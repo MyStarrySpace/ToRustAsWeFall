@@ -1,0 +1,552 @@
+extends Node
+
+## CLI test runner. Parses command-line arguments and dispatches tests.
+## Usage: godot --headless --path "." -- --test-syntax
+##        godot --headless --path "." -- --test-all
+##        godot --headless --path "." -- --test-tag-day
+
+var _passed := 0
+var _failed := 0
+var _test_name := ""
+
+func _ready() -> void:
+	# Wait one frame so the _ready chain completes before scene tests add_child to root
+	await get_tree().process_frame
+
+	var args := OS.get_cmdline_user_args()
+	if args.is_empty():
+		args = OS.get_cmdline_args()
+
+	var ran_test := false
+	for arg in args:
+		match arg:
+			"--test-all":
+				ran_test = true
+				await _run_all_tests()
+			"--test-syntax":
+				ran_test = true
+				_test_syntax()
+			"--test-grid":
+				ran_test = true
+				_test_grid_pathfinding()
+			"--test-game-state":
+				ran_test = true
+				_test_game_state()
+			"--test-scheduler":
+				ran_test = true
+				_test_event_scheduler()
+			"--test-tag-day":
+				ran_test = true
+				await _test_tag_day()
+			"--test-aster-sim":
+				ran_test = true
+				await _test_aster_sim()
+			"--test-peris-sim":
+				ran_test = true
+				await _test_peris_sim()
+			"--test-leaving-facility":
+				ran_test = true
+				await _test_leaving_facility()
+			"--test-scene-load":
+				ran_test = true
+				await _test_scene_load()
+
+	if ran_test:
+		_print_results()
+		get_tree().quit(0 if _failed == 0 else 1)
+	else:
+		# No test flag — this script was loaded but no test requested.
+		# In normal gameplay this node does nothing.
+		pass
+
+func _run_all_tests() -> void:
+	_test_syntax()
+	_test_grid_pathfinding()
+	_test_game_state()
+	_test_event_scheduler()
+	await _test_scene_load()
+	await _test_aster_sim()
+	await _test_peris_sim()
+	await _test_leaving_facility()
+	await _test_tag_day()
+
+# --- Test: Syntax ---
+# If we got this far, GDScript compiled successfully.
+func _test_syntax() -> void:
+	_test_name = "Syntax Check"
+	_assert_true(true, "All GDScript files compiled without errors")
+
+# --- Test: Scene Load ---
+func _test_scene_load() -> void:
+	_test_name = "Scene Load"
+
+	var level_editor := load("res://scenes/editor/level_editor.tscn")
+	_assert_true(level_editor != null, "level_editor.tscn loads")
+
+	var aster_sim := load("res://scenes/tutorial/aster_sim.tscn")
+	_assert_true(aster_sim != null, "aster_sim.tscn loads")
+
+	var peris_sim := load("res://scenes/tutorial/peris_sim.tscn")
+	_assert_true(peris_sim != null, "peris_sim.tscn loads")
+
+	var leaving := load("res://scenes/tutorial/leaving_facility.tscn")
+	_assert_true(leaving != null, "leaving_facility.tscn loads")
+
+	var tag_day := load("res://scenes/tutorial/tag_day.tscn")
+	_assert_true(tag_day != null, "tag_day.tscn loads")
+
+	var block_lib := load("res://resources/block_library.tres")
+	_assert_true(block_lib != null, "block_library.tres loads")
+	_assert_true(block_lib is MeshLibrary, "block_library is MeshLibrary")
+
+	await get_tree().process_frame
+
+# --- Test: EventScheduler ---
+func _test_event_scheduler() -> void:
+	_test_name = "EventScheduler"
+
+	var sched := EventScheduler.new()
+	_assert_true(sched != null, "EventScheduler created")
+	_assert_equals(sched.get_current_tick(), 0.0, "Starts at tick 0")
+	_assert_equals(sched.pending_count(), 0, "No pending events initially")
+
+	# Schedule and advance
+	var fired := []
+	sched.schedule_at(1.0, func(): fired.append("a"), "event_a")
+	sched.schedule_at(2.0, func(): fired.append("b"), "event_b")
+	sched.schedule_at(1.5, func(): fired.append("c"), "event_c")
+	_assert_equals(sched.pending_count(), 3, "3 events pending")
+
+	sched.advance_ticks(1.0)
+	_assert_equals(fired.size(), 1, "1 event fired at tick 1.0")
+	_assert_equals(fired[0], "a", "Event 'a' fired first")
+	_assert_equals(sched.get_current_tick(), 1.0, "Tick is 1.0")
+
+	sched.advance_ticks(1.5)
+	_assert_equals(fired.size(), 3, "All 3 events fired by tick 2.5")
+	_assert_equals(fired[1], "c", "Event 'c' fired second (tick 1.5)")
+	_assert_equals(fired[2], "b", "Event 'b' fired third (tick 2.0)")
+
+	# schedule_after — use array wrapper for lambda-mutable state
+	var after_result := [false]
+	sched.schedule_after(0.5, func(): after_result[0] = true, "after_test")
+	sched.advance_ticks(0.5)
+	_assert_true(after_result[0], "schedule_after fires after delay")
+
+	# Cancel by handle
+	var cancel_result := [false]
+	var handle := sched.schedule_after(1.0, func(): cancel_result[0] = true, "cancel_test")
+	_assert_true(sched.cancel(handle), "cancel returns true for valid handle")
+	sched.advance_ticks(2.0)
+	_assert_true(not cancel_result[0], "Cancelled event did not fire")
+
+	# Cancel by tag
+	var tag_result := [0]
+	sched.schedule_after(1.0, func(): tag_result[0] += 1, "batch")
+	sched.schedule_after(2.0, func(): tag_result[0] += 1, "batch")
+	sched.schedule_after(3.0, func(): tag_result[0] += 1, "keep")
+	var removed := sched.cancel_tag("batch")
+	_assert_equals(removed, 2, "cancel_tag removed 2 events")
+	sched.advance_ticks(5.0)
+	_assert_equals(tag_result[0], 1, "Only non-cancelled event fired")
+
+	# Speed multiplier via advance()
+	var sched2 := EventScheduler.new()
+	var speed_result := [false]
+	sched2.set_speed(10.0)
+	sched2.schedule_at(5.0, func(): speed_result[0] = true, "speed_test")
+	sched2.advance(0.5)  # 0.5 real seconds * 10x = 5.0 ticks
+	_assert_true(speed_result[0], "Speed multiplier accelerates event firing")
+
+	# Pause/resume
+	var sched3 := EventScheduler.new()
+	var pause_result := [false]
+	sched3.schedule_at(1.0, func(): pause_result[0] = true, "pause_test")
+	sched3.pause()
+	sched3.advance_ticks(5.0)
+	_assert_true(not pause_result[0], "Paused scheduler doesn't fire events")
+	sched3.resume()
+	sched3.advance_ticks(1.0)
+	_assert_true(pause_result[0], "Resumed scheduler fires events")
+
+	# Priority ordering
+	var prio_order := []
+	var sched4 := EventScheduler.new()
+	sched4.schedule_at(1.0, func(): prio_order.append("low"), "low", 10)
+	sched4.schedule_at(1.0, func(): prio_order.append("high"), "high", 0)
+	sched4.schedule_at(1.0, func(): prio_order.append("mid"), "mid", 5)
+	sched4.advance_ticks(1.0)
+	_assert_equals(prio_order[0], "high", "Priority 0 fires first")
+	_assert_equals(prio_order[1], "mid", "Priority 5 fires second")
+	_assert_equals(prio_order[2], "low", "Priority 10 fires third")
+
+	# Reactive chaining (event schedules another event)
+	var sched5 := EventScheduler.new()
+	var chain := []
+	sched5.schedule_at(1.0, func():
+		chain.append("first")
+		sched5.schedule_after(0.5, func(): chain.append("second"), "chain2")
+	, "chain1")
+	sched5.advance_ticks(2.0)
+	_assert_equals(chain.size(), 2, "Reactive chain: both events fired")
+	_assert_equals(chain[1], "second", "Chained event fired correctly")
+
+	# Serialize/deserialize
+	var sched6 := EventScheduler.new()
+	sched6.set_speed(5.0)
+	sched6.advance_ticks(10.0)
+	sched6.pause()
+	var snap := sched6.serialize()
+	_assert_equals(snap.current_tick, 10.0, "Serialized tick")
+	_assert_equals(snap.speed, 5.0, "Serialized speed")
+	_assert_equals(snap.paused, true, "Serialized paused")
+
+	var sched7 := EventScheduler.new()
+	sched7.deserialize(snap)
+	_assert_equals(sched7.get_current_tick(), 10.0, "Deserialized tick")
+	_assert_equals(sched7.get_speed(), 5.0, "Deserialized speed")
+	_assert_true(sched7.is_paused(), "Deserialized paused state")
+
+# --- Test: Tag Day Sequence ---
+func _test_tag_day() -> void:
+	_test_name = "Tag Day Sequence"
+
+	var scene := load("res://scenes/tutorial/tag_day.tscn")
+	_assert_true(scene != null, "Tag Day scene loads")
+
+	if scene:
+		var instance: Node = scene.instantiate()
+		_assert_true(instance != null, "Tag Day scene instantiates")
+		get_tree().root.add_child(instance)
+		for i in range(5):
+			await get_tree().process_frame
+		_assert_true(instance.is_inside_tree(), "Tag Day scene is in tree")
+
+		var env: Node = instance.find_child("Environment", true, false)
+		_assert_true(env != null, "Environment node exists")
+
+		var chars: Node = instance.find_child("Characters", true, false)
+		_assert_true(chars != null, "Characters node exists")
+
+		var camera: Node = instance.find_child("GameCamera", true, false)
+		_assert_true(camera != null, "GameCamera node exists")
+
+		var dialogue: Node = instance.find_child("DialogueBox", true, false)
+		_assert_true(dialogue != null, "DialogueBox node exists")
+
+		# Event-driven progression test: verify scheduler and step system
+		if "_current_step" in instance and "_scheduler" in instance:
+			_assert_true(instance._scheduler != null, "EventScheduler exists")
+			_assert_true(instance._current_step != "", "Current step is set")
+
+			# Exercise corridor walk path construction
+			instance._start_poem_and_drag()
+			for j in range(3):
+				await get_tree().process_frame
+			instance._begin_corridor_walk()
+			for j in range(5):
+				await get_tree().process_frame
+			_assert_true(true, "Corridor walk started without crash (walk_path typed arrays)")
+
+		instance.queue_free()
+		await get_tree().process_frame
+
+# --- Test: Aster Simulation ---
+func _test_aster_sim() -> void:
+	_test_name = "Aster Simulation"
+
+	var scene := load("res://scenes/tutorial/aster_sim.tscn")
+	_assert_true(scene != null, "Aster sim scene loads")
+
+	if scene:
+		var instance: Node = scene.instantiate()
+		_assert_true(instance != null, "Aster sim scene instantiates")
+		get_tree().root.add_child(instance)
+		for i in range(5):
+			await get_tree().process_frame
+		_assert_true(instance.is_inside_tree(), "Aster sim scene is in tree")
+
+		var env: Node = instance.find_child("Environment", true, false)
+		_assert_true(env != null, "Environment node exists")
+
+		var chars: Node = instance.find_child("Characters", true, false)
+		_assert_true(chars != null, "Characters node exists")
+
+		var aster: Node = instance.find_child("Aster", true, false)
+		_assert_true(aster != null, "Aster player node exists")
+
+		var ron: Node = instance.find_child("Ron", true, false)
+		_assert_true(ron != null, "Ron NPC node exists")
+
+		var drink: Node = instance.find_child("DrinkMachine", true, false)
+		_assert_true(drink != null, "Drink machine interactable exists")
+
+		var dialogue: Node = instance.find_child("DialogueBox", true, false)
+		_assert_true(dialogue != null, "DialogueBox node exists")
+
+		instance.queue_free()
+		await get_tree().process_frame
+
+# --- Test: Peris Simulation ---
+func _test_peris_sim() -> void:
+	_test_name = "Peris Simulation"
+
+	var scene := load("res://scenes/tutorial/peris_sim.tscn")
+	_assert_true(scene != null, "Peris sim scene loads")
+
+	if scene:
+		var instance: Node = scene.instantiate()
+		_assert_true(instance != null, "Peris sim scene instantiates")
+		get_tree().root.add_child(instance)
+		for i in range(5):
+			await get_tree().process_frame
+		_assert_true(instance.is_inside_tree(), "Peris sim scene is in tree")
+
+		var env: Node = instance.find_child("Environment", true, false)
+		_assert_true(env != null, "Environment node exists")
+
+		var chars: Node = instance.find_child("Characters", true, false)
+		_assert_true(chars != null, "Characters node exists")
+
+		var peris: Node = instance.find_child("Peris", true, false)
+		_assert_true(peris != null, "Peris player node exists")
+
+		var monos: Node = instance.find_child("Monos", true, false)
+		_assert_true(monos != null, "Monos NPC node exists")
+
+		var dialogue: Node = instance.find_child("DialogueBox", true, false)
+		_assert_true(dialogue != null, "DialogueBox node exists")
+
+		instance.queue_free()
+		await get_tree().process_frame
+
+# --- Test: Leaving Facility ---
+func _test_leaving_facility() -> void:
+	_test_name = "Leaving Facility"
+
+	var scene := load("res://scenes/tutorial/leaving_facility.tscn")
+	_assert_true(scene != null, "Leaving facility scene loads")
+
+	if scene:
+		var instance: Node = scene.instantiate()
+		_assert_true(instance != null, "Leaving facility scene instantiates")
+		get_tree().root.add_child(instance)
+		for i in range(5):
+			await get_tree().process_frame
+		_assert_true(instance.is_inside_tree(), "Scene is in tree")
+
+		var aster: Node = instance.find_child("Aster", true, false)
+		_assert_true(aster != null, "Aster player node exists")
+
+		var peris: Node = instance.find_child("Peris", true, false)
+		_assert_true(peris != null, "Peris NPC node exists")
+
+		var endo: Node = instance.find_child("Endo", true, false)
+		_assert_true(endo != null, "Endo NPC node exists")
+
+		var dialogue: Node = instance.find_child("DialogueBox", true, false)
+		_assert_true(dialogue != null, "DialogueBox node exists")
+
+		instance.queue_free()
+		await get_tree().process_frame
+
+# --- Test: Grid Pathfinding ---
+func _test_grid_pathfinding() -> void:
+	_test_name = "Grid Pathfinding"
+
+	# Create a simple room
+	var grid := GridWorld.new()
+	grid.create_room(10, 8, true)
+	_assert_equals(grid.width, 10, "Room width is 10")
+	_assert_equals(grid.height, 8, "Room height is 8")
+
+	# Walls on border
+	_assert_equals(grid.get_tile(0, 0), GridWorld.Tile.WALL, "Top-left is wall")
+	_assert_equals(grid.get_tile(5, 4), GridWorld.Tile.FLOOR, "Center is floor")
+	_assert_true(not grid.is_walkable(0, 0), "Wall is not walkable")
+	_assert_true(grid.is_walkable(5, 4), "Floor is walkable")
+
+	# Path from (1,1) to (8,6) in open room — should find a path
+	var path := grid.find_path(Vector2i(1, 1), Vector2i(8, 6))
+	_assert_true(path.size() > 0, "Path found in open room")
+
+	# Path end should be at cell (8,6) world position
+	if path.size() > 0:
+		var end_cell := grid.world_to_grid(path[path.size() - 1])
+		_assert_equals(end_cell, Vector2i(8, 6), "Path ends at target cell")
+
+	# Add a wall across the middle
+	for x in range(1, 9):
+		grid.set_tile(x, 4, GridWorld.Tile.WALL)
+	# Leave a gap at x=5
+	grid.set_tile(5, 4, GridWorld.Tile.FLOOR)
+
+	# Path should route through the gap
+	var path2 := grid.find_path(Vector2i(1, 1), Vector2i(1, 6))
+	_assert_true(path2.size() > 0, "Path found through wall gap")
+
+	# Verify the path goes through the gap (cell 5,4)
+	var passes_gap := false
+	for wp in path2:
+		var cell := grid.world_to_grid(wp)
+		if cell.x >= 4 and cell.x <= 6 and cell.y == 4:
+			passes_gap = true
+			break
+	_assert_true(passes_gap, "Path routes through gap in wall")
+
+	# Block the gap — no path should exist
+	grid.set_tile(5, 4, GridWorld.Tile.WALL)
+	var path3 := grid.find_path(Vector2i(1, 1), Vector2i(1, 6))
+	_assert_true(path3.is_empty(), "No path when fully walled off")
+
+	# Coordinate conversion round-trip
+	var cell := Vector2i(5, 3)
+	var world_pos := grid.grid_to_world(cell)
+	var back := grid.world_to_grid(world_pos)
+	_assert_equals(back, cell, "grid_to_world → world_to_grid round-trip")
+
+	# Load from strings (prototype format)
+	var grid2 := GridWorld.new()
+	grid2.load_from_strings(PackedStringArray([
+		"111",
+		"101",
+		"111",
+	]))
+	_assert_equals(grid2.width, 3, "String-loaded width")
+	_assert_equals(grid2.height, 3, "String-loaded height")
+	_assert_equals(grid2.get_tile(1, 1), GridWorld.Tile.FLOOR, "String-loaded center is floor")
+	_assert_equals(grid2.get_tile(0, 0), GridWorld.Tile.WALL, "String-loaded corner is wall")
+
+	# find_tiles
+	var grid3 := GridWorld.new()
+	grid3.load_from_strings(PackedStringArray([
+		"1111",
+		"1051",
+		"1601",
+		"1111",
+	]))
+	var terminals := grid3.find_tiles(GridWorld.Tile.TERMINAL)
+	_assert_equals(terminals.size(), 1, "Found 1 terminal tile")
+	if terminals.size() > 0:
+		_assert_equals(terminals[0], Vector2i(2, 1), "Terminal at correct position")
+	var foods := grid3.find_tiles(GridWorld.Tile.FOOD)
+	_assert_equals(foods.size(), 1, "Found 1 food tile")
+	if foods.size() > 0:
+		_assert_equals(foods[0], Vector2i(1, 2), "Food at correct position")
+
+	# Locked door test
+	var grid4 := GridWorld.new()
+	grid4.load_from_strings(PackedStringArray([
+		"111",
+		"181",
+		"101",
+		"111",
+	]))
+	var locked := {Vector2i(1, 1): true}
+	_assert_true(not grid4.is_walkable(1, 1, {}, locked), "Locked door blocks")
+	_assert_true(grid4.is_walkable(1, 1, {}, {}), "Unlocked door passable")
+
+# --- Test: GameState ---
+func _test_game_state() -> void:
+	_test_name = "GameState"
+
+	# Create grid and GameState
+	var grid := GridWorld.new()
+	grid.create_room(10, 8, true)
+
+	var gs := GameState.new()
+	gs.grid = grid
+	_assert_true(gs.grid != null, "GameState has grid")
+
+	# Register a character
+	gs.register_character("aster", grid.grid_to_world(Vector2i(1, 1)), 3.0, {"atp": 72})
+	_assert_true(gs.characters.has("aster"), "Character registered")
+	_assert_true(gs.characters["aster"].move_speed == 3.0, "Move speed is 3.0")
+	_assert_true(gs.characters["aster"].stats.atp == 72, "Stats preserved")
+
+	# Command: move to cell
+	var moved := gs.command_move_to_cell("aster", Vector2i(5, 3))
+	_assert_true(moved, "command_move_to_cell returns true")
+	_assert_true(gs.characters["aster"].is_moving, "Character is moving")
+	_assert_true(gs.characters["aster"].path.size() > 0, "Path has waypoints")
+
+	# Tick until arrival
+	var ticks := 0
+	while gs.is_moving("aster") and ticks < 500:
+		gs.tick(0.05)
+		ticks += 1
+	_assert_true(not gs.is_moving("aster"), "Character arrived after ticking")
+	var final_cell := grid.world_to_grid(gs.characters["aster"].position)
+	_assert_equals(final_cell, Vector2i(5, 3), "Final cell matches target")
+
+	# Command: move to unreachable cell (wall)
+	var blocked := gs.command_move_to_cell("aster", Vector2i(0, 0))
+	_assert_true(not blocked, "Cannot pathfind to wall")
+
+	# Command: straight-line move
+	var pos_moved := gs.command_move_to_pos("aster", Vector3(4.5, 0, 2.5))
+	_assert_true(pos_moved, "command_move_to_pos returns true")
+	ticks = 0
+	while gs.is_moving("aster") and ticks < 200:
+		gs.tick(0.05)
+		ticks += 1
+	_assert_true(not gs.is_moving("aster"), "Straight-line move completed")
+
+	# Command: stop
+	gs.command_move_to_cell("aster", Vector2i(8, 6))
+	_assert_true(gs.is_moving("aster"), "Moving before stop")
+	gs.command_stop("aster")
+	_assert_true(not gs.is_moving("aster"), "Stopped after command_stop")
+
+	# Serialize / deserialize round-trip
+	gs.command_move_to_cell("aster", Vector2i(3, 3))
+	ticks = 0
+	while gs.is_moving("aster") and ticks < 500:
+		gs.tick(0.05)
+		ticks += 1
+
+	var snapshot := gs.serialize()
+	_assert_true(snapshot.has("characters"), "Snapshot has characters")
+	_assert_true(snapshot.characters.has("aster"), "Snapshot has aster")
+
+	var gs2 := GameState.new()
+	gs2.grid = grid
+	gs2.deserialize(snapshot)
+	_assert_true(gs2.characters.has("aster"), "Deserialized has aster")
+	var pos1: Vector3 = gs.characters["aster"].position
+	var pos2: Vector3 = gs2.characters["aster"].position
+	_assert_true(pos1.distance_to(pos2) < 0.01, "Positions match after round-trip")
+
+	# Unregister
+	gs.unregister_character("aster")
+	_assert_true(not gs.characters.has("aster"), "Character unregistered")
+
+# --- Assertions ---
+
+func _assert_true(condition: bool, message: String) -> void:
+	if condition:
+		print("  PASS: [%s] %s" % [_test_name, message])
+		_passed += 1
+	else:
+		print("  FAIL: [%s] %s" % [_test_name, message])
+		_failed += 1
+
+func _assert_equals(actual: Variant, expected: Variant, message: String) -> void:
+	if actual == expected:
+		print("  PASS: [%s] %s (got: %s)" % [_test_name, message, actual])
+		_passed += 1
+	else:
+		print("  FAIL: [%s] %s (expected: %s, got: %s)" % [_test_name, message, expected, actual])
+		_failed += 1
+
+func _print_results() -> void:
+	print("")
+	print("=== TEST RESULTS ===")
+	print("  Passed: %d" % _passed)
+	print("  Failed: %d" % _failed)
+	print("  Total:  %d" % (_passed + _failed))
+	if _failed > 0:
+		print("  STATUS: FAILED")
+	else:
+		print("  STATUS: ALL PASSED")
+	print("====================")

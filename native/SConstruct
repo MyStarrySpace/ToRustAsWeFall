@@ -1,0 +1,23 @@
+#!/usr/bin/env python
+import os
+import sys
+
+env = SConscript("../godot-cpp/SConstruct")
+
+env.Append(CPPPATH=["src/"])
+sources = Glob("src/*.cpp")
+
+if env["platform"] == "macos":
+    library = env.SharedLibrary(
+        "../to-rust-as-we-fall/bin/libtrwf.{}.{}.framework/libtrwf.{}.{}".format(
+            env["platform"], env["target"], env["platform"], env["target"]
+        ),
+        source=sources,
+    )
+else:
+    library = env.SharedLibrary(
+        "../to-rust-as-we-fall/bin/libtrwf{}{}".format(env["suffix"], env["SHLIBSUFFIX"]),
+        source=sources,
+    )
+
+Default(library)

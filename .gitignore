@@ -1,0 +1,30 @@
+# Claude Code
+.claude/
+
+# Godot binaries (download separately)
+*.exe
+godot.bat
+
+# godot-cpp (large dependency — clone/copy separately)
+godot-cpp/
+
+# Godot editor cache
+to-rust-as-we-fall/.godot/
+
+# Built native libraries and linker artifacts
+to-rust-as-we-fall/bin/*.dll
+to-rust-as-we-fall/bin/*.so
+to-rust-as-we-fall/bin/*.dylib
+to-rust-as-we-fall/bin/*.framework/
+to-rust-as-we-fall/bin/*.lib
+to-rust-as-we-fall/bin/*.exp
+
+# SCons build artifacts
+native/.sconsign.dblite
+native/**/*.obj
+native/**/*.o
+native/**/*.lib
+native/**/*.a
+
+# Android export
+to-rust-as-we-fall/android/

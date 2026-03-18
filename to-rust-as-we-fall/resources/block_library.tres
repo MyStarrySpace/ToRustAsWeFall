@@ -1,0 +1,186 @@
+[gd_resource type="MeshLibrary" format=3]
+
+
+[sub_resource type="StandardMaterial3D" id="Mat_wall"]
+albedo_color = Color(0.22, 0.16, 0.12, 1)
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="Mat_floor"]
+albedo_color = Color(0.1, 0.1, 0.12, 1)
+roughness = 0.95
+
+[sub_resource type="StandardMaterial3D" id="Mat_pipe"]
+albedo_color = Color(0.15, 0.35, 0.32, 1)
+roughness = 0.4
+metallic = 0.3
+
+[sub_resource type="StandardMaterial3D" id="Mat_flora"]
+albedo_color = Color(0.1, 0.4, 0.25, 1)
+roughness = 0.8
+emission_enabled = true
+emission = Color(0.0, 0.15, 0.05, 1)
+emission_energy_multiplier = 0.3
+
+[sub_resource type="StandardMaterial3D" id="Mat_iron"]
+albedo_color = Color(0.45, 0.15, 0.05, 1)
+roughness = 0.6
+metallic = 0.5
+emission_enabled = true
+emission = Color(0.3, 0.08, 0.0, 1)
+emission_energy_multiplier = 0.4
+
+[sub_resource type="StandardMaterial3D" id="Mat_terminal"]
+albedo_color = Color(0.08, 0.18, 0.28, 1)
+roughness = 0.3
+metallic = 0.4
+emission_enabled = true
+emission = Color(0.0, 0.3, 0.5, 1)
+emission_energy_multiplier = 0.5
+
+[sub_resource type="StandardMaterial3D" id="Mat_shelter"]
+albedo_color = Color(0.12, 0.18, 0.3, 1)
+roughness = 0.5
+emission_enabled = true
+emission = Color(0.05, 0.1, 0.25, 1)
+emission_energy_multiplier = 0.2
+
+[sub_resource type="StandardMaterial3D" id="Mat_membrane"]
+albedo_color = Color(0.3, 0.2, 0.25, 1)
+roughness = 0.7
+transparency = 1
+albedo_color = Color(0.3, 0.2, 0.25, 0.75)
+
+
+[sub_resource type="BoxMesh" id="Mesh_wall"]
+size = Vector3(1, 1, 1)
+material = SubResource("Mat_wall")
+
+[sub_resource type="BoxMesh" id="Mesh_floor"]
+size = Vector3(1, 0.15, 1)
+material = SubResource("Mat_floor")
+
+[sub_resource type="CylinderMesh" id="Mesh_pipe"]
+top_radius = 0.28
+bottom_radius = 0.28
+height = 1.0
+radial_segments = 12
+material = SubResource("Mat_pipe")
+
+[sub_resource type="SphereMesh" id="Mesh_flora"]
+radius = 0.42
+height = 0.84
+radial_segments = 10
+rings = 6
+material = SubResource("Mat_flora")
+
+[sub_resource type="BoxMesh" id="Mesh_iron"]
+size = Vector3(0.75, 0.75, 0.75)
+material = SubResource("Mat_iron")
+
+[sub_resource type="BoxMesh" id="Mesh_terminal"]
+size = Vector3(0.5, 0.7, 0.5)
+material = SubResource("Mat_terminal")
+
+[sub_resource type="CylinderMesh" id="Mesh_shelter"]
+top_radius = 0.0
+bottom_radius = 0.5
+height = 0.8
+radial_segments = 8
+material = SubResource("Mat_shelter")
+
+[sub_resource type="BoxMesh" id="Mesh_membrane"]
+size = Vector3(1, 1, 0.15)
+material = SubResource("Mat_membrane")
+
+
+[sub_resource type="BoxShape3D" id="Shape_wall"]
+size = Vector3(1, 1, 1)
+
+[sub_resource type="BoxShape3D" id="Shape_floor"]
+size = Vector3(1, 0.15, 1)
+
+[sub_resource type="CylinderShape3D" id="Shape_pipe"]
+radius = 0.28
+height = 1.0
+
+[sub_resource type="SphereShape3D" id="Shape_flora"]
+radius = 0.42
+
+[sub_resource type="BoxShape3D" id="Shape_iron"]
+size = Vector3(0.75, 0.75, 0.75)
+
+[sub_resource type="BoxShape3D" id="Shape_terminal"]
+size = Vector3(0.5, 0.7, 0.5)
+
+[sub_resource type="CylinderShape3D" id="Shape_shelter"]
+radius = 0.5
+height = 0.8
+
+[sub_resource type="BoxShape3D" id="Shape_membrane"]
+size = Vector3(1, 1, 0.15)
+
+
+[resource]
+item/0/name = "wall"
+item/0/mesh = SubResource("Mesh_wall")
+item/0/mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/0/shapes = [SubResource("Shape_wall"), Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)]
+item/0/navigation_mesh = null
+item/0/navigation_mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/0/navigation_layers = 1
+
+item/1/name = "floor"
+item/1/mesh = SubResource("Mesh_floor")
+item/1/mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.425, 0)
+item/1/shapes = [SubResource("Shape_floor"), Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.425, 0)]
+item/1/navigation_mesh = null
+item/1/navigation_mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/1/navigation_layers = 1
+
+item/2/name = "pipe"
+item/2/mesh = SubResource("Mesh_pipe")
+item/2/mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/2/shapes = [SubResource("Shape_pipe"), Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)]
+item/2/navigation_mesh = null
+item/2/navigation_mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/2/navigation_layers = 1
+
+item/3/name = "flora"
+item/3/mesh = SubResource("Mesh_flora")
+item/3/mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.08, 0)
+item/3/shapes = [SubResource("Shape_flora"), Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.08, 0)]
+item/3/navigation_mesh = null
+item/3/navigation_mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/3/navigation_layers = 1
+
+item/4/name = "iron_bloom"
+item/4/mesh = SubResource("Mesh_iron")
+item/4/mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/4/shapes = [SubResource("Shape_iron"), Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)]
+item/4/navigation_mesh = null
+item/4/navigation_mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/4/navigation_layers = 1
+
+item/5/name = "terminal"
+item/5/mesh = SubResource("Mesh_terminal")
+item/5/mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.15, 0)
+item/5/shapes = [SubResource("Shape_terminal"), Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.15, 0)]
+item/5/navigation_mesh = null
+item/5/navigation_mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/5/navigation_layers = 1
+
+item/6/name = "shelter"
+item/6/mesh = SubResource("Mesh_shelter")
+item/6/mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
+item/6/shapes = [SubResource("Shape_shelter"), Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)]
+item/6/navigation_mesh = null
+item/6/navigation_mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/6/navigation_layers = 1
+
+item/7/name = "membrane"
+item/7/mesh = SubResource("Mesh_membrane")
+item/7/mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/7/shapes = [SubResource("Shape_membrane"), Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)]
+item/7/navigation_mesh = null
+item/7/navigation_mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/7/navigation_layers = 1

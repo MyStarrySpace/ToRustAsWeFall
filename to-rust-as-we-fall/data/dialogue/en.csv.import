@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://cj3rk42gpnahd"
+
+[deps]
+
+files=["res://data/dialogue/en.speaker.translation", "res://data/dialogue/en.style.translation", "res://data/dialogue/en.wait.translation", "res://data/dialogue/en.text.translation", "res://data/dialogue/en.context.translation"]
+
+source_file="res://data/dialogue/en.csv"
+dest_files=["res://data/dialogue/en.speaker.translation", "res://data/dialogue/en.style.translation", "res://data/dialogue/en.wait.translation", "res://data/dialogue/en.text.translation", "res://data/dialogue/en.context.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

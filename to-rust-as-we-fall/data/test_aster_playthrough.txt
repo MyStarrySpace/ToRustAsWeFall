@@ -1,0 +1,27 @@
+# Automated playthrough of Aster's simulation tutorial
+# Interaction is proximity-based: walk near objects and dwell
+
+status
+wait 3
+status
+
+# Move to the drink machine and dwell to interact
+move 8 -3
+dwell 2
+
+# Verify ATP filled via proximity interaction
+assert atp >= 100
+
+# Wait for Ron conversation
+wait 8
+advance
+advance
+advance
+advance
+
+# Wait for tag notification (Ron + device)
+advance
+advance
+advance
+
+status

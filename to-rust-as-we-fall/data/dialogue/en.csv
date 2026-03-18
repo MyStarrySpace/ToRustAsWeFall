@@ -1,0 +1,71 @@
+key,speaker,style,wait,text,context
+aster_sim.working.thought,,thought,false,"If I can get the baseline data right, I can predict thermal drift three cycles out instead of one...",Aster at his desk mumbling about forecasting
+aster_sim.ron.greeting,Ron,normal,false,"Hey hey, star of databank 534b!",Ron checks his device as he walks up
+aster_sim.ron.name,Ron,normal,false,"Aster! Your metrics this quarter are disgusting, you beast.",Ron glances at device — read the name off it
+aster_sim.aster.forecast,Aster,normal,false,"I've been trying to forecast instead of react. Would work better if we had more historical data, but...",Aster trails off and starts moving to terminal
+aster_sim.aster.show,Aster,normal,false,"Here, let me show you.",Tutorial beat: player moves Aster to terminal
+aster_sim.system.cleaned,,data,false,"The data has been cleaned and normalized to correct for anomalies. No further analysis is necessary.",Visible on terminal — set dressing now; most important sentence later
+aster_sim.ron.drinks,Ron,normal,false,"Ah well, that's part of the job! I think we're both glad for unlimited drinks and not having to do backbreaking manual labor. Speaking of which, enjoy the new drink machine! Unlimited, as always, for top performers like you.",Ron offering perks as compensation — institutional warmth
+aster_sim.drink_label,,ui,false,click,Label that appears over the drink machine during tutorial
+aster_sim.drink_redirect.thought,,thought,false,I should grab a drink first. I always grab a drink first.,Soft redirect if player wanders away from drink machine
+aster_sim.ron.move_fast,Ron,normal,false,"Keep it up! Move fast and break, am I right?",The motto — directive disguised as camaraderie
+aster_sim.ron.tag_notify,Ron,normal,false,"Ah, sorry to have to pull you out. You're on a roll!",Tag Day notification chimes — Ron delivers it with institutional language
+aster_sim.device.tag_verify,DEVICE,data,false,TAG VERIFICATION — CHECKPOINT 7-B — REPORT WITHIN 15 MINUTES,Device notification
+aster_sim.tag_routine,,data,true,Time for Tag Day. Routine.,Aster's flat reaction — waits for player click
+tag_day.checkpoint_id,,data,false,CHECKPOINT 7-B  //  IMMUNITY VERIFICATION,Data overlay as Aster arrives at checkpoint
+tag_day.scan_failed,STATION 7-B.2,data,false,TAG VERIFICATION: FAILED,Adjacent station scan failure — red flash
+tag_day.poem.01,,poem,false,"Here we go round the prickly pear
+Prickly pear prickly pear
+Here we go round the prickly pear
+At five o'clock in the morning.",Citizen singing — nursery rhyme draws attention
+tag_day.poem.02,,poem,false,"Between the idea
+And the reality
+Between the motion
+And the act",Shadow stanzas — corridor walk begins
+tag_day.poem.03,,poem,false,Falls the Shadow,
+tag_day.poem.04,,poem,false,"Between the conception
+And the creation
+Between the emotion
+And the response",
+tag_day.poem.05,,poem,false,Falls the Shadow,
+tag_day.poem.06,,poem,false,"Between the desire
+And the spasm
+Between the potency
+And the existence
+Between the essence
+And the descent
+Falls the Shadow",The long stanza — voice steady as they walk deeper
+tag_day.fragment.01,,fragment,false,For Thine is the Kingdom...,Syntax collapsing — fragments of prayer stuttering
+tag_day.fragment.02,,fragment,false,"This is the way the world ends
+This is the way the world ends",
+tag_day.fragment.03,,fragment,false,"This is the way... the world...
+Not with a bang but a whimper",Last words — the poem predicts its own ending
+tag_day.naturalizers_grip,,data,false,"The two white figures step forward. They take the citizen's arms. Gently. Efficiently.",Naturalizers grip citizen for corridor walk
+tag_day.no_field,,data,false,The data has no field for what just happened.,After neutralization — the data has no field for poetry
+tag_day.scan_passed,STATION 7-B.1,data,false,TAG VERIFICATION: PASSED,Aster scans clean
+tag_day.clearance,,data,true,"Blue light. Clean reading. You return to the simulation.",Blue clearance — waits for player click
+peris_sim.waiting.thought,,thought,false,Monos should be connecting soon. He's always a little late.,Peris at her desk waiting for client
+peris_sim.feed_hum,,normal,false,"The feed terminal hums. The session slot is open. No connection yet.",Portal waiting for connection
+peris_sim.monos.late,Monos,normal,false,"Sorry I'm late. Sorry. I was — there was someone following me. On the way here. I thought I lost them but...",Monos arrives flustered through the portal
+peris_sim.monos.start,Monos,normal,false,"Anyway. I'm here now. Let's start.",
+peris_sim.session_begins,,normal,false,"The session begins. Monos is talking about his week. Completion markers tick.",Session in progress
+peris_sim.monos.hit,Monos,normal,false,—!,Attack through the portal — Monos is hurt
+peris_sim.attack_narration,,normal,false,"Something reaches through the portal connection. Monos recoils. He's hurt.",
+peris_sim.system.overtime,SYSTEM,data,false,SESSION OVERTIME — TERMINATE AND LOG NOTES?,System prompting termination
+peris_sim.sprint.thought,,thought,false,I need to get to the terminal. Now.,Urgency — player must run to portal
+peris_sim.care.thought,,thought,false,"I can't just walk past them. That's not who I am.",Soft redirect if player ignores Monos — Peris's care ethic
+peris_sim.protect_hint,,normal,false,You're within range. Cast Protect through the portal to shield Monos.,Player near enough to cast
+peris_sim.aftermath,,normal,false,"The attack subsides. The shielding holds. Monos is shaken but stable.",After protect — crisis passed
+peris_sim.monos.thanks,Monos,normal,false,"I... thank you. I don't know what that was. Thank you, Peris.",
+peris_sim.system.complete,SYSTEM,data,false,SESSION COMPLETE — EFFICIENCY: 62%  //  OVERTIME PENALTY LOGGED,Efficiency penalty
+peris_sim.penalty_narration,,data,false,"The system logs the penalty. It doesn't log what you did for Monos.",
+peris_sim.session_ends,,normal,true,The session ends. The portal closes.,Waits for click — transition out
+facility.exit_narration,,normal,false,"The facility door seals behind you. The corridor stretches ahead.",Leaving the facility
+facility.endo_appears,,normal,false,"Someone is waiting at the exit. Quiet. Watchful. He falls into step beside you.",Endo joins
+facility.endo.shelters,Endo,normal,false,I know where the shelters are. Stay close.,
+facility.endo.iron_warn,Endo,normal,false,"Not that way. That'll drain you.",First iron spill — safe routing lesson
+facility.endo.dusk,Endo,normal,false,Getting dark. There's a shelter ahead.,Dusk approaching — time pressure
+facility.endo.shelter,Endo,normal,false,Shelter. Get inside.,Arriving at shelter
+facility.night_narration,,normal,false,"Night. The barrier is thinner here. You can hear things moving outside.",First night
+facility.endo.rest,Endo,normal,false,Rest. You'll need it.,
+facility.dawn,,data,true,Day 2. Dawn.,Morning — waits for click
