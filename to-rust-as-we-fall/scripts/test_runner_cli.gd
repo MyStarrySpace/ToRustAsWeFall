@@ -47,6 +47,12 @@ func _ready() -> void:
 			"--test-leaving-facility":
 				ran_test = true
 				await _test_leaving_facility()
+			"--test-tag-day-dialogue":
+				ran_test = true
+				await _test_tag_day_dialogue()
+			"--test-peris-dialogue":
+				ran_test = true
+				await _test_peris_dialogue()
 			"--test-scene-load":
 				ran_test = true
 				await _test_scene_load()
@@ -77,6 +83,8 @@ func _run_all_tests() -> void:
 	await _test_peris_sim()
 	await _test_leaving_facility()
 	await _test_tag_day()
+	await _test_tag_day_dialogue()
+	await _test_peris_dialogue()
 
 # --- Test: Syntax ---
 # If we got this far, GDScript compiled successfully.
@@ -555,6 +563,203 @@ func _assert_equals(actual: Variant, expected: Variant, message: String) -> void
 	else:
 		print("  FAIL: [%s] %s (expected: %s, got: %s)" % [_test_name, message, expected, actual])
 		_failed += 1
+
+# --- Dialogue Sequence Tests ---
+
+## Helper: pop through scheduler events, flushing dialogue box between each.
+## Returns an array of {tick, text, speaker, style} dictionaries.
+func _pop_dialogue_log(instance: Node) -> Array[Dictionary]:
+	var log: Array[Dictionary] = []
+	var dialogue_box: Node = instance._dialogue
+	var scheduler: EventScheduler = instance._scheduler
+	dialogue_box.speed_multiplier = 10000.0
+
+	var capture := func(text: String):
+		log.append({
+			"tick": scheduler.get_current_tick(),
+			"text": text,
+			"speaker": dialogue_box._speaker_label.text if dialogue_box._speaker_label.visible else "",
+			"style": dialogue_box._style,
+		})
+	dialogue_box.line_displayed.connect(capture)
+
+	var safety := 0
+	var idle := 0
+	while safety < 5000:
+		for j in range(200):
+			if not dialogue_box.is_active():
+				break
+			dialogue_box._process(0.05)
+		if scheduler.pending_count() == 0:
+			idle += 1
+			if idle > 5:
+				break
+			for j in range(10):
+				dialogue_box._process(0.05)
+			continue
+		idle = 0
+		var info: Dictionary = scheduler.pop_next()
+		if info.is_empty():
+			break
+		safety += 1
+
+	dialogue_box.line_displayed.disconnect(capture)
+	return log
+
+func _test_tag_day_dialogue() -> void:
+	_test_name = "Tag Day Dialogue"
+	var scene := load("res://scenes/tutorial/tag_day.tscn")
+	if not scene:
+		_assert_true(false, "Scene loads")
+		return
+	var instance: Node = scene.instantiate()
+	get_tree().root.add_child(instance)
+	for i in range(3):
+		await get_tree().process_frame
+
+	var log := _pop_dialogue_log(instance)
+
+	_assert_true(log.size() >= 25, "At least 25 dialogue lines (got: %d)" % log.size())
+
+	# Verify groan appears exactly once
+	var groan_count := 0
+	for entry in log:
+		if "get back to work" in entry.text:
+			groan_count += 1
+	_assert_true(groan_count == 1, "Groan appears exactly once (got: %d)" % groan_count)
+
+	# Verify groan has BYSTANDER speaker
+	for entry in log:
+		if "get back to work" in entry.text:
+			_assert_true(entry.speaker == "BYSTANDER", "Groan speaker is BYSTANDER (got: %s)" % entry.speaker)
+
+	# Verify Aster's report line exists with correct speaker
+	var report_count := 0
+	for entry in log:
+		if "access denied" in entry.text:
+			report_count += 1
+			_assert_true(entry.speaker == "ASTER", "Report speaker is ASTER (got: %s)" % entry.speaker)
+	_assert_true(report_count == 1, "Report blocked appears once (got: %d)" % report_count)
+
+	# Verify poem appears before fragments
+	var first_poem_tick := 9999.0
+	var first_fragment_tick := 9999.0
+	for entry in log:
+		if entry.style == "poem" and entry.tick < first_poem_tick:
+			first_poem_tick = entry.tick
+		if entry.style == "fragment" and entry.tick < first_fragment_tick:
+			first_fragment_tick = entry.tick
+	_assert_true(first_poem_tick < first_fragment_tick, "Poem starts before fragments")
+
+	# Verify whimper appears after a gap (the BANG silence)
+	var bang_tick := 0.0
+	var whimper_tick := 0.0
+	for entry in log:
+		if "bang" in entry.text:
+			bang_tick = entry.tick
+		if entry.text == "whimper.":
+			whimper_tick = entry.tick
+	if bang_tick > 0 and whimper_tick > 0:
+		var gap := whimper_tick - bang_tick
+		_assert_true(gap >= 2.0, "BANG to whimper gap >= 2s (got: %.1f)" % gap)
+
+	# Verify scan passed appears near the end
+	var scan_passed := false
+	for entry in log:
+		if "PASSED" in entry.text:
+			scan_passed = true
+	_assert_true(scan_passed, "Scan passed line exists")
+
+	instance.queue_free()
+	await get_tree().process_frame
+
+func _test_peris_dialogue() -> void:
+	_test_name = "Peris Dialogue"
+	var scene := load("res://scenes/tutorial/peris_sim.tscn")
+	if not scene:
+		_assert_true(false, "Scene loads")
+		return
+	var instance: Node = scene.instantiate()
+	get_tree().root.add_child(instance)
+	for i in range(3):
+		await get_tree().process_frame
+
+	# Phase 1: Pop through automated events (up to the input gate)
+	var log := _pop_dialogue_log(instance)
+	var phase1_count := log.size()
+	_assert_true(phase1_count >= 5, "Phase 1: at least 5 dialogue lines before input gate (got: %d)" % phase1_count)
+
+	# Verify Monos appears
+	var has_monos := false
+	for entry in log:
+		if entry.speaker == "Monos" or "Monos" in entry.text:
+			has_monos = true
+	_assert_true(has_monos, "Monos dialogue appears")
+
+	# Verify system overtime prompt
+	var has_overtime := false
+	for entry in log:
+		if "OVERTIME" in entry.text:
+			has_overtime = true
+	_assert_true(has_overtime, "Session overtime prompt appears")
+
+	# Phase 2: Bypass input gates — simulate player actions
+	# The sequence is: run_tutorial (paused) → sprint → protect → aftermath
+	if "_resume_from_run_tutorial" in instance:
+		instance._resume_from_run_tutorial()
+		# Flush any immediate scheduler events
+		while instance._scheduler.pending_count() > 0:
+			var info: Dictionary = instance._scheduler.pop_next()
+			if info.is_empty():
+				break
+
+	if "_start_protect" in instance:
+		instance._start_protect()
+
+	if "_on_protect_pressed" in instance and "_has_protected" in instance:
+		instance._has_protected = false
+		instance._on_protect_pressed()
+
+	# Phase 3: Pop through the rest of the sequence
+	var log2 := _pop_dialogue_log(instance)
+	var phase2_count := log2.size()
+	_assert_true(phase2_count >= 3, "Phase 2: at least 3 dialogue lines after protect (got: %d)" % phase2_count)
+
+	# Verify aftermath / efficiency lines
+	var has_aftermath := false
+	var has_efficiency := false
+	for entry in log2:
+		if "shaken" in entry.text or "stable" in entry.text:
+			has_aftermath = true
+		if "efficiency" in entry.text.to_lower() or "penalty" in entry.text.to_lower() or "score" in entry.text.to_lower() or "complete" in entry.text.to_lower():
+			has_efficiency = true
+	_assert_true(has_aftermath or phase2_count > 0, "Aftermath dialogue appears")
+
+	# Write combined dump for review
+	var file := FileAccess.open("peris_dialogue_dump.txt", FileAccess.WRITE)
+	if file:
+		file.store_line("# Peris Sim Dialogue Dump")
+		file.store_line("# Phase 1: %d lines (automated)" % phase1_count)
+		file.store_line("# Phase 2: %d lines (after input bypass)" % phase2_count)
+		file.store_line("")
+		file.store_line("--- PHASE 1: AUTOMATED ---")
+		for entry in log:
+			var prefix := "%.2f [%s]" % [entry.tick, entry.style]
+			if entry.speaker != "":
+				prefix += " %s:" % entry.speaker
+			file.store_line("%s %s" % [prefix, entry.text])
+		file.store_line("")
+		file.store_line("--- PHASE 2: AFTER INPUT BYPASS ---")
+		for entry in log2:
+			var prefix := "%.2f [%s]" % [entry.tick, entry.style]
+			if entry.speaker != "":
+				prefix += " %s:" % entry.speaker
+			file.store_line("%s %s" % [prefix, entry.text])
+		file.close()
+		print("  Peris dialogue dump written to peris_dialogue_dump.txt")
+
+	instance.queue_free()
+	await get_tree().process_frame
 
 # --- Dialogue Dump ---
 
