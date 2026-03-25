@@ -56,6 +56,9 @@ func _ready() -> void:
 			"--test-peris-dialogue":
 				ran_test = true
 				await _test_peris_dialogue()
+			"--test-elevator-dialogue":
+				ran_test = true
+				await _test_elevator_dialogue()
 			"--test-scene-load":
 				ran_test = true
 				await _test_scene_load()
@@ -89,6 +92,7 @@ func _run_all_tests() -> void:
 	await _test_tag_day()
 	await _test_tag_day_dialogue()
 	await _test_peris_dialogue()
+	await _test_elevator_dialogue()
 
 # --- Test: Syntax ---
 # If we got this far, GDScript compiled successfully.
@@ -611,9 +615,12 @@ func _assert_equals(actual: Variant, expected: Variant, message: String) -> void
 
 # --- Dialogue Sequence Tests ---
 
-## Helper: pop through scheduler events, flushing dialogue box between each.
+## Pop through scheduler events, flushing dialogue between each.
+## step_actions: Dictionary mapping step names to Callables that simulate
+## player input (e.g. teleporting to a position, pressing a key).
+## Actions fire once when _current_step first matches the key.
 ## Returns an array of {tick, text, speaker, style} dictionaries.
-func _pop_dialogue_log(instance: Node) -> Array[Dictionary]:
+func _pop_dialogue_log(instance: Node, step_actions: Dictionary = {}) -> Array[Dictionary]:
 	var log: Array[Dictionary] = []
 	var dialogue_box: Node = instance._dialogue
 	var scheduler: EventScheduler = instance._scheduler
@@ -628,13 +635,27 @@ func _pop_dialogue_log(instance: Node) -> Array[Dictionary]:
 		})
 	dialogue_box.line_displayed.connect(capture)
 
+	var last_actioned_step := ""
 	var safety := 0
 	var idle := 0
 	while safety < 5000:
+		# Flush dialogue box
 		for j in range(200):
 			if not dialogue_box.is_active():
 				break
 			dialogue_box._process(0.05)
+
+		# Check for step actions to simulate input
+		var current_step: String = instance._current_step
+		if current_step in step_actions and current_step != last_actioned_step:
+			last_actioned_step = current_step
+			step_actions[current_step].call()
+			# Run _on_process so proximity gates and per-frame checks can fire
+			if instance.has_method("_on_process"):
+				instance._on_process(0.1, 1.0)
+			idle = 0
+			continue
+
 		if scheduler.pending_count() == 0:
 			idle += 1
 			if idle > 5:
@@ -729,10 +750,18 @@ func _test_peris_dialogue() -> void:
 	for i in range(3):
 		await get_tree().process_frame
 
-	# Phase 1: Pop through automated events (up to the input gate)
-	var log := _pop_dialogue_log(instance)
-	var phase1_count := log.size()
-	_assert_true(phase1_count >= 5, "Phase 1: at least 5 dialogue lines before input gate (got: %d)" % phase1_count)
+	# Full sequence with simulated input at each gate
+	var log := _pop_dialogue_log(instance, {
+		"run_tutorial": func():
+			instance._resume_from_run_tutorial(),
+		"sprint_to_terminal": func():
+			instance._start_protect(),
+		"protect": func():
+			instance._has_protected = false
+			instance._on_protect_pressed(),
+	})
+
+	_assert_true(log.size() >= 10, "At least 10 dialogue lines (got: %d)" % log.size())
 
 	# Verify Monos appears
 	var has_monos := false
@@ -748,60 +777,101 @@ func _test_peris_dialogue() -> void:
 			has_overtime = true
 	_assert_true(has_overtime, "Session overtime prompt appears")
 
-	# Phase 2: Bypass input gates — simulate player actions
-	# The sequence is: run_tutorial (paused) → sprint → protect → aftermath
-	if "_resume_from_run_tutorial" in instance:
-		instance._resume_from_run_tutorial()
-		# Flush any immediate scheduler events
-		while instance._scheduler.pending_count() > 0:
-			var info: Dictionary = instance._scheduler.pop_next()
-			if info.is_empty():
-				break
-
-	if "_start_protect" in instance:
-		instance._start_protect()
-
-	if "_on_protect_pressed" in instance and "_has_protected" in instance:
-		instance._has_protected = false
-		instance._on_protect_pressed()
-
-	# Phase 3: Pop through the rest of the sequence
-	var log2 := _pop_dialogue_log(instance)
-	var phase2_count := log2.size()
-	_assert_true(phase2_count >= 3, "Phase 2: at least 3 dialogue lines after protect (got: %d)" % phase2_count)
-
-	# Verify aftermath / efficiency lines
+	# Verify aftermath
 	var has_aftermath := false
-	var has_efficiency := false
-	for entry in log2:
+	for entry in log:
 		if "shaken" in entry.text or "stable" in entry.text:
 			has_aftermath = true
-		if "efficiency" in entry.text.to_lower() or "penalty" in entry.text.to_lower() or "score" in entry.text.to_lower() or "complete" in entry.text.to_lower():
-			has_efficiency = true
-	_assert_true(has_aftermath or phase2_count > 0, "Aftermath dialogue appears")
+	_assert_true(has_aftermath, "Aftermath dialogue appears")
 
-	# Write combined dump for review
-	var file := FileAccess.open("peris_dialogue_dump.txt", FileAccess.WRITE)
-	if file:
-		file.store_line("# Peris Sim Dialogue Dump")
-		file.store_line("# Phase 1: %d lines (automated)" % phase1_count)
-		file.store_line("# Phase 2: %d lines (after input bypass)" % phase2_count)
-		file.store_line("")
-		file.store_line("--- PHASE 1: AUTOMATED ---")
-		for entry in log:
-			var prefix := "%.2f [%s]" % [entry.tick, entry.style]
-			if entry.speaker != "":
-				prefix += " %s:" % entry.speaker
-			file.store_line("%s %s" % [prefix, entry.text])
-		file.store_line("")
-		file.store_line("--- PHASE 2: AFTER INPUT BYPASS ---")
-		for entry in log2:
-			var prefix := "%.2f [%s]" % [entry.tick, entry.style]
-			if entry.speaker != "":
-				prefix += " %s:" % entry.speaker
-			file.store_line("%s %s" % [prefix, entry.text])
-		file.close()
-		print("  Peris dialogue dump written to peris_dialogue_dump.txt")
+	# Verify efficiency penalty
+	var has_penalty := false
+	for entry in log:
+		if "62%" in entry.text or "PENALTY" in entry.text:
+			has_penalty = true
+	_assert_true(has_penalty, "Efficiency penalty logged")
+
+	instance.queue_free()
+	await get_tree().process_frame
+
+# --- Dialogue Dump ---
+
+func _test_elevator_dialogue() -> void:
+	_test_name = "Elevator Dialogue"
+	var scene := load("res://scenes/tutorial/elevator.tscn")
+	if not scene:
+		_assert_true(false, "Scene loads")
+		return
+	var instance: Node = scene.instantiate()
+	get_tree().root.add_child(instance)
+	for i in range(3):
+		await get_tree().process_frame
+
+	var log := _pop_dialogue_log(instance, {
+		"approach_aster": func():
+			# Teleport Peris near Aster
+			var target: Vector3 = instance.ASTER_POS + Vector3(0.5, 0.5, 0)
+			instance._peris_node.global_position = target
+			instance._game_state.characters["peris"].position = target,
+		"emp_tutorial": func():
+			instance._on_emp_pressed(),
+		"emp_tutorial_2": func():
+			instance._on_emp_pressed(),
+		"multiselect_tutorial": func():
+			# Teleport both near panel
+			var pp: Vector3 = instance.PANEL_POS + Vector3(-0.5, 0.5, 0)
+			var ap: Vector3 = instance.PANEL_POS + Vector3(0.5, 0.5, 0)
+			instance._peris_node.global_position = pp
+			instance._aster_node.global_position = ap
+			instance._game_state.characters["peris"].position = pp
+			instance._game_state.characters["aster"].position = ap,
+		"hack_tutorial": func():
+			instance._on_panel_hacked(),
+	})
+
+	_assert_true(log.size() >= 20, "At least 20 dialogue lines (got: %d)" % log.size())
+
+	# Verify Aster retells Tag Day
+	var has_tag_day := false
+	for entry in log:
+		if "prickly pear" in entry.text.to_lower() or "bang" in entry.text:
+			has_tag_day = true
+	_assert_true(has_tag_day, "Aster retells Tag Day")
+
+	# Verify Peris mentions sanction
+	var has_sanction := false
+	for entry in log:
+		if "gel" in entry.text.to_lower() or "breathing" in entry.text.to_lower():
+			has_sanction = true
+	_assert_true(has_sanction, "Peris mentions sanction/gel")
+
+	# Verify escort unit protocol
+	var has_protocol := false
+	for entry in log:
+		if "RE-SEDATION" in entry.text or "SEDATION" in entry.text:
+			has_protocol = true
+	_assert_true(has_protocol, "Escort unit protocol fires")
+
+	# Verify hack override
+	var has_override := false
+	for entry in log:
+		if "OVERRIDE" in entry.text:
+			has_override = true
+	_assert_true(has_override, "Hack override succeeds")
+
+	# Verify lockout
+	var has_lockout := false
+	for entry in log:
+		if "NON-COMPLIANT" in entry.text:
+			has_lockout = true
+	_assert_true(has_lockout, "NON-COMPLIANT lockout fires")
+
+	# Verify final line
+	var has_forward := false
+	for entry in log:
+		if "Forward" in entry.text:
+			has_forward = true
+	_assert_true(has_forward, "Final 'Forward. Together.' line exists")
 
 	instance.queue_free()
 	await get_tree().process_frame

@@ -108,13 +108,11 @@ func _on_process(delta: float, spd: float) -> void:
 		var texts := ["NO EXIT AVAILABLE", "---", "%02d" % randi_range(10, 99), "ERR", "NO EXIT"]
 		_floor_indicator.text = texts[randi() % texts.size()]
 
-	# Escort unit flicker when stunned
+	# Escort unit flicker when stunned (toggle visibility)
 	if _unit_1_stunned and _escort_1:
-		var alpha: float = 0.3 + 0.7 * abs(sin(Time.get_ticks_msec() * 0.01))
-		_escort_1.modulate.a = alpha
+		_escort_1.visible = int(Time.get_ticks_msec() / 100) % 2 == 0
 	if _unit_2_stunned and _escort_2:
-		var alpha: float = 0.3 + 0.7 * abs(sin(Time.get_ticks_msec() * 0.01))
-		_escort_2.modulate.a = alpha
+		_escort_2.visible = int(Time.get_ticks_msec() / 100) % 2 == 0
 
 	# Reboot timer
 	if _reboot_active:
