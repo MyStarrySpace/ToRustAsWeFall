@@ -8,21 +8,19 @@ extends TutorialSequence
 var _data_overlay: CanvasLayer
 var _data_view_material: ShaderMaterial
 var _queue_npcs: Array = []
-var _citizen  # Node3D + npc.gd
+var _citizen  # Node3D + npc.gd — in queue ahead of Aster
 var _naturalizer_1  # Node3D + npc.gd
 var _naturalizer_2  # Node3D + npc.gd
 var _scan_station_light: OmniLight3D
-var _adjacent_station_light: OmniLight3D
 
 # Queue positions (checkpoint corridor runs along +X)
 const QUEUE_START := Vector3(0, 0, 0)
 const QUEUE_SPACING := 1.8
 const STATION_POS := Vector3(12, 0, 0)
-const ADJ_STATION_POS := Vector3(12, 0, -4)
 
-# Naturalizer standing positions (flanking the adjacent scan station)
-const NK_STAND_POS_1 := Vector3(12, 0, -5.2)
-const NK_STAND_POS_2 := Vector3(12, 0, -2.8)
+# Naturalizer standing positions (near the back wall, out of the way)
+const NK_STAND_POS_1 := Vector3(13.2, 0, -5.5)
+const NK_STAND_POS_2 := Vector3(14.8, 0, -5.5)
 
 # Corridor waypoints
 const CORRIDOR_ENTRANCE := Vector3(14, 0, -8)
@@ -49,16 +47,19 @@ func _build_characters() -> void:
 	_player.position = Vector3(-3, 0.5, 0)
 	chars_node.add_child(_player)
 
-	for i in range(4):
+	# Citizen (CZN-217) is directly ahead of Aster in the same queue
+	_citizen = _create_npc("CZN-217", Color(0.5, 0.45, 0.4))
+	_citizen.position = Vector3(-3 + QUEUE_SPACING, 0, 0)
+	chars_node.add_child(_citizen)
+
+	# A few other citizens ahead of the citizen
+	for i in range(3):
 		var npc := _create_npc("CZN-%03d" % (400 + i), Color(0.4, 0.4, 0.45))
-		npc.position = Vector3(STATION_POS.x - (3 - i) * QUEUE_SPACING, 0, 0)
+		npc.position = Vector3(-3 + (i + 2) * QUEUE_SPACING, 0, 0)
 		chars_node.add_child(npc)
 		_queue_npcs.append(npc)
 
-	_citizen = _create_npc("CZN-217", Color(0.5, 0.45, 0.4))
-	_citizen.position = ADJ_STATION_POS
-	chars_node.add_child(_citizen)
-
+	# Naturalizers standing near the back wall
 	_naturalizer_1 = _create_npc("NK-01", Color(0.85, 0.85, 0.88))
 	_naturalizer_1.position = NK_STAND_POS_1
 	chars_node.add_child(_naturalizer_1)
@@ -72,12 +73,12 @@ func _build_characters() -> void:
 
 func _register_characters() -> void:
 	_register_gs_character("aster", _player, 3.0)
+	_register_gs_character("citizen", _citizen, BASE_NPC_SPEED)
 
 	for i in range(_queue_npcs.size()):
 		var id := "czn_%d" % (400 + i)
 		_register_gs_character(id, _queue_npcs[i], BASE_NPC_SPEED)
 
-	_register_gs_character("citizen", _citizen, BASE_NPC_SPEED)
 	_register_gs_character("nk1", _naturalizer_1, BASE_NPC_SPEED)
 	_register_gs_character("nk2", _naturalizer_2, BASE_NPC_SPEED)
 
@@ -117,58 +118,52 @@ func _begin() -> void:
 	_start_arrive()
 
 func _on_process(delta: float, _spd: float) -> void:
-	# Update data view shader with Aster's eye position
 	if _data_view_material and _player:
 		_data_view_material.set_shader_parameter("aster_pos",
 			_player.global_position + Vector3(0, 1.0, 0))
-
-	if _adjacent_station_light.light_energy > 2.1:
-		_adjacent_station_light.light_energy = lerpf(
-			_adjacent_station_light.light_energy, 2.0, 3.0 * delta
-		)
 
 # --- Event-driven steps ---
 
 func _start_arrive() -> void:
 	_current_step = "arrive"
 	_player.set_move_enabled(false)
-	var queue_back := QUEUE_START + Vector3(-QUEUE_SPACING, 0, 0)
-	_game_state.command_move_to_pos("aster", queue_back)
 	_game_state.character_arrived.connect(_on_character_arrived)
 	DialogueData.say_to(_dialogue, "tag_day.checkpoint_id")
+	# Citizen begins murmuring the nursery rhyme while in the queue
+	_scheduler.schedule_after(2.0, func():
+		DialogueData.say_to(_dialogue, "tag_day.murmur.01")
+		_dialogue.dialogue_finished.connect(func():
+			DialogueData.say_to(_dialogue, "tag_day.murmur.02")
+		, CONNECT_ONE_SHOT)
+	, "murmur")
+	_scheduler.schedule_after(1.0, _shuffle_queue_forward, "queue_shuffle")
 
 func _on_character_arrived(id: String) -> void:
-	if id == "aster" and _current_step == "arrive":
-		_scheduler.schedule_after(0, _start_queue_wait, "queue_wait")
+	if id == "citizen" and _current_step == "arrive":
+		_scheduler.schedule_after(1.5, _start_citizen_scan, "citizen_scan")
 	elif id == "aster" and _current_step == "aster_scans":
 		_on_aster_at_station()
 	elif id == "citizen" and _current_step in ["corridor_walk", "pan_prompt", "fragments"]:
 		_scheduler.schedule_after(0, _start_neutralization, "neutralization")
 
-func _start_queue_wait() -> void:
-	_current_step = "queue_wait"
-	_shuffle_queue_forward()
-	_scheduler.schedule_after(4.0, _start_citizen_fails, "citizen_fails")
-
-func _start_citizen_fails() -> void:
-	_current_step = "citizen_fails"
-	_adjacent_station_light.light_color = Color(0.8, 0.1, 0.05)
-	_adjacent_station_light.light_energy = 6.0
+func _start_citizen_scan() -> void:
+	_current_step = "citizen_scan"
+	# The scan fails — mental instability detected
+	_scan_station_light.light_color = Color(0.8, 0.1, 0.05)
+	_scan_station_light.light_energy = 6.0
 	DialogueData.say_to(_dialogue, "tag_day.scan_failed")
-	_scheduler.schedule_after(3.0, _start_poem_and_drag, "poem_and_drag")
+	_scheduler.schedule_after(3.0, _start_naturalizers_grip, "nk_grip")
 
-func _start_poem_and_drag() -> void:
-	_current_step = "poem_and_drag"
-
+func _start_naturalizers_grip() -> void:
+	_current_step = "naturalizers_grip"
 	DialogueData.say_to(_dialogue, "tag_day.naturalizers_grip")
-
-	_game_state.command_move_to_pos("nk1", ADJ_STATION_POS + Vector3(0, 0, -0.6))
-	_game_state.command_move_to_pos("nk2", ADJ_STATION_POS + Vector3(0, 0, 0.6))
-
-	_scheduler.schedule_after(1.5, _begin_corridor_walk, "corridor_walk")
-
+	# Naturalizers approach the citizen at the station
+	_game_state.command_move_to_pos("nk1", STATION_POS + Vector3(0, 0, -0.6))
+	_game_state.command_move_to_pos("nk2", STATION_POS + Vector3(0, 0, 0.6))
+	_scheduler.schedule_after(2.0, _begin_corridor_walk, "corridor_walk")
+	# Aster shuffles up behind but stays back
 	_player.set_move_enabled(false)
-	_game_state.command_move_to_pos("aster", STATION_POS + Vector3(-1.5, 0, 0))
+	_game_state.command_move_to_pos("aster", STATION_POS + Vector3(-2.0, 0, 0))
 
 func _begin_corridor_walk() -> void:
 	_current_step = "corridor_walk"
@@ -204,7 +199,7 @@ func _begin_corridor_walk() -> void:
 	]
 	_game_state.command_walk_path("nk2", nk2_path)
 
-	# Space out the poem — longer hold between stanzas
+	# Shadow stanzas — spaced out
 	_dialogue.default_hold_time = 4.0
 	DialogueData.say_sequence_to(_dialogue, "tag_day.poem.")
 	_scheduler.schedule_after(2.0, _start_pan_prompt, "pan_prompt")
@@ -216,7 +211,6 @@ func _start_pan_prompt() -> void:
 	_camera.set_wasd_pan_enabled(true)
 	_camera.max_pan_distance = 40.0
 	_tutorial_prompt.show_prompt("WASD — pan camera")
-	# After the player has had time to pan, show fast-forward prompt
 	_scheduler.schedule_after(8.0, _show_fastforward_prompt, "ff_prompt")
 
 func _show_fastforward_prompt() -> void:
@@ -228,37 +222,51 @@ func _on_poem_finished() -> void:
 func _start_fragments() -> void:
 	_current_step = "fragments"
 	_tutorial_prompt.hide_prompt()
-	_dialogue.default_hold_time = 3.0
-	# Fragment 01: "For Thine is the Kingdom..."
+	_dialogue.default_hold_time = 2.5
+	# Stuttering prayer fragments — individually scheduled
 	DialogueData.say_to(_dialogue, "tag_day.fragment.01")
-	_dialogue.dialogue_finished.connect(_fragment_02, CONNECT_ONE_SHOT)
+	_dialogue.dialogue_finished.connect(func():
+		_scheduler.schedule_after(1.5, func():
+			DialogueData.say_to(_dialogue, "tag_day.fragment.02")
+			_dialogue.dialogue_finished.connect(func():
+				_scheduler.schedule_after(1.5, func():
+					DialogueData.say_to(_dialogue, "tag_day.fragment.03")
+					_dialogue.dialogue_finished.connect(func():
+						_scheduler.schedule_after(1.0, _start_world_ends, "world_ends")
+					, CONNECT_ONE_SHOT)
+				, "frag3")
+			, CONNECT_ONE_SHOT)
+		, "frag2")
+	, CONNECT_ONE_SHOT)
 
-func _fragment_02() -> void:
-	_scheduler.schedule_after(2.0, func():
-		# Fragment 02: "This is the way the world ends..."
-		DialogueData.say_to(_dialogue, "tag_day.fragment.02")
-		_dialogue.dialogue_finished.connect(_fragment_03, CONNECT_ONE_SHOT)
-	, "frag2")
+func _start_world_ends() -> void:
+	# "This is the way the world ends" — three times
+	DialogueData.say_to(_dialogue, "tag_day.fragment.04")
+	_dialogue.dialogue_finished.connect(func():
+		DialogueData.say_to(_dialogue, "tag_day.fragment.05")
+		_dialogue.dialogue_finished.connect(func():
+			DialogueData.say_to(_dialogue, "tag_day.fragment.06")
+			_dialogue.dialogue_finished.connect(func():
+				_scheduler.schedule_after(1.5, _start_bang_line, "bang_line")
+			, CONNECT_ONE_SHOT)
+		, CONNECT_ONE_SHOT)
+	, CONNECT_ONE_SHOT)
 
-func _fragment_03() -> void:
-	_scheduler.schedule_after(2.0, func():
-		# Fragment 03: "Not with a bang but a—"
-		DialogueData.say_to(_dialogue, "tag_day.fragment.03")
-		_dialogue.dialogue_finished.connect(_on_bang, CONNECT_ONE_SHOT)
-	, "frag3")
+func _start_bang_line() -> void:
+	# "Not with a bang but a—"
+	DialogueData.say_to(_dialogue, "tag_day.fragment.07")
+	_dialogue.dialogue_finished.connect(_on_bang, CONNECT_ONE_SHOT)
 
 func _on_bang() -> void:
-	# Screen shake — the Naturalizers act
 	_camera_shake(0.4, 0.15)
 	_dialogue.clear()
 	# Silence. Then the last word.
 	_scheduler.schedule_after(2.5, _fragment_whimper, "whimper")
 
 func _fragment_whimper() -> void:
-	DialogueData.say_to(_dialogue, "tag_day.fragment.04")
+	DialogueData.say_to(_dialogue, "tag_day.fragment.08")
 	_dialogue.dialogue_finished.connect(func():
-		_dialogue.default_hold_time = 2.0
-		_scheduler.schedule_after(1.5, _start_neutralization, "neutralization")
+		_scheduler.schedule_after(1.0, _start_neutralization, "neutralization")
 	, CONNECT_ONE_SHOT)
 
 func _camera_shake(duration: float, intensity: float) -> void:
@@ -283,35 +291,60 @@ func _start_neutralization() -> void:
 	_game_state.command_stop("nk1")
 	_game_state.command_stop("nk2")
 	_scheduler.schedule_after(1.0, func(): _citizen.fade_out(2.0), "citizen_fade")
-	_scheduler.schedule_after(3.5, _start_return_focus, "return_focus")
+	_scheduler.schedule_after(3.0, _start_lockdown, "lockdown")
+
+func _start_lockdown() -> void:
+	_current_step = "lockdown"
+	# Alarm — all lights turn red
+	_scan_station_light.light_color = Color(0.8, 0.1, 0.05)
+	_scan_station_light.light_energy = 4.0
+	_camera_shake(0.2, 0.08)
+
+	DialogueData.say_to(_dialogue, "tag_day.lockdown")
+	_dialogue.dialogue_finished.connect(func():
+		# Queue NPCs groan about the delay
+		DialogueData.say_to(_dialogue, "tag_day.groan")
+		_dialogue.dialogue_finished.connect(func():
+			DialogueData.say_to(_dialogue, "tag_day.no_field")
+			_dialogue.dialogue_finished.connect(func():
+				_scheduler.schedule_after(1.5, _start_return_focus, "return_focus")
+			, CONNECT_ONE_SHOT)
+		, CONNECT_ONE_SHOT)
+	, CONNECT_ONE_SHOT)
 
 func _start_return_focus() -> void:
 	_current_step = "return_focus"
-	DialogueData.say_to(_dialogue, "tag_day.no_field")
 	_camera.set_wasd_pan_enabled(false)
 	_camera.set_pan_enabled(false)
 	_camera.max_pan_distance = 15.0
-	_scheduler.schedule_after(3.0, _start_aster_scans, "aster_scans")
+	# Lights return to normal
+	_scan_station_light.light_color = Color(0.3, 0.3, 0.35)
+	_scan_station_light.light_energy = 1.5
+	_scheduler.schedule_after(2.0, _start_aster_scans, "aster_scans")
 
 func _start_aster_scans() -> void:
 	_current_step = "aster_scans"
 	_game_state.command_move_to_pos("aster", STATION_POS)
 
 func _on_aster_at_station() -> void:
+	# Blue light — scan passed
 	_scan_station_light.light_color = Color(0.2, 0.5, 0.9)
 	_scan_station_light.light_energy = 4.0
 	DialogueData.say_to(_dialogue, "tag_day.scan_passed")
-	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_clearance, "clearance"),
-		CONNECT_ONE_SHOT
-	)
+	_dialogue.dialogue_finished.connect(func():
+		_scheduler.schedule_after(0.5, _start_blue_transition, "blue_transition")
+	, CONNECT_ONE_SHOT)
 
-func _start_clearance() -> void:
+func _start_blue_transition() -> void:
 	_current_step = "clearance"
 	_scan_station_light.light_color = Color(0.15, 0.4, 0.85)
-	_scan_station_light.light_energy = 3.0
-	DialogueData.say_to(_dialogue, "tag_day.clearance")
-	_dialogue.dialogue_finished.connect(_on_sequence_complete, CONNECT_ONE_SHOT)
+	_scan_station_light.light_energy = 6.0
+	_dialogue.default_hold_time = 2.0
+	# Fade screen to blue, then transition to Peris
+	_fade_rect.color = Color(0.1, 0.2, 0.5, 0.0)
+	var tween := create_tween()
+	tween.tween_property(_fade_rect, "color:a", 1.0, 2.0)
+	tween.tween_callback(_on_sequence_complete)
 
 func _on_sequence_complete() -> void:
 	_current_step = "complete"
@@ -320,12 +353,16 @@ func _on_sequence_complete() -> void:
 # --- Queue ---
 
 func _shuffle_queue_forward() -> void:
+	# Move citizen to scanner
+	_game_state.command_move_to_pos("citizen", STATION_POS)
+	# Move queue NPCs forward
 	for i in range(_queue_npcs.size()):
 		var id := "czn_%d" % (400 + i)
-		var target_x := STATION_POS.x - ((_queue_npcs.size() - 1 - i) * QUEUE_SPACING)
+		var target_x := STATION_POS.x - (i + 1) * QUEUE_SPACING
 		_game_state.command_move_to_pos(id, Vector3(target_x, 0, 0))
-	var player_x := STATION_POS.x - (_queue_npcs.size() * QUEUE_SPACING)
-	_game_state.command_move_to_pos("aster", Vector3(player_x, 0, 0))
+	# Aster follows behind the citizen
+	var aster_x := STATION_POS.x - (_queue_npcs.size() + 1) * QUEUE_SPACING
+	_game_state.command_move_to_pos("aster", Vector3(aster_x, 0, 0))
 
 # --- Environment Build ---
 
@@ -364,9 +401,8 @@ func _build_environment() -> void:
 	_add_wall(env_node, Vector3(-4, 1.5, -2), Vector3(0.3, 3, 14))
 	_add_wall(env_node, Vector3(28, 1.5, -2), Vector3(0.3, 3, 14))
 
-	# Scan station booths
-	_add_booth(env_node, STATION_POS, "7-B.1")
-	_add_booth(env_node, ADJ_STATION_POS, "7-B.2")
+	# Scan station booth
+	_add_booth(env_node, STATION_POS, "7-B")
 
 	# Queue lane markers
 	for i in range(6):
@@ -449,13 +485,6 @@ func _build_environment() -> void:
 	_scan_station_light.light_energy = 1.5
 	_scan_station_light.omni_range = 4.0
 	env_node.add_child(_scan_station_light)
-
-	_adjacent_station_light = OmniLight3D.new()
-	_adjacent_station_light.position = ADJ_STATION_POS + Vector3(0, 2, 0)
-	_adjacent_station_light.light_color = Color(0.3, 0.3, 0.35)
-	_adjacent_station_light.light_energy = 1.5
-	_adjacent_station_light.omni_range = 4.0
-	env_node.add_child(_adjacent_station_light)
 
 # --- Corridor Build ---
 

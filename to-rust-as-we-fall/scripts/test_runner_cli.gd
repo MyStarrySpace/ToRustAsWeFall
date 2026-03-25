@@ -241,7 +241,7 @@ func _test_tag_day() -> void:
 			_assert_true(instance._current_step != "", "Current step is set")
 
 			# Exercise corridor walk — all movement goes through GameState
-			instance._start_poem_and_drag()
+			instance._start_naturalizers_grip()
 			for j in range(3):
 				await get_tree().process_frame
 			instance._begin_corridor_walk()

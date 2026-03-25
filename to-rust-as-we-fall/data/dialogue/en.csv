@@ -13,38 +13,45 @@ aster_sim.ron.tag_notify,Ron,normal,false,"Ah, sorry to have to pull you out. Yo
 aster_sim.device.tag_verify,DEVICE,data,false,TAG VERIFICATION — CHECKPOINT 7-B — REPORT WITHIN 15 MINUTES,Device notification
 aster_sim.tag_routine,,data,true,Time for Tag Day. Routine.,Aster's flat reaction — waits for player click
 tag_day.checkpoint_id,,data,false,CHECKPOINT 7-B  //  IMMUNITY VERIFICATION,Data overlay as Aster arrives at checkpoint
-tag_day.scan_failed,STATION 7-B.2,data,false,TAG VERIFICATION: FAILED,Adjacent station scan failure — red flash
-tag_day.poem.01,,poem,false,"Here we go round the prickly pear
-Prickly pear prickly pear
-Here we go round the prickly pear
-At five o'clock in the morning.",Citizen singing — nursery rhyme draws attention
-tag_day.poem.02,,poem,false,"Between the idea
-And the reality
-Between the motion
-And the act",Shadow stanzas — corridor walk begins
-tag_day.poem.03,,poem,false,Falls the Shadow,
-tag_day.poem.04,,poem,false,"Between the conception
-And the creation
-Between the emotion
-And the response",
-tag_day.poem.05,,poem,false,Falls the Shadow,
-tag_day.poem.06,,poem,false,"Between the desire
-And the spasm
-Between the potency
-And the existence
-Between the essence
-And the descent
-Falls the Shadow",The long stanza — voice steady as they walk deeper
-tag_day.fragment.01,,fragment,false,For Thine is the Kingdom...,Syntax collapsing — fragments of prayer stuttering
-tag_day.fragment.02,,fragment,false,"This is the way the world ends
-This is the way the world ends",
-tag_day.fragment.03,,fragment,false,"This is the way... the world...
-Not with a bang but a—",The final line breaks mid-word
-tag_day.fragment.04,,fragment,false,whimper.,Last word — spoken into silence
+tag_day.murmur.01,,poem,false,"Here we go round the prickly pear
+Prickly pear prickly pear",Citizen murmuring in queue — nursery rhyme draws attention
+tag_day.murmur.02,,poem,false,"Here we go round the prickly pear
+At five o'clock in the morning.",Citizen continues in queue before scan
+tag_day.scan_failed,STATION 7-B,data,false,MENTAL INSTABILITY DETECTED  //  DISPATCHING RESPONSE UNIT,Citizen's scan flags cognitive deviation
 tag_day.naturalizers_grip,,data,false,"The two white figures step forward. They take the citizen's arms. Gently. Efficiently.",Naturalizers grip citizen for corridor walk
+tag_day.poem.01,,poem,false,"Between the idea
+And the reality",Shadow stanzas begin — corridor walk
+tag_day.poem.02,,poem,false,"Between the motion
+And the act",
+tag_day.poem.03,,poem,false,Falls the Shadow,
+tag_day.poem.04,,poem,false,For Thine is the Kingdom,
+tag_day.poem.05,,poem,false,"Between the conception
+And the creation",
+tag_day.poem.06,,poem,false,"Between the emotion
+And the response",
+tag_day.poem.07,,poem,false,Falls the Shadow,
+tag_day.poem.08,,poem,false,Life is very long,
+tag_day.poem.09,,poem,false,"Between the desire
+And the spasm",Voice steady as they walk deeper
+tag_day.poem.10,,poem,false,"Between the potency
+And the existence",
+tag_day.poem.11,,poem,false,"Between the essence
+And the descent",
+tag_day.poem.12,,poem,false,Falls the Shadow,
+tag_day.poem.13,,poem,false,For Thine is the Kingdom,
+tag_day.fragment.01,,fragment,false,For Thine is,Syntax collapsing — fragments of prayer stuttering
+tag_day.fragment.02,,fragment,false,Life is,
+tag_day.fragment.03,,fragment,false,For Thine is the,
+tag_day.fragment.04,,fragment,false,This is the way the world ends,
+tag_day.fragment.05,,fragment,false,This is the way the world ends,
+tag_day.fragment.06,,fragment,false,This is the way the world ends,
+tag_day.fragment.07,,fragment,false,Not with a bang but a—,The final line breaks mid-word
+tag_day.fragment.08,,fragment,false,whimper.,Last word — spoken into silence
 tag_day.no_field,,data,false,The data has no field for what just happened.,After neutralization — the data has no field for poetry
-tag_day.scan_passed,STATION 7-B.1,data,false,TAG VERIFICATION: PASSED,Aster scans clean
-tag_day.clearance,,data,true,"Blue light. Clean reading. You return to the simulation.",Blue clearance — waits for player click
+tag_day.lockdown,,data,false,MEDICAL BAY PROTOCOL  //  ENFORCEMENT ENABLED  //  PLEASE REMAIN IN POSITION,Lockdown alarm after neutralization
+tag_day.groan,,normal,false,"Come on... I need to get back to work.",Queue NPCs reacting to the lockdown delay
+tag_day.scan_passed,STATION 7-B,data,false,TAG VERIFICATION: PASSED  //  CLEARANCE NOMINAL,Aster scans clean
+tag_day.clearance,,data,false,Blue light. Clean reading.,Blue clearance — auto-advances into transition
 peris_sim.waiting.thought,,thought,false,Monos should be connecting soon. He's always a little late.,Peris at her desk waiting for client
 peris_sim.feed_hum,,normal,false,"The feed terminal hums. The session slot is open. No connection yet.",Portal waiting for connection
 peris_sim.monos.late,Monos,normal,false,"Sorry I'm late. Sorry. I was — there was someone following me. On the way here. I thought I lost them but...",Monos arrives flustered through the portal
