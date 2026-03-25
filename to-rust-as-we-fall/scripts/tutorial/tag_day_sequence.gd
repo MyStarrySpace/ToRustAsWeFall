@@ -6,6 +6,7 @@ extends TutorialSequence
 ## walk with Eliot poem, WASD camera pan, neutralization, Aster's clearance.
 
 var _data_overlay: CanvasLayer
+var _data_view_material: ShaderMaterial
 var _queue_npcs: Array = []
 var _citizen  # Node3D + npc.gd
 var _naturalizer_1  # Node3D + npc.gd
@@ -81,6 +82,19 @@ func _register_characters() -> void:
 	_register_gs_character("nk2", _naturalizer_2, BASE_NPC_SPEED)
 
 func _setup_ui() -> void:
+	# Data view post-process quad (Aster's perception overlay)
+	var quad := MeshInstance3D.new()
+	quad.name = "DataViewQuad"
+	var qm := QuadMesh.new()
+	qm.size = Vector2(2, 2)
+	quad.mesh = qm
+	quad.extra_cull_margin = 10000.0
+	_data_view_material = ShaderMaterial.new()
+	_data_view_material.shader = preload("res://resources/data_view.gdshader")
+	_data_view_material.render_priority = 127
+	quad.material_override = _data_view_material
+	add_child(quad)
+
 	_data_overlay = CanvasLayer.new()
 	_data_overlay.layer = 9
 	add_child(_data_overlay)
@@ -103,6 +117,11 @@ func _begin() -> void:
 	_start_arrive()
 
 func _on_process(delta: float, _spd: float) -> void:
+	# Update data view shader with Aster's eye position
+	if _data_view_material and _player:
+		_data_view_material.set_shader_parameter("aster_pos",
+			_player.global_position + Vector3(0, 1.0, 0))
+
 	if _adjacent_station_light.light_energy > 2.1:
 		_adjacent_station_light.light_energy = lerpf(
 			_adjacent_station_light.light_energy, 2.0, 3.0 * delta
