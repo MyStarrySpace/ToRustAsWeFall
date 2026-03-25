@@ -31,6 +31,7 @@ void EventScheduler::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_paused"), &EventScheduler::is_paused);
 	ClassDB::bind_method(D_METHOD("get_current_tick"), &EventScheduler::get_current_tick);
 	ClassDB::bind_method(D_METHOD("pending_count"), &EventScheduler::pending_count);
+	ClassDB::bind_method(D_METHOD("pop_next"), &EventScheduler::pop_next);
 	ClassDB::bind_method(D_METHOD("serialize"), &EventScheduler::serialize);
 	ClassDB::bind_method(D_METHOD("deserialize", "data"), &EventScheduler::deserialize);
 	ClassDB::bind_method(D_METHOD("clear"), &EventScheduler::clear);
@@ -134,6 +135,34 @@ void EventScheduler::advance_ticks(double ticks) {
 	}
 
 	_current_tick = target;
+}
+
+Dictionary EventScheduler::pop_next() {
+	while (!_heap.empty()) {
+		ScheduledEvent event = _heap.top();
+		_heap.pop();
+
+		if (_cancelled.count(event.handle)) {
+			_cancelled.erase(event.handle);
+			continue;
+		}
+
+		_live_count--;
+		double delta = event.key.tick - _current_tick;
+		_current_tick = event.key.tick;
+		event.callback.call();
+
+		if (!event.tag.is_empty()) {
+			emit_signal("event_fired", event.tag);
+		}
+
+		Dictionary result;
+		result["tick"] = event.key.tick;
+		result["tag"] = event.tag;
+		result["delta"] = delta;
+		return result;
+	}
+	return Dictionary();
 }
 
 void EventScheduler::set_speed(double mult) {

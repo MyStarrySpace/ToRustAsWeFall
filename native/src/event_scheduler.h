@@ -48,6 +48,11 @@ public:
 	double get_current_tick() const;
 	int pending_count() const;
 
+	// Pop-through: fire the next event regardless of current tick.
+	// Returns Dictionary with "tick", "tag", "delta" (time since previous tick).
+	// Returns empty Dictionary if no events pending.
+	Dictionary pop_next();
+
 	// Serialization (tick/speed/paused only — Callables aren't serializable)
 	Dictionary serialize() const;
 	void deserialize(const Dictionary &data);

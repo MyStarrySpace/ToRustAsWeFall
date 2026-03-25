@@ -51,12 +51,20 @@ func _ready() -> void:
 				ran_test = true
 				await _test_scene_load()
 
+	# --dump-dialogue <scene_path> [output_path]
+	for i in range(args.size()):
+		if args[i] == "--dump-dialogue" and i + 1 < args.size():
+			ran_test = true
+			var scene_path: String = args[i + 1]
+			var output_path := "dialogue_dump.txt"
+			if i + 2 < args.size() and not args[i + 2].begins_with("--"):
+				output_path = args[i + 2]
+			await _dump_dialogue(scene_path, output_path)
+
 	if ran_test:
 		_print_results()
 		get_tree().quit(0 if _failed == 0 else 1)
 	else:
-		# No test flag — this script was loaded but no test requested.
-		# In normal gameplay this node does nothing.
 		pass
 
 func _run_all_tests() -> void:
@@ -547,6 +555,90 @@ func _assert_equals(actual: Variant, expected: Variant, message: String) -> void
 	else:
 		print("  FAIL: [%s] %s (expected: %s, got: %s)" % [_test_name, message, expected, actual])
 		_failed += 1
+
+# --- Dialogue Dump ---
+
+func _dump_dialogue(scene_path: String, output_path: String) -> void:
+	_test_name = "Dialogue Dump"
+	print("  Dumping dialogue for: %s" % scene_path)
+
+	var scene := load(scene_path)
+	if not scene:
+		print("  ERROR: Could not load scene: %s" % scene_path)
+		return
+
+	var instance: Node = scene.instantiate()
+	get_tree().root.add_child(instance)
+	# Let the scene initialize
+	for i in range(3):
+		await get_tree().process_frame
+
+	if not "_dialogue" in instance or not "_scheduler" in instance:
+		print("  ERROR: Scene does not have _dialogue or _scheduler")
+		instance.queue_free()
+		return
+
+	var log: Array[String] = []
+	var dialogue_box: Node = instance._dialogue
+	var scheduler: EventScheduler = instance._scheduler
+
+	# Make dialogue instant so typewriter doesn't block
+	dialogue_box.speed_multiplier = 10000.0
+
+	# Hook line_displayed to capture every dialogue line
+	dialogue_box.line_displayed.connect(func(text: String):
+		var speaker: String = dialogue_box._speaker_label.text if dialogue_box._speaker_label.visible else ""
+		var style: String = dialogue_box._style
+		var tick := scheduler.get_current_tick()
+		var prefix := "%.2f [%s]" % [tick, style]
+		if speaker != "":
+			prefix += " %s:" % speaker
+		log.append("%s %s" % [prefix, text])
+	)
+
+	# Pop through all scheduler events. Between each pop, flush the
+	# dialogue box so dialogue_finished fires and chains the next event.
+	var safety := 0
+	var idle_pops := 0
+	while safety < 5000:
+		# Flush dialogue box until it's idle (all queued lines displayed + finished)
+		for j in range(200):
+			if not dialogue_box.is_active():
+				break
+			dialogue_box._process(0.05)
+
+		if scheduler.pending_count() == 0:
+			idle_pops += 1
+			if idle_pops > 5:
+				break
+			# One more flush in case dialogue_finished queued something
+			for j in range(10):
+				dialogue_box._process(0.05)
+			continue
+
+		idle_pops = 0
+		var info: Dictionary = scheduler.pop_next()
+		if info.is_empty():
+			break
+		safety += 1
+
+	# Write to file
+	var file := FileAccess.open(output_path, FileAccess.WRITE)
+	if file:
+		file.store_line("# Dialogue dump: %s" % scene_path)
+		file.store_line("# %d lines captured" % log.size())
+		file.store_line("")
+		for line in log:
+			file.store_line(line)
+		file.close()
+		print("  Wrote %d dialogue lines to %s" % [log.size(), output_path])
+	else:
+		print("  ERROR: Could not open %s for writing" % output_path)
+		for line in log:
+			print("    %s" % line)
+
+	instance.queue_free()
+	await get_tree().process_frame
 
 func _print_results() -> void:
 	print("")
