@@ -159,9 +159,10 @@ func _start_naturalizers_grip() -> void:
 	# Naturalizers approach the citizen at his device
 	_game_state.command_move_to_pos("nk1", CITIZEN_DEVICE_POS + Vector3(0, 0, -0.6))
 	_game_state.command_move_to_pos("nk2", CITIZEN_DEVICE_POS + Vector3(0, 0, 0.6))
-	# Report label appears above the escort after a delay — visible if the player pans
-	_scheduler.schedule_after(4.0, _show_report_label, "report_label")
-	_scheduler.schedule_after(2.0, _begin_corridor_walk, "corridor_walk")
+	# Wait for enforcers to reach the citizen (~4s at speed 2.0) before walking
+	_scheduler.schedule_after(5.0, _begin_corridor_walk, "corridor_walk")
+	# Report label appears above the escort during the walk
+	_scheduler.schedule_after(10.0, _show_report_label, "report_label")
 
 func _show_report_label() -> void:
 	var lbl := Label3D.new()
@@ -181,11 +182,20 @@ func _show_report_label() -> void:
 func _begin_corridor_walk() -> void:
 	_current_step = "corridor_walk"
 
+	# Snap all three into formation at citizen's device before walking.
+	# Prevents enforcers from getting ahead if the grip movement was incomplete.
+	_game_state.command_stop("citizen")
+	_game_state.command_stop("nk1")
+	_game_state.command_stop("nk2")
+	_citizen.global_position = Vector3(CITIZEN_DEVICE_POS.x, 0, CITIZEN_DEVICE_POS.z)
+	_naturalizer_1.global_position = CITIZEN_DEVICE_POS + Vector3(0, 0, -0.6)
+	_naturalizer_2.global_position = CITIZEN_DEVICE_POS + Vector3(0, 0, 0.6)
+
 	# Walk speed paced so they arrive near the dead end around the BANG line.
-	# Path is ~42 units; poem + fragments ≈ 120s → speed ~0.35
-	_game_state.change_move_speed("citizen", 0.35)
-	_game_state.change_move_speed("nk1", 0.35)
-	_game_state.change_move_speed("nk2", 0.35)
+	# Path from device to dead end is ~52 units; poem + fragments ≈ 120s → speed ~0.45
+	_game_state.change_move_speed("citizen", 0.45)
+	_game_state.change_move_speed("nk1", 0.45)
+	_game_state.change_move_speed("nk2", 0.45)
 
 	var citizen_path: Array[Vector3] = [
 		CORRIDOR_ENTRANCE, CORRIDOR_A_END, CORRIDOR_B_END,
