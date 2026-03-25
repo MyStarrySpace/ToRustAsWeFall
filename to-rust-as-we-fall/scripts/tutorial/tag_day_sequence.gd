@@ -9,6 +9,7 @@ extends Node3D
 ## Each step is a function that does its work and schedules the next event.
 
 var _scheduler: EventScheduler
+var _game_state: GameState
 var _current_step := ""
 
 var _player  # CharacterBody3D + player.gd
@@ -54,6 +55,9 @@ func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
 	_scheduler = EventScheduler.new()
+	_game_state = GameState.new()
+	_game_state.scheduler = _scheduler
+	_register_characters()
 	_build_ui()
 	_start_arrive()
 
@@ -65,15 +69,8 @@ func _process(delta: float) -> void:
 	_scheduler.set_speed(spd)
 	_dialogue.speed_multiplier = spd
 
-	# Advance scheduler
+	# Advance scheduler (all movement derives timing from scheduler ticks)
 	_scheduler.advance(delta)
-
-	# Scale NPC movement speeds
-	_citizen.move_speed = BASE_NPC_SPEED * spd
-	_naturalizer_1.move_speed = BASE_NPC_SPEED * spd
-	_naturalizer_2.move_speed = BASE_NPC_SPEED * spd
-	for npc in _queue_npcs:
-		npc.move_speed = BASE_NPC_SPEED * spd
 
 	# Station light pulse fade
 	if _adjacent_station_light.light_energy > 2.1:
@@ -87,12 +84,17 @@ func _start_arrive() -> void:
 	_current_step = "arrive"
 	_player.set_move_enabled(false)
 	var queue_back := QUEUE_START + Vector3(-QUEUE_SPACING, 0, 0)
-	_player.walk_to(queue_back)
-	_player.auto_path_complete.connect(_on_arrive_complete, CONNECT_ONE_SHOT)
+	_game_state.command_move_to_pos("aster", queue_back)
+	_game_state.character_arrived.connect(_on_character_arrived)
 	DialogueData.say_to(_dialogue, "tag_day.checkpoint_id")
 
-func _on_arrive_complete() -> void:
-	_scheduler.schedule_after(0, _start_queue_wait, "queue_wait")
+func _on_character_arrived(id: String) -> void:
+	if id == "aster" and _current_step == "arrive":
+		_scheduler.schedule_after(0, _start_queue_wait, "queue_wait")
+	elif id == "aster" and _current_step == "aster_scans":
+		_on_aster_at_station()
+	elif id == "citizen" and _current_step in ["corridor_walk", "pan_prompt", "fragments"]:
+		_scheduler.schedule_after(0, _start_neutralization, "neutralization")
 
 func _start_queue_wait() -> void:
 	_current_step = "queue_wait"
@@ -109,21 +111,22 @@ func _start_citizen_fails() -> void:
 func _start_poem_and_drag() -> void:
 	_current_step = "poem_and_drag"
 
-	# Naturalizers grip the citizen
 	DialogueData.say_to(_dialogue, "tag_day.naturalizers_grip")
 
-	# Naturalizers walk to citizen
-	_naturalizer_1.walk_to(ADJ_STATION_POS + Vector3(0, 0, -0.6))
-	_naturalizer_2.walk_to(ADJ_STATION_POS + Vector3(0, 0, 0.6))
+	# Naturalizers close in on the citizen at the adjacent station
+	_game_state.command_move_to_pos("nk1", ADJ_STATION_POS + Vector3(0, 0, -0.6))
+	_game_state.command_move_to_pos("nk2", ADJ_STATION_POS + Vector3(0, 0, 0.6))
 
-	# After 1.5s: start poem and begin corridor walk simultaneously
+	# After naturalizers reach the citizen, begin the corridor walk
 	_scheduler.schedule_after(1.5, _begin_corridor_walk, "corridor_walk")
 
-	# Aster advances toward station area
+	# Aster advances toward the station area to watch
 	_player.set_move_enabled(false)
-	_player.walk_to(STATION_POS + Vector3(-1.5, 0, 0))
+	_game_state.command_move_to_pos("aster", STATION_POS + Vector3(-1.5, 0, 0))
 
 func _begin_corridor_walk() -> void:
+	_current_step = "corridor_walk"
+
 	# Queue the poem lines
 	DialogueData.say_sequence_to(_dialogue, "tag_day.poem.")
 
@@ -136,7 +139,7 @@ func _begin_corridor_walk() -> void:
 		CORRIDOR_D_END,
 		DEAD_END,
 	]
-	_citizen.walk_path(citizen_path)
+	_game_state.command_walk_path("citizen", citizen_path)
 
 	# Naturalizers walk alongside with offsets
 	var nk1_path: Array[Vector3] = [
@@ -147,7 +150,7 @@ func _begin_corridor_walk() -> void:
 		CORRIDOR_D_END + Vector3(0, 0, -0.6),
 		DEAD_END + Vector3(-0.6, 0, 0),
 	]
-	_naturalizer_1.walk_path(nk1_path)
+	_game_state.command_walk_path("nk1", nk1_path)
 
 	var nk2_path: Array[Vector3] = [
 		CORRIDOR_ENTRANCE + Vector3(0, 0, 0.6),
@@ -157,17 +160,14 @@ func _begin_corridor_walk() -> void:
 		CORRIDOR_D_END + Vector3(0, 0, 0.6),
 		DEAD_END + Vector3(0.6, 0, 0),
 	]
-	_naturalizer_2.walk_path(nk2_path)
+	_game_state.command_walk_path("nk2", nk2_path)
 
-	# When citizen reaches the corridor doorway (waypoint 0), show WASD prompt
-	_citizen.waypoint_reached.connect(_on_citizen_waypoint, CONNECT_DEFERRED)
+	# Show pan prompt once citizen is in the corridor (time-based since
+	# GameState walk_path doesn't emit per-waypoint signals)
+	_scheduler.schedule_after(2.0, _start_pan_prompt, "pan_prompt")
 
 	# When poem finishes, queue the fragments
 	_dialogue.dialogue_finished.connect(_on_poem_finished, CONNECT_ONE_SHOT)
-
-func _on_citizen_waypoint(index: int) -> void:
-	if index == 0 and _current_step == "poem_and_drag":
-		_start_pan_prompt()
 
 func _start_pan_prompt() -> void:
 	_current_step = "pan_prompt"
@@ -191,12 +191,9 @@ func _on_fragments_finished() -> void:
 
 func _start_neutralization() -> void:
 	_current_step = "neutralization"
-	_citizen.stop()
-	_naturalizer_1.stop()
-	_naturalizer_2.stop()
-	# Disconnect waypoint signal
-	if _citizen.waypoint_reached.is_connected(_on_citizen_waypoint):
-		_citizen.waypoint_reached.disconnect(_on_citizen_waypoint)
+	_game_state.command_stop("citizen")
+	_game_state.command_stop("nk1")
+	_game_state.command_stop("nk2")
 	# Fade the citizen out
 	_scheduler.schedule_after(1.0, func(): _citizen.fade_out(2.0), "citizen_fade")
 	_scheduler.schedule_after(3.5, _start_return_focus, "return_focus")
@@ -212,8 +209,7 @@ func _start_return_focus() -> void:
 
 func _start_aster_scans() -> void:
 	_current_step = "aster_scans"
-	_player.walk_to(STATION_POS)
-	_player.auto_path_complete.connect(_on_aster_at_station, CONNECT_ONE_SHOT)
+	_game_state.command_move_to_pos("aster", STATION_POS)
 
 func _on_aster_at_station() -> void:
 	_scan_station_light.light_color = Color(0.2, 0.5, 0.9)
@@ -239,11 +235,11 @@ func _on_sequence_complete() -> void:
 
 func _shuffle_queue_forward() -> void:
 	for i in range(_queue_npcs.size()):
-		var npc: Node3D = _queue_npcs[i]
+		var id := "czn_%d" % (400 + i)
 		var target_x := STATION_POS.x - ((_queue_npcs.size() - 1 - i) * QUEUE_SPACING)
-		npc.walk_to(Vector3(target_x, 0, 0))
+		_game_state.command_move_to_pos(id, Vector3(target_x, 0, 0))
 	var player_x := STATION_POS.x - (_queue_npcs.size() * QUEUE_SPACING)
-	_player.walk_to(Vector3(player_x, 0, 0))
+	_game_state.command_move_to_pos("aster", Vector3(player_x, 0, 0))
 
 # --- Environment Build ---
 
@@ -542,6 +538,35 @@ func _build_characters() -> void:
 		_camera.target = _player
 		_camera.follow_offset = Vector3(0, 10, 7)
 		_camera.set_pan_enabled(false)
+
+## Wire all characters into GameState after scheduler is created.
+func _register_characters() -> void:
+	# Player
+	_game_state.register_character("aster", _player.position, 3.0)
+	_player.game_state = _game_state
+	_player.char_id = "aster"
+
+	# Queue NPCs
+	for i in range(_queue_npcs.size()):
+		var id := "czn_%d" % (400 + i)
+		var npc: Node3D = _queue_npcs[i]
+		_game_state.register_character(id, npc.position, BASE_NPC_SPEED)
+		npc.game_state = _game_state
+		npc.char_id = id
+
+	# Citizen
+	_game_state.register_character("citizen", _citizen.position, BASE_NPC_SPEED)
+	_citizen.game_state = _game_state
+	_citizen.char_id = "citizen"
+
+	# Naturalizers
+	_game_state.register_character("nk1", _naturalizer_1.position, BASE_NPC_SPEED)
+	_naturalizer_1.game_state = _game_state
+	_naturalizer_1.char_id = "nk1"
+
+	_game_state.register_character("nk2", _naturalizer_2.position, BASE_NPC_SPEED)
+	_naturalizer_2.game_state = _game_state
+	_naturalizer_2.char_id = "nk2"
 
 func _create_player() -> CharacterBody3D:
 	var player := preload("res://scenes/game/player_character.tscn").instantiate()
