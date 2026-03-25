@@ -1,21 +1,10 @@
 @tool
-extends Node3D
+extends TutorialSequence
 
 ## Tag Day tutorial sequence. Builds the checkpoint environment and drives
 ## the scripted events: queue, citizen failure, naturalizer grip, corridor
 ## walk with Eliot poem, WASD camera pan, neutralization, Aster's clearance.
-##
-## Event-driven: uses EventScheduler instead of phase-timer dispatch.
-## Each step is a function that does its work and schedules the next event.
 
-var _scheduler: EventScheduler
-var _game_state: GameState
-var _current_step := ""
-
-var _player  # CharacterBody3D + player.gd
-var _camera  # Camera3D + game_camera.gd
-var _dialogue  # CanvasLayer + dialogue_box.gd
-var _tutorial_prompt  # CanvasLayer + tutorial_prompt.gd
 var _data_overlay: CanvasLayer
 var _queue_npcs: Array = []
 var _citizen  # Node3D + npc.gd
@@ -42,37 +31,78 @@ const CORRIDOR_C_END := Vector3(24, 0, -25)
 const CORRIDOR_D_END := Vector3(19, 0, -27)
 const DEAD_END := Vector3(17, 0, -28)
 
-# Base NPC walk speed (modified by fast-forward)
 const BASE_NPC_SPEED := 2.0
 
-func _ready() -> void:
-	if Engine.is_editor_hint():
-		for child in get_children().duplicate():
-			child.free()
+# --- Virtual overrides ---
+
+func _build_scene() -> void:
 	_build_environment()
 	_build_corridor()
-	_build_characters()
-	if Engine.is_editor_hint():
-		return
-	_scheduler = EventScheduler.new()
-	_game_state = GameState.new()
-	_game_state.scheduler = _scheduler
-	_register_characters()
-	_build_ui()
+
+func _build_characters() -> void:
+	var chars_node := Node3D.new()
+	chars_node.name = "Characters"
+	add_child(chars_node)
+
+	_player = _create_player_character("Aster", Color(0.29, 0.62, 1.0))
+	_player.position = Vector3(-3, 0.5, 0)
+	chars_node.add_child(_player)
+
+	for i in range(4):
+		var npc := _create_npc("CZN-%03d" % (400 + i), Color(0.4, 0.4, 0.45))
+		npc.position = Vector3(STATION_POS.x - (3 - i) * QUEUE_SPACING, 0, 0)
+		chars_node.add_child(npc)
+		_queue_npcs.append(npc)
+
+	_citizen = _create_npc("CZN-217", Color(0.5, 0.45, 0.4))
+	_citizen.position = ADJ_STATION_POS
+	chars_node.add_child(_citizen)
+
+	_naturalizer_1 = _create_npc("NK-01", Color(0.85, 0.85, 0.88))
+	_naturalizer_1.position = NK_STAND_POS_1
+	chars_node.add_child(_naturalizer_1)
+
+	_naturalizer_2 = _create_npc("NK-02", Color(0.85, 0.85, 0.88))
+	_naturalizer_2.position = NK_STAND_POS_2
+	chars_node.add_child(_naturalizer_2)
+
+	if not Engine.is_editor_hint():
+		_setup_game_camera(_player, Vector3(0, 10, 7))
+
+func _register_characters() -> void:
+	_register_gs_character("aster", _player, 3.0)
+
+	for i in range(_queue_npcs.size()):
+		var id := "czn_%d" % (400 + i)
+		_register_gs_character(id, _queue_npcs[i], BASE_NPC_SPEED)
+
+	_register_gs_character("citizen", _citizen, BASE_NPC_SPEED)
+	_register_gs_character("nk1", _naturalizer_1, BASE_NPC_SPEED)
+	_register_gs_character("nk2", _naturalizer_2, BASE_NPC_SPEED)
+
+func _setup_ui() -> void:
+	_data_overlay = CanvasLayer.new()
+	_data_overlay.layer = 9
+	add_child(_data_overlay)
+
+	var data_label := Label.new()
+	data_label.text = "CHECKPOINT 7-B  //  ATMOSPHERIC Fe: 12.4 ppb  //  TAG QUEUE: ACTIVE"
+	data_label.add_theme_font_size_override("font_size", 11)
+	data_label.add_theme_color_override("font_color", Color(0.25, 0.4, 0.6, 0.5))
+	data_label.position = Vector2(12, 8)
+	_data_overlay.add_child(data_label)
+
+	var data_label2 := Label.new()
+	data_label2.text = "AST-PERCEPT: DATA-MAP  //  STRUCT: GEOMETRY  //  BIO: DATAPOINT"
+	data_label2.add_theme_font_size_override("font_size", 10)
+	data_label2.add_theme_color_override("font_color", Color(0.2, 0.35, 0.5, 0.35))
+	data_label2.position = Vector2(12, 24)
+	_data_overlay.add_child(data_label2)
+
+func _begin() -> void:
 	_start_arrive()
 
-func _process(delta: float) -> void:
-	if Engine.is_editor_hint():
-		return
-	# Speed control: hold F for 10x
-	var spd := 10.0 if Input.is_key_pressed(KEY_F) else 1.0
-	_scheduler.set_speed(spd)
-	_dialogue.speed_multiplier = spd
-
-	# Advance scheduler (all movement derives timing from scheduler ticks)
-	_scheduler.advance(delta)
-
-	# Station light pulse fade
+func _on_process(delta: float, _spd: float) -> void:
 	if _adjacent_station_light.light_energy > 2.1:
 		_adjacent_station_light.light_energy = lerpf(
 			_adjacent_station_light.light_energy, 2.0, 3.0 * delta
@@ -113,35 +143,25 @@ func _start_poem_and_drag() -> void:
 
 	DialogueData.say_to(_dialogue, "tag_day.naturalizers_grip")
 
-	# Naturalizers close in on the citizen at the adjacent station
 	_game_state.command_move_to_pos("nk1", ADJ_STATION_POS + Vector3(0, 0, -0.6))
 	_game_state.command_move_to_pos("nk2", ADJ_STATION_POS + Vector3(0, 0, 0.6))
 
-	# After naturalizers reach the citizen, begin the corridor walk
 	_scheduler.schedule_after(1.5, _begin_corridor_walk, "corridor_walk")
 
-	# Aster advances toward the station area to watch
 	_player.set_move_enabled(false)
 	_game_state.command_move_to_pos("aster", STATION_POS + Vector3(-1.5, 0, 0))
 
 func _begin_corridor_walk() -> void:
 	_current_step = "corridor_walk"
 
-	# Queue the poem lines
 	DialogueData.say_sequence_to(_dialogue, "tag_day.poem.")
 
-	# Citizen walks the corridor path
 	var citizen_path: Array[Vector3] = [
-		CORRIDOR_ENTRANCE,
-		CORRIDOR_A_END,
-		CORRIDOR_B_END,
-		CORRIDOR_C_END,
-		CORRIDOR_D_END,
-		DEAD_END,
+		CORRIDOR_ENTRANCE, CORRIDOR_A_END, CORRIDOR_B_END,
+		CORRIDOR_C_END, CORRIDOR_D_END, DEAD_END,
 	]
 	_game_state.command_walk_path("citizen", citizen_path)
 
-	# Naturalizers walk alongside with offsets
 	var nk1_path: Array[Vector3] = [
 		CORRIDOR_ENTRANCE + Vector3(0, 0, -0.6),
 		CORRIDOR_A_END + Vector3(0, 0, -0.6),
@@ -162,16 +182,11 @@ func _begin_corridor_walk() -> void:
 	]
 	_game_state.command_walk_path("nk2", nk2_path)
 
-	# Show pan prompt once citizen is in the corridor (time-based since
-	# GameState walk_path doesn't emit per-waypoint signals)
 	_scheduler.schedule_after(2.0, _start_pan_prompt, "pan_prompt")
-
-	# When poem finishes, queue the fragments
 	_dialogue.dialogue_finished.connect(_on_poem_finished, CONNECT_ONE_SHOT)
 
 func _start_pan_prompt() -> void:
 	_current_step = "pan_prompt"
-	# Enable camera pan so the player can follow the corridor walk
 	_camera.set_pan_enabled(true)
 	_camera.set_wasd_pan_enabled(true)
 	_camera.max_pan_distance = 40.0
@@ -194,14 +209,12 @@ func _start_neutralization() -> void:
 	_game_state.command_stop("citizen")
 	_game_state.command_stop("nk1")
 	_game_state.command_stop("nk2")
-	# Fade the citizen out
 	_scheduler.schedule_after(1.0, func(): _citizen.fade_out(2.0), "citizen_fade")
 	_scheduler.schedule_after(3.5, _start_return_focus, "return_focus")
 
 func _start_return_focus() -> void:
 	_current_step = "return_focus"
 	DialogueData.say_to(_dialogue, "tag_day.no_field")
-	# Disable pan, return camera to Aster
 	_camera.set_wasd_pan_enabled(false)
 	_camera.set_pan_enabled(false)
 	_camera.max_pan_distance = 15.0
@@ -272,15 +285,10 @@ func _build_environment() -> void:
 	env_node.add_child(floor_body)
 
 	# Walls — main room with doorway opening at x=13-15, z=-8
-	# Back wall left segment (x=-4 to x=13)
 	_add_wall(env_node, Vector3(4.5, 1.5, -8), Vector3(17, 3, 0.3))
-	# Back wall right segment (x=15 to x=28)
 	_add_wall(env_node, Vector3(21.5, 1.5, -8), Vector3(13, 3, 0.3))
-	# Front wall
 	_add_wall(env_node, Vector3(12, 1.5, 6), Vector3(32, 3, 0.3))
-	# Left wall
 	_add_wall(env_node, Vector3(-4, 1.5, -2), Vector3(0.3, 3, 14))
-	# Right wall
 	_add_wall(env_node, Vector3(28, 1.5, -2), Vector3(0.3, 3, 14))
 
 	# Scan station booths
@@ -340,6 +348,27 @@ func _build_environment() -> void:
 	world_env.environment = env
 	env_node.add_child(world_env)
 
+	# Verification sign
+	var overhead := MeshInstance3D.new()
+	var oh_box := BoxMesh.new()
+	oh_box.size = Vector3(3, 0.1, 0.6)
+	overhead.mesh = oh_box
+	var oh_mat := StandardMaterial3D.new()
+	oh_mat.albedo_color = Color(0.15, 0.15, 0.2)
+	oh_mat.emission_enabled = true
+	oh_mat.emission = Color(0.1, 0.12, 0.2)
+	oh_mat.emission_energy_multiplier = 0.3
+	overhead.material_override = oh_mat
+	overhead.position = Vector3(STATION_POS.x, 2.6, 0)
+	env_node.add_child(overhead)
+	var sign_lbl := Label3D.new()
+	sign_lbl.text = "VERIFICATION  7-B"
+	sign_lbl.font_size = 32
+	sign_lbl.pixel_size = 0.008
+	sign_lbl.modulate = Color(0.3, 0.4, 0.6, 0.7)
+	sign_lbl.position = Vector3(STATION_POS.x, 2.6, -0.04)
+	env_node.add_child(sign_lbl)
+
 	# Station lights
 	_scan_station_light = OmniLight3D.new()
 	_scan_station_light.position = STATION_POS + Vector3(0, 2, 0)
@@ -363,40 +392,39 @@ func _build_corridor() -> void:
 		return
 
 	var floor_color := Color(0.06, 0.06, 0.08)
-	var wall_color := Color(0.12, 0.12, 0.15)
 
 	# Segment A: straight away from doorway (x=13-15, z=-8 to z=-16)
 	_add_corridor_floor(env_node, Vector3(14, -0.05, -12), Vector3(2, 0.1, 8), floor_color)
 	_add_corridor_collision(env_node, Vector3(14, -0.01, -12), Vector3(2, 0.02, 8))
-	_add_wall(env_node, Vector3(12.85, 1.5, -12), Vector3(0.3, 3, 8))  # Left wall
-	_add_wall(env_node, Vector3(15.15, 1.5, -12), Vector3(0.3, 3, 8))  # Right wall
+	_add_wall(env_node, Vector3(12.85, 1.5, -12), Vector3(0.3, 3, 8))
+	_add_wall(env_node, Vector3(15.15, 1.5, -12), Vector3(0.3, 3, 8))
 
 	# Segment B: turn right (x=15-25, z=-16 to z=-18)
 	_add_corridor_floor(env_node, Vector3(20, -0.05, -17), Vector3(10, 0.1, 2), floor_color)
 	_add_corridor_collision(env_node, Vector3(20, -0.01, -17), Vector3(10, 0.02, 2))
-	_add_wall(env_node, Vector3(20, 1.5, -15.85), Vector3(10, 3, 0.3))  # Near wall
-	_add_wall(env_node, Vector3(20, 1.5, -18.15), Vector3(10, 3, 0.3))  # Far wall
+	_add_wall(env_node, Vector3(20, 1.5, -15.85), Vector3(10, 3, 0.3))
+	_add_wall(env_node, Vector3(20, 1.5, -18.15), Vector3(10, 3, 0.3))
 
 	# Segment C: turn away again (x=23-25, z=-18 to z=-26)
 	_add_corridor_floor(env_node, Vector3(24, -0.05, -22), Vector3(2, 0.1, 8), floor_color)
 	_add_corridor_collision(env_node, Vector3(24, -0.01, -22), Vector3(2, 0.02, 8))
-	_add_wall(env_node, Vector3(22.85, 1.5, -22), Vector3(0.3, 3, 8))  # Left wall
-	_add_wall(env_node, Vector3(25.15, 1.5, -22), Vector3(0.3, 3, 8))  # Right wall
+	_add_wall(env_node, Vector3(22.85, 1.5, -22), Vector3(0.3, 3, 8))
+	_add_wall(env_node, Vector3(25.15, 1.5, -22), Vector3(0.3, 3, 8))
 
 	# Segment D: turn left into dead-end (x=16-23, z=-26 to z=-28)
 	_add_corridor_floor(env_node, Vector3(19.5, -0.05, -27), Vector3(7, 0.1, 2), floor_color)
 	_add_corridor_collision(env_node, Vector3(19.5, -0.01, -27), Vector3(7, 0.02, 2))
-	_add_wall(env_node, Vector3(19.5, 1.5, -25.85), Vector3(7, 3, 0.3))  # Near wall
-	_add_wall(env_node, Vector3(19.5, 1.5, -28.15), Vector3(7, 3, 0.3))  # Far wall
+	_add_wall(env_node, Vector3(19.5, 1.5, -25.85), Vector3(7, 3, 0.3))
+	_add_wall(env_node, Vector3(19.5, 1.5, -28.15), Vector3(7, 3, 0.3))
 
 	# Dead end alcove (x=16-18, z=-28 to z=-30)
 	_add_corridor_floor(env_node, Vector3(17, -0.05, -29), Vector3(2, 0.1, 2), floor_color)
 	_add_corridor_collision(env_node, Vector3(17, -0.01, -29), Vector3(2, 0.02, 2))
-	_add_wall(env_node, Vector3(15.85, 1.5, -29), Vector3(0.3, 3, 2))   # Left wall
-	_add_wall(env_node, Vector3(18.15, 1.5, -29), Vector3(0.3, 3, 2))   # Right wall
-	_add_wall(env_node, Vector3(17, 1.5, -30.15), Vector3(2, 3, 0.3))   # Back wall
+	_add_wall(env_node, Vector3(15.85, 1.5, -29), Vector3(0.3, 3, 2))
+	_add_wall(env_node, Vector3(18.15, 1.5, -29), Vector3(0.3, 3, 2))
+	_add_wall(env_node, Vector3(17, 1.5, -30.15), Vector3(2, 3, 0.3))
 
-	# Corridor ceiling panels (dimmer emission than main room)
+	# Corridor ceiling panels
 	_add_corridor_ceiling(env_node, Vector3(14, 2.95, -12), Vector3(1.5, 0.05, 3), 0.3)
 	_add_corridor_ceiling(env_node, Vector3(20, 2.95, -17), Vector3(4, 0.05, 1.5), 0.2)
 	_add_corridor_ceiling(env_node, Vector3(24, 2.95, -22), Vector3(1.5, 0.05, 3), 0.15)
@@ -453,17 +481,6 @@ func _add_corridor_light(parent: Node3D, pos: Vector3, energy: float, color: Col
 	light.omni_range = 5.0
 	parent.add_child(light)
 
-func _add_wall(parent: Node3D, pos: Vector3, size: Vector3) -> void:
-	var mesh_inst := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = size
-	mesh_inst.mesh = box
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.12, 0.12, 0.15)
-	mesh_inst.material_override = mat
-	mesh_inst.position = pos
-	parent.add_child(mesh_inst)
-
 func _add_booth(parent: Node3D, pos: Vector3, label_text: String) -> void:
 	for z_off in [-0.6, 0.6]:
 		var pillar := MeshInstance3D.new()
@@ -494,121 +511,3 @@ func _add_booth(parent: Node3D, pos: Vector3, label_text: String) -> void:
 	lbl.position = pos + Vector3(0, 2.2, 0)
 	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	parent.add_child(lbl)
-
-# --- Character Build ---
-
-func _build_characters() -> void:
-	var chars_node := Node3D.new()
-	chars_node.name = "Characters"
-	add_child(chars_node)
-
-	# Player (Aster)
-	_player = _create_player()
-	_player.position = Vector3(-3, 0.5, 0)
-	chars_node.add_child(_player)
-
-	# Queue NPCs (citizens ahead of Aster)
-	for i in range(4):
-		var npc := _create_npc("CZN-%03d" % (400 + i), Color(0.4, 0.4, 0.45))
-		npc.position = Vector3(STATION_POS.x - (3 - i) * QUEUE_SPACING, 0, 0)
-		chars_node.add_child(npc)
-		_queue_npcs.append(npc)
-
-	# The citizen who will fail (at adjacent station)
-	_citizen = _create_npc("CZN-217", Color(0.5, 0.45, 0.4))
-	_citizen.position = ADJ_STATION_POS
-	chars_node.add_child(_citizen)
-
-	# Naturalizers (visible from start, standing near the back wall)
-	_naturalizer_1 = _create_npc("NK-01", Color(0.85, 0.85, 0.88))
-	_naturalizer_1.position = NK_STAND_POS_1
-	chars_node.add_child(_naturalizer_1)
-
-	_naturalizer_2 = _create_npc("NK-02", Color(0.85, 0.85, 0.88))
-	_naturalizer_2.position = NK_STAND_POS_2
-	chars_node.add_child(_naturalizer_2)
-
-	# Camera (gameplay only)
-	if not Engine.is_editor_hint():
-		var cam := Camera3D.new()
-		cam.name = "GameCamera"
-		cam.set_script(preload("res://scripts/game/game_camera.gd"))
-		add_child(cam)
-		_camera = cam
-		_camera.target = _player
-		_camera.follow_offset = Vector3(0, 10, 7)
-		_camera.set_pan_enabled(false)
-
-## Wire all characters into GameState after scheduler is created.
-func _register_characters() -> void:
-	# Player
-	_game_state.register_character("aster", _player.position, 3.0)
-	_player.game_state = _game_state
-	_player.char_id = "aster"
-
-	# Queue NPCs
-	for i in range(_queue_npcs.size()):
-		var id := "czn_%d" % (400 + i)
-		var npc: Node3D = _queue_npcs[i]
-		_game_state.register_character(id, npc.position, BASE_NPC_SPEED)
-		npc.game_state = _game_state
-		npc.char_id = id
-
-	# Citizen
-	_game_state.register_character("citizen", _citizen.position, BASE_NPC_SPEED)
-	_citizen.game_state = _game_state
-	_citizen.char_id = "citizen"
-
-	# Naturalizers
-	_game_state.register_character("nk1", _naturalizer_1.position, BASE_NPC_SPEED)
-	_naturalizer_1.game_state = _game_state
-	_naturalizer_1.char_id = "nk1"
-
-	_game_state.register_character("nk2", _naturalizer_2.position, BASE_NPC_SPEED)
-	_naturalizer_2.game_state = _game_state
-	_naturalizer_2.char_id = "nk2"
-
-func _create_player() -> CharacterBody3D:
-	var player := preload("res://scenes/game/player_character.tscn").instantiate()
-	player.name = "Aster"
-	player.color = Color(0.29, 0.62, 1.0)
-	player.get_node("Label3D").text = "ASTER"
-	player.get_node("Label3D").modulate = Color(0.29, 0.62, 1.0, 0.8)
-	return player
-
-func _create_npc(npc_name: String, npc_color: Color) -> Node3D:
-	var npc := Node3D.new()
-	npc.name = npc_name.replace("-", "_")
-	npc.set_script(preload("res://scripts/game/npc.gd"))
-	npc.display_name = npc_name
-	npc.color = npc_color
-	return npc
-
-# --- UI Build ---
-
-func _build_ui() -> void:
-	var ui := preload("res://scenes/game/tutorial_ui.tscn").instantiate()
-	add_child(ui)
-	_dialogue = ui.get_node("DialogueBox")
-	_tutorial_prompt = ui.get_node("TutorialPrompt")
-	# Clear the fade overlay (starts opaque black for scenes that fade in)
-	ui.get_node("FadeOverlay/FadeRect").color.a = 0.0
-
-	# Data overlay
-	_data_overlay = CanvasLayer.new()
-	_data_overlay.layer = 9
-	add_child(_data_overlay)
-
-	var data_label := Label.new()
-	data_label.text = "CHECKPOINT 7-B  //  ATMOSPHERIC Fe: 12.4 ppb  //  TAG QUEUE: ACTIVE"
-	data_label.add_theme_font_size_override("font_size", 11)
-	data_label.add_theme_color_override("font_color", Color(0.25, 0.4, 0.6, 0.5))
-	data_label.position = Vector2(12, 8)
-	_data_overlay.add_child(data_label)
-
-	var data_label2 := Label.new()
-	data_label2.text = "AST-PERCEPT: DATA-MAP  //  STRUCT: GEOMETRY  //  BIO: DATAPOINT"
-	data_label2.add_theme_font_size_override("font_size", 10)
-	data_label2.add_theme_color_override("font_color", Color(0.2, 0.35, 0.5, 0.35))
-	data_label2.position = Vector2(12, 24)
-	_data_overlay.add_child(data_label2)
