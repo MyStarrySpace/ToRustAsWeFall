@@ -544,35 +544,11 @@ func _build_characters() -> void:
 		_camera.set_pan_enabled(false)
 
 func _create_player() -> CharacterBody3D:
-	var player := CharacterBody3D.new()
+	var player := preload("res://scenes/game/player_character.tscn").instantiate()
 	player.name = "Aster"
-
-	var col := CollisionShape3D.new()
-	var capsule := CapsuleShape3D.new()
-	capsule.radius = 0.25
-	capsule.height = 1.0
-	col.shape = capsule
-	col.position.y = 0.5
-	player.add_child(col)
-
-	var mesh := MeshInstance3D.new()
-	mesh.name = "Mesh"
-	mesh.position.y = 0.5
-	player.add_child(mesh)
-
-	var label := Label3D.new()
-	label.name = "Label3D"
-	label.text = "ASTER"
-	label.font_size = 48
-	label.pixel_size = 0.01
-	label.modulate = Color(0.29, 0.62, 1.0, 0.8)
-	label.position.y = 1.3
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	player.add_child(label)
-
-	player.set_script(preload("res://scripts/game/player.gd"))
-	player.collision_layer = 2
-	player.collision_mask = 2
+	player.color = Color(0.29, 0.62, 1.0)
+	player.get_node("Label3D").text = "ASTER"
+	player.get_node("Label3D").modulate = Color(0.29, 0.62, 1.0, 0.8)
 	return player
 
 func _create_npc(npc_name: String, npc_color: Color) -> Node3D:
@@ -586,18 +562,10 @@ func _create_npc(npc_name: String, npc_color: Color) -> Node3D:
 # --- UI Build ---
 
 func _build_ui() -> void:
-	var dlg := CanvasLayer.new()
-	dlg.name = "DialogueBox"
-	dlg.set_script(preload("res://scripts/game/dialogue_box.gd"))
-	add_child(dlg)
-	_dialogue = dlg
-
-	# Tutorial prompt for WASD hint
-	var tp := CanvasLayer.new()
-	tp.name = "TutorialPrompt"
-	tp.set_script(preload("res://scripts/game/tutorial_prompt.gd"))
-	add_child(tp)
-	_tutorial_prompt = tp
+	var ui := preload("res://scenes/game/tutorial_ui.tscn").instantiate()
+	add_child(ui)
+	_dialogue = ui.get_node("DialogueBox")
+	_tutorial_prompt = ui.get_node("TutorialPrompt")
 
 	# Data overlay
 	_data_overlay = CanvasLayer.new()
