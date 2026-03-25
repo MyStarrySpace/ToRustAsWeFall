@@ -228,11 +228,12 @@ func _begin_corridor_walk() -> void:
 	_scheduler.schedule_after(2.0, _start_pan_prompt, "pan_prompt")
 	_dialogue.dialogue_finished.connect(_on_poem_finished, CONNECT_ONE_SHOT)
 
-	# Enforcer banter — floating Label3D, visible only if the player pans
-	_scheduler.schedule_after(15.0, func(): _show_nk_chat(_naturalizer_1, DialogueData.text("tag_day.nk_chat.01")), "nk_chat1")
-	_scheduler.schedule_after(20.0, func(): _show_nk_chat(_naturalizer_2, DialogueData.text("tag_day.nk_chat.02")), "nk_chat2")
-	_scheduler.schedule_after(27.0, func(): _show_nk_chat(_naturalizer_1, DialogueData.text("tag_day.nk_chat.03")), "nk_chat3")
-	_scheduler.schedule_after(33.0, func(): _show_nk_chat(_naturalizer_2, DialogueData.text("tag_day.nk_chat.04")), "nk_chat4")
+	# Enforcer banter — interlaced with the poem, visible if the player pans.
+	# Appears while WASD prompt is showing, before the F fast-forward prompt.
+	_scheduler.schedule_after(4.0, func(): _show_nk_chat(_naturalizer_1, DialogueData.text("tag_day.nk_chat.01")), "nk_chat1")
+	_scheduler.schedule_after(8.0, func(): _show_nk_chat(_naturalizer_2, DialogueData.text("tag_day.nk_chat.02")), "nk_chat2")
+	_scheduler.schedule_after(13.0, func(): _show_nk_chat(_naturalizer_1, DialogueData.text("tag_day.nk_chat.03")), "nk_chat3")
+	_scheduler.schedule_after(18.0, func(): _show_nk_chat(_naturalizer_2, DialogueData.text("tag_day.nk_chat.04")), "nk_chat4")
 
 func _show_nk_chat(nk: Node3D, text: String) -> void:
 	var old := nk.find_child("ChatLabel", false, false)
@@ -261,7 +262,8 @@ func _start_pan_prompt() -> void:
 	_camera.set_wasd_pan_enabled(true)
 	_camera.max_pan_distance = 40.0
 	_tutorial_prompt.show_prompt("WASD — pan camera")
-	_scheduler.schedule_after(8.0, _show_fastforward_prompt, "ff_prompt")
+	# F prompt appears after the enforcer banter wraps up (~20s into the walk)
+	_scheduler.schedule_after(20.0, _show_fastforward_prompt, "ff_prompt")
 
 func _show_fastforward_prompt() -> void:
 	_tutorial_prompt.show_prompt("F — fast-forward time")
