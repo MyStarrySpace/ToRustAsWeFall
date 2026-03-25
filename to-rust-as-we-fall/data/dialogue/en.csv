@@ -19,6 +19,10 @@ tag_day.murmur.02,,poem,false,"Here we go round the prickly pear
 At five o'clock in the morning.",Citizen continues in queue before scan
 tag_day.scan_failed,STATION 7-B,data,false,SCAN FAILED  //  DISPATCHING RESPONSE UNIT,Citizen's device scan fails
 tag_day.naturalizers_grip,,data,false,"The two white figures step forward. They take the citizen's arms. Gently. Efficiently.",Naturalizers grip citizen for corridor walk
+tag_day.nk_chat.01,,normal,false,"Structured. Definitely structured.",NK-01 making a bet — visible as Label3D if player pans
+tag_day.nk_chat.02,,normal,false,"You said that about the last one.",NK-02 pushing back
+tag_day.nk_chat.03,,normal,false,"The last one was silent. I didn't bet on that one.",NK-01 defending
+tag_day.nk_chat.04,,normal,false,"You bet it'd be weird structured speech. Silent counts as weird.",NK-02 reminding him he was wrong
 tag_day.poem.01,,poem,false,"Between the idea
 And the reality",Shadow stanzas begin — corridor walk
 tag_day.poem.02,,poem,false,"Between the motion

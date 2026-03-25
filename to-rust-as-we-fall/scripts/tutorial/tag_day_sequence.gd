@@ -181,10 +181,11 @@ func _show_report_label() -> void:
 func _begin_corridor_walk() -> void:
 	_current_step = "corridor_walk"
 
-	# Slow the escort for dramatic pacing
-	_game_state.change_move_speed("citizen", 1.0)
-	_game_state.change_move_speed("nk1", 1.0)
-	_game_state.change_move_speed("nk2", 1.0)
+	# Walk speed paced so they arrive near the dead end around the BANG line.
+	# Path is ~42 units; poem + fragments ≈ 120s → speed ~0.35
+	_game_state.change_move_speed("citizen", 0.35)
+	_game_state.change_move_speed("nk1", 0.35)
+	_game_state.change_move_speed("nk2", 0.35)
 
 	var citizen_path: Array[Vector3] = [
 		CORRIDOR_ENTRANCE, CORRIDOR_A_END, CORRIDOR_B_END,
@@ -217,6 +218,32 @@ func _begin_corridor_walk() -> void:
 	DialogueData.say_sequence_to(_dialogue, "tag_day.poem.")
 	_scheduler.schedule_after(2.0, _start_pan_prompt, "pan_prompt")
 	_dialogue.dialogue_finished.connect(_on_poem_finished, CONNECT_ONE_SHOT)
+
+	# Enforcer banter — floating Label3D, visible only if the player pans
+	_scheduler.schedule_after(15.0, func(): _show_nk_chat(_naturalizer_1, DialogueData.text("tag_day.nk_chat.01")), "nk_chat1")
+	_scheduler.schedule_after(20.0, func(): _show_nk_chat(_naturalizer_2, DialogueData.text("tag_day.nk_chat.02")), "nk_chat2")
+	_scheduler.schedule_after(27.0, func(): _show_nk_chat(_naturalizer_1, DialogueData.text("tag_day.nk_chat.03")), "nk_chat3")
+	_scheduler.schedule_after(33.0, func(): _show_nk_chat(_naturalizer_2, DialogueData.text("tag_day.nk_chat.04")), "nk_chat4")
+
+func _show_nk_chat(nk: Node3D, text: String) -> void:
+	# Remove any previous chat label on this enforcer
+	var old := nk.find_child("ChatLabel", false, false)
+	if old:
+		old.queue_free()
+	var lbl := Label3D.new()
+	lbl.name = "ChatLabel"
+	lbl.text = text
+	lbl.font_size = 24
+	lbl.pixel_size = 0.008
+	lbl.modulate = Color(0.6, 0.6, 0.65, 0.0)
+	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	nk.add_child(lbl)
+	lbl.position = Vector3(0, 1.6, 0)
+	var tween := create_tween()
+	tween.tween_property(lbl, "modulate:a", 0.7, 0.5)
+	tween.tween_interval(4.0)
+	tween.tween_property(lbl, "modulate:a", 0.0, 1.0)
+	tween.tween_callback(lbl.queue_free)
 
 func _start_pan_prompt() -> void:
 	_current_step = "pan_prompt"
