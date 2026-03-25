@@ -4,7 +4,7 @@ aster_sim.ron.greeting,Ron,normal,false,"Hey hey, star of databank 534b!",Ron ch
 aster_sim.ron.name,Ron,normal,false,"Aster! Your metrics this quarter are disgusting, you beast.",Ron glances at device — read the name off it
 aster_sim.aster.forecast,Aster,normal,false,"I've been trying to forecast instead of react. Would work better if we had more historical data, but...",Aster trails off and starts moving to terminal
 aster_sim.aster.show,Aster,normal,false,"Here, let me show you.",Tutorial beat: player moves Aster to terminal
-aster_sim.system.cleaned,,data,false,"The data has been cleaned and normalized to correct for anomalies. No further analysis is necessary.",Visible on terminal — set dressing now; most important sentence later
+aster_sim.system.cleaned,,data,false,The data has been cleaned and normalized to correct for anomalies. No further analysis is necessary.,Visible on terminal — set dressing now; most important sentence later
 aster_sim.ron.drinks,Ron,normal,false,"Ah well, that's part of the job! I think we're both glad for unlimited drinks and not having to do backbreaking manual labor. Speaking of which, enjoy the new drink machine! Unlimited, as always, for top performers like you.",Ron offering perks as compensation — institutional warmth
 aster_sim.drink_label,,ui,false,click,Label that appears over the drink machine during tutorial
 aster_sim.drink_redirect.thought,,thought,false,I should grab a drink first. I always grab a drink first.,Soft redirect if player wanders away from drink machine
@@ -18,11 +18,11 @@ Prickly pear prickly pear",Citizen murmuring in queue — nursery rhyme draws at
 tag_day.murmur.02,,poem,false,"Here we go round the prickly pear
 At five o'clock in the morning.",Citizen continues in queue before scan
 tag_day.scan_failed,STATION 7-B,data,false,SCAN FAILED  //  DISPATCHING RESPONSE UNIT,Citizen's device scan fails
-tag_day.naturalizers_grip,,data,false,"The two white figures step forward. They take the citizen's arms. Gently. Efficiently.",Naturalizers grip citizen for corridor walk
-tag_day.nk_chat.01,,normal,false,"Structured. Definitely structured.",NK-01 making a bet — visible as Label3D if player pans
-tag_day.nk_chat.02,,normal,false,"You said that about the last one.",NK-02 pushing back
-tag_day.nk_chat.03,,normal,false,"The last one was silent. I didn't bet on that one.",NK-01 defending
-tag_day.nk_chat.04,,normal,false,"You bet it'd be weird structured speech. Silent counts as weird.",NK-02 reminding him he was wrong
+tag_day.naturalizers_grip,,data,false,The two white figures step forward. They take the citizen's arms. Gently. Efficiently.,Naturalizers grip citizen for corridor walk
+tag_day.nk_chat.01,,normal,false,Structured. The speech is definitely structured.,NK-01 making a bet — visible as Label3D if player pans
+tag_day.nk_chat.02,,normal,false,You said that about the last one.,NK-02 pushing back
+tag_day.nk_chat.03,,normal,false,The last one was silent. I said it'd be weird structured speech. Silent counts as weird.,NK-01 defending
+tag_day.nk_chat.04,,normal,false,"Yet you didn't get that hint last time you tried courtship, didn't you?",NK-02 reminding him he was wrong
 tag_day.poem.01,,poem,false,"Between the idea
 And the reality",Shadow stanzas begin — corridor walk
 tag_day.poem.02,,poem,false,"Between the motion
@@ -52,32 +52,67 @@ tag_day.fragment.06,,fragment,false,This is the way the world ends,
 tag_day.fragment.07,,fragment,false,Not with a bang but a—,The final line breaks mid-word
 tag_day.fragment.08,,fragment,false,whimper.,Last word — spoken into silence
 tag_day.lockdown,,data,false,MEDICAL BAY PROTOCOL  //  ENFORCEMENT ENABLED  //  PLEASE REMAIN IN POSITION,Lockdown alarm after neutralization
-tag_day.groan,BYSTANDER,normal,false,"Come on... I need to get back to work.",Bystander reacting to the lockdown delay
-tag_day.report_blocked,ASTER,data,false,"Incident report... access denied. Device is on lockdown. I'll have to remember to log this later.",Aster tries to file a report — device locked during protocol enforcement
+tag_day.groan,BYSTANDER,normal,false,Come on... I need to get back to work.,Bystander reacting to the lockdown delay
+tag_day.report_blocked,ASTER,data,false,Incident report... access denied. Device is on lockdown. I'll have to remember to log this later.,Aster tries to file a report — device locked during protocol enforcement
 tag_day.scan_passed,STATION 7-B,data,false,TAG VERIFICATION: PASSED  //  CLEARANCE NOMINAL,Aster scans clean
 tag_day.clearance,,data,false,Blue light. Clean reading.,Blue clearance — auto-advances into transition
 peris_sim.waiting.thought,,thought,false,Monos should be connecting soon. He's always a little late.,Peris at her desk waiting for client
-peris_sim.feed_hum,,normal,false,"The feed terminal hums. The session slot is open. No connection yet.",Portal waiting for connection
-peris_sim.monos.late,Monos,normal,false,"Sorry I'm late. Sorry. I was — there was someone following me. On the way here. I thought I lost them but...",Monos arrives flustered through the portal
-peris_sim.monos.start,Monos,normal,false,"Anyway. I'm here now. Let's start.",
-peris_sim.session_begins,,normal,false,"The session begins. Monos is talking about his week. Completion markers tick.",Session in progress
+peris_sim.feed_hum,,normal,false,The feed terminal hums. The session slot is open. No connection yet.,Portal waiting for connection
+peris_sim.monos.late,Monos,normal,false,Sorry I'm late. Sorry. I was — there was someone following me. On the way here. I thought I lost them but...,Monos arrives flustered through the portal
+peris_sim.monos.start,Monos,normal,false,Anyway. I'm here now. Let's start.,
+peris_sim.session_begins,,normal,false,The session begins. Monos is talking about his week. Completion markers tick.,Session in progress
 peris_sim.monos.hit,Monos,normal,false,—!,Attack through the portal — Monos is hurt
-peris_sim.attack_narration,,normal,false,"Something reaches through the portal connection. Monos recoils. He's hurt.",
+peris_sim.attack_narration,,normal,false,Something reaches through the portal connection. Monos recoils. He's hurt.,
 peris_sim.system.overtime,SYSTEM,data,false,SESSION OVERTIME — TERMINATE AND LOG NOTES?,System prompting termination
 peris_sim.sprint.thought,,thought,false,I need to get to the terminal. Now.,Urgency — player must run to portal
-peris_sim.care.thought,,thought,false,"I can't just walk past them. That's not who I am.",Soft redirect if player ignores Monos — Peris's care ethic
+peris_sim.care.thought,,thought,false,I can't just walk past them. That's not who I am.,Soft redirect if player ignores Monos — Peris's care ethic
 peris_sim.protect_hint,,normal,false,You're within range. Cast Protect through the portal to shield Monos.,Player near enough to cast
-peris_sim.aftermath,,normal,false,"The attack subsides. The shielding holds. Monos is shaken but stable.",After protect — crisis passed
+peris_sim.aftermath,,normal,false,The attack subsides. The shielding holds. Monos is shaken but stable.,After protect — crisis passed
 peris_sim.monos.thanks,Monos,normal,false,"I... thank you. I don't know what that was. Thank you, Peris.",
 peris_sim.system.complete,SYSTEM,data,false,SESSION COMPLETE — EFFICIENCY: 62%  //  OVERTIME PENALTY LOGGED,Efficiency penalty
-peris_sim.penalty_narration,,data,false,"The system logs the penalty. It doesn't log what you did for Monos.",
+peris_sim.penalty_narration,,data,false,The system logs the penalty. It doesn't log what you did for Monos.,
 peris_sim.session_ends,,normal,true,The session ends. The portal closes.,Waits for click — transition out
-facility.exit_narration,,normal,false,"The facility door seals behind you. The corridor stretches ahead.",Leaving the facility
-facility.endo_appears,,normal,false,"Someone is waiting at the exit. Quiet. Watchful. He falls into step beside you.",Endo joins
+elevator.fragment.01,,fragment,false,...,Consciousness fragment — darkness
+elevator.fragment.02,,fragment,false,Red light.,Consciousness fragment — the first thing Peris sees
+elevator.fragment.03,,fragment,false,You're in a box.,Consciousness fragment — spatial awareness
+elevator.peris.where,Peris,normal,false,Where...? What is this place?,Peris wakes in the elevator
+elevator.narration.room,,normal,false,"A small room. Metal walls. Red emergency light cycling overhead. Two white figures against the far wall, dormant. Someone slumped in the corner.",Scene description
+elevator.peris.hey,Peris,normal,false,"Hey. Hey, can you hear me? Are you alive? Please be alive.",Peris approaches Aster
+elevator.aster.waking,Aster,normal,false,...I already submitted the forecast. Check the terminal.,Aster wakes groggy — still in the simulation mentally
+elevator.aster.where,Aster,normal,false,...This isn't the sim. Where are we?,Aster realizes
+elevator.peris.explain,Peris,normal,false,"Some kind of transport. I woke up here. I don't know how long ago.",Peris explains
+elevator.aster.wellness,Aster,normal,false,"Wellness check. Some guy at the checkpoint started singing, and apparently being nearby means I need processing.",Aster's version of events — dismissive at first
+elevator.peris.singing,Peris,normal,false,Someone was singing?,
+elevator.aster.prickly,Aster,normal,false,"His scan didn't clear. Red light. And instead of stepping aside he just started singing. Some nursery rhyme. Prickly pear, something something.",
+elevator.aster.already_knew,Aster,normal,false,"Like he didn't care. Like he already knew.",This sentence comes out different from how he intended
+elevator.aster.protocol,Aster,normal,false,"Anyway. They sent a response team. Two naturalizers. Walked him out. Standard protocol.",Recovering — faster
+elevator.peris.and_then,Peris,normal,false,And then?,
+elevator.aster.bang,Aster,normal,false,"He was singing... 'this is the way the world ends.' Three times. And then... 'not with a bang but a—'",He stops
+elevator.aster.there_was,Aster,normal,false,...There was a bang.,
+elevator.aster.whimper,Aster,normal,false,"And then one more word. Quiet. I almost didn't hear it. 'Whimper.'",
+elevator.aster.ninety,Aster,normal,false,...The checkpoint reset after ninety seconds. I was next in the queue.,How close he was
+elevator.peris.helped,Peris,normal,false,I got sent here because I helped someone.,
+elevator.peris.sanction,Peris,normal,false,"A client was attacked during a session. I protected him. My score dropped. They disconnected my feed and gave me breathing exercises. And gel squishing.",
+elevator.aster.gel,Aster,normal,false,...What?,
+elevator.peris.gel,Peris,normal,false,"Satisfying content. Gel being squished. Soap being cut. They took away my clients and gave me gel.",
+elevator.aster.thats,Aster,normal,false,That's...,He doesn't finish — the unit activates
+elevator.unit.protocol,EU-1,data,false,PASSENGERS CONSCIOUS  //  DISTRESS DETECTED  //  INITIATING RE-SEDATION PROTOCOL,Escort unit activates
+elevator.aster.device,Aster,normal,false,"My device still works. I can disrupt them. When it gets close — I'll hit it.",Aster realizes he can EMP
+elevator.aster.another,Aster,normal,false,The other one! Again!,Second unit activates
+elevator.aster.stay_close,Aster,normal,false,"That bought us time. They'll reboot. Stay close to me — we need to get to that panel.",Post-EMP urgency
+elevator.aster.hack,Aster,normal,false,I can override this. Just need a moment...,Aster begins hacking the panel
+elevator.system.override,SYSTEM,data,false,MAINTENANCE OVERRIDE ACCEPTED  //  DOORS CYCLING,Hack succeeds
+elevator.narration.doors,,normal,false,The elevator shudders. The doors grind open. Light spills in from a corridor neither of them recognizes.,Doors open
+elevator.system.noncompliant,SYSTEM,data,false,TAG STATUS: NON-COMPLIANT  //  WELLNESS PROTOCOL DEVIATION  //  FACILITY ACCESS REVOKED,Lockout
+elevator.aster.locked,Aster,normal,false,It locked us out. My device can't reach any facility system. We can't go back.,Aster tries and fails
+elevator.peris.back_to_what,Peris,normal,false,...Back in to what?,
+elevator.aster.forward,Aster,normal,true,Forward. Together.,Waits for click — transition beat
+facility.exit_narration,,normal,false,The facility door seals behind you. The corridor stretches ahead.,Leaving the facility
+facility.endo_appears,,normal,false,Someone is waiting at the exit. Quiet. Watchful. He falls into step beside you.,Endo joins
 facility.endo.shelters,Endo,normal,false,I know where the shelters are. Stay close.,
-facility.endo.iron_warn,Endo,normal,false,"Not that way. That'll drain you.",First iron spill — safe routing lesson
+facility.endo.iron_warn,Endo,normal,false,Not that way. That'll drain you.,First iron spill — safe routing lesson
 facility.endo.dusk,Endo,normal,false,Getting dark. There's a shelter ahead.,Dusk approaching — time pressure
 facility.endo.shelter,Endo,normal,false,Shelter. Get inside.,Arriving at shelter
-facility.night_narration,,normal,false,"Night. The barrier is thinner here. You can hear things moving outside.",First night
+facility.night_narration,,normal,false,Night. The barrier is thinner here. You can hear things moving outside.,First night
 facility.endo.rest,Endo,normal,false,Rest. You'll need it.,
 facility.dawn,,data,true,Day 2. Dawn.,Morning — waits for click

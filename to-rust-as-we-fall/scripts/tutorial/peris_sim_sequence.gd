@@ -317,7 +317,7 @@ func _start_transition_out() -> void:
 
 func _complete() -> void:
 	_current_step = "complete"
-	get_tree().change_scene_to_file("res://scenes/tutorial/leaving_facility.tscn")
+	get_tree().change_scene_to_file("res://scenes/tutorial/elevator.tscn")
 
 # --- Session timer ---
 

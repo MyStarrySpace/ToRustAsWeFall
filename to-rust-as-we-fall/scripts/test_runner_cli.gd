@@ -44,6 +44,9 @@ func _ready() -> void:
 			"--test-peris-sim":
 				ran_test = true
 				await _test_peris_sim()
+			"--test-elevator":
+				ran_test = true
+				await _test_elevator()
 			"--test-leaving-facility":
 				ran_test = true
 				await _test_leaving_facility()
@@ -81,6 +84,7 @@ func _run_all_tests() -> void:
 	await _test_scene_load()
 	await _test_aster_sim()
 	await _test_peris_sim()
+	await _test_elevator()
 	await _test_leaving_facility()
 	await _test_tag_day()
 	await _test_tag_day_dialogue()
@@ -334,6 +338,47 @@ func _test_peris_sim() -> void:
 
 		var dialogue: Node = instance.find_child("DialogueBox", true, false)
 		_assert_true(dialogue != null, "DialogueBox node exists")
+
+		instance.queue_free()
+		await get_tree().process_frame
+
+# --- Test: Leaving Facility ---
+# --- Test: Elevator Tutorial ---
+func _test_elevator() -> void:
+	_test_name = "Elevator Tutorial"
+
+	var scene := load("res://scenes/tutorial/elevator.tscn")
+	_assert_true(scene != null, "Elevator scene loads")
+
+	if scene:
+		var instance: Node = scene.instantiate()
+		_assert_true(instance != null, "Elevator scene instantiates")
+		get_tree().root.add_child(instance)
+		for i in range(5):
+			await get_tree().process_frame
+		_assert_true(instance.is_inside_tree(), "Scene is in tree")
+
+		var env: Node = instance.find_child("Environment", true, false)
+		_assert_true(env != null, "Environment node exists")
+
+		var chars: Node = instance.find_child("Characters", true, false)
+		_assert_true(chars != null, "Characters node exists")
+
+		var peris: Node = instance.find_child("Peris", true, false)
+		_assert_true(peris != null, "Peris player node exists")
+
+		var aster: Node = instance.find_child("Aster", true, false)
+		_assert_true(aster != null, "Aster player node exists")
+
+		var dialogue: Node = instance.find_child("DialogueBox", true, false)
+		_assert_true(dialogue != null, "DialogueBox node exists")
+
+		if "_scheduler" in instance:
+			_assert_true(instance._scheduler != null, "EventScheduler exists")
+			_assert_true(instance._game_state != null, "GameState exists")
+
+		var panel: Node = instance.find_child("ControlPanel", true, false)
+		_assert_true(panel != null, "Control panel exists")
 
 		instance.queue_free()
 		await get_tree().process_frame
