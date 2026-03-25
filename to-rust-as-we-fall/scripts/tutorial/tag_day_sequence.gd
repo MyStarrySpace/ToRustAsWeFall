@@ -7,16 +7,16 @@ extends TutorialSequence
 
 var _data_overlay: CanvasLayer
 var _data_view_material: ShaderMaterial
-var _queue_npcs: Array = []
-var _citizen  # Node3D + npc.gd — in queue ahead of Aster
+var _bystanders: Array = []
+var _citizen  # Node3D + npc.gd — at device to Aster's right
 var _naturalizer_1  # Node3D + npc.gd
 var _naturalizer_2  # Node3D + npc.gd
-var _scan_station_light: OmniLight3D
+var _citizen_light: OmniLight3D  # Light above citizen's device
 
-# Queue positions (checkpoint corridor runs along +X)
-const QUEUE_START := Vector3(0, 0, 0)
-const QUEUE_SPACING := 1.8
-const STATION_POS := Vector3(12, 0, 0)
+# Psy-Knapse device positions — row along +X, everyone at their own device
+const DEVICE_SPACING := 2.2
+const ASTER_DEVICE_POS := Vector3(6, 0, 0)
+const CITIZEN_DEVICE_POS := Vector3(6 + DEVICE_SPACING, 0, 0)  # To Aster's right
 
 # Naturalizer standing positions (near the back wall, out of the way)
 const NK_STAND_POS_1 := Vector3(13.2, 0, -5.5)
@@ -43,21 +43,22 @@ func _build_characters() -> void:
 	chars_node.name = "Characters"
 	add_child(chars_node)
 
+	# Aster at his Psy-Knapse device
 	_player = _create_player_character("Aster", Color(0.29, 0.62, 1.0))
-	_player.position = Vector3(-3, 0.5, 0)
+	_player.position = ASTER_DEVICE_POS + Vector3(0, 0.5, 0)
 	chars_node.add_child(_player)
 
-	# Citizen (CZN-217) is directly ahead of Aster in the same queue
+	# Citizen (CZN-217) at the device to Aster's right
 	_citizen = _create_npc("CZN-217", Color(0.5, 0.45, 0.4))
-	_citizen.position = Vector3(-3 + QUEUE_SPACING, 0, 0)
+	_citizen.position = CITIZEN_DEVICE_POS
 	chars_node.add_child(_citizen)
 
-	# A few other citizens ahead of the citizen
+	# Other citizens at their own devices (further right)
 	for i in range(3):
 		var npc := _create_npc("CZN-%03d" % (400 + i), Color(0.4, 0.4, 0.45))
-		npc.position = Vector3(-3 + (i + 2) * QUEUE_SPACING, 0, 0)
+		npc.position = CITIZEN_DEVICE_POS + Vector3((i + 1) * DEVICE_SPACING, 0, 0)
 		chars_node.add_child(npc)
-		_queue_npcs.append(npc)
+		_bystanders.append(npc)
 
 	# Naturalizers standing near the back wall
 	_naturalizer_1 = _create_npc("NK-01", Color(0.85, 0.85, 0.88))
@@ -75,9 +76,9 @@ func _register_characters() -> void:
 	_register_gs_character("aster", _player, 3.0)
 	_register_gs_character("citizen", _citizen, BASE_NPC_SPEED)
 
-	for i in range(_queue_npcs.size()):
+	for i in range(_bystanders.size()):
 		var id := "czn_%d" % (400 + i)
-		_register_gs_character(id, _queue_npcs[i], BASE_NPC_SPEED)
+		_register_gs_character(id, _bystanders[i], BASE_NPC_SPEED)
 
 	_register_gs_character("nk1", _naturalizer_1, BASE_NPC_SPEED)
 	_register_gs_character("nk2", _naturalizer_2, BASE_NPC_SPEED)
@@ -129,41 +130,36 @@ func _start_arrive() -> void:
 	_player.set_move_enabled(false)
 	_game_state.character_arrived.connect(_on_character_arrived)
 	DialogueData.say_to(_dialogue, "tag_day.checkpoint_id")
-	# Citizen begins murmuring the nursery rhyme while in the queue
+	# Citizen begins murmuring the nursery rhyme at his device
 	_scheduler.schedule_after(2.0, func():
 		DialogueData.say_to(_dialogue, "tag_day.murmur.01")
 		_dialogue.dialogue_finished.connect(func():
 			DialogueData.say_to(_dialogue, "tag_day.murmur.02")
+			_dialogue.dialogue_finished.connect(func():
+				_scheduler.schedule_after(1.5, _start_citizen_scan, "citizen_scan")
+			, CONNECT_ONE_SHOT)
 		, CONNECT_ONE_SHOT)
 	, "murmur")
-	_scheduler.schedule_after(1.0, _shuffle_queue_forward, "queue_shuffle")
 
 func _on_character_arrived(id: String) -> void:
-	if id == "citizen" and _current_step == "arrive":
-		_scheduler.schedule_after(1.5, _start_citizen_scan, "citizen_scan")
-	elif id == "aster" and _current_step == "aster_scans":
-		_on_aster_at_station()
-	elif id == "citizen" and _current_step in ["corridor_walk", "pan_prompt", "fragments"]:
+	if id == "citizen" and _current_step in ["corridor_walk", "pan_prompt", "fragments"]:
 		_scheduler.schedule_after(0, _start_neutralization, "neutralization")
 
 func _start_citizen_scan() -> void:
 	_current_step = "citizen_scan"
-	# The scan fails — mental instability detected
-	_scan_station_light.light_color = Color(0.8, 0.1, 0.05)
-	_scan_station_light.light_energy = 6.0
+	# The citizen's device scan fails — mental instability detected
+	_citizen_light.light_color = Color(0.8, 0.1, 0.05)
+	_citizen_light.light_energy = 6.0
 	DialogueData.say_to(_dialogue, "tag_day.scan_failed")
 	_scheduler.schedule_after(3.0, _start_naturalizers_grip, "nk_grip")
 
 func _start_naturalizers_grip() -> void:
 	_current_step = "naturalizers_grip"
 	DialogueData.say_to(_dialogue, "tag_day.naturalizers_grip")
-	# Naturalizers approach the citizen at the station
-	_game_state.command_move_to_pos("nk1", STATION_POS + Vector3(0, 0, -0.6))
-	_game_state.command_move_to_pos("nk2", STATION_POS + Vector3(0, 0, 0.6))
+	# Naturalizers approach the citizen at his device
+	_game_state.command_move_to_pos("nk1", CITIZEN_DEVICE_POS + Vector3(0, 0, -0.6))
+	_game_state.command_move_to_pos("nk2", CITIZEN_DEVICE_POS + Vector3(0, 0, 0.6))
 	_scheduler.schedule_after(2.0, _begin_corridor_walk, "corridor_walk")
-	# Aster shuffles up behind but stays back
-	_player.set_move_enabled(false)
-	_game_state.command_move_to_pos("aster", STATION_POS + Vector3(-2.0, 0, 0))
 
 func _begin_corridor_walk() -> void:
 	_current_step = "corridor_walk"
@@ -295,14 +291,12 @@ func _start_neutralization() -> void:
 
 func _start_lockdown() -> void:
 	_current_step = "lockdown"
-	# Alarm — all lights turn red
-	_scan_station_light.light_color = Color(0.8, 0.1, 0.05)
-	_scan_station_light.light_energy = 4.0
+	# Alarm — citizen's device light stays red, others pulse
+	_citizen_light.light_energy = 4.0
 	_camera_shake(0.2, 0.08)
 
 	DialogueData.say_to(_dialogue, "tag_day.lockdown")
 	_dialogue.dialogue_finished.connect(func():
-		# Queue NPCs groan about the delay
 		DialogueData.say_to(_dialogue, "tag_day.groan")
 		_dialogue.dialogue_finished.connect(func():
 			DialogueData.say_to(_dialogue, "tag_day.report_blocked")
@@ -317,19 +311,17 @@ func _start_return_focus() -> void:
 	_camera.set_wasd_pan_enabled(false)
 	_camera.set_pan_enabled(false)
 	_camera.max_pan_distance = 15.0
-	# Lights return to normal
-	_scan_station_light.light_color = Color(0.3, 0.3, 0.35)
-	_scan_station_light.light_energy = 1.5
+	# Citizen's light dims back down
+	_citizen_light.light_color = Color(0.3, 0.3, 0.35)
+	_citizen_light.light_energy = 1.5
 	_scheduler.schedule_after(2.0, _start_aster_scans, "aster_scans")
 
 func _start_aster_scans() -> void:
 	_current_step = "aster_scans"
-	_game_state.command_move_to_pos("aster", STATION_POS)
-
-func _on_aster_at_station() -> void:
-	# Blue light — scan passed
-	_scan_station_light.light_color = Color(0.2, 0.5, 0.9)
-	_scan_station_light.light_energy = 4.0
+	# Aster's device scans him — blue light at his position
+	_citizen_light.light_color = Color(0.2, 0.5, 0.9)
+	_citizen_light.light_energy = 4.0
+	_citizen_light.position = ASTER_DEVICE_POS + Vector3(0, 2, 0)
 	DialogueData.say_to(_dialogue, "tag_day.scan_passed")
 	_dialogue.dialogue_finished.connect(func():
 		_scheduler.schedule_after(0.5, _start_blue_transition, "blue_transition")
@@ -337,10 +329,10 @@ func _on_aster_at_station() -> void:
 
 func _start_blue_transition() -> void:
 	_current_step = "clearance"
-	_scan_station_light.light_color = Color(0.15, 0.4, 0.85)
-	_scan_station_light.light_energy = 6.0
+	_citizen_light.light_color = Color(0.15, 0.4, 0.85)
+	_citizen_light.light_energy = 6.0
 	_dialogue.default_hold_time = 2.0
-	# Fade screen to blue, then transition to Peris
+	# Screen fades to blue — transition to Peris
 	_fade_rect.color = Color(0.1, 0.2, 0.5, 0.0)
 	var tween := create_tween()
 	tween.tween_property(_fade_rect, "color:a", 1.0, 2.0)
@@ -350,19 +342,6 @@ func _on_sequence_complete() -> void:
 	_current_step = "complete"
 	get_tree().change_scene_to_file("res://scenes/tutorial/peris_sim.tscn")
 
-# --- Queue ---
-
-func _shuffle_queue_forward() -> void:
-	# Move citizen to scanner
-	_game_state.command_move_to_pos("citizen", STATION_POS)
-	# Move queue NPCs forward
-	for i in range(_queue_npcs.size()):
-		var id := "czn_%d" % (400 + i)
-		var target_x := STATION_POS.x - (i + 1) * QUEUE_SPACING
-		_game_state.command_move_to_pos(id, Vector3(target_x, 0, 0))
-	# Aster follows behind the citizen
-	var aster_x := STATION_POS.x - (_queue_npcs.size() + 1) * QUEUE_SPACING
-	_game_state.command_move_to_pos("aster", Vector3(aster_x, 0, 0))
 
 # --- Environment Build ---
 
@@ -401,10 +380,12 @@ func _build_environment() -> void:
 	_add_wall(env_node, Vector3(-4, 1.5, -2), Vector3(0.3, 3, 14))
 	_add_wall(env_node, Vector3(28, 1.5, -2), Vector3(0.3, 3, 14))
 
-	# Scan station booth
-	_add_booth(env_node, STATION_POS, "7-B")
+	# Psy-Knapse devices — row of stations, one per citizen
+	for i in range(5):
+		var dev_pos := ASTER_DEVICE_POS + Vector3(i * DEVICE_SPACING, 0, 0)
+		_add_booth(env_node, dev_pos, "PSY-%d" % (i + 1))
 
-	# Queue lane markers
+	# Floor lane dividers between devices
 	for i in range(6):
 		var marker := MeshInstance3D.new()
 		var line := BoxMesh.new()
@@ -413,7 +394,7 @@ func _build_environment() -> void:
 		var line_mat := StandardMaterial3D.new()
 		line_mat.albedo_color = Color(0.15, 0.15, 0.2)
 		marker.material_override = line_mat
-		marker.position = Vector3(STATION_POS.x - i * QUEUE_SPACING, 0.01, 0)
+		marker.position = ASTER_DEVICE_POS + Vector3(i * DEVICE_SPACING + DEVICE_SPACING * 0.5, 0.01, 0)
 		env_node.add_child(marker)
 
 	# Ceiling panels
@@ -468,23 +449,24 @@ func _build_environment() -> void:
 	oh_mat.emission = Color(0.1, 0.12, 0.2)
 	oh_mat.emission_energy_multiplier = 0.3
 	overhead.material_override = oh_mat
-	overhead.position = Vector3(STATION_POS.x, 2.6, 0)
+	var sign_x := ASTER_DEVICE_POS.x + 2.0 * DEVICE_SPACING
+	overhead.position = Vector3(sign_x, 2.6, 0)
 	env_node.add_child(overhead)
 	var sign_lbl := Label3D.new()
-	sign_lbl.text = "VERIFICATION  7-B"
+	sign_lbl.text = "TAG DAY  //  VERIFICATION  7-B"
 	sign_lbl.font_size = 32
 	sign_lbl.pixel_size = 0.008
 	sign_lbl.modulate = Color(0.3, 0.4, 0.6, 0.7)
-	sign_lbl.position = Vector3(STATION_POS.x, 2.6, -0.04)
+	sign_lbl.position = Vector3(sign_x, 2.6, -0.04)
 	env_node.add_child(sign_lbl)
 
-	# Station lights
-	_scan_station_light = OmniLight3D.new()
-	_scan_station_light.position = STATION_POS + Vector3(0, 2, 0)
-	_scan_station_light.light_color = Color(0.3, 0.3, 0.35)
-	_scan_station_light.light_energy = 1.5
-	_scan_station_light.omni_range = 4.0
-	env_node.add_child(_scan_station_light)
+	# Light above citizen's device (used for scan result + lockdown)
+	_citizen_light = OmniLight3D.new()
+	_citizen_light.position = CITIZEN_DEVICE_POS + Vector3(0, 2, 0)
+	_citizen_light.light_color = Color(0.3, 0.3, 0.35)
+	_citizen_light.light_energy = 1.5
+	_citizen_light.omni_range = 4.0
+	env_node.add_child(_citizen_light)
 
 # --- Corridor Build ---
 
