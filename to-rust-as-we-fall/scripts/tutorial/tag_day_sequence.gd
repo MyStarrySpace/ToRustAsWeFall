@@ -1,3 +1,4 @@
+@tool
 extends Node3D
 
 ## Tag Day tutorial sequence. Builds the checkpoint environment and drives
@@ -44,16 +45,23 @@ const DEAD_END := Vector3(17, 0, -28)
 const BASE_NPC_SPEED := 2.0
 
 func _ready() -> void:
-	_scheduler = EventScheduler.new()
+	if Engine.is_editor_hint():
+		for child in get_children().duplicate():
+			child.free()
 	_build_environment()
 	_build_corridor()
 	_build_characters()
+	if Engine.is_editor_hint():
+		return
+	_scheduler = EventScheduler.new()
 	_build_ui()
 	_start_arrive()
 
 func _process(delta: float) -> void:
-	# Speed control: hold X for 10x
-	var spd := 10.0 if Input.is_key_pressed(KEY_X) else 1.0
+	if Engine.is_editor_hint():
+		return
+	# Speed control: hold F for 10x
+	var spd := 10.0 if Input.is_key_pressed(KEY_F) else 1.0
 	_scheduler.set_speed(spd)
 	_dialogue.speed_multiplier = spd
 
@@ -524,15 +532,16 @@ func _build_characters() -> void:
 	_naturalizer_2.position = NK_STAND_POS_2
 	chars_node.add_child(_naturalizer_2)
 
-	# Camera
-	var cam := Camera3D.new()
-	cam.name = "GameCamera"
-	cam.set_script(preload("res://scripts/game/game_camera.gd"))
-	add_child(cam)
-	_camera = cam
-	_camera.target = _player
-	_camera.follow_offset = Vector3(0, 10, 7)
-	_camera.set_pan_enabled(false)
+	# Camera (gameplay only)
+	if not Engine.is_editor_hint():
+		var cam := Camera3D.new()
+		cam.name = "GameCamera"
+		cam.set_script(preload("res://scripts/game/game_camera.gd"))
+		add_child(cam)
+		_camera = cam
+		_camera.target = _player
+		_camera.follow_offset = Vector3(0, 10, 7)
+		_camera.set_pan_enabled(false)
 
 func _create_player() -> CharacterBody3D:
 	var player := CharacterBody3D.new()
