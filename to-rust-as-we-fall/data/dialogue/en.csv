@@ -39,7 +39,8 @@ tag_day.fragment.01,,fragment,false,For Thine is the Kingdom...,Syntax collapsin
 tag_day.fragment.02,,fragment,false,"This is the way the world ends
 This is the way the world ends",
 tag_day.fragment.03,,fragment,false,"This is the way... the world...
-Not with a bang but a whimper",Last words — the poem predicts its own ending
+Not with a bang but a—",The final line breaks mid-word
+tag_day.fragment.04,,fragment,false,whimper.,Last word — spoken into silence
 tag_day.naturalizers_grip,,data,false,"The two white figures step forward. They take the citizen's arms. Gently. Efficiently.",Naturalizers grip citizen for corridor walk
 tag_day.no_field,,data,false,The data has no field for what just happened.,After neutralization — the data has no field for poetry
 tag_day.scan_passed,STATION 7-B.1,data,false,TAG VERIFICATION: PASSED,Aster scans clean

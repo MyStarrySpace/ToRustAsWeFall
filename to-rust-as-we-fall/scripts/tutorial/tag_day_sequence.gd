@@ -173,7 +173,10 @@ func _start_poem_and_drag() -> void:
 func _begin_corridor_walk() -> void:
 	_current_step = "corridor_walk"
 
-	DialogueData.say_sequence_to(_dialogue, "tag_day.poem.")
+	# Slow the escort for dramatic pacing
+	_game_state.change_move_speed("citizen", 1.0)
+	_game_state.change_move_speed("nk1", 1.0)
+	_game_state.change_move_speed("nk2", 1.0)
 
 	var citizen_path: Array[Vector3] = [
 		CORRIDOR_ENTRANCE, CORRIDOR_A_END, CORRIDOR_B_END,
@@ -201,7 +204,13 @@ func _begin_corridor_walk() -> void:
 	]
 	_game_state.command_walk_path("nk2", nk2_path)
 
-	_scheduler.schedule_after(2.0, _start_pan_prompt, "pan_prompt")
+	# Tutorial: fast-forward prompt
+	_tutorial_prompt.show_prompt("F — fast-forward time")
+
+	# Space out the poem — longer hold between stanzas
+	_dialogue.default_hold_time = 4.0
+	DialogueData.say_sequence_to(_dialogue, "tag_day.poem.")
+	_scheduler.schedule_after(3.0, _start_pan_prompt, "pan_prompt")
 	_dialogue.dialogue_finished.connect(_on_poem_finished, CONNECT_ONE_SHOT)
 
 func _start_pan_prompt() -> void:
@@ -217,11 +226,54 @@ func _on_poem_finished() -> void:
 func _start_fragments() -> void:
 	_current_step = "fragments"
 	_tutorial_prompt.hide_prompt()
-	DialogueData.say_sequence_to(_dialogue, "tag_day.fragment.")
-	_dialogue.dialogue_finished.connect(_on_fragments_finished, CONNECT_ONE_SHOT)
+	_dialogue.default_hold_time = 3.0
+	# Fragment 01: "For Thine is the Kingdom..."
+	DialogueData.say_to(_dialogue, "tag_day.fragment.01")
+	_dialogue.dialogue_finished.connect(_fragment_02, CONNECT_ONE_SHOT)
 
-func _on_fragments_finished() -> void:
-	_scheduler.schedule_after(0, _start_neutralization, "neutralization")
+func _fragment_02() -> void:
+	_scheduler.schedule_after(2.0, func():
+		# Fragment 02: "This is the way the world ends..."
+		DialogueData.say_to(_dialogue, "tag_day.fragment.02")
+		_dialogue.dialogue_finished.connect(_fragment_03, CONNECT_ONE_SHOT)
+	, "frag2")
+
+func _fragment_03() -> void:
+	_scheduler.schedule_after(2.0, func():
+		# Fragment 03: "Not with a bang but a—"
+		DialogueData.say_to(_dialogue, "tag_day.fragment.03")
+		_dialogue.dialogue_finished.connect(_on_bang, CONNECT_ONE_SHOT)
+	, "frag3")
+
+func _on_bang() -> void:
+	# Screen shake — the Naturalizers act
+	_camera_shake(0.4, 0.15)
+	_dialogue.clear()
+	# Silence. Then the last word.
+	_scheduler.schedule_after(2.5, _fragment_whimper, "whimper")
+
+func _fragment_whimper() -> void:
+	DialogueData.say_to(_dialogue, "tag_day.fragment.04")
+	_dialogue.dialogue_finished.connect(func():
+		_dialogue.default_hold_time = 2.0
+		_scheduler.schedule_after(1.5, _start_neutralization, "neutralization")
+	, CONNECT_ONE_SHOT)
+
+func _camera_shake(duration: float, intensity: float) -> void:
+	if not _camera:
+		return
+	var tween := create_tween()
+	var steps := int(duration / 0.05)
+	for i in range(steps):
+		var offset := Vector3(
+			randf_range(-intensity, intensity),
+			randf_range(-intensity * 0.5, intensity * 0.5),
+			randf_range(-intensity, intensity)
+		)
+		tween.tween_property(_camera, "follow_offset",
+			Vector3(0, 10, 7) + offset, 0.05)
+		intensity *= 0.85
+	tween.tween_property(_camera, "follow_offset", Vector3(0, 10, 7), 0.1)
 
 func _start_neutralization() -> void:
 	_current_step = "neutralization"
