@@ -1,279 +1,255 @@
-extends Node3D
+@tool
+extends TutorialSequence
 
 ## Leaving the facility — iron spill tutorial.
 ## Aster and Peris forced out. Endo joins at the exit.
 ## Teaches safe/direct routing, time pressure, first shelter rest.
-## No UI text, popups, or prompts. The environment teaches.
+##
+## Event-driven: uses EventScheduler + GameState interpolation.
+## Each step is a function that does its work and schedules the next event.
 
-enum Phase {
-	FADE_IN,            # Transition from Peris's sim
-	FACILITY_EXIT,      # Aster and Peris at the facility exit
-	ENDO_JOINS,         # Endo appears, joins the party
-	FIRST_CORRIDOR,     # Player clicks destination — safe mode routes around iron spill
-	SAFE_ROUTE_LESSON,  # Characters take the long way. Player absorbs the detour.
-	DUSK_APPROACHES,    # Time bar appears. Endo mentions shelter. Urgency.
-	SECOND_IRON,        # Another iron patch. Safe detour is very long. Choice moment.
-	REACH_SHELTER,      # Characters arrive at shelter
-	FIRST_REST,         # Rest mechanic — night skip
-	DAWN,               # Day 2 begins
-	COMPLETE,
-}
+var _routing_mode := "safe"
 
-var _phase: Phase = Phase.FADE_IN
-var _phase_timer := 0.0
-var _phase_started := false
-var _player_clicked_destination := false
-var _reached_midpoint := false
-var _reached_shelter := false
-var _routing_mode := "safe"  # "safe" or "direct"
-
-var _player  # Aster (player-controlled)
-var _peris   # Peris (follows Aster)
-var _endo    # Endo (joins at exit)
-var _camera
-var _dialogue
-var _fade_rect: ColorRect
-var _time_bar: ProgressBar
-var _time_label: Label
-var _time_bar_container: Control
-var _routing_label: Label
-var _hp_bar: ProgressBar
-var _hp_label: Label
+var _peris
+var _endo
+var _hud  # GameHUD
 var _iron_lights: Array[OmniLight3D] = []
 
-var _game_time := 0.3  # Start in afternoon — dusk is coming
+var _game_time := 0.3
 var _hp := 100.0
+var _is_running := false
 
-# --- Layout ---
-# Corridor runs along +X. Two routes at each iron patch.
+# Layout — corridor runs along +X
 const EXIT_POS := Vector3(0, 0, 0)
-const IRON_1_POS := Vector3(12, 0, 0)       # First iron spill on main path
-const SAFE_1_WAYPOINT := Vector3(12, 0, -6)  # Safe detour goes around
+const IRON_1_POS := Vector3(12, 0, 0)
+const SAFE_1_WAYPOINT := Vector3(12, 0, -6)
 const SAFE_1_END := Vector3(18, 0, 0)
 const MIDPOINT := Vector3(22, 0, 0)
-const IRON_2_POS := Vector3(30, 0, 0)        # Second iron spill
-const SAFE_2_WAYPOINT := Vector3(30, 0, -8)  # Much longer safe detour
+const IRON_2_POS := Vector3(30, 0, 0)
+const SAFE_2_WAYPOINT := Vector3(30, 0, -8)
 const SAFE_2_END := Vector3(38, 0, 0)
 const SHELTER_POS := Vector3(42, 0, 0)
 
-func _ready() -> void:
+# --- Virtual method overrides ---
+
+func _build_scene() -> void:
 	_build_environment()
-	_build_characters()
-	_build_ui()
-	_set_phase(Phase.FADE_IN)
+	_build_decorations()
 
-func _process(delta: float) -> void:
-	_phase_timer += delta
+func _build_characters() -> void:
+	var chars := Node3D.new()
+	chars.name = "Characters"
+	add_child(chars)
 
+	# Aster (player)
+	_player = _create_player_character("Aster", Color(0.29, 0.62, 1.0))
+	_player.position = EXIT_POS + Vector3(1, 0.5, 0)
+	chars.add_child(_player)
+
+	# Peris (follows)
+	_peris = _create_npc("Peris", Color(1.0, 0.67, 0.27))
+	_peris.position = EXIT_POS + Vector3(0, 0, 1)
+	chars.add_child(_peris)
+
+	# Endo (hidden until joins)
+	_endo = _create_npc("Endo", Color(0.4, 0.67, 0.53))
+	_endo.position = EXIT_POS + Vector3(3, 0, -2)
+	_endo.visible = false
+	chars.add_child(_endo)
+
+	# Camera
+	if not Engine.is_editor_hint():
+		_setup_game_camera(_player, Vector3(0, 10, 8))
+
+func _register_characters() -> void:
+	_register_gs_character("aster", _player, 3.0)
+	_register_gs_character("peris", _peris, 2.5)
+	_register_gs_character("endo", _endo, 2.5)
+
+func _setup_ui() -> void:
+	# Game HUD — HP bar, time display, routing toggle
+	_hud = CanvasLayer.new()
+	_hud.name = "GameHUD"
+	_hud.set_script(preload("res://scripts/game/game_hud.gd"))
+	add_child(_hud)
+	_hud.add_stat_bar("hp", Color(0.7, 0.3, 0.25), 100.0, _hp)
+
+func _begin() -> void:
+	_start_fade_in()
+
+func _on_process(delta: float, spd: float) -> void:
 	# Time advances during outdoor phases
-	if _phase >= Phase.FIRST_CORRIDOR and _phase < Phase.FIRST_REST:
-		_game_time += delta * 0.008  # Slow enough to feel pressure but allow play
-		_update_time_display()
+	var outdoor := _current_step in [
+		"first_corridor", "safe_route_lesson", "dusk_approaches",
+		"second_iron", "reach_shelter"
+	]
+	if outdoor:
+		_game_time += delta * 0.008 * spd
+		if _hud:
+			_hud.set_time(1, _game_time)
 
 	# Iron damage when standing on iron
-	if _phase >= Phase.FIRST_CORRIDOR and _phase < Phase.REACH_SHELTER:
-		_check_iron_damage(delta)
+	if outdoor and _current_step != "reach_shelter":
+		_check_iron_damage(delta * spd)
 
-	# Peris follows Aster (loose follow)
-	if _peris and _player and _phase >= Phase.FIRST_CORRIDOR:
-		var follow_dist: float = _player.global_position.distance_to(_peris.global_position)
-		if follow_dist > 2.5 and not _peris.is_moving() if _peris.has_method("is_moving") else false:
-			_peris.walk_to(_player.global_position + Vector3(-1.2, 0, 0.8))
+	# NPC follow behavior
+	_update_npc_follow()
 
-	# Endo follows too
-	if _endo and _endo.visible and _player and _phase >= Phase.FIRST_CORRIDOR:
-		var endo_dist: float = _player.global_position.distance_to(_endo.global_position)
-		if endo_dist > 3.0:
-			_endo.walk_to(_player.global_position + Vector3(-1.2, 0, -0.8))
+	# Per-frame visual updates
+	_update_fades()
 
-	match _phase:
-		Phase.FADE_IN: _process_fade_in(delta)
-		Phase.FACILITY_EXIT: _process_facility_exit(delta)
-		Phase.ENDO_JOINS: _process_endo_joins(delta)
-		Phase.FIRST_CORRIDOR: _process_first_corridor(delta)
-		Phase.SAFE_ROUTE_LESSON: _process_safe_route(delta)
-		Phase.DUSK_APPROACHES: _process_dusk(delta)
-		Phase.SECOND_IRON: _process_second_iron(delta)
-		Phase.REACH_SHELTER: _process_reach_shelter(delta)
-		Phase.FIRST_REST: _process_first_rest(delta)
-		Phase.DAWN: _process_dawn(delta)
+	# Position-based step triggers
+	if _current_step == "first_corridor":
+		var px: float = _game_state.get_position("aster").x
+		if px > IRON_1_POS.x - 3.0:
+			DialogueData.say_to(_dialogue, "facility.endo.iron_warn")
+			_start_safe_route_lesson()
+	elif _current_step == "safe_route_lesson":
+		var px: float = _game_state.get_position("aster").x
+		if px > MIDPOINT.x - 1.0:
+			_start_dusk_approaches()
+	elif _current_step == "second_iron":
+		var px: float = _game_state.get_position("aster").x
+		if px > SHELTER_POS.x - 2.0:
+			_start_reach_shelter()
 
-func _set_phase(phase: Phase) -> void:
-	_phase = phase
-	_phase_timer = 0.0
-	_phase_started = false
+func _update_fades() -> void:
+	if _current_step == "fade_in":
+		_update_fade_in(2.0)
+	elif _current_step == "dawn":
+		pass  # No fade
 
-func _enter_phase() -> void:
-	_phase_started = true
+func _update_npc_follow() -> void:
+	if _current_step in ["first_corridor", "safe_route_lesson", "dusk_approaches", "second_iron"]:
+		var aster_pos := _game_state.get_position("aster")
+		# Peris follows
+		var peris_pos := _game_state.get_position("peris")
+		if aster_pos.distance_to(peris_pos) > 2.5 and not _game_state.is_moving("peris"):
+			_game_state.command_move_to_pos("peris", aster_pos + Vector3(-1.2, 0, 0.8))
+		# Endo follows
+		var endo_pos := _game_state.get_position("endo")
+		if aster_pos.distance_to(endo_pos) > 3.0 and not _game_state.is_moving("endo"):
+			_game_state.command_move_to_pos("endo", aster_pos + Vector3(-1.2, 0, -0.8))
 
 # --- Input ---
 
 func _unhandled_input(event: InputEvent) -> void:
+	if Engine.is_editor_hint():
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		var kc := (event as InputEventKey).keycode
-		# Tab to toggle safe/direct
-		if kc == KEY_TAB and _phase >= Phase.DUSK_APPROACHES:
+		if kc == KEY_TAB and _current_step in ["first_corridor", "safe_route_lesson", "dusk_approaches", "second_iron"]:
 			_toggle_routing()
+		if kc == KEY_Z and _current_step in ["first_corridor", "safe_route_lesson", "dusk_approaches", "second_iron"]:
+			_toggle_run()
 
-# --- Phases ---
+# --- Event-driven steps ---
 
-func _process_fade_in(delta: float) -> void:
-	if not _phase_started:
-		_enter_phase()
-		_fade_rect.color = Color(0.03, 0.03, 0.04, 1)
-		_player.set_move_enabled(false)
+func _start_fade_in() -> void:
+	_current_step = "fade_in"
+	_fade_from(Color(0.03, 0.03, 0.04, 1), 2.5, _start_facility_exit, "facility_exit")
+	_player.set_move_enabled(false)
 
-	var alpha := 1.0 - clampf(_phase_timer / 2.0, 0.0, 1.0)
-	_fade_rect.color.a = alpha
-	if _phase_timer > 2.5:
-		_set_phase(Phase.FACILITY_EXIT)
+func _start_facility_exit() -> void:
+	_current_step = "facility_exit"
+	DialogueData.say_to(_dialogue, "facility.exit_narration")
+	_scheduler.schedule_after(3.5, _start_endo_joins, "endo_joins")
 
-func _process_facility_exit(_delta: float) -> void:
-	if not _phase_started:
-		_enter_phase()
-		DialogueData.say_to(_dialogue, "facility.exit_narration")
-	if _phase_timer > 3.5:
-		_set_phase(Phase.ENDO_JOINS)
+func _start_endo_joins() -> void:
+	_current_step = "endo_joins"
+	_endo.visible = true
+	_game_state.command_move_to_pos("endo", EXIT_POS + Vector3(1.5, 0, -0.8))
+	DialogueData.say_to(_dialogue, "facility.endo_appears")
+	DialogueData.say_to(_dialogue, "facility.endo.shelters")
+	_dialogue.dialogue_finished.connect(
+		func(): _scheduler.schedule_after(0, _start_first_corridor, "first_corridor"),
+		CONNECT_ONE_SHOT
+	)
 
-func _process_endo_joins(_delta: float) -> void:
-	if not _phase_started:
-		_enter_phase()
-		_endo.visible = true
-		_endo.walk_to(EXIT_POS + Vector3(1.5, 0, -0.8))
-		DialogueData.say_to(_dialogue, "facility.endo_appears")
-		DialogueData.say_to(_dialogue, "facility.endo.shelters")
-		_dialogue.dialogue_finished.connect(
-			func(): _set_phase(Phase.FIRST_CORRIDOR), CONNECT_ONE_SHOT
-		)
+func _start_first_corridor() -> void:
+	_current_step = "first_corridor"
+	_player.set_move_enabled(true)
+	if _hud:
+		_hud.show_routing_toggle("safe")
+		_hud.routing_toggled.connect(func(mode: String): _routing_mode = mode)
+		_hud.show_run_toggle(false)
+		_hud.run_toggled.connect(func(running: bool): _toggle_run())
 
-func _process_first_corridor(_delta: float) -> void:
-	if not _phase_started:
-		_enter_phase()
-		_player.set_move_enabled(true)
+func _start_safe_route_lesson() -> void:
+	_current_step = "safe_route_lesson"
 
-	# Detect when player clicks toward the iron spill area
-	var player_x: float = _player.global_position.x
-	if player_x > IRON_1_POS.x - 3.0 and not _player_clicked_destination:
-		_player_clicked_destination = true
-		# In safe mode, auto-route around the iron
-		# The player sees the detour happen
-		DialogueData.say_to(_dialogue, "facility.endo.iron_warn")
-		_set_phase(Phase.SAFE_ROUTE_LESSON)
+func _start_dusk_approaches() -> void:
+	_current_step = "dusk_approaches"
+	_game_time = 0.4
+	if _hud:
+		_hud.show_time(1, _game_time)
+	DialogueData.say_to(_dialogue, "facility.endo.dusk")
+	_scheduler.schedule_after(4.0, _start_second_iron, "second_iron")
 
-func _process_safe_route(_delta: float) -> void:
-	if not _phase_started:
-		_enter_phase()
-		# The safe route goes around — the player watches the detour
+func _start_second_iron() -> void:
+	_current_step = "second_iron"
 
-	var player_x: float = _player.global_position.x
-	if player_x > MIDPOINT.x - 1.0:
-		_reached_midpoint = true
-		_set_phase(Phase.DUSK_APPROACHES)
+func _start_reach_shelter() -> void:
+	_current_step = "reach_shelter"
+	_player.set_move_enabled(false)
+	DialogueData.say_to(_dialogue, "facility.endo.shelter")
+	_scheduler.schedule_after(2.5, _start_first_rest, "first_rest")
 
-func _process_dusk(_delta: float) -> void:
-	if not _phase_started:
-		_enter_phase()
-		# Time bar appears
-		_time_bar_container.visible = true
-		_game_time = 0.4  # Push toward dusk
-		DialogueData.say_to(_dialogue, "facility.endo.dusk")
-		_routing_label.visible = true
-		_hp_bar.visible = true
-		_hp_label.visible = true
+func _start_first_rest() -> void:
+	_current_step = "first_rest"
+	_game_time = 0.55
+	if _hud:
+		_hud.set_time(1, _game_time)
+	DialogueData.say_to(_dialogue, "facility.night_narration")
+	DialogueData.say_to(_dialogue, "facility.endo.rest")
+	_hp = 100.0
+	_dialogue.dialogue_finished.connect(
+		func(): _scheduler.schedule_after(0, _start_dawn, "dawn"),
+		CONNECT_ONE_SHOT
+	)
 
-	if _phase_timer > 4.0:
-		_set_phase(Phase.SECOND_IRON)
-
-func _process_second_iron(_delta: float) -> void:
-	if not _phase_started:
-		_enter_phase()
-		# The choice: safe (very long detour) or direct (through iron)
-		# No prompt — just the visible iron patch and the time bar ticking
-
-	var player_x: float = _player.global_position.x
-	if player_x > SHELTER_POS.x - 2.0:
-		_set_phase(Phase.REACH_SHELTER)
-
-func _process_reach_shelter(_delta: float) -> void:
-	if not _phase_started:
-		_enter_phase()
-		_player.set_move_enabled(false)
-		DialogueData.say_to(_dialogue, "facility.endo.shelter")
-
-	if _phase_timer > 2.5:
-		_set_phase(Phase.FIRST_REST)
-
-func _process_first_rest(_delta: float) -> void:
-	if not _phase_started:
-		_enter_phase()
-		# Night falls
-		_game_time = 0.55
-		_update_time_display()
-		DialogueData.say_to(_dialogue, "facility.night_narration")
-		DialogueData.say_to(_dialogue, "facility.endo.rest")
-		# Heal
-		_hp = 100.0
-		_dialogue.dialogue_finished.connect(
-			func(): _set_phase(Phase.DAWN), CONNECT_ONE_SHOT
-		)
-
-func _process_dawn(_delta: float) -> void:
-	if not _phase_started:
-		_enter_phase()
-		_game_time = 0.05
-		_update_time_display()
-		DialogueData.say_to(_dialogue, "facility.dawn")
-		_dialogue.dialogue_finished.connect(
-			func(): _set_phase(Phase.COMPLETE), CONNECT_ONE_SHOT
-		)
+func _start_dawn() -> void:
+	_current_step = "dawn"
+	_game_time = 0.05
+	if _hud:
+		_hud.set_time(1, _game_time)
+	DialogueData.say_to(_dialogue, "facility.dawn")
+	_dialogue.dialogue_finished.connect(
+		func(): _current_step = "complete",
+		CONNECT_ONE_SHOT
+	)
 
 # --- Routing ---
 
-func _toggle_routing() -> void:
-	if _routing_mode == "safe":
-		_routing_mode = "direct"
-		_routing_label.text = "DIRECT"
-		_routing_label.add_theme_color_override("font_color", Color(0.8, 0.3, 0.2, 0.8))
+func _toggle_run() -> void:
+	_is_running = not _is_running
+	if _is_running:
+		_game_state.change_move_speed("aster", 5.0)
 	else:
-		_routing_mode = "safe"
-		_routing_label.text = "SAFE"
-		_routing_label.add_theme_color_override("font_color", Color(0.3, 0.6, 0.4, 0.8))
+		_game_state.change_move_speed("aster", 3.0)
+	if _hud:
+		_hud.set_run_mode(_is_running)
+
+func _toggle_routing() -> void:
+	_routing_mode = "direct" if _routing_mode == "safe" else "safe"
+	if _hud:
+		_hud.set_routing_mode(_routing_mode)
 
 # --- Iron damage ---
 
-func _check_iron_damage(delta: float) -> void:
-	var px: float = _player.global_position.x
-	var pz: float = _player.global_position.z
+func _check_iron_damage(game_delta: float) -> void:
+	var pos := _game_state.get_position("aster")
 	var on_iron := false
-
-	# Iron patch 1: around IRON_1_POS, 3 tiles wide
-	if abs(px - IRON_1_POS.x) < 2.0 and abs(pz - IRON_1_POS.z) < 2.0:
+	if abs(pos.x - IRON_1_POS.x) < 2.0 and abs(pos.z - IRON_1_POS.z) < 2.0:
 		on_iron = true
-	# Iron patch 2: around IRON_2_POS, 3 tiles wide
-	if abs(px - IRON_2_POS.x) < 2.0 and abs(pz - IRON_2_POS.z) < 2.0:
+	if abs(pos.x - IRON_2_POS.x) < 2.0 and abs(pos.z - IRON_2_POS.z) < 2.0:
 		on_iron = true
-
 	if on_iron:
-		_hp = maxf(0, _hp - 4.0 * delta)
-		_hp_bar.value = _hp
-		# Visual feedback — iron light pulses
+		_hp = maxf(0, _hp - 4.0 * game_delta)
+		if _hud:
+			_hud.set_stat("hp", _hp)
 		for light in _iron_lights:
 			light.light_energy = 3.0 + sin(Time.get_ticks_msec() * 0.01) * 1.5
-
-func _update_time_display() -> void:
-	_time_bar.value = _game_time * 100.0
-	var tod_label: String
-	if _game_time < 0.15: tod_label = "Morning"
-	elif _game_time < 0.3: tod_label = "Afternoon"
-	elif _game_time < 0.4: tod_label = "Evening"
-	elif _game_time < 0.5: tod_label = "Dusk"
-	else: tod_label = "NIGHT"
-	_time_label.text = "Day 1  %s" % tod_label
-	_time_label.add_theme_color_override("font_color",
-		Color(0.8, 0.2, 0.15) if _game_time >= 0.5
-		else Color(0.7, 0.5, 0.2) if _game_time >= 0.4
-		else Color(0.5, 0.5, 0.55)
-	)
 
 # --- Environment ---
 
@@ -282,7 +258,6 @@ func _build_environment() -> void:
 	env.name = "Environment"
 	add_child(env)
 
-	# Ground — long corridor floor
 	var ground := MeshInstance3D.new()
 	var gb := BoxMesh.new()
 	gb.size = Vector3(50, 0.1, 16)
@@ -293,10 +268,9 @@ func _build_environment() -> void:
 	ground.position = Vector3(22, -0.05, 0)
 	env.add_child(ground)
 
-	# Floor collision
 	var fbody := StaticBody3D.new()
 	fbody.position = Vector3(22, -0.01, 0)
-	fbody.collision_layer = 1  # Ground
+	fbody.collision_layer = 1
 	fbody.collision_mask = 0
 	var fcol := CollisionShape3D.new()
 	var fshape := BoxShape3D.new()
@@ -305,26 +279,17 @@ func _build_environment() -> void:
 	fbody.add_child(fcol)
 	env.add_child(fbody)
 
-	# Corridor walls
 	var wc := Color(0.13, 0.12, 0.14)
 	_add_wall(env, Vector3(22, 1.5, -8), Vector3(50, 3, 0.3), wc)
 	_add_wall(env, Vector3(22, 1.5, 8), Vector3(50, 3, 0.3), wc)
-
-	# Facility door (behind player)
 	_add_wall(env, Vector3(-2, 1.5, 0), Vector3(0.4, 3, 16), Color(0.08, 0.08, 0.1))
 
-	# Shelter structure at the end
 	_add_shelter(env, SHELTER_POS)
-
-	# Iron spill patches — visible orange-brown discoloration
 	_add_iron_patch(env, IRON_1_POS)
 	_add_iron_patch(env, IRON_2_POS)
-
-	# Safe detour paths — slightly lighter floor sections showing the alternate route
 	_add_detour_markers(env, IRON_1_POS, SAFE_1_WAYPOINT, 4)
 	_add_detour_markers(env, IRON_2_POS, SAFE_2_WAYPOINT, 6)
 
-	# Corridor lighting — dimmer than facility, exterior feel
 	var dir := DirectionalLight3D.new()
 	dir.rotation_degrees = Vector3(-50, 20, 0)
 	dir.light_color = Color(0.6, 0.55, 0.5)
@@ -332,7 +297,6 @@ func _build_environment() -> void:
 	dir.shadow_enabled = true
 	env.add_child(dir)
 
-	# World environment — cooler, more exposed
 	var we := WorldEnvironment.new()
 	var e := Environment.new()
 	e.background_mode = Environment.BG_COLOR
@@ -345,19 +309,7 @@ func _build_environment() -> void:
 	we.environment = e
 	env.add_child(we)
 
-func _add_wall(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> void:
-	var m := MeshInstance3D.new()
-	var b := BoxMesh.new()
-	b.size = size
-	m.mesh = b
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	m.material_override = mat
-	m.position = pos
-	parent.add_child(m)
-
 func _add_iron_patch(parent: Node3D, pos: Vector3) -> void:
-	# Orange-brown floor discoloration
 	var patch := MeshInstance3D.new()
 	var pb := BoxMesh.new()
 	pb.size = Vector3(4, 0.02, 4)
@@ -371,7 +323,6 @@ func _add_iron_patch(parent: Node3D, pos: Vector3) -> void:
 	patch.position = pos + Vector3(0, 0.01, 0)
 	parent.add_child(patch)
 
-	# Iron glow light
 	var light := OmniLight3D.new()
 	light.position = pos + Vector3(0, 0.5, 0)
 	light.light_color = Color(0.7, 0.25, 0.05)
@@ -380,7 +331,6 @@ func _add_iron_patch(parent: Node3D, pos: Vector3) -> void:
 	parent.add_child(light)
 	_iron_lights.append(light)
 
-	# "Fe" label (visible through Aster's data lens)
 	var lbl := Label3D.new()
 	lbl.text = "Fe"
 	lbl.font_size = 64
@@ -391,7 +341,6 @@ func _add_iron_patch(parent: Node3D, pos: Vector3) -> void:
 	parent.add_child(lbl)
 
 func _add_detour_markers(parent: Node3D, iron_pos: Vector3, waypoint: Vector3, count: int) -> void:
-	# Subtle floor markers showing the safe route exists
 	for i in range(count):
 		var t := float(i) / float(count - 1) if count > 1 else 0.5
 		var pos := iron_pos.lerp(waypoint, t)
@@ -406,14 +355,11 @@ func _add_detour_markers(parent: Node3D, iron_pos: Vector3, waypoint: Vector3, c
 		parent.add_child(marker)
 
 func _add_shelter(parent: Node3D, pos: Vector3) -> void:
-	# Shelter structure — a recessed alcove with a warm light
 	_add_wall(parent, pos + Vector3(0, 1.0, -2.5), Vector3(3, 2, 0.2), Color(0.14, 0.13, 0.12))
 	_add_wall(parent, pos + Vector3(0, 1.0, 2.5), Vector3(3, 2, 0.2), Color(0.14, 0.13, 0.12))
 	_add_wall(parent, pos + Vector3(1.5, 1.0, 0), Vector3(0.2, 2, 5), Color(0.14, 0.13, 0.12))
-	# Ceiling
 	_add_wall(parent, pos + Vector3(0, 2.0, 0), Vector3(3, 0.15, 5), Color(0.12, 0.11, 0.1))
 
-	# Warm interior light
 	var light := OmniLight3D.new()
 	light.position = pos + Vector3(0, 1.5, 0)
 	light.light_color = Color(0.8, 0.6, 0.35)
@@ -421,7 +367,6 @@ func _add_shelter(parent: Node3D, pos: Vector3) -> void:
 	light.omni_range = 5.0
 	parent.add_child(light)
 
-	# Shelter label
 	var lbl := Label3D.new()
 	lbl.text = "SHELTER"
 	lbl.font_size = 36
@@ -431,184 +376,139 @@ func _add_shelter(parent: Node3D, pos: Vector3) -> void:
 	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	parent.add_child(lbl)
 
-# --- Characters ---
+# --- Decorations ---
 
-func _build_characters() -> void:
-	var chars := Node3D.new()
-	chars.name = "Characters"
-	add_child(chars)
+func _build_decorations() -> void:
+	var env_node: Node = find_child("Environment", false, false)
+	if not env_node:
+		return
 
-	# Aster (player)
-	_player = _create_char("Aster", Color(0.29, 0.62, 1.0), true)
-	_player.position = EXIT_POS + Vector3(1, 0.5, 0)
-	chars.add_child(_player)
+	# Exposed vasculature — conduit pipes running along the corridor ceiling,
+	# representing blood vessels visible in the extracellular space
+	var pipe_mat := StandardMaterial3D.new()
+	pipe_mat.albedo_color = Color(0.18, 0.1, 0.08)
+	pipe_mat.roughness = 0.6
+	# Main artery along the corridor
+	var artery := MeshInstance3D.new()
+	var ac := CylinderMesh.new()
+	ac.top_radius = 0.15
+	ac.bottom_radius = 0.15
+	ac.height = 44.0
+	artery.mesh = ac
+	artery.material_override = pipe_mat
+	artery.position = Vector3(22, 2.7, -2.0)
+	artery.rotation.z = PI / 2.0
+	env_node.add_child(artery)
+	# Branching capillaries
+	var cap_mat := StandardMaterial3D.new()
+	cap_mat.albedo_color = Color(0.2, 0.1, 0.07)
+	for i in range(8):
+		var cap := MeshInstance3D.new()
+		var cc := CylinderMesh.new()
+		cc.top_radius = 0.04
+		cc.bottom_radius = 0.06
+		cc.height = 3.0 + fmod(i * 1.3, 2.0)
+		cap.mesh = cc
+		cap.material_override = cap_mat
+		cap.position = Vector3(3.0 + i * 5.0, 2.7, -2.0)
+		cap.rotation.x = PI / 2.0
+		cap.rotation.z = 0.3 * (1 if i % 2 == 0 else -1)
+		env_node.add_child(cap)
 
-	# Peris (follows)
-	_peris = Node3D.new()
-	_peris.name = "Peris"
-	_peris.set_script(preload("res://scripts/game/npc.gd"))
-	_peris.display_name = "PERIS"
-	_peris.color = Color(1.0, 0.67, 0.27)
-	_peris.position = EXIT_POS + Vector3(0, 0, 1)
-	chars.add_child(_peris)
+	# Iron deposit growths on walls near iron patches — rust-colored nodules
+	var rust_mat := StandardMaterial3D.new()
+	rust_mat.albedo_color = Color(0.4, 0.15, 0.05)
+	rust_mat.emission_enabled = true
+	rust_mat.emission = Color(0.2, 0.06, 0.02)
+	rust_mat.emission_energy_multiplier = 0.3
+	rust_mat.roughness = 0.9
+	for iron_x in [IRON_1_POS.x, IRON_2_POS.x]:
+		for j in range(5):
+			var nodule := MeshInstance3D.new()
+			var sp := SphereMesh.new()
+			sp.radius = 0.08 + fmod(j * 0.7, 0.12)
+			sp.height = sp.radius * 1.6
+			nodule.mesh = sp
+			nodule.material_override = rust_mat
+			var side := 1.0 if j % 2 == 0 else -1.0
+			nodule.position = Vector3(
+				iron_x - 1.5 + j * 0.8,
+				0.3 + fmod(j * 0.5, 0.6),
+				side * 7.8
+			)
+			env_node.add_child(nodule)
 
-	# Endo (hidden until joins)
-	_endo = Node3D.new()
-	_endo.name = "Endo"
-	_endo.set_script(preload("res://scripts/game/npc.gd"))
-	_endo.display_name = "ENDO"
-	_endo.color = Color(0.4, 0.67, 0.53)
-	_endo.position = EXIT_POS + Vector3(3, 0, -2)
-	_endo.visible = false
-	chars.add_child(_endo)
+	# Support struts — angled structural braces along the corridor
+	var strut_mat := StandardMaterial3D.new()
+	strut_mat.albedo_color = Color(0.1, 0.1, 0.12)
+	for i in range(6):
+		var strut := MeshInstance3D.new()
+		var sb := BoxMesh.new()
+		sb.size = Vector3(0.1, 2.5, 0.1)
+		strut.mesh = sb
+		strut.material_override = strut_mat
+		strut.position = Vector3(5.0 + i * 7.0, 1.5, -7.8)
+		strut.rotation.z = 0.2
+		env_node.add_child(strut)
 
-	# Camera
-	var cam := Camera3D.new()
-	cam.name = "GameCamera"
-	cam.set_script(preload("res://scripts/game/game_camera.gd"))
-	add_child(cam)
-	_camera = cam
-	_camera.target = _player
-	_camera.follow_offset = Vector3(0, 10, 8)
-	_camera.set_pan_enabled(false)
+	# Emergency route beacons — small lights marking the safe detour paths
+	var beacon_mat := StandardMaterial3D.new()
+	beacon_mat.albedo_color = Color(0.2, 0.4, 0.3)
+	beacon_mat.emission_enabled = true
+	beacon_mat.emission = Color(0.15, 0.35, 0.2)
+	beacon_mat.emission_energy_multiplier = 1.5
+	beacon_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	var beacon_positions := [
+		SAFE_1_WAYPOINT + Vector3(-2, 0, 0),
+		SAFE_1_WAYPOINT,
+		SAFE_1_WAYPOINT + Vector3(2, 0, 0),
+		SAFE_2_WAYPOINT + Vector3(-2, 0, 0),
+		SAFE_2_WAYPOINT,
+		SAFE_2_WAYPOINT + Vector3(2, 0, 0),
+	]
+	for bpos in beacon_positions:
+		var beacon := MeshInstance3D.new()
+		var bsp := SphereMesh.new()
+		bsp.radius = 0.08
+		beacon.mesh = bsp
+		beacon.material_override = beacon_mat
+		beacon.position = bpos + Vector3(0, 0.15, 0)
+		env_node.add_child(beacon)
 
-func _create_char(char_name: String, color: Color, is_player: bool) -> CharacterBody3D:
-	var body := CharacterBody3D.new()
-	body.name = char_name
+	# Warning signage along the corridor
+	var signs := [
+		{"pos": Vector3(8, 1.8, -7.8), "text": "CAUTION: Fe CONTAMINATION"},
+		{"pos": Vector3(26, 1.8, -7.8), "text": "CAUTION: Fe CONTAMINATION"},
+		{"pos": Vector3(38, 1.8, -7.8), "text": "SHELTER  →"},
+	]
+	for s in signs:
+		var sign_bg := MeshInstance3D.new()
+		var sgb := BoxMesh.new()
+		sgb.size = Vector3(2.4, 0.5, 0.02)
+		sign_bg.mesh = sgb
+		var sgm := StandardMaterial3D.new()
+		sgm.albedo_color = Color(0.12, 0.08, 0.03)
+		sign_bg.material_override = sgm
+		sign_bg.position = s.pos
+		env_node.add_child(sign_bg)
+		var lbl := Label3D.new()
+		lbl.text = s.text
+		lbl.font_size = 24
+		lbl.pixel_size = 0.008
+		lbl.modulate = Color(0.8, 0.4, 0.15, 0.8)
+		lbl.position = s.pos + Vector3(0, 0, -0.02)
+		env_node.add_child(lbl)
 
-	var col := CollisionShape3D.new()
-	var cs := CapsuleShape3D.new()
-	cs.radius = 0.25
-	cs.height = 1.0
-	col.shape = cs
-	col.position.y = 0.5
-	body.add_child(col)
-
-	var mesh := MeshInstance3D.new()
-	mesh.name = "Mesh"
-	mesh.position.y = 0.5
-	body.add_child(mesh)
-
-	var label := Label3D.new()
-	label.name = "Label3D"
-	label.text = char_name.to_upper()
-	label.font_size = 48
-	label.pixel_size = 0.01
-	label.modulate = Color(color, 0.8)
-	label.position.y = 1.3
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	body.add_child(label)
-
-	# Collision layer 2 (characters), mask 2 (other characters only)
-	body.collision_layer = 2
-	body.collision_mask = 2
-
-	if is_player:
-		body.set_script(preload("res://scripts/game/player.gd"))
-		body.color = color
-	return body
-
-# --- UI ---
-
-func _build_ui() -> void:
-	# Dialogue
-	var dlg := CanvasLayer.new()
-	dlg.name = "DialogueBox"
-	dlg.set_script(preload("res://scripts/game/dialogue_box.gd"))
-	add_child(dlg)
-	_dialogue = dlg
-
-	# Fade overlay
-	var fade_layer := CanvasLayer.new()
-	fade_layer.layer = 20
-	add_child(fade_layer)
-	_fade_rect = ColorRect.new()
-	_fade_rect.color = Color(0.03, 0.03, 0.04, 1)
-	_fade_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_fade_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	fade_layer.add_child(_fade_rect)
-
-	# HUD layer
-	var hud := CanvasLayer.new()
-	hud.layer = 10
-	add_child(hud)
-
-	# Time bar — top center (hidden until DUSK_APPROACHES)
-	_time_bar_container = HBoxContainer.new()
-	_time_bar_container.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_time_bar_container.offset_top = 10
-	_time_bar_container.offset_left = -120
-	_time_bar_container.offset_right = 120
-	_time_bar_container.offset_bottom = 30
-	_time_bar_container.add_theme_constant_override("separation", 8)
-	_time_bar_container.visible = false
-	hud.add_child(_time_bar_container)
-
-	_time_label = Label.new()
-	_time_label.add_theme_font_size_override("font_size", 11)
-	_time_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.55))
-	_time_label.custom_minimum_size.x = 80
-	_time_bar_container.add_child(_time_label)
-
-	_time_bar = ProgressBar.new()
-	_time_bar.min_value = 0
-	_time_bar.max_value = 100
-	_time_bar.value = _game_time * 100
-	_time_bar.show_percentage = false
-	_time_bar.custom_minimum_size = Vector2(120, 12)
-	var tb_bg := StyleBoxFlat.new()
-	tb_bg.bg_color = Color(0.08, 0.08, 0.1)
-	tb_bg.set_corner_radius_all(2)
-	_time_bar.add_theme_stylebox_override("background", tb_bg)
-	var tb_fill := StyleBoxFlat.new()
-	tb_fill.bg_color = Color(0.7, 0.5, 0.2)
-	tb_fill.set_corner_radius_all(2)
-	_time_bar.add_theme_stylebox_override("fill", tb_fill)
-	_time_bar_container.add_child(_time_bar)
-
-	# Routing mode indicator — bottom left (hidden until DUSK)
-	_routing_label = Label.new()
-	_routing_label.text = "SAFE"
-	_routing_label.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	_routing_label.offset_left = 16
-	_routing_label.offset_bottom = -16
-	_routing_label.offset_top = -36
-	_routing_label.add_theme_font_size_override("font_size", 13)
-	_routing_label.add_theme_color_override("font_color", Color(0.3, 0.6, 0.4, 0.8))
-	_routing_label.visible = false
-	hud.add_child(_routing_label)
-
-	# HP bar — top right (hidden until DUSK)
-	var hp_container := HBoxContainer.new()
-	hp_container.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	hp_container.offset_left = -170
-	hp_container.offset_top = 10
-	hp_container.offset_right = -12
-	hp_container.offset_bottom = 28
-	hp_container.add_theme_constant_override("separation", 8)
-	hud.add_child(hp_container)
-
-	_hp_label = Label.new()
-	_hp_label.add_theme_font_size_override("font_size", 11)
-	_hp_label.add_theme_color_override("font_color", Color(0.7, 0.35, 0.3, 0.8))
-	_hp_label.custom_minimum_size.x = 60
-	_hp_label.text = "HP 100%"
-	_hp_label.visible = false
-	hp_container.add_child(_hp_label)
-
-	_hp_bar = ProgressBar.new()
-	_hp_bar.min_value = 0
-	_hp_bar.max_value = 100
-	_hp_bar.value = 100
-	_hp_bar.show_percentage = false
-	_hp_bar.custom_minimum_size = Vector2(80, 12)
-	var hp_bg := StyleBoxFlat.new()
-	hp_bg.bg_color = Color(0.08, 0.08, 0.1)
-	hp_bg.set_corner_radius_all(2)
-	_hp_bar.add_theme_stylebox_override("background", hp_bg)
-	var hp_fill := StyleBoxFlat.new()
-	hp_fill.bg_color = Color(0.7, 0.3, 0.25)
-	hp_fill.set_corner_radius_all(2)
-	_hp_bar.add_theme_stylebox_override("fill", hp_fill)
-	_hp_bar.visible = false
-	hp_container.add_child(_hp_bar)
+	# Degradation marks — darker stained patches on the floor near iron
+	var stain_mat := StandardMaterial3D.new()
+	stain_mat.albedo_color = Color(0.06, 0.05, 0.04)
+	for iron_x in [IRON_1_POS.x, IRON_2_POS.x]:
+		for j in range(3):
+			var stain := MeshInstance3D.new()
+			var stb := BoxMesh.new()
+			stb.size = Vector3(1.5 + j * 0.5, 0.003, 1.0 + j * 0.3)
+			stain.mesh = stb
+			stain.material_override = stain_mat
+			stain.position = Vector3(iron_x + j * 1.5 - 1.0, 0.005, 2.0 - j * 1.5)
+			stain.rotation.y = j * 0.4
+			env_node.add_child(stain)

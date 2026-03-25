@@ -1,4 +1,5 @@
-extends Node3D
+@tool
+extends TutorialSequence
 
 ## Aster's simulation tutorial. Teaches movement, interaction, ATP.
 ## Establishes Aster's character, introduces Ron, ends with Tag Day notification.
@@ -6,30 +7,18 @@ extends Node3D
 ## Event-driven: uses EventScheduler instead of phase-timer dispatch.
 ## Each step is a function that does its work and schedules the next event.
 
-var _scheduler: EventScheduler
-var _current_step := ""  ## Replaces Phase enum — SimRunner string-matches this
 var _has_moved := false
 var _has_drunk := false
-var _fade_start_tick := 0.0  ## For continuous fade interpolation
 
-var _player
-var _camera
-var _dialogue
-var _tutorial_prompt
 var _ron
 var _terminal  # Interactable — forecasting terminal
 var _drink_machine  # Interactable — drink machine
 var _atp_bar: ProgressBar
 var _atp_label: Label
-var _fade_rect: ColorRect
-var _thought_label: Label  # Aster's inner thoughts
 
 # Grid system
 var _grid: GridWorld
 var _renderer: GridRenderer
-
-# Central data authority
-var _game_state: GameState
 
 # Environment
 var _data_displays: Array[MeshInstance3D] = []
@@ -38,30 +27,84 @@ var _data_displays: Array[MeshInstance3D] = []
 var _atp := 72.0  # Start slightly below max to show the bar clearly
 const ATP_MAX := 100.0
 
-func _ready() -> void:
-	_scheduler = EventScheduler.new()
+# --- Virtual overrides ---
+
+func _build_scene() -> void:
 	_build_environment()
-	_build_characters()
+	_build_decorations()
 	_build_terminal()
 	_build_drink_machine()
-	_build_ui()
+
+func _build_characters() -> void:
+	var in_game := not Engine.is_editor_hint()
+
+	var chars := Node3D.new()
+	chars.name = "Characters"
+	add_child(chars)
+
+	_player = _create_player_character("Aster", Color(0.29, 0.62, 1.0))
+	var player_world := _grid.grid_to_world(Vector2i(3, 4))
+	_player.position = Vector3(player_world.x, 0.5, player_world.z)
+	if in_game:
+		_player.grid_world = _grid
+	chars.add_child(_player)
+
+	_ron = _create_npc("Ron", Color(0.7, 0.6, 0.45))
+	_ron.display_name = "RON"
+	var ron_world := _grid.grid_to_world(Vector2i(2, 6))
+	_ron.position = Vector3(ron_world.x, 0, ron_world.z)
+	if in_game:
+		_ron.grid_world = _grid
+	chars.add_child(_ron)
+
+	if in_game:
+		_setup_game_camera(_player, Vector3(0, 8, 6))
+
+func _register_characters() -> void:
+	_game_state.grid = _grid
+	_register_gs_character("aster", _player, _player.move_speed, {"atp": _atp})
+
+func _setup_ui() -> void:
+	# ATP bar — scene-specific, top right
+	var atp_layer := CanvasLayer.new()
+	atp_layer.layer = 10
+	add_child(atp_layer)
+
+	var atp_container := HBoxContainer.new()
+	atp_container.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	atp_container.offset_left = -180
+	atp_container.offset_top = 12
+	atp_container.offset_right = -12
+	atp_container.offset_bottom = 32
+	atp_container.add_theme_constant_override("separation", 8)
+	atp_layer.add_child(atp_container)
+
+	_atp_label = Label.new()
+	_atp_label.add_theme_font_size_override("font_size", 12)
+	_atp_label.add_theme_color_override("font_color", Color(0.3, 0.7, 0.4, 0.8))
+	_atp_label.custom_minimum_size.x = 70
+	atp_container.add_child(_atp_label)
+
+	_atp_bar = ProgressBar.new()
+	_atp_bar.min_value = 0
+	_atp_bar.max_value = ATP_MAX
+	_atp_bar.value = _atp
+	_atp_bar.show_percentage = false
+	_atp_bar.custom_minimum_size = Vector2(90, 16)
+	var bar_style := StyleBoxFlat.new()
+	bar_style.bg_color = Color(0.08, 0.08, 0.1)
+	bar_style.set_corner_radius_all(2)
+	_atp_bar.add_theme_stylebox_override("background", bar_style)
+	var fill_style := StyleBoxFlat.new()
+	fill_style.bg_color = Color(0.2, 0.6, 0.35)
+	fill_style.set_corner_radius_all(2)
+	_atp_bar.add_theme_stylebox_override("fill", fill_style)
+	atp_container.add_child(_atp_bar)
+
+func _begin() -> void:
 	_start_fade_in()
 
-func _process(delta: float) -> void:
-	# Fast-forward control: hold X for 10x speed
-	var spd := 10.0 if Input.is_key_pressed(KEY_X) else 1.0
-	_scheduler.set_speed(spd)
-	_dialogue.speed_multiplier = spd
-	_terminal.speed_multiplier = spd
-	_drink_machine.speed_multiplier = spd
-
-	# Advance scheduler (converts real delta to ticks via speed)
-	_scheduler.advance(delta)
-
-	# Advance GameState (NPC movement at speed)
-	_game_state.tick(delta * spd)
-
-	# Per-frame visual updates
+func _on_process(_delta: float, _spd: float) -> void:
 	_update_atp_display()
 	_update_fades()
 	_update_show_terminal()
@@ -70,18 +113,23 @@ func _process(delta: float) -> void:
 	for i in range(_data_displays.size()):
 		var d := _data_displays[i]
 		d.position.y = 1.8 + sin(Time.get_ticks_msec() * 0.001 + i * 1.5) * 0.08
-		d.rotation.y += delta * 0.15
+		d.rotation.y += _delta * 0.15
+
+func _get_speed_recipients() -> Array:
+	var recipients := []
+	if _terminal:
+		recipients.append(_terminal)
+	if _drink_machine:
+		recipients.append(_drink_machine)
+	return recipients
 
 # --- Per-frame visual helpers ---
 
 func _update_fades() -> void:
-	var elapsed := _scheduler.get_current_tick() - _fade_start_tick
 	if _current_step == "fade_in":
-		var alpha := 1.0 - clampf(elapsed / 2.0, 0.0, 1.0)
-		_fade_rect.color.a = alpha
+		_update_fade_in(2.0)
 	elif _current_step == "transition_out":
-		var alpha := clampf(elapsed / 2.0, 0.0, 1.0)
-		_fade_rect.color = Color(0.05, 0.03, 0.01, alpha)
+		_update_fade_out(Color(0.05, 0.03, 0.01), 2.0)
 
 func _update_show_terminal() -> void:
 	if _current_step == "show_terminal" and not _has_moved and _player.is_moving():
@@ -92,10 +140,8 @@ func _update_show_terminal() -> void:
 
 func _start_fade_in() -> void:
 	_current_step = "fade_in"
-	_fade_rect.color = Color(0, 0, 0, 1)
 	_player.set_move_enabled(false)
-	_fade_start_tick = _scheduler.get_current_tick()
-	_scheduler.schedule_after(2.5, _start_working, "working")
+	_fade_from(Color(0, 0, 0, 1), 2.5, _start_working, "working")
 
 func _start_working() -> void:
 	_current_step = "working"
@@ -199,17 +245,6 @@ func _complete() -> void:
 	_current_step = "complete"
 	get_tree().change_scene_to_file("res://scenes/tutorial/tag_day.tscn")
 
-# --- Thoughts (Aster's inner monologue) ---
-
-func _show_thought(text: String) -> void:
-	_thought_label.text = text
-	var tween := create_tween()
-	tween.tween_property(_thought_label, "modulate:a", 0.7, 0.5)
-
-func _hide_thought() -> void:
-	var tween := create_tween()
-	tween.tween_property(_thought_label, "modulate:a", 0.0, 0.5)
-
 func _update_atp_display() -> void:
 	_atp_bar.value = _atp
 	_atp_label.text = "ATP  %d%%" % int(_atp)
@@ -291,17 +326,6 @@ func _build_environment() -> void:
 	env.glow_bloom = 0.15
 	we.environment = env
 	env_node.add_child(we)
-
-func _add_wall(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> void:
-	var m := MeshInstance3D.new()
-	var b := BoxMesh.new()
-	b.size = size
-	m.mesh = b
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	m.material_override = mat
-	m.position = pos
-	parent.add_child(m)
 
 func _add_desk(parent: Node3D, pos: Vector3) -> void:
 	# Desktop surface
@@ -393,113 +417,136 @@ func _add_drink_machine_visual(parent: Node3D, pos: Vector3) -> void:
 	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	parent.add_child(lbl)
 
-# --- Characters ---
+# --- Decorations ---
 
-func _build_characters() -> void:
-	# Create GameState — central data authority
-	_game_state = GameState.new()
-	_game_state.grid = _grid
+func _build_decorations() -> void:
+	var env_node: Node = find_child("Environment", false, false)
+	if not env_node:
+		return
 
-	var chars := Node3D.new()
-	chars.name = "Characters"
-	add_child(chars)
+	# Astrocyte process fibers — branching structures across the ceiling,
+	# representing the star-shaped processes astrocytes extend through tissue
+	var fiber_color := Color(0.12, 0.25, 0.35, 0.6)
+	var fiber_mat := StandardMaterial3D.new()
+	fiber_mat.albedo_color = fiber_color
+	fiber_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fiber_mat.emission_enabled = true
+	fiber_mat.emission = Color(0.08, 0.18, 0.28)
+	fiber_mat.emission_energy_multiplier = 0.6
+	var player_start := _grid.grid_to_world(Vector2i(3, 4))
+	for i in range(7):
+		var angle := i * TAU / 7.0 + 0.3
+		var length := 2.5 + fmod(i * 1.7, 1.5)
+		var fiber := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.02
+		cm.bottom_radius = 0.04
+		cm.height = length
+		fiber.mesh = cm
+		fiber.material_override = fiber_mat
+		fiber.position = Vector3(
+			player_start.x + cos(angle) * 1.0,
+			2.7,
+			player_start.z + sin(angle) * 1.0
+		)
+		fiber.rotation = Vector3(0, angle, PI / 2.0 + (i % 3) * 0.15)
+		env_node.add_child(fiber)
 
-	# Player (Aster) — position derived from grid (cell 3,4 = near flora)
-	_player = _create_player()
-	var player_world := _grid.grid_to_world(Vector2i(3, 4))
-	_player.position = Vector3(player_world.x, 0.5, player_world.z)
-	_player.grid_world = _grid
-	_player.game_state = _game_state
-	_player.char_id = "aster"
-	# Collision layer 2 (characters), mask 2 (other characters only)
-	_player.collision_layer = 2
-	_player.collision_mask = 2
-	chars.add_child(_player)
+	# Nutrient conduits — glowing tubes along the top of walls
+	var conduit_mat := StandardMaterial3D.new()
+	conduit_mat.albedo_color = Color(0.15, 0.3, 0.2, 0.7)
+	conduit_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	conduit_mat.emission_enabled = true
+	conduit_mat.emission = Color(0.1, 0.25, 0.15)
+	conduit_mat.emission_energy_multiplier = 1.0
+	# Conduit along back wall
+	var conduit1 := MeshInstance3D.new()
+	var cc1 := CylinderMesh.new()
+	cc1.top_radius = 0.06
+	cc1.bottom_radius = 0.06
+	cc1.height = 14.0
+	conduit1.mesh = cc1
+	conduit1.material_override = conduit_mat
+	conduit1.position = Vector3(5, 2.6, _grid.height * _grid.cell_size - 0.3)
+	conduit1.rotation.z = PI / 2.0
+	env_node.add_child(conduit1)
+	# Conduit along side wall
+	var conduit2 := MeshInstance3D.new()
+	var cc2 := CylinderMesh.new()
+	cc2.top_radius = 0.05
+	cc2.bottom_radius = 0.05
+	cc2.height = 7.0
+	conduit2.mesh = cc2
+	conduit2.material_override = conduit_mat
+	conduit2.position = Vector3(0.3, 2.4, 4.5)
+	conduit2.rotation.x = PI / 2.0
+	env_node.add_child(conduit2)
 
-	# Register Aster in GameState
-	_game_state.register_character("aster", _player.position, _player.move_speed, {"atp": _atp})
+	# Neurotransmitter readout panels — wall-mounted data displays
+	var panel_data := [
+		{"pos": Vector3(1.5, 1.6, 0.35), "text": "GABA  42.1", "color": Color(0.2, 0.5, 0.3)},
+		{"pos": Vector3(3.5, 1.8, 0.35), "text": "GLU   18.7", "color": Color(0.5, 0.35, 0.2)},
+		{"pos": Vector3(5.5, 1.5, 0.35), "text": "K+   4.2mM", "color": Color(0.3, 0.3, 0.55)},
+	]
+	for pd in panel_data:
+		var panel := MeshInstance3D.new()
+		var pb := BoxMesh.new()
+		pb.size = Vector3(1.0, 0.5, 0.02)
+		panel.mesh = pb
+		var pm := StandardMaterial3D.new()
+		pm.albedo_color = Color(0.05, 0.08, 0.1, 0.85)
+		pm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		pm.emission_enabled = true
+		pm.emission = pd.color * 0.4
+		pm.emission_energy_multiplier = 0.8
+		panel.material_override = pm
+		panel.position = pd.pos
+		env_node.add_child(panel)
+		var lbl := Label3D.new()
+		lbl.text = pd.text
+		lbl.font_size = 28
+		lbl.pixel_size = 0.008
+		lbl.modulate = Color(pd.color, 0.7)
+		lbl.position = pd.pos + Vector3(0, 0, -0.02)
+		env_node.add_child(lbl)
 
-	# Ron — approaches from behind/side (cell 2,6)
-	_ron = Node3D.new()
-	_ron.name = "Ron"
-	_ron.set_script(preload("res://scripts/game/npc.gd"))
-	_ron.display_name = "RON"
-	_ron.color = Color(0.7, 0.6, 0.45)
-	var ron_world := _grid.grid_to_world(Vector2i(2, 6))
-	_ron.position = Vector3(ron_world.x, 0, ron_world.z)
-	_ron.grid_world = _grid
-	chars.add_child(_ron)
-
-	# Camera
-	var cam := Camera3D.new()
-	cam.name = "GameCamera"
-	cam.set_script(preload("res://scripts/game/game_camera.gd"))
-	add_child(cam)
-	_camera = cam
-	_camera.target = _player
-	_camera.follow_offset = Vector3(0, 8, 6)
-	_camera.set_pan_enabled(false)
-
-func _create_player() -> CharacterBody3D:
-	var player := CharacterBody3D.new()
-	player.name = "Aster"
-
-	var col := CollisionShape3D.new()
-	var cs := CapsuleShape3D.new()
-	cs.radius = 0.25
-	cs.height = 1.0
-	col.shape = cs
-	col.position.y = 0.5
-	player.add_child(col)
-
-	var mesh := MeshInstance3D.new()
-	mesh.name = "Mesh"
-	mesh.position.y = 0.5
-	player.add_child(mesh)
-
-	var label := Label3D.new()
-	label.name = "Label3D"
-	label.text = "ASTER"
-	label.font_size = 48
-	label.pixel_size = 0.01
-	label.modulate = Color(0.29, 0.62, 1.0, 0.8)
-	label.position.y = 1.3
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	player.add_child(label)
-
-	player.set_script(preload("res://scripts/game/player.gd"))
-	return player
+	# Calcium wave floor strips — subtle glowing lines on the floor
+	var wave_mat := StandardMaterial3D.new()
+	wave_mat.albedo_color = Color(0.1, 0.2, 0.3, 0.3)
+	wave_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	wave_mat.emission_enabled = true
+	wave_mat.emission = Color(0.08, 0.15, 0.25)
+	wave_mat.emission_energy_multiplier = 0.5
+	wave_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	for i in range(4):
+		var strip := MeshInstance3D.new()
+		var sb := BoxMesh.new()
+		sb.size = Vector3(8.0 + i * 2.0, 0.005, 0.04)
+		strip.mesh = sb
+		strip.material_override = wave_mat
+		strip.position = Vector3(4.0 + i * 0.5, 0.01, 2.0 + i * 1.5)
+		strip.rotation.y = 0.1 * i
+		env_node.add_child(strip)
 
 # --- Terminal Interactable ---
 
 func _build_terminal() -> void:
-	# Derive terminal position from grid tile type
 	var term_cells := _grid.find_tiles(GridWorld.Tile.TERMINAL)
 	var term_pos := Vector3(3, 0, 0)
 	if not term_cells.is_empty():
 		term_pos = _grid.grid_to_world(term_cells[0])
 
-	_terminal = Area3D.new()
-	_terminal.name = "Terminal"
-	_terminal.set_script(preload("res://scripts/game/interactable.gd"))
-	_terminal.description = "Forecasting Terminal"
-	_terminal.one_shot = true
-	_terminal.dwell_time = 1.0
-	_terminal.tutorial_label = "Click"
-	_terminal.position = term_pos + Vector3(0, 0.8, 0)
-	_terminal.collision_layer = 4  # Interactables
-	_terminal.collision_mask = 2   # Detect characters
+	if not Engine.is_editor_hint():
+		_terminal = preload("res://scenes/game/interactable.tscn").instantiate()
+		_terminal.name = "Terminal"
+		_terminal.description = "Forecasting Terminal"
+		_terminal.one_shot = true
+		_terminal.dwell_time = 1.0
+		_terminal.tutorial_label = "Click"
+		_terminal.position = term_pos + Vector3(0, 0.8, 0)
+		add_child(_terminal)
+		_terminal.interacted.connect(_on_terminal_interacted)
 
-	var col := CollisionShape3D.new()
-	var shape := SphereShape3D.new()
-	shape.radius = 1.5
-	col.shape = shape
-	_terminal.add_child(col)
-
-	add_child(_terminal)
-	_terminal.interacted.connect(_on_terminal_interacted)
-
-	# Terminal visual — desk with floating screen
 	var env_node: Node = find_child("Environment", false, false)
 	if env_node:
 		_add_desk(env_node, term_pos)
@@ -510,106 +557,17 @@ func _build_terminal() -> void:
 # --- Drink Machine Interactable ---
 
 func _build_drink_machine() -> void:
-	# Derive drink machine position from grid tile type
 	var drink_cells := _grid.find_tiles(GridWorld.Tile.FOOD)
 	var machine_pos := Vector3(8, 0, -3)
 	if not drink_cells.is_empty():
 		machine_pos = _grid.grid_to_world(drink_cells[0])
 
-	_drink_machine = Area3D.new()
-	_drink_machine.name = "DrinkMachine"
-	_drink_machine.set_script(preload("res://scripts/game/interactable.gd"))
-	_drink_machine.description = "Drink Machine"
-	_drink_machine.one_shot = true
-	_drink_machine.tutorial_label = DialogueData.text("aster_sim.drink_label")
-	_drink_machine.position = machine_pos + Vector3(0, 0.9, 0)
-	_drink_machine.collision_layer = 4  # Interactables
-	_drink_machine.collision_mask = 2   # Detect characters
-
-	var col := CollisionShape3D.new()
-	var shape := SphereShape3D.new()
-	shape.radius = 1.5
-	col.shape = shape
-	_drink_machine.add_child(col)
-
-	add_child(_drink_machine)
-	_drink_machine.interacted.connect(_on_drink_interacted)
-
-# --- UI ---
-
-func _build_ui() -> void:
-	# Dialogue box
-	var dlg := CanvasLayer.new()
-	dlg.name = "DialogueBox"
-	dlg.set_script(preload("res://scripts/game/dialogue_box.gd"))
-	add_child(dlg)
-	_dialogue = dlg
-
-	# Tutorial prompt
-	var tp := CanvasLayer.new()
-	tp.name = "TutorialPrompt"
-	tp.set_script(preload("res://scripts/game/tutorial_prompt.gd"))
-	add_child(tp)
-	_tutorial_prompt = tp
-
-	# Fade overlay
-	var fade_layer := CanvasLayer.new()
-	fade_layer.layer = 20
-	add_child(fade_layer)
-	_fade_rect = ColorRect.new()
-	_fade_rect.color = Color(0, 0, 0, 1)
-	_fade_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_fade_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	fade_layer.add_child(_fade_rect)
-
-	# ATP bar — top right
-	var atp_layer := CanvasLayer.new()
-	atp_layer.layer = 10
-	add_child(atp_layer)
-
-	var atp_container := HBoxContainer.new()
-	atp_container.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	atp_container.offset_left = -180
-	atp_container.offset_top = 12
-	atp_container.offset_right = -12
-	atp_container.offset_bottom = 32
-	atp_container.add_theme_constant_override("separation", 8)
-	atp_layer.add_child(atp_container)
-
-	_atp_label = Label.new()
-	_atp_label.add_theme_font_size_override("font_size", 12)
-	_atp_label.add_theme_color_override("font_color", Color(0.3, 0.7, 0.4, 0.8))
-	_atp_label.custom_minimum_size.x = 70
-	atp_container.add_child(_atp_label)
-
-	_atp_bar = ProgressBar.new()
-	_atp_bar.min_value = 0
-	_atp_bar.max_value = ATP_MAX
-	_atp_bar.value = _atp
-	_atp_bar.show_percentage = false
-	_atp_bar.custom_minimum_size = Vector2(90, 16)
-	var bar_style := StyleBoxFlat.new()
-	bar_style.bg_color = Color(0.08, 0.08, 0.1)
-	bar_style.set_corner_radius_all(2)
-	_atp_bar.add_theme_stylebox_override("background", bar_style)
-	var fill_style := StyleBoxFlat.new()
-	fill_style.bg_color = Color(0.2, 0.6, 0.35)
-	fill_style.set_corner_radius_all(2)
-	_atp_bar.add_theme_stylebox_override("fill", fill_style)
-	atp_container.add_child(_atp_bar)
-
-	# Thought display (Aster's inner monologue — italic, center screen)
-	var thought_layer := CanvasLayer.new()
-	thought_layer.layer = 11
-	add_child(thought_layer)
-	_thought_label = Label.new()
-	_thought_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_thought_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_thought_label.offset_top = 50
-	_thought_label.offset_left = -300
-	_thought_label.offset_right = 300
-	_thought_label.add_theme_font_size_override("font_size", 14)
-	_thought_label.add_theme_color_override("font_color", Color(0.6, 0.65, 0.75))
-	_thought_label.modulate.a = 0.0
-	_thought_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	thought_layer.add_child(_thought_label)
+	if not Engine.is_editor_hint():
+		_drink_machine = preload("res://scenes/game/interactable.tscn").instantiate()
+		_drink_machine.name = "DrinkMachine"
+		_drink_machine.description = "Drink Machine"
+		_drink_machine.one_shot = true
+		_drink_machine.tutorial_label = DialogueData.text("aster_sim.drink_label")
+		_drink_machine.position = machine_pos + Vector3(0, 0.9, 0)
+		add_child(_drink_machine)
+		_drink_machine.interacted.connect(_on_drink_interacted)
