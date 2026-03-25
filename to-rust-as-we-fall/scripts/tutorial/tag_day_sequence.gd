@@ -308,7 +308,7 @@ func _start_bang_line() -> void:
 	_dialogue.dialogue_finished.connect(_on_bang, CONNECT_ONE_SHOT)
 
 func _on_bang() -> void:
-	_camera_shake(0.4, 0.15)
+	_camera.shake(0.5, 3.0)
 	_dialogue.clear()
 	# Silence. Then the last word.
 	_scheduler.schedule_after(2.5, _fragment_whimper, "whimper")
@@ -319,21 +319,6 @@ func _fragment_whimper() -> void:
 		_scheduler.schedule_after(1.0, _start_neutralization, "neutralization")
 	, CONNECT_ONE_SHOT)
 
-func _camera_shake(duration: float, intensity: float) -> void:
-	if not _camera:
-		return
-	var tween := create_tween()
-	var steps := int(duration / 0.05)
-	for i in range(steps):
-		var offset := Vector3(
-			randf_range(-intensity, intensity),
-			randf_range(-intensity * 0.5, intensity * 0.5),
-			randf_range(-intensity, intensity)
-		)
-		tween.tween_property(_camera, "follow_offset",
-			Vector3(0, 10, 7) + offset, 0.05)
-		intensity *= 0.85
-	tween.tween_property(_camera, "follow_offset", Vector3(0, 10, 7), 0.1)
 
 func _start_neutralization() -> void:
 	_current_step = "neutralization"
@@ -347,7 +332,7 @@ func _start_lockdown() -> void:
 	_current_step = "lockdown"
 	# Alarm — citizen's device light stays red, others pulse
 	_citizen_light.light_energy = 4.0
-	_camera_shake(0.2, 0.08)
+	_camera.shake(0.15, 8.0)
 
 	DialogueData.say_to(_dialogue, "tag_day.lockdown")
 	_dialogue.dialogue_finished.connect(func():

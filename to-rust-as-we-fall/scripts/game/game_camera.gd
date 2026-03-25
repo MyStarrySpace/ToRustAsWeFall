@@ -21,6 +21,11 @@ var _locked := false
 var _lock_position := Vector3.ZERO
 var _wasd_pan_enabled := false
 
+# Screen shake state
+var _shake_intensity := 0.0
+var _shake_decay := 5.0
+var _shake_offset := Vector3.ZERO
+
 # Pan hint — emitted when something is off-screen and the player might want to pan
 signal pan_hint_triggered(direction: Vector2)
 
@@ -99,7 +104,19 @@ func _process(delta: float) -> void:
 			if _pan_offset.length() > max_pan_distance:
 				_pan_offset = _pan_offset.normalized() * max_pan_distance
 
-	var goal := target.global_position + follow_offset + _pan_offset
+	# Shake decay
+	if _shake_intensity > 0.001:
+		_shake_offset = Vector3(
+			randf_range(-_shake_intensity, _shake_intensity),
+			randf_range(-_shake_intensity * 0.5, _shake_intensity * 0.5),
+			randf_range(-_shake_intensity, _shake_intensity)
+		)
+		_shake_intensity = lerpf(_shake_intensity, 0.0, _shake_decay * delta)
+	else:
+		_shake_offset = Vector3.ZERO
+		_shake_intensity = 0.0
+
+	var goal := target.global_position + follow_offset + _pan_offset + _shake_offset
 	global_position = global_position.lerp(goal, follow_speed * delta)
 	look_at(target.global_position + _pan_offset, Vector3.UP)
 
@@ -129,6 +146,12 @@ func set_wasd_pan_enabled(enabled: bool) -> void:
 	_wasd_pan_enabled = enabled
 	if not enabled:
 		_pan_offset = Vector3.ZERO
+
+## Trigger screen shake. Intensity is the max offset in world units.
+## Decay rate controls how fast it fades (higher = faster).
+func shake(intensity: float = 0.3, decay: float = 5.0) -> void:
+	_shake_intensity = intensity
+	_shake_decay = decay
 
 ## Check if a world position is visible on screen (for pan hints)
 func is_position_on_screen(world_pos: Vector3) -> bool:
