@@ -126,19 +126,16 @@ func _on_process(delta: float, _spd: float) -> void:
 # --- Event-driven steps ---
 
 func _start_arrive() -> void:
-	_current_step = "arrive"
+	_enter_step("arrive")
 	_player.set_move_enabled(false)
 	_game_state.character_arrived.connect(_on_character_arrived)
 	DialogueData.say_to(_dialogue, "tag_day.checkpoint_id")
-	# Citizen begins murmuring the nursery rhyme at his device
+	# Citizen murmurs the nursery rhyme, then scan triggers
 	_scheduler.schedule_after(2.0, func():
-		DialogueData.say_to(_dialogue, "tag_day.murmur.01")
-		_dialogue.dialogue_finished.connect(func():
-			DialogueData.say_to(_dialogue, "tag_day.murmur.02")
-			_dialogue.dialogue_finished.connect(func():
-				_scheduler.schedule_after(1.5, _start_citizen_scan, "citizen_scan")
-			, CONNECT_ONE_SHOT)
-		, CONNECT_ONE_SHOT)
+		_dialogue_chain(
+			["tag_day.murmur.01", "tag_day.murmur.02"],
+			func(): _scheduler.schedule_after(1.5, _start_citizen_scan, "citizen_scan")
+		)
 	, "murmur")
 
 func _on_character_arrived(id: String) -> void:
@@ -146,7 +143,7 @@ func _on_character_arrived(id: String) -> void:
 		_scheduler.schedule_after(0, _start_neutralization, "neutralization")
 
 func _start_citizen_scan() -> void:
-	_current_step = "citizen_scan"
+	_enter_step("citizen_scan")
 	# The citizen's device scan fails
 	_citizen_light.light_color = Color(0.8, 0.1, 0.05)
 	_citizen_light.light_energy = 6.0
@@ -154,7 +151,7 @@ func _start_citizen_scan() -> void:
 	_scheduler.schedule_after(3.0, _start_naturalizers_grip, "nk_grip")
 
 func _start_naturalizers_grip() -> void:
-	_current_step = "naturalizers_grip"
+	_enter_step("naturalizers_grip")
 	DialogueData.say_to(_dialogue, "tag_day.naturalizers_grip")
 	# Naturalizers approach the citizen at his device
 	_game_state.command_move_to_pos("nk1", CITIZEN_DEVICE_POS + Vector3(0, 0, -0.6))
@@ -182,7 +179,7 @@ func _show_report_label() -> void:
 	tween.tween_property(lbl, "modulate:a", 0.0, 2.0)
 
 func _begin_corridor_walk() -> void:
-	_current_step = "corridor_walk"
+	_enter_step("corridor_walk")
 
 	# Snap all three into formation at citizen's device before walking.
 	# Prevents enforcers from getting ahead if the grip movement was incomplete.
@@ -259,7 +256,7 @@ func _show_nk_chat(nk: Node3D, text: String) -> void:
 	tween.tween_callback(lbl.queue_free)
 
 func _start_pan_prompt() -> void:
-	_current_step = "pan_prompt"
+	_enter_step("pan_prompt")
 	_camera.set_pan_enabled(true)
 	_camera.set_wasd_pan_enabled(true)
 	_camera.max_pan_distance = 40.0
@@ -273,47 +270,19 @@ func _on_poem_finished() -> void:
 	_start_fragments()
 
 func _start_fragments() -> void:
-	_current_step = "fragments"
+	_enter_step("fragments")
 	_tutorial_prompt.hide_prompt()
 	_dialogue.default_hold_time = 2.5
-	# Stuttering prayer fragments — individually scheduled
-	DialogueData.say_to(_dialogue, "tag_day.fragment.01")
-	_dialogue.dialogue_finished.connect(func():
-		_scheduler.schedule_after(1.5, func():
-			DialogueData.say_to(_dialogue, "tag_day.fragment.02")
-			_dialogue.dialogue_finished.connect(func():
-				_scheduler.schedule_after(1.5, func():
-					DialogueData.say_to(_dialogue, "tag_day.fragment.03")
-					_dialogue.dialogue_finished.connect(func():
-						_scheduler.schedule_after(1.0, _start_world_ends, "world_ends")
-					, CONNECT_ONE_SHOT)
-				, "frag3")
-			, CONNECT_ONE_SHOT)
-		, "frag2")
-	, CONNECT_ONE_SHOT)
-
-func _start_world_ends() -> void:
-	# "This is the way the world ends" — three times
-	DialogueData.say_to(_dialogue, "tag_day.fragment.04")
-	_dialogue.dialogue_finished.connect(func():
-		DialogueData.say_to(_dialogue, "tag_day.fragment.05")
-		_dialogue.dialogue_finished.connect(func():
-			DialogueData.say_to(_dialogue, "tag_day.fragment.06")
-			_dialogue.dialogue_finished.connect(func():
-				_scheduler.schedule_after(1.5, _start_bang_line, "bang_line")
-			, CONNECT_ONE_SHOT)
-		, CONNECT_ONE_SHOT)
-	, CONNECT_ONE_SHOT)
-
-func _start_bang_line() -> void:
-	# "Not with a bang but a—"
-	DialogueData.say_to(_dialogue, "tag_day.fragment.07")
-	_dialogue.dialogue_finished.connect(_on_bang, CONNECT_ONE_SHOT)
+	# Stuttering prayer fragments with gaps, then "world ends" x3, then bang
+	_dialogue_chain([
+		"tag_day.fragment.01", "tag_day.fragment.02", "tag_day.fragment.03",
+		"tag_day.fragment.04", "tag_day.fragment.05", "tag_day.fragment.06",
+		"tag_day.fragment.07",
+	], _on_bang, 1.5)
 
 func _on_bang() -> void:
 	_camera.shake(0.5, 3.0)
 	_dialogue.clear()
-	# Silence. Then the last word.
 	_scheduler.schedule_after(2.5, _fragment_whimper, "whimper")
 
 func _fragment_whimper() -> void:
@@ -322,11 +291,9 @@ func _fragment_whimper() -> void:
 		_scheduler.schedule_after(1.0, _start_neutralization, "neutralization")
 	, CONNECT_ONE_SHOT)
 
-
 func _start_neutralization() -> void:
-	if _current_step == "neutralization":
+	if not _enter_step("neutralization"):
 		return
-	_current_step = "neutralization"
 	_game_state.command_stop("citizen")
 	_game_state.command_stop("nk1")
 	_game_state.command_stop("nk2")
@@ -334,24 +301,16 @@ func _start_neutralization() -> void:
 	_scheduler.schedule_after(3.0, _start_lockdown, "lockdown")
 
 func _start_lockdown() -> void:
-	_current_step = "lockdown"
-	# Alarm — citizen's device light stays red, others pulse
+	_enter_step("lockdown")
 	_citizen_light.light_energy = 4.0
 	_camera.shake(0.15, 8.0)
-
-	DialogueData.say_to(_dialogue, "tag_day.lockdown")
-	_dialogue.dialogue_finished.connect(func():
-		DialogueData.say_to(_dialogue, "tag_day.groan")
-		_dialogue.dialogue_finished.connect(func():
-			DialogueData.say_to(_dialogue, "tag_day.report_blocked")
-			_dialogue.dialogue_finished.connect(func():
-				_scheduler.schedule_after(1.5, _start_return_focus, "return_focus")
-			, CONNECT_ONE_SHOT)
-		, CONNECT_ONE_SHOT)
-	, CONNECT_ONE_SHOT)
+	_dialogue_chain(
+		["tag_day.lockdown", "tag_day.groan", "tag_day.report_blocked"],
+		func(): _scheduler.schedule_after(1.5, _start_return_focus, "return_focus")
+	)
 
 func _start_return_focus() -> void:
-	_current_step = "return_focus"
+	_enter_step("return_focus")
 	_camera.set_wasd_pan_enabled(false)
 	_camera.set_pan_enabled(false)
 	_camera.max_pan_distance = 15.0
@@ -372,7 +331,7 @@ func _start_aster_scans() -> void:
 	, CONNECT_ONE_SHOT)
 
 func _start_blue_transition() -> void:
-	_current_step = "clearance"
+	_enter_step("clearance")
 	_citizen_light.light_color = Color(0.15, 0.4, 0.85)
 	_citizen_light.light_energy = 6.0
 	_dialogue.default_hold_time = 2.0
@@ -383,7 +342,7 @@ func _start_blue_transition() -> void:
 	tween.tween_callback(_on_sequence_complete)
 
 func _on_sequence_complete() -> void:
-	_current_step = "complete"
+	_enter_step("complete")
 	get_tree().change_scene_to_file("res://scenes/tutorial/peris_sim.tscn")
 
 

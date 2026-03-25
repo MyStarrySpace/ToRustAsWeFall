@@ -22,6 +22,12 @@ var _thought_label: Label
 var _player         # CharacterBody3D + player.gd
 var _camera         # Camera3D + game_camera.gd
 
+# Dialogue chain state (used by _dialogue_chain helper)
+var _dlg_chain_keys: Array = []
+var _dlg_chain_index := 0
+var _dlg_chain_next: Callable
+var _dlg_chain_delay := 0.0
+
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		for child in get_children().duplicate():
@@ -146,6 +152,46 @@ func _show_thought(text: String) -> void:
 func _hide_thought() -> void:
 	var tween := create_tween()
 	tween.tween_property(_thought_label, "modulate:a", 0.0, 0.5)
+
+# --- Step transition ---
+
+## Transition to a new step. Clears stale dialogue callbacks to prevent
+## double-fire from overlapping signal subscriptions. Returns false if
+## already in the requested step (duplicate call).
+func _enter_step(step_name: String) -> bool:
+	if _current_step == step_name:
+		return false
+	_current_step = step_name
+	# Disconnect any stale dialogue_finished callbacks from the previous step
+	if _dialogue:
+		for conn in _dialogue.dialogue_finished.get_connections():
+			_dialogue.dialogue_finished.disconnect(conn.callable)
+	return true
+
+# --- Dialogue chain ---
+
+## Play a sequence of dialogue keys in order, with optional delay between
+## each line. Calls next_func when the entire chain completes.
+func _dialogue_chain(keys: Array, next_func: Callable, delay_between := 0.0) -> void:
+	_dlg_chain_keys = keys
+	_dlg_chain_index = 0
+	_dlg_chain_next = next_func
+	_dlg_chain_delay = delay_between
+	_dlg_chain_play_next()
+
+func _dlg_chain_play_next() -> void:
+	if _dlg_chain_index >= _dlg_chain_keys.size():
+		_dlg_chain_next.call()
+		return
+	var key: String = _dlg_chain_keys[_dlg_chain_index]
+	_dlg_chain_index += 1
+	DialogueData.say_to(_dialogue, key)
+	if _dlg_chain_delay > 0.0 and _dlg_chain_index < _dlg_chain_keys.size():
+		_dialogue.dialogue_finished.connect(func():
+			_scheduler.schedule_after(_dlg_chain_delay, _dlg_chain_play_next, "dlg_chain")
+		, CONNECT_ONE_SHOT)
+	else:
+		_dialogue.dialogue_finished.connect(_dlg_chain_play_next, CONNECT_ONE_SHOT)
 
 # --- Environment helpers ---
 
