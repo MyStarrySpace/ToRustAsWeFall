@@ -234,19 +234,21 @@ func _test_tag_day() -> void:
 		var dialogue: Node = instance.find_child("DialogueBox", true, false)
 		_assert_true(dialogue != null, "DialogueBox node exists")
 
-		# Event-driven progression test: verify scheduler and step system
+		# Event-driven progression test: verify scheduler, GameState, step system
 		if "_current_step" in instance and "_scheduler" in instance:
 			_assert_true(instance._scheduler != null, "EventScheduler exists")
+			_assert_true(instance._game_state != null, "GameState exists")
 			_assert_true(instance._current_step != "", "Current step is set")
 
-			# Exercise corridor walk path construction
+			# Exercise corridor walk — all movement goes through GameState
 			instance._start_poem_and_drag()
 			for j in range(3):
 				await get_tree().process_frame
 			instance._begin_corridor_walk()
 			for j in range(5):
 				await get_tree().process_frame
-			_assert_true(true, "Corridor walk started without crash (walk_path typed arrays)")
+			_assert_true(instance._game_state.is_moving("citizen"), "Citizen is walking the corridor")
+			_assert_true(instance._game_state.is_moving("nk1"), "Naturalizer 1 is escorting")
 
 		instance.queue_free()
 		await get_tree().process_frame
@@ -450,12 +452,14 @@ func _test_grid_pathfinding() -> void:
 func _test_game_state() -> void:
 	_test_name = "GameState"
 
-	# Create grid and GameState
+	# Create grid, scheduler, and GameState
 	var grid := GridWorld.new()
 	grid.create_room(10, 8, true)
 
+	var sched := EventScheduler.new()
 	var gs := GameState.new()
 	gs.grid = grid
+	gs.scheduler = sched
 	_assert_true(gs.grid != null, "GameState has grid")
 
 	# Register a character
@@ -467,16 +471,21 @@ func _test_game_state() -> void:
 	# Command: move to cell
 	var moved := gs.command_move_to_cell("aster", Vector2i(5, 3))
 	_assert_true(moved, "command_move_to_cell returns true")
-	_assert_true(gs.characters["aster"].is_moving, "Character is moving")
-	_assert_true(gs.characters["aster"].path.size() > 0, "Path has waypoints")
+	_assert_true(gs.is_moving("aster"), "Character is moving")
+	_assert_true(gs.characters["aster"].movement != null, "Movement state exists")
 
-	# Tick until arrival
-	var ticks := 0
-	while gs.is_moving("aster") and ticks < 500:
-		gs.tick(0.05)
-		ticks += 1
-	_assert_true(not gs.is_moving("aster"), "Character arrived after ticking")
-	var final_cell := grid.world_to_grid(gs.characters["aster"].position)
+	# Mid-movement: position should have moved from start
+	var start_pos := grid.grid_to_world(Vector2i(1, 1))
+	sched.advance_ticks(0.5)
+	var mid_pos := gs.get_position("aster")
+	_assert_true(gs.is_moving("aster"), "Still moving after partial advance")
+	_assert_true(mid_pos.distance_to(start_pos) > 0.1, "Character moved from start")
+
+	# Advance scheduler until arrival
+	sched.advance_ticks(100.0)
+	_assert_true(not gs.is_moving("aster"), "Character arrived after advancing scheduler")
+	var final_pos := gs.get_position("aster")
+	var final_cell := grid.world_to_grid(final_pos)
 	_assert_equals(final_cell, Vector2i(5, 3), "Final cell matches target")
 
 	# Command: move to unreachable cell (wall)
@@ -486,35 +495,35 @@ func _test_game_state() -> void:
 	# Command: straight-line move
 	var pos_moved := gs.command_move_to_pos("aster", Vector3(4.5, 0, 2.5))
 	_assert_true(pos_moved, "command_move_to_pos returns true")
-	ticks = 0
-	while gs.is_moving("aster") and ticks < 200:
-		gs.tick(0.05)
-		ticks += 1
+	sched.advance_ticks(100.0)
 	_assert_true(not gs.is_moving("aster"), "Straight-line move completed")
 
-	# Command: stop
+	# Command: stop mid-movement
 	gs.command_move_to_cell("aster", Vector2i(8, 6))
 	_assert_true(gs.is_moving("aster"), "Moving before stop")
+	sched.advance_ticks(0.3)
+	var stop_pos := gs.get_position("aster")
 	gs.command_stop("aster")
 	_assert_true(not gs.is_moving("aster"), "Stopped after command_stop")
+	var after_stop := gs.get_position("aster")
+	_assert_true(stop_pos.distance_to(after_stop) < 0.01, "Position preserved after stop")
 
 	# Serialize / deserialize round-trip
 	gs.command_move_to_cell("aster", Vector2i(3, 3))
-	ticks = 0
-	while gs.is_moving("aster") and ticks < 500:
-		gs.tick(0.05)
-		ticks += 1
+	sched.advance_ticks(100.0)
 
 	var snapshot := gs.serialize()
 	_assert_true(snapshot.has("characters"), "Snapshot has characters")
 	_assert_true(snapshot.characters.has("aster"), "Snapshot has aster")
 
+	var sched2 := EventScheduler.new()
 	var gs2 := GameState.new()
 	gs2.grid = grid
+	gs2.scheduler = sched2
 	gs2.deserialize(snapshot)
 	_assert_true(gs2.characters.has("aster"), "Deserialized has aster")
-	var pos1: Vector3 = gs.characters["aster"].position
-	var pos2: Vector3 = gs2.characters["aster"].position
+	var pos1: Vector3 = gs.get_position("aster")
+	var pos2: Vector3 = gs2.get_position("aster")
 	_assert_true(pos1.distance_to(pos2) < 0.01, "Positions match after round-trip")
 
 	# Unregister

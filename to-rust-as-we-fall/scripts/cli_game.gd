@@ -142,7 +142,7 @@ func _execute_text_command(text: String) -> void:
 				print("[CLI] Usage: grid_move <grid_x> <grid_z>")
 
 		"run":
-			await _sim._execute(SimCommand.key_press(KEY_SHIFT))
+			await _sim._execute(SimCommand.key_press(KEY_Z))
 			print("[CLI] Run toggled")
 
 		"dwell", "interact", "use":
@@ -154,7 +154,7 @@ func _execute_text_command(text: String) -> void:
 			await _sim._execute(SimCommand.wait_time(dwell_secs))
 
 		"protect":
-			await _sim._execute(SimCommand.key_press(KEY_Q))
+			await _sim._execute(SimCommand.key_press(KEY_X))
 			await _sim._execute(SimCommand.wait_frames(10))
 
 		"route", "routing":

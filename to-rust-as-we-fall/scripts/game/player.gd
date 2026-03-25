@@ -1,8 +1,14 @@
+@tool
 extends CharacterBody3D
 
 ## Rimworld-style click-to-move. Click ground → destination marker appears →
 ## character walks there. Indirect control. Visual feedback: destination ring,
 ## path line from character to destination.
+##
+## Supports two modes:
+## - GameState-driven: position read from interpolation each frame. All commands
+##   go through GameState. Scheduler handles arrival timing.
+## - Fallback: frame-based velocity movement (for scenes without GameState).
 
 @export var move_speed := 3.0
 @export var color := Color(0.29, 0.62, 1.0)  # Aster blue
@@ -10,8 +16,7 @@ extends CharacterBody3D
 ## When set, click-to-move uses A* pathfinding. When null, straight-line.
 var grid_world: GridWorld
 
-## When set, movement commands go through GameState. Player reads path from
-## GameState, drives move_and_slide(), writes position back.
+## When set, movement commands go through GameState.
 var game_state: GameState
 var char_id := ""  ## Character ID in GameState (e.g. "aster")
 
@@ -63,7 +68,6 @@ func _ready() -> void:
 	_dest_marker_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_dest_marker.material_override = _dest_marker_mat
 	_dest_marker.rotation.x = -PI / 2.0
-	# Add to scene root so it stays at the click position, not on the player
 	_dest_marker.top_level = true
 	add_child(_dest_marker)
 
@@ -77,11 +81,20 @@ func _ready() -> void:
 	_path_line.material_override = line_mat
 	add_child(_path_line)
 
+	if Engine.is_editor_hint():
+		return
+
+	# Connect arrival signal if GameState is available
+	if game_state:
+		game_state.character_arrived.connect(_on_gs_arrived)
+
 func _unhandled_input(event: InputEvent) -> void:
+	if Engine.is_editor_hint():
+		return
 	if not _move_enabled:
 		return
-	if _auto_path.size() > 0:
-		return  # Don't interrupt auto-path with clicks
+	if _auto_path.size() > 0 and not (game_state and char_id != ""):
+		return  # Don't interrupt fallback auto-path with clicks
 
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
@@ -98,7 +111,7 @@ func _raycast_ground(screen_pos: Vector2) -> Vector3:
 	var dir := camera.project_ray_normal(screen_pos)
 	var space := get_world_3d().direct_space_state
 	var query := PhysicsRayQueryParameters3D.create(from, from + dir * 100.0)
-	query.collision_mask = 1  # Ground only — skip characters (layer 2) and interactables (layer 4)
+	query.collision_mask = 1  # Ground only
 	var result := space.intersect_ray(query)
 	if not result.is_empty():
 		return result.position
@@ -106,7 +119,6 @@ func _raycast_ground(screen_pos: Vector2) -> Vector3:
 
 func _set_click_target(world_pos: Vector3) -> void:
 	if game_state and char_id != "":
-		# Unified path: route through GameState
 		if grid_world:
 			var target_cell := grid_world.world_to_grid(world_pos)
 			if not game_state.command_move_to_cell(char_id, target_cell):
@@ -114,30 +126,26 @@ func _set_click_target(world_pos: Vector3) -> void:
 			var snapped := grid_world.grid_to_world(target_cell)
 			_dest_marker.global_position = Vector3(snapped.x, 0.05, snapped.z)
 		else:
-			game_state.command_move_to_pos(char_id, world_pos)
+			if not game_state.command_move_to_pos(char_id, world_pos):
+				return
 			_dest_marker.global_position = Vector3(world_pos.x, 0.05, world_pos.z)
-		# Sync local state from GameState
-		var ch: Dictionary = game_state.characters[char_id]
-		_auto_path = ch.path.duplicate()
-		_auto_path_index = ch.path_index
 		_moving = true
 		_dest_marker_mat.albedo_color.a = 0.6
 		_dest_marker.scale = Vector3(1.2, 1.2, 1.2)
-	elif grid_world:
-		# Grid-based: snap to cell center, A* pathfind
+		return
+
+	if grid_world:
 		var target_cell := grid_world.world_to_grid(world_pos)
 		var current_cell := grid_world.world_to_grid(global_position)
 		var snapped := grid_world.grid_to_world(target_cell)
 		var path := grid_world.find_path(current_cell, target_cell)
 		if path.is_empty():
-			return  # No valid path
+			return
 		walk_path(path)
-		# Show destination marker at grid cell center
 		_dest_marker.global_position = Vector3(snapped.x, 0.05, snapped.z)
 		_dest_marker_mat.albedo_color.a = 0.6
 		_dest_marker.scale = Vector3(1.2, 1.2, 1.2)
 	else:
-		# Straight-line fallback (no grid)
 		_target_pos = world_pos
 		_target_pos.y = global_position.y
 		_moving = true
@@ -150,11 +158,8 @@ func _set_click_target(world_pos: Vector3) -> void:
 ## Walk to a grid cell using A* pathfinding.
 func walk_to_grid(cell: Vector2i) -> void:
 	if game_state and char_id != "":
-		if game_state.command_move_to_cell(char_id, cell):
-			var ch: Dictionary = game_state.characters[char_id]
-			_auto_path = ch.path.duplicate()
-			_auto_path_index = ch.path_index
-			_moving = true
+		game_state.command_move_to_cell(char_id, cell)
+		_moving = true
 		return
 	if not grid_world:
 		return
@@ -164,39 +169,25 @@ func walk_to_grid(cell: Vector2i) -> void:
 		walk_path(path)
 
 func _physics_process(delta: float) -> void:
-	# GameState-driven movement: read path from GameState, use move_and_slide, write back
-	if game_state and char_id != "" and game_state.characters.has(char_id):
-		var ch: Dictionary = game_state.characters[char_id]
-		if ch.is_moving and not ch.path.is_empty() and ch.path_index < ch.path.size():
-			var waypoint: Vector3 = ch.path[ch.path_index]
-			var dir := (waypoint - global_position)
-			dir.y = 0
-			if dir.length() < 0.2:
-				# Let GameState advance the path index
-				game_state.update_position(char_id, global_position)
-				if not game_state.is_moving(char_id):
-					_moving = false
-					velocity = Vector3.ZERO
-					auto_path_complete.emit()
-			else:
-				velocity = dir.normalized() * move_speed
-				move_and_slide()
-				game_state.update_position(char_id, global_position)
-			# Keep local path in sync for line drawing
-			_auto_path = ch.path.duplicate()
-			_auto_path_index = ch.path_index
-			_update_path_line()
-			_update_dest_marker(delta)
-			return
-		elif not ch.is_moving and _moving:
+	if Engine.is_editor_hint():
+		return
+	# GameState-driven: read interpolated position
+	if game_state and char_id != "":
+		if game_state.is_moving(char_id):
+			var pos := game_state.get_position(char_id)
+			global_position = Vector3(pos.x, global_position.y, pos.z)
+			_moving = true
+		elif _moving:
+			# Just arrived — snap to final position
 			_moving = false
+			var pos := game_state.get_position(char_id)
+			global_position = Vector3(pos.x, global_position.y, pos.z)
 			velocity = Vector3.ZERO
-			auto_path_complete.emit()
 		_update_dest_marker(delta)
 		_update_path_line()
 		return
 
-	# Auto-path movement (scripted, no GameState)
+	# Fallback: auto-path movement (scripted, no GameState)
 	if _auto_path.size() > 0:
 		var waypoint := _auto_path[_auto_path_index]
 		var dir := (waypoint - global_position)
@@ -208,14 +199,17 @@ func _physics_process(delta: float) -> void:
 				_auto_path_index = 0
 				_moving = false
 				auto_path_complete.emit()
+				_update_dest_marker(delta)
+				_update_path_line()
 				return
 		else:
 			velocity = dir.normalized() * move_speed
 			move_and_slide()
 		_update_path_line()
+		_update_dest_marker(delta)
 		return
 
-	# Click-to-move
+	# Fallback: click-to-move
 	if _moving:
 		var dir := (_target_pos - global_position)
 		dir.y = 0
@@ -231,12 +225,16 @@ func _physics_process(delta: float) -> void:
 	_update_dest_marker(delta)
 	_update_path_line()
 
+func _on_gs_arrived(id: String) -> void:
+	if id == char_id:
+		_moving = false
+		arrived.emit()
+		auto_path_complete.emit()
+
 func _update_dest_marker(delta: float) -> void:
 	if _moving:
-		# Pulse gently
 		var pulse := 0.3 + sin(Time.get_ticks_msec() * 0.004) * 0.15
 		_dest_marker_mat.albedo_color.a = pulse
-		# Shrink as character approaches
 		var dist := Vector2(
 			global_position.x - _dest_marker.global_position.x,
 			global_position.z - _dest_marker.global_position.z
@@ -244,30 +242,40 @@ func _update_dest_marker(delta: float) -> void:
 		var s := clampf(dist / 3.0, 0.3, 1.2)
 		_dest_marker.scale = Vector3(s, s, s)
 	else:
-		# Fade out
 		_dest_marker_mat.albedo_color.a = maxf(0, _dest_marker_mat.albedo_color.a - delta * 2.0)
 
 func _update_path_line() -> void:
-	if not _moving and _auto_path.is_empty():
+	if not _moving:
 		_path_line.mesh = null
 		return
 
 	var im := ImmediateMesh.new()
 	im.surface_begin(Mesh.PRIMITIVE_LINES)
+	var from_pos := Vector3(global_position.x, 0.08, global_position.z)
 
-	var from_pos := global_position
-	from_pos.y = 0.08  # Slightly above ground
-
-	if _auto_path.size() > 0:
-		# Draw line through auto-path waypoints
+	if game_state and char_id != "" and game_state.is_moving(char_id):
+		var mv = game_state.characters[char_id].movement
+		if mv:
+			var path: Array[Vector3] = mv.path
+			var cum_dist: Array[float] = mv.cum_dist
+			var total: float = mv.total_distance
+			var current_tick := game_state.scheduler.get_current_tick()
+			var t := clampf((current_tick - mv.start_tick) / mv.duration, 0.0, 1.0) if mv.duration > 0 else 1.0
+			var current_dist := t * total
+			for i in range(1, path.size()):
+				if cum_dist[i] > current_dist:
+					var to_pos := Vector3(path[i].x, 0.08, path[i].z)
+					im.surface_add_vertex(from_pos)
+					im.surface_add_vertex(to_pos)
+					from_pos = to_pos
+	elif _auto_path.size() > 0:
 		for i in range(_auto_path_index, _auto_path.size()):
 			var wp := _auto_path[i]
 			var to_pos := Vector3(wp.x, 0.08, wp.z)
 			im.surface_add_vertex(from_pos)
 			im.surface_add_vertex(to_pos)
 			from_pos = to_pos
-	else:
-		# Draw line to click target
+	elif _moving:
 		var to_pos := Vector3(_target_pos.x, 0.08, _target_pos.z)
 		im.surface_add_vertex(from_pos)
 		im.surface_add_vertex(to_pos)
@@ -277,12 +285,20 @@ func _update_path_line() -> void:
 
 ## Set an auto-path for scripted movement
 func walk_to(pos: Vector3) -> void:
+	if game_state and char_id != "":
+		game_state.command_move_to_pos(char_id, pos)
+		_moving = true
+		return
 	_auto_path = [pos]
 	_auto_path_index = 0
 	_moving = true
 
 ## Walk along a series of waypoints
 func walk_path(path: Array[Vector3]) -> void:
+	if game_state and char_id != "":
+		game_state.command_walk_path(char_id, path)
+		_moving = true
+		return
 	_auto_path = path
 	_auto_path_index = 0
 	_moving = true
@@ -290,9 +306,13 @@ func walk_path(path: Array[Vector3]) -> void:
 func set_move_enabled(enabled: bool) -> void:
 	_move_enabled = enabled
 	if not enabled:
+		if game_state and char_id != "":
+			game_state.command_stop(char_id)
 		_moving = false
 		velocity = Vector3.ZERO
 		_auto_path.clear()
 
 func is_moving() -> bool:
+	if game_state and char_id != "":
+		return game_state.is_moving(char_id)
 	return _moving

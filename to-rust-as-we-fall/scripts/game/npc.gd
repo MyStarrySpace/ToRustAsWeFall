@@ -1,12 +1,18 @@
+@tool
 extends Node3D
 
 ## Simple NPC with scripted movement and visual representation.
+## Supports GameState-driven interpolation or local fallback movement.
 
 @export var display_name := "Citizen"
 @export var color := Color(0.5, 0.5, 0.55)
 @export var move_speed := 2.0
 
-## When set, walk_to_grid() uses A* pathfinding.
+## When set, movement commands go through GameState (interpolation-based).
+var game_state: GameState
+var char_id := ""
+
+## When set, walk_to_grid() uses A* pathfinding (fallback mode only).
 var grid_world: GridWorld
 
 var _path: Array[Vector3] = []
@@ -43,7 +49,23 @@ func _ready() -> void:
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	add_child(_label)
 
+	if Engine.is_editor_hint():
+		return
+
+	if game_state and char_id != "":
+		game_state.character_arrived.connect(_on_gs_arrived)
+
 func _process(delta: float) -> void:
+	if Engine.is_editor_hint():
+		return
+	# GameState-driven: read interpolated position
+	if game_state and char_id != "":
+		if game_state.is_moving(char_id):
+			var pos := game_state.get_position(char_id)
+			global_position = Vector3(pos.x, global_position.y, pos.z)
+		return
+
+	# Fallback: local path-following
 	if not _moving or _path.is_empty():
 		return
 
@@ -63,27 +85,48 @@ func _process(delta: float) -> void:
 	else:
 		global_position += dir.normalized() * move_speed * delta
 
+func _on_gs_arrived(id: String) -> void:
+	if id == char_id:
+		path_complete.emit()
+
 func walk_path(path: Array[Vector3]) -> void:
+	if game_state and char_id != "":
+		game_state.command_walk_path(char_id, path)
+		return
 	_path = path
 	_path_index = 0
 	_moving = true
 
 func walk_to(pos: Vector3) -> void:
+	if game_state and char_id != "":
+		game_state.command_move_to_pos(char_id, pos)
+		return
 	walk_path([pos])
 
 func stop() -> void:
+	if game_state and char_id != "":
+		game_state.command_stop(char_id)
+		return
 	_moving = false
 	_path.clear()
 	_path_index = 0
 
 ## Walk to a grid cell using A* pathfinding.
 func walk_to_grid(cell: Vector2i) -> void:
+	if game_state and char_id != "":
+		game_state.command_move_to_cell(char_id, cell)
+		return
 	if not grid_world:
 		return
 	var current_cell := grid_world.world_to_grid(global_position)
 	var path := grid_world.find_path(current_cell, cell)
 	if not path.is_empty():
 		walk_path(path)
+
+func is_moving() -> bool:
+	if game_state and char_id != "":
+		return game_state.is_moving(char_id)
+	return _moving
 
 func set_color(c: Color) -> void:
 	color = c
