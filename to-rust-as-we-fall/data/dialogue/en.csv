@@ -17,7 +17,7 @@ tag_day.murmur.01,,poem,false,"Here we go round the prickly pear
 Prickly pear prickly pear",Citizen murmuring in queue — nursery rhyme draws attention
 tag_day.murmur.02,,poem,false,"Here we go round the prickly pear
 At five o'clock in the morning.",Citizen continues in queue before scan
-tag_day.scan_failed,STATION 7-B,data,false,MENTAL INSTABILITY DETECTED  //  DISPATCHING RESPONSE UNIT,Citizen's scan flags cognitive deviation
+tag_day.scan_failed,STATION 7-B,data,false,SCAN FAILED  //  DISPATCHING RESPONSE UNIT,Citizen's device scan fails
 tag_day.naturalizers_grip,,data,false,"The two white figures step forward. They take the citizen's arms. Gently. Efficiently.",Naturalizers grip citizen for corridor walk
 tag_day.poem.01,,poem,false,"Between the idea
 And the reality",Shadow stanzas begin — corridor walk

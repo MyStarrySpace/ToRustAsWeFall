@@ -147,7 +147,7 @@ func _on_character_arrived(id: String) -> void:
 
 func _start_citizen_scan() -> void:
 	_current_step = "citizen_scan"
-	# The citizen's device scan fails — mental instability detected
+	# The citizen's device scan fails
 	_citizen_light.light_color = Color(0.8, 0.1, 0.05)
 	_citizen_light.light_energy = 6.0
 	DialogueData.say_to(_dialogue, "tag_day.scan_failed")
@@ -159,7 +159,24 @@ func _start_naturalizers_grip() -> void:
 	# Naturalizers approach the citizen at his device
 	_game_state.command_move_to_pos("nk1", CITIZEN_DEVICE_POS + Vector3(0, 0, -0.6))
 	_game_state.command_move_to_pos("nk2", CITIZEN_DEVICE_POS + Vector3(0, 0, 0.6))
+	# Report label appears above the escort after a delay — visible if the player pans
+	_scheduler.schedule_after(4.0, _show_report_label, "report_label")
 	_scheduler.schedule_after(2.0, _begin_corridor_walk, "corridor_walk")
+
+func _show_report_label() -> void:
+	var lbl := Label3D.new()
+	lbl.name = "ReportLabel"
+	lbl.text = "REPORT FILED  |  CAUSE: MENTAL INSTABILITY"
+	lbl.font_size = 28
+	lbl.pixel_size = 0.008
+	lbl.modulate = Color(0.7, 0.3, 0.2, 0.0)
+	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_naturalizer_1.add_child(lbl)
+	lbl.position = Vector3(0, 1.8, 0)
+	var tween := create_tween()
+	tween.tween_property(lbl, "modulate:a", 0.8, 1.5)
+	tween.tween_interval(6.0)
+	tween.tween_property(lbl, "modulate:a", 0.0, 2.0)
 
 func _begin_corridor_walk() -> void:
 	_current_step = "corridor_walk"
