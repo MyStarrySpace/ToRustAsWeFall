@@ -305,7 +305,7 @@ func _start_lockdown() -> void:
 		# Queue NPCs groan about the delay
 		DialogueData.say_to(_dialogue, "tag_day.groan")
 		_dialogue.dialogue_finished.connect(func():
-			DialogueData.say_to(_dialogue, "tag_day.no_field")
+			DialogueData.say_to(_dialogue, "tag_day.report_blocked")
 			_dialogue.dialogue_finished.connect(func():
 				_scheduler.schedule_after(1.5, _start_return_focus, "return_focus")
 			, CONNECT_ONE_SHOT)
