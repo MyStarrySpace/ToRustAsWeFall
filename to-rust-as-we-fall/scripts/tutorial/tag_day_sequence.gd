@@ -168,15 +168,17 @@ func _show_report_label() -> void:
 	var lbl := Label3D.new()
 	lbl.name = "ReportLabel"
 	lbl.text = "REPORT FILED  |  CAUSE: MENTAL INSTABILITY"
-	lbl.font_size = 28
-	lbl.pixel_size = 0.008
-	lbl.modulate = Color(0.7, 0.3, 0.2, 0.0)
+	lbl.font_size = 48
+	lbl.pixel_size = 0.01
+	lbl.modulate = Color(0.8, 0.3, 0.2, 0.0)
+	lbl.outline_modulate = Color(0, 0, 0, 0.5)
+	lbl.outline_size = 4
 	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_naturalizer_1.add_child(lbl)
-	lbl.position = Vector3(0, 1.8, 0)
+	lbl.position = Vector3(0, 2.0, 0)
 	var tween := create_tween()
-	tween.tween_property(lbl, "modulate:a", 0.8, 1.5)
-	tween.tween_interval(6.0)
+	tween.tween_property(lbl, "modulate:a", 0.9, 1.0)
+	tween.tween_interval(8.0)
 	tween.tween_property(lbl, "modulate:a", 0.0, 2.0)
 
 func _begin_corridor_walk() -> void:
@@ -236,22 +238,23 @@ func _begin_corridor_walk() -> void:
 	_scheduler.schedule_after(33.0, func(): _show_nk_chat(_naturalizer_2, DialogueData.text("tag_day.nk_chat.04")), "nk_chat4")
 
 func _show_nk_chat(nk: Node3D, text: String) -> void:
-	# Remove any previous chat label on this enforcer
 	var old := nk.find_child("ChatLabel", false, false)
 	if old:
 		old.queue_free()
 	var lbl := Label3D.new()
 	lbl.name = "ChatLabel"
 	lbl.text = text
-	lbl.font_size = 24
-	lbl.pixel_size = 0.008
-	lbl.modulate = Color(0.6, 0.6, 0.65, 0.0)
+	lbl.font_size = 36
+	lbl.pixel_size = 0.01
+	lbl.modulate = Color(0.7, 0.7, 0.75, 0.0)
+	lbl.outline_modulate = Color(0, 0, 0, 0.5)
+	lbl.outline_size = 4
 	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	nk.add_child(lbl)
-	lbl.position = Vector3(0, 1.6, 0)
+	lbl.position = Vector3(0, 1.8, 0)
 	var tween := create_tween()
-	tween.tween_property(lbl, "modulate:a", 0.7, 0.5)
-	tween.tween_interval(4.0)
+	tween.tween_property(lbl, "modulate:a", 0.85, 0.4)
+	tween.tween_interval(5.0)
 	tween.tween_property(lbl, "modulate:a", 0.0, 1.0)
 	tween.tween_callback(lbl.queue_free)
 
@@ -321,6 +324,8 @@ func _fragment_whimper() -> void:
 
 
 func _start_neutralization() -> void:
+	if _current_step == "neutralization":
+		return
 	_current_step = "neutralization"
 	_game_state.command_stop("citizen")
 	_game_state.command_stop("nk1")
