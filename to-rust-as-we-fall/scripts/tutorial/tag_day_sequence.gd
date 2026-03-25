@@ -591,6 +591,8 @@ func _build_ui() -> void:
 	add_child(ui)
 	_dialogue = ui.get_node("DialogueBox")
 	_tutorial_prompt = ui.get_node("TutorialPrompt")
+	# Clear the fade overlay (starts opaque black for scenes that fade in)
+	ui.get_node("FadeOverlay/FadeRect").color.a = 0.0
 
 	# Data overlay
 	_data_overlay = CanvasLayer.new()
