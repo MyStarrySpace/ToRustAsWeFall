@@ -204,13 +204,10 @@ func _begin_corridor_walk() -> void:
 	]
 	_game_state.command_walk_path("nk2", nk2_path)
 
-	# Tutorial: fast-forward prompt
-	_tutorial_prompt.show_prompt("F — fast-forward time")
-
 	# Space out the poem — longer hold between stanzas
 	_dialogue.default_hold_time = 4.0
 	DialogueData.say_sequence_to(_dialogue, "tag_day.poem.")
-	_scheduler.schedule_after(3.0, _start_pan_prompt, "pan_prompt")
+	_scheduler.schedule_after(2.0, _start_pan_prompt, "pan_prompt")
 	_dialogue.dialogue_finished.connect(_on_poem_finished, CONNECT_ONE_SHOT)
 
 func _start_pan_prompt() -> void:
@@ -219,6 +216,11 @@ func _start_pan_prompt() -> void:
 	_camera.set_wasd_pan_enabled(true)
 	_camera.max_pan_distance = 40.0
 	_tutorial_prompt.show_prompt("WASD — pan camera")
+	# After the player has had time to pan, show fast-forward prompt
+	_scheduler.schedule_after(8.0, _show_fastforward_prompt, "ff_prompt")
+
+func _show_fastforward_prompt() -> void:
+	_tutorial_prompt.show_prompt("F — fast-forward time")
 
 func _on_poem_finished() -> void:
 	_start_fragments()
