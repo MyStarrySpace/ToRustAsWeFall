@@ -30,9 +30,9 @@ const QUEUE_SPACING := 1.8
 const STATION_POS := Vector3(12, 0, 0)
 const ADJ_STATION_POS := Vector3(12, 0, -4)
 
-# Naturalizer standing positions (visible from start, flanking the doorway)
-const NK_STAND_POS_1 := Vector3(13.2, 0, -5.5)
-const NK_STAND_POS_2 := Vector3(14.8, 0, -5.5)
+# Naturalizer standing positions (flanking the adjacent scan station)
+const NK_STAND_POS_1 := Vector3(12, 0, -5.2)
+const NK_STAND_POS_2 := Vector3(12, 0, -2.8)
 
 # Corridor waypoints
 const CORRIDOR_ENTRANCE := Vector3(14, 0, -8)
