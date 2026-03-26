@@ -94,9 +94,9 @@ elevator.aster.gel,Aster,normal,false,...What?,
 elevator.peris.gel,Peris,normal,false,Satisfying content. Gel being squished. Soap being cut. They took away my clients and gave me gel.,
 elevator.aster.thats,Aster,normal,false,That's...,He doesn't finish — the unit activates
 elevator.unit.protocol,EU-1,data,false,PASSENGERS CONSCIOUS  //  DISTRESS DETECTED  //  INITIATING RE-SEDATION PROTOCOL,Escort unit activates
-elevator.aster.device,Aster,normal,false,My device still works. I can disrupt them. When it gets close — I'll hit it.,Aster realizes he can EMP
-elevator.aster.another,Aster,normal,false,The other one! Again!,Second unit activates
-elevator.aster.stay_close,Aster,normal,false,That bought us time. They'll reboot. Stay close to me — we need to get to that panel.,Post-EMP urgency
+elevator.aster.device,Aster,normal,false,"No no no. My device. I can pulse it, fry their circuits. Both of them.",Aster panicking but finding a solution
+elevator.aster.another,Aster,normal,false,The other one! Again!,Second unit activates (legacy key)
+elevator.aster.stay_close,Aster,normal,false,They'll reboot. We don't have long. That panel. Now.,Post-EMP urgency
 elevator.aster.hack,Aster,normal,false,I can override this. Just need a moment...,Aster begins hacking the panel
 elevator.system.override,SYSTEM,data,false,MAINTENANCE OVERRIDE ACCEPTED  //  DOORS CYCLING,Hack succeeds
 elevator.narration.doors,,normal,false,The elevator shudders. The doors grind open. Light spills in from a corridor neither of them recognizes.,Doors open

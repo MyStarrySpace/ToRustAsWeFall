@@ -92,6 +92,8 @@ func _setup_ui() -> void:
 	_hud.add_portrait("aster", "Aster", Color(0.29, 0.62, 1.0))
 	_hud.set_portrait_status("aster", "downed")
 	_hud.set_portrait_stat("aster", "sta", 0)
+	_hud.show_pause_toggle(false)
+	_hud.pause_toggled.connect(_on_pause_toggled)
 	_hud.add_ability("emp", "EMP", "Q", Color(0.29, 0.62, 1.0))
 	_hud.set_ability_state("emp", "disabled")
 	_hud.character_selection_changed.connect(_on_character_selected)
@@ -187,31 +189,44 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		var kc := (event as InputEventKey).keycode
-		if kc == KEY_Q:
+		if kc == KEY_SPACE:
+			_toggle_pause()
+		elif kc == KEY_Q:
 			_on_emp_pressed()
 		elif kc == KEY_TAB and _current_step in ["multiselect_tutorial", "hack_tutorial"]:
 			_switch_character()
 
+func _toggle_pause() -> void:
+	if _scheduler.is_paused():
+		_scheduler.resume()
+	else:
+		_scheduler.pause()
+	_hud.set_paused(_scheduler.is_paused())
+
+func _on_pause_toggled(is_paused: bool) -> void:
+	if is_paused:
+		_scheduler.pause()
+	else:
+		_scheduler.resume()
+
 func _on_emp_pressed() -> void:
 	if _current_step == "emp_tutorial" and _emp_count == 0:
-		_fire_emp(_escort_1)
-		_unit_1_stunned = true
-		_emp_count = 1
-		_scheduler.schedule_after(1.5, _start_emp_tutorial_2, "emp2")
-	elif _current_step == "emp_tutorial_2" and _emp_count == 1:
-		_fire_emp(_escort_2)
-		_unit_2_stunned = true
-		_emp_count = 2
-		_reboot_active = true
-		_reboot_timer = 30.0
-		_tutorial_prompt.hide_prompt()
-		_scheduler.schedule_after(1.0, _start_multiselect_tutorial, "multiselect")
+		_fire_emp_both()
 
-func _fire_emp(unit: Node3D) -> void:
-	_stamina = maxf(0, _stamina - 15.0)
+func _fire_emp_both() -> void:
+	_stamina = maxf(0, _stamina - 25.0)
 	_hud.set_portrait_stat("peris", "sta", _stamina)
-	_camera.shake(0.2, 4.0)
-	unit.stop()
+	_hud.set_ability_state("emp", "cooldown", 10.0)
+	_camera.shake(0.3, 4.0)
+	_escort_1.stop()
+	_escort_2.stop()
+	_unit_1_stunned = true
+	_unit_2_stunned = true
+	_emp_count = 2
+	_reboot_active = true
+	_reboot_timer = 30.0
+	_tutorial_prompt.hide_prompt()
+	_scheduler.schedule_after(1.5, _start_multiselect_tutorial, "multiselect")
 
 func _on_exit_button_pressed() -> void:
 	# Flash "NO EXIT" on the indicator
@@ -349,8 +364,13 @@ func _start_conversation() -> void:
 
 func _start_units_activate() -> void:
 	_enter_step("units_activate")
-	# Escort unit lights brighten
+	# Auto-pause so the player can read the situation
+	_scheduler.pause()
+	_hud.set_paused(true)
+	# Both escorts advance
 	_escort_1.walk_to(_peris_node.global_position + Vector3(0.5, 0, 0))
+	_escort_2.walk_to(_peris_node.global_position + Vector3(0, 0, 0.5))
+	_camera.shake(0.1, 8.0)
 	_dialogue_chain(
 		["elevator.unit.protocol", "elevator.aster.device"],
 		func(): _scheduler.schedule_after(0.5, _start_emp_tutorial, "emp_tut")
@@ -362,10 +382,8 @@ func _start_emp_tutorial() -> void:
 	_tutorial_prompt.show_prompt("[Q] — EMP")
 
 func _start_emp_tutorial_2() -> void:
+	# Kept for reboot fallback but no longer triggered normally
 	_enter_step("emp_tutorial_2")
-	_escort_2.walk_to(_peris_node.global_position + Vector3(0, 0, 0.5))
-	DialogueData.say_to(_dialogue, "elevator.aster.another")
-	_tutorial_prompt.show_prompt("[Q] — EMP")
 
 func _start_multiselect_tutorial() -> void:
 	_enter_step("multiselect_tutorial")
