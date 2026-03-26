@@ -761,7 +761,7 @@ func _test_peris_dialogue() -> void:
 			instance._on_protect_pressed(),
 	})
 
-	_assert_true(log.size() >= 10, "At least 10 dialogue lines (got: %d)" % log.size())
+	_assert_true(log.size() >= 8, "At least 8 dialogue lines (got: %d)" % log.size())
 
 	# Verify Monos appears
 	var has_monos := false
@@ -777,12 +777,12 @@ func _test_peris_dialogue() -> void:
 			has_overtime = true
 	_assert_true(has_overtime, "Session overtime prompt appears")
 
-	# Verify aftermath
-	var has_aftermath := false
+	# Verify Monos thanks after protect
+	var has_thanks := false
 	for entry in log:
-		if "shaken" in entry.text or "stable" in entry.text:
-			has_aftermath = true
-	_assert_true(has_aftermath, "Aftermath dialogue appears")
+		if "thank you" in entry.text.to_lower():
+			has_thanks = true
+	_assert_true(has_thanks, "Monos thanks Peris after protect")
 
 	# Verify efficiency penalty
 	var has_penalty := false

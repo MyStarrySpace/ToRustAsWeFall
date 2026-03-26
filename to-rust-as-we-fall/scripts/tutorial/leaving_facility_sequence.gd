@@ -154,7 +154,7 @@ func _start_fade_in() -> void:
 func _start_facility_exit() -> void:
 	_current_step = "facility_exit"
 	# Camera look-ahead to show the corridor
-	var orig_offset := _camera.follow_offset
+	var orig_offset: Vector3 = _camera.follow_offset
 	var t := create_tween()
 	t.tween_property(_camera, "follow_offset", orig_offset + Vector3(3, 0, 0), 1.5)
 	t.tween_interval(0.5)
