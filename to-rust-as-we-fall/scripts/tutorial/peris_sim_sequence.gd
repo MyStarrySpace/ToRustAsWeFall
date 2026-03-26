@@ -15,6 +15,7 @@ var _monos
 var _portal_visual: MeshInstance3D
 var _portal_light: OmniLight3D
 var _attack_particles: OmniLight3D
+var _portal_tween_active := false
 var _hud  # GameHUD
 var _session_timer_label: Label
 
@@ -134,8 +135,8 @@ func _on_process(delta: float, spd: float) -> void:
 			_hide_thought()
 			_start_protect()
 
-	# Portal glow animation
-	if _portal_light:
+	# Portal glow animation (suppressed during tweens)
+	if _portal_light and not _portal_tween_active:
 		_portal_light.light_energy = 1.5 + sin(Time.get_ticks_msec() * 0.002) * 0.3
 
 	# Attack light flash
@@ -202,7 +203,12 @@ func _start_workspace() -> void:
 func _start_monos_late() -> void:
 	_current_step = "monos_late"
 	_hide_thought()
-	DialogueData.say_to(_dialogue, "peris_sim.feed_hum")
+	# Portal warming pulse instead of narration
+	_portal_tween_active = true
+	var t := create_tween()
+	t.tween_property(_portal_light, "light_energy", 2.5, 1.0)
+	t.tween_property(_portal_light, "light_energy", 1.5, 1.0)
+	t.tween_callback(func(): _portal_tween_active = false)
 	_scheduler.schedule_after(4.0, _start_monos_arrives, "monos_arrives")
 
 func _start_monos_arrives() -> void:
@@ -220,7 +226,12 @@ func _start_monos_arrives() -> void:
 func _start_session_begins() -> void:
 	_current_step = "session_begins"
 	_session_timer_label.visible = true
-	DialogueData.say_to(_dialogue, "peris_sim.session_begins")
+	# Portal energy bump to mark session start
+	_portal_tween_active = true
+	var t := create_tween()
+	t.tween_property(_portal_light, "light_energy", 4.0, 0.4)
+	t.tween_property(_portal_light, "light_energy", 3.0, 0.6)
+	t.tween_callback(func(): _portal_tween_active = false)
 	_scheduler.schedule_after(5.0, _start_attack, "attack")
 
 func _start_attack() -> void:
@@ -229,8 +240,8 @@ func _start_attack() -> void:
 	_attack_particles.light_color = Color(0.9, 0.15, 0.05)
 	_attack_particles.light_energy = 5.0
 	_portal_light.light_color = Color(0.8, 0.2, 0.1)
+	_camera.shake(0.15, 6.0)
 	DialogueData.say_to(_dialogue, "peris_sim.monos.hit")
-	DialogueData.say_to(_dialogue, "peris_sim.attack_narration")
 	DialogueData.say_to(_dialogue, "peris_sim.system.overtime")
 	_dialogue.dialogue_finished.connect(
 		func(): _scheduler.schedule_after(0, _start_run_tutorial, "run_tutorial"),
@@ -289,7 +300,6 @@ func _start_aftermath() -> void:
 	_attack_particles.visible = false
 	_portal_light.light_color = Color(0.8, 0.6, 0.3)
 	_portal_light.light_energy = 2.0
-	DialogueData.say_to(_dialogue, "peris_sim.aftermath")
 	DialogueData.say_to(_dialogue, "peris_sim.monos.thanks")
 	_dialogue.dialogue_finished.connect(
 		func(): _scheduler.schedule_after(0, _start_efficiency_log, "efficiency_log"),
@@ -301,8 +311,13 @@ func _start_efficiency_log() -> void:
 	_efficiency_score = 62.0
 	DialogueData.say_to(_dialogue, "peris_sim.system.complete")
 	DialogueData.say_to(_dialogue, "peris_sim.penalty_narration")
-	DialogueData.say_to(_dialogue, "peris_sim.session_ends")
 	_monos.fade_out(1.5)
+	# Portal closure synced with Monos fade
+	_portal_tween_active = true
+	var t := create_tween()
+	t.tween_property(_portal_light, "light_energy", 0.0, 1.5)
+	t.parallel().tween_property(_portal_visual, "scale", Vector3(1.0, 0.0, 1.0), 1.5)
+	t.tween_callback(func(): _portal_tween_active = false)
 	_dialogue.dialogue_finished.connect(
 		func(): _scheduler.schedule_after(0, _start_transition_out, "transition_out"),
 		CONNECT_ONE_SHOT

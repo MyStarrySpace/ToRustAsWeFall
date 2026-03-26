@@ -49,11 +49,11 @@ tag_day.fragment.03,,fragment,false,For Thine is the,
 tag_day.fragment.04,,fragment,false,This is the way the world ends,
 tag_day.fragment.05,,fragment,false,This is the way the world ends,
 tag_day.fragment.06,,fragment,false,This is the way the world ends,
-tag_day.fragment.07,,fragment,false,Not with a bang but a—,The final line breaks mid-word
-tag_day.fragment.08,,fragment,false,whimper.,Last word — spoken into silence
+tag_day.fragment.07,,fragment,false,Not with a BANG...,The final line breaks mid-word
+tag_day.fragment.08,,fragment,false,... but a whimper.,Last words
 tag_day.lockdown,,data,false,MEDICAL BAY PROTOCOL  //  ENFORCEMENT ENABLED  //  PLEASE REMAIN IN POSITION,Lockdown alarm after neutralization
 tag_day.groan,BYSTANDER,normal,false,Come on... I need to get back to work.,Bystander reacting to the lockdown delay
-tag_day.report_blocked,ASTER,data,false,Incident report... access denied. Device is on lockdown. I'll have to remember to log this later.,Aster tries to file a report — device locked during protocol enforcement
+tag_day.report_blocked,ASTER,data,false,Incident report... access denied. Device is on lockdown. I'll have to remember to log this later.,"Aster tries to file a report, device locked during protocol enforcement"
 tag_day.scan_passed,STATION 7-B,data,false,TAG VERIFICATION: PASSED  //  CLEARANCE NOMINAL,Aster scans clean
 tag_day.clearance,,data,false,Blue light. Clean reading.,Blue clearance — auto-advances into transition
 peris_sim.waiting.thought,,thought,false,Monos should be connecting soon. He's always a little late.,Peris at her desk waiting for client
@@ -70,11 +70,8 @@ peris_sim.protect_hint,,normal,false,You're within range. Cast Protect through t
 peris_sim.aftermath,,normal,false,The attack subsides. The shielding holds. Monos is shaken but stable.,After protect — crisis passed
 peris_sim.monos.thanks,Monos,normal,false,"I... thank you. I don't know what that was. Thank you, Peris.",
 peris_sim.system.complete,SYSTEM,data,false,SESSION COMPLETE — EFFICIENCY: 62%  //  OVERTIME PENALTY LOGGED,Efficiency penalty
-peris_sim.penalty_narration,,data,false,The system logs the penalty. It doesn't log what you did for Monos.,
+peris_sim.penalty_narration,,data,true,The system logs the penalty. It doesn't log what you did for Monos.,
 peris_sim.session_ends,,normal,true,The session ends. The portal closes.,Waits for click — transition out
-elevator.fragment.01,,fragment,false,...,Consciousness fragment — darkness
-elevator.fragment.02,,fragment,false,Red light.,Consciousness fragment — the first thing Peris sees
-elevator.fragment.03,,fragment,false,You're in a box.,Consciousness fragment — spatial awareness
 elevator.peris.where,Peris,normal,false,Where...? What is this place?,Peris wakes in the elevator
 elevator.narration.room,,normal,false,"A small room. Metal walls. Red emergency light cycling overhead. Two white figures against the far wall, dormant. Someone slumped in the corner.",Scene description
 elevator.peris.hey,Peris,normal,false,"Hey. Hey, can you hear me? Are you alive? Please be alive.",Peris approaches Aster
@@ -108,10 +105,10 @@ elevator.aster.locked,Aster,normal,false,It locked us out. My device can't reach
 elevator.peris.back_to_what,Peris,normal,false,...Back in to what?,
 elevator.aster.forward,Aster,normal,false,Forward. Together.,
 elevator.peris.not_supposed,Peris,normal,false,I don't think we're supposed to be here.,Entering the maintenance corridor
-elevator.aster.no_service,Aster,data,false,"Nobody is. This section hasn't been serviced in... the maintenance logs just stop.",Aster reads corridor data
-elevator.bridge.narration,,normal,false,"An elevated walkway spanning a larger space. Incomplete railing. Exposed framework. The air is open — it smells like rust.",Bridge description
+elevator.aster.no_service,Aster,data,false,Nobody is. This section hasn't been serviced in... the maintenance logs just stop.,Aster reads corridor data
+elevator.bridge.narration,,normal,false,An elevated walkway spanning a larger space. Incomplete railing. Exposed framework. The air is open — it smells like rust.,Bridge description
 elevator.peris.bodies,Peris,normal,false,Those people down there...,Peris sees bodies below the bridge
-elevator.aster.logs,Aster,normal,false,"All casualties are supposed to be logged. I'll check the records when we find a working terminal. Come on.",Aster files it as data and keeps moving
+elevator.aster.logs,Aster,normal,false,All casualties are supposed to be logged. I'll check the records when we find a working terminal. Come on.,Aster files it as data and keeps moving
 elevator.aster.ahead,Aster,normal,true,There's something ahead. Lights.,Waits for click — transition to leaving_facility
 facility.exit_narration,,normal,false,The facility door seals behind you. The corridor stretches ahead.,Leaving the facility
 facility.endo_appears,,normal,false,Someone is waiting at the exit. Quiet. Watchful. He falls into step beside you.,Endo joins
