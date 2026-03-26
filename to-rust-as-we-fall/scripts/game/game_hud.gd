@@ -8,6 +8,7 @@ signal run_toggled(is_running: bool)
 signal routing_toggled(mode: String)
 signal ability_pressed(ability_name: String)
 signal pause_toggled(is_paused: bool)
+signal character_selection_changed(selected_ids: Array)
 
 var _bottom_panel: PanelContainer
 var _stat_section: VBoxContainer
@@ -30,6 +31,13 @@ var _paused := false
 # Tracked state
 var _stat_bars: Dictionary = {}
 var _abilities: Dictionary = {}
+
+# Character portraits
+var _portrait_section: HBoxContainer
+var _portraits: Dictionary = {}  # id -> {card, style, name_label, display_name, color, stat_bars, alert, status}
+var _selected_characters: Array[String] = []
+var _active_portrait := ""
+var _multi_select := false
 
 func _ready() -> void:
 	layer = 10
@@ -80,6 +88,12 @@ func _build_bottom_bar() -> void:
 	hbox.add_theme_constant_override("separation", 16)
 	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	_bottom_panel.add_child(hbox)
+
+	# Far left: character portraits
+	_portrait_section = HBoxContainer.new()
+	_portrait_section.add_theme_constant_override("separation", 4)
+	_portrait_section.visible = false
+	hbox.add_child(_portrait_section)
 
 	# Left: stat bars
 	_stat_section = VBoxContainer.new()
@@ -192,6 +206,217 @@ func set_stat(stat_name: String, value: float) -> void:
 		fill.bg_color = Color(0.7, 0.55, 0.2)
 	else:
 		fill.bg_color = info.color
+
+# --- Character Portraits ---
+
+func add_portrait(id: String, display_name: String, color: Color) -> void:
+	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(80, 0)
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.07, 0.07, 0.09, 0.9)
+	style.border_color = Color(color, 0.3)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(3)
+	style.content_margin_left = 6
+	style.content_margin_right = 6
+	style.content_margin_top = 4
+	style.content_margin_bottom = 4
+	card.add_theme_stylebox_override("panel", style)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 2)
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(vbox)
+
+	var name_label := Label.new()
+	name_label.text = display_name.to_upper()
+	name_label.add_theme_font_size_override("font_size", 10)
+	name_label.add_theme_color_override("font_color", color)
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(name_label)
+
+	var stats_box := VBoxContainer.new()
+	stats_box.add_theme_constant_override("separation", 1)
+	stats_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(stats_box)
+
+	var stat_bars := {}
+	for stat_def in [["hp", "HP", Color(0.7, 0.3, 0.25)], ["atp", "ATP", Color(0.3, 0.6, 0.35)], ["sta", "STA", Color(0.3, 0.5, 0.7)]]:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 2)
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+		var lbl := Label.new()
+		lbl.text = stat_def[1]
+		lbl.add_theme_font_size_override("font_size", 7)
+		lbl.add_theme_color_override("font_color", Color(0.4, 0.4, 0.45))
+		lbl.custom_minimum_size.x = 18
+		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(lbl)
+
+		var bar := ProgressBar.new()
+		bar.min_value = 0
+		bar.max_value = 100
+		bar.value = 100
+		bar.show_percentage = false
+		bar.custom_minimum_size = Vector2(45, 3)
+		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var bg := StyleBoxFlat.new()
+		bg.bg_color = Color(0.05, 0.05, 0.06)
+		bg.set_corner_radius_all(1)
+		bar.add_theme_stylebox_override("background", bg)
+		var fill := StyleBoxFlat.new()
+		fill.bg_color = stat_def[2]
+		fill.set_corner_radius_all(1)
+		bar.add_theme_stylebox_override("fill", fill)
+		row.add_child(bar)
+
+		stats_box.add_child(row)
+		stat_bars[stat_def[0]] = bar
+
+	card.gui_input.connect(_on_portrait_input.bind(id))
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+
+	_portrait_section.add_child(card)
+	_portrait_section.visible = true
+
+	_portraits[id] = {
+		"card": card,
+		"style": style,
+		"name_label": name_label,
+		"display_name": display_name,
+		"color": color,
+		"stat_bars": stat_bars,
+		"alert": false,
+		"status": "",
+	}
+
+	if _active_portrait == "":
+		set_active_portrait(id)
+
+func set_active_portrait(id: String) -> void:
+	if not _portraits.has(id):
+		return
+	var prev := _active_portrait
+	_active_portrait = id
+	if _portraits[id].alert:
+		set_portrait_alert(id, false)
+	_style_all_portraits()
+	if prev != id:
+		character_selection_changed.emit(get_selected_ids())
+
+func get_selected_ids() -> Array:
+	if _multi_select:
+		return _selected_characters.duplicate()
+	return [_active_portrait] if _active_portrait != "" else []
+
+func set_portrait_stat(id: String, stat_name: String, value: float) -> void:
+	if not _portraits.has(id):
+		return
+	var bars: Dictionary = _portraits[id].stat_bars
+	if bars.has(stat_name):
+		bars[stat_name].value = value
+
+func set_portrait_alert(id: String, alert: bool) -> void:
+	if not _portraits.has(id):
+		return
+	_portraits[id].alert = alert
+	_update_portrait_name(id)
+	_style_portrait(id)
+
+func set_portrait_status(id: String, status: String) -> void:
+	if not _portraits.has(id):
+		return
+	_portraits[id].status = status
+	_update_portrait_name(id)
+	_style_portrait(id)
+
+func get_next_portrait_id(current_id: String) -> String:
+	var ids := _portraits.keys()
+	if ids.size() <= 1:
+		return current_id
+	var idx := ids.find(current_id)
+	return ids[(idx + 1) % ids.size()]
+
+func remove_portrait(id: String) -> void:
+	if not _portraits.has(id):
+		return
+	_portraits[id].card.queue_free()
+	_portraits.erase(id)
+	_selected_characters.erase(id)
+	if _active_portrait == id:
+		_active_portrait = _portraits.keys()[0] if _portraits.size() > 0 else ""
+		_style_all_portraits()
+	if _portraits.size() == 0:
+		_portrait_section.visible = false
+
+func _on_portrait_input(event: InputEvent, id: String) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		set_active_portrait(id)
+
+func _update_portrait_name(id: String) -> void:
+	var p: Dictionary = _portraits[id]
+	var text: String = str(p.display_name).to_upper()
+	match p.status:
+		"downed":
+			text += "  X"
+		"resting":
+			text += "  zzz"
+		"attacking":
+			text += "  !"
+		"dragging":
+			text += "  ~"
+		"":
+			if p.alert and id != _active_portrait:
+				text += "  !"
+		_:
+			text += "  " + p.status
+	p.name_label.text = text
+
+func _style_all_portraits() -> void:
+	for id in _portraits:
+		_style_portrait(id)
+
+func _style_portrait(id: String) -> void:
+	var p: Dictionary = _portraits[id]
+	var is_active := id == _active_portrait and not _multi_select
+	var is_selected := id in _selected_characters and _multi_select
+	var style: StyleBoxFlat = p.style
+	var color: Color = p.color
+
+	if is_active:
+		style.bg_color = Color(0.08, 0.08, 0.1, 0.95)
+		style.border_color = Color(color, 0.7)
+		style.set_border_width_all(2)
+		p.name_label.add_theme_color_override("font_color", color)
+		p.card.modulate.a = 1.0
+	elif is_selected:
+		style.bg_color = Color(0.1, 0.1, 0.02, 0.95)
+		style.border_color = Color(0.9, 0.8, 0.3, 0.7)
+		style.set_border_width_all(2)
+		p.name_label.add_theme_color_override("font_color", color)
+		p.card.modulate.a = 1.0
+	else:
+		style.bg_color = Color(0.07, 0.07, 0.09, 0.9)
+		style.border_color = Color(color, 0.3)
+		style.set_border_width_all(1)
+		p.name_label.add_theme_color_override("font_color", Color(color, 0.6))
+		p.card.modulate.a = 0.7
+
+	if p.alert and not is_active:
+		style.bg_color = Color(0.12, 0.12, 0.04, 0.95)
+		p.card.modulate.a = 1.0
+
+	match p.status:
+		"downed":
+			p.name_label.add_theme_color_override("font_color", Color(0.9, 0.3, 0.25))
+		"resting":
+			p.name_label.add_theme_color_override("font_color", Color(0.3, 0.7, 0.4))
+		"attacking":
+			style.bg_color = Color(0.15, 0.04, 0.04, 0.95)
+			p.name_label.add_theme_color_override("font_color", Color(0.9, 0.25, 0.2))
 
 # --- Control Buttons ---
 

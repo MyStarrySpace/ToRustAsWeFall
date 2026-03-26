@@ -24,6 +24,9 @@ var _indicator_b_label: Label3D  # The "B" that flickers
 var _exit_button  # Interactable — flashes "NO EXIT" when pressed
 var _no_exit_label: Label3D
 
+# HUD
+var _hud  # GameHUD
+
 # EMP state
 var _emp_count := 0
 var _unit_1_stunned := false
@@ -80,6 +83,19 @@ func _register_characters() -> void:
 	_aster_node.set_move_enabled(false)
 
 func _setup_ui() -> void:
+	# Game HUD with character portraits
+	_hud = CanvasLayer.new()
+	_hud.name = "GameHUD"
+	_hud.set_script(preload("res://scripts/game/game_hud.gd"))
+	add_child(_hud)
+	_hud.add_portrait("peris", "Peris", Color(1.0, 0.67, 0.27))
+	_hud.add_portrait("aster", "Aster", Color(0.29, 0.62, 1.0))
+	_hud.set_portrait_status("aster", "downed")
+	_hud.set_portrait_stat("aster", "sta", 0)
+	_hud.add_ability("emp", "EMP", "Q", Color(0.29, 0.62, 1.0))
+	_hud.set_ability_state("emp", "disabled")
+	_hud.character_selection_changed.connect(_on_character_selected)
+
 	# Control panel interactable (hacking target)
 	_control_panel = preload("res://scenes/game/interactable.tscn").instantiate()
 	_control_panel.name = "ControlPanel"
@@ -193,6 +209,7 @@ func _on_emp_pressed() -> void:
 
 func _fire_emp(unit: Node3D) -> void:
 	_stamina = maxf(0, _stamina - 15.0)
+	_hud.set_portrait_stat("peris", "sta", _stamina)
 	_camera.shake(0.2, 4.0)
 	unit.stop()
 
@@ -206,18 +223,33 @@ func _on_exit_button_pressed() -> void:
 	_camera.shake(0.05, 10.0)
 
 func _switch_character() -> void:
+	var next_id: String = _hud.get_next_portrait_id(_active_character)
+	_select_character(next_id)
+
+func _select_character(id: String) -> void:
+	if id == _active_character:
+		return
+	# Disable current character's movement
 	if _active_character == "peris":
 		_peris_node.set_move_enabled(false)
-		_aster_node.set_move_enabled(true)
-		_player = _aster_node
-		_active_character = "aster"
-		_camera.target = _aster_node
 	else:
 		_aster_node.set_move_enabled(false)
+	# Activate new character
+	if id == "peris":
 		_peris_node.set_move_enabled(true)
 		_player = _peris_node
-		_active_character = "peris"
 		_camera.target = _peris_node
+	else:
+		_aster_node.set_move_enabled(true)
+		_player = _aster_node
+		_camera.target = _aster_node
+	_active_character = id
+	_hud.set_active_portrait(id)
+
+func _on_character_selected(selected_ids: Array) -> void:
+	if selected_ids.size() > 0 and selected_ids[0] != _active_character:
+		if _current_step in ["multiselect_tutorial", "hack_tutorial"]:
+			_select_character(selected_ids[0])
 
 # --- Event steps ---
 
@@ -275,6 +307,8 @@ func _start_approach_aster() -> void:
 
 func _start_wake_aster() -> void:
 	_enter_step("wake_aster")
+	_hud.set_portrait_status("aster", "")
+	_hud.set_portrait_stat("aster", "sta", 100)
 	DialogueData.say_to(_dialogue, "elevator.peris.hey")
 	# Tween Aster upright
 	var tween := create_tween()
@@ -324,6 +358,7 @@ func _start_units_activate() -> void:
 
 func _start_emp_tutorial() -> void:
 	_enter_step("emp_tutorial")
+	_hud.set_ability_state("emp", "ready")
 	_tutorial_prompt.show_prompt("[Q] — EMP")
 
 func _start_emp_tutorial_2() -> void:
@@ -339,6 +374,7 @@ func _start_multiselect_tutorial() -> void:
 	_active_character = "peris"
 	_player = _peris_node
 	_camera.target = _peris_node
+	_hud.set_active_portrait("peris")
 	DialogueData.say_to(_dialogue, "elevator.aster.stay_close")
 	_dialogue.dialogue_finished.connect(func():
 		_tutorial_prompt.show_prompt("[Tab] — switch character")
