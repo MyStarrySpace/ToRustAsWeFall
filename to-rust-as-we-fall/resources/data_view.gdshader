@@ -1,14 +1,14 @@
 shader_type spatial;
 render_mode unshaded, cull_disabled, depth_draw_never, depth_test_disabled;
 
-// Aster's data-perception overlay. Within clear_radius of aster_pos,
+// Aster's data-perception overlay. Within clear_radius of character_pos,
 // the world renders normally. Beyond it, surfaces are rendered as a
 // data schematic: near-black with bright edge lines (depth + color
 // Sobel detection) and subtle scanlines.
 
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
 uniform sampler2D depth_tex : hint_depth_texture, filter_nearest;
-uniform vec3 aster_pos = vec3(0.0);
+uniform vec3 character_pos = vec3(0.0);
 uniform float clear_radius = 8.0;
 uniform float blend_width = 3.0;
 uniform vec3 edge_color = vec3(0.29, 0.55, 0.85);
@@ -29,7 +29,7 @@ void fragment() {
 	vec3 world_pos = (INV_VIEW_MATRIX * vec4(view_coords.xyz, 1.0)).xyz;
 
 	// Distance from Aster — drives the blend between normal and data view
-	float dist = distance(world_pos, aster_pos);
+	float dist = distance(world_pos, character_pos);
 	float data_blend = smoothstep(clear_radius, clear_radius + blend_width, dist);
 
 	if (data_blend > 0.005) {

@@ -22,6 +22,12 @@ var _thought_label: Label
 var _player         # CharacterBody3D + player.gd
 var _camera         # Camera3D + game_camera.gd
 
+# Perception system
+var _perception_quad: MeshInstance3D
+var _perception_material: ShaderMaterial
+var _perception_mode := ""  # "", "data", "fog"
+var _perception_target: Node3D  # Character whose position drives the shader
+
 # Dialogue chain state (used by _dialogue_chain helper)
 var _dlg_chain_keys: Array = []
 var _dlg_chain_index := 0
@@ -53,6 +59,10 @@ func _process(delta: float) -> void:
 	for node in _get_speed_recipients():
 		node.speed_multiplier = spd
 	_scheduler.advance(delta)
+	# Update perception shader tracking
+	if _perception_material and _perception_target:
+		_perception_material.set_shader_parameter("character_pos",
+			_perception_target.global_position + Vector3(0, 1.0, 0))
 	_on_process(delta, spd)
 
 # --- Virtual methods (override in subclasses) ---
@@ -80,6 +90,45 @@ func _compute_speed() -> float:
 
 func _get_speed_recipients() -> Array:
 	return []
+
+# --- Perception system ---
+
+## Enable the perception overlay. Mode is "data" (Aster's edge detection)
+## or "fog" (Peris's warm fog). tracking_node is the character whose
+## position drives the clear-vision radius.
+func _setup_perception(mode: String, tracking_node: Node3D) -> void:
+	if not _perception_quad:
+		_perception_quad = MeshInstance3D.new()
+		_perception_quad.name = "PerceptionQuad"
+		var qm := QuadMesh.new()
+		qm.size = Vector2(2, 2)
+		_perception_quad.mesh = qm
+		_perception_quad.extra_cull_margin = 10000.0
+		_perception_material = ShaderMaterial.new()
+		_perception_material.render_priority = 127
+		_perception_quad.material_override = _perception_material
+		add_child(_perception_quad)
+	_set_perception_mode(mode)
+	_perception_target = tracking_node
+
+## Switch the perception shader without recreating the quad.
+func _set_perception_mode(mode: String) -> void:
+	_perception_mode = mode
+	if not _perception_material:
+		return
+	match mode:
+		"data":
+			_perception_material.shader = preload("res://resources/data_view.gdshader")
+		"fog":
+			_perception_material.shader = preload("res://resources/peris_fog.gdshader")
+		_:
+			_perception_quad.visible = false
+			return
+	_perception_quad.visible = true
+
+## Change which character the perception shader tracks.
+func _set_perception_target(node: Node3D) -> void:
+	_perception_target = node
 
 # --- UI setup ---
 
