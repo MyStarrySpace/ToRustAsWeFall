@@ -296,7 +296,7 @@ func _start_fade_in() -> void:
 func _start_waking() -> void:
 	_enter_step("waking")
 	_dialogue_chain(
-		["elevator.peris.where", "elevator.narration.room"],
+		["elevator.peris.where"],
 		func(): _scheduler.schedule_after(1.0, _start_approach_aster, "approach")
 	)
 
@@ -395,9 +395,10 @@ func _on_panel_hacked() -> void:
 		return
 	_reboot_active = false
 	_camera.shake(0.3, 3.0)
-	_dialogue_chain(
-		["elevator.system.override", "elevator.narration.doors"],
-		func(): _scheduler.schedule_after(1.0, _start_doors_open, "doors")
+	DialogueData.say_to(_dialogue, "elevator.system.override")
+	_dialogue.dialogue_finished.connect(
+		func(): _scheduler.schedule_after(0.5, _start_doors_open, "doors"),
+		CONNECT_ONE_SHOT
 	)
 
 func _start_doors_open() -> void:
@@ -445,7 +446,6 @@ func _start_bridge() -> void:
 	_game_state.command_move_to_pos("aster", bridge_pos + Vector3(1.0, 0, 0))
 	_game_state.command_move_to_pos("peris", bridge_pos)
 	_dialogue_chain([
-		"elevator.bridge.narration",
 		"elevator.peris.bodies",
 		"elevator.aster.logs",
 		"elevator.aster.ahead",
