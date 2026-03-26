@@ -225,16 +225,33 @@ func _switch_character() -> void:
 
 func _start_consciousness_fragments() -> void:
 	_enter_step("consciousness_fragments")
+	# Stage 1: Everything dark. Only the emergency light near Peris visible.
+	_emergency_light.light_energy = 0.0
+	if _aster_node:
+		_aster_node.visible = false
+	for unit in [_escort_1, _escort_2]:
+		if unit:
+			unit.visible = false
+
+	# Fragment 1: darkness, just text
 	_show_thought(DialogueData.text("elevator.fragment.01"))
-	_scheduler.schedule_after(2.0, func():
+	_scheduler.schedule_after(2.5, func():
 		_hide_thought()
-		_scheduler.schedule_after(0.5, func():
+		# Fragment 2: red light fades in around Peris
+		_scheduler.schedule_after(0.8, func():
 			_show_thought(DialogueData.text("elevator.fragment.02"))
-			_scheduler.schedule_after(2.0, func():
+			_fade_rect.color.a = 0.7  # Partial reveal
+			var tween := create_tween()
+			tween.tween_property(_emergency_light, "light_energy", 1.5, 1.5)
+			_scheduler.schedule_after(2.5, func():
 				_hide_thought()
-				_scheduler.schedule_after(0.5, func():
+				# Fragment 3: Aster appears (brought in by unit)
+				_scheduler.schedule_after(0.8, func():
 					_show_thought(DialogueData.text("elevator.fragment.03"))
-					_scheduler.schedule_after(2.0, func():
+					if _aster_node:
+						_aster_node.visible = true
+					_fade_rect.color.a = 0.4  # More reveal
+					_scheduler.schedule_after(2.5, func():
 						_hide_thought()
 						_scheduler.schedule_after(0.5, _start_fade_in, "fade_in")
 					, "frag_hide3")
@@ -245,7 +262,16 @@ func _start_consciousness_fragments() -> void:
 
 func _start_fade_in() -> void:
 	_enter_step("fade_in")
-	_fade_from(Color(0, 0, 0, 1), 3.0, _start_waking, "waking")
+	# Reveal escort units and full room
+	for unit in [_escort_1, _escort_2]:
+		if unit:
+			unit.visible = true
+	# Full fade from current partial darkness to clear
+	_fade_rect.color = Color(0, 0, 0, _fade_rect.color.a)
+	_fade_start_tick = _scheduler.get_current_tick()
+	var tween := create_tween()
+	tween.tween_property(_emergency_light, "light_energy", 3.0, 2.0)
+	_scheduler.schedule_after(3.0, _start_waking, "waking")
 
 func _start_waking() -> void:
 	_enter_step("waking")
