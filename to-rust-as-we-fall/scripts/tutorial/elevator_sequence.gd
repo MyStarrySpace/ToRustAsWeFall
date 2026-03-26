@@ -20,6 +20,9 @@ var _door_panel_a: MeshInstance3D
 var _door_panel_b: MeshInstance3D
 var _control_panel  # Interactable
 var _indicator_timer := 0.0
+var _indicator_b_label: Label3D  # The "B" that flickers
+var _exit_button  # Interactable — flashes "NO EXIT" when pressed
+var _no_exit_label: Label3D
 
 # EMP state
 var _emp_count := 0
@@ -88,6 +91,17 @@ func _setup_ui() -> void:
 	# Hide the interactable until hack step
 	_control_panel.visible = false
 
+	# Exit button near the doors — Peris can try it during waking
+	_exit_button = preload("res://scenes/game/interactable.tscn").instantiate()
+	_exit_button.name = "ExitButton"
+	_exit_button.description = "Door Button"
+	_exit_button.one_shot = false
+	_exit_button.dwell_time = 0.5
+	_exit_button.tutorial_label = "OPEN"
+	_exit_button.position = Vector3(2.0, 1.0, 0.8)
+	add_child(_exit_button)
+	_exit_button.interacted.connect(_on_exit_button_pressed)
+
 func _begin() -> void:
 	_player.set_move_enabled(false)
 	_fade_rect.color = Color(0, 0, 0, 1)
@@ -101,12 +115,11 @@ func _on_process(delta: float, spd: float) -> void:
 	if _emergency_light:
 		_emergency_light.light_energy = 1.5 + sin(Time.get_ticks_msec() * 0.003) * 0.5
 
-	# Floor indicator glitch
+	# Floor indicator: "3" is steady, "B" flickers
 	_indicator_timer += delta * spd
-	if _floor_indicator and _indicator_timer > 0.8:
+	if _indicator_b_label and _indicator_timer > 0.3:
 		_indicator_timer = 0.0
-		var texts := ["NO EXIT AVAILABLE", "---", "%02d" % randi_range(10, 99), "ERR", "NO EXIT"]
-		_floor_indicator.text = texts[randi() % texts.size()]
+		_indicator_b_label.visible = not _indicator_b_label.visible
 
 	# Escort unit flicker when stunned (toggle visibility)
 	if _unit_1_stunned and _escort_1:
@@ -183,6 +196,15 @@ func _fire_emp(unit: Node3D) -> void:
 	_stamina = maxf(0, _stamina - 15.0)
 	_camera.shake(0.2, 4.0)
 	unit.stop()
+
+func _on_exit_button_pressed() -> void:
+	# Flash "NO EXIT" on the indicator
+	if _no_exit_label:
+		var tween := create_tween()
+		tween.tween_property(_no_exit_label, "modulate:a", 0.9, 0.2)
+		tween.tween_interval(1.5)
+		tween.tween_property(_no_exit_label, "modulate:a", 0.0, 0.5)
+	_camera.shake(0.05, 10.0)
 
 func _switch_character() -> void:
 	if _active_character == "peris":
@@ -420,14 +442,34 @@ func _build_environment() -> void:
 	env.add_child(_emergency_light)
 
 	# Floor indicator
+	# Floor indicator: "3" steady + "B" flickering
 	_floor_indicator = Label3D.new()
-	_floor_indicator.text = "NO EXIT AVAILABLE"
-	_floor_indicator.font_size = 24
-	_floor_indicator.pixel_size = 0.008
+	_floor_indicator.text = "3"
+	_floor_indicator.font_size = 48
+	_floor_indicator.pixel_size = 0.01
 	_floor_indicator.modulate = Color(0.8, 0.2, 0.1, 0.8)
-	_floor_indicator.position = Vector3(2.1, 2.2, 0)
+	_floor_indicator.position = Vector3(2.1, 2.3, 0.15)
 	_floor_indicator.rotation.y = -PI / 2.0
 	env.add_child(_floor_indicator)
+
+	_indicator_b_label = Label3D.new()
+	_indicator_b_label.text = "B"
+	_indicator_b_label.font_size = 48
+	_indicator_b_label.pixel_size = 0.01
+	_indicator_b_label.modulate = Color(0.8, 0.2, 0.1, 0.6)
+	_indicator_b_label.position = Vector3(2.1, 2.3, -0.15)
+	_indicator_b_label.rotation.y = -PI / 2.0
+	env.add_child(_indicator_b_label)
+
+	# "NO EXIT" label (hidden, flashes when exit button is pressed)
+	_no_exit_label = Label3D.new()
+	_no_exit_label.text = "NO EXIT"
+	_no_exit_label.font_size = 28
+	_no_exit_label.pixel_size = 0.008
+	_no_exit_label.modulate = Color(0.9, 0.15, 0.1, 0.0)
+	_no_exit_label.position = Vector3(2.1, 1.8, 0)
+	_no_exit_label.rotation.y = -PI / 2.0
+	env.add_child(_no_exit_label)
 
 	# Control panel visual (dark box with small emissive screen)
 	var panel_mesh := MeshInstance3D.new()
