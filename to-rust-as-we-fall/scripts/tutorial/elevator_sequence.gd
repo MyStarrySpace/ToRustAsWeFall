@@ -388,6 +388,31 @@ func _start_lockout() -> void:
 		"elevator.aster.locked",
 		"elevator.peris.back_to_what",
 		"elevator.aster.forward",
+	], func(): _scheduler.schedule_after(1.0, _start_corridor, "corridor"))
+
+func _start_corridor() -> void:
+	_enter_step("corridor")
+	_build_bridge_environment()
+	# Walk both characters out through the doors
+	var exit_pos := Vector3(ELEVATOR_SIZE.x / 2.0 + 3.0, 0, 0)
+	_game_state.command_move_to_pos("aster", exit_pos)
+	_game_state.command_move_to_pos("peris", exit_pos + Vector3(0, 0, 1.0))
+	_dialogue_chain([
+		"elevator.peris.not_supposed",
+		"elevator.aster.no_service",
+	], func(): _scheduler.schedule_after(2.0, _start_bridge, "bridge"))
+
+func _start_bridge() -> void:
+	_enter_step("bridge")
+	# Walk to the bridge railing
+	var bridge_pos := Vector3(ELEVATOR_SIZE.x / 2.0 + 12.0, 0, 0)
+	_game_state.command_move_to_pos("aster", bridge_pos + Vector3(1.0, 0, 0))
+	_game_state.command_move_to_pos("peris", bridge_pos)
+	_dialogue_chain([
+		"elevator.bridge.narration",
+		"elevator.peris.bodies",
+		"elevator.aster.logs",
+		"elevator.aster.ahead",
 	], func(): _scheduler.schedule_after(1.0, _start_transition_out, "transition"))
 
 func _start_transition_out() -> void:
@@ -399,6 +424,119 @@ func _start_transition_out() -> void:
 func _complete() -> void:
 	_enter_step("complete")
 	get_tree().change_scene_to_file("res://scenes/tutorial/leaving_facility.tscn")
+
+func _build_bridge_environment() -> void:
+	var env: Node = find_child("Environment", false, false)
+	if not env:
+		return
+	var start_x := ELEVATOR_SIZE.x / 2.0 + 0.5
+
+	# Maintenance corridor from elevator to bridge
+	var corridor_color := Color(0.07, 0.07, 0.09)
+	var wall_color := Color(0.1, 0.1, 0.12)
+
+	# Floor — corridor leading out
+	_add_corridor_section(env, Vector3(start_x + 3.0, -0.05, 0), Vector3(7, 0.1, 4), corridor_color)
+	# Collision
+	var body := StaticBody3D.new()
+	body.position = Vector3(start_x + 3.0, -0.01, 0)
+	body.collision_layer = 1
+	body.collision_mask = 0
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(7, 0.02, 4)
+	col.shape = shape
+	body.add_child(col)
+	env.add_child(body)
+	# Walls
+	_add_wall(env, Vector3(start_x + 3.0, 2.0, -2.0), Vector3(7, 4, 0.2), wall_color)
+	_add_wall(env, Vector3(start_x + 3.0, 2.0, 2.0), Vector3(7, 4, 0.2), wall_color)
+
+	# Corridor light
+	var cor_light := OmniLight3D.new()
+	cor_light.position = Vector3(start_x + 3.0, 3.0, 0)
+	cor_light.light_color = Color(0.3, 0.2, 0.15)
+	cor_light.light_energy = 1.5
+	cor_light.omni_range = 8.0
+	env.add_child(cor_light)
+
+	# Bridge / catwalk — extends further, wider, open below
+	var bridge_start := start_x + 7.0
+	_add_corridor_section(env, Vector3(bridge_start + 5.0, -0.05, 0), Vector3(12, 0.1, 3), corridor_color)
+	# Bridge collision
+	var b2 := StaticBody3D.new()
+	b2.position = Vector3(bridge_start + 5.0, -0.01, 0)
+	b2.collision_layer = 1
+	b2.collision_mask = 0
+	var c2 := CollisionShape3D.new()
+	var s2 := BoxShape3D.new()
+	s2.size = Vector3(12, 0.02, 3)
+	c2.shape = s2
+	b2.add_child(c2)
+	env.add_child(b2)
+
+	# Partial railing (incomplete — sections missing)
+	for i in range(5):
+		var rail := MeshInstance3D.new()
+		var rb := BoxMesh.new()
+		rb.size = Vector3(0.05, 0.8, 0.05)
+		rail.mesh = rb
+		var rm := StandardMaterial3D.new()
+		rm.albedo_color = Color(0.15, 0.15, 0.18)
+		rail.material_override = rm
+		rail.position = Vector3(bridge_start + 1.5 + i * 2.0, 0.4, -1.4)
+		env.add_child(rail)
+
+	# Bridge lighting — dimmer, exposed
+	var bridge_light := OmniLight3D.new()
+	bridge_light.position = Vector3(bridge_start + 5.0, 3.0, 0)
+	bridge_light.light_color = Color(0.25, 0.18, 0.12)
+	bridge_light.light_energy = 1.0
+	bridge_light.omni_range = 10.0
+	env.add_child(bridge_light)
+
+	# Below the bridge: dim suggestions of the world below
+	# Iron blooms (faint orange glow)
+	for i in range(3):
+		var bloom := OmniLight3D.new()
+		bloom.position = Vector3(bridge_start + 2.0 + i * 4.0, -3.0, randf_range(-4, 4))
+		bloom.light_color = Color(0.7, 0.3, 0.1)
+		bloom.light_energy = 0.4
+		bloom.omni_range = 3.0
+		env.add_child(bloom)
+
+	# Bodies below (dark capsules on the ground far below)
+	for i in range(4):
+		var body_mesh := MeshInstance3D.new()
+		var cap := CapsuleMesh.new()
+		cap.radius = 0.2
+		cap.height = 0.8
+		body_mesh.mesh = cap
+		var bm := StandardMaterial3D.new()
+		bm.albedo_color = Color(0.15, 0.12, 0.1)
+		body_mesh.material_override = bm
+		body_mesh.position = Vector3(bridge_start + 1.0 + i * 3.0, -4.0, randf_range(-3, 3))
+		body_mesh.rotation.z = PI / 2.0
+		env.add_child(body_mesh)
+
+	# Distant terminal glow (faint blue-green)
+	var terminal_glow := OmniLight3D.new()
+	terminal_glow.position = Vector3(bridge_start + 10.0, -2.0, -5.0)
+	terminal_glow.light_color = Color(0.2, 0.5, 0.4)
+	terminal_glow.light_energy = 0.6
+	terminal_glow.omni_range = 4.0
+	env.add_child(terminal_glow)
+
+func _add_corridor_section(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> void:
+	var mesh := MeshInstance3D.new()
+	var b := BoxMesh.new()
+	b.size = size
+	mesh.mesh = b
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mesh.material_override = mat
+	mesh.position = pos
+	parent.add_child(mesh)
 
 # --- Environment ---
 

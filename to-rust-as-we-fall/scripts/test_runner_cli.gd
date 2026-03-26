@@ -876,12 +876,19 @@ func _test_elevator_dialogue() -> void:
 			has_lockout = true
 	_assert_true(has_lockout, "NON-COMPLIANT lockout fires")
 
-	# Verify final line
-	var has_forward := false
+	# Verify bridge dialogue
+	var has_bodies := false
 	for entry in log:
-		if "Forward" in entry.text:
-			has_forward = true
-	_assert_true(has_forward, "Final 'Forward. Together.' line exists")
+		if "people down there" in entry.text:
+			has_bodies = true
+	_assert_true(has_bodies, "Bridge bodies dialogue exists")
+
+	# Verify final line
+	var has_ahead := false
+	for entry in log:
+		if "ahead" in entry.text and "Lights" in entry.text:
+			has_ahead = true
+	_assert_true(has_ahead, "Final 'There's something ahead' line exists")
 
 	instance.queue_free()
 	await get_tree().process_frame

@@ -22,7 +22,7 @@ tag_day.naturalizers_grip,,data,false,The two white figures step forward. They t
 tag_day.nk_chat.01,,normal,false,Structured. The speech is definitely structured.,NK-01 making a bet — visible as Label3D if player pans
 tag_day.nk_chat.02,,normal,false,You said that about the last one.,NK-02 pushing back
 tag_day.nk_chat.03,,normal,false,The last one was silent. I said it'd be weird structured speech. Silent counts as weird.,NK-01 defending
-tag_day.nk_chat.04,,normal,false,"Yet you didn't get that hint last time you tried courtship, didn't you?",NK-02 reminding him he was wrong
+tag_day.nk_chat.04,,normal,false,"Yet you didn't get that hint last time you tried courtship, didn't you?",NK-02 poking fun at his relationship
 tag_day.poem.01,,poem,false,"Between the idea
 And the reality",Shadow stanzas begin — corridor walk
 tag_day.poem.02,,poem,false,"Between the motion
@@ -80,33 +80,39 @@ elevator.narration.room,,normal,false,"A small room. Metal walls. Red emergency 
 elevator.peris.hey,Peris,normal,false,"Hey. Hey, can you hear me? Are you alive? Please be alive.",Peris approaches Aster
 elevator.aster.waking,Aster,normal,false,...I already submitted the forecast. Check the terminal.,Aster wakes groggy — still in the simulation mentally
 elevator.aster.where,Aster,normal,false,...This isn't the sim. Where are we?,Aster realizes
-elevator.peris.explain,Peris,normal,false,"Some kind of transport. I woke up here. I don't know how long ago.",Peris explains
+elevator.peris.explain,Peris,normal,false,Some kind of transport. I woke up here. I don't know how long ago.,Peris explains
 elevator.aster.wellness,Aster,normal,false,"Wellness check. Some guy at the checkpoint started singing, and apparently being nearby means I need processing.",Aster's version of events — dismissive at first
 elevator.peris.singing,Peris,normal,false,Someone was singing?,
 elevator.aster.prickly,Aster,normal,false,"His scan didn't clear. Red light. And instead of stepping aside he just started singing. Some nursery rhyme. Prickly pear, something something.",
-elevator.aster.already_knew,Aster,normal,false,"Like he didn't care. Like he already knew.",This sentence comes out different from how he intended
-elevator.aster.protocol,Aster,normal,false,"Anyway. They sent a response team. Two naturalizers. Walked him out. Standard protocol.",Recovering — faster
+elevator.aster.already_knew,Aster,normal,false,Like he didn't care. Like he already knew.,This sentence comes out different from how he intended
+elevator.aster.protocol,Aster,normal,false,Anyway. They sent a response team. Two naturalizers. Walked him out. Standard protocol.,Recovering — faster
 elevator.peris.and_then,Peris,normal,false,And then?,
-elevator.aster.bang,Aster,normal,false,"He was singing... 'this is the way the world ends.' Three times. And then... 'not with a bang but a—'",He stops
+elevator.aster.bang,Aster,normal,false,He was singing... 'this is the way the world ends.' Three times. And then... 'not with a bang but a—',He stops
 elevator.aster.there_was,Aster,normal,false,...There was a bang.,
-elevator.aster.whimper,Aster,normal,false,"And then one more word. Quiet. I almost didn't hear it. 'Whimper.'",
+elevator.aster.whimper,Aster,normal,false,And then one more word. Quiet. I almost didn't hear it. 'Whimper.',
 elevator.aster.ninety,Aster,normal,false,...The checkpoint reset after ninety seconds. I was next in the queue.,How close he was
 elevator.peris.helped,Peris,normal,false,I got sent here because I helped someone.,
-elevator.peris.sanction,Peris,normal,false,"A client was attacked during a session. I protected him. My score dropped. They disconnected my feed and gave me breathing exercises. And gel squishing.",
+elevator.peris.sanction,Peris,normal,false,A client was attacked during a session. I protected him. My score dropped. They disconnected my feed and gave me breathing exercises. And gel squishing.,
 elevator.aster.gel,Aster,normal,false,...What?,
-elevator.peris.gel,Peris,normal,false,"Satisfying content. Gel being squished. Soap being cut. They took away my clients and gave me gel.",
+elevator.peris.gel,Peris,normal,false,Satisfying content. Gel being squished. Soap being cut. They took away my clients and gave me gel.,
 elevator.aster.thats,Aster,normal,false,That's...,He doesn't finish — the unit activates
 elevator.unit.protocol,EU-1,data,false,PASSENGERS CONSCIOUS  //  DISTRESS DETECTED  //  INITIATING RE-SEDATION PROTOCOL,Escort unit activates
-elevator.aster.device,Aster,normal,false,"My device still works. I can disrupt them. When it gets close — I'll hit it.",Aster realizes he can EMP
+elevator.aster.device,Aster,normal,false,My device still works. I can disrupt them. When it gets close — I'll hit it.,Aster realizes he can EMP
 elevator.aster.another,Aster,normal,false,The other one! Again!,Second unit activates
-elevator.aster.stay_close,Aster,normal,false,"That bought us time. They'll reboot. Stay close to me — we need to get to that panel.",Post-EMP urgency
+elevator.aster.stay_close,Aster,normal,false,That bought us time. They'll reboot. Stay close to me — we need to get to that panel.,Post-EMP urgency
 elevator.aster.hack,Aster,normal,false,I can override this. Just need a moment...,Aster begins hacking the panel
 elevator.system.override,SYSTEM,data,false,MAINTENANCE OVERRIDE ACCEPTED  //  DOORS CYCLING,Hack succeeds
 elevator.narration.doors,,normal,false,The elevator shudders. The doors grind open. Light spills in from a corridor neither of them recognizes.,Doors open
 elevator.system.noncompliant,SYSTEM,data,false,TAG STATUS: NON-COMPLIANT  //  WELLNESS PROTOCOL DEVIATION  //  FACILITY ACCESS REVOKED,Lockout
 elevator.aster.locked,Aster,normal,false,It locked us out. My device can't reach any facility system. We can't go back.,Aster tries and fails
 elevator.peris.back_to_what,Peris,normal,false,...Back in to what?,
-elevator.aster.forward,Aster,normal,true,Forward. Together.,Waits for click — transition beat
+elevator.aster.forward,Aster,normal,false,Forward. Together.,
+elevator.peris.not_supposed,Peris,normal,false,I don't think we're supposed to be here.,Entering the maintenance corridor
+elevator.aster.no_service,Aster,data,false,"Nobody is. This section hasn't been serviced in... the maintenance logs just stop.",Aster reads corridor data
+elevator.bridge.narration,,normal,false,"An elevated walkway spanning a larger space. Incomplete railing. Exposed framework. The air is open — it smells like rust.",Bridge description
+elevator.peris.bodies,Peris,normal,false,Those people down there...,Peris sees bodies below the bridge
+elevator.aster.logs,Aster,normal,false,"All casualties are supposed to be logged. I'll check the records when we find a working terminal. Come on.",Aster files it as data and keeps moving
+elevator.aster.ahead,Aster,normal,true,There's something ahead. Lights.,Waits for click — transition to leaving_facility
 facility.exit_narration,,normal,false,The facility door seals behind you. The corridor stretches ahead.,Leaving the facility
 facility.endo_appears,,normal,false,Someone is waiting at the exit. Quiet. Watchful. He falls into step beside you.,Endo joins
 facility.endo.shelters,Endo,normal,false,I know where the shelters are. Stay close.,
