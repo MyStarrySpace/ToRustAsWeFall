@@ -14,6 +14,7 @@ var _peris
 var _endo
 var _hud  # GameHUD
 var _iron_lights: Array[OmniLight3D] = []
+var _dir_light: DirectionalLight3D
 
 var _game_time := 0.3
 var _hp := 100.0
@@ -152,14 +153,18 @@ func _start_fade_in() -> void:
 
 func _start_facility_exit() -> void:
 	_current_step = "facility_exit"
-	DialogueData.say_to(_dialogue, "facility.exit_narration")
+	# Camera look-ahead to show the corridor
+	var orig_offset := _camera.follow_offset
+	var t := create_tween()
+	t.tween_property(_camera, "follow_offset", orig_offset + Vector3(3, 0, 0), 1.5)
+	t.tween_interval(0.5)
+	t.tween_property(_camera, "follow_offset", orig_offset, 1.0)
 	_scheduler.schedule_after(3.5, _start_endo_joins, "endo_joins")
 
 func _start_endo_joins() -> void:
 	_current_step = "endo_joins"
 	_endo.visible = true
 	_game_state.command_move_to_pos("endo", EXIT_POS + Vector3(1.5, 0, -0.8))
-	DialogueData.say_to(_dialogue, "facility.endo_appears")
 	DialogueData.say_to(_dialogue, "facility.endo.shelters")
 	_dialogue.dialogue_finished.connect(
 		func(): _scheduler.schedule_after(0, _start_first_corridor, "first_corridor"),
@@ -200,7 +205,14 @@ func _start_first_rest() -> void:
 	_game_time = 0.55
 	if _hud:
 		_hud.set_time(1, _game_time)
-	DialogueData.say_to(_dialogue, "facility.night_narration")
+	# Night transition: dim world, pulse iron threat
+	var t := create_tween()
+	t.tween_property(_dir_light, "light_energy", 0.05, 1.5)
+	for light in _iron_lights:
+		var lt := create_tween()
+		lt.set_loops(3)
+		lt.tween_property(light, "light_energy", 3.5, 0.8)
+		lt.tween_property(light, "light_energy", 1.5, 0.8)
 	DialogueData.say_to(_dialogue, "facility.endo.rest")
 	_hp = 100.0
 	_dialogue.dialogue_finished.connect(
@@ -290,12 +302,12 @@ func _build_environment() -> void:
 	_add_detour_markers(env, IRON_1_POS, SAFE_1_WAYPOINT, 4)
 	_add_detour_markers(env, IRON_2_POS, SAFE_2_WAYPOINT, 6)
 
-	var dir := DirectionalLight3D.new()
-	dir.rotation_degrees = Vector3(-50, 20, 0)
-	dir.light_color = Color(0.6, 0.55, 0.5)
-	dir.light_energy = 0.5
-	dir.shadow_enabled = true
-	env.add_child(dir)
+	_dir_light = DirectionalLight3D.new()
+	_dir_light.rotation_degrees = Vector3(-50, 20, 0)
+	_dir_light.light_color = Color(0.6, 0.55, 0.5)
+	_dir_light.light_energy = 0.5
+	_dir_light.shadow_enabled = true
+	env.add_child(_dir_light)
 
 	var we := WorldEnvironment.new()
 	var e := Environment.new()
