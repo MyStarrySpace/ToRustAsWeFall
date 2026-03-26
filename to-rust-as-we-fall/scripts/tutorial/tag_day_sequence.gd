@@ -136,8 +136,9 @@ func _start_citizen_scan() -> void:
 
 func _start_naturalizers_grip() -> void:
 	_enter_step("naturalizers_grip")
-	DialogueData.say_to(_dialogue, "tag_day.naturalizers_grip")
-	# Naturalizers approach the citizen at his device
+	# Naturalizers approach deliberately (slower than default)
+	_game_state.change_move_speed("nk1", 1.5)
+	_game_state.change_move_speed("nk2", 1.5)
 	_game_state.command_move_to_pos("nk1", CITIZEN_DEVICE_POS + Vector3(0, 0, -0.6))
 	_game_state.command_move_to_pos("nk2", CITIZEN_DEVICE_POS + Vector3(0, 0, 0.6))
 	# Wait for enforcers to reach the citizen (~4s at speed 2.0) before walking
