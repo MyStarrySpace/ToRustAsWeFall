@@ -808,6 +808,16 @@ func _test_elevator_dialogue() -> void:
 		await get_tree().process_frame
 
 	var log := _pop_dialogue_log(instance, {
+		"consciousness_fragments": func():
+			# Skip tween-based fragments — jump straight to waking
+			if instance._aster_node:
+				instance._aster_node.visible = true
+			for unit in [instance._escort_1, instance._escort_2]:
+				if unit:
+					unit.visible = true
+			instance._emergency_light.light_energy = 3.0
+			instance._fade_rect.color.a = 0.0
+			instance._start_waking(),
 		"approach_aster": func():
 			# Teleport Peris near Aster
 			var target: Vector3 = instance.ASTER_POS + Vector3(0.5, 0.5, 0)

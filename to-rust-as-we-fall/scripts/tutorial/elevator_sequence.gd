@@ -145,10 +145,8 @@ func _on_process(delta: float, spd: float) -> void:
 				_enter_step("units_activate")
 				_start_units_activate()
 
-	# Fade updates
-	if _current_step == "fade_in":
-		_update_fade_in(2.5)
-	elif _current_step == "transition_out":
+	# Transition out fade
+	if _current_step == "transition_out":
 		_update_fade_out(Color(0.02, 0.02, 0.03), 2.0)
 
 	# Approach gate
@@ -225,7 +223,7 @@ func _switch_character() -> void:
 
 func _start_consciousness_fragments() -> void:
 	_enter_step("consciousness_fragments")
-	# Stage 1: Everything dark. Only the emergency light near Peris visible.
+	# Hide everything except Peris initially
 	_emergency_light.light_energy = 0.0
 	if _aster_node:
 		_aster_node.visible = false
@@ -233,45 +231,35 @@ func _start_consciousness_fragments() -> void:
 		if unit:
 			unit.visible = false
 
-	# Fragment 1: darkness, just text
-	_show_thought(DialogueData.text("elevator.fragment.01"))
-	_scheduler.schedule_after(2.5, func():
-		_hide_thought()
-		# Fragment 2: red light fades in around Peris
-		_scheduler.schedule_after(0.8, func():
-			_show_thought(DialogueData.text("elevator.fragment.02"))
-			_fade_rect.color.a = 0.7  # Partial reveal
-			var tween := create_tween()
-			tween.tween_property(_emergency_light, "light_energy", 1.5, 1.5)
-			_scheduler.schedule_after(2.5, func():
-				_hide_thought()
-				# Fragment 3: Aster appears (brought in by unit)
-				_scheduler.schedule_after(0.8, func():
-					_show_thought(DialogueData.text("elevator.fragment.03"))
-					if _aster_node:
-						_aster_node.visible = true
-					_fade_rect.color.a = 0.4  # More reveal
-					_scheduler.schedule_after(2.5, func():
-						_hide_thought()
-						_scheduler.schedule_after(0.5, _start_fade_in, "fade_in")
-					, "frag_hide3")
-				, "frag3")
-			, "frag_hide2")
-		, "frag2")
-	, "frag_hide1")
+	# Fragment 1: Fade in on Peris + red light, then fade out
+	var t := create_tween()
+	t.tween_property(_emergency_light, "light_energy", 2.0, 0.8)
+	t.parallel().tween_property(_fade_rect, "color:a", 0.0, 0.8)
+	t.tween_interval(1.5)
+	t.tween_property(_fade_rect, "color:a", 1.0, 0.6)
+	t.tween_callback(func():
+		# Fragment 2: Show Aster, fade in, then fade out
+		if _aster_node:
+			_aster_node.visible = true
+		var t2 := create_tween()
+		t2.tween_property(_fade_rect, "color:a", 0.0, 0.8)
+		t2.tween_interval(1.5)
+		t2.tween_property(_fade_rect, "color:a", 1.0, 0.6)
+		t2.tween_callback(_start_fade_in)
+	)
 
 func _start_fade_in() -> void:
 	_enter_step("fade_in")
-	# Reveal escort units and full room
+	# Full reveal: escort units, full lighting
 	for unit in [_escort_1, _escort_2]:
 		if unit:
 			unit.visible = true
-	# Full fade from current partial darkness to clear
-	_fade_rect.color = Color(0, 0, 0, _fade_rect.color.a)
-	_fade_start_tick = _scheduler.get_current_tick()
-	var tween := create_tween()
-	tween.tween_property(_emergency_light, "light_energy", 3.0, 2.0)
-	_scheduler.schedule_after(3.0, _start_waking, "waking")
+	_emergency_light.light_energy = 3.0
+	var t := create_tween()
+	t.tween_property(_fade_rect, "color:a", 0.0, 1.0)
+	t.tween_callback(func():
+		_scheduler.schedule_after(0.5, _start_waking, "waking")
+	)
 
 func _start_waking() -> void:
 	_enter_step("waking")
