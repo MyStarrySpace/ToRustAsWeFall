@@ -32,12 +32,13 @@ var _reboot_timer := 30.0
 var _reboot_active := false
 var _stamina := 100.0
 
-# Positions (elevator ~4.5x4.5, centered at origin)
-const PERIS_START := Vector3(-0.5, 0.5, 0.8)
-const ASTER_POS := Vector3(1.0, 0, -1.0)
-const ESCORT_1_POS := Vector3(-1.5, 0, -1.5)
-const ESCORT_2_POS := Vector3(-1.5, 0, 1.5)
-const PANEL_POS := Vector3(1.5, 0, 0)
+# Positions (elevator ~8x8, tall ceiling)
+const ELEVATOR_SIZE := Vector3(8.0, 4.0, 8.0)
+const PERIS_START := Vector3(-1.0, 0.5, 1.5)
+const ASTER_POS := Vector3(2.0, 0, -2.0)
+const ESCORT_1_POS := Vector3(-2.5, 0, -2.5)
+const ESCORT_2_POS := Vector3(-2.5, 0, 2.5)
+const PANEL_POS := Vector3(3.5, 0, 0)
 
 # --- Virtual overrides ---
 
@@ -71,7 +72,7 @@ func _build_characters() -> void:
 	chars.add_child(_escort_2)
 
 	if not Engine.is_editor_hint():
-		_setup_game_camera(_player, Vector3(0, 4, 3))
+		_setup_game_camera(_player, Vector3(0, 3.5, 2.5))
 
 func _register_characters() -> void:
 	_register_gs_character("peris", _peris_node, 2.5)
@@ -85,7 +86,7 @@ func _setup_ui() -> void:
 	_control_panel.description = "Control Panel"
 	_control_panel.one_shot = true
 	_control_panel.dwell_time = 3.0
-	_control_panel.position = PANEL_POS + Vector3(0, 0.8, 0)
+	_control_panel.position = Vector3(ELEVATOR_SIZE.x / 2.0 - 0.3, 1.0, 0)
 	add_child(_control_panel)
 	_control_panel.interacted.connect(_on_panel_hacked)
 	# Hide the interactable until hack step
@@ -98,7 +99,7 @@ func _setup_ui() -> void:
 	_exit_button.one_shot = false
 	_exit_button.dwell_time = 0.5
 	_exit_button.tutorial_label = "OPEN"
-	_exit_button.position = Vector3(2.0, 1.0, 0.8)
+	_exit_button.position = Vector3(ELEVATOR_SIZE.x / 2.0 - 0.3, 1.0, 1.5)
 	add_child(_exit_button)
 	_exit_button.interacted.connect(_on_exit_button_pressed)
 
@@ -392,15 +393,19 @@ func _build_environment() -> void:
 	env.name = "Environment"
 	add_child(env)
 
+	var hw := ELEVATOR_SIZE.x / 2.0  # half width
+	var hd := ELEVATOR_SIZE.z / 2.0  # half depth
+	var h := ELEVATOR_SIZE.y          # ceiling height
+
 	# Floor
 	var floor_mesh := MeshInstance3D.new()
 	var fb := BoxMesh.new()
-	fb.size = Vector3(4.5, 0.1, 4.5)
+	fb.size = Vector3(ELEVATOR_SIZE.x, 0.1, ELEVATOR_SIZE.z)
 	floor_mesh.mesh = fb
 	var fm := StandardMaterial3D.new()
-	fm.albedo_color = Color(0.08, 0.08, 0.1)
-	fm.metallic = 0.4
-	fm.roughness = 0.3
+	fm.albedo_color = Color(0.1, 0.1, 0.12)
+	fm.metallic = 0.3
+	fm.roughness = 0.4
 	floor_mesh.material_override = fm
 	floor_mesh.position = Vector3(0, -0.05, 0)
 	env.add_child(floor_mesh)
@@ -412,106 +417,126 @@ func _build_environment() -> void:
 	floor_body.collision_mask = 0
 	var fc := CollisionShape3D.new()
 	var fs := BoxShape3D.new()
-	fs.size = Vector3(4.5, 0.02, 4.5)
+	fs.size = Vector3(ELEVATOR_SIZE.x, 0.02, ELEVATOR_SIZE.z)
 	fc.shape = fs
 	floor_body.add_child(fc)
 	env.add_child(floor_body)
 
-	# Walls (dark metallic)
-	var wc := Color(0.1, 0.1, 0.12)
-	_add_wall(env, Vector3(0, 1.5, -2.25), Vector3(4.5, 3, 0.2), wc)    # back
-	_add_wall(env, Vector3(0, 1.5, 2.25), Vector3(4.5, 3, 0.2), wc)     # front
-	_add_wall(env, Vector3(-2.25, 1.5, 0), Vector3(0.2, 3, 4.5), wc)    # left
-	# Right wall (door wall) — two halves with gap in the middle
-	_add_wall(env, Vector3(2.25, 1.5, -1.5), Vector3(0.2, 3, 1.4), wc)
-	_add_wall(env, Vector3(2.25, 1.5, 1.5), Vector3(0.2, 3, 1.4), wc)
+	# Walls
+	var wc := Color(0.12, 0.12, 0.14)
+	_add_wall(env, Vector3(0, h / 2.0, -hd), Vector3(ELEVATOR_SIZE.x, h, 0.2), wc)  # back
+	_add_wall(env, Vector3(0, h / 2.0, hd), Vector3(ELEVATOR_SIZE.x, h, 0.2), wc)   # front
+	_add_wall(env, Vector3(-hw, h / 2.0, 0), Vector3(0.2, h, ELEVATOR_SIZE.z), wc)  # left
+	# Right wall (door wall) — two halves with gap
+	_add_wall(env, Vector3(hw, h / 2.0, -hd * 0.55), Vector3(0.2, h, hd * 0.8), wc)
+	_add_wall(env, Vector3(hw, h / 2.0, hd * 0.55), Vector3(0.2, h, hd * 0.8), wc)
 
 	# Door panels (tween apart when hack succeeds)
-	_door_panel_a = _make_door_panel(env, Vector3(2.2, 1.5, -0.4), wc)
-	_door_panel_b = _make_door_panel(env, Vector3(2.2, 1.5, 0.4), wc)
+	_door_panel_a = _make_door_panel(env, Vector3(hw - 0.05, h / 2.0, -0.6), wc)
+	_door_panel_b = _make_door_panel(env, Vector3(hw - 0.05, h / 2.0, 0.6), wc)
 
 	# Ceiling
-	_add_wall(env, Vector3(0, 3.0, 0), Vector3(4.5, 0.1, 4.5), Color(0.05, 0.05, 0.07))
+	_add_wall(env, Vector3(0, h, 0), Vector3(ELEVATOR_SIZE.x, 0.1, ELEVATOR_SIZE.z), Color(0.06, 0.06, 0.08))
 
-	# Emergency light (red, pulsing)
+	# Emergency light (red, pulsing) — bright enough to illuminate the room
 	_emergency_light = OmniLight3D.new()
-	_emergency_light.position = Vector3(0, 2.8, 0)
-	_emergency_light.light_color = Color(0.8, 0.15, 0.1)
-	_emergency_light.light_energy = 1.5
-	_emergency_light.omni_range = 6.0
+	_emergency_light.position = Vector3(0, h - 0.3, 0)
+	_emergency_light.light_color = Color(0.85, 0.15, 0.1)
+	_emergency_light.light_energy = 3.0
+	_emergency_light.omni_range = 10.0
 	env.add_child(_emergency_light)
 
-	# Floor indicator
-	# Floor indicator: "3" steady + "B" flickering
+	# Secondary fill light — dim warm ambient so walls are visible
+	var fill := OmniLight3D.new()
+	fill.position = Vector3(0, h * 0.6, 0)
+	fill.light_color = Color(0.4, 0.25, 0.2)
+	fill.light_energy = 1.0
+	fill.omni_range = 8.0
+	env.add_child(fill)
+
+	# Floor indicator: "3" steady + "B" flickering (on door wall)
+	var indicator_x := hw - 0.1
 	_floor_indicator = Label3D.new()
 	_floor_indicator.text = "3"
-	_floor_indicator.font_size = 48
-	_floor_indicator.pixel_size = 0.01
-	_floor_indicator.modulate = Color(0.8, 0.2, 0.1, 0.8)
-	_floor_indicator.position = Vector3(2.1, 2.3, 0.15)
+	_floor_indicator.font_size = 64
+	_floor_indicator.pixel_size = 0.012
+	_floor_indicator.modulate = Color(0.8, 0.2, 0.1, 0.9)
+	_floor_indicator.position = Vector3(indicator_x, h * 0.7, 0.2)
 	_floor_indicator.rotation.y = -PI / 2.0
 	env.add_child(_floor_indicator)
 
 	_indicator_b_label = Label3D.new()
 	_indicator_b_label.text = "B"
-	_indicator_b_label.font_size = 48
-	_indicator_b_label.pixel_size = 0.01
-	_indicator_b_label.modulate = Color(0.8, 0.2, 0.1, 0.6)
-	_indicator_b_label.position = Vector3(2.1, 2.3, -0.15)
+	_indicator_b_label.font_size = 64
+	_indicator_b_label.pixel_size = 0.012
+	_indicator_b_label.modulate = Color(0.8, 0.2, 0.1, 0.7)
+	_indicator_b_label.position = Vector3(indicator_x, h * 0.7, -0.2)
 	_indicator_b_label.rotation.y = -PI / 2.0
 	env.add_child(_indicator_b_label)
 
-	# "NO EXIT" label (hidden, flashes when exit button is pressed)
+	# "NO EXIT" label (hidden, flashes when exit button pressed)
 	_no_exit_label = Label3D.new()
 	_no_exit_label.text = "NO EXIT"
-	_no_exit_label.font_size = 28
-	_no_exit_label.pixel_size = 0.008
+	_no_exit_label.font_size = 36
+	_no_exit_label.pixel_size = 0.01
 	_no_exit_label.modulate = Color(0.9, 0.15, 0.1, 0.0)
-	_no_exit_label.position = Vector3(2.1, 1.8, 0)
+	_no_exit_label.position = Vector3(indicator_x, h * 0.5, 0)
 	_no_exit_label.rotation.y = -PI / 2.0
 	env.add_child(_no_exit_label)
 
-	# Control panel visual (dark box with small emissive screen)
+	# Control panel visual
 	var panel_mesh := MeshInstance3D.new()
 	var pb := BoxMesh.new()
-	pb.size = Vector3(0.15, 0.8, 0.5)
+	pb.size = Vector3(0.15, 1.0, 0.6)
 	panel_mesh.mesh = pb
 	var pm := StandardMaterial3D.new()
-	pm.albedo_color = Color(0.12, 0.12, 0.15)
+	pm.albedo_color = Color(0.14, 0.14, 0.17)
 	pm.emission_enabled = true
-	pm.emission = Color(0.05, 0.08, 0.15)
-	pm.emission_energy_multiplier = 0.3
+	pm.emission = Color(0.05, 0.1, 0.2)
+	pm.emission_energy_multiplier = 0.5
 	panel_mesh.material_override = pm
-	panel_mesh.position = Vector3(2.1, 1.0, 0)
+	panel_mesh.position = Vector3(indicator_x, 1.0, 0)
 	env.add_child(panel_mesh)
 
 	# Standby indicator lights near escort units
 	for pos in [ESCORT_1_POS, ESCORT_2_POS]:
 		var standby := OmniLight3D.new()
-		standby.position = pos + Vector3(0, 1.2, 0)
-		standby.light_color = Color(0.3, 0.3, 0.35)
-		standby.light_energy = 0.3
-		standby.omni_range = 1.5
+		standby.position = pos + Vector3(0, 1.5, 0)
+		standby.light_color = Color(0.3, 0.3, 0.4)
+		standby.light_energy = 0.5
+		standby.omni_range = 2.5
 		env.add_child(standby)
+
+	# Ceiling panel strips (industrial detail)
+	for i in range(3):
+		var strip := MeshInstance3D.new()
+		var sb := BoxMesh.new()
+		sb.size = Vector3(ELEVATOR_SIZE.x * 0.8, 0.02, 0.15)
+		strip.mesh = sb
+		var sm := StandardMaterial3D.new()
+		sm.albedo_color = Color(0.08, 0.08, 0.1)
+		strip.material_override = sm
+		strip.position = Vector3(0, h - 0.02, -2.0 + i * 2.0)
+		env.add_child(strip)
 
 	# WorldEnvironment
 	var we := WorldEnvironment.new()
 	var e := Environment.new()
 	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color(0.02, 0.02, 0.03)
+	e.background_color = Color(0.03, 0.02, 0.02)
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.25, 0.1, 0.08)
-	e.ambient_light_energy = 0.3
+	e.ambient_light_color = Color(0.3, 0.15, 0.1)
+	e.ambient_light_energy = 0.5
 	e.glow_enabled = true
-	e.glow_intensity = 0.2
-	e.glow_bloom = 0.05
+	e.glow_intensity = 0.3
+	e.glow_bloom = 0.1
 	we.environment = e
 	env.add_child(we)
 
 func _make_door_panel(parent: Node3D, pos: Vector3, color: Color) -> MeshInstance3D:
 	var panel := MeshInstance3D.new()
 	var b := BoxMesh.new()
-	b.size = Vector3(0.15, 3, 0.75)
+	b.size = Vector3(0.15, ELEVATOR_SIZE.y, 1.2)
 	panel.mesh = b
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color.darkened(0.1)
