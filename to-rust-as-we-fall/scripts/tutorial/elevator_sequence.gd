@@ -406,9 +406,12 @@ func _start_multiselect_tutorial() -> void:
 	_player = _peris_node
 	_camera.target = _peris_node
 	_hud.set_active_portrait("peris")
+	# Auto-pause so the player can plan their move
+	_scheduler.pause()
+	_hud.set_paused(true)
 	DialogueData.say_to(_dialogue, "elevator.aster.stay_close")
 	_dialogue.dialogue_finished.connect(func():
-		_tutorial_prompt.show_prompt("[Tab] — switch character")
+		_tutorial_prompt.show_prompt("[Tab] — switch  [Space] — unpause")
 	, CONNECT_ONE_SHOT)
 
 func _start_hack_tutorial() -> void:

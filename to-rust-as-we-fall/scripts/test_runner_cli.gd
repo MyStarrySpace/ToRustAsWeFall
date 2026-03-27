@@ -830,7 +830,8 @@ func _test_elevator_dialogue() -> void:
 			instance._on_emp_pressed()
 			instance._flush_queued_abilities(),
 		"multiselect_tutorial": func():
-			# Teleport both near panel
+			# Resume from auto-pause and teleport both near panel
+			instance._scheduler.resume()
 			var pp: Vector3 = instance.PANEL_POS + Vector3(-0.5, 0.5, 0)
 			var ap: Vector3 = instance.PANEL_POS + Vector3(0.5, 0.5, 0)
 			instance._peris_node.global_position = pp
