@@ -365,8 +365,8 @@ func _start_conversation() -> void:
 	_enter_step("conversation")
 	_dialogue.default_hold_time = 3.0
 	_dialogue_chain([
+		"elevator.aster.device_locked",
 		"elevator.peris.trapped",
-		"elevator.aster.stuck",
 		"elevator.peris.why",
 		"elevator.aster.wellness",
 		"elevator.aster.bang",
@@ -374,7 +374,21 @@ func _start_conversation() -> void:
 		"elevator.aster.gel",
 		"elevator.peris.gel",
 		"elevator.aster.thats",
-	], _start_units_activate, 0.5)
+	], _start_system_restored, 0.5)
+
+func _start_system_restored() -> void:
+	_enter_step("system_restored")
+	_camera.shake(0.1, 8.0)
+	# System restores devices — Aster's data overlay activates
+	_setup_perception("data", _aster_node)
+	# Control panel now visible through the data overlay
+	_control_panel.visible = true
+	DialogueData.say_to(_dialogue, "elevator.system.restored")
+	DialogueData.say_to(_dialogue, "elevator.aster.overlay")
+	_dialogue.dialogue_finished.connect(
+		func(): _scheduler.schedule_after(0.5, _start_units_activate, "units_activate"),
+		CONNECT_ONE_SHOT
+	)
 
 func _start_units_activate() -> void:
 	_enter_step("units_activate")
@@ -384,7 +398,7 @@ func _start_units_activate() -> void:
 	# Both escorts advance
 	_escort_1.walk_to(_peris_node.global_position + Vector3(0.5, 0, 0))
 	_escort_2.walk_to(_peris_node.global_position + Vector3(0, 0, 0.5))
-	_camera.shake(0.1, 8.0)
+	_camera.shake(0.2, 6.0)
 	_dialogue_chain(
 		["elevator.unit.protocol", "elevator.aster.device"],
 		func(): _scheduler.schedule_after(0.5, _start_emp_tutorial, "emp_tut")
