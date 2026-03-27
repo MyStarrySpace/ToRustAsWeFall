@@ -51,18 +51,6 @@ func _process(delta: float) -> void:
 		if _message_timer <= 0:
 			_message_label.modulate.a = 0.0
 
-	# Update ability display timers
-	for id in _abilities:
-		var ab: Dictionary = _abilities[id]
-		if ab.state == "active" and ab.remaining > 0:
-			ab.remaining = maxf(0, ab.remaining - delta)
-			_update_ability_label(id)
-		elif ab.state == "cooldown" and ab.remaining > 0:
-			ab.remaining = maxf(0, ab.remaining - delta)
-			if ab.remaining <= 0:
-				ab.state = "ready"
-			_update_ability_label(id)
-
 func _build_bottom_bar() -> void:
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)

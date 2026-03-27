@@ -77,21 +77,14 @@ elevator.narration.room,,normal,false,"A small room. Metal walls. Red emergency 
 elevator.peris.hey,Peris,normal,false,"Hey. Hey, can you hear me? Are you alive? Please be alive.",Peris approaches Aster
 elevator.aster.waking,Aster,normal,false,...I already submitted the forecast. Check the terminal.,Aster wakes groggy — still in the simulation mentally
 elevator.aster.where,Aster,normal,false,...This isn't the sim. Where are we?,Aster realizes
-elevator.peris.explain,Peris,normal,false,Some kind of transport. I woke up here. I don't know how long ago.,Peris explains
-elevator.aster.wellness,Aster,normal,false,"Wellness check. Some guy at the checkpoint started singing, and apparently being nearby means I need processing.",Aster's version of events — dismissive at first
-elevator.peris.singing,Peris,normal,false,Someone was singing?,
-elevator.aster.prickly,Aster,normal,false,"His scan didn't clear. Red light. And instead of stepping aside he just started singing. Some nursery rhyme. Prickly pear, something something.",
-elevator.aster.already_knew,Aster,normal,false,Like he didn't care. Like he already knew.,This sentence comes out different from how he intended
-elevator.aster.protocol,Aster,normal,false,Anyway. They sent a response team. Two naturalizers. Walked him out. Standard protocol.,Recovering — faster
-elevator.peris.and_then,Peris,normal,false,And then?,
-elevator.aster.bang,Aster,normal,false,He was singing... 'this is the way the world ends.' Three times. And then... 'not with a bang but a—',He stops
-elevator.aster.there_was,Aster,normal,false,...There was a bang.,
-elevator.aster.whimper,Aster,normal,false,And then one more word. Quiet. I almost didn't hear it. 'Whimper.',
-elevator.aster.ninety,Aster,normal,false,...The checkpoint reset after ninety seconds. I was next in the queue.,How close he was
-elevator.peris.helped,Peris,normal,false,I got sent here because I helped someone.,
-elevator.peris.sanction,Peris,normal,false,A client was attacked during a session. I protected him. My score dropped. They disconnected my feed and gave me breathing exercises. And gel squishing.,
-elevator.aster.gel,Aster,normal,false,...What?,
-elevator.peris.gel,Peris,normal,false,Satisfying content. Gel being squished. Soap being cut. They took away my clients and gave me gel.,
+elevator.peris.trapped,Peris,normal,false,I tried the doors. Nothing. No signal on my device either.,First thing: they're stuck
+elevator.aster.stuck,Aster,normal,false,Some kind of transport. No maintenance access. No panel response.,Aster tries data approach
+elevator.peris.why,Peris,normal,false,Why are we here?,
+elevator.aster.wellness,Aster,normal,false,"Tag Day. A citizen's scan failed, and they... the naturalizers took him. I was next in the queue.",Compressed version
+elevator.aster.bang,Aster,normal,false,"He was singing. 'Not with a bang but a—' ...there was a bang. The checkpoint reset after ninety seconds.",The full horror in two sentences
+elevator.peris.helped,Peris,normal,false,I protected a client during an attack. They gave me a sanction and gel squishing.,Peris's compressed version
+elevator.aster.gel,Aster,normal,false,...Gel?,
+elevator.peris.gel,Peris,normal,false,Satisfying content. Soap being cut. They took my clients and gave me gel.,
 elevator.aster.thats,Aster,normal,false,That's...,He doesn't finish — the unit activates
 elevator.unit.protocol,EU-1,data,false,PASSENGERS CONSCIOUS  //  DISTRESS DETECTED  //  INITIATING RE-SEDATION PROTOCOL,Escort unit activates
 elevator.aster.device,Aster,normal,false,"No no no. My device. I can pulse it, fry their circuits. Both of them.",Aster panicking but finding a solution

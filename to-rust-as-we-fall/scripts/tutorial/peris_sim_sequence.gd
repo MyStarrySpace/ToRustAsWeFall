@@ -10,6 +10,7 @@ extends TutorialSequence
 
 var _has_sprinted := false
 var _has_protected := false
+var _protect_end_tick := 0.0
 
 var _monos
 var _portal_visual: MeshInstance3D
@@ -142,6 +143,13 @@ func _on_process(delta: float, spd: float) -> void:
 	# Attack light flash
 	if _attack_particles and _attack_particles.visible:
 		_attack_particles.light_energy = 3.0 + sin(Time.get_ticks_msec() * 0.015) * 2.0
+
+	# Protect ability display from scheduler ticks
+	if _protect_end_tick > 0 and _hud:
+		var remaining := maxf(0, _protect_end_tick - _scheduler.get_current_tick())
+		_hud.set_ability_state("protect", "active", remaining)
+		if remaining <= 0:
+			_protect_end_tick = 0.0
 
 # --- Per-frame visual helpers ---
 
@@ -286,6 +294,7 @@ func _on_protect_pressed() -> void:
 	if _current_step != "protect" or _has_protected:
 		return
 	_has_protected = true
+	_protect_end_tick = _scheduler.get_current_tick() + 5.0
 	if _hud:
 		_hud.set_ability_state("protect", "active", 5.0)
 		_hud.show_message("Peris: PROTECT! Absorbing damage from nearby allies.", 2.0)

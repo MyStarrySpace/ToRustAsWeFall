@@ -30,9 +30,9 @@ var _hud  # GameHUD
 # EMP state
 var _emp_count := 0
 var _emp_queued := false
+var _emp_cooldown_end := 0.0  # scheduler tick when cooldown expires
 var _unit_1_stunned := false
 var _unit_2_stunned := false
-var _reboot_timer := 30.0
 var _reboot_active := false
 var _stamina := 100.0
 
@@ -147,22 +147,13 @@ func _on_process(delta: float, spd: float) -> void:
 	if _unit_2_stunned and _escort_2:
 		_escort_2.visible = int(Time.get_ticks_msec() / 100) % 2 == 0
 
-	# Reboot timer
-	if _reboot_active:
-		_reboot_timer -= delta * spd
-		if _reboot_timer <= 0:
-			_reboot_timer = 30.0
-			_unit_1_stunned = false
-			_unit_2_stunned = false
-			if _escort_1:
-				_escort_1.modulate.a = 1.0
-			if _escort_2:
-				_escort_2.modulate.a = 1.0
-			# Units reboot — re-trigger EMP tutorial if not past it
-			if _current_step in ["emp_tutorial", "emp_tutorial_2", "multiselect_tutorial"]:
-				_emp_count = 0
-				_enter_step("units_activate")
-				_start_units_activate()
+	# Update EMP cooldown display from scheduler ticks
+	if _emp_cooldown_end > 0:
+		var remaining := maxf(0, _emp_cooldown_end - _scheduler.get_current_tick())
+		_hud.set_ability_state("emp", "cooldown", remaining)
+		if remaining <= 0:
+			_emp_cooldown_end = 0.0
+			_hud.set_ability_state("emp", "ready")
 
 	# Transition out fade
 	if _current_step == "transition_out":
@@ -229,6 +220,7 @@ func _on_emp_pressed() -> void:
 func _fire_emp_both() -> void:
 	_stamina = maxf(0, _stamina - 25.0)
 	_hud.set_portrait_stat("peris", "sta", _stamina)
+	_emp_cooldown_end = _scheduler.get_current_tick() + 10.0
 	_hud.set_ability_state("emp", "cooldown", 10.0)
 	_camera.shake(0.3, 4.0)
 	_escort_1.stop()
@@ -237,9 +229,25 @@ func _fire_emp_both() -> void:
 	_unit_2_stunned = true
 	_emp_count = 2
 	_reboot_active = true
-	_reboot_timer = 30.0
 	_tutorial_prompt.hide_prompt()
+	# Reboot and multiselect tutorial on the scheduler
+	_scheduler.schedule_after(30.0, _on_reboot, "reboot")
 	_scheduler.schedule_after(1.5, _start_multiselect_tutorial, "multiselect")
+
+func _on_reboot() -> void:
+	if not _reboot_active:
+		return
+	_unit_1_stunned = false
+	_unit_2_stunned = false
+	if _escort_1:
+		_escort_1.visible = true
+	if _escort_2:
+		_escort_2.visible = true
+	if _current_step in ["emp_tutorial", "multiselect_tutorial"]:
+		_emp_count = 0
+		_reboot_active = false
+		_enter_step("units_activate")
+		_start_units_activate()
 
 func _on_exit_button_pressed() -> void:
 	# Flash "NO EXIT" on the indicator
@@ -357,19 +365,12 @@ func _start_conversation() -> void:
 	_enter_step("conversation")
 	_dialogue.default_hold_time = 3.0
 	_dialogue_chain([
-		"elevator.peris.explain",
+		"elevator.peris.trapped",
+		"elevator.aster.stuck",
+		"elevator.peris.why",
 		"elevator.aster.wellness",
-		"elevator.peris.singing",
-		"elevator.aster.prickly",
-		"elevator.aster.already_knew",
-		"elevator.aster.protocol",
-		"elevator.peris.and_then",
 		"elevator.aster.bang",
-		"elevator.aster.there_was",
-		"elevator.aster.whimper",
-		"elevator.aster.ninety",
 		"elevator.peris.helped",
-		"elevator.peris.sanction",
 		"elevator.aster.gel",
 		"elevator.peris.gel",
 		"elevator.aster.thats",
