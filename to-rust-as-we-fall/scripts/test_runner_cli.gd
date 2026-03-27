@@ -823,10 +823,12 @@ func _test_elevator_dialogue() -> void:
 			var target: Vector3 = instance.ASTER_POS + Vector3(0.5, 0.5, 0)
 			instance._peris_node.global_position = target
 			instance._game_state.characters["peris"].position = target,
+		"units_activate": func():
+			# Resume from auto-pause so dialogue can advance
+			instance._scheduler.resume(),
 		"emp_tutorial": func():
-			instance._on_emp_pressed(),
-		"emp_tutorial_2": func():
-			instance._on_emp_pressed(),
+			instance._on_emp_pressed()
+			instance._flush_queued_abilities(),
 		"multiselect_tutorial": func():
 			# Teleport both near panel
 			var pp: Vector3 = instance.PANEL_POS + Vector3(-0.5, 0.5, 0)

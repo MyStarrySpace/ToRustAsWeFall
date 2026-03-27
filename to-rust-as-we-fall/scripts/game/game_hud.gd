@@ -550,6 +550,8 @@ func _update_ability_label(id: String) -> void:
 			btn.text = "%s  %ds" % [ab.display_name, ceili(ab.remaining)]
 		"cooldown":
 			btn.text = "%s  (%ds)" % [ab.display_name, ceili(ab.remaining)]
+		"queued":
+			btn.text = "%s  >>>" % ab.display_name
 		_:
 			btn.text = "%s  %s" % [ab.display_name, ab.keybind]
 
@@ -566,6 +568,10 @@ func _style_ability_button(id: String) -> void:
 			style.bg_color = Color(0.06, 0.06, 0.08, 0.9)
 			style.border_color = Color(ab.color, 0.2)
 			btn.add_theme_color_override("font_color", Color(ab.color, 0.35))
+		"queued":
+			style.bg_color = Color(ab.color.darkened(0.6), 0.9)
+			style.border_color = Color(ab.color, 0.8)
+			btn.add_theme_color_override("font_color", Color(ab.color, 0.9))
 		"disabled":
 			style.bg_color = Color(0.05, 0.05, 0.06, 0.9)
 			style.border_color = Color(0.12, 0.12, 0.15, 0.3)

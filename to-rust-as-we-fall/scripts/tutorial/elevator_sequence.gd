@@ -29,6 +29,7 @@ var _hud  # GameHUD
 
 # EMP state
 var _emp_count := 0
+var _emp_queued := false
 var _unit_1_stunned := false
 var _unit_2_stunned := false
 var _reboot_timer := 30.0
@@ -199,19 +200,31 @@ func _unhandled_key_input(event: InputEvent) -> void:
 func _toggle_pause() -> void:
 	if _scheduler.is_paused():
 		_scheduler.resume()
+		_hud.set_paused(false)
+		_flush_queued_abilities()
 	else:
 		_scheduler.pause()
-	_hud.set_paused(_scheduler.is_paused())
+		_hud.set_paused(true)
 
 func _on_pause_toggled(is_paused: bool) -> void:
 	if is_paused:
 		_scheduler.pause()
 	else:
 		_scheduler.resume()
+		_flush_queued_abilities()
+
+func _flush_queued_abilities() -> void:
+	if _emp_queued:
+		_emp_queued = false
+		_fire_emp_both()
 
 func _on_emp_pressed() -> void:
 	if _current_step == "emp_tutorial" and _emp_count == 0:
-		_fire_emp_both()
+		if _scheduler.is_paused():
+			_emp_queued = true
+			_hud.set_ability_state("emp", "queued")
+		else:
+			_fire_emp_both()
 
 func _fire_emp_both() -> void:
 	_stamina = maxf(0, _stamina - 25.0)
