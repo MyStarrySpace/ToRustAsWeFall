@@ -36,6 +36,9 @@ var _unit_2_stunned := false
 var _reboot_active := false
 var _stamina := 100.0
 
+# Bridge ecology
+var _bridge_chelators: Array[MeshInstance3D] = []
+
 # Positions (elevator ~8x8, tall ceiling)
 const ELEVATOR_SIZE := Vector3(8.0, 4.0, 8.0)
 const PERIS_START := Vector3(-1.0, 0.5, 1.5)
@@ -154,6 +157,16 @@ func _on_process(delta: float, spd: float) -> void:
 		if remaining <= 0:
 			_emp_cooldown_end = 0.0
 			_hud.set_ability_state("emp", "ready")
+
+	# Chelators drift along walls below the bridge
+	for i in range(_bridge_chelators.size()):
+		var c: MeshInstance3D = _bridge_chelators[i]
+		c.position.x += delta * spd * 0.3
+		c.rotation.y += delta * spd * 0.8
+		# Loop back when past the bridge
+		var bridge_end := ELEVATOR_SIZE.x / 2.0 + 0.5 + 7.0 + 12.0
+		if c.position.x > bridge_end:
+			c.position.x -= 11.0
 
 	# Transition out fade
 	if _current_step == "transition_out":
@@ -580,17 +593,75 @@ func _build_bridge_environment() -> void:
 	bridge_light.omni_range = 10.0
 	env.add_child(bridge_light)
 
-	# Below the bridge: dim suggestions of the world below
-	# Iron blooms (faint orange glow)
-	for i in range(3):
+	# Below the bridge: the corridor ecology visible as a living system
+	var ground_y := -4.0
+
+	# Iron blooms (faint orange glow on walls and floor)
+	for i in range(4):
 		var bloom := OmniLight3D.new()
-		bloom.position = Vector3(bridge_start + 2.0 + i * 4.0, -3.0, randf_range(-4, 4))
+		bloom.position = Vector3(bridge_start + 1.5 + i * 3.0, ground_y + 1.0, randf_range(-4, 4))
 		bloom.light_color = Color(0.7, 0.3, 0.1)
-		bloom.light_energy = 0.4
+		bloom.light_energy = 0.5
 		bloom.omni_range = 3.0
 		env.add_child(bloom)
 
-	# Bodies below (dark capsules on the ground far below)
+	# Chelators — small ring-shaped things moving along the walls
+	for i in range(6):
+		var chelator := MeshInstance3D.new()
+		var torus := TorusMesh.new()
+		torus.inner_radius = 0.04
+		torus.outer_radius = 0.12
+		chelator.mesh = torus
+		var cm := StandardMaterial3D.new()
+		cm.albedo_color = Color(0.4, 0.25, 0.15)
+		cm.metallic = 0.6
+		cm.roughness = 0.3
+		chelator.material_override = cm
+		var cx := bridge_start + 1.0 + i * 2.0
+		var cz := -5.0 + randf_range(-1, 1) if i % 2 == 0 else 5.0 + randf_range(-1, 1)
+		chelator.position = Vector3(cx, ground_y + 0.5 + randf_range(0, 2.0), cz)
+		chelator.rotation = Vector3(randf_range(0, TAU), randf_range(0, TAU), 0)
+		env.add_child(chelator)
+		_bridge_chelators.append(chelator)
+
+	# Fluor — yellow-green bioluminescence in a breached corner
+	var fluor_light := OmniLight3D.new()
+	fluor_light.position = Vector3(bridge_start + 3.0, ground_y + 1.5, 6.0)
+	fluor_light.light_color = Color(0.6, 0.9, 0.2)
+	fluor_light.light_energy = 0.8
+	fluor_light.omni_range = 3.5
+	env.add_child(fluor_light)
+	var fluor_mesh := MeshInstance3D.new()
+	var fluor_sphere := SphereMesh.new()
+	fluor_sphere.radius = 0.3
+	fluor_sphere.height = 0.6
+	fluor_mesh.mesh = fluor_sphere
+	var fm := StandardMaterial3D.new()
+	fm.albedo_color = Color(0.4, 0.7, 0.15, 0.7)
+	fm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fm.emission_enabled = true
+	fm.emission = Color(0.5, 0.8, 0.2)
+	fm.emission_energy_multiplier = 1.5
+	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fluor_mesh.material_override = fm
+	fluor_mesh.position = Vector3(bridge_start + 3.0, ground_y + 1.2, 6.0)
+	env.add_child(fluor_mesh)
+
+	# Chain — something long and dark hanging alongside a conduit bundle
+	var chain := MeshInstance3D.new()
+	var chain_mesh := CylinderMesh.new()
+	chain_mesh.top_radius = 0.06
+	chain_mesh.bottom_radius = 0.08
+	chain_mesh.height = 3.5
+	chain.mesh = chain_mesh
+	var chain_mat := StandardMaterial3D.new()
+	chain_mat.albedo_color = Color(0.08, 0.06, 0.05)
+	chain.material_override = chain_mat
+	chain.position = Vector3(bridge_start + 8.0, ground_y + 3.0, -5.5)
+	chain.rotation.z = 0.15
+	env.add_child(chain)
+
+	# Bodies between the blooms (figures that stopped moving long ago)
 	for i in range(4):
 		var body_mesh := MeshInstance3D.new()
 		var cap := CapsuleMesh.new()
@@ -600,17 +671,25 @@ func _build_bridge_environment() -> void:
 		var bm := StandardMaterial3D.new()
 		bm.albedo_color = Color(0.15, 0.12, 0.1)
 		body_mesh.material_override = bm
-		body_mesh.position = Vector3(bridge_start + 1.0 + i * 3.0, -4.0, randf_range(-3, 3))
+		body_mesh.position = Vector3(bridge_start + 1.0 + i * 3.0, ground_y, randf_range(-3, 3))
 		body_mesh.rotation.z = PI / 2.0
 		env.add_child(body_mesh)
 
-	# Distant terminal glow (faint blue-green)
+	# Powered terminal (faint blue-green deeper in the system)
 	var terminal_glow := OmniLight3D.new()
-	terminal_glow.position = Vector3(bridge_start + 10.0, -2.0, -5.0)
+	terminal_glow.position = Vector3(bridge_start + 10.0, ground_y + 2.0, -5.0)
 	terminal_glow.light_color = Color(0.2, 0.5, 0.4)
 	terminal_glow.light_energy = 0.6
 	terminal_glow.omni_range = 4.0
 	env.add_child(terminal_glow)
+
+	# Something growing in an alcove (blue-green, alive)
+	var growth_light := OmniLight3D.new()
+	growth_light.position = Vector3(bridge_start + 6.0, ground_y + 0.8, 5.5)
+	growth_light.light_color = Color(0.15, 0.5, 0.45)
+	growth_light.light_energy = 0.4
+	growth_light.omni_range = 2.5
+	env.add_child(growth_light)
 
 func _add_corridor_section(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> void:
 	var mesh := MeshInstance3D.new()
