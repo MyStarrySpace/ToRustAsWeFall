@@ -89,7 +89,7 @@ elevator.aster.thats,Aster,normal,false,That's...,Interrupted by system restorat
 elevator.system.restored,SYSTEM,data,false,MAINTENANCE CYCLE COMPLETE  //  DEVICE ACCESS RESTORED  //  RESUMING PASSENGER PROTOCOL,System restores devices and wakes escorts simultaneously
 elevator.aster.overlay,Aster,normal,false,My device. It's back. There's a maintenance panel behind the doors.,Aster's data overlay reveals the panel
 elevator.unit.protocol,EU-1,data,false,PASSENGERS CONSCIOUS  //  DISTRESS DETECTED  //  INITIATING RE-SEDATION PROTOCOL,Escort units activate as part of the same restoration
-elevator.aster.device,Aster,normal,false,"No no no. I can pulse them both. One burst.",Aster panicking but finding a solution
+elevator.aster.device,Aster,normal,false,"No no no. My device. I can pulse it, fry their circuits.",Aster panicking but finding a solution
 elevator.aster.another,Aster,normal,false,The other one! Again!,Second unit activates (legacy key)
 elevator.aster.stay_close,Aster,normal,false,They'll reboot. We don't have long. That panel. Now.,Post-EMP urgency
 elevator.aster.hack,Aster,normal,false,I can override this. Just need a moment...,Aster begins hacking the panel
