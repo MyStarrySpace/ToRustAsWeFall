@@ -19,7 +19,6 @@ Prickly pear prickly pear",Citizen murmuring in queue — nursery rhyme draws at
 tag_day.murmur.02,,poem,false,"Here we go round the prickly pear
 At five o'clock in the morning.",Citizen continues in queue before scan
 tag_day.scan_failed,STATION 7-B,data,false,SCAN FAILED  //  DISPATCHING RESPONSE UNIT,Citizen's device scan fails
-tag_day.naturalizers_grip,,data,false,The two white figures step forward. They take the citizen's arms. Gently. Efficiently.,Naturalizers grip citizen for corridor walk
 tag_day.nk_chat.01,,normal,false,"Looks like I win the bet. Not weird. He's just babbling like most of them did yesterday.",NK-01 claims victory — visible as Label3D if player pans
 tag_day.nk_chat.02,,normal,false,"Well, it's weirdly structured, unlike all that gibberish we heard.",NK-02 pushing back — the poem has form
 tag_day.nk_chat.03,,normal,false,"You'll call anything weird, like that case of complete silence.",NK-01 dismissing
