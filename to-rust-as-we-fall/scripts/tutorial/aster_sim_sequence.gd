@@ -159,7 +159,6 @@ func _start_ron_greeting() -> void:
 	_ron.stop()
 	DialogueData.say_to(_dialogue, "aster_sim.ron.greeting")
 	DialogueData.say_to(_dialogue, "aster_sim.ron.name")
-	DialogueData.say_to(_dialogue, "aster_sim.aster.forecast")
 	DialogueData.say_to(_dialogue, "aster_sim.aster.show")
 	_dialogue.dialogue_finished.connect(
 		func(): _scheduler.schedule_after(0, _start_show_terminal, "show_terminal"),

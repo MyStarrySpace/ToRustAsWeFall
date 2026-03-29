@@ -2,7 +2,6 @@ key,speaker,style,wait,text,context
 aster_sim.working.thought,,thought,false,"If I can get the baseline data right, I can predict thermal drift three cycles out instead of one...",Aster at his desk mumbling about forecasting
 aster_sim.ron.greeting,Ron,normal,false,"Hey hey, star of databank 534b!",Ron checks his device as he walks up
 aster_sim.ron.name,Ron,normal,false,"Aster! Your metrics this quarter are disgusting, you beast.",Ron glances at device — read the name off it
-aster_sim.aster.forecast,Aster,normal,false,"I've been trying to forecast instead of react. Would work better if we had more historical data, but...",Aster trails off and starts moving to terminal
 aster_sim.aster.show,Aster,normal,false,"Here, let me show you.",Tutorial beat: player moves Aster to terminal
 aster_sim.system.cleaned,,data,false,The data has been cleaned and normalized to correct for anomalies. No further analysis is necessary.,Visible on terminal — set dressing now; most important sentence later
 aster_sim.ron.drinks,Ron,normal,false,"Ah well, that's part of the job! I think we're both glad for unlimited drinks and not having to do backbreaking manual labor. Speaking of which, enjoy the new drink machine! Unlimited, as always, for top performers like you.",Ron offering perks as compensation — institutional warmth
