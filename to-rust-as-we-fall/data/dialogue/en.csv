@@ -59,7 +59,6 @@ tag_day.report_blocked,ASTER,normal,false,"Ugh, can't even make an incident repo
 tag_day.scan_passed,STATION 7-B,data,false,TAG VERIFICATION: PASSED  //  CLEARANCE NOMINAL,Aster scans clean
 tag_day.clearance,,data,false,Blue light. Clean reading.,Blue clearance — auto-advances into transition
 peris_sim.waiting.thought,,thought,false,Monos should be connecting soon. He's always a little late.,Peris at her desk waiting for client
-peris_sim.feed_hum,,normal,false,The feed terminal hums. The session slot is open. No connection yet.,Portal waiting for connection
 peris_sim.monos.late,Monos,normal,false,Sorry I'm late. Sorry. I was — there was someone following me. On the way here. I thought I lost them but...,Monos arrives flustered through the portal
 peris_sim.monos.start,Monos,normal,false,Anyway. I'm here now. Let's start.,
 peris_sim.session_begins,,normal,false,The session begins. Monos is talking about his week. Completion markers tick.,Session in progress
