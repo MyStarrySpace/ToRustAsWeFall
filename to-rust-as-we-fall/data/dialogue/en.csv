@@ -55,7 +55,7 @@ tag_day.fragment.07,,fragment,false,Not with a BANG...,The final line breaks mid
 tag_day.fragment.08,,fragment,false,... but a whimper.,Last words
 tag_day.lockdown,,data,false,MEDICAL BAY PROTOCOL  //  ENFORCEMENT ENABLED  //  PLEASE REMAIN IN POSITION,Lockdown alarm after neutralization
 tag_day.groan,BYSTANDER,normal,false,Come on... I need to get back to work.,Bystander reacting to the lockdown delay
-tag_day.report_blocked,ASTER,data,false,Incident report... access denied. Device is on lockdown. I'll have to remember to log this later.,"Aster tries to file a report, device locked during protocol enforcement"
+tag_day.report_blocked,ASTER,normal,false,"Ugh, can't even make an incident report.",Aster frustrated — device locked during protocol enforcement
 tag_day.scan_passed,STATION 7-B,data,false,TAG VERIFICATION: PASSED  //  CLEARANCE NOMINAL,Aster scans clean
 tag_day.clearance,,data,false,Blue light. Clean reading.,Blue clearance — auto-advances into transition
 peris_sim.waiting.thought,,thought,false,Monos should be connecting soon. He's always a little late.,Peris at her desk waiting for client
