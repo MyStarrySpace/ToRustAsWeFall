@@ -247,7 +247,7 @@ func _start_transition_out() -> void:
 
 func _complete() -> void:
 	_current_step = "complete"
-	get_tree().change_scene_to_file("res://scenes/tutorial/tag_day.tscn")
+	get_tree().change_scene_to_file("res://scenes/tutorial/peris_sim.tscn")
 
 func _update_atp_display() -> void:
 	_atp_bar.value = _atp

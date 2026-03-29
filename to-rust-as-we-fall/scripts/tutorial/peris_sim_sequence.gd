@@ -8,6 +8,8 @@ extends TutorialSequence
 ## Event-driven: uses EventScheduler + GameState interpolation.
 ## Each step is a function that does its work and schedules the next event.
 
+static var _visit_phase := 1
+
 var _has_sprinted := false
 var _has_protected := false
 var _protect_end_tick := 0.0
@@ -101,7 +103,14 @@ func _setup_ui() -> void:
 func _begin() -> void:
 	_current_step = "fade_in"
 	_player.set_move_enabled(false)
-	_fade_from(Color(0.15, 0.1, 0.03, 1), 3.0, _start_workspace, "workspace")
+	if _visit_phase == 1:
+		_fade_from(Color(0.15, 0.1, 0.03, 1), 3.0, _start_workspace, "workspace")
+	else:
+		# Phase 2: returning from Tag Day — session already in progress
+		_monos.visible = true
+		_portal_light.light_color = Color(0.9, 0.6, 0.3)
+		_portal_light.light_energy = 3.0
+		_fade_from(Color(0.15, 0.1, 0.03, 1), 3.0, _start_session_begins, "session_begins")
 
 func _compute_speed() -> float:
 	var spd := 10.0 if Input.is_key_pressed(KEY_F) else 1.0
@@ -226,8 +235,10 @@ func _start_monos_arrives() -> void:
 	_portal_light.light_energy = 3.0
 	DialogueData.say_to(_dialogue, "peris_sim.monos.late")
 	DialogueData.say_to(_dialogue, "peris_sim.monos.start")
+	DialogueData.say_to(_dialogue, "peris_sim.peris.week")
+	DialogueData.say_to(_dialogue, "peris_sim.monos.week")
 	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_session_begins, "session_begins"),
+		func(): _scheduler.schedule_after(0, _start_transition_out, "transition_out"),
 		CONNECT_ONE_SHOT
 	)
 
@@ -341,7 +352,11 @@ func _start_transition_out() -> void:
 
 func _complete() -> void:
 	_current_step = "complete"
-	get_tree().change_scene_to_file("res://scenes/tutorial/elevator.tscn")
+	if _visit_phase == 1:
+		_visit_phase = 2
+		get_tree().change_scene_to_file("res://scenes/tutorial/tag_day.tscn")
+	else:
+		get_tree().change_scene_to_file("res://scenes/tutorial/elevator.tscn")
 
 # --- Session timer ---
 

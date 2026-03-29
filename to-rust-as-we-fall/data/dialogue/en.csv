@@ -61,7 +61,8 @@ tag_day.clearance,,data,false,Blue light. Clean reading.,Blue clearance — auto
 peris_sim.waiting.thought,,thought,false,Monos should be connecting soon. He's always a little late.,Peris at her desk waiting for client
 peris_sim.monos.late,Monos,normal,false,Sorry I'm late. Sorry. I was — there was someone following me. On the way here. I thought I lost them but...,Monos arrives flustered through the portal
 peris_sim.monos.start,Monos,normal,false,Anyway. I'm here now. Let's start.,
-peris_sim.session_begins,,normal,false,The session begins. Monos is talking about his week. Completion markers tick.,Session in progress
+peris_sim.peris.week,Peris,normal,false,"So, how's your week been?",Session opener — casual warmth
+peris_sim.monos.week,Monos,normal,false,"It's been... definitely been a week.",Monos tired — not elaborating
 peris_sim.monos.hit,Monos,normal,false,—!,Attack through the portal — Monos is hurt
 peris_sim.attack_narration,,normal,false,Something reaches through the portal connection. Monos recoils. He's hurt.,
 peris_sim.system.overtime,SYSTEM,data,false,SESSION OVERTIME — TERMINATE AND LOG NOTES?,System prompting termination
