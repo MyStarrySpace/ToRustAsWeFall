@@ -219,6 +219,8 @@ func _begin_corridor_walk() -> void:
 	_scheduler.schedule_after(8.0, func(): _show_nk_chat(_naturalizer_2, DialogueData.text("tag_day.nk_chat.02")), "nk_chat2")
 	_scheduler.schedule_after(13.0, func(): _show_nk_chat(_naturalizer_1, DialogueData.text("tag_day.nk_chat.03")), "nk_chat3")
 	_scheduler.schedule_after(18.0, func(): _show_nk_chat(_naturalizer_2, DialogueData.text("tag_day.nk_chat.04")), "nk_chat4")
+	_scheduler.schedule_after(23.0, func(): _show_nk_chat(_naturalizer_1, DialogueData.text("tag_day.nk_chat.05")), "nk_chat5")
+	_scheduler.schedule_after(28.0, func(): _show_nk_chat(_naturalizer_2, DialogueData.text("tag_day.nk_chat.06")), "nk_chat6")
 
 func _show_nk_chat(nk: Node3D, text: String) -> void:
 	var old := nk.find_child("ChatLabel", false, false)

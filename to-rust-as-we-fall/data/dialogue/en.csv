@@ -1,7 +1,9 @@
 key,speaker,style,wait,text,context
-aster_sim.working.thought,,thought,false,"If I can get the baseline data right, I can predict thermal drift three cycles out instead of one...",Aster at his desk mumbling about forecasting
+aster_sim.working.thought.01,,thought,false,"Ugh, my monitoring model's off again...",Aster frustrated at desk — model isn't working
+aster_sim.working.thought.02,,thought,false,"They keep complaining about just patching things, yet nobody wants to approve my historical data access requests...",Institutional stonewalling — he's trying to do better work
 aster_sim.ron.greeting,Ron,normal,false,"Hey hey, star of databank 534b!",Ron checks his device as he walks up
 aster_sim.ron.name,Ron,normal,false,"Aster! Your metrics this quarter are disgusting, you beast.",Ron glances at device — read the name off it
+aster_sim.ron.working_on,Ron,normal,false,What's the big man working on now?,Ron genuinely curious — sets up Aster showing the terminal
 aster_sim.aster.show,Aster,normal,false,"Here, let me show you.",Tutorial beat: player moves Aster to terminal
 aster_sim.system.cleaned,,data,false,The data has been cleaned and normalized to correct for anomalies. No further analysis is necessary.,Visible on terminal — set dressing now; most important sentence later
 aster_sim.ron.drinks,Ron,normal,false,"Ah well, that's part of the job! I think we're both glad for unlimited drinks and not having to do backbreaking manual labor. Speaking of which, enjoy the new drink machine! Unlimited, as always, for top performers like you.",Ron offering perks as compensation — institutional warmth
@@ -18,10 +20,12 @@ tag_day.murmur.02,,poem,false,"Here we go round the prickly pear
 At five o'clock in the morning.",Citizen continues in queue before scan
 tag_day.scan_failed,STATION 7-B,data,false,SCAN FAILED  //  DISPATCHING RESPONSE UNIT,Citizen's device scan fails
 tag_day.naturalizers_grip,,data,false,The two white figures step forward. They take the citizen's arms. Gently. Efficiently.,Naturalizers grip citizen for corridor walk
-tag_day.nk_chat.01,,normal,false,Structured. The speech is definitely structured.,NK-01 making a bet — visible as Label3D if player pans
-tag_day.nk_chat.02,,normal,false,You said that about the last one.,NK-02 pushing back
-tag_day.nk_chat.03,,normal,false,The last one was silent. I said it'd be weird structured speech. Silent counts as weird.,NK-01 defending
-tag_day.nk_chat.04,,normal,false,"Yet you didn't get that hint last time you tried courtship, didn't you?",NK-02 poking fun at his relationship
+tag_day.nk_chat.01,,normal,false,"Looks like I win the bet. Not weird. He's just babbling like most of them did yesterday.",NK-01 claims victory — visible as Label3D if player pans
+tag_day.nk_chat.02,,normal,false,"Well, it's weirdly structured, unlike all that gibberish we heard.",NK-02 pushing back — the poem has form
+tag_day.nk_chat.03,,normal,false,"You'll call anything weird, like that case of complete silence.",NK-01 dismissing
+tag_day.nk_chat.04,,normal,false,"Silence IS weird. Yet you didn't get that hint last time you tried courtship, did you?",NK-02 pivots to personal jab
+tag_day.nk_chat.05,,normal,false,"We had three cases of silence in the last week. It's completely normal.",NK-01 deflecting with statistics
+tag_day.nk_chat.06,,normal,false,...says the guy who spent his date completely silent before getting completely ghosted.,NK-02 lands the kill shot
 tag_day.poem.01,,poem,false,"Between the idea
 And the reality",Shadow stanzas begin — corridor walk
 tag_day.poem.02,,poem,false,"Between the motion

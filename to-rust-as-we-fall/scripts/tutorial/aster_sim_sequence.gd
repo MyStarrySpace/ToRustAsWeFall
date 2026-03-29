@@ -145,7 +145,11 @@ func _start_fade_in() -> void:
 
 func _start_working() -> void:
 	_current_step = "working"
-	_show_thought(DialogueData.text("aster_sim.working.thought"))
+	_show_thought(DialogueData.text("aster_sim.working.thought.01"))
+	_scheduler.schedule_after(3.0, _show_second_thought, "second_thought")
+
+func _show_second_thought() -> void:
+	_show_thought(DialogueData.text("aster_sim.working.thought.02"))
 	_scheduler.schedule_after(4.0, _start_ron_approaches, "ron_approaches")
 
 func _start_ron_approaches() -> void:
@@ -159,6 +163,7 @@ func _start_ron_greeting() -> void:
 	_ron.stop()
 	DialogueData.say_to(_dialogue, "aster_sim.ron.greeting")
 	DialogueData.say_to(_dialogue, "aster_sim.ron.name")
+	DialogueData.say_to(_dialogue, "aster_sim.ron.working_on")
 	DialogueData.say_to(_dialogue, "aster_sim.aster.show")
 	_dialogue.dialogue_finished.connect(
 		func(): _scheduler.schedule_after(0, _start_show_terminal, "show_terminal"),
