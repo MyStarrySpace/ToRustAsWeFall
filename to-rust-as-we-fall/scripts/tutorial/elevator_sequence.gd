@@ -246,12 +246,13 @@ func _on_process(delta: float, spd: float) -> void:
 			_player.set_move_enabled(false)
 			_start_wake_aster()
 
-	# Multi-select gate: both near panel
+	# Multi-select gate: both near the door exit
 	if _current_step == "multiselect_tutorial":
+		var exit_gate := Vector3(ELEVATOR_SIZE.x / 2.0, 0, 0)
 		var pp := _game_state.get_position("peris")
 		var ap := _game_state.get_position("aster")
-		if pp.distance_to(PANEL_POS) < 2.0 and ap.distance_to(PANEL_POS) < 2.0:
-			_start_hack_tutorial()
+		if pp.distance_to(exit_gate) < 2.5 and ap.distance_to(exit_gate) < 2.5:
+			_start_corridor()
 
 # --- Input ---
 
@@ -264,7 +265,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			_toggle_pause()
 		elif kc == KEY_Q:
 			_on_emp_pressed()
-		elif kc == KEY_TAB and _current_step in ["multiselect_tutorial", "hack_tutorial"]:
+		elif kc == KEY_TAB and _current_step in ["hack_tutorial", "multiselect_tutorial"]:
 			_switch_character()
 
 func _toggle_pause() -> void:
@@ -309,9 +310,9 @@ func _fire_emp_both() -> void:
 	_emp_count = 2
 	_reboot_active = true
 	_tutorial_prompt.hide_prompt()
-	# Reboot and multiselect tutorial on the scheduler
+	# Reboot and hack tutorial on the scheduler
 	_scheduler.schedule_after(30.0, _on_reboot, "reboot")
-	_scheduler.schedule_after(1.5, _start_multiselect_tutorial, "multiselect")
+	_scheduler.schedule_after(1.5, _start_hack_tutorial, "hack")
 
 func _on_reboot() -> void:
 	if not _reboot_active:
@@ -322,7 +323,7 @@ func _on_reboot() -> void:
 		_escort_1.visible = true
 	if _escort_2:
 		_escort_2.visible = true
-	if _current_step in ["emp_tutorial", "multiselect_tutorial"]:
+	if _current_step in ["emp_tutorial", "hack_tutorial", "multiselect_tutorial"]:
 		_emp_count = 0
 		_reboot_active = false
 		_enter_step("units_activate")
@@ -493,28 +494,12 @@ func _start_emp_tutorial_2() -> void:
 	# Kept for reboot fallback but no longer triggered normally
 	_enter_step("emp_tutorial_2")
 
-func _start_multiselect_tutorial() -> void:
-	_enter_step("multiselect_tutorial")
-	_peris_node.set_move_enabled(true)
-	_aster_node.set_move_enabled(false)
-	_active_character = "peris"
-	_player = _peris_node
-	_camera.target = _peris_node
-	_hud.set_active_portrait("peris")
-	# Auto-pause so the player can plan their move
-	_scheduler.pause()
-	_hud.set_paused(true)
-	DialogueData.say_to(_dialogue, "elevator.aster.stay_close")
-	_dialogue.dialogue_finished.connect(func():
-		_tutorial_prompt.show_prompt("[Tab] — switch  [Space] — unpause")
-	, CONNECT_ONE_SHOT)
-
 func _start_hack_tutorial() -> void:
 	_enter_step("hack_tutorial")
 	_tutorial_prompt.hide_prompt()
-	# Force Aster active for hacking
+	# Auto-switch to Aster for hacking
 	if _active_character != "aster":
-		_switch_character()
+		_select_character("aster")
 	_peris_node.set_move_enabled(false)
 	_control_panel.visible = true
 	DialogueData.say_to(_dialogue, "elevator.aster.hack")
@@ -554,7 +539,19 @@ func _start_lockout() -> void:
 		"elevator.aster.locked",
 		"elevator.peris.back_to_what",
 		"elevator.aster.forward",
-	], func(): _scheduler.schedule_after(1.0, _start_corridor, "corridor"))
+	], func(): _scheduler.schedule_after(1.0, _start_multiselect_tutorial, "multiselect"))
+
+func _start_multiselect_tutorial() -> void:
+	_enter_step("multiselect_tutorial")
+	# Switch to Peris — both need to reach the exit
+	_select_character("peris")
+	_peris_node.set_move_enabled(true)
+	_scheduler.pause()
+	_hud.set_paused(true)
+	DialogueData.say_to(_dialogue, "elevator.aster.stay_close")
+	_dialogue.dialogue_finished.connect(func():
+		_tutorial_prompt.show_prompt("[Tab] — switch  [Space] — unpause")
+	, CONNECT_ONE_SHOT)
 
 func _start_corridor() -> void:
 	_enter_step("corridor")
