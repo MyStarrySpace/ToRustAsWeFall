@@ -254,6 +254,14 @@ func _on_process(delta: float, spd: float) -> void:
 		if pp.distance_to(exit_gate) < 2.5 and ap.distance_to(exit_gate) < 2.5:
 			_start_corridor()
 
+	# Route convergence gate: player reached the junction area
+	if _current_step == "route_choice":
+		var player_pos := _game_state.get_position("aster")
+		if player_pos.x > ROUTES_CONVERGE.x - 2.0:
+			_tutorial_prompt.hide_prompt()
+			_player.set_move_enabled(false)
+			_start_junction_arrive()
+
 # --- Input ---
 
 func _unhandled_key_input(event: InputEvent) -> void:
@@ -642,12 +650,12 @@ func _start_fallen() -> void:
 		"elevator.aster.two_paths",
 	], func(): _scheduler.schedule_after(1.5, _start_route_choice, "route_choice"))
 
-# --- Route Choice (stub — Phase 3) ---
+# --- Route Choice ---
 
 func _start_route_choice() -> void:
 	_enter_step("route_choice")
-	# Phase 3: fork geometry, position-gated convergence
-	_scheduler.schedule_after(2.0, _start_junction_arrive, "junction")
+	_player.set_move_enabled(true)
+	_tutorial_prompt.show_prompt("Click to move — choose a path")
 
 # --- Junction (stub — Phase 4) ---
 
@@ -842,6 +850,72 @@ func _build_below_chunk(parent: Node3D) -> void:
 	growth_light.light_energy = 0.4
 	growth_light.omni_range = 2.5
 	parent.add_child(growth_light)
+
+	# --- Route fork geometry ---
+	var fork_x := FORK_POS.x
+	var wall_h := 3.0
+	var wall_color := Color(0.08, 0.08, 0.1)
+
+	# Central divider wall that splits the path into two branches
+	_add_wall(parent, Vector3(fork_x + 8.0, ground_y + wall_h / 2.0, 0), Vector3(16, wall_h, 0.4), wall_color)
+
+	# Enemy route (north, z < 0): narrow, dark, red eyes suggest hostile presence
+	var en_z := -4.0
+	_add_wall(parent, Vector3(fork_x + 8.0, ground_y + wall_h / 2.0, en_z - 3.0), Vector3(16, wall_h, 0.3), wall_color)
+	# Hostile eye lights along the enemy route
+	for i in range(5):
+		var ex := fork_x + 2.0 + i * 3.5
+		for z_off in [-0.3, 0.3]:
+			var eye := OmniLight3D.new()
+			eye.position = Vector3(ex, ground_y + 1.2, en_z - 1.5 + z_off)
+			eye.light_color = Color(0.9, 0.15, 0.05)
+			eye.light_energy = 0.3
+			eye.omni_range = 1.2
+			parent.add_child(eye)
+
+	# Hazard route (south, z > 0): wider, iron patches, unstable ceiling drips
+	var hz_z := 4.0
+	_add_wall(parent, Vector3(fork_x + 8.0, ground_y + wall_h / 2.0, hz_z + 3.5), Vector3(16, wall_h, 0.3), wall_color)
+	# Iron deposit patches on the hazard floor
+	for i in range(3):
+		var ix := fork_x + 3.0 + i * 5.0
+		var iron := MeshInstance3D.new()
+		var ib := BoxMesh.new()
+		ib.size = Vector3(3, 0.05, 2.5)
+		iron.mesh = ib
+		var im := StandardMaterial3D.new()
+		im.albedo_color = Color(0.35, 0.15, 0.05)
+		im.emission_enabled = true
+		im.emission = Color(0.25, 0.08, 0.02)
+		im.emission_energy_multiplier = 0.3
+		iron.material_override = im
+		iron.position = Vector3(ix, ground_y + 0.02, hz_z + 1.0)
+		parent.add_child(iron)
+		# Iron glow
+		var ig := OmniLight3D.new()
+		ig.position = Vector3(ix, ground_y + 0.5, hz_z + 1.0)
+		ig.light_color = Color(0.7, 0.25, 0.05)
+		ig.light_energy = 0.6
+		ig.omni_range = 3.0
+		parent.add_child(ig)
+
+	# Ceiling drips along hazard route (rust stalactites)
+	for i in range(4):
+		var drip := MeshInstance3D.new()
+		var dc := CylinderMesh.new()
+		dc.top_radius = 0.02
+		dc.bottom_radius = 0.06
+		dc.height = 0.8
+		drip.mesh = dc
+		var dm := StandardMaterial3D.new()
+		dm.albedo_color = Color(0.3, 0.12, 0.06)
+		drip.material_override = dm
+		drip.position = Vector3(fork_x + 2.5 + i * 4.0, ground_y + wall_h - 0.4, hz_z + randf_range(-0.5, 2.0))
+		parent.add_child(drip)
+
+	# Convergence area — wider chamber where both routes meet
+	var conv_x := ROUTES_CONVERGE.x
+	_add_corridor_section(parent, Vector3(conv_x, ground_y - 0.04, 0), Vector3(8, 0.08, 12), Color(0.06, 0.06, 0.08))
 
 func _build_junction_chunk(parent: Node3D) -> void:
 	# Endo's shelter — built in Phase 4
