@@ -68,6 +68,9 @@ func _ready() -> void:
 			"--test-endo-drink":
 				ran_test = true
 				await _test_endo_drink()
+			"--test-ferrolure":
+				ran_test = true
+				await _test_ferrolure()
 			"--test-scene-load":
 				ran_test = true
 				await _test_scene_load()
@@ -106,6 +109,7 @@ func _run_all_tests() -> void:
 	await _test_elevator_dialogue()
 	await _test_endo_drink()
 	await _test_enemy()
+	await _test_ferrolure()
 
 # --- Test: Syntax ---
 # If we got this far, GDScript compiled successfully.
@@ -1207,6 +1211,74 @@ func _test_enemy() -> void:
 		"Enemy ignores player on hazard route dist=9 (got: %s)" % safe_enemy.get_state())
 
 	root.queue_free()
+	await get_tree().process_frame
+
+# --- Test: Ferrolure Gauntlet ---
+func _test_ferrolure() -> void:
+	_test_name = "Ferrolure"
+	var scene := load("res://scenes/tutorial/elevator.tscn")
+	if not scene:
+		_assert_true(false, "Scene loads")
+		return
+	var instance: Node = scene.instantiate()
+	get_tree().root.add_child(instance)
+	for i in range(3):
+		await get_tree().process_frame
+
+	# Load gauntlet chunk
+	instance._load_chunk("gauntlet")
+	for i in range(3):
+		await get_tree().process_frame
+
+	# Verify ferrolure mesh exists
+	_assert_true(instance._ferrolure_mesh != null, "Ferrolure mesh exists")
+
+	# Verify gauntlet enemies exist
+	_assert_true(instance._gauntlet_enemies.size() == 5,
+		"5 gauntlet enemies spawned (got: %d)" % instance._gauntlet_enemies.size())
+
+	# Verify enemies target players initially
+	var first_enemy: Enemy = instance._gauntlet_enemies[0]
+	_assert_true("aster" in first_enemy._detection_targets or "peris" in first_enemy._detection_targets,
+		"Enemies target players before ferrolure")
+
+	# Activate ferrolure
+	instance._on_ferrolure_activated()
+	for i in range(2):
+		await get_tree().process_frame
+
+	_assert_true(instance._ferrolure_active, "Ferrolure is active after activation")
+
+	# Verify enemies no longer target players
+	_assert_true(first_enemy._detection_targets.is_empty(),
+		"Enemies stop targeting players when lure active (targets: %s)" % str(first_enemy._detection_targets))
+
+	# Advance scheduler — enemies should move toward ferrolure position
+	for i in range(20):
+		instance._scheduler.advance(0.3)
+		await get_tree().process_frame
+
+	# Check that enemies moved toward the ferrolure
+	var lure_pos: Vector3 = instance.FERROLURE_POS
+	var near_lure := 0
+	for enemy in instance._gauntlet_enemies:
+		if is_instance_valid(enemy) and enemy.global_position.distance_to(lure_pos) < 8.0:
+			near_lure += 1
+	_assert_true(near_lure >= 3,
+		"Most enemies moved toward ferrolure (near: %d/5)" % near_lure)
+
+	# Expire ferrolure
+	instance._on_ferrolure_expired()
+	for i in range(2):
+		await get_tree().process_frame
+
+	_assert_true(not instance._ferrolure_active, "Ferrolure deactivated after expiry")
+
+	# Verify enemies re-target players
+	_assert_true("aster" in first_enemy._detection_targets or "peris" in first_enemy._detection_targets,
+		"Enemies re-target players after lure expires")
+
+	instance.queue_free()
 	await get_tree().process_frame
 
 # --- Dialogue Dump ---

@@ -44,3 +44,12 @@ elevator.peris.stomach,Peris,normal,false,Can't sleep well on an empty stomach.,
 elevator.endo.rest,,normal,false,"He moves to the window. Settles against the wall, watching outward.",Endo takes watch — no marker needed
 elevator.night.eyes,,poem,false,Red. Through the grating. Watching.,Pairs of eyes outside — the player sees them too
 elevator.dawn,,normal,false,"Morning. They're gone.",The eyes recede with the light
+elevator.morning.trail,,normal,false,"A faint wet trail near the shelter door, already drying. It wasn't there last night.",Evidence of the night visitors
+elevator.aster.back_in,Aster,normal,false,It's not letting me back in.,Aster tries his device — locked out of the simulation
+elevator.peris.back_to_what,Peris,normal,false,...Back in to what?,Not rhetorical — what exactly does he want to go back to
+elevator.endo.stands,,normal,false,"He stands. Looks at the corridor ahead, then at them. Steps toward the door.",Endo gestures: he's coming with
+elevator.peris.coming,Peris,normal,false,I think he's coming with us.,
+elevator.aster.ok,Aster,normal,false,I don't see why not.,
+elevator.aster.blocked,Aster,data,false,"Dense cluster ahead. Five, maybe six. Too many to push through.",Aster reads the gauntlet
+elevator.peris.ferrolure,Peris,normal,false,"There's something on the wall. Iron lure — ferrolure. If I activate it, they might go for that instead.",Peris recognizes the device
+elevator.ferrolure.active,,data,false,FERROLURE ACTIVE  //  SIDEROPHORE LURE  //  18s REMAINING,System readout

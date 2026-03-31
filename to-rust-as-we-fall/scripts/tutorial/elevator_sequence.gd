@@ -51,6 +51,12 @@ var _iframes: Dictionary = {}  # char_id -> scheduler tick when i-frames expire
 var _iron_patches: Array[Dictionary] = []
 const IRON_DAMAGE_PER_SEC := 8.0
 
+# Ferrolure
+var _ferrolure_active := false
+var _ferrolure_mesh: MeshInstance3D
+var _ferrolure_interactable: Node
+var _gauntlet_enemies: Array[Enemy] = []
+
 # Chunk system
 var _chunks: Dictionary = {}
 
@@ -84,6 +90,12 @@ const ROUTES_CONVERGE := Vector3(BRIDGE_END_X + 16.0, BELOW_Y, 0)
 const JUNCTION_POS := Vector3(BRIDGE_END_X + 18.0, BELOW_Y, 0)
 const SHELTER_SIZE := Vector3(6, 3, 5)
 
+# Ferrolure gauntlet (after shelter)
+const GAUNTLET_POS := Vector3(BRIDGE_END_X + 30.0, BELOW_Y, 0)
+const FERROLURE_POS := Vector3(BRIDGE_END_X + 28.0, BELOW_Y + 0.3, 4.0)
+const GAUNTLET_EXIT := Vector3(BRIDGE_END_X + 42.0, BELOW_Y, 0)
+const FERROLURE_DURATION := 18.0
+
 # --- Chunk management ---
 
 func _load_chunk(chunk_name: String) -> Node3D:
@@ -98,6 +110,7 @@ func _load_chunk(chunk_name: String) -> Node3D:
 		"bridge": _build_bridge_chunk(chunk)
 		"below": _build_below_chunk(chunk)
 		"junction": _build_junction_chunk(chunk)
+		"gauntlet": _build_gauntlet_chunk(chunk)
 	return chunk
 
 func _unload_chunk(chunk_name: String) -> void:
@@ -300,6 +313,14 @@ func _on_process(delta: float, spd: float) -> void:
 			_tutorial_prompt.hide_prompt()
 			_player.set_move_enabled(false)
 			_start_junction_arrive()
+
+	# Gauntlet exit gate: player passed the enemies
+	if _current_step == "gauntlet":
+		var player_pos := _game_state.get_position("aster")
+		if player_pos.x > GAUNTLET_EXIT.x - 2.0:
+			_tutorial_prompt.hide_prompt()
+			_player.set_move_enabled(false)
+			_complete()
 
 # --- Input ---
 
@@ -900,8 +921,77 @@ func _start_dawn() -> void:
 			break
 	DialogueData.say_to(_dialogue, "elevator.dawn")
 	_dialogue.dialogue_finished.connect(func():
-		_scheduler.schedule_after(1.0, _complete, "complete")
+		_scheduler.schedule_after(1.0, _start_morning, "morning")
 	, CONNECT_ONE_SHOT)
+
+# --- Morning / Endo Joins ---
+
+func _start_morning() -> void:
+	_enter_step("morning")
+	_dialogue_chain([
+		"elevator.morning.trail",
+		"elevator.aster.back_in",
+		"elevator.peris.back_to_what",
+		"elevator.endo.stands",
+		"elevator.peris.coming",
+		"elevator.aster.ok",
+	], func(): _scheduler.schedule_after(1.5, _start_gauntlet, "gauntlet"))
+
+# --- Ferrolure Gauntlet ---
+
+func _start_gauntlet() -> void:
+	_enter_step("gauntlet")
+	_load_chunk("gauntlet")
+	_unload_chunk("junction")
+	_player.set_move_enabled(true)
+	# Walk party to gauntlet entrance
+	var entrance := Vector3(GAUNTLET_POS.x - 6.0, BELOW_Y + 0.5, 0)
+	_game_state.command_move_to_pos("aster", entrance)
+	_game_state.command_move_to_pos("peris", entrance + Vector3(-1, 0, 1))
+	_game_state.command_move_to_pos("endo", entrance + Vector3(-1, 0, -1))
+	_dialogue_chain([
+		"elevator.aster.blocked",
+		"elevator.peris.ferrolure",
+	], func():
+		_tutorial_prompt.show_prompt("[Interact] — activate Ferrolure (Peris only)")
+	)
+
+func _on_ferrolure_activated() -> void:
+	if _ferrolure_active:
+		return
+	_ferrolure_active = true
+	_tutorial_prompt.hide_prompt()
+	# Visual: pulsing orange glow
+	if _ferrolure_mesh:
+		var mat := _ferrolure_mesh.material_override as StandardMaterial3D
+		if mat:
+			mat.emission_energy_multiplier = 3.0
+	# Redirect all gauntlet enemies to target the ferrolure position
+	for enemy in _gauntlet_enemies:
+		if is_instance_valid(enemy) and enemy.is_alive():
+			enemy._detection_targets = []
+			enemy._current_target_id = ""
+			enemy._change_state("idle")
+			if enemy.game_state and enemy.game_state.characters.has(enemy.char_id):
+				enemy.game_state.command_move_to_pos(enemy.char_id, FERROLURE_POS)
+	_show_marker(FERROLURE_POS + Vector3(0, 1.5, 0), "LURE ACTIVE")
+	_dialogue.default_hold_time = 2.0
+	DialogueData.say_to(_dialogue, "elevator.ferrolure.active")
+	# Timer: ferrolure expires after FERROLURE_DURATION
+	_scheduler.schedule_after(FERROLURE_DURATION, _on_ferrolure_expired, "ferrolure_expire")
+
+func _on_ferrolure_expired() -> void:
+	_ferrolure_active = false
+	_clear_markers()
+	if _ferrolure_mesh:
+		var mat := _ferrolure_mesh.material_override as StandardMaterial3D
+		if mat:
+			mat.emission_energy_multiplier = 0.5
+	# Enemies resume targeting players
+	for enemy in _gauntlet_enemies:
+		if is_instance_valid(enemy) and enemy.is_alive():
+			enemy._detection_targets = ["aster", "peris"]
+			enemy._change_state("idle")
 
 func _complete() -> void:
 	_enter_step("complete")
@@ -1304,6 +1394,78 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	_drink_mesh.material_override = drink_mat
 	_drink_mesh.position = Vector3(sx + 1.5, ground_y + 0.5, -1.0)
 	parent.add_child(_drink_mesh)
+
+func _build_gauntlet_chunk(parent: Node3D) -> void:
+	var ground_y := BELOW_Y
+	var gx := GAUNTLET_POS.x
+	var wc := Color(0.09, 0.09, 0.11)
+
+	# Ground floor
+	_add_corridor_section(parent, Vector3(gx, ground_y - 0.03, 0), Vector3(20, 0.06, 14), Color(0.05, 0.05, 0.07))
+	# Ground collision
+	var gb := StaticBody3D.new()
+	gb.position = Vector3(gx, ground_y - 0.01, 0)
+	gb.collision_layer = 1
+	gb.collision_mask = 0
+	var gc := CollisionShape3D.new()
+	var gs := BoxShape3D.new()
+	gs.size = Vector3(20, 0.02, 14)
+	gc.shape = gs
+	gb.add_child(gc)
+	parent.add_child(gb)
+
+	# Walls — corridor widens into a chamber
+	_add_wall(parent, Vector3(gx, ground_y + 1.5, -7.0), Vector3(20, 3, 0.3), wc)
+	_add_wall(parent, Vector3(gx, ground_y + 1.5, 7.0), Vector3(20, 3, 0.3), wc)
+	_add_wall(parent, Vector3(gx + 10.0, ground_y + 1.5, 0), Vector3(0.3, 3, 14), wc)
+
+	# Ferrolure — interactable iron lure device (only Peris can activate)
+	_ferrolure_mesh = MeshInstance3D.new()
+	_ferrolure_mesh.name = "Ferrolure"
+	var fsp := SphereMesh.new()
+	fsp.radius = 0.25
+	fsp.height = 0.5
+	_ferrolure_mesh.mesh = fsp
+	var fmat := StandardMaterial3D.new()
+	fmat.albedo_color = Color(0.7, 0.4, 0.1)
+	fmat.emission_enabled = true
+	fmat.emission = Color(0.6, 0.3, 0.05)
+	fmat.emission_energy_multiplier = 0.5
+	fmat.metallic = 0.5
+	_ferrolure_mesh.material_override = fmat
+	_ferrolure_mesh.position = FERROLURE_POS
+	parent.add_child(_ferrolure_mesh)
+
+	# Ferrolure interactable
+	_ferrolure_interactable = preload("res://scenes/game/interactable.tscn").instantiate()
+	_ferrolure_interactable.name = "FerrolureInteract"
+	_ferrolure_interactable.description = "Ferrolure"
+	_ferrolure_interactable.one_shot = true
+	_ferrolure_interactable.dwell_time = 1.0
+	_ferrolure_interactable.position = FERROLURE_POS
+	add_child(_ferrolure_interactable)
+	_ferrolure_interactable.interacted.connect(_on_ferrolure_activated)
+
+	# Gauntlet enemies — a cluster blocking the direct path
+	_gauntlet_enemies.clear()
+	for i in range(5):
+		var ex: float = gx - 2.0 + i * 2.5
+		var ez: float = randf_range(-3.0, 3.0)
+		var eid := "gauntlet_%d" % i
+		var enemy := _spawn_enemy(eid, Vector3(ex, ground_y + 0.5, ez), parent)
+		enemy.detection_range = 5.0
+		var pa := Vector3(ex - 1.0, ground_y + 0.5, ez - 1.5)
+		var pb := Vector3(ex + 1.0, ground_y + 0.5, ez + 1.5)
+		enemy.set_patrol([pa, pb])
+		_gauntlet_enemies.append(enemy)
+
+	# Dim lighting — ominous
+	var gauntlet_light := OmniLight3D.new()
+	gauntlet_light.position = Vector3(gx, ground_y + 2.5, 0)
+	gauntlet_light.light_color = Color(0.2, 0.12, 0.08)
+	gauntlet_light.light_energy = 1.5
+	gauntlet_light.omni_range = 12.0
+	parent.add_child(gauntlet_light)
 
 func _add_corridor_section(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> void:
 	var mesh := MeshInstance3D.new()
