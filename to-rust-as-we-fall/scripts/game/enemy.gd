@@ -6,9 +6,12 @@ extends Node3D
 ## so they respect speed multiplier (fast-forward) and pause automatically.
 ##
 ## Interfaces:
-##   State Machine — idle, patrol, alert, pursuit, dead
+##   State Machine — idle, patrol, alert, pursuit, windup, charge, recover, dead
 ##   HP / Death    — take_damage(), die(), is_alive()
 ##   Detection     — periodic scan, white "!" on spotted character
+##
+## Attack cycle: pursuit → windup (pause, turn red) → charge (dash to locked
+## position) → hit or miss → recover (still, blue→normal fade) → pursuit
 ##
 ## Extend and override _build_visual() for different enemy types.
 
@@ -20,6 +23,15 @@ extends Node3D
 @export var detection_range := 6.0
 @export var scan_interval := 0.5
 @export var pursuit_update_interval := 0.8
+
+# Attack cycle config
+@export var attack_range := 3.0
+@export var windup_duration := 0.8
+@export var charge_speed := 8.0
+@export var charge_damage := 25.0
+@export var charge_max_duration := 1.5
+@export var recover_duration := 1.2
+@export var iframe_duration := 1.0
 
 # --- GameState integration (set by scene before adding to tree) ---
 var game_state: GameState
@@ -39,17 +51,25 @@ var _alert_label: Label3D
 var _patrol_waypoints: Array[Vector3] = []
 var _patrol_index := 0
 
+# --- Attack cycle ---
+var _charge_target_pos := Vector3.ZERO
+var _charging := false
+var _charge_hit := false
+
 # --- Visual ---
 var _mesh: MeshInstance3D
 var _eye_left: OmniLight3D
 var _eye_right: OmniLight3D
+var _base_color: Color
 
 signal damaged(amount: float, new_hp: float)
 signal died()
 signal target_spotted(target_id: String)
+signal hit_target(target_id: String, damage: float)
 
 func _ready() -> void:
 	_hp = max_hp
+	_base_color = color
 	_state_tag = "enemy_%s" % name
 	_build_visual()
 
@@ -115,7 +135,37 @@ func _enter_state(state: String) -> void:
 		"pursuit":
 			_set_eye_energy(2.0)
 			_pursue_target()
+		"windup":
+			_stop_movement()
+			_set_mesh_color(Color(0.9, 0.15, 0.1))
+			_set_eye_energy(3.0)
+			# Lock the target position at the moment of windup
+			if _current_target_id != "" and game_state:
+				_charge_target_pos = game_state.get_position(_current_target_id)
+			var scheduler := _get_scheduler()
+			if scheduler:
+				scheduler.schedule_after(windup_duration, _begin_charge, _state_tag)
+		"charge":
+			_charging = true
+			_charge_hit = false
+			# Timeout: if we don't hit anything, recover anyway
+			var scheduler := _get_scheduler()
+			if scheduler:
+				scheduler.schedule_after(charge_max_duration, _end_charge, _state_tag)
+		"recover":
+			_charging = false
+			_stop_movement()
+			_set_mesh_color(Color(0.2, 0.3, 0.7))
+			_set_eye_energy(0.3)
+			# Fade from blue back to normal color
+			if _mesh and _mesh.material_override:
+				var tween := create_tween()
+				tween.tween_method(_set_mesh_color, Color(0.2, 0.3, 0.7), _base_color, recover_duration)
+			var scheduler := _get_scheduler()
+			if scheduler:
+				scheduler.schedule_after(recover_duration, _resume_pursuit, _state_tag)
 		"dead":
+			_charging = false
 			_stop_movement()
 			_set_eye_energy(0.0)
 			died.emit()
@@ -127,6 +177,8 @@ func _exit_state(state: String) -> void:
 			_remove_alert_label()
 		"pursuit":
 			_stop_movement()
+		"charge":
+			_charging = false
 
 # --- Detection (scheduler-driven) ---
 
@@ -166,7 +218,6 @@ func _show_alert_on_target() -> void:
 	_remove_alert_label()
 	if _current_target_id == "" or not game_state:
 		return
-	# Find the target node in the scene tree
 	var target_node := _find_character_node(_current_target_id)
 	if not target_node:
 		return
@@ -187,7 +238,7 @@ func _remove_alert_label() -> void:
 		_alert_label.queue_free()
 	_alert_label = null
 
-# --- Pursuit ---
+# --- Pursuit → Windup → Charge → Recover cycle ---
 
 func _begin_pursuit() -> void:
 	if _state != "alert":
@@ -199,12 +250,33 @@ func _pursue_target() -> void:
 	if _state != "pursuit" or _current_target_id == "" or not game_state:
 		return
 	var target_pos := game_state.get_position(_current_target_id)
+	var dist := global_position.distance_to(target_pos)
+	# Close enough to attack — wind up
+	if dist < attack_range:
+		_change_state("windup")
+		return
+	# Otherwise keep chasing
 	if game_state.characters.has(char_id):
 		game_state.command_move_to_pos(char_id, target_pos)
-	# Re-schedule pursuit update to re-target
 	var scheduler := _get_scheduler()
 	if scheduler:
 		scheduler.schedule_after(pursuit_update_interval, _pursue_target, _state_tag)
+
+func _begin_charge() -> void:
+	if _state != "windup":
+		return
+	_change_state("charge")
+
+func _end_charge() -> void:
+	if _state != "charge":
+		return
+	_change_state("recover")
+
+func _resume_pursuit() -> void:
+	if _state != "recover":
+		return
+	_set_mesh_color(_base_color)
+	_change_state("pursuit")
 
 # --- Patrol ---
 
@@ -215,7 +287,6 @@ func _patrol_next_waypoint() -> void:
 	if game_state and game_state.characters.has(char_id):
 		game_state.command_move_to_pos(char_id, waypoint)
 	_patrol_index = (_patrol_index + 1) % _patrol_waypoints.size()
-	# Schedule next waypoint after arrival (estimate based on distance/speed)
 	var dist := global_position.distance_to(waypoint)
 	var travel_time := dist / maxf(move_speed, 0.1) + 0.5
 	var scheduler := _get_scheduler()
@@ -255,18 +326,49 @@ func _set_eye_energy(energy: float) -> void:
 	if _eye_right:
 		_eye_right.light_energy = energy
 
+func _set_mesh_color(c: Color) -> void:
+	if _mesh and _mesh.material_override:
+		(_mesh.material_override as StandardMaterial3D).albedo_color = c
+
 func _fade_out(duration: float) -> void:
 	if _mesh:
 		var tween := create_tween()
 		tween.tween_property(_mesh, "transparency", 1.0, duration)
 	_set_eye_energy(0.0)
 
-# --- Movement helpers ---
+# --- Movement / Charge collision ---
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	# GameState-driven position sync
 	if game_state and char_id != "" and game_state.is_moving(char_id):
 		var pos := game_state.get_position(char_id)
 		global_position = Vector3(pos.x, global_position.y, pos.z)
+
+	# Charge: move toward locked target position, check for collision
+	# Speed scaled by scheduler speed multiplier so charge respects fast-forward
+	if _charging and _state == "charge":
+		var dir := (_charge_target_pos - global_position)
+		dir.y = 0
+		if dir.length() < 0.3:
+			_end_charge()
+			return
+		var spd_mult := 1.0
+		var scheduler := _get_scheduler()
+		if scheduler:
+			spd_mult = scheduler.get_speed()
+		if scheduler and scheduler.is_paused():
+			return
+		global_position += dir.normalized() * charge_speed * delta * spd_mult
+		if not _charge_hit:
+			for target_id in _detection_targets:
+				var target_node := _find_character_node(target_id)
+				if not target_node:
+					continue
+				if global_position.distance_to(target_node.global_position) < 0.8:
+					_charge_hit = true
+					hit_target.emit(target_id, charge_damage)
+					_end_charge()
+					return
 
 func _stop_movement() -> void:
 	if game_state and game_state.characters.has(char_id):
@@ -280,12 +382,25 @@ func _get_scheduler() -> EventScheduler:
 	return null
 
 func _find_character_node(target_id: String) -> Node:
-	var parent := get_parent()
-	if not parent:
-		return null
-	for child in parent.get_children():
-		if child.has_method("get") and child.get("char_id") == target_id:
-			return child
-		if child.name.to_lower() == target_id:
-			return child
+	# Search parent first (Characters node), then siblings of parent (chunk nodes)
+	for search_root in _get_search_roots():
+		for child in search_root.get_children():
+			if child == self:
+				continue
+			if child.has_method("get") and child.get("char_id") == target_id:
+				return child
+			if child.name.to_lower() == target_id:
+				return child
 	return null
+
+func _get_search_roots() -> Array[Node]:
+	var roots: Array[Node] = []
+	var parent := get_parent()
+	if parent:
+		roots.append(parent)
+		# Also search sibling containers (e.g. Characters node when enemy is in a chunk)
+		if parent.get_parent():
+			for sibling in parent.get_parent().get_children():
+				if sibling != parent and sibling is Node3D:
+					roots.append(sibling)
+	return roots

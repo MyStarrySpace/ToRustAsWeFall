@@ -45,6 +45,7 @@ var _enemy_count := 0
 var _aster_hp := 100.0
 var _peris_hp := 100.0
 var _game_over := false
+var _iframes: Dictionary = {}  # char_id -> scheduler tick when i-frames expire
 
 # Chunk system
 var _chunks: Dictionary = {}
@@ -238,31 +239,9 @@ func _on_process(delta: float, spd: float) -> void:
 			_hud.set_ability_state("emp", "ready")
 
 	# Enemies drift visually (patrol driven by scheduler, this handles rotation)
-	# Enemies in pursuit deal contact damage to nearby characters
 	for enemy in _enemies:
-		if not is_instance_valid(enemy) or not enemy.is_alive():
-			continue
-		enemy.rotation.y += delta * spd * 0.3
-		if enemy.get_state() == "pursuit" and not _game_over:
-			var epos := enemy.global_position
-			var damage_per_sec := 15.0
-			for pair in [["aster", _aster_node], ["peris", _peris_node]]:
-				var cid: String = pair[0]
-				var cnode: Node3D = pair[1]
-				if not cnode or epos.distance_to(cnode.global_position) > 1.5:
-					continue
-				if cid == "aster" and _aster_hp > 0:
-					_aster_hp = maxf(0.0, _aster_hp - damage_per_sec * delta * spd)
-					_hud.set_portrait_stat("aster", "hp", _aster_hp)
-					if _aster_hp <= 0:
-						_hud.set_portrait_status("aster", "downed")
-				elif cid == "peris" and _peris_hp > 0:
-					_peris_hp = maxf(0.0, _peris_hp - damage_per_sec * delta * spd)
-					_hud.set_portrait_stat("peris", "hp", _peris_hp)
-					if _peris_hp <= 0:
-						_hud.set_portrait_status("peris", "downed")
-			if _aster_hp <= 0 and _peris_hp <= 0:
-				_start_game_over()
+		if is_instance_valid(enemy) and enemy.is_alive():
+			enemy.rotation.y += delta * spd * 0.3
 
 	# Approach gate
 	if _current_step == "approach_aster":
@@ -761,10 +740,39 @@ func _spawn_enemy(id: String, pos: Vector3, parent: Node3D) -> Enemy:
 	enemy.position = pos
 	parent.add_child(enemy)
 	_register_gs_character(id, enemy, enemy.move_speed)
+	enemy.hit_target.connect(_on_enemy_hit)
 	enemy.activate()
 	_enemies.append(enemy)
 	_enemy_count += 1
 	return enemy
+
+func _on_enemy_hit(target_id: String, damage: float) -> void:
+	if _game_over:
+		return
+	# Check i-frames
+	var now := _scheduler.get_current_tick()
+	if _iframes.has(target_id) and now < _iframes[target_id]:
+		return
+	_iframes[target_id] = now + 1.0
+	# Apply damage
+	if target_id == "aster" and _aster_hp > 0:
+		_aster_hp = maxf(0.0, _aster_hp - damage)
+		_hud.set_portrait_stat("aster", "hp", _aster_hp)
+		if _aster_hp <= 0:
+			_hud.set_portrait_status("aster", "downed")
+	elif target_id == "peris" and _peris_hp > 0:
+		_peris_hp = maxf(0.0, _peris_hp - damage)
+		_hud.set_portrait_stat("peris", "hp", _peris_hp)
+		if _peris_hp <= 0:
+			_hud.set_portrait_status("peris", "downed")
+	# Flash the hit character white briefly
+	var target_node: Node3D = _aster_node if target_id == "aster" else _peris_node
+	if target_node:
+		var flash := create_tween()
+		flash.tween_property(target_node, "modulate", Color(1, 1, 1, 0.4), 0.1)
+		flash.tween_property(target_node, "modulate", Color(1, 1, 1, 1), 0.3)
+	if _aster_hp <= 0 and _peris_hp <= 0:
+		_start_game_over()
 
 func _show_marker(pos: Vector3, text: String) -> void:
 	var lbl := Label3D.new()

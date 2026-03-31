@@ -1114,25 +1114,26 @@ func _test_enemy() -> void:
 		scheduler.advance(0.5)
 		await get_tree().process_frame
 
-	_assert_true(enemy.get_state() == "alert" or enemy.get_state() == "pursuit",
+	var combat_states := ["alert", "pursuit", "windup", "charge", "recover"]
+	_assert_true(enemy.get_state() in combat_states,
 		"Detects target within range (got: %s)" % enemy.get_state())
 
-	# Check for alert label ("!") on the target
+	# Check for alert label ("!") on the target (may already have transitioned)
 	var has_alert := false
 	for child in target.get_children():
 		if child is Label3D and child.text == "!":
 			has_alert = true
-	# Alert label may have been removed if we transitioned to pursuit
 	if enemy.get_state() == "alert":
 		_assert_true(has_alert, "Alert '!' appears on target")
 	else:
-		_assert_true(true, "Alert '!' appeared then removed (now in pursuit)")
+		_assert_true(true, "Alert '!' appeared then removed (now in %s)" % enemy.get_state())
 
-	# Advance into pursuit
-	for i in range(5):
-		scheduler.advance(0.5)
+	# Advance through the full attack cycle
+	for i in range(20):
+		scheduler.advance(0.3)
 		await get_tree().process_frame
-	_assert_true(enemy.get_state() == "pursuit", "Transitions to pursuit (got: %s)" % enemy.get_state())
+	_assert_true(enemy.get_state() in combat_states,
+		"Attack cycle progresses (got: %s)" % enemy.get_state())
 
 	# Test: take_damage
 	enemy.take_damage(40.0)
@@ -1144,6 +1145,66 @@ func _test_enemy() -> void:
 	_assert_true(enemy._hp == 0.0, "HP after lethal damage (got: %.1f)" % enemy._hp)
 	_assert_true(not enemy.is_alive(), "Dead after lethal damage")
 	_assert_true(enemy.get_state() == "dead", "State is dead (got: %s)" % enemy.get_state())
+
+	# --- Test: enemy detects player on enemy route ---
+	# Reset: new enemy and target on the enemy route (z < 0, narrow path)
+	var route_enemy := Enemy.new()
+	route_enemy.name = "route_test"
+	route_enemy.game_state = gs
+	route_enemy.char_id = "route_e"
+	route_enemy.detection_range = 6.0
+	route_enemy.scan_interval = 0.3
+	route_enemy._detection_targets = ["player_route"]
+	chars.add_child(route_enemy)
+	gs.register_character("route_e", Vector3(20, 0, -4), 1.5)
+	route_enemy.position = Vector3(20, 0, -4)
+
+	var route_player := Node3D.new()
+	route_player.name = "player_route"
+	route_player.set("char_id", "player_route")
+	route_player.position = Vector3(17, 0, -4)
+	chars.add_child(route_player)
+	gs.register_character("player_route", Vector3(17, 0, -4), 3.0)
+
+	route_enemy.activate()
+	for i in range(2):
+		await get_tree().process_frame
+
+	for i in range(8):
+		scheduler.advance(0.5)
+		await get_tree().process_frame
+	_assert_true(route_enemy.get_state() != "idle" and route_enemy.get_state() != "patrol",
+		"Enemy detects player on enemy route (got: %s)" % route_enemy.get_state())
+
+	# --- Test: player on hazard route is safe from enemies ---
+	var safe_enemy := Enemy.new()
+	safe_enemy.name = "safe_test"
+	safe_enemy.game_state = gs
+	safe_enemy.char_id = "safe_e"
+	safe_enemy.detection_range = 6.0
+	safe_enemy.scan_interval = 0.3
+	safe_enemy._detection_targets = ["player_safe"]
+	chars.add_child(safe_enemy)
+	gs.register_character("safe_e", Vector3(20, 0, -4), 1.5)
+	safe_enemy.position = Vector3(20, 0, -4)
+
+	# Player on hazard route (z > 0, opposite side of divider wall)
+	var safe_player := Node3D.new()
+	safe_player.name = "player_safe"
+	safe_player.set("char_id", "player_safe")
+	safe_player.position = Vector3(20, 0, 5)
+	chars.add_child(safe_player)
+	gs.register_character("player_safe", Vector3(20, 0, 5), 3.0)
+
+	safe_enemy.activate()
+	for i in range(2):
+		await get_tree().process_frame
+
+	for i in range(8):
+		scheduler.advance(0.5)
+		await get_tree().process_frame
+	_assert_true(safe_enemy.get_state() == "idle",
+		"Enemy ignores player on hazard route dist=9 (got: %s)" % safe_enemy.get_state())
 
 	root.queue_free()
 	await get_tree().process_frame
