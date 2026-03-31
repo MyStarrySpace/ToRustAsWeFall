@@ -664,25 +664,54 @@ func _start_junction_arrive() -> void:
 	_load_chunk("junction")
 	_unload_chunk("below")
 	_bridge_chelators.clear()
-	# Reveal Endo
+	# Reveal Endo in the shelter doorway
 	_endo.visible = true
+	_endo.position = Vector3(JUNCTION_POS.x - SHELTER_SIZE.x / 2.0, BELOW_Y + 0.5, 0)
 	_register_gs_character("endo", _endo, 2.5)
-	# Walk party into shelter
+	# Shelter marker appears where Endo beckons
+	_show_marker(Vector3(JUNCTION_POS.x, BELOW_Y + 2.5, 0), "SHELTER")
+	# Walk party toward Endo
 	var shelter_enter := Vector3(JUNCTION_POS.x - SHELTER_SIZE.x / 2.0 - 1.0, BELOW_Y + 0.5, 0)
 	_game_state.command_move_to_pos("aster", shelter_enter + Vector3(0, 0, 0.5))
 	_game_state.command_move_to_pos("peris", shelter_enter + Vector3(0, 0, -0.5))
 	_dialogue_chain([
-		"elevator.endo.greeting",
+		"elevator.endo.beckon",
+		"elevator.peris.who",
+		"elevator.aster.endo_read",
 	], func(): _scheduler.schedule_after(1.0, _start_endo_shelter, "shelter"))
 
 func _start_endo_shelter() -> void:
 	_enter_step("endo_shelter")
 	_player.set_move_enabled(false)
+	# Marker on the drink container
+	_show_marker(Vector3(JUNCTION_POS.x + 1.5, BELOW_Y + 1.0, -1.0), "WATER")
 	_dialogue_chain([
 		"elevator.endo.drink",
 		"elevator.peris.stomach",
 		"elevator.endo.rest",
-	], func(): _scheduler.schedule_after(2.0, _start_night_watch, "night_watch"))
+	], func():
+		_clear_markers()
+		_scheduler.schedule_after(2.0, _start_night_watch, "night_watch")
+	)
+
+func _show_marker(pos: Vector3, text: String) -> void:
+	var lbl := Label3D.new()
+	lbl.name = "Marker_" + text
+	lbl.text = text
+	lbl.font_size = 28
+	lbl.pixel_size = 0.008
+	lbl.modulate = Color(0.4, 0.6, 0.8, 0.7)
+	lbl.outline_modulate = Color(0, 0, 0, 0.5)
+	lbl.outline_size = 3
+	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	lbl.position = pos
+	find_child("Environment", false, false).add_child(lbl)
+
+func _clear_markers() -> void:
+	var env: Node = find_child("Environment", false, false)
+	for child in env.get_children():
+		if child is Label3D and child.name.begins_with("Marker_"):
+			child.queue_free()
 
 func _start_night_watch() -> void:
 	_enter_step("night_watch")
