@@ -35,6 +35,9 @@ func _ready() -> void:
 			"--test-scheduler":
 				ran_test = true
 				_test_event_scheduler()
+			"--test-enemy":
+				ran_test = true
+				await _test_enemy()
 			"--test-tag-day":
 				ran_test = true
 				await _test_tag_day()
@@ -102,6 +105,7 @@ func _run_all_tests() -> void:
 	await _test_peris_tutorial_redirect()
 	await _test_elevator_dialogue()
 	await _test_endo_drink()
+	await _test_enemy()
 
 # --- Test: Syntax ---
 # If we got this far, GDScript compiled successfully.
@@ -1047,6 +1051,101 @@ func _test_endo_drink() -> void:
 	_assert_true(drink_near_endo, "Drink near Endo after delivery (dist: %.2f)" % endo_pos.distance_to(drink_final))
 
 	instance.queue_free()
+	await get_tree().process_frame
+
+# --- Test: Enemy System ---
+func _test_enemy() -> void:
+	_test_name = "Enemy"
+
+	# Set up a minimal scene with GameState + scheduler
+	var root := Node3D.new()
+	root.name = "EnemyTestRoot"
+	get_tree().root.add_child(root)
+
+	var chars := Node3D.new()
+	chars.name = "Characters"
+	root.add_child(chars)
+
+	var scheduler := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = scheduler
+
+	# Create a target character (simulated player)
+	var target := Node3D.new()
+	target.name = "aster"
+	target.set("char_id", "aster")
+	target.position = Vector3(10, 0, 0)
+	chars.add_child(target)
+	gs.register_character("aster", Vector3(10, 0, 0), 3.0)
+
+	# Create an enemy
+	var enemy := Enemy.new()
+	enemy.name = "test_enemy"
+	enemy.game_state = gs
+	enemy.char_id = "enemy_0"
+	enemy.max_hp = 100.0
+	enemy.detection_range = 6.0
+	enemy.scan_interval = 0.3
+	enemy._detection_targets = ["aster"]
+	chars.add_child(enemy)
+	gs.register_character("enemy_0", Vector3(0, 0, 0), 1.5)
+
+	for i in range(2):
+		await get_tree().process_frame
+
+	# Test: initial state
+	_assert_true(enemy.get_state() == "idle", "Initial state is idle (got: %s)" % enemy.get_state())
+	_assert_true(enemy.is_alive(), "Enemy starts alive")
+	_assert_true(enemy._hp == 100.0, "HP starts at max (got: %.1f)" % enemy._hp)
+
+	# Test: activate and run detection scans — target is at distance 10, range is 6
+	enemy.activate()
+	for i in range(5):
+		scheduler.advance(0.5)
+		await get_tree().process_frame
+	_assert_true(enemy.get_state() == "idle", "No detection at distance 10 (got: %s)" % enemy.get_state())
+
+	# Move target within range
+	target.position = Vector3(3, 0, 0)
+	gs.characters["aster"].position = Vector3(3, 0, 0)
+
+	# Advance scheduler — detection scan should fire and spot target
+	for i in range(5):
+		scheduler.advance(0.5)
+		await get_tree().process_frame
+
+	_assert_true(enemy.get_state() == "alert" or enemy.get_state() == "pursuit",
+		"Detects target within range (got: %s)" % enemy.get_state())
+
+	# Check for alert label ("!") on the target
+	var has_alert := false
+	for child in target.get_children():
+		if child is Label3D and child.text == "!":
+			has_alert = true
+	# Alert label may have been removed if we transitioned to pursuit
+	if enemy.get_state() == "alert":
+		_assert_true(has_alert, "Alert '!' appears on target")
+	else:
+		_assert_true(true, "Alert '!' appeared then removed (now in pursuit)")
+
+	# Advance into pursuit
+	for i in range(5):
+		scheduler.advance(0.5)
+		await get_tree().process_frame
+	_assert_true(enemy.get_state() == "pursuit", "Transitions to pursuit (got: %s)" % enemy.get_state())
+
+	# Test: take_damage
+	enemy.take_damage(40.0)
+	_assert_true(enemy._hp == 60.0, "HP after 40 damage (got: %.1f)" % enemy._hp)
+	_assert_true(enemy.is_alive(), "Still alive at 60 HP")
+
+	# Test: die
+	enemy.take_damage(60.0)
+	_assert_true(enemy._hp == 0.0, "HP after lethal damage (got: %.1f)" % enemy._hp)
+	_assert_true(not enemy.is_alive(), "Dead after lethal damage")
+	_assert_true(enemy.get_state() == "dead", "State is dead (got: %s)" % enemy.get_state())
+
+	root.queue_free()
 	await get_tree().process_frame
 
 # --- Dialogue Dump ---

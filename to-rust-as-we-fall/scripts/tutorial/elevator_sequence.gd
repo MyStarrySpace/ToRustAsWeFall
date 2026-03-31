@@ -37,8 +37,9 @@ var _unit_2_stunned := false
 var _reboot_active := false
 var _stamina := 100.0
 
-# Bridge ecology
-var _bridge_chelators: Array[MeshInstance3D] = []
+# Enemies
+var _enemies: Array[Enemy] = []
+var _enemy_count := 0
 
 # Chunk system
 var _chunks: Dictionary = {}
@@ -229,15 +230,10 @@ func _on_process(delta: float, spd: float) -> void:
 			_emp_cooldown_end = 0.0
 			_hud.set_ability_state("emp", "ready")
 
-	# Chelators drift along walls below the bridge
-	for i in range(_bridge_chelators.size()):
-		var c: MeshInstance3D = _bridge_chelators[i]
-		c.position.x += delta * spd * 0.3
-		c.rotation.y += delta * spd * 0.8
-		# Loop back when past the bridge
-		var bridge_end := ELEVATOR_SIZE.x / 2.0 + 0.5 + 7.0 + 12.0
-		if c.position.x > bridge_end:
-			c.position.x -= 11.0
+	# Enemies drift visually (patrol driven by scheduler, this handles rotation)
+	for enemy in _enemies:
+		if is_instance_valid(enemy) and enemy.is_alive():
+			enemy.rotation.y += delta * spd * 0.3
 
 	# Approach gate
 	if _current_step == "approach_aster":
@@ -664,7 +660,7 @@ func _start_junction_arrive() -> void:
 	_enter_step("junction_arrive")
 	_load_chunk("junction")
 	_unload_chunk("below")
-	_bridge_chelators.clear()
+	_enemies.clear()
 	# Reveal Endo in the shelter doorway
 	_endo.visible = true
 	_endo.position = Vector3(JUNCTION_POS.x - SHELTER_SIZE.x / 2.0, BELOW_Y + 0.5, 0)
@@ -725,6 +721,21 @@ func _on_endo_delivered(id: String) -> void:
 	], func():
 		_scheduler.schedule_after(2.0, _start_night_watch, "night_watch")
 	)
+
+func _spawn_enemy(id: String, pos: Vector3, parent: Node3D) -> Enemy:
+	var enemy := Enemy.new()
+	enemy.name = id
+	enemy.game_state = _game_state
+	enemy.char_id = id
+	enemy.detection_range = 6.0
+	enemy._detection_targets = ["aster", "peris"]
+	enemy.position = pos
+	parent.add_child(enemy)
+	_register_gs_character(id, enemy, enemy.move_speed)
+	enemy.activate()
+	_enemies.append(enemy)
+	_enemy_count += 1
+	return enemy
 
 func _show_marker(pos: Vector3, text: String) -> void:
 	var lbl := Label3D.new()
@@ -926,25 +937,15 @@ func _build_below_chunk(parent: Node3D) -> void:
 		bloom.omni_range = 3.0
 		parent.add_child(bloom)
 
-	# Chelators — small ring-shaped things moving along the walls
-	_bridge_chelators.clear()
+	# Chelators — living entities patrolling the ecology (same creatures as enemy route)
 	for i in range(6):
-		var chelator := MeshInstance3D.new()
-		var torus := TorusMesh.new()
-		torus.inner_radius = 0.04
-		torus.outer_radius = 0.12
-		chelator.mesh = torus
-		var cm := StandardMaterial3D.new()
-		cm.albedo_color = Color(0.4, 0.25, 0.15)
-		cm.metallic = 0.6
-		cm.roughness = 0.3
-		chelator.material_override = cm
-		var cx := bridge_start + 1.0 + i * 2.0
-		var cz := -5.0 + randf_range(-1, 1) if i % 2 == 0 else 5.0 + randf_range(-1, 1)
-		chelator.position = Vector3(cx, ground_y + 0.5 + randf_range(0, 2.0), cz)
-		chelator.rotation = Vector3(randf_range(0, TAU), randf_range(0, TAU), 0)
-		parent.add_child(chelator)
-		_bridge_chelators.append(chelator)
+		var enemy := _spawn_enemy("chelator_%d" % i,
+			Vector3(bridge_start + 1.0 + i * 2.0, ground_y + 0.5, (-5.0 if i % 2 == 0 else 5.0) + randf_range(-1, 1)),
+			parent)
+		# Patrol along the walls
+		var patrol_a := Vector3(bridge_start + 1.0 + i * 2.0, ground_y + 0.5, enemy.position.z)
+		var patrol_b := Vector3(bridge_start + 1.0 + i * 2.0 + 4.0, ground_y + 0.5, enemy.position.z)
+		enemy.set_patrol([patrol_a, patrol_b])
 
 	# Fluor — yellow-green bioluminescence in a breached corner
 	var fluor_light := OmniLight3D.new()
@@ -1024,16 +1025,14 @@ func _build_below_chunk(parent: Node3D) -> void:
 	# Enemy route (north, z < 0): narrow, dark, red eyes suggest hostile presence
 	var en_z := -4.0
 	_add_wall(parent, Vector3(fork_x + 8.0, ground_y + wall_h / 2.0, en_z - 3.0), Vector3(16, wall_h, 0.3), wall_color)
-	# Hostile eye lights along the enemy route
-	for i in range(5):
-		var ex := fork_x + 2.0 + i * 3.5
-		for z_off in [-0.3, 0.3]:
-			var eye := OmniLight3D.new()
-			eye.position = Vector3(ex, ground_y + 1.2, en_z - 1.5 + z_off)
-			eye.light_color = Color(0.9, 0.15, 0.05)
-			eye.light_energy = 0.3
-			eye.omni_range = 1.2
-			parent.add_child(eye)
+	# Enemies along the enemy route (same creatures visible from bridge)
+	for i in range(4):
+		var ex: float = fork_x + 2.0 + i * 4.0
+		var enemy := _spawn_enemy("route_enemy_%d" % i,
+			Vector3(ex, ground_y + 0.5, en_z - 1.5), parent)
+		var pa := Vector3(ex - 1.5, ground_y + 0.5, en_z - 1.5)
+		var pb := Vector3(ex + 1.5, ground_y + 0.5, en_z - 1.5)
+		enemy.set_patrol([pa, pb])
 
 	# Hazard route (south, z > 0): wider, iron patches, unstable ceiling drips
 	var hz_z := 4.0
