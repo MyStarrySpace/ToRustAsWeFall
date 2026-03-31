@@ -1,0 +1,34 @@
+key,speaker,style,wait,text,context
+elevator.peris.where,Peris,normal,false,Where...? What is this place?,Peris wakes in the elevator
+elevator.narration.room,,normal,false,"A small room. Metal walls. Red emergency light cycling overhead. Two white figures against the far wall, dormant. Someone slumped in the corner.",Scene description
+elevator.peris.hey,Peris,normal,false,"Hey. Hey, can you hear me? Are you alive? Please be alive.",Peris approaches Aster
+elevator.aster.waking,Aster,normal,false,...I already submitted the forecast. Check the terminal.,Aster wakes groggy — still in the simulation mentally
+elevator.aster.where,Aster,normal,false,...This isn't the sim. Where are we?,Aster realizes
+elevator.aster.device_locked,Aster,data,false,My device is locked. No facility access. No maintenance overlay.,Aster checks device first thing
+elevator.peris.trapped,Peris,normal,false,Doors won't respond. I tried.,Peris confirms they're stuck
+elevator.peris.why,Peris,normal,false,Why are we here?,
+elevator.aster.wellness,Aster,normal,false,Tag Day. A citizen's scan failed and they walked him to the Wellness Wing.,Aster retells it flatly — doesn't know what happened
+elevator.aster.singing,Aster,normal,false,He was reciting something on the way. I couldn't make it out. Then the checkpoint reset.,No mention of the bang — Aster's data view couldn't see the room
+elevator.peris.citizen_ok,Peris,normal,false,Is he OK?,
+elevator.aster.privacy,Aster,normal,false,I... never thought to ask. It wasn't really any of my business. There's a privacy policy.,Cites the policy like it settles the matter
+elevator.peris.speaking_of,Peris,normal,false,Speaking of policy...,Pivots — policy is also what happened to her
+elevator.peris.gel,Peris,normal,false,Have you ever performed so poorly they started showing you animations of soap being cut and gel being squished? It's the most uncomfortable comfort I've ever felt.,Peris disturbed by how soothing it was meant to be
+elevator.aster.perks,Aster,normal,false,"Poorly? I've only performed so well that they give me perks, like this upgraded device...",Oblivious flex — interrupted by system restoration
+elevator.system.restored,SYSTEM,data,false,MAINTENANCE CYCLE COMPLETE  //  DEVICE ACCESS RESTORED  //  RESUMING PASSENGER PROTOCOL,System restores devices and wakes escorts simultaneously
+elevator.aster.overlay,Aster,normal,false,My device. It's back. There's a maintenance panel behind the doors.,Aster's data overlay reveals the panel
+elevator.unit.protocol,EU-1,data,false,PASSENGERS CONSCIOUS  //  DISTRESS DETECTED  //  INITIATING RE-SEDATION PROTOCOL,Escort units activate as part of the same restoration
+elevator.aster.device,Aster,normal,false,"No no no. My device. I can pulse it, fry their circuits.",Aster panicking but finding a solution
+elevator.aster.stay_close,Aster,normal,false,They'll reboot. We don't have long. That panel. Now.,Post-EMP urgency
+elevator.aster.hack,Aster,normal,false,I can override this. Just need a moment...,Aster begins hacking the panel
+elevator.system.override,SYSTEM,data,false,MAINTENANCE OVERRIDE ACCEPTED  //  DOORS CYCLING,Hack succeeds
+elevator.narration.doors,,normal,false,The elevator shudders. The doors grind open. Light spills in from a corridor neither of them recognizes.,Doors open
+elevator.system.noncompliant,SYSTEM,data,false,TAG STATUS: NON-COMPLIANT  //  WELLNESS PROTOCOL DEVIATION  //  FACILITY ACCESS REVOKED,Lockout
+elevator.aster.locked,Aster,normal,false,It locked us out. My device can't reach any facility system. We can't go back.,Aster tries and fails
+elevator.peris.back_to_what,Peris,normal,false,"I don't really have anything to go back to, anyways...",
+elevator.aster.forward,Aster,normal,false,"So, I guess we go forward together.",
+elevator.peris.not_supposed,Peris,normal,false,I don't think we're supposed to be here.,Entering the maintenance corridor
+elevator.aster.no_service,Aster,data,false,Nobody is. This section hasn't been serviced in... the maintenance logs just stop.,Aster reads corridor data
+elevator.bridge.narration,,normal,false,An elevated walkway spanning a larger space. Incomplete railing. Exposed framework. The air is open — it smells like rust.,Bridge description
+elevator.peris.bodies,Peris,normal,false,Those people down there...,Peris sees bodies below the bridge
+elevator.aster.logs,Aster,normal,false,All casualties are supposed to be logged. I'll check the records when we find a working terminal. Come on.,Aster files it as data and keeps moving
+elevator.aster.ahead,Aster,normal,true,There's something ahead. Lights.,Waits for click — transition to leaving_facility

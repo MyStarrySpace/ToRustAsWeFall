@@ -15,7 +15,7 @@ var _displayed_chars := 0.0
 var _hold_timer := 0.0
 var _active := false
 var _waiting_for_input := false
-var _style := "normal"  # "normal", "poem", "data", "fragment"
+var _style := "normal"  # "normal", "poem", "data", "fragment", "whisper"
 
 var _panel: PanelContainer
 var _speaker_label: Label
@@ -87,6 +87,8 @@ func _process(delta: float) -> void:
 			spd *= 0.4  # Slower for fragmenting speech
 		elif _style == "poem":
 			spd *= 0.7  # Measured pace for poetry
+		elif _style == "whisper":
+			spd *= 0.25  # Barely audible
 		_displayed_chars += spd * speed_multiplier * delta
 		var count := mini(int(_displayed_chars), _current_text.length())
 		_text_label.text = _current_text.substr(0, count)
@@ -165,6 +167,9 @@ func _show_next() -> void:
 		"fragment":
 			_text_label.add_theme_color_override("default_color", Color(0.5, 0.45, 0.4, 0.8))
 			panel_style.border_color = Color(0.25, 0.1, 0.08, 0.4)
+		"whisper":
+			_text_label.add_theme_color_override("default_color", Color(0.4, 0.38, 0.35, 0.35))
+			panel_style.border_color = Color(0.15, 0.08, 0.06, 0.2)
 		"data":
 			_text_label.add_theme_color_override("default_color", Color(0.3, 0.5, 0.7))
 			panel_style.border_color = Color(0.1, 0.2, 0.35, 0.5)

@@ -50,6 +50,9 @@ func _ready() -> void:
 			"--test-leaving-facility":
 				ran_test = true
 				await _test_leaving_facility()
+			"--test-showcase":
+				ran_test = true
+				await _test_showcase()
 			"--test-tag-day-dialogue":
 				ran_test = true
 				await _test_tag_day_dialogue()
@@ -89,9 +92,11 @@ func _run_all_tests() -> void:
 	await _test_peris_sim()
 	await _test_elevator()
 	await _test_leaving_facility()
+	await _test_showcase()
 	await _test_tag_day()
 	await _test_tag_day_dialogue()
 	await _test_peris_dialogue()
+	await _test_peris_tutorial_redirect()
 	await _test_elevator_dialogue()
 
 # --- Test: Syntax ---
@@ -417,6 +422,33 @@ func _test_leaving_facility() -> void:
 		instance.queue_free()
 		await get_tree().process_frame
 
+# --- Test: Showcase ---
+func _test_showcase() -> void:
+	_test_name = "Showcase"
+
+	var scene := load("res://scenes/showcase/showcase.tscn")
+	_assert_true(scene != null, "Showcase scene loads")
+
+	if scene:
+		var instance: Node = scene.instantiate()
+		_assert_true(instance != null, "Showcase scene instantiates")
+		get_tree().root.add_child(instance)
+		for i in range(5):
+			await get_tree().process_frame
+		_assert_true(instance.is_inside_tree(), "Scene is in tree")
+
+		var env: Node = instance.find_child("Environment", true, false)
+		_assert_true(env != null, "Environment node exists")
+
+		var cam: Node = instance.find_child("GameCamera", true, false)
+		_assert_true(cam != null, "GameCamera node exists")
+
+		var hud: Node = instance.find_child("GameHUD", true, false)
+		_assert_true(hud != null, "GameHUD node exists")
+
+		instance.queue_free()
+		await get_tree().process_frame
+
 # --- Test: Grid Pathfinding ---
 func _test_grid_pathfinding() -> void:
 	_test_name = "Grid Pathfinding"
@@ -702,7 +734,7 @@ func _test_tag_day_dialogue() -> void:
 	# Verify Aster's report line exists with correct speaker
 	var report_count := 0
 	for entry in log:
-		if "access denied" in entry.text:
+		if "incident report" in entry.text:
 			report_count += 1
 			_assert_true(entry.speaker == "ASTER", "Report speaker is ASTER (got: %s)" % entry.speaker)
 	_assert_true(report_count == 1, "Report blocked appears once (got: %d)" % report_count)
@@ -746,22 +778,28 @@ func _test_peris_dialogue() -> void:
 		_assert_true(false, "Scene loads")
 		return
 	var instance: Node = scene.instantiate()
+	instance._visit_phase = 2
 	get_tree().root.add_child(instance)
 	for i in range(3):
 		await get_tree().process_frame
 
-	# Full sequence with simulated input at each gate
+	# Phase 2: attack → queue tutorial → protect → aftermath
 	var log := _pop_dialogue_log(instance, {
 		"run_tutorial": func():
 			instance._resume_from_run_tutorial(),
-		"sprint_to_terminal": func():
-			instance._start_protect(),
-		"protect": func():
-			instance._has_protected = false
-			instance._on_protect_pressed(),
+		"queue_move": func():
+			instance._on_move_queued(),
+		"queue_protect": func():
+			instance._on_protect_queued(),
+		"queue_execute": func():
+			# Teleport Peris near portal so proximity check passes
+			var target: Vector3 = instance.PORTAL_POS + Vector3(-0.5, 0.5, 0)
+			instance._player.global_position = target
+			instance._game_state.characters["peris"].position = target
+			instance._start_executing(),
 	})
 
-	_assert_true(log.size() >= 8, "At least 8 dialogue lines (got: %d)" % log.size())
+	_assert_true(log.size() >= 4, "At least 4 dialogue lines (got: %d)" % log.size())
 
 	# Verify Monos appears
 	var has_monos := false
@@ -791,6 +829,60 @@ func _test_peris_dialogue() -> void:
 			has_penalty = true
 	_assert_true(has_penalty, "Efficiency penalty logged")
 
+	instance._visit_phase = 1
+	instance.queue_free()
+	await get_tree().process_frame
+
+func _test_peris_tutorial_redirect() -> void:
+	_test_name = "Peris Tutorial Redirect"
+	var scene := load("res://scenes/tutorial/peris_sim.tscn")
+	if not scene:
+		_assert_true(false, "Scene loads")
+		return
+	var instance: Node = scene.instantiate()
+	instance._visit_phase = 2
+	get_tree().root.add_child(instance)
+	for i in range(3):
+		await get_tree().process_frame
+
+	# Phase 2 with out-of-range attempts at each queue step
+	var log := _pop_dialogue_log(instance, {
+		"run_tutorial": func():
+			instance._resume_from_run_tutorial(),
+		"queue_move": func():
+			# Try protect before queuing movement — should trigger out of range
+			instance._on_protect_pressed()
+			instance._on_move_queued(),
+		"queue_protect": func():
+			# Try protect via X before shift-clicking — should trigger out of range
+			instance._on_protect_pressed()
+			instance._on_protect_queued(),
+		"queue_execute": func():
+			var target: Vector3 = instance.PORTAL_POS + Vector3(-0.5, 0.5, 0)
+			instance._player.global_position = target
+			instance._game_state.characters["peris"].position = target
+			instance._start_executing(),
+	})
+
+	# Verify out-of-range was triggered twice (once per queue step)
+	_assert_true(instance._out_of_range_count == 2,
+		"Out of range triggered twice (got: %d)" % instance._out_of_range_count)
+
+	# Verify the tutorial still completed despite redirects
+	var has_thanks := false
+	for entry in log:
+		if "thank you" in entry.text.to_lower():
+			has_thanks = true
+	_assert_true(has_thanks, "Tutorial completed despite redirects")
+
+	# Verify efficiency penalty still logged
+	var has_penalty := false
+	for entry in log:
+		if "62%" in entry.text or "PENALTY" in entry.text:
+			has_penalty = true
+	_assert_true(has_penalty, "Efficiency penalty logged after redirects")
+
+	instance._visit_phase = 1
 	instance.queue_free()
 	await get_tree().process_frame
 
@@ -847,7 +939,7 @@ func _test_elevator_dialogue() -> void:
 	# Verify Aster retells Tag Day
 	var has_tag_day := false
 	for entry in log:
-		if "prickly pear" in entry.text.to_lower() or "bang" in entry.text:
+		if "wellness wing" in entry.text.to_lower() or "privacy" in entry.text.to_lower():
 			has_tag_day = true
 	_assert_true(has_tag_day, "Aster retells Tag Day")
 

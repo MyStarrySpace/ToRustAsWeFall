@@ -13,6 +13,10 @@ uniform float clear_radius = 8.0;
 uniform float blend_width = 3.0;
 uniform vec3 edge_color = vec3(0.29, 0.55, 0.85);
 uniform float edge_width = 1.5;
+// Blackout zone — region the data perception cannot penetrate (renders as void)
+uniform vec3 blackout_pos = vec3(0.0, 0.0, -9999.0);
+uniform float blackout_radius = 0.0;
+uniform float blackout_blend = 2.0;
 
 void vertex() {
 	POSITION = vec4(VERTEX.xy, 1.0, 1.0);
@@ -69,6 +73,11 @@ void fragment() {
 
 		screen = mix(screen, data, data_blend);
 	}
+
+	// Blackout zone — data perception reads nothing here
+	float bo_dist = distance(world_pos, blackout_pos);
+	float bo = 1.0 - smoothstep(blackout_radius - blackout_blend, blackout_radius, bo_dist);
+	screen = mix(screen, vec3(0.005, 0.005, 0.01), bo);
 
 	ALBEDO = screen;
 	ALPHA = 1.0;

@@ -1,0 +1,50 @@
+key,speaker,style,wait,text,context
+tag_day.checkpoint_id,,data,false,CHECKPOINT 7-B  //  IMMUNITY VERIFICATION,Data overlay as Aster arrives at checkpoint
+tag_day.murmur.01,,poem,false,"Here we go round the prickly pear
+Prickly pear prickly pear",Citizen murmuring in queue — nursery rhyme draws attention
+tag_day.murmur.02,,poem,false,"Here we go round the prickly pear
+At five o'clock in the morning.",Citizen continues in queue before scan
+tag_day.scan_failed,STATION 7-B,data,false,SCAN FAILED  //  DISPATCHING RESPONSE UNIT,Citizen's device scan fails
+tag_day.poem.01,,poem,false,"Between the idea
+And the reality",Shadow stanzas begin — corridor walk
+tag_day.nk_chat.01,,normal,false,"Looks like I win the bet. Not weird. He's just babbling like most of them did yesterday.",NK-01 claims victory — Label3D at ~4s
+tag_day.poem.02,,poem,false,"Between the motion
+And the act",
+tag_day.nk_chat.02,,normal,false,"Well, it's weirdly structured, unlike all that gibberish we heard.",NK-02 pushing back — Label3D at ~8s
+tag_day.poem.03,,poem,false,Falls the Shadow,
+tag_day.poem.04,,poem,false,For Thine is the Kingdom,
+tag_day.nk_chat.03,,normal,false,"You'll call anything weird, like that case of complete silence.",NK-01 dismissing — Label3D at ~13s
+tag_day.poem.05,,poem,false,"Between the conception
+And the creation",
+tag_day.nk_chat.04,,normal,false,"Silence IS weird. Yet you didn't get that hint last time you tried courtship, did you?",NK-02 pivots to personal jab — Label3D at ~18s
+tag_day.poem.06,,poem,false,"Between the emotion
+And the response",
+tag_day.nk_chat.05,,normal,false,"We had three cases of silence in the last week. It's completely normal.",NK-01 deflecting with statistics — Label3D at ~23s
+tag_day.poem.07,,poem,false,Falls the Shadow,
+tag_day.poem.08,,poem,false,Life is very long,
+tag_day.nk_chat.06,,normal,false,...says the guy who spent his date completely silent before getting completely ghosted.,NK-02 lands the kill shot — Label3D at ~28s
+tag_day.poem.09,,poem,false,"Between the desire
+And the spasm",Voice steady as they walk deeper
+tag_day.nk_chat.07,,normal,false,"I'm working on my approach.",NK-01 retreating to vague self-improvement — Label3D at ~33s
+tag_day.poem.10,,poem,false,"Between the potency
+And the existence",
+tag_day.nk_chat.08,,normal,false,"You've been 'working on your approach' since orientation. How's that going?",NK-02 won't let him have it — Label3D at ~38s
+tag_day.poem.11,,poem,false,"Between the essence
+And the descent",
+tag_day.nk_chat.09,,normal,false,"There's still time.",NK-01 down to bare assertion — Label3D at ~43s
+tag_day.poem.12,,poem,false,Falls the Shadow,
+tag_day.nk_chat.10,,normal,false,"Is there? You're what, twenty-three? Twenty-four?",NK-02 names the number — casual and terminal — Label3D at ~48s
+tag_day.poem.13,,poem,false,For Thine is the Kingdom,
+tag_day.fragment.01,,fragment,false,For Thine is,Syntax collapsing — fragments of prayer stuttering
+tag_day.fragment.02,,fragment,false,Life is,
+tag_day.fragment.03,,fragment,false,For Thine is the,
+tag_day.fragment.04,,fragment,false,This is the way the world ends,
+tag_day.fragment.05,,fragment,false,This is the way the world ends,
+tag_day.fragment.06,,fragment,false,This is the way the world ends,
+tag_day.fragment.07,,fragment,false,Not with a BANG...,The final line breaks mid-word
+tag_day.fragment.08,,whisper,false,...but a whimper.,Muffled behind the closed door
+tag_day.lockdown,,data,false,MEDICAL BAY PROTOCOL  //  ENFORCEMENT ENABLED  //  PLEASE REMAIN IN POSITION,Lockdown alarm after neutralization
+tag_day.groan,BYSTANDER,normal,false,Come on... I need to get back to work.,Bystander reacting to the lockdown delay
+tag_day.report_blocked,ASTER,normal,false,"Ugh, can't even make an incident report.",Aster frustrated — device locked during protocol enforcement
+tag_day.scan_passed,STATION 7-B,data,false,TAG VERIFICATION: PASSED  //  CLEARANCE NOMINAL,Aster scans clean
+tag_day.clearance,,data,false,Blue light. Clean reading.,Blue clearance — auto-advances into transition

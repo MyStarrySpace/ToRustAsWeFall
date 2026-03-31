@@ -12,6 +12,8 @@ static var _visit_phase := 1
 
 var _has_sprinted := false
 var _has_protected := false
+var _protect_queued := false
+var _out_of_range_count := 0
 var _protect_end_tick := 0.0
 
 var _monos
@@ -131,19 +133,17 @@ func _on_process(delta: float, spd: float) -> void:
 			_game_state.change_move_speed("peris", 3.0)
 
 	# Session timer during active session phases
-	if _current_step in ["session_begins", "attack", "sprint_to_terminal", "protect"]:
+	if _current_step in ["session_begins", "attack", "executing"]:
 		_session_time += delta * spd
 		_update_session_timer()
 
-	# Sprint proximity check
-	if _current_step == "sprint_to_terminal":
+	# Queued protect proximity check — fire when Peris arrives near portal
+	if _current_step == "executing" and _protect_queued:
 		var peris_pos := _game_state.get_position("peris")
 		var dist := Vector2(peris_pos.x - PORTAL_POS.x, peris_pos.z - PORTAL_POS.z).length()
 		if dist < 2.5:
-			_scheduler.cancel_tag("sprint_redirect")
-			_tutorial_prompt.hide_prompt()
-			_hide_thought()
-			_start_protect()
+			_protect_queued = false
+			_fire_queued_protect()
 
 	# Portal glow animation (suppressed during tweens)
 	if _portal_light and not _portal_tween_active:
@@ -170,6 +170,42 @@ func _update_fades() -> void:
 
 # --- Input: run toggle ---
 
+func _input(event: InputEvent) -> void:
+	if Engine.is_editor_hint():
+		return
+	if not event is InputEventMouseButton:
+		return
+	var mb := event as InputEventMouseButton
+	if mb.button_index != MOUSE_BUTTON_LEFT or not mb.pressed:
+		return
+	if _current_step == "queue_move":
+		var hit := _raycast_ground_from(mb.position)
+		if hit != Vector3.INF:
+			call_deferred("_on_move_queued")
+	elif _current_step == "queue_protect" and mb.shift_pressed:
+		var hit := _raycast_ground_from(mb.position)
+		if hit != Vector3.INF:
+			var dist_to_monos := Vector2(hit.x - MONOS_POS.x, hit.z - MONOS_POS.z).length()
+			if dist_to_monos < 2.5:
+				get_viewport().set_input_as_handled()
+				_on_protect_queued()
+
+func _raycast_ground_from(screen_pos: Vector2) -> Vector3:
+	var camera := get_viewport().get_camera_3d()
+	if not camera:
+		return Vector3.INF
+	var from := camera.project_ray_origin(screen_pos)
+	var dir := camera.project_ray_normal(screen_pos)
+	var space := get_world_3d().direct_space_state
+	if not space:
+		return Vector3.INF
+	var query := PhysicsRayQueryParameters3D.create(from, from + dir * 100.0)
+	query.collision_mask = 1
+	var result := space.intersect_ray(query)
+	if not result.is_empty():
+		return result.position
+	return Vector3.INF
+
 func _unhandled_input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
 		return
@@ -179,9 +215,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			_toggle_run()
 
 func _toggle_pause() -> void:
-	# During run tutorial resume, P acts as unpause -> advance
 	if _current_step == "run_tutorial_resume":
 		_resume_from_run_tutorial()
+		return
+	if _current_step == "queue_execute":
+		_start_executing()
+		return
+	if _current_step in ["queue_move", "queue_protect"]:
 		return
 	_is_paused = not _is_paused
 	if _hud:
@@ -190,6 +230,11 @@ func _toggle_pause() -> void:
 func _on_pause_toggled(is_paused: bool) -> void:
 	if _current_step == "run_tutorial_resume":
 		_resume_from_run_tutorial()
+		return
+	if _current_step == "queue_execute" and not is_paused:
+		_start_executing()
+		return
+	if _current_step in ["queue_move", "queue_protect"]:
 		return
 	_is_paused = is_paused
 
@@ -234,6 +279,7 @@ func _start_monos_arrives() -> void:
 	_portal_light.light_color = Color(0.9, 0.6, 0.3)
 	_portal_light.light_energy = 3.0
 	DialogueData.say_to(_dialogue, "peris_sim.monos.late")
+	DialogueData.say_to(_dialogue, "peris_sim.monos.followed")
 	DialogueData.say_to(_dialogue, "peris_sim.monos.start")
 	DialogueData.say_to(_dialogue, "peris_sim.peris.week")
 	DialogueData.say_to(_dialogue, "peris_sim.monos.week")
@@ -276,34 +322,61 @@ func _start_run_tutorial() -> void:
 	_tutorial_prompt.show_prompt("[Z] — toggle Run")
 
 func _resume_from_run_tutorial() -> void:
+	_tutorial_prompt.hide_prompt()
+	_start_queue_move()
+
+func _start_queue_move() -> void:
+	_current_step = "queue_move"
+	_is_paused = true
+	if _hud:
+		_hud.set_paused(true)
+	_player.set_move_enabled(true)
+	_show_thought(DialogueData.text("peris_sim.sprint.thought"))
+	_tutorial_prompt.show_prompt("[Click] — move toward the portal")
+
+func _on_move_queued() -> void:
+	if _current_step != "queue_move":
+		return
+	_start_queue_protect()
+
+func _start_queue_protect() -> void:
+	_current_step = "queue_protect"
+	_tutorial_prompt.show_prompt("[Shift+Click] Monos — queue Protect")
+
+func _on_protect_queued() -> void:
+	if _current_step != "queue_protect":
+		return
+	_start_queue_execute()
+
+func _start_queue_execute() -> void:
+	_current_step = "queue_execute"
+	_protect_queued = true
+	if _hud:
+		_hud.set_ability_state("protect", "queued")
+	_tutorial_prompt.show_prompt("[Space] — unpause")
+
+func _start_executing() -> void:
+	_current_step = "executing"
 	_is_paused = false
 	if _hud:
 		_hud.set_paused(false)
 	_tutorial_prompt.hide_prompt()
-	_scheduler.schedule_after(0, _start_sprint_to_terminal, "sprint_to_terminal")
-
-func _start_sprint_to_terminal() -> void:
-	_current_step = "sprint_to_terminal"
-	_show_thought(DialogueData.text("peris_sim.sprint.thought"))
-	_tutorial_prompt.show_prompt("Hold [Z] to run")
-	_player.set_move_enabled(true)
-	# Soft redirect if player lingers far from the portal
-	_scheduler.schedule_after(6.0, _check_sprint_redirect, "sprint_redirect")
-
-func _check_sprint_redirect() -> void:
-	if _current_step != "sprint_to_terminal":
-		return
-	var peris_pos := _game_state.get_position("peris")
-	if peris_pos.distance_to(PORTAL_POS) > 5.0:
-		_show_thought(DialogueData.text("peris_sim.care.thought"))
-
-func _start_protect() -> void:
-	_current_step = "protect"
-	DialogueData.say_to(_dialogue, "peris_sim.protect_hint")
+	_hide_thought()
 
 func _on_protect_pressed() -> void:
-	if _current_step != "protect" or _has_protected:
+	if _has_protected:
 		return
+	if _current_step in ["queue_move", "queue_protect"]:
+		_show_out_of_range()
+		return
+
+func _show_out_of_range() -> void:
+	_out_of_range_count += 1
+	if _hud:
+		_hud.show_message("OUT OF RANGE", 1.5)
+	_show_thought(DialogueData.text("peris_sim.range.thought"))
+
+func _fire_queued_protect() -> void:
 	_has_protected = true
 	_protect_end_tick = _scheduler.get_current_tick() + 5.0
 	if _hud:
@@ -330,7 +403,6 @@ func _start_efficiency_log() -> void:
 	_current_step = "efficiency_log"
 	_efficiency_score = 62.0
 	DialogueData.say_to(_dialogue, "peris_sim.system.complete")
-	DialogueData.say_to(_dialogue, "peris_sim.penalty_narration")
 	_monos.fade_out(1.5)
 	# Portal closure synced with Monos fade
 	_portal_tween_active = true
@@ -375,7 +447,7 @@ func _update_session_timer() -> void:
 func _unhandled_key_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		var kc := (event as InputEventKey).keycode
-		if kc == KEY_X and _current_step == "protect" and not _has_protected:
+		if kc == KEY_X:
 			_on_protect_pressed()
 		elif kc == KEY_SPACE:
 			_toggle_pause()

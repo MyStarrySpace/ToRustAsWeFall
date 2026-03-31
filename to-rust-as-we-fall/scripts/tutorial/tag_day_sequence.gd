@@ -85,6 +85,10 @@ func _register_characters() -> void:
 func _setup_ui() -> void:
 	# Aster's data-view perception (managed by base class)
 	_setup_perception("data", _player)
+	# Blackout the dead-end alcove — Aster's data perception can't read past here
+	_perception_material.set_shader_parameter("blackout_pos", DEAD_END + Vector3(0, 1.0, -1.0))
+	_perception_material.set_shader_parameter("blackout_radius", 4.0)
+	_perception_material.set_shader_parameter("blackout_blend", 2.5)
 
 	_data_overlay = CanvasLayer.new()
 	_data_overlay.layer = 9
@@ -221,6 +225,10 @@ func _begin_corridor_walk() -> void:
 	_scheduler.schedule_after(18.0, func(): _show_nk_chat(_naturalizer_2, DialogueData.text("tag_day.nk_chat.04")), "nk_chat4")
 	_scheduler.schedule_after(23.0, func(): _show_nk_chat(_naturalizer_1, DialogueData.text("tag_day.nk_chat.05")), "nk_chat5")
 	_scheduler.schedule_after(28.0, func(): _show_nk_chat(_naturalizer_2, DialogueData.text("tag_day.nk_chat.06")), "nk_chat6")
+	_scheduler.schedule_after(33.0, func(): _show_nk_chat(_naturalizer_1, DialogueData.text("tag_day.nk_chat.07")), "nk_chat7")
+	_scheduler.schedule_after(38.0, func(): _show_nk_chat(_naturalizer_2, DialogueData.text("tag_day.nk_chat.08")), "nk_chat8")
+	_scheduler.schedule_after(43.0, func(): _show_nk_chat(_naturalizer_1, DialogueData.text("tag_day.nk_chat.09")), "nk_chat9")
+	_scheduler.schedule_after(48.0, func(): _show_nk_chat(_naturalizer_2, DialogueData.text("tag_day.nk_chat.10")), "nk_chat10")
 
 func _show_nk_chat(nk: Node3D, text: String) -> void:
 	var old := nk.find_child("ChatLabel", false, false)
@@ -499,6 +507,27 @@ func _build_corridor() -> void:
 	_add_wall(env_node, Vector3(15.85, 1.5, -29), Vector3(0.3, 3, 2))
 	_add_wall(env_node, Vector3(18.15, 1.5, -29), Vector3(0.3, 3, 2))
 	_add_wall(env_node, Vector3(17, 1.5, -30.15), Vector3(2, 3, 0.3))
+
+	# "Wellness Wing" sign above the corridor entrance
+	var ww_sign := MeshInstance3D.new()
+	var ww_box := BoxMesh.new()
+	ww_box.size = Vector3(2.5, 0.1, 0.4)
+	ww_sign.mesh = ww_box
+	var ww_mat := StandardMaterial3D.new()
+	ww_mat.albedo_color = Color(0.12, 0.12, 0.18)
+	ww_mat.emission_enabled = true
+	ww_mat.emission = Color(0.08, 0.1, 0.18)
+	ww_mat.emission_energy_multiplier = 0.3
+	ww_sign.material_override = ww_mat
+	ww_sign.position = Vector3(CORRIDOR_ENTRANCE.x, 2.6, CORRIDOR_ENTRANCE.z + 0.2)
+	env_node.add_child(ww_sign)
+	var ww_lbl := Label3D.new()
+	ww_lbl.text = "WELLNESS WING"
+	ww_lbl.font_size = 36
+	ww_lbl.pixel_size = 0.008
+	ww_lbl.modulate = Color(0.3, 0.4, 0.6, 0.7)
+	ww_lbl.position = Vector3(CORRIDOR_ENTRANCE.x, 2.6, CORRIDOR_ENTRANCE.z + 0.17)
+	env_node.add_child(ww_lbl)
 
 	# Corridor ceiling panels
 	_add_corridor_ceiling(env_node, Vector3(14, 2.95, -12), Vector3(1.5, 0.05, 3), 0.3)

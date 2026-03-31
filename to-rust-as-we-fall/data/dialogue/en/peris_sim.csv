@@ -1,0 +1,15 @@
+key,speaker,style,wait,text,context
+peris_sim.waiting.thought,,thought,false,Monos should be connecting soon. He's always a little late.,Peris at her desk waiting for client
+peris_sim.monos.late,Monos,normal,false,Sorry I'm late. Sorry. I was — there was someone following me.,Monos arrives flustered through the portal
+peris_sim.monos.followed,Monos,normal,false,On the way here. I thought I lost them but...,Trailing off — the fear he didn't lose them
+peris_sim.monos.start,Monos,normal,false,Anyway. I'm here now. Let's start.,
+peris_sim.peris.week,Peris,normal,false,"So, how's your week been?",Session opener — casual warmth
+peris_sim.monos.week,Monos,normal,false,"It's been... definitely been a week.",Monos tired — not elaborating
+peris_sim.monos.hit,Monos,normal,false,—!,Attack through the portal — Monos is hurt
+peris_sim.system.overtime,SYSTEM,data,false,SESSION OVERTIME // TERMINATE AND LOG NOTES,Mandatory compliance warning — not optional
+peris_sim.sprint.thought,,thought,false,I need to get to the terminal. Now.,Urgency — player must run to portal
+peris_sim.care.thought,,thought,false,I can't just walk past them. That's not who I am.,Soft redirect if player ignores Monos — Peris's care ethic
+peris_sim.range.thought,,thought,false,I need to get closer.,Redirect if player tries ability out of range
+peris_sim.monos.thanks,Monos,normal,false,"I... thank you. I don't know what that was. Thank you, Peris.",
+peris_sim.system.complete,SYSTEM,data,false,SESSION COMPLETE — EFFICIENCY: 62%  //  OVERTIME PENALTY LOGGED,Efficiency penalty
+peris_sim.session_ends,,,false,,Session ends — portal closes and Monos fades out

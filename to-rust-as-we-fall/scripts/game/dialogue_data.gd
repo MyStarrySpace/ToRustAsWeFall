@@ -1,29 +1,41 @@
 class_name DialogueData
 
-## Loads dialogue from CSV. Single source of truth for all text in the game.
+## Loads dialogue from per-scene CSV files. Single source of truth for all text.
 ## CSV columns: key, speaker, style, wait, text, context
 ##
 ## Usage:
-##   DialogueData.load_csv("res://data/dialogue/en.csv")
+##   DialogueData.load_dir("res://data/dialogue/en/")
 ##   var line = DialogueData.get_line("aster_sim.ron.greeting")
 ##   dialogue_box.say(line.text, line.speaker, line.style, line.wait)
 ##
-## For translation: load a different CSV (e.g. "res://data/dialogue/ja.csv")
+## For translation: load a different directory (e.g. "res://data/dialogue/ja/")
 
 static var _lines: Dictionary = {}  # key → DialogueLine
 static var _loaded := false
 
-## Call once at startup or when switching language
-static func load_csv(path: String) -> void:
+## Load all CSV files in a directory
+static func load_dir(dir_path: String) -> void:
 	_lines.clear()
+	var dir := DirAccess.open(dir_path)
+	if not dir:
+		push_error("DialogueData: Could not open directory %s" % dir_path)
+		return
+	dir.list_dir_begin()
+	var file_name := dir.get_next()
+	while file_name != "":
+		if not dir.current_is_dir() and file_name.ends_with(".csv"):
+			_load_csv_file(dir_path.path_join(file_name))
+		file_name = dir.get_next()
+	_loaded = true
+
+## Load a single CSV file (merges into existing lines)
+static func _load_csv_file(path: String) -> void:
 	var file := FileAccess.open(path, FileAccess.READ)
 	if not file:
 		push_error("DialogueData: Could not open %s" % path)
 		return
 
-	# Read header
 	var header_line := file.get_csv_line()
-	# Find column indices
 	var col_key := _find_col(header_line, "key")
 	var col_speaker := _find_col(header_line, "speaker")
 	var col_style := _find_col(header_line, "style")
@@ -32,7 +44,7 @@ static func load_csv(path: String) -> void:
 	var col_context := _find_col(header_line, "context")
 
 	if col_key < 0 or col_text < 0:
-		push_error("DialogueData: CSV missing required columns (key, text)")
+		push_error("DialogueData: CSV missing required columns (key, text) in %s" % path)
 		return
 
 	while not file.eof_reached():
@@ -48,14 +60,11 @@ static func load_csv(path: String) -> void:
 		line.text = row[col_text].strip_edges() if col_text < row.size() else ""
 		line.context = row[col_context].strip_edges() if col_context >= 0 and col_context < row.size() else ""
 
-		# Style "thought" is treated as style "normal" with speaker="" for the dialogue box
 		if line.style == "thought":
 			line.is_thought = true
 			line.style = "normal"
 
 		_lines[line.key] = line
-
-	_loaded = true
 
 static func _find_col(header: PackedStringArray, name: String) -> int:
 	for i in range(header.size()):
@@ -66,7 +75,7 @@ static func _find_col(header: PackedStringArray, name: String) -> int:
 ## Get a single dialogue line by key
 static func get_line(key: String) -> DialogueLine:
 	if not _loaded:
-		load_csv("res://data/dialogue/en.csv")
+		load_dir("res://data/dialogue/en/")
 	if key in _lines:
 		return _lines[key]
 	push_warning("DialogueData: key not found: %s" % key)
@@ -78,7 +87,7 @@ static func get_line(key: String) -> DialogueLine:
 ## Get multiple lines by key prefix (e.g. "tag_day.poem" returns poem.01 through poem.14)
 static func get_lines(prefix: String) -> Array[DialogueLine]:
 	if not _loaded:
-		load_csv("res://data/dialogue/en.csv")
+		load_dir("res://data/dialogue/en/")
 	var result: Array[DialogueLine] = []
 	# Collect all matching keys, sorted
 	var keys: Array[String] = []
