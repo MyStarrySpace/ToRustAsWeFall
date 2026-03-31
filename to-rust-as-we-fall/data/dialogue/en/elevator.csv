@@ -35,7 +35,7 @@ elevator.aster.ahead,Aster,normal,true,There's something ahead. Lights.,Waits fo
 elevator.peris.floor,Peris,normal,false,The floor—!,Bridge gives way
 elevator.peris.hurt,Peris,normal,false,Are you hurt?,After the fall
 elevator.aster.sublevel,Aster,data,false,Sub-level. We fell through.,Aster reads the environment
-elevator.aster.two_paths,Aster,normal,false,"Two ways forward. Neither looks good.",Fork visible ahead
+elevator.aster.two_paths,Aster,data,false,"Two corridors. One's clear but corroded. The other's shorter, but something's in there.",Aster reads the fork — safe route has iron hazards on floor; dangerous route has hostiles
 elevator.endo.beckon,,normal,false,"Someone in the doorway. Beckoning.",Endo gestures them inside — marker appears on shelter
 elevator.peris.who,Peris,normal,false,Who...?,
 elevator.aster.endo_read,Aster,data,false,"Endosomal unit. Non-hostile. His tag reads compliant, but the signal's dead.",Aster scans Endo
