@@ -45,6 +45,7 @@ var _chunks: Dictionary = {}
 
 # Endo (hidden until junction)
 var _endo: Node3D
+var _drink_mesh: MeshInstance3D  # Individual drink — carried by Endo
 
 # Night watch
 var _monster_eyes: Array[OmniLight3D] = []
@@ -683,14 +684,45 @@ func _start_junction_arrive() -> void:
 func _start_endo_shelter() -> void:
 	_enter_step("endo_shelter")
 	_player.set_move_enabled(false)
-	# Marker on the drink container
-	_show_marker(Vector3(JUNCTION_POS.x + 1.5, BELOW_Y + 1.0, -1.0), "WATER")
+	# Endo walks to the drink container
+	var container_pos := Vector3(JUNCTION_POS.x + 1.5, BELOW_Y + 0.5, -1.0)
+	_game_state.command_move_to_pos("endo", container_pos)
+	_game_state.character_arrived.connect(_on_endo_at_container, CONNECT_ONE_SHOT)
+
+func _on_endo_at_container(id: String) -> void:
+	if id != "endo":
+		# Wrong character arrived — re-listen
+		_game_state.character_arrived.connect(_on_endo_at_container, CONNECT_ONE_SHOT)
+		return
+	# Dwell indicator while Endo picks up drink
+	_show_marker(_endo.global_position + Vector3(0, 1.5, 0), "...")
+	_scheduler.schedule_after(1.5, _endo_pickup_drink, "endo_pickup")
+
+func _endo_pickup_drink() -> void:
+	_clear_markers()
+	# Reparent drink to Endo so it moves with him
+	if _drink_mesh and is_instance_valid(_drink_mesh):
+		var global_pos := _drink_mesh.global_position
+		_drink_mesh.get_parent().remove_child(_drink_mesh)
+		_endo.add_child(_drink_mesh)
+		_drink_mesh.position = Vector3(0, 1.2, 0.3)
+	# WATER marker on the drink
+	_show_marker(Vector3(JUNCTION_POS.x + 1.5, BELOW_Y + 1.5, -1.0), "WATER")
+	# Endo walks back to the party
+	var party_pos := Vector3(JUNCTION_POS.x - SHELTER_SIZE.x / 2.0 + 1.0, BELOW_Y + 0.5, 0)
+	_game_state.command_move_to_pos("endo", party_pos)
+	_game_state.character_arrived.connect(_on_endo_delivered, CONNECT_ONE_SHOT)
+
+func _on_endo_delivered(id: String) -> void:
+	if id != "endo":
+		_game_state.character_arrived.connect(_on_endo_delivered, CONNECT_ONE_SHOT)
+		return
+	_clear_markers()
 	_dialogue_chain([
 		"elevator.endo.drink",
 		"elevator.peris.stomach",
 		"elevator.endo.rest",
 	], func():
-		_clear_markers()
 		_scheduler.schedule_after(2.0, _start_night_watch, "night_watch")
 	)
 
@@ -1109,6 +1141,7 @@ func _build_junction_chunk(parent: Node3D) -> void:
 
 	# Container for drinks
 	var container := MeshInstance3D.new()
+	container.name = "DrinkContainer"
 	var co := BoxMesh.new()
 	co.size = Vector3(0.8, 0.4, 0.5)
 	container.mesh = co
@@ -1117,6 +1150,22 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	container.material_override = cont_mat
 	container.position = Vector3(sx + 1.5, ground_y + 0.2, -1.0)
 	parent.add_child(container)
+
+	# Individual drink sitting on top of the container
+	_drink_mesh = MeshInstance3D.new()
+	_drink_mesh.name = "Drink"
+	var dc := CylinderMesh.new()
+	dc.top_radius = 0.06
+	dc.bottom_radius = 0.05
+	dc.height = 0.18
+	_drink_mesh.mesh = dc
+	var drink_mat := StandardMaterial3D.new()
+	drink_mat.albedo_color = Color(0.25, 0.3, 0.35)
+	drink_mat.metallic = 0.4
+	drink_mat.roughness = 0.3
+	_drink_mesh.material_override = drink_mat
+	_drink_mesh.position = Vector3(sx + 1.5, ground_y + 0.5, -1.0)
+	parent.add_child(_drink_mesh)
 
 func _add_corridor_section(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> void:
 	var mesh := MeshInstance3D.new()

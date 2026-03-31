@@ -62,6 +62,9 @@ func _ready() -> void:
 			"--test-elevator-dialogue":
 				ran_test = true
 				await _test_elevator_dialogue()
+			"--test-endo-drink":
+				ran_test = true
+				await _test_endo_drink()
 			"--test-scene-load":
 				ran_test = true
 				await _test_scene_load()
@@ -98,6 +101,7 @@ func _run_all_tests() -> void:
 	await _test_peris_dialogue()
 	await _test_peris_tutorial_redirect()
 	await _test_elevator_dialogue()
+	await _test_endo_drink()
 
 # --- Test: Syntax ---
 # If we got this far, GDScript compiled successfully.
@@ -983,6 +987,64 @@ func _test_elevator_dialogue() -> void:
 		if "ahead" in entry.text and "Lights" in entry.text:
 			has_ahead = true
 	_assert_true(has_ahead, "Final 'There's something ahead' line exists")
+
+	instance.queue_free()
+	await get_tree().process_frame
+
+# --- Test: Endo Drink Pickup ---
+func _test_endo_drink() -> void:
+	_test_name = "Endo Drink"
+	var scene := load("res://scenes/tutorial/elevator.tscn")
+	if not scene:
+		_assert_true(false, "Scene loads")
+		return
+	var instance: Node = scene.instantiate()
+	get_tree().root.add_child(instance)
+	for i in range(3):
+		await get_tree().process_frame
+
+	# Load junction chunk to get the drink mesh
+	instance._load_chunk("junction")
+	for i in range(2):
+		await get_tree().process_frame
+
+	var drink: MeshInstance3D = instance._drink_mesh
+	_assert_true(drink != null, "Drink mesh exists")
+	if not drink:
+		instance.queue_free()
+		await get_tree().process_frame
+		return
+
+	var drink_start_pos: Vector3 = drink.global_position
+	_assert_true(drink_start_pos.y < -3.0, "Drink starts on container (got y: %.1f)" % drink_start_pos.y)
+
+	# Set up Endo so the shelter step can run
+	instance._endo.visible = true
+	instance._endo.position = Vector3(
+		instance.JUNCTION_POS.x - instance.SHELTER_SIZE.x / 2.0,
+		instance.BELOW_Y + 0.5, 0)
+	instance._register_gs_character("endo", instance._endo, 2.5)
+
+	# Trigger the shelter step (Endo walks to container)
+	instance._start_endo_shelter()
+	# Advance the scheduler enough for Endo to reach the container
+	for i in range(80):
+		instance._scheduler.advance(0.1)
+		await get_tree().process_frame
+
+	var drink_after_walk: Vector3 = drink.global_position
+	var drink_moved := drink_start_pos.distance_to(drink_after_walk) > 0.5
+	_assert_true(drink_moved, "Drink moved after Endo walks (dist: %.2f)" % drink_start_pos.distance_to(drink_after_walk))
+
+	# Advance more for Endo to walk back with the drink
+	for i in range(80):
+		instance._scheduler.advance(0.1)
+		await get_tree().process_frame
+
+	var endo_pos: Vector3 = instance._endo.global_position
+	var drink_final: Vector3 = drink.global_position
+	var drink_near_endo := endo_pos.distance_to(drink_final) < 2.0
+	_assert_true(drink_near_endo, "Drink near Endo after delivery (dist: %.2f)" % endo_pos.distance_to(drink_final))
 
 	instance.queue_free()
 	await get_tree().process_frame
