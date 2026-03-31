@@ -41,6 +41,11 @@ var _stamina := 100.0
 var _enemies: Array[Enemy] = []
 var _enemy_count := 0
 
+# Character HP
+var _aster_hp := 100.0
+var _peris_hp := 100.0
+var _game_over := false
+
 # Chunk system
 var _chunks: Dictionary = {}
 
@@ -165,6 +170,8 @@ func _setup_ui() -> void:
 	add_child(_hud)
 	_hud.add_portrait("peris", "Peris", Color(1.0, 0.67, 0.27))
 	_hud.add_portrait("aster", "Aster", Color(0.29, 0.62, 1.0))
+	_hud.set_portrait_stat("peris", "hp", 100)
+	_hud.set_portrait_stat("aster", "hp", 100)
 	_hud.set_portrait_status("aster", "downed")
 	_hud.set_portrait_stat("aster", "sta", 0)
 	_hud.show_pause_toggle(false)
@@ -231,9 +238,31 @@ func _on_process(delta: float, spd: float) -> void:
 			_hud.set_ability_state("emp", "ready")
 
 	# Enemies drift visually (patrol driven by scheduler, this handles rotation)
+	# Enemies in pursuit deal contact damage to nearby characters
 	for enemy in _enemies:
-		if is_instance_valid(enemy) and enemy.is_alive():
-			enemy.rotation.y += delta * spd * 0.3
+		if not is_instance_valid(enemy) or not enemy.is_alive():
+			continue
+		enemy.rotation.y += delta * spd * 0.3
+		if enemy.get_state() == "pursuit" and not _game_over:
+			var epos := enemy.global_position
+			var damage_per_sec := 15.0
+			for pair in [["aster", _aster_node], ["peris", _peris_node]]:
+				var cid: String = pair[0]
+				var cnode: Node3D = pair[1]
+				if not cnode or epos.distance_to(cnode.global_position) > 1.5:
+					continue
+				if cid == "aster" and _aster_hp > 0:
+					_aster_hp = maxf(0.0, _aster_hp - damage_per_sec * delta * spd)
+					_hud.set_portrait_stat("aster", "hp", _aster_hp)
+					if _aster_hp <= 0:
+						_hud.set_portrait_status("aster", "downed")
+				elif cid == "peris" and _peris_hp > 0:
+					_peris_hp = maxf(0.0, _peris_hp - damage_per_sec * delta * spd)
+					_hud.set_portrait_stat("peris", "hp", _peris_hp)
+					if _peris_hp <= 0:
+						_hud.set_portrait_status("peris", "downed")
+			if _aster_hp <= 0 and _peris_hp <= 0:
+				_start_game_over()
 
 	# Approach gate
 	if _current_step == "approach_aster":
@@ -836,12 +865,44 @@ func _complete() -> void:
 	_enter_step("complete")
 	_player.set_move_enabled(false)
 	_fade_start_tick = _scheduler.get_current_tick()
-	# Fade to black then transition
 	var tween := create_tween()
 	tween.tween_property(_fade_rect, "color", Color(0.02, 0.02, 0.03, 1.0), 2.0)
 	tween.tween_callback(func():
 		get_tree().change_scene_to_file("res://scenes/tutorial/leaving_facility.tscn")
 	)
+
+# --- Game Over ---
+
+func _start_game_over() -> void:
+	if _game_over:
+		return
+	_game_over = true
+	_enter_step("game_over")
+	_player.set_move_enabled(false)
+	_scheduler.pause()
+	# Stop all enemies
+	for enemy in _enemies:
+		if is_instance_valid(enemy):
+			enemy._change_state("idle")
+	# Fade to dark red-black
+	var tween := create_tween()
+	tween.tween_property(_fade_rect, "color", Color(0.08, 0.02, 0.02, 0.85), 2.0)
+	tween.tween_callback(_show_game_over_text)
+
+func _show_game_over_text() -> void:
+	var overlay := CanvasLayer.new()
+	overlay.layer = 20
+	add_child(overlay)
+	var label := Label.new()
+	label.text = "We Fell"
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 48)
+	label.add_theme_color_override("font_color", Color(0.7, 0.25, 0.2, 0.0))
+	label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	overlay.add_child(label)
+	var tween := create_tween()
+	tween.tween_property(label, "theme_override_colors/font_color:a", 1.0, 2.0)
 
 func _build_bridge_chunk(parent: Node3D) -> void:
 	var start_x := ELEVATOR_SIZE.x / 2.0 + 0.5
