@@ -1006,15 +1006,48 @@ func _build_below_chunk(parent: Node3D) -> void:
 		bloom.omni_range = 3.0
 		parent.add_child(bloom)
 
-	# Chelators — living entities patrolling the ecology (same creatures as enemy route)
+	# Chelators — smaller prey entities patrolling the ecology walls
+	var chelator_ids: Array[String] = []
 	for i in range(6):
-		var enemy := _spawn_enemy("chelator_%d" % i,
+		var cid := "chelator_%d" % i
+		chelator_ids.append(cid)
+		var enemy := _spawn_enemy(cid,
 			Vector3(bridge_start + 1.0 + i * 2.0, ground_y + 0.5, (-5.0 if i % 2 == 0 else 5.0) + randf_range(-1, 1)),
 			parent)
-		# Patrol along the walls
+		enemy.max_hp = 20.0
+		enemy._hp = 20.0
+		enemy.detection_range = 4.0
 		var patrol_a := Vector3(bridge_start + 1.0 + i * 2.0, ground_y + 0.5, enemy.position.z)
 		var patrol_b := Vector3(bridge_start + 1.0 + i * 2.0 + 4.0, ground_y + 0.5, enemy.position.z)
 		enemy.set_patrol([patrol_a, patrol_b])
+
+	# Predators — larger enemies that hunt the chelators
+	# They're distracted by prey, so they don't target players initially
+	for i in range(2):
+		var pid := "predator_%d" % i
+		var predator := _spawn_enemy(pid,
+			Vector3(bridge_start + 3.0 + i * 6.0, ground_y + 0.5, randf_range(-2, 2)),
+			parent)
+		predator.max_hp = 80.0
+		predator._hp = 80.0
+		predator.move_speed = 2.0
+		predator.charge_speed = 10.0
+		predator.charge_damage = 35.0
+		predator.detection_range = 8.0
+		# Target chelators, not players — distracted by the hunt
+		predator._detection_targets = chelator_ids.duplicate()
+		# Larger visual
+		if predator._mesh and predator._mesh.mesh is CapsuleMesh:
+			(predator._mesh.mesh as CapsuleMesh).radius = 0.35
+			(predator._mesh.mesh as CapsuleMesh).height = 1.2
+			predator._mesh.position.y = 0.6
+		predator.color = Color(0.5, 0.12, 0.08)
+		predator._base_color = Color(0.5, 0.12, 0.08)
+		if predator._mesh and predator._mesh.material_override:
+			(predator._mesh.material_override as StandardMaterial3D).albedo_color = Color(0.5, 0.12, 0.08)
+		var pa := Vector3(bridge_start + 2.0 + i * 6.0, ground_y + 0.5, -2.0)
+		var pb := Vector3(bridge_start + 6.0 + i * 6.0, ground_y + 0.5, 2.0)
+		predator.set_patrol([pa, pb])
 
 	# Fluor — yellow-green bioluminescence in a breached corner
 	var fluor_light := OmniLight3D.new()
