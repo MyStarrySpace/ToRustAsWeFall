@@ -47,6 +47,10 @@ var _peris_hp := 100.0
 var _game_over := false
 var _iframes: Dictionary = {}  # char_id -> scheduler tick when i-frames expire
 
+# Iron hazard zones — Array of {pos: Vector3, size: Vector3}
+var _iron_patches: Array[Dictionary] = []
+const IRON_DAMAGE_PER_SEC := 8.0
+
 # Chunk system
 var _chunks: Dictionary = {}
 
@@ -242,6 +246,36 @@ func _on_process(delta: float, spd: float) -> void:
 	for enemy in _enemies:
 		if is_instance_valid(enemy) and enemy.is_alive():
 			enemy.rotation.y += delta * spd * 0.3
+
+	# Iron patch damage — standing on iron hurts
+	if not _game_over and not _iron_patches.is_empty():
+		for pair in [["aster", _aster_node], ["peris", _peris_node]]:
+			var cid: String = pair[0]
+			var cnode: Node3D = pair[1]
+			if not cnode:
+				continue
+			var hp: float = _aster_hp if cid == "aster" else _peris_hp
+			if hp <= 0:
+				continue
+			var cpos := cnode.global_position
+			for patch in _iron_patches:
+				var ppos: Vector3 = patch.pos
+				var psz: Vector3 = patch.size
+				if absf(cpos.x - ppos.x) < psz.x / 2.0 and absf(cpos.z - ppos.z) < psz.z / 2.0:
+					var dmg := IRON_DAMAGE_PER_SEC * delta * spd
+					if cid == "aster":
+						_aster_hp = maxf(0.0, _aster_hp - dmg)
+						_hud.set_portrait_stat("aster", "hp", _aster_hp)
+						if _aster_hp <= 0:
+							_hud.set_portrait_status("aster", "downed")
+					else:
+						_peris_hp = maxf(0.0, _peris_hp - dmg)
+						_hud.set_portrait_stat("peris", "hp", _peris_hp)
+						if _peris_hp <= 0:
+							_hud.set_portrait_status("peris", "downed")
+					break
+		if _aster_hp <= 0 and _peris_hp <= 0:
+			_start_game_over()
 
 	# Approach gate
 	if _current_step == "approach_aster":
@@ -1139,12 +1173,14 @@ func _build_below_chunk(parent: Node3D) -> void:
 	# Hazard route (south, z > 0): wider, iron patches, unstable ceiling drips
 	var hz_z := 4.0
 	_add_wall(parent, Vector3(fork_x + 8.0, ground_y + wall_h / 2.0, hz_z + 3.5), Vector3(16, wall_h, 0.3), wall_color)
-	# Iron deposit patches on the hazard floor
+	# Iron deposit patches on the hazard floor (deal damage on contact)
 	for i in range(3):
-		var ix := fork_x + 3.0 + i * 5.0
+		var ix: float = fork_x + 3.0 + i * 5.0
+		var iron_pos := Vector3(ix, ground_y + 0.02, hz_z + 1.0)
+		var iron_size := Vector3(3, 0.05, 2.5)
 		var iron := MeshInstance3D.new()
 		var ib := BoxMesh.new()
-		ib.size = Vector3(3, 0.05, 2.5)
+		ib.size = iron_size
 		iron.mesh = ib
 		var im := StandardMaterial3D.new()
 		im.albedo_color = Color(0.35, 0.15, 0.05)
@@ -1152,8 +1188,9 @@ func _build_below_chunk(parent: Node3D) -> void:
 		im.emission = Color(0.25, 0.08, 0.02)
 		im.emission_energy_multiplier = 0.3
 		iron.material_override = im
-		iron.position = Vector3(ix, ground_y + 0.02, hz_z + 1.0)
+		iron.position = iron_pos
 		parent.add_child(iron)
+		_iron_patches.append({"pos": iron_pos, "size": iron_size})
 		# Iron glow
 		var ig := OmniLight3D.new()
 		ig.position = Vector3(ix, ground_y + 0.5, hz_z + 1.0)
