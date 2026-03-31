@@ -657,18 +657,119 @@ func _start_route_choice() -> void:
 	_player.set_move_enabled(true)
 	_tutorial_prompt.show_prompt("Click to move — choose a path")
 
-# --- Junction (stub — Phase 4) ---
+# --- Junction / Shelter ---
 
 func _start_junction_arrive() -> void:
 	_enter_step("junction_arrive")
 	_load_chunk("junction")
-	# Phase 4: Endo greeting, shelter, night watch, dawn
-	_scheduler.schedule_after(2.0, _complete, "complete")
+	_unload_chunk("below")
+	_bridge_chelators.clear()
+	# Reveal Endo
+	_endo.visible = true
+	_register_gs_character("endo", _endo, 2.5)
+	# Walk party into shelter
+	var shelter_enter := Vector3(JUNCTION_POS.x - SHELTER_SIZE.x / 2.0 - 1.0, BELOW_Y + 0.5, 0)
+	_game_state.command_move_to_pos("aster", shelter_enter + Vector3(0, 0, 0.5))
+	_game_state.command_move_to_pos("peris", shelter_enter + Vector3(0, 0, -0.5))
+	_dialogue_chain([
+		"elevator.endo.greeting",
+	], func(): _scheduler.schedule_after(1.0, _start_endo_shelter, "shelter"))
+
+func _start_endo_shelter() -> void:
+	_enter_step("endo_shelter")
+	_player.set_move_enabled(false)
+	_dialogue_chain([
+		"elevator.endo.drink",
+		"elevator.peris.stomach",
+		"elevator.endo.rest",
+	], func(): _scheduler.schedule_after(2.0, _start_night_watch, "night_watch"))
+
+func _start_night_watch() -> void:
+	_enter_step("night_watch")
+	# Darken the world — night falls
+	var env_node: Node = find_child("Environment", false, false)
+	var we: WorldEnvironment = env_node.find_child("*", false, false) as WorldEnvironment if env_node else null
+	for child in env_node.get_children():
+		if child is WorldEnvironment:
+			we = child
+			break
+	if we and we.environment:
+		we.environment.ambient_light_energy = 0.1
+
+	# Flicker the shelter interior light
+	var shelter_light: OmniLight3D
+	var junction_chunk: Node3D = _chunks.get("junction")
+	if junction_chunk:
+		shelter_light = junction_chunk.find_child("ShelterLight", false, false)
+
+	# Spawn monster eye pairs outside both windows
+	_monster_eyes.clear()
+	var ground_y := BELOW_Y
+	var sx := JUNCTION_POS.x
+	var sd := SHELTER_SIZE.z
+	for side_idx in range(2):
+		var side_sign: float = -1.0 if side_idx == 0 else 1.0
+		var wz: float = side_sign * (sd / 2.0 + 0.5)
+		for i in range(3):
+			var pair_x: float = sx - 2.0 + i * 2.5
+			for eye_idx in range(2):
+				var eye := OmniLight3D.new()
+				var eye_offset: float = -0.15 if eye_idx == 0 else 0.15
+				eye.position = Vector3(pair_x + eye_offset, ground_y + 1.6, wz)
+				eye.light_color = Color(0.95, 0.1, 0.05)
+				eye.light_energy = 0.0
+				eye.omni_range = 0.8
+				find_child("Environment", false, false).add_child(eye)
+				_monster_eyes.append(eye)
+
+	# Fade eyes in over 2 seconds
+	for eye in _monster_eyes:
+		var tween := create_tween()
+		tween.tween_property(eye, "light_energy", 0.5 + randf() * 0.3, 2.0 + randf() * 1.0)
+
+	# Shelter light flickers
+	if shelter_light:
+		_scheduler.schedule_after(3.0, func():
+			var flicker := create_tween()
+			flicker.tween_property(shelter_light, "light_energy", 1.0, 0.1)
+			flicker.tween_property(shelter_light, "light_energy", 2.5, 0.1)
+			flicker.tween_property(shelter_light, "light_energy", 0.8, 0.1)
+			flicker.tween_property(shelter_light, "light_energy", 2.5, 0.3)
+		, "flicker")
+
+	DialogueData.say_to(_dialogue, "elevator.night.eyes")
+	_scheduler.schedule_after(8.0, _start_dawn, "dawn")
+
+func _start_dawn() -> void:
+	_enter_step("dawn")
+	# Eyes fade out
+	for eye in _monster_eyes:
+		if is_instance_valid(eye):
+			var tween := create_tween()
+			tween.tween_property(eye, "light_energy", 0.0, 2.0)
+			tween.tween_callback(eye.queue_free)
+	_monster_eyes.clear()
+	# Restore ambient light
+	var env_node: Node = find_child("Environment", false, false)
+	for child in env_node.get_children():
+		if child is WorldEnvironment:
+			child.environment.ambient_light_energy = 0.5
+			break
+	DialogueData.say_to(_dialogue, "elevator.dawn")
+	_dialogue.dialogue_finished.connect(func():
+		_scheduler.schedule_after(1.0, _complete, "complete")
+	, CONNECT_ONE_SHOT)
 
 func _complete() -> void:
 	_enter_step("complete")
-	# Placeholder transition — will be replaced by dawn step in Phase 4
-	get_tree().change_scene_to_file("res://scenes/tutorial/leaving_facility.tscn")
+	_player.set_move_enabled(false)
+	_fade_start_tick = _scheduler.get_current_tick()
+	# Fade to black then transition
+	var tween := create_tween()
+	tween.tween_property(_fade_rect, "color", Color(0.02, 0.02, 0.03, 1.0), 2.0)
+	tween.tween_callback(func():
+		get_tree().change_scene_to_file("res://scenes/tutorial/leaving_facility.tscn")
+	)
 
 func _build_bridge_chunk(parent: Node3D) -> void:
 	var start_x := ELEVATOR_SIZE.x / 2.0 + 0.5
@@ -918,8 +1019,75 @@ func _build_below_chunk(parent: Node3D) -> void:
 	_add_corridor_section(parent, Vector3(conv_x, ground_y - 0.04, 0), Vector3(8, 0.08, 12), Color(0.06, 0.06, 0.08))
 
 func _build_junction_chunk(parent: Node3D) -> void:
-	# Endo's shelter — built in Phase 4
-	pass
+	var ground_y := BELOW_Y
+	var sx := JUNCTION_POS.x
+	var sw := SHELTER_SIZE.x
+	var sh := SHELTER_SIZE.y
+	var sd := SHELTER_SIZE.z
+	var wc := Color(0.12, 0.11, 0.1)
+
+	# Shelter floor
+	_add_corridor_section(parent, Vector3(sx, ground_y - 0.03, 0), Vector3(sw + 2, 0.06, sd + 2), Color(0.08, 0.08, 0.09))
+
+	# Walls (with window openings on north and south)
+	# West wall (entry side) — opening for door
+	_add_wall(parent, Vector3(sx - sw / 2.0, ground_y + sh / 2.0, -sd * 0.35), Vector3(0.2, sh, sd * 0.3), wc)
+	_add_wall(parent, Vector3(sx - sw / 2.0, ground_y + sh / 2.0, sd * 0.35), Vector3(0.2, sh, sd * 0.3), wc)
+	# East wall (solid back)
+	_add_wall(parent, Vector3(sx + sw / 2.0, ground_y + sh / 2.0, 0), Vector3(0.2, sh, sd), wc)
+	# North wall — lower section + upper section with window gap
+	_add_wall(parent, Vector3(sx, ground_y + 0.5, -sd / 2.0), Vector3(sw, 1.0, 0.2), wc)
+	_add_wall(parent, Vector3(sx, ground_y + sh - 0.3, -sd / 2.0), Vector3(sw, 0.6, 0.2), wc)
+	# South wall — same window pattern
+	_add_wall(parent, Vector3(sx, ground_y + 0.5, sd / 2.0), Vector3(sw, 1.0, 0.2), wc)
+	_add_wall(parent, Vector3(sx, ground_y + sh - 0.3, sd / 2.0), Vector3(sw, 0.6, 0.2), wc)
+	# Ceiling
+	_add_wall(parent, Vector3(sx, ground_y + sh, 0), Vector3(sw, 0.15, sd), Color(0.07, 0.07, 0.09))
+
+	# Window grating (thin bars across the window openings)
+	for z_side in [-sd / 2.0, sd / 2.0]:
+		for i in range(4):
+			var bar := MeshInstance3D.new()
+			var bb := BoxMesh.new()
+			bb.size = Vector3(0.03, 1.2, 0.03)
+			bar.mesh = bb
+			var bm := StandardMaterial3D.new()
+			bm.albedo_color = Color(0.15, 0.14, 0.13)
+			bar.material_override = bm
+			bar.position = Vector3(sx - sw / 2.0 + 1.0 + i * 1.2, ground_y + 1.6, z_side)
+			parent.add_child(bar)
+
+	# Interior warm light
+	var interior_light := OmniLight3D.new()
+	interior_light.name = "ShelterLight"
+	interior_light.position = Vector3(sx, ground_y + sh - 0.5, 0)
+	interior_light.light_color = Color(0.8, 0.6, 0.35)
+	interior_light.light_energy = 2.5
+	interior_light.omni_range = 6.0
+	parent.add_child(interior_light)
+
+	# Crates (seating / furnishings)
+	for i in range(2):
+		var crate := MeshInstance3D.new()
+		var cb := BoxMesh.new()
+		cb.size = Vector3(0.6, 0.5, 0.6)
+		crate.mesh = cb
+		var cm := StandardMaterial3D.new()
+		cm.albedo_color = Color(0.2, 0.18, 0.15)
+		crate.material_override = cm
+		crate.position = Vector3(sx + 1.0 - i * 2.0, ground_y + 0.25, 1.0)
+		parent.add_child(crate)
+
+	# Container for drinks
+	var container := MeshInstance3D.new()
+	var co := BoxMesh.new()
+	co.size = Vector3(0.8, 0.4, 0.5)
+	container.mesh = co
+	var cont_mat := StandardMaterial3D.new()
+	cont_mat.albedo_color = Color(0.18, 0.2, 0.18)
+	container.material_override = cont_mat
+	container.position = Vector3(sx + 1.5, ground_y + 0.2, -1.0)
+	parent.add_child(container)
 
 func _add_corridor_section(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> void:
 	var mesh := MeshInstance3D.new()

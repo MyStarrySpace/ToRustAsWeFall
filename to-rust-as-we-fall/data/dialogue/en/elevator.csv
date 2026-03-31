@@ -36,3 +36,9 @@ elevator.peris.floor,Peris,normal,false,The floor—!,Bridge gives way
 elevator.peris.hurt,Peris,normal,false,Are you hurt?,After the fall
 elevator.aster.sublevel,Aster,data,false,Sub-level. We fell through.,Aster reads the environment
 elevator.aster.two_paths,Aster,normal,false,"Two ways forward. Neither looks good.",Fork visible ahead
+elevator.endo.greeting,Endo,normal,false,"In here. Quickly.",Endo at the shelter entrance
+elevator.endo.drink,Endo,normal,false,There's water. Drink.,Offers drink
+elevator.peris.stomach,Peris,normal,false,Thank you. Can't sleep well on an empty stomach.,
+elevator.endo.rest,Endo,normal,false,"Rest. I'll keep watch.",Settles in by the window
+elevator.night.eyes,,poem,false,Red. Through the grating. Watching.,Pairs of eyes outside — the player sees them too
+elevator.dawn,,normal,false,"Morning. They're gone.",The eyes recede with the light
