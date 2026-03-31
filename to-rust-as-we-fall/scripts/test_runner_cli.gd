@@ -921,17 +921,16 @@ func _test_elevator_dialogue() -> void:
 		"emp_tutorial": func():
 			instance._on_emp_pressed()
 			instance._flush_queued_abilities(),
-		"multiselect_tutorial": func():
-			# Resume from auto-pause and teleport both near panel
-			instance._scheduler.resume()
-			var pp: Vector3 = instance.PANEL_POS + Vector3(-0.5, 0.5, 0)
-			var ap: Vector3 = instance.PANEL_POS + Vector3(0.5, 0.5, 0)
-			instance._peris_node.global_position = pp
-			instance._aster_node.global_position = ap
-			instance._game_state.characters["peris"].position = pp
-			instance._game_state.characters["aster"].position = ap,
 		"hack_tutorial": func():
 			instance._on_panel_hacked(),
+		"multiselect_tutorial": func():
+			# Resume from auto-pause and teleport both near the door exit
+			instance._scheduler.resume()
+			var exit_gate := Vector3(instance.ELEVATOR_SIZE.x / 2.0, 0.5, 0)
+			instance._peris_node.global_position = exit_gate + Vector3(0, 0, -0.5)
+			instance._aster_node.global_position = exit_gate + Vector3(0, 0, 0.5)
+			instance._game_state.characters["peris"].position = exit_gate + Vector3(0, 0, -0.5)
+			instance._game_state.characters["aster"].position = exit_gate + Vector3(0, 0, 0.5),
 	})
 
 	_assert_true(log.size() >= 20, "At least 20 dialogue lines (got: %d)" % log.size())
