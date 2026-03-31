@@ -31,4 +31,8 @@ elevator.aster.no_service,Aster,data,false,Nobody is. This section hasn't been s
 elevator.bridge.narration,,normal,false,An elevated walkway spanning a larger space. Incomplete railing. Exposed framework. The air is open — it smells like rust.,Bridge description
 elevator.peris.bodies,Peris,normal,false,Those people down there...,Peris sees bodies below the bridge
 elevator.aster.logs,Aster,normal,false,All casualties are supposed to be logged. I'll check the records when we find a working terminal. Come on.,Aster files it as data and keeps moving
-elevator.aster.ahead,Aster,normal,true,There's something ahead. Lights.,Waits for click — transition to leaving_facility
+elevator.aster.ahead,Aster,normal,true,There's something ahead. Lights.,Waits for click — bridge collapse follows
+elevator.peris.floor,Peris,normal,false,The floor—!,Bridge gives way
+elevator.peris.hurt,Peris,normal,false,Are you hurt?,After the fall
+elevator.aster.sublevel,Aster,data,false,Sub-level. We fell through.,Aster reads the environment
+elevator.aster.two_paths,Aster,normal,false,"Two ways forward. Neither looks good.",Fork visible ahead

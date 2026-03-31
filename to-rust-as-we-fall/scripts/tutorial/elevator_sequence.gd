@@ -238,10 +238,6 @@ func _on_process(delta: float, spd: float) -> void:
 		if c.position.x > bridge_end:
 			c.position.x -= 11.0
 
-	# Transition out fade
-	if _current_step == "transition_out":
-		_update_fade_out(Color(0.02, 0.02, 0.03), 2.0)
-
 	# Approach gate
 	if _current_step == "approach_aster":
 		var peris_pos := _game_state.get_position("peris")
@@ -583,16 +579,90 @@ func _start_bridge() -> void:
 		"elevator.peris.bodies",
 		"elevator.aster.logs",
 		"elevator.aster.ahead",
-	], func(): _scheduler.schedule_after(1.0, _start_transition_out, "transition"))
+	], func(): _scheduler.schedule_after(1.0, _start_bridge_collapse, "collapse"))
 
-func _start_transition_out() -> void:
-	_enter_step("transition_out")
+# --- Bridge Collapse ---
+
+func _start_bridge_collapse() -> void:
+	_enter_step("bridge_collapse")
 	_player.set_move_enabled(false)
-	_fade_start_tick = _scheduler.get_current_tick()
-	_scheduler.schedule_after(2.5, _complete, "complete")
+	_game_state.command_stop("aster")
+	_game_state.command_stop("peris")
+	# Hide escort units (abandoned above)
+	if _escort_1:
+		_escort_1.visible = false
+	if _escort_2:
+		_escort_2.visible = false
+	# Warning rumble
+	_camera.shake(0.4, 2.0)
+	DialogueData.say_to(_dialogue, "elevator.peris.floor")
+	_scheduler.schedule_after(0.8, _execute_bridge_fall, "bridge_fall")
+
+func _execute_bridge_fall() -> void:
+	_camera.shake(0.6, 1.5)
+	var fall_duration := 1.2
+	var bridge_chunk: Node3D = _chunks.get("bridge")
+	var bridge_floor: Node3D = bridge_chunk.find_child("BridgeFloor", false, false) if bridge_chunk else null
+	var tween := create_tween()
+	tween.set_parallel(true)
+	# Bridge floor falls with slight rotation
+	if bridge_floor:
+		tween.tween_property(bridge_floor, "position:y", BELOW_Y, fall_duration) \
+			.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+		tween.tween_property(bridge_floor, "rotation:x", 0.15, fall_duration * 0.8)
+	# Characters fall
+	for char_node in [_peris_node, _aster_node]:
+		tween.tween_property(char_node, "position:y", BELOW_Y + 0.5, fall_duration) \
+			.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+	# Camera follows
+	tween.tween_property(_camera, "follow_offset:y", _camera.follow_offset.y + BELOW_Y, fall_duration * 1.1)
+	tween.chain().tween_callback(_on_fall_landed)
+
+func _on_fall_landed() -> void:
+	_camera.shake(0.3, 6.0)
+	# Update GameState positions to the below level
+	for char_id in ["peris", "aster"]:
+		var pos: Vector3 = _game_state.get_position(char_id)
+		_game_state.characters[char_id].position = Vector3(pos.x, BELOW_Y + 0.5, pos.z)
+	# Unload chunks above
+	_unload_chunk("elevator")
+	_unload_chunk("bridge")
+	# Null out freed elevator references
+	_emergency_light = null
+	_indicator_b_label = null
+	_floor_indicator = null
+	_door_panel_a = null
+	_door_panel_b = null
+	_no_exit_label = null
+	_scheduler.schedule_after(1.0, _start_fallen, "fallen")
+
+func _start_fallen() -> void:
+	_enter_step("fallen")
+	_player.set_move_enabled(true)
+	_dialogue_chain([
+		"elevator.peris.hurt",
+		"elevator.aster.sublevel",
+		"elevator.aster.two_paths",
+	], func(): _scheduler.schedule_after(1.5, _start_route_choice, "route_choice"))
+
+# --- Route Choice (stub — Phase 3) ---
+
+func _start_route_choice() -> void:
+	_enter_step("route_choice")
+	# Phase 3: fork geometry, position-gated convergence
+	_scheduler.schedule_after(2.0, _start_junction_arrive, "junction")
+
+# --- Junction (stub — Phase 4) ---
+
+func _start_junction_arrive() -> void:
+	_enter_step("junction_arrive")
+	_load_chunk("junction")
+	# Phase 4: Endo greeting, shelter, night watch, dawn
+	_scheduler.schedule_after(2.0, _complete, "complete")
 
 func _complete() -> void:
 	_enter_step("complete")
+	# Placeholder transition — will be replaced by dawn step in Phase 4
 	get_tree().change_scene_to_file("res://scenes/tutorial/leaving_facility.tscn")
 
 func _build_bridge_chunk(parent: Node3D) -> void:
