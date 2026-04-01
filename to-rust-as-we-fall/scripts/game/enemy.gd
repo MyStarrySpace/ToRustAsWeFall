@@ -79,6 +79,8 @@ func _ready() -> void:
 func activate() -> void:
 	if _state == "dead":
 		return
+	if game_state and not game_state.detection_predicted.is_connected(_on_detection_predicted):
+		game_state.detection_predicted.connect(_on_detection_predicted)
 	_change_state("idle")
 
 ## Set patrol waypoints and switch to patrol state.
@@ -122,10 +124,9 @@ func _change_state(new_state: String) -> void:
 func _enter_state(state: String) -> void:
 	match state:
 		"idle":
-			_schedule_detection_scan()
+			pass  # Detection via GameState prediction signal
 		"patrol":
 			_patrol_next_waypoint()
-			_schedule_detection_scan()
 		"alert":
 			_show_alert_on_target()
 			_set_eye_energy(1.5)
@@ -180,37 +181,18 @@ func _exit_state(state: String) -> void:
 		"charge":
 			_charging = false
 
-# --- Detection (scheduler-driven) ---
+# --- Detection (via GameState predictive signal) ---
 
-func _schedule_detection_scan() -> void:
-	var scheduler := _get_scheduler()
-	if not scheduler or _state == "dead":
+func _on_detection_predicted(detector_id: String, target_id: String) -> void:
+	if detector_id != char_id:
 		return
-	scheduler.schedule_after(scan_interval, _detection_scan, _state_tag)
-
-func _detection_scan() -> void:
-	if _state == "dead":
+	if target_id not in _detection_targets:
 		return
-	if not game_state:
-		_schedule_detection_scan()
+	if _state in ["alert", "pursuit", "windup", "charge", "recover", "dead"]:
 		return
-	var my_pos := global_position
-	var closest_dist := detection_range + 1.0
-	var closest_id := ""
-	for target_id in _detection_targets:
-		if not game_state.characters.has(target_id):
-			continue
-		var target_pos := game_state.get_position(target_id)
-		var dist := my_pos.distance_to(target_pos)
-		if dist < detection_range and dist < closest_dist:
-			closest_dist = dist
-			closest_id = target_id
-	if closest_id != "":
-		_current_target_id = closest_id
-		target_spotted.emit(closest_id)
-		_change_state("alert")
-	else:
-		_schedule_detection_scan()
+	_current_target_id = target_id
+	target_spotted.emit(target_id)
+	_change_state("alert")
 
 # --- Alert ---
 

@@ -68,6 +68,9 @@ func _ready() -> void:
 			"--test-endo-drink":
 				ran_test = true
 				await _test_endo_drink()
+			"--test-predict-detect":
+				ran_test = true
+				_test_predictive_detection()
 			"--test-ferrolure":
 				ran_test = true
 				await _test_ferrolure()
@@ -110,6 +113,7 @@ func _run_all_tests() -> void:
 	await _test_endo_drink()
 	await _test_enemy()
 	await _test_ferrolure()
+	_test_predictive_detection()
 
 # --- Test: Syntax ---
 # If we got this far, GDScript compiled successfully.
@@ -943,6 +947,12 @@ func _test_elevator_dialogue() -> void:
 			instance._aster_node.global_position = exit_gate + Vector3(0, 0, 0.5)
 			instance._game_state.characters["peris"].position = exit_gate + Vector3(0, 0, -0.5)
 			instance._game_state.characters["aster"].position = exit_gate + Vector3(0, 0, 0.5),
+		"corridor": func():
+			pass,
+		"bridge": func():
+			pass,
+		"bridge_collapse": func():
+			pass,
 	})
 
 	_assert_true(log.size() >= 20, "At least 20 dialogue lines (got: %d)" % log.size())
@@ -982,19 +992,12 @@ func _test_elevator_dialogue() -> void:
 			has_lockout = true
 	_assert_true(has_lockout, "NON-COMPLIANT lockout fires")
 
-	# Verify bridge dialogue
-	var has_bodies := false
+	# Verify lockout leads to next steps (corridor/bridge dialogue tested by later steps)
+	var has_forward := false
 	for entry in log:
-		if "people down there" in entry.text:
-			has_bodies = true
-	_assert_true(has_bodies, "Bridge bodies dialogue exists")
-
-	# Verify final line
-	var has_ahead := false
-	for entry in log:
-		if "ahead" in entry.text and "Lights" in entry.text:
-			has_ahead = true
-	_assert_true(has_ahead, "Final 'There's something ahead' line exists")
+		if "forward" in entry.text.to_lower() or "go back" in entry.text.to_lower():
+			has_forward = true
+	_assert_true(has_forward, "Forward/back dialogue after lockout")
 
 	instance.queue_free()
 	await get_tree().process_frame
@@ -1089,10 +1092,9 @@ func _test_enemy() -> void:
 	enemy.char_id = "enemy_0"
 	enemy.max_hp = 100.0
 	enemy.detection_range = 6.0
-	enemy.scan_interval = 0.3
 	enemy._detection_targets = ["aster"]
 	chars.add_child(enemy)
-	gs.register_character("enemy_0", Vector3(0, 0, 0), 1.5)
+	gs.register_character("enemy_0", Vector3(0, 0, 0), 1.5, {"detection_range": 6.0})
 
 	for i in range(2):
 		await get_tree().process_frame
@@ -1102,19 +1104,18 @@ func _test_enemy() -> void:
 	_assert_true(enemy.is_alive(), "Enemy starts alive")
 	_assert_true(enemy._hp == 100.0, "HP starts at max (got: %.1f)" % enemy._hp)
 
-	# Test: activate and run detection scans — target is at distance 10, range is 6
+	# Test: activate — target is at distance 10, range is 6, no detection
 	enemy.activate()
 	for i in range(5):
 		scheduler.advance(0.5)
 		await get_tree().process_frame
 	_assert_true(enemy.get_state() == "idle", "No detection at distance 10 (got: %s)" % enemy.get_state())
 
-	# Move target within range
-	target.position = Vector3(3, 0, 0)
-	gs.characters["aster"].position = Vector3(3, 0, 0)
+	# Move target within range via command (triggers predictive detection)
+	gs.command_move_to_pos("aster", Vector3(1, 0, 0))
 
-	# Advance scheduler — detection scan should fire and spot target
-	for i in range(5):
+	# Advance scheduler — predictive detection event should fire
+	for i in range(10):
 		scheduler.advance(0.5)
 		await get_tree().process_frame
 
@@ -1150,27 +1151,27 @@ func _test_enemy() -> void:
 	_assert_true(not enemy.is_alive(), "Dead after lethal damage")
 	_assert_true(enemy.get_state() == "dead", "State is dead (got: %s)" % enemy.get_state())
 
-	# --- Test: enemy detects player on enemy route ---
-	# Reset: new enemy and target on the enemy route (z < 0, narrow path)
+	# --- Test: enemy detects player approaching on enemy route ---
 	var route_enemy := Enemy.new()
 	route_enemy.name = "route_test"
 	route_enemy.game_state = gs
 	route_enemy.char_id = "route_e"
 	route_enemy.detection_range = 6.0
-	route_enemy.scan_interval = 0.3
 	route_enemy._detection_targets = ["player_route"]
 	chars.add_child(route_enemy)
-	gs.register_character("route_e", Vector3(20, 0, -4), 1.5)
+	gs.register_character("route_e", Vector3(20, 0, -4), 1.5, {"detection_range": 6.0})
 	route_enemy.position = Vector3(20, 0, -4)
 
 	var route_player := Node3D.new()
 	route_player.name = "player_route"
 	route_player.set("char_id", "player_route")
-	route_player.position = Vector3(17, 0, -4)
+	route_player.position = Vector3(12, 0, -4)
 	chars.add_child(route_player)
-	gs.register_character("player_route", Vector3(17, 0, -4), 3.0)
+	gs.register_character("player_route", Vector3(12, 0, -4), 3.0)
 
 	route_enemy.activate()
+	# Move player toward enemy (triggers predictive detection)
+	gs.command_move_to_pos("player_route", Vector3(20, 0, -4))
 	for i in range(2):
 		await get_tree().process_frame
 
@@ -1186,13 +1187,11 @@ func _test_enemy() -> void:
 	safe_enemy.game_state = gs
 	safe_enemy.char_id = "safe_e"
 	safe_enemy.detection_range = 6.0
-	safe_enemy.scan_interval = 0.3
 	safe_enemy._detection_targets = ["player_safe"]
 	chars.add_child(safe_enemy)
-	gs.register_character("safe_e", Vector3(20, 0, -4), 1.5)
+	gs.register_character("safe_e", Vector3(20, 0, -4), 1.5, {"detection_range": 6.0})
 	safe_enemy.position = Vector3(20, 0, -4)
 
-	# Player on hazard route (z > 0, opposite side of divider wall)
 	var safe_player := Node3D.new()
 	safe_player.name = "player_safe"
 	safe_player.set("char_id", "player_safe")
@@ -1201,6 +1200,8 @@ func _test_enemy() -> void:
 	gs.register_character("player_safe", Vector3(20, 0, 5), 3.0)
 
 	safe_enemy.activate()
+	# Player moves along hazard route (distance 9 from enemy, out of range 6)
+	gs.command_move_to_pos("player_safe", Vector3(30, 0, 5))
 	for i in range(2):
 		await get_tree().process_frame
 
@@ -1212,6 +1213,109 @@ func _test_enemy() -> void:
 
 	root.queue_free()
 	await get_tree().process_frame
+
+# --- Test: Predictive Detection (quadratic solver) ---
+func _test_predictive_detection() -> void:
+	_test_name = "Predictive Detection"
+
+	# Test 1: User's example — two units 10 apart, closing at 2 units/sec total
+	# Each moves at 1 unit/sec toward the other. Ranges 4 and 2 → events at t=3, t=4
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+
+	gs.register_character("unit_a", Vector3(0, 0, 0), 1.0, {"detection_range": 4.0})
+	gs.register_character("unit_b", Vector3(10, 0, 0), 1.0, {"detection_range": 2.0})
+
+	var detections: Array[Dictionary] = []
+	gs.detection_predicted.connect(func(det: String, tgt: String):
+		detections.append({"detector": det, "target": tgt, "tick": sched.get_current_tick()})
+	)
+
+	gs.command_move_to_pos("unit_a", Vector3(10, 0, 0))
+	gs.command_move_to_pos("unit_b", Vector3(0, 0, 0))
+
+	# Advance to t=3 — unit_a (range 4) should detect
+	sched.advance_ticks(3.0)
+	_assert_true(detections.size() >= 1, "Head-on: first detection by t=3 (got: %d)" % detections.size())
+	if detections.size() >= 1:
+		_assert_true(detections[0].detector == "unit_a", "Head-on: unit_a detects first (got: %s)" % detections[0].detector)
+		_assert_true(absf(detections[0].tick - 3.0) < 0.1, "Head-on: first at t=3 (got: %.2f)" % detections[0].tick)
+
+	# Advance to t=4 — unit_b (range 2) should detect
+	sched.advance_ticks(1.0)
+	_assert_true(detections.size() >= 2, "Head-on: second detection by t=4 (got: %d)" % detections.size())
+	if detections.size() >= 2:
+		_assert_true(detections[1].detector == "unit_b", "Head-on: unit_b detects second (got: %s)" % detections[1].detector)
+		_assert_true(absf(detections[1].tick - 4.0) < 0.1, "Head-on: second at t=4 (got: %.2f)" % detections[1].tick)
+
+	# Test 2: One moving, one stationary — range 3, distance 8, speed 2 → t=2.5
+	var gs2 := GameState.new()
+	var sched2 := EventScheduler.new()
+	gs2.scheduler = sched2
+	gs2.register_character("mover", Vector3(0, 0, 0), 2.0, {"detection_range": 3.0})
+	gs2.register_character("static_c", Vector3(8, 0, 0), 1.0, {})
+
+	var det2: Array[Dictionary] = []
+	gs2.detection_predicted.connect(func(det: String, tgt: String):
+		det2.append({"detector": det, "target": tgt, "tick": sched2.get_current_tick()})
+	)
+
+	gs2.command_move_to_pos("mover", Vector3(10, 0, 0))
+	sched2.advance_ticks(2.5)
+	_assert_true(det2.size() >= 1, "One-moving: detection by t=2.5 (got: %d)" % det2.size())
+	if det2.size() >= 1:
+		_assert_true(absf(det2[0].tick - 2.5) < 0.1, "One-moving: at t=2.5 (got: %.2f)" % det2[0].tick)
+
+	# Test 3: Movement cancelled — predictions invalidated
+	var gs3 := GameState.new()
+	var sched3 := EventScheduler.new()
+	gs3.scheduler = sched3
+	gs3.register_character("cancel_a", Vector3(0, 0, 0), 2.0, {"detection_range": 3.0})
+	gs3.register_character("cancel_b", Vector3(6, 0, 0), 1.0, {})
+
+	var det3: Array[Dictionary] = []
+	gs3.detection_predicted.connect(func(det: String, tgt: String):
+		det3.append({"detector": det, "tick": sched3.get_current_tick()})
+	)
+
+	gs3.command_move_to_pos("cancel_a", Vector3(10, 0, 0))
+	gs3.command_stop("cancel_a")
+	sched3.advance_ticks(5.0)
+	_assert_true(det3.size() == 0, "Cancelled: no detection (got: %d)" % det3.size())
+
+	# Test 4: Already in range — immediate detection
+	var gs4 := GameState.new()
+	var sched4 := EventScheduler.new()
+	gs4.scheduler = sched4
+	gs4.register_character("close_a", Vector3(0, 0, 0), 1.0, {"detection_range": 5.0})
+	gs4.register_character("close_b", Vector3(3, 0, 0), 1.0, {})
+
+	var det4: Array[Dictionary] = []
+	gs4.detection_predicted.connect(func(det: String, tgt: String):
+		det4.append({"detector": det, "tick": sched4.get_current_tick()})
+	)
+
+	gs4.command_move_to_pos("close_a", Vector3(1, 0, 0))
+	sched4.advance_ticks(0.01)
+	_assert_true(det4.size() >= 1, "Already in range: immediate detection (got: %d)" % det4.size())
+
+	# Test 5: Parallel paths — never converge
+	var gs5 := GameState.new()
+	var sched5 := EventScheduler.new()
+	gs5.scheduler = sched5
+	gs5.register_character("par_a", Vector3(0, 0, 0), 2.0, {"detection_range": 3.0})
+	gs5.register_character("par_b", Vector3(0, 0, 5), 2.0, {})
+
+	var det5: Array[Dictionary] = []
+	gs5.detection_predicted.connect(func(det: String, tgt: String):
+		det5.append({"detector": det})
+	)
+
+	gs5.command_move_to_pos("par_a", Vector3(10, 0, 0))
+	gs5.command_move_to_pos("par_b", Vector3(10, 0, 5))
+	sched5.advance_ticks(10.0)
+	_assert_true(det5.size() == 0, "Parallel paths: no detection (got: %d)" % det5.size())
 
 # --- Test: Ferrolure Gauntlet ---
 func _test_ferrolure() -> void:

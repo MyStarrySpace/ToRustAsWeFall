@@ -794,7 +794,7 @@ func _spawn_enemy(id: String, pos: Vector3, parent: Node3D) -> Enemy:
 	enemy._detection_targets = ["aster", "peris"]
 	enemy.position = pos
 	parent.add_child(enemy)
-	_register_gs_character(id, enemy, enemy.move_speed)
+	_register_gs_character(id, enemy, enemy.move_speed, {"detection_range": enemy.detection_range})
 	enemy.hit_target.connect(_on_enemy_hit)
 	enemy.activate()
 	_enemies.append(enemy)
@@ -1158,6 +1158,7 @@ func _build_below_chunk(parent: Node3D) -> void:
 		predator.charge_speed = 10.0
 		predator.charge_damage = 35.0
 		predator.detection_range = 8.0
+		_game_state.characters[pid].stats["detection_range"] = 8.0
 		# Target chelators, not players — distracted by the hunt
 		predator._detection_targets = chelator_ids.duplicate()
 		# Larger visual
