@@ -686,7 +686,7 @@ func _pop_dialogue_log(instance: Node, step_actions: Dictionary = {}) -> Array[D
 	var last_actioned_step := ""
 	var safety := 0
 	var idle := 0
-	while safety < 5000:
+	while safety < 20000:
 		# Flush dialogue box
 		for j in range(200):
 			if not dialogue_box.is_active():
@@ -706,7 +706,7 @@ func _pop_dialogue_log(instance: Node, step_actions: Dictionary = {}) -> Array[D
 
 		if scheduler.pending_count() == 0:
 			idle += 1
-			if idle > 5:
+			if idle > 20:
 				break
 			for j in range(10):
 				dialogue_box._process(0.05)
@@ -948,9 +948,12 @@ func _test_elevator_dialogue() -> void:
 			instance._game_state.characters["peris"].position = exit_gate + Vector3(0, 0, -0.5)
 			instance._game_state.characters["aster"].position = exit_gate + Vector3(0, 0, 0.5),
 		"corridor": func():
-			pass,
-		"bridge": func():
-			pass,
+			# Suppress enemy detection during dialogue test
+			for enemy in instance._enemies:
+				if is_instance_valid(enemy):
+					enemy._detection_targets.clear()
+					if instance._game_state.characters.has(enemy.char_id):
+						instance._game_state.characters[enemy.char_id].stats["detection_range"] = 0.0,
 		"bridge_collapse": func():
 			pass,
 	})
@@ -992,12 +995,19 @@ func _test_elevator_dialogue() -> void:
 			has_lockout = true
 	_assert_true(has_lockout, "NON-COMPLIANT lockout fires")
 
-	# Verify lockout leads to next steps (corridor/bridge dialogue tested by later steps)
-	var has_forward := false
+	# Verify bridge dialogue
+	var has_bodies := false
 	for entry in log:
-		if "forward" in entry.text.to_lower() or "go back" in entry.text.to_lower():
-			has_forward = true
-	_assert_true(has_forward, "Forward/back dialogue after lockout")
+		if "people down there" in entry.text:
+			has_bodies = true
+	_assert_true(has_bodies, "Bridge bodies dialogue exists")
+
+	# Verify final bridge line
+	var has_ahead := false
+	for entry in log:
+		if "ahead" in entry.text and "Lights" in entry.text:
+			has_ahead = true
+	_assert_true(has_ahead, "Final 'There's something ahead' line exists")
 
 	instance.queue_free()
 	await get_tree().process_frame

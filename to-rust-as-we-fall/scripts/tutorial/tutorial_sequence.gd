@@ -235,12 +235,11 @@ func _dlg_chain_play_next() -> void:
 	var key: String = _dlg_chain_keys[_dlg_chain_index]
 	_dlg_chain_index += 1
 	DialogueData.say_to(_dialogue, key)
-	if _dlg_chain_delay > 0.0 and _dlg_chain_index < _dlg_chain_keys.size():
-		_dialogue.dialogue_finished.connect(func():
-			_scheduler.schedule_after(_dlg_chain_delay, _dlg_chain_play_next, "dlg_chain")
-		, CONNECT_ONE_SHOT)
-	else:
-		_dialogue.dialogue_finished.connect(_dlg_chain_play_next, CONNECT_ONE_SHOT)
+	# Route the advance through the scheduler so pop_next() can drive the chain
+	_dialogue.dialogue_finished.connect(func():
+		var delay := _dlg_chain_delay if _dlg_chain_index < _dlg_chain_keys.size() else 0.0
+		_scheduler.schedule_after(delay, _dlg_chain_play_next, "dlg_chain")
+	, CONNECT_ONE_SHOT)
 
 # --- Environment helpers ---
 
