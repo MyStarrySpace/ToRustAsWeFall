@@ -1101,12 +1101,12 @@ func _test_junction_flow() -> void:
 		await get_tree().process_frame
 
 	# Verify interactable objects exist
-	var interactable_names := ["Junction_Workbench", "Junction_Monitor", "Junction_Food", "Junction_Lookout", "Junction_Heater"]
+	var interactable_names := ["Junction_Workbench", "Junction_Monitor", "Junction_Food", "Junction_Lookout", "Junction_Heater", "Junction_Markings", "Junction_Game"]
 	var found_count := 0
 	for iname in interactable_names:
 		if instance.find_child(iname, true, false):
 			found_count += 1
-	_assert_true(found_count == 5, "All 5 junction interactables exist (got: %d)" % found_count)
+	_assert_true(found_count == 7, "All 7 junction interactables exist (got: %d)" % found_count)
 
 	# Verify drink mesh exists on container
 	_assert_true(instance._drink_mesh != null, "Drink mesh exists in junction")
@@ -1151,7 +1151,7 @@ func _test_climb_and_lockout() -> void:
 	_assert_true(has_not_back, "Peris not-back dialogue exists")
 
 	# Verify junction interactable dialogue keys exist
-	for prefix in ["elevator.junction.workbench", "elevator.junction.monitor", "elevator.junction.food", "elevator.junction.lookout", "elevator.junction.heater"]:
+	for prefix in ["elevator.junction.workbench", "elevator.junction.monitor", "elevator.junction.food", "elevator.junction.lookout", "elevator.junction.heater", "elevator.junction.markings", "elevator.junction.game"]:
 		var has_aster := DialogueData.text(prefix + ".aster") != ""
 		var has_peris := DialogueData.text(prefix + ".peris") != ""
 		_assert_true(has_aster, "%s.aster dialogue exists" % prefix)

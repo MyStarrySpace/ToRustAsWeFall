@@ -1491,6 +1491,32 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	_add_junction_interactable("Heater", Vector3(sx - SHELTER_SIZE.x / 2.0 + 0.5, ground_y + 0.5, 0),
 		"elevator.junction.heater")
 
+	# Wall markings (Endo's personal annotation system on the barrier wall)
+	var markings := Label3D.new()
+	markings.text = "|| /// ||| // ||||| / ||"
+	markings.font_size = 24
+	markings.pixel_size = 0.008
+	markings.modulate = Color(0.5, 0.45, 0.35, 0.6)
+	markings.position = Vector3(sx + SHELTER_SIZE.x / 2.0 - 0.15, ground_y + 1.0, 1.0)
+	markings.rotation.y = -PI / 2.0
+	parent.add_child(markings)
+	_add_junction_interactable("Markings", Vector3(sx + SHELTER_SIZE.x / 2.0 - 0.5, ground_y + 1.0, 1.0),
+		"elevator.junction.markings")
+
+	# Puzzle game on the workbench (hand-carved, well-worn)
+	var game_piece := MeshInstance3D.new()
+	var gp := BoxMesh.new()
+	gp.size = Vector3(0.3, 0.1, 0.3)
+	game_piece.mesh = gp
+	var gpm := StandardMaterial3D.new()
+	gpm.albedo_color = Color(0.22, 0.18, 0.14)
+	gpm.roughness = 0.2
+	game_piece.material_override = gpm
+	game_piece.position = Vector3(sx - 1.2, ground_y + 0.75, -1.6)
+	parent.add_child(game_piece)
+	_add_junction_interactable("Game", Vector3(sx - 1.2, ground_y + 0.9, -1.6),
+		"elevator.junction.game")
+
 func _add_junction_interactable(label: String, pos: Vector3, dialogue_prefix: String) -> void:
 	var interact := preload("res://scenes/game/interactable.tscn").instantiate()
 	interact.name = "Junction_" + label

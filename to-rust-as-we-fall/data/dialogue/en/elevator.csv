@@ -50,6 +50,10 @@ elevator.junction.lookout.aster,Aster,data,false,Significant wear pattern on the
 elevator.junction.lookout.peris,Peris,normal,false,Someone stands here a lot. Looking out. Waiting for someone.,Peris at the lookout spot
 elevator.junction.heater.aster,Aster,data,false,This heating element is active and positioned at the entrance. Inefficient placement for personal use. It's oriented outward.,Aster at the heater — data without emotional inference
 elevator.junction.heater.peris,Peris,normal,false,This is warm. It's been running for a while. Someone set it up for visitors.,Peris at the heater — she reads the care
+elevator.junction.markings.aster,Aster,data,false,What annotation format is this? This is definitely not standard!,Aster at the wall markings — unrecognized system
+elevator.junction.markings.peris,Peris,normal,false,"I'm not sure what these markings say, but the handwriting's got a lot of personality.",Peris at the wall markings — she reads the person
+elevator.junction.game.aster,Aster,normal,false,Who has time to waste on things like these?,Aster at the puzzle game — can't fathom leisure
+elevator.junction.game.peris,Peris,normal,false,"Oh, it's a little puzzle. Someone made this by hand. It's been used a lot, look how smooth the edges are.",Peris at the puzzle game — she sees the care and the loneliness
 elevator.endo.beckon,,normal,false,"Someone in the doorway. Beckoning.",Endo gestures them inside — marker appears on shelter
 elevator.peris.who,Peris,normal,false,Who...?,
 elevator.aster.endo_read,Aster,data,false,"Endosomal unit. Non-hostile. His tag reads compliant, but the signal's dead.",Aster scans Endo
