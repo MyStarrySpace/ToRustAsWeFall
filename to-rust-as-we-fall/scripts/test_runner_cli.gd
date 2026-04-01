@@ -71,6 +71,9 @@ func _ready() -> void:
 			"--test-predict-detect":
 				ran_test = true
 				_test_predictive_detection()
+			"--test-detect-equiv":
+				ran_test = true
+				_test_detection_equivalence()
 			"--test-ferrolure":
 				ran_test = true
 				await _test_ferrolure()
@@ -114,6 +117,7 @@ func _run_all_tests() -> void:
 	await _test_enemy()
 	await _test_ferrolure()
 	_test_predictive_detection()
+	_test_detection_equivalence()
 
 # --- Test: Syntax ---
 # If we got this far, GDScript compiled successfully.
@@ -1326,6 +1330,118 @@ func _test_predictive_detection() -> void:
 	gs5.command_move_to_pos("par_b", Vector3(10, 0, 5))
 	sched5.advance_ticks(10.0)
 	_assert_true(det5.size() == 0, "Parallel paths: no detection (got: %d)" % det5.size())
+
+# --- Test: Detection Equivalence (predictive vs brute-force tick scan) ---
+func _test_detection_equivalence() -> void:
+	_test_name = "Detection Equivalence"
+
+	# Brute-force scanner: advance in small ticks, check distances each step
+	# Returns the first tick where distance < range, or -1.0
+	var _bruteforce_detect := func(
+		pos_a: Vector3, vel_a: Vector3,
+		pos_b: Vector3, vel_b: Vector3,
+		det_range: float, max_time: float
+	) -> float:
+		var dt := 0.01
+		var t := 0.0
+		while t <= max_time:
+			var pa := pos_a + vel_a * t
+			var pb := pos_b + vel_b * t
+			var dist := Vector2(pa.x - pb.x, pa.z - pb.z).length()
+			if dist < det_range:
+				return t
+			t += dt
+		return -1.0
+
+	# Scenario configs: [pos_a, vel_a, pos_b, vel_b, range, label]
+	var scenarios: Array[Dictionary] = [
+		{"pa": Vector3(0,0,0), "va": Vector3(2,0,0), "pb": Vector3(12,0,0), "vb": Vector3.ZERO, "range": 3.0, "label": "Approach stationary"},
+		{"pa": Vector3(0,0,0), "va": Vector3(1,0,0), "pb": Vector3(10,0,0), "vb": Vector3(-1,0,0), "range": 4.0, "label": "Head-on range=4"},
+		{"pa": Vector3(0,0,0), "va": Vector3(1,0,0), "pb": Vector3(10,0,0), "vb": Vector3(-1,0,0), "range": 2.0, "label": "Head-on range=2"},
+		{"pa": Vector3(0,0,0), "va": Vector3(1,0,1), "pb": Vector3(8,0,8), "vb": Vector3.ZERO, "range": 2.0, "label": "Diagonal approach"},
+		{"pa": Vector3(0,0,0), "va": Vector3(3,0,0), "pb": Vector3(5,0,4), "vb": Vector3(0,0,-1), "range": 3.0, "label": "Perpendicular closing"},
+		{"pa": Vector3(0,0,0), "va": Vector3(1,0,0), "pb": Vector3(0,0,20), "vb": Vector3(1,0,0), "range": 5.0, "label": "Parallel far apart"},
+		{"pa": Vector3(0,0,0), "va": Vector3(2,0,0), "pb": Vector3(15,0,2), "vb": Vector3(-1,0,0), "range": 3.0, "label": "Offset head-on"},
+		{"pa": Vector3(0,0,0), "va": Vector3(0,0,0), "pb": Vector3(4,0,0), "vb": Vector3.ZERO, "range": 5.0, "label": "Both static in range"},
+		{"pa": Vector3(0,0,0), "va": Vector3(0,0,0), "pb": Vector3(10,0,0), "vb": Vector3.ZERO, "range": 5.0, "label": "Both static out of range"},
+	]
+
+	for scenario in scenarios:
+		var pa: Vector3 = scenario.pa
+		var va: Vector3 = scenario.va
+		var pb: Vector3 = scenario.pb
+		var vb: Vector3 = scenario.vb
+		var det_range: float = scenario.range
+		var label: String = scenario.label
+
+		# Brute force result
+		var bf_t: float = _bruteforce_detect.call(pa, va, pb, vb, det_range, 20.0)
+
+		# Predictive result via GameState
+		var sched := EventScheduler.new()
+		var gs := GameState.new()
+		gs.scheduler = sched
+		var speed_a: float = va.length() if va.length() > 0.01 else 1.0
+		var speed_b: float = vb.length() if vb.length() > 0.01 else 1.0
+		gs.register_character("det_a", pa, speed_a, {"detection_range": det_range})
+		gs.register_character("det_b", pb, speed_b, {})
+
+		var pred_detections: Array[float] = []
+		gs.detection_predicted.connect(func(_det: String, _tgt: String):
+			pred_detections.append(sched.get_current_tick())
+		)
+
+		# Issue movement commands matching the velocities
+		if va.length() > 0.01:
+			var dest_a := pa + va.normalized() * 30.0
+			gs.command_move_to_pos("det_a", dest_a)
+		if vb.length() > 0.01:
+			var dest_b := pb + vb.normalized() * 30.0
+			gs.command_move_to_pos("det_b", dest_b)
+		# For static in-range, trigger recompute manually
+		if va.length() <= 0.01 and vb.length() <= 0.01:
+			gs._recompute_all_detection_predictions()
+
+		sched.advance_ticks(20.0)
+		var pred_t: float = pred_detections[0] if pred_detections.size() > 0 else -1.0
+
+		# Compare
+		if bf_t < 0.0:
+			_assert_true(pred_t < 0.0, "%s: both agree no detection" % label)
+		else:
+			_assert_true(pred_t >= 0.0, "%s: both agree detection occurs" % label)
+			if pred_t >= 0.0:
+				var diff := absf(pred_t - bf_t)
+				_assert_true(diff < 0.05, "%s: timing matches (bf=%.2f pred=%.2f diff=%.3f)" % [label, bf_t, pred_t, diff])
+
+	# Multi-entity scenario: 3 detectors, 2 targets moving in various directions
+	var sched_m := EventScheduler.new()
+	var gs_m := GameState.new()
+	gs_m.scheduler = sched_m
+	gs_m.register_character("d1", Vector3(0, 0, 0), 2.0, {"detection_range": 4.0})
+	gs_m.register_character("d2", Vector3(0, 0, 10), 1.5, {"detection_range": 3.0})
+	gs_m.register_character("d3", Vector3(10, 0, 5), 1.0, {"detection_range": 5.0})
+	gs_m.register_character("t1", Vector3(8, 0, 0), 2.0, {})
+	gs_m.register_character("t2", Vector3(5, 0, 12), 1.0, {})
+
+	var multi_det: Array[Dictionary] = []
+	gs_m.detection_predicted.connect(func(det: String, tgt: String):
+		multi_det.append({"detector": det, "target": tgt, "tick": sched_m.get_current_tick()})
+	)
+
+	gs_m.command_move_to_pos("d1", Vector3(10, 0, 0))
+	gs_m.command_move_to_pos("t1", Vector3(0, 0, 0))
+	gs_m.command_move_to_pos("d2", Vector3(5, 0, 12))
+	gs_m.command_move_to_pos("t2", Vector3(0, 0, 10))
+
+	sched_m.advance_ticks(10.0)
+
+	# d1 (range 4) approaching t1: start dist 8, closing at 4 units/sec → t=1.0
+	# d2 (range 3) approaching t2: dist ~5.4, closing at ~2.5 → t≈1.0
+	# d3 (range 5, stationary) — t1 starts at dist ~5.4 and moves away
+	_assert_true(multi_det.size() >= 2, "Multi-entity: at least 2 detections (got: %d)" % multi_det.size())
+	if multi_det.size() >= 1:
+		_assert_true(multi_det[0].tick < 2.0, "Multi-entity: first detection before t=2 (got: %.2f)" % multi_det[0].tick)
 
 # --- Test: Ferrolure Gauntlet ---
 func _test_ferrolure() -> void:
