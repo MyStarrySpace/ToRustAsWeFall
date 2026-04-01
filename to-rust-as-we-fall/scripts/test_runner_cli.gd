@@ -1151,7 +1151,7 @@ func _test_climb_and_lockout() -> void:
 	_assert_true(has_not_back, "Peris not-back dialogue exists")
 
 	# Verify junction interactable dialogue keys exist
-	for prefix in ["elevator.junction.workbench", "elevator.junction.monitor", "elevator.junction.food", "elevator.junction.lookout", "elevator.junction.heater", "elevator.junction.markings", "elevator.junction.game"]:
+	for prefix in ["junction.workbench", "junction.monitor", "junction.food", "junction.lookout", "junction.heater", "junction.markings", "junction.game"]:
 		var has_aster := DialogueData.text(prefix + ".aster") != ""
 		var has_peris := DialogueData.text(prefix + ".peris") != ""
 		_assert_true(has_aster, "%s.aster dialogue exists" % prefix)

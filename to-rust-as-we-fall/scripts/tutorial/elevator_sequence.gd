@@ -748,7 +748,7 @@ func _start_junction_arrive() -> void:
 		if child is WorldEnvironment:
 			child.environment.ambient_light_energy = 0.25
 			break
-	DialogueData.say_to(_dialogue, "elevator.junction.dusk")
+	DialogueData.say_to(_dialogue, "junction.dusk")
 	# Player can explore the junction freely
 	_player.set_move_enabled(true)
 	# Schedule Endo's entrance after exploration time
@@ -766,9 +766,9 @@ func _start_endo_enters() -> void:
 	_show_marker(Vector3(JUNCTION_POS.x, BELOW_Y + 2.5, 0), "SHELTER")
 	_player.set_move_enabled(false)
 	_dialogue_chain([
-		"elevator.endo.beckon",
-		"elevator.peris.who",
-		"elevator.aster.endo_read",
+		"junction.endo.beckon",
+		"junction.peris.who",
+		"junction.aster.endo_read",
 	], func(): _scheduler.schedule_after(1.0, _start_endo_shelter, "shelter"))
 
 func _start_endo_shelter() -> void:
@@ -809,9 +809,9 @@ func _on_endo_delivered(id: String) -> void:
 		return
 	_clear_markers()
 	_dialogue_chain([
-		"elevator.endo.drink",
-		"elevator.peris.stomach",
-		"elevator.endo.rest",
+		"junction.endo.drink",
+		"junction.peris.stomach",
+		"junction.endo.rest",
 	], func():
 		_scheduler.schedule_after(2.0, _start_night_watch, "night_watch")
 	)
@@ -932,7 +932,7 @@ func _start_night_watch() -> void:
 			flicker.tween_property(shelter_light, "light_energy", 2.5, 0.3)
 		, "flicker")
 
-	DialogueData.say_to(_dialogue, "elevator.night.eyes")
+	DialogueData.say_to(_dialogue, "junction.night.eyes")
 	_scheduler.schedule_after(8.0, _start_dawn, "dawn")
 
 func _start_dawn() -> void:
@@ -950,7 +950,7 @@ func _start_dawn() -> void:
 		if child is WorldEnvironment:
 			child.environment.ambient_light_energy = 0.5
 			break
-	DialogueData.say_to(_dialogue, "elevator.dawn")
+	DialogueData.say_to(_dialogue, "junction.dawn")
 	_dialogue.dialogue_finished.connect(func():
 		_scheduler.schedule_after(1.0, _start_morning, "morning")
 	, CONNECT_ONE_SHOT)
@@ -960,12 +960,12 @@ func _start_dawn() -> void:
 func _start_morning() -> void:
 	_enter_step("morning")
 	_dialogue_chain([
-		"elevator.morning.trail",
-		"elevator.aster.back_in",
-		"elevator.peris.back_to_what",
-		"elevator.endo.stands",
-		"elevator.peris.coming",
-		"elevator.aster.ok",
+		"junction.morning.trail",
+		"junction.aster.back_in",
+		"junction.peris.back_to_what",
+		"junction.endo.stands",
+		"junction.peris.coming",
+		"junction.aster.ok",
 	], func(): _scheduler.schedule_after(1.5, _start_gauntlet, "gauntlet"))
 
 # --- Ferrolure Gauntlet ---
@@ -981,8 +981,8 @@ func _start_gauntlet() -> void:
 	_game_state.command_move_to_pos("peris", entrance + Vector3(-1, 0, 1))
 	_game_state.command_move_to_pos("endo", entrance + Vector3(-1, 0, -1))
 	_dialogue_chain([
-		"elevator.aster.blocked",
-		"elevator.peris.ferrolure",
+		"junction.aster.blocked",
+		"junction.peris.ferrolure",
 	], func():
 		_tutorial_prompt.show_prompt("[Interact] — activate Ferrolure (Peris only)")
 	)
@@ -1007,7 +1007,7 @@ func _on_ferrolure_activated() -> void:
 				enemy.game_state.command_move_to_pos(enemy.char_id, FERROLURE_POS)
 	_show_marker(FERROLURE_POS + Vector3(0, 1.5, 0), "LURE ACTIVE")
 	_dialogue.default_hold_time = 2.0
-	DialogueData.say_to(_dialogue, "elevator.ferrolure.active")
+	DialogueData.say_to(_dialogue, "junction.ferrolure.active")
 	# Timer: ferrolure expires after FERROLURE_DURATION
 	_scheduler.schedule_after(FERROLURE_DURATION, _on_ferrolure_expired, "ferrolure_expire")
 
@@ -1440,7 +1440,7 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	workbench.position = Vector3(sx - 1.5, ground_y + 0.35, -1.8)
 	parent.add_child(workbench)
 	_add_junction_interactable("Workbench", Vector3(sx - 1.5, ground_y + 0.8, -1.8),
-		"elevator.junction.workbench")
+		"junction.workbench")
 
 	# Monitoring station (gauges on wall)
 	var monitor_panel := MeshInstance3D.new()
@@ -1456,7 +1456,7 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	monitor_panel.position = Vector3(sx + SHELTER_SIZE.x / 2.0 - 0.15, ground_y + 1.5, -1.0)
 	parent.add_child(monitor_panel)
 	_add_junction_interactable("Monitor", Vector3(sx + SHELTER_SIZE.x / 2.0 - 0.5, ground_y + 1.5, -1.0),
-		"elevator.junction.monitor")
+		"junction.monitor")
 
 	# Food cache (sealed container on shelf)
 	var food_cache := MeshInstance3D.new()
@@ -1469,11 +1469,11 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	food_cache.position = Vector3(sx - 2.0, ground_y + 0.8, 1.5)
 	parent.add_child(food_cache)
 	_add_junction_interactable("Food", Vector3(sx - 2.0, ground_y + 1.0, 1.5),
-		"elevator.junction.food")
+		"junction.food")
 
 	# Lookout spot by window
 	_add_junction_interactable("Lookout", Vector3(sx + 1.0, ground_y + 1.0, -SHELTER_SIZE.z / 2.0 + 0.3),
-		"elevator.junction.lookout")
+		"junction.lookout")
 
 	# Heater near entrance
 	var heater := MeshInstance3D.new()
@@ -1489,7 +1489,7 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	heater.position = Vector3(sx - SHELTER_SIZE.x / 2.0 + 0.3, ground_y + 0.25, 0)
 	parent.add_child(heater)
 	_add_junction_interactable("Heater", Vector3(sx - SHELTER_SIZE.x / 2.0 + 0.5, ground_y + 0.5, 0),
-		"elevator.junction.heater")
+		"junction.heater")
 
 	# Wall markings (Endo's personal annotation system on the barrier wall)
 	var markings := Label3D.new()
@@ -1501,7 +1501,7 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	markings.rotation.y = -PI / 2.0
 	parent.add_child(markings)
 	_add_junction_interactable("Markings", Vector3(sx + SHELTER_SIZE.x / 2.0 - 0.5, ground_y + 1.0, 1.0),
-		"elevator.junction.markings")
+		"junction.markings")
 
 	# Puzzle game on the workbench (hand-carved, well-worn)
 	var game_piece := MeshInstance3D.new()
@@ -1515,7 +1515,7 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	game_piece.position = Vector3(sx - 1.2, ground_y + 0.75, -1.6)
 	parent.add_child(game_piece)
 	_add_junction_interactable("Game", Vector3(sx - 1.2, ground_y + 0.9, -1.6),
-		"elevator.junction.game")
+		"junction.game")
 
 func _add_junction_interactable(label: String, pos: Vector3, dialogue_prefix: String) -> void:
 	var interact := preload("res://scenes/game/interactable.tscn").instantiate()
