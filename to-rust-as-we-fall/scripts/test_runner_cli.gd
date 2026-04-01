@@ -68,6 +68,12 @@ func _ready() -> void:
 			"--test-endo-drink":
 				ran_test = true
 				await _test_endo_drink()
+			"--test-junction-flow":
+				ran_test = true
+				await _test_junction_flow()
+			"--test-climb":
+				ran_test = true
+				_test_climb_and_lockout()
 			"--test-predict-detect":
 				ran_test = true
 				_test_predictive_detection()
@@ -114,6 +120,8 @@ func _run_all_tests() -> void:
 	await _test_peris_tutorial_redirect()
 	await _test_elevator_dialogue()
 	await _test_endo_drink()
+	await _test_junction_flow()
+	_test_climb_and_lockout()
 	await _test_enemy()
 	await _test_ferrolure()
 	_test_predictive_detection()
@@ -1074,6 +1082,80 @@ func _test_endo_drink() -> void:
 
 	instance.queue_free()
 	await get_tree().process_frame
+
+# --- Test: Junction Arrival Flow ---
+func _test_junction_flow() -> void:
+	_test_name = "Junction Flow"
+	var scene := load("res://scenes/tutorial/elevator.tscn")
+	if not scene:
+		_assert_true(false, "Scene loads")
+		return
+	var instance: Node = scene.instantiate()
+	get_tree().root.add_child(instance)
+	for i in range(3):
+		await get_tree().process_frame
+
+	# Load junction chunk
+	instance._load_chunk("junction")
+	for i in range(3):
+		await get_tree().process_frame
+
+	# Verify interactable objects exist
+	var interactable_names := ["Junction_Workbench", "Junction_Monitor", "Junction_Food", "Junction_Lookout", "Junction_Heater"]
+	var found_count := 0
+	for iname in interactable_names:
+		if instance.find_child(iname, true, false):
+			found_count += 1
+	_assert_true(found_count == 5, "All 5 junction interactables exist (got: %d)" % found_count)
+
+	# Verify drink mesh exists on container
+	_assert_true(instance._drink_mesh != null, "Drink mesh exists in junction")
+
+	# Trigger junction arrive — should set dusk and enable movement
+	instance._start_junction_arrive()
+	for i in range(3):
+		await get_tree().process_frame
+
+	_assert_true(instance._current_step == "junction_arrive", "Step is junction_arrive (got: %s)" % instance._current_step)
+
+	# Verify Endo is NOT visible yet (arrives after delay)
+	_assert_true(not instance._endo.visible, "Endo not visible on initial arrival")
+
+	# Advance scheduler past the 8s Endo entrance delay
+	for i in range(20):
+		instance._scheduler.advance(0.5)
+		await get_tree().process_frame
+
+	_assert_true(instance._endo.visible, "Endo visible after entrance delay")
+	_assert_true(instance._current_step == "endo_enters", "Step advanced to endo_enters (got: %s)" % instance._current_step)
+
+	instance.queue_free()
+	await get_tree().process_frame
+
+# --- Test: Climb and Soft Lockout Dialogue ---
+func _test_climb_and_lockout() -> void:
+	_test_name = "Climb and Lockout"
+
+	# Verify climb dialogue keys exist
+	var has_climb_aster := DialogueData.text("elevator.aster.climb") != ""
+	var has_climb_peris := DialogueData.text("elevator.peris.climb") != ""
+	var has_another_way := DialogueData.text("elevator.aster.another_way") != ""
+	_assert_true(has_climb_aster, "Aster climb dialogue exists")
+	_assert_true(has_climb_peris, "Peris climb dialogue exists")
+	_assert_true(has_another_way, "Another way dialogue exists")
+
+	# Verify soft lockout dialogue (dismiss, not locked out)
+	var has_dismiss := DialogueData.text("elevator.aster.dismiss") != ""
+	var has_not_back := DialogueData.text("elevator.peris.not_back") != ""
+	_assert_true(has_dismiss, "Aster dismiss (soft lockout) dialogue exists")
+	_assert_true(has_not_back, "Peris not-back dialogue exists")
+
+	# Verify junction interactable dialogue keys exist
+	for prefix in ["elevator.junction.workbench", "elevator.junction.monitor", "elevator.junction.food", "elevator.junction.lookout", "elevator.junction.heater"]:
+		var has_aster := DialogueData.text(prefix + ".aster") != ""
+		var has_peris := DialogueData.text(prefix + ".peris") != ""
+		_assert_true(has_aster, "%s.aster dialogue exists" % prefix)
+		_assert_true(has_peris, "%s.peris dialogue exists" % prefix)
 
 # --- Test: Enemy System ---
 func _test_enemy() -> void:
