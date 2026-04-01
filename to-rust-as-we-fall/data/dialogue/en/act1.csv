@@ -157,12 +157,12 @@ junction.aster.ok,Aster,normal,false,I don't see why not.,
 junction.aster.blocked,Aster,data,false,"Dense cluster ahead. Five, maybe six. Too many to push through.",Aster reads the gauntlet
 junction.peris.ferrolure,Peris,normal,false,"There's something on the wall. Iron lure — ferrolure. If I activate it, they might go for that instead.",Peris recognizes the device
 junction.ferrolure.active,,data,false,FERROLURE ACTIVE  //  SIDEROPHORE LURE  //  18s REMAINING,System readout
-facility.exit_narration,,normal,false,The facility door seals behind you. The corridor stretches ahead.,Leaving the facility
-facility.endo_appears,,normal,false,Someone is waiting at the exit. Quiet. Watchful. He falls into step beside you.,Endo joins — no words
-facility.endo.shelters,,normal,false,He points ahead. Then at a marker on the wall — a shelter symbol.,Endo gestures toward shelter — marker appears
-facility.endo.iron_warn,,normal,false,He stops. Holds out an arm. Shakes his head slowly.,Endo blocks the iron path — marker on safe route
-facility.endo.dusk,,normal,false,He taps the wall. Points at the dimming light. Walks faster.,Endo notices dusk — urgency without words
-facility.endo.shelter,,normal,false,He stops at a door. Opens it. Steps aside.,Endo at the shelter entrance
-facility.night_narration,,normal,false,Night. The barrier is thinner here. You can hear things moving outside.,First night
-facility.endo.rest,,normal,false,He settles against the wall. Watches the door.,Endo takes watch — same posture as junction
-facility.dawn,,data,true,Day 2. Dawn.,Morning — waits for click
+junction.exit_narration,,normal,false,The facility door seals behind you. The corridor stretches ahead.,Leaving the facility
+junction.endo_appears,,normal,false,Someone is waiting at the exit. Quiet. Watchful. He falls into step beside you.,Endo joins — no words
+junction.endo.shelters,,normal,false,He points ahead. Then at a marker on the wall — a shelter symbol.,Endo gestures toward shelter — marker appears
+junction.endo.iron_warn,,normal,false,He stops. Holds out an arm. Shakes his head slowly.,Endo blocks the iron path — marker on safe route
+junction.endo.dusk,,normal,false,He taps the wall. Points at the dimming light. Walks faster.,Endo notices dusk — urgency without words
+junction.endo.shelter,,normal,false,He stops at a door. Opens it. Steps aside.,Endo at the shelter entrance
+junction.night_narration,,normal,false,Night. The barrier is thinner here. You can hear things moving outside.,First night
+junction.endo.rest,,normal,false,He settles against the wall. Watches the door.,Endo takes watch — same posture as junction
+junction.dawn,,data,true,Day 2. Dawn.,Morning — waits for click
