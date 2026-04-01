@@ -32,6 +32,7 @@ extends Node3D
 @export var charge_max_duration := 1.5
 @export var recover_duration := 1.2
 @export var iframe_duration := 1.0
+@export var pursuit_rescan_delay := 4.0  # Seconds of pursuit before scanning for new targets
 
 # --- GameState integration (set by scene before adding to tree) ---
 var game_state: GameState
@@ -127,6 +128,8 @@ func _enter_state(state: String) -> void:
 			pass  # Detection via GameState prediction signal
 		"patrol":
 			_patrol_next_waypoint()
+		"detecting":
+			pass  # Explicitly scanning for new targets after pursuit timeout
 		"alert":
 			_show_alert_on_target()
 			_set_eye_energy(1.5)
@@ -136,6 +139,14 @@ func _enter_state(state: String) -> void:
 		"pursuit":
 			_set_eye_energy(2.0)
 			_pursue_target()
+			# After pursuit_rescan_delay, drop back to detecting for new targets
+			var sched := _get_scheduler()
+			if sched and pursuit_rescan_delay > 0:
+				sched.schedule_after(pursuit_rescan_delay, _begin_rescan, _state_tag)
+		"detecting":
+			# Listening for detection_predicted signal (same as idle)
+			_set_eye_energy(0.6)
+			_current_target_id = ""
 		"windup":
 			_stop_movement()
 			_set_mesh_color(Color(0.9, 0.15, 0.1))
@@ -188,7 +199,8 @@ func _on_detection_predicted(detector_id: String, target_id: String) -> void:
 		return
 	if target_id not in _detection_targets:
 		return
-	if _state in ["alert", "pursuit", "windup", "charge", "recover", "dead"]:
+	# Only respond to detections when in a scanning state
+	if _state not in ["idle", "patrol", "detecting"]:
 		return
 	_current_target_id = target_id
 	target_spotted.emit(target_id)
@@ -259,6 +271,12 @@ func _resume_pursuit() -> void:
 		return
 	_set_mesh_color(_base_color)
 	_change_state("pursuit")
+
+func _begin_rescan() -> void:
+	if _state != "pursuit":
+		return
+	_stop_movement()
+	_change_state("detecting")
 
 # --- Patrol ---
 
