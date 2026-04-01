@@ -116,7 +116,7 @@ func _begin() -> void:
 
 func _compute_speed() -> float:
 	var spd := 10.0 if Input.is_key_pressed(KEY_F) else 1.0
-	if _is_paused or _current_step in ["run_tutorial", "run_tutorial_resume"]:
+	if _is_paused or _current_step in ["alert_monos", "protect_prompt", "run_prompt", "click_monos", "confirm_protect"]:
 		spd = 0.0
 	return spd
 
@@ -178,17 +178,16 @@ func _input(event: InputEvent) -> void:
 	var mb := event as InputEventMouseButton
 	if mb.button_index != MOUSE_BUTTON_LEFT or not mb.pressed:
 		return
-	if _current_step == "queue_move":
-		var hit := _raycast_ground_from(mb.position)
-		if hit != Vector3.INF:
-			call_deferred("_on_move_queued")
-	elif _current_step == "queue_protect" and mb.shift_pressed:
+	if _current_step == "click_monos":
 		var hit := _raycast_ground_from(mb.position)
 		if hit != Vector3.INF:
 			var dist_to_monos := Vector2(hit.x - MONOS_POS.x, hit.z - MONOS_POS.z).length()
 			if dist_to_monos < 2.5:
 				get_viewport().set_input_as_handled()
-				_on_protect_queued()
+				_tutorial_prompt.hide_prompt()
+				_start_confirm_protect()
+			else:
+				_show_correction("peris_sim.correct.target_monos")
 
 func _raycast_ground_from(screen_pos: Vector2) -> Vector3:
 	var camera := get_viewport().get_camera_3d()
@@ -206,53 +205,56 @@ func _raycast_ground_from(screen_pos: Vector2) -> Vector3:
 		return result.position
 	return Vector3.INF
 
-func _unhandled_input(event: InputEvent) -> void:
-	if Engine.is_editor_hint():
-		return
-	if event is InputEventKey and event.pressed and not event.echo:
-		var kc := (event as InputEventKey).keycode
-		if kc == KEY_Z:
-			_toggle_run()
-
 func _toggle_pause() -> void:
-	if _current_step == "run_tutorial_resume":
-		_resume_from_run_tutorial()
-		return
-	if _current_step == "queue_execute":
+	# Only allow unpause at the confirm_protect step
+	if _current_step == "confirm_protect":
 		_start_executing()
 		return
-	if _current_step in ["queue_move", "queue_protect"]:
+	# Correction: trying to unpause during the ordered tutorial
+	if _current_step in ["alert_monos", "protect_prompt", "run_prompt", "click_monos"]:
+		_show_correction("peris_sim.correct.not_yet")
 		return
 	_is_paused = not _is_paused
 	if _hud:
 		_hud.set_paused(_is_paused)
 
 func _on_pause_toggled(is_paused: bool) -> void:
-	if _current_step == "run_tutorial_resume":
-		_resume_from_run_tutorial()
-		return
-	if _current_step == "queue_execute" and not is_paused:
+	if _current_step == "confirm_protect" and not is_paused:
 		_start_executing()
 		return
-	if _current_step in ["queue_move", "queue_protect"]:
+	if _current_step in ["alert_monos", "protect_prompt", "run_prompt", "click_monos"]:
+		_show_correction("peris_sim.correct.not_yet")
 		return
 	_is_paused = is_paused
 
 func _toggle_run() -> void:
+	# During ordered tutorial: only allowed at run_prompt step
+	if _current_step == "run_prompt":
+		_is_running = true
+		_has_sprinted = true
+		_game_state.change_move_speed("peris", 6.0)
+		if _hud:
+			_hud.set_run_mode(true)
+		_start_click_monos()
+		return
+	if _current_step == "protect_prompt":
+		_show_correction("peris_sim.correct.protect_first")
+		return
+	if _current_step in ["alert_monos", "click_monos", "confirm_protect"]:
+		return
+	# Normal run toggle outside tutorial
 	_is_running = not _is_running
 	if _is_running and _stamina > 0:
 		_game_state.change_move_speed("peris", 6.0)
-		if not _has_sprinted:
-			_has_sprinted = true
-		# During run tutorial: player toggled run on — prompt to unpause
-		if _current_step == "run_tutorial":
-			_current_step = "run_tutorial_resume"
-			_tutorial_prompt.show_prompt("[Space] — unpause")
+		_has_sprinted = true
 	else:
 		_is_running = false
 		_game_state.change_move_speed("peris", 3.0)
 	if _hud:
 		_hud.set_run_mode(_is_running)
+
+func _show_correction(key: String) -> void:
+	_show_thought(DialogueData.text(key))
 
 # --- Event-driven steps ---
 
@@ -278,14 +280,19 @@ func _start_monos_arrives() -> void:
 	_monos.visible = true
 	_portal_light.light_color = Color(0.9, 0.6, 0.3)
 	_portal_light.light_energy = 3.0
-	DialogueData.say_to(_dialogue, "peris_sim.monos.late")
-	DialogueData.say_to(_dialogue, "peris_sim.monos.followed")
-	DialogueData.say_to(_dialogue, "peris_sim.monos.start")
-	DialogueData.say_to(_dialogue, "peris_sim.peris.week")
-	DialogueData.say_to(_dialogue, "peris_sim.monos.week")
-	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_transition_out, "transition_out"),
-		CONNECT_ONE_SHOT
+	_dialogue_chain([
+		"peris_sim.monos.late",
+		"peris_sim.monos.followed",
+		"peris_sim.monos.stress",
+		"peris_sim.peris.safe",
+		"peris_sim.monos.breathe",
+		"peris_sim.monos.ok",
+		"peris_sim.peris.week",
+		"peris_sim.monos.week",
+	], func():
+		# Brief normalcy — session timer visible before transition
+		_session_timer_label.visible = true
+		_scheduler.schedule_after(3.0, _start_transition_out, "transition_out")
 	)
 
 func _start_session_begins() -> void:
@@ -309,48 +316,64 @@ func _start_attack() -> void:
 	DialogueData.say_to(_dialogue, "peris_sim.monos.hit")
 	DialogueData.say_to(_dialogue, "peris_sim.system.overtime")
 	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_run_tutorial, "run_tutorial"),
+		func(): _scheduler.schedule_after(0, _start_alert_monos, "alert_monos"),
 		CONNECT_ONE_SHOT
 	)
 
-func _start_run_tutorial() -> void:
-	_current_step = "run_tutorial"
+# --- Strict ordered tutorial sequence ---
+
+func _start_alert_monos() -> void:
+	_enter_step("alert_monos")
+	# White "!" over Monos
+	var alert := Label3D.new()
+	alert.name = "AlertMark"
+	alert.text = "!"
+	alert.font_size = 72
+	alert.pixel_size = 0.012
+	alert.modulate = Color(1, 1, 1, 0.95)
+	alert.outline_modulate = Color(0, 0, 0, 0.6)
+	alert.outline_size = 5
+	alert.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	alert.position = Vector3(0, 1.8, 0)
+	_monos.add_child(alert)
+	# Auto-pause
+	_is_paused = true
 	_player.set_move_enabled(false)
-	_is_paused = true
 	if _hud:
 		_hud.set_paused(true)
+	_scheduler.schedule_after(1.0, _start_protect_prompt, "protect_prompt")
+
+func _start_protect_prompt() -> void:
+	_enter_step("protect_prompt")
+	DialogueData.say_to(_dialogue, "peris_sim.peris.protect_him")
+	_dialogue.dialogue_finished.connect(func():
+		_tutorial_prompt.show_prompt("[X] — queue Protect")
+	, CONNECT_ONE_SHOT)
+
+func _start_run_prompt() -> void:
+	_enter_step("run_prompt")
 	_tutorial_prompt.show_prompt("[Z] — toggle Run")
-
-func _resume_from_run_tutorial() -> void:
-	_tutorial_prompt.hide_prompt()
-	_start_queue_move()
-
-func _start_queue_move() -> void:
-	_current_step = "queue_move"
-	_is_paused = true
 	if _hud:
-		_hud.set_paused(true)
+		_hud.show_run_toggle(true)
+
+func _start_click_monos() -> void:
+	_enter_step("click_monos")
 	_player.set_move_enabled(true)
-	_show_thought(DialogueData.text("peris_sim.sprint.thought"))
-	_tutorial_prompt.show_prompt("[Click] — move toward the portal")
+	_tutorial_prompt.show_prompt("[Click] Monos — set Protect target")
 
-func _on_move_queued() -> void:
-	if _current_step != "queue_move":
-		return
-	_start_queue_protect()
-
-func _start_queue_protect() -> void:
-	_current_step = "queue_protect"
-	_tutorial_prompt.show_prompt("[Shift+Click] Monos — queue Protect")
-
-func _on_protect_queued() -> void:
-	if _current_step != "queue_protect":
-		return
-	_start_queue_execute()
-
-func _start_queue_execute() -> void:
-	_current_step = "queue_execute"
+func _start_confirm_protect() -> void:
+	_enter_step("confirm_protect")
 	_protect_queued = true
+	# Shield marker over Monos
+	var shield := Label3D.new()
+	shield.name = "ShieldMark"
+	shield.text = "SHIELD"
+	shield.font_size = 36
+	shield.pixel_size = 0.01
+	shield.modulate = Color(0.8, 0.6, 0.2, 0.9)
+	shield.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	shield.position = Vector3(0, 2.2, 0)
+	_monos.add_child(shield)
 	if _hud:
 		_hud.set_ability_state("protect", "queued")
 	_tutorial_prompt.show_prompt("[Space] — unpause")
@@ -366,8 +389,14 @@ func _start_executing() -> void:
 func _on_protect_pressed() -> void:
 	if _has_protected:
 		return
-	if _current_step in ["queue_move", "queue_protect"]:
-		_show_out_of_range()
+	# Ordered tutorial: X only valid at protect_prompt step
+	if _current_step == "protect_prompt":
+		_tutorial_prompt.hide_prompt()
+		if _hud:
+			_hud.set_ability_state("protect", "queued")
+		_start_run_prompt()
+		return
+	if _current_step in ["alert_monos", "run_prompt", "click_monos", "confirm_protect"]:
 		return
 
 func _show_out_of_range() -> void:
@@ -449,6 +478,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		var kc := (event as InputEventKey).keycode
 		if kc == KEY_X:
 			_on_protect_pressed()
+		elif kc == KEY_Z:
+			_toggle_run()
 		elif kc == KEY_SPACE:
 			_toggle_pause()
 

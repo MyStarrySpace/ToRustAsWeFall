@@ -803,15 +803,18 @@ func _test_peris_dialogue() -> void:
 	for i in range(3):
 		await get_tree().process_frame
 
-	# Phase 2: attack → queue tutorial → protect → aftermath
+	# Phase 2: attack → strict ordered tutorial → protect → aftermath
 	var log := _pop_dialogue_log(instance, {
-		"run_tutorial": func():
-			instance._resume_from_run_tutorial(),
-		"queue_move": func():
-			instance._on_move_queued(),
-		"queue_protect": func():
-			instance._on_protect_queued(),
-		"queue_execute": func():
+		"protect_prompt": func():
+			# Simulate pressing X to queue protect
+			instance._on_protect_pressed(),
+		"run_prompt": func():
+			# Simulate pressing Z to toggle run
+			instance._toggle_run(),
+		"click_monos": func():
+			# Simulate clicking near Monos
+			instance._start_confirm_protect(),
+		"confirm_protect": func():
 			# Teleport Peris near portal so proximity check passes
 			var target: Vector3 = instance.PORTAL_POS + Vector3(-0.5, 0.5, 0)
 			instance._player.global_position = target
@@ -865,30 +868,28 @@ func _test_peris_tutorial_redirect() -> void:
 	for i in range(3):
 		await get_tree().process_frame
 
-	# Phase 2 with out-of-range attempts at each queue step
+	# Phase 2: test out-of-order inputs trigger corrections
 	var log := _pop_dialogue_log(instance, {
-		"run_tutorial": func():
-			instance._resume_from_run_tutorial(),
-		"queue_move": func():
-			# Try protect before queuing movement — should trigger out of range
-			instance._on_protect_pressed()
-			instance._on_move_queued(),
-		"queue_protect": func():
-			# Try protect via X before shift-clicking — should trigger out of range
-			instance._on_protect_pressed()
-			instance._on_protect_queued(),
-		"queue_execute": func():
+		"protect_prompt": func():
+			# Wrong: try Z (run) before X (protect) — should show correction
+			instance._toggle_run()
+			# Correct: press X
+			instance._on_protect_pressed(),
+		"run_prompt": func():
+			# Wrong: try Space (unpause) before Z — should show correction
+			instance._toggle_pause()
+			# Correct: press Z
+			instance._toggle_run(),
+		"click_monos": func():
+			instance._start_confirm_protect(),
+		"confirm_protect": func():
 			var target: Vector3 = instance.PORTAL_POS + Vector3(-0.5, 0.5, 0)
 			instance._player.global_position = target
 			instance._game_state.characters["peris"].position = target
 			instance._start_executing(),
 	})
 
-	# Verify out-of-range was triggered twice (once per queue step)
-	_assert_true(instance._out_of_range_count == 2,
-		"Out of range triggered twice (got: %d)" % instance._out_of_range_count)
-
-	# Verify the tutorial still completed despite redirects
+	# Verify the tutorial still completed despite wrong inputs
 	var has_thanks := false
 	for entry in log:
 		if "thank you" in entry.text.to_lower():
