@@ -602,10 +602,11 @@ func _start_doors_open() -> void:
 func _start_lockout() -> void:
 	_enter_step("lockout")
 	_dialogue.default_hold_time = 2.5
+	# Tag fires as notification Aster dismisses — not a full lockout yet
 	_dialogue_chain([
 		"elevator.system.noncompliant",
-		"elevator.aster.locked",
-		"elevator.peris.back_to_what",
+		"elevator.aster.dismiss",
+		"elevator.peris.not_back",
 		"elevator.aster.forward",
 	], func(): _scheduler.schedule_after(1.0, _start_multiselect_tutorial, "multiselect"))
 
@@ -703,10 +704,27 @@ func _on_fall_landed() -> void:
 
 func _start_fallen() -> void:
 	_enter_step("fallen")
-	_player.set_move_enabled(true)
 	_dialogue_chain([
 		"elevator.peris.hurt",
 		"elevator.aster.sublevel",
+	], func(): _scheduler.schedule_after(1.0, _start_climb_attempt, "climb"))
+
+func _start_climb_attempt() -> void:
+	_enter_step("climb_attempt")
+	# Characters look up at the collapsed bridge — no way back
+	_dialogue_chain([
+		"elevator.aster.climb",
+		"elevator.peris.climb",
+		"elevator.aster.another_way",
+	], func():
+		# TODO: placeholder for finding the alternative path
+		_scheduler.schedule_after(1.0, _start_route_fork_dialogue, "route_fork")
+	)
+
+func _start_route_fork_dialogue() -> void:
+	_enter_step("route_fork_dialogue")
+	_player.set_move_enabled(true)
+	_dialogue_chain([
 		"elevator.aster.two_paths",
 	], func(): _scheduler.schedule_after(1.5, _start_route_choice, "route_choice"))
 
@@ -724,16 +742,29 @@ func _start_junction_arrive() -> void:
 	_load_chunk("junction")
 	_unload_chunk("below")
 	_enemies.clear()
-	# Reveal Endo in the shelter doorway
+	# Scripted dusk — light dims
+	var env_node: Node = find_child("Environment", false, false)
+	for child in env_node.get_children():
+		if child is WorldEnvironment:
+			child.environment.ambient_light_energy = 0.25
+			break
+	DialogueData.say_to(_dialogue, "elevator.junction.dusk")
+	# Player can explore the junction freely
+	_player.set_move_enabled(true)
+	# Schedule Endo's entrance after exploration time
+	_scheduler.schedule_after(8.0, _start_endo_enters, "endo_enters")
+
+func _start_endo_enters() -> void:
+	_enter_step("endo_enters")
+	# Endo arrives from a side entrance
 	_endo.visible = true
-	_endo.position = Vector3(JUNCTION_POS.x - SHELTER_SIZE.x / 2.0, BELOW_Y + 0.5, 0)
+	_endo.position = Vector3(JUNCTION_POS.x + SHELTER_SIZE.x / 2.0 + 1.0, BELOW_Y + 0.5, 0)
 	_register_gs_character("endo", _endo, 2.5)
-	# Shelter marker appears where Endo beckons
+	# Endo walks into the junction
+	var junction_center := Vector3(JUNCTION_POS.x, BELOW_Y + 0.5, 0)
+	_game_state.command_move_to_pos("endo", junction_center)
 	_show_marker(Vector3(JUNCTION_POS.x, BELOW_Y + 2.5, 0), "SHELTER")
-	# Walk party toward Endo
-	var shelter_enter := Vector3(JUNCTION_POS.x - SHELTER_SIZE.x / 2.0 - 1.0, BELOW_Y + 0.5, 0)
-	_game_state.command_move_to_pos("aster", shelter_enter + Vector3(0, 0, 0.5))
-	_game_state.command_move_to_pos("peris", shelter_enter + Vector3(0, 0, -0.5))
+	_player.set_move_enabled(false)
 	_dialogue_chain([
 		"elevator.endo.beckon",
 		"elevator.peris.who",
@@ -1395,6 +1426,84 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	_drink_mesh.material_override = drink_mat
 	_drink_mesh.position = Vector3(sx + 1.5, ground_y + 0.5, -1.0)
 	parent.add_child(_drink_mesh)
+
+	# --- Junction interactables (GDD: Endo's Junction) ---
+
+	# Workbench with tools
+	var workbench := MeshInstance3D.new()
+	var wb := BoxMesh.new()
+	wb.size = Vector3(1.5, 0.7, 0.6)
+	workbench.mesh = wb
+	var wbm := StandardMaterial3D.new()
+	wbm.albedo_color = Color(0.18, 0.15, 0.12)
+	workbench.material_override = wbm
+	workbench.position = Vector3(sx - 1.5, ground_y + 0.35, -1.8)
+	parent.add_child(workbench)
+	_add_junction_interactable("Workbench", Vector3(sx - 1.5, ground_y + 0.8, -1.8),
+		"elevator.junction.workbench")
+
+	# Monitoring station (gauges on wall)
+	var monitor_panel := MeshInstance3D.new()
+	var mp := BoxMesh.new()
+	mp.size = Vector3(1.0, 0.8, 0.1)
+	monitor_panel.mesh = mp
+	var mpm := StandardMaterial3D.new()
+	mpm.albedo_color = Color(0.12, 0.14, 0.13)
+	mpm.emission_enabled = true
+	mpm.emission = Color(0.05, 0.08, 0.05)
+	mpm.emission_energy_multiplier = 0.3
+	monitor_panel.material_override = mpm
+	monitor_panel.position = Vector3(sx + SHELTER_SIZE.x / 2.0 - 0.15, ground_y + 1.5, -1.0)
+	parent.add_child(monitor_panel)
+	_add_junction_interactable("Monitor", Vector3(sx + SHELTER_SIZE.x / 2.0 - 0.5, ground_y + 1.5, -1.0),
+		"elevator.junction.monitor")
+
+	# Food cache (sealed container on shelf)
+	var food_cache := MeshInstance3D.new()
+	var fc := BoxMesh.new()
+	fc.size = Vector3(0.5, 0.3, 0.4)
+	food_cache.mesh = fc
+	var fcm := StandardMaterial3D.new()
+	fcm.albedo_color = Color(0.2, 0.2, 0.15)
+	food_cache.material_override = fcm
+	food_cache.position = Vector3(sx - 2.0, ground_y + 0.8, 1.5)
+	parent.add_child(food_cache)
+	_add_junction_interactable("Food", Vector3(sx - 2.0, ground_y + 1.0, 1.5),
+		"elevator.junction.food")
+
+	# Lookout spot by window
+	_add_junction_interactable("Lookout", Vector3(sx + 1.0, ground_y + 1.0, -SHELTER_SIZE.z / 2.0 + 0.3),
+		"elevator.junction.lookout")
+
+	# Heater near entrance
+	var heater := MeshInstance3D.new()
+	var hb := BoxMesh.new()
+	hb.size = Vector3(0.4, 0.5, 0.4)
+	heater.mesh = hb
+	var hm := StandardMaterial3D.new()
+	hm.albedo_color = Color(0.25, 0.15, 0.1)
+	hm.emission_enabled = true
+	hm.emission = Color(0.3, 0.15, 0.05)
+	hm.emission_energy_multiplier = 0.5
+	heater.material_override = hm
+	heater.position = Vector3(sx - SHELTER_SIZE.x / 2.0 + 0.3, ground_y + 0.25, 0)
+	parent.add_child(heater)
+	_add_junction_interactable("Heater", Vector3(sx - SHELTER_SIZE.x / 2.0 + 0.5, ground_y + 0.5, 0),
+		"elevator.junction.heater")
+
+func _add_junction_interactable(label: String, pos: Vector3, dialogue_prefix: String) -> void:
+	var interact := preload("res://scenes/game/interactable.tscn").instantiate()
+	interact.name = "Junction_" + label
+	interact.description = label
+	interact.one_shot = false
+	interact.dwell_time = 1.0
+	interact.position = pos
+	add_child(interact)
+	interact.interacted.connect(func():
+		# Show Aster or Peris dialogue depending on active character
+		var key := dialogue_prefix + (".aster" if _active_character == "aster" else ".peris")
+		DialogueData.say_to(_dialogue, key)
+	)
 
 func _build_gauntlet_chunk(parent: Node3D) -> void:
 	var ground_y := BELOW_Y

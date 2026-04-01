@@ -22,10 +22,10 @@ elevator.aster.stay_close,Aster,normal,false,They'll reboot. We don't have long.
 elevator.aster.hack,Aster,normal,false,I can override this. Just need a moment...,Aster begins hacking the panel
 elevator.system.override,SYSTEM,data,false,MAINTENANCE OVERRIDE ACCEPTED  //  DOORS CYCLING,Hack succeeds
 elevator.narration.doors,,normal,false,The elevator shudders. The doors grind open. Light spills in from a corridor neither of them recognizes.,Doors open
-elevator.system.noncompliant,SYSTEM,data,false,TAG STATUS: NON-COMPLIANT  //  WELLNESS PROTOCOL DEVIATION  //  FACILITY ACCESS REVOKED,Lockout
-elevator.aster.locked,Aster,normal,false,It locked us out. My device can't reach any facility system. We can't go back.,Aster tries and fails
-elevator.peris.back_to_what,Peris,normal,false,"I don't really have anything to go back to, anyways...",
-elevator.aster.forward,Aster,normal,false,"So, I guess we go forward together.",
+elevator.system.noncompliant,SYSTEM,data,false,TAG STATUS: NON-COMPLIANT  //  WELLNESS PROTOCOL DEVIATION,Notification Aster dismisses — not a lockout yet
+elevator.aster.dismiss,Aster,normal,false,Administrative error. I'll sort it out when we get back.,Aster doesn't understand what non-compliant means yet
+elevator.peris.not_back,Peris,normal,false,"I don't really have anything to go back to, anyways...",
+elevator.aster.forward,Aster,normal,false,Forward then.,
 elevator.peris.not_supposed,Peris,normal,false,I don't think we're supposed to be here.,Entering the maintenance corridor
 elevator.aster.no_service,Aster,data,false,Nobody is. This section hasn't been serviced in... the maintenance logs just stop.,Aster reads corridor data
 elevator.bridge.narration,,normal,false,An elevated walkway spanning a larger space. Incomplete railing. Exposed framework. The air is open — it smells like rust.,Bridge description
@@ -35,7 +35,21 @@ elevator.aster.ahead,Aster,normal,true,There's something ahead. Lights.,Waits fo
 elevator.peris.floor,Peris,normal,false,The floor—!,Bridge gives way
 elevator.peris.hurt,Peris,normal,false,Are you hurt?,After the fall
 elevator.aster.sublevel,Aster,data,false,Sub-level. We fell through.,Aster reads the environment
+elevator.aster.climb,Aster,normal,false,"They might have called me a beast, but I'm not this type of animal...",Looking up at the collapsed bridge — no way back up
+elevator.peris.climb,Peris,normal,false,We've got the combined strength of two children. It wouldn't be physically possible to climb this...,
+elevator.aster.another_way,Aster,data,false,There's something over there. Another way forward.,Finds the alternative path (TBD)
 elevator.aster.two_paths,Aster,data,false,"Two corridors. One's clear but corroded. The other's shorter, but something's in there.",Aster reads the fork — safe route has iron hazards on floor; dangerous route has hostiles
+elevator.junction.dusk,,normal,false,The light is changing. Dimming.,Scripted dusk — first nightfall approaching
+elevator.junction.workbench.aster,Aster,data,false,"Sealant applicators. Pressure readers. Manual torque adjusters. No automated systems. Whoever lives here is maintaining this entire section by hand.",Aster examines the workbench
+elevator.junction.workbench.peris,Peris,normal,false,These are all laid out so carefully. Every tool in its place. Someone really cares about their work.,Peris examines the workbench
+elevator.junction.monitor.aster,Aster,data,false,"Barrier integrity readings. Trending downward. Slowly, but consistently. Whoever is logging this has been watching the wall weaken for years.",Aster reads the monitoring station
+elevator.junction.monitor.peris,Peris,normal,false,"All these little gauges. I don't know what they measure but they all look like they're... leaning the wrong way.",Peris reads the monitoring station
+elevator.junction.food.aster,Aster,normal,false,Consuming food you do not own is a breach of protocol.,Aster at the food cache — compliance over survival
+elevator.junction.food.peris,Peris,normal,false,It's not very nice to take someone else's food!,Peris at the food cache — empathy over survival
+elevator.junction.lookout.aster,Aster,data,false,Significant wear pattern on the floor here. Someone stands in this exact spot regularly. The window faces the bridge approach.,Aster at the lookout spot
+elevator.junction.lookout.peris,Peris,normal,false,Someone stands here a lot. Looking out. Waiting for someone.,Peris at the lookout spot
+elevator.junction.heater.aster,Aster,data,false,This heating element is active and positioned at the entrance. Inefficient placement for personal use. It's oriented outward.,Aster at the heater — data without emotional inference
+elevator.junction.heater.peris,Peris,normal,false,This is warm. It's been running for a while. Someone set it up for visitors.,Peris at the heater — she reads the care
 elevator.endo.beckon,,normal,false,"Someone in the doorway. Beckoning.",Endo gestures them inside — marker appears on shelter
 elevator.peris.who,Peris,normal,false,Who...?,
 elevator.aster.endo_read,Aster,data,false,"Endosomal unit. Non-hostile. His tag reads compliant, but the signal's dead.",Aster scans Endo
