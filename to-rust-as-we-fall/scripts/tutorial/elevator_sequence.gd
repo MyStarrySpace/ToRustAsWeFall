@@ -557,6 +557,8 @@ func _start_units_activate() -> void:
 
 func _start_emp_tutorial() -> void:
 	_enter_step("emp_tutorial")
+	# Switch to Aster — the EMP is his ability, not Peris's
+	_select_character("aster")
 	_hud.set_ability_state("emp", "ready")
 	_tutorial_prompt.show_prompt("[Q] — EMP")
 
