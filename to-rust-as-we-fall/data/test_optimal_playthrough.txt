@@ -1,0 +1,161 @@
+# =============================================================================
+# OPTIMAL PLAYTHROUGH — Act 1 Pacing Test
+# =============================================================================
+# Run with:
+#   cd to-rust-as-we-fall
+#   timeout 120 ../Godot_v4.6.1-stable_win64_console.exe --headless --path "." \
+#     -- --cli --cli-script "res://data/test_optimal_playthrough.txt"
+#
+# PURPOSE: Simulate an optimal player run through Act 1 to measure:
+#   - Time per section (real seconds at 1x speed)
+#   - APM feel (how many commands per section)
+#   - Difficulty (where does the player need to think vs. autopilot)
+#   - Pacing (does any section drag? rush?)
+#
+# OPTIMAL STRATEGY NOTES:
+#   - Player knows the layout (second playthrough or guide)
+#   - No wrong turns, no wasted movement
+#   - Dialogue is advanced immediately (fast-forward)
+#   - Hazards are avoided via safe routing when possible
+#   - Enemies are avoided, not fought (unless forced)
+#
+# Each section starts with a STATUS check and ends with a STATUS check.
+# The delta between them is the section time.
+# =============================================================================
+
+# --- ELEVATOR (already tested separately) ---
+# Skip: elevator is its own scene. This starts at act1.
+
+# =============================================================================
+# SECTION: PERIVASCULAR CHANNELS (shelters 2-3)
+# Strategy: Follow flowing water. Avoid stagnant pools. Tend flora when prompted.
+# Expected: ~30s dialogue + ~20s movement = ~50s
+# =============================================================================
+status
+# Dialogue auto-advances at 10x speed
+wait 3
+advance
+advance
+advance
+# Endo teaching
+wait 2
+advance
+advance
+advance
+# Flora tending
+wait 2
+advance
+advance
+advance
+advance
+# Corpse starch
+wait 2
+advance
+advance
+advance
+advance
+advance
+advance
+# Explore — move toward stacks
+wait 2
+advance
+advance
+move 45 0
+wait 5
+status
+
+# =============================================================================
+# SECTION: PROCESSING STACKS (shelters 4-5)
+# Strategy: Straight to terminal. Read data. Move on.
+# Expected: ~25s dialogue + ~15s movement = ~40s
+# =============================================================================
+advance
+advance
+advance
+# Terminal
+wait 2
+advance
+advance
+advance
+advance
+advance
+# Archive
+wait 3
+advance
+advance
+advance
+advance
+advance
+advance
+# Explore — move toward rings
+wait 2
+move 95 0
+wait 5
+status
+
+# =============================================================================
+# SECTION: RESIDENTIAL RINGS (shelters 6-7)
+# Strategy: Walk through civilization. Witness Endo departure. Move on.
+# Expected: ~35s dialogue + ~10s movement = ~45s
+# =============================================================================
+advance
+advance
+advance
+# Client
+wait 3
+advance
+advance
+advance
+advance
+advance
+# Endo departs
+wait 3
+advance
+advance
+advance
+advance
+advance
+advance
+advance
+# Explore — move toward lockout
+wait 2
+move 145 0
+wait 5
+status
+
+# =============================================================================
+# SECTION: LOCKOUT / CHASE
+# Strategy: Approach panel. Get rejected. Run when Naturalizers come.
+# Expected: ~20s dialogue + ~10s chase = ~30s
+# =============================================================================
+advance
+advance
+advance
+# Rejected
+wait 1
+advance
+advance
+advance
+advance
+advance
+# Chase
+wait 1
+advance
+advance
+advance
+# RUN BACK — move behind lockout boundary
+run
+move 130 0
+wait 3
+# Exile
+advance
+advance
+advance
+advance
+wait 2
+status
+
+# =============================================================================
+# FINAL STATUS — Total time and state
+# =============================================================================
+status
