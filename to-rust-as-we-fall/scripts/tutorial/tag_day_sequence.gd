@@ -127,9 +127,8 @@ func _start_arrive() -> void:
 		)
 	, "citizen_talk")
 
-func _on_character_arrived(id: String) -> void:
-	if id == "citizen" and _current_step in ["corridor_walk", "pan_prompt", "fragments"]:
-		_scheduler.schedule_after(0, _start_neutralization, "neutralization")
+func _on_character_arrived(_id: String) -> void:
+	pass
 
 func _start_citizen_scan() -> void:
 	_enter_step("citizen_scan")
@@ -260,9 +259,6 @@ func _begin_corridor_walk() -> void:
 
 
 func _start_pan_prompt() -> void:
-	# Don't call _enter_step here — that would disconnect the dialogue chain's
-	# dialogue_finished handler and kill the poem/NK interleave.
-	# This is a UI overlay, not a narrative step change.
 	_camera.set_pan_enabled(true)
 	_camera.set_wasd_pan_enabled(true)
 	_camera.max_pan_distance = 40.0
