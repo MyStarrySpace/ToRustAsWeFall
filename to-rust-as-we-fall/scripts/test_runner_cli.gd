@@ -804,6 +804,18 @@ func _test_tag_day_dialogue() -> void:
 			has_bang = true
 	_assert_true(has_bang, "BANG fragment reached (poem chain completed)")
 
+	# Verify BANG fires before the lockdown (poem+fragments complete before walk ends)
+	var bang_tick_val := 0.0
+	var lockdown_tick := 0.0
+	for entry in log:
+		if "BANG" in entry.text and bang_tick_val == 0.0:
+			bang_tick_val = entry.tick
+		if "MEDICAL BAY" in entry.text and lockdown_tick == 0.0:
+			lockdown_tick = entry.tick
+	if bang_tick_val > 0 and lockdown_tick > 0:
+		_assert_true(bang_tick_val < lockdown_tick,
+			"BANG before lockdown (bang=%.1f lockdown=%.1f)" % [bang_tick_val, lockdown_tick])
+
 	# Verify NK chat lines appear in the dialogue log
 	var nk_count := 0
 	for entry in log:

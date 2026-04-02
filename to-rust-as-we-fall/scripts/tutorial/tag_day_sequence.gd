@@ -180,34 +180,53 @@ func _begin_corridor_walk() -> void:
 	_naturalizer_1.global_position = CITIZEN_DEVICE_POS + Vector3(0, 0, -0.6)
 	_naturalizer_2.global_position = CITIZEN_DEVICE_POS + Vector3(0, 0, 0.6)
 
-	# Walk speed paced so they arrive near the dead end around the BANG line.
-	# Path from device to dead end is ~52 units; poem + fragments ≈ 120s → speed ~0.45
-	_game_state.change_move_speed("citizen", 0.45)
-	_game_state.change_move_speed("nk1", 0.45)
-	_game_state.change_move_speed("nk2", 0.45)
+	# Walk speed: poem chain = 64s, fragments = ~40s, total ~104s.
+	# Path length ~52 units. Speed 0.4 → 130s walk. Citizen arrives
+	# after fragments, before the lockdown times out.
+	_game_state.change_move_speed("citizen", 0.4)
+	_game_state.change_move_speed("nk1", 0.4)
+	_game_state.change_move_speed("nk2", 0.4)
+
+	# Waypoints with explicit corners so characters don't cut through walls.
+	# Corridor is 2 units wide. Each turn needs a corner waypoint.
+	# A runs along Z (x=14), B runs along X (z=-17), C runs along Z (x=24),
+	# D runs along X (z=-27), dead end at (17, -28).
+	var corner_AB := Vector3(14, 0, -17)   # Turn from A (along Z) to B (along X)
+	var corner_BC := Vector3(24, 0, -17)   # Turn from B (along X) to C (along Z)
+	var corner_CD := Vector3(24, 0, -27)   # Turn from C (along Z) to D (along X)
 
 	var citizen_path: Array[Vector3] = [
-		CORRIDOR_ENTRANCE, CORRIDOR_A_END, CORRIDOR_B_END,
-		CORRIDOR_C_END, CORRIDOR_D_END, DEAD_END,
+		CORRIDOR_ENTRANCE,
+		CORRIDOR_A_END, corner_AB,
+		CORRIDOR_B_END, corner_BC,
+		CORRIDOR_C_END, corner_CD,
+		CORRIDOR_D_END, DEAD_END,
 	]
 	_game_state.command_walk_path("citizen", citizen_path)
 
+	# NKs walk flanking — offset perpendicular to movement direction
 	var nk1_path: Array[Vector3] = [
-		CORRIDOR_ENTRANCE + Vector3(0, 0, -0.6),
-		CORRIDOR_A_END + Vector3(0, 0, -0.6),
-		CORRIDOR_B_END + Vector3(-0.6, 0, 0),
-		CORRIDOR_C_END + Vector3(-0.6, 0, 0),
-		CORRIDOR_D_END + Vector3(0, 0, -0.6),
+		CORRIDOR_ENTRANCE + Vector3(-0.6, 0, 0),         # A: moving along -Z, offset in -X
+		CORRIDOR_A_END + Vector3(-0.6, 0, 0),
+		corner_AB + Vector3(-0.6, 0, 0),
+		CORRIDOR_B_END + Vector3(0, 0, -0.6),            # B: moving along +X, offset in -Z
+		corner_BC + Vector3(0, 0, -0.6),
+		CORRIDOR_C_END + Vector3(-0.6, 0, 0),            # C: moving along -Z, offset in -X
+		corner_CD + Vector3(-0.6, 0, 0),
+		CORRIDOR_D_END + Vector3(0, 0, -0.6),            # D: moving along -X, offset in -Z
 		DEAD_END + Vector3(-0.6, 0, 0),
 	]
 	_game_state.command_walk_path("nk1", nk1_path)
 
 	var nk2_path: Array[Vector3] = [
-		CORRIDOR_ENTRANCE + Vector3(0, 0, 0.6),
-		CORRIDOR_A_END + Vector3(0, 0, 0.6),
-		CORRIDOR_B_END + Vector3(0.6, 0, 0),
-		CORRIDOR_C_END + Vector3(0.6, 0, 0),
-		CORRIDOR_D_END + Vector3(0, 0, 0.6),
+		CORRIDOR_ENTRANCE + Vector3(0.6, 0, 0),          # A: offset in +X
+		CORRIDOR_A_END + Vector3(0.6, 0, 0),
+		corner_AB + Vector3(0.6, 0, 0),
+		CORRIDOR_B_END + Vector3(0, 0, 0.6),             # B: offset in +Z
+		corner_BC + Vector3(0, 0, 0.6),
+		CORRIDOR_C_END + Vector3(0.6, 0, 0),             # C: offset in +X
+		corner_CD + Vector3(0.6, 0, 0),
+		CORRIDOR_D_END + Vector3(0, 0, 0.6),             # D: offset in +Z
 		DEAD_END + Vector3(0.6, 0, 0),
 	]
 	_game_state.command_walk_path("nk2", nk2_path)
