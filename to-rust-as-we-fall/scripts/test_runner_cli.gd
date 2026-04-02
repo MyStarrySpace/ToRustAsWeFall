@@ -1433,6 +1433,51 @@ func _test_chain_enemy() -> void:
 			all_red = false
 	_assert_true(all_red, "All segments turn red on color change")
 
+	# Test: anchor constraint — head can't exceed max_reach from anchor
+	chain._state = "idle"
+	chain._hp = chain.max_hp
+	chain._anchored = true
+	var anchor := Vector3(0, 0, 0)
+	chain._anchor_pos = anchor
+	var max_reach: float = chain.get_max_reach()
+	_assert_true(absf(max_reach - chain.segment_count * chain.segment_spacing) < 0.01,
+		"Max reach = segment_count * spacing (got: %.2f)" % max_reach)
+
+	# Move lead point way beyond max reach
+	chain.global_position = Vector3(max_reach + 5.0, 0, 0)
+	# Reset segment positions so _process can work cleanly
+	for i in range(chain.segment_count):
+		chain._segment_positions[i] = chain.global_position - Vector3(0, 0, i * chain.segment_spacing)
+	chain._segment_positions[chain.segment_count - 1] = anchor
+
+	for i in range(5):
+		scheduler.advance(0.1)
+		await get_tree().process_frame
+
+	# Head should have been clamped back
+	var head_dist: float = chain.global_position.distance_to(anchor)
+	_assert_true(head_dist <= max_reach + 0.05,
+		"Anchored head within max_reach (dist: %.2f, max: %.2f)" % [head_dist, max_reach])
+
+	# Tail should be pinned to anchor
+	var tail_dist: float = chain._segment_positions[chain.segment_count - 1].distance_to(anchor)
+	_assert_true(tail_dist < 0.01, "Tail pinned to anchor (dist: %.3f)" % tail_dist)
+
+	# Test: detach releases the constraint
+	chain.detach()
+	chain.global_position = Vector3(max_reach + 10.0, 0, 0)
+	for i in range(5):
+		scheduler.advance(0.1)
+		await get_tree().process_frame
+	var detached_dist: float = chain.global_position.distance_to(anchor)
+	_assert_true(detached_dist > max_reach, "Detached head moves beyond max_reach (dist: %.2f)" % detached_dist)
+
+	# Test: re-anchor to new position
+	var new_anchor := Vector3(50, 0, 0)
+	chain.anchor_to(new_anchor)
+	_assert_true(chain._anchored, "Re-anchored after anchor_to()")
+	_assert_true(chain._anchor_pos.distance_to(new_anchor) < 0.01, "New anchor position set")
+
 	# Test: HP/death inherited from Enemy (must be last — kills the chain)
 	chain._state = "idle"
 	chain._hp = chain.max_hp

@@ -17,6 +17,10 @@ var _segments: Array[MeshInstance3D] = []
 var _segment_positions: Array[Vector3] = []
 var _segment_mats: Array[StandardMaterial3D] = []
 
+# --- Anchor constraint ---
+var _anchor_pos := Vector3.ZERO  # Wall attachment point (tail stays here)
+var _anchored := true            # Whether the chain is tethered to its anchor
+
 # --- Overrides ---
 
 func _build_visual() -> void:
@@ -43,6 +47,8 @@ func _build_visual() -> void:
 	_segment_positions.clear()
 	for i in range(segment_count):
 		_segment_positions.append(global_position - Vector3(0, 0, i * segment_spacing))
+	_anchor_pos = _segment_positions[segment_count - 1]
+	_anchored = true
 
 	# Eyes on the head segment only
 	_eye_left = _make_eye(Vector3(-0.05, 0.0, 0.08))
@@ -86,7 +92,16 @@ func _process(delta: float) -> void:
 	# Lead point is the enemy's global position (set by parent _process)
 	var lead := global_position
 
-	# Head segment tracks the lead point directly
+	# Anchor constraint: clamp lead point to max reach from anchor
+	var max_reach: float = segment_count * segment_spacing
+	if _anchored:
+		var anchor_dist := lead.distance_to(_anchor_pos)
+		if anchor_dist > max_reach:
+			var pull_dir := (_anchor_pos - lead).normalized()
+			lead = _anchor_pos - pull_dir * max_reach
+			global_position = lead
+
+	# Head segment tracks the lead point
 	_segment_positions[0] = lead
 
 	# Each subsequent segment follows the one in front
@@ -111,6 +126,10 @@ func _process(delta: float) -> void:
 		if new_dist > max_stretch:
 			var snap_dir := (_segment_positions[i] - _segment_positions[i - 1]).normalized()
 			_segment_positions[i] = _segment_positions[i - 1] + snap_dir * max_stretch
+
+	# Pin the tail to the anchor while tethered
+	if _anchored:
+		_segment_positions[segment_count - 1] = _anchor_pos
 
 	_apply_segment_visuals()
 
@@ -141,11 +160,27 @@ func _apply_segment_visuals() -> void:
 # --- Public helpers ---
 
 ## Set initial segment positions along a wall line.
-## Call after adding to scene tree and before activate().
+## The last segment becomes the anchor point. Call before activate().
 func set_wall_line(start: Vector3, direction: Vector3) -> void:
 	_segment_positions.clear()
 	for i in range(segment_count):
 		_segment_positions.append(start + direction.normalized() * (i * segment_spacing))
+	# Anchor is the tail (last segment)
+	_anchor_pos = _segment_positions[segment_count - 1]
+	_anchored = true
+
+## Detach from the wall anchor. Head moves freely, tail no longer pinned.
+func detach() -> void:
+	_anchored = false
+
+## Re-anchor to a new position (e.g. after settling on a new wall).
+func anchor_to(pos: Vector3) -> void:
+	_anchor_pos = pos
+	_anchored = true
+
+## Maximum distance the head can reach from the anchor.
+func get_max_reach() -> float:
+	return segment_count * segment_spacing
 
 ## Get all segment world positions (for external collision checks).
 func get_segment_positions() -> Array[Vector3]:
