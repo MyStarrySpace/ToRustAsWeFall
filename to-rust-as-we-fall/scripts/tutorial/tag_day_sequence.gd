@@ -118,13 +118,14 @@ func _start_arrive() -> void:
 	_player.set_move_enabled(false)
 	_game_state.character_arrived.connect(_on_character_arrived)
 	DialogueData.say_to(_dialogue, "tag_day.checkpoint_id")
-	# Citizen murmurs the nursery rhyme, then scan triggers
+	# Citizen tries small talk, Aster shuts them down, then scan fails
 	_scheduler.schedule_after(2.0, func():
 		_dialogue_chain(
-			["tag_day.murmur.01", "tag_day.murmur.02"],
+			["tag_day.citizen.talk", "tag_day.aster.shush", "tag_day.citizen.scan",
+			 "tag_day.murmur.01", "tag_day.murmur.02"],
 			func(): _scheduler.schedule_after(1.5, _start_citizen_scan, "citizen_scan")
 		)
-	, "murmur")
+	, "citizen_talk")
 
 func _on_character_arrived(id: String) -> void:
 	if id == "citizen" and _current_step in ["corridor_walk", "pan_prompt", "fragments"]:

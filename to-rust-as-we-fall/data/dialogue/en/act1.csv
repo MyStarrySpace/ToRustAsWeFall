@@ -76,6 +76,9 @@ elevator.aster.climb,Aster,normal,false,"They might have called me a beast, but 
 elevator.peris.climb,Peris,normal,false,We've got the combined strength of two children. It wouldn't be physically possible to climb this...,
 elevator.aster.another_way,Aster,data,false,There's something over there. Another way forward.,Finds the alternative path (TBD)
 elevator.aster.two_paths,Aster,data,false,"Two corridors. One's clear but corroded. The other's shorter, but something's in there.",Aster reads the fork — safe route has iron hazards on floor; dangerous route has hostiles
+tag_day.citizen.talk,CITIZEN,normal,false,"It's this time again, huh?",Citizen tries small talk — the last normal thing they say
+tag_day.aster.shush,Aster,normal,false,"Shh, that's against protocol.",Aster shuts them down — productivity over connection
+tag_day.citizen.scan,,normal,false,The citizen looks at him for a moment. Then they turn back to the scanner.,The citizen presents their tag. The scan fails.
 tag_day.poem.01,,poem,false,"Between the idea
 And the reality
 Between the motion
@@ -141,8 +144,8 @@ junction.heater.aster,Aster,data,false,This heating element is active and positi
 junction.heater.peris,Peris,normal,false,This is warm. It's been running for a while. Someone set it up for visitors.,Peris at the heater — she reads the care
 junction.markings.aster,Aster,data,false,What annotation format is this? This is definitely not standard!,Aster at the wall markings — unrecognized system
 junction.markings.peris,Peris,normal,false,"I'm not sure what these markings say, but the handwriting's got a lot of personality.",Peris at the wall markings — she reads the person
-junction.game.aster,Aster,normal,false,Who has time to waste on things like these?,Aster at the puzzle game — can't fathom leisure
-junction.game.peris,Peris,normal,false,"Oh, it's a little puzzle. Someone made this by hand. It's been used a lot, look how smooth the edges are.",Peris at the puzzle game — she sees the care and the loneliness
+junction.game.aster,Aster,normal,false,Who has time to waste on things like these?,"Aster can't fathom leisure — ""Lot Clot"" scratched into the base plate"
+junction.game.peris,Peris,normal,false,"Oh, it's a little puzzle. Someone made this by hand. Look how smooth the edges are from use.",Peris sees the care and the years of play — sliding block puzzle about clearing blockages
 junction.endo.beckon,,normal,false,Someone in the doorway. Beckoning.,Endo gestures them inside — marker appears on shelter
 junction.peris.who,Peris,normal,false,Who...?,
 junction.aster.endo_read,Aster,data,false,"Endosomal unit. Non-hostile. His tag reads compliant, but the signal's dead.",Aster scans Endo
