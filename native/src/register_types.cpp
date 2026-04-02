@@ -6,6 +6,7 @@
 #include <godot_cpp/godot.hpp>
 
 #include "event_scheduler.h"
+#include "xlsx_reader.h"
 
 using namespace godot;
 
@@ -15,6 +16,7 @@ void initialize_trwf_module(ModuleInitializationLevel p_level) {
 	}
 
 	ClassDB::register_class<EventScheduler>();
+	ClassDB::register_class<XlsxReader>();
 }
 
 void uninitialize_trwf_module(ModuleInitializationLevel p_level) {

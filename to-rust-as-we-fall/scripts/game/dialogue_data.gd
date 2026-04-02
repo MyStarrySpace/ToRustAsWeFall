@@ -13,7 +13,7 @@ class_name DialogueData
 static var _lines: Dictionary = {}  # key → DialogueLine
 static var _loaded := false
 
-## Load all CSV files in a directory
+## Load all dialogue files (xlsx and csv) in a directory
 static func load_dir(dir_path: String) -> void:
 	_lines.clear()
 	var dir := DirAccess.open(dir_path)
@@ -23,12 +23,45 @@ static func load_dir(dir_path: String) -> void:
 	dir.list_dir_begin()
 	var file_name := dir.get_next()
 	while file_name != "":
-		if not dir.current_is_dir() and file_name.ends_with(".csv"):
-			_load_csv_file(dir_path.path_join(file_name))
+		if not dir.current_is_dir():
+			if file_name.ends_with(".xlsx"):
+				_load_xlsx_file(dir_path.path_join(file_name))
+			elif file_name.ends_with(".csv"):
+				_load_csv_file(dir_path.path_join(file_name))
 		file_name = dir.get_next()
 	_loaded = true
 
-## Load a single CSV file (merges into existing lines)
+## Load an xlsx workbook (each sheet becomes a batch of dialogue lines)
+static func _load_xlsx_file(path: String) -> void:
+	var reader := XlsxReader.new()
+	if reader.open(path) != OK:
+		push_error("DialogueData: Could not open %s" % path)
+		return
+	for sheet_name in reader.get_sheet_names():
+		var rows := reader.get_sheet_data(sheet_name)
+		if rows.is_empty():
+			continue
+		var first_row: Array = rows[0]
+		var start := 1 if first_row.size() > 0 and str(first_row[0]).strip_edges().to_lower() == "key" else 0
+		for i in range(start, rows.size()):
+			var row: Array = rows[i]
+			if row.size() < 5 or str(row[0]).strip_edges() == "":
+				continue
+			var line := DialogueLine.new()
+			line.key = str(row[0]).strip_edges()
+			line.speaker = str(row[1]).strip_edges() if row.size() > 1 else ""
+			line.style = str(row[2]).strip_edges() if row.size() > 2 else "normal"
+			line.wait = str(row[3]).strip_edges().to_lower() == "true" if row.size() > 3 else false
+			var raw_text := str(row[4]).strip_edges() if row.size() > 4 else ""
+			line.text = raw_text.replace("|", "\n")
+			line.context = str(row[5]).strip_edges() if row.size() > 5 else ""
+			if line.style == "thought":
+				line.is_thought = true
+				line.style = "normal"
+			_lines[line.key] = line
+	reader.close()
+
+## Load a single CSV file (merges into existing lines, fallback for non-xlsx)
 static func _load_csv_file(path: String) -> void:
 	var file := FileAccess.open(path, FileAccess.READ)
 	if not file:
