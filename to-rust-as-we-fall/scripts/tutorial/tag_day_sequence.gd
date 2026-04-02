@@ -284,24 +284,20 @@ func _start_fragments() -> void:
 	], _on_bang, 1.5)
 
 func _on_bang() -> void:
+	_enter_step("neutralization")
 	_camera.shake(0.5, 3.0)
 	_dialogue.clear()
+	_game_state.command_stop("citizen")
+	_game_state.command_stop("nk1")
+	_game_state.command_stop("nk2")
+	_citizen.fade_out(2.0)
 	_scheduler.schedule_after(2.5, _fragment_whimper, "whimper")
 
 func _fragment_whimper() -> void:
 	DialogueData.say_to(_dialogue, "tag_day.fragment.08")
 	_dialogue.dialogue_finished.connect(func():
-		_scheduler.schedule_after(1.0, _start_neutralization, "neutralization")
+		_scheduler.schedule_after(1.0, _start_lockdown, "lockdown")
 	, CONNECT_ONE_SHOT)
-
-func _start_neutralization() -> void:
-	if not _enter_step("neutralization"):
-		return
-	_game_state.command_stop("citizen")
-	_game_state.command_stop("nk1")
-	_game_state.command_stop("nk2")
-	_scheduler.schedule_after(1.0, func(): _citizen.fade_out(2.0), "citizen_fade")
-	_scheduler.schedule_after(3.0, _start_lockdown, "lockdown")
 
 func _start_lockdown() -> void:
 	_enter_step("lockdown")
