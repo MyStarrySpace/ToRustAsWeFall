@@ -38,6 +38,9 @@ func _ready() -> void:
 			"--test-enemy":
 				ran_test = true
 				await _test_enemy()
+			"--test-chain-enemy":
+				ran_test = true
+				await _test_chain_enemy()
 			"--test-tag-day":
 				ran_test = true
 				await _test_tag_day()
@@ -123,6 +126,7 @@ func _run_all_tests() -> void:
 	await _test_junction_flow()
 	_test_climb_and_lockout()
 	await _test_enemy()
+	await _test_chain_enemy()
 	await _test_ferrolure()
 	_test_predictive_detection()
 	_test_detection_equivalence()
@@ -1307,6 +1311,134 @@ func _test_enemy() -> void:
 		await get_tree().process_frame
 	_assert_true(safe_enemy.get_state() == "idle",
 		"Enemy ignores player on hazard route dist=9 (got: %s)" % safe_enemy.get_state())
+
+	root.queue_free()
+	await get_tree().process_frame
+
+# --- Test: Chain Enemy ---
+func _test_chain_enemy() -> void:
+	_test_name = "Chain Enemy"
+
+	var root := Node3D.new()
+	root.name = "ChainTestRoot"
+	get_tree().root.add_child(root)
+
+	var chars := Node3D.new()
+	chars.name = "Characters"
+	root.add_child(chars)
+
+	var scheduler := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = scheduler
+
+	# Create a chain enemy
+	var chain := ChainEnemy.new()
+	chain.name = "test_chain"
+	chain.game_state = gs
+	chain.char_id = "chain_0"
+	chain.segment_count = 6
+	chain.segment_spacing = 0.3
+	chain.max_stretch = 0.5
+	chain.detection_range = 5.0
+	chain._detection_targets = ["target_c"]
+	chars.add_child(chain)
+	gs.register_character("chain_0", Vector3(0, 0, 0), 1.5, {"detection_range": 5.0})
+
+	for i in range(3):
+		await get_tree().process_frame
+
+	# Test: correct number of segments created
+	_assert_true(chain._segments.size() == 6, "6 segments created (got: %d)" % chain._segments.size())
+	_assert_true(chain._segment_positions.size() == 6, "6 segment positions (got: %d)" % chain._segment_positions.size())
+
+	# Test: set_wall_line initializes positions along a direction
+	chain.set_wall_line(Vector3(5, 0, 0), Vector3(1, 0, 0))
+	_assert_true(chain._segment_positions[0].distance_to(Vector3(5, 0, 0)) < 0.01,
+		"Wall line starts at (5,0,0)")
+	_assert_true(chain._segment_positions[5].distance_to(Vector3(5 + 5 * 0.3, 0, 0)) < 0.01,
+		"Wall line end segment at correct position")
+
+	# Test: activate works (inherits from Enemy)
+	chain.activate()
+	_assert_true(chain.get_state() == "idle", "Initial state is idle (got: %s)" % chain.get_state())
+
+	# Record initial segment positions
+	var initial_positions: Array[Vector3] = []
+	for pos in chain._segment_positions:
+		initial_positions.append(pos)
+
+	# Move the lead point via GameState
+	gs.command_move_to_pos("chain_0", Vector3(10, 0, 0))
+
+	# Advance scheduler and process frames so segments follow
+	for i in range(30):
+		scheduler.advance(0.1)
+		await get_tree().process_frame
+
+	# Test: segments have moved from initial positions
+	var segments_moved := false
+	for i in range(chain._segment_positions.size()):
+		if chain._segment_positions[i].distance_to(initial_positions[i]) > 0.1:
+			segments_moved = true
+			break
+	_assert_true(segments_moved, "Segments moved after lead point moved")
+
+	# Test: spacing constraint — no segment further than max_stretch from previous
+	var spacing_ok := true
+	for i in range(1, chain._segment_positions.size()):
+		var dist: float = chain._segment_positions[i].distance_to(chain._segment_positions[i - 1])
+		if dist > chain.max_stretch + 0.01:
+			spacing_ok = false
+	_assert_true(spacing_ok, "All segments within max_stretch of previous")
+
+	# Test: contact damage — place a target near a middle segment
+	var target := Node3D.new()
+	target.name = "target_c"
+	target.set("char_id", "target_c")
+	chars.add_child(target)
+	gs.register_character("target_c", Vector3(0, 0, 0), 1.0)
+
+	# Position target near segment 3
+	var seg3_pos: Vector3 = chain._segment_positions[3]
+	target.position = seg3_pos + Vector3(0.3, 0, 0)
+	gs.characters["target_c"].position = target.position
+
+	var hit_detected := false
+	chain.hit_target.connect(func(tid: String, dmg: float):
+		hit_detected = true
+	)
+
+	# Test segment contact directly using get_segment_positions
+	# Place target exactly at segment 3's position
+	chain._segment_positions[3] = Vector3(20, 0, 5)
+	target.global_position = Vector3(20.2, 0, 5)
+	var seg_positions := chain.get_segment_positions()
+	var contact_found := false
+	for sp in seg_positions:
+		if sp.distance_to(target.global_position) < 0.6:
+			contact_found = true
+			break
+	_assert_true(contact_found, "Segment contact within 0.6 of target")
+
+	# Also test the public check_segment_contact method
+	chain._segment_positions[2] = target.global_position + Vector3(0.1, 0, 0)
+	var contact_id := chain.check_segment_contact(0.6)
+	_assert_true(contact_id == "target_c", "check_segment_contact finds target (got: '%s')" % contact_id)
+
+	# Test: color change propagates to all segments
+	chain._set_mesh_color(Color(0.9, 0.1, 0.1))
+	var all_red := true
+	for mat in chain._segment_mats:
+		if mat.albedo_color.r < 0.8:
+			all_red = false
+	_assert_true(all_red, "All segments turn red on color change")
+
+	# Test: HP/death inherited from Enemy (must be last — kills the chain)
+	chain._state = "idle"
+	chain._hp = chain.max_hp
+	chain.take_damage(chain.max_hp)
+	_assert_true(not chain.is_alive(), "Chain dies when HP reaches 0")
+	_assert_true(chain.get_state() == "dead", "Chain state is dead (got: %s)" % chain.get_state())
 
 	root.queue_free()
 	await get_tree().process_frame
