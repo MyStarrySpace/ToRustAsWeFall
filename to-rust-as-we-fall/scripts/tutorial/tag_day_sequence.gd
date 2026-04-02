@@ -246,7 +246,9 @@ func _begin_corridor_walk() -> void:
 
 
 func _start_pan_prompt() -> void:
-	_enter_step("pan_prompt")
+	# Don't call _enter_step here — that would disconnect the dialogue chain's
+	# dialogue_finished handler and kill the poem/NK interleave.
+	# This is a UI overlay, not a narrative step change.
 	_camera.set_pan_enabled(true)
 	_camera.set_wasd_pan_enabled(true)
 	_camera.max_pan_distance = 40.0

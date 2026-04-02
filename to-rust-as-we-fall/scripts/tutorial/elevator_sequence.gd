@@ -178,6 +178,8 @@ func _build_characters() -> void:
 func _register_characters() -> void:
 	_register_gs_character("peris", _peris_node, 2.5)
 	_register_gs_character("aster", _aster_node, 2.5)
+	_register_gs_character("eu1", _escort_1, 2.0)
+	_register_gs_character("eu2", _escort_2, 2.0)
 	_aster_node.set_move_enabled(false)
 
 func _setup_ui() -> void:
