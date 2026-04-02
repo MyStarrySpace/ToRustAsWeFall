@@ -3,83 +3,88 @@
 # =============================================================================
 # Run with:
 #   cd to-rust-as-we-fall
-#   timeout 120 ../Godot_v4.6.1-stable_win64_console.exe --headless --path "." \
+#   timeout 300 ../Godot_v4.6.1-stable_win64_console.exe --headless --path "." \
 #     -- --cli --cli-script "res://data/test_optimal_playthrough.txt"
 #
-# PURPOSE: Simulate an optimal player run through Act 1 to measure:
-#   - Time per section (real seconds at 1x speed)
-#   - APM feel (how many commands per section)
-#   - Difficulty (where does the player need to think vs. autopilot)
-#   - Pacing (does any section drag? rush?)
+# LEVEL SIZING:
+#   Walk speed: 3.0 units/sec. Run: 6.0 units/sec.
+#   Channels: 220 x 50 units (main path: ~73s walk)
+#   Stacks: 220 x 40 units (main path: ~73s walk)
+#   Rings: 200 x 50 units (main path: ~67s walk)
+#   Lockout: 80 x 20 units (event, not exploration)
+#   Total: ~4 min walking + ~6 min dialogue/interaction = ~10 min
 #
-# OPTIMAL STRATEGY NOTES:
-#   - Player knows the layout (second playthrough or guide)
-#   - No wrong turns, no wasted movement
-#   - Dialogue is advanced immediately (fast-forward)
-#   - Hazards are avoided via safe routing when possible
-#   - Enemies are avoided, not fought (unless forced)
-#
-# Each section starts with a STATUS check and ends with a STATUS check.
-# The delta between them is the section time.
 # =============================================================================
 
-# --- ELEVATOR (already tested separately) ---
-# Skip: elevator is its own scene. This starts at act1.
-
-# =============================================================================
-# SECTION: PERIVASCULAR CHANNELS (shelters 2-3)
-# Strategy: Follow flowing water. Avoid stagnant pools. Tend flora when prompted.
-# Expected: ~30s dialogue + ~20s movement = ~50s
-# =============================================================================
+# === PERIVASCULAR CHANNELS (shelters 2-3) ===
+# Strategy: Follow flowing water (safe). Tend flora for light.
+# Explore 1 side branch for food. Avoid stagnant zones.
+# Expected: ~3-4 min (73s walk + 60s dialogue + 60s exploration)
 status
-# Dialogue auto-advances at 10x speed
+
+# Opening dialogue
 wait 3
 advance
 advance
 advance
-# Endo teaching
+
+# Endo teaches stagnant = danger
 wait 2
 advance
 advance
 advance
+
 # Flora tending
 wait 2
 advance
 advance
 advance
 advance
-# Corpse starch
+
+# Explore side branch (detour ~30 units off main path)
+move 50 -20
+wait 8
+
+# Corpse starch — Endo demonstrates
+advance
+advance
+advance
+advance
+advance
+advance
+
+# Continue down main path
 wait 2
 advance
 advance
-advance
-advance
-advance
-advance
-# Explore — move toward stacks
-wait 2
-advance
-advance
-move 45 0
-wait 5
+
+# Walk the length of channels
+move 110 0
+wait 20
+move 215 0
+wait 25
+
 status
 
-# =============================================================================
-# SECTION: PROCESSING STACKS (shelters 4-5)
-# Strategy: Straight to terminal. Read data. Move on.
-# Expected: ~25s dialogue + ~15s movement = ~40s
-# =============================================================================
+# === PROCESSING STACKS (shelters 4-5) ===
+# Strategy: Navigate server rack corridors to terminal. Hack it.
+# Walk past Myke's workspace (notice, don't interact). Push through.
+# Expected: ~3-4 min (73s walk + 45s dialogue + 45s terminal)
 advance
 advance
 advance
-# Terminal
+
+# Find terminal (midway)
 wait 2
+move 328 0
+wait 20
 advance
 advance
 advance
 advance
 advance
-# Archive
+
+# Archive section
 wait 3
 advance
 advance
@@ -87,27 +92,30 @@ advance
 advance
 advance
 advance
-# Explore — move toward rings
+
+# Walk to end of stacks
 wait 2
-move 95 0
-wait 5
+move 455 0
+wait 25
+
 status
 
-# =============================================================================
-# SECTION: RESIDENTIAL RINGS (shelters 6-7)
-# Strategy: Walk through civilization. Witness Endo departure. Move on.
-# Expected: ~35s dialogue + ~10s movement = ~45s
-# =============================================================================
+# === RESIDENTIAL RINGS (shelters 6-7) ===
+# Strategy: Walk through civilization. Try to talk to client (fails).
+# Let Endo departure happen. Push through to lockout.
+# Expected: ~3-4 min (67s walk + 50s dialogue + 40s wandering)
 advance
 advance
 advance
-# Client
+
+# Client encounter
 wait 3
 advance
 advance
 advance
 advance
 advance
+
 # Endo departs
 wait 3
 advance
@@ -117,20 +125,23 @@ advance
 advance
 advance
 advance
-# Explore — move toward lockout
+
+# Walk the length of rings
 wait 2
-move 145 0
-wait 5
+move 580 0
+wait 25
+move 675 0
+wait 20
+
 status
 
-# =============================================================================
-# SECTION: LOCKOUT / CHASE
-# Strategy: Approach panel. Get rejected. Run when Naturalizers come.
-# Expected: ~20s dialogue + ~10s chase = ~30s
-# =============================================================================
+# === LOCKOUT / CHASE ===
+# Strategy: Approach panel. Accept rejection. Run when chased.
+# Expected: ~1-2 min (short — event, not exploration)
 advance
 advance
 advance
+
 # Rejected
 wait 1
 advance
@@ -138,24 +149,26 @@ advance
 advance
 advance
 advance
-# Chase
+
+# Chase — run back
 wait 1
 advance
 advance
 advance
-# RUN BACK — move behind lockout boundary
 run
-move 130 0
-wait 3
-# Exile
+move 680 0
+wait 8
+
+# Exile dialogue
 advance
 advance
 advance
 advance
 wait 2
+
 status
 
-# =============================================================================
-# FINAL STATUS — Total time and state
-# =============================================================================
+# === FINAL ===
+# Total expected: ~10-15 min for all 4 sections at 1x speed
+# This is roughly 1 in-game day with some margin before nightfall
 status

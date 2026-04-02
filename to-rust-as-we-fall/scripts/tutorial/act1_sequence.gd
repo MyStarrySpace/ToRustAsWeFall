@@ -26,14 +26,17 @@ var _peris_hp := 100.0
 var _naturalizers: Array[Node3D] = []
 
 # Layout — linear progression along +X
+# Each section is 200-250 units long, 40-60 units wide.
+# At 3.0 units/sec walk speed, main path traversal = 60-80s.
+# With side branches and exploration, each section = 3-5 min.
 const CHANNELS_START := Vector3(0, 0, 0)
-const CHANNELS_END := Vector3(40, 0, 0)
-const STACKS_START := Vector3(50, 0, 0)
-const STACKS_END := Vector3(90, 0, 0)
-const RINGS_START := Vector3(100, 0, 0)
-const RINGS_END := Vector3(140, 0, 0)
-const LOCKOUT_START := Vector3(150, 0, 0)
-const LOCKOUT_BOUNDARY := Vector3(160, 0, 0)
+const CHANNELS_END := Vector3(220, 0, 0)
+const STACKS_START := Vector3(240, 0, 0)
+const STACKS_END := Vector3(460, 0, 0)
+const RINGS_START := Vector3(480, 0, 0)
+const RINGS_END := Vector3(680, 0, 0)
+const LOCKOUT_START := Vector3(700, 0, 0)
+const LOCKOUT_BOUNDARY := Vector3(780, 0, 0)
 
 # --- Chunk management ---
 
@@ -378,31 +381,33 @@ func _complete() -> void:
 
 func _build_channels_chunk(parent: Node3D) -> void:
 	var sx := CHANNELS_START.x
+	var length := 220.0
+	var width := 50.0
 	var floor_color := Color(0.06, 0.08, 0.1)
 	var wall_color := Color(0.08, 0.08, 0.1)
 
-	# Ground + collision
-	_add_corridor_section(parent, Vector3(sx + 20, -0.05, 0), Vector3(45, 0.1, 14), floor_color)
+	# Main corridor ground + collision
+	_add_corridor_section(parent, Vector3(sx + length / 2.0, -0.05, 0), Vector3(length, 0.1, width), floor_color)
 	var gb := StaticBody3D.new()
-	gb.position = Vector3(sx + 20, -0.01, 0)
+	gb.position = Vector3(sx + length / 2.0, -0.01, 0)
 	gb.collision_layer = 1
 	gb.collision_mask = 0
 	var gc := CollisionShape3D.new()
 	var gs := BoxShape3D.new()
-	gs.size = Vector3(45, 0.02, 14)
+	gs.size = Vector3(length, 0.02, width)
 	gc.shape = gs
 	gb.add_child(gc)
 	parent.add_child(gb)
 
-	# Walls
-	_add_wall(parent, Vector3(sx + 20, 1.5, -7), Vector3(45, 3, 0.3), wall_color)
-	_add_wall(parent, Vector3(sx + 20, 1.5, 7), Vector3(45, 3, 0.3), wall_color)
+	# Outer walls
+	_add_wall(parent, Vector3(sx + length / 2.0, 1.5, -width / 2.0), Vector3(length, 3, 0.3), wall_color)
+	_add_wall(parent, Vector3(sx + length / 2.0, 1.5, width / 2.0), Vector3(length, 3, 0.3), wall_color)
 
-	# Flowing water channels (visual — blue-tinted strips on floor)
-	for i in range(4):
+	# Flowing water channels along the main path (blue-tinted strips)
+	for i in range(6):
 		var water := MeshInstance3D.new()
 		var wb := BoxMesh.new()
-		wb.size = Vector3(40, 0.02, 1.5)
+		wb.size = Vector3(length * 0.8, 0.02, 2.0)
 		water.mesh = wb
 		var wm := StandardMaterial3D.new()
 		wm.albedo_color = Color(0.1, 0.15, 0.2)
@@ -410,147 +415,174 @@ func _build_channels_chunk(parent: Node3D) -> void:
 		wm.emission = Color(0.05, 0.08, 0.12)
 		wm.emission_energy_multiplier = 0.3
 		water.material_override = wm
-		water.position = Vector3(sx + 20, 0.01, -4.5 + i * 3.0)
+		water.position = Vector3(sx + length / 2.0, 0.01, -15.0 + i * 6.0)
 		parent.add_child(water)
 
-	# Stagnant pools with iron deposits
-	var stagnant_pos := Vector3(sx + 30, 0.02, 5.0)
-	var stagnant_size := Vector3(6, 0.04, 4)
-	var stagnant := MeshInstance3D.new()
-	var sb := BoxMesh.new()
-	sb.size = stagnant_size
-	stagnant.mesh = sb
-	var sm := StandardMaterial3D.new()
-	sm.albedo_color = Color(0.2, 0.12, 0.06)
-	sm.emission_enabled = true
-	sm.emission = Color(0.15, 0.06, 0.02)
-	sm.emission_energy_multiplier = 0.2
-	stagnant.material_override = sm
-	stagnant.position = stagnant_pos
-	parent.add_child(stagnant)
-	_iron_patches.append({"pos": stagnant_pos, "size": stagnant_size})
+	# Side branches (3 alcoves off the main path for exploration)
+	for i in range(3):
+		var branch_x: float = sx + 50.0 + i * 60.0
+		var branch_z: float = -width / 2.0 + 5.0 if i % 2 == 0 else width / 2.0 - 5.0
+		var branch_sign: float = 1.0 if branch_z > 0 else -1.0
+		# Alcove floor
+		_add_corridor_section(parent, Vector3(branch_x, -0.04, branch_z + branch_sign * 10.0), Vector3(15, 0.08, 12), Color(0.05, 0.06, 0.08))
+		# Alcove walls
+		_add_wall(parent, Vector3(branch_x - 8.0, 1.5, branch_z + branch_sign * 10.0), Vector3(0.3, 3, 12), wall_color)
+		_add_wall(parent, Vector3(branch_x + 8.0, 1.5, branch_z + branch_sign * 10.0), Vector3(0.3, 3, 12), wall_color)
 
-	# Flora growth (interactable)
-	var flora_interact := preload("res://scenes/game/interactable.tscn").instantiate()
-	flora_interact.name = "FloraGrowth"
-	flora_interact.description = "Wild Growth"
-	flora_interact.one_shot = true
-	flora_interact.dwell_time = 1.5
-	flora_interact.position = Vector3(sx + 15, 0.3, -3)
-	add_child(flora_interact)
+	# Stagnant pools with iron deposits (multiple, spread out)
+	for i in range(4):
+		var sp_x: float = sx + 40.0 + i * 50.0
+		var sp_z: float = 8.0 + randf_range(-3, 3) if i % 2 == 0 else -8.0 + randf_range(-3, 3)
+		var sp_pos := Vector3(sp_x, 0.02, sp_z)
+		var sp_size := Vector3(8, 0.04, 6)
+		var stagnant := MeshInstance3D.new()
+		var sb := BoxMesh.new()
+		sb.size = sp_size
+		stagnant.mesh = sb
+		var sm := StandardMaterial3D.new()
+		sm.albedo_color = Color(0.2, 0.12, 0.06)
+		sm.emission_enabled = true
+		sm.emission = Color(0.15, 0.06, 0.02)
+		sm.emission_energy_multiplier = 0.2
+		stagnant.material_override = sm
+		stagnant.position = sp_pos
+		parent.add_child(stagnant)
+		_iron_patches.append({"pos": sp_pos, "size": sp_size})
 
-	# Lighting — cool blue for flowing, warm amber for stagnant
-	var flow_light := OmniLight3D.new()
-	flow_light.position = Vector3(sx + 15, 2.5, 0)
-	flow_light.light_color = Color(0.2, 0.25, 0.4)
-	flow_light.light_energy = 1.5
-	flow_light.omni_range = 12.0
-	parent.add_child(flow_light)
+	# Flora growths (multiple — player learns tending through repetition)
+	for i in range(3):
+		var fi := preload("res://scenes/game/interactable.tscn").instantiate()
+		fi.name = "FloraGrowth_%d" % i
+		fi.description = "Wild Growth"
+		fi.one_shot = false
+		fi.dwell_time = 1.5
+		fi.position = Vector3(sx + 30.0 + i * 70.0, 0.3, randf_range(-8, 8))
+		add_child(fi)
+	# Keep the first one named for test compatibility
+	var flora_interact := find_child("FloraGrowth_0", true, false)
+	if flora_interact:
+		flora_interact.name = "FloraGrowth"
 
-	var stag_light := OmniLight3D.new()
-	stag_light.position = Vector3(sx + 30, 2.0, 5)
-	stag_light.light_color = Color(0.5, 0.25, 0.1)
-	stag_light.light_energy = 1.0
-	stag_light.omni_range = 6.0
-	parent.add_child(stag_light)
+	# Lighting — spread across the length
+	for i in range(5):
+		var light := OmniLight3D.new()
+		light.position = Vector3(sx + 20.0 + i * 45.0, 2.5, 0)
+		light.light_color = Color(0.2, 0.25, 0.4)
+		light.light_energy = 1.5
+		light.omni_range = 20.0
+		parent.add_child(light)
+
+	# Warm lights near stagnant zones
+	for i in range(3):
+		var sl := OmniLight3D.new()
+		sl.position = Vector3(sx + 50.0 + i * 60.0, 2.0, 12.0 if i % 2 == 0 else -12.0)
+		sl.light_color = Color(0.5, 0.25, 0.1)
+		sl.light_energy = 1.0
+		sl.omni_range = 8.0
+		parent.add_child(sl)
 
 func _build_stacks_chunk(parent: Node3D) -> void:
 	var sx := STACKS_START.x
+	var length := 220.0
+	var width := 40.0
 	var floor_color := Color(0.05, 0.05, 0.06)
 	var wall_color := Color(0.07, 0.07, 0.09)
 
 	# Ground + collision
-	_add_corridor_section(parent, Vector3(sx + 20, -0.05, 0), Vector3(45, 0.1, 12), floor_color)
+	_add_corridor_section(parent, Vector3(sx + length / 2.0, -0.05, 0), Vector3(length, 0.1, width), floor_color)
 	var gb := StaticBody3D.new()
-	gb.position = Vector3(sx + 20, -0.01, 0)
+	gb.position = Vector3(sx + length / 2.0, -0.01, 0)
 	gb.collision_layer = 1
 	gb.collision_mask = 0
 	var gc := CollisionShape3D.new()
 	var gs := BoxShape3D.new()
-	gs.size = Vector3(45, 0.02, 12)
+	gs.size = Vector3(length, 0.02, width)
 	gc.shape = gs
 	gb.add_child(gc)
 	parent.add_child(gb)
 
 	# Walls
-	_add_wall(parent, Vector3(sx + 20, 2.0, -6), Vector3(45, 4, 0.3), wall_color)
-	_add_wall(parent, Vector3(sx + 20, 2.0, 6), Vector3(45, 4, 0.3), wall_color)
+	_add_wall(parent, Vector3(sx + length / 2.0, 2.5, -width / 2.0), Vector3(length, 5, 0.3), wall_color)
+	_add_wall(parent, Vector3(sx + length / 2.0, 2.5, width / 2.0), Vector3(length, 5, 0.3), wall_color)
 
-	# Server racks (rows of boxes)
-	for row in range(3):
-		for col in range(6):
+	# Server racks — dense grid creating corridors between them
+	for row in range(5):
+		for col in range(12):
 			var rack := MeshInstance3D.new()
 			var rb := BoxMesh.new()
-			rb.size = Vector3(0.8, 2.5, 3.0)
+			rb.size = Vector3(1.0, 3.0, 5.0)
 			rack.mesh = rb
 			var rm := StandardMaterial3D.new()
 			rm.albedo_color = Color(0.06, 0.06, 0.08)
 			rm.metallic = 0.3
 			rack.material_override = rm
-			rack.position = Vector3(sx + 5 + col * 6.0, 1.25, -3.5 + row * 3.5)
+			rack.position = Vector3(sx + 15 + col * 16.0, 1.5, -12.0 + row * 6.0)
 			parent.add_child(rack)
 
-	# Terminal interactable
+	# Terminal interactable (midway through the stacks)
 	var terminal := preload("res://scenes/game/interactable.tscn").instantiate()
 	terminal.name = "DataTerminal"
 	terminal.description = "Maintenance Terminal"
 	terminal.one_shot = true
 	terminal.dwell_time = 2.0
-	terminal.position = Vector3(sx + 20, 1.0, 0)
+	terminal.position = Vector3(sx + length * 0.4, 1.0, 0)
 	add_child(terminal)
 
-	# Myke's elegant workspace (visual only)
+	# Myke's elegant workspace — deeper in, off the main path
 	var elegant_light := OmniLight3D.new()
-	elegant_light.position = Vector3(sx + 35, 2.0, -2)
+	elegant_light.position = Vector3(sx + length * 0.75, 2.0, -10)
 	elegant_light.light_color = Color(0.3, 0.25, 0.2)
-	elegant_light.light_energy = 0.8
-	elegant_light.omni_range = 5.0
+	elegant_light.light_energy = 1.2
+	elegant_light.omni_range = 8.0
 	parent.add_child(elegant_light)
 
-	# Cold industrial lighting
-	var main_light := OmniLight3D.new()
-	main_light.position = Vector3(sx + 20, 3.5, 0)
-	main_light.light_color = Color(0.2, 0.2, 0.3)
-	main_light.light_energy = 2.0
-	main_light.omni_range = 15.0
-	parent.add_child(main_light)
+	# Cold industrial lighting spread across the length
+	for i in range(6):
+		var light := OmniLight3D.new()
+		light.position = Vector3(sx + 20.0 + i * 35.0, 4.0, 0)
+		light.light_color = Color(0.2, 0.2, 0.3)
+		light.light_energy = 2.0
+		light.omni_range = 20.0
+		parent.add_child(light)
 
 func _build_rings_chunk(parent: Node3D) -> void:
 	var sx := RINGS_START.x
+	var length := 200.0
+	var width := 50.0
 	var floor_color := Color(0.12, 0.11, 0.1)
 	var wall_color := Color(0.15, 0.14, 0.12)
 
 	# Ground + collision
-	_add_corridor_section(parent, Vector3(sx + 20, -0.05, 0), Vector3(45, 0.1, 14), floor_color)
+	_add_corridor_section(parent, Vector3(sx + length / 2.0, -0.05, 0), Vector3(length, 0.1, width), floor_color)
 	var gb := StaticBody3D.new()
-	gb.position = Vector3(sx + 20, -0.01, 0)
+	gb.position = Vector3(sx + length / 2.0, -0.01, 0)
 	gb.collision_layer = 1
 	gb.collision_mask = 0
 	var gc := CollisionShape3D.new()
 	var gs := BoxShape3D.new()
-	gs.size = Vector3(45, 0.02, 14)
+	gs.size = Vector3(length, 0.02, width)
 	gc.shape = gs
 	gb.add_child(gc)
 	parent.add_child(gb)
 
 	# Walls — cleaner, residential
-	_add_wall(parent, Vector3(sx + 20, 2.0, -7), Vector3(45, 4, 0.3), wall_color)
-	_add_wall(parent, Vector3(sx + 20, 2.0, 7), Vector3(45, 4, 0.3), wall_color)
+	_add_wall(parent, Vector3(sx + length / 2.0, 2.0, -width / 2.0), Vector3(length, 4, 0.3), wall_color)
+	_add_wall(parent, Vector3(sx + length / 2.0, 2.0, width / 2.0), Vector3(length, 4, 0.3), wall_color)
 
-	# Warm residential lighting
-	for i in range(4):
+	# Warm residential lighting — generous, well-lit
+	for i in range(8):
 		var light := OmniLight3D.new()
-		light.position = Vector3(sx + 5 + i * 10.0, 3.0, 0)
+		light.position = Vector3(sx + 15 + i * 25.0, 3.5, 0)
 		light.light_color = Color(0.8, 0.6, 0.4)
-		light.light_energy = 2.0
-		light.omni_range = 10.0
+		light.light_energy = 2.5
+		light.omni_range = 18.0
 		parent.add_child(light)
 
-	# Simulation bay windows (glowing rectangles along one wall)
-	for i in range(5):
+	# Simulation bay windows (glowing rectangles along the north wall)
+	for i in range(10):
 		var bay := MeshInstance3D.new()
 		var bb := BoxMesh.new()
-		bb.size = Vector3(3, 1.5, 0.1)
+		bb.size = Vector3(5, 2.0, 0.1)
 		bay.mesh = bb
 		var bm := StandardMaterial3D.new()
 		bm.albedo_color = Color(0.15, 0.12, 0.1)
@@ -558,8 +590,20 @@ func _build_rings_chunk(parent: Node3D) -> void:
 		bm.emission = Color(0.3, 0.25, 0.15)
 		bm.emission_energy_multiplier = 0.5
 		bay.material_override = bm
-		bay.position = Vector3(sx + 5 + i * 8.0, 1.5, -6.8)
+		bay.position = Vector3(sx + 10 + i * 18.0, 1.8, -width / 2.0 + 0.2)
 		parent.add_child(bay)
+
+	# Apartment doors along the south wall (some sealed, one ajar)
+	for i in range(8):
+		var door := MeshInstance3D.new()
+		var db := BoxMesh.new()
+		db.size = Vector3(2.0, 2.5, 0.1)
+		door.mesh = db
+		var dm := StandardMaterial3D.new()
+		dm.albedo_color = Color(0.18, 0.16, 0.14)
+		door.material_override = dm
+		door.position = Vector3(sx + 20 + i * 22.0, 1.25, width / 2.0 - 0.2)
+		parent.add_child(door)
 
 	# Client interactable (Peris tries to talk)
 	var client := preload("res://scenes/game/interactable.tscn").instantiate()
@@ -567,51 +611,69 @@ func _build_rings_chunk(parent: Node3D) -> void:
 	client.description = "Former Client"
 	client.one_shot = true
 	client.dwell_time = 1.0
-	client.position = Vector3(sx + 25, 0.5, -2)
+	client.position = Vector3(sx + length * 0.4, 0.5, -5)
 	add_child(client)
+
+	# Drink machine in an alcove (set dressing — civilization has amenities)
+	var drink := MeshInstance3D.new()
+	var drb := BoxMesh.new()
+	drb.size = Vector3(1.0, 1.8, 0.8)
+	drink.mesh = drb
+	var drm := StandardMaterial3D.new()
+	drm.albedo_color = Color(0.15, 0.18, 0.2)
+	drm.emission_enabled = true
+	drm.emission = Color(0.1, 0.15, 0.2)
+	drm.emission_energy_multiplier = 0.3
+	drink.material_override = drm
+	drink.position = Vector3(sx + length * 0.6, 0.9, width / 2.0 - 2.0)
+	parent.add_child(drink)
 
 func _build_lockout_chunk(parent: Node3D) -> void:
 	var sx := LOCKOUT_START.x
+	var length := 80.0  # Shorter — this is an event, not an exploration area
+	var width := 20.0
 	var floor_color := Color(0.1, 0.1, 0.12)
 	var wall_color := Color(0.12, 0.12, 0.14)
 
 	# Ground + collision
-	_add_corridor_section(parent, Vector3(sx + 10, -0.05, 0), Vector3(25, 0.1, 10), floor_color)
+	_add_corridor_section(parent, Vector3(sx + length / 2.0, -0.05, 0), Vector3(length, 0.1, width), floor_color)
 	var gb := StaticBody3D.new()
-	gb.position = Vector3(sx + 10, -0.01, 0)
+	gb.position = Vector3(sx + length / 2.0, -0.01, 0)
 	gb.collision_layer = 1
 	gb.collision_mask = 0
 	var gc := CollisionShape3D.new()
 	var gs := BoxShape3D.new()
-	gs.size = Vector3(25, 0.02, 10)
+	gs.size = Vector3(length, 0.02, width)
 	gc.shape = gs
 	gb.add_child(gc)
 	parent.add_child(gb)
 
-	# Walls
-	_add_wall(parent, Vector3(sx + 10, 2.0, -5), Vector3(25, 4, 0.3), wall_color)
-	_add_wall(parent, Vector3(sx + 10, 2.0, 5), Vector3(25, 4, 0.3), wall_color)
+	# Walls — cleaner, getting closer to civilization
+	_add_wall(parent, Vector3(sx + length / 2.0, 2.5, -width / 2.0), Vector3(length, 5, 0.3), wall_color)
+	_add_wall(parent, Vector3(sx + length / 2.0, 2.5, width / 2.0), Vector3(length, 5, 0.3), wall_color)
 
-	# Clean infrastructure lighting (the simulation boundary)
-	var boundary_light := OmniLight3D.new()
-	boundary_light.position = Vector3(LOCKOUT_BOUNDARY.x, 3.0, 0)
-	boundary_light.light_color = Color(0.5, 0.5, 0.6)
-	boundary_light.light_energy = 3.0
-	boundary_light.omni_range = 12.0
-	parent.add_child(boundary_light)
+	# Progressive lighting: dim at entry, bright at boundary (approaching civilization)
+	for i in range(4):
+		var light := OmniLight3D.new()
+		var t: float = float(i) / 3.0
+		light.position = Vector3(sx + 10.0 + i * 20.0, 3.0, 0)
+		light.light_color = Color(0.3 + t * 0.3, 0.3 + t * 0.2, 0.35 + t * 0.25)
+		light.light_energy = 1.0 + t * 2.0
+		light.omni_range = 12.0 + t * 6.0
+		parent.add_child(light)
 
-	# Access panel visual
+	# Access panel visual (at the boundary)
 	var panel := MeshInstance3D.new()
 	var pb := BoxMesh.new()
-	pb.size = Vector3(0.15, 1.2, 0.8)
+	pb.size = Vector3(0.15, 1.5, 1.0)
 	panel.mesh = pb
 	var pm := StandardMaterial3D.new()
 	pm.albedo_color = Color(0.12, 0.14, 0.18)
 	pm.emission_enabled = true
 	pm.emission = Color(0.1, 0.15, 0.25)
-	pm.emission_energy_multiplier = 0.5
+	pm.emission_energy_multiplier = 0.8
 	panel.material_override = pm
-	panel.position = LOCKOUT_BOUNDARY + Vector3(-0.5, 0.6, 0)
+	panel.position = LOCKOUT_BOUNDARY + Vector3(-0.5, 0.75, 0)
 	parent.add_child(panel)
 
 	# Access panel interactable
@@ -620,5 +682,5 @@ func _build_lockout_chunk(parent: Node3D) -> void:
 	access.description = "Access Panel"
 	access.one_shot = true
 	access.dwell_time = 1.5
-	access.position = LOCKOUT_BOUNDARY + Vector3(-1.0, 0.6, 0)
+	access.position = LOCKOUT_BOUNDARY + Vector3(-1.5, 0.75, 0)
 	add_child(access)

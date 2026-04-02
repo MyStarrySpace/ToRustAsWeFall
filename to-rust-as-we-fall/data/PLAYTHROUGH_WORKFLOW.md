@@ -8,7 +8,7 @@ Simulate an optimal player run through each game section to measure pacing, APM 
 
 | Metric | How | Target |
 |--------|-----|--------|
-| **Section time** | `status` at start/end of each section, delta the scheduler ticks | 30-60s per section at 1x speed |
+| **Section time** | `status` at start/end of each section, delta the scheduler ticks | 3-5 min per shelter stretch at 1x speed |
 | **APM** | Count commands per section, divide by section time | 10-20 actions/minute feels engaged without frantic |
 | **Dead time** | Seconds where the player has nothing to do | < 5s continuous dead time |
 | **Difficulty** | Does the optimal strategy require thinking, or is it autopilot? | Each section should have 1-2 decision points |
@@ -69,18 +69,38 @@ Write the commands that execute the optimal strategy. The `#` comments ARE the d
 
 ## Interpreting Results
 
+### Pacing reference: Subnautica day/night
+
+The GDD targets ~15 min day, ~5 min night. A full day-night cycle is ~20 min.
+Players should reach shelter in 3-5 min of game time per shelter stretch.
+An Act 1 run (shelters 1-10) should take ~30-50 min of game time.
+
+### Level sizing math
+
+- Walk speed: 3.0 units/sec. Run: 6.0 units/sec.
+- 3 min of walking = ~540 units of linear distance.
+- But exploration is not linear: side branches, backtracking, dwelling at
+  interactables, avoiding hazards. Effective exploration covers ~40% of
+  distance walked. So a level with 200 units of main path + 100 units of
+  side branches gives ~300 units to explore, which takes ~3-4 min at walk.
+- Width should be 30-60 units to allow meaningful route choices.
+
 ### Good pacing
-- Each section is 30-60s at 1x speed
-- Dialogue and movement alternate (never > 30s of pure dialogue or pure walking)
+- Each shelter-to-shelter stretch is 3-5 min at 1x speed
+- Dialogue and movement alternate (never > 45s of pure dialogue or pure walking)
 - The player always knows what to do next (prompt, dialogue hint, or environmental cue)
 - Transitions between sections feel like progression, not loading
+- At least 2-3 side branches worth exploring per section
+- At least 1 resource decision per section (food, flora, shelter timing)
+- The day/night clock creates gentle urgency, not panic
 
 ### Bad signs
-- Section > 90s: something is dragging. Cut dialogue or shorten the walk.
-- Section < 20s: too fast, player hasn't absorbed the space. Add an interactable or a beat.
+- Section < 2 min: hallway, not a level. Add branching, resources, exploration.
+- Section > 7 min: too sprawling for one shelter stretch. Split or add a midpoint.
 - > 10 consecutive `advance` commands: monologue. Break it up with movement or interaction.
-- Dead time > 5s after last dialogue: player is standing around. Add a prompt or auto-advance.
-- 0 decision points in a section: autopilot. Add a route choice or interaction.
+- Dead time > 10s with nothing to do: player is lost. Add a landmark or prompt.
+- 0 decision points in a section: autopilot. Add a route choice or hazard.
+- Main path is a straight line with no width: player never has to look around.
 
 ## Updating the Playthrough
 
