@@ -166,3 +166,67 @@ junction.endo.shelter,,normal,false,He stops at a door. Opens it. Steps aside.,E
 junction.night_narration,,normal,false,Night. The barrier is thinner here. You can hear things moving outside.,First night
 junction.endo.rest,,normal,false,He settles against the wall. Watches the door.,Endo takes watch — same posture as junction
 junction.dawn,,data,true,Day 2. Dawn.,Morning — waits for click
+channels.narration.enter,,normal,false,"The corridor opens. Water runs along the floor in shallow channels. The air is different here — cleaner where the water flows, stale where it pools.",First view of the Perivascular Channels
+channels.aster.fluid,Aster,data,false,"Fluid dynamics are still active in this section. Flow rate correlates with atmospheric quality. Where it moves, the readings are clean.",Aster reads the data
+channels.peris.sound,Peris,normal,false,Listen. You can hear it. The moving water sounds different from the still water.,Peris reads by ear
+channels.endo.stop,,normal,false,He stops at the edge of a stagnant pool. Shakes his head. Points to the flowing channel beside it.,Endo: stagnant = danger
+channels.aster.stagnant,Aster,data,false,Iron concentration spikes near the stagnant sections. The standing water is concentrating the deposits.,Aster confirms
+channels.peris.thick,Peris,normal,false,The air is heavier here. Like breathing through cloth.,Peris feels biofilm
+channels.narration.flora,,normal,false,"Something is growing where the water seeps into the wall. Faint. Not quite alive, not quite dead.",First wild flora
+channels.peris.touch,Peris,normal,false,"It responds to me. I just... touched it, and it brightened.",Peris discovers tending
+channels.aster.glow,Aster,data,false,"Bioluminescence increased by 40% on contact. Whatever you did, the growth is producing more light now.",Aster measures it
+channels.peris.always,Peris,normal,false,I didn't do anything. Plants just... respond to me. They always have.,She doesn't know why
+channels.narration.branch,,normal,false,The channels branch. One path flows steadily forward. Another leads into silence.,Route choice
+channels.endo.point,,normal,false,"He points toward the flowing channel. Then at the silent branch, and draws a finger across his throat.",That way is death
+channels.narration.body,,normal,false,A figure in the drainage channel. Still. The water flows around them. They stopped moving a long time ago.,First lootable corpse
+channels.endo.kneel,,normal,false,"He kneels beside the body. A brief pause. Then his hands move — practiced, efficient. He stands with something in his palm.",Endo demonstrates nutrient absorption
+channels.peris.what,Peris,normal,false,What did he just...?,Peris processing
+channels.aster.nutrients,Aster,data,false,Organic nutrient absorption. The biological matter still has caloric value. It is what it is.,Clinical framing
+channels.peris.people,Peris,normal,false,These were people.,Humane framing
+channels.aster.hungry,Aster,normal,false,They were. And we're hungry.,Pragmatism
+channels.narration.shelter,,normal,false,"A sealed alcove beside the main flow. The door responds to proximity. Inside: dry, warm, defensible.",Shelter 2
+channels.endo.door,,normal,false,He opens the door. Steps aside. The same gesture as the junction.,Endo at shelter
+stacks.narration.enter,,normal,false,The drainage channels give way to something industrial. Server racks in rows. Cooling systems humming. The sound of computation.,Entering the Processing Stacks
+stacks.aster.home,Aster,data,false,I know this infrastructure. These are the processing cores. Every data point I've ever analyzed was processed here.,Aster recognizes the hardware
+stacks.peris.cold,Peris,normal,false,It's cold in here. And loud. How does anyone work in this?,Peris in a machine environment
+stacks.aster.terminal,Aster,data,false,There. A maintenance terminal. No friendly interface — just raw logs.,Raw data access
+stacks.aster.cleaned,Aster,data,false,"""The data has been cleaned and normalized to correct for anomalies."" The same words. From my desk in the simulation.",Information trail begins
+stacks.aster.here,Aster,normal,false,It happened here. On these servers. Through these conduits. The system that gave me the drink machine is the same one that cleaned my reports.,Connecting the dots
+stacks.peris.ok,Peris,normal,false,Are you OK?,
+stacks.aster.not_sure,Aster,normal,false,I'm not sure what I expected to find. But it wasn't this.,Processing the betrayal
+stacks.narration.elegant,,normal,false,"One section is noticeably better than its surroundings. The cable routing is elegant, almost artistic. Someone who cared about this hardware shaped these rows.",Myke retroactive storytelling
+stacks.narration.closet,,normal,false,"A small workspace between two racks. A half-finished schematic, crossed out and restarted in the margins. Someone was designing something better and kept stopping.",Myke was here
+stacks.aster.archive,Aster,data,false,Older data here. The system keeps its own history in layers. I can read backwards through it.,Archive access
+stacks.aster.when,Aster,data,false,"The normalization started on a specific date. Someone built the protocol. Someone authorized it. The terminal doesn't say who, but it shows when.",The trail has a beginning
+stacks.peris.meaning,Peris,normal,false,What does that mean for us?,
+stacks.aster.means,Aster,normal,false,It means the data isn't broken. Someone is making it wrong. On purpose.,Not failure — policy
+rings.narration.enter,,normal,false,The corridors change. Clean. Lit. Warm. People walk past on their own routines. Simulation bays glow through windows.,Entering the Residential Rings
+rings.aster.signal,Aster,data,false,"System signals everywhere. Processing stations, transit routing, the full network. This is civilization.",Aster reads the infrastructure
+rings.peris.remember,Peris,normal,false,I know this place. My clients lived here. The inner ones.,Peris recognizes territory
+rings.peris.hello,Peris,normal,false,Hello? It... it's me. Peris. From the feed.,Tries to connect
+rings.narration.client,,normal,false,The client looks confused. Recognizes the voice but not the face. They hurry away.,The feed was a wall
+rings.peris.wall,Peris,normal,false,The feed was supposed to connect us. It was a wall the whole time.,Peris realizes
+rings.narration.empty,,normal,false,"Some apartments are empty. The system lists the occupants as ""reassigned."" Their belongings are still on the shelves.",Disappearance
+rings.aster.tags,Aster,data,false,"Our tags are still flagged here. We can see all of this, but we can't participate.",Ghosts
+rings.endo.discomfort,,normal,false,He's checking behind them more often. His movements are less fluid. He keeps touching the walls.,Endo far from his wall
+rings.endo.stops,,normal,false,He stops. Looks back. Looks forward. Looks at them. Then turns around.,Endo chooses the wall
+rings.peris.endo,Peris,normal,false,Endo?,
+rings.narration.leaving,,normal,false,He doesn't explain. He's already walking back. His section of the wall needs him.,Endothelial cells don't travel
+rings.peris.understands,Peris,normal,false,I understand. Some people can only function in their own space.,Social worker reading
+rings.aster.just_us,Aster,normal,false,So it's just us now.,
+rings.peris.visiting,Peris,normal,false,It's been just us since the elevator. Endo was visiting.,Reframe: Endo was the guest
+lockout.narration.clean,,normal,false,The corridors get cleaner. The clicking fades. The air smells filtered. Infrastructure lights improve.,Approaching the boundary
+lockout.aster.signals,Aster,data,false,"System signals are strong here. Processing stations, transit routing. We're close.",Proximity to civilization
+lockout.aster.panel,Aster,data,false,Access panel. Standard interface. Let me just...,Aster tries to interface
+lockout.system.rejected,SYSTEM,data,false,NON-COMPLIANT: WELLNESS PROTOCOL DEVIATION. ACCESS REVOKED.,Rejection
+lockout.aster.again,Aster,normal,false,No. Let me try again.,Denial
+lockout.system.rejected2,SYSTEM,data,false,ACCESS REVOKED. REPORT TO NEAREST PROCESSING STATION.,Same result
+lockout.aster.hack,Aster,normal,false,I can hack it. I hacked the elevator. I can hack this.,Brute force attempt
+lockout.system.blocked,SYSTEM,data,false,UNAUTHORIZED ACCESS ATTEMPT LOGGED. RESPONSE UNIT DISPATCHED.,Triggers enforcers
+lockout.narration.footsteps,,normal,false,Coordinated footsteps. The scan-sweep sound. The calm efficiency of units following protocol.,Naturalizers converging
+lockout.peris.run,Peris,normal,false,We need to go. Now.,
+lockout.narration.chase,,normal,false,They run. The Naturalizers don't. They walk with purpose. The gentle hands from Tag Day are reaching for them.,The chase
+lockout.narration.boundary,,normal,false,The Naturalizers stop at the boundary where the system's infrastructure ends. They stand. They scan. They wait.,The system does not extend here
+lockout.aster.not_in,Aster,normal,false,It's not letting me back in.,The real lockout
+lockout.peris.back_to,Peris,normal,false,...Back in to what?,Not rhetorical
+lockout.narration.forward,,normal,false,The Naturalizers watch from the boundary. The clicking of Chelators resumes behind them. There is no going back.,Exile is permanent
