@@ -57,7 +57,8 @@ static func _load_csv_file(path: String) -> void:
 		line.speaker = row[col_speaker].strip_edges() if col_speaker >= 0 and col_speaker < row.size() else ""
 		line.style = row[col_style].strip_edges() if col_style >= 0 and col_style < row.size() else "normal"
 		line.wait = (row[col_wait].strip_edges().to_lower() == "true") if col_wait >= 0 and col_wait < row.size() else false
-		line.text = row[col_text].strip_edges() if col_text < row.size() else ""
+		var raw_text := row[col_text].strip_edges() if col_text < row.size() else ""
+		line.text = raw_text.replace("|", "\n")
 		line.context = row[col_context].strip_edges() if col_context >= 0 and col_context < row.size() else ""
 
 		if line.style == "thought":

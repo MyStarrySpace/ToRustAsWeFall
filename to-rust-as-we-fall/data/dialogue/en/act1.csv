@@ -75,44 +75,25 @@ elevator.aster.two_paths,Aster,data,false,"Two corridors. One's clear but corrod
 tag_day.citizen.talk,CITIZEN,normal,false,"It's this time again, huh?",Citizen tries small talk — the last normal thing they say
 tag_day.aster.shush,Aster,normal,false,"Shh, that's against protocol.",Aster shuts them down — productivity over connection
 tag_day.citizen.scan,,normal,false,The citizen looks at him for a moment. Then they turn back to the scanner.,The citizen presents their tag. The scan fails.
-tag_day.poem.01,,poem,false,"Between the idea
-And the reality
-Between the motion
-And the act",First stanza — the gap between intention and action
+tag_day.poem.01,,poem,false,Between the idea|And the reality|Between the motion|And the act,First stanza — the gap between intention and action
 tag_day.nk_chat.01,NK-01,normal,false,Looks like I win the bet. Not weird. He's just babbling like most of them did yesterday.,NK-01 claims victory
-tag_day.poem.02,,poem,false,"Falls the Shadow
-
-For Thine is the Kingdom",Refrain — the Shadow falls between
+tag_day.poem.02,,poem,false,Falls the Shadow|For Thine is the Kingdom,Refrain — the Shadow falls between
 tag_day.nk_chat.02,NK-02,normal,false,"Well, it's weirdly structured, unlike all that gibberish we heard.",NK-02 pushing back
-tag_day.poem.03,,poem,false,"Between the conception
-And the creation
-Between the emotion
-And the response",Second stanza — the gap between feeling and acting
+tag_day.poem.03,,poem,false,Between the conception|And the creation|Between the emotion|And the response,Second stanza — the gap between feeling and acting
 tag_day.nk_chat.03,NK-01,normal,false,"You'll call anything weird, like that case of complete silence.",NK-01 dismissing
 tag_day.nk_chat.04,NK-02,normal,false,"Silence IS weird. Yet you didn't get that hint last time you tried courtship, did you?",NK-02 pivots to personal jab
-tag_day.poem.04,,poem,false,"Falls the Shadow
-
-Life is very long",Refrain — life stretches
+tag_day.poem.04,,poem,false,Falls the Shadow|Life is very long,Refrain — life stretches
 tag_day.nk_chat.05,NK-01,normal,false,We had three cases of silence in the last week. It's completely normal.,NK-01 deflecting with statistics
 tag_day.nk_chat.06,NK-02,normal,false,...says the guy who spent his date completely silent before getting completely ghosted.,NK-02 lands the kill shot
-tag_day.poem.05,,poem,false,"Between the desire
-And the spasm
-Between the potency
-And the existence
-Between the essence
-And the descent","Third stanza — the full descent, longest breath"
+tag_day.poem.05,,poem,false,Between the desire|And the spasm|Between the potency|And the existence|Between the essence|And the descent,"Third stanza — the full descent, longest breath"
 tag_day.nk_chat.07,NK-01,normal,false,I'm working on my approach.,NK-01 retreating to vague self-improvement
 tag_day.nk_chat.08,NK-02,normal,false,You've been 'working on your approach' since orientation. How's that going?,NK-02 won't let him have it
-tag_day.poem.06,,poem,false,"Falls the Shadow
-
-For Thine is the Kingdom",Final refrain before collapse
+tag_day.poem.06,,poem,false,Falls the Shadow|For Thine is the Kingdom,Final refrain before collapse
 tag_day.nk_chat.09,NK-01,normal,false,There's still time.,NK-01 down to bare assertion
 tag_day.nk_chat.10,NK-02,normal,false,"Is there? You're what, twenty-three? Twenty-four?",NK-02 names the number — casual and terminal
 tag_day.checkpoint_id,,data,false,CHECKPOINT 7-B  //  IMMUNITY VERIFICATION,Data overlay as Aster arrives at checkpoint
-tag_day.murmur.01,,poem,false,"Here we go round the prickly pear
-Prickly pear prickly pear",Citizen murmuring in queue — nursery rhyme draws attention
-tag_day.murmur.02,,poem,false,"Here we go round the prickly pear
-At five o'clock in the morning.",Citizen continues in queue before scan
+tag_day.murmur.01,,poem,false,Here we go round the prickly pear|Prickly pear prickly pear,Citizen murmuring in queue — nursery rhyme draws attention
+tag_day.murmur.02,,poem,false,Here we go round the prickly pear|At five o'clock in the morning.,Citizen continues in queue before scan
 tag_day.scan_failed,STATION 7-B,data,false,SCAN FAILED  //  DISPATCHING RESPONSE UNIT,Citizen's device scan fails
 tag_day.fragment.01,,fragment,false,For Thine is,Syntax collapsing — fragments of prayer stuttering
 tag_day.fragment.02,,fragment,false,Life is,
