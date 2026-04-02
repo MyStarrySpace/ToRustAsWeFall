@@ -26,7 +26,7 @@ signal dialogue_finished()
 signal line_displayed(text: String)
 
 func _ready() -> void:
-	layer = 10
+	layer = 15
 	_build_ui()
 	_panel.visible = false
 
