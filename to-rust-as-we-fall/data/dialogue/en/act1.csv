@@ -59,10 +59,6 @@ elevator.aster.stay_close,Aster,normal,false,They'll reboot. We don't have long.
 elevator.aster.hack,Aster,normal,false,I can override this. Just need a moment...,Aster begins hacking the panel
 elevator.system.override,SYSTEM,data,false,MAINTENANCE OVERRIDE ACCEPTED  //  DOORS CYCLING,Hack succeeds
 elevator.narration.doors,,normal,false,The elevator shudders. The doors grind open. Light spills in from a corridor neither of them recognizes.,Doors open
-elevator.system.noncompliant,SYSTEM,data,false,TAG STATUS: NON-COMPLIANT  //  WELLNESS PROTOCOL DEVIATION,Notification Aster dismisses — not a lockout yet
-elevator.aster.dismiss,Aster,normal,false,Administrative error. I'll sort it out when we get back.,Aster doesn't understand what non-compliant means yet
-elevator.peris.not_back,Peris,normal,false,"I don't really have anything to go back to, anyways...",
-elevator.aster.forward,Aster,normal,false,Forward then.,
 elevator.peris.not_supposed,Peris,normal,false,I don't think we're supposed to be here.,Entering the maintenance corridor
 elevator.aster.no_service,Aster,data,false,Nobody is. This section hasn't been serviced in... the maintenance logs just stop.,Aster reads corridor data
 elevator.bridge.narration,,normal,false,An elevated walkway spanning a larger space. Incomplete railing. Exposed framework. The air is open — it smells like rust.,Bridge description

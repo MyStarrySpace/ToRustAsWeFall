@@ -601,18 +601,7 @@ func _start_doors_open() -> void:
 	outside_light.light_energy = 2.0
 	outside_light.omni_range = 6.0
 	find_child("Environment", false, false).add_child(outside_light)
-	_scheduler.schedule_after(2.0, _start_lockout, "lockout")
-
-func _start_lockout() -> void:
-	_enter_step("lockout")
-	_dialogue.default_hold_time = 2.5
-	# Tag fires as notification Aster dismisses — not a full lockout yet
-	_dialogue_chain([
-		"elevator.system.noncompliant",
-		"elevator.aster.dismiss",
-		"elevator.peris.not_back",
-		"elevator.aster.forward",
-	], func(): _scheduler.schedule_after(1.0, _start_multiselect_tutorial, "multiselect"))
+	_scheduler.schedule_after(2.0, _start_multiselect_tutorial, "multiselect")
 
 func _start_multiselect_tutorial() -> void:
 	_enter_step("multiselect_tutorial")

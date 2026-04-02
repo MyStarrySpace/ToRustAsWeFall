@@ -1031,13 +1031,6 @@ func _test_elevator_dialogue() -> void:
 			has_override = true
 	_assert_true(has_override, "Hack override succeeds")
 
-	# Verify lockout
-	var has_lockout := false
-	for entry in log:
-		if "NON-COMPLIANT" in entry.text:
-			has_lockout = true
-	_assert_true(has_lockout, "NON-COMPLIANT lockout fires")
-
 	# Verify bridge dialogue
 	var has_bodies := false
 	for entry in log:
