@@ -753,7 +753,7 @@ func _test_tag_day_dialogue() -> void:
 
 	var log := _pop_dialogue_log(instance)
 
-	_assert_true(log.size() >= 33, "At least 33 dialogue lines (got: %d)" % log.size())
+	_assert_true(log.size() >= 28, "At least 28 dialogue lines (got: %d)" % log.size())
 
 	# Verify groan appears exactly once
 	var groan_count := 0
@@ -796,6 +796,13 @@ func _test_tag_day_dialogue() -> void:
 	if bang_tick > 0 and whimper_tick > 0:
 		var gap := whimper_tick - bang_tick
 		_assert_true(gap >= 2.0, "BANG to whimper gap >= 2s (got: %.1f)" % gap)
+
+	# Verify BANG fragment is reached (poem chain completed, fragments fired)
+	var has_bang := false
+	for entry in log:
+		if "BANG" in entry.text:
+			has_bang = true
+	_assert_true(has_bang, "BANG fragment reached (poem chain completed)")
 
 	# Verify NK chat lines appear in the dialogue log
 	var nk_count := 0

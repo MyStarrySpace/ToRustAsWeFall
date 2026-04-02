@@ -216,32 +216,26 @@ func _begin_corridor_walk() -> void:
 	_dialogue.default_hold_time = 4.0
 	_scheduler.schedule_after(2.0, _start_pan_prompt, "pan_prompt")
 
-	# Interleaved sequence: poem line, then NK chat where it fits.
-	# The ordering matches the GDD: NK banter slots between poem stanzas.
+	# Interleaved stanzas and NK banter. Each stanza is merged into
+	# one multi-line dialogue entry. 16 lines × 4s hold = 64s total.
+	# Fits within the ~115s corridor walk with room for fragments.
 	_dialogue_chain([
-		"tag_day.poem.01",
+		"tag_day.poem.01",    # Stanza 1: idea/reality, motion/act
 		"tag_day.nk_chat.01",
-		"tag_day.poem.02",
+		"tag_day.poem.02",    # Falls the Shadow / For Thine is the Kingdom
 		"tag_day.nk_chat.02",
-		"tag_day.poem.03",
-		"tag_day.poem.04",
+		"tag_day.poem.03",    # Stanza 2: conception/creation, emotion/response
 		"tag_day.nk_chat.03",
-		"tag_day.poem.05",
 		"tag_day.nk_chat.04",
-		"tag_day.poem.06",
+		"tag_day.poem.04",    # Falls the Shadow / Life is very long
 		"tag_day.nk_chat.05",
-		"tag_day.poem.07",
-		"tag_day.poem.08",
 		"tag_day.nk_chat.06",
-		"tag_day.poem.09",
+		"tag_day.poem.05",    # Stanza 3: desire/spasm, potency/existence, essence/descent
 		"tag_day.nk_chat.07",
-		"tag_day.poem.10",
 		"tag_day.nk_chat.08",
-		"tag_day.poem.11",
+		"tag_day.poem.06",    # Falls the Shadow / For Thine is the Kingdom
 		"tag_day.nk_chat.09",
-		"tag_day.poem.12",
 		"tag_day.nk_chat.10",
-		"tag_day.poem.13",
 	], _on_poem_finished)
 
 
