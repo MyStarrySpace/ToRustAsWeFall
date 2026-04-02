@@ -749,7 +749,7 @@ func _test_tag_day_dialogue() -> void:
 
 	var log := _pop_dialogue_log(instance)
 
-	_assert_true(log.size() >= 25, "At least 25 dialogue lines (got: %d)" % log.size())
+	_assert_true(log.size() >= 33, "At least 33 dialogue lines (got: %d)" % log.size())
 
 	# Verify groan appears exactly once
 	var groan_count := 0
@@ -792,6 +792,21 @@ func _test_tag_day_dialogue() -> void:
 	if bang_tick > 0 and whimper_tick > 0:
 		var gap := whimper_tick - bang_tick
 		_assert_true(gap >= 2.0, "BANG to whimper gap >= 2s (got: %.1f)" % gap)
+
+	# Verify NK chat lines appear in the dialogue log
+	var nk_count := 0
+	for entry in log:
+		if entry.speaker == "NK-01" or entry.speaker == "NK-02":
+			nk_count += 1
+	_assert_true(nk_count >= 8, "NK chat lines in dialogue (got: %d)" % nk_count)
+
+	# Verify NK lines interleave with poem lines (NK appears after a poem line)
+	var found_nk_after_poem := false
+	for i in range(1, log.size()):
+		if (log[i].speaker == "NK-01" or log[i].speaker == "NK-02") and log[i - 1].style == "poem":
+			found_nk_after_poem = true
+			break
+	_assert_true(found_nk_after_poem, "NK chat interleaves with poem")
 
 	# Verify scan passed appears near the end
 	var scan_passed := false

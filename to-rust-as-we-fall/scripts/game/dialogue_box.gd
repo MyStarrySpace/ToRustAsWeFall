@@ -95,7 +95,6 @@ func _process(delta: float) -> void:
 		if count >= _current_text.length():
 			line_displayed.emit(_current_text)
 			if _waiting_for_input:
-				# Auto-advance wait_for_input lines when fast-forwarding
 				if speed_multiplier > 2.0:
 					_hold_timer = 0.3 / speed_multiplier
 				else:
@@ -103,7 +102,6 @@ func _process(delta: float) -> void:
 			else:
 				_hold_timer = default_hold_time
 	elif _waiting_for_input:
-		# Auto-advance when fast-forwarding
 		if speed_multiplier > 2.0:
 			_hold_timer -= delta * speed_multiplier
 			if _hold_timer <= 0:
@@ -192,6 +190,8 @@ func say(text: String, speaker := "", style := "normal", wait := false) -> void:
 		"style": style,
 		"wait_for_input": wait,
 	})
+	if _queue.size() > 3:
+		push_warning("DialogueBox: queue depth %d — upstream timing may be pushing lines too fast" % _queue.size())
 	if not _active:
 		_show_next()
 

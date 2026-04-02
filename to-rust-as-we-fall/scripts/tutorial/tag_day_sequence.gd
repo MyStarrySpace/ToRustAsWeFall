@@ -211,45 +211,39 @@ func _begin_corridor_walk() -> void:
 	]
 	_game_state.command_walk_path("nk2", nk2_path)
 
-	# Shadow stanzas — spaced out
+	# Shadow stanzas interleaved with enforcer banter in the dialogue box.
+	# Single chain driven by the scheduler — poem and NK lines alternate.
 	_dialogue.default_hold_time = 4.0
-	DialogueData.say_sequence_to(_dialogue, "tag_day.poem.")
 	_scheduler.schedule_after(2.0, _start_pan_prompt, "pan_prompt")
-	_dialogue.dialogue_finished.connect(_on_poem_finished, CONNECT_ONE_SHOT)
 
-	# Enforcer banter — interlaced with the poem, visible if the player pans.
-	# Appears while WASD prompt is showing, before the F fast-forward prompt.
-	_scheduler.schedule_after(4.0, func(): _show_nk_chat(_naturalizer_1, DialogueData.text("tag_day.nk_chat.01")), "nk_chat1")
-	_scheduler.schedule_after(8.0, func(): _show_nk_chat(_naturalizer_2, DialogueData.text("tag_day.nk_chat.02")), "nk_chat2")
-	_scheduler.schedule_after(13.0, func(): _show_nk_chat(_naturalizer_1, DialogueData.text("tag_day.nk_chat.03")), "nk_chat3")
-	_scheduler.schedule_after(18.0, func(): _show_nk_chat(_naturalizer_2, DialogueData.text("tag_day.nk_chat.04")), "nk_chat4")
-	_scheduler.schedule_after(23.0, func(): _show_nk_chat(_naturalizer_1, DialogueData.text("tag_day.nk_chat.05")), "nk_chat5")
-	_scheduler.schedule_after(28.0, func(): _show_nk_chat(_naturalizer_2, DialogueData.text("tag_day.nk_chat.06")), "nk_chat6")
-	_scheduler.schedule_after(33.0, func(): _show_nk_chat(_naturalizer_1, DialogueData.text("tag_day.nk_chat.07")), "nk_chat7")
-	_scheduler.schedule_after(38.0, func(): _show_nk_chat(_naturalizer_2, DialogueData.text("tag_day.nk_chat.08")), "nk_chat8")
-	_scheduler.schedule_after(43.0, func(): _show_nk_chat(_naturalizer_1, DialogueData.text("tag_day.nk_chat.09")), "nk_chat9")
-	_scheduler.schedule_after(48.0, func(): _show_nk_chat(_naturalizer_2, DialogueData.text("tag_day.nk_chat.10")), "nk_chat10")
+	# Interleaved sequence: poem line, then NK chat where it fits.
+	# The ordering matches the GDD: NK banter slots between poem stanzas.
+	_dialogue_chain([
+		"tag_day.poem.01",
+		"tag_day.nk_chat.01",
+		"tag_day.poem.02",
+		"tag_day.nk_chat.02",
+		"tag_day.poem.03",
+		"tag_day.poem.04",
+		"tag_day.nk_chat.03",
+		"tag_day.poem.05",
+		"tag_day.nk_chat.04",
+		"tag_day.poem.06",
+		"tag_day.nk_chat.05",
+		"tag_day.poem.07",
+		"tag_day.poem.08",
+		"tag_day.nk_chat.06",
+		"tag_day.poem.09",
+		"tag_day.nk_chat.07",
+		"tag_day.poem.10",
+		"tag_day.nk_chat.08",
+		"tag_day.poem.11",
+		"tag_day.nk_chat.09",
+		"tag_day.poem.12",
+		"tag_day.nk_chat.10",
+		"tag_day.poem.13",
+	], _on_poem_finished)
 
-func _show_nk_chat(nk: Node3D, text: String) -> void:
-	var old := nk.find_child("ChatLabel", false, false)
-	if old:
-		old.queue_free()
-	var lbl := Label3D.new()
-	lbl.name = "ChatLabel"
-	lbl.text = text
-	lbl.font_size = 36
-	lbl.pixel_size = 0.01
-	lbl.modulate = Color(0.7, 0.7, 0.75, 0.0)
-	lbl.outline_modulate = Color(0, 0, 0, 0.5)
-	lbl.outline_size = 4
-	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	nk.add_child(lbl)
-	lbl.position = Vector3(0, 1.8, 0)
-	var tween := create_tween()
-	tween.tween_property(lbl, "modulate:a", 0.85, 0.4)
-	tween.tween_interval(5.0)
-	tween.tween_property(lbl, "modulate:a", 0.0, 1.0)
-	tween.tween_callback(lbl.queue_free)
 
 func _start_pan_prompt() -> void:
 	_enter_step("pan_prompt")
