@@ -243,6 +243,17 @@ func _dlg_chain_play_next() -> void:
 
 # --- Environment helpers ---
 
+func _add_corridor_section(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> void:
+	var mesh := MeshInstance3D.new()
+	var b2 := BoxMesh.new()
+	b2.size = size
+	mesh.mesh = b2
+	var mat2 := StandardMaterial3D.new()
+	mat2.albedo_color = color
+	mesh.material_override = mat2
+	mesh.position = pos
+	parent.add_child(mesh)
+
 func _add_wall(parent: Node3D, pos: Vector3, size: Vector3, color := Color(0.12, 0.12, 0.15)) -> void:
 	var m := MeshInstance3D.new()
 	var b := BoxMesh.new()

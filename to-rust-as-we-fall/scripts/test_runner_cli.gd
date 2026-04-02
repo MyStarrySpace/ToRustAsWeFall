@@ -41,6 +41,9 @@ func _ready() -> void:
 			"--test-chain-enemy":
 				ran_test = true
 				await _test_chain_enemy()
+			"--test-act1":
+				ran_test = true
+				await _test_act1()
 			"--test-tag-day":
 				ran_test = true
 				await _test_tag_day()
@@ -127,6 +130,7 @@ func _run_all_tests() -> void:
 	_test_climb_and_lockout()
 	await _test_enemy()
 	await _test_chain_enemy()
+	await _test_act1()
 	await _test_ferrolure()
 	_test_predictive_detection()
 	_test_detection_equivalence()
@@ -1501,6 +1505,66 @@ func _test_chain_enemy() -> void:
 	_assert_true(chain.get_state() == "dead", "Chain state is dead (got: %s)" % chain.get_state())
 
 	root.queue_free()
+	await get_tree().process_frame
+
+# --- Test: Act 1 Levels ---
+func _test_act1() -> void:
+	_test_name = "Act 1 Levels"
+	var scene := load("res://scenes/tutorial/act1.tscn")
+	if not scene:
+		_assert_true(false, "Scene loads")
+		return
+	var instance: Node = scene.instantiate()
+	get_tree().root.add_child(instance)
+	for i in range(3):
+		await get_tree().process_frame
+
+	# Verify scene structure
+	_assert_true(instance.find_child("Environment", false, false) != null, "Environment node exists")
+	_assert_true(instance.find_child("Characters", false, false) != null, "Characters node exists")
+
+	# Verify characters
+	var aster := instance.find_child("Aster", true, false)
+	var peris := instance.find_child("Peris", true, false)
+	var endo := instance.find_child("Endo", true, false)
+	_assert_true(aster != null, "Aster exists")
+	_assert_true(peris != null, "Peris exists")
+	_assert_true(endo != null, "Endo exists")
+	_assert_true(endo.visible, "Endo visible at start")
+
+	# Verify channels chunk loaded
+	_assert_true(instance._chunks.has("channels"), "Channels chunk loaded at start")
+
+	# Load all 4 chunks and verify
+	instance._load_chunk("stacks")
+	instance._load_chunk("rings")
+	instance._load_chunk("lockout")
+	for i in range(2):
+		await get_tree().process_frame
+
+	_assert_true(instance._chunks.has("stacks"), "Stacks chunk loaded")
+	_assert_true(instance._chunks.has("rings"), "Rings chunk loaded")
+	_assert_true(instance._chunks.has("lockout"), "Lockout chunk loaded")
+
+	# Verify interactables exist
+	_assert_true(instance.find_child("FloraGrowth", true, false) != null, "Flora interactable in channels")
+	_assert_true(instance.find_child("DataTerminal", true, false) != null, "Terminal interactable in stacks")
+	_assert_true(instance.find_child("ClientNPC", true, false) != null, "Client interactable in rings")
+	_assert_true(instance.find_child("AccessPanel", true, false) != null, "Access panel in lockout")
+
+	# Verify dialogue keys exist for all scenes
+	for prefix in ["channels.narration.enter", "channels.peris.touch", "channels.endo.kneel",
+		"stacks.aster.cleaned", "stacks.aster.means",
+		"rings.peris.wall", "rings.endo.stops", "rings.peris.visiting",
+		"lockout.system.rejected", "lockout.aster.not_in", "lockout.peris.back_to"]:
+		var text := DialogueData.text(prefix)
+		_assert_true(text != "", "Dialogue key exists: %s" % prefix)
+
+	# Verify chunk unloading works
+	instance._unload_chunk("channels")
+	_assert_true(not instance._chunks.has("channels"), "Channels unloaded")
+
+	instance.queue_free()
 	await get_tree().process_frame
 
 # --- Test: Predictive Detection (quadratic solver) ---

@@ -1031,7 +1031,7 @@ func _complete() -> void:
 	var tween := create_tween()
 	tween.tween_property(_fade_rect, "color", Color(0.02, 0.02, 0.03, 1.0), 2.0)
 	tween.tween_callback(func():
-		get_tree().change_scene_to_file("res://scenes/tutorial/leaving_facility.tscn")
+		get_tree().change_scene_to_file("res://scenes/tutorial/act1.tscn")
 	)
 
 # --- Game Over ---
