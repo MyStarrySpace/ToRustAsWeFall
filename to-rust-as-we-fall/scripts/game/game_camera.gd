@@ -58,6 +58,18 @@ func _process(delta: float) -> void:
 	if _locked:
 		var goal := _lock_position + follow_offset
 		global_position = global_position.lerp(goal, follow_speed * delta)
+		# Apply shake even when locked
+		if _shake_intensity > 0.001:
+			_shake_offset = Vector3(
+				randf_range(-_shake_intensity, _shake_intensity),
+				randf_range(-_shake_intensity * 0.5, _shake_intensity * 0.5),
+				randf_range(-_shake_intensity, _shake_intensity)
+			)
+			_shake_intensity = lerpf(_shake_intensity, 0.0, _shake_decay * delta)
+			global_position += _shake_offset
+		else:
+			_shake_offset = Vector3.ZERO
+			_shake_intensity = 0.0
 		look_at(_lock_position, Vector3.UP)
 		return
 
@@ -116,8 +128,8 @@ func _process(delta: float) -> void:
 		_shake_offset = Vector3.ZERO
 		_shake_intensity = 0.0
 
-	var goal := target.global_position + follow_offset + _pan_offset + _shake_offset
-	global_position = global_position.lerp(goal, follow_speed * delta)
+	var goal := target.global_position + follow_offset + _pan_offset
+	global_position = global_position.lerp(goal, follow_speed * delta) + _shake_offset
 	look_at(target.global_position + _pan_offset, Vector3.UP)
 
 func _update_immediate() -> void:

@@ -89,6 +89,9 @@ func _ready() -> void:
 			"--test-ferrolure":
 				ran_test = true
 				await _test_ferrolure()
+			"--test-camera-shake":
+				ran_test = true
+				_test_camera_shake()
 			"--test-scene-load":
 				ran_test = true
 				await _test_scene_load()
@@ -132,6 +135,7 @@ func _run_all_tests() -> void:
 	await _test_chain_enemy()
 	await _test_act1()
 	await _test_ferrolure()
+	_test_camera_shake()
 	_test_predictive_detection()
 	_test_detection_equivalence()
 
@@ -2122,6 +2126,63 @@ func _dump_dialogue(scene_path: String, output_path: String) -> void:
 
 	instance.queue_free()
 	await get_tree().process_frame
+
+func _test_camera_shake() -> void:
+	_test_name = "Camera Shake"
+
+	# Set up a minimal scene: camera + target node
+	var target := Node3D.new()
+	target.position = Vector3(5, 0, 5)
+	get_tree().root.add_child(target)
+
+	var cam := Camera3D.new()
+	cam.name = "TestShakeCam"
+	cam.set_script(preload("res://scripts/game/game_camera.gd"))
+	get_tree().root.add_child(cam)
+	cam.target = target
+	cam.follow_offset = Vector3(0, 10, 7)
+	cam.follow_speed = 100.0  # High follow speed so position converges fast
+
+	# Let camera settle to target
+	for i in range(10):
+		cam._process(0.016)
+	var settled_pos := cam.global_position
+
+	# Trigger shake
+	cam.shake(0.5, 3.0)
+	_assert_true(cam._shake_intensity > 0.0, "Shake intensity set after shake()")
+
+	# Run a few frames — shake should offset position from settled
+	var max_offset := 0.0
+	for i in range(30):
+		cam._process(0.016)
+		var offset := (cam.global_position - settled_pos).length()
+		if offset > max_offset:
+			max_offset = offset
+	_assert_true(max_offset > 0.01, "Camera moved from settled position during shake (max offset: %.4f)" % max_offset)
+
+	# After enough frames, shake should decay
+	for i in range(200):
+		cam._process(0.016)
+	_assert_true(cam._shake_intensity < 0.001, "Shake decayed to near zero (got: %.6f)" % cam._shake_intensity)
+
+	# Shake while locked
+	cam.lock_to(Vector3(10, 0, 10))
+	for i in range(10):
+		cam._process(0.016)
+	var locked_pos := cam.global_position
+
+	cam.shake(0.4, 3.0)
+	var locked_max_offset := 0.0
+	for i in range(30):
+		cam._process(0.016)
+		var offset := (cam.global_position - locked_pos).length()
+		if offset > locked_max_offset:
+			locked_max_offset = offset
+	_assert_true(locked_max_offset > 0.01, "Camera shakes while locked (max offset: %.4f)" % locked_max_offset)
+
+	cam.queue_free()
+	target.queue_free()
 
 func _print_results() -> void:
 	print("")
