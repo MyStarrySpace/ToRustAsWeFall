@@ -95,6 +95,7 @@ func _ready() -> void:
 			"--test-physics":
 				ran_test = true
 				_test_physics_objects()
+				_test_physics_edge_cases()
 			"--test-scene-load":
 				ran_test = true
 				await _test_scene_load()
@@ -140,6 +141,7 @@ func _run_all_tests() -> void:
 	await _test_ferrolure()
 	_test_camera_shake()
 	_test_physics_objects()
+	_test_physics_edge_cases()
 	_test_predictive_detection()
 	_test_detection_equivalence()
 
@@ -2309,6 +2311,313 @@ func _test_physics_objects() -> void:
 	gs.unregister_physics_object("barrel1")
 	_assert_true(not gs.physics_objects.has("barrel1"), "Barrel unregistered")
 	_assert_true(grid.is_walkable(barrel_cell.x, barrel_cell.y), "Grid cell freed after unregister")
+
+func _test_physics_edge_cases() -> void:
+	_test_name = "Physics Edge Cases"
+
+	# --- Non-pushable object ---
+	var gs: GameState
+	var sched: EventScheduler
+	var grid2: GridWorld
+
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+	gs.register_physics_object("static_box", Vector3(5, 0, 5), 0.5, 5.0, 0.6, false)
+	gs.register_character("runner", Vector3(3, 0, 5), 3.0)
+	gs.command_move_to_pos("runner", Vector3(10, 0, 5))
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+	var static_pos := gs.get_physics_position("static_box")
+	_assert_true(absf(static_pos.x - 5.0) < 0.01, "Non-pushable object stays put (got: %.2f)" % static_pos.x)
+
+	# --- Parallel miss: character walks past object (offset in Z) ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+	gs.register_physics_object("side_barrel", Vector3(5, 0, 7), 0.3)
+	gs.register_character("passerby", Vector3(3, 0, 5), 3.0)
+	gs.command_move_to_pos("passerby", Vector3(10, 0, 5))
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+	var side_pos := gs.get_physics_position("side_barrel")
+	_assert_true(absf(side_pos.x - 5.0) < 0.01, "Object not hit when character walks past (Z offset 2.0, got: %.2f)" % side_pos.x)
+
+	# --- Near miss: character barely misses ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+	gs.register_physics_object("near_miss", Vector3(5, 0, 6.0), 0.3)
+	gs.register_character("grazer", Vector3(3, 0, 5), 3.0)
+	gs.command_move_to_pos("grazer", Vector3(10, 0, 5))
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+	var near_pos := gs.get_physics_position("near_miss")
+	# collision_range = 0.4 + 0.3 = 0.7, offset in Z = 1.0 → miss
+	_assert_true(absf(near_pos.x - 5.0) < 0.01, "Near miss: Z offset 1.0 > collision range 0.7 (got: %.2f)" % near_pos.x)
+
+	# --- Diagonal push ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+	gs.register_physics_object("diag_obj", Vector3(7, 0, 7), 0.5, 1.5, 0.5)
+	gs.register_character("diag_char", Vector3(3, 0, 3), 4.0)
+	gs.command_move_to_pos("diag_char", Vector3(10, 0, 10))
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+	var diag_pos := gs.get_physics_position("diag_obj")
+	var diag_moved := diag_pos.distance_to(Vector3(7, 0, 7)) > 0.1
+	_assert_true(diag_moved, "Diagonal push moves object (dist: %.2f)" % diag_pos.distance_to(Vector3(7, 0, 7)))
+	# Should be pushed roughly along +X+Z diagonal
+	_assert_true(diag_pos.x > 7.0, "Diagonal push: +X component (got: %.2f)" % diag_pos.x)
+	_assert_true(diag_pos.z > 7.0, "Diagonal push: +Z component (got: %.2f)" % diag_pos.z)
+
+	# --- Friction comparison: icy vs rough ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+	gs.register_physics_object("icy", Vector3(5, 0, 5), 0.5, 1.0, 0.2)
+	gs.register_physics_object("rough", Vector3(5, 0, 8), 0.5, 1.0, 0.9)
+	gs.register_character("ice_pusher", Vector3(3, 0, 5), 3.0)
+	gs.register_character("rough_pusher", Vector3(3, 0, 8), 3.0)
+	gs.command_move_to_pos("ice_pusher", Vector3(10, 0, 5))
+	gs.command_move_to_pos("rough_pusher", Vector3(10, 0, 8))
+	for _di in range(1000):
+		if sched.pop_next().is_empty(): break
+	var icy_pos := gs.get_physics_position("icy")
+	var rough_pos := gs.get_physics_position("rough")
+	_assert_true(icy_pos.x > rough_pos.x, "Icy slides farther than rough (icy: %.2f, rough: %.2f)" % [icy_pos.x, rough_pos.x])
+
+	# --- Speed comparison: fast vs slow character ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+	gs.register_physics_object("target_fast", Vector3(5, 0, 5), 0.5, 1.0, 0.5)
+	gs.register_physics_object("target_slow", Vector3(5, 0, 8), 0.5, 1.0, 0.5)
+	gs.register_character("fast_char", Vector3(3, 0, 5), 6.0)
+	gs.register_character("slow_char", Vector3(3, 0, 8), 1.5)
+	gs.command_move_to_pos("fast_char", Vector3(10, 0, 5))
+	gs.command_move_to_pos("slow_char", Vector3(10, 0, 8))
+	for _di in range(2000):
+		if sched.pop_next().is_empty(): break
+	var fast_result := gs.get_physics_position("target_fast")
+	var slow_result := gs.get_physics_position("target_slow")
+	_assert_true(fast_result.x > slow_result.x, "Fast char pushes farther than slow (fast: %.2f, slow: %.2f)" % [fast_result.x, slow_result.x])
+
+	# --- Radius comparison: large vs small collision radius ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+	gs.register_physics_object("big_radius", Vector3(5, 0, 5), 1.0, 1.0, 0.5)
+	gs.register_physics_object("small_radius", Vector3(5, 0, 8), 0.2, 1.0, 0.5)
+	gs.register_character("rad_char1", Vector3(3, 0, 5), 3.0)
+	gs.register_character("rad_char2", Vector3(3, 0, 8), 3.0)
+	gs.command_move_to_pos("rad_char1", Vector3(10, 0, 5))
+	gs.command_move_to_pos("rad_char2", Vector3(10, 0, 8))
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+	var big_pos := gs.get_physics_position("big_radius")
+	var small_pos := gs.get_physics_position("small_radius")
+	# Both should move (same mass/friction), but big_radius hits earlier (larger collision range)
+	_assert_true(big_pos.x > 5.1, "Large radius object pushed (got: %.2f)" % big_pos.x)
+	_assert_true(small_pos.x > 5.1, "Small radius object pushed (got: %.2f)" % small_pos.x)
+
+	# --- Determinism: same setup twice produces identical results ---
+	var det_results: Array[float] = []
+	for trial in range(2):
+		gs = GameState.new()
+		sched = EventScheduler.new()
+		grid2 = GridWorld.new()
+		grid2.create_room(30, 30)
+		gs.grid = grid2
+		gs.scheduler = sched
+		gs.register_physics_object("det_obj", Vector3(6, 0, 6), 0.5, 1.5, 0.5)
+		gs.register_character("det_char", Vector3(3, 0, 6), 3.5)
+		gs.command_move_to_pos("det_char", Vector3(12, 0, 6))
+		for _di in range(1000):
+			if sched.pop_next().is_empty(): break
+		det_results.append(gs.get_physics_position("det_obj").x)
+	_assert_true(absf(det_results[0] - det_results[1]) < 0.001, "Deterministic: two runs match (%.4f vs %.4f)" % [det_results[0], det_results[1]])
+
+	# --- Object already overlapping character at registration ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+	gs.register_character("overlap_char", Vector3(5, 0, 5), 3.0)
+	gs.register_physics_object("overlap_obj", Vector3(5.3, 0, 5), 0.5, 1.0, 0.5)
+	# Object is already within collision range (0.4 + 0.5 = 0.9, distance = 0.3)
+	# Character is stationary, so no push should occur (no velocity)
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+	var overlap_pos := gs.get_physics_position("overlap_obj")
+	_assert_true(absf(overlap_pos.x - 5.3) < 0.1, "Stationary overlap: no push without velocity (got: %.2f)" % overlap_pos.x)
+
+	# --- Character stops before reaching object ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+	gs.register_physics_object("far_obj", Vector3(15, 0, 5), 0.5, 1.0, 0.5)
+	gs.register_character("short_walk", Vector3(3, 0, 5), 3.0)
+	gs.command_move_to_pos("short_walk", Vector3(8, 0, 5))
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+	var far_pos := gs.get_physics_position("far_obj")
+	_assert_true(absf(far_pos.x - 15.0) < 0.01, "Object untouched when char stops short (got: %.2f)" % far_pos.x)
+
+	# --- Multiple objects in a line (bowling) ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+	gs.register_physics_object("pin1", Vector3(6, 0, 5), 0.4, 0.8, 0.4)
+	gs.register_physics_object("pin2", Vector3(7.5, 0, 5), 0.4, 0.8, 0.4)
+	gs.register_physics_object("pin3", Vector3(9, 0, 5), 0.4, 0.8, 0.4)
+	gs.register_character("bowler", Vector3(3, 0, 5), 5.0)
+	gs.command_move_to_pos("bowler", Vector3(15, 0, 5))
+	for _di in range(2000):
+		if sched.pop_next().is_empty(): break
+	var pin1_pos := gs.get_physics_position("pin1")
+	var pin2_pos := gs.get_physics_position("pin2")
+	var pin3_pos := gs.get_physics_position("pin3")
+	var pin1_displaced := absf(pin1_pos.x - 6.0) > 0.1
+	_assert_true(pin1_displaced, "Bowling pin 1 displaced (got: %.2f, started: 6.0)" % pin1_pos.x)
+	_assert_true(pin2_pos.x > 7.6, "Bowling pin 2 pushed (got: %.2f)" % pin2_pos.x)
+	_assert_true(pin3_pos.x > 9.1, "Bowling pin 3 pushed (got: %.2f)" % pin3_pos.x)
+	# Pins should end up in order (1 < 2 < 3)
+	_assert_true(pin1_pos.x < pin2_pos.x, "Bowling order: pin1 < pin2 (%.2f < %.2f)" % [pin1_pos.x, pin2_pos.x])
+	_assert_true(pin2_pos.x < pin3_pos.x, "Bowling order: pin2 < pin3 (%.2f < %.2f)" % [pin2_pos.x, pin3_pos.x])
+
+	# --- Opposite direction push (character approaches from +X) ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+	gs.register_physics_object("reverse_obj", Vector3(8, 0, 5), 0.5, 1.0, 0.5)
+	gs.register_character("reverse_char", Vector3(12, 0, 5), 3.0)
+	gs.command_move_to_pos("reverse_char", Vector3(3, 0, 5))
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+	var rev_pos := gs.get_physics_position("reverse_obj")
+	_assert_true(rev_pos.x < 7.9, "Reverse push: object pushed in -X (got: %.2f)" % rev_pos.x)
+
+	# --- Area impulse: object outside radius not affected ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+	gs.register_physics_object("in_range", Vector3(5, 0, 5), 0.5, 1.0, 0.5)
+	gs.register_physics_object("out_range", Vector3(15, 0, 5), 0.5, 1.0, 0.5)
+	gs.apply_area_impulse(Vector3(5, 0, 5), 3.0, 5.0)
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+	var out_pos := gs.get_physics_position("out_range")
+	_assert_true(absf(out_pos.x - 15.0) < 0.01, "Object outside blast radius not moved (got: %.2f)" % out_pos.x)
+
+	# --- Area impulse: falloff — closer objects pushed farther ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+	# Place objects on different Z so they can't chain-push each other
+	gs.register_physics_object("close_obj", Vector3(6, 0, 5), 0.5, 1.0, 0.5)
+	gs.register_physics_object("far_falloff", Vector3(8, 0, 10), 0.5, 1.0, 0.5)
+	gs.apply_area_impulse(Vector3(5, 0, 5), 5.0, 8.0)
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+	var close_final := gs.get_physics_position("close_obj")
+	var far_final := gs.get_physics_position("far_falloff")
+	var close_moved := close_final.distance_to(Vector3(6, 0, 5))
+	var far_moved := far_final.distance_to(Vector3(8, 0, 10))
+	_assert_true(close_moved > far_moved, "Blast falloff: closer pushed more (close: %.2f, far: %.2f)" % [close_moved, far_moved])
+
+	# --- Zero-radius object (degenerate case) ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+	gs.register_physics_object("tiny", Vector3(5, 0, 5), 0.01, 1.0, 0.5)
+	gs.register_character("tiny_pusher", Vector3(3, 0, 5), 3.0)
+	gs.command_move_to_pos("tiny_pusher", Vector3(10, 0, 5))
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+	# Should not crash; object may or may not be pushed depending on collision range
+	_assert_true(true, "Zero-radius object: no crash")
+
+	# --- Unregister while moving ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+	gs.register_physics_object("vanish", Vector3(5, 0, 5), 0.5, 1.0, 0.3)
+	gs.register_character("vanish_pusher", Vector3(3, 0, 5), 4.0)
+	gs.command_move_to_pos("vanish_pusher", Vector3(10, 0, 5))
+	# Pop one event (likely the collision), then unregister mid-slide
+	sched.pop_next()
+	gs.unregister_physics_object("vanish")
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+	_assert_true(not gs.physics_objects.has("vanish"), "Unregister mid-flight: no crash, object gone")
+
+	# --- Many objects: 10 objects in a cluster, area impulse scatters all ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+	var center := Vector3(15, 0, 15)
+	for i in range(10):
+		var angle := float(i) * TAU / 10.0
+		var opos := center + Vector3(cos(angle) * 1.5, 0, sin(angle) * 1.5)
+		gs.register_physics_object("cluster_%d" % i, opos, 0.3, 1.0, 0.5)
+	gs.apply_area_impulse(center, 5.0, 6.0)
+	for _di in range(3000):
+		if sched.pop_next().is_empty(): break
+	var scatter_count := 0
+	for i in range(10):
+		var cpos := gs.get_physics_position("cluster_%d" % i)
+		if cpos.distance_to(center) > 2.0:
+			scatter_count += 1
+	_assert_true(scatter_count >= 8, "Cluster scatter: %d/10 objects moved outward" % scatter_count)
 
 func _print_results() -> void:
 	print("")
