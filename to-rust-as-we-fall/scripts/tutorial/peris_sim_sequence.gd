@@ -341,7 +341,7 @@ func _start_alert_monos() -> void:
 	_player.set_move_enabled(false)
 	if _hud:
 		_hud.set_paused(true)
-	_scheduler.schedule_after(1.0, _start_protect_prompt, "protect_prompt")
+	_start_protect_prompt()
 
 func _start_protect_prompt() -> void:
 	_enter_step("protect_prompt")
