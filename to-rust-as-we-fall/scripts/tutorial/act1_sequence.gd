@@ -454,6 +454,9 @@ func _build_channels_chunk(parent: Node3D) -> void:
 		var fi := preload("res://scenes/game/interactable.tscn").instantiate()
 		fi.name = "FloraGrowth_%d" % i
 		fi.description = "Wild Growth"
+		fi.dialogue_key = "channels.peris.touch"
+		fi.dialogue_box = _dialogue
+		fi.active_character = "peris"
 		fi.one_shot = false
 		fi.dwell_time = 1.5
 		fi.position = Vector3(sx + 30.0 + i * 70.0, 0.3, randf_range(-8, 8))
@@ -523,6 +526,9 @@ func _build_stacks_chunk(parent: Node3D) -> void:
 	var terminal := preload("res://scenes/game/interactable.tscn").instantiate()
 	terminal.name = "DataTerminal"
 	terminal.description = "Maintenance Terminal"
+	terminal.dialogue_key = "stacks.aster.cleaned"
+	terminal.dialogue_box = _dialogue
+	terminal.active_character = "aster"
 	terminal.one_shot = true
 	terminal.dwell_time = 2.0
 	terminal.position = Vector3(sx + length * 0.4, 1.0, 0)
@@ -609,6 +615,9 @@ func _build_rings_chunk(parent: Node3D) -> void:
 	var client := preload("res://scenes/game/interactable.tscn").instantiate()
 	client.name = "ClientNPC"
 	client.description = "Former Client"
+	client.dialogue_key = "rings.peris.hello"
+	client.dialogue_box = _dialogue
+	client.active_character = "peris"
 	client.one_shot = true
 	client.dwell_time = 1.0
 	client.position = Vector3(sx + length * 0.4, 0.5, -5)
@@ -680,6 +689,9 @@ func _build_lockout_chunk(parent: Node3D) -> void:
 	var access := preload("res://scenes/game/interactable.tscn").instantiate()
 	access.name = "AccessPanel"
 	access.description = "Access Panel"
+	access.dialogue_key = "lockout.system.rejected"
+	access.dialogue_box = _dialogue
+	access.active_character = "aster"
 	access.one_shot = true
 	access.dwell_time = 1.5
 	access.position = LOCKOUT_BOUNDARY + Vector3(-1.5, 0.75, 0)

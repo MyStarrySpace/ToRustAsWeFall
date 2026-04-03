@@ -1,32 +1,51 @@
 extends Area3D
 
-## Proximity-based interactable. No key press — stand near it and it activates.
-## Like cells: interaction happens through proximity, not buttons.
-## Shows a channel progress indicator while dwelling, triggers on completion.
+## Proximity-based interactable. Stand near it and it activates.
+## Supports character-specific dialogue: set dialogue_key and the
+## interactable resolves the key with a character suffix automatically.
+##
+## Example: dialogue_key = "junction.food", active character = "aster"
+##   → looks up "junction.food.aster", falls back to "junction.food"
+##
+## For interactions that need custom logic beyond dialogue, connect
+## the interacted signal.
 
-@export var dwell_time := 1.5  ## Seconds the player must stay nearby
+@export var dwell_time := 1.5
 @export var description := ""
 @export var one_shot := false
-@export var tutorial_label := ""  ## If set, shows a "click" (or other) label above the object
+@export var tutorial_label := ""
+
+## Dialogue key prefix. On interaction, resolves character-specific variant.
+## Leave empty for no automatic dialogue (signal-only interaction).
+@export var dialogue_key := ""
+
+## If set, only this character can trigger the interaction.
+## Empty = any character.
+@export var required_character := ""
 
 var _player_in_range := false
 var _dwell_progress := 0.0
 var _used := false
 
-## External speed multiplier (set by sequence for fast-forward). Default 1.0.
 var speed_multiplier := 1.0
+
+## Set by the sequence to route dialogue. If null, dialogue_key is ignored.
+var dialogue_box: Node = null
+## Set by the sequence to identify which character is interacting.
+var active_character := ""
 
 var _progress_ring: MeshInstance3D
 var _progress_mat: StandardMaterial3D
 var _tutorial_label_3d: Label3D
 
 signal interacted()
+## Emitted with the resolved dialogue key when dialogue_key is set
+signal dialogue_triggered(key: String, character: String)
 
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
 
-	# Visual: a ring on the ground that fills as dwell progresses
 	_progress_ring = MeshInstance3D.new()
 	var torus := TorusMesh.new()
 	torus.inner_radius = 0.6
@@ -43,32 +62,28 @@ func _ready() -> void:
 	_progress_ring.rotation.x = -PI / 2.0
 	add_child(_progress_ring)
 
-	# Tutorial label — floating text above the interactable (e.g. "Click")
-	# White, starts hidden, only shown when show_tutorial_label() is called
 	_tutorial_label_3d = Label3D.new()
 	_tutorial_label_3d.text = tutorial_label if tutorial_label != "" else "Click"
 	_tutorial_label_3d.font_size = 48
 	_tutorial_label_3d.pixel_size = 0.012
-	_tutorial_label_3d.modulate = Color(1.0, 1.0, 1.0, 0.0)  # White, starts invisible
+	_tutorial_label_3d.modulate = Color(1.0, 1.0, 1.0, 0.0)
 	_tutorial_label_3d.outline_modulate = Color(0, 0, 0, 0.5)
 	_tutorial_label_3d.outline_size = 8
 	_tutorial_label_3d.position = Vector3(0, 2.2, 0)
 	_tutorial_label_3d.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_tutorial_label_3d.visible = false  # Completely hidden until needed
+	_tutorial_label_3d.visible = false
 	add_child(_tutorial_label_3d)
 
 func _process(delta: float) -> void:
 	if _used:
 		return
 
-	# Tutorial label pulses gently when visible
 	if _tutorial_label_3d and _tutorial_label_3d.visible and _tutorial_label_3d.modulate.a > 0.1:
 		var pulse := 0.6 + sin(Time.get_ticks_msec() * 0.003) * 0.25
 		_tutorial_label_3d.modulate.a = pulse
 
 	if _player_in_range:
 		_dwell_progress += delta * speed_multiplier
-		# Visual feedback — ring fades in and pulses as it fills
 		var t := clampf(_dwell_progress / dwell_time, 0.0, 1.0)
 		_progress_mat.albedo_color.a = t * 0.6
 		_progress_ring.scale = Vector3.ONE * (0.8 + t * 0.4)
@@ -76,23 +91,45 @@ func _process(delta: float) -> void:
 		if _dwell_progress >= dwell_time:
 			_trigger()
 	else:
-		# Fade out when player leaves
 		if _dwell_progress > 0:
 			_dwell_progress = maxf(0, _dwell_progress - delta * 2.0)
 			var t := clampf(_dwell_progress / dwell_time, 0.0, 1.0)
 			_progress_mat.albedo_color.a = t * 0.3
 
 func _trigger() -> void:
+	# Character gate
+	if required_character != "" and active_character != "" and active_character != required_character:
+		return
+
 	if one_shot:
 		_used = true
 	_dwell_progress = 0.0
 	_progress_mat.albedo_color.a = 0.0
-	# Hide tutorial label on interaction
 	if _tutorial_label_3d:
 		_tutorial_label_3d.modulate.a = 0.0
+
+	# Resolve dialogue
+	if dialogue_key != "":
+		var resolved := _resolve_dialogue_key()
+		if dialogue_box and resolved != "":
+			DialogueData.say_to(dialogue_box, resolved)
+		dialogue_triggered.emit(resolved, active_character)
+
 	interacted.emit()
 
-## Show the tutorial label (call from sequence script when it's time)
+func _resolve_dialogue_key() -> String:
+	if dialogue_key == "":
+		return ""
+	if active_character != "":
+		var char_key := dialogue_key + "." + active_character
+		var line := DialogueData.get_line(char_key)
+		if not line.text.begins_with("[MISSING:"):
+			return char_key
+	var line := DialogueData.get_line(dialogue_key)
+	if not line.text.begins_with("[MISSING:"):
+		return dialogue_key
+	return ""
+
 func show_tutorial_label() -> void:
 	if _tutorial_label_3d:
 		_tutorial_label_3d.visible = true
@@ -100,7 +137,6 @@ func show_tutorial_label() -> void:
 		var tween := create_tween()
 		tween.tween_property(_tutorial_label_3d, "modulate:a", 0.9, 0.5)
 
-## Hide the tutorial label
 func hide_tutorial_label() -> void:
 	if _tutorial_label_3d:
 		var tween := create_tween()
@@ -108,7 +144,6 @@ func hide_tutorial_label() -> void:
 		tween.tween_callback(func(): _tutorial_label_3d.visible = false)
 
 func _on_body_entered(body: Node3D) -> void:
-	# Accept any player character (Aster, Peris, etc.)
 	if _used:
 		return
 	if body is CharacterBody3D:
@@ -125,7 +160,6 @@ func reset() -> void:
 	_dwell_progress = 0.0
 	_progress_mat.albedo_color.a = 0.0
 
-## For headless testing: check if interaction would trigger at current dwell
 func get_dwell_progress() -> float:
 	return _dwell_progress / dwell_time if dwell_time > 0 else 0.0
 

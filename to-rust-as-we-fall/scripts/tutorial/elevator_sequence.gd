@@ -1514,15 +1514,13 @@ func _add_junction_interactable(label: String, pos: Vector3, dialogue_prefix: St
 	var interact := preload("res://scenes/game/interactable.tscn").instantiate()
 	interact.name = "Junction_" + label
 	interact.description = label
+	interact.dialogue_key = dialogue_prefix
+	interact.dialogue_box = _dialogue
+	interact.active_character = _active_character
 	interact.one_shot = false
 	interact.dwell_time = 1.0
 	interact.position = pos
 	add_child(interact)
-	interact.interacted.connect(func():
-		# Show Aster or Peris dialogue depending on active character
-		var key := dialogue_prefix + (".aster" if _active_character == "aster" else ".peris")
-		DialogueData.say_to(_dialogue, key)
-	)
 
 func _build_gauntlet_chunk(parent: Node3D) -> void:
 	var ground_y := BELOW_Y
