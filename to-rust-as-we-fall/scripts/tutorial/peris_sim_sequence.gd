@@ -8,6 +8,7 @@ extends TutorialSequence
 ## Event-driven: uses EventScheduler + GameState interpolation.
 ## Each step is a function that does its work and schedules the next event.
 
+@export_range(1, 2) var start_phase := 0
 static var _visit_phase := 1
 
 var _has_sprinted := false
@@ -103,6 +104,8 @@ func _setup_ui() -> void:
 	set_process_unhandled_key_input(true)
 
 func _begin() -> void:
+	if start_phase > 0:
+		_visit_phase = start_phase
 	_current_step = "fade_in"
 	_player.set_move_enabled(false)
 	if _visit_phase == 1:
