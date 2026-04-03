@@ -431,12 +431,25 @@ func get_physics_position(id: String) -> Vector3:
 	if mv.duration <= 0.0:
 		return mv.path[mv.path.size() - 1]
 	var t := clampf((scheduler.get_current_tick() - mv.start_tick) / mv.duration, 0.0, 1.0)
-	return _interpolate_path(mv.path, mv.cum_dist, t)
+	var pos := _interpolate_path(mv.path, mv.cum_dist, t)
+	if obj.has("throw") and obj.throw != null:
+		var tw: Dictionary = obj.throw
+		var dt: float = scheduler.get_current_tick() - tw.start_tick
+		pos.y = tw.start_y + tw.vy * dt - 0.5 * PENDULUM_GRAVITY * dt * dt
+		if pos.y < tw.ground_y:
+			pos.y = tw.ground_y
+	return pos
 
 func is_physics_moving(id: String) -> bool:
 	if not physics_objects.has(id):
 		return false
 	return physics_objects[id].movement != null
+
+func is_physics_airborne(id: String) -> bool:
+	if not physics_objects.has(id):
+		return false
+	var obj: Dictionary = physics_objects[id]
+	return obj.has("throw") and obj.throw != null
 
 func _get_physics_segments(id: String) -> Array[Dictionary]:
 	var obj: Dictionary = physics_objects[id]
@@ -537,6 +550,14 @@ func _on_physics_collision_event(obj_id: String, collider_id: String) -> void:
 	if not physics_objects.has(obj_id) or not characters.has(collider_id):
 		return
 	var obj: Dictionary = physics_objects[obj_id]
+
+	# Airborne object hitting a character: emit signal and land, don't self-push
+	if obj.has("throw") and obj.throw != null:
+		var obj_vel := _get_velocity_at_tick(obj_id, scheduler.get_current_tick())
+		physics_collision.emit(obj_id, collider_id, obj_vel)
+		_on_throw_landing(obj_id)
+		return
+
 	if not obj.pushable:
 		return
 
@@ -705,6 +726,171 @@ func apply_area_impulse(center: Vector3, radius: float, force: float) -> void:
 			if slide_distance >= 0.05:
 				_apply_physics_movement(obj_id, pos, slide_target, impulse_speed)
 				physics_collision.emit(obj_id, "", dir * impulse_speed)
+
+# --- Throw Physics ---
+
+func throw_physics_object(obj_id: String, velocity: Vector3, start_pos: Vector3 = Vector3.INF) -> void:
+	if not physics_objects.has(obj_id) or not scheduler:
+		return
+	var obj: Dictionary = physics_objects[obj_id]
+	var from: Vector3 = start_pos if start_pos != Vector3.INF else get_physics_position(obj_id)
+	var ground_y := 0.0
+
+	# Cancel existing movement
+	if obj.movement != null:
+		scheduler.cancel(obj.movement.handle)
+		obj.movement = null
+	if grid:
+		grid.remove_dynamic_blocker(obj.grid_cell)
+
+	# Compute flight time from vertical parabola: y = y0 + vy*t - 0.5*g*t²
+	# Solve for y = ground_y: 0.5*g*t² - vy*t - (y0 - ground_y) = 0
+	var y0: float = from.y
+	var vy: float = velocity.y
+	var flight_time: float
+	if y0 <= ground_y and vy <= 0:
+		flight_time = 0.0
+	else:
+		var a_coeff := 0.5 * PENDULUM_GRAVITY
+		var b_coeff := -vy
+		var c_coeff := -(y0 - ground_y)
+		var disc := b_coeff * b_coeff - 4.0 * a_coeff * c_coeff
+		if disc < 0:
+			flight_time = 0.0
+		else:
+			var sqrt_disc := sqrt(disc)
+			var t1: float = (-b_coeff + sqrt_disc) / (2.0 * a_coeff)
+			var t2: float = (-b_coeff - sqrt_disc) / (2.0 * a_coeff)
+			flight_time = maxf(t1, t2)
+			if flight_time < 0.01:
+				flight_time = 0.0
+
+	if flight_time < 0.01:
+		obj.position = Vector3(from.x, ground_y, from.z)
+		obj.throw = null
+		if grid:
+			obj.grid_cell = grid.world_to_grid(obj.position)
+			grid.add_dynamic_blocker(obj.grid_cell, obj_id)
+		return
+
+	# XZ: linear flight path
+	var xz_vel := Vector3(velocity.x, 0, velocity.z)
+	var landing_pos := Vector3(from.x + xz_vel.x * flight_time, ground_y, from.z + xz_vel.z * flight_time)
+
+	# Trace XZ path against walls
+	if grid:
+		var traced := _trace_slide_against_walls(Vector3(from.x, 0, from.z), Vector3(landing_pos.x, 0, landing_pos.z))
+		var traced_dist := Vector3(traced.x - from.x, 0, traced.z - from.z).length()
+		var full_dist := Vector3(landing_pos.x - from.x, 0, landing_pos.z - from.z).length()
+		if traced_dist < full_dist and full_dist > 0.01:
+			var frac := traced_dist / full_dist
+			flight_time *= frac
+			landing_pos = Vector3(traced.x, ground_y, traced.z)
+
+	# Set up throw parabola for Y
+	var now := scheduler.get_current_tick()
+	obj.throw = {
+		"start_tick": now,
+		"start_y": y0,
+		"vy": vy,
+		"ground_y": ground_y,
+		"landing_tick": now + flight_time,
+	}
+
+	# Set up XZ movement (reuses existing path system)
+	var xz_speed := xz_vel.length()
+	var xz_from := Vector3(from.x, ground_y, from.z)
+	var xz_to := Vector3(landing_pos.x, ground_y, landing_pos.z)
+	var path: Array[Vector3] = [xz_from, xz_to]
+	var cum_dist := _compute_cum_dist(path)
+	var xz_dist: float = cum_dist[cum_dist.size() - 1]
+
+	var oid := obj_id
+	var handle := scheduler.schedule_at(
+		now + flight_time,
+		func(): _on_throw_landing(oid),
+		"throw_" + obj_id
+	)
+
+	obj.movement = {
+		"path": path,
+		"cum_dist": cum_dist,
+		"total_distance": xz_dist if xz_dist > 0.001 else 0.001,
+		"start_tick": now,
+		"duration": flight_time,
+		"handle": handle,
+	}
+
+	_recompute_physics_predictions()
+	_recompute_pendulum_predictions()
+
+func _on_throw_landing(obj_id: String) -> void:
+	if not physics_objects.has(obj_id):
+		return
+	var obj: Dictionary = physics_objects[obj_id]
+	var landing_pos := get_physics_position(obj_id)
+	landing_pos.y = 0.0
+
+	# Get XZ velocity at landing for post-bounce slide
+	var xz_vel := _get_velocity_at_tick(obj_id, scheduler.get_current_tick())
+	var xz_speed := xz_vel.length()
+
+	# Clear throw and movement
+	obj.throw = null
+	obj.movement = null
+	obj.position = landing_pos
+	if grid:
+		obj.grid_cell = grid.world_to_grid(landing_pos)
+
+	# Convert remaining XZ velocity into a ground slide (reduced by bounce loss)
+	var bounce_factor := 0.5
+	var slide_speed := xz_speed * bounce_factor
+	if slide_speed > 0.1 and obj.pushable:
+		var slide_dir := xz_vel.normalized()
+		var slide_distance: float = (slide_speed * slide_speed) / (2.0 * obj.friction * PHYSICS_DECELERATION)
+		if slide_distance > 0.05:
+			var slide_target: Vector3 = landing_pos + slide_dir * slide_distance
+			var own_cell: Vector2i = obj.grid_cell
+			if grid:
+				grid.remove_dynamic_blocker(own_cell)
+			slide_target = _trace_slide_against_walls(landing_pos, slide_target)
+			if grid:
+				grid.add_dynamic_blocker(own_cell, obj_id)
+			slide_distance = Vector3(slide_target.x - landing_pos.x, 0, slide_target.z - landing_pos.z).length()
+			if slide_distance >= 0.05:
+				_apply_physics_movement(obj_id, landing_pos, slide_target, slide_speed)
+				physics_collision.emit(obj_id, "", xz_vel * bounce_factor)
+				return
+
+	# No slide — settle in place
+	if grid:
+		grid.add_dynamic_blocker(obj.grid_cell, obj_id)
+	_recompute_physics_predictions()
+	_recompute_pendulum_predictions()
+
+func get_throw_height(id: String) -> float:
+	if not physics_objects.has(id):
+		return 0.0
+	var obj: Dictionary = physics_objects[id]
+	if not obj.has("throw") or obj.throw == null or not scheduler:
+		return obj.position.y
+	var tw: Dictionary = obj.throw
+	var dt: float = scheduler.get_current_tick() - tw.start_tick
+	var y: float = tw.start_y + tw.vy * dt - 0.5 * PENDULUM_GRAVITY * dt * dt
+	return maxf(y, tw.ground_y)
+
+func get_throw_peak_height(id: String) -> float:
+	if not physics_objects.has(id):
+		return 0.0
+	var obj: Dictionary = physics_objects[id]
+	if not obj.has("throw") or obj.throw == null:
+		return 0.0
+	var tw: Dictionary = obj.throw
+	var vy: float = tw.vy
+	if vy <= 0:
+		return tw.start_y
+	var t_peak := vy / PENDULUM_GRAVITY
+	return tw.start_y + vy * t_peak - 0.5 * PENDULUM_GRAVITY * t_peak * t_peak
 
 # --- Pendulums ---
 

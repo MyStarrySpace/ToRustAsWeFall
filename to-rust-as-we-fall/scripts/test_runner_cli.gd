@@ -99,6 +99,9 @@ func _ready() -> void:
 			"--test-pendulum":
 				ran_test = true
 				_test_pendulum()
+			"--test-throw":
+				ran_test = true
+				_test_throw_physics()
 			"--test-scene-load":
 				ran_test = true
 				await _test_scene_load()
@@ -146,6 +149,7 @@ func _run_all_tests() -> void:
 	_test_physics_objects()
 	_test_physics_edge_cases()
 	_test_pendulum()
+	_test_throw_physics()
 	_test_predictive_detection()
 	_test_detection_equivalence()
 
@@ -2773,6 +2777,224 @@ func _test_pendulum() -> void:
 	# --- Unregister ---
 	gs.unregister_pendulum("phase0")
 	_assert_true(not gs.pendulums.has("phase0"), "Pendulum unregistered")
+
+func _test_throw_physics() -> void:
+	_test_name = "Throw Physics"
+	var gs: GameState
+	var sched: EventScheduler
+	var grid2: GridWorld
+
+	# --- Basic throw: lob forward ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+
+	gs.register_physics_object("ball", Vector3(5, 0, 5), 0.3, 0.5, 0.5)
+	gs.throw_physics_object("ball", Vector3(4, 6, 0), Vector3(5, 1, 5))
+
+	_assert_true(gs.is_physics_airborne("ball"), "Ball is airborne after throw")
+	_assert_true(gs.is_physics_moving("ball"), "Ball is moving after throw")
+
+	# Check peak height (vy=6, peak at t=vy/g=0.612s, height=1+6*0.612-0.5*9.8*0.612²=2.837)
+	var peak := gs.get_throw_peak_height("ball")
+	_assert_true(peak > 2.0, "Peak height > 2.0 (got: %.2f)" % peak)
+
+	# Mid-flight: Y should be above ground
+	sched.advance_ticks(0.3)
+	var mid_pos := gs.get_physics_position("ball")
+	_assert_true(mid_pos.y > 1.0, "Mid-flight Y above ground (got: %.2f)" % mid_pos.y)
+	_assert_true(mid_pos.x > 5.5, "Mid-flight X moved forward (got: %.2f)" % mid_pos.x)
+
+	# Drain to landing
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+
+	var landed_pos := gs.get_physics_position("ball")
+	_assert_true(landed_pos.y < 0.1, "Ball on ground after landing (y: %.2f)" % landed_pos.y)
+	_assert_true(landed_pos.x > 8.0, "Ball traveled forward (x: %.2f)" % landed_pos.x)
+	_assert_true(not gs.is_physics_airborne("ball"), "Ball no longer airborne")
+
+	# --- Throw straight up: lands near origin ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+
+	gs.register_physics_object("up_ball", Vector3(10, 0, 10), 0.3, 0.5, 0.5)
+	gs.throw_physics_object("up_ball", Vector3(0, 8, 0), Vector3(10, 0, 10))
+
+	var up_peak := gs.get_throw_peak_height("up_ball")
+	_assert_true(up_peak > 3.0, "Vertical throw peak height (got: %.2f)" % up_peak)
+
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+
+	var up_landed := gs.get_physics_position("up_ball")
+	_assert_true(absf(up_landed.x - 10.0) < 0.5, "Vertical throw lands near origin X (got: %.2f)" % up_landed.x)
+	_assert_true(absf(up_landed.z - 10.0) < 0.5, "Vertical throw lands near origin Z (got: %.2f)" % up_landed.z)
+
+	# --- Throw into wall: truncated flight ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(20, 20)
+	gs.grid = grid2
+	gs.scheduler = sched
+
+	gs.register_physics_object("wall_ball", Vector3(15, 0, 10), 0.3, 0.5, 0.5)
+	gs.throw_physics_object("wall_ball", Vector3(8, 4, 0), Vector3(15, 1, 10))
+
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+
+	var wall_landed := gs.get_physics_position("wall_ball")
+	_assert_true(wall_landed.x < 19.0, "Throw stopped at wall (x: %.2f)" % wall_landed.x)
+
+	# --- Throw hits character mid-flight ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+
+	var throw_hits: Array = []
+	gs.physics_collision.connect(func(oid, cid, imp): throw_hits.append({"oid": oid, "cid": cid}))
+
+	gs.register_character("target_char", Vector3(10, 0, 5), 0.0)
+	gs.register_physics_object("projectile", Vector3(5, 0, 5), 0.4, 0.3, 0.5)
+	gs.throw_physics_object("projectile", Vector3(6, 3, 0), Vector3(5, 1, 5))
+
+	for _di in range(1000):
+		if sched.pop_next().is_empty(): break
+
+	# Thrown object should hit the character and land near it
+	var proj_final := gs.get_physics_position("projectile")
+	_assert_true(proj_final.x > 7.0, "Projectile reached target area (x: %.2f)" % proj_final.x)
+	_assert_true(not gs.is_physics_airborne("projectile"), "Projectile landed after hit")
+	_assert_true(throw_hits.size() > 0, "Throw collision signal fired (count: %d)" % throw_hits.size())
+
+	# --- Post-landing slide ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+
+	gs.register_physics_object("slider", Vector3(5, 0, 10), 0.3, 0.5, 0.3)
+	gs.throw_physics_object("slider", Vector3(5, 4, 0), Vector3(5, 1, 10))
+
+	# Track if the object slides after landing
+	var slide_detected := false
+	var slide_log: Array = []
+	gs.physics_collision.connect(func(oid, cid, imp): slide_log.append(oid))
+
+	for _di in range(1000):
+		if sched.pop_next().is_empty(): break
+
+	var slider_final := gs.get_physics_position("slider")
+	_assert_true(slider_final.y < 0.1, "Slider on ground (y: %.2f)" % slider_final.y)
+	# With vx=5 and bounce_factor=0.5, post-landing slide speed=2.5, slide_dist=2.5²/(2*0.3*3)=3.47
+	_assert_true(slider_final.x > 9.0, "Post-landing slide extended range (x: %.2f)" % slider_final.x)
+
+	# --- Throw with no vertical component (flat throw) ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+
+	gs.register_physics_object("flat", Vector3(5, 0, 10), 0.3, 0.5, 0.5)
+	gs.throw_physics_object("flat", Vector3(4, 0, 0), Vector3(5, 2, 10))
+
+	# With vy=0 from y=2: flight_time = sqrt(2*2/9.8)=0.639s, lands at x=5+4*0.639=7.56
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+
+	var flat_final := gs.get_physics_position("flat")
+	_assert_true(flat_final.y < 0.1, "Flat throw lands (y: %.2f)" % flat_final.y)
+	_assert_true(flat_final.x > 7.0, "Flat throw traveled forward (x: %.2f)" % flat_final.x)
+
+	# --- Throw from ground (y=0): just vy lifts it ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+
+	gs.register_physics_object("ground_throw", Vector3(5, 0, 10), 0.3, 0.5, 0.5)
+	gs.throw_physics_object("ground_throw", Vector3(3, 5, 0), Vector3(5, 0, 10))
+
+	var gt_peak := gs.get_throw_peak_height("ground_throw")
+	_assert_true(gt_peak > 1.0, "Ground throw has peak height (got: %.2f)" % gt_peak)
+
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+
+	var gt_final := gs.get_physics_position("ground_throw")
+	_assert_true(gt_final.y < 0.1, "Ground throw lands (y: %.2f)" % gt_final.y)
+	_assert_true(gt_final.x > 7.0, "Ground throw traveled (x: %.2f)" % gt_final.x)
+
+	# --- Diagonal throw (XZ) ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+
+	gs.register_physics_object("diag_throw", Vector3(5, 0, 5), 0.3, 0.5, 0.5)
+	gs.throw_physics_object("diag_throw", Vector3(3, 5, 3), Vector3(5, 0, 5))
+
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+
+	var diag_final := gs.get_physics_position("diag_throw")
+	_assert_true(diag_final.x > 6.5, "Diagonal throw +X (got: %.2f)" % diag_final.x)
+	_assert_true(diag_final.z > 6.5, "Diagonal throw +Z (got: %.2f)" % diag_final.z)
+
+	# --- Throw hits physics object (bowling) ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+
+	# Rock lands near barrel, post-landing slide pushes it
+	gs.register_physics_object("target_barrel", Vector3(11, 0, 10), 0.5, 1.5, 0.4)
+	gs.register_physics_object("thrown_rock", Vector3(5, 0, 10), 0.4, 0.5, 0.3)
+	gs.throw_physics_object("thrown_rock", Vector3(6, 3, 0), Vector3(5, 1, 10))
+
+	for _di in range(2000):
+		if sched.pop_next().is_empty(): break
+
+	var barrel_after := gs.get_physics_position("target_barrel")
+	_assert_true(barrel_after.distance_to(Vector3(11, 0, 10)) > 0.1, "Barrel displaced by thrown rock (barrel x: %.2f)" % barrel_after.x)
+
+	# --- Determinism ---
+	var throw_results: Array[float] = []
+	for trial in range(2):
+		gs = GameState.new()
+		sched = EventScheduler.new()
+		grid2 = GridWorld.new()
+		grid2.create_room(30, 30)
+		gs.grid = grid2
+		gs.scheduler = sched
+		gs.register_physics_object("det", Vector3(5, 0, 10), 0.3, 0.5, 0.4)
+		gs.throw_physics_object("det", Vector3(4, 5, 2), Vector3(5, 0.5, 10))
+		for _di in range(1000):
+			if sched.pop_next().is_empty(): break
+		throw_results.append(gs.get_physics_position("det").x)
+	_assert_true(absf(throw_results[0] - throw_results[1]) < 0.001, "Throw deterministic (%.4f vs %.4f)" % [throw_results[0], throw_results[1]])
 
 func _print_results() -> void:
 	print("")
