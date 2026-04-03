@@ -105,6 +105,9 @@ func _ready() -> void:
 			"--test-physics-comparison":
 				ran_test = true
 				await _test_physics_comparison()
+			"--test-items":
+				ran_test = true
+				_test_items()
 			"--test-scene-load":
 				ran_test = true
 				await _test_scene_load()
@@ -166,6 +169,7 @@ func _run_all_tests() -> void:
 	_test_throw_physics()
 	await _test_physics_comparison()
 	await _test_peris_phase2()
+	_test_items()
 	_test_predictive_detection()
 	_test_detection_equivalence()
 
@@ -3371,6 +3375,160 @@ func _test_peris_phase2() -> void:
 	instance._visit_phase = 1
 	instance.queue_free()
 	await get_tree().process_frame
+
+func _test_items() -> void:
+	_test_name = "Items & Endocytosis"
+
+	var gs := GameState.new()
+	var sched := EventScheduler.new()
+	gs.scheduler = sched
+
+	gs.register_character("aster", Vector3(5, 0, 5), 3.0, {"atp": 50.0})
+	gs.register_character("peris", Vector3(6, 0, 5), 3.0, {"atp": 80.0})
+
+	# --- Spawn and pickup ---
+	var lysate_id := gs.spawn_item("lysate", Vector3(5, 0, 5))
+	_assert_true(gs.items.has(lysate_id), "Item spawned")
+	_assert_true(gs.items[lysate_id].location == "ground", "Item starts on ground")
+
+	var picked := gs.pick_up_item("aster", lysate_id)
+	_assert_true(picked, "Pickup succeeds")
+	_assert_true(gs.items[lysate_id].location == "hand", "Item now in hand")
+	_assert_true(gs.items[lysate_id].holder == "aster", "Holder is aster")
+	_assert_true(gs.get_hand_items("aster").size() == 1, "Aster has 1 hand item")
+
+	# --- Full hands ---
+	var lysate2 := gs.spawn_item("lysate", Vector3(5, 0, 5))
+	gs.pick_up_item("aster", lysate2)
+	_assert_true(gs.get_hand_items("aster").size() == 2, "Aster has 2 hand items")
+	_assert_true(not gs.has_free_hand("aster"), "No free hands")
+
+	var lysate3 := gs.spawn_item("lysate", Vector3(5, 0, 5))
+	var full_pick := gs.pick_up_item("aster", lysate3)
+	_assert_true(not full_pick, "Cannot pick up with full hands")
+
+	# --- Drop ---
+	var dropped := gs.drop_item("aster", lysate2)
+	_assert_true(dropped, "Drop succeeds")
+	_assert_true(gs.items[lysate2].location == "ground", "Dropped item on ground")
+	_assert_true(gs.has_free_hand("aster"), "Hand freed after drop")
+
+	# --- Transfer ---
+	var transferred := gs.transfer_item("aster", "peris", lysate_id)
+	_assert_true(transferred, "Transfer succeeds (within range)")
+	_assert_true(gs.items[lysate_id].holder == "peris", "Item holder changed to peris")
+	_assert_true(gs.get_hand_items("aster").size() == 0, "Aster hands empty after transfer")
+	_assert_true(gs.get_hand_items("peris").size() == 1, "Peris has 1 item after transfer")
+
+	# --- Transfer at distance fails ---
+	gs.register_character("far_char", Vector3(20, 0, 20), 3.0)
+	var far_item := gs.spawn_item("seed", Vector3(20, 0, 20))
+	gs.pick_up_item("far_char", far_item)
+	var far_transfer := gs.transfer_item("far_char", "aster", far_item)
+	_assert_true(not far_transfer, "Transfer at distance fails")
+
+	# --- Endocytose lysate: restores ATP ---
+	var pre_atp: float = gs.characters["peris"].stats.get("atp", 0.0)
+	gs.endocytose_item("peris", lysate_id)
+	_assert_true(gs.is_endocytosing("peris"), "Peris is endocytosing")
+
+	# Pop the scheduler event to complete endocytosis
+	for _di in range(100):
+		if sched.pop_next().is_empty(): break
+	var post_atp: float = gs.characters["peris"].stats.get("atp", 0.0)
+	_assert_true(post_atp > pre_atp, "ATP increased after digesting lysate (%.1f -> %.1f)" % [pre_atp, post_atp])
+	_assert_true(not gs.items.has(lysate_id), "Lysate consumed (removed from items)")
+	_assert_true(not gs.is_endocytosing("peris"), "Endocytosis complete")
+
+	# --- Endocytose cure component: stored + added to collection ---
+	var cure_id := gs.spawn_item("cure_component", Vector3(6, 0, 5), {"collection_name": "Chaperone Lattice", "adds_to_collection": true})
+	gs.pick_up_item("peris", cure_id)
+	gs.endocytose_item("peris", cure_id)
+	for _di in range(100):
+		if sched.pop_next().is_empty(): break
+	_assert_true(gs.items[cure_id].location == "internal", "Cure component stored internally")
+	_assert_true(cure_id in gs.collection, "Cure component added to collection")
+	_assert_true(gs.get_internal_items("peris").has(cure_id), "Peris has cure internally")
+
+	# --- Exocytose: internal → hand ---
+	var exo := gs.exocytose_item("peris", cure_id)
+	_assert_true(exo, "Exocytose succeeds")
+	_assert_true(gs.items[cure_id].location == "hand", "Exocytosed item back in hand")
+	_assert_true(gs.get_hand_items("peris").size() == 1, "Peris has item in hand after exocytose")
+
+	# --- Exocytose with full hands: drops to ground ---
+	gs.pick_up_item("peris", lysate2)
+	_assert_true(not gs.has_free_hand("peris"), "Peris hands full")
+	var seed_id := gs.spawn_item("seed", Vector3(6, 0, 5))
+	gs.pick_up_item("peris", seed_id)  # Fails — hands full
+	# Manually put a seed in internal for testing
+	gs.items[seed_id].holder = "peris"
+	gs.items[seed_id].location = "internal"
+	gs.characters["peris"].internal.append(seed_id)
+	var exo2 := gs.exocytose_item("peris", seed_id)
+	_assert_true(exo2, "Exocytose with full hands succeeds")
+	_assert_true(gs.items[seed_id].location == "ground", "Exocytosed to ground when hands full")
+
+	# --- Scent radius ---
+	var scent_item := gs.spawn_item("lysate", Vector3(5, 0, 5))
+	gs.pick_up_item("aster", scent_item)
+	var scent := gs.get_scent_radius("aster")
+	_assert_true(scent > 5.0, "Carrying lysate generates scent (radius: %.1f)" % scent)
+
+	gs.drop_item("aster", scent_item)
+	var no_scent := gs.get_scent_radius("aster")
+	_assert_true(no_scent < 0.01, "No scent after dropping lysate (radius: %.3f)" % no_scent)
+
+	# --- Endocytose hushcap: stun effect ---
+	var hush_id := gs.spawn_item("hushcap", Vector3(5, 0, 5))
+	gs.pick_up_item("aster", hush_id)
+
+	var stun_log: Array = []
+	gs.item_endocytosed.connect(func(cid, iid, eff): stun_log.append(eff))
+
+	gs.endocytose_item("aster", hush_id)
+	for _di in range(100):
+		if sched.pop_next().is_empty(): break
+	_assert_true(stun_log.has("stun_self"), "Hushcap endocytosis emits stun_self effect")
+
+	# --- Endocytose fire fruit: self damage ---
+	var fire_id := gs.spawn_item("fire_fruit", Vector3(5, 0, 5))
+	gs.pick_up_item("aster", fire_id)
+	gs.characters["aster"].stats["hp"] = 100.0
+	gs.endocytose_item("aster", fire_id)
+	for _di in range(100):
+		if sched.pop_next().is_empty(): break
+	var hp_after: float = gs.characters["aster"].stats.get("hp", 100.0)
+	_assert_true(hp_after < 100.0, "Fire fruit dealt self damage (hp: %.1f)" % hp_after)
+
+	# --- Cancel endocytosis ---
+	var cancel_item := gs.spawn_item("seed", Vector3(5, 0, 5))
+	gs.pick_up_item("aster", cancel_item)
+	gs.endocytose_item("aster", cancel_item)
+	_assert_true(gs.is_endocytosing("aster"), "Endocytosis started")
+	gs.cancel_endocytosis("aster")
+	_assert_true(not gs.is_endocytosing("aster"), "Endocytosis cancelled")
+	_assert_true(gs.items[cancel_item].location == "hand", "Item stays in hand after cancel")
+
+	# --- Remove item ---
+	gs.remove_item(cancel_item)
+	_assert_true(not gs.items.has(cancel_item), "Item removed from items dict")
+	_assert_true(gs.get_hand_items("aster").size() == 0, "Hand slot cleared on remove")
+
+	# --- Determinism ---
+	var det_results: Array[float] = []
+	for trial in range(2):
+		var gs2 := GameState.new()
+		var s2 := EventScheduler.new()
+		gs2.scheduler = s2
+		gs2.register_character("det_char", Vector3(5, 0, 5), 3.0, {"atp": 50.0})
+		var det_item := gs2.spawn_item("lysate", Vector3(5, 0, 5))
+		gs2.pick_up_item("det_char", det_item)
+		gs2.endocytose_item("det_char", det_item)
+		for _di in range(100):
+			if s2.pop_next().is_empty(): break
+		det_results.append(gs2.characters["det_char"].stats.get("atp", 0.0))
+	_assert_true(absf(det_results[0] - det_results[1]) < 0.001, "Deterministic: ATP matches (%.2f vs %.2f)" % [det_results[0], det_results[1]])
 
 func _print_results() -> void:
 	print("")

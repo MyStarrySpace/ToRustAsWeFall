@@ -13,6 +13,11 @@ signal character_arrived(id: String)
 signal detection_predicted(detector_id: String, target_id: String)
 signal physics_collision(obj_id: String, collider_id: String, impulse: Vector3)
 signal pendulum_hit(pendulum_id: String, target_id: String, bob_velocity: Vector3)
+signal item_picked_up(char_id: String, item_id: String)
+signal item_dropped(char_id: String, item_id: String)
+signal item_endocytosed(char_id: String, item_id: String, effect: String)
+signal item_transferred(from_id: String, to_id: String, item_id: String)
+signal item_exocytosed(char_id: String, item_id: String)
 
 var grid: GridWorld
 var scheduler: EventScheduler
@@ -20,6 +25,10 @@ var explored: Dictionary = {}
 var characters: Dictionary = {}
 var physics_objects: Dictionary = {}
 var pendulums: Dictionary = {}
+var items: Dictionary = {}        # item_id → item dict
+var collection: Array[String] = [] # Permanently collected item IDs (cure components, etc.)
+var _next_item_id := 1
+var _endocytosing: Dictionary = {} # char_id → {item_id, handle} for in-progress endocytosis
 
 ## Pendulum schema:
 ## {
@@ -71,6 +80,8 @@ func register_character(id: String, pos: Vector3, speed: float = 3.0, stats: Dic
 		"move_speed": speed,
 		"stats": stats,
 		"movement": null,
+		"hands": [null, null],
+		"internal": [],
 	}
 	explored[id] = {}
 
@@ -386,6 +397,223 @@ func _get_movement_segments(id: String) -> Array[Dictionary]:
 			"velocity": vel,
 		})
 	return segments
+
+# --- Items / Hands / Endocytosis ---
+
+const TRANSFER_RANGE := 1.5
+const ENDOCYTOSE_DEFAULT_DURATION := 2.0
+
+func spawn_item(type: String, pos: Vector3, properties: Dictionary = {}) -> String:
+	var id := "item_%d" % _next_item_id
+	_next_item_id += 1
+	var type_data := ItemData.get_type_data(type)
+	type_data.merge(properties, true)
+	items[id] = {
+		"type": type,
+		"holder": "",
+		"location": "ground",
+		"position": pos,
+		"properties": type_data,
+	}
+	return id
+
+func remove_item(item_id: String) -> void:
+	if not items.has(item_id):
+		return
+	var item: Dictionary = items[item_id]
+	if item.holder != "" and characters.has(item.holder):
+		var ch: Dictionary = characters[item.holder]
+		if item.location == "hand":
+			for i in range(ch.hands.size()):
+				if ch.hands[i] == item_id:
+					ch.hands[i] = null
+		elif item.location == "internal":
+			ch.internal.erase(item_id)
+	items.erase(item_id)
+
+func pick_up_item(char_id: String, item_id: String) -> bool:
+	if not characters.has(char_id) or not items.has(item_id):
+		return false
+	var item: Dictionary = items[item_id]
+	if item.location != "ground":
+		return false
+	var ch: Dictionary = characters[char_id]
+	var slot := _find_free_hand(char_id)
+	if slot < 0:
+		return false
+	var char_pos := get_position(char_id)
+	var dist := Vector3(char_pos.x - item.position.x, 0, char_pos.z - item.position.z).length()
+	if dist > 2.0:
+		return false
+	ch.hands[slot] = item_id
+	item.holder = char_id
+	item.location = "hand"
+	item_picked_up.emit(char_id, item_id)
+	return true
+
+func drop_item(char_id: String, item_id: String) -> bool:
+	if not characters.has(char_id) or not items.has(item_id):
+		return false
+	var item: Dictionary = items[item_id]
+	if item.holder != char_id or item.location != "hand":
+		return false
+	var ch: Dictionary = characters[char_id]
+	for i in range(ch.hands.size()):
+		if ch.hands[i] == item_id:
+			ch.hands[i] = null
+	item.holder = ""
+	item.location = "ground"
+	item.position = get_position(char_id)
+	item_dropped.emit(char_id, item_id)
+	return true
+
+func transfer_item(from_id: String, to_id: String, item_id: String) -> bool:
+	if not characters.has(from_id) or not characters.has(to_id) or not items.has(item_id):
+		return false
+	var item: Dictionary = items[item_id]
+	if item.holder != from_id or item.location != "hand":
+		return false
+	var to_slot := _find_free_hand(to_id)
+	if to_slot < 0:
+		return false
+	var dist := get_position(from_id).distance_to(get_position(to_id))
+	if dist > TRANSFER_RANGE:
+		return false
+	var from_ch: Dictionary = characters[from_id]
+	for i in range(from_ch.hands.size()):
+		if from_ch.hands[i] == item_id:
+			from_ch.hands[i] = null
+	var to_ch: Dictionary = characters[to_id]
+	to_ch.hands[to_slot] = item_id
+	item.holder = to_id
+	item_transferred.emit(from_id, to_id, item_id)
+	return true
+
+func endocytose_item(char_id: String, item_id: String) -> bool:
+	if not characters.has(char_id) or not items.has(item_id) or not scheduler:
+		return false
+	var item: Dictionary = items[item_id]
+	if item.holder != char_id or item.location != "hand":
+		return false
+	if _endocytosing.has(char_id):
+		return false
+	command_stop(char_id)
+	var duration: float = item.properties.get("endocytosis_duration", ENDOCYTOSE_DEFAULT_DURATION)
+	var cid := char_id
+	var iid := item_id
+	var handle := scheduler.schedule_after(duration, func(): _complete_endocytosis(cid, iid), "endocytose_" + char_id)
+	_endocytosing[char_id] = {"item_id": item_id, "handle": handle}
+	return true
+
+func cancel_endocytosis(char_id: String) -> void:
+	if not _endocytosing.has(char_id):
+		return
+	var info: Dictionary = _endocytosing[char_id]
+	if scheduler:
+		scheduler.cancel(info.handle)
+	_endocytosing.erase(char_id)
+
+func is_endocytosing(char_id: String) -> bool:
+	return _endocytosing.has(char_id)
+
+func _complete_endocytosis(char_id: String, item_id: String) -> void:
+	_endocytosing.erase(char_id)
+	if not characters.has(char_id) or not items.has(item_id):
+		return
+	var item: Dictionary = items[item_id]
+	var ch: Dictionary = characters[char_id]
+	var effect := ItemData.get_endocytosis_effect(item.type)
+
+	# Remove from hand
+	for i in range(ch.hands.size()):
+		if ch.hands[i] == item_id:
+			ch.hands[i] = null
+
+	match effect:
+		"digest":
+			var restore: float = item.properties.get("atp_restore", 0.0)
+			ch.stats["atp"] = ch.stats.get("atp", 0.0) + restore
+			items.erase(item_id)
+		"store":
+			item.location = "internal"
+			ch.internal.append(item_id)
+			if item.properties.get("adds_to_collection", false) and item_id not in collection:
+				collection.append(item_id)
+		"stun_self":
+			item.location = "internal"
+			ch.internal.append(item_id)
+		"scent_broadcast":
+			item.location = "internal"
+			ch.internal.append(item_id)
+		"self_damage":
+			var dmg: float = item.properties.get("damage", 0.0)
+			var hp: float = ch.stats.get("hp", 100.0)
+			ch.stats["hp"] = maxf(0.0, hp - dmg)
+			items.erase(item_id)
+		_:
+			item.location = "internal"
+			ch.internal.append(item_id)
+
+	item_endocytosed.emit(char_id, item_id, effect)
+
+func exocytose_item(char_id: String, item_id: String) -> bool:
+	if not characters.has(char_id) or not items.has(item_id):
+		return false
+	var item: Dictionary = items[item_id]
+	if item.holder != char_id or item.location != "internal":
+		return false
+	var ch: Dictionary = characters[char_id]
+	ch.internal.erase(item_id)
+	var slot := _find_free_hand(char_id)
+	if slot >= 0:
+		ch.hands[slot] = item_id
+		item.location = "hand"
+	else:
+		item.holder = ""
+		item.location = "ground"
+		item.position = get_position(char_id)
+	item_exocytosed.emit(char_id, item_id)
+	return true
+
+func get_hand_items(char_id: String) -> Array:
+	if not characters.has(char_id):
+		return []
+	var result := []
+	for slot in characters[char_id].hands:
+		if slot != null:
+			result.append(slot)
+	return result
+
+func get_internal_items(char_id: String) -> Array:
+	if not characters.has(char_id):
+		return []
+	return characters[char_id].internal.duplicate()
+
+func has_free_hand(char_id: String) -> bool:
+	return _find_free_hand(char_id) >= 0
+
+func _find_free_hand(char_id: String) -> int:
+	if not characters.has(char_id):
+		return -1
+	var hands: Array = characters[char_id].hands
+	for i in range(hands.size()):
+		if hands[i] == null:
+			return i
+	return -1
+
+func get_scent_radius(char_id: String) -> float:
+	if not characters.has(char_id):
+		return 0.0
+	var radius := 0.0
+	for item_id in get_hand_items(char_id):
+		if items.has(item_id) and ItemData.has_scent(items[item_id].type):
+			var sr: float = items[item_id].properties.get("scent_radius", 0.0)
+			radius = maxf(radius, sr)
+	for item_id in get_internal_items(char_id):
+		if items.has(item_id) and ItemData.has_scent(items[item_id].type):
+			var sr: float = items[item_id].properties.get("scent_radius", 0.0)
+			radius = maxf(radius, sr)
+	return radius
 
 # --- Physics Objects ---
 
