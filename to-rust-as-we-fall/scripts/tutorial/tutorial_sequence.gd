@@ -55,7 +55,9 @@ func _process(delta: float) -> void:
 	var spd := _compute_speed()
 	_scheduler.set_speed(spd)
 	if _dialogue:
-		_dialogue.speed_multiplier = spd
+		# Dialogue always advances at real speed (or fast-forward). Never frozen.
+		# The scheduler controls WHEN chains start, not how fast text types.
+		_dialogue.speed_multiplier = maxf(spd, 1.0)
 	for node in _get_speed_recipients():
 		node.speed_multiplier = spd
 	_scheduler.advance(delta)
@@ -230,15 +232,20 @@ func _dialogue_chain(keys: Array, next_func: Callable, delay_between := 0.0) -> 
 
 func _dlg_chain_play_next() -> void:
 	if _dlg_chain_index >= _dlg_chain_keys.size():
-		_dlg_chain_next.call()
+		# Chain complete: schedule the next event through the scheduler
+		# so it waits for its scheduled tick AND for this chain to be done
+		_scheduler.schedule_after(0, _dlg_chain_next, "dlg_chain")
 		return
 	var key: String = _dlg_chain_keys[_dlg_chain_index]
 	_dlg_chain_index += 1
 	DialogueData.say_to(_dialogue, key)
-	# Route the advance through the scheduler so pop_next() can drive the chain
+	# Lines within a chain advance via dialogue_finished directly.
+	# No scheduler — dialogue types and holds at real speed, independent of pause.
 	_dialogue.dialogue_finished.connect(func():
-		var delay := _dlg_chain_delay if _dlg_chain_index < _dlg_chain_keys.size() else 0.0
-		_scheduler.schedule_after(delay, _dlg_chain_play_next, "dlg_chain")
+		if _dlg_chain_delay > 0.0 and _dlg_chain_index < _dlg_chain_keys.size():
+			_scheduler.schedule_after(_dlg_chain_delay, _dlg_chain_play_next, "dlg_chain")
+		else:
+			_dlg_chain_play_next()
 	, CONNECT_ONE_SHOT)
 
 # --- Environment helpers ---
