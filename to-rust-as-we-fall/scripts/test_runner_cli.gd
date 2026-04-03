@@ -92,6 +92,9 @@ func _ready() -> void:
 			"--test-camera-shake":
 				ran_test = true
 				_test_camera_shake()
+			"--test-physics":
+				ran_test = true
+				_test_physics_objects()
 			"--test-scene-load":
 				ran_test = true
 				await _test_scene_load()
@@ -136,6 +139,7 @@ func _run_all_tests() -> void:
 	await _test_act1()
 	await _test_ferrolure()
 	_test_camera_shake()
+	_test_physics_objects()
 	_test_predictive_detection()
 	_test_detection_equivalence()
 
@@ -2183,6 +2187,128 @@ func _test_camera_shake() -> void:
 
 	cam.queue_free()
 	target.queue_free()
+
+func _test_physics_objects() -> void:
+	_test_name = "Physics Objects"
+
+	# Setup: grid + scheduler + game state
+	var grid := GridWorld.new()
+	grid.create_room(20, 20)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+
+	# Test 1: Register and query position
+	gs.register_physics_object("barrel1", Vector3(5, 0, 5), 0.5, 2.0, 0.6)
+	_assert_true(gs.physics_objects.has("barrel1"), "Physics object registered")
+	var pos := gs.get_physics_position("barrel1")
+	_assert_true(absf(pos.x - 5.0) < 0.01, "Initial position correct (got: %.2f)" % pos.x)
+
+	# Test 2: Character pushes object
+	gs.register_character("pusher", Vector3(3, 0, 5), 3.0)
+	gs.command_move_to_pos("pusher", Vector3(10, 0, 5))
+
+	# Check prediction was scheduled
+	_assert_true(sched.pending_count() >= 2, "At least 2 events pending (movement + collision, got: %d)" % sched.pending_count())
+
+	# Track collisions via signal (use array since lambdas can't modify outer locals)
+	var collision_log: Array = []
+	gs.physics_collision.connect(func(oid, cid, imp): collision_log.append(oid))
+
+	# Pop through scheduler events
+	for i in range(500):
+		var info := sched.pop_next()
+		if info.is_empty():
+			break
+	_assert_true(collision_log.size() > 0, "Physics collision signal fired (count: %d)" % collision_log.size())
+
+	# Pop remaining events to let barrel settle
+	for i in range(200):
+		var info := sched.pop_next()
+		if info.is_empty():
+			break
+
+	var final_pos := gs.get_physics_position("barrel1")
+	_assert_true(final_pos.x > 5.1, "Barrel pushed in +X direction (got: %.2f)" % final_pos.x)
+
+	# Test 3: Mass ratio — heavy object barely moves
+	gs.register_physics_object("heavy", Vector3(5, 0, 8), 0.5, 20.0, 0.6)
+	gs.register_character("pusher2", Vector3(3, 0, 8), 3.0)
+	gs.command_move_to_pos("pusher2", Vector3(10, 0, 8))
+	for i in range(500):
+		var info := sched.pop_next()
+		if info.is_empty():
+			break
+	var heavy_pos := gs.get_physics_position("heavy")
+	_assert_true(heavy_pos.x < final_pos.x, "Heavy object moved less than light (heavy: %.2f, light: %.2f)" % [heavy_pos.x, final_pos.x])
+
+	# Test 4: Chain reaction — push A into B
+	gs.register_physics_object("chain_a", Vector3(5, 0, 12), 0.5, 1.0, 0.5)
+	gs.register_physics_object("chain_b", Vector3(6.5, 0, 12), 0.5, 1.0, 0.5)
+	gs.register_character("chain_pusher", Vector3(3, 0, 12), 4.0)
+	gs.command_move_to_pos("chain_pusher", Vector3(10, 0, 12))
+
+	var chain_b_moved := false
+	for i in range(1000):
+		var info := sched.pop_next()
+		if info.is_empty():
+			break
+		if gs.is_physics_moving("chain_b"):
+			chain_b_moved = true
+
+	# Let everything settle
+	for i in range(500):
+		var info := sched.pop_next()
+		if info.is_empty():
+			break
+
+	var chain_a_final := gs.get_physics_position("chain_a")
+	var chain_b_final := gs.get_physics_position("chain_b")
+	var chain_a_moved := absf(chain_a_final.x - 5.0) > 0.1
+	_assert_true(chain_a_moved, "Chain A displaced (got: %.2f, started: 5.0)" % chain_a_final.x)
+	_assert_true(chain_b_final.x > 7.0, "Chain B pushed by chain reaction (got: %.2f)" % chain_b_final.x)
+
+	# Test 5: Wall stop — object stops at wall
+	gs.register_physics_object("wall_obj", Vector3(17, 0, 5), 0.5, 1.0, 0.3)
+	gs.register_character("wall_pusher", Vector3(15, 0, 5), 5.0)
+	gs.command_move_to_pos("wall_pusher", Vector3(19, 0, 5))
+	for i in range(500):
+		var info := sched.pop_next()
+		if info.is_empty():
+			break
+	var wall_obj_pos := gs.get_physics_position("wall_obj")
+	_assert_true(wall_obj_pos.x < 19.0, "Object stopped before wall (got: %.2f)" % wall_obj_pos.x)
+
+	# Test 6: Grid blocking — object at rest blocks walkability
+	var barrel_cell := grid.world_to_grid(gs.get_physics_position("barrel1"))
+	_assert_true(not grid.is_walkable(barrel_cell.x, barrel_cell.y), "Barrel blocks grid cell at rest")
+
+	# Test 7: Area impulse
+	gs.register_physics_object("blast_a", Vector3(10, 0, 15), 0.5, 1.0, 0.5)
+	gs.register_physics_object("blast_b", Vector3(11, 0, 15), 0.5, 1.0, 0.5)
+	gs.register_physics_object("blast_c", Vector3(10, 0, 16), 0.5, 1.0, 0.5)
+	var pre_a := gs.get_physics_position("blast_a")
+	var pre_b := gs.get_physics_position("blast_b")
+	gs.apply_area_impulse(Vector3(10.5, 0, 15.5), 3.0, 5.0)
+
+	for i in range(500):
+		var info := sched.pop_next()
+		if info.is_empty():
+			break
+
+	var post_a := gs.get_physics_position("blast_a")
+	var post_b := gs.get_physics_position("blast_b")
+	var post_c := gs.get_physics_position("blast_c")
+	var a_moved := pre_a.distance_to(post_a) > 0.1
+	var b_moved := pre_b.distance_to(post_b) > 0.1
+	_assert_true(a_moved, "Blast object A moved (dist: %.2f)" % pre_a.distance_to(post_a))
+	_assert_true(b_moved, "Blast object B moved (dist: %.2f)" % pre_b.distance_to(post_b))
+
+	# Test 8: Unregister
+	gs.unregister_physics_object("barrel1")
+	_assert_true(not gs.physics_objects.has("barrel1"), "Barrel unregistered")
+	_assert_true(grid.is_walkable(barrel_cell.x, barrel_cell.y), "Grid cell freed after unregister")
 
 func _print_results() -> void:
 	print("")

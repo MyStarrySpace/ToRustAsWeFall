@@ -22,6 +22,7 @@ var height := 0
 var grid: Array = []  # Array of Array[int] — grid[z][x]
 var cell_size := 1.0
 var origin := Vector3.ZERO
+var dynamic_blockers: Dictionary = {}  # Vector2i → obj_id
 
 # --- Loading ---
 
@@ -101,9 +102,15 @@ func is_walkable(x: int, z: int, explored: Dictionary = {}, locked_doors: Dictio
 		var key := Vector2i(x, z)
 		if locked_doors.has(key) and locked_doors[key]:
 			return false
-	# If we have explored data and this cell is known to be a wall, block it
-	# Unknown tiles are passable (fog of war — optimistic pathfinding)
+	if dynamic_blockers.has(Vector2i(x, z)):
+		return false
 	return true
+
+func add_dynamic_blocker(cell: Vector2i, obj_id: String) -> void:
+	dynamic_blockers[cell] = obj_id
+
+func remove_dynamic_blocker(cell: Vector2i) -> void:
+	dynamic_blockers.erase(cell)
 
 func world_to_grid(world_pos: Vector3) -> Vector2i:
 	var local := world_pos - origin
