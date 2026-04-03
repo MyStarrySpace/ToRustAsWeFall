@@ -12,12 +12,26 @@ extends RefCounted
 signal character_arrived(id: String)
 signal detection_predicted(detector_id: String, target_id: String)
 signal physics_collision(obj_id: String, collider_id: String, impulse: Vector3)
+signal pendulum_hit(pendulum_id: String, target_id: String, bob_velocity: Vector3)
 
 var grid: GridWorld
 var scheduler: EventScheduler
 var explored: Dictionary = {}
 var characters: Dictionary = {}
 var physics_objects: Dictionary = {}
+var pendulums: Dictionary = {}
+
+## Pendulum schema:
+## {
+##   anchor: Vector3,         # Pivot point (top of swing)
+##   length: float,           # Rope/chain length
+##   amplitude: float,        # Max swing angle in radians
+##   phase: float,            # Phase offset in radians
+##   swing_axis: Vector3,     # Normalized axis perpendicular to swing plane (e.g. Z for XY swing)
+##   bob_radius: float,       # Collision radius of the bob
+##   damping: float,          # Amplitude decay per second (0 = no decay)
+##   start_tick: float,       # When oscillation began
+## }
 
 ## PhysicsObject schema:
 ## {
@@ -225,6 +239,7 @@ func _start_movement(id: String, full_path: Array[Vector3]) -> void:
 	}
 	_recompute_all_detection_predictions()
 	_recompute_physics_predictions()
+	_recompute_pendulum_predictions()
 
 func _cancel_movement(id: String) -> void:
 	if not characters.has(id):
@@ -236,6 +251,7 @@ func _cancel_movement(id: String) -> void:
 		ch.movement = null
 	_recompute_all_detection_predictions()
 	_recompute_physics_predictions()
+	_recompute_pendulum_predictions()
 
 func _on_arrival(id: String) -> void:
 	if not characters.has(id):
@@ -393,6 +409,7 @@ func register_physics_object(id: String, pos: Vector3, radius: float = 0.5, mass
 	if grid and pushable:
 		grid.add_dynamic_blocker(cell, id)
 	_recompute_physics_predictions()
+	_recompute_pendulum_predictions()
 
 func unregister_physics_object(id: String) -> void:
 	if physics_objects.has(id):
@@ -688,6 +705,168 @@ func apply_area_impulse(center: Vector3, radius: float, force: float) -> void:
 			if slide_distance >= 0.05:
 				_apply_physics_movement(obj_id, pos, slide_target, impulse_speed)
 				physics_collision.emit(obj_id, "", dir * impulse_speed)
+
+# --- Pendulums ---
+
+const PENDULUM_GRAVITY := 9.8
+const PENDULUM_SEGMENTS_PER_PERIOD := 12
+
+func register_pendulum(id: String, anchor: Vector3, length: float, amplitude: float, swing_axis: Vector3 = Vector3.FORWARD, bob_radius: float = 0.4, phase: float = 0.0, damping: float = 0.0) -> void:
+	var start_tick := scheduler.get_current_tick() if scheduler else 0.0
+	pendulums[id] = {
+		"anchor": anchor,
+		"length": length,
+		"amplitude": amplitude,
+		"phase": phase,
+		"swing_axis": swing_axis.normalized(),
+		"bob_radius": bob_radius,
+		"damping": damping,
+		"start_tick": start_tick,
+	}
+	_recompute_pendulum_predictions()
+
+func unregister_pendulum(id: String) -> void:
+	pendulums.erase(id)
+	if scheduler:
+		scheduler.cancel_tag("pendulum_predict")
+
+func get_pendulum_omega(id: String) -> float:
+	if not pendulums.has(id):
+		return 0.0
+	var p: Dictionary = pendulums[id]
+	return sqrt(PENDULUM_GRAVITY / p.length)
+
+func get_pendulum_period(id: String) -> float:
+	var omega := get_pendulum_omega(id)
+	return TAU / omega if omega > 0.001 else 1.0
+
+func get_pendulum_angle(id: String, tick: float = -1.0) -> float:
+	if not pendulums.has(id):
+		return 0.0
+	var p: Dictionary = pendulums[id]
+	if tick < 0.0:
+		tick = scheduler.get_current_tick() if scheduler else 0.0
+	var dt: float = tick - p.start_tick
+	var omega := sqrt(PENDULUM_GRAVITY / p.length)
+	var amp: float = p.amplitude
+	if p.damping > 0.0 and dt > 0.0:
+		amp *= exp(-p.damping * dt)
+	return amp * cos(omega * dt + p.phase)
+
+func get_pendulum_position(id: String, tick: float = -1.0) -> Vector3:
+	if not pendulums.has(id):
+		return Vector3.ZERO
+	var p: Dictionary = pendulums[id]
+	var theta := get_pendulum_angle(id, tick)
+	var swing_dir := Vector3(-p.swing_axis.z, 0, p.swing_axis.x)
+	var bob_offset: Vector3 = swing_dir * sin(theta) * p.length + Vector3(0, -cos(theta) * p.length, 0)
+	return p.anchor + bob_offset
+
+func get_pendulum_bob_velocity(id: String, tick: float = -1.0) -> Vector3:
+	if not pendulums.has(id):
+		return Vector3.ZERO
+	var p: Dictionary = pendulums[id]
+	if tick < 0.0:
+		tick = scheduler.get_current_tick() if scheduler else 0.0
+	var dt: float = tick - p.start_tick
+	var omega := sqrt(PENDULUM_GRAVITY / p.length)
+	var amp: float = p.amplitude
+	if p.damping > 0.0 and dt > 0.0:
+		amp *= exp(-p.damping * dt)
+	var theta := amp * cos(omega * dt + p.phase)
+	var dtheta := -amp * omega * sin(omega * dt + p.phase)
+	var swing_dir := Vector3(-p.swing_axis.z, 0, p.swing_axis.x)
+	var vx: Vector3 = swing_dir * cos(theta) * p.length * dtheta
+	var vy := Vector3(0, sin(theta) * p.length * dtheta, 0)
+	return vx + vy
+
+# Decompose pendulum motion into linear segments for collision prediction
+func _get_pendulum_segments(id: String, duration: float = -1.0) -> Array[Dictionary]:
+	if not pendulums.has(id) or not scheduler:
+		return []
+	var p: Dictionary = pendulums[id]
+	var omega := sqrt(PENDULUM_GRAVITY / p.length)
+	var period := TAU / omega if omega > 0.001 else 1.0
+
+	if duration < 0.0:
+		# Look ahead 2 periods (or until fully damped)
+		duration = period * 2.0
+		if p.damping > 0.0:
+			# Time until amplitude drops below 0.01 radians
+			var decay_time := -log(0.01 / maxf(p.amplitude, 0.01)) / maxf(p.damping, 0.001)
+			duration = minf(duration, decay_time)
+
+	var now := scheduler.get_current_tick()
+	var step := period / PENDULUM_SEGMENTS_PER_PERIOD
+	var steps := int(duration / step) + 1
+	var segments: Array[Dictionary] = []
+
+	for i in range(steps):
+		var t0 := now + i * step
+		var t1 := now + (i + 1) * step
+		var pos0 := get_pendulum_position(id, t0)
+		var pos1 := get_pendulum_position(id, t1)
+		var dt := t1 - t0
+		var vel := Vector3((pos1.x - pos0.x) / dt, 0, (pos1.z - pos0.z) / dt) if dt > 0.001 else Vector3.ZERO
+		segments.append({
+			"start_tick": t0,
+			"end_tick": t1,
+			"start_pos": Vector3(pos0.x, 0, pos0.z),
+			"velocity": vel,
+		})
+
+	return segments
+
+func _recompute_pendulum_predictions() -> void:
+	if not scheduler:
+		return
+	scheduler.cancel_tag("pendulum_predict")
+	if pendulums.is_empty():
+		return
+	var now := scheduler.get_current_tick()
+
+	for pend_id in pendulums:
+		var p: Dictionary = pendulums[pend_id]
+		var pend_segs := _get_pendulum_segments(pend_id)
+
+		# Pendulum vs Characters
+		for char_id in characters:
+			var collision_range: float = PHYSICS_COLLISION_RADIUS + p.bob_radius
+			var char_segs := _get_movement_segments(char_id)
+			var t := _predict_collision_time(pend_segs, char_segs, collision_range, now)
+			if t >= 0.0 and t > now + 0.01:
+				var pid: String = pend_id
+				var cid: String = char_id
+				scheduler.schedule_at(t, func(): _on_pendulum_hit_character(pid, cid), "pendulum_predict")
+
+		# Pendulum vs Physics Objects
+		for obj_id in physics_objects:
+			var obj: Dictionary = physics_objects[obj_id]
+			var collision_range: float = obj.radius + p.bob_radius
+			var obj_segs := _get_physics_segments(obj_id)
+			var t := _predict_collision_time(pend_segs, obj_segs, collision_range, now)
+			if t >= 0.0 and t > now + 0.01:
+				var pid: String = pend_id
+				var oid: String = obj_id
+				scheduler.schedule_at(t, func(): _on_pendulum_hit_physics(pid, oid), "pendulum_predict")
+
+func _on_pendulum_hit_character(pendulum_id: String, char_id: String) -> void:
+	if not pendulums.has(pendulum_id) or not characters.has(char_id):
+		return
+	var bob_vel := get_pendulum_bob_velocity(pendulum_id)
+	pendulum_hit.emit(pendulum_id, char_id, bob_vel)
+
+func _on_pendulum_hit_physics(pendulum_id: String, obj_id: String) -> void:
+	if not pendulums.has(pendulum_id) or not physics_objects.has(obj_id):
+		return
+	var obj: Dictionary = physics_objects[obj_id]
+	if not obj.pushable:
+		return
+	var bob_vel := get_pendulum_bob_velocity(pendulum_id)
+	var obj_pos := get_physics_position(obj_id)
+	var bob_pos := get_pendulum_position(pendulum_id)
+	_resolve_physics_impulse(obj_id, obj_pos, Vector3.ZERO, bob_pos, bob_vel, obj)
+	pendulum_hit.emit(pendulum_id, obj_id, bob_vel)
 
 static func _solve_quadratic_detection(pos_a: Vector3, vel_a: Vector3, pos_b: Vector3, vel_b: Vector3, R: float, max_tau: float) -> float:
 	var dp_x := pos_a.x - pos_b.x

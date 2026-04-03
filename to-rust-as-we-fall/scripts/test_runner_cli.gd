@@ -96,6 +96,9 @@ func _ready() -> void:
 				ran_test = true
 				_test_physics_objects()
 				_test_physics_edge_cases()
+			"--test-pendulum":
+				ran_test = true
+				_test_pendulum()
 			"--test-scene-load":
 				ran_test = true
 				await _test_scene_load()
@@ -142,6 +145,7 @@ func _run_all_tests() -> void:
 	_test_camera_shake()
 	_test_physics_objects()
 	_test_physics_edge_cases()
+	_test_pendulum()
 	_test_predictive_detection()
 	_test_detection_equivalence()
 
@@ -2618,6 +2622,157 @@ func _test_physics_edge_cases() -> void:
 		if cpos.distance_to(center) > 2.0:
 			scatter_count += 1
 	_assert_true(scatter_count >= 8, "Cluster scatter: %d/10 objects moved outward" % scatter_count)
+
+func _test_pendulum() -> void:
+	_test_name = "Pendulum"
+	var gs: GameState
+	var sched: EventScheduler
+	var grid2: GridWorld
+
+	# --- Basic oscillation ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	gs.scheduler = sched
+
+	gs.register_pendulum("p1", Vector3(5, 8, 5), 4.0, 0.5, Vector3.FORWARD, 0.4, 0.0, 0.0)
+	_assert_true(gs.pendulums.has("p1"), "Pendulum registered")
+
+	var period := gs.get_pendulum_period("p1")
+	_assert_true(period > 0.5 and period < 5.0, "Period reasonable (got: %.2f)" % period)
+
+	# At t=0 with phase=0: angle = amplitude * cos(0) = amplitude
+	var angle_0 := gs.get_pendulum_angle("p1", 0.0)
+	_assert_true(absf(angle_0 - 0.5) < 0.01, "Angle at t=0 = amplitude (got: %.3f)" % angle_0)
+
+	# At t=period/2: angle should be -amplitude (half period, cos(pi) = -1)
+	var angle_half := gs.get_pendulum_angle("p1", period / 2.0)
+	_assert_true(absf(angle_half + 0.5) < 0.01, "Angle at T/2 = -amplitude (got: %.3f)" % angle_half)
+
+	# At t=period: angle should return to amplitude (full cycle, cos(2pi) = 1)
+	var angle_full := gs.get_pendulum_angle("p1", period)
+	_assert_true(absf(angle_full - 0.5) < 0.01, "Angle at T = amplitude (got: %.3f)" % angle_full)
+
+	# --- Position traces an arc ---
+	var pos_0 := gs.get_pendulum_position("p1", 0.0)
+	var pos_half := gs.get_pendulum_position("p1", period / 2.0)
+	var pos_quarter := gs.get_pendulum_position("p1", period / 4.0)
+
+	# At quarter period, angle = 0, bob hangs straight down
+	_assert_true(pos_quarter.y < pos_0.y, "Bob lowest at T/4 (%.2f < %.2f)" % [pos_quarter.y, pos_0.y])
+	# At 0 and half, bob is at opposite extremes in X (or Z depending on axis)
+	var lateral_diff := pos_0.distance_to(pos_half)
+	_assert_true(lateral_diff > 1.0, "Bob swings between extremes (dist: %.2f)" % lateral_diff)
+
+	# --- Bob velocity peaks at bottom, zero at extremes ---
+	var vel_0 := gs.get_pendulum_bob_velocity("p1", 0.0)
+	var vel_quarter := gs.get_pendulum_bob_velocity("p1", period / 4.0)
+	_assert_true(vel_0.length() < 0.5, "Velocity near zero at extreme (got: %.3f)" % vel_0.length())
+	_assert_true(vel_quarter.length() > 1.0, "Velocity peaks at bottom (got: %.3f)" % vel_quarter.length())
+
+	# --- Damping reduces amplitude over time ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	gs.scheduler = sched
+	gs.register_pendulum("damped", Vector3(5, 8, 5), 4.0, 0.5, Vector3.FORWARD, 0.4, 0.0, 0.5)
+	var amp_early := absf(gs.get_pendulum_angle("damped", 0.0))
+	var amp_late := absf(gs.get_pendulum_angle("damped", 5.0))
+	_assert_true(amp_late < amp_early, "Damping reduces amplitude (early: %.3f, late: %.3f)" % [amp_early, amp_late])
+
+	# --- Pendulum hits character walking through ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(20, 20)
+	gs.grid = grid2
+	gs.scheduler = sched
+
+	# Pendulum swings along X at y=8, bob reaches down to y=4 (length=4)
+	# Bob swings laterally around x=5
+	gs.register_pendulum("swinger", Vector3(5, 8, 5), 4.0, 0.6, Vector3.FORWARD, 0.5)
+
+	# Character walks through the swing zone
+	var hit_log: Array = []
+	gs.pendulum_hit.connect(func(pid, tid, vel): hit_log.append({"pid": pid, "tid": tid, "speed": vel.length()}))
+
+	gs.register_character("walker", Vector3(2, 0, 5), 2.0)
+	gs.command_move_to_pos("walker", Vector3(8, 0, 5))
+
+	for _di in range(2000):
+		if sched.pop_next().is_empty(): break
+
+	_assert_true(hit_log.size() > 0, "Pendulum hit character (hits: %d)" % hit_log.size())
+	if hit_log.size() > 0:
+		_assert_true(hit_log[0].speed > 0.5, "Hit has velocity (speed: %.2f)" % hit_log[0].speed)
+
+	# --- Pendulum hits physics object ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(20, 20)
+	gs.grid = grid2
+	gs.scheduler = sched
+
+	# Phase PI/2 so bob starts at center (angle=0) and swings toward the object
+	gs.register_pendulum("pusher_pend", Vector3(5, 8, 5), 4.0, 0.6, Vector3.FORWARD, 0.5, PI / 2.0)
+	gs.register_physics_object("pend_target", Vector3(7.0, 0, 5), 0.5, 1.0, 0.5)
+
+	var pobj_hits: Array = []
+	gs.pendulum_hit.connect(func(pid, tid, vel): pobj_hits.append({"tid": tid, "speed": vel.length()}))
+
+	for _di in range(2000):
+		if sched.pop_next().is_empty(): break
+
+	_assert_true(pobj_hits.size() > 0, "Pendulum-physics collision detected (hits: %d)" % pobj_hits.size())
+	var pend_obj_pos := gs.get_physics_position("pend_target")
+	_assert_true(pend_obj_pos.distance_to(Vector3(6.5, 0, 5)) > 0.05, "Pendulum pushed physics object (dist: %.2f)" % pend_obj_pos.distance_to(Vector3(6.5, 0, 5)))
+
+	# --- Character walks past but out of range ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(20, 20)
+	gs.grid = grid2
+	gs.scheduler = sched
+
+	gs.register_pendulum("miss_pend", Vector3(5, 8, 5), 4.0, 0.3, Vector3.FORWARD, 0.3)
+	var miss_log: Array = []
+	gs.pendulum_hit.connect(func(pid, tid, vel): miss_log.append(tid))
+
+	# Walk at z=8, pendulum swings at z=5 — way out of range
+	gs.register_character("far_walker", Vector3(2, 0, 8), 2.0)
+	gs.command_move_to_pos("far_walker", Vector3(8, 0, 8))
+	for _di in range(1000):
+		if sched.pop_next().is_empty(): break
+
+	_assert_true(miss_log.size() == 0, "No hit when character walks out of range (hits: %d)" % miss_log.size())
+
+	# --- Different lengths = different periods ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	gs.scheduler = sched
+	gs.register_pendulum("short", Vector3(0, 5, 0), 1.0, 0.5)
+	gs.register_pendulum("long", Vector3(0, 15, 0), 9.0, 0.5)
+	var short_period := gs.get_pendulum_period("short")
+	var long_period := gs.get_pendulum_period("long")
+	_assert_true(long_period > short_period, "Longer pendulum = longer period (short: %.2f, long: %.2f)" % [short_period, long_period])
+	# T = 2pi*sqrt(L/g), so T_long/T_short = sqrt(9/1) = 3
+	var ratio := long_period / short_period
+	_assert_true(absf(ratio - 3.0) < 0.1, "Period ratio matches sqrt(L) (got: %.2f, expected: 3.0)" % ratio)
+
+	# --- Phase offset ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	gs.scheduler = sched
+	gs.register_pendulum("phase0", Vector3(0, 5, 0), 2.0, 0.5, Vector3.FORWARD, 0.3, 0.0)
+	gs.register_pendulum("phase90", Vector3(0, 5, 0), 2.0, 0.5, Vector3.FORWARD, 0.3, PI / 2.0)
+	var p0_angle := gs.get_pendulum_angle("phase0", 0.0)
+	var p90_angle := gs.get_pendulum_angle("phase90", 0.0)
+	_assert_true(absf(p0_angle - 0.5) < 0.01, "Phase 0: angle=amplitude at t=0 (got: %.3f)" % p0_angle)
+	_assert_true(absf(p90_angle) < 0.01, "Phase PI/2: angle=0 at t=0 (got: %.3f)" % p90_angle)
+
+	# --- Unregister ---
+	gs.unregister_pendulum("phase0")
+	_assert_true(not gs.pendulums.has("phase0"), "Pendulum unregistered")
 
 func _print_results() -> void:
 	print("")
