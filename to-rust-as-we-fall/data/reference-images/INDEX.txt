@@ -1,0 +1,48 @@
+Reference Images — Real Biology for Enemy Design
+All images from Wikimedia Commons (CC/public domain).
+
+01_siderophore_structure.svg    — Triacetylfusarinine C (hydroxamate siderophore) chelating Fe3+
+                                  Maps to: Chelator, Fluor, Chain, Crust
+
+02_biofilm_staph_aureus.jpg     — S. aureus biofilm on catheter surface
+                                  Maps to: Infiltrator, Crust
+
+03_naegleria_fowleri_lifecycle.gif — N. fowleri lifecycle (cyst, trophozoite, flagellate)
+                                  Maps to: Amoeba
+
+04_neutrophil_3d.png            — 3D rendering of neutrophil (multi-lobed nucleus)
+                                  Maps to: Responder, Night Hunter
+
+05_membrane_attack_complex.png  — Complement MAC (C5b-9) pore assembly diagram
+                                  Maps to: Seeker
+
+06_natural_killer_cell_sem.jpg  — SEM of human NK cell
+                                  Maps to: Naturalizer
+
+07_blood_brain_barrier.jpg      — BBB anatomy (astrocyte endfeet wrapping capillaries)
+                                  Maps to: Night Hunter (BBB breakdown)
+
+08_mast_cell_microscopy.jpg     — Mast cell microscopy (Giemsa stain, 1000x)
+                                  Maps to: Sentinel
+
+09_ferroptosis.gif              — NOT YET DOWNLOADED (Wikimedia rate limit)
+                                  Source: Ferroptosis_human_prostate_cancer_model.gif
+                                  Maps to: Iron Bloom (environmental hazard)
+
+10_neuroinflammation.jpg        — NOT YET DOWNLOADED (Wikimedia rate limit)
+                                  Source: Neuroinflammation_example.jpg
+                                  Maps to: Cytokine Storm (environmental hazard)
+
+11_eosinophil_3d.png            — 3D rendering of eosinophil (bilobed nucleus, granules)
+                                  Maps to: reference only (Spitter design dropped)
+
+12_pyoverdine_structure.png     — Pyoverdine fluorescent siderophore structure
+                                  Maps to: Fluor
+
+13_deferoxamine_structure.png   — Deferoxamine (hydroxamate chelator, clinical iron chelation)
+                                  Maps to: Chain
+
+Missing (no Wikipedia image available):
+  - Gingipain (no image on wiki) — Maps to: Gnawer
+  - P. gingivalis (no image on wiki) — Maps to: Infiltrator, Gnawer
+  - Intracellular parasite (TIF format only) — Maps to: Recruiter
