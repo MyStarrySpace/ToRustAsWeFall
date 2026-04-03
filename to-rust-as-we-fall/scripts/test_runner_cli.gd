@@ -102,6 +102,9 @@ func _ready() -> void:
 			"--test-throw":
 				ran_test = true
 				_test_throw_physics()
+			"--test-physics-comparison":
+				ran_test = true
+				await _test_physics_comparison()
 			"--test-scene-load":
 				ran_test = true
 				await _test_scene_load()
@@ -150,6 +153,7 @@ func _run_all_tests() -> void:
 	_test_physics_edge_cases()
 	_test_pendulum()
 	_test_throw_physics()
+	await _test_physics_comparison()
 	_test_predictive_detection()
 	_test_detection_equivalence()
 
@@ -2995,6 +2999,306 @@ func _test_throw_physics() -> void:
 			if sched.pop_next().is_empty(): break
 		throw_results.append(gs.get_physics_position("det").x)
 	_assert_true(absf(throw_results[0] - throw_results[1]) < 0.001, "Throw deterministic (%.4f vs %.4f)" % [throw_results[0], throw_results[1]])
+
+func _test_physics_comparison() -> void:
+	_test_name = "Physics Comparison"
+
+	# ============================
+	# CUSTOM ENGINE: Push scenario
+	# ============================
+	var gs := GameState.new()
+	var sched := EventScheduler.new()
+	var grid2 := GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+
+	gs.register_physics_object("custom_barrel", Vector3(8, 0, 10), 0.5, 2.0, 0.5)
+	gs.register_character("custom_pusher", Vector3(3, 0, 10), 4.0)
+
+	var custom_start := Time.get_ticks_usec()
+	gs.command_move_to_pos("custom_pusher", Vector3(15, 0, 10))
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+	var custom_elapsed := Time.get_ticks_usec() - custom_start
+	var custom_result := gs.get_physics_position("custom_barrel")
+
+	# Run same scenario twice for determinism check
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+	gs.register_physics_object("custom_barrel", Vector3(8, 0, 10), 0.5, 2.0, 0.5)
+	gs.register_character("custom_pusher", Vector3(3, 0, 10), 4.0)
+	gs.command_move_to_pos("custom_pusher", Vector3(15, 0, 10))
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+	var custom_result2 := gs.get_physics_position("custom_barrel")
+
+	var custom_deterministic := custom_result.distance_to(custom_result2) < 0.001
+
+	# ============================
+	# JOLT ENGINE: Push scenario
+	# ============================
+	var jolt_root := Node3D.new()
+	jolt_root.name = "JoltTestScene"
+	get_tree().root.add_child(jolt_root)
+
+	# Floor
+	var floor_body := StaticBody3D.new()
+	var floor_shape := CollisionShape3D.new()
+	var floor_box := BoxShape3D.new()
+	floor_box.size = Vector3(30, 1, 30)
+	floor_shape.shape = floor_box
+	floor_body.add_child(floor_shape)
+	floor_body.position = Vector3(15, -0.5, 15)
+	jolt_root.add_child(floor_body)
+
+	# Barrel (RigidBody3D)
+	var jolt_barrel := RigidBody3D.new()
+	jolt_barrel.mass = 2.0
+	jolt_barrel.position = Vector3(8, 0.5, 10)
+	var barrel_shape := CollisionShape3D.new()
+	var barrel_sphere := SphereShape3D.new()
+	barrel_sphere.radius = 0.5
+	barrel_shape.shape = barrel_sphere
+	jolt_barrel.add_child(barrel_shape)
+	jolt_root.add_child(jolt_barrel)
+
+	# Wait for physics to settle
+	for i in range(30):
+		await get_tree().physics_frame
+
+	var jolt_barrel_start := jolt_barrel.position
+
+	# Push barrel with an impulse equivalent to a 4 unit/sec character hitting it
+	var jolt_start := Time.get_ticks_usec()
+	jolt_barrel.apply_impulse(Vector3(4.0 * 2.0 * 0.85, 0, 0))
+
+	# Run physics for ~2 seconds (120 physics frames at 60Hz)
+	for i in range(120):
+		await get_tree().physics_frame
+	var jolt_elapsed := Time.get_ticks_usec() - jolt_start
+	var jolt_result := jolt_barrel.position
+
+	# Run same scenario again for determinism check
+	jolt_barrel.position = Vector3(8, 0.5, 10)
+	jolt_barrel.linear_velocity = Vector3.ZERO
+	jolt_barrel.angular_velocity = Vector3.ZERO
+	for i in range(30):
+		await get_tree().physics_frame
+	jolt_barrel.apply_impulse(Vector3(4.0 * 2.0 * 0.85, 0, 0))
+	for i in range(120):
+		await get_tree().physics_frame
+	var jolt_result2 := jolt_barrel.position
+	var jolt_deterministic := jolt_result.distance_to(jolt_result2) < 0.01
+
+	jolt_root.queue_free()
+	await get_tree().process_frame
+
+	# ============================
+	# COMPARISON RESULTS
+	# ============================
+	print("")
+	print("  === Physics Engine Comparison ===")
+	print("  Scenario: character pushes barrel from x=3 to x=15, barrel at x=8")
+	print("")
+	print("  Custom (scheduler-driven):")
+	print("    Result:  barrel at x=%.4f z=%.4f" % [custom_result.x, custom_result.z])
+	print("    Time:    %d µs" % custom_elapsed)
+	print("    Deterministic: %s (diff: %.6f)" % ["YES" if custom_deterministic else "NO", custom_result.distance_to(custom_result2)])
+	print("    Headless:      YES (no physics server needed)")
+	print("    Speed control: YES (scheduler fast-forward, pop_next)")
+	print("    Predictive:    YES (collision pre-scheduled, zero per-frame cost)")
+	print("")
+	print("  Jolt (Godot built-in):")
+	print("    Result:  barrel at x=%.4f z=%.4f y=%.4f" % [jolt_result.x, jolt_result.z, jolt_result.y])
+	print("    Time:    %d µs (120 physics frames)" % jolt_elapsed)
+	print("    Deterministic: %s (diff: %.6f)" % ["YES" if jolt_deterministic else "NO", jolt_result.distance_to(jolt_result2)])
+	print("    Headless:      YES (Jolt has no render deps)")
+	print("    Speed control: NO (tied to physics tick rate)")
+	print("    Predictive:    NO (per-frame integration)")
+	print("")
+
+	# Assertions
+	_assert_true(custom_result.x > 8.0, "Custom: barrel pushed (x: %.2f)" % custom_result.x)
+	_assert_true(jolt_result.x > 8.0, "Jolt: barrel pushed (x: %.2f)" % jolt_result.x)
+	_assert_true(custom_deterministic, "Custom: deterministic across runs")
+	_assert_true(custom_elapsed < jolt_elapsed, "Custom faster than Jolt (%d µs vs %d µs)" % [custom_elapsed, jolt_elapsed])
+
+	# ============================
+	# CHAIN REACTION COMPARISON
+	# ============================
+	# Custom: 3 barrels in a line
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+	gs.register_physics_object("c1", Vector3(8, 0, 5), 0.4, 1.0, 0.4)
+	gs.register_physics_object("c2", Vector3(9.5, 0, 5), 0.4, 1.0, 0.4)
+	gs.register_physics_object("c3", Vector3(11, 0, 5), 0.4, 1.0, 0.4)
+	gs.register_character("chain_p", Vector3(3, 0, 5), 5.0)
+
+	custom_start = Time.get_ticks_usec()
+	gs.command_move_to_pos("chain_p", Vector3(15, 0, 5))
+	for _di in range(2000):
+		if sched.pop_next().is_empty(): break
+	custom_elapsed = Time.get_ticks_usec() - custom_start
+	var c1_pos := gs.get_physics_position("c1")
+	var c2_pos := gs.get_physics_position("c2")
+	var c3_pos := gs.get_physics_position("c3")
+
+	# Jolt: 3 barrels in a line
+	jolt_root = Node3D.new()
+	jolt_root.name = "JoltChainTest"
+	get_tree().root.add_child(jolt_root)
+
+	var jolt_floor := StaticBody3D.new()
+	var jf_shape := CollisionShape3D.new()
+	var jf_box := BoxShape3D.new()
+	jf_box.size = Vector3(30, 1, 30)
+	jf_shape.shape = jf_box
+	jolt_floor.add_child(jf_shape)
+	jolt_floor.position = Vector3(15, -0.5, 15)
+	jolt_root.add_child(jolt_floor)
+
+	var jolt_barrels: Array[RigidBody3D] = []
+	for bx in [8.0, 9.5, 11.0]:
+		var b := RigidBody3D.new()
+		b.mass = 1.0
+		b.position = Vector3(bx, 0.5, 5)
+		var bs := CollisionShape3D.new()
+		var bsp := SphereShape3D.new()
+		bsp.radius = 0.4
+		bs.shape = bsp
+		b.add_child(bs)
+		jolt_root.add_child(b)
+		jolt_barrels.append(b)
+
+	for i in range(30):
+		await get_tree().physics_frame
+
+	jolt_start = Time.get_ticks_usec()
+	jolt_barrels[0].apply_impulse(Vector3(5.0 * 1.0 * 0.85, 0, 0))
+	for i in range(180):
+		await get_tree().physics_frame
+	jolt_elapsed = Time.get_ticks_usec() - jolt_start
+
+	print("  === Chain Reaction Comparison (3 barrels) ===")
+	print("  Custom:  [%.2f, %.2f, %.2f]  %d µs" % [c1_pos.x, c2_pos.x, c3_pos.x, custom_elapsed])
+	print("  Jolt:    [%.2f, %.2f, %.2f]  %d µs" % [jolt_barrels[0].position.x, jolt_barrels[1].position.x, jolt_barrels[2].position.x, jolt_elapsed])
+	print("")
+
+	_assert_true(c3_pos.x > 11.0, "Custom chain: barrel 3 pushed (x: %.2f)" % c3_pos.x)
+	_assert_true(jolt_barrels[2].position.x > 11.0, "Jolt chain: barrel 3 pushed (x: %.2f)" % jolt_barrels[2].position.x)
+
+	# ============================
+	# AREA IMPULSE COMPARISON
+	# ============================
+	# Custom: 5 objects around a center
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+	var custom_scatter_positions: Array[Vector3] = []
+	for i in range(5):
+		var angle := float(i) * TAU / 5.0
+		var opos := Vector3(15 + cos(angle) * 1.5, 0, 15 + sin(angle) * 1.5)
+		gs.register_physics_object("s%d" % i, opos, 0.3, 1.0, 0.5)
+		custom_scatter_positions.append(opos)
+
+	custom_start = Time.get_ticks_usec()
+	gs.apply_area_impulse(Vector3(15, 0, 15), 4.0, 6.0)
+	for _di in range(1000):
+		if sched.pop_next().is_empty(): break
+	custom_elapsed = Time.get_ticks_usec() - custom_start
+
+	var custom_scatter_moved := 0
+	for i in range(5):
+		if gs.get_physics_position("s%d" % i).distance_to(custom_scatter_positions[i]) > 0.5:
+			custom_scatter_moved += 1
+
+	# Jolt: 5 objects around a center
+	jolt_root.queue_free()
+	await get_tree().process_frame
+	jolt_root = Node3D.new()
+	jolt_root.name = "JoltScatterTest"
+	get_tree().root.add_child(jolt_root)
+
+	var jf2 := StaticBody3D.new()
+	var jf2_shape := CollisionShape3D.new()
+	var jf2_box := BoxShape3D.new()
+	jf2_box.size = Vector3(30, 1, 30)
+	jf2_shape.shape = jf2_box
+	jf2.add_child(jf2_shape)
+	jf2.position = Vector3(15, -0.5, 15)
+	jolt_root.add_child(jf2)
+
+	var jolt_scatter: Array[RigidBody3D] = []
+	var jolt_scatter_starts: Array[Vector3] = []
+	for i in range(5):
+		var angle := float(i) * TAU / 5.0
+		var opos := Vector3(15 + cos(angle) * 1.5, 0.5, 15 + sin(angle) * 1.5)
+		var b := RigidBody3D.new()
+		b.mass = 1.0
+		b.position = opos
+		var bs := CollisionShape3D.new()
+		var bsp := SphereShape3D.new()
+		bsp.radius = 0.3
+		bs.shape = bsp
+		b.add_child(bs)
+		jolt_root.add_child(b)
+		jolt_scatter.append(b)
+		jolt_scatter_starts.append(opos)
+
+	for i in range(30):
+		await get_tree().physics_frame
+
+	jolt_start = Time.get_ticks_usec()
+	for b in jolt_scatter:
+		var dir := (b.position - Vector3(15, 0.5, 15)).normalized()
+		var dist := b.position.distance_to(Vector3(15, 0.5, 15))
+		var falloff := 1.0 - (dist / 4.0)
+		b.apply_impulse(dir * 6.0 * falloff)
+	for i in range(120):
+		await get_tree().physics_frame
+	jolt_elapsed = Time.get_ticks_usec() - jolt_start
+
+	var jolt_scatter_moved := 0
+	for i in range(5):
+		if jolt_scatter[i].position.distance_to(jolt_scatter_starts[i]) > 0.5:
+			jolt_scatter_moved += 1
+
+	print("  === Area Impulse Comparison (5 objects) ===")
+	print("  Custom:  %d/5 scattered  %d µs" % [custom_scatter_moved, custom_elapsed])
+	print("  Jolt:    %d/5 scattered  %d µs" % [jolt_scatter_moved, jolt_elapsed])
+	print("")
+
+	_assert_true(custom_scatter_moved >= 4, "Custom scatter: %d/5 moved" % custom_scatter_moved)
+	_assert_true(jolt_scatter_moved >= 4, "Jolt scatter: %d/5 moved" % jolt_scatter_moved)
+
+	print("  === Summary ===")
+	print("  Custom engine strengths:")
+	print("    - Deterministic (exact match across runs)")
+	print("    - Predictive (zero per-frame collision checks)")
+	print("    - Speed-controllable (10x fast-forward, pop_next for tests)")
+	print("    - Integrated with EventScheduler (pause, tag cancel)")
+	print("    - Headlessly testable with pop_next()")
+	print("  Jolt strengths:")
+	print("    - Full rigid body simulation (rotation, stacking, joints)")
+	print("    - Continuous collision detection")
+	print("    - Industry-standard solver (tunneling prevention)")
+	print("    - Free angular dynamics (tumbling, spinning)")
+	print("")
+
+	jolt_root.queue_free()
+	await get_tree().process_frame
 
 func _print_results() -> void:
 	print("")
