@@ -140,13 +140,7 @@ func _on_process(delta: float, spd: float) -> void:
 		_session_time += delta * spd
 		_update_session_timer()
 
-	# Queued protect proximity check — fire when Peris arrives near portal
-	if _current_step == "executing" and _protect_queued:
-		var peris_pos := _game_state.get_position("peris")
-		var dist := Vector2(peris_pos.x - PORTAL_POS.x, peris_pos.z - PORTAL_POS.z).length()
-		if dist < 2.5:
-			_protect_queued = false
-			_fire_queued_protect()
+	# Queued protect handled by GameState.queue_ability (predictive)
 
 	# Portal glow animation (suppressed during tweens)
 	if _portal_light and not _portal_tween_active:
@@ -388,6 +382,10 @@ func _start_executing() -> void:
 		_hud.set_paused(false)
 	_tutorial_prompt.hide_prompt()
 	_hide_thought()
+	# Queue protect on Monos — auto-moves Peris into range and fires
+	if _protect_queued:
+		_protect_queued = false
+		_game_state.queue_ability("peris", "protect", PORTAL_POS, 2.5, _fire_queued_protect)
 
 func _on_protect_pressed() -> void:
 	if _has_protected:
