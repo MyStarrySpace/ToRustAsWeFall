@@ -87,7 +87,13 @@ void XlsxReader::_parse_workbook_rels() {
 			String id = xml->get_named_attribute_value_safe("Id");
 			String target = xml->get_named_attribute_value_safe("Target");
 			if (!id.is_empty() && !target.is_empty()) {
-				rels_map[id] = "xl/" + target;
+				// Handle both relative ("worksheets/sheet1.xml") and
+				// absolute ("/xl/worksheets/sheet1.xml") Target paths
+				if (target.begins_with("/")) {
+					rels_map[id] = target.substr(1);
+				} else {
+					rels_map[id] = "xl/" + target;
+				}
 			}
 		}
 	}

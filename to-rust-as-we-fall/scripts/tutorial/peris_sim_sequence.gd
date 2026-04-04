@@ -23,14 +23,12 @@ var _portal_light: OmniLight3D
 var _attack_particles: OmniLight3D
 var _portal_tween_active := false
 var _hud  # GameHUD
-var _session_timer_label: Label
 
 # Stats
 var _stamina := 100.0
 const STAMINA_MAX := 100.0
 var _is_running := false
 var _is_paused := false
-var _session_time := 0.0
 var _efficiency_score := 100.0
 
 # Positions
@@ -86,21 +84,6 @@ func _setup_ui() -> void:
 			_on_protect_pressed()
 	)
 
-	# Session timer (above HUD, separate)
-	var timer_layer := CanvasLayer.new()
-	timer_layer.layer = 10
-	add_child(timer_layer)
-	_session_timer_label = Label.new()
-	_session_timer_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_session_timer_label.offset_top = 12
-	_session_timer_label.offset_left = -100
-	_session_timer_label.offset_right = 100
-	_session_timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_session_timer_label.add_theme_font_size_override("font_size", 13)
-	_session_timer_label.add_theme_color_override("font_color", Color(0.4, 0.5, 0.6, 0.7))
-	_session_timer_label.visible = false
-	timer_layer.add_child(_session_timer_label)
-
 	set_process_unhandled_key_input(true)
 
 func _begin() -> void:
@@ -134,11 +117,6 @@ func _on_process(delta: float, spd: float) -> void:
 		if _stamina <= 0:
 			_is_running = false
 			_game_state.change_move_speed("peris", 3.0)
-
-	# Session timer during active session phases
-	if _current_step in ["session_begins", "attack", "executing"]:
-		_session_time += delta * spd
-		_update_session_timer()
 
 	# Queued protect handled by GameState.queue_ability (predictive)
 
@@ -289,21 +267,17 @@ func _start_monos_arrives() -> void:
 		"peris_sim.peris.week",
 		"peris_sim.monos.week",
 	], func():
-		# Brief normalcy — session timer visible before transition
-		_session_timer_label.visible = true
 		_scheduler.schedule_after(3.0, _start_transition_out, "transition_out")
 	)
 
 func _start_session_begins() -> void:
 	_current_step = "session_begins"
-	_session_timer_label.visible = true
-	# Portal energy bump to mark session start
 	_portal_tween_active = true
 	var t := create_tween()
 	t.tween_property(_portal_light, "light_energy", 4.0, 0.4)
 	t.tween_property(_portal_light, "light_energy", 3.0, 0.6)
 	t.tween_callback(func(): _portal_tween_active = false)
-	_scheduler.schedule_after(5.0, _start_attack, "attack")
+	_scheduler.schedule_after(2.0, _start_attack, "attack")
 
 func _start_attack() -> void:
 	_current_step = "attack"
@@ -450,7 +424,6 @@ func _start_efficiency_log() -> void:
 func _start_transition_out() -> void:
 	_current_step = "transition_out"
 	_player.set_move_enabled(false)
-	_session_timer_label.visible = false
 	_fade_start_tick = _scheduler.get_current_tick()
 	_scheduler.schedule_after(2.5, _complete, "complete")
 
@@ -461,18 +434,6 @@ func _complete() -> void:
 		get_tree().change_scene_to_file("res://scenes/tutorial/tag_day.tscn")
 	else:
 		get_tree().change_scene_to_file("res://scenes/tutorial/elevator.tscn")
-
-# --- Session timer ---
-
-func _update_session_timer() -> void:
-	var overtime := _session_time > 20.0
-	_session_timer_label.text = "SESSION  %s  %s" % [
-		"%d:%02d" % [int(_session_time) / 60, int(_session_time) % 60],
-		"OVERTIME" if overtime else ""
-	]
-	_session_timer_label.add_theme_color_override("font_color",
-		Color(0.8, 0.2, 0.15) if overtime else Color(0.4, 0.5, 0.6, 0.7)
-	)
 
 # --- Key input ---
 

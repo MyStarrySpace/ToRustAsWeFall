@@ -279,7 +279,7 @@ func _start_fragments() -> void:
 	# Stuttering prayer fragments with gaps, then "world ends" x3, then bang
 	_dialogue_chain([
 		"tag_day.fragment.01", "tag_day.fragment.02", "tag_day.fragment.03",
-		"tag_day.fragment.04", "tag_day.fragment.05", "tag_day.fragment.06",
+		"tag_day.fragment.04",
 		"tag_day.fragment.07",
 	], _on_bang, 1.5)
 
