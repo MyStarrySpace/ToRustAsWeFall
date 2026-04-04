@@ -230,6 +230,7 @@ func _toggle_run() -> void:
 		_is_running = true
 		_has_sprinted = true
 		_game_state.change_move_speed("peris", 6.0)
+		_player.set_running(true)
 		if _hud:
 			_hud.set_run_mode(true)
 		_start_click_monos()
@@ -247,6 +248,7 @@ func _toggle_run() -> void:
 	else:
 		_is_running = false
 		_game_state.change_move_speed("peris", 3.0)
+	_player.set_running(_is_running)
 	if _hud:
 		_hud.set_run_mode(_is_running)
 

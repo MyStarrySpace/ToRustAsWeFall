@@ -11,6 +11,7 @@ extends CharacterBody3D
 ## - Fallback: frame-based velocity movement (for scenes without GameState).
 
 @export var move_speed := 3.0
+@export var run_speed := 6.0
 @export var color := Color(0.29, 0.62, 1.0)  # Aster blue
 
 ## When set, click-to-move uses A* pathfinding. When null, straight-line.
@@ -23,8 +24,13 @@ var char_id := ""  ## Character ID in GameState (e.g. "aster")
 var _target_pos: Vector3
 var _moving := false
 var _move_enabled := true
+var _running := false
 var _auto_path: Array[Vector3] = []
 var _auto_path_index := 0
+
+# Ability queue destination marker
+var _ability_marker: MeshInstance3D
+var _ability_marker_mat: StandardMaterial3D
 
 @onready var _mesh: MeshInstance3D = $Mesh
 @onready var _label: Label3D = $Label3D
@@ -80,6 +86,23 @@ func _ready() -> void:
 	line_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_path_line.material_override = line_mat
 	add_child(_path_line)
+
+	# Ability target marker — diamond shape at queued ability destination
+	_ability_marker = MeshInstance3D.new()
+	var diamond := SphereMesh.new()
+	diamond.radius = 0.2
+	diamond.height = 0.4
+	_ability_marker.mesh = diamond
+	_ability_marker_mat = StandardMaterial3D.new()
+	_ability_marker_mat.albedo_color = Color(0.9, 0.7, 0.2, 0.0)
+	_ability_marker_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_ability_marker_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_ability_marker_mat.emission_enabled = true
+	_ability_marker_mat.emission = Color(0.9, 0.6, 0.1)
+	_ability_marker_mat.emission_energy_multiplier = 0.5
+	_ability_marker.material_override = _ability_marker_mat
+	_ability_marker.top_level = true
+	add_child(_ability_marker)
 
 	if Engine.is_editor_hint():
 		return
@@ -245,7 +268,24 @@ func _update_dest_marker(delta: float) -> void:
 		_dest_marker_mat.albedo_color.a = maxf(0, _dest_marker_mat.albedo_color.a - delta * 2.0)
 
 func _update_path_line() -> void:
-	if not _moving:
+	# Update ability marker visibility
+	var has_queued_ability := game_state and char_id != "" and game_state.has_queued_ability(char_id)
+	if has_queued_ability:
+		var qa_data: Dictionary = game_state._queued_abilities[char_id]
+		_ability_marker.global_position = Vector3(qa_data.target_pos.x, 0.5, qa_data.target_pos.z)
+		var pulse := 0.5 + sin(Time.get_ticks_msec() * 0.005) * 0.3
+		_ability_marker_mat.albedo_color.a = pulse
+	else:
+		_ability_marker_mat.albedo_color.a = 0.0
+
+	# Path line color: walk = character color (subtle), run = bright warm
+	var line_mat: StandardMaterial3D = _path_line.material_override
+	if _running:
+		line_mat.albedo_color = Color(1.0, 0.7, 0.3, 0.5)
+	else:
+		line_mat.albedo_color = Color(color, 0.3)
+
+	if not _moving and not has_queued_ability:
 		_path_line.mesh = null
 		return
 
@@ -316,3 +356,20 @@ func is_moving() -> bool:
 	if game_state and char_id != "":
 		return game_state.is_moving(char_id)
 	return _moving
+
+func set_running(running: bool) -> void:
+	_running = running
+	# Visual: capsule leans forward slightly when running, stretches
+	if _mesh:
+		if running:
+			_mesh.rotation.x = -0.15
+			_mesh.scale = Vector3(0.9, 1.1, 0.9)
+		else:
+			_mesh.rotation.x = 0.0
+			_mesh.scale = Vector3.ONE
+	# Update dest marker color: orange when running
+	if _dest_marker_mat:
+		if running:
+			_dest_marker_mat.albedo_color = Color(1.0, 0.6, 0.2, _dest_marker_mat.albedo_color.a)
+		else:
+			_dest_marker_mat.albedo_color = Color(color.r, color.g, color.b, _dest_marker_mat.albedo_color.a)
