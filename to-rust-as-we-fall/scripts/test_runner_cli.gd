@@ -111,6 +111,9 @@ func _ready() -> void:
 			"--test-abilities":
 				ran_test = true
 				_test_queued_abilities()
+			"--test-dodge":
+				ran_test = true
+				_test_dodge_roll()
 			"--test-scene-load":
 				ran_test = true
 				await _test_scene_load()
@@ -174,6 +177,7 @@ func _run_all_tests() -> void:
 	await _test_peris_phase2()
 	_test_items()
 	_test_queued_abilities()
+	_test_dodge_roll()
 	_test_predictive_detection()
 	_test_detection_equivalence()
 
@@ -3606,6 +3610,136 @@ func _test_queued_abilities() -> void:
 	_assert_true(fired_b.size() == 1, "Replacement ability fired")
 	# First ability may or may not fire depending on timing, but second definitely should
 	_assert_true(fired_b.size() >= fired_a.size(), "Replacement took priority")
+
+func _test_dodge_roll() -> void:
+	_test_name = "Dodge Roll"
+
+	var gs := GameState.new()
+	var sched := EventScheduler.new()
+	var grid2 := GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+
+	gs.register_character("peris", Vector3(10, 0, 10), 3.0, {
+		"stamina": 100.0,
+		"dodge_unlocked": true,
+	})
+
+	# --- Basic dodge ---
+	var start_pos := gs.get_position("peris")
+	var dodged := gs.dodge_roll("peris", Vector3(1, 0, 0))
+	_assert_true(dodged, "Dodge roll succeeds")
+	_assert_true(gs.is_dodging("peris"), "Character is dodging")
+	_assert_true(gs.is_moving("peris"), "Character is moving during dodge")
+
+	var sta_after: float = gs.characters["peris"].stats.stamina
+	_assert_true(sta_after < 100.0, "Stamina consumed (got: %.1f)" % sta_after)
+	_assert_true(absf(sta_after - (100.0 - gs.DODGE_STAMINA_COST)) < 0.01, "Correct stamina cost")
+
+	# Pop to completion
+	for _di in range(100):
+		if sched.pop_next().is_empty(): break
+	_assert_true(not gs.is_dodging("peris"), "Dodge finished")
+
+	var end_pos := gs.get_position("peris")
+	var dodge_dist := end_pos.distance_to(start_pos)
+	_assert_true(dodge_dist > 2.0, "Moved during dodge (dist: %.2f)" % dodge_dist)
+	_assert_true(end_pos.x > start_pos.x, "Moved in +X direction")
+
+	# --- Dodge not unlocked ---
+	gs.register_character("locked", Vector3(10, 0, 15), 3.0, {
+		"stamina": 100.0,
+		"dodge_unlocked": false,
+	})
+	var no_dodge := gs.dodge_roll("locked", Vector3(1, 0, 0))
+	_assert_true(not no_dodge, "Dodge fails when not unlocked")
+
+	# --- Not enough stamina ---
+	gs.characters["peris"].stats["stamina"] = 5.0
+	var low_sta := gs.dodge_roll("peris", Vector3(1, 0, 0))
+	_assert_true(not low_sta, "Dodge fails with low stamina")
+	_assert_true(absf(gs.characters["peris"].stats.stamina - 5.0) < 0.01, "Stamina not consumed on fail")
+
+	# --- Cooldown ---
+	gs.characters["peris"].stats["stamina"] = 100.0
+	gs.dodge_roll("peris", Vector3(0, 0, 1))
+	for _di in range(100):
+		if sched.pop_next().is_empty(): break
+	# Immediately try again — should be on cooldown
+	var cd_dodge := gs.dodge_roll("peris", Vector3(0, 0, -1))
+	_assert_true(not cd_dodge, "Dodge on cooldown")
+
+	# Advance past cooldown
+	sched.advance_ticks(gs.DODGE_COOLDOWN + 0.1)
+	gs.characters["peris"].stats["stamina"] = 100.0
+	var after_cd := gs.dodge_roll("peris", Vector3(-1, 0, 0))
+	_assert_true(after_cd, "Dodge succeeds after cooldown")
+	for _di in range(100):
+		if sched.pop_next().is_empty(): break
+
+	# --- Wall stop ---
+	gs.register_character("waller", Vector3(27, 0, 10), 3.0, {
+		"stamina": 100.0,
+		"dodge_unlocked": true,
+	})
+	gs.dodge_roll("waller", Vector3(1, 0, 0))
+	for _di in range(100):
+		if sched.pop_next().is_empty(): break
+	var wall_pos := gs.get_position("waller")
+	_assert_true(wall_pos.x < 29.0, "Dodge stopped at wall (x: %.2f)" % wall_pos.x)
+
+	# --- I-frames: detection suppressed during dodge ---
+	gs.register_character("dodger", Vector3(5, 0, 5), 3.0, {
+		"stamina": 100.0,
+		"dodge_unlocked": true,
+	})
+	gs.register_character("enemy_det", Vector3(8, 0, 5), 0.0, {
+		"detection_range": 4.0,
+	})
+
+	var det_log: Array = []
+	gs.detection_predicted.connect(func(det, tgt): det_log.append(tgt))
+
+	# Enemy should detect dodger normally (within range)
+	# But during dodge, detection is suppressed
+	gs.dodge_roll("dodger", Vector3(-1, 0, 0))  # Dodge away from enemy
+	_assert_true(gs.is_dodging("dodger"), "Dodger is dodging")
+
+	# Pop — any detection event during dodge should be suppressed
+	for _di in range(100):
+		if sched.pop_next().is_empty(): break
+
+	var dodger_detected := false
+	for entry in det_log:
+		if entry == "dodger":
+			dodger_detected = true
+	_assert_true(not dodger_detected, "I-frames: dodger not detected during dodge")
+
+	# --- Diagonal dodge ---
+	gs.register_character("diag", Vector3(10, 0, 10), 3.0, {
+		"stamina": 100.0,
+		"dodge_unlocked": true,
+	})
+	var diag_start := gs.get_position("diag")
+	gs.dodge_roll("diag", Vector3(1, 0, 1))
+	for _di in range(100):
+		if sched.pop_next().is_empty(): break
+	var diag_end := gs.get_position("diag")
+	_assert_true(diag_end.x > diag_start.x, "Diagonal dodge +X")
+	_assert_true(diag_end.z > diag_start.z, "Diagonal dodge +Z")
+
+	# --- Signal emitted ---
+	var dodge_log: Array = []
+	gs.dodge_started.connect(func(cid, dir): dodge_log.append(cid))
+	gs.register_character("sig_test", Vector3(15, 0, 15), 3.0, {
+		"stamina": 100.0,
+		"dodge_unlocked": true,
+	})
+	gs.dodge_roll("sig_test", Vector3(0, 0, 1))
+	_assert_true(dodge_log.size() == 1, "dodge_started signal emitted")
+	for _di in range(100):
+		if sched.pop_next().is_empty(): break
 
 func _print_results() -> void:
 	print("")

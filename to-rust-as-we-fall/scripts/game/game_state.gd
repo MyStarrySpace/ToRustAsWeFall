@@ -19,6 +19,8 @@ signal item_endocytosed(char_id: String, item_id: String, effect: String)
 signal item_transferred(from_id: String, to_id: String, item_id: String)
 signal item_exocytosed(char_id: String, item_id: String)
 signal ability_fired(char_id: String, ability: String, target_pos: Vector3)
+signal dodge_started(char_id: String, direction: Vector3)
+signal dodge_finished(char_id: String)
 
 var grid: GridWorld
 var scheduler: EventScheduler
@@ -30,6 +32,7 @@ var items: Dictionary = {}        # item_id → item dict
 var collection: Array[String] = [] # Permanently collected item IDs (cure components, etc.)
 var _next_item_id := 1
 var _endocytosing: Dictionary = {} # char_id → {item_id, handle} for in-progress endocytosis
+var _dodging: Dictionary = {}     # char_id → {end_tick, handle}
 
 ## Pendulum schema:
 ## {
@@ -351,6 +354,8 @@ func _recompute_all_detection_predictions() -> void:
 func _on_detection_event(detector_id: String, target_id: String) -> void:
 	if not characters.has(detector_id) or not characters.has(target_id):
 		return
+	if is_dodging(target_id):
+		return
 	detection_predicted.emit(detector_id, target_id)
 
 func _predict_detection_time(detector_id: String, target_id: String, det_range: float, now: float) -> float:
@@ -398,6 +403,96 @@ func _get_movement_segments(id: String) -> Array[Dictionary]:
 			"velocity": vel,
 		})
 	return segments
+
+# --- Dodge Roll ---
+
+const DODGE_DISTANCE := 3.0
+const DODGE_DURATION := 0.35
+const DODGE_STAMINA_COST := 15.0
+const DODGE_COOLDOWN := 1.0
+
+func dodge_roll(char_id: String, direction: Vector3) -> bool:
+	if not characters.has(char_id) or not scheduler:
+		return false
+	var ch: Dictionary = characters[char_id]
+	if not ch.stats.get("dodge_unlocked", false):
+		return false
+	if is_dodging(char_id):
+		return false
+	# Cooldown check
+	var now := scheduler.get_current_tick()
+	var last_dodge: float = ch.stats.get("_last_dodge_tick", -10.0)
+	if now - last_dodge < DODGE_COOLDOWN:
+		return false
+	# Stamina check
+	var stamina: float = ch.stats.get("stamina", 0.0)
+	if stamina < DODGE_STAMINA_COST:
+		return false
+
+	# Consume stamina
+	ch.stats["stamina"] = stamina - DODGE_STAMINA_COST
+	ch.stats["_last_dodge_tick"] = now
+
+	# Compute dodge destination
+	var dir := Vector3(direction.x, 0, direction.z)
+	if dir.length_squared() < 0.001:
+		dir = Vector3(1, 0, 0)
+	dir = dir.normalized()
+	var from := get_position(char_id)
+	var to := from + dir * DODGE_DISTANCE
+
+	# Wall trace
+	if grid:
+		to = _trace_slide_against_walls(from, to)
+	var dodge_dist := Vector3(to.x - from.x, 0, to.z - from.z).length()
+	if dodge_dist < 0.1:
+		ch.stats["stamina"] = stamina  # Refund
+		return false
+
+	# Cancel current movement and start dodge movement
+	_cancel_movement(char_id)
+	ch.position = from
+
+	var speed := dodge_dist / DODGE_DURATION
+	var path: Array[Vector3] = [from, to]
+	var cum_dist := _compute_cum_dist(path)
+	var cid := char_id
+	var handle := scheduler.schedule_at(
+		now + DODGE_DURATION,
+		func(): _on_dodge_end(cid),
+		"dodge_" + char_id
+	)
+	ch.movement = {
+		"path": path,
+		"cum_dist": cum_dist,
+		"total_distance": dodge_dist,
+		"start_tick": now,
+		"duration": DODGE_DURATION,
+		"handle": handle,
+	}
+	_dodging[char_id] = {"end_tick": now + DODGE_DURATION, "handle": handle}
+
+	dodge_started.emit(char_id, dir)
+	_recompute_all_detection_predictions()
+	_recompute_physics_predictions()
+	_recompute_pendulum_predictions()
+	return true
+
+func is_dodging(char_id: String) -> bool:
+	return _dodging.has(char_id)
+
+func _on_dodge_end(char_id: String) -> void:
+	_dodging.erase(char_id)
+	if not characters.has(char_id):
+		return
+	var ch: Dictionary = characters[char_id]
+	if ch.movement != null:
+		var dest: Vector3 = ch.movement.path[ch.movement.path.size() - 1]
+		ch.position = dest
+		if grid:
+			ch.grid_cell = grid.world_to_grid(dest)
+		ch.movement = null
+	dodge_finished.emit(char_id)
 
 # --- Queued Abilities (auto-move-into-range) ---
 
@@ -1334,6 +1429,8 @@ func _recompute_pendulum_predictions() -> void:
 
 func _on_pendulum_hit_character(pendulum_id: String, char_id: String) -> void:
 	if not pendulums.has(pendulum_id) or not characters.has(char_id):
+		return
+	if is_dodging(char_id):
 		return
 	var bob_vel := get_pendulum_bob_velocity(pendulum_id)
 	pendulum_hit.emit(pendulum_id, char_id, bob_vel)
