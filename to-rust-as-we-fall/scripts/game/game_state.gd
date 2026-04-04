@@ -277,8 +277,6 @@ func _on_arrival(id: String) -> void:
 		ch.grid_cell = grid.world_to_grid(dest)
 	ch.movement = null
 	character_arrived.emit(id)
-	if _queued_abilities.has(id):
-		check_queued_abilities()
 
 static func _compute_cum_dist(path: Array[Vector3]) -> Array[float]:
 	var result: Array[float] = [0.0]
@@ -420,13 +418,17 @@ func queue_ability(char_id: String, ability: String, target_pos: Vector3, abilit
 		"range": ability_range,
 		"callback": callback,
 	}
-	# Move toward target, stopping at ability range
+	# Move toward target — overshoot slightly past range so the predicted
+	# in-range event fires mid-walk before arrival
 	var dir := Vector3(target_pos.x - char_pos.x, 0, target_pos.z - char_pos.z).normalized()
-	var move_target := target_pos - dir * (ability_range * 0.8)
+	var move_target := target_pos
 	command_move_to_pos(char_id, move_target)
+	_schedule_ability_in_range(char_id)
 
 func cancel_queued_ability(char_id: String) -> void:
 	_queued_abilities.erase(char_id)
+	if scheduler:
+		scheduler.cancel_tag("ability_range")
 
 func has_queued_ability(char_id: String) -> bool:
 	return _queued_abilities.has(char_id)
@@ -436,22 +438,33 @@ func get_queued_ability(char_id: String) -> String:
 		return _queued_abilities[char_id].ability
 	return ""
 
-func check_queued_abilities() -> void:
-	var to_fire: Array[String] = []
-	for char_id in _queued_abilities:
-		if not characters.has(char_id):
-			to_fire.append(char_id)
-			continue
-		var qa: Dictionary = _queued_abilities[char_id]
-		var char_pos := get_position(char_id)
-		var dist := Vector2(char_pos.x - qa.target_pos.x, char_pos.z - qa.target_pos.z).length()
-		if dist <= qa.range:
-			to_fire.append(char_id)
-			command_stop(char_id)
-			qa.callback.call()
-			ability_fired.emit(char_id, qa.ability, qa.target_pos)
-	for char_id in to_fire:
-		_queued_abilities.erase(char_id)
+func _schedule_ability_in_range(char_id: String) -> void:
+	if not _queued_abilities.has(char_id) or not scheduler:
+		return
+	scheduler.cancel_tag("ability_range_" + char_id)
+	var qa: Dictionary = _queued_abilities[char_id]
+	var now := scheduler.get_current_tick()
+	# Use the quadratic solver: character moving toward stationary target point
+	var char_segs := _get_movement_segments(char_id)
+	var target_seg: Array[Dictionary] = [{
+		"start_tick": 0.0,
+		"end_tick": 1e12,
+		"start_pos": Vector3(qa.target_pos.x, 0, qa.target_pos.z),
+		"velocity": Vector3.ZERO,
+	}]
+	var t := _predict_collision_time(char_segs, target_seg, qa.range, now)
+	if t >= 0.0:
+		var cid := char_id
+		scheduler.schedule_at(t, func(): _on_ability_in_range(cid), "ability_range_" + char_id)
+
+func _on_ability_in_range(char_id: String) -> void:
+	if not _queued_abilities.has(char_id):
+		return
+	var qa: Dictionary = _queued_abilities[char_id]
+	_queued_abilities.erase(char_id)
+	command_stop(char_id)
+	qa.callback.call()
+	ability_fired.emit(char_id, qa.ability, qa.target_pos)
 
 # --- Items / Hands / Endocytosis ---
 
