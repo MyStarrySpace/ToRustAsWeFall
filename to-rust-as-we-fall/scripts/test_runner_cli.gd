@@ -3741,6 +3741,86 @@ func _test_dodge_roll() -> void:
 	for _di in range(100):
 		if sched.pop_next().is_empty(): break
 
+	# --- Enemy charge misses during dodge i-frames ---
+	_test_name = "Dodge I-Frames vs Enemy"
+
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+
+	# Character with dodge unlocked
+	gs.register_character("hero", Vector3(10, 0, 10), 3.0, {
+		"stamina": 100.0,
+		"dodge_unlocked": true,
+		"hp": 100.0,
+	})
+
+	# Create a hero node in the tree so the enemy can find it
+	var hero_node := Node3D.new()
+	hero_node.name = "hero"
+	hero_node.global_position = Vector3(10, 0.5, 10)
+	get_tree().root.add_child(hero_node)
+
+	# Create an enemy that targets the hero
+	var enemy := Enemy.new()
+	enemy.game_state = gs
+	enemy.char_id = "baddie"
+	enemy._detection_targets = ["hero"]
+	enemy.charge_damage = 25.0
+	get_tree().root.add_child(enemy)
+	gs.register_character("baddie", Vector3(11, 0, 10), 3.0, {"detection_range": 8.0})
+
+	# Track hits via signal
+	var hit_log: Array = []
+	enemy.hit_target.connect(func(tid, dmg): hit_log.append({"target": tid, "damage": dmg}))
+
+	# Place enemy right next to hero and trigger a charge
+	enemy.global_position = Vector3(11, 0.5, 10)
+	enemy._charge_target_pos = Vector3(10, 0.5, 10)
+	enemy._charging = true
+	enemy._charge_hit = false
+	enemy._state = "charge"
+
+	# Hero dodges away BEFORE enemy's charge frame checks
+	gs.dodge_roll("hero", Vector3(-1, 0, 0))
+	_assert_true(gs.is_dodging("hero"), "Hero is dodging")
+
+	# Simulate enemy _process frames while hero is mid-dodge
+	for i in range(20):
+		enemy._process(0.016)
+
+	_assert_true(hit_log.size() == 0, "Enemy charge deals NO damage during dodge i-frames (hits: %d)" % hit_log.size())
+	var hp_after: float = gs.characters["hero"].stats.get("hp", 100.0)
+	_assert_true(hp_after >= 100.0, "Hero HP unchanged (hp: %.1f)" % hp_after)
+
+	# Now let dodge finish
+	for _di in range(100):
+		if sched.pop_next().is_empty(): break
+	_assert_true(not gs.is_dodging("hero"), "Dodge finished")
+
+	# Enemy charges again — this time hero is NOT dodging
+	var hero_pos := gs.get_position("hero")
+	hero_node.global_position = Vector3(hero_pos.x, 0.5, hero_pos.z)
+	enemy.global_position = Vector3(hero_pos.x + 0.5, 0.5, hero_pos.z)
+	enemy._charge_target_pos = Vector3(hero_pos.x, 0.5, hero_pos.z)
+	enemy._charging = true
+	enemy._charge_hit = false
+	enemy._state = "charge"
+
+	for i in range(60):
+		enemy._process(0.016)
+
+	_assert_true(hit_log.size() == 1, "Enemy charge HITS after dodge ends (hits: %d)" % hit_log.size())
+	if hit_log.size() > 0:
+		_assert_true(hit_log[0].target == "hero", "Hit target is hero")
+		_assert_true(hit_log[0].damage == 25.0, "Damage is 25 (got: %.1f)" % hit_log[0].damage)
+
+	enemy.queue_free()
+	hero_node.queue_free()
+
 func _print_results() -> void:
 	print("")
 	print("=== TEST RESULTS ===")

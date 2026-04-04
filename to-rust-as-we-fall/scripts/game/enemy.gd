@@ -361,6 +361,8 @@ func _process(delta: float) -> void:
 		global_position += dir.normalized() * charge_speed * delta * spd_mult
 		if not _charge_hit:
 			for target_id in _detection_targets:
+				if game_state and game_state.is_dodging(target_id):
+					continue
 				var target_node := _find_character_node(target_id)
 				if not target_node:
 					continue
