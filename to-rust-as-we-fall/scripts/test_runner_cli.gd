@@ -3821,6 +3821,90 @@ func _test_dodge_roll() -> void:
 	enemy.queue_free()
 	hero_node.queue_free()
 
+	# --- Predictive auto-dodge: character auto-evades incoming attack ---
+	_test_name = "Predictive Auto-Dodge"
+
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+
+	# Character with auto_dodge enabled
+	gs.register_character("evader", Vector3(10, 0, 10), 3.0, {
+		"stamina": 100.0,
+		"dodge_unlocked": true,
+		"auto_dodge": true,
+	})
+
+	# Enemy approaches from the right
+	gs.register_character("attacker", Vector3(18, 0, 10), 4.0, {
+		"detection_range": 3.0,
+	})
+
+	var auto_dodge_log: Array = []
+	gs.dodge_started.connect(func(cid, dir): auto_dodge_log.append({"char": cid, "dir": dir}))
+	var det_log2: Array = []
+	gs.detection_predicted.connect(func(det, tgt): det_log2.append(tgt))
+
+	# Move attacker toward evader
+	gs.command_move_to_pos("attacker", Vector3(10, 0, 10))
+
+	# Pop scheduler — attacker walks toward evader, detection event predicted,
+	# auto-dodge triggers before detection_predicted is emitted
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+
+	_assert_true(auto_dodge_log.size() >= 1, "Auto-dodge triggered (count: %d)" % auto_dodge_log.size())
+	if auto_dodge_log.size() > 0:
+		_assert_true(auto_dodge_log[0].char == "evader", "Evader auto-dodged")
+		# Dodge should be perpendicular to approach (approach is -X, perp is +Z or -Z)
+		var dodge_dir: Vector3 = auto_dodge_log[0].dir
+		_assert_true(absf(dodge_dir.z) > 0.5, "Dodge perpendicular to attack (dir.z: %.2f)" % dodge_dir.z)
+
+	# detection_predicted should NOT have fired for evader (auto-dodge consumed it)
+	var evader_detected := false
+	for entry in det_log2:
+		if entry == "evader":
+			evader_detected = true
+	_assert_true(not evader_detected, "detection_predicted suppressed by auto-dodge")
+
+	# Stamina should have been consumed
+	var evader_sta: float = gs.characters["evader"].stats.stamina
+	_assert_true(evader_sta < 100.0, "Auto-dodge consumed stamina (got: %.1f)" % evader_sta)
+
+	# --- Auto-dodge fails when stamina is too low ---
+	gs = GameState.new()
+	sched = EventScheduler.new()
+	grid2 = GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+
+	gs.register_character("low_sta", Vector3(10, 0, 10), 3.0, {
+		"stamina": 5.0,
+		"dodge_unlocked": true,
+		"auto_dodge": true,
+	})
+	gs.register_character("attacker2", Vector3(18, 0, 10), 4.0, {
+		"detection_range": 3.0,
+	})
+
+	var det_log3: Array = []
+	gs.detection_predicted.connect(func(det, tgt): det_log3.append(tgt))
+
+	gs.command_move_to_pos("attacker2", Vector3(10, 0, 10))
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+
+	# With only 5 stamina and 15 cost, dodge should fail — detection_predicted fires normally
+	var low_sta_detected := false
+	for entry in det_log3:
+		if entry == "low_sta":
+			low_sta_detected = true
+	_assert_true(low_sta_detected, "Low stamina: detection fires (auto-dodge failed)")
+
 func _print_results() -> void:
 	print("")
 	print("=== TEST RESULTS ===")

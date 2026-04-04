@@ -356,6 +356,17 @@ func _on_detection_event(detector_id: String, target_id: String) -> void:
 		return
 	if is_dodging(target_id):
 		return
+	# Auto-dodge: if target has dodge queued, automatically evade
+	var target_ch: Dictionary = characters[target_id]
+	if target_ch.stats.get("auto_dodge", false) and target_ch.stats.get("dodge_unlocked", false):
+		var attacker_pos := get_position(detector_id)
+		var target_pos := get_position(target_id)
+		var approach := Vector3(attacker_pos.x - target_pos.x, 0, attacker_pos.z - target_pos.z)
+		if approach.length_squared() > 0.001:
+			# Dodge perpendicular to the attack direction
+			var perp := Vector3(-approach.z, 0, approach.x).normalized()
+			if dodge_roll(target_id, perp):
+				return
 	detection_predicted.emit(detector_id, target_id)
 
 func _predict_detection_time(detector_id: String, target_id: String, det_range: float, now: float) -> float:
