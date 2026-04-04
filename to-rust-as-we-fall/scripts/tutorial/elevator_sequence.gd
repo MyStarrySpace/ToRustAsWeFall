@@ -954,8 +954,6 @@ func _start_morning() -> void:
 	_enter_step("morning")
 	_dialogue_chain([
 		"junction.morning.trail",
-		"junction.aster.back_in",
-		"junction.peris.back_to_what",
 		"junction.endo.stands",
 		"junction.peris.coming",
 		"junction.aster.ok",
