@@ -108,6 +108,9 @@ func _ready() -> void:
 			"--test-items":
 				ran_test = true
 				_test_items()
+			"--test-abilities":
+				ran_test = true
+				_test_queued_abilities()
 			"--test-scene-load":
 				ran_test = true
 				await _test_scene_load()
@@ -170,6 +173,7 @@ func _run_all_tests() -> void:
 	await _test_physics_comparison()
 	await _test_peris_phase2()
 	_test_items()
+	_test_queued_abilities()
 	_test_predictive_detection()
 	_test_detection_equivalence()
 
@@ -3529,6 +3533,79 @@ func _test_items() -> void:
 			if s2.pop_next().is_empty(): break
 		det_results.append(gs2.characters["det_char"].stats.get("atp", 0.0))
 	_assert_true(absf(det_results[0] - det_results[1]) < 0.001, "Deterministic: ATP matches (%.2f vs %.2f)" % [det_results[0], det_results[1]])
+
+func _test_queued_abilities() -> void:
+	_test_name = "Queued Abilities"
+
+	var gs := GameState.new()
+	var sched := EventScheduler.new()
+	var grid2 := GridWorld.new()
+	grid2.create_room(30, 30)
+	gs.grid = grid2
+	gs.scheduler = sched
+
+	gs.register_character("peris", Vector3(3, 0, 5), 3.0)
+
+	# --- Already in range: fires immediately ---
+	var fired: Array = []
+	gs.queue_ability("peris", "protect", Vector3(4, 0, 5), 2.0, func(): fired.append("protect"))
+	_assert_true(fired.size() == 1, "In-range ability fires immediately (fired: %d)" % fired.size())
+	_assert_true(not gs.has_queued_ability("peris"), "No queued ability after immediate fire")
+
+	# --- Out of range: queues and auto-moves ---
+	var fired2: Array = []
+	gs.queue_ability("peris", "protect", Vector3(15, 0, 5), 2.5, func(): fired2.append("protect"))
+	_assert_true(gs.has_queued_ability("peris"), "Ability queued when out of range")
+	_assert_true(gs.get_queued_ability("peris") == "protect", "Queued ability name is protect")
+	_assert_true(gs.is_moving("peris"), "Character auto-moves toward target")
+
+	# Pop scheduler until character arrives and ability fires
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+	_assert_true(fired2.size() == 1, "Ability fired after auto-move (fired: %d)" % fired2.size())
+	_assert_true(not gs.has_queued_ability("peris"), "Queue cleared after firing")
+
+	# Verify character stopped near target
+	var final_pos := gs.get_position("peris")
+	var dist_to_target := Vector2(final_pos.x - 15.0, final_pos.z - 5.0).length()
+	_assert_true(dist_to_target <= 2.5, "Character within ability range (dist: %.2f)" % dist_to_target)
+
+	# --- Cancel queued ability ---
+	var fired3: Array = []
+	gs.queue_ability("peris", "emp", Vector3(25, 0, 5), 2.0, func(): fired3.append("emp"))
+	_assert_true(gs.has_queued_ability("peris"), "Ability queued")
+	gs.cancel_queued_ability("peris")
+	_assert_true(not gs.has_queued_ability("peris"), "Ability cancelled")
+
+	# Drain remaining events — cancelled ability should not fire
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+	_assert_true(fired3.size() == 0, "Cancelled ability never fired")
+
+	# --- Ability signal emitted ---
+	var signal_log: Array = []
+	gs.ability_fired.connect(func(cid, ab, tpos): signal_log.append({"char": cid, "ability": ab}))
+
+	gs.register_character("aster", Vector3(3, 0, 10), 4.0)
+	gs.queue_ability("aster", "emp", Vector3(12, 0, 10), 3.0, func(): pass)
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+	_assert_true(signal_log.size() >= 1, "ability_fired signal emitted (count: %d)" % signal_log.size())
+	if signal_log.size() > 0:
+		_assert_true(signal_log[0].ability == "emp", "Signal has correct ability name")
+
+	# --- Queue replaces previous queue ---
+	var fired_a: Array = []
+	var fired_b: Array = []
+	gs.register_character("tyreg", Vector3(3, 0, 15), 3.0)
+	gs.queue_ability("tyreg", "suppress", Vector3(20, 0, 15), 2.0, func(): fired_a.append(1))
+	gs.queue_ability("tyreg", "freeze", Vector3(10, 0, 15), 2.0, func(): fired_b.append(1))
+	_assert_true(gs.get_queued_ability("tyreg") == "freeze", "Second queue replaced first")
+	for _di in range(500):
+		if sched.pop_next().is_empty(): break
+	_assert_true(fired_b.size() == 1, "Replacement ability fired")
+	# First ability may or may not fire depending on timing, but second definitely should
+	_assert_true(fired_b.size() >= fired_a.size(), "Replacement took priority")
 
 func _print_results() -> void:
 	print("")

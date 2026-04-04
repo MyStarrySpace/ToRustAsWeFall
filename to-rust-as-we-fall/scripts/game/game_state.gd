@@ -18,6 +18,7 @@ signal item_dropped(char_id: String, item_id: String)
 signal item_endocytosed(char_id: String, item_id: String, effect: String)
 signal item_transferred(from_id: String, to_id: String, item_id: String)
 signal item_exocytosed(char_id: String, item_id: String)
+signal ability_fired(char_id: String, ability: String, target_pos: Vector3)
 
 var grid: GridWorld
 var scheduler: EventScheduler
@@ -276,6 +277,8 @@ func _on_arrival(id: String) -> void:
 		ch.grid_cell = grid.world_to_grid(dest)
 	ch.movement = null
 	character_arrived.emit(id)
+	if _queued_abilities.has(id):
+		check_queued_abilities()
 
 static func _compute_cum_dist(path: Array[Vector3]) -> Array[float]:
 	var result: Array[float] = [0.0]
@@ -397,6 +400,58 @@ func _get_movement_segments(id: String) -> Array[Dictionary]:
 			"velocity": vel,
 		})
 	return segments
+
+# --- Queued Abilities (auto-move-into-range) ---
+
+var _queued_abilities: Dictionary = {} # char_id → {ability, target_pos, range, callback}
+
+func queue_ability(char_id: String, ability: String, target_pos: Vector3, ability_range: float, callback: Callable) -> void:
+	if not characters.has(char_id):
+		return
+	var char_pos := get_position(char_id)
+	var dist := Vector2(char_pos.x - target_pos.x, char_pos.z - target_pos.z).length()
+	if dist <= ability_range:
+		callback.call()
+		ability_fired.emit(char_id, ability, target_pos)
+		return
+	_queued_abilities[char_id] = {
+		"ability": ability,
+		"target_pos": target_pos,
+		"range": ability_range,
+		"callback": callback,
+	}
+	# Move toward target, stopping at ability range
+	var dir := Vector3(target_pos.x - char_pos.x, 0, target_pos.z - char_pos.z).normalized()
+	var move_target := target_pos - dir * (ability_range * 0.8)
+	command_move_to_pos(char_id, move_target)
+
+func cancel_queued_ability(char_id: String) -> void:
+	_queued_abilities.erase(char_id)
+
+func has_queued_ability(char_id: String) -> bool:
+	return _queued_abilities.has(char_id)
+
+func get_queued_ability(char_id: String) -> String:
+	if _queued_abilities.has(char_id):
+		return _queued_abilities[char_id].ability
+	return ""
+
+func check_queued_abilities() -> void:
+	var to_fire: Array[String] = []
+	for char_id in _queued_abilities:
+		if not characters.has(char_id):
+			to_fire.append(char_id)
+			continue
+		var qa: Dictionary = _queued_abilities[char_id]
+		var char_pos := get_position(char_id)
+		var dist := Vector2(char_pos.x - qa.target_pos.x, char_pos.z - qa.target_pos.z).length()
+		if dist <= qa.range:
+			to_fire.append(char_id)
+			command_stop(char_id)
+			qa.callback.call()
+			ability_fired.emit(char_id, qa.ability, qa.target_pos)
+	for char_id in to_fire:
+		_queued_abilities.erase(char_id)
 
 # --- Items / Hands / Endocytosis ---
 
