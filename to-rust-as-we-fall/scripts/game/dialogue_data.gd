@@ -52,8 +52,7 @@ static func _load_xlsx_file(path: String) -> void:
 			line.speaker = str(row[1]).strip_edges() if row.size() > 1 else ""
 			line.style = str(row[2]).strip_edges() if row.size() > 2 else "normal"
 			line.wait = str(row[3]).strip_edges().to_lower() == "true" if row.size() > 3 else false
-			var raw_text := str(row[4]).strip_edges() if row.size() > 4 else ""
-			line.text = raw_text.replace("|", "\n")
+			line.text = str(row[4]).strip_edges() if row.size() > 4 else ""
 			line.context = str(row[5]).strip_edges() if row.size() > 5 else ""
 			if line.style == "thought":
 				line.is_thought = true
