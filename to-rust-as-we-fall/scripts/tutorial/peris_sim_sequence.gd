@@ -14,7 +14,6 @@ static var _visit_phase := 1
 var _has_sprinted := false
 var _has_protected := false
 var _protect_queued := false
-var _out_of_range_count := 0
 var _protect_end_tick := 0.0
 
 var _monos
@@ -214,7 +213,13 @@ func _toggle_run() -> void:
 		_start_click_monos()
 		return
 	if _current_step == "protect_prompt":
-		_show_correction("peris_sim.correct.protect_first")
+		_is_running = true
+		_has_sprinted = true
+		_game_state.change_move_speed("peris", 6.0)
+		_player.set_running(true)
+		if _hud:
+			_hud.set_run_mode(true)
+		_show_thought(DialogueData.text("peris_sim.protect_remind"))
 		return
 	if _current_step in ["alert_monos", "click_monos", "confirm_protect"]:
 		return
@@ -375,12 +380,6 @@ func _on_protect_pressed() -> void:
 		return
 	if _current_step in ["alert_monos", "run_prompt", "click_monos", "confirm_protect"]:
 		return
-
-func _show_out_of_range() -> void:
-	_out_of_range_count += 1
-	if _hud:
-		_hud.show_message("OUT OF RANGE", 1.5)
-	_show_thought(DialogueData.text("peris_sim.range.thought"))
 
 func _fire_queued_protect() -> void:
 	_has_protected = true
