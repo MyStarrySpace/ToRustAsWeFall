@@ -11,8 +11,7 @@ var _peris_node: CharacterBody3D
 var _endo: Node3D
 var _active_character := "aster"
 
-# Chunks
-var _chunks: Dictionary = {}
+@export var start_chunk := ""
 
 # Iron hazard zones
 var _iron_patches: Array[Dictionary] = []
@@ -38,27 +37,14 @@ const RINGS_END := Vector3(680, 0, 0)
 const LOCKOUT_START := Vector3(700, 0, 0)
 const LOCKOUT_BOUNDARY := Vector3(780, 0, 0)
 
-# --- Chunk management ---
+# --- Chunk dispatch ---
 
-func _load_chunk(chunk_name: String) -> Node3D:
-	if _chunks.has(chunk_name):
-		return _chunks[chunk_name]
-	var chunk := Node3D.new()
-	chunk.name = "Chunk_" + chunk_name
-	find_child("Environment", false, false).add_child(chunk)
-	_chunks[chunk_name] = chunk
+func _build_chunk(chunk_name: String, parent: Node3D) -> void:
 	match chunk_name:
-		"channels": _build_channels_chunk(chunk)
-		"stacks": _build_stacks_chunk(chunk)
-		"rings": _build_rings_chunk(chunk)
-		"lockout": _build_lockout_chunk(chunk)
-	return chunk
-
-func _unload_chunk(chunk_name: String) -> void:
-	if not _chunks.has(chunk_name):
-		return
-	_chunks[chunk_name].queue_free()
-	_chunks.erase(chunk_name)
+		"channels": _build_channels_chunk(parent)
+		"stacks": _build_stacks_chunk(parent)
+		"rings": _build_rings_chunk(parent)
+		"lockout": _build_lockout_chunk(parent)
 
 # --- Virtual overrides ---
 
@@ -113,6 +99,23 @@ func _setup_ui() -> void:
 
 func _begin() -> void:
 	_player.set_move_enabled(false)
+	if start_chunk != "":
+		_load_chunk(start_chunk)
+		_player.set_move_enabled(true)
+		match start_chunk:
+			"channels":
+				_player.global_position = CHANNELS_START + Vector3(5, 0.5, 0)
+				_start_channels_enter()
+			"stacks":
+				_player.global_position = STACKS_START + Vector3(5, 0.5, 0)
+				_start_stacks_enter()
+			"rings":
+				_player.global_position = RINGS_START + Vector3(5, 0.5, 0)
+				_start_rings_enter()
+			"lockout":
+				_player.global_position = LOCKOUT_START + Vector3(5, 0.5, 0)
+				_start_lockout_approach()
+		return
 	_fade_from(Color(0.02, 0.02, 0.03, 1), 2.5, _start_channels_enter, "channels_enter")
 
 func _compute_speed() -> float:

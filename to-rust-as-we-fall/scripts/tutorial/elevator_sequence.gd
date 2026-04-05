@@ -58,7 +58,7 @@ var _ferrolure_interactable: Node
 var _gauntlet_enemies: Array[Enemy] = []
 
 # Chunk system
-var _chunks: Dictionary = {}
+@export var start_chunk := ""
 
 # Endo (hidden until junction)
 var _endo: Node3D
@@ -96,28 +96,15 @@ const FERROLURE_POS := Vector3(BRIDGE_END_X + 28.0, BELOW_Y + 0.3, 4.0)
 const GAUNTLET_EXIT := Vector3(BRIDGE_END_X + 42.0, BELOW_Y, 0)
 const FERROLURE_DURATION := 18.0
 
-# --- Chunk management ---
+# --- Chunk dispatch ---
 
-func _load_chunk(chunk_name: String) -> Node3D:
-	if _chunks.has(chunk_name):
-		return _chunks[chunk_name]
-	var chunk := Node3D.new()
-	chunk.name = "Chunk_" + chunk_name
-	find_child("Environment", false, false).add_child(chunk)
-	_chunks[chunk_name] = chunk
+func _build_chunk(chunk_name: String, parent: Node3D) -> void:
 	match chunk_name:
-		"elevator": _build_elevator_chunk(chunk)
-		"bridge": _build_bridge_chunk(chunk)
-		"below": _build_below_chunk(chunk)
-		"junction": _build_junction_chunk(chunk)
-		"gauntlet": _build_gauntlet_chunk(chunk)
-	return chunk
-
-func _unload_chunk(chunk_name: String) -> void:
-	if not _chunks.has(chunk_name):
-		return
-	_chunks[chunk_name].queue_free()
-	_chunks.erase(chunk_name)
+		"elevator": _build_elevator_chunk(parent)
+		"bridge": _build_bridge_chunk(parent)
+		"below": _build_below_chunk(parent)
+		"junction": _build_junction_chunk(parent)
+		"gauntlet": _build_gauntlet_chunk(parent)
 
 # --- Virtual overrides ---
 
@@ -226,6 +213,25 @@ func _setup_ui() -> void:
 func _begin() -> void:
 	_player.set_move_enabled(false)
 	_fade_rect.color = Color(0, 0, 0, 1)
+	# Skip to a specific chunk for testing/preview
+	if start_chunk != "":
+		_load_chunk(start_chunk)
+		_player.set_move_enabled(true)
+		_fade_rect.color = Color(0, 0, 0, 0)
+		match start_chunk:
+			"junction":
+				_player.global_position = Vector3(JUNCTION_POS.x, BELOW_Y + 0.5, 0)
+				_start_junction_arrive()
+			"gauntlet":
+				_player.global_position = Vector3(GAUNTLET_POS.x, BELOW_Y + 0.5, 0)
+				_start_gauntlet()
+			"bridge":
+				_load_chunk("below")
+				_player.global_position = Vector3(0, 0.5, 0)
+				_start_bridge()
+			_:
+				_player.global_position = Vector3.ZERO
+		return
 	_scheduler.schedule_after(1.0, _start_consciousness_fragments, "fragments")
 
 func _compute_speed() -> float:
@@ -735,17 +741,8 @@ func _start_junction_arrive() -> void:
 	_load_chunk("junction")
 	_unload_chunk("below")
 	_enemies.clear()
-	# Scripted dusk — light dims
-	var env_node: Node = find_child("Environment", false, false)
-	for child in env_node.get_children():
-		if child is WorldEnvironment:
-			child.environment.ambient_light_energy = 0.25
-			break
-	DialogueData.say_to(_dialogue, "junction.dusk")
-	# Player can explore the junction freely
 	_player.set_move_enabled(true)
-	# Schedule Endo's entrance after exploration time
-	_scheduler.schedule_after(8.0, _start_endo_enters, "endo_enters")
+	# Player explores the junction. Peris tending the dormant plant triggers dusk + Endo.
 
 func _start_endo_enters() -> void:
 	_enter_step("endo_enters")
@@ -1507,6 +1504,53 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	parent.add_child(game_piece)
 	_add_junction_interactable("Game", Vector3(sx - 1.2, ground_y + 0.9, -1.6),
 		"junction.game")
+
+	# Dormant plant in the corner (Peris tends it, triggering dusk + Endo's arrival)
+	var plant_mesh := MeshInstance3D.new()
+	var pm := SphereMesh.new()
+	pm.radius = 0.2
+	pm.height = 0.3
+	plant_mesh.mesh = pm
+	var plant_mat := StandardMaterial3D.new()
+	plant_mat.albedo_color = Color(0.15, 0.12, 0.08)
+	plant_mat.roughness = 0.8
+	plant_mesh.material_override = plant_mat
+	plant_mesh.position = Vector3(sx + SHELTER_SIZE.x / 2.0 - 0.8, ground_y + 0.15, SHELTER_SIZE.z / 2.0 - 0.5)
+	parent.add_child(plant_mesh)
+
+	var plant_interact := preload("res://scenes/game/interactable.tscn").instantiate()
+	plant_interact.name = "DormantPlant"
+	plant_interact.description = "Dormant Plant"
+	plant_interact.dialogue_key = "junction.peris.tend_plant"
+	plant_interact.dialogue_box = _dialogue
+	plant_interact.active_character = _active_character
+	plant_interact.required_character = "peris"
+	plant_interact.one_shot = true
+	plant_interact.dwell_time = 2.0
+	plant_interact.position = plant_mesh.position + Vector3(0, 0.3, 0)
+	add_child(plant_interact)
+	plant_interact.interacted.connect(func():
+		# Plant blooms
+		var bloom := create_tween()
+		bloom.tween_property(plant_mat, "albedo_color", Color(0.2, 0.5, 0.3), 1.5)
+		bloom.parallel().tween_property(plant_mat, "emission_enabled", true, 0.0)
+		plant_mat.emission_enabled = true
+		plant_mat.emission = Color(0.1, 0.3, 0.15)
+		bloom.parallel().tween_property(plant_mat, "emission_energy_multiplier", 0.8, 2.0)
+		bloom.parallel().tween_property(plant_mesh, "scale", Vector3(1.5, 1.8, 1.5), 2.0)
+		# Trigger dusk + Endo arrival
+		_start_dusk_from_plant()
+	)
+
+func _start_dusk_from_plant() -> void:
+	var env_node: Node = find_child("Environment", false, false)
+	if env_node:
+		for child in env_node.get_children():
+			if child is WorldEnvironment:
+				var t := create_tween()
+				t.tween_property(child.environment, "ambient_light_energy", 0.15, 3.0)
+				break
+	_scheduler.schedule_after(2.0, _start_endo_enters, "endo_enters")
 
 func _add_junction_interactable(label: String, pos: Vector3, dialogue_prefix: String) -> void:
 	var interact := preload("res://scenes/game/interactable.tscn").instantiate()

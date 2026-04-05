@@ -1199,15 +1199,24 @@ func _test_junction_flow() -> void:
 
 	_assert_true(instance._current_step == "junction_arrive", "Step is junction_arrive (got: %s)" % instance._current_step)
 
-	# Verify Endo is NOT visible yet (arrives after delay)
+	# Verify Endo is NOT visible yet (arrives when Peris tends the plant)
 	_assert_true(not instance._endo.visible, "Endo not visible on initial arrival")
 
-	# Advance scheduler past the 8s Endo entrance delay
-	for i in range(20):
+	# Verify dormant plant exists
+	var plant := instance.find_child("DormantPlant", true, false)
+	_assert_true(plant != null, "Dormant plant interactable exists")
+
+	# Trigger the plant interaction (simulates Peris tending it)
+	if plant:
+		plant._trigger()
+	for i in range(5):
+		await get_tree().process_frame
+	# Advance scheduler past the 2s Endo entrance delay after plant
+	for i in range(10):
 		instance._scheduler.advance(0.5)
 		await get_tree().process_frame
 
-	_assert_true(instance._endo.visible, "Endo visible after entrance delay")
+	_assert_true(instance._endo.visible, "Endo visible after plant tended")
 	_assert_true(instance._current_step == "endo_enters", "Step advanced to endo_enters (got: %s)" % instance._current_step)
 
 	instance.queue_free()

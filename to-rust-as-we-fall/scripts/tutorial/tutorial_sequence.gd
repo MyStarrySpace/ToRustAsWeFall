@@ -60,6 +60,8 @@ func _process(delta: float) -> void:
 		_dialogue.speed_multiplier = maxf(spd, 1.0)
 	for node in _get_speed_recipients():
 		node.speed_multiplier = spd
+	if _anim_player:
+		_anim_player.speed_scale = maxf(spd, 0.001)
 	_scheduler.advance(delta)
 	# Update perception shader tracking
 	if _perception_material and _perception_target:
@@ -247,6 +249,62 @@ func _dlg_chain_play_next() -> void:
 		else:
 			_dlg_chain_play_next()
 	, CONNECT_ONE_SHOT)
+
+# --- Chunk Management ---
+
+var _chunks: Dictionary = {}
+
+func _load_chunk(chunk_name: String) -> Node3D:
+	if _chunks.has(chunk_name):
+		return _chunks[chunk_name]
+	var chunk := Node3D.new()
+	chunk.name = "Chunk_" + chunk_name
+	var env := find_child("Environment", false, false)
+	if env:
+		env.add_child(chunk)
+	else:
+		add_child(chunk)
+	_chunks[chunk_name] = chunk
+	_build_chunk(chunk_name, chunk)
+	return chunk
+
+func _unload_chunk(chunk_name: String) -> void:
+	if not _chunks.has(chunk_name):
+		return
+	_chunks[chunk_name].queue_free()
+	_chunks.erase(chunk_name)
+
+func _build_chunk(_chunk_name: String, _parent: Node3D) -> void:
+	pass
+
+# --- Animation System ---
+
+var _anim_player: AnimationPlayer
+var _anim_lib: AnimationLibrary
+
+func _create_animation(anim_name: String, length: float) -> Animation:
+	if not _anim_player:
+		_anim_player = AnimationPlayer.new()
+		_anim_player.name = "SequenceAnimations"
+		add_child(_anim_player)
+		_anim_lib = AnimationLibrary.new()
+		_anim_player.add_animation_library("", _anim_lib)
+	var anim := Animation.new()
+	anim.length = length
+	_anim_lib.add_animation(anim_name, anim)
+	return anim
+
+func _play_animation(anim_name: String) -> void:
+	if _anim_player and _anim_lib.has_animation(anim_name):
+		_anim_player.speed_scale = _compute_speed()
+		_anim_player.play(anim_name)
+
+func _stop_animation(anim_name: String) -> void:
+	if _anim_player and _anim_player.current_animation == anim_name:
+		_anim_player.stop()
+
+func _has_animation(anim_name: String) -> bool:
+	return _anim_lib != null and _anim_lib.has_animation(anim_name)
 
 # --- Environment helpers ---
 
