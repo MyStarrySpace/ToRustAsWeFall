@@ -468,8 +468,8 @@ func _test_elevator() -> void:
 			_assert_true(instance._scheduler != null, "EventScheduler exists")
 			_assert_true(instance._game_state != null, "GameState exists")
 
-		var panel: Node = instance.find_child("ControlPanel", true, false)
-		_assert_true(panel != null, "Control panel exists")
+		var exit_btn: Node = instance.find_child("ExitButton", true, false)
+		_assert_true(exit_btn != null, "Exit button exists")
 
 		instance.queue_free()
 		await get_tree().process_frame
@@ -1038,8 +1038,9 @@ func _test_elevator_dialogue() -> void:
 		"emp_tutorial": func():
 			instance._on_emp_pressed()
 			instance._flush_queued_abilities(),
-		"hack_tutorial": func():
-			instance._on_panel_hacked(),
+		"doors_unlocked": func():
+			if instance._exit_button:
+				instance._exit_button._trigger(),
 		"multiselect_tutorial": func():
 			# Resume from auto-pause and teleport both near the door exit
 			instance._scheduler.resume()
@@ -1082,12 +1083,12 @@ func _test_elevator_dialogue() -> void:
 			has_protocol = true
 	_assert_true(has_protocol, "Escort unit protocol fires")
 
-	# Verify hack override
+	# Verify door override after EMP
 	var has_override := false
 	for entry in log:
 		if "OVERRIDE" in entry.text:
 			has_override = true
-	_assert_true(has_override, "Hack override succeeds")
+	_assert_true(has_override, "Door override after EMP")
 
 	# Verify bridge dialogue
 	var has_bodies := false

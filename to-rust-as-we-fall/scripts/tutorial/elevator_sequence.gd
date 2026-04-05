@@ -187,19 +187,8 @@ func _setup_ui() -> void:
 	_hud.set_ability_state("emp", "disabled")
 	_hud.character_selection_changed.connect(_on_character_selected)
 
-	# Control panel interactable (hacking target)
-	_control_panel = preload("res://scenes/game/interactable.tscn").instantiate()
-	_control_panel.name = "ControlPanel"
-	_control_panel.description = "Control Panel"
-	_control_panel.one_shot = true
-	_control_panel.dwell_time = 3.0
-	_control_panel.position = Vector3(ELEVATOR_SIZE.x / 2.0 - 0.3, 1.0, 0)
-	add_child(_control_panel)
-	_control_panel.interacted.connect(_on_panel_hacked)
-	# Hide the interactable until hack step
-	_control_panel.visible = false
-
-	# Exit button near the doors — Peris can try it during waking
+	# Exit button near the doors
+	# Before EMP: shows "NO EXIT". After EMP: door lock fails, button opens doors.
 	_exit_button = preload("res://scenes/game/interactable.tscn").instantiate()
 	_exit_button.name = "ExitButton"
 	_exit_button.description = "Door Button"
@@ -388,7 +377,7 @@ func _fire_emp_both() -> void:
 	_tutorial_prompt.hide_prompt()
 	# Reboot and hack tutorial on the scheduler
 	_scheduler.schedule_after(30.0, _on_reboot, "reboot")
-	_scheduler.schedule_after(1.5, _start_hack_tutorial, "hack")
+	_scheduler.schedule_after(1.5, _start_doors_unlocked, "doors_unlock")
 
 func _on_reboot() -> void:
 	if not _reboot_active:
@@ -399,7 +388,7 @@ func _on_reboot() -> void:
 		_escort_1.visible = true
 	if _escort_2:
 		_escort_2.visible = true
-	if _current_step in ["emp_tutorial", "hack_tutorial", "multiselect_tutorial"]:
+	if _current_step in ["emp_tutorial", "doors_unlocked", "multiselect_tutorial"]:
 		_emp_count = 0
 		_reboot_active = false
 		_enter_step("units_activate")
@@ -538,8 +527,6 @@ func _start_system_restored() -> void:
 	_camera.shake(0.1, 8.0)
 	# System restores devices — Aster's data overlay activates
 	_setup_perception("data", _aster_node)
-	# Control panel now visible through the data overlay
-	_control_panel.visible = true
 	DialogueData.say_to(_dialogue, "elevator.system.restored")
 	DialogueData.say_to(_dialogue, "elevator.aster.overlay")
 	_dialogue.dialogue_finished.connect(
@@ -572,26 +559,21 @@ func _start_emp_tutorial_2() -> void:
 	# Kept for reboot fallback but no longer triggered normally
 	_enter_step("emp_tutorial_2")
 
-func _start_hack_tutorial() -> void:
-	_enter_step("hack_tutorial")
-	_tutorial_prompt.hide_prompt()
-	# Auto-switch to Aster for hacking
-	if _active_character != "aster":
-		_select_character("aster")
-	_peris_node.set_move_enabled(false)
-	_control_panel.visible = true
-	DialogueData.say_to(_dialogue, "elevator.aster.hack")
-
-func _on_panel_hacked() -> void:
-	if _current_step != "hack_tutorial":
-		return
+func _start_doors_unlocked() -> void:
+	_enter_step("doors_unlocked")
 	_reboot_active = false
-	_camera.shake(0.3, 3.0)
+	_tutorial_prompt.hide_prompt()
+	# EMP killed the door lock — the exit button now works
+	_exit_button.one_shot = true
+	_exit_button.tutorial_label = "OPEN"
+	_exit_button.show_tutorial_label()
 	DialogueData.say_to(_dialogue, "elevator.system.override")
-	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0.5, _start_doors_open, "doors"),
-		CONNECT_ONE_SHOT
-	)
+	# Re-wire exit button to actually open the doors
+	if _exit_button.interacted.is_connected(_on_exit_button_pressed):
+		_exit_button.interacted.disconnect(_on_exit_button_pressed)
+	_exit_button.interacted.connect(func():
+		_scheduler.schedule_after(0.0, _start_doors_open, "doors")
+	, CONNECT_ONE_SHOT)
 
 func _start_doors_open() -> void:
 	_enter_step("doors_open")
