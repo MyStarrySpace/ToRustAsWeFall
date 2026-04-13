@@ -18,6 +18,7 @@ to-rust-as-we-fall/bin/*.dylib
 to-rust-as-we-fall/bin/*.framework/
 to-rust-as-we-fall/bin/*.lib
 to-rust-as-we-fall/bin/*.exp
+to-rust-as-we-fall/bin/~*.TMP
 
 # SCons build artifacts
 native/.sconsign.dblite
@@ -28,3 +29,9 @@ native/**/*.a
 
 # Android export
 to-rust-as-we-fall/android/
+
+# Generated hide-encounter analysis artifacts
+to-rust-as-we-fall/hide_encounter*_analysis.json
+to-rust-as-we-fall/hide_encounter_*.png
+to-rust-as-we-fall/*_analysis_plots/
+to-rust-as-we-fall/dialogue_dump.txt

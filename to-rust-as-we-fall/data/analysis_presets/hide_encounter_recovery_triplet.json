@@ -1,0 +1,29 @@
+{
+	"search": {
+		"lure_values": [12.0],
+		"hide_values": [7.0],
+		"siderophore_speed_values": [1.7],
+		"run_drain_values": [30.0],
+		"walk_regen_values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+		"stand_regen_values": [0.0, 2.5, 5.0, 7.5, 10.0, 12.5, 15.0],
+		"hold_duration_values": [0.5, 1.0, 1.5, 2.0, 2.5, 3.0],
+		"cluster_gap_values": [7.5],
+		"exit_gap_values": [2.5],
+		"optimize_for_threshold": true,
+		"threshold_search": {
+			"resolution": 2.5
+		},
+		"config": {
+			"lure1_duration": 12.0,
+			"lure2_duration": 18.0
+		}
+	},
+	"bifurcation": {
+		"step": 2.5
+	},
+	"monte_carlo": {
+		"trials": 128,
+		"sample_limit": 12,
+		"seed": 17
+	}
+}

@@ -89,6 +89,48 @@ func _ready() -> void:
 			"--test-ferrolure":
 				ran_test = true
 				await _test_ferrolure()
+			"--test-hide-encounter":
+				ran_test = true
+				_test_hide_encounter()
+			"--test-hide-encounter-analysis":
+				ran_test = true
+				_test_hide_encounter_analysis()
+			"--test-hide-encounter-shared-duration":
+				ran_test = true
+				_test_hide_encounter_shared_duration()
+			"--test-hide-encounter-lure2-duration":
+				ran_test = true
+				_test_hide_encounter_lure2_duration()
+			"--test-hide-encounter-exit-gap":
+				ran_test = true
+				_test_hide_encounter_exit_gap()
+			"--test-hide-encounter-cluster-gap":
+				ran_test = true
+				_test_hide_encounter_cluster_gap()
+			"--test-hide-encounter-run-drain":
+				ran_test = true
+				_test_hide_encounter_run_drain()
+			"--test-hide-encounter-stand-regen":
+				ran_test = true
+				_test_hide_encounter_stand_regen()
+			"--test-hide-encounter-consume-cost":
+				ran_test = true
+				_test_hide_encounter_consume_cost()
+			"--test-hide-encounter-hold-duration":
+				ran_test = true
+				_test_hide_encounter_hold_duration()
+			"--test-hide-encounter-walk-regen":
+				ran_test = true
+				_test_hide_encounter_walk_regen()
+			"--test-hide-encounter-coupled-stand-hold":
+				ran_test = true
+				_test_hide_encounter_coupled_stand_hold()
+			"--test-hide-encounter-coupled-stand-walk":
+				ran_test = true
+				_test_hide_encounter_coupled_stand_walk()
+			"--test-hide-encounter-split-recovery":
+				ran_test = true
+				_test_hide_encounter_split_recovery()
 			"--test-camera-shake":
 				ran_test = true
 				_test_camera_shake()
@@ -138,6 +180,67 @@ func _ready() -> void:
 			if i + 2 < args.size() and not args[i + 2].begins_with("--"):
 				output_path = args[i + 2]
 			await _dump_dialogue(scene_path, output_path)
+		if args[i] == "--export-hide-encounter-analysis":
+			ran_test = true
+			var analysis_output := "hide_encounter_analysis.json"
+			if i + 1 < args.size() and not args[i + 1].begins_with("--"):
+				analysis_output = args[i + 1]
+			_export_hide_encounter_analysis(analysis_output)
+		if args[i] == "--export-hide-encounter-exit-gap-analysis":
+			ran_test = true
+			var exit_gap_analysis_output := "hide_encounter_exit_gap_analysis.json"
+			if i + 1 < args.size() and not args[i + 1].begins_with("--"):
+				exit_gap_analysis_output = args[i + 1]
+			_export_hide_encounter_exit_gap_analysis(exit_gap_analysis_output)
+		if args[i] == "--export-hide-encounter-cluster-gap-analysis":
+			ran_test = true
+			var cluster_gap_analysis_output := "hide_encounter_cluster_gap_analysis.json"
+			if i + 1 < args.size() and not args[i + 1].begins_with("--"):
+				cluster_gap_analysis_output = args[i + 1]
+			_export_hide_encounter_cluster_gap_analysis(cluster_gap_analysis_output)
+		if args[i] == "--export-hide-encounter-run-drain-analysis":
+			ran_test = true
+			var run_drain_analysis_output := "hide_encounter_run_drain_analysis.json"
+			if i + 1 < args.size() and not args[i + 1].begins_with("--"):
+				run_drain_analysis_output = args[i + 1]
+			_export_hide_encounter_run_drain_analysis(run_drain_analysis_output)
+		if args[i] == "--export-hide-encounter-stand-regen-analysis":
+			ran_test = true
+			var stand_regen_analysis_output := "hide_encounter_stand_regen_analysis.json"
+			if i + 1 < args.size() and not args[i + 1].begins_with("--"):
+				stand_regen_analysis_output = args[i + 1]
+			_export_hide_encounter_stand_regen_analysis(stand_regen_analysis_output)
+		if args[i] == "--export-hide-encounter-hold-duration-analysis":
+			ran_test = true
+			var hold_duration_analysis_output := "hide_encounter_hold_duration_analysis.json"
+			if i + 1 < args.size() and not args[i + 1].begins_with("--"):
+				hold_duration_analysis_output = args[i + 1]
+			_export_hide_encounter_hold_duration_analysis(hold_duration_analysis_output)
+		if args[i] == "--export-hide-encounter-custom-analysis" and i + 1 < args.size():
+			ran_test = true
+			var config_path: String = args[i + 1]
+			var custom_analysis_output := "hide_encounter_custom_analysis.json"
+			if i + 2 < args.size() and not args[i + 2].begins_with("--"):
+				custom_analysis_output = args[i + 2]
+			_export_hide_encounter_custom_analysis(config_path, custom_analysis_output)
+		if args[i] == "--export-hide-encounter-walk-regen-analysis":
+			ran_test = true
+			var walk_regen_analysis_output := "hide_encounter_walk_regen_analysis.json"
+			if i + 1 < args.size() and not args[i + 1].begins_with("--"):
+				walk_regen_analysis_output = args[i + 1]
+			_export_hide_encounter_walk_regen_analysis(walk_regen_analysis_output)
+		if args[i] == "--export-hide-encounter-coupled-stand-hold-analysis":
+			ran_test = true
+			var coupled_stand_hold_output := "hide_encounter_coupled_stand_hold_analysis.json"
+			if i + 1 < args.size() and not args[i + 1].begins_with("--"):
+				coupled_stand_hold_output = args[i + 1]
+			_export_hide_encounter_coupled_stand_hold_analysis(coupled_stand_hold_output)
+		if args[i] == "--export-hide-encounter-coupled-stand-walk-analysis":
+			ran_test = true
+			var coupled_stand_walk_output := "hide_encounter_coupled_stand_walk_analysis.json"
+			if i + 1 < args.size() and not args[i + 1].begins_with("--"):
+				coupled_stand_walk_output = args[i + 1]
+			_export_hide_encounter_coupled_stand_walk_analysis(coupled_stand_walk_output)
 
 	if ran_test:
 		_print_results()
@@ -2094,6 +2197,867 @@ func _test_ferrolure() -> void:
 
 	instance.queue_free()
 	await get_tree().process_frame
+
+# --- Test: Hide Encounter Solver ---
+func _test_hide_encounter() -> void:
+	_test_name = "Hide Encounter"
+
+	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	_assert_true(sim_script != null, "Hide encounter sim script loads")
+	if sim_script == null:
+		return
+
+	var sim = sim_script.new()
+	var solved: Dictionary = sim.search_solution({
+		"siderophore_speed_values": [1.5, 1.6, 1.7],
+	})
+	_assert_true(not solved.is_empty(), "Solver found hallway distances that fit the encounter")
+	if solved.is_empty():
+		return
+
+	var cfg: Dictionary = solved["config"]
+	_assert_true(cfg["hide_distance"] > 0.0, "Hide is placed beyond lure 2")
+	_assert_true(cfg["hide_distance"] < cfg["lure_distance"], "Hide stays between the two lures")
+	_assert_true(cfg["siderophore_speed"] > 0.0, "Solver tunes a positive siderophore speed")
+	_assert_true(solved.has("search_space"), "Solver reports the searched parameter space")
+
+	var success: Dictionary = solved["success"]
+	_assert_true(success["success"], "Intended sequence succeeds")
+	_assert_true(success.get("exit_margin", -1.0) > 0.0, "Success exits before lure 2 expires")
+	_assert_true(success.get("lure1_margin", -1.0) > 0.0, "Success reaches lure 2 before lure 1 expires")
+
+	var slow_retreat: Dictionary = solved["slow_retreat"]
+	var slow_lure2: Dictionary = solved["slow_lure2_activation"]
+	var no_lure2: Dictionary = solved["no_lure2"]
+	var slow_exit: Dictionary = solved["slow_exit"]
+
+	_assert_true(not slow_retreat["success"], "Slow retreat fails")
+	_assert_true(not slow_lure2["success"], "Slow lure 2 activation fails")
+	_assert_true(not no_lure2["success"], "Skipping lure 2 fails")
+	_assert_true(not slow_exit["success"], "Slow exit fails")
+
+	_assert_true(String(slow_retreat["failure_reason"]) != "", "Slow retreat records a failure reason")
+	_assert_true(String(slow_lure2["failure_reason"]) != "", "Slow lure 2 activation records a failure reason")
+	_assert_true(String(no_lure2["failure_reason"]) != "", "No-lure-2 run records a failure reason")
+	_assert_true(String(slow_exit["failure_reason"]) != "", "Slow exit records a failure reason")
+
+func _test_hide_encounter_analysis() -> void:
+	_test_name = "Hide Encounter Analysis"
+
+	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	_assert_true(analysis_script != null, "Hide encounter analysis script loads")
+	if analysis_script == null:
+		return
+
+	var analysis = analysis_script.new()
+	var bundle: Dictionary = analysis.build_bundle({
+		"search": {
+			"siderophore_speed_values": [1.5, 1.7],
+			"config": {
+				"hold_regen": 5.0,
+				"hide_regen": 2.5,
+			},
+		},
+		"bifurcation": {"step": 5.0},
+		"phase_plane": {"stamina_samples": [35.0, 55.0, 75.0, 100.0]},
+		"monte_carlo": {"trials": 64, "sample_limit": 8, "seed": 17},
+	})
+	_assert_true(not bundle.is_empty(), "Analysis bundle builds")
+	if bundle.is_empty():
+		return
+
+	_assert_true(bundle.has("phase_plane"), "Bundle includes phase-plane data")
+	_assert_true(bundle.has("stamina_bifurcation"), "Bundle includes bifurcation data")
+	_assert_true(bundle.has("monte_carlo"), "Bundle includes Monte Carlo data")
+	_assert_true(bundle.has("search") and bundle["search"].has("parameter_space"), "Bundle includes solver parameter space")
+	_assert_true(bundle["search"].has("objective"), "Bundle includes solver objective metadata")
+	_assert_equals(String(bundle.get("methodology_version", "")), "hide-encounter-v5", "Bundle reports the current methodology version")
+	_assert_equals(float(bundle["tuned_config"].get("hold_regen", -1.0)), 5.0, "Analysis preserves hold regen from search config")
+	_assert_equals(float(bundle["tuned_config"].get("hide_regen", -1.0)), 2.5, "Analysis preserves hide regen from search config")
+	_assert_equals(float(bundle["tuned_config"].get("consume_stamina_cost", -1.0)), 0.0, "Analysis preserves consume stamina cost from search config")
+
+	var bifurcation: Dictionary = bundle["stamina_bifurcation"]
+	_assert_true(bifurcation["samples"].size() > 0, "Bifurcation sweep produced samples")
+	_assert_true(float(bifurcation.get("first_success_stamina", -1.0)) >= 0.0, "Bifurcation found a success threshold")
+
+	var vector_field: Array = bundle["phase_plane"].get("vector_field", [])
+	_assert_equals(vector_field.size(), 5, "Phase-plane exposes run, walk, hold, hide, and stand regimes")
+	_assert_true(bundle["phase_plane"].has("discrete_events"), "Phase-plane reports discrete stamina events")
+
+	var monte_carlo: Dictionary = bundle["monte_carlo"]
+	var confusion: Dictionary = monte_carlo["confusion_matrix"]
+	var total_confusion := int(confusion["true_positive"]) + int(confusion["false_positive"]) + int(confusion["true_negative"]) + int(confusion["false_negative"])
+	_assert_equals(total_confusion, monte_carlo["trials"], "Confusion matrix covers every Monte Carlo trial")
+
+func _test_hide_encounter_shared_duration() -> void:
+	_test_name = "Hide Encounter Shared Duration"
+
+	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	_assert_true(sim_script != null, "Hide encounter sim script loads for shared-duration search")
+	if sim_script == null:
+		return
+
+	var sim = sim_script.new()
+	var solved: Dictionary = sim.search_solution({
+		"share_lure_duration": true,
+		"optimize_for_threshold": true,
+		"siderophore_speed_values": [1.5, 1.6, 1.7, 1.8],
+		"lure_duration_values": [14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0],
+		"threshold_search": {"resolution": 5.0},
+	})
+	_assert_true(solved.is_empty(), "Current systems do not admit a valid equal-duration lure solution in the tested bounds")
+
+func _test_hide_encounter_lure2_duration() -> void:
+	_test_name = "Hide Encounter Lure2 Duration"
+
+	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	_assert_true(sim_script != null, "Hide encounter sim script loads for lure2-duration search")
+	if sim_script == null:
+		return
+
+	var sim = sim_script.new()
+	var solved: Dictionary = sim.search_solution({
+		"lure_values": [12.0],
+		"hide_values": [7.0],
+		"siderophore_speed_values": [1.7],
+		"run_drain_values": [30.0],
+		"walk_regen_values": [0.0],
+		"stand_regen_values": [5.0],
+		"hold_regen_values": [0.0],
+		"hide_regen_values": [5.0],
+		"hold_duration_values": [2.0],
+		"cluster_gap_values": [7.5],
+		"exit_gap_values": [2.5],
+		"lure2_duration_values": [14.0, 16.0, 18.0, 20.0, 22.0],
+		"optimize_for_threshold": true,
+		"threshold_search": {"resolution": 2.5},
+		"config": {
+			"lure1_duration": 12.0,
+		},
+	})
+	_assert_true(not solved.is_empty(), "Lure2-duration search finds a valid encounter")
+	if solved.is_empty():
+		return
+
+	_assert_true([14.0, 16.0, 18.0, 20.0, 22.0].has(float(solved["config"]["lure2_duration"])), "Lure2-duration search chooses a searched lure 2 duration")
+	_assert_true(solved["search_space"].has("lure2_duration_values"), "Lure2-duration search records lure 2 timing values")
+	_assert_true(solved["success"]["success"], "Lure2-duration search preserves intended success")
+
+func _test_hide_encounter_exit_gap() -> void:
+	_test_name = "Hide Encounter Exit Gap"
+
+	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	_assert_true(sim_script != null, "Hide encounter sim script loads for exit-gap search")
+	if sim_script == null:
+		return
+
+	var sim = sim_script.new()
+	var solved: Dictionary = sim.search_solution({
+		"lure_values": [12.0],
+		"hide_values": [7.0],
+		"siderophore_speed_values": [1.7],
+		"exit_gap_values": [2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0],
+		"optimize_for_threshold": true,
+		"threshold_search": {"resolution": 2.5},
+		"config": {
+			"lure1_duration": 12.0,
+			"lure2_duration": 18.0,
+		},
+	})
+	_assert_true(not solved.is_empty(), "Exit-gap search finds a valid encounter")
+	if solved.is_empty():
+		return
+
+	_assert_true(float(solved["config"]["exit_gap"]) >= 2.5, "Exit-gap search chooses a searched gap value")
+	_assert_true(float(solved.get("first_success_stamina", -1.0)) >= 0.0, "Exit-gap search records a stamina threshold")
+	_assert_true(solved["success"]["success"], "Exit-gap search preserves intended success")
+
+func _test_hide_encounter_cluster_gap() -> void:
+	_test_name = "Hide Encounter Cluster Gap"
+
+	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	_assert_true(sim_script != null, "Hide encounter sim script loads for cluster-gap search")
+	if sim_script == null:
+		return
+
+	var sim = sim_script.new()
+	var solved: Dictionary = sim.search_solution({
+		"lure_values": [12.0],
+		"hide_values": [7.0],
+		"siderophore_speed_values": [1.7],
+		"cluster_gap_values": [4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0, 10.5, 11.0, 11.5, 12.0],
+		"exit_gap_values": [2.5],
+		"optimize_for_threshold": true,
+		"threshold_search": {"resolution": 2.5},
+		"config": {
+			"lure1_duration": 12.0,
+			"lure2_duration": 18.0,
+		},
+	})
+	_assert_true(not solved.is_empty(), "Cluster-gap search finds a valid encounter")
+	if solved.is_empty():
+		return
+
+	_assert_true(float(solved["config"]["cluster_gap"]) >= 4.0, "Cluster-gap search chooses a searched gap value")
+	_assert_true(float(solved.get("first_success_stamina", -1.0)) >= 0.0, "Cluster-gap search records a stamina threshold")
+	_assert_true(solved["success"]["success"], "Cluster-gap search preserves intended success")
+
+func _test_hide_encounter_run_drain() -> void:
+	_test_name = "Hide Encounter Run Drain"
+
+	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	_assert_true(sim_script != null, "Hide encounter sim script loads for run-drain search")
+	if sim_script == null:
+		return
+
+	var sim = sim_script.new()
+	var solved: Dictionary = sim.search_solution({
+		"lure_values": [12.0],
+		"hide_values": [7.0],
+		"siderophore_speed_values": [1.7],
+		"cluster_gap_values": [7.5],
+		"exit_gap_values": [2.5],
+		"run_drain_values": [30.0, 35.0, 40.0, 45.0, 50.0, 55.0, 60.0, 65.0, 70.0, 75.0, 80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0, 125.0, 130.0, 135.0, 140.0, 145.0, 150.0, 155.0, 160.0, 165.0, 170.0, 175.0, 180.0],
+		"optimize_for_threshold": true,
+		"threshold_search": {"resolution": 2.5},
+		"config": {
+			"lure1_duration": 12.0,
+			"lure2_duration": 18.0,
+		},
+	})
+	_assert_true(not solved.is_empty(), "Run-drain search finds a valid encounter")
+	if solved.is_empty():
+		return
+
+	_assert_true(float(solved["config"]["run_drain"]) >= 30.0, "Run-drain search chooses a searched decay value")
+	_assert_true(float(solved.get("first_success_stamina", -1.0)) >= 0.0, "Run-drain search records a stamina threshold")
+	_assert_true(solved["success"]["success"], "Run-drain search preserves intended success")
+
+func _test_hide_encounter_stand_regen() -> void:
+	_test_name = "Hide Encounter Stand Regen"
+
+	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	_assert_true(sim_script != null, "Hide encounter sim script loads for stand-regen search")
+	if sim_script == null:
+		return
+
+	var sim = sim_script.new()
+	var solved: Dictionary = sim.search_solution({
+		"lure_values": [12.0],
+		"hide_values": [7.0],
+		"siderophore_speed_values": [1.7],
+		"run_drain_values": [30.0],
+		"cluster_gap_values": [7.5],
+		"exit_gap_values": [2.5],
+		"stand_regen_values": [0.0, 2.5, 5.0, 7.5, 10.0, 12.5, 15.0, 17.5, 20.0, 22.5, 25.0, 27.5, 30.0],
+		"optimize_for_threshold": true,
+		"threshold_search": {"resolution": 2.5},
+		"config": {
+			"lure1_duration": 12.0,
+			"lure2_duration": 18.0,
+		},
+	})
+	_assert_true(not solved.is_empty(), "Stand-regen search finds a valid encounter")
+	if solved.is_empty():
+		return
+
+	_assert_true(float(solved["config"]["stand_regen"]) >= 0.0, "Stand-regen search chooses a searched regen value")
+	_assert_true(float(solved.get("first_success_stamina", -1.0)) >= 0.0, "Stand-regen search records a stamina threshold")
+	_assert_true(solved["success"]["success"], "Stand-regen search preserves intended success")
+
+func _test_hide_encounter_consume_cost() -> void:
+	_test_name = "Hide Encounter Consume Cost"
+
+	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	_assert_true(sim_script != null, "Hide encounter sim script loads for consume-cost search")
+	if sim_script == null:
+		return
+
+	var sim = sim_script.new()
+	var solved: Dictionary = sim.search_solution({
+		"lure_values": [12.0],
+		"hide_values": [7.0],
+		"siderophore_speed_values": [1.7],
+		"run_drain_values": [30.0],
+		"walk_regen_values": [0.0],
+		"stand_regen_values": [5.0],
+		"hold_regen_values": [0.0],
+		"hide_regen_values": [5.0],
+		"consume_stamina_cost_values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0],
+		"hold_duration_values": [2.0],
+		"cluster_gap_values": [7.5],
+		"exit_gap_values": [2.5],
+		"optimize_for_threshold": true,
+		"threshold_search": {"resolution": 2.5},
+		"config": {
+			"lure1_duration": 12.0,
+			"lure2_duration": 18.0,
+		},
+	})
+	_assert_true(not solved.is_empty(), "Consume-cost search finds a valid encounter")
+	if solved.is_empty():
+		return
+
+	_assert_true(float(solved["config"]["consume_stamina_cost"]) >= 0.0, "Consume-cost search chooses a searched cost")
+	_assert_true(solved["search_space"].has("consume_stamina_cost_values"), "Consume-cost search records the searched cost values")
+	_assert_true(solved["success"]["success"], "Consume-cost search preserves intended success")
+
+func _test_hide_encounter_hold_duration() -> void:
+	_test_name = "Hide Encounter Hold Duration"
+
+	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	_assert_true(sim_script != null, "Hide encounter sim script loads for hold-duration search")
+	if sim_script == null:
+		return
+
+	var sim = sim_script.new()
+	var solved: Dictionary = sim.search_solution({
+		"lure_values": [12.0],
+		"hide_values": [7.0],
+		"siderophore_speed_values": [1.7],
+		"run_drain_values": [30.0],
+		"stand_regen_values": [15.0],
+		"cluster_gap_values": [7.5],
+		"exit_gap_values": [2.5],
+		"hold_duration_values": [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0],
+		"optimize_for_threshold": true,
+		"threshold_search": {"resolution": 2.5},
+		"config": {
+			"lure1_duration": 12.0,
+			"lure2_duration": 18.0,
+		},
+	})
+	_assert_true(not solved.is_empty(), "Hold-duration search finds a valid encounter")
+	if solved.is_empty():
+		return
+
+	_assert_true(float(solved["config"]["hold_duration"]) >= 0.5, "Hold-duration search chooses a searched shared hold")
+	_assert_true(float(solved.get("first_success_stamina", -1.0)) >= 0.0, "Hold-duration search records a stamina threshold")
+	_assert_true(solved["success"]["success"], "Hold-duration search preserves intended success")
+
+func _test_hide_encounter_walk_regen() -> void:
+	_test_name = "Hide Encounter Walk Regen"
+
+	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	_assert_true(sim_script != null, "Hide encounter sim script loads for walk-regen search")
+	if sim_script == null:
+		return
+
+	var sim = sim_script.new()
+	var solved: Dictionary = sim.search_solution({
+		"lure_values": [12.0],
+		"hide_values": [7.0],
+		"siderophore_speed_values": [1.7],
+		"run_drain_values": [30.0],
+		"stand_regen_values": [15.0],
+		"hold_duration_values": [2.0],
+		"cluster_gap_values": [7.5],
+		"exit_gap_values": [2.5],
+		"walk_regen_values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+		"optimize_for_threshold": true,
+		"threshold_search": {"resolution": 2.5},
+		"config": {
+			"lure1_duration": 12.0,
+			"lure2_duration": 18.0,
+		},
+	})
+	_assert_true(not solved.is_empty(), "Walk-regen search finds a valid encounter")
+	if solved.is_empty():
+		return
+
+	_assert_true(float(solved["config"]["walk_regen"]) >= 0.0, "Walk-regen search chooses a searched regen value")
+	_assert_true(float(solved.get("first_success_stamina", -1.0)) >= 0.0, "Walk-regen search records a stamina threshold")
+	_assert_true(solved["success"]["success"], "Walk-regen search preserves intended success")
+
+func _test_hide_encounter_coupled_stand_hold() -> void:
+	_test_name = "Hide Encounter Coupled Stand Hold"
+
+	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	_assert_true(sim_script != null, "Hide encounter sim script loads for coupled stand-hold search")
+	if sim_script == null:
+		return
+
+	var sim = sim_script.new()
+	var solved: Dictionary = sim.search_solution({
+		"lure_values": [12.0],
+		"hide_values": [7.0],
+		"siderophore_speed_values": [1.7],
+		"run_drain_values": [30.0],
+		"walk_regen_values": [3.0],
+		"stand_regen_values": [0.0, 2.5, 5.0, 7.5, 10.0, 12.5, 15.0],
+		"hold_duration_values": [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5],
+		"cluster_gap_values": [7.5],
+		"exit_gap_values": [2.5],
+		"optimize_for_threshold": true,
+		"threshold_search": {"resolution": 2.5},
+		"config": {
+			"lure1_duration": 12.0,
+			"lure2_duration": 18.0,
+		},
+	})
+	_assert_true(not solved.is_empty(), "Coupled stand-hold search finds a valid encounter")
+	if solved.is_empty():
+		return
+
+	_assert_true(float(solved["config"]["stand_regen"]) >= 0.0, "Coupled stand-hold search chooses a searched stand regen")
+	_assert_true(float(solved["config"]["hold_duration"]) >= 0.5, "Coupled stand-hold search chooses a searched hold duration")
+	_assert_true(float(solved.get("first_success_stamina", -1.0)) >= 0.0, "Coupled stand-hold search records a stamina threshold")
+	_assert_true(solved["success"]["success"], "Coupled stand-hold search preserves intended success")
+
+func _test_hide_encounter_coupled_stand_walk() -> void:
+	_test_name = "Hide Encounter Coupled Stand Walk"
+
+	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	_assert_true(sim_script != null, "Hide encounter sim script loads for coupled stand-walk search")
+	if sim_script == null:
+		return
+
+	var sim = sim_script.new()
+	var solved: Dictionary = sim.search_solution({
+		"lure_values": [12.0],
+		"hide_values": [7.0],
+		"siderophore_speed_values": [1.7],
+		"run_drain_values": [30.0],
+		"stand_regen_values": [0.0, 2.5, 5.0, 7.5, 10.0, 12.5, 15.0],
+		"walk_regen_values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+		"hold_duration_values": [2.0],
+		"cluster_gap_values": [7.5],
+		"exit_gap_values": [2.5],
+		"optimize_for_threshold": true,
+		"threshold_search": {"resolution": 2.5},
+		"config": {
+			"lure1_duration": 12.0,
+			"lure2_duration": 18.0,
+		},
+	})
+	_assert_true(not solved.is_empty(), "Coupled stand-walk search finds a valid encounter")
+	if solved.is_empty():
+		return
+
+	_assert_true(float(solved["config"]["stand_regen"]) >= 0.0, "Coupled stand-walk search chooses a searched stand regen")
+	_assert_true(float(solved["config"]["walk_regen"]) >= 0.0, "Coupled stand-walk search chooses a searched walk regen")
+	_assert_true(float(solved.get("first_success_stamina", -1.0)) >= 0.0, "Coupled stand-walk search records a stamina threshold")
+	_assert_true(solved["success"]["success"], "Coupled stand-walk search preserves intended success")
+
+func _test_hide_encounter_split_recovery() -> void:
+	_test_name = "Hide Encounter Split Recovery"
+
+	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	_assert_true(sim_script != null, "Hide encounter sim script loads for split-recovery search")
+	if sim_script == null:
+		return
+
+	var sim = sim_script.new()
+	var solved: Dictionary = sim.search_solution({
+		"lure_values": [12.0],
+		"hide_values": [7.0],
+		"siderophore_speed_values": [1.7],
+		"run_drain_values": [30.0],
+		"walk_regen_values": [0.0],
+		"stand_regen_values": [5.0],
+		"hold_regen_values": [0.0, 2.5, 5.0],
+		"hide_regen_values": [0.0, 2.5, 5.0],
+		"hold_duration_values": [2.0],
+		"cluster_gap_values": [7.5],
+		"exit_gap_values": [2.5],
+		"optimize_for_threshold": true,
+		"threshold_search": {"resolution": 2.5},
+		"config": {
+			"lure1_duration": 12.0,
+			"lure2_duration": 18.0,
+		},
+	})
+	_assert_true(not solved.is_empty(), "Split-recovery search finds a valid encounter")
+	if solved.is_empty():
+		return
+
+	var chosen_hold_regen: float = float(solved["config"].get("hold_regen", solved["config"]["stand_regen"]))
+	var chosen_hide_regen: float = float(solved["config"].get("hide_regen", solved["config"]["stand_regen"]))
+	_assert_true([0.0, 2.5, 5.0].has(chosen_hold_regen), "Split-recovery search chooses a searched hold regen")
+	_assert_true([0.0, 2.5, 5.0].has(chosen_hide_regen), "Split-recovery search chooses a searched hide regen")
+	_assert_true(solved["search_space"].has("hold_regen_values"), "Split-recovery search records hold regen parameter space")
+	_assert_true(solved["search_space"].has("hide_regen_values"), "Split-recovery search records hide regen parameter space")
+	_assert_true(solved["success"]["success"], "Split-recovery search preserves intended success")
+
+func _export_hide_encounter_analysis(output_path: String) -> void:
+	_test_name = "Hide Encounter Analysis Export"
+
+	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	_assert_true(analysis_script != null, "Hide encounter analysis script loads for export")
+	if analysis_script == null:
+		return
+
+	var analysis = analysis_script.new()
+	var bundle: Dictionary = analysis.build_bundle()
+	_assert_true(not bundle.is_empty(), "Hide encounter analysis bundle exported")
+	if bundle.is_empty():
+		return
+
+	var file := FileAccess.open(output_path, FileAccess.WRITE)
+	_assert_true(file != null, "Output file opened for analysis export")
+	if file == null:
+		return
+	file.store_string(JSON.stringify(bundle, "\t"))
+	print("  Wrote hide encounter analysis to: %s" % output_path)
+
+func _export_hide_encounter_exit_gap_analysis(output_path: String) -> void:
+	_test_name = "Hide Encounter Exit Gap Export"
+
+	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	_assert_true(analysis_script != null, "Hide encounter analysis script loads for exit-gap export")
+	if analysis_script == null:
+		return
+
+	var analysis = analysis_script.new()
+	var bundle: Dictionary = analysis.build_bundle({
+		"search": {
+			"lure_values": [12.0],
+			"hide_values": [7.0],
+			"siderophore_speed_values": [1.7],
+			"exit_gap_values": [2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0],
+			"optimize_for_threshold": true,
+			"threshold_search": {"resolution": 2.5},
+			"config": {
+				"lure1_duration": 12.0,
+				"lure2_duration": 18.0,
+			},
+		},
+		"bifurcation": {"step": 2.5},
+		"monte_carlo": {"trials": 128, "sample_limit": 12, "seed": 17},
+	})
+	_assert_true(not bundle.is_empty(), "Hide encounter exit-gap analysis bundle exported")
+	if bundle.is_empty():
+		return
+
+	var file := FileAccess.open(output_path, FileAccess.WRITE)
+	_assert_true(file != null, "Output file opened for exit-gap analysis export")
+	if file == null:
+		return
+	file.store_string(JSON.stringify(bundle, "\t"))
+	print("  Wrote hide encounter exit-gap analysis to: %s" % output_path)
+
+func _export_hide_encounter_cluster_gap_analysis(output_path: String) -> void:
+	_test_name = "Hide Encounter Cluster Gap Export"
+
+	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	_assert_true(analysis_script != null, "Hide encounter analysis script loads for cluster-gap export")
+	if analysis_script == null:
+		return
+
+	var analysis = analysis_script.new()
+	var bundle: Dictionary = analysis.build_bundle({
+		"search": {
+			"lure_values": [12.0],
+			"hide_values": [7.0],
+			"siderophore_speed_values": [1.7],
+			"cluster_gap_values": [4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0, 10.5, 11.0, 11.5, 12.0],
+			"exit_gap_values": [2.5],
+			"optimize_for_threshold": true,
+			"threshold_search": {"resolution": 2.5},
+			"config": {
+				"lure1_duration": 12.0,
+				"lure2_duration": 18.0,
+			},
+		},
+		"bifurcation": {"step": 2.5},
+		"monte_carlo": {"trials": 128, "sample_limit": 12, "seed": 17},
+	})
+	_assert_true(not bundle.is_empty(), "Hide encounter cluster-gap analysis bundle exported")
+	if bundle.is_empty():
+		return
+
+	var file := FileAccess.open(output_path, FileAccess.WRITE)
+	_assert_true(file != null, "Output file opened for cluster-gap analysis export")
+	if file == null:
+		return
+	file.store_string(JSON.stringify(bundle, "\t"))
+	print("  Wrote hide encounter cluster-gap analysis to: %s" % output_path)
+
+func _export_hide_encounter_run_drain_analysis(output_path: String) -> void:
+	_test_name = "Hide Encounter Run Drain Export"
+
+	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	_assert_true(analysis_script != null, "Hide encounter analysis script loads for run-drain export")
+	if analysis_script == null:
+		return
+
+	var analysis = analysis_script.new()
+	var bundle: Dictionary = analysis.build_bundle({
+		"search": {
+			"lure_values": [12.0],
+			"hide_values": [7.0],
+			"siderophore_speed_values": [1.7],
+			"cluster_gap_values": [7.5],
+			"exit_gap_values": [2.5],
+			"run_drain_values": [30.0, 35.0, 40.0, 45.0, 50.0, 55.0, 60.0, 65.0, 70.0, 75.0, 80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0, 125.0, 130.0, 135.0, 140.0, 145.0, 150.0, 155.0, 160.0, 165.0, 170.0, 175.0, 180.0],
+			"optimize_for_threshold": true,
+			"threshold_search": {"resolution": 2.5},
+			"config": {
+				"lure1_duration": 12.0,
+				"lure2_duration": 18.0,
+			},
+		},
+		"bifurcation": {"step": 2.5},
+		"monte_carlo": {"trials": 128, "sample_limit": 12, "seed": 17},
+	})
+	_assert_true(not bundle.is_empty(), "Hide encounter run-drain analysis bundle exported")
+	if bundle.is_empty():
+		return
+
+	var file := FileAccess.open(output_path, FileAccess.WRITE)
+	_assert_true(file != null, "Output file opened for run-drain analysis export")
+	if file == null:
+		return
+	file.store_string(JSON.stringify(bundle, "\t"))
+	print("  Wrote hide encounter run-drain analysis to: %s" % output_path)
+
+func _export_hide_encounter_stand_regen_analysis(output_path: String) -> void:
+	_test_name = "Hide Encounter Stand Regen Export"
+
+	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	_assert_true(analysis_script != null, "Hide encounter analysis script loads for stand-regen export")
+	if analysis_script == null:
+		return
+
+	var analysis = analysis_script.new()
+	var bundle: Dictionary = analysis.build_bundle({
+		"search": {
+			"lure_values": [12.0],
+			"hide_values": [7.0],
+			"siderophore_speed_values": [1.7],
+			"run_drain_values": [30.0],
+			"cluster_gap_values": [7.5],
+			"exit_gap_values": [2.5],
+			"stand_regen_values": [0.0, 2.5, 5.0, 7.5, 10.0, 12.5, 15.0, 17.5, 20.0, 22.5, 25.0, 27.5, 30.0],
+			"optimize_for_threshold": true,
+			"threshold_search": {"resolution": 2.5},
+			"config": {
+				"lure1_duration": 12.0,
+				"lure2_duration": 18.0,
+			},
+		},
+		"bifurcation": {"step": 2.5},
+		"monte_carlo": {"trials": 128, "sample_limit": 12, "seed": 17},
+	})
+	_assert_true(not bundle.is_empty(), "Hide encounter stand-regen analysis bundle exported")
+	if bundle.is_empty():
+		return
+
+	var file := FileAccess.open(output_path, FileAccess.WRITE)
+	_assert_true(file != null, "Output file opened for stand-regen analysis export")
+	if file == null:
+		return
+	file.store_string(JSON.stringify(bundle, "\t"))
+	print("  Wrote hide encounter stand-regen analysis to: %s" % output_path)
+
+func _export_hide_encounter_hold_duration_analysis(output_path: String) -> void:
+	_test_name = "Hide Encounter Hold Duration Export"
+
+	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	_assert_true(analysis_script != null, "Hide encounter analysis script loads for hold-duration export")
+	if analysis_script == null:
+		return
+
+	var analysis = analysis_script.new()
+	var bundle: Dictionary = analysis.build_bundle({
+		"search": {
+			"lure_values": [12.0],
+			"hide_values": [7.0],
+			"siderophore_speed_values": [1.7],
+			"run_drain_values": [30.0],
+			"stand_regen_values": [15.0],
+			"cluster_gap_values": [7.5],
+			"exit_gap_values": [2.5],
+			"hold_duration_values": [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0],
+			"optimize_for_threshold": true,
+			"threshold_search": {"resolution": 2.5},
+			"config": {
+				"lure1_duration": 12.0,
+				"lure2_duration": 18.0,
+			},
+		},
+		"bifurcation": {"step": 2.5},
+		"monte_carlo": {"trials": 128, "sample_limit": 12, "seed": 17},
+	})
+	_assert_true(not bundle.is_empty(), "Hide encounter hold-duration analysis bundle exported")
+	if bundle.is_empty():
+		return
+
+	var file := FileAccess.open(output_path, FileAccess.WRITE)
+	_assert_true(file != null, "Output file opened for hold-duration analysis export")
+	if file == null:
+		return
+	file.store_string(JSON.stringify(bundle, "\t"))
+	print("  Wrote hide encounter hold-duration analysis to: %s" % output_path)
+
+func _export_hide_encounter_custom_analysis(config_path: String, output_path: String) -> void:
+	_test_name = "Hide Encounter Custom Export"
+
+	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	_assert_true(analysis_script != null, "Hide encounter analysis script loads for custom export")
+	if analysis_script == null:
+		return
+
+	var overrides := _load_hide_encounter_analysis_overrides(config_path)
+	_assert_true(not overrides.is_empty(), "Hide encounter custom analysis config loaded")
+	if overrides.is_empty():
+		return
+
+	var analysis = analysis_script.new()
+	var bundle: Dictionary = analysis.build_bundle(overrides)
+	_assert_true(not bundle.is_empty(), "Hide encounter custom analysis bundle exported")
+	if bundle.is_empty():
+		return
+
+	var file := FileAccess.open(output_path, FileAccess.WRITE)
+	_assert_true(file != null, "Output file opened for custom analysis export")
+	if file == null:
+		return
+	file.store_string(JSON.stringify(bundle, "\t"))
+	print("  Wrote hide encounter custom analysis to: %s" % output_path)
+
+func _load_hide_encounter_analysis_overrides(config_path: String) -> Dictionary:
+	var resolved_path := config_path
+	if not resolved_path.begins_with("res://") and not resolved_path.begins_with("user://"):
+		if resolved_path.begins_with("./"):
+			resolved_path = resolved_path.substr(2)
+		if resolved_path.begins_with("/"):
+			resolved_path = resolved_path.substr(1)
+		resolved_path = "res://%s" % resolved_path
+
+	var file := FileAccess.open(resolved_path, FileAccess.READ)
+	_assert_true(file != null, "Custom analysis config opened")
+	if file == null:
+		return {}
+
+	var parsed = JSON.parse_string(file.get_as_text())
+	_assert_true(parsed is Dictionary, "Custom analysis config parsed as dictionary")
+	if parsed is Dictionary:
+		return parsed
+	return {}
+
+func _export_hide_encounter_walk_regen_analysis(output_path: String) -> void:
+	_test_name = "Hide Encounter Walk Regen Export"
+
+	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	_assert_true(analysis_script != null, "Hide encounter analysis script loads for walk-regen export")
+	if analysis_script == null:
+		return
+
+	var analysis = analysis_script.new()
+	var bundle: Dictionary = analysis.build_bundle({
+		"search": {
+			"lure_values": [12.0],
+			"hide_values": [7.0],
+			"siderophore_speed_values": [1.7],
+			"run_drain_values": [30.0],
+			"stand_regen_values": [15.0],
+			"hold_duration_values": [2.0],
+			"cluster_gap_values": [7.5],
+			"exit_gap_values": [2.5],
+			"walk_regen_values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+			"optimize_for_threshold": true,
+			"threshold_search": {"resolution": 2.5},
+			"config": {
+				"lure1_duration": 12.0,
+				"lure2_duration": 18.0,
+			},
+		},
+		"bifurcation": {"step": 2.5},
+		"monte_carlo": {"trials": 128, "sample_limit": 12, "seed": 17},
+	})
+	_assert_true(not bundle.is_empty(), "Hide encounter walk-regen analysis bundle exported")
+	if bundle.is_empty():
+		return
+
+	var file := FileAccess.open(output_path, FileAccess.WRITE)
+	_assert_true(file != null, "Output file opened for walk-regen analysis export")
+	if file == null:
+		return
+	file.store_string(JSON.stringify(bundle, "\t"))
+	print("  Wrote hide encounter walk-regen analysis to: %s" % output_path)
+
+func _export_hide_encounter_coupled_stand_hold_analysis(output_path: String) -> void:
+	_test_name = "Hide Encounter Coupled Stand Hold Export"
+
+	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	_assert_true(analysis_script != null, "Hide encounter analysis script loads for coupled stand-hold export")
+	if analysis_script == null:
+		return
+
+	var analysis = analysis_script.new()
+	var bundle: Dictionary = analysis.build_bundle({
+		"search": {
+			"lure_values": [12.0],
+			"hide_values": [7.0],
+			"siderophore_speed_values": [1.7],
+			"run_drain_values": [30.0],
+			"walk_regen_values": [3.0],
+			"stand_regen_values": [0.0, 2.5, 5.0, 7.5, 10.0, 12.5, 15.0],
+			"hold_duration_values": [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5],
+			"cluster_gap_values": [7.5],
+			"exit_gap_values": [2.5],
+			"optimize_for_threshold": true,
+			"threshold_search": {"resolution": 2.5},
+			"config": {
+				"lure1_duration": 12.0,
+				"lure2_duration": 18.0,
+			},
+		},
+		"bifurcation": {"step": 2.5},
+		"monte_carlo": {"trials": 128, "sample_limit": 12, "seed": 17},
+	})
+	_assert_true(not bundle.is_empty(), "Hide encounter coupled stand-hold analysis bundle exported")
+	if bundle.is_empty():
+		return
+
+	var file := FileAccess.open(output_path, FileAccess.WRITE)
+	_assert_true(file != null, "Output file opened for coupled stand-hold analysis export")
+	if file == null:
+		return
+	file.store_string(JSON.stringify(bundle, "\t"))
+	print("  Wrote hide encounter coupled stand-hold analysis to: %s" % output_path)
+
+func _export_hide_encounter_coupled_stand_walk_analysis(output_path: String) -> void:
+	_test_name = "Hide Encounter Coupled Stand Walk Export"
+
+	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	_assert_true(analysis_script != null, "Hide encounter analysis script loads for coupled stand-walk export")
+	if analysis_script == null:
+		return
+
+	var analysis = analysis_script.new()
+	var bundle: Dictionary = analysis.build_bundle({
+		"search": {
+			"lure_values": [12.0],
+			"hide_values": [7.0],
+			"siderophore_speed_values": [1.7],
+			"run_drain_values": [30.0],
+			"stand_regen_values": [0.0, 2.5, 5.0, 7.5, 10.0, 12.5, 15.0],
+			"walk_regen_values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+			"hold_duration_values": [2.0],
+			"cluster_gap_values": [7.5],
+			"exit_gap_values": [2.5],
+			"optimize_for_threshold": true,
+			"threshold_search": {"resolution": 2.5},
+			"config": {
+				"lure1_duration": 12.0,
+				"lure2_duration": 18.0,
+			},
+		},
+		"bifurcation": {"step": 2.5},
+		"monte_carlo": {"trials": 128, "sample_limit": 12, "seed": 17},
+	})
+	_assert_true(not bundle.is_empty(), "Hide encounter coupled stand-walk analysis bundle exported")
+	if bundle.is_empty():
+		return
+
+	var file := FileAccess.open(output_path, FileAccess.WRITE)
+	_assert_true(file != null, "Output file opened for coupled stand-walk analysis export")
+	if file == null:
+		return
+	file.store_string(JSON.stringify(bundle, "\t"))
+	print("  Wrote hide encounter coupled stand-walk analysis to: %s" % output_path)
 
 # --- Dialogue Dump ---
 
