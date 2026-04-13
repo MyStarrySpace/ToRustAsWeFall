@@ -10,6 +10,8 @@ var _aster_node: CharacterBody3D
 var _peris_node: CharacterBody3D
 var _endo: Node3D
 var _active_character := "aster"
+var _channels_ferrolure: MeshInstance3D
+var _channels_ferrolure_light: OmniLight3D
 
 @export var start_chunk := ""
 
@@ -30,6 +32,12 @@ var _naturalizers: Array[Node3D] = []
 # With side branches and exploration, each section = 3-5 min.
 const CHANNELS_START := Vector3(0, 0, 0)
 const CHANNELS_END := Vector3(220, 0, 0)
+const CHANNELS_MEMORY_TRIGGER_X := 54.0
+const CHANNELS_BODY_POS := Vector3(74.0, 0.5, -3.0)
+const CHANNELS_FERROLURE_TRIGGER_X := 146.0
+const CHANNELS_FERROLURE_POS := Vector3(156.0, 0.5, 9.0)
+const CHANNELS_SHELTER_TRIGGER_X := 190.0
+const CHANNELS_SHELTER_POS := Vector3(198.0, 0.5, 12.0)
 const STACKS_START := Vector3(240, 0, 0)
 const STACKS_END := Vector3(460, 0, 0)
 const RINGS_START := Vector3(480, 0, 0)
@@ -122,6 +130,13 @@ func _compute_speed() -> float:
 	return 10.0 if Input.is_key_pressed(KEY_F) else 1.0
 
 func _on_process(delta: float, spd: float) -> void:
+	var channels_script_locked := _current_step in [
+		"channels_memory",
+		"channels_corpse",
+		"channels_ferrolure",
+		"channels_shelter",
+	]
+
 	# Iron patch damage
 	for pair in [["aster", _aster_node], ["peris", _peris_node]]:
 		var cid: String = pair[0]
@@ -144,18 +159,30 @@ func _on_process(delta: float, spd: float) -> void:
 				break
 
 	# NPC follow (Endo follows Aster when present and visible)
-	if _endo and _endo.visible and _game_state.characters.has("endo"):
+	if not channels_script_locked and _endo and _endo.visible and _game_state.characters.has("endo"):
 		var dist := _endo.global_position.distance_to(_aster_node.global_position)
 		if dist > 3.0 and not _game_state.is_moving("endo"):
 			_game_state.command_move_to_pos("endo", _aster_node.global_position + Vector3(-1.2, 0, -0.8))
 
 	# Peris follows Aster
-	if _peris_node and _game_state.characters.has("peris"):
+	if not channels_script_locked and _peris_node and _game_state.characters.has("peris"):
 		var dist := _peris_node.global_position.distance_to(_aster_node.global_position)
 		if dist > 3.0 and not _game_state.is_moving("peris"):
 			_game_state.command_move_to_pos("peris", _aster_node.global_position + Vector3(-1.2, 0, 0.8))
 
 	# Position gates
+	if _current_step == "channels_to_memory":
+		if _game_state.get_position("aster").x > CHANNELS_MEMORY_TRIGGER_X:
+			_start_channels_memory()
+
+	if _current_step == "channels_to_ferrolure":
+		if _game_state.get_position("aster").x > CHANNELS_FERROLURE_TRIGGER_X:
+			_start_channels_ferrolure()
+
+	if _current_step == "channels_to_shelter":
+		if _game_state.get_position("aster").x > CHANNELS_SHELTER_TRIGGER_X:
+			_start_channels_shelter()
+
 	if _current_step == "channels_explore":
 		if _game_state.get_position("aster").x > CHANNELS_END.x - 5.0:
 			_start_stacks_enter()
@@ -181,51 +208,161 @@ func _on_process(delta: float, spd: float) -> void:
 
 # --- Step functions ---
 
+func _focus_aster_view() -> void:
+	_set_perception_mode("data")
+	_set_perception_target(_aster_node)
+	if _camera:
+		_camera.target = _aster_node
+
+func _focus_peris_view() -> void:
+	_set_perception_mode("fog")
+	_set_perception_target(_peris_node)
+	if _camera:
+		_camera.target = _peris_node
+
+func _wait_for_arrivals(ids: Array[String], next_func: Callable, tag: String) -> void:
+	var poll: Callable
+	poll = func() -> void:
+		for id in ids:
+			if _game_state.is_moving(id):
+				_scheduler.schedule_after(0.1, poll, tag)
+				return
+		_scheduler.schedule_after(0.0, next_func, tag)
+	_scheduler.schedule_after(0.0, poll, tag)
+
+func _move_party_and_continue(destinations: Dictionary, next_func: Callable, tag: String) -> void:
+	var ids: Array[String] = []
+	for id in destinations.keys():
+		ids.append(id)
+		_game_state.command_move_to_pos(id, destinations[id])
+	_wait_for_arrivals(ids, next_func, tag)
+
+func _set_channels_ferrolure_active(active: bool) -> void:
+	if _channels_ferrolure:
+		var mat := _channels_ferrolure.material_override as StandardMaterial3D
+		if mat:
+			mat.emission_energy_multiplier = 1.4 if active else 0.25
+	if _channels_ferrolure_light:
+		_channels_ferrolure_light.light_energy = 2.0 if active else 0.45
+
 func _start_channels_enter() -> void:
-	_enter_step("channels_enter")
+	if not _enter_step("channels_enter"):
+		return
+	_focus_aster_view()
 	_player.set_move_enabled(true)
 	_dialogue_chain([
 		"channels.narration.enter",
 		"channels.aster.fluid",
 		"channels.peris.sound",
-	], func(): _scheduler.schedule_after(2.0, _start_channels_endo_teach, "endo_teach"))
+	], func(): _scheduler.schedule_after(0.5, _start_channels_to_memory, "channels_to_memory"))
 
-func _start_channels_endo_teach() -> void:
-	_enter_step("channels_endo_teach")
-	_dialogue_chain([
-		"channels.endo.stop",
-		"channels.aster.stagnant",
-		"channels.peris.thick",
-	], func(): _scheduler.schedule_after(2.0, _start_channels_flora, "flora"))
+func _start_channels_to_memory() -> void:
+	if not _enter_step("channels_to_memory"):
+		return
+	_focus_aster_view()
+	_player.set_move_enabled(true)
+	_tutorial_prompt.show_prompt("Click to move")
 
-func _start_channels_flora() -> void:
-	_enter_step("channels_flora")
-	_dialogue_chain([
-		"channels.narration.flora",
-		"channels.peris.touch",
-		"channels.aster.glow",
-		"channels.peris.always",
-	], func(): _scheduler.schedule_after(2.0, _start_channels_corpse, "corpse"))
+func _start_channels_memory() -> void:
+	if not _enter_step("channels_memory"):
+		return
+	_player.set_move_enabled(false)
+	_tutorial_prompt.hide_prompt()
+	_game_state.command_stop("aster")
+	_focus_peris_view()
+	_move_party_and_continue({
+		"peris": CHANNELS_BODY_POS + Vector3(-1.0, 0.0, 1.1),
+		"aster": CHANNELS_BODY_POS + Vector3(-3.0, 0.0, 0.4),
+		"endo": CHANNELS_BODY_POS + Vector3(-4.2, 0.0, -0.8),
+	}, func():
+		_dialogue_chain([
+			"channels.narration.memory",
+			"channels.peris.know_place",
+			"channels.aster.not_here",
+			"channels.peris.saw_it",
+			"channels.narration.leads",
+		], func(): _scheduler.schedule_after(0.5, _start_channels_corpse, "channels_corpse"))
+	, "channels_memory_move")
+
+func _start_channels_to_ferrolure() -> void:
+	if not _enter_step("channels_to_ferrolure"):
+		return
+	_focus_aster_view()
+	_player.set_move_enabled(true)
+	_tutorial_prompt.show_prompt("Click to move")
 
 func _start_channels_corpse() -> void:
-	_enter_step("channels_corpse")
+	if not _enter_step("channels_corpse"):
+		return
+	_focus_aster_view()
 	_dialogue_chain([
 		"channels.narration.body",
 		"channels.endo.kneel",
-		"channels.peris.what",
-		"channels.aster.nutrients",
+		"channels.aster.report",
+		"channels.peris.smell",
+		"channels.peris.clients",
+		"channels.aster.lysate",
 		"channels.peris.people",
 		"channels.aster.hungry",
-	], func(): _scheduler.schedule_after(2.0, _start_channels_explore, "explore"))
+		"channels.aster.downgrade",
+	], func(): _scheduler.schedule_after(0.5, _start_channels_to_ferrolure, "channels_to_ferrolure"))
+
+func _start_channels_ferrolure() -> void:
+	if not _enter_step("channels_ferrolure"):
+		return
+	_player.set_move_enabled(false)
+	_tutorial_prompt.hide_prompt()
+	_game_state.command_stop("aster")
+	_set_channels_ferrolure_active(false)
+	_move_party_and_continue({
+		"peris": CHANNELS_FERROLURE_POS + Vector3(-0.8, 0.0, 0.6),
+		"aster": CHANNELS_FERROLURE_POS + Vector3(-2.5, 0.0, -0.3),
+		"endo": CHANNELS_FERROLURE_POS + Vector3(-3.6, 0.0, 1.2),
+	}, func():
+		_dialogue_chain([
+			"channels.narration.flora",
+			"channels.aster.lure",
+			"channels.peris.signals",
+			"channels.peris.pause",
+		], func():
+			_set_channels_ferrolure_active(true)
+			_dialogue_chain([
+				"channels.peris.touch",
+				"channels.peris.always",
+			], func(): _scheduler.schedule_after(0.5, _start_channels_to_shelter, "channels_to_shelter"))
+		)
+	, "channels_ferrolure_move")
+
+func _start_channels_to_shelter() -> void:
+	if not _enter_step("channels_to_shelter"):
+		return
+	_focus_aster_view()
+	_player.set_move_enabled(true)
+	_tutorial_prompt.show_prompt("Click to move")
+
+func _start_channels_shelter() -> void:
+	if not _enter_step("channels_shelter"):
+		return
+	_player.set_move_enabled(false)
+	_tutorial_prompt.hide_prompt()
+	_game_state.command_stop("aster")
+	_move_party_and_continue({
+		"aster": CHANNELS_SHELTER_POS + Vector3(-1.8, 0.0, -1.2),
+		"peris": CHANNELS_SHELTER_POS + Vector3(-0.8, 0.0, 0.9),
+		"endo": CHANNELS_SHELTER_POS + Vector3(-0.3, 0.0, -0.2),
+	}, func():
+		_dialogue_chain([
+			"channels.narration.shelter",
+			"channels.endo.door",
+		], func(): _scheduler.schedule_after(0.5, _start_channels_explore, "channels_explore"))
+	, "channels_shelter_move")
 
 func _start_channels_explore() -> void:
-	_enter_step("channels_explore")
-	_dialogue_chain([
-		"channels.narration.branch",
-		"channels.endo.point",
-	], func():
-		_tutorial_prompt.show_prompt("Click to move — follow the flowing water")
-	)
+	if not _enter_step("channels_explore"):
+		return
+	_focus_aster_view()
+	_player.set_move_enabled(true)
+	_tutorial_prompt.show_prompt("Click to move")
 
 # --- Stacks ---
 
@@ -452,22 +589,97 @@ func _build_channels_chunk(parent: Node3D) -> void:
 		parent.add_child(stagnant)
 		_iron_patches.append({"pos": sp_pos, "size": sp_size})
 
-	# Flora growths (multiple — player learns tending through repetition)
-	for i in range(3):
-		var fi := preload("res://scenes/game/interactable.tscn").instantiate()
-		fi.name = "FloraGrowth_%d" % i
-		fi.description = "Wild Growth"
-		fi.dialogue_key = "channels.peris.touch"
-		fi.dialogue_box = _dialogue
-		fi.active_character = "peris"
-		fi.one_shot = false
-		fi.dwell_time = 1.5
-		fi.position = Vector3(sx + 30.0 + i * 70.0, 0.3, randf_range(-8, 8))
-		add_child(fi)
-	# Keep the first one named for test compatibility
-	var flora_interact := find_child("FloraGrowth_0", true, false)
-	if flora_interact:
-		flora_interact.name = "FloraGrowth"
+	# Body in the drainage path grounds both the memory beat and the harvest beat.
+	var body := MeshInstance3D.new()
+	body.name = "ChannelsBody"
+	var corpse_mesh := CapsuleMesh.new()
+	corpse_mesh.radius = 0.28
+	corpse_mesh.height = 1.3
+	body.mesh = corpse_mesh
+	var body_mat := StandardMaterial3D.new()
+	body_mat.albedo_color = Color(0.2, 0.18, 0.16)
+	body_mat.roughness = 0.9
+	body.material_override = body_mat
+	body.position = CHANNELS_BODY_POS
+	body.rotation_degrees = Vector3(0, 0, 88)
+	parent.add_child(body)
+
+	for i in range(2):
+		var memory_body := MeshInstance3D.new()
+		var memory_mesh := CapsuleMesh.new()
+		memory_mesh.radius = 0.22
+		memory_mesh.height = 1.1
+		memory_body.mesh = memory_mesh
+		var memory_mat := StandardMaterial3D.new()
+		memory_mat.albedo_color = Color(0.16, 0.18, 0.22)
+		memory_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		memory_mat.albedo_color.a = 0.45
+		memory_body.material_override = memory_mat
+		memory_body.position = Vector3(sx + 48.0 + i * 14.0, 0.38, -10.0 + i * 6.0)
+		memory_body.rotation_degrees = Vector3(0, 0, 90)
+		parent.add_child(memory_body)
+
+	# Second ferrolure: dormant until Peris tends it in the coda beat.
+	var ferrolure_root := Node3D.new()
+	ferrolure_root.name = "SecondFerrolure"
+	ferrolure_root.position = CHANNELS_FERROLURE_POS
+	parent.add_child(ferrolure_root)
+
+	var ferrolure_stem := MeshInstance3D.new()
+	var ferrolure_stem_mesh := CylinderMesh.new()
+	ferrolure_stem_mesh.top_radius = 0.08
+	ferrolure_stem_mesh.bottom_radius = 0.12
+	ferrolure_stem_mesh.height = 1.0
+	ferrolure_stem.mesh = ferrolure_stem_mesh
+	var stem_mat := StandardMaterial3D.new()
+	stem_mat.albedo_color = Color(0.18, 0.24, 0.18)
+	ferrolure_stem.material_override = stem_mat
+	ferrolure_stem.position = Vector3(0, 0.5, 0)
+	ferrolure_root.add_child(ferrolure_stem)
+
+	_channels_ferrolure = MeshInstance3D.new()
+	var ferrolure_bulb_mesh := SphereMesh.new()
+	ferrolure_bulb_mesh.radius = 0.35
+	ferrolure_bulb_mesh.height = 0.7
+	_channels_ferrolure.mesh = ferrolure_bulb_mesh
+	var ferrolure_mat := StandardMaterial3D.new()
+	ferrolure_mat.albedo_color = Color(0.22, 0.35, 0.25)
+	ferrolure_mat.emission_enabled = true
+	ferrolure_mat.emission = Color(0.2, 0.55, 0.32)
+	ferrolure_mat.emission_energy_multiplier = 0.25
+	_channels_ferrolure.material_override = ferrolure_mat
+	_channels_ferrolure.position = Vector3(0, 1.05, 0)
+	ferrolure_root.add_child(_channels_ferrolure)
+
+	_channels_ferrolure_light = OmniLight3D.new()
+	_channels_ferrolure_light.position = Vector3(0, 1.0, 0)
+	_channels_ferrolure_light.light_color = Color(0.32, 0.7, 0.45)
+	_channels_ferrolure_light.light_energy = 0.45
+	_channels_ferrolure_light.omni_range = 8.0
+	ferrolure_root.add_child(_channels_ferrolure_light)
+	_set_channels_ferrolure_active(false)
+
+	# Shelter alcove at the far end of the zone.
+	_add_corridor_section(parent, Vector3(CHANNELS_SHELTER_POS.x, -0.04, CHANNELS_SHELTER_POS.z), Vector3(16, 0.08, 10), Color(0.07, 0.07, 0.08))
+	_add_wall(parent, Vector3(CHANNELS_SHELTER_POS.x, 1.5, CHANNELS_SHELTER_POS.z + 5.0), Vector3(16, 3, 0.3), wall_color)
+	_add_wall(parent, Vector3(CHANNELS_SHELTER_POS.x - 8.0, 1.5, CHANNELS_SHELTER_POS.z), Vector3(0.3, 3, 10), wall_color)
+	_add_wall(parent, Vector3(CHANNELS_SHELTER_POS.x + 8.0, 1.5, CHANNELS_SHELTER_POS.z), Vector3(0.3, 3, 10), wall_color)
+	var shelter_door := MeshInstance3D.new()
+	shelter_door.name = "ChannelsShelterDoor"
+	var shelter_door_mesh := BoxMesh.new()
+	shelter_door_mesh.size = Vector3(2.4, 2.6, 0.18)
+	shelter_door.mesh = shelter_door_mesh
+	var shelter_door_mat := StandardMaterial3D.new()
+	shelter_door_mat.albedo_color = Color(0.22, 0.2, 0.18)
+	shelter_door.material_override = shelter_door_mat
+	shelter_door.position = CHANNELS_SHELTER_POS + Vector3(0, 1.25, -4.8)
+	parent.add_child(shelter_door)
+	var shelter_light := OmniLight3D.new()
+	shelter_light.position = CHANNELS_SHELTER_POS + Vector3(0, 2.0, 0)
+	shelter_light.light_color = Color(0.85, 0.68, 0.42)
+	shelter_light.light_energy = 2.1
+	shelter_light.omni_range = 12.0
+	parent.add_child(shelter_light)
 
 	# Lighting — spread across the length
 	for i in range(5):

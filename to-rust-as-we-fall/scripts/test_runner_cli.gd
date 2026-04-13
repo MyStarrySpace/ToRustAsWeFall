@@ -1717,14 +1717,17 @@ func _test_act1() -> void:
 	_assert_true(instance._chunks.has("rings"), "Rings chunk loaded")
 	_assert_true(instance._chunks.has("lockout"), "Lockout chunk loaded")
 
-	# Verify interactables exist
-	_assert_true(instance.find_child("FloraGrowth", true, false) != null, "Flora interactable in channels")
+	# Verify key scene anchors exist
+	_assert_true(instance.find_child("ChannelsBody", true, false) != null, "Body landmark in channels")
+	_assert_true(instance.find_child("SecondFerrolure", true, false) != null, "Second ferrolure in channels")
+	_assert_true(instance.find_child("ChannelsShelterDoor", true, false) != null, "Shelter door in channels")
 	_assert_true(instance.find_child("DataTerminal", true, false) != null, "Terminal interactable in stacks")
 	_assert_true(instance.find_child("ClientNPC", true, false) != null, "Client interactable in rings")
 	_assert_true(instance.find_child("AccessPanel", true, false) != null, "Access panel in lockout")
 
 	# Verify dialogue keys exist for all scenes
-	for prefix in ["channels.narration.enter", "channels.peris.touch", "channels.endo.kneel",
+	for prefix in ["channels.narration.enter", "channels.peris.know_place", "channels.aster.report",
+		"channels.peris.touch", "channels.endo.kneel",
 		"stacks.aster.cleaned", "stacks.aster.means",
 		"rings.peris.wall", "rings.endo.stops", "rings.peris.visiting",
 		"lockout.system.rejected", "lockout.aster.not_in", "lockout.peris.back_to"]:
