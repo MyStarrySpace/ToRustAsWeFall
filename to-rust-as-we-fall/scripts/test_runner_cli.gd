@@ -1720,10 +1720,47 @@ func _test_act1() -> void:
 	# Verify key scene anchors exist
 	_assert_true(instance.find_child("ChannelsBody", true, false) != null, "Body landmark in channels")
 	_assert_true(instance.find_child("SecondFerrolure", true, false) != null, "Second ferrolure in channels")
+	_assert_true(instance.find_child("EncounterFerrolure", true, false) != null, "Encounter ferrolure in channels")
+	_assert_true(instance.find_child("EncounterFerrolureInteract", true, false) != null, "Encounter interactable in channels")
+	_assert_true(instance.find_child("ChannelsHideSpot", true, false) != null, "Hide spot in channels")
+	_assert_true(instance.find_child("ChannelsSwarm_0", true, false) != null, "Swarm cluster in channels")
 	_assert_true(instance.find_child("ChannelsShelterDoor", true, false) != null, "Shelter door in channels")
 	_assert_true(instance.find_child("DataTerminal", true, false) != null, "Terminal interactable in stacks")
 	_assert_true(instance.find_child("ClientNPC", true, false) != null, "Client interactable in rings")
 	_assert_true(instance.find_child("AccessPanel", true, false) != null, "Access panel in lockout")
+
+	# Smoke the Channels hide-and-run encounter.
+	var hide_spot := instance.find_child("ChannelsHideSpot", true, false)
+	instance._begin_channels_encounter()
+	await get_tree().process_frame
+	_assert_true(instance._current_step == "channels_encounter_activate", "Encounter enters activation step")
+	_assert_true(instance._active_character == "endo", "Encounter hands control to Endo")
+	_assert_true(instance._player == endo, "Endo becomes the active player for the encounter")
+	_assert_true(not instance._channels_run_lure_active, "Encounter lure starts inactive")
+
+	instance._on_channels_run_lure_activated()
+	_assert_true(instance._current_step == "channels_encounter_hide", "Lure activation advances to hide step")
+	_assert_true(instance._channels_run_lure_active, "Lure activation powers the encounter plant")
+
+	instance._on_channels_run_lure_expired()
+	_assert_true(instance._channels_encounter_resetting, "Missing the hide window arms an encounter retry")
+	instance._scheduler.cancel_tag("channels_run_lure_expire")
+	instance._scheduler.cancel_tag("channels_encounter_retry")
+	instance._reset_channels_encounter_nodes()
+
+	instance._begin_channels_encounter()
+	instance._on_channels_run_lure_activated()
+	endo.global_position = hide_spot.global_position
+	instance._update_channels_encounter(0.1, 1.0)
+	_assert_true(instance._channels_party_hidden, "Endo can hide before the lure expires")
+
+	instance._on_channels_run_lure_expired()
+	_assert_true(instance._current_step == "channels_encounter_run", "Hidden party can transition into the run step")
+	_assert_true(not instance._channels_run_lure_active, "Lure powers down before the shelter sprint")
+
+	endo.global_position = Vector3(198.0, 0.5, 12.0)
+	instance._update_channels_encounter(0.1, 1.0)
+	_assert_true(instance._current_step == "channels_shelter", "Encounter success advances to the shelter beat")
 
 	# Verify dialogue keys exist for all scenes
 	for prefix in ["channels.narration.enter", "channels.peris.know_place", "channels.aster.report",
@@ -1736,7 +1773,9 @@ func _test_act1() -> void:
 
 	# Verify chunk unloading works
 	instance._unload_chunk("channels")
+	await get_tree().process_frame
 	_assert_true(not instance._chunks.has("channels"), "Channels unloaded")
+	_assert_true(instance.find_child("EncounterFerrolureInteract", true, false) == null, "Encounter interactable unloads with channels")
 
 	instance.queue_free()
 	await get_tree().process_frame

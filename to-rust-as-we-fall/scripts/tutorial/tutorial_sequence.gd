@@ -33,6 +33,7 @@ var _dlg_chain_keys: Array = []
 var _dlg_chain_index := 0
 var _dlg_chain_next: Callable
 var _dlg_chain_delay := 0.0
+var _did_teardown := false
 
 func _ready() -> void:
 	if Engine.is_editor_hint():
@@ -68,6 +69,11 @@ func _process(delta: float) -> void:
 		_perception_material.set_shader_parameter("character_pos",
 			_perception_target.global_position + Vector3(0, 1.0, 0))
 	_on_process(delta, spd)
+
+func _exit_tree() -> void:
+	if Engine.is_editor_hint():
+		return
+	_teardown_sequence()
 
 # --- Virtual methods (override in subclasses) ---
 
@@ -145,6 +151,44 @@ func _init_ui() -> void:
 	_thought_label = ui.get_node("ThoughtOverlay/ThoughtLabel")
 	_fade_rect.color.a = 0.0
 	_setup_ui()
+
+func _teardown_sequence() -> void:
+	if _did_teardown:
+		return
+	_did_teardown = true
+
+	if _dialogue:
+		for conn in _dialogue.dialogue_finished.get_connections():
+			_dialogue.dialogue_finished.disconnect(conn.callable)
+		if _dialogue.has_method("clear"):
+			_dialogue.clear()
+
+	_dlg_chain_keys.clear()
+	_dlg_chain_index = 0
+	_dlg_chain_next = Callable()
+	_dlg_chain_delay = 0.0
+	_perception_target = null
+
+	if _camera:
+		_camera.target = null
+
+	for node in find_children("*", "", true, false):
+		for prop in node.get_property_list():
+			if prop.name == "game_state":
+				node.set("game_state", null)
+				break
+
+	if _scheduler:
+		_scheduler.clear()
+	if _game_state:
+		_game_state.scheduler = null
+
+	_game_state = null
+	_scheduler = null
+	_dialogue = null
+	_tutorial_prompt = null
+	_fade_rect = null
+	_thought_label = null
 
 # --- Character helpers ---
 

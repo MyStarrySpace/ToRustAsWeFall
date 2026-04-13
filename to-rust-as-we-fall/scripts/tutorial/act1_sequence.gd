@@ -8,10 +8,19 @@ extends TutorialSequence
 # Characters
 var _aster_node: CharacterBody3D
 var _peris_node: CharacterBody3D
-var _endo: Node3D
+var _endo: CharacterBody3D
 var _active_character := "aster"
 var _channels_ferrolure: MeshInstance3D
 var _channels_ferrolure_light: OmniLight3D
+var _channels_run_lure_mesh: MeshInstance3D
+var _channels_run_lure_light: OmniLight3D
+var _channels_run_lure_interactable
+var _channels_hide_spot: Node3D
+var _channels_swarm_units: Array[Dictionary] = []
+var _channels_run_lure_active := false
+var _channels_run_lure_expire_tick := -1.0
+var _channels_party_hidden := false
+var _channels_encounter_resetting := false
 
 @export var start_chunk := ""
 
@@ -36,7 +45,15 @@ const CHANNELS_MEMORY_TRIGGER_X := 54.0
 const CHANNELS_BODY_POS := Vector3(74.0, 0.5, -3.0)
 const CHANNELS_FERROLURE_TRIGGER_X := 146.0
 const CHANNELS_FERROLURE_POS := Vector3(156.0, 0.5, 9.0)
-const CHANNELS_SHELTER_TRIGGER_X := 190.0
+const CHANNELS_ENCOUNTER_TRIGGER_X := 174.0
+const CHANNELS_ENCOUNTER_ENTRY_POS := Vector3(176.0, 0.5, 3.0)
+const CHANNELS_RUN_LURE_POS := Vector3(180.0, 0.5, 1.5)
+const CHANNELS_HIDE_SPOT_POS := Vector3(186.0, 0.5, -10.0)
+const CHANNELS_SWARM_CLUSTER_X := 193.0
+const CHANNELS_SWARM_DETECT_RADIUS := 2.2
+const CHANNELS_SWARM_SPEED := 1.7
+const CHANNELS_RUN_LURE_DURATION := 20.0
+const CHANNELS_SWARM_OFFSETS := [-2.4, -1.6, -0.8, 0.0, 0.8, 1.6, 2.4]
 const CHANNELS_SHELTER_POS := Vector3(198.0, 0.5, 12.0)
 const STACKS_START := Vector3(240, 0, 0)
 const STACKS_END := Vector3(460, 0, 0)
@@ -84,13 +101,13 @@ func _build_characters() -> void:
 	chars.add_child(_player)
 	_aster_node = _player
 
-	# Peris (follows)
+	# Peris
 	_peris_node = _create_player_character("Peris", Color(1.0, 0.67, 0.27))
 	_peris_node.position = CHANNELS_START + Vector3(0, 0.5, 1)
 	chars.add_child(_peris_node)
 
-	# Endo (present until rings, then departs)
-	_endo = _create_npc("Endo", Color(0.4, 0.67, 0.53))
+	# Endo becomes controllable during the Channels encounter.
+	_endo = _create_player_character("Endo", Color(0.4, 0.67, 0.53))
 	_endo.position = CHANNELS_START + Vector3(-1, 0.5, 0)
 	chars.add_child(_endo)
 
@@ -104,6 +121,7 @@ func _register_characters() -> void:
 
 func _setup_ui() -> void:
 	_setup_perception("data", _aster_node)
+	_select_character("aster")
 
 func _begin() -> void:
 	_player.set_move_enabled(false)
@@ -131,6 +149,8 @@ func _compute_speed() -> float:
 
 func _on_process(delta: float, spd: float) -> void:
 	var channels_script_locked := _current_step in [
+		"channels_encounter_intro",
+		"channels_encounter_reset",
 		"channels_memory",
 		"channels_corpse",
 		"channels_ferrolure",
@@ -158,17 +178,25 @@ func _on_process(delta: float, spd: float) -> void:
 					_peris_hp = maxf(0.0, _peris_hp - dmg)
 				break
 
-	# NPC follow (Endo follows Aster when present and visible)
-	if not channels_script_locked and _endo and _endo.visible and _game_state.characters.has("endo"):
-		var dist := _endo.global_position.distance_to(_aster_node.global_position)
-		if dist > 3.0 and not _game_state.is_moving("endo"):
-			_game_state.command_move_to_pos("endo", _aster_node.global_position + Vector3(-1.2, 0, -0.8))
+	_update_channels_encounter(delta, spd)
 
-	# Peris follows Aster
-	if not channels_script_locked and _peris_node and _game_state.characters.has("peris"):
-		var dist := _peris_node.global_position.distance_to(_aster_node.global_position)
-		if dist > 3.0 and not _game_state.is_moving("peris"):
-			_game_state.command_move_to_pos("peris", _aster_node.global_position + Vector3(-1.2, 0, 0.8))
+	# Non-active party members follow the current leader when the script
+	# isn't staging a cutscene or reset.
+	if not channels_script_locked:
+		var leader := _get_character_node(_active_character)
+		for pair in [
+			["aster", _aster_node, Vector3(-1.2, 0, 0.8)],
+			["peris", _peris_node, Vector3(-1.2, 0, 1.2)],
+			["endo", _endo, Vector3(-1.2, 0, -0.8)],
+		]:
+			var cid: String = pair[0]
+			var cnode: CharacterBody3D = pair[1]
+			var offset: Vector3 = pair[2]
+			if cid == _active_character or cnode == null or not cnode.visible or not _game_state.characters.has(cid):
+				continue
+			var dist := cnode.global_position.distance_to(leader.global_position)
+			if dist > 3.0 and not _game_state.is_moving(cid):
+				_game_state.command_move_to_pos(cid, leader.global_position + offset)
 
 	# Position gates
 	if _current_step == "channels_to_memory":
@@ -179,9 +207,9 @@ func _on_process(delta: float, spd: float) -> void:
 		if _game_state.get_position("aster").x > CHANNELS_FERROLURE_TRIGGER_X:
 			_start_channels_ferrolure()
 
-	if _current_step == "channels_to_shelter":
-		if _game_state.get_position("aster").x > CHANNELS_SHELTER_TRIGGER_X:
-			_start_channels_shelter()
+	if _current_step == "channels_to_encounter":
+		if _game_state.get_position("aster").x > CHANNELS_ENCOUNTER_TRIGGER_X:
+			_start_channels_encounter_intro()
 
 	if _current_step == "channels_explore":
 		if _game_state.get_position("aster").x > CHANNELS_END.x - 5.0:
@@ -208,6 +236,41 @@ func _on_process(delta: float, spd: float) -> void:
 
 # --- Step functions ---
 
+func _get_character_node(id: String) -> CharacterBody3D:
+	match id:
+		"aster":
+			return _aster_node
+		"peris":
+			return _peris_node
+		"endo":
+			return _endo
+		_:
+			return null
+
+func _set_interactable_active_character(id: String) -> void:
+	for node in find_children("*", "", true, false):
+		if node.has_signal("interacted") and node.has_method("get_dwell_progress"):
+			node.set("active_character", id)
+
+func _select_character(id: String) -> void:
+	var next := _get_character_node(id)
+	if next == null:
+		return
+	for cid in ["aster", "peris", "endo"]:
+		var node := _get_character_node(cid)
+		if node:
+			node.set_move_enabled(cid == id)
+	_player = next
+	_active_character = id
+	_set_interactable_active_character(id)
+	match id:
+		"aster":
+			_focus_aster_view()
+		"peris":
+			_focus_peris_view()
+		"endo":
+			_focus_endo_view()
+
 func _focus_aster_view() -> void:
 	_set_perception_mode("data")
 	_set_perception_target(_aster_node)
@@ -219,6 +282,12 @@ func _focus_peris_view() -> void:
 	_set_perception_target(_peris_node)
 	if _camera:
 		_camera.target = _peris_node
+
+func _focus_endo_view() -> void:
+	_set_perception_mode("")
+	_set_perception_target(_endo)
+	if _camera:
+		_camera.target = _endo
 
 func _wait_for_arrivals(ids: Array[String], next_func: Callable, tag: String) -> void:
 	var poll: Callable
@@ -244,6 +313,161 @@ func _set_channels_ferrolure_active(active: bool) -> void:
 			mat.emission_energy_multiplier = 1.4 if active else 0.25
 	if _channels_ferrolure_light:
 		_channels_ferrolure_light.light_energy = 2.0 if active else 0.45
+
+func _set_channels_run_lure_active(active: bool) -> void:
+	_channels_run_lure_active = active
+	if _channels_run_lure_mesh:
+		var mat := _channels_run_lure_mesh.material_override as StandardMaterial3D
+		if mat:
+			mat.emission_energy_multiplier = 2.0 if active else 0.35
+	if _channels_run_lure_light:
+		_channels_run_lure_light.light_energy = 2.4 if active else 0.5
+
+func _show_marker(pos: Vector3, text: String, tint := Color(0.4, 0.7, 0.5, 0.75)) -> void:
+	var lbl := Label3D.new()
+	lbl.name = "Marker_" + text
+	lbl.text = text
+	lbl.font_size = 28
+	lbl.pixel_size = 0.008
+	lbl.modulate = tint
+	lbl.outline_modulate = Color(0, 0, 0, 0.5)
+	lbl.outline_size = 8
+	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	lbl.position = pos
+	var env: Node = find_child("Environment", false, false)
+	if env:
+		env.add_child(lbl)
+
+func _clear_markers() -> void:
+	var env: Node = find_child("Environment", false, false)
+	if env == null:
+		return
+	for child in env.get_children():
+		if child is Label3D and child.name.begins_with("Marker_"):
+			child.queue_free()
+
+func _reset_channels_encounter_nodes() -> void:
+	_clear_markers()
+	_set_channels_run_lure_active(false)
+	_channels_run_lure_expire_tick = -1.0
+	_channels_party_hidden = false
+	_channels_encounter_resetting = false
+	if is_instance_valid(_channels_run_lure_interactable):
+		_channels_run_lure_interactable.reset()
+		_channels_run_lure_interactable.show_tutorial_label()
+	for i in range(_channels_swarm_units.size()):
+		var unit := _channels_swarm_units[i]
+		unit["x"] = CHANNELS_SWARM_CLUSTER_X + CHANNELS_SWARM_OFFSETS[i]
+		unit["target_x"] = unit["x"]
+		if unit["node"]:
+			unit["node"].position.x = unit["x"]
+		_channels_swarm_units[i] = unit
+
+func _begin_channels_encounter() -> void:
+	if not _enter_step("channels_encounter_activate"):
+		return
+	_select_character("endo")
+	_reset_channels_encounter_nodes()
+	_show_marker(CHANNELS_RUN_LURE_POS + Vector3(0, 2.0, 0), "LURE", Color(0.75, 0.45, 0.2, 0.8))
+	_show_marker(CHANNELS_HIDE_SPOT_POS + Vector3(0, 2.0, 0), "HIDE", Color(0.35, 0.75, 0.55, 0.8))
+	_show_marker(CHANNELS_SHELTER_POS + Vector3(0, 2.0, 0), "SHELTER", Color(0.8, 0.72, 0.45, 0.85))
+	_tutorial_prompt.show_prompt("Move Endo to the lure and hold position")
+	_player.set_move_enabled(true)
+
+func _on_channels_run_lure_activated() -> void:
+	if _channels_run_lure_active or _current_step not in ["channels_encounter_activate", "channels_encounter_hide"]:
+		return
+	_set_channels_run_lure_active(true)
+	_channels_run_lure_expire_tick = _scheduler.get_current_tick() + CHANNELS_RUN_LURE_DURATION
+	_enter_step("channels_encounter_hide")
+	if _channels_run_lure_interactable:
+		_channels_run_lure_interactable.hide_tutorial_label()
+	_tutorial_prompt.show_prompt("Hide until the swarm commits")
+	_scheduler.cancel_tag("channels_run_lure_expire")
+	_scheduler.schedule_after(CHANNELS_RUN_LURE_DURATION, _on_channels_run_lure_expired, "channels_run_lure_expire")
+
+func _on_channels_run_lure_expired() -> void:
+	if _current_step not in ["channels_encounter_hide", "channels_encounter_run"]:
+		return
+	_set_channels_run_lure_active(false)
+	_channels_run_lure_expire_tick = -1.0
+	if _channels_party_hidden:
+		_enter_step("channels_encounter_run")
+		_tutorial_prompt.show_prompt("Run for shelter")
+	else:
+		_fail_channels_encounter("lure_expired_exposed")
+
+func _fail_channels_encounter(reason: String) -> void:
+	if _channels_encounter_resetting or _current_step not in ["channels_encounter_activate", "channels_encounter_hide", "channels_encounter_run"]:
+		return
+	_channels_encounter_resetting = true
+	_player.set_move_enabled(false)
+	for cid in ["aster", "peris", "endo"]:
+		if _game_state.characters.has(cid):
+			_game_state.command_stop(cid)
+	_tutorial_prompt.show_prompt("The swarm catches the movement. Try again.")
+	_clear_markers()
+	_show_marker(CHANNELS_HIDE_SPOT_POS + Vector3(0, 2.0, 0), "CAUGHT", Color(0.85, 0.28, 0.22, 0.85))
+	_scheduler.schedule_after(1.0, func():
+		_restart_channels_encounter(reason)
+	, "channels_encounter_retry")
+
+func _restart_channels_encounter(_reason: String) -> void:
+	if not _enter_step("channels_encounter_reset"):
+		return
+	_move_party_and_continue({
+		"aster": CHANNELS_ENCOUNTER_ENTRY_POS + Vector3(-2.4, 0.0, 0.4),
+		"peris": CHANNELS_ENCOUNTER_ENTRY_POS + Vector3(-1.4, 0.0, 1.2),
+		"endo": CHANNELS_ENCOUNTER_ENTRY_POS,
+	}, func():
+		_begin_channels_encounter()
+	, "channels_encounter_reset_move")
+
+func _complete_channels_encounter() -> void:
+	if _current_step == "channels_shelter":
+		return
+	_player.set_move_enabled(false)
+	for cid in ["aster", "peris", "endo"]:
+		if _game_state.characters.has(cid):
+			_game_state.command_stop(cid)
+	_clear_markers()
+	_tutorial_prompt.hide_prompt()
+	_scheduler.cancel_tag("channels_run_lure_expire")
+	_start_channels_shelter()
+
+func _update_channels_encounter(delta: float, spd: float) -> void:
+	if _current_step not in ["channels_encounter_activate", "channels_encounter_hide", "channels_encounter_run"]:
+		return
+	var target_x := CHANNELS_SWARM_CLUSTER_X
+	if _channels_run_lure_active:
+		target_x = CHANNELS_RUN_LURE_POS.x
+	for i in range(_channels_swarm_units.size()):
+		var unit := _channels_swarm_units[i]
+		unit["target_x"] = target_x + CHANNELS_SWARM_OFFSETS[i]
+		var dx: float = unit["target_x"] - unit["x"]
+		unit["x"] += signf(dx) * minf(absf(dx), CHANNELS_SWARM_SPEED * delta * spd)
+		if unit["node"]:
+			unit["node"].position.x = unit["x"]
+		_channels_swarm_units[i] = unit
+
+	var hide_reached: bool = _player.global_position.distance_to(CHANNELS_HIDE_SPOT_POS) <= 2.3
+	if hide_reached != _channels_party_hidden:
+		_channels_party_hidden = hide_reached
+		if _channels_party_hidden and _current_step == "channels_encounter_hide":
+			_tutorial_prompt.show_prompt("Wait for the lure to burn out")
+
+	if _current_step == "channels_encounter_run" and _player.global_position.distance_to(CHANNELS_SHELTER_POS) <= 3.0:
+		_complete_channels_encounter()
+		return
+
+	if _channels_party_hidden:
+		return
+
+	var visible_x: float = _player.global_position.x
+	for unit in _channels_swarm_units:
+		if absf(unit["x"] - visible_x) <= CHANNELS_SWARM_DETECT_RADIUS:
+			_fail_channels_encounter("detected")
+			return
 
 func _start_channels_enter() -> void:
 	if not _enter_step("channels_enter"):
@@ -310,6 +534,7 @@ func _start_channels_corpse() -> void:
 func _start_channels_ferrolure() -> void:
 	if not _enter_step("channels_ferrolure"):
 		return
+	_select_character("aster")
 	_player.set_move_enabled(false)
 	_tutorial_prompt.hide_prompt()
 	_game_state.command_stop("aster")
@@ -329,23 +554,41 @@ func _start_channels_ferrolure() -> void:
 			_dialogue_chain([
 				"channels.peris.touch",
 				"channels.peris.always",
-			], func(): _scheduler.schedule_after(0.5, _start_channels_to_shelter, "channels_to_shelter"))
+			], func(): _scheduler.schedule_after(0.5, _start_channels_to_encounter, "channels_to_encounter"))
 		)
 	, "channels_ferrolure_move")
 
-func _start_channels_to_shelter() -> void:
-	if not _enter_step("channels_to_shelter"):
+func _start_channels_to_encounter() -> void:
+	if not _enter_step("channels_to_encounter"):
 		return
+	_select_character("aster")
 	_focus_aster_view()
 	_player.set_move_enabled(true)
 	_tutorial_prompt.show_prompt("Click to move")
 
+func _start_channels_encounter_intro() -> void:
+	if not _enter_step("channels_encounter_intro"):
+		return
+	_select_character("endo")
+	_player.set_move_enabled(false)
+	_tutorial_prompt.hide_prompt()
+	_move_party_and_continue({
+		"aster": CHANNELS_ENCOUNTER_ENTRY_POS + Vector3(-2.4, 0.0, 0.4),
+		"peris": CHANNELS_ENCOUNTER_ENTRY_POS + Vector3(-1.4, 0.0, 1.2),
+		"endo": CHANNELS_ENCOUNTER_ENTRY_POS,
+	}, func():
+		_begin_channels_encounter()
+	, "channels_encounter_intro_move")
+
 func _start_channels_shelter() -> void:
 	if not _enter_step("channels_shelter"):
 		return
+	_select_character("endo")
 	_player.set_move_enabled(false)
 	_tutorial_prompt.hide_prompt()
 	_game_state.command_stop("aster")
+	_game_state.command_stop("peris")
+	_game_state.command_stop("endo")
 	_move_party_and_continue({
 		"aster": CHANNELS_SHELTER_POS + Vector3(-1.8, 0.0, -1.2),
 		"peris": CHANNELS_SHELTER_POS + Vector3(-0.8, 0.0, 0.9),
@@ -360,7 +603,7 @@ func _start_channels_shelter() -> void:
 func _start_channels_explore() -> void:
 	if not _enter_step("channels_explore"):
 		return
-	_focus_aster_view()
+	_select_character("aster")
 	_player.set_move_enabled(true)
 	_tutorial_prompt.show_prompt("Click to move")
 
@@ -658,6 +901,91 @@ func _build_channels_chunk(parent: Node3D) -> void:
 	_channels_ferrolure_light.omni_range = 8.0
 	ferrolure_root.add_child(_channels_ferrolure_light)
 	_set_channels_ferrolure_active(false)
+
+	# Encounter lure: Endo uses this to pull the swarm away from the shelter route.
+	var run_lure_root := Node3D.new()
+	run_lure_root.name = "EncounterFerrolure"
+	run_lure_root.position = CHANNELS_RUN_LURE_POS
+	parent.add_child(run_lure_root)
+
+	var run_lure_stem := MeshInstance3D.new()
+	var run_lure_stem_mesh := CylinderMesh.new()
+	run_lure_stem_mesh.top_radius = 0.09
+	run_lure_stem_mesh.bottom_radius = 0.13
+	run_lure_stem_mesh.height = 1.1
+	run_lure_stem.mesh = run_lure_stem_mesh
+	var run_lure_stem_mat := StandardMaterial3D.new()
+	run_lure_stem_mat.albedo_color = Color(0.25, 0.28, 0.18)
+	run_lure_stem.material_override = run_lure_stem_mat
+	run_lure_stem.position = Vector3(0, 0.55, 0)
+	run_lure_root.add_child(run_lure_stem)
+
+	_channels_run_lure_mesh = MeshInstance3D.new()
+	var run_lure_bulb := SphereMesh.new()
+	run_lure_bulb.radius = 0.4
+	run_lure_bulb.height = 0.8
+	_channels_run_lure_mesh.mesh = run_lure_bulb
+	var run_lure_mat := StandardMaterial3D.new()
+	run_lure_mat.albedo_color = Color(0.55, 0.34, 0.12)
+	run_lure_mat.emission_enabled = true
+	run_lure_mat.emission = Color(0.8, 0.4, 0.15)
+	run_lure_mat.emission_energy_multiplier = 0.35
+	run_lure_mat.metallic = 0.15
+	_channels_run_lure_mesh.material_override = run_lure_mat
+	_channels_run_lure_mesh.position = Vector3(0, 1.1, 0)
+	run_lure_root.add_child(_channels_run_lure_mesh)
+
+	_channels_run_lure_light = OmniLight3D.new()
+	_channels_run_lure_light.position = Vector3(0, 1.2, 0)
+	_channels_run_lure_light.light_color = Color(0.9, 0.45, 0.18)
+	_channels_run_lure_light.light_energy = 0.5
+	_channels_run_lure_light.omni_range = 8.0
+	run_lure_root.add_child(_channels_run_lure_light)
+	_set_channels_run_lure_active(false)
+
+	_channels_run_lure_interactable = preload("res://scenes/game/interactable.tscn").instantiate()
+	_channels_run_lure_interactable.name = "EncounterFerrolureInteract"
+	_channels_run_lure_interactable.description = "Ferrolure"
+	_channels_run_lure_interactable.required_character = "endo"
+	_channels_run_lure_interactable.one_shot = false
+	_channels_run_lure_interactable.dwell_time = 2.0
+	_channels_run_lure_interactable.tutorial_label = "HOLD"
+	_channels_run_lure_interactable.position = CHANNELS_RUN_LURE_POS
+	parent.add_child(_channels_run_lure_interactable)
+	_channels_run_lure_interactable.interacted.connect(_on_channels_run_lure_activated)
+
+	# Hide alcove near the shelter route.
+	_channels_hide_spot = Node3D.new()
+	_channels_hide_spot.name = "ChannelsHideSpot"
+	_channels_hide_spot.position = CHANNELS_HIDE_SPOT_POS
+	parent.add_child(_channels_hide_spot)
+	_add_corridor_section(parent, Vector3(CHANNELS_HIDE_SPOT_POS.x, -0.04, CHANNELS_HIDE_SPOT_POS.z), Vector3(10, 0.08, 8), Color(0.05, 0.05, 0.07))
+	_add_wall(parent, Vector3(CHANNELS_HIDE_SPOT_POS.x, 1.5, CHANNELS_HIDE_SPOT_POS.z + 4.0), Vector3(10, 3, 0.3), wall_color)
+	_add_wall(parent, Vector3(CHANNELS_HIDE_SPOT_POS.x - 5.0, 1.5, CHANNELS_HIDE_SPOT_POS.z), Vector3(0.3, 3, 8), wall_color)
+	_add_wall(parent, Vector3(CHANNELS_HIDE_SPOT_POS.x + 5.0, 1.5, CHANNELS_HIDE_SPOT_POS.z), Vector3(0.3, 3, 8), wall_color)
+
+	# Swarm cluster guarding the stretch before the shelter.
+	_channels_swarm_units.clear()
+	for i in range(CHANNELS_SWARM_OFFSETS.size()):
+		var swarm := MeshInstance3D.new()
+		swarm.name = "ChannelsSwarm_%d" % i
+		var swarm_mesh := SphereMesh.new()
+		swarm_mesh.radius = 0.3
+		swarm_mesh.height = 0.6
+		swarm.mesh = swarm_mesh
+		var swarm_mat := StandardMaterial3D.new()
+		swarm_mat.albedo_color = Color(0.15, 0.12, 0.08)
+		swarm_mat.emission_enabled = true
+		swarm_mat.emission = Color(0.45, 0.2, 0.06)
+		swarm_mat.emission_energy_multiplier = 0.6
+		swarm.material_override = swarm_mat
+		swarm.position = Vector3(CHANNELS_SWARM_CLUSTER_X + CHANNELS_SWARM_OFFSETS[i], 0.6, 0.5 + sin(float(i)) * 1.2)
+		parent.add_child(swarm)
+		_channels_swarm_units.append({
+			"node": swarm,
+			"x": swarm.position.x,
+			"target_x": swarm.position.x,
+		})
 
 	# Shelter alcove at the far end of the zone.
 	_add_corridor_section(parent, Vector3(CHANNELS_SHELTER_POS.x, -0.04, CHANNELS_SHELTER_POS.z), Vector3(16, 0.08, 10), Color(0.07, 0.07, 0.08))
