@@ -34,6 +34,8 @@ var _dlg_chain_index := 0
 var _dlg_chain_next: Callable
 var _dlg_chain_delay := 0.0
 var _did_teardown := false
+var suppress_scene_change := false
+var requested_scene_change := ""
 
 func _ready() -> void:
 	if Engine.is_editor_hint():
@@ -100,6 +102,30 @@ func _compute_speed() -> float:
 
 func _get_speed_recipients() -> Array:
 	return []
+
+func headless_advance(duration: float, step := 0.05) -> void:
+	if Engine.is_editor_hint() or _scheduler == null:
+		return
+	var remaining: float = duration
+	while remaining > 0.0001:
+		var dt: float = minf(step, remaining)
+		_scheduler.advance_ticks(dt)
+		_on_process(dt, 1.0)
+		_headless_sync_runtime(dt)
+		remaining -= dt
+
+func headless_get_anchor_positions() -> Dictionary:
+	return {}
+
+func headless_get_state() -> Dictionary:
+	return {
+		"current_step": _current_step,
+		"requested_scene_change": requested_scene_change,
+		"scheduler_tick": _scheduler.get_current_tick() if _scheduler else 0.0,
+	}
+
+func _headless_sync_runtime(_delta: float) -> void:
+	pass
 
 # --- Perception system ---
 
@@ -189,6 +215,12 @@ func _teardown_sequence() -> void:
 	_tutorial_prompt = null
 	_fade_rect = null
 	_thought_label = null
+
+func _change_scene_or_record(scene_path: String) -> void:
+	requested_scene_change = scene_path
+	if suppress_scene_change:
+		return
+	get_tree().change_scene_to_file(scene_path)
 
 # --- Character helpers ---
 

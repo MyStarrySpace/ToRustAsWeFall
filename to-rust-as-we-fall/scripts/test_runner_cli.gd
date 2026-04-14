@@ -4,10 +4,12 @@ extends Node
 ## Usage: godot --headless --path "." -- --test-syntax
 ##        godot --headless --path "." -- --test-all
 ##        godot --headless --path "." -- --test-tag-day
+##        godot --headless --path "." -- --test-sequence-contracts
 
 var _passed := 0
 var _failed := 0
 var _test_name := ""
+const PUZZLE_FRAGMENT_CATALOG_PATH := "res://data/puzzles/showcase_fragments.json"
 
 func _ready() -> void:
 	# Wait one frame so the _ready chain completes before scene tests add_child to root
@@ -62,6 +64,9 @@ func _ready() -> void:
 			"--test-showcase":
 				ran_test = true
 				await _test_showcase()
+			"--test-puzzle-fragments":
+				ran_test = true
+				await _test_puzzle_fragments()
 			"--test-tag-day-dialogue":
 				ran_test = true
 				await _test_tag_day_dialogue()
@@ -162,6 +167,9 @@ func _ready() -> void:
 			"--test-peris-phase2":
 				ran_test = true
 				await _test_peris_phase2()
+			"--test-sequence-contracts":
+				ran_test = true
+				await _test_sequence_contracts()
 
 	# --start-peris-phase2: launch the scene directly at phase 2 for manual testing
 	for i in range(args.size()):
@@ -173,6 +181,9 @@ func _ready() -> void:
 
 	# --dump-dialogue <scene_path> [output_path]
 	for i in range(args.size()):
+		if args[i] == "--test-puzzle-fragment" and i + 1 < args.size():
+			ran_test = true
+			await _test_puzzle_fragments(args[i + 1])
 		if args[i] == "--dump-dialogue" and i + 1 < args.size():
 			ran_test = true
 			var scene_path: String = args[i + 1]
@@ -259,6 +270,7 @@ func _run_all_tests() -> void:
 	await _test_elevator()
 	await _test_leaving_facility()
 	await _test_showcase()
+	await _test_puzzle_fragments()
 	await _test_tag_day()
 	await _test_tag_day_dialogue()
 	await _test_peris_dialogue()
@@ -278,6 +290,7 @@ func _run_all_tests() -> void:
 	_test_throw_physics()
 	await _test_physics_comparison()
 	await _test_peris_phase2()
+	await _test_sequence_contracts()
 	_test_items()
 	_test_queued_abilities()
 	_test_dodge_roll()
@@ -613,26 +626,247 @@ func _test_showcase() -> void:
 
 	var scene := load("res://scenes/showcase/showcase.tscn")
 	_assert_true(scene != null, "Showcase scene loads")
+	if not scene:
+		return
 
-	if scene:
-		var instance: Node = scene.instantiate()
-		_assert_true(instance != null, "Showcase scene instantiates")
-		get_tree().root.add_child(instance)
-		for i in range(5):
-			await get_tree().process_frame
-		_assert_true(instance.is_inside_tree(), "Scene is in tree")
+	var instance: Node = await _instantiate_scene_and_wait(scene)
+	_assert_true(instance != null, "Showcase scene instantiates")
+	_assert_true(instance.is_inside_tree(), "Scene is in tree")
+	_assert_true(instance.find_child("Environment", true, false) != null, "Environment node exists")
+	_assert_true(instance.find_child("Hazards", true, false) != null, "Hazards node exists")
+	_assert_true(instance.find_child("Characters", true, false) != null, "Characters node exists")
+	_assert_true(instance.find_child("GameCamera", true, false) != null, "GameCamera node exists")
+	_assert_true(instance.find_child("GameHUD", true, false) != null, "GameHUD node exists")
+	_assert_true(instance.find_child("Aster", true, false) != null, "Aster node exists")
+	_assert_true(instance.find_child("Peris", true, false) != null, "Peris node exists")
+	_assert_true(instance.find_child("Endo", true, false) != null, "Endo node exists")
+	_assert_true("_scheduler" in instance and instance._scheduler != null, "EventScheduler exists")
+	_assert_true("_game_state" in instance and instance._game_state != null, "GameState exists")
+	_assert_true("_characters" in instance and instance._characters.size() == 3, "Three showcase party characters registered")
+	_assert_true(instance._standard_enemy != null, "Standard enemy station exists")
+	_assert_true(instance._chain_enemy != null, "Chain enemy station exists")
+	_assert_equals(instance._ferrolure_enemies.size(), 3, "Ferrolure pack count is 3")
+	_assert_equals(instance._hide_swarm_units.size(), 4, "Hide swarm count is 4")
+	_assert_true(instance._game_state.pendulums.has("showcase_pendulum"), "Pendulum registered in GameState")
+	_assert_true(instance._game_state.physics_objects.has("push_barrel"), "Push barrel registered in GameState")
+	_assert_true(instance._game_state.physics_objects.has("launcher_barrel"), "Launcher barrel registered in GameState")
+	var station_positions: Dictionary = instance.get_station_positions()
+	_assert_true(
+		station_positions.has("enemy_probe")
+		and station_positions.has("chain_probe")
+		and station_positions.has("iron_patch")
+		and station_positions.has("ferrolure")
+		and station_positions.has("hide_spot")
+		and station_positions.has("shelter")
+		and station_positions.has("launcher"),
+		"Headless station lookup exposes every showcase lane"
+	)
+	_assert_equals(instance._standard_enemy.get_state(), "patrol", "Standard enemy begins in patrol")
+	_assert_equals(instance._chain_enemy.get_state(), "patrol", "Chain enemy begins in patrol")
+	await _dispose_scene(instance)
 
-		var env: Node = instance.find_child("Environment", true, false)
-		_assert_true(env != null, "Environment node exists")
+	instance = await _instantiate_scene_and_wait(scene)
+	var enemy_positions: Dictionary = instance.get_station_positions()
+	var aster_hp_before: float = instance.get_character_hp("aster")
+	var enemy_hit_before: int = instance._enemy_hit_log.size()
+	instance._select_character("aster")
+	instance.headless_set_character_position("aster", enemy_positions["enemy_probe"])
+	_advance_showcase(instance, 3.0)
+	_assert_true(instance._standard_enemy.get_state() != "patrol", "Standard enemy leaves patrol when Aster enters its lane")
+	_assert_equals(instance._standard_enemy._current_target_id, "aster", "Standard enemy acquires Aster as its target")
+	_assert_true(
+		instance._enemy_hit_log.size() > enemy_hit_before or instance.get_character_hp("aster") < aster_hp_before or instance._standard_enemy.get_state() in ["windup", "charge", "recover"],
+		"Standard enemy lane progresses into its combat loop"
+	)
+	await _dispose_scene(instance)
 
-		var cam: Node = instance.find_child("GameCamera", true, false)
-		_assert_true(cam != null, "GameCamera node exists")
+	instance = await _instantiate_scene_and_wait(scene)
+	var chain_positions: Dictionary = instance.get_station_positions()
+	var peris_hp_before: float = instance.get_character_hp("peris")
+	var chain_hit_before: int = instance._enemy_hit_log.size()
+	instance._select_character("peris")
+	instance.headless_set_character_position("peris", chain_positions["chain_probe"])
+	_advance_showcase(instance, 3.0)
+	_assert_true(instance._chain_enemy.get_state() != "patrol", "Chain enemy leaves patrol when Peris enters its lane")
+	_assert_equals(instance._chain_enemy._current_target_id, "peris", "Chain enemy acquires Peris as its target")
+	_assert_true(
+		instance._enemy_hit_log.size() > chain_hit_before or instance.get_character_hp("peris") < peris_hp_before or instance._chain_enemy.get_state() in ["windup", "charge", "recover"],
+		"Chain enemy lane progresses into its combat loop"
+	)
+	await _dispose_scene(instance)
 
-		var hud: Node = instance.find_child("GameHUD", true, false)
-		_assert_true(hud != null, "GameHUD node exists")
+	instance = await _instantiate_scene_and_wait(scene)
+	var iron_positions: Dictionary = instance.get_station_positions()
+	var iron_hp_before: float = instance.get_character_hp("endo")
+	instance._select_character("endo")
+	instance.headless_set_character_position("endo", iron_positions["iron_patch"])
+	_advance_showcase(instance, 1.25)
+	_assert_true(instance.get_character_hp("endo") < iron_hp_before, "Iron bloom lane drains health over time")
+	await _dispose_scene(instance)
 
+	instance = await _instantiate_scene_and_wait(scene)
+	var ferrolure_positions: Dictionary = instance.get_station_positions()
+	var ferrolure_pos: Vector3 = ferrolure_positions["ferrolure"]
+	var dist_before: Array[float] = []
+	for enemy in instance._ferrolure_enemies:
+		dist_before.append(instance._game_state.get_position(enemy.char_id).distance_to(ferrolure_pos))
+	instance.activate_showcase_ferrolure()
+	_assert_true(instance._showcase_ferrolure_active, "Ferrolure can be activated headlessly")
+	_advance_showcase(instance, 1.0)
+	var targets_cleared := true
+	var moved_toward_lure := true
+	for i in range(instance._ferrolure_enemies.size()):
+		var enemy = instance._ferrolure_enemies[i]
+		if not enemy._detection_targets.is_empty():
+			targets_cleared = false
+		var dist_now: float = instance._game_state.get_position(enemy.char_id).distance_to(ferrolure_pos)
+		if dist_now >= dist_before[i]:
+			moved_toward_lure = false
+	_assert_true(targets_cleared, "Ferrolure clears normal target tracking while active")
+	_assert_true(moved_toward_lure, "Ferrolure pack moves toward the lure signal")
+	_advance_showcase(instance, 8.5)
+	var targets_restored := true
+	for enemy in instance._ferrolure_enemies:
+		if enemy._detection_targets.size() != 3:
+			targets_restored = false
+	_assert_true(not instance._showcase_ferrolure_active, "Ferrolure expires after its timer")
+	_assert_true(targets_restored, "Ferrolure pack restores normal tracking after expiry")
+	await _dispose_scene(instance)
+
+	instance = await _instantiate_scene_and_wait(scene)
+	var hide_positions: Dictionary = instance.get_station_positions()
+	instance._select_character("endo")
+	instance.headless_set_character_position("endo", hide_positions["hide_entry"])
+	instance.activate_hide_lure()
+	_advance_showcase(instance, 2.0)
+	_assert_equals(instance._hide_last_outcome, "detected", "Hide lane fails when Endo stays exposed")
+	_assert_equals(instance._hide_phase, "failed", "Hide lane enters the failed state on exposure")
+	instance._reset_hide_encounter()
+	instance.headless_set_character_position("endo", hide_positions["hide_spot"])
+	instance.activate_hide_lure()
+	_advance_showcase(instance, 6.2)
+	_assert_equals(instance._hide_phase, "run", "Hide lane transitions to run after a successful wait")
+	instance.headless_set_character_position("endo", hide_positions["shelter"])
+	_advance_showcase(instance, 0.2)
+	_assert_equals(instance._hide_last_outcome, "success", "Hide lane records success after shelter is reached")
+	_assert_equals(instance._hide_phase, "safe", "Hide lane enters the safe state on a clean run")
+	await _dispose_scene(instance)
+
+	instance = await _instantiate_scene_and_wait(scene)
+	var pendulum_hit_before: int = instance._pendulum_event_log.size()
+	var pendulum_hp_before: float = instance.get_character_hp("endo")
+	instance._select_character("endo")
+	instance.headless_set_character_position("endo", Vector3(13.4, 0.0, 19.5))
+	_advance_showcase(instance, 5.0)
+	var pendulum_hit := false
+	for i in range(pendulum_hit_before, instance._pendulum_event_log.size()):
+		if instance._pendulum_event_log[i]["target_id"] == "endo":
+			pendulum_hit = true
+			break
+	_assert_true(pendulum_hit, "Pendulum lane resolves a character collision")
+	_assert_true(instance.get_character_hp("endo") < pendulum_hp_before, "Pendulum lane deals damage on hit")
+	await _dispose_scene(instance)
+
+	instance = await _instantiate_scene_and_wait(scene)
+	var launcher_start: Vector3 = instance._game_state.get_physics_position("launcher_barrel")
+	var throw_target := Vector3(launcher_start.x + 3.5, 0.0, launcher_start.z)
+	var throw_hp_before: float = instance.get_character_hp("aster")
+	var physics_event_before: int = instance._physics_event_log.size()
+	instance.headless_set_character_position("aster", throw_target)
+	instance.trigger_showcase_throw()
+	_advance_showcase(instance, 0.2)
+	_assert_true(instance._game_state.is_physics_airborne("launcher_barrel"), "Launcher barrel becomes airborne when fired")
+	_assert_true(instance._game_state.get_physics_position("launcher_barrel").x > launcher_start.x + 0.5, "Launcher barrel advances across the bay")
+	_advance_showcase(instance, 2.0)
+	var physics_hit_aster := false
+	for i in range(physics_event_before, instance._physics_event_log.size()):
+		if instance._physics_event_log[i]["collider_id"] == "aster":
+			physics_hit_aster = true
+			break
+	_assert_true(physics_hit_aster, "Thrown barrel collides with a character placed in its path")
+	_assert_true(instance.get_character_hp("aster") < throw_hp_before, "Thrown barrel collision deals damage")
+	await _dispose_scene(instance)
+
+func _test_puzzle_fragments(fragment_id := "") -> void:
+	_test_name = "Puzzle Fragments" if fragment_id == "" else "Puzzle Fragment: %s" % fragment_id
+
+	var catalog_script = load("res://scripts/game/puzzle_fragment_catalog.gd")
+	_assert_true(catalog_script != null, "Puzzle fragment catalog script loads")
+	if catalog_script == null:
+		return
+
+	var runner_script = load("res://scripts/game/puzzle_fragment_runner.gd")
+	_assert_true(runner_script != null, "Puzzle fragment runner script loads")
+	if runner_script == null:
+		return
+
+	var catalog = catalog_script.new()
+	var loaded_catalog: bool = catalog.load_from_file(PUZZLE_FRAGMENT_CATALOG_PATH)
+	_assert_true(loaded_catalog, "Puzzle fragment catalog JSON loads")
+	if not loaded_catalog:
+		return
+
+	if fragment_id != "":
+		var fragment: Dictionary = catalog.find_fragment(fragment_id)
+		_assert_true(not fragment.is_empty(), "Puzzle fragment '%s' exists" % fragment_id)
+		if fragment.is_empty():
+			return
+
+	var runner = runner_script.new(get_tree())
+	var result: Dictionary = await runner.run_catalog(catalog, fragment_id)
+	var fragments: Array = result.get("fragments", [])
+	_assert_true(not fragments.is_empty(), "Puzzle fragment runner returned at least one fragment")
+	if fragments.is_empty():
+		return
+
+	for fragment_result in fragments:
+		for scenario_result in fragment_result.get("scenarios", []):
+			var label := "%s / %s" % [fragment_result.get("id", "unknown"), scenario_result.get("id", "scenario")]
+			_assert_true(bool(scenario_result.get("success", false)), "%s passes" % label)
+
+	_assert_equals(int(result.get("failed", 0)), 0, "Puzzle fragment suite has no failures")
+
+func _instantiate_scene_and_wait(scene: PackedScene, settle_frames := 5) -> Node:
+	var instance: Node = scene.instantiate()
+	get_tree().root.add_child(instance)
+	for i in range(settle_frames):
+		await get_tree().process_frame
+	return instance
+
+func _dispose_scene(instance: Node) -> void:
+	if instance and is_instance_valid(instance):
 		instance.queue_free()
 		await get_tree().process_frame
+
+func _advance_showcase(instance: Node, duration: float, step := 0.05) -> void:
+	if instance.has_method("headless_advance"):
+		instance.headless_advance(duration, step)
+		return
+	if not ("_scheduler" in instance):
+		return
+	var scheduler: EventScheduler = instance._scheduler
+	var remaining: float = duration
+	while remaining > 0.0001:
+		var dt: float = minf(step, remaining)
+		scheduler.advance_ticks(dt)
+		if instance.has_method("_on_process"):
+			instance._on_process(dt, 1.0)
+		_sync_showcase_runtime(instance, dt)
+		remaining -= dt
+
+func _sync_showcase_runtime(instance: Node, delta: float) -> void:
+	if "_characters" in instance:
+		for node in instance._characters.values():
+			if node and is_instance_valid(node) and node.has_method("_physics_process"):
+				node._physics_process(delta)
+	if "_enemy_nodes" in instance:
+		for enemy in instance._enemy_nodes:
+			if enemy and is_instance_valid(enemy):
+				enemy._process(delta)
+	if "_physics_visuals" in instance:
+		for visual in instance._physics_visuals.values():
+			if visual and is_instance_valid(visual) and visual.has_method("_process"):
+				visual._process(delta)
 
 # --- Test: Grid Pathfinding ---
 func _test_grid_pathfinding() -> void:
@@ -745,10 +979,10 @@ func _test_game_state() -> void:
 	_assert_true(gs.grid != null, "GameState has grid")
 
 	# Register a character
-	gs.register_character("aster", grid.grid_to_world(Vector2i(1, 1)), 3.0, {"atp": 72})
+	gs.register_character("aster", grid.grid_to_world(Vector2i(1, 1)), 3.0, {"atp": 6})
 	_assert_true(gs.characters.has("aster"), "Character registered")
 	_assert_true(gs.characters["aster"].move_speed == 3.0, "Move speed is 3.0")
-	_assert_true(gs.characters["aster"].stats.atp == 72, "Stats preserved")
+	_assert_true(gs.characters["aster"].stats.atp == 6, "Stats preserved")
 
 	# Command: move to cell
 	var moved := gs.command_move_to_cell("aster", Vector2i(5, 3))
@@ -888,6 +1122,229 @@ func _pop_dialogue_log(instance: Node, step_actions: Dictionary = {}) -> Array[D
 
 	dialogue_box.line_displayed.disconnect(capture)
 	return log
+
+func _drive_sequence_contract(instance: Node, step_actions: Dictionary = {}, max_pops := 20000) -> Dictionary:
+	var log: Array[Dictionary] = []
+	var step_history: Array = []
+	var dialogue_box: Node = instance._dialogue
+	var scheduler: EventScheduler = instance._scheduler
+	var actioned_steps: Dictionary = {}
+	var termination_reason := "safety"
+	dialogue_box.speed_multiplier = 10000.0
+
+	var step_state := {"last": ""}
+	var capture_step := func():
+		var current_step: String = instance._current_step
+		if current_step != "" and current_step != step_state["last"]:
+			step_history.append(current_step)
+			step_state["last"] = current_step
+
+	var capture_line := func(text: String):
+		log.append({
+			"tick": scheduler.get_current_tick(),
+			"text": text,
+			"speaker": dialogue_box._speaker_label.text if dialogue_box._speaker_label.visible else "",
+			"style": dialogue_box._style,
+		})
+
+	capture_step.call()
+	dialogue_box.line_displayed.connect(capture_line)
+
+	var safety := 0
+	var idle := 0
+	while safety < max_pops:
+		for j in range(200):
+			if not dialogue_box.is_active():
+				break
+			dialogue_box._process(0.05)
+			capture_step.call()
+
+		var current_step: String = instance._current_step
+		if current_step in step_actions and not actioned_steps.has(current_step):
+			actioned_steps[current_step] = true
+			step_actions[current_step].call()
+			if instance.has_method("_on_process"):
+				instance._on_process(0.1, 1.0)
+			capture_step.call()
+			idle = 0
+			continue
+
+		if current_step == "complete" and scheduler.pending_count() == 0 and not dialogue_box.is_active():
+			termination_reason = "complete"
+			break
+
+		if scheduler.pending_count() == 0:
+			if instance.has_method("_on_process"):
+				instance._on_process(0.1, 1.0)
+				capture_step.call()
+			if instance._current_step == "complete" and not dialogue_box.is_active():
+				termination_reason = "complete"
+				break
+			idle += 1
+			if idle > 20:
+				termination_reason = "idle"
+				break
+			for j in range(10):
+				dialogue_box._process(0.05)
+				capture_step.call()
+			continue
+
+		idle = 0
+		var info: Dictionary = scheduler.pop_next()
+		capture_step.call()
+		if info.is_empty():
+			termination_reason = "empty_pop"
+			break
+		safety += 1
+
+	if dialogue_box.line_displayed.is_connected(capture_line):
+		dialogue_box.line_displayed.disconnect(capture_line)
+
+	return {
+		"dialogue_log": log,
+		"step_history": step_history,
+		"termination_reason": termination_reason,
+		"actioned_steps": actioned_steps.keys(),
+	}
+
+func _format_steps(steps: Array) -> String:
+	var packed := PackedStringArray()
+	for step in steps:
+		packed.append(str(step))
+	return " -> ".join(packed)
+
+func _assert_step_subsequence(actual: Array, expected: Array, message: String) -> void:
+	var cursor := 0
+	var matched_all := true
+	for step in expected:
+		while cursor < actual.size() and actual[cursor] != step:
+			cursor += 1
+		if cursor >= actual.size():
+			matched_all = false
+			break
+		cursor += 1
+	_assert_true(
+		matched_all,
+		"%s (expected: %s | got: %s)" % [message, _format_steps(expected), _format_steps(actual)]
+	)
+
+func _assert_step_absent(actual: Array, forbidden_step: String, message: String) -> void:
+	_assert_true(
+		not actual.has(forbidden_step),
+		"%s (history: %s)" % [message, _format_steps(actual)]
+	)
+
+func _set_sequence_character_position(instance: Node, char_id: String, pos: Vector3) -> void:
+	var node: Node3D = null
+	if instance.has_method("_get_character_node"):
+		node = instance._get_character_node(char_id)
+	elif char_id == "aster" and "_aster_node" in instance:
+		node = instance._aster_node
+	elif char_id == "peris" and "_peris_node" in instance:
+		node = instance._peris_node
+	elif char_id == "endo" and "_endo" in instance:
+		node = instance._endo
+	elif char_id == "player" and "_player" in instance:
+		node = instance._player
+
+	if node:
+		node.global_position = pos
+
+	if "_game_state" in instance and instance._game_state and instance._game_state.characters.has(char_id):
+		instance._game_state.command_stop(char_id)
+		instance._game_state.characters[char_id].position = pos
+
+func _disable_enemy_detection(instance: Node) -> void:
+	var enemy_groups: Array = []
+	if "_enemies" in instance:
+		enemy_groups.append(instance._enemies)
+	if "_gauntlet_enemies" in instance:
+		enemy_groups.append(instance._gauntlet_enemies)
+
+	for enemy_group in enemy_groups:
+		for enemy in enemy_group:
+			if not is_instance_valid(enemy):
+				continue
+			if "_detection_targets" in enemy:
+				enemy.set("_detection_targets", [])
+			if "_current_target_id" in enemy:
+				enemy.set("_current_target_id", "")
+			if enemy.has_method("_change_state"):
+				enemy._change_state("idle")
+			if enemy.game_state and enemy.game_state.characters.has(enemy.char_id):
+				enemy.game_state.characters[enemy.char_id].stats["detection_range"] = 0.0
+
+func _run_sequence_contract(
+	label: String,
+	scene_path: String,
+	expected_steps: Array,
+	step_actions_factory: Callable = Callable(),
+	setup: Callable = Callable(),
+	expected_next_scene := "",
+	forbidden_steps: Array = [],
+	expected_final_step := "complete",
+	extra_assertions: Callable = Callable()
+) -> void:
+	_test_name = label
+	var scene := load(scene_path)
+	_assert_true(scene != null, "Scene loads")
+	if not scene:
+		return
+
+	var instance: Node = scene.instantiate()
+	_assert_true(instance != null, "Scene instantiates")
+	if not instance:
+		return
+
+	if "suppress_scene_change" in instance:
+		instance.suppress_scene_change = true
+	if setup.is_valid():
+		setup.call(instance)
+
+	get_tree().root.add_child(instance)
+	for i in range(3):
+		await get_tree().process_frame
+
+	var step_actions := {}
+	if step_actions_factory.is_valid():
+		step_actions = step_actions_factory.call(instance)
+
+	var result := _drive_sequence_contract(instance, step_actions)
+	var step_history: Array = result.step_history
+	var actioned_steps: Array = result.actioned_steps
+	_assert_true(not step_history.is_empty(), "Captured step history")
+	_assert_step_subsequence(step_history, expected_steps, "Required step order holds")
+
+	if expected_final_step != "":
+		_assert_equals(instance._current_step, expected_final_step, "Final step is %s" % expected_final_step)
+
+	if not step_actions.is_empty():
+		_assert_equals(
+			actioned_steps.size(),
+			step_actions.size(),
+			"All scripted step hooks ran"
+		)
+
+	for forbidden_step in forbidden_steps:
+		_assert_step_absent(step_history, forbidden_step, "Step %s does not appear" % forbidden_step)
+
+	if expected_next_scene != "" and "requested_scene_change" in instance:
+		_assert_equals(instance.requested_scene_change, expected_next_scene, "Recorded next scene handoff")
+
+	_assert_true(
+		result.termination_reason in ["complete", "idle"],
+		"Driver terminated cleanly (got: %s)" % result.termination_reason
+	)
+
+	if extra_assertions.is_valid():
+		extra_assertions.call(instance, result)
+
+	instance.set_process(false)
+	instance.set_physics_process(false)
+	if instance.has_method("_teardown_sequence"):
+		instance._teardown_sequence()
+	instance.queue_free()
+	await get_tree().process_frame
 
 func _test_tag_day_dialogue() -> void:
 	_test_name = "Tag Day Dialogue"
@@ -1339,8 +1796,8 @@ func _test_climb_and_lockout() -> void:
 	_assert_true(has_another_way, "Another way dialogue exists")
 
 	# Verify soft lockout dialogue (dismiss, not locked out)
-	var has_dismiss := DialogueData.text("elevator.aster.dismiss") != ""
-	var has_not_back := DialogueData.text("elevator.peris.not_back") != ""
+	var has_dismiss := DialogueData.has_key("elevator.aster.dismiss")
+	var has_not_back := DialogueData.has_key("elevator.peris.not_back")
 	_assert_true(has_dismiss, "Aster dismiss (soft lockout) dialogue exists")
 	_assert_true(has_not_back, "Peris not-back dialogue exists")
 
@@ -4400,6 +4857,292 @@ func _test_peris_phase2() -> void:
 	instance.queue_free()
 	await get_tree().process_frame
 
+func _test_sequence_contracts() -> void:
+	var aster_actions := func(instance: Node):
+		var actions := {}
+		actions["show_terminal"] = func(): instance._on_terminal_interacted()
+		actions["walk_to_drink"] = func(): instance._on_drink_interacted()
+		return actions
+
+	var peris_phase_1_setup := func(instance: Node):
+		instance._visit_phase = 1
+
+	var peris_phase_2_setup := func(instance: Node):
+		instance._visit_phase = 2
+
+	var peris_phase_2_actions := func(instance: Node):
+		var actions := {}
+		actions["protect_prompt"] = func(): instance._on_protect_pressed()
+		actions["run_prompt"] = func(): instance._toggle_run()
+		actions["click_monos"] = func(): instance._start_confirm_protect()
+		actions["confirm_protect"] = func(): instance._start_executing()
+		return actions
+
+	var leaving_actions := func(instance: Node):
+		var actions := {}
+		actions["first_corridor"] = func():
+			_set_sequence_character_position(
+				instance,
+				"aster",
+				Vector3(instance.IRON_1_POS.x - 1.0, 0.5, instance.IRON_1_POS.z)
+			)
+		actions["safe_route_lesson"] = func():
+			_set_sequence_character_position(
+				instance,
+				"aster",
+				Vector3(instance.MIDPOINT.x + 1.0, 0.5, instance.MIDPOINT.z)
+			)
+		actions["second_iron"] = func():
+			_set_sequence_character_position(
+				instance,
+				"aster",
+				Vector3(instance.SHELTER_POS.x + 0.5, 0.5, instance.SHELTER_POS.z)
+			)
+		return actions
+
+	var tag_day_actions := func(instance: Node):
+		var actions := {}
+		actions["clearance"] = func():
+			instance._on_sequence_complete()
+		return actions
+
+	var elevator_actions := func(instance: Node):
+		var actions := {}
+		actions["consciousness_fragments"] = func():
+			if instance._aster_node:
+				instance._aster_node.visible = true
+			for unit in [instance._escort_1, instance._escort_2]:
+				if unit:
+					unit.visible = true
+			instance._emergency_light.light_energy = 3.0
+			instance._fade_rect.color.a = 0.0
+			instance._start_waking()
+		actions["approach_aster"] = func():
+			_set_sequence_character_position(
+				instance,
+				"peris",
+				instance.ASTER_POS + Vector3(0.5, 0.5, 0.0)
+			)
+		actions["units_activate"] = func():
+			instance._scheduler.resume()
+		actions["emp_tutorial"] = func():
+			instance._on_emp_pressed()
+			instance._flush_queued_abilities()
+		actions["doors_unlocked"] = func():
+			if instance._exit_button:
+				instance._exit_button._trigger()
+		actions["multiselect_tutorial"] = func():
+			instance._scheduler.resume()
+			var exit_gate := Vector3(instance.ELEVATOR_SIZE.x / 2.0, 0.5, 0.0)
+			_set_sequence_character_position(
+				instance,
+				"peris",
+				exit_gate + Vector3(0.0, 0.0, -0.5)
+			)
+			_set_sequence_character_position(
+				instance,
+				"aster",
+				exit_gate + Vector3(0.0, 0.0, 0.5)
+			)
+		actions["corridor"] = func():
+			_disable_enemy_detection(instance)
+		actions["bridge_collapse"] = func():
+			instance._on_fall_landed()
+		actions["route_choice"] = func():
+			_disable_enemy_detection(instance)
+			_set_sequence_character_position(
+				instance,
+				"aster",
+				instance.ROUTES_CONVERGE + Vector3(1.5, 0.5, 0.0)
+			)
+		actions["junction_arrive"] = func():
+			instance._start_dusk_from_plant()
+		actions["endo_shelter"] = func():
+			instance._on_endo_delivered("endo")
+		actions["gauntlet"] = func():
+			_disable_enemy_detection(instance)
+			instance._on_ferrolure_activated()
+			_set_sequence_character_position(
+				instance,
+				"aster",
+				instance.GAUNTLET_EXIT + Vector3(1.5, 0.5, 0.0)
+			)
+		actions["complete"] = func():
+			instance._change_scene_or_record("res://scenes/tutorial/act1.tscn")
+			instance._scheduler.clear()
+		return actions
+
+	var act1_actions := func(instance: Node):
+		var actions := {}
+		actions["channels_to_memory"] = func():
+			_set_sequence_character_position(
+				instance,
+				"aster",
+				Vector3(instance.CHANNELS_MEMORY_TRIGGER_X + 1.0, 0.5, 0.0)
+			)
+		actions["channels_memory"] = func():
+			instance._start_channels_corpse()
+		actions["channels_to_ferrolure"] = func():
+			_set_sequence_character_position(
+				instance,
+				"aster",
+				Vector3(instance.CHANNELS_FERROLURE_TRIGGER_X + 1.0, 0.5, 0.0)
+			)
+		actions["channels_ferrolure"] = func():
+			instance._start_channels_to_encounter()
+		actions["channels_to_encounter"] = func():
+			_set_sequence_character_position(
+				instance,
+				"aster",
+				Vector3(instance.CHANNELS_ENCOUNTER_TRIGGER_X + 1.0, 0.5, 0.0)
+			)
+		actions["channels_encounter_intro"] = func():
+			instance._begin_channels_encounter()
+		actions["channels_encounter_activate"] = func():
+			instance._on_channels_run_lure_activated()
+		actions["channels_encounter_hide"] = func():
+			_set_sequence_character_position(
+				instance,
+				"endo",
+				instance.CHANNELS_HIDE_SPOT_POS
+			)
+		actions["channels_encounter_run"] = func():
+			_set_sequence_character_position(
+				instance,
+				"endo",
+				instance.CHANNELS_SHELTER_POS
+			)
+		actions["channels_shelter"] = func():
+			instance._start_channels_explore()
+		actions["channels_explore"] = func():
+			_set_sequence_character_position(
+				instance,
+				"aster",
+				Vector3(instance.CHANNELS_END.x - 4.0, 0.5, 0.0)
+			)
+		actions["stacks_explore"] = func():
+			_set_sequence_character_position(
+				instance,
+				"aster",
+				Vector3(instance.STACKS_END.x - 4.0, 0.5, 0.0)
+			)
+		actions["rings_explore"] = func():
+			_set_sequence_character_position(
+				instance,
+				"aster",
+				Vector3(instance.RINGS_END.x - 4.0, 0.5, 0.0)
+			)
+		actions["lockout_chase"] = func():
+			_set_sequence_character_position(
+				instance,
+				"aster",
+				Vector3(instance.LOCKOUT_START.x - 11.0, 0.5, 0.0)
+			)
+		actions["complete"] = func():
+			instance._change_scene_or_record("res://scenes/tutorial/leaving_facility.tscn")
+		return actions
+
+	await _run_sequence_contract(
+		"Sequence Contract: Aster Sim",
+		"res://scenes/tutorial/aster_sim.tscn",
+		[
+			"fade_in", "working", "ron_approaches", "ron_greeting",
+			"show_terminal", "terminal_data", "ron_drinks", "walk_to_drink",
+			"drink", "ron_move_fast", "tag_notify", "walk_to_exit",
+			"transition_out", "complete",
+		],
+		aster_actions,
+		Callable(),
+		"res://scenes/tutorial/peris_sim.tscn"
+	)
+
+	await _run_sequence_contract(
+		"Sequence Contract: Peris Phase 1",
+		"res://scenes/tutorial/peris_sim.tscn",
+		[
+			"fade_in", "workspace", "monos_late",
+			"monos_arrives", "transition_out", "complete",
+		],
+		Callable(),
+		peris_phase_1_setup,
+		"res://scenes/tutorial/tag_day.tscn"
+	)
+
+	await _run_sequence_contract(
+		"Sequence Contract: Tag Day",
+		"res://scenes/tutorial/tag_day.tscn",
+		[
+			"arrive", "citizen_scan", "naturalizers_grip", "corridor_walk",
+			"fragments", "neutralization", "lockdown", "return_focus",
+			"aster_scans", "clearance", "complete",
+		],
+		tag_day_actions,
+		Callable(),
+		"res://scenes/tutorial/peris_sim.tscn"
+	)
+
+	await _run_sequence_contract(
+		"Sequence Contract: Peris Phase 2",
+		"res://scenes/tutorial/peris_sim.tscn",
+		[
+			"fade_in", "session_begins", "attack", "protect_prompt",
+			"run_prompt", "click_monos", "confirm_protect",
+			"executing", "aftermath", "efficiency_log", "transition_out", "complete",
+		],
+		peris_phase_2_actions,
+		peris_phase_2_setup,
+		"res://scenes/tutorial/elevator.tscn"
+	)
+
+	await _run_sequence_contract(
+		"Sequence Contract: Leaving Facility",
+		"res://scenes/tutorial/leaving_facility.tscn",
+		[
+			"fade_in", "facility_exit", "endo_joins", "first_corridor",
+			"safe_route_lesson", "dusk_approaches", "second_iron",
+			"reach_shelter", "first_rest", "dawn", "complete",
+		],
+		leaving_actions
+	)
+
+	await _run_sequence_contract(
+		"Sequence Contract: Elevator",
+		"res://scenes/tutorial/elevator.tscn",
+		[
+			"consciousness_fragments", "waking", "approach_aster", "wake_aster",
+			"conversation", "system_restored", "units_activate", "emp_tutorial",
+			"doors_unlocked", "doors_open", "multiselect_tutorial", "corridor",
+			"bridge", "bridge_collapse", "fallen", "climb_attempt",
+			"route_fork_dialogue", "route_choice", "junction_arrive",
+			"endo_enters", "endo_shelter", "night_watch", "dawn", "morning",
+			"gauntlet", "complete",
+		],
+		elevator_actions,
+		Callable(),
+		"res://scenes/tutorial/act1.tscn",
+		["game_over"]
+	)
+
+	await _run_sequence_contract(
+		"Sequence Contract: Act 1",
+		"res://scenes/tutorial/act1.tscn",
+		[
+			"channels_enter", "channels_to_memory", "channels_memory",
+			"channels_corpse", "channels_to_ferrolure", "channels_ferrolure",
+			"channels_to_encounter", "channels_encounter_intro",
+			"channels_encounter_activate", "channels_encounter_hide",
+			"channels_encounter_run", "channels_shelter", "channels_explore",
+			"stacks_enter", "stacks_terminal", "stacks_archive", "stacks_explore",
+			"rings_enter", "rings_client", "endo_departs", "rings_explore",
+			"lockout_approach", "lockout_rejected", "lockout_chase",
+			"lockout_exile", "complete",
+		],
+		act1_actions,
+		Callable(),
+		"res://scenes/tutorial/leaving_facility.tscn",
+		["channels_encounter_reset"]
+	)
+
 func _test_items() -> void:
 	_test_name = "Items & Endocytosis"
 
@@ -4407,8 +5150,8 @@ func _test_items() -> void:
 	var sched := EventScheduler.new()
 	gs.scheduler = sched
 
-	gs.register_character("aster", Vector3(5, 0, 5), 3.0, {"atp": 50.0})
-	gs.register_character("peris", Vector3(6, 0, 5), 3.0, {"atp": 80.0})
+	gs.register_character("aster", Vector3(5, 0, 5), 3.0, {"atp": 4.0})
+	gs.register_character("peris", Vector3(6, 0, 5), 3.0, {"atp": 6.0})
 
 	# --- Spawn and pickup ---
 	var lysate_id := gs.spawn_item("lysate", Vector3(5, 0, 5))
@@ -4545,7 +5288,7 @@ func _test_items() -> void:
 		var gs2 := GameState.new()
 		var s2 := EventScheduler.new()
 		gs2.scheduler = s2
-		gs2.register_character("det_char", Vector3(5, 0, 5), 3.0, {"atp": 50.0})
+		gs2.register_character("det_char", Vector3(5, 0, 5), 3.0, {"atp": 4.0})
 		var det_item := gs2.spawn_item("lysate", Vector3(5, 0, 5))
 		gs2.pick_up_item("det_char", det_item)
 		gs2.endocytose_item("det_char", det_item)
@@ -4777,7 +5520,7 @@ func _test_dodge_roll() -> void:
 	# Create a hero node in the tree so the enemy can find it
 	var hero_node := Node3D.new()
 	hero_node.name = "hero"
-	hero_node.global_position = Vector3(10, 0.5, 10)
+	hero_node.position = Vector3(10, 0.5, 10)
 	get_tree().root.add_child(hero_node)
 
 	# Create an enemy that targets the hero
@@ -4836,6 +5579,7 @@ func _test_dodge_roll() -> void:
 
 	enemy.queue_free()
 	hero_node.queue_free()
+	await get_tree().process_frame
 
 	# --- Predictive auto-dodge: character auto-evades incoming attack ---
 	_test_name = "Predictive Auto-Dodge"

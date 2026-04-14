@@ -10,7 +10,7 @@ move 8 -3
 dwell 2
 
 # Verify ATP filled via proximity interaction
-assert atp >= 100
+assert atp >= 8
 
 # Wait for Ron conversation
 wait 8

@@ -1,5 +1,7 @@
 extends CanvasLayer
 
+const SurvivalStats = preload("res://scripts/game/survival_stats.gd")
+
 ## Unified game HUD. Sequences configure which elements are visible.
 ## Matches the React prototype layout: stat bars left, controls center,
 ## abilities right, time bar top, messages top-center.
@@ -156,8 +158,23 @@ func add_stat_bar(stat_name: String, color: Color, max_val: float, initial: floa
 	label.add_theme_font_size_override("font_size", 11)
 	label.add_theme_color_override("font_color", Color(color, 0.8))
 	label.custom_minimum_size.x = 65
-	label.text = "%s  %d%%" % [stat_name.to_upper(), int(initial)]
+	label.text = _format_stat_label(stat_name, initial, max_val)
 	row.add_child(label)
+
+	if stat_name.to_lower() == "atp":
+		var pip_info := _make_pip_strip(int(SurvivalStats.ATP_MAX_PIPS), Vector2(8, 10), color, Color(0.06, 0.06, 0.08))
+		row.add_child(pip_info["box"])
+		_stat_section.add_child(row)
+		_stat_bars[stat_name] = {
+			"row": row,
+			"label": label,
+			"type": "pips",
+			"max": SurvivalStats.ATP_MAX_PIPS,
+			"color": color,
+			"pip_info": pip_info,
+		}
+		_set_pip_strip_value(pip_info, SurvivalStats.normalize_atp(initial))
+		return
 
 	var bar := ProgressBar.new()
 	bar.min_value = 0
@@ -176,24 +193,36 @@ func add_stat_bar(stat_name: String, color: Color, max_val: float, initial: floa
 	row.add_child(bar)
 
 	_stat_section.add_child(row)
-	_stat_bars[stat_name] = {"row": row, "bar": bar, "label": label, "max": max_val, "color": color}
+	_stat_bars[stat_name] = {
+		"row": row,
+		"bar": bar,
+		"label": label,
+		"type": "bar",
+		"max": max_val,
+		"color": color,
+	}
 
 func set_stat(stat_name: String, value: float) -> void:
 	if not _stat_bars.has(stat_name):
 		return
 	var info: Dictionary = _stat_bars[stat_name]
-	info.bar.value = value
-	info.label.text = "%s  %d%%" % [stat_name.to_upper(), int(value)]
+	var max_val: float = float(info.get("max", 100.0))
+	var label: Label = info.get("label")
+	label.text = _format_stat_label(stat_name, value, max_val)
+	if str(info.get("type", "")) == "pips":
+		_set_pip_strip_value(info.get("pip_info", {}), SurvivalStats.normalize_atp(value))
+		return
+	var bar: ProgressBar = info.get("bar")
+	bar.value = value
 	# Color shift when low
-	var fill: StyleBoxFlat = info.bar.get_theme_stylebox("fill")
-	var max_val: float = info.max
+	var fill: StyleBoxFlat = bar.get_theme_stylebox("fill")
 	var ratio := value / max_val if max_val > 0 else 0.0
 	if ratio < 0.3:
 		fill.bg_color = Color(0.7, 0.3, 0.2)
 	elif ratio < 0.6:
 		fill.bg_color = Color(0.7, 0.55, 0.2)
 	else:
-		fill.bg_color = info.color
+		fill.bg_color = info.get("color", Color.WHITE)
 
 # --- Character Portraits ---
 
@@ -244,6 +273,19 @@ func add_portrait(id: String, display_name: String, color: Color) -> void:
 		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.add_child(lbl)
 
+		if stat_def[0] == "atp":
+			var pip_info := _make_pip_strip(int(SurvivalStats.ATP_MAX_PIPS), Vector2(4, 3), stat_def[2], Color(0.05, 0.05, 0.06))
+			var pip_box: HBoxContainer = pip_info["box"]
+			pip_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			row.add_child(pip_box)
+			stats_box.add_child(row)
+			stat_bars[stat_def[0]] = {
+				"type": "pips",
+				"pip_info": pip_info,
+			}
+			_set_pip_strip_value(pip_info, SurvivalStats.ATP_MAX_PIPS)
+			continue
+
 		var bar := ProgressBar.new()
 		bar.min_value = 0
 		bar.max_value = 100
@@ -262,7 +304,10 @@ func add_portrait(id: String, display_name: String, color: Color) -> void:
 		row.add_child(bar)
 
 		stats_box.add_child(row)
-		stat_bars[stat_def[0]] = bar
+		stat_bars[stat_def[0]] = {
+			"type": "bar",
+			"bar": bar,
+		}
 
 	card.gui_input.connect(_on_portrait_input.bind(id))
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -305,7 +350,14 @@ func set_portrait_stat(id: String, stat_name: String, value: float) -> void:
 		return
 	var bars: Dictionary = _portraits[id].stat_bars
 	if bars.has(stat_name):
-		bars[stat_name].value = value
+		var info: Variant = bars[stat_name]
+		if info is Dictionary and info.get("type", "") == "pips":
+			_set_pip_strip_value(info.get("pip_info", {}), SurvivalStats.normalize_atp(value))
+		elif info is Dictionary and info.get("type", "") == "bar":
+			var bar: ProgressBar = info.get("bar")
+			bar.value = value
+		elif info is ProgressBar:
+			info.value = value
 
 func set_portrait_alert(id: String, alert: bool) -> void:
 	if not _portraits.has(id):
@@ -405,6 +457,41 @@ func _style_portrait(id: String) -> void:
 		"attacking":
 			style.bg_color = Color(0.15, 0.04, 0.04, 0.95)
 			p.name_label.add_theme_color_override("font_color", Color(0.9, 0.25, 0.2))
+
+func _format_stat_label(stat_name: String, value: float, max_val: float) -> String:
+	if stat_name.to_lower() == "atp":
+		return "ATP  %s" % SurvivalStats.atp_text(value)
+	if max_val == 100.0:
+		return "%s  %d%%" % [stat_name.to_upper(), int(value)]
+	return "%s  %d" % [stat_name.to_upper(), int(value)]
+
+func _make_pip_strip(count: int, pip_size: Vector2, color: Color, off_color: Color) -> Dictionary:
+	var box := HBoxContainer.new()
+	box.add_theme_constant_override("separation", 1)
+	var pips: Array[ColorRect] = []
+	for _i in range(count):
+		var pip := ColorRect.new()
+		pip.custom_minimum_size = pip_size
+		pip.color = off_color
+		box.add_child(pip)
+		pips.append(pip)
+	return {
+		"box": box,
+		"pips": pips,
+		"color": color,
+		"off_color": off_color,
+		"max": float(count),
+	}
+
+func _set_pip_strip_value(pip_info: Dictionary, value: float) -> void:
+	var max_count := int(pip_info.get("max", 0.0))
+	var filled := int(clampf(roundf(value), 0.0, float(max_count)))
+	var color: Color = pip_info.get("color", Color.WHITE)
+	var off_color: Color = pip_info.get("off_color", Color(0.05, 0.05, 0.06))
+	var pips: Array = pip_info.get("pips", [])
+	for i in range(pips.size()):
+		var pip: ColorRect = pips[i]
+		pip.color = color if i < filled else off_color
 
 # --- Control Buttons ---
 

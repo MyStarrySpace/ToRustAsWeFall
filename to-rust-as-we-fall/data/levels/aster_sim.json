@@ -27,7 +27,7 @@
     "name": "Aster",
     "position": [0, -0.7],
     "color": "#4A9EFF",
-    "stats": { "hp": 100, "atp": 72, "stamina": 100 }
+    "stats": { "hp": 100, "atp": 6, "stamina": 100 }
   },
 
   "npcs": [
@@ -51,7 +51,7 @@
       "one_shot": true,
       "label": "DRINKS",
       "interaction": "proximity_dwell",
-      "effect": { "atp": 100 }
+      "effect": { "atp": 8 }
     }
   ],
 

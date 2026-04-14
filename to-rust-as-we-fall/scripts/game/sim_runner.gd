@@ -1,5 +1,7 @@
 class_name SimRunner
 
+const SurvivalStats = preload("res://scripts/game/survival_stats.gd")
+
 ## Executes SimCommands against a live scene tree. Used for:
 ## - Headless automated testing (scripted playthrough)
 ## - CLI game mode (text commands → SimCommands)
@@ -239,7 +241,7 @@ func _print_state() -> void:
 		print("  Moving: %s" % (player.is_moving() if player.has_method("is_moving") else "?"))
 	if seq:
 		print("  Phase: %s" % _get_phase_string(seq))
-		if "_atp" in seq: print("  ATP: %.0f" % seq._atp)
+		if "_atp" in seq: print("  ATP: %s" % SurvivalStats.atp_text(seq._atp))
 		if "_hp" in seq: print("  HP: %.0f" % seq._hp)
 		if "_stamina" in seq: print("  Stamina: %.0f" % seq._stamina)
 		if "_game_time" in seq: print("  Time: %.2f" % seq._game_time)

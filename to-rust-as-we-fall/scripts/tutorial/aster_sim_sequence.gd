@@ -1,6 +1,8 @@
 @tool
 extends TutorialSequence
 
+const SurvivalStats = preload("res://scripts/game/survival_stats.gd")
+
 ## Aster's simulation tutorial. Teaches movement, interaction, ATP.
 ## Establishes Aster's character, introduces Ron, ends with Tag Day notification.
 ##
@@ -13,7 +15,7 @@ var _has_drunk := false
 var _ron
 var _terminal  # Interactable — forecasting terminal
 var _drink_machine  # Interactable — drink machine
-var _atp_bar: ProgressBar
+var _atp_pips: Array[ColorRect] = []
 var _atp_label: Label
 
 # Grid system
@@ -24,8 +26,8 @@ var _renderer: GridRenderer
 var _data_displays: Array[MeshInstance3D] = []
 
 # ATP simulation
-var _atp := 72.0  # Start slightly below max to show the bar clearly
-const ATP_MAX := 100.0
+var _atp := 6.0  # Start slightly below max so the refill is visible.
+const ATP_MAX := SurvivalStats.ATP_MAX_PIPS
 
 # --- Virtual overrides ---
 
@@ -65,7 +67,7 @@ func _register_characters() -> void:
 	_register_gs_character("aster", _player, _player.move_speed, {"atp": _atp})
 
 func _setup_ui() -> void:
-	# ATP bar — scene-specific, top right
+	# ATP pips — scene-specific, top right
 	var atp_layer := CanvasLayer.new()
 	atp_layer.layer = 10
 	add_child(atp_layer)
@@ -82,24 +84,18 @@ func _setup_ui() -> void:
 	_atp_label = Label.new()
 	_atp_label.add_theme_font_size_override("font_size", 12)
 	_atp_label.add_theme_color_override("font_color", Color(0.3, 0.7, 0.4, 0.8))
-	_atp_label.custom_minimum_size.x = 70
+	_atp_label.custom_minimum_size.x = 64
 	atp_container.add_child(_atp_label)
 
-	_atp_bar = ProgressBar.new()
-	_atp_bar.min_value = 0
-	_atp_bar.max_value = ATP_MAX
-	_atp_bar.value = _atp
-	_atp_bar.show_percentage = false
-	_atp_bar.custom_minimum_size = Vector2(90, 16)
-	var bar_style := StyleBoxFlat.new()
-	bar_style.bg_color = Color(0.08, 0.08, 0.1)
-	bar_style.set_corner_radius_all(2)
-	_atp_bar.add_theme_stylebox_override("background", bar_style)
-	var fill_style := StyleBoxFlat.new()
-	fill_style.bg_color = Color(0.2, 0.6, 0.35)
-	fill_style.set_corner_radius_all(2)
-	_atp_bar.add_theme_stylebox_override("fill", fill_style)
-	atp_container.add_child(_atp_bar)
+	var pip_box := HBoxContainer.new()
+	pip_box.add_theme_constant_override("separation", 2)
+	atp_container.add_child(pip_box)
+	for _i in range(int(ATP_MAX)):
+		var pip := ColorRect.new()
+		pip.custom_minimum_size = Vector2(10, 16)
+		pip.color = Color(0.08, 0.08, 0.1)
+		pip_box.add_child(pip)
+		_atp_pips.append(pip)
 
 func _begin() -> void:
 	_start_fade_in()
@@ -247,11 +243,13 @@ func _start_transition_out() -> void:
 
 func _complete() -> void:
 	_current_step = "complete"
-	get_tree().change_scene_to_file("res://scenes/tutorial/peris_sim.tscn")
+	_change_scene_or_record("res://scenes/tutorial/peris_sim.tscn")
 
 func _update_atp_display() -> void:
-	_atp_bar.value = _atp
-	_atp_label.text = "ATP  %d%%" % int(_atp)
+	var filled := int(SurvivalStats.normalize_atp(_atp))
+	for i in range(_atp_pips.size()):
+		_atp_pips[i].color = Color(0.2, 0.6, 0.35) if i < filled else Color(0.08, 0.08, 0.1)
+	_atp_label.text = "ATP  %s" % SurvivalStats.atp_text(_atp)
 
 # --- Environment ---
 

@@ -11,7 +11,7 @@ const TYPES := {
 		"scent_radius": 6.0,
 		"endocytosis_effect": "digest",
 		"endocytosis_duration": 2.0,
-		"atp_restore": 30.0,
+		"atp_restore": 2.0,
 	},
 	"cure_component": {
 		"display_name": "Cure Component",

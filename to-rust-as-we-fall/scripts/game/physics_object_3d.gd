@@ -11,7 +11,7 @@ func _process(_delta: float) -> void:
 	if not game_state or obj_id == "":
 		return
 	var pos := game_state.get_physics_position(obj_id)
-	global_position = Vector3(pos.x, global_position.y, pos.z)
+	global_position = pos
 
 	if game_state.is_physics_moving(obj_id) and _spin_speed > 0:
 		rotate_y(_spin_speed * _delta)

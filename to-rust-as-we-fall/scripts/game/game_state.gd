@@ -1,6 +1,8 @@
 class_name GameState
 extends RefCounted
 
+const SurvivalStats = preload("res://scripts/game/survival_stats.gd")
+
 ## Central data authority for all character state and movement.
 ## Movement uses path interpolation driven by EventScheduler ticks.
 ## Position is computed on read — no per-frame tick needed.
@@ -75,6 +77,9 @@ var _dodging: Dictionary = {}     # char_id → {end_tick, handle}
 ## }
 
 func register_character(id: String, pos: Vector3, speed: float = 3.0, stats: Dictionary = {}) -> void:
+	var normalized_stats := stats.duplicate(true)
+	if normalized_stats.has("atp"):
+		normalized_stats["atp"] = SurvivalStats.normalize_atp(float(normalized_stats["atp"]))
 	var cell := Vector2i.ZERO
 	if grid:
 		cell = grid.world_to_grid(pos)
@@ -82,7 +87,7 @@ func register_character(id: String, pos: Vector3, speed: float = 3.0, stats: Dic
 		"position": pos,
 		"grid_cell": cell,
 		"move_speed": speed,
-		"stats": stats,
+		"stats": normalized_stats,
 		"movement": null,
 		"hands": [null, null],
 		"internal": [],
@@ -705,8 +710,9 @@ func _complete_endocytosis(char_id: String, item_id: String) -> void:
 
 	match effect:
 		"digest":
-			var restore: float = item.properties.get("atp_restore", 0.0)
-			ch.stats["atp"] = ch.stats.get("atp", 0.0) + restore
+			var restore: float = SurvivalStats.normalize_atp(float(item.properties.get("atp_restore", 0.0)))
+			var current_atp: float = SurvivalStats.normalize_atp(float(ch.stats.get("atp", 0.0)))
+			ch.stats["atp"] = SurvivalStats.clamp_atp(current_atp + restore)
 			items.erase(item_id)
 		"store":
 			item.location = "internal"

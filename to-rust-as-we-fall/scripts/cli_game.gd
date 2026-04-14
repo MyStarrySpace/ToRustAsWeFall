@@ -197,7 +197,7 @@ func _execute_text_command(text: String) -> void:
 			print("  advance         Click through dialogue")
 			print("  status          Print game state")
 			print("  phase           Print current sequence phase")
-			print("  assert <stat> <op> <value>  Check a stat (e.g. assert atp >= 100)")
+			print("  assert <stat> <op> <value>  Check a stat (e.g. assert atp >= 8)")
 			print("  help            This message")
 
 		"quit", "exit":

@@ -251,7 +251,10 @@ func _pursue_target() -> void:
 		return
 	# Otherwise keep chasing
 	if game_state.characters.has(char_id):
-		game_state.command_move_to_pos(char_id, target_pos)
+		if game_state.grid:
+			game_state.command_move_to_cell(char_id, game_state.grid.world_to_grid(target_pos))
+		else:
+			game_state.command_move_to_pos(char_id, target_pos)
 	var scheduler := _get_scheduler()
 	if scheduler:
 		scheduler.schedule_after(pursuit_update_interval, _pursue_target, _state_tag)
@@ -285,7 +288,10 @@ func _patrol_next_waypoint() -> void:
 		return
 	var waypoint := _patrol_waypoints[_patrol_index]
 	if game_state and game_state.characters.has(char_id):
-		game_state.command_move_to_pos(char_id, waypoint)
+		if game_state.grid:
+			game_state.command_move_to_cell(char_id, game_state.grid.world_to_grid(waypoint))
+		else:
+			game_state.command_move_to_pos(char_id, waypoint)
 	_patrol_index = (_patrol_index + 1) % _patrol_waypoints.size()
 	var dist := global_position.distance_to(waypoint)
 	var travel_time := dist / maxf(move_speed, 0.1) + 0.5

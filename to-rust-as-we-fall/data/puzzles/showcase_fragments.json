@@ -1,0 +1,167 @@
+{
+	"catalog_id": "showcase_fragments_v1",
+	"display_name": "Showcase Puzzle And Survival Fragments",
+	"scene": "res://scenes/showcase/showcase.tscn",
+	"fragments": [
+		{
+			"id": "standard_enemy_lane",
+			"display_name": "Standard Enemy Lane",
+			"kind": "survival",
+			"tags": ["enemy", "detection", "combat"],
+			"scenarios": [
+				{
+					"id": "aster_draws_aggro",
+					"display_name": "Aster Draws Aggro",
+					"script": [
+						{"type": "snapshot_state", "key": "before"},
+						{"type": "select_character", "char_id": "aster"},
+						{"type": "teleport", "char_id": "aster", "anchor": "enemy_probe"},
+						{"type": "advance", "seconds": 3.0},
+						{"type": "assert_path", "path": "enemy.standard.state", "op": "!=", "value": "patrol"},
+						{"type": "assert_path", "path": "enemy.standard.target", "op": "==", "value": "aster"}
+					]
+				}
+			]
+		},
+		{
+			"id": "chain_enemy_lane",
+			"display_name": "Chain Enemy Lane",
+			"kind": "survival",
+			"tags": ["enemy", "chain", "combat"],
+			"scenarios": [
+				{
+					"id": "peris_draws_aggro",
+					"display_name": "Peris Draws Aggro",
+					"script": [
+						{"type": "snapshot_state", "key": "before"},
+						{"type": "select_character", "char_id": "peris"},
+						{"type": "teleport", "char_id": "peris", "anchor": "chain_probe"},
+						{"type": "advance", "seconds": 3.0},
+						{"type": "assert_path", "path": "enemy.chain.state", "op": "!=", "value": "patrol"},
+						{"type": "assert_path", "path": "enemy.chain.target", "op": "==", "value": "peris"}
+					]
+				}
+			]
+		},
+		{
+			"id": "iron_bloom_lane",
+			"display_name": "Iron Bloom Lane",
+			"kind": "survival",
+			"tags": ["hazard", "iron", "damage"],
+			"scenarios": [
+				{
+					"id": "endo_takes_floor_damage",
+					"display_name": "Endo Takes Floor Damage",
+					"script": [
+						{"type": "snapshot_state", "key": "before"},
+						{"type": "select_character", "char_id": "endo"},
+						{"type": "teleport", "char_id": "endo", "anchor": "iron_patch"},
+						{"type": "advance", "seconds": 1.25},
+						{"type": "assert_path", "path": "character_hp.endo", "op": "<", "snapshot": "before", "snapshot_path": "character_hp.endo"}
+					]
+				}
+			]
+		},
+		{
+			"id": "ferrolure_signal_lane",
+			"display_name": "Ferrolure Signal Lane",
+			"kind": "puzzle",
+			"tags": ["ferrolure", "ecology", "routing"],
+			"scenarios": [
+				{
+					"id": "signal_redirects_pack",
+					"display_name": "Signal Redirects Pack",
+					"script": [
+						{"type": "snapshot_state", "key": "before"},
+						{"type": "call", "method": "activate_showcase_ferrolure"},
+						{"type": "advance", "seconds": 1.0},
+						{"type": "assert_path", "path": "ferrolure_active", "op": "==", "value": true},
+						{"type": "assert_path", "path": "ferrolure_tracking_cleared", "op": "==", "value": true},
+						{"type": "assert_path", "path": "ferrolure_avg_distance", "op": "<", "snapshot": "before", "snapshot_path": "ferrolure_avg_distance"},
+						{"type": "advance", "seconds": 8.5},
+						{"type": "assert_path", "path": "ferrolure_active", "op": "==", "value": false},
+						{"type": "assert_path", "path": "ferrolure_tracking_restored", "op": "==", "value": true}
+					]
+				}
+			]
+		},
+		{
+			"id": "hide_lane",
+			"display_name": "Hide Lane",
+			"kind": "puzzle",
+			"tags": ["hide", "ferrolure", "survival", "timing"],
+			"scenarios": [
+				{
+					"id": "exposed_failure",
+					"display_name": "Exposed Failure",
+					"script": [
+						{"type": "select_character", "char_id": "endo"},
+						{"type": "teleport", "char_id": "endo", "anchor": "hide_entry"},
+						{"type": "call", "method": "activate_hide_lure"},
+						{"type": "advance", "seconds": 2.0},
+						{"type": "assert_path", "path": "hide_last_outcome", "op": "==", "value": "detected"},
+						{"type": "assert_path", "path": "hide_phase", "op": "==", "value": "failed"}
+					]
+				},
+				{
+					"id": "hidden_success",
+					"display_name": "Hidden Success",
+					"script": [
+						{"type": "select_character", "char_id": "endo"},
+						{"type": "teleport", "char_id": "endo", "anchor": "hide_spot"},
+						{"type": "call", "method": "activate_hide_lure"},
+						{"type": "advance", "seconds": 6.2},
+						{"type": "assert_path", "path": "hide_phase", "op": "==", "value": "run"},
+						{"type": "teleport", "char_id": "endo", "anchor": "shelter"},
+						{"type": "advance", "seconds": 0.2},
+						{"type": "assert_path", "path": "hide_last_outcome", "op": "==", "value": "success"},
+						{"type": "assert_path", "path": "hide_phase", "op": "==", "value": "safe"}
+					]
+				}
+			]
+		},
+		{
+			"id": "pendulum_lane",
+			"display_name": "Pendulum Lane",
+			"kind": "puzzle",
+			"tags": ["pendulum", "timing", "hazard"],
+			"scenarios": [
+				{
+					"id": "endo_gets_clipped",
+					"display_name": "Endo Gets Clipped",
+					"script": [
+						{"type": "snapshot_state", "key": "before"},
+						{"type": "select_character", "char_id": "endo"},
+						{"type": "teleport", "char_id": "endo", "anchor": "pendulum_probe"},
+						{"type": "advance", "seconds": 5.0},
+						{"type": "assert_path", "path": "event_counts.pendulum", "op": ">", "snapshot": "before", "snapshot_path": "event_counts.pendulum"},
+						{"type": "assert_path", "path": "character_hp.endo", "op": "<", "snapshot": "before", "snapshot_path": "character_hp.endo"}
+					]
+				}
+			]
+		},
+		{
+			"id": "launcher_throw_lane",
+			"display_name": "Launcher Throw Lane",
+			"kind": "puzzle",
+			"tags": ["physics", "throw", "timing"],
+			"scenarios": [
+				{
+					"id": "aster_eats_the_barrel",
+					"display_name": "Aster Eats The Barrel",
+					"script": [
+						{"type": "snapshot_state", "key": "before"},
+						{"type": "select_character", "char_id": "aster"},
+						{"type": "teleport", "char_id": "aster", "anchor": "launcher_hit_probe"},
+						{"type": "call", "method": "trigger_showcase_throw"},
+						{"type": "advance", "seconds": 0.2},
+						{"type": "assert_path", "path": "physics_airborne.launcher_barrel", "op": "==", "value": true},
+						{"type": "advance", "seconds": 2.0},
+						{"type": "assert_path", "path": "event_counts.physics", "op": ">", "snapshot": "before", "snapshot_path": "event_counts.physics"},
+						{"type": "assert_path", "path": "character_hp.aster", "op": "<", "snapshot": "before", "snapshot_path": "character_hp.aster"}
+					]
+				}
+			]
+		}
+	]
+}
