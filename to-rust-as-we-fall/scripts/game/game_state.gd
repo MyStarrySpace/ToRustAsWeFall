@@ -1788,8 +1788,53 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			)
 		GameEvent.KIND_CANCEL_QUEUED_ABILITY:
 			cancel_queued_ability(String(payload["char_id"]))
+		GameEvent.KIND_DOWN_CHARACTER:
+			down_character(String(payload["char_id"]))
+		GameEvent.KIND_RESTORE_CHARACTER:
+			restore_character(String(payload["char_id"]))
 		_:
 			push_warning("GameState._dispatch: unknown event kind %s" % kind)
+
+# --- Narrative state transitions (downed / restored) ---
+#
+# A character is narratively available when they can speak in scenes,
+# stand on pressure plates, and satisfy gates. Downed characters still
+# exist in the world (the rest of the party has to carry them) but don't
+# count toward those checks. Restore happens at hubs; downing happens
+# when HP hits zero from combat or narrative event.
+
+signal character_downed(char_id: String)
+signal character_restored(char_id: String)
+
+func down_character(char_id: String) -> void:
+	_emit(GameEvent.KIND_DOWN_CHARACTER, {"char_id": char_id})
+	if not characters.has(char_id):
+		return
+	var ch: Dictionary = characters[char_id]
+	ch.stats["hp"] = 0.0
+	ch.stats["stamina"] = 0.0
+	ch.stats["narrative_available"] = false
+	_do_stop(char_id)
+	character_downed.emit(char_id)
+
+func restore_character(char_id: String) -> void:
+	_emit(GameEvent.KIND_RESTORE_CHARACTER, {"char_id": char_id})
+	if not characters.has(char_id):
+		return
+	var ch: Dictionary = characters[char_id]
+	var stats: Dictionary = ch.stats
+	if stats.has("max_hp"):
+		stats["hp"] = float(stats["max_hp"])
+	if stats.has("max_stamina"):
+		stats["stamina"] = float(stats["max_stamina"])
+	stats["atp"] = SurvivalStats.ATP_MAX_PIPS
+	stats["narrative_available"] = true
+	character_restored.emit(char_id)
+
+func is_narratively_available(char_id: String) -> bool:
+	if not characters.has(char_id):
+		return false
+	return bool(characters[char_id].stats.get("narrative_available", true))
 
 # --- Mechanisms (pressure plates / weight sensors / area triggers) ---
 #

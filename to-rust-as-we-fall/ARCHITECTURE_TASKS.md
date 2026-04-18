@@ -115,16 +115,24 @@ Every cure puzzle must be solvable by Aster + Peris alone. This task builds the 
 
 Game-shape primitives. Zones are data; hubs and gates are nodes with explicit roles.
 
-- [ ] **6.1** Define `Zone` resource (`.tres`): id, hub-ids[], spoke-ids[], gate-ids[], essential-third.
-- [ ] **6.2** Define `Hub` node: rest-point that restores HP/ATP/stamina on enter, triggers processing scenes, persists until zone-exit.
-- [ ] **6.3** Define `Gate` node: evaluates party-composition predicate before allowing passage. Predicate is environmental (e.g. "terminal only Aster can access"), not a popup.
-- [ ] **6.4** `ZoneManager` autoload: tracks current zone, active hub, which spokes are complete, which gates are passed.
-- [ ] **6.5** Hub-rest flow: restores HP/ATP/stamina; marks all downed characters as narratively available for scenes.
+**Design decision (locked in by 6.1–6.4):** Zone is a plain `Resource` with exported fields so scenes can declare zones in `.tres` files. Hub and Gate are `RefCounted` data classes, not `Node3D` — they're referenced by scene-level nodes via id. `ZoneManager` is `RefCounted` (not an autoload) so tests can construct one per scenario. This decouples the model from the scene tree; when we later need a scene-tree integration, a Node wrapper can hold a ZoneManager reference.
+
+**Design decision (locked in by 6.5):** narrative-availability is a per-character bool stored in `stats["narrative_available"]`. `down_character` / `restore_character` are logged commands (emit through `_emit`). They're issued by combat code (on HP → 0) and by hubs (on rest). Both are replay-safe because they go through the event log.
+
+- [x] **6.1** `Zone` resource with `id`, `display_name`, `hub_ids`, `spoke_ids`, `gate_ids`, `essential_third`. — [scripts/game/zone.gd](scripts/game/zone.gd)
+- [x] **6.2** `Hub` class with `id`, `zone_id`, `position`, `radius`, and a `restore_party(gs, party)` static helper. Entering a hub triggers `restore_character` for every party member — each restore goes through the log. — [scripts/game/hub.gd](scripts/game/hub.gd)
+- [x] **6.3** `Gate` class with `required_members` and `try_pass(gs, party) -> bool`. Emits either `passed` or `blocked(reason: StringName)` exactly once per call. Reasons are `missing_<id>` (not in party) or `unavailable_<id>` (downed / narratively unavailable). — [scripts/game/gate.gd](scripts/game/gate.gd)
+- [x] **6.4** `ZoneManager` with registries for zones/hubs/gates and signals `zone_entered`, `zone_exited`, `hub_entered`, `gate_passed`, `gate_blocked`, `spoke_completed`. Tracks current zone, hub, completed spokes, and passed gates. `is_hub_reachable(hub_id)` returns true only for hubs in the currently-active zone — implements the "old hubs fall out of practical reach" semantics. **Not an autoload** — instantiated per scene. — [scripts/game/zone_manager.gd](scripts/game/zone_manager.gd)
+- [x] **6.5** Hub-rest flow: `down_character` and `restore_character` commands on GameState, both logged. Rest sets HP/stamina to declared max values (from `stats.max_hp` / `stats.max_stamina`) and ATP to `SurvivalStats.ATP_MAX_PIPS`, and flips `narrative_available` to true.
+
+**Open issue — evaluate_mechanisms / enter_hub auto-trigger:** scenes today must call `zm.enter_hub(...)` manually when the party reaches the hub's radius. Automating this via movement-arrival signals is straightforward (detection prediction pattern) but deferred until the first scene wires a live hub.
+
+**Open issue — party membership is test-side:** ZoneManager's methods take an explicit `party: Array` parameter rather than querying a canonical source. The party model is part of #8 (rotating essential third) and #9 (cohesion). When those land, ZoneManager will pull party from the canonical source.
 
 **Success conditions**
-- `--test-hub-rest-restore`: down a character, retreat to hub, trigger rest, assert HP == maxHP, ATP == maxATP, stamina == maxStamina, narrative-available == true.
-- `--test-gate-block`: approach a gate requiring Endo while Endo is not in party → gate emits `blocked(reason: "endo_required")`, does not advance. Add Endo → passes.
-- `--test-zone-progression`: run a scripted sequence from zone A hub → spoke → gate → zone B hub. Assert zone transitions fire, old zone's hubs remain reachable within same zone, fall out of reach after next zone-exit.
+- [x] `--test-hub-rest-restore`: 7/7. Down a character; HP/stamina zero; narrative-available flips false. Rest at hub; HP/stamina restored to declared max, ATP to full, narrative-available true.
+- [x] `--test-gate-block`: 8/8. Gate requiring Endo blocks without Endo (reason `missing_endo`). Adding a downed Endo still blocks (reason `unavailable_endo`). Restoring Endo and retrying → passes once.
+- [x] `--test-zone-progression`: 17/17. Two-zone scripted run: enter zone A, both A hubs reachable, zone B's not. Enter hub, mark spoke complete, pass gate. Enter zone B → `zone_exited(channels)` fires, zone A hubs fall out of reach, zone B hub becomes reachable.
 
 ---
 

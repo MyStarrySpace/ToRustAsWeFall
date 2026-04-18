@@ -81,6 +81,15 @@ func _ready() -> void:
 			"--test-actuator-no-id-checks":
 				ran_test = true
 				_test_actuator_no_id_checks()
+			"--test-hub-rest-restore":
+				ran_test = true
+				_test_hub_rest_restore()
+			"--test-gate-block":
+				ran_test = true
+				_test_gate_block()
+			"--test-zone-progression":
+				ran_test = true
+				_test_zone_progression()
 			"--test-flora-memory":
 				ran_test = true
 				_test_flora_memory()
@@ -351,6 +360,9 @@ func _run_all_tests() -> void:
 	_test_save_corruption_recovery()
 	_test_actuator_composition_blind()
 	_test_actuator_no_id_checks()
+	_test_hub_rest_restore()
+	_test_gate_block()
+	_test_zone_progression()
 	_test_flora_memory()
 	_test_event_scheduler()
 	await _test_scene_load()
@@ -2333,6 +2345,7 @@ func _test_event_log_mutation_audit() -> void:
 		"get_pendulum_position", "get_pendulum_bob_velocity",
 		"is_dodging", "is_endocytosing",
 		"has_queued_ability", "get_queued_ability",
+		"is_narratively_available",
 		# Snapshot/restore — bypasses log by design (used for tests, not gameplay)
 		"serialize", "deserialize",
 		# Event-log infrastructure itself
@@ -2580,6 +2593,198 @@ func _test_save_corruption_recovery() -> void:
 	_assert_equals(bad["status"], EventLog.LoadStatus.BAD_HEADER,
 		"Stream without magic reports BAD_HEADER")
 	_assert_equals((bad["log"] as EventLog).size(), 0, "Bad-header log is empty")
+
+# Down a character, retreat to a hub, trigger rest, assert every stat is
+# restored to its declared max and the character is narratively available
+# again. Proves the failure model's "care is infrastructural" thesis at
+# the simulation level: nobody stays down after a rest.
+func _test_hub_rest_restore() -> void:
+	_test_name = "Hub Rest Restore"
+
+	var grid := GridWorld.new()
+	grid.create_room(10, 8, true)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+
+	# Register aster with explicit max stats so restore has something to
+	# restore TO. Without max_hp / max_stamina in stats, restore leaves
+	# the value alone (safer than guessing).
+	gs.register_character("aster", grid.grid_to_world(Vector2i(1, 1)), 3.0, {
+		"hp": 100.0, "max_hp": 100.0,
+		"stamina": 80.0, "max_stamina": 80.0,
+		"atp": 6,
+		"narrative_available": true,
+	})
+
+	# Down — stats go to zero, narrative-available clears
+	gs.down_character("aster")
+	_assert_equals(gs.characters["aster"].stats.get("hp", -1.0), 0.0, "HP zeroed on down")
+	_assert_equals(gs.characters["aster"].stats.get("stamina", -1.0), 0.0, "Stamina zeroed on down")
+	_assert_true(not gs.is_narratively_available("aster"),
+		"Narrative-unavailable when downed")
+
+	# Retreat to hub (just position — the hub only cares that restore is triggered)
+	var hub := Hub.new()
+	hub.id = &"hub_channels"
+	hub.zone_id = &"channels"
+	hub.position = grid.grid_to_world(Vector2i(4, 4))
+	hub.radius = 2.0
+
+	Hub.restore_party(gs, ["aster"])
+
+	var stats: Dictionary = gs.characters["aster"].stats
+	_assert_equals(stats.get("hp", -1.0), 100.0, "HP restored to max")
+	_assert_equals(stats.get("stamina", -1.0), 80.0, "Stamina restored to max")
+	_assert_equals(stats.get("atp", -1.0), SurvivalStats.ATP_MAX_PIPS, "ATP restored to full")
+	_assert_true(gs.is_narratively_available("aster"), "Narrative-available after rest")
+
+# Gate requires Endo. Without Endo in the party, try_pass emits blocked
+# with a reason naming the missing member and does not pass. Adding Endo
+# lets it through. Also: an Endo who is narratively-unavailable (downed)
+# still blocks the gate until rested.
+func _test_gate_block() -> void:
+	_test_name = "Gate Block"
+
+	var grid := GridWorld.new()
+	grid.create_room(10, 8, true)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+
+	gs.register_character("aster", grid.grid_to_world(Vector2i(1, 1)), 3.0, {
+		"hp": 100.0, "max_hp": 100.0, "narrative_available": true,
+	})
+	gs.register_character("peris", grid.grid_to_world(Vector2i(2, 1)), 3.0, {
+		"hp": 100.0, "max_hp": 100.0, "narrative_available": true,
+	})
+
+	var gate := Gate.new()
+	gate.id = &"endo_junction"
+	gate.zone_id = &"channels"
+	gate.required_members = [&"endo"]
+
+	var blocked_reasons: Array = []
+	var passed_count := [0]
+	gate.blocked.connect(func(reason: StringName): blocked_reasons.append(String(reason)))
+	gate.passed.connect(func(): passed_count[0] += 1)
+
+	# Without Endo → blocked
+	var ok_without := gate.try_pass(gs, ["aster", "peris"])
+	_assert_equals(ok_without, false, "try_pass returns false without Endo")
+	_assert_equals(passed_count[0], 0, "passed signal did not fire")
+	_assert_equals(blocked_reasons.size(), 1, "blocked signal fired once")
+	_assert_equals(blocked_reasons[0], "missing_endo", "Reason names the missing member")
+
+	# Add Endo but downed → still blocked
+	gs.register_character("endo", grid.grid_to_world(Vector2i(3, 1)), 3.0, {
+		"hp": 100.0, "max_hp": 100.0, "narrative_available": true,
+	})
+	gs.down_character("endo")
+	var ok_downed := gate.try_pass(gs, ["aster", "peris", "endo"])
+	_assert_equals(ok_downed, false, "Gate blocks when required member is downed")
+	_assert_equals(blocked_reasons[1], "unavailable_endo",
+		"Reason names the unavailable member")
+
+	# Restore Endo → passes
+	gs.restore_character("endo")
+	var ok_restored := gate.try_pass(gs, ["aster", "peris", "endo"])
+	_assert_equals(ok_restored, true, "Gate passes with available Endo")
+	_assert_equals(passed_count[0], 1, "passed signal fired once")
+
+# Zone A → spoke → gate → Zone B. Zone transitions fire their signals,
+# and hub reachability shifts: zone A's hubs are reachable while in zone A,
+# fall out of reach once zone B is entered.
+func _test_zone_progression() -> void:
+	_test_name = "Zone Progression"
+
+	var grid := GridWorld.new()
+	grid.create_room(20, 8, true)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+
+	gs.register_character("aster", grid.grid_to_world(Vector2i(1, 1)), 3.0, {
+		"hp": 100.0, "max_hp": 100.0, "narrative_available": true,
+	})
+	gs.register_character("peris", grid.grid_to_world(Vector2i(2, 1)), 3.0, {
+		"hp": 100.0, "max_hp": 100.0, "narrative_available": true,
+	})
+
+	var zm := ZoneManager.new()
+
+	# Build two zones
+	var zone_a := Zone.new()
+	zone_a.id = &"channels"
+	zone_a.hub_ids = [&"hub_channels_a", &"hub_channels_b"]
+	zm.register_zone(zone_a)
+	var zone_b := Zone.new()
+	zone_b.id = &"stacks"
+	zone_b.hub_ids = [&"hub_stacks"]
+	zm.register_zone(zone_b)
+
+	var hub_a := Hub.new()
+	hub_a.id = &"hub_channels_a"
+	hub_a.zone_id = &"channels"
+	zm.register_hub(hub_a)
+	var hub_b := Hub.new()
+	hub_b.id = &"hub_channels_b"
+	hub_b.zone_id = &"channels"
+	zm.register_hub(hub_b)
+	var hub_s := Hub.new()
+	hub_s.id = &"hub_stacks"
+	hub_s.zone_id = &"stacks"
+	zm.register_hub(hub_s)
+
+	var gate_ab := Gate.new()
+	gate_ab.id = &"channels_to_stacks"
+	gate_ab.zone_id = &"channels"
+	zm.register_gate(gate_ab)
+
+	# Observe signals
+	var zones_entered: Array = []
+	var zones_exited: Array = []
+	var hubs_entered: Array = []
+	zm.zone_entered.connect(func(id: StringName): zones_entered.append(String(id)))
+	zm.zone_exited.connect(func(id: StringName): zones_exited.append(String(id)))
+	zm.hub_entered.connect(func(id: StringName): hubs_entered.append(String(id)))
+
+	# Enter zone A → both A hubs reachable, B's not
+	zm.enter_zone(&"channels")
+	_assert_equals(zones_entered.size(), 1, "zone_entered fires on first zone")
+	_assert_equals(zones_entered[0], "channels", "...for channels")
+	_assert_equals(zones_exited.size(), 0, "no zone_exited on first enter")
+	_assert_true(zm.is_hub_reachable(&"hub_channels_a"), "Hub A reachable in zone A")
+	_assert_true(zm.is_hub_reachable(&"hub_channels_b"), "Hub B reachable in zone A")
+	_assert_true(not zm.is_hub_reachable(&"hub_stacks"), "Zone B hub not reachable yet")
+
+	# Enter hub A — rest fires
+	zm.enter_hub(&"hub_channels_a", gs, ["aster", "peris"])
+	_assert_equals(hubs_entered.size(), 1, "hub_entered fired")
+
+	# Mark a spoke complete
+	zm.mark_spoke_complete(&"channels_encounter")
+	_assert_true(zm.is_spoke_complete(&"channels_encounter"), "Spoke completion tracked")
+
+	# Pass the gate
+	var ok := zm.try_pass_gate(&"channels_to_stacks", gs, ["aster", "peris"])
+	_assert_true(ok, "Unrestricted gate passes")
+	_assert_true(zm.is_gate_passed(&"channels_to_stacks"), "Gate recorded as passed")
+
+	# Enter zone B → A's hubs fall out of reach
+	zm.enter_zone(&"stacks")
+	_assert_equals(zones_exited.size(), 1, "zone_exited fires on transition")
+	_assert_equals(zones_exited[0], "channels", "...naming the old zone")
+	_assert_equals(zones_entered.size(), 2, "zone_entered fires for new zone")
+	_assert_equals(zones_entered[1], "stacks", "...named stacks")
+	_assert_true(not zm.is_hub_reachable(&"hub_channels_a"),
+		"Old zone's hub A falls out of reach after transition")
+	_assert_true(not zm.is_hub_reachable(&"hub_channels_b"),
+		"Old zone's hub B falls out of reach after transition")
+	_assert_true(zm.is_hub_reachable(&"hub_stacks"), "New zone's hub reachable")
 
 # Composition-blind test: a single weight-threshold mechanism must trigger
 # identically whether the weight comes from one heavy character, two light

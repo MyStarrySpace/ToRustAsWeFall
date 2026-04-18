@@ -61,6 +61,13 @@ const KIND_DODGE_ROLL := &"dodge_roll"
 const KIND_QUEUE_ABILITY := &"queue_ability"
 const KIND_CANCEL_QUEUED_ABILITY := &"cancel_queued_ability"
 
+# --- Narrative state transitions ---
+# down_character and restore_character are gameplay commands that flip a
+# character's narrative-availability (can they speak in scenes? can they
+# stand on pressure plates?). Driven by damage / rest sequences.
+const KIND_DOWN_CHARACTER := &"down_character"
+const KIND_RESTORE_CHARACTER := &"restore_character"
+
 const ALL_KINDS: Array[StringName] = [
 	KIND_REGISTER_CHARACTER,
 	KIND_UNREGISTER_CHARACTER,
@@ -86,6 +93,8 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_DODGE_ROLL,
 	KIND_QUEUE_ABILITY,
 	KIND_CANCEL_QUEUED_ABILITY,
+	KIND_DOWN_CHARACTER,
+	KIND_RESTORE_CHARACTER,
 ]
 
 static func make(tick: float, kind: StringName, payload: Dictionary) -> Dictionary:
