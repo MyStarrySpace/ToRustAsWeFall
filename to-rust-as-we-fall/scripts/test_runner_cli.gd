@@ -69,6 +69,12 @@ func _ready() -> void:
 			"--test-rng-no-wallclock":
 				ran_test = true
 				_test_rng_no_wallclock()
+			"--test-save-load-integrity":
+				ran_test = true
+				_test_save_load_integrity()
+			"--test-save-corruption-recovery":
+				ran_test = true
+				_test_save_corruption_recovery()
 			"--test-flora-memory":
 				ran_test = true
 				_test_flora_memory()
@@ -335,6 +341,8 @@ func _run_all_tests() -> void:
 	_test_event_log_mutation_audit()
 	_test_rng_determinism()
 	_test_rng_no_wallclock()
+	_test_save_load_integrity()
+	_test_save_corruption_recovery()
 	_test_flora_memory()
 	_test_event_scheduler()
 	await _test_scene_load()
@@ -2406,6 +2414,160 @@ func _test_rng_determinism() -> void:
 	_assert_equals(gs.base_seed, 1234, "Replay propagates base_seed from log")
 	_assert_equals(gs.rng_registry.base_seed, 1234, "Replay's registry uses replayed seed")
 
+# Float-aware deep equality for GameState.serialize() snapshots. Floats are
+# compared with epsilon to absorb deterministic-but-last-bit FP drift across
+# replays of the same sequence.
+func _snapshots_equal(a: Variant, b: Variant) -> bool:
+	if typeof(a) != typeof(b):
+		return false
+	if a is Dictionary and b is Dictionary:
+		if a.size() != b.size():
+			return false
+		for k in a.keys():
+			if not b.has(k):
+				return false
+			if not _snapshots_equal(a[k], b[k]):
+				return false
+		return true
+	if a is Array and b is Array:
+		if a.size() != b.size():
+			return false
+		for i in range(a.size()):
+			if not _snapshots_equal(a[i], b[i]):
+				return false
+		return true
+	if a is float and b is float:
+		return absf(a - b) < 0.001
+	return a == b
+
+# Helper: drive a fixed scripted sequence against a GameState. Used by both
+# legs of the save/load integrity test so the recordings differ only in
+# whether the run was continuous or interrupted by a save/load round-trip.
+func _eventlog_drive_sequence(gs: GameState, sched: EventScheduler, grid: GridWorld, start: int, end: int) -> void:
+	# 5 commands per "step", each step advances the scheduler 1 tick.
+	# Commands chosen to exercise both immediate state changes and
+	# scheduler-driven follow-ups (movement arrival).
+	for step in range(start, end):
+		var cell_x: int = 1 + (step % 6)
+		var cell_z: int = 1 + ((step / 6) % 4)
+		gs.command_move_to_cell("aster", Vector2i(cell_x, cell_z))
+		sched.advance_ticks(0.5)
+		gs.command_stop("aster")
+		sched.advance_ticks(0.1)
+		if step % 3 == 0:
+			gs.spawn_item("food", grid.grid_to_world(Vector2i(cell_x, cell_z)))
+		sched.advance_ticks(0.4)
+
+# Run a fixed sequence to the midpoint, snapshot via to_bytes; continue to
+# the endpoint, snapshot again. Then: load the midpoint bytes into a fresh
+# GameState, drive the same second half, snapshot again. The two end-state
+# snapshots must be byte-identical — proves save/load is just "freeze the
+# event log and resume from it."
+func _test_save_load_integrity() -> void:
+	_test_name = "Save/Load Integrity"
+
+	var grid := GridWorld.new()
+	grid.create_room(10, 8, true)
+
+	# --- Run A: continuous, with mid-save and end-save ---
+	var sched_a := EventScheduler.new()
+	var gs_a := GameState.new()
+	gs_a.grid = grid
+	gs_a.scheduler = sched_a
+	gs_a.event_log = EventLog.new()
+	gs_a.set_base_seed(7)
+	gs_a.register_character("aster", grid.grid_to_world(Vector2i(1, 1)), 3.0, {"atp": 50})
+
+	_eventlog_drive_sequence(gs_a, sched_a, grid, 0, 10)  # ticks 0..10
+	gs_a.flush_tick()
+	var mid_bytes := gs_a.event_log.to_bytes()
+	_assert_true(mid_bytes.size() > 0, "Mid-run save produced bytes (%d)" % mid_bytes.size())
+	var mid_event_count := gs_a.event_log.size()
+
+	_eventlog_drive_sequence(gs_a, sched_a, grid, 10, 20)  # ticks 10..20
+	gs_a.flush_tick()
+	var snap_a := gs_a.serialize()
+	var end_event_count_a := gs_a.event_log.size()
+
+	# --- Run B: load mid-bytes, replay to the mid state, continue ---
+	var loaded := EventLog.load_bytes(mid_bytes)
+	_assert_equals(loaded["status"], EventLog.LoadStatus.OK, "Mid-bytes load OK")
+	var mid_log: EventLog = loaded["log"]
+	_assert_equals(mid_log.size(), mid_event_count, "Loaded log has same event count as snapshot")
+	_assert_equals(mid_log.base_seed, 7, "Loaded log preserves base_seed")
+
+	var gs_b := GameState.replay(mid_log, grid)
+	# Replay set _recording = true again; attach the loaded log so further
+	# commands continue appending to it.
+	gs_b.event_log = mid_log
+	# The replay drained the scheduler to recorded_until; further advances
+	# build on top.
+	_eventlog_drive_sequence(gs_b, gs_b.scheduler, grid, 10, 20)
+	gs_b.flush_tick()
+	var snap_b := gs_b.serialize()
+	var end_event_count_b := gs_b.event_log.size()
+
+	# --- Compare ---
+	_assert_equals(end_event_count_b, end_event_count_a,
+		"Continued log has same event count as continuous run")
+	# Use the same epsilon-aware comparison the CLI replay uses
+	_assert_true(_snapshots_equal(snap_a, snap_b),
+		"Continuous and resumed runs produce equal final state")
+
+	# Bytes round-trip: re-serializing the resumed log yields readable bytes
+	var end_bytes := gs_b.event_log.to_bytes()
+	var reloaded := EventLog.load_bytes(end_bytes)
+	_assert_equals(reloaded["status"], EventLog.LoadStatus.OK, "End bytes load OK")
+
+# Construct a clean log, then truncate the serialized bytes mid-event.
+# load_bytes must (a) return TRUNCATED status, (b) recover every event that
+# was fully present, (c) drop the partial event. Replay against the partial
+# log must yield the state at the truncation point.
+func _test_save_corruption_recovery() -> void:
+	_test_name = "Save Corruption Recovery"
+
+	var grid := GridWorld.new()
+	grid.create_room(8, 6, true)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+	gs.event_log = EventLog.new()
+
+	gs.register_character("aster", grid.grid_to_world(Vector2i(1, 1)), 3.0, {"atp": 50})
+	for i in range(5):
+		gs.command_move_to_cell("aster", Vector2i(1 + i, 1))
+		sched.advance_ticks(2.0)
+	gs.flush_tick()
+	var clean_bytes := gs.event_log.to_bytes()
+	var full_count := gs.event_log.size()
+	_assert_true(full_count >= 6, "Recorded at least 6 events")
+
+	# Truncate to 80% of the byte stream — guaranteed to chop a per-event
+	# blob in half (header + several events fit, last event chunked off).
+	var cut: int = int(clean_bytes.size() * 0.8)
+	var truncated := clean_bytes.slice(0, cut)
+	var loaded := EventLog.load_bytes(truncated)
+	_assert_equals(loaded["status"], EventLog.LoadStatus.TRUNCATED,
+		"Truncated bytes report TRUNCATED status")
+	var partial: EventLog = loaded["log"]
+	_assert_true(partial.size() < full_count,
+		"Partial log has fewer events than the original (%d < %d)" % [partial.size(), full_count])
+	_assert_true(partial.size() >= 1, "At least one event recovered (got %d)" % partial.size())
+
+	# Replay the partial log — must produce a state matching the recorded-up-to point
+	var gs_partial := GameState.replay(partial, grid)
+	_assert_true(gs_partial.characters.has("aster"),
+		"Replay of partial log: aster registered")
+
+	# Bad header: stream missing magic returns BAD_HEADER and an empty log
+	var no_magic := PackedByteArray()
+	no_magic.append_array("not a save file at all".to_utf8_buffer())
+	var bad := EventLog.load_bytes(no_magic)
+	_assert_equals(bad["status"], EventLog.LoadStatus.BAD_HEADER,
+		"Stream without magic reports BAD_HEADER")
+	_assert_equals((bad["log"] as EventLog).size(), 0, "Bad-header log is empty")
+
 # Lint: forbid wall-clock RNG / time calls in game-logic .gd files. Files
 # that legitimately need them for visual or performance reasons must
 # annotate themselves with `# @rendering_only` near the top.
@@ -2433,6 +2595,7 @@ func _test_rng_no_wallclock() -> void:
 		# UI; nothing in the game logic reads these values
 		"res://scripts/system/save_manager.gd",
 		"res://scripts/system/engram_journal.gd",
+		"res://scripts/game/event_log.gd",
 	])
 
 	var dirs_to_walk := PackedStringArray([

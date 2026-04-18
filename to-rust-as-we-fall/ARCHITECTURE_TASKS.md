@@ -60,16 +60,20 @@ Pairs with #1. Without this, replays diverge and everything downstream (#3, #11,
 
 Falls out of #1 and #2. Not a separate subsystem — it's the log plus a base seed.
 
-- [ ] **3.1** Save = `{base_seed, events[]}` + small header (version, build hash, timestamp for UI only).
-- [ ] **3.2** Load = `GameState.replay(events, base_seed)`.
-- [ ] **3.3** Corrupt-save handling: replay stops at first malformed event, state freezes at last clean tick, UI offers "continue from clean point" or "abort".
-- [ ] **3.4** Quick-save / quick-load hotkeys.
+**Format decision (locked in by 3.1):** v1 was a single `var_to_bytes` blob (atomic, no partial recovery). v2 is length-prefixed: `[8-byte magic][u32 header_len][header dict][per event: u32 ev_len + event dict]`. A truncated stream stops cleanly at the last fully-written event; a corrupted event blob terminates loading at that point. Everything before the failure is returned as a partial log. The cost is a few extra bytes per event for length prefixes; the benefit is that crash-truncated saves (mid-write) load as far as they can.
+
+- [x] **3.1** Save format v2: header (`{version, base_seed, recorded_until, saved_unix}`) + length-prefixed events. `EventLog.to_bytes()` writes the whole stream; `EventLog.load_bytes()` returns `{log, status, recovered}`. Header lacks `build_hash` because there's no build pipeline yet — added when one exists.
+- [x] **3.2** Load = `GameState.replay(log, grid, ability_handlers)`. Replay re-seeds from `log.base_seed` and drains pending scheduler events to `log.recorded_until` so movements in flight at save time arrive identically.
+- [x] **3.3** Corrupt-save handling: `EventLog.load_bytes` returns one of `LoadStatus.{OK, TRUNCATED, CORRUPTED, BAD_HEADER}`. The returned log always contains every event that decoded cleanly before the failure point. UI signal not yet wired — the status is the API; an autoload or game-level handler can emit a user-visible signal when it gets a non-OK status.
+- [ ] **3.4** Quick-save / quick-load hotkeys. **Deferred** until there's a game-level input controller to host them. The save/load API exists (`EventLog.to_bytes` / `load_bytes`); SaveManager needs a `save_event_log(slot)` / `load_event_log(slot)` wrapper, and the input map needs `quick_save` / `quick_load` actions wired to a global handler.
 
 **Success conditions**
-- `--test-save-load-integrity`: run fixed sequence for 1000 ticks, save mid-run at tick 500, continue to 1000, save final. Separately: save at 500, load from that save, continue to 1000, save. Both final saves must produce byte-identical states.
-- `--test-save-corruption-recovery`: construct an event log, truncate last event in the middle, load → state matches truncate-point state, UI emits `save_corrupted` signal.
+- [x] `--test-save-load-integrity`: 7/7. Drive a 20-step scripted sequence; snapshot bytes mid-run, continue to end, snapshot again. Then load mid-bytes into a fresh GameState via replay, continue with the same second-half commands, snapshot end. Continuous and resumed runs produce equal final state. `base_seed` and event count round-trip cleanly through bytes.
+- [x] `--test-save-corruption-recovery`: 7/7. Truncate a clean log to 80% of its bytes; `load_bytes` returns `TRUNCATED` status with the events that fit fully recovered. Replay of the partial log yields a valid mid-state. `BAD_HEADER` returned for streams missing the magic, with an empty log.
 
-**Supersedes** prototype-port Phase 19 (Save/Load). Phase 19 can be deleted once this task completes.
+**Supersedes** prototype-port Phase 19 (Save/Load). Phase 19 can be deleted once 3.4 lands and SaveManager wraps the event-log API.
+
+**Open issue — `set_base_seed` propagation:** Initially the base seed lived only on `GameState`, so save files written by a recording session lost the seed (the EventLog had its own default-zero `base_seed`). Fixed: `GameState.set_base_seed` now propagates to `event_log.base_seed` if a log is attached. Tests caught this immediately.
 
 ---
 

@@ -64,11 +64,14 @@ func _init() -> void:
 		_pending_event_log = null
 	rng_registry = RngRegistry.new(base_seed)
 
-## Setter that also re-seeds the RNG registry. Call before any system
-## fetches an RNG, otherwise the existing instances keep their old seeds.
+## Setter that re-seeds the RNG registry and propagates to the event log
+## (so save files carry the seed). Call before any system fetches an RNG,
+## otherwise existing instances keep their old seeds.
 func set_base_seed(seed_value: int) -> void:
 	base_seed = seed_value
 	rng_registry = RngRegistry.new(seed_value)
+	if event_log != null:
+		event_log.base_seed = seed_value
 
 func _record_tick() -> float:
 	if scheduler:
