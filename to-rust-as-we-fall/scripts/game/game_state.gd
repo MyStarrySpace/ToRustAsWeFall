@@ -627,6 +627,11 @@ const TRANSFER_RANGE := 1.5
 const ENDOCYTOSE_DEFAULT_DURATION := 2.0
 
 func spawn_item(type: String, pos: Vector3, properties: Dictionary = {}) -> String:
+	_emit(GameEvent.KIND_SPAWN_ITEM, {
+		"type": type,
+		"pos": GameEvent.v3_to_arr(pos),
+		"properties": properties.duplicate(true),
+	})
 	var id := "item_%d" % _next_item_id
 	_next_item_id += 1
 	var type_data := ItemData.get_type_data(type)
@@ -645,6 +650,7 @@ func spawn_item(type: String, pos: Vector3, properties: Dictionary = {}) -> Stri
 	return id
 
 func remove_item(item_id: String) -> void:
+	_emit(GameEvent.KIND_REMOVE_ITEM, {"item_id": item_id})
 	if not items.has(item_id):
 		return
 	var item: Dictionary = items[item_id]
@@ -659,6 +665,7 @@ func remove_item(item_id: String) -> void:
 	items.erase(item_id)
 
 func pick_up_item(char_id: String, item_id: String) -> bool:
+	_emit(GameEvent.KIND_PICK_UP_ITEM, {"char_id": char_id, "item_id": item_id})
 	if not characters.has(char_id) or not items.has(item_id):
 		return false
 	if is_endocytosing(char_id):
@@ -683,6 +690,7 @@ func pick_up_item(char_id: String, item_id: String) -> bool:
 	return true
 
 func drop_item(char_id: String, item_id: String) -> bool:
+	_emit(GameEvent.KIND_DROP_ITEM, {"char_id": char_id, "item_id": item_id})
 	if not characters.has(char_id) or not items.has(item_id):
 		return false
 	if is_endocytosing(char_id):
@@ -699,6 +707,7 @@ func drop_item(char_id: String, item_id: String) -> bool:
 	return true
 
 func transfer_item(from_id: String, to_id: String, item_id: String) -> bool:
+	_emit(GameEvent.KIND_TRANSFER_ITEM, {"from_id": from_id, "to_id": to_id, "item_id": item_id})
 	if not characters.has(from_id) or not characters.has(to_id) or not items.has(item_id):
 		return false
 	if is_endocytosing(from_id) or is_endocytosing(to_id):
@@ -722,6 +731,7 @@ func transfer_item(from_id: String, to_id: String, item_id: String) -> bool:
 	return true
 
 func endocytose_item(char_id: String, item_id: String) -> bool:
+	_emit(GameEvent.KIND_ENDOCYTOSE_ITEM, {"char_id": char_id, "item_id": item_id})
 	if not characters.has(char_id) or not items.has(item_id) or not scheduler:
 		return false
 	var item: Dictionary = items[item_id]
@@ -740,6 +750,7 @@ func endocytose_item(char_id: String, item_id: String) -> bool:
 	return true
 
 func cancel_endocytosis(char_id: String) -> void:
+	_emit(GameEvent.KIND_CANCEL_ENDOCYTOSIS, {"char_id": char_id})
 	if not _endocytosing.has(char_id):
 		return
 	var info: Dictionary = _endocytosing[char_id]
@@ -790,6 +801,7 @@ func _complete_endocytosis(char_id: String, item_id: String) -> void:
 	item_endocytosed.emit(char_id, item_id, effect)
 
 func exocytose_item(char_id: String, item_id: String) -> bool:
+	_emit(GameEvent.KIND_EXOCYTOSE_ITEM, {"char_id": char_id, "item_id": item_id})
 	if not characters.has(char_id) or not items.has(item_id):
 		return false
 	if is_endocytosing(char_id):
@@ -1600,6 +1612,30 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			command_stop(String(payload["id"]))
 		GameEvent.KIND_CHANGE_SPEED:
 			change_move_speed(String(payload["id"]), float(payload["speed"]))
+		GameEvent.KIND_SPAWN_ITEM:
+			spawn_item(
+				String(payload["type"]),
+				GameEvent.arr_to_v3(payload["pos"]),
+				payload.get("properties", {})
+			)
+		GameEvent.KIND_REMOVE_ITEM:
+			remove_item(String(payload["item_id"]))
+		GameEvent.KIND_PICK_UP_ITEM:
+			pick_up_item(String(payload["char_id"]), String(payload["item_id"]))
+		GameEvent.KIND_DROP_ITEM:
+			drop_item(String(payload["char_id"]), String(payload["item_id"]))
+		GameEvent.KIND_TRANSFER_ITEM:
+			transfer_item(
+				String(payload["from_id"]),
+				String(payload["to_id"]),
+				String(payload["item_id"])
+			)
+		GameEvent.KIND_ENDOCYTOSE_ITEM:
+			endocytose_item(String(payload["char_id"]), String(payload["item_id"]))
+		GameEvent.KIND_CANCEL_ENDOCYTOSIS:
+			cancel_endocytosis(String(payload["char_id"]))
+		GameEvent.KIND_EXOCYTOSE_ITEM:
+			exocytose_item(String(payload["char_id"]), String(payload["item_id"]))
 		_:
 			push_warning("GameState._dispatch: unknown event kind %s" % kind)
 

@@ -28,6 +28,18 @@ const KIND_WALK_PATH := &"walk_path"
 const KIND_STOP := &"stop"
 const KIND_CHANGE_SPEED := &"change_speed"
 
+# --- Item commands ---
+# spawn_item returns the new item id, but the id is deterministic given
+# replay of the same sequence (counter starts at 1, only spawn increments).
+const KIND_SPAWN_ITEM := &"spawn_item"
+const KIND_REMOVE_ITEM := &"remove_item"
+const KIND_PICK_UP_ITEM := &"pick_up_item"
+const KIND_DROP_ITEM := &"drop_item"
+const KIND_TRANSFER_ITEM := &"transfer_item"
+const KIND_ENDOCYTOSE_ITEM := &"endocytose_item"
+const KIND_CANCEL_ENDOCYTOSIS := &"cancel_endocytosis"
+const KIND_EXOCYTOSE_ITEM := &"exocytose_item"
+
 const ALL_KINDS: Array[StringName] = [
 	KIND_REGISTER_CHARACTER,
 	KIND_UNREGISTER_CHARACTER,
@@ -36,6 +48,14 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_WALK_PATH,
 	KIND_STOP,
 	KIND_CHANGE_SPEED,
+	KIND_SPAWN_ITEM,
+	KIND_REMOVE_ITEM,
+	KIND_PICK_UP_ITEM,
+	KIND_DROP_ITEM,
+	KIND_TRANSFER_ITEM,
+	KIND_ENDOCYTOSE_ITEM,
+	KIND_CANCEL_ENDOCYTOSIS,
+	KIND_EXOCYTOSE_ITEM,
 ]
 
 static func make(tick: float, kind: StringName, payload: Dictionary) -> Dictionary:

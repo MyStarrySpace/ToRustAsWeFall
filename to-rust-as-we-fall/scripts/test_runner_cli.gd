@@ -2173,6 +2173,36 @@ func _test_event_log_roundtrip() -> void:
 	var gs_replay3 := GameState.replay(gs.event_log, grid)
 	_assert_true(not gs_replay3.characters.has("aster"), "Replay reflects unregister")
 
+	# --- Item commands round-trip ---
+	var sched_i := EventScheduler.new()
+	var gs_i := GameState.new()
+	gs_i.grid = grid
+	gs_i.scheduler = sched_i
+	gs_i.event_log = EventLog.new()
+
+	gs_i.register_character("aster", grid.grid_to_world(Vector2i(2, 2)), 3.0, {"atp": 50})
+	gs_i.register_character("peris", grid.grid_to_world(Vector2i(2, 3)), 3.0, {"atp": 50})
+
+	var item_id_a := gs_i.spawn_item("food", grid.grid_to_world(Vector2i(2, 2)), {"atp_restore": 25})
+	var item_id_b := gs_i.spawn_item("flora_seed", grid.grid_to_world(Vector2i(5, 5)))
+	_assert_equals(item_id_a, "item_1", "First spawn id is item_1")
+	_assert_equals(item_id_b, "item_2", "Second spawn id is item_2")
+
+	_assert_true(gs_i.pick_up_item("aster", item_id_a), "Aster picks up item_1")
+	_assert_true(gs_i.transfer_item("aster", "peris", item_id_a), "Transfer item_1 aster→peris")
+	_assert_true(gs_i.drop_item("peris", item_id_a), "Peris drops item_1")
+	gs_i.remove_item(item_id_b)
+	gs_i.flush_tick()
+
+	# Replay
+	var gs_i_replay := GameState.replay(gs_i.event_log, grid)
+	_assert_true(gs_i_replay.items.has(item_id_a), "Replay preserves item_1")
+	_assert_true(not gs_i_replay.items.has(item_id_b), "Replay reflects removed item_2")
+	var item_after: Dictionary = gs_i_replay.items[item_id_a]
+	_assert_equals(item_after["holder"], "", "Replay: item_1 holder cleared after drop")
+	_assert_equals(item_after["location"], "ground", "Replay: item_1 on ground")
+	_assert_equals(gs_i_replay.get_hand_items("peris").size(), 0, "Replay: Peris hands empty after drop")
+
 func _test_flora_memory() -> void:
 	_test_name = "Flora Memory"
 
