@@ -1,4 +1,6 @@
 extends Camera3D
+# @rendering_only_file — camera shake is purely visual; safe to use Godot's
+# wall-clock RNG (does not affect game state or replay determinism).
 
 ## Isometric-style follow camera with pan. Follows a target by default.
 ## Player can pan with right-drag or edge scroll. Snaps back on movement input.

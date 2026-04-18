@@ -11,6 +11,7 @@ extends Area3D
 ## the interacted signal.
 
 @export var dwell_time := 1.5
+@export var interaction_radius := 1.5
 @export var description := ""
 @export var one_shot := false
 @export var tutorial_label := ""
@@ -37,6 +38,7 @@ var active_character := ""
 var _progress_ring: MeshInstance3D
 var _progress_mat: StandardMaterial3D
 var _tutorial_label_3d: Label3D
+var _collision_shape: CollisionShape3D
 
 signal interacted()
 ## Emitted with the resolved dialogue key when dialogue_key is set
@@ -45,6 +47,9 @@ signal dialogue_triggered(key: String, character: String)
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
+	_collision_shape = get_node_or_null("CollisionShape3D")
+	if _collision_shape != null and _collision_shape.shape is SphereShape3D:
+		(_collision_shape.shape as SphereShape3D).radius = interaction_radius
 
 	_progress_ring = MeshInstance3D.new()
 	var torus := TorusMesh.new()
@@ -79,7 +84,7 @@ func _process(delta: float) -> void:
 		return
 
 	if _tutorial_label_3d and _tutorial_label_3d.visible and _tutorial_label_3d.modulate.a > 0.1:
-		var pulse := 0.6 + sin(Time.get_ticks_msec() * 0.003) * 0.25
+		var pulse := 0.6 + sin(Time.get_ticks_msec() * 0.003) * 0.25  # @rendering_only — tutorial label pulse
 		_tutorial_label_3d.modulate.a = pulse
 
 	if _player_in_range:

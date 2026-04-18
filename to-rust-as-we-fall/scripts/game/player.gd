@@ -256,7 +256,7 @@ func _on_gs_arrived(id: String) -> void:
 
 func _update_dest_marker(delta: float) -> void:
 	if _moving:
-		var pulse := 0.3 + sin(Time.get_ticks_msec() * 0.004) * 0.15
+		var pulse := 0.3 + sin(Time.get_ticks_msec() * 0.004) * 0.15  # @rendering_only — destination marker pulse
 		_dest_marker_mat.albedo_color.a = pulse
 		var dist := Vector2(
 			global_position.x - _dest_marker.global_position.x,
@@ -273,7 +273,7 @@ func _update_path_line() -> void:
 	if has_queued_ability:
 		var qa_data: Dictionary = game_state._queued_abilities[char_id]
 		_ability_marker.global_position = Vector3(qa_data.target_pos.x, 0.5, qa_data.target_pos.z)
-		var pulse := 0.5 + sin(Time.get_ticks_msec() * 0.005) * 0.3
+		var pulse := 0.5 + sin(Time.get_ticks_msec() * 0.005) * 0.3  # @rendering_only — ability marker pulse
 		_ability_marker_mat.albedo_color.a = pulse
 	else:
 		_ability_marker_mat.albedo_color.a = 0.0

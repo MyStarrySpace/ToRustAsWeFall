@@ -1,5 +1,7 @@
 @tool
-extends TutorialSequence
+extends "res://scripts/tutorial/tutorial_sequence.gd"
+
+const DayNightCycleScript = preload("res://scripts/game/day_night_cycle.gd")
 
 ## Leaving the facility — iron spill tutorial.
 ## Aster and Peris forced out. Endo joins at the exit.
@@ -15,8 +17,11 @@ var _endo
 var _hud  # GameHUD
 var _iron_lights: Array[OmniLight3D] = []
 var _dir_light: DirectionalLight3D
+var _world_environment: Environment
 
+var _game_day := 1
 var _game_time := 0.3
+var _game_clock = DayNightCycleScript.new()
 var _hp := 100.0
 var _is_running := false
 
@@ -30,6 +35,13 @@ const IRON_2_POS := Vector3(30, 0, 0)
 const SAFE_2_WAYPOINT := Vector3(30, 0, -8)
 const SAFE_2_END := Vector3(38, 0, 0)
 const SHELTER_POS := Vector3(42, 0, 0)
+const OUTDOOR_STEPS := [
+	"first_corridor",
+	"safe_route_lesson",
+	"dusk_approaches",
+	"second_iron",
+	"reach_shelter",
+]
 
 # --- Virtual method overrides ---
 
@@ -76,18 +88,14 @@ func _setup_ui() -> void:
 	_hud.add_stat_bar("hp", Color(0.7, 0.3, 0.25), 100.0, _hp)
 
 func _begin() -> void:
+	_set_game_time(_game_day, _game_time, false)
 	_start_fade_in()
 
 func _on_process(delta: float, spd: float) -> void:
 	# Time advances during outdoor phases
-	var outdoor := _current_step in [
-		"first_corridor", "safe_route_lesson", "dusk_approaches",
-		"second_iron", "reach_shelter"
-	]
+	var outdoor := OUTDOOR_STEPS.has(_current_step)
 	if outdoor:
-		_game_time += delta * 0.008 * spd
-		if _hud:
-			_hud.set_time(1, _game_time)
+		_advance_game_clock(delta * spd)
 
 	# Iron damage when standing on iron
 	if outdoor and _current_step != "reach_shelter":
@@ -179,15 +187,14 @@ func _start_first_corridor() -> void:
 		_hud.routing_toggled.connect(func(mode: String): _routing_mode = mode)
 		_hud.show_run_toggle(false)
 		_hud.run_toggled.connect(func(running: bool): _toggle_run())
+	_set_game_time(_game_day, _game_time, true)
 
 func _start_safe_route_lesson() -> void:
 	_current_step = "safe_route_lesson"
 
 func _start_dusk_approaches() -> void:
 	_current_step = "dusk_approaches"
-	_game_time = 0.4
-	if _hud:
-		_hud.show_time(1, _game_time)
+	_set_game_time(_game_day, 0.4, true)
 	DialogueData.say_to(_dialogue, "facility.endo.dusk")
 	_scheduler.schedule_after(4.0, _start_second_iron, "second_iron")
 
@@ -202,9 +209,7 @@ func _start_reach_shelter() -> void:
 
 func _start_first_rest() -> void:
 	_current_step = "first_rest"
-	_game_time = 0.55
-	if _hud:
-		_hud.set_time(1, _game_time)
+	_set_game_time(_game_day, 0.55, true)
 	# Night transition: dim world, pulse iron threat
 	var t := create_tween()
 	t.tween_property(_dir_light, "light_energy", 0.05, 1.5)
@@ -222,9 +227,7 @@ func _start_first_rest() -> void:
 
 func _start_dawn() -> void:
 	_current_step = "dawn"
-	_game_time = 0.05
-	if _hud:
-		_hud.set_time(1, _game_time)
+	_set_game_time(_game_day + 1, 0.05, true)
 	DialogueData.say_to(_dialogue, "facility.dawn")
 	_dialogue.dialogue_finished.connect(
 		func(): _current_step = "complete",
@@ -261,7 +264,7 @@ func _check_iron_damage(game_delta: float) -> void:
 		if _hud:
 			_hud.set_stat("hp", _hp)
 		for light in _iron_lights:
-			light.light_energy = 3.0 + sin(Time.get_ticks_msec() * 0.01) * 1.5
+			light.light_energy = 3.0 + sin(Time.get_ticks_msec() * 0.01) * 1.5  # @rendering_only — iron light pulse
 
 # --- Environment ---
 
@@ -320,6 +323,54 @@ func _build_environment() -> void:
 	e.glow_intensity = 0.3
 	we.environment = e
 	env.add_child(we)
+	_world_environment = e
+	_apply_time_of_day_visuals()
+
+func _advance_game_clock(delta_seconds: float) -> void:
+	if delta_seconds <= 0.0:
+		return
+	var next_clock: Dictionary = _game_clock.advance(_game_day, _game_time, delta_seconds)
+	_game_day = int(next_clock.get("day", _game_day))
+	_game_time = float(next_clock.get("time", _game_time))
+	_sync_game_time_display()
+
+func _set_game_time(day: int, time_of_day: float, show_time := true) -> void:
+	_game_day = maxi(day, 1)
+	_game_time = clampf(float(time_of_day), 0.0, 1.0)
+	if _hud != null:
+		if show_time:
+			_hud.show_time(_game_day, _game_time)
+		else:
+			_hud.hide_time()
+	_apply_time_of_day_visuals()
+
+func _sync_game_time_display() -> void:
+	if _hud != null:
+		_hud.set_time(_game_day, _game_time)
+	_apply_time_of_day_visuals()
+
+func _apply_time_of_day_visuals() -> void:
+	if _dir_light == null or _world_environment == null:
+		return
+
+	var normalized := clampf(_game_time, 0.0, 1.0)
+	if normalized < DayNightCycleScript.NIGHT_START:
+		var dusk_blend := clampf(normalized / DayNightCycleScript.NIGHT_START, 0.0, 1.0)
+		_world_environment.background_color = Color(0.06, 0.07, 0.09).lerp(Color(0.12, 0.08, 0.06), dusk_blend)
+		_world_environment.ambient_light_color = Color(0.32, 0.34, 0.38).lerp(Color(0.42, 0.31, 0.23), dusk_blend)
+		_world_environment.ambient_light_energy = lerpf(0.48, 0.26, dusk_blend)
+		_world_environment.glow_intensity = lerpf(0.22, 0.34, dusk_blend)
+		_dir_light.light_color = Color(0.7, 0.73, 0.78).lerp(Color(0.92, 0.52, 0.24), dusk_blend)
+		_dir_light.light_energy = lerpf(0.72, 0.24, dusk_blend)
+		return
+
+	var night_blend := clampf((normalized - DayNightCycleScript.NIGHT_START) / DayNightCycleScript.SEGMENT_SPAN, 0.0, 1.0)
+	_world_environment.background_color = Color(0.03, 0.03, 0.05).lerp(Color(0.01, 0.012, 0.02), night_blend)
+	_world_environment.ambient_light_color = Color(0.12, 0.14, 0.2).lerp(Color(0.05, 0.06, 0.09), night_blend)
+	_world_environment.ambient_light_energy = lerpf(0.16, 0.06, night_blend)
+	_world_environment.glow_intensity = lerpf(0.32, 0.14, night_blend)
+	_dir_light.light_color = Color(0.24, 0.34, 0.54).lerp(Color(0.1, 0.14, 0.26), night_blend)
+	_dir_light.light_energy = lerpf(0.14, 0.04, night_blend)
 
 func _add_iron_patch(parent: Node3D, pos: Vector3) -> void:
 	var patch := MeshInstance3D.new()

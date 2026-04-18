@@ -35,16 +35,24 @@ Everything else in the doc ("recording and playback come for free", save integri
 
 Pairs with #1. Without this, replays diverge and everything downstream (#3, #11, #13) breaks.
 
-- [ ] **2.1** Remove all uses of `randi()`, `randf()`, `randomize()`, wall-clock seeds. Grep-gated CI check.
-- [ ] **2.2** Add `SeededRng` (wraps Godot's `RandomNumberGenerator`); require explicit seed on construction.
-- [ ] **2.3** Add `RngRegistry` keyed by system name (`"ai.techo"`, `"ai.cytokine"`, `"loot"`, `"ambient"`, ...). Each system fetches its own RNG via `RngRegistry.get("ai.techo", spawn_event_id)`. Seeds derive from `base_seed XOR hash(system_name) XOR spawn_event_id` — no wall-clock input.
-- [ ] **2.4** Surface `GameState.base_seed` in the title screen + pause menu (read/write, like Minecraft seeds).
-- [ ] **2.5** Log RNG consumption into the event stream when systems are born (so mid-run spawns don't drift between replays).
+**Survey finding (locked in by 2.1):** no game-logic system currently uses randomness. All existing `randf` / `randi` / `Time.get_ticks_msec` calls are visual (light pulses, camera shake, debris scatter) or test/analysis code. The lint catches future drift; existing visual code is annotated rather than rewritten.
+
+**Annotation convention:**
+- Per-line: `# @rendering_only` at the end of a line allows that single line to use Godot's globals.
+- File-level: `# @rendering_only_file` near the top exempts the whole file. Use only for files that are 100% visual (camera, fragment chunks, decoration-heavy sequence scripts).
+
+- [x] **2.1** Lint-gated check on `randi()`, `randf()`, `randomize()`, `RandomNumberGenerator.new()`, `Time.get_ticks_*`, `Time.get_unix_time_from_system()`. Existing visual usages annotated with `@rendering_only` or `@rendering_only_file`. Save-metadata files (`save_manager.gd`, `engram_journal.gd`) and analysis harnesses (`hide_encounter_analysis.gd`) are explicitly allowlisted.
+- [x] **2.2** `SeededRng` wraps `RandomNumberGenerator`; constructor requires an explicit seed. — [scripts/game/seeded_rng.gd](scripts/game/seeded_rng.gd)
+- [x] **2.3** `RngRegistry` keyed by `(system_name, birth_id)`. Seeds derive from `base_seed * 1000003 ^ hash(system_name) * 1000003 ^ birth_id` — XOR alone collapses too many keys, so we mix with a large odd prime first. — [scripts/game/rng_registry.gd](scripts/game/rng_registry.gd)
+- [~] **2.4** `GameState.base_seed` exists with `set_base_seed(value)` setter that re-seeds the registry. `EventLog.base_seed` carries it through save/replay; `GameState.replay` re-seeds from the log. **Pending:** title-screen + pause-menu UI for player-visible seed entry (UI work, not engine work).
+- [~] **2.5** RNG consumption events. The schema and registry support per-spawn `birth_id` derivation, so a Techo born at event N gets a deterministic seed without explicit logging. **No RNG-consumption events emitted yet** because no game system uses RNG; will be added per-system as systems land.
+
+**Open issue — SeededRng.set_state pitfall:** the initial implementation set `_rng.state = 0` after `_rng.seed = seed_value`, which discarded the seed's effect (every instance produced identical output). Fixed by removing the state reset; the seed setter on `RandomNumberGenerator` derives the initial state. Documented in code so it doesn't regress.
 
 **Success conditions**
-- `--test-rng-determinism`: seed a `GameState` with base_seed=42, run a fixed scripted sequence that exercises each registered system (AI, loot, ambient), hash the final state; repeat 3×; all hashes match.
-- `--test-rng-no-wallclock`: grep-gated — fails build if any `.gd` calls `randi()`, `randf()`, `Time.get_*ticks*`, or `randomize()` (allowlist for visual-only code marked `@rendering_only`).
-- Two replays of the same event stream produce identical logs when re-recorded.
+- [x] `--test-rng-determinism`: 6/6. Same seed → same value sequence (across multiple systems). Different seed → different sequence (same system). Per-system isolation: extra `ai.techo` calls do not perturb `loot` output. Per-spawn isolation: same system with different `birth_id`s produces independent streams. `GameState.replay` propagates the log's `base_seed` and re-seeds the registry.
+- [x] `--test-rng-no-wallclock`: walks `scripts/`, fails if any `.gd` line uses a wall-clock pattern (`randi`, `randf`, `randomize`, `RandomNumberGenerator.new`, `Time.get_ticks_*`, `Time.get_unix_time_from_system`) outside the allowlist or without `@rendering_only` / `@rendering_only_file`. Currently passing on a clean tree.
+- [ ] Two replays of the same event stream produce identical logs when re-recorded — covered indirectly by the determinism test today; will get an explicit `--test-rng-rerecord-stable` test alongside the first game system that uses RNG.
 
 ---
 

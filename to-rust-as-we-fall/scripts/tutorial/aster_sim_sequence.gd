@@ -1,5 +1,5 @@
 @tool
-extends TutorialSequence
+extends "res://scripts/tutorial/tutorial_sequence.gd"
 
 const SurvivalStats = preload("res://scripts/game/survival_stats.gd")
 
@@ -108,7 +108,7 @@ func _on_process(_delta: float, _spd: float) -> void:
 	# Animate floating data displays
 	for i in range(_data_displays.size()):
 		var d := _data_displays[i]
-		d.position.y = 1.8 + sin(Time.get_ticks_msec() * 0.001 + i * 1.5) * 0.08
+		d.position.y = 1.8 + sin(Time.get_ticks_msec() * 0.001 + i * 1.5) * 0.08  # @rendering_only — data display bobbing
 		d.rotation.y += _delta * 0.15
 
 func _get_speed_recipients() -> Array:

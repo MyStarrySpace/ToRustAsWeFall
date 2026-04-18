@@ -1,5 +1,9 @@
 @tool
-extends TutorialSequence
+extends "res://scripts/tutorial/tutorial_sequence.gd"
+# @rendering_only_file — sequence has many decorative wall-clock animations
+# (light pulses, debris scatter, blinking lights). All randomness in this
+# file is cosmetic. New game-logic randomness here must go through the
+# RngRegistry, not Godot globals.
 
 ## Elevator tutorial → bridge collapse → route choice → Endo's shelter.
 ## Chunk-based: geometry loads/unloads as the player progresses.
@@ -1001,7 +1005,7 @@ func _complete() -> void:
 	var tween := create_tween()
 	tween.tween_property(_fade_rect, "color", Color(0.02, 0.02, 0.03, 1.0), 2.0)
 	tween.tween_callback(func():
-		get_tree().change_scene_to_file("res://scenes/tutorial/act1.tscn")
+		_change_scene_or_record("res://scenes/tutorial/act1.tscn")
 	)
 
 # --- Game Over ---

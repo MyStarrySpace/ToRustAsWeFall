@@ -63,6 +63,12 @@ func _ready() -> void:
 			"--test-event-log-mutation-audit":
 				ran_test = true
 				_test_event_log_mutation_audit()
+			"--test-rng-determinism":
+				ran_test = true
+				_test_rng_determinism()
+			"--test-rng-no-wallclock":
+				ran_test = true
+				_test_rng_no_wallclock()
 			"--test-flora-memory":
 				ran_test = true
 				_test_flora_memory()
@@ -327,6 +333,8 @@ func _run_all_tests() -> void:
 	_test_game_state()
 	_test_event_log_roundtrip()
 	_test_event_log_mutation_audit()
+	_test_rng_determinism()
+	_test_rng_no_wallclock()
 	_test_flora_memory()
 	_test_event_scheduler()
 	await _test_scene_load()
@@ -2313,6 +2321,9 @@ func _test_event_log_mutation_audit() -> void:
 		"serialize", "deserialize",
 		# Event-log infrastructure itself
 		"replay", "register_ability_handler", "flush_tick",
+		# Setup — must be set once before any commands run; carried in the
+		# log's base_seed metadata field, not as an event
+		"set_base_seed",
 	])
 
 	var public_funcs := _parse_public_funcs(content)
@@ -2329,6 +2340,151 @@ func _test_event_log_mutation_audit() -> void:
 
 	_assert_equals(missing.size(), 0,
 		"All public mutating functions emit (missing _emit in: %s)" % str(missing))
+
+# Determinism test: same base seed across two runs must produce the same
+# sequence of values from every system's RNG. Different seeds must produce
+# (with overwhelming probability) different sequences.
+func _test_rng_determinism() -> void:
+	_test_name = "RNG Determinism"
+
+	# Twin runs at the same seed
+	var reg_a := RngRegistry.new(42)
+	var reg_b := RngRegistry.new(42)
+
+	var seq_a: Array = []
+	var seq_b: Array = []
+	for _i in range(20):
+		seq_a.append(reg_a.get_rng(&"ai.techo").randi())
+		seq_a.append(reg_a.get_rng(&"loot").randf())
+		seq_a.append(reg_a.get_rng(&"ambient").randf_range(0.0, 1.0))
+	for _i in range(20):
+		seq_b.append(reg_b.get_rng(&"ai.techo").randi())
+		seq_b.append(reg_b.get_rng(&"loot").randf())
+		seq_b.append(reg_b.get_rng(&"ambient").randf_range(0.0, 1.0))
+	_assert_equals(seq_a.hash(), seq_b.hash(), "Same seed → same value sequence")
+
+	# Different seed → different sequence (compare same system, same length)
+	var seq_a_techo: Array = []
+	var reg_a2 := RngRegistry.new(42)
+	for _i in range(20):
+		seq_a_techo.append(reg_a2.get_rng(&"ai.techo").randi())
+	var reg_c := RngRegistry.new(43)
+	var seq_c: Array = []
+	for _i in range(20):
+		seq_c.append(reg_c.get_rng(&"ai.techo").randi())
+	_assert_true(seq_a_techo.hash() != seq_c.hash(),
+		"Different seed → different sequence (same system)")
+
+	# Per-system isolation: consuming one system's RNG must not shift another's
+	var reg_d := RngRegistry.new(42)
+	var loot_d: Array = []
+	for _i in range(10):
+		loot_d.append(reg_d.get_rng(&"loot").randi())
+	# Now do the same but with extra ai.techo calls interleaved
+	var reg_e := RngRegistry.new(42)
+	for _i in range(10):
+		reg_e.get_rng(&"ai.techo").randi()  # different system, should not perturb loot
+	var loot_e: Array = []
+	for _i in range(10):
+		loot_e.append(reg_e.get_rng(&"loot").randi())
+	_assert_equals(loot_d.hash(), loot_e.hash(),
+		"Per-system isolation: ai.techo calls do not shift loot output")
+
+	# Per-spawn (birth_id) isolation: two Techos born at different events
+	# get different streams from the same system name.
+	var techo_4712 := reg_a.get_rng(&"ai.techo", 4712).randi()
+	var techo_9999 := reg_a.get_rng(&"ai.techo", 9999).randi()
+	_assert_true(techo_4712 != techo_9999,
+		"Different birth_ids in same system produce different streams")
+
+	# GameState integration: replay must reseed from log.base_seed
+	var grid := GridWorld.new()
+	grid.create_room(8, 6, true)
+	var log := EventLog.new()
+	log.base_seed = 1234
+	var gs := GameState.replay(log, grid)
+	_assert_equals(gs.base_seed, 1234, "Replay propagates base_seed from log")
+	_assert_equals(gs.rng_registry.base_seed, 1234, "Replay's registry uses replayed seed")
+
+# Lint: forbid wall-clock RNG / time calls in game-logic .gd files. Files
+# that legitimately need them for visual or performance reasons must
+# annotate themselves with `# @rendering_only` near the top.
+func _test_rng_no_wallclock() -> void:
+	_test_name = "RNG No Wallclock"
+
+	var bad_patterns := PackedStringArray([
+		"randi()", "randf()", "randomize()",
+		"randi_range(", "randf_range(",
+		"randfn(", "randv2(",
+		"RandomNumberGenerator.new()",
+		"Time.get_ticks_msec(", "Time.get_ticks_usec(",
+		"Time.get_unix_time_from_system(",
+	])
+
+	# Files that may legitimately use these (visual-only, test, perf):
+	# either listed here explicitly, or marked with `# @rendering_only`.
+	var explicit_allowlist := PackedStringArray([
+		# RNG plumbing itself wraps the engine API
+		"res://scripts/game/seeded_rng.gd",
+		# Tests exercise determinism / perf / Monte Carlo by design
+		"res://scripts/test_runner_cli.gd",
+		"res://scripts/game/hide_encounter_analysis.gd",
+		# Save metadata is allowed to record wall-clock timestamps for the
+		# UI; nothing in the game logic reads these values
+		"res://scripts/system/save_manager.gd",
+		"res://scripts/system/engram_journal.gd",
+	])
+
+	var dirs_to_walk := PackedStringArray([
+		"res://scripts/",
+	])
+	var offenders: Array = []
+	for dir in dirs_to_walk:
+		_walk_for_rng_lint(dir, bad_patterns, explicit_allowlist, offenders)
+
+	_assert_equals(offenders.size(), 0,
+		"No wall-clock RNG / time outside allowlist (offenders: %s)" % str(offenders))
+
+func _walk_for_rng_lint(path: String, bad_patterns: PackedStringArray,
+		allow: PackedStringArray, offenders: Array) -> void:
+	var d := DirAccess.open(path)
+	if d == null:
+		return
+	d.list_dir_begin()
+	var name := d.get_next()
+	while name != "":
+		if name == "." or name == "..":
+			name = d.get_next()
+			continue
+		var full := path.path_join(name)
+		if d.current_is_dir():
+			_walk_for_rng_lint(full, bad_patterns, allow, offenders)
+		elif name.ends_with(".gd"):
+			if allow.has(full):
+				name = d.get_next()
+				continue
+			var f := FileAccess.open(full, FileAccess.READ)
+			if f == null:
+				name = d.get_next()
+				continue
+			var content := f.get_as_text()
+			f.close()
+			# File-level escape hatch for purely-visual scripts
+			if content.contains("# @rendering_only_file"):
+				name = d.get_next()
+				continue
+			# Per-line check: a line containing a bad pattern is OK if the
+			# same line carries `# @rendering_only`. This lets sequence
+			# scripts mix game logic with cosmetic light pulses safely.
+			for line in content.split("\n"):
+				if line.contains("# @rendering_only"):
+					continue
+				for pat in bad_patterns:
+					if line.contains(pat):
+						offenders.append("%s uses %s" % [full, pat])
+						break
+		name = d.get_next()
+	d.list_dir_end()
 
 # Returns Array of {name: String, body: String} for every "func NAME(" in the
 # source whose name does not begin with underscore. Static funcs are included

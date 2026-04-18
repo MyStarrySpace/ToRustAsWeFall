@@ -1,5 +1,5 @@
 @tool
-extends TutorialSequence
+extends "res://scripts/tutorial/tutorial_sequence.gd"
 
 ## Peris's simulation tutorial. Teaches walk/run, stamina, Protect ability.
 ## Warm, social workspace. Session with Monos. Attack through the portal.
@@ -121,11 +121,11 @@ func _on_process(delta: float, spd: float) -> void:
 
 	# Portal glow animation (suppressed during tweens)
 	if _portal_light and not _portal_tween_active:
-		_portal_light.light_energy = 1.5 + sin(Time.get_ticks_msec() * 0.002) * 0.3
+		_portal_light.light_energy = 1.5 + sin(Time.get_ticks_msec() * 0.002) * 0.3  # @rendering_only — portal glow
 
 	# Attack light flash
 	if _attack_particles and _attack_particles.visible:
-		_attack_particles.light_energy = 3.0 + sin(Time.get_ticks_msec() * 0.015) * 2.0
+		_attack_particles.light_energy = 3.0 + sin(Time.get_ticks_msec() * 0.015) * 2.0  # @rendering_only — attack flash
 
 	# Protect ability display from scheduler ticks
 	if _protect_end_tick > 0 and _hud:
@@ -430,9 +430,9 @@ func _complete() -> void:
 	_current_step = "complete"
 	if _visit_phase == 1:
 		_visit_phase = 2
-		get_tree().change_scene_to_file("res://scenes/tutorial/tag_day.tscn")
+		_change_scene_or_record("res://scenes/tutorial/tag_day.tscn")
 	else:
-		get_tree().change_scene_to_file("res://scenes/tutorial/elevator.tscn")
+		_change_scene_or_record("res://scenes/tutorial/elevator.tscn")
 
 # --- Key input ---
 

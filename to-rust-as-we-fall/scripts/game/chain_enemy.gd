@@ -153,7 +153,7 @@ func _apply_segment_visuals() -> void:
 
 	# Idle breathing: subtle position oscillation
 	if _state == "idle" or _state == "patrol":
-		var t := Time.get_ticks_msec() * 0.001
+		var t := Time.get_ticks_msec() * 0.001  # @rendering_only — idle breathing animation
 		for i in range(_segments.size()):
 			_segments[i].position.y += sin(t + i * 0.5) * 0.01
 

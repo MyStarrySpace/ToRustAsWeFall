@@ -47,10 +47,28 @@ var _recording: bool = true
 ## not from whatever frame the recorder happened to attach on.
 static var _pending_event_log: EventLog = null
 
+## The run's base seed. Every RNG in the registry derives from this.
+## Defaults to 0 (a valid, predictable seed). Set explicitly per-run for
+## variety; surfaced to the player in the title screen / pause menu so
+## they can share runs by seed.
+var base_seed: int = 0
+
+## Per-system RNG registry. All game-logic randomness must go through this.
+## Visual-only code (camera shake, light pulses) may use Godot's globals
+## as long as the file is annotated `# @rendering_only`.
+var rng_registry: RngRegistry
+
 func _init() -> void:
 	if _pending_event_log != null:
 		event_log = _pending_event_log
 		_pending_event_log = null
+	rng_registry = RngRegistry.new(base_seed)
+
+## Setter that also re-seeds the RNG registry. Call before any system
+## fetches an RNG, otherwise the existing instances keep their old seeds.
+func set_base_seed(seed_value: int) -> void:
+	base_seed = seed_value
+	rng_registry = RngRegistry.new(seed_value)
 
 func _record_tick() -> float:
 	if scheduler:
@@ -1645,6 +1663,7 @@ static func replay(log: EventLog, world_grid: GridWorld, ability_handlers: Dicti
 	gs.grid = world_grid
 	gs.scheduler = sched
 	gs._recording = false
+	gs.set_base_seed(log.base_seed)
 	for id in ability_handlers:
 		gs.register_ability_handler(StringName(id), ability_handlers[id])
 
