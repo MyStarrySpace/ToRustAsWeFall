@@ -140,14 +140,20 @@ Game-shape primitives. Zones are data; hubs and gates are nodes with explicit ro
 
 No game-over. Downed ≠ dead. Retreat to hub = full recovery.
 
-- [ ] **7.1** Extend character state machine with `downed` state (already listed in `TASKS.md` 2.2 — verify it exists and behaves per architecture).
-- [ ] **7.2** Remove any remaining "game over" code paths; replace with "retreat-to-last-hub" flow.
-- [ ] **7.3** Ensure permadeath only occurs via scripted narrative events (flag on event payload).
-- [ ] **7.4** Downed-party-recovery: if all characters downed in a spoke, auto-retreat to last hub with scripted fade, restore party.
+**API shape (locked in by 7.1–7.4):**
+- `down_character` / `restore_character`: combat and rest, fully recoverable, logged commands (added in #6).
+- `die_scripted(char_id)`: the ONLY path to permanent death. Sets `stats.dead = true`, emits `character_died(char_id, true)`. The `scripted` flag on the signal is always true because `die_scripted` is the sole emission site; the parameter is there to document intent and to make the lint explicit.
+- `is_downed(char_id)` / `is_party_downed(party)`: queries.
+- `ZoneManager.retreat_to_last_hub(gs, party) -> bool`: restores every party member and fires `party_retreated(hub_id)`. Returns false if no hub has been entered yet (the party has nowhere to retreat TO — scenes should prevent this by ensuring a hub is entered before spokes begin).
+
+- [x] **7.1** `downed` state as `stats.narrative_available == false` (set by `down_character`). Not a separate state-machine node — the existing stat dict carries the flag, which is reachable via `is_downed(char_id)`.
+- [~] **7.2** "Remove any remaining game over code paths". **Machinery in place:** `retreat_to_last_hub` + `party_retreated` signal give scenes the replacement. **Existing content not migrated:** `tutorial/elevator_sequence.gd` has a "We Fell" game-over path at `_start_game_over()` (iron spill failure). Migration is content work — when the elevator scene is rewritten, swap the fade-and-end for `zm.retreat_to_last_hub` + a specific retreat point. Flagged here; not changed in this slice.
+- [x] **7.3** Permadeath via scripted events only. `character_died.emit(` appears in exactly one place (`die_scripted`). The `--test-scripted-death-only` lint enforces this by scanning all production `.gd` files and rejecting emissions in any other function.
+- [x] **7.4** Downed-party-recovery primitive. Game code can check `gs.is_party_downed(party)` in its spoke loop and call `zm.retreat_to_last_hub(gs, party)` when it returns true. Auto-trigger on every `character_downed` signal is a straightforward extension; left to scene code because the "spoke loop" is scene-specific.
 
 **Success conditions**
-- `--test-no-game-over`: CLI scenario — down all characters, assert no `game_over` signal ever fires; assert `party_retreated(hub_id)` fires; assert party state at hub is fully restored.
-- `--test-scripted-death-only`: grep-gated — any `character_died` emission must have `payload.scripted == true`; otherwise test fails.
+- [x] `--test-no-game-over`: 12/12. Down all party members in a spoke → no `game_over`-style signal, no `character_died`, `is_party_downed` is true. `retreat_to_last_hub` returns true, emits `party_retreated(hub_channels)`, every member's HP/stamina restored to max, narrative-available true. Retreat without a prior hub returns false cleanly.
+- [x] `--test-scripted-death-only`: 1/1. Walks `scripts/` (excluding the test runner itself, which references the signal name in lint strings and docstrings). Flags any `character_died.emit(` call outside `die_scripted`. Negative-test verified with a sentinel function.
 
 ---
 

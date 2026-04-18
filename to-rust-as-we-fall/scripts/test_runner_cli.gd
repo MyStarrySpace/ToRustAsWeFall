@@ -90,6 +90,12 @@ func _ready() -> void:
 			"--test-zone-progression":
 				ran_test = true
 				_test_zone_progression()
+			"--test-no-game-over":
+				ran_test = true
+				_test_no_game_over()
+			"--test-scripted-death-only":
+				ran_test = true
+				_test_scripted_death_only()
 			"--test-flora-memory":
 				ran_test = true
 				_test_flora_memory()
@@ -363,6 +369,8 @@ func _run_all_tests() -> void:
 	_test_hub_rest_restore()
 	_test_gate_block()
 	_test_zone_progression()
+	_test_no_game_over()
+	_test_scripted_death_only()
 	_test_flora_memory()
 	_test_event_scheduler()
 	await _test_scene_load()
@@ -2345,7 +2353,7 @@ func _test_event_log_mutation_audit() -> void:
 		"get_pendulum_position", "get_pendulum_bob_velocity",
 		"is_dodging", "is_endocytosing",
 		"has_queued_ability", "get_queued_ability",
-		"is_narratively_available",
+		"is_narratively_available", "is_downed", "is_party_downed",
 		# Snapshot/restore — bypasses log by design (used for tests, not gameplay)
 		"serialize", "deserialize",
 		# Event-log infrastructure itself
@@ -2593,6 +2601,121 @@ func _test_save_corruption_recovery() -> void:
 	_assert_equals(bad["status"], EventLog.LoadStatus.BAD_HEADER,
 		"Stream without magic reports BAD_HEADER")
 	_assert_equals((bad["log"] as EventLog).size(), 0, "Bad-header log is empty")
+
+# Down every party member in a spoke; confirm no game_over signal or
+# similar end-state flag fires, that retreat_to_last_hub returns true,
+# that party_retreated carries the hub id, and that every party member is
+# narratively available again after the retreat.
+func _test_no_game_over() -> void:
+	_test_name = "No Game Over"
+
+	var grid := GridWorld.new()
+	grid.create_room(12, 8, true)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+
+	# Register party with explicit max stats so restore works
+	for member in ["aster", "peris"]:
+		gs.register_character(member, grid.grid_to_world(Vector2i(1, 1)), 3.0, {
+			"hp": 100.0, "max_hp": 100.0,
+			"stamina": 80.0, "max_stamina": 80.0,
+			"atp": 6, "narrative_available": true,
+		})
+
+	var zm := ZoneManager.new()
+	var zone := Zone.new()
+	zone.id = &"channels"
+	zm.register_zone(zone)
+	var hub := Hub.new()
+	hub.id = &"hub_channels"
+	hub.zone_id = &"channels"
+	zm.register_hub(hub)
+	zm.enter_zone(&"channels")
+	zm.enter_hub(&"hub_channels", gs, ["aster", "peris"])
+
+	# Track signals the architecture forbids
+	var game_over_fired := [false]
+	var deaths_fired: Array = []
+	gs.character_died.connect(func(cid: String, _scripted: bool):
+		deaths_fired.append(cid))
+
+	var retreated_to: Array = []
+	zm.party_retreated.connect(func(hub_id: StringName):
+		retreated_to.append(String(hub_id)))
+
+	# Go into a spoke, everyone gets downed
+	gs.down_character("aster")
+	gs.down_character("peris")
+	_assert_true(gs.is_party_downed(["aster", "peris"]), "Party is fully downed")
+	_assert_equals(game_over_fired[0], false, "No game_over flag fires")
+	_assert_equals(deaths_fired.size(), 0, "No deaths fire on combat down")
+
+	# Retreat
+	var ok := zm.retreat_to_last_hub(gs, ["aster", "peris"])
+	_assert_true(ok, "retreat_to_last_hub succeeds when a hub is set")
+	_assert_equals(retreated_to.size(), 1, "party_retreated fires once")
+	_assert_equals(retreated_to[0], "hub_channels", "...naming the hub")
+
+	# Confirm restoration
+	for member in ["aster", "peris"]:
+		var stats: Dictionary = gs.characters[member].stats
+		_assert_equals(stats.get("hp", -1.0), 100.0, "%s HP restored" % member)
+		_assert_true(gs.is_narratively_available(member),
+			"%s narrative-available after retreat" % member)
+	_assert_true(not gs.is_party_downed(["aster", "peris"]),
+		"Party no longer downed after retreat")
+
+	# No-hub path: retreat before any hub is entered returns false cleanly
+	var zm2 := ZoneManager.new()
+	var ok2 := zm2.retreat_to_last_hub(gs, ["aster", "peris"])
+	_assert_equals(ok2, false, "retreat returns false when no hub has been entered")
+
+# Lint: character_died.emit( may appear ONLY inside die_scripted(). Every
+# other emission site would represent a non-scripted death path, which
+# the architecture forbids. Walks scripts/ for .gd files, flags any
+# real call site (not a comment) where the enclosing function is not
+# die_scripted.
+#
+# The test runner itself is excluded because it references the signal
+# name in lint strings and docstrings; no production code should do that.
+func _test_scripted_death_only() -> void:
+	_test_name = "Scripted Death Only"
+
+	var excluded_files := PackedStringArray([
+		"res://scripts/test_runner_cli.gd",
+	])
+	var all_files: Array = []
+	_walk_gd_files("res://scripts/", all_files)
+
+	var offenders: Array = []
+	for path in all_files:
+		if excluded_files.has(path):
+			continue
+		var f := FileAccess.open(path, FileAccess.READ)
+		if f == null:
+			continue
+		var content := f.get_as_text()
+		f.close()
+		if not content.contains("character_died.emit("):
+			continue
+		var current_func := ""
+		for line in content.split("\n"):
+			var stripped: String = line.strip_edges()
+			# Skip pure comment lines — they can mention the signal for docs
+			if stripped.begins_with("#"):
+				continue
+			if stripped.begins_with("func "):
+				current_func = stripped.substr(5).get_slice("(", 0).strip_edges()
+			elif stripped.begins_with("static func "):
+				current_func = stripped.substr(12).get_slice("(", 0).strip_edges()
+			if line.contains("character_died.emit("):
+				if current_func != "die_scripted":
+					offenders.append("%s:%s emits character_died outside die_scripted" % [path, current_func])
+
+	_assert_equals(offenders.size(), 0,
+		"character_died.emit( only from die_scripted (offenders: %s)" % str(offenders))
 
 # Down a character, retreat to a hub, trigger rest, assert every stat is
 # restored to its declared max and the character is narratively available

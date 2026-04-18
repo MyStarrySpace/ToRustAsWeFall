@@ -67,6 +67,10 @@ const KIND_CANCEL_QUEUED_ABILITY := &"cancel_queued_ability"
 # stand on pressure plates?). Driven by damage / rest sequences.
 const KIND_DOWN_CHARACTER := &"down_character"
 const KIND_RESTORE_CHARACTER := &"restore_character"
+# die_scripted is the ONLY path to permanent death. Combat-driven damage
+# produces downs (recoverable at hub); death is reserved for narrative
+# beats authored in sequence scripts.
+const KIND_DIE_SCRIPTED := &"die_scripted"
 
 const ALL_KINDS: Array[StringName] = [
 	KIND_REGISTER_CHARACTER,
@@ -95,6 +99,7 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_CANCEL_QUEUED_ABILITY,
 	KIND_DOWN_CHARACTER,
 	KIND_RESTORE_CHARACTER,
+	KIND_DIE_SCRIPTED,
 ]
 
 static func make(tick: float, kind: StringName, payload: Dictionary) -> Dictionary:

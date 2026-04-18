@@ -18,6 +18,10 @@ signal hub_entered(hub_id: StringName)
 signal gate_passed(gate_id: StringName)
 signal gate_blocked(gate_id: StringName, reason: StringName)
 signal spoke_completed(spoke_id: StringName)
+## Fired when the party retreats to a hub after going down in a spoke.
+## The game-over path is a retreat, not an end screen — scenes subscribe
+## to this to fade, teleport the party back, and resume gameplay.
+signal party_retreated(hub_id: StringName)
 
 var zones: Dictionary = {}   # id (StringName) → Zone
 var hubs: Dictionary = {}    # id (StringName) → Hub
@@ -101,3 +105,20 @@ func is_hub_reachable(hub_id: StringName) -> bool:
 		return false
 	var hub: Hub = hubs[hub_id]
 	return hub.zone_id == current_zone
+
+## Retreat the party to the last-entered hub. Restores every member and
+## emits party_retreated(hub_id). If no hub has been entered yet this is
+## a no-op — the party has nowhere to retreat TO. Scenes hook this signal
+## to fade, teleport the party, and resume gameplay at the hub.
+##
+## This is the architecture's answer to "game over": there isn't one.
+## Going down in a spoke is costly (time + resources burned) but bounded
+## (short retreat, small heal, back to try again).
+func retreat_to_last_hub(gs: GameState, party: Array) -> bool:
+	if current_hub == &"":
+		return false
+	if not hubs.has(current_hub):
+		return false
+	Hub.restore_party(gs, party)
+	party_retreated.emit(current_hub)
+	return true

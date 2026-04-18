@@ -1792,6 +1792,8 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			down_character(String(payload["char_id"]))
 		GameEvent.KIND_RESTORE_CHARACTER:
 			restore_character(String(payload["char_id"]))
+		GameEvent.KIND_DIE_SCRIPTED:
+			die_scripted(String(payload["char_id"]))
 		_:
 			push_warning("GameState._dispatch: unknown event kind %s" % kind)
 
@@ -1805,6 +1807,11 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 
 signal character_downed(char_id: String)
 signal character_restored(char_id: String)
+## Permanent death. Always scripted — the second parameter is always true
+## because die_scripted is the only emission site. The signal carries the
+## flag anyway so listeners can assert it and so the event log records the
+## intent explicitly, future-proofing against any later non-scripted paths.
+signal character_died(char_id: String, scripted: bool)
 
 func down_character(char_id: String) -> void:
 	_emit(GameEvent.KIND_DOWN_CHARACTER, {"char_id": char_id})
@@ -1835,6 +1842,37 @@ func is_narratively_available(char_id: String) -> bool:
 	if not characters.has(char_id):
 		return false
 	return bool(characters[char_id].stats.get("narrative_available", true))
+
+func is_downed(char_id: String) -> bool:
+	if not characters.has(char_id):
+		return false
+	return not bool(characters[char_id].stats.get("narrative_available", true))
+
+## Every party member is downed. Triggers auto-retreat in game code.
+func is_party_downed(party: Array) -> bool:
+	if party.is_empty():
+		return false
+	for char_id in party:
+		if not is_downed(String(char_id)):
+			return false
+	return true
+
+## Permanent death. The ONLY path to a character leaving the simulation
+## without possibility of restoration — reserved for scripted narrative
+## beats ("after the Basal Galleries, Peris's degradation accelerates").
+## The --test-scripted-death-only lint asserts that character_died.emit is
+## called nowhere else in the codebase.
+func die_scripted(char_id: String) -> void:
+	_emit(GameEvent.KIND_DIE_SCRIPTED, {"char_id": char_id})
+	if not characters.has(char_id):
+		return
+	_do_stop(char_id)
+	var ch: Dictionary = characters[char_id]
+	ch.stats["hp"] = 0.0
+	ch.stats["stamina"] = 0.0
+	ch.stats["narrative_available"] = false
+	ch.stats["dead"] = true
+	character_died.emit(char_id, true)
 
 # --- Mechanisms (pressure plates / weight sensors / area triggers) ---
 #
