@@ -2203,6 +2203,40 @@ func _test_event_log_roundtrip() -> void:
 	_assert_equals(item_after["location"], "ground", "Replay: item_1 on ground")
 	_assert_equals(gs_i_replay.get_hand_items("peris").size(), 0, "Replay: Peris hands empty after drop")
 
+	# --- Physics + pendulum + dodge round-trip ---
+	var sched_p := EventScheduler.new()
+	var gs_p := GameState.new()
+	gs_p.grid = grid
+	gs_p.scheduler = sched_p
+	gs_p.event_log = EventLog.new()
+
+	gs_p.register_character("aster", grid.grid_to_world(Vector2i(2, 2)), 3.0,
+		{"stamina": 50.0, "dodge_unlocked": true})
+	gs_p.register_physics_object("box1", grid.grid_to_world(Vector2i(4, 4)), 0.5, 2.0, 0.6, true)
+	gs_p.register_pendulum("p1", Vector3(6, 5, 6), 4.0, 0.6)
+	sched_p.advance_ticks(0.2)
+	gs_p.dodge_roll("aster", Vector3(1, 0, 0))
+	sched_p.advance_ticks(0.5)
+	gs_p.apply_area_impulse(grid.grid_to_world(Vector2i(4, 4)) + Vector3(0.5, 0, 0), 2.0, 4.0)
+	sched_p.advance_ticks(2.0)
+	gs_p.unregister_physics_object("box1")
+	gs_p.unregister_pendulum("p1")
+	gs_p.flush_tick()
+
+	_assert_equals(gs_p.event_log.size(), 7, "Recorded 7 physics/pendulum/dodge events")
+
+	var gs_p_replay := GameState.replay(gs_p.event_log, grid)
+	_assert_true(gs_p_replay.characters.has("aster"), "Replay reconstructs aster")
+	_assert_true(not gs_p_replay.physics_objects.has("box1"),
+		"Replay reflects unregister_physics_object")
+	_assert_true(not gs_p_replay.pendulums.has("p1"),
+		"Replay reflects unregister_pendulum")
+	# Stamina was consumed by dodge — both runs should match
+	_assert_equals(
+		gs_p_replay.characters["aster"].stats.get("stamina", -1.0),
+		gs_p.characters["aster"].stats.get("stamina", -1.0),
+		"Replay matches stamina post-dodge")
+
 func _test_flora_memory() -> void:
 	_test_name = "Flora Memory"
 

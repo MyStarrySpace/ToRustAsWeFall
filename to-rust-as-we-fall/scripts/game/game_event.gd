@@ -40,6 +40,19 @@ const KIND_ENDOCYTOSE_ITEM := &"endocytose_item"
 const KIND_CANCEL_ENDOCYTOSIS := &"cancel_endocytosis"
 const KIND_EXOCYTOSE_ITEM := &"exocytose_item"
 
+# --- Physics commands ---
+const KIND_REGISTER_PHYSICS_OBJECT := &"register_physics_object"
+const KIND_UNREGISTER_PHYSICS_OBJECT := &"unregister_physics_object"
+const KIND_THROW_PHYSICS_OBJECT := &"throw_physics_object"
+const KIND_APPLY_AREA_IMPULSE := &"apply_area_impulse"
+
+# --- Pendulum commands ---
+const KIND_REGISTER_PENDULUM := &"register_pendulum"
+const KIND_UNREGISTER_PENDULUM := &"unregister_pendulum"
+
+# --- Dodge ---
+const KIND_DODGE_ROLL := &"dodge_roll"
+
 const ALL_KINDS: Array[StringName] = [
 	KIND_REGISTER_CHARACTER,
 	KIND_UNREGISTER_CHARACTER,
@@ -56,6 +69,13 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_ENDOCYTOSE_ITEM,
 	KIND_CANCEL_ENDOCYTOSIS,
 	KIND_EXOCYTOSE_ITEM,
+	KIND_REGISTER_PHYSICS_OBJECT,
+	KIND_UNREGISTER_PHYSICS_OBJECT,
+	KIND_THROW_PHYSICS_OBJECT,
+	KIND_APPLY_AREA_IMPULSE,
+	KIND_REGISTER_PENDULUM,
+	KIND_UNREGISTER_PENDULUM,
+	KIND_DODGE_ROLL,
 ]
 
 static func make(tick: float, kind: StringName, payload: Dictionary) -> Dictionary:

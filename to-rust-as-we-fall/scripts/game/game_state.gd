@@ -470,6 +470,10 @@ const DODGE_STAMINA_COST := 15.0
 const DODGE_COOLDOWN := 1.0
 
 func dodge_roll(char_id: String, direction: Vector3) -> bool:
+	_emit(GameEvent.KIND_DODGE_ROLL, {
+		"char_id": char_id,
+		"direction": GameEvent.v3_to_arr(direction),
+	})
 	if not characters.has(char_id) or not scheduler:
 		return false
 	if is_endocytosing(char_id):
@@ -897,6 +901,14 @@ const PHYSICS_DECELERATION := 3.0  # Units/sec² deceleration during slide (game
 const PHYSICS_RESTITUTION := 0.85
 
 func register_physics_object(id: String, pos: Vector3, radius: float = 0.5, mass: float = 2.0, friction: float = 0.6, pushable: bool = true) -> void:
+	_emit(GameEvent.KIND_REGISTER_PHYSICS_OBJECT, {
+		"id": id,
+		"pos": GameEvent.v3_to_arr(pos),
+		"radius": radius,
+		"mass": mass,
+		"friction": friction,
+		"pushable": pushable,
+	})
 	var cell := Vector2i.ZERO
 	if grid:
 		cell = grid.world_to_grid(pos)
@@ -915,6 +927,7 @@ func register_physics_object(id: String, pos: Vector3, radius: float = 0.5, mass
 	_recompute_pendulum_predictions()
 
 func unregister_physics_object(id: String) -> void:
+	_emit(GameEvent.KIND_UNREGISTER_PHYSICS_OBJECT, {"id": id})
 	if physics_objects.has(id):
 		var obj: Dictionary = physics_objects[id]
 		if obj.movement != null and scheduler:
@@ -1204,6 +1217,11 @@ func _on_physics_arrival(obj_id: String) -> void:
 # --- Area Impulse ---
 
 func apply_area_impulse(center: Vector3, radius: float, force: float) -> void:
+	_emit(GameEvent.KIND_APPLY_AREA_IMPULSE, {
+		"center": GameEvent.v3_to_arr(center),
+		"radius": radius,
+		"force": force,
+	})
 	for obj_id in physics_objects:
 		var obj: Dictionary = physics_objects[obj_id]
 		if not obj.pushable:
@@ -1233,6 +1251,11 @@ func apply_area_impulse(center: Vector3, radius: float, force: float) -> void:
 # --- Throw Physics ---
 
 func throw_physics_object(obj_id: String, velocity: Vector3, start_pos: Vector3 = Vector3.INF) -> void:
+	_emit(GameEvent.KIND_THROW_PHYSICS_OBJECT, {
+		"obj_id": obj_id,
+		"velocity": GameEvent.v3_to_arr(velocity),
+		"start_pos": GameEvent.v3_to_arr(start_pos),
+	})
 	if not physics_objects.has(obj_id) or not scheduler:
 		return
 	var obj: Dictionary = physics_objects[obj_id]
@@ -1401,6 +1424,16 @@ const PENDULUM_GRAVITY := 9.8
 const PENDULUM_SEGMENTS_PER_PERIOD := 12
 
 func register_pendulum(id: String, anchor: Vector3, length: float, amplitude: float, swing_axis: Vector3 = Vector3.FORWARD, bob_radius: float = 0.4, phase: float = 0.0, damping: float = 0.0) -> void:
+	_emit(GameEvent.KIND_REGISTER_PENDULUM, {
+		"id": id,
+		"anchor": GameEvent.v3_to_arr(anchor),
+		"length": length,
+		"amplitude": amplitude,
+		"swing_axis": GameEvent.v3_to_arr(swing_axis),
+		"bob_radius": bob_radius,
+		"phase": phase,
+		"damping": damping,
+	})
 	var start_tick := scheduler.get_current_tick() if scheduler else 0.0
 	pendulums[id] = {
 		"anchor": anchor,
@@ -1415,6 +1448,7 @@ func register_pendulum(id: String, anchor: Vector3, length: float, amplitude: fl
 	_recompute_pendulum_predictions()
 
 func unregister_pendulum(id: String) -> void:
+	_emit(GameEvent.KIND_UNREGISTER_PENDULUM, {"id": id})
 	pendulums.erase(id)
 	if scheduler:
 		scheduler.cancel_tag("pendulum_predict")
@@ -1636,6 +1670,44 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			cancel_endocytosis(String(payload["char_id"]))
 		GameEvent.KIND_EXOCYTOSE_ITEM:
 			exocytose_item(String(payload["char_id"]), String(payload["item_id"]))
+		GameEvent.KIND_REGISTER_PHYSICS_OBJECT:
+			register_physics_object(
+				String(payload["id"]),
+				GameEvent.arr_to_v3(payload["pos"]),
+				float(payload.get("radius", 0.5)),
+				float(payload.get("mass", 2.0)),
+				float(payload.get("friction", 0.6)),
+				bool(payload.get("pushable", true))
+			)
+		GameEvent.KIND_UNREGISTER_PHYSICS_OBJECT:
+			unregister_physics_object(String(payload["id"]))
+		GameEvent.KIND_THROW_PHYSICS_OBJECT:
+			throw_physics_object(
+				String(payload["obj_id"]),
+				GameEvent.arr_to_v3(payload["velocity"]),
+				GameEvent.arr_to_v3(payload["start_pos"])
+			)
+		GameEvent.KIND_APPLY_AREA_IMPULSE:
+			apply_area_impulse(
+				GameEvent.arr_to_v3(payload["center"]),
+				float(payload["radius"]),
+				float(payload["force"])
+			)
+		GameEvent.KIND_REGISTER_PENDULUM:
+			register_pendulum(
+				String(payload["id"]),
+				GameEvent.arr_to_v3(payload["anchor"]),
+				float(payload["length"]),
+				float(payload["amplitude"]),
+				GameEvent.arr_to_v3(payload.get("swing_axis", [0.0, 0.0, -1.0])),
+				float(payload.get("bob_radius", 0.4)),
+				float(payload.get("phase", 0.0)),
+				float(payload.get("damping", 0.0))
+			)
+		GameEvent.KIND_UNREGISTER_PENDULUM:
+			unregister_pendulum(String(payload["id"]))
+		GameEvent.KIND_DODGE_ROLL:
+			dodge_roll(String(payload["char_id"]), GameEvent.arr_to_v3(payload["direction"]))
 		_:
 			push_warning("GameState._dispatch: unknown event kind %s" % kind)
 
