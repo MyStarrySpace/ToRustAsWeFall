@@ -119,7 +119,7 @@ Game-shape primitives. Zones are data; hubs and gates are nodes with explicit ro
 
 **Design decision (locked in by 6.5):** narrative-availability is a per-character bool stored in `stats["narrative_available"]`. `down_character` / `restore_character` are logged commands (emit through `_emit`). They're issued by combat code (on HP → 0) and by hubs (on rest). Both are replay-safe because they go through the event log.
 
-- [x] **6.1** `Zone` resource with `id`, `display_name`, `hub_ids`, `spoke_ids`, `gate_ids`, `essential_third`. — [scripts/game/zone.gd](scripts/game/zone.gd)
+- [x] **6.1** `Zone` resource with `id`, `display_name`, `hub_ids`, `spoke_ids`, `gate_ids`. — [scripts/game/zone.gd](scripts/game/zone.gd). (The `essential_third` field was removed when #8 was dropped.)
 - [x] **6.2** `Hub` class with `id`, `zone_id`, `position`, `radius`, and a `restore_party(gs, party)` static helper. Entering a hub triggers `restore_character` for every party member — each restore goes through the log. — [scripts/game/hub.gd](scripts/game/hub.gd)
 - [x] **6.3** `Gate` class with `required_members` and `try_pass(gs, party) -> bool`. Emits either `passed` or `blocked(reason: StringName)` exactly once per call. Reasons are `missing_<id>` (not in party) or `unavailable_<id>` (downed / narratively unavailable). — [scripts/game/gate.gd](scripts/game/gate.gd)
 - [x] **6.4** `ZoneManager` with registries for zones/hubs/gates and signals `zone_entered`, `zone_exited`, `hub_entered`, `gate_passed`, `gate_blocked`, `spoke_completed`. Tracks current zone, hub, completed spokes, and passed gates. `is_hub_reachable(hub_id)` returns true only for hubs in the currently-active zone — implements the "old hubs fall out of practical reach" semantics. **Not an autoload** — instantiated per scene. — [scripts/game/zone_manager.gd](scripts/game/zone_manager.gd)
@@ -127,7 +127,7 @@ Game-shape primitives. Zones are data; hubs and gates are nodes with explicit ro
 
 **Open issue — evaluate_mechanisms / enter_hub auto-trigger:** scenes today must call `zm.enter_hub(...)` manually when the party reaches the hub's radius. Automating this via movement-arrival signals is straightforward (detection prediction pattern) but deferred until the first scene wires a live hub.
 
-**Open issue — party membership is test-side:** ZoneManager's methods take an explicit `party: Array` parameter rather than querying a canonical source. The party model is part of #8 (rotating essential third) and #9 (cohesion). When those land, ZoneManager will pull party from the canonical source.
+**Open issue — party membership is test-side:** ZoneManager's methods take an explicit `party: Array` parameter rather than querying a canonical source. With #8 dropped, the canonical party model is just "who's currently recruited" — arrives alongside #9 (cohesion) and recruitment flow.
 
 **Success conditions**
 - [x] `--test-hub-rest-restore`: 7/7. Down a character; HP/stamina zero; narrative-available flips false. Rest at hub; HP/stamina restored to declared max, ATP to full, narrative-available true.
@@ -157,18 +157,15 @@ No game-over. Downed ≠ dead. Retreat to hub = full recovery.
 
 ---
 
-## 8. Load-bearing spine + rotating essential third
+## 8. ~~Load-bearing spine + rotating essential third~~ — REMOVED
 
-Aster + Peris always load-bearing. One rotating third per zone. Previous thirds remain as non-essential party members.
+**Design change (2026-04-18):** dropped the "rotating essential third" model. The game is beatable with Aster and Peris alone; every ally can be refused. This is a stronger form of the architecture doc's original thesis ("every puzzle must be solvable by Aster and Peris alone") — we are committing to A+P sufficiency even for zone-specific gates, not just for puzzles.
 
-- [ ] **8.1** `Party` model: `essential = ["aster", "peris"]` (fixed) + `zone_third: StringName` (rotates) + `non_essential: Array[StringName]` (accumulates).
-- [ ] **8.2** Gate predicates default to `{essential} ∪ {zone_third}`. Exceptional gates can override with explicit requirements.
-- [ ] **8.3** Zone transition updates `zone_third` per the rotation table (Act 1 → Endo, Supply Lines → Myke, Maintenance Warrens → Oli, Archive Depths → Tyreg).
-- [ ] **8.4** Scene-trigger system checks essential presence before firing zone-critical scenes.
-
-**Success conditions**
-- `--test-rotating-third`: scripted sequence advances through three zones, assert `zone_third` transitions match rotation table, assert non-essential list accumulates previous thirds.
-- `--test-spine-sufficiency`: for each zone, verify all gates are passable with only `{aster, peris, zone_third}` — no gate silently requires any other character.
+**Consequences for other tasks:**
+- Gates keep their per-gate `required_members` list (#6). Games with Aster+Peris-only runs simply declare gates with empty `required_members` (any-party) or `[aster, peris]` (which is always satisfied by the spine).
+- No `zone_third` concept in ZoneManager. A canonical party source still needs to land (currently ZoneManager takes `party: Array` explicitly) but the party model is just "who's currently recruited" — no essential-member distinction.
+- Zone resource's `essential_third` field removed (dead code).
+- `--test-spine-sufficiency` is now trivially satisfied by construction and doesn't need to exist as a runtime test; content review will enforce it during level design.
 
 ---
 
@@ -250,11 +247,11 @@ Architectural decision from the doc's "Same-button consume-and-deploy" note: use
 #2 seeded RNG ─→ (requires #1 for RNG-spawn events)
 #4 actuators ──→ #5 puzzle harness
 #6 hub/spoke ──┬─→ #7 failure model
-               ├─→ #8 rotating third
                ├─→ #10 portals
                └─→ #11 scene triggers
+#8 REMOVED — game is A+P-sufficient by design
 #9 cohesion  ──→ (independent)
 #13 input    ──→ (independent, but needs #4 for deploy targets)
 ```
 
-Recommended start: **#1 → #2 → #3** as one engine-foundations sprint. Then **#4 → #5** as a world-model sprint. Then **#6 → #7 → #8** as a game-shape sprint. #9, #10, #11, #12, #13 can slot in as needed.
+Recommended start: **#1 → #2 → #3** as one engine-foundations sprint. Then **#4 → #5** as a world-model sprint. Then **#6 → #7** as a game-shape sprint. #9, #10, #11, #12, #13 can slot in as needed.
