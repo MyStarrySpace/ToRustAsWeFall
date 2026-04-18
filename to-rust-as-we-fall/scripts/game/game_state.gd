@@ -36,6 +36,30 @@ var _next_item_id := 1
 var _endocytosing: Dictionary = {} # char_id → {item_id, handle} for in-progress endocytosis
 var _dodging: Dictionary = {}     # char_id → {end_tick, handle}
 
+## Optional event log. When non-null, every external command is appended.
+## Replay-driven mutations (set _recording = false during replay) are skipped.
+## Coverage so far: character lifecycle + movement commands. Items, physics,
+## pendulums, abilities, and dodge are not yet wired through the log.
+var event_log: EventLog
+var _recording: bool = true
+
+func _record_tick() -> float:
+	if scheduler:
+		return scheduler.get_current_tick()
+	return 0.0
+
+func _emit(kind: StringName, payload: Dictionary) -> void:
+	if event_log == null or not _recording:
+		return
+	event_log.append(GameEvent.make(_record_tick(), kind, payload))
+
+## Update the log's recorded-until tick to the current scheduler tick.
+## Call before serializing the log if the scheduler advanced past the last
+## logged command (e.g. waiting for movement to complete).
+func flush_tick() -> void:
+	if event_log != null and _recording and scheduler:
+		event_log.note_tick(scheduler.get_current_tick())
+
 ## Pendulum schema:
 ## {
 ##   anchor: Vector3,         # Pivot point (top of swing)
@@ -77,6 +101,12 @@ var _dodging: Dictionary = {}     # char_id → {end_tick, handle}
 ## }
 
 func register_character(id: String, pos: Vector3, speed: float = 3.0, stats: Dictionary = {}) -> void:
+	_emit(GameEvent.KIND_REGISTER_CHARACTER, {
+		"id": id,
+		"pos": GameEvent.v3_to_arr(pos),
+		"speed": speed,
+		"stats": stats.duplicate(true),
+	})
 	var normalized_stats := stats.duplicate(true)
 	if normalized_stats.has("atp"):
 		normalized_stats["atp"] = SurvivalStats.normalize_atp(float(normalized_stats["atp"]))
@@ -95,6 +125,7 @@ func register_character(id: String, pos: Vector3, speed: float = 3.0, stats: Dic
 	explored[id] = {}
 
 func unregister_character(id: String) -> void:
+	_emit(GameEvent.KIND_UNREGISTER_CHARACTER, {"id": id})
 	if characters.has(id):
 		_cancel_movement(id)
 	characters.erase(id)
@@ -104,7 +135,10 @@ func unregister_character(id: String) -> void:
 
 ## A* pathfind to a grid cell. Returns true if a path was found.
 func command_move_to_cell(id: String, cell: Vector2i) -> bool:
+	_emit(GameEvent.KIND_MOVE_TO_CELL, {"id": id, "cell": GameEvent.v2i_to_arr(cell)})
 	if not characters.has(id) or not grid or not scheduler:
+		return false
+	if is_endocytosing(id):
 		return false
 	var current_pos := get_position(id)
 	var current_cell := grid.world_to_grid(current_pos)
@@ -120,7 +154,10 @@ func command_move_to_cell(id: String, cell: Vector2i) -> bool:
 
 ## Straight-line move to a world position.
 func command_move_to_pos(id: String, pos: Vector3) -> bool:
+	_emit(GameEvent.KIND_MOVE_TO_POS, {"id": id, "pos": GameEvent.v3_to_arr(pos)})
 	if not characters.has(id) or not scheduler:
+		return false
+	if is_endocytosing(id):
 		return false
 	var current_pos := get_position(id)
 	var target := Vector3(pos.x, current_pos.y, pos.z)
@@ -131,7 +168,10 @@ func command_move_to_pos(id: String, pos: Vector3) -> bool:
 
 ## Set an explicit path (scripted waypoints).
 func command_walk_path(id: String, path: Array[Vector3]) -> void:
+	_emit(GameEvent.KIND_WALK_PATH, {"id": id, "path": GameEvent.path_to_arr(path)})
 	if not characters.has(id) or not scheduler or path.is_empty():
+		return
+	if is_endocytosing(id):
 		return
 	var current_pos := get_position(id)
 	_cancel_movement(id)
@@ -142,6 +182,7 @@ func command_walk_path(id: String, path: Array[Vector3]) -> void:
 
 ## Halt movement at current interpolated position.
 func command_stop(id: String) -> void:
+	_emit(GameEvent.KIND_STOP, {"id": id})
 	if not characters.has(id):
 		return
 	var ch: Dictionary = characters[id]
@@ -153,6 +194,7 @@ func command_stop(id: String) -> void:
 
 ## Change movement speed. If currently moving, recalculates arrival time.
 func change_move_speed(id: String, new_speed: float) -> void:
+	_emit(GameEvent.KIND_CHANGE_SPEED, {"id": id, "speed": new_speed})
 	if not characters.has(id):
 		return
 	var ch: Dictionary = characters[id]
@@ -430,6 +472,8 @@ const DODGE_COOLDOWN := 1.0
 func dodge_roll(char_id: String, direction: Vector3) -> bool:
 	if not characters.has(char_id) or not scheduler:
 		return false
+	if is_endocytosing(char_id):
+		return false
 	var ch: Dictionary = characters[char_id]
 	if not ch.stats.get("dodge_unlocked", false):
 		return false
@@ -587,6 +631,10 @@ func spawn_item(type: String, pos: Vector3, properties: Dictionary = {}) -> Stri
 	_next_item_id += 1
 	var type_data := ItemData.get_type_data(type)
 	type_data.merge(properties, true)
+	if not type_data.has("hand_slots"):
+		type_data["hand_slots"] = ItemData.get_hand_slots(type)
+	if not type_data.has("endocytosis_allowed"):
+		type_data["endocytosis_allowed"] = ItemData.can_endocytose(type)
 	items[id] = {
 		"type": type,
 		"holder": "",
@@ -613,18 +661,22 @@ func remove_item(item_id: String) -> void:
 func pick_up_item(char_id: String, item_id: String) -> bool:
 	if not characters.has(char_id) or not items.has(item_id):
 		return false
+	if is_endocytosing(char_id):
+		return false
 	var item: Dictionary = items[item_id]
 	if item.location != "ground":
 		return false
 	var ch: Dictionary = characters[char_id]
-	var slot := _find_free_hand(char_id)
-	if slot < 0:
+	var required_slots := _required_hand_slots(item)
+	var slots := _find_free_hand_slots(char_id, required_slots)
+	if slots.is_empty():
 		return false
 	var char_pos := get_position(char_id)
 	var dist := Vector3(char_pos.x - item.position.x, 0, char_pos.z - item.position.z).length()
 	if dist > 2.0:
 		return false
-	ch.hands[slot] = item_id
+	for slot in slots:
+		ch.hands[int(slot)] = item_id
 	item.holder = char_id
 	item.location = "hand"
 	item_picked_up.emit(char_id, item_id)
@@ -633,13 +685,13 @@ func pick_up_item(char_id: String, item_id: String) -> bool:
 func drop_item(char_id: String, item_id: String) -> bool:
 	if not characters.has(char_id) or not items.has(item_id):
 		return false
+	if is_endocytosing(char_id):
+		return false
 	var item: Dictionary = items[item_id]
 	if item.holder != char_id or item.location != "hand":
 		return false
 	var ch: Dictionary = characters[char_id]
-	for i in range(ch.hands.size()):
-		if ch.hands[i] == item_id:
-			ch.hands[i] = null
+	_clear_item_from_hands(ch, item_id)
 	item.holder = ""
 	item.location = "ground"
 	item.position = get_position(char_id)
@@ -649,21 +701,22 @@ func drop_item(char_id: String, item_id: String) -> bool:
 func transfer_item(from_id: String, to_id: String, item_id: String) -> bool:
 	if not characters.has(from_id) or not characters.has(to_id) or not items.has(item_id):
 		return false
+	if is_endocytosing(from_id) or is_endocytosing(to_id):
+		return false
 	var item: Dictionary = items[item_id]
 	if item.holder != from_id or item.location != "hand":
 		return false
-	var to_slot := _find_free_hand(to_id)
-	if to_slot < 0:
+	var to_slots := _find_free_hand_slots(to_id, _required_hand_slots(item))
+	if to_slots.is_empty():
 		return false
 	var dist := get_position(from_id).distance_to(get_position(to_id))
 	if dist > TRANSFER_RANGE:
 		return false
 	var from_ch: Dictionary = characters[from_id]
-	for i in range(from_ch.hands.size()):
-		if from_ch.hands[i] == item_id:
-			from_ch.hands[i] = null
+	_clear_item_from_hands(from_ch, item_id)
 	var to_ch: Dictionary = characters[to_id]
-	to_ch.hands[to_slot] = item_id
+	for slot in to_slots:
+		to_ch.hands[int(slot)] = item_id
 	item.holder = to_id
 	item_transferred.emit(from_id, to_id, item_id)
 	return true
@@ -673,6 +726,8 @@ func endocytose_item(char_id: String, item_id: String) -> bool:
 		return false
 	var item: Dictionary = items[item_id]
 	if item.holder != char_id or item.location != "hand":
+		return false
+	if not bool(item.properties.get("endocytosis_allowed", ItemData.can_endocytose(item.type))):
 		return false
 	if _endocytosing.has(char_id):
 		return false
@@ -704,9 +759,7 @@ func _complete_endocytosis(char_id: String, item_id: String) -> void:
 	var effect := ItemData.get_endocytosis_effect(item.type)
 
 	# Remove from hand
-	for i in range(ch.hands.size()):
-		if ch.hands[i] == item_id:
-			ch.hands[i] = null
+	_clear_item_from_hands(ch, item_id)
 
 	match effect:
 		"digest":
@@ -739,14 +792,17 @@ func _complete_endocytosis(char_id: String, item_id: String) -> void:
 func exocytose_item(char_id: String, item_id: String) -> bool:
 	if not characters.has(char_id) or not items.has(item_id):
 		return false
+	if is_endocytosing(char_id):
+		return false
 	var item: Dictionary = items[item_id]
 	if item.holder != char_id or item.location != "internal":
 		return false
 	var ch: Dictionary = characters[char_id]
 	ch.internal.erase(item_id)
-	var slot := _find_free_hand(char_id)
-	if slot >= 0:
-		ch.hands[slot] = item_id
+	var slots := _find_free_hand_slots(char_id, _required_hand_slots(item))
+	if not slots.is_empty():
+		for slot in slots:
+			ch.hands[int(slot)] = item_id
 		item.location = "hand"
 	else:
 		item.holder = ""
@@ -760,9 +816,14 @@ func get_hand_items(char_id: String) -> Array:
 		return []
 	var result := []
 	for slot in characters[char_id].hands:
-		if slot != null:
+		if slot != null and not result.has(slot):
 			result.append(slot)
 	return result
+
+func get_hand_slots(char_id: String) -> Array:
+	if not characters.has(char_id):
+		return []
+	return characters[char_id].hands.duplicate()
 
 func get_internal_items(char_id: String) -> Array:
 	if not characters.has(char_id):
@@ -772,6 +833,9 @@ func get_internal_items(char_id: String) -> Array:
 func has_free_hand(char_id: String) -> bool:
 	return _find_free_hand(char_id) >= 0
 
+func has_free_hands(char_id: String, required_slots := 1) -> bool:
+	return not _find_free_hand_slots(char_id, required_slots).is_empty()
+
 func _find_free_hand(char_id: String) -> int:
 	if not characters.has(char_id):
 		return -1
@@ -780,6 +844,25 @@ func _find_free_hand(char_id: String) -> int:
 		if hands[i] == null:
 			return i
 	return -1
+
+func _find_free_hand_slots(char_id: String, required_slots: int) -> Array[int]:
+	var slots: Array[int] = []
+	if not characters.has(char_id):
+		return slots
+	for i in range(characters[char_id].hands.size()):
+		if characters[char_id].hands[i] == null:
+			slots.append(i)
+			if slots.size() >= maxi(required_slots, 1):
+				return slots
+	return []
+
+func _clear_item_from_hands(ch: Dictionary, item_id: String) -> void:
+	for i in range(ch.hands.size()):
+		if ch.hands[i] == item_id:
+			ch.hands[i] = null
+
+func _required_hand_slots(item: Dictionary) -> int:
+	return maxi(int(item.get("properties", {}).get("hand_slots", ItemData.get_hand_slots(str(item.get("type", ""))))), 1)
 
 func get_scent_radius(char_id: String) -> float:
 	if not characters.has(char_id):
@@ -1463,6 +1546,62 @@ func _on_pendulum_hit_physics(pendulum_id: String, obj_id: String) -> void:
 	var bob_pos := get_pendulum_position(pendulum_id)
 	_resolve_physics_impulse(obj_id, obj_pos, Vector3.ZERO, bob_pos, bob_vel, obj)
 	pendulum_hit.emit(pendulum_id, obj_id, bob_vel)
+
+# --- Replay ---
+#
+# Replay reconstructs a fresh GameState by re-issuing each logged command
+# at the tick it was originally issued. Internal scheduler-driven mutations
+# (movement arrival, dodge end, etc.) re-derive themselves because the
+# scheduler is deterministic and gets identical inputs in identical order.
+
+## Build a fresh GameState by replaying the log against the given grid.
+## The caller supplies the grid because it is a shared resource, not state.
+static func replay(log: EventLog, world_grid: GridWorld) -> GameState:
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = world_grid
+	gs.scheduler = sched
+	gs._recording = false
+
+	var prev_tick := 0.0
+	for event in log.events:
+		var tick: float = float(event["tick"])
+		if tick > prev_tick:
+			sched.advance_ticks(tick - prev_tick)
+			prev_tick = tick
+		gs._dispatch(StringName(event["kind"]), event["payload"])
+
+	# Drain pending scheduler events up to the recorded final tick so movements
+	# in flight at save time arrive identically.
+	if log.recorded_until > prev_tick:
+		sched.advance_ticks(log.recorded_until - prev_tick)
+
+	gs._recording = true
+	return gs
+
+func _dispatch(kind: StringName, payload: Dictionary) -> void:
+	match kind:
+		GameEvent.KIND_REGISTER_CHARACTER:
+			register_character(
+				String(payload["id"]),
+				GameEvent.arr_to_v3(payload["pos"]),
+				float(payload.get("speed", 3.0)),
+				payload.get("stats", {})
+			)
+		GameEvent.KIND_UNREGISTER_CHARACTER:
+			unregister_character(String(payload["id"]))
+		GameEvent.KIND_MOVE_TO_CELL:
+			command_move_to_cell(String(payload["id"]), GameEvent.arr_to_v2i(payload["cell"]))
+		GameEvent.KIND_MOVE_TO_POS:
+			command_move_to_pos(String(payload["id"]), GameEvent.arr_to_v3(payload["pos"]))
+		GameEvent.KIND_WALK_PATH:
+			command_walk_path(String(payload["id"]), GameEvent.arr_to_path(payload["path"]))
+		GameEvent.KIND_STOP:
+			command_stop(String(payload["id"]))
+		GameEvent.KIND_CHANGE_SPEED:
+			change_move_speed(String(payload["id"]), float(payload["speed"]))
+		_:
+			push_warning("GameState._dispatch: unknown event kind %s" % kind)
 
 static func _solve_quadratic_detection(pos_a: Vector3, vel_a: Vector3, pos_b: Vector3, vel_b: Vector3, R: float, max_tau: float) -> float:
 	var dp_x := pos_a.x - pos_b.x

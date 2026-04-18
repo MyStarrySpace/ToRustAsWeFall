@@ -9,7 +9,30 @@ extends Node
 var _passed := 0
 var _failed := 0
 var _test_name := ""
+const DayNightCycleScript = preload("res://scripts/game/day_night_cycle.gd")
+const FloraMemorySystem = preload("res://scripts/game/flora_memory_system.gd")
 const PUZZLE_FRAGMENT_CATALOG_PATH := "res://data/puzzles/showcase_fragments.json"
+const MOTHER_HACK_DWELL_SECONDS := 0.6
+const MOTHER_PORTAL_DWELL_SECONDS := 0.4
+const MOTHER_BUD_DWELL_SECONDS := 0.6
+const MOTHER_ROOT_SETTLE_SECONDS := 5.5
+const MOTHER_PICKUP_DWELL_SECONDS := 0.8
+const MOTHER_INSTALL_DWELL_SECONDS := 0.8
+const MOTHER_TEND_DWELL_SECONDS := 1.0
+const MOTHER_CLOAK_DWELL_SECONDS := 0.4
+const ACT1_SEQUENCE_STEPS := [
+	"channels_enter", "channels_to_memory", "channels_memory",
+	"channels_corpse", "channels_window_one_intro", "channels_window_one_activate",
+	"channels_window_one_cross", "channels_to_ferrolure", "channels_ferrolure",
+	"channels_window_two_intro", "channels_window_two_activate",
+	"channels_window_two_cross", "channels_to_encounter", "channels_encounter_intro",
+	"channels_encounter_activate", "channels_encounter_hide",
+	"channels_encounter_run", "channels_shelter", "channels_explore",
+	"stacks_enter", "stacks_terminal", "stacks_signal", "stacks_archive", "stacks_explore",
+	"rings_enter", "rings_client", "endo_departs", "rings_explore",
+	"lockout_approach", "lockout_rejected", "lockout_chase",
+	"lockout_exile", "complete",
+]
 
 func _ready() -> void:
 	# Wait one frame so the _ready chain completes before scene tests add_child to root
@@ -34,6 +57,12 @@ func _ready() -> void:
 			"--test-game-state":
 				ran_test = true
 				_test_game_state()
+			"--test-event-log-roundtrip":
+				ran_test = true
+				_test_event_log_roundtrip()
+			"--test-flora-memory":
+				ran_test = true
+				_test_flora_memory()
 			"--test-scheduler":
 				ran_test = true
 				_test_event_scheduler()
@@ -64,9 +93,18 @@ func _ready() -> void:
 			"--test-showcase":
 				ran_test = true
 				await _test_showcase()
+			"--test-engram":
+				ran_test = true
+				_test_engram_and_saves()
 			"--test-puzzle-fragments":
 				ran_test = true
 				await _test_puzzle_fragments()
+			"--test-survival-range-timing":
+				ran_test = true
+				await _test_survival_range_timing()
+			"--test-day-night-cycle":
+				ran_test = true
+				await _test_day_night_cycle()
 			"--test-tag-day-dialogue":
 				ran_test = true
 				await _test_tag_day_dialogue()
@@ -164,12 +202,33 @@ func _ready() -> void:
 			"--test-scene-load":
 				ran_test = true
 				await _test_scene_load()
+			"--test-mother-ferrolure":
+				ran_test = true
+				await _test_mother_ferrolure_preview()
+			"--test-channels-rhythm":
+				ran_test = true
+				await _test_channels_rhythm_preview()
+			"--test-channels-hide":
+				ran_test = true
+				await _test_channels_hide_window_preview()
 			"--test-peris-phase2":
 				ran_test = true
 				await _test_peris_phase2()
 			"--test-sequence-contracts":
 				ran_test = true
 				await _test_sequence_contracts()
+			"--report-act1-playtime":
+				ran_test = true
+				await _report_act1_playtime()
+			"--report-act1-human-playtime":
+				ran_test = true
+				await _report_act1_human_playtime()
+			"--report-survival-range-playtime":
+				ran_test = true
+				await _report_survival_range_playtime()
+			"--report-mother-ferrolure-playtime":
+				ran_test = true
+				await _report_mother_ferrolure_playtime()
 
 	# --start-peris-phase2: launch the scene directly at phase 2 for manual testing
 	for i in range(args.size()):
@@ -263,6 +322,8 @@ func _run_all_tests() -> void:
 	_test_syntax()
 	_test_grid_pathfinding()
 	_test_game_state()
+	_test_event_log_roundtrip()
+	_test_flora_memory()
 	_test_event_scheduler()
 	await _test_scene_load()
 	await _test_aster_sim()
@@ -270,7 +331,10 @@ func _run_all_tests() -> void:
 	await _test_elevator()
 	await _test_leaving_facility()
 	await _test_showcase()
+	_test_engram_and_saves()
 	await _test_puzzle_fragments()
+	await _test_day_night_cycle()
+	await _test_survival_range_timing()
 	await _test_tag_day()
 	await _test_tag_day_dialogue()
 	await _test_peris_dialogue()
@@ -289,6 +353,9 @@ func _run_all_tests() -> void:
 	_test_pendulum()
 	_test_throw_physics()
 	await _test_physics_comparison()
+	await _test_mother_ferrolure_preview()
+	await _test_channels_rhythm_preview()
+	await _test_channels_hide_window_preview()
 	await _test_peris_phase2()
 	await _test_sequence_contracts()
 	_test_items()
@@ -322,11 +389,574 @@ func _test_scene_load() -> void:
 	var tag_day := load("res://scenes/tutorial/tag_day.tscn")
 	_assert_true(tag_day != null, "tag_day.tscn loads")
 
+	for chunk_scene_path in [
+		"res://scenes/fragments/chunks/stacks_fragment_chunk.tscn",
+		"res://scenes/fragments/chunks/rings_fragment_chunk.tscn",
+		"res://scenes/fragments/chunks/lockout_fragment_chunk.tscn",
+		"res://scenes/fragments/chunks/overlay_lab_chunk.tscn",
+		"res://scenes/fragments/chunks/mother_ferrolure_chunk.tscn",
+		"res://scenes/fragments/chunks/survival_range_chunk.tscn",
+		"res://scenes/fragments/chunks/channels_rhythm_chunk.tscn",
+		"res://scenes/fragments/chunks/channels_hide_window_chunk.tscn",
+	]:
+		var chunk_scene: PackedScene = load(chunk_scene_path)
+		_assert_true(chunk_scene != null, "%s loads" % chunk_scene_path.get_file())
+
+	for preview_scene_path in [
+		"res://scenes/fragments/stacks_preview.tscn",
+		"res://scenes/fragments/rings_preview.tscn",
+		"res://scenes/fragments/lockout_preview.tscn",
+		"res://scenes/fragments/overlay_lab_preview.tscn",
+		"res://scenes/fragments/mother_ferrolure_preview.tscn",
+		"res://scenes/fragments/survival_range_preview.tscn",
+		"res://scenes/fragments/channels_rhythm_preview.tscn",
+		"res://scenes/fragments/channels_hide_window_preview.tscn",
+	]:
+		var preview_scene: PackedScene = load(preview_scene_path)
+		_assert_true(preview_scene != null, "%s loads" % preview_scene_path.get_file())
+		if preview_scene == null:
+			continue
+		var preview_instance: Node = preview_scene.instantiate()
+		_assert_true(preview_instance != null, "%s instantiates" % preview_scene_path.get_file())
+		if preview_instance == null:
+			continue
+		get_tree().root.add_child(preview_instance)
+		for _i in range(2):
+			await get_tree().process_frame
+		var env: Node = preview_instance.find_child("Environment", true, false)
+		_assert_true(env != null, "%s has an Environment node" % preview_scene_path.get_file())
+		preview_instance.queue_free()
+		await get_tree().process_frame
+
 	var block_lib := load("res://resources/block_library.tres")
 	_assert_true(block_lib != null, "block_library.tres loads")
 	_assert_true(block_lib is MeshLibrary, "block_library is MeshLibrary")
 
 	await get_tree().process_frame
+
+func _test_mother_ferrolure_preview() -> void:
+	_test_name = "Mother Ferrolure Preview"
+
+	var preview_scene: PackedScene = load("res://scenes/fragments/mother_ferrolure_preview.tscn")
+	_assert_true(preview_scene != null, "mother_ferrolure_preview.tscn loads")
+	if preview_scene == null:
+		return
+
+	var inventory_instance: Node = preview_scene.instantiate()
+	_assert_true(inventory_instance != null, "mother_ferrolure_preview.tscn instantiates")
+	if inventory_instance == null:
+		return
+	get_tree().root.add_child(inventory_instance)
+	for _i in range(2):
+		await get_tree().process_frame
+
+	var inventory_chunk: Node = inventory_instance.find_child("Chunk_mother_ferrolure", true, false)
+	_assert_true(inventory_chunk != null, "Mother preview builds its chunk")
+	if inventory_chunk == null:
+		inventory_instance.queue_free()
+		await get_tree().process_frame
+		return
+
+	var initial_state: Dictionary = inventory_chunk.get_preview_state()
+	_assert_true(not bool(initial_state.get("gear_pocket_open", false)), "Mother board starts with the gear pocket closed")
+	_assert_true(not bool(initial_state.get("socket_lane_open", false)), "Mother board starts with the socket lane closed")
+	_assert_true(not bool(initial_state.get("mother_lane_clear", false)), "Mother board starts with the mother lane clogged")
+
+	inventory_instance.headless_select_character("aster")
+	_assert_true(inventory_chunk.activate_terminal("term_beta"), "Aster can open the central service terminal")
+	inventory_instance.headless_select_character("peris")
+	_assert_true(inventory_chunk.use_portal(), "Peris can cross into the central service bay")
+	_assert_true(not inventory_chunk.activate_fragment_move("crossbar", 1), "Crossbar cannot slide right while another root still blocks the lane")
+	_assert_true(inventory_chunk.use_portal(), "Peris can return after a blocked root read")
+
+	inventory_instance.headless_select_character("endo")
+	inventory_instance.headless_set_character_position("endo", inventory_chunk.COLLAPSE_POS)
+	_assert_true(inventory_chunk.clear_collapse(), "Endo can clear the collapse")
+	inventory_instance.headless_set_character_position("endo", inventory_chunk.BODY_POSITIONS["body_a"])
+	inventory_instance.set_preview_character_stat("endo", "atp", 1.0)
+	_assert_true(inventory_chunk.harvest_body("body_a"), "Endo can harvest starch in the chamber")
+	var held: Array = inventory_instance.get_preview_hand_items("endo")
+	_assert_equals(held.size(), 1, "Harvesting gives Endo a held starch unit")
+	_assert_true(inventory_instance.endocytose_preview_item("endo", str(held[0])), "Preview supports consuming harvested starch")
+	inventory_instance.headless_advance(2.2)
+	_assert_true(inventory_instance.get_preview_hand_items("endo").is_empty(), "Consumed starch frees Endo's hand")
+	_assert_true(inventory_instance.get_preview_character_stat("endo", "atp") > 1.0, "Consumed starch restores ATP in the preview")
+
+	_mother_execute_root_move(inventory_instance, inventory_chunk, "term_gamma", "gear_latch", 1, ["B2", "B3"], "Repair Test 1/3")
+	_mother_execute_root_move(inventory_instance, inventory_chunk, "term_beta", "socket_brace", 1, ["D2", "E2"], "Repair Test 2/3")
+	inventory_instance.headless_select_character("endo")
+	inventory_instance.headless_set_character_position("endo", inventory_chunk.GEAR_POS)
+	_assert_true(inventory_chunk.pick_up_gear(), "Endo can still lift the gear in the repair test")
+	_mother_execute_root_move(inventory_instance, inventory_chunk, "term_alpha", "spine_gate", -1, ["A4", "B4"], "Repair Test 3/3")
+	inventory_instance.headless_select_character("endo")
+	inventory_instance.headless_set_character_position("endo", inventory_chunk._repair_point_position("edge_relief"))
+	_assert_true(inventory_chunk.install_gear_at("edge_relief"), "A wrong repair mount still commits and resolves")
+	var wrong_repair_state: Dictionary = inventory_chunk.get_preview_state()
+	var repair_attempts: Array = wrong_repair_state.get("repair_attempts", [])
+	_assert_true(not bool(wrong_repair_state.get("gear_installed", false)), "Wrong repair does not count as a successful install")
+	_assert_true(repair_attempts.has("edge_relief"), "Wrong repair is recorded in chunk state")
+	_assert_true(not bool(wrong_repair_state.get("socket_lane_open", true)), "Wrong edge-relief install closes the carry lane again")
+	_assert_equals(wrong_repair_state.get("roots", {}).get("spine_gate", {}).get("cells", []), ["B4", "C4"], "Wrong edge-relief install drops the spine gate back into the lane")
+	_assert_equals(inventory_instance.get_preview_hand_items("endo").size(), 0, "Rejected repair frees Endo's hands after the gear kicks back out")
+
+	inventory_instance.queue_free()
+	await get_tree().process_frame
+
+	var solve_instance: Node = preview_scene.instantiate()
+	_assert_true(solve_instance != null, "mother_ferrolure_preview.tscn instantiates for the optimal solve")
+	if solve_instance == null:
+		return
+	get_tree().root.add_child(solve_instance)
+	for _j in range(2):
+		await get_tree().process_frame
+
+	var solve_chunk: Node = solve_instance.find_child("Chunk_mother_ferrolure", true, false)
+	_assert_true(solve_chunk != null, "Optimal-solve preview builds its chunk")
+	if solve_chunk == null:
+		solve_instance.queue_free()
+		await get_tree().process_frame
+		return
+
+	_mother_execute_root_move(solve_instance, solve_chunk, "term_gamma", "gear_latch", 1, ["B2", "B3"], "Optimal 1/9")
+	_mother_execute_root_move(solve_instance, solve_chunk, "term_beta", "socket_brace", 1, ["D2", "E2"], "Optimal 2/9")
+	var state_after_west: Dictionary = solve_chunk.get_preview_state()
+	_assert_true(bool(state_after_west.get("gear_pocket_open", false)), "Optimal west opening unlocks the gear pocket")
+
+	solve_instance.headless_select_character("endo")
+	solve_instance.headless_set_character_position("endo", solve_chunk.GEAR_POS)
+	_assert_true(solve_chunk.pick_up_gear(), "Endo can lift the gear once the west pocket is open")
+	var hand_slots: Array = solve_instance.get_preview_hand_slots("endo")
+	_assert_equals(str(hand_slots[0]), str(hand_slots[1]), "Two-hand gear occupies both hand slots")
+
+	_mother_execute_root_move(solve_instance, solve_chunk, "term_alpha", "spine_gate", -1, ["A4", "B4"], "Optimal 3/9")
+	var state_after_spine: Dictionary = solve_chunk.get_preview_state()
+	_assert_true(bool(state_after_spine.get("socket_lane_open", false)), "Lifting the spine gate opens the carry lane to the socket")
+
+	solve_instance.headless_select_character("endo")
+	solve_instance.headless_set_character_position("endo", solve_chunk._repair_point_position("load_regulator"))
+	_assert_true(solve_chunk.install_gear_at("load_regulator"), "Endo can install the mother gear at the correct repair point once the carry lane is open")
+	var installed_state: Dictionary = solve_chunk.get_preview_state()
+	_assert_equals(str(installed_state.get("installed_repair", "")), "load_regulator", "Optimal solve mounts the gear into the diagnosed load regulator")
+
+	_mother_execute_root_move(solve_instance, solve_chunk, "term_beta", "socket_brace", 1, ["E2", "F2"], "Optimal 4/9")
+	_mother_execute_root_move(solve_instance, solve_chunk, "term_gamma", "tending_step", -1, ["E3", "E4"], "Optimal 5/9")
+	_mother_execute_root_move(solve_instance, solve_chunk, "term_beta", "crossbar", -1, ["D2", "D3", "D4"], "Optimal 6/9")
+	_mother_execute_root_move(solve_instance, solve_chunk, "term_beta", "bloom_curtain", 1, ["D5", "E5"], "Optimal 7/9")
+	_mother_execute_root_move(solve_instance, solve_chunk, "term_alpha", "mother_veil", 1, ["C6", "D6"], "Optimal 8/9")
+	_mother_execute_root_move(solve_instance, solve_chunk, "term_alpha", "mother_veil", 1, ["D6", "E6"], "Optimal 9/9")
+
+	var solved_state: Dictionary = solve_chunk.get_preview_state()
+	_assert_true(bool(solved_state.get("mother_lane_clear", false)), "Optimal root sequence clears the mother lane end to end")
+
+	solve_instance.headless_select_character("peris")
+	solve_instance.headless_set_character_position("peris", solve_chunk.MOTHER_POS)
+	_assert_true(solve_chunk.tend_mother(), "Peris can stabilize the mother after the optimal solution")
+	var final_state: Dictionary = solve_chunk.get_preview_state()
+	_assert_true(bool(final_state.get("mother_tended", false)), "Chunk state records the stabilized mother")
+
+	solve_instance.queue_free()
+	await get_tree().process_frame
+
+func _test_channels_rhythm_preview() -> void:
+	_test_name = "Channels Rhythm Preview"
+
+	var preview_scene: PackedScene = load("res://scenes/fragments/channels_rhythm_preview.tscn")
+	_assert_true(preview_scene != null, "channels_rhythm_preview.tscn loads")
+	if preview_scene == null:
+		return
+
+	var instance: Node = preview_scene.instantiate()
+	_assert_true(instance != null, "channels_rhythm_preview.tscn instantiates")
+	if instance == null:
+		return
+	get_tree().root.add_child(instance)
+	for _i in range(2):
+		await get_tree().process_frame
+
+	var chunk: Node = instance.find_child("Chunk_channels_rhythm", true, false)
+	_assert_true(chunk != null, "Channels rhythm preview builds its chunk")
+	if chunk == null:
+		instance.queue_free()
+		await get_tree().process_frame
+		return
+
+	var initial_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
+	_assert_equals(int(initial_state.get("periodic_channel_count", 0)), 3, "Channels rhythm preview exposes three periodic flood channels")
+	_assert_true(int(initial_state.get("bridge_segment_count", 0)) >= 8, "Channels rhythm preview builds the bridge arc")
+	_assert_equals(int(initial_state.get("swarm_unit_count", 0)), 5, "Channels rhythm preview spawns the siderophore pack")
+
+	var analysis: Dictionary = chunk.get_wash_analysis() if chunk.has_method("get_wash_analysis") else {}
+	_assert_true(bool(analysis.get("guaranteed", false)), "Channels rhythm preview analytically guarantees a washout")
+	_assert_true(float(analysis.get("coverage_gap", 1.0)) <= 0.001, "Channels rhythm preview has no uncovered timing gap")
+
+	var period := float(initial_state.get("flow_period", 6.0))
+	var sample_count := 72
+	for i in range(sample_count):
+		var offset := period * float(i) / float(sample_count)
+		if chunk.has_method("reset_preview_state"):
+			chunk.call("reset_preview_state")
+		if instance.has_method("headless_set_character_position"):
+			instance.headless_set_character_position("aster", chunk.STAGE_POS)
+			instance.headless_set_character_position("peris", chunk.STAGE_POS + Vector3(-1.6, 0.0, 1.4))
+			instance.headless_set_character_position("endo", chunk.STAGE_POS + Vector3(-2.0, 0.0, -1.6))
+		_assert_true(chunk.has_method("set_timing_offset"), "Channels rhythm chunk exposes timing offset controls")
+		if chunk.has_method("set_timing_offset"):
+			chunk.call("set_timing_offset", offset)
+		_assert_true(bool(chunk.call("activate_lure")), "Channels rhythm preview activates at offset %.3f" % offset)
+		if instance.has_method("headless_advance"):
+			instance.headless_advance(6.2, 0.05)
+		var offset_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
+		_assert_equals(str(offset_state.get("swarm_state", "")), "washed", "Offset %.3f washes the pack" % offset)
+		_assert_true(int(offset_state.get("washed_channel_index", -1)) >= 0, "Offset %.3f records a wash channel" % offset)
+		_assert_equals(int(offset_state.get("washed_swarm_units", 0)), 5, "Offset %.3f washes every unit" % offset)
+
+	instance.queue_free()
+	await get_tree().process_frame
+
+func _test_channels_hide_window_preview() -> void:
+	_test_name = "Channels Hide Window Preview"
+
+	var preview_scene: PackedScene = load("res://scenes/fragments/channels_hide_window_preview.tscn")
+	_assert_true(preview_scene != null, "channels_hide_window_preview.tscn loads")
+	if preview_scene == null:
+		return
+
+	var instance: Node = preview_scene.instantiate()
+	_assert_true(instance != null, "channels_hide_window_preview.tscn instantiates")
+	if instance == null:
+		return
+	get_tree().root.add_child(instance)
+	for _i in range(2):
+		await get_tree().process_frame
+
+	var chunk: Node = instance.find_child("Chunk_channels_hide_window", true, false)
+	_assert_true(chunk != null, "Channels hide window preview builds its chunk")
+	if chunk == null:
+		instance.queue_free()
+		await get_tree().process_frame
+		return
+
+	var initial_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
+	_assert_equals(int(initial_state.get("periodic_channel_count", 0)), 3, "Channels hide window preview exposes three periodic flood channels")
+	_assert_true(bool(initial_state.get("corridor_present", false)), "Channels hide window preview builds the fallback corridor")
+	_assert_true(bool(initial_state.get("conceal_patch_present", false)), "Channels hide window preview builds the concealment patch")
+	_assert_equals(int(initial_state.get("swarm_unit_count", 0)), 5, "Channels hide window preview spawns the siderophore pack")
+
+	var analysis: Dictionary = chunk.get_wash_analysis() if chunk.has_method("get_wash_analysis") else {}
+	_assert_true(not bool(analysis.get("guaranteed", true)), "Channels hide window preview is not analytically guaranteed")
+	_assert_true(float(analysis.get("coverage_gap", 0.0)) >= 0.25, "Channels hide window preview leaves a meaningful timing gap")
+	_assert_true(float(analysis.get("safe_sample_offset", -1.0)) >= 0.0, "Channels hide window preview exposes a sample safe offset")
+	_assert_true(float(analysis.get("failed_sample_offset", -1.0)) >= 0.0, "Channels hide window preview exposes a sample failed offset")
+	_assert_true(int(analysis.get("failed_sample_count", 0)) > 0, "Channels hide window preview includes failing offsets")
+
+	var anchors: Dictionary = instance.headless_get_anchor_positions() if instance.has_method("headless_get_anchor_positions") else {}
+	var stage_pos: Vector3 = anchors.get("stage", Vector3.ZERO)
+	var hide_patch_pos: Vector3 = anchors.get("hide_patch", Vector3.ZERO)
+	var goal_pos: Vector3 = anchors.get("goal", Vector3.ZERO)
+
+	if chunk.has_method("reset_preview_state"):
+		chunk.call("reset_preview_state")
+	if instance.has_method("headless_set_character_position"):
+		instance.headless_set_character_position("aster", stage_pos)
+		instance.headless_set_character_position("peris", stage_pos + Vector3(-1.5, 0.0, 1.2))
+		instance.headless_set_character_position("endo", stage_pos + Vector3(-1.8, 0.0, -1.3))
+	_assert_true(bool(chunk.call("set_recommended_offset", "safe")), "Channels hide window preview can apply a safe offset preset")
+	_assert_true(bool(chunk.call("activate_lure")), "Channels hide window preview activates on the sampled safe offset")
+	if instance.has_method("headless_advance"):
+		instance.headless_advance(6.2, 0.05)
+	var washed_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
+	_assert_equals(str(washed_state.get("swarm_state", "")), "washed", "Sample safe offset washes the pack")
+	_assert_true(int(washed_state.get("washed_channel_index", -1)) >= 0, "Sample safe offset records a wash channel")
+	if instance.has_method("headless_set_character_position"):
+		instance.headless_set_character_position("aster", goal_pos)
+	if instance.has_method("headless_advance"):
+		instance.headless_advance(0.2, 0.05)
+	var success_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
+	_assert_equals(str(success_state.get("last_outcome", "")), "success", "Washing the pack still lets Aster clear the lane")
+
+	if chunk.has_method("reset_preview_state"):
+		chunk.call("reset_preview_state")
+	if instance.has_method("headless_set_character_position"):
+		instance.headless_set_character_position("aster", stage_pos)
+		instance.headless_set_character_position("peris", stage_pos + Vector3(-1.5, 0.0, 1.2))
+		instance.headless_set_character_position("endo", stage_pos + Vector3(-1.8, 0.0, -1.3))
+	_assert_true(bool(chunk.call("set_recommended_offset", "fail")), "Channels hide window preview can apply a failed offset preset")
+	_assert_true(bool(chunk.call("activate_lure")), "Channels hide window preview activates on the sampled failed offset")
+	if instance.has_method("headless_advance"):
+		instance.headless_advance(5.2, 0.05)
+	if instance.has_method("headless_set_character_position"):
+		instance.headless_set_character_position("aster", hide_patch_pos)
+	if instance.has_method("headless_advance"):
+		instance.headless_advance(5.4, 0.05)
+	var retry_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
+	_assert_true(not bool(retry_state.get("detected", true)), "Getting into the patch before reacquisition avoids detection")
+	_assert_equals(str(retry_state.get("swarm_state", "")), "idle", "The pack eventually resets after a concealed miss")
+	_assert_equals(str(retry_state.get("phase", "")), "activate", "A concealed miss returns the lane to an activatable state")
+	_assert_true(int(retry_state.get("concealed_retries", 0)) >= 1, "The preview records a concealed retry")
+
+	if chunk.has_method("reset_preview_state"):
+		chunk.call("reset_preview_state")
+	if instance.has_method("headless_set_character_position"):
+		instance.headless_set_character_position("aster", stage_pos)
+	_assert_true(bool(chunk.call("set_recommended_offset", "fail")), "Channels hide window preview can reapply the failed offset preset")
+	_assert_true(bool(chunk.call("activate_lure")), "Channels hide window preview reactivates on the failed offset")
+	if instance.has_method("headless_advance"):
+		instance.headless_advance(7.8, 0.05)
+	var fail_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
+	_assert_true(bool(fail_state.get("detected", false)), "Staying exposed after a miss gets the player detected")
+	_assert_equals(str(fail_state.get("last_outcome", "")), "detected", "Detection locks in once the pack reacquires the player")
+	if instance.has_method("headless_set_character_position"):
+		instance.headless_set_character_position("aster", hide_patch_pos)
+	if instance.has_method("headless_advance"):
+		instance.headless_advance(0.3, 0.05)
+	var locked_fail_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
+	_assert_equals(str(locked_fail_state.get("phase", "")), "failed", "Entering the patch after detection does not clear the failure")
+
+	instance.queue_free()
+	await get_tree().process_frame
+
+func _mother_execute_root_move(instance: Node, chunk: Node, terminal_id: String, root_id: String, direction: int, expected_cells: Array, label: String) -> void:
+	instance.headless_select_character("aster")
+	_assert_true(chunk.activate_terminal(terminal_id), "%s opens %s" % [label, terminal_id])
+	instance.headless_select_character("peris")
+	_assert_true(chunk.use_portal(), "%s sends Peris to %s" % [label, terminal_id])
+	_assert_true(chunk.activate_fragment_move(root_id, direction), "%s shifts %s" % [label, root_id])
+	instance.headless_advance(5.5)
+	var state: Dictionary = chunk.get_preview_state()
+	var root_state: Dictionary = state.get("roots", {}).get(root_id, {})
+	_assert_equals(root_state.get("cells", []), expected_cells, "%s lands %s at the expected cells" % [label, root_id])
+	if not bool(state.get("portal_open", false)):
+		instance.headless_select_character("aster")
+		_assert_true(chunk.activate_terminal(terminal_id), "%s reopens %s for extraction" % [label, terminal_id])
+		instance.headless_select_character("peris")
+	_assert_true(chunk.use_portal(), "%s brings Peris back out" % label)
+
+func _mother_record_timing(measurements: Dictionary, totals: Dictionary, key: String, bucket: String, result: Dictionary) -> void:
+	measurements[key] = result
+	totals[bucket] = float(totals.get(bucket, 0.0)) + float(result.get("measured", 0.0))
+
+func _mother_measure_wait(instance: Node, measurements: Dictionary, totals: Dictionary, key: String, duration: float) -> void:
+	var start_tick := _preview_scheduler_tick(instance)
+	_advance_showcase(instance, duration)
+	var result := {
+		"predicted": duration,
+		"measured": _preview_scheduler_tick(instance) - start_tick,
+	}
+	measurements[key] = result
+	totals["settle"] = float(totals.get("settle", 0.0)) + float(result.get("measured", 0.0))
+
+func _mother_snap_character(instance: Node, char_id: String, position: Vector3) -> void:
+	if instance.has_method("headless_set_character_position"):
+		instance.headless_set_character_position(char_id, position)
+
+func _mother_activate_ability(
+	instance: Node,
+	measurements: Dictionary,
+	totals: Dictionary,
+	key: String,
+	char_id: String,
+	ability_id: String,
+	dwell_time: float
+) -> Dictionary:
+	var start_tick := _preview_scheduler_tick(instance)
+	if char_id != "" and instance.has_method("headless_select_character"):
+		instance.headless_select_character(char_id)
+	if dwell_time > 0.0:
+		_advance_showcase(instance, dwell_time)
+	var activated := instance.has_method("headless_activate_ability") and bool(instance.headless_activate_ability(ability_id))
+	var result := {
+		"predicted": dwell_time,
+		"measured": _preview_scheduler_tick(instance) - start_tick,
+		"result": activated,
+	}
+	_mother_record_timing(measurements, totals, key, "interaction", result)
+	return result
+
+func _mother_profile_root_move(
+	instance: Node,
+	chunk: Node,
+	terminal_id: String,
+	root_id: String,
+	direction: int,
+	label: String,
+	include_movement: bool,
+	measurements: Dictionary,
+	totals: Dictionary
+) -> void:
+	if include_movement:
+		_mother_record_timing(measurements, totals, "%s_peris_stage" % label, "movement", _survival_range_move_segment(instance, {
+			"character": "peris",
+			"end_position": chunk.BASE_PORTAL_POS,
+		}))
+		_mother_record_timing(measurements, totals, "%s_aster_move" % label, "movement", _survival_range_move_segment(instance, {
+			"character": "aster",
+			"end_position": chunk._terminal_position(terminal_id),
+		}))
+	var hack_result := _survival_range_dwell_and_call(instance, "aster", {
+		"dwell_time": MOTHER_HACK_DWELL_SECONDS,
+	}, "activate_terminal", [terminal_id])
+	_mother_record_timing(measurements, totals, "%s_hack" % label, "interaction", hack_result)
+	_assert_true(bool(hack_result.get("result", false)), "%s opens %s during timing run" % [label, terminal_id])
+	var cross_in_result := _survival_range_dwell_and_call(instance, "peris", {
+		"dwell_time": MOTHER_PORTAL_DWELL_SECONDS,
+	}, "use_portal")
+	_mother_record_timing(measurements, totals, "%s_cross_in" % label, "interaction", cross_in_result)
+	_assert_true(bool(cross_in_result.get("result", false)), "%s sends Peris into %s during timing run" % [label, terminal_id])
+	var activate_result := _survival_range_dwell_and_call(instance, "peris", {
+		"dwell_time": MOTHER_BUD_DWELL_SECONDS,
+	}, "activate_fragment_move", [root_id, direction])
+	_mother_record_timing(measurements, totals, "%s_activate" % label, "interaction", activate_result)
+	_assert_true(bool(activate_result.get("result", false)), "%s shifts %s during timing run" % [label, root_id])
+	_mother_measure_wait(instance, measurements, totals, "%s_settle" % label, MOTHER_ROOT_SETTLE_SECONDS)
+	var root_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
+	if not bool(root_state.get("portal_open", false)):
+		var reopen_result := _survival_range_dwell_and_call(instance, "aster", {
+			"dwell_time": MOTHER_HACK_DWELL_SECONDS,
+		}, "activate_terminal", [terminal_id])
+		_mother_record_timing(measurements, totals, "%s_reopen_hack" % label, "interaction", reopen_result)
+		_assert_true(bool(reopen_result.get("result", false)), "%s reopens %s for extraction during timing run" % [label, terminal_id])
+	var cross_out_result := _survival_range_dwell_and_call(instance, "peris", {
+		"dwell_time": MOTHER_PORTAL_DWELL_SECONDS,
+	}, "use_portal")
+	_mother_record_timing(measurements, totals, "%s_cross_out" % label, "interaction", cross_out_result)
+	_assert_true(bool(cross_out_result.get("result", false)), "%s brings Peris back out during timing run" % label)
+
+func _run_mother_ferrolure_profile(profile: String) -> Dictionary:
+	var preview_scene: PackedScene = load("res://scenes/fragments/mother_ferrolure_preview.tscn")
+	_assert_true(preview_scene != null, "mother_ferrolure_preview.tscn loads for %s playtime run" % profile)
+	if preview_scene == null:
+		return {}
+
+	var instance: Node = await _instantiate_scene_and_wait(preview_scene, 3)
+	_assert_true(instance != null, "mother_ferrolure_preview.tscn instantiates for %s playtime run" % profile)
+	if instance == null:
+		return {}
+
+	var chunk: Node = instance.find_child("Chunk_mother_ferrolure", true, false)
+	_assert_true(chunk != null, "Mother chunk exists for %s playtime run" % profile)
+	if chunk == null:
+		await _dispose_scene(instance)
+		return {}
+
+	var include_movement := profile != "system_optimal"
+	var include_wrong_repair := profile == "movement_wrong_repair"
+	var measurements := {}
+	var totals := {
+		"movement": 0.0,
+		"interaction": 0.0,
+		"settle": 0.0,
+	}
+	var start_state: Dictionary = instance.headless_get_state() if instance.has_method("headless_get_state") else {}
+	var start_tick := _preview_scheduler_tick(instance)
+
+	_mother_profile_root_move(instance, chunk, "term_gamma", "gear_latch", 1, "move_1", include_movement, measurements, totals)
+	_mother_profile_root_move(instance, chunk, "term_beta", "socket_brace", 1, "move_2", include_movement, measurements, totals)
+
+	if include_movement:
+		_mother_record_timing(measurements, totals, "endo_to_gear", "movement", _survival_range_move_segment(instance, {
+			"character": "endo",
+			"end_position": chunk.GEAR_POS,
+		}))
+	_mother_snap_character(instance, "endo", chunk.GEAR_POS)
+	var pickup_result := _survival_range_dwell_and_call(instance, "endo", {
+		"dwell_time": MOTHER_PICKUP_DWELL_SECONDS,
+	}, "pick_up_gear")
+	_mother_record_timing(measurements, totals, "pick_up_gear", "interaction", pickup_result)
+	_assert_true(bool(pickup_result.get("result", false)), "Timing run can pick up the mother gear")
+
+	_mother_profile_root_move(instance, chunk, "term_alpha", "spine_gate", -1, "move_3", include_movement, measurements, totals)
+
+	if include_wrong_repair:
+		var wrong_cloak_result := _mother_activate_ability(instance, measurements, totals, "wrong_repair_cloak", "endo", "endo_patch", MOTHER_CLOAK_DWELL_SECONDS)
+		_assert_true(bool(wrong_cloak_result.get("result", false)), "Timing run can trigger Endo's cloak for the wrong-repair carry")
+		if include_movement:
+			_mother_record_timing(measurements, totals, "endo_to_wrong_repair", "movement", _survival_range_move_segment(instance, {
+				"character": "endo",
+				"end_position": chunk._repair_point_position("edge_relief"),
+			}))
+		_mother_snap_character(instance, "endo", chunk._repair_point_position("edge_relief"))
+		var wrong_install_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
+		var wrong_install_hands: Array = instance.get_preview_hand_items("endo") if instance.has_method("get_preview_hand_items") else []
+		_assert_true(bool(wrong_install_state.get("socket_lane_open", false)), "Wrong-repair route still has the carry lane open before the detour mount")
+		_assert_true(not wrong_install_hands.is_empty(), "Wrong-repair route still has the gear in Endo's hands before the detour mount")
+		var wrong_install_result := _survival_range_dwell_and_call(instance, "endo", {
+			"dwell_time": MOTHER_INSTALL_DWELL_SECONDS,
+		}, "install_gear_at", ["edge_relief"])
+		_mother_record_timing(measurements, totals, "wrong_install", "interaction", wrong_install_result)
+		_assert_true(bool(wrong_install_result.get("result", false)), "Timing run can commit the wrong repair detour")
+		var post_wrong_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
+		var recover_item_id := str(post_wrong_state.get("gear_item", ""))
+		var recover_item_state: Dictionary = instance.get_preview_item_state(recover_item_id) if recover_item_id != "" and instance.has_method("get_preview_item_state") else {}
+		var recover_target := Vector3(recover_item_state.get("position", chunk.HIDE_SPOT_POS + Vector3(1.4, 0.24, 0.0)))
+		var recover_cloak_result := _mother_activate_ability(instance, measurements, totals, "recover_cloak", "endo", "endo_patch", MOTHER_CLOAK_DWELL_SECONDS)
+		_assert_true(bool(recover_cloak_result.get("result", false)), "Timing run can trigger Endo's cloak for the recovery pull")
+		if include_movement:
+			_mother_record_timing(measurements, totals, "endo_recover_gear", "movement", _survival_range_move_segment(instance, {
+				"character": "endo",
+				"end_position": recover_target,
+			}))
+		_mother_snap_character(instance, "endo", recover_target)
+		var recover_state: Dictionary = instance.headless_get_state() if instance.has_method("headless_get_state") else {}
+		var recover_stats: Dictionary = recover_state.get("character_stats", {}).get("endo", {})
+		_assert_true(float(recover_stats.get("hp", 0.0)) > 0.0, "Wrong-repair route keeps Endo alive through the recovery pull")
+		_assert_equals(str(recover_state.get("active_character", "")), "endo", "Wrong-repair route keeps Endo active at the recovery pickup")
+		var recover_pickup_result := _survival_range_dwell_and_call(instance, "endo", {
+			"dwell_time": MOTHER_PICKUP_DWELL_SECONDS,
+		}, "pick_up_gear")
+		_mother_record_timing(measurements, totals, "recover_pickup", "interaction", recover_pickup_result)
+		_assert_true(bool(recover_pickup_result.get("result", false)), "Timing run can recover the rejected gear")
+		_mother_profile_root_move(instance, chunk, "term_alpha", "spine_gate", -1, "reopen_carry", include_movement, measurements, totals)
+
+	if include_movement:
+		var repair_cloak_result := _mother_activate_ability(instance, measurements, totals, "repair_cloak", "endo", "endo_patch", MOTHER_CLOAK_DWELL_SECONDS)
+		_assert_true(bool(repair_cloak_result.get("result", false)), "Timing run can trigger Endo's cloak for the repair carry")
+	if include_movement:
+		_mother_record_timing(measurements, totals, "endo_to_repair", "movement", _survival_range_move_segment(instance, {
+			"character": "endo",
+			"end_position": chunk._repair_point_position("load_regulator"),
+		}))
+	_mother_snap_character(instance, "endo", chunk._repair_point_position("load_regulator"))
+	var install_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
+	var install_hands: Array = instance.get_preview_hand_items("endo") if instance.has_method("get_preview_hand_items") else []
+	_assert_true(bool(install_state.get("socket_lane_open", false)), "Timing run still has the carry lane open before the load regulator mount")
+	_assert_true(not install_hands.is_empty(), "Timing run still has the gear in Endo's hands before the load regulator mount")
+	var install_result := _survival_range_dwell_and_call(instance, "endo", {
+		"dwell_time": MOTHER_INSTALL_DWELL_SECONDS,
+	}, "install_gear_at", ["load_regulator"])
+	_mother_record_timing(measurements, totals, "install_gear", "interaction", install_result)
+	_assert_true(bool(install_result.get("result", false)), "Timing run can install the load regulator gear")
+
+	_mother_profile_root_move(instance, chunk, "term_beta", "socket_brace", 1, "move_4", include_movement, measurements, totals)
+	_mother_profile_root_move(instance, chunk, "term_gamma", "tending_step", -1, "move_5", include_movement, measurements, totals)
+	_mother_profile_root_move(instance, chunk, "term_beta", "crossbar", -1, "move_6", include_movement, measurements, totals)
+	_mother_profile_root_move(instance, chunk, "term_beta", "bloom_curtain", 1, "move_7", include_movement, measurements, totals)
+	_mother_profile_root_move(instance, chunk, "term_alpha", "mother_veil", 1, "move_8", include_movement, measurements, totals)
+	_mother_profile_root_move(instance, chunk, "term_alpha", "mother_veil", 1, "move_9", include_movement, measurements, totals)
+
+	if include_movement:
+		_mother_record_timing(measurements, totals, "peris_to_mother", "movement", _survival_range_move_segment(instance, {
+			"character": "peris",
+			"end_position": chunk.MOTHER_POS,
+		}))
+	_mother_snap_character(instance, "peris", chunk.MOTHER_POS)
+	var tend_result := _survival_range_dwell_and_call(instance, "peris", {
+		"dwell_time": MOTHER_TEND_DWELL_SECONDS,
+	}, "tend_mother")
+	_mother_record_timing(measurements, totals, "tend_mother", "interaction", tend_result)
+
+	var final_state: Dictionary = instance.headless_get_state() if instance.has_method("headless_get_state") else {}
+	await _dispose_scene(instance)
+	return {
+		"profile": profile,
+		"start_state": start_state,
+		"final_state": final_state,
+		"measurements": measurements,
+		"movement_total": float(totals.get("movement", 0.0)),
+		"interaction_total": float(totals.get("interaction", 0.0)),
+		"settle_total": float(totals.get("settle", 0.0)),
+		"measured_total": float(final_state.get("scheduler_tick", 0.0)) - start_tick,
+		"root_move_count": 10 if include_wrong_repair else 9,
+	}
 
 # --- Test: EventScheduler ---
 func _test_event_scheduler() -> void:
@@ -433,6 +1063,53 @@ func _test_event_scheduler() -> void:
 	_assert_equals(sched7.get_current_tick(), 10.0, "Deserialized tick")
 	_assert_equals(sched7.get_speed(), 5.0, "Deserialized speed")
 	_assert_true(sched7.is_paused(), "Deserialized paused state")
+
+func _test_engram_and_saves() -> void:
+	_test_name = "Engram + SaveManager"
+
+	SaveManager.clear_slot()
+	EngramJournal.reset_state()
+
+	var image := Image.create(16, 12, false, Image.FORMAT_RGBA8)
+	image.fill(Color(0.2, 0.4, 0.8, 1.0))
+
+	var entry := EngramJournal.create_manual_entry_from_image(image, {
+		"scene_name": "Test Scene",
+		"timestamp_label": "Act 1 / Day 1",
+		"location": "Test Zone",
+		"sub_location": "Checkpoint",
+		"caption": "Test Zone, Day 1",
+		"position": Vector3(4.0, 0.5, 7.0),
+	})
+	_assert_true(not entry.is_empty(), "Manual Engram entry created")
+	_assert_equals(EngramJournal.get_entry_count(), 1, "Journal count increments")
+	_assert_true(FileAccess.file_exists(str(entry.get("image_path", ""))), "Stored capture file exists")
+
+	EngramJournal.toggle_bookmark(int(entry.get("id", -1)))
+	var bookmarked := EngramJournal.get_entry(int(entry.get("id", -1)))
+	_assert_true(bool(bookmarked.get("player_bookmark", false)), "Bookmark persists in memory")
+
+	var export_path := "user://saves/autosave/exported_capture.png"
+	_assert_true(EngramJournal.export_capture(int(entry.get("id", -1)), export_path), "Capture export succeeds")
+	_assert_true(FileAccess.file_exists(export_path), "Exported capture exists")
+
+	_assert_true(SaveManager.save_current("test"), "SaveManager writes autosave manifest")
+	_assert_true(SaveManager.has_slot(), "Autosave slot exists")
+
+	var payload := SaveManager.load_slot_payload()
+	_assert_equals(int(payload.get("version", 0)), SaveManager.SAVE_VERSION, "Save payload version matches")
+	var journal_state: Dictionary = payload.get("journal", {})
+	var saved_entries: Array = journal_state.get("entries", [])
+	_assert_equals(saved_entries.size(), 1, "Journal entries persisted into save payload")
+	_assert_equals(int(journal_state.get("next_id", 0)), 2, "Next capture id persisted")
+
+	EngramJournal.reset_state()
+	_assert_equals(EngramJournal.get_entry_count(), 0, "Reset clears in-memory journal")
+	EngramJournal.apply_save_state(journal_state)
+	_assert_equals(EngramJournal.get_entry_count(), 1, "Journal restores from save state")
+
+	SaveManager.clear_slot()
+	EngramJournal.reset_state()
 
 # --- Test: Tag Day Sequence ---
 func _test_tag_day() -> void:
@@ -822,7 +1499,11 @@ func _test_puzzle_fragments(fragment_id := "") -> void:
 	for fragment_result in fragments:
 		for scenario_result in fragment_result.get("scenarios", []):
 			var label := "%s / %s" % [fragment_result.get("id", "unknown"), scenario_result.get("id", "scenario")]
-			_assert_true(bool(scenario_result.get("success", false)), "%s passes" % label)
+			var scenario_message := str(scenario_result.get("message", ""))
+			_assert_true(
+				bool(scenario_result.get("success", false)),
+				"%s passes%s" % [label, (": " + scenario_message) if scenario_message != "" else ""]
+			)
 
 	_assert_equals(int(result.get("failed", 0)), 0, "Puzzle fragment suite has no failures")
 
@@ -867,6 +1548,379 @@ func _sync_showcase_runtime(instance: Node, delta: float) -> void:
 		for visual in instance._physics_visuals.values():
 			if visual and is_instance_valid(visual) and visual.has_method("_process"):
 				visual._process(delta)
+
+func _preview_scheduler_tick(instance: Node) -> float:
+	if instance != null and instance.has_method("headless_get_state"):
+		var state: Dictionary = instance.headless_get_state()
+		return float(state.get("scheduler_tick", 0.0))
+	return 0.0
+
+func _load_survival_range_timing_predictions() -> Dictionary:
+	var preview_scene: PackedScene = load("res://scenes/fragments/survival_range_preview.tscn")
+	_assert_true(preview_scene != null, "survival_range_preview.tscn loads for timing predictions")
+	if preview_scene == null:
+		return {}
+
+	var instance: Node = await _instantiate_scene_and_wait(preview_scene, 3)
+	if instance == null:
+		_assert_true(false, "survival_range_preview.tscn instantiates for timing predictions")
+		return {}
+
+	var predictions_variant: Variant = null
+	if instance.has_method("headless_call_chunk"):
+		predictions_variant = instance.headless_call_chunk("get_route_timing_predictions")
+	var predictions: Dictionary = predictions_variant if predictions_variant is Dictionary else {}
+	_assert_true(not predictions.is_empty(), "Survival range exposes timing predictions")
+	await _dispose_scene(instance)
+	return predictions
+
+func _survival_range_move_segment(instance: Node, segment: Dictionary) -> Dictionary:
+	var char_id := str(segment.get("character", ""))
+	var destination: Vector3 = segment.get("end_position", Vector3.ZERO)
+	var running := bool(segment.get("running", false))
+	var start_tick := _preview_scheduler_tick(instance)
+	if char_id != "" and instance.has_method("headless_select_character"):
+		instance.headless_select_character(char_id)
+	var started: bool = instance.has_method("headless_move_character") and bool(instance.headless_move_character(char_id, destination, running))
+	var movement_info := {}
+	if instance.has_method("headless_get_character_movement_info"):
+		movement_info = instance.headless_get_character_movement_info(char_id)
+	var duration := float(movement_info.get("duration", 0.0))
+	if duration > 0.0:
+		_advance_showcase(instance, duration)
+	var moving_after: bool = instance.has_method("headless_is_character_moving") and bool(instance.headless_is_character_moving(char_id))
+	if moving_after:
+		_advance_showcase(instance, 0.001, 0.001)
+		moving_after = instance.has_method("headless_is_character_moving") and bool(instance.headless_is_character_moving(char_id))
+	return {
+		"started": started,
+		"predicted": float(segment.get("travel_time", 0.0)),
+		"measured": _preview_scheduler_tick(instance) - start_tick,
+		"moving_after": moving_after,
+		"movement_info": movement_info,
+	}
+
+func _survival_range_dwell_and_call(
+	instance: Node,
+	char_id: String,
+	segment: Dictionary,
+	method_name: String,
+	args: Array = []
+) -> Dictionary:
+	var start_tick := _preview_scheduler_tick(instance)
+	if char_id != "" and instance.has_method("headless_select_character"):
+		instance.headless_select_character(char_id)
+	var dwell_time := float(segment.get("dwell_time", segment.get("total_time", 0.0)))
+	if dwell_time > 0.0:
+		_advance_showcase(instance, dwell_time)
+	var call_result: Variant = null
+	if instance.has_method("headless_call_chunk"):
+		call_result = instance.headless_call_chunk(method_name, args)
+	return {
+		"predicted": dwell_time,
+		"measured": _preview_scheduler_tick(instance) - start_tick,
+		"result": call_result,
+	}
+
+func _run_survival_range_profile(profile: String) -> Dictionary:
+	var preview_scene: PackedScene = load("res://scenes/fragments/survival_range_preview.tscn")
+	_assert_true(preview_scene != null, "survival_range_preview.tscn loads for %s timing run" % profile)
+	if preview_scene == null:
+		return {}
+
+	var instance: Node = await _instantiate_scene_and_wait(preview_scene, 3)
+	_assert_true(instance != null, "survival_range_preview.tscn instantiates for %s timing run" % profile)
+	if instance == null:
+		return {}
+
+	var prediction_variant: Variant = null
+	if instance.has_method("headless_call_chunk"):
+		prediction_variant = instance.headless_call_chunk("predict_route_timing", [profile])
+	var prediction: Dictionary = prediction_variant if prediction_variant is Dictionary else {}
+	_assert_true(not prediction.is_empty(), "Survival range reports %s timing profile" % profile)
+	if prediction.is_empty():
+		await _dispose_scene(instance)
+		return {}
+
+	if instance.has_method("headless_set_selected_characters"):
+		instance.headless_set_selected_characters(["aster", "peris", "endo"])
+	if instance.has_method("headless_set_routing_mode"):
+		instance.headless_set_routing_mode(str(prediction.get("routing_mode", "safe")))
+
+	var segments: Dictionary = prediction.get("segments", {})
+	var measurements := {}
+	var start_state: Dictionary = instance.headless_get_state() if instance.has_method("headless_get_state") else {}
+	var start_tick := _preview_scheduler_tick(instance)
+
+	measurements["depart"] = _survival_range_dwell_and_call(instance, "aster", segments.get("depart", {}), "depart_range")
+	if segments.has("scout"):
+		measurements["scout_move"] = _survival_range_move_segment(instance, segments.get("scout", {}))
+		measurements["scout"] = _survival_range_dwell_and_call(instance, "aster", segments.get("scout", {}), "survey_route")
+	if segments.has("stage_endo"):
+		measurements["stage_endo"] = _survival_range_move_segment(instance, segments.get("stage_endo", {}))
+	if segments.has("stage_peris"):
+		measurements["stage_peris"] = _survival_range_move_segment(instance, segments.get("stage_peris", {}))
+	if segments.has("lure"):
+		measurements["lure"] = _survival_range_dwell_and_call(instance, "peris", segments.get("lure", {}), "activate_range_lure")
+		if bool(prediction.get("use_peris_tune", false)) and instance.has_method("headless_activate_ability"):
+			if instance.has_method("headless_select_character"):
+				instance.headless_select_character("peris")
+			measurements["peris_tune"] = {
+				"activated": instance.headless_activate_ability("peris_tune"),
+			}
+
+	measurements["cross"] = _survival_range_dwell_and_call(instance, "endo", segments.get("cross", {}), "cross_seam")
+	measurements["hide_move"] = _survival_range_move_segment(instance, segments.get("hide", {}))
+	measurements["hide"] = _survival_range_dwell_and_call(instance, "endo", segments.get("hide", {}), "commit_hide")
+
+	var post_hide_state: Dictionary = instance.headless_get_state() if instance.has_method("headless_get_state") else {}
+	var post_hide_chunk: Dictionary = post_hide_state.get("chunk", {})
+	var actual_window_margin := float(post_hide_chunk.get("lure_remaining", 0.0))
+
+	if segments.has("hold"):
+		var hold_duration := float(segments.get("hold", {}).get("total_time", 0.0))
+		if hold_duration > 0.0:
+			var hold_start := _preview_scheduler_tick(instance)
+			_advance_showcase(instance, hold_duration)
+			measurements["hold"] = {
+				"predicted": hold_duration,
+				"measured": _preview_scheduler_tick(instance) - hold_start,
+			}
+	if segments.has("shelter"):
+		measurements["shelter"] = _survival_range_move_segment(instance, segments.get("shelter", {}))
+		var shelter_state: Dictionary = instance.headless_get_state() if instance.has_method("headless_get_state") else {}
+		var shelter_chunk: Dictionary = shelter_state.get("chunk", {})
+		if str(shelter_chunk.get("route_phase", "")) != "complete":
+			_advance_showcase(instance, 0.05)
+
+	var final_state: Dictionary = instance.headless_get_state() if instance.has_method("headless_get_state") else {}
+	await _dispose_scene(instance)
+	return {
+		"profile": profile,
+		"prediction": prediction,
+		"measurements": measurements,
+		"start_state": start_state,
+		"predicted_total": float(prediction.get("total_time", 0.0)),
+		"measured_total": float(final_state.get("scheduler_tick", 0.0)) - start_tick,
+		"predicted_window_margin": float(prediction.get("window_margin", 0.0)),
+		"actual_window_margin": actual_window_margin,
+		"final_state": final_state,
+	}
+
+func _test_day_night_cycle() -> void:
+	_test_name = "Day Night Cycle"
+
+	var cycle = DayNightCycleScript.new()
+	var day_boundary: Dictionary = cycle.advance(1, DayNightCycleScript.DAY_START, DayNightCycleScript.DEFAULT_DAY_DURATION_SECONDS)
+	_assert_equals(int(day_boundary.get("day", 0)), 1, "A full day segment stays on the same day number")
+	_assert_true(absf(float(day_boundary.get("time", -1.0)) - DayNightCycleScript.NIGHT_START) <= 0.0001, "900s reaches the night boundary")
+
+	var night_boundary: Dictionary = cycle.advance(1, DayNightCycleScript.NIGHT_START, DayNightCycleScript.DEFAULT_NIGHT_DURATION_SECONDS)
+	_assert_equals(int(night_boundary.get("day", 0)), 2, "A full night segment advances the calendar day")
+	_assert_true(absf(float(night_boundary.get("time", -1.0)) - DayNightCycleScript.DAY_START) <= 0.0001, "300s rolls the clock back to dawn")
+
+	var preview_scene: PackedScene = load("res://scenes/fragments/survival_range_preview.tscn")
+	_assert_true(preview_scene != null, "survival_range_preview.tscn loads for clock validation")
+	if preview_scene == null:
+		return
+
+	var instance: Node = await _instantiate_scene_and_wait(preview_scene, 3)
+	_assert_true(instance != null, "survival_range_preview.tscn instantiates for clock validation")
+	if instance == null:
+		return
+
+	var start_state: Dictionary = instance.headless_get_state() if instance.has_method("headless_get_state") else {}
+	var expected: Dictionary = cycle.advance(
+		int(start_state.get("day", 1)),
+		float(start_state.get("time", 0.0)),
+		60.0
+	)
+	if instance.has_method("headless_advance"):
+		instance.headless_advance(60.0, 1.0)
+	var advanced_state: Dictionary = instance.headless_get_state() if instance.has_method("headless_get_state") else {}
+	_assert_equals(int(advanced_state.get("day", 0)), int(expected.get("day", -1)), "Preview day advances with the shared clock")
+	_assert_true(
+		absf(float(advanced_state.get("time", -1.0)) - float(expected.get("time", -2.0))) <= 0.01,
+		"Preview time advances 60s according to the shared clock"
+	)
+	_assert_equals(
+		str(advanced_state.get("time_phase", "")),
+		str(cycle.get_phase_name(float(expected.get("time", 0.0)))),
+		"Preview reports the expected phase label after clock advancement"
+	)
+	await _dispose_scene(instance)
+
+func _test_survival_range_timing() -> void:
+	_test_name = "Survival Range Timing"
+
+	var predictions := await _load_survival_range_timing_predictions()
+	var staged_safe: Dictionary = predictions.get("staged_safe", {})
+	var optimal_safe: Dictionary = predictions.get("optimal_safe", {})
+	var greedy_direct: Dictionary = predictions.get("greedy_direct", {})
+
+	_assert_true(not staged_safe.is_empty(), "Staged safe timing profile exists")
+	_assert_true(not optimal_safe.is_empty(), "Optimal safe timing profile exists")
+	_assert_true(not greedy_direct.is_empty(), "Greedy direct timing profile exists")
+	if staged_safe.is_empty() or optimal_safe.is_empty() or greedy_direct.is_empty():
+		return
+
+	_assert_true(not bool(staged_safe.get("success", true)), "Safe route without Bloom is predicted to miss the window")
+	_assert_true(float(staged_safe.get("window_margin", 0.0)) < 0.0, "Safe route without Bloom has negative window margin")
+	_assert_true(bool(optimal_safe.get("success", false)), "Optimal safe route is predicted to succeed")
+	_assert_true(float(optimal_safe.get("window_margin", 0.0)) > 0.0, "Optimal safe route keeps positive window margin")
+	_assert_true(not bool(greedy_direct.get("success", true)), "Greedy direct profile is predicted to fail")
+	_assert_equals(str(greedy_direct.get("outcome", "")), "hide_without_window", "Greedy direct profile fails at the hide")
+
+	var measured := await _run_survival_range_profile("optimal_safe")
+	_assert_true(not measured.is_empty(), "Measured optimal safe route returns data")
+	if measured.is_empty():
+		return
+
+	var final_chunk: Dictionary = measured.get("final_state", {}).get("chunk", {})
+	_assert_equals(str(final_chunk.get("route_phase", "")), "complete", "Measured optimal route reaches completion")
+	_assert_true(bool(final_chunk.get("shelter_reached", false)), "Measured optimal route reaches the shelter")
+	_assert_equals(str(final_chunk.get("last_outcome", "")), "success", "Measured optimal route records success")
+
+	var predicted_total := float(measured.get("predicted_total", 0.0))
+	var measured_total := float(measured.get("measured_total", 0.0))
+	var total_diff := absf(predicted_total - measured_total)
+	_assert_true(total_diff <= 0.08, "Measured total matches prediction within 0.08s (diff=%.3f)" % total_diff)
+
+	var predicted_margin := float(measured.get("predicted_window_margin", 0.0))
+	var actual_margin := float(measured.get("actual_window_margin", 0.0))
+	var margin_diff := absf(predicted_margin - actual_margin)
+	_assert_true(margin_diff <= 0.08, "Measured lure margin matches prediction within 0.08s (diff=%.3f)" % margin_diff)
+
+	for step_name in ["scout_move", "stage_endo", "stage_peris", "hide_move", "shelter"]:
+		var step: Dictionary = measured.get("measurements", {}).get(step_name, {})
+		if step.is_empty():
+			continue
+		var step_diff := absf(float(step.get("predicted", 0.0)) - float(step.get("measured", 0.0)))
+		_assert_true(step_diff <= 0.02, "%s timing matches predicted movement within 0.02s" % step_name)
+		_assert_true(not bool(step.get("moving_after", true)), "%s finishes its movement command" % step_name)
+
+func _report_survival_range_playtime() -> void:
+	_test_name = "Survival Range Playtime"
+
+	var predictions := await _load_survival_range_timing_predictions()
+	_assert_true(not predictions.is_empty(), "Loaded survival range timing predictions for report")
+	if predictions.is_empty():
+		return
+
+	var measured := await _run_survival_range_profile("optimal_safe")
+	_assert_true(not measured.is_empty(), "Measured optimal safe route for report")
+	if measured.is_empty():
+		return
+
+	var cycle = DayNightCycleScript.new()
+	var start_state: Dictionary = measured.get("start_state", {})
+	var start_day := int(start_state.get("day", 1))
+	var start_time := float(start_state.get("time", 0.0))
+	var start_clock: Dictionary = start_state.get("clock", {})
+	var phase_name := str(start_clock.get("phase", cycle.get_phase_name(start_time)))
+	var phase_duration := float(start_clock.get("phase_duration_seconds", cycle.get_phase_duration_seconds(start_time)))
+	var phase_remaining := float(start_clock.get("phase_remaining_seconds", cycle.get_seconds_until_next_phase(start_time)))
+	var measured_total := float(measured.get("measured_total", 0.0))
+	var phase_consumed_percent := measured_total / maxf(phase_duration, 1.0) * 100.0
+	var phase_remaining_after := maxf(0.0, phase_remaining - measured_total)
+	var projected_clock: Dictionary = cycle.advance(start_day, start_time, measured_total)
+
+	print("")
+	print("  === Survival Range Playtime ===")
+	print("  Safe route without Bloom: %s (fails, margin %+.2fs)" % [
+		_format_playtime(float(predictions["staged_safe"].get("total_time", 0.0))),
+		float(predictions["staged_safe"].get("window_margin", 0.0)),
+	])
+	print("  Optimal safe route: %s predicted, %s measured (margin %+.2fs)" % [
+		_format_playtime(float(measured.get("predicted_total", 0.0))),
+		_format_playtime(float(measured.get("measured_total", 0.0))),
+		float(measured.get("predicted_window_margin", 0.0)),
+	])
+	print("  Greedy direct route: %s to fail (%.0f predicted seam damage)" % [
+		_format_playtime(float(predictions["greedy_direct"].get("total_time", 0.0))),
+		float(predictions["greedy_direct"].get("predicted_damage", 0.0)),
+	])
+	print("  Starts at Day %d %s and the optimal route uses %.1f%% of that phase window." % [
+		start_day,
+		phase_name,
+		phase_consumed_percent,
+	])
+	print("  Clock after the optimal route: Day %d %s (%s left in the current phase)." % [
+		int(projected_clock.get("day", start_day)),
+		str(cycle.get_phase_name(float(projected_clock.get("time", start_time)))),
+		_format_playtime(phase_remaining_after),
+	])
+	print("")
+
+func _report_mother_ferrolure_playtime() -> void:
+	_test_name = "Mother Ferrolure Playtime"
+
+	var system_optimal := await _run_mother_ferrolure_profile("system_optimal")
+	_assert_true(not system_optimal.is_empty(), "Measured Mother Ferrolure system-optimal route")
+	if system_optimal.is_empty():
+		return
+
+	var movement_optimal := await _run_mother_ferrolure_profile("movement_optimal")
+	_assert_true(not movement_optimal.is_empty(), "Measured Mother Ferrolure movement-optimal route")
+	if movement_optimal.is_empty():
+		return
+
+	var movement_wrong := await _run_mother_ferrolure_profile("movement_wrong_repair")
+	_assert_true(not movement_wrong.is_empty(), "Measured Mother Ferrolure wrong-repair detour route")
+	if movement_wrong.is_empty():
+		return
+
+	var optimal_measurements: Dictionary = movement_optimal.get("measurements", {})
+	var wrong_measurements: Dictionary = movement_wrong.get("measurements", {})
+	_assert_true(bool(optimal_measurements.get("tend_mother", {}).get("result", false)), "Movement-optimal route still stabilizes the mother")
+	_assert_true(bool(wrong_measurements.get("tend_mother", {}).get("result", false)), "Wrong-repair detour still recovers to a stabilized mother")
+
+	var cycle = DayNightCycleScript.new()
+	var start_state: Dictionary = movement_optimal.get("start_state", {})
+	var start_day := int(start_state.get("day", 1))
+	var start_time := float(start_state.get("time", 0.0))
+	var start_clock: Dictionary = start_state.get("clock", {})
+	var phase_name := str(start_clock.get("phase", cycle.get_phase_name(start_time)))
+	var phase_duration := float(start_clock.get("phase_duration_seconds", cycle.get_phase_duration_seconds(start_time)))
+	var optimal_total := float(movement_optimal.get("measured_total", 0.0))
+	var wrong_total := float(movement_wrong.get("measured_total", 0.0))
+	var optimal_phase_consumed_percent := optimal_total / maxf(phase_duration, 1.0) * 100.0
+	var wrong_phase_consumed_percent := wrong_total / maxf(phase_duration, 1.0) * 100.0
+	var optimal_projected_clock: Dictionary = cycle.advance(start_day, start_time, optimal_total)
+	var wrong_projected_clock: Dictionary = cycle.advance(start_day, start_time, wrong_total)
+	var root_animation_lower_bound := 9.0 * MOTHER_ROOT_SETTLE_SECONDS
+
+	print("")
+	print("  === Mother Ferrolure Playtime ===")
+	print("  Root-slide lower bound: %s for 9 committed board shifts." % _format_playtime(root_animation_lower_bound))
+	print("  System-optimal route: %s (%s interactions, %s root settling)." % [
+		_format_playtime(float(system_optimal.get("measured_total", 0.0))),
+		_format_playtime(float(system_optimal.get("interaction_total", 0.0))),
+		_format_playtime(float(system_optimal.get("settle_total", 0.0))),
+	])
+	print("  Movement-optimal upper bound: %s (%s movement, %s interactions, %s root settling)." % [
+		_format_playtime(optimal_total),
+		_format_playtime(float(movement_optimal.get("movement_total", 0.0))),
+		_format_playtime(float(movement_optimal.get("interaction_total", 0.0))),
+		_format_playtime(float(movement_optimal.get("settle_total", 0.0))),
+	])
+	print("  Wrong-repair detour: %s total, adding %s over the clean movement line." % [
+		_format_playtime(wrong_total),
+		_format_playtime(wrong_total - optimal_total),
+	])
+	print("  Starts at Day %d %s. Clean movement line uses %.1f%% of that phase; the wrong-repair detour uses %.1f%%." % [
+		start_day,
+		phase_name,
+		optimal_phase_consumed_percent,
+		wrong_phase_consumed_percent,
+	])
+	print("  Clock after clean solve: Day %d %s. Clock after wrong detour: Day %d %s." % [
+		int(optimal_projected_clock.get("day", start_day)),
+		str(cycle.get_phase_name(float(optimal_projected_clock.get("time", start_time)))),
+		int(wrong_projected_clock.get("day", start_day)),
+		str(cycle.get_phase_name(float(wrong_projected_clock.get("time", start_time)))),
+	])
+	print("")
 
 # --- Test: Grid Pathfinding ---
 func _test_grid_pathfinding() -> void:
@@ -1046,6 +2100,144 @@ func _test_game_state() -> void:
 	gs.unregister_character("aster")
 	_assert_true(not gs.characters.has("aster"), "Character unregistered")
 
+func _test_event_log_roundtrip() -> void:
+	_test_name = "EventLog Roundtrip"
+
+	var grid := GridWorld.new()
+	grid.create_room(10, 8, true)
+
+	# --- Recording session ---
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+	gs.event_log = EventLog.new()
+
+	var start_pos := grid.grid_to_world(Vector2i(1, 1))
+	gs.register_character("aster", start_pos, 3.0, {"atp": 6})
+	_assert_true(gs.event_log.size() == 1, "Register emits one event")
+
+	sched.advance_ticks(0.25)
+	gs.command_move_to_cell("aster", Vector2i(5, 3))
+	sched.advance_ticks(100.0)  # advance past arrival
+	_assert_true(not gs.is_moving("aster"), "Recording: arrived after advance")
+
+	gs.command_move_to_pos("aster", Vector3(2.5, 0, 2.5))
+	sched.advance_ticks(0.4)
+	gs.command_stop("aster")
+	gs.change_move_speed("aster", 5.0)
+
+	var path: Array[Vector3] = [grid.grid_to_world(Vector2i(3, 3)), grid.grid_to_world(Vector2i(4, 4))]
+	gs.command_walk_path("aster", path)
+	sched.advance_ticks(100.0)
+	gs.flush_tick()
+
+	var snap1 := gs.serialize()
+	var event_count := gs.event_log.size()
+	_assert_equals(event_count, 6, "Recorded 6 commands")
+	_assert_true(gs.event_log.recorded_until >= 200.0,
+		"recorded_until tracks scheduler tick (got %f)" % gs.event_log.recorded_until)
+
+	# --- Replay from in-memory log ---
+	var gs_replay := GameState.replay(gs.event_log, grid)
+	var snap_replay := gs_replay.serialize()
+	_assert_true(snap_replay.characters.has("aster"), "Replay reconstructs character")
+
+	var pos_orig := Vector3(snap1.characters["aster"].position[0], snap1.characters["aster"].position[1], snap1.characters["aster"].position[2])
+	var pos_rep := Vector3(snap_replay.characters["aster"].position[0], snap_replay.characters["aster"].position[1], snap_replay.characters["aster"].position[2])
+	_assert_true(pos_orig.distance_to(pos_rep) < 0.01,
+		"Replay final position matches recording (orig=%s, replay=%s)" % [pos_orig, pos_rep])
+	_assert_equals(snap_replay.characters["aster"].move_speed, snap1.characters["aster"].move_speed,
+		"Replay preserves move_speed")
+
+	# --- Roundtrip log through bytes ---
+	var bytes := gs.event_log.to_bytes()
+	_assert_true(bytes.size() > 0, "Log serializes to non-empty bytes")
+	var log_decoded := EventLog.from_bytes(bytes)
+	_assert_equals(log_decoded.size(), event_count, "Decoded log has same event count")
+
+	var gs_replay2 := GameState.replay(log_decoded, grid)
+	var snap_replay2 := gs_replay2.serialize()
+	var pos_rep2 := Vector3(snap_replay2.characters["aster"].position[0], snap_replay2.characters["aster"].position[1], snap_replay2.characters["aster"].position[2])
+	_assert_true(pos_orig.distance_to(pos_rep2) < 0.01,
+		"Position matches after byte-roundtrip + replay (got %s)" % pos_rep2)
+
+	# --- Replay does not append to its own log ---
+	gs_replay.event_log = EventLog.new()
+	gs_replay.command_stop("aster")
+	_assert_true(gs_replay.event_log.size() == 1, "Post-replay recording works (replay flag cleared)")
+
+	# --- Unregister also goes through the log ---
+	gs.unregister_character("aster")
+	_assert_true(gs.event_log.size() == event_count + 1, "Unregister appended to log")
+	var gs_replay3 := GameState.replay(gs.event_log, grid)
+	_assert_true(not gs_replay3.characters.has("aster"), "Replay reflects unregister")
+
+func _test_flora_memory() -> void:
+	_test_name = "Flora Memory"
+
+	var flora := FloraMemorySystem.new()
+	flora.register_node("near", {
+		"species": "Lumivine",
+		"zone": "channels",
+		"position": Vector3.ZERO,
+		"signal_type": "iron",
+		"signal_label": "iron bloom",
+		"signal_pos": Vector3(6, 0, 0),
+		"relationship_strength": 0.82,
+		"tended": true,
+	})
+	flora.register_node("far", {
+		"species": "Archive Vine",
+		"zone": "channels",
+		"position": Vector3(22, 0, 0),
+		"signal_type": "resource",
+		"signal_label": "cache warmth",
+		"signal_pos": Vector3(26, 0, 0),
+		"relationship_strength": 0.55,
+	})
+	flora.register_node("forget", {
+		"species": "Forget-Me-Not",
+		"zone": "channels",
+		"position": Vector3(2, 0, 0),
+		"signal_type": "relationship",
+		"signal_label": "Aster",
+		"signal_pos": Vector3(2, 0, 0),
+		"relationship_strength": 1.0,
+		"role": "relationship",
+		"forget_me_not": true,
+		"tended": true,
+		"childhood_species": true,
+	})
+
+	var started := flora.start_read("near", 0.0)
+	_assert_true(bool(started.get("started", false)), "Sensor read starts from encountered flora")
+	var early_snapshot := flora.get_overlay_snapshot(0.7, "channels")
+	_assert_true(early_snapshot.get("visible_clues", []).size() == 1, "Encounter rule hides unencountered remote nodes")
+	_assert_true(str(early_snapshot.get("visible_clues", [])[0].get("signal_label", "")) == "iron bloom", "Early context stays specific")
+
+	flora.encounter_node("far")
+	flora.start_read("near", 20.0)
+	var propagated_snapshot := flora.get_overlay_snapshot(24.0, "channels")
+	_assert_true(propagated_snapshot.get("visible_clues", []).size() >= 2, "Encountered remote nodes join the network after propagation")
+
+	flora.set_stage(FloraMemorySystem.Stage.LATE)
+	flora.start_read("near", 40.0)
+	var late_snapshot := flora.get_overlay_snapshot(41.0, "channels")
+	var late_clue: Dictionary = late_snapshot.get("visible_clues", [])[0]
+	_assert_true(str(late_clue.get("signal_label", "")) != "iron bloom", "Late degradation coarsens contextual readings")
+	_assert_true(late_snapshot.get("time_remaining", 0.0) < early_snapshot.get("time_remaining", 0.0), "Late read window is shorter than early")
+
+	flora.set_stage(FloraMemorySystem.Stage.EARLY)
+	var forget_read := flora.start_read("forget", 60.0)
+	_assert_equals(str(forget_read.get("scent", "")), "rust going away", "Forget-me-not keeps the phantom scent early")
+	flora.set_stage(FloraMemorySystem.Stage.ENDGAME)
+	var failed_forget := flora.start_read("forget", 80.0)
+	_assert_equals(str(failed_forget.get("scent", "")), "none", "Forget-me-not scent collapses in endgame without repair")
+	flora.apply_cure_component("Chaperone Lattice")
+	var restored_forget := flora.start_read("forget", 100.0)
+	_assert_true(str(restored_forget.get("scent", "")) != "none", "Chaperone Lattice restores relational scent support")
+
 # --- Assertions ---
 
 func _assert_true(condition: bool, message: String) -> void:
@@ -1126,6 +2318,7 @@ func _pop_dialogue_log(instance: Node, step_actions: Dictionary = {}) -> Array[D
 func _drive_sequence_contract(instance: Node, step_actions: Dictionary = {}, max_pops := 20000) -> Dictionary:
 	var log: Array[Dictionary] = []
 	var step_history: Array = []
+	var step_ticks := {}
 	var dialogue_box: Node = instance._dialogue
 	var scheduler: EventScheduler = instance._scheduler
 	var actioned_steps: Dictionary = {}
@@ -1137,6 +2330,8 @@ func _drive_sequence_contract(instance: Node, step_actions: Dictionary = {}, max
 		var current_step: String = instance._current_step
 		if current_step != "" and current_step != step_state["last"]:
 			step_history.append(current_step)
+			if not step_ticks.has(current_step):
+				step_ticks[current_step] = scheduler.get_current_tick()
 			step_state["last"] = current_step
 
 	var capture_line := func(text: String):
@@ -1203,8 +2398,141 @@ func _drive_sequence_contract(instance: Node, step_actions: Dictionary = {}, max
 	return {
 		"dialogue_log": log,
 		"step_history": step_history,
+		"step_ticks": step_ticks,
 		"termination_reason": termination_reason,
 		"actioned_steps": actioned_steps.keys(),
+	}
+
+func _drive_sequence_contract_with_wall_time(
+	instance: Node,
+	step_actions: Dictionary = {},
+	max_pops := 20000,
+	dialogue_speed_multiplier := 1.0,
+	continue_delay := 0.35,
+	process_delta := 0.05
+) -> Dictionary:
+	var log: Array[Dictionary] = []
+	var step_history: Array = []
+	var step_ticks := {}
+	var step_wall_times := {}
+	var dialogue_box: Node = instance._dialogue
+	var scheduler: EventScheduler = instance._scheduler
+	var actioned_steps: Dictionary = {}
+	var termination_reason := "safety"
+	var wall_time := 0.0
+	var scheduler_time := 0.0
+	var dialogue_time := 0.0
+	dialogue_box.speed_multiplier = dialogue_speed_multiplier
+
+	var step_state := {"last": ""}
+	var wait_input_time := 0.0
+
+	var capture_step := func():
+		var current_step: String = instance._current_step
+		if current_step != "" and current_step != step_state["last"]:
+			step_history.append(current_step)
+			if not step_ticks.has(current_step):
+				step_ticks[current_step] = scheduler.get_current_tick()
+			if not step_wall_times.has(current_step):
+				step_wall_times[current_step] = wall_time
+			step_state["last"] = current_step
+
+	var capture_line := func(text: String):
+		log.append({
+			"tick": scheduler.get_current_tick(),
+			"wall_time": wall_time,
+			"text": text,
+			"speaker": dialogue_box._speaker_label.text if dialogue_box._speaker_label.visible else "",
+			"style": dialogue_box._style,
+		})
+
+	var process_dialogue := func(dt: float):
+		dialogue_box._process(dt)
+		wall_time += dt
+		dialogue_time += dt
+		var current_text: String = dialogue_box.get("_current_text")
+		var displayed_chars: float = float(dialogue_box.get("_displayed_chars"))
+		var waiting_for_input: bool = bool(dialogue_box.get("_waiting_for_input"))
+		if waiting_for_input and displayed_chars >= current_text.length():
+			wait_input_time += dt
+			if wait_input_time >= continue_delay:
+				dialogue_box._advance()
+				wait_input_time = 0.0
+		else:
+			wait_input_time = 0.0
+
+	capture_step.call()
+	dialogue_box.line_displayed.connect(capture_line)
+
+	var safety := 0
+	var idle := 0
+	while safety < max_pops:
+		for j in range(200):
+			if not dialogue_box.is_active():
+				break
+			process_dialogue.call(process_delta)
+			capture_step.call()
+
+		var current_step: String = instance._current_step
+		if current_step in step_actions and not actioned_steps.has(current_step):
+			actioned_steps[current_step] = true
+			step_actions[current_step].call()
+			if instance.has_method("_on_process"):
+				instance._on_process(0.1, 1.0)
+			capture_step.call()
+			idle = 0
+			continue
+
+		if current_step == "complete" and scheduler.pending_count() == 0 and not dialogue_box.is_active():
+			termination_reason = "complete"
+			break
+
+		if scheduler.pending_count() == 0:
+			if instance.has_method("_on_process"):
+				instance._on_process(0.1, 1.0)
+				capture_step.call()
+			if instance._current_step == "complete" and not dialogue_box.is_active():
+				termination_reason = "complete"
+				break
+			idle += 1
+			if idle > 20:
+				termination_reason = "idle"
+				break
+			for j in range(10):
+				if not dialogue_box.is_active():
+					break
+				process_dialogue.call(process_delta)
+				capture_step.call()
+			continue
+
+		idle = 0
+		var before_tick := scheduler.get_current_tick()
+		var info: Dictionary = scheduler.pop_next()
+		var after_tick := scheduler.get_current_tick()
+		var dt_tick := maxf(0.0, after_tick - before_tick)
+		wall_time += dt_tick
+		scheduler_time += dt_tick
+		if instance.has_method("_on_process"):
+			instance._on_process(0.1, 1.0)
+		capture_step.call()
+		if info.is_empty():
+			termination_reason = "empty_pop"
+			break
+		safety += 1
+
+	if dialogue_box.line_displayed.is_connected(capture_line):
+		dialogue_box.line_displayed.disconnect(capture_line)
+
+	return {
+		"dialogue_log": log,
+		"step_history": step_history,
+		"step_ticks": step_ticks,
+		"step_wall_times": step_wall_times,
+		"termination_reason": termination_reason,
+		"actioned_steps": actioned_steps.keys(),
+		"elapsed_wall_time": wall_time,
+		"scheduler_elapsed_time": scheduler_time,
+		"dialogue_elapsed_time": dialogue_time,
 	}
 
 func _format_steps(steps: Array) -> String:
@@ -1284,17 +2612,17 @@ func _run_sequence_contract(
 	forbidden_steps: Array = [],
 	expected_final_step := "complete",
 	extra_assertions: Callable = Callable()
-) -> void:
+) -> Dictionary:
 	_test_name = label
 	var scene := load(scene_path)
 	_assert_true(scene != null, "Scene loads")
 	if not scene:
-		return
+		return {}
 
 	var instance: Node = scene.instantiate()
 	_assert_true(instance != null, "Scene instantiates")
 	if not instance:
-		return
+		return {}
 
 	if "suppress_scene_change" in instance:
 		instance.suppress_scene_change = true
@@ -1345,6 +2673,823 @@ func _run_sequence_contract(
 		instance._teardown_sequence()
 	instance.queue_free()
 	await get_tree().process_frame
+	return result
+
+func _format_playtime(seconds: float) -> String:
+	if seconds < 0.0:
+		return "n/a"
+	var total_seconds := int(round(seconds))
+	var minutes := total_seconds / 60
+	var secs := total_seconds % 60
+	return "%d:%02d (%0.1fs)" % [minutes, secs, seconds]
+
+func _step_tick(result: Dictionary, step: String) -> float:
+	var step_ticks: Dictionary = result.get("step_ticks", {})
+	if step_ticks.has(step):
+		return float(step_ticks[step])
+	return -1.0
+
+func _step_wall_time(result: Dictionary, step: String) -> float:
+	var step_wall_times: Dictionary = result.get("step_wall_times", {})
+	if step_wall_times.has(step):
+		return float(step_wall_times[step])
+	return -1.0
+
+func _get_sequence_character_position(instance: Node, char_id: String) -> Vector3:
+	if "_game_state" in instance and instance._game_state and instance._game_state.characters.has(char_id):
+		return instance._game_state.get_position(char_id)
+	var node: Node3D = null
+	if instance.has_method("_get_character_node"):
+		node = instance._get_character_node(char_id)
+	elif char_id == "aster" and "_aster_node" in instance:
+		node = instance._aster_node
+	elif char_id == "peris" and "_peris_node" in instance:
+		node = instance._peris_node
+	elif char_id == "endo" and "_endo" in instance:
+		node = instance._endo
+	elif char_id == "player" and "_player" in instance:
+		node = instance._player
+	return node.global_position if node else Vector3.ZERO
+
+func _get_sequence_character_speed(instance: Node, char_id: String) -> float:
+	if "_game_state" in instance and instance._game_state and instance._game_state.characters.has(char_id):
+		return float(instance._game_state.characters[char_id].move_speed)
+	return 3.0
+
+func _schedule_human_move(
+	instance: Node,
+	char_id: String,
+	target: Vector3,
+	tag: String,
+	reaction_delay := 0.35
+) -> float:
+	var from := _get_sequence_character_position(instance, char_id)
+	var speed := _get_sequence_character_speed(instance, char_id)
+	var travel_time := from.distance_to(target) / maxf(speed, 0.1)
+	var total_delay := reaction_delay + travel_time
+	instance._scheduler.schedule_after(total_delay, func():
+		_set_sequence_character_position(instance, char_id, target)
+	, tag)
+	return total_delay
+
+func _clear_sequence_runtime(instance: Node) -> void:
+	if "_scheduler" in instance and instance._scheduler:
+		instance._scheduler.clear()
+	if "_dialogue" in instance and instance._dialogue and instance._dialogue.has_method("clear"):
+		instance._dialogue.clear()
+
+func _make_act1_sequence_actions(instance: Node) -> Dictionary:
+	var actions := {}
+	actions["channels_to_memory"] = func():
+		_set_sequence_character_position(
+			instance,
+			"aster",
+			Vector3(instance.CHANNELS_MEMORY_TRIGGER_X + 1.0, 0.5, 0.0)
+		)
+	actions["channels_memory"] = func():
+		_clear_sequence_runtime(instance)
+		instance._enter_step("channels_corpse")
+	actions["channels_corpse"] = func():
+		_clear_sequence_runtime(instance)
+		_set_sequence_character_position(instance, "aster", instance.CHANNELS_WINDOW_ONE_STAGE_POS)
+		_set_sequence_character_position(instance, "peris", instance.CHANNELS_WINDOW_ONE_STAGE_POS + Vector3(-1.6, 0.0, 1.2))
+		_set_sequence_character_position(instance, "endo", instance.CHANNELS_WINDOW_ONE_STAGE_POS + Vector3(-2.8, 0.0, -1.0))
+		instance._enter_step("channels_window_one_intro")
+	actions["channels_window_one_intro"] = func():
+		instance._begin_channels_window_lane("window_one")
+	actions["channels_window_one_activate"] = func():
+		instance.activate_channels_window_lure("window_one")
+	actions["channels_window_one_cross"] = func():
+		_set_sequence_character_position(
+			instance,
+			"aster",
+			instance.CHANNELS_WINDOW_ONE_GOAL_POS
+		)
+		instance._update_channels_window_puzzles(0.1, 1.0)
+	actions["channels_to_ferrolure"] = func():
+		_set_sequence_character_position(
+			instance,
+			"aster",
+			Vector3(instance.CHANNELS_FERROLURE_TRIGGER_X + 1.0, 0.5, 0.0)
+		)
+	actions["channels_ferrolure"] = func():
+		_clear_sequence_runtime(instance)
+		_set_sequence_character_position(instance, "aster", instance.CHANNELS_WINDOW_TWO_STAGE_POS)
+		_set_sequence_character_position(instance, "peris", instance.CHANNELS_WINDOW_TWO_STAGE_POS + Vector3(-1.6, 0.0, 1.2))
+		_set_sequence_character_position(instance, "endo", instance.CHANNELS_WINDOW_TWO_STAGE_POS + Vector3(-2.8, 0.0, -1.0))
+		instance._enter_step("channels_window_two_intro")
+	actions["channels_window_two_intro"] = func():
+		instance._begin_channels_window_lane("window_two")
+	actions["channels_window_two_activate"] = func():
+		instance.activate_channels_window_lure("window_two")
+	actions["channels_window_two_cross"] = func():
+		_set_sequence_character_position(
+			instance,
+			"aster",
+			instance.CHANNELS_WINDOW_TWO_GOAL_POS
+		)
+		instance._update_channels_window_puzzles(0.1, 1.0)
+	actions["channels_to_encounter"] = func():
+		_set_sequence_character_position(
+			instance,
+			"aster",
+			Vector3(instance.CHANNELS_ENCOUNTER_TRIGGER_X + 1.0, 0.5, 0.0)
+		)
+	actions["channels_encounter_intro"] = func():
+		_clear_sequence_runtime(instance)
+		_set_sequence_character_position(instance, "aster", instance.CHANNELS_ENCOUNTER_ENTRY_POS + Vector3(-2.4, 0.0, 0.4))
+		_set_sequence_character_position(instance, "peris", instance.CHANNELS_ENCOUNTER_ENTRY_POS + Vector3(-1.4, 0.0, 1.2))
+		_set_sequence_character_position(instance, "endo", instance.CHANNELS_ENCOUNTER_ENTRY_POS)
+		instance._begin_channels_encounter()
+	actions["channels_encounter_activate"] = func():
+		instance._on_channels_run_lure_activated()
+	actions["channels_encounter_hide"] = func():
+		_set_sequence_character_position(
+			instance,
+			"endo",
+			instance.CHANNELS_HIDE_SPOT_POS
+		)
+	actions["channels_encounter_run"] = func():
+		_set_sequence_character_position(
+			instance,
+			"endo",
+			instance.CHANNELS_SHELTER_POS
+		)
+	actions["channels_shelter"] = func():
+		_clear_sequence_runtime(instance)
+		instance._start_channels_explore()
+	actions["channels_explore"] = func():
+		_set_sequence_character_position(
+			instance,
+			"aster",
+			Vector3(instance.CHANNELS_END.x - 4.0, 0.5, 0.0)
+		)
+	actions["stacks_enter"] = func():
+		_clear_sequence_runtime(instance)
+		instance._enter_step("stacks_terminal")
+	actions["stacks_terminal"] = func():
+		_clear_sequence_runtime(instance)
+		instance._enter_step("stacks_signal")
+	actions["stacks_signal"] = func():
+		_clear_sequence_runtime(instance)
+		instance._enter_step("stacks_archive")
+	actions["stacks_archive"] = func():
+		_clear_sequence_runtime(instance)
+		instance._enter_step("stacks_explore")
+	actions["stacks_explore"] = func():
+		_set_sequence_character_position(
+			instance,
+			"aster",
+			Vector3(instance.STACKS_END.x - 4.0, 0.5, 0.0)
+		)
+	actions["rings_enter"] = func():
+		_clear_sequence_runtime(instance)
+		instance._enter_step("rings_client")
+	actions["rings_client"] = func():
+		_clear_sequence_runtime(instance)
+		instance._enter_step("endo_departs")
+	actions["endo_departs"] = func():
+		_clear_sequence_runtime(instance)
+		instance._enter_step("rings_explore")
+	actions["rings_explore"] = func():
+		_set_sequence_character_position(
+			instance,
+			"aster",
+			Vector3(instance.RINGS_END.x - 4.0, 0.5, 0.0)
+		)
+	actions["lockout_approach"] = func():
+		_clear_sequence_runtime(instance)
+		instance._enter_step("lockout_rejected")
+	actions["lockout_rejected"] = func():
+		_clear_sequence_runtime(instance)
+		_set_sequence_character_position(
+			instance,
+			"aster",
+			Vector3(instance.LOCKOUT_START.x + 5.0, 0.5, 0.0)
+		)
+		instance._start_lockout_chase()
+	actions["lockout_chase"] = func():
+		_set_sequence_character_position(
+			instance,
+			"aster",
+			Vector3(instance.LOCKOUT_START.x - 11.0, 0.5, 0.0)
+		)
+	actions["lockout_exile"] = func():
+		_clear_sequence_runtime(instance)
+		instance._enter_step("complete")
+		instance._change_scene_or_record("res://scenes/tutorial/leaving_facility.tscn")
+	actions["complete"] = func():
+		instance._change_scene_or_record("res://scenes/tutorial/leaving_facility.tscn")
+	return actions
+
+func _make_act1_human_actions(instance: Node) -> Dictionary:
+	var actions := {}
+	actions["channels_to_memory"] = func():
+		_schedule_human_move(
+			instance,
+			"aster",
+			Vector3(instance.CHANNELS_MEMORY_TRIGGER_X + 1.0, 0.5, 0.0),
+			"human_channels_to_memory",
+			0.5
+		)
+	actions["channels_to_ferrolure"] = func():
+		_schedule_human_move(
+			instance,
+			"aster",
+			Vector3(instance.CHANNELS_FERROLURE_TRIGGER_X + 1.0, 0.5, 0.0),
+			"human_channels_to_ferrolure",
+			0.45
+		)
+	actions["channels_window_one_intro"] = func():
+		var stage_targets := {
+			"aster": instance.CHANNELS_WINDOW_ONE_STAGE_POS,
+			"peris": instance.CHANNELS_WINDOW_ONE_STAGE_POS + Vector3(-1.6, 0.0, 1.2),
+			"endo": instance.CHANNELS_WINDOW_ONE_STAGE_POS + Vector3(-2.8, 0.0, -1.0),
+		}
+		for char_id in stage_targets.keys():
+			_set_sequence_character_position(instance, char_id, stage_targets[char_id])
+	actions["channels_window_one_activate"] = func():
+		var char_id := "aster"
+		var target: Vector3 = instance.CHANNELS_WINDOW_ONE_LURE_POS
+		var from := _get_sequence_character_position(instance, char_id)
+		var speed := _get_sequence_character_speed(instance, char_id)
+		var travel_time := from.distance_to(target) / maxf(speed, 0.1)
+		var arrive_delay := 0.25 + travel_time
+		instance._scheduler.schedule_after(arrive_delay, func():
+			_set_sequence_character_position(instance, char_id, target)
+		, "human_channels_window_one_arrive")
+		instance._scheduler.schedule_after(arrive_delay + 1.6, func():
+			_set_sequence_character_position(instance, char_id, target)
+			instance.activate_channels_window_lure("window_one")
+		, "human_channels_window_one_activate")
+	actions["channels_window_one_cross"] = func():
+		_schedule_human_move(
+			instance,
+			"aster",
+			instance.CHANNELS_WINDOW_ONE_GOAL_POS,
+			"human_channels_window_one_cross",
+			0.15
+		)
+	actions["channels_to_encounter"] = func():
+		_schedule_human_move(
+			instance,
+			"aster",
+			Vector3(instance.CHANNELS_ENCOUNTER_TRIGGER_X + 1.0, 0.5, 0.0),
+			"human_channels_to_encounter",
+			0.45
+		)
+	actions["channels_window_two_intro"] = func():
+		var stage_targets := {
+			"aster": instance.CHANNELS_WINDOW_TWO_STAGE_POS,
+			"peris": instance.CHANNELS_WINDOW_TWO_STAGE_POS + Vector3(-1.6, 0.0, 1.2),
+			"endo": instance.CHANNELS_WINDOW_TWO_STAGE_POS + Vector3(-2.8, 0.0, -1.0),
+		}
+		for char_id in stage_targets.keys():
+			_set_sequence_character_position(instance, char_id, stage_targets[char_id])
+	actions["channels_window_two_activate"] = func():
+		var char_id := "aster"
+		var target: Vector3 = instance.CHANNELS_WINDOW_TWO_LURE_POS
+		var from := _get_sequence_character_position(instance, char_id)
+		var speed := _get_sequence_character_speed(instance, char_id)
+		var travel_time := from.distance_to(target) / maxf(speed, 0.1)
+		var arrive_delay := 0.25 + travel_time
+		instance._scheduler.schedule_after(arrive_delay, func():
+			_set_sequence_character_position(instance, char_id, target)
+		, "human_channels_window_two_arrive")
+		instance._scheduler.schedule_after(arrive_delay + 1.6, func():
+			_set_sequence_character_position(instance, char_id, target)
+			instance.activate_channels_window_lure("window_two")
+		, "human_channels_window_two_activate")
+	actions["channels_window_two_cross"] = func():
+		_schedule_human_move(
+			instance,
+			"aster",
+			instance.CHANNELS_WINDOW_TWO_GOAL_POS,
+			"human_channels_window_two_cross",
+			0.15
+		)
+	actions["channels_encounter_activate"] = func():
+		var char_id := "endo"
+		var target: Vector3 = instance.CHANNELS_RUN_LURE_POS
+		var from := _get_sequence_character_position(instance, char_id)
+		var speed := _get_sequence_character_speed(instance, char_id)
+		var travel_time := from.distance_to(target) / maxf(speed, 0.1)
+		var arrive_delay := 0.35 + travel_time
+		instance._scheduler.schedule_after(arrive_delay, func():
+			_set_sequence_character_position(instance, char_id, target)
+		, "human_channels_lure_arrive")
+		instance._scheduler.schedule_after(arrive_delay + 2.0, func():
+			_set_sequence_character_position(instance, char_id, target)
+			instance._on_channels_run_lure_activated()
+		, "human_channels_lure_activate")
+	actions["channels_encounter_hide"] = func():
+		_schedule_human_move(
+			instance,
+			"endo",
+			instance.CHANNELS_HIDE_SPOT_POS,
+			"human_channels_encounter_hide",
+			0.2
+		)
+	actions["channels_encounter_run"] = func():
+		_schedule_human_move(
+			instance,
+			"endo",
+			instance.CHANNELS_SHELTER_POS,
+			"human_channels_encounter_run",
+			0.2
+		)
+	actions["channels_explore"] = func():
+		_schedule_human_move(
+			instance,
+			"aster",
+			Vector3(instance.CHANNELS_END.x - 4.0, 0.5, 0.0),
+			"human_channels_explore",
+			0.4
+		)
+	actions["stacks_explore"] = func():
+		_schedule_human_move(
+			instance,
+			"aster",
+			Vector3(instance.STACKS_END.x - 4.0, 0.5, 0.0),
+			"human_stacks_explore",
+			0.4
+		)
+	actions["rings_explore"] = func():
+		_schedule_human_move(
+			instance,
+			"aster",
+			Vector3(instance.RINGS_END.x - 4.0, 0.5, 0.0),
+			"human_rings_explore",
+			0.4
+		)
+	actions["lockout_chase"] = func():
+		_schedule_human_move(
+			instance,
+			"aster",
+			Vector3(instance.LOCKOUT_START.x - 11.0, 0.5, 0.0),
+			"human_lockout_chase",
+			0.2
+		)
+	return actions
+
+func _dialogue_style_speed_multiplier(style: String) -> float:
+	match style:
+		"fragment":
+			return 0.4
+		"poem":
+			return 0.7
+		"whisper":
+			return 0.25
+		_:
+			return 1.0
+
+func _dialogue_line_duration(key: String, continue_delay := 0.35) -> float:
+	var line := DialogueData.get_line(key)
+	var cps := 30.0 * _dialogue_style_speed_multiplier(line.style)
+	var display_time := line.text.length() / maxf(cps, 1.0)
+	var hold_time := continue_delay if line.wait else 2.0
+	return display_time + hold_time
+
+func _dialogue_chain_duration(keys: Array, delay_between := 0.0, continue_delay := 0.35) -> float:
+	var total := 0.0
+	for i in range(keys.size()):
+		total += _dialogue_line_duration(str(keys[i]), continue_delay)
+		if delay_between > 0.0 and i < keys.size() - 1:
+			total += delay_between
+	return total
+
+func _travel_duration(from: Vector3, to: Vector3, speed: float, reaction_delay := 0.0) -> float:
+	return reaction_delay + from.distance_to(to) / maxf(speed, 0.1)
+
+func _party_move_duration(from_positions: Dictionary, destinations: Dictionary, speeds: Dictionary) -> float:
+	var longest := 0.0
+	for id in destinations.keys():
+		if not from_positions.has(id):
+			continue
+		longest = maxf(
+			longest,
+			from_positions[id].distance_to(destinations[id]) / maxf(float(speeds.get(id, 3.0)), 0.1)
+		)
+	return longest
+
+func _mark_estimate_step(step_wall_times: Dictionary, step_name: String, system_time: float, dialogue_time: float) -> void:
+	step_wall_times[step_name] = system_time + dialogue_time
+
+func _estimate_act1_human_playtime() -> Dictionary:
+	var scene := load("res://scenes/tutorial/act1.tscn")
+	if not scene:
+		return {}
+	var instance: Node = scene.instantiate()
+	if not instance:
+		return {}
+
+	var speeds := {
+		"aster": 3.0,
+		"peris": 2.5,
+		"endo": 2.5,
+	}
+	var positions := {
+		"aster": instance.CHANNELS_START + Vector3(5, 0.5, 0),
+		"peris": instance.CHANNELS_START + Vector3(0, 0.5, 1),
+		"endo": instance.CHANNELS_START + Vector3(-1, 0.5, 0),
+	}
+	var step_wall_times := {}
+	var system_time := 2.5
+	var dialogue_time := 0.0
+
+	_mark_estimate_step(step_wall_times, "channels_enter", system_time, dialogue_time)
+	dialogue_time += _dialogue_chain_duration([
+		"channels.narration.enter",
+		"channels.aster.fluid",
+		"channels.peris.sound",
+	])
+	system_time += 0.5
+
+	_mark_estimate_step(step_wall_times, "channels_to_memory", system_time, dialogue_time)
+	var target := Vector3(instance.CHANNELS_MEMORY_TRIGGER_X + 1.0, 0.5, 0.0)
+	system_time += _travel_duration(positions["aster"], target, speeds["aster"], 0.5)
+	positions["aster"] = target
+
+	_mark_estimate_step(step_wall_times, "channels_memory", system_time, dialogue_time)
+	var party_targets := {
+		"peris": instance.CHANNELS_BODY_POS + Vector3(-1.0, 0.0, 1.1),
+		"aster": instance.CHANNELS_BODY_POS + Vector3(-3.0, 0.0, 0.4),
+		"endo": instance.CHANNELS_BODY_POS + Vector3(-4.2, 0.0, -0.8),
+	}
+	system_time += _party_move_duration(positions, party_targets, speeds)
+	for id in party_targets.keys():
+		positions[id] = party_targets[id]
+	dialogue_time += _dialogue_chain_duration([
+		"channels.narration.memory",
+		"channels.peris.know_place",
+		"channels.aster.not_here",
+		"channels.peris.saw_it",
+		"channels.narration.leads",
+	])
+	system_time += 0.5
+
+	_mark_estimate_step(step_wall_times, "channels_corpse", system_time, dialogue_time)
+	dialogue_time += _dialogue_chain_duration([
+		"channels.narration.body",
+		"channels.endo.kneel",
+		"channels.aster.report",
+		"channels.peris.smell",
+		"channels.peris.clients",
+		"channels.aster.lysate",
+		"channels.peris.people",
+		"channels.aster.hungry",
+		"channels.aster.downgrade",
+	])
+	system_time += 0.5
+
+	_mark_estimate_step(step_wall_times, "channels_window_one_intro", system_time, dialogue_time)
+	party_targets = {
+		"aster": instance.CHANNELS_WINDOW_ONE_STAGE_POS,
+		"peris": instance.CHANNELS_WINDOW_ONE_STAGE_POS + Vector3(-1.6, 0.0, 1.2),
+		"endo": instance.CHANNELS_WINDOW_ONE_STAGE_POS + Vector3(-2.8, 0.0, -1.0),
+	}
+	system_time += _party_move_duration(positions, party_targets, speeds)
+	for id in party_targets.keys():
+		positions[id] = party_targets[id]
+	dialogue_time += _dialogue_chain_duration([
+		"channels.narration.window_one",
+		"channels.endo.window_one",
+	])
+	system_time += 0.35
+
+	_mark_estimate_step(step_wall_times, "channels_window_one_activate", system_time, dialogue_time)
+	system_time += _travel_duration(
+		positions["aster"],
+		instance.CHANNELS_WINDOW_ONE_LURE_POS,
+		speeds["aster"],
+		0.25
+	)
+	positions["aster"] = instance.CHANNELS_WINDOW_ONE_LURE_POS
+	system_time += 1.6
+
+	_mark_estimate_step(step_wall_times, "channels_window_one_cross", system_time, dialogue_time)
+	system_time += _travel_duration(
+		positions["aster"],
+		instance.CHANNELS_WINDOW_ONE_GOAL_POS,
+		speeds["aster"],
+		0.15
+	)
+	positions["aster"] = instance.CHANNELS_WINDOW_ONE_GOAL_POS
+
+	_mark_estimate_step(step_wall_times, "channels_to_ferrolure", system_time, dialogue_time)
+	target = Vector3(instance.CHANNELS_FERROLURE_TRIGGER_X + 1.0, 0.5, 0.0)
+	system_time += _travel_duration(positions["aster"], target, speeds["aster"], 0.45)
+	positions["aster"] = target
+
+	_mark_estimate_step(step_wall_times, "channels_ferrolure", system_time, dialogue_time)
+	party_targets = {
+		"peris": instance.CHANNELS_FERROLURE_POS + Vector3(-0.8, 0.0, 0.6),
+		"aster": instance.CHANNELS_FERROLURE_POS + Vector3(-2.5, 0.0, -0.3),
+		"endo": instance.CHANNELS_FERROLURE_POS + Vector3(-3.6, 0.0, 1.2),
+	}
+	system_time += _party_move_duration(positions, party_targets, speeds)
+	for id in party_targets.keys():
+		positions[id] = party_targets[id]
+	dialogue_time += _dialogue_chain_duration([
+		"channels.narration.flora",
+		"channels.aster.lure",
+		"channels.peris.signals",
+		"channels.peris.pause",
+	])
+	dialogue_time += _dialogue_chain_duration([
+		"channels.peris.touch",
+		"channels.peris.always",
+	])
+	system_time += 2.0
+
+	_mark_estimate_step(step_wall_times, "channels_window_two_intro", system_time, dialogue_time)
+	party_targets = {
+		"aster": instance.CHANNELS_WINDOW_TWO_STAGE_POS,
+		"peris": instance.CHANNELS_WINDOW_TWO_STAGE_POS + Vector3(-1.6, 0.0, 1.2),
+		"endo": instance.CHANNELS_WINDOW_TWO_STAGE_POS + Vector3(-2.8, 0.0, -1.0),
+	}
+	system_time += _party_move_duration(positions, party_targets, speeds)
+	for id in party_targets.keys():
+		positions[id] = party_targets[id]
+	dialogue_time += _dialogue_chain_duration([
+		"channels.narration.window_two",
+		"channels.peris.window_two",
+	])
+	system_time += 0.35
+
+	_mark_estimate_step(step_wall_times, "channels_window_two_activate", system_time, dialogue_time)
+	system_time += _travel_duration(
+		positions["aster"],
+		instance.CHANNELS_WINDOW_TWO_LURE_POS,
+		speeds["aster"],
+		0.25
+	)
+	positions["aster"] = instance.CHANNELS_WINDOW_TWO_LURE_POS
+	system_time += 1.6
+
+	_mark_estimate_step(step_wall_times, "channels_window_two_cross", system_time, dialogue_time)
+	system_time += _travel_duration(
+		positions["aster"],
+		instance.CHANNELS_WINDOW_TWO_GOAL_POS,
+		speeds["aster"],
+		0.15
+	)
+	positions["aster"] = instance.CHANNELS_WINDOW_TWO_GOAL_POS
+
+	_mark_estimate_step(step_wall_times, "channels_to_encounter", system_time, dialogue_time)
+	target = Vector3(instance.CHANNELS_ENCOUNTER_TRIGGER_X + 1.0, 0.5, 0.0)
+	system_time += _travel_duration(positions["aster"], target, speeds["aster"], 0.45)
+	positions["aster"] = target
+
+	_mark_estimate_step(step_wall_times, "channels_encounter_intro", system_time, dialogue_time)
+	party_targets = {
+		"aster": instance.CHANNELS_ENCOUNTER_ENTRY_POS + Vector3(-2.4, 0.0, 0.4),
+		"peris": instance.CHANNELS_ENCOUNTER_ENTRY_POS + Vector3(-1.4, 0.0, 1.2),
+		"endo": instance.CHANNELS_ENCOUNTER_ENTRY_POS,
+	}
+	system_time += _party_move_duration(positions, party_targets, speeds)
+	for id in party_targets.keys():
+		positions[id] = party_targets[id]
+
+	_mark_estimate_step(step_wall_times, "channels_encounter_activate", system_time, dialogue_time)
+	var lure_arrival_time := _travel_duration(
+		positions["endo"],
+		instance.CHANNELS_RUN_LURE_POS,
+		speeds["endo"],
+		0.35
+	)
+	system_time += lure_arrival_time + 2.0
+	positions["endo"] = instance.CHANNELS_RUN_LURE_POS
+
+	_mark_estimate_step(step_wall_times, "channels_encounter_hide", system_time, dialogue_time)
+	var hide_travel_time := _travel_duration(
+		positions["endo"],
+		instance.CHANNELS_HIDE_SPOT_POS,
+		speeds["endo"],
+		0.2
+	)
+	system_time += 20.0
+	positions["endo"] = instance.CHANNELS_HIDE_SPOT_POS
+
+	_mark_estimate_step(step_wall_times, "channels_encounter_run", system_time, dialogue_time)
+	system_time += _travel_duration(
+		positions["endo"],
+		instance.CHANNELS_SHELTER_POS,
+		speeds["endo"],
+		0.2
+	)
+	positions["endo"] = instance.CHANNELS_SHELTER_POS
+
+	_mark_estimate_step(step_wall_times, "channels_shelter", system_time, dialogue_time)
+	party_targets = {
+		"aster": instance.CHANNELS_SHELTER_POS + Vector3(-1.8, 0.0, -1.2),
+		"peris": instance.CHANNELS_SHELTER_POS + Vector3(-0.8, 0.0, 0.9),
+		"endo": instance.CHANNELS_SHELTER_POS + Vector3(-0.3, 0.0, -0.2),
+	}
+	system_time += _party_move_duration(positions, party_targets, speeds)
+	for id in party_targets.keys():
+		positions[id] = party_targets[id]
+	dialogue_time += _dialogue_chain_duration([
+		"channels.narration.shelter",
+		"channels.endo.door",
+		"channels.narration.recuperate",
+		"channels.narration.shortcut",
+	])
+	system_time += 0.5
+
+	_mark_estimate_step(step_wall_times, "channels_explore", system_time, dialogue_time)
+	target = Vector3(instance.CHANNELS_END.x - 4.0, 0.5, 0.0)
+	system_time += _travel_duration(positions["aster"], target, speeds["aster"], 0.4)
+	positions["aster"] = target
+
+	_mark_estimate_step(step_wall_times, "stacks_enter", system_time, dialogue_time)
+	dialogue_time += _dialogue_chain_duration([
+		"stacks.narration.enter",
+		"stacks.aster.cores",
+		"stacks.peris.noisy",
+		"stacks.narration.network_address",
+		"stacks.aster.know_number",
+	])
+	system_time += 2.0
+
+	_mark_estimate_step(step_wall_times, "stacks_terminal", system_time, dialogue_time)
+	dialogue_time += _dialogue_chain_duration([
+		"stacks.aster.support_team",
+		"stacks.aster.drink_machine",
+		"stacks.peris.priorities",
+		"stacks.narration.cleaned_terminal",
+		"stacks.aster.cleaner_than_place",
+		"stacks.aster.simplodrink",
+		"stacks.peris.miss_machine",
+		"stacks.aster.expectation",
+	])
+	system_time += 2.0
+
+	_mark_estimate_step(step_wall_times, "stacks_signal", system_time, dialogue_time)
+	dialogue_time += _dialogue_chain_duration([
+		"stacks.narration.instrumented_lane",
+		"stacks.aster.nonstandard",
+		"stacks.aster.metrics",
+		"stacks.peris.damn_cooler",
+		"stacks.aster.cooling_part",
+		"stacks.peris.meaning",
+		"stacks.aster.standardization",
+	])
+	system_time += 2.0
+
+	_mark_estimate_step(step_wall_times, "stacks_archive", system_time, dialogue_time)
+	dialogue_time += _dialogue_chain_duration([
+		"stacks.narration.workspace",
+		"stacks.aster.pull_archive",
+		"stacks.aster.ghost_ids",
+		"stacks.peris.fake_permissions",
+		"stacks.aster.security_patch",
+		"stacks.aster.not_the_type",
+		"stacks.aster.right",
+	])
+	system_time += 2.0
+
+	_mark_estimate_step(step_wall_times, "stacks_explore", system_time, dialogue_time)
+	target = Vector3(instance.STACKS_END.x - 4.0, 0.5, 0.0)
+	system_time += _travel_duration(positions["aster"], target, speeds["aster"], 0.4)
+	positions["aster"] = target
+
+	_mark_estimate_step(step_wall_times, "rings_enter", system_time, dialogue_time)
+	dialogue_time += _dialogue_chain_duration([
+		"rings.narration.enter",
+		"rings.aster.signal",
+		"rings.peris.remember",
+	])
+	system_time += 3.0
+
+	_mark_estimate_step(step_wall_times, "rings_client", system_time, dialogue_time)
+	dialogue_time += _dialogue_chain_duration([
+		"rings.peris.hello",
+		"rings.narration.client",
+		"rings.peris.wall",
+		"rings.narration.empty",
+		"rings.aster.tags",
+	])
+	system_time += 3.0
+
+	_mark_estimate_step(step_wall_times, "endo_departs", system_time, dialogue_time)
+	dialogue_time += _dialogue_chain_duration([
+		"rings.endo.discomfort",
+		"rings.endo.stops",
+		"rings.peris.endo",
+		"rings.narration.leaving",
+		"rings.peris.understands",
+		"rings.aster.just_us",
+		"rings.peris.visiting",
+	])
+	system_time += 2.0
+
+	_mark_estimate_step(step_wall_times, "rings_explore", system_time, dialogue_time)
+	target = Vector3(instance.RINGS_END.x - 4.0, 0.5, 0.0)
+	system_time += _travel_duration(positions["aster"], target, speeds["aster"], 0.4)
+	positions["aster"] = target
+
+	_mark_estimate_step(step_wall_times, "lockout_approach", system_time, dialogue_time)
+	dialogue_time += _dialogue_chain_duration([
+		"lockout.narration.clean",
+		"lockout.aster.signals",
+		"lockout.aster.panel",
+	])
+	system_time += 1.0
+
+	_mark_estimate_step(step_wall_times, "lockout_rejected", system_time, dialogue_time)
+	dialogue_time += _dialogue_chain_duration([
+		"lockout.system.rejected",
+		"lockout.aster.again",
+		"lockout.system.rejected2",
+		"lockout.aster.hack",
+		"lockout.system.blocked",
+	])
+	system_time += 1.0
+
+	_mark_estimate_step(step_wall_times, "lockout_chase", system_time, dialogue_time)
+	dialogue_time += _dialogue_chain_duration([
+		"lockout.narration.footsteps",
+		"lockout.peris.run",
+		"lockout.narration.chase",
+	])
+	target = Vector3(instance.LOCKOUT_START.x - 11.0, 0.5, 0.0)
+	system_time += _travel_duration(positions["aster"], target, speeds["aster"], 0.2)
+	positions["aster"] = target
+
+	_mark_estimate_step(step_wall_times, "lockout_exile", system_time, dialogue_time)
+	dialogue_time += _dialogue_chain_duration([
+		"lockout.narration.boundary",
+		"lockout.aster.not_in",
+		"lockout.peris.back_to",
+		"lockout.narration.forward",
+	])
+	system_time += 2.0
+
+	_mark_estimate_step(step_wall_times, "complete", system_time, dialogue_time)
+	instance.queue_free()
+	return {
+		"step_wall_times": step_wall_times,
+		"system_time": system_time,
+		"dialogue_time": dialogue_time,
+		"scene_total": system_time + dialogue_time,
+		"hide_travel_time": hide_travel_time,
+	}
+
+func _report_act1_playtime() -> void:
+	var result := await _run_sequence_contract(
+		"Act 1 Playtime",
+		"res://scenes/tutorial/act1.tscn",
+		ACT1_SEQUENCE_STEPS,
+		Callable(self, "_make_act1_sequence_actions"),
+		Callable(),
+		"res://scenes/tutorial/leaving_facility.tscn"
+	)
+	var start_tick := _step_tick(result, "channels_enter")
+	var shelter_tick := _step_tick(result, "channels_shelter")
+	var explore_tick := _step_tick(result, "channels_explore")
+	var complete_tick := _step_tick(result, "complete")
+	var channels_to_shelter := shelter_tick - start_tick
+	var channels_to_explore := explore_tick - start_tick
+	var act1_total := complete_tick - start_tick
+	_assert_true(start_tick >= 0.0, "Captured channels entry tick")
+	_assert_true(shelter_tick >= 0.0, "Captured shelter tick")
+	_assert_true(explore_tick >= 0.0, "Captured channels explore tick")
+	_assert_true(complete_tick >= 0.0, "Captured Act 1 completion tick")
+	print("")
+	print("  === Act 1 Playtime ===")
+	print("  Channels to shelter: %s" % _format_playtime(channels_to_shelter))
+	print("  Channels to free explore: %s" % _format_playtime(channels_to_explore))
+	print("  Full scripted Act 1: %s" % _format_playtime(act1_total))
+	print("")
+
+func _report_act1_human_playtime() -> void:
+	_test_name = "Act 1 Human Playtime"
+	var result := _estimate_act1_human_playtime()
+	_assert_true(not result.is_empty(), "Computed human playtime estimate")
+	var channels_enter_wall := _step_wall_time(result, "channels_enter")
+	var channels_shelter_wall := _step_wall_time(result, "channels_shelter")
+	var channels_explore_wall := _step_wall_time(result, "channels_explore")
+	var complete_wall := _step_wall_time(result, "complete")
+	var scene_total := float(result.get("scene_total", 0.0))
+	var scheduler_total := float(result.get("system_time", 0.0))
+	var dialogue_total := float(result.get("dialogue_time", 0.0))
+	var hide_travel_time := float(result.get("hide_travel_time", 0.0))
+	_assert_true(channels_enter_wall >= 0.0, "Captured channels entry wall time")
+	_assert_true(channels_shelter_wall >= 0.0, "Captured shelter wall time")
+	_assert_true(channels_explore_wall >= 0.0, "Captured channels explore wall time")
+	_assert_true(complete_wall >= 0.0, "Captured Act 1 completion wall time")
+	_assert_true(hide_travel_time < 20.0, "Encounter hide run fits within lure duration")
+
+	print("")
+	print("  === Act 1 Human Playtime ===")
+	print("  Channels to shelter: %s" % _format_playtime(channels_shelter_wall - channels_enter_wall))
+	print("  Channels to free explore: %s" % _format_playtime(channels_explore_wall - channels_enter_wall))
+	print("  Full scripted Act 1 (from channels enter): %s" % _format_playtime(complete_wall - channels_enter_wall))
+	print("  Full scripted scene (including fade): %s" % _format_playtime(scene_total))
+	print("  Scheduler-driven time: %s" % _format_playtime(scheduler_total))
+	print("  Dialogue/display time: %s" % _format_playtime(dialogue_total))
+	print("")
 
 func _test_tag_day_dialogue() -> void:
 	_test_name = "Tag Day Dialogue"
@@ -2176,17 +4321,58 @@ func _test_act1() -> void:
 
 	# Verify key scene anchors exist
 	_assert_true(instance.find_child("ChannelsBody", true, false) != null, "Body landmark in channels")
+	_assert_true(instance.find_child("ChannelsWindowLane_window_one", true, false) != null, "First timed window lane in channels")
+	_assert_true(instance.find_child("ChannelsWindowInteract_window_one", true, false) != null, "First timed window interactable in channels")
+	_assert_true(instance.find_child("ChannelsWindowChannel_window_one_0", true, false) != null, "First timed window rhythm channel in channels")
+	_assert_true(instance.find_child("ChannelsWindowBridge_window_one_0", true, false) != null, "First timed window bridge segment in channels")
+	_assert_true(instance.find_child("ChannelsWindowCorpse_window_one_0", true, false) != null, "First timed window corpse cluster in channels")
+	_assert_true(instance.find_child("ChannelsWindowSwarm_window_one_0", true, false) != null, "First timed window siderophore unit in channels")
 	_assert_true(instance.find_child("SecondFerrolure", true, false) != null, "Second ferrolure in channels")
+	_assert_true(instance.find_child("ChannelsWindowLane_window_two", true, false) != null, "Second timed window lane in channels")
+	_assert_true(instance.find_child("ChannelsWindowInteract_window_two", true, false) != null, "Second timed window interactable in channels")
+	_assert_true(instance.find_child("ChannelsWindowChannel_window_two_0", true, false) != null, "Second timed window rhythm channel in channels")
 	_assert_true(instance.find_child("EncounterFerrolure", true, false) != null, "Encounter ferrolure in channels")
 	_assert_true(instance.find_child("EncounterFerrolureInteract", true, false) != null, "Encounter interactable in channels")
 	_assert_true(instance.find_child("ChannelsHideSpot", true, false) != null, "Hide spot in channels")
 	_assert_true(instance.find_child("ChannelsSwarm_0", true, false) != null, "Swarm cluster in channels")
 	_assert_true(instance.find_child("ChannelsShelterDoor", true, false) != null, "Shelter door in channels")
+	_assert_true(instance.find_child("ChannelsShortcutGate", true, false) != null, "Shortcut gate in channels")
+	_assert_true(instance.find_child("ChannelsShelterLabel", true, false) != null, "Shelter label in channels")
 	_assert_true(instance.find_child("DataTerminal", true, false) != null, "Terminal interactable in stacks")
+	_assert_true(instance.find_child("SignalWall", true, false) != null, "Signal wall interactable in stacks")
+	_assert_true(instance.find_child("SupportWorkspace", true, false) != null, "Support workspace interactable in stacks")
 	_assert_true(instance.find_child("ClientNPC", true, false) != null, "Client interactable in rings")
 	_assert_true(instance.find_child("AccessPanel", true, false) != null, "Access panel in lockout")
+	_assert_true(not instance._channels_shortcut_unlocked, "Channels shortcut starts locked")
+	_assert_true(not instance._channels_party_recuperated, "Party starts unrested in channels")
+
+	# Smoke the two timed ferrolure windows that pad out the Channels route.
+	instance.start_channels_window_puzzle("window_one")
+	await get_tree().process_frame
+	_assert_true(instance._current_step == "channels_window_one_activate", "Window one enters activation step")
+	var window_one_contract: Dictionary = instance.headless_get_state().get("channels_window_lanes", {}).get("window_one", {})
+	_assert_equals(int(window_one_contract.get("periodic_channel_count", 0)), 3, "Window one exposes three periodic flood channels")
+	_assert_true(bool(window_one_contract.get("wash_analysis", {}).get("guaranteed", false)), "Window one wash analysis guarantees a washout across timing offsets")
+	instance.activate_channels_window_lure("window_one")
+	_assert_true(instance._current_step == "channels_window_one_cross", "Window one activation opens the crossing window")
+	instance.headless_advance(6.0)
+	var window_one_rhythm_state: Dictionary = instance.headless_get_state().get("channels_window_lanes", {}).get("window_one", {})
+	_assert_equals(str(window_one_rhythm_state.get("swarm_state", "")), "washed", "Window one ferrolure branch washes the siderophore pack")
+	_assert_true(int(window_one_rhythm_state.get("washed_channel_index", -1)) >= 0, "Window one records which rhythm channel washed the pack")
+	instance.headless_set_character_position("aster", instance.CHANNELS_WINDOW_ONE_GOAL_POS)
+	instance._update_channels_window_puzzles(0.1, 1.0)
+	_assert_true(instance._current_step == "channels_to_ferrolure", "Window one success returns to the ferrolure travel step")
+	_assert_true(instance._channels_window_lanes["window_one"]["last_outcome"] == "success", "Window one records a success outcome")
+
+	instance.start_channels_window_puzzle("window_two")
+	await get_tree().process_frame
+	instance.activate_channels_window_lure("window_two")
+	instance.headless_advance(instance.CHANNELS_WINDOW_TWO_DURATION + 0.1)
+	_assert_true(instance._channels_window_lanes["window_two"]["phase"] == "failed", "Window two can fail on a missed crossing window")
+	_assert_true(instance._channels_window_lanes["window_two"]["last_outcome"] == "window_closed", "Window two failure records the timeout reason")
 
 	# Smoke the Channels hide-and-run encounter.
+	instance.prepare_channels_fragment()
 	var hide_spot := instance.find_child("ChannelsHideSpot", true, false)
 	instance._begin_channels_encounter()
 	await get_tree().process_frame
@@ -2215,14 +4401,55 @@ func _test_act1() -> void:
 	_assert_true(instance._current_step == "channels_encounter_run", "Hidden party can transition into the run step")
 	_assert_true(not instance._channels_run_lure_active, "Lure powers down before the shelter sprint")
 
-	endo.global_position = Vector3(198.0, 0.5, 12.0)
+	instance._aster_hp = 41.0
+	instance._peris_hp = 58.0
+	if instance._game_state.characters.has("aster"):
+		instance._game_state.characters["aster"].stats["atp"] = 3.0
+	if instance._game_state.characters.has("peris"):
+		instance._game_state.characters["peris"].stats["atp"] = 4.0
+	endo.global_position = instance.CHANNELS_SHELTER_POS
 	instance._update_channels_encounter(0.1, 1.0)
 	_assert_true(instance._current_step == "channels_shelter", "Encounter success advances to the shelter beat")
+	_assert_true(instance._channels_shortcut_unlocked, "Shelter reach unlocks the channels shortcut")
+	_assert_true(instance._channels_party_recuperated, "Shelter reach marks the party as recuperated")
+	_assert_equals(instance._aster_hp, 100.0, "Shelter recuperation restores Aster HP")
+	_assert_equals(instance._peris_hp, 100.0, "Shelter recuperation restores Peris HP")
+	_assert_equals(float(instance._game_state.characters["aster"].stats.get("atp", 0.0)), 8.0, "Shelter recuperation restores Aster ATP")
+	_assert_equals(float(instance._game_state.characters["peris"].stats.get("atp", 0.0)), 8.0, "Shelter recuperation restores Peris ATP")
+
+	EngramJournal.reset_state(false)
+	instance.prepare_stacks_fragment("engram")
+	instance.trigger_stacks_support_log()
+	await get_tree().process_frame
+	_assert_equals(EngramJournal.get_entry_count(), 1, "Stacks intro creates one Engram support log")
+	_assert_true(instance._engram_overlay.visible, "Stacks intro opens the Engram overlay")
+	_assert_equals(instance.headless_get_state()["stacks"]["engram"]["story_key"], "stacks_support_team_log", "Stacks intro records the support log story key")
+	instance.close_stacks_engram_overlay()
+	instance.headless_advance(0.2)
+	_assert_true(instance._current_step == "stacks_terminal", "Closing the Engram advances to the terminal beat")
+
+	instance.prepare_stacks_fragment("terminal")
+	instance.trigger_stacks_terminal()
+	_assert_true(instance._stacks_terminal_interacted, "Stacks terminal interaction is tracked")
+	_assert_true(instance._current_step == "stacks_signal", "Stacks terminal interaction advances to signal beat")
+
+	instance.prepare_stacks_fragment("signal")
+	instance.trigger_stacks_signal()
+	_assert_true(instance._stacks_signal_interacted, "Stacks signal interaction is tracked")
+	_assert_true(instance._current_step == "stacks_archive", "Stacks signal interaction advances to archive beat")
+
+	instance.prepare_stacks_fragment("archive")
+	instance.trigger_stacks_archive()
+	_assert_true(instance._stacks_archive_interacted, "Stacks workspace interaction is tracked")
+	_assert_true(instance._stacks_audit_flags_found, "Stacks workspace interaction flags the audit clue")
+	_assert_true(instance._current_step == "stacks_explore", "Stacks workspace interaction returns control to exploration")
 
 	# Verify dialogue keys exist for all scenes
 	for prefix in ["channels.narration.enter", "channels.peris.know_place", "channels.aster.report",
-		"channels.peris.touch", "channels.endo.kneel",
-		"stacks.aster.cleaned", "stacks.aster.means",
+		"channels.narration.window_one", "channels.endo.window_one", "channels.peris.touch",
+		"channels.narration.window_two", "channels.peris.window_two", "channels.endo.kneel",
+		"channels.narration.recuperate", "channels.narration.shortcut",
+		"stacks.engram.support_log.title", "stacks.aster.support_team", "stacks.aster.standardization", "stacks.aster.right",
 		"rings.peris.wall", "rings.endo.stops", "rings.peris.visiting",
 		"lockout.system.rejected", "lockout.aster.not_in", "lockout.peris.back_to"]:
 		var text := DialogueData.text(prefix)
@@ -4972,75 +7199,7 @@ func _test_sequence_contracts() -> void:
 			instance._scheduler.clear()
 		return actions
 
-	var act1_actions := func(instance: Node):
-		var actions := {}
-		actions["channels_to_memory"] = func():
-			_set_sequence_character_position(
-				instance,
-				"aster",
-				Vector3(instance.CHANNELS_MEMORY_TRIGGER_X + 1.0, 0.5, 0.0)
-			)
-		actions["channels_memory"] = func():
-			instance._start_channels_corpse()
-		actions["channels_to_ferrolure"] = func():
-			_set_sequence_character_position(
-				instance,
-				"aster",
-				Vector3(instance.CHANNELS_FERROLURE_TRIGGER_X + 1.0, 0.5, 0.0)
-			)
-		actions["channels_ferrolure"] = func():
-			instance._start_channels_to_encounter()
-		actions["channels_to_encounter"] = func():
-			_set_sequence_character_position(
-				instance,
-				"aster",
-				Vector3(instance.CHANNELS_ENCOUNTER_TRIGGER_X + 1.0, 0.5, 0.0)
-			)
-		actions["channels_encounter_intro"] = func():
-			instance._begin_channels_encounter()
-		actions["channels_encounter_activate"] = func():
-			instance._on_channels_run_lure_activated()
-		actions["channels_encounter_hide"] = func():
-			_set_sequence_character_position(
-				instance,
-				"endo",
-				instance.CHANNELS_HIDE_SPOT_POS
-			)
-		actions["channels_encounter_run"] = func():
-			_set_sequence_character_position(
-				instance,
-				"endo",
-				instance.CHANNELS_SHELTER_POS
-			)
-		actions["channels_shelter"] = func():
-			instance._start_channels_explore()
-		actions["channels_explore"] = func():
-			_set_sequence_character_position(
-				instance,
-				"aster",
-				Vector3(instance.CHANNELS_END.x - 4.0, 0.5, 0.0)
-			)
-		actions["stacks_explore"] = func():
-			_set_sequence_character_position(
-				instance,
-				"aster",
-				Vector3(instance.STACKS_END.x - 4.0, 0.5, 0.0)
-			)
-		actions["rings_explore"] = func():
-			_set_sequence_character_position(
-				instance,
-				"aster",
-				Vector3(instance.RINGS_END.x - 4.0, 0.5, 0.0)
-			)
-		actions["lockout_chase"] = func():
-			_set_sequence_character_position(
-				instance,
-				"aster",
-				Vector3(instance.LOCKOUT_START.x - 11.0, 0.5, 0.0)
-			)
-		actions["complete"] = func():
-			instance._change_scene_or_record("res://scenes/tutorial/leaving_facility.tscn")
-		return actions
+	var act1_actions := Callable(self, "_make_act1_sequence_actions")
 
 	await _run_sequence_contract(
 		"Sequence Contract: Aster Sim",
@@ -5126,17 +7285,7 @@ func _test_sequence_contracts() -> void:
 	await _run_sequence_contract(
 		"Sequence Contract: Act 1",
 		"res://scenes/tutorial/act1.tscn",
-		[
-			"channels_enter", "channels_to_memory", "channels_memory",
-			"channels_corpse", "channels_to_ferrolure", "channels_ferrolure",
-			"channels_to_encounter", "channels_encounter_intro",
-			"channels_encounter_activate", "channels_encounter_hide",
-			"channels_encounter_run", "channels_shelter", "channels_explore",
-			"stacks_enter", "stacks_terminal", "stacks_archive", "stacks_explore",
-			"rings_enter", "rings_client", "endo_departs", "rings_explore",
-			"lockout_approach", "lockout_rejected", "lockout_chase",
-			"lockout_exile", "complete",
-		],
+		ACT1_SEQUENCE_STEPS,
 		act1_actions,
 		Callable(),
 		"res://scenes/tutorial/leaving_facility.tscn",
