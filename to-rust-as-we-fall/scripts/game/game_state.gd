@@ -286,6 +286,15 @@ func get_grid_cell(id: String) -> Vector2i:
 
 # --- Serialization ---
 
+## Stable-within-run hash of the serialized state. Used by tests and replay
+## tooling to assert that two GameStates represent the same simulation
+## state without doing a deep structural compare. Not stable across Godot
+## processes (Godot's hash functions aren't guaranteed deterministic across
+## runs); for cross-process verification use serialize() and compare
+## structurally.
+func state_hash() -> int:
+	return serialize().hash()
+
 ## Snapshot for save/load. Movement is not serialized — sequences re-establish it.
 func serialize() -> Dictionary:
 	var char_data := {}
@@ -1665,12 +1674,18 @@ func _on_pendulum_hit_physics(pendulum_id: String, obj_id: String) -> void:
 ## ability_handlers is an optional dict of ability_id → Callable used to
 ## reproduce ability fires; abilities without a registered handler dispatch
 ## as no-ops (the queue + range-arrival still happen, just no behavior).
-static func replay(log: EventLog, world_grid: GridWorld, ability_handlers: Dictionary = {}) -> GameState:
+##
+## re_record_into (optional): if provided, the replay re-emits every
+## dispatched command into this log. The re-recorded log must be
+## byte-identical to the original — any divergence is a determinism bug.
+## Used by --test-determinism-rerecord to close the #2 invariant.
+static func replay(log: EventLog, world_grid: GridWorld, ability_handlers: Dictionary = {}, re_record_into: EventLog = null) -> GameState:
 	var sched := EventScheduler.new()
 	var gs := GameState.new()
 	gs.grid = world_grid
 	gs.scheduler = sched
-	gs._recording = false
+	gs._recording = re_record_into != null
+	gs.event_log = re_record_into
 	gs.set_base_seed(log.base_seed)
 	for id in ability_handlers:
 		gs.register_ability_handler(StringName(id), ability_handlers[id])

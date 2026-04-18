@@ -52,7 +52,7 @@ Pairs with #1. Without this, replays diverge and everything downstream (#3, #11,
 **Success conditions**
 - [x] `--test-rng-determinism`: 6/6. Same seed → same value sequence (across multiple systems). Different seed → different sequence (same system). Per-system isolation: extra `ai.techo` calls do not perturb `loot` output. Per-spawn isolation: same system with different `birth_id`s produces independent streams. `GameState.replay` propagates the log's `base_seed` and re-seeds the registry.
 - [x] `--test-rng-no-wallclock`: walks `scripts/`, fails if any `.gd` line uses a wall-clock pattern (`randi`, `randf`, `randomize`, `RandomNumberGenerator.new`, `Time.get_ticks_*`, `Time.get_unix_time_from_system`) outside the allowlist or without `@rendering_only` / `@rendering_only_file`. Currently passing on a clean tree.
-- [ ] Two replays of the same event stream produce identical logs when re-recorded — covered indirectly by the determinism test today; will get an explicit `--test-rng-rerecord-stable` test alongside the first game system that uses RNG.
+- [x] Two replays of the same event stream produce identical logs when re-recorded — closed by `--test-determinism-rerecord` (covered under #12). The test currently exercises non-RNG commands; extending to RNG-dependent systems lands alongside the first game system that uses `RngRegistry`.
 
 ---
 
@@ -220,14 +220,19 @@ Ordered trigger priorities: spoke-completion, gate-pass, milestone, time-of-day.
 
 Falls out of #1. Not new functionality — new surfaces on existing functionality.
 
-- [ ] **12.1** `--cli --record <path>` writes the event log to disk as the CLI session runs.
-- [ ] **12.2** `--cli --replay <path>` replays a log and exits with final-state hash.
-- [ ] **12.3** In-editor debug overlay: scrub the event log forward/backward, render state at any tick.
-- [ ] **12.4** Bug report export: `--export-bug-log` dumps current event log + build hash + base seed in a single file.
+- [x] **12.1** `--cli --record <path>` writes the event log to disk as the CLI session runs. (Landed in #1.)
+- [x] **12.2** `--cli --replay <path>` replays a log; snapshot-equal check decides exit 0/1. (Landed in #1.)
+- [ ] **12.3** In-editor debug overlay. **Deferred** — UI work, needs a debug panel scene. The machinery is ready: `EventLog.load_bytes`, `GameState.replay`, per-tick scrubbing is just calling `replay` with an event-count limit (trivial extension). Build alongside the first time a bug report needs to be waded through.
+- [~] **12.4** Bug report export. **Partial:** the current save-file format (header + length-prefixed events) is already self-contained enough to be a bug report. Missing: a `--export-bug-log` CLI subcommand that bundles metadata (session description, build hash when available) alongside the log. Defer pending a build pipeline that can produce a stable `build_hash`.
+
+**New primitives added by this slice:**
+- `GameState.state_hash()` — stable-within-run hash of `serialize()`. Used by tests to assert determinism without deep structural compares.
+- `GameState.replay(log, grid, handlers, re_record_into)` — optional `re_record_into` parameter makes the replay emit every dispatched command into a fresh log. The re-recorded log must match the original event-for-event.
 
 **Success conditions**
-- `--test-replay-roundtrip`: record a CLI session, replay it, final state hashes match.
-- `--test-bug-log-self-contained`: exported bug log, replayed on a clean checkout at the matching build hash, reconstructs the reported state.
+- [x] `--test-replay-roundtrip`: 4/4. Record a scripted session, replay, assert `state_hash` matches. Serialize the log to bytes, load, replay from the loaded log, assert hash still matches.
+- [x] `--test-determinism-rerecord`: 4/4. Closes the open invariant from #2 ("two replays of the same event stream produce identical logs when re-recorded"). Replay while re-recording into a fresh log; compare event-for-event against the original (ticks match within FP epsilon, kinds match exactly, payloads structurally equal).
+- [ ] `--test-bug-log-self-contained`: deferred alongside 12.4 until a build pipeline exists.
 
 ---
 

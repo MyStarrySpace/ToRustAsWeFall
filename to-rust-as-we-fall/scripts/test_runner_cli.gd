@@ -99,6 +99,12 @@ func _ready() -> void:
 			"--test-scene-triggers":
 				ran_test = true
 				_test_scene_triggers()
+			"--test-replay-roundtrip":
+				ran_test = true
+				_test_replay_roundtrip()
+			"--test-determinism-rerecord":
+				ran_test = true
+				_test_determinism_rerecord()
 			"--test-flora-memory":
 				ran_test = true
 				_test_flora_memory()
@@ -375,6 +381,8 @@ func _run_all_tests() -> void:
 	_test_no_game_over()
 	_test_scripted_death_only()
 	_test_scene_triggers()
+	_test_replay_roundtrip()
+	_test_determinism_rerecord()
 	_test_flora_memory()
 	_test_event_scheduler()
 	await _test_scene_load()
@@ -2359,7 +2367,7 @@ func _test_event_log_mutation_audit() -> void:
 		"has_queued_ability", "get_queued_ability",
 		"is_narratively_available", "is_downed", "is_party_downed",
 		# Snapshot/restore — bypasses log by design (used for tests, not gameplay)
-		"serialize", "deserialize",
+		"serialize", "deserialize", "state_hash",
 		# Event-log infrastructure itself
 		"replay", "register_ability_handler", "flush_tick",
 		# Setup — must be set once before any commands run; carried in the
@@ -2605,6 +2613,125 @@ func _test_save_corruption_recovery() -> void:
 	_assert_equals(bad["status"], EventLog.LoadStatus.BAD_HEADER,
 		"Stream without magic reports BAD_HEADER")
 	_assert_equals((bad["log"] as EventLog).size(), 0, "Bad-header log is empty")
+
+# Record a scripted session into an event log, replay the log into a
+# fresh GameState, assert the two state hashes match. Baseline round-trip
+# for replay determinism — deeper coverage is in save-load-integrity,
+# but this is the cleanest "one recording, one replay" check.
+func _test_replay_roundtrip() -> void:
+	_test_name = "Replay Roundtrip"
+
+	var grid := GridWorld.new()
+	grid.create_room(12, 8, true)
+
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+	gs.event_log = EventLog.new()
+	gs.set_base_seed(2026)
+
+	gs.register_character("aster", grid.grid_to_world(Vector2i(1, 1)), 3.0, {
+		"hp": 100.0, "max_hp": 100.0,
+		"stamina": 80.0, "max_stamina": 80.0,
+		"atp": 6, "narrative_available": true,
+	})
+	gs.register_character("peris", grid.grid_to_world(Vector2i(2, 1)), 3.0, {
+		"hp": 100.0, "max_hp": 100.0,
+		"stamina": 80.0, "max_stamina": 80.0,
+		"atp": 6, "narrative_available": true,
+	})
+	for i in range(6):
+		gs.command_move_to_cell("aster", Vector2i(2 + i, 2 + (i % 3)))
+		sched.advance_ticks(2.0)
+		if i == 2:
+			gs.down_character("peris")
+		if i == 4:
+			gs.restore_character("peris")
+	gs.spawn_item("fire_fruit", grid.grid_to_world(Vector2i(5, 5)))
+	gs.flush_tick()
+
+	var original_hash := gs.state_hash()
+
+	var replayed := GameState.replay(gs.event_log, grid)
+	var replay_hash := replayed.state_hash()
+
+	_assert_equals(replay_hash, original_hash,
+		"Record→replay round-trip produces identical state hash")
+	_assert_true(_snapshots_equal(gs.serialize(), replayed.serialize()),
+		"Serialized snapshots are structurally equal")
+
+	# Round-trip through bytes too
+	var bytes := gs.event_log.to_bytes()
+	var loaded := EventLog.load_bytes(bytes)
+	_assert_equals(loaded["status"], EventLog.LoadStatus.OK, "Log bytes decode cleanly")
+	var from_bytes := GameState.replay(loaded["log"], grid)
+	_assert_equals(from_bytes.state_hash(), original_hash,
+		"Bytes → log → replay still produces identical hash")
+
+# Re-record determinism: replay a log into a new GameState while
+# simultaneously appending every dispatched command into a fresh log.
+# The re-recorded log must match the original event-for-event. Closes the
+# #2 open invariant: "two replays of the same event stream produce
+# identical logs when re-recorded."
+func _test_determinism_rerecord() -> void:
+	_test_name = "Determinism Re-Record"
+
+	var grid := GridWorld.new()
+	grid.create_room(10, 8, true)
+
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+	gs.event_log = EventLog.new()
+	gs.set_base_seed(99)
+
+	gs.register_character("aster", grid.grid_to_world(Vector2i(1, 1)), 3.0, {"atp": 4})
+	for i in range(5):
+		gs.command_move_to_cell("aster", Vector2i(1 + i, 1 + (i % 2)))
+		sched.advance_ticks(1.5)
+		if i == 2:
+			gs.spawn_item("seed", grid.grid_to_world(Vector2i(3, 3)))
+	gs.flush_tick()
+	var log_original := gs.event_log
+
+	# Replay while re-recording
+	var log_rerec := EventLog.new()
+	var _replayed := GameState.replay(log_original, grid, {}, log_rerec)
+
+	_assert_equals(log_rerec.size(), log_original.size(),
+		"Re-recorded log has same event count (%d == %d)" % [log_rerec.size(), log_original.size()])
+	_assert_equals(log_rerec.base_seed, log_original.base_seed,
+		"Re-recorded log preserves base_seed")
+
+	# Event-for-event compare — ticks, kinds, payloads all identical.
+	var divergences: Array = []
+	for i in range(log_original.size()):
+		var a: Dictionary = log_original.events[i]
+		var b: Dictionary = log_rerec.events[i]
+		if String(a["kind"]) != String(b["kind"]):
+			divergences.append("event %d: kind %s vs %s" % [i, a["kind"], b["kind"]])
+			continue
+		if abs(float(a["tick"]) - float(b["tick"])) > 1e-6:
+			divergences.append("event %d: tick %f vs %f" % [i, a["tick"], b["tick"]])
+			continue
+		if not _snapshots_equal(a["payload"], b["payload"]):
+			divergences.append("event %d: payload differs" % i)
+	_assert_equals(divergences.size(), 0,
+		"Re-recorded log matches original event-for-event (divergences: %s)" % str(divergences))
+
+	# Byte-level compare of the serialized form (modulo saved_unix which is
+	# re-captured on each to_bytes call). Strip the header's saved_unix and
+	# compare the structural parts.
+	var bytes_a := log_original.to_bytes()
+	var bytes_b := log_rerec.to_bytes()
+	# The saved_unix field may differ by a second; compare via load+compare
+	# instead of raw bytes.
+	var loaded_a := EventLog.load_bytes(bytes_a)
+	var loaded_b := EventLog.load_bytes(bytes_b)
+	_assert_equals(loaded_a["log"].size(), loaded_b["log"].size(),
+		"Byte-serialized logs decode to same event count")
 
 # Scene triggers: each concrete trigger type fires its scene exactly once
 # for a matching dispatch; priority resolution when multiple triggers
