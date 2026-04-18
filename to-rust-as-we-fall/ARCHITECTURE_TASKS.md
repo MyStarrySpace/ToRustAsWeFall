@@ -15,9 +15,9 @@ Everything else in the doc ("recording and playback come for free", save integri
 **Tick-drain decision:** the log carries `recorded_until: float` alongside the event array. Replay drains pending scheduler events up to this tick at the end of replay so movements still in flight at save time complete identically. Callers that advance the scheduler without issuing commands (e.g. waiting for a character to arrive) must call `GameState.flush_tick()` before serializing.
 
 - [x] **1.1** Define `GameEvent` schema: `{tick: float, kind: StringName, payload: Dictionary}`. Plain-data payloads only. — [scripts/game/game_event.gd](scripts/game/game_event.gd)
-- [~] **1.2** Audit all state mutations in `game_state.gd`. **Done:** movement, items, physics, pendulums, dodge, abilities (queue_ability + cancel_queued_ability). All public command surfaces are wired. **Remaining:** lint pass `--test-event-log-mutation-audit` to enforce the invariant.
+- [x] **1.2** Audit all state mutations in `game_state.gd`. All public commands route through `_emit`. Lint `--test-event-log-mutation-audit` enforces the invariant by parsing every public function and failing if it mutates without emitting (queries/snapshot helpers are allowlisted with justification).
 - [x] **1.3** Add `EventLog` class (append-only, in-memory) with `recorded_until` tracking. — [scripts/game/event_log.gd](scripts/game/event_log.gd)
-- [~] **1.4** Add `GameState.replay(log, grid)` that constructs fresh state by replaying events. **Movement commands dispatched.** Items/physics/pendulums/abilities/dodge dispatch cases pending alongside 1.2.
+- [x] **1.4** Add `GameState.replay(log, grid, ability_handlers)` that constructs fresh state by replaying events. Full dispatch table for movement, items, physics, pendulums, dodge, abilities. Drains pending scheduler events up to `log.recorded_until` so movements in flight at save time arrive identically.
 - [x] **1.5** Add event-log serializer (`to_bytes` / `from_bytes` via `var_to_bytes`). Versioned header (`FORMAT_VERSION = 1`).
 
 **Resolved — Callable payloads:** `queue_ability` keeps its `Callable` parameter for game-code ergonomics, but the log records only the ability *id* (a `String`). At replay time, `GameState.replay(log, grid, ability_handlers)` consults an `ability_id → Callable` dict to fire the right behavior. Abilities without a registered handler dispatch as no-ops — the queue + range-arrival still happen, just no behavior. Game code that wants replay-safe abilities registers handlers at startup via `GameState.register_ability_handler`.
@@ -25,9 +25,9 @@ Everything else in the doc ("recording and playback come for free", save integri
 **Resolved — internal command calls polluting the log:** when one public command (e.g. `queue_ability`) internally called another (e.g. `command_move_to_pos`), the inner call also emitted, producing redundant events on replay. Fixed by extracting `_do_move_to_pos` and `_do_stop` private helpers that mutate state without emitting. Public commands now follow the pattern `_emit(...); _do_*(...)`. Internal callers use the `_do_*` variants.
 
 **Success conditions**
-- [x] `--test-event-log-roundtrip`: 13/13 assertions passing. Records a movement-only session (register, advance, move-to-cell, advance, move-to-pos, advance, stop, change-speed, walk-path, advance), serializes, decodes, replays — final positions match within 0.01 units. Replay does not re-append to its own log. Unregister round-trips.
-- [ ] `--test-event-log-mutation-audit`: lint not yet built; scheduled alongside completion of 1.2.
-- [ ] CLI: `--cli --record out.log` / `--cli --replay out.log --assert-final-state-matches` — surface not yet wired into `cli_game.gd`.
+- [x] `--test-event-log-roundtrip`: 34/34 assertions passing across movement, items, physics, pendulums, dodge, and abilities. Final positions and stats match within FP epsilon. Replay does not re-append to its own log. Unregister round-trips. Ability handler registry verified.
+- [x] `--test-event-log-mutation-audit`: parses every public function in `game_state.gd` and fails if it mutates state without `_emit`. Allowlist documents the exceptions (queries, snapshot/restore helpers, log infrastructure). Negative-test verified by adding a sentinel function and confirming the lint catches it.
+- [x] CLI: `--cli --record out.log` writes the log + a state snapshot. `--cli --replay out.log` replays against the scene's grid and asserts the replayed final state matches the snapshot, exiting 0/1. Round-trip verified end-to-end. Recording uses `GameState._pending_event_log` so the log captures the session from the scene's first `register_character` onward.
 
 ---
 

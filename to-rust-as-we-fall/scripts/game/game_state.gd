@@ -38,10 +38,19 @@ var _dodging: Dictionary = {}     # char_id → {end_tick, handle}
 
 ## Optional event log. When non-null, every external command is appended.
 ## Replay-driven mutations (set _recording = false during replay) are skipped.
-## Coverage so far: character lifecycle + movement commands. Items, physics,
-## pendulums, abilities, and dodge are not yet wired through the log.
 var event_log: EventLog
 var _recording: bool = true
+
+## Recorders (CLI --record, replay tooling) set this before the scene
+## constructs its GameState. The first GameState constructed consumes
+## the pending log so the recording starts from register_character forward,
+## not from whatever frame the recorder happened to attach on.
+static var _pending_event_log: EventLog = null
+
+func _init() -> void:
+	if _pending_event_log != null:
+		event_log = _pending_event_log
+		_pending_event_log = null
 
 func _record_tick() -> float:
 	if scheduler:

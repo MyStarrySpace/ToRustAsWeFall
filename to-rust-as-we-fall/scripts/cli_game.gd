@@ -14,9 +14,22 @@ extends Node
 ##   advance          Click through dialogue
 ##   help             Show available commands
 ##   quit             Exit
+##
+## Record/replay flags:
+##   --record <path>  Attach an EventLog to the scene's GameState during the
+##                    session. On exit, writes <path> (the log) and
+##                    <path>.snap (the recorded GameState snapshot used as
+##                    the ground truth for replay verification).
+##   --replay <path>  Load the log + snapshot, replay the log against the
+##                    current scene's grid via GameState.replay, and assert
+##                    the replayed state matches the snapshot. Exits 0 if
+##                    they match, 1 otherwise.
 
 var _sim: SimRunner
 var _running := true
+var _record_path := ""
+var _replay_path := ""
+var _record_log: EventLog
 
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
@@ -24,12 +37,26 @@ func _ready() -> void:
 		# Not in CLI mode — this autoload does nothing
 		return
 
+	# Parse --record / --replay paths
+	for i in range(args.size()):
+		if args[i] == "--record" and i + 1 < args.size():
+			_record_path = args[i + 1]
+		if args[i] == "--replay" and i + 1 < args.size():
+			_replay_path = args[i + 1]
+
 	_sim = SimRunner.new(get_tree())
 
 	print("")
 	print("=== TO RUST AS WE FALL — CLI MODE ===")
 	print("Type 'help' for commands.")
 	print("")
+
+	if _replay_path != "":
+		await _run_replay()
+		return
+
+	if _record_path != "":
+		_attach_recorder()
 
 	# Start processing input on a thread
 	_start_input_loop()
@@ -84,6 +111,8 @@ func _prompt() -> void:
 	if not commands.is_empty():
 		await _run_commands(commands)
 		_sim._print_state()
+		if _record_path != "":
+			_finalize_recording()
 		print("\n[CLI] Done. Exiting.")
 		get_tree().quit(0)
 
@@ -205,3 +234,116 @@ func _execute_text_command(text: String) -> void:
 
 		_:
 			print("[CLI] Unknown command: %s (type 'help')" % verb)
+
+# --- Record / replay ---
+
+# Pre-attach an EventLog into GameState's static pending slot. The first
+# GameState constructed (typically the scene's) consumes it. This captures
+# the session from register_character onward, not from whatever frame the
+# recorder happened to attach on.
+func _attach_recorder() -> void:
+	_record_log = EventLog.new()
+	GameState._pending_event_log = _record_log
+	print("[CLI/record] Pending EventLog ready; will attach on next GameState construction.")
+	print("[CLI/record] Writing to %s on exit." % _record_path)
+
+func _finalize_recording() -> void:
+	if _record_log == null:
+		return
+	var gs: GameState = _sim._find_game_state()
+	if gs:
+		gs.flush_tick()
+	var snap_path := _record_path + ".snap"
+	var bytes := _record_log.to_bytes()
+	var f := FileAccess.open(_record_path, FileAccess.WRITE)
+	if f == null:
+		print("[CLI/record] Failed to write log: %s" % _record_path)
+		return
+	f.store_buffer(bytes)
+	f.close()
+	if gs:
+		var snap := gs.serialize()
+		var snap_bytes := var_to_bytes(snap)
+		var sf := FileAccess.open(snap_path, FileAccess.WRITE)
+		if sf:
+			sf.store_buffer(snap_bytes)
+			sf.close()
+	print("[CLI/record] Wrote %d events (%d bytes) to %s" % [
+		_record_log.size(), bytes.size(), _record_path])
+
+# Load a recorded log + snapshot, replay against the current scene's grid,
+# and assert the replayed final state matches the snapshot.
+func _run_replay() -> void:
+	var lf := FileAccess.open(_replay_path, FileAccess.READ)
+	if lf == null:
+		print("[CLI/replay] Could not open log: %s" % _replay_path)
+		get_tree().quit(1)
+		return
+	var log_bytes := lf.get_buffer(lf.get_length())
+	lf.close()
+	var log := EventLog.from_bytes(log_bytes)
+
+	var snap_path := _replay_path + ".snap"
+	var sf := FileAccess.open(snap_path, FileAccess.READ)
+	if sf == null:
+		print("[CLI/replay] Could not open snapshot: %s" % snap_path)
+		get_tree().quit(1)
+		return
+	var snap_bytes := sf.get_buffer(sf.get_length())
+	sf.close()
+	var expected_snap: Variant = bytes_to_var(snap_bytes)
+
+	var gs_orig: GameState = await _await_game_state()
+	if gs_orig == null:
+		print("[CLI/replay] No GameState in scene; cannot resolve grid.")
+		get_tree().quit(1)
+		return
+
+	var replayed := GameState.replay(log, gs_orig.grid)
+	var actual_snap := replayed.serialize()
+
+	if _snapshots_equal(actual_snap, expected_snap):
+		print("[CLI/replay] OK — replayed %d events, final state matches snapshot." % log.size())
+		get_tree().quit(0)
+	else:
+		print("[CLI/replay] FAIL — replayed state does not match snapshot.")
+		print("  expected: %s" % expected_snap)
+		print("  actual:   %s" % actual_snap)
+		get_tree().quit(1)
+
+# Wait up to N frames for the scene's GameState to exist. Sequences create
+# it inside their own _ready, which runs after this autoload's _ready awaits.
+func _await_game_state(max_frames: int = 60) -> GameState:
+	for _i in range(max_frames):
+		var gs: GameState = _sim._find_game_state()
+		if gs != null:
+			return gs
+		await get_tree().process_frame
+	return null
+
+# Snapshot equality is a structural compare on the dicts we serialize today
+# (characters, explored). Position floats are compared with epsilon to absorb
+# tiny FP drift between paths that should be deterministic but may vary by
+# the last bit of float math.
+func _snapshots_equal(a: Variant, b: Variant) -> bool:
+	if typeof(a) != typeof(b):
+		return false
+	if a is Dictionary and b is Dictionary:
+		if a.size() != b.size():
+			return false
+		for k in a.keys():
+			if not b.has(k):
+				return false
+			if not _snapshots_equal(a[k], b[k]):
+				return false
+		return true
+	if a is Array and b is Array:
+		if a.size() != b.size():
+			return false
+		for i in range(a.size()):
+			if not _snapshots_equal(a[i], b[i]):
+				return false
+		return true
+	if a is float and b is float:
+		return absf(a - b) < 0.001
+	return a == b

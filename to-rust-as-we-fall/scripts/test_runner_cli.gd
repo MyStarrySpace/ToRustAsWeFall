@@ -60,6 +60,9 @@ func _ready() -> void:
 			"--test-event-log-roundtrip":
 				ran_test = true
 				_test_event_log_roundtrip()
+			"--test-event-log-mutation-audit":
+				ran_test = true
+				_test_event_log_mutation_audit()
 			"--test-flora-memory":
 				ran_test = true
 				_test_flora_memory()
@@ -323,6 +326,7 @@ func _run_all_tests() -> void:
 	_test_grid_pathfinding()
 	_test_game_state()
 	_test_event_log_roundtrip()
+	_test_event_log_mutation_audit()
 	_test_flora_memory()
 	_test_event_scheduler()
 	await _test_scene_load()
@@ -2274,6 +2278,95 @@ func _test_event_log_roundtrip() -> void:
 	var gs_a_replay_nohandlers := GameState.replay(gs_a.event_log, grid)
 	_assert_true(not gs_a_replay_nohandlers.has_queued_ability("peris"),
 		"Replay without handlers: cancel still applies")
+
+# Lint: every public, non-static function in game_state.gd that mutates
+# state must call _emit so the action lands in the event log. Read-only
+# queries and explicitly-allowlisted helpers are exempt. Catches future
+# drift where a new public command is added without log wiring.
+func _test_event_log_mutation_audit() -> void:
+	_test_name = "EventLog Mutation Audit"
+
+	var path := "res://scripts/game/game_state.gd"
+	var f := FileAccess.open(path, FileAccess.READ)
+	_assert_true(f != null, "game_state.gd opens")
+	if f == null:
+		return
+	var content := f.get_as_text()
+	f.close()
+
+	# Read-only or log-helper functions that legitimately do not emit.
+	# Adding to this list requires a justification (why this public function
+	# does not represent a player/sequence input that needs replaying).
+	var allowlist := PackedStringArray([
+		# Pure queries
+		"get_position", "is_moving", "get_grid_cell",
+		"get_hand_items", "get_hand_slots", "get_internal_items",
+		"has_free_hand", "has_free_hands",
+		"get_scent_radius",
+		"get_physics_position", "is_physics_moving", "is_physics_airborne",
+		"get_throw_height", "get_throw_peak_height",
+		"get_pendulum_omega", "get_pendulum_period", "get_pendulum_angle",
+		"get_pendulum_position", "get_pendulum_bob_velocity",
+		"is_dodging", "is_endocytosing",
+		"has_queued_ability", "get_queued_ability",
+		# Snapshot/restore — bypasses log by design (used for tests, not gameplay)
+		"serialize", "deserialize",
+		# Event-log infrastructure itself
+		"replay", "register_ability_handler", "flush_tick",
+	])
+
+	var public_funcs := _parse_public_funcs(content)
+	_assert_true(public_funcs.size() > 0, "Parser found public functions")
+
+	var missing: Array = []
+	for fn in public_funcs:
+		var name: String = fn["name"]
+		if allowlist.has(name):
+			continue
+		var body: String = fn["body"]
+		if not body.contains("_emit("):
+			missing.append(name)
+
+	_assert_equals(missing.size(), 0,
+		"All public mutating functions emit (missing _emit in: %s)" % str(missing))
+
+# Returns Array of {name: String, body: String} for every "func NAME(" in the
+# source whose name does not begin with underscore. Static funcs are included
+# (they are public). The body span runs until the next top-level "func "
+# or end of file.
+func _parse_public_funcs(content: String) -> Array:
+	var result: Array = []
+	var lines := content.split("\n")
+	var current_name := ""
+	var current_body := ""
+	var in_collected := false
+
+	for raw in lines:
+		var line: String = raw
+		var stripped := line.strip_edges()
+		var is_func_line := false
+		var func_name := ""
+		if stripped.begins_with("func "):
+			is_func_line = true
+			func_name = stripped.substr(5).get_slice("(", 0).strip_edges()
+		elif stripped.begins_with("static func "):
+			is_func_line = true
+			func_name = stripped.substr(12).get_slice("(", 0).strip_edges()
+
+		if is_func_line:
+			# Flush previous
+			if in_collected:
+				result.append({"name": current_name, "body": current_body})
+			current_name = func_name
+			current_body = ""
+			in_collected = not func_name.begins_with("_")
+		else:
+			if in_collected:
+				current_body += line + "\n"
+
+	if in_collected:
+		result.append({"name": current_name, "body": current_body})
+	return result
 
 func _test_flora_memory() -> void:
 	_test_name = "Flora Memory"
