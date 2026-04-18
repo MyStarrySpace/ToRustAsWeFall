@@ -53,6 +53,14 @@ const KIND_UNREGISTER_PENDULUM := &"unregister_pendulum"
 # --- Dodge ---
 const KIND_DODGE_ROLL := &"dodge_roll"
 
+# --- Abilities ---
+# The Callable side of queue_ability is not replay-safe. Replay looks up
+# the handler by ability id in GameState._ability_handlers; game code that
+# wants replay-safe abilities must register handlers via
+# GameState.register_ability_handler before replaying.
+const KIND_QUEUE_ABILITY := &"queue_ability"
+const KIND_CANCEL_QUEUED_ABILITY := &"cancel_queued_ability"
+
 const ALL_KINDS: Array[StringName] = [
 	KIND_REGISTER_CHARACTER,
 	KIND_UNREGISTER_CHARACTER,
@@ -76,6 +84,8 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_REGISTER_PENDULUM,
 	KIND_UNREGISTER_PENDULUM,
 	KIND_DODGE_ROLL,
+	KIND_QUEUE_ABILITY,
+	KIND_CANCEL_QUEUED_ABILITY,
 ]
 
 static func make(tick: float, kind: StringName, payload: Dictionary) -> Dictionary:

@@ -2237,6 +2237,44 @@ func _test_event_log_roundtrip() -> void:
 		gs_p.characters["aster"].stats.get("stamina", -1.0),
 		"Replay matches stamina post-dodge")
 
+	# --- Abilities round-trip via handler registry ---
+	var sched_a := EventScheduler.new()
+	var gs_a := GameState.new()
+	gs_a.grid = grid
+	gs_a.scheduler = sched_a
+	gs_a.event_log = EventLog.new()
+
+	gs_a.register_character("peris", grid.grid_to_world(Vector2i(2, 2)), 3.0, {})
+	var fired_orig: Array = []
+	# In-range immediate fire
+	gs_a.queue_ability("peris", "protect", grid.grid_to_world(Vector2i(2, 2)), 3.0,
+		func(): fired_orig.append("protect"))
+	# Out-of-range queue, then cancel
+	gs_a.queue_ability("peris", "emp", grid.grid_to_world(Vector2i(8, 8)), 1.0,
+		func(): fired_orig.append("emp"))
+	gs_a.cancel_queued_ability("peris")
+	gs_a.flush_tick()
+
+	_assert_equals(fired_orig.size(), 1, "Recording: only in-range protect fired")
+	_assert_equals(gs_a.event_log.size(), 4, "4 ability events logged (register + queue + queue + cancel)")
+
+	# Replay with handler registry — protect should fire again
+	var fired_replay: Array = []
+	var handlers := {
+		&"protect": func(): fired_replay.append("protect"),
+		&"emp": func(): fired_replay.append("emp"),
+	}
+	var gs_a_replay := GameState.replay(gs_a.event_log, grid, handlers)
+	_assert_equals(fired_replay.size(), 1, "Replay: registered handler fires once")
+	_assert_equals(fired_replay[0], "protect", "Replay: correct ability fired")
+	_assert_true(not gs_a_replay.has_queued_ability("peris"),
+		"Replay: cancelled ability is not queued")
+
+	# Replay without handlers — nothing fires, but state still consistent (no crash)
+	var gs_a_replay_nohandlers := GameState.replay(gs_a.event_log, grid)
+	_assert_true(not gs_a_replay_nohandlers.has_queued_ability("peris"),
+		"Replay without handlers: cancel still applies")
+
 func _test_flora_memory() -> void:
 	_test_name = "Flora Memory"
 

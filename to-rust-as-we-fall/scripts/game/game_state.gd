@@ -155,6 +155,11 @@ func command_move_to_cell(id: String, cell: Vector2i) -> bool:
 ## Straight-line move to a world position.
 func command_move_to_pos(id: String, pos: Vector3) -> bool:
 	_emit(GameEvent.KIND_MOVE_TO_POS, {"id": id, "pos": GameEvent.v3_to_arr(pos)})
+	return _do_move_to_pos(id, pos)
+
+# Internal: same as command_move_to_pos but does not log. Use this from
+# inside other commands so the log records only the originating command.
+func _do_move_to_pos(id: String, pos: Vector3) -> bool:
 	if not characters.has(id) or not scheduler:
 		return false
 	if is_endocytosing(id):
@@ -183,6 +188,9 @@ func command_walk_path(id: String, path: Array[Vector3]) -> void:
 ## Halt movement at current interpolated position.
 func command_stop(id: String) -> void:
 	_emit(GameEvent.KIND_STOP, {"id": id})
+	_do_stop(id)
+
+func _do_stop(id: String) -> void:
 	if not characters.has(id):
 		return
 	var ch: Dictionary = characters[id]
@@ -562,7 +570,23 @@ func _on_dodge_end(char_id: String) -> void:
 
 var _queued_abilities: Dictionary = {} # char_id → {ability, target_pos, range, callback}
 
+## Registry of ability id → Callable. Replay consults this to fire abilities
+## with the correct behavior; recorded sessions create the Callable in-place,
+## but the in-place Callable is not replay-safe and is not serialized.
+## Game code that wants replay-safe abilities should register handlers here
+## at startup with stable ability ids.
+var _ability_handlers: Dictionary = {}
+
+func register_ability_handler(ability_id: StringName, handler: Callable) -> void:
+	_ability_handlers[ability_id] = handler
+
 func queue_ability(char_id: String, ability: String, target_pos: Vector3, ability_range: float, callback: Callable) -> void:
+	_emit(GameEvent.KIND_QUEUE_ABILITY, {
+		"char_id": char_id,
+		"ability": ability,
+		"target_pos": GameEvent.v3_to_arr(target_pos),
+		"range": ability_range,
+	})
 	if not characters.has(char_id):
 		return
 	var char_pos := get_position(char_id)
@@ -581,10 +605,11 @@ func queue_ability(char_id: String, ability: String, target_pos: Vector3, abilit
 	# in-range event fires mid-walk before arrival
 	var dir := Vector3(target_pos.x - char_pos.x, 0, target_pos.z - char_pos.z).normalized()
 	var move_target := target_pos
-	command_move_to_pos(char_id, move_target)
+	_do_move_to_pos(char_id, move_target)
 	_schedule_ability_in_range(char_id)
 
 func cancel_queued_ability(char_id: String) -> void:
+	_emit(GameEvent.KIND_CANCEL_QUEUED_ABILITY, {"char_id": char_id})
 	_queued_abilities.erase(char_id)
 	if scheduler:
 		scheduler.cancel_tag("ability_range")
@@ -621,7 +646,7 @@ func _on_ability_in_range(char_id: String) -> void:
 		return
 	var qa: Dictionary = _queued_abilities[char_id]
 	_queued_abilities.erase(char_id)
-	command_stop(char_id)
+	_do_stop(char_id)
 	qa.callback.call()
 	ability_fired.emit(char_id, qa.ability, qa.target_pos)
 
@@ -745,7 +770,7 @@ func endocytose_item(char_id: String, item_id: String) -> bool:
 		return false
 	if _endocytosing.has(char_id):
 		return false
-	command_stop(char_id)
+	_do_stop(char_id)
 	var duration: float = item.properties.get("endocytosis_duration", ENDOCYTOSE_DEFAULT_DURATION)
 	var cid := char_id
 	var iid := item_id
@@ -1602,12 +1627,17 @@ func _on_pendulum_hit_physics(pendulum_id: String, obj_id: String) -> void:
 
 ## Build a fresh GameState by replaying the log against the given grid.
 ## The caller supplies the grid because it is a shared resource, not state.
-static func replay(log: EventLog, world_grid: GridWorld) -> GameState:
+## ability_handlers is an optional dict of ability_id → Callable used to
+## reproduce ability fires; abilities without a registered handler dispatch
+## as no-ops (the queue + range-arrival still happen, just no behavior).
+static func replay(log: EventLog, world_grid: GridWorld, ability_handlers: Dictionary = {}) -> GameState:
 	var sched := EventScheduler.new()
 	var gs := GameState.new()
 	gs.grid = world_grid
 	gs.scheduler = sched
 	gs._recording = false
+	for id in ability_handlers:
+		gs.register_ability_handler(StringName(id), ability_handlers[id])
 
 	var prev_tick := 0.0
 	for event in log.events:
@@ -1708,6 +1738,20 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			unregister_pendulum(String(payload["id"]))
 		GameEvent.KIND_DODGE_ROLL:
 			dodge_roll(String(payload["char_id"]), GameEvent.arr_to_v3(payload["direction"]))
+		GameEvent.KIND_QUEUE_ABILITY:
+			var ab_id := String(payload["ability"])
+			var handler: Callable = _ability_handlers.get(StringName(ab_id), Callable())
+			if not handler.is_valid():
+				handler = func(): pass
+			queue_ability(
+				String(payload["char_id"]),
+				ab_id,
+				GameEvent.arr_to_v3(payload["target_pos"]),
+				float(payload["range"]),
+				handler
+			)
+		GameEvent.KIND_CANCEL_QUEUED_ABILITY:
+			cancel_queued_ability(String(payload["char_id"]))
 		_:
 			push_warning("GameState._dispatch: unknown event kind %s" % kind)
 
