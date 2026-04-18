@@ -200,12 +200,19 @@ Designed-affordance backtracking. Zones change on revisit.
 
 Ordered trigger priorities: spoke-completion, gate-pass, milestone, time-of-day.
 
-- [ ] **11.1** `SceneTrigger` base class with `evaluate(context) -> bool` + `priority: int`.
-- [ ] **11.2** Concrete triggers: `OnSpokeComplete`, `OnGatePass`, `OnMilestone`, `OnTimeOfDay`.
-- [ ] **11.3** `SceneManager` autoload: evaluates pending triggers on state changes, fires highest-priority scene that hasn't played.
+**Design decisions (locked in by 11.1–11.3):**
+- Context is a plain `Dictionary` with a `kind: StringName` field and kind-specific payload (e.g. `spoke_id`, `gate_id`). Keeps the surface duck-typed and open to new trigger types without modifying the base class.
+- Default priorities encode the narrative hierarchy: gate-pass (30) > milestone (20) > spoke-complete (10) > time-of-day (0). Ties break by registration order so scene authors can control resolution by ordering their `register_trigger` calls.
+- Time-of-day triggers default to `one_shot = false` because they're ambient flavor that repeats each cycle; every other type defaults one-shot.
+
+- [x] **11.1** `SceneTrigger` base class with `scene_id`, `priority`, `one_shot`, `evaluate(context) -> bool`. — [scripts/game/scene_trigger.gd](scripts/game/scene_trigger.gd)
+- [x] **11.2** Concrete triggers `OnSpokeComplete`, `OnGatePass`, `OnMilestone`, `OnTimeOfDay` bundled in one file as the naming conveys ("these are the four"). — [scripts/game/scene_triggers.gd](scripts/game/scene_triggers.gd)
+- [x] **11.3** `SceneManager` (RefCounted, not autoload) with `register_trigger`, `dispatch(context)`, `scene_fired(scene_id, context)` signal, and `bind_zone_manager(zm)` convenience that wires `spoke_completed` and `gate_passed` through. — [scripts/game/scene_manager.gd](scripts/game/scene_manager.gd)
+
+**Open item — milestone / time-of-day wiring:** `bind_zone_manager` covers spoke + gate events. Milestone and time-of-day need source signals too (milestone signals from GameState? from a separate MilestoneTracker? time-of-day from DayNightCycle). When those sources land, extend `SceneManager.bind_*` helpers.
 
 **Success conditions**
-- `--test-scene-triggers`: scripted scenario exercises all four trigger types in isolation; assert each fires its scene exactly once; assert priority resolution when multiple triggers match simultaneously.
+- [x] `--test-scene-triggers`: 15/15. Each of four trigger types fires its scene for the matching dispatch. Non-matching contexts fire nothing. One-shot triggers don't re-fire; time-of-day re-fires by design. Priority resolution: higher priority wins over registration order. Equal priority: earliest registration wins. ZoneManager-bound signals flow through to dispatch.
 
 ---
 

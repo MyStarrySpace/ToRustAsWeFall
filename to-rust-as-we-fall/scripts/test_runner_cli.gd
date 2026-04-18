@@ -96,6 +96,9 @@ func _ready() -> void:
 			"--test-scripted-death-only":
 				ran_test = true
 				_test_scripted_death_only()
+			"--test-scene-triggers":
+				ran_test = true
+				_test_scene_triggers()
 			"--test-flora-memory":
 				ran_test = true
 				_test_flora_memory()
@@ -371,6 +374,7 @@ func _run_all_tests() -> void:
 	_test_zone_progression()
 	_test_no_game_over()
 	_test_scripted_death_only()
+	_test_scene_triggers()
 	_test_flora_memory()
 	_test_event_scheduler()
 	await _test_scene_load()
@@ -2601,6 +2605,113 @@ func _test_save_corruption_recovery() -> void:
 	_assert_equals(bad["status"], EventLog.LoadStatus.BAD_HEADER,
 		"Stream without magic reports BAD_HEADER")
 	_assert_equals((bad["log"] as EventLog).size(), 0, "Bad-header log is empty")
+
+# Scene triggers: each concrete trigger type fires its scene exactly once
+# for a matching dispatch; priority resolution when multiple triggers
+# match simultaneously; one-shot tracking; time-of-day triggers repeat.
+# Also verifies ZoneManager integration — binding a ZoneManager causes
+# spoke_completed and gate_passed signals to dispatch via SceneManager.
+func _test_scene_triggers() -> void:
+	_test_name = "Scene Triggers"
+
+	# --- Four concrete trigger types, each matches its own context ---
+	var sm := SceneManager.new()
+	sm.register_trigger(SceneTriggers.OnSpokeComplete.new(
+		&"scene_channels_cleared", &"channels_encounter"))
+	sm.register_trigger(SceneTriggers.OnGatePass.new(
+		&"scene_endo_joins", &"endo_junction"))
+	sm.register_trigger(SceneTriggers.OnMilestone.new(
+		&"scene_first_cure_component", &"cure_component_1"))
+	sm.register_trigger(SceneTriggers.OnTimeOfDay.new(
+		&"scene_dusk_ambience", &"dusk"))
+
+	var fired: Array = []
+	sm.scene_fired.connect(func(id: StringName, _ctx: Dictionary):
+		fired.append(String(id)))
+
+	sm.dispatch({"kind": &"spoke_completed", "spoke_id": &"channels_encounter"})
+	_assert_equals(fired.size(), 1, "Spoke-complete trigger fires")
+	_assert_equals(fired[0], "scene_channels_cleared", "...correct scene id")
+
+	sm.dispatch({"kind": &"gate_passed", "gate_id": &"endo_junction"})
+	_assert_equals(fired.size(), 2, "Gate-pass trigger fires")
+	_assert_equals(fired[1], "scene_endo_joins", "...correct scene id")
+
+	sm.dispatch({"kind": &"milestone", "milestone_id": &"cure_component_1"})
+	_assert_equals(fired.size(), 3, "Milestone trigger fires")
+
+	sm.dispatch({"kind": &"time_of_day", "time_of_day": &"dusk"})
+	_assert_equals(fired.size(), 4, "Time-of-day trigger fires")
+
+	# --- Unmatched context fires nothing ---
+	sm.dispatch({"kind": &"spoke_completed", "spoke_id": &"unknown_spoke"})
+	_assert_equals(fired.size(), 4, "Non-matching context does not fire")
+
+	# --- One-shot: re-dispatch the same context does not re-fire ---
+	sm.dispatch({"kind": &"spoke_completed", "spoke_id": &"channels_encounter"})
+	_assert_equals(fired.size(), 4, "One-shot trigger does not re-fire")
+
+	# --- Time-of-day is not one-shot; should re-fire each cycle ---
+	sm.dispatch({"kind": &"time_of_day", "time_of_day": &"dusk"})
+	_assert_equals(fired.size(), 5, "Time-of-day trigger re-fires by design")
+
+	# --- Priority resolution: higher priority wins ---
+	var sm2 := SceneManager.new()
+	var high := SceneTriggers.OnGatePass.new(&"high", &"shared_gate", 100)
+	var low := SceneTriggers.OnGatePass.new(&"low", &"shared_gate", 1)
+	sm2.register_trigger(low)   # register lower priority first
+	sm2.register_trigger(high)  # to ensure priority wins over registration order
+	var fired2: Array = []
+	sm2.scene_fired.connect(func(id: StringName, _ctx: Dictionary):
+		fired2.append(String(id)))
+	sm2.dispatch({"kind": &"gate_passed", "gate_id": &"shared_gate"})
+	_assert_equals(fired2.size(), 1, "Priority clash fires exactly one scene")
+	_assert_equals(fired2[0], "high", "Higher priority wins over registration order")
+
+	# --- Tie-break by registration order ---
+	var sm3 := SceneManager.new()
+	var first := SceneTriggers.OnGatePass.new(&"first", &"tied_gate", 50)
+	var second := SceneTriggers.OnGatePass.new(&"second", &"tied_gate", 50)
+	sm3.register_trigger(first)
+	sm3.register_trigger(second)
+	var fired3: Array = []
+	sm3.scene_fired.connect(func(id: StringName, _ctx: Dictionary):
+		fired3.append(String(id)))
+	sm3.dispatch({"kind": &"gate_passed", "gate_id": &"tied_gate"})
+	_assert_equals(fired3[0], "first", "Equal priority → first registered wins")
+
+	# --- ZoneManager binding: signals flow through dispatch ---
+	var grid := GridWorld.new()
+	grid.create_room(10, 8, true)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+	gs.register_character("aster", grid.grid_to_world(Vector2i(1, 1)), 3.0, {
+		"narrative_available": true,
+	})
+	var zm := ZoneManager.new()
+	var zone := Zone.new()
+	zone.id = &"channels"
+	zm.register_zone(zone)
+	var gate := Gate.new()
+	gate.id = &"bound_gate"
+	gate.zone_id = &"channels"
+	zm.register_gate(gate)
+
+	var sm4 := SceneManager.new()
+	sm4.register_trigger(SceneTriggers.OnSpokeComplete.new(&"bound_spoke_scene", &"sp1"))
+	sm4.register_trigger(SceneTriggers.OnGatePass.new(&"bound_gate_scene", &"bound_gate"))
+	sm4.bind_zone_manager(zm)
+	var fired4: Array = []
+	sm4.scene_fired.connect(func(id: StringName, _ctx: Dictionary):
+		fired4.append(String(id)))
+	zm.enter_zone(&"channels")
+	zm.mark_spoke_complete(&"sp1")
+	zm.try_pass_gate(&"bound_gate", gs, ["aster"])
+	_assert_equals(fired4.size(), 2, "ZoneManager bound signals flow through dispatch")
+	_assert_equals(fired4[0], "bound_spoke_scene", "...spoke scene fires")
+	_assert_equals(fired4[1], "bound_gate_scene", "...gate scene fires")
 
 # Down every party member in a spoke; confirm no game_over signal or
 # similar end-state flag fires, that retreat_to_last_hub returns true,
