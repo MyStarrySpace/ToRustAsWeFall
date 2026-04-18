@@ -32,6 +32,11 @@ var physics_objects: Dictionary = {}
 var pendulums: Dictionary = {}
 var items: Dictionary = {}        # item_id → item dict
 var collection: Array[String] = [] # Permanently collected item IDs (cure components, etc.)
+## Registered Mechanisms (pressure plates, weight sensors, area triggers).
+## Scene-scoped infrastructure, not per-run state — not serialized in the
+## event log. Scenes register mechanisms in their _ready and connect to
+## triggered/untriggered signals.
+var mechanisms: Dictionary = {}   # id (StringName) → Mechanism
 var _next_item_id := 1
 var _endocytosing: Dictionary = {} # char_id → {item_id, handle} for in-progress endocytosis
 var _dodging: Dictionary = {}     # char_id → {end_tick, handle}
@@ -1785,6 +1790,53 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			cancel_queued_ability(String(payload["char_id"]))
 		_:
 			push_warning("GameState._dispatch: unknown event kind %s" % kind)
+
+# --- Mechanisms (pressure plates / weight sensors / area triggers) ---
+#
+# Mechanisms see only Actuator data (position, weight, signature). They do
+# not know which actuators are characters, items, or physics objects —
+# that's the point. evaluate_mechanisms() is called on demand by scenes
+# (or by tests) after any change that may have shifted actuator positions.
+
+func register_mechanism(m: Mechanism) -> void:
+	mechanisms[m.id] = m
+
+func unregister_mechanism(mech_id: StringName) -> void:
+	mechanisms.erase(mech_id)
+
+# Build the actuator list from current state. Characters use their stats'
+# weight (default 1.0) and signature (default "organic"). Items contribute
+# only when on the ground. Physics objects contribute their mass and a
+# signature pulled from properties (default "physics_object").
+func get_all_actuators() -> Array:
+	var result: Array = []
+	for char_id in characters:
+		var ch: Dictionary = characters[char_id]
+		var stats: Dictionary = ch.get("stats", {})
+		var w: float = float(stats.get("weight", 1.0))
+		var sig: StringName = StringName(str(stats.get("signature", "organic")))
+		result.append(Actuator.make(get_position(char_id), w, sig))
+	for item_id in items:
+		var item: Dictionary = items[item_id]
+		if item.get("location", "") != "ground":
+			continue
+		var props: Dictionary = item.get("properties", {})
+		var w: float = float(props.get("weight", 0.0))
+		var sig: StringName = StringName(str(props.get("signature", item.get("type", ""))))
+		result.append(Actuator.make(item.get("position", Vector3.ZERO), w, sig))
+	for obj_id in physics_objects:
+		var obj: Dictionary = physics_objects[obj_id]
+		var w: float = float(obj.get("mass", 0.0))
+		var sig: StringName = StringName(str(obj.get("signature", "physics_object")))
+		result.append(Actuator.make(get_physics_position(obj_id), w, sig))
+	return result
+
+func evaluate_mechanisms() -> void:
+	if mechanisms.is_empty():
+		return
+	var actuators := get_all_actuators()
+	for m_id in mechanisms:
+		mechanisms[m_id].update(actuators)
 
 static func _solve_quadratic_detection(pos_a: Vector3, vel_a: Vector3, pos_b: Vector3, vel_b: Vector3, R: float, max_tau: float) -> float:
 	var dp_x := pos_a.x - pos_b.x

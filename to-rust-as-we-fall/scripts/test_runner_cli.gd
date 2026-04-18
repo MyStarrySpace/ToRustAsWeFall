@@ -75,6 +75,12 @@ func _ready() -> void:
 			"--test-save-corruption-recovery":
 				ran_test = true
 				_test_save_corruption_recovery()
+			"--test-actuator-composition-blind":
+				ran_test = true
+				_test_actuator_composition_blind()
+			"--test-actuator-no-id-checks":
+				ran_test = true
+				_test_actuator_no_id_checks()
 			"--test-flora-memory":
 				ran_test = true
 				_test_flora_memory()
@@ -343,6 +349,8 @@ func _run_all_tests() -> void:
 	_test_rng_no_wallclock()
 	_test_save_load_integrity()
 	_test_save_corruption_recovery()
+	_test_actuator_composition_blind()
+	_test_actuator_no_id_checks()
 	_test_flora_memory()
 	_test_event_scheduler()
 	await _test_scene_load()
@@ -2332,6 +2340,11 @@ func _test_event_log_mutation_audit() -> void:
 		# Setup — must be set once before any commands run; carried in the
 		# log's base_seed metadata field, not as an event
 		"set_base_seed",
+		# Mechanism infrastructure: scene-scoped, not per-run state. Not
+		# serialized in the event log; scenes register mechanisms in their
+		# _ready and the lint should not require these to emit.
+		"register_mechanism", "unregister_mechanism",
+		"get_all_actuators", "evaluate_mechanisms",
 	])
 
 	var public_funcs := _parse_public_funcs(content)
@@ -2567,6 +2580,191 @@ func _test_save_corruption_recovery() -> void:
 	_assert_equals(bad["status"], EventLog.LoadStatus.BAD_HEADER,
 		"Stream without magic reports BAD_HEADER")
 	_assert_equals((bad["log"] as EventLog).size(), 0, "Bad-header log is empty")
+
+# Composition-blind test: a single weight-threshold mechanism must trigger
+# identically whether the weight comes from one heavy character, two light
+# characters, an item on the floor, or a character + item combined. The
+# mechanism must never inspect what kind of actuator is on it.
+func _test_actuator_composition_blind() -> void:
+	_test_name = "Actuator Composition-Blind"
+
+	var grid := GridWorld.new()
+	grid.create_room(8, 8, true)
+
+	var plate_pos := grid.grid_to_world(Vector2i(4, 4))
+
+	# Helper: build a fresh GameState + mechanism + signal counter, return
+	# the trigger count after evaluating once.
+	var run_scenario := func(setup: Callable) -> int:
+		var sched := EventScheduler.new()
+		var gs := GameState.new()
+		gs.grid = grid
+		gs.scheduler = sched
+		var plate := WeightMechanism.new()
+		plate.id = &"plate"
+		plate.position = plate_pos
+		plate.radius = 0.6
+		plate.threshold = 2.0
+		gs.register_mechanism(plate)
+		var triggers := [0]
+		plate.triggered.connect(func(): triggers[0] += 1)
+		setup.call(gs)
+		gs.evaluate_mechanisms()
+		return triggers[0]
+
+	# (a) one heavy character (weight 2.5)
+	var heavy_char := func(gs: GameState) -> void:
+		gs.register_character("oli", plate_pos, 3.0, {"weight": 2.5})
+	_assert_equals(run_scenario.call(heavy_char), 1, "(a) one heavy character triggers plate")
+
+	# (b) two light characters (weight 1.0 each)
+	var two_light := func(gs: GameState) -> void:
+		gs.register_character("aster", plate_pos, 3.0, {"weight": 1.0})
+		gs.register_character("peris", plate_pos, 3.0, {"weight": 1.0})
+	_assert_equals(run_scenario.call(two_light), 1, "(b) two light characters trigger plate")
+
+	# (c) one heavy item on the ground (weight 2.5)
+	var heavy_item := func(gs: GameState) -> void:
+		gs.spawn_item("mother_gear", plate_pos, {"weight": 2.5})
+	_assert_equals(run_scenario.call(heavy_item), 1, "(c) one heavy item triggers plate")
+
+	# (d) one character + one item, summing to threshold
+	var char_plus_item := func(gs: GameState) -> void:
+		gs.register_character("aster", plate_pos, 3.0, {"weight": 1.0})
+		gs.spawn_item("fire_fruit", plate_pos, {"weight": 1.0})
+	_assert_equals(run_scenario.call(char_plus_item), 1, "(d) character + item triggers plate")
+
+	# Below-threshold cases must NOT trigger — proves the test is sensitive
+	var one_light := func(gs: GameState) -> void:
+		gs.register_character("aster", plate_pos, 3.0, {"weight": 1.0})
+	_assert_equals(run_scenario.call(one_light), 0, "one light character does not trigger")
+
+	var off_plate := func(gs: GameState) -> void:
+		gs.register_character("oli", grid.grid_to_world(Vector2i(0, 0)), 3.0, {"weight": 5.0})
+	_assert_equals(run_scenario.call(off_plate), 0, "actuator outside zone does not trigger")
+
+	# Untriggered transition: trigger then remove the actuator
+	var sched2 := EventScheduler.new()
+	var gs2 := GameState.new()
+	gs2.grid = grid
+	gs2.scheduler = sched2
+	var plate2 := WeightMechanism.new()
+	plate2.id = &"plate"
+	plate2.position = plate_pos
+	plate2.radius = 0.6
+	plate2.threshold = 2.0
+	gs2.register_mechanism(plate2)
+	var triggered := [0]
+	var untriggered := [0]
+	plate2.triggered.connect(func(): triggered[0] += 1)
+	plate2.untriggered.connect(func(): untriggered[0] += 1)
+	gs2.register_character("oli", plate_pos, 3.0, {"weight": 2.5})
+	gs2.evaluate_mechanisms()
+	_assert_equals(triggered[0], 1, "Triggered fires on transition")
+	gs2.unregister_character("oli")
+	gs2.evaluate_mechanisms()
+	_assert_equals(untriggered[0], 1, "Untriggered fires when actuator leaves")
+
+	# Idempotent: re-evaluating with same state produces no extra signals
+	gs2.register_character("oli", plate_pos, 3.0, {"weight": 2.5})
+	gs2.evaluate_mechanisms()
+	gs2.evaluate_mechanisms()
+	gs2.evaluate_mechanisms()
+	_assert_equals(triggered[0], 2, "Re-evaluation with same triggered state does not re-fire")
+
+# Lint: Mechanism subclasses must never reference char_id, character lists,
+# or call methods that special-case characters vs items. Walks
+# scripts/game/ for files that extend Mechanism (directly or transitively)
+# and greps for forbidden patterns.
+func _test_actuator_no_id_checks() -> void:
+	_test_name = "Actuator No ID Checks"
+
+	var forbidden := PackedStringArray([
+		"char_id",
+		"is_character(",
+		"characters[",
+		"characters.has(",
+		"\"item_id\"",  # mechanism payloads should not name item ids either
+	])
+
+	var mechanism_files: Array = []
+	_collect_mechanism_files(mechanism_files)
+	_assert_true(mechanism_files.size() >= 2,
+		"Found at least the base + one subclass (got %d, files: %s)" % [mechanism_files.size(), str(mechanism_files)])
+
+	var offenders: Array = []
+	for path in mechanism_files:
+		var f := FileAccess.open(path, FileAccess.READ)
+		if f == null:
+			continue
+		var content := f.get_as_text()
+		f.close()
+		for pat in forbidden:
+			if content.contains(pat):
+				offenders.append("%s contains %s" % [path, pat])
+
+	_assert_equals(offenders.size(), 0,
+		"Mechanism files free of identity checks (offenders: %s)" % str(offenders))
+
+# Discover every .gd file that participates in the Mechanism hierarchy.
+# A file participates if its class_name is a known mechanism class OR if
+# it extends one. Iterates to a fixed point so deep subclass chains are
+# included transitively. Includes the base class itself (matched by
+# class_name).
+func _collect_mechanism_files(out: Array) -> void:
+	var all_files: Array = []
+	_walk_gd_files("res://scripts/", all_files)
+
+	var known: Dictionary = {"Mechanism": true}
+	for _pass in range(5):
+		var added_this_pass := false
+		for path in all_files:
+			if out.has(path):
+				continue
+			var f := FileAccess.open(path, FileAccess.READ)
+			if f == null:
+				continue
+			var content := f.get_as_text()
+			f.close()
+			var declared := ""
+			for line in content.split("\n"):
+				var s: String = line.strip_edges()
+				if s.begins_with("class_name "):
+					declared = s.substr(11).get_slice(" ", 0).strip_edges()
+					break
+			var matches := false
+			if declared != "" and known.has(declared):
+				matches = true
+			else:
+				for cls in known.keys():
+					if content.contains("extends " + cls):
+						matches = true
+						break
+			if matches:
+				out.append(path)
+				if declared != "" and not known.has(declared):
+					known[declared] = true
+				added_this_pass = true
+		if not added_this_pass:
+			break
+
+func _walk_gd_files(path: String, out: Array) -> void:
+	var d := DirAccess.open(path)
+	if d == null:
+		return
+	d.list_dir_begin()
+	var name := d.get_next()
+	while name != "":
+		if name == "." or name == "..":
+			name = d.get_next()
+			continue
+		var full := path.path_join(name)
+		if d.current_is_dir():
+			_walk_gd_files(full, out)
+		elif name.ends_with(".gd"):
+			out.append(full)
+		name = d.get_next()
+	d.list_dir_end()
 
 # Lint: forbid wall-clock RNG / time calls in game-logic .gd files. Files
 # that legitimately need them for visual or performance reasons must

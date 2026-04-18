@@ -81,14 +81,18 @@ Falls out of #1 and #2. Not a separate subsystem — it's the log plus a base se
 
 World-as-physical-system. Pressure plates, triggers, and mechanisms respond to physical conditions, not to character identity.
 
-- [ ] **4.1** Define `Actuator` contract: any entity with `position: Vector3`, `weight: float`, `signature: StringName` (e.g. `"organic"`, `"metal"`, `"heavy_fruit"`). Characters, items, physics objects all implement this.
-- [ ] **4.2** Define `Mechanism` contract: evaluates a condition over actuators in its zone (e.g. `sum(weight) >= threshold`, `count(signature == "organic") >= 1`). Mechanisms never inspect `char_id`.
-- [ ] **4.3** Migrate existing pressure-sensitive interactables (`interactable.gd`) to the Mechanism contract.
-- [ ] **4.4** Add heavy-item → weight mapping in `item_data.gd`.
+**Design decision (locked in by 4.1–4.2):** `Actuator` is plain data (`position`, `weight`, `signature`), not a base class anything inherits. `GameState.get_all_actuators()` builds the list on demand from characters/items/physics_objects. Mechanisms see the list filtered to their zone and evaluate a pure condition. This makes the contract impossible to misuse: a Mechanism that wants more than the three Actuator fields would have to query GameState directly, which the lint catches.
+
+- [x] **4.1** `Actuator` data class with `position`, `weight`, `signature`. — [scripts/game/actuator.gd](scripts/game/actuator.gd). `GameState.get_all_actuators()` reads characters' `stats.weight` (default 1.0), items' `properties.weight` (default 0.0), and physics objects' `mass`.
+- [x] **4.2** `Mechanism` base class with `id`, `position`, `radius`, `update(actuators)`. Emits `triggered` / `untriggered` on transitions; idempotent. `WeightMechanism` subclass triggers when summed weight in zone ≥ threshold. — [scripts/game/mechanism.gd](scripts/game/mechanism.gd), [scripts/game/weight_mechanism.gd](scripts/game/weight_mechanism.gd)
+- [ ] **4.3** Migrate existing pressure-sensitive interactables. **N/A:** `interactable.gd` is proximity-based, not weight-based — no pressure-sensitive interactables exist yet to migrate. The `WeightMechanism` is in place for the first scene that needs one.
+- [~] **4.4** Heavy-item → weight mapping in `item_data.gd`. **Pending:** the schema supports `weight` as a per-type property, but the existing item types (`mother_gear`, `fragment`, `fire_fruit`, etc.) don't yet declare weights. Tests pass weights via `properties` overrides. Will land alongside the first scene that uses pressure plates.
+
+**Open issue — `evaluate_mechanisms()` is on-demand only:** runtime scenes need to call `evaluate_mechanisms()` after any change that may have shifted actuator positions. Not auto-fired from movement / drop / pickup yet because there are no live mechanisms in the running game. When the first scene wires a pressure plate, hook it into the scheduler-driven movement-arrival path the way detection prediction works today.
 
 **Success conditions**
-- `--test-actuator-composition-blind`: set up a pressure plate requiring weight ≥ 2.0. Verify it triggers when (a) one heavy character stands on it, (b) two light characters stand on it, (c) one heavy fruit is placed on it, (d) one character + one item combine to reach threshold. All four cases must trigger identical downstream events.
-- `--test-actuator-no-id-checks`: grep-gated — fails if any `Mechanism` subclass references `char_id`, `is_character()`, or checks a character list.
+- [x] `--test-actuator-composition-blind`: 9/9. A weight-2.0 plate triggers identically when activated by (a) one heavy character (weight 2.5), (b) two light characters (1.0 each), (c) one heavy item, (d) one character + one item summing to threshold. Single light character does not trigger; actuator outside the zone does not trigger; transitions fire once on enter/leave; re-evaluation is idempotent.
+- [x] `--test-actuator-no-id-checks`: 2/2. Walks `scripts/` for files in the Mechanism class hierarchy (auto-discovered to fixed point), greps for forbidden patterns (`char_id`, `is_character(`, `characters[`, `characters.has(`, `"item_id"`). False-positive doc-comment match caught by reading the lint output and rewording the docstring.
 
 ---
 
