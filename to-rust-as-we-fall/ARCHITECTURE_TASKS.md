@@ -187,12 +187,19 @@ Party moves as a unit. Splits are scripted.
 
 Designed-affordance backtracking. Zones change on revisit.
 
-- [ ] **10.1** `Portal` node: data-driven destination zone-id + re-entry hub-id.
-- [ ] **10.2** `ZoneState` snapshots: on zone-exit, persist zone's stateful entities (enemy populations, NPC states, environmental flags); on re-entry, apply zone's revisit-state transforms (new enemies, shifted NPC states).
-- [ ] **10.3** Author the Inflammashunt revisit state as first example.
+**Design decisions (locked in by 10.1–10.2):**
+- `Portal` is plain data (id, from/to zone, to hub) — no runtime behavior. All portal semantics live on ZoneManager.
+- Zone state is a free-form `Dictionary` per zone; scenes structure it however they like. ZoneManager just stores, retrieves, and transforms.
+- Revisit transforms are `Callable(Dictionary) -> Dictionary`, registered per zone. They run on every entry from the second onward, so each revisit can stack further transforms ("level" increments each time, for instance).
+
+- [x] **10.1** `Portal` data class with `id`, `from_zone_id`, `to_zone_id`, `to_hub_id`. `ZoneManager.register_portal` / `take_portal(id, gs, party)`. — [scripts/game/portal.gd](scripts/game/portal.gd)
+- [x] **10.2** `ZoneManager.save_zone_state(zone_id, state)` / `get_zone_state(zone_id)` / `register_revisit_transform(zone_id, callable)`. Transform applied inside `enter_zone` when `visit_count >= 2`, so the state returned by `get_zone_state` after a revisit already reflects the transformation.
+- [ ] **10.3** Inflammashunt revisit state. **Deferred** — content work. The machinery is in place; the Inflammashunt puzzle itself isn't authored yet.
+
+**Open item — portal eligibility:** `take_portal` doesn't check whether the party is close enough to the portal; scenes trigger it when the party enters the portal's trigger zone. Consistent with hub/gate pattern — the mechanism is environmental, the machinery is API-driven.
 
 **Success conditions**
-- `--test-portal-revisit`: complete a zone, take portal to a different zone, return via portal, assert enemy roster / NPC states / environmental flags differ from first visit per revisit-state spec.
+- [x] `--test-portal-revisit`: 17/17. Two-zone setup with bidirectional portals and a registered revisit transform. First entry: `visit_count = 1`, `is_first_visit = true`. Save zone A's state, portal to B, save B's state, portal back. Revisit: A's saved state is preserved AND the transform ran (enemy roster hardened, `tended` flag flipped, revisit level incremented). B's state preserved across the round trip. Third entry: transform stacks (level = 2). Unknown portal id returns false cleanly.
 
 ---
 

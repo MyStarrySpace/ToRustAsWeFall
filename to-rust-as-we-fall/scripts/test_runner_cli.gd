@@ -105,6 +105,9 @@ func _ready() -> void:
 			"--test-determinism-rerecord":
 				ran_test = true
 				_test_determinism_rerecord()
+			"--test-portal-revisit":
+				ran_test = true
+				_test_portal_revisit()
 			"--test-flora-memory":
 				ran_test = true
 				_test_flora_memory()
@@ -383,6 +386,7 @@ func _run_all_tests() -> void:
 	_test_scene_triggers()
 	_test_replay_roundtrip()
 	_test_determinism_rerecord()
+	_test_portal_revisit()
 	_test_flora_memory()
 	_test_event_scheduler()
 	await _test_scene_load()
@@ -2613,6 +2617,121 @@ func _test_save_corruption_recovery() -> void:
 	_assert_equals(bad["status"], EventLog.LoadStatus.BAD_HEADER,
 		"Stream without magic reports BAD_HEADER")
 	_assert_equals((bad["log"] as EventLog).size(), 0, "Bad-header log is empty")
+
+# Portal backtracking: register two zones linked by portals, take a
+# portal from A→B, save A's zone state on exit, return via B→A portal,
+# assert the saved state is preserved. Also verifies visit_count, first
+# vs revisit semantics, and that a registered revisit transform fires on
+# the second entry to harden the encounter.
+func _test_portal_revisit() -> void:
+	_test_name = "Portal Revisit"
+
+	var grid := GridWorld.new()
+	grid.create_room(14, 10, true)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+	gs.register_character("aster", grid.grid_to_world(Vector2i(1, 1)), 3.0, {
+		"narrative_available": true,
+	})
+
+	var zm := ZoneManager.new()
+	var zone_a := Zone.new()
+	zone_a.id = &"channels"
+	var zone_b := Zone.new()
+	zone_b.id = &"stacks"
+	zm.register_zone(zone_a)
+	zm.register_zone(zone_b)
+
+	var hub_a := Hub.new()
+	hub_a.id = &"hub_channels"
+	hub_a.zone_id = &"channels"
+	var hub_b := Hub.new()
+	hub_b.id = &"hub_stacks"
+	hub_b.zone_id = &"stacks"
+	zm.register_hub(hub_a)
+	zm.register_hub(hub_b)
+
+	var portal_a_to_b := Portal.new()
+	portal_a_to_b.id = &"portal_a_b"
+	portal_a_to_b.from_zone_id = &"channels"
+	portal_a_to_b.to_zone_id = &"stacks"
+	portal_a_to_b.to_hub_id = &"hub_stacks"
+	zm.register_portal(portal_a_to_b)
+
+	var portal_b_to_a := Portal.new()
+	portal_b_to_a.id = &"portal_b_a"
+	portal_b_to_a.from_zone_id = &"stacks"
+	portal_b_to_a.to_zone_id = &"channels"
+	portal_b_to_a.to_hub_id = &"hub_channels"
+	zm.register_portal(portal_b_to_a)
+
+	# Revisit transform: on second entry to channels, replace the enemy
+	# roster with a harder variant and set the "tended" flag.
+	zm.register_revisit_transform(&"channels", func(state: Dictionary) -> Dictionary:
+		state["enemy_roster"] = ["shaded_naturalizer", "shaded_naturalizer"]
+		state["tended"] = true
+		state["revisit_level"] = int(state.get("revisit_level", 0)) + 1
+		return state)
+
+	# Observe portal-taken
+	var portals_taken: Array = []
+	zm.portal_taken.connect(func(id: StringName): portals_taken.append(String(id)))
+
+	# --- First visit to A ---
+	zm.enter_zone(&"channels")
+	zm.enter_hub(&"hub_channels", gs, ["aster"])
+	_assert_equals(zm.get_visit_count(&"channels"), 1, "First entry: visit_count = 1")
+	_assert_true(zm.is_first_visit(&"channels"), "is_first_visit true on first entry")
+
+	# Simulate scene saving its state on zone-exit
+	zm.save_zone_state(&"channels", {
+		"enemy_roster": ["naturalizer"],
+		"tended": false,
+		"revisit_level": 0,
+	})
+
+	# --- Take portal A→B ---
+	var ok := zm.take_portal(&"portal_a_b", gs, ["aster"])
+	_assert_true(ok, "Portal A→B taken")
+	_assert_equals(portals_taken[0], "portal_a_b", "portal_taken names the portal")
+	_assert_equals(zm.current_zone, &"stacks", "Now in zone B")
+	_assert_equals(zm.current_hub, &"hub_stacks", "At zone B's hub")
+	_assert_equals(zm.get_visit_count(&"stacks"), 1, "First entry to B: count = 1")
+
+	# Scene saves B's state on exit
+	zm.save_zone_state(&"stacks", {"enemy_roster": ["siderophore_cluster"]})
+
+	# --- Take portal B→A (revisit) ---
+	zm.take_portal(&"portal_b_a", gs, ["aster"])
+	_assert_equals(zm.current_zone, &"channels", "Back in zone A")
+	_assert_equals(zm.get_visit_count(&"channels"), 2, "Revisit: count = 2")
+	_assert_true(not zm.is_first_visit(&"channels"), "is_first_visit false on revisit")
+
+	# Saved state is preserved, AND revisit transform has been applied
+	var a_state := zm.get_zone_state(&"channels")
+	_assert_equals(a_state.get("enemy_roster", []), ["shaded_naturalizer", "shaded_naturalizer"],
+		"Revisit transform replaced enemy roster")
+	_assert_equals(a_state.get("tended", false), true, "Revisit transform set tended=true")
+	_assert_equals(a_state.get("revisit_level", -1), 1, "Revisit transform incremented level")
+
+	# B's state preserved across the round trip (even though we came through it)
+	var b_state := zm.get_zone_state(&"stacks")
+	_assert_equals(b_state.get("enemy_roster", []), ["siderophore_cluster"],
+		"Zone B state preserved through backtrack")
+
+	# --- Third entry: transform runs again on top of already-transformed state ---
+	zm.take_portal(&"portal_a_b", gs, ["aster"])
+	zm.take_portal(&"portal_b_a", gs, ["aster"])
+	_assert_equals(zm.get_visit_count(&"channels"), 3, "Third entry: count = 3")
+	var a_state_3 := zm.get_zone_state(&"channels")
+	_assert_equals(a_state_3.get("revisit_level", -1), 2,
+		"Transform re-applied on third entry, level incremented again")
+
+	# Bad portal id returns false cleanly
+	var bad := zm.take_portal(&"nonexistent", gs, ["aster"])
+	_assert_equals(bad, false, "Unknown portal id returns false")
 
 # Record a scripted session into an event log, replay the log into a
 # fresh GameState, assert the two state hashes match. Baseline round-trip
