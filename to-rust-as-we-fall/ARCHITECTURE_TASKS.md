@@ -173,13 +173,19 @@ No game-over. Downed ≠ dead. Retreat to hub = full recovery.
 
 Party moves as a unit. Splits are scripted.
 
-- [ ] **9.1** Movement command defaults: clicking a destination moves whole party (formation + follow).
-- [ ] **9.2** `PartySplit(members: Array, duration_or_event: Variant)` — scripted-only API; not exposed to player input.
-- [ ] **9.3** Out-of-split movement commands always target whole party.
+**Design decisions (locked in by 9.1–9.3):**
+- Party is an ordered `Array[String]` on GameState, set via `set_party(members)`. Splits track a subset in `_split_members`; `_main_group()` = party − split members.
+- `party_move_to_cell` / `party_move_to_pos` emit ONE command, not N per-member commands. The log records intent ("the player clicked once meaning the whole party"), not the fanout. Replay re-dispatches and re-fans-out identically.
+- Splits are scripted-only by convention — no player input path calls `start_split` or `end_split`. Enforced by code review, not by lint (the architecture doesn't define "player input" in a grep-able way).
+- During a split, direct `command_move_to_cell(split_member, ...)` still works so sequence scripts can move split members independently.
+
+- [x] **9.1** `set_party` / `party_move_to_cell` / `party_move_to_pos` commands on GameState. Each party_move addresses every non-split party member via `_do_move_to_*` internal helpers (no double-emit). Extracted `_do_move_to_cell` to match the `_do_move_to_pos` / `_do_stop` pattern.
+- [x] **9.2** `start_split(members)` / `end_split()` logged commands; `is_split_active`, `get_split_members` queries. Invalid members (not in current party) are silently filtered at split-start time.
+- [x] **9.3** `party_move_*` consults `_main_group()`, which returns party minus split members. Split members stay put unless addressed directly.
 
 **Success conditions**
-- `--test-party-cohesion-default`: issue move command, assert all party members have movement events queued to formation slots.
-- `--test-scripted-split`: start a scripted split, assert only split members move independently; end split, assert reunification.
+- [x] `--test-party-cohesion-default`: 14/14. Party of 3; one `party_move_to_cell` → all 3 move; every member arrives. Same for `party_move_to_pos`. Event log records exactly ONE party_move event per command, not per-member. Replay reconstructs the party through dispatch.
+- [x] `--test-scripted-split`: 12/12. Split subset → main group still responds to party_move but split member stays put. Split member can be moved directly via `command_move_to_cell`. `end_split` rejoins — party_move addresses everyone again. Invalid members in `start_split` filtered.
 
 ---
 

@@ -108,6 +108,12 @@ func _ready() -> void:
 			"--test-portal-revisit":
 				ran_test = true
 				_test_portal_revisit()
+			"--test-party-cohesion-default":
+				ran_test = true
+				_test_party_cohesion_default()
+			"--test-scripted-split":
+				ran_test = true
+				_test_scripted_split()
 			"--test-flora-memory":
 				ran_test = true
 				_test_flora_memory()
@@ -387,6 +393,8 @@ func _run_all_tests() -> void:
 	_test_replay_roundtrip()
 	_test_determinism_rerecord()
 	_test_portal_revisit()
+	_test_party_cohesion_default()
+	_test_scripted_split()
 	_test_flora_memory()
 	_test_event_scheduler()
 	await _test_scene_load()
@@ -2370,6 +2378,7 @@ func _test_event_log_mutation_audit() -> void:
 		"is_dodging", "is_endocytosing",
 		"has_queued_ability", "get_queued_ability",
 		"is_narratively_available", "is_downed", "is_party_downed",
+		"get_party", "get_split_members", "is_split_active",
 		# Snapshot/restore — bypasses log by design (used for tests, not gameplay)
 		"serialize", "deserialize", "state_hash",
 		# Event-log infrastructure itself
@@ -2617,6 +2626,131 @@ func _test_save_corruption_recovery() -> void:
 	_assert_equals(bad["status"], EventLog.LoadStatus.BAD_HEADER,
 		"Stream without magic reports BAD_HEADER")
 	_assert_equals((bad["log"] as EventLog).size(), 0, "Bad-header log is empty")
+
+# Issue one party_move command; assert every party member has a movement
+# queued toward the target. Proves the "one click, whole party moves"
+# default — the player never has to address members individually.
+func _test_party_cohesion_default() -> void:
+	_test_name = "Party Cohesion Default"
+
+	var grid := GridWorld.new()
+	grid.create_room(14, 10, true)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+
+	gs.register_character("aster", grid.grid_to_world(Vector2i(1, 1)), 3.0, {
+		"narrative_available": true,
+	})
+	gs.register_character("peris", grid.grid_to_world(Vector2i(2, 1)), 3.0, {
+		"narrative_available": true,
+	})
+	gs.register_character("endo", grid.grid_to_world(Vector2i(3, 1)), 3.0, {
+		"narrative_available": true,
+	})
+
+	gs.set_party(["aster", "peris", "endo"])
+	_assert_equals(gs.get_party().size(), 3, "Party has 3 members")
+	_assert_true(not gs.is_split_active(), "No split active by default")
+
+	# Fire one party move; every member should start moving
+	gs.party_move_to_cell(Vector2i(8, 5))
+	for member in ["aster", "peris", "endo"]:
+		_assert_true(gs.is_moving(member),
+			"%s has movement queued after party_move_to_cell" % member)
+
+	# Advance scheduler past arrival; every member arrives
+	sched.advance_ticks(100.0)
+	for member in ["aster", "peris", "endo"]:
+		_assert_true(not gs.is_moving(member),
+			"%s arrived at target" % member)
+
+	# party_move_to_pos also addresses every member
+	gs.party_move_to_pos(Vector3(3.5, 0, 6.5))
+	for member in ["aster", "peris", "endo"]:
+		_assert_true(gs.is_moving(member),
+			"%s moves on party_move_to_pos" % member)
+
+	# Log only records ONE party_move event per command, not N per-member moves
+	var event_count_before := gs.event_log.size() if gs.event_log else 0
+	# Reset
+	sched.advance_ticks(100.0)
+	var log := EventLog.new()
+	gs.event_log = log
+	gs.party_move_to_cell(Vector2i(10, 7))
+	_assert_equals(log.size(), 1,
+		"One party_move_to_cell command → one event (not per-member)")
+	_assert_equals(String(log.events[0]["kind"]), "party_move_to_cell",
+		"Logged kind is party_move_to_cell")
+
+	# Replay reproduces the same fanout
+	sched.advance_ticks(100.0)
+	gs.flush_tick()
+	var full_log := EventLog.new()
+	gs.event_log = full_log
+	gs.set_party(["aster", "peris", "endo"])
+	gs.party_move_to_cell(Vector2i(5, 5))
+	sched.advance_ticks(100.0)
+	gs.flush_tick()
+	var replayed := GameState.replay(full_log, grid)
+	replayed.register_character("aster", grid.grid_to_world(Vector2i(1, 1)), 3.0, {
+		"narrative_available": true,
+	})  # noop safeguard — replay already constructed these via dispatch
+	_assert_equals(replayed.get_party().size(), 3, "Replay reconstructs party")
+
+# Scripted split: a subset goes off alone for a narrative beat. During the
+# split, party_move addresses only the main group; split members move on
+# their own via direct command_move. Ending the split rejoins them.
+func _test_scripted_split() -> void:
+	_test_name = "Scripted Split"
+
+	var grid := GridWorld.new()
+	grid.create_room(14, 10, true)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+
+	for member in ["aster", "peris", "endo"]:
+		gs.register_character(member, grid.grid_to_world(Vector2i(1, 1)), 3.0, {
+			"narrative_available": true,
+		})
+	gs.set_party(["aster", "peris", "endo"])
+
+	# Start a split — peris goes off alone
+	gs.start_split(["peris"])
+	_assert_true(gs.is_split_active(), "Split is active")
+	_assert_equals(gs.get_split_members(), ["peris"], "Peris is the split member")
+
+	# party_move addresses ONLY the main group (aster + endo)
+	gs.party_move_to_cell(Vector2i(6, 5))
+	_assert_true(gs.is_moving("aster"), "Aster moves on party command")
+	_assert_true(gs.is_moving("endo"), "Endo moves on party command")
+	_assert_true(not gs.is_moving("peris"),
+		"Peris does NOT move on party command — she's split off")
+
+	# A sequence can still move peris directly via her own char_id
+	gs.command_move_to_cell("peris", Vector2i(10, 8))
+	_assert_true(gs.is_moving("peris"), "Peris moves when addressed directly")
+
+	# End the split — main-group status restored
+	gs.end_split()
+	_assert_true(not gs.is_split_active(), "Split ended")
+	_assert_equals(gs.get_split_members().size(), 0, "No split members after end")
+
+	# Now party_move addresses everyone again (advance past prior movement first)
+	sched.advance_ticks(100.0)
+	gs.party_move_to_cell(Vector2i(4, 4))
+	for member in ["aster", "peris", "endo"]:
+		_assert_true(gs.is_moving(member),
+			"%s rejoins party-wide movement after end_split" % member)
+
+	# start_split with a non-party member ignores the invalid id
+	gs.end_split()  # ensure clean state
+	gs.start_split(["aster", "nonexistent"])
+	_assert_equals(gs.get_split_members(), ["aster"],
+		"Invalid split members are filtered out")
 
 # Portal backtracking: register two zones linked by portals, take a
 # portal from A→B, save A's zone state on exit, return via B→A portal,

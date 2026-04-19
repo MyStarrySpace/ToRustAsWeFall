@@ -72,6 +72,16 @@ const KIND_RESTORE_CHARACTER := &"restore_character"
 # beats authored in sequence scripts.
 const KIND_DIE_SCRIPTED := &"die_scripted"
 
+# --- Party cohesion ---
+# Party movement addresses every party member with one command. The player
+# clicks once and the whole party goes. Splits are scripted narrative
+# events — the player does not initiate splits, the story does.
+const KIND_SET_PARTY := &"set_party"
+const KIND_PARTY_MOVE_TO_CELL := &"party_move_to_cell"
+const KIND_PARTY_MOVE_TO_POS := &"party_move_to_pos"
+const KIND_START_SPLIT := &"start_split"
+const KIND_END_SPLIT := &"end_split"
+
 const ALL_KINDS: Array[StringName] = [
 	KIND_REGISTER_CHARACTER,
 	KIND_UNREGISTER_CHARACTER,
@@ -100,6 +110,11 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_DOWN_CHARACTER,
 	KIND_RESTORE_CHARACTER,
 	KIND_DIE_SCRIPTED,
+	KIND_SET_PARTY,
+	KIND_PARTY_MOVE_TO_CELL,
+	KIND_PARTY_MOVE_TO_POS,
+	KIND_START_SPLIT,
+	KIND_END_SPLIT,
 ]
 
 static func make(tick: float, kind: StringName, payload: Dictionary) -> Dictionary:

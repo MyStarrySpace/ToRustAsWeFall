@@ -171,21 +171,7 @@ func unregister_character(id: String) -> void:
 ## A* pathfind to a grid cell. Returns true if a path was found.
 func command_move_to_cell(id: String, cell: Vector2i) -> bool:
 	_emit(GameEvent.KIND_MOVE_TO_CELL, {"id": id, "cell": GameEvent.v2i_to_arr(cell)})
-	if not characters.has(id) or not grid or not scheduler:
-		return false
-	if is_endocytosing(id):
-		return false
-	var current_pos := get_position(id)
-	var current_cell := grid.world_to_grid(current_pos)
-	var path := grid.find_path(current_cell, cell)
-	if path.is_empty():
-		return false
-	_cancel_movement(id)
-	characters[id].position = current_pos
-	var full_path: Array[Vector3] = [current_pos]
-	full_path.append_array(path)
-	_start_movement(id, full_path)
-	return true
+	return _do_move_to_cell(id, cell)
 
 ## Straight-line move to a world position.
 func command_move_to_pos(id: String, pos: Vector3) -> bool:
@@ -1809,8 +1795,108 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			restore_character(String(payload["char_id"]))
 		GameEvent.KIND_DIE_SCRIPTED:
 			die_scripted(String(payload["char_id"]))
+		GameEvent.KIND_SET_PARTY:
+			set_party(payload.get("members", []))
+		GameEvent.KIND_PARTY_MOVE_TO_CELL:
+			party_move_to_cell(GameEvent.arr_to_v2i(payload["cell"]))
+		GameEvent.KIND_PARTY_MOVE_TO_POS:
+			party_move_to_pos(GameEvent.arr_to_v3(payload["pos"]))
+		GameEvent.KIND_START_SPLIT:
+			start_split(payload.get("members", []))
+		GameEvent.KIND_END_SPLIT:
+			end_split()
 		_:
 			push_warning("GameState._dispatch: unknown event kind %s" % kind)
+
+# --- Party cohesion ---
+#
+# The party moves as a unit. Clicking a destination issues command_move
+# for every non-split party member. Splits are scripted narrative events;
+# the player does not initiate splits. During a split, party_move targets
+# only the main group (non-split members); split members are addressed
+# directly by sequence scripts via command_move_to_* on their char_id.
+
+## Ordered party roster. Set via set_party; individual characters must be
+## registered first. A character can be in `characters` without being in
+## the party (e.g., NPCs, enemies, recruits waiting for approach).
+var party: Array[String] = []
+## Characters temporarily split off from the main group by a scripted
+## narrative event. party_move ignores these until end_split is called.
+var _split_members: Array[String] = []
+
+func set_party(members: Array) -> void:
+	_emit(GameEvent.KIND_SET_PARTY, {"members": members.duplicate()})
+	party.clear()
+	for m in members:
+		party.append(String(m))
+
+func get_party() -> Array[String]:
+	return party.duplicate()
+
+func get_split_members() -> Array[String]:
+	return _split_members.duplicate()
+
+func is_split_active() -> bool:
+	return not _split_members.is_empty()
+
+## Main-group members: party minus split members. The subset that
+## responds to party_move_to_* while a split is active. Returns the
+## whole party when no split is active.
+func _main_group() -> Array[String]:
+	if _split_members.is_empty():
+		return party.duplicate()
+	var result: Array[String] = []
+	for m in party:
+		if not (m in _split_members):
+			result.append(m)
+	return result
+
+func party_move_to_cell(cell: Vector2i) -> void:
+	_emit(GameEvent.KIND_PARTY_MOVE_TO_CELL, {"cell": GameEvent.v2i_to_arr(cell)})
+	for char_id in _main_group():
+		_do_move_to_cell(char_id, cell)
+
+func party_move_to_pos(pos: Vector3) -> void:
+	_emit(GameEvent.KIND_PARTY_MOVE_TO_POS, {"pos": GameEvent.v3_to_arr(pos)})
+	for char_id in _main_group():
+		_do_move_to_pos(char_id, pos)
+
+## Scripted split — subset of the party moves independently for a
+## narrative beat. NOT exposed to player input. While a split is active,
+## party_move_to_* addresses only the main group; split members are
+## moved directly via command_move_to_* by the driving sequence.
+func start_split(members: Array) -> void:
+	_emit(GameEvent.KIND_START_SPLIT, {"members": members.duplicate()})
+	_split_members.clear()
+	for m in members:
+		var cid := String(m)
+		# Only split members who are actually in the party
+		if cid in party:
+			_split_members.append(cid)
+
+func end_split() -> void:
+	_emit(GameEvent.KIND_END_SPLIT, {})
+	_split_members.clear()
+
+# Internal helper mirroring _do_move_to_pos for cell-based movement, used
+# by party_move_to_cell to avoid the per-member _emit that the public
+# command_move_to_cell would fire.
+func _do_move_to_cell(id: String, cell: Vector2i) -> bool:
+	if not characters.has(id) or not grid or not scheduler:
+		return false
+	if is_endocytosing(id):
+		return false
+	var current_pos := get_position(id)
+	var current_cell := grid.world_to_grid(current_pos)
+	var path := grid.find_path(current_cell, cell)
+	if path.is_empty():
+		return false
+	_cancel_movement(id)
+	characters[id].position = current_pos
+	var full_path: Array[Vector3] = [current_pos]
+	full_path.append_array(path)
+	_start_movement(id, full_path)
+	return true
 
 # --- Narrative state transitions (downed / restored) ---
 #
