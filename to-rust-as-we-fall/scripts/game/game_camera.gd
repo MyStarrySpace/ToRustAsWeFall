@@ -149,6 +149,12 @@ func unlock() -> void:
 	_locked = false
 	_pan_offset = Vector3.ZERO
 
+func is_locked() -> bool:
+	return _locked
+
+func get_lock_position() -> Vector3:
+	return _lock_position
+
 ## Enable/disable player pan control
 func set_pan_enabled(enabled: bool) -> void:
 	_pan_enabled = enabled

@@ -1,5 +1,5 @@
 @tool
-extends TutorialSequence
+extends "res://scripts/tutorial/tutorial_sequence.gd"
 
 ## Tag Day tutorial sequence. Builds the checkpoint environment and drives
 ## the scripted events: queue, citizen failure, naturalizer grip, corridor
@@ -342,7 +342,7 @@ func _start_blue_transition() -> void:
 
 func _on_sequence_complete() -> void:
 	_enter_step("complete")
-	get_tree().change_scene_to_file("res://scenes/tutorial/peris_sim.tscn")
+	_change_scene_or_record("res://scenes/tutorial/peris_sim.tscn")
 
 
 # --- Environment Build ---

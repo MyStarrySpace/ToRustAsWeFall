@@ -136,6 +136,12 @@ static func get_lines(prefix: String) -> Array[DialogueLine]:
 static func text(key: String) -> String:
 	return get_line(key).text
 
+## Check whether a dialogue key exists in the loaded tables.
+static func has_key(key: String) -> bool:
+	if not _loaded:
+		load_dir("res://data/dialogue/en/")
+	return key in _lines
+
 ## Send a line directly to a dialogue box node
 static func say_to(dialogue_box: Node, key: String) -> void:
 	var line := get_line(key)

@@ -6,6 +6,12 @@ extends Node3D
 ## UI setup, speed control, camera, and common helpers. Subclasses override
 ## virtual methods to build their scene-specific content.
 
+const INTERACTABLE_SCENE := preload("res://scenes/game/interactable.tscn")
+const EXPLORATION_RADIUS_SCALE := 1.35
+const EXPLORATION_MIN_RADIUS := 1.6
+const EXPLORATION_FOCUS_OFFSET := Vector3(0, 4.2, 3.2)
+const EXPLORATION_FOCUS_HEIGHT := 0.9
+
 # Core infrastructure
 var _scheduler: EventScheduler
 var _game_state: GameState
@@ -17,6 +23,7 @@ var _dialogue       # CanvasLayer + dialogue_box.gd
 var _tutorial_prompt # CanvasLayer + tutorial_prompt.gd
 var _fade_rect: ColorRect
 var _thought_label: Label
+var _engram_overlay
 
 # Player and camera (populated by subclass via helpers)
 var _player         # CharacterBody3D + player.gd
@@ -25,8 +32,15 @@ var _camera         # Camera3D + game_camera.gd
 # Perception system
 var _perception_quad: MeshInstance3D
 var _perception_material: ShaderMaterial
-var _perception_mode := ""  # "", "data", "fog"
+var _perception_mode := ""  # "", "data", "fog", "outline"
 var _perception_target: Node3D  # Character whose position drives the shader
+var _outline_hover_source: Node3D = null
+var _outline_selected_source: Node3D = null
+var _outline_hover_color := Color.WHITE
+var _outline_selected_color := Color(1.0, 0.62, 0.12, 1.0)
+var _outline_hover_radius := 2.0
+var _outline_selected_radius := 2.0
+var _outline_selection_token := 0
 
 # Dialogue chain state (used by _dialogue_chain helper)
 var _dlg_chain_keys: Array = []
@@ -36,11 +50,22 @@ var _dlg_chain_delay := 0.0
 var _did_teardown := false
 var suppress_scene_change := false
 var requested_scene_change := ""
+var _capture_pause_depth := 0
+var _capture_pause_was_paused := false
+var _thought_fade_active := false
+var _thought_fade_start_tick := 0.0
+var _thought_fade_duration := 0.0
+var _thought_fade_from_alpha := 0.0
+var _thought_fade_to_alpha := 0.0
+var _exploration_focus_active := false
+var _exploration_focus_prev_camera_offset := Vector3.ZERO
+var _exploration_focus_prev_camera_target: Node3D = null
+var _exploration_focus_prev_scheduler_paused := false
+var _exploration_focus_prev_move_enabled := true
 
 func _ready() -> void:
 	if Engine.is_editor_hint():
-		for child in get_children().duplicate():
-			child.free()
+		_clear_editor_generated_preview_children()
 	_build_scene()
 	_build_characters()
 	if Engine.is_editor_hint():
@@ -55,6 +80,12 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
+	# Guard: teardown may null the scheduler/game_state before Godot stops
+	# invoking _process on this node (scene-change mid-frame, child frees
+	# out of order). Subclasses that override _on_process expect these to
+	# be non-null, so bail if they're gone.
+	if _scheduler == null or _game_state == null:
+		return
 	var spd := _compute_speed()
 	_scheduler.set_speed(spd)
 	if _dialogue:
@@ -63,13 +94,10 @@ func _process(delta: float) -> void:
 		_dialogue.speed_multiplier = maxf(spd, 1.0)
 	for node in _get_speed_recipients():
 		node.speed_multiplier = spd
-	if _anim_player:
-		_anim_player.speed_scale = maxf(spd, 0.001)
 	_scheduler.advance(delta)
-	# Update perception shader tracking
-	if _perception_material and _perception_target:
-		_perception_material.set_shader_parameter("character_pos",
-			_perception_target.global_position + Vector3(0, 1.0, 0))
+	_sync_scheduler_animations()
+	_update_thought_fade()
+	_sync_perception_shader()
 	_on_process(delta, spd)
 
 func _exit_tree() -> void:
@@ -110,7 +138,11 @@ func headless_advance(duration: float, step := 0.05) -> void:
 	while remaining > 0.0001:
 		var dt: float = minf(step, remaining)
 		_scheduler.advance_ticks(dt)
+		_sync_scheduler_animations()
+		_update_thought_fade()
+		_sync_perception_shader()
 		_on_process(dt, 1.0)
+		_headless_sync_scheduler_visuals()
 		_headless_sync_runtime(dt)
 		remaining -= dt
 
@@ -127,11 +159,24 @@ func headless_get_state() -> Dictionary:
 func _headless_sync_runtime(_delta: float) -> void:
 	pass
 
+func _headless_sync_scheduler_visuals() -> void:
+	for node in find_children("*", "", true, false):
+		if node.has_method("sync_scheduler_visuals"):
+			node.call("sync_scheduler_visuals")
+
+func _get_chunk_scene(_chunk_name: String) -> PackedScene:
+	return null
+
+func _clear_editor_generated_preview_children() -> void:
+	for child in get_children().duplicate():
+		if child.owner == null:
+			child.free()
+
 # --- Perception system ---
 
-## Enable the perception overlay. Mode is "data" (Aster's edge detection)
-## or "fog" (Peris's warm fog). tracking_node is the character whose
-## position drives the clear-vision radius.
+## Enable the perception overlay. Mode is "data" (Aster's edge detection),
+## "fog" (Peris's warm fog), or "outline" (black full-scene outlines).
+## tracking_node is the character whose position drives location-aware shaders.
 func _setup_perception(mode: String, tracking_node: Node3D) -> void:
 	if not _perception_quad:
 		_perception_quad = MeshInstance3D.new()
@@ -146,6 +191,7 @@ func _setup_perception(mode: String, tracking_node: Node3D) -> void:
 		add_child(_perception_quad)
 	_set_perception_mode(mode)
 	_perception_target = tracking_node
+	_sync_perception_shader()
 
 ## Switch the perception shader without recreating the quad.
 func _set_perception_mode(mode: String) -> void:
@@ -157,6 +203,8 @@ func _set_perception_mode(mode: String) -> void:
 			_perception_material.shader = preload("res://resources/data_view.gdshader")
 		"fog":
 			_perception_material.shader = preload("res://resources/peris_fog.gdshader")
+		"outline":
+			_perception_material.shader = preload("res://resources/black_outline.gdshader")
 		_:
 			_perception_quad.visible = false
 			return
@@ -165,6 +213,58 @@ func _set_perception_mode(mode: String) -> void:
 ## Change which character the perception shader tracks.
 func _set_perception_target(node: Node3D) -> void:
 	_perception_target = node
+	_sync_perception_shader()
+
+func _sync_perception_shader() -> void:
+	if _perception_mode == "outline":
+		_sync_outline_highlights()
+		return
+	if _perception_material == null or _perception_target == null:
+		return
+	_perception_material.set_shader_parameter("character_pos",
+		_get_perception_target_position() + Vector3(0, 1.0, 0))
+
+func _sync_outline_highlights() -> void:
+	var material := _get_outline_shader_material()
+	if material == null:
+		return
+	if _outline_hover_source != null and is_instance_valid(_outline_hover_source):
+		material.set_shader_parameter("hover_outline_enabled", true)
+		material.set_shader_parameter("hover_outline_world_pos", _outline_hover_source.call("get_outline_highlight_origin") if _outline_hover_source.has_method("get_outline_highlight_origin") else _outline_hover_source.global_position + Vector3(0.0, 0.8, 0.0))
+		material.set_shader_parameter("hover_outline_radius", _outline_hover_radius)
+		material.set_shader_parameter("hover_outline_color", Vector3(_outline_hover_color.r, _outline_hover_color.g, _outline_hover_color.b))
+	else:
+		_outline_hover_source = null
+		material.set_shader_parameter("hover_outline_enabled", false)
+	if _outline_selected_source != null and is_instance_valid(_outline_selected_source):
+		material.set_shader_parameter("selected_outline_enabled", true)
+		material.set_shader_parameter("selected_outline_world_pos", _outline_selected_source.call("get_outline_highlight_origin") if _outline_selected_source.has_method("get_outline_highlight_origin") else _outline_selected_source.global_position + Vector3(0.0, 0.8, 0.0))
+		material.set_shader_parameter("selected_outline_radius", _outline_selected_radius)
+		material.set_shader_parameter("selected_outline_color", Vector3(_outline_selected_color.r, _outline_selected_color.g, _outline_selected_color.b))
+	else:
+		_outline_selected_source = null
+		material.set_shader_parameter("selected_outline_enabled", false)
+
+func _get_outline_shader_material() -> ShaderMaterial:
+	if _perception_mode != "outline":
+		return null
+	if _perception_material != null and _perception_material.shader != null:
+		return _perception_material
+	var imported_outline := find_child("AsterSimRoomOutlinePreview", true, false) as MeshInstance3D
+	if imported_outline != null:
+		return imported_outline.material_override as ShaderMaterial
+	var fallback_outline := find_child("PerceptionQuad", true, false) as MeshInstance3D
+	if fallback_outline != null:
+		return fallback_outline.material_override as ShaderMaterial
+	return null
+
+func _get_perception_target_position() -> Vector3:
+	var pos := _perception_target.global_position
+	var target_game_state = _perception_target.get("game_state")
+	var target_char_id := str(_perception_target.get("char_id"))
+	if target_game_state != null and target_char_id != "" and target_game_state.characters.has(target_char_id):
+		pos = target_game_state.get_position(target_char_id)
+	return pos
 
 # --- UI setup ---
 
@@ -176,12 +276,23 @@ func _init_ui() -> void:
 	_fade_rect = ui.get_node("FadeOverlay/FadeRect")
 	_thought_label = ui.get_node("ThoughtOverlay/ThoughtLabel")
 	_fade_rect.color.a = 0.0
+
+	_engram_overlay = CanvasLayer.new()
+	_engram_overlay.name = "EngramOverlay"
+	_engram_overlay.set_script(preload("res://scripts/ui/engram_overlay.gd"))
+	add_child(_engram_overlay)
 	_setup_ui()
 
 func _teardown_sequence() -> void:
 	if _did_teardown:
 		return
 	_did_teardown = true
+
+	# Stop the per-frame pump before we invalidate anything it depends on.
+	# Godot can still dispatch one more frame of _process after _exit_tree
+	# when the scene changes mid-frame; this prevents a crash in subclasses.
+	set_process(false)
+	set_physics_process(false)
 
 	if _dialogue:
 		for conn in _dialogue.dialogue_finished.get_connections():
@@ -193,6 +304,8 @@ func _teardown_sequence() -> void:
 	_dlg_chain_index = 0
 	_dlg_chain_next = Callable()
 	_dlg_chain_delay = 0.0
+	_scheduler_animation_states.clear()
+	_thought_fade_active = false
 	_perception_target = null
 
 	if _camera:
@@ -215,12 +328,121 @@ func _teardown_sequence() -> void:
 	_tutorial_prompt = null
 	_fade_rect = null
 	_thought_label = null
+	_engram_overlay = null
 
 func _change_scene_or_record(scene_path: String) -> void:
 	requested_scene_change = scene_path
+	var save_manager := get_node_or_null("/root/SaveManager")
+	if save_manager != null:
+		save_manager.save_current("scene_change")
 	if suppress_scene_change:
 		return
 	get_tree().change_scene_to_file(scene_path)
+
+func build_save_snapshot() -> Dictionary:
+	return {
+		"scene_kind": "tutorial_sequence",
+		"current_step": _current_step,
+		"requested_scene_change": requested_scene_change,
+		"scheduler": _scheduler.serialize() if _scheduler != null else {},
+		"game_state": _game_state.serialize() if _game_state != null else {},
+		"capture_context": get_capture_context(),
+	}
+
+func apply_save_snapshot(data: Dictionary) -> void:
+	if _scheduler != null and data.has("scheduler"):
+		_scheduler.deserialize(data.scheduler)
+	if data.has("game_state"):
+		_apply_saved_game_state(data.game_state)
+	_current_step = str(data.get("current_step", _current_step))
+	requested_scene_change = str(data.get("requested_scene_change", requested_scene_change))
+
+func _apply_saved_game_state(snapshot: Dictionary) -> void:
+	if _game_state == null:
+		return
+	var characters_snapshot: Dictionary = snapshot.get("characters", {})
+	for char_id in characters_snapshot.keys():
+		if not _game_state.characters.has(char_id):
+			continue
+		var saved_char: Dictionary = characters_snapshot[char_id]
+		var position_arr: Array = saved_char.get("position", [0.0, 0.0, 0.0])
+		var position := Vector3(
+			float(position_arr[0]),
+			float(position_arr[1]),
+			float(position_arr[2])
+		)
+		var runtime_char: Dictionary = _game_state.characters[char_id]
+		runtime_char["position"] = position
+		runtime_char["move_speed"] = float(saved_char.get("move_speed", runtime_char.get("move_speed", 3.0)))
+		runtime_char["stats"] = saved_char.get("stats", {}).duplicate(true)
+		runtime_char["movement"] = null
+		if _game_state.grid != null:
+			runtime_char["grid_cell"] = _game_state.grid.world_to_grid(position)
+		var node := _find_character_node(char_id)
+		if node != null:
+			node.global_position = Vector3(position.x, node.global_position.y, position.z)
+	if snapshot.has("explored"):
+		_game_state._deserialize_explored(snapshot.explored)
+
+func _find_character_node(char_id: String) -> Node3D:
+	for node in find_children("*", "", true, false):
+		if not (node is Node3D):
+			continue
+		if "char_id" in node and str(node.char_id) == char_id:
+			return node
+	return null
+
+func set_capture_pause(active: bool) -> void:
+	if _scheduler == null:
+		return
+	if active:
+		if _capture_pause_depth == 0:
+			_capture_pause_was_paused = _scheduler.is_paused()
+			if not _capture_pause_was_paused:
+				_scheduler.pause()
+		_capture_pause_depth += 1
+		return
+	if _capture_pause_depth > 0:
+		_capture_pause_depth -= 1
+	if _capture_pause_depth == 0 and not _capture_pause_was_paused:
+		_scheduler.resume()
+
+func show_capture_message(text: String) -> void:
+	if _tutorial_prompt != null:
+		_tutorial_prompt.show_prompt(text, 1.6)
+
+func get_capture_context() -> Dictionary:
+	var scene_label: String = _humanize_capture_token(name if name != "" else _scene_label_from_path())
+	var sub_location: String = _humanize_capture_token(_current_step)
+	var position: Vector3 = _player.global_position if _player != null else Vector3.ZERO
+	return {
+		"scene_path": scene_file_path,
+		"scene_name": scene_label,
+		"act": 0,
+		"day": 0,
+		"time_of_day": "",
+		"timestamp_label": scene_label,
+		"location": scene_label,
+		"sub_location": sub_location,
+		"trigger_type": "manual",
+		"trigger_context": _current_step if _current_step != "" else "manual_capture",
+		"position": position,
+		"caption": "%s%s" % [scene_label, (", " + sub_location) if sub_location != "" else ""],
+	}
+
+func _scene_label_from_path() -> String:
+	var path: String = scene_file_path
+	if path == "":
+		return "engram"
+	return path.get_file().get_basename()
+
+func _humanize_capture_token(value: String) -> String:
+	if value == "":
+		return ""
+	var words := value.replace("_", " ").replace("-", " ").split(" ", false)
+	for i in range(words.size()):
+		words[i] = str(words[i]).capitalize()
+	return " ".join(words)
 
 # --- Character helpers ---
 
@@ -254,6 +476,181 @@ func _register_gs_character(id: String, node: Node3D, speed: float = 3.0, stats:
 	_game_state.register_character(id, node.position, speed, stats)
 	node.game_state = _game_state
 	node.char_id = id
+	if node.has_method("set_scheduler"):
+		node.call("set_scheduler", _scheduler)
+
+# --- Exploration helpers ---
+
+func _create_interactable(
+		parent: Node3D,
+		pos: Vector3,
+		interactable_name: String,
+		radius: float = 1.5,
+		dwell: float = 1.0,
+		label: String = "",
+		one_shot: bool = true
+	) -> Area3D:
+	var area := INTERACTABLE_SCENE.instantiate() as Area3D
+	area.name = interactable_name
+	area.position = pos
+	area.set("interaction_radius", radius)
+	area.set("outline_highlight_radius", radius)
+	area.set("dwell_time", dwell)
+	area.set("one_shot", one_shot)
+	area.set("tutorial_label", label)
+	area.set("dialogue_box", _dialogue)
+	area.set("active_character", _current_interaction_character())
+	_connect_interactable_outline_feedback(area)
+	parent.add_child(area)
+	return area
+
+func _connect_interactable_outline_feedback(area: Area3D) -> void:
+	if area.has_signal("outline_hovered"):
+		area.connect("outline_hovered", _on_interactable_outline_hovered)
+	if area.has_signal("outline_unhovered"):
+		area.connect("outline_unhovered", _on_interactable_outline_unhovered)
+	if area.has_signal("outline_selected"):
+		area.connect("outline_selected", _on_interactable_outline_selected)
+
+func _on_interactable_outline_hovered(interactable: Node) -> void:
+	if not (interactable is Node3D):
+		return
+	_outline_hover_source = interactable as Node3D
+	_outline_hover_color = _read_interactable_color(interactable, "hover_outline_color", Color.WHITE)
+	_outline_hover_radius = _read_interactable_outline_radius(interactable)
+	_sync_outline_highlights()
+
+func _on_interactable_outline_unhovered(interactable: Node) -> void:
+	if _outline_hover_source == interactable:
+		_outline_hover_source = null
+		_sync_outline_highlights()
+
+func _on_interactable_outline_selected(interactable: Node) -> void:
+	if not (interactable is Node3D):
+		return
+	_outline_selected_source = interactable as Node3D
+	_outline_selected_color = _read_interactable_color(interactable, "selected_feedback_color", Color(1.0, 0.62, 0.12, 1.0))
+	_outline_selected_radius = _read_interactable_outline_radius(interactable)
+	_sync_outline_highlights()
+	_outline_selection_token += 1
+	var token := _outline_selection_token
+	var duration := _read_interactable_float(interactable, "selected_feedback_duration", 0.7)
+	get_tree().create_timer(maxf(0.05, duration)).timeout.connect(func():
+		if token == _outline_selection_token:
+			_outline_selected_source = null
+			_sync_outline_highlights()
+	)
+
+func _read_interactable_color(interactable: Node, property_name: String, fallback: Color) -> Color:
+	var value = interactable.get(property_name)
+	if value is Color:
+		return value
+	return fallback
+
+func _read_interactable_float(interactable: Node, property_name: String, fallback: float) -> float:
+	var value = interactable.get(property_name)
+	if value == null:
+		return fallback
+	return float(value)
+
+func _read_interactable_outline_radius(interactable: Node) -> float:
+	if interactable.has_method("get_outline_highlight_radius"):
+		return float(interactable.call("get_outline_highlight_radius"))
+	var radius := _read_interactable_float(interactable, "outline_highlight_radius", 0.0)
+	if radius <= 0.0:
+		radius = _read_interactable_float(interactable, "interaction_radius", 2.0)
+	return maxf(0.25, radius)
+
+func _current_interaction_character() -> String:
+	if _player == null:
+		return ""
+	var char_id = _player.get("char_id")
+	return str(char_id) if char_id != null else ""
+
+## Create a proximity Interactable zone that fires a "look" narration + a
+## character "line" (both DialogueData keys) once the player dwells. Returns
+## the Area3D so callers can customize radius, tutorial_label, or gate
+## behavior via the area's interacted signal.
+##
+## look_key: narration shown first (no speaker). Pass "" to skip.
+## line_key: spoken dialogue. Pass "" to skip.
+## The pair plays in order through the dialogue box.
+func _make_exploration_zone(
+		parent: Node3D,
+		pos: Vector3,
+		zone_name: String,
+		look_key: String,
+		line_key: String,
+		radius: float = 1.5,
+		dwell: float = 0.6,
+		label: String = ""
+	) -> Area3D:
+	var scaled_radius := maxf(radius * EXPLORATION_RADIUS_SCALE, EXPLORATION_MIN_RADIUS)
+	var area := _create_interactable(parent, pos, zone_name, scaled_radius, dwell, label, true)
+	if look_key != "" or line_key != "":
+		area.connect("interacted", func(): _play_exploration_beat(look_key, line_key, area))
+	if label != "":
+		area.call_deferred("show_tutorial_label")
+	return area
+
+## Play a look/line pair through the dialogue box in sequence.
+func _play_exploration_beat(look_key: String, line_key: String, focus_node: Node3D = null) -> void:
+	var keys := []
+	if look_key != "":
+		keys.append(look_key)
+	if line_key != "":
+		keys.append(line_key)
+	_play_focused_dialogue_keys(keys, focus_node)
+
+func _play_focused_dialogue_keys(keys: Array, focus_node: Node3D = null) -> void:
+	if _dialogue == null:
+		return
+	if focus_node != null:
+		_begin_exploration_focus(focus_node)
+	var queued_dialogue := false
+	for key in keys:
+		var key_string := str(key)
+		if key_string == "":
+			continue
+		DialogueData.say_to(_dialogue, key_string)
+		queued_dialogue = true
+	if focus_node != null:
+		if queued_dialogue:
+			_dialogue.dialogue_finished.connect(_finish_exploration_focus, CONNECT_ONE_SHOT)
+		else:
+			_finish_exploration_focus()
+
+func _begin_exploration_focus(focus_node: Node3D) -> void:
+	if _exploration_focus_active:
+		return
+	_exploration_focus_active = true
+	_exploration_focus_prev_scheduler_paused = _scheduler != null and _scheduler.is_paused()
+	if _scheduler != null and not _exploration_focus_prev_scheduler_paused:
+		_scheduler.pause()
+	if _player != null and _player.has_method("set_move_enabled"):
+		_exploration_focus_prev_move_enabled = bool(_player.get("_move_enabled")) if "_move_enabled" in _player else true
+		_player.set_move_enabled(false)
+	if _camera != null:
+		_exploration_focus_prev_camera_offset = _camera.follow_offset
+		_exploration_focus_prev_camera_target = _camera.target
+		_camera.follow_offset = EXPLORATION_FOCUS_OFFSET
+		_camera.lock_to(_exploration_focus_point(focus_node))
+
+func _finish_exploration_focus() -> void:
+	if not _exploration_focus_active:
+		return
+	if _camera != null:
+		_camera.follow_offset = _exploration_focus_prev_camera_offset
+		_camera.target = _exploration_focus_prev_camera_target
+		_camera.unlock()
+	if _player != null and _player.has_method("set_move_enabled"):
+		_player.set_move_enabled(_exploration_focus_prev_move_enabled)
+	if _scheduler != null and not _exploration_focus_prev_scheduler_paused:
+		_scheduler.resume()
+	_exploration_focus_active = false
+
+func _exploration_focus_point(focus_node: Node3D) -> Vector3:
+	return focus_node.global_position + Vector3(0, EXPLORATION_FOCUS_HEIGHT, 0)
 
 # --- Fade helpers ---
 
@@ -275,12 +672,33 @@ func _update_fade_out(target_color: Color, duration: float = 2.0) -> void:
 
 func _show_thought(text: String) -> void:
 	_thought_label.text = text
-	var tween := create_tween()
-	tween.tween_property(_thought_label, "modulate:a", 0.7, 0.5)
+	_start_thought_fade(0.7, 0.5)
 
 func _hide_thought() -> void:
-	var tween := create_tween()
-	tween.tween_property(_thought_label, "modulate:a", 0.0, 0.5)
+	_start_thought_fade(0.0, 0.5)
+
+func _start_thought_fade(target_alpha: float, duration: float) -> void:
+	if _thought_label == null:
+		return
+	if _scheduler == null or duration <= 0.0 or _scheduler.get_speed() <= 0.0:
+		_thought_label.modulate.a = target_alpha
+		_thought_fade_active = false
+		return
+	_thought_fade_from_alpha = _thought_label.modulate.a
+	_thought_fade_to_alpha = target_alpha
+	_thought_fade_duration = duration
+	_thought_fade_start_tick = _scheduler.get_current_tick()
+	_thought_fade_active = true
+	_update_thought_fade()
+
+func _update_thought_fade() -> void:
+	if not _thought_fade_active or _thought_label == null or _scheduler == null:
+		return
+	var elapsed := _scheduler.get_current_tick() - _thought_fade_start_tick
+	var t := clampf(elapsed / maxf(_thought_fade_duration, 0.001), 0.0, 1.0)
+	_thought_label.modulate.a = lerpf(_thought_fade_from_alpha, _thought_fade_to_alpha, t)
+	if t >= 1.0:
+		_thought_fade_active = false
 
 # --- Step transition ---
 
@@ -310,9 +728,10 @@ func _dialogue_chain(keys: Array, next_func: Callable, delay_between := 0.0) -> 
 
 func _dlg_chain_play_next() -> void:
 	if _dlg_chain_index >= _dlg_chain_keys.size():
-		# Chain complete: schedule the next event through the scheduler
-		# so it waits for its scheduled tick AND for this chain to be done
-		_scheduler.schedule_after(0, _dlg_chain_next, "dlg_chain")
+		# Chain completion is dialogue/UI timing, not simulation timing. Call
+		# through directly so tutorial prompts can appear before a pause gate.
+		if _dlg_chain_next.is_valid():
+			_dlg_chain_next.call()
 		return
 	var key: String = _dlg_chain_keys[_dlg_chain_index]
 	_dlg_chain_index += 1
@@ -333,7 +752,18 @@ var _chunks: Dictionary = {}
 func _load_chunk(chunk_name: String) -> Node3D:
 	if _chunks.has(chunk_name):
 		return _chunks[chunk_name]
-	var chunk := Node3D.new()
+	var chunk_scene: PackedScene = _get_chunk_scene(chunk_name)
+	var chunk: Node3D
+	if chunk_scene != null:
+		var instance: Node = chunk_scene.instantiate()
+		if instance is Node3D:
+			chunk = instance as Node3D
+			if chunk.has_method("attach_chunk_host"):
+				chunk.call("attach_chunk_host", self, chunk_name)
+		else:
+			push_warning("Chunk scene for %s did not instantiate a Node3D" % chunk_name)
+	if chunk == null:
+		chunk = Node3D.new()
 	chunk.name = "Chunk_" + chunk_name
 	var env := find_child("Environment", false, false)
 	if env:
@@ -341,13 +771,17 @@ func _load_chunk(chunk_name: String) -> Node3D:
 	else:
 		add_child(chunk)
 	_chunks[chunk_name] = chunk
-	_build_chunk(chunk_name, chunk)
+	if chunk_scene == null:
+		_build_chunk(chunk_name, chunk)
 	return chunk
 
 func _unload_chunk(chunk_name: String) -> void:
 	if not _chunks.has(chunk_name):
 		return
-	_chunks[chunk_name].queue_free()
+	var chunk: Node3D = _chunks[chunk_name]
+	if is_instance_valid(chunk) and chunk.has_method("detach_chunk_host"):
+		chunk.call("detach_chunk_host")
+	chunk.queue_free()
 	_chunks.erase(chunk_name)
 
 func _build_chunk(_chunk_name: String, _parent: Node3D) -> void:
@@ -357,6 +791,15 @@ func _build_chunk(_chunk_name: String, _parent: Node3D) -> void:
 
 var _anim_player: AnimationPlayer
 var _anim_lib: AnimationLibrary
+var _scheduler_animation_states: Dictionary = {}
+
+## Runtime bridge for AnimationPlayer clips. Author and preview animations in
+## Godot's editor as usual, then play them through this helper so simulation
+## pause/fast-forward controls the clip by scheduler ticks.
+func _register_scheduler_animation_player(player: AnimationPlayer) -> void:
+	if player == null:
+		return
+	player.speed_scale = 0.0
 
 func _create_animation(anim_name: String, length: float) -> Animation:
 	if not _anim_player:
@@ -365,22 +808,89 @@ func _create_animation(anim_name: String, length: float) -> Animation:
 		add_child(_anim_player)
 		_anim_lib = AnimationLibrary.new()
 		_anim_player.add_animation_library("", _anim_lib)
+		_register_scheduler_animation_player(_anim_player)
 	var anim := Animation.new()
 	anim.length = length
 	_anim_lib.add_animation(anim_name, anim)
 	return anim
 
-func _play_animation(anim_name: String) -> void:
+func _play_animation(anim_name: String, finished := Callable()) -> void:
 	if _anim_player and _anim_lib.has_animation(anim_name):
-		_anim_player.speed_scale = _compute_speed()
-		_anim_player.play(anim_name)
+		_play_scheduler_animation(_anim_player, anim_name, finished)
+
+func _play_scheduler_animation(
+		player: AnimationPlayer,
+		anim_name: String,
+		finished := Callable(),
+		from_start := true
+	) -> void:
+	if player == null or _scheduler == null or not player.has_animation(anim_name):
+		return
+	_register_scheduler_animation_player(player)
+	var anim: Animation = player.get_animation(anim_name)
+	var length := maxf(anim.length, 0.0)
+	var start_tick := _scheduler.get_current_tick()
+	if not from_start and player.current_animation == anim_name:
+		start_tick -= player.current_animation_position
+	var state := {
+		"player": player,
+		"animation": anim_name,
+		"start_tick": start_tick,
+		"length": length,
+		"loop": anim.loop_mode != Animation.LOOP_NONE,
+		"finished": finished,
+	}
+	_scheduler_animation_states[player.get_instance_id()] = state
+	player.play(anim_name)
+	player.speed_scale = 0.0
+	_seek_scheduler_animation(player, anim_name, 0.0 if from_start else player.current_animation_position)
 
 func _stop_animation(anim_name: String) -> void:
 	if _anim_player and _anim_player.current_animation == anim_name:
+		_scheduler_animation_states.erase(_anim_player.get_instance_id())
 		_anim_player.stop()
 
 func _has_animation(anim_name: String) -> bool:
 	return _anim_lib != null and _anim_lib.has_animation(anim_name)
+
+func _stop_scheduler_animation(player: AnimationPlayer) -> void:
+	if player == null:
+		return
+	_scheduler_animation_states.erase(player.get_instance_id())
+	player.stop()
+
+func _sync_scheduler_animations() -> void:
+	if _scheduler == null or _scheduler_animation_states.is_empty():
+		return
+	var now := _scheduler.get_current_tick()
+	for key in _scheduler_animation_states.keys():
+		var state: Dictionary = _scheduler_animation_states.get(key, {})
+		var player: AnimationPlayer = state.get("player", null)
+		var anim_name := str(state.get("animation", ""))
+		if player == null or not is_instance_valid(player) or anim_name == "" or not player.has_animation(anim_name):
+			_scheduler_animation_states.erase(key)
+			continue
+		var length := float(state.get("length", 0.0))
+		var elapsed := maxf(0.0, now - float(state.get("start_tick", now)))
+		var position := elapsed
+		var done := false
+		if bool(state.get("loop", false)) and length > 0.0:
+			position = fposmod(elapsed, length)
+		elif elapsed >= length:
+			position = length
+			done = true
+		_seek_scheduler_animation(player, anim_name, position)
+		if done:
+			_scheduler_animation_states.erase(key)
+			var cb: Callable = state.get("finished", Callable())
+			if cb.is_valid():
+				cb.call()
+
+func _seek_scheduler_animation(player: AnimationPlayer, anim_name: String, position: float) -> void:
+	if player.current_animation != anim_name:
+		player.play(anim_name)
+	player.speed_scale = 0.0
+	player.seek(position, true)
 
 # --- Environment helpers ---
 

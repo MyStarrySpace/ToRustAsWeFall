@@ -23,10 +23,14 @@ var _attack_particles: OmniLight3D
 var _portal_tween_active := false
 var _hud  # GameHUD
 
-# Stats
-var _stamina := 100.0
-const STAMINA_MAX := 100.0
-var _is_running := false
+# Exploration beat (phase 1, pre-Monos-arrival)
+var _explore_logbook_gate  # Interactable at the logbook
+const EXPLORE_MIN_TIME := 10.0  # scheduler seconds before the logbook gate unlocks
+var _explore_gate_unlocked := false
+var _explore_gate_fired := false
+
+# Stats live in GameState. Stamina drain and run speed are authoritative there;
+# this scene only talks to _game_state through set_running / adjust_stat.
 var _is_paused := false
 var _efficiency_score := 100.0
 
@@ -62,7 +66,10 @@ func _build_characters() -> void:
 		_setup_game_camera(_player, Vector3(0, 8, 6))
 
 func _register_characters() -> void:
-	_register_gs_character("peris", _player, 3.0, {"stamina": _stamina})
+	_register_gs_character("peris", _player, GameState.WALK_SPEED, {
+		"stamina": GameState.STAMINA_MAX,
+	})
+	_register_gs_character("monos", _monos, _monos.move_speed)
 
 func _setup_ui() -> void:
 	_thought_label.add_theme_color_override("font_color", Color(0.75, 0.6, 0.45))
@@ -72,16 +79,21 @@ func _setup_ui() -> void:
 	_hud.name = "GameHUD"
 	_hud.set_script(preload("res://scripts/game/game_hud.gd"))
 	add_child(_hud)
-	_hud.add_stat_bar("sta", Color(0.3, 0.5, 0.7), STAMINA_MAX, _stamina)
+	_hud.add_stat_bar("sta", Color(0.3, 0.5, 0.7), GameState.STAMINA_MAX, GameState.STAMINA_MAX)
 	_hud.show_pause_toggle(false)
 	_hud.show_run_toggle(false)
 	_hud.add_ability("protect", "PROTECT", "X", Color(0.8, 0.55, 0.2))
 	_hud.pause_toggled.connect(_on_pause_toggled)
+	# Tutorial guards the run press to specific steps; let _toggle_run stay
+	# the hook that decides whether the flip is allowed, and flip GameState
+	# ourselves rather than letting the HUD auto-delegate.
 	_hud.run_toggled.connect(func(running: bool): _toggle_run())
 	_hud.ability_pressed.connect(func(id: String):
 		if id == "protect":
 			_on_protect_pressed()
 	)
+	# Tutorial gates the run button per-step, so keep signal-based flow.
+	_hud.bind_game_state(_game_state, "peris", false)
 
 	set_process_unhandled_key_input(true)
 
@@ -106,16 +118,11 @@ func _compute_speed() -> float:
 	return spd
 
 func _on_process(delta: float, spd: float) -> void:
-	if _hud:
-		_hud.set_stat("sta", _stamina)
 	_update_fades()
 
-	# Stamina drain while running and moving
-	if _is_running and _game_state.is_moving("peris"):
-		_stamina = maxf(0, _stamina - 30.0 * delta * spd)
-		if _stamina <= 0:
-			_is_running = false
-			_game_state.change_move_speed("peris", 3.0)
+	# Stat bars and run visuals auto-update from GameState signals via
+	# GameHUD.bind_game_state, and stamina drain happens in GameState on the
+	# scheduler tick. Nothing to drain here.
 
 	# Queued protect handled by GameState.queue_ability (predictive)
 
@@ -202,38 +209,29 @@ func _on_pause_toggled(is_paused: bool) -> void:
 	_is_paused = is_paused
 
 func _toggle_run() -> void:
+	if _game_state == null:
+		return
 	# During ordered tutorial: only allowed at run_prompt step
 	if _current_step == "run_prompt":
-		_is_running = true
 		_has_sprinted = true
-		_game_state.change_move_speed("peris", 6.0)
+		_game_state.set_running("peris", true)
 		_player.set_running(true)
-		if _hud:
-			_hud.set_run_mode(true)
 		_start_click_monos()
 		return
 	if _current_step == "protect_prompt":
-		_is_running = true
 		_has_sprinted = true
-		_game_state.change_move_speed("peris", 6.0)
+		_game_state.set_running("peris", true)
 		_player.set_running(true)
-		if _hud:
-			_hud.set_run_mode(true)
 		_show_thought(DialogueData.text("peris_sim.protect_remind"))
 		return
 	if _current_step in ["alert_monos", "click_monos", "confirm_protect"]:
 		return
 	# Normal run toggle outside tutorial
-	_is_running = not _is_running
-	if _is_running and _stamina > 0:
-		_game_state.change_move_speed("peris", 6.0)
+	_game_state.toggle_running("peris")
+	var now_running := _game_state.is_running("peris")
+	if now_running:
 		_has_sprinted = true
-	else:
-		_is_running = false
-		_game_state.change_move_speed("peris", 3.0)
-	_player.set_running(_is_running)
-	if _hud:
-		_hud.set_run_mode(_is_running)
+	_player.set_running(now_running)
 
 func _show_correction(key: String) -> void:
 	_show_thought(DialogueData.text(key))
@@ -243,19 +241,29 @@ func _show_correction(key: String) -> void:
 func _start_workspace() -> void:
 	_current_step = "workspace"
 	_player.set_move_enabled(true)
-	_show_thought(DialogueData.text("peris_sim.waiting.thought"))
-	_scheduler.schedule_after(4.0, _start_monos_late, "monos_late")
+	# Phase 1: Peris narrates her no-show reluctance and takes a lap around
+	# the room while the player explores. Monos connects when Peris opens
+	# his file in the logbook (the gate). The old "Monos should be connecting
+	# soon" thought is replaced by the new opening.line from the expansion.
+	_show_thought(DialogueData.text("peris.sim_expand.opening.line"))
+	_build_exploration_objects()
+	_explore_gate_unlocked = false
+	_explore_gate_fired = false
+	DialogueData.say_to(_dialogue, "peris.sim_expand.narration.enter")
+	_scheduler.schedule_after(EXPLORE_MIN_TIME, _unlock_exploration_gate, "explore_gate_unlock")
 
-func _start_monos_late() -> void:
-	_current_step = "monos_late"
+func _unlock_exploration_gate() -> void:
+	_explore_gate_unlocked = true
+	if _explore_logbook_gate and _explore_logbook_gate.has_method("show_tutorial_label"):
+		_explore_logbook_gate.show_tutorial_label()
+
+func _on_exploration_gate_interacted() -> void:
+	if not _explore_gate_unlocked or _explore_gate_fired:
+		return
+	_explore_gate_fired = true
+	DialogueData.say_to(_dialogue, "peris.sim_expand.logbook.interact")
 	_hide_thought()
-	# Portal warming pulse instead of narration
-	_portal_tween_active = true
-	var t := create_tween()
-	t.tween_property(_portal_light, "light_energy", 2.5, 1.0)
-	t.tween_property(_portal_light, "light_energy", 1.5, 1.0)
-	t.tween_callback(func(): _portal_tween_active = false)
-	_scheduler.schedule_after(4.0, _start_monos_arrives, "monos_arrives")
+	_start_monos_arrives()
 
 func _start_monos_arrives() -> void:
 	_current_step = "monos_arrives"
@@ -390,7 +398,7 @@ func _fire_queued_protect() -> void:
 	_attack_particles.light_energy = 0.5
 	_portal_light.light_color = Color(0.9, 0.7, 0.3)
 	_portal_light.light_energy = 4.0
-	_stamina = maxf(0, _stamina - 15.0)
+	_game_state.adjust_stat("peris", "stamina", -15.0)
 	_scheduler.schedule_after(0, _start_aftermath, "aftermath")
 
 func _start_aftermath() -> void:
@@ -741,3 +749,235 @@ func _build_decorations() -> void:
 		book.material_override = bm
 		book.position = Vector3(-4.65, 0.3 + i * 0.35, 2.4 + i * 0.3)
 		env_node.add_child(book)
+
+# --- Exploration objects (phase 1, pre-Monos-arrival) ---
+
+func _build_exploration_objects() -> void:
+	if Engine.is_editor_hint():
+		return
+	var env: Node3D = self
+	_build_peris_plants(env)
+	_build_peris_painting(env)
+	_build_peris_wellness_feed(env)
+	_build_peris_strike_warning(env)
+	_build_peris_session_notes(env)
+	_build_peris_logbook_gate(env)
+
+func _make_peris_plant(parent: Node3D, pos: Vector3, height: float, base_color: Color, bloom: bool) -> Node3D:
+	var root := Node3D.new()
+	root.position = pos
+	parent.add_child(root)
+	var pot := MeshInstance3D.new()
+	var pb := CylinderMesh.new()
+	pb.top_radius = 0.14
+	pb.bottom_radius = 0.1
+	pb.height = 0.2
+	pot.mesh = pb
+	var pot_mat := StandardMaterial3D.new()
+	pot_mat.albedo_color = Color(0.3, 0.22, 0.18)
+	pot_mat.roughness = 0.8
+	pot.material_override = pot_mat
+	pot.position = Vector3(0, 0.1, 0)
+	root.add_child(pot)
+	var foliage := MeshInstance3D.new()
+	var fb := SphereMesh.new()
+	fb.radius = 0.2
+	fb.height = height
+	foliage.mesh = fb
+	var fm := StandardMaterial3D.new()
+	fm.albedo_color = base_color
+	fm.roughness = 0.7
+	foliage.material_override = fm
+	foliage.position = Vector3(0, 0.2 + height * 0.5, 0)
+	root.add_child(foliage)
+	if bloom:
+		var bloom_mesh := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.05
+		sm.height = 0.1
+		bloom_mesh.mesh = sm
+		var bm := StandardMaterial3D.new()
+		bm.albedo_color = Color(1.0, 0.85, 0.7)
+		bm.emission_enabled = true
+		bm.emission = Color(0.8, 0.6, 0.5)
+		bm.emission_energy_multiplier = 0.3
+		bloom_mesh.material_override = bm
+		bloom_mesh.position = Vector3(0.12, 0.2 + height * 0.8, 0.05)
+		root.add_child(bloom_mesh)
+	return root
+
+func _build_peris_plants(parent: Node3D) -> void:
+	# Placeholder plant array — positions chosen to spread across the workspace
+	# so the player navigates between them. Species is visual only; the
+	# dialogue carries the meaning. Specs per simulation_tutorial_expansions.md.
+	var plants := [
+		[Vector3(-4.4, 0, -1.4), 0.6, Color(0.2, 0.45, 0.22), false,
+			"", "peris.sim_expand.plant_1.line"],
+		[Vector3(-0.7, 0, 4.7), 0.3, Color(0.35, 0.45, 0.22), false,
+			"", "peris.sim_expand.plant_2.line"],
+		[Vector3(2.6, 0.8, 4.4), 0.18, Color(0.3, 0.5, 0.3), true,
+			"", "peris.sim_expand.plant_3.line"],
+		[Vector3(6.0, 0, 4.6), 0.25, Color(0.28, 0.4, 0.32), false,
+			"", "peris.sim_expand.plant_4.line"],
+		[Vector3(10.0, 0, 4.2), 0.45, Color(0.22, 0.48, 0.28), false,
+			"", "peris.sim_expand.plant_5.line"],
+		[Vector3(-0.9, 0, 1.4), 0.7, Color(0.18, 0.35, 0.22), false,
+			"", "peris.sim_expand.plant_6.line"],
+		[Vector3(3.0, 0, 1.2), 0.65, Color(0.25, 0.5, 0.3), false,
+			"", "peris.sim_expand.plant_7.line"],
+		[Vector3(7.0, 0, 1.0), 0.4, Color(0.3, 0.42, 0.22), false,
+			"", "peris.sim_expand.plant_8.line"],
+		[Vector3(11.0, 0, 0.0), 0.55, Color(0.2, 0.4, 0.22), false,
+			"", "peris.sim_expand.plant_9.line"],
+	]
+	for i in range(plants.size()):
+		var p: Array = plants[i]
+		var pos: Vector3 = p[0]
+		var height: float = p[1]
+		var color: Color = p[2]
+		var bloom: bool = p[3]
+		var look_key: String = p[4]
+		var line_key: String = p[5]
+		var plant_node := _make_peris_plant(parent, pos, height, color, bloom)
+		plant_node.name = "Plant%d" % (i + 1)
+		var zone_pos := Vector3(pos.x, 0, pos.z)
+		_make_exploration_zone(parent, zone_pos,
+			"Plant%dZone" % (i + 1),
+			look_key, line_key,
+			1.0, 0.6)
+
+func _build_peris_painting(parent: Node3D) -> void:
+	var pos := Vector3(3.2, 2.2, -5.82)
+	var frame := MeshInstance3D.new()
+	var fb := BoxMesh.new()
+	fb.size = Vector3(1.2, 0.85, 0.06)
+	frame.mesh = fb
+	var fm := StandardMaterial3D.new()
+	fm.albedo_color = Color(0.2, 0.14, 0.1)
+	frame.material_override = fm
+	frame.position = pos
+	parent.add_child(frame)
+	var canvas := MeshInstance3D.new()
+	var cb := BoxMesh.new()
+	cb.size = Vector3(1.1, 0.75, 0.05)
+	canvas.mesh = cb
+	var cm := StandardMaterial3D.new()
+	cm.albedo_color = Color(0.55, 0.38, 0.45)
+	cm.roughness = 0.6
+	canvas.material_override = cm
+	canvas.position = pos + Vector3(0, 0, 0.02)
+	parent.add_child(canvas)
+	_make_exploration_zone(parent, Vector3(3.2, 0, -4.8),
+		"PaintingZone",
+		"",
+		"peris.sim_expand.painting.line",
+		1.3, 0.6)
+
+func _build_peris_wellness_feed(parent: Node3D) -> void:
+	var pos := Vector3(-4.65, 1.4, -4.8)
+	var screen := MeshInstance3D.new()
+	var sb := BoxMesh.new()
+	sb.size = Vector3(0.8, 0.5, 0.04)
+	screen.mesh = sb
+	var sm := StandardMaterial3D.new()
+	sm.albedo_color = Color(0.35, 0.4, 0.5, 0.85)
+	sm.emission_enabled = true
+	sm.emission = Color(0.3, 0.4, 0.55)
+	sm.emission_energy_multiplier = 0.9
+	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	screen.material_override = sm
+	screen.position = pos
+	parent.add_child(screen)
+	_make_exploration_zone(parent, Vector3(-4.2, 0, -4.8),
+		"WellnessZone",
+		"",
+		"peris.sim_expand.wellness.line",
+		1.0, 0.6)
+
+func _build_peris_strike_warning(parent: Node3D) -> void:
+	# Pinned institutional notification. The focused interaction plays the
+	# document (ui-style) plus Peris's line, no modal.
+	var pos := Vector3(-0.9, 1.8, -5.82)
+	var icon := MeshInstance3D.new()
+	var ib := BoxMesh.new()
+	ib.size = Vector3(0.4, 0.55, 0.04)
+	icon.mesh = ib
+	var im := StandardMaterial3D.new()
+	im.albedo_color = Color(0.85, 0.8, 0.68)
+	im.emission_enabled = true
+	im.emission = Color(0.3, 0.25, 0.18)
+	im.emission_energy_multiplier = 0.2
+	icon.material_override = im
+	icon.position = pos
+	parent.add_child(icon)
+	var strip := MeshInstance3D.new()
+	var rb := BoxMesh.new()
+	rb.size = Vector3(0.4, 0.08, 0.045)
+	strip.mesh = rb
+	var rm := StandardMaterial3D.new()
+	rm.albedo_color = Color(0.5, 0.2, 0.2)
+	strip.material_override = rm
+	strip.position = pos + Vector3(0, 0.24, 0.001)
+	parent.add_child(strip)
+	var area := _make_exploration_zone(parent, Vector3(-0.9, 0, -4.7),
+		"StrikeWarningZone",
+		"",
+		"",
+		1.0, 0.8)
+	area.connect("interacted", func():
+		_play_focused_dialogue_keys([
+			"peris.sim_expand.strike_warning.notification",
+			"peris.sim_expand.strike_warning.line",
+		], area)
+	)
+
+func _build_peris_session_notes(parent: Node3D) -> void:
+	var pos := Vector3(1.1, 0.85, -1.7)
+	var tablet := MeshInstance3D.new()
+	var tb := BoxMesh.new()
+	tb.size = Vector3(0.25, 0.02, 0.35)
+	tablet.mesh = tb
+	var tm := StandardMaterial3D.new()
+	tm.albedo_color = Color(0.15, 0.18, 0.22)
+	tm.emission_enabled = true
+	tm.emission = Color(0.3, 0.4, 0.5)
+	tm.emission_energy_multiplier = 0.6
+	tm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	tablet.material_override = tm
+	tablet.position = pos
+	parent.add_child(tablet)
+	_make_exploration_zone(parent, Vector3(1.1, 0, -1.7),
+		"NotesZone",
+		"",
+		"peris.sim_expand.notes.line",
+		0.9, 0.6)
+
+func _build_peris_logbook_gate(parent: Node3D) -> void:
+	# Logbook sits across the room from the portal. The player must traverse
+	# the workspace to reach this gate.
+	var pos := Vector3(-4.45, 0.9, 4.4)
+	var console := MeshInstance3D.new()
+	var cb := BoxMesh.new()
+	cb.size = Vector3(0.5, 1.0, 0.4)
+	console.mesh = cb
+	var cm := StandardMaterial3D.new()
+	cm.albedo_color = Color(0.2, 0.22, 0.25)
+	console.material_override = cm
+	console.position = pos
+	parent.add_child(console)
+	var screen := MeshInstance3D.new()
+	var sb := BoxMesh.new()
+	sb.size = Vector3(0.45, 0.45, 0.04)
+	screen.mesh = sb
+	var sm := StandardMaterial3D.new()
+	sm.albedo_color = Color(0.75, 0.55, 0.35)
+	sm.emission_enabled = true
+	sm.emission = Color(0.65, 0.45, 0.25)
+	sm.emission_energy_multiplier = 0.8
+	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	screen.material_override = sm
+	screen.position = pos + Vector3(0, 0.1, 0.22)
+	parent.add_child(screen)
+	var gate := _create_interactable(parent, Vector3(pos.x + 0.7, 0, pos.z), "LogbookGate", 2.0, 0.8, "Continue", false)
+	gate.connect("interacted", _on_exploration_gate_interacted)
+	_explore_logbook_gate = gate

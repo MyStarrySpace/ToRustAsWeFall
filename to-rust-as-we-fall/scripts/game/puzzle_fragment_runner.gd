@@ -88,6 +88,7 @@ func _run_scenario(scene: PackedScene, fragment: Dictionary, scenario: Dictionar
 	var action_index := 0
 	var script: Array = []
 	script.append_array(fragment.get("setup", []))
+	script.append_array(scenario.get("setup", []))
 	script.append_array(scenario.get("script", []))
 
 	for raw_action in script:
@@ -179,6 +180,15 @@ func _execute_action(instance: Node, anchors: Dictionary, snapshots: Dictionary,
 			var args: Array = action.get("args", [])
 			instance.callv(method_name, args)
 			return _step_ok("Called %s" % method_name)
+		"call_chunk":
+			var chunk_method := str(action.get("method", ""))
+			if chunk_method == "":
+				return _step_error("missing_method_name", "call_chunk requires method")
+			if not instance.has_method("headless_call_chunk"):
+				return _step_error("missing_method", "Scene does not expose headless_call_chunk")
+			var chunk_args: Array = action.get("args", [])
+			instance.call("headless_call_chunk", chunk_method, chunk_args)
+			return _step_ok("Called chunk %s" % chunk_method)
 		"snapshot_state":
 			var key := str(action.get("key", ""))
 			if key == "":

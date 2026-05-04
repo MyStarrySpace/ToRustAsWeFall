@@ -41,6 +41,16 @@ var _selected_characters: Array[String] = []
 var _active_portrait := ""
 var _multi_select := false
 
+## Optional GameState binding. When set, stat bars auto-update from
+## stat_changed and run button visuals mirror game_state.is_running. When
+## _auto_toggle_running is also true (the default), clicking the run button
+## delegates straight to game_state.toggle_running. Tutorial scenes that
+## need to veto the flip per-step should pass auto_toggle_running=false so
+## the HUD still emits run_toggled for their handler.
+var _game_state: GameState = null
+var _game_state_char_id := ""
+var _auto_toggle_running := true
+
 func _ready() -> void:
 	layer = 10
 	_build_bottom_bar()
@@ -329,20 +339,90 @@ func add_portrait(id: String, display_name: String, color: Color) -> void:
 	if _active_portrait == "":
 		set_active_portrait(id)
 
-func set_active_portrait(id: String) -> void:
+func set_multi_select_enabled(enabled: bool) -> void:
+	if _multi_select == enabled:
+		return
+	_multi_select = enabled
+	if _multi_select:
+		if _selected_characters.is_empty() and _active_portrait != "":
+			_selected_characters = [_active_portrait]
+	else:
+		_selected_characters.clear()
+	_style_all_portraits()
+	character_selection_changed.emit(get_selected_ids())
+
+func set_selected_portraits(ids: Array) -> void:
+	var next_selected: Array[String] = []
+	for raw_id in ids:
+		var id := str(raw_id)
+		if not _portraits.has(id) or next_selected.has(id):
+			continue
+		next_selected.append(id)
+
+	if _multi_select:
+		if next_selected.is_empty() and _active_portrait != "":
+			next_selected = [_active_portrait]
+		if not next_selected.is_empty() and not next_selected.has(_active_portrait):
+			_active_portrait = next_selected[0]
+	else:
+		_selected_characters.clear()
+		_style_all_portraits()
+		return
+
+	if _selected_characters == next_selected:
+		_style_all_portraits()
+		return
+
+	_selected_characters = next_selected
+	_style_all_portraits()
+	character_selection_changed.emit(get_selected_ids())
+
+func toggle_portrait_selected(id: String) -> void:
+	if not _portraits.has(id):
+		return
+	if not _multi_select:
+		set_active_portrait(id)
+		return
+
+	var next_selected := _selected_characters.duplicate()
+	if next_selected.has(id):
+		if next_selected.size() <= 1:
+			return
+		next_selected.erase(id)
+		if _active_portrait == id:
+			_active_portrait = next_selected[0]
+	else:
+		next_selected.append(id)
+
+	_selected_characters = next_selected
+	_style_all_portraits()
+	character_selection_changed.emit(get_selected_ids())
+
+func set_active_portrait(id: String, preserve_multi_selection := false) -> void:
 	if not _portraits.has(id):
 		return
 	var prev := _active_portrait
+	var prev_selected := _selected_characters.duplicate()
 	_active_portrait = id
+	if _multi_select:
+		if preserve_multi_selection:
+			if not _selected_characters.has(id):
+				_selected_characters.append(id)
+		else:
+			_selected_characters = [id]
 	if _portraits[id].alert:
 		set_portrait_alert(id, false)
 	_style_all_portraits()
-	if prev != id:
+	if prev != id or prev_selected != _selected_characters:
 		character_selection_changed.emit(get_selected_ids())
 
 func get_selected_ids() -> Array:
 	if _multi_select:
-		return _selected_characters.duplicate()
+		var selected := _selected_characters.duplicate()
+		if _active_portrait != "" and selected.has(_active_portrait):
+			selected.erase(_active_portrait)
+			selected.push_front(_active_portrait)
+		return selected
 	return [_active_portrait] if _active_portrait != "" else []
 
 func set_portrait_stat(id: String, stat_name: String, value: float) -> void:
@@ -394,7 +474,16 @@ func remove_portrait(id: String) -> void:
 
 func _on_portrait_input(event: InputEvent, id: String) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		set_active_portrait(id)
+		var mouse_event := event as InputEventMouseButton
+		if _multi_select and (mouse_event.ctrl_pressed or mouse_event.shift_pressed):
+			toggle_portrait_selected(id)
+		elif _multi_select and _selected_characters.has(id):
+			set_active_portrait(id, true)
+		elif _multi_select:
+			set_selected_portraits([id])
+			set_active_portrait(id, true)
+		else:
+			set_active_portrait(id)
 
 func _update_portrait_name(id: String) -> void:
 	var p: Dictionary = _portraits[id]
@@ -510,9 +599,71 @@ func set_run_mode(is_running: bool) -> void:
 	_style_run_button()
 
 func _on_run_pressed() -> void:
+	if _game_state != null and _auto_toggle_running and _game_state_char_id != "":
+		_game_state.toggle_running(_game_state_char_id)
+		# Visual state will be synced via running_changed signal.
+		return
 	_run_active = not _run_active
 	_style_run_button()
 	run_toggled.emit(_run_active)
+
+## Bind this HUD to a GameState so the run toggle and stat bars route through
+## the central authority. `char_id` is the character whose stats drive the
+## bars (usually the player character in single-character scenes). Pass
+## auto_toggle_running=false to keep run_toggled signal-based (for tutorial
+## scenes that veto the flip per-step and call set_running manually).
+func bind_game_state(game_state: GameState, char_id: String, auto_toggle_running: bool = true) -> void:
+	if _game_state != null:
+		if _game_state.stat_changed.is_connected(_on_gs_stat_changed):
+			_game_state.stat_changed.disconnect(_on_gs_stat_changed)
+		if _game_state.running_changed.is_connected(_on_gs_running_changed):
+			_game_state.running_changed.disconnect(_on_gs_running_changed)
+	_game_state = game_state
+	_game_state_char_id = char_id
+	_auto_toggle_running = auto_toggle_running
+	if _game_state != null:
+		_game_state.stat_changed.connect(_on_gs_stat_changed)
+		_game_state.running_changed.connect(_on_gs_running_changed)
+		# Prime the UI from current GameState values so the bars show real
+		# numbers even before the first change signal.
+		for stat_name in _stat_bars.keys():
+			var internal := _hud_stat_name_to_gs(stat_name)
+			if internal != "":
+				set_stat(stat_name, _game_state.get_stat(char_id, internal))
+		set_run_mode(_game_state.is_running(char_id))
+
+## Unbind from GameState on teardown so signals don't fire on freed HUDs.
+func unbind_game_state() -> void:
+	bind_game_state(null, "")
+
+func _on_gs_stat_changed(char_id: String, stat: String, value: float) -> void:
+	if char_id != _game_state_char_id:
+		return
+	var hud_name := _gs_stat_name_to_hud(stat)
+	if hud_name != "" and _stat_bars.has(hud_name):
+		set_stat(hud_name, value)
+	if _portraits.has(char_id):
+		set_portrait_stat(char_id, stat, value)
+
+func _on_gs_running_changed(char_id: String, running: bool) -> void:
+	if char_id != _game_state_char_id:
+		return
+	set_run_mode(running)
+
+## HUD stat-bar IDs are short ("sta", "hp", "atp"); GameState uses full names.
+static func _hud_stat_name_to_gs(hud_name: String) -> String:
+	match hud_name:
+		"sta": return "stamina"
+		"hp": return "hp"
+		"atp": return "atp"
+	return ""
+
+static func _gs_stat_name_to_hud(gs_name: String) -> String:
+	match gs_name:
+		"stamina": return "sta"
+		"hp": return "hp"
+		"atp": return "atp"
+	return ""
 
 func _style_run_button() -> void:
 	if not _run_button:

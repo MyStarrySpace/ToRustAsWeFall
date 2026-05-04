@@ -28,6 +28,13 @@ const KIND_WALK_PATH := &"walk_path"
 const KIND_STOP := &"stop"
 const KIND_CHANGE_SPEED := &"change_speed"
 
+# --- Stats and running ---
+# set_stat mutates a character stat (hp/stamina/atp/...). adjust_stat /
+# reset_characters_to_full wrap set_stat so only one kind is needed.
+# set_running toggles run mode (changes move_speed + scheduled stamina drain).
+const KIND_SET_STAT := &"set_stat"
+const KIND_SET_RUNNING := &"set_running"
+
 # --- Item commands ---
 # spawn_item returns the new item id, but the id is deterministic given
 # replay of the same sequence (counter starts at 1, only spawn increments).
@@ -115,6 +122,8 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_PARTY_MOVE_TO_POS,
 	KIND_START_SPLIT,
 	KIND_END_SPLIT,
+	KIND_SET_STAT,
+	KIND_SET_RUNNING,
 ]
 
 static func make(tick: float, kind: StringName, payload: Dictionary) -> Dictionary:

@@ -2,6 +2,8 @@
 
 Derived from GDD v0.1, series bible, and React prototype. Organized by dependency order — later phases depend on earlier ones.
 
+**Enemy naming:** canonical in-world names used throughout (Techo, Meeb, Neutro, Naturalizer, Hidra, etc.). Biology references live in `data/enemy_ecosystem.md` — consult that doc for the roster, per-enemy role, and inter-enemy dynamics. When adding a new phase for an existing enemy, use the in-world name.
+
 ---
 
 ## Phase 0: Project Foundation
@@ -74,7 +76,7 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 - [ ] **4.6** Endo memory layer: green-tinted survival data. Shows food, flora, shelter, hide rooms with warm green icons and glows
 - [ ] **4.7** Myke memory layer: road network only. Orange-highlighted road tiles. No walls or structure. Hide rooms shown dimly
 - [ ] **4.8** Oli memory layer: electrical connections only. Teal-tinted. Lock terminals and terminal-locked doors labeled. Dashed connection lines from lock terminal to controlled shelter (visible in true sight when Oli is active)
-- [ ] **4.9** Tyreg memory layer: tactical overlay. Purple-tinted. Iron blooms labeled. NK patrol routes shown as dashed lines (in true sight only)
+- [ ] **4.9** Tyreg memory layer: tactical overlay. Purple-tinted. Iron blooms labeled. Naturalizer patrol routes shown as dashed lines (in true sight only)
 - [ ] **4.10** Map layer conflict rule: true sight always overrides memory. Contradictions between memory layers outside anyone's vision remain unresolved
 - [ ] **4.11** Knocked-out characters' map layers go dark until revived
 
@@ -102,9 +104,9 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 
 ---
 
-## Phase 7: Siderophore Enemy AI
+## Phase 7: Techo Enemy AI
 
-- [ ] **7.1** Spawn 8 siderophores at game start, minimum 8 tiles from all characters. Stats: 30 HP, speed 0.025
+- [ ] **7.1** Spawn 8 Techos at game start, minimum 8 tiles from all characters. Stats: 30 HP, speed 0.025
 - [ ] **7.2** State machine:
   - **Idle**: wander within 6 tiles of home position, new target every 3-7s, move at 0.5x speed
   - **Pursue**: move toward visible character (<6 tile detection), track last-seen position
@@ -117,30 +119,30 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
   - **Impact**: deal `8 + day*2` damage to characters within 1.2 tiles
   - **Recover** (0.8s): vulnerable, can't move
 - [ ] **7.4** Detection rules: can't detect characters in hide rooms (tile 9) or shelters (tile 4). Can't detect cloaked Endo
-- [ ] **7.5** Territorial repulsion: idle siderophores push apart when within 3 tiles (`push = 0.003/distance`)
+- [ ] **7.5** Territorial repulsion: idle Techos push apart when within 3 tiles (`push = 0.003/distance`)
 - [ ] **7.6** Daily scaling: target count = `min(20, 8 + floor((day-1) * 1.5))`. Stats scale: `maxHP = 30 + (day-1)*5`, `speed = 0.025 + (day-1)*0.002`
 - [ ] **7.7** Death/respawn: on 0 HP, teleport to home position, reset to idle, become invisible for 12s
-- [ ] **7.8** Ferrolure override: active ferrolures (within 8 tiles) attract siderophores, overriding character targeting
+- [ ] **7.8** Ferrolure override: active ferrolures (within 8 tiles) attract Techos, overriding character targeting
 
 ---
 
-## Phase 8: Amoeba (Lysosome) AI
+## Phase 8: Meeb (Amoeba) AI
 
-- [ ] **8.1** Spawn 3 amoebae at game start, minimum 12 tiles from characters. Speed 0.022
-- [ ] **8.2** Target acquisition: detect nearest entity (siderophore or character) within 6 tiles. Ignore cloaked Endo, characters in shelter/hide
+- [ ] **8.1** Spawn 3 Meebs at game start, minimum 12 tiles from characters. Speed 0.022
+- [ ] **8.2** Target acquisition: detect nearest entity (Techo or character) within 6 tiles. Ignore cloaked Endo, characters in shelter/hide
 - [ ] **8.3** Pursuit: move toward target. Speed 1.3x when within 3 tiles
-- [ ] **8.4** Engulfing (siderophores): on contact, lock both in place, drain siderophore 10 HP/s. When siderophore dies, 2s digest pause, siderophore respawns at home
+- [ ] **8.4** Engulfing (Techos): on contact, lock both in place, drain Techo 10 HP/s. When Techo dies, 2s digest pause, Techo respawns at home
 - [ ] **8.5** Character damage: on contact with character, deal 10 damage/s (continuous)
 - [ ] **8.6** Roaming: when no target, wander with bias toward iron_bloom tiles (50% chance to target nearest iron_bloom within 8 tiles)
 - [ ] **8.7** Endo NO Pulse interaction: slowed to 40% speed when within 5 tiles of Endo with active NO Pulse
 
 ---
 
-## Phase 9: Night Hunters (Neutrophils)
+## Phase 9: Neutros (Night Hunters / Neutrophils)
 
-- [ ] **9.1** Spawn 3 neutrophils at nightfall, maximizing distance from all characters. Speed 0.065
-- [ ] **9.2** Priority: nearby siderophore (<3 tiles) > visible character (<8 tiles) > roaming drift
-- [ ] **9.3** Siderophore kill: on contact, instant kill (teleport to home, 8s respawn timer)
+- [ ] **9.1** Spawn 3 Neutros at nightfall, maximizing distance from all characters. Speed 0.065
+- [ ] **9.2** Priority: nearby Techo (<3 tiles) > visible character (<8 tiles) > roaming drift
+- [ ] **9.3** Techo kill: on contact, instant kill (teleport to home, 8s respawn timer)
 - [ ] **9.4** Character pursuit: move toward character, deal 40 damage/s on contact
 - [ ] **9.5** Shelter circling: if target is in shelter/hide room, orbit at 2.5 tile radius at 0.6x speed
 - [ ] **9.6** Roaming: drift toward nearest character at 0.4x speed with random wander
@@ -160,7 +162,7 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 - [ ] **10.4** Data terminal (tile 5): Aster only, 2.0s channel. Reveals 8-tile radius on Aster's explored map. Terminal marked as used
 - [ ] **10.5** Key (tile 7): 0.5s channel. Sets `keyCollected = true`
 - [ ] **10.6** Locked door (tile 8): if key collected, instantly unlock. Otherwise "Locked. You need a key" and stop movement
-- [ ] **10.7** Ferrolure: Peris only, 1.0s channel. Activates for 18s (lures siderophores within 8 tiles). Fixed positions on map
+- [ ] **10.7** Ferrolure: Peris only, 1.0s channel. Activates for 18s (lures Techos within 8 tiles). Fixed positions on map
 - [ ] **10.8** Lock terminal: Oli or Aster, 1.5s channel. Unlocks the associated shelter (removes from blocked set, removes terminal)
 - [ ] **10.9** Ammo pickup: any character, 0.5s channel. Removes ammo spot, adds 3 rounds to Tyreg. Auto-triggers on arrival
 - [ ] **10.10** Channel progress bar: yellow bar below character, pulsing glow during channel
@@ -173,7 +175,7 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 - [ ] **11.2** **Peris — Harvest**: Must be on tended flora. 30s buff. Slow HP regen (0.5/s), vision boost (+harvestTimer*0.3), floating particle VFX
 - [ ] **11.3** **Endo — NO Pulse**: 6s duration, 15s cooldown, 20 stamina cost. Enemies within 5 tiles slowed to 40% speed. Breaks cloak
 - [ ] **11.4** **Endo — Cloak**: 10s duration, 25 stamina cost. Invisible to all enemies. Breaks on ability use
-- [ ] **11.5** **Aster — EMP Hack**: AoE within 5 tiles. Deals 15 damage, suppresses enemies 8s, disrupts amoebae. 3-day cooldown, 30 stamina cost
+- [ ] **11.5** **Aster — EMP Hack**: AoE within 5 tiles. Deals 15 damage, suppresses enemies 8s, disrupts Meebs. 3-day cooldown, 30 stamina cost
 - [ ] **11.6** **Aster — Phagocytosis** (day 7+): Target mode → tap weakened enemy (<50% HP, within 2 tiles). Lock both in place, drain 10 HP/s, heal Aster. 20s cooldown after consume. Tap to cancel
 - [ ] **11.7** **Myke — Inflame**: Target mode → tap tile within 6 tiles. Creates fire zone (4s duration, 6 damage/s to enemies, 3 damage/s to allies within 1.2 tiles). 10s cooldown, 20 stamina
 - [ ] **11.8** **Myke — Engulf**: Target mode → tap enemy within 5 tiles. Burns target 8s (4 HP/s self-damage, 2 HP/s to nearby enemies, 3 HP/s to nearby allies). 18s cooldown, 25 stamina
@@ -199,7 +201,7 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 
 - [ ] **13.1** Character switching: click portrait or press key to switch active character. Clears alert on switched-to character
 - [ ] **13.2** Multi-select: long-press portrait to enter multi-select. Toggle characters. Click map to move all selected. X to exit
-- [ ] **13.3** Alert system: non-active characters who can see enemies/NKs/amoebae get yellow "!" indicator and pulsing ring
+- [ ] **13.3** Alert system: non-active characters who can see Techos/Naturalizers/Meebs get yellow "!" indicator and pulsing ring
 - [ ] **13.4** Downed state: HP reaches 0 → downed. Can't move, act, or rest. Path cleared. Message: "[Name] is DOWN! Drag them to a shelter"
 - [ ] **13.5** Dragging: auto-pickup when walking over downed character. Dragged character follows dragger. 0.5x speed, 2x stamina drain
 - [ ] **13.6** Revive at shelter: downed character at shelter tile with a conscious ally nearby → 10s revive timer → revive at 1 HP, auto-rest
@@ -216,7 +218,7 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
   - Restful bonus: 1.5x healing if nobody is downed anywhere
   - Downed at shelter: revive at 1 HP + 30% of base healing
   - Downed outside shelter: left behind, no healing
-- [ ] **14.4** Dawn reset: clear night hunters, reset all enemy positions/HP/states, scale enemy count/stats for new day, respawn consumed food (after 3 days), decay tended flora (after 5 days), regenerate lock terminals
+- [ ] **14.4** Dawn reset: clear Neutros, reset all enemy positions/HP/states, scale enemy count/stats for new day, respawn consumed food (after 3 days), decay tended flora (after 5 days), regenerate lock terminals
 
 ---
 
@@ -224,7 +226,7 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 
 - [ ] **15.1** **Myke (day 4)**: Spawn at (24.5, 18.5). Unlock road network (row/column grid pattern). Roads give 1.3x speed bonus. Myke's memory map: roads + hide rooms
 - [ ] **15.2** **Oli (day 7)**: Spawn at (2.5, 2.5). Set up lock terminals: (4,2)→shelter(2,2), (22,18)→shelter(24,18). Selective quarantine: just-used shelter gets locked. Oli's memory map: terminals + locked doors
-- [ ] **15.3** **Tyreg (day 10)**: Spawn at (2.5, 2.5). Activate NK patrols (3 patrols with waypoint routes). Place ammo spots (6 fixed locations). Full containment: all shelters locked. Tyreg's memory map: iron blooms + hide rooms
+- [ ] **15.3** **Tyreg (day 10)**: Spawn at (2.5, 2.5). Activate Naturalizer patrols (3 patrols with waypoint routes). Place ammo spots (6 fixed locations). Full containment: all shelters locked. Tyreg's memory map: iron blooms + hide rooms
 
 ---
 
@@ -234,19 +236,19 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 - [ ] **16.2** Selective quarantine (days 7-9, Oli unlocked): just-used shelter gets locked, other stays open
 - [ ] **16.3** Full containment (day 10+, Tyreg unlocked): all shelters locked
 - [ ] **16.4** Lock terminal activation: Oli or Aster, 1.5s channel, unlocks associated shelter
-- [ ] **16.5** NK scanner interference: when NK patrol passes within 3 tiles of lock terminal, temporarily unlock associated shelter for 10s
+- [ ] **16.5** Naturalizer scanner interference: when Naturalizer patrol passes within 3 tiles of lock terminal, temporarily unlock associated shelter for 10s
 - [ ] **16.6** Temporary unlock indicator: pulsing green glow on shelter + countdown timer
 - [ ] **16.7** Lock re-engagement: shelter re-locks when temp unlock timer expires
 
 ---
 
-## Phase 17: NK Patrol System
+## Phase 17: Naturalizer Patrol System
 
 - [ ] **17.1** 3 patrol routes with fixed waypoints (see prototype for exact coordinates). Speed 0.015
 - [ ] **17.2** Patrol behavior: walk to next waypoint in sequence, loop
 - [ ] **17.3** Detection: scan for characters within 4 tiles (ignore cloaked, in shelter/hide)
 - [ ] **17.4** Chase: 8s leash, 1.5x speed. Deal 20 damage/s on contact. Return to patrol when leash expires or target at 8+ tiles
-- [ ] **17.5** Scanner line visual: rotating line from NK position
+- [ ] **17.5** Scanner line visual: rotating line from Naturalizer position
 - [ ] **17.6** Patrol route visualization: dashed line when Tyreg is active character
 - [ ] **17.7** Tyreg immune balancing: Tyreg recognized by NKs, they defer briefly (from GDD — specific implementation TBD)
 
@@ -270,7 +272,7 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 
 ## Phase 19: Save/Load System
 
-- [ ] **19.1** Serialize full game state: character positions/stats/states, enemies, amoebae, NKs, explored sets, day/time, door locks, consumed food, tended flora, all flags
+- [ ] **19.1** Serialize full game state: character positions/stats/states, enemies, Meebs, Naturalizers, explored sets, day/time, door locks, consumed food, tended flora, all flags
 - [ ] **19.2** Handle object references: convert entity cross-references to IDs for serialization, restore on deserialize
 - [ ] **19.3** Save trigger: per-shelter (on rest/night skip). Export to JSON file
 - [ ] **19.4** Load: from JSON file, reconstruct full state, resume gameplay
@@ -279,12 +281,12 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 
 ## Phase 20: VFX & Rendering
 
-- [ ] **20.1** Tile glow effects: flora (green, stronger when tended), iron_bloom (red), terminal (blue, flickers near NK), shelter (blue), lock terminal (teal)
+- [ ] **20.1** Tile glow effects: flora (green, stronger when tended), iron_bloom (red), terminal (blue, flickers near Naturalizer), shelter (blue), lock terminal (teal)
 - [ ] **20.2** Fire zone rendering: pulsing orange/red with inner yellow core
-- [ ] **20.3** Siderophore rendering: color by state (idle=brown, pursue=red, investigate=orange, search=tan, scatter=yellow). Attack state visuals: windup ring, charge trail, impact flash, recover dim
-- [ ] **20.4** Amoeba rendering: translucent shifting blobs (two overlapping circles with sine-wave oscillation), engulfing animation (larger pulsing, prey fading inside)
-- [ ] **20.5** Neutrophil rendering: dark red with glowing red eyes, always slightly visible in darkness
-- [ ] **20.6** NK rendering: clean white circle, rotating scanner line, chase timer ring, detection radius when pursuing, scanner disruption spark near lock terminals
+- [ ] **20.3** Techo rendering: color by state (idle=brown, pursue=red, investigate=orange, search=tan, scatter=yellow). Attack state visuals: windup ring, charge trail, impact flash, recover dim
+- [ ] **20.4** Meeb rendering: translucent shifting blobs (two overlapping circles with sine-wave oscillation), engulfing animation (larger pulsing, prey fading inside)
+- [ ] **20.5** Neutro rendering: dark red with glowing red eyes, always slightly visible in darkness
+- [ ] **20.6** Naturalizer rendering: clean white circle, rotating scanner line, chase timer ring, detection radius when pursuing, scanner disruption spark near lock terminals
 - [ ] **20.7** Character rendering: colored circle with letter label, white selection ring for active, vision radius tint, path line. Status overlays: red flash when attacked, yellow alert ring, downed X, resting Z, channel progress bar, shield glow, dragging line
 - [ ] **20.8** Grid overlay: per-character colored grid (not Peris)
 - [ ] **20.9** Ability VFX: Protect aura (dashed yellow ring), Sheath connection line, Shield glow, NO Pulse green area, Cloak transparency, Harvest floating particles, Phagocytosis blue membrane, Conduct dashed line, burning enemies (orange ring + area glow), suppressed enemies (purple dashed ring + X)
@@ -295,8 +297,8 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 
 - [ ] **21.1** Ambient soundscape: biological hum, machinery, fluid. Different per zone/time
 - [ ] **21.2** Day/night transition audio cues
-- [ ] **21.3** Enemy detection stinger (siderophore pursuit)
-- [ ] **21.4** Night hunter warning sound
+- [ ] **21.3** Enemy detection stinger (Techo pursuit)
+- [ ] **21.4** Neutro warning sound
 - [ ] **21.5** Ability activation SFX per ability
 - [ ] **21.6** Channel completion chime
 - [ ] **21.7** Character downed alert
@@ -309,9 +311,9 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 
 These are in the GDD but not yet implemented in the prototype. Defer until core is solid.
 
-- [ ] **22.1** Multiple zones (Zone 1: sheltered, Zone 2: corridor/NK patrols, Zone 3: pathogen territory). Metroidvania ability gating between zones
+- [ ] **22.1** Multiple zones (Zone 1: sheltered, Zone 2: corridor/Naturalizer patrols, Zone 3: pathogen territory). Metroidvania ability gating between zones
 - [ ] **22.2** Peris perception degradation shader: cartographic memory-map distortion that worsens over days (desaturation, spatial warping, detail loss, fog thickening). See GDD section 16.2
-- [ ] **22.3** Siderophore iron gradient system: static iron map with event-based updates, proximity detection, party iron as mobile attractor. See GDD section 16.1
+- [ ] **22.3** Techo iron gradient system: static iron map with event-based updates, proximity detection, party iron as mobile attractor. See GDD section 16.1
 - [ ] **22.4** Additional threat types: Infiltrators (zone transformers), Recruiters (capture enemies), Cytokine storms (timed hazards), Biofilm patches (slow terrain), Spore fields, Resonance zones
 - [ ] **22.5** Flora species taxonomy: different species with distinct gameplay effects (wayfinding, bioluminescence, medicine, communication network, fast-travel via mycelial network)
 - [ ] **22.6** LaFerr's device: narrative MacGuffin + mid-game tool (40Hz gamma entrainment for Myke, diagnostics, therapeutic modes)
@@ -333,13 +335,13 @@ For a playable vertical slice, build in this order:
 2. **Phase 2 + 3**: Character + pathfinding → click to move
 3. **Phase 4**: Fog of war → the core perception mechanic works
 4. **Phase 5 + 6**: Day/night + pause → survival pressure exists
-5. **Phase 7**: Siderophores → something to survive against
+5. **Phase 7**: Techos → something to survive against
 6. **Phase 10 (food + shelter only)**: Eat, rest → survival loop closes
 7. **Phase 14**: Rest/night skip → complete day cycle
 8. **Phase 18 (minimal)**: Basic UI → playable
 9. **Phase 12**: Damage system → combat feels right
 10. **Phase 13**: Party management → multi-character play
-11. **Phases 8-9**: Amoebae + neutrophils → threat ecology
+11. **Phases 8-9**: Meebs + Neutros → threat ecology
 12. **Phase 11**: Abilities → tactical depth
 13. **Phase 15-17**: Recruitment + locks + NKs → mid/late-game systems
 14. **Phase 19**: Save/load → persistence

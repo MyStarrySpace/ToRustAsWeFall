@@ -1,5 +1,5 @@
 @tool
-extends TutorialSequence
+extends "res://scripts/tutorial/tutorial_sequence.gd"
 
 ## Functional showcase scene. Every station uses the live systems that the
 ## real levels already rely on: enemy AI, ferrolure redirection, iron hazard
@@ -79,6 +79,7 @@ const IRON_PATCH_RECTS := [
 ]
 
 const IRON_PROBE_CELL := Vector2i(31, 10)
+const IRON_SAFE_CELL := Vector2i(28, 10)
 
 const PUSH_BARREL_CELL := Vector2i(31, 33)
 const LAUNCHER_BARREL_CELL := Vector2i(38, 31)
@@ -103,6 +104,7 @@ const HIDE_ENTRY_CELL := Vector2i(61, 20)
 const HIDE_LURE_CELL := Vector2i(64, 20)
 const HIDE_SPOT_CELL := Vector2i(69, 26)
 const HIDE_SHELTER_CELL := Vector2i(76, 20)
+const HIDE_EXPOSED_WAIT_CELL := Vector2i(59, 20)
 const HIDE_SWARM_CLUSTER_X := 58.5
 
 var _grid: GridWorld
@@ -184,16 +186,20 @@ func _register_characters() -> void:
 	for char_id in _characters.keys():
 		var node: CharacterBody3D = _characters[char_id]
 		_register_gs_character(char_id, node, CHARACTER_SPEEDS[char_id], {
-			"hp": DEFAULT_HP,
-			"stamina": 100.0,
+			"hp": GameState.HP_MAX,
+			"stamina": GameState.STAMINA_MAX,
 		})
-		_character_hp[char_id] = DEFAULT_HP
+		_character_hp[char_id] = GameState.HP_MAX
 
 	for enemy in _enemy_nodes:
 		enemy.game_state = _game_state
 		_register_gs_character(enemy.char_id, enemy, enemy.move_speed, {
 			"detection_range": enemy.detection_range,
 		})
+
+	# Showcase is a preview environment — start every run from full stats so
+	# nothing carries over between sessions.
+	_game_state.reset_characters_to_full()
 
 func _setup_ui() -> void:
 	_hud = CanvasLayer.new()
@@ -467,16 +473,20 @@ func _on_pendulum_hit(pendulum_id: String, target_id: String, bob_velocity: Vect
 
 func get_station_positions() -> Dictionary:
 	var launcher_pos := _game_state.get_physics_position("launcher_barrel") if _game_state and _game_state.physics_objects.has("launcher_barrel") else _cell_world(LAUNCHER_BARREL_CELL, 0.0)
+	var hide_run_exposed := Vector3(55.2, 0.5, _cell_world(HIDE_SHELTER_CELL, 0.5).z)
 	return {
 		"enemy_probe": _cell_world(ENEMY_PROBE_CELL, 0.5),
 		"chain_probe": _cell_world(CHAIN_PROBE_CELL, 0.5),
 		"iron_patch": _cell_world(IRON_PROBE_CELL, 0.5),
+		"iron_safe": _cell_world(IRON_SAFE_CELL, 0.5),
 		"ferrolure": _cell_world(SHOWCASE_FERROLURE_CELL, 0.5),
 		"ferrolure_probe": _cell_world(FERROLURE_PROBE_CELL, 0.5),
 		"hide_entry": _cell_world(HIDE_ENTRY_CELL, 0.5),
 		"hide_lure": _cell_world(HIDE_LURE_CELL, 0.5),
 		"hide_spot": _cell_world(HIDE_SPOT_CELL, 0.5),
 		"shelter": _cell_world(HIDE_SHELTER_CELL, 0.5),
+		"hide_exposed_wait": _cell_world(HIDE_EXPOSED_WAIT_CELL, 0.5),
+		"hide_run_exposed": hide_run_exposed,
 		"launcher": _cell_world(LAUNCHER_INTERACT_CELL, 0.5),
 		"launcher_hit_probe": launcher_pos + Vector3(3.5, 0.0, 0.0),
 		"pendulum_probe": PENDULUM_PROBE,
@@ -504,10 +514,12 @@ func headless_get_state() -> Dictionary:
 			"standard": {
 				"state": _standard_enemy.get_state() if _standard_enemy else "",
 				"target": _standard_enemy._current_target_id if _standard_enemy else "",
+				"distance_to_target": _enemy_target_distance(_standard_enemy),
 			},
 			"chain": {
 				"state": _chain_enemy.get_state() if _chain_enemy else "",
 				"target": _chain_enemy._current_target_id if _chain_enemy else "",
+				"distance_to_target": _enemy_target_distance(_chain_enemy),
 			},
 		},
 		"event_counts": {
@@ -550,14 +562,46 @@ func headless_set_character_position(char_id: String, pos: Vector3) -> void:
 		_game_state._recompute_physics_predictions()
 		_game_state._recompute_pendulum_predictions()
 
+func headless_set_character_hp(char_id: String, hp: float) -> void:
+	if not _character_hp.has(char_id):
+		return
+	var new_hp := clampf(hp, 0.0, DEFAULT_HP)
+	_character_hp[char_id] = new_hp
+	_character_iframes[char_id] = -1000.0
+	if _hud:
+		_hud.set_portrait_stat(char_id, "hp", new_hp)
+		_hud.set_portrait_status(char_id, "downed" if new_hp <= 0.0 else "")
+	if _game_state and _game_state.characters.has(char_id):
+		_game_state.characters[char_id].stats["hp"] = new_hp
+	if _characters.has(char_id):
+		var node: CharacterBody3D = _characters[char_id]
+		if new_hp <= 0.0:
+			node.set_move_enabled(false)
+		elif char_id == _active_char_id:
+			node.set_move_enabled(true)
+
 func activate_showcase_ferrolure() -> void:
 	_on_showcase_ferrolure_activated()
+
+func prime_showcase_ferrolure_window() -> void:
+	_on_showcase_ferrolure_activated()
+	headless_advance(1.0)
 
 func activate_hide_lure() -> void:
 	_on_hide_lure_activated()
 
+func prime_hide_run_window() -> void:
+	_reset_hide_encounter()
+	headless_select_character("endo")
+	headless_set_character_position("endo", _cell_world(HIDE_SPOT_CELL, 0.5))
+	_on_hide_lure_activated()
+	headless_advance(HIDE_LURE_DURATION + 0.1)
+
 func trigger_showcase_throw() -> void:
 	_trigger_showcase_throw()
+
+func headless_reset_physics_station() -> void:
+	_reset_physics_station()
 
 func reset_hide_encounter() -> void:
 	_reset_hide_encounter()
@@ -584,6 +628,16 @@ func _ferrolure_targets_restored() -> bool:
 		if enemy and enemy._detection_targets.size() != 3:
 			return false
 	return true
+
+func _enemy_target_distance(enemy: Enemy) -> float:
+	if enemy == null or not _game_state:
+		return -1.0
+	if not _game_state.characters.has(enemy.char_id):
+		return -1.0
+	var target_id := str(enemy._current_target_id)
+	if target_id == "" or not _game_state.characters.has(target_id):
+		return -1.0
+	return _game_state.get_position(enemy.char_id).distance_to(_game_state.get_position(target_id))
 
 func _init_grid() -> void:
 	_grid = GridWorld.new()

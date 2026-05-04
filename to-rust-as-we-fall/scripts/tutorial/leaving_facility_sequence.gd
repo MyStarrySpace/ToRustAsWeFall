@@ -22,8 +22,7 @@ var _world_environment: Environment
 var _game_day := 1
 var _game_time := 0.3
 var _game_clock = DayNightCycleScript.new()
-var _hp := 100.0
-var _is_running := false
+# HP + running live in GameState (stat API / set_running); nothing local here.
 
 # Layout — corridor runs along +X
 const EXIT_POS := Vector3(0, 0, 0)
@@ -75,9 +74,9 @@ func _build_characters() -> void:
 		_setup_game_camera(_player, Vector3(0, 10, 8))
 
 func _register_characters() -> void:
-	_register_gs_character("aster", _player, 3.0)
-	_register_gs_character("peris", _peris, 2.5)
-	_register_gs_character("endo", _endo, 2.5)
+	_register_gs_character("aster", _player, GameState.WALK_SPEED, {"hp": GameState.HP_MAX, "stamina": GameState.STAMINA_MAX})
+	_register_gs_character("peris", _peris, 2.5, {"hp": GameState.HP_MAX, "stamina": GameState.STAMINA_MAX})
+	_register_gs_character("endo", _endo, 2.5, {"hp": GameState.HP_MAX})
 
 func _setup_ui() -> void:
 	# Game HUD — HP bar, time display, routing toggle
@@ -85,9 +84,13 @@ func _setup_ui() -> void:
 	_hud.name = "GameHUD"
 	_hud.set_script(preload("res://scripts/game/game_hud.gd"))
 	add_child(_hud)
-	_hud.add_stat_bar("hp", Color(0.7, 0.3, 0.25), 100.0, _hp)
+	_hud.add_stat_bar("hp", Color(0.7, 0.3, 0.25), GameState.HP_MAX, GameState.HP_MAX)
+	# Bind late in _begin once _game_state exists. Keep auto_toggle_running
+	# false so the scene's step guard in _toggle_run still runs.
 
 func _begin() -> void:
+	if _hud:
+		_hud.bind_game_state(_game_state, "aster", false)
 	_set_game_time(_game_day, _game_time, false)
 	_start_fade_in()
 
@@ -219,7 +222,7 @@ func _start_first_rest() -> void:
 		lt.tween_property(light, "light_energy", 3.5, 0.8)
 		lt.tween_property(light, "light_energy", 1.5, 0.8)
 	DialogueData.say_to(_dialogue, "facility.endo.rest")
-	_hp = 100.0
+	_game_state.set_stat("aster", "hp", GameState.HP_MAX)
 	_dialogue.dialogue_finished.connect(
 		func(): _scheduler.schedule_after(0, _start_dawn, "dawn"),
 		CONNECT_ONE_SHOT
@@ -237,13 +240,9 @@ func _start_dawn() -> void:
 # --- Routing ---
 
 func _toggle_run() -> void:
-	_is_running = not _is_running
-	if _is_running:
-		_game_state.change_move_speed("aster", 5.0)
-	else:
-		_game_state.change_move_speed("aster", 3.0)
-	if _hud:
-		_hud.set_run_mode(_is_running)
+	if _game_state == null:
+		return
+	_game_state.toggle_running("aster")
 
 func _toggle_routing() -> void:
 	_routing_mode = "direct" if _routing_mode == "safe" else "safe"
@@ -260,9 +259,7 @@ func _check_iron_damage(game_delta: float) -> void:
 	if abs(pos.x - IRON_2_POS.x) < 2.0 and abs(pos.z - IRON_2_POS.z) < 2.0:
 		on_iron = true
 	if on_iron:
-		_hp = maxf(0, _hp - 4.0 * game_delta)
-		if _hud:
-			_hud.set_stat("hp", _hp)
+		_game_state.adjust_stat("aster", "hp", -4.0 * game_delta)
 		for light in _iron_lights:
 			light.light_energy = 3.0 + sin(Time.get_ticks_msec() * 0.01) * 1.5  # @rendering_only — iron light pulse
 

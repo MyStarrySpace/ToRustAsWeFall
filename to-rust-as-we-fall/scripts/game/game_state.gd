@@ -23,6 +23,8 @@ signal item_exocytosed(char_id: String, item_id: String)
 signal ability_fired(char_id: String, ability: String, target_pos: Vector3)
 signal dodge_started(char_id: String, direction: Vector3)
 signal dodge_finished(char_id: String)
+signal stat_changed(char_id: String, stat: String, value: float)
+signal running_changed(char_id: String, running: bool)
 
 var grid: GridWorld
 var scheduler: EventScheduler
@@ -40,6 +42,16 @@ var mechanisms: Dictionary = {}   # id (StringName) → Mechanism
 var _next_item_id := 1
 var _endocytosing: Dictionary = {} # char_id → {item_id, handle} for in-progress endocytosis
 var _dodging: Dictionary = {}     # char_id → {end_tick, handle}
+## Per-character running state. Absent key = walking. Value: {tick_handle}.
+## Running drains stamina on a scheduler tick; walks at WALK_SPEED, runs at RUN_SPEED.
+var _running: Dictionary = {}
+
+const HP_MAX := 100.0
+const STAMINA_MAX := 100.0
+const WALK_SPEED := 3.0
+const RUN_SPEED := 6.0
+const RUN_STAMINA_DRAIN_PER_SEC := 30.0
+const RUN_TICK_INTERVAL := 0.1
 
 ## Optional event log. When non-null, every external command is appended.
 ## Replay-driven mutations (set _recording = false during replay) are skipped.
@@ -162,6 +174,13 @@ func register_character(id: String, pos: Vector3, speed: float = 3.0, stats: Dic
 func unregister_character(id: String) -> void:
 	_emit(GameEvent.KIND_UNREGISTER_CHARACTER, {"id": id})
 	if characters.has(id):
+		# Clean up running tick inline — not a commanded input, just
+		# side-effect cleanup, so it should not produce an extra log entry.
+		if _running.has(id):
+			var handle: int = int(_running[id].get("tick_handle", 0))
+			if handle != 0 and scheduler:
+				scheduler.cancel(handle)
+			_running.erase(id)
 		_cancel_movement(id)
 	characters.erase(id)
 	explored.erase(id)
@@ -265,6 +284,151 @@ func is_moving(id: String) -> bool:
 		return false
 	return characters[id].movement != null
 
+# --- Stats ---
+
+## Read a stat (hp/stamina/atp/...). Returns 0.0 if unknown character or stat.
+func get_stat(id: String, stat: String) -> float:
+	if not characters.has(id):
+		return 0.0
+	return float(characters[id].stats.get(stat, 0.0))
+
+## Per-character upper bound for hp/stamina/atp. Reads "<stat>_max" from the
+## character's stats dict if present (set by stat_upgrade endocytosis); falls
+## back to the GameState constants otherwise. Other stats return 0.0.
+func get_stat_cap(id: String, stat: String) -> float:
+	if not characters.has(id):
+		return 0.0
+	var stats: Dictionary = characters[id].stats
+	var cap_key := stat + "_max"
+	if stats.has(cap_key):
+		return float(stats[cap_key])
+	match stat:
+		"hp": return HP_MAX
+		"stamina": return STAMINA_MAX
+		"atp": return SurvivalStats.ATP_MAX_PIPS
+	return 0.0
+
+## Set a stat. Clamps to per-character cap (default = GameState constants;
+## raised by stat_upgrade items). Emits stat_changed. Stats not in the
+## hp/stamina/atp set pass through unclamped.
+func set_stat(id: String, stat: String, value: float) -> void:
+	_emit(GameEvent.KIND_SET_STAT, {"id": id, "stat": stat, "value": value})
+	if not characters.has(id):
+		return
+	var clamped: float = value
+	match stat:
+		"stamina":
+			clamped = clampf(value, 0.0, get_stat_cap(id, "stamina"))
+		"hp":
+			clamped = clampf(value, 0.0, get_stat_cap(id, "hp"))
+		"atp":
+			clamped = clampf(roundf(value), 0.0, get_stat_cap(id, "atp"))
+	characters[id].stats[stat] = clamped
+	stat_changed.emit(id, stat, clamped)
+
+## Shorthand for relative stat changes (damage, drain, healing).
+func adjust_stat(id: String, stat: String, delta: float) -> void:
+	set_stat(id, stat, get_stat(id, stat) + delta)
+
+## Apply a stat_upgrade item's payload to a character. Internal — called by
+## _complete_endocytosis. The increment is direct (not through set_stat) so
+## the cap can grow past the GameState constants without being clamped by
+## itself. Capacity upgrades (hp_max/stamina_max/atp_max) also refill the
+## corresponding current stat to the new cap; tending_speed and other
+## non-capacity upgrades just bump the value.
+func _apply_stat_upgrade(char_id: String, payload: Dictionary) -> void:
+	if not characters.has(char_id):
+		return
+	var stat: String = str(payload.get("stat", ""))
+	var amount: float = float(payload.get("amount", 0.0))
+	if stat == "" or amount == 0.0:
+		return
+	var stats: Dictionary = characters[char_id].stats
+	if stat in ["hp_max", "stamina_max", "atp_max"]:
+		# Capacity upgrades start from the current cap (which is the default
+		# constant if the character has never been upgraded) so the first
+		# bump lands relative to 100 rather than 0.
+		var current_stat := stat.substr(0, stat.find("_max"))
+		var new_cap: float = get_stat_cap(char_id, current_stat) + amount
+		stats[stat] = new_cap
+		stat_changed.emit(char_id, stat, new_cap)
+		set_stat(char_id, current_stat, new_cap)
+	else:
+		var new_value: float = float(stats.get(stat, 0.0)) + amount
+		stats[stat] = new_value
+		stat_changed.emit(char_id, stat, new_value)
+
+# --- Running ---
+
+func is_running(id: String) -> bool:
+	return _running.has(id)
+
+## Enter or leave running state. Running cannot start on zero stamina.
+## Running changes move_speed to RUN_SPEED and starts a drain tick; exiting
+## reverts to WALK_SPEED. Signal running_changed fires on state change.
+func set_running(id: String, running: bool) -> void:
+	_emit(GameEvent.KIND_SET_RUNNING, {"id": id, "running": running})
+	if not characters.has(id):
+		return
+	if running == is_running(id):
+		return
+	if running:
+		if get_stat(id, "stamina") <= 0.0:
+			return
+		_running[id] = {"tick_handle": 0}
+		change_move_speed(id, RUN_SPEED)
+		_schedule_running_tick(id)
+	else:
+		var entry: Dictionary = _running.get(id, {})
+		var handle: int = int(entry.get("tick_handle", 0))
+		if handle != 0 and scheduler:
+			scheduler.cancel(handle)
+		_running.erase(id)
+		change_move_speed(id, WALK_SPEED)
+	running_changed.emit(id, running)
+
+func toggle_running(id: String) -> void:
+	set_running(id, not is_running(id))
+
+func _schedule_running_tick(id: String) -> void:
+	if not is_running(id) or not scheduler:
+		return
+	var handle := scheduler.schedule_after(
+		RUN_TICK_INTERVAL,
+		func(): _on_running_tick(id),
+		"running_" + id
+	)
+	_running[id]["tick_handle"] = handle
+
+func _on_running_tick(id: String) -> void:
+	if not is_running(id) or not characters.has(id):
+		return
+	if not is_moving(id):
+		# Character is running but stationary. Let the tick die and let the
+		# next _start_movement revive it — that way an idle runner does not
+		# clog the scheduler with no-op ticks forever.
+		if _running.has(id):
+			_running[id]["tick_handle"] = 0
+		return
+	var new_val: float = maxf(0.0, get_stat(id, "stamina") - RUN_STAMINA_DRAIN_PER_SEC * RUN_TICK_INTERVAL)
+	set_stat(id, "stamina", new_val)
+	if new_val <= 0.0:
+		set_running(id, false)
+		return
+	_schedule_running_tick(id)
+
+## Restore every registered character to full stats, clear running flags.
+## Intended for preview entry so scenes always start from a known-good state.
+## Refills to each character's current cap (which may be above the defaults
+## if a stat_upgrade item has been consumed).
+func reset_characters_to_full() -> void:
+	for id in characters.keys():
+		if is_running(id):
+			set_running(id, false)
+		set_stat(id, "hp", get_stat_cap(id, "hp"))
+		set_stat(id, "stamina", get_stat_cap(id, "stamina"))
+		set_stat(id, "atp", get_stat_cap(id, "atp"))
+
 func get_grid_cell(id: String) -> Vector2i:
 	if not grid:
 		return Vector2i.ZERO
@@ -337,6 +501,10 @@ func _start_movement(id: String, full_path: Array[Vector3]) -> void:
 		"duration": duration,
 		"handle": handle,
 	}
+	# Running stamina drain is paused while stationary; revive the tick now
+	# that the character is in motion again.
+	if is_running(id) and int(_running[id].get("tick_handle", 0)) == 0:
+		_schedule_running_tick(id)
 	_recompute_all_detection_predictions()
 	_recompute_physics_predictions()
 	_recompute_pendulum_predictions()
@@ -853,6 +1021,17 @@ func _complete_endocytosis(char_id: String, item_id: String) -> void:
 			var hp: float = ch.stats.get("hp", 100.0)
 			ch.stats["hp"] = maxf(0.0, hp - dmg)
 			items.erase(item_id)
+		"stat_upgrade":
+			var payload := ItemData.get_upgrade_payload(item.type)
+			var locked_to: String = str(payload.get("locked_to", ""))
+			if locked_to != "" and locked_to != char_id:
+				# Wrong character — keep the item internally so it can be
+				# transferred to whoever it's locked to. No upgrade applied.
+				item.location = "internal"
+				ch.internal.append(item_id)
+			else:
+				_apply_stat_upgrade(char_id, payload)
+				items.erase(item_id)
 		_:
 			item.location = "internal"
 			ch.internal.append(item_id)

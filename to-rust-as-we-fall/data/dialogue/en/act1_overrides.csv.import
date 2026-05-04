@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://b5dk4vsssv5es"
+
+[deps]
+
+files=["res://data/dialogue/en/act1_overrides.speaker.translation", "res://data/dialogue/en/act1_overrides.style.translation", "res://data/dialogue/en/act1_overrides.wait.translation", "res://data/dialogue/en/act1_overrides.text.translation", "res://data/dialogue/en/act1_overrides.context.translation"]
+
+source_file="res://data/dialogue/en/act1_overrides.csv"
+dest_files=["res://data/dialogue/en/act1_overrides.speaker.translation", "res://data/dialogue/en/act1_overrides.style.translation", "res://data/dialogue/en/act1_overrides.wait.translation", "res://data/dialogue/en/act1_overrides.text.translation", "res://data/dialogue/en/act1_overrides.context.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

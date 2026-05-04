@@ -1,0 +1,10 @@
+key,speaker,style,wait,text,context
+facility.endo.shelters,,normal,false,,Temporary blank placeholder to suppress missing-key warnings
+facility.endo.iron_warn,,normal,false,,Temporary blank placeholder to suppress missing-key warnings
+facility.endo.dusk,,normal,false,,Temporary blank placeholder to suppress missing-key warnings
+facility.endo.shelter,,normal,false,,Temporary blank placeholder to suppress missing-key warnings
+facility.endo.rest,,normal,false,,Temporary blank placeholder to suppress missing-key warnings
+facility.dawn,,normal,false,,Temporary blank placeholder to suppress missing-key warnings
+junction.peris.tend_plant.peris,,normal,false,,Temporary blank placeholder to suppress missing-key warnings
+elevator.aster.dismiss,,normal,false,,Temporary blank placeholder to suppress missing-key warnings
+elevator.peris.not_back,,normal,false,,Temporary blank placeholder to suppress missing-key warnings

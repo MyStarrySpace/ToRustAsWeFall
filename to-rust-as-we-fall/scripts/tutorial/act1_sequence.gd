@@ -1211,7 +1211,7 @@ func _fail_channels_window_lane(window_id: String, reason: String) -> void:
 	lane["phase"] = "failed"
 	lane["last_outcome"] = reason
 	_channels_window_lanes[window_id] = lane
-	_tutorial_prompt.show_prompt("Too slow. The siderophores spill back into the lane.")
+	_tutorial_prompt.show_prompt("Too slow. The Techos spill back into the lane.")
 	_clear_markers()
 	_show_marker(lane["curtain_pos"] + Vector3(0, 2.0, 0), "BLOCKED", Color(0.86, 0.28, 0.22, 0.88))
 	_scheduler.schedule_after(1.0, func():

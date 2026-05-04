@@ -1,0 +1,9 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/tutorial/glass_bead_game_display.gd" id="1"]
+[ext_resource type="PackedScene" path="res://resources/models/aster-sim/glass-bead-game/glass-bead-game.gltf" id="2"]
+
+[node name="GlassBeadGameDisplay" type="Node3D"]
+script = ExtResource("1")
+
+[node name="GlassBeadGameModel" parent="." instance=ExtResource("2")]

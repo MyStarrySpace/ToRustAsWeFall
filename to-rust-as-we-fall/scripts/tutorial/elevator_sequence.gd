@@ -17,6 +17,8 @@ var _peris_node: CharacterBody3D
 var _escort_1  # NPC
 var _escort_2  # NPC
 var _active_character := "peris"
+var _selected_character_ids: Array[String] = ["peris"]
+var _suppress_hud_character_signal := false
 
 # Environment
 var _emergency_light: OmniLight3D
@@ -27,6 +29,8 @@ var _control_panel  # Interactable
 var _indicator_timer := 0.0
 var _indicator_b_label: Label3D  # The "B" that flickers
 var _exit_button  # Interactable — flashes "NO EXIT" when pressed
+var _aster_wake_interactable  # Interactable for waking knocked-out Aster
+var _climb_interactable  # Interactable for checking the collapsed bridge
 var _no_exit_label: Label3D
 
 # HUD
@@ -35,11 +39,13 @@ var _hud  # GameHUD
 # EMP state
 var _emp_count := 0
 var _emp_queued := false
+var _emp_pause_locked := false
 var _emp_cooldown_end := 0.0  # scheduler tick when cooldown expires
 var _unit_1_stunned := false
 var _unit_2_stunned := false
 var _reboot_active := false
 var _stamina := 100.0
+var _multiselect_hint_next_tick := -999.0
 
 # Enemies
 var _enemies: Array[Enemy] = []
@@ -78,6 +84,7 @@ const ASTER_POS := Vector3(2.0, 0, -2.0)
 const ESCORT_1_POS := Vector3(-2.5, 0, -2.5)
 const ESCORT_2_POS := Vector3(-2.5, 0, 2.5)
 const PANEL_POS := Vector3(3.5, 0, 0)
+const EMP_GUARD_STANDOFF_DISTANCE := 2.6
 
 # Below-level (ecology visible from bridge, walkable after collapse)
 const BELOW_Y := -4.0
@@ -181,6 +188,7 @@ func _setup_ui() -> void:
 	add_child(_hud)
 	_hud.add_portrait("peris", "Peris", Color(1.0, 0.67, 0.27))
 	_hud.add_portrait("aster", "Aster", Color(0.29, 0.62, 1.0))
+	_hud.set_selected_portraits(_selected_character_ids)
 	_hud.set_portrait_stat("peris", "hp", 100)
 	_hud.set_portrait_stat("aster", "hp", 100)
 	_hud.set_portrait_status("aster", "downed")
@@ -189,6 +197,10 @@ func _setup_ui() -> void:
 	_hud.pause_toggled.connect(_on_pause_toggled)
 	_hud.add_ability("emp", "EMP", "Q", Color(0.29, 0.62, 1.0))
 	_hud.set_ability_state("emp", "disabled")
+	_hud.ability_pressed.connect(func(id: String):
+		if id == "emp":
+			_on_emp_pressed()
+	)
 	_hud.character_selection_changed.connect(_on_character_selected)
 
 	# Exit button near the doors
@@ -199,6 +211,10 @@ func _setup_ui() -> void:
 	_exit_button.one_shot = false
 	_exit_button.dwell_time = 0.5
 	_exit_button.tutorial_label = "OPEN"
+	_exit_button.show_interaction_zone = false
+	_exit_button.monitoring = false
+	_exit_button.monitorable = false
+	_exit_button.visible = false
 	_exit_button.position = Vector3(ELEVATOR_SIZE.x / 2.0 - 0.3, 1.0, 1.5)
 	add_child(_exit_button)
 	_exit_button.interacted.connect(_on_exit_button_pressed)
@@ -294,7 +310,7 @@ func _on_process(delta: float, spd: float) -> void:
 	# Approach gate
 	if _current_step == "approach_aster":
 		var peris_pos := _game_state.get_position("peris")
-		if peris_pos.distance_to(ASTER_POS) < 1.8:
+		if (_aster_wake_interactable == null or not is_instance_valid(_aster_wake_interactable)) and peris_pos.distance_to(ASTER_POS) < 1.8:
 			_tutorial_prompt.hide_prompt()
 			_player.set_move_enabled(false)
 			_start_wake_aster()
@@ -304,8 +320,12 @@ func _on_process(delta: float, spd: float) -> void:
 		var exit_gate := Vector3(ELEVATOR_SIZE.x / 2.0, 0, 0)
 		var pp := _game_state.get_position("peris")
 		var ap := _game_state.get_position("aster")
-		if pp.distance_to(exit_gate) < 2.5 and ap.distance_to(exit_gate) < 2.5:
+		var peris_at_door := pp.distance_to(exit_gate) < 2.5
+		var aster_at_door := ap.distance_to(exit_gate) < 2.5
+		if peris_at_door and aster_at_door and _multiselect_has_required_pair():
 			_start_corridor()
+		elif peris_at_door or aster_at_door:
+			_show_multiselect_together_hint()
 
 	# Route convergence gate: player reached the junction area
 	if _current_step == "route_choice":
@@ -313,7 +333,7 @@ func _on_process(delta: float, spd: float) -> void:
 		if player_pos.x > ROUTES_CONVERGE.x - 2.0:
 			_tutorial_prompt.hide_prompt()
 			_player.set_move_enabled(false)
-			_start_junction_arrive()
+			_start_bridge_collapse()
 
 	# Gauntlet exit gate: player passed the enemies
 	if _current_step == "gauntlet":
@@ -329,16 +349,32 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
-		var kc := (event as InputEventKey).keycode
+		var key_event := event as InputEventKey
+		var kc := key_event.keycode
 		if kc == KEY_SPACE:
 			_toggle_pause()
 		elif kc == KEY_Q:
 			_on_emp_pressed()
 		elif kc == KEY_TAB and _current_step in ["hack_tutorial", "multiselect_tutorial"]:
 			_switch_character()
+		elif _current_step == "multiselect_tutorial" and kc in [KEY_1, KEY_2]:
+			var char_id := "peris" if kc == KEY_1 else "aster"
+			if key_event.ctrl_pressed or key_event.shift_pressed:
+				_hud.toggle_portrait_selected(char_id)
+			else:
+				_select_character(char_id)
 
 func _toggle_pause() -> void:
 	if _scheduler.is_paused():
+		if _emp_pause_locked and not _emp_queued:
+			_hud.set_paused(true)
+			_tutorial_prompt.show_prompt("[Q] - queue Aster's EMP before unpausing")
+			return
+		if _current_step == "multiselect_tutorial" and not _multiselect_has_required_pair():
+			_hud.set_paused(true)
+			_tutorial_prompt.show_prompt("Ctrl-click Aster's portrait to select both, then move together")
+			_show_multiselect_together_hint()
+			return
 		_scheduler.resume()
 		_hud.set_paused(false)
 		_flush_queued_abilities()
@@ -350,6 +386,15 @@ func _on_pause_toggled(is_paused: bool) -> void:
 	if is_paused:
 		_scheduler.pause()
 	else:
+		if _emp_pause_locked and not _emp_queued:
+			_hud.set_paused(true)
+			_tutorial_prompt.show_prompt("[Q] - queue Aster's EMP before unpausing")
+			return
+		if _current_step == "multiselect_tutorial" and not _multiselect_has_required_pair():
+			_hud.set_paused(true)
+			_tutorial_prompt.show_prompt("Ctrl-click Aster's portrait to select both, then move together")
+			_show_multiselect_together_hint()
+			return
 		_scheduler.resume()
 		_flush_queued_abilities()
 
@@ -362,11 +407,15 @@ func _on_emp_pressed() -> void:
 	if _current_step == "emp_tutorial" and _emp_count == 0:
 		if _scheduler.is_paused():
 			_emp_queued = true
+			_emp_pause_locked = false
 			_hud.set_ability_state("emp", "queued")
+			_tutorial_prompt.show_prompt("[Space] - unpause to fire queued EMP")
 		else:
 			_fire_emp_both()
 
 func _fire_emp_both() -> void:
+	_emp_pause_locked = false
+	_emp_queued = false
 	_stamina = maxf(0, _stamina - 25.0)
 	_hud.set_portrait_stat("peris", "sta", _stamina)
 	_emp_cooldown_end = _scheduler.get_current_tick() + 10.0
@@ -407,34 +456,96 @@ func _on_exit_button_pressed() -> void:
 		tween.tween_property(_no_exit_label, "modulate:a", 0.0, 0.5)
 	_camera.shake(0.05, 10.0)
 
+func _set_exit_button_interactable(active: bool) -> void:
+	if _exit_button == null:
+		return
+	_exit_button.visible = active
+	_exit_button.monitoring = active
+	_exit_button.monitorable = active
+	_exit_button.show_interaction_zone = active
+	var marker := _exit_button.find_child("InteractionZoneMarker", true, false) as Node3D
+	if marker != null:
+		marker.visible = active
+	if not active:
+		if _exit_button.has_method("hide_tutorial_label"):
+			_exit_button.hide_tutorial_label()
+		if _exit_button.has_method("reset"):
+			_exit_button.reset()
+
 func _switch_character() -> void:
 	var next_id: String = _hud.get_next_portrait_id(_active_character)
 	_select_character(next_id)
 
-func _select_character(id: String) -> void:
-	if id == _active_character:
+func _select_character(id: String, preserve_multi_selection := false) -> void:
+	if not (id in ["peris", "aster"]):
 		return
-	# Disable current character's movement
-	if _active_character == "peris":
-		_peris_node.set_move_enabled(false)
-	else:
-		_aster_node.set_move_enabled(false)
-	# Activate new character
 	if id == "peris":
-		_peris_node.set_move_enabled(true)
 		_player = _peris_node
 		_camera.target = _peris_node
 	else:
-		_aster_node.set_move_enabled(true)
 		_player = _aster_node
 		_camera.target = _aster_node
 	_active_character = id
-	_hud.set_active_portrait(id)
+	if not preserve_multi_selection:
+		_selected_character_ids = [id]
+	elif not _selected_character_ids.has(id):
+		_selected_character_ids.append(id)
+	_suppress_hud_character_signal = true
+	_hud.set_active_portrait(id, preserve_multi_selection)
+	if preserve_multi_selection:
+		_hud.set_selected_portraits(_selected_character_ids)
+	_suppress_hud_character_signal = false
+	_apply_character_control_selection()
 
 func _on_character_selected(selected_ids: Array) -> void:
-	if selected_ids.size() > 0 and selected_ids[0] != _active_character:
-		if _current_step in ["multiselect_tutorial", "hack_tutorial"]:
-			_select_character(selected_ids[0])
+	if _suppress_hud_character_signal:
+		return
+	var sanitized := _sanitize_character_selection(selected_ids)
+	if sanitized.is_empty():
+		sanitized = [_active_character]
+	_selected_character_ids = sanitized
+	var preferred := sanitized[0]
+	if preferred != _active_character and _current_step in ["multiselect_tutorial", "hack_tutorial"]:
+		_select_character(preferred, bool(_hud.get("_multi_select")))
+	else:
+		_apply_character_control_selection()
+	if _current_step == "multiselect_tutorial":
+		_update_multiselect_tutorial_prompt()
+
+func _sanitize_character_selection(selected_ids: Array) -> Array[String]:
+	var sanitized: Array[String] = []
+	for raw_id in selected_ids:
+		var id := str(raw_id)
+		if not (id in ["peris", "aster"]):
+			continue
+		if sanitized.has(id):
+			continue
+		sanitized.append(id)
+	return sanitized
+
+func _apply_character_control_selection() -> void:
+	var group_control := _hud != null and bool(_hud.get("_multi_select")) and _selected_character_ids.size() > 1
+	_peris_node.set_move_enabled((group_control and _selected_character_ids.has("peris")) or (not group_control and _active_character == "peris"))
+	_aster_node.set_move_enabled((group_control and _selected_character_ids.has("aster")) or (not group_control and _active_character == "aster"))
+
+func _multiselect_has_required_pair() -> bool:
+	return _selected_character_ids.has("peris") and _selected_character_ids.has("aster")
+
+func _update_multiselect_tutorial_prompt() -> void:
+	if _multiselect_has_required_pair():
+		_tutorial_prompt.show_prompt("Both selected. Press [Space], then click the open doorway.")
+	else:
+		_tutorial_prompt.show_prompt("Ctrl-click Aster's portrait to select both Peris and Aster.")
+
+func _show_multiselect_together_hint() -> void:
+	var now := _scheduler.get_current_tick() if _scheduler != null else 0.0
+	if now < _multiselect_hint_next_tick:
+		return
+	if _dialogue != null and _dialogue.has_method("is_active") and _dialogue.is_active():
+		return
+	_multiselect_hint_next_tick = now + 3.0
+	DialogueData.say_to(_dialogue, "elevator.aster.hurry_together")
+	_update_multiselect_tutorial_prompt()
 
 # --- Event steps ---
 
@@ -489,9 +600,11 @@ func _start_approach_aster() -> void:
 	_enter_step("approach_aster")
 	_player.set_move_enabled(true)
 	_tutorial_prompt.show_prompt("Click to move")
+	_show_aster_wake_interactable()
 
 func _start_wake_aster() -> void:
 	_enter_step("wake_aster")
+	_clear_aster_wake_interactable()
 	_hud.set_portrait_status("aster", "")
 	_hud.set_portrait_stat("aster", "sta", 100)
 	DialogueData.say_to(_dialogue, "elevator.peris.hey")
@@ -509,6 +622,39 @@ func _start_wake_aster() -> void:
 			, CONNECT_ONE_SHOT)
 		, "aster_wake")
 	, CONNECT_ONE_SHOT)
+
+func _show_aster_wake_interactable() -> void:
+	if _aster_wake_interactable != null and is_instance_valid(_aster_wake_interactable):
+		return
+	var parent := _chunks.get("elevator", null) as Node3D
+	if parent == null:
+		parent = find_child("Environment", false, false) as Node3D
+	var zone_pos := ASTER_POS + Vector3(0.0, 0.05, 0.0)
+	_aster_wake_interactable = _create_interactable(parent, zone_pos, "AsterWakeZone", 2.0, 0.6, "Wake", true)
+	_aster_wake_interactable.description = "Aster"
+	_aster_wake_interactable.required_character = "peris"
+	_aster_wake_interactable.active_character = "peris"
+	_aster_wake_interactable.interacted.connect(_on_aster_wake_interacted)
+	_aster_wake_interactable.call_deferred("show_tutorial_label")
+
+func _clear_aster_wake_interactable() -> void:
+	if _aster_wake_interactable == null or not is_instance_valid(_aster_wake_interactable):
+		_aster_wake_interactable = null
+		return
+	_aster_wake_interactable.visible = false
+	_aster_wake_interactable.monitoring = false
+	_aster_wake_interactable.monitorable = false
+	if _aster_wake_interactable.has_method("hide_tutorial_label"):
+		_aster_wake_interactable.hide_tutorial_label()
+	_aster_wake_interactable.queue_free()
+	_aster_wake_interactable = null
+
+func _on_aster_wake_interacted() -> void:
+	if _current_step != "approach_aster":
+		return
+	_tutorial_prompt.hide_prompt()
+	_player.set_move_enabled(false)
+	_start_wake_aster()
 
 func _start_conversation() -> void:
 	_enter_step("conversation")
@@ -540,24 +686,41 @@ func _start_system_restored() -> void:
 
 func _start_units_activate() -> void:
 	_enter_step("units_activate")
-	# Auto-pause so the player can read the situation
-	_scheduler.pause()
-	_hud.set_paused(true)
-	# Both escorts advance
-	_escort_1.walk_to(_peris_node.global_position + Vector3(0.5, 0, 0))
-	_escort_2.walk_to(_peris_node.global_position + Vector3(0, 0, 0.5))
+	# Both escorts advance, but stop short so Aster has room to EMP them.
+	var party_center := _get_emp_party_center()
+	_escort_1.walk_to(_get_emp_guard_standoff_pos("eu1", _escort_1, party_center))
+	_escort_2.walk_to(_get_emp_guard_standoff_pos("eu2", _escort_2, party_center))
 	_camera.shake(0.2, 6.0)
 	_dialogue_chain(
 		["elevator.unit.protocol", "elevator.aster.device"],
-		func(): _scheduler.schedule_after(0.5, _start_emp_tutorial, "emp_tut")
+		_start_emp_tutorial
 	)
+
+func _get_emp_party_center() -> Vector3:
+	var peris_pos := _game_state.get_position("peris") if _game_state and _game_state.characters.has("peris") else _peris_node.global_position
+	var aster_pos := _game_state.get_position("aster") if _game_state and _game_state.characters.has("aster") else _aster_node.global_position
+	return (peris_pos + aster_pos) * 0.5
+
+func _get_emp_guard_standoff_pos(guard_id: String, guard_node: Node3D, party_center: Vector3) -> Vector3:
+	var guard_pos := _game_state.get_position(guard_id) if _game_state and _game_state.characters.has(guard_id) else guard_node.global_position
+	var away_from_party := guard_pos - party_center
+	away_from_party.y = 0.0
+	if away_from_party.length() < 0.01:
+		away_from_party = Vector3.LEFT
+	var standoff := party_center + away_from_party.normalized() * EMP_GUARD_STANDOFF_DISTANCE
+	standoff.y = guard_pos.y
+	return standoff
 
 func _start_emp_tutorial() -> void:
 	_enter_step("emp_tutorial")
 	# Switch to Aster — the EMP is his ability, not Peris's
 	_select_character("aster")
+	_emp_pause_locked = true
+	_emp_queued = false
 	_hud.set_ability_state("emp", "ready")
-	_tutorial_prompt.show_prompt("[Q] — EMP")
+	_tutorial_prompt.show_prompt("[Q] - queue Aster's EMP")
+	_scheduler.pause()
+	_hud.set_paused(true)
 
 func _start_emp_tutorial_2() -> void:
 	# Kept for reboot fallback but no longer triggered normally
@@ -568,19 +731,22 @@ func _start_doors_unlocked() -> void:
 	_reboot_active = false
 	_tutorial_prompt.hide_prompt()
 	# EMP killed the door lock — the exit button now works
+	_set_exit_button_interactable(true)
 	_exit_button.one_shot = true
 	_exit_button.tutorial_label = "OPEN"
 	_exit_button.show_tutorial_label()
 	DialogueData.say_to(_dialogue, "elevator.system.override")
-	# Re-wire exit button to actually open the doors
+	_dialogue.dialogue_finished.connect(_start_doors_open, CONNECT_ONE_SHOT)
+	# Re-wire exit button as a fallback; the "doors cycling" notification
+	# should advance automatically once the line finishes.
 	if _exit_button.interacted.is_connected(_on_exit_button_pressed):
 		_exit_button.interacted.disconnect(_on_exit_button_pressed)
-	_exit_button.interacted.connect(func():
-		_scheduler.schedule_after(0.0, _start_doors_open, "doors")
-	, CONNECT_ONE_SHOT)
+	_exit_button.interacted.connect(_start_doors_open, CONNECT_ONE_SHOT)
 
 func _start_doors_open() -> void:
-	_enter_step("doors_open")
+	if not _enter_step("doors_open"):
+		return
+	_set_exit_button_interactable(false)
 	# Tween door panels apart
 	if _door_panel_a and _door_panel_b:
 		var tween := create_tween()
@@ -597,18 +763,24 @@ func _start_doors_open() -> void:
 
 func _start_multiselect_tutorial() -> void:
 	_enter_step("multiselect_tutorial")
+	_selected_character_ids = ["peris"]
+	_suppress_hud_character_signal = true
+	_hud.set_multi_select_enabled(true)
+	_hud.set_selected_portraits(_selected_character_ids)
+	_suppress_hud_character_signal = false
 	# Switch to Peris — both need to reach the exit
-	_select_character("peris")
-	_peris_node.set_move_enabled(true)
+	_select_character("peris", true)
 	_scheduler.pause()
 	_hud.set_paused(true)
-	DialogueData.say_to(_dialogue, "elevator.aster.stay_close")
+	DialogueData.say_to(_dialogue, "elevator.aster.multiselect")
 	_dialogue.dialogue_finished.connect(func():
 		_tutorial_prompt.show_prompt("[Tab] — switch  [Space] — unpause")
 	, CONNECT_ONE_SHOT)
+	_dialogue.dialogue_finished.connect(_update_multiselect_tutorial_prompt, CONNECT_ONE_SHOT)
 
 func _start_corridor() -> void:
 	_enter_step("corridor")
+	_tutorial_prompt.hide_prompt()
 	_load_chunk("bridge")
 	_load_chunk("below")
 	# Walk both characters out through the doors
@@ -630,13 +802,14 @@ func _start_bridge() -> void:
 		"elevator.peris.bodies",
 		"elevator.aster.logs",
 		"elevator.aster.ahead",
-	], func(): _scheduler.schedule_after(1.0, _start_bridge_collapse, "collapse"))
+	], func(): _scheduler.schedule_after(1.0, _start_route_fork_dialogue, "route_fork"))
 
 # --- Bridge Collapse ---
 
 func _start_bridge_collapse() -> void:
 	_enter_step("bridge_collapse")
-	_player.set_move_enabled(false)
+	_peris_node.set_move_enabled(false)
+	_aster_node.set_move_enabled(false)
 	_game_state.command_stop("aster")
 	_game_state.command_stop("peris")
 	# Hide escort units (abandoned above)
@@ -702,9 +875,31 @@ func _start_climb_attempt() -> void:
 		"elevator.peris.climb",
 		"elevator.aster.another_way",
 	], func():
-		# TODO: placeholder for finding the alternative path
-		_scheduler.schedule_after(1.0, _start_route_fork_dialogue, "route_fork")
+		_show_climb_interactable()
 	)
+
+func _show_climb_interactable() -> void:
+	if _climb_interactable != null and is_instance_valid(_climb_interactable):
+		return
+	var parent := _chunks.get("below", null) as Node3D
+	if parent == null:
+		parent = find_child("Environment", false, false) as Node3D
+	var zone_pos := Vector3(BRIDGE_START_X + 5.0, BELOW_Y + 0.05, 0.0)
+	_climb_interactable = _create_interactable(parent, zone_pos, "ClimbPromptZone", 2.4, 0.8, "Climb", true)
+	_climb_interactable.description = "Collapsed Bridge"
+	_climb_interactable.interacted.connect(_on_climb_prompt_interacted)
+	_climb_interactable.call_deferred("show_tutorial_label")
+	_player.set_move_enabled(true)
+	_tutorial_prompt.show_prompt("Climb zone - check the collapsed bridge")
+
+func _on_climb_prompt_interacted() -> void:
+	if _current_step != "climb_attempt":
+		return
+	_tutorial_prompt.hide_prompt()
+	if _climb_interactable != null and is_instance_valid(_climb_interactable):
+		_climb_interactable.queue_free()
+		_climb_interactable = null
+	_scheduler.schedule_after(0.2, _start_junction_arrive, "junction_arrive")
 
 func _start_route_fork_dialogue() -> void:
 	_enter_step("route_fork_dialogue")

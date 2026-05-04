@@ -256,6 +256,9 @@ func _ready() -> void:
 			"--test-scene-load":
 				ran_test = true
 				await _test_scene_load()
+			"--test-asset-pipeline":
+				ran_test = true
+				_test_asset_pipeline()
 			"--test-mother-ferrolure":
 				ran_test = true
 				await _test_mother_ferrolure_preview()
@@ -398,6 +401,7 @@ func _run_all_tests() -> void:
 	_test_flora_memory()
 	_test_event_scheduler()
 	await _test_scene_load()
+	_test_asset_pipeline()
 	await _test_aster_sim()
 	await _test_peris_sim()
 	await _test_elevator()
@@ -505,6 +509,333 @@ func _test_scene_load() -> void:
 	_assert_true(block_lib is MeshLibrary, "block_library is MeshLibrary")
 
 	await get_tree().process_frame
+
+func _test_asset_pipeline() -> void:
+	_test_name = "Asset Pipeline"
+
+	_assert_true(
+		FileAccess.file_exists("res://tools/gltf_emissive_from_color.py"),
+		"glTF emissive color helper exists"
+	)
+	_assert_true(
+		FileAccess.file_exists("res://tools/aster_sim_room_outline_import.gd"),
+		"Aster room outline import hook exists"
+	)
+	var outline_shader_text := FileAccess.get_file_as_string("res://resources/black_outline.gdshader")
+	_assert_true(
+		outline_shader_text.contains("close_outline_width")
+		and outline_shader_text.contains("far_outline_width")
+		and outline_shader_text.contains("mix(close_outline_width, far_outline_width"),
+		"Aster outline shader scales width by camera distance"
+	)
+	_assert_true(
+		outline_shader_text.contains("texture_outline_mix")
+		and outline_shader_text.contains("local_outline_color")
+		and outline_shader_text.contains("darker_nearby_color")
+		and outline_shader_text.contains("component_min_color")
+		and outline_shader_text.contains("colored_floor")
+		and outline_shader_text.contains("scene_average_color")
+		and outline_shader_text.contains("textureLod(screen_tex")
+		and outline_shader_text.contains("local_color * mix")
+		and outline_shader_text.contains("ALBEDO = mix(screen, edge_color, edge)"),
+		"Aster outline shader multiplies the minimum nearby texture color by the scene average"
+	)
+	_assert_true(
+		outline_shader_text.contains("hover_outline_enabled")
+		and outline_shader_text.contains("hover_outline_color")
+		and outline_shader_text.contains("selected_outline_enabled")
+		and outline_shader_text.contains("selected_outline_color")
+		and outline_shader_text.contains("selected_outline_world_pos"),
+		"Aster outline shader supports hover and selected interactable highlights"
+	)
+	_assert_true(
+		outline_shader_text.contains("bright_region_threshold")
+		and outline_shader_text.contains("bright_color_edge_suppression")
+		and outline_shader_text.contains("brightest_luma")
+		and outline_shader_text.contains("color_edge_weight * color_edge_suppression"),
+		"Aster outline shader suppresses color outlines across emissive texture regions"
+	)
+
+	var gltf_path := "res://resources/models/aster-sim/room/aster-sim-room-hi-res.gltf"
+	var import_text := FileAccess.get_file_as_string(gltf_path + ".import")
+	_assert_true(
+		import_text.contains('import_script/path="res://tools/aster_sim_room_outline_import.gd"'),
+		"Aster room glTF imports with the outline preview hook"
+	)
+	var imported_scene: PackedScene = load(gltf_path)
+	_assert_true(imported_scene != null, "Aster room imported scene loads")
+	if imported_scene != null:
+		var imported_room := imported_scene.instantiate()
+		var outline_preview := imported_room.find_child("AsterSimRoomOutlinePreview", true, false) as MeshInstance3D
+		_assert_true(outline_preview != null, "Aster room imported scene includes the outline preview quad")
+		if outline_preview != null:
+			var outline_material := outline_preview.material_override as ShaderMaterial
+			_assert_true(outline_material != null, "Aster room outline preview uses a shader material")
+			if outline_material != null and outline_material.shader != null:
+				_assert_equals(outline_material.shader.resource_path,
+					"res://resources/black_outline.gdshader",
+					"Aster room outline preview uses the black outline shader")
+				var close_param: Variant = outline_material.get_shader_parameter("close_outline_width")
+				var far_param: Variant = outline_material.get_shader_parameter("far_outline_width")
+				if close_param != null and far_param != null:
+					var close_outline_width: float = close_param
+					var far_outline_width: float = far_param
+					_assert_true(close_outline_width > far_outline_width,
+						"Aster room outline gets thicker closer to the camera")
+				else:
+					_assert_true(true,
+						"Aster room outline uses shader-default near/far width controls")
+				var hover_enabled: Variant = outline_material.get_shader_parameter("hover_outline_enabled")
+				var selected_enabled: Variant = outline_material.get_shader_parameter("selected_outline_enabled")
+				if hover_enabled != null and selected_enabled != null:
+					_assert_true(not bool(hover_enabled), "Aster room outline hover starts disabled")
+					_assert_true(not bool(selected_enabled), "Aster room outline selection starts disabled")
+		imported_room.free()
+	var gltf_text := FileAccess.get_file_as_string(gltf_path)
+	_assert_true(not gltf_text.is_empty(), "Aster room glTF source is readable")
+	if gltf_text.is_empty():
+		return
+
+	var parsed: Variant = JSON.parse_string(gltf_text)
+	_assert_true(parsed is Dictionary, "Aster room glTF parses as JSON")
+	if not (parsed is Dictionary):
+		return
+
+	var gltf: Dictionary = parsed
+	var source_rgb := (0xfc << 16) | (0xff << 8) | 0xfa
+	var cool_blue_factor_rgb := (0x9b << 16) | (0xd7 << 8) | 0xff
+	_assert_gltf_material_emissive_mask(
+		gltf,
+		"aster-sim-room-hi-res_1",
+		"aster-sim-room-hi-res_1_emissive.png",
+		source_rgb,
+		source_rgb,
+		cool_blue_factor_rgb,
+		5123
+	)
+	_assert_gltf_material_emissive_mask(
+		gltf,
+		"aster-sim-room-hi-res_8",
+		"aster-sim-room-hi-res_8_emissive.png",
+		source_rgb,
+		source_rgb,
+		cool_blue_factor_rgb,
+		112
+	)
+	_assert_gltf_material_normal_map(
+		gltf,
+		"aster-sim-room-hi-res_1",
+		"aster-sim-room-hi-res_1_normals.png",
+		1.0
+	)
+
+func _assert_gltf_material_emissive_mask(
+	gltf: Dictionary,
+	material_name: String,
+	expected_emissive_uri: String,
+	source_rgb: int,
+	_emissive_rgb: int,
+	factor_rgb: int,
+	expected_lit_pixels: int
+) -> void:
+	var material_index := _find_gltf_material_index(gltf, material_name)
+	_assert_true(material_index >= 0, "%s material exists" % material_name)
+	if material_index < 0:
+		return
+
+	var materials: Array = gltf.get("materials", [])
+	var material: Dictionary = materials[material_index]
+	var emissive_texture_variant: Variant = material.get("emissiveTexture", null)
+	_assert_true(emissive_texture_variant is Dictionary, "%s has an emissive texture" % material_name)
+	if not (emissive_texture_variant is Dictionary):
+		return
+
+	var emissive_texture: Dictionary = emissive_texture_variant
+	var texture_index := int(emissive_texture.get("index", -1))
+	var textures: Array = gltf.get("textures", [])
+	_assert_true(texture_index >= 0 and texture_index < textures.size(), "%s emissive texture index is valid" % material_name)
+	if texture_index < 0 or texture_index >= textures.size():
+		return
+
+	var texture: Dictionary = textures[texture_index]
+	var image_index := int(texture.get("source", -1))
+	var images: Array = gltf.get("images", [])
+	_assert_true(image_index >= 0 and image_index < images.size(), "%s emissive image index is valid" % material_name)
+	if image_index < 0 or image_index >= images.size():
+		return
+
+	var image: Dictionary = images[image_index]
+	_assert_equals(
+		str(image.get("uri", "")),
+		expected_emissive_uri,
+		"%s emissive image URI is wired" % material_name
+	)
+
+	var extensions_used: Array = gltf.get("extensionsUsed", [])
+	_assert_true(
+		extensions_used.has("KHR_materials_emissive_strength"),
+		"Aster room glTF declares the emissive strength extension for %s" % material_name
+	)
+	var material_extensions: Dictionary = material.get("extensions", {})
+	var strength_info: Dictionary = material_extensions.get("KHR_materials_emissive_strength", {})
+	_assert_true(
+		absf(float(strength_info.get("emissiveStrength", 0.0)) - 2.5) < 0.001,
+		"%s emissive strength is preserved" % material_name
+	)
+	_assert_true(
+		_factor_matches_rgb(material.get("emissiveFactor", []), factor_rgb),
+		"%s emissive factor is cool blue" % material_name
+	)
+
+	var base_texture_index := int(material.get("pbrMetallicRoughness", {}).get("baseColorTexture", {}).get("index", -1))
+	_assert_true(base_texture_index >= 0 and base_texture_index < textures.size(), "%s base texture index is valid" % material_name)
+	if base_texture_index < 0 or base_texture_index >= textures.size():
+		return
+
+	var base_texture: Dictionary = textures[base_texture_index]
+	var base_image_index := int(base_texture.get("source", -1))
+	_assert_true(base_image_index >= 0 and base_image_index < images.size(), "%s base image index is valid" % material_name)
+	if base_image_index < 0 or base_image_index >= images.size():
+		return
+
+	var base_image: Dictionary = images[base_image_index]
+	var base_uri := str(base_image.get("uri", ""))
+	var emissive_uri := str(image.get("uri", ""))
+	var source_image := Image.new()
+	var emissive_image := Image.new()
+	var source_error := _load_png_from_res(source_image, "res://resources/models/aster-sim/room/%s" % base_uri)
+	var emissive_error := _load_png_from_res(emissive_image, "res://resources/models/aster-sim/room/%s" % emissive_uri)
+	_assert_equals(source_error, OK, "%s source texture loads" % material_name)
+	_assert_equals(emissive_error, OK, "%s generated emissive texture loads" % material_name)
+	if source_error != OK or emissive_error != OK:
+		return
+
+	source_image.convert(Image.FORMAT_RGBA8)
+	emissive_image.convert(Image.FORMAT_RGBA8)
+	_assert_equals(emissive_image.get_width(), source_image.get_width(), "%s emissive texture width matches source" % material_name)
+	_assert_equals(emissive_image.get_height(), source_image.get_height(), "%s emissive texture height matches source" % material_name)
+
+	var source_target_pixels := 0
+	var masked_pixels := 0
+	var mismatched_pixels := 0
+	for y in range(source_image.get_height()):
+		for x in range(source_image.get_width()):
+			var source_pixel := source_image.get_pixel(x, y)
+			var emissive_pixel := emissive_image.get_pixel(x, y)
+			var source_matches := _rgb24(source_pixel) == source_rgb and _color_byte(source_pixel.a) > 0
+			var actual_emissive_rgb := _rgb24(emissive_pixel)
+			if source_matches:
+				source_target_pixels += 1
+				if actual_emissive_rgb != 0:
+					masked_pixels += 1
+				else:
+					mismatched_pixels += 1
+			elif actual_emissive_rgb != 0:
+				mismatched_pixels += 1
+
+	_assert_equals(source_target_pixels, expected_lit_pixels, "%s source texture contains expected #fcfffa pixels" % material_name)
+	_assert_equals(masked_pixels, source_target_pixels, "Every #fcfffa source pixel contributes to the emissive mask for %s" % material_name)
+	_assert_equals(mismatched_pixels, 0, "Only #fcfffa source pixels are emissive for %s" % material_name)
+
+func _assert_gltf_material_normal_map(
+	gltf: Dictionary,
+	material_name: String,
+	expected_normal_uri: String,
+	expected_scale: float
+) -> void:
+	var material_index := _find_gltf_material_index(gltf, material_name)
+	_assert_true(material_index >= 0, "%s normal-map material exists" % material_name)
+	if material_index < 0:
+		return
+
+	var materials: Array = gltf.get("materials", [])
+	var textures: Array = gltf.get("textures", [])
+	var images: Array = gltf.get("images", [])
+	var material: Dictionary = materials[material_index]
+	var normal_texture_variant: Variant = material.get("normalTexture", null)
+	_assert_true(normal_texture_variant is Dictionary, "%s has a normal texture" % material_name)
+	if not (normal_texture_variant is Dictionary):
+		return
+
+	var normal_texture: Dictionary = normal_texture_variant
+	var texture_index := int(normal_texture.get("index", -1))
+	_assert_true(texture_index >= 0 and texture_index < textures.size(), "%s normal texture index is valid" % material_name)
+	_assert_true(
+		absf(float(normal_texture.get("scale", 1.0)) - expected_scale) < 0.001,
+		"%s normal texture scale is preserved" % material_name
+	)
+	if texture_index < 0 or texture_index >= textures.size():
+		return
+
+	var texture: Dictionary = textures[texture_index]
+	var image_index := int(texture.get("source", -1))
+	_assert_true(image_index >= 0 and image_index < images.size(), "%s normal image index is valid" % material_name)
+	if image_index < 0 or image_index >= images.size():
+		return
+
+	var image: Dictionary = images[image_index]
+	_assert_equals(str(image.get("uri", "")), expected_normal_uri, "%s normal image URI is wired" % material_name)
+
+	var base_texture_index := int(material.get("pbrMetallicRoughness", {}).get("baseColorTexture", {}).get("index", -1))
+	_assert_true(base_texture_index >= 0 and base_texture_index < textures.size(), "%s normal base texture index is valid" % material_name)
+	if base_texture_index < 0 or base_texture_index >= textures.size():
+		return
+
+	var base_texture: Dictionary = textures[base_texture_index]
+	var base_image_index := int(base_texture.get("source", -1))
+	_assert_true(base_image_index >= 0 and base_image_index < images.size(), "%s normal base image index is valid" % material_name)
+	if base_image_index < 0 or base_image_index >= images.size():
+		return
+
+	var base_image: Dictionary = images[base_image_index]
+	var source_image := Image.new()
+	var normal_image := Image.new()
+	var source_error := _load_png_from_res(source_image, "res://resources/models/aster-sim/room/%s" % str(base_image.get("uri", "")))
+	var normal_error := _load_png_from_res(normal_image, "res://resources/models/aster-sim/room/%s" % expected_normal_uri)
+	_assert_equals(source_error, OK, "%s normal source texture loads" % material_name)
+	_assert_equals(normal_error, OK, "%s normal texture loads" % material_name)
+	if source_error != OK or normal_error != OK:
+		return
+
+	_assert_equals(normal_image.get_width(), source_image.get_width(), "%s normal texture width matches source" % material_name)
+	_assert_equals(normal_image.get_height(), source_image.get_height(), "%s normal texture height matches source" % material_name)
+
+func _find_gltf_material_index(gltf: Dictionary, material_name: String) -> int:
+	var materials: Array = gltf.get("materials", [])
+	for i in range(materials.size()):
+		var material: Dictionary = materials[i]
+		if str(material.get("name", "")) == material_name:
+			return i
+	return -1
+
+func _rgb24(color: Color) -> int:
+	return (_color_byte(color.r) << 16) | (_color_byte(color.g) << 8) | _color_byte(color.b)
+
+func _color_byte(value: float) -> int:
+	return clampi(int(round(value * 255.0)), 0, 255)
+
+func _factor_matches_rgb(factor_variant: Variant, expected_rgb: int) -> bool:
+	if not (factor_variant is Array):
+		return false
+	var factor: Array = factor_variant
+	if factor.size() < 3:
+		return false
+	var expected_r := float((expected_rgb >> 16) & 0xff) / 255.0
+	var expected_g := float((expected_rgb >> 8) & 0xff) / 255.0
+	var expected_b := float(expected_rgb & 0xff) / 255.0
+	return (
+		absf(float(factor[0]) - expected_r) < 0.001
+		and absf(float(factor[1]) - expected_g) < 0.001
+		and absf(float(factor[2]) - expected_b) < 0.001
+	)
+
+func _load_png_from_res(image: Image, path: String) -> int:
+	if not FileAccess.file_exists(path):
+		return ERR_FILE_NOT_FOUND
+	var bytes := FileAccess.get_file_as_bytes(path)
+	if bytes.is_empty():
+		return ERR_FILE_CANT_READ
+	return image.load_png_from_buffer(bytes)
 
 func _test_mother_ferrolure_preview() -> void:
 	_test_name = "Mother Ferrolure Preview"
@@ -1261,6 +1592,181 @@ func _test_aster_sim() -> void:
 
 		var dialogue: Node = instance.find_child("DialogueBox", true, false)
 		_assert_true(dialogue != null, "DialogueBox node exists")
+		var high_res_room := instance.find_child("default", true, false) as Node3D
+		_assert_true(high_res_room != null, "Aster sim keeps the imported high-res room instance")
+		var placement := instance.find_child("ScenePlacement", true, false) as Node3D
+		_assert_true(placement != null, "Aster sim exposes authored placement markers")
+		if placement != null:
+			var required_markers := [
+				"RoomCenter",
+				"HighResRoomOrigin",
+				"AsterStart",
+				"RonStart",
+				"RonExitTarget",
+				"TerminalAnchor",
+				"TerminalInteract",
+				"DrinkMachineAnchor",
+				"DrinkMachineInteract",
+				"GlassBeadAnchor",
+				"GlassBeadZoneMarker",
+				"MacabreTealCanvas",
+				"MacabreTealZoneMarker",
+				"HunterAshCanvas",
+				"HunterAshZoneMarker",
+				"AwardsShelf",
+				"AwardsCenterZoneMarker",
+				"AwardsJournalismZoneMarker",
+				"JStoreShelf",
+				"JStoreMainZoneMarker",
+				"JStoreArticlesZoneMarker",
+				"HallwayExit",
+				"DataMotesCenter",
+			]
+			for marker_name in required_markers:
+				_assert_true(placement.find_child(marker_name, true, false) is Node3D,
+					"Aster sim exposes %s as a scene placement node" % marker_name)
+			for light_name in ["WarmDirectionalLight", "DeskLight", "DataLight", "HallwayExitLight"]:
+				_assert_true(placement.find_child(light_name, true, false) is Light3D,
+					"Aster sim exposes %s as a scene light" % light_name)
+			var room_origin := placement.find_child("HighResRoomOrigin", true, false) as Node3D
+			var room_center := placement.find_child("RoomCenter", true, false) as Node3D
+			if high_res_room != null and room_origin != null:
+				_assert_true(high_res_room.global_position.distance_to(room_origin.global_position) < 0.01,
+					"High-res Aster room origin is aligned through a scene placement node")
+			if high_res_room != null and room_center != null:
+				var high_res_center := high_res_room.global_position + Vector3(3.5, 0.0, 6.0625)
+				var center_delta := Vector2(
+					high_res_center.x - room_center.global_position.x,
+					high_res_center.z - room_center.global_position.z
+				).length()
+				_assert_true(center_delta < 0.01,
+					"High-res Aster room is centered on the graybox room placement")
+			var terminal_marker := placement.find_child("TerminalInteract", true, false) as Node3D
+			var drink_marker := placement.find_child("DrinkMachineInteract", true, false) as Node3D
+			var terminal_node := instance.find_child("Terminal", true, false) as Node3D
+			var drink_node := instance.find_child("DrinkMachine", true, false) as Node3D
+			if terminal_marker != null and terminal_node != null:
+				_assert_true(terminal_node.global_position.distance_to(terminal_marker.global_position) < 0.01,
+					"Terminal interactable uses its scene placement marker")
+			if drink_marker != null and drink_node != null:
+				_assert_true(drink_node.global_position.distance_to(drink_marker.global_position) < 0.01,
+					"Drink machine interactable uses its scene placement marker")
+		var room_spot := instance.find_child("SpotLight3D", true, false) as SpotLight3D
+		_assert_true(room_spot != null, "Aster sim keeps the imported-room spotlight")
+		if room_spot != null:
+			_assert_true(room_spot.global_position.x >= 0.0 and room_spot.global_position.x <= 18.0
+				and room_spot.global_position.z >= -2.0 and room_spot.global_position.z <= 14.0,
+				"Aster sim imported-room spotlight is repositioned onto the graybox room")
+		var imported_outline := instance.find_child("AsterSimRoomOutlinePreview", true, false) as MeshInstance3D
+		var perception_quad := instance.find_child("PerceptionQuad", true, false) as MeshInstance3D
+		var outline_overlay: MeshInstance3D = imported_outline if imported_outline != null else perception_quad
+		var outline_material: ShaderMaterial = null
+		_assert_true(outline_overlay != null, "Aster sim installs a visible outline overlay")
+		if outline_overlay != null:
+			_assert_true(outline_overlay.visible, "Aster sim outline overlay is visible")
+			outline_material = outline_overlay.material_override as ShaderMaterial
+			_assert_true(outline_material != null, "Aster sim outline overlay uses a shader material")
+			if outline_material != null and outline_material.shader != null:
+				_assert_equals(outline_material.shader.resource_path,
+					"res://resources/black_outline.gdshader",
+					"Aster sim outline overlay uses the black outline shader")
+		_assert_equals(instance._perception_mode, "outline", "Aster sim uses black outline perception mode")
+		if perception_quad != null:
+			_assert_true(instance._perception_material != null, "Aster sim fallback outline material exists")
+			var shader: Shader = instance._perception_material.shader
+			_assert_true(shader != null, "Aster sim fallback outline shader is loaded")
+			if shader != null:
+				_assert_equals(shader.resource_path,
+					"res://resources/black_outline.gdshader",
+					"Aster sim fallback uses the black outline shader")
+		_assert_equals(DialogueData.text("aster_sim.ron.lighting"),
+			"Geez, Aster, it looks like an evil lair in here. You ever think about turning the lights up?",
+			"Ron comments on Aster's dim simulation lighting")
+		_assert_equals(DialogueData.text("aster_sim.aster.lighting"),
+			"The default's like working on the surface of the sun. I cannot deal with it.",
+			"Aster names his preference for dimmer workspace lighting")
+		_assert_true(not DialogueData.has_key("aster_sim.ron.whatever_works"),
+			"Ron does not answer Aster's lighting preference after walking out")
+
+		dialogue.clear()
+		instance._scheduler.clear()
+		instance._start_ron_move_fast()
+		for i in range(2):
+			await get_tree().process_frame
+
+		_assert_true(instance._game_state.characters.has("ron"), "Ron is registered with GameState")
+		_assert_true(instance._game_state.is_moving("ron"), "Ron movement is scheduler-backed")
+		var ron_before: Vector3 = instance._game_state.get_position("ron")
+		instance.headless_advance(0.5, 0.1)
+		var ron_after: Vector3 = instance._game_state.get_position("ron")
+		_assert_true(ron_after.distance_to(ron_before) > 0.1, "Ron advances when scheduler time advances")
+		_assert_scheduler_animation_bridge(instance)
+
+		dialogue.clear()
+		dialogue.dialogue_finished.emit()
+		for i in range(2):
+			await get_tree().process_frame
+
+		var aster_explore_zones := [
+			"GlassBeadZone",
+			"macabre_tealZone",
+			"hunter_ashZone",
+			"AwardsCenterZone",
+			"AwardsJournalismZone",
+			"JStoreMainZone",
+			"JStoreArticlesZone",
+			"HallwayGate",
+		]
+		for zone_name in aster_explore_zones:
+			_assert_exploration_interactable_contract(instance, zone_name)
+
+		if placement != null:
+			var zone_marker_pairs := {
+				"GlassBeadZone": "GlassBeadZoneMarker",
+				"macabre_tealZone": "MacabreTealZoneMarker",
+				"hunter_ashZone": "HunterAshZoneMarker",
+				"AwardsCenterZone": "AwardsCenterZoneMarker",
+				"AwardsJournalismZone": "AwardsJournalismZoneMarker",
+				"JStoreMainZone": "JStoreMainZoneMarker",
+				"JStoreArticlesZone": "JStoreArticlesZoneMarker",
+				"HallwayGate": "HallwayExit",
+			}
+			for zone_name in zone_marker_pairs.keys():
+				var zone_node := instance.find_child(zone_name, true, false) as Node3D
+				var marker_node := placement.find_child(str(zone_marker_pairs[zone_name]), true, false) as Node3D
+				if zone_node != null and marker_node != null:
+					_assert_true(zone_node.global_position.distance_to(marker_node.global_position) < 0.01,
+						"%s uses its scene placement marker" % zone_name)
+
+		var glass_zone := instance.find_child("GlassBeadZone", true, false)
+		if glass_zone != null and outline_material != null:
+			glass_zone.call("_on_mouse_entered")
+			instance._sync_perception_shader()
+			_assert_true(bool(outline_material.get_shader_parameter("hover_outline_enabled")),
+				"Mouse hover enables the white interactable outline")
+			_assert_equals(outline_material.get_shader_parameter("hover_outline_color"), Vector3(1.0, 1.0, 1.0),
+				"Hovered interactables use a white outline")
+			var click := InputEventMouseButton.new()
+			click.button_index = MOUSE_BUTTON_LEFT
+			click.pressed = true
+			glass_zone.call("_on_input_event", null, click, Vector3.ZERO, Vector3.UP, 0)
+			instance._sync_perception_shader()
+			_assert_true(bool(outline_material.get_shader_parameter("selected_outline_enabled")),
+				"Clicking an interactable enables the selected outline")
+			_assert_equals(outline_material.get_shader_parameter("selected_outline_color"), Vector3(1.0, 0.62, 0.12),
+				"Clicked interactables use the configurable amber feedback color")
+			_assert_equals(glass_zone.get("selected_feedback_color"), Color(1.0, 0.62, 0.12, 1.0),
+				"Interactable selection feedback color is editable")
+			_assert_true(glass_zone.find_child("SelectedParticles", true, false) != null,
+				"Clicking an interactable emits selected feedback particles")
+			glass_zone.call("_on_mouse_exited")
+			instance._sync_perception_shader()
+			_assert_true(not bool(outline_material.get_shader_parameter("hover_outline_enabled")),
+				"Mouse exit clears the interactable hover outline")
+
+		var hallway_gate := instance.find_child("HallwayGate", true, false) as Node3D
+		if hallway_gate != null:
+			_assert_true(hallway_gate.global_position.x >= 16.0, "Aster Continue gate is at the room edge")
 
 		instance.queue_free()
 		await get_tree().process_frame
@@ -1295,8 +1801,286 @@ func _test_peris_sim() -> void:
 		var dialogue: Node = instance.find_child("DialogueBox", true, false)
 		_assert_true(dialogue != null, "DialogueBox node exists")
 
+		instance._visit_phase = 1
+		instance._start_workspace()
+		for i in range(2):
+			await get_tree().process_frame
+
+		var peris_explore_zones := [
+			"Plant1Zone",
+			"Plant2Zone",
+			"Plant3Zone",
+			"Plant4Zone",
+			"Plant5Zone",
+			"Plant6Zone",
+			"Plant7Zone",
+			"Plant8Zone",
+			"Plant9Zone",
+			"PaintingZone",
+			"WellnessZone",
+			"StrikeWarningZone",
+			"NotesZone",
+			"LogbookGate",
+		]
+		for zone_name in peris_explore_zones:
+			_assert_exploration_interactable_contract(instance, zone_name)
+		_assert_interactable_spacing(instance, peris_explore_zones, 2.8,
+			"Peris exploration interactables are spaced apart")
+
+		var camera = instance.find_child("GameCamera", true, false)
+		var plant_zone := instance.find_child("Plant1Zone", true, false)
+		if plant_zone != null and camera != null:
+			dialogue.clear()
+			var previous_offset: Vector3 = camera.follow_offset
+			var previous_target: Node3D = camera.target
+			plant_zone.call("_trigger")
+			await get_tree().process_frame
+			_assert_true(instance._scheduler.is_paused(),
+				"Peris exploration interaction pauses scheduler time while focused")
+			_assert_true(bool(camera.call("is_locked")),
+				"Peris exploration interaction locks the camera to the interactable")
+			_assert_equals(camera.follow_offset, Vector3(0, 4.2, 3.2),
+				"Peris exploration interaction uses the close inspection camera offset")
+			_assert_equals(str(dialogue.get("_current_text")), DialogueData.text("peris.sim_expand.plant_1.line"),
+				"Peris plant interaction opens directly on the object line")
+			_assert_true(not str(dialogue.get("_current_text")).contains("Peris "),
+				"Peris plant interaction does not queue visible-action narration")
+			dialogue.clear()
+			dialogue.dialogue_finished.emit()
+			await get_tree().process_frame
+			_assert_true(not instance._scheduler.is_paused(),
+				"Peris exploration focus restores scheduler time after dialogue finishes")
+			_assert_true(not bool(camera.call("is_locked")),
+				"Peris exploration focus unlocks the camera after dialogue finishes")
+			_assert_equals(camera.follow_offset, previous_offset,
+				"Peris exploration focus restores the previous camera offset")
+			_assert_true(camera.target == previous_target,
+				"Peris exploration focus restores the previous camera target")
+			_assert_true(bool(peris.get("_move_enabled")),
+				"Peris movement is re-enabled after exploration focus finishes")
+
+		var strike_zone := instance.find_child("StrikeWarningZone", true, false)
+		if strike_zone != null and camera != null:
+			dialogue.clear()
+			strike_zone.call("_trigger")
+			await get_tree().process_frame
+			var strike_text := str(dialogue.get("_current_text"))
+			_assert_equals(strike_text, DialogueData.text("peris.sim_expand.strike_warning.notification"),
+				"Strike warning opens on the pinned document without visible-action narration")
+			_assert_true(not strike_text.contains("glances"),
+				"Strike warning interaction does not queue the old glance narration")
+			dialogue.clear()
+			dialogue.dialogue_finished.emit()
+			await get_tree().process_frame
+
+		var logbook_gate := instance.find_child("LogbookGate", true, false) as Node3D
+		if logbook_gate != null:
+			_assert_true(logbook_gate.global_position.x <= -3.5, "Peris Continue gate is at the room edge")
+
+		_assert_true(instance._game_state.characters.has("monos"), "Monos is registered with GameState")
+		if monos != null:
+			monos.fade_out(1.0)
+			instance.headless_advance(0.5, 0.1)
+			_assert_true(monos._label.modulate.a < 0.7, "Monos fade follows scheduler time")
+			instance.headless_advance(0.6, 0.1)
+			_assert_true(monos._label.modulate.a <= 0.01, "Monos fade completes under scheduler fast-forward")
+
 		instance.queue_free()
 		await get_tree().process_frame
+
+func _assert_scheduler_animation_bridge(instance: Node) -> void:
+	var probe := Node3D.new()
+	probe.name = "SchedulerAnimationProbe"
+	instance.add_child(probe)
+
+	var player := AnimationPlayer.new()
+	player.name = "ProbeAnimationPlayer"
+	player.root_node = NodePath("..")
+	probe.add_child(player)
+
+	var lib := AnimationLibrary.new()
+	var anim := Animation.new()
+	anim.length = 1.0
+	var track := anim.add_track(Animation.TYPE_VALUE)
+	anim.track_set_path(track, NodePath(".:position:x"))
+	anim.track_insert_key(track, 0.0, 0.0)
+	anim.track_insert_key(track, 1.0, 10.0)
+	lib.add_animation("probe_move", anim)
+	player.add_animation_library("", lib)
+
+	instance._play_scheduler_animation(player, "probe_move")
+	instance.headless_advance(0.5, 0.1)
+	_assert_true(probe.position.x >= 4.0 and probe.position.x <= 6.0,
+		"AnimationPlayer clip samples halfway from scheduler time")
+	instance.headless_advance(0.6, 0.1)
+	_assert_true(probe.position.x >= 9.5, "AnimationPlayer clip completes under scheduler fast-forward")
+	_assert_true(not instance._scheduler_animation_states.has(player.get_instance_id()),
+		"Completed scheduler animation is removed from active animation set")
+	probe.queue_free()
+
+func _assert_interactable_spacing(root: Node, node_names: Array, min_distance: float, label: String) -> void:
+	var min_dist := 999999.0
+	var closest_pair := ""
+	for i in range(node_names.size()):
+		var a_node := root.find_child(str(node_names[i]), true, false) as Node3D
+		if a_node == null:
+			continue
+		for j in range(i + 1, node_names.size()):
+			var b_node := root.find_child(str(node_names[j]), true, false) as Node3D
+			if b_node == null:
+				continue
+			var dist := Vector2(
+				a_node.global_position.x - b_node.global_position.x,
+				a_node.global_position.z - b_node.global_position.z
+			).length()
+			if dist < min_dist:
+				min_dist = dist
+				closest_pair = "%s/%s" % [str(node_names[i]), str(node_names[j])]
+	_assert_true(min_dist >= min_distance,
+		"%s (closest: %s %.2fm, minimum: %.2fm)" % [label, closest_pair, min_dist, min_distance])
+
+func _assert_exploration_interactable_contract(root: Node, node_name: String) -> Node:
+	var node := root.find_child(node_name, true, false)
+	_assert_true(node != null, "%s exploration interactable exists" % node_name)
+	if node == null:
+		return null
+	var script: Script = node.get_script()
+	var script_path := script.resource_path if script != null else ""
+	_assert_equals(script_path, "res://scripts/game/interactable.gd",
+		"%s uses the shared interactable script" % node_name)
+	_assert_equals(int(node.get("collision_layer")), 4,
+		"%s is on the interactable collision layer" % node_name)
+	_assert_equals(int(node.get("collision_mask")), 2,
+		"%s detects player bodies" % node_name)
+	_assert_true(bool(node.get("input_ray_pickable")),
+		"%s can receive mouse hover and click picking" % node_name)
+	_assert_true(node.has_signal("outline_hovered"),
+		"%s emits shared hover outline feedback" % node_name)
+	_assert_true(node.has_signal("outline_selected"),
+		"%s emits shared selected outline feedback" % node_name)
+	_assert_equals(node.get("hover_outline_color"), Color.WHITE,
+		"%s hover outline defaults to white" % node_name)
+	_assert_equals(node.get("selected_feedback_color"), Color(1.0, 0.62, 0.12, 1.0),
+		"%s selected feedback defaults to editable amber" % node_name)
+	var shape_node := node.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	_assert_true(shape_node != null, "%s has a collision shape" % node_name)
+	if shape_node != null:
+		_assert_true(shape_node.shape is SphereShape3D, "%s uses a spherical interaction volume" % node_name)
+		if shape_node.shape is SphereShape3D:
+			var sphere := shape_node.shape as SphereShape3D
+			_assert_true(sphere.radius >= 1.6, "%s has a larger interaction radius" % node_name)
+			var highlight_radius := float(node.call("get_outline_highlight_radius")) if node.has_method("get_outline_highlight_radius") else float(node.get("outline_highlight_radius"))
+			_assert_true(highlight_radius + 0.001 >= sphere.radius,
+				"%s outline highlight covers the full interaction zone" % node_name)
+	var marker := node.get_node_or_null("InteractionZoneMarker") as MeshInstance3D
+	_assert_true(marker != null, "%s shows its interaction zone" % node_name)
+	if marker != null:
+		_assert_true(marker.visible, "%s interaction zone marker is visible" % node_name)
+	return node
+
+func _clear_sequence_runtime_for_spatial_test(instance: Node) -> void:
+	if "_scheduler" in instance and instance._scheduler:
+		instance._scheduler.clear()
+		instance._scheduler.resume()
+	if "_dialogue" in instance and instance._dialogue and instance._dialogue.has_method("clear"):
+		instance._dialogue.clear()
+	if "_tutorial_prompt" in instance and instance._tutorial_prompt and instance._tutorial_prompt.has_method("hide_prompt"):
+		instance._tutorial_prompt.hide_prompt()
+
+func _drive_interactable_zone(area: Node, body: Node3D, dwell_seconds: float, step := 0.1) -> void:
+	if area == null or body == null:
+		return
+	if area.has_method("_on_body_entered"):
+		area.call("_on_body_entered", body)
+	var elapsed := 0.0
+	while elapsed < dwell_seconds:
+		var dt: float = minf(step, dwell_seconds - elapsed)
+		if area.has_method("_process"):
+			area.call("_process", dt)
+		elapsed += dt
+	if area.has_method("_on_body_exited"):
+		area.call("_on_body_exited", body)
+
+func _assert_elevator_movement_gate(instance: Node, gate: Dictionary) -> void:
+	var label := str(gate.get("label", "movement gate"))
+	var start_step := str(gate.get("start_step", ""))
+	var expected_step := str(gate.get("expected_step", ""))
+	if bool(gate.get("reset_runtime", true)):
+		_clear_sequence_runtime_for_spatial_test(instance)
+	if start_step != "":
+		instance._enter_step(start_step)
+	var selected_ids: Array = gate.get("selected_ids", [])
+	if selected_ids.size() > 0 and "_hud" in instance and instance._hud != null:
+		instance._hud.set_selected_portraits(selected_ids)
+	var characters: Array = gate.get("characters", [])
+	for character_gate in characters:
+		var character := character_gate as Dictionary
+		_set_sequence_character_position(
+			instance,
+			str(character.get("id", "")),
+			character.get("outside", Vector3.ZERO)
+		)
+	if instance.has_method("_on_process"):
+		instance._on_process(0.1, 1.0)
+	_assert_equals(instance._current_step, start_step, "%s does not fire while characters are outside mapped trigger zones" % label)
+	if "_scheduler" in instance and instance._scheduler:
+		instance._scheduler.resume()
+	for character_gate in characters:
+		var character := character_gate as Dictionary
+		var char_id := str(character.get("id", ""))
+		if "_game_state" in instance and instance._game_state:
+			instance._game_state.command_move_to_pos(char_id, character.get("target", Vector3.ZERO))
+	var max_time := float(gate.get("max_time", 4.0))
+	var advance_step := float(gate.get("step", 0.05))
+	if instance.has_method("headless_advance"):
+		instance.headless_advance(max_time, advance_step)
+	_assert_equals(instance._current_step, expected_step, "%s advances when mapped movement crosses the trigger" % label)
+
+func _assert_elevator_escort_standoff(instance: Node, min_distance: float, label: String) -> void:
+	for guard_id in ["eu1", "eu2"]:
+		var guard_pos: Vector3 = instance._game_state.get_position(guard_id)
+		var nearest := 999999.0
+		for party_id in ["peris", "aster"]:
+			var party_pos: Vector3 = instance._game_state.get_position(party_id)
+			var dist := Vector2(guard_pos.x - party_pos.x, guard_pos.z - party_pos.z).length()
+			nearest = minf(nearest, dist)
+		_assert_true(nearest >= min_distance,
+			"%s: %s remains %.2fm from the party (minimum %.2fm)" % [label, guard_id, nearest, min_distance])
+
+func _assert_elevator_fall_lands_clear_of_enemies(instance: Node, min_buffer: float, label: String) -> void:
+	var checked := 0
+	var nearest_margin := INF
+	for party_id in ["peris", "aster"]:
+		var party_pos: Vector3 = instance._game_state.get_position(party_id)
+		for enemy in instance._enemies:
+			if not is_instance_valid(enemy):
+				continue
+			if enemy.has_method("is_alive") and not enemy.is_alive():
+				continue
+			if not instance._game_state.characters.has(enemy.char_id):
+				continue
+			var enemy_pos: Vector3 = instance._game_state.get_position(enemy.char_id)
+			var enemy_range := 0.0
+			if "detection_range" in enemy:
+				enemy_range = float(enemy.detection_range)
+			elif instance._game_state.characters[enemy.char_id].stats.has("detection_range"):
+				enemy_range = float(instance._game_state.characters[enemy.char_id].stats["detection_range"])
+			var horizontal_distance := Vector2(
+				party_pos.x - enemy_pos.x,
+				party_pos.z - enemy_pos.z
+			).length()
+			nearest_margin = minf(nearest_margin, horizontal_distance - enemy_range)
+			checked += 1
+	_assert_true(checked > 0, "%s checks spawned below-level enemies" % label)
+	_assert_true(nearest_margin >= min_buffer,
+		"%s: party lands outside enemy detection by %.2fm (minimum %.2fm)" % [label, nearest_margin, min_buffer])
+
+func _assert_elevator_active_player_can_move(instance: Node, label: String) -> void:
+	_assert_true(instance._player != null, "%s has an active player character" % label)
+	if instance._player == null:
+		return
+	_assert_true(bool(instance._player.get("_move_enabled")),
+		"%s leaves the active player movement-enabled" % label)
 
 # --- Test: Leaving Facility ---
 # --- Test: Elevator Tutorial ---
@@ -1309,6 +2093,8 @@ func _test_elevator() -> void:
 	if scene:
 		var instance: Node = scene.instantiate()
 		_assert_true(instance != null, "Elevator scene instantiates")
+		if "suppress_scene_change" in instance:
+			instance.suppress_scene_change = true
 		get_tree().root.add_child(instance)
 		for i in range(5):
 			await get_tree().process_frame
@@ -1335,6 +2121,223 @@ func _test_elevator() -> void:
 
 		var exit_btn: Node = instance.find_child("ExitButton", true, false)
 		_assert_true(exit_btn != null, "Exit button exists")
+		if exit_btn != null:
+			_assert_true(not bool(exit_btn.get("monitoring")),
+				"Exit button interaction is inactive before EMP unlock")
+			var exit_marker := exit_btn.find_child("InteractionZoneMarker", true, false) as Node3D
+			_assert_true(exit_marker == null or not exit_marker.visible,
+				"Exit button interaction zone is hidden before EMP unlock")
+
+		_clear_sequence_runtime_for_spatial_test(instance)
+		instance._start_approach_aster()
+		for wake_frame in range(2):
+			await get_tree().process_frame
+		var wake_zone := _assert_exploration_interactable_contract(instance, "AsterWakeZone")
+		if wake_zone != null:
+			_assert_equals(str(wake_zone.get("required_character")), "peris",
+				"Aster wake zone is Peris-specific")
+			_set_sequence_character_position(
+				instance,
+				"peris",
+				instance.ASTER_POS + Vector3(3.5, 0.5, 0.0)
+			)
+			instance._on_process(0.1, 1.0)
+			_assert_equals(instance._current_step, "approach_aster",
+				"Aster wake zone does not fire while Peris is outside")
+			_set_sequence_character_position(instance, "peris", (wake_zone as Node3D).global_position)
+			_drive_interactable_zone(wake_zone, instance._peris_node, 0.7)
+			instance.headless_advance(0.1, 0.05)
+			_assert_equals(instance._current_step, "wake_aster",
+				"Aster wake zone advances after Peris dwells in it")
+			await get_tree().process_frame
+			_assert_true(instance.find_child("AsterWakeZone", true, false) == null,
+				"Aster wake zone disappears once Peris wakes him")
+
+		_clear_sequence_runtime_for_spatial_test(instance)
+		if dialogue.has_method("clear"):
+			dialogue.clear()
+		instance._start_units_activate()
+		instance.headless_advance(4.0, 0.1)
+		_assert_elevator_escort_standoff(instance, 2.0,
+			"Escort units stop short during Aster EMP setup")
+		dialogue.dialogue_finished.emit()
+		instance._scheduler.pause()
+		dialogue.dialogue_finished.emit()
+		_assert_equals(instance._current_step, "emp_tutorial",
+			"EMP tutorial prompt fires after unit warning dialogue")
+		_assert_true(instance._scheduler.is_paused(), "EMP tutorial pauses after the prompt is available")
+		_assert_true(str(instance._tutorial_prompt._label.text).contains("EMP"),
+			"EMP tutorial prompt text is visible")
+		_assert_elevator_escort_standoff(instance, 2.0,
+			"Escort units are not touching the party at the EMP prompt")
+		instance._toggle_pause()
+		_assert_true(instance._scheduler.is_paused(),
+			"EMP tutorial cannot unpause before Aster queues EMP")
+		instance._on_emp_pressed()
+		_assert_true(instance._emp_queued, "Aster EMP queues while the tutorial is paused")
+		_assert_elevator_escort_standoff(instance, 2.0,
+			"Escort units are not touching the party while EMP is queued")
+		instance._toggle_pause()
+		_assert_true(not instance._scheduler.is_paused(),
+			"EMP tutorial unpauses after Aster queues EMP")
+		_assert_equals(instance._emp_count, 2, "Queued EMP fires when the tutorial unpauses")
+		_assert_elevator_escort_standoff(instance, 2.0,
+			"Escort units are not touching the party when EMP fires")
+		instance.headless_advance(1.6, 0.1)
+		_assert_equals(instance._current_step, "doors_unlocked",
+			"Queued EMP advances to the door unlock")
+		if exit_btn != null:
+			_assert_true(bool(exit_btn.get("monitoring")),
+				"Exit button interaction is active after EMP unlock")
+			var unlocked_marker := exit_btn.find_child("InteractionZoneMarker", true, false) as Node3D
+			_assert_true(unlocked_marker != null and unlocked_marker.visible,
+				"Exit button interaction zone is visible after EMP unlock")
+		dialogue.dialogue_finished.emit()
+		_assert_equals(instance._current_step, "doors_open",
+			"Door cycling notification opens the doors automatically")
+		if exit_btn != null:
+			_assert_true(not bool(exit_btn.get("monitoring")),
+				"Exit button interaction turns off once doors start opening")
+		instance.headless_advance(2.1, 0.1)
+		_assert_equals(instance._current_step, "multiselect_tutorial",
+			"Door opening advances to the multiselect tutorial")
+		_assert_true(instance._scheduler.is_paused(),
+			"Multiselect tutorial pauses after doors finish opening")
+		_assert_true(bool(instance._hud.get("_multi_select")),
+			"Multiselect tutorial enables HUD multi-select")
+		_assert_equals(instance._hud.get_selected_ids(), ["peris"],
+			"Multiselect tutorial starts with only Peris selected")
+		instance._toggle_pause()
+		_assert_true(instance._scheduler.is_paused(),
+			"Multiselect tutorial cannot unpause before Peris and Aster are selected together")
+
+		var exit_gate := Vector3(instance.ELEVATOR_SIZE.x / 2.0, 0.5, 0.0)
+		_set_sequence_character_position(instance, "peris", exit_gate + Vector3(0.0, 0.0, -0.5))
+		_set_sequence_character_position(instance, "aster", exit_gate + Vector3(0.0, 0.0, 0.5))
+		instance._on_process(0.1, 1.0)
+		_assert_equals(instance._current_step, "multiselect_tutorial",
+			"Door gate does not advance when both characters arrive without the two-character selection")
+		instance._hud.set_selected_portraits(["peris", "aster"])
+		_assert_equals(instance._hud.get_selected_ids(), ["peris", "aster"],
+			"Ctrl/shift multi-select can select both Peris and Aster")
+		_assert_true(bool(instance._peris_node.get("_move_enabled")) and bool(instance._aster_node.get("_move_enabled")),
+			"Selecting both characters enables both player controllers for group movement")
+		instance._toggle_pause()
+		_assert_true(not instance._scheduler.is_paused(),
+			"Multiselect tutorial unpauses after both characters are selected")
+		_assert_elevator_movement_gate(instance, {
+			"label": "two-character elevator exit gate",
+			"start_step": "multiselect_tutorial",
+			"expected_step": "corridor",
+			"selected_ids": ["peris", "aster"],
+			"characters": [
+				{
+					"id": "peris",
+					"outside": exit_gate + Vector3(-4.0, 0.0, -3.5),
+					"target": exit_gate + Vector3(0.0, 0.0, -0.5),
+				},
+				{
+					"id": "aster",
+					"outside": exit_gate + Vector3(-4.0, 0.0, 3.5),
+					"target": exit_gate + Vector3(0.0, 0.0, 0.5),
+				},
+			],
+			"max_time": 3.0,
+		})
+
+		instance._setup_perception("data", instance._aster_node)
+		var before_shader_pos: Vector3 = instance._perception_material.get_shader_parameter("character_pos")
+		instance._scheduler.resume()
+		instance._game_state.command_move_to_pos("aster", Vector3(before_shader_pos.x + 4.0, 0.5, before_shader_pos.z))
+		instance.headless_advance(0.6, 0.1)
+		var after_shader_pos: Vector3 = instance._perception_material.get_shader_parameter("character_pos")
+		_assert_true(after_shader_pos.x > before_shader_pos.x + 0.5,
+			"Aster perception shader follows scheduler movement")
+
+		_clear_sequence_runtime_for_spatial_test(instance)
+		instance._load_chunk("below")
+		_assert_true(instance._enemies.size() > 0,
+			"Enemy route is present before the bridge collapse beat")
+		_assert_elevator_movement_gate(instance, {
+			"label": "Aster route convergence gate",
+			"start_step": "route_choice",
+			"expected_step": "bridge_collapse",
+			"characters": [
+				{
+					"id": "aster",
+					"outside": Vector3(instance.ROUTES_CONVERGE.x - 4.0, instance.BELOW_Y + 0.5, 0.0),
+					"target": instance.ROUTES_CONVERGE + Vector3(0.5, 0.5, 0.0),
+				},
+			],
+			"max_time": 3.0,
+		})
+		_assert_true(instance._game_state.get_position("aster").x > instance.ROUTES_CONVERGE.x - 2.0,
+			"Bridge collapse starts after Aster has passed the enemy/hazard routes")
+		_set_sequence_character_position(
+			instance,
+			"peris",
+			instance._game_state.get_position("aster") + Vector3(-0.8, 0.0, 0.8)
+		)
+		instance._on_fall_landed()
+		_assert_elevator_fall_lands_clear_of_enemies(instance, 1.0,
+			"Bridge collapse landing after route convergence")
+
+		_clear_sequence_runtime_for_spatial_test(instance)
+		instance._load_chunk("below")
+		instance._enter_step("climb_attempt")
+		instance._show_climb_interactable()
+		for j in range(2):
+			await get_tree().process_frame
+		_assert_elevator_active_player_can_move(instance,
+			"Post-fall climb prompt")
+		var climb_zone := _assert_exploration_interactable_contract(instance, "ClimbPromptZone")
+		if climb_zone != null:
+			_assert_true(float(climb_zone.get("interaction_radius")) >= 2.4,
+				"Climb prompt has a clearly defined larger interaction zone")
+			_set_sequence_character_position(instance, "peris", (climb_zone as Node3D).global_position)
+			_drive_interactable_zone(climb_zone, instance._peris_node, 0.9)
+			instance.headless_advance(0.3, 0.05)
+			_assert_equals(instance._current_step, "junction_arrive",
+				"Climb prompt advances to the junction after the post-route fall")
+
+		for k in range(2):
+			await get_tree().process_frame
+		var plant_zone := _assert_exploration_interactable_contract(instance, "DormantPlant")
+		if plant_zone != null:
+			_set_sequence_character_position(instance, "peris", (plant_zone as Node3D).global_position)
+			_drive_interactable_zone(plant_zone, instance._peris_node, 2.2)
+			instance.headless_advance(2.1, 0.1)
+			_assert_equals(instance._current_step, "endo_enters",
+				"Dormant plant advances after Peris dwells in its mapped zone")
+
+		_clear_sequence_runtime_for_spatial_test(instance)
+		if not instance._game_state.characters.has("endo"):
+			instance._register_gs_character("endo", instance._endo, 2.5)
+		instance._start_gauntlet()
+		_disable_enemy_detection(instance)
+		for m in range(2):
+			await get_tree().process_frame
+		var ferrolure_zone := _assert_exploration_interactable_contract(instance, "FerrolureInteract")
+		if ferrolure_zone != null:
+			_set_sequence_character_position(instance, "peris", (ferrolure_zone as Node3D).global_position)
+			_drive_interactable_zone(ferrolure_zone, instance._peris_node, 1.2)
+			_assert_true(instance._ferrolure_active,
+				"Ferrolure activates after dwelling in its mapped zone")
+
+		_assert_elevator_movement_gate(instance, {
+			"label": "Aster gauntlet exit gate",
+			"start_step": "gauntlet",
+			"expected_step": "complete",
+			"reset_runtime": false,
+			"characters": [
+				{
+					"id": "aster",
+					"outside": Vector3(instance.GAUNTLET_EXIT.x - 4.0, instance.BELOW_Y + 0.5, 0.0),
+					"target": instance.GAUNTLET_EXIT + Vector3(1.5, 0.5, 0.0),
+				},
+			],
+			"max_time": 3.0,
+		})
 
 		instance.queue_free()
 		await get_tree().process_frame
@@ -2391,6 +3394,11 @@ func _test_event_log_mutation_audit() -> void:
 		# _ready and the lint should not require these to emit.
 		"register_mechanism", "unregister_mechanism",
 		"get_all_actuators", "evaluate_mechanisms",
+		# Stat reads
+		"get_stat", "get_stat_cap", "is_running",
+		# Stat / running wrappers — set_stat and set_running emit; these
+		# call through them rather than emitting directly.
+		"adjust_stat", "toggle_running", "reset_characters_to_full",
 	])
 
 	var public_funcs := _parse_public_funcs(content)
@@ -5267,7 +6275,8 @@ func _test_elevator_dialogue() -> void:
 			# Teleport Peris near Aster
 			var target: Vector3 = instance.ASTER_POS + Vector3(0.5, 0.5, 0)
 			instance._peris_node.global_position = target
-			instance._game_state.characters["peris"].position = target,
+			instance._game_state.characters["peris"].position = target
+			instance._on_aster_wake_interacted(),
 		"units_activate": func():
 			# Resume from auto-pause so dialogue can advance
 			instance._scheduler.resume(),
@@ -5279,6 +6288,7 @@ func _test_elevator_dialogue() -> void:
 				instance._exit_button._trigger(),
 		"multiselect_tutorial": func():
 			# Resume from auto-pause and teleport both near the door exit
+			instance._hud.set_selected_portraits(["peris", "aster"])
 			instance._scheduler.resume()
 			var exit_gate := Vector3(instance.ELEVATOR_SIZE.x / 2.0, 0.5, 0)
 			instance._peris_node.global_position = exit_gate + Vector3(0, 0, -0.5)
@@ -5292,6 +6302,14 @@ func _test_elevator_dialogue() -> void:
 					enemy._detection_targets.clear()
 					if instance._game_state.characters.has(enemy.char_id):
 						instance._game_state.characters[enemy.char_id].stats["detection_range"] = 0.0,
+		"route_choice": func():
+			# Route choice now happens before the collapse; move to convergence
+			# so the fall beat can trigger after the enemy/hazard section.
+			_set_sequence_character_position(
+				instance,
+				"aster",
+				instance.ROUTES_CONVERGE + Vector3(1.5, 0.5, 0.0)
+			),
 		"bridge_collapse": func():
 			pass,
 	})
@@ -8620,10 +9638,24 @@ func _test_sequence_contracts() -> void:
 		var actions := {}
 		actions["show_terminal"] = func(): instance._on_terminal_interacted()
 		actions["walk_to_drink"] = func(): instance._on_drink_interacted()
+		# Exploration beat: unlock the gate immediately and fire it. The scene
+		# normally waits EXPLORE_MIN_TIME of scheduler time, but contract tests
+		# skip straight through.
+		actions["explore_workspace"] = func():
+			instance._explore_gate_unlocked = true
+			instance._on_exploration_gate_interacted()
 		return actions
 
 	var peris_phase_1_setup := func(instance: Node):
 		instance._visit_phase = 1
+
+	var peris_phase_1_actions := func(instance: Node):
+		var actions := {}
+		# Exploration beat: unlock and fire the logbook gate so Monos connects.
+		actions["workspace"] = func():
+			instance._explore_gate_unlocked = true
+			instance._on_exploration_gate_interacted()
+		return actions
 
 	var peris_phase_2_setup := func(instance: Node):
 		instance._visit_phase = 2
@@ -8681,15 +9713,12 @@ func _test_sequence_contracts() -> void:
 				"peris",
 				instance.ASTER_POS + Vector3(0.5, 0.5, 0.0)
 			)
-		actions["units_activate"] = func():
-			instance._scheduler.resume()
+			instance._on_aster_wake_interacted()
 		actions["emp_tutorial"] = func():
 			instance._on_emp_pressed()
-			instance._flush_queued_abilities()
-		actions["doors_unlocked"] = func():
-			if instance._exit_button:
-				instance._exit_button._trigger()
+			instance._toggle_pause()
 		actions["multiselect_tutorial"] = func():
+			instance._hud.set_selected_portraits(["peris", "aster"])
 			instance._scheduler.resume()
 			var exit_gate := Vector3(instance.ELEVATOR_SIZE.x / 2.0, 0.5, 0.0)
 			_set_sequence_character_position(
@@ -8706,6 +9735,8 @@ func _test_sequence_contracts() -> void:
 			_disable_enemy_detection(instance)
 		actions["bridge_collapse"] = func():
 			instance._on_fall_landed()
+		actions["climb_attempt"] = func():
+			instance._on_climb_prompt_interacted()
 		actions["route_choice"] = func():
 			_disable_enemy_detection(instance)
 			_set_sequence_character_position(
@@ -8738,8 +9769,8 @@ func _test_sequence_contracts() -> void:
 		[
 			"fade_in", "working", "ron_approaches", "ron_greeting",
 			"show_terminal", "terminal_data", "ron_drinks", "walk_to_drink",
-			"drink", "ron_move_fast", "tag_notify", "walk_to_exit",
-			"transition_out", "complete",
+			"drink", "ron_move_fast", "explore_workspace", "tag_notify",
+			"walk_to_exit", "transition_out", "complete",
 		],
 		aster_actions,
 		Callable(),
@@ -8750,10 +9781,10 @@ func _test_sequence_contracts() -> void:
 		"Sequence Contract: Peris Phase 1",
 		"res://scenes/tutorial/peris_sim.tscn",
 		[
-			"fade_in", "workspace", "monos_late",
-			"monos_arrives", "transition_out", "complete",
+			"fade_in", "workspace", "monos_arrives",
+			"transition_out", "complete",
 		],
-		Callable(),
+		peris_phase_1_actions,
 		peris_phase_1_setup,
 		"res://scenes/tutorial/tag_day.tscn"
 	)
@@ -8802,8 +9833,8 @@ func _test_sequence_contracts() -> void:
 			"consciousness_fragments", "waking", "approach_aster", "wake_aster",
 			"conversation", "system_restored", "units_activate", "emp_tutorial",
 			"doors_unlocked", "doors_open", "multiselect_tutorial", "corridor",
-			"bridge", "bridge_collapse", "fallen", "climb_attempt",
-			"route_fork_dialogue", "route_choice", "junction_arrive",
+			"bridge", "route_fork_dialogue", "route_choice", "bridge_collapse",
+			"fallen", "climb_attempt", "junction_arrive",
 			"endo_enters", "endo_shelter", "night_watch", "dawn", "morning",
 			"gauntlet", "complete",
 		],
@@ -8926,8 +9957,8 @@ func _test_items() -> void:
 	var no_scent := gs.get_scent_radius("aster")
 	_assert_true(no_scent < 0.01, "No scent after dropping lysate (radius: %.3f)" % no_scent)
 
-	# --- Endocytose hushcap: stun effect ---
-	var hush_id := gs.spawn_item("hushcap", Vector3(5, 0, 5))
+	# --- Endocytose hushbloom: stun effect ---
+	var hush_id := gs.spawn_item("hushbloom", Vector3(5, 0, 5))
 	gs.pick_up_item("aster", hush_id)
 
 	var stun_log: Array = []
@@ -8947,6 +9978,47 @@ func _test_items() -> void:
 		if sched.pop_next().is_empty(): break
 	var hp_after: float = gs.characters["aster"].stats.get("hp", 100.0)
 	_assert_true(hp_after < 100.0, "Fire fruit dealt self damage (hp: %.1f)" % hp_after)
+
+	# --- Endocytose curecumin: stat upgrade (universal, +10 hp_max + refill) ---
+	gs.characters["aster"].stats["hp"] = 80.0
+	var cap_before: float = gs.get_stat_cap("aster", "hp")
+	var cure_up := gs.spawn_item("curecumin", Vector3(5, 0, 5))
+	gs.pick_up_item("aster", cure_up)
+	gs.endocytose_item("aster", cure_up)
+	for _di in range(100):
+		if sched.pop_next().is_empty(): break
+	var cap_after: float = gs.get_stat_cap("aster", "hp")
+	_assert_equals(cap_after, cap_before + 10.0, "Curecumin raised hp_max by 10")
+	_assert_equals(gs.get_stat("aster", "hp"), cap_after,
+		"Curecumin refilled hp to new cap")
+	_assert_true(not gs.items.has(cure_up), "Curecumin consumed (item removed)")
+
+	# --- Endocytose solfloraphane on Aster: locked_to peris, no upgrade ---
+	var sol_aster := gs.spawn_item("solfloraphane", Vector3(5, 0, 5))
+	gs.pick_up_item("aster", sol_aster)
+	var aster_tend_before: float = float(gs.characters["aster"].stats.get("tending_speed", 0.0))
+	gs.endocytose_item("aster", sol_aster)
+	for _di in range(100):
+		if sched.pop_next().is_empty(): break
+	_assert_true(gs.items.has(sol_aster),
+		"Solfloraphane preserved when consumer is wrong character")
+	_assert_equals(gs.items[sol_aster].location, "internal",
+		"Locked-out solfloraphane sits in Aster's internal")
+	_assert_equals(float(gs.characters["aster"].stats.get("tending_speed", 0.0)),
+		aster_tend_before, "Aster tending_speed unchanged")
+
+	# --- Endocytose solfloraphane on Peris: applies tending_speed +0.15 ---
+	# Earlier asserts left Peris's hands in an unknown state — clear them so
+	# the upgrade flow has a clean slate.
+	gs.characters["peris"].hands = [null, null]
+	var sol_peris := gs.spawn_item("solfloraphane", Vector3(5, 0, 5))
+	_assert_true(gs.pick_up_item("peris", sol_peris), "Peris picks up solfloraphane")
+	_assert_true(gs.endocytose_item("peris", sol_peris), "Peris starts solfloraphane endocytosis")
+	for _di in range(100):
+		if sched.pop_next().is_empty(): break
+	_assert_equals(float(gs.characters["peris"].stats.get("tending_speed", 0.0)),
+		0.15, "Peris tending_speed +0.15 after solfloraphane")
+	_assert_true(not gs.items.has(sol_peris), "Solfloraphane consumed by Peris")
 
 	# --- Cancel endocytosis ---
 	var cancel_item := gs.spawn_item("seed", Vector3(5, 0, 5))

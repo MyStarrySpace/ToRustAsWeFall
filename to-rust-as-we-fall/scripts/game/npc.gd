@@ -7,10 +7,12 @@ extends Node3D
 @export var display_name := "Citizen"
 @export var color := Color(0.5, 0.5, 0.55)
 @export var move_speed := 2.0
+var speed_multiplier := 1.0
 
 ## When set, movement commands go through GameState (interpolation-based).
 var game_state: GameState
 var char_id := ""
+var _scheduler
 
 ## When set, walk_to_grid() uses A* pathfinding (fallback mode only).
 var grid_world: GridWorld
@@ -19,6 +21,9 @@ var _path: Array[Vector3] = []
 var _path_index := 0
 var _moving := false
 var _visible_mesh := true
+var _fade_active := false
+var _fade_start_tick := 0.0
+var _fade_duration := 0.0
 
 @onready var _mesh: MeshInstance3D
 @onready var _label: Label3D
@@ -58,6 +63,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
+	_update_scheduler_fade()
 	# GameState-driven: read interpolated position
 	if game_state and char_id != "":
 		if game_state.is_moving(char_id):
@@ -83,7 +89,13 @@ func _process(delta: float) -> void:
 			_path_index = 0
 			path_complete.emit()
 	else:
-		global_position += dir.normalized() * move_speed * delta
+		global_position += dir.normalized() * move_speed * speed_multiplier * delta
+
+func set_scheduler(scheduler_ref) -> void:
+	_scheduler = scheduler_ref
+
+func sync_scheduler_visuals() -> void:
+	_update_scheduler_fade()
 
 func _on_gs_arrived(id: String) -> void:
 	if id == char_id:
@@ -136,6 +148,27 @@ func set_color(c: Color) -> void:
 		_label.modulate = Color(c, 0.7)
 
 func fade_out(duration: float) -> void:
+	if _scheduler != null:
+		_fade_start_tick = _scheduler.get_current_tick()
+		_fade_duration = maxf(duration, 0.001)
+		_fade_active = true
+		_update_scheduler_fade()
+		return
 	var tween := create_tween()
 	tween.tween_property(_mesh, "transparency", 1.0, duration)
 	tween.parallel().tween_property(_label, "modulate:a", 0.0, duration)
+
+func _update_scheduler_fade() -> void:
+	if not _fade_active or _scheduler == null:
+		return
+	var elapsed: float = _scheduler.get_current_tick() - _fade_start_tick
+	var t := clampf(elapsed / _fade_duration, 0.0, 1.0)
+	_apply_fade_alpha(1.0 - t)
+	if t >= 1.0:
+		_fade_active = false
+
+func _apply_fade_alpha(alpha: float) -> void:
+	if _mesh:
+		_mesh.transparency = 1.0 - alpha
+	if _label:
+		_label.modulate.a = 0.7 * alpha
