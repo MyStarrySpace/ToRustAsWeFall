@@ -1,17 +1,9 @@
 @tool
 extends "res://scripts/tutorial/tutorial_sequence.gd"
-# @rendering_only_file — sequence has many decorative wall-clock animations
-# (light pulses, debris scatter, blinking lights). All randomness in this
-# file is cosmetic. New game-logic randomness here must go through the
-# RngRegistry, not Godot globals.
+# @rendering_only_file: decorative timing/randomness only.
 
-## Elevator tutorial → bridge collapse → route choice → Endo's shelter.
-## Chunk-based: geometry loads/unloads as the player progresses.
-## Peris wakes in a stuck elevator. Aster is unconscious. Escort units on standby.
-## Conversation (emotional core). Units activate. EMP (Q). Character switching (Tab).
-## Hack the panel. Doors open. Bridge collapses. Route fork. Endo's shelter. Night watch.
+## Elevator tutorial through bridge collapse, route choice, and Endo's shelter.
 
-# Characters
 var _aster_node: CharacterBody3D
 var _peris_node: CharacterBody3D
 var _escort_1  # NPC
@@ -20,7 +12,6 @@ var _active_character := "peris"
 var _selected_character_ids: Array[String] = ["peris"]
 var _suppress_hud_character_signal := false
 
-# Environment
 var _emergency_light: OmniLight3D
 var _floor_indicator: Label3D
 var _door_panel_a: MeshInstance3D
@@ -28,12 +19,11 @@ var _door_panel_b: MeshInstance3D
 var _control_panel  # Interactable
 var _indicator_timer := 0.0
 var _indicator_b_label: Label3D  # The "B" that flickers
-var _exit_button  # Interactable — flashes "NO EXIT" when pressed
+var _exit_button  # Interactable that flashes "NO EXIT".
 var _aster_wake_interactable  # Interactable for waking knocked-out Aster
 var _climb_interactable  # Interactable for checking the collapsed bridge
 var _no_exit_label: Label3D
 
-# HUD
 var _hud  # GameHUD
 
 # EMP state
@@ -47,7 +37,6 @@ var _reboot_active := false
 var _stamina := 100.0
 var _multiselect_hint_next_tick := -999.0
 
-# Enemies
 var _enemies: Array[Enemy] = []
 var _enemy_count := 0
 
@@ -57,7 +46,7 @@ var _peris_hp := 100.0
 var _game_over := false
 var _iframes: Dictionary = {}  # char_id -> scheduler tick when i-frames expire
 
-# Iron hazard zones — Array of {pos: Vector3, size: Vector3}
+# Iron hazard zones: Array of {pos: Vector3, size: Vector3}.
 var _iron_patches: Array[Dictionary] = []
 const IRON_DAMAGE_PER_SEC := 8.0
 
@@ -77,7 +66,6 @@ var _drink_mesh: MeshInstance3D  # Individual drink — carried by Endo
 # Night watch
 var _monster_eyes: Array[OmniLight3D] = []
 
-# Positions (elevator ~8x8, tall ceiling)
 const ELEVATOR_SIZE := Vector3(8.0, 4.0, 8.0)
 const PERIS_START := Vector3(-1.0, 0.5, 1.5)
 const ASTER_POS := Vector3(2.0, 0, -2.0)
@@ -86,22 +74,22 @@ const ESCORT_2_POS := Vector3(-2.5, 0, 2.5)
 const PANEL_POS := Vector3(3.5, 0, 0)
 const EMP_GUARD_STANDOFF_DISTANCE := 2.6
 
-# Below-level (ecology visible from bridge, walkable after collapse)
+# Below-level ecology
 const BELOW_Y := -4.0
 const BRIDGE_START_X := 11.5  # ELEVATOR_SIZE.x/2 + 0.5 + 7.0
 const BRIDGE_END_X := 23.5    # BRIDGE_START_X + 12.0
 
-# Route fork (after collapse, two paths diverge)
+# Route fork
 const FORK_POS := Vector3(BRIDGE_START_X + 4.0, BELOW_Y, 0)
 const ENEMY_ROUTE_END := Vector3(BRIDGE_END_X + 8.0, BELOW_Y, -6.0)
 const HAZARD_ROUTE_END := Vector3(BRIDGE_END_X + 12.0, BELOW_Y, 6.0)
 const ROUTES_CONVERGE := Vector3(BRIDGE_END_X + 16.0, BELOW_Y, 0)
 
-# Endo's junction / shelter
+# Endo junction and shelter
 const JUNCTION_POS := Vector3(BRIDGE_END_X + 18.0, BELOW_Y, 0)
 const SHELTER_SIZE := Vector3(6, 3, 5)
 
-# Ferrolure gauntlet (after shelter)
+# Ferrolure gauntlet
 const GAUNTLET_POS := Vector3(BRIDGE_END_X + 30.0, BELOW_Y, 0)
 const FERROLURE_POS := Vector3(BRIDGE_END_X + 28.0, BELOW_Y + 0.3, 4.0)
 const GAUNTLET_EXIT := Vector3(BRIDGE_END_X + 42.0, BELOW_Y, 0)
@@ -143,13 +131,11 @@ func _build_characters() -> void:
 	chars.name = "Characters"
 	add_child(chars)
 
-	# Peris — active player initially
 	_player = _create_player_character("Peris", Color(0.8, 0.5, 0.35))
 	_player.position = PERIS_START
 	chars.add_child(_player)
 	_peris_node = _player
 
-	# Aster — player character but disabled and slumped
 	_aster_node = _create_player_character("Aster", Color(0.29, 0.62, 1.0))
 	_aster_node.position = ASTER_POS + Vector3(0, 0.5, 0)
 	_aster_node.rotation_degrees.z = 30.0
@@ -164,7 +150,6 @@ func _build_characters() -> void:
 	_escort_2.position = ESCORT_2_POS
 	chars.add_child(_escort_2)
 
-	# Endo (hidden until junction)
 	_endo = _create_npc("Endo", Color(0.4, 0.67, 0.53))
 	_endo.position = Vector3(JUNCTION_POS.x + 3, BELOW_Y + 0.5, -2)
 	_endo.visible = false
@@ -181,10 +166,9 @@ func _register_characters() -> void:
 	_aster_node.set_move_enabled(false)
 
 func _setup_ui() -> void:
-	# Game HUD with character portraits
 	_hud = CanvasLayer.new()
 	_hud.name = "GameHUD"
-	_hud.set_script(preload("res://scripts/game/game_hud.gd"))
+	_hud.set_script(preload("res://scripts/ui/game_hud.gd"))
 	add_child(_hud)
 	_hud.add_portrait("peris", "Peris", Color(1.0, 0.67, 0.27))
 	_hud.add_portrait("aster", "Aster", Color(0.29, 0.62, 1.0))
@@ -203,8 +187,7 @@ func _setup_ui() -> void:
 	)
 	_hud.character_selection_changed.connect(_on_character_selected)
 
-	# Exit button near the doors
-	# Before EMP: shows "NO EXIT". After EMP: door lock fails, button opens doors.
+	# Door button changes behavior after EMP.
 	_exit_button = preload("res://scenes/game/interactable.tscn").instantiate()
 	_exit_button.name = "ExitButton"
 	_exit_button.description = "Door Button"
@@ -212,17 +195,18 @@ func _setup_ui() -> void:
 	_exit_button.dwell_time = 0.5
 	_exit_button.tutorial_label = "OPEN"
 	_exit_button.show_interaction_zone = false
+	_exit_button.interaction_enabled = false
 	_exit_button.monitoring = false
 	_exit_button.monitorable = false
 	_exit_button.visible = false
 	_exit_button.position = Vector3(ELEVATOR_SIZE.x / 2.0 - 0.3, 1.0, 1.5)
 	add_child(_exit_button)
 	_exit_button.interacted.connect(_on_exit_button_pressed)
+	_set_exit_button_interactable(false)
 
 func _begin() -> void:
 	_player.set_move_enabled(false)
 	_fade_rect.color = Color(0, 0, 0, 1)
-	# Skip to a specific chunk for testing/preview
 	if start_chunk != "":
 		_load_chunk(start_chunk)
 		_player.set_move_enabled(true)
@@ -247,24 +231,24 @@ func _compute_speed() -> float:
 	return 10.0 if Input.is_key_pressed(KEY_F) else 1.0
 
 func _on_process(delta: float, spd: float) -> void:
-	# Emergency light pulse (elevator chunk)
+	# Emergency light pulse.
 	if _emergency_light and is_instance_valid(_emergency_light):
 		_emergency_light.light_energy = 1.5 + sin(Time.get_ticks_msec() * 0.003) * 0.5
 
-	# Floor indicator: "3" is steady, "B" flickers (elevator chunk)
+	# Floor indicator flicker.
 	if _indicator_b_label and is_instance_valid(_indicator_b_label):
 		_indicator_timer += delta * spd
 		if _indicator_timer > 0.3:
 			_indicator_timer = 0.0
 			_indicator_b_label.visible = not _indicator_b_label.visible
 
-	# Escort unit flicker when stunned (toggle visibility)
+	# Stunned escort flicker.
 	if _unit_1_stunned and _escort_1:
 		_escort_1.visible = int(Time.get_ticks_msec() / 100) % 2 == 0
 	if _unit_2_stunned and _escort_2:
 		_escort_2.visible = int(Time.get_ticks_msec() / 100) % 2 == 0
 
-	# Update EMP cooldown display from scheduler ticks
+	# Sync EMP cooldown display.
 	if _emp_cooldown_end > 0:
 		var remaining := maxf(0, _emp_cooldown_end - _scheduler.get_current_tick())
 		_hud.set_ability_state("emp", "cooldown", remaining)
@@ -272,12 +256,12 @@ func _on_process(delta: float, spd: float) -> void:
 			_emp_cooldown_end = 0.0
 			_hud.set_ability_state("emp", "ready")
 
-	# Enemies drift visually (patrol driven by scheduler, this handles rotation)
+	# Visual patrol drift.
 	for enemy in _enemies:
 		if is_instance_valid(enemy) and enemy.is_alive():
 			enemy.rotation.y += delta * spd * 0.3
 
-	# Iron patch damage — standing on iron hurts
+	# Iron patches hurt on contact.
 	if not _game_over and not _iron_patches.is_empty():
 		for pair in [["aster", _aster_node], ["peris", _peris_node]]:
 			var cid: String = pair[0]
@@ -459,18 +443,23 @@ func _on_exit_button_pressed() -> void:
 func _set_exit_button_interactable(active: bool) -> void:
 	if _exit_button == null:
 		return
+	if active and _exit_button.has_method("reset"):
+		_exit_button.reset()
 	_exit_button.visible = active
-	_exit_button.monitoring = active
-	_exit_button.monitorable = active
 	_exit_button.show_interaction_zone = active
+	if _exit_button.has_method("set_interaction_enabled"):
+		_exit_button.set_interaction_enabled(active)
+	else:
+		_exit_button.monitoring = active
+		_exit_button.monitorable = active
 	var marker := _exit_button.find_child("InteractionZoneMarker", true, false) as Node3D
 	if marker != null:
 		marker.visible = active
 	if not active:
 		if _exit_button.has_method("hide_tutorial_label"):
 			_exit_button.hide_tutorial_label()
-		if _exit_button.has_method("reset"):
-			_exit_button.reset()
+		if _exit_button.has_method("cancel_queued_feedback"):
+			_exit_button.cancel_queued_feedback()
 
 func _switch_character() -> void:
 	var next_id: String = _hud.get_next_portrait_id(_active_character)
@@ -675,7 +664,7 @@ func _start_conversation() -> void:
 func _start_system_restored() -> void:
 	_enter_step("system_restored")
 	_camera.shake(0.1, 8.0)
-	# System restores devices — Aster's data overlay activates
+	# Device access restored; Aster's overlay activates.
 	_setup_perception("data", _aster_node)
 	DialogueData.say_to(_dialogue, "elevator.system.restored")
 	DialogueData.say_to(_dialogue, "elevator.aster.overlay")
@@ -686,7 +675,7 @@ func _start_system_restored() -> void:
 
 func _start_units_activate() -> void:
 	_enter_step("units_activate")
-	# Both escorts advance, but stop short so Aster has room to EMP them.
+	# Escorts stop short so EMP does not fire at contact range.
 	var party_center := _get_emp_party_center()
 	_escort_1.walk_to(_get_emp_guard_standoff_pos("eu1", _escort_1, party_center))
 	_escort_2.walk_to(_get_emp_guard_standoff_pos("eu2", _escort_2, party_center))
@@ -713,7 +702,7 @@ func _get_emp_guard_standoff_pos(guard_id: String, guard_node: Node3D, party_cen
 
 func _start_emp_tutorial() -> void:
 	_enter_step("emp_tutorial")
-	# Switch to Aster — the EMP is his ability, not Peris's
+	# EMP belongs to Aster.
 	_select_character("aster")
 	_emp_pause_locked = true
 	_emp_queued = false
@@ -723,22 +712,20 @@ func _start_emp_tutorial() -> void:
 	_hud.set_paused(true)
 
 func _start_emp_tutorial_2() -> void:
-	# Kept for reboot fallback but no longer triggered normally
 	_enter_step("emp_tutorial_2")
 
 func _start_doors_unlocked() -> void:
 	_enter_step("doors_unlocked")
 	_reboot_active = false
 	_tutorial_prompt.hide_prompt()
-	# EMP killed the door lock — the exit button now works
+	# EMP disables the door lock.
 	_set_exit_button_interactable(true)
 	_exit_button.one_shot = true
 	_exit_button.tutorial_label = "OPEN"
 	_exit_button.show_tutorial_label()
 	DialogueData.say_to(_dialogue, "elevator.system.override")
 	_dialogue.dialogue_finished.connect(_start_doors_open, CONNECT_ONE_SHOT)
-	# Re-wire exit button as a fallback; the "doors cycling" notification
-	# should advance automatically once the line finishes.
+	# Exit button remains a fallback if auto-advance misses.
 	if _exit_button.interacted.is_connected(_on_exit_button_pressed):
 		_exit_button.interacted.disconnect(_on_exit_button_pressed)
 	_exit_button.interacted.connect(_start_doors_open, CONNECT_ONE_SHOT)
@@ -747,12 +734,10 @@ func _start_doors_open() -> void:
 	if not _enter_step("doors_open"):
 		return
 	_set_exit_button_interactable(false)
-	# Tween door panels apart
 	if _door_panel_a and _door_panel_b:
 		var tween := create_tween()
 		tween.tween_property(_door_panel_a, "position:z", -1.5, 1.5)
 		tween.parallel().tween_property(_door_panel_b, "position:z", 1.5, 1.5)
-	# Add light from outside
 	var outside_light := OmniLight3D.new()
 	outside_light.position = Vector3(3.5, 1.5, 0)
 	outside_light.light_color = Color(0.4, 0.4, 0.5)
@@ -768,7 +753,7 @@ func _start_multiselect_tutorial() -> void:
 	_hud.set_multi_select_enabled(true)
 	_hud.set_selected_portraits(_selected_character_ids)
 	_suppress_hud_character_signal = false
-	# Switch to Peris — both need to reach the exit
+	# Switch to Peris; both need to reach the exit.
 	_select_character("peris", true)
 	_scheduler.pause()
 	_hud.set_paused(true)
@@ -783,7 +768,6 @@ func _start_corridor() -> void:
 	_tutorial_prompt.hide_prompt()
 	_load_chunk("bridge")
 	_load_chunk("below")
-	# Walk both characters out through the doors
 	var exit_pos := Vector3(ELEVATOR_SIZE.x / 2.0 + 3.0, 0, 0)
 	_game_state.command_move_to_pos("aster", exit_pos)
 	_game_state.command_move_to_pos("peris", exit_pos + Vector3(0, 0, 1.0))
@@ -794,7 +778,6 @@ func _start_corridor() -> void:
 
 func _start_bridge() -> void:
 	_enter_step("bridge")
-	# Walk to the bridge railing
 	var bridge_pos := Vector3(ELEVATOR_SIZE.x / 2.0 + 12.0, 0, 0)
 	_game_state.command_move_to_pos("aster", bridge_pos + Vector3(1.0, 0, 0))
 	_game_state.command_move_to_pos("peris", bridge_pos)
@@ -812,12 +795,10 @@ func _start_bridge_collapse() -> void:
 	_aster_node.set_move_enabled(false)
 	_game_state.command_stop("aster")
 	_game_state.command_stop("peris")
-	# Hide escort units (abandoned above)
 	if _escort_1:
 		_escort_1.visible = false
 	if _escort_2:
 		_escort_2.visible = false
-	# Warning rumble
 	_camera.shake(0.4, 2.0)
 	DialogueData.say_to(_dialogue, "elevator.peris.floor")
 	_scheduler.schedule_after(0.8, _execute_bridge_fall, "bridge_fall")
@@ -829,29 +810,23 @@ func _execute_bridge_fall() -> void:
 	var bridge_floor: Node3D = bridge_chunk.find_child("BridgeFloor", false, false) if bridge_chunk else null
 	var tween := create_tween()
 	tween.set_parallel(true)
-	# Bridge floor falls with slight rotation
 	if bridge_floor:
 		tween.tween_property(bridge_floor, "position:y", BELOW_Y, fall_duration) \
 			.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
 		tween.tween_property(bridge_floor, "rotation:x", 0.15, fall_duration * 0.8)
-	# Characters fall
 	for char_node in [_peris_node, _aster_node]:
 		tween.tween_property(char_node, "position:y", BELOW_Y + 0.5, fall_duration) \
 			.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
-	# Camera follows
 	tween.tween_property(_camera, "follow_offset:y", _camera.follow_offset.y + BELOW_Y, fall_duration * 1.1)
 	tween.chain().tween_callback(_on_fall_landed)
 
 func _on_fall_landed() -> void:
 	_camera.shake(0.3, 6.0)
-	# Update GameState positions to the below level
 	for char_id in ["peris", "aster"]:
 		var pos: Vector3 = _game_state.get_position(char_id)
 		_game_state.characters[char_id].position = Vector3(pos.x, BELOW_Y + 0.5, pos.z)
-	# Unload chunks above
 	_unload_chunk("elevator")
 	_unload_chunk("bridge")
-	# Null out freed elevator references
 	_emergency_light = null
 	_indicator_b_label = null
 	_floor_indicator = null
@@ -869,7 +844,7 @@ func _start_fallen() -> void:
 
 func _start_climb_attempt() -> void:
 	_enter_step("climb_attempt")
-	# Characters look up at the collapsed bridge — no way back
+	# Establish that the bridge cannot be retraced.
 	_dialogue_chain([
 		"elevator.aster.climb",
 		"elevator.peris.climb",
@@ -952,7 +927,7 @@ func _start_endo_shelter() -> void:
 
 func _on_endo_at_container(id: String) -> void:
 	if id != "endo":
-		# Wrong character arrived — re-listen
+		# Wrong character arrived; re-listen.
 		_game_state.character_arrived.connect(_on_endo_at_container, CONNECT_ONE_SHOT)
 		return
 	# Dwell indicator while Endo picks up drink
@@ -1052,7 +1027,7 @@ func _clear_markers() -> void:
 
 func _start_night_watch() -> void:
 	_enter_step("night_watch")
-	# Darken the world — night falls
+	# Darken the world for nightfall.
 	var env_node: Node = find_child("Environment", false, false)
 	var we: WorldEnvironment = env_node.find_child("*", false, false) as WorldEnvironment if env_node else null
 	for child in env_node.get_children():
@@ -1161,12 +1136,11 @@ func _on_ferrolure_activated() -> void:
 		return
 	_ferrolure_active = true
 	_tutorial_prompt.hide_prompt()
-	# Visual: pulsing orange glow
 	if _ferrolure_mesh:
 		var mat := _ferrolure_mesh.material_override as StandardMaterial3D
 		if mat:
 			mat.emission_energy_multiplier = 3.0
-	# Redirect all gauntlet enemies to target the ferrolure position
+	# Redirect gauntlet enemies to the ferrolure.
 	for enemy in _gauntlet_enemies:
 		if is_instance_valid(enemy) and enemy.is_alive():
 			enemy._detection_targets = []
@@ -1177,7 +1151,6 @@ func _on_ferrolure_activated() -> void:
 	_show_marker(FERROLURE_POS + Vector3(0, 1.5, 0), "LURE ACTIVE")
 	_dialogue.default_hold_time = 2.0
 	DialogueData.say_to(_dialogue, "junction.ferrolure.active")
-	# Timer: ferrolure expires after FERROLURE_DURATION
 	_scheduler.schedule_after(FERROLURE_DURATION, _on_ferrolure_expired, "ferrolure_expire")
 
 func _on_ferrolure_expired() -> void:
@@ -1187,7 +1160,7 @@ func _on_ferrolure_expired() -> void:
 		var mat := _ferrolure_mesh.material_override as StandardMaterial3D
 		if mat:
 			mat.emission_energy_multiplier = 0.5
-	# Enemies resume targeting players
+	# Restore enemy targeting.
 	for enemy in _gauntlet_enemies:
 		if is_instance_valid(enemy) and enemy.is_alive():
 			enemy._detection_targets = ["aster", "peris"]
@@ -1253,11 +1226,9 @@ func _build_bridge_chunk(parent: Node3D) -> void:
 	col.shape = shape
 	body.add_child(col)
 	parent.add_child(body)
-	# Corridor walls
 	_add_wall(parent, Vector3(start_x + 3.0, 2.0, -2.0), Vector3(7, 4, 0.2), wall_color)
 	_add_wall(parent, Vector3(start_x + 3.0, 2.0, 2.0), Vector3(7, 4, 0.2), wall_color)
 
-	# Corridor light
 	var cor_light := OmniLight3D.new()
 	cor_light.position = Vector3(start_x + 3.0, 3.0, 0)
 	cor_light.light_color = Color(0.3, 0.2, 0.15)
@@ -1265,7 +1236,7 @@ func _build_bridge_chunk(parent: Node3D) -> void:
 	cor_light.omni_range = 8.0
 	parent.add_child(cor_light)
 
-	# Bridge / catwalk — named sub-node for collapse tween
+	# Named for collapse tween.
 	var bridge_start := start_x + 7.0
 	var bridge_floor := Node3D.new()
 	bridge_floor.name = "BridgeFloor"
@@ -1282,7 +1253,6 @@ func _build_bridge_chunk(parent: Node3D) -> void:
 	b2.add_child(c2)
 	bridge_floor.add_child(b2)
 
-	# Partial railing (on bridge floor so it falls with it)
 	for i in range(5):
 		var rail := MeshInstance3D.new()
 		var rb := BoxMesh.new()
@@ -1294,7 +1264,6 @@ func _build_bridge_chunk(parent: Node3D) -> void:
 		rail.position = Vector3(bridge_start + 1.5 + i * 2.0, 0.4, -1.4)
 		bridge_floor.add_child(rail)
 
-	# Bridge lighting
 	var bridge_light := OmniLight3D.new()
 	bridge_light.position = Vector3(bridge_start + 5.0, 3.0, 0)
 	bridge_light.light_color = Color(0.25, 0.18, 0.12)
@@ -1306,7 +1275,6 @@ func _build_below_chunk(parent: Node3D) -> void:
 	var bridge_start := ELEVATOR_SIZE.x / 2.0 + 0.5 + 7.0
 	var ground_y := BELOW_Y
 
-	# Ground collision (walkable after collapse)
 	var ground_body := StaticBody3D.new()
 	ground_body.position = Vector3(bridge_start + 5.0, ground_y - 0.01, 0)
 	ground_body.collision_layer = 1
@@ -1318,10 +1286,9 @@ func _build_below_chunk(parent: Node3D) -> void:
 	ground_body.add_child(gc)
 	parent.add_child(ground_body)
 
-	# Ground floor visual
 	_add_corridor_section(parent, Vector3(bridge_start + 5.0, ground_y - 0.05, 0), Vector3(40, 0.1, 16), Color(0.05, 0.05, 0.07))
 
-	# Iron blooms (faint orange glow on walls and floor)
+	# Iron blooms.
 	for i in range(4):
 		var bloom := OmniLight3D.new()
 		bloom.position = Vector3(bridge_start + 1.5 + i * 3.0, ground_y + 1.0, randf_range(-4, 4))
@@ -1330,7 +1297,7 @@ func _build_below_chunk(parent: Node3D) -> void:
 		bloom.omni_range = 3.0
 		parent.add_child(bloom)
 
-	# Chelators — smaller prey entities patrolling the ecology walls
+	# Chelators patrol the ecology walls.
 	var chelator_ids: Array[String] = []
 	for i in range(6):
 		var cid := "chelator_%d" % i
@@ -1345,8 +1312,7 @@ func _build_below_chunk(parent: Node3D) -> void:
 		var patrol_b := Vector3(bridge_start + 1.0 + i * 2.0 + 4.0, ground_y + 0.5, enemy.position.z)
 		enemy.set_patrol([patrol_a, patrol_b])
 
-	# Predators — larger enemies that hunt the chelators
-	# They're distracted by prey, so they don't target players initially
+	# Predators hunt Chelators before targeting the party.
 	for i in range(2):
 		var pid := "predator_%d" % i
 		var predator := _spawn_enemy(pid,
@@ -1359,9 +1325,7 @@ func _build_below_chunk(parent: Node3D) -> void:
 		predator.charge_damage = 35.0
 		predator.detection_range = 8.0
 		_game_state.characters[pid].stats["detection_range"] = 8.0
-		# Target chelators, not players — distracted by the hunt
 		predator._detection_targets = chelator_ids.duplicate()
-		# Larger visual
 		if predator._mesh and predator._mesh.mesh is CapsuleMesh:
 			(predator._mesh.mesh as CapsuleMesh).radius = 0.35
 			(predator._mesh.mesh as CapsuleMesh).height = 1.2
@@ -1374,7 +1338,7 @@ func _build_below_chunk(parent: Node3D) -> void:
 		var pb := Vector3(bridge_start + 6.0 + i * 6.0, ground_y + 0.5, 2.0)
 		predator.set_patrol([pa, pb])
 
-	# Fluor — yellow-green bioluminescence in a breached corner
+	# Fluor bioluminescence.
 	var fluor_light := OmniLight3D.new()
 	fluor_light.position = Vector3(bridge_start + 3.0, ground_y + 1.5, 6.0)
 	fluor_light.light_color = Color(0.6, 0.9, 0.2)
@@ -1446,13 +1410,12 @@ func _build_below_chunk(parent: Node3D) -> void:
 	var wall_h := 3.0
 	var wall_color := Color(0.08, 0.08, 0.1)
 
-	# Central divider wall that splits the path into two branches
+	# Central divider creates two branches.
 	_add_wall(parent, Vector3(fork_x + 8.0, ground_y + wall_h / 2.0, 0), Vector3(16, wall_h, 0.4), wall_color)
 
-	# Enemy route (north, z < 0): narrow, dark, red eyes suggest hostile presence
 	var en_z := -4.0
 	_add_wall(parent, Vector3(fork_x + 8.0, ground_y + wall_h / 2.0, en_z - 3.0), Vector3(16, wall_h, 0.3), wall_color)
-	# Enemies along the enemy route (same creatures visible from bridge)
+	# Enemy-route patrols.
 	for i in range(4):
 		var ex: float = fork_x + 2.0 + i * 4.0
 		var enemy := _spawn_enemy("route_enemy_%d" % i,
@@ -1461,10 +1424,10 @@ func _build_below_chunk(parent: Node3D) -> void:
 		var pb := Vector3(ex + 1.5, ground_y + 0.5, en_z - 1.5)
 		enemy.set_patrol([pa, pb])
 
-	# Hazard route (south, z > 0): wider, iron patches, unstable ceiling drips
+	# Hazard route.
 	var hz_z := 4.0
 	_add_wall(parent, Vector3(fork_x + 8.0, ground_y + wall_h / 2.0, hz_z + 3.5), Vector3(16, wall_h, 0.3), wall_color)
-	# Iron deposit patches on the hazard floor (deal damage on contact)
+	# Iron deposit patches.
 	for i in range(3):
 		var ix: float = fork_x + 3.0 + i * 5.0
 		var iron_pos := Vector3(ix, ground_y + 0.02, hz_z + 1.0)
@@ -1482,7 +1445,6 @@ func _build_below_chunk(parent: Node3D) -> void:
 		iron.position = iron_pos
 		parent.add_child(iron)
 		_iron_patches.append({"pos": iron_pos, "size": iron_size})
-		# Iron glow
 		var ig := OmniLight3D.new()
 		ig.position = Vector3(ix, ground_y + 0.5, hz_z + 1.0)
 		ig.light_color = Color(0.7, 0.25, 0.05)
@@ -1490,7 +1452,7 @@ func _build_below_chunk(parent: Node3D) -> void:
 		ig.omni_range = 3.0
 		parent.add_child(ig)
 
-	# Ceiling drips along hazard route (rust stalactites)
+	# Rust stalactites.
 	for i in range(4):
 		var drip := MeshInstance3D.new()
 		var dc := CylinderMesh.new()
@@ -1504,7 +1466,7 @@ func _build_below_chunk(parent: Node3D) -> void:
 		drip.position = Vector3(fork_x + 2.5 + i * 4.0, ground_y + wall_h - 0.4, hz_z + randf_range(-0.5, 2.0))
 		parent.add_child(drip)
 
-	# Convergence area — wider chamber where both routes meet
+	# Route convergence chamber.
 	var conv_x := ROUTES_CONVERGE.x
 	_add_corridor_section(parent, Vector3(conv_x, ground_y - 0.04, 0), Vector3(8, 0.08, 12), Color(0.06, 0.06, 0.08))
 
@@ -1519,22 +1481,18 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	# Shelter floor
 	_add_corridor_section(parent, Vector3(sx, ground_y - 0.03, 0), Vector3(sw + 2, 0.06, sd + 2), Color(0.08, 0.08, 0.09))
 
-	# Walls (with window openings on north and south)
-	# West wall (entry side) — opening for door
+	# Entry wall with door gap.
 	_add_wall(parent, Vector3(sx - sw / 2.0, ground_y + sh / 2.0, -sd * 0.35), Vector3(0.2, sh, sd * 0.3), wc)
 	_add_wall(parent, Vector3(sx - sw / 2.0, ground_y + sh / 2.0, sd * 0.35), Vector3(0.2, sh, sd * 0.3), wc)
-	# East wall (solid back)
 	_add_wall(parent, Vector3(sx + sw / 2.0, ground_y + sh / 2.0, 0), Vector3(0.2, sh, sd), wc)
-	# North wall — lower section + upper section with window gap
+	# Window-gap walls.
 	_add_wall(parent, Vector3(sx, ground_y + 0.5, -sd / 2.0), Vector3(sw, 1.0, 0.2), wc)
 	_add_wall(parent, Vector3(sx, ground_y + sh - 0.3, -sd / 2.0), Vector3(sw, 0.6, 0.2), wc)
-	# South wall — same window pattern
 	_add_wall(parent, Vector3(sx, ground_y + 0.5, sd / 2.0), Vector3(sw, 1.0, 0.2), wc)
 	_add_wall(parent, Vector3(sx, ground_y + sh - 0.3, sd / 2.0), Vector3(sw, 0.6, 0.2), wc)
-	# Ceiling
 	_add_wall(parent, Vector3(sx, ground_y + sh, 0), Vector3(sw, 0.15, sd), Color(0.07, 0.07, 0.09))
 
-	# Window grating (thin bars across the window openings)
+	# Window grating.
 	for z_side in [-sd / 2.0, sd / 2.0]:
 		for i in range(4):
 			var bar := MeshInstance3D.new()
@@ -1547,7 +1505,6 @@ func _build_junction_chunk(parent: Node3D) -> void:
 			bar.position = Vector3(sx - sw / 2.0 + 1.0 + i * 1.2, ground_y + 1.6, z_side)
 			parent.add_child(bar)
 
-	# Interior warm light
 	var interior_light := OmniLight3D.new()
 	interior_light.name = "ShelterLight"
 	interior_light.position = Vector3(sx, ground_y + sh - 0.5, 0)
@@ -1556,7 +1513,6 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	interior_light.omni_range = 6.0
 	parent.add_child(interior_light)
 
-	# Crates (seating / furnishings)
 	for i in range(2):
 		var crate := MeshInstance3D.new()
 		var cb := BoxMesh.new()
@@ -1568,7 +1524,6 @@ func _build_junction_chunk(parent: Node3D) -> void:
 		crate.position = Vector3(sx + 1.0 - i * 2.0, ground_y + 0.25, 1.0)
 		parent.add_child(crate)
 
-	# Container for drinks
 	var container := MeshInstance3D.new()
 	container.name = "DrinkContainer"
 	var co := BoxMesh.new()
@@ -1580,7 +1535,6 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	container.position = Vector3(sx + 1.5, ground_y + 0.2, -1.0)
 	parent.add_child(container)
 
-	# Individual drink sitting on top of the container
 	_drink_mesh = MeshInstance3D.new()
 	_drink_mesh.name = "Drink"
 	var dc := CylinderMesh.new()
@@ -1611,7 +1565,7 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	_add_junction_interactable("Workbench", Vector3(sx - 1.5, ground_y + 0.8, -1.8),
 		"junction.workbench")
 
-	# Monitoring station (gauges on wall)
+	# Monitoring station.
 	var monitor_panel := MeshInstance3D.new()
 	var mp := BoxMesh.new()
 	mp.size = Vector3(1.0, 0.8, 0.1)
@@ -1627,7 +1581,7 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	_add_junction_interactable("Monitor", Vector3(sx + SHELTER_SIZE.x / 2.0 - 0.5, ground_y + 1.5, -1.0),
 		"junction.monitor")
 
-	# Food cache (sealed container on shelf)
+	# Food cache.
 	var food_cache := MeshInstance3D.new()
 	var fc := BoxMesh.new()
 	fc.size = Vector3(0.5, 0.3, 0.4)
@@ -1640,11 +1594,9 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	_add_junction_interactable("Food", Vector3(sx - 2.0, ground_y + 1.0, 1.5),
 		"junction.food")
 
-	# Lookout spot by window
 	_add_junction_interactable("Lookout", Vector3(sx + 1.0, ground_y + 1.0, -SHELTER_SIZE.z / 2.0 + 0.3),
 		"junction.lookout")
 
-	# Heater near entrance
 	var heater := MeshInstance3D.new()
 	var hb := BoxMesh.new()
 	hb.size = Vector3(0.4, 0.5, 0.4)
@@ -1660,7 +1612,7 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	_add_junction_interactable("Heater", Vector3(sx - SHELTER_SIZE.x / 2.0 + 0.5, ground_y + 0.5, 0),
 		"junction.heater")
 
-	# Wall markings (Endo's personal annotation system on the barrier wall)
+	# Endo's barrier markings.
 	var markings := Label3D.new()
 	markings.text = "|| /// ||| // ||||| / ||"
 	markings.font_size = 24
@@ -1672,7 +1624,7 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	_add_junction_interactable("Markings", Vector3(sx + SHELTER_SIZE.x / 2.0 - 0.5, ground_y + 1.0, 1.0),
 		"junction.markings")
 
-	# Puzzle game on the workbench (hand-carved, well-worn)
+	# Hand-carved puzzle.
 	var game_piece := MeshInstance3D.new()
 	var gp := BoxMesh.new()
 	gp.size = Vector3(0.3, 0.1, 0.3)
@@ -1686,7 +1638,7 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	_add_junction_interactable("Game", Vector3(sx - 1.2, ground_y + 0.9, -1.6),
 		"junction.game")
 
-	# Dormant plant in the corner (Peris tends it, triggering dusk + Endo's arrival)
+	# Peris tends this plant to trigger dusk and Endo.
 	var plant_mesh := MeshInstance3D.new()
 	var pm := SphereMesh.new()
 	pm.radius = 0.2
@@ -1711,7 +1663,6 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	plant_interact.position = plant_mesh.position + Vector3(0, 0.3, 0)
 	add_child(plant_interact)
 	plant_interact.interacted.connect(func():
-		# Plant blooms
 		var bloom := create_tween()
 		bloom.tween_property(plant_mat, "albedo_color", Color(0.2, 0.5, 0.3), 1.5)
 		bloom.parallel().tween_property(plant_mat, "emission_enabled", true, 0.0)
@@ -1719,7 +1670,6 @@ func _build_junction_chunk(parent: Node3D) -> void:
 		plant_mat.emission = Color(0.1, 0.3, 0.15)
 		bloom.parallel().tween_property(plant_mat, "emission_energy_multiplier", 0.8, 2.0)
 		bloom.parallel().tween_property(plant_mesh, "scale", Vector3(1.5, 1.8, 1.5), 2.0)
-		# Trigger dusk + Endo arrival
 		_start_dusk_from_plant()
 	)
 
@@ -1752,7 +1702,6 @@ func _build_gauntlet_chunk(parent: Node3D) -> void:
 
 	# Ground floor
 	_add_corridor_section(parent, Vector3(gx, ground_y - 0.03, 0), Vector3(20, 0.06, 14), Color(0.05, 0.05, 0.07))
-	# Ground collision
 	var gb := StaticBody3D.new()
 	gb.position = Vector3(gx, ground_y - 0.01, 0)
 	gb.collision_layer = 1
@@ -1764,12 +1713,12 @@ func _build_gauntlet_chunk(parent: Node3D) -> void:
 	gb.add_child(gc)
 	parent.add_child(gb)
 
-	# Walls — corridor widens into a chamber
+	# Chamber walls.
 	_add_wall(parent, Vector3(gx, ground_y + 1.5, -7.0), Vector3(20, 3, 0.3), wc)
 	_add_wall(parent, Vector3(gx, ground_y + 1.5, 7.0), Vector3(20, 3, 0.3), wc)
 	_add_wall(parent, Vector3(gx + 10.0, ground_y + 1.5, 0), Vector3(0.3, 3, 14), wc)
 
-	# Ferrolure — interactable iron lure device (only Peris can activate)
+	# Peris-only iron lure.
 	_ferrolure_mesh = MeshInstance3D.new()
 	_ferrolure_mesh.name = "Ferrolure"
 	var fsp := SphereMesh.new()
@@ -1786,7 +1735,6 @@ func _build_gauntlet_chunk(parent: Node3D) -> void:
 	_ferrolure_mesh.position = FERROLURE_POS
 	parent.add_child(_ferrolure_mesh)
 
-	# Ferrolure interactable
 	_ferrolure_interactable = preload("res://scenes/game/interactable.tscn").instantiate()
 	_ferrolure_interactable.name = "FerrolureInteract"
 	_ferrolure_interactable.description = "Ferrolure"
@@ -1796,7 +1744,7 @@ func _build_gauntlet_chunk(parent: Node3D) -> void:
 	add_child(_ferrolure_interactable)
 	_ferrolure_interactable.interacted.connect(_on_ferrolure_activated)
 
-	# Gauntlet enemies — a cluster blocking the direct path
+	# Enemy cluster blocking the direct path.
 	_gauntlet_enemies.clear()
 	for i in range(5):
 		var ex: float = gx - 2.0 + i * 2.5
@@ -1809,7 +1757,6 @@ func _build_gauntlet_chunk(parent: Node3D) -> void:
 		enemy.set_patrol([pa, pb])
 		_gauntlet_enemies.append(enemy)
 
-	# Dim lighting — ominous
 	var gauntlet_light := OmniLight3D.new()
 	gauntlet_light.position = Vector3(gx, ground_y + 2.5, 0)
 	gauntlet_light.light_color = Color(0.2, 0.12, 0.08)
@@ -1835,7 +1782,6 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 	var hd := ELEVATOR_SIZE.z / 2.0
 	var h := ELEVATOR_SIZE.y
 
-	# Floor
 	var floor_mesh := MeshInstance3D.new()
 	var fb := BoxMesh.new()
 	fb.size = Vector3(ELEVATOR_SIZE.x, 0.1, ELEVATOR_SIZE.z)
@@ -1848,7 +1794,6 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 	floor_mesh.position = Vector3(0, -0.05, 0)
 	parent.add_child(floor_mesh)
 
-	# Floor collision
 	var floor_body := StaticBody3D.new()
 	floor_body.position = Vector3(0, -0.01, 0)
 	floor_body.collision_layer = 1
@@ -1860,7 +1805,6 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 	floor_body.add_child(fc)
 	parent.add_child(floor_body)
 
-	# Walls
 	var wc := Color(0.12, 0.12, 0.14)
 	_add_wall(parent, Vector3(0, h / 2.0, -hd), Vector3(ELEVATOR_SIZE.x, h, 0.2), wc)
 	_add_wall(parent, Vector3(0, h / 2.0, hd), Vector3(ELEVATOR_SIZE.x, h, 0.2), wc)
@@ -1868,14 +1812,11 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 	_add_wall(parent, Vector3(hw, h / 2.0, -hd * 0.55), Vector3(0.2, h, hd * 0.8), wc)
 	_add_wall(parent, Vector3(hw, h / 2.0, hd * 0.55), Vector3(0.2, h, hd * 0.8), wc)
 
-	# Door panels (tween apart when hack succeeds)
 	_door_panel_a = _make_door_panel(parent, Vector3(hw - 0.05, h / 2.0, -0.6), wc)
 	_door_panel_b = _make_door_panel(parent, Vector3(hw - 0.05, h / 2.0, 0.6), wc)
 
-	# Ceiling
 	_add_wall(parent, Vector3(0, h, 0), Vector3(ELEVATOR_SIZE.x, 0.1, ELEVATOR_SIZE.z), Color(0.06, 0.06, 0.08))
 
-	# Emergency light (red, pulsing)
 	_emergency_light = OmniLight3D.new()
 	_emergency_light.position = Vector3(0, h - 0.3, 0)
 	_emergency_light.light_color = Color(0.85, 0.15, 0.1)
@@ -1883,7 +1824,6 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 	_emergency_light.omni_range = 10.0
 	parent.add_child(_emergency_light)
 
-	# Secondary fill light
 	var fill := OmniLight3D.new()
 	fill.position = Vector3(0, h * 0.6, 0)
 	fill.light_color = Color(0.4, 0.25, 0.2)
@@ -1891,7 +1831,6 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 	fill.omni_range = 8.0
 	parent.add_child(fill)
 
-	# Floor indicator: "3" steady + "B" flickering
 	var indicator_x := hw - 0.1
 	_floor_indicator = Label3D.new()
 	_floor_indicator.text = "3"
@@ -1911,7 +1850,7 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 	_indicator_b_label.rotation.y = -PI / 2.0
 	parent.add_child(_indicator_b_label)
 
-	# "NO EXIT" label (hidden, flashes when exit button pressed)
+	# Flashes before door access is restored.
 	_no_exit_label = Label3D.new()
 	_no_exit_label.text = "NO EXIT"
 	_no_exit_label.font_size = 36
@@ -1921,7 +1860,6 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 	_no_exit_label.rotation.y = -PI / 2.0
 	parent.add_child(_no_exit_label)
 
-	# Control panel visual
 	var panel_mesh := MeshInstance3D.new()
 	var pb := BoxMesh.new()
 	pb.size = Vector3(0.15, 1.0, 0.6)
@@ -1935,7 +1873,6 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 	panel_mesh.position = Vector3(indicator_x, 1.0, 0)
 	parent.add_child(panel_mesh)
 
-	# Standby indicator lights near escort units
 	for pos in [ESCORT_1_POS, ESCORT_2_POS]:
 		var standby := OmniLight3D.new()
 		standby.position = pos + Vector3(0, 1.5, 0)
@@ -1944,7 +1881,6 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 		standby.omni_range = 2.5
 		parent.add_child(standby)
 
-	# Ceiling panel strips
 	for i in range(3):
 		var strip := MeshInstance3D.new()
 		var sb := BoxMesh.new()

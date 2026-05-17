@@ -9,8 +9,9 @@ extends Node
 var _passed := 0
 var _failed := 0
 var _test_name := ""
-const DayNightCycleScript = preload("res://scripts/game/day_night_cycle.gd")
-const FloraMemorySystem = preload("res://scripts/game/flora_memory_system.gd")
+const DayNightCycleScript = preload("res://scripts/system/simulation/day_night_cycle.gd")
+const FloraMemorySystem = preload("res://scripts/system/simulation/flora_memory_system.gd")
+const FauxPhysicsSensorScript = preload("res://scripts/game/mechanics/faux_physics_sensor.gd")
 const PUZZLE_FRAGMENT_CATALOG_PATH := "res://data/puzzles/showcase_fragments.json"
 const MOTHER_HACK_DWELL_SECONDS := 0.6
 const MOTHER_PORTAL_DWELL_SECONDS := 0.4
@@ -20,6 +21,10 @@ const MOTHER_PICKUP_DWELL_SECONDS := 0.8
 const MOTHER_INSTALL_DWELL_SECONDS := 0.8
 const MOTHER_TEND_DWELL_SECONDS := 1.0
 const MOTHER_CLOAK_DWELL_SECONDS := 0.4
+const SAVE_MANAGER_SINGLETON := "SaveManager"
+const SAVE_MANAGER_SCRIPT_PATH := "res://scripts/system/persistence/save_manager.gd"
+const ENGRAM_JOURNAL_SINGLETON := "EngramJournal"
+const ENGRAM_JOURNAL_SCRIPT_PATH := "res://scripts/system/persistence/engram_journal.gd"
 const ACT1_SEQUENCE_STEPS := [
 	"channels_enter", "channels_to_memory", "channels_memory",
 	"channels_corpse", "channels_window_one_intro", "channels_window_one_activate",
@@ -521,6 +526,46 @@ func _test_asset_pipeline() -> void:
 		FileAccess.file_exists("res://tools/aster_sim_room_outline_import.gd"),
 		"Aster room outline import hook exists"
 	)
+	_assert_true(
+		FileAccess.file_exists("res://scripts/game/objects/outline_surface_target.gd"),
+		"Reusable outline surface target exists"
+	)
+	_assert_true(
+		FileAccess.file_exists("res://scripts/game/characters/character_interaction_controller.gd"),
+		"Reusable character interaction controller exists"
+	)
+	_assert_true(
+		FileAccess.file_exists("res://scripts/game/objects/outline_feedback_manager.gd"),
+		"Reusable outline feedback manager exists"
+	)
+	_assert_true(
+		FileAccess.file_exists("res://scripts/game/objects/interactable_catalog.gd"),
+		"Reusable interactable catalog exists"
+	)
+	_assert_true(
+		FileAccess.file_exists("res://data/interactables/tutorial_interactables.json"),
+		"Tutorial interactable data catalog exists"
+	)
+	var interactable_specs = JSON.parse_string(FileAccess.get_file_as_string("res://data/interactables/tutorial_interactables.json"))
+	_assert_true(interactable_specs is Dictionary,
+		"Tutorial interactable data catalog parses as a dictionary")
+	if interactable_specs is Dictionary:
+		_assert_equals(str(interactable_specs["tutorial.inspection"].interactable_type), "INSPECTION",
+			"Inspection interactables are declared in data")
+		_assert_true(not bool(interactable_specs["aster.drink_machine"].interaction_enabled),
+			"Aster drink machine starts disabled from data")
+		_assert_equals(str(interactable_specs["peris.logbook_gate"].interactable_type), "HOLD_ACTION",
+			"Peris logbook gate is declared as a hold/action interactable")
+	_assert_true(
+		FileAccess.file_exists("res://resources/object_outline_feedback.gdshader"),
+		"Object-level outline feedback shader exists"
+	)
+	var object_outline_shader_text := FileAccess.get_file_as_string("res://resources/object_outline_feedback.gdshader")
+	_assert_true(
+		object_outline_shader_text.contains("VERTEX += NORMAL * outline_width")
+		and object_outline_shader_text.contains("EMISSION = outline_color.rgb * glow_strength"),
+		"Object-level outline shader expands meshes and emits glow"
+	)
 	var outline_shader_text := FileAccess.get_file_as_string("res://resources/black_outline.gdshader")
 	_assert_true(
 		outline_shader_text.contains("close_outline_width")
@@ -541,12 +586,9 @@ func _test_asset_pipeline() -> void:
 		"Aster outline shader multiplies the minimum nearby texture color by the scene average"
 	)
 	_assert_true(
-		outline_shader_text.contains("hover_outline_enabled")
-		and outline_shader_text.contains("hover_outline_color")
-		and outline_shader_text.contains("selected_outline_enabled")
-		and outline_shader_text.contains("selected_outline_color")
-		and outline_shader_text.contains("selected_outline_world_pos"),
-		"Aster outline shader supports hover and selected interactable highlights"
+		not outline_shader_text.contains("hover_outline_enabled")
+		and not outline_shader_text.contains("selected_outline_enabled"),
+		"Aster full-screen outline shader does not own hover/selected object masks"
 	)
 	_assert_true(
 		outline_shader_text.contains("bright_region_threshold")
@@ -585,11 +627,16 @@ func _test_asset_pipeline() -> void:
 				else:
 					_assert_true(true,
 						"Aster room outline uses shader-default near/far width controls")
-				var hover_enabled: Variant = outline_material.get_shader_parameter("hover_outline_enabled")
-				var selected_enabled: Variant = outline_material.get_shader_parameter("selected_outline_enabled")
-				if hover_enabled != null and selected_enabled != null:
-					_assert_true(not bool(hover_enabled), "Aster room outline hover starts disabled")
-					_assert_true(not bool(selected_enabled), "Aster room outline selection starts disabled")
+				_assert_true(
+					not outline_shader_text.contains("hover_outline_enabled")
+					and not outline_shader_text.contains("selected_outline_enabled"),
+					"Aster room outline preview leaves interactive highlights to object materials"
+				)
+		var surface_targets := _find_nodes_with_script(imported_room, "res://scripts/game/objects/outline_surface_target.gd")
+		_assert_true(surface_targets.size() >= 8,
+			"Aster room import splits material surfaces into outline target wrappers")
+		if not surface_targets.is_empty():
+			_assert_outline_surface_target_contract(surface_targets[0], "Aster room split surface", false, true)
 		imported_room.free()
 	var gltf_text := FileAccess.get_file_as_string(gltf_path)
 	_assert_true(not gltf_text.is_empty(), "Aster room glTF source is readable")
@@ -1387,7 +1434,7 @@ func _test_event_scheduler() -> void:
 	_assert_equals(fired[1], "c", "Event 'c' fired second (tick 1.5)")
 	_assert_equals(fired[2], "b", "Event 'b' fired third (tick 2.0)")
 
-	# schedule_after — use array wrapper for lambda-mutable state
+	# schedule_after with array wrapper for lambda-mutable state.
 	var after_result := [false]
 	sched.schedule_after(0.5, func(): after_result[0] = true, "after_test")
 	sched.advance_ticks(0.5)
@@ -1470,13 +1517,20 @@ func _test_event_scheduler() -> void:
 func _test_engram_and_saves() -> void:
 	_test_name = "Engram + SaveManager"
 
-	SaveManager.clear_slot()
-	EngramJournal.reset_state()
+	var save_manager = _test_singleton(SAVE_MANAGER_SINGLETON, SAVE_MANAGER_SCRIPT_PATH)
+	var engram_journal = _test_singleton(ENGRAM_JOURNAL_SINGLETON, ENGRAM_JOURNAL_SCRIPT_PATH)
+	_assert_true(save_manager != null, "SaveManager singleton is available")
+	_assert_true(engram_journal != null, "EngramJournal singleton is available")
+	if save_manager == null or engram_journal == null:
+		return
+
+	save_manager.call("clear_slot")
+	engram_journal.call("reset_state")
 
 	var image := Image.create(16, 12, false, Image.FORMAT_RGBA8)
 	image.fill(Color(0.2, 0.4, 0.8, 1.0))
 
-	var entry := EngramJournal.create_manual_entry_from_image(image, {
+	var entry: Dictionary = engram_journal.call("create_manual_entry_from_image", image, {
 		"scene_name": "Test Scene",
 		"timestamp_label": "Act 1 / Day 1",
 		"location": "Test Zone",
@@ -1485,34 +1539,34 @@ func _test_engram_and_saves() -> void:
 		"position": Vector3(4.0, 0.5, 7.0),
 	})
 	_assert_true(not entry.is_empty(), "Manual Engram entry created")
-	_assert_equals(EngramJournal.get_entry_count(), 1, "Journal count increments")
+	_assert_equals(int(engram_journal.call("get_entry_count")), 1, "Journal count increments")
 	_assert_true(FileAccess.file_exists(str(entry.get("image_path", ""))), "Stored capture file exists")
 
-	EngramJournal.toggle_bookmark(int(entry.get("id", -1)))
-	var bookmarked := EngramJournal.get_entry(int(entry.get("id", -1)))
+	engram_journal.call("toggle_bookmark", int(entry.get("id", -1)))
+	var bookmarked: Dictionary = engram_journal.call("get_entry", int(entry.get("id", -1)))
 	_assert_true(bool(bookmarked.get("player_bookmark", false)), "Bookmark persists in memory")
 
 	var export_path := "user://saves/autosave/exported_capture.png"
-	_assert_true(EngramJournal.export_capture(int(entry.get("id", -1)), export_path), "Capture export succeeds")
+	_assert_true(bool(engram_journal.call("export_capture", int(entry.get("id", -1)), export_path)), "Capture export succeeds")
 	_assert_true(FileAccess.file_exists(export_path), "Exported capture exists")
 
-	_assert_true(SaveManager.save_current("test"), "SaveManager writes autosave manifest")
-	_assert_true(SaveManager.has_slot(), "Autosave slot exists")
+	_assert_true(bool(save_manager.call("save_current", "test")), "SaveManager writes autosave manifest")
+	_assert_true(bool(save_manager.call("has_slot")), "Autosave slot exists")
 
-	var payload := SaveManager.load_slot_payload()
-	_assert_equals(int(payload.get("version", 0)), SaveManager.SAVE_VERSION, "Save payload version matches")
+	var payload: Dictionary = save_manager.call("load_slot_payload")
+	_assert_equals(int(payload.get("version", 0)), 1, "Save payload version matches")
 	var journal_state: Dictionary = payload.get("journal", {})
 	var saved_entries: Array = journal_state.get("entries", [])
 	_assert_equals(saved_entries.size(), 1, "Journal entries persisted into save payload")
 	_assert_equals(int(journal_state.get("next_id", 0)), 2, "Next capture id persisted")
 
-	EngramJournal.reset_state()
-	_assert_equals(EngramJournal.get_entry_count(), 0, "Reset clears in-memory journal")
-	EngramJournal.apply_save_state(journal_state)
-	_assert_equals(EngramJournal.get_entry_count(), 1, "Journal restores from save state")
+	engram_journal.call("reset_state")
+	_assert_equals(int(engram_journal.call("get_entry_count")), 0, "Reset clears in-memory journal")
+	engram_journal.call("apply_save_state", journal_state)
+	_assert_equals(int(engram_journal.call("get_entry_count")), 1, "Journal restores from save state")
 
-	SaveManager.clear_slot()
-	EngramJournal.reset_state()
+	save_manager.call("clear_slot")
+	engram_journal.call("reset_state")
 
 # --- Test: Tag Day Sequence ---
 func _test_tag_day() -> void:
@@ -1547,7 +1601,7 @@ func _test_tag_day() -> void:
 			_assert_true(instance._game_state != null, "GameState exists")
 			_assert_true(instance._current_step != "", "Current step is set")
 
-			# Exercise corridor walk — all movement goes through GameState
+			# Exercise corridor walk through GameState movement.
 			instance._start_naturalizers_grip()
 			for j in range(3):
 				await get_tree().process_frame
@@ -1583,12 +1637,51 @@ func _test_aster_sim() -> void:
 
 		var aster: Node = instance.find_child("Aster", true, false)
 		_assert_true(aster != null, "Aster player node exists")
+		var interaction_controller := aster.find_child("CharacterInteractionController", true, false) if aster != null else null
+		_assert_true(interaction_controller != null,
+			"Aster uses the reusable character interaction controller")
 
 		var ron: Node = instance.find_child("Ron", true, false)
 		_assert_true(ron != null, "Ron NPC node exists")
 
 		var drink: Node = instance.find_child("DrinkMachine", true, false)
 		_assert_true(drink != null, "Drink machine interactable exists")
+		var terminal: Node = instance.find_child("Terminal", true, false)
+		_assert_true(terminal != null, "Terminal interactable exists")
+		if terminal != null and drink != null:
+			_assert_equals(str(terminal.get("interactable_id")), "aster.terminal",
+				"Aster terminal pulls its behavior from the interactable data catalog")
+			_assert_interactable_type(terminal, Interactable.InteractableType.HOLD_ACTION,
+				"Aster terminal")
+			_assert_equals(str(drink.get("interactable_id")), "aster.drink_machine",
+				"Aster drink machine pulls its behavior from the interactable data catalog")
+			_assert_interactable_type(drink, Interactable.InteractableType.HOLD_ACTION,
+				"Aster drink machine")
+			_assert_true(terminal.has_method("is_interaction_enabled") and not bool(terminal.call("is_interaction_enabled")),
+				"Aster terminal is disabled until the monitor tutorial step")
+			_assert_true(drink.has_method("is_interaction_enabled") and not bool(drink.call("is_interaction_enabled")),
+				"Aster drink machine is disabled until Ron asks Aster to get a drink")
+			var initial_step := str(instance._current_step)
+			drink.call("_trigger")
+			_assert_equals(instance._current_step, initial_step,
+				"Disabled drink machine cannot skip the monitor sequence")
+			instance._start_show_terminal()
+			await get_tree().process_frame
+			_assert_true(bool(terminal.call("is_interaction_enabled")),
+				"Aster terminal enables at the monitor tutorial step")
+			_assert_true(not bool(drink.call("is_interaction_enabled")),
+				"Aster drink machine stays disabled during the monitor tutorial step")
+			terminal.call("_trigger")
+			await get_tree().process_frame
+			_assert_equals(instance._current_step, "terminal_data",
+				"Approaching and holding at Aster's monitor advances the sequence")
+			_assert_true(not bool(drink.call("is_interaction_enabled")),
+				"Aster drink machine remains disabled until the drink tutorial step")
+			instance._start_walk_to_drink()
+			await get_tree().process_frame
+			_assert_true(bool(drink.call("is_interaction_enabled")),
+				"Aster drink machine enables only at the drink tutorial step")
+			drink.call("set_interaction_enabled", false)
 
 		var dialogue: Node = instance.find_child("DialogueBox", true, false)
 		_assert_true(dialogue != null, "DialogueBox node exists")
@@ -1661,24 +1754,55 @@ func _test_aster_sim() -> void:
 		var perception_quad := instance.find_child("PerceptionQuad", true, false) as MeshInstance3D
 		var outline_overlay: MeshInstance3D = imported_outline if imported_outline != null else perception_quad
 		var outline_material: ShaderMaterial = null
-		_assert_true(outline_overlay != null, "Aster sim installs a visible outline overlay")
+		_assert_true(outline_overlay != null, "Aster sim keeps an outline overlay node available")
 		if outline_overlay != null:
-			_assert_true(outline_overlay.visible, "Aster sim outline overlay is visible")
+			_assert_true(not outline_overlay.visible,
+				"Aster sim temporarily disables the full-screen black outline overlay")
 			outline_material = outline_overlay.material_override as ShaderMaterial
-			_assert_true(outline_material != null, "Aster sim outline overlay uses a shader material")
-			if outline_material != null and outline_material.shader != null:
-				_assert_equals(outline_material.shader.resource_path,
-					"res://resources/black_outline.gdshader",
-					"Aster sim outline overlay uses the black outline shader")
-		_assert_equals(instance._perception_mode, "outline", "Aster sim uses black outline perception mode")
+			if outline_overlay == perception_quad and outline_material != null and outline_material.shader != null:
+				_assert_true(outline_material.shader.resource_path != "res://resources/black_outline.gdshader",
+					"Aster sim fallback overlay is not running the black outline shader")
+		_assert_equals(instance._perception_mode, "outline", "Aster sim keeps outline perception mode for object feedback")
+		var feedback_manager := instance.find_child("OutlineFeedbackManager", true, false)
+		_assert_true(feedback_manager != null, "Aster sim centralizes outline feedback state")
+		var room_surface_targets := _find_nodes_with_script(instance, "res://scripts/game/objects/outline_surface_target.gd")
+		_assert_true(room_surface_targets.size() >= 8,
+			"Aster sim high-res room keeps generated per-surface wrappers")
+		for target_name in [
+			"RoomTargetDesk",
+			"RoomTargetDrinkMachine",
+			"RoomTargetDataDisplays",
+		]:
+			var room_target := instance.find_child(target_name, true, false)
+			_assert_outline_surface_target_contract(room_target, target_name, true, false)
+			if room_target != null and room_target.has_method("get_highlight_mesh_count"):
+				_assert_true(int(room_target.call("get_highlight_mesh_count")) > 0,
+					"%s is wired to actual graybox meshes" % target_name)
+				_assert_true(int(room_target.call("get_outline_shell_count")) > 0,
+					"%s creates object-local outline shell meshes" % target_name)
+				_assert_true(bool(room_target.get("outline_particles_enabled")),
+					"%s has outline particles enabled for the graybox effect preview" % target_name)
+				_assert_true(int(room_target.get("outline_particles_per_mesh")) >= 180,
+					"%s uses diagnostic outline particle density for the graybox effect preview" % target_name)
+				_assert_true(float(room_target.get("selected_feedback_duration")) >= 2.5,
+					"%s keeps amber selected feedback visible long enough to debug" % target_name)
+				_assert_true(room_target.has_method("is_feedback_managed") and bool(room_target.call("is_feedback_managed")),
+					"%s delegates hover and selection state to the outline feedback manager" % target_name)
+		for surface_target in room_surface_targets:
+			if surface_target.has_meta("source_surface"):
+				_assert_true(not bool(surface_target.get("input_ray_pickable")),
+					"Generated GLTF surface wrappers do not steal hover from semantic room targets")
+		if high_res_room != null:
+			_assert_true(not high_res_room.visible,
+				"High-res room is hidden while testing graybox object outlines")
 		if perception_quad != null:
-			_assert_true(instance._perception_material != null, "Aster sim fallback outline material exists")
-			var shader: Shader = instance._perception_material.shader
-			_assert_true(shader != null, "Aster sim fallback outline shader is loaded")
-			if shader != null:
-				_assert_equals(shader.resource_path,
-					"res://resources/black_outline.gdshader",
-					"Aster sim fallback uses the black outline shader")
+			_assert_true(not perception_quad.visible,
+				"Aster sim fallback outline quad is hidden while object feedback is debugged")
+			if instance._perception_material != null:
+				var shader: Shader = instance._perception_material.shader
+				if shader != null:
+					_assert_true(shader.resource_path != "res://resources/black_outline.gdshader",
+						"Aster sim fallback does not run the black outline shader during object feedback debug")
 		_assert_equals(DialogueData.text("aster_sim.ron.lighting"),
 			"Geez, Aster, it looks like an evil lair in here. You ever think about turning the lights up?",
 			"Ron comments on Aster's dim simulation lighting")
@@ -1687,6 +1811,12 @@ func _test_aster_sim() -> void:
 			"Aster names his preference for dimmer workspace lighting")
 		_assert_true(not DialogueData.has_key("aster_sim.ron.whatever_works"),
 			"Ron does not answer Aster's lighting preference after walking out")
+		_assert_true(DialogueData.text("aster.sim_expand.glass_bead.line").contains("nobody asks me to normalize anything"),
+			"Aster sim glass bead dialogue uses the revised private-pleasure flavor")
+		_assert_true(DialogueData.text("aster.sim_expand.painting_2.line").contains("waterfall thing with the rainbow"),
+			"Aster sim Hunter and Ash dialogue uses the revised art-market flavor")
+		_assert_true(DialogueData.text("aster.sim_expand.bookshelf.line").contains("Barrier fault prediction"),
+			"Aster sim J-store dialogue uses the revised publication-trail flavor")
 
 		dialogue.clear()
 		instance._scheduler.clear()
@@ -1718,7 +1848,39 @@ func _test_aster_sim() -> void:
 			"HallwayGate",
 		]
 		for zone_name in aster_explore_zones:
-			_assert_exploration_interactable_contract(instance, zone_name)
+			var zone := _assert_exploration_interactable_contract(instance, zone_name)
+			if zone == null:
+				continue
+			if zone_name == "HallwayGate":
+				_assert_equals(str(zone.get("interactable_id")), "aster.hallway_gate",
+					"Aster hallway gate pulls its behavior from the interactable data catalog")
+				_assert_interactable_type(zone, Interactable.InteractableType.HOLD_ACTION,
+					"Aster hallway gate")
+			else:
+				_assert_equals(str(zone.get("interactable_id")), "tutorial.inspection",
+					"%s pulls inspection behavior from the interactable data catalog" % zone_name)
+				_assert_interactable_type(zone, Interactable.InteractableType.INSPECTION,
+					"%s" % zone_name)
+		var room_element_targets := _find_nodes_with_meta(instance, "room_element_id")
+		_assert_true(room_element_targets.size() >= 8,
+			"Aster sim exposes semantic graybox object outline targets")
+		for target_name in [
+			"RoomTargetDesk",
+			"RoomTargetDrinkMachine",
+			"RoomTargetGlassBeadGame",
+			"RoomTargetMacabreTealPainting",
+			"RoomTargetHunterAshPainting",
+			"RoomTargetAwardsShelf",
+			"RoomTargetJStoreShelf",
+			"RoomTargetDataDisplays",
+		]:
+			var room_target := instance.find_child(target_name, true, false)
+			_assert_outline_surface_target_contract(room_target, target_name, true, false)
+			if room_target != null and room_target.has_method("get_highlight_mesh_count"):
+				_assert_true(int(room_target.call("get_highlight_mesh_count")) > 0,
+					"%s is wired to actual graybox meshes" % target_name)
+				_assert_true(int(room_target.call("get_outline_shell_count")) > 0,
+					"%s creates object-local outline shell meshes" % target_name)
 
 		if placement != null:
 			var zone_marker_pairs := {
@@ -1738,35 +1900,157 @@ func _test_aster_sim() -> void:
 					_assert_true(zone_node.global_position.distance_to(marker_node.global_position) < 0.01,
 						"%s uses its scene placement marker" % zone_name)
 
+		var room_delegate_pairs := {
+			"RoomTargetDesk": "Terminal",
+			"RoomTargetDataDisplays": "Terminal",
+			"RoomTargetDrinkMachine": "DrinkMachine",
+			"RoomTargetGlassBeadGame": "GlassBeadZone",
+			"RoomTargetMacabreTealPainting": "macabre_tealZone",
+			"RoomTargetHunterAshPainting": "hunter_ashZone",
+			"RoomTargetAwardsShelf": "AwardsCenterZone",
+			"RoomTargetJStoreShelf": "JStoreMainZone",
+		}
+		for target_name in room_delegate_pairs.keys():
+			var room_target := instance.find_child(str(target_name), true, false)
+			var delegate := instance.find_child(str(room_delegate_pairs[target_name]), true, false)
+			if room_target != null and delegate != null:
+				_assert_true(room_target.has_method("get_interaction_delegate"),
+					"%s exposes its semantic interaction delegate" % target_name)
+				_assert_true(room_target.call("get_interaction_delegate") == delegate,
+					"%s proxies clicks to %s" % [target_name, room_delegate_pairs[target_name]])
+
 		var glass_zone := instance.find_child("GlassBeadZone", true, false)
-		if glass_zone != null and outline_material != null:
+		if glass_zone != null:
+			dialogue.clear()
+			dialogue.dialogue_finished.emit()
+			await get_tree().process_frame
+			_drive_interactable_zone(glass_zone, aster as Node3D, 1.0)
+			_assert_equals(str(dialogue.get("_current_text")), "",
+				"Aster inspection zones do not fire from proximity hold timers")
+
+		var aster_camera = instance.find_child("GameCamera", true, false)
+		var jstore_zone := instance.find_child("JStoreMainZone", true, false)
+		if jstore_zone != null and aster_camera != null:
+			dialogue.clear()
+			jstore_zone.call("_trigger")
+			await get_tree().process_frame
+			_assert_equals(str(dialogue.get("_current_text")), DialogueData.text("aster.sim_expand.bookshelf.line"),
+				"Aster exploration interaction opens directly on the object line")
+			_assert_true(str(dialogue.get("_current_text")) != DialogueData.text("aster.sim_expand.bookshelf.look"),
+				"Aster exploration interaction skips visible-action direction text")
+			dialogue.clear()
+			dialogue.dialogue_finished.emit()
+			await get_tree().process_frame
+
+		if glass_zone != null and feedback_manager != null:
+			dialogue.clear()
 			glass_zone.call("_on_mouse_entered")
 			instance._sync_perception_shader()
-			_assert_true(bool(outline_material.get_shader_parameter("hover_outline_enabled")),
-				"Mouse hover enables the white interactable outline")
-			_assert_equals(outline_material.get_shader_parameter("hover_outline_color"), Vector3(1.0, 1.0, 1.0),
-				"Hovered interactables use a white outline")
+			_assert_true(feedback_manager.call("get_hovered_target") == glass_zone,
+				"Outline feedback manager owns interactable hover state")
+			_assert_true(glass_zone.has_signal("interaction_requested"),
+				"Interactable zones expose generic interaction requests")
 			var click := InputEventMouseButton.new()
 			click.button_index = MOUSE_BUTTON_LEFT
 			click.pressed = true
 			glass_zone.call("_on_input_event", null, click, Vector3.ZERO, Vector3.UP, 0)
 			instance._sync_perception_shader()
-			_assert_true(bool(outline_material.get_shader_parameter("selected_outline_enabled")),
-				"Clicking an interactable enables the selected outline")
-			_assert_equals(outline_material.get_shader_parameter("selected_outline_color"), Vector3(1.0, 0.62, 0.12),
-				"Clicked interactables use the configurable amber feedback color")
+			_assert_true(feedback_manager.call("get_selected_target") == glass_zone,
+				"Outline feedback manager owns interactable selected state")
+			_assert_true(instance._game_state.is_moving("aster"),
+				"Clicking an interactable asks the character controller to move Aster")
 			_assert_equals(glass_zone.get("selected_feedback_color"), Color(1.0, 0.62, 0.12, 1.0),
 				"Interactable selection feedback color is editable")
 			_assert_true(glass_zone.find_child("SelectedParticles", true, false) != null,
 				"Clicking an interactable emits selected feedback particles")
+			var glass_particles := glass_zone.find_child("SelectedParticles", true, false) as GPUParticles3D
+			if glass_particles != null:
+				_assert_true(glass_particles.emitting and glass_particles.visible,
+					"Interactable selected feedback is visible while Aster walks to inspect")
+			instance.headless_advance(5.0, 0.05)
+			await get_tree().process_frame
+			_assert_equals(str(dialogue.get("_current_text")), DialogueData.text("aster.sim_expand.glass_bead.line"),
+				"Inspection interactable fires when Aster reaches it in headless movement")
+			_assert_true(feedback_manager.call("get_selected_target") == null,
+				"Inspection interactable clears selected feedback after arrival")
+			if glass_particles != null:
+				_assert_true(not glass_particles.emitting and not glass_particles.visible,
+					"Interactable selected feedback clears already-spawned particles")
+			dialogue.clear()
+			dialogue.dialogue_finished.emit()
 			glass_zone.call("_on_mouse_exited")
 			instance._sync_perception_shader()
-			_assert_true(not bool(outline_material.get_shader_parameter("hover_outline_enabled")),
-				"Mouse exit clears the interactable hover outline")
+			await get_tree().process_frame
+
+		var macabre_target := instance.find_child("RoomTargetMacabreTealPainting", true, false)
+		var awards_target := instance.find_child("RoomTargetAwardsShelf", true, false)
+		if macabre_target != null and awards_target != null and feedback_manager != null:
+			macabre_target.call("_on_mouse_entered")
+			instance._sync_perception_shader()
+			_assert_true(feedback_manager.call("get_hovered_target") == macabre_target,
+				"Outline feedback manager owns graybox room hover state")
+			_assert_true(bool(macabre_target.call("has_active_mesh_outline")),
+				"Hovering a graybox room element applies the object outline shader to its meshes")
+			_assert_true(int(macabre_target.call("get_outline_shell_count")) > 0,
+				"Hovering a graybox room element uses object-local outline shell meshes")
+			_assert_true(macabre_target.has_signal("interaction_requested"),
+				"Room element targets expose generic interaction requests")
+			var macabre_origin: Vector3 = macabre_target.call("get_outline_highlight_origin")
+			var awards_origin: Vector3 = awards_target.call("get_outline_highlight_origin")
+			_assert_true(macabre_origin.distance_to(awards_origin) > 4.0,
+				"Room element hover targets are independently positioned")
+			macabre_target.call("begin_queued_feedback", macabre_origin + Vector3(7.0, 0.0, 0.0))
+			var selected_particles := macabre_target.find_child("SelectedParticles", true, false) as GPUParticles3D
+			_assert_true(selected_particles != null,
+				"Room element selected feedback creates a particle emitter")
+			if selected_particles != null:
+				_assert_true(selected_particles.global_position.distance_to(macabre_origin) < 0.5,
+					"Room element selected particles stay anchored to the object, not the movement target")
+			macabre_target.call("complete_queued_feedback")
+			var surface_click := InputEventMouseButton.new()
+			surface_click.button_index = MOUSE_BUTTON_LEFT
+			surface_click.pressed = true
+			macabre_target.call("_on_input_event", null, surface_click, macabre_origin, Vector3.UP, 0)
+			instance._sync_perception_shader()
+			_assert_true(feedback_manager.call("get_selected_target") == macabre_target,
+				"Outline feedback manager owns graybox room selected state")
+			_assert_true(bool(macabre_target.call("has_active_mesh_outline")),
+				"Clicking a graybox room element keeps the object outline shader active for selected feedback")
+			_assert_true(bool(macabre_target.call("is_selected_feedback_active")),
+				"Clicked room element remains selected while Aster moves toward it")
+			_assert_true(instance._game_state.is_moving("aster"),
+				"Clicking a room element asks the character controller to move Aster toward it")
+			_assert_true(bool(macabre_target.call("has_active_outline_particles")),
+				"Amber selected outline continuously emits particles from the outlined graybox meshes")
+			_assert_true(macabre_target.find_child("SelectedParticles", true, false) != null,
+				"Clicking a room element emits selected feedback particles")
+			macabre_target.call("_on_mouse_exited")
+			instance._sync_perception_shader()
+			_assert_true(bool(macabre_target.call("is_selected_feedback_active")),
+				"Mouse exit does not clear queued gold feedback before arrival")
+			instance.headless_advance(0.15, 0.05)
+			_assert_true(bool(macabre_target.call("is_selected_feedback_active")),
+				"Queued gold feedback persists during movement")
+			instance.headless_advance(4.0, 0.05)
+			await get_tree().process_frame
+			_assert_equals(str(dialogue.get("_current_text")), DialogueData.text("aster.sim_expand.painting_1.line"),
+				"Clicking an outlined room object triggers its paired inspection interactable")
+			_assert_true(not bool(macabre_target.call("is_selected_feedback_active")),
+				"Queued gold feedback clears after Aster reaches the object")
+			_assert_true(feedback_manager.call("get_selected_target") == null,
+				"Outline feedback manager clears selected state after arrival")
+			var cleared_selected_particles := macabre_target.find_child("SelectedParticles", true, false) as GPUParticles3D
+			if cleared_selected_particles != null:
+				_assert_true(not cleared_selected_particles.emitting and not cleared_selected_particles.visible,
+					"Room element selected feedback clears already-spawned particles after arrival")
+			_assert_true(not bool(macabre_target.call("has_active_outline_particles")),
+				"Room element outline particles stop and clear after arrival")
 
 		var hallway_gate := instance.find_child("HallwayGate", true, false) as Node3D
 		if hallway_gate != null:
 			_assert_true(hallway_gate.global_position.x >= 16.0, "Aster Continue gate is at the room edge")
+
+		await _assert_aster_interaction_click_matrix(instance, dialogue)
 
 		instance.queue_free()
 		await get_tree().process_frame
@@ -1823,7 +2107,19 @@ func _test_peris_sim() -> void:
 			"LogbookGate",
 		]
 		for zone_name in peris_explore_zones:
-			_assert_exploration_interactable_contract(instance, zone_name)
+			var zone := _assert_exploration_interactable_contract(instance, zone_name)
+			if zone == null:
+				continue
+			if zone_name == "LogbookGate":
+				_assert_equals(str(zone.get("interactable_id")), "peris.logbook_gate",
+					"Peris logbook gate pulls its behavior from the interactable data catalog")
+				_assert_interactable_type(zone, Interactable.InteractableType.HOLD_ACTION,
+					"Peris logbook gate")
+			else:
+				_assert_equals(str(zone.get("interactable_id")), "tutorial.inspection",
+					"%s pulls inspection behavior from the interactable data catalog" % zone_name)
+				_assert_interactable_type(zone, Interactable.InteractableType.INSPECTION,
+					"%s" % zone_name)
 		_assert_interactable_spacing(instance, peris_explore_zones, 2.8,
 			"Peris exploration interactables are spaced apart")
 
@@ -1831,6 +2127,9 @@ func _test_peris_sim() -> void:
 		var plant_zone := instance.find_child("Plant1Zone", true, false)
 		if plant_zone != null and camera != null:
 			dialogue.clear()
+			_drive_interactable_zone(plant_zone, peris as Node3D, 1.0)
+			_assert_equals(str(dialogue.get("_current_text")), "",
+				"Peris inspection zones do not fire from proximity hold timers")
 			var previous_offset: Vector3 = camera.follow_offset
 			var previous_target: Node3D = camera.target
 			plant_zone.call("_trigger")
@@ -1877,6 +2176,8 @@ func _test_peris_sim() -> void:
 		if logbook_gate != null:
 			_assert_true(logbook_gate.global_position.x <= -3.5, "Peris Continue gate is at the room edge")
 
+		await _assert_peris_interaction_click_matrix(instance, dialogue)
+
 		_assert_true(instance._game_state.characters.has("monos"), "Monos is registered with GameState")
 		if monos != null:
 			monos.fade_out(1.0)
@@ -1918,6 +2219,91 @@ func _assert_scheduler_animation_bridge(instance: Node) -> void:
 		"Completed scheduler animation is removed from active animation set")
 	probe.queue_free()
 
+func _assert_aster_interaction_click_matrix(instance: Node, dialogue: Node) -> void:
+	var aster_start: Vector3 = instance._placement_or_grid("AsterStart", Vector2i(3, 4), 0.5)
+	var terminal_start: Vector3 = instance._placement_or_position("DrinkMachineInteract", Vector3(8.0, aster_start.y, -3.0))
+	terminal_start.y = aster_start.y
+	var terminal_checks := [
+		{"target": "RoomTargetDesk", "delegate": "Terminal", "label": "Desk visible target"},
+		{"target": "RoomTargetDataDisplays", "delegate": "Terminal", "label": "Data displays visible target"},
+	]
+	for check in terminal_checks:
+		await _reset_dialogue_focus(instance, dialogue)
+		instance._scheduler.clear()
+		instance._current_step = "show_terminal"
+		if instance._terminal and instance._terminal.has_method("reset"):
+			instance._terminal.reset()
+		if instance._terminal and instance._terminal.has_method("set_interaction_enabled"):
+			instance._terminal.set_interaction_enabled(true)
+		await _click_target_and_advance(instance, str(check.target), "aster", terminal_start, 5.0, str(check.label))
+		_drive_interactable_zone(instance._terminal, instance._player as Node3D, float(instance._terminal.get("dwell_time")) + 0.2)
+		await get_tree().process_frame
+		_assert_equals(instance._current_step, "terminal_data",
+			"%s click reaches the terminal interactable and advances the tutorial" % check.label)
+		_assert_equals(str(dialogue.get("_current_text")), DialogueData.text("aster_sim.system.cleaned"),
+			"%s click plays terminal dialogue through the semantic interactable" % check.label)
+
+	await _reset_dialogue_focus(instance, dialogue)
+	instance._scheduler.clear()
+	instance._current_step = "walk_to_drink"
+	instance._has_drunk = false
+	if instance._drink_machine and instance._drink_machine.has_method("reset"):
+		instance._drink_machine.reset()
+	if instance._drink_machine and instance._drink_machine.has_method("set_interaction_enabled"):
+		instance._drink_machine.set_interaction_enabled(true)
+	await _click_target_and_advance(instance, "RoomTargetDrinkMachine", "aster", aster_start, 5.0, "Drink machine visible target")
+	_drive_interactable_zone(instance._drink_machine, instance._player as Node3D, float(instance._drink_machine.get("dwell_time")) + 0.2)
+	await get_tree().process_frame
+	_assert_equals(instance._current_step, "drink",
+		"Drink machine visible target click reaches the drink interactable")
+	_assert_true(instance._has_drunk,
+		"Drink machine visible target click updates the drink state")
+	_assert_equals(float(instance._game_state.get_stat("aster", "atp")), float(instance.ATP_MAX),
+		"Drink machine visible target click applies the ATP refill")
+
+	var inspection_checks := [
+		{"target": "RoomTargetGlassBeadGame", "delegate": "GlassBeadZone", "text": "aster.sim_expand.glass_bead.line"},
+		{"target": "RoomTargetMacabreTealPainting", "delegate": "macabre_tealZone", "text": "aster.sim_expand.painting_1.line"},
+		{"target": "RoomTargetHunterAshPainting", "delegate": "hunter_ashZone", "text": "aster.sim_expand.painting_2.line"},
+		{"target": "RoomTargetAwardsShelf", "delegate": "AwardsCenterZone", "text": "aster.sim_expand.awards.line"},
+		{"target": "RoomTargetJStoreShelf", "delegate": "JStoreMainZone", "text": "aster.sim_expand.bookshelf.line"},
+	]
+	for check in inspection_checks:
+		await _reset_dialogue_focus(instance, dialogue)
+		instance._scheduler.clear()
+		instance._current_step = "explore_workspace"
+		var delegate := instance.find_child(str(check.delegate), true, false)
+		if delegate != null and delegate.has_method("reset"):
+			delegate.reset()
+		await _click_target_and_advance(instance, str(check.target), "aster", aster_start, 6.0, str(check.target))
+		_assert_equals(str(dialogue.get("_current_text")), DialogueData.text(str(check.text)),
+			"%s click reaches %s and plays its inspection line" % [str(check.target), str(check.delegate)])
+	await _reset_dialogue_focus(instance, dialogue)
+
+func _assert_peris_interaction_click_matrix(instance: Node, dialogue: Node) -> void:
+	var checks := []
+	for i in range(1, 10):
+		checks.append({
+			"target": "Plant%dZone" % i,
+			"text": "peris.sim_expand.plant_%d.line" % i,
+		})
+	checks.append({"target": "PaintingZone", "text": "peris.sim_expand.painting.line"})
+	checks.append({"target": "WellnessZone", "text": "peris.sim_expand.wellness.line"})
+	checks.append({"target": "StrikeWarningZone", "text": "peris.sim_expand.strike_warning.notification"})
+	checks.append({"target": "NotesZone", "text": "peris.sim_expand.notes.line"})
+
+	for check in checks:
+		await _reset_dialogue_focus(instance, dialogue)
+		instance._scheduler.clear()
+		instance._current_step = "workspace"
+		var target := instance.find_child(str(check.target), true, false)
+		if target != null and target.has_method("reset"):
+			target.reset()
+		await _click_target_and_advance(instance, str(check.target), "peris", instance.PERIS_START, 7.0, str(check.target))
+		_assert_equals(str(dialogue.get("_current_text")), DialogueData.text(str(check.text)),
+			"%s click-to-arrival path plays the expected Peris inspection line" % check.target)
+	await _reset_dialogue_focus(instance, dialogue)
+
 func _assert_interactable_spacing(root: Node, node_names: Array, min_distance: float, label: String) -> void:
 	var min_dist := 999999.0
 	var closest_pair := ""
@@ -1946,7 +2332,7 @@ func _assert_exploration_interactable_contract(root: Node, node_name: String) ->
 		return null
 	var script: Script = node.get_script()
 	var script_path := script.resource_path if script != null else ""
-	_assert_equals(script_path, "res://scripts/game/interactable.gd",
+	_assert_equals(script_path, "res://scripts/game/objects/interactable.gd",
 		"%s uses the shared interactable script" % node_name)
 	_assert_equals(int(node.get("collision_layer")), 4,
 		"%s is on the interactable collision layer" % node_name)
@@ -1958,6 +2344,10 @@ func _assert_exploration_interactable_contract(root: Node, node_name: String) ->
 		"%s emits shared hover outline feedback" % node_name)
 	_assert_true(node.has_signal("outline_selected"),
 		"%s emits shared selected outline feedback" % node_name)
+	_assert_true(node.has_signal("interaction_requested"),
+		"%s emits reusable interaction requests" % node_name)
+	_assert_true(node.has_method("set_feedback_managed") and node.has_method("is_feedback_managed"),
+		"%s can delegate feedback state to a central manager" % node_name)
 	_assert_equals(node.get("hover_outline_color"), Color.WHITE,
 		"%s hover outline defaults to white" % node_name)
 	_assert_equals(node.get("selected_feedback_color"), Color(1.0, 0.62, 0.12, 1.0),
@@ -1977,6 +2367,83 @@ func _assert_exploration_interactable_contract(root: Node, node_name: String) ->
 	if marker != null:
 		_assert_true(marker.visible, "%s interaction zone marker is visible" % node_name)
 	return node
+
+func _assert_interactable_type(node: Node, expected_type: int, label: String) -> void:
+	if node == null:
+		return
+	_assert_equals(int(node.get("interactable_type")), expected_type,
+		"%s has the expected interactable type enum" % label)
+
+func _test_singleton(singleton_name: String, script_path: String) -> Node:
+	var existing := get_node_or_null("/root/%s" % singleton_name)
+	if existing != null:
+		return existing
+	var script := load(script_path)
+	if script == null:
+		return null
+	var node := Node.new()
+	node.name = singleton_name
+	node.set_script(script)
+	get_tree().root.add_child(node)
+	return node
+
+func _assert_outline_surface_target_contract(node: Node, label: String, expect_pickable := true, expect_visual := true) -> void:
+	_assert_true(node != null, "%s exists" % label)
+	if node == null:
+		return
+	var script: Script = node.get_script()
+	var script_path := script.resource_path if script != null else ""
+	_assert_equals(script_path, "res://scripts/game/objects/outline_surface_target.gd",
+		"%s uses the reusable outline target script" % label)
+	_assert_true(node is StaticBody3D, "%s is a pickable static body" % label)
+	if expect_pickable:
+		_assert_equals(int(node.get("collision_layer")), 4, "%s is on the pickable/interactable layer" % label)
+		_assert_true(bool(node.get("input_ray_pickable")), "%s can receive mouse hover and click input" % label)
+	else:
+		_assert_equals(int(node.get("collision_layer")), 0, "%s does not participate in picking by default" % label)
+		_assert_true(not bool(node.get("input_ray_pickable")), "%s is not mouse pickable by default" % label)
+	_assert_true(node.has_signal("outline_hovered"), "%s emits hover outline feedback" % label)
+	_assert_true(node.has_signal("outline_selected"), "%s emits selected outline feedback" % label)
+	_assert_true(node.has_signal("interaction_requested"), "%s emits reusable interaction requests" % label)
+	_assert_true(node.has_method("set_feedback_managed") and node.has_method("is_feedback_managed"),
+		"%s can delegate feedback state to a central manager" % label)
+	_assert_equals(node.get("hover_outline_color"), Color.WHITE, "%s hover outline defaults to white" % label)
+	_assert_equals(node.get("selected_feedback_color"), Color(1.0, 0.62, 0.12, 1.0),
+		"%s selected feedback defaults to editable amber" % label)
+	var visual := node.get_node_or_null("Visual") as MeshInstance3D
+	if expect_visual:
+		_assert_true(visual != null, "%s has a visual mesh child" % label)
+	if visual != null and visual.mesh != null:
+		_assert_equals(visual.mesh.get_surface_count(), 1,
+			"%s visual contains exactly one split surface" % label)
+	var shape_node := node.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	_assert_true(shape_node != null and shape_node.shape != null, "%s has a generated pick collision shape" % label)
+	if node.has_method("get_outline_highlight_radius"):
+		_assert_true(float(node.call("get_outline_highlight_radius")) > 0.0,
+			"%s calculates a shader highlight radius" % label)
+
+func _find_nodes_with_script(root: Node, script_path: String) -> Array:
+	var matches := []
+	_collect_nodes_with_script(root, script_path, matches)
+	return matches
+
+func _find_nodes_with_meta(root: Node, meta_name: String) -> Array:
+	var matches := []
+	_collect_nodes_with_meta(root, meta_name, matches)
+	return matches
+
+func _collect_nodes_with_script(node: Node, script_path: String, matches: Array) -> void:
+	var script: Script = node.get_script()
+	if script != null and script.resource_path == script_path:
+		matches.append(node)
+	for child in node.get_children():
+		_collect_nodes_with_script(child, script_path, matches)
+
+func _collect_nodes_with_meta(node: Node, meta_name: String, matches: Array) -> void:
+	if node.has_meta(meta_name):
+		matches.append(node)
+	for child in node.get_children():
+		_collect_nodes_with_meta(child, meta_name, matches)
 
 func _clear_sequence_runtime_for_spatial_test(instance: Node) -> void:
 	if "_scheduler" in instance and instance._scheduler:
@@ -2000,6 +2467,51 @@ func _drive_interactable_zone(area: Node, body: Node3D, dwell_seconds: float, st
 		elapsed += dt
 	if area.has_method("_on_body_exited"):
 		area.call("_on_body_exited", body)
+
+func _reset_dialogue_focus(instance: Node, dialogue: Node) -> void:
+	if dialogue != null and dialogue.has_method("clear"):
+		dialogue.clear()
+		dialogue.dialogue_finished.emit()
+	if "_scheduler" in instance and instance._scheduler != null and instance._scheduler.is_paused():
+		instance._scheduler.resume()
+	if "_player" in instance and instance._player != null and instance._player.has_method("set_move_enabled"):
+		instance._player.set_move_enabled(true)
+	await get_tree().process_frame
+
+func _click_target_and_advance(
+		instance: Node,
+		target_name: String,
+		char_id: String,
+		start_position: Vector3,
+		advance_seconds: float,
+		label: String
+	) -> void:
+	var target := instance.find_child(target_name, true, false)
+	_assert_true(target != null, "%s click target exists" % label)
+	if target == null:
+		return
+	if target.has_method("complete_queued_feedback"):
+		target.complete_queued_feedback()
+	if target.has_method("_on_mouse_exited"):
+		target.call("_on_mouse_exited")
+	_set_sequence_character_position(instance, char_id, start_position)
+	if "_player" in instance and instance._player != null and instance._player.has_method("set_move_enabled"):
+		instance._player.set_move_enabled(true)
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	var event_position: Vector3 = target.global_position if target is Node3D else start_position
+	if target.has_method("get_outline_highlight_origin"):
+		var origin = target.call("get_outline_highlight_origin")
+		if origin is Vector3:
+			event_position = origin
+	target.call("_on_input_event", null, click, event_position, Vector3.UP, 0)
+	if "_game_state" in instance and instance._game_state != null and instance._game_state.characters.has(char_id):
+		_assert_true(instance._game_state.is_moving(char_id),
+			"%s click starts scheduler-backed movement for %s" % [label, char_id])
+	if instance.has_method("headless_advance"):
+		instance.headless_advance(advance_seconds, 0.05)
+	await get_tree().process_frame
 
 func _assert_elevator_movement_gate(instance: Node, gate: Dictionary) -> void:
 	var label := str(gate.get("label", "movement gate"))
@@ -2542,14 +3054,19 @@ func _test_showcase() -> void:
 func _test_puzzle_fragments(fragment_id := "") -> void:
 	_test_name = "Puzzle Fragments" if fragment_id == "" else "Puzzle Fragment: %s" % fragment_id
 
-	var catalog_script = load("res://scripts/game/puzzle_fragment_catalog.gd")
+	var catalog_script = load("res://scripts/fragments/puzzle_fragment_catalog.gd")
 	_assert_true(catalog_script != null, "Puzzle fragment catalog script loads")
 	if catalog_script == null:
 		return
 
-	var runner_script = load("res://scripts/game/puzzle_fragment_runner.gd")
+	var runner_script = load("res://scripts/fragments/puzzle_fragment_runner.gd")
 	_assert_true(runner_script != null, "Puzzle fragment runner script loads")
 	if runner_script == null:
+		return
+
+	var schema_script = load("res://scripts/fragments/puzzle_fragment_schema.gd")
+	_assert_true(schema_script != null, "Puzzle fragment schema script loads")
+	if schema_script == null:
 		return
 
 	var catalog = catalog_script.new()
@@ -2557,6 +3074,8 @@ func _test_puzzle_fragments(fragment_id := "") -> void:
 	_assert_true(loaded_catalog, "Puzzle fragment catalog JSON loads")
 	if not loaded_catalog:
 		return
+
+	_assert_puzzle_fragment_schema_covers_catalog(catalog, schema_script)
 
 	if fragment_id != "":
 		var fragment: Dictionary = catalog.find_fragment(fragment_id)
@@ -2581,6 +3100,33 @@ func _test_puzzle_fragments(fragment_id := "") -> void:
 			)
 
 	_assert_equals(int(result.get("failed", 0)), 0, "Puzzle fragment suite has no failures")
+
+func _assert_puzzle_fragment_schema_covers_catalog(catalog, schema_script) -> void:
+	var unknown_actions: Dictionary = {}
+	var unknown_ops: Dictionary = {}
+	for fragment in catalog.get_fragments():
+		_collect_unknown_fragment_actions(fragment.get(schema_script.KEY_SETUP, []), schema_script, unknown_actions, unknown_ops)
+		for raw_scenario in fragment.get(schema_script.KEY_SCENARIOS, []):
+			if typeof(raw_scenario) != TYPE_DICTIONARY:
+				continue
+			var scenario: Dictionary = raw_scenario
+			_collect_unknown_fragment_actions(scenario.get(schema_script.KEY_SETUP, []), schema_script, unknown_actions, unknown_ops)
+			_collect_unknown_fragment_actions(scenario.get(schema_script.KEY_SCRIPT, []), schema_script, unknown_actions, unknown_ops)
+	_assert_equals(unknown_actions.keys(), [], "Puzzle fragment schema covers every catalog action type")
+	_assert_equals(unknown_ops.keys(), [], "Puzzle fragment schema covers every catalog assertion operator")
+
+func _collect_unknown_fragment_actions(actions: Array, schema_script, unknown_actions: Dictionary, unknown_ops: Dictionary) -> void:
+	for raw_action in actions:
+		if typeof(raw_action) != TYPE_DICTIONARY:
+			continue
+		var action: Dictionary = raw_action
+		var action_name := str(action.get(schema_script.KEY_ACTION_TYPE, ""))
+		if schema_script.action_type_from_variant(action_name) == schema_script.ActionType.UNKNOWN:
+			unknown_actions[action_name] = true
+		if action_name == schema_script.ACTION_ASSERT_PATH:
+			var op_name := str(action.get(schema_script.KEY_OP, schema_script.OP_EQUAL))
+			if schema_script.compare_op_from_variant(op_name) == schema_script.CompareOp.UNKNOWN:
+				unknown_ops[op_name] = true
 
 func _instantiate_scene_and_wait(scene: PackedScene, settle_frames := 5) -> Node:
 	var instance: Node = scene.instantiate()
@@ -3007,32 +3553,27 @@ func _test_grid_pathfinding() -> void:
 	_assert_equals(grid.width, 10, "Room width is 10")
 	_assert_equals(grid.height, 8, "Room height is 8")
 
-	# Walls on border
 	_assert_equals(grid.get_tile(0, 0), GridWorld.Tile.WALL, "Top-left is wall")
 	_assert_equals(grid.get_tile(5, 4), GridWorld.Tile.FLOOR, "Center is floor")
 	_assert_true(not grid.is_walkable(0, 0), "Wall is not walkable")
 	_assert_true(grid.is_walkable(5, 4), "Floor is walkable")
 
-	# Path from (1,1) to (8,6) in open room — should find a path
+	# Open-room path exists.
 	var path := grid.find_path(Vector2i(1, 1), Vector2i(8, 6))
 	_assert_true(path.size() > 0, "Path found in open room")
 
-	# Path end should be at cell (8,6) world position
 	if path.size() > 0:
 		var end_cell := grid.world_to_grid(path[path.size() - 1])
 		_assert_equals(end_cell, Vector2i(8, 6), "Path ends at target cell")
 
-	# Add a wall across the middle
 	for x in range(1, 9):
 		grid.set_tile(x, 4, GridWorld.Tile.WALL)
-	# Leave a gap at x=5
 	grid.set_tile(5, 4, GridWorld.Tile.FLOOR)
 
-	# Path should route through the gap
+	# Path routes through the gap.
 	var path2 := grid.find_path(Vector2i(1, 1), Vector2i(1, 6))
 	_assert_true(path2.size() > 0, "Path found through wall gap")
 
-	# Verify the path goes through the gap (cell 5,4)
 	var passes_gap := false
 	for wp in path2:
 		var cell := grid.world_to_grid(wp)
@@ -3041,7 +3582,6 @@ func _test_grid_pathfinding() -> void:
 			break
 	_assert_true(passes_gap, "Path routes through gap in wall")
 
-	# Block the gap — no path should exist
 	grid.set_tile(5, 4, GridWorld.Tile.WALL)
 	var path3 := grid.find_path(Vector2i(1, 1), Vector2i(1, 6))
 	_assert_true(path3.is_empty(), "No path when fully walled off")
@@ -3306,7 +3846,7 @@ func _test_event_log_roundtrip() -> void:
 		"Replay reflects unregister_physics_object")
 	_assert_true(not gs_p_replay.pendulums.has("p1"),
 		"Replay reflects unregister_pendulum")
-	# Stamina was consumed by dodge — both runs should match
+	# Stamina consumed by dodge should match across runs.
 	_assert_equals(
 		gs_p_replay.characters["aster"].stats.get("stamina", -1.0),
 		gs_p.characters["aster"].stats.get("stamina", -1.0),
@@ -3333,7 +3873,7 @@ func _test_event_log_roundtrip() -> void:
 	_assert_equals(fired_orig.size(), 1, "Recording: only in-range protect fired")
 	_assert_equals(gs_a.event_log.size(), 4, "4 ability events logged (register + queue + queue + cancel)")
 
-	# Replay with handler registry — protect should fire again
+	# Replay with handler registry should fire protect again.
 	var fired_replay: Array = []
 	var handlers := {
 		&"protect": func(): fired_replay.append("protect"),
@@ -3345,7 +3885,7 @@ func _test_event_log_roundtrip() -> void:
 	_assert_true(not gs_a_replay.has_queued_ability("peris"),
 		"Replay: cancelled ability is not queued")
 
-	# Replay without handlers — nothing fires, but state still consistent (no crash)
+	# Replay without handlers stays consistent without firing.
 	var gs_a_replay_nohandlers := GameState.replay(gs_a.event_log, grid)
 	_assert_true(not gs_a_replay_nohandlers.has_queued_ability("peris"),
 		"Replay without handlers: cancel still applies")
@@ -3353,11 +3893,11 @@ func _test_event_log_roundtrip() -> void:
 # Lint: every public, non-static function in game_state.gd that mutates
 # state must call _emit so the action lands in the event log. Read-only
 # queries and explicitly-allowlisted helpers are exempt. Catches future
-# drift where a new public command is added without log wiring.
+# drift where public commands miss log wiring.
 func _test_event_log_mutation_audit() -> void:
 	_test_name = "EventLog Mutation Audit"
 
-	var path := "res://scripts/game/game_state.gd"
+	var path := "res://scripts/system/core/game_state.gd"
 	var f := FileAccess.open(path, FileAccess.READ)
 	_assert_true(f != null, "game_state.gd opens")
 	if f == null:
@@ -3382,11 +3922,11 @@ func _test_event_log_mutation_audit() -> void:
 		"has_queued_ability", "get_queued_ability",
 		"is_narratively_available", "is_downed", "is_party_downed",
 		"get_party", "get_split_members", "is_split_active",
-		# Snapshot/restore — bypasses log by design (used for tests, not gameplay)
+		# Snapshot/restore bypasses the log for tests.
 		"serialize", "deserialize", "state_hash",
 		# Event-log infrastructure itself
 		"replay", "register_ability_handler", "flush_tick",
-		# Setup — must be set once before any commands run; carried in the
+		# Setup must happen before commands run; carried in the
 		# log's base_seed metadata field, not as an event
 		"set_base_seed",
 		# Mechanism infrastructure: scene-scoped, not per-run state. Not
@@ -3396,7 +3936,7 @@ func _test_event_log_mutation_audit() -> void:
 		"get_all_actuators", "evaluate_mechanisms",
 		# Stat reads
 		"get_stat", "get_stat_cap", "is_running",
-		# Stat / running wrappers — set_stat and set_running emit; these
+		# Stat and running wrappers emit; these
 		# call through them rather than emitting directly.
 		"adjust_stat", "toggle_running", "reset_characters_to_full",
 	])
@@ -3438,7 +3978,7 @@ func _test_rng_determinism() -> void:
 		seq_b.append(reg_b.get_rng(&"ambient").randf_range(0.0, 1.0))
 	_assert_equals(seq_a.hash(), seq_b.hash(), "Same seed → same value sequence")
 
-	# Different seed → different sequence (compare same system, same length)
+	# Different seed means different sequence.
 	var seq_a_techo: Array = []
 	var reg_a2 := RngRegistry.new(42)
 	for _i in range(20):
@@ -3455,7 +3995,7 @@ func _test_rng_determinism() -> void:
 	var loot_d: Array = []
 	for _i in range(10):
 		loot_d.append(reg_d.get_rng(&"loot").randi())
-	# Now do the same but with extra ai.techo calls interleaved
+	# Repeat with extra ai.techo calls interleaved.
 	var reg_e := RngRegistry.new(42)
 	for _i in range(10):
 		reg_e.get_rng(&"ai.techo").randi()  # different system, should not perturb loot
@@ -3481,9 +4021,7 @@ func _test_rng_determinism() -> void:
 	_assert_equals(gs.base_seed, 1234, "Replay propagates base_seed from log")
 	_assert_equals(gs.rng_registry.base_seed, 1234, "Replay's registry uses replayed seed")
 
-# Float-aware deep equality for GameState.serialize() snapshots. Floats are
-# compared with epsilon to absorb deterministic-but-last-bit FP drift across
-# replays of the same sequence.
+# Snapshot equality with epsilon for replay-safe float comparisons.
 func _snapshots_equal(a: Variant, b: Variant) -> bool:
 	if typeof(a) != typeof(b):
 		return false
@@ -3507,13 +4045,9 @@ func _snapshots_equal(a: Variant, b: Variant) -> bool:
 		return absf(a - b) < 0.001
 	return a == b
 
-# Helper: drive a fixed scripted sequence against a GameState. Used by both
-# legs of the save/load integrity test so the recordings differ only in
-# whether the run was continuous or interrupted by a save/load round-trip.
+# Drive the same script for continuous and save/load runs.
 func _eventlog_drive_sequence(gs: GameState, sched: EventScheduler, grid: GridWorld, start: int, end: int) -> void:
-	# 5 commands per "step", each step advances the scheduler 1 tick.
-	# Commands chosen to exercise both immediate state changes and
-	# scheduler-driven follow-ups (movement arrival).
+	# Mix immediate state changes with scheduler-driven arrivals.
 	for step in range(start, end):
 		var cell_x: int = 1 + (step % 6)
 		var cell_z: int = 1 + ((step / 6) % 4)
@@ -3525,18 +4059,14 @@ func _eventlog_drive_sequence(gs: GameState, sched: EventScheduler, grid: GridWo
 			gs.spawn_item("food", grid.grid_to_world(Vector2i(cell_x, cell_z)))
 		sched.advance_ticks(0.4)
 
-# Run a fixed sequence to the midpoint, snapshot via to_bytes; continue to
-# the endpoint, snapshot again. Then: load the midpoint bytes into a fresh
-# GameState, drive the same second half, snapshot again. The two end-state
-# snapshots must be byte-identical — proves save/load is just "freeze the
-# event log and resume from it."
+# Resumed and continuous runs must end in the same state.
 func _test_save_load_integrity() -> void:
 	_test_name = "Save/Load Integrity"
 
 	var grid := GridWorld.new()
 	grid.create_room(10, 8, true)
 
-	# --- Run A: continuous, with mid-save and end-save ---
+	# Run A: continuous, with mid-save and end-save.
 	var sched_a := EventScheduler.new()
 	var gs_a := GameState.new()
 	gs_a.grid = grid
@@ -3556,7 +4086,7 @@ func _test_save_load_integrity() -> void:
 	var snap_a := gs_a.serialize()
 	var end_event_count_a := gs_a.event_log.size()
 
-	# --- Run B: load mid-bytes, replay to the mid state, continue ---
+	# Run B: replay mid-save, then continue.
 	var loaded := EventLog.load_bytes(mid_bytes)
 	_assert_equals(loaded["status"], EventLog.LoadStatus.OK, "Mid-bytes load OK")
 	var mid_log: EventLog = loaded["log"]
@@ -3564,17 +4094,13 @@ func _test_save_load_integrity() -> void:
 	_assert_equals(mid_log.base_seed, 7, "Loaded log preserves base_seed")
 
 	var gs_b := GameState.replay(mid_log, grid)
-	# Replay set _recording = true again; attach the loaded log so further
-	# commands continue appending to it.
+	# Continue appending to the loaded log after replay.
 	gs_b.event_log = mid_log
-	# The replay drained the scheduler to recorded_until; further advances
-	# build on top.
 	_eventlog_drive_sequence(gs_b, gs_b.scheduler, grid, 10, 20)
 	gs_b.flush_tick()
 	var snap_b := gs_b.serialize()
 	var end_event_count_b := gs_b.event_log.size()
 
-	# --- Compare ---
 	_assert_equals(end_event_count_b, end_event_count_a,
 		"Continued log has same event count as continuous run")
 	# Use the same epsilon-aware comparison the CLI replay uses
@@ -3586,10 +4112,7 @@ func _test_save_load_integrity() -> void:
 	var reloaded := EventLog.load_bytes(end_bytes)
 	_assert_equals(reloaded["status"], EventLog.LoadStatus.OK, "End bytes load OK")
 
-# Construct a clean log, then truncate the serialized bytes mid-event.
-# load_bytes must (a) return TRUNCATED status, (b) recover every event that
-# was fully present, (c) drop the partial event. Replay against the partial
-# log must yield the state at the truncation point.
+# Truncated saves recover complete events and drop the partial one.
 func _test_save_corruption_recovery() -> void:
 	_test_name = "Save Corruption Recovery"
 
@@ -3610,8 +4133,7 @@ func _test_save_corruption_recovery() -> void:
 	var full_count := gs.event_log.size()
 	_assert_true(full_count >= 6, "Recorded at least 6 events")
 
-	# Truncate to 80% of the byte stream — guaranteed to chop a per-event
-	# blob in half (header + several events fit, last event chunked off).
+	# Chop inside an event blob.
 	var cut: int = int(clean_bytes.size() * 0.8)
 	var truncated := clean_bytes.slice(0, cut)
 	var loaded := EventLog.load_bytes(truncated)
@@ -3622,7 +4144,7 @@ func _test_save_corruption_recovery() -> void:
 		"Partial log has fewer events than the original (%d < %d)" % [partial.size(), full_count])
 	_assert_true(partial.size() >= 1, "At least one event recovered (got %d)" % partial.size())
 
-	# Replay the partial log — must produce a state matching the recorded-up-to point
+	# Partial replay should match the truncation point.
 	var gs_partial := GameState.replay(partial, grid)
 	_assert_true(gs_partial.characters.has("aster"),
 		"Replay of partial log: aster registered")
@@ -3635,9 +4157,7 @@ func _test_save_corruption_recovery() -> void:
 		"Stream without magic reports BAD_HEADER")
 	_assert_equals((bad["log"] as EventLog).size(), 0, "Bad-header log is empty")
 
-# Issue one party_move command; assert every party member has a movement
-# queued toward the target. Proves the "one click, whole party moves"
-# default — the player never has to address members individually.
+# One party move should fan out to every party member.
 func _test_party_cohesion_default() -> void:
 	_test_name = "Party Cohesion Default"
 
@@ -3662,13 +4182,11 @@ func _test_party_cohesion_default() -> void:
 	_assert_equals(gs.get_party().size(), 3, "Party has 3 members")
 	_assert_true(not gs.is_split_active(), "No split active by default")
 
-	# Fire one party move; every member should start moving
 	gs.party_move_to_cell(Vector2i(8, 5))
 	for member in ["aster", "peris", "endo"]:
 		_assert_true(gs.is_moving(member),
 			"%s has movement queued after party_move_to_cell" % member)
 
-	# Advance scheduler past arrival; every member arrives
 	sched.advance_ticks(100.0)
 	for member in ["aster", "peris", "endo"]:
 		_assert_true(not gs.is_moving(member),
@@ -3680,9 +4198,8 @@ func _test_party_cohesion_default() -> void:
 		_assert_true(gs.is_moving(member),
 			"%s moves on party_move_to_pos" % member)
 
-	# Log only records ONE party_move event per command, not N per-member moves
+	# Log one party command, not per-member moves.
 	var event_count_before := gs.event_log.size() if gs.event_log else 0
-	# Reset
 	sched.advance_ticks(100.0)
 	var log := EventLog.new()
 	gs.event_log = log
@@ -3692,7 +4209,7 @@ func _test_party_cohesion_default() -> void:
 	_assert_equals(String(log.events[0]["kind"]), "party_move_to_cell",
 		"Logged kind is party_move_to_cell")
 
-	# Replay reproduces the same fanout
+	# Replay reproduces the same fanout.
 	sched.advance_ticks(100.0)
 	gs.flush_tick()
 	var full_log := EventLog.new()
@@ -3704,12 +4221,10 @@ func _test_party_cohesion_default() -> void:
 	var replayed := GameState.replay(full_log, grid)
 	replayed.register_character("aster", grid.grid_to_world(Vector2i(1, 1)), 3.0, {
 		"narrative_available": true,
-	})  # noop safeguard — replay already constructed these via dispatch
+	})  # No-op safeguard; replay already constructed this.
 	_assert_equals(replayed.get_party().size(), 3, "Replay reconstructs party")
 
-# Scripted split: a subset goes off alone for a narrative beat. During the
-# split, party_move addresses only the main group; split members move on
-# their own via direct command_move. Ending the split rejoins them.
+# Scripted split limits party_move to the main group.
 func _test_scripted_split() -> void:
 	_test_name = "Scripted Split"
 
@@ -3726,28 +4241,25 @@ func _test_scripted_split() -> void:
 		})
 	gs.set_party(["aster", "peris", "endo"])
 
-	# Start a split — peris goes off alone
 	gs.start_split(["peris"])
 	_assert_true(gs.is_split_active(), "Split is active")
 	_assert_equals(gs.get_split_members(), ["peris"], "Peris is the split member")
 
-	# party_move addresses ONLY the main group (aster + endo)
+	# party_move addresses only the main group.
 	gs.party_move_to_cell(Vector2i(6, 5))
 	_assert_true(gs.is_moving("aster"), "Aster moves on party command")
 	_assert_true(gs.is_moving("endo"), "Endo moves on party command")
 	_assert_true(not gs.is_moving("peris"),
 		"Peris does NOT move on party command — she's split off")
 
-	# A sequence can still move peris directly via her own char_id
 	gs.command_move_to_cell("peris", Vector2i(10, 8))
 	_assert_true(gs.is_moving("peris"), "Peris moves when addressed directly")
 
-	# End the split — main-group status restored
 	gs.end_split()
 	_assert_true(not gs.is_split_active(), "Split ended")
 	_assert_equals(gs.get_split_members().size(), 0, "No split members after end")
 
-	# Now party_move addresses everyone again (advance past prior movement first)
+	# Finish prior movement before party-wide movement.
 	sched.advance_ticks(100.0)
 	gs.party_move_to_cell(Vector2i(4, 4))
 	for member in ["aster", "peris", "endo"]:
@@ -3761,7 +4273,7 @@ func _test_scripted_split() -> void:
 		"Invalid split members are filtered out")
 
 # Portal backtracking: register two zones linked by portals, take a
-# portal from A→B, save A's zone state on exit, return via B→A portal,
+# portal from A to B, save A's zone state on exit, return via B to A,
 # assert the saved state is preserved. Also verifies visit_count, first
 # vs revisit semantics, and that a registered revisit transform fires on
 # the second entry to harden the encounter.
@@ -3834,7 +4346,7 @@ func _test_portal_revisit() -> void:
 		"revisit_level": 0,
 	})
 
-	# --- Take portal A→B ---
+	# Take portal A to B.
 	var ok := zm.take_portal(&"portal_a_b", gs, ["aster"])
 	_assert_true(ok, "Portal A→B taken")
 	_assert_equals(portals_taken[0], "portal_a_b", "portal_taken names the portal")
@@ -3845,7 +4357,7 @@ func _test_portal_revisit() -> void:
 	# Scene saves B's state on exit
 	zm.save_zone_state(&"stacks", {"enemy_roster": ["siderophore_cluster"]})
 
-	# --- Take portal B→A (revisit) ---
+	# Take portal B to A.
 	zm.take_portal(&"portal_b_a", gs, ["aster"])
 	_assert_equals(zm.current_zone, &"channels", "Back in zone A")
 	_assert_equals(zm.get_visit_count(&"channels"), 2, "Revisit: count = 2")
@@ -3877,7 +4389,7 @@ func _test_portal_revisit() -> void:
 
 # Record a scripted session into an event log, replay the log into a
 # fresh GameState, assert the two state hashes match. Baseline round-trip
-# for replay determinism — deeper coverage is in save-load-integrity,
+# for replay determinism; deeper coverage is in save-load-integrity,
 # but this is the cleanest "one recording, one replay" check.
 func _test_replay_roundtrip() -> void:
 	_test_name = "Replay Roundtrip"
@@ -3930,11 +4442,8 @@ func _test_replay_roundtrip() -> void:
 	_assert_equals(from_bytes.state_hash(), original_hash,
 		"Bytes → log → replay still produces identical hash")
 
-# Re-record determinism: replay a log into a new GameState while
-# simultaneously appending every dispatched command into a fresh log.
-# The re-recorded log must match the original event-for-event. Closes the
-# #2 open invariant: "two replays of the same event stream produce
-# identical logs when re-recorded."
+# Re-record determinism: replay while appending into a fresh log.
+# The re-recorded log must match the original event-for-event.
 func _test_determinism_rerecord() -> void:
 	_test_name = "Determinism Re-Record"
 
@@ -3966,7 +4475,7 @@ func _test_determinism_rerecord() -> void:
 	_assert_equals(log_rerec.base_seed, log_original.base_seed,
 		"Re-recorded log preserves base_seed")
 
-	# Event-for-event compare — ticks, kinds, payloads all identical.
+	# Event-for-event compare: ticks, kinds, payloads.
 	var divergences: Array = []
 	for i in range(log_original.size()):
 		var a: Dictionary = log_original.events[i]
@@ -3997,7 +4506,7 @@ func _test_determinism_rerecord() -> void:
 # Scene triggers: each concrete trigger type fires its scene exactly once
 # for a matching dispatch; priority resolution when multiple triggers
 # match simultaneously; one-shot tracking; time-of-day triggers repeat.
-# Also verifies ZoneManager integration — binding a ZoneManager causes
+# Also verifies ZoneManager integration: binding a ZoneManager causes
 # spoke_completed and gate_passed signals to dispatch via SceneManager.
 func _test_scene_triggers() -> void:
 	_test_name = "Scene Triggers"
@@ -4202,7 +4711,7 @@ func _test_scripted_death_only() -> void:
 		var current_func := ""
 		for line in content.split("\n"):
 			var stripped: String = line.strip_edges()
-			# Skip pure comment lines — they can mention the signal for docs
+			# Skip pure comment lines; docs can mention the signal.
 			if stripped.begins_with("#"):
 				continue
 			if stripped.begins_with("func "):
@@ -4240,14 +4749,14 @@ func _test_hub_rest_restore() -> void:
 		"narrative_available": true,
 	})
 
-	# Down — stats go to zero, narrative-available clears
+	# Down clears stats and narrative availability.
 	gs.down_character("aster")
 	_assert_equals(gs.characters["aster"].stats.get("hp", -1.0), 0.0, "HP zeroed on down")
 	_assert_equals(gs.characters["aster"].stats.get("stamina", -1.0), 0.0, "Stamina zeroed on down")
 	_assert_true(not gs.is_narratively_available("aster"),
 		"Narrative-unavailable when downed")
 
-	# Retreat to hub (just position — the hub only cares that restore is triggered)
+	# Retreat position is enough to trigger hub restore.
 	var hub := Hub.new()
 	hub.id = &"hub_channels"
 	hub.zone_id = &"channels"
@@ -4259,7 +4768,7 @@ func _test_hub_rest_restore() -> void:
 	var stats: Dictionary = gs.characters["aster"].stats
 	_assert_equals(stats.get("hp", -1.0), 100.0, "HP restored to max")
 	_assert_equals(stats.get("stamina", -1.0), 80.0, "Stamina restored to max")
-	_assert_equals(stats.get("atp", -1.0), SurvivalStats.ATP_MAX_PIPS, "ATP restored to full")
+	_assert_equals(stats.get("atp", -1.0), GameState.ATP_MAX_PIPS, "ATP restored to full")
 	_assert_true(gs.is_narratively_available("aster"), "Narrative-available after rest")
 
 # Gate requires Endo. Without Endo in the party, try_pass emits blocked
@@ -4293,14 +4802,14 @@ func _test_gate_block() -> void:
 	gate.blocked.connect(func(reason: StringName): blocked_reasons.append(String(reason)))
 	gate.passed.connect(func(): passed_count[0] += 1)
 
-	# Without Endo → blocked
+	# Without Endo: blocked.
 	var ok_without := gate.try_pass(gs, ["aster", "peris"])
 	_assert_equals(ok_without, false, "try_pass returns false without Endo")
 	_assert_equals(passed_count[0], 0, "passed signal did not fire")
 	_assert_equals(blocked_reasons.size(), 1, "blocked signal fired once")
 	_assert_equals(blocked_reasons[0], "missing_endo", "Reason names the missing member")
 
-	# Add Endo but downed → still blocked
+	# Downed Endo stays blocked.
 	gs.register_character("endo", grid.grid_to_world(Vector2i(3, 1)), 3.0, {
 		"hp": 100.0, "max_hp": 100.0, "narrative_available": true,
 	})
@@ -4310,13 +4819,13 @@ func _test_gate_block() -> void:
 	_assert_equals(blocked_reasons[1], "unavailable_endo",
 		"Reason names the unavailable member")
 
-	# Restore Endo → passes
+	# Restored Endo passes.
 	gs.restore_character("endo")
 	var ok_restored := gate.try_pass(gs, ["aster", "peris", "endo"])
 	_assert_equals(ok_restored, true, "Gate passes with available Endo")
 	_assert_equals(passed_count[0], 1, "passed signal fired once")
 
-# Zone A → spoke → gate → Zone B. Zone transitions fire their signals,
+# Zone A to spoke to gate to Zone B. Zone transitions fire their signals,
 # and hub reachability shifts: zone A's hubs are reachable while in zone A,
 # fall out of reach once zone B is entered.
 func _test_zone_progression() -> void:
@@ -4374,7 +4883,7 @@ func _test_zone_progression() -> void:
 	zm.zone_exited.connect(func(id: StringName): zones_exited.append(String(id)))
 	zm.hub_entered.connect(func(id: StringName): hubs_entered.append(String(id)))
 
-	# Enter zone A → both A hubs reachable, B's not
+	# Enter zone A: A hubs reachable, B hub hidden.
 	zm.enter_zone(&"channels")
 	_assert_equals(zones_entered.size(), 1, "zone_entered fires on first zone")
 	_assert_equals(zones_entered[0], "channels", "...for channels")
@@ -4383,7 +4892,7 @@ func _test_zone_progression() -> void:
 	_assert_true(zm.is_hub_reachable(&"hub_channels_b"), "Hub B reachable in zone A")
 	_assert_true(not zm.is_hub_reachable(&"hub_stacks"), "Zone B hub not reachable yet")
 
-	# Enter hub A — rest fires
+	# Enter hub A and rest.
 	zm.enter_hub(&"hub_channels_a", gs, ["aster", "peris"])
 	_assert_equals(hubs_entered.size(), 1, "hub_entered fired")
 
@@ -4396,7 +4905,7 @@ func _test_zone_progression() -> void:
 	_assert_true(ok, "Unrestricted gate passes")
 	_assert_true(zm.is_gate_passed(&"channels_to_stacks"), "Gate recorded as passed")
 
-	# Enter zone B → A's hubs fall out of reach
+	# Enter zone B; A hubs fall out of reach.
 	zm.enter_zone(&"stacks")
 	_assert_equals(zones_exited.size(), 1, "zone_exited fires on transition")
 	_assert_equals(zones_exited[0], "channels", "...naming the old zone")
@@ -4408,7 +4917,7 @@ func _test_zone_progression() -> void:
 		"Old zone's hub B falls out of reach after transition")
 	_assert_true(zm.is_hub_reachable(&"hub_stacks"), "New zone's hub reachable")
 
-# Composition-blind test: a single weight-threshold mechanism must trigger
+# Composition-blind test: a single faux-physics sensor must trigger
 # identically whether the weight comes from one heavy character, two light
 # characters, an item on the floor, or a character + item combined. The
 # mechanism must never inspect what kind of actuator is on it.
@@ -4427,11 +4936,12 @@ func _test_actuator_composition_blind() -> void:
 		var gs := GameState.new()
 		gs.grid = grid
 		gs.scheduler = sched
-		var plate := WeightMechanism.new()
+		var plate := FauxPhysicsSensorScript.new()
 		plate.id = &"plate"
 		plate.position = plate_pos
 		plate.radius = 0.6
-		plate.threshold = 2.0
+		plate.mode = FauxPhysicsSensorScript.SensorMode.TOTAL_WEIGHT
+		plate.required_weight = 2.0
 		gs.register_mechanism(plate)
 		var triggers := [0]
 		plate.triggered.connect(func(): triggers[0] += 1)
@@ -4461,7 +4971,7 @@ func _test_actuator_composition_blind() -> void:
 		gs.spawn_item("fire_fruit", plate_pos, {"weight": 1.0})
 	_assert_equals(run_scenario.call(char_plus_item), 1, "(d) character + item triggers plate")
 
-	# Below-threshold cases must NOT trigger — proves the test is sensitive
+	# Below-threshold cases must not trigger.
 	var one_light := func(gs: GameState) -> void:
 		gs.register_character("aster", plate_pos, 3.0, {"weight": 1.0})
 	_assert_equals(run_scenario.call(one_light), 0, "one light character does not trigger")
@@ -4475,11 +4985,12 @@ func _test_actuator_composition_blind() -> void:
 	var gs2 := GameState.new()
 	gs2.grid = grid
 	gs2.scheduler = sched2
-	var plate2 := WeightMechanism.new()
+	var plate2 := FauxPhysicsSensorScript.new()
 	plate2.id = &"plate"
 	plate2.position = plate_pos
 	plate2.radius = 0.6
-	plate2.threshold = 2.0
+	plate2.mode = FauxPhysicsSensorScript.SensorMode.TOTAL_WEIGHT
+	plate2.required_weight = 2.0
 	gs2.register_mechanism(plate2)
 	var triggered := [0]
 	var untriggered := [0]
@@ -4498,6 +5009,42 @@ func _test_actuator_composition_blind() -> void:
 	gs2.evaluate_mechanisms()
 	gs2.evaluate_mechanisms()
 	_assert_equals(triggered[0], 2, "Re-evaluation with same triggered state does not re-fire")
+
+	var count_sensor := FauxPhysicsSensorScript.new()
+	count_sensor.mode = FauxPhysicsSensorScript.SensorMode.ACTUATOR_COUNT
+	count_sensor.required_count = 2
+	_assert_true(count_sensor.evaluate([
+		Actuator.make(Vector3.ZERO, 0.1, &"small"),
+		Actuator.make(Vector3.ZERO, 0.1, &"small"),
+	]), "Count mode triggers on enough actuators")
+	_assert_true(not count_sensor.evaluate([
+		Actuator.make(Vector3.ZERO, 10.0, &"heavy"),
+	]), "Count mode ignores weight")
+
+	var signature_sensor := FauxPhysicsSensorScript.new()
+	signature_sensor.mode = FauxPhysicsSensorScript.SensorMode.SIGNATURE_PRESENT
+	signature_sensor.required_signature = &"conductive"
+	_assert_true(signature_sensor.evaluate([
+		Actuator.make(Vector3.ZERO, 0.1, &"organic"),
+		Actuator.make(Vector3.ZERO, 0.1, &"conductive"),
+	]), "Signature mode triggers when required material is present")
+	_assert_true(not signature_sensor.evaluate([
+		Actuator.make(Vector3.ZERO, 5.0, &"organic"),
+	]), "Signature mode ignores unrelated heavy actuators")
+
+	var material_scale := FauxPhysicsSensorScript.new()
+	material_scale.mode = FauxPhysicsSensorScript.SensorMode.SIGNATURE_WEIGHT
+	material_scale.required_signature = &"metal"
+	material_scale.required_weight = 2.0
+	_assert_true(material_scale.evaluate([
+		Actuator.make(Vector3.ZERO, 1.0, &"metal"),
+		Actuator.make(Vector3.ZERO, 1.0, &"stone"),
+		Actuator.make(Vector3.ZERO, 1.0, &"metal"),
+	]), "Signature-weight mode sums only matching material")
+	_assert_true(not material_scale.evaluate([
+		Actuator.make(Vector3.ZERO, 1.0, &"metal"),
+		Actuator.make(Vector3.ZERO, 5.0, &"stone"),
+	]), "Signature-weight mode rejects unmatched weight")
 
 # Lint: Mechanism subclasses must never reference char_id, character lists,
 # or call methods that special-case characters vs items. Walks
@@ -4612,15 +5159,15 @@ func _test_rng_no_wallclock() -> void:
 	# either listed here explicitly, or marked with `# @rendering_only`.
 	var explicit_allowlist := PackedStringArray([
 		# RNG plumbing itself wraps the engine API
-		"res://scripts/game/seeded_rng.gd",
+		"res://scripts/system/random/seeded_rng.gd",
 		# Tests exercise determinism / perf / Monte Carlo by design
 		"res://scripts/test_runner_cli.gd",
-		"res://scripts/game/hide_encounter_analysis.gd",
+		"res://scripts/game/mechanics/hide_encounter_analysis.gd",
 		# Save metadata is allowed to record wall-clock timestamps for the
 		# UI; nothing in the game logic reads these values
-		"res://scripts/system/save_manager.gd",
-		"res://scripts/system/engram_journal.gd",
-		"res://scripts/game/event_log.gd",
+		"res://scripts/system/persistence/save_manager.gd",
+		"res://scripts/system/persistence/engram_journal.gd",
+		"res://scripts/system/core/event_log.gd",
 	])
 
 	var dirs_to_walk := PackedStringArray([
@@ -5075,10 +5622,15 @@ func _drive_sequence_contract_with_wall_time(
 	}
 
 func _format_steps(steps: Array) -> String:
-	var packed := PackedStringArray()
+	var parts := []
 	for step in steps:
-		packed.append(str(step))
-	return " -> ".join(packed)
+		parts.append(str(step))
+	var text := ""
+	for i in range(parts.size()):
+		if i > 0:
+			text += " -> "
+		text += str(parts[i])
+	return text
 
 func _assert_step_subsequence(actual: Array, expected: Array, message: String) -> void:
 	var cursor := 0
@@ -5112,6 +5664,8 @@ func _set_sequence_character_position(instance: Node, char_id: String, pos: Vect
 	elif char_id == "endo" and "_endo" in instance:
 		node = instance._endo
 	elif char_id == "player" and "_player" in instance:
+		node = instance._player
+	elif "_player" in instance and instance._player != null and str(instance._player.get("char_id")) == char_id:
 		node = instance._player
 
 	if node:
@@ -6143,7 +6697,7 @@ func _test_peris_dialogue() -> void:
 	for i in range(3):
 		await get_tree().process_frame
 
-	# Phase 2: attack → strict ordered tutorial → protect → aftermath
+	# Phase 2: attack, ordered tutorial, protect, aftermath.
 	var log := _pop_dialogue_log(instance, {
 		"protect_prompt": func():
 			# Simulate pressing X to queue protect
@@ -6192,6 +6746,25 @@ func _test_peris_dialogue() -> void:
 			has_penalty = true
 	_assert_true(has_penalty, "Efficiency penalty logged")
 
+	var has_sanction := false
+	var has_wellness := false
+	var has_reconnect_denied := false
+	var has_worker_exit := false
+	for entry in log:
+		var lower_text: String = entry.text.to_lower()
+		if "sanction" in lower_text or "suspended pending review" in lower_text:
+			has_sanction = true
+		if "breathing techniques" in lower_text or "gel" in lower_text or "soap" in lower_text:
+			has_wellness = true
+		if "reconnect request denied" in lower_text:
+			has_reconnect_denied = true
+		if "medical attention" in lower_text or "are you okay" in lower_text:
+			has_worker_exit = true
+	_assert_true(has_sanction, "Sanction notice appears after Monos is saved")
+	_assert_true(has_wellness, "Wellness feed replaces the client feed")
+	_assert_true(has_reconnect_denied, "Reconnect denial appears before exit")
+	_assert_true(has_worker_exit, "Simulation bay exit dialogue appears")
+
 	instance._visit_phase = 1
 	instance.queue_free()
 	await get_tree().process_frame
@@ -6211,12 +6784,12 @@ func _test_peris_tutorial_redirect() -> void:
 	# Phase 2: test out-of-order inputs trigger corrections
 	var log := _pop_dialogue_log(instance, {
 		"protect_prompt": func():
-			# Wrong: try Z (run) before X (protect) — should show correction
+			# Wrong: try Z before X, should show correction.
 			instance._toggle_run()
 			# Correct: press X
 			instance._on_protect_pressed(),
 		"run_prompt": func():
-			# Wrong: try Space (unpause) before Z — should show correction
+			# Wrong: try Space before Z, should show correction.
 			instance._toggle_pause()
 			# Correct: press Z
 			instance._toggle_run(),
@@ -6262,7 +6835,7 @@ func _test_elevator_dialogue() -> void:
 
 	var log := _pop_dialogue_log(instance, {
 		"consciousness_fragments": func():
-			# Skip tween-based fragments — jump straight to waking
+			# Skip tween fragments and jump to waking.
 			if instance._aster_node:
 				instance._aster_node.visible = true
 			for unit in [instance._escort_1, instance._escort_2]:
@@ -6303,8 +6876,7 @@ func _test_elevator_dialogue() -> void:
 					if instance._game_state.characters.has(enemy.char_id):
 						instance._game_state.characters[enemy.char_id].stats["detection_range"] = 0.0,
 		"route_choice": func():
-			# Route choice now happens before the collapse; move to convergence
-			# so the fall beat can trigger after the enemy/hazard section.
+			# Move to convergence so the fall beat can trigger later.
 			_set_sequence_character_position(
 				instance,
 				"aster",
@@ -6447,7 +7019,7 @@ func _test_junction_flow() -> void:
 	# Verify drink mesh exists on container
 	_assert_true(instance._drink_mesh != null, "Drink mesh exists in junction")
 
-	# Trigger junction arrive — should set dusk and enable movement
+	# Junction arrival sets dusk and enables movement.
 	instance._start_junction_arrive()
 	for i in range(3):
 		await get_tree().process_frame
@@ -6546,7 +7118,7 @@ func _test_enemy() -> void:
 	_assert_true(enemy.is_alive(), "Enemy starts alive")
 	_assert_true(enemy._hp == 100.0, "HP starts at max (got: %.1f)" % enemy._hp)
 
-	# Test: activate — target is at distance 10, range is 6, no detection
+	# Activation outside range should not detect.
 	enemy.activate()
 	for i in range(5):
 		scheduler.advance(0.5)
@@ -6556,7 +7128,7 @@ func _test_enemy() -> void:
 	# Move target within range via command (triggers predictive detection)
 	gs.command_move_to_pos("aster", Vector3(1, 0, 0))
 
-	# Advance scheduler — predictive detection event should fire
+	# Predictive detection should fire.
 	for i in range(10):
 		scheduler.advance(0.5)
 		await get_tree().process_frame
@@ -6724,7 +7296,7 @@ func _test_chain_enemy() -> void:
 			break
 	_assert_true(segments_moved, "Segments moved after lead point moved")
 
-	# Test: spacing constraint — no segment further than max_stretch from previous
+	# Spacing constraint keeps segments within max_stretch.
 	var spacing_ok := true
 	for i in range(1, chain._segment_positions.size()):
 		var dist: float = chain._segment_positions[i].distance_to(chain._segment_positions[i - 1])
@@ -6732,7 +7304,7 @@ func _test_chain_enemy() -> void:
 			spacing_ok = false
 	_assert_true(spacing_ok, "All segments within max_stretch of previous")
 
-	# Test: contact damage — place a target near a middle segment
+	# Contact damage with a target near a middle segment.
 	var target := Node3D.new()
 	target.name = "target_c"
 	target.set("char_id", "target_c")
@@ -6774,7 +7346,7 @@ func _test_chain_enemy() -> void:
 			all_red = false
 	_assert_true(all_red, "All segments turn red on color change")
 
-	# Test: anchor constraint — head can't exceed max_reach from anchor
+	# Anchor constraint keeps head within max_reach.
 	chain._state = "idle"
 	chain._hp = chain.max_hp
 	chain._anchored = true
@@ -6813,13 +7385,13 @@ func _test_chain_enemy() -> void:
 	var detached_dist: float = chain.global_position.distance_to(anchor)
 	_assert_true(detached_dist > max_reach, "Detached head moves beyond max_reach (dist: %.2f)" % detached_dist)
 
-	# Test: re-anchor to new position
+	# Re-anchor to another position.
 	var new_anchor := Vector3(50, 0, 0)
 	chain.anchor_to(new_anchor)
 	_assert_true(chain._anchored, "Re-anchored after anchor_to()")
 	_assert_true(chain._anchor_pos.distance_to(new_anchor) < 0.01, "New anchor position set")
 
-	# Test: HP/death inherited from Enemy (must be last — kills the chain)
+	# HP/death inherited from Enemy; run last because it kills the chain.
 	chain._state = "idle"
 	chain._hp = chain.max_hp
 	chain.take_damage(chain.max_hp)
@@ -6966,11 +7538,15 @@ func _test_act1() -> void:
 	_assert_equals(float(instance._game_state.characters["aster"].stats.get("atp", 0.0)), 8.0, "Shelter recuperation restores Aster ATP")
 	_assert_equals(float(instance._game_state.characters["peris"].stats.get("atp", 0.0)), 8.0, "Shelter recuperation restores Peris ATP")
 
-	EngramJournal.reset_state(false)
+	var engram_journal = _test_singleton(ENGRAM_JOURNAL_SINGLETON, ENGRAM_JOURNAL_SCRIPT_PATH)
+	_assert_true(engram_journal != null, "EngramJournal singleton is available for Stacks")
+	if engram_journal != null:
+		engram_journal.call("reset_state", false)
 	instance.prepare_stacks_fragment("engram")
 	instance.trigger_stacks_support_log()
 	await get_tree().process_frame
-	_assert_equals(EngramJournal.get_entry_count(), 1, "Stacks intro creates one Engram support log")
+	if engram_journal != null:
+		_assert_equals(int(engram_journal.call("get_entry_count")), 1, "Stacks intro creates one Engram support log")
 	_assert_true(instance._engram_overlay.visible, "Stacks intro opens the Engram overlay")
 	_assert_equals(instance.headless_get_state()["stacks"]["engram"]["story_key"], "stacks_support_team_log", "Stacks intro records the support log story key")
 	instance.close_stacks_engram_overlay()
@@ -7017,8 +7593,8 @@ func _test_act1() -> void:
 func _test_predictive_detection() -> void:
 	_test_name = "Predictive Detection"
 
-	# Test 1: User's example — two units 10 apart, closing at 2 units/sec total
-	# Each moves at 1 unit/sec toward the other. Ranges 4 and 2 → events at t=3, t=4
+	# User example: two units 10 apart, closing at 2 units/sec total.
+	# Ranges 4 and 2 produce events at t=3 and t=4.
 	var sched := EventScheduler.new()
 	var gs := GameState.new()
 	gs.scheduler = sched
@@ -7034,21 +7610,21 @@ func _test_predictive_detection() -> void:
 	gs.command_move_to_pos("unit_a", Vector3(10, 0, 0))
 	gs.command_move_to_pos("unit_b", Vector3(0, 0, 0))
 
-	# Advance to t=3 — unit_a (range 4) should detect
+	# At t=3, unit_a should detect.
 	sched.advance_ticks(3.0)
 	_assert_true(detections.size() >= 1, "Head-on: first detection by t=3 (got: %d)" % detections.size())
 	if detections.size() >= 1:
 		_assert_true(detections[0].detector == "unit_a", "Head-on: unit_a detects first (got: %s)" % detections[0].detector)
 		_assert_true(absf(detections[0].tick - 3.0) < 0.1, "Head-on: first at t=3 (got: %.2f)" % detections[0].tick)
 
-	# Advance to t=4 — unit_b (range 2) should detect
+	# At t=4, unit_b should detect.
 	sched.advance_ticks(1.0)
 	_assert_true(detections.size() >= 2, "Head-on: second detection by t=4 (got: %d)" % detections.size())
 	if detections.size() >= 2:
 		_assert_true(detections[1].detector == "unit_b", "Head-on: unit_b detects second (got: %s)" % detections[1].detector)
 		_assert_true(absf(detections[1].tick - 4.0) < 0.1, "Head-on: second at t=4 (got: %.2f)" % detections[1].tick)
 
-	# Test 2: One moving, one stationary — range 3, distance 8, speed 2 → t=2.5
+	# One moving, one stationary: range 3, distance 8, speed 2, t=2.5.
 	var gs2 := GameState.new()
 	var sched2 := EventScheduler.new()
 	gs2.scheduler = sched2
@@ -7066,7 +7642,7 @@ func _test_predictive_detection() -> void:
 	if det2.size() >= 1:
 		_assert_true(absf(det2[0].tick - 2.5) < 0.1, "One-moving: at t=2.5 (got: %.2f)" % det2[0].tick)
 
-	# Test 3: Movement cancelled — predictions invalidated
+	# Movement cancellation invalidates predictions.
 	var gs3 := GameState.new()
 	var sched3 := EventScheduler.new()
 	gs3.scheduler = sched3
@@ -7083,7 +7659,7 @@ func _test_predictive_detection() -> void:
 	sched3.advance_ticks(5.0)
 	_assert_true(det3.size() == 0, "Cancelled: no detection (got: %d)" % det3.size())
 
-	# Test 4: Already in range — immediate detection
+	# Already in range triggers immediate detection.
 	var gs4 := GameState.new()
 	var sched4 := EventScheduler.new()
 	gs4.scheduler = sched4
@@ -7099,7 +7675,7 @@ func _test_predictive_detection() -> void:
 	sched4.advance_ticks(0.01)
 	_assert_true(det4.size() >= 1, "Already in range: immediate detection (got: %d)" % det4.size())
 
-	# Test 5: Parallel paths — never converge
+	# Parallel paths never converge.
 	var gs5 := GameState.new()
 	var sched5 := EventScheduler.new()
 	gs5.scheduler = sched5
@@ -7221,9 +7797,9 @@ func _test_detection_equivalence() -> void:
 
 	sched_m.advance_ticks(10.0)
 
-	# d1 (range 4) approaching t1: start dist 8, closing at 4 units/sec → t=1.0
-	# d2 (range 3) approaching t2: dist ~5.4, closing at ~2.5 → t≈1.0
-	# d3 (range 5, stationary) — t1 starts at dist ~5.4 and moves away
+	# d1: range 4, start dist 8, closing at 4 units/sec, t=1.0.
+	# d2: range 3, dist ~5.4, closing at ~2.5, t≈1.0.
+	# d3: stationary range 5; t1 starts near range and moves away.
 	_assert_true(multi_det.size() >= 2, "Multi-entity: at least 2 detections (got: %d)" % multi_det.size())
 	if multi_det.size() >= 1:
 		_assert_true(multi_det[0].tick < 2.0, "Multi-entity: first detection before t=2 (got: %.2f)" % multi_det[0].tick)
@@ -7353,7 +7929,7 @@ func _test_detection_equivalence() -> void:
 	_assert_true(bf_b.size() == pred_b.size(),
 		"Circle-10: same detection count (bf=%d pred=%d)" % [bf_b.size(), pred_b.size()])
 
-	# Test C: 10 units, mixed — some stationary, some crossing, some parallel
+	# Mixed 10-unit case: stationary, crossing, and parallel paths.
 	var setup_c: Array[Dictionary] = []
 	setup_c.append({"id": "c0", "pos": Vector3(0, 0, 0), "vel": Vector3(2, 0, 0), "range": 5.0, "path_len": 40.0})
 	setup_c.append({"id": "c1", "pos": Vector3(20, 0, 0), "vel": Vector3(-2, 0, 0), "range": 3.0, "path_len": 40.0})
@@ -7441,11 +8017,11 @@ func _test_ferrolure() -> void:
 
 	_assert_true(instance._ferrolure_active, "Ferrolure is active after activation")
 
-	# Verify enemies no longer target players
+	# Verify enemies ignore players.
 	_assert_true(first_enemy._detection_targets.is_empty(),
 		"Enemies stop targeting players when lure active (targets: %s)" % str(first_enemy._detection_targets))
 
-	# Advance scheduler — enemies should move toward ferrolure position
+	# Enemies should move toward the ferrolure.
 	for i in range(20):
 		instance._scheduler.advance(0.3)
 		await get_tree().process_frame
@@ -7477,7 +8053,7 @@ func _test_ferrolure() -> void:
 func _test_hide_encounter() -> void:
 	_test_name = "Hide Encounter"
 
-	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	var sim_script = load("res://scripts/game/mechanics/hide_encounter_sim.gd")
 	_assert_true(sim_script != null, "Hide encounter sim script loads")
 	if sim_script == null:
 		return
@@ -7519,7 +8095,7 @@ func _test_hide_encounter() -> void:
 func _test_hide_encounter_analysis() -> void:
 	_test_name = "Hide Encounter Analysis"
 
-	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	var analysis_script = load("res://scripts/game/mechanics/hide_encounter_analysis.gd")
 	_assert_true(analysis_script != null, "Hide encounter analysis script loads")
 	if analysis_script == null:
 		return
@@ -7567,7 +8143,7 @@ func _test_hide_encounter_analysis() -> void:
 func _test_hide_encounter_shared_duration() -> void:
 	_test_name = "Hide Encounter Shared Duration"
 
-	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	var sim_script = load("res://scripts/game/mechanics/hide_encounter_sim.gd")
 	_assert_true(sim_script != null, "Hide encounter sim script loads for shared-duration search")
 	if sim_script == null:
 		return
@@ -7585,7 +8161,7 @@ func _test_hide_encounter_shared_duration() -> void:
 func _test_hide_encounter_lure2_duration() -> void:
 	_test_name = "Hide Encounter Lure2 Duration"
 
-	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	var sim_script = load("res://scripts/game/mechanics/hide_encounter_sim.gd")
 	_assert_true(sim_script != null, "Hide encounter sim script loads for lure2-duration search")
 	if sim_script == null:
 		return
@@ -7621,7 +8197,7 @@ func _test_hide_encounter_lure2_duration() -> void:
 func _test_hide_encounter_exit_gap() -> void:
 	_test_name = "Hide Encounter Exit Gap"
 
-	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	var sim_script = load("res://scripts/game/mechanics/hide_encounter_sim.gd")
 	_assert_true(sim_script != null, "Hide encounter sim script loads for exit-gap search")
 	if sim_script == null:
 		return
@@ -7650,7 +8226,7 @@ func _test_hide_encounter_exit_gap() -> void:
 func _test_hide_encounter_cluster_gap() -> void:
 	_test_name = "Hide Encounter Cluster Gap"
 
-	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	var sim_script = load("res://scripts/game/mechanics/hide_encounter_sim.gd")
 	_assert_true(sim_script != null, "Hide encounter sim script loads for cluster-gap search")
 	if sim_script == null:
 		return
@@ -7680,7 +8256,7 @@ func _test_hide_encounter_cluster_gap() -> void:
 func _test_hide_encounter_run_drain() -> void:
 	_test_name = "Hide Encounter Run Drain"
 
-	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	var sim_script = load("res://scripts/game/mechanics/hide_encounter_sim.gd")
 	_assert_true(sim_script != null, "Hide encounter sim script loads for run-drain search")
 	if sim_script == null:
 		return
@@ -7711,7 +8287,7 @@ func _test_hide_encounter_run_drain() -> void:
 func _test_hide_encounter_stand_regen() -> void:
 	_test_name = "Hide Encounter Stand Regen"
 
-	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	var sim_script = load("res://scripts/game/mechanics/hide_encounter_sim.gd")
 	_assert_true(sim_script != null, "Hide encounter sim script loads for stand-regen search")
 	if sim_script == null:
 		return
@@ -7743,7 +8319,7 @@ func _test_hide_encounter_stand_regen() -> void:
 func _test_hide_encounter_consume_cost() -> void:
 	_test_name = "Hide Encounter Consume Cost"
 
-	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	var sim_script = load("res://scripts/game/mechanics/hide_encounter_sim.gd")
 	_assert_true(sim_script != null, "Hide encounter sim script loads for consume-cost search")
 	if sim_script == null:
 		return
@@ -7780,7 +8356,7 @@ func _test_hide_encounter_consume_cost() -> void:
 func _test_hide_encounter_hold_duration() -> void:
 	_test_name = "Hide Encounter Hold Duration"
 
-	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	var sim_script = load("res://scripts/game/mechanics/hide_encounter_sim.gd")
 	_assert_true(sim_script != null, "Hide encounter sim script loads for hold-duration search")
 	if sim_script == null:
 		return
@@ -7813,7 +8389,7 @@ func _test_hide_encounter_hold_duration() -> void:
 func _test_hide_encounter_walk_regen() -> void:
 	_test_name = "Hide Encounter Walk Regen"
 
-	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	var sim_script = load("res://scripts/game/mechanics/hide_encounter_sim.gd")
 	_assert_true(sim_script != null, "Hide encounter sim script loads for walk-regen search")
 	if sim_script == null:
 		return
@@ -7847,7 +8423,7 @@ func _test_hide_encounter_walk_regen() -> void:
 func _test_hide_encounter_coupled_stand_hold() -> void:
 	_test_name = "Hide Encounter Coupled Stand Hold"
 
-	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	var sim_script = load("res://scripts/game/mechanics/hide_encounter_sim.gd")
 	_assert_true(sim_script != null, "Hide encounter sim script loads for coupled stand-hold search")
 	if sim_script == null:
 		return
@@ -7882,7 +8458,7 @@ func _test_hide_encounter_coupled_stand_hold() -> void:
 func _test_hide_encounter_coupled_stand_walk() -> void:
 	_test_name = "Hide Encounter Coupled Stand Walk"
 
-	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	var sim_script = load("res://scripts/game/mechanics/hide_encounter_sim.gd")
 	_assert_true(sim_script != null, "Hide encounter sim script loads for coupled stand-walk search")
 	if sim_script == null:
 		return
@@ -7917,7 +8493,7 @@ func _test_hide_encounter_coupled_stand_walk() -> void:
 func _test_hide_encounter_split_recovery() -> void:
 	_test_name = "Hide Encounter Split Recovery"
 
-	var sim_script = load("res://scripts/game/hide_encounter_sim.gd")
+	var sim_script = load("res://scripts/game/mechanics/hide_encounter_sim.gd")
 	_assert_true(sim_script != null, "Hide encounter sim script loads for split-recovery search")
 	if sim_script == null:
 		return
@@ -7957,7 +8533,7 @@ func _test_hide_encounter_split_recovery() -> void:
 func _export_hide_encounter_analysis(output_path: String) -> void:
 	_test_name = "Hide Encounter Analysis Export"
 
-	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	var analysis_script = load("res://scripts/game/mechanics/hide_encounter_analysis.gd")
 	_assert_true(analysis_script != null, "Hide encounter analysis script loads for export")
 	if analysis_script == null:
 		return
@@ -7978,7 +8554,7 @@ func _export_hide_encounter_analysis(output_path: String) -> void:
 func _export_hide_encounter_exit_gap_analysis(output_path: String) -> void:
 	_test_name = "Hide Encounter Exit Gap Export"
 
-	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	var analysis_script = load("res://scripts/game/mechanics/hide_encounter_analysis.gd")
 	_assert_true(analysis_script != null, "Hide encounter analysis script loads for exit-gap export")
 	if analysis_script == null:
 		return
@@ -8014,7 +8590,7 @@ func _export_hide_encounter_exit_gap_analysis(output_path: String) -> void:
 func _export_hide_encounter_cluster_gap_analysis(output_path: String) -> void:
 	_test_name = "Hide Encounter Cluster Gap Export"
 
-	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	var analysis_script = load("res://scripts/game/mechanics/hide_encounter_analysis.gd")
 	_assert_true(analysis_script != null, "Hide encounter analysis script loads for cluster-gap export")
 	if analysis_script == null:
 		return
@@ -8051,7 +8627,7 @@ func _export_hide_encounter_cluster_gap_analysis(output_path: String) -> void:
 func _export_hide_encounter_run_drain_analysis(output_path: String) -> void:
 	_test_name = "Hide Encounter Run Drain Export"
 
-	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	var analysis_script = load("res://scripts/game/mechanics/hide_encounter_analysis.gd")
 	_assert_true(analysis_script != null, "Hide encounter analysis script loads for run-drain export")
 	if analysis_script == null:
 		return
@@ -8089,7 +8665,7 @@ func _export_hide_encounter_run_drain_analysis(output_path: String) -> void:
 func _export_hide_encounter_stand_regen_analysis(output_path: String) -> void:
 	_test_name = "Hide Encounter Stand Regen Export"
 
-	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	var analysis_script = load("res://scripts/game/mechanics/hide_encounter_analysis.gd")
 	_assert_true(analysis_script != null, "Hide encounter analysis script loads for stand-regen export")
 	if analysis_script == null:
 		return
@@ -8128,7 +8704,7 @@ func _export_hide_encounter_stand_regen_analysis(output_path: String) -> void:
 func _export_hide_encounter_hold_duration_analysis(output_path: String) -> void:
 	_test_name = "Hide Encounter Hold Duration Export"
 
-	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	var analysis_script = load("res://scripts/game/mechanics/hide_encounter_analysis.gd")
 	_assert_true(analysis_script != null, "Hide encounter analysis script loads for hold-duration export")
 	if analysis_script == null:
 		return
@@ -8168,7 +8744,7 @@ func _export_hide_encounter_hold_duration_analysis(output_path: String) -> void:
 func _export_hide_encounter_custom_analysis(config_path: String, output_path: String) -> void:
 	_test_name = "Hide Encounter Custom Export"
 
-	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	var analysis_script = load("res://scripts/game/mechanics/hide_encounter_analysis.gd")
 	_assert_true(analysis_script != null, "Hide encounter analysis script loads for custom export")
 	if analysis_script == null:
 		return
@@ -8214,7 +8790,7 @@ func _load_hide_encounter_analysis_overrides(config_path: String) -> Dictionary:
 func _export_hide_encounter_walk_regen_analysis(output_path: String) -> void:
 	_test_name = "Hide Encounter Walk Regen Export"
 
-	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	var analysis_script = load("res://scripts/game/mechanics/hide_encounter_analysis.gd")
 	_assert_true(analysis_script != null, "Hide encounter analysis script loads for walk-regen export")
 	if analysis_script == null:
 		return
@@ -8255,7 +8831,7 @@ func _export_hide_encounter_walk_regen_analysis(output_path: String) -> void:
 func _export_hide_encounter_coupled_stand_hold_analysis(output_path: String) -> void:
 	_test_name = "Hide Encounter Coupled Stand Hold Export"
 
-	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	var analysis_script = load("res://scripts/game/mechanics/hide_encounter_analysis.gd")
 	_assert_true(analysis_script != null, "Hide encounter analysis script loads for coupled stand-hold export")
 	if analysis_script == null:
 		return
@@ -8296,7 +8872,7 @@ func _export_hide_encounter_coupled_stand_hold_analysis(output_path: String) -> 
 func _export_hide_encounter_coupled_stand_walk_analysis(output_path: String) -> void:
 	_test_name = "Hide Encounter Coupled Stand Walk Export"
 
-	var analysis_script = load("res://scripts/game/hide_encounter_analysis.gd")
+	var analysis_script = load("res://scripts/game/mechanics/hide_encounter_analysis.gd")
 	_assert_true(analysis_script != null, "Hide encounter analysis script loads for coupled stand-walk export")
 	if analysis_script == null:
 		return
@@ -8428,7 +9004,7 @@ func _test_camera_shake() -> void:
 
 	var cam := Camera3D.new()
 	cam.name = "TestShakeCam"
-	cam.set_script(preload("res://scripts/game/game_camera.gd"))
+	cam.set_script(preload("res://scripts/ui/game_camera.gd"))
 	get_tree().root.add_child(cam)
 	cam.target = target
 	cam.follow_offset = Vector3(0, 10, 7)
@@ -8443,7 +9019,7 @@ func _test_camera_shake() -> void:
 	cam.shake(0.5, 3.0)
 	_assert_true(cam._shake_intensity > 0.0, "Shake intensity set after shake()")
 
-	# Run a few frames — shake should offset position from settled
+	# Shake should offset position from settled.
 	var max_offset := 0.0
 	for i in range(30):
 		cam._process(0.016)
@@ -8519,7 +9095,7 @@ func _test_physics_objects() -> void:
 	var final_pos := gs.get_physics_position("barrel1")
 	_assert_true(final_pos.x > 5.1, "Barrel pushed in +X direction (got: %.2f)" % final_pos.x)
 
-	# Test 3: Mass ratio — heavy object barely moves
+	# Mass ratio: heavy object barely moves.
 	gs.register_physics_object("heavy", Vector3(5, 0, 8), 0.5, 20.0, 0.6)
 	gs.register_character("pusher2", Vector3(3, 0, 8), 3.0)
 	gs.command_move_to_pos("pusher2", Vector3(10, 0, 8))
@@ -8530,7 +9106,7 @@ func _test_physics_objects() -> void:
 	var heavy_pos := gs.get_physics_position("heavy")
 	_assert_true(heavy_pos.x < final_pos.x, "Heavy object moved less than light (heavy: %.2f, light: %.2f)" % [heavy_pos.x, final_pos.x])
 
-	# Test 4: Chain reaction — push A into B
+	# Chain reaction pushes A into B.
 	gs.register_physics_object("chain_a", Vector3(5, 0, 12), 0.5, 1.0, 0.5)
 	gs.register_physics_object("chain_b", Vector3(6.5, 0, 12), 0.5, 1.0, 0.5)
 	gs.register_character("chain_pusher", Vector3(3, 0, 12), 4.0)
@@ -8556,7 +9132,7 @@ func _test_physics_objects() -> void:
 	_assert_true(chain_a_moved, "Chain A displaced (got: %.2f, started: 5.0)" % chain_a_final.x)
 	_assert_true(chain_b_final.x > 7.0, "Chain B pushed by chain reaction (got: %.2f)" % chain_b_final.x)
 
-	# Test 5: Wall stop — object stops at wall
+	# Wall stop.
 	gs.register_physics_object("wall_obj", Vector3(17, 0, 5), 0.5, 1.0, 0.3)
 	gs.register_character("wall_pusher", Vector3(15, 0, 5), 5.0)
 	gs.command_move_to_pos("wall_pusher", Vector3(19, 0, 5))
@@ -8567,7 +9143,7 @@ func _test_physics_objects() -> void:
 	var wall_obj_pos := gs.get_physics_position("wall_obj")
 	_assert_true(wall_obj_pos.x < 19.0, "Object stopped before wall (got: %.2f)" % wall_obj_pos.x)
 
-	# Test 6: Grid blocking — object at rest blocks walkability
+	# Resting object blocks walkability.
 	var barrel_cell := grid.world_to_grid(gs.get_physics_position("barrel1"))
 	_assert_true(not grid.is_walkable(barrel_cell.x, barrel_cell.y), "Barrel blocks grid cell at rest")
 
@@ -8647,7 +9223,7 @@ func _test_physics_edge_cases() -> void:
 	for _di in range(500):
 		if sched.pop_next().is_empty(): break
 	var near_pos := gs.get_physics_position("near_miss")
-	# collision_range = 0.4 + 0.3 = 0.7, offset in Z = 1.0 → miss
+	# collision_range = 0.7, offset in Z = 1.0, miss.
 	_assert_true(absf(near_pos.x - 5.0) < 0.01, "Near miss: Z offset 1.0 > collision range 0.7 (got: %.2f)" % near_pos.x)
 
 	# --- Diagonal push ---
@@ -8831,7 +9407,7 @@ func _test_physics_edge_cases() -> void:
 	var out_pos := gs.get_physics_position("out_range")
 	_assert_true(absf(out_pos.x - 15.0) < 0.01, "Object outside blast radius not moved (got: %.2f)" % out_pos.x)
 
-	# --- Area impulse: falloff — closer objects pushed farther ---
+	# Area impulse falloff: closer objects pushed farther.
 	gs = GameState.new()
 	sched = EventScheduler.new()
 	grid2 = GridWorld.new()
@@ -9019,7 +9595,7 @@ func _test_pendulum() -> void:
 	var miss_log: Array = []
 	gs.pendulum_hit.connect(func(pid, tid, vel): miss_log.append(tid))
 
-	# Walk at z=8, pendulum swings at z=5 — way out of range
+	# Walk at z=8, pendulum swings at z=5, out of range.
 	gs.register_character("far_walker", Vector3(2, 0, 8), 2.0)
 	gs.command_move_to_pos("far_walker", Vector3(8, 0, 8))
 	for _di in range(1000):
@@ -9319,7 +9895,6 @@ func _test_physics_comparison() -> void:
 	jolt_root.name = "JoltTestScene"
 	get_tree().root.add_child(jolt_root)
 
-	# Floor
 	var floor_body := StaticBody3D.new()
 	var floor_shape := CollisionShape3D.new()
 	var floor_box := BoxShape3D.new()
@@ -9629,6 +10204,21 @@ func _test_peris_phase2() -> void:
 			has_efficiency = true
 	_assert_true(has_efficiency or has_complete, "Phase 2: efficiency logged")
 
+	var has_sanction := false
+	var has_wellness := false
+	var has_reconnect_denied := false
+	for entry in log:
+		var lower_text: String = entry.text.to_lower()
+		if "sanction" in lower_text or "suspended pending review" in lower_text:
+			has_sanction = true
+		if "restorative mode" in lower_text or "gel" in lower_text or "soap" in lower_text:
+			has_wellness = true
+		if "reconnect request denied" in lower_text:
+			has_reconnect_denied = true
+	_assert_true(has_sanction, "Phase 2: sanction mode follows efficiency penalty")
+	_assert_true(has_wellness, "Phase 2: wellness feed appears during sanction")
+	_assert_true(has_reconnect_denied, "Phase 2: reconnect denial appears before transition")
+
 	instance._visit_phase = 1
 	instance.queue_free()
 	await get_tree().process_frame
@@ -9808,7 +10398,9 @@ func _test_sequence_contracts() -> void:
 		[
 			"fade_in", "session_begins", "attack", "protect_prompt",
 			"run_prompt", "click_monos", "confirm_protect",
-			"executing", "aftermath", "efficiency_log", "transition_out", "complete",
+			"executing", "aftermath", "efficiency_log", "sanction_notice",
+			"sanction_feed", "spiral_flash", "reconnect_denied", "sim_bay_exit",
+			"transition_out", "complete",
 		],
 		peris_phase_2_actions,
 		peris_phase_2_setup,
@@ -9928,7 +10520,7 @@ func _test_items() -> void:
 	_assert_true(cure_id in gs.collection, "Cure component added to collection")
 	_assert_true(gs.get_internal_items("peris").has(cure_id), "Peris has cure internally")
 
-	# --- Exocytose: internal → hand ---
+	# Exocytose: internal to hand.
 	var exo := gs.exocytose_item("peris", cure_id)
 	_assert_true(exo, "Exocytose succeeds")
 	_assert_true(gs.items[cure_id].location == "hand", "Exocytosed item back in hand")
@@ -10008,7 +10600,7 @@ func _test_items() -> void:
 		aster_tend_before, "Aster tending_speed unchanged")
 
 	# --- Endocytose solfloraphane on Peris: applies tending_speed +0.15 ---
-	# Earlier asserts left Peris's hands in an unknown state — clear them so
+	# Earlier asserts left Peris's hands in an unknown state; clear them so
 	# the upgrade flow has a clean slate.
 	gs.characters["peris"].hands = [null, null]
 	var sol_peris := gs.spawn_item("solfloraphane", Vector3(5, 0, 5))
@@ -10092,7 +10684,7 @@ func _test_queued_abilities() -> void:
 	gs.cancel_queued_ability("peris")
 	_assert_true(not gs.has_queued_ability("peris"), "Ability cancelled")
 
-	# Drain remaining events — cancelled ability should not fire
+	# Drain remaining events; cancelled ability should not fire.
 	for _di in range(500):
 		if sched.pop_next().is_empty(): break
 	_assert_true(fired3.size() == 0, "Cancelled ability never fired")
@@ -10177,7 +10769,7 @@ func _test_dodge_roll() -> void:
 	gs.dodge_roll("peris", Vector3(0, 0, 1))
 	for _di in range(100):
 		if sched.pop_next().is_empty(): break
-	# Immediately try again — should be on cooldown
+	# Immediate retry should be on cooldown.
 	var cd_dodge := gs.dodge_roll("peris", Vector3(0, 0, -1))
 	_assert_true(not cd_dodge, "Dodge on cooldown")
 
@@ -10217,7 +10809,7 @@ func _test_dodge_roll() -> void:
 	gs.dodge_roll("dodger", Vector3(-1, 0, 0))  # Dodge away from enemy
 	_assert_true(gs.is_dodging("dodger"), "Dodger is dodging")
 
-	# Pop — any detection event during dodge should be suppressed
+	# Detection during dodge should be suppressed.
 	for _di in range(100):
 		if sched.pop_next().is_empty(): break
 
@@ -10307,12 +10899,12 @@ func _test_dodge_roll() -> void:
 	var hp_after: float = gs.characters["hero"].stats.get("hp", 100.0)
 	_assert_true(hp_after >= 100.0, "Hero HP unchanged (hp: %.1f)" % hp_after)
 
-	# Now let dodge finish
+	# Let dodge finish.
 	for _di in range(100):
 		if sched.pop_next().is_empty(): break
 	_assert_true(not gs.is_dodging("hero"), "Dodge finished")
 
-	# Enemy charges again — this time hero is NOT dodging
+	# Enemy charges again while hero is vulnerable.
 	var hero_pos := gs.get_position("hero")
 	hero_node.global_position = Vector3(hero_pos.x, 0.5, hero_pos.z)
 	enemy.global_position = Vector3(hero_pos.x + 0.5, 0.5, hero_pos.z)
@@ -10363,7 +10955,7 @@ func _test_dodge_roll() -> void:
 	# Move attacker toward evader
 	gs.command_move_to_pos("attacker", Vector3(10, 0, 10))
 
-	# Pop scheduler — attacker walks toward evader, detection event predicted,
+	# Pop scheduler: attacker walks toward evader, detection predicted,
 	# auto-dodge triggers before detection_predicted is emitted
 	for _di in range(500):
 		if sched.pop_next().is_empty(): break
@@ -10410,7 +11002,7 @@ func _test_dodge_roll() -> void:
 	for _di in range(500):
 		if sched.pop_next().is_empty(): break
 
-	# With only 5 stamina and 15 cost, dodge should fail — detection_predicted fires normally
+	# Low stamina makes dodge fail; detection_predicted fires normally.
 	var low_sta_detected := false
 	for entry in det_log3:
 		if entry == "low_sta":
