@@ -12,7 +12,15 @@ var _test_name := ""
 const DayNightCycleScript = preload("res://scripts/system/simulation/day_night_cycle.gd")
 const FloraMemorySystem = preload("res://scripts/system/simulation/flora_memory_system.gd")
 const FauxPhysicsSensorScript = preload("res://scripts/game/mechanics/faux_physics_sensor.gd")
+const StretchArchetypeCatalogScript = preload("res://scripts/generation/stretch_archetype_catalog.gd")
+const StretchGeneratorScript = preload("res://scripts/generation/stretch_generator.gd")
+const StretchGenerationPlaytestLoopScript = preload("res://scripts/generation/stretch_generation_playtest_loop.gd")
+const PlaythroughAnimationHtmlRendererScript = preload("res://scripts/generation/playthrough_animation_html_renderer.gd")
+const NavigationGraphScript = preload("res://scripts/system/core/navigation_graph.gd")
 const PUZZLE_FRAGMENT_CATALOG_PATH := "res://data/puzzles/showcase_fragments.json"
+const GENERATED_STRETCH_SPEC_PATH := "res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"
+const GENERATED_CHAIN_NESTED_POC_SPEC_PATH := "res://data/generated_stretches/generated_chain_nested_poc_shelter_2_to_3.json"
+const GENERATED_RANDOM_WALK_POC_SPEC_PATH := "res://data/generated_stretches/generated_random_walk_poc_shelter_3_to_4.json"
 const MOTHER_HACK_DWELL_SECONDS := 0.6
 const MOTHER_PORTAL_DWELL_SECONDS := 0.4
 const MOTHER_BUD_DWELL_SECONDS := 0.6
@@ -25,6 +33,37 @@ const SAVE_MANAGER_SINGLETON := "SaveManager"
 const SAVE_MANAGER_SCRIPT_PATH := "res://scripts/system/persistence/save_manager.gd"
 const ENGRAM_JOURNAL_SINGLETON := "EngramJournal"
 const ENGRAM_JOURNAL_SCRIPT_PATH := "res://scripts/system/persistence/engram_journal.gd"
+const FRAGMENT_PREVIEW_GUI_CONTRACT_ID := "fragment_preview_shared_gui_v1"
+const GAME_HUD_CONTRACT_ID := "shared_game_hud_v1"
+const GAME_HUD_SCRIPT_PATH := "res://scripts/ui/game_hud.gd"
+const FRAGMENT_PREVIEW_CONTROL_HELP := "Click move  1-3 focus  Ctrl+1-3 multi-select  C cycle  Z/X abilities  V drop  T transfer  B retrieve  F1-F3 overlays  O drawer  Tab route  Space pause  R reload"
+const FRAGMENT_PREVIEW_INVENTORY_CONTROL_HELP := "Controls: Z/X abilities  V drop  T transfer  B retrieve"
+const FRAGMENT_CHUNK_SCENE_PATHS := [
+	"res://scenes/fragments/chunks/stacks_fragment_chunk.tscn",
+	"res://scenes/fragments/chunks/rings_fragment_chunk.tscn",
+	"res://scenes/fragments/chunks/lockout_fragment_chunk.tscn",
+	"res://scenes/fragments/chunks/overlay_lab_chunk.tscn",
+	"res://scenes/fragments/chunks/mother_ferrolure_chunk.tscn",
+	"res://scenes/fragments/chunks/survival_range_chunk.tscn",
+	"res://scenes/fragments/chunks/channels_rhythm_chunk.tscn",
+	"res://scenes/fragments/chunks/channels_hide_window_chunk.tscn",
+	"res://scenes/fragments/chunks/endo_junction_stretch_chunk.tscn",
+	"res://scenes/fragments/chunks/generated_stretch_chunk.tscn",
+]
+const FRAGMENT_PREVIEW_SCENE_PATHS := [
+	"res://scenes/fragments/stacks_preview.tscn",
+	"res://scenes/fragments/rings_preview.tscn",
+	"res://scenes/fragments/lockout_preview.tscn",
+	"res://scenes/fragments/overlay_lab_preview.tscn",
+	"res://scenes/fragments/mother_ferrolure_preview.tscn",
+	"res://scenes/fragments/survival_range_preview.tscn",
+	"res://scenes/fragments/channels_rhythm_preview.tscn",
+	"res://scenes/fragments/channels_hide_window_preview.tscn",
+	"res://scenes/fragments/endo_junction_stretch_preview.tscn",
+	"res://scenes/fragments/generated_stretch_preview.tscn",
+	"res://scenes/fragments/generated_chain_nested_poc_preview.tscn",
+	"res://scenes/fragments/generated_random_walk_poc_preview.tscn",
+]
 const ACT1_SEQUENCE_STEPS := [
 	"channels_enter", "channels_to_memory", "channels_memory",
 	"channels_corpse", "channels_window_one_intro", "channels_window_one_activate",
@@ -140,6 +179,12 @@ func _ready() -> void:
 			"--test-aster-sim":
 				ran_test = true
 				await _test_aster_sim()
+			"--test-aster-playthrough":
+				ran_test = true
+				await _test_aster_playthrough()
+			"--test-dialogue-pause":
+				ran_test = true
+				await _test_dialogue_pause_chain()
 			"--test-peris-sim":
 				ran_test = true
 				await _test_peris_sim()
@@ -261,12 +306,21 @@ func _ready() -> void:
 			"--test-scene-load":
 				ran_test = true
 				await _test_scene_load()
+			"--test-archetype-generation":
+				ran_test = true
+				await _test_archetype_generation()
+			"--test-generated-stretch-playtest-loop":
+				ran_test = true
+				await _test_generated_stretch_playtest_loop()
 			"--test-asset-pipeline":
 				ran_test = true
 				_test_asset_pipeline()
 			"--test-mother-ferrolure":
 				ran_test = true
 				await _test_mother_ferrolure_preview()
+			"--test-endo-junction-stretch":
+				ran_test = true
+				await _test_endo_junction_stretch_preview()
 			"--test-channels-rhythm":
 				ran_test = true
 				await _test_channels_rhythm_preview()
@@ -312,6 +366,19 @@ func _ready() -> void:
 			if i + 2 < args.size() and not args[i + 2].begins_with("--"):
 				output_path = args[i + 2]
 			await _dump_dialogue(scene_path, output_path)
+		if args[i] == "--dump-tutorial-dialogue" and i + 1 < args.size():
+			ran_test = true
+			var tutorial_scene: String = args[i + 1]
+			var output_path := "tutorial_dialogue_dump.txt"
+			if i + 2 < args.size() and not args[i + 2].begins_with("--"):
+				output_path = args[i + 2]
+			await _dump_tutorial_dialogue(tutorial_scene, output_path)
+		if args[i] == "--report-generated-stretch-events":
+			ran_test = true
+			var generated_events_output := "res://reports/generated_stretch_event_report.json"
+			if i + 1 < args.size() and not args[i + 1].begins_with("--"):
+				generated_events_output = args[i + 1]
+			await _report_generated_stretch_events(generated_events_output)
 		if args[i] == "--export-hide-encounter-analysis":
 			ran_test = true
 			var analysis_output := "hide_encounter_analysis.json"
@@ -388,6 +455,8 @@ func _run_all_tests() -> void:
 	_test_event_log_mutation_audit()
 	_test_rng_determinism()
 	_test_rng_no_wallclock()
+	await _test_archetype_generation()
+	await _test_generated_stretch_playtest_loop()
 	_test_save_load_integrity()
 	_test_save_corruption_recovery()
 	_test_actuator_composition_blind()
@@ -408,6 +477,8 @@ func _run_all_tests() -> void:
 	await _test_scene_load()
 	_test_asset_pipeline()
 	await _test_aster_sim()
+	await _test_aster_playthrough()
+	await _test_dialogue_pause_chain()
 	await _test_peris_sim()
 	await _test_elevator()
 	await _test_leaving_facility()
@@ -435,6 +506,7 @@ func _run_all_tests() -> void:
 	_test_throw_physics()
 	await _test_physics_comparison()
 	await _test_mother_ferrolure_preview()
+	await _test_endo_junction_stretch_preview()
 	await _test_channels_rhythm_preview()
 	await _test_channels_hide_window_preview()
 	await _test_peris_phase2()
@@ -450,6 +522,129 @@ func _run_all_tests() -> void:
 func _test_syntax() -> void:
 	_test_name = "Syntax Check"
 	_assert_true(true, "All GDScript files compiled without errors")
+	_assert_no_dialogue_override_files()
+	_assert_ouroboros_dialogue_draft()
+	_assert_nustle_dialogue_draft()
+	_assert_love_dimensionless_dialogue_draft()
+
+func _assert_no_dialogue_override_files() -> void:
+	var dir := DirAccess.open("res://data/dialogue/en")
+	_assert_true(dir != null, "Dialogue source directory exists")
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var file_name := dir.get_next()
+	while file_name != "":
+		if not dir.current_is_dir() and file_name.contains("_overrides"):
+			_assert_true(false,
+				"Dialogue override files are not allowed; edit act1.xlsx instead: %s" % file_name)
+		file_name = dir.get_next()
+	dir.list_dir_end()
+
+func _assert_ouroboros_dialogue_draft() -> void:
+	var required_keys := [
+		"ouroboros.entry.narration",
+		"ouroboros.aster.overlay_loop",
+		"ouroboros.peris.name",
+		"ouroboros.peris.tail",
+		"ouroboros.aster.loop_model",
+		"ouroboros.peris.secret",
+		"ouroboros.peris.world_can_change",
+		"ouroboros.peris.not_doomed",
+		"ouroboros.close.narration",
+	]
+	for key in required_keys:
+		_assert_true(DialogueData.has_key(key), "Ouroboros draft dialogue key exists: %s" % key)
+	_assert_true(DialogueData.text("ouroboros.aster.loop_model").contains("same loop"),
+		"Ouroboros draft keeps Aster's closed-loop systems read")
+	_assert_true(DialogueData.text("ouroboros.peris.world_can_change").contains("world can change"),
+		"Ouroboros draft keeps the world-can-change secret")
+	_assert_true(DialogueData.text("ouroboros.peris.not_doomed").contains("not doomed"),
+		"Ouroboros draft keeps the not-doomed anchor")
+
+func _assert_nustle_dialogue_draft() -> void:
+	var required_keys := [
+		"nustle.dogs.peris.ask",
+		"nustle.dogs.aster.ask",
+		"nustle.dogs.peris.myth",
+		"nustle.dogs.aster.mythical",
+		"nustle.nuzzle.peris.lead",
+		"nustle.nusselt.aster.mishear",
+		"nustle.nusselt.aster.explain",
+		"nustle.nuzzle.peris.correct",
+		"nustle.word.peris.nustle",
+		"nustle.word.aster.all_three",
+		"nustle.close.peris.feel",
+		"nustle.close.aster.this",
+	]
+	for key in required_keys:
+		_assert_true(DialogueData.has_key(key), "Nustle draft dialogue key exists: %s" % key)
+	var dog_myth := DialogueData.text("nustle.dogs.peris.myth")
+	_assert_true(
+		dog_myth.contains("universal hospitality")
+		and dog_myth.contains("cooperate easily")
+		and not dog_myth.to_lower().contains("love"),
+		"Nustle draft keeps Peris's dog myth in hospitality/bonding language")
+	var nusselt_read := DialogueData.text("nustle.nusselt.aster.explain")
+	_assert_true(
+		nusselt_read.contains("Nusselt number")
+		and nusselt_read.contains("convective")
+		and nusselt_read.contains("conductive")
+		and nusselt_read.contains("Fur would complicate it")
+		and nusselt_read.contains("Wet surface, higher local transfer")
+		and not nusselt_read.contains("thermal map"),
+		"Nustle draft keeps Aster's concise Nusselt expansion without the removed thermal-map line")
+	var old_word := DialogueData.text("nustle.word.peris.nustle")
+	_assert_true(
+		old_word.contains("Nustle")
+		and old_word.contains("settle comfortably, snuggle, or fondly take care of"),
+		"Nustle draft keeps the approved old-word definition")
+	_assert_equals(DialogueData.text("nustle.close.aster.this"),
+		"...Just like this.",
+		"Nustle draft keeps Aster's final answer")
+	_assert_true(not DialogueData.has_key("nustle.word.peris.dog_myth"),
+		"Rejected Nustle dog-myth draft key is absent")
+
+func _assert_love_dimensionless_dialogue_draft() -> void:
+	var required_keys := [
+		"love_dimensionless.entry.narration",
+		"love_dimensionless.aster.wake_test",
+		"love_dimensionless.peris.drink_machine",
+		"love_dimensionless.aster.separations_transport",
+		"love_dimensionless.peris.word_funny",
+		"love_dimensionless.peris.ads",
+		"love_dimensionless.aster.simulo_skins",
+		"love_dimensionless.peris.love_languages",
+		"love_dimensionless.aster.soul_weight",
+		"love_dimensionless.peris.jingle_weight",
+		"love_dimensionless.aster.define_love",
+		"love_dimensionless.aster.more_words",
+		"love_dimensionless.peris.relationships",
+		"love_dimensionless.aster.jingle",
+		"love_dimensionless.peris.can_remember",
+		"love_dimensionless.aster.yeah",
+		"love_dimensionless.peris.dimensionless",
+	]
+	for key in required_keys:
+		_assert_true(DialogueData.has_key(key), "Love is Dimensionless dialogue key exists: %s" % key)
+	var intro := DialogueData.get_line("love_dimensionless.entry.narration")
+	_assert_true(
+		intro.context.contains("Late Act 2 / early Act 3")
+		and intro.context.contains("unspecified mini-boss"),
+		"Love is Dimensionless keeps the source placement note on the first row")
+	var simulo_line := DialogueData.text("love_dimensionless.aster.simulo_skins")
+	_assert_true(
+		simulo_line.contains("Love at first site")
+		and simulo_line.contains("love at a good price"),
+		"Love is Dimensionless keeps the Simulo-skins ad phrasing")
+	var relationships_line := DialogueData.text("love_dimensionless.peris.relationships")
+	_assert_true(
+		relationships_line.contains("relationships")
+		and relationships_line.contains("dimensionless numbers"),
+		"Love is Dimensionless bridges word meaning to dimensionless numbers")
+	_assert_equals(DialogueData.text("love_dimensionless.peris.dimensionless"),
+		"Love is dimensionless.",
+		"Love is Dimensionless lands on the title line")
 
 # --- Test: Scene Load ---
 func _test_scene_load() -> void:
@@ -457,6 +652,16 @@ func _test_scene_load() -> void:
 
 	var level_editor := load("res://scenes/editor/level_editor.tscn")
 	_assert_true(level_editor != null, "level_editor.tscn loads")
+	if level_editor != null:
+		var editor_instance: Node = level_editor.instantiate()
+		_assert_true(editor_instance != null, "level_editor.tscn instantiates")
+		if editor_instance != null:
+			get_tree().root.add_child(editor_instance)
+			for _i in range(3):
+				await get_tree().process_frame
+			_assert_level_editor_plan_browser(editor_instance)
+			editor_instance.queue_free()
+			await get_tree().process_frame
 
 	var aster_sim := load("res://scenes/tutorial/aster_sim.tscn")
 	_assert_true(aster_sim != null, "aster_sim.tscn loads")
@@ -470,29 +675,18 @@ func _test_scene_load() -> void:
 	var tag_day := load("res://scenes/tutorial/tag_day.tscn")
 	_assert_true(tag_day != null, "tag_day.tscn loads")
 
-	for chunk_scene_path in [
-		"res://scenes/fragments/chunks/stacks_fragment_chunk.tscn",
-		"res://scenes/fragments/chunks/rings_fragment_chunk.tscn",
-		"res://scenes/fragments/chunks/lockout_fragment_chunk.tscn",
-		"res://scenes/fragments/chunks/overlay_lab_chunk.tscn",
-		"res://scenes/fragments/chunks/mother_ferrolure_chunk.tscn",
-		"res://scenes/fragments/chunks/survival_range_chunk.tscn",
-		"res://scenes/fragments/chunks/channels_rhythm_chunk.tscn",
-		"res://scenes/fragments/chunks/channels_hide_window_chunk.tscn",
-	]:
+	for chunk_scene_path in FRAGMENT_CHUNK_SCENE_PATHS:
 		var chunk_scene: PackedScene = load(chunk_scene_path)
 		_assert_true(chunk_scene != null, "%s loads" % chunk_scene_path.get_file())
+		if chunk_scene == null:
+			continue
+		var chunk_instance: Node = chunk_scene.instantiate()
+		_assert_true(chunk_instance != null, "%s instantiates without its own GUI" % chunk_scene_path.get_file())
+		if chunk_instance != null:
+			_assert_no_embedded_game_gui(chunk_instance, chunk_scene_path.get_file())
+			chunk_instance.free()
 
-	for preview_scene_path in [
-		"res://scenes/fragments/stacks_preview.tscn",
-		"res://scenes/fragments/rings_preview.tscn",
-		"res://scenes/fragments/lockout_preview.tscn",
-		"res://scenes/fragments/overlay_lab_preview.tscn",
-		"res://scenes/fragments/mother_ferrolure_preview.tscn",
-		"res://scenes/fragments/survival_range_preview.tscn",
-		"res://scenes/fragments/channels_rhythm_preview.tscn",
-		"res://scenes/fragments/channels_hide_window_preview.tscn",
-	]:
+	for preview_scene_path in FRAGMENT_PREVIEW_SCENE_PATHS:
 		var preview_scene: PackedScene = load(preview_scene_path)
 		_assert_true(preview_scene != null, "%s loads" % preview_scene_path.get_file())
 		if preview_scene == null:
@@ -506,6 +700,9 @@ func _test_scene_load() -> void:
 			await get_tree().process_frame
 		var env: Node = preview_instance.find_child("Environment", true, false)
 		_assert_true(env != null, "%s has an Environment node" % preview_scene_path.get_file())
+		_assert_fragment_preview_uses_shared_gui(preview_instance, preview_scene_path.get_file())
+		_assert_preview_overlay_vision_sources(preview_instance, preview_scene_path.get_file())
+		_assert_preview_main_ability_keymap(preview_instance, preview_scene_path.get_file())
 		preview_instance.queue_free()
 		await get_tree().process_frame
 
@@ -515,12 +712,973 @@ func _test_scene_load() -> void:
 
 	await get_tree().process_frame
 
+func _assert_level_editor_plan_browser(editor_instance: Node) -> void:
+	_assert_true(editor_instance.has_method("get_editor_plan_entries"),
+		"Level editor exposes plan entries")
+	_assert_true(editor_instance.has_method("show_plan_scene"),
+		"Level editor can load a plan graybox")
+	_assert_true(editor_instance.has_method("get_editor_plan_state"),
+		"Level editor exposes plan browser state")
+	_assert_true(editor_instance.has_method("get_generation_palette"),
+		"Level editor exposes generation palette")
+	_assert_true(editor_instance.has_method("generate_stretch_plan"),
+		"Level editor can generate stretch plans")
+	_assert_true(editor_instance.has_method("generate_and_playtest_stretch"),
+		"Level editor can generate and playtest stretch plans")
+	_assert_true(editor_instance.has_method("show_generated_stretch"),
+		"Level editor can show generated stretch plans")
+	_assert_true(editor_instance.has_method("get_generation_state"),
+		"Level editor exposes generation state")
+	if not editor_instance.has_method("get_editor_plan_state"):
+		return
+
+	var entries: Array = editor_instance.call("get_editor_plan_entries") if editor_instance.has_method("get_editor_plan_entries") else []
+	_assert_true(entries.size() >= FRAGMENT_CHUNK_SCENE_PATHS.size(),
+		"Level editor exposes every reusable fragment chunk plus saved generated specs as plans")
+	for entry in entries:
+		if not (entry is Dictionary):
+			continue
+		var plan_id := str((entry as Dictionary).get("id", ""))
+		editor_instance.call("show_plan_scene", plan_id)
+		var per_plan_state: Dictionary = editor_instance.call("get_editor_plan_state")
+		_assert_equals(str(per_plan_state.get("active_plan_id", "")), plan_id,
+			"Level editor can load %s as a plan graybox" % plan_id)
+		_assert_true(bool(per_plan_state.get("loaded", false)),
+			"%s plan graybox loads" % plan_id)
+		_assert_true(int(per_plan_state.get("anchor_count", 0)) > 0,
+			"%s plan graybox exposes anchors" % plan_id)
+		_assert_true(bool(per_plan_state.get("collisions_disabled", false)),
+			"%s plan graybox remains read-only" % plan_id)
+		if plan_id == "generated_teaching_channels_shelter_1_to_2":
+			_assert_true(bool(per_plan_state.get("generated", false)),
+				"Generated stretch appears as a generated plan")
+			var plan_graybox: Dictionary = per_plan_state.get("graybox", {})
+			_assert_equals(str(plan_graybox.get("contract_id", "")), "generated_stretch_graybox_v1",
+				"Generated plan exposes the spatial graybox contract")
+			_assert_true(bool(plan_graybox.get("supports_click_to_move", false)),
+				"Generated plan graybox declares click-to-move support")
+			_assert_true(bool(plan_graybox.get("supports_multiple_elevations", false)),
+				"Generated plan graybox includes multiple elevations")
+			_assert_true(int(plan_graybox.get("content_placement_count", 0)) > 0,
+				"Generated plan graybox exposes placed flora/enemy/structure content")
+			var generation: Dictionary = per_plan_state.get("generation", {})
+			_assert_equals(str(generation.get("spec_id", "")), "generated_teaching_channels_shelter_1_to_2",
+				"Generated plan exposes its stretch spec id")
+			var generated_slot: Dictionary = per_plan_state.get("world_slot", {})
+			_assert_equals(str(generated_slot.get("entry_shelter_id", "")), "shelter_1",
+				"Generated plan exposes entry shelter metadata")
+			_assert_equals(str(generated_slot.get("exit_shelter_id", "")), "shelter_2",
+				"Generated plan exposes exit shelter metadata")
+		if plan_id == "generated_chain_nested_poc_shelter_2_to_3":
+			_assert_true(bool(per_plan_state.get("generated", false)),
+				"Chain/nested generated proof appears as a generated plan")
+			var generation: Dictionary = per_plan_state.get("generation", {})
+			_assert_equals(str(generation.get("spec_id", "")), "generated_chain_nested_poc_shelter_2_to_3",
+				"Chain/nested generated plan exposes its stretch spec id")
+			var composition: Dictionary = generation.get("composition", {})
+			_assert_equals(str(composition.get("mode", "")), "chain_nested_poc",
+				"Chain/nested generated plan exposes composition mode")
+			_assert_true(int(composition.get("nested_count", 0)) >= 2,
+				"Chain/nested generated plan exposes nested archetypes")
+		if plan_id == "generated_random_walk_poc_shelter_3_to_4":
+			_assert_true(bool(per_plan_state.get("generated", false)),
+				"Random-walk generated proof appears as a generated plan")
+			var generation: Dictionary = per_plan_state.get("generation", {})
+			_assert_equals(str(generation.get("spec_id", "")), "generated_random_walk_poc_shelter_3_to_4",
+				"Random-walk generated plan exposes its stretch spec id")
+			var walk_composition: Dictionary = generation.get("composition", {})
+			_assert_true(bool(walk_composition.get("uses_random_walk", false)),
+				"Random-walk generated plan exposes random-walk metadata")
+			_assert_true(int(walk_composition.get("walk_element_count", 0)) >= 7,
+				"Random-walk generated plan exposes walked archetype elements")
+
+	var state: Dictionary = editor_instance.call("get_editor_plan_state")
+	_assert_equals(str(state.get("contract_id", "")), "level_editor_plan_graybox_v1",
+		"Level editor reports the plan graybox contract")
+	_assert_true(bool(state.get("loaded", false)),
+		"Level editor loads an initial plan graybox")
+	_assert_true(bool(state.get("visible", false)),
+		"Level editor plan graybox starts visible")
+	_assert_true(int(state.get("anchor_count", 0)) > 0,
+		"Level editor plan graybox exposes plan anchors")
+	_assert_true(bool(state.get("collisions_disabled", false)),
+		"Level editor plan graybox is read-only and non-pickable")
+
+	var plan_root := editor_instance.find_child("PlanPreviewRoot", true, false)
+	_assert_true(plan_root != null,
+		"Level editor mounts plan grayboxes under a shared root")
+	if plan_root != null:
+		_assert_true(plan_root.get_child_count() == 1,
+			"Level editor mounts exactly one active plan graybox")
+	_assert_true(editor_instance.find_child("PlanAnchorMarkers", true, false) != null,
+		"Level editor overlays anchor markers on the active plan")
+
+	var hud := editor_instance.find_child("HUD", true, false)
+	_assert_true(hud != null,
+		"Level editor keeps its HUD while showing plans")
+	if hud != null:
+		_assert_true(hud.find_child("PlanBrowserPanel", true, false) != null,
+			"Level editor HUD exposes the plan browser panel")
+		_assert_true(hud.find_child("PlanSelector", true, false) != null,
+			"Level editor HUD exposes the plan selector")
+		_assert_true(hud.find_child("PlanVisibilityButton", true, false) != null,
+			"Level editor HUD exposes a plan visibility toggle")
+		_assert_true(hud.find_child("GenerationTierSelector", true, false) != null,
+			"Level editor HUD exposes generation tier control")
+		_assert_true(hud.find_child("GenerationButton", true, false) != null,
+			"Level editor HUD exposes generation action")
+		_assert_true(hud.find_child("GenerationAllowedEdit", true, false) != null,
+			"Level editor HUD exposes generation limitation input")
+
+	editor_instance.call("show_plan_scene", "mother_ferrolure")
+	state = editor_instance.call("get_editor_plan_state")
+	_assert_equals(str(state.get("active_plan_id", "")), "mother_ferrolure",
+		"Level editor can switch plans by id")
+	_assert_equals(str(state.get("active_plan_title", "")), "Mother Flure",
+		"Level editor reads the loaded chunk title")
+	var slot: Dictionary = state.get("world_slot", {})
+	_assert_equals(str(slot.get("slot_id", "")), "act1_mother_flure",
+		"Level editor exposes world-slot metadata for loaded plans")
+	_assert_true(int(state.get("anchor_count", 0)) > 0,
+		"Mother Flure plan exposes anchors in editor state")
+	_assert_true(bool(state.get("collisions_disabled", false)),
+		"Switched plan graybox remains non-pickable")
+
+	if editor_instance.has_method("generate_stretch_plan") and editor_instance.has_method("show_generated_stretch"):
+		var generated_spec: Dictionary = editor_instance.call("generate_stretch_plan", {
+			"id": "editor_generated_test",
+			"title": "Editor Generated Test",
+			"seed": 1701,
+			"complexity_tier": "teaching",
+			"limitations": {
+				"required": {"flora": ["flure"], "structures": ["shelter"], "archetypes": ["11"]},
+			},
+			"world_slot": {
+				"slot_id": "editor_generated_test",
+				"act": 1,
+				"region": "Editor",
+				"entry_shelter_id": "shelter_1",
+				"exit_shelter_id": "shelter_2",
+				"entry_anchor": "entry",
+				"exit_anchor": "exit_shelter",
+				"preview_party_preset": "full_party_full_health",
+			},
+		})
+		_assert_true(bool(generated_spec.get("success", false)),
+			"Level editor generation API returns a valid stretch spec")
+		editor_instance.call("show_generated_stretch", generated_spec)
+		state = editor_instance.call("get_editor_plan_state")
+		_assert_true(bool(state.get("generated", false)),
+			"Level editor can show an in-memory generated stretch")
+		_assert_true(int(state.get("anchor_count", 0)) > 0,
+			"In-memory generated stretch exposes anchor markers")
+		var generated_graybox: Dictionary = state.get("graybox", {})
+		_assert_equals(str(generated_graybox.get("contract_id", "")), "generated_stretch_graybox_v1",
+			"In-memory generated stretch exposes the spatial graybox contract")
+		_assert_true(int(generated_graybox.get("outline_target_count", 0)) > 0,
+			"In-memory generated stretch exposes clickable outline targets")
+		_assert_true(int(generated_graybox.get("instanced_content_marker_count", 0)) > 0,
+			"In-memory generated stretch instances placed content markers")
+
+	editor_instance.call("set_plan_visibility", false)
+	state = editor_instance.call("get_editor_plan_state")
+	_assert_true(not bool(state.get("visible", true)),
+		"Level editor can hide the plan graybox")
+	editor_instance.call("set_plan_visibility", true)
+	state = editor_instance.call("get_editor_plan_state")
+	_assert_true(bool(state.get("visible", false)),
+		"Level editor can show the plan graybox again")
+
+	editor_instance.call("focus_active_plan")
+	var editor_camera := editor_instance.find_child("EditorCamera", true, false)
+	_assert_true(editor_camera != null,
+		"Level editor keeps a camera for plan focusing")
+	if editor_camera != null:
+		var distance := float(editor_camera.get("distance"))
+		_assert_true(distance >= 18.0,
+			"Level editor focus frames the active plan")
+
+# --- Test: Archetype Stretch Generation ---
+func _test_archetype_generation() -> void:
+	_test_name = "Archetype Generation"
+
+	var catalog := StretchArchetypeCatalogScript.new()
+	var catalog_validation: Dictionary = catalog.validate()
+	_assert_true(bool(catalog_validation.get("valid", false)), "Archetype catalog validates")
+	_assert_equals(catalog.get_archetype_ids().size(), 11, "Catalog exposes archetypes 1-11")
+	for flora_id in ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "doma", "snapbloom", "capbage", "gasafoetida", "climbvine", "resolution_roots", "forget_me_nots"]:
+		_assert_true(catalog.has_content("flora", flora_id), "Catalog includes flora %s" % flora_id)
+	for enemy_id in ["techos", "verdings", "hidras", "crusts", "candids", "meebs", "naturalizers", "gnawers", "neutros", "spikers", "tanglers", "toxos", "nosomas"]:
+		_assert_true(catalog.has_content("enemies", enemy_id), "Catalog includes enemy %s" % enemy_id)
+
+	var base_settings := {
+		"id": "generated_test_standard",
+		"title": "Generated Test Standard",
+		"seed": 1701,
+		"complexity_tier": "standard",
+		"world_slot": {
+			"slot_id": "generated_test_standard",
+			"act": 1,
+			"region": "Test",
+			"entry_shelter_id": "shelter_1",
+			"exit_shelter_id": "shelter_2",
+			"entry_anchor": "entry",
+			"exit_anchor": "exit_shelter",
+		},
+	}
+	var spec_a: Dictionary = StretchGeneratorScript.generate(base_settings)
+	var spec_b: Dictionary = StretchGeneratorScript.generate(base_settings)
+	_assert_true(bool(spec_a.get("success", false)), "Generator returns a successful spec")
+	_assert_equals(JSON.stringify(spec_a), JSON.stringify(spec_b), "Same seed and settings produce identical specs")
+	var different_settings := base_settings.duplicate(true)
+	different_settings["seed"] = 1702
+	var spec_c: Dictionary = StretchGeneratorScript.generate(different_settings)
+	_assert_true(JSON.stringify(spec_a.get("nodes", [])).hash() != JSON.stringify(spec_c.get("nodes", [])).hash()
+			or JSON.stringify(spec_a.get("palette_usage", {})).hash() != JSON.stringify(spec_c.get("palette_usage", {})).hash(),
+		"Different seed changes generated layout or composition")
+
+	var previous_nodes := 0
+	for tier in ["teaching", "standard", "hard", "setpiece"]:
+		var validation: Dictionary = StretchGeneratorScript.validate_settings({"complexity_tier": tier, "seed": 9})
+		var resolved: Dictionary = validation.get("resolved_settings", {})
+		var budget: Dictionary = resolved.get("budget", {})
+		var node_count := int(budget.get("node_count", 0))
+		_assert_true(node_count >= previous_nodes, "%s tier budget is not smaller than the previous tier" % tier)
+		previous_nodes = node_count
+
+	var range_spec: Dictionary = StretchGeneratorScript.generate({
+		"id": "generated_range_budget",
+		"seed": 1701,
+		"complexity_tier": "teaching",
+		"budget": {
+			"node_count": [7, 7],
+			"flora_slots": [2, 2],
+			"enemy_slots": 1,
+		},
+	})
+	_assert_equals(int(range_spec.get("budget", {}).get("node_count", 0)), 7, "Budget ranges resolve inside the requested range")
+	_assert_equals(int(range_spec.get("budget", {}).get("flora_slots", 0)), 2, "Numeric budget range override is honored")
+
+	var limited_spec: Dictionary = StretchGeneratorScript.generate({
+		"id": "generated_limited_test",
+		"seed": 33,
+		"complexity_tier": "teaching",
+		"budget": {
+			"flora_slots": 1,
+			"enemy_slots": 1,
+			"structures_slots": 3,
+			"archetype_depth": 2,
+		},
+		"limitations": {
+			"allowed": {
+				"flora": ["flure"],
+				"enemies": ["techos"],
+				"structures": ["shelter", "forage_cache", "shortcut_gate"],
+				"archetypes": ["2", "11"]
+			},
+			"blocked": {
+				"flora": ["scarpet"]
+			},
+			"required": {
+				"flora": ["flure"],
+				"enemies": ["techos"],
+				"structures": ["shelter"],
+				"archetypes": ["11"]
+			}
+		},
+	})
+	_assert_true(bool(limited_spec.get("success", false)), "Allowed/blocked/required limitations can produce a valid spec")
+	var limited_usage: Dictionary = limited_spec.get("palette_usage", {})
+	_assert_equals(limited_usage.get("flora", []), ["flure"], "Allowed flora limits generated flora")
+	_assert_equals(limited_usage.get("enemies", []), ["techos"], "Allowed enemy limits generated enemies")
+	_assert_true(not (limited_usage.get("flora", []) as Array).has("scarpet"), "Blocked flora is excluded")
+	for chain_entry in limited_spec.get("archetype_chain", []):
+		if chain_entry is Dictionary:
+			_assert_true(["2", "11"].has(str((chain_entry as Dictionary).get("id", ""))), "Allowed archetype limits are enforced")
+
+	var invalid_spec: Dictionary = StretchGeneratorScript.generate({
+		"id": "generated_invalid_limit_test",
+		"limitations": {
+			"blocked": {"flora": ["flure"]},
+			"required": {"flora": ["flure"]},
+		},
+	})
+	_assert_true(not bool(invalid_spec.get("success", true)), "Required/blocked conflicts fail validation")
+
+	var chain_nested_spec: Dictionary = StretchGeneratorScript.generate({
+		"id": "generated_chain_nested_runtime_test",
+		"title": "Generated Chain Nested Runtime Test",
+		"seed": 2403,
+		"complexity_tier": "standard",
+		"budget": {
+			"node_count": 7,
+			"optional_node_count": 1,
+			"branch_count": 1,
+			"archetype_depth": 5,
+			"pressure_budget": 2,
+			"flora_slots": 3,
+			"enemy_slots": 2,
+			"structures_slots": 5,
+			"shortcut_count": 1,
+			"resource_beats": 1,
+		},
+		"limitations": {
+			"allowed": {
+				"flora": ["flure", "hushbloom", "scarpet"],
+				"enemies": ["techos", "naturalizers"],
+				"structures": ["shelter", "barrier", "forage_cache", "carry_gear", "shortcut_gate", "terminal", "pipe"],
+				"archetypes": ["1", "2", "3", "4", "6", "11"],
+			},
+			"required": {
+				"flora": ["flure"],
+				"enemies": ["naturalizers"],
+				"structures": ["shelter", "carry_gear"],
+				"archetypes": ["1", "2", "3", "4", "6"],
+			},
+		},
+		"composition": {
+			"mode": "chain_nested_poc",
+			"chain": [
+				{"id": "1", "variant": "reveal_plant", "label": "Reveal flure", "output": "flure_exposed"},
+				{"id": "2", "variant": "flure_iron_decoy", "label": "Use flure", "input": "flure_exposed", "output": "patrol_diverted"},
+				{"id": "3", "variant": "critical_resource", "label": "Carry component", "input": "patrol_diverted", "output": "carry_component_secured"},
+				{"id": "6", "variant": "flow_diagram", "label": "Rebuild route", "input": "carry_component_secured", "output": "shelter_route_reassembled"},
+			],
+			"nested": [
+				{"host": "3", "host_step": 4, "id": "4", "variant": "false_scent", "label": "Nested patrol distraction", "nested": [
+					{"host_step": 5, "id": "2", "variant": "hushbloom_stun", "label": "Nested plant trigger"}
+				]},
+				{"host": "6", "host_step": 3, "id": "3", "variant": "information_artifact", "label": "Nested fragment carry"},
+			],
+		},
+		"world_slot": {
+			"slot_id": "generated_chain_nested_runtime_test",
+			"act": 1,
+			"region": "Channels",
+			"entry_shelter_id": "shelter_2",
+			"exit_shelter_id": "shelter_3",
+		},
+	})
+	_assert_true(bool(chain_nested_spec.get("success", false)), "Generator builds a chain/nested archetype proof spec")
+	var composition: Dictionary = chain_nested_spec.get("composition", {})
+	_assert_equals(str(composition.get("mode", "")), "chain_nested_poc", "Generated proof carries composition mode")
+	_assert_equals(int(composition.get("chain_count", 0)), 4, "Generated proof carries the explicit chain")
+	_assert_equals(int(composition.get("nested_count", 0)), 3, "Generated proof flattens nested archetypes")
+	_assert_equals(int(composition.get("nested_depth", 0)), 2, "Generated proof records nested depth")
+	for link in composition.get("links", []):
+		if link is Dictionary:
+			_assert_true(bool((link as Dictionary).get("feeds_next", false)), "Generated proof links chain outputs into next inputs")
+	var generated_chain_ids: Array[String] = []
+	for chain_entry in chain_nested_spec.get("archetype_chain", []):
+		if chain_entry is Dictionary:
+			generated_chain_ids.append(str((chain_entry as Dictionary).get("id", "")))
+	_assert_equals(generated_chain_ids.slice(0, 4), ["1", "2", "3", "6"],
+		"Generated proof preserves explicit chain order")
+	var nested_host_node_found := false
+	for node in chain_nested_spec.get("nodes", []):
+		if node is Dictionary and not ((node as Dictionary).get("nested_archetypes", []) as Array).is_empty():
+			nested_host_node_found = true
+			break
+	_assert_true(nested_host_node_found, "Generated proof attaches nested archetypes to playable nodes")
+
+	var random_walk_settings := {
+		"id": "generated_random_walk_runtime_test",
+		"title": "Generated Random Walk Runtime Test",
+		"seed": 3117,
+		"complexity_tier": "standard",
+		"budget": {
+			"node_count": 8,
+			"optional_node_count": 1,
+			"branch_count": 1,
+			"archetype_depth": 4,
+			"pressure_budget": 2,
+			"flora_slots": 3,
+			"enemy_slots": 2,
+			"structures_slots": 5,
+			"shortcut_count": 1,
+			"resource_beats": 2,
+		},
+		"limitations": {
+			"allowed": {
+				"flora": ["flure", "hushbloom", "scarpet"],
+				"enemies": ["techos", "naturalizers"],
+				"structures": ["shelter", "forage_cache", "terminal", "carry_gear", "shortcut_gate", "pipe"],
+				"archetypes": ["2", "3", "4", "6", "11"],
+			},
+			"required": {
+				"flora": ["flure"],
+				"enemies": ["naturalizers"],
+				"structures": ["shelter"],
+				"archetypes": ["2", "3", "4", "6"],
+			},
+		},
+		"composition": {
+			"mode": "archetype_random_walk",
+			"random_walk": {
+				"start_archetype": "2",
+				"start_step": 0,
+				"step_count": 7,
+				"transition_chance": 0.45,
+				"prefer_tags": ["flora", "patrol", "carry", "fragments"],
+				"allow_revisit": true,
+			},
+		},
+		"world_slot": {
+			"slot_id": "generated_random_walk_runtime_test",
+			"act": 1,
+			"region": "Channels",
+			"entry_shelter_id": "shelter_3",
+			"exit_shelter_id": "shelter_4",
+		},
+	}
+	var random_walk_spec: Dictionary = StretchGeneratorScript.generate(random_walk_settings)
+	var random_walk_spec_b: Dictionary = StretchGeneratorScript.generate(random_walk_settings)
+	_assert_true(bool(random_walk_spec.get("success", false)), "Generator builds a random-walk archetype proof spec")
+	_assert_equals(JSON.stringify(random_walk_spec), JSON.stringify(random_walk_spec_b),
+		"Random-walk generation is deterministic for the same seed")
+	var random_walk_settings_c := random_walk_settings.duplicate(true)
+	random_walk_settings_c["seed"] = 3118
+	var random_walk_spec_c: Dictionary = StretchGeneratorScript.generate(random_walk_settings_c)
+	_assert_true(JSON.stringify(random_walk_spec.get("composition", {}).get("random_walk", {})).hash() != JSON.stringify(random_walk_spec_c.get("composition", {}).get("random_walk", {})).hash(),
+		"Different seed changes the random-walk path or layout")
+	var walk_composition: Dictionary = random_walk_spec.get("composition", {})
+	var walk_info: Dictionary = walk_composition.get("random_walk", {})
+	_assert_true(bool(walk_composition.get("uses_random_walk", false)), "Generated proof records random-walk composition")
+	_assert_equals(int(walk_composition.get("walk_element_count", 0)), 7, "Generated proof walks the requested number of archetype elements")
+	_assert_true((walk_info.get("edges", []) as Array).size() >= 6, "Generated proof records random-walk element edges")
+	var visited_walk_ids: Array = walk_info.get("visited_archetypes", [])
+	for required_walk_id in ["2", "3", "4", "6"]:
+		_assert_true(visited_walk_ids.has(required_walk_id), "Random walk covers required archetype %s" % required_walk_id)
+	var walked_node_count := 0
+	for node in random_walk_spec.get("nodes", []):
+		if node is Dictionary and str((node as Dictionary).get("walk_element", "")) != "":
+			walked_node_count += 1
+	_assert_equals(walked_node_count, 7, "Generated random-walk nodes expose archetype elements")
+	_assert_true(int(random_walk_spec.get("budget", {}).get("node_count", 0)) >= 9,
+		"Random-walk step count expands the node budget to fit entry and exit")
+
+	for required_key in ["anchors", "routes", "world_slot", "archetype_chain", "graybox", "navigation"]:
+		_assert_true(spec_a.has(required_key), "Generated spec includes %s" % required_key)
+	_assert_equals(str(spec_a.get("world_slot", {}).get("preview_party_preset", "")), "full_party_full_health",
+		"Generated spec carries full-party/full-health preview preset")
+	_assert_true(not (spec_a.get("headless", {}).get("golden_path", []) as Array).is_empty(),
+		"Generated spec includes a golden path")
+	var graybox: Dictionary = spec_a.get("graybox", {})
+	_assert_equals(str(graybox.get("contract_id", "")), "generated_stretch_graybox_v1",
+		"Generated spec exposes the graybox layout contract")
+	_assert_true(bool(graybox.get("supports_click_to_move", false)),
+		"Generated graybox declares click-to-move support")
+	_assert_true(bool(graybox.get("supports_multiple_elevations", false)),
+		"Generated graybox can produce multiple elevations")
+	var navigation: Dictionary = spec_a.get("navigation", {})
+	_assert_equals(str(navigation.get("contract_id", "")), "multi_level_navigation_graph_v1",
+		"Generated spec exposes the multi-level navigation graph contract")
+	_assert_true(bool(navigation.get("supports_multiple_elevations", false)),
+		"Generated navigation graph declares multiple elevation support")
+	_assert_true((navigation.get("nodes", []) as Array).size() >= (spec_a.get("nodes", []) as Array).size(),
+		"Generated navigation graph includes node surfaces")
+	_assert_true((navigation.get("edges", []) as Array).size() >= (spec_a.get("routes", []) as Array).size(),
+		"Generated navigation graph includes route edges")
+	var graph = NavigationGraphScript.new()
+	graph.configure(navigation)
+	var graph_node_path: Array = graph.find_node_path("entry", "exit_shelter")
+	_assert_true(graph_node_path.size() >= 2,
+		"Generated navigation graph can route from entry to exit")
+	var graph_world_path: Array = graph.find_path(Vector3(0.0, 0.5, 1.6), graph.get_node_position("exit_shelter"))
+	_assert_true(graph_world_path.size() >= 3,
+		"Generated navigation graph returns playable multi-waypoint world paths")
+	_assert_true(graph.path_uses_multiple_elevations(graph_world_path),
+		"Generated navigation path preserves Y-level changes")
+	var stacked_graph = NavigationGraphScript.new()
+	stacked_graph.configure({
+		"contract_id": "multi_level_navigation_graph_v1",
+		"supports_multiple_elevations": true,
+		"entry_node": "lower",
+		"exit_node": "upper",
+		"nodes": [
+			{"id": "lower", "position": [0.0, 0.45, 0.0], "elevation_index": 0},
+			{"id": "ramp", "position": [4.0, 1.17, 0.0], "elevation_index": 1},
+			{"id": "upper", "position": [0.0, 1.89, 0.0], "elevation_index": 2},
+		],
+		"edges": [
+			{"id": "lower_to_ramp", "from": "lower", "to": "ramp", "kind": "safe", "waypoints": [[0.0, 0.45, 0.0], [4.0, 1.17, 0.0]]},
+			{"id": "ramp_to_upper", "from": "ramp", "to": "upper", "kind": "safe", "waypoints": [[4.0, 1.17, 0.0], [0.0, 1.89, 0.0]]},
+		],
+	})
+	_assert_equals(stacked_graph.find_nearest_node_id(Vector3(0.0, 1.86, 0.05)), "upper",
+		"Navigation graph distinguishes stacked floors with the same X/Z")
+	var stacked_path: Array = stacked_graph.find_path(Vector3(0.0, 0.45, 0.0), Vector3(0.0, 1.89, 0.0))
+	_assert_true(stacked_path.size() >= 3 and stacked_graph.path_uses_multiple_elevations(stacked_path),
+		"Navigation graph routes between stacked Y-levels through explicit connectors")
+	var first_content_node_found := false
+	for node in spec_a.get("nodes", []):
+		if node is Dictionary and not ((node as Dictionary).get("content_placements", []) as Array).is_empty():
+			first_content_node_found = true
+			var placement: Dictionary = ((node as Dictionary).get("content_placements", []) as Array)[0]
+			_assert_true((node as Dictionary).has("footprint"), "Generated nodes expose actual floor footprint sizing")
+			_assert_true(placement.has("position") and placement.has("size"), "Generated content placements expose position and size")
+			break
+	_assert_true(first_content_node_found, "Generated graybox includes placed flora/enemy/structure content")
+
+	var loaded_fixture := StretchGeneratorScript.load_spec(GENERATED_STRETCH_SPEC_PATH)
+	_assert_equals(str(loaded_fixture.get("id", "")), "generated_teaching_channels_shelter_1_to_2",
+		"Saved generated fixture spec loads")
+	_assert_equals(str(loaded_fixture.get("schema", "")), "trawf_generated_stretch_spec_v1",
+		"Saved generated fixture uses the stretch spec schema")
+	var loaded_poc_fixture := StretchGeneratorScript.load_spec(GENERATED_CHAIN_NESTED_POC_SPEC_PATH)
+	_assert_equals(str(loaded_poc_fixture.get("id", "")), "generated_chain_nested_poc_shelter_2_to_3",
+		"Saved chain/nested generated proof spec loads")
+	_assert_equals(str(loaded_poc_fixture.get("composition", {}).get("mode", "")), "chain_nested_poc",
+		"Saved chain/nested proof fixture exposes composition metadata")
+	var loaded_walk_fixture := StretchGeneratorScript.load_spec(GENERATED_RANDOM_WALK_POC_SPEC_PATH)
+	_assert_equals(str(loaded_walk_fixture.get("id", "")), "generated_random_walk_poc_shelter_3_to_4",
+		"Saved random-walk generated proof spec loads")
+	_assert_true(bool(loaded_walk_fixture.get("composition", {}).get("uses_random_walk", false)),
+		"Saved random-walk proof fixture exposes walk metadata")
+
+	var chunk_scene := load("res://scenes/fragments/chunks/generated_stretch_chunk.tscn")
+	_assert_true(chunk_scene != null, "Generated stretch chunk scene loads")
+	if chunk_scene != null:
+		var chunk_instance: Node = chunk_scene.instantiate()
+		_assert_true(chunk_instance != null, "Generated stretch chunk instantiates")
+		if chunk_instance != null:
+			_assert_true(chunk_instance.has_method("configure_chunk"), "Generated chunk exposes configure_chunk")
+			_assert_true(chunk_instance.has_method("get_generation_spec"), "Generated chunk exposes get_generation_spec")
+			chunk_instance.free()
+		var poc_chunk: Node = chunk_scene.instantiate()
+		_assert_true(poc_chunk != null, "Generated chain/nested chunk instantiates")
+		if poc_chunk != null:
+			poc_chunk.call("configure_chunk", {"spec": chain_nested_spec})
+			get_tree().root.add_child(poc_chunk)
+			await get_tree().process_frame
+			var poc_state: Dictionary = poc_chunk.call("get_preview_state")
+			var poc_graybox: Dictionary = poc_chunk.call("get_graybox_state")
+			var poc_navigation: Dictionary = poc_chunk.call("get_navigation_state")
+			_assert_equals(str(poc_graybox.get("contract_id", "")), "generated_stretch_graybox_v1",
+				"Generated chain/nested chunk builds the spatial graybox contract")
+			_assert_equals(str(poc_navigation.get("contract_id", "")), "multi_level_navigation_graph_v1",
+				"Generated chain/nested chunk builds the multi-level navigation contract")
+			_assert_true(int(poc_graybox.get("outline_target_count", 0)) > 0,
+				"Generated chain/nested chunk builds clickable node outline targets")
+			_assert_true(int(poc_graybox.get("instanced_content_marker_count", 0)) > 0,
+				"Generated chain/nested chunk instances sized content markers")
+			_assert_true(bool(poc_graybox.get("supports_multiple_elevations", false)),
+				"Generated chain/nested chunk builds multiple elevations")
+			_assert_equals(str(poc_state.get("generation", {}).get("composition", {}).get("mode", "")), "chain_nested_poc",
+				"Generated chunk exposes chain/nested composition in preview state")
+			_assert_equals(int(poc_state.get("generation", {}).get("nested_depth", 0)), 2,
+				"Generated chunk exposes nested depth in preview state")
+			var poc_golden: Variant = poc_chunk.call("run_generated_golden_path")
+			_assert_true(poc_golden == true, "Generated chain/nested golden path reaches shelter")
+			var poc_risky: Variant = poc_chunk.call("run_generated_risky_recovery")
+			poc_state = poc_chunk.call("get_preview_state")
+			_assert_true(poc_risky == true, "Generated chain/nested risky route recovery remains playable")
+			_assert_true(float(poc_state.get("risky_damage_total", 0.0)) > 0.0,
+				"Generated chain/nested risky route records pressure damage")
+			poc_chunk.queue_free()
+			await get_tree().process_frame
+		var walk_chunk: Node = chunk_scene.instantiate()
+		_assert_true(walk_chunk != null, "Generated random-walk chunk instantiates")
+		if walk_chunk != null:
+			walk_chunk.call("configure_chunk", {"spec": random_walk_spec})
+			get_tree().root.add_child(walk_chunk)
+			await get_tree().process_frame
+			var walk_state: Dictionary = walk_chunk.call("get_preview_state")
+			var walk_graybox: Dictionary = walk_chunk.call("get_graybox_state")
+			var walk_navigation: Dictionary = walk_chunk.call("get_navigation_state")
+			_assert_equals(str(walk_graybox.get("contract_id", "")), "generated_stretch_graybox_v1",
+				"Generated random-walk chunk builds the spatial graybox contract")
+			_assert_equals(str(walk_navigation.get("contract_id", "")), "multi_level_navigation_graph_v1",
+				"Generated random-walk chunk builds the multi-level navigation contract")
+			_assert_true(int(walk_graybox.get("outline_target_count", 0)) > 0,
+				"Generated random-walk chunk builds clickable node outline targets")
+			_assert_true(int(walk_graybox.get("instanced_content_marker_count", 0)) > 0,
+				"Generated random-walk chunk instances sized content markers")
+			_assert_true(bool(walk_graybox.get("supports_multiple_elevations", false)),
+				"Generated random-walk chunk builds multiple elevations")
+			_assert_true(bool(walk_state.get("generation", {}).get("uses_random_walk", false)),
+				"Generated chunk exposes random-walk composition in preview state")
+			_assert_equals(int(walk_state.get("generation", {}).get("walk_element_count", 0)), 7,
+				"Generated chunk exposes random-walk element count")
+			var walk_golden: Variant = walk_chunk.call("run_generated_golden_path")
+			_assert_true(walk_golden == true, "Generated random-walk golden path reaches shelter")
+			var walk_risky: Variant = walk_chunk.call("run_generated_risky_recovery")
+			walk_state = walk_chunk.call("get_preview_state")
+			_assert_true(walk_risky == true, "Generated random-walk risky route recovery remains playable")
+			_assert_true(float(walk_state.get("risky_damage_total", 0.0)) > 0.0,
+				"Generated random-walk risky route records pressure damage")
+			walk_chunk.queue_free()
+			await get_tree().process_frame
+
+	var preview_scene := load("res://scenes/fragments/generated_stretch_preview.tscn")
+	_assert_true(preview_scene != null, "Generated stretch preview scene loads")
+	if preview_scene == null:
+		return
+	var preview_instance: Node = preview_scene.instantiate()
+	_assert_true(preview_instance != null, "Generated stretch preview instantiates")
+	if preview_instance == null:
+		return
+	get_tree().root.add_child(preview_instance)
+	for _i in range(3):
+		await get_tree().process_frame
+	var state: Dictionary = preview_instance.call("headless_get_state")
+	_assert_equals(str(state.get("preview_chunk", "")), "generated_stretch", "Generated preview reports its chunk id")
+	_assert_equals(str(state.get("preview_party_preset", "")), "full_party_full_health", "Generated preview starts with full-party preset")
+	var preview_graybox: Dictionary = state.get("chunk", {}).get("graybox", {})
+	_assert_equals(str(preview_graybox.get("contract_id", "")), "generated_stretch_graybox_v1",
+		"Generated preview reports the spatial graybox contract")
+	var preview_navigation: Dictionary = state.get("navigation", {})
+	_assert_equals(str(preview_navigation.get("contract_id", "")), "multi_level_navigation_graph_v1",
+		"Generated preview installs the multi-level navigation graph into GameState")
+	_assert_true(bool(preview_navigation.get("supports_multiple_elevations", false)),
+		"Generated preview navigation supports multiple elevations")
+	_assert_true(bool(preview_graybox.get("supports_click_to_move", false)),
+		"Generated preview reports click-to-move support")
+	_assert_true(int(preview_graybox.get("outline_target_count", 0)) > 0,
+		"Generated preview exposes clickable node outline targets")
+	_assert_true(int(preview_graybox.get("instanced_content_marker_count", 0)) > 0,
+		"Generated preview instances sized flora/enemy/structure markers")
+	_assert_true(int(preview_graybox.get("route_surface_instance_count", 0)) > 0,
+		"Generated preview instances route surfaces between nodes")
+	for char_id in ["aster", "peris", "endo"]:
+		var stats: Dictionary = state.get("character_stats", {}).get(char_id, {})
+		_assert_equals(float(stats.get("hp", -1.0)), 100.0, "%s starts at max HP" % char_id)
+		_assert_equals(float(stats.get("sta", -1.0)), 100.0, "%s starts at max stamina" % char_id)
+		_assert_equals(float(stats.get("atp", -1.0)), float(GameState.ATP_MAX_PIPS), "%s starts at max ATP" % char_id)
+	var elevated_target := Vector3.INF
+	var generation_spec: Dictionary = preview_instance.call("headless_call_chunk", "get_generation_spec", [])
+	for node in generation_spec.get("nodes", []):
+		if node is Dictionary and int((node as Dictionary).get("elevation_index", 0)) > 0:
+			elevated_target = _vec3_from_array((node as Dictionary).get("approach_position", (node as Dictionary).get("position", [])), Vector3.INF)
+			break
+	_assert_true(elevated_target != Vector3.INF, "Generated fixture includes an elevated navigation target")
+	if elevated_target != Vector3.INF:
+		preview_instance.call("headless_set_character_position", "aster", Vector3(0.0, 0.5, 1.6))
+		var move_ok := bool(preview_instance.call("headless_move_character", "aster", elevated_target, false))
+		var move_info: Dictionary = preview_instance.call("headless_get_character_movement_info", "aster")
+		_assert_true(move_ok, "Generated preview accepts a click move to an elevated target")
+		_assert_true(int(move_info.get("path_count", 0)) >= 3,
+			"Generated preview routes elevated click movement through navigation waypoints")
+		_assert_true(_serialized_path_uses_multiple_y(move_info.get("path", [])),
+			"Generated preview movement path preserves multiple Y-levels")
+		preview_instance.call("headless_set_character_position", "aster", Vector3(0.0, 0.5, 1.6))
+	var golden_result: Variant = preview_instance.call("headless_call_chunk", "run_generated_golden_path", [])
+	var golden_ok: bool = golden_result == true
+	state = preview_instance.call("headless_get_state")
+	_assert_true(golden_ok, "Generated golden path reaches the exit shelter")
+	_assert_true(bool(state.get("chunk", {}).get("shelter_rested", false)), "Generated golden path rests at the exit shelter")
+	_assert_true(bool(state.get("chunk", {}).get("shortcut_unlocked", false)), "Generated golden path exposes shortcut state")
+	var risky_result: Variant = preview_instance.call("headless_call_chunk", "run_generated_risky_recovery", [])
+	var risky_ok: bool = risky_result == true
+	state = preview_instance.call("headless_get_state")
+	_assert_true(risky_ok, "Generated risky route recovery remains playable")
+	_assert_equals(str(state.get("chunk", {}).get("route_phase", "")), "complete", "Generated risky recovery completes")
+	_assert_true(float(state.get("chunk", {}).get("risky_damage_total", 0.0)) > 0.0, "Generated risky recovery records pressure damage")
+	preview_instance.queue_free()
+	await get_tree().process_frame
+
+func _test_generated_stretch_playtest_loop() -> void:
+	_test_name = "Generated Stretch Playtest Loop"
+
+	var settings := {
+		"id": "generated_playtest_loop_random_walk",
+		"title": "Generated Playtest Loop Random Walk",
+		"seed": 4129,
+		"complexity_tier": "standard",
+		"budget": {
+			"node_count": 8,
+			"optional_node_count": 1,
+			"branch_count": 1,
+			"archetype_depth": 4,
+			"pressure_budget": 2,
+			"flora_slots": 3,
+			"enemy_slots": 2,
+			"structures_slots": 5,
+			"shortcut_count": 1,
+			"resource_beats": 2,
+		},
+		"limitations": {
+			"allowed": {
+				"flora": ["flure", "hushbloom", "scarpet"],
+				"enemies": ["techos", "naturalizers"],
+				"structures": ["shelter", "forage_cache", "terminal", "carry_gear", "shortcut_gate", "pipe"],
+				"archetypes": ["2", "3", "4", "6", "11"],
+			},
+			"required": {
+				"flora": ["flure"],
+				"enemies": ["naturalizers"],
+				"structures": ["shelter"],
+				"archetypes": ["2", "3", "4", "6"],
+			},
+		},
+		"composition": {
+			"mode": "archetype_random_walk",
+			"random_walk": {
+				"start_archetype": "2",
+				"start_step": 0,
+				"step_count": 7,
+				"transition_chance": 0.45,
+				"prefer_tags": ["flora", "patrol", "carry", "fragments"],
+				"allow_revisit": true,
+			},
+		},
+		"world_slot": {
+			"slot_id": "generated_playtest_loop_random_walk",
+			"act": 1,
+			"region": "Channels",
+			"entry_shelter_id": "shelter_4",
+			"exit_shelter_id": "shelter_5",
+		},
+	}
+
+	var loop = StretchGenerationPlaytestLoopScript.new()
+	_assert_true(loop != null, "Stretch generation playtest loop instantiates")
+	var result: Dictionary = await loop.generate_and_playtest(settings, get_tree(), {
+		"capture_animation": true,
+		"capture_step": 0.4,
+	})
+	_assert_equals(str(result.get("contract_id", "")), "stretch_generation_playtest_loop_v1",
+		"Playtest loop reports its contract")
+	_assert_true(bool(result.get("success", false)), "Playtest loop succeeds without failures")
+	_assert_equals(str(result.get("spec_id", "")), "generated_playtest_loop_random_walk",
+		"Playtest loop reports the generated spec id")
+	_assert_true((result.get("errors", []) as Array).is_empty(),
+		"Playtest loop reports no failures")
+	_assert_true(int(result.get("event_count", 0)) >= 20,
+		"Playtest loop records a full event timeline")
+	var loop_events: Array = result.get("events", [])
+	_assert_true(_event_type_seen(loop_events, "spec_ready"),
+		"Playtest loop records generation event")
+	_assert_true(_event_type_seen(loop_events, "preview_ready"),
+		"Playtest loop records preview boot event")
+	_assert_true(_event_type_seen(loop_events, "ability_activated"),
+		"Playtest loop records ability events")
+	_assert_true(_event_type_seen(loop_events, "route_chosen"),
+		"Playtest loop records route events")
+	_assert_true(_event_type_seen(loop_events, "node_activated"),
+		"Playtest loop records node events")
+	_assert_true(_event_type_seen(loop_events, "shelter_rested"),
+		"Playtest loop records shelter rest events")
+	var checks: Dictionary = result.get("checks", {})
+	for check_id in [
+		"generator_success",
+		"preview_scene_loads",
+		"preview_scene_instantiates",
+		"preview_headless_state",
+		"preview_chunk_is_generated",
+		"preview_party_preset_full",
+		"shared_preview_gui",
+		"canonical_controls_visible",
+		"world_slot_exposed",
+		"full_party_full_stats",
+		"preview_graybox_spatial_contract",
+		"preview_navigation_graph_contract",
+		"preview_graybox_click_targets",
+		"preview_graybox_content_placed",
+		"preview_graybox_elevations",
+		"main_abilities_exercised",
+		"golden_path_moves_party",
+		"golden_path_uses_routes",
+		"golden_path_uses_multilevel_navigation",
+		"golden_path_reaches_shelter",
+		"risky_recovery_playable",
+		"risky_recovery_applies_pressure",
+		"playthrough_animation_contract",
+		"playthrough_animation_snapshots",
+		"playthrough_animation_walk_state",
+		"playthrough_animation_run_state",
+		"playthrough_animation_inventory_state",
+	]:
+		_assert_true(bool(checks.get(check_id, false)), "Playtest loop passes %s" % check_id)
+	var animation: Dictionary = result.get("animation", {})
+	_assert_equals(str(animation.get("contract_id", "")), "playthrough_animation_v1",
+		"Playtest loop emits reusable playthrough animation data")
+	_assert_true(int(animation.get("snapshot_count", 0)) >= 8,
+		"Playtest animation captures multiple state snapshots")
+	_assert_true((animation.get("layout", {}).get("nodes", []) as Array).size() >= 2,
+		"Playtest animation carries graybox layout nodes")
+	_assert_true((animation.get("layout", {}).get("routes", []) as Array).size() >= 1,
+		"Playtest animation carries graybox route layout")
+	var animation_summary: Dictionary = animation.get("summary", {})
+	_assert_true(bool(animation_summary.get("has_walk_state", false)),
+		"Playtest animation captures walking state")
+	_assert_true(bool(animation_summary.get("has_run_state", false)),
+		"Playtest animation captures running state")
+	_assert_true(bool(animation_summary.get("has_hand_slots", false)),
+		"Playtest animation captures hand slots")
+	_assert_true(bool(animation_summary.get("has_endocytosis", false)),
+		"Playtest animation captures endocytosis effects")
+	_assert_true(_animation_has_character_path(animation, "aster"),
+		"Playtest animation captures Aster movement paths")
+	var generated_spec: Dictionary = result.get("spec", {})
+	_assert_true(bool(generated_spec.get("composition", {}).get("uses_random_walk", false)),
+		"Playtest loop keeps random-walk generation metadata")
+	var golden_report: Dictionary = result.get("playthroughs", {}).get("golden_path", {})
+	_assert_true((golden_report.get("visited_nodes", []) as Array).has("exit_shelter"),
+		"Playtest loop drives the generated golden path to the exit shelter")
+	_assert_true((golden_report.get("route_gaps", []) as Array).is_empty(),
+		"Generated golden path is route-graph playable")
+	_assert_true(int(golden_report.get("movement_commands", 0)) >= 3,
+		"Playtest loop moves the party through preview movement")
+	var risky_report: Dictionary = result.get("playthroughs", {}).get("risky_recovery", {})
+	_assert_true(bool(risky_report.get("recovered", false)),
+		"Playtest loop recovers from risky route pressure")
+	_assert_true(float(risky_report.get("damage", 0.0)) > 0.0,
+		"Playtest loop records risky route damage")
+
+	var editor_scene: PackedScene = load("res://scenes/editor/level_editor.tscn")
+	_assert_true(editor_scene != null, "Level editor loads for generate-and-playtest API")
+	if editor_scene != null:
+		var editor_instance: Node = await _instantiate_scene_and_wait(editor_scene, 3)
+		_assert_true(editor_instance != null, "Level editor instantiates for generate-and-playtest API")
+		if editor_instance != null:
+			_assert_true(editor_instance.has_method("generate_and_playtest_stretch"),
+				"Level editor exposes generate-and-playtest API")
+			var editor_settings := settings.duplicate(true)
+			editor_settings["id"] = "generated_editor_playtest_loop"
+			editor_settings["seed"] = 4130
+			var editor_result: Dictionary = await editor_instance.call("generate_and_playtest_stretch", editor_settings)
+			_assert_true(bool(editor_result.get("success", false)),
+				"Level editor generate-and-playtest API returns a playable result")
+			var generation_state: Dictionary = editor_instance.call("get_generation_state")
+			_assert_equals(str(generation_state.get("last_action", "")), "generate_and_playtest",
+				"Level editor records generate-and-playtest as the last generation action")
+			_assert_equals(str(generation_state.get("spec_id", "")), "generated_editor_playtest_loop",
+				"Level editor records the generated playtest spec id")
+			await _dispose_scene(editor_instance)
+
+func _event_type_seen(events: Array, event_type: String) -> bool:
+	for event in events:
+		if event is Dictionary and str((event as Dictionary).get("type", "")) == event_type:
+			return true
+	return false
+
+func _animation_has_character_path(animation: Dictionary, char_id: String) -> bool:
+	for snapshot in animation.get("snapshots", []):
+		if not (snapshot is Dictionary):
+			continue
+		var characters: Dictionary = (snapshot as Dictionary).get("characters", {})
+		var character: Dictionary = characters.get(char_id, {})
+		var movement: Dictionary = character.get("movement", {})
+		if int(movement.get("path_count", 0)) >= 2:
+			return true
+	return false
+
+func _generated_stretch_event_report_settings() -> Dictionary:
+	return {
+		"id": "generated_event_walk_shelter_4_to_5",
+		"title": "Generated Event Walk: Shelter 4 -> Shelter 5",
+		"seed": 5271,
+		"complexity_tier": "hard",
+		"budget": {
+			"node_count": 10,
+			"optional_node_count": 2,
+			"branch_count": 2,
+			"archetype_depth": 5,
+			"pressure_budget": 3,
+			"flora_slots": 4,
+			"enemy_slots": 3,
+			"structures_slots": 6,
+			"shortcut_count": 1,
+			"resource_beats": 2,
+		},
+		"limitations": {
+			"allowed": {
+				"flora": ["flure", "hushbloom", "scarpet", "seefern", "forget_me_nots"],
+				"enemies": ["techos", "naturalizers", "tanglers"],
+				"structures": ["shelter", "forage_cache", "terminal", "carry_gear", "shortcut_gate", "pipe", "barrier"],
+				"archetypes": ["1", "2", "3", "4", "6", "8", "11"],
+			},
+			"required": {
+				"flora": ["flure", "hushbloom"],
+				"enemies": ["naturalizers"],
+				"structures": ["shelter", "shortcut_gate"],
+				"archetypes": ["1", "2", "3", "4", "6"],
+			},
+		},
+		"composition": {
+			"mode": "archetype_random_walk",
+			"random_walk": {
+				"start_archetype": "2",
+				"start_step": 0,
+				"step_count": 8,
+				"transition_chance": 0.5,
+				"prefer_tags": ["flora", "patrol", "carry", "fragments", "enemy"],
+				"allow_revisit": true,
+			},
+		},
+		"world_slot": {
+			"slot_id": "generated_event_walk_shelter_4_to_5",
+			"act": 1,
+			"region": "Channels",
+			"entry_shelter_id": "shelter_4",
+			"exit_shelter_id": "shelter_5",
+			"next_slot": "generated_event_walk_shelter_5_to_6",
+		},
+	}
+
+func _report_generated_stretch_events(output_path: String) -> void:
+	_test_name = "Generated Stretch Events"
+	var loop = StretchGenerationPlaytestLoopScript.new()
+	var result: Dictionary = await loop.generate_and_playtest(_generated_stretch_event_report_settings(), get_tree(), {
+		"capture_animation": true,
+		"capture_step": 0.25,
+	})
+	_assert_true(bool(result.get("success", false)), "Generated stretch playtest event report succeeds")
+	_assert_true(int(result.get("event_count", 0)) >= 20, "Generated stretch event report captures an ordered timeline")
+	var animation: Dictionary = result.get("animation", {})
+	_assert_equals(str(animation.get("contract_id", "")), "playthrough_animation_v1", "Generated stretch event report includes playthrough animation data")
+	_assert_true(int(animation.get("snapshot_count", 0)) >= 8, "Generated stretch event report captures animation snapshots")
+	var spec: Dictionary = result.get("spec", {})
+	var spec_path := "res://data/generated_stretches/%s.json" % str(spec.get("id", "generated_stretch_events"))
+	var saved_spec := StretchGeneratorScript.save_spec(spec, spec_path)
+	_assert_true(saved_spec, "Generated stretch spec saved for inspection")
+	result["saved_spec_path"] = spec_path
+	result["saved_spec"] = saved_spec
+	var html_output_path := output_path.get_base_dir().path_join("generated_stretch_event_animation.html")
+	result["animation_html_path"] = html_output_path
+
+	var html_dir := ProjectSettings.globalize_path(html_output_path.get_base_dir())
+	DirAccess.make_dir_recursive_absolute(html_dir)
+	var html_file := FileAccess.open(html_output_path, FileAccess.WRITE)
+	_assert_true(html_file != null, "Generated stretch animation output file opened")
+	if html_file != null:
+		html_file.store_string(PlaythroughAnimationHtmlRendererScript.build_html(result))
+		html_file.close()
+
+	var absolute_dir := ProjectSettings.globalize_path(output_path.get_base_dir())
+	DirAccess.make_dir_recursive_absolute(absolute_dir)
+	var file := FileAccess.open(output_path, FileAccess.WRITE)
+	_assert_true(file != null, "Generated stretch event report output file opened")
+	if file == null:
+		return
+	file.store_string(JSON.stringify(result, "\t"))
+	file.close()
+
+	print("  Generated stretch: %s" % str(spec.get("title", "")))
+	print("  Saved spec: %s" % spec_path)
+	print("  Event report: %s" % output_path)
+	print("  Animation: %s" % html_output_path)
+	print("  Event count: %d" % int(result.get("event_count", 0)))
+	print("  Animation snapshots: %d" % int(animation.get("snapshot_count", 0)))
+	for event in (result.get("events", []) as Array).slice(0, 18):
+		if event is Dictionary:
+			print("    %02d [%s] %s" % [
+				int((event as Dictionary).get("index", 0)),
+				str((event as Dictionary).get("phase", "")),
+				str((event as Dictionary).get("label", "")),
+			])
+
 func _test_asset_pipeline() -> void:
 	_test_name = "Asset Pipeline"
 
 	_assert_true(
 		FileAccess.file_exists("res://tools/gltf_emissive_from_color.py"),
 		"glTF emissive color helper exists"
+	)
+	_assert_true(
+		FileAccess.file_exists("res://tools/gltf_wire_material_sidecars.py"),
+		"glTF material sidecar wiring helper exists"
 	)
 	_assert_true(
 		FileAccess.file_exists("res://tools/aster_sim_room_outline_import.gd"),
@@ -637,6 +1795,15 @@ func _test_asset_pipeline() -> void:
 			"Aster room import splits material surfaces into outline target wrappers")
 		if not surface_targets.is_empty():
 			_assert_outline_surface_target_contract(surface_targets[0], "Aster room split surface", false, true)
+		var normal_material := _find_material_by_resource_name(imported_room, "aster-sim-room-hi-res_1")
+		_assert_true(normal_material is StandardMaterial3D,
+			"Aster room imported material keeps a Godot StandardMaterial3D for normal mapping")
+		if normal_material is StandardMaterial3D:
+			var standard_material := normal_material as StandardMaterial3D
+			_assert_true(standard_material.normal_enabled,
+				"Aster room imported material has normal mapping enabled")
+			_assert_true(standard_material.normal_texture != null,
+				"Aster room imported material has a normal texture assigned")
 		imported_room.free()
 	var gltf_text := FileAccess.get_file_as_string(gltf_path)
 	_assert_true(not gltf_text.is_empty(), "Aster room glTF source is readable")
@@ -855,6 +2022,30 @@ func _find_gltf_material_index(gltf: Dictionary, material_name: String) -> int:
 			return i
 	return -1
 
+func _find_material_by_resource_name(root: Node, material_name: String) -> Material:
+	if root is MeshInstance3D:
+		var mesh_instance := root as MeshInstance3D
+		var override_material := mesh_instance.material_override
+		if _material_resource_name_matches(override_material, material_name):
+			return override_material
+		var mesh := mesh_instance.mesh
+		if mesh != null:
+			for surface_index in range(mesh.get_surface_count()):
+				var surface_override := mesh_instance.get_surface_override_material(surface_index)
+				if _material_resource_name_matches(surface_override, material_name):
+					return surface_override
+				var surface_material := mesh.surface_get_material(surface_index)
+				if _material_resource_name_matches(surface_material, material_name):
+					return surface_material
+	for child in root.get_children():
+		var child_material := _find_material_by_resource_name(child, material_name)
+		if child_material != null:
+			return child_material
+	return null
+
+func _material_resource_name_matches(material: Material, material_name: String) -> bool:
+	return material != null and material.resource_name == material_name
+
 func _rgb24(color: Color) -> int:
 	return (_color_byte(color.r) << 16) | (_color_byte(color.g) << 8) | _color_byte(color.b)
 
@@ -891,6 +2082,25 @@ func _test_mother_ferrolure_preview() -> void:
 	_assert_true(preview_scene != null, "mother_ferrolure_preview.tscn loads")
 	if preview_scene == null:
 		return
+	await _assert_preview_scene_idle_dialogue_stability(
+		"res://scenes/fragments/mother_ferrolure_preview.tscn",
+		"Chunk_mother_ferrolure",
+		"Mother Flure",
+		"This is not a corridor"
+	)
+	await _assert_preview_scene_main_ability_keymap(
+		"res://scenes/fragments/mother_ferrolure_preview.tscn",
+		"Mother Flure"
+	)
+	await _assert_preview_scene_interactable_click_flow(
+		"res://scenes/fragments/mother_ferrolure_preview.tscn",
+		"Chunk_mother_ferrolure",
+		"*AlphaInteractable",
+		"aster",
+		"Mother Flure terminal",
+		"active_terminal",
+		"term_alpha"
+	)
 
 	var inventory_instance: Node = preview_scene.instantiate()
 	_assert_true(inventory_instance != null, "mother_ferrolure_preview.tscn instantiates")
@@ -908,6 +2118,19 @@ func _test_mother_ferrolure_preview() -> void:
 		return
 
 	var initial_state: Dictionary = inventory_chunk.get_preview_state()
+	var initial_preview_state: Dictionary = inventory_instance.headless_get_state()
+	var mother_slot: Dictionary = initial_preview_state.get("world_slot", {})
+	_assert_equals(str(initial_preview_state.get("preview_party_preset", "")), "full_party_full_health", "Mother preview declares the full-party/full-health preset")
+	_assert_equals(str(mother_slot.get("slot_id", "")), "act1_mother_flure", "Mother preview reports its world slot")
+	_assert_equals(str(mother_slot.get("entry_shelter_id", "")), "shelter_5", "Mother world slot enters from Shelter 5")
+	_assert_equals(str(mother_slot.get("exit_shelter_id", "")), "shelter_6", "Mother world slot exits toward Shelter 6")
+	_assert_equals(str(mother_slot.get("entry_anchor", "")), "processing_stacks_exit", "Mother world slot enters from the Processing Stacks")
+	_assert_equals(str(mother_slot.get("exit_anchor", "")), "residential_rings_approach", "Mother world slot exits toward the Residential Rings")
+	for char_id in ["aster", "peris", "endo"]:
+		var stats: Dictionary = initial_preview_state.get("character_stats", {}).get(char_id, {})
+		_assert_equals(float(stats.get("hp", -1.0)), 100.0, "Mother preview starts %s at full HP" % char_id)
+		_assert_equals(float(stats.get("sta", -1.0)), 100.0, "Mother preview starts %s at full stamina" % char_id)
+		_assert_equals(float(stats.get("atp", -1.0)), GameState.ATP_MAX_PIPS, "Mother preview starts %s at full ATP" % char_id)
 	_assert_true(not bool(initial_state.get("gear_pocket_open", false)), "Mother board starts with the gear pocket closed")
 	_assert_true(not bool(initial_state.get("socket_lane_open", false)), "Mother board starts with the socket lane closed")
 	_assert_true(not bool(initial_state.get("mother_lane_clear", false)), "Mother board starts with the mother lane clogged")
@@ -1007,6 +2230,136 @@ func _test_mother_ferrolure_preview() -> void:
 	solve_instance.queue_free()
 	await get_tree().process_frame
 
+func _test_endo_junction_stretch_preview() -> void:
+	_test_name = "Endo Junction Stretch Preview"
+
+	var preview_scene: PackedScene = load("res://scenes/fragments/endo_junction_stretch_preview.tscn")
+	_assert_true(preview_scene != null, "endo_junction_stretch_preview.tscn loads")
+	if preview_scene == null:
+		return
+	await _assert_preview_scene_idle_dialogue_stability(
+		"res://scenes/fragments/endo_junction_stretch_preview.tscn",
+		"Chunk_endo_junction_stretch",
+		"Endo Junction Stretch",
+		"This is not a corridor"
+	)
+	await _assert_preview_scene_main_ability_keymap(
+		"res://scenes/fragments/endo_junction_stretch_preview.tscn",
+		"Endo Junction Stretch"
+	)
+	await _assert_preview_scene_interactable_click_flow(
+		"res://scenes/fragments/endo_junction_stretch_preview.tscn",
+		"Chunk_endo_junction_stretch",
+		"EndoJunctionReadInteractable",
+		"endo",
+		"Endo Junction marks",
+		"junction_read",
+		true
+	)
+
+	var instance: Node = await _instantiate_scene_and_wait(preview_scene, 3)
+	_assert_true(instance != null, "endo_junction_stretch_preview.tscn instantiates")
+	if instance == null:
+		return
+
+	var chunk: Node = instance.find_child("Chunk_endo_junction_stretch", true, false)
+	_assert_true(chunk != null, "Endo Junction preview builds its chunk")
+	if chunk == null:
+		await _dispose_scene(instance)
+		return
+
+	var preview_state: Dictionary = instance.headless_get_state()
+	var slot: Dictionary = preview_state.get("world_slot", {})
+	_assert_equals(str(preview_state.get("preview_party_preset", "")), "full_party_full_health", "Endo stretch declares the full-party/full-health preset")
+	_assert_equals(str(slot.get("slot_id", "")), "act1_endo_junction_to_shelter_1", "Endo stretch reports its world slot")
+	_assert_equals(str(slot.get("entry_shelter_id", "")), "endo_junction", "Endo stretch starts from the junction anchor")
+	_assert_equals(str(slot.get("exit_shelter_id", "")), "shelter_1", "Endo stretch exits into Shelter 1")
+	_assert_equals(str(slot.get("next_slot", "")), "act1_channels_first_spiral", "Endo stretch points at the later Channels slot")
+	var canonical_party: Array = slot.get("canonical_party", [])
+	_assert_equals(canonical_party.size(), 3, "Endo stretch canonical slot carries the full party")
+	for char_id in ["aster", "peris", "endo"]:
+		var stats: Dictionary = preview_state.get("character_stats", {}).get(char_id, {})
+		_assert_equals(float(stats.get("hp", -1.0)), 100.0, "Endo stretch starts %s at full HP" % char_id)
+		_assert_equals(float(stats.get("sta", -1.0)), 100.0, "Endo stretch starts %s at full stamina" % char_id)
+		_assert_equals(float(stats.get("atp", -1.0)), GameState.ATP_MAX_PIPS, "Endo stretch starts %s at full ATP" % char_id)
+
+	var initial_chunk_state: Dictionary = chunk.get_preview_state()
+	_assert_true(not bool(initial_chunk_state.get("shelter_reached", false)), "Endo stretch starts before Shelter 1 is reached")
+	_assert_true(not bool(initial_chunk_state.get("shortcut_unlocked", false)), "Endo stretch starts with the shortcut locked")
+
+	instance.headless_select_character("endo")
+	instance.headless_set_character_position("endo", chunk.JUNCTION_POS)
+	_assert_true(chunk.read_junction(), "Endo can read his junction marks")
+	instance.headless_select_character("aster")
+	instance.headless_set_character_position("aster", chunk.GUIDE_MARK_POS)
+	_assert_true(chunk.mark_safe_route(), "Aster can translate Endo's safe route")
+	instance.headless_select_character("endo")
+	instance.headless_set_character_position("endo", chunk.FORAGE_CACHE_POS)
+	_assert_true(chunk.collect_forage(), "Endo can collect the first shelter-stretch cache")
+	instance.headless_set_character_position("endo", chunk.SAFE_LEDGE_POS)
+	_assert_true(chunk.commit_safe_route(), "Safe ledge route can be committed")
+	var safe_state: Dictionary = instance.headless_get_state()
+	for char_id in ["aster", "peris", "endo"]:
+		var safe_stats: Dictionary = safe_state.get("character_stats", {}).get(char_id, {})
+		_assert_equals(float(safe_stats.get("hp", -1.0)), 100.0, "Safe Endo stretch keeps %s at full HP before rest" % char_id)
+
+	instance.headless_set_character_position("endo", chunk.SHORTCUT_LOCK_POS)
+	_assert_true(chunk.unlock_shortcut(), "Endo can open the return shortcut")
+	instance.headless_set_character_position("aster", chunk.SHELTER_POS)
+	_assert_true(chunk.reach_shelter(), "Party can reach and rest at Shelter 1")
+	var complete_state: Dictionary = chunk.get_preview_state()
+	_assert_true(bool(complete_state.get("shelter_reached", false)), "Endo stretch records Shelter 1 reached")
+	_assert_true(bool(complete_state.get("shelter_rested", false)), "Endo stretch records Shelter 1 rest")
+	_assert_true(bool(complete_state.get("shortcut_unlocked", false)), "Endo stretch records shortcut unlock")
+	_assert_equals(str(complete_state.get("route_choice", "")), "safe", "Golden path records the safe route")
+	_assert_equals(int(complete_state.get("first_night_beat_count", 0)), 1, "First-night shelter beat fires once")
+	_assert_true(chunk.reach_shelter(), "Shelter rest is idempotent after completion")
+	var repeated_state: Dictionary = chunk.get_preview_state()
+	_assert_equals(int(repeated_state.get("first_night_beat_count", 0)), 1, "First-night shelter beat does not refire")
+	var rested_preview_state: Dictionary = instance.headless_get_state()
+	for char_id in ["aster", "peris", "endo"]:
+		var rested_stats: Dictionary = rested_preview_state.get("character_stats", {}).get(char_id, {})
+		_assert_equals(float(rested_stats.get("hp", -1.0)), 100.0, "Shelter rest restores %s HP" % char_id)
+		_assert_equals(float(rested_stats.get("sta", -1.0)), 100.0, "Shelter rest restores %s stamina" % char_id)
+		_assert_equals(float(rested_stats.get("atp", -1.0)), GameState.ATP_MAX_PIPS, "Shelter rest restores %s ATP" % char_id)
+
+	await _dispose_scene(instance)
+
+	var direct_instance: Node = await _instantiate_scene_and_wait(preview_scene, 3)
+	_assert_true(direct_instance != null, "endo_junction_stretch_preview.tscn instantiates for the direct route")
+	if direct_instance == null:
+		return
+	var direct_chunk: Node = direct_instance.find_child("Chunk_endo_junction_stretch", true, false)
+	_assert_true(direct_chunk != null, "Direct-route Endo preview builds its chunk")
+	if direct_chunk == null:
+		await _dispose_scene(direct_instance)
+		return
+
+	direct_instance.headless_select_character("endo")
+	direct_instance.headless_set_character_position("endo", direct_chunk.JUNCTION_POS)
+	_assert_true(direct_chunk.read_junction(), "Direct route still begins with Endo's world read")
+	direct_instance.headless_set_routing_mode("direct")
+	direct_instance.headless_select_character("aster")
+	direct_instance.headless_set_character_position("aster", direct_chunk.RISKY_BLOOM_POS)
+	_assert_true(direct_chunk.commit_direct_route(), "Direct route is playable")
+	var damaged_state: Dictionary = direct_chunk.get_preview_state()
+	_assert_equals(str(damaged_state.get("route_choice", "")), "direct", "Direct route records its route choice")
+	_assert_true(float(damaged_state.get("direct_damage_total", 0.0)) > 0.0, "Direct route records damage pressure")
+	_assert_true(float(damaged_state.get("party_min_hp", 0.0)) > 0.0, "Direct route remains recoverable")
+	direct_instance.headless_select_character("endo")
+	direct_instance.headless_set_character_position("endo", direct_chunk.SHORTCUT_LOCK_POS)
+	_assert_true(direct_chunk.unlock_shortcut(), "Direct route can still open the shortcut")
+	direct_instance.headless_set_character_position("peris", direct_chunk.SHELTER_POS)
+	_assert_true(direct_chunk.reach_shelter(), "Direct route can recover at Shelter 1")
+	var direct_complete: Dictionary = direct_chunk.get_preview_state()
+	_assert_true(bool(direct_complete.get("shelter_rested", false)), "Direct route records Shelter 1 rest")
+	var direct_rest_state: Dictionary = direct_instance.headless_get_state()
+	for char_id in ["aster", "peris", "endo"]:
+		var direct_stats: Dictionary = direct_rest_state.get("character_stats", {}).get(char_id, {})
+		_assert_equals(float(direct_stats.get("hp", -1.0)), 100.0, "Direct route rest restores %s HP" % char_id)
+
+	await _dispose_scene(direct_instance)
+
 func _test_channels_rhythm_preview() -> void:
 	_test_name = "Channels Rhythm Preview"
 
@@ -1070,6 +2423,12 @@ func _test_channels_hide_window_preview() -> void:
 	_assert_true(preview_scene != null, "channels_hide_window_preview.tscn loads")
 	if preview_scene == null:
 		return
+	await _assert_preview_scene_idle_dialogue_stability(
+		"res://scenes/fragments/channels_hide_window_preview.tscn",
+		"Chunk_channels_hide_window",
+		"Channels Hide Window",
+		"This is not a corridor"
+	)
 
 	var instance: Node = preview_scene.instantiate()
 	_assert_true(instance != null, "channels_hide_window_preview.tscn instantiates")
@@ -1594,6 +2953,14 @@ func _test_tag_day() -> void:
 
 		var dialogue: Node = instance.find_child("DialogueBox", true, false)
 		_assert_true(dialogue != null, "DialogueBox node exists")
+		for key in [
+			"peris_sim.system.complete",
+			"peris_sim.system.sanction_notice",
+			"peris_sim.system.wellness_feed",
+			"peris_sim.system.spiral_flash",
+			"peris_sim.system.reconnect_denied",
+		]:
+			_assert_true(DialogueData.has_key(key), "Peris phase 2 dialogue key exists: %s" % key)
 
 		# Event-driven progression test: verify scheduler, GameState, step system
 		if "_current_step" in instance and "_scheduler" in instance:
@@ -1615,6 +2982,140 @@ func _test_tag_day() -> void:
 		await get_tree().process_frame
 
 # --- Test: Aster Simulation ---
+## Drive the whole Aster sim to completion using ONLY the data layer: the
+## scheduler for time, the three interactables for input, and request_advance()
+## for the one acknowledge line. No speed_multiplier hack, no synthetic clicks.
+## This is the regression gate that the game is playable through the scheduler.
+func _test_aster_playthrough() -> void:
+	_test_name = "Aster Playthrough (data layer)"
+
+	var scene := load("res://scenes/tutorial/aster_sim.tscn")
+	_assert_true(scene != null, "Aster sim scene loads for playthrough")
+	if scene == null:
+		return
+	var instance: Node = scene.instantiate()
+	get_tree().root.add_child(instance)
+	for i in range(5):
+		await get_tree().process_frame
+
+	var dialogue: Node = instance._dialogue
+	var scheduler: EventScheduler = instance._scheduler
+	_assert_true(dialogue != null and scheduler != null,
+		"Aster playthrough exposes dialogue and scheduler")
+	if dialogue == null or scheduler == null:
+		instance.queue_free()
+		await get_tree().process_frame
+		return
+
+	var actioned := {}
+	var reached_complete := false
+	var saw_terminal_focus := false
+	var safety := 0
+	while safety < 6000:
+		safety += 1
+		# Acknowledge any wait gate (data-layer equivalent of a click), then
+		# advance scheduler time. Dialogue rides the one clock both ways.
+		_pump_dialogue(dialogue, 4.0)
+		instance.headless_advance(0.5, 0.25)
+
+		var step := str(instance._current_step)
+		if step == "terminal_focus":
+			saw_terminal_focus = true
+		if step == "complete":
+			reached_complete = true
+			break
+
+		# Each interaction fires once, when the data layer makes it available.
+		if step == "show_terminal" and not actioned.has("show_terminal") \
+				and instance._terminal != null and instance._terminal.is_interaction_enabled():
+			actioned["show_terminal"] = true
+			instance._terminal._trigger()
+		elif step == "walk_to_drink" and not actioned.has("walk_to_drink") \
+				and instance._drink_machine != null and instance._drink_machine.is_interaction_enabled():
+			actioned["walk_to_drink"] = true
+			instance._drink_machine._trigger()
+		elif step == "explore_workspace" and not actioned.has("explore_workspace") \
+				and instance._explore_gate_unlocked and instance._explore_hallway_gate != null:
+			actioned["explore_workspace"] = true
+			instance._explore_hallway_gate._trigger()
+
+	_assert_true(saw_terminal_focus,
+		"Clicking the terminal opens the forecast screen-focus beat")
+	_assert_true(reached_complete,
+		"Aster sim plays to completion through the data layer (last step: %s)" % str(instance._current_step))
+	_assert_equals(str(instance.requested_scene_change), "res://scenes/tutorial/peris_sim.tscn",
+		"Completed Aster sim hands off to the Peris sim")
+
+	instance.queue_free()
+	await get_tree().process_frame
+
+## Dialogue must keep flowing while the gameplay scheduler is paused (the Peris
+## protect prompt and exploration focus rely on this). A queued chain advances
+## line-to-line and finishes; an acknowledge line waits for request_advance().
+func _test_dialogue_pause_chain() -> void:
+	_test_name = "Dialogue During Pause"
+
+	var scene := load("res://scenes/tutorial/aster_sim.tscn")
+	_assert_true(scene != null, "Scene loads for pause-dialogue test")
+	if scene == null:
+		return
+	var instance: Node = scene.instantiate()
+	get_tree().root.add_child(instance)
+	for i in range(5):
+		await get_tree().process_frame
+
+	var dialogue: Node = instance._dialogue
+	var scheduler: EventScheduler = instance._scheduler
+	if dialogue == null or scheduler == null:
+		_assert_true(false, "Pause-dialogue test has dialogue and scheduler")
+		instance.queue_free()
+		await get_tree().process_frame
+		return
+
+	scheduler.pause()
+	_assert_true(scheduler.is_paused(), "Gameplay scheduler is paused")
+
+	# A three-line auto chain advances entirely on the dialogue clock.
+	dialogue.clear()
+	var shown: Array[String] = []
+	var finished := {"hit": false}
+	var on_line := func(t: String): shown.append(t)
+	var on_fin := func(): finished["hit"] = true
+	dialogue.line_displayed.connect(on_line)
+	dialogue.dialogue_finished.connect(on_fin)
+	dialogue.say("First line during pause.", "TEST", "normal", false)
+	dialogue.say("Second line during pause.", "TEST", "normal", false)
+	dialogue.say("Third line during pause.", "TEST", "normal", false)
+
+	var safety := 0
+	while dialogue.is_active() and safety < 4000:
+		dialogue.advance_ui_time(4.0)
+		safety += 1
+
+	_assert_true(scheduler.is_paused(), "Scheduler stayed paused while dialogue advanced")
+	_assert_equals(shown.size(), 3, "All three queued lines trigger in turn while paused (no hang)")
+	_assert_true(finished["hit"], "dialogue_finished fires after the paused chain completes")
+	_assert_true(not dialogue.is_active(), "Dialogue box returns to idle while paused")
+
+	# An acknowledge line holds until request_advance(), even while paused.
+	dialogue.clear()
+	finished["hit"] = false
+	dialogue.say("Acknowledge me.", "TEST", "normal", true)
+	for j in range(60):
+		dialogue.advance_ui_time(4.0)
+	_assert_true(dialogue.is_active(),
+		"Acknowledge line waits for an explicit advance while paused (does not auto-skip)")
+	dialogue.request_advance()
+	_assert_true(not dialogue.is_active(),
+		"request_advance() clears the acknowledge line while paused")
+	_assert_true(finished["hit"], "dialogue_finished fires once the acknowledge line is advanced")
+
+	dialogue.line_displayed.disconnect(on_line)
+	dialogue.dialogue_finished.disconnect(on_fin)
+	scheduler.resume()
+	instance.queue_free()
+	await get_tree().process_frame
+
 func _test_aster_sim() -> void:
 	_test_name = "Aster Simulation"
 
@@ -1651,7 +3152,7 @@ func _test_aster_sim() -> void:
 		if terminal != null and drink != null:
 			_assert_equals(str(terminal.get("interactable_id")), "aster.terminal",
 				"Aster terminal pulls its behavior from the interactable data catalog")
-			_assert_interactable_type(terminal, Interactable.InteractableType.HOLD_ACTION,
+			_assert_interactable_type(terminal, Interactable.InteractableType.INSPECTION,
 				"Aster terminal")
 			_assert_equals(str(drink.get("interactable_id")), "aster.drink_machine",
 				"Aster drink machine pulls its behavior from the interactable data catalog")
@@ -1673,8 +3174,11 @@ func _test_aster_sim() -> void:
 				"Aster drink machine stays disabled during the monitor tutorial step")
 			terminal.call("_trigger")
 			await get_tree().process_frame
+			_assert_equals(instance._current_step, "terminal_focus",
+				"Clicking Aster's monitor opens the forecast screen-focus beat")
+			instance.headless_advance(instance.TERMINAL_FOCUS_DURATION + 0.1)
 			_assert_equals(instance._current_step, "terminal_data",
-				"Approaching and holding at Aster's monitor advances the sequence")
+				"The terminal focus beat advances the sequence to terminal_data")
 			_assert_true(not bool(drink.call("is_interaction_enabled")),
 				"Aster drink machine remains disabled until the drink tutorial step")
 			instance._start_walk_to_drink()
@@ -1685,6 +3189,21 @@ func _test_aster_sim() -> void:
 
 		var dialogue: Node = instance.find_child("DialogueBox", true, false)
 		_assert_true(dialogue != null, "DialogueBox node exists")
+		if dialogue != null:
+			_assert_true(dialogue.has_method("advance_ui_time"),
+				"DialogueBox exposes UI-time advancement")
+			_assert_true(dialogue.has_method("request_advance"),
+				"DialogueBox exposes an explicit advance shared by click and data layer")
+			# The dialogue clock is owned by the sequence and runs even when the
+			# gameplay scheduler is paused.
+			instance._scheduler.pause()
+			dialogue.clear()
+			dialogue.say("clock probe", "", "normal", false)
+			dialogue.advance_ui_time(0.2)
+			_assert_true(float(dialogue.get("_displayed_chars")) > 0.0,
+				"Dialogue advances while the gameplay scheduler is paused")
+			dialogue.clear()
+			instance._scheduler.resume()
 		var high_res_room := instance.find_child("default", true, false) as Node3D
 		_assert_true(high_res_room != null, "Aster sim keeps the imported high-res room instance")
 		var placement := instance.find_child("ScenePlacement", true, false) as Node3D
@@ -1711,7 +3230,6 @@ func _test_aster_sim() -> void:
 				"AwardsJournalismZoneMarker",
 				"JStoreShelf",
 				"JStoreMainZoneMarker",
-				"JStoreArticlesZoneMarker",
 				"HallwayExit",
 				"DataMotesCenter",
 			]
@@ -1804,19 +3322,59 @@ func _test_aster_sim() -> void:
 					_assert_true(shader.resource_path != "res://resources/black_outline.gdshader",
 						"Aster sim fallback does not run the black outline shader during object feedback debug")
 		_assert_equals(DialogueData.text("aster_sim.ron.lighting"),
-			"Geez, Aster, it looks like an evil lair in here. You ever think about turning the lights up?",
-			"Ron comments on Aster's dim simulation lighting")
+			"Geez, Aster, it looks like an evil lair in here. You ever think about turning the lights up? Might want to fix that before they think you've lost your mind...",
+			"Ron combines the dim-lighting and lost-your-mind comments")
+		_assert_equals(DialogueData.text("aster_sim.ron.greeting"),
+			"Hey hey, Deputy Analyst, Separations and Transport!",
+			"Ron greets Aster with the revised workplace title")
 		_assert_equals(DialogueData.text("aster_sim.aster.lighting"),
-			"The default's like working on the surface of the sun. I cannot deal with it.",
-			"Aster names his preference for dimmer workspace lighting")
+			"The default's like working on the surface of the sun! I've always had it like this...",
+			"Aster names his long-standing dim workspace preference")
+		_assert_true(DialogueData.text("aster_sim.ron.tag_day_jobs").contains("happy Tag Day"),
+			"Ron adds the revised Tag Day jobs comment after the lighting exchange")
+		_assert_equals(DialogueData.text("aster_sim.device.tag_verify"),
+			"HAPPY TAG DAY! WORKSTATIONS HAVE BEEN DISABLED. PLEASE DISCONNECT FROM SIMULATION",
+			"Tag Day device notification uses the revised workstation shutdown text")
+		_assert_equals(DialogueData.text("tag_day.nk_chat.10"),
+			"Is there? You're what, twenty-three? Twenty-four? Soon it'll be you in that room...",
+			"Tag Day NK-01 late corridor line matches the revised age-room threat")
+		_assert_true(DialogueData.text("aster_sim.ron.tag_notify").contains("Chief Analyst, Separations and Transport"),
+			"Ron uses the revised Chief Analyst promotion joke")
+		_assert_equals(DialogueData.text("aster_sim.tag_routine"),
+			"Man, they should really automate these checks sometime. Can't they'd just let me work instead of pulling us all out?",
+			"Aster final simulation line uses the revised automation-check complaint")
 		_assert_true(not DialogueData.has_key("aster_sim.ron.whatever_works"),
 			"Ron does not answer Aster's lighting preference after walking out")
+		_assert_true(not DialogueData.has_key("aster_sim.ron.lost_mind"),
+			"Ron lost-your-mind comment is merged into the lighting line")
+		for retired_key in [
+			"aster_sim.working.thought.01",
+			"aster_sim.working.thought.02",
+			"aster_sim.ron.working_on",
+			"aster_sim.aster.show",
+			"aster_sim.system.cleaned",
+			"aster.sim_expand.glass_bead.look",
+			"aster.sim_expand.painting_1.look",
+			"aster.sim_expand.painting_2.look",
+			"aster.sim_expand.awards.look",
+			"aster.sim_expand.awards.journalism_look",
+			"aster.sim_expand.bookshelf.look",
+			"aster.sim_expand.bookshelf.articles_pull",
+		]:
+			_assert_true(not DialogueData.has_key(retired_key),
+				"Retired Aster sim setup/action dialogue key is absent: %s" % retired_key)
 		_assert_true(DialogueData.text("aster.sim_expand.glass_bead.line").contains("nobody asks me to normalize anything"),
 			"Aster sim glass bead dialogue uses the revised private-pleasure flavor")
-		_assert_true(DialogueData.text("aster.sim_expand.painting_2.line").contains("waterfall thing with the rainbow"),
-			"Aster sim Hunter and Ash dialogue uses the revised art-market flavor")
-		_assert_true(DialogueData.text("aster.sim_expand.bookshelf.line").contains("Barrier fault prediction"),
-			"Aster sim J-store dialogue uses the revised publication-trail flavor")
+		var hunter_ash_line := DialogueData.text("aster.sim_expand.painting_2.line")
+		_assert_true(
+			hunter_ash_line.contains("Breadth of Life")
+			and hunter_ash_line.contains("mine's the digital one")
+			and not hunter_ash_line.contains("waterfall thing"),
+			"Aster sim Hunter and Ash dialogue uses the reference Breadth of Life hidden-reward seed")
+		_assert_true(DialogueData.text("aster.sim_expand.bookshelf.line").contains("Journal of Adjusted Transfer Analysis"),
+			"Aster sim J-store collection dialogue uses the revised journal list flavor")
+		_assert_true(DialogueData.text("aster.sim_expand.bookshelf.articles_line").contains("Most of my work is on barrier fault prediction"),
+			"Aster sim J-store articles dialogue uses the revised barrier-fault publication flavor")
 
 		dialogue.clear()
 		instance._scheduler.clear()
@@ -1832,8 +3390,8 @@ func _test_aster_sim() -> void:
 		_assert_true(ron_after.distance_to(ron_before) > 0.1, "Ron advances when scheduler time advances")
 		_assert_scheduler_animation_bridge(instance)
 
-		dialogue.clear()
-		dialogue.dialogue_finished.emit()
+		_drain_dialogue_box(dialogue)
+		instance.headless_advance(0.2, 0.05)
 		for i in range(2):
 			await get_tree().process_frame
 
@@ -1844,7 +3402,6 @@ func _test_aster_sim() -> void:
 			"AwardsCenterZone",
 			"AwardsJournalismZone",
 			"JStoreMainZone",
-			"JStoreArticlesZone",
 			"HallwayGate",
 		]
 		for zone_name in aster_explore_zones:
@@ -1863,7 +3420,9 @@ func _test_aster_sim() -> void:
 					"%s" % zone_name)
 		var room_element_targets := _find_nodes_with_meta(instance, "room_element_id")
 		_assert_true(room_element_targets.size() >= 8,
-			"Aster sim exposes semantic graybox object outline targets")
+				"Aster sim exposes semantic graybox object outline targets")
+		_assert_true(instance.find_child("JStoreArticlesZone", true, false) == null,
+			"Aster sim uses one J-store interactable zone with sequenced lines")
 		for target_name in [
 			"RoomTargetDesk",
 			"RoomTargetDrinkMachine",
@@ -1890,7 +3449,6 @@ func _test_aster_sim() -> void:
 				"AwardsCenterZone": "AwardsCenterZoneMarker",
 				"AwardsJournalismZone": "AwardsJournalismZoneMarker",
 				"JStoreMainZone": "JStoreMainZoneMarker",
-				"JStoreArticlesZone": "JStoreArticlesZoneMarker",
 				"HallwayGate": "HallwayExit",
 			}
 			for zone_name in zone_marker_pairs.keys():
@@ -1936,10 +3494,19 @@ func _test_aster_sim() -> void:
 			await get_tree().process_frame
 			_assert_equals(str(dialogue.get("_current_text")), DialogueData.text("aster.sim_expand.bookshelf.line"),
 				"Aster exploration interaction opens directly on the object line")
-			_assert_true(str(dialogue.get("_current_text")) != DialogueData.text("aster.sim_expand.bookshelf.look"),
+			_assert_true(not str(dialogue.get("_current_text")).contains("Aster glances"),
 				"Aster exploration interaction skips visible-action direction text")
 			dialogue.clear()
 			dialogue.dialogue_finished.emit()
+			await get_tree().process_frame
+			jstore_zone.call("_trigger")
+			await get_tree().process_frame
+			_assert_equals(str(dialogue.get("_current_text")), DialogueData.text("aster.sim_expand.bookshelf.articles_line"),
+				"Aster J-store interaction advances to article details on the second click")
+			dialogue.clear()
+			dialogue.dialogue_finished.emit()
+			if jstore_zone.has_meta("exploration_dialogue_index"):
+				jstore_zone.set_meta("exploration_dialogue_index", 0)
 			await get_tree().process_frame
 
 		if glass_zone != null and feedback_manager != null:
@@ -2084,6 +3651,18 @@ func _test_peris_sim() -> void:
 
 		var dialogue: Node = instance.find_child("DialogueBox", true, false)
 		_assert_true(dialogue != null, "DialogueBox node exists")
+		for retired_key in [
+			"peris_sim.waiting.thought",
+			"peris_sim.monos.start",
+			"peris_sim.sprint.thought",
+			"peris_sim.care.thought",
+			"peris_sim.correct.queue_first",
+			"peris_sim.session_ends",
+			"peris.sim_expand.narration.enter",
+			"peris.sim_expand.logbook.interact",
+		]:
+			_assert_true(not DialogueData.has_key(retired_key),
+				"Retired Peris sim dialogue key is absent: %s" % retired_key)
 
 		instance._visit_phase = 1
 		instance._start_workspace()
@@ -2144,9 +3723,10 @@ func _test_peris_sim() -> void:
 				"Peris plant interaction opens directly on the object line")
 			_assert_true(not str(dialogue.get("_current_text")).contains("Peris "),
 				"Peris plant interaction does not queue visible-action narration")
-			dialogue.clear()
-			dialogue.dialogue_finished.emit()
+			_drain_dialogue_box(dialogue, 10.0, 0.05)
 			await get_tree().process_frame
+			_assert_true(not dialogue.is_active(),
+				"Peris focused inspection dialogue advances while scheduler time is paused")
 			_assert_true(not instance._scheduler.is_paused(),
 				"Peris exploration focus restores scheduler time after dialogue finishes")
 			_assert_true(not bool(camera.call("is_locked")),
@@ -2186,8 +3766,81 @@ func _test_peris_sim() -> void:
 			instance.headless_advance(0.6, 0.1)
 			_assert_true(monos._label.modulate.a <= 0.01, "Monos fade completes under scheduler fast-forward")
 
+		if dialogue != null:
+			dialogue.clear()
+			instance._start_alert_monos()
+			await get_tree().process_frame
+			_assert_equals(instance._current_step, "protect_prompt",
+				"Peris protect tutorial reaches the paused dialogue prompt")
+			_assert_equals(float(instance._compute_speed()), 0.0,
+				"Peris protect tutorial freezes gameplay simulation time")
+			_drain_dialogue_box(dialogue)
+			await get_tree().process_frame
+			_assert_true(not dialogue.is_active(),
+				"Peris protect prompt dialogue can fast-forward while gameplay is paused")
+			_assert_equals(instance._current_step, "protect_prompt",
+				"UI-only dialogue advancement does not mutate the tutorial step")
+
 		instance.queue_free()
 		await get_tree().process_frame
+
+		await _assert_peris_phase2_live_post_attack_progression(scene)
+
+func _assert_peris_phase2_live_post_attack_progression(scene: PackedScene) -> void:
+	var instance: Node = scene.instantiate()
+	instance._visit_phase = 2
+	get_tree().root.add_child(instance)
+	for i in range(3):
+		await get_tree().process_frame
+
+	var dialogue: Node = instance.find_child("DialogueBox", true, false)
+	_assert_true(dialogue != null, "Peris phase 2 live regression has dialogue")
+	if dialogue == null:
+		instance.queue_free()
+		await get_tree().process_frame
+		return
+
+	var actioned := {}
+	var saw_efficiency_log := false
+	var saw_sanction_notice := false
+	var elapsed := 0.0
+	var step := 0.05
+	while elapsed < 90.0:
+		var current_step := str(instance._current_step)
+		if current_step == "efficiency_log":
+			saw_efficiency_log = true
+		if current_step == "sanction_notice":
+			saw_sanction_notice = true
+			break
+
+		if current_step == "protect_prompt" and not actioned.has("protect_prompt") and not dialogue.is_active():
+			actioned["protect_prompt"] = true
+			instance._on_protect_pressed()
+		elif current_step == "run_prompt" and not actioned.has("run_prompt"):
+			actioned["run_prompt"] = true
+			instance._toggle_run()
+		elif current_step == "click_monos" and not actioned.has("click_monos"):
+			actioned["click_monos"] = true
+			instance._start_confirm_protect()
+		elif current_step == "confirm_protect" and not actioned.has("confirm_protect"):
+			actioned["confirm_protect"] = true
+			instance._toggle_pause()
+
+		_pump_dialogue(dialogue, 12.0)
+		if instance.has_method("_process"):
+			instance._process(step)
+		elapsed += step
+
+	_assert_true(saw_efficiency_log,
+		"Peris phase 2 live path reaches the feed-terminal close / efficiency log")
+	_assert_true(saw_sanction_notice,
+		"Peris phase 2 live path advances from closed feed terminal to sanction notice")
+	_assert_equals(str(instance._current_step), "sanction_notice",
+		"Peris phase 2 live path is not stuck after the feed terminal closes")
+
+	instance._visit_phase = 1
+	instance.queue_free()
+	await get_tree().process_frame
 
 func _assert_scheduler_animation_bridge(instance: Node) -> void:
 	var probe := Node3D.new()
@@ -2236,12 +3889,21 @@ func _assert_aster_interaction_click_matrix(instance: Node, dialogue: Node) -> v
 		if instance._terminal and instance._terminal.has_method("set_interaction_enabled"):
 			instance._terminal.set_interaction_enabled(true)
 		await _click_target_and_advance(instance, str(check.target), "aster", terminal_start, 5.0, str(check.label))
-		_drive_interactable_zone(instance._terminal, instance._player as Node3D, float(instance._terminal.get("dwell_time")) + 0.2)
 		await get_tree().process_frame
-		_assert_equals(instance._current_step, "terminal_data",
+		_assert_equals(instance._current_step, "terminal_focus",
+			"%s click opens the terminal forecast focus beat" % check.label)
+		# Advance only until the focus beat ends, so we land on terminal_data
+		# rather than overshooting into the next scheduled steps.
+		var reached_terminal_data := false
+		for _i in range(80):
+			instance.headless_advance(0.1, 0.1)
+			if str(instance._current_step) == "terminal_data":
+				reached_terminal_data = true
+				break
+		_assert_true(reached_terminal_data,
 			"%s click reaches the terminal interactable and advances the tutorial" % check.label)
-		_assert_equals(str(dialogue.get("_current_text")), DialogueData.text("aster_sim.system.cleaned"),
-			"%s click plays terminal dialogue through the semantic interactable" % check.label)
+		_assert_equals(str(dialogue.get("_current_text")), "",
+			"%s click advances silently through the forecast screen-focus beat" % check.label)
 
 	await _reset_dialogue_focus(instance, dialogue)
 	instance._scheduler.clear()
@@ -2275,6 +3937,8 @@ func _assert_aster_interaction_click_matrix(instance: Node, dialogue: Node) -> v
 		var delegate := instance.find_child(str(check.delegate), true, false)
 		if delegate != null and delegate.has_method("reset"):
 			delegate.reset()
+		if delegate != null and delegate.has_meta("exploration_dialogue_index"):
+			delegate.set_meta("exploration_dialogue_index", 0)
 		await _click_target_and_advance(instance, str(check.target), "aster", aster_start, 6.0, str(check.target))
 		_assert_equals(str(dialogue.get("_current_text")), DialogueData.text(str(check.text)),
 			"%s click reaches %s and plays its inspection line" % [str(check.target), str(check.delegate)])
@@ -2672,21 +4336,22 @@ func _test_elevator() -> void:
 		instance.headless_advance(4.0, 0.1)
 		_assert_elevator_escort_standoff(instance, 2.0,
 			"Escort units stop short during Aster EMP setup")
-		dialogue.dialogue_finished.emit()
-		instance._scheduler.pause()
-		dialogue.dialogue_finished.emit()
+		_drain_dialogue_box(dialogue, 25.0, 0.05)
+		instance.headless_advance(0.1, 0.05)
 		_assert_equals(instance._current_step, "emp_tutorial",
 			"EMP tutorial prompt fires after unit warning dialogue")
 		_assert_true(instance._scheduler.is_paused(), "EMP tutorial pauses after the prompt is available")
 		_assert_true(str(instance._tutorial_prompt._label.text).contains("EMP"),
 			"EMP tutorial prompt text is visible")
+		_assert_true(str(instance._tutorial_prompt._label.text).contains("[Z]"),
+			"EMP tutorial maps Aster's main ability to Z")
 		_assert_elevator_escort_standoff(instance, 2.0,
 			"Escort units are not touching the party at the EMP prompt")
 		instance._toggle_pause()
 		_assert_true(instance._scheduler.is_paused(),
 			"EMP tutorial cannot unpause before Aster queues EMP")
-		instance._on_emp_pressed()
-		_assert_true(instance._emp_queued, "Aster EMP queues while the tutorial is paused")
+		_assert_true(_press_unhandled_key(instance, KEY_Z), "Elevator accepts Z input for Aster EMP")
+		_assert_true(instance._emp_queued, "Aster EMP queues from Z while the tutorial is paused")
 		_assert_elevator_escort_standoff(instance, 2.0,
 			"Escort units are not touching the party while EMP is queued")
 		instance._toggle_pause()
@@ -3140,6 +4805,191 @@ func _dispose_scene(instance: Node) -> void:
 		instance.queue_free()
 		await get_tree().process_frame
 
+func _assert_no_embedded_game_gui(root: Node, label: String) -> void:
+	var gui_nodes: Array[String] = []
+	_collect_embedded_game_gui_nodes(root, str(root.name), gui_nodes)
+	_assert_equals(gui_nodes.size(), 0,
+		"%s keeps reusable game GUI out of the chunk tree (found: %s)" % [label, str(gui_nodes)])
+
+func _collect_embedded_game_gui_nodes(node: Node, path: String, gui_nodes: Array[String]) -> void:
+	for child in node.get_children():
+		var child_path := "%s/%s" % [path, str(child.name)]
+		if child is CanvasLayer or child is Control:
+			gui_nodes.append(child_path)
+		_collect_embedded_game_gui_nodes(child, child_path, gui_nodes)
+
+func _find_fragment_chunk_root(instance: Node) -> Node:
+	if "_active_chunk" in instance:
+		var active_chunk: Variant = instance.get("_active_chunk")
+		if active_chunk is Node:
+			return active_chunk
+	for child in instance.get_children():
+		var child_name := str(child.name)
+		if child_name.begins_with("Chunk_") or child_name.ends_with("Chunk"):
+			return child
+	return null
+
+func _assert_fragment_preview_uses_shared_gui(instance: Node, label: String) -> void:
+	_assert_true(instance != null, "%s exists for shared GUI contract" % label)
+	if instance == null:
+		return
+	_assert_true(instance.has_method("headless_get_state"), "%s exposes headless GUI state" % label)
+	if not instance.has_method("headless_get_state"):
+		return
+
+	var state: Dictionary = instance.headless_get_state()
+	var ui: Dictionary = state.get("ui", {})
+	_assert_equals(str(ui.get("contract_id", "")), FRAGMENT_PREVIEW_GUI_CONTRACT_ID,
+		"%s uses the shared fragment-preview GUI contract" % label)
+	_assert_equals(str(ui.get("hud_script", "")), GAME_HUD_SCRIPT_PATH,
+		"%s declares the shared GameHUD script" % label)
+	_assert_true(bool(ui.get("shared_hud", false)), "%s binds the shared GameHUD instance" % label)
+	_assert_equals(str(ui.get("controls", "")), FRAGMENT_PREVIEW_CONTROL_HELP,
+		"%s uses the canonical preview control line" % label)
+	_assert_equals(str(ui.get("inventory_controls", "")), FRAGMENT_PREVIEW_INVENTORY_CONTROL_HELP,
+		"%s uses the canonical inventory control line" % label)
+
+	var hud: Node = instance.find_child("GameHUD", true, false)
+	_assert_true(hud != null, "%s creates exactly one reusable GameHUD node" % label)
+	if hud == null:
+		return
+	_assert_true(hud.has_method("get_hud_contract"), "%s GameHUD exposes its reusable contract" % label)
+	if not hud.has_method("get_hud_contract"):
+		return
+
+	var hud_contract: Dictionary = hud.call("get_hud_contract")
+	_assert_equals(str(hud_contract.get("contract_id", "")), GAME_HUD_CONTRACT_ID,
+		"%s GameHUD reports the shared HUD contract" % label)
+	_assert_equals(str(hud_contract.get("script", "")), GAME_HUD_SCRIPT_PATH,
+		"%s GameHUD contract points at the shared HUD script" % label)
+	_assert_equals(str(hud_contract.get("run_keybind", "")), "",
+		"%s preview HUD leaves Z free for main abilities" % label)
+	_assert_equals(str(hud_contract.get("routing_keybind", "")), "Tab",
+		"%s preview HUD keeps the shared route key" % label)
+	_assert_equals(str(hud_contract.get("pause_keybind", "")), "Space",
+		"%s preview HUD keeps the shared pause key" % label)
+
+	var stat_names: Array = hud_contract.get("stats", [])
+	for stat_name in ["atp", "hp", "sta"]:
+		_assert_true(stat_names.has(stat_name), "%s shared HUD exposes %s stat" % [label, stat_name])
+	var portrait_ids: Array = hud_contract.get("portraits", [])
+	for char_id in ["aster", "peris", "endo"]:
+		_assert_true(portrait_ids.has(char_id), "%s shared HUD exposes %s portrait" % [label, char_id])
+
+	var hud_abilities: Dictionary = hud_contract.get("abilities", {})
+	var state_abilities: Dictionary = state.get("abilities", {})
+	for ability_id in ["aster_focus", "peris_tune", "endo_patch"]:
+		var hud_ability: Dictionary = hud_abilities.get(ability_id, {})
+		var state_ability: Dictionary = state_abilities.get(ability_id, {})
+		_assert_equals(str(hud_ability.get("keybind", "")), str(state_ability.get("keybind", "")),
+			"%s HUD and headless state agree on %s keybind" % [label, ability_id])
+
+	var chunk_root := _find_fragment_chunk_root(instance)
+	_assert_true(chunk_root != null, "%s mounts one chunk under the shared preview shell" % label)
+	if chunk_root != null:
+		_assert_no_embedded_game_gui(chunk_root, "%s %s" % [label, str(chunk_root.name)])
+
+func _assert_preview_overlay_vision_sources(instance: Node, label: String) -> void:
+	_assert_true(instance != null, "%s instance exists for overlay vision sources" % label)
+	if instance == null:
+		return
+	_assert_true(instance.has_method("headless_set_character_position"), "%s can place party members for overlay checks" % label)
+	_assert_true(instance.has_method("headless_set_overlay_state"), "%s can toggle overlay sources for checks" % label)
+	_assert_true(instance.has_method("headless_get_state"), "%s exposes overlay vision state" % label)
+	_assert_true(instance.has_method("set_preview_character_visible"), "%s can hide party members for overlay checks" % label)
+	_assert_true(instance.has_method("_sync_overlay_stack"), "%s can sync its perception stack" % label)
+	_assert_true("_overlay_stack_material" in instance, "%s owns a shared perception stack material" % label)
+	if (
+		not instance.has_method("headless_set_character_position")
+		or not instance.has_method("headless_set_overlay_state")
+		or not instance.has_method("headless_get_state")
+		or not instance.has_method("set_preview_character_visible")
+		or not instance.has_method("_sync_overlay_stack")
+		or not ("_overlay_stack_material" in instance)
+	):
+		return
+
+	var party_positions := {
+		"aster": Vector3(1.0, 0.5, 1.0),
+		"peris": Vector3(7.0, 0.5, 2.0),
+		"endo": Vector3(-4.0, 0.5, -3.0),
+	}
+	for char_id in ["aster", "peris", "endo"]:
+		instance.call("headless_set_overlay_state", char_id, true)
+		instance.call("headless_set_character_position", char_id, party_positions[char_id])
+	instance.call("_sync_overlay_stack")
+
+	var material: ShaderMaterial = instance.get("_overlay_stack_material") as ShaderMaterial
+	_assert_true(material != null, "%s perception stack has a shader material" % label)
+	if material == null:
+		return
+
+	var expected_sources: Array[Vector3] = [
+		party_positions["aster"] + Vector3(0.0, 1.0, 0.0),
+		party_positions["peris"] + Vector3(0.0, 1.0, 0.0),
+		party_positions["endo"] + Vector3(0.0, 1.0, 0.0),
+	]
+	_assert_equals(int(material.get_shader_parameter("data_vision_count")), 3,
+		"%s data overlay clears around all visible party members" % label)
+	_assert_equals(int(material.get_shader_parameter("fog_vision_count")), 3,
+		"%s fog overlay clears around all visible party members" % label)
+	_assert_preview_overlay_source_positions(material, "data", expected_sources, "%s data overlay" % label)
+	_assert_preview_overlay_source_positions(material, "fog", expected_sources, "%s fog overlay" % label)
+
+	var state: Dictionary = instance.call("headless_get_state")
+	var state_sources: Array = state.get("overlay_vision_sources", [])
+	_assert_equals(state_sources.size(), 3, "%s reports all overlay vision sources in headless state" % label)
+
+	instance.call("headless_set_overlay_state", "endo", false)
+	instance.call("_sync_overlay_stack")
+	_assert_equals(int(material.get_shader_parameter("data_vision_count")), 3,
+		"%s data overlay keeps party vision independent of overlay readout toggles" % label)
+	_assert_equals(int(material.get_shader_parameter("fog_vision_count")), 3,
+		"%s fog overlay keeps party vision independent of overlay readout toggles" % label)
+
+	instance.call("set_preview_character_visible", "endo", false)
+	instance.call("_sync_overlay_stack")
+	_assert_equals(int(material.get_shader_parameter("data_vision_count")), 2,
+		"%s data overlay removes invisible party members from vision sources" % label)
+	_assert_equals(int(material.get_shader_parameter("fog_vision_count")), 2,
+		"%s fog overlay removes invisible party members from vision sources" % label)
+	instance.call("set_preview_character_visible", "endo", true)
+	instance.call("headless_set_overlay_state", "endo", true)
+	instance.call("headless_set_character_position", "endo", party_positions["endo"])
+	instance.call("_sync_overlay_stack")
+
+func _assert_preview_overlay_source_positions(
+	material: ShaderMaterial,
+	prefix: String,
+	expected_sources: Array[Vector3],
+	label: String
+) -> void:
+	var actual_sources: Array[Vector3] = [
+		material.get_shader_parameter("%s_character_pos" % prefix),
+		material.get_shader_parameter("%s_vision_pos_1" % prefix),
+		material.get_shader_parameter("%s_vision_pos_2" % prefix),
+	]
+	for index in range(expected_sources.size()):
+		_assert_vector3_close(actual_sources[index], expected_sources[index], 0.01,
+			"%s source %d follows the correct party member" % [label, index + 1])
+
+func _assert_vector3_close(actual: Vector3, expected: Vector3, tolerance: float, label: String) -> void:
+	_assert_true(actual.distance_to(expected) <= tolerance,
+		"%s (actual: %s expected: %s)" % [label, str(actual), str(expected)])
+
+func _press_unhandled_key(instance: Node, keycode: int, ctrl_pressed := false, shift_pressed := false) -> bool:
+	if instance == null or not instance.has_method("_unhandled_key_input"):
+		return false
+	var event := InputEventKey.new()
+	event.keycode = keycode
+	event.physical_keycode = keycode
+	event.pressed = true
+	event.echo = false
+	event.ctrl_pressed = ctrl_pressed
+	event.shift_pressed = shift_pressed
+	instance.call("_unhandled_key_input", event)
+	return true
+
 func _advance_showcase(instance: Node, duration: float, step := 0.05) -> void:
 	if instance.has_method("headless_advance"):
 		instance.headless_advance(duration, step)
@@ -3169,6 +5019,301 @@ func _sync_showcase_runtime(instance: Node, delta: float) -> void:
 		for visual in instance._physics_visuals.values():
 			if visual and is_instance_valid(visual) and visual.has_method("_process"):
 				visual._process(delta)
+
+func _assert_preview_scene_idle_dialogue_stability(
+	scene_path: String,
+	chunk_name: String,
+	label: String,
+	forbidden_substring := ""
+) -> void:
+	var preview_scene: PackedScene = load(scene_path)
+	_assert_true(preview_scene != null, "%s loads for idle dialogue stability" % scene_path.get_file())
+	if preview_scene == null:
+		return
+
+	var instance: Node = await _instantiate_scene_and_wait(preview_scene, 3)
+	_assert_true(instance != null, "%s instantiates for idle dialogue stability" % scene_path.get_file())
+	if instance == null:
+		return
+
+	var chunk: Node = instance.find_child(chunk_name, true, false)
+	_assert_true(chunk != null, "%s builds %s for idle dialogue stability" % [label, chunk_name])
+	_assert_preview_dialogue_idle_stable(instance, label, forbidden_substring)
+	await _dispose_scene(instance)
+
+func _assert_preview_scene_main_ability_keymap(scene_path: String, label: String) -> void:
+	var preview_scene: PackedScene = load(scene_path)
+	_assert_true(preview_scene != null, "%s loads for main ability keymap" % scene_path.get_file())
+	if preview_scene == null:
+		return
+
+	var instance: Node = await _instantiate_scene_and_wait(preview_scene, 3)
+	_assert_true(instance != null, "%s instantiates for main ability keymap" % scene_path.get_file())
+	if instance == null:
+		return
+
+	_assert_preview_main_ability_keymap(instance, label)
+	await _dispose_scene(instance)
+
+func _assert_preview_scene_interactable_click_flow(
+	scene_path: String,
+	chunk_name: String,
+	interactable_pattern: String,
+	active_char: String,
+	label: String,
+	expected_state_key := "",
+	expected_state_value = true
+) -> void:
+	var preview_scene: PackedScene = load(scene_path)
+	_assert_true(preview_scene != null, "%s loads for interactable click flow" % scene_path.get_file())
+	if preview_scene == null:
+		return
+
+	var instance: Node = await _instantiate_scene_and_wait(preview_scene, 3)
+	_assert_true(instance != null, "%s instantiates for interactable click flow" % scene_path.get_file())
+	if instance == null:
+		return
+
+	var chunk: Node = instance.find_child(chunk_name, true, false)
+	_assert_true(chunk != null, "%s builds %s for interactable click flow" % [label, chunk_name])
+	if chunk == null:
+		await _dispose_scene(instance)
+		return
+
+	var interactable := chunk.find_child(interactable_pattern, true, false)
+	_assert_true(interactable != null, "%s exposes %s" % [label, interactable_pattern])
+	if interactable == null:
+		await _dispose_scene(instance)
+		return
+
+	_assert_interactable_type(interactable, Interactable.InteractableType.INSPECTION,
+		"%s click-arrival interactable" % label)
+	_assert_equals(float(interactable.get("dwell_time")), 0.0,
+		"%s has no dwell timer" % label)
+
+	var feedback_manager := instance.find_child("OutlineFeedbackManager", true, false)
+	_assert_true(feedback_manager != null, "%s has the shared outline feedback manager" % label)
+	if feedback_manager == null:
+		await _dispose_scene(instance)
+		return
+
+	instance.headless_select_character(active_char)
+	var target_node := interactable as Node3D
+	_assert_true(target_node != null, "%s click target is spatial" % label)
+	if target_node == null:
+		await _dispose_scene(instance)
+		return
+	var target_pos: Vector3 = target_node.global_position
+	instance.headless_set_character_position(active_char, target_pos)
+
+	var state_before_idle: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
+	_advance_preview_interactable_idle_window(instance, 1.1)
+	if expected_state_key != "":
+		var state_after_idle: Dictionary = chunk.get_preview_state()
+		_assert_equals(state_after_idle.get(expected_state_key), state_before_idle.get(expected_state_key),
+			"%s does not fire from proximity dwell" % label)
+
+	instance.headless_set_character_position(active_char, target_pos + Vector3(-5.0, 0.0, -1.5))
+	var alpha_before_hover := _interactable_zone_alpha(interactable)
+	interactable.call("_on_mouse_entered")
+	var alpha_after_hover := _interactable_zone_alpha(interactable)
+	_assert_true(feedback_manager.call("get_hovered_target") == interactable,
+		"%s hover enters the shared outline manager" % label)
+	if alpha_before_hover >= 0.0 and alpha_after_hover >= 0.0:
+		_assert_true(alpha_after_hover > alpha_before_hover,
+			"%s hover applies visible shader feedback" % label)
+
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	interactable.call("_on_input_event", null, click, target_pos, Vector3.UP, 0)
+	_assert_true(feedback_manager.call("get_selected_target") == interactable,
+		"%s click switches to selected shader feedback" % label)
+	_assert_true(instance.headless_is_character_moving(active_char),
+		"%s click moves the active character toward the target" % label)
+	_assert_true(interactable.find_child("SelectedParticles", true, false) != null,
+		"%s selected feedback creates particles while moving" % label)
+
+	instance.headless_advance(8.0, 0.05)
+	if expected_state_key != "":
+		var state_after_click: Dictionary = chunk.get_preview_state()
+		_assert_equals(state_after_click.get(expected_state_key), expected_state_value,
+			"%s click-arrival resolves the interaction" % label)
+	_assert_true(feedback_manager.call("get_selected_target") == null,
+		"%s arrival clears selected shader feedback" % label)
+	var selected_particles := interactable.find_child("SelectedParticles", true, false) as GPUParticles3D
+	if selected_particles != null:
+		_assert_true(not selected_particles.emitting and not selected_particles.visible,
+			"%s arrival clears selected particles" % label)
+	interactable.call("_on_mouse_exited")
+
+	await _dispose_scene(instance)
+
+func _advance_preview_interactable_idle_window(instance: Node, duration: float, step := 0.1) -> void:
+	var remaining := maxf(0.0, duration)
+	while remaining > 0.0001:
+		var dt := minf(step, remaining)
+		if instance.has_method("_on_process"):
+			instance.call("_on_process", dt, 1.0)
+		_advance_preview_interactables_for_idle(instance, dt)
+		if instance.has_method("_headless_sync_runtime"):
+			instance.call("_headless_sync_runtime", dt)
+		remaining -= dt
+
+func _interactable_zone_alpha(interactable: Node) -> float:
+	if interactable == null:
+		return -1.0
+	var marker := interactable.find_child("InteractionZoneMarker", true, false) as MeshInstance3D
+	if marker == null or not (marker.material_override is StandardMaterial3D):
+		return -1.0
+	var material := marker.material_override as StandardMaterial3D
+	return material.albedo_color.a
+
+func _assert_preview_main_ability_keymap(instance: Node, label: String) -> void:
+	_assert_true(instance != null, "%s instance exists for main ability keymap" % label)
+	if instance == null:
+		return
+	_assert_true(instance.has_method("headless_get_state"), "%s exposes state for main ability keymap" % label)
+	_assert_true(instance.has_method("headless_select_character"), "%s exposes character selection for main ability keymap" % label)
+	if not instance.has_method("headless_get_state") or not instance.has_method("headless_select_character"):
+		return
+
+	var expected := {
+		"aster_focus": {"owner": "aster", "keybind": "Z", "keycode": KEY_Z},
+		"peris_tune": {"owner": "peris", "keybind": "X", "keycode": KEY_X},
+		"endo_patch": {"owner": "endo", "keybind": "Z", "keycode": KEY_Z},
+	}
+	var state: Dictionary = instance.headless_get_state()
+	var abilities: Dictionary = state.get("abilities", {})
+	for ability_id in expected.keys():
+		var spec: Dictionary = expected[ability_id]
+		var ability: Dictionary = abilities.get(ability_id, {})
+		_assert_equals(str(ability.get("owner", "")), str(spec.get("owner", "")),
+			"%s %s belongs to its canonical character" % [label, ability_id])
+		_assert_equals(str(ability.get("keybind", "")), str(spec.get("keybind", "")),
+			"%s %s displays its Z/X main-ability key" % [label, ability_id])
+		_assert_equals(int(ability.get("keycode", 0)), int(spec.get("keycode", 0)),
+			"%s %s exposes its Z/X keycode in headless state" % [label, ability_id])
+
+	var activations := [
+		{"char_id": "aster", "ability_id": "aster_focus", "keycode": KEY_Z},
+		{"char_id": "peris", "ability_id": "peris_tune", "keycode": KEY_X},
+		{"char_id": "endo", "ability_id": "endo_patch", "keycode": KEY_Z},
+	]
+	for activation in activations:
+		var char_id := str(activation.get("char_id", ""))
+		var ability_id := str(activation.get("ability_id", ""))
+		var keycode := int(activation.get("keycode", 0))
+		instance.headless_select_character(char_id)
+		var before: Dictionary = instance.headless_get_state()
+		var before_stats: Dictionary = before.get("character_stats", {}).get(char_id, {})
+		var before_atp := float(before_stats.get("atp", -1.0))
+		var before_run := bool(before.get("run_active", false))
+
+		_assert_true(_press_unhandled_key(instance, keycode),
+			"%s accepts %s for %s's main ability" % [label, OS.get_keycode_string(keycode), char_id.capitalize()])
+		var after: Dictionary = instance.headless_get_state()
+		var ability_runtime: Dictionary = after.get("abilities", {}).get(ability_id, {})
+		var after_stats: Dictionary = after.get("character_stats", {}).get(char_id, {})
+		_assert_true(str(ability_runtime.get("state", "ready")) != "ready",
+			"%s %s triggers from %s" % [label, ability_id, OS.get_keycode_string(keycode)])
+		_assert_true(float(after_stats.get("atp", before_atp)) < before_atp,
+			"%s %s spends ATP from %s" % [label, ability_id, OS.get_keycode_string(keycode)])
+		if keycode == KEY_Z:
+			_assert_equals(bool(after.get("run_active", true)), before_run,
+				"%s uses Z for %s's ability without toggling run" % [label, char_id.capitalize()])
+
+func _assert_preview_dialogue_idle_stable(
+	instance: Node,
+	label: String,
+	forbidden_substring := "",
+	idle_seconds := 3.2,
+	step := 0.1
+) -> void:
+	_assert_true(instance != null, "%s instance exists for idle dialogue stability" % label)
+	if instance == null:
+		return
+	_assert_true("_dialogue" in instance, "%s exposes dialogue for idle stability" % label)
+	if not ("_dialogue" in instance):
+		return
+	var dialogue_box: Node = instance._dialogue
+	_assert_true(dialogue_box != null, "%s has a dialogue box for idle stability" % label)
+	if dialogue_box == null:
+		return
+
+	var displayed: Array[String] = []
+	dialogue_box.line_displayed.connect(func(text: String): displayed.append(text))
+
+	var remaining := maxf(0.0, idle_seconds)
+	while remaining > 0.0001:
+		var dt := minf(step, remaining)
+		if instance.has_method("_on_process"):
+			instance.call("_on_process", dt, 1.0)
+		_advance_preview_interactables_for_idle(instance, dt)
+		if instance.has_method("_headless_sync_runtime"):
+			instance.call("_headless_sync_runtime", dt)
+		_advance_dialogue_box(dialogue_box, dt)
+		remaining -= dt
+
+	# Flush anything that may have been spuriously queued so a repeat shows up.
+	_drain_dialogue_box(dialogue_box)
+
+	var counts := {}
+	var repeated: Array[String] = []
+	for text in displayed:
+		counts[text] = int(counts.get(text, 0)) + 1
+	for text in counts.keys():
+		if int(counts.get(text, 0)) > 1:
+			repeated.append(str(text))
+	_assert_equals(repeated.size(), 0, "%s does not repeat dialogue while idling (seen: %s)" % [label, str(displayed)])
+
+	if forbidden_substring != "":
+		var leaked_forbidden := false
+		for text in displayed:
+			if text.contains(forbidden_substring):
+				leaked_forbidden = true
+				break
+		_assert_true(not leaked_forbidden, "%s does not leak '%s' while idling" % [label, forbidden_substring])
+
+func _advance_preview_interactables_for_idle(instance: Node, delta: float) -> void:
+	if not ("_preview_interactables" in instance):
+		return
+
+	var active_char := ""
+	if instance.has_method("get_preview_active_character"):
+		active_char = str(instance.call("get_preview_active_character"))
+
+	var characters := {}
+	if "_characters" in instance:
+		var raw_characters: Variant = instance.get("_characters")
+		if raw_characters is Dictionary:
+			characters = raw_characters
+
+	var raw_interactables: Variant = instance.get("_preview_interactables")
+	if not (raw_interactables is Array):
+		return
+	for interactable_variant in raw_interactables:
+		if not (interactable_variant is Node):
+			continue
+		var interactable := interactable_variant as Node
+		if interactable == null or not is_instance_valid(interactable):
+			continue
+		interactable.set("active_character", active_char)
+
+		var interactable_node := interactable as Node3D
+		var in_range := false
+		if interactable_node != null:
+			var radius := float(interactable.get("interaction_radius"))
+			for character_variant in characters.values():
+				if not (character_variant is Node3D):
+					continue
+				var character_node := character_variant as Node3D
+				if character_node.global_position.distance_to(interactable_node.global_position) <= radius:
+					in_range = true
+					break
+		interactable.set("_player_in_range", in_range)
+		if interactable.has_method("_process"):
+			interactable.call("_process", delta)
 
 func _preview_scheduler_tick(instance: Node) -> float:
 	if instance != null and instance.has_method("headless_get_state"):
@@ -5167,6 +7312,7 @@ func _test_rng_no_wallclock() -> void:
 		# UI; nothing in the game logic reads these values
 		"res://scripts/system/persistence/save_manager.gd",
 		"res://scripts/system/persistence/engram_journal.gd",
+		"res://scripts/system/engram_journal.gd",
 		"res://scripts/system/core/event_log.gd",
 	])
 
@@ -5342,7 +7488,59 @@ func _assert_equals(actual: Variant, expected: Variant, message: String) -> void
 		print("  FAIL: [%s] %s (expected: %s, got: %s)" % [_test_name, message, expected, actual])
 		_failed += 1
 
+func _vec3_from_array(raw: Variant, fallback: Vector3) -> Vector3:
+	if raw is Vector3:
+		return raw
+	if raw is Array and (raw as Array).size() >= 3:
+		return Vector3(float((raw as Array)[0]), float((raw as Array)[1]), float((raw as Array)[2]))
+	return fallback
+
+func _serialized_path_uses_multiple_y(path: Variant) -> bool:
+	if not (path is Array):
+		return false
+	var seen: Array[int] = []
+	for raw_point in path:
+		var point := _vec3_from_array(raw_point, Vector3.INF)
+		if point == Vector3.INF:
+			continue
+		var level := int(roundf(point.y * 100.0))
+		if not seen.has(level):
+			seen.append(level)
+	return seen.size() > 1
+
 # --- Dialogue Sequence Tests ---
+
+func _advance_dialogue_box(dialogue_box: Node, dt: float) -> void:
+	# Feed the one dialogue clock dt ticks (no speed_multiplier — that field is
+	# gone; the box has no clock of its own).
+	if dialogue_box != null and dialogue_box.has_method("advance_ui_time"):
+		dialogue_box.call("advance_ui_time", dt)
+
+## Advance the box, then acknowledge a wait gate the way the headless "player"
+## would (a fully-typed wait=true line waits for an explicit advance). This is
+## the single mechanism that replaces the old speed_multiplier = 10000 hack.
+func _pump_dialogue(dialogue_box: Node, dt: float) -> void:
+	if dialogue_box == null:
+		return
+	_advance_dialogue_box(dialogue_box, dt)
+	if not dialogue_box.has_method("request_advance"):
+		return
+	if not bool(dialogue_box.get("_waiting_for_input")):
+		return
+	var shown := float(dialogue_box.get("_displayed_chars"))
+	var total := str(dialogue_box.get("_current_text")).length()
+	if shown >= float(total):
+		dialogue_box.call("request_advance")
+
+## Drain all currently-queued dialogue to idle, acknowledging wait gates. Pumps
+## the dialogue clock in large ticks until the box reports idle.
+func _drain_dialogue_box(dialogue_box: Node, _duration := 0.0, _step := 0.0) -> void:
+	var safety := 0
+	while safety < 5000:
+		if dialogue_box == null or (dialogue_box.has_method("is_active") and not dialogue_box.is_active()):
+			return
+		_pump_dialogue(dialogue_box, 16.0)
+		safety += 1
 
 ## Pop through scheduler events, flushing dialogue between each.
 ## step_actions: Dictionary mapping step names to Callables that simulate
@@ -5353,7 +7551,6 @@ func _pop_dialogue_log(instance: Node, step_actions: Dictionary = {}) -> Array[D
 	var log: Array[Dictionary] = []
 	var dialogue_box: Node = instance._dialogue
 	var scheduler: EventScheduler = instance._scheduler
-	dialogue_box.speed_multiplier = 10000.0
 
 	var capture := func(text: String):
 		log.append({
@@ -5372,7 +7569,7 @@ func _pop_dialogue_log(instance: Node, step_actions: Dictionary = {}) -> Array[D
 		for j in range(200):
 			if not dialogue_box.is_active():
 				break
-			dialogue_box._process(0.05)
+			_pump_dialogue(dialogue_box, 16.0)
 
 		# Check for step actions to simulate input
 		var current_step: String = instance._current_step
@@ -5390,7 +7587,7 @@ func _pop_dialogue_log(instance: Node, step_actions: Dictionary = {}) -> Array[D
 			if idle > 20:
 				break
 			for j in range(10):
-				dialogue_box._process(0.05)
+				_pump_dialogue(dialogue_box, 16.0)
 			continue
 		idle = 0
 		var info: Dictionary = scheduler.pop_next()
@@ -5409,7 +7606,6 @@ func _drive_sequence_contract(instance: Node, step_actions: Dictionary = {}, max
 	var scheduler: EventScheduler = instance._scheduler
 	var actioned_steps: Dictionary = {}
 	var termination_reason := "safety"
-	dialogue_box.speed_multiplier = 10000.0
 
 	var step_state := {"last": ""}
 	var capture_step := func():
@@ -5437,7 +7633,7 @@ func _drive_sequence_contract(instance: Node, step_actions: Dictionary = {}, max
 		for j in range(200):
 			if not dialogue_box.is_active():
 				break
-			dialogue_box._process(0.05)
+			_pump_dialogue(dialogue_box, 16.0)
 			capture_step.call()
 
 		var current_step: String = instance._current_step
@@ -5466,7 +7662,7 @@ func _drive_sequence_contract(instance: Node, step_actions: Dictionary = {}, max
 				termination_reason = "idle"
 				break
 			for j in range(10):
-				dialogue_box._process(0.05)
+				_pump_dialogue(dialogue_box, 16.0)
 				capture_step.call()
 			continue
 
@@ -5508,7 +7704,6 @@ func _drive_sequence_contract_with_wall_time(
 	var wall_time := 0.0
 	var scheduler_time := 0.0
 	var dialogue_time := 0.0
-	dialogue_box.speed_multiplier = dialogue_speed_multiplier
 
 	var step_state := {"last": ""}
 	var wait_input_time := 0.0
@@ -5533,16 +7728,19 @@ func _drive_sequence_contract_with_wall_time(
 		})
 
 	var process_dialogue := func(dt: float):
-		dialogue_box._process(dt)
+		# Realistic-pace harness: the caller's multiplier is applied here (the
+		# box no longer carries a speed_multiplier field).
+		_advance_dialogue_box(dialogue_box, dt * dialogue_speed_multiplier)
 		wall_time += dt
 		dialogue_time += dt
 		var current_text: String = dialogue_box.get("_current_text")
 		var displayed_chars: float = float(dialogue_box.get("_displayed_chars"))
 		var waiting_for_input: bool = bool(dialogue_box.get("_waiting_for_input"))
 		if waiting_for_input and displayed_chars >= current_text.length():
+			# Simulate a player pausing continue_delay before acknowledging.
 			wait_input_time += dt
 			if wait_input_time >= continue_delay:
-				dialogue_box._advance()
+				dialogue_box.request_advance()
 				wait_input_time = 0.0
 		else:
 			wait_input_time = 0.0
@@ -6666,6 +8864,14 @@ func _test_tag_day_dialogue() -> void:
 		if entry.speaker == "NK-01" or entry.speaker == "NK-02":
 			nk_count += 1
 	_assert_true(nk_count >= 8, "NK chat lines in dialogue (got: %d)" % nk_count)
+	var revised_nk10 := DialogueData.text("tag_day.nk_chat.10")
+	var has_revised_nk10 := false
+	for entry in log:
+		if entry.text == revised_nk10:
+			has_revised_nk10 = true
+			break
+	_assert_true(has_revised_nk10,
+		"Tag Day dialogue log includes the revised NK-01 age-room threat")
 
 	# Verify NK lines interleave with poem lines (NK appears after a poem line)
 	var found_nk_after_poem := false
@@ -8912,6 +11118,221 @@ func _export_hide_encounter_coupled_stand_walk_analysis(output_path: String) -> 
 
 # --- Dialogue Dump ---
 
+func _dump_tutorial_dialogue(tutorial_scene: String, output_path: String) -> void:
+	_test_name = "Tutorial Dialogue Dump"
+	var target := tutorial_scene.strip_edges().to_lower()
+	var sections: Array[Dictionary] = []
+	match target:
+		"aster", "aster-sim", "aster_sim":
+			sections.append(await _collect_tutorial_dialogue_section(
+				"Aster Sim - scripted clean path",
+				"res://scenes/tutorial/aster_sim.tscn",
+				Callable(),
+				Callable(self, "_aster_dialogue_dump_actions")
+			))
+			sections.append(_dialogue_key_section("Aster Sim - overlay/thought lines", [
+				"aster_sim.drink_redirect.thought",
+			]))
+			sections.append(_dialogue_key_section("Aster Sim - optional inspection lines", [
+				"aster.sim_expand.glass_bead.line",
+				"aster.sim_expand.painting_1.line",
+				"aster.sim_expand.painting_2.line",
+				"aster.sim_expand.awards.line",
+				"aster.sim_expand.awards.journalism_line",
+				"aster.sim_expand.bookshelf.line",
+				"aster.sim_expand.bookshelf.articles_line",
+			]))
+		"peris", "peris-sim", "peris_sim":
+			sections.append(await _collect_tutorial_dialogue_section(
+				"Peris Sim Phase 1 - scripted clean path",
+				"res://scenes/tutorial/peris_sim.tscn",
+				Callable(self, "_peris_phase_1_dialogue_dump_setup"),
+				Callable(self, "_peris_phase_1_dialogue_dump_actions")
+			))
+			sections.append(await _collect_tutorial_dialogue_section(
+				"Peris Sim Phase 2 - scripted clean path",
+				"res://scenes/tutorial/peris_sim.tscn",
+				Callable(self, "_peris_phase_2_dialogue_dump_setup"),
+				Callable(self, "_peris_phase_2_dialogue_dump_actions")
+			))
+			sections.append(_dialogue_key_section("Peris Sim - overlay/thought and correction lines", [
+				"peris.sim_expand.opening.line",
+				"peris_sim.protect_remind",
+				"peris_sim.correct.not_yet",
+			]))
+			sections.append(_dialogue_key_section("Peris Sim - optional inspection lines", [
+				"peris.sim_expand.plant_1.line",
+				"peris.sim_expand.plant_2.line",
+				"peris.sim_expand.plant_3.line",
+				"peris.sim_expand.plant_4.line",
+				"peris.sim_expand.plant_5.line",
+				"peris.sim_expand.plant_6.line",
+				"peris.sim_expand.plant_7.line",
+				"peris.sim_expand.plant_8.line",
+				"peris.sim_expand.plant_9.line",
+				"peris.sim_expand.painting.line",
+				"peris.sim_expand.wellness.line",
+				"peris.sim_expand.strike_warning.notification",
+				"peris.sim_expand.strike_warning.line",
+				"peris.sim_expand.notes.line",
+			]))
+		"peris-phase1", "peris_phase1":
+			sections.append(await _collect_tutorial_dialogue_section(
+				"Peris Sim Phase 1 - scripted clean path",
+				"res://scenes/tutorial/peris_sim.tscn",
+				Callable(self, "_peris_phase_1_dialogue_dump_setup"),
+				Callable(self, "_peris_phase_1_dialogue_dump_actions")
+			))
+		"peris-phase2", "peris_phase2":
+			sections.append(await _collect_tutorial_dialogue_section(
+				"Peris Sim Phase 2 - scripted clean path",
+				"res://scenes/tutorial/peris_sim.tscn",
+				Callable(self, "_peris_phase_2_dialogue_dump_setup"),
+				Callable(self, "_peris_phase_2_dialogue_dump_actions")
+			))
+		_:
+			print("  ERROR: Unknown tutorial dialogue target: %s" % tutorial_scene)
+			print("  Expected one of: aster, peris, peris-phase1, peris-phase2")
+			return
+
+	_write_dialogue_dump_sections(output_path, tutorial_scene, sections)
+
+func _collect_tutorial_dialogue_section(
+		section_title: String,
+		scene_path: String,
+		setup: Callable,
+		actions_factory: Callable
+	) -> Dictionary:
+	var scene := load(scene_path)
+	if not scene:
+		return {
+			"title": section_title,
+			"scene": scene_path,
+			"error": "Could not load scene",
+			"lines": [],
+		}
+
+	var instance: Node = scene.instantiate()
+	if setup.is_valid():
+		setup.call(instance)
+	if "suppress_scene_change" in instance:
+		instance.suppress_scene_change = true
+	get_tree().root.add_child(instance)
+	for i in range(3):
+		await get_tree().process_frame
+
+	var actions: Dictionary = {}
+	if actions_factory.is_valid():
+		var action_result = actions_factory.call(instance)
+		if action_result is Dictionary:
+			actions = action_result
+
+	var lines := _pop_dialogue_log(instance, actions)
+	instance.queue_free()
+	await get_tree().process_frame
+	return {
+		"title": section_title,
+		"scene": scene_path,
+		"lines": lines,
+	}
+
+func _aster_dialogue_dump_actions(instance: Node) -> Dictionary:
+	return {
+		"show_terminal": func(): instance._on_terminal_interacted(),
+		"walk_to_drink": func(): instance._on_drink_interacted(),
+		"explore_workspace": func():
+			instance._explore_gate_unlocked = true
+			instance._on_exploration_gate_interacted(),
+	}
+
+func _peris_phase_1_dialogue_dump_setup(instance: Node) -> void:
+	instance._visit_phase = 1
+
+func _peris_phase_1_dialogue_dump_actions(instance: Node) -> Dictionary:
+	return {
+		"workspace": func():
+			instance._explore_gate_unlocked = true
+			instance._on_exploration_gate_interacted(),
+	}
+
+func _peris_phase_2_dialogue_dump_setup(instance: Node) -> void:
+	instance._visit_phase = 2
+
+func _peris_phase_2_dialogue_dump_actions(instance: Node) -> Dictionary:
+	return {
+		"protect_prompt": func(): instance._on_protect_pressed(),
+		"run_prompt": func(): instance._toggle_run(),
+		"click_monos": func(): instance._start_confirm_protect(),
+		"confirm_protect": func():
+			var target: Vector3 = instance.PORTAL_POS + Vector3(-0.5, 0.5, 0.0)
+			instance._player.global_position = target
+			instance._game_state.characters["peris"].position = target
+			instance._start_executing(),
+	}
+
+func _dialogue_key_section(section_title: String, keys: Array[String]) -> Dictionary:
+	var lines: Array[Dictionary] = []
+	for key in keys:
+		var line := DialogueData.get_line(key)
+		lines.append({
+			"key": key,
+			"tick": 0.0,
+			"text": line.text,
+			"speaker": line.speaker,
+			"style": line.style,
+		})
+	return {
+		"title": section_title,
+		"scene": "DialogueData",
+		"lines": lines,
+	}
+
+func _write_dialogue_dump_sections(output_path: String, target: String, sections: Array[Dictionary]) -> void:
+	var file := FileAccess.open(output_path, FileAccess.WRITE)
+	if file == null:
+		print("  ERROR: Could not open %s for writing" % output_path)
+		return
+
+	var total_lines := 0
+	for section in sections:
+		total_lines += (section.get("lines", []) as Array).size()
+
+	file.store_line("# Tutorial dialogue dump: %s" % target)
+	file.store_line("# %d sections, %d lines captured" % [sections.size(), total_lines])
+	file.store_line("# Format: index | tick | style | speaker | key | text")
+	file.store_line("")
+
+	for section in sections:
+		file.store_line("## %s" % str(section.get("title", "Untitled section")))
+		file.store_line("# Source: %s" % str(section.get("scene", "")))
+		if section.has("error"):
+			file.store_line("ERROR: %s" % str(section.error))
+			file.store_line("")
+			continue
+		var lines: Array = section.get("lines", [])
+		for i in range(lines.size()):
+			var entry: Dictionary = lines[i]
+			var text := _single_line_dump_text(str(entry.get("text", "")))
+			var speaker := str(entry.get("speaker", ""))
+			var key := str(entry.get("key", ""))
+			var style := str(entry.get("style", "normal"))
+			var tick := float(entry.get("tick", 0.0))
+			file.store_line("%03d | %.2f | %s | %s | %s | %s" % [
+				i + 1,
+				tick,
+				style,
+				speaker,
+				key,
+				text,
+			])
+		file.store_line("")
+
+	file.close()
+	print("  Wrote %d dialogue lines to %s" % [total_lines, output_path])
+
+func _single_line_dump_text(text: String) -> String:
+	return text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\\n")
+
 func _dump_dialogue(scene_path: String, output_path: String) -> void:
 	_test_name = "Dialogue Dump"
 	print("  Dumping dialogue for: %s" % scene_path)
@@ -8936,9 +11357,6 @@ func _dump_dialogue(scene_path: String, output_path: String) -> void:
 	var dialogue_box: Node = instance._dialogue
 	var scheduler: EventScheduler = instance._scheduler
 
-	# Make dialogue instant so typewriter doesn't block
-	dialogue_box.speed_multiplier = 10000.0
-
 	# Hook line_displayed to capture every dialogue line
 	dialogue_box.line_displayed.connect(func(text: String):
 		var speaker: String = dialogue_box._speaker_label.text if dialogue_box._speaker_label.visible else ""
@@ -8959,7 +11377,7 @@ func _dump_dialogue(scene_path: String, output_path: String) -> void:
 		for j in range(200):
 			if not dialogue_box.is_active():
 				break
-			dialogue_box._process(0.05)
+			_pump_dialogue(dialogue_box, 16.0)
 
 		if scheduler.pending_count() == 0:
 			idle_pops += 1
@@ -8967,7 +11385,7 @@ func _dump_dialogue(scene_path: String, output_path: String) -> void:
 				break
 			# One more flush in case dialogue_finished queued something
 			for j in range(10):
-				dialogue_box._process(0.05)
+				_pump_dialogue(dialogue_box, 16.0)
 			continue
 
 		idle_pops = 0

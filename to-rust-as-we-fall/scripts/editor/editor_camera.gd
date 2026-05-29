@@ -19,6 +19,12 @@ var _dragging_pan: bool = false
 func _ready() -> void:
 	_update_transform()
 
+func focus_on(new_target: Vector3, new_distance := -1.0) -> void:
+	target = new_target
+	if new_distance > 0.0:
+		distance = clampf(new_distance, min_distance, max_distance)
+	_update_transform()
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton

@@ -1,5 +1,5 @@
 extends "res://scripts/scene_chunks/scene_chunk.gd"
-# @rendering_only_file — chunk does only visual setup and pulse animation.
+# @rendering_only_file: visual setup and pulse animation only.
 
 const FLOOR_CENTER := Vector3(34.0, -0.05, 0.0)
 const FLOOR_SIZE := Vector3(72.0, 0.1, 30.0)
@@ -147,14 +147,13 @@ func _build_client_fragment() -> void:
 	_add_box(client_root, Vector3.ZERO, Vector3(0.7, 1.5, 0.45), Color(0.18, 0.16, 0.14), Color(0.24, 0.16, 0.1), 0.18)
 	_add_label(self, "FORMER CLIENT", CLIENT_POS + Vector3(0.0, 2.2, 0.0))
 	_add_flora_cluster(CLIENT_BLOOM_POS, Color(0.94, 0.74, 0.44), 1.0, 4)
-	_client_interactable = _add_interactable(
+	_client_interactable = _add_inspection_interactable(
 		self,
 		"ClientBloomInteractable",
 		"Client Bloom",
 		CLIENT_POS + Vector3(0.0, 0.2, 0.0),
 		"CALL",
-		"peris",
-		1.0
+		"peris"
 	)
 	_client_interactable.interacted.connect(_on_client_interacted)
 
@@ -168,14 +167,13 @@ func _build_propagation_fragment() -> void:
 			3
 		)
 	_propogation_doorframe(PROPAGATION_POS + Vector3(0.0, 1.4, 2.2))
-	_propagation_interactable = _add_interactable(
+	_propagation_interactable = _add_inspection_interactable(
 		self,
 		"PropagationInteractable",
 		"Propagation Trace",
 		PROPAGATION_POS + Vector3(0.0, 0.3, 0.0),
 		"TRACE",
-		"peris",
-		1.0
+		"peris"
 	)
 	_propagation_interactable.interacted.connect(_on_propagation_interacted)
 
@@ -184,14 +182,13 @@ func _build_forget_me_not_fragment() -> void:
 	_add_box(self, FORGET_ME_NOT_POS + Vector3(0.0, 0.25, 0.0), Vector3(7.0, 0.5, 6.0), Color(0.12, 0.11, 0.1))
 	_add_flora_cluster(FORGET_ME_NOT_POS + Vector3(-0.8, 0.0, -0.6), Color(0.58, 0.72, 0.95), 1.1, 5)
 	_add_flora_cluster(FORGET_ME_NOT_POS + Vector3(1.1, 0.0, 0.9), Color(0.66, 0.78, 0.98), 0.9, 4)
-	_forget_me_not_interactable = _add_interactable(
+	_forget_me_not_interactable = _add_inspection_interactable(
 		self,
 		"ForgetMeNotInteractable",
 		"Forget-Me-Not",
 		FORGET_ME_NOT_POS + Vector3(0.0, 0.3, 0.0),
 		"TEND",
-		"",
-		1.0
+		""
 	)
 	_forget_me_not_interactable.interacted.connect(_on_forget_me_not_interacted)
 

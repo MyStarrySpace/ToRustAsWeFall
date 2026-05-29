@@ -1,0 +1,42 @@
+# Blender 5.1.1 MTL File: 'stylized_plant_pothos_v5.blend'
+# www.blender.org
+
+newmtl PotMat
+Ns 22.499992
+Ka 1.000000 1.000000 1.000000
+Ks 0.200000 0.200000 0.200000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/Users/quest/Programming/Games/ToRustAsWeFall/blender/peris-sim/textures/pothos/PotTex.png
+
+newmtl SaucerMat
+Ns 22.499992
+Ka 1.000000 1.000000 1.000000
+Ks 0.200000 0.200000 0.200000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/Users/quest/Programming/Games/ToRustAsWeFall/blender/peris-sim/textures/pothos/SaucerTex.png
+
+newmtl SoilMat
+Ns 22.499992
+Ka 1.000000 1.000000 1.000000
+Ks 0.200000 0.200000 0.200000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/Users/quest/Programming/Games/ToRustAsWeFall/blender/peris-sim/textures/pothos/SoilTex.png
+
+newmtl VineMat
+Ns 22.499992
+Ka 1.000000 1.000000 1.000000
+Ks 0.200000 0.200000 0.200000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+illum 2
+map_Kd C:/Users/quest/Programming/Games/ToRustAsWeFall/blender/peris-sim/textures/pothos/VineTex.png
+map_d C:/Users/quest/Programming/Games/ToRustAsWeFall/blender/peris-sim/textures/pothos/VineTex.png

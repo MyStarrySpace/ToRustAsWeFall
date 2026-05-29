@@ -1,0 +1,105 @@
+{
+  "schema": "trawf_archetype_catalog_v1",
+  "source": "design_archetypes.md",
+  "archetypes": {
+    "1": {
+      "name": "Redirected enemy aggression",
+      "kind": "puzzle",
+      "tags": ["enemy", "impact", "barrier", "reroute"],
+      "compatible_node_roles": ["route_pressure", "danger", "shortcut", "setpiece"],
+      "steps": ["identify impact target", "position bait", "trigger charge", "dodge commitment", "enemy hits target", "use changed state"],
+      "variants": ["destroy_barrier", "kill_enemy", "reveal_plant", "reveal_terminal", "reveal_passage", "activate_mechanism"],
+      "shadow_solution": {"aster_peris": true, "notes": "Use overlay timing plus flora or scarpet cover to substitute for a combat specialist."}
+    },
+    "2": {
+      "name": "Plant as tool",
+      "kind": "puzzle",
+      "tags": ["flora", "peris", "environment", "enemy_routing"],
+      "compatible_node_roles": ["foraging", "guidance", "route_pressure", "danger", "shortcut", "setpiece"],
+      "steps": ["acquire plant or seed", "identify target", "plant or tend", "wait for effect", "use effect"],
+      "variants": ["flure_iron_decoy", "hushbloom_stun", "climbvine_traversal", "resolution_roots_stabilize", "resolution_roots_break"],
+      "shadow_solution": {"aster_peris": true, "notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."}
+    },
+    "3": {
+      "name": "Carry the heavy thing",
+      "kind": "puzzle",
+      "tags": ["carry", "escort", "vulnerability", "resource"],
+      "compatible_node_roles": ["resource", "danger", "mixed", "setpiece"],
+      "steps": ["pick up carry target", "accept limitations", "cover carrier", "navigate hazards", "deliver target"],
+      "variants": ["cure_component", "puzzle_piece", "injured_party_member", "critical_resource", "information_artifact"],
+      "shadow_solution": {"aster_peris": true, "notes": "Use drag routes, scarpet masking, and slower recovery windows."}
+    },
+    "4": {
+      "name": "Distract the patrol",
+      "kind": "puzzle",
+      "tags": ["patrol", "distraction", "coordination", "timing"],
+      "compatible_node_roles": ["route_pressure", "danger", "mixed", "shortcut"],
+      "steps": ["read patrol", "choose distractor", "position distractor", "position actor", "trigger distraction", "patrol responds", "act in blind spot", "regroup"],
+      "variants": ["loud_action", "false_scent", "iron_signal", "electrical_signature", "terminal_task", "plant_tending_task", "aquatic_route"],
+      "shadow_solution": {"aster_peris": true, "notes": "Aster provides electrical/data distraction while Peris performs the physical or flora task."}
+    },
+    "5": {
+      "name": "Two-character split",
+      "kind": "hybrid",
+      "tags": ["split", "coordination", "interdependence", "reunion"],
+      "compatible_node_roles": ["mixed", "setpiece", "shortcut"],
+      "steps": ["encounter separation", "divide party", "scout sides", "complete dependent tasks", "coordinate timing", "reunite"],
+      "variants": ["physical_wall", "class_restricted_access", "hazard_traversal", "sequential", "simultaneous", "sustained", "recovery"],
+      "shadow_solution": {"aster_peris": true, "notes": "Aster and Peris are the minimum viable split pair."}
+    },
+    "6": {
+      "name": "Pattern reconstruction",
+      "kind": "puzzle",
+      "tags": ["fragments", "memory", "map", "assembly"],
+      "compatible_node_roles": ["guidance", "resource", "mixed", "setpiece"],
+      "steps": ["discover fragments", "locate fragments", "retrieve fragments", "assemble whole", "use revealed pattern"],
+      "variants": ["area_map", "flow_diagram", "document", "image_symbol", "combat_retrieval", "memory_pressure", "carry_vulnerability", "hidden_overlay"],
+      "shadow_solution": {"aster_peris": true, "notes": "Aster finds hidden structure; Peris preserves relational or flora context."}
+    },
+    "7": {
+      "name": "Stealth-and-time",
+      "kind": "survival",
+      "tags": ["stealth", "timing", "patrol_gap", "pressure"],
+      "compatible_node_roles": ["route_pressure", "danger", "mixed"],
+      "steps": ["observe patrol", "identify gap", "position before gap", "execute objective", "disengage to cover"],
+      "variants": ["nk_patrol", "naturalizer_patrol", "chelator_presence", "pass_through", "terminal_access", "plant_objective", "extract_objective"],
+      "shadow_solution": {"aster_peris": true, "notes": "Aster reads timing; Peris creates or extends cover."}
+    },
+    "8": {
+      "name": "Class-gated interaction",
+      "kind": "puzzle",
+      "tags": ["class", "terminal", "authority", "gate"],
+      "compatible_node_roles": ["guidance", "shortcut", "setpiece"],
+      "steps": ["encounter gate", "identify class", "position class bearer", "initiate interaction", "resolve interaction"],
+      "variants": ["ast_terminal", "pct_client", "ent_barrier", "tmc_enforcement", "door", "information", "resource", "npc_cooperation"],
+      "shadow_solution": {"aster_peris": true, "notes": "Aster/PCT coverage handles most early class gates; other classes need environmental alternatives."}
+    },
+    "9": {
+      "name": "Expectation subversion",
+      "kind": "meta",
+      "tags": ["subversion", "rare", "commitment", "consequence"],
+      "compatible_node_roles": ["setpiece", "danger"],
+      "steps": ["establish convention", "invoke convention", "break convention", "deliver consequence"],
+      "variants": ["death_convention", "highlighted_interaction_trap", "tragic", "weaponized", "mechanical_consequence", "narrative_consequence"],
+      "shadow_solution": {"aster_peris": true, "notes": "Use sparingly; generated stretches should only flag this for designer review."}
+    },
+    "10": {
+      "name": "Danger zone",
+      "kind": "meta",
+      "tags": ["danger_zone", "cure_component", "container", "nested"],
+      "compatible_node_roles": ["setpiece", "mixed", "danger"],
+      "steps": ["entry transition", "sub-puzzle composition", "retrieve component", "exit transition"],
+      "variants": ["iron_based", "naturalizer_patrol", "atmospheric", "mixed", "single_route_shadow", "multi_route_converging", "sequence_locked"],
+      "shadow_solution": {"aster_peris": true, "notes": "Major danger zones must define an Aster/Peris composition."}
+    },
+    "11": {
+      "name": "Narrative beat",
+      "kind": "meta",
+      "tags": ["dialogue", "recognition", "transition", "party"],
+      "compatible_node_roles": ["boundary", "guidance", "regroup", "shelter_arrival"],
+      "steps": ["pre-transition state", "transition mechanism", "post-transition state"],
+      "variants": ["setup_pivot_payoff", "recognition", "realization", "confession", "memory", "silence", "two_character", "party_wide", "character_alone", "npc"],
+      "shadow_solution": {"aster_peris": true, "notes": "Narrative beat adapts to available party but should preserve state transition."}
+    }
+  }
+}

@@ -1,6 +1,6 @@
 extends "res://scripts/scene_chunks/scene_chunk.gd"
 
-const FloraMemorySystem = preload("res://scripts/game/flora_memory_system.gd")
+const FloraMemorySystem = preload("res://scripts/system/simulation/flora_memory_system.gd")
 
 const LAB_ZONE := "overlay_lab"
 const FLOOR_CENTER := Vector3(52.0, -0.05, 0.0)

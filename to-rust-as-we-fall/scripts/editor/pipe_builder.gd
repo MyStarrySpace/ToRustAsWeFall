@@ -81,10 +81,10 @@ static func build(library: MeshLibrary) -> void:
 		st.begin(Mesh.PRIMITIVE_TRIANGLES)
 
 		if mask in straight_xforms:
-			# Pure straight — single full-length cylinder, cleaner look
+			# Pure straight: single full-length cylinder.
 			st.append_from(full_cyl, 0, straight_xforms[mask])
 		else:
-			# Junction node — sphere + stubs toward each connected neighbor
+			# Junction node: sphere plus neighbor stubs.
 			st.append_from(joint, 0, Transform3D.IDENTITY)
 			for bit in range(6):
 				if mask & (1 << bit):

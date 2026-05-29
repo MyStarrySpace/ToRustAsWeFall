@@ -17,6 +17,9 @@ func detach_chunk_host() -> void:
 	host = null
 	_interactables.clear()
 
+func configure_chunk(_config: Dictionary) -> void:
+	pass
+
 func _ready() -> void:
 	if _built:
 		return
@@ -51,6 +54,9 @@ func get_preview_time_state() -> Dictionary:
 
 func get_preview_abilities() -> Array:
 	return []
+
+func get_world_slot() -> Dictionary:
+	return {}
 
 func get_preview_state() -> Dictionary:
 	return {}
@@ -330,7 +336,8 @@ func _add_interactable(
 	required_character := "",
 	dwell_time := 1.0,
 	one_shot := false,
-	interaction_radius := 1.5
+	interaction_radius := 1.5,
+	interactable_type := Interactable.InteractableType.HOLD_ACTION
 ) -> Area3D:
 	var interactable := INTERACTABLE_SCENE.instantiate()
 	interactable.name = node_name
@@ -341,8 +348,32 @@ func _add_interactable(
 	interactable.dwell_time = dwell_time
 	interactable.one_shot = one_shot
 	interactable.interaction_radius = interaction_radius
+	interactable.interactable_type = interactable_type
 	parent.add_child(interactable)
 	_register_interactable(interactable)
 	if interactable.has_method("show_tutorial_label"):
 		interactable.call("show_tutorial_label")
 	return interactable
+
+func _add_inspection_interactable(
+	parent: Node3D,
+	node_name: String,
+	description: String,
+	position: Vector3,
+	tutorial_label: String,
+	required_character := "",
+	interaction_radius := 1.5,
+	one_shot := false
+) -> Area3D:
+	return _add_interactable(
+		parent,
+		node_name,
+		description,
+		position,
+		tutorial_label,
+		required_character,
+		0.0,
+		one_shot,
+		interaction_radius,
+		Interactable.InteractableType.INSPECTION
+	)

@@ -179,7 +179,7 @@ func _setup_ui() -> void:
 	_hud.set_portrait_stat("aster", "sta", 0)
 	_hud.show_pause_toggle(false)
 	_hud.pause_toggled.connect(_on_pause_toggled)
-	_hud.add_ability("emp", "EMP", "Q", Color(0.29, 0.62, 1.0))
+	_hud.add_ability("emp", "EMP", "Z", Color(0.29, 0.62, 1.0))
 	_hud.set_ability_state("emp", "disabled")
 	_hud.ability_pressed.connect(func(id: String):
 		if id == "emp":
@@ -337,7 +337,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		var kc := key_event.keycode
 		if kc == KEY_SPACE:
 			_toggle_pause()
-		elif kc == KEY_Q:
+		elif kc == KEY_Z:
 			_on_emp_pressed()
 		elif kc == KEY_TAB and _current_step in ["hack_tutorial", "multiselect_tutorial"]:
 			_switch_character()
@@ -352,7 +352,7 @@ func _toggle_pause() -> void:
 	if _scheduler.is_paused():
 		if _emp_pause_locked and not _emp_queued:
 			_hud.set_paused(true)
-			_tutorial_prompt.show_prompt("[Q] - queue Aster's EMP before unpausing")
+			_tutorial_prompt.show_prompt("[Z] - queue Aster's EMP before unpausing")
 			return
 		if _current_step == "multiselect_tutorial" and not _multiselect_has_required_pair():
 			_hud.set_paused(true)
@@ -372,7 +372,7 @@ func _on_pause_toggled(is_paused: bool) -> void:
 	else:
 		if _emp_pause_locked and not _emp_queued:
 			_hud.set_paused(true)
-			_tutorial_prompt.show_prompt("[Q] - queue Aster's EMP before unpausing")
+			_tutorial_prompt.show_prompt("[Z] - queue Aster's EMP before unpausing")
 			return
 		if _current_step == "multiselect_tutorial" and not _multiselect_has_required_pair():
 			_hud.set_paused(true)
@@ -707,7 +707,7 @@ func _start_emp_tutorial() -> void:
 	_emp_pause_locked = true
 	_emp_queued = false
 	_hud.set_ability_state("emp", "ready")
-	_tutorial_prompt.show_prompt("[Q] - queue Aster's EMP")
+	_tutorial_prompt.show_prompt("[Z] - queue Aster's EMP")
 	_scheduler.pause()
 	_hud.set_paused(true)
 

@@ -2,6 +2,18 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 
 const FLOOR_CENTER := Vector3(58.0, -0.05, 0.0)
 const FLOOR_SIZE := Vector3(120.0, 0.1, 54.0)
+const WORLD_SLOT := {
+	"slot_id": "act1_mother_flure",
+	"act": 1,
+	"region": "Mother Flure Chamber",
+	"entry_shelter_id": "shelter_5",
+	"exit_shelter_id": "shelter_6",
+	"entry_anchor": "processing_stacks_exit",
+	"exit_anchor": "residential_rings_approach",
+	"canonical_party": ["aster", "peris", "endo"],
+	"preview_party_preset": "full_party_full_health",
+	"next_slot": "act1_residential_rings",
+}
 
 const BOARD_ORIGIN := Vector3(42.0, 0.0, -18.0)
 const BOARD_CELL_SIZE := 6.0
@@ -181,7 +193,7 @@ func headless_process(delta: float) -> void:
 	_update_runtime(delta)
 
 func get_scene_title() -> String:
-	return "Mother Ferrolure Fragment"
+	return "Mother Flure"
 
 func get_scene_help() -> String:
 	return "Pilot the full Mother chamber with the in-game preview stack: the board still matters, but the solve is diagnosis now. Aster reads the old logistics, Peris reads the mother's stress, and Endo has to carry the gear to the repair point that actually matches the fault."
@@ -209,6 +221,9 @@ func get_preview_anchors() -> Dictionary:
 		"service_gamma": SERVICE_GAMMA_POS,
 	}, true)
 	return anchors
+
+func get_world_slot() -> Dictionary:
+	return WORLD_SLOT.duplicate(true)
 
 func get_preview_time_state() -> Dictionary:
 	return {
@@ -336,7 +351,7 @@ func handle_preview_ability(ability_id: String, _ability: Dictionary = {}) -> Di
 		"peris_tune":
 			return {"characters": {"peris": {"sta_delta": 10.0}}}
 		"endo_patch":
-			_endo_cloak_until = current_tick + 5.5
+			_endo_cloak_until = maxf(_endo_cloak_until, current_tick + 24.0)
 			return {"characters": {"endo": {"sta_delta": 6.0}}}
 		_:
 			return {}
@@ -722,14 +737,13 @@ func _build_service_alcove(terminal_id: String) -> void:
 			var bud_pos := row_pos + Vector3(-1.55 if direction < 0 else 1.55, 0.14, -0.48)
 			_add_box(self, bud_pos + Vector3(0.0, 0.18, 0.0), Vector3(0.54, 0.36, 0.54), Color(0.24, 0.18, 0.12), Color(0.72, 0.54, 0.26), 0.22)
 			_add_label(self, _bud_label(direction), bud_pos + Vector3(0.0, 0.86, 0.0), Color(0.96, 0.8, 0.52))
-			var interactable = _add_interactable(
+			var interactable = _add_inspection_interactable(
 				self,
 				"%s_%s_%s" % [terminal_id.capitalize(), root_id.capitalize(), "neg" if direction < 0 else "pos"],
 				"%s / %s" % [ROOT_DEFS[root_id].get("label", root_id), _bud_label(direction)],
 				bud_pos,
 				"SHIFT",
-				"peris",
-				0.45
+				"peris"
 			)
 			interactable.interacted.connect(Callable(self, "activate_fragment_move").bind(root_id, direction))
 
@@ -739,19 +753,19 @@ func _build_portal_bank() -> void:
 	_add_box(self, BASE_PORTAL_POS + Vector3(0.0, 2.22, 0.0), Vector3(1.56, 0.18, 0.18), Color(0.22, 0.2, 0.18))
 	_portal_base_fill = _add_box(self, BASE_PORTAL_POS + Vector3(0.0, 1.08, 0.0), Vector3(1.2, 1.84, 0.08), Color(0.18, 0.16, 0.14), Color(0.76, 0.56, 0.28), 0.2)
 	_portal_base_material = _portal_base_fill.material_override
-	_portal_entry_interactable = _add_interactable(self, "MotherPortalEntry", "Portal Entry", BASE_PORTAL_POS + Vector3(0.0, 0.2, 0.0), "CROSS", "peris", 0.45)
+	_portal_entry_interactable = _add_inspection_interactable(self, "MotherPortalEntry", "Portal Entry", BASE_PORTAL_POS + Vector3(0.0, 0.2, 0.0), "CROSS", "peris")
 	_portal_entry_interactable.interacted.connect(func() -> void: use_portal())
 	_portal_remote_fill = _add_box(self, Vector3(2000.0, 1.08, 2000.0), Vector3(1.2, 1.84, 0.08), Color(0.18, 0.16, 0.14), Color(0.92, 0.66, 0.32), 0.2)
 	_portal_remote_material = _portal_remote_fill.material_override
 	_portal_remote_label = _add_label(self, "RETURN", Vector3(2000.0, 3.0, 2000.0), Color(0.94, 0.76, 0.46))
-	_portal_return_interactable = _add_interactable(self, "MotherPortalReturn", "Portal Return", Vector3(2000.0, 0.2, 2000.0), "RETURN", "peris", 0.35)
+	_portal_return_interactable = _add_inspection_interactable(self, "MotherPortalReturn", "Portal Return", Vector3(2000.0, 0.2, 2000.0), "RETURN", "peris")
 	_portal_return_interactable.interacted.connect(func() -> void: use_portal())
 
 func _build_gear_station() -> void:
 	_add_box(self, GEAR_POS + Vector3(0.0, -0.1, 0.0), Vector3(3.8, 0.28, 3.4), Color(0.12, 0.1, 0.08))
 	_add_box(self, GEAR_POS + Vector3(0.0, 0.38, 0.0), Vector3(2.1, 0.26, 2.1), Color(0.18, 0.14, 0.1), Color(0.46, 0.3, 0.16), 0.22)
 	_add_label(self, "MOTHER GEAR", GEAR_POS + Vector3(0.0, 2.2, 0.0), Color(0.88, 0.76, 0.58))
-	_gear_interactable = _add_interactable(self, "MotherGearInteractable", "Mother Gear", GEAR_POS + Vector3(0.0, 0.25, 0.0), "LIFT", "", 0.65)
+	_gear_interactable = _add_inspection_interactable(self, "MotherGearInteractable", "Mother Gear", GEAR_POS + Vector3(0.0, 0.25, 0.0), "LIFT")
 	_gear_interactable.interacted.connect(func() -> void: pick_up_gear())
 
 func _build_install_socket() -> void:
@@ -763,7 +777,7 @@ func _build_install_socket() -> void:
 		var mount := _add_box(self, repair_pos + Vector3(0.0, 0.78, 0.0), Vector3(1.14, 0.24, 1.14), Color(0.18, 0.2, 0.24), repair_color, 0.22)
 		_repair_point_materials[repair_id] = mount.material_override
 		_repair_point_labels[repair_id] = _add_label(self, str(REPAIR_POINT_DEFS[repair_id].get("label", repair_id)).to_upper(), repair_pos + Vector3(0.0, 2.1, 0.0), repair_color.lightened(0.15))
-		var interactable := _add_interactable(self, "%sRepairInteractable" % repair_id.capitalize(), str(REPAIR_POINT_DEFS[repair_id].get("label", repair_id)), repair_pos + Vector3(0.0, 0.2, 0.0), "MOUNT", "", 0.75)
+		var interactable := _add_inspection_interactable(self, "%sRepairInteractable" % repair_id.capitalize(), str(REPAIR_POINT_DEFS[repair_id].get("label", repair_id)), repair_pos + Vector3(0.0, 0.2, 0.0), "MOUNT")
 		interactable.interacted.connect(Callable(self, "install_gear_at").bind(repair_id))
 		_repair_interactables[repair_id] = interactable
 		if repair_id == CORRECT_REPAIR_ID:
@@ -787,7 +801,7 @@ func _build_mother() -> void:
 		bloom.position = MOTHER_POS + bloom_offset
 		add_child(bloom)
 		_mother_bloom_materials.append(material)
-	_mother_interactable = _add_interactable(self, "MotherTendInteractable", "Mother Ferrolure", MOTHER_POS + Vector3(-2.2, 0.4, 0.0), "TEND", "", 0.8)
+	_mother_interactable = _add_inspection_interactable(self, "MotherTendInteractable", "Mother Ferrolure", MOTHER_POS + Vector3(-2.2, 0.4, 0.0), "TEND")
 	_mother_interactable.interacted.connect(func() -> void: tend_mother())
 
 func _build_collapse_offshoot() -> void:
@@ -796,14 +810,14 @@ func _build_collapse_offshoot() -> void:
 	_add_box(self, Vector3(50.0, 1.3, 13.9), Vector3(28.0, 2.6, 0.3), Color(0.14, 0.12, 0.1))
 	for debris_offset in [Vector3(-1.2, 0.55, -0.4), Vector3(0.2, 0.48, 0.2), Vector3(1.4, 0.6, -0.15)]:
 		_add_box(self, COLLAPSE_POS + debris_offset, Vector3(1.4, 1.0, 1.0), Color(0.28, 0.24, 0.18))
-	_collapse_interactable = _add_interactable(self, "MotherCollapseInteractable", "Collapsed Debris", COLLAPSE_POS + Vector3(0.0, 0.2, 0.0), "SHIFT", "", 0.85)
+	_collapse_interactable = _add_inspection_interactable(self, "MotherCollapseInteractable", "Collapsed Debris", COLLAPSE_POS + Vector3(0.0, 0.2, 0.0), "SHIFT")
 	_collapse_interactable.interacted.connect(func() -> void: clear_collapse())
 	for body_id in BODY_POSITIONS.keys():
 		var pos: Vector3 = BODY_POSITIONS[body_id]
 		var body := _add_box(self, pos, Vector3(2.2, 0.3, 0.86), Color(0.34, 0.28, 0.22))
 		_body_materials[body_id] = body.material_override
 		_body_labels[body_id] = _add_label(self, BODY_NAMES.get(body_id, body_id).to_upper(), pos + Vector3(0.0, 1.25, 0.0), Color(0.8, 0.72, 0.64))
-		var interactable = _add_interactable(self, "%sInteractable" % body_id.capitalize(), BODY_NAMES.get(body_id, body_id), pos + Vector3(0.0, 0.22, 0.0), "ABSORB", "", 0.55)
+		var interactable = _add_inspection_interactable(self, "%sInteractable" % body_id.capitalize(), BODY_NAMES.get(body_id, body_id), pos + Vector3(0.0, 0.22, 0.0), "ABSORB")
 		interactable.interacted.connect(Callable(self, "harvest_body").bind(body_id))
 
 func _build_hide_spot() -> void:
@@ -855,7 +869,7 @@ func _build_terminal(terminal_id: String, position: Vector3, label_text: String,
 	_terminal_materials[terminal_id] = screen.material_override
 	_terminal_labels[terminal_id] = _add_label(self, portal_label, position + Vector3(0.0, 1.72, -0.82), Color(0.72, 0.66, 0.54))
 	_add_label(self, label_text, position + Vector3(0.0, 2.2, 0.0), Color(0.76, 0.84, 0.92))
-	var interactable = _add_interactable(self, "%sInteractable" % terminal_id.capitalize(), label_text, position + Vector3(0.0, 0.2, 0.0), "HACK", "aster", 0.7)
+	var interactable = _add_inspection_interactable(self, "%sInteractable" % terminal_id.capitalize(), label_text, position + Vector3(0.0, 0.2, 0.0), "HACK", "aster")
 	interactable.interacted.connect(Callable(self, "activate_terminal").bind(terminal_id))
 
 func _build_root(root_id: String) -> void:
@@ -1097,6 +1111,9 @@ func _reject_wrong_repair(repair_id: String) -> void:
 	_apply_wrong_repair_shift(repair_id, current_tick)
 	var recovery_pos := HIDE_SPOT_POS + Vector3(1.4 * float(_repair_attempts.size()), 0.24, 0.0)
 	_spawn_gear(recovery_pos)
+	_endo_cloak_until = maxf(_endo_cloak_until, current_tick + 18.0)
+	_hazard_cooldowns.erase("endo")
+	_set_ability_state("endo_patch", "ready", 0.0)
 	_set_preview_step("mother_%s_rejected" % repair_id)
 	_show_note(str(REPAIR_POINT_DEFS[repair_id].get("flare_note", "The chamber rejects the mount and kicks the gear back into the alcove.")), 4.2)
 	_update_mother_visuals()

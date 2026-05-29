@@ -163,14 +163,13 @@ func _build_support_log_station() -> void:
 		0.7
 	)
 	_add_label(self, "SUPPORT LOG", SUPPORT_LOG_POS + Vector3(0.0, 2.2, 0.0))
-	_support_log_interactable = _add_interactable(
+	_support_log_interactable = _add_inspection_interactable(
 		self,
 		"SupportLogInteractable",
 		"Support Log",
 		SUPPORT_LOG_POS + Vector3(0.0, 0.3, 0.0),
 		"LOG",
-		"aster",
-		1.0
+		"aster"
 	)
 	_support_log_interactable.interacted.connect(_on_support_log_interacted)
 
@@ -185,14 +184,13 @@ func _build_terminal_station() -> void:
 		0.8
 	)
 	_add_label(self, "NORMALIZATION TERMINAL", TERMINAL_POS + Vector3(0.0, 2.4, 0.0))
-	_terminal_interactable = _add_interactable(
+	_terminal_interactable = _add_inspection_interactable(
 		self,
 		"TerminalInteractable",
 		"Normalization Terminal",
 		TERMINAL_POS + Vector3(0.0, 0.3, 0.0),
 		"READ",
-		"aster",
-		1.1
+		"aster"
 	)
 	_terminal_interactable.interacted.connect(_on_terminal_interacted)
 
@@ -209,14 +207,13 @@ func _build_signal_station() -> void:
 			0.65
 		)
 	_add_label(self, "CUSTOM SIGNAL WALL", SIGNAL_POS + Vector3(0.0, 2.7, -1.2))
-	_signal_interactable = _add_interactable(
+	_signal_interactable = _add_inspection_interactable(
 		self,
 		"SignalInteractable",
 		"Custom Signal Wall",
 		SIGNAL_POS + Vector3(0.0, 0.3, -0.9),
 		"SCAN",
-		"aster",
-		1.0
+		"aster"
 	)
 	_signal_interactable.interacted.connect(_on_signal_interacted)
 
@@ -232,14 +229,13 @@ func _build_archive_station() -> void:
 			0.22
 		)
 	_add_label(self, "TUNED WORKSPACE", ARCHIVE_POS + Vector3(0.0, 2.3, 0.0))
-	_archive_interactable = _add_interactable(
+	_archive_interactable = _add_inspection_interactable(
 		self,
 		"ArchiveInteractable",
 		"Tuned Workspace",
 		ARCHIVE_POS + Vector3(0.0, 0.3, 0.0),
 		"ARCHIVE",
-		"aster",
-		1.0
+		"aster"
 	)
 	_archive_interactable.interacted.connect(_on_archive_interacted)
 

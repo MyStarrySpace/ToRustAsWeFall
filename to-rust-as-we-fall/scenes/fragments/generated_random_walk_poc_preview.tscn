@@ -1,0 +1,11 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/fragments/fragment_preview_sequence.gd" id="1_preview"]
+
+[node name="GeneratedRandomWalkPocPreview" type="Node3D"]
+script = ExtResource("1_preview")
+preview_chunk = "generated_stretch"
+scene_title_override = "Generated Random Walk POC"
+preview_chunk_config = {
+"spec_path": "res://data/generated_stretches/generated_random_walk_poc_shelter_3_to_4.json"
+}

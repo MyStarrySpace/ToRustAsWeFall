@@ -1,24 +1,29 @@
 @tool
 extends "res://scripts/tutorial/tutorial_sequence.gd"
 
-const SurvivalStats = preload("res://scripts/game/survival_stats.gd")
-
-## Aster's simulation tutorial. Teaches movement, interaction, ATP.
-## Establishes Aster's character, introduces Ron, ends with Tag Day notification.
-##
-## Event-driven: uses EventScheduler instead of phase-timer dispatch.
-## Each step is a function that does its work and schedules the next event.
+## Aster simulation tutorial: movement, interaction, ATP, Ron, Tag Day.
 
 var _has_moved := false
 var _has_drunk := false
 
 var _ron
-var _terminal  # Interactable — forecasting terminal
-var _drink_machine  # Interactable — drink machine
-var _hud  # GameHUD — ATP stat bar + portrait
+var _terminal  # Forecasting terminal interactable.
+var _drink_machine  # Drink machine interactable.
+var _hud  # GameHUD with ATP bar and portrait.
+
+# Terminal screen-focus cinematic (click the terminal → camera frames the
+# screen, the low-fi screen swaps for a detailed readout, then the beat ends).
+const TERMINAL_FOCUS_DURATION := 3.0
+const TERMINAL_FOCUS_OFFSET := Vector3(0.0, 1.3, 3.0)
+var _terminal_screen_world := Vector3.ZERO
+var _terminal_screen_lowfi: MeshInstance3D
+var _terminal_screen_detail: Node3D
+var _terminal_prev_camera_offset := Vector3.ZERO
+var _terminal_prev_camera_target: Node3D
 
 # Exploration beat (post-drink, pre-Tag-Day)
 @export var show_graybox_room := true
+@export var show_high_res_room := false
 var _explore_hallway_gate  # Interactable at hallway exit
 const EXPLORE_MIN_TIME := 12.0  # scheduler ticks before the hallway gate unlocks
 var _explore_gate_unlocked := false
@@ -29,20 +34,19 @@ const HALLWAY_EXIT_CELL := Vector2i(16, 4)  # right edge of the room, just insid
 var _grid: GridWorld
 var _renderer: GridRenderer
 
-# Environment
 var _data_displays: Array[MeshInstance3D] = []
 
 const PLACEMENT_ROOT := "ScenePlacement"
+const OUTLINE_TARGET_SCRIPT := preload("res://scripts/game/objects/outline_surface_target.gd")
 
-# ATP lives in GameState; this scene starts Aster slightly below max so the
-# drink-machine refill is visible. Previews invoke reset_characters_to_full
-# which overrides this to full.
+# Start below max ATP so the drink refill is visible.
 const ATP_START := 6.0
-const ATP_MAX := SurvivalStats.ATP_MAX_PIPS
+const ATP_MAX := GameState.ATP_MAX_PIPS
 
 # --- Virtual overrides ---
 
 func _build_scene() -> void:
+	_apply_high_res_room_visibility()
 	_build_environment()
 	_build_decorations()
 	_build_terminal()
@@ -77,35 +81,42 @@ func _register_characters() -> void:
 	_register_gs_character("ron", _ron, _ron.move_speed)
 
 func _setup_ui() -> void:
-	# Use the shared GameHud for consistency across scenes. Only the ATP
-	# stat bar is applicable here; run toggle, abilities, pause, portraits
-	# stay hidden during this tutorial beat.
+	# Only the ATP bar is active in this tutorial beat.
 	_hud = CanvasLayer.new()
 	_hud.name = "GameHUD"
-	_hud.set_script(preload("res://scripts/game/game_hud.gd"))
+	_hud.set_script(preload("res://scripts/ui/game_hud.gd"))
 	add_child(_hud)
 	_hud.add_stat_bar("atp", Color(0.3, 0.7, 0.4), ATP_MAX, ATP_START)
 	_hud.bind_game_state(_game_state, "aster")
 
 func _begin() -> void:
 	_enable_outline_preview()
+	_connect_outline_feedback_sources(self)
 	_start_fade_in()
 
 func _enable_outline_preview() -> void:
+	if not OUTLINE_POST_PROCESS_ENABLED:
+		show_high_res_room = false
+		_apply_high_res_room_visibility()
+	_set_imported_outline_preview_enabled(OUTLINE_POST_PROCESS_ENABLED)
 	if find_child("AsterSimRoomOutlinePreview", true, false) != null:
 		_perception_mode = "outline"
 		return
 	_setup_perception("outline", _player)
 
+func _set_imported_outline_preview_enabled(enabled: bool) -> void:
+	for preview in find_children("AsterSimRoomOutlinePreview", "MeshInstance3D", true, false):
+		if preview is MeshInstance3D:
+			(preview as MeshInstance3D).visible = enabled
+
 func _on_process(_delta: float, _spd: float) -> void:
-	# ATP display updates through GameHud bindings; nothing to poll here.
+	# GameHud handles ATP updates.
 	_update_fades()
 	_update_show_terminal()
 
-	# Animate floating data displays
 	for i in range(_data_displays.size()):
 		var d := _data_displays[i]
-		d.position.y = 1.8 + sin(Time.get_ticks_msec() * 0.001 + i * 1.5) * 0.08  # @rendering_only — data display bobbing
+		d.position.y = 1.8 + sin(Time.get_ticks_msec() * 0.001 + i * 1.5) * 0.08  # @rendering_only: data display bobbing
 		d.rotation.y += _delta * 0.15
 
 func _get_speed_recipients() -> Array:
@@ -134,6 +145,68 @@ func _placement_or_grid(marker_name: String, fallback_cell: Vector2i, y: float =
 func _local_for_parent(parent: Node3D, global_position: Vector3) -> Vector3:
 	return parent.to_local(global_position) if parent != null else global_position
 
+func _apply_high_res_room_visibility() -> void:
+	var high_res_scene := find_child("AsterRoom", true, false) as Node3D
+	if high_res_scene != null:
+		high_res_scene.visible = show_high_res_room
+		var high_res_room := high_res_scene.find_child("default", true, false) as Node3D
+		if high_res_room != null:
+			high_res_room.visible = show_high_res_room
+		for light in high_res_scene.find_children("*", "Light3D", true, false):
+			if light is Light3D:
+				(light as Light3D).visible = show_high_res_room
+	else:
+		var high_res_room := find_child("default", true, false) as Node3D
+		if high_res_room != null:
+			high_res_room.visible = show_high_res_room
+		var high_res_spot := find_child("SpotLight3D", true, false) as Light3D
+		if high_res_spot != null:
+			high_res_spot.visible = show_high_res_room
+
+func _create_graybox_outline_target(
+		parent: Node3D,
+		target_name: String,
+		center: Vector3,
+		size: Vector3,
+		meshes: Array,
+		element_id: String,
+		radius: float = 1.0
+	) -> Node3D:
+	var target := StaticBody3D.new()
+	target.name = target_name
+	target.set_script(OUTLINE_TARGET_SCRIPT)
+	target.position = center
+	target.set("outline_highlight_radius", radius)
+	target.set("outline_highlight_extents", size * 0.5)
+	target.set("outline_highlight_height", 0.0)
+	target.set("selected_feedback_duration", 3.0)
+	target.set("hover_object_outline_width", 0.08)
+	target.set("selected_object_outline_width", 0.12)
+	target.set("selected_object_glow_strength", 3.8)
+	target.set("selected_particle_count", 180)
+	target.set("outline_particles_enabled", true)
+	target.set("outline_particles_per_mesh", 220)
+	target.set_meta("room_element_id", element_id)
+
+	var collision_shape := CollisionShape3D.new()
+	collision_shape.name = "CollisionShape3D"
+	var box := BoxShape3D.new()
+	box.size = size
+	collision_shape.shape = box
+	target.add_child(collision_shape)
+	parent.add_child(target)
+
+	for mesh in meshes:
+		if mesh is MeshInstance3D:
+			target.call("register_highlight_mesh", mesh)
+	if not Engine.is_editor_hint():
+		_connect_outline_feedback_source(target)
+	return target
+
+func _set_room_target_interaction_delegate(target: Node, delegate: Node) -> void:
+	if target != null and delegate != null and target.has_method("set_interaction_delegate"):
+		target.call("set_interaction_delegate", delegate)
+
 # --- Per-frame visual helpers ---
 
 func _update_fades() -> void:
@@ -156,12 +229,7 @@ func _start_fade_in() -> void:
 
 func _start_working() -> void:
 	_current_step = "working"
-	_show_thought(DialogueData.text("aster_sim.working.thought.01"))
-	_scheduler.schedule_after(3.0, _show_second_thought, "second_thought")
-
-func _show_second_thought() -> void:
-	_show_thought(DialogueData.text("aster_sim.working.thought.02"))
-	_scheduler.schedule_after(4.0, _start_ron_approaches, "ron_approaches")
+	_scheduler.schedule_after(7.0, _start_ron_approaches, "ron_approaches")
 
 func _start_ron_approaches() -> void:
 	_current_step = "ron_approaches"
@@ -174,8 +242,6 @@ func _start_ron_greeting() -> void:
 	_ron.stop()
 	DialogueData.say_to(_dialogue, "aster_sim.ron.greeting")
 	DialogueData.say_to(_dialogue, "aster_sim.ron.name")
-	DialogueData.say_to(_dialogue, "aster_sim.ron.working_on")
-	DialogueData.say_to(_dialogue, "aster_sim.aster.show")
 	_dialogue.dialogue_finished.connect(
 		func(): _scheduler.schedule_after(0, _start_show_terminal, "show_terminal"),
 		CONNECT_ONE_SHOT
@@ -183,32 +249,66 @@ func _start_ron_greeting() -> void:
 
 func _start_show_terminal() -> void:
 	_current_step = "show_terminal"
+	if _terminal and _terminal.has_method("set_interaction_enabled"):
+		_terminal.set_interaction_enabled(true)
 	_terminal.show_tutorial_label()
 	_player.set_move_enabled(true)
 	# Terminal interaction triggers _on_terminal_interacted (signal-driven)
 
 func _on_terminal_interacted() -> void:
-	if _current_step == "show_terminal" or _current_step == "terminal_data":
-		_scheduler.cancel_tag("drink_redirect")  # Clean up any pending
-		_start_terminal_data()
+	if _current_step != "show_terminal":
+		return
+	_scheduler.cancel_tag("drink_redirect")
+	_start_terminal_focus()
+
+# Click the terminal → frame the screen, swap in the detailed readout, hold a
+# beat, then continue. Scheduler-driven so it runs headless and respects F.
+func _start_terminal_focus() -> void:
+	_current_step = "terminal_focus"
+	_player.set_move_enabled(false)
+	_begin_terminal_screen_focus()
+	_scheduler.schedule_after(TERMINAL_FOCUS_DURATION, _end_terminal_focus, "terminal_focus")
+
+func _end_terminal_focus() -> void:
+	_end_terminal_screen_focus()
+	_player.set_move_enabled(true)
+	_start_terminal_data()
+
+func _begin_terminal_screen_focus() -> void:
+	if _terminal_screen_lowfi != null:
+		_terminal_screen_lowfi.visible = false
+	if _terminal_screen_detail != null:
+		_terminal_screen_detail.visible = true
+	if _camera != null:
+		_terminal_prev_camera_offset = _camera.follow_offset
+		_terminal_prev_camera_target = _camera.target
+		_camera.follow_offset = TERMINAL_FOCUS_OFFSET
+		_camera.lock_to(_terminal_screen_world)
+
+func _end_terminal_screen_focus() -> void:
+	if _terminal_screen_detail != null:
+		_terminal_screen_detail.visible = false
+	if _terminal_screen_lowfi != null:
+		_terminal_screen_lowfi.visible = true
+	if _camera != null:
+		_camera.follow_offset = _terminal_prev_camera_offset
+		_camera.target = _terminal_prev_camera_target
+		_camera.unlock()
 
 func _start_terminal_data() -> void:
 	_current_step = "terminal_data"
-	DialogueData.say_to(_dialogue, "aster_sim.system.cleaned")
-	_scheduler.schedule_after(3.0, _start_ron_drinks, "ron_drinks")
+	_scheduler.schedule_after(0.75, _start_ron_drinks, "ron_drinks")
 
 func _start_ron_drinks() -> void:
 	_current_step = "ron_drinks"
-	DialogueData.say_to(_dialogue, "aster_sim.ron.drinks")
-	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_walk_to_drink, "walk_to_drink"),
-		CONNECT_ONE_SHOT
-	)
+	_scheduler.schedule_after(0.0, _start_walk_to_drink, "walk_to_drink")
 
 func _start_walk_to_drink() -> void:
 	_current_step = "walk_to_drink"
+	if _drink_machine and _drink_machine.has_method("set_interaction_enabled"):
+		_drink_machine.set_interaction_enabled(true)
 	_drink_machine.show_tutorial_label()
-	# Redirect hint if player hasn't drunk after 8 seconds
+	# Hint if the player skips the drink too long.
 	_scheduler.schedule_after(8.0, _show_drink_redirect, "drink_redirect")
 
 func _show_drink_redirect() -> void:
@@ -217,6 +317,8 @@ func _show_drink_redirect() -> void:
 
 func _on_drink_interacted() -> void:
 	if _has_drunk:
+		return
+	if _current_step != "walk_to_drink":
 		return
 	_has_drunk = true
 	_scheduler.cancel_tag("drink_redirect")
@@ -235,19 +337,18 @@ func _start_ron_move_fast() -> void:
 		_ron.walk_to(_placement_or_position(
 			"RonExitTarget",
 			Vector3(hallway_world.x - 1.0, 0.0, hallway_world.z)
-		))
+	))
 	DialogueData.say_to(_dialogue, "aster_sim.ron.move_fast")
-	DialogueData.say_to(_dialogue, "aster_sim.ron.lighting")
-	DialogueData.say_to(_dialogue, "aster_sim.aster.lighting")
-	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_explore_workspace, "explore_workspace"),
-		CONNECT_ONE_SHOT
-	)
+	_dialogue_chain([
+		"aster_sim.ron.drinks",
+		"aster_sim.ron.lighting",
+		"aster_sim.aster.lighting",
+		"aster_sim.ron.tag_day_jobs",
+	], func(): _scheduler.schedule_after(0, _start_explore_workspace, "explore_workspace"))
 
 func _start_explore_workspace() -> void:
 	_current_step = "explore_workspace"
-	# Aster can move around the workspace freely; the hallway gate is
-	# time-locked so the player sees at least some of the room.
+	# Time-lock the hallway for a short exploration beat.
 	_build_exploration_objects()
 	_explore_gate_unlocked = false
 	_explore_gate_fired = false
@@ -298,7 +399,7 @@ func _build_environment() -> void:
 	_grid = GridWorld.new()
 	_grid.load_from_json("res://data/levels/aster_sim.json")
 
-	# Grid renderer — creates floor collision + tile meshes
+	# Grid renderer creates floor collision and tile meshes.
 	_renderer = GridRenderer.new()
 	_renderer.name = "Environment"
 	var warm_colors := {
@@ -314,55 +415,56 @@ func _build_environment() -> void:
 	add_child(_renderer)
 	_apply_graybox_visibility()
 
-	# Decorative elements on top of grid
 	var env_node := _renderer
+	var use_imported_room_lighting := show_high_res_room and not show_graybox_room
 
-	# Floating data motes near Aster's starting area
+	# Floating data motes.
 	var player_start := _placement_or_grid("DataMotesCenter", Vector2i(3, 4), 1.8)
+	var data_display_meshes: Array = []
 	for i in range(3):
 		var angle := i * TAU / 3.0
 		var pos := Vector3(player_start.x + cos(angle) * 1.5, 1.8, player_start.z + sin(angle) * 1.5)
 		var display := _create_holo_display(pos)
 		env_node.add_child(display)
 		_data_displays.append(display)
+		data_display_meshes.append(display)
+	_create_graybox_outline_target(env_node, "RoomTargetDataDisplays",
+		player_start, Vector3(3.8, 1.4, 3.8), data_display_meshes, "data_displays", 1.9)
 
-	# Drink machine visual — position derived from grid
+	# Drink machine.
 	var drink_cells := _grid.find_tiles(GridWorld.Tile.FOOD)
 	if not drink_cells.is_empty():
 		var drink_world := _placement_or_grid("DrinkMachineAnchor", drink_cells[0], 0.0)
 		_add_drink_machine_visual(env_node, drink_world)
 
-	# Warm ambient lighting
-	_ensure_directional_light(env_node)
+	if not use_imported_room_lighting:
+		_ensure_directional_light(env_node)
 
-	# Warm point light near desk
-	_ensure_omni_light(
-		env_node,
-		"DeskLight",
-		_placement_or_position("DeskLight", Vector3(player_start.x, 2.5, player_start.z)),
-		Color(0.9, 0.75, 0.5),
-		2.0,
-		6.0
-	)
+		_ensure_omni_light(
+			env_node,
+			"DeskLight",
+			_placement_or_position("DeskLight", Vector3(player_start.x, 2.5, player_start.z)),
+			Color(0.9, 0.75, 0.5),
+			2.0,
+			6.0
+		)
 
-	# Cyan accent light on data displays
-	_ensure_omni_light(
-		env_node,
-		"DataLight",
-		_placement_or_position("DataLight", Vector3(player_start.x, 2.0, player_start.z)),
-		Color(0.3, 0.6, 0.8),
-		1.0,
-		4.0
-	)
+		_ensure_omni_light(
+			env_node,
+			"DataLight",
+			_placement_or_position("DataLight", Vector3(player_start.x, 2.0, player_start.z)),
+			Color(0.3, 0.6, 0.8),
+			1.0,
+			4.0
+		)
 
-	# World environment — warm simulation
 	var we := WorldEnvironment.new()
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.06, 0.05, 0.04)
+	env.background_color = Color.BLACK if use_imported_room_lighting else Color(0.06, 0.05, 0.04)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.4, 0.35, 0.28)
-	env.ambient_light_energy = 0.5
+	env.ambient_light_color = Color.BLACK if use_imported_room_lighting else Color(0.4, 0.35, 0.28)
+	env.ambient_light_energy = 0.0 if use_imported_room_lighting else 0.5
 	env.glow_enabled = true
 	env.glow_intensity = 0.4
 	env.glow_bloom = 0.15
@@ -410,6 +512,7 @@ func _ensure_omni_light(
 	return light
 
 func _add_desk(parent: Node3D, pos: Vector3) -> void:
+	var meshes: Array = []
 	# Desktop surface
 	var desk := MeshInstance3D.new()
 	var db := BoxMesh.new()
@@ -421,8 +524,8 @@ func _add_desk(parent: Node3D, pos: Vector3) -> void:
 	desk.material_override = dm
 	desk.position = pos + Vector3(0, 0.75, 0)
 	parent.add_child(desk)
+	meshes.append(desk)
 
-	# Legs
 	for x in [-0.8, 0.8]:
 		for z in [-0.4, 0.4]:
 			var leg := MeshInstance3D.new()
@@ -432,8 +535,9 @@ func _add_desk(parent: Node3D, pos: Vector3) -> void:
 			leg.material_override = dm
 			leg.position = pos + Vector3(x, 0.375, z)
 			parent.add_child(leg)
+			meshes.append(leg)
 
-	# Chair (simple cylinder)
+	# Chair.
 	var chair := MeshInstance3D.new()
 	var cm := CylinderMesh.new()
 	cm.top_radius = 0.25
@@ -445,6 +549,10 @@ func _add_desk(parent: Node3D, pos: Vector3) -> void:
 	chair.material_override = chair_mat
 	chair.position = pos + Vector3(0, 0.5, -0.7)
 	parent.add_child(chair)
+	meshes.append(chair)
+
+	_create_graybox_outline_target(parent, "RoomTargetDesk",
+		pos + Vector3(0.0, 0.75, -0.1), Vector3(2.4, 1.2, 1.8), meshes, "desk", 1.45)
 
 func _create_holo_display(pos: Vector3) -> MeshInstance3D:
 	var display := MeshInstance3D.new()
@@ -463,7 +571,7 @@ func _create_holo_display(pos: Vector3) -> MeshInstance3D:
 	return display
 
 func _add_drink_machine_visual(parent: Node3D, pos: Vector3) -> void:
-	# Body
+	var meshes: Array = []
 	var body := MeshInstance3D.new()
 	var bb := BoxMesh.new()
 	bb.size = Vector3(0.8, 1.8, 0.6)
@@ -473,8 +581,8 @@ func _add_drink_machine_visual(parent: Node3D, pos: Vector3) -> void:
 	body.material_override = bm
 	body.position = pos + Vector3(0, 0.9, 0)
 	parent.add_child(body)
+	meshes.append(body)
 
-	# Screen glow
 	var screen := MeshInstance3D.new()
 	var sb := BoxMesh.new()
 	sb.size = Vector3(0.5, 0.3, 0.02)
@@ -488,8 +596,8 @@ func _add_drink_machine_visual(parent: Node3D, pos: Vector3) -> void:
 	screen.material_override = sm
 	screen.position = pos + Vector3(0, 1.4, -0.32)
 	parent.add_child(screen)
+	meshes.append(screen)
 
-	# Label
 	var lbl := Label3D.new()
 	lbl.text = "DRINKS"
 	lbl.font_size = 36
@@ -499,6 +607,9 @@ func _add_drink_machine_visual(parent: Node3D, pos: Vector3) -> void:
 	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	parent.add_child(lbl)
 
+	_create_graybox_outline_target(parent, "RoomTargetDrinkMachine",
+		pos + Vector3(0.0, 0.95, 0.0), Vector3(1.2, 2.1, 1.0), meshes, "drink_machine", 1.2)
+
 # --- Decorations ---
 
 func _build_decorations() -> void:
@@ -506,7 +617,7 @@ func _build_decorations() -> void:
 	if not env_node:
 		return
 
-	# Astrocyte process fibers — branching structures across the ceiling,
+	# Astrocyte process fibers branch across the ceiling,
 	# representing the star-shaped processes astrocytes extend through tissue
 	var fiber_color := Color(0.12, 0.25, 0.35, 0.6)
 	var fiber_mat := StandardMaterial3D.new()
@@ -534,14 +645,13 @@ func _build_decorations() -> void:
 		fiber.rotation = Vector3(0, angle, PI / 2.0 + (i % 3) * 0.15)
 		env_node.add_child(fiber)
 
-	# Nutrient conduits — glowing tubes along the top of walls
+	# Nutrient conduits.
 	var conduit_mat := StandardMaterial3D.new()
 	conduit_mat.albedo_color = Color(0.15, 0.3, 0.2, 0.7)
 	conduit_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	conduit_mat.emission_enabled = true
 	conduit_mat.emission = Color(0.1, 0.25, 0.15)
 	conduit_mat.emission_energy_multiplier = 1.0
-	# Conduit along back wall
 	var conduit1 := MeshInstance3D.new()
 	var cc1 := CylinderMesh.new()
 	cc1.top_radius = 0.06
@@ -552,7 +662,6 @@ func _build_decorations() -> void:
 	conduit1.position = Vector3(5, 2.6, _grid.height * _grid.cell_size - 0.3)
 	conduit1.rotation.z = PI / 2.0
 	env_node.add_child(conduit1)
-	# Conduit along side wall
 	var conduit2 := MeshInstance3D.new()
 	var cc2 := CylinderMesh.new()
 	cc2.top_radius = 0.05
@@ -564,7 +673,7 @@ func _build_decorations() -> void:
 	conduit2.rotation.x = PI / 2.0
 	env_node.add_child(conduit2)
 
-	# Neurotransmitter readout panels — wall-mounted data displays
+	# Neurotransmitter readout panels.
 	var panel_data := [
 		{"pos": Vector3(1.5, 1.6, 0.35), "text": "GABA  42.1", "color": Color(0.2, 0.5, 0.3)},
 		{"pos": Vector3(3.5, 1.8, 0.35), "text": "GLU   18.7", "color": Color(0.5, 0.35, 0.2)},
@@ -592,7 +701,7 @@ func _build_decorations() -> void:
 		lbl.position = pd.pos + Vector3(0, 0, -0.02)
 		env_node.add_child(lbl)
 
-	# Calcium wave floor strips — subtle glowing lines on the floor
+	# Calcium wave floor strips.
 	var wave_mat := StandardMaterial3D.new()
 	wave_mat.albedo_color = Color(0.1, 0.2, 0.3, 0.3)
 	wave_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -622,19 +731,57 @@ func _build_terminal() -> void:
 		_terminal = preload("res://scenes/game/interactable.tscn").instantiate()
 		_terminal.name = "Terminal"
 		_terminal.description = "Forecasting Terminal"
-		_terminal.one_shot = true
-		_terminal.dwell_time = 1.0
-		_terminal.tutorial_label = "Click"
-		_terminal.position = _placement_or_position("TerminalInteract", term_pos + Vector3(0, 0.8, 0))
+		_terminal.apply_interactable_spec("aster.terminal")
+		_terminal.position = _local_for_parent(self, _placement_or_position("TerminalInteract", term_pos + Vector3(0, 0.8, 0)))
 		add_child(_terminal)
 		_terminal.interacted.connect(_on_terminal_interacted)
+		_set_room_target_interaction_delegate(find_child("RoomTargetDataDisplays", true, false), _terminal)
 
 	var env_node: Node = find_child("Environment", false, false)
 	if env_node:
 		_add_desk(env_node, term_pos)
-		var display := _create_holo_display(term_pos + Vector3(0, 1.5, 0))
+		_set_room_target_interaction_delegate(find_child("RoomTargetDesk", true, false), _terminal)
+		_terminal_screen_world = term_pos + Vector3(0, 1.5, 0)
+		var display := _create_holo_display(_terminal_screen_world)
 		env_node.add_child(display)
 		_data_displays.append(display)
+		_terminal_screen_lowfi = display
+		_terminal_screen_detail = _create_terminal_screen_detail(_terminal_screen_world)
+		env_node.add_child(_terminal_screen_detail)
+
+## The detailed screen shown while the terminal is in focus. Placeholder art:
+## a brighter framed panel plus a forecast readout, swapped in for the low-fi
+## holo display when the player checks the terminal.
+func _create_terminal_screen_detail(world_pos: Vector3) -> Node3D:
+	var root := Node3D.new()
+	root.name = "TerminalScreenDetail"
+	root.position = world_pos
+	root.visible = false
+
+	var panel := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(1.7, 1.05)
+	panel.mesh = qm
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.04, 0.10, 0.14)
+	mat.emission_enabled = true
+	mat.emission = Color(0.12, 0.34, 0.5)
+	mat.emission_energy_multiplier = 1.6
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	panel.material_override = mat
+	root.add_child(panel)
+
+	var readout := Label3D.new()
+	# @placeholder: stand-in forecast readout until the screen art lands.
+	readout.text = "FORECAST // BARRIER INTEGRITY\nSECTOR 07   98.2%   NOMINAL\nSECTOR 12   41.6%   WATCH\nTRANSFER LOAD       STABLE"
+	readout.font_size = 26
+	readout.pixel_size = 0.0038
+	readout.modulate = Color(0.6, 0.85, 1.0)
+	readout.outline_modulate = Color(0, 0, 0, 0.6)
+	readout.outline_size = 6
+	readout.position = Vector3(0, 0, 0.02)
+	root.add_child(readout)
+	return root
 
 # --- Drink Machine Interactable ---
 
@@ -648,11 +795,11 @@ func _build_drink_machine() -> void:
 		_drink_machine = preload("res://scenes/game/interactable.tscn").instantiate()
 		_drink_machine.name = "DrinkMachine"
 		_drink_machine.description = "Drink Machine"
-		_drink_machine.one_shot = true
-		_drink_machine.tutorial_label = DialogueData.text("aster_sim.drink_label")
-		_drink_machine.position = _placement_or_position("DrinkMachineInteract", machine_pos + Vector3(0, 0.9, 0))
+		_drink_machine.apply_interactable_spec("aster.drink_machine")
+		_drink_machine.position = _local_for_parent(self, _placement_or_position("DrinkMachineInteract", machine_pos + Vector3(0, 0.9, 0)))
 		add_child(_drink_machine)
 		_drink_machine.interacted.connect(_on_drink_interacted)
+		_set_room_target_interaction_delegate(find_child("RoomTargetDrinkMachine", true, false), _drink_machine)
 
 # --- Exploration objects (post-drink, pre-Tag-Day) ---
 
@@ -662,9 +809,9 @@ func _build_exploration_objects() -> void:
 	var env: Node3D = _renderer if _renderer else self
 	_build_glass_bead_game(env)
 	_build_painting_panel(env, Vector2i(6, 1), Vector2i(6, 3), "macabre_teal",
-		Color(0.15, 0.38, 0.42), "aster.sim_expand.painting_1.look", "aster.sim_expand.painting_1.line")
+		Color(0.15, 0.38, 0.42), "aster.sim_expand.painting_1.line")
 	_build_painting_panel(env, Vector2i(11, 1), Vector2i(11, 3), "hunter_ash",
-		Color(0.4, 0.3, 0.18), "aster.sim_expand.painting_2.look", "aster.sim_expand.painting_2.line")
+		Color(0.4, 0.3, 0.18), "aster.sim_expand.painting_2.line")
 	_build_awards_shelf(env)
 	_build_jstore_shelf(env)
 	_build_hallway_exit(env)
@@ -672,7 +819,7 @@ func _build_exploration_objects() -> void:
 func _build_glass_bead_game(parent: Node3D) -> void:
 	var bead_cell := Vector2i(7, 5)
 	var world := _placement_or_grid("GlassBeadAnchor", bead_cell, 0.0)
-	# Low disc base
+	var meshes: Array = []
 	var base := MeshInstance3D.new()
 	var bm := CylinderMesh.new()
 	bm.top_radius = 0.35
@@ -689,7 +836,7 @@ func _build_glass_bead_game(parent: Node3D) -> void:
 	base.material_override = base_mat
 	base.position = world + Vector3(0, 0.55, 0)
 	parent.add_child(base)
-	# Floating beads
+	meshes.append(base)
 	for i in range(8):
 		var bead := MeshInstance3D.new()
 		var sm := SphereMesh.new()
@@ -707,16 +854,18 @@ func _build_glass_bead_game(parent: Node3D) -> void:
 		var angle := i * TAU / 8.0
 		bead.position = world + Vector3(cos(angle) * 0.25, 0.9 + sin(angle * 2.0) * 0.08, sin(angle) * 0.25)
 		parent.add_child(bead)
-	# Approach zone
-	_make_exploration_zone(
+		meshes.append(bead)
+	var target := _create_graybox_outline_target(parent, "RoomTargetGlassBeadGame",
+		world + Vector3(0.0, 0.75, 0.0), Vector3(1.2, 1.1, 1.2), meshes, "glass_bead_game", 1.0)
+	var zone := _make_exploration_zone(
 		parent, _local_for_parent(parent, _placement_or_position("GlassBeadZoneMarker", world)),
 		"GlassBeadZone",
-		"aster.sim_expand.glass_bead.look",
 		"aster.sim_expand.glass_bead.line",
 		1.4, 0.6
 	)
+	_set_room_target_interaction_delegate(target, zone)
 
-func _build_painting_panel(parent: Node3D, canvas_cell: Vector2i, zone_cell: Vector2i, zone_name: String, palette: Color, look_key: String, line_key: String) -> void:
+func _build_painting_panel(parent: Node3D, canvas_cell: Vector2i, zone_cell: Vector2i, zone_name: String, palette: Color, line_key: String) -> void:
 	var marker_prefix := _exploration_marker_prefix(zone_name)
 	var canvas_world := _placement_or_grid(marker_prefix + "Canvas", canvas_cell, 0.0)
 	var panel := MeshInstance3D.new()
@@ -727,7 +876,7 @@ func _build_painting_panel(parent: Node3D, canvas_cell: Vector2i, zone_cell: Vec
 	pm.albedo_color = palette
 	pm.roughness = 0.7
 	panel.material_override = pm
-	# Frame the canvas: simple darker border behind it
+	# Canvas frame.
 	var frame := MeshInstance3D.new()
 	var fb := BoxMesh.new()
 	fb.size = Vector3(1.5, 1.1, 0.04)
@@ -739,15 +888,19 @@ func _build_painting_panel(parent: Node3D, canvas_cell: Vector2i, zone_cell: Vec
 	frame.position = canvas_world + Vector3(0, 1.8, 0.0)
 	parent.add_child(frame)
 	parent.add_child(panel)
-	# Approach zone in front of the canvas (offset toward room interior)
+	var target_name := "RoomTarget%sPainting" % marker_prefix
+	var target := _create_graybox_outline_target(parent, target_name,
+		canvas_world + Vector3(0.0, 1.8, 0.03), Vector3(1.8, 1.35, 0.35), [frame, panel],
+		"%s_painting" % zone_name, 0.95)
 	var zone_world := _placement_or_grid(marker_prefix + "ZoneMarker", zone_cell, 0.0)
-	_make_exploration_zone(parent, _local_for_parent(parent, zone_world), zone_name + "Zone",
-		look_key, line_key, 1.4, 0.6)
+	var zone := _make_exploration_zone(parent, _local_for_parent(parent, zone_world), zone_name + "Zone",
+		line_key, 1.4, 0.6)
+	_set_room_target_interaction_delegate(target, zone)
 
 func _build_awards_shelf(parent: Node3D) -> void:
 	var shelf_cell := Vector2i(14, 2)
 	var world := _placement_or_grid("AwardsShelf", shelf_cell, 0.0)
-	# Shelf backing
+	var meshes: Array = []
 	var shelf := MeshInstance3D.new()
 	var sb := BoxMesh.new()
 	sb.size = Vector3(0.25, 0.6, 2.0)
@@ -758,7 +911,8 @@ func _build_awards_shelf(parent: Node3D) -> void:
 	shelf.material_override = shelf_mat
 	shelf.position = world + Vector3(0.6, 1.3, 0)
 	parent.add_child(shelf)
-	# Plaques — a row of small institutional-looking rectangles
+	meshes.append(shelf)
+	# Plaques.
 	for i in range(6):
 		var plaque := MeshInstance3D.new()
 		var pb := BoxMesh.new()
@@ -771,22 +925,24 @@ func _build_awards_shelf(parent: Node3D) -> void:
 		plaque.material_override = pm
 		plaque.position = world + Vector3(0.5, 1.35, -0.7 + i * 0.28)
 		parent.add_child(plaque)
-	# Two approach zones — centerpiece plaque and journalism prize
-	_make_exploration_zone(parent, _local_for_parent(parent, _placement_or_position("AwardsCenterZoneMarker", world + Vector3(0, 0, -0.4))),
+		meshes.append(plaque)
+	var target := _create_graybox_outline_target(parent, "RoomTargetAwardsShelf",
+		world + Vector3(0.55, 1.3, 0.0), Vector3(1.0, 1.2, 2.35), meshes, "awards_shelf", 1.35)
+	# Two approach zones.
+	var center_zone := _make_exploration_zone(parent, _local_for_parent(parent, _placement_or_position("AwardsCenterZoneMarker", world + Vector3(0, 0, -0.4))),
 		"AwardsCenterZone",
-		"aster.sim_expand.awards.look",
 		"aster.sim_expand.awards.line",
 		0.9, 0.6)
 	_make_exploration_zone(parent, _local_for_parent(parent, _placement_or_position("AwardsJournalismZoneMarker", world + Vector3(0, 0, 0.6))),
 		"AwardsJournalismZone",
-		"aster.sim_expand.awards.journalism_look",
 		"aster.sim_expand.awards.journalism_line",
 		0.9, 0.6)
+	_set_room_target_interaction_delegate(target, center_zone)
 
 func _build_jstore_shelf(parent: Node3D) -> void:
 	var shelf_cell := Vector2i(14, 5)
 	var world := _placement_or_grid("JStoreShelf", shelf_cell, 0.0)
-	# Shelf
+	var meshes: Array = []
 	var shelf := MeshInstance3D.new()
 	var sb := BoxMesh.new()
 	sb.size = Vector3(0.25, 1.0, 2.0)
@@ -796,7 +952,8 @@ func _build_jstore_shelf(parent: Node3D) -> void:
 	shelf.material_override = shelf_mat
 	shelf.position = world + Vector3(0.6, 1.1, 0)
 	parent.add_child(shelf)
-	# J-store spines — vertical rectangles of varied colors
+	meshes.append(shelf)
+	# J-store spines.
 	var spine_colors := [
 		Color(0.15, 0.2, 0.35),
 		Color(0.35, 0.18, 0.15),
@@ -815,7 +972,8 @@ func _build_jstore_shelf(parent: Node3D) -> void:
 		spine.material_override = pm
 		spine.position = world + Vector3(0.5, 0.9, -0.9 + i * 0.18)
 		parent.add_child(spine)
-	# Empty mugs on top of the shelf — accumulating reward history
+		meshes.append(spine)
+	# Empty mugs.
 	for i in range(12):
 		var mug := MeshInstance3D.new()
 		var mb := CylinderMesh.new()
@@ -830,21 +988,21 @@ func _build_jstore_shelf(parent: Node3D) -> void:
 		var col := i % 6
 		mug.position = world + Vector3(0.5, 1.7, -0.7 + col * 0.22 + row * 0.05)
 		parent.add_child(mug)
-	# Two approach zones — shelf overview + articles pull
-	_make_exploration_zone(parent, _local_for_parent(parent, _placement_or_position("JStoreMainZoneMarker", world + Vector3(0, 0, -0.4))),
+		meshes.append(mug)
+	var target := _create_graybox_outline_target(parent, "RoomTargetJStoreShelf",
+		world + Vector3(0.55, 1.15, 0.0), Vector3(1.0, 1.8, 2.35), meshes, "jstore_shelf", 1.45)
+	var main_zone := _make_exploration_sequence_zone(parent, _local_for_parent(parent, _placement_or_position("JStoreMainZoneMarker", world + Vector3(0, 0, -0.4))),
 		"JStoreMainZone",
-		"aster.sim_expand.bookshelf.look",
-		"aster.sim_expand.bookshelf.line",
+		[
+			"aster.sim_expand.bookshelf.line",
+			"aster.sim_expand.bookshelf.articles_line",
+		],
 		0.9, 0.6)
-	_make_exploration_zone(parent, _local_for_parent(parent, _placement_or_position("JStoreArticlesZoneMarker", world + Vector3(0, 0, 0.6))),
-		"JStoreArticlesZone",
-		"aster.sim_expand.bookshelf.articles_pull",
-		"aster.sim_expand.bookshelf.articles_line",
-		0.9, 0.8)
+	_set_room_target_interaction_delegate(target, main_zone)
 
 func _build_hallway_exit(parent: Node3D) -> void:
 	var world := _placement_or_grid("HallwayExit", HALLWAY_EXIT_CELL, 0.0)
-	# Visual: an archway frame hinting at egress
+	# Archway frame.
 	var arch := MeshInstance3D.new()
 	var ab := BoxMesh.new()
 	ab.size = Vector3(0.2, 2.8, 1.2)
@@ -854,7 +1012,6 @@ func _build_hallway_exit(parent: Node3D) -> void:
 	arch.material_override = am
 	arch.position = world + Vector3(0.6, 1.4, 0)
 	parent.add_child(arch)
-	# Warm light past the arch
 	_ensure_omni_light(
 		parent,
 		"HallwayExitLight",
@@ -863,9 +1020,9 @@ func _build_hallway_exit(parent: Node3D) -> void:
 		1.4,
 		4.0
 	)
-	# Gate zone is reusable Interactable plumbing; the unlock flag controls
-	# story progression, not physics wiring.
-	var gate := _create_interactable(parent, _local_for_parent(parent, world), "HallwayGate", 2.2, 0.8, "Continue", false)
+	# Reuses Interactable plumbing for the timed gate.
+	var gate := _create_interactable(parent, _local_for_parent(parent, world), "HallwayGate", 2.2, 0.8,
+		"Continue", false, Interactable.InteractableType.HOLD_ACTION, "aster.hallway_gate")
 	gate.connect("interacted", _on_exploration_gate_interacted)
 	_explore_hallway_gate = gate
 

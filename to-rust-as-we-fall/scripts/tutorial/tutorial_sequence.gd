@@ -2,15 +2,30 @@
 class_name TutorialSequence
 extends Node3D
 
-## Base class for all tutorial sequences. Handles scheduler, GameState,
-## UI setup, speed control, camera, and common helpers. Subclasses override
-## virtual methods to build their scene-specific content.
+## Shared scheduler, GameState, UI, camera, and scene helpers for tutorials.
 
 const INTERACTABLE_SCENE := preload("res://scenes/game/interactable.tscn")
 const EXPLORATION_RADIUS_SCALE := 1.35
 const EXPLORATION_MIN_RADIUS := 1.6
 const EXPLORATION_FOCUS_OFFSET := Vector3(0, 4.2, 3.2)
 const EXPLORATION_FOCUS_HEIGHT := 0.9
+const OUTLINE_POST_PROCESS_ENABLED := false
+const OUTLINE_FEEDBACK_MANAGER_SCRIPT := preload("res://scripts/game/objects/outline_feedback_manager.gd")
+const CHROMATIC_ABERRATION_SHADER := preload("res://resources/chromatic_aberration.gdshader")
+
+@export_group("Post Processing")
+@export var chromatic_aberration_enabled := false:
+	set(value):
+		chromatic_aberration_enabled = value
+		_sync_chromatic_aberration_effect()
+@export_range(0.0, 8.0, 0.1, "suffix:px") var chromatic_aberration_strength := 2.0:
+	set(value):
+		chromatic_aberration_strength = value
+		_sync_chromatic_aberration_effect()
+@export_range(0.0, 1.0, 0.01) var chromatic_aberration_intensity := 1.0:
+	set(value):
+		chromatic_aberration_intensity = value
+		_sync_chromatic_aberration_effect()
 
 # Core infrastructure
 var _scheduler: EventScheduler
@@ -20,10 +35,13 @@ var _fade_start_tick := 0.0
 
 # UI references (populated by _init_ui)
 var _dialogue       # CanvasLayer + dialogue_box.gd
-var _tutorial_prompt # CanvasLayer + tutorial_prompt.gd
+var _tutorial_prompt # TutorialUI prompt facade
 var _fade_rect: ColorRect
 var _thought_label: Label
 var _engram_overlay
+var _chromatic_aberration_layer: CanvasLayer
+var _chromatic_aberration_rect: ColorRect
+var _chromatic_aberration_material: ShaderMaterial
 
 # Player and camera (populated by subclass via helpers)
 var _player         # CharacterBody3D + player.gd
@@ -40,7 +58,10 @@ var _outline_hover_color := Color.WHITE
 var _outline_selected_color := Color(1.0, 0.62, 0.12, 1.0)
 var _outline_hover_radius := 2.0
 var _outline_selected_radius := 2.0
+var _outline_hover_extents := Vector3.ZERO
+var _outline_selected_extents := Vector3.ZERO
 var _outline_selection_token := 0
+var _outline_feedback_manager: Node = null
 
 # Dialogue chain state (used by _dialogue_chain helper)
 var _dlg_chain_keys: Array = []
@@ -66,6 +87,10 @@ var _exploration_focus_prev_move_enabled := true
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		_clear_editor_generated_preview_children()
+	else:
+		_outline_feedback_manager = OUTLINE_FEEDBACK_MANAGER_SCRIPT.new()
+		_outline_feedback_manager.name = "OutlineFeedbackManager"
+		add_child(_outline_feedback_manager)
 	_build_scene()
 	_build_characters()
 	if Engine.is_editor_hint():
@@ -80,18 +105,15 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
-	# Guard: teardown may null the scheduler/game_state before Godot stops
-	# invoking _process on this node (scene-change mid-frame, child frees
-	# out of order). Subclasses that override _on_process expect these to
-	# be non-null, so bail if they're gone.
+	# Scene changes can dispatch one final _process after teardown.
 	if _scheduler == null or _game_state == null:
 		return
 	var spd := _compute_speed()
 	_scheduler.set_speed(spd)
 	if _dialogue:
-		# Dialogue always advances at real speed (or fast-forward). Never frozen.
-		# The scheduler controls WHEN chains start, not how fast text types.
-		_dialogue.speed_multiplier = maxf(spd, 1.0)
+		# The sequence owns the one dialogue clock. It is F-scaled but NOT gated
+		# by _compute_speed(), so gameplay pause never freezes dialogue.
+		_dialogue.advance_ui_time(delta * _compute_dialogue_speed())
 	for node in _get_speed_recipients():
 		node.speed_multiplier = spd
 	_scheduler.advance(delta)
@@ -128,6 +150,12 @@ func _on_process(_delta: float, _spd: float) -> void:
 func _compute_speed() -> float:
 	return 10.0 if Input.is_key_pressed(KEY_F) else 1.0
 
+## Dialogue clock speed. Intentionally independent of _compute_speed(): holding
+## F fast-forwards dialogue even while gameplay is paused (Peris protect prompt,
+## exploration focus), and a paused scheduler never freezes dialogue.
+func _compute_dialogue_speed() -> float:
+	return 10.0 if Input.is_key_pressed(KEY_F) else 1.0
+
 func _get_speed_recipients() -> Array:
 	return []
 
@@ -138,6 +166,9 @@ func headless_advance(duration: float, step := 0.05) -> void:
 	while remaining > 0.0001:
 		var dt: float = minf(step, remaining)
 		_scheduler.advance_ticks(dt)
+		if _dialogue:
+			# Same one clock as real play; dt is already in ticks (1x headless).
+			_dialogue.advance_ui_time(dt)
 		_sync_scheduler_animations()
 		_update_thought_fade()
 		_sync_perception_shader()
@@ -174,9 +205,7 @@ func _clear_editor_generated_preview_children() -> void:
 
 # --- Perception system ---
 
-## Enable the perception overlay. Mode is "data" (Aster's edge detection),
-## "fog" (Peris's warm fog), or "outline" (black full-scene outlines).
-## tracking_node is the character whose position drives location-aware shaders.
+## Enable a perception overlay: data, fog, or outline.
 func _setup_perception(mode: String, tracking_node: Node3D) -> void:
 	if not _perception_quad:
 		_perception_quad = MeshInstance3D.new()
@@ -204,6 +233,10 @@ func _set_perception_mode(mode: String) -> void:
 		"fog":
 			_perception_material.shader = preload("res://resources/peris_fog.gdshader")
 		"outline":
+			if not OUTLINE_POST_PROCESS_ENABLED:
+				_perception_material.shader = null
+				_perception_quad.visible = false
+				return
 			_perception_material.shader = preload("res://resources/black_outline.gdshader")
 		_:
 			_perception_quad.visible = false
@@ -225,25 +258,8 @@ func _sync_perception_shader() -> void:
 		_get_perception_target_position() + Vector3(0, 1.0, 0))
 
 func _sync_outline_highlights() -> void:
-	var material := _get_outline_shader_material()
-	if material == null:
-		return
-	if _outline_hover_source != null and is_instance_valid(_outline_hover_source):
-		material.set_shader_parameter("hover_outline_enabled", true)
-		material.set_shader_parameter("hover_outline_world_pos", _outline_hover_source.call("get_outline_highlight_origin") if _outline_hover_source.has_method("get_outline_highlight_origin") else _outline_hover_source.global_position + Vector3(0.0, 0.8, 0.0))
-		material.set_shader_parameter("hover_outline_radius", _outline_hover_radius)
-		material.set_shader_parameter("hover_outline_color", Vector3(_outline_hover_color.r, _outline_hover_color.g, _outline_hover_color.b))
-	else:
-		_outline_hover_source = null
-		material.set_shader_parameter("hover_outline_enabled", false)
-	if _outline_selected_source != null and is_instance_valid(_outline_selected_source):
-		material.set_shader_parameter("selected_outline_enabled", true)
-		material.set_shader_parameter("selected_outline_world_pos", _outline_selected_source.call("get_outline_highlight_origin") if _outline_selected_source.has_method("get_outline_highlight_origin") else _outline_selected_source.global_position + Vector3(0.0, 0.8, 0.0))
-		material.set_shader_parameter("selected_outline_radius", _outline_selected_radius)
-		material.set_shader_parameter("selected_outline_color", Vector3(_outline_selected_color.r, _outline_selected_color.g, _outline_selected_color.b))
-	else:
-		_outline_selected_source = null
-		material.set_shader_parameter("selected_outline_enabled", false)
+	# Object materials own hover/selection feedback to avoid screen-edge bleed.
+	pass
 
 func _get_outline_shader_material() -> ShaderMaterial:
 	if _perception_mode != "outline":
@@ -272,7 +288,7 @@ func _init_ui() -> void:
 	var ui := preload("res://scenes/game/tutorial_ui.tscn").instantiate()
 	add_child(ui)
 	_dialogue = ui.get_node("DialogueBox")
-	_tutorial_prompt = ui.get_node("TutorialPrompt")
+	_tutorial_prompt = ui
 	_fade_rect = ui.get_node("FadeOverlay/FadeRect")
 	_thought_label = ui.get_node("ThoughtOverlay/ThoughtLabel")
 	_fade_rect.color.a = 0.0
@@ -281,16 +297,55 @@ func _init_ui() -> void:
 	_engram_overlay.name = "EngramOverlay"
 	_engram_overlay.set_script(preload("res://scripts/ui/engram_overlay.gd"))
 	add_child(_engram_overlay)
+	_init_chromatic_aberration_effect()
 	_setup_ui()
+
+func _init_chromatic_aberration_effect() -> void:
+	if _chromatic_aberration_layer != null:
+		_sync_chromatic_aberration_effect()
+		return
+
+	_chromatic_aberration_layer = CanvasLayer.new()
+	_chromatic_aberration_layer.name = "ChromaticAberrationLayer"
+	_chromatic_aberration_layer.layer = 0
+	add_child(_chromatic_aberration_layer)
+
+	_chromatic_aberration_rect = ColorRect.new()
+	_chromatic_aberration_rect.name = "ChromaticAberrationRect"
+	_chromatic_aberration_rect.anchor_right = 1.0
+	_chromatic_aberration_rect.anchor_bottom = 1.0
+	_chromatic_aberration_rect.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_chromatic_aberration_rect.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_chromatic_aberration_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_chromatic_aberration_layer.add_child(_chromatic_aberration_rect)
+
+	_chromatic_aberration_material = ShaderMaterial.new()
+	_chromatic_aberration_material.shader = CHROMATIC_ABERRATION_SHADER
+	_chromatic_aberration_rect.material = _chromatic_aberration_material
+	_sync_chromatic_aberration_effect()
+
+func _sync_chromatic_aberration_effect() -> void:
+	if _chromatic_aberration_layer == null or _chromatic_aberration_material == null:
+		return
+	var active := (
+		chromatic_aberration_enabled
+		and chromatic_aberration_strength > 0.0
+		and chromatic_aberration_intensity > 0.0
+	)
+	_chromatic_aberration_layer.visible = active
+	_chromatic_aberration_material.set_shader_parameter("strength_px", chromatic_aberration_strength)
+	_chromatic_aberration_material.set_shader_parameter("intensity", chromatic_aberration_intensity)
+
+func set_chromatic_aberration_enabled(enabled: bool) -> void:
+	chromatic_aberration_enabled = enabled
+	_sync_chromatic_aberration_effect()
 
 func _teardown_sequence() -> void:
 	if _did_teardown:
 		return
 	_did_teardown = true
 
-	# Stop the per-frame pump before we invalidate anything it depends on.
-	# Godot can still dispatch one more frame of _process after _exit_tree
-	# when the scene changes mid-frame; this prevents a crash in subclasses.
+	# Prevent one last _process from touching torn-down state.
 	set_process(false)
 	set_physics_process(false)
 
@@ -307,6 +362,7 @@ func _teardown_sequence() -> void:
 	_scheduler_animation_states.clear()
 	_thought_fade_active = false
 	_perception_target = null
+	_outline_feedback_manager = null
 
 	if _camera:
 		_camera.target = null
@@ -329,6 +385,9 @@ func _teardown_sequence() -> void:
 	_fade_rect = null
 	_thought_label = null
 	_engram_overlay = null
+	_chromatic_aberration_layer = null
+	_chromatic_aberration_rect = null
+	_chromatic_aberration_material = null
 
 func _change_scene_or_record(scene_path: String) -> void:
 	requested_scene_change = scene_path
@@ -457,7 +516,7 @@ func _create_player_character(char_name: String, char_color: Color) -> Character
 func _create_npc(npc_name: String, npc_color: Color) -> Node3D:
 	var npc := Node3D.new()
 	npc.name = npc_name.replace("-", "_")
-	npc.set_script(preload("res://scripts/game/npc.gd"))
+	npc.set_script(preload("res://scripts/game/ai/npc.gd"))
 	npc.display_name = npc_name
 	npc.color = npc_color
 	return npc
@@ -465,7 +524,7 @@ func _create_npc(npc_name: String, npc_color: Color) -> Node3D:
 func _setup_game_camera(target_node: Node3D, offset := Vector3(0, 10, 7)) -> void:
 	var cam := Camera3D.new()
 	cam.name = "GameCamera"
-	cam.set_script(preload("res://scripts/game/game_camera.gd"))
+	cam.set_script(preload("res://scripts/ui/game_camera.gd"))
 	add_child(cam)
 	_camera = cam
 	_camera.target = target_node
@@ -478,6 +537,8 @@ func _register_gs_character(id: String, node: Node3D, speed: float = 3.0, stats:
 	node.char_id = id
 	if node.has_method("set_scheduler"):
 		node.call("set_scheduler", _scheduler)
+	if node == _player and node.has_method("bind_interaction_root"):
+		node.call("bind_interaction_root", self)
 
 # --- Exploration helpers ---
 
@@ -488,7 +549,9 @@ func _create_interactable(
 		radius: float = 1.5,
 		dwell: float = 1.0,
 		label: String = "",
-		one_shot: bool = true
+		one_shot: bool = true,
+		interactable_type: int = Interactable.InteractableType.HOLD_ACTION,
+		interactable_id: String = ""
 	) -> Area3D:
 	var area := INTERACTABLE_SCENE.instantiate() as Area3D
 	area.name = interactable_name
@@ -497,20 +560,37 @@ func _create_interactable(
 	area.set("outline_highlight_radius", radius)
 	area.set("dwell_time", dwell)
 	area.set("one_shot", one_shot)
+	area.set("interactable_type", interactable_type)
 	area.set("tutorial_label", label)
 	area.set("dialogue_box", _dialogue)
 	area.set("active_character", _current_interaction_character())
+	if interactable_id != "" and area.has_method("apply_interactable_spec"):
+		area.call("apply_interactable_spec", interactable_id)
 	_connect_interactable_outline_feedback(area)
 	parent.add_child(area)
 	return area
 
-func _connect_interactable_outline_feedback(area: Area3D) -> void:
-	if area.has_signal("outline_hovered"):
-		area.connect("outline_hovered", _on_interactable_outline_hovered)
-	if area.has_signal("outline_unhovered"):
-		area.connect("outline_unhovered", _on_interactable_outline_unhovered)
-	if area.has_signal("outline_selected"):
-		area.connect("outline_selected", _on_interactable_outline_selected)
+func _connect_interactable_outline_feedback(source: Node) -> void:
+	_connect_outline_feedback_source(source)
+
+func _connect_outline_feedback_sources(root: Node) -> void:
+	_connect_outline_feedback_source(root)
+	for child in root.get_children():
+		_connect_outline_feedback_sources(child)
+
+func _connect_outline_feedback_source(source: Node) -> void:
+	if source == null:
+		return
+	if _outline_feedback_manager != null:
+		_outline_feedback_manager.call("bind_target", source)
+		_outline_feedback_manager.call("bind_interaction_controller", source)
+		return
+	if source.has_signal("outline_hovered") and not source.is_connected("outline_hovered", _on_interactable_outline_hovered):
+		source.connect("outline_hovered", _on_interactable_outline_hovered)
+	if source.has_signal("outline_unhovered") and not source.is_connected("outline_unhovered", _on_interactable_outline_unhovered):
+		source.connect("outline_unhovered", _on_interactable_outline_unhovered)
+	if source.has_signal("outline_selected") and not source.is_connected("outline_selected", _on_interactable_outline_selected):
+		source.connect("outline_selected", _on_interactable_outline_selected)
 
 func _on_interactable_outline_hovered(interactable: Node) -> void:
 	if not (interactable is Node3D):
@@ -518,6 +598,7 @@ func _on_interactable_outline_hovered(interactable: Node) -> void:
 	_outline_hover_source = interactable as Node3D
 	_outline_hover_color = _read_interactable_color(interactable, "hover_outline_color", Color.WHITE)
 	_outline_hover_radius = _read_interactable_outline_radius(interactable)
+	_outline_hover_extents = _read_interactable_outline_extents(interactable)
 	_sync_outline_highlights()
 
 func _on_interactable_outline_unhovered(interactable: Node) -> void:
@@ -531,6 +612,7 @@ func _on_interactable_outline_selected(interactable: Node) -> void:
 	_outline_selected_source = interactable as Node3D
 	_outline_selected_color = _read_interactable_color(interactable, "selected_feedback_color", Color(1.0, 0.62, 0.12, 1.0))
 	_outline_selected_radius = _read_interactable_outline_radius(interactable)
+	_outline_selected_extents = _read_interactable_outline_extents(interactable)
 	_sync_outline_highlights()
 	_outline_selection_token += 1
 	var token := _outline_selection_token
@@ -561,43 +643,86 @@ func _read_interactable_outline_radius(interactable: Node) -> float:
 		radius = _read_interactable_float(interactable, "interaction_radius", 2.0)
 	return maxf(0.25, radius)
 
+func _read_interactable_outline_extents(interactable: Node) -> Vector3:
+	if interactable.has_method("get_outline_highlight_extents"):
+		var method_value = interactable.call("get_outline_highlight_extents")
+		if method_value is Vector3:
+			return method_value
+	var value = interactable.get("outline_highlight_extents")
+	if value is Vector3:
+		return value
+	return Vector3.ZERO
+
 func _current_interaction_character() -> String:
 	if _player == null:
 		return ""
 	var char_id = _player.get("char_id")
 	return str(char_id) if char_id != null else ""
 
-## Create a proximity Interactable zone that fires a "look" narration + a
-## character "line" (both DialogueData keys) once the player dwells. Returns
-## the Area3D so callers can customize radius, tutorial_label, or gate
-## behavior via the area's interacted signal.
-##
-## look_key: narration shown first (no speaker). Pass "" to skip.
-## line_key: spoken dialogue. Pass "" to skip.
-## The pair plays in order through the dialogue box.
+## Create a click-to-inspect zone for spoken/object text.
 func _make_exploration_zone(
 		parent: Node3D,
 		pos: Vector3,
 		zone_name: String,
-		look_key: String,
 		line_key: String,
 		radius: float = 1.5,
 		dwell: float = 0.6,
 		label: String = ""
 	) -> Area3D:
 	var scaled_radius := maxf(radius * EXPLORATION_RADIUS_SCALE, EXPLORATION_MIN_RADIUS)
-	var area := _create_interactable(parent, pos, zone_name, scaled_radius, dwell, label, true)
-	if look_key != "" or line_key != "":
-		area.connect("interacted", func(): _play_exploration_beat(look_key, line_key, area))
+	var area := _create_interactable(parent, pos, zone_name, scaled_radius, dwell, label, true,
+		Interactable.InteractableType.INSPECTION, "tutorial.inspection")
+	if line_key != "":
+		area.connect("interacted", func(): _play_exploration_beat(line_key, area))
 	if label != "":
 		area.call_deferred("show_tutorial_label")
 	return area
 
-## Play a look/line pair through the dialogue box in sequence.
-func _play_exploration_beat(look_key: String, line_key: String, focus_node: Node3D = null) -> void:
+## Create a reusable inspection zone that advances through lines on repeated clicks.
+func _make_exploration_sequence_zone(
+		parent: Node3D,
+		pos: Vector3,
+		zone_name: String,
+		line_keys: Array,
+		radius: float = 1.5,
+		dwell: float = 0.6,
+		label: String = ""
+	) -> Area3D:
+	var scaled_radius := maxf(radius * EXPLORATION_RADIUS_SCALE, EXPLORATION_MIN_RADIUS)
+	var area := _create_interactable(parent, pos, zone_name, scaled_radius, dwell, label, false,
+		Interactable.InteractableType.INSPECTION, "tutorial.inspection")
+	area.set("one_shot", false)
+	area.set("interactable_type", Interactable.InteractableType.INSPECTION)
+	var cleaned_keys := []
+	for key in line_keys:
+		var key_string := str(key)
+		if key_string != "":
+			cleaned_keys.append(key_string)
+	area.set_meta("exploration_dialogue_keys", cleaned_keys)
+	area.set_meta("exploration_dialogue_index", 0)
+	if not cleaned_keys.is_empty():
+		area.connect("interacted", func(): _play_next_exploration_sequence_beat(area))
+	if label != "":
+		area.call_deferred("show_tutorial_label")
+	return area
+
+func _play_next_exploration_sequence_beat(area: Node3D) -> void:
+	if area == null:
+		return
+	var raw_keys = area.get_meta("exploration_dialogue_keys", [])
+	if not (raw_keys is Array):
+		return
+	var keys: Array = raw_keys
+	if keys.is_empty():
+		return
+	var index := int(area.get_meta("exploration_dialogue_index", 0))
+	var clamped_index := mini(maxi(index, 0), keys.size() - 1)
+	var line_key := str(keys[clamped_index])
+	area.set_meta("exploration_dialogue_index", mini(clamped_index + 1, keys.size() - 1))
+	_play_exploration_beat(line_key, area)
+
+func _play_exploration_beat(line_key: String, focus_node: Node3D = null) -> void:
 	var keys := []
-	if look_key != "":
-		keys.append(look_key)
 	if line_key != "":
 		keys.append(line_key)
 	_play_focused_dialogue_keys(keys, focus_node)
@@ -702,14 +827,11 @@ func _update_thought_fade() -> void:
 
 # --- Step transition ---
 
-## Transition to a new step. Clears stale dialogue callbacks to prevent
-## double-fire from overlapping signal subscriptions. Returns false if
-## already in the requested step (duplicate call).
+## Enter a step once and clear stale dialogue callbacks.
 func _enter_step(step_name: String) -> bool:
 	if _current_step == step_name:
 		return false
 	_current_step = step_name
-	# Disconnect any stale dialogue_finished callbacks from the previous step
 	if _dialogue:
 		for conn in _dialogue.dialogue_finished.get_connections():
 			_dialogue.dialogue_finished.disconnect(conn.callable)
@@ -717,8 +839,7 @@ func _enter_step(step_name: String) -> bool:
 
 # --- Dialogue chain ---
 
-## Play a sequence of dialogue keys in order, with optional delay between
-## each line. Calls next_func when the entire chain completes.
+## Play dialogue keys in order, then call next_func.
 func _dialogue_chain(keys: Array, next_func: Callable, delay_between := 0.0) -> void:
 	_dlg_chain_keys = keys
 	_dlg_chain_index = 0
@@ -728,16 +849,13 @@ func _dialogue_chain(keys: Array, next_func: Callable, delay_between := 0.0) -> 
 
 func _dlg_chain_play_next() -> void:
 	if _dlg_chain_index >= _dlg_chain_keys.size():
-		# Chain completion is dialogue/UI timing, not simulation timing. Call
-		# through directly so tutorial prompts can appear before a pause gate.
 		if _dlg_chain_next.is_valid():
-			_dlg_chain_next.call()
+			_scheduler.schedule_after(0.0, _dlg_chain_next, "dlg_chain_complete")
 		return
 	var key: String = _dlg_chain_keys[_dlg_chain_index]
 	_dlg_chain_index += 1
 	DialogueData.say_to(_dialogue, key)
-	# Lines within a chain advance via dialogue_finished directly.
-	# No scheduler — dialogue types and holds at real speed, independent of pause.
+	# The dialogue box owns UI timing; only stateful follow-ups enter the scheduler.
 	_dialogue.dialogue_finished.connect(func():
 		if _dlg_chain_delay > 0.0 and _dlg_chain_index < _dlg_chain_keys.size():
 			_scheduler.schedule_after(_dlg_chain_delay, _dlg_chain_play_next, "dlg_chain")
@@ -760,6 +878,8 @@ func _load_chunk(chunk_name: String) -> Node3D:
 			chunk = instance as Node3D
 			if chunk.has_method("attach_chunk_host"):
 				chunk.call("attach_chunk_host", self, chunk_name)
+			if has_method("_configure_loaded_chunk"):
+				call("_configure_loaded_chunk", chunk, chunk_name)
 		else:
 			push_warning("Chunk scene for %s did not instantiate a Node3D" % chunk_name)
 	if chunk == null:
@@ -787,15 +907,16 @@ func _unload_chunk(chunk_name: String) -> void:
 func _build_chunk(_chunk_name: String, _parent: Node3D) -> void:
 	pass
 
+func _configure_loaded_chunk(_chunk: Node3D, _chunk_name: String) -> void:
+	pass
+
 # --- Animation System ---
 
 var _anim_player: AnimationPlayer
 var _anim_lib: AnimationLibrary
 var _scheduler_animation_states: Dictionary = {}
 
-## Runtime bridge for AnimationPlayer clips. Author and preview animations in
-## Godot's editor as usual, then play them through this helper so simulation
-## pause/fast-forward controls the clip by scheduler ticks.
+## Scheduler-driven playback for editor-authored AnimationPlayer clips.
 func _register_scheduler_animation_player(player: AnimationPlayer) -> void:
 	if player == null:
 		return

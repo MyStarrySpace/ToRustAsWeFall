@@ -1,0 +1,417 @@
+class_name Interactable
+extends Area3D
+
+## Proximity interactable with optional character-specific dialogue.
+
+enum InteractableType {
+	HOLD_ACTION,
+	INSPECTION,
+}
+
+@export var dwell_time := 1.5
+@export var interaction_radius := 2.0
+@export var description := ""
+@export var one_shot := false
+@export var interaction_enabled := true
+@export var interactable_type := InteractableType.HOLD_ACTION
+@export var interactable_id := ""
+@export var tutorial_label := ""
+@export var show_interaction_zone := true
+@export var interaction_zone_color := Color(0.35, 0.75, 0.55, 0.16)
+@export var hover_outline_color := Color.WHITE
+@export var selected_feedback_color := Color(1.0, 0.62, 0.12, 1.0)
+@export var outline_highlight_radius := 0.0
+@export var outline_highlight_height := 0.8
+@export var selected_feedback_duration := 2.5
+@export var selected_particle_count := 120
+@export var selected_particles_enabled := true
+
+## Dialogue key prefix; empty means signal-only.
+@export var dialogue_key := ""
+
+## Optional required character id.
+@export var required_character := ""
+
+var _player_in_range := false
+var _dwell_progress := 0.0
+var _used := false
+
+var speed_multiplier := 1.0
+
+## Sequence-owned dialogue target.
+var dialogue_box: Node = null
+## Active character id.
+var active_character := ""
+
+var _progress_ring: MeshInstance3D
+var _progress_mat: StandardMaterial3D
+var _zone_marker: MeshInstance3D
+var _zone_mat: StandardMaterial3D
+var _tutorial_label_3d: Label3D
+var _collision_shape: CollisionShape3D
+var _selected_particles: GPUParticles3D
+var _selected_particle_material: ParticleProcessMaterial
+var _feedback_managed := false
+
+signal interacted()
+signal outline_hovered(interactable: Node)
+signal outline_unhovered(interactable: Node)
+signal outline_selected(interactable: Node)
+signal interaction_requested(interactable: Node, world_position: Vector3)
+## Emitted after resolving dialogue_key.
+signal dialogue_triggered(key: String, character: String)
+
+func _ready() -> void:
+	if interactable_id != "":
+		apply_interactable_spec(interactable_id)
+	body_entered.connect(_on_body_entered)
+	body_exited.connect(_on_body_exited)
+	mouse_entered.connect(_on_mouse_entered)
+	mouse_exited.connect(_on_mouse_exited)
+	input_event.connect(_on_input_event)
+	# Match packed-scene physics layers for script-created zones.
+	collision_layer = 4 if interaction_enabled else 0
+	collision_mask = 2 if interaction_enabled else 0
+	input_ray_pickable = true
+	_collision_shape = get_node_or_null("CollisionShape3D")
+	if _collision_shape != null and _collision_shape.shape != null:
+		_collision_shape.shape = _collision_shape.shape.duplicate()
+	if _collision_shape != null and _collision_shape.shape is SphereShape3D:
+		(_collision_shape.shape as SphereShape3D).radius = interaction_radius
+
+	_build_zone_marker()
+
+	_progress_ring = MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = maxf(0.05, interaction_radius - 0.18)
+	torus.outer_radius = interaction_radius
+	torus.rings = 24
+	torus.ring_segments = 12
+	_progress_ring.mesh = torus
+	_progress_mat = StandardMaterial3D.new()
+	_progress_mat.albedo_color = Color(0.4, 0.7, 0.5, 0.0)
+	_progress_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_progress_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_progress_ring.material_override = _progress_mat
+	_progress_ring.position = Vector3(0, 0.05, 0)
+	_progress_ring.rotation.x = -PI / 2.0
+	add_child(_progress_ring)
+
+	_tutorial_label_3d = Label3D.new()
+	_tutorial_label_3d.text = tutorial_label if tutorial_label != "" else "Click"
+	_tutorial_label_3d.font_size = 48
+	_tutorial_label_3d.pixel_size = 0.012
+	_tutorial_label_3d.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	_tutorial_label_3d.outline_modulate = Color(0, 0, 0, 0.5)
+	_tutorial_label_3d.outline_size = 8
+	_tutorial_label_3d.position = Vector3(0, 2.2, 0)
+	_tutorial_label_3d.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_tutorial_label_3d.visible = false
+	add_child(_tutorial_label_3d)
+	set_interaction_enabled(interaction_enabled)
+	if interaction_enabled:
+		call_deferred("_refresh_player_range")
+
+func _build_zone_marker() -> void:
+	_zone_marker = MeshInstance3D.new()
+	_zone_marker.name = "InteractionZoneMarker"
+	_zone_marker.visible = show_interaction_zone
+	var disc := CylinderMesh.new()
+	disc.top_radius = interaction_radius
+	disc.bottom_radius = interaction_radius
+	disc.height = 0.012
+	disc.radial_segments = 64
+	_zone_marker.mesh = disc
+	_zone_mat = StandardMaterial3D.new()
+	_zone_mat.albedo_color = interaction_zone_color
+	_zone_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_zone_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_zone_marker.material_override = _zone_mat
+	_zone_marker.position = Vector3(0, 0.018, 0)
+	add_child(_zone_marker)
+
+func _process(delta: float) -> void:
+	if _used or not interaction_enabled:
+		return
+
+	if _tutorial_label_3d and _tutorial_label_3d.visible and _tutorial_label_3d.modulate.a > 0.1:
+		var pulse := 0.6 + sin(Time.get_ticks_msec() * 0.003) * 0.25  # @rendering_only: label pulse
+		_tutorial_label_3d.modulate.a = pulse
+
+	if _uses_hold_timer() and _player_in_range:
+		_dwell_progress += delta * speed_multiplier
+		var t := clampf(_dwell_progress / dwell_time, 0.0, 1.0)
+		_progress_mat.albedo_color.a = t * 0.6
+		_progress_ring.scale = Vector3.ONE * (0.8 + t * 0.4)
+
+		if _dwell_progress >= dwell_time:
+			_trigger()
+	else:
+		if _dwell_progress > 0:
+			_dwell_progress = maxf(0, _dwell_progress - delta * 2.0)
+			var t := clampf(_dwell_progress / dwell_time, 0.0, 1.0)
+			_progress_mat.albedo_color.a = t * 0.3
+
+func _trigger(play_feedback := true) -> void:
+	if required_character != "" and active_character != "" and active_character != required_character:
+		return
+	if _used or not interaction_enabled:
+		return
+
+	if one_shot:
+		_used = true
+	_dwell_progress = 0.0
+	_progress_mat.albedo_color.a = 0.0
+	if one_shot:
+		set_interaction_enabled(false)
+		outline_unhovered.emit(self)
+	if _tutorial_label_3d:
+		_tutorial_label_3d.modulate.a = 0.0
+	if play_feedback:
+		if not _feedback_managed:
+			play_selected_feedback()
+		outline_selected.emit(self)
+
+	if dialogue_key != "":
+		var resolved := _resolve_dialogue_key()
+		if dialogue_box and resolved != "":
+			DialogueData.say_to(dialogue_box, resolved)
+		dialogue_triggered.emit(resolved, active_character)
+
+	interacted.emit()
+
+func _resolve_dialogue_key() -> String:
+	if dialogue_key == "":
+		return ""
+	if active_character != "":
+		var char_key := dialogue_key + "." + active_character
+		var line := DialogueData.get_line(char_key)
+		if not line.text.begins_with("[MISSING:"):
+			return char_key
+	var line := DialogueData.get_line(dialogue_key)
+	if not line.text.begins_with("[MISSING:"):
+		return dialogue_key
+	return ""
+
+func show_tutorial_label() -> void:
+	if _tutorial_label_3d and interaction_enabled:
+		_tutorial_label_3d.visible = true
+		_tutorial_label_3d.modulate.a = 0.0
+		var tween := create_tween()
+		tween.tween_property(_tutorial_label_3d, "modulate:a", 0.9, 0.5)
+
+func hide_tutorial_label() -> void:
+	if _tutorial_label_3d:
+		var tween := create_tween()
+		tween.tween_property(_tutorial_label_3d, "modulate:a", 0.0, 0.3)
+		tween.tween_callback(func(): _tutorial_label_3d.visible = false)
+
+func _on_body_entered(body: Node3D) -> void:
+	if _used or not interaction_enabled:
+		return
+	if body is CharacterBody3D:
+		_player_in_range = true
+		_dwell_progress = 0.0
+
+func _on_body_exited(body: Node3D) -> void:
+	if body is CharacterBody3D:
+		_player_in_range = false
+
+func _on_mouse_entered() -> void:
+	if _used or not interaction_enabled:
+		return
+	if not _feedback_managed:
+		set_hover_feedback(true)
+	outline_hovered.emit(self)
+
+func _on_mouse_exited() -> void:
+	if not _feedback_managed:
+		set_hover_feedback(false)
+	outline_unhovered.emit(self)
+
+func _on_input_event(_camera: Node, event: InputEvent, _event_position: Vector3, _normal: Vector3, _shape_idx: int) -> void:
+	if _used or not interaction_enabled:
+		return
+	if event is InputEventMouseButton:
+		var mouse_button := event as InputEventMouseButton
+		if mouse_button.button_index == MOUSE_BUTTON_LEFT and mouse_button.pressed:
+			get_viewport().set_input_as_handled()
+			interaction_requested.emit(self, global_position)
+			outline_selected.emit(self)
+
+func play_selected_feedback() -> void:
+	if not selected_particles_enabled:
+		return
+	_ensure_selected_particles()
+	_selected_particles.amount = maxi(1, selected_particle_count)
+	_selected_particles.lifetime = maxf(0.1, selected_feedback_duration)
+	_selected_particle_material.color = selected_feedback_color
+	_set_particle_draw_color(_selected_particles, selected_feedback_color, 8.0)
+	_restart_particle_emitter(_selected_particles)
+
+func _ensure_selected_particles() -> void:
+	if _selected_particles != null:
+		return
+	_selected_particles = GPUParticles3D.new()
+	_selected_particles.name = "SelectedParticles"
+	_selected_particles.amount = maxi(1, selected_particle_count)
+	_selected_particles.lifetime = maxf(0.1, selected_feedback_duration)
+	_selected_particles.one_shot = false
+	_selected_particles.explosiveness = 0.0
+	_selected_particles.emitting = false
+	_selected_particles.visible = false
+	_selected_particles.position = Vector3(0.0, outline_highlight_height, 0.0)
+	_selected_particles.visibility_aabb = AABB(Vector3(-6.0, -6.0, -6.0), Vector3(12.0, 12.0, 12.0))
+
+	var particle_mesh := SphereMesh.new()
+	particle_mesh.radius = 0.08
+	particle_mesh.height = 0.16
+	particle_mesh.material = _make_particle_draw_material(selected_feedback_color, 8.0)
+	_selected_particles.draw_pass_1 = particle_mesh
+
+	_selected_particle_material = ParticleProcessMaterial.new()
+	_selected_particle_material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	_selected_particle_material.emission_sphere_radius = maxf(0.35, interaction_radius * 0.4)
+	_selected_particle_material.direction = Vector3.UP
+	_selected_particle_material.spread = 180.0
+	_selected_particle_material.initial_velocity_min = 0.02
+	_selected_particle_material.initial_velocity_max = 0.12
+	_selected_particle_material.gravity = Vector3.ZERO
+	_selected_particle_material.scale_min = 0.12
+	_selected_particle_material.scale_max = 0.26
+	_selected_particle_material.color = selected_feedback_color
+	_selected_particles.process_material = _selected_particle_material
+	add_child(_selected_particles)
+
+func set_feedback_managed(active: bool) -> void:
+	_feedback_managed = active
+
+func is_feedback_managed() -> bool:
+	return _feedback_managed
+
+func set_hover_feedback(active: bool) -> void:
+	if _zone_mat == null:
+		return
+	var color := interaction_zone_color
+	color.a = 0.28 if active else interaction_zone_color.a
+	_zone_mat.albedo_color = color
+
+func set_interaction_enabled(active: bool) -> void:
+	interaction_enabled = active
+	monitoring = active
+	monitorable = active
+	collision_layer = 4 if active else 0
+	collision_mask = 2 if active else 0
+	input_ray_pickable = active and not _used
+	_player_in_range = false
+	_dwell_progress = 0.0
+	if _progress_mat != null:
+		_progress_mat.albedo_color.a = 0.0
+	if _zone_marker != null:
+		_zone_marker.visible = active and show_interaction_zone
+	if _tutorial_label_3d != null and not active:
+		_tutorial_label_3d.visible = false
+		_tutorial_label_3d.modulate.a = 0.0
+	if active:
+		call_deferred("_refresh_player_range")
+
+func is_interaction_enabled() -> bool:
+	return interaction_enabled
+
+func apply_interactable_spec(spec_id: String) -> void:
+	var catalog_script = load("res://scripts/game/objects/interactable_catalog.gd")
+	if catalog_script != null:
+		catalog_script.apply_spec(self, spec_id)
+	if _tutorial_label_3d != null:
+		_tutorial_label_3d.text = tutorial_label if tutorial_label != "" else "Click"
+	if _collision_shape != null and _collision_shape.shape is SphereShape3D:
+		(_collision_shape.shape as SphereShape3D).radius = interaction_radius
+	if is_inside_tree():
+		set_interaction_enabled(interaction_enabled)
+
+func on_interaction_arrived() -> void:
+	if _triggers_on_arrival():
+		_trigger(false)
+
+func _refresh_player_range() -> void:
+	if not interaction_enabled or not monitoring or _used:
+		return
+	_player_in_range = false
+	for body in get_overlapping_bodies():
+		if body is CharacterBody3D:
+			_player_in_range = true
+			break
+
+func _uses_hold_timer() -> bool:
+	return interactable_type == InteractableType.HOLD_ACTION
+
+func _triggers_on_arrival() -> bool:
+	return interactable_type == InteractableType.INSPECTION
+
+func _make_particle_draw_material(color: Color, energy: float) -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.albedo_color = color
+	material.vertex_color_use_as_albedo = true
+	material.emission_enabled = true
+	material.emission = color
+	material.emission_energy_multiplier = energy
+	return material
+
+func _set_particle_draw_color(particles: GPUParticles3D, color: Color, energy: float) -> void:
+	if particles == null or not (particles.draw_pass_1 is PrimitiveMesh):
+		return
+	var mesh := particles.draw_pass_1 as PrimitiveMesh
+	if mesh.material is StandardMaterial3D:
+		var material := mesh.material as StandardMaterial3D
+		material.albedo_color = color
+		material.emission = color
+		material.emission_energy_multiplier = energy
+
+func _restart_particle_emitter(particles: GPUParticles3D) -> void:
+	if particles == null:
+		return
+	particles.visible = true
+	particles.emitting = false
+	particles.restart()
+	particles.emitting = true
+
+func _clear_particle_emitter(particles: GPUParticles3D) -> void:
+	if particles == null:
+		return
+	particles.emitting = false
+	particles.visible = false
+	particles.restart()
+	particles.emitting = false
+
+func begin_queued_feedback(_origin: Vector3 = Vector3.ZERO) -> void:
+	play_selected_feedback()
+
+func complete_queued_feedback() -> void:
+	if _selected_particles != null:
+		_clear_particle_emitter(_selected_particles)
+
+func cancel_queued_feedback() -> void:
+	complete_queued_feedback()
+
+func get_outline_highlight_radius() -> float:
+	return outline_highlight_radius if outline_highlight_radius > 0.0 else interaction_radius
+
+func get_outline_highlight_origin() -> Vector3:
+	return global_position + Vector3(0.0, outline_highlight_height, 0.0)
+
+func get_interaction_target_position(_from_position: Vector3 = Vector3.ZERO, _requested_position: Vector3 = Vector3.INF) -> Vector3:
+	return global_position
+
+func reset() -> void:
+	_used = false
+	_player_in_range = false
+	_dwell_progress = 0.0
+	_progress_mat.albedo_color.a = 0.0
+	set_interaction_enabled(true)
+
+func get_dwell_progress() -> float:
+	return _dwell_progress / dwell_time if dwell_time > 0 else 0.0
+
+func is_player_in_range() -> bool:
+	return _player_in_range

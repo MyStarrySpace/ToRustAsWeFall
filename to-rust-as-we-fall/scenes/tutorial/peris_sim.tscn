@@ -4,3 +4,6 @@
 
 [node name="PerisSim" type="Node3D" unique_id=1398858068]
 script = ExtResource("1")
+chromatic_aberration_enabled = true
+chromatic_aberration_strength = 1.9
+chromatic_aberration_intensity = 0.9

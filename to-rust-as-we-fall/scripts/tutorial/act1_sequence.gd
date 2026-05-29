@@ -1,13 +1,10 @@
 @tool
 extends "res://scripts/tutorial/tutorial_sequence.gd"
 
-const FloraMemorySystem = preload("res://scripts/game/flora_memory_system.gd")
+const FloraMemorySystem = preload("res://scripts/system/simulation/flora_memory_system.gd")
 
-## Act 1 levels: Perivascular Channels → Processing Stacks →
-## Residential Rings → Lockout/Chase.
-## Chunk-based: geometry loads/unloads as the player progresses.
+## Act 1 chunk sequence: Channels, Stacks, Rings, Lockout.
 
-# Characters
 var _aster_node: CharacterBody3D
 var _peris_node: CharacterBody3D
 var _endo: CharacterBody3D
@@ -78,10 +75,7 @@ var _flora_system := FloraMemorySystem.new()
 
 const FLORA_SMELL_RADIUS := 2.25
 
-# Layout — linear progression along +X
-# Each section is 200-250 units long, 40-60 units wide.
-# At 3.0 units/sec walk speed, main path traversal = 60-80s.
-# With side branches and exploration, each section = 3-5 min.
+# Linear progression along +X.
 const CHANNELS_START := Vector3(0, 0, 0)
 const CHANNELS_END := Vector3(228, 0, 0)
 const CHANNELS_MEMORY_TRIGGER_X := 54.0
@@ -176,7 +170,7 @@ func _build_characters() -> void:
 	_peris_node.position = CHANNELS_START + Vector3(0, 0.5, 1)
 	chars.add_child(_peris_node)
 
-	# Endo becomes controllable during the Channels encounter.
+	# Endo joins during the Channels encounter.
 	_endo = _create_player_character("Endo", Color(0.4, 0.67, 0.53))
 	_endo.position = CHANNELS_START + Vector3(-1, 0.5, 0)
 	chars.add_child(_endo)
@@ -280,8 +274,7 @@ func _on_process(delta: float, spd: float) -> void:
 	_update_overlay_note(delta)
 	_update_flora_system()
 
-	# Non-active party members follow the current leader when the script
-	# isn't staging a cutscene or reset.
+	# Followers trail the leader outside cutscenes.
 	if not channels_script_locked:
 		var leader := _get_character_node(_active_character)
 		for pair in [
@@ -329,7 +322,7 @@ func _on_process(delta: float, spd: float) -> void:
 			if is_instance_valid(nk):
 				var nk_pos := nk.global_position
 				var aster_pos := _aster_node.global_position
-				# Stop if past the infrastructure boundary (going back into unserviced)
+				# Stop at the unserviced boundary.
 				if aster_pos.x < LOCKOUT_START.x - 10.0:
 					_start_lockout_exile()
 					break
@@ -2809,7 +2802,7 @@ func _build_channels_chunk(parent: Node3D) -> void:
 	shelter_heater.position = CHANNELS_SHELTER_POS + Vector3(3.4, 0.45, 2.0)
 	parent.add_child(shelter_heater)
 
-	# Lighting — spread across the length
+	# Lighting spans the corridor.
 	for i in range(5):
 		var light := OmniLight3D.new()
 		light.position = Vector3(sx + 20.0 + i * 45.0, 2.5, 0)
@@ -3136,11 +3129,10 @@ func _build_stacks_chunk(parent: Node3D) -> void:
 	gb.add_child(gc)
 	parent.add_child(gb)
 
-	# Walls
 	_add_wall(parent, Vector3(sx + length / 2.0, 2.5, -width / 2.0), Vector3(length, 5, 0.3), wall_color)
 	_add_wall(parent, Vector3(sx + length / 2.0, 2.5, width / 2.0), Vector3(length, 5, 0.3), wall_color)
 
-	# Server racks — dense grid creating corridors between them
+	# Dense rack grid creates corridors.
 	for row in range(5):
 		for col in range(12):
 			var rack := MeshInstance3D.new()
@@ -3312,7 +3304,7 @@ func _build_stacks_chunk(parent: Node3D) -> void:
 	drink.position = Vector3(sx + length * 0.6, 0.95, width / 2.0 - 3.0)
 	parent.add_child(drink)
 
-	# Cold industrial lighting spread across the length
+	# Cold lighting spans the corridor.
 	for i in range(6):
 		var light := OmniLight3D.new()
 		light.position = Vector3(sx + 20.0 + i * 35.0, 4.0, 0)
@@ -3367,11 +3359,11 @@ func _build_rings_chunk(parent: Node3D) -> void:
 	gb.add_child(gc)
 	parent.add_child(gb)
 
-	# Walls — cleaner, residential
+	# Cleaner residential walls.
 	_add_wall(parent, Vector3(sx + length / 2.0, 2.0, -width / 2.0), Vector3(length, 4, 0.3), wall_color)
 	_add_wall(parent, Vector3(sx + length / 2.0, 2.0, width / 2.0), Vector3(length, 4, 0.3), wall_color)
 
-	# Warm residential lighting — generous, well-lit
+	# Warm residential lighting.
 	for i in range(8):
 		var light := OmniLight3D.new()
 		light.position = Vector3(sx + 15 + i * 25.0, 3.5, 0)
@@ -3419,7 +3411,7 @@ func _build_rings_chunk(parent: Node3D) -> void:
 	client.position = Vector3(sx + length * 0.4, 0.5, -5)
 	add_child(client)
 
-	# Drink machine in an alcove (set dressing — civilization has amenities)
+	# Drink machine set dressing.
 	var drink := MeshInstance3D.new()
 	var drb := BoxMesh.new()
 	drb.size = Vector3(1.0, 1.8, 0.8)
@@ -3492,7 +3484,7 @@ func _build_lockout_chunk(parent: Node3D) -> void:
 	gb.add_child(gc)
 	parent.add_child(gb)
 
-	# Walls — cleaner, getting closer to civilization
+	# Cleaner boundary walls.
 	_add_wall(parent, Vector3(sx + length / 2.0, 2.5, -width / 2.0), Vector3(length, 5, 0.3), wall_color)
 	_add_wall(parent, Vector3(sx + length / 2.0, 2.5, width / 2.0), Vector3(length, 5, 0.3), wall_color)
 

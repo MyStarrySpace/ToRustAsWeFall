@@ -14,9 +14,9 @@ Everything else in the doc ("recording and playback come for free", save integri
 
 **Tick-drain decision:** the log carries `recorded_until: float` alongside the event array. Replay drains pending scheduler events up to this tick at the end of replay so movements still in flight at save time complete identically. Callers that advance the scheduler without issuing commands (e.g. waiting for a character to arrive) must call `GameState.flush_tick()` before serializing.
 
-- [x] **1.1** Define `GameEvent` schema: `{tick: float, kind: StringName, payload: Dictionary}`. Plain-data payloads only. — [scripts/game/game_event.gd](scripts/game/game_event.gd)
+- [x] **1.1** Define `GameEvent` schema: `{tick: float, kind: StringName, payload: Dictionary}`. Plain-data payloads only. — [scripts/system/core/game_event.gd](scripts/system/core/game_event.gd)
 - [x] **1.2** Audit all state mutations in `game_state.gd`. All public commands route through `_emit`. Lint `--test-event-log-mutation-audit` enforces the invariant by parsing every public function and failing if it mutates without emitting (queries/snapshot helpers are allowlisted with justification).
-- [x] **1.3** Add `EventLog` class (append-only, in-memory) with `recorded_until` tracking. — [scripts/game/event_log.gd](scripts/game/event_log.gd)
+- [x] **1.3** Add `EventLog` class (append-only, in-memory) with `recorded_until` tracking. — [scripts/system/core/event_log.gd](scripts/system/core/event_log.gd)
 - [x] **1.4** Add `GameState.replay(log, grid, ability_handlers)` that constructs fresh state by replaying events. Full dispatch table for movement, items, physics, pendulums, dodge, abilities. Drains pending scheduler events up to `log.recorded_until` so movements in flight at save time arrive identically.
 - [x] **1.5** Add event-log serializer (`to_bytes` / `from_bytes` via `var_to_bytes`). Versioned header (`FORMAT_VERSION = 1`).
 
@@ -42,8 +42,8 @@ Pairs with #1. Without this, replays diverge and everything downstream (#3, #11,
 - File-level: `# @rendering_only_file` near the top exempts the whole file. Use only for files that are 100% visual (camera, fragment chunks, decoration-heavy sequence scripts).
 
 - [x] **2.1** Lint-gated check on `randi()`, `randf()`, `randomize()`, `RandomNumberGenerator.new()`, `Time.get_ticks_*`, `Time.get_unix_time_from_system()`. Existing visual usages annotated with `@rendering_only` or `@rendering_only_file`. Save-metadata files (`save_manager.gd`, `engram_journal.gd`) and analysis harnesses (`hide_encounter_analysis.gd`) are explicitly allowlisted.
-- [x] **2.2** `SeededRng` wraps `RandomNumberGenerator`; constructor requires an explicit seed. — [scripts/game/seeded_rng.gd](scripts/game/seeded_rng.gd)
-- [x] **2.3** `RngRegistry` keyed by `(system_name, birth_id)`. Seeds derive from `base_seed * 1000003 ^ hash(system_name) * 1000003 ^ birth_id` — XOR alone collapses too many keys, so we mix with a large odd prime first. — [scripts/game/rng_registry.gd](scripts/game/rng_registry.gd)
+- [x] **2.2** `SeededRng` wraps `RandomNumberGenerator`; constructor requires an explicit seed. — [scripts/system/random/seeded_rng.gd](scripts/system/random/seeded_rng.gd)
+- [x] **2.3** `RngRegistry` keyed by `(system_name, birth_id)`. Seeds derive from `base_seed * 1000003 ^ hash(system_name) * 1000003 ^ birth_id` — XOR alone collapses too many keys, so we mix with a large odd prime first. — [scripts/system/random/rng_registry.gd](scripts/system/random/rng_registry.gd)
 - [~] **2.4** `GameState.base_seed` exists with `set_base_seed(value)` setter that re-seeds the registry. `EventLog.base_seed` carries it through save/replay; `GameState.replay` re-seeds from the log. **Pending:** title-screen + pause-menu UI for player-visible seed entry (UI work, not engine work).
 - [~] **2.5** RNG consumption events. The schema and registry support per-spawn `birth_id` derivation, so a Techo born at event N gets a deterministic seed without explicit logging. **No RNG-consumption events emitted yet** because no game system uses RNG; will be added per-system as systems land.
 
@@ -83,15 +83,15 @@ World-as-physical-system. Pressure plates, triggers, and mechanisms respond to p
 
 **Design decision (locked in by 4.1–4.2):** `Actuator` is plain data (`position`, `weight`, `signature`), not a base class anything inherits. `GameState.get_all_actuators()` builds the list on demand from characters/items/physics_objects. Mechanisms see the list filtered to their zone and evaluate a pure condition. This makes the contract impossible to misuse: a Mechanism that wants more than the three Actuator fields would have to query GameState directly, which the lint catches.
 
-- [x] **4.1** `Actuator` data class with `position`, `weight`, `signature`. — [scripts/game/actuator.gd](scripts/game/actuator.gd). `GameState.get_all_actuators()` reads characters' `stats.weight` (default 1.0), items' `properties.weight` (default 0.0), and physics objects' `mass`.
-- [x] **4.2** `Mechanism` base class with `id`, `position`, `radius`, `update(actuators)`. Emits `triggered` / `untriggered` on transitions; idempotent. `WeightMechanism` subclass triggers when summed weight in zone ≥ threshold. — [scripts/game/mechanism.gd](scripts/game/mechanism.gd), [scripts/game/weight_mechanism.gd](scripts/game/weight_mechanism.gd)
-- [ ] **4.3** Migrate existing pressure-sensitive interactables. **N/A:** `interactable.gd` is proximity-based, not weight-based — no pressure-sensitive interactables exist yet to migrate. The `WeightMechanism` is in place for the first scene that needs one.
+- [x] **4.1** `Actuator` data class with `position`, `weight`, `signature`. — [scripts/game/mechanics/actuator.gd](scripts/game/mechanics/actuator.gd). `GameState.get_all_actuators()` reads characters' `stats.weight` (default 1.0), items' `properties.weight` (default 0.0), and physics objects' `mass`.
+- [x] **4.2** `Mechanism` base class with `id`, `position`, `radius`, `update(actuators)`. Emits `triggered` / `untriggered` on transitions; idempotent. `FauxPhysicsSensor` handles authored puzzle conditions such as total weight, actuator count, signature presence, and signature-specific weight. — [scripts/game/mechanics/mechanism.gd](scripts/game/mechanics/mechanism.gd), [scripts/game/mechanics/faux_physics_sensor.gd](scripts/game/mechanics/faux_physics_sensor.gd)
+- [ ] **4.3** Migrate existing pressure-sensitive interactables. **N/A:** `interactable.gd` is proximity-based, not weight-based — no pressure-sensitive interactables exist yet to migrate. `FauxPhysicsSensor` is in place for the first scene that needs authored physical puzzle logic.
 - [~] **4.4** Heavy-item → weight mapping in `item_data.gd`. **Pending:** the schema supports `weight` as a per-type property, but the existing item types (`mother_gear`, `fragment`, `fire_fruit`, etc.) don't yet declare weights. Tests pass weights via `properties` overrides. Will land alongside the first scene that uses pressure plates.
 
 **Open issue — `evaluate_mechanisms()` is on-demand only:** runtime scenes need to call `evaluate_mechanisms()` after any change that may have shifted actuator positions. Not auto-fired from movement / drop / pickup yet because there are no live mechanisms in the running game. When the first scene wires a pressure plate, hook it into the scheduler-driven movement-arrival path the way detection prediction works today.
 
 **Success conditions**
-- [x] `--test-actuator-composition-blind`: 9/9. A weight-2.0 plate triggers identically when activated by (a) one heavy character (weight 2.5), (b) two light characters (1.0 each), (c) one heavy item, (d) one character + one item summing to threshold. Single light character does not trigger; actuator outside the zone does not trigger; transitions fire once on enter/leave; re-evaluation is idempotent.
+- [x] `--test-actuator-composition-blind`: A weight-2.0 faux-physics sensor triggers identically when activated by (a) one heavy character (weight 2.5), (b) two light characters (1.0 each), (c) one heavy item, (d) one character + one item summing to threshold. Single light character does not trigger; actuator outside the zone does not trigger; transitions fire once on enter/leave; re-evaluation is idempotent. The same test also covers count, signature-present, and signature-weight sensor modes.
 - [x] `--test-actuator-no-id-checks`: 2/2. Walks `scripts/` for files in the Mechanism class hierarchy (auto-discovered to fixed point), greps for forbidden patterns (`char_id`, `is_character(`, `characters[`, `characters.has(`, `"item_id"`). False-positive doc-comment match caught by reading the lint output and rewording the docstring.
 
 ---
@@ -119,11 +119,11 @@ Game-shape primitives. Zones are data; hubs and gates are nodes with explicit ro
 
 **Design decision (locked in by 6.5):** narrative-availability is a per-character bool stored in `stats["narrative_available"]`. `down_character` / `restore_character` are logged commands (emit through `_emit`). They're issued by combat code (on HP → 0) and by hubs (on rest). Both are replay-safe because they go through the event log.
 
-- [x] **6.1** `Zone` resource with `id`, `display_name`, `hub_ids`, `spoke_ids`, `gate_ids`. — [scripts/game/zone.gd](scripts/game/zone.gd). (The `essential_third` field was removed when #8 was dropped.)
-- [x] **6.2** `Hub` class with `id`, `zone_id`, `position`, `radius`, and a `restore_party(gs, party)` static helper. Entering a hub triggers `restore_character` for every party member — each restore goes through the log. — [scripts/game/hub.gd](scripts/game/hub.gd)
-- [x] **6.3** `Gate` class with `required_members` and `try_pass(gs, party) -> bool`. Emits either `passed` or `blocked(reason: StringName)` exactly once per call. Reasons are `missing_<id>` (not in party) or `unavailable_<id>` (downed / narratively unavailable). — [scripts/game/gate.gd](scripts/game/gate.gd)
-- [x] **6.4** `ZoneManager` with registries for zones/hubs/gates and signals `zone_entered`, `zone_exited`, `hub_entered`, `gate_passed`, `gate_blocked`, `spoke_completed`. Tracks current zone, hub, completed spokes, and passed gates. `is_hub_reachable(hub_id)` returns true only for hubs in the currently-active zone — implements the "old hubs fall out of practical reach" semantics. **Not an autoload** — instantiated per scene. — [scripts/game/zone_manager.gd](scripts/game/zone_manager.gd)
-- [x] **6.5** Hub-rest flow: `down_character` and `restore_character` commands on GameState, both logged. Rest sets HP/stamina to declared max values (from `stats.max_hp` / `stats.max_stamina`) and ATP to `SurvivalStats.ATP_MAX_PIPS`, and flips `narrative_available` to true.
+- [x] **6.1** `Zone` resource with `id`, `display_name`, `hub_ids`, `spoke_ids`, `gate_ids`. — [scripts/game/world/zone.gd](scripts/game/world/zone.gd). (The `essential_third` field was removed when #8 was dropped.)
+- [x] **6.2** `Hub` class with `id`, `zone_id`, `position`, `radius`, and a `restore_party(gs, party)` static helper. Entering a hub triggers `restore_character` for every party member — each restore goes through the log. — [scripts/game/world/hub.gd](scripts/game/world/hub.gd)
+- [x] **6.3** `Gate` class with `required_members` and `try_pass(gs, party) -> bool`. Emits either `passed` or `blocked(reason: StringName)` exactly once per call. Reasons are `missing_<id>` (not in party) or `unavailable_<id>` (downed / narratively unavailable). — [scripts/game/world/gate.gd](scripts/game/world/gate.gd)
+- [x] **6.4** `ZoneManager` with registries for zones/hubs/gates and signals `zone_entered`, `zone_exited`, `hub_entered`, `gate_passed`, `gate_blocked`, `spoke_completed`. Tracks current zone, hub, completed spokes, and passed gates. `is_hub_reachable(hub_id)` returns true only for hubs in the currently-active zone — implements the "old hubs fall out of practical reach" semantics. **Not an autoload** — instantiated per scene. — [scripts/game/world/zone_manager.gd](scripts/game/world/zone_manager.gd)
+- [x] **6.5** Hub-rest flow: `down_character` and `restore_character` commands on GameState, both logged. Rest sets HP/stamina to declared max values (from `stats.max_hp` / `stats.max_stamina`) and ATP to `GameState.ATP_MAX_PIPS`, and flips `narrative_available` to true.
 
 **Open issue — evaluate_mechanisms / enter_hub auto-trigger:** scenes today must call `zm.enter_hub(...)` manually when the party reaches the hub's radius. Automating this via movement-arrival signals is straightforward (detection prediction pattern) but deferred until the first scene wires a live hub.
 
@@ -198,7 +198,7 @@ Designed-affordance backtracking. Zones change on revisit.
 - Zone state is a free-form `Dictionary` per zone; scenes structure it however they like. ZoneManager just stores, retrieves, and transforms.
 - Revisit transforms are `Callable(Dictionary) -> Dictionary`, registered per zone. They run on every entry from the second onward, so each revisit can stack further transforms ("level" increments each time, for instance).
 
-- [x] **10.1** `Portal` data class with `id`, `from_zone_id`, `to_zone_id`, `to_hub_id`. `ZoneManager.register_portal` / `take_portal(id, gs, party)`. — [scripts/game/portal.gd](scripts/game/portal.gd)
+- [x] **10.1** `Portal` data class with `id`, `from_zone_id`, `to_zone_id`, `to_hub_id`. `ZoneManager.register_portal` / `take_portal(id, gs, party)`. — [scripts/game/world/portal.gd](scripts/game/world/portal.gd)
 - [x] **10.2** `ZoneManager.save_zone_state(zone_id, state)` / `get_zone_state(zone_id)` / `register_revisit_transform(zone_id, callable)`. Transform applied inside `enter_zone` when `visit_count >= 2`, so the state returned by `get_zone_state` after a revisit already reflects the transformation.
 - [ ] **10.3** Inflammashunt revisit state. **Deferred** — content work. The machinery is in place; the Inflammashunt puzzle itself isn't authored yet.
 
@@ -218,9 +218,9 @@ Ordered trigger priorities: spoke-completion, gate-pass, milestone, time-of-day.
 - Default priorities encode the narrative hierarchy: gate-pass (30) > milestone (20) > spoke-complete (10) > time-of-day (0). Ties break by registration order so scene authors can control resolution by ordering their `register_trigger` calls.
 - Time-of-day triggers default to `one_shot = false` because they're ambient flavor that repeats each cycle; every other type defaults one-shot.
 
-- [x] **11.1** `SceneTrigger` base class with `scene_id`, `priority`, `one_shot`, `evaluate(context) -> bool`. — [scripts/game/scene_trigger.gd](scripts/game/scene_trigger.gd)
-- [x] **11.2** Concrete triggers `OnSpokeComplete`, `OnGatePass`, `OnMilestone`, `OnTimeOfDay` bundled in one file as the naming conveys ("these are the four"). — [scripts/game/scene_triggers.gd](scripts/game/scene_triggers.gd)
-- [x] **11.3** `SceneManager` (RefCounted, not autoload) with `register_trigger`, `dispatch(context)`, `scene_fired(scene_id, context)` signal, and `bind_zone_manager(zm)` convenience that wires `spoke_completed` and `gate_passed` through. — [scripts/game/scene_manager.gd](scripts/game/scene_manager.gd)
+- [x] **11.1** `SceneTrigger` base class with `scene_id`, `priority`, `one_shot`, `evaluate(context) -> bool`. — [scripts/system/scenes/scene_trigger.gd](scripts/system/scenes/scene_trigger.gd)
+- [x] **11.2** Concrete triggers `OnSpokeComplete`, `OnGatePass`, `OnMilestone`, `OnTimeOfDay` bundled in one file as the naming conveys ("these are the four"). — [scripts/system/scenes/scene_triggers.gd](scripts/system/scenes/scene_triggers.gd)
+- [x] **11.3** `SceneManager` (RefCounted, not autoload) with `register_trigger`, `dispatch(context)`, `scene_fired(scene_id, context)` signal, and `bind_zone_manager(zm)` convenience that wires `spoke_completed` and `gate_passed` through. — [scripts/system/scenes/scene_manager.gd](scripts/system/scenes/scene_manager.gd)
 
 **Open item — milestone / time-of-day wiring:** `bind_zone_manager` covers spoke + gate events. Milestone and time-of-day need source signals too (milestone signals from GameState? from a separate MilestoneTracker? time-of-day from DayNightCycle). When those sources land, extend `SceneManager.bind_*` helpers.
 

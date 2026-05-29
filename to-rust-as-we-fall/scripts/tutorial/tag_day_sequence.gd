@@ -1,18 +1,16 @@
 @tool
 extends "res://scripts/tutorial/tutorial_sequence.gd"
 
-## Tag Day tutorial sequence. Builds the checkpoint environment and drives
-## the scripted events: queue, citizen failure, naturalizer grip, corridor
-## walk with Eliot poem, WASD camera pan, neutralization, Aster's clearance.
+## Tag Day checkpoint, citizen failure, corridor walk, and Aster clearance.
 
 var _data_overlay: CanvasLayer
 var _bystanders: Array = []
-var _citizen  # Node3D + npc.gd — at device to Aster's right
+var _citizen  # Node3D + npc.gd at device to Aster's right.
 var _naturalizer_1  # Node3D + npc.gd
 var _naturalizer_2  # Node3D + npc.gd
 var _citizen_light: OmniLight3D  # Light above citizen's device
 
-# Psy-Knapse device positions — row along +X, everyone at their own device
+# Psy-Knapse device positions.
 const DEVICE_SPACING := 2.2
 const ASTER_DEVICE_POS := Vector3(6, 0, 0)
 const CITIZEN_DEVICE_POS := Vector3(6 + DEVICE_SPACING, 0, 0)  # To Aster's right
@@ -85,7 +83,7 @@ func _register_characters() -> void:
 func _setup_ui() -> void:
 	# Aster's data-view perception (managed by base class)
 	_setup_perception("data", _player)
-	# Blackout the dead-end alcove — Aster's data perception can't read past here
+	# Data perception cannot read past the dead-end alcove.
 	_perception_material.set_shader_parameter("blackout_pos", DEAD_END + Vector3(0, 1.0, -1.0))
 	_perception_material.set_shader_parameter("blackout_radius", 4.0)
 	_perception_material.set_shader_parameter("blackout_blend", 2.5)
@@ -140,12 +138,12 @@ func _start_citizen_scan() -> void:
 
 func _start_naturalizers_grip() -> void:
 	_enter_step("naturalizers_grip")
-	# Naturalizers approach deliberately (slower than default)
+	# Naturalizers approach slowly.
 	_game_state.change_move_speed("nk1", 1.5)
 	_game_state.change_move_speed("nk2", 1.5)
 	_game_state.command_move_to_pos("nk1", CITIZEN_DEVICE_POS + Vector3(0, 0, -0.6))
 	_game_state.command_move_to_pos("nk2", CITIZEN_DEVICE_POS + Vector3(0, 0, 0.6))
-	# Wait for enforcers to reach the citizen (~4s at speed 2.0) before walking
+	# Let enforcers reach the citizen before walking.
 	_scheduler.schedule_after(5.0, _begin_corridor_walk, "corridor_walk")
 	# Report label appears above the escort during the walk
 	_scheduler.schedule_after(10.0, _show_report_label, "report_label")
@@ -170,8 +168,7 @@ func _show_report_label() -> void:
 func _begin_corridor_walk() -> void:
 	_enter_step("corridor_walk")
 
-	# Snap all three into formation at citizen's device before walking.
-	# Prevents enforcers from getting ahead if the grip movement was incomplete.
+	# Snap formation before the corridor walk.
 	_game_state.command_stop("citizen")
 	_game_state.command_stop("nk1")
 	_game_state.command_stop("nk2")
@@ -179,17 +176,12 @@ func _begin_corridor_walk() -> void:
 	_naturalizer_1.global_position = CITIZEN_DEVICE_POS + Vector3(0, 0, -0.6)
 	_naturalizer_2.global_position = CITIZEN_DEVICE_POS + Vector3(0, 0, 0.6)
 
-	# Walk speed: poem chain = 64s, fragments = ~40s, total ~104s.
-	# Path length ~52 units. Speed 0.4 → 130s walk. Citizen arrives
-	# after fragments, before the lockdown times out.
+	# Slow walk leaves room for poem and fragments.
 	_game_state.change_move_speed("citizen", 0.4)
 	_game_state.change_move_speed("nk1", 0.4)
 	_game_state.change_move_speed("nk2", 0.4)
 
-	# Waypoints with explicit corners so characters don't cut through walls.
-	# Corridor is 2 units wide. Each turn needs a corner waypoint.
-	# A runs along Z (x=14), B runs along X (z=-17), C runs along Z (x=24),
-	# D runs along X (z=-27), dead end at (17, -28).
+	# Explicit corners prevent wall-cutting.
 	var corner_AB := Vector3(14, 0, -17)   # Turn from A (along Z) to B (along X)
 	var corner_BC := Vector3(24, 0, -17)   # Turn from B (along X) to C (along Z)
 	var corner_CD := Vector3(24, 0, -27)   # Turn from C (along Z) to D (along X)
@@ -203,7 +195,7 @@ func _begin_corridor_walk() -> void:
 	]
 	_game_state.command_walk_path("citizen", citizen_path)
 
-	# NKs walk flanking — offset perpendicular to movement direction
+	# NKs flank the citizen.
 	var nk1_path: Array[Vector3] = [
 		CORRIDOR_ENTRANCE + Vector3(-0.6, 0, 0),         # A: moving along -Z, offset in -X
 		CORRIDOR_A_END + Vector3(-0.6, 0, 0),
@@ -230,14 +222,11 @@ func _begin_corridor_walk() -> void:
 	]
 	_game_state.command_walk_path("nk2", nk2_path)
 
-	# Shadow stanzas interleaved with enforcer banter in the dialogue box.
-	# Single chain driven by the scheduler — poem and NK lines alternate.
+	# Poem and NK lines alternate in one scheduler chain.
 	_dialogue.default_hold_time = 4.0
 	_scheduler.schedule_after(2.0, _start_pan_prompt, "pan_prompt")
 
-	# Interleaved stanzas and NK banter. Each stanza is merged into
-	# one multi-line dialogue entry. 16 lines × 4s hold = 64s total.
-	# Fits within the ~115s corridor walk with room for fragments.
+	# Merged stanzas fit inside the corridor walk.
 	_dialogue_chain([
 		"tag_day.poem.01",    # Stanza 1: idea/reality, motion/act
 		"tag_day.nk_chat.01",
@@ -263,7 +252,7 @@ func _start_pan_prompt() -> void:
 	_camera.set_wasd_pan_enabled(true)
 	_camera.max_pan_distance = 40.0
 	_tutorial_prompt.show_prompt("WASD — pan camera")
-	# F prompt appears after the enforcer banter wraps up (~20s into the walk)
+	# F prompt appears after early banter.
 	_scheduler.schedule_after(20.0, _show_fastforward_prompt, "ff_prompt")
 
 func _show_fastforward_prompt() -> void:
@@ -320,7 +309,7 @@ func _start_return_focus() -> void:
 
 func _start_aster_scans() -> void:
 	_current_step = "aster_scans"
-	# Aster's device scans him — blue light at his position
+	# Aster's scan light.
 	_citizen_light.light_color = Color(0.2, 0.5, 0.9)
 	_citizen_light.light_energy = 4.0
 	_citizen_light.position = ASTER_DEVICE_POS + Vector3(0, 2, 0)
@@ -334,7 +323,7 @@ func _start_blue_transition() -> void:
 	_citizen_light.light_color = Color(0.15, 0.4, 0.85)
 	_citizen_light.light_energy = 6.0
 	_dialogue.default_hold_time = 2.0
-	# Screen fades to blue — transition to Peris
+	# Blue fade transitions to Peris.
 	_fade_rect.color = Color(0.1, 0.2, 0.5, 0.0)
 	var tween := create_tween()
 	tween.tween_property(_fade_rect, "color:a", 1.0, 2.0)
@@ -352,7 +341,6 @@ func _build_environment() -> void:
 	env_node.name = "Environment"
 	add_child(env_node)
 
-	# Floor
 	var floor_mesh := MeshInstance3D.new()
 	var floor_box := BoxMesh.new()
 	floor_box.size = Vector3(32, 0.1, 16)
@@ -363,7 +351,6 @@ func _build_environment() -> void:
 	floor_mesh.position = Vector3(12, -0.05, -2)
 	env_node.add_child(floor_mesh)
 
-	# Floor collision for click-to-move
 	var floor_body := StaticBody3D.new()
 	floor_body.position = Vector3(12, -0.01, -2)
 	floor_body.collision_layer = 1
@@ -375,19 +362,19 @@ func _build_environment() -> void:
 	floor_body.add_child(floor_col)
 	env_node.add_child(floor_body)
 
-	# Walls — main room with doorway opening at x=13-15, z=-8
+	# Main-room walls with doorway.
 	_add_wall(env_node, Vector3(4.5, 1.5, -8), Vector3(17, 3, 0.3))
 	_add_wall(env_node, Vector3(21.5, 1.5, -8), Vector3(13, 3, 0.3))
 	_add_wall(env_node, Vector3(12, 1.5, 6), Vector3(32, 3, 0.3))
 	_add_wall(env_node, Vector3(-4, 1.5, -2), Vector3(0.3, 3, 14))
 	_add_wall(env_node, Vector3(28, 1.5, -2), Vector3(0.3, 3, 14))
 
-	# Psy-Knapse devices — row of stations, one per citizen
+	# Psy-Knapse device row.
 	for i in range(5):
 		var dev_pos := ASTER_DEVICE_POS + Vector3(i * DEVICE_SPACING, 0, 0)
 		_add_booth(env_node, dev_pos, "PSY-%d" % (i + 1))
 
-	# Floor lane dividers between devices
+	# Lane dividers between devices.
 	for i in range(6):
 		var marker := MeshInstance3D.new()
 		var line := BoxMesh.new()
@@ -399,7 +386,6 @@ func _build_environment() -> void:
 		marker.position = ASTER_DEVICE_POS + Vector3(i * DEVICE_SPACING + DEVICE_SPACING * 0.5, 0.01, 0)
 		env_node.add_child(marker)
 
-	# Ceiling panels
 	for i in range(4):
 		var ceiling_light := MeshInstance3D.new()
 		var cl_box := BoxMesh.new()
@@ -531,13 +517,12 @@ func _build_corridor() -> void:
 	ww_lbl.position = Vector3(CORRIDOR_ENTRANCE.x, 2.6, CORRIDOR_ENTRANCE.z + 0.17)
 	env_node.add_child(ww_lbl)
 
-	# Corridor ceiling panels
 	_add_corridor_ceiling(env_node, Vector3(14, 2.95, -12), Vector3(1.5, 0.05, 3), 0.3)
 	_add_corridor_ceiling(env_node, Vector3(20, 2.95, -17), Vector3(4, 0.05, 1.5), 0.2)
 	_add_corridor_ceiling(env_node, Vector3(24, 2.95, -22), Vector3(1.5, 0.05, 3), 0.15)
 	_add_corridor_ceiling(env_node, Vector3(17, 2.95, -28), Vector3(1.5, 0.05, 1.5), 0.1)
 
-	# Corridor lights — progressively dimmer and redder
+	# Corridor lights grow dimmer and redder.
 	_add_corridor_light(env_node, Vector3(14, 2.5, -12), 0.8, Color(0.3, 0.2, 0.15))
 	_add_corridor_light(env_node, Vector3(20, 2.5, -17), 0.6, Color(0.25, 0.15, 0.1))
 	_add_corridor_light(env_node, Vector3(24, 2.5, -22), 0.4, Color(0.2, 0.12, 0.08))

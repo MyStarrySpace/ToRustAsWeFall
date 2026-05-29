@@ -1,0 +1,49 @@
+{
+  "schema": "trawf_generation_content_palette_v1",
+  "flora": {
+    "seefern": {"display_name": "Seefern", "support": "implemented", "tags": ["sensor", "light", "reveal"]},
+    "scarpet": {"display_name": "Scarpet", "support": "implemented", "tags": ["cover", "masking", "ground"]},
+    "flure": {"display_name": "Flure", "support": "implemented", "tags": ["iron_decoy", "lure"]},
+    "mother_flure": {"display_name": "Mother Flure", "support": "implemented", "tags": ["setpiece", "root", "flure"]},
+    "hushbloom": {"display_name": "Hushbloom", "support": "implemented", "tags": ["stun", "defense"]},
+    "doma": {"display_name": "Doma", "support": "implemented", "tags": ["tight_cover", "hide"]},
+    "snapbloom": {"display_name": "Snapbloom", "support": "implemented", "tags": ["repellent", "camouflage"]},
+    "capbage": {"display_name": "Capbage", "support": "placeholder", "tags": ["gdd", "harvest", "food"]},
+    "gasafoetida": {"display_name": "Gasafoetida", "support": "placeholder", "tags": ["gdd", "gas", "combustible"]},
+    "climbvine": {"display_name": "Climbvine", "support": "placeholder", "tags": ["traversal", "bridge", "height"]},
+    "resolution_roots": {"display_name": "Resolution Roots", "support": "placeholder", "tags": ["puzzle_only", "stabilize", "break"]},
+    "forget_me_nots": {"display_name": "Forget-me-nots", "support": "placeholder", "tags": ["relationship", "memory", "ambient"]}
+  },
+  "enemies": {
+    "techos": {"display_name": "Techos", "support": "implemented", "tags": ["siderophore", "swarm", "iron"]},
+    "verdings": {"display_name": "Verdings", "support": "placeholder", "tags": ["siderophore", "breach", "fluorescent"]},
+    "hidras": {"display_name": "Hidras", "support": "placeholder", "tags": ["siderophore", "infrastructure", "mimic"]},
+    "crusts": {"display_name": "Crusts", "support": "placeholder", "tags": ["siderophore", "surface", "biofilm"]},
+    "candids": {"display_name": "Candids", "support": "placeholder", "tags": ["biofilm", "environment", "slow"]},
+    "meebs": {"display_name": "Meebs", "support": "placeholder", "tags": ["engulfer", "predator", "siderophore_counter"]},
+    "naturalizers": {"display_name": "Naturalizers", "support": "implemented", "tags": ["patrol", "enforcement", "tag_scan"]},
+    "gnawers": {"display_name": "Gnawers", "support": "placeholder", "tags": ["metabolic", "hunter"]},
+    "neutros": {"display_name": "Neutros", "support": "placeholder", "tags": ["burst", "aoe", "neutral_until_triggered"]},
+    "spikers": {"display_name": "Spikers", "support": "placeholder", "tags": ["line_of_sight", "sniper"]},
+    "tanglers": {"display_name": "Tanglers", "support": "placeholder", "tags": ["stealth", "grapple", "tau"]},
+    "toxos": {"display_name": "Toxos", "support": "placeholder", "tags": ["setpiece", "parasite"]},
+    "nosomas": {"display_name": "Nosomas", "support": "placeholder", "tags": ["late_game", "invisible", "enforcer"]}
+  },
+  "structures": {
+    "shelter": {"display_name": "Shelter", "support": "implemented", "tags": ["rest", "checkpoint", "hub"]},
+    "portal": {"display_name": "Portal", "support": "placeholder", "tags": ["shortcut", "revisit"]},
+    "terminal": {"display_name": "Terminal", "support": "implemented", "tags": ["aster", "data", "class_gate"]},
+    "barrier": {"display_name": "Barrier", "support": "implemented", "tags": ["endo", "boundary", "repair"]},
+    "membrane": {"display_name": "Membrane", "support": "implemented", "tags": ["gate", "organic", "boundary"]},
+    "pipe": {"display_name": "Pipe", "support": "implemented", "tags": ["channel", "flow", "infrastructure"]},
+    "junction": {"display_name": "Junction", "support": "implemented", "tags": ["endo", "route", "anchor"]},
+    "workbench": {"display_name": "Workbench", "support": "implemented", "tags": ["endo", "lot_clot", "setup"]},
+    "root_slide": {"display_name": "Root Slide", "support": "implemented", "tags": ["mother_flure", "puzzle", "lane"]},
+    "shortcut_gate": {"display_name": "Shortcut Gate", "support": "implemented", "tags": ["shortcut", "return", "ratchet"]},
+    "forage_cache": {"display_name": "Forage Cache", "support": "implemented", "tags": ["resource", "food", "endo"]},
+    "hide_slot": {"display_name": "Hide Slot", "support": "implemented", "tags": ["hide", "refuge", "survival"]},
+    "water_control": {"display_name": "Water Control", "support": "implemented", "tags": ["channels", "flow", "wash"]},
+    "class_gate": {"display_name": "Class Gate", "support": "implemented", "tags": ["authority", "gate", "terminal"]},
+    "carry_gear": {"display_name": "Carry Gear", "support": "implemented", "tags": ["carry", "gear", "endo"]}
+  }
+}

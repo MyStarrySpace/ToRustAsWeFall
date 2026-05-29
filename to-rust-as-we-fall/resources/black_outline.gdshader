@@ -34,16 +34,6 @@ uniform float color_edge_weight = 0.35;
 uniform float bright_region_threshold = 0.72;
 uniform float bright_region_feather = 0.18;
 uniform float bright_color_edge_suppression = 1.0;
-uniform bool hover_outline_enabled = false;
-uniform vec3 hover_outline_world_pos = vec3(0.0, 0.0, 0.0);
-uniform float hover_outline_radius = 2.0;
-uniform float hover_outline_feather = 0.35;
-uniform vec3 hover_outline_color = vec3(1.0, 1.0, 1.0);
-uniform bool selected_outline_enabled = false;
-uniform vec3 selected_outline_world_pos = vec3(0.0, 0.0, 0.0);
-uniform float selected_outline_radius = 2.0;
-uniform float selected_outline_feather = 0.35;
-uniform vec3 selected_outline_color = vec3(1.0, 0.62, 0.12);
 
 void vertex() {
 	POSITION = vec4(VERTEX.xy, 1.0, 1.0);
@@ -144,23 +134,6 @@ void fragment() {
 	float edge = clamp(max(depth_edge, color_edge), 0.0, 1.0) * outline_strength;
 	vec3 average_color = scene_average_color();
 	vec3 edge_color = local_outline_color(screen, color_l, color_r, color_u, color_d, average_color);
-	vec3 world_pos = (INV_VIEW_MATRIX * vec4(view_coords.xyz, 1.0)).xyz;
-	if (hover_outline_enabled) {
-		float hover_mask = 1.0 - smoothstep(
-			hover_outline_radius,
-			hover_outline_radius + hover_outline_feather,
-			distance(world_pos, hover_outline_world_pos)
-		);
-		edge_color = mix(edge_color, hover_outline_color, hover_mask);
-	}
-	if (selected_outline_enabled) {
-		float selected_mask = 1.0 - smoothstep(
-			selected_outline_radius,
-			selected_outline_radius + selected_outline_feather,
-			distance(world_pos, selected_outline_world_pos)
-		);
-		edge_color = mix(edge_color, selected_outline_color, selected_mask);
-	}
 	ALBEDO = mix(screen, edge_color, edge);
 	ALPHA = 1.0;
 }

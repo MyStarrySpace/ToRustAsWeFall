@@ -1,0 +1,228 @@
+extends CanvasLayer
+
+## Bottom-of-screen dialogue display with typewriter effect.
+## Supports speaker labels, text queuing, and style variants.
+##
+## Timing authority: the dialogue box does NOT advance itself. Its owner (the
+## tutorial sequence) feeds elapsed time in via advance_ui_time(), so a single
+## clock drives real play, headless runs, the CLI, and tests identically.
+## See .claude/CLAUDE.md "Dialogue & Time Authority".
+
+@export var chars_per_second := 30.0
+## The one shared reading beat: an auto line (wait == false) types out, holds
+## this many ticks, then advances. Never tuned per line. Acknowledge lines
+## (wait == true) ignore this and wait for request_advance() instead.
+@export var default_hold_time := 2.0
+
+var _queue: Array[Dictionary] = []
+var _current_text := ""
+var _displayed_chars := 0.0
+var _hold_timer := 0.0
+var _active := false
+var _waiting_for_input := false
+var _style := "normal"  # "normal", "poem", "data", "fragment", "whisper"
+
+var _panel: PanelContainer
+var _speaker_label: Label
+var _text_label: RichTextLabel
+var _continue_hint: Label
+
+signal dialogue_finished()
+signal line_displayed(text: String)
+
+func _ready() -> void:
+	layer = 15
+	_build_ui()
+	_panel.visible = false
+
+func _build_ui() -> void:
+	# Full-width bottom panel
+	var margin := MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	margin.offset_top = -120
+	margin.offset_bottom = 0
+	margin.add_theme_constant_override("margin_left", 40)
+	margin.add_theme_constant_override("margin_right", 40)
+	margin.add_theme_constant_override("margin_bottom", 16)
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(margin)
+
+	_panel = PanelContainer.new()
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.02, 0.02, 0.04, 0.92)
+	panel_style.border_color = Color(0.15, 0.15, 0.2, 0.6)
+	panel_style.set_border_width_all(1)
+	panel_style.set_corner_radius_all(2)
+	panel_style.set_content_margin_all(16)
+	_panel.add_theme_stylebox_override("panel", panel_style)
+	margin.add_child(_panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	_panel.add_child(vbox)
+
+	_speaker_label = Label.new()
+	_speaker_label.add_theme_font_size_override("font_size", 12)
+	_speaker_label.add_theme_color_override("font_color", Color(0.4, 0.6, 0.8, 0.8))
+	vbox.add_child(_speaker_label)
+
+	_text_label = RichTextLabel.new()
+	_text_label.bbcode_enabled = true
+	_text_label.fit_content = true
+	_text_label.scroll_active = false
+	_text_label.add_theme_font_size_override("normal_font_size", 15)
+	_text_label.add_theme_color_override("default_color", Color(0.75, 0.75, 0.8))
+	vbox.add_child(_text_label)
+
+	_continue_hint = Label.new()
+	_continue_hint.text = ""
+	_continue_hint.add_theme_font_size_override("font_size", 11)
+	_continue_hint.add_theme_color_override("font_color", Color(0.35, 0.35, 0.4, 0.6))
+	_continue_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	vbox.add_child(_continue_hint)
+
+## Advance the dialogue by delta_ticks of dialogue time. The owner feeds this
+## (real play, headless, CLI, tests all call it), so the box has no clock of
+## its own. delta_ticks is already speed-scaled by the caller.
+func advance_ui_time(delta_ticks: float) -> void:
+	if not _active:
+		return
+	var dialogue_delta := maxf(0.0, delta_ticks)
+
+	if _displayed_chars < _current_text.length():
+		var spd := chars_per_second
+		if _style == "fragment":
+			spd *= 0.4
+		elif _style == "poem":
+			spd *= 0.7
+		elif _style == "whisper":
+			spd *= 0.25
+		_displayed_chars += spd * dialogue_delta
+		var count := mini(int(_displayed_chars), _current_text.length())
+		_text_label.text = _current_text.substr(0, count)
+		if count >= _current_text.length():
+			line_displayed.emit(_current_text)
+			if _waiting_for_input:
+				# Acknowledge line: hold until request_advance(), at any speed.
+				_continue_hint.text = "[click to continue]"
+			else:
+				_hold_timer = default_hold_time
+	elif _waiting_for_input:
+		# Fully shown; wait for an explicit advance.
+		pass
+	else:
+		_hold_timer -= dialogue_delta
+		if _hold_timer <= 0:
+			_advance()
+
+## Explicit advance: a real click and any data-layer command share this path.
+## First press completes the typewriter; once a line is fully shown, advances.
+func request_advance() -> void:
+	if not _active:
+		return
+	if _displayed_chars < _current_text.length():
+		_displayed_chars = _current_text.length()
+		_text_label.text = _current_text
+		line_displayed.emit(_current_text)
+		if _waiting_for_input:
+			_continue_hint.text = "[click to continue]"
+		else:
+			_hold_timer = default_hold_time
+		return
+	_advance()
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not _active:
+		return
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
+			request_advance()
+			if is_inside_tree():
+				get_viewport().set_input_as_handled()
+
+func _advance() -> void:
+	if _queue.is_empty():
+		_active = false
+		_panel.visible = false
+		dialogue_finished.emit()
+		return
+	_show_next()
+
+func _show_next() -> void:
+	var entry: Dictionary = _queue.pop_front()
+	_current_text = entry.get("text", "")
+	_style = entry.get("style", "normal")
+	_waiting_for_input = entry.get("wait_for_input", false)
+	_displayed_chars = 0.0
+	_hold_timer = 0.0
+	_continue_hint.text = ""
+
+	var speaker: String = entry.get("speaker", "")
+	_speaker_label.text = speaker
+	_speaker_label.visible = speaker != ""
+	_text_label.text = ""
+
+	# Style the panel based on type
+	var panel_style := _panel.get_theme_stylebox("panel") as StyleBoxFlat
+	match _style:
+		"poem":
+			_text_label.add_theme_color_override("default_color", Color(0.6, 0.6, 0.65))
+			panel_style.border_color = Color(0.2, 0.15, 0.1, 0.4)
+			_speaker_label.add_theme_color_override("font_color", Color(0.5, 0.4, 0.35, 0.6))
+		"fragment":
+			_text_label.add_theme_color_override("default_color", Color(0.5, 0.45, 0.4, 0.8))
+			panel_style.border_color = Color(0.25, 0.1, 0.08, 0.4)
+		"whisper":
+			_text_label.add_theme_color_override("default_color", Color(0.4, 0.38, 0.35, 0.35))
+			panel_style.border_color = Color(0.15, 0.08, 0.06, 0.2)
+		"data":
+			_text_label.add_theme_color_override("default_color", Color(0.3, 0.5, 0.7))
+			panel_style.border_color = Color(0.1, 0.2, 0.35, 0.5)
+			_speaker_label.add_theme_color_override("font_color", Color(0.3, 0.5, 0.7, 0.6))
+		_:
+			_text_label.add_theme_color_override("default_color", Color(0.75, 0.75, 0.8))
+			panel_style.border_color = Color(0.15, 0.15, 0.2, 0.6)
+			_speaker_label.add_theme_color_override("font_color", Color(0.4, 0.6, 0.8, 0.8))
+
+	_panel.visible = true
+	_active = true
+
+# --- Public API ---
+
+## Queue a single line of dialogue
+func say(text: String, speaker := "", style := "normal", wait := false) -> void:
+	_queue.append({
+		"text": text,
+		"speaker": speaker,
+		"style": style,
+		"wait_for_input": wait,
+	})
+	if _queue.size() > 3:
+		push_warning("DialogueBox: queue depth %d; upstream timing may be pushing lines too fast" % _queue.size())
+	if not _active:
+		_show_next()
+
+## Queue multiple lines
+func say_sequence(lines: Array[Dictionary]) -> void:
+	for line in lines:
+		_queue.append(line)
+	if not _active:
+		_show_next()
+
+## Force clear
+func clear() -> void:
+	_queue.clear()
+	_current_text = ""
+	_displayed_chars = 0.0
+	_hold_timer = 0.0
+	_waiting_for_input = false
+	_active = false
+	_panel.visible = false
+	if _text_label != null:
+		_text_label.text = ""
+	if _continue_hint != null:
+		_continue_hint.text = ""
+
+func is_active() -> bool:
+	return _active

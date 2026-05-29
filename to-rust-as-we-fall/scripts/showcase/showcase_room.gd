@@ -197,14 +197,14 @@ func _register_characters() -> void:
 			"detection_range": enemy.detection_range,
 		})
 
-	# Showcase is a preview environment — start every run from full stats so
+	# Showcase starts every run from full stats so
 	# nothing carries over between sessions.
 	_game_state.reset_characters_to_full()
 
 func _setup_ui() -> void:
 	_hud = CanvasLayer.new()
 	_hud.name = "GameHUD"
-	_hud.set_script(preload("res://scripts/game/game_hud.gd"))
+	_hud.set_script(preload("res://scripts/ui/game_hud.gd"))
 	add_child(_hud)
 	_hud.show_pause_toggle(false)
 	_hud.show_run_toggle(false)
@@ -1189,7 +1189,7 @@ func _trigger_showcase_throw() -> void:
 func _build_barrel_visual(id: String, pos: Vector3, color: Color) -> void:
 	var root := Node3D.new()
 	root.name = id.capitalize()
-	root.set_script(preload("res://scripts/game/physics_object_3d.gd"))
+	root.set_script(preload("res://scripts/game/objects/physics_object_3d.gd"))
 	root.position = pos
 
 	var mesh := MeshInstance3D.new()

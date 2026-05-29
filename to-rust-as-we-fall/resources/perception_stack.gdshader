@@ -6,6 +6,9 @@ uniform sampler2D depth_tex : hint_depth_texture, filter_nearest;
 
 uniform bool data_enabled = false;
 uniform vec3 data_character_pos = vec3(0.0);
+uniform int data_vision_count = 1;
+uniform vec3 data_vision_pos_1 = vec3(0.0);
+uniform vec3 data_vision_pos_2 = vec3(0.0);
 uniform float data_clear_radius = 8.0;
 uniform float data_blend_width = 3.0;
 uniform vec3 data_edge_color = vec3(0.29, 0.55, 0.85);
@@ -16,10 +19,24 @@ uniform float data_blackout_blend = 2.0;
 
 uniform bool fog_enabled = false;
 uniform vec3 fog_character_pos = vec3(0.0);
+uniform int fog_vision_count = 1;
+uniform vec3 fog_vision_pos_1 = vec3(0.0);
+uniform vec3 fog_vision_pos_2 = vec3(0.0);
 uniform float fog_clear_radius = 8.0;
 uniform float fog_blend_width = 4.0;
 uniform vec3 fog_color = vec3(0.15, 0.1, 0.07);
 uniform float fog_desaturation = 0.8;
+
+float vision_distance(vec3 world_pos, int source_count, vec3 primary_pos, vec3 secondary_pos, vec3 tertiary_pos) {
+	float dist = distance(world_pos, primary_pos);
+	if (source_count > 1) {
+		dist = min(dist, distance(world_pos, secondary_pos));
+	}
+	if (source_count > 2) {
+		dist = min(dist, distance(world_pos, tertiary_pos));
+	}
+	return dist;
+}
 
 void vertex() {
 	POSITION = vec4(VERTEX.xy, 1.0, 1.0);
@@ -35,7 +52,7 @@ void fragment() {
 	vec3 world_pos = (INV_VIEW_MATRIX * vec4(view_coords.xyz, 1.0)).xyz;
 
 	if (data_enabled) {
-		float data_dist = distance(world_pos, data_character_pos);
+		float data_dist = vision_distance(world_pos, data_vision_count, data_character_pos, data_vision_pos_1, data_vision_pos_2);
 		float data_blend = smoothstep(data_clear_radius, data_clear_radius + data_blend_width, data_dist);
 
 		if (data_blend > 0.005) {
@@ -80,7 +97,7 @@ void fragment() {
 	}
 
 	if (fog_enabled) {
-		float fog_dist = distance(world_pos, fog_character_pos);
+		float fog_dist = vision_distance(world_pos, fog_vision_count, fog_character_pos, fog_vision_pos_1, fog_vision_pos_2);
 		float fog_blend = smoothstep(fog_clear_radius, fog_clear_radius + fog_blend_width, fog_dist);
 
 		if (fog_blend > 0.005) {

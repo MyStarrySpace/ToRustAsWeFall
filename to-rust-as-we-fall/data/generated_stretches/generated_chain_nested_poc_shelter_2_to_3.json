@@ -1,0 +1,2375 @@
+{
+	"anchors": {
+		"aster": [
+			0.0,
+			0.5,
+			1.6
+		],
+		"endo": [
+			-1.2,
+			0.5,
+			-1.8
+		],
+		"entry": [
+			0.0,
+			0.449999988079071,
+			-3.0
+		],
+		"exit_shelter": [
+			72.0,
+			0.449999988079071,
+			-3.0
+		],
+		"node_01": [
+			12.0,
+			1.16999995708466,
+			0.0
+		],
+		"node_02": [
+			24.0,
+			1.88999998569489,
+			3.0
+		],
+		"node_03": [
+			36.0,
+			1.16999995708466,
+			-3.0
+		],
+		"node_04": [
+			48.0,
+			1.16999995708466,
+			0.0
+		],
+		"node_05": [
+			60.0,
+			1.88999998569489,
+			3.0
+		],
+		"peris": [
+			-1.6,
+			0.5,
+			0.0
+		]
+	},
+	"archetype_chain": [
+		{
+			"chain_index": 0,
+			"chain_input": "",
+			"chain_label": "Break a brittle service barrier to expose usable flure",
+			"chain_output": "flure_exposed",
+			"composition_mode": "chain_nested_poc",
+			"composition_role": "chain_link",
+			"id": "1",
+			"kind": "puzzle",
+			"link_ref": "chain_00",
+			"name": "Redirected enemy aggression",
+			"shadow_solution": {
+				"aster_peris": true,
+				"notes": "Use overlay timing plus flora or scarpet cover to substitute for a combat specialist."
+			},
+			"step_count": 6,
+			"tags": [
+				"enemy",
+				"impact",
+				"barrier",
+				"reroute"
+			],
+			"variant": "reveal_plant"
+		},
+		{
+			"chain_index": 1,
+			"chain_input": "flure_exposed",
+			"chain_label": "Use the exposed flure as a patrol decoy",
+			"chain_output": "patrol_diverted",
+			"composition_mode": "chain_nested_poc",
+			"composition_role": "chain_link",
+			"id": "2",
+			"kind": "puzzle",
+			"link_ref": "chain_01",
+			"name": "Plant as tool",
+			"shadow_solution": {
+				"aster_peris": true,
+				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
+			},
+			"step_count": 5,
+			"tags": [
+				"flora",
+				"peris",
+				"environment",
+				"enemy_routing"
+			],
+			"variant": "flure_iron_decoy"
+		},
+		{
+			"chain_index": 2,
+			"chain_input": "patrol_diverted",
+			"chain_label": "Carry the shelter component through the diverted patrol lane",
+			"chain_output": "carry_component_secured",
+			"composition_mode": "chain_nested_poc",
+			"composition_role": "chain_link",
+			"id": "3",
+			"kind": "puzzle",
+			"link_ref": "chain_02",
+			"name": "Carry the heavy thing",
+			"shadow_solution": {
+				"aster_peris": true,
+				"notes": "Use drag routes, scarpet masking, and slower recovery windows."
+			},
+			"step_count": 5,
+			"tags": [
+				"carry",
+				"escort",
+				"vulnerability",
+				"resource"
+			],
+			"variant": "critical_resource"
+		},
+		{
+			"chain_index": 3,
+			"chain_input": "carry_component_secured",
+			"chain_label": "Reconstruct the return map from carried fragments",
+			"chain_output": "shelter_route_reassembled",
+			"composition_mode": "chain_nested_poc",
+			"composition_role": "chain_link",
+			"id": "6",
+			"kind": "puzzle",
+			"link_ref": "chain_03",
+			"name": "Pattern reconstruction",
+			"shadow_solution": {
+				"aster_peris": true,
+				"notes": "Aster finds hidden structure; Peris preserves relational or flora context."
+			},
+			"step_count": 5,
+			"tags": [
+				"fragments",
+				"memory",
+				"map",
+				"assembly"
+			],
+			"variant": "flow_diagram"
+		},
+		{
+			"chain_index": 4,
+			"composition_role": "required_append",
+			"id": "4",
+			"kind": "puzzle",
+			"name": "Distract the patrol",
+			"shadow_solution": {
+				"aster_peris": true,
+				"notes": "Aster provides electrical/data distraction while Peris performs the physical or flora task."
+			},
+			"step_count": 8,
+			"tags": [
+				"patrol",
+				"distraction",
+				"coordination",
+				"timing"
+			],
+			"variant": "terminal_task"
+		}
+	],
+	"budget": {
+		"archetype_depth": 5,
+		"branch_count": 1,
+		"enemy_slots": 2,
+		"flora_slots": 3,
+		"node_count": 7,
+		"optional_node_count": 1,
+		"pressure_budget": 2,
+		"resource_beats": 1,
+		"shortcut_count": 1,
+		"structures_slots": 5
+	},
+	"composition": {
+		"chain": [
+			{
+				"chain_index": 0,
+				"id": "1",
+				"input": "",
+				"label": "Break a brittle service barrier to expose usable flure",
+				"output": "flure_exposed",
+				"ref": "chain_00",
+				"role": "chain",
+				"variant": "reveal_plant"
+			},
+			{
+				"chain_index": 1,
+				"id": "2",
+				"input": "flure_exposed",
+				"label": "Use the exposed flure as a patrol decoy",
+				"output": "patrol_diverted",
+				"ref": "chain_01",
+				"role": "chain",
+				"variant": "flure_iron_decoy"
+			},
+			{
+				"chain_index": 2,
+				"id": "3",
+				"input": "patrol_diverted",
+				"label": "Carry the shelter component through the diverted patrol lane",
+				"output": "carry_component_secured",
+				"ref": "chain_02",
+				"role": "chain",
+				"variant": "critical_resource"
+			},
+			{
+				"chain_index": 3,
+				"id": "6",
+				"input": "carry_component_secured",
+				"label": "Reconstruct the return map from carried fragments",
+				"output": "shelter_route_reassembled",
+				"ref": "chain_03",
+				"role": "chain",
+				"variant": "flow_diagram"
+			}
+		],
+		"chain_count": 4,
+		"has_nested": true,
+		"host_nodes": [
+			"node_03",
+			"node_04",
+			"node_05"
+		],
+		"links": [
+			{
+				"feeds_next": true,
+				"from_archetype": "1",
+				"from_chain_index": 0,
+				"input": "flure_exposed",
+				"output": "flure_exposed",
+				"to_archetype": "2",
+				"to_chain_index": 1
+			},
+			{
+				"feeds_next": true,
+				"from_archetype": "2",
+				"from_chain_index": 1,
+				"input": "patrol_diverted",
+				"output": "patrol_diverted",
+				"to_archetype": "3",
+				"to_chain_index": 2
+			},
+			{
+				"feeds_next": true,
+				"from_archetype": "3",
+				"from_chain_index": 2,
+				"input": "carry_component_secured",
+				"output": "carry_component_secured",
+				"to_archetype": "6",
+				"to_chain_index": 3
+			}
+		],
+		"mode": "chain_nested_poc",
+		"nested": [
+			{
+				"depth": 1,
+				"host_id": "3",
+				"host_step": 4,
+				"id": "4",
+				"input": "carry_component_secured",
+				"label": "Carrier hazard is managed as a patrol distraction",
+				"output": "carrier_window_opened",
+				"parent_ref": "",
+				"ref": "nested_00",
+				"role": "nested",
+				"variant": "false_scent"
+			},
+			{
+				"depth": 1,
+				"host_id": "4",
+				"host_step": 5,
+				"id": "2",
+				"input": "carrier_window_opened",
+				"label": "The distraction trigger is a plant tending task",
+				"output": "patrol_staggered",
+				"parent_ref": "",
+				"ref": "nested_00_00",
+				"role": "nested",
+				"variant": "hushbloom_stun"
+			},
+			{
+				"depth": 1,
+				"host_id": "6",
+				"host_step": 3,
+				"id": "3",
+				"input": "fragment_found",
+				"label": "Each map fragment is a vulnerable carry beat",
+				"output": "fragment_delivered",
+				"parent_ref": "",
+				"ref": "nested_01",
+				"role": "nested",
+				"variant": "information_artifact"
+			}
+		],
+		"nested_count": 3,
+		"nested_depth": 1,
+		"random_walk": {
+
+		},
+		"uses_random_walk": false,
+		"walk_archetype_count": 0,
+		"walk_element_count": 0
+	},
+	"graybox": {
+		"bounds": {
+			"center": [
+				36.2999992370605,
+				2.75999999046326,
+				-0.149999856948853
+			],
+			"max": [
+				76.5999984741211,
+				5.15999984741211,
+				6.40000009536743
+			],
+			"min": [
+				-4.0,
+				0.359999984502792,
+				-6.69999980926514
+			],
+			"size": [
+				80.5999984741211,
+				4.79999971389771,
+				13.1000003814697
+			]
+		},
+		"content_placement_count": 16,
+		"contract_id": "generated_stretch_graybox_v1",
+		"elevation_count": 3,
+		"elevation_indices": [
+			0,
+			1,
+			2
+		],
+		"elevation_step": 0.72,
+		"navigation_contract_id": "multi_level_navigation_graph_v1",
+		"navigation_edge_count": 9,
+		"navigation_node_count": 7,
+		"node_surface_count": 7,
+		"route_surface_count": 9,
+		"source": {
+			"complexity_tier": "standard",
+			"node_budget": 7,
+			"spec_id": "generated_chain_nested_poc_shelter_2_to_3"
+		},
+		"supports_click_to_move": true,
+		"supports_multiple_elevations": true,
+		"supports_outline_targets": true,
+		"surface_y_base": 0.45,
+		"unit_scale": 1.0
+	},
+	"headless": {
+		"golden_path": [
+			"entry",
+			"node_01",
+			"node_02",
+			"node_04",
+			"node_05",
+			"exit_shelter"
+		],
+		"risky_recovery": [
+			"risky_direct",
+			"exit_shelter"
+		],
+		"state_paths": [
+			"chunk.generation.spec_id",
+			"chunk.generation.route_choice",
+			"chunk.generation.shelter_rested",
+			"chunk.generation.shortcut_unlocked",
+			"chunk.generation.composition",
+			"chunk.generation.composition.random_walk",
+			"chunk.generation.unsupported_placeholder_count",
+			"chunk.generation.navigation"
+		]
+	},
+	"id": "generated_chain_nested_poc_shelter_2_to_3",
+	"navigation": {
+		"contract_id": "multi_level_navigation_graph_v1",
+		"edges": [
+			{
+				"bidirectional": true,
+				"from": "entry",
+				"height_delta": 0.719999969005585,
+				"id": "main_00_01",
+				"kind": "safe",
+				"path_cost": 12.3902540206909,
+				"physical_cost": 12.3902540206909,
+				"recoverable": true,
+				"risk": "safe",
+				"risk_penalty": 0.0,
+				"route_id": "main_00_01",
+				"slope_ratio": 0.0582085466658145,
+				"to": "node_01",
+				"traversal": "ramp",
+				"waypoints": [
+					[
+						0.0,
+						0.449999988079071,
+						-3.0
+					],
+					[
+						6.0,
+						0.809999942779541,
+						-1.5
+					],
+					[
+						12.0,
+						1.16999995708466,
+						0.0
+					]
+				],
+				"width": 1.85
+			},
+			{
+				"bidirectional": true,
+				"from": "node_01",
+				"height_delta": 0.720000028610229,
+				"id": "main_01_02",
+				"kind": "safe",
+				"path_cost": 12.3902540206909,
+				"physical_cost": 12.3902540206909,
+				"recoverable": true,
+				"risk": "safe",
+				"risk_penalty": 0.0,
+				"route_id": "main_01_02",
+				"slope_ratio": 0.0582085514845643,
+				"to": "node_02",
+				"traversal": "ramp",
+				"waypoints": [
+					[
+						12.0,
+						1.16999995708466,
+						0.0
+					],
+					[
+						18.0,
+						1.52999997138977,
+						1.5
+					],
+					[
+						24.0,
+						1.88999998569489,
+						3.0
+					]
+				],
+				"width": 1.85
+			},
+			{
+				"bidirectional": true,
+				"from": "node_02",
+				"height_delta": -0.720000028610229,
+				"id": "main_02_03",
+				"kind": "safe",
+				"path_cost": 13.4357137680054,
+				"physical_cost": 13.4357137680054,
+				"recoverable": true,
+				"risk": "safe",
+				"risk_penalty": 0.0,
+				"route_id": "main_02_03",
+				"slope_ratio": -0.0536656347118944,
+				"to": "node_03",
+				"traversal": "ramp",
+				"waypoints": [
+					[
+						24.0,
+						1.88999998569489,
+						3.0
+					],
+					[
+						30.0,
+						1.52999997138977,
+						0.0
+					],
+					[
+						36.0,
+						1.16999995708466,
+						-3.0
+					]
+				],
+				"width": 1.85
+			},
+			{
+				"bidirectional": true,
+				"from": "node_03",
+				"height_delta": 0.0,
+				"id": "main_03_04",
+				"kind": "safe",
+				"path_cost": 12.3693170547485,
+				"physical_cost": 12.3693170547485,
+				"recoverable": true,
+				"risk": "safe",
+				"risk_penalty": 0.0,
+				"route_id": "main_03_04",
+				"slope_ratio": 0.0,
+				"to": "node_04",
+				"traversal": "walkway",
+				"waypoints": [
+					[
+						36.0,
+						1.16999995708466,
+						-3.0
+					],
+					[
+						42.0,
+						1.16999995708466,
+						-1.5
+					],
+					[
+						48.0,
+						1.16999995708466,
+						0.0
+					]
+				],
+				"width": 1.85
+			},
+			{
+				"bidirectional": true,
+				"from": "node_04",
+				"height_delta": 0.720000028610229,
+				"id": "main_04_05",
+				"kind": "safe",
+				"path_cost": 12.3902540206909,
+				"physical_cost": 12.3902540206909,
+				"recoverable": true,
+				"risk": "safe",
+				"risk_penalty": 0.0,
+				"route_id": "main_04_05",
+				"slope_ratio": 0.0582085514845643,
+				"to": "node_05",
+				"traversal": "ramp",
+				"waypoints": [
+					[
+						48.0,
+						1.16999995708466,
+						0.0
+					],
+					[
+						54.0,
+						1.52999997138977,
+						1.5
+					],
+					[
+						60.0,
+						1.88999998569489,
+						3.0
+					]
+				],
+				"width": 1.85
+			},
+			{
+				"bidirectional": true,
+				"from": "node_05",
+				"height_delta": -1.43999999761581,
+				"id": "main_05_06",
+				"kind": "safe",
+				"path_cost": 13.4934644699097,
+				"physical_cost": 13.4934644699097,
+				"recoverable": true,
+				"risk": "safe",
+				"risk_penalty": 0.0,
+				"route_id": "main_05_06",
+				"slope_ratio": -0.107331264981121,
+				"to": "exit_shelter",
+				"traversal": "ramp",
+				"waypoints": [
+					[
+						60.0,
+						1.88999998569489,
+						3.0
+					],
+					[
+						66.0,
+						1.16999995708466,
+						0.0
+					],
+					[
+						72.0,
+						0.449999988079071,
+						-3.0
+					]
+				],
+				"width": 1.85
+			},
+			{
+				"bidirectional": true,
+				"from": "node_02",
+				"height_delta": -0.720000028610229,
+				"id": "optional_bypass_02_04",
+				"kind": "safe",
+				"path_cost": 24.1974868774414,
+				"physical_cost": 24.1974868774414,
+				"recoverable": true,
+				"risk": "safe",
+				"risk_penalty": 0.0,
+				"route_id": "optional_bypass_02_04",
+				"slope_ratio": -0.0297683374162664,
+				"to": "node_04",
+				"traversal": "ramp",
+				"waypoints": [
+					[
+						24.0,
+						1.88999998569489,
+						3.0
+					],
+					[
+						36.0,
+						1.52999997138977,
+						1.5
+					],
+					[
+						48.0,
+						1.16999995708466,
+						0.0
+					]
+				],
+				"width": 1.35
+			},
+			{
+				"bidirectional": true,
+				"from": "entry",
+				"height_delta": 0.0,
+				"id": "risky_direct",
+				"kind": "risky",
+				"path_cost": 100.0,
+				"physical_cost": 72.0,
+				"recoverable": true,
+				"risk": "risky",
+				"risk_penalty": 28.0,
+				"route_id": "risky_direct",
+				"slope_ratio": 0.0,
+				"to": "exit_shelter",
+				"traversal": "walkway",
+				"waypoints": [
+					[
+						0.0,
+						0.449999988079071,
+						-3.0
+					],
+					[
+						36.0,
+						0.449999988079071,
+						-3.0
+					],
+					[
+						72.0,
+						0.449999988079071,
+						-3.0
+					]
+				],
+				"width": 1.15
+			},
+			{
+				"bidirectional": true,
+				"from": "node_05",
+				"height_delta": -1.43999999761581,
+				"id": "return_shortcut",
+				"kind": "shortcut",
+				"path_cost": 64.3164443969727,
+				"physical_cost": 60.3164443969727,
+				"recoverable": true,
+				"risk": "shortcut",
+				"risk_penalty": 4.0,
+				"route_id": "return_shortcut",
+				"slope_ratio": -0.0238808918742655,
+				"to": "entry",
+				"traversal": "ramp",
+				"waypoints": [
+					[
+						60.0,
+						1.88999998569489,
+						3.0
+					],
+					[
+						30.0,
+						1.16999995708466,
+						0.0
+					],
+					[
+						0.0,
+						0.449999988079071,
+						-3.0
+					]
+				],
+				"width": 1.25
+			}
+		],
+		"elevation_indices": [
+			0,
+			1,
+			2
+		],
+		"entry_anchor": "entry",
+		"entry_node": "entry",
+		"exit_anchor": "exit_shelter",
+		"exit_node": "exit_shelter",
+		"floor_columns": [
+			{
+				"floors": [
+					{
+						"elevation_index": 0,
+						"node_id": "entry",
+						"y": 0.449999988079071
+					}
+				],
+				"xz": [
+					0.0,
+					-3.0
+				]
+			},
+			{
+				"floors": [
+					{
+						"elevation_index": 1,
+						"node_id": "node_01",
+						"y": 1.16999995708466
+					}
+				],
+				"xz": [
+					12.0,
+					0.0
+				]
+			},
+			{
+				"floors": [
+					{
+						"elevation_index": 2,
+						"node_id": "node_02",
+						"y": 1.88999998569489
+					}
+				],
+				"xz": [
+					24.0,
+					3.0
+				]
+			},
+			{
+				"floors": [
+					{
+						"elevation_index": 1,
+						"node_id": "node_03",
+						"y": 1.16999995708466
+					}
+				],
+				"xz": [
+					36.0,
+					-3.0
+				]
+			},
+			{
+				"floors": [
+					{
+						"elevation_index": 1,
+						"node_id": "node_04",
+						"y": 1.16999995708466
+					}
+				],
+				"xz": [
+					48.0,
+					0.0
+				]
+			},
+			{
+				"floors": [
+					{
+						"elevation_index": 2,
+						"node_id": "node_05",
+						"y": 1.88999998569489
+					}
+				],
+				"xz": [
+					60.0,
+					3.0
+				]
+			},
+			{
+				"floors": [
+					{
+						"elevation_index": 0,
+						"node_id": "exit_shelter",
+						"y": 0.449999988079071
+					}
+				],
+				"xz": [
+					72.0,
+					-3.0
+				]
+			}
+		],
+		"golden_path_nodes": [
+			"entry",
+			"node_01",
+			"node_02",
+			"node_04",
+			"node_05",
+			"exit_shelter"
+		],
+		"max_snap_distance": 9.0,
+		"nodes": [
+			{
+				"content_count": 2,
+				"elevation_index": 0,
+				"floor_size": [
+					6.0,
+					0.159999996423721,
+					4.19999980926514
+				],
+				"id": "entry",
+				"position": [
+					0.0,
+					0.449999988079071,
+					-3.0
+				],
+				"radius": 3.0,
+				"role": "boundary",
+				"supports_click_to_move": true,
+				"surface_id": "node:entry",
+				"surface_y": 0.45
+			},
+			{
+				"content_count": 2,
+				"elevation_index": 1,
+				"floor_size": [
+					4.80000019073486,
+					0.140000000596046,
+					4.0
+				],
+				"id": "node_01",
+				"position": [
+					12.0,
+					1.16999995708466,
+					0.0
+				],
+				"radius": 2.40000009536743,
+				"role": "guidance",
+				"supports_click_to_move": true,
+				"surface_id": "node:node_01",
+				"surface_y": 1.17
+			},
+			{
+				"content_count": 3,
+				"elevation_index": 2,
+				"floor_size": [
+					5.40000009536743,
+					0.140000000596046,
+					4.80000019073486
+				],
+				"id": "node_02",
+				"position": [
+					24.0,
+					1.88999998569489,
+					3.0
+				],
+				"radius": 2.70000004768372,
+				"role": "route_pressure",
+				"supports_click_to_move": true,
+				"surface_id": "node:node_02",
+				"surface_y": 1.89
+			},
+			{
+				"content_count": 2,
+				"elevation_index": 1,
+				"floor_size": [
+					6.19999980926514,
+					0.140000000596046,
+					4.80000019073486
+				],
+				"id": "node_03",
+				"position": [
+					36.0,
+					1.16999995708466,
+					-3.0
+				],
+				"radius": 3.09999990463257,
+				"role": "foraging",
+				"supports_click_to_move": true,
+				"surface_id": "node:node_03",
+				"surface_y": 1.17
+			},
+			{
+				"content_count": 3,
+				"elevation_index": 1,
+				"floor_size": [
+					5.40000009536743,
+					0.140000000596046,
+					4.80000019073486
+				],
+				"id": "node_04",
+				"position": [
+					48.0,
+					1.16999995708466,
+					0.0
+				],
+				"radius": 2.70000004768372,
+				"role": "danger",
+				"supports_click_to_move": true,
+				"surface_id": "node:node_04",
+				"surface_y": 1.17
+			},
+			{
+				"content_count": 2,
+				"elevation_index": 2,
+				"floor_size": [
+					4.80000019073486,
+					0.140000000596046,
+					4.80000019073486
+				],
+				"id": "node_05",
+				"position": [
+					60.0,
+					1.88999998569489,
+					3.0
+				],
+				"radius": 2.40000009536743,
+				"role": "shortcut",
+				"supports_click_to_move": true,
+				"surface_id": "node:node_05",
+				"surface_y": 1.89
+			},
+			{
+				"content_count": 2,
+				"elevation_index": 0,
+				"floor_size": [
+					7.19999980926514,
+					0.180000007152557,
+					5.40000009536743
+				],
+				"id": "exit_shelter",
+				"position": [
+					72.0,
+					0.449999988079071,
+					-3.0
+				],
+				"radius": 3.59999990463257,
+				"role": "shelter_arrival",
+				"supports_click_to_move": true,
+				"surface_id": "node:exit_shelter",
+				"surface_y": 0.45
+			}
+		],
+		"route_modes": [
+			"safe",
+			"direct"
+		],
+		"source": {
+			"complexity_tier": "standard",
+			"generator": "archetype_based_stretch_v1",
+			"spec_id": "generated_chain_nested_poc_shelter_2_to_3"
+		},
+		"space_id": "generated_chain_nested_poc_shelter_2_to_3",
+		"supports_multiple_elevations": true
+	},
+	"nodes": [
+		{
+			"approach_position": [
+				0.0,
+				0.449999988079071,
+				-1.57200002670288
+			],
+			"archetype_id": "11",
+			"archetype_name": "Narrative beat",
+			"chain_index": -1,
+			"chain_input": "",
+			"chain_label": "",
+			"chain_output": "",
+			"composition_role": "",
+			"content_placements": [
+				{
+					"category": "flora",
+					"id": "flure",
+					"label": "flure",
+					"local_offset": [
+						-2.13000011444092,
+						0.725000023841858,
+						-0.923999965190887
+					],
+					"position": [
+						-2.13000011444092,
+						1.17499995231628,
+						-3.92400002479553
+					],
+					"role": "puzzle_flora",
+					"rotation_y_degrees": -11.0,
+					"shape": "plant_cluster",
+					"size": [
+						1.79999995231628,
+						1.45000004768372,
+						1.79999995231628
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "structures",
+					"id": "shelter",
+					"label": "shelter",
+					"local_offset": [
+						0.0,
+						1.20000004768372,
+						0.755999982357025
+					],
+					"position": [
+						0.0,
+						1.65000009536743,
+						-2.24399995803833
+					],
+					"role": "rest",
+					"rotation_y_degrees": 26.0,
+					"shape": "shelter_shell",
+					"size": [
+						4.80000019073486,
+						2.40000009536743,
+						3.40000009536743
+					],
+					"support": "implemented"
+				}
+			],
+			"elevation_index": 0,
+			"elevation_meters": 0.0,
+			"enemies": [],
+			"floor_size": [
+				6.0,
+				0.159999996423721,
+				4.19999980926514
+			],
+			"flora": [
+				"flure"
+			],
+			"footprint": [
+				6.0,
+				0.159999996423721,
+				4.19999980926514
+			],
+			"id": "entry",
+			"label": "Entry Boundary",
+			"layout_step": {
+
+			},
+			"link_ref": "",
+			"nested_archetypes": [],
+			"nested_depth": 0,
+			"optional": false,
+			"position": [
+				0.0,
+				0.449999988079071,
+				-3.0
+			],
+			"pressure": 0,
+			"resource": false,
+			"resource_beat": false,
+			"role": "boundary",
+			"shadow_solution": {
+				"aster": "Read the patrol timing and confirm which plant effect is safe to trigger.",
+				"endo": "Marks the return shortcut and stabilizes the carried shelter component.",
+				"peris": "Tend the flure and hushbloom so the carrier never needs a combat-only solution."
+			},
+			"shortcut": false,
+			"structures": [
+				"shelter"
+			],
+			"surface_y": 0.45,
+			"title": "Entry Boundary",
+			"variant": "",
+			"walk_element": "",
+			"walk_index": -1,
+			"walk_ref": "",
+			"walk_step_index": -1,
+			"walk_transition": ""
+		},
+		{
+			"approach_position": [
+				12.0,
+				1.16999995708466,
+				1.36000001430511
+			],
+			"archetype_id": "1",
+			"archetype_name": "Redirected enemy aggression",
+			"chain_index": 0,
+			"chain_input": "",
+			"chain_label": "Break a brittle service barrier to expose usable flure",
+			"chain_output": "flure_exposed",
+			"composition_role": "chain_link",
+			"content_placements": [
+				{
+					"category": "flora",
+					"id": "hushbloom",
+					"label": "hushbloom",
+					"local_offset": [
+						-1.7940000295639,
+						0.550000011920929,
+						-0.879999995231628
+					],
+					"position": [
+						10.206000328064,
+						1.72000002861023,
+						-0.879999995231628
+					],
+					"role": "resource",
+					"rotation_y_degrees": 0.0,
+					"shape": "plant_cluster",
+					"size": [
+						1.0,
+						1.10000002384186,
+						1.0
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "structures",
+					"id": "terminal",
+					"label": "terminal",
+					"local_offset": [
+						0.0,
+						0.824999988079071,
+						0.720000028610229
+					],
+					"position": [
+						12.0,
+						1.99499988555908,
+						0.720000028610229
+					],
+					"role": "guidance",
+					"rotation_y_degrees": 37.0,
+					"shape": "console",
+					"size": [
+						1.20000004768372,
+						1.64999997615814,
+						0.75
+					],
+					"support": "implemented"
+				}
+			],
+			"elevation_index": 1,
+			"elevation_meters": 0.72,
+			"enemies": [],
+			"floor_size": [
+				4.80000019073486,
+				0.140000000596046,
+				4.0
+			],
+			"flora": [
+				"hushbloom"
+			],
+			"footprint": [
+				4.80000019073486,
+				0.140000000596046,
+				4.0
+			],
+			"id": "node_01",
+			"label": "Guidance Beat",
+			"layout_step": {
+
+			},
+			"link_ref": "chain_00",
+			"nested_archetypes": [],
+			"nested_depth": 0,
+			"optional": false,
+			"position": [
+				12.0,
+				1.16999995708466,
+				0.0
+			],
+			"pressure": 0,
+			"resource": false,
+			"resource_beat": false,
+			"role": "guidance",
+			"shadow_solution": {
+				"aster_peris": true,
+				"notes": "Use overlay timing plus flora or scarpet cover to substitute for a combat specialist."
+			},
+			"shortcut": false,
+			"structures": [
+				"terminal"
+			],
+			"surface_y": 1.17,
+			"title": "Guidance Beat",
+			"variant": "reveal_plant",
+			"walk_element": "",
+			"walk_index": -1,
+			"walk_ref": "",
+			"walk_step_index": -1,
+			"walk_transition": ""
+		},
+		{
+			"approach_position": [
+				22.8120002746582,
+				1.88999998569489,
+				4.63199996948242
+			],
+			"archetype_id": "2",
+			"archetype_name": "Plant as tool",
+			"chain_index": 1,
+			"chain_input": "flure_exposed",
+			"chain_label": "Use the exposed flure as a patrol decoy",
+			"chain_output": "patrol_diverted",
+			"composition_role": "chain_link",
+			"content_placements": [
+				{
+					"category": "flora",
+					"id": "scarpet",
+					"label": "scarpet",
+					"local_offset": [
+						-1.96200001239777,
+						0.0799999982118607,
+						-1.05599999427795
+					],
+					"position": [
+						22.0380001068115,
+						1.97000002861023,
+						1.94400000572205
+					],
+					"role": "cover",
+					"rotation_y_degrees": 11.0,
+					"shape": "mat",
+					"size": [
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "enemies",
+					"id": "naturalizers",
+					"label": "naturalizers",
+					"local_offset": [
+						1.2960000038147,
+						0.550000011920929,
+						-0.240000009536743
+					],
+					"position": [
+						25.2959995269775,
+						2.44000005722046,
+						2.75999999046326
+					],
+					"role": "pressure",
+					"rotation_y_degrees": 48.0,
+					"shape": "enemy_volume",
+					"size": [
+						1.5,
+						1.10000002384186,
+						1.5
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "structures",
+					"id": "terminal",
+					"label": "terminal",
+					"local_offset": [
+						0.550000011920929,
+						0.824999988079071,
+						0.864000022411346
+					],
+					"position": [
+						24.5499992370605,
+						2.71499991416931,
+						3.86400008201599
+					],
+					"role": "guidance",
+					"rotation_y_degrees": 85.0,
+					"shape": "console",
+					"size": [
+						1.20000004768372,
+						1.64999997615814,
+						0.75
+					],
+					"support": "implemented"
+				}
+			],
+			"elevation_index": 2,
+			"elevation_meters": 1.44,
+			"enemies": [
+				"naturalizers"
+			],
+			"floor_size": [
+				5.40000009536743,
+				0.140000000596046,
+				4.80000019073486
+			],
+			"flora": [
+				"scarpet"
+			],
+			"footprint": [
+				5.40000009536743,
+				0.140000000596046,
+				4.80000019073486
+			],
+			"id": "node_02",
+			"label": "Route Pressure",
+			"layout_step": {
+
+			},
+			"link_ref": "chain_01",
+			"nested_archetypes": [],
+			"nested_depth": 0,
+			"optional": false,
+			"position": [
+				24.0,
+				1.88999998569489,
+				3.0
+			],
+			"pressure": 1,
+			"resource": false,
+			"resource_beat": false,
+			"role": "route_pressure",
+			"shadow_solution": {
+				"aster_peris": true,
+				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
+			},
+			"shortcut": false,
+			"structures": [
+				"terminal"
+			],
+			"surface_y": 1.89,
+			"title": "Route Pressure",
+			"variant": "flure_iron_decoy",
+			"walk_element": "",
+			"walk_index": -1,
+			"walk_ref": "",
+			"walk_step_index": -1,
+			"walk_transition": ""
+		},
+		{
+			"approach_position": [
+				36.0,
+				1.16999995708466,
+				-1.36799991130829
+			],
+			"archetype_id": "3",
+			"archetype_name": "Carry the heavy thing",
+			"chain_index": 2,
+			"chain_input": "patrol_diverted",
+			"chain_label": "Carry the shelter component through the diverted patrol lane",
+			"chain_output": "carry_component_secured",
+			"composition_role": "chain_link",
+			"content_placements": [
+				{
+					"category": "flora",
+					"id": "flure",
+					"label": "flure",
+					"local_offset": [
+						-2.18599987030029,
+						0.725000023841858,
+						-1.05599999427795
+					],
+					"position": [
+						33.8139991760254,
+						1.89499998092651,
+						-4.05599975585938
+					],
+					"role": "puzzle_flora",
+					"rotation_y_degrees": 22.0,
+					"shape": "plant_cluster",
+					"size": [
+						1.79999995231628,
+						1.45000004768372,
+						1.79999995231628
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "structures",
+					"id": "forage_cache",
+					"label": "forage_cache",
+					"local_offset": [
+						0.0,
+						0.375,
+						0.864000022411346
+					],
+					"position": [
+						36.0,
+						1.54499995708466,
+						-2.13599991798401
+					],
+					"role": "resource",
+					"rotation_y_degrees": 59.0,
+					"shape": "structure_box",
+					"size": [
+						1.70000004768372,
+						0.75,
+						1.0
+					],
+					"support": "implemented"
+				}
+			],
+			"elevation_index": 1,
+			"elevation_meters": 0.72,
+			"enemies": [],
+			"floor_size": [
+				6.19999980926514,
+				0.140000000596046,
+				4.80000019073486
+			],
+			"flora": [
+				"flure"
+			],
+			"footprint": [
+				6.19999980926514,
+				0.140000000596046,
+				4.80000019073486
+			],
+			"id": "node_03",
+			"label": "Foraging Beat",
+			"layout_step": {
+
+			},
+			"link_ref": "chain_02",
+			"nested_archetypes": [
+				{
+					"depth": 1,
+					"host_id": "3",
+					"host_step": 4,
+					"id": "4",
+					"input": "carry_component_secured",
+					"label": "Carrier hazard is managed as a patrol distraction",
+					"output": "carrier_window_opened",
+					"parent_ref": "",
+					"ref": "nested_00",
+					"role": "nested",
+					"variant": "false_scent"
+				}
+			],
+			"nested_depth": 1,
+			"optional": true,
+			"position": [
+				36.0,
+				1.16999995708466,
+				-3.0
+			],
+			"pressure": 0,
+			"resource": true,
+			"resource_beat": true,
+			"role": "foraging",
+			"shadow_solution": {
+				"aster_peris": true,
+				"notes": "Use drag routes, scarpet masking, and slower recovery windows."
+			},
+			"shortcut": false,
+			"structures": [
+				"forage_cache"
+			],
+			"surface_y": 1.17,
+			"title": "Foraging Beat",
+			"variant": "critical_resource",
+			"walk_element": "",
+			"walk_index": -1,
+			"walk_ref": "",
+			"walk_step_index": -1,
+			"walk_transition": ""
+		},
+		{
+			"approach_position": [
+				46.8120002746582,
+				1.16999995708466,
+				1.63200008869171
+			],
+			"archetype_id": "6",
+			"archetype_name": "Pattern reconstruction",
+			"chain_index": 3,
+			"chain_input": "carry_component_secured",
+			"chain_label": "Reconstruct the return map from carried fragments",
+			"chain_output": "shelter_route_reassembled",
+			"composition_role": "chain_link",
+			"content_placements": [
+				{
+					"category": "flora",
+					"id": "hushbloom",
+					"label": "hushbloom",
+					"local_offset": [
+						-1.96200001239777,
+						0.550000011920929,
+						-1.05599999427795
+					],
+					"position": [
+						46.0379981994629,
+						1.72000002861023,
+						-1.05599999427795
+					],
+					"role": "resource",
+					"rotation_y_degrees": 33.0,
+					"shape": "plant_cluster",
+					"size": [
+						1.0,
+						1.10000002384186,
+						1.0
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "enemies",
+					"id": "naturalizers",
+					"label": "naturalizers",
+					"local_offset": [
+						1.2960000038147,
+						0.550000011920929,
+						-0.240000009536743
+					],
+					"position": [
+						49.2960014343262,
+						1.72000002861023,
+						-0.240000009536743
+					],
+					"role": "pressure",
+					"rotation_y_degrees": 70.0,
+					"shape": "enemy_volume",
+					"size": [
+						1.5,
+						1.10000002384186,
+						1.5
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "structures",
+					"id": "shortcut_gate",
+					"label": "shortcut_gate",
+					"local_offset": [
+						0.550000011920929,
+						1.10000002384186,
+						0.864000022411346
+					],
+					"position": [
+						48.5499992370605,
+						2.26999998092651,
+						0.864000022411346
+					],
+					"role": "shortcut",
+					"rotation_y_degrees": 107.0,
+					"shape": "gate",
+					"size": [
+						2.40000009536743,
+						2.20000004768372,
+						0.379999995231628
+					],
+					"support": "implemented"
+				}
+			],
+			"elevation_index": 1,
+			"elevation_meters": 0.72,
+			"enemies": [
+				"naturalizers"
+			],
+			"floor_size": [
+				5.40000009536743,
+				0.140000000596046,
+				4.80000019073486
+			],
+			"flora": [
+				"hushbloom"
+			],
+			"footprint": [
+				5.40000009536743,
+				0.140000000596046,
+				4.80000019073486
+			],
+			"id": "node_04",
+			"label": "Danger Beat",
+			"layout_step": {
+
+			},
+			"link_ref": "chain_03",
+			"nested_archetypes": [
+				{
+					"depth": 1,
+					"host_id": "6",
+					"host_step": 3,
+					"id": "3",
+					"input": "fragment_found",
+					"label": "Each map fragment is a vulnerable carry beat",
+					"output": "fragment_delivered",
+					"parent_ref": "",
+					"ref": "nested_01",
+					"role": "nested",
+					"variant": "information_artifact"
+				}
+			],
+			"nested_depth": 1,
+			"optional": false,
+			"position": [
+				48.0,
+				1.16999995708466,
+				0.0
+			],
+			"pressure": 1,
+			"resource": false,
+			"resource_beat": false,
+			"role": "danger",
+			"shadow_solution": {
+				"aster_peris": true,
+				"notes": "Aster finds hidden structure; Peris preserves relational or flora context."
+			},
+			"shortcut": true,
+			"structures": [
+				"shortcut_gate"
+			],
+			"surface_y": 1.17,
+			"title": "Danger Beat",
+			"variant": "flow_diagram",
+			"walk_element": "",
+			"walk_index": -1,
+			"walk_ref": "",
+			"walk_step_index": -1,
+			"walk_transition": ""
+		},
+		{
+			"approach_position": [
+				60.0,
+				1.88999998569489,
+				4.63199996948242
+			],
+			"archetype_id": "4",
+			"archetype_name": "Distract the patrol",
+			"chain_index": 4,
+			"chain_input": "",
+			"chain_label": "",
+			"chain_output": "",
+			"composition_role": "required_append",
+			"content_placements": [
+				{
+					"category": "flora",
+					"id": "scarpet",
+					"label": "scarpet",
+					"local_offset": [
+						-1.7940000295639,
+						0.0799999982118607,
+						-1.05599999427795
+					],
+					"position": [
+						58.2060012817383,
+						1.97000002861023,
+						1.94400000572205
+					],
+					"role": "cover",
+					"rotation_y_degrees": 44.0,
+					"shape": "mat",
+					"size": [
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "structures",
+					"id": "shortcut_gate",
+					"label": "shortcut_gate",
+					"local_offset": [
+						0.0,
+						1.10000002384186,
+						0.864000022411346
+					],
+					"position": [
+						60.0,
+						2.99000000953674,
+						3.86400008201599
+					],
+					"role": "shortcut",
+					"rotation_y_degrees": 81.0,
+					"shape": "gate",
+					"size": [
+						2.40000009536743,
+						2.20000004768372,
+						0.379999995231628
+					],
+					"support": "implemented"
+				}
+			],
+			"elevation_index": 2,
+			"elevation_meters": 1.44,
+			"enemies": [],
+			"floor_size": [
+				4.80000019073486,
+				0.140000000596046,
+				4.80000019073486
+			],
+			"flora": [
+				"scarpet"
+			],
+			"footprint": [
+				4.80000019073486,
+				0.140000000596046,
+				4.80000019073486
+			],
+			"id": "node_05",
+			"label": "Shortcut Lock",
+			"layout_step": {
+
+			},
+			"link_ref": "",
+			"nested_archetypes": [
+				{
+					"depth": 1,
+					"host_id": "4",
+					"host_step": 5,
+					"id": "2",
+					"input": "carrier_window_opened",
+					"label": "The distraction trigger is a plant tending task",
+					"output": "patrol_staggered",
+					"parent_ref": "",
+					"ref": "nested_00_00",
+					"role": "nested",
+					"variant": "hushbloom_stun"
+				}
+			],
+			"nested_depth": 1,
+			"optional": false,
+			"position": [
+				60.0,
+				1.88999998569489,
+				3.0
+			],
+			"pressure": 0,
+			"resource": false,
+			"resource_beat": false,
+			"role": "shortcut",
+			"shadow_solution": {
+				"aster_peris": true,
+				"notes": "Aster provides electrical/data distraction while Peris performs the physical or flora task."
+			},
+			"shortcut": true,
+			"structures": [
+				"shortcut_gate"
+			],
+			"surface_y": 1.89,
+			"title": "Shortcut Lock",
+			"variant": "terminal_task",
+			"walk_element": "",
+			"walk_index": -1,
+			"walk_ref": "",
+			"walk_step_index": -1,
+			"walk_transition": ""
+		},
+		{
+			"approach_position": [
+				70.7040023803711,
+				0.449999988079071,
+				-1.16399991512299
+			],
+			"archetype_id": "11",
+			"archetype_name": "Narrative beat",
+			"chain_index": -1,
+			"chain_input": "",
+			"chain_label": "",
+			"chain_output": "",
+			"composition_role": "",
+			"content_placements": [
+				{
+					"category": "flora",
+					"id": "flure",
+					"label": "flure",
+					"local_offset": [
+						-2.46599984169006,
+						0.725000023841858,
+						-1.18799996376038
+					],
+					"position": [
+						69.5339965820313,
+						1.17499995231628,
+						-4.1879997253418
+					],
+					"role": "puzzle_flora",
+					"rotation_y_degrees": -11.0,
+					"shape": "plant_cluster",
+					"size": [
+						1.79999995231628,
+						1.45000004768372,
+						1.79999995231628
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "structures",
+					"id": "shelter",
+					"label": "shelter",
+					"local_offset": [
+						0.0,
+						1.20000004768372,
+						0.972000002861023
+					],
+					"position": [
+						72.0,
+						1.65000009536743,
+						-2.02799987792969
+					],
+					"role": "rest",
+					"rotation_y_degrees": 26.0,
+					"shape": "shelter_shell",
+					"size": [
+						4.80000019073486,
+						2.40000009536743,
+						3.40000009536743
+					],
+					"support": "implemented"
+				}
+			],
+			"elevation_index": 0,
+			"elevation_meters": 0.0,
+			"enemies": [],
+			"floor_size": [
+				7.19999980926514,
+				0.180000007152557,
+				5.40000009536743
+			],
+			"flora": [
+				"flure"
+			],
+			"footprint": [
+				7.19999980926514,
+				0.180000007152557,
+				5.40000009536743
+			],
+			"id": "exit_shelter",
+			"label": "Shelter Arrival",
+			"layout_step": {
+
+			},
+			"link_ref": "",
+			"nested_archetypes": [],
+			"nested_depth": 0,
+			"optional": false,
+			"position": [
+				72.0,
+				0.449999988079071,
+				-3.0
+			],
+			"pressure": 0,
+			"resource": false,
+			"resource_beat": false,
+			"role": "shelter_arrival",
+			"shadow_solution": {
+				"aster": "Read the patrol timing and confirm which plant effect is safe to trigger.",
+				"endo": "Marks the return shortcut and stabilizes the carried shelter component.",
+				"peris": "Tend the flure and hushbloom so the carrier never needs a combat-only solution."
+			},
+			"shortcut": false,
+			"structures": [
+				"shelter"
+			],
+			"surface_y": 0.45,
+			"title": "Shelter Arrival",
+			"variant": "",
+			"walk_element": "",
+			"walk_index": -1,
+			"walk_ref": "",
+			"walk_step_index": -1,
+			"walk_transition": ""
+		}
+	],
+	"ok": true,
+	"palette_usage": {
+		"enemies": [
+			"naturalizers",
+			"techos"
+		],
+		"flora": [
+			"flure",
+			"hushbloom",
+			"scarpet"
+		],
+		"structures": [
+			"shelter",
+			"carry_gear",
+			"terminal",
+			"forage_cache",
+			"shortcut_gate"
+		]
+	},
+	"routes": [
+		{
+			"cost": 1,
+			"from": "entry",
+			"height_delta": 0.719999969005585,
+			"id": "main_00_01",
+			"kind": "safe",
+			"recoverable": true,
+			"risk": "safe",
+			"surface": {
+				"from": [
+					0.0,
+					0.449999988079071,
+					-3.0
+				],
+				"midpoint": [
+					6.0,
+					0.809999942779541,
+					-1.5
+				],
+				"slope": 0.719999969005585,
+				"supports_click_to_move": true,
+				"to": [
+					12.0,
+					1.16999995708466,
+					0.0
+				],
+				"width": 1.85
+			},
+			"to": "node_01",
+			"width": 1.85
+		},
+		{
+			"cost": 1,
+			"from": "node_01",
+			"height_delta": 0.720000028610229,
+			"id": "main_01_02",
+			"kind": "safe",
+			"recoverable": true,
+			"risk": "safe",
+			"surface": {
+				"from": [
+					12.0,
+					1.16999995708466,
+					0.0
+				],
+				"midpoint": [
+					18.0,
+					1.52999997138977,
+					1.5
+				],
+				"slope": 0.720000028610229,
+				"supports_click_to_move": true,
+				"to": [
+					24.0,
+					1.88999998569489,
+					3.0
+				],
+				"width": 1.85
+			},
+			"to": "node_02",
+			"width": 1.85
+		},
+		{
+			"cost": 1,
+			"from": "node_02",
+			"height_delta": -0.720000028610229,
+			"id": "main_02_03",
+			"kind": "safe",
+			"recoverable": true,
+			"risk": "safe",
+			"surface": {
+				"from": [
+					24.0,
+					1.88999998569489,
+					3.0
+				],
+				"midpoint": [
+					30.0,
+					1.52999997138977,
+					0.0
+				],
+				"slope": -0.720000028610229,
+				"supports_click_to_move": true,
+				"to": [
+					36.0,
+					1.16999995708466,
+					-3.0
+				],
+				"width": 1.85
+			},
+			"to": "node_03",
+			"width": 1.85
+		},
+		{
+			"cost": 1,
+			"from": "node_03",
+			"height_delta": 0.0,
+			"id": "main_03_04",
+			"kind": "safe",
+			"recoverable": true,
+			"risk": "safe",
+			"surface": {
+				"from": [
+					36.0,
+					1.16999995708466,
+					-3.0
+				],
+				"midpoint": [
+					42.0,
+					1.16999995708466,
+					-1.5
+				],
+				"slope": 0.0,
+				"supports_click_to_move": true,
+				"to": [
+					48.0,
+					1.16999995708466,
+					0.0
+				],
+				"width": 1.85
+			},
+			"to": "node_04",
+			"width": 1.85
+		},
+		{
+			"cost": 1,
+			"from": "node_04",
+			"height_delta": 0.720000028610229,
+			"id": "main_04_05",
+			"kind": "safe",
+			"recoverable": true,
+			"risk": "safe",
+			"surface": {
+				"from": [
+					48.0,
+					1.16999995708466,
+					0.0
+				],
+				"midpoint": [
+					54.0,
+					1.52999997138977,
+					1.5
+				],
+				"slope": 0.720000028610229,
+				"supports_click_to_move": true,
+				"to": [
+					60.0,
+					1.88999998569489,
+					3.0
+				],
+				"width": 1.85
+			},
+			"to": "node_05",
+			"width": 1.85
+		},
+		{
+			"cost": 1,
+			"from": "node_05",
+			"height_delta": -1.43999999761581,
+			"id": "main_05_06",
+			"kind": "safe",
+			"recoverable": true,
+			"risk": "safe",
+			"surface": {
+				"from": [
+					60.0,
+					1.88999998569489,
+					3.0
+				],
+				"midpoint": [
+					66.0,
+					1.16999995708466,
+					0.0
+				],
+				"slope": -1.43999999761581,
+				"supports_click_to_move": true,
+				"to": [
+					72.0,
+					0.449999988079071,
+					-3.0
+				],
+				"width": 1.85
+			},
+			"to": "exit_shelter",
+			"width": 1.85
+		},
+		{
+			"bypasses_optional": "node_03",
+			"cost": 1,
+			"from": "node_02",
+			"height_delta": -0.720000028610229,
+			"id": "optional_bypass_02_04",
+			"kind": "safe",
+			"recoverable": true,
+			"risk": "safe",
+			"surface": {
+				"from": [
+					24.0,
+					1.88999998569489,
+					3.0
+				],
+				"midpoint": [
+					36.0,
+					1.52999997138977,
+					1.5
+				],
+				"slope": -0.720000028610229,
+				"supports_click_to_move": true,
+				"to": [
+					48.0,
+					1.16999995708466,
+					0.0
+				],
+				"width": 1.35
+			},
+			"to": "node_04",
+			"width": 1.35
+		},
+		{
+			"cost": 0,
+			"damage": 26.0,
+			"from": "entry",
+			"height_delta": 0.0,
+			"id": "risky_direct",
+			"kind": "risky",
+			"recoverable": true,
+			"risk": "risky",
+			"surface": {
+				"from": [
+					0.0,
+					0.449999988079071,
+					-3.0
+				],
+				"midpoint": [
+					36.0,
+					0.449999988079071,
+					-3.0
+				],
+				"slope": 0.0,
+				"supports_click_to_move": true,
+				"to": [
+					72.0,
+					0.449999988079071,
+					-3.0
+				],
+				"width": 1.15
+			},
+			"to": "exit_shelter",
+			"width": 1.15
+		},
+		{
+			"cost": 0,
+			"from": "node_05",
+			"height_delta": -1.43999999761581,
+			"id": "return_shortcut",
+			"kind": "shortcut",
+			"recoverable": true,
+			"risk": "shortcut",
+			"surface": {
+				"from": [
+					60.0,
+					1.88999998569489,
+					3.0
+				],
+				"midpoint": [
+					30.0,
+					1.16999995708466,
+					0.0
+				],
+				"slope": -1.43999999761581,
+				"supports_click_to_move": true,
+				"to": [
+					0.0,
+					0.449999988079071,
+					-3.0
+				],
+				"width": 1.25
+			},
+			"to": "entry",
+			"unlocks_shortcut": true,
+			"width": 1.25
+		}
+	],
+	"schema": "trawf_generated_stretch_spec_v1",
+	"settings": {
+		"budget": {
+			"archetype_depth": 5,
+			"branch_count": 1,
+			"enemy_slots": 2,
+			"flora_slots": 3,
+			"node_count": 7,
+			"optional_node_count": 1,
+			"pressure_budget": 2,
+			"resource_beats": 1,
+			"shortcut_count": 1,
+			"structures_slots": 5
+		},
+		"complexity_tier": "standard",
+		"composition": {
+			"chain": [
+				{
+					"chain_index": 0,
+					"id": "1",
+					"input": "",
+					"label": "Break a brittle service barrier to expose usable flure",
+					"output": "flure_exposed",
+					"ref": "chain_00",
+					"role": "chain",
+					"variant": "reveal_plant"
+				},
+				{
+					"chain_index": 1,
+					"id": "2",
+					"input": "flure_exposed",
+					"label": "Use the exposed flure as a patrol decoy",
+					"output": "patrol_diverted",
+					"ref": "chain_01",
+					"role": "chain",
+					"variant": "flure_iron_decoy"
+				},
+				{
+					"chain_index": 2,
+					"id": "3",
+					"input": "patrol_diverted",
+					"label": "Carry the shelter component through the diverted patrol lane",
+					"output": "carry_component_secured",
+					"ref": "chain_02",
+					"role": "chain",
+					"variant": "critical_resource"
+				},
+				{
+					"chain_index": 3,
+					"id": "6",
+					"input": "carry_component_secured",
+					"label": "Reconstruct the return map from carried fragments",
+					"output": "shelter_route_reassembled",
+					"ref": "chain_03",
+					"role": "chain",
+					"variant": "flow_diagram"
+				}
+			],
+			"mode": "chain_nested_poc",
+			"nested": [
+				{
+					"depth": 1,
+					"host_id": "3",
+					"host_step": 4,
+					"id": "4",
+					"input": "carry_component_secured",
+					"label": "Carrier hazard is managed as a patrol distraction",
+					"output": "carrier_window_opened",
+					"parent_ref": "",
+					"ref": "nested_00",
+					"role": "nested",
+					"variant": "false_scent"
+				},
+				{
+					"depth": 1,
+					"host_id": "4",
+					"host_step": 5,
+					"id": "2",
+					"input": "carrier_window_opened",
+					"label": "The distraction trigger is a plant tending task",
+					"output": "patrol_staggered",
+					"parent_ref": "",
+					"ref": "nested_00_00",
+					"role": "nested",
+					"variant": "hushbloom_stun"
+				},
+				{
+					"depth": 1,
+					"host_id": "6",
+					"host_step": 3,
+					"id": "3",
+					"input": "fragment_found",
+					"label": "Each map fragment is a vulnerable carry beat",
+					"output": "fragment_delivered",
+					"parent_ref": "",
+					"ref": "nested_01",
+					"role": "nested",
+					"variant": "information_artifact"
+				}
+			],
+			"random_walk": {
+				"allow_revisit": true,
+				"prefer_tags": [],
+				"start_archetype": "",
+				"start_step": 0,
+				"step_count": 0,
+				"transition_chance": 0.35
+			},
+			"shadow_solution": {
+				"aster": "Read the patrol timing and confirm which plant effect is safe to trigger.",
+				"endo": "Marks the return shortcut and stabilizes the carried shelter component.",
+				"peris": "Tend the flure and hushbloom so the carrier never needs a combat-only solution."
+			}
+		},
+		"id": "generated_chain_nested_poc_shelter_2_to_3",
+		"limitations": {
+			"allowed": {
+				"archetypes": [
+					"1",
+					"2",
+					"3",
+					"4",
+					"6",
+					"11"
+				],
+				"enemies": [
+					"techos",
+					"naturalizers"
+				],
+				"flora": [
+					"flure",
+					"hushbloom",
+					"scarpet"
+				],
+				"structures": [
+					"shelter",
+					"barrier",
+					"forage_cache",
+					"carry_gear",
+					"shortcut_gate",
+					"terminal",
+					"pipe"
+				]
+			},
+			"blocked": {
+				"archetypes": [],
+				"enemies": [],
+				"flora": [],
+				"structures": []
+			},
+			"required": {
+				"archetypes": [
+					"1",
+					"2",
+					"3",
+					"4",
+					"6"
+				],
+				"enemies": [
+					"naturalizers"
+				],
+				"flora": [
+					"flure"
+				],
+				"structures": [
+					"shelter",
+					"carry_gear"
+				]
+			}
+		},
+		"seed": 2403,
+		"title": "Generated Chain/Nested POC: Shelter 2 -> Shelter 3",
+		"world_slot": {
+			"act": 1.0,
+			"canonical_party": [
+				"aster",
+				"peris",
+				"endo"
+			],
+			"entry_anchor": "entry",
+			"entry_shelter_id": "shelter_2",
+			"exit_anchor": "exit_shelter",
+			"exit_shelter_id": "shelter_3",
+			"next_slot": "generated_channels_shelter_3_to_4",
+			"preview_party_preset": "full_party_full_health",
+			"region": "Channels",
+			"slot_id": "generated_chain_nested_poc_shelter_2_to_3"
+		}
+	},
+	"source": {
+		"complexity_tier": "standard",
+		"generator": "archetype_based_stretch_v1",
+		"seed": 2403
+	},
+	"success": true,
+	"title": "Generated Chain/Nested POC: Shelter 2 -> Shelter 3",
+	"validation": {
+		"warnings": []
+	},
+	"world_slot": {
+		"act": 1.0,
+		"canonical_party": [
+			"aster",
+			"peris",
+			"endo"
+		],
+		"entry_anchor": "entry",
+		"entry_shelter_id": "shelter_2",
+		"exit_anchor": "exit_shelter",
+		"exit_shelter_id": "shelter_3",
+		"next_slot": "generated_channels_shelter_3_to_4",
+		"preview_party_preset": "full_party_full_health",
+		"region": "Channels",
+		"slot_id": "generated_chain_nested_poc_shelter_2_to_3"
+	}
+}

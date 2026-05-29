@@ -1,0 +1,24 @@
+[gd_scene format=3 uid="uid://cxq52emhtiqen"]
+
+[ext_resource type="PackedScene" uid="uid://civ25w5pj8nfi" path="res://resources/models/peris-sim/peris-sim.gltf" id="1_7vujh"]
+
+[sub_resource type="Environment" id="Environment_1jrdb"]
+background_mode = 1
+ambient_light_source = 2
+ambient_light_color = Color(0.4527142, 0.37521115, 0.5201956, 1)
+ambient_light_energy = 0.6
+glow_enabled = true
+glow_intensity = 0.45
+glow_bloom = 0.12
+
+[node name="Node3D" type="Node3D" unique_id=541613636]
+
+[node name="default2" parent="." unique_id=1719876395 instance=ExtResource("1_7vujh")]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -2.120719, 0, -1.6762371)
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1619768369]
+environment = SubResource("Environment_1jrdb")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="WorldEnvironment" unique_id=1814698099]
+transform = Transform3D(0.9446458, 0.28944293, -0.15448971, 0, 0.47087333, 0.88220084, 0.32809186, -0.83336735, 0.4448085, 0, 0, 0.6673794)
+shadow_enabled = true

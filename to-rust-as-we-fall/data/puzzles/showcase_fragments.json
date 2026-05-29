@@ -800,6 +800,60 @@
 			]
 		},
 		{
+			"id": "generated_teaching_stretch",
+			"display_name": "Generated Teaching Stretch",
+			"scene": "res://scenes/fragments/generated_stretch_preview.tscn",
+			"kind": "survival",
+			"tags": ["generated", "archetype", "stretch", "shelter", "chunk"],
+			"setup": [
+				{"type": "call", "method": "headless_set_selected_characters", "args": [["aster", "peris", "endo"]]},
+				{"type": "select_character", "char_id": "aster"}
+			],
+			"scenarios": [
+				{
+					"id": "environment_contract",
+					"display_name": "Environment Contract",
+					"script": [
+						{"type": "assert_path", "path": "preview_chunk", "op": "==", "value": "generated_stretch"},
+						{"type": "assert_path", "path": "preview_party_preset", "op": "==", "value": "full_party_full_health"},
+						{"type": "assert_path", "path": "selected_characters", "op": "contains", "value": "aster"},
+						{"type": "assert_path", "path": "selected_characters", "op": "contains", "value": "peris"},
+						{"type": "assert_path", "path": "selected_characters", "op": "contains", "value": "endo"},
+						{"type": "assert_path", "path": "character_stats.aster.hp", "op": "==", "value": 100.0},
+						{"type": "assert_path", "path": "character_stats.peris.sta", "op": "==", "value": 100.0},
+						{"type": "assert_path", "path": "chunk.generation.contract_id", "op": "==", "value": "stretch_generation_v1"},
+						{"type": "assert_path", "path": "chunk.generation.spec_id", "op": "==", "value": "generated_teaching_channels_shelter_1_to_2"},
+						{"type": "assert_path", "path": "chunk.generation.world_slot.entry_shelter_id", "op": "==", "value": "shelter_1"},
+						{"type": "assert_path", "path": "chunk.generation.world_slot.exit_shelter_id", "op": "==", "value": "shelter_2"}
+					]
+				},
+				{
+					"id": "golden_path_reaches_shelter",
+					"display_name": "Golden Path Reaches Shelter",
+					"script": [
+						{"type": "call_chunk", "method": "reset_preview_state"},
+						{"type": "call_chunk", "method": "run_generated_golden_path"},
+						{"type": "assert_path", "path": "chunk.shelter_rested", "op": "==", "value": true},
+						{"type": "assert_path", "path": "chunk.route_phase", "op": "==", "value": "complete"},
+						{"type": "assert_path", "path": "chunk.first_shelter_beat_fired", "op": "==", "value": true},
+						{"type": "assert_path", "path": "chunk.shortcut_unlocked", "op": "==", "value": true}
+					]
+				},
+				{
+					"id": "risky_route_recovers",
+					"display_name": "Risky Route Recovers",
+					"script": [
+						{"type": "call_chunk", "method": "reset_preview_state"},
+						{"type": "call_chunk", "method": "run_generated_risky_recovery"},
+						{"type": "assert_path", "path": "chunk.route_phase", "op": "==", "value": "complete"},
+						{"type": "assert_path", "path": "chunk.shelter_rested", "op": "==", "value": true},
+						{"type": "assert_path", "path": "chunk.risky_damage_total", "op": ">", "value": 0.0},
+						{"type": "assert_path", "path": "chunk.last_outcome", "op": "==", "value": "success"}
+					]
+				}
+			]
+		},
+		{
 			"id": "lockout_boundary_escape",
 			"display_name": "Lockout Boundary Escape",
 			"scene": "res://scenes/tutorial/act1.tscn",

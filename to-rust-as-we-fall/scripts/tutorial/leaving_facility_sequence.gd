@@ -1,14 +1,9 @@
 @tool
 extends "res://scripts/tutorial/tutorial_sequence.gd"
 
-const DayNightCycleScript = preload("res://scripts/game/day_night_cycle.gd")
+const DayNightCycleScript = preload("res://scripts/system/simulation/day_night_cycle.gd")
 
-## Leaving the facility — iron spill tutorial.
-## Aster and Peris forced out. Endo joins at the exit.
-## Teaches safe/direct routing, time pressure, first shelter rest.
-##
-## Event-driven: uses EventScheduler + GameState interpolation.
-## Each step is a function that does its work and schedules the next event.
+## Iron spill tutorial: routing, pressure, Endo join, first shelter rest.
 
 var _routing_mode := "safe"
 
@@ -22,9 +17,9 @@ var _world_environment: Environment
 var _game_day := 1
 var _game_time := 0.3
 var _game_clock = DayNightCycleScript.new()
-# HP + running live in GameState (stat API / set_running); nothing local here.
+# HP and running live in GameState.
 
-# Layout — corridor runs along +X
+# Corridor runs along +X.
 const EXIT_POS := Vector3(0, 0, 0)
 const IRON_1_POS := Vector3(12, 0, 0)
 const SAFE_1_WAYPOINT := Vector3(12, 0, -6)
@@ -69,7 +64,6 @@ func _build_characters() -> void:
 	_endo.visible = false
 	chars.add_child(_endo)
 
-	# Camera
 	if not Engine.is_editor_hint():
 		_setup_game_camera(_player, Vector3(0, 10, 8))
 
@@ -79,14 +73,12 @@ func _register_characters() -> void:
 	_register_gs_character("endo", _endo, 2.5, {"hp": GameState.HP_MAX})
 
 func _setup_ui() -> void:
-	# Game HUD — HP bar, time display, routing toggle
 	_hud = CanvasLayer.new()
 	_hud.name = "GameHUD"
-	_hud.set_script(preload("res://scripts/game/game_hud.gd"))
+	_hud.set_script(preload("res://scripts/ui/game_hud.gd"))
 	add_child(_hud)
 	_hud.add_stat_bar("hp", Color(0.7, 0.3, 0.25), GameState.HP_MAX, GameState.HP_MAX)
-	# Bind late in _begin once _game_state exists. Keep auto_toggle_running
-	# false so the scene's step guard in _toggle_run still runs.
+	# Bind after _game_state exists; route guards still own toggles.
 
 func _begin() -> void:
 	if _hud:
@@ -164,7 +156,6 @@ func _start_fade_in() -> void:
 
 func _start_facility_exit() -> void:
 	_current_step = "facility_exit"
-	# Camera look-ahead to show the corridor
 	var orig_offset: Vector3 = _camera.follow_offset
 	var t := create_tween()
 	t.tween_property(_camera, "follow_offset", orig_offset + Vector3(3, 0, 0), 1.5)
@@ -443,8 +434,7 @@ func _build_decorations() -> void:
 	if not env_node:
 		return
 
-	# Exposed vasculature — conduit pipes running along the corridor ceiling,
-	# representing blood vessels visible in the extracellular space
+	# Exposed vasculature.
 	var pipe_mat := StandardMaterial3D.new()
 	pipe_mat.albedo_color = Color(0.18, 0.1, 0.08)
 	pipe_mat.roughness = 0.6
@@ -475,7 +465,7 @@ func _build_decorations() -> void:
 		cap.rotation.z = 0.3 * (1 if i % 2 == 0 else -1)
 		env_node.add_child(cap)
 
-	# Iron deposit growths on walls near iron patches — rust-colored nodules
+	# Iron deposit growths.
 	var rust_mat := StandardMaterial3D.new()
 	rust_mat.albedo_color = Color(0.4, 0.15, 0.05)
 	rust_mat.emission_enabled = true
@@ -498,7 +488,7 @@ func _build_decorations() -> void:
 			)
 			env_node.add_child(nodule)
 
-	# Support struts — angled structural braces along the corridor
+	# Support struts.
 	var strut_mat := StandardMaterial3D.new()
 	strut_mat.albedo_color = Color(0.1, 0.1, 0.12)
 	for i in range(6):
@@ -511,7 +501,7 @@ func _build_decorations() -> void:
 		strut.rotation.z = 0.2
 		env_node.add_child(strut)
 
-	# Emergency route beacons — small lights marking the safe detour paths
+	# Emergency route beacons.
 	var beacon_mat := StandardMaterial3D.new()
 	beacon_mat.albedo_color = Color(0.2, 0.4, 0.3)
 	beacon_mat.emission_enabled = true
@@ -559,7 +549,7 @@ func _build_decorations() -> void:
 		lbl.position = s.pos + Vector3(0, 0, -0.02)
 		env_node.add_child(lbl)
 
-	# Degradation marks — darker stained patches on the floor near iron
+	# Degradation marks.
 	var stain_mat := StandardMaterial3D.new()
 	stain_mat.albedo_color = Color(0.06, 0.05, 0.04)
 	for iron_x in [IRON_1_POS.x, IRON_2_POS.x]:

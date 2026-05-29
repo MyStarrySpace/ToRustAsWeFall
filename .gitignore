@@ -35,3 +35,20 @@ to-rust-as-we-fall/hide_encounter*_analysis.json
 to-rust-as-we-fall/hide_encounter_*.png
 to-rust-as-we-fall/*_analysis_plots/
 to-rust-as-we-fall/dialogue_dump.txt
+
+# Art-tool working directories (source lives here; game-ready exports go in
+# to-rust-as-we-fall/resources/). Too large / scratch for version control.
+asesprite/
+blender/
+blockbench/
+crocotile/
+kitbash-tool/
+
+# Generated reports + run artifacts
+to-rust-as-we-fall/reports/
+
+# Temp logs and editor lock files
+*.err.log
+*.out.log
+tmp_*.log
+~$*.xlsx

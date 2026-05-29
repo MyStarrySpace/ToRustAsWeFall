@@ -1,5 +1,5 @@
 extends "res://scripts/scene_chunks/scene_chunk.gd"
-# @rendering_only_file — chunk does only visual setup and pulse animation.
+# @rendering_only_file: visual setup and pulse animation only.
 
 const FLOOR_CENTER := Vector3(28.0, -0.05, 0.0)
 const FLOOR_SIZE := Vector3(60.0, 0.1, 18.0)
@@ -181,14 +181,13 @@ func _build_boundary_panel() -> void:
 	_add_box(self, ACCESS_PANEL_POS + Vector3(0.6, 0.0, 0.0), Vector3(0.2, 1.5, 1.0), Color(0.12, 0.15, 0.2), Color(0.14, 0.22, 0.36), 0.75)
 	_add_box(self, ACCESS_PANEL_POS + Vector3(2.4, 1.9, 0.0), Vector3(3.6, 3.8, 0.4), Color(0.17, 0.18, 0.22))
 	_add_label(self, "LOCKOUT BOUNDARY", ACCESS_PANEL_POS + Vector3(-1.0, 2.5, 0.0))
-	_access_interactable = _add_interactable(
+	_access_interactable = _add_inspection_interactable(
 		self,
 		"AccessPanelInteractable",
 		"Access Panel",
 		ACCESS_PANEL_POS + Vector3(-1.0, 0.0, 0.0),
 		"ACCESS",
-		"aster",
-		1.0
+		"aster"
 	)
 	_access_interactable.interacted.connect(_on_access_interacted)
 

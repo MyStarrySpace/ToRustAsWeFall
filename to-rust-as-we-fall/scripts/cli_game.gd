@@ -1,29 +1,7 @@
 extends Node
 
-## CLI game mode. Runs the game headlessly with text input/output.
+## Headless text CLI for scripted play, record, and replay.
 ## Launch: godot --headless --path "." -- --cli
-##
-## Commands:
-##   move <x> <z>     Move player to world position
-##   run              Toggle run mode
-##   interact         Press E (interact with nearby object)
-##   protect          Press Q (Protect ability)
-##   route            Press Tab (toggle safe/direct)
-##   wait <seconds>   Advance game time
-##   status           Print full game state
-##   advance          Click through dialogue
-##   help             Show available commands
-##   quit             Exit
-##
-## Record/replay flags:
-##   --record <path>  Attach an EventLog to the scene's GameState during the
-##                    session. On exit, writes <path> (the log) and
-##                    <path>.snap (the recorded GameState snapshot used as
-##                    the ground truth for replay verification).
-##   --replay <path>  Load the log + snapshot, replay the log against the
-##                    current scene's grid via GameState.replay, and assert
-##                    the replayed state matches the snapshot. Exits 0 if
-##                    they match, 1 otherwise.
 
 var _sim: SimRunner
 var _running := true
@@ -34,10 +12,9 @@ var _record_log: EventLog
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	if not args.has("--cli"):
-		# Not in CLI mode — this autoload does nothing
+		# Skip outside CLI mode.
 		return
 
-	# Parse --record / --replay paths
 	for i in range(args.size()):
 		if args[i] == "--record" and i + 1 < args.size():
 			_record_path = args[i + 1]
@@ -58,11 +35,10 @@ func _ready() -> void:
 	if _record_path != "":
 		_attach_recorder()
 
-	# Start processing input on a thread
 	_start_input_loop()
 
 func _start_input_loop() -> void:
-	# Process stdin in _process to stay on the main thread
+	# Process stdin on the main thread.
 	set_process(true)
 	_prompt()
 
@@ -72,20 +48,15 @@ var _check_stdin := true
 func _process(_delta: float) -> void:
 	if not _running or not _check_stdin:
 		return
-	# Non-blocking stdin read isn't great in Godot, so we use a poll approach
-	# In practice, the game advances each frame while we wait for input
+	# Placeholder for non-blocking stdin polling.
 	pass
 
 func _unhandled_input(event: InputEvent) -> void:
-	# Not used in CLI mode — input comes from stdin
+	# Input comes from stdin.
 	pass
 
 func _prompt() -> void:
-	# Godot doesn't have great stdin support in-process.
-	# For CLI mode, we'll use a polling approach with OS.execute or
-	# just process commands passed as args after --cli.
-	#
-	# For now, support batch command mode:
+	# Batch command mode:
 	# godot --headless --path "." -- --cli --cmd "move 8 -3" --cmd "interact" --cmd "status"
 	var args := OS.get_cmdline_user_args()
 	var commands: Array[String] = []
@@ -98,11 +69,9 @@ func _prompt() -> void:
 			i += 1
 
 	if commands.is_empty():
-		# Interactive mode hint
 		print("[CLI] No --cmd arguments. Use: -- --cli --cmd \"move 8 -3\" --cmd \"status\"")
 		print("[CLI] Or use --cli-script <path> to run a command script file.")
 
-		# Check for script file
 		var script_idx := args.find("--cli-script")
 		if script_idx >= 0 and script_idx + 1 < args.size():
 			var script_path: String = args[script_idx + 1]
@@ -174,13 +143,20 @@ func _execute_text_command(text: String) -> void:
 			await _sim._execute(SimCommand.key_press(KEY_Z))
 			print("[CLI] Run toggled")
 
-		"dwell", "interact", "use":
-			# Proximity interaction — just wait near the object for its dwell time
+		"dwell":
+			# Proximity interaction waits through dwell time.
 			var dwell_secs := 2.0
 			if parts.size() >= 2:
 				dwell_secs = parts[1].to_float()
 			print("[CLI] Dwelling for %.1fs (proximity interaction)..." % dwell_secs)
 			await _sim._execute(SimCommand.wait_time(dwell_secs))
+
+		"click", "interact", "use":
+			# Interact with a named interactable (e.g. click Terminal).
+			if parts.size() >= 2:
+				await _sim._execute(SimCommand.trigger_interactable(parts[1]))
+			else:
+				print("[CLI] Usage: click <InteractableName>")
 
 		"protect":
 			await _sim._execute(SimCommand.key_press(KEY_X))
@@ -196,7 +172,12 @@ func _execute_text_command(text: String) -> void:
 				seconds = parts[1].to_float()
 			await _sim._execute(SimCommand.wait_time(seconds))
 
-		"advance", "skip":
+		"advance":
+			# Single acknowledge — the same step a player click performs.
+			await _sim._execute(SimCommand.advance_dialogue())
+
+		"skip":
+			# Drain the current dialogue, acknowledging wait gates as it goes.
 			await _sim._execute(SimCommand.wait_dialogue())
 
 		"status", "state", "look":
@@ -220,10 +201,12 @@ func _execute_text_command(text: String) -> void:
 			print("  grid_move <gx> <gz>  Move player to grid cell (A* pathfinding)")
 			print("  run             Toggle run/walk")
 			print("  dwell [secs]    Wait near object for proximity interaction (default 2s)")
-			print("  protect         Cast Protect ability (Q)")
+			print("  click <name>    Interact with a named interactable (e.g. click Terminal)")
+			print("  protect         Cast Protect ability (X)")
 			print("  route           Toggle safe/direct routing (Tab)")
 			print("  wait <seconds>  Advance game time")
-			print("  advance         Click through dialogue")
+			print("  advance         Advance dialogue one step (acknowledge)")
+			print("  skip            Drain current dialogue to the end")
 			print("  status          Print game state")
 			print("  phase           Print current sequence phase")
 			print("  assert <stat> <op> <value>  Check a stat (e.g. assert atp >= 8)")
@@ -237,10 +220,7 @@ func _execute_text_command(text: String) -> void:
 
 # --- Record / replay ---
 
-# Pre-attach an EventLog into GameState's static pending slot. The first
-# GameState constructed (typically the scene's) consumes it. This captures
-# the session from register_character onward, not from whatever frame the
-# recorder happened to attach on.
+# Pre-attach a log so the scene's GameState records from setup.
 func _attach_recorder() -> void:
 	_record_log = EventLog.new()
 	GameState._pending_event_log = _record_log
@@ -271,8 +251,7 @@ func _finalize_recording() -> void:
 	print("[CLI/record] Wrote %d events (%d bytes) to %s" % [
 		_record_log.size(), bytes.size(), _record_path])
 
-# Load a recorded log + snapshot, replay against the current scene's grid,
-# and assert the replayed final state matches the snapshot.
+# Replay a recorded log and compare to its snapshot.
 func _run_replay() -> void:
 	var lf := FileAccess.open(_replay_path, FileAccess.READ)
 	if lf == null:
@@ -311,8 +290,7 @@ func _run_replay() -> void:
 		print("  actual:   %s" % actual_snap)
 		get_tree().quit(1)
 
-# Wait up to N frames for the scene's GameState to exist. Sequences create
-# it inside their own _ready, which runs after this autoload's _ready awaits.
+# Wait for the sequence GameState to exist.
 func _await_game_state(max_frames: int = 60) -> GameState:
 	for _i in range(max_frames):
 		var gs: GameState = _sim._find_game_state()
@@ -321,10 +299,7 @@ func _await_game_state(max_frames: int = 60) -> GameState:
 		await get_tree().process_frame
 	return null
 
-# Snapshot equality is a structural compare on the dicts we serialize today
-# (characters, explored). Position floats are compared with epsilon to absorb
-# tiny FP drift between paths that should be deterministic but may vary by
-# the last bit of float math.
+# Structural snapshot compare with epsilon for position floats.
 func _snapshots_equal(a: Variant, b: Variant) -> bool:
 	if typeof(a) != typeof(b):
 		return false

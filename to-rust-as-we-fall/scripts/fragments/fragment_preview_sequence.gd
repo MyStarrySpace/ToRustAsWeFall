@@ -1,9 +1,8 @@
 extends "res://scripts/tutorial/tutorial_sequence.gd"
 
-const DayNightCycleScript = preload("res://scripts/game/day_night_cycle.gd")
-const GameHUDScript = preload("res://scripts/game/game_hud.gd")
-const ItemData = preload("res://scripts/game/item_data.gd")
-const SurvivalStats = preload("res://scripts/game/survival_stats.gd")
+const DayNightCycleScript = preload("res://scripts/system/simulation/day_night_cycle.gd")
+const GameHUDScript = preload("res://scripts/ui/game_hud.gd")
+const ItemData = preload("res://scripts/game/objects/item_data.gd")
 const PERCEPTION_STACK_SHADER := preload("res://resources/perception_stack.gdshader")
 
 const STACKS_CHUNK_SCENE := preload("res://scenes/fragments/chunks/stacks_fragment_chunk.tscn")
@@ -14,6 +13,8 @@ const MOTHER_FERROLURE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/mot
 const SURVIVAL_RANGE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/survival_range_chunk.tscn")
 const CHANNELS_RHYTHM_CHUNK_SCENE := preload("res://scenes/fragments/chunks/channels_rhythm_chunk.tscn")
 const CHANNELS_HIDE_WINDOW_CHUNK_SCENE := preload("res://scenes/fragments/chunks/channels_hide_window_chunk.tscn")
+const ENDO_JUNCTION_STRETCH_CHUNK_SCENE := preload("res://scenes/fragments/chunks/endo_junction_stretch_chunk.tscn")
+const GENERATED_STRETCH_CHUNK_SCENE := preload("res://scenes/fragments/chunks/generated_stretch_chunk.tscn")
 
 const CHARACTER_IDS := ["aster", "peris", "endo"]
 const CHARACTER_DISPLAY_NAMES := {
@@ -41,13 +42,23 @@ const ABILITY_KEYCODES := {
 	"Q": KEY_Q,
 	"W": KEY_W,
 	"E": KEY_E,
+	"Z": KEY_Z,
 	"X": KEY_X,
 	"V": KEY_V,
+}
+const PREVIEW_GUI_CONTRACT_ID := "fragment_preview_shared_gui_v1"
+const GAME_HUD_SCRIPT_PATH := "res://scripts/ui/game_hud.gd"
+const PREVIEW_CONTROL_HELP := "Click move  1-3 focus  Ctrl+1-3 multi-select  C cycle  Z/X abilities  V drop  T transfer  B retrieve  F1-F3 overlays  O drawer  Tab route  Space pause  R reload"
+const PREVIEW_INVENTORY_CONTROL_HELP := "Controls: Z/X abilities  V drop  T transfer  B retrieve"
+const CANONICAL_MAIN_ABILITY_BINDINGS := {
+	"aster_focus": {"owner": "aster", "keybind": "Z", "keycode": KEY_Z},
+	"peris_tune": {"owner": "peris", "keybind": "X", "keycode": KEY_X},
+	"endo_patch": {"owner": "endo", "keybind": "Z", "keycode": KEY_Z},
 }
 
 const DEFAULT_HP := 100.0
 const DEFAULT_STAMINA := 100.0
-const DEFAULT_ATP := SurvivalStats.ATP_MAX_PIPS
+const DEFAULT_ATP := GameState.ATP_MAX_PIPS
 const DEFAULT_DAY := 1
 const DEFAULT_TIME := 0.28
 const DEFAULT_DAY_DURATION_SECONDS := DayNightCycleScript.DEFAULT_DAY_DURATION_SECONDS
@@ -57,6 +68,7 @@ const STAMINA_REGEN := 10.0
 
 @export var preview_chunk := "stacks"
 @export var scene_title_override := ""
+@export var preview_chunk_config: Dictionary = {}
 
 var _characters: Dictionary = {}
 var _character_state: Dictionary = {}
@@ -121,6 +133,10 @@ func _get_chunk_scene(chunk_name: String) -> PackedScene:
 			return CHANNELS_RHYTHM_CHUNK_SCENE
 		"channels_hide_window":
 			return CHANNELS_HIDE_WINDOW_CHUNK_SCENE
+		"endo_junction_stretch":
+			return ENDO_JUNCTION_STRETCH_CHUNK_SCENE
+		"generated_stretch":
+			return GENERATED_STRETCH_CHUNK_SCENE
 		_:
 			return null
 
@@ -169,11 +185,14 @@ func _build_characters() -> void:
 
 func _register_characters() -> void:
 	for char_id in CHARACTER_IDS:
-		_register_gs_character(char_id, _characters[char_id], CHARACTER_SPEEDS[char_id], {
+		var character_node: Node3D = _characters[char_id]
+		_register_gs_character(char_id, character_node, CHARACTER_SPEEDS[char_id], {
 			"hp": DEFAULT_HP,
 			"stamina": DEFAULT_STAMINA,
 			"atp": DEFAULT_ATP,
 		})
+		if character_node != null and character_node.has_method("bind_interaction_root"):
+			character_node.call("bind_interaction_root", self)
 
 func _setup_ui() -> void:
 	_build_preview_ui()
@@ -185,9 +204,11 @@ func _setup_ui() -> void:
 func _begin() -> void:
 	set_preview_step(preview_chunk)
 	_active_chunk = _load_chunk(preview_chunk)
+	_connect_outline_feedback_sources(self)
 	_apply_chunk_runtime_preset()
 	if _active_chunk != null and _active_chunk.has_method("reset_preview_state"):
 		_active_chunk.call("reset_preview_state")
+	_apply_chunk_navigation_graph()
 	_apply_chunk_metadata()
 	_position_party_for_chunk()
 	_select_character(_default_chunk_character())
@@ -195,6 +216,22 @@ func _begin() -> void:
 	_refresh_inventory_panel()
 	_tutorial_prompt.show_prompt("Click to move")
 	show_preview_message("Preview booted with full HP, stamina, and ATP.", 2.0)
+
+func _configure_loaded_chunk(chunk: Node3D, chunk_name: String) -> void:
+	if chunk_name != preview_chunk:
+		return
+	if chunk != null and chunk.has_method("configure_chunk"):
+		chunk.call("configure_chunk", preview_chunk_config)
+
+func _apply_chunk_navigation_graph() -> void:
+	if _game_state == null:
+		return
+	if _active_chunk != null and _active_chunk.has_method("get_navigation_graph_data"):
+		var data: Variant = _active_chunk.call("get_navigation_graph_data")
+		if data is Dictionary and not (data as Dictionary).is_empty():
+			_game_state.set_navigation_data(data as Dictionary)
+			return
+	_game_state.clear_navigation_graph()
 
 func _compute_speed() -> float:
 	if _scheduler != null and _scheduler.is_paused():
@@ -235,7 +272,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			KEY_C:
 				_cycle_character()
 			KEY_Z:
-				_toggle_run()
+				if not _activate_keybound_preview_ability(KEY_Z):
+					_toggle_run()
 			KEY_SPACE:
 				_toggle_pause()
 			KEY_R:
@@ -247,7 +285,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			KEY_F3:
 				_toggle_overlay("endo")
 			KEY_X:
-				_consume_active_item()
+				if not _activate_keybound_preview_ability(KEY_X):
+					_consume_active_item()
 			KEY_V:
 				_drop_active_item()
 			KEY_T:
@@ -270,9 +309,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				else:
 					_select_character("endo")
 			_:
-				var ability_id := _get_ability_for_keycode(key_event.keycode)
-				if ability_id != "":
-					_activate_preview_ability(ability_id)
+				_activate_keybound_preview_ability(key_event.keycode)
 
 func register_preview_interactable(interactable: Node) -> void:
 	if _preview_interactables.has(interactable):
@@ -280,6 +317,11 @@ func register_preview_interactable(interactable: Node) -> void:
 	_preview_interactables.append(interactable)
 	interactable.dialogue_box = _dialogue
 	interactable.active_character = _active_char_id
+	_connect_interactable_outline_feedback(interactable)
+	for char_id in CHARACTER_IDS:
+		var character_node: Node = _characters.get(char_id, null)
+		if character_node != null and character_node.has_method("bind_interaction_target"):
+			character_node.call("bind_interaction_target", interactable)
 
 func get_preview_dialogue_box() -> Node:
 	return _dialogue
@@ -437,7 +479,7 @@ func set_preview_character_stat(char_id: String, stat_name: String, value: float
 		"sta":
 			_character_state[char_id][normalized] = clampf(value, 0.0, DEFAULT_STAMINA)
 		"atp":
-			_character_state[char_id][normalized] = SurvivalStats.clamp_atp(value)
+			_character_state[char_id][normalized] = GameState.clamp_atp(value)
 		_:
 			return
 
@@ -494,6 +536,8 @@ func headless_get_anchor_positions() -> Dictionary:
 func headless_get_state() -> Dictionary:
 	var state := {
 		"preview_chunk": preview_chunk,
+		"preview_party_preset": _preview_party_preset(),
+		"world_slot": _active_world_slot(),
 		"current_step": _current_step,
 		"active_character": _active_char_id,
 		"selected_characters": _selected_char_ids.duplicate(),
@@ -519,11 +563,14 @@ func headless_get_state() -> Dictionary:
 		"overlay_states": _overlay_states.duplicate(true),
 		"enabled_overlays": _get_enabled_overlays(),
 		"active_overlay": _get_live_overlay_id(),
+		"overlay_vision_sources": _get_overlay_vision_source_state(),
 		"overlay_panel_collapsed": _overlay_panel_collapsed,
+		"ui": _get_preview_ui_state(),
 		"inventory": {
 			"collection": get_preview_collection_items(),
 			"endocytosing": {},
 		},
+		"navigation": _game_state.get_navigation_state() if _game_state != null else {},
 		"characters": {},
 		"character_stats": {},
 		"abilities": {},
@@ -540,16 +587,53 @@ func headless_get_state() -> Dictionary:
 		state["inventory"]["endocytosing"][char_id] = _game_state.is_endocytosing(char_id) if _game_state != null else false
 
 	for ability_id in _ability_order:
+		var ability_def: Dictionary = _ability_defs.get(ability_id, {})
+		var ability_runtime: Dictionary = _ability_runtime.get(ability_id, {})
 		state["abilities"][ability_id] = {
-			"state": str(_ability_runtime.get(ability_id, {}).get("base_state", "ready")),
-			"remaining": float(_ability_runtime.get(ability_id, {}).get("remaining", 0.0)),
-			"owner": str(_ability_defs.get(ability_id, {}).get("owner", "")),
+			"display_name": str(ability_def.get("display_name", ability_id.to_upper())),
+			"keybind": str(ability_def.get("keybind", "")),
+			"keycode": int(ability_def.get("keycode", 0)),
+			"state": str(ability_runtime.get("base_state", "ready")),
+			"remaining": float(ability_runtime.get("remaining", 0.0)),
+			"owner": str(ability_def.get("owner", "")),
 		}
 
 	if _active_chunk != null and _active_chunk.has_method("get_preview_state"):
 		state["chunk"] = _active_chunk.call("get_preview_state")
 
 	return state
+
+func _get_preview_ui_state() -> Dictionary:
+	var hud_contract := {}
+	if _hud != null and _hud.has_method("get_hud_contract"):
+		hud_contract = _hud.call("get_hud_contract")
+	return {
+		"contract_id": PREVIEW_GUI_CONTRACT_ID,
+		"hud_script": GAME_HUD_SCRIPT_PATH,
+		"shared_hud": _hud != null and _hud.get_script() == GameHUDScript,
+		"controls": PREVIEW_CONTROL_HELP,
+		"inventory_controls": PREVIEW_INVENTORY_CONTROL_HELP,
+		"ability_keymap": _get_canonical_main_ability_keymap(),
+		"hud": hud_contract,
+	}
+
+func _get_canonical_main_ability_keymap() -> Dictionary:
+	var keymap := {}
+	for ability_id in CANONICAL_MAIN_ABILITY_BINDINGS.keys():
+		var binding: Dictionary = CANONICAL_MAIN_ABILITY_BINDINGS.get(ability_id, {})
+		keymap[ability_id] = binding.duplicate(true)
+	return keymap
+
+func _active_world_slot() -> Dictionary:
+	if _active_chunk != null and _active_chunk.has_method("get_world_slot"):
+		var slot: Variant = _active_chunk.call("get_world_slot")
+		if slot is Dictionary:
+			return (slot as Dictionary).duplicate(true)
+	return {}
+
+func _preview_party_preset() -> String:
+	var slot := _active_world_slot()
+	return str(slot.get("preview_party_preset", "full_party_full_health"))
 
 func headless_select_character(char_id: String) -> void:
 	_select_character(char_id)
@@ -573,14 +657,28 @@ func headless_get_character_movement_info(char_id: String) -> Dictionary:
 	if _game_state == null or not _game_state.characters.has(char_id):
 		return {"moving": false}
 	var ch: Dictionary = _game_state.characters[char_id]
+	var speed := float(ch.get("move_speed", get_preview_character_move_speed(char_id, false)))
+	var walk_speed := get_preview_character_move_speed(char_id, false)
+	var running := speed > walk_speed + 0.05
 	var movement: Variant = ch.get("movement", null)
 	if not (movement is Dictionary):
-		return {"moving": false}
+		return {
+			"moving": false,
+			"speed": speed,
+			"running": running,
+			"locomotion": "idle",
+		}
+	var path: Array = (movement as Dictionary).get("path", [])
 	return {
 		"moving": true,
 		"duration": float(movement.get("duration", 0.0)),
 		"total_distance": float(movement.get("total_distance", 0.0)),
 		"start_tick": float(movement.get("start_tick", 0.0)),
+		"speed": speed,
+		"running": running,
+		"locomotion": "run" if running else "walk",
+		"path_count": path.size(),
+		"path": _serialize_vector3_path(path),
 	}
 
 func headless_activate_ability(ability_id: String) -> bool:
@@ -614,14 +712,21 @@ func headless_set_character_position(char_id: String, pos: Vector3) -> void:
 		return
 	if _game_state != null and _game_state.characters.has(char_id):
 		_game_state.command_stop(char_id)
-		_game_state.characters[char_id].position = Vector3(pos.x, 0.0, pos.z)
+		_game_state.characters[char_id].position = pos
 	if _characters[char_id] != null:
-		_characters[char_id].global_position = Vector3(pos.x, _characters[char_id].global_position.y, pos.z)
+		_characters[char_id].global_position = pos
 
 func headless_call_chunk(method_name: String, args: Array = []) -> Variant:
 	if _active_chunk == null or not _active_chunk.has_method(method_name):
 		return null
 	return _active_chunk.callv(method_name, args)
+
+func _serialize_vector3_path(path: Array) -> Array:
+	var result := []
+	for point in path:
+		if point is Vector3:
+			result.append([point.x, point.y, point.z])
+	return result
 
 func set_preview_character_position(char_id: String, pos: Vector3) -> void:
 	headless_set_character_position(char_id, pos)
@@ -948,23 +1053,64 @@ func _sync_overlay_stack() -> void:
 	if _overlay_stack_material == null or _overlay_stack_quad == null:
 		return
 
-	var data_enabled := bool(_overlay_states.get("aster", false)) and _characters.has("aster") and _character_is_visible("aster")
-	var fog_enabled := bool(_overlay_states.get("peris", false)) and _characters.has("peris") and _character_is_visible("peris")
+	var vision_positions := _get_overlay_vision_positions()
+	var data_enabled := bool(_overlay_states.get("aster", false)) and not vision_positions.is_empty()
+	var fog_enabled := bool(_overlay_states.get("peris", false)) and not vision_positions.is_empty()
 	_overlay_stack_quad.visible = data_enabled or fog_enabled
 
-	var aster_position := Vector3.ZERO
-	if _characters.has("aster") and _characters["aster"] != null:
-		aster_position = (_characters["aster"] as CharacterBody3D).global_position + Vector3(0.0, 1.0, 0.0)
-	var peris_position := Vector3.ZERO
-	if _characters.has("peris") and _characters["peris"] != null:
-		peris_position = (_characters["peris"] as CharacterBody3D).global_position + Vector3(0.0, 1.0, 0.0)
+	var source_0 := _overlay_vision_source_at(vision_positions, 0)
+	var source_1 := _overlay_vision_source_at(vision_positions, 1)
+	var source_2 := _overlay_vision_source_at(vision_positions, 2)
+	var source_count := mini(vision_positions.size(), CHARACTER_IDS.size())
 
 	_overlay_stack_material.set_shader_parameter("data_enabled", data_enabled)
-	_overlay_stack_material.set_shader_parameter("data_character_pos", aster_position)
+	_overlay_stack_material.set_shader_parameter("data_character_pos", source_0)
+	_overlay_stack_material.set_shader_parameter("data_vision_count", source_count)
+	_overlay_stack_material.set_shader_parameter("data_vision_pos_1", source_1)
+	_overlay_stack_material.set_shader_parameter("data_vision_pos_2", source_2)
 	_overlay_stack_material.set_shader_parameter("data_blackout_pos", Vector3(0.0, 0.0, -9999.0))
 	_overlay_stack_material.set_shader_parameter("data_blackout_radius", 0.0)
 	_overlay_stack_material.set_shader_parameter("fog_enabled", fog_enabled)
-	_overlay_stack_material.set_shader_parameter("fog_character_pos", peris_position)
+	_overlay_stack_material.set_shader_parameter("fog_character_pos", source_0)
+	_overlay_stack_material.set_shader_parameter("fog_vision_count", source_count)
+	_overlay_stack_material.set_shader_parameter("fog_vision_pos_1", source_1)
+	_overlay_stack_material.set_shader_parameter("fog_vision_pos_2", source_2)
+
+func _get_overlay_vision_positions() -> Array[Vector3]:
+	var positions: Array[Vector3] = []
+	for char_id in CHARACTER_IDS:
+		if not _characters.has(char_id) or _characters[char_id] == null:
+			continue
+		if not _character_is_visible(char_id):
+			continue
+		var character_node := _characters[char_id] as CharacterBody3D
+		if character_node == null:
+			continue
+		positions.append(character_node.global_position + Vector3(0.0, 1.0, 0.0))
+	return positions
+
+func _get_overlay_vision_source_state() -> Array[Dictionary]:
+	var sources: Array[Dictionary] = []
+	for char_id in CHARACTER_IDS:
+		if not _characters.has(char_id) or _characters[char_id] == null:
+			continue
+		if not _character_is_visible(char_id):
+			continue
+		var character_node := _characters[char_id] as CharacterBody3D
+		if character_node == null:
+			continue
+		sources.append({
+			"character_id": char_id,
+			"position": character_node.global_position + Vector3(0.0, 1.0, 0.0),
+		})
+	return sources
+
+func _overlay_vision_source_at(positions: Array[Vector3], index: int) -> Vector3:
+	if index >= 0 and index < positions.size():
+		return positions[index]
+	if not positions.is_empty():
+		return positions[0]
+	return Vector3(0.0, 0.0, -9999.0)
 
 func _connect_preview_item_signals() -> void:
 	if _game_state == null:
@@ -1136,7 +1282,7 @@ func _refresh_inventory_panel() -> void:
 	if _inventory_panel_label == null:
 		return
 	var lines: Array[String] = []
-	lines.append("Controls: X consume  V drop  T transfer  B retrieve")
+	lines.append(PREVIEW_INVENTORY_CONTROL_HELP)
 	for char_id in CHARACTER_IDS:
 		var slot_names: Array[String] = []
 		for slot in get_preview_hand_slots(char_id):
@@ -1238,7 +1384,7 @@ func _build_game_hud() -> void:
 	_hud.add_stat_bar("sta", Color(0.3, 0.52, 0.72), DEFAULT_STAMINA, DEFAULT_STAMINA)
 	_hud.add_stat_bar("atp", Color(0.34, 0.62, 0.38), DEFAULT_ATP, DEFAULT_ATP)
 	_hud.show_pause_toggle(false)
-	_hud.show_run_toggle(false)
+	_hud.show_run_toggle(false, "")
 	_hud.show_routing_toggle(_routing_mode)
 	_hud.pause_toggled.connect(_on_pause_toggled)
 	_hud.run_toggled.connect(_on_run_toggled)
@@ -1390,7 +1536,7 @@ func _apply_character_override(char_id: String, override: Dictionary) -> void:
 	if override.has("stamina"):
 		_character_state[char_id]["sta"] = clampf(float(override.get("stamina", DEFAULT_STAMINA)), 0.0, DEFAULT_STAMINA)
 	if override.has("atp"):
-		_character_state[char_id]["atp"] = SurvivalStats.clamp_atp(float(override.get("atp", DEFAULT_ATP)))
+		_character_state[char_id]["atp"] = GameState.clamp_atp(float(override.get("atp", DEFAULT_ATP)))
 	if override.has("status"):
 		_character_state[char_id]["status"] = str(override.get("status", ""))
 	if override.has("visible"):
@@ -1407,8 +1553,8 @@ func _build_default_ability_definitions() -> Dictionary:
 		"aster_focus": {
 			"id": "aster_focus",
 			"display_name": "FOCUS",
-			"keybind": "Q",
-			"keycode": KEY_Q,
+			"keybind": "Z",
+			"keycode": KEY_Z,
 			"owner": "aster",
 			"color": CHARACTER_COLORS["aster"],
 			"duration": 1.4,
@@ -1421,8 +1567,8 @@ func _build_default_ability_definitions() -> Dictionary:
 		"peris_tune": {
 			"id": "peris_tune",
 			"display_name": "TUNE",
-			"keybind": "W",
-			"keycode": KEY_W,
+			"keybind": "X",
+			"keycode": KEY_X,
 			"owner": "peris",
 			"color": CHARACTER_COLORS["peris"],
 			"duration": 1.8,
@@ -1436,8 +1582,8 @@ func _build_default_ability_definitions() -> Dictionary:
 		"endo_patch": {
 			"id": "endo_patch",
 			"display_name": "PATCH",
-			"keybind": "E",
-			"keycode": KEY_E,
+			"keybind": "Z",
+			"keycode": KEY_Z,
 			"owner": "endo",
 			"color": CHARACTER_COLORS["endo"],
 			"duration": 1.0,
@@ -1458,6 +1604,7 @@ func _configure_preview_abilities(chunk_abilities: Array) -> void:
 	var default_defs := _build_default_ability_definitions()
 	for ability_id in ["aster_focus", "peris_tune", "endo_patch"]:
 		var def: Dictionary = default_defs[ability_id].duplicate(true)
+		def = _apply_canonical_main_ability_binding(ability_id, def)
 		_ability_defs[ability_id] = def
 		_ability_order.append(ability_id)
 
@@ -1470,6 +1617,7 @@ func _configure_preview_abilities(chunk_abilities: Array) -> void:
 			continue
 		var merged: Dictionary = _ability_defs.get(ability_id, {}).duplicate(true)
 		merged.merge(entry_dict, true)
+		merged = _apply_canonical_main_ability_binding(ability_id, merged)
 		_ability_defs[ability_id] = merged
 		if not _ability_order.has(ability_id):
 			_ability_order.append(ability_id)
@@ -1489,6 +1637,15 @@ func _configure_preview_abilities(chunk_abilities: Array) -> void:
 			)
 
 	_refresh_ability_display()
+
+func _apply_canonical_main_ability_binding(ability_id: String, ability: Dictionary) -> Dictionary:
+	if not CANONICAL_MAIN_ABILITY_BINDINGS.has(ability_id):
+		return ability
+	var binding: Dictionary = CANONICAL_MAIN_ABILITY_BINDINGS.get(ability_id, {})
+	ability["owner"] = str(binding.get("owner", ability.get("owner", "")))
+	ability["keybind"] = str(binding.get("keybind", ability.get("keybind", "")))
+	ability["keycode"] = int(binding.get("keycode", ability.get("keycode", 0)))
+	return ability
 
 func _apply_chunk_metadata() -> void:
 	var title := scene_title_override
@@ -1510,7 +1667,7 @@ func _apply_chunk_metadata() -> void:
 		if owner != "" and keybind != "":
 			ability_hints.append("%s:%s %s" % [CHARACTER_DISPLAY_NAMES.get(owner, owner.capitalize()), keybind, display])
 
-	var controls := "Click move  1-3 focus  Ctrl+1-3 multi-select  C cycle  X consume  V drop  T transfer  B retrieve  F1-F3 overlays  O drawer  Tab route  Z run  Space pause  R reload"
+	var controls := PREVIEW_CONTROL_HELP
 	if not ability_hints.is_empty():
 		controls += "  " + "  ".join(ability_hints)
 
@@ -1643,7 +1800,7 @@ func _set_active_character(char_id: String) -> void:
 
 	_active_char_id = char_id
 	_player = _characters[char_id]
-	_player.set_move_enabled(true)
+	_sync_character_move_enabled()
 	if _camera != null:
 		_camera.target = _player
 
@@ -1658,6 +1815,12 @@ func _set_active_character(char_id: String) -> void:
 
 	if _active_chunk != null and _active_chunk.has_method("on_preview_character_selected"):
 		_active_chunk.call("on_preview_character_selected", char_id)
+
+func _sync_character_move_enabled() -> void:
+	for char_id in CHARACTER_IDS:
+		var character_node = _characters.get(char_id, null)
+		if character_node != null and character_node.has_method("set_move_enabled"):
+			character_node.call("set_move_enabled", char_id == _active_char_id)
 
 func _sanitize_selected_ids(selected_ids: Array) -> Array[String]:
 	var sanitized: Array[String] = []
@@ -1910,6 +2073,7 @@ func _refresh_ability_display(ability_id := "") -> void:
 		_hud.set_ability_state(current_id, display_state, display_remaining)
 
 func _get_ability_for_keycode(keycode: int) -> String:
+	var fallback := ""
 	for ability_id in _ability_order:
 		var ability: Dictionary = _ability_defs.get(ability_id, {})
 		var mapped_keycode := int(ability.get("keycode", 0))
@@ -1917,8 +2081,18 @@ func _get_ability_for_keycode(keycode: int) -> String:
 			var keybind := str(ability.get("keybind", "")).to_upper()
 			mapped_keycode = int(ABILITY_KEYCODES.get(keybind, 0))
 		if mapped_keycode == keycode:
-			return ability_id
-	return ""
+			if str(ability.get("owner", "")) == _active_char_id:
+				return ability_id
+			if fallback == "":
+				fallback = ability_id
+	return fallback
+
+func _activate_keybound_preview_ability(keycode: int) -> bool:
+	var ability_id := _get_ability_for_keycode(keycode)
+	if ability_id == "":
+		return false
+	_activate_preview_ability(ability_id)
+	return true
 
 func _update_stamina(delta: float, spd: float) -> void:
 	if _active_char_id == "" or not _character_state.has(_active_char_id):

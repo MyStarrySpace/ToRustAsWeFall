@@ -1,5 +1,22 @@
 # Asset Tools
 
+## glTF sidecar material wiring
+
+Use `gltf_wire_material_sidecars.py` after re-exporting a Crocotile `.gltf`. Crocotile rewrites the material table, so previously wired emissive and normal textures can disappear even when the sidecar PNG files are still beside the base textures. This tool reconnects sidecars by naming convention.
+
+Example:
+
+```powershell
+python tools\gltf_wire_material_sidecars.py `
+  resources\models\aster-sim\room\aster-sim-room-hi-res.gltf `
+  --emissive-factor "#9bd7ff" `
+  --emissive-strength 2.5 `
+  --normal-scale 1.0 `
+  --fail-on-no-changes
+```
+
+By default, each base texture looks for `*_emissive.png`, `*_normals.png`, and `*_normal.png`. Use `--dry-run` to check what would be reconnected without editing the GLTF.
+
 ## glTF emissive masks from palette colors
 
 Use `gltf_emissive_from_color.py` when an asset uses a flat palette color to mark lights, screens, signs, or other glowing details. The tool scans each material's base-color texture, writes a black emissive mask where only matching pixels are lit, and wires that mask back into the `.gltf`.

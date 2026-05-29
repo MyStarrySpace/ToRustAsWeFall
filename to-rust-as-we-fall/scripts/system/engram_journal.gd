@@ -244,7 +244,7 @@ func _collect_capture_hide_nodes(root: Node, excluded_nodes: Array) -> Array:
 		if node is Node:
 			excluded[node.get_instance_id()] = true
 
-	var result: Array = []
+	var result: Array = []f
 	_collect_capture_hide_nodes_recursive(root, result, excluded)
 	return result
 
