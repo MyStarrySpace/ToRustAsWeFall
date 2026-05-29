@@ -107,6 +107,9 @@ func _ready() -> void:
 			"--test-event-log-mutation-audit":
 				ran_test = true
 				_test_event_log_mutation_audit()
+			"--test-movement-capture":
+				ran_test = true
+				_test_movement_capture()
 			"--test-rng-determinism":
 				ran_test = true
 				_test_rng_determinism()
@@ -462,6 +465,7 @@ func _run_all_tests() -> void:
 	_test_game_state()
 	_test_event_log_roundtrip()
 	_test_event_log_mutation_audit()
+	_test_movement_capture()
 	_test_rng_determinism()
 	_test_rng_no_wallclock()
 	await _test_archetype_generation()
@@ -6278,6 +6282,14 @@ func _test_event_log_mutation_audit() -> void:
 		# Stat and running wrappers emit; these
 		# call through them rather than emitting directly.
 		"adjust_stat", "toggle_running", "reset_characters_to_full",
+		# Pure ATP helpers (static, no state) — formatting/clamping only.
+		"normalize_atp", "clamp_atp", "atp_text",
+		# Navigation graph is map structure (like the grid), set from level data
+		# at scene setup — not a per-run player command. Carried with the
+		# scene/grid that replay is given, not as an event. get_navigation_state
+		# is a pure query.
+		"set_navigation_graph", "set_navigation_data", "clear_navigation_graph",
+		"get_navigation_state",
 	])
 
 	var public_funcs := _parse_public_funcs(content)
@@ -6294,6 +6306,55 @@ func _test_event_log_mutation_audit() -> void:
 
 	_assert_equals(missing.size(), 0,
 		"All public mutating functions emit (missing _emit in: %s)" % str(missing))
+
+## Character movement — player AND scripted NPC — must be captured in the event
+## log and replay deterministically. Proves the data layer "captures moving
+## characters" end to end.
+func _test_movement_capture() -> void:
+	_test_name = "Movement Capture"
+
+	var grid := GridWorld.new()
+	grid.create_room(12, 12)  # walkable interior with a wall border
+	var scheduler := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = scheduler
+	gs.grid = grid
+	var log := EventLog.new()
+	gs.event_log = log
+
+	gs.register_character("hero", grid.grid_to_world(Vector2i(2, 2)), GameState.WALK_SPEED)
+	gs.register_character("npc", grid.grid_to_world(Vector2i(8, 8)), 3.0)
+
+	# The exact commands player.gd / npc.gd issue for movement.
+	gs.command_move_to_cell("hero", Vector2i(6, 6))
+	gs.command_walk_path("hero", [grid.grid_to_world(Vector2i(7, 7))])
+	gs.command_move_to_pos("npc", grid.grid_to_world(Vector2i(3, 3)))
+
+	# Every movement command landed in the log, for both characters.
+	var kinds := {}
+	for e in log.events:
+		var k := str(e.get("kind", ""))
+		kinds[k] = int(kinds.get(k, 0)) + 1
+	_assert_true(int(kinds.get(str(GameEvent.KIND_REGISTER_CHARACTER), 0)) >= 2,
+		"Both characters are registered in the event log")
+	_assert_true(int(kinds.get(str(GameEvent.KIND_MOVE_TO_CELL), 0)) >= 1,
+		"Grid move command is captured")
+	_assert_true(int(kinds.get(str(GameEvent.KIND_WALK_PATH), 0)) >= 1,
+		"Walk-path command is captured")
+	_assert_true(int(kinds.get(str(GameEvent.KIND_MOVE_TO_POS), 0)) >= 1,
+		"World-position move command (NPC) is captured")
+
+	# Settle movement, flush the tail tick, then replay into a fresh state.
+	scheduler.advance_ticks(12.0)
+	gs.flush_tick()
+	var hero_end := gs.get_position("hero")
+	var npc_end := gs.get_position("npc")
+
+	var replayed := GameState.replay(log, grid)
+	_assert_true(hero_end.distance_to(replayed.get_position("hero")) < 0.05,
+		"Replay reproduces the hero's movement (%s vs %s)" % [hero_end, replayed.get_position("hero")])
+	_assert_true(npc_end.distance_to(replayed.get_position("npc")) < 0.05,
+		"Replay reproduces the NPC's movement (%s vs %s)" % [npc_end, replayed.get_position("npc")])
 
 # Determinism test: same base seed across two runs must produce the same
 # sequence of values from every system's RNG. Different seeds must produce
