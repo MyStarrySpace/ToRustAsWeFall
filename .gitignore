@@ -52,3 +52,6 @@ to-rust-as-we-fall/reports/
 *.out.log
 tmp_*.log
 ~$*.xlsx
+
+# Stray temp files
+*.tmp
