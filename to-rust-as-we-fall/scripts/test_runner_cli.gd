@@ -306,6 +306,12 @@ func _ready() -> void:
 			"--test-scene-load":
 				ran_test = true
 				await _test_scene_load()
+			"--test-all-scenes-load":
+				ran_test = true
+				await _test_all_scenes_load()
+			"--test-scene-spatial":
+				ran_test = true
+				await _test_scene_spatial_consistency()
 			"--test-archetype-generation":
 				ran_test = true
 				await _test_archetype_generation()
@@ -475,6 +481,8 @@ func _run_all_tests() -> void:
 	_test_flora_memory()
 	_test_event_scheduler()
 	await _test_scene_load()
+	await _test_all_scenes_load()
+	await _test_scene_spatial_consistency()
 	_test_asset_pipeline()
 	await _test_aster_sim()
 	await _test_aster_playthrough()
@@ -711,6 +719,125 @@ func _test_scene_load() -> void:
 	_assert_true(block_lib is MeshLibrary, "block_library is MeshLibrary")
 
 	await get_tree().process_frame
+
+## Auto-discover EVERY .tscn under res://scenes and confirm it loads. Scenes that
+## aren't a heavy sequence (which their own dedicated test already instantiates)
+## are also instantiated. This way a newly-added scene can never go untested.
+func _test_all_scenes_load() -> void:
+	_test_name = "All Scenes Load"
+	var scene_paths := _discover_scenes("res://scenes")
+	scene_paths.sort()
+	_assert_true(scene_paths.size() >= 30,
+		"Discovered the scene set (%d scenes under res://scenes)" % scene_paths.size())
+	# These build a full act/sequence on _ready; their dedicated tests instantiate
+	# and drive them, so here we only confirm the resource loads.
+	var heavy := {
+		"res://scenes/tutorial/act1.tscn": true,
+		"res://scenes/tutorial/elevator.tscn": true,
+	}
+	for path in scene_paths:
+		var packed: PackedScene = load(path)
+		_assert_true(packed != null, "%s loads" % path)
+		if packed == null or heavy.has(path):
+			continue
+		var inst: Node = packed.instantiate()
+		_assert_true(inst != null, "%s instantiates" % path.get_file())
+		if inst == null:
+			continue
+		get_tree().root.add_child(inst)
+		await get_tree().process_frame
+		inst.queue_free()
+		await get_tree().process_frame
+
+func _discover_scenes(dir_path: String) -> Array[String]:
+	var found: Array[String] = []
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return found
+	dir.list_dir_begin()
+	var name := dir.get_next()
+	while name != "":
+		if name == "." or name == "..":
+			name = dir.get_next()
+			continue
+		var child := dir_path.path_join(name)
+		if dir.current_is_dir():
+			found.append_array(_discover_scenes(child))
+		elif name.ends_with(".tscn"):
+			found.append(child)
+		name = dir.get_next()
+	dir.list_dir_end()
+	return found
+
+## Spatial consistency for grid-backed tutorial scenes: every registered character
+## and every interactable must sit on a finite, in-bounds, walkable cell. Catches
+## characters spawned inside walls or off the grid.
+func _test_scene_spatial_consistency() -> void:
+	_test_name = "Scene Spatial Consistency"
+	var grid_scenes := [
+		"res://scenes/tutorial/aster_sim.tscn",
+		"res://scenes/tutorial/peris_sim.tscn",
+		"res://scenes/tutorial/leaving_facility.tscn",
+		"res://scenes/tutorial/tag_day.tscn",
+	]
+	for path in grid_scenes:
+		var packed: PackedScene = load(path)
+		_assert_true(packed != null, "%s loads for spatial check" % path.get_file())
+		if packed == null:
+			continue
+		var inst: Node = packed.instantiate()
+		get_tree().root.add_child(inst)
+		for _i in range(5):
+			await get_tree().process_frame
+
+		var label: String = path.get_file()
+		var gs = inst.get("_game_state")
+		_assert_true(gs != null, "%s exposes a GameState" % label)
+		if gs == null:
+			inst.queue_free()
+			await get_tree().process_frame
+			continue
+		_assert_true(gs.characters.size() > 0, "%s registers characters in GameState" % label)
+
+		# A grid is optional — some scenes use a procedural environment. When one
+		# is present, character/interactable cells must be in-bounds and walkable.
+		var grid = gs.grid
+		if grid != null:
+			_assert_true(int(grid.width) > 0 and int(grid.height) > 0 and float(grid.cell_size) > 0.0,
+				"%s grid has sane dimensions (%dx%d, cell %.1f)" % [label, grid.width, grid.height, grid.cell_size])
+
+		# Every GameState character: finite position (always); in-bounds + walkable when gridded.
+		for char_id in gs.characters.keys():
+			var pos: Vector3 = gs.get_position(char_id)
+			_assert_true(_is_finite_vec3(pos),
+				"%s character '%s' has a finite position" % [label, char_id])
+			if not _is_finite_vec3(pos) or grid == null:
+				continue
+			var cell: Vector2i = grid.world_to_grid(pos)
+			_assert_true(grid.is_in_bounds(cell.x, cell.y),
+				"%s character '%s' starts inside the grid (cell %s)" % [label, char_id, cell])
+			if grid.is_in_bounds(cell.x, cell.y):
+				_assert_true(grid.is_walkable(cell.x, cell.y),
+					"%s character '%s' starts on a walkable cell (cell %s, tile %d)" % [label, char_id, cell, grid.get_tile(cell.x, cell.y)])
+
+		# Every interactable: finite position (always); in-bounds when gridded.
+		for node in inst.find_children("*", "Interactable", true, false):
+			if not (node is Node3D):
+				continue
+			var ipos: Vector3 = (node as Node3D).global_position
+			_assert_true(_is_finite_vec3(ipos),
+				"%s interactable '%s' has a finite position" % [label, node.name])
+			if not _is_finite_vec3(ipos) or grid == null:
+				continue
+			var icell: Vector2i = grid.world_to_grid(ipos)
+			_assert_true(grid.is_in_bounds(icell.x, icell.y),
+				"%s interactable '%s' sits inside the grid (cell %s)" % [label, node.name, icell])
+
+		inst.queue_free()
+		await get_tree().process_frame
+
+func _is_finite_vec3(v: Vector3) -> bool:
+	return is_finite(v.x) and is_finite(v.y) and is_finite(v.z)
 
 func _assert_level_editor_plan_browser(editor_instance: Node) -> void:
 	_assert_true(editor_instance.has_method("get_editor_plan_entries"),
