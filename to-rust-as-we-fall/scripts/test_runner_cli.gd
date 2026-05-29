@@ -13049,7 +13049,7 @@ func _test_sequence_contracts() -> void:
 		],
 		peris_phase_1_actions,
 		peris_phase_1_setup,
-		"res://scenes/tutorial/tag_day.tscn"
+		"res://scenes/tutorial/aster_sim.tscn"
 	)
 
 	await _run_sequence_contract(
@@ -13062,7 +13062,7 @@ func _test_sequence_contracts() -> void:
 		],
 		tag_day_actions,
 		Callable(),
-		"res://scenes/tutorial/peris_sim.tscn"
+		"res://scenes/tutorial/elevator.tscn"
 	)
 
 	await _run_sequence_contract(
@@ -13077,7 +13077,7 @@ func _test_sequence_contracts() -> void:
 		],
 		peris_phase_2_actions,
 		peris_phase_2_setup,
-		"res://scenes/tutorial/elevator.tscn"
+		"res://scenes/tutorial/tag_day.tscn"
 	)
 
 	await _run_sequence_contract(

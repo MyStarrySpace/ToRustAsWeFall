@@ -482,10 +482,12 @@ func _start_transition_out() -> void:
 func _complete() -> void:
 	_current_step = "complete"
 	if _visit_phase == 1:
+		# First half opens the game, then hands off to Aster's sim.
 		_visit_phase = 2
-		_change_scene_or_record("res://scenes/tutorial/tag_day.tscn")
+		_change_scene_or_record("res://scenes/tutorial/aster_sim.tscn")
 	else:
-		_change_scene_or_record("res://scenes/tutorial/elevator.tscn")
+		# Second half (Monos session) leads into Tag Day.
+		_change_scene_or_record("res://scenes/tutorial/tag_day.tscn")
 
 # --- Key input ---
 

@@ -323,7 +323,7 @@ func _start_blue_transition() -> void:
 	_citizen_light.light_color = Color(0.15, 0.4, 0.85)
 	_citizen_light.light_energy = 6.0
 	_dialogue.default_hold_time = 2.0
-	# Blue fade transitions to Peris.
+	# Blue fade transitions into the elevator.
 	_fade_rect.color = Color(0.1, 0.2, 0.5, 0.0)
 	var tween := create_tween()
 	tween.tween_property(_fade_rect, "color:a", 1.0, 2.0)
@@ -331,7 +331,7 @@ func _start_blue_transition() -> void:
 
 func _on_sequence_complete() -> void:
 	_enter_step("complete")
-	_change_scene_or_record("res://scenes/tutorial/peris_sim.tscn")
+	_change_scene_or_record("res://scenes/tutorial/elevator.tscn")
 
 
 # --- Environment Build ---
