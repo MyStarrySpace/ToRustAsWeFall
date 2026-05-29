@@ -312,6 +312,9 @@ func _ready() -> void:
 			"--test-scene-spatial":
 				ran_test = true
 				await _test_scene_spatial_consistency()
+			"--test-occlusion-fade":
+				ran_test = true
+				await _test_occlusion_fade()
 			"--test-archetype-generation":
 				ran_test = true
 				await _test_archetype_generation()
@@ -483,6 +486,7 @@ func _run_all_tests() -> void:
 	await _test_scene_load()
 	await _test_all_scenes_load()
 	await _test_scene_spatial_consistency()
+	await _test_occlusion_fade()
 	_test_asset_pipeline()
 	await _test_aster_sim()
 	await _test_aster_playthrough()
@@ -838,6 +842,69 @@ func _test_scene_spatial_consistency() -> void:
 
 func _is_finite_vec3(v: Vector3) -> bool:
 	return is_finite(v.x) and is_finite(v.y) and is_finite(v.z)
+
+## OcclusionFade: shader loads, applies to occluders preserving albedo, and keeps
+## the player_position uniform synced to the bound target each frame.
+func _test_occlusion_fade() -> void:
+	_test_name = "Occlusion Fade"
+
+	var shader := load("res://resources/occlusion_fade.gdshader")
+	_assert_true(shader is Shader, "Occlusion fade shader loads")
+	var fade_script := load("res://scripts/game/objects/occlusion_fade.gd")
+	_assert_true(fade_script is GDScript, "OcclusionFade script loads")
+
+	var root := Node3D.new()
+	get_tree().root.add_child(root)
+
+	var target := Node3D.new()
+	target.position = Vector3(2.0, 0.0, 3.0)
+	root.add_child(target)
+
+	var occluder := MeshInstance3D.new()
+	occluder.mesh = BoxMesh.new()
+	var src_mat := StandardMaterial3D.new()
+	src_mat.albedo_color = Color(0.2, 0.4, 0.6)
+	src_mat.roughness = 0.7
+	occluder.material_override = src_mat
+	root.add_child(occluder)
+
+	var fade = fade_script.new()
+	root.add_child(fade)
+	fade.bind(target)
+	var mat = fade.register_occluder(occluder)
+
+	_assert_true(mat is ShaderMaterial, "register_occluder returns a ShaderMaterial")
+	_assert_equals(fade.occluder_count(), 1, "OcclusionFade tracks the registered occluder")
+	_assert_true(occluder.material_override is ShaderMaterial,
+		"Occluder mesh now renders through the occlusion shader")
+	if mat != null:
+		var copied: Color = mat.get_shader_parameter("albedo_color")
+		_assert_true(copied.is_equal_approx(Color(0.2, 0.4, 0.6)),
+			"Occlusion fade preserves the source albedo color")
+
+	# The controller syncs player_position (chest-height offset) each frame.
+	target.position = Vector3(5.0, 0.0, -1.0)
+	fade._process(0.016)
+	if mat != null:
+		var expected := target.global_position + Vector3(0.0, fade.target_height_offset, 0.0)
+		var got: Vector3 = mat.get_shader_parameter("player_position")
+		_assert_true(got.is_equal_approx(expected),
+			"player_position uniform tracks the bound target (got %s)" % got)
+
+	# Bulk registration over a subtree.
+	var group_root := Node3D.new()
+	root.add_child(group_root)
+	for i in range(3):
+		var mi := MeshInstance3D.new()
+		mi.mesh = BoxMesh.new()
+		group_root.add_child(mi)
+	var fade2 = fade_script.new()
+	root.add_child(fade2)
+	var n: int = fade2.register_occluders_in(group_root)
+	_assert_equals(n, 3, "register_occluders_in applies to every mesh under a root")
+
+	root.queue_free()
+	await get_tree().process_frame
 
 func _assert_level_editor_plan_browser(editor_instance: Node) -> void:
 	_assert_true(editor_instance.has_method("get_editor_plan_entries"),
