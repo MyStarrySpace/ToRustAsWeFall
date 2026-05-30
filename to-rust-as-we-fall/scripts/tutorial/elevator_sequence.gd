@@ -6,6 +6,7 @@ extends "res://scripts/tutorial/tutorial_sequence.gd"
 
 var _aster_node: CharacterBody3D
 var _peris_node: CharacterBody3D
+var _fall_landed_fired := false  # one-shot guard: bridge landing fires once
 var _escort_1  # NPC
 var _escort_2  # NPC
 var _active_character := "peris"
@@ -551,7 +552,8 @@ func _start_consciousness_fragments() -> void:
 		if unit:
 			unit.visible = false
 
-	# Fragment 1: Fade in on Peris + red light, then fade out
+	# Fragment 1 + 2 fades are cosmetic tweens; the step transition rides the
+	# scheduler so fast-forward reaches fade_in at the same tick.
 	var t := create_tween()
 	t.tween_property(_emergency_light, "light_energy", 2.0, 0.8)
 	t.parallel().tween_property(_fade_rect, "color:a", 0.0, 0.8)
@@ -565,21 +567,24 @@ func _start_consciousness_fragments() -> void:
 		t2.tween_property(_fade_rect, "color:a", 0.0, 0.8)
 		t2.tween_interval(1.5)
 		t2.tween_property(_fade_rect, "color:a", 1.0, 0.6)
-		t2.tween_callback(_start_fade_in)
 	)
+	_scheduler.schedule_after(5.8, _start_fade_in, "fade_in")
 
 func _start_fade_in() -> void:
+	# Scheduler-driven from consciousness_fragments. If a test force-fired straight to
+	# waking, this scheduled call is stale — no-op so it can't drag the step backward.
+	if _current_step != "consciousness_fragments":
+		return
 	_enter_step("fade_in")
 	# Full reveal: escort units, full lighting
 	for unit in [_escort_1, _escort_2]:
 		if unit:
 			unit.visible = true
 	_emergency_light.light_energy = 3.0
+	# Cosmetic fade; the transition to waking rides the scheduler (1.0 fade + 0.5).
 	var t := create_tween()
 	t.tween_property(_fade_rect, "color:a", 0.0, 1.0)
-	t.tween_callback(func():
-		_scheduler.schedule_after(0.5, _start_waking, "waking")
-	)
+	_scheduler.schedule_after(1.5, _start_waking, "waking")
 
 func _start_waking() -> void:
 	_enter_step("waking")
@@ -794,6 +799,7 @@ func _start_bridge() -> void:
 
 func _start_bridge_collapse() -> void:
 	_enter_step("bridge_collapse")
+	_fall_landed_fired = false
 	_peris_node.set_move_enabled(false)
 	_aster_node.set_move_enabled(false)
 	_game_state.command_stop("aster")
@@ -821,9 +827,15 @@ func _execute_bridge_fall() -> void:
 		tween.tween_property(char_node, "position:y", BELOW_Y + 0.5, fall_duration) \
 			.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
 	tween.tween_property(_camera, "follow_offset:y", _camera.follow_offset.y + BELOW_Y, fall_duration * 1.1)
-	tween.chain().tween_callback(_on_fall_landed)
+	# The fall animation is a cosmetic tween; the landing (which repositions the party
+	# in GameState and advances the step) rides the scheduler so fast-forward matches.
+	_scheduler.schedule_after(fall_duration * 1.1, _on_fall_landed, "fall_landed")
 
 func _on_fall_landed() -> void:
+	# Fires from the scheduled landing (or a test force-fire) — exactly once.
+	if _fall_landed_fired:
+		return
+	_fall_landed_fired = true
 	_camera.shake(0.3, 6.0)
 	for char_id in ["peris", "aster"]:
 		var pos: Vector3 = _game_state.get_position(char_id)
@@ -1665,6 +1677,8 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	plant_interact.dwell_time = 2.0
 	plant_interact.position = plant_mesh.position + Vector3(0, 0.3, 0)
 	add_child(plant_interact)
+	if plant_interact.has_method("set_scheduler"):
+		plant_interact.set_scheduler(_scheduler)
 	plant_interact.interacted.connect(func():
 		var bloom := create_tween()
 		bloom.tween_property(plant_mat, "albedo_color", Color(0.2, 0.5, 0.3), 1.5)
@@ -1697,6 +1711,8 @@ func _add_junction_interactable(label: String, pos: Vector3, dialogue_prefix: St
 	interact.dwell_time = 1.0
 	interact.position = pos
 	add_child(interact)
+	if interact.has_method("set_scheduler"):
+		interact.set_scheduler(_scheduler)
 
 func _build_gauntlet_chunk(parent: Node3D) -> void:
 	var ground_y := BELOW_Y
@@ -1745,6 +1761,8 @@ func _build_gauntlet_chunk(parent: Node3D) -> void:
 	_ferrolure_interactable.dwell_time = 1.0
 	_ferrolure_interactable.position = FERROLURE_POS
 	add_child(_ferrolure_interactable)
+	if _ferrolure_interactable.has_method("set_scheduler"):
+		_ferrolure_interactable.set_scheduler(_scheduler)
 	_ferrolure_interactable.interacted.connect(_on_ferrolure_activated)
 
 	# Enemy cluster blocking the direct path.

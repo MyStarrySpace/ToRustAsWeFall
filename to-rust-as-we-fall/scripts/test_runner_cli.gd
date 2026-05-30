@@ -366,6 +366,9 @@ func _ready() -> void:
 			"--test-intro-realinput":
 				ran_test = true
 				await _test_intro_realinput()
+			"--test-fast-forward-invariance":
+				ran_test = true
+				await _test_fast_forward_invariance()
 			"--report-act1-playtime":
 				ran_test = true
 				await _report_act1_playtime()
@@ -517,6 +520,7 @@ func _run_all_tests() -> void:
 	await _test_aster_sim()
 	await _test_aster_playthrough()
 	await _test_input_playthrough()
+	await _test_fast_forward_invariance()
 	await _test_dialogue_pause_chain()
 	await _test_settings()
 	await _test_dialogue_pagination()
@@ -3457,6 +3461,71 @@ func _synthetic_click_interactable(instance: Node, interactable: Node) -> void:
 ## complete by genuine input only (synthetic clicks, dwell-by-walking, HUD ability
 ## keys, data-layer dialogue advance) — never gate._trigger() or a teleport. A leg
 ## that can't reach a gate STALLS at that step, which is the finding we want.
+## Fast-forward must not change the game. Holding F multiplies the scheduler's speed,
+## but events fire at the same TICKS, so a data-layer-driven scene must progress through
+## the same steps and reach the same end whether F is held or not. Wall-clock timing
+## (SceneTree tweens, Time.get_ticks) would diverge. We drive Tag Day (fully auto:
+## dialogue + scheduler) via manual _process at 1x and 10x and compare.
+func _test_fast_forward_invariance() -> void:
+	_test_name = "Fast-Forward Invariance"
+	var slow := await _run_ff_scene("res://scenes/tutorial/tag_day.tscn", false)
+	var fast := await _run_ff_scene("res://scenes/tutorial/tag_day.tscn", true)
+	_assert_true(slow.has("complete"),
+		"Tag Day reaches complete at 1x via the data layer (steps: %s)" % str(slow))
+	_assert_true(fast.has("complete"),
+		"Tag Day reaches complete at 10x / fast-forward (steps: %s)" % str(fast))
+	# Same logical progression. Fast-forward may snapshot fewer intermediate frames, so
+	# the 10x sequence must be an in-order subsequence of the 1x sequence (no reorder,
+	# no extra steps, no divergence).
+	_assert_step_subsequence(slow, fast,
+		"Tag Day runs the same step sequence with fast-forward as without")
+
+## Drive a scene's data layer at a controlled speed: only our manual _process(dt) ticks
+## it (set_process(false) silences the engine's own call), at the speed _compute_speed()
+## derives from whether the fast_forward action is held. Returns the step history.
+func _run_ff_scene(scene_path: String, fast_forward: bool) -> Array:
+	var scene := load(scene_path)
+	if scene == null:
+		return []
+	var instance: Node = scene.instantiate()
+	if "suppress_scene_change" in instance:
+		instance.suppress_scene_change = true
+	get_tree().root.add_child(instance)
+	for i in range(5):
+		await get_tree().process_frame
+	instance.set_process(false)
+	if fast_forward:
+		Input.action_press("fast_forward")
+	else:
+		Input.action_release("fast_forward")
+	var dialogue: Node = instance.get("_dialogue")
+	var steps: Array = []
+	var last := ""
+	var idle := 0
+	var guard := 0
+	while guard < 30000:
+		guard += 1
+		if dialogue != null:
+			_pump_dialogue(dialogue, 8.0)
+		if instance.has_method("_process"):
+			instance._process(0.1)
+		var s := str(instance._current_step)
+		if s != last:
+			steps.append(s)
+			last = s
+			idle = 0
+		else:
+			idle += 1
+		if s == "complete":
+			break
+		if idle > 6000:
+			break
+		await get_tree().process_frame
+	Input.action_release("fast_forward")
+	instance.queue_free()
+	await get_tree().process_frame
+	return steps
+
 func _test_intro_realinput() -> void:
 	_test_name = "Intro Real-Input Reachability"
 	await _run_realinput_leg("Aster", "res://scenes/tutorial/aster_sim.tscn", 0,
@@ -13550,11 +13619,10 @@ func _test_sequence_contracts() -> void:
 			)
 		return actions
 
-	var tag_day_actions := func(instance: Node):
-		var actions := {}
-		actions["clearance"] = func():
-			instance._on_sequence_complete()
-		return actions
+	# clearance -> complete now rides the scheduler (the blue fade is a cosmetic tween),
+	# so the driver reaches complete on its own — no force-fire needed.
+	var tag_day_actions := func(_instance: Node):
+		return {}
 
 	var elevator_actions := func(instance: Node):
 		var actions := {}
@@ -13809,17 +13877,11 @@ func _intro_leg_actions(scene_path: String, visit: int, instance: Node) -> Dicti
 			actions["click_monos"] = func(): instance._start_confirm_protect()
 			actions["confirm_protect"] = func(): instance._start_executing()
 	elif scene_path.ends_with("tag_day.tscn"):
-		actions["clearance"] = func(): instance._on_sequence_complete()
+		# clearance -> complete rides the scheduler now; no force-fire needed.
+		pass
 	elif scene_path.ends_with("elevator.tscn"):
-		actions["consciousness_fragments"] = func():
-			if instance._aster_node:
-				instance._aster_node.visible = true
-			for unit in [instance._escort_1, instance._escort_2]:
-				if unit:
-					unit.visible = true
-			instance._emergency_light.light_energy = 3.0
-			instance._fade_rect.color.a = 0.0
-			instance._start_waking()
+		# consciousness_fragments -> fade_in -> waking and bridge_collapse -> fall now
+		# ride the scheduler (the fades/fall are cosmetic tweens), so no force-fire.
 		actions["approach_aster"] = func():
 			_set_sequence_character_position(instance, "peris", instance.ASTER_POS + Vector3(0.5, 0.5, 0.0))
 			instance._on_aster_wake_interacted()
@@ -13833,7 +13895,6 @@ func _intro_leg_actions(scene_path: String, visit: int, instance: Node) -> Dicti
 			_set_sequence_character_position(instance, "peris", exit_gate + Vector3(0.0, 0.0, -0.5))
 			_set_sequence_character_position(instance, "aster", exit_gate + Vector3(0.0, 0.0, 0.5))
 		actions["corridor"] = func(): _disable_enemy_detection(instance)
-		actions["bridge_collapse"] = func(): instance._on_fall_landed()
 		actions["climb_attempt"] = func(): instance._on_climb_prompt_interacted()
 		actions["route_choice"] = func():
 			_disable_enemy_detection(instance)

@@ -323,11 +323,12 @@ func _start_blue_transition() -> void:
 	_citizen_light.light_color = Color(0.15, 0.4, 0.85)
 	_citizen_light.light_energy = 6.0
 	_dialogue.default_hold_time = 2.0
-	# Blue fade transitions into the elevator.
+	# Blue fade into the elevator. The fade is a cosmetic tween, but the step
+	# transition rides the scheduler so fast-forward reaches it at the same tick.
 	_fade_rect.color = Color(0.1, 0.2, 0.5, 0.0)
 	var tween := create_tween()
 	tween.tween_property(_fade_rect, "color:a", 1.0, 2.0)
-	tween.tween_callback(_on_sequence_complete)
+	_scheduler.schedule_after(2.0, _on_sequence_complete, "blue_complete")
 
 func _on_sequence_complete() -> void:
 	_enter_step("complete")
