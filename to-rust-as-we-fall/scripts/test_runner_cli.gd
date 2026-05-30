@@ -3583,15 +3583,10 @@ func _set_step_in_actions(actions: Array, step_value: float, schema) -> void:
 		if typeof(action) == TYPE_DICTIONARY and str(action.get(schema.KEY_ACTION_TYPE, "")) == schema.ACTION_ADVANCE:
 			action[schema.KEY_STEP] = step_value
 
-## Scenarios known to diverge under fast-forward, tracked for a fix rather than
-## gating the suite. channels_hide_window's detect/search/wash transitions are
-## per-frame current_tick>=threshold polls evaluated against per-frame concealment,
-## so a coarse (10x) sample resolves the mistime->conceal->retry path differently
-## (ends at phase "cross" instead of a concealed retry at "activate"). Fixing it
-## means moving those polls onto scheduled events + tick-exact concealment.
-const _KNOWN_FF_PUZZLE_DIVERGENCES := {
-	"channels_hide_window_lane/mistimed_attempt_can_hide_and_retry": true,
-}
+## Scenarios known to diverge under fast-forward, tracked rather than gating the suite.
+## (Empty: channels_hide_window's surge wash/miss is now predicted analytically at lure
+## activation instead of discovered by per-frame flood sampling, so it's invariant.)
+const _KNOWN_FF_PUZZLE_DIVERGENCES := {}
 
 func _compare_ff_puzzle_runs(id: String, slow: Dictionary, fast: Dictionary, schema) -> void:
 	var slow_scenarios: Array = slow.get(schema.KEY_SCENARIOS, [])

@@ -72,6 +72,14 @@ var _detect_arm_tick := -1.0
 var _detected := false
 var _concealed_retries := 0
 var _wash_analysis := {}
+# Swarm outcome is predicted analytically at lure activation (same flood model as
+# _offset_washes, resolved to ticks) and fired by a tick poll, so wash-vs-miss is
+# identical at 1x and 10x — the per-frame "did a unit hit a flooded channel this
+# frame" sampling is cosmetic motion only.
+var _swarm_path_time := 0.0
+var _predicted_wash_tick := -1.0
+var _predicted_wash_channel := -1
+var _predicted_miss_tick := -1.0
 
 func _build_chunk() -> void:
 	_add_floor(self, FLOOR_CENTER, FLOOR_SIZE, Color(0.065, 0.075, 0.09))
@@ -290,6 +298,9 @@ func reset_preview_state() -> void:
 	_detect_arm_tick = -1.0
 	_detected = false
 	_concealed_retries = 0
+	_predicted_wash_tick = -1.0
+	_predicted_wash_channel = -1
+	_predicted_miss_tick = -1.0
 	_set_lane_active(false)
 
 	for i in range(_curtain_nodes.size()):
@@ -330,6 +341,8 @@ func activate_lure() -> bool:
 		unit["path_index"] = 1
 		unit["wash_vector"] = Vector3.ZERO
 		_swarm_units[i] = unit
+
+	_predict_swarm_outcome(_swarm_start_tick)
 
 	if _lure_interactable != null and _lure_interactable.has_method("hide_tutorial_label"):
 		_lure_interactable.call("hide_tutorial_label")
@@ -498,6 +511,9 @@ func _build_periodic_bridge() -> void:
 			continue
 		path_distance += _swarm_path[i - 1].distance_to(_swarm_path[i])
 		path_distances.append(path_distance)
+	# Full traversal time, used to predict the "surge missed" tick (all units reach the
+	# lure end un-washed) without per-frame discovery.
+	_swarm_path_time = path_distance / SWARM_SPEED
 
 	var desired_spacing := FLOW_PERIOD / float(PERIODIC_CHANNELS)
 	for i in range(channel_specs.size()):
@@ -676,9 +692,10 @@ func _update_channel_visuals(current_tick: float) -> void:
 func _update_swarm(delta: float, current_tick: float) -> void:
 	match _swarm_state:
 		"advancing":
-			var wash_triggered := false
-			var wash_channel_index := -1
-			var all_lured := not _swarm_units.is_empty()
+			# Cosmetic motion: advance each unit along the path. The wash/miss decision
+			# is precomputed (_predict_swarm_outcome) — we no longer sample whether a
+			# unit hits a flooded channel this frame, so the outcome is sampling-
+			# independent (fast-forward-safe).
 			for i in range(_swarm_units.size()):
 				var unit: Dictionary = _swarm_units[i]
 				var node = unit.get("node")
@@ -686,7 +703,6 @@ func _update_swarm(delta: float, current_tick: float) -> void:
 					_swarm_units[i] = unit
 					continue
 				if current_tick < _swarm_start_tick + float(unit.get("delay", 0.0)):
-					all_lured = false
 					_swarm_units[i] = unit
 					continue
 				if str(unit.get("state", "")) == "washed":
@@ -697,26 +713,18 @@ func _update_swarm(delta: float, current_tick: float) -> void:
 					unit["state"] = "lured"
 					_swarm_units[i] = unit
 					continue
-				all_lured = false
 				var target: Vector3 = _swarm_path[path_index]
 				node.position = node.position.move_toward(target, delta * SWARM_SPEED)
 				if node.position.distance_to(target) <= 0.08:
-					if _channel_contact_map.has(path_index):
-						var candidate_channel_index := int(_channel_contact_map[path_index])
-						if candidate_channel_index >= 0 and candidate_channel_index < _periodic_channels.size():
-							var contact_channel: Dictionary = _periodic_channels[candidate_channel_index]
-							if bool(contact_channel.get("flooded", false)):
-								wash_triggered = true
-								wash_channel_index = candidate_channel_index
 					unit["path_index"] = path_index + 1
 					if int(unit.get("path_index", 0)) >= _swarm_path.size():
 						unit["state"] = "lured"
 				_swarm_units[i] = unit
-				if wash_triggered:
-					break
-			if wash_triggered:
-				_trigger_swarm_wash(wash_channel_index, current_tick)
-			elif all_lured:
+			# Fire the precomputed outcome at its tick. The trigger frame can lag by up
+			# to one step under fast-forward, but wash-vs-miss and the channel are fixed.
+			if _predicted_wash_tick >= 0.0 and current_tick >= _predicted_wash_tick:
+				_trigger_swarm_wash(_predicted_wash_channel, current_tick)
+			elif _predicted_miss_tick >= 0.0 and current_tick >= _predicted_miss_tick:
 				_begin_search(current_tick)
 		"washing":
 			var washed_count := 0
@@ -924,6 +932,37 @@ func _channel_level(local_phase: float) -> float:
 		return 0.62 + 0.28 * sin(PI * flood_t)
 	var cooldown_t := clampf((local_phase - FLOOD_DURATION) / maxf(FLOW_PERIOD - FLOOD_DURATION, 0.001), 0.0, 1.0)
 	return lerpf(0.22, 0.06, cooldown_t)
+
+## Resolve the surge outcome to ticks at activation: the earliest (unit, channel)
+## arrival whose channel is flooded at that exact tick is the wash; if none floods, all
+## units reach the lure end un-washed and the surge misses. Same flood model as
+## _offset_washes — just resolved to ticks so a tick poll, not per-frame coincidence
+## sampling, fires it. Keeps the outcome identical at 1x and 10x.
+func _predict_swarm_outcome(activate_tick: float) -> void:
+	var earliest_wash := INF
+	var wash_channel := -1
+	for channel_variant in _periodic_channels:
+		var channel: Dictionary = channel_variant
+		var contact_time := float(channel.get("contact_time", 0.0))
+		var phase_offset := float(channel.get("phase_offset", 0.0))
+		for unit_variant in _swarm_units:
+			var unit: Dictionary = unit_variant
+			var arrival := activate_tick + float(unit.get("delay", 0.0)) + contact_time
+			var local_phase := fposmod(arrival + _flow_offset + phase_offset, FLOW_PERIOD)
+			if local_phase < FLOOD_DURATION and arrival < earliest_wash:
+				earliest_wash = arrival
+				wash_channel = int(channel.get("index", -1))
+	if wash_channel >= 0:
+		_predicted_wash_tick = earliest_wash
+		_predicted_wash_channel = wash_channel
+		_predicted_miss_tick = -1.0
+	else:
+		var max_delay := 0.0
+		for unit_variant in _swarm_units:
+			max_delay = maxf(max_delay, float((unit_variant as Dictionary).get("delay", 0.0)))
+		_predicted_wash_tick = -1.0
+		_predicted_wash_channel = -1
+		_predicted_miss_tick = activate_tick + max_delay + _swarm_path_time
 
 func _offset_washes(offset: float) -> bool:
 	for channel_variant in _periodic_channels:
