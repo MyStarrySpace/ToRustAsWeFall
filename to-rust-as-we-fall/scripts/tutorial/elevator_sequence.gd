@@ -179,7 +179,7 @@ func _setup_ui() -> void:
 	_hud.set_portrait_stat("aster", "sta", 0)
 	_hud.show_pause_toggle(false)
 	_hud.pause_toggled.connect(_on_pause_toggled)
-	_hud.add_ability("emp", "EMP", "Z", Color(0.29, 0.62, 1.0))
+	_hud.add_ability("emp", "EMP", "E", Color(0.29, 0.62, 1.0))
 	_hud.set_ability_state("emp", "disabled")
 	_hud.ability_pressed.connect(func(id: String):
 		if id == "emp":
@@ -228,7 +228,7 @@ func _begin() -> void:
 	_scheduler.schedule_after(1.0, _start_consciousness_fragments, "fragments")
 
 func _compute_speed() -> float:
-	return 10.0 if Input.is_key_pressed(KEY_F) else 1.0
+	return 10.0 if Input.is_action_pressed("fast_forward") else 1.0
 
 func _on_process(delta: float, spd: float) -> void:
 	# Emergency light pulse.
@@ -329,30 +329,33 @@ func _on_process(delta: float, spd: float) -> void:
 
 # --- Input ---
 
+# Pause (Space) and EMP (E) arrive as HUD signals (pause_toggled / ability_pressed)
+# mapped from the input map by GameHUD. Only the elevator-specific character
+# switch / multi-select shortcuts are handled here, via input actions.
 func _unhandled_key_input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
 		return
-	if event is InputEventKey and event.pressed and not event.echo:
+	if event.is_action_pressed("route") and _current_step in ["hack_tutorial", "multiselect_tutorial"]:
+		_switch_character()
+	elif _current_step == "multiselect_tutorial":
+		var char_id := ""
+		if event.is_action_pressed("select_primary"):
+			char_id = "peris"
+		elif event.is_action_pressed("select_secondary"):
+			char_id = "aster"
+		if char_id == "":
+			return
 		var key_event := event as InputEventKey
-		var kc := key_event.keycode
-		if kc == KEY_SPACE:
-			_toggle_pause()
-		elif kc == KEY_Z:
-			_on_emp_pressed()
-		elif kc == KEY_TAB and _current_step in ["hack_tutorial", "multiselect_tutorial"]:
-			_switch_character()
-		elif _current_step == "multiselect_tutorial" and kc in [KEY_1, KEY_2]:
-			var char_id := "peris" if kc == KEY_1 else "aster"
-			if key_event.ctrl_pressed or key_event.shift_pressed:
-				_hud.toggle_portrait_selected(char_id)
-			else:
-				_select_character(char_id)
+		if key_event != null and (key_event.ctrl_pressed or key_event.shift_pressed):
+			_hud.toggle_portrait_selected(char_id)
+		else:
+			_select_character(char_id)
 
 func _toggle_pause() -> void:
 	if _scheduler.is_paused():
 		if _emp_pause_locked and not _emp_queued:
 			_hud.set_paused(true)
-			_tutorial_prompt.show_prompt("[Z] - queue Aster's EMP before unpausing")
+			_tutorial_prompt.show_prompt("[E] - queue Aster's EMP before unpausing")
 			return
 		if _current_step == "multiselect_tutorial" and not _multiselect_has_required_pair():
 			_hud.set_paused(true)
@@ -372,7 +375,7 @@ func _on_pause_toggled(is_paused: bool) -> void:
 	else:
 		if _emp_pause_locked and not _emp_queued:
 			_hud.set_paused(true)
-			_tutorial_prompt.show_prompt("[Z] - queue Aster's EMP before unpausing")
+			_tutorial_prompt.show_prompt("[E] - queue Aster's EMP before unpausing")
 			return
 		if _current_step == "multiselect_tutorial" and not _multiselect_has_required_pair():
 			_hud.set_paused(true)
@@ -707,7 +710,7 @@ func _start_emp_tutorial() -> void:
 	_emp_pause_locked = true
 	_emp_queued = false
 	_hud.set_ability_state("emp", "ready")
-	_tutorial_prompt.show_prompt("[Z] - queue Aster's EMP")
+	_tutorial_prompt.show_prompt("[E] - queue Aster's EMP")
 	_scheduler.pause()
 	_hud.set_paused(true)
 

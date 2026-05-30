@@ -137,15 +137,8 @@ func _update_npc_follow() -> void:
 
 # --- Input ---
 
-func _unhandled_input(event: InputEvent) -> void:
-	if Engine.is_editor_hint():
-		return
-	if event is InputEventKey and event.pressed and not event.echo:
-		var kc := (event as InputEventKey).keycode
-		if kc == KEY_TAB and _current_step in ["first_corridor", "safe_route_lesson", "dusk_approaches", "second_iron"]:
-			_toggle_routing()
-		if kc == KEY_Z and _current_step in ["first_corridor", "safe_route_lesson", "dusk_approaches", "second_iron"]:
-			_toggle_run()
+# Route (Tab) and run (Z) arrive as HUD signals (routing_toggled / run_toggled)
+# mapped from the input map by GameHUD — wired in _start_first_corridor.
 
 # --- Event-driven steps ---
 

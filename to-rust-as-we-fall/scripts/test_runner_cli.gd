@@ -116,6 +116,9 @@ func _ready() -> void:
 			"--test-rng-no-wallclock":
 				ran_test = true
 				_test_rng_no_wallclock()
+			"--test-sequence-input-discipline":
+				ran_test = true
+				_test_sequence_input_discipline()
 			"--test-save-load-integrity":
 				ran_test = true
 				_test_save_load_integrity()
@@ -477,6 +480,7 @@ func _run_all_tests() -> void:
 	_test_movement_capture()
 	_test_rng_determinism()
 	_test_rng_no_wallclock()
+	_test_sequence_input_discipline()
 	await _test_archetype_generation()
 	await _test_generated_stretch_playtest_loop()
 	_test_save_load_integrity()
@@ -4676,15 +4680,15 @@ func _test_elevator() -> void:
 		_assert_true(instance._scheduler.is_paused(), "EMP tutorial pauses after the prompt is available")
 		_assert_true(str(instance._tutorial_prompt._label.text).contains("EMP"),
 			"EMP tutorial prompt text is visible")
-		_assert_true(str(instance._tutorial_prompt._label.text).contains("[Z]"),
-			"EMP tutorial maps Aster's main ability to Z")
+		_assert_true(str(instance._tutorial_prompt._label.text).contains("[E]"),
+			"EMP tutorial maps Aster's main ability to E")
 		_assert_elevator_escort_standoff(instance, 2.0,
 			"Escort units are not touching the party at the EMP prompt")
 		instance._toggle_pause()
 		_assert_true(instance._scheduler.is_paused(),
 			"EMP tutorial cannot unpause before Aster queues EMP")
-		_assert_true(_press_unhandled_key(instance, KEY_Z), "Elevator accepts Z input for Aster EMP")
-		_assert_true(instance._emp_queued, "Aster EMP queues from Z while the tutorial is paused")
+		_assert_true(_press_hud_action_key(instance, KEY_E), "Elevator accepts E (EMP action) for Aster EMP")
+		_assert_true(instance._emp_queued, "Aster EMP queues from E while the tutorial is paused")
 		_assert_elevator_escort_standoff(instance, 2.0,
 			"Escort units are not touching the party while EMP is queued")
 		instance._toggle_pause()
@@ -5321,6 +5325,22 @@ func _press_unhandled_key(instance: Node, keycode: int, ctrl_pressed := false, s
 	event.ctrl_pressed = ctrl_pressed
 	event.shift_pressed = shift_pressed
 	instance.call("_unhandled_key_input", event)
+	return true
+
+## Dispatch a key to the scene's GameHUD _unhandled_input — the path that maps
+## input actions (e.g. the emp action) to HUD signals like real play.
+func _press_hud_action_key(instance: Node, keycode: int) -> bool:
+	if instance == null:
+		return false
+	var hud = instance.get("_hud")
+	if hud == null or not hud.has_method("_unhandled_input"):
+		return false
+	var event := InputEventKey.new()
+	event.keycode = keycode
+	event.physical_keycode = keycode
+	event.pressed = true
+	event.echo = false
+	hud.call("_unhandled_input", event)
 	return true
 
 func _advance_showcase(instance: Node, duration: float, step := 0.05) -> void:
@@ -7674,6 +7694,36 @@ func _walk_gd_files(path: String, out: Array) -> void:
 			out.append(full)
 		name = d.get_next()
 	d.list_dir_end()
+
+# Lint: sequence scripts must not own raw player input or duplicate the ground
+# raycast. Input / raycast / interaction routing belongs in the shared controller
+# (player.gd ground_clicked + click mode, GameHUD action→signal mapping, the
+# project input map). Per-step DECISIONS may stay in the sequence, expressed via
+# input actions and HUD signals — never raw keycodes or raycasts.
+func _test_sequence_input_discipline() -> void:
+	_test_name = "Sequence Input Discipline"
+	var bad := {
+		"project_ray_origin": "ground raycast — use player.gd's shared raycast / ground_clicked",
+		"intersect_ray": "ground raycast — use the shared controller",
+		"Input.is_key_pressed": "raw key polling — use Input.is_action_pressed + the input map",
+	}
+	var dir := DirAccess.open("res://scripts/tutorial")
+	_assert_true(dir != null, "tutorial scripts dir opens")
+	if dir == null:
+		return
+	var offenders: Array = []
+	dir.list_dir_begin()
+	var fname := dir.get_next()
+	while fname != "":
+		if not dir.current_is_dir() and fname.ends_with("_sequence.gd"):
+			var text := FileAccess.get_file_as_string("res://scripts/tutorial/".path_join(fname))
+			for pat in bad.keys():
+				if text.contains(pat):
+					offenders.append("%s: '%s' (%s)" % [fname, pat, bad[pat]])
+		fname = dir.get_next()
+	dir.list_dir_end()
+	_assert_equals(offenders.size(), 0,
+		"Sequence scripts own no raw input / duplicated raycast (offenders: %s)" % str(offenders))
 
 # Lint: forbid wall-clock RNG / time calls in game-logic .gd files. Files
 # that legitimately need them for visual or performance reasons must

@@ -63,6 +63,30 @@ func _process(delta: float) -> void:
 		if _message_timer <= 0:
 			_message_label.modulate.a = 0.0
 
+## Keyboard input becomes the SAME intent as a HUD button: input actions map to
+## the existing signals, so sequences only ever listen to run_toggled /
+## pause_toggled / routing_toggled / ability_pressed, never raw keycodes.
+func _unhandled_input(event: InputEvent) -> void:
+	if get_tree().paused:
+		return  # the pause menu owns input while it's open
+	if event.is_action_pressed("pause") and _pause_button != null:
+		_on_pause_pressed()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("run") and _run_button != null:
+		_on_run_pressed()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("route") and _routing_button != null:
+		_on_routing_pressed()
+		get_viewport().set_input_as_handled()
+	else:
+		# Abilities: an ability id ("protect", "emp") matching a registered
+		# input action fires that ability.
+		for id in _abilities.keys():
+			if InputMap.has_action(id) and event.is_action_pressed(id):
+				ability_pressed.emit(id)
+				get_viewport().set_input_as_handled()
+				return
+
 func get_hud_contract() -> Dictionary:
 	var stat_names: Array[String] = []
 	for stat_name in _stat_bars.keys():

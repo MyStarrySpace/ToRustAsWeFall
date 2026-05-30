@@ -149,13 +149,13 @@ func _on_process(_delta: float, _spd: float) -> void:
 	pass
 
 func _compute_speed() -> float:
-	return 10.0 if Input.is_key_pressed(KEY_F) else 1.0
+	return 10.0 if Input.is_action_pressed("fast_forward") else 1.0
 
 ## Dialogue clock speed. Intentionally independent of _compute_speed(): holding
 ## F fast-forwards dialogue even while gameplay is paused (Peris protect prompt,
 ## exploration focus), and a paused scheduler never freezes dialogue.
 func _compute_dialogue_speed() -> float:
-	return 10.0 if Input.is_key_pressed(KEY_F) else 1.0
+	return 10.0 if Input.is_action_pressed("fast_forward") else 1.0
 
 func _get_speed_recipients() -> Array:
 	return []

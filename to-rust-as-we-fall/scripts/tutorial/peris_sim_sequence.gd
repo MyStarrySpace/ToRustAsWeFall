@@ -86,8 +86,6 @@ func _setup_ui() -> void:
 	# Keep run input gated by step.
 	_hud.bind_game_state(_game_state, "peris", false)
 
-	set_process_unhandled_key_input(true)
-
 func _begin() -> void:
 	if start_phase > 0:
 		_visit_phase = start_phase
@@ -103,7 +101,7 @@ func _begin() -> void:
 		_fade_from(Color(0.15, 0.1, 0.03, 1), 3.0, _start_session_begins, "session_begins")
 
 func _compute_speed() -> float:
-	var spd := 10.0 if Input.is_key_pressed(KEY_F) else 1.0
+	var spd := 10.0 if Input.is_action_pressed("fast_forward") else 1.0
 	if _is_paused or _current_step in ["alert_monos", "protect_prompt", "run_prompt", "click_monos", "confirm_protect"]:
 		spd = 0.0
 	return spd
@@ -135,42 +133,23 @@ func _update_fades() -> void:
 	elif _current_step == "transition_out":
 		_update_fade_out(Color(0.03, 0.03, 0.04), 2.0)
 
-# --- Input: run toggle ---
+# --- Target selection (click Monos) ---
 
-func _input(event: InputEvent) -> void:
-	if Engine.is_editor_hint():
+## During click_monos the player is in "select" click mode; the shared input
+## controller reports the clicked ground position here. We only decide whether
+## it's close enough to Monos — no raycasting in the sequence.
+func _on_target_selected(world_pos: Vector3) -> void:
+	if _current_step != "click_monos":
 		return
-	if not event is InputEventMouseButton:
-		return
-	var mb := event as InputEventMouseButton
-	if mb.button_index != MOUSE_BUTTON_LEFT or not mb.pressed:
-		return
-	if _current_step == "click_monos":
-		var hit := _raycast_ground_from(mb.position)
-		if hit != Vector3.INF:
-			var dist_to_monos := Vector2(hit.x - MONOS_POS.x, hit.z - MONOS_POS.z).length()
-			if dist_to_monos < 2.5:
-				get_viewport().set_input_as_handled()
-				_tutorial_prompt.hide_prompt()
-				_start_confirm_protect()
-			else:
-				_show_correction("peris_sim.correct.target_monos")
-
-func _raycast_ground_from(screen_pos: Vector2) -> Vector3:
-	var camera := get_viewport().get_camera_3d()
-	if not camera:
-		return Vector3.INF
-	var from := camera.project_ray_origin(screen_pos)
-	var dir := camera.project_ray_normal(screen_pos)
-	var space := get_world_3d().direct_space_state
-	if not space:
-		return Vector3.INF
-	var query := PhysicsRayQueryParameters3D.create(from, from + dir * 100.0)
-	query.collision_mask = 1
-	var result := space.intersect_ray(query)
-	if not result.is_empty():
-		return result.position
-	return Vector3.INF
+	var dist_to_monos := Vector2(world_pos.x - MONOS_POS.x, world_pos.z - MONOS_POS.z).length()
+	if dist_to_monos < 2.5:
+		if _player.ground_clicked.is_connected(_on_target_selected):
+			_player.ground_clicked.disconnect(_on_target_selected)
+		_player.set_click_mode("move")
+		_tutorial_prompt.hide_prompt()
+		_start_confirm_protect()
+	else:
+		_show_correction("peris_sim.correct.target_monos")
 
 func _toggle_pause() -> void:
 	# Only allow unpause at the confirm_protect step
@@ -325,6 +304,11 @@ func _start_run_prompt() -> void:
 func _start_click_monos() -> void:
 	_enter_step("click_monos")
 	_player.set_move_enabled(true)
+	# Clicks select a target rather than move; the shared controller reports the
+	# clicked ground position to _on_target_selected.
+	_player.set_click_mode("select")
+	if not _player.ground_clicked.is_connected(_on_target_selected):
+		_player.ground_clicked.connect(_on_target_selected)
 	_tutorial_prompt.show_prompt("[Click] Monos - set Protect target")
 
 func _start_confirm_protect() -> void:
@@ -489,17 +473,8 @@ func _complete() -> void:
 		# Second half (Monos session) leads into Tag Day.
 		_change_scene_or_record("res://scenes/tutorial/tag_day.tscn")
 
-# --- Key input ---
-
-func _unhandled_key_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo:
-		var kc := (event as InputEventKey).keycode
-		if kc == KEY_X:
-			_on_protect_pressed()
-		elif kc == KEY_Z:
-			_toggle_run()
-		elif kc == KEY_SPACE:
-			_toggle_pause()
+# Run/pause/protect keys arrive as HUD signals (run_toggled / pause_toggled /
+# ability_pressed), mapped from the input map by GameHUD — see _setup_ui.
 
 # --- Environment ---
 

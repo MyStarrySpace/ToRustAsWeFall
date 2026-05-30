@@ -19,6 +19,9 @@ var char_id := ""  ## Character ID in GameState (e.g. "aster")
 var _target_pos: Vector3
 var _moving := false
 var _move_enabled := true
+## "move" = a ground click moves the player; "select" = a ground click only
+## emits ground_clicked for a sequence to interpret (e.g. "click the target").
+var _click_mode := "move"
 var _running := false
 var _auto_path: Array[Vector3] = []
 var _auto_path_index := 0
@@ -39,6 +42,9 @@ var _path_line: MeshInstance3D
 
 signal arrived()
 signal auto_path_complete()
+## Emitted on every left-click that hits the ground, with the world position.
+## Sequences listen to this instead of running their own ground raycast.
+signal ground_clicked(world_pos: Vector3)
 
 func _ready() -> void:
 	_target_pos = global_position
@@ -116,17 +122,33 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
 		return
+	if not (event is InputEventMouseButton):
+		return
+	var mb := event as InputEventMouseButton
+	if mb.button_index != MOUSE_BUTTON_LEFT or not mb.pressed:
+		return
+
+	# Select mode: a click only reports the world position; the sequence decides
+	# what it means (e.g. "is that near the target?"). No movement.
+	if _click_mode == "select":
+		var hit_sel := _raycast_ground(mb.position)
+		if hit_sel != Vector3.INF:
+			ground_clicked.emit(hit_sel)
+		return
+
+	# Move mode (default): click-to-move.
 	if not _move_enabled:
 		return
 	if _auto_path.size() > 0 and not (game_state and char_id != ""):
 		return  # Don't interrupt fallback auto-path with clicks
+	var hit := _raycast_ground(mb.position)
+	if hit != Vector3.INF:
+		ground_clicked.emit(hit)
+		_set_click_target(hit)
 
-	if event is InputEventMouseButton:
-		var mb := event as InputEventMouseButton
-		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
-			var hit := _raycast_ground(mb.position)
-			if hit != Vector3.INF:
-				_set_click_target(hit)
+## Switch how a ground click is interpreted: "move" (default) or "select".
+func set_click_mode(mode: String) -> void:
+	_click_mode = mode if mode in ["move", "select"] else "move"
 
 func _raycast_ground(screen_pos: Vector2) -> Vector3:
 	var camera := get_viewport().get_camera_3d()
