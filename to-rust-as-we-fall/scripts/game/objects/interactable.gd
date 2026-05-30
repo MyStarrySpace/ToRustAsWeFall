@@ -106,11 +106,17 @@ func _ready() -> void:
 
 	_tutorial_label_3d = Label3D.new()
 	_tutorial_label_3d.text = tutorial_label if tutorial_label != "" else "Click"
-	_tutorial_label_3d.font_size = 48
-	_tutorial_label_3d.pixel_size = 0.012
+	_tutorial_label_3d.font_size = 72
+	# fixed_size keeps the hint a constant on-screen size: it stays legible far away
+	# and never balloons when the follow-camera is close. no_depth_test draws it over
+	# the object it labels instead of clipping into the mesh.
+	_tutorial_label_3d.fixed_size = true
+	_tutorial_label_3d.pixel_size = 0.0006
 	_tutorial_label_3d.modulate = Color(1.0, 1.0, 1.0, 0.0)
-	_tutorial_label_3d.outline_modulate = Color(0, 0, 0, 0.5)
-	_tutorial_label_3d.outline_size = 8
+	_tutorial_label_3d.outline_modulate = Color(0, 0, 0, 0.6)
+	_tutorial_label_3d.outline_size = 10
+	_tutorial_label_3d.no_depth_test = true
+	_tutorial_label_3d.render_priority = 2
 	_tutorial_label_3d.position = Vector3(0, 2.2, 0)
 	_tutorial_label_3d.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_tutorial_label_3d.visible = false

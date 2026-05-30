@@ -21,7 +21,7 @@ var _hud  # GameHUD
 
 # Exploration beat (phase 1, pre-Monos-arrival)
 var _explore_logbook_gate  # Interactable at the logbook
-const EXPLORE_MIN_TIME := 10.0  # scheduler seconds before the logbook gate unlocks
+const EXPLORE_MIN_TIME := 6.0  # scheduler seconds before the logbook gate unlocks
 var _explore_gate_unlocked := false
 var _explore_gate_fired := false
 
