@@ -23,7 +23,9 @@ static func load_dir(dir_path: String) -> void:
 	dir.list_dir_begin()
 	var file_name := dir.get_next()
 	while file_name != "":
-		if not dir.current_is_dir():
+		# Skip Excel lock files (~$act1.xlsx) and hidden files — they end in
+		# .xlsx but aren't real workbooks, and choke the reader.
+		if not dir.current_is_dir() and not file_name.begins_with("~$") and not file_name.begins_with("."):
 			if file_name.ends_with(".xlsx"):
 				_load_xlsx_file(dir_path.path_join(file_name))
 			elif file_name.ends_with(".csv"):
