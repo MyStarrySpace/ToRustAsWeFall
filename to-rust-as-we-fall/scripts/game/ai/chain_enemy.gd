@@ -53,13 +53,17 @@ func _set_mesh_color(c: Color) -> void:
 		mat.albedo_color = c
 
 func _process(delta: float) -> void:
+	# The head charge is scheduler-tick-derived (base Enemy._process), so the contact
+	# tick is fast-forward-invariant. The trailing body segments still follow per frame
+	# (follow_speed * delta * spd below), so segment-hit timing is a per-frame
+	# approximation; collisions test the scheduler-authoritative target position.
 	if _charging and _state == "charge" and not _charge_hit:
 		for seg_pos in _segment_positions:
 			for target_id in _detection_targets:
-				var target_node := _find_character_node(target_id)
-				if not target_node:
+				var target_pos := _charge_target_world(target_id)
+				if target_pos == Vector3.INF:
 					continue
-				if seg_pos.distance_to(target_node.global_position) < 0.6:
+				if seg_pos.distance_to(target_pos) < 0.6:
 					_charge_hit = true
 					hit_target.emit(target_id, charge_damage)
 					_end_charge()

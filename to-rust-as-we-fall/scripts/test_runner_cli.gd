@@ -14350,13 +14350,18 @@ func _test_dodge_roll() -> void:
 	enemy._charging = true
 	enemy._charge_hit = false
 	enemy._state = "charge"
+	# The charge is scheduler-tick-derived; record its start (as _enter_state would).
+	enemy._charge_start_pos = enemy.global_position
+	enemy._charge_start_tick = sched.get_current_tick()
 
 	# Hero dodges away BEFORE enemy's charge frame checks
 	gs.dodge_roll("hero", Vector3(-1, 0, 0))
 	_assert_true(gs.is_dodging("hero"), "Hero is dodging")
 
-	# Simulate enemy _process frames while hero is mid-dodge
+	# Advance the scheduler alongside _process so the tick-derived charge moves while
+	# the hero is mid-dodge (0.32 ticks total < DODGE_DURATION 0.35, so dodge stays up).
 	for i in range(20):
+		sched.advance_ticks(0.016)
 		enemy._process(0.016)
 
 	_assert_true(hit_log.size() == 0, "Enemy charge deals NO damage during dodge i-frames (hits: %d)" % hit_log.size())
@@ -14376,8 +14381,11 @@ func _test_dodge_roll() -> void:
 	enemy._charging = true
 	enemy._charge_hit = false
 	enemy._state = "charge"
+	enemy._charge_start_pos = enemy.global_position
+	enemy._charge_start_tick = sched.get_current_tick()
 
 	for i in range(60):
+		sched.advance_ticks(0.016)
 		enemy._process(0.016)
 
 	_assert_true(hit_log.size() == 1, "Enemy charge HITS after dodge ends (hits: %d)" % hit_log.size())

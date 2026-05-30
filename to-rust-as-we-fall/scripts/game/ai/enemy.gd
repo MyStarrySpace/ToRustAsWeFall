@@ -44,6 +44,10 @@ var _patrol_index := 0
 var _charge_target_pos := Vector3.ZERO
 var _charging := false
 var _charge_hit := false
+# Charge position is derived from the scheduler tick (not wall-clock delta) so the
+# hit lands at the same tick whether or not fast-forward is held.
+var _charge_start_tick := 0.0
+var _charge_start_pos := Vector3.ZERO
 
 # --- Visual ---
 var _mesh: MeshInstance3D
@@ -148,9 +152,11 @@ func _enter_state(state: String) -> void:
 		"charge":
 			_charging = true
 			_charge_hit = false
+			_charge_start_pos = global_position
 			# Timeout: if we don't hit anything, recover anyway
 			var scheduler := _get_scheduler()
 			if scheduler:
+				_charge_start_tick = scheduler.get_current_tick()
 				scheduler.schedule_after(charge_max_duration, _end_charge, _state_tag)
 		"recover":
 			_charging = false
@@ -337,29 +343,34 @@ func _process(delta: float) -> void:
 		var pos := game_state.get_position(char_id)
 		global_position = Vector3(pos.x, global_position.y, pos.z)
 
-	# Charge: move toward locked target position, check for collision
-	# Speed scaled by scheduler speed multiplier so charge respects fast-forward
+	# Charge: position is a pure function of the scheduler tick, so the lunge covers the
+	# same distance per TICK and the contact lands at the same tick regardless of frame
+	# rate or fast-forward. _process only reads it; the scheduler is the clock.
 	if _charging and _state == "charge":
-		var dir := (_charge_target_pos - global_position)
-		dir.y = 0
-		if dir.length() < 0.3:
-			_end_charge()
-			return
-		var spd_mult := 1.0
 		var scheduler := _get_scheduler()
-		if scheduler:
-			spd_mult = scheduler.get_speed()
 		if scheduler and scheduler.is_paused():
 			return
-		global_position += dir.normalized() * charge_speed * delta * spd_mult
+		var to_target := _charge_target_pos - _charge_start_pos
+		to_target.y = 0
+		var total_dist := to_target.length()
+		var now_tick := scheduler.get_current_tick() if scheduler else _charge_start_tick
+		var traveled := charge_speed * (now_tick - _charge_start_tick)
+		var dir := to_target.normalized() if total_dist > 0.001 else Vector3.ZERO
+		global_position = Vector3(
+			_charge_start_pos.x + dir.x * minf(traveled, total_dist),
+			global_position.y,
+			_charge_start_pos.z + dir.z * minf(traveled, total_dist))
+		if traveled >= total_dist - 0.3:
+			_end_charge()
+			return
 		if not _charge_hit:
 			for target_id in _detection_targets:
 				if game_state and game_state.is_dodging(target_id):
 					continue
-				var target_node := _find_character_node(target_id)
-				if not target_node:
+				var target_pos := _charge_target_world(target_id)
+				if target_pos == Vector3.INF:
 					continue
-				if global_position.distance_to(target_node.global_position) < 0.8:
+				if global_position.distance_to(target_pos) < 0.8:
 					_charge_hit = true
 					hit_target.emit(target_id, charge_damage)
 					_end_charge()
@@ -375,6 +386,14 @@ func _get_scheduler() -> EventScheduler:
 	if game_state and game_state.scheduler:
 		return game_state.scheduler
 	return null
+
+## Scheduler-authoritative world position of a target: GameState when the target is
+## registered (so the charge clock and the target clock are the same), else the node.
+func _charge_target_world(target_id: String) -> Vector3:
+	if game_state and game_state.characters.has(target_id):
+		return game_state.get_position(target_id)
+	var node := _find_character_node(target_id)
+	return (node as Node3D).global_position if node else Vector3.INF
 
 func _find_character_node(target_id: String) -> Node:
 	# Search parent first (Characters node), then siblings of parent (chunk nodes)

@@ -2020,11 +2020,13 @@ func _clear_lockout_runtime_state() -> void:
 func _complete() -> void:
 	_enter_step("complete")
 	_player.set_move_enabled(false)
+	# Cosmetic fade; the scene hand-off rides the scheduler so fast-forward (and the
+	# headless playthrough, which never advances tweens) reaches it at the same tick.
 	var tween := create_tween()
 	tween.tween_property(_fade_rect, "color", Color(0.02, 0.02, 0.03, 1.0), 2.0)
-	tween.tween_callback(func():
+	_scheduler.schedule_after(2.0, func():
 		_change_scene_or_record("res://scenes/tutorial/leaving_facility.tscn")
-	)
+	, "complete_handoff")
 
 # --- Chunk builders ---
 
