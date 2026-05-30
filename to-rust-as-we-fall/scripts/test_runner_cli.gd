@@ -4466,6 +4466,10 @@ func _drive_interactable_zone(area: Node, body: Node3D, dwell_seconds: float, st
 		if area.has_method("_process"):
 			area.call("_process", dt)
 		elapsed += dt
+	# Scheduler-driven dwell completes via a scheduled event, not _process; this
+	# helper drives the interactable in isolation, so fire the completion directly.
+	if "_scheduler" in area and area._scheduler != null and area.has_method("_on_dwell_complete"):
+		area.call("_on_dwell_complete")
 	if area.has_method("_on_body_exited"):
 		area.call("_on_body_exited", body)
 
@@ -5665,6 +5669,13 @@ func _advance_preview_interactables_for_idle(instance: Node, delta: float) -> vo
 					in_range = true
 					break
 		interactable.set("_player_in_range", in_range)
+		# Scheduler-driven dwell schedules on range-enter; mirror that here since we
+		# set _player_in_range directly instead of going through _on_body_entered.
+		if "_scheduler" in interactable and interactable.get("_scheduler") != null:
+			if in_range and not interactable.get("_dwell_scheduled"):
+				interactable.call("_begin_dwell")
+			elif not in_range:
+				interactable.call("_cancel_dwell")
 		if interactable.has_method("_process"):
 			interactable.call("_process", delta)
 

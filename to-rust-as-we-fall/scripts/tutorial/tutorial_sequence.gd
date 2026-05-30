@@ -104,6 +104,7 @@ func _ready() -> void:
 	_game_state = GameState.new()
 	_game_state.scheduler = _scheduler
 	_register_characters()
+	_inject_scheduler_into_interactables(self)
 	_init_ui()
 	_begin()
 
@@ -563,6 +564,15 @@ func _register_gs_character(id: String, node: Node3D, speed: float = 3.0, stats:
 	if node == _player and node.has_method("bind_interaction_root"):
 		node.call("bind_interaction_root", self)
 
+## Hand the gameplay scheduler to every interactable built before the scheduler
+## existed (the scene tree is assembled in _build_scene, _scheduler after). Their
+## dwell timers then ride the scheduler and pause with gameplay.
+func _inject_scheduler_into_interactables(node: Node) -> void:
+	if node is Interactable and node.has_method("set_scheduler"):
+		node.call("set_scheduler", _scheduler)
+	for child in node.get_children():
+		_inject_scheduler_into_interactables(child)
+
 # --- Exploration helpers ---
 
 func _create_interactable(
@@ -589,6 +599,8 @@ func _create_interactable(
 	area.set("active_character", _current_interaction_character())
 	if interactable_id != "" and area.has_method("apply_interactable_spec"):
 		area.call("apply_interactable_spec", interactable_id)
+	if _scheduler != null and area.has_method("set_scheduler"):
+		area.call("set_scheduler", _scheduler)
 	_connect_interactable_outline_feedback(area)
 	parent.add_child(area)
 	return area

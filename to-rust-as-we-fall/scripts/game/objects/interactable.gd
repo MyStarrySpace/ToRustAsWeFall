@@ -36,6 +36,13 @@ var _player_in_range := false
 var _dwell_progress := 0.0
 var _used := false
 
+# Gameplay scheduler. When set, a HOLD_ACTION's dwell completion is a scheduled
+# event that pauses with gameplay; when null, dwell falls back to the wall clock.
+var _scheduler = null
+var _dwell_tag := ""
+var _dwell_scheduled := false
+var _dwell_start_tick := 0.0
+
 var speed_multiplier := 1.0
 
 ## Sequence-owned dialogue target.
@@ -139,18 +146,54 @@ func _process(delta: float) -> void:
 		_tutorial_label_3d.modulate.a = pulse
 
 	if _uses_hold_timer() and _player_in_range:
-		_dwell_progress += delta * speed_multiplier
+		if _scheduler != null:
+			# Scheduler lane: completion is a scheduled event (_on_dwell_complete).
+			# The ring is a cosmetic readout of the scheduler clock, nothing more.
+			_dwell_progress = clampf(_scheduler.get_current_tick() - _dwell_start_tick, 0.0, dwell_time)
+		else:
+			_dwell_progress += delta * speed_multiplier
 		var t := clampf(_dwell_progress / dwell_time, 0.0, 1.0)
 		_progress_mat.albedo_color.a = t * 0.6
 		_progress_ring.scale = Vector3.ONE * (0.8 + t * 0.4)
 
-		if _dwell_progress >= dwell_time:
+		if _scheduler == null and _dwell_progress >= dwell_time:
 			_trigger()
 	else:
 		if _dwell_progress > 0:
 			_dwell_progress = maxf(0, _dwell_progress - delta * 2.0)
 			var t := clampf(_dwell_progress / dwell_time, 0.0, 1.0)
 			_progress_mat.albedo_color.a = t * 0.3
+
+## Inject the gameplay scheduler so dwell completion is a scheduled event that
+## pauses with gameplay. Without it, dwell falls back to the per-frame wall clock.
+func set_scheduler(scheduler_ref) -> void:
+	_scheduler = scheduler_ref
+	if _scheduler != null and _dwell_tag == "":
+		_dwell_tag = "dwell_%d" % get_instance_id()
+
+func _begin_dwell() -> void:
+	if _scheduler == null or not _uses_hold_timer() or not _player_in_range:
+		return
+	if _used or not interaction_enabled:
+		return
+	_cancel_dwell()
+	_dwell_start_tick = _scheduler.get_current_tick()
+	_dwell_progress = 0.0
+	_scheduler.schedule_after(dwell_time, Callable(self, "_on_dwell_complete"), _dwell_tag)
+	_dwell_scheduled = true
+
+func _cancel_dwell() -> void:
+	if _scheduler != null and _dwell_scheduled and _dwell_tag != "":
+		_scheduler.cancel_tag(_dwell_tag)
+	_dwell_scheduled = false
+
+func _on_dwell_complete() -> void:
+	_dwell_scheduled = false
+	if _player_in_range and not _used and interaction_enabled and _uses_hold_timer():
+		_trigger()
+		# Non-one-shot interactables re-arm while the player keeps standing in range.
+		if not _used and _player_in_range and interaction_enabled:
+			_begin_dwell()
 
 func _trigger(play_feedback := true) -> void:
 	if required_character != "" and active_character != "" and active_character != required_character:
@@ -160,6 +203,7 @@ func _trigger(play_feedback := true) -> void:
 
 	if one_shot:
 		_used = true
+	_cancel_dwell()
 	_dwell_progress = 0.0
 	_progress_mat.albedo_color.a = 0.0
 	if one_shot:
@@ -212,10 +256,12 @@ func _on_body_entered(body: Node3D) -> void:
 	if body is CharacterBody3D:
 		_player_in_range = true
 		_dwell_progress = 0.0
+		_begin_dwell()
 
 func _on_body_exited(body: Node3D) -> void:
 	if body is CharacterBody3D:
 		_player_in_range = false
+		_cancel_dwell()
 
 func _on_mouse_entered() -> void:
 	if _used or not interaction_enabled:
@@ -303,6 +349,7 @@ func set_interaction_enabled(active: bool) -> void:
 	collision_layer = 4 if active else 0
 	collision_mask = 2 if active else 0
 	input_ray_pickable = active and not _used
+	_cancel_dwell()
 	_player_in_range = false
 	_dwell_progress = 0.0
 	if _progress_mat != null:
@@ -341,6 +388,8 @@ func _refresh_player_range() -> void:
 		if body is CharacterBody3D:
 			_player_in_range = true
 			break
+	if _player_in_range:
+		_begin_dwell()
 
 func _uses_hold_timer() -> bool:
 	return interactable_type == InteractableType.HOLD_ACTION
