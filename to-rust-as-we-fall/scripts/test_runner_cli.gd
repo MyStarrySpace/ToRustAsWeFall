@@ -188,6 +188,9 @@ func _ready() -> void:
 			"--test-aster-playthrough":
 				ran_test = true
 				await _test_aster_playthrough()
+			"--test-input-playthrough":
+				ran_test = true
+				await _test_input_playthrough()
 			"--test-dialogue-pause":
 				ran_test = true
 				await _test_dialogue_pause_chain()
@@ -507,6 +510,7 @@ func _run_all_tests() -> void:
 	_test_asset_pipeline()
 	await _test_aster_sim()
 	await _test_aster_playthrough()
+	await _test_input_playthrough()
 	await _test_dialogue_pause_chain()
 	await _test_settings()
 	await _test_dialogue_pagination()
@@ -3262,6 +3266,186 @@ func _test_aster_playthrough() -> void:
 
 	instance.queue_free()
 	await get_tree().process_frame
+
+## Real-input playthrough. Drives a scene through the ACTUAL per-frame loop with
+## synthetic Input (mouse clicks routed through Input.parse_input_event), never
+## force-firing a gate. The player must raycast the floor from a click, walk to the
+## logbook gate, and let the proximity dwell fire it. This is the coverage that
+## catches a scene that looks playable but strands the player at a hidden/unreachable
+## gate — the Peris workspace stall.
+func _test_input_playthrough() -> void:
+	_test_name = "Input Playthrough (synthetic input)"
+	await _input_playthrough_peris1()
+	await _input_playthrough_aster_first_gate()
+
+func _input_playthrough_peris1() -> void:
+	var scene := load("res://scenes/tutorial/peris_sim.tscn")
+	_assert_true(scene != null, "Peris sim loads for input playthrough")
+	if scene == null:
+		return
+	var instance: Node = scene.instantiate()
+	instance.set("start_phase", 1)
+	get_tree().root.add_child(instance)
+	for i in range(10):
+		await get_tree().process_frame
+
+	# Roll through fade-in to the explorable workspace step.
+	var safety := 0
+	while str(instance._current_step) != "workspace" and safety < 4000:
+		instance.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+		safety += 1
+	_assert_equals(str(instance._current_step), "workspace",
+		"Peris-1 reaches the workspace step (input playthrough)")
+
+	var player: Node3D = instance._player as Node3D
+	var gate: Node3D = instance._explore_logbook_gate as Node3D
+	if player == null or gate == null or str(instance._current_step) != "workspace":
+		_assert_true(false, "Peris-1 workspace exposes a player and logbook gate")
+		instance.queue_free()
+		await get_tree().process_frame
+		return
+
+	var gate_pos: Vector3 = gate.global_position
+	var radius := float(gate.get("interaction_radius"))
+
+	# Walk to the gate by clicking the floor near it (synthetic mouse through the
+	# real input pipeline). Advance scheduler time so the exploration lock lifts and
+	# the proximity dwell can fire.
+	var reached := false
+	var unlocked := false
+	safety = 0
+	while safety < 6000:
+		safety += 1
+		if not reached and safety % 40 == 1:
+			_synthetic_ground_click(instance, Vector3(gate_pos.x, 0.0, gate_pos.z))
+		instance.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+		var d := Vector2(player.global_position.x - gate_pos.x,
+			player.global_position.z - gate_pos.z).length()
+		if d <= radius:
+			reached = true
+		if instance._explore_gate_unlocked:
+			unlocked = true
+		if str(instance._current_step) == "monos_arrives":
+			break
+
+	_assert_true(reached, "Player walks to the logbook gate via synthetic clicks")
+	_assert_true(unlocked, "Logbook gate unlocks after the exploration beat")
+	_assert_equals(str(instance._current_step), "monos_arrives",
+		"Reaching + dwelling the unlocked gate triggers it through real input (no force-fire); step=%s" % str(instance._current_step))
+
+	# Past the gate the beat is dialogue + scheduled transitions: drive the one
+	# dialogue clock (data-layer acknowledge) and time to the hand-off.
+	var dialogue: Node = instance._dialogue
+	var reached_complete := false
+	safety = 0
+	while safety < 12000:
+		safety += 1
+		_pump_dialogue(dialogue, 4.0)
+		instance.headless_advance(0.5, 0.25)
+		await get_tree().process_frame
+		if str(instance._current_step) == "complete":
+			reached_complete = true
+			break
+	_assert_true(reached_complete,
+		"Peris-1 plays to complete via input + data-layer dialogue (last: %s)" % str(instance._current_step))
+
+	instance.queue_free()
+	await get_tree().process_frame
+
+## Aster's first gate is the same shape of bug: the player must physically walk to
+## the forecasting terminal and let the dwell open it. Prove that gate is reachable
+## and fires through real input (full completion stays covered by the data-layer
+## --test-aster-playthrough).
+func _input_playthrough_aster_first_gate() -> void:
+	var scene := load("res://scenes/tutorial/aster_sim.tscn")
+	_assert_true(scene != null, "Aster sim loads for input playthrough")
+	if scene == null:
+		return
+	var instance: Node = scene.instantiate()
+	get_tree().root.add_child(instance)
+	for i in range(10):
+		await get_tree().process_frame
+
+	# Roll through the intro beats (fade, Ron) to the step where the terminal is live.
+	var dialogue: Node = instance._dialogue
+	var safety := 0
+	while str(instance._current_step) != "show_terminal" and safety < 8000:
+		_pump_dialogue(dialogue, 4.0)
+		instance.headless_advance(0.25, 0.1)
+		await get_tree().process_frame
+		safety += 1
+	_assert_equals(str(instance._current_step), "show_terminal",
+		"Aster reaches the show_terminal step (input playthrough)")
+
+	var player: Node3D = instance._player as Node3D
+	var terminal: Node3D = instance._terminal as Node3D
+	if player == null or terminal == null or str(instance._current_step) != "show_terminal":
+		_assert_true(false, "Aster show_terminal exposes a player and a terminal")
+		instance.queue_free()
+		await get_tree().process_frame
+		return
+
+	# The forecasting terminal is an INSPECTION interactable: a click on the object
+	# itself (not a proximity dwell) routes through the interaction controller, which
+	# walks the player over and triggers it on arrival. Click the terminal directly.
+	var opened := false
+	safety = 0
+	while safety < 6000:
+		safety += 1
+		if not opened and safety % 50 == 1:
+			_synthetic_click_interactable(instance, terminal)
+		_pump_dialogue(dialogue, 4.0)
+		instance.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+		if str(instance._current_step) == "terminal_focus":
+			opened = true
+			break
+
+	_assert_true(opened,
+		"Clicking the terminal opens it through real input (controller-arrival, no force-fire); step=%s" % str(instance._current_step))
+
+	instance.queue_free()
+	await get_tree().process_frame
+
+## Click the floor at a world position through the real input pipeline: project the
+## point to a screen position via the active camera, then feed a left-click press and
+## release to Input. The player's own _unhandled_input raycasts and moves — the test
+## never calls _set_click_target or _trigger.
+func _synthetic_ground_click(instance: Node, world_pos: Vector3) -> void:
+	var camera := get_viewport().get_camera_3d()
+	if camera == null and "_camera" in instance:
+		camera = instance._camera
+	if camera == null:
+		return
+	var screen_pos := camera.unproject_position(world_pos)
+	for pressed in [true, false]:
+		var ev := InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_LEFT
+		ev.pressed = pressed
+		ev.position = screen_pos
+		Input.parse_input_event(ev)
+
+## Click an INSPECTION interactable. The headless display server never casts the
+## viewport's physics-picking ray, so a real mouse event can't reach an object's
+## _on_input_event. Deliver the left-click to that handler directly — the same entry
+## point a real pick invokes — then let the REAL chain run: interaction_requested →
+## the interaction controller walks the player over → triggers on arrival. We never
+## call _trigger() ourselves, so the player must still reach the object.
+func _synthetic_click_interactable(instance: Node, interactable: Node) -> void:
+	if interactable == null or not interactable.has_method("_on_input_event"):
+		return
+	var camera := get_viewport().get_camera_3d()
+	if camera == null and "_camera" in instance:
+		camera = instance._camera
+	var world_pos: Vector3 = (interactable as Node3D).global_position
+	var ev := InputEventMouseButton.new()
+	ev.button_index = MOUSE_BUTTON_LEFT
+	ev.pressed = true
+	if camera != null:
+		ev.position = camera.unproject_position(world_pos)
+	interactable.call("_on_input_event", camera, ev, world_pos, Vector3.UP, 0)
 
 ## Dialogue must keep flowing while the gameplay scheduler is paused (the Peris
 ## protect prompt and exploration focus rely on this). A queued chain advances
