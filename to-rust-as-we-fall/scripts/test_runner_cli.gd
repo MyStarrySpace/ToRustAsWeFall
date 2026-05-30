@@ -360,6 +360,9 @@ func _ready() -> void:
 			"--test-sequence-contracts":
 				ran_test = true
 				await _test_sequence_contracts()
+			"--test-intro-chain":
+				ran_test = true
+				await _test_intro_chain()
 			"--report-act1-playtime":
 				ran_test = true
 				await _report_act1_playtime()
@@ -13497,6 +13500,139 @@ func _test_sequence_contracts() -> void:
 		"res://scenes/tutorial/leaving_facility.tscn",
 		["channels_encounter_reset"]
 	)
+
+## Walk the whole tutorial intro as one connected chain: start at the main scene,
+## drive each leg to complete, then FOLLOW its recorded requested_scene_change into
+## the next scene (suppress_scene_change keeps the tree from swapping under us). This
+## catches a broken hand-off or a scene that stalls on real entry — things the
+## per-scene contract tests, which load each scene in isolation, can't see.
+func _test_intro_chain() -> void:
+	_test_name = "Intro Chain (end-to-end)"
+	var scene_path := "res://scenes/tutorial/peris_sim.tscn"
+	var peris_visits := 0
+	var legs: Array[String] = []
+	var guard := 0
+	while scene_path != "" and guard < 10:
+		guard += 1
+		var visit := 0
+		if scene_path.ends_with("peris_sim.tscn"):
+			peris_visits += 1
+			visit = peris_visits
+		var leg := await _drive_intro_leg(scene_path, visit)
+		var leg_name := scene_path.get_file()
+		if visit > 0:
+			leg_name += " (phase %d)" % visit
+		legs.append("%s -> %s [%s]" % [leg_name, str(leg.next).get_file(), str(leg.termination)])
+		_assert_equals(str(leg.termination), "complete",
+			"Intro chain: %s plays to complete without stalling (last step: %s)" % [leg_name, str(leg.last_step)])
+		var nxt := str(leg.next)
+		# The tutorial intro ends when the elevator hands off to Act 1 (the game proper).
+		if scene_path.ends_with("elevator.tscn"):
+			_assert_equals(nxt, "res://scenes/tutorial/act1.tscn",
+				"Intro chain ends by handing the elevator off to Act 1")
+			break
+		_assert_true(nxt != "" and nxt != scene_path,
+			"Intro chain: %s hands off to a next scene (got: %s)" % [leg_name, nxt])
+		if nxt == "" or nxt == scene_path:
+			break
+		scene_path = nxt
+	print("[INTRO CHAIN] " + " | ".join(legs))
+	_assert_true(peris_visits >= 2, "Intro chain visits the Peris sim twice (phase 1, then phase 2 after Aster)")
+
+func _drive_intro_leg(scene_path: String, visit: int) -> Dictionary:
+	var scene := load(scene_path)
+	if scene == null:
+		return {"termination": "load_fail", "last_step": "", "next": "", "steps": []}
+	var instance: Node = scene.instantiate()
+	if "suppress_scene_change" in instance:
+		instance.suppress_scene_change = true
+	# Peris is visited twice; the static _visit_phase selects which half runs.
+	if scene_path.ends_with("peris_sim.tscn") and "_visit_phase" in instance:
+		instance._visit_phase = visit
+	get_tree().root.add_child(instance)
+	for i in range(3):
+		await get_tree().process_frame
+	var actions := _intro_leg_actions(scene_path, visit, instance)
+	var result := _drive_sequence_contract(instance, actions)
+	var next_scene := ""
+	if "requested_scene_change" in instance:
+		next_scene = str(instance.requested_scene_change)
+	var last_step := str(instance._current_step)
+	instance.set_process(false)
+	instance.set_physics_process(false)
+	if instance.has_method("_teardown_sequence"):
+		instance._teardown_sequence()
+	instance.queue_free()
+	await get_tree().process_frame
+	return {
+		"termination": str(result.get("termination_reason", "?")),
+		"last_step": last_step,
+		"next": next_scene,
+		"steps": result.get("step_history", []),
+	}
+
+## The scripted interaction at each gated step, per scene. Mirrors the per-scene
+## contract hooks (force-fired / teleported beats); the chain's value is verifying
+## the connected end-to-end path, not the input fidelity of every beat (real-input
+## reachability is covered separately by --test-input-playthrough).
+func _intro_leg_actions(scene_path: String, visit: int, instance: Node) -> Dictionary:
+	var actions := {}
+	if scene_path.ends_with("aster_sim.tscn"):
+		actions["show_terminal"] = func(): instance._on_terminal_interacted()
+		actions["walk_to_drink"] = func(): instance._on_drink_interacted()
+		actions["explore_workspace"] = func():
+			instance._explore_gate_unlocked = true
+			instance._on_exploration_gate_interacted()
+	elif scene_path.ends_with("peris_sim.tscn"):
+		if visit <= 1:
+			actions["workspace"] = func():
+				instance._explore_gate_unlocked = true
+				instance._on_exploration_gate_interacted()
+		else:
+			actions["protect_prompt"] = func(): instance._on_protect_pressed()
+			actions["run_prompt"] = func(): instance._toggle_run()
+			actions["click_monos"] = func(): instance._start_confirm_protect()
+			actions["confirm_protect"] = func(): instance._start_executing()
+	elif scene_path.ends_with("tag_day.tscn"):
+		actions["clearance"] = func(): instance._on_sequence_complete()
+	elif scene_path.ends_with("elevator.tscn"):
+		actions["consciousness_fragments"] = func():
+			if instance._aster_node:
+				instance._aster_node.visible = true
+			for unit in [instance._escort_1, instance._escort_2]:
+				if unit:
+					unit.visible = true
+			instance._emergency_light.light_energy = 3.0
+			instance._fade_rect.color.a = 0.0
+			instance._start_waking()
+		actions["approach_aster"] = func():
+			_set_sequence_character_position(instance, "peris", instance.ASTER_POS + Vector3(0.5, 0.5, 0.0))
+			instance._on_aster_wake_interacted()
+		actions["emp_tutorial"] = func():
+			instance._on_emp_pressed()
+			instance._toggle_pause()
+		actions["multiselect_tutorial"] = func():
+			instance._hud.set_selected_portraits(["peris", "aster"])
+			instance._scheduler.resume()
+			var exit_gate := Vector3(instance.ELEVATOR_SIZE.x / 2.0, 0.5, 0.0)
+			_set_sequence_character_position(instance, "peris", exit_gate + Vector3(0.0, 0.0, -0.5))
+			_set_sequence_character_position(instance, "aster", exit_gate + Vector3(0.0, 0.0, 0.5))
+		actions["corridor"] = func(): _disable_enemy_detection(instance)
+		actions["bridge_collapse"] = func(): instance._on_fall_landed()
+		actions["climb_attempt"] = func(): instance._on_climb_prompt_interacted()
+		actions["route_choice"] = func():
+			_disable_enemy_detection(instance)
+			_set_sequence_character_position(instance, "aster", instance.ROUTES_CONVERGE + Vector3(1.5, 0.5, 0.0))
+		actions["junction_arrive"] = func(): instance._start_dusk_from_plant()
+		actions["endo_shelter"] = func(): instance._on_endo_delivered("endo")
+		actions["gauntlet"] = func():
+			_disable_enemy_detection(instance)
+			instance._on_ferrolure_activated()
+			_set_sequence_character_position(instance, "aster", instance.GAUNTLET_EXIT + Vector3(1.5, 0.5, 0.0))
+		actions["complete"] = func():
+			instance._change_scene_or_record("res://scenes/tutorial/act1.tscn")
+			instance._scheduler.clear()
+	return actions
 
 func _test_items() -> void:
 	_test_name = "Items & Endocytosis"
