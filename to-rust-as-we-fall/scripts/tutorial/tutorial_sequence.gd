@@ -28,7 +28,8 @@ const CHROMATIC_ABERRATION_SHADER := preload("res://resources/chromatic_aberrati
 		_sync_chromatic_aberration_effect()
 
 # Core infrastructure
-var _scheduler: EventScheduler
+var _scheduler: EventScheduler          # gameplay lane (pausable, replay)
+var _ui_scheduler: EventScheduler       # dialogue / thought-fade / UI lane
 var _game_state: GameState
 var _current_step := ""
 var _fade_start_tick := 0.0
@@ -97,6 +98,9 @@ func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
 	_scheduler = EventScheduler.new()
+	# Second lane: dialogue / thought-fades / UI timers. F-scaled but never frozen
+	# by gameplay pause — "pause gameplay, keep dialogue" is structural, not a hack.
+	_ui_scheduler = EventScheduler.new()
 	_game_state = GameState.new()
 	_game_state.scheduler = _scheduler
 	_register_characters()
@@ -109,15 +113,20 @@ func _process(delta: float) -> void:
 	# Scene changes can dispatch one final _process after teardown.
 	if _scheduler == null or _game_state == null:
 		return
+	# Gameplay lane.
 	var spd := _compute_speed()
 	_scheduler.set_speed(spd)
-	if _dialogue:
-		# The sequence owns the one dialogue clock. It is F-scaled but NOT gated
-		# by _compute_speed(), so gameplay pause never freezes dialogue.
-		_dialogue.advance_ui_time(delta * _compute_dialogue_speed())
 	for node in _get_speed_recipients():
 		node.speed_multiplier = spd
 	_scheduler.advance(delta)
+	# UI lane: dialogue + thought-fades advance here. F-scaled, but independent of
+	# gameplay pause, so pausing gameplay keeps narrative flowing.
+	var ui_before := _ui_scheduler.get_current_tick()
+	_ui_scheduler.set_speed(_compute_dialogue_speed())
+	_ui_scheduler.advance(delta)
+	var ui_delta := _ui_scheduler.get_current_tick() - ui_before
+	if _dialogue:
+		_dialogue.advance_ui_time(ui_delta)
 	_sync_scheduler_animations()
 	_update_thought_fade()
 	_sync_perception_shader()
@@ -167,8 +176,10 @@ func headless_advance(duration: float, step := 0.05) -> void:
 	while remaining > 0.0001:
 		var dt: float = minf(step, remaining)
 		_scheduler.advance_ticks(dt)
+		if _ui_scheduler:
+			_ui_scheduler.advance_ticks(dt)
 		if _dialogue:
-			# Same one clock as real play; dt is already in ticks (1x headless).
+			# Same UI lane as real play; dt is already in ticks (1x headless).
 			_dialogue.advance_ui_time(dt)
 		_sync_scheduler_animations()
 		_update_thought_fade()
@@ -383,11 +394,14 @@ func _teardown_sequence() -> void:
 
 	if _scheduler:
 		_scheduler.clear()
+	if _ui_scheduler:
+		_ui_scheduler.clear()
 	if _game_state:
 		_game_state.scheduler = null
 
 	_game_state = null
 	_scheduler = null
+	_ui_scheduler = null
 	_dialogue = null
 	_tutorial_prompt = null
 	_fade_rect = null
@@ -817,21 +831,22 @@ func _hide_thought() -> void:
 func _start_thought_fade(target_alpha: float, duration: float) -> void:
 	if _thought_label == null:
 		return
-	if _scheduler == null or duration <= 0.0 or _scheduler.get_speed() <= 0.0:
+	# Thoughts ride the UI lane, so they fade smoothly even while gameplay is paused.
+	if _ui_scheduler == null or duration <= 0.0 or _ui_scheduler.get_speed() <= 0.0:
 		_thought_label.modulate.a = target_alpha
 		_thought_fade_active = false
 		return
 	_thought_fade_from_alpha = _thought_label.modulate.a
 	_thought_fade_to_alpha = target_alpha
 	_thought_fade_duration = duration
-	_thought_fade_start_tick = _scheduler.get_current_tick()
+	_thought_fade_start_tick = _ui_scheduler.get_current_tick()
 	_thought_fade_active = true
 	_update_thought_fade()
 
 func _update_thought_fade() -> void:
-	if not _thought_fade_active or _thought_label == null or _scheduler == null:
+	if not _thought_fade_active or _thought_label == null or _ui_scheduler == null:
 		return
-	var elapsed := _scheduler.get_current_tick() - _thought_fade_start_tick
+	var elapsed := _ui_scheduler.get_current_tick() - _thought_fade_start_tick
 	var t := clampf(elapsed / maxf(_thought_fade_duration, 0.001), 0.0, 1.0)
 	_thought_label.modulate.a = lerpf(_thought_fade_from_alpha, _thought_fade_to_alpha, t)
 	if t >= 1.0:
