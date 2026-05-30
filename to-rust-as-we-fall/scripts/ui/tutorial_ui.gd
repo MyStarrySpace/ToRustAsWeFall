@@ -45,10 +45,11 @@ func _setup_prompt() -> void:
 	_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_label.add_theme_font_size_override("font_size", 18)
 	_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.75, 0.0))
+	# Sit above the dialogue panel (bottom ~150px) so prompts never overlap it.
 	_label.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_label.offset_top = -60
-	_label.offset_bottom = -30
-	_label.offset_left = -200
-	_label.offset_right = 200
+	_label.offset_top = -196
+	_label.offset_bottom = -166
+	_label.offset_left = -240
+	_label.offset_right = 240
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_prompt_layer.add_child(_label)

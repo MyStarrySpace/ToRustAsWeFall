@@ -17,6 +17,8 @@ var _bottom_panel: PanelContainer
 var _stat_section: VBoxContainer
 var _control_section: HBoxContainer
 var _ability_section: VBoxContainer
+var _ordered_sections: Array[Control] = []
+var _section_separators: Array[VSeparator] = []
 var _time_container: HBoxContainer
 var _time_label: Label
 var _time_bar: ProgressBar
@@ -118,7 +120,8 @@ func _build_bottom_bar() -> void:
 	margin.add_child(_bottom_panel)
 
 	var hbox := HBoxContainer.new()
-	hbox.add_theme_constant_override("separation", 16)
+	hbox.name = "BottomRow"
+	hbox.add_theme_constant_override("separation", 14)
 	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	_bottom_panel.add_child(hbox)
 
@@ -131,7 +134,6 @@ func _build_bottom_bar() -> void:
 	# Left: stat bars
 	_stat_section = VBoxContainer.new()
 	_stat_section.add_theme_constant_override("separation", 3)
-	_stat_section.custom_minimum_size.x = 160
 	hbox.add_child(_stat_section)
 
 	# Center: control buttons
@@ -143,8 +145,38 @@ func _build_bottom_bar() -> void:
 	# Right: ability buttons
 	_ability_section = VBoxContainer.new()
 	_ability_section.add_theme_constant_override("separation", 4)
-	_ability_section.custom_minimum_size.x = 140
 	hbox.add_child(_ability_section)
+
+	# Thin separators between populated groups; empty groups (and their
+	# separators) auto-hide so the bar only shows what a scene actually uses.
+	_ordered_sections = [_portrait_section, _stat_section, _control_section, _ability_section]
+	for i in range(1, _ordered_sections.size()):
+		var sep := VSeparator.new()
+		sep.add_theme_constant_override("separation", 10)
+		hbox.add_child(sep)
+		hbox.move_child(sep, _ordered_sections[i].get_index())
+		_section_separators.append(sep)
+	for section in _ordered_sections:
+		section.child_entered_tree.connect(func(_n): _refresh_sections())
+		section.child_exiting_tree.connect(func(_n): _refresh_sections())
+	_refresh_sections()
+
+## Show a section only when it has content, and a separator only between two
+## visible groups. Keeps the bottom bar from reserving empty columns.
+func _refresh_sections() -> void:
+	var seen_visible := false
+	for i in range(_ordered_sections.size()):
+		var section: Control = _ordered_sections[i]
+		var has_content := section.get_child_count() > 0
+		# The portrait section manages its own visibility (multi-select scenes).
+		if section != _portrait_section:
+			section.visible = has_content
+		var section_visible := section.visible and has_content
+		if i > 0:
+			var sep: VSeparator = _section_separators[i - 1]
+			sep.visible = section_visible and seen_visible
+		if section_visible:
+			seen_visible = true
 
 func _build_time_bar() -> void:
 	_time_container = HBoxContainer.new()

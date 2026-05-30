@@ -188,6 +188,15 @@ func _ready() -> void:
 			"--test-dialogue-pause":
 				ran_test = true
 				await _test_dialogue_pause_chain()
+			"--test-settings":
+				ran_test = true
+				await _test_settings()
+			"--test-dialogue-pagination":
+				ran_test = true
+				await _test_dialogue_pagination()
+			"--test-pause-menu":
+				ran_test = true
+				await _test_pause_menu()
 			"--test-peris-sim":
 				ran_test = true
 				await _test_peris_sim()
@@ -495,6 +504,9 @@ func _run_all_tests() -> void:
 	await _test_aster_sim()
 	await _test_aster_playthrough()
 	await _test_dialogue_pause_chain()
+	await _test_settings()
+	await _test_dialogue_pagination()
+	await _test_pause_menu()
 	await _test_peris_sim()
 	await _test_elevator()
 	await _test_leaving_facility()
@@ -3312,6 +3324,129 @@ func _test_dialogue_pause_chain() -> void:
 	dialogue.dialogue_finished.disconnect(on_fin)
 	scheduler.resume()
 	instance.queue_free()
+	await get_tree().process_frame
+
+## Settings autoload: preset → scale mapping, ConfigFile persistence round-trip.
+func _test_settings() -> void:
+	_test_name = "Settings"
+	# TextSpeed: SLOW=0, NORMAL=1, FAST=2, INSTANT=3
+	var s: Node = get_tree().root.get_node_or_null("Settings")
+	_assert_true(s != null, "Settings autoload is registered")
+	if s == null:
+		return
+	var original := int(s.text_speed)
+
+	s.set_text_speed(1)  # NORMAL
+	_assert_true(is_equal_approx(float(s.text_cps_scale()), 1.0) and is_equal_approx(float(s.text_hold_scale()), 1.0),
+		"Normal preset is 1x speed and 1x hold")
+	s.set_text_speed(0)  # SLOW
+	_assert_true(float(s.text_cps_scale()) < 1.0 and float(s.text_hold_scale()) > 1.0,
+		"Slow preset types slower and holds longer")
+	s.set_text_speed(2)  # FAST
+	_assert_true(float(s.text_cps_scale()) > 1.0 and float(s.text_hold_scale()) < 1.0,
+		"Fast preset types faster and holds shorter")
+	s.set_text_speed(3)  # INSTANT
+	_assert_true(float(s.text_cps_scale()) >= 100.0,
+		"Instant preset types effectively instantly")
+
+	# Persistence: save FAST, load into a fresh instance.
+	s.set_text_speed(2)  # FAST (set_text_speed saves)
+	var fresh: Node = load("res://scripts/system/settings.gd").new()
+	fresh.load_settings()
+	_assert_equals(int(fresh.text_speed), 2, "Text speed persists across a fresh load")
+	fresh.free()
+
+	# Restore the shared autoload (and persisted file) so later tests see Normal.
+	s.set_text_speed(original)
+
+## Long lines paginate: the visible window pages, but _current_text stays the
+## full logical line and line_displayed / dialogue_finished fire once per line.
+func _test_dialogue_pagination() -> void:
+	_test_name = "Dialogue Pagination"
+	var box: Node = load("res://scripts/ui/dialogue_box.gd").new()
+	get_tree().root.add_child(box)
+	await get_tree().process_frame
+
+	var shown: Array[String] = []
+	var finished := {"n": 0}
+	box.line_displayed.connect(func(t: String): shown.append(t))
+	box.dialogue_finished.connect(func(): finished["n"] += 1)
+
+	var short_line := "A short line."
+	box.say(short_line)
+	_assert_equals(box._pages.size(), 1, "A short line is a single page")
+	# Drain it.
+	var guard := 0
+	while box.is_active() and guard < 4000:
+		box.advance_ui_time(8.0)
+		guard += 1
+
+	var long_line := "This is the first sentence of a deliberately long passage. Here is a second sentence that keeps going. A third sentence adds yet more length to push well past the pagination threshold. And a fourth sentence ensures we split into multiple readable pages instead of one wall of text."
+	shown.clear()
+	finished["n"] = 0
+	box.say(long_line)
+	_assert_equals(str(box._current_text), long_line, "Paginated line keeps _current_text as the full line")
+	_assert_true(box._pages.size() > 1, "A >180-char line splits into multiple pages (got %d)" % box._pages.size())
+
+	guard = 0
+	var saw_multiple_pages := false
+	while box.is_active() and guard < 8000:
+		box.advance_ui_time(8.0)
+		if int(box._page_index) > 0:
+			saw_multiple_pages = true
+		# _current_text must stay the full line throughout.
+		if str(box._current_text) != long_line:
+			break
+		guard += 1
+
+	_assert_equals(str(box._current_text), long_line, "_current_text stays the full line while paging")
+	_assert_true(saw_multiple_pages, "Advancing walks through the pages")
+	_assert_equals(shown.size(), 1, "line_displayed fires once per logical line, not per page")
+	_assert_equals(int(finished["n"]), 1, "dialogue_finished fires once for the paginated line")
+	if shown.size() == 1:
+		_assert_equals(shown[0], long_line, "line_displayed carries the full line text")
+
+	box.queue_free()
+	await get_tree().process_frame
+
+## Pause menu: opens/closes, pauses the tree, navigates to Settings, and its
+## text-speed buttons drive the Settings autoload.
+func _test_pause_menu() -> void:
+	_test_name = "Pause Menu"
+	var s: Node = get_tree().root.get_node_or_null("Settings")
+	var original := int(s.text_speed) if s != null else 1
+
+	var pm: Node = load("res://scenes/ui/pause_menu.tscn").instantiate()
+	get_tree().root.add_child(pm)
+	await get_tree().process_frame
+
+	_assert_true(not pm.is_open() and not pm.visible, "Pause menu starts closed")
+	_assert_true(not get_tree().paused, "Tree starts unpaused")
+
+	pm.open()
+	_assert_true(pm.is_open() and pm.visible, "Pause menu opens")
+	_assert_true(get_tree().paused, "Opening the pause menu pauses gameplay")
+
+	# Navigate to Settings, then Esc-style toggle returns to the pause view.
+	pm._show_settings()
+	_assert_true(pm._settings_view.visible and not pm._pause_view.visible, "Settings view shows")
+	pm.toggle()
+	_assert_true(pm.is_open() and pm._pause_view.visible, "Toggle from Settings returns to the pause view (not closed)")
+
+	# Text speed buttons drive the Settings autoload.
+	if s != null:
+		pm._show_settings()
+		pm._on_speed_pressed(2)  # FAST
+		_assert_equals(int(s.text_speed), 2, "Pause-menu text-speed button updates Settings")
+
+	pm.close()
+	_assert_true(not pm.is_open() and not get_tree().paused, "Closing the pause menu resumes gameplay")
+
+	# Restore shared state.
+	if s != null:
+		s.set_text_speed(original)
+	get_tree().paused = false
+	pm.queue_free()
 	await get_tree().process_frame
 
 func _test_aster_sim() -> void:
@@ -7567,7 +7702,6 @@ func _test_rng_no_wallclock() -> void:
 		# UI; nothing in the game logic reads these values
 		"res://scripts/system/persistence/save_manager.gd",
 		"res://scripts/system/persistence/engram_journal.gd",
-		"res://scripts/system/engram_journal.gd",
 		"res://scripts/system/core/event_log.gd",
 	])
 

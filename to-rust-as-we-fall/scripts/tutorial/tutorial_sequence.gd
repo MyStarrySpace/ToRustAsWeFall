@@ -39,6 +39,7 @@ var _tutorial_prompt # TutorialUI prompt facade
 var _fade_rect: ColorRect
 var _thought_label: Label
 var _engram_overlay
+var _pause_menu
 var _chromatic_aberration_layer: CanvasLayer
 var _chromatic_aberration_rect: ColorRect
 var _chromatic_aberration_material: ShaderMaterial
@@ -297,6 +298,13 @@ func _init_ui() -> void:
 	_engram_overlay.name = "EngramOverlay"
 	_engram_overlay.set_script(preload("res://scripts/ui/engram_overlay.gd"))
 	add_child(_engram_overlay)
+
+	# Esc-toggled pause menu (Resume / Settings → accessibility). Self-contained:
+	# it handles its own input and pauses gameplay while open.
+	_pause_menu = preload("res://scenes/ui/pause_menu.tscn").instantiate()
+	_pause_menu.name = "PauseMenu"
+	add_child(_pause_menu)
+
 	_init_chromatic_aberration_effect()
 	_setup_ui()
 
@@ -385,6 +393,7 @@ func _teardown_sequence() -> void:
 	_fade_rect = null
 	_thought_label = null
 	_engram_overlay = null
+	_pause_menu = null
 	_chromatic_aberration_layer = null
 	_chromatic_aberration_rect = null
 	_chromatic_aberration_material = null
@@ -796,6 +805,9 @@ func _update_fade_out(target_color: Color, duration: float = 2.0) -> void:
 # --- Thought helpers ---
 
 func _show_thought(text: String) -> void:
+	# Dialogue takes priority: don't stack an ambient thought over a live line.
+	if _dialogue != null and _dialogue.has_method("is_active") and _dialogue.is_active():
+		return
 	_thought_label.text = text
 	_start_thought_fade(0.7, 0.5)
 

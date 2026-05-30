@@ -17,6 +17,7 @@ config/icon="res://icon.svg"
 
 [autoload]
 
+Settings="*res://scripts/system/settings.gd"
 TestRunner="*res://scripts/test_runner_cli.gd"
 CLIGame="*res://scripts/cli_game.gd"
 SaveManager="*res://scripts/system/persistence/save_manager.gd"
