@@ -7091,6 +7091,17 @@ func _test_sim_command_api() -> void:
 	_assert_equals(give.type, SimCommand.Type.GIVE_ITEM, "give_item builds the right command")
 	_assert_equals(str(give.args.get("to_char")), "peris", "give_item carries the recipient")
 
+	var throw := SimCommand.throw_object("barrel", 5.0, -2.0)
+	_assert_equals(throw.type, SimCommand.Type.THROW_OBJECT, "throw_object builds the right command")
+	_assert_equals(float(throw.args.get("x")), 5.0, "throw_object carries its target x")
+
+	var queue := SimCommand.queue_moves([Vector3(1, 0, 1), Vector3(2, 0, 2)])
+	_assert_equals(queue.type, SimCommand.Type.QUEUE_MOVES, "queue_moves builds the right command")
+	_assert_equals((queue.args.get("points") as Array).size(), 2, "queue_moves carries its waypoints")
+
+	var rest := SimCommand.rest()
+	_assert_equals(rest.type, SimCommand.Type.REST, "rest builds the right command")
+
 	# The runner resolves an interactable by exact id, and returns empty otherwise.
 	var grid := GridWorld.new()
 	grid.create_room(16, 16, true)
@@ -7104,6 +7115,21 @@ func _test_sim_command_api() -> void:
 		"SimRunner resolves an interactable by its exact registered id")
 	_assert_equals(runner._resolve_interactable_id(gs, "missing"), "",
 		"SimRunner returns empty for an unknown interactable")
+
+	# Ballistic throw lands a registered physics object near its target XZ.
+	gs.register_physics_object("toss", grid.grid_to_world(Vector2i(2, 2)), 0.5, 2.0, 0.6, true)
+	var toss_target := grid.grid_to_world(Vector2i(8, 6))
+	toss_target.y = 0.0
+	_assert_true(gs.throw_physics_object_to("toss", toss_target),
+		"throw_physics_object_to launches a registered object")
+	for i in range(800):
+		if sched.pop_next().is_empty():
+			break
+	var landed := gs.get_physics_position("toss")
+	var land_err := Vector2(landed.x - toss_target.x, landed.z - toss_target.z).length()
+	_assert_true(land_err < 2.0, "Thrown object lands near its target (err %.2f)" % land_err)
+	_assert_true(not gs.throw_physics_object_to("nope", toss_target),
+		"Throwing an unregistered object fails cleanly")
 
 # --- Test: GameState ---
 func _test_game_state() -> void:

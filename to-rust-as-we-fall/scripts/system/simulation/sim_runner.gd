@@ -56,6 +56,12 @@ func _execute(cmd: SimCommand) -> void:
 			_drop_item(cmd.args.get("item_id", ""), cmd.args.get("char_id", ""))
 		SimCommand.Type.GIVE_ITEM:
 			_give_item(cmd.args.get("item_id", ""), cmd.args.get("to_char", ""), cmd.args.get("char_id", ""))
+		SimCommand.Type.THROW_OBJECT:
+			_throw_object(cmd.args.get("obj_id", ""), cmd.args.get("x", 0.0), cmd.args.get("z", 0.0), cmd.args.get("arc_time", 0.0))
+		SimCommand.Type.QUEUE_MOVES:
+			_queue_moves(cmd.args.get("points", []), cmd.args.get("char_id", ""))
+		SimCommand.Type.REST:
+			_rest(cmd.args.get("char_id", ""))
 		SimCommand.Type.ASSERT_STAT:
 			_assert_stat(cmd.args.stat, cmd.args.op, cmd.args.value)
 		SimCommand.Type.ASSERT_PHASE:
@@ -287,6 +293,51 @@ func _give_item(item_id: String, to_char: String, char_id: String) -> void:
 		print("[SIM] %s gave '%s' to %s" % [who, item_id, to_char])
 	else:
 		print("[SIM] give → could not transfer '%s' from %s to %s" % [item_id, who, to_char])
+
+## Throw a physics object to a world location along an arc.
+func _throw_object(obj_id: String, x: float, z: float, arc_time: float) -> void:
+	var gs := _find_game_state()
+	if gs == null:
+		print("[SIM] throw → no GameState")
+		return
+	if gs.throw_physics_object_to(obj_id, Vector3(x, 0.0, z), arc_time):
+		print("[SIM] threw '%s' toward (%.1f, %.1f)" % [obj_id, x, z])
+	else:
+		print("[SIM] throw → no physics object '%s'" % obj_id)
+
+## Queue several destinations; the character walks them in order (one move each).
+func _queue_moves(points: Array, char_id: String) -> void:
+	var gs := _find_game_state()
+	if gs == null:
+		print("[SIM] queue → no GameState")
+		return
+	var who := _actor_char_id(char_id)
+	var path: Array[Vector3] = []
+	for p in points:
+		if p is Vector3:
+			path.append(p)
+		elif p is Array and (p as Array).size() >= 2:
+			path.append(Vector3(float(p[0]), 0.0, float(p[1])))
+	if path.is_empty():
+		print("[SIM] queue → no destinations")
+		return
+	gs.command_walk_path(who, path)
+	print("[SIM] %s queued %d move(s)" % [who, path.size()])
+
+## Rest at a shelter: restore the whole party (or one character if named).
+func _rest(char_id: String) -> void:
+	var gs := _find_game_state()
+	if gs == null:
+		print("[SIM] rest → no GameState")
+		return
+	var members: Array = [char_id] if char_id != "" else gs.get_party()
+	if members.is_empty():
+		var who := _find_player_char_id()
+		if who != "":
+			members = [who]
+	for member in members:
+		gs.restore_character(String(member))
+	print("[SIM] rested — restored %s" % str(members))
 
 ## Advance the dialogue one step via the same path a real click uses.
 func _advance_dialogue() -> void:

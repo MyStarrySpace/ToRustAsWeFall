@@ -188,6 +188,27 @@ func _execute_text_command(text: String) -> void:
 			else:
 				print("[CLI] Usage: give <item_id> <to_char>")
 
+		"throw":
+			if parts.size() >= 4:
+				await _sim._execute(SimCommand.throw_object(parts[1], parts[2].to_float(), parts[3].to_float()))
+			else:
+				print("[CLI] Usage: throw <obj_id> <x> <z>")
+
+		"queue":
+			# queue x1 z1 x2 z2 ... — walk the listed waypoints in order.
+			var points: Array = []
+			var i := 1
+			while i + 1 < parts.size():
+				points.append(Vector3(parts[i].to_float(), 0.0, parts[i + 1].to_float()))
+				i += 2
+			if points.is_empty():
+				print("[CLI] Usage: queue <x1> <z1> [<x2> <z2> ...]")
+			else:
+				await _sim._execute(SimCommand.queue_moves(points))
+
+		"rest", "sleep":
+			await _sim._execute(SimCommand.rest())
+
 		"protect":
 			await _sim._execute(SimCommand.key_press(KEY_X))
 			await _sim._execute(SimCommand.wait_frames(10))
@@ -237,6 +258,9 @@ func _execute_text_command(text: String) -> void:
 			print("  equip <item>    Pick an item into a free hand slot")
 			print("  drop <item>     Drop a held item")
 			print("  give <item> <char>  Hand a held item to another character")
+			print("  throw <obj> <x> <z>  Throw a physics object to a location")
+			print("  queue <x1> <z1> ...  Queue waypoints; walk them in order")
+			print("  rest            Rest at a shelter (restore the party)")
 			print("  protect         Cast Protect ability (X)")
 			print("  route           Toggle safe/direct routing (Tab)")
 			print("  wait <seconds>  Advance game time")

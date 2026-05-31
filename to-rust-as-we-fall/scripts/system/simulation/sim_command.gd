@@ -19,6 +19,9 @@ enum Type {
 	EQUIP_ITEM,     # Pick an item into a free hand slot (equip)
 	DROP_ITEM,      # Drop a held item at the character's feet
 	GIVE_ITEM,      # Transfer a held item to another character
+	THROW_OBJECT,   # Throw a physics object to a target location along an arc
+	QUEUE_MOVES,    # Queue several destinations; the character walks them in order
+	REST,           # Restore the party (rest at a shelter)
 	ASSERT_STAT,    # Assert a player stat value
 	ASSERT_PHASE,   # Assert the current sequence phase
 	ASSERT_NEAR,    # Assert player is near a position
@@ -124,6 +127,27 @@ static func give_item(item_id: String, to_char: String, char_id := "") -> SimCom
 	var cmd := SimCommand.new()
 	cmd.type = Type.GIVE_ITEM
 	cmd.args = {"item_id": item_id, "to_char": to_char, "char_id": char_id}
+	return cmd
+
+## Throw a physics object to a target world location along an arc.
+static func throw_object(obj_id: String, x: float, z: float, arc_time := 0.0) -> SimCommand:
+	var cmd := SimCommand.new()
+	cmd.type = Type.THROW_OBJECT
+	cmd.args = {"obj_id": obj_id, "x": x, "z": z, "arc_time": arc_time}
+	return cmd
+
+## Queue several destinations; the character walks them in order (one click each).
+static func queue_moves(points: Array, char_id := "") -> SimCommand:
+	var cmd := SimCommand.new()
+	cmd.type = Type.QUEUE_MOVES
+	cmd.args = {"points": points, "char_id": char_id}
+	return cmd
+
+## Rest at a shelter: restore the party's hp / stamina / atp.
+static func rest(char_id := "") -> SimCommand:
+	var cmd := SimCommand.new()
+	cmd.type = Type.REST
+	cmd.args = {"char_id": char_id}
 	return cmd
 
 static func assert_stat(stat_name: String, op: String, value: float) -> SimCommand:

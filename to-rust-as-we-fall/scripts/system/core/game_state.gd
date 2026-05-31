@@ -1829,6 +1829,26 @@ func throw_physics_object(obj_id: String, velocity: Vector3, start_pos: Vector3 
 	_recompute_physics_predictions()
 	_recompute_pendulum_predictions()
 
+## Throw a physics object to a target XZ location along an arc. Picks a launch
+## velocity from a flight time (scaled with distance unless `arc_time` is given),
+## then defers to throw_physics_object — which traces walls and drives the
+## parabola off the scheduler tick, so it stays replay-deterministic. Returns
+## false if the object isn't registered.
+func throw_physics_object_to(obj_id: String, target: Vector3, arc_time: float = 0.0) -> bool:
+	if not physics_objects.has(obj_id) or not scheduler:
+		return false
+	var from := get_physics_position(obj_id)
+	var dx := target.x - from.x
+	var dz := target.z - from.z
+	var horizontal := Vector2(dx, dz).length()
+	var t := arc_time
+	if t <= 0.0:
+		t = clampf(horizontal / 6.0, 0.45, 2.5)
+	# y(t) = from.y + vy*t - 0.5*g*t² = target.y  → solve for vy.
+	var vy := (target.y - from.y + 0.5 * PENDULUM_GRAVITY * t * t) / t
+	throw_physics_object(obj_id, Vector3(dx / t, vy, dz / t), from)
+	return true
+
 func _on_throw_landing(obj_id: String) -> void:
 	if not physics_objects.has(obj_id):
 		return
