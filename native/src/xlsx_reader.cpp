@@ -144,15 +144,17 @@ void XlsxReader::_parse_shared_strings() {
 
 	while (xml->read() == OK) {
 		XMLParser::NodeType type = xml->get_node_type();
-		String node_name = xml->get_node_name();
 
+		// get_node_name() must only be called on element nodes; calling it on a
+		// NODE_TEXT (the string contents themselves) raises an engine error, and
+		// the shared-strings table is almost entirely text nodes.
 		if (type == XMLParser::NODE_ELEMENT) {
-			if (node_name == "si") {
+			if (xml->get_node_name() == "si") {
 				in_si = true;
 				current_text = "";
 			}
 		} else if (type == XMLParser::NODE_ELEMENT_END) {
-			if (node_name == "si") {
+			if (xml->get_node_name() == "si") {
 				_shared_strings.push_back(current_text);
 				in_si = false;
 			}
