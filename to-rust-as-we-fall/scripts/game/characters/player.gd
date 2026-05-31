@@ -340,7 +340,7 @@ func _update_path_line() -> void:
 	im.surface_begin(Mesh.PRIMITIVE_LINES)
 	var from_pos := global_position + Vector3(0.0, 0.08, 0.0)
 
-	if game_state and char_id != "" and game_state.is_moving(char_id):
+	if game_state and game_state.scheduler != null and char_id != "" and game_state.is_moving(char_id):
 		var mv = game_state.characters[char_id].movement
 		if mv:
 			var path: Array[Vector3] = mv.path
