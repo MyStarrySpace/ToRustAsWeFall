@@ -107,6 +107,9 @@ func _ready() -> void:
 			"--test-interactable-data":
 				ran_test = true
 				_test_interactable_data()
+			"--test-chunk-party-presence":
+				ran_test = true
+				_test_chunk_party_presence()
 			"--test-event-log-roundtrip":
 				ran_test = true
 				_test_event_log_roundtrip()
@@ -498,6 +501,7 @@ func _run_all_tests() -> void:
 	_test_game_state()
 	_test_cooperative_pathfinding()
 	_test_interactable_data()
+	_test_chunk_party_presence()
 	_test_event_log_roundtrip()
 	_test_event_log_mutation_audit()
 	_test_movement_capture()
@@ -7025,6 +7029,38 @@ func _test_interactable_data() -> void:
 	var reached := gs2.get_position("aster").distance_to(grid2.grid_to_world(Vector2i(6, 4))) < 1.5
 	_assert_true(reached, "Aster reaches the targeted interactable")
 	_assert_true(gs2.trigger_interactable("near_a", "aster"), "Reached interactable can then be triggered")
+
+# --- Test: chunk party presence (D8a) ---
+func _test_chunk_party_presence() -> void:
+	_test_name = "ChunkPartyPresence"
+
+	# A chunk with no PartyPresence node returns an empty map (no override → the
+	# host keeps its full default roster).
+	var bare := SceneChunk.new()
+	_assert_true(bare.get_party_presence().is_empty(),
+		"A chunk without a PartyPresence node reports no presence override")
+	bare.free()
+
+	# A PartyPresence node reports its configured roster.
+	var presence := PartyPresence.new()
+	presence.aster_present = true
+	presence.peris_present = false
+	presence.endo_present = true
+	var map := presence.presence_map()
+	_assert_true(bool(map.get("aster")), "PartyPresence marks aster present")
+	_assert_true(not bool(map.get("peris")), "PartyPresence marks peris absent")
+	_assert_true(bool(map.get("endo")), "PartyPresence marks endo present")
+	var ids := presence.present_ids()
+	_assert_true(ids.has("aster") and ids.has("endo") and not ids.has("peris"),
+		"present_ids lists only the present members")
+
+	# A chunk discovers a PartyPresence child and surfaces its map.
+	var chunk := SceneChunk.new()
+	chunk.add_child(presence)
+	var discovered := chunk.get_party_presence()
+	_assert_true(not bool(discovered.get("peris", true)),
+		"A chunk surfaces its PartyPresence child's map")
+	chunk.free()
 
 # --- Test: GameState ---
 func _test_game_state() -> void:

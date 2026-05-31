@@ -211,6 +211,7 @@ func _begin() -> void:
 	_apply_chunk_navigation_graph()
 	_apply_chunk_metadata()
 	_position_party_for_chunk()
+	_apply_chunk_party_presence()
 	_select_character(_default_chunk_character())
 	_refresh_preview_items()
 	_refresh_inventory_panel()
@@ -1689,6 +1690,18 @@ func _position_party_for_chunk() -> void:
 	for char_id in CHARACTER_IDS:
 		if positions.has(char_id):
 			headless_set_character_position(char_id, positions[char_id])
+
+## Honour a chunk's PartyPresence node (if any): hide absent members so they
+## can't be selected or moved. No node / empty map => keep the full roster.
+func _apply_chunk_party_presence() -> void:
+	if _active_chunk == null or not _active_chunk.has_method("get_party_presence"):
+		return
+	var presence: Variant = _active_chunk.call("get_party_presence")
+	if not (presence is Dictionary) or (presence as Dictionary).is_empty():
+		return
+	for char_id in CHARACTER_IDS:
+		if (presence as Dictionary).has(char_id):
+			set_preview_character_visible(char_id, bool((presence as Dictionary)[char_id]))
 
 func _default_chunk_character() -> String:
 	var default_id := "aster"

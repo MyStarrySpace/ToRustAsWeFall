@@ -905,6 +905,14 @@ func _dlg_chain_play_next() -> void:
 
 var _chunks: Dictionary = {}
 
+## Exposed to hosted chunks so their interactables register with the same data
+## layer the rest of the game uses (SceneChunk reads these through `host`).
+func get_preview_game_state() -> GameState:
+	return _game_state
+
+func get_preview_scheduler() -> EventScheduler:
+	return _scheduler
+
 func _load_chunk(chunk_name: String) -> Node3D:
 	if _chunks.has(chunk_name):
 		return _chunks[chunk_name]

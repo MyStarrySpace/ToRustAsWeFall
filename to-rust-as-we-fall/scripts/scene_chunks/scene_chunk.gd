@@ -49,6 +49,14 @@ func get_preview_anchors() -> Dictionary:
 func get_preview_character_state() -> Dictionary:
 	return {}
 
+## Per-character party presence at this story beat, read from a PartyPresence child
+## node if one is present. Empty => no override (host keeps its full roster).
+func get_party_presence() -> Dictionary:
+	for child in get_children():
+		if child is PartyPresence:
+			return (child as PartyPresence).presence_map()
+	return {}
+
 func get_preview_time_state() -> Dictionary:
 	return {}
 
@@ -223,6 +231,24 @@ func _get_scheduler_tick() -> float:
 		return float(host.call("get_preview_scheduler_tick"))
 	return 0.0
 
+func _get_game_state():
+	if host != null and host.has_method("get_preview_game_state"):
+		return host.call("get_preview_game_state")
+	return null
+
+func _get_scheduler():
+	if host != null and host.has_method("get_preview_scheduler"):
+		return host.call("get_preview_scheduler")
+	return null
+
+## Registry id for a chunk interactable: namespaced by chunk so two chunks sharing
+## an authored node name can't collide in GameState. The scene-tree node keeps the
+## authored name (tests / lookups match on it); only the data id is namespaced.
+func _interactable_data_id(node_name: String) -> String:
+	if chunk_name == "":
+		return node_name
+	return "%s_%s" % [chunk_name, node_name]
+
 func _clear_dialogue() -> void:
 	var dialogue_box: Node = _dialogue_box()
 	if dialogue_box != null and dialogue_box.has_method("clear"):
@@ -339,17 +365,37 @@ func _add_interactable(
 	interaction_radius := 1.5,
 	interactable_type := Interactable.InteractableType.HOLD_ACTION
 ) -> Area3D:
-	var interactable := INTERACTABLE_SCENE.instantiate()
+	var spec := {
+		"position": position,
+		"description": description,
+		"requires_hold": interactable_type == Interactable.InteractableType.HOLD_ACTION,
+		"hold_time": dwell_time,
+		"one_shot": one_shot,
+		"required_character": required_character,
+		"radius": interaction_radius,
+		"tutorial_label": tutorial_label,
+	}
+	var interactable = InteractableFactory.spawn(
+		_get_game_state(),
+		parent,
+		_interactable_data_id(node_name),
+		spec,
+		_get_scheduler(),
+		_dialogue_box(),
+		_get_active_character()
+	)
+	# Keep the authored scene-tree name so lookups/tests that match on it still work
+	# (the data-layer id stays namespaced via _interactable_data_id).
 	interactable.name = node_name
+	# Mirror the spec onto the node directly so a host-less standalone preview (no
+	# GameState to bind against) still has every field populated.
 	interactable.description = description
-	interactable.position = position
 	interactable.tutorial_label = tutorial_label
 	interactable.required_character = required_character
 	interactable.dwell_time = dwell_time
 	interactable.one_shot = one_shot
 	interactable.interaction_radius = interaction_radius
 	interactable.interactable_type = interactable_type
-	parent.add_child(interactable)
 	_register_interactable(interactable)
 	if interactable.has_method("show_tutorial_label"):
 		interactable.call("show_tutorial_label")
