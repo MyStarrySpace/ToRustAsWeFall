@@ -195,7 +195,6 @@ func _setup_ui() -> void:
 	_exit_button.one_shot = false
 	_exit_button.dwell_time = 0.5
 	_exit_button.tutorial_label = "OPEN"
-	_exit_button.show_interaction_zone = false
 	_exit_button.interaction_enabled = false
 	_exit_button.monitoring = false
 	_exit_button.monitorable = false
@@ -455,15 +454,11 @@ func _set_exit_button_interactable(active: bool) -> void:
 	if active and _exit_button.has_method("reset"):
 		_exit_button.reset()
 	_exit_button.visible = active
-	_exit_button.show_interaction_zone = active
 	if _exit_button.has_method("set_interaction_enabled"):
 		_exit_button.set_interaction_enabled(active)
 	else:
 		_exit_button.monitoring = active
 		_exit_button.monitorable = active
-	var marker := _exit_button.find_child("InteractionZoneMarker", true, false) as Node3D
-	if marker != null:
-		marker.visible = active
 	if not active:
 		if _exit_button.has_method("hide_tutorial_label"):
 			_exit_button.hide_tutorial_label()
@@ -1860,13 +1855,15 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 	fill.omni_range = 8.0
 	parent.add_child(fill)
 
+	# Floor readout "3B": the "3" steady, the "B" flickering, both glowing. HDR
+	# (>1) modulate blooms through the environment glow; a small red light backs it.
 	var indicator_x := hw - 0.1
 	_floor_indicator = Label3D.new()
 	_floor_indicator.text = "3"
 	_floor_indicator.font_size = 64
 	_floor_indicator.pixel_size = 0.012
-	_floor_indicator.modulate = Color(0.8, 0.2, 0.1, 0.9)
-	_floor_indicator.position = Vector3(indicator_x, h * 0.7, 0.2)
+	_floor_indicator.modulate = Color(2.0, 0.45, 0.2, 1.0)
+	_floor_indicator.position = Vector3(indicator_x, h * 0.7, 0.18)
 	_floor_indicator.rotation.y = -PI / 2.0
 	parent.add_child(_floor_indicator)
 
@@ -1874,10 +1871,17 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 	_indicator_b_label.text = "B"
 	_indicator_b_label.font_size = 64
 	_indicator_b_label.pixel_size = 0.012
-	_indicator_b_label.modulate = Color(0.8, 0.2, 0.1, 0.7)
-	_indicator_b_label.position = Vector3(indicator_x, h * 0.7, -0.2)
+	_indicator_b_label.modulate = Color(2.0, 0.45, 0.2, 1.0)
+	_indicator_b_label.position = Vector3(indicator_x, h * 0.7, -0.05)
 	_indicator_b_label.rotation.y = -PI / 2.0
 	parent.add_child(_indicator_b_label)
+
+	var indicator_glow := OmniLight3D.new()
+	indicator_glow.light_color = Color(0.95, 0.25, 0.15)
+	indicator_glow.light_energy = 1.4
+	indicator_glow.omni_range = 1.6
+	indicator_glow.position = Vector3(indicator_x - 0.15, h * 0.7 + 0.25, 0.05)
+	parent.add_child(indicator_glow)
 
 	# Flashes before door access is restored.
 	_no_exit_label = Label3D.new()
