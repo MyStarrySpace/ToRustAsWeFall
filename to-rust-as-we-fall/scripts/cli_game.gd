@@ -158,6 +158,36 @@ func _execute_text_command(text: String) -> void:
 			else:
 				print("[CLI] Usage: click <InteractableName>")
 
+		"interactables", "list", "scan":
+			# What can the party act on right now (combined visible range).
+			var radius := parts[1].to_float() if parts.size() >= 2 else 0.0
+			await _sim._execute(SimCommand.list_interactables(radius))
+
+		"move_to", "goto", "approach":
+			# Walk the active character to a registered interactable, then dwell.
+			if parts.size() >= 2:
+				await _sim._execute(SimCommand.move_to_interactable(parts[1]))
+			else:
+				print("[CLI] Usage: move_to <interactable>")
+
+		"equip", "pickup", "take":
+			if parts.size() >= 2:
+				await _sim._execute(SimCommand.equip_item(parts[1]))
+			else:
+				print("[CLI] Usage: equip <item_id>")
+
+		"drop":
+			if parts.size() >= 2:
+				await _sim._execute(SimCommand.drop_item(parts[1]))
+			else:
+				print("[CLI] Usage: drop <item_id>")
+
+		"give", "hand":
+			if parts.size() >= 3:
+				await _sim._execute(SimCommand.give_item(parts[1], parts[2]))
+			else:
+				print("[CLI] Usage: give <item_id> <to_char>")
+
 		"protect":
 			await _sim._execute(SimCommand.key_press(KEY_X))
 			await _sim._execute(SimCommand.wait_frames(10))
@@ -202,6 +232,11 @@ func _execute_text_command(text: String) -> void:
 			print("  run             Toggle run/walk")
 			print("  dwell [secs]    Wait near object for proximity interaction (default 2s)")
 			print("  click <name>    Interact with a named interactable (e.g. click Terminal)")
+			print("  interactables [r]  List interactables in the party's visible range")
+			print("  move_to <name>  Walk the active character to an interactable")
+			print("  equip <item>    Pick an item into a free hand slot")
+			print("  drop <item>     Drop a held item")
+			print("  give <item> <char>  Hand a held item to another character")
 			print("  protect         Cast Protect ability (X)")
 			print("  route           Toggle safe/direct routing (Tab)")
 			print("  wait <seconds>  Advance game time")

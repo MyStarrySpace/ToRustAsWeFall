@@ -14,6 +14,11 @@ enum Type {
 	WAIT_DIALOGUE,  # Wait until dialogue finishes (advancing at wait gates)
 	ADVANCE_DIALOGUE, # Advance the dialogue one step (a click / acknowledge)
 	TRIGGER_INTERACTABLE, # Interact with a named interactable (a click on it)
+	LIST_INTERACTABLES, # Print interactables within the party's combined visible range
+	MOVE_TO_INTERACTABLE, # Walk the active character to a named/registered interactable
+	EQUIP_ITEM,     # Pick an item into a free hand slot (equip)
+	DROP_ITEM,      # Drop a held item at the character's feet
+	GIVE_ITEM,      # Transfer a held item to another character
 	ASSERT_STAT,    # Assert a player stat value
 	ASSERT_PHASE,   # Assert the current sequence phase
 	ASSERT_NEAR,    # Assert player is near a position
@@ -83,6 +88,42 @@ static func trigger_interactable(node_name: String) -> SimCommand:
 	var cmd := SimCommand.new()
 	cmd.type = Type.TRIGGER_INTERACTABLE
 	cmd.args = {"name": node_name}
+	return cmd
+
+## Print every interactable within the party's combined visible range (the data
+## layer's "what can we act on right now" query).
+static func list_interactables(radius: float = 0.0) -> SimCommand:
+	var cmd := SimCommand.new()
+	cmd.type = Type.LIST_INTERACTABLES
+	cmd.args = {"radius": radius}
+	return cmd
+
+## Walk the active character to a registered interactable (by id or node name).
+static func move_to_interactable(id: String, char_id := "") -> SimCommand:
+	var cmd := SimCommand.new()
+	cmd.type = Type.MOVE_TO_INTERACTABLE
+	cmd.args = {"id": id, "char_id": char_id}
+	return cmd
+
+## Equip: move an item into a free hand slot (pick it up).
+static func equip_item(item_id: String, char_id := "") -> SimCommand:
+	var cmd := SimCommand.new()
+	cmd.type = Type.EQUIP_ITEM
+	cmd.args = {"item_id": item_id, "char_id": char_id}
+	return cmd
+
+## Drop a held item at the character's feet.
+static func drop_item(item_id: String, char_id := "") -> SimCommand:
+	var cmd := SimCommand.new()
+	cmd.type = Type.DROP_ITEM
+	cmd.args = {"item_id": item_id, "char_id": char_id}
+	return cmd
+
+## Hand a held item to another character.
+static func give_item(item_id: String, to_char: String, char_id := "") -> SimCommand:
+	var cmd := SimCommand.new()
+	cmd.type = Type.GIVE_ITEM
+	cmd.args = {"item_id": item_id, "to_char": to_char, "char_id": char_id}
 	return cmd
 
 static func assert_stat(stat_name: String, op: String, value: float) -> SimCommand:

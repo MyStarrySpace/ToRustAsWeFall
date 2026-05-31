@@ -46,6 +46,16 @@ func _execute(cmd: SimCommand) -> void:
 			_advance_dialogue()
 		SimCommand.Type.TRIGGER_INTERACTABLE:
 			_trigger_interactable(cmd.args.name)
+		SimCommand.Type.LIST_INTERACTABLES:
+			_list_interactables(cmd.args.get("radius", 0.0))
+		SimCommand.Type.MOVE_TO_INTERACTABLE:
+			_move_to_interactable(cmd.args.get("id", ""), cmd.args.get("char_id", ""))
+		SimCommand.Type.EQUIP_ITEM:
+			_equip_item(cmd.args.get("item_id", ""), cmd.args.get("char_id", ""))
+		SimCommand.Type.DROP_ITEM:
+			_drop_item(cmd.args.get("item_id", ""), cmd.args.get("char_id", ""))
+		SimCommand.Type.GIVE_ITEM:
+			_give_item(cmd.args.get("item_id", ""), cmd.args.get("to_char", ""), cmd.args.get("char_id", ""))
 		SimCommand.Type.ASSERT_STAT:
 			_assert_stat(cmd.args.stat, cmd.args.op, cmd.args.value)
 		SimCommand.Type.ASSERT_PHASE:
@@ -188,6 +198,95 @@ func _trigger_interactable(node_name: String) -> void:
 		print("[SIM] Interacted with '%s'" % node_name)
 	else:
 		print("[SIM] Interact → '%s' has no interaction" % node_name)
+
+## Which character acts: an explicit id when given, else the inferred player.
+func _actor_char_id(explicit: String) -> String:
+	if explicit != "":
+		return explicit
+	return _find_player_char_id()
+
+## Resolve a registered interactable id from either an exact id or a node name.
+func _resolve_interactable_id(gs: GameState, id_or_name: String) -> String:
+	if gs == null:
+		return ""
+	if gs.has_interactable(id_or_name):
+		return id_or_name
+	var node: Node = _find_node(id_or_name)
+	if node != null and "data_id" in node and String(node.data_id) != "":
+		return String(node.data_id)
+	return ""
+
+## Print every interactable within the party's combined visible range.
+func _list_interactables(radius: float) -> void:
+	var gs := _find_game_state()
+	if gs == null:
+		print("[SIM] list-interactables → no GameState")
+		return
+	var party: Array = gs.get_party()
+	if party.is_empty():
+		var who := _find_player_char_id()
+		if who != "":
+			party = [who]
+	var ids: Array = gs.interactables_in_range(party, radius) if radius > 0.0 else gs.interactables_in_range(party)
+	print("[SIM] %d interactable(s) in range of %s:" % [ids.size(), str(party)])
+	for id in ids:
+		var spec: Dictionary = gs.get_interactable(id)
+		print("  - %s @ %s" % [id, str(spec.get("position", Vector3.ZERO))])
+
+## Walk the active character to a registered interactable (id or node name).
+func _move_to_interactable(id_or_name: String, char_id: String) -> void:
+	var gs := _find_game_state()
+	if gs == null:
+		print("[SIM] move-to → no GameState")
+		return
+	var who := _actor_char_id(char_id)
+	var rid := _resolve_interactable_id(gs, id_or_name)
+	if rid == "":
+		print("[SIM] move-to → no interactable '%s'" % id_or_name)
+		return
+	if gs.move_to_interactable(who, rid):
+		print("[SIM] %s moving to interactable '%s'" % [who, rid])
+	else:
+		print("[SIM] move-to → could not path %s to '%s'" % [who, rid])
+
+## Equip: move an item into a free hand slot (pick it up).
+func _equip_item(item_id: String, char_id: String) -> void:
+	var gs := _find_game_state()
+	if gs == null:
+		print("[SIM] equip → no GameState")
+		return
+	var who := _actor_char_id(char_id)
+	if gs.pick_up_item(who, item_id):
+		print("[SIM] %s equipped '%s' (hands: %s)" % [who, item_id, str(gs.get_hand_items(who))])
+	else:
+		print("[SIM] equip → %s could not pick up '%s'" % [who, item_id])
+
+## Drop a held item at the character's feet.
+func _drop_item(item_id: String, char_id: String) -> void:
+	var gs := _find_game_state()
+	if gs == null:
+		print("[SIM] drop → no GameState")
+		return
+	var who := _actor_char_id(char_id)
+	if gs.drop_item(who, item_id):
+		print("[SIM] %s dropped '%s'" % [who, item_id])
+	else:
+		print("[SIM] drop → %s is not holding '%s'" % [who, item_id])
+
+## Hand a held item to another character.
+func _give_item(item_id: String, to_char: String, char_id: String) -> void:
+	var gs := _find_game_state()
+	if gs == null:
+		print("[SIM] give → no GameState")
+		return
+	var who := _actor_char_id(char_id)
+	if to_char == "":
+		print("[SIM] give → needs a recipient")
+		return
+	if gs.transfer_item(who, to_char, item_id):
+		print("[SIM] %s gave '%s' to %s" % [who, item_id, to_char])
+	else:
+		print("[SIM] give → could not transfer '%s' from %s to %s" % [item_id, who, to_char])
 
 ## Advance the dialogue one step via the same path a real click uses.
 func _advance_dialogue() -> void:

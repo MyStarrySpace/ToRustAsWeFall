@@ -110,6 +110,9 @@ func _ready() -> void:
 			"--test-chunk-party-presence":
 				ran_test = true
 				_test_chunk_party_presence()
+			"--test-sim-command-api":
+				ran_test = true
+				_test_sim_command_api()
 			"--test-event-log-roundtrip":
 				ran_test = true
 				_test_event_log_roundtrip()
@@ -502,6 +505,7 @@ func _run_all_tests() -> void:
 	_test_cooperative_pathfinding()
 	_test_interactable_data()
 	_test_chunk_party_presence()
+	_test_sim_command_api()
 	_test_event_log_roundtrip()
 	_test_event_log_mutation_audit()
 	_test_movement_capture()
@@ -7061,6 +7065,45 @@ func _test_chunk_party_presence() -> void:
 	_assert_true(not bool(discovered.get("peris", true)),
 		"A chunk surfaces its PartyPresence child's map")
 	chunk.free()
+
+# --- Test: SimCommand API surface (D9) ---
+func _test_sim_command_api() -> void:
+	_test_name = "SimCommandAPI"
+
+	var list := SimCommand.list_interactables(8.0)
+	_assert_equals(list.type, SimCommand.Type.LIST_INTERACTABLES, "list_interactables builds the right command")
+	_assert_equals(float(list.args.get("radius", -1.0)), 8.0, "list_interactables carries its radius")
+
+	var move := SimCommand.move_to_interactable("Terminal", "aster")
+	_assert_equals(move.type, SimCommand.Type.MOVE_TO_INTERACTABLE, "move_to_interactable builds the right command")
+	_assert_equals(str(move.args.get("id")), "Terminal", "move_to_interactable carries its target id")
+	_assert_equals(str(move.args.get("char_id")), "aster", "move_to_interactable carries the actor")
+
+	var equip := SimCommand.equip_item("ferritin_shard")
+	_assert_equals(equip.type, SimCommand.Type.EQUIP_ITEM, "equip_item builds the right command")
+	_assert_equals(str(equip.args.get("item_id")), "ferritin_shard", "equip_item carries its item id")
+
+	var drop := SimCommand.drop_item("ferritin_shard", "endo")
+	_assert_equals(drop.type, SimCommand.Type.DROP_ITEM, "drop_item builds the right command")
+	_assert_equals(str(drop.args.get("char_id")), "endo", "drop_item carries the actor")
+
+	var give := SimCommand.give_item("ferritin_shard", "peris", "aster")
+	_assert_equals(give.type, SimCommand.Type.GIVE_ITEM, "give_item builds the right command")
+	_assert_equals(str(give.args.get("to_char")), "peris", "give_item carries the recipient")
+
+	# The runner resolves an interactable by exact id, and returns empty otherwise.
+	var grid := GridWorld.new()
+	grid.create_room(16, 16, true)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.grid = grid
+	gs.register_interactable({"id": "console_a", "position": grid.grid_to_world(Vector2i(2, 2)), "radius": 3.0})
+	var runner := SimRunner.new(get_tree())
+	_assert_equals(runner._resolve_interactable_id(gs, "console_a"), "console_a",
+		"SimRunner resolves an interactable by its exact registered id")
+	_assert_equals(runner._resolve_interactable_id(gs, "missing"), "",
+		"SimRunner returns empty for an unknown interactable")
 
 # --- Test: GameState ---
 func _test_game_state() -> void:
