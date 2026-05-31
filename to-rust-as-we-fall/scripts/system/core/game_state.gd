@@ -37,6 +37,11 @@ var _endocytosing: Dictionary = {} # char_id → {item_id, handle} for in-progre
 var _dodging: Dictionary = {}     # char_id → {end_tick, handle}
 ## Per-character running tick state. Missing key = walking.
 var _running: Dictionary = {}
+## Cooperative-pathfinding space-time reservations: Vector2i cell →
+## Array of {t0, t1, id}. A character claims each cell it transits for a
+## padded time window so others can plan paths that never overlap it in
+## space and time. Derived from movement, never serialized.
+var _reservations: Dictionary = {}
 
 const HP_MAX := 100.0
 const STAMINA_MAX := 100.0
@@ -161,6 +166,7 @@ func register_character(id: String, pos: Vector3, speed: float = 3.0, stats: Dic
 		"internal": [],
 	}
 	explored[id] = {}
+	_reserve_parked(id, cell)
 
 func unregister_character(id: String) -> void:
 	_emit(GameEvent.KIND_UNREGISTER_CHARACTER, {"id": id})
@@ -248,6 +254,7 @@ func _do_stop(id: String) -> void:
 		if grid:
 			ch.grid_cell = grid.world_to_grid(ch.position)
 	_cancel_movement(id)
+	_reserve_parked(id, ch.grid_cell)
 
 ## Change movement speed. If currently moving, recalculates arrival time.
 func change_move_speed(id: String, new_speed: float) -> void:
@@ -299,6 +306,8 @@ func get_position(id: String) -> Vector3:
 	if ch.movement == null or not scheduler:
 		return ch.position
 	var mv: Dictionary = ch.movement
+	if mv.has("arrival_ticks"):
+		return _interpolate_path_timed(mv.path, mv.arrival_ticks, scheduler.get_current_tick())
 	if mv.duration <= 0.0:
 		return mv.path[mv.path.size() - 1]
 	var t := clampf((scheduler.get_current_tick() - mv.start_tick) / mv.duration, 0.0, 1.0)
@@ -475,7 +484,11 @@ func deserialize(data: Dictionary) -> void:
 
 # --- Internal ---
 
-func _start_movement(id: String, full_path: Array[Vector3]) -> void:
+## Begin interpolated movement along full_path. If arrival_ticks is supplied
+## (one absolute tick per waypoint, monotonic, arrival_ticks[0] == now), the
+## character follows that exact timing — letting cooperative paths embed waits.
+## Otherwise timing is uniform constant-speed, identical to the prior behavior.
+func _start_movement(id: String, full_path: Array[Vector3], arrival_ticks: Array[float] = []) -> void:
 	var ch: Dictionary = characters[id]
 	var cum_dist := _compute_cum_dist(full_path)
 	var total_dist: float = cum_dist[cum_dist.size() - 1]
@@ -483,26 +496,36 @@ func _start_movement(id: String, full_path: Array[Vector3]) -> void:
 		ch.position = full_path[full_path.size() - 1]
 		if grid:
 			ch.grid_cell = grid.world_to_grid(ch.position)
+		_clear_reservations(id)
+		_reserve_parked(id, ch.grid_cell)
 		character_arrived.emit(id)
 		_recompute_all_detection_predictions()
 		_recompute_physics_predictions()
 		return
 	var speed: float = ch.move_speed
-	var duration := total_dist / speed
 	var start_tick := scheduler.get_current_tick()
+	var ticks: Array[float] = arrival_ticks
+	if ticks.size() != full_path.size():
+		ticks = []
+		for d in cum_dist:
+			ticks.append(start_tick + d / speed)
+	var final_tick: float = ticks[ticks.size() - 1]
+	var duration := final_tick - start_tick
 	var handle := scheduler.schedule_at(
-		start_tick + duration,
+		final_tick,
 		func(): _on_arrival(id),
 		"movement_" + id
 	)
 	ch.movement = {
 		"path": full_path,
 		"cum_dist": cum_dist,
+		"arrival_ticks": ticks,
 		"total_distance": total_dist,
 		"start_tick": start_tick,
 		"duration": duration,
 		"handle": handle,
 	}
+	_reserve_path(id, full_path, ticks)
 	# Resume stamina drain on movement.
 	# that the character is in motion again.
 	if is_running(id) and int(_running[id].get("tick_handle", 0)) == 0:
@@ -519,6 +542,7 @@ func _cancel_movement(id: String) -> void:
 		if scheduler:
 			scheduler.cancel(ch.movement.handle)
 		ch.movement = null
+	_clear_reservations(id)
 	_recompute_all_detection_predictions()
 	_recompute_physics_predictions()
 	_recompute_pendulum_predictions()
@@ -534,6 +558,7 @@ func _on_arrival(id: String) -> void:
 	if grid:
 		ch.grid_cell = grid.world_to_grid(dest)
 	ch.movement = null
+	_reserve_parked(id, ch.grid_cell)
 	character_arrived.emit(id)
 
 static func _compute_cum_dist(path: Array[Vector3]) -> Array[float]:
@@ -560,6 +585,211 @@ static func _interpolate_path(path: Array[Vector3], cum_dist: Array[float], t: f
 			var seg_t := (target_dist - seg_start) / seg_len
 			return path[i - 1].lerp(path[i], seg_t)
 	return path[path.size() - 1]
+
+## Interpolate along a path with explicit per-waypoint arrival ticks. Unlike the
+## constant-speed variant, this honors uneven segment timing — including a
+## "wait" segment where two consecutive waypoints share a position but span time,
+## which holds the character in place. Cooperative paths use this to pause and let
+## another character pass.
+static func _interpolate_path_timed(path: Array[Vector3], arrival_ticks: Array, tick: float) -> Vector3:
+	if path.is_empty():
+		return Vector3.ZERO
+	var n := path.size()
+	if n == 1 or tick <= arrival_ticks[0]:
+		return path[0]
+	if tick >= arrival_ticks[n - 1]:
+		return path[n - 1]
+	for i in range(1, n):
+		if arrival_ticks[i] >= tick:
+			var span: float = arrival_ticks[i] - arrival_ticks[i - 1]
+			if span <= 0.0001:
+				return path[i]
+			var seg_t: float = (tick - arrival_ticks[i - 1]) / span
+			return path[i - 1].lerp(path[i], seg_t)
+	return path[n - 1]
+
+# --- Cooperative pathfinding (space-time reservations) ---
+#
+# Each character claims every cell it transits for a padded time window. The
+# window for cell k spans from when the character leaves cell k-1 until it
+# reaches cell k+1 — a 3-cell sliding claim, so a head-on swap (A: X→Y while
+# B: Y→X at the same time) shows up as overlapping claims on BOTH shared cells
+# and is rejected by a single vertex check. The space-time A* plans paths that
+# avoid every reserved (cell, time) window, inserting waits when needed.
+# Reservations are derived from movement and scheduler ticks, so they replay
+# identically and behave the same under fast-forward.
+
+## Slack ticks padded around each reserved window so characters keep a little
+## space and never graze at a shared boundary.
+const _RESERVE_BUFFER := 0.18
+## A parked character holds its cell effectively forever; others route around it.
+const _PARK_HORIZON := 1.0e12
+## Search bounds for the cooperative planner.
+const _COOP_MAX_NODES := 4000
+
+func _clear_reservations(id: String) -> void:
+	if _reservations.is_empty():
+		return
+	var empty_cells: Array = []
+	for cell in _reservations:
+		var slots: Array = _reservations[cell]
+		var kept: Array = []
+		for s in slots:
+			if s.id != id:
+				kept.append(s)
+		if kept.is_empty():
+			empty_cells.append(cell)
+		else:
+			_reservations[cell] = kept
+	for cell in empty_cells:
+		_reservations.erase(cell)
+
+func _add_reservation(cell: Vector2i, t0: float, t1: float, id: String) -> void:
+	if not _reservations.has(cell):
+		_reservations[cell] = []
+	_reservations[cell].append({"t0": t0, "t1": t1, "id": id})
+
+## Reserve a stationary character's cell from now to the horizon.
+func _reserve_parked(id: String, cell: Vector2i) -> void:
+	if not scheduler:
+		return
+	_clear_reservations(id)
+	_add_reservation(cell, scheduler.get_current_tick() - _RESERVE_BUFFER, _PARK_HORIZON, id)
+
+## Reserve every cell a path transits with its 3-cell sliding time window. The
+## final (destination) cell is held to the horizon since the character parks there.
+func _reserve_path(id: String, world_path: Array[Vector3], arrival_ticks: Array) -> void:
+	if not grid:
+		return
+	_clear_reservations(id)
+	var n := world_path.size()
+	for k in range(n):
+		var cell := grid.world_to_grid(world_path[k])
+		var lo := maxi(0, k - 1)
+		var hi := mini(n - 1, k + 1)
+		var t0: float = float(arrival_ticks[lo]) - _RESERVE_BUFFER
+		var t1: float
+		if k == n - 1:
+			t1 = _PARK_HORIZON
+		else:
+			t1 = float(arrival_ticks[hi]) + _RESERVE_BUFFER
+		_add_reservation(cell, t0, t1, id)
+
+## True if any character other than exclude_id has cell reserved during [t0, t1].
+func _cell_reserved(cell: Vector2i, t0: float, t1: float, exclude_id: String) -> bool:
+	if not _reservations.has(cell):
+		return false
+	for s in _reservations[cell]:
+		if s.id == exclude_id:
+			continue
+		if t0 <= s.t1 and s.t0 <= t1:
+			return true
+	return false
+
+func _coop_h(cell: Vector2i, end: Vector2i, card: float) -> float:
+	var dx := absf(cell.x - end.x)
+	var dz := absf(cell.y - end.y)
+	return (maxf(dx, dz) + 0.4142136 * minf(dx, dz)) * card
+
+func _coop_key(cell: Vector2i, t: float, t_start: float, tq: float) -> String:
+	return "%d,%d,%d" % [cell.x, cell.y, int(round((t - t_start) / tq))]
+
+## Space-time A*: a grid-cell path from start to end whose timed transit avoids
+## every reserved (cell, time) window owned by another character, inserting
+## waits where needed. Returns {cells: Array[Vector2i], ticks: Array[float]}
+## (absolute arrival tick per cell) or {} if no conflict-free path is found.
+func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: float, exclude_id: String) -> Dictionary:
+	if not grid:
+		return {}
+	if start == end:
+		return {"cells": [start] as Array[Vector2i], "ticks": [t_start] as Array[float]}
+	if not grid.is_in_bounds(end.x, end.y) or not grid.is_walkable(end.x, end.y):
+		return {}
+	var card: float = (grid.cell_size / speed) if speed > 0.0 else 1.0
+	var diag: float = card * 1.4142136
+	var tq: float = maxf(card * 0.5, 0.0001)
+	var dirs: Array[Vector2i] = [
+		Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+		Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1),
+	]
+	# A budget on total time so the planner can't wait/wander forever.
+	var time_budget: float = _coop_h(start, end, card) * 3.0 + card * 16.0
+	var open: Array = [{"cell": start, "t": t_start, "g": 0.0, "f": _coop_h(start, end, card)}]
+	var start_key := _coop_key(start, t_start, t_start, tq)
+	var best_g: Dictionary = {start_key: 0.0}
+	var came: Dictionary = {start_key: {"cell": start, "t": t_start, "pkey": ""}}
+	var nodes := 0
+	while not open.is_empty() and nodes < _COOP_MAX_NODES:
+		nodes += 1
+		var bi := 0
+		for i in range(1, open.size()):
+			if open[i].f < open[bi].f:
+				bi = i
+		var cur: Dictionary = open[bi]
+		open.remove_at(bi)
+		var ccell: Vector2i = cur.cell
+		var ct: float = cur.t
+		var cur_key := _coop_key(ccell, ct, t_start, tq)
+		# A stale entry (we already reached this state cheaper) — skip.
+		if cur.g > float(best_g.get(cur_key, INF)) + 0.0001:
+			continue
+		if ccell == end:
+			return _coop_reconstruct(came, cur_key)
+		# Eight moves plus a wait-in-place.
+		for di in range(dirs.size() + 1):
+			var is_wait := di == dirs.size()
+			var ncell: Vector2i = ccell if is_wait else ccell + dirs[di]
+			var dt: float = card
+			if not is_wait:
+				var dir := dirs[di]
+				var is_diag := dir.x != 0 and dir.y != 0
+				dt = diag if is_diag else card
+				if not grid.is_in_bounds(ncell.x, ncell.y) or not grid.is_walkable(ncell.x, ncell.y):
+					continue
+				if is_diag:
+					if not grid.is_walkable(ccell.x + dir.x, ccell.y) or not grid.is_walkable(ccell.x, ccell.y + dir.y):
+						continue
+			var nt: float = ct + dt
+			if _cell_reserved(ncell, ct - _RESERVE_BUFFER, nt + _RESERVE_BUFFER, exclude_id):
+				continue
+			var ng: float = cur.g + dt
+			if ng > time_budget:
+				continue
+			var nkey := _coop_key(ncell, nt, t_start, tq)
+			if ng < float(best_g.get(nkey, INF)) - 0.0001:
+				best_g[nkey] = ng
+				came[nkey] = {"cell": ncell, "t": nt, "pkey": cur_key}
+				open.append({"cell": ncell, "t": nt, "g": ng, "f": ng + _coop_h(ncell, end, card)})
+	return {}
+
+func _coop_reconstruct(came: Dictionary, key: String) -> Dictionary:
+	var cells: Array[Vector2i] = []
+	var ticks: Array[float] = []
+	var k := key
+	while k != "" and came.has(k):
+		var node: Dictionary = came[k]
+		cells.push_front(node.cell)
+		ticks.push_front(float(node.t))
+		k = String(node.pkey)
+	return {"cells": cells, "ticks": ticks}
+
+## Convert a planned cell sequence (cell centers + absolute arrival ticks) into a
+## world path that begins at the character's actual current position. A short
+## glide from current_pos to the first cell center is timed by distance/speed,
+## then the planner's per-cell ticks follow (shifted by that glide).
+func _build_timed_world_path(current_pos: Vector3, cells: Array, plan_ticks: Array, speed: float) -> Dictionary:
+	var path: Array[Vector3] = [current_pos]
+	var ticks: Array[float] = [float(plan_ticks[0])]
+	var first_center := grid.grid_to_world(cells[0])
+	var glide: float = (current_pos.distance_to(first_center) / speed) if speed > 0.0 else 0.0
+	for i in range(cells.size()):
+		path.append(grid.grid_to_world(cells[i]))
+		ticks.append(float(plan_ticks[i]) + glide)
+	# Drop a redundant first center identical to current_pos (zero-length lead-in).
+	if path.size() >= 2 and path[0].distance_to(path[1]) < 0.001 and absf(ticks[1] - ticks[0]) < 0.0001:
+		path.remove_at(0)
+		ticks.remove_at(0)
+	return {"path": path, "ticks": ticks}
 
 func _serialize_explored() -> Dictionary:
 	var result := {}
@@ -652,13 +882,19 @@ func _get_movement_segments(id: String) -> Array[Dictionary]:
 		return [{"start_tick": 0.0, "end_tick": 1e12, "start_pos": Vector3(pos.x, 0, pos.z), "velocity": Vector3.ZERO}]
 	var mv: Dictionary = ch.movement
 	var segments: Array[Dictionary] = []
-	var speed: float = ch.move_speed
+	var has_ticks: bool = mv.has("arrival_ticks")
 	for i in range(1, mv.path.size()):
-		var seg_start_tick: float = mv.start_tick + (mv.cum_dist[i - 1] / mv.total_distance) * mv.duration
-		var seg_end_tick: float = mv.start_tick + (mv.cum_dist[i] / mv.total_distance) * mv.duration
+		var seg_start_tick: float
+		var seg_end_tick: float
+		if has_ticks:
+			seg_start_tick = mv.arrival_ticks[i - 1]
+			seg_end_tick = mv.arrival_ticks[i]
+		else:
+			seg_start_tick = mv.start_tick + (mv.cum_dist[i - 1] / mv.total_distance) * mv.duration
+			seg_end_tick = mv.start_tick + (mv.cum_dist[i] / mv.total_distance) * mv.duration
 		var dir := Vector3(mv.path[i].x - mv.path[i - 1].x, 0, mv.path[i].z - mv.path[i - 1].z)
-		var seg_len := dir.length()
-		var vel := dir.normalized() * speed if seg_len > 0.001 else Vector3.ZERO
+		var span: float = seg_end_tick - seg_start_tick
+		var vel := dir / span if (dir.length() > 0.001 and span > 0.0001) else Vector3.ZERO
 		segments.append({
 			"start_tick": seg_start_tick,
 			"end_tick": seg_end_tick,
@@ -2003,13 +2239,72 @@ func _main_group() -> Array[String]:
 
 func party_move_to_cell(cell: Vector2i) -> void:
 	_emit(GameEvent.KIND_PARTY_MOVE_TO_CELL, {"cell": GameEvent.v2i_to_arr(cell)})
-	for char_id in _main_group():
-		_do_move_to_cell(char_id, cell)
+	var members := _main_group()
+	if grid:
+		var assigned := _assign_party_cells(members, cell)
+		for char_id in members:
+			_do_move_to_cell(char_id, assigned[char_id])
+	else:
+		for char_id in members:
+			_do_move_to_cell(char_id, cell)
 
 func party_move_to_pos(pos: Vector3) -> void:
 	_emit(GameEvent.KIND_PARTY_MOVE_TO_POS, {"pos": GameEvent.v3_to_arr(pos)})
-	for char_id in _main_group():
-		_do_move_to_pos(char_id, pos)
+	var members := _main_group()
+	if grid:
+		# Snap to the grid so the party spreads onto distinct cells around the
+		# clicked point and moves cooperatively (no stacking, no overlap).
+		var assigned := _assign_party_cells(members, grid.world_to_grid(pos))
+		for char_id in members:
+			_do_move_to_cell(char_id, assigned[char_id])
+	else:
+		for char_id in members:
+			_do_move_to_pos(char_id, pos)
+
+## Give each party member a distinct, walkable destination cell around target so
+## a single party move never stacks everyone on one cell. The order of members
+## is deterministic (party order), so this replays and fast-forwards identically.
+func _assign_party_cells(members: Array, target: Vector2i) -> Dictionary:
+	var assigned: Dictionary = {}
+	var taken: Dictionary = {}
+	for id in members:
+		var cell := _nearest_free_cell(target, taken)
+		assigned[id] = cell
+		taken[cell] = true
+	return assigned
+
+## Outward ring search from target for the closest walkable cell not already
+## taken by another member. Deterministic tie-break by distance then coordinate.
+func _nearest_free_cell(target: Vector2i, taken: Dictionary) -> Vector2i:
+	if grid.is_in_bounds(target.x, target.y) and grid.is_walkable(target.x, target.y) and not taken.has(target):
+		return target
+	for radius in range(1, 9):
+		var best := Vector2i.ZERO
+		var found := false
+		for dz in range(-radius, radius + 1):
+			for dx in range(-radius, radius + 1):
+				if maxi(absi(dx), absi(dz)) != radius:
+					continue
+				var c := target + Vector2i(dx, dz)
+				if taken.has(c) or not grid.is_in_bounds(c.x, c.y) or not grid.is_walkable(c.x, c.y):
+					continue
+				if not found or _ring_closer(c, best, target):
+					best = c
+					found = true
+		if found:
+			return best
+	return target
+
+func _ring_closer(c: Vector2i, best: Vector2i, target: Vector2i) -> bool:
+	var dc := c - target
+	var db := best - target
+	var dist_c := dc.x * dc.x + dc.y * dc.y
+	var dist_b := db.x * db.x + db.y * db.y
+	if dist_c != dist_b:
+		return dist_c < dist_b
+	if c.x != best.x:
+		return c.x < best.x
+	return c.y < best.y
 
 ## Scripted split; not exposed to player input.
 func start_split(members: Array) -> void:
@@ -2032,11 +2327,22 @@ func _do_move_to_cell(id: String, cell: Vector2i) -> bool:
 		return false
 	var current_pos := get_position(id)
 	var current_cell := grid.world_to_grid(current_pos)
-	var path := grid.find_path(current_cell, cell)
-	if path.is_empty():
-		return false
+	var speed: float = characters[id].move_speed
 	_cancel_movement(id)
 	characters[id].position = current_pos
+	# Prefer a cooperative path that never overlaps another character in space
+	# and time, waiting or detouring as needed.
+	var plan := _plan_cooperative(current_cell, cell, speed, scheduler.get_current_tick(), id)
+	if not plan.is_empty() and not plan.cells.is_empty():
+		var built := _build_timed_world_path(current_pos, plan.cells, plan.ticks, speed)
+		_start_movement(id, built.path, built.ticks)
+		return true
+	# No conflict-free path within budget: fall back to plain A* so the
+	# character still moves (it may briefly overlap another).
+	var path := grid.find_path(current_cell, cell)
+	if path.is_empty():
+		_reserve_parked(id, current_cell)
+		return false
 	var full_path: Array[Vector3] = [current_pos]
 	full_path.append_array(path)
 	_start_movement(id, full_path)

@@ -101,6 +101,9 @@ func _ready() -> void:
 			"--test-game-state":
 				ran_test = true
 				_test_game_state()
+			"--test-cooperative-pathfinding":
+				ran_test = true
+				_test_cooperative_pathfinding()
 			"--test-event-log-roundtrip":
 				ran_test = true
 				_test_event_log_roundtrip()
@@ -490,6 +493,7 @@ func _run_all_tests() -> void:
 	_test_syntax()
 	_test_grid_pathfinding()
 	_test_game_state()
+	_test_cooperative_pathfinding()
 	_test_event_log_roundtrip()
 	_test_event_log_mutation_audit()
 	_test_movement_capture()
@@ -6696,6 +6700,142 @@ func _test_grid_pathfinding() -> void:
 	var locked := {Vector2i(1, 1): true}
 	_assert_true(not grid4.is_walkable(1, 1, {}, locked), "Locked door blocks")
 	_assert_true(grid4.is_walkable(1, 1, {}, {}), "Unlocked door passable")
+
+# --- Test: Cooperative (space-time) pathfinding ---
+# Characters reserve the (cell, time) slots their paths occupy; others plan around
+# them. The invariant: no two characters ever occupy the same grid cell at the
+# same scheduler tick while moving — including head-on swaps and convergence.
+
+## Step the scheduler, sampling every tick, and report the worst-case overlap:
+## how many sampled ticks had two characters in the same cell, plus the minimum
+## center-to-center world distance seen.
+func _coop_overlap_report(gs, ids: Array, sched, step: float, max_steps: int) -> Dictionary:
+	var grid = gs.grid
+	var same_cell_ticks := 0
+	var min_dist := 1.0e9
+	for s in range(max_steps):
+		var cells := []
+		var positions := []
+		for id in ids:
+			positions.append(gs.get_position(id))
+			cells.append(grid.world_to_grid(positions[positions.size() - 1]))
+		for i in range(ids.size()):
+			for j in range(i + 1, ids.size()):
+				if cells[i] == cells[j]:
+					same_cell_ticks += 1
+				var d: float = positions[i].distance_to(positions[j])
+				if d < min_dist:
+					min_dist = d
+		var any_moving := false
+		for id in ids:
+			if gs.is_moving(id):
+				any_moving = true
+				break
+		if not any_moving and s > 0:
+			break
+		sched.advance_ticks(step)
+	return {"same_cell_ticks": same_cell_ticks, "min_dist": min_dist}
+
+func _test_cooperative_pathfinding() -> void:
+	_test_name = "Cooperative Pathfinding"
+
+	# --- 1. Two characters swapping sides of an open room cross paths but never
+	# share a cell at any tick. ---
+	var grid := GridWorld.new()
+	grid.create_room(16, 16, true)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+	gs.register_character("a", grid.grid_to_world(Vector2i(2, 8)), 3.0, {})
+	gs.register_character("b", grid.grid_to_world(Vector2i(13, 8)), 3.0, {})
+	gs.command_move_to_cell("a", Vector2i(13, 8))
+	gs.command_move_to_cell("b", Vector2i(2, 8))
+	var rep := _coop_overlap_report(gs, ["a", "b"], sched, 0.05, 600)
+	_assert_equals(rep.same_cell_ticks, 0,
+		"Crossing characters never share a cell (same-cell ticks=%d, min sep=%.2f)" % [rep.same_cell_ticks, rep.min_dist])
+	_assert_true(not gs.is_moving("a") and not gs.is_moving("b"), "Both crossing characters arrived")
+	_assert_equals(grid.world_to_grid(gs.get_position("a")), Vector2i(13, 8), "A reached its target")
+	_assert_equals(grid.world_to_grid(gs.get_position("b")), Vector2i(2, 8), "B reached its target")
+
+	# --- 2. A whole-party move spreads onto distinct cells and never overlaps. ---
+	var grid2 := GridWorld.new()
+	grid2.create_room(18, 14, true)
+	var sched2 := EventScheduler.new()
+	var gs2 := GameState.new()
+	gs2.grid = grid2
+	gs2.scheduler = sched2
+	gs2.register_character("aster", grid2.grid_to_world(Vector2i(2, 2)), 3.0, {})
+	gs2.register_character("peris", grid2.grid_to_world(Vector2i(3, 2)), 3.0, {})
+	gs2.register_character("endo", grid2.grid_to_world(Vector2i(4, 2)), 3.0, {})
+	gs2.register_character("ron", grid2.grid_to_world(Vector2i(5, 2)), 3.0, {})
+	gs2.set_party(["aster", "peris", "endo", "ron"])
+	gs2.party_move_to_cell(Vector2i(12, 10))
+	var rep2 := _coop_overlap_report(gs2, ["aster", "peris", "endo", "ron"], sched2, 0.05, 800)
+	_assert_equals(rep2.same_cell_ticks, 0,
+		"Party members never share a cell during a party move (min sep=%.2f)" % rep2.min_dist)
+	var party_cells := {}
+	for id in ["aster", "peris", "endo", "ron"]:
+		_assert_true(not gs2.is_moving(id), "%s finished the party move" % id)
+		var c := grid2.world_to_grid(gs2.get_position(id))
+		_assert_true(not party_cells.has(c), "%s parked on its own distinct cell %s" % [id, c])
+		party_cells[c] = id
+
+	# --- 3. Head-on through a 2-wide corridor: each takes a lane, no overlap. ---
+	var grid3 := GridWorld.new()
+	grid3.load_from_strings(PackedStringArray([
+		"####################",
+		"#........##........#",
+		"#........##........#",
+		"#..................#",
+		"#..................#",
+		"#........##........#",
+		"#........##........#",
+		"####################",
+	]))
+	var sched3 := EventScheduler.new()
+	var gs3 := GameState.new()
+	gs3.grid = grid3
+	gs3.scheduler = sched3
+	gs3.register_character("x", grid3.grid_to_world(Vector2i(2, 3)), 3.0, {})
+	gs3.register_character("y", grid3.grid_to_world(Vector2i(17, 4)), 3.0, {})
+	gs3.command_move_to_cell("x", Vector2i(17, 4))
+	gs3.command_move_to_cell("y", Vector2i(2, 3))
+	var rep3 := _coop_overlap_report(gs3, ["x", "y"], sched3, 0.05, 1000)
+	_assert_equals(rep3.same_cell_ticks, 0,
+		"Head-on characters take separate lanes through the corridor (min sep=%.2f)" % rep3.min_dist)
+	_assert_true(not gs3.is_moving("x") and not gs3.is_moving("y"), "Both head-on characters arrived")
+	_assert_equals(grid3.world_to_grid(gs3.get_position("x")), Vector2i(17, 4), "X crossed the corridor")
+	_assert_equals(grid3.world_to_grid(gs3.get_position("y")), Vector2i(2, 3), "Y crossed the corridor")
+
+	# --- 4. Planning is deterministic and step-size (fast-forward) invariant. ---
+	var fine := _coop_run_swap("fine", 0.05)
+	var coarse := _coop_run_swap("coarse", 0.5)
+	var repeat := _coop_run_swap("repeat", 0.05)
+	_assert_true(fine.a.distance_to(repeat.a) < 0.001 and fine.b.distance_to(repeat.b) < 0.001,
+		"Cooperative paths are deterministic across identical runs")
+	_assert_true(fine.a.distance_to(coarse.a) < 0.001 and fine.b.distance_to(coarse.b) < 0.001,
+		"Cooperative paths reach the same positions at fine (1x) and coarse (10x) step sizes")
+	_assert_equals(fine.hash, coarse.hash, "Final state hash matches across step sizes (fast-forward invariant)")
+
+## Run the swap scenario and return final positions + state hash. Used to prove
+## determinism and fast-forward invariance at different scheduler step sizes.
+func _coop_run_swap(_label: String, step: float) -> Dictionary:
+	var grid := GridWorld.new()
+	grid.create_room(16, 16, true)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+	gs.register_character("a", grid.grid_to_world(Vector2i(2, 8)), 3.0, {})
+	gs.register_character("b", grid.grid_to_world(Vector2i(13, 8)), 3.0, {})
+	gs.command_move_to_cell("a", Vector2i(13, 8))
+	gs.command_move_to_cell("b", Vector2i(2, 8))
+	for s in range(2000):
+		if not gs.is_moving("a") and not gs.is_moving("b"):
+			break
+		sched.advance_ticks(step)
+	return {"a": gs.get_position("a"), "b": gs.get_position("b"), "hash": gs.state_hash()}
 
 # --- Test: GameState ---
 func _test_game_state() -> void:
