@@ -6991,6 +6991,32 @@ func _test_interactable_data() -> void:
 	_assert_true(not replayed.is_interactable_enabled("t1"),
 		"Replay reconstructs the one-shot-disabled state")
 
+	# --- Query + move-to loop: find interactables in the party's combined visible
+	# range, move a character to one, and trigger it (the automated chunk-test loop). ---
+	var grid2 := GridWorld.new()
+	grid2.create_room(24, 24, true)
+	var sched2 := EventScheduler.new()
+	var gs2 := GameState.new()
+	gs2.grid = grid2
+	gs2.scheduler = sched2
+	gs2.register_character("aster", grid2.grid_to_world(Vector2i(3, 3)), 3.0, {})
+	gs2.register_character("peris", grid2.grid_to_world(Vector2i(4, 3)), 3.0, {})
+	gs2.set_party(["aster", "peris"])
+	gs2.register_interactable({"id": "near_a", "position": grid2.grid_to_world(Vector2i(6, 4)), "requires_hold": false})
+	gs2.register_interactable({"id": "far_a", "position": grid2.grid_to_world(Vector2i(20, 20)), "requires_hold": false})
+	var visible := gs2.interactables_in_range(gs2.get_party(), 12.0)
+	_assert_true(visible.has("near_a"), "A nearby interactable is within the party's visible range")
+	_assert_true(not visible.has("far_a"), "A far interactable is outside the visible range")
+	# Move aster to the nearby interactable, then trigger it.
+	_assert_true(gs2.move_to_interactable("aster", "near_a"), "move_to_interactable issues a move")
+	for s in range(400):
+		if not gs2.is_moving("aster"):
+			break
+		sched2.advance_ticks(0.05)
+	var reached := gs2.get_position("aster").distance_to(grid2.grid_to_world(Vector2i(6, 4))) < 1.5
+	_assert_true(reached, "Aster reaches the targeted interactable")
+	_assert_true(gs2.trigger_interactable("near_a", "aster"), "Reached interactable can then be triggered")
+
 # --- Test: GameState ---
 func _test_game_state() -> void:
 	_test_name = "GameState"
@@ -7282,6 +7308,9 @@ func _test_event_log_mutation_audit() -> void:
 		"get_party", "get_split_members", "is_split_active",
 		# Interactable registry queries (register/trigger/enable/reset emit).
 		"has_interactable", "get_interactable", "is_interactable_enabled",
+		"interactables_in_range",
+		# Composes command_move_to_cell (which emits); no event of its own.
+		"move_to_interactable",
 		# Snapshot/restore bypasses the log for tests.
 		"serialize", "deserialize", "state_hash",
 		# Event-log infrastructure itself

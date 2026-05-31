@@ -2601,6 +2601,37 @@ func trigger_interactable(id: String, character := "") -> bool:
 	interactable_triggered.emit(id, character)
 	return true
 
+## Default radius for "what can the party see/reach" queries.
+const INTERACTABLE_VISIBLE_RANGE := 12.0
+
+## Interactable ids within `radius` of ANY of the given characters. Used to ask
+## "what can the party act on right now" (the combined visible range). With
+## enabled_only, spent one-shots / disabled interactables are excluded.
+func interactables_in_range(char_ids: Array, radius: float = INTERACTABLE_VISIBLE_RANGE, enabled_only := true) -> Array:
+	var result: Array = []
+	var positions: Array[Vector3] = []
+	for cid in char_ids:
+		if characters.has(String(cid)):
+			positions.append(get_position(String(cid)))
+	for id in interactables:
+		if enabled_only and not is_interactable_enabled(id):
+			continue
+		var ipos: Vector3 = interactables[id].get("position", Vector3.ZERO)
+		for p in positions:
+			if Vector3(p.x - ipos.x, 0.0, p.z - ipos.z).length() <= radius:
+				result.append(id)
+				break
+	result.sort()
+	return result
+
+## Move a character to a registered interactable (cooperative cell move to its
+## cell). Delegates to command_move_to_cell, which is the logged command.
+func move_to_interactable(char_id: String, id: String) -> bool:
+	if not has_interactable(id) or not grid:
+		return false
+	var ipos: Vector3 = interactables[id].get("position", Vector3.ZERO)
+	return command_move_to_cell(char_id, grid.world_to_grid(ipos))
+
 static func _solve_quadratic_detection(pos_a: Vector3, vel_a: Vector3, pos_b: Vector3, vel_b: Vector3, R: float, max_tau: float) -> float:
 	var dp_x := pos_a.x - pos_b.x
 	var dp_z := pos_a.z - pos_b.z
