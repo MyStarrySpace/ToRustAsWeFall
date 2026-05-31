@@ -44,6 +44,10 @@ blockbench/
 crocotile/
 kitbash-tool/
 
+# Design research / reference images (not used by the game at runtime).
+# Kept on disk outside the game folder, out of version control.
+reference-images/
+
 # Generated reports + run artifacts
 to-rust-as-we-fall/reports/
 
