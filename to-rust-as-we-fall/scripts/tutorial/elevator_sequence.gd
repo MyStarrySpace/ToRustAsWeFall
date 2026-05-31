@@ -232,6 +232,11 @@ func _compute_speed() -> float:
 	return 10.0 if Input.is_action_pressed("fast_forward") else 1.0
 
 func _on_process(delta: float, spd: float) -> void:
+	# Scheduler-driven fade to black on the final transition (the scene change is
+	# scheduled in _complete; this only animates the cosmetic alpha).
+	if _current_step == "complete":
+		_update_fade_out(Color(0.02, 0.02, 0.03), 2.0)
+
 	# Emergency light pulse.
 	if _emergency_light and is_instance_valid(_emergency_light):
 		_emergency_light.light_energy = 1.5 + sin(Time.get_ticks_msec() * 0.003) * 0.5
@@ -1184,12 +1189,15 @@ func _on_ferrolure_expired() -> void:
 func _complete() -> void:
 	_enter_step("complete")
 	_player.set_move_enabled(false)
+	# Fade + scene change ride the scheduler (not a wall-clock tween), so the
+	# blackout and the swap fire on the scheduler clock and never race a paused
+	# or fast-forwarded sequence. The fade alpha is driven per-frame in
+	# _on_process while the step is "complete".
 	_fade_start_tick = _scheduler.get_current_tick()
-	var tween := create_tween()
-	tween.tween_property(_fade_rect, "color", Color(0.02, 0.02, 0.03, 1.0), 2.0)
-	tween.tween_callback(func():
-		_change_scene_or_record("res://scenes/tutorial/act1.tscn")
-	)
+	_scheduler.schedule_after(2.0, _do_complete_scene_change, "complete_change")
+
+func _do_complete_scene_change() -> void:
+	_change_scene_or_record("res://scenes/tutorial/act1.tscn")
 
 # --- Game Over ---
 
