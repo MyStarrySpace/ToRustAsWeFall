@@ -236,10 +236,14 @@ func _compute_speed() -> float:
 	return 10.0 if Input.is_action_pressed("fast_forward") else 1.0
 
 func _on_process(delta: float, spd: float) -> void:
-	# Scheduler-driven fade to black on the final transition (the scene change is
-	# scheduled in _complete; this only animates the cosmetic alpha).
+	# Intro + outro fades are driven off the scheduler tick (not wall-clock tweens)
+	# so they speed with F in lockstep with their scheduled step transitions.
 	if _current_step == "complete":
 		_update_fade_out(Color(0.02, 0.02, 0.03), 2.0)
+	elif _current_step == "consciousness_fragments":
+		_update_consciousness_fade()
+	elif _current_step == "fade_in":
+		_update_fade_in(FADE_IN_DURATION)
 
 	# Emergency light pulse.
 	if _emergency_light and is_instance_valid(_emergency_light):
@@ -555,6 +559,14 @@ func _show_multiselect_together_hint() -> void:
 
 # --- Event steps ---
 
+# Consciousness-fragment intro fade phases (scheduler ticks). Two fragments, each
+# fade-in -> hold -> fade-out; the second starts at FRAG2_TICK. Total 5.8 ticks.
+const CONSCIOUSNESS_FADE := 0.8
+const CONSCIOUSNESS_HOLD := 1.5
+const CONSCIOUSNESS_FADE_OUT := 0.6
+const CONSCIOUSNESS_FRAG2_TICK := 2.9
+const FADE_IN_DURATION := 1.0
+
 func _start_consciousness_fragments() -> void:
 	_enter_step("consciousness_fragments")
 	# Hide everything except Peris initially
@@ -565,23 +577,38 @@ func _start_consciousness_fragments() -> void:
 		if unit:
 			unit.visible = false
 
-	# Fragment 1 + 2 fades are cosmetic tweens; the step transition rides the
-	# scheduler so fast-forward reaches fade_in at the same tick.
-	var t := create_tween()
-	t.tween_property(_emergency_light, "light_energy", 2.0, 0.8)
-	t.parallel().tween_property(_fade_rect, "color:a", 0.0, 0.8)
-	t.tween_interval(1.5)
-	t.tween_property(_fade_rect, "color:a", 1.0, 0.6)
-	t.tween_callback(func():
-		# Fragment 2: Show Aster, fade in, then fade out
+	# The two consciousness-fragment fades are driven per-frame off the scheduler
+	# tick (see _update_consciousness_fade in _on_process), so holding F speeds the
+	# fades and the fade_in transition together — a wall-clock tween here would lag
+	# the (scheduler-timed) transition under fast-forward and tear the fade.
+	_fade_rect.color = Color(0, 0, 0, 1)
+	_fade_start_tick = _scheduler.get_current_tick()
+	# Fragment 2 reveals Aster at the start of its fade-in (after fragment 1).
+	_scheduler.schedule_after(CONSCIOUSNESS_FRAG2_TICK, func():
 		if _aster_node:
 			_aster_node.visible = true
-		var t2 := create_tween()
-		t2.tween_property(_fade_rect, "color:a", 0.0, 0.8)
-		t2.tween_interval(1.5)
-		t2.tween_property(_fade_rect, "color:a", 1.0, 0.6)
-	)
+	, "frag2_reveal")
 	_scheduler.schedule_after(5.8, _start_fade_in, "fade_in")
+
+## Per-frame alpha for the two-fragment consciousness intro, read off the
+## scheduler tick so fast-forward scales it with the scheduled transitions.
+func _update_consciousness_fade() -> void:
+	if _fade_rect == null:
+		return
+	var elapsed: float = _scheduler.get_current_tick() - _fade_start_tick
+	# Each fragment: fade-in (black->clear) -> hold (clear) -> fade-out (clear->black).
+	var local := elapsed
+	if elapsed >= CONSCIOUSNESS_FRAG2_TICK:
+		local = elapsed - CONSCIOUSNESS_FRAG2_TICK
+	var alpha := 1.0
+	if local < CONSCIOUSNESS_FADE:
+		alpha = 1.0 - clampf(local / CONSCIOUSNESS_FADE, 0.0, 1.0)
+	elif local < CONSCIOUSNESS_FADE + CONSCIOUSNESS_HOLD:
+		alpha = 0.0
+	else:
+		var out_t := local - (CONSCIOUSNESS_FADE + CONSCIOUSNESS_HOLD)
+		alpha = clampf(out_t / CONSCIOUSNESS_FADE_OUT, 0.0, 1.0)
+	_fade_rect.color.a = alpha
 
 func _start_fade_in() -> void:
 	# Scheduler-driven from consciousness_fragments. If a test force-fired straight to
@@ -594,9 +621,10 @@ func _start_fade_in() -> void:
 		if unit:
 			unit.visible = true
 	_emergency_light.light_energy = 3.0
-	# Cosmetic fade; the transition to waking rides the scheduler (1.0 fade + 0.5).
-	var t := create_tween()
-	t.tween_property(_fade_rect, "color:a", 0.0, 1.0)
+	# Scheduler-driven fade-in (see _on_process) so it speeds with F in lockstep
+	# with the scheduled waking transition.
+	_fade_rect.color = Color(0, 0, 0, 1)
+	_fade_start_tick = _scheduler.get_current_tick()
 	_scheduler.schedule_after(1.5, _start_waking, "waking")
 
 func _start_waking() -> void:
