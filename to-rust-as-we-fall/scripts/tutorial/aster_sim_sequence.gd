@@ -142,8 +142,8 @@ func _placement_or_grid(marker_name: String, fallback_cell: Vector2i, y: float =
 	fallback.y = y
 	return _placement_or_position(marker_name, fallback)
 
-func _local_for_parent(parent: Node3D, global_position: Vector3) -> Vector3:
-	return parent.to_local(global_position) if parent != null else global_position
+func _local_for_parent(parent: Node3D, world_pos: Vector3) -> Vector3:
+	return parent.to_local(world_pos) if parent != null else world_pos
 
 func _apply_high_res_room_visibility() -> void:
 	var high_res_scene := find_child("AsterRoom", true, false) as Node3D
@@ -806,7 +806,9 @@ func _build_drink_machine() -> void:
 func _build_exploration_objects() -> void:
 	if Engine.is_editor_hint():
 		return
-	var env: Node3D = _renderer if _renderer else self
+	var env: Node3D = self
+	if _renderer != null:
+		env = _renderer
 	_build_glass_bead_game(env)
 	_build_painting_panel(env, Vector2i(6, 1), Vector2i(6, 3), "macabre_teal",
 		Color(0.15, 0.38, 0.42), "aster.sim_expand.painting_1.line")

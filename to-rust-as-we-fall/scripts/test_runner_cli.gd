@@ -8808,12 +8808,12 @@ func _drain_dialogue_box(dialogue_box: Node, _duration := 0.0, _step := 0.0) -> 
 ## Actions fire once when _current_step first matches the key.
 ## Returns an array of {tick, text, speaker, style} dictionaries.
 func _pop_dialogue_log(instance: Node, step_actions: Dictionary = {}) -> Array[Dictionary]:
-	var log: Array[Dictionary] = []
+	var log_entries: Array[Dictionary] = []
 	var dialogue_box: Node = instance._dialogue
 	var scheduler: EventScheduler = instance._scheduler
 
 	var capture := func(text: String):
-		log.append({
+		log_entries.append({
 			"tick": scheduler.get_current_tick(),
 			"text": text,
 			"speaker": dialogue_box._speaker_label.text if dialogue_box._speaker_label.visible else "",
@@ -8856,7 +8856,7 @@ func _pop_dialogue_log(instance: Node, step_actions: Dictionary = {}) -> Array[D
 		safety += 1
 
 	dialogue_box.line_displayed.disconnect(capture)
-	return log
+	return log_entries
 
 func _drive_sequence_contract(instance: Node, step_actions: Dictionary = {}, max_pops := 20000) -> Dictionary:
 	var log: Array[Dictionary] = []

@@ -2413,10 +2413,10 @@ func is_downed(char_id: String) -> bool:
 	return not bool(characters[char_id].stats.get("narrative_available", true))
 
 ## True when every listed party member is downed.
-func is_party_downed(party: Array) -> bool:
-	if party.is_empty():
+func is_party_downed(members: Array) -> bool:
+	if members.is_empty():
 		return false
-	for char_id in party:
+	for char_id in members:
 		if not is_downed(String(char_id)):
 			return false
 	return true

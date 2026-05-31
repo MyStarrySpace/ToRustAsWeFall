@@ -172,8 +172,8 @@ func _set_click_target(world_pos: Vector3, cancel_interaction := true) -> bool:
 			var target_cell := grid_world.world_to_grid(world_pos)
 			if not game_state.command_move_to_cell(char_id, target_cell):
 				return false
-			var snapped := grid_world.grid_to_world(target_cell)
-			_dest_marker.global_position = Vector3(snapped.x, 0.05, snapped.z)
+			var snapped_pos := grid_world.grid_to_world(target_cell)
+			_dest_marker.global_position = Vector3(snapped_pos.x, 0.05, snapped_pos.z)
 		else:
 			if not game_state.command_move_to_pos(char_id, world_pos):
 				return false
@@ -186,12 +186,12 @@ func _set_click_target(world_pos: Vector3, cancel_interaction := true) -> bool:
 	if grid_world:
 		var target_cell := grid_world.world_to_grid(world_pos)
 		var current_cell := grid_world.world_to_grid(global_position)
-		var snapped := grid_world.grid_to_world(target_cell)
+		var snapped_pos := grid_world.grid_to_world(target_cell)
 		var path := grid_world.find_path(current_cell, target_cell)
 		if path.is_empty():
 			return false
 		walk_path(path)
-		_dest_marker.global_position = Vector3(snapped.x, 0.05, snapped.z)
+		_dest_marker.global_position = Vector3(snapped_pos.x, 0.05, snapped_pos.z)
 		_dest_marker_mat.albedo_color.a = 0.6
 		_dest_marker.scale = Vector3(1.2, 1.2, 1.2)
 	else:

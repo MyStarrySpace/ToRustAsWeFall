@@ -681,17 +681,17 @@ func _build_decorations() -> void:
 	wrap_mat.albedo_color = Color(0.22, 0.16, 0.11)
 	wrap_mat.roughness = 0.7
 	for i in range(6):
-		var wrap := MeshInstance3D.new()
+		var wrap_mesh := MeshInstance3D.new()
 		var cm := CylinderMesh.new()
 		cm.top_radius = 0.05
 		cm.bottom_radius = 0.05
 		cm.height = 2.2
-		wrap.mesh = cm
-		wrap.material_override = wrap_mat
-		wrap.position = Vector3(-4.85, 0.4 + i * 0.45, -3.0 + i * 1.0)
-		wrap.rotation.z = PI / 2.0
-		wrap.rotation.y = 0.3
-		env_node.add_child(wrap)
+		wrap_mesh.mesh = cm
+		wrap_mesh.material_override = wrap_mat
+		wrap_mesh.position = Vector3(-4.85, 0.4 + i * 0.45, -3.0 + i * 1.0)
+		wrap_mesh.rotation.z = PI / 2.0
+		wrap_mesh.rotation.y = 0.3
+		env_node.add_child(wrap_mesh)
 
 	# Warm pendant lights.
 	var pendant_mat := StandardMaterial3D.new()
