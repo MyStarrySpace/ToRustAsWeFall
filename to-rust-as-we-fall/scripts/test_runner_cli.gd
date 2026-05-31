@@ -6902,6 +6902,31 @@ func _test_cooperative_pathfinding() -> void:
 	_assert_equals(same7, 0, "Speed change mid-move preserves the no-overlap guarantee")
 	_assert_true(not gs7.is_moving("p") and not gs7.is_moving("q"), "Both arrived after a mid-move speed change")
 
+	# --- 8. Cramped, elevator-like room: a mover can still reach a downed ally to
+	# wake them (within interaction range) even though the ally + escorts hold
+	# parked reservations. Guards the elevator "approach Aster" beat. ---
+	var grid8 := GridWorld.new()
+	grid8.create_room(7, 7, true)  # ~5x5 interior, like the elevator
+	var sched8 := EventScheduler.new()
+	var gs8 := GameState.new()
+	gs8.grid = grid8
+	gs8.scheduler = sched8
+	gs8.register_character("aster", grid8.grid_to_world(Vector2i(3, 3)), 2.0, {})   # downed, parked
+	gs8.register_character("eu1", grid8.grid_to_world(Vector2i(4, 4)), 2.0, {})     # escort, parked
+	gs8.register_character("eu2", grid8.grid_to_world(Vector2i(2, 4)), 2.0, {})     # escort, parked
+	gs8.register_character("peris", grid8.grid_to_world(Vector2i(1, 1)), 2.5, {})
+	var moved8: bool = gs8.command_move_to_cell("peris", Vector2i(3, 3))  # click onto Aster
+	_assert_true(moved8, "Peris accepts a move toward the downed ally")
+	_assert_true(gs8.is_moving("peris"), "Peris starts moving toward Aster")
+	for s in range(500):
+		if not gs8.is_moving("peris"):
+			break
+		sched8.advance_ticks(0.05)
+	var peris_wake := gs8.get_position("peris")
+	var aster_wake := gs8.get_position("aster")
+	_assert_true(peris_wake.distance_to(aster_wake) < 1.8,
+		"Peris reaches wake range of the downed ally in a cramped room (sep=%.2f)" % peris_wake.distance_to(aster_wake))
+
 ## Run the swap scenario and return final positions + state hash. Used to prove
 ## determinism and fast-forward invariance at different scheduler step sizes.
 func _coop_run_swap(_label: String, step: float) -> Dictionary:
