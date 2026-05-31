@@ -90,12 +90,25 @@
 				{
 					"id": "endo_takes_floor_damage",
 					"display_name": "Endo Takes Floor Damage",
+					"outcome": "failure",
 					"script": [
 						{"type": "snapshot_state", "key": "before"},
 						{"type": "select_character", "char_id": "endo"},
 						{"type": "teleport", "char_id": "endo", "anchor": "iron_patch"},
 						{"type": "advance", "seconds": 1.25},
 						{"type": "assert_path", "path": "character_hp.endo", "op": "<", "snapshot": "before", "snapshot_path": "character_hp.endo"}
+					]
+				},
+				{
+					"id": "clean_floor_takes_no_damage",
+					"display_name": "Clean Floor Takes No Damage",
+					"outcome": "success",
+					"script": [
+						{"type": "snapshot_state", "key": "before"},
+						{"type": "select_character", "char_id": "endo"},
+						{"type": "teleport", "char_id": "endo", "anchor": "iron_safe"},
+						{"type": "advance", "seconds": 1.25},
+						{"type": "assert_path", "path": "character_hp.endo", "op": "==", "snapshot": "before", "snapshot_path": "character_hp.endo"}
 					]
 				}
 			]
@@ -132,6 +145,7 @@
 				{
 					"id": "damaged_entry_becomes_lethal",
 					"display_name": "Damaged Entry Becomes Lethal",
+					"outcome": "failure",
 					"setup": [
 						{"type": "call", "method": "headless_set_character_hp", "args": ["endo", 4.0]},
 						{"type": "select_character", "char_id": "endo"},
@@ -140,6 +154,20 @@
 					"script": [
 						{"type": "advance", "seconds": 0.6},
 						{"type": "assert_path", "path": "character_hp.endo", "op": "==", "value": 0.0}
+					]
+				},
+				{
+					"id": "healthy_entry_survives_the_touch",
+					"display_name": "Healthy Entry Survives The Touch",
+					"outcome": "success",
+					"setup": [
+						{"type": "call", "method": "headless_set_character_hp", "args": ["endo", 100.0]},
+						{"type": "select_character", "char_id": "endo"},
+						{"type": "teleport", "char_id": "endo", "anchor": "iron_patch"}
+					],
+					"script": [
+						{"type": "advance", "seconds": 0.6},
+						{"type": "assert_path", "path": "character_hp.endo", "op": ">", "value": 0.0}
 					]
 				}
 			]
@@ -151,8 +179,19 @@
 			"tags": ["ferrolure", "ecology", "routing"],
 			"scenarios": [
 				{
+					"id": "without_signal_pack_keeps_hunting",
+					"display_name": "Without Signal Pack Keeps Hunting",
+					"outcome": "failure",
+					"script": [
+						{"type": "advance", "seconds": 1.0},
+						{"type": "assert_path", "path": "ferrolure_active", "op": "==", "value": false},
+						{"type": "assert_path", "path": "ferrolure_tracking_cleared", "op": "==", "value": false}
+					]
+				},
+				{
 					"id": "signal_redirects_pack",
 					"display_name": "Signal Redirects Pack",
+					"outcome": "success",
 					"script": [
 						{"type": "snapshot_state", "key": "before"},
 						{"type": "call", "method": "activate_showcase_ferrolure"},
@@ -254,6 +293,7 @@
 				{
 					"id": "timeout_failure",
 					"display_name": "Timeout Failure",
+					"outcome": "failure",
 					"script": [
 						{"type": "call", "method": "start_channels_window_puzzle", "args": ["window_one"]},
 						{"type": "call", "method": "activate_channels_window_lure", "args": ["window_one"]},
@@ -265,6 +305,7 @@
 				{
 					"id": "clean_cross_success",
 					"display_name": "Clean Cross Success",
+					"outcome": "success",
 					"script": [
 						{"type": "call", "method": "start_channels_window_puzzle", "args": ["window_one"]},
 						{"type": "call", "method": "activate_channels_window_lure", "args": ["window_one"]},
@@ -286,6 +327,7 @@
 				{
 					"id": "timeout_failure",
 					"display_name": "Timeout Failure",
+					"outcome": "failure",
 					"script": [
 						{"type": "call", "method": "start_channels_window_puzzle", "args": ["window_two"]},
 						{"type": "call", "method": "activate_channels_window_lure", "args": ["window_two"]},
@@ -297,6 +339,7 @@
 				{
 					"id": "clean_cross_success",
 					"display_name": "Clean Cross Success",
+					"outcome": "success",
 					"script": [
 						{"type": "call", "method": "start_channels_window_puzzle", "args": ["window_two"]},
 						{"type": "call", "method": "activate_channels_window_lure", "args": ["window_two"]},
@@ -376,6 +419,7 @@
 				{
 					"id": "conceal_patch_blocks_initial_detection",
 					"display_name": "Conceal Patch Blocks Initial Detection",
+					"outcome": "success",
 					"script": [
 						{"type": "call_chunk", "method": "reset_preview_state"},
 						{"type": "call_chunk", "method": "set_recommended_offset", "args": ["fail"]},
@@ -390,6 +434,7 @@
 				{
 					"id": "conceal_patch_does_not_clear_existing_detection",
 					"display_name": "Conceal Patch Does Not Clear Existing Detection",
+					"outcome": "failure",
 					"script": [
 						{"type": "call_chunk", "method": "reset_preview_state"},
 						{"type": "call_chunk", "method": "set_recommended_offset", "args": ["fail"]},
@@ -413,6 +458,7 @@
 				{
 					"id": "exposed_failure",
 					"display_name": "Exposed Failure",
+					"outcome": "failure",
 					"script": [
 						{"type": "select_character", "char_id": "endo"},
 						{"type": "teleport", "char_id": "endo", "anchor": "hide_entry"},
@@ -425,6 +471,7 @@
 				{
 					"id": "hidden_success",
 					"display_name": "Hidden Success",
+					"outcome": "success",
 					"script": [
 						{"type": "select_character", "char_id": "endo"},
 						{"type": "teleport", "char_id": "endo", "anchor": "hide_spot"},
@@ -471,6 +518,7 @@
 				{
 					"id": "dash_to_shelter",
 					"display_name": "Dash To Shelter",
+					"outcome": "success",
 					"script": [
 						{"type": "assert_path", "path": "hide_phase", "op": "==", "value": "run"},
 						{"type": "teleport", "char_id": "endo", "anchor": "shelter"},
@@ -482,6 +530,7 @@
 				{
 					"id": "panic_back_into_the_swarm",
 					"display_name": "Panic Back Into The Swarm",
+					"outcome": "failure",
 					"script": [
 						{"type": "assert_path", "path": "hide_phase", "op": "==", "value": "run"},
 						{"type": "teleport", "char_id": "endo", "anchor": "hide_run_exposed"},
@@ -741,6 +790,7 @@
 				{
 					"id": "disciplined_team_reaches_the_next_shelter",
 					"display_name": "Disciplined Team Reaches The Next Shelter",
+					"outcome": "success",
 					"script": [
 						{"type": "assert_path", "path": "preview_chunk", "op": "==", "value": "survival_range"},
 						{"type": "assert_path", "path": "selected_characters", "op": "contains", "value": "aster"},
@@ -781,6 +831,7 @@
 				{
 					"id": "greedy_shortcut_burns_the_margin",
 					"display_name": "Greedy Shortcut Burns The Margin",
+					"outcome": "failure",
 					"script": [
 						{"type": "teleport", "char_id": "aster", "anchor": "west_shelter"},
 						{"type": "call", "method": "headless_call_chunk", "args": ["depart_range"]},

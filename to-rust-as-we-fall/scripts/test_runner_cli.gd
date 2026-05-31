@@ -113,6 +113,9 @@ func _ready() -> void:
 			"--test-sim-command-api":
 				ran_test = true
 				_test_sim_command_api()
+			"--test-puzzle-outcome-coverage":
+				ran_test = true
+				_test_puzzle_outcome_coverage()
 			"--test-event-log-roundtrip":
 				ran_test = true
 				_test_event_log_roundtrip()
@@ -506,6 +509,7 @@ func _run_all_tests() -> void:
 	_test_interactable_data()
 	_test_chunk_party_presence()
 	_test_sim_command_api()
+	_test_puzzle_outcome_coverage()
 	_test_event_log_roundtrip()
 	_test_event_log_mutation_audit()
 	_test_movement_capture()
@@ -5718,6 +5722,40 @@ func _collect_unknown_fragment_actions(actions: Array, schema_script, unknown_ac
 			if schema_script.compare_op_from_variant(op_name) == schema_script.CompareOp.UNKNOWN:
 				unknown_ops[op_name] = true
 
+## D13 — every puzzle stretch that classifies its scenarios with an "outcome" tag
+## must demonstrate BOTH a success and a failure case. The runner separately
+## proves each scenario passes; this guard proves the *coverage*. Untagged
+## puzzle/survival/hybrid fragments are reported as still needing both cases
+## (teaching beats — stacks/rings interactions — have no loss state and stay
+## untagged, so they're listed as candidates only, not failures).
+func _test_puzzle_outcome_coverage() -> void:
+	_test_name = "PuzzleOutcomeCoverage"
+	var catalog_script = load("res://scripts/fragments/puzzle_fragment_catalog.gd")
+	_assert_true(catalog_script != null, "Puzzle fragment catalog script loads")
+	if catalog_script == null:
+		return
+	var catalog = catalog_script.new()
+	_assert_true(catalog.load_from_file(PUZZLE_FRAGMENT_CATALOG_PATH), "Puzzle fragment catalog loads")
+	var classified := 0
+	var pending: Array = []
+	for fragment in catalog.get_fragments():
+		var outcomes := {}
+		for raw_scenario in fragment.get("scenarios", []):
+			var o := String((raw_scenario as Dictionary).get("outcome", ""))
+			if o != "":
+				outcomes[o] = true
+		if outcomes.is_empty():
+			if String(fragment.get("kind", "")) in ["puzzle", "survival", "hybrid"]:
+				pending.append(String(fragment.get("id")))
+			continue
+		classified += 1
+		_assert_true(outcomes.has("success") and outcomes.has("failure"),
+			"Puzzle stretch '%s' demonstrates both a success and a failure outcome" % fragment.get("id"))
+	_assert_true(classified >= 9,
+		"The seeded puzzle stretches stay outcome-classified (got %d, expected >= 9)" % classified)
+	print("[D13] %d puzzle stretch(es) classified with both outcomes; %d candidate(s) still need a fail/success case: %s"
+		% [classified, pending.size(), str(pending)])
+
 func _instantiate_scene_and_wait(scene: PackedScene, settle_frames := 5) -> Node:
 	var instance: Node = scene.instantiate()
 	get_tree().root.add_child(instance)
@@ -7414,6 +7452,9 @@ func _test_event_log_mutation_audit() -> void:
 		"get_scent_radius",
 		"get_physics_position", "is_physics_moving", "is_physics_airborne",
 		"get_throw_height", "get_throw_peak_height",
+		# Computes a launch velocity then delegates to throw_physics_object, which
+		# emits the throw (with that velocity) — replay rides the delegated event.
+		"throw_physics_object_to",
 		"get_pendulum_omega", "get_pendulum_period", "get_pendulum_angle",
 		"get_pendulum_position", "get_pendulum_bob_velocity",
 		"is_dodging", "is_endocytosing",
