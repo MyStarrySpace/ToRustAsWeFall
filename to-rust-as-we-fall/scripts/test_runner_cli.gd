@@ -6818,6 +6818,78 @@ func _test_cooperative_pathfinding() -> void:
 		"Cooperative paths reach the same positions at fine (1x) and coarse (10x) step sizes")
 	_assert_equals(fine.hash, coarse.hash, "Final state hash matches across step sizes (fast-forward invariant)")
 
+	# --- 5. Characters of DIFFERENT speeds crossing still never share a cell.
+	# A slow character's reservation windows are wider; the fast one must time
+	# its transit around them. (The other cases use equal speed.) ---
+	var grid5 := GridWorld.new()
+	grid5.create_room(16, 16, true)
+	var sched5 := EventScheduler.new()
+	var gs5 := GameState.new()
+	gs5.grid = grid5
+	gs5.scheduler = sched5
+	gs5.register_character("slow", grid5.grid_to_world(Vector2i(8, 2)), 2.0, {})
+	gs5.register_character("fast", grid5.grid_to_world(Vector2i(2, 8)), 6.0, {})
+	gs5.command_move_to_cell("slow", Vector2i(8, 13))
+	gs5.command_move_to_cell("fast", Vector2i(13, 8))
+	var rep5 := _coop_overlap_report(gs5, ["slow", "fast"], sched5, 0.05, 1000)
+	_assert_equals(rep5.same_cell_ticks, 0,
+		"Different-speed crossing never shares a cell (min sep=%.2f)" % rep5.min_dist)
+	_assert_true(not gs5.is_moving("slow") and not gs5.is_moving("fast"), "Both different-speed characters arrived")
+	_assert_equals(grid5.world_to_grid(gs5.get_position("slow")), Vector2i(8, 13), "Slow reached its target")
+	_assert_equals(grid5.world_to_grid(gs5.get_position("fast")), Vector2i(13, 8), "Fast reached its target")
+
+	# --- 6. A dodging character reserves its cells, so a cooperative mover routes
+	# around it (dodge builds movement manually, bypassing _start_movement). ---
+	var grid6 := GridWorld.new()
+	grid6.create_room(16, 16, true)
+	var sched6 := EventScheduler.new()
+	var gs6 := GameState.new()
+	gs6.grid = grid6
+	gs6.scheduler = sched6
+	gs6.register_character("dodger", grid6.grid_to_world(Vector2i(8, 8)), 3.0, {"dodge_unlocked": true, "stamina": 100.0})
+	gs6.register_character("mover", grid6.grid_to_world(Vector2i(2, 8)), 3.0, {})
+	var dodged: bool = gs6.dodge_roll("dodger", Vector3(0, 0, 1))
+	_assert_true(dodged, "Dodge roll succeeded")
+	var dodge_reserved := false
+	for cell in gs6._reservations.keys():
+		for slot in gs6._reservations[cell]:
+			if String(slot.id) == "dodger":
+				dodge_reserved = true
+	_assert_true(dodge_reserved, "Dodging character holds cell reservations during the dodge")
+	gs6.command_move_to_cell("mover", Vector2i(13, 8))
+	var rep6 := _coop_overlap_report(gs6, ["dodger", "mover"], sched6, 0.02, 600)
+	_assert_equals(rep6.same_cell_ticks, 0, "Cooperative mover never shares a cell with a dodging character (min sep=%.2f)" % rep6.min_dist)
+
+	# --- 7. A mid-move speed change (e.g. toggling run) keeps cooperative timing
+	# rather than reverting to a plain overlap-prone path. ---
+	var grid7 := GridWorld.new()
+	grid7.create_room(16, 16, true)
+	var sched7 := EventScheduler.new()
+	var gs7 := GameState.new()
+	gs7.grid = grid7
+	gs7.scheduler = sched7
+	gs7.register_character("p", grid7.grid_to_world(Vector2i(2, 8)), 3.0, {})
+	gs7.register_character("q", grid7.grid_to_world(Vector2i(13, 8)), 3.0, {})
+	gs7.command_move_to_cell("p", Vector2i(13, 8))
+	gs7.command_move_to_cell("q", Vector2i(2, 8))
+	var same7 := 0
+	var changed := false
+	for s in range(600):
+		var cp := grid7.world_to_grid(gs7.get_position("p"))
+		var cq := grid7.world_to_grid(gs7.get_position("q"))
+		if cp == cq:
+			same7 += 1
+		if not gs7.is_moving("p") and not gs7.is_moving("q") and s > 0:
+			break
+		# Toggle p's speed partway through the crossing.
+		if not changed and s == 20:
+			gs7.change_move_speed("p", 6.0)
+			changed = true
+		sched7.advance_ticks(0.05)
+	_assert_true(changed, "Speed change fired mid-move")
+	_assert_equals(same7, 0, "Speed change mid-move preserves the no-overlap guarantee")
+	_assert_true(not gs7.is_moving("p") and not gs7.is_moving("q"), "Both arrived after a mid-move speed change")
+
 ## Run the swap scenario and return final positions + state hash. Used to prove
 ## determinism and fast-forward invariance at different scheduler step sizes.
 func _coop_run_swap(_label: String, step: float) -> Dictionary:

@@ -270,13 +270,12 @@ func change_move_speed(id: String, new_speed: float) -> void:
 	_cancel_movement(id)
 	ch.position = current_pos
 	if grid:
+		# Replan cooperatively at the new speed so a mid-move speed change (e.g.
+		# toggling run) keeps respecting other characters' reservations rather
+		# than reverting to a plain, overlap-prone straight path.
 		var dest_cell := grid.world_to_grid(dest)
 		var current_cell := grid.world_to_grid(current_pos)
-		var path := grid.find_path(current_cell, dest_cell)
-		if not path.is_empty():
-			var full_path: Array[Vector3] = [current_pos]
-			full_path.append_array(path)
-			_start_movement(id, full_path)
+		if _begin_cooperative_move(id, current_pos, current_cell, dest_cell, new_speed):
 			return
 	_start_movement(id, _resolve_world_path(current_pos, dest))
 
@@ -624,8 +623,13 @@ static func _interpolate_path_timed(path: Array[Vector3], arrival_ticks: Array, 
 const _RESERVE_BUFFER := 0.18
 ## A parked character holds its cell effectively forever; others route around it.
 const _PARK_HORIZON := 1.0e12
-## Search bounds for the cooperative planner.
-const _COOP_MAX_NODES := 4000
+## Search bounds for the cooperative planner. Generous so legitimate solutions
+## that need a long wait (e.g. letting a slow character clear a corridor) are
+## found, keeping the overlap-prone plain-A* fallback a true last resort.
+const _COOP_MAX_NODES := 12000
+## Extra wait/detour slack (in cell-times) the planner may spend beyond the
+## straight-line estimate before giving up.
+const _COOP_WAIT_SLACK_CELLS := 48.0
 
 func _clear_reservations(id: String) -> void:
 	if _reservations.is_empty():
@@ -713,7 +717,7 @@ func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: fl
 		Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1),
 	]
 	# A budget on total time so the planner can't wait/wander forever.
-	var time_budget: float = _coop_h(start, end, card) * 3.0 + card * 16.0
+	var time_budget: float = _coop_h(start, end, card) * 3.0 + card * _COOP_WAIT_SLACK_CELLS
 	var open: Array = [{"cell": start, "t": t_start, "g": 0.0, "f": _coop_h(start, end, card)}]
 	var start_key := _coop_key(start, t_start, t_start, tq)
 	var best_g: Dictionary = {start_key: 0.0}
@@ -967,14 +971,19 @@ func dodge_roll(char_id: String, direction: Vector3) -> bool:
 		func(): _on_dodge_end(cid),
 		"dodge_" + char_id
 	)
+	var dodge_ticks: Array[float] = [now, now + DODGE_DURATION]
 	ch.movement = {
 		"path": path,
 		"cum_dist": cum_dist,
+		"arrival_ticks": dodge_ticks,
 		"total_distance": dodge_dist,
 		"start_tick": now,
 		"duration": DODGE_DURATION,
 		"handle": handle,
 	}
+	# Reserve the dodge's cells so a cooperative mover routes around the dodging
+	# character (the manual movement dict above bypasses _start_movement).
+	_reserve_path(char_id, path, dodge_ticks)
 	_dodging[char_id] = {"end_tick": now + DODGE_DURATION, "handle": handle}
 
 	dodge_started.emit(char_id, dir)
@@ -997,6 +1006,7 @@ func _on_dodge_end(char_id: String) -> void:
 		if grid:
 			ch.grid_cell = grid.world_to_grid(dest)
 		ch.movement = null
+	_reserve_parked(char_id, ch.grid_cell)
 	dodge_finished.emit(char_id)
 
 # --- Queued Abilities (auto-move-into-range) ---
@@ -2278,7 +2288,10 @@ func _assign_party_cells(members: Array, target: Vector2i) -> Dictionary:
 func _nearest_free_cell(target: Vector2i, taken: Dictionary) -> Vector2i:
 	if grid.is_in_bounds(target.x, target.y) and grid.is_walkable(target.x, target.y) and not taken.has(target):
 		return target
-	for radius in range(1, 9):
+	# Search the whole reachable extent (capped) so a large party on a big map
+	# never falsely stacks just because a free cell sits past a fixed radius.
+	var max_radius := mini(maxi(grid.width, grid.height), 24)
+	for radius in range(1, max_radius + 1):
 		var best := Vector2i.ZERO
 		var found := false
 		for dz in range(-radius, radius + 1):
@@ -2293,6 +2306,8 @@ func _nearest_free_cell(target: Vector2i, taken: Dictionary) -> Vector2i:
 					found = true
 		if found:
 			return best
+	# No free cell anywhere in range (fewer walkable cells than members) —
+	# stacking on the target is then physically unavoidable.
 	return target
 
 func _ring_closer(c: Vector2i, best: Vector2i, target: Vector2i) -> bool:
@@ -2330,16 +2345,21 @@ func _do_move_to_cell(id: String, cell: Vector2i) -> bool:
 	var speed: float = characters[id].move_speed
 	_cancel_movement(id)
 	characters[id].position = current_pos
-	# Prefer a cooperative path that never overlaps another character in space
-	# and time, waiting or detouring as needed.
-	var plan := _plan_cooperative(current_cell, cell, speed, scheduler.get_current_tick(), id)
+	return _begin_cooperative_move(id, current_pos, current_cell, cell, speed)
+
+## Plan a cooperative path from current_cell to dest_cell (waiting/detouring to
+## avoid other characters' reserved cell-time windows) and start it. Falls back
+## to plain A* only when no conflict-free path exists within the search budget,
+## so the character still moves (the fallback prioritizes liveness — it may
+## briefly overlap another character). Assumes the caller already cancelled any
+## prior movement and pinned characters[id].position to current_pos.
+func _begin_cooperative_move(id: String, current_pos: Vector3, current_cell: Vector2i, dest_cell: Vector2i, speed: float) -> bool:
+	var plan := _plan_cooperative(current_cell, dest_cell, speed, scheduler.get_current_tick(), id)
 	if not plan.is_empty() and not plan.cells.is_empty():
 		var built := _build_timed_world_path(current_pos, plan.cells, plan.ticks, speed)
 		_start_movement(id, built.path, built.ticks)
 		return true
-	# No conflict-free path within budget: fall back to plain A* so the
-	# character still moves (it may briefly overlap another).
-	var path := grid.find_path(current_cell, cell)
+	var path := grid.find_path(current_cell, dest_cell)
 	if path.is_empty():
 		_reserve_parked(id, current_cell)
 		return false
