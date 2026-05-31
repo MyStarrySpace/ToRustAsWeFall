@@ -1,33 +1,47 @@
 extends CanvasLayer
 
-## Bottom-of-screen dialogue display with typewriter effect.
-## Supports speaker labels, text queuing, and style variants.
+## Bottom-of-screen dialogue display: typewriter effect + a constant-size,
+## scrolling transcript. Earlier lines stay visible but faded above; the line in
+## progress sits full-opacity at the bottom. The mouse wheel reviews history; a
+## new line re-follows the bottom.
 ##
 ## Timing authority: the dialogue box does NOT advance itself. Its owner (the
 ## tutorial sequence) feeds elapsed time in via advance_ui_time(), so a single
 ## clock drives real play, headless runs, the CLI, and tests identically.
 ## See .claude/CLAUDE.md "Dialogue & Time Authority".
 ##
-## Long lines paginate: the visible label shows one readable page at a time, but
-## _current_text stays the full logical line and line_displayed/dialogue_finished
-## fire once per line. Text speed is scaled by the Settings autoload.
+## Advancement is click-driven by default: a click finishes the current page's
+## typing, a second click advances. Auto-advance (type, hold a beat, advance on
+## its own) is opt-in via the Settings autoload (auto_advance_dialogue). The data
+## layer always advances through awaiting_advance() so headless/CLI never stall.
+##
+## Long lines paginate: the typewriter still gates page by page, but _current_text
+## stays the full logical line and line_displayed/dialogue_finished fire once per
+## line. Text speed is scaled by the Settings autoload.
 
 @export var chars_per_second := 30.0
-## The one shared reading beat: an auto line (wait == false) types out, holds
-## this many ticks, then advances. Never tuned per line. Acknowledge lines
-## (wait == true) ignore this and wait for request_advance() instead.
+## The one shared reading beat: when auto-advance is enabled, an auto line
+## (wait == false) types out, holds this many ticks, then advances. Never tuned
+## per line. Acknowledge lines (wait == true) ignore this and wait for
+## request_advance() regardless of the auto-advance setting.
 @export var default_hold_time := 2.0
 
 ## A line longer than this splits into sentence-packed pages you advance through.
 const PAGE_MAX_CHARS := 180
 const READABLE_WIDTH := 720.0
-## A page taller than this (rare: a dense page or a long poem stanza) scrolls within
-## a capped box instead of growing off the top of the screen and clipping. Normal
-## pages are shorter than this, so they size naturally with no scroll.
-const MAX_TEXT_HEIGHT := 132.0
+## Fixed inner height of the scrolling transcript view. The panel stays a
+## constant size; older lines scroll up out of view instead of growing it.
+const SCROLL_HEIGHT := 104.0
+## Newest-kept cap on retained transcript entries (bounds memory in long scenes).
+const TRANSCRIPT_MAX := 40
+## Pixels per mouse-wheel notch when reviewing history.
+const SCROLL_STEP := 36.0
+## Faded color for previously-shown lines in the transcript.
+const HISTORY_COLOR_HEX := "55565f"
 
 var _queue: Array[Dictionary] = []
 var _current_text := ""
+var _current_speaker := ""
 var _displayed_chars := 0.0
 var _hold_timer := 0.0
 var _active := false
@@ -38,8 +52,17 @@ var _style := "normal"  # "normal", "poem", "data", "fragment", "whisper"
 var _pages: Array[Vector2i] = [Vector2i(0, 0)]
 var _page_index := 0
 
+## Completed lines shown earlier in this conversation: {text, speaker, style}.
+var _transcript: Array[Dictionary] = []
+## Prebuilt bbcode for the faded history (rebuilt only when _transcript changes).
+var _history_cache := ""
+## True while the player has scrolled up to review; suspends auto-follow until
+## the next line.
+var _user_scrolled := false
+
 var _panel: PanelContainer
 var _speaker_label: Label
+var _scroll: ScrollContainer
 var _text_label: RichTextLabel
 var _continue_hint: Label
 var _hint_tween: Tween
@@ -53,10 +76,10 @@ func _ready() -> void:
 	_panel.visible = false
 
 func _build_ui() -> void:
-	# Bottom-centered panel, capped to a readable column width.
+	# Bottom-centered, constant-size panel capped to a readable column width.
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	margin.offset_top = -150
+	margin.offset_top = -(SCROLL_HEIGHT + 96.0)
 	margin.offset_bottom = 0
 	margin.add_theme_constant_override("margin_left", 24)
 	margin.add_theme_constant_override("margin_right", 24)
@@ -71,6 +94,7 @@ func _build_ui() -> void:
 	_panel = PanelContainer.new()
 	_panel.custom_minimum_size.x = READABLE_WIDTH
 	_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var panel_style := StyleBoxFlat.new()
 	panel_style.bg_color = Color(0.02, 0.02, 0.04, 0.93)
 	panel_style.border_color = Color(0.18, 0.2, 0.28, 0.7)
@@ -85,29 +109,43 @@ func _build_ui() -> void:
 	center.add_child(_panel)
 
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 7)
+	vbox.add_theme_constant_override("separation", 6)
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_panel.add_child(vbox)
 
 	_speaker_label = Label.new()
 	_speaker_label.add_theme_font_size_override("font_size", 12)
 	_speaker_label.add_theme_color_override("font_color", Color(0.45, 0.65, 0.9, 0.95))
+	_speaker_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vbox.add_child(_speaker_label)
+
+	# Fixed-height viewport: the transcript label grows inside, the box clips +
+	# scrolls. mouse_filter IGNORE so clicks/wheel reach _unhandled_input, where
+	# we drive advance (click) and review (wheel) ourselves.
+	_scroll = ScrollContainer.new()
+	_scroll.custom_minimum_size = Vector2(READABLE_WIDTH - 40.0, SCROLL_HEIGHT)
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_scroll.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(_scroll)
 
 	_text_label = RichTextLabel.new()
 	_text_label.bbcode_enabled = true
 	_text_label.fit_content = true
 	_text_label.scroll_active = false
 	_text_label.custom_minimum_size.x = READABLE_WIDTH - 40.0
+	_text_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_text_label.add_theme_font_size_override("normal_font_size", 16)
 	_text_label.add_theme_constant_override("line_separation", 5)
 	_text_label.add_theme_color_override("default_color", Color(0.78, 0.78, 0.84))
-	vbox.add_child(_text_label)
+	_text_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_scroll.add_child(_text_label)
 
 	_continue_hint = Label.new()
 	_continue_hint.text = ""
 	_continue_hint.add_theme_font_size_override("font_size", 12)
 	_continue_hint.add_theme_color_override("font_color", Color(0.55, 0.6, 0.7, 0.85))
 	_continue_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_continue_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vbox.add_child(_continue_hint)
 
 	# Gentle pulse so the continue indicator reads as "waiting on you".
@@ -141,6 +179,13 @@ func _effective_hold() -> float:
 		return default_hold_time * float(s.call("text_hold_scale"))
 	return default_hold_time
 
+## Auto-advance (type, hold, advance on its own) is opt-in. Default: click-only.
+func _auto_advance_enabled() -> bool:
+	var s := _settings()
+	if s != null and s.has_method("is_auto_advance_dialogue"):
+		return bool(s.call("is_auto_advance_dialogue"))
+	return false
+
 # --- Advancement ---
 
 ## Advance the dialogue by delta_ticks of dialogue time. The owner feeds this
@@ -161,7 +206,10 @@ func advance_ui_time(delta_ticks: float) -> void:
 			_on_page_typed()
 		return
 
-	# Current page fully shown.
+	# Current page fully shown. With auto-advance off (default) the box waits for
+	# an explicit advance (a click or the data layer); the clock does nothing.
+	if not _auto_advance_enabled():
+		return
 	if _is_last_page():
 		if _waiting_for_input:
 			return  # await request_advance()
@@ -180,6 +228,7 @@ func advance_ui_time(delta_ticks: float) -> void:
 func request_advance() -> void:
 	if not _active:
 		return
+	_user_scrolled = false
 	var page_end := _pages[_page_index].y
 	if _displayed_chars < float(page_end):
 		_displayed_chars = float(page_end)
@@ -191,6 +240,19 @@ func request_advance() -> void:
 	else:
 		_next_page()
 
+## True when the box can't progress on its own and is waiting for an advance
+## (a click, or a data-layer advance). The headless/CLI drivers poll this and
+## call request_advance() — the equivalent of the player clicking — so click-only
+## mode never stalls them.
+func awaiting_advance() -> bool:
+	if not _active:
+		return false
+	if _displayed_chars < float(_pages[_page_index].y):
+		return false
+	if _is_last_page():
+		return _waiting_for_input or not _auto_advance_enabled()
+	return not _auto_advance_enabled()
+
 func _is_last_page() -> bool:
 	return _page_index >= _pages.size() - 1
 
@@ -198,15 +260,8 @@ func _is_last_page() -> bool:
 func _on_page_typed() -> void:
 	if _is_last_page():
 		line_displayed.emit(_current_text)
-		if _waiting_for_input:
-			_show_continue_hint()
-		else:
-			_hold_timer = _effective_hold()
-			_show_continue_hint()
-	else:
-		# Page gate — give the player a beat, then auto-reveal the next page.
-		_hold_timer = _effective_hold()
-		_show_continue_hint()
+	_hold_timer = _effective_hold()
+	_show_continue_hint()
 
 func _next_page() -> void:
 	_page_index += 1
@@ -217,28 +272,51 @@ func _next_page() -> void:
 func _render_visible() -> void:
 	var page := _pages[_page_index]
 	var count := mini(int(_displayed_chars), page.y)
-	_text_label.text = _current_text.substr(page.x, count - page.x)
-	_apply_text_overflow_scroll()
+	# The in-progress line accumulates from its start, so a multi-page line builds
+	# up in the scroll view (pages are reading gates, not separate screens).
+	_text_label.text = _compose_text(_current_text.substr(0, count))
+	_follow_bottom()
 
-## A page that would grow taller than MAX_TEXT_HEIGHT scrolls within a capped box
-## (following the typewriter reveal so the newest line stays visible) instead of
-## expanding off-screen and clipping. Shorter pages size to content with no scroll.
-## Purely visual — it touches neither the dialogue clock nor any game state.
-func _apply_text_overflow_scroll() -> void:
-	if _text_label == null:
+## Faded history (cached) above + the full-opacity in-progress text at the bottom.
+func _compose_text(current_visible: String) -> String:
+	if _history_cache == "":
+		return current_visible
+	return _history_cache + "\n\n" + current_visible
+
+func _history_line_bbcode(entry: Dictionary) -> String:
+	var prefix := ""
+	var sp := String(entry.get("speaker", ""))
+	if sp != "":
+		prefix = "%s  " % sp
+	return "[color=#%s]%s%s[/color]" % [HISTORY_COLOR_HEX, prefix, String(entry.get("text", ""))]
+
+func _append_to_transcript(text: String, speaker: String, style: String) -> void:
+	_transcript.append({"text": text, "speaker": speaker, "style": style})
+	while _transcript.size() > TRANSCRIPT_MAX:
+		_transcript.pop_front()
+	_rebuild_history_cache()
+
+func _rebuild_history_cache() -> void:
+	var parts: Array[String] = []
+	for entry in _transcript:
+		parts.append(_history_line_bbcode(entry))
+	_history_cache = "\n\n".join(parts)
+
+## Pin the scroll to the newest text unless the player has scrolled up to review.
+func _follow_bottom() -> void:
+	if _scroll == null or _user_scrolled:
 		return
-	if _text_label.get_content_height() > MAX_TEXT_HEIGHT:
-		if _text_label.fit_content:
-			_text_label.fit_content = false
-			_text_label.scroll_active = true
-			_text_label.custom_minimum_size.y = MAX_TEXT_HEIGHT
-		var scrollbar := _text_label.get_v_scroll_bar()
-		if scrollbar != null:
-			scrollbar.value = scrollbar.max_value
-	elif not _text_label.fit_content:
-		_text_label.fit_content = true
-		_text_label.scroll_active = false
-		_text_label.custom_minimum_size.y = 0.0
+	_scroll.set_deferred("scroll_vertical", 1 << 20)
+
+func _scroll_by(amount: float) -> void:
+	if _scroll == null:
+		return
+	_user_scrolled = true
+	_scroll.scroll_vertical = maxi(0, _scroll.scroll_vertical + int(amount))
+	# Re-follow if the player has scrolled back to the bottom.
+	var sb := _scroll.get_v_scroll_bar()
+	if sb != null and float(_scroll.scroll_vertical) >= sb.max_value - sb.page - 1.0:
+		_user_scrolled = false
 
 func _show_continue_hint() -> void:
 	if _pages.size() > 1:
@@ -251,40 +329,51 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
-		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
-			request_advance()
-			if is_inside_tree():
-				get_viewport().set_input_as_handled()
+		if not mb.pressed:
+			return
+		match mb.button_index:
+			MOUSE_BUTTON_LEFT:
+				request_advance()
+				if is_inside_tree():
+					get_viewport().set_input_as_handled()
+			MOUSE_BUTTON_WHEEL_UP:
+				_scroll_by(-SCROLL_STEP)
+				if is_inside_tree():
+					get_viewport().set_input_as_handled()
+			MOUSE_BUTTON_WHEEL_DOWN:
+				_scroll_by(SCROLL_STEP)
+				if is_inside_tree():
+					get_viewport().set_input_as_handled()
 
 func _advance() -> void:
 	if _queue.is_empty():
 		_active = false
 		_panel.visible = false
+		_transcript.clear()
+		_history_cache = ""
 		dialogue_finished.emit()
 		return
+	# The line that just finished joins the faded history above the next one.
+	_append_to_transcript(_current_text, _current_speaker, _style)
 	_show_next()
 
 func _show_next() -> void:
 	var entry: Dictionary = _queue.pop_front()
 	_current_text = entry.get("text", "")
+	_current_speaker = entry.get("speaker", "")
 	_style = entry.get("style", "normal")
 	_waiting_for_input = entry.get("wait_for_input", false)
 	_displayed_chars = 0.0
 	_hold_timer = 0.0
+	_user_scrolled = false
 	_continue_hint.text = ""
 	_pages = _paginate(_current_text)
 	_page_index = 0
 
-	var speaker: String = entry.get("speaker", "")
-	_speaker_label.text = speaker
-	_speaker_label.visible = speaker != ""
-	_text_label.text = ""
-	# Start each line sized to content; _render_visible re-caps + scrolls if it grows.
-	_text_label.fit_content = true
-	_text_label.scroll_active = false
-	_text_label.custom_minimum_size.y = 0.0
+	_speaker_label.text = _current_speaker
+	_speaker_label.visible = _current_speaker != ""
 
-	# Style the panel based on type.
+	# Style the panel + in-progress text color based on type.
 	var panel_style := _panel.get_theme_stylebox("panel") as StyleBoxFlat
 	match _style:
 		"poem":
@@ -310,6 +399,7 @@ func _show_next() -> void:
 
 	_panel.visible = true
 	_active = true
+	_render_visible()
 
 # --- Pagination ---
 
@@ -384,12 +474,16 @@ func say_sequence(lines: Array[Dictionary]) -> void:
 func clear() -> void:
 	_queue.clear()
 	_current_text = ""
+	_current_speaker = ""
 	_displayed_chars = 0.0
 	_hold_timer = 0.0
 	_waiting_for_input = false
 	_active = false
 	_pages = [Vector2i(0, 0)]
 	_page_index = 0
+	_transcript.clear()
+	_history_cache = ""
+	_user_scrolled = false
 	_panel.visible = false
 	if _text_label != null:
 		_text_label.text = ""

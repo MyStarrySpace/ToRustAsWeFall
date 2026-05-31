@@ -198,8 +198,12 @@ func _advance_dialogue() -> void:
 	else:
 		print("[SIM] Advance → no dialogue box")
 
-## True when a line is fully typed and waiting for an explicit acknowledge.
+## True when the box is waiting for an advance — a fully-typed line that won't
+## progress on its own (click-only by default, or an acknowledge line). The CLI
+## acknowledges it the way a player click would.
 func _dialogue_at_wait_gate(dlg: Node) -> bool:
+	if dlg.has_method("awaiting_advance"):
+		return bool(dlg.call("awaiting_advance"))
 	if not bool(dlg.get("_waiting_for_input")):
 		return false
 	var shown := float(dlg.get("_displayed_chars"))

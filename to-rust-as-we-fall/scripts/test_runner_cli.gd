@@ -3848,7 +3848,13 @@ func _test_dialogue_pause_chain() -> void:
 	scheduler.pause()
 	_assert_true(scheduler.is_paused(), "Gameplay scheduler is paused")
 
-	# A three-line auto chain advances entirely on the dialogue clock.
+	# With auto-advance enabled, a three-line auto chain advances entirely on the
+	# dialogue clock — proving the UI clock keeps flowing while gameplay is paused.
+	var settings_node: Node = get_tree().root.get_node_or_null("Settings")
+	var prior_auto := false
+	if settings_node != null:
+		prior_auto = bool(settings_node.get("auto_advance_dialogue"))
+		settings_node.set_auto_advance_dialogue(true)
 	dialogue.clear()
 	var shown: Array[String] = []
 	var finished := {"hit": false}
@@ -3864,6 +3870,8 @@ func _test_dialogue_pause_chain() -> void:
 	while dialogue.is_active() and safety < 4000:
 		dialogue.advance_ui_time(4.0)
 		safety += 1
+	if settings_node != null:
+		settings_node.set_auto_advance_dialogue(prior_auto)
 
 	_assert_true(scheduler.is_paused(), "Scheduler stayed paused while dialogue advanced")
 	_assert_equals(shown.size(), 3, "All three queued lines trigger in turn while paused (no hang)")
@@ -3938,10 +3946,12 @@ func _test_dialogue_pagination() -> void:
 	var short_line := "A short line."
 	box.say(short_line)
 	_assert_equals(box._pages.size(), 1, "A short line is a single page")
-	# Drain it.
+	# Drain it (click-only by default: type, then advance when awaiting).
 	var guard := 0
 	while box.is_active() and guard < 4000:
 		box.advance_ui_time(8.0)
+		if box.awaiting_advance():
+			box.request_advance()
 		guard += 1
 
 	var long_line := "This is the first sentence of a deliberately long passage. Here is a second sentence that keeps going. A third sentence adds yet more length to push well past the pagination threshold. And a fourth sentence ensures we split into multiple readable pages instead of one wall of text."
@@ -3955,6 +3965,8 @@ func _test_dialogue_pagination() -> void:
 	var saw_multiple_pages := false
 	while box.is_active() and guard < 8000:
 		box.advance_ui_time(8.0)
+		if box.awaiting_advance():
+			box.request_advance()
 		if int(box._page_index) > 0:
 			saw_multiple_pages = true
 		# _current_text must stay the full line throughout.
@@ -8742,6 +8754,12 @@ func _pump_dialogue(dialogue_box: Node, dt: float) -> void:
 	_advance_dialogue_box(dialogue_box, dt)
 	if not dialogue_box.has_method("request_advance"):
 		return
+	# Click-only by default: advance every line the box is waiting on (the
+	# headless equivalent of the player clicking), not just wait=true lines.
+	if dialogue_box.has_method("awaiting_advance"):
+		if bool(dialogue_box.call("awaiting_advance")):
+			dialogue_box.call("request_advance")
+		return
 	if not bool(dialogue_box.get("_waiting_for_input")):
 		return
 	var shown := float(dialogue_box.get("_displayed_chars"))
@@ -8950,11 +8968,9 @@ func _drive_sequence_contract_with_wall_time(
 		_advance_dialogue_box(dialogue_box, dt * dialogue_speed_multiplier)
 		wall_time += dt
 		dialogue_time += dt
-		var current_text: String = dialogue_box.get("_current_text")
-		var displayed_chars: float = float(dialogue_box.get("_displayed_chars"))
-		var waiting_for_input: bool = bool(dialogue_box.get("_waiting_for_input"))
-		if waiting_for_input and displayed_chars >= current_text.length():
-			# Simulate a player pausing continue_delay before acknowledging.
+		var awaiting: bool = dialogue_box.has_method("awaiting_advance") and bool(dialogue_box.call("awaiting_advance"))
+		if awaiting:
+			# Simulate a player pausing continue_delay before clicking to advance.
 			wait_input_time += dt
 			if wait_input_time >= continue_delay:
 				dialogue_box.request_advance()

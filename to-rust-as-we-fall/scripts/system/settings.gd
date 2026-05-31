@@ -27,6 +27,10 @@ const TEXT_SPEED_HOLD := {
 signal changed()
 
 var text_speed: int = TextSpeed.NORMAL
+## When true, non-acknowledge dialogue lines advance on their own after a reading
+## beat. Default false: every line waits for a click (or data-layer advance), so
+## the dialogue is click-driven unless the player opts into auto-advance.
+var auto_advance_dialogue: bool = false
 
 func _ready() -> void:
 	# Settings must apply even while the rest of the scene is paused.
@@ -49,6 +53,18 @@ func text_cps_scale() -> float:
 func text_hold_scale() -> float:
 	return float(TEXT_SPEED_HOLD.get(text_speed, 1.0))
 
+# --- Auto-advance ---
+
+func set_auto_advance_dialogue(enabled: bool) -> void:
+	if enabled == auto_advance_dialogue:
+		return
+	auto_advance_dialogue = enabled
+	save_settings()
+	changed.emit()
+
+func is_auto_advance_dialogue() -> bool:
+	return auto_advance_dialogue
+
 static func text_speed_label(preset: int) -> String:
 	match preset:
 		TextSpeed.SLOW: return "Slow"
@@ -62,6 +78,7 @@ static func text_speed_label(preset: int) -> String:
 func save_settings() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("accessibility", "text_speed", text_speed)
+	cfg.set_value("accessibility", "auto_advance_dialogue", auto_advance_dialogue)
 	cfg.save(CONFIG_PATH)
 
 func load_settings() -> void:
@@ -69,6 +86,7 @@ func load_settings() -> void:
 	if cfg.load(CONFIG_PATH) != OK:
 		return
 	text_speed = clampi(int(cfg.get_value("accessibility", "text_speed", TextSpeed.NORMAL)), 0, TextSpeed.size() - 1)
+	auto_advance_dialogue = bool(cfg.get_value("accessibility", "auto_advance_dialogue", false))
 
 # --- Static fallbacks for consumers (degrade gracefully without the autoload) ---
 
