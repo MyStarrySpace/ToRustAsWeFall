@@ -206,7 +206,8 @@ func _show_correction(key: String) -> void:
 func _start_workspace() -> void:
 	_current_step = "workspace"
 	_player.set_move_enabled(true)
-	# Phase 1 explores until Peris opens Monos's file.
+	# Phase 1 wanders the room while the new client's session stalls; the
+	# exploration gate is where the spoofed signal finally breaks through.
 	_show_thought(DialogueData.text("peris.sim_expand.opening.line"))
 	_build_exploration_objects()
 	_explore_gate_unlocked = false
@@ -223,10 +224,12 @@ func _on_exploration_gate_interacted() -> void:
 		return
 	_explore_gate_fired = true
 	_hide_thought()
-	_start_monos_arrives()
+	_start_monos_breakthrough()
 
-func _start_monos_arrives() -> void:
-	_current_step = "monos_arrives"
+## Monos breaks through on a spoofed signal — not the scheduled client. He is
+## panicked, apologetic for the channel, and discloses why he risked it.
+func _start_monos_breakthrough() -> void:
+	_current_step = "monos_breakthrough"
 	_monos.visible = true
 	_portal_light.light_color = Color(0.9, 0.6, 0.3)
 	_portal_light.light_energy = 3.0

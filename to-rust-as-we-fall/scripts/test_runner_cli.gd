@@ -3361,12 +3361,12 @@ func _input_playthrough_peris1() -> void:
 			reached = true
 		if instance._explore_gate_unlocked:
 			unlocked = true
-		if str(instance._current_step) == "monos_arrives":
+		if str(instance._current_step) == "monos_breakthrough":
 			break
 
 	_assert_true(reached, "Player walks to the logbook gate via synthetic clicks")
 	_assert_true(unlocked, "Logbook gate unlocks after the exploration beat")
-	_assert_equals(str(instance._current_step), "monos_arrives",
+	_assert_equals(str(instance._current_step), "monos_breakthrough",
 		"Reaching + dwelling the unlocked gate triggers it through real input (no force-fire); step=%s" % str(instance._current_step))
 
 	# Past the gate the beat is dialogue + scheduled transitions: drive the one
@@ -14277,7 +14277,7 @@ func _test_sequence_contracts() -> void:
 		"Sequence Contract: Peris Phase 1",
 		"res://scenes/tutorial/peris_sim.tscn",
 		[
-			"fade_in", "workspace", "monos_arrives",
+			"fade_in", "workspace", "monos_breakthrough",
 			"transition_out", "complete",
 		],
 		peris_phase_1_actions,
