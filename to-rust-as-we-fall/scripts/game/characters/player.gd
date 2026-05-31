@@ -164,9 +164,23 @@ func _raycast_ground(screen_pos: Vector2) -> Vector3:
 		return result.position
 	return Vector3.INF
 
+## When true, a ground click moves the whole party (spread onto distinct cells)
+## via the data layer rather than just this character — so a multi-select group
+## move never stacks members on one cell.
+var group_move := false
+
 func _set_click_target(world_pos: Vector3, cancel_interaction := true) -> bool:
 	if cancel_interaction and _interaction_controller != null:
 		_interaction_controller.cancel_active_target()
+	# Group move: one click spreads the party across distinct cells.
+	if group_move and game_state and grid_world:
+		game_state.party_move_to_cell(grid_world.world_to_grid(world_pos))
+		var group_snap := grid_world.grid_to_world(grid_world.world_to_grid(world_pos))
+		_dest_marker.global_position = Vector3(group_snap.x, 0.05, group_snap.z)
+		_moving = true
+		_dest_marker_mat.albedo_color.a = 0.6
+		_dest_marker.scale = Vector3(1.2, 1.2, 1.2)
+		return true
 	if game_state and char_id != "":
 		if grid_world:
 			var target_cell := grid_world.world_to_grid(world_pos)

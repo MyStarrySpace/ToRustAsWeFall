@@ -36,7 +36,6 @@ var _unit_1_stunned := false
 var _unit_2_stunned := false
 var _reboot_active := false
 var _stamina := 100.0
-var _multiselect_hint_next_tick := -999.0
 
 var _enemies: Array[Enemy] = []
 var _enemy_count := 0
@@ -518,26 +517,34 @@ func _sanitize_character_selection(selected_ids: Array) -> Array[String]:
 
 func _apply_character_control_selection() -> void:
 	var group_control := _hud != null and bool(_hud.get("_multi_select")) and _selected_character_ids.size() > 1
-	_peris_node.set_move_enabled((group_control and _selected_character_ids.has("peris")) or (not group_control and _active_character == "peris"))
-	_aster_node.set_move_enabled((group_control and _selected_character_ids.has("aster")) or (not group_control and _active_character == "aster"))
+	# In group control the party moves as one: the active character's player drives
+	# the click and issues a spread party move (distinct cells, no overlap), so only
+	# it is move-enabled — the other member is carried by the party move, not its
+	# own click. Single control: only the active character moves, no group move.
+	if group_control and _game_state != null:
+		_game_state.set_party(_sanitize_character_selection(_selected_character_ids))
+	for entry in [["peris", _peris_node], ["aster", _aster_node]]:
+		var cid: String = entry[0]
+		var node = entry[1]
+		if node == null:
+			continue
+		var is_active: bool = _active_character == cid
+		node.set_move_enabled(is_active)
+		if node.has_method("set") or "group_move" in node:
+			node.set("group_move", group_control and is_active)
 
 func _multiselect_has_required_pair() -> bool:
 	return _selected_character_ids.has("peris") and _selected_character_ids.has("aster")
 
 func _update_multiselect_tutorial_prompt() -> void:
 	if _multiselect_has_required_pair():
-		_tutorial_prompt.show_prompt("Both selected. Press [Space], then click the open doorway.")
+		# Queue the move while paused, then unpause to run through together.
+		_tutorial_prompt.show_prompt("Both selected. Click the open doorway to set your path, then press [Space].")
 	else:
 		_tutorial_prompt.show_prompt("Ctrl-click Aster's portrait to select both Peris and Aster.")
 
 func _show_multiselect_together_hint() -> void:
-	var now := _scheduler.get_current_tick() if _scheduler != null else 0.0
-	if now < _multiselect_hint_next_tick:
-		return
-	if _dialogue != null and _dialogue.has_method("is_active") and _dialogue.is_active():
-		return
-	_multiselect_hint_next_tick = now + 3.0
-	DialogueData.say_to(_dialogue, "elevator.aster.hurry_together")
+	# The prompt carries the instruction; Aster says his line once (no repeated nag).
 	_update_multiselect_tutorial_prompt()
 
 # --- Event steps ---

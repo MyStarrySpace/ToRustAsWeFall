@@ -5305,8 +5305,17 @@ func _test_elevator() -> void:
 		instance._hud.set_selected_portraits(["peris", "aster"])
 		_assert_equals(instance._hud.get_selected_ids(), ["peris", "aster"],
 			"Ctrl/shift multi-select can select both Peris and Aster")
-		_assert_true(bool(instance._peris_node.get("_move_enabled")) and bool(instance._aster_node.get("_move_enabled")),
-			"Selecting both characters enables both player controllers for group movement")
+		instance._selected_character_ids = ["peris", "aster"]
+		instance._apply_character_control_selection()
+		# Group movement is driven by the ACTIVE controller issuing a spread party
+		# move, not by both controllers moving to the same cell (which stacked them).
+		_assert_true(bool(instance._peris_node.get("_move_enabled")) and bool(instance._peris_node.get("group_move")),
+			"Selecting both routes the active controller as a spread group move")
+		_assert_true(not bool(instance._aster_node.get("_move_enabled")),
+			"The other member is carried by the group move, not its own click (no stacking)")
+		# The party is the selected pair, so a group move spreads them onto distinct cells.
+		_assert_equals(instance._game_state.get_party(), ["peris", "aster"],
+			"Group control sets the party to the selected pair for spread moves")
 		instance._toggle_pause()
 		_assert_true(not instance._scheduler.is_paused(),
 			"Multiselect tutorial unpauses after both characters are selected")
