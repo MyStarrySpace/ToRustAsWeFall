@@ -4934,10 +4934,8 @@ func _assert_exploration_interactable_contract(root: Node, node_name: String) ->
 			var highlight_radius := float(node.call("get_outline_highlight_radius")) if node.has_method("get_outline_highlight_radius") else float(node.get("outline_highlight_radius"))
 			_assert_true(highlight_radius + 0.001 >= sphere.radius,
 				"%s outline highlight covers the full interaction zone" % node_name)
-	var marker := node.get_node_or_null("InteractionZoneMarker") as MeshInstance3D
-	_assert_true(marker != null, "%s shows its interaction zone" % node_name)
-	if marker != null:
-		_assert_true(marker.visible, "%s interaction zone marker is visible" % node_name)
+	_assert_true(bool(node.get("monitoring")) and bool(node.get("interaction_enabled")),
+		"%s interaction is active (monitoring its proximity zone)" % node_name)
 	return node
 
 func _assert_interactable_type(node: Node, expected_type: int, label: String) -> void:
@@ -5212,9 +5210,6 @@ func _test_elevator() -> void:
 		if exit_btn != null:
 			_assert_true(not bool(exit_btn.get("monitoring")),
 				"Exit button interaction is inactive before EMP unlock")
-			var exit_marker := exit_btn.find_child("InteractionZoneMarker", true, false) as Node3D
-			_assert_true(exit_marker == null or not exit_marker.visible,
-				"Exit button interaction zone is hidden before EMP unlock")
 
 		_clear_sequence_runtime_for_spatial_test(instance)
 		instance._start_approach_aster()
@@ -5278,9 +5273,6 @@ func _test_elevator() -> void:
 		if exit_btn != null:
 			_assert_true(bool(exit_btn.get("monitoring")),
 				"Exit button interaction is active after EMP unlock")
-			var unlocked_marker := exit_btn.find_child("InteractionZoneMarker", true, false) as Node3D
-			_assert_true(unlocked_marker != null and unlocked_marker.visible,
-				"Exit button interaction zone is visible after EMP unlock")
 		dialogue.dialogue_finished.emit()
 		_assert_equals(instance._current_step, "doors_open",
 			"Door cycling notification opens the doors automatically")

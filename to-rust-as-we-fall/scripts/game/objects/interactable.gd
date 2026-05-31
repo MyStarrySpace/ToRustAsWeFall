@@ -16,8 +16,6 @@ enum InteractableType {
 @export var interactable_type := InteractableType.HOLD_ACTION
 @export var interactable_id := ""
 @export var tutorial_label := ""
-@export var show_interaction_zone := true
-@export var interaction_zone_color := Color(0.35, 0.75, 0.55, 0.16)
 @export var hover_outline_color := Color.WHITE
 @export var selected_feedback_color := Color(1.0, 0.62, 0.12, 1.0)
 @export var outline_highlight_radius := 0.0
@@ -52,8 +50,6 @@ var active_character := ""
 
 var _progress_ring: MeshInstance3D
 var _progress_mat: StandardMaterial3D
-var _zone_marker: MeshInstance3D
-var _zone_mat: StandardMaterial3D
 var _tutorial_label_3d: Label3D
 var _collision_shape: CollisionShape3D
 var _selected_particles: GPUParticles3D
@@ -85,8 +81,6 @@ func _ready() -> void:
 		_collision_shape.shape = _collision_shape.shape.duplicate()
 	if _collision_shape != null and _collision_shape.shape is SphereShape3D:
 		(_collision_shape.shape as SphereShape3D).radius = interaction_radius
-
-	_build_zone_marker()
 
 	_progress_ring = MeshInstance3D.new()
 	var torus := TorusMesh.new()
@@ -125,23 +119,6 @@ func _ready() -> void:
 	if interaction_enabled:
 		call_deferred("_refresh_player_range")
 
-func _build_zone_marker() -> void:
-	_zone_marker = MeshInstance3D.new()
-	_zone_marker.name = "InteractionZoneMarker"
-	_zone_marker.visible = show_interaction_zone
-	var disc := CylinderMesh.new()
-	disc.top_radius = interaction_radius
-	disc.bottom_radius = interaction_radius
-	disc.height = 0.012
-	disc.radial_segments = 64
-	_zone_marker.mesh = disc
-	_zone_mat = StandardMaterial3D.new()
-	_zone_mat.albedo_color = interaction_zone_color
-	_zone_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_zone_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_zone_marker.material_override = _zone_mat
-	_zone_marker.position = Vector3(0, 0.018, 0)
-	add_child(_zone_marker)
 
 func _process(delta: float) -> void:
 	if _used or not interaction_enabled:
@@ -341,12 +318,10 @@ func set_feedback_managed(active: bool) -> void:
 func is_feedback_managed() -> bool:
 	return _feedback_managed
 
-func set_hover_feedback(active: bool) -> void:
-	if _zone_mat == null:
-		return
-	var color := interaction_zone_color
-	color.a = 0.28 if active else interaction_zone_color.a
-	_zone_mat.albedo_color = color
+## Kept as a no-op so OutlineFeedbackManager's has_method() hover hook still
+## resolves; the green ground disc it used to tint has been removed.
+func set_hover_feedback(_active: bool) -> void:
+	pass
 
 func set_interaction_enabled(active: bool) -> void:
 	interaction_enabled = active
@@ -360,8 +335,6 @@ func set_interaction_enabled(active: bool) -> void:
 	_dwell_progress = 0.0
 	if _progress_mat != null:
 		_progress_mat.albedo_color.a = 0.0
-	if _zone_marker != null:
-		_zone_marker.visible = active and show_interaction_zone
 	if _tutorial_label_3d != null and not active:
 		_tutorial_label_3d.visible = false
 		_tutorial_label_3d.modulate.a = 0.0

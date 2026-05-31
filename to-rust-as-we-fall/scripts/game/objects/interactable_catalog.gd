@@ -36,8 +36,6 @@ static func apply_spec(interactable: Node, spec_id: String) -> void:
 		interactable.set("tutorial_label", DialogueData.text(str(spec.tutorial_label_key)))
 	elif spec.has("tutorial_label"):
 		interactable.set("tutorial_label", str(spec.tutorial_label))
-	if spec.has("show_interaction_zone"):
-		interactable.set("show_interaction_zone", bool(spec.show_interaction_zone))
 
 static func _parse_interactable_type(value: String) -> int:
 	match value:
