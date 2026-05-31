@@ -586,23 +586,22 @@ func _create_interactable(
 		interactable_type: int = Interactable.InteractableType.HOLD_ACTION,
 		interactable_id: String = ""
 	) -> Area3D:
-	var area := INTERACTABLE_SCENE.instantiate() as Area3D
-	area.name = interactable_name
-	area.position = pos
-	area.set("interaction_radius", radius)
+	# Register the interactable in the data layer and spawn a view bound to it.
+	var spec := {
+		"position": pos,
+		"radius": radius,
+		"hold_time": dwell,
+		"one_shot": one_shot,
+		"requires_hold": interactable_type == Interactable.InteractableType.HOLD_ACTION,
+		"tutorial_label": label,
+	}
+	if interactable_id != "":
+		spec["catalog_id"] = interactable_id
+	var area := InteractableFactory.spawn(
+		_game_state, parent, interactable_name, spec,
+		_scheduler, _dialogue, _current_interaction_character()) as Area3D
 	area.set("outline_highlight_radius", radius)
-	area.set("dwell_time", dwell)
-	area.set("one_shot", one_shot)
-	area.set("interactable_type", interactable_type)
-	area.set("tutorial_label", label)
-	area.set("dialogue_box", _dialogue)
-	area.set("active_character", _current_interaction_character())
-	if interactable_id != "" and area.has_method("apply_interactable_spec"):
-		area.call("apply_interactable_spec", interactable_id)
-	if _scheduler != null and area.has_method("set_scheduler"):
-		area.call("set_scheduler", _scheduler)
 	_connect_interactable_outline_feedback(area)
-	parent.add_child(area)
 	return area
 
 func _connect_interactable_outline_feedback(source: Node) -> void:

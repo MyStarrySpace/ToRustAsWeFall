@@ -2225,6 +2225,8 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			trigger_interactable(String(payload["id"]), String(payload.get("character", "")))
 		GameEvent.KIND_SET_INTERACTABLE_ENABLED:
 			set_interactable_enabled(String(payload["id"]), bool(payload["enabled"]))
+		GameEvent.KIND_RESET_INTERACTABLE:
+			reset_interactable(String(payload["id"]))
 		_:
 			push_warning("GameState._dispatch: unknown event kind %s" % kind)
 
@@ -2565,9 +2567,20 @@ func is_interactable_enabled(id: String) -> bool:
 func set_interactable_enabled(id: String, enabled: bool) -> void:
 	if not interactables.has(id):
 		return
+	if bool(interactables[id].get("enabled", true)) == enabled:
+		return  # no-op: keeps the node free to mirror without log spam
 	_emit(GameEvent.KIND_SET_INTERACTABLE_ENABLED, {"id": id, "enabled": enabled})
 	interactables[id]["enabled"] = enabled
 	interactable_enabled_changed.emit(id, enabled)
+
+## Re-arm an interactable: clear its triggered flag and re-enable it (so a
+## one-shot can fire again). Event-logged so replay reproduces the re-arm.
+func reset_interactable(id: String) -> void:
+	if not interactables.has(id):
+		return
+	_emit(GameEvent.KIND_RESET_INTERACTABLE, {"id": id})
+	interactables[id]["triggered"] = false
+	interactables[id]["enabled"] = true
 
 ## The trigger authority. Guards existence / enabled / required_character; on
 ## success records the event, marks triggered, disables one-shots, and emits.

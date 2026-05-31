@@ -41,6 +41,12 @@ var _dwell_tag := ""
 var _dwell_scheduled := false
 var _dwell_start_tick := 0.0
 
+# Data-layer binding. When set, GameState owns this interactable's trigger /
+# enabled / one-shot state and records triggers for replay; the node is a view.
+# When unbound (standalone preview), the node falls back to its @export fields.
+var _game_state = null
+var data_id := ""
+
 var speed_multiplier := 1.0
 
 ## Sequence-owned dialogue target.
@@ -154,6 +160,27 @@ func set_scheduler(scheduler_ref) -> void:
 	if _scheduler != null and _dwell_tag == "":
 		_dwell_tag = "dwell_%d" % get_instance_id()
 
+## Bind this view to a GameState-registered interactable id. Pulls the spec's
+## parameters into the node's fields (so all the visual/dwell code is unchanged)
+## and routes triggering through the data layer. Optional: an unbound node keeps
+## using its @export fields (standalone previews / showcase).
+func bind_data(game_state, id: String) -> void:
+	_game_state = game_state
+	data_id = id
+	if _game_state == null or not _game_state.has_interactable(id):
+		return
+	var spec: Dictionary = _game_state.get_interactable(id)
+	interactable_type = InteractableType.HOLD_ACTION if bool(spec.get("requires_hold", true)) else InteractableType.INSPECTION
+	dwell_time = float(spec.get("hold_time", dwell_time))
+	one_shot = bool(spec.get("one_shot", one_shot))
+	required_character = String(spec.get("required_character", required_character))
+	if String(spec.get("dialogue_key", "")) != "":
+		dialogue_key = String(spec.get("dialogue_key"))
+	interaction_radius = float(spec.get("radius", interaction_radius))
+	if String(spec.get("tutorial_label", "")) != "":
+		tutorial_label = String(spec.get("tutorial_label"))
+	interaction_enabled = _game_state.is_interactable_enabled(id)
+
 func _begin_dwell() -> void:
 	if _scheduler == null or not _uses_hold_timer() or not _player_in_range:
 		return
@@ -179,9 +206,15 @@ func _on_dwell_complete() -> void:
 			_begin_dwell()
 
 func _trigger(play_feedback := true) -> void:
-	if required_character != "" and active_character != "" and active_character != required_character:
-		return
 	if _used or not interaction_enabled:
+		return
+	# When bound, the data layer is the trigger authority (guards the required
+	# character + enabled state, records the event for replay, disables one-shots).
+	# Unbound, the node guards locally.
+	if _game_state != null and data_id != "":
+		if not _game_state.trigger_interactable(data_id, active_character):
+			return
+	elif required_character != "" and active_character != "" and active_character != required_character:
 		return
 
 	if one_shot:
@@ -325,6 +358,10 @@ func set_hover_feedback(_active: bool) -> void:
 
 func set_interaction_enabled(active: bool) -> void:
 	interaction_enabled = active
+	# Keep the data layer's enabled flag in sync so trigger guards + range queries
+	# stay accurate (no-op + no log when unchanged).
+	if _game_state != null and data_id != "" and _game_state.has_interactable(data_id):
+		_game_state.set_interactable_enabled(data_id, active)
 	monitoring = active
 	monitorable = active
 	collision_layer = 4 if active else 0
@@ -436,6 +473,9 @@ func reset() -> void:
 	_player_in_range = false
 	_dwell_progress = 0.0
 	_progress_mat.albedo_color.a = 0.0
+	# Re-arm the data layer too (clear triggered), so a one-shot can fire again.
+	if _game_state != null and data_id != "" and _game_state.has_interactable(data_id):
+		_game_state.reset_interactable(data_id)
 	set_interaction_enabled(true)
 
 func get_dwell_progress() -> float:

@@ -71,6 +71,7 @@ const KIND_REGISTER_INTERACTABLE := &"register_interactable"
 const KIND_UNREGISTER_INTERACTABLE := &"unregister_interactable"
 const KIND_TRIGGER_INTERACTABLE := &"trigger_interactable"
 const KIND_SET_INTERACTABLE_ENABLED := &"set_interactable_enabled"
+const KIND_RESET_INTERACTABLE := &"reset_interactable"
 
 const ALL_KINDS: Array[StringName] = [
 	KIND_REGISTER_CHARACTER,
@@ -111,6 +112,7 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_UNREGISTER_INTERACTABLE,
 	KIND_TRIGGER_INTERACTABLE,
 	KIND_SET_INTERACTABLE_ENABLED,
+	KIND_RESET_INTERACTABLE,
 ]
 
 static func make(tick: float, kind: StringName, payload: Dictionary) -> Dictionary:

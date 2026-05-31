@@ -7280,6 +7280,8 @@ func _test_event_log_mutation_audit() -> void:
 		"has_queued_ability", "get_queued_ability",
 		"is_narratively_available", "is_downed", "is_party_downed",
 		"get_party", "get_split_members", "is_split_active",
+		# Interactable registry queries (register/trigger/enable/reset emit).
+		"has_interactable", "get_interactable", "is_interactable_enabled",
 		# Snapshot/restore bypasses the log for tests.
 		"serialize", "deserialize", "state_hash",
 		# Event-log infrastructure itself
