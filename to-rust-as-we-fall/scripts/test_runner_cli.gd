@@ -116,6 +116,9 @@ func _ready() -> void:
 			"--test-puzzle-outcome-coverage":
 				ran_test = true
 				_test_puzzle_outcome_coverage()
+			"--test-overlay-facility-gating":
+				ran_test = true
+				await _test_overlay_facility_gating()
 			"--test-event-log-roundtrip":
 				ran_test = true
 				_test_event_log_roundtrip()
@@ -551,6 +554,7 @@ func _run_all_tests() -> void:
 	await _test_pause_menu()
 	await _test_peris_sim()
 	await _test_elevator()
+	await _test_overlay_facility_gating()
 	await _test_leaving_facility()
 	await _test_showcase()
 	_test_engram_and_saves()
@@ -5755,6 +5759,44 @@ func _test_puzzle_outcome_coverage() -> void:
 		"The seeded puzzle stretches stay outcome-classified (got %d, expected >= 9)" % classified)
 	print("[D13] %d puzzle stretch(es) classified with both outcomes; %d candidate(s) still need a fail/success case: %s"
 		% [classified, pending.size(), str(pending)])
+
+## D12 — Aster's data overlay maps the main facility (blueprints exist) out through
+## Endo's junction, then goes dark in the maintenance corridors past it.
+func _test_overlay_facility_gating() -> void:
+	_test_name = "OverlayFacilityGating"
+	var scene := load("res://scenes/tutorial/elevator.tscn")
+	_assert_true(scene != null, "Elevator scene loads for overlay gating")
+	if scene == null:
+		return
+	var instance: Node = await _instantiate_scene_and_wait(scene, 5)
+	_assert_true(instance != null, "Elevator scene instantiates for overlay gating")
+	if instance == null:
+		return
+	if "suppress_scene_change" in instance:
+		instance.suppress_scene_change = true
+	# Activate Aster's data overlay directly (normally fires at system_restored).
+	instance._setup_perception("data", instance._aster_node)
+	var quad := instance._perception_quad as MeshInstance3D
+	_assert_true(quad != null, "Perception quad exists once the data overlay is active")
+	if quad == null:
+		await _dispose_scene(instance)
+		return
+	var boundary: float = instance.MAIN_FACILITY_MAX_X
+	var below_y: float = instance.BELOW_Y
+	# Within the main facility (out to Endo's junction) → overlay lit.
+	if instance._game_state.characters.has("aster"):
+		instance._game_state.command_stop("aster")
+		instance._game_state.characters["aster"].position = Vector3(boundary - 6.0, below_y + 0.5, 0.0)
+	instance._aster_node.global_position = Vector3(boundary - 6.0, below_y + 0.5, 0.0)
+	instance._on_process(0.1, 1.0)
+	_assert_true(quad.visible, "Data overlay stays lit through the main facility (out to Endo's junction)")
+	# Past the junction (maintenance, no blueprints) → overlay dark.
+	if instance._game_state.characters.has("aster"):
+		instance._game_state.characters["aster"].position = Vector3(boundary + 6.0, below_y + 0.5, 0.0)
+	instance._aster_node.global_position = Vector3(boundary + 6.0, below_y + 0.5, 0.0)
+	instance._on_process(0.1, 1.0)
+	_assert_true(not quad.visible, "Data overlay goes dark past Endo's junction (maintenance area)")
+	await _dispose_scene(instance)
 
 func _instantiate_scene_and_wait(scene: PackedScene, settle_frames := 5) -> Node:
 	var instance: Node = scene.instantiate()

@@ -88,6 +88,10 @@ const ROUTES_CONVERGE := Vector3(BRIDGE_END_X + 16.0, BELOW_Y, 0)
 # Endo junction and shelter
 const JUNCTION_POS := Vector3(BRIDGE_END_X + 18.0, BELOW_Y, 0)
 const SHELTER_SIZE := Vector3(6, 3, 5)
+# Aster's schematics cover the main facility out through Endo's junction (and its
+# shelter); past this X the corridors are maintenance with no blueprints, so the
+# data overlay goes dark.
+const MAIN_FACILITY_MAX_X := JUNCTION_POS.x + SHELTER_SIZE.x
 
 # Ferrolure gauntlet
 const GAUNTLET_POS := Vector3(BRIDGE_END_X + 30.0, BELOW_Y, 0)
@@ -244,6 +248,16 @@ func _on_process(delta: float, spd: float) -> void:
 		_update_consciousness_fade()
 	elif _current_step == "fade_in":
 		_update_fade_in(FADE_IN_DURATION)
+
+	# Aster's data overlay maps the main facility, where blueprints exist. It stays
+	# active out to Endo's junction; past it is maintenance with no schematic, so the
+	# overlay reads nothing there. Gating on Aster's position keeps it lit through the
+	# whole bridge → fall → junction stretch and dark only once she's past the junction.
+	if _perception_mode == "data" and _perception_quad and is_instance_valid(_perception_quad):
+		var aster_x := _aster_node.global_position.x
+		if _game_state and _game_state.characters.has("aster"):
+			aster_x = _game_state.get_position("aster").x
+		_perception_quad.visible = aster_x <= MAIN_FACILITY_MAX_X
 
 	# Emergency light pulse.
 	if _emergency_light and is_instance_valid(_emergency_light):
