@@ -12,6 +12,7 @@
 				{
 					"id": "aster_draws_aggro",
 					"display_name": "Aster Draws Aggro",
+					"outcome": "failure",
 					"script": [
 						{"type": "snapshot_state", "key": "before"},
 						{"type": "select_character", "char_id": "aster"},
@@ -19,6 +20,17 @@
 						{"type": "advance", "seconds": 3.0},
 						{"type": "assert_path", "path": "enemy.standard.state", "op": "!=", "value": "patrol"},
 						{"type": "assert_path", "path": "enemy.standard.target", "op": "==", "value": "aster"}
+					]
+				},
+				{
+					"id": "stays_in_patrol",
+					"display_name": "Stays In Patrol",
+					"outcome": "success",
+					"script": [
+						{"type": "select_character", "char_id": "aster"},
+						{"type": "teleport", "char_id": "aster", "anchor": "iron_safe"},
+						{"type": "advance", "seconds": 3.0},
+						{"type": "assert_path", "path": "enemy.standard.target", "op": "==", "value": ""}
 					]
 				}
 			]
@@ -32,6 +44,7 @@
 				{
 					"id": "peris_draws_aggro",
 					"display_name": "Peris Draws Aggro",
+					"outcome": "failure",
 					"script": [
 						{"type": "snapshot_state", "key": "before"},
 						{"type": "select_character", "char_id": "peris"},
@@ -39,6 +52,17 @@
 						{"type": "advance", "seconds": 3.0},
 						{"type": "assert_path", "path": "enemy.chain.state", "op": "!=", "value": "patrol"},
 						{"type": "assert_path", "path": "enemy.chain.target", "op": "==", "value": "peris"}
+					]
+				},
+				{
+					"id": "peris_stays_out_of_range",
+					"display_name": "Peris Stays Out Of Range",
+					"outcome": "success",
+					"script": [
+						{"type": "select_character", "char_id": "peris"},
+						{"type": "teleport", "char_id": "peris", "anchor": "iron_safe"},
+						{"type": "advance", "seconds": 3.0},
+						{"type": "assert_path", "path": "enemy.chain.target", "op": "==", "value": ""}
 					]
 				}
 			]
@@ -52,12 +76,24 @@
 				{
 					"id": "hesitate_and_let_it_close",
 					"display_name": "Hesitate And Let It Close",
+					"outcome": "failure",
 					"script": [
 						{"type": "select_character", "char_id": "aster"},
 						{"type": "teleport", "char_id": "aster", "anchor": "enemy_probe"},
 						{"type": "advance", "seconds": 3.0},
 						{"type": "assert_path", "path": "enemy.standard.target", "op": "==", "value": "aster"},
 						{"type": "assert_path", "path": "enemy.standard.distance_to_target", "op": "<=", "value": 1.0}
+					]
+				},
+				{
+					"id": "maintain_distance_stays_clear",
+					"display_name": "Maintain Distance Stays Clear",
+					"outcome": "success",
+					"script": [
+						{"type": "select_character", "char_id": "aster"},
+						{"type": "teleport", "char_id": "aster", "anchor": "iron_safe"},
+						{"type": "advance", "seconds": 3.0},
+						{"type": "assert_path", "path": "enemy.standard.target", "op": "==", "value": ""}
 					]
 				}
 			]
@@ -71,12 +107,24 @@
 				{
 					"id": "hesitate_and_let_it_close",
 					"display_name": "Hesitate And Let It Close",
+					"outcome": "failure",
 					"script": [
 						{"type": "select_character", "char_id": "peris"},
 						{"type": "teleport", "char_id": "peris", "anchor": "chain_probe"},
 						{"type": "advance", "seconds": 3.0},
 						{"type": "assert_path", "path": "enemy.chain.target", "op": "==", "value": "peris"},
 						{"type": "assert_path", "path": "enemy.chain.distance_to_target", "op": "<=", "value": 1.0}
+					]
+				},
+				{
+					"id": "hold_distance_stays_clear",
+					"display_name": "Hold Distance Stays Clear",
+					"outcome": "success",
+					"script": [
+						{"type": "select_character", "char_id": "peris"},
+						{"type": "teleport", "char_id": "peris", "anchor": "iron_safe"},
+						{"type": "advance", "seconds": 3.0},
+						{"type": "assert_path", "path": "enemy.chain.target", "op": "==", "value": ""}
 					]
 				}
 			]
@@ -122,6 +170,7 @@
 				{
 					"id": "stepping_out_stops_the_bleed",
 					"display_name": "Stepping Out Stops The Bleed",
+					"outcome": "success",
 					"script": [
 						{"type": "snapshot_state", "key": "before"},
 						{"type": "select_character", "char_id": "endo"},
@@ -132,6 +181,21 @@
 						{"type": "teleport", "char_id": "endo", "anchor": "iron_safe"},
 						{"type": "advance", "seconds": 1.0},
 						{"type": "assert_path", "path": "character_hp.endo", "op": "==", "snapshot": "injured", "snapshot_path": "character_hp.endo"}
+					]
+				},
+				{
+					"id": "staying_on_patch_drains_continuously",
+					"display_name": "Staying On Patch Drains Continuously",
+					"outcome": "failure",
+					"script": [
+						{"type": "snapshot_state", "key": "initial"},
+						{"type": "select_character", "char_id": "endo"},
+						{"type": "teleport", "char_id": "endo", "anchor": "iron_patch"},
+						{"type": "advance", "seconds": 0.6},
+						{"type": "snapshot_state", "key": "first_check"},
+						{"type": "assert_path", "path": "character_hp.endo", "op": "<", "snapshot": "initial", "snapshot_path": "character_hp.endo"},
+						{"type": "advance", "seconds": 0.8},
+						{"type": "assert_path", "path": "character_hp.endo", "op": "<", "snapshot": "first_check", "snapshot_path": "character_hp.endo"}
 					]
 				}
 			]
@@ -218,6 +282,7 @@
 				{
 					"id": "pack_stays_committed_mid_window",
 					"display_name": "Pack Stays Committed Mid-Window",
+					"outcome": "success",
 					"script": [
 						{"type": "assert_path", "path": "ferrolure_active", "op": "==", "value": true},
 						{"type": "assert_path", "path": "ferrolure_tracking_cleared", "op": "==", "value": true},
@@ -228,6 +293,7 @@
 				{
 					"id": "window_eventually_restores_tracking",
 					"display_name": "Window Eventually Restores Tracking",
+					"outcome": "failure",
 					"script": [
 						{"type": "advance", "seconds": 7.5},
 						{"type": "assert_path", "path": "ferrolure_active", "op": "==", "value": false},
@@ -246,6 +312,7 @@
 				{
 					"id": "environment_contract",
 					"display_name": "Environment Contract",
+					"outcome": "teaching",
 					"script": [
 						{"type": "assert_path", "path": "preview_chunk", "op": "==", "value": "channels_rhythm"},
 						{"type": "assert_path", "path": "chunk.periodic_channel_count", "op": "==", "value": 3},
@@ -260,6 +327,7 @@
 				{
 					"id": "default_offset_washes_swarm",
 					"display_name": "Default Offset Washes Swarm",
+					"outcome": "success",
 					"script": [
 						{"type": "call_chunk", "method": "reset_preview_state"},
 						{"type": "call_chunk", "method": "activate_lure"},
@@ -272,6 +340,7 @@
 				{
 					"id": "shifted_offset_still_washes_swarm",
 					"display_name": "Shifted Offset Still Washes Swarm",
+					"outcome": "success",
 					"script": [
 						{"type": "call_chunk", "method": "reset_preview_state"},
 						{"type": "call_chunk", "method": "set_timing_offset", "args": [4.35]},
@@ -279,6 +348,18 @@
 						{"type": "advance", "seconds": 6.0},
 						{"type": "assert_path", "path": "chunk.swarm_state", "op": "==", "value": "washed"},
 						{"type": "assert_path", "path": "chunk.washed_channel_index", "op": ">=", "value": 0}
+					]
+				},
+				{
+					"id": "window_closes_before_crossing",
+					"display_name": "Window Closes Before Crossing",
+					"outcome": "failure",
+					"script": [
+						{"type": "call_chunk", "method": "reset_preview_state"},
+						{"type": "call_chunk", "method": "activate_lure"},
+						{"type": "advance", "seconds": 14.0},
+						{"type": "assert_path", "path": "chunk.phase", "op": "==", "value": "failed"},
+						{"type": "assert_path", "path": "chunk.last_outcome", "op": "==", "value": "window_closed"}
 					]
 				}
 			]
@@ -361,6 +442,7 @@
 				{
 					"id": "environment_contract",
 					"display_name": "Environment Contract",
+					"outcome": "teaching",
 					"script": [
 						{"type": "assert_path", "path": "preview_chunk", "op": "==", "value": "channels_hide_window"},
 						{"type": "assert_path", "path": "chunk.periodic_channel_count", "op": "==", "value": 3},
@@ -375,6 +457,7 @@
 				{
 					"id": "timed_flush_still_clears_the_lane",
 					"display_name": "Timed Flush Still Clears The Lane",
+					"outcome": "success",
 					"script": [
 						{"type": "call_chunk", "method": "reset_preview_state"},
 						{"type": "call_chunk", "method": "set_recommended_offset", "args": ["safe"]},
@@ -391,6 +474,7 @@
 				{
 					"id": "mistimed_attempt_can_hide_and_retry",
 					"display_name": "Mistimed Attempt Can Hide And Retry",
+					"outcome": "success",
 					"script": [
 						{"type": "call_chunk", "method": "reset_preview_state"},
 						{"type": "call_chunk", "method": "set_recommended_offset", "args": ["fail"]},
@@ -405,6 +489,20 @@
 						{"type": "call_chunk", "method": "activate_lure"},
 						{"type": "advance", "seconds": 6.2},
 						{"type": "assert_path", "path": "chunk.swarm_state", "op": "==", "value": "washed"}
+					]
+				},
+				{
+					"id": "mistimed_attempt_no_escape",
+					"display_name": "Mistimed Attempt No Escape",
+					"outcome": "failure",
+					"script": [
+						{"type": "call_chunk", "method": "reset_preview_state"},
+						{"type": "call_chunk", "method": "set_recommended_offset", "args": ["fail"]},
+						{"type": "call_chunk", "method": "activate_lure"},
+						{"type": "advance", "seconds": 7.8},
+						{"type": "assert_path", "path": "chunk.detected", "op": "==", "value": true},
+						{"type": "assert_path", "path": "chunk.phase", "op": "==", "value": "failed"},
+						{"type": "assert_path", "path": "chunk.last_outcome", "op": "==", "value": "detected"}
 					]
 				}
 			]
@@ -495,6 +593,7 @@
 				{
 					"id": "waiting_exposed_burns_the_window",
 					"display_name": "Waiting Exposed Burns The Window",
+					"outcome": "failure",
 					"script": [
 						{"type": "select_character", "char_id": "endo"},
 						{"type": "teleport", "char_id": "endo", "anchor": "hide_exposed_wait"},
@@ -502,6 +601,22 @@
 						{"type": "advance", "seconds": 6.2},
 						{"type": "assert_path", "path": "hide_phase", "op": "==", "value": "failed"},
 						{"type": "assert_path", "path": "hide_last_outcome", "op": "==", "value": "lure_expired_exposed"}
+					]
+				},
+				{
+					"id": "racing_to_shelter_beats_the_clock",
+					"display_name": "Racing To Shelter Beats The Clock",
+					"outcome": "success",
+					"script": [
+						{"type": "select_character", "char_id": "endo"},
+						{"type": "teleport", "char_id": "endo", "anchor": "hide_spot"},
+						{"type": "call", "method": "activate_hide_lure"},
+						{"type": "advance", "seconds": 6.2},
+						{"type": "assert_path", "path": "hide_phase", "op": "==", "value": "run"},
+						{"type": "teleport", "char_id": "endo", "anchor": "shelter"},
+						{"type": "advance", "seconds": 0.2},
+						{"type": "assert_path", "path": "hide_last_outcome", "op": "==", "value": "success"},
+						{"type": "assert_path", "path": "hide_phase", "op": "==", "value": "safe"}
 					]
 				}
 			]
@@ -550,6 +665,7 @@
 				{
 					"id": "endo_gets_clipped",
 					"display_name": "Endo Gets Clipped",
+					"outcome": "failure",
 					"script": [
 						{"type": "snapshot_state", "key": "before"},
 						{"type": "select_character", "char_id": "endo"},
@@ -557,6 +673,19 @@
 						{"type": "advance", "seconds": 5.0},
 						{"type": "assert_path", "path": "event_counts.pendulum", "op": ">", "snapshot": "before", "snapshot_path": "event_counts.pendulum"},
 						{"type": "assert_path", "path": "character_hp.endo", "op": "<", "snapshot": "before", "snapshot_path": "character_hp.endo"}
+					]
+				},
+				{
+					"id": "endo_stays_clear",
+					"display_name": "Endo Stays Clear",
+					"outcome": "success",
+					"script": [
+						{"type": "snapshot_state", "key": "before"},
+						{"type": "select_character", "char_id": "endo"},
+						{"type": "teleport", "char_id": "endo", "anchor": "launcher"},
+						{"type": "advance", "seconds": 5.0},
+						{"type": "assert_path", "path": "event_counts.pendulum", "op": "==", "snapshot": "before", "snapshot_path": "event_counts.pendulum"},
+						{"type": "assert_path", "path": "character_hp.endo", "op": "==", "snapshot": "before", "snapshot_path": "character_hp.endo"}
 					]
 				}
 			]
@@ -570,6 +699,7 @@
 				{
 					"id": "aster_eats_the_barrel",
 					"display_name": "Aster Eats The Barrel",
+					"outcome": "failure",
 					"script": [
 						{"type": "snapshot_state", "key": "before"},
 						{"type": "select_character", "char_id": "aster"},
@@ -580,6 +710,21 @@
 						{"type": "advance", "seconds": 2.0},
 						{"type": "assert_path", "path": "event_counts.physics", "op": ">", "snapshot": "before", "snapshot_path": "event_counts.physics"},
 						{"type": "assert_path", "path": "character_hp.aster", "op": "<", "snapshot": "before", "snapshot_path": "character_hp.aster"}
+					]
+				},
+				{
+					"id": "aster_clears_the_lane",
+					"display_name": "Aster Clears The Lane",
+					"outcome": "success",
+					"script": [
+						{"type": "snapshot_state", "key": "before"},
+						{"type": "select_character", "char_id": "aster"},
+						{"type": "teleport", "char_id": "aster", "anchor": "push_barrel"},
+						{"type": "call", "method": "trigger_showcase_throw"},
+						{"type": "advance", "seconds": 0.2},
+						{"type": "assert_path", "path": "physics_airborne.launcher_barrel", "op": "==", "value": true},
+						{"type": "advance", "seconds": 2.0},
+						{"type": "assert_path", "path": "character_hp.aster", "op": "==", "snapshot": "before", "snapshot_path": "character_hp.aster"}
 					]
 				}
 			]
@@ -917,12 +1062,26 @@
 				{
 					"id": "crossing_the_boundary_forces_exile",
 					"display_name": "Crossing The Boundary Forces Exile",
+					"outcome": "failure",
 					"script": [
 						{"type": "assert_path", "path": "lockout.naturalizer_count", "op": "==", "value": 3},
 						{"type": "teleport", "char_id": "aster", "anchor": "lockout_escape_trigger"},
 						{"type": "advance", "seconds": 0.2},
 						{"type": "assert_path", "path": "current_step", "op": "==", "value": "lockout_exile"},
 						{"type": "assert_path", "path": "lockout.boundary_crossed", "op": "==", "value": true}
+					]
+				},
+				{
+					"id": "holds_position_avoids_exile",
+					"display_name": "Holds Position Avoids Exile",
+					"outcome": "success",
+					"script": [
+						{"type": "assert_path", "path": "lockout.naturalizer_count", "op": "==", "value": 3},
+						{"type": "assert_path", "path": "current_step", "op": "==", "value": "lockout_chase"},
+						{"type": "teleport", "char_id": "aster", "anchor": "lockout_access_panel"},
+						{"type": "advance", "seconds": 2.0},
+						{"type": "assert_path", "path": "lockout.boundary_crossed", "op": "==", "value": false},
+						{"type": "assert_path", "path": "current_step", "op": "!=", "value": "lockout_exile"}
 					]
 				}
 			]

@@ -5755,8 +5755,8 @@ func _test_puzzle_outcome_coverage() -> void:
 		classified += 1
 		_assert_true(outcomes.has("success") and outcomes.has("failure"),
 			"Puzzle stretch '%s' demonstrates both a success and a failure outcome" % fragment.get("id"))
-	_assert_true(classified >= 9,
-		"The seeded puzzle stretches stay outcome-classified (got %d, expected >= 9)" % classified)
+	_assert_true(classified >= 21,
+		"Every genuine puzzle stretch stays outcome-classified (got %d, expected >= 21)" % classified)
 	print("[D13] %d puzzle stretch(es) classified with both outcomes; %d candidate(s) still need a fail/success case: %s"
 		% [classified, pending.size(), str(pending)])
 
