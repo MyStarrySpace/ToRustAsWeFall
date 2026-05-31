@@ -157,6 +157,12 @@ func _build_characters() -> void:
 
 	if not Engine.is_editor_hint():
 		_setup_game_camera(_player, Vector3(0, 3.5, 2.5))
+		# Keep the view inside the elevator: pan / edge-scroll can't push the
+		# look-at past the walls. Cleared when the corridor opens up.
+		if _camera != null and _camera.has_method("set_look_bounds"):
+			var hx := ELEVATOR_SIZE.x / 2.0
+			var hz := ELEVATOR_SIZE.z / 2.0
+			_camera.set_look_bounds(Vector3(-hx, 0.0, -hz), Vector3(hx, 0.0, hz))
 
 func _register_characters() -> void:
 	_register_gs_character("peris", _peris_node, 2.5)
@@ -781,6 +787,9 @@ func _start_multiselect_tutorial() -> void:
 func _start_corridor() -> void:
 	_enter_step("corridor")
 	_tutorial_prompt.hide_prompt()
+	# Leaving the elevator: the view can follow the party out into the corridor.
+	if _camera != null and _camera.has_method("clear_look_bounds"):
+		_camera.clear_look_bounds()
 	_load_chunk("bridge")
 	_load_chunk("below")
 	var exit_pos := Vector3(ELEVATOR_SIZE.x / 2.0 + 3.0, 0, 0)

@@ -5305,7 +5305,8 @@ func _test_elevator() -> void:
 		instance._hud.set_selected_portraits(["peris", "aster"])
 		_assert_equals(instance._hud.get_selected_ids(), ["peris", "aster"],
 			"Ctrl/shift multi-select can select both Peris and Aster")
-		instance._selected_character_ids = ["peris", "aster"]
+		var both_selected: Array[String] = ["peris", "aster"]
+		instance._selected_character_ids = both_selected
 		instance._apply_character_control_selection()
 		# Group movement is driven by the ACTIVE controller issuing a spread party
 		# move, not by both controllers moving to the same cell (which stacked them).

@@ -18,6 +18,11 @@ extends Camera3D
 var _pan_offset := Vector3.ZERO
 var _panning := false
 var _pan_enabled := true
+# Optional world-space clamp on the look-at point (X/Z), so pan/edge-scroll can't
+# push the view outside a confined room (e.g. the elevator). Inactive by default.
+var _look_bounds_active := false
+var _look_bounds_min := Vector3.ZERO
+var _look_bounds_max := Vector3.ZERO
 var _following := true
 var _locked := false
 var _lock_position := Vector3.ZERO
@@ -130,14 +135,36 @@ func _process(delta: float) -> void:
 		_shake_offset = Vector3.ZERO
 		_shake_intensity = 0.0
 
-	var goal := target.global_position + follow_offset + _pan_offset
+	var look := _clamp_look(target.global_position + _pan_offset)
+	var goal := look + follow_offset
 	global_position = global_position.lerp(goal, follow_speed * delta) + _shake_offset
-	look_at(target.global_position + _pan_offset, Vector3.UP)
+	look_at(look, Vector3.UP)
 
 func _update_immediate() -> void:
 	if target:
-		global_position = target.global_position + follow_offset
-		look_at(target.global_position, Vector3.UP)
+		var look := _clamp_look(target.global_position)
+		global_position = look + follow_offset
+		look_at(look, Vector3.UP)
+
+## Clamp a look-at point to the active bounds (X/Z), keeping the view inside a
+## confined room. Y and the point are unchanged when no bounds are set.
+func _clamp_look(point: Vector3) -> Vector3:
+	if not _look_bounds_active:
+		return point
+	return Vector3(
+		clampf(point.x, _look_bounds_min.x, _look_bounds_max.x),
+		point.y,
+		clampf(point.z, _look_bounds_min.z, _look_bounds_max.z)
+	)
+
+## Constrain the look-at point to a world-space X/Z box (e.g. a room interior).
+func set_look_bounds(min_corner: Vector3, max_corner: Vector3) -> void:
+	_look_bounds_active = true
+	_look_bounds_min = min_corner
+	_look_bounds_max = max_corner
+
+func clear_look_bounds() -> void:
+	_look_bounds_active = false
 
 ## Lock camera to a world position (for scripted sequences)
 func lock_to(pos: Vector3) -> void:
