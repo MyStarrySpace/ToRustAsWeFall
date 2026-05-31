@@ -11,7 +11,7 @@ uniform sampler2D depth_tex : hint_depth_texture, filter_nearest;
 uniform vec3 character_pos = vec3(0.0);
 uniform float clear_radius = 8.0;
 uniform float blend_width = 3.0;
-uniform vec3 edge_color = vec3(0.29, 0.55, 0.85);
+uniform vec3 edge_color = vec3(0.55, 0.80, 1.0);
 uniform float edge_width = 1.5;
 // Blackout zone — region the data perception cannot penetrate (renders as void)
 uniform vec3 blackout_pos = vec3(0.0, 0.0, -9999.0);
