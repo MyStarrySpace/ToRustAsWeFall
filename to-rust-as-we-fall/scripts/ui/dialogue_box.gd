@@ -21,6 +21,10 @@ extends CanvasLayer
 ## A line longer than this splits into sentence-packed pages you advance through.
 const PAGE_MAX_CHARS := 180
 const READABLE_WIDTH := 720.0
+## A page taller than this (rare: a dense page or a long poem stanza) scrolls within
+## a capped box instead of growing off the top of the screen and clipping. Normal
+## pages are shorter than this, so they size naturally with no scroll.
+const MAX_TEXT_HEIGHT := 132.0
 
 var _queue: Array[Dictionary] = []
 var _current_text := ""
@@ -214,6 +218,27 @@ func _render_visible() -> void:
 	var page := _pages[_page_index]
 	var count := mini(int(_displayed_chars), page.y)
 	_text_label.text = _current_text.substr(page.x, count - page.x)
+	_apply_text_overflow_scroll()
+
+## A page that would grow taller than MAX_TEXT_HEIGHT scrolls within a capped box
+## (following the typewriter reveal so the newest line stays visible) instead of
+## expanding off-screen and clipping. Shorter pages size to content with no scroll.
+## Purely visual — it touches neither the dialogue clock nor any game state.
+func _apply_text_overflow_scroll() -> void:
+	if _text_label == null:
+		return
+	if _text_label.get_content_height() > MAX_TEXT_HEIGHT:
+		if _text_label.fit_content:
+			_text_label.fit_content = false
+			_text_label.scroll_active = true
+			_text_label.custom_minimum_size.y = MAX_TEXT_HEIGHT
+		var scrollbar := _text_label.get_v_scroll_bar()
+		if scrollbar != null:
+			scrollbar.value = scrollbar.max_value
+	elif not _text_label.fit_content:
+		_text_label.fit_content = true
+		_text_label.scroll_active = false
+		_text_label.custom_minimum_size.y = 0.0
 
 func _show_continue_hint() -> void:
 	if _pages.size() > 1:
@@ -254,6 +279,10 @@ func _show_next() -> void:
 	_speaker_label.text = speaker
 	_speaker_label.visible = speaker != ""
 	_text_label.text = ""
+	# Start each line sized to content; _render_visible re-caps + scrolls if it grows.
+	_text_label.fit_content = true
+	_text_label.scroll_active = false
+	_text_label.custom_minimum_size.y = 0.0
 
 	# Style the panel based on type.
 	var panel_style := _panel.get_theme_stylebox("panel") as StyleBoxFlat
