@@ -20,6 +20,9 @@ signal dodge_started(char_id: String, direction: Vector3)
 signal dodge_finished(char_id: String)
 signal stat_changed(char_id: String, stat: String, value: float)
 signal running_changed(char_id: String, running: bool)
+signal interactable_registered(id: String)
+signal interactable_triggered(id: String, character: String)
+signal interactable_enabled_changed(id: String, enabled: bool)
 
 var grid: GridWorld
 var navigation_graph
@@ -32,6 +35,10 @@ var items: Dictionary = {}        # item_id → item dict
 var collection: Array[String] = [] # Permanently collected item IDs (cure components, etc.)
 ## Scene-scoped mechanisms, not serialized.
 var mechanisms: Dictionary = {}   # id (StringName) → Mechanism
+## Scene-scoped interactables as data (the source of truth; the scene node is a
+## view bound to an id). Like mechanisms: rebuilt by replaying the log, not
+## snapshot-serialized. id (String) → spec Dictionary.
+var interactables: Dictionary = {}
 var _next_item_id := 1
 var _endocytosing: Dictionary = {} # char_id → {item_id, handle} for in-progress endocytosis
 var _dodging: Dictionary = {}     # char_id → {end_tick, handle}
@@ -2210,6 +2217,14 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			start_split(payload.get("members", []))
 		GameEvent.KIND_END_SPLIT:
 			end_split()
+		GameEvent.KIND_REGISTER_INTERACTABLE:
+			register_interactable(payload)
+		GameEvent.KIND_UNREGISTER_INTERACTABLE:
+			unregister_interactable(String(payload["id"]))
+		GameEvent.KIND_TRIGGER_INTERACTABLE:
+			trigger_interactable(String(payload["id"]), String(payload.get("character", "")))
+		GameEvent.KIND_SET_INTERACTABLE_ENABLED:
+			set_interactable_enabled(String(payload["id"]), bool(payload["enabled"]))
 		_:
 			push_warning("GameState._dispatch: unknown event kind %s" % kind)
 
@@ -2474,6 +2489,104 @@ func evaluate_mechanisms() -> void:
 	var actuators := get_all_actuators()
 	for m_id in mechanisms:
 		mechanisms[m_id].update(actuators)
+
+# --- Interactables (data layer) ---
+#
+# The data layer owns interactable state (enabled / triggered / one-shot); the
+# scene node is a view bound to an id that handles proximity, click, dwell, and
+# visuals. Registration/trigger/enable are event-logged so a replay rebuilds the
+# registry and re-fires triggers; dwell timing stays on the scheduler (the log
+# records the result at the completion tick), keeping fast-forward invariance.
+
+## Normalize a spec dict into the stored shape (defaults + a Vector3 position).
+func _normalize_interactable_spec(spec: Dictionary) -> Dictionary:
+	var pos_raw: Variant = spec.get("position", Vector3.ZERO)
+	var pos: Vector3 = GameEvent.arr_to_v3(pos_raw) if pos_raw is Array else pos_raw
+	return {
+		"id": String(spec.get("id", "")),
+		"position": pos,
+		"requires_hold": bool(spec.get("requires_hold", true)),
+		"hold_time": float(spec.get("hold_time", 1.0)),
+		"one_shot": bool(spec.get("one_shot", false)),
+		"required_character": String(spec.get("required_character", "")),
+		"dialogue_key": String(spec.get("dialogue_key", "")),
+		"radius": float(spec.get("radius", 2.0)),
+		"tutorial_label": String(spec.get("tutorial_label", "")),
+		"catalog_id": String(spec.get("catalog_id", "")),
+		"enabled": bool(spec.get("enabled", true)),
+		"triggered": false,
+	}
+
+## Register an interactable spec. id is required and unique within the scene.
+func register_interactable(spec: Dictionary) -> void:
+	var norm := _normalize_interactable_spec(spec)
+	if norm.id == "":
+		push_warning("GameState.register_interactable: spec has no id")
+		return
+	_emit(GameEvent.KIND_REGISTER_INTERACTABLE, {
+		"id": norm.id,
+		"position": GameEvent.v3_to_arr(norm.position),
+		"requires_hold": norm.requires_hold,
+		"hold_time": norm.hold_time,
+		"one_shot": norm.one_shot,
+		"required_character": norm.required_character,
+		"dialogue_key": norm.dialogue_key,
+		"radius": norm.radius,
+		"tutorial_label": norm.tutorial_label,
+		"catalog_id": norm.catalog_id,
+		"enabled": norm.enabled,
+	})
+	interactables[norm.id] = norm
+	interactable_registered.emit(norm.id)
+
+func unregister_interactable(id: String) -> void:
+	if not interactables.has(id):
+		return
+	_emit(GameEvent.KIND_UNREGISTER_INTERACTABLE, {"id": id})
+	interactables.erase(id)
+
+func has_interactable(id: String) -> bool:
+	return interactables.has(id)
+
+## Copy-on-read so callers can't mutate the registry behind its back.
+func get_interactable(id: String) -> Dictionary:
+	if not interactables.has(id):
+		return {}
+	return (interactables[id] as Dictionary).duplicate(true)
+
+func is_interactable_enabled(id: String) -> bool:
+	if not interactables.has(id):
+		return false
+	var spec: Dictionary = interactables[id]
+	if bool(spec.get("one_shot", false)) and bool(spec.get("triggered", false)):
+		return false
+	return bool(spec.get("enabled", true))
+
+func set_interactable_enabled(id: String, enabled: bool) -> void:
+	if not interactables.has(id):
+		return
+	_emit(GameEvent.KIND_SET_INTERACTABLE_ENABLED, {"id": id, "enabled": enabled})
+	interactables[id]["enabled"] = enabled
+	interactable_enabled_changed.emit(id, enabled)
+
+## The trigger authority. Guards existence / enabled / required_character; on
+## success records the event, marks triggered, disables one-shots, and emits.
+## Returns true if the trigger was accepted.
+func trigger_interactable(id: String, character := "") -> bool:
+	if not interactables.has(id):
+		return false
+	if not is_interactable_enabled(id):
+		return false
+	var spec: Dictionary = interactables[id]
+	var req := String(spec.get("required_character", ""))
+	if req != "" and character != "" and character != req:
+		return false
+	_emit(GameEvent.KIND_TRIGGER_INTERACTABLE, {"id": id, "character": character})
+	spec["triggered"] = true
+	if bool(spec.get("one_shot", false)):
+		spec["enabled"] = false
+	interactable_triggered.emit(id, character)
+	return true
 
 static func _solve_quadratic_detection(pos_a: Vector3, vel_a: Vector3, pos_b: Vector3, vel_b: Vector3, R: float, max_tau: float) -> float:
 	var dp_x := pos_a.x - pos_b.x

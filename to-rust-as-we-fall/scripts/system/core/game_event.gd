@@ -65,6 +65,13 @@ const KIND_PARTY_MOVE_TO_POS := &"party_move_to_pos"
 const KIND_START_SPLIT := &"start_split"
 const KIND_END_SPLIT := &"end_split"
 
+# --- Interactables (data layer owns them; scene node is a view) ---
+# Scene-scoped like mechanisms: rebuilt by replaying the log, not snapshot-serialized.
+const KIND_REGISTER_INTERACTABLE := &"register_interactable"
+const KIND_UNREGISTER_INTERACTABLE := &"unregister_interactable"
+const KIND_TRIGGER_INTERACTABLE := &"trigger_interactable"
+const KIND_SET_INTERACTABLE_ENABLED := &"set_interactable_enabled"
+
 const ALL_KINDS: Array[StringName] = [
 	KIND_REGISTER_CHARACTER,
 	KIND_UNREGISTER_CHARACTER,
@@ -100,6 +107,10 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_END_SPLIT,
 	KIND_SET_STAT,
 	KIND_SET_RUNNING,
+	KIND_REGISTER_INTERACTABLE,
+	KIND_UNREGISTER_INTERACTABLE,
+	KIND_TRIGGER_INTERACTABLE,
+	KIND_SET_INTERACTABLE_ENABLED,
 ]
 
 static func make(tick: float, kind: StringName, payload: Dictionary) -> Dictionary:

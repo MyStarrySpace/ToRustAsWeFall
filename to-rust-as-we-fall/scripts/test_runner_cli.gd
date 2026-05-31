@@ -104,6 +104,9 @@ func _ready() -> void:
 			"--test-cooperative-pathfinding":
 				ran_test = true
 				_test_cooperative_pathfinding()
+			"--test-interactable-data":
+				ran_test = true
+				_test_interactable_data()
 			"--test-event-log-roundtrip":
 				ran_test = true
 				_test_event_log_roundtrip()
@@ -494,6 +497,7 @@ func _run_all_tests() -> void:
 	_test_grid_pathfinding()
 	_test_game_state()
 	_test_cooperative_pathfinding()
+	_test_interactable_data()
 	_test_event_log_roundtrip()
 	_test_event_log_mutation_audit()
 	_test_movement_capture()
@@ -6937,6 +6941,55 @@ func _coop_run_swap(_label: String, step: float) -> Dictionary:
 			break
 		sched.advance_ticks(step)
 	return {"a": gs.get_position("a"), "b": gs.get_position("b"), "hash": gs.state_hash()}
+
+# --- Test: data-first interactables ---
+# GameState owns interactable state; register/trigger/enable are event-logged so
+# a replay rebuilds the registry and re-fires triggers.
+func _test_interactable_data() -> void:
+	_test_name = "Interactable Data Layer"
+	var grid := GridWorld.new()
+	grid.create_room(10, 10, true)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+	var log := EventLog.new()
+	gs.event_log = log
+
+	gs.register_interactable({
+		"id": "t1", "position": grid.grid_to_world(Vector2i(4, 4)),
+		"requires_hold": false, "one_shot": true, "required_character": "aster",
+		"dialogue_key": "aster.terminal",
+	})
+	_assert_true(gs.has_interactable("t1"), "Interactable registered into the data layer")
+	_assert_true(gs.is_interactable_enabled("t1"), "Newly registered interactable is enabled")
+
+	# Wrong character is rejected and records nothing.
+	var log_before := log.size()
+	_assert_true(not gs.trigger_interactable("t1", "peris"),
+		"Trigger rejected for the wrong required character")
+	_assert_equals(log.size(), log_before, "A rejected trigger records no event")
+
+	# Right character triggers, marks triggered, and disables the one-shot.
+	_assert_true(gs.trigger_interactable("t1", "aster"), "Trigger accepted for the required character")
+	_assert_true(gs.get_interactable("t1").get("triggered", false), "Trigger marks the interactable triggered")
+	_assert_true(not gs.is_interactable_enabled("t1"), "One-shot interactable disables after firing")
+	_assert_true(not gs.trigger_interactable("t1", "aster"), "A spent one-shot can't fire again")
+
+	# Event log holds exactly one register + one trigger.
+	var kinds: Array[String] = []
+	for e in log.events:
+		kinds.append(String(e["kind"]))
+	_assert_equals(kinds.count("register_interactable"), 1, "One register_interactable event logged")
+	_assert_equals(kinds.count("trigger_interactable"), 1, "One trigger_interactable event logged")
+
+	# Replay rebuilds the registry + the triggered/disabled state.
+	var replayed := GameState.replay(log, grid)
+	_assert_true(replayed.has_interactable("t1"), "Replay reconstructs the interactable")
+	_assert_true(replayed.get_interactable("t1").get("triggered", false),
+		"Replay reconstructs the triggered state")
+	_assert_true(not replayed.is_interactable_enabled("t1"),
+		"Replay reconstructs the one-shot-disabled state")
 
 # --- Test: GameState ---
 func _test_game_state() -> void:
