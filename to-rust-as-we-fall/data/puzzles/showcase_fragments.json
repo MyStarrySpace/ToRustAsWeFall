@@ -1101,6 +1101,179 @@
 					]
 				}
 			]
+		},
+		{
+			"id": "refuge_run",
+			"display_name": "Refuge Run",
+			"scene": "res://scenes/fragments/refuge_run_preview.tscn",
+			"kind": "hybrid",
+			"tags": ["hiding", "enemy", "flora", "routing", "timing"],
+			"scenarios": [
+				{
+					"id": "environment_contract",
+					"display_name": "Environment Contract",
+					"outcome": "teaching",
+					"script": [
+						{"type": "assert_path", "path": "preview_chunk", "op": "==", "value": "refuge_run"},
+						{"type": "assert_path", "path": "chunk.hiding_type_count", "op": "==", "value": 3},
+						{"type": "assert_path", "path": "chunk.enemy_count", "op": "==", "value": 2},
+						{"type": "assert_path", "path": "chunk.plant_count", "op": "==", "value": 2},
+						{"type": "assert_path", "path": "chunk.route_count", "op": "==", "value": 2}
+					]
+				},
+				{
+					"id": "conceal_patch_hides_member",
+					"display_name": "Conceal Patch Hides Member",
+					"outcome": "success",
+					"script": [
+						{"type": "call_chunk", "method": "reset_preview_state"},
+						{"type": "select_character", "char_id": "aster"},
+						{"type": "teleport", "char_id": "aster", "anchor": "conceal_patch"},
+						{"type": "advance", "seconds": 0.5},
+						{"type": "assert_path", "path": "chunk.patch_concealed", "op": "==", "value": true}
+					]
+				},
+				{
+					"id": "caught_in_the_open",
+					"display_name": "Caught In The Open",
+					"outcome": "failure",
+					"script": [
+						{"type": "call_chunk", "method": "reset_preview_state"},
+						{"type": "select_character", "char_id": "aster"},
+						{"type": "teleport", "char_id": "aster", "anchor": "standard_sentry"},
+						{"type": "advance", "seconds": 3.0},
+						{"type": "assert_path", "path": "chunk.patch_concealed", "op": "==", "value": false},
+						{"type": "assert_path", "path": "chunk.enemy.standard.target", "op": "==", "value": "aster"}
+					]
+				},
+				{
+					"id": "slit_crossed_in_window",
+					"display_name": "Slit Crossed In Window",
+					"outcome": "success",
+					"script": [
+						{"type": "call_chunk", "method": "reset_preview_state"},
+						{"type": "call_chunk", "method": "choose_route", "args": ["north"]},
+						{"type": "select_character", "char_id": "aster"},
+						{"type": "call_chunk", "method": "activate_slit_lure"},
+						{"type": "teleport", "char_id": "aster", "anchor": "hide_slit"},
+						{"type": "advance", "seconds": 0.5},
+						{"type": "assert_path", "path": "chunk.slit_phase", "op": "==", "value": "hidden"},
+						{"type": "advance", "seconds": 6.0},
+						{"type": "assert_path", "path": "chunk.slit_phase", "op": "==", "value": "safe"}
+					]
+				},
+				{
+					"id": "slit_window_closes",
+					"display_name": "Slit Window Closes",
+					"outcome": "failure",
+					"script": [
+						{"type": "call_chunk", "method": "reset_preview_state"},
+						{"type": "call_chunk", "method": "choose_route", "args": ["north"]},
+						{"type": "select_character", "char_id": "aster"},
+						{"type": "teleport", "char_id": "aster", "anchor": "converge"},
+						{"type": "call_chunk", "method": "activate_slit_lure"},
+						{"type": "advance", "seconds": 6.5},
+						{"type": "assert_path", "path": "chunk.slit_phase", "op": "==", "value": "failed"},
+						{"type": "assert_path", "path": "chunk.route_phase", "op": "==", "value": "failed"}
+					]
+				},
+				{
+					"id": "spot_holds_through_sweep",
+					"display_name": "Spot Holds Through Sweep",
+					"outcome": "success",
+					"script": [
+						{"type": "call_chunk", "method": "reset_preview_state"},
+						{"type": "call_chunk", "method": "choose_route", "args": ["north"]},
+						{"type": "teleport", "char_id": "aster", "anchor": "hide_spot"},
+						{"type": "teleport", "char_id": "peris", "anchor": "hide_spot"},
+						{"type": "teleport", "char_id": "endo", "anchor": "hide_spot"},
+						{"type": "call_chunk", "method": "activate_spot_sweep"},
+						{"type": "advance", "seconds": 0.5},
+						{"type": "assert_path", "path": "chunk.spot_phase", "op": "==", "value": "hidden"},
+						{"type": "advance", "seconds": 6.0},
+						{"type": "assert_path", "path": "chunk.spot_phase", "op": "==", "value": "safe"}
+					]
+				},
+				{
+					"id": "spot_left_during_sweep",
+					"display_name": "Spot Left During Sweep",
+					"outcome": "failure",
+					"script": [
+						{"type": "call_chunk", "method": "reset_preview_state"},
+						{"type": "call_chunk", "method": "choose_route", "args": ["north"]},
+						{"type": "teleport", "char_id": "aster", "anchor": "hide_spot"},
+						{"type": "teleport", "char_id": "peris", "anchor": "hide_spot"},
+						{"type": "teleport", "char_id": "endo", "anchor": "hide_spot"},
+						{"type": "call_chunk", "method": "activate_spot_sweep"},
+						{"type": "advance", "seconds": 1.0},
+						{"type": "assert_path", "path": "chunk.spot_phase", "op": "==", "value": "hidden"},
+						{"type": "teleport", "char_id": "aster", "anchor": "converge"},
+						{"type": "advance", "seconds": 1.0},
+						{"type": "assert_path", "path": "chunk.spot_phase", "op": "==", "value": "failed"}
+					]
+				},
+				{
+					"id": "chain_seam_detects",
+					"display_name": "Chain Seam Detects",
+					"outcome": "failure",
+					"script": [
+						{"type": "call_chunk", "method": "reset_preview_state"},
+						{"type": "select_character", "char_id": "endo"},
+						{"type": "teleport", "char_id": "endo", "anchor": "chain_seam"},
+						{"type": "advance", "seconds": 3.0},
+						{"type": "assert_path", "path": "chunk.enemy.chain.target", "op": "==", "value": "endo"}
+					]
+				},
+				{
+					"id": "north_route_keeps_health",
+					"display_name": "North Route Keeps Health",
+					"outcome": "success",
+					"script": [
+						{"type": "call_chunk", "method": "reset_preview_state"},
+						{"type": "call_chunk", "method": "choose_route", "args": ["north"]},
+						{"type": "assert_path", "path": "chunk.route_choice", "op": "==", "value": "north"},
+						{"type": "assert_path", "path": "chunk.hazard_taken", "op": "==", "value": false}
+					]
+				},
+				{
+					"id": "south_route_burns_through_bloom",
+					"display_name": "South Route Burns Through Bloom",
+					"outcome": "teaching",
+					"script": [
+						{"type": "call_chunk", "method": "reset_preview_state"},
+						{"type": "call_chunk", "method": "choose_route", "args": ["south"]},
+						{"type": "assert_path", "path": "chunk.route_choice", "op": "==", "value": "south"},
+						{"type": "assert_path", "path": "chunk.hazard_taken", "op": "==", "value": true}
+					]
+				},
+				{
+					"id": "full_run_completes",
+					"display_name": "Full Run Completes",
+					"outcome": "success",
+					"script": [
+						{"type": "call_chunk", "method": "reset_preview_state"},
+						{"type": "call_chunk", "method": "choose_route", "args": ["north"]},
+						{"type": "select_character", "char_id": "aster"},
+						{"type": "call_chunk", "method": "activate_slit_lure"},
+						{"type": "teleport", "char_id": "aster", "anchor": "hide_slit"},
+						{"type": "advance", "seconds": 6.5},
+						{"type": "assert_path", "path": "chunk.slit_phase", "op": "==", "value": "safe"},
+						{"type": "teleport", "char_id": "aster", "anchor": "hide_spot"},
+						{"type": "teleport", "char_id": "peris", "anchor": "hide_spot"},
+						{"type": "teleport", "char_id": "endo", "anchor": "hide_spot"},
+						{"type": "call_chunk", "method": "activate_spot_sweep"},
+						{"type": "advance", "seconds": 6.5},
+						{"type": "assert_path", "path": "chunk.spot_phase", "op": "==", "value": "safe"},
+						{"type": "teleport", "char_id": "aster", "anchor": "exit_shelter"},
+						{"type": "teleport", "char_id": "peris", "anchor": "exit_shelter"},
+						{"type": "teleport", "char_id": "endo", "anchor": "exit_shelter"},
+						{"type": "advance", "seconds": 0.3},
+						{"type": "call_chunk", "method": "reach_exit"},
+						{"type": "assert_path", "path": "chunk.route_phase", "op": "==", "value": "complete"},
+						{"type": "assert_path", "path": "chunk.shelter_reached", "op": "==", "value": true}
+					]
+				}
+			]
 		}
 	]
 }
