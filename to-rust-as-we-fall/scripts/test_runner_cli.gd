@@ -110,6 +110,9 @@ func _ready() -> void:
 			"--test-outline-particle-emission":
 				ran_test = true
 				_test_outline_particle_emission()
+			"--test-interactable-outline-particles":
+				ran_test = true
+				_test_interactable_outline_particles()
 			"--test-interactable-data":
 				ran_test = true
 				_test_interactable_data()
@@ -517,6 +520,7 @@ func _run_all_tests() -> void:
 	_test_cooperative_pathfinding()
 	_test_path_renderer()
 	_test_outline_particle_emission()
+	_test_interactable_outline_particles()
 	_test_interactable_data()
 	_test_chunk_party_presence()
 	_test_sim_command_api()
@@ -7199,6 +7203,38 @@ func _test_outline_particle_emission() -> void:
 			"Outline particles ride the mesh transform so points land on the surface")
 
 	target.queue_free()
+
+# --- Test: proximity interactable feedback traces its outline ---
+# Plain interactables have no mesh, so their "outline" is the interaction footprint.
+# The selected feedback emits from a ring around that radius (not a central blob) and
+# recolours to selected_feedback_color, the same in every scene.
+func _test_interactable_outline_particles() -> void:
+	_test_name = "Interactable Outline Particles"
+
+	var it := Interactable.new()
+	it.interaction_radius = 2.0
+	it.selected_feedback_color = Color(0.2, 0.9, 0.4, 1.0)
+	add_child(it)
+	it._ensure_selected_particles()
+
+	var pm := it._selected_particles.process_material as ParticleProcessMaterial
+	_assert_true(pm != null, "Interactable selected particles have a process material")
+	if pm != null:
+		_assert_equals(pm.emission_shape, ParticleProcessMaterial.EMISSION_SHAPE_RING,
+			"Interactable particles emit from a ring outline, not a central point")
+		_assert_true(pm.emission_ring_radius > 1.0,
+			"Ring radius scales with the interaction footprint (got %.2f)" % pm.emission_ring_radius)
+		_assert_true(pm.emission_ring_inner_radius < pm.emission_ring_radius,
+			"Ring keeps a band (inner < outer) so particles trace the outline edge")
+
+	# Colour feedback applies regardless of scene.
+	it.play_selected_feedback()
+	if pm != null:
+		_assert_equals(pm.color, it.selected_feedback_color,
+			"Selected feedback recolours the interactable particles")
+	_assert_true(it._selected_particles.emitting, "play_selected_feedback starts the emitter")
+
+	it.queue_free()
 
 # --- Test: data-first interactables ---
 # GameState owns interactable state; register/trigger/enable are event-logged so

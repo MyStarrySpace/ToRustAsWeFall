@@ -322,7 +322,6 @@ func _ensure_selected_particles() -> void:
 	_selected_particles.explosiveness = 0.0
 	_selected_particles.emitting = false
 	_selected_particles.visible = false
-	_selected_particles.position = Vector3(0.0, outline_highlight_height, 0.0)
 	_selected_particles.visibility_aabb = AABB(Vector3(-6.0, -6.0, -6.0), Vector3(12.0, 12.0, 12.0))
 
 	var particle_mesh := SphereMesh.new()
@@ -331,13 +330,22 @@ func _ensure_selected_particles() -> void:
 	particle_mesh.material = _make_particle_draw_material(selected_feedback_color, 8.0)
 	_selected_particles.draw_pass_1 = particle_mesh
 
+	# Trace the interactable's outline (its interaction footprint) instead of a single
+	# central blob: a ring band around the radius, raised into a short column so the
+	# spread reads as wrapping the object. Mesh-free, so it works in every scene.
+	var ring_radius := maxf(0.45, interaction_radius * 0.7)
+	var ring_height := maxf(0.6, outline_highlight_height * 1.4)
+	_selected_particles.position = Vector3(0.0, ring_height * 0.5, 0.0)
 	_selected_particle_material = ParticleProcessMaterial.new()
-	_selected_particle_material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
-	_selected_particle_material.emission_sphere_radius = maxf(0.35, interaction_radius * 0.4)
+	_selected_particle_material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_RING
+	_selected_particle_material.emission_ring_axis = Vector3.UP
+	_selected_particle_material.emission_ring_radius = ring_radius
+	_selected_particle_material.emission_ring_inner_radius = maxf(0.0, ring_radius - 0.3)
+	_selected_particle_material.emission_ring_height = ring_height
 	_selected_particle_material.direction = Vector3.UP
-	_selected_particle_material.spread = 180.0
-	_selected_particle_material.initial_velocity_min = 0.02
-	_selected_particle_material.initial_velocity_max = 0.12
+	_selected_particle_material.spread = 60.0
+	_selected_particle_material.initial_velocity_min = 0.05
+	_selected_particle_material.initial_velocity_max = 0.18
 	_selected_particle_material.gravity = Vector3.ZERO
 	_selected_particle_material.scale_min = 0.12
 	_selected_particle_material.scale_max = 0.26
