@@ -104,6 +104,9 @@ func _ready() -> void:
 			"--test-cooperative-pathfinding":
 				ran_test = true
 				_test_cooperative_pathfinding()
+			"--test-path-renderer":
+				ran_test = true
+				_test_path_renderer()
 			"--test-interactable-data":
 				ran_test = true
 				_test_interactable_data()
@@ -509,6 +512,7 @@ func _run_all_tests() -> void:
 	_test_grid_pathfinding()
 	_test_game_state()
 	_test_cooperative_pathfinding()
+	_test_path_renderer()
 	_test_interactable_data()
 	_test_chunk_party_presence()
 	_test_sim_command_api()
@@ -5332,6 +5336,19 @@ func _test_elevator() -> void:
 		# The party is the selected pair, so a group move spreads them onto distinct cells.
 		_assert_equals(instance._game_state.get_party(), ["peris", "aster"],
 			"Group control sets the party to the selected pair for spread moves")
+		# Regression: a single ground click in group control must move EVERY selected
+		# member, not just the active one. The elevator has no grid, so before the
+		# gridless party fallback the non-active member (Aster) was stranded while only
+		# the active controller (Peris) walked off. Drive the ACTUAL click path here.
+		instance._game_state.command_stop("peris")
+		instance._game_state.command_stop("aster")
+		_assert_true(instance._player == instance._peris_node,
+			"Peris is the active group-move controller")
+		instance._player.move_to_world_position(exit_gate + Vector3(2.0, 0.0, 0.0))
+		_assert_true(instance._game_state.is_moving("peris"),
+			"Group-move click moves the active member (Peris)")
+		_assert_true(instance._game_state.is_moving("aster"),
+			"Group-move click also moves the carried member (Aster) on a gridless map")
 		instance._toggle_pause()
 		_assert_true(not instance._scheduler.is_paused(),
 			"Multiselect tutorial unpauses after both characters are selected")
@@ -7038,6 +7055,77 @@ func _coop_run_swap(_label: String, step: float) -> Dictionary:
 			break
 		sched.advance_ticks(step)
 	return {"a": gs.get_position("a"), "b": gs.get_position("b"), "hash": gs.state_hash()}
+
+# --- Test: reusable movement-path visual ---
+# PathRenderer is the shared path line: point it at a GameState character and it
+# builds the remaining-route geometry from the data layer. Render frames aren't
+# pumped reliably headless, so drive _process() directly and inspect the mesh.
+func _test_path_renderer() -> void:
+	_test_name = "Path Renderer"
+
+	# Gridless GameState (like the elevator): movement is straight-line world moves.
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.register_character("mover", Vector3.ZERO, 3.0, {})
+
+	var pr := PathRenderer.new()
+	add_child(pr)  # _ready builds the line MeshInstance (not @tool → runs headless)
+	pr.setup(gs, "mover", Color(0.2, 0.6, 1.0))
+
+	# Idle: nothing to draw.
+	pr._process(0.0)
+	_assert_true(pr._line.mesh == null, "Idle character draws no path line")
+
+	# Moving: the not-yet-traversed leg becomes line geometry.
+	gs.command_move_to_pos("mover", Vector3(6.0, 0.0, 0.0))  # 6m / 3 = 2.0 ticks
+	sched.advance_ticks(1.0)  # halfway
+	pr._process(0.0)
+	_assert_true(gs.is_moving("mover"), "Mover is mid-move")
+	_assert_true(pr._line.mesh != null, "Moving character draws a path line")
+	if pr._line.mesh != null:
+		_assert_true(pr._line.mesh.get_surface_count() > 0,
+			"Path line mesh has a surface (vertices were added)")
+
+	# Running flips the line to the orange running tint.
+	pr.set_running(true)
+	pr._process(0.0)
+	_assert_equals(pr._mat.albedo_color, PathRenderer.RUNNING_COLOR,
+		"Running recolours the path line")
+	pr.set_running(false)
+
+	# Arrived: the line clears again.
+	sched.advance_ticks(2.0)
+	pr._process(0.0)
+	_assert_true(not gs.is_moving("mover"), "Mover arrived")
+	_assert_true(pr._line.mesh == null, "Arrived character draws no path line")
+
+	# Explicit-path mode: works without any GameState movement (standalone previews).
+	pr.char_id = ""
+	pr.set_explicit_path([Vector3(1.0, 0.0, 0.0), Vector3(2.0, 0.0, 1.0)])
+	pr._process(0.0)
+	_assert_true(pr._line.mesh != null, "Explicit path draws a line with no GameState move")
+	pr.clear_explicit_path()
+	pr._process(0.0)
+	_assert_true(pr._line.mesh == null, "Cleared explicit path draws nothing")
+
+	pr.queue_free()
+
+	# Gridless party fan-out: a single party move must address EVERY member and
+	# spread them (distinct destinations), not stack them on one point.
+	var sched2 := EventScheduler.new()
+	var gs2 := GameState.new()
+	gs2.scheduler = sched2
+	gs2.register_character("peris", Vector3.ZERO, 3.0, {})
+	gs2.register_character("aster", Vector3(0.0, 0.0, 0.5), 3.0, {})
+	gs2.set_party(["peris", "aster"])
+	gs2.party_move_to_pos(Vector3(5.0, 0.0, 0.0))
+	_assert_true(gs2.is_moving("peris") and gs2.is_moving("aster"),
+		"Gridless party move addresses every member")
+	var peris_dest: Vector3 = gs2.characters["peris"].movement.path[-1]
+	var aster_dest: Vector3 = gs2.characters["aster"].movement.path[-1]
+	_assert_true(absf(peris_dest.z - aster_dest.z) > 0.1,
+		"Gridless party move fans members onto distinct points (no stacking)")
 
 # --- Test: data-first interactables ---
 # GameState owns interactable state; register/trigger/enable are event-logged so

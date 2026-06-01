@@ -2255,6 +2255,9 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 # Party move commands address all non-split party members.
 
 ## Ordered party roster.
+# Lateral spacing between members on a gridless party move (no cell spread available).
+const _PARTY_GRIDLESS_SPACING := 1.0
+
 var party: Array[String] = []
 ## Scripted split members ignored by party_move.
 var _split_members: Array[String] = []
@@ -2305,8 +2308,13 @@ func party_move_to_pos(pos: Vector3) -> void:
 		for char_id in members:
 			_do_move_to_cell(char_id, assigned[char_id])
 	else:
-		for char_id in members:
-			_do_move_to_pos(char_id, pos)
+		# No grid (e.g. the elevator): cooperative cell spread isn't available, so fan
+		# members out along Z around the target by party order — a pure function of the
+		# index, so it stays deterministic / replay-safe — rather than stacking them.
+		var count := members.size()
+		for i in range(count):
+			var lateral := (float(i) - float(count - 1) / 2.0) * _PARTY_GRIDLESS_SPACING
+			_do_move_to_pos(members[i], pos + Vector3(0.0, 0.0, lateral))
 
 ## Give each party member a distinct, walkable destination cell around target so
 ## a single party move never stacks everyone on one cell. The order of members

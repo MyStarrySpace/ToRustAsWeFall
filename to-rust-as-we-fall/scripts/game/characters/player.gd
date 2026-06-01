@@ -38,7 +38,7 @@ var _ability_marker_mat: StandardMaterial3D
 var _dest_marker: MeshInstance3D
 var _dest_marker_mat: StandardMaterial3D
 
-var _path_line: MeshInstance3D
+var _path_renderer: PathRenderer
 
 signal arrived()
 signal auto_path_complete()
@@ -76,14 +76,12 @@ func _ready() -> void:
 	_dest_marker.top_level = true
 	add_child(_dest_marker)
 
-	_path_line = MeshInstance3D.new()
-	_path_line.top_level = true
-	var line_mat := StandardMaterial3D.new()
-	line_mat.albedo_color = Color(color, 0.3)
-	line_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	line_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_path_line.material_override = line_mat
-	add_child(_path_line)
+	# The movement-path line is the shared PathRenderer, anchored to this body so the
+	# line starts exactly where the mesh is. game_state / char_id are forwarded once
+	# they're assigned (see _update_path_line).
+	_path_renderer = PathRenderer.new()
+	_path_renderer.setup(game_state, char_id, color, self)
+	add_child(_path_renderer)
 
 	_ability_marker = MeshInstance3D.new()
 	var diamond := SphereMesh.new()
@@ -172,11 +170,18 @@ var group_move := false
 func _set_click_target(world_pos: Vector3, cancel_interaction := true) -> bool:
 	if cancel_interaction and _interaction_controller != null:
 		_interaction_controller.cancel_active_target()
-	# Group move: one click spreads the party across distinct cells.
-	if group_move and game_state and grid_world:
-		game_state.party_move_to_cell(grid_world.world_to_grid(world_pos))
-		var group_snap := grid_world.grid_to_world(grid_world.world_to_grid(world_pos))
-		_dest_marker.global_position = Vector3(group_snap.x, 0.05, group_snap.z)
+	# Group move: one click moves the whole party. On a grid they spread onto
+	# distinct cells; gridless (e.g. the elevator) they fan out around the clicked
+	# point — either way every selected member gets a move, not just the active one.
+	if group_move and game_state:
+		if grid_world:
+			var group_cell := grid_world.world_to_grid(world_pos)
+			game_state.party_move_to_cell(group_cell)
+			var group_snap := grid_world.grid_to_world(group_cell)
+			_dest_marker.global_position = Vector3(group_snap.x, 0.05, group_snap.z)
+		else:
+			game_state.party_move_to_pos(world_pos)
+			_dest_marker.global_position = Vector3(world_pos.x, world_pos.y + 0.05, world_pos.z)
 		_moving = true
 		_dest_marker_mat.albedo_color.a = 0.6
 		_dest_marker.scale = Vector3(1.2, 1.2, 1.2)
@@ -340,49 +345,23 @@ func _update_path_line() -> void:
 	else:
 		_ability_marker_mat.albedo_color.a = 0.0
 
-	var line_mat: StandardMaterial3D = _path_line.material_override
-	if _running:
-		line_mat.albedo_color = Color(1.0, 0.7, 0.3, 0.5)
-	else:
-		line_mat.albedo_color = Color(color, 0.3)
-
-	if not _moving and not has_queued_ability:
-		_path_line.mesh = null
+	# The path line itself is drawn by the shared PathRenderer. Keep its inputs in
+	# sync (game_state / char_id are assigned after _ready) and hand it the local
+	# fallback path for the rare no-GameState case (editor / standalone previews).
+	if _path_renderer == null:
 		return
-
-	var im := ImmediateMesh.new()
-	im.surface_begin(Mesh.PRIMITIVE_LINES)
-	var from_pos := global_position + Vector3(0.0, 0.08, 0.0)
-
-	if game_state and game_state.scheduler != null and char_id != "" and game_state.is_moving(char_id):
-		var mv = game_state.characters[char_id].movement
-		if mv:
-			var path: Array[Vector3] = mv.path
-			var cum_dist: Array[float] = mv.cum_dist
-			var total: float = mv.total_distance
-			var current_tick := game_state.scheduler.get_current_tick()
-			var t := clampf((current_tick - mv.start_tick) / mv.duration, 0.0, 1.0) if mv.duration > 0 else 1.0
-			var current_dist := t * total
-			for i in range(1, path.size()):
-				if cum_dist[i] > current_dist:
-					var to_pos := path[i] + Vector3(0.0, 0.08, 0.0)
-					im.surface_add_vertex(from_pos)
-					im.surface_add_vertex(to_pos)
-					from_pos = to_pos
+	_path_renderer.game_state = game_state
+	_path_renderer.char_id = char_id
+	_path_renderer.color = color
+	_path_renderer.set_running(_running)
+	if game_state and char_id != "":
+		_path_renderer.clear_explicit_path()
 	elif _auto_path.size() > 0:
-		for i in range(_auto_path_index, _auto_path.size()):
-			var wp := _auto_path[i]
-			var to_pos := wp + Vector3(0.0, 0.08, 0.0)
-			im.surface_add_vertex(from_pos)
-			im.surface_add_vertex(to_pos)
-			from_pos = to_pos
+		_path_renderer.set_explicit_path(_auto_path, _auto_path_index)
 	elif _moving:
-		var to_pos := _target_pos + Vector3(0.0, 0.08, 0.0)
-		im.surface_add_vertex(from_pos)
-		im.surface_add_vertex(to_pos)
-
-	im.surface_end()
-	_path_line.mesh = im
+		_path_renderer.set_explicit_path([_target_pos], 0)
+	else:
+		_path_renderer.clear_explicit_path()
 
 ## Walk to a world position.
 func walk_to(pos: Vector3) -> void:
