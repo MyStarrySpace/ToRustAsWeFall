@@ -305,11 +305,12 @@ func _ensure_outline_particles(mesh_instance: MeshInstance3D) -> GPUParticles3D:
 	particles.explosiveness = 0.0
 	particles.emitting = false
 	particles.visible = false
-	particles.top_level = true
-	particles.local_coords = false
+	# Ride the mesh's world transform (no top_level): emission points authored in
+	# mesh-local space then land on the surface at the right world position/scale,
+	# and follow the object if it moves.
+	particles.top_level = false
+	particles.local_coords = true
 	particles.visibility_aabb = AABB(Vector3(-6.0, -6.0, -6.0), Vector3(12.0, 12.0, 12.0))
-
-	var aabb := mesh_instance.mesh.get_aabb()
 
 	var particle_mesh := SphereMesh.new()
 	particle_mesh.radius = 0.065
@@ -318,8 +319,20 @@ func _ensure_outline_particles(mesh_instance: MeshInstance3D) -> GPUParticles3D:
 	particles.draw_pass_1 = particle_mesh
 
 	var process_material := ParticleProcessMaterial.new()
-	process_material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
-	process_material.emission_box_extents = aabb.size * 0.5 + Vector3.ONE * selected_object_outline_width
+	# Emit from the mesh SURFACE (its outline), not a solid box at the centre — the
+	# old box collapsed to a blob once the object was scaled. Sampled points wrap the
+	# silhouette; directed points push each particle out along the local surface normal.
+	var emission := _build_surface_emission(mesh_instance.mesh, outline_particles_per_mesh)
+	if int(emission["count"]) > 0:
+		process_material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_DIRECTED_POINTS
+		process_material.emission_point_count = int(emission["count"])
+		process_material.emission_point_texture = _emission_points_texture(emission["positions"])
+		process_material.emission_normal_texture = _emission_points_texture(emission["normals"])
+	else:
+		# Degenerate mesh (no triangles): a sphere around the object still spreads.
+		var aabb := mesh_instance.mesh.get_aabb()
+		process_material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+		process_material.emission_sphere_radius = maxf(0.2, aabb.size.length() * 0.5)
 	process_material.direction = Vector3.UP
 	process_material.spread = 180.0
 	process_material.initial_velocity_min = 0.01
@@ -338,8 +351,98 @@ func _ensure_outline_particles(mesh_instance: MeshInstance3D) -> GPUParticles3D:
 func _sync_outline_particles(mesh_instance: MeshInstance3D, particles: GPUParticles3D) -> void:
 	if mesh_instance == null or particles == null or mesh_instance.mesh == null:
 		return
+	# Sit at the mesh's local origin so it inherits the mesh's world transform; the
+	# emission points (mesh-local) then map straight onto the surface.
+	particles.transform = Transform3D.IDENTITY
 	var aabb := mesh_instance.mesh.get_aabb()
-	particles.global_position = mesh_instance.to_global(aabb.position + aabb.size * 0.5)
+	var margin := Vector3.ONE * (selected_object_outline_width + 0.5)
+	particles.visibility_aabb = AABB(aabb.position - margin, aabb.size + margin * 2.0)
+
+# Low-discrepancy constants for even, deterministic surface sampling (no RNG, so it
+# stays replay-safe and clear of the wall-clock-RNG lint).
+const _SURFACE_PHI := 0.6180339887498949
+const _SURFACE_R2_A := 0.7548776662466927
+const _SURFACE_R2_B := 0.5698402909980532
+
+## Area-weighted, deterministic sample of a mesh surface. Returns mesh-local
+## positions plus per-point face normals (one entry per requested sample) so
+## particles can emit from the object's outline instead of one clustered point.
+## count == 0 means the mesh had no triangles to sample.
+func _build_surface_emission(mesh: Mesh, sample_count: int) -> Dictionary:
+	var count := maxi(1, sample_count)
+	var v0 := PackedVector3Array()
+	var v1 := PackedVector3Array()
+	var v2 := PackedVector3Array()
+	var nrm := PackedVector3Array()
+	var cum_area := PackedFloat32Array()
+	var total := 0.0
+	for s in range(mesh.get_surface_count()):
+		# PrimitiveMesh (BoxMesh, etc.) lacks surface_get_primitive_type and is always
+		# triangles; ArrayMesh exposes it, so skip any non-triangle surface there.
+		if mesh.has_method("surface_get_primitive_type") and mesh.surface_get_primitive_type(s) != Mesh.PRIMITIVE_TRIANGLES:
+			continue
+		var arrays := mesh.surface_get_arrays(s)
+		if arrays.size() <= Mesh.ARRAY_VERTEX:
+			continue
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		if verts.is_empty():
+			continue
+		var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+		@warning_ignore("integer_division")
+		var tri_count: int = (verts.size() / 3) if idx.is_empty() else (idx.size() / 3)
+		for t in range(tri_count):
+			var a: Vector3
+			var b: Vector3
+			var c: Vector3
+			if idx.is_empty():
+				a = verts[t * 3]
+				b = verts[t * 3 + 1]
+				c = verts[t * 3 + 2]
+			else:
+				a = verts[idx[t * 3]]
+				b = verts[idx[t * 3 + 1]]
+				c = verts[idx[t * 3 + 2]]
+			var cross := (b - a).cross(c - a)
+			var double_area := cross.length()
+			if double_area <= 0.0000001:
+				continue
+			total += double_area * 0.5
+			v0.append(a)
+			v1.append(b)
+			v2.append(c)
+			nrm.append(cross / double_area)
+			cum_area.append(total)
+	var positions := PackedVector3Array()
+	var normals := PackedVector3Array()
+	if v0.is_empty() or total <= 0.0:
+		return {"positions": positions, "normals": normals, "count": 0}
+	for i in range(count):
+		# Pick a triangle weighted by area via a low-discrepancy sweep, then an even
+		# barycentric point inside it via an R2 low-discrepancy pair.
+		var pick := fposmod(float(i) * _SURFACE_PHI, 1.0) * total
+		var lo := 0
+		var hi := cum_area.size() - 1
+		while lo < hi:
+			var mid := (lo + hi) >> 1
+			if cum_area[mid] < pick:
+				lo = mid + 1
+			else:
+				hi = mid
+		var r1 := fposmod(float(i) * _SURFACE_R2_A, 1.0)
+		var r2 := fposmod(float(i) * _SURFACE_R2_B, 1.0)
+		var su := sqrt(r1)
+		positions.append(v0[lo] * (1.0 - su) + v1[lo] * (su * (1.0 - r2)) + v2[lo] * (su * r2))
+		normals.append(nrm[lo])
+	return {"positions": positions, "normals": normals, "count": count}
+
+## Pack points into a 1-row RGBF texture for ParticleProcessMaterial point emission.
+func _emission_points_texture(points: PackedVector3Array) -> ImageTexture:
+	var n := maxi(1, points.size())
+	var image := Image.create(n, 1, false, Image.FORMAT_RGBF)
+	for i in range(points.size()):
+		var p := points[i]
+		image.set_pixel(i, 0, Color(p.x, p.y, p.z))
+	return ImageTexture.create_from_image(image)
 
 func _make_particle_draw_material(color: Color, energy: float) -> StandardMaterial3D:
 	var material := StandardMaterial3D.new()

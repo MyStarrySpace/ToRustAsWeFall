@@ -107,6 +107,9 @@ func _ready() -> void:
 			"--test-path-renderer":
 				ran_test = true
 				_test_path_renderer()
+			"--test-outline-particle-emission":
+				ran_test = true
+				_test_outline_particle_emission()
 			"--test-interactable-data":
 				ran_test = true
 				_test_interactable_data()
@@ -513,6 +516,7 @@ func _run_all_tests() -> void:
 	_test_game_state()
 	_test_cooperative_pathfinding()
 	_test_path_renderer()
+	_test_outline_particle_emission()
 	_test_interactable_data()
 	_test_chunk_party_presence()
 	_test_sim_command_api()
@@ -7126,6 +7130,75 @@ func _test_path_renderer() -> void:
 	var aster_dest: Vector3 = gs2.characters["aster"].movement.path[-1]
 	_assert_true(absf(peris_dest.z - aster_dest.z) > 0.1,
 		"Gridless party move fans members onto distinct points (no stacking)")
+
+# --- Test: outline particles emit from the object surface ---
+# The per-mesh outline feedback used a box emission shape sized from the mesh AABB,
+# which collapsed into a centre blob (worse once the object was scaled). It now
+# samples the mesh surface so particles spread around the object's outline.
+func _test_outline_particle_emission() -> void:
+	_test_name = "Outline Particle Emission"
+
+	var target := OutlineSurfaceTarget.new()
+	add_child(target)
+
+	var box := BoxMesh.new()
+	box.size = Vector3(2.0, 1.0, 3.0)
+
+	var emission := target._build_surface_emission(box, 220)
+	_assert_equals(int(emission["count"]), 220, "Surface emission yields the requested point count")
+	var positions: PackedVector3Array = emission["positions"]
+	_assert_equals(positions.size(), 220, "One emission point per sample")
+
+	# Points must SPREAD across the surface, not collapse to a single cluster.
+	var mn := Vector3(INF, INF, INF)
+	var mx := -mn
+	for p in positions:
+		mn = Vector3(minf(mn.x, p.x), minf(mn.y, p.y), minf(mn.z, p.z))
+		mx = Vector3(maxf(mx.x, p.x), maxf(mx.y, p.y), maxf(mx.z, p.z))
+	var span := mx - mn
+	_assert_true(span.x > 1.5 and span.y > 0.7 and span.z > 2.0,
+		"Emission points span the mesh outline (span=%s), not one spot" % str(span))
+
+	# Every point lies ON the box surface (distance to the nearest face ~ 0).
+	var half := box.size * 0.5
+	var max_surface_dist := 0.0
+	for p in positions:
+		var d := minf(minf(absf(absf(p.x) - half.x), absf(absf(p.y) - half.y)), absf(absf(p.z) - half.z))
+		max_surface_dist = maxf(max_surface_dist, d)
+	_assert_true(max_surface_dist < 0.01,
+		"Every emission point lies on the mesh surface (max off-surface=%.4f)" % max_surface_dist)
+
+	# Deterministic: same mesh + count reproduces identical points (replay-safe, no RNG).
+	var positions2: PackedVector3Array = target._build_surface_emission(box, 220)["positions"]
+	var deterministic := positions.size() == positions2.size()
+	if deterministic:
+		for i in range(positions.size()):
+			if positions[i].distance_to(positions2[i]) > 0.00001:
+				deterministic = false
+				break
+	_assert_true(deterministic, "Surface sampling is deterministic for identical inputs")
+
+	# Degenerate mesh (no triangles) falls back to a sphere, never a clustered box.
+	var empty := ArrayMesh.new()
+	var degenerate := target._build_surface_emission(empty, 64)
+	_assert_equals(int(degenerate["count"]), 0, "A mesh with no triangles yields zero surface points")
+
+	# The built emitter uses surface point emission, not a box blob.
+	var mi := MeshInstance3D.new()
+	mi.mesh = box
+	target.add_child(mi)
+	var particles = target._ensure_outline_particles(mi)
+	_assert_true(particles != null, "Outline particles are created for a highlight mesh")
+	if particles != null:
+		var pm := particles.process_material as ParticleProcessMaterial
+		_assert_equals(pm.emission_shape, ParticleProcessMaterial.EMISSION_SHAPE_DIRECTED_POINTS,
+			"Outline particles emit from surface points, not a box")
+		_assert_true(pm.emission_point_count > 1, "Outline emission uses many surface points")
+		_assert_true(pm.emission_point_texture != null, "Outline emission has a point-position texture")
+		_assert_true(not particles.top_level and particles.local_coords,
+			"Outline particles ride the mesh transform so points land on the surface")
+
+	target.queue_free()
 
 # --- Test: data-first interactables ---
 # GameState owns interactable state; register/trigger/enable are event-logged so
