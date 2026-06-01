@@ -327,6 +327,25 @@ func run_generated_risky_recovery() -> bool:
 		_route_choice = "risky_recovery"
 	return _shelter_rested
 
+## A failed traversal: the party commits to the risky route and takes the
+## pressure, but is stranded short of the next shelter — the stretch is never
+## crossed. Returns false (the run did not reach safety).
+func run_generated_failed_traversal() -> bool:
+	_ensure_spec_loaded()
+	reset_preview_state()
+	for route in _routes():
+		if route is Dictionary and _route_kind(route as Dictionary) == "risky":
+			choose_generated_route(str((route as Dictionary).get("id", "")), false)
+			break
+	if _route_choice == "":
+		_route_choice = "failed_traversal"
+	_route_phase = "failed"
+	_shelter_reached = false
+	_shelter_rested = false
+	_last_outcome = "stranded"
+	_set_preview_step("generated_stretch_failed")
+	return _shelter_rested
+
 func handle_preview_ability(ability_id: String, _ability: Dictionary = {}) -> Dictionary:
 	match ability_id:
 		"aster_focus":

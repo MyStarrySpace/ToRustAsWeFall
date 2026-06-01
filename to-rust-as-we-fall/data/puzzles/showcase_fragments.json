@@ -1009,6 +1009,7 @@
 				{
 					"id": "environment_contract",
 					"display_name": "Environment Contract",
+					"outcome": "teaching",
 					"script": [
 						{"type": "assert_path", "path": "preview_chunk", "op": "==", "value": "generated_stretch"},
 						{"type": "assert_path", "path": "preview_party_preset", "op": "==", "value": "full_party_full_health"},
@@ -1026,6 +1027,7 @@
 				{
 					"id": "golden_path_reaches_shelter",
 					"display_name": "Golden Path Reaches Shelter",
+					"outcome": "success",
 					"script": [
 						{"type": "call_chunk", "method": "reset_preview_state"},
 						{"type": "call_chunk", "method": "run_generated_golden_path"},
@@ -1038,6 +1040,7 @@
 				{
 					"id": "risky_route_recovers",
 					"display_name": "Risky Route Recovers",
+					"outcome": "success",
 					"script": [
 						{"type": "call_chunk", "method": "reset_preview_state"},
 						{"type": "call_chunk", "method": "run_generated_risky_recovery"},
@@ -1045,6 +1048,19 @@
 						{"type": "assert_path", "path": "chunk.shelter_rested", "op": "==", "value": true},
 						{"type": "assert_path", "path": "chunk.risky_damage_total", "op": ">", "value": 0.0},
 						{"type": "assert_path", "path": "chunk.last_outcome", "op": "==", "value": "success"}
+					]
+				},
+				{
+					"id": "stranded_short_of_shelter",
+					"display_name": "Stranded Short Of Shelter",
+					"outcome": "failure",
+					"script": [
+						{"type": "call_chunk", "method": "reset_preview_state"},
+						{"type": "call_chunk", "method": "run_generated_failed_traversal"},
+						{"type": "assert_path", "path": "chunk.route_phase", "op": "==", "value": "failed"},
+						{"type": "assert_path", "path": "chunk.shelter_rested", "op": "==", "value": false},
+						{"type": "assert_path", "path": "chunk.last_outcome", "op": "==", "value": "stranded"},
+						{"type": "assert_path", "path": "chunk.risky_damage_total", "op": ">", "value": 0.0}
 					]
 				}
 			]
