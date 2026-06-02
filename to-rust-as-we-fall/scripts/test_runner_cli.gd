@@ -4642,6 +4642,25 @@ func _test_peris_sim() -> void:
 		_assert_interactable_spacing(instance, peris_explore_zones, 2.8,
 			"Peris exploration interactables are spaced apart")
 
+		# Exploration objects now carry the shared outline + surface-particle feedback.
+		var peris_outline_targets := [
+			"Plant1Outline", "Plant5Outline", "PaintingOutline", "WellnessOutline",
+			"StrikeWarningOutline", "NotesOutline", "LogbookOutline",
+		]
+		for target_name in peris_outline_targets:
+			var ot := instance.find_child(target_name, true, false)
+			_assert_true(ot != null, "Peris exploration object %s has an outline target" % target_name)
+			if ot == null:
+				continue
+			_assert_true(bool(ot.get("outline_particles_enabled")),
+				"%s emits outline particles" % target_name)
+			if ot.has_method("get_highlight_mesh_count"):
+				_assert_true(int(ot.call("get_highlight_mesh_count")) > 0,
+					"%s wraps actual object meshes" % target_name)
+			if ot.has_method("get_outline_shell_count"):
+				_assert_true(int(ot.call("get_outline_shell_count")) > 0,
+					"%s builds object-local outline shells" % target_name)
+
 		var camera = instance.find_child("GameCamera", true, false)
 		var plant_zone := instance.find_child("Plant1Zone", true, false)
 		if plant_zone != null and camera != null:

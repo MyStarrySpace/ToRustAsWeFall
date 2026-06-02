@@ -893,10 +893,13 @@ func _build_peris_plants(parent: Node3D) -> void:
 		var plant_node := _make_peris_plant(parent, pos, height, color, bloom)
 		plant_node.name = "Plant%d" % (i + 1)
 		var zone_pos := Vector3(pos.x, 0, pos.z)
-		_make_exploration_zone(parent, zone_pos,
+		var zone := _make_exploration_zone(parent, zone_pos,
 			"Plant%dZone" % (i + 1),
 			line_key,
 			1.0, 0.6)
+		var target := _outline_object_meshes(parent, "Plant%dOutline" % (i + 1),
+			_collect_mesh_instances(plant_node), "peris_plant_%d" % (i + 1), 0.7)
+		_set_room_target_interaction_delegate(target, zone)
 
 func _build_peris_painting(parent: Node3D) -> void:
 	var pos := Vector3(3.2, 2.2, -5.82)
@@ -919,10 +922,13 @@ func _build_peris_painting(parent: Node3D) -> void:
 	canvas.material_override = cm
 	canvas.position = pos + Vector3(0, 0, 0.02)
 	parent.add_child(canvas)
-	_make_exploration_zone(parent, Vector3(3.2, 0, -4.8),
+	var zone := _make_exploration_zone(parent, Vector3(3.2, 0, -4.8),
 		"PaintingZone",
 		"peris.sim_expand.painting.line",
 		1.3, 0.6)
+	var target := _outline_object_meshes(parent, "PaintingOutline",
+		[frame, canvas], "peris_painting", 0.95)
+	_set_room_target_interaction_delegate(target, zone)
 
 func _build_peris_wellness_feed(parent: Node3D) -> void:
 	var pos := Vector3(-4.65, 1.4, -4.8)
@@ -939,10 +945,13 @@ func _build_peris_wellness_feed(parent: Node3D) -> void:
 	screen.material_override = sm
 	screen.position = pos
 	parent.add_child(screen)
-	_make_exploration_zone(parent, Vector3(-4.2, 0, -4.8),
+	var zone := _make_exploration_zone(parent, Vector3(-4.2, 0, -4.8),
 		"WellnessZone",
 		"peris.sim_expand.wellness.line",
 		1.0, 0.6)
+	var target := _outline_object_meshes(parent, "WellnessOutline",
+		[screen], "peris_wellness", 0.8)
+	_set_room_target_interaction_delegate(target, zone)
 
 func _build_peris_strike_warning(parent: Node3D) -> void:
 	# Focused interaction plays document text plus Peris's line.
@@ -978,6 +987,9 @@ func _build_peris_strike_warning(parent: Node3D) -> void:
 			"peris.sim_expand.strike_warning.line",
 		], area)
 	)
+	var target := _outline_object_meshes(parent, "StrikeWarningOutline",
+		[icon, strip], "peris_strike_warning", 0.7)
+	_set_room_target_interaction_delegate(target, area)
 
 func _build_peris_session_notes(parent: Node3D) -> void:
 	var pos := Vector3(1.1, 0.85, -1.7)
@@ -994,10 +1006,13 @@ func _build_peris_session_notes(parent: Node3D) -> void:
 	tablet.material_override = tm
 	tablet.position = pos
 	parent.add_child(tablet)
-	_make_exploration_zone(parent, Vector3(1.1, 0, -1.7),
+	var zone := _make_exploration_zone(parent, Vector3(1.1, 0, -1.7),
 		"NotesZone",
 		"peris.sim_expand.notes.line",
 		0.9, 0.6)
+	var target := _outline_object_meshes(parent, "NotesOutline",
+		[tablet], "peris_notes", 0.6)
+	_set_room_target_interaction_delegate(target, zone)
 
 func _build_peris_logbook_gate(parent: Node3D) -> void:
 	# Logbook is the gate to Monos.
@@ -1028,3 +1043,6 @@ func _build_peris_logbook_gate(parent: Node3D) -> void:
 		"Continue", false, Interactable.InteractableType.HOLD_ACTION, "peris.logbook_gate")
 	gate.connect("interacted", _on_exploration_gate_interacted)
 	_explore_logbook_gate = gate
+	var target := _outline_object_meshes(parent, "LogbookOutline",
+		[console, screen], "peris_logbook", 1.0)
+	_set_room_target_interaction_delegate(target, gate)

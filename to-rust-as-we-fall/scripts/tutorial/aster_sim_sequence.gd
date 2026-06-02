@@ -37,7 +37,6 @@ var _renderer: GridRenderer
 var _data_displays: Array[MeshInstance3D] = []
 
 const PLACEMENT_ROOT := "ScenePlacement"
-const OUTLINE_TARGET_SCRIPT := preload("res://scripts/game/objects/outline_surface_target.gd")
 
 # Start below max ATP so the drink refill is visible.
 const ATP_START := 6.0
@@ -172,40 +171,8 @@ func _create_graybox_outline_target(
 		element_id: String,
 		radius: float = 1.0
 	) -> Node3D:
-	var target := StaticBody3D.new()
-	target.name = target_name
-	target.set_script(OUTLINE_TARGET_SCRIPT)
-	target.position = center
-	target.set("outline_highlight_radius", radius)
-	target.set("outline_highlight_extents", size * 0.5)
-	target.set("outline_highlight_height", 0.0)
-	target.set("selected_feedback_duration", 3.0)
-	target.set("hover_object_outline_width", 0.08)
-	target.set("selected_object_outline_width", 0.12)
-	target.set("selected_object_glow_strength", 3.8)
-	target.set("selected_particle_count", 180)
-	target.set("outline_particles_enabled", true)
-	target.set("outline_particles_per_mesh", 220)
-	target.set_meta("room_element_id", element_id)
-
-	var collision_shape := CollisionShape3D.new()
-	collision_shape.name = "CollisionShape3D"
-	var box := BoxShape3D.new()
-	box.size = size
-	collision_shape.shape = box
-	target.add_child(collision_shape)
-	parent.add_child(target)
-
-	for mesh in meshes:
-		if mesh is MeshInstance3D:
-			target.call("register_highlight_mesh", mesh)
-	if not Engine.is_editor_hint():
-		_connect_outline_feedback_source(target)
-	return target
-
-func _set_room_target_interaction_delegate(target: Node, delegate: Node) -> void:
-	if target != null and delegate != null and target.has_method("set_interaction_delegate"):
-		target.call("set_interaction_delegate", delegate)
+	# Thin wrapper over the shared base helper, kept for the existing call sites.
+	return _create_outline_target(parent, target_name, center, size, meshes, element_id, radius)
 
 # --- Per-frame visual helpers ---
 

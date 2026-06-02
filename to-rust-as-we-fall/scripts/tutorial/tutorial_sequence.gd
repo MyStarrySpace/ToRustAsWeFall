@@ -11,6 +11,7 @@ const EXPLORATION_FOCUS_OFFSET := Vector3(0, 4.2, 3.2)
 const EXPLORATION_FOCUS_HEIGHT := 0.9
 const OUTLINE_POST_PROCESS_ENABLED := false
 const OUTLINE_FEEDBACK_MANAGER_SCRIPT := preload("res://scripts/game/objects/outline_feedback_manager.gd")
+const OUTLINE_TARGET_SCRIPT := preload("res://scripts/game/objects/outline_surface_target.gd")
 const CHROMATIC_ABERRATION_SHADER := preload("res://resources/chromatic_aberration.gdshader")
 
 @export_group("Post Processing")
@@ -692,6 +693,102 @@ func _current_interaction_character() -> String:
 		return ""
 	var char_id = _player.get("char_id")
 	return str(char_id) if char_id != null else ""
+
+# --- Object outlines (hover/selected edge outline + surface-emitted particles) ---
+
+## Wrap a set of visual meshes in an OutlineSurfaceTarget so the object gets a
+## hover/selected edge outline + surface-emitted particles, bound to the outline
+## feedback manager. Reusable across every scene — hand it the object's meshes and
+## a box that encloses it. Returns the target (StaticBody3D + OutlineSurfaceTarget).
+func _create_outline_target(
+		parent: Node3D,
+		target_name: String,
+		center: Vector3,
+		size: Vector3,
+		meshes: Array,
+		element_id: String,
+		radius: float = 1.0
+	) -> Node3D:
+	var target := StaticBody3D.new()
+	target.name = target_name
+	target.set_script(OUTLINE_TARGET_SCRIPT)
+	target.position = center
+	target.set("outline_highlight_radius", radius)
+	target.set("outline_highlight_extents", size * 0.5)
+	target.set("outline_highlight_height", 0.0)
+	target.set("selected_feedback_duration", 3.0)
+	target.set("hover_object_outline_width", 0.08)
+	target.set("selected_object_outline_width", 0.12)
+	target.set("selected_object_glow_strength", 3.8)
+	target.set("selected_particle_count", 180)
+	target.set("outline_particles_enabled", true)
+	target.set("outline_particles_per_mesh", 220)
+	target.set_meta("room_element_id", element_id)
+
+	var collision_shape := CollisionShape3D.new()
+	collision_shape.name = "CollisionShape3D"
+	var box := BoxShape3D.new()
+	box.size = size
+	collision_shape.shape = box
+	target.add_child(collision_shape)
+	parent.add_child(target)
+
+	for mesh in meshes:
+		if mesh is MeshInstance3D:
+			target.call("register_highlight_mesh", mesh)
+	if not Engine.is_editor_hint():
+		_connect_outline_feedback_source(target)
+	return target
+
+## Like _create_outline_target but derives the enclosing box from the meshes' own
+## world bounds, so callers don't hand-tune a size. Returns null if no usable mesh.
+func _outline_object_meshes(
+		parent: Node3D,
+		target_name: String,
+		meshes: Array,
+		element_id: String,
+		radius: float = 1.0,
+		padding: float = 0.12
+	) -> Node3D:
+	var bounds := _combined_world_bounds(meshes)
+	if bounds.size == Vector3.ZERO:
+		return null
+	var center := bounds.position + bounds.size * 0.5
+	var size := bounds.size + Vector3.ONE * (padding * 2.0)
+	return _create_outline_target(parent, target_name, center, size, meshes, element_id, radius)
+
+## World-space AABB enclosing every MeshInstance3D in `meshes` (empty if none).
+func _combined_world_bounds(meshes: Array) -> AABB:
+	var bounds := AABB()
+	var started := false
+	for mesh in meshes:
+		if not (mesh is MeshInstance3D):
+			continue
+		var mi := mesh as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		var world := mi.global_transform * mi.mesh.get_aabb()
+		if not started:
+			bounds = world
+			started = true
+		else:
+			bounds = bounds.merge(world)
+	return bounds
+
+## Gather every MeshInstance3D at or under `node` (objects often nest their meshes).
+func _collect_mesh_instances(node: Node) -> Array:
+	var result: Array = []
+	if node is MeshInstance3D:
+		result.append(node)
+	for child in node.get_children():
+		result.append_array(_collect_mesh_instances(child))
+	return result
+
+## Route an outline target's interaction to a paired zone/interactable, so clicking
+## the outlined object runs the same inspection as walking up to it.
+func _set_room_target_interaction_delegate(target: Node, delegate: Node) -> void:
+	if target != null and delegate != null and target.has_method("set_interaction_delegate"):
+		target.call("set_interaction_delegate", delegate)
 
 ## Create a click-to-inspect zone for spoken/object text.
 func _make_exploration_zone(
