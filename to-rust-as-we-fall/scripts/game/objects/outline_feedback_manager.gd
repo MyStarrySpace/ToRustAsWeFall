@@ -1,7 +1,25 @@
 class_name OutlineFeedbackManager
 extends Node
 
-## Owns hover and selected feedback for outline-capable targets.
+## Owns hover and selected feedback for outline-capable targets, AND builds the
+## outline-target representations themselves. Any scene or chunk calls
+## OutlineFeedbackManager.ensure(self) to get the shared system for its branch and
+## outline an object's meshes — the same path works in tutorials and in gameplay
+## chunks (where outline targets previously had no manager and silently did nothing).
+
+const OUTLINE_TARGET_SCRIPT := preload("res://scripts/game/objects/outline_surface_target.gd")
+
+## Default OutlineSurfaceTarget tuning; a per-call opts dict overrides individual keys.
+const OUTLINE_DEFAULTS := {
+	"outline_highlight_height": 0.0,
+	"selected_feedback_duration": 3.0,
+	"hover_object_outline_width": 0.08,
+	"selected_object_outline_width": 0.12,
+	"selected_object_glow_strength": 3.8,
+	"selected_particle_count": 180,
+	"outline_particles_enabled": true,
+	"outline_particles_per_mesh": 220,
+}
 
 var hovered_target: Node = null
 var selected_target: Node = null
@@ -121,3 +139,127 @@ func _read_target_float(target: Node, property_name: String, fallback: float) ->
 	if value == null:
 		return fallback
 	return float(value)
+
+# --- Discovery ---
+
+## Find the outline system for `context`'s branch, or create one. Sequences and
+## chunks call this instead of owning a manager directly: it walks up from the caller
+## looking for an existing manager among each ancestor's children (so two scenes
+## coexisting in one tree never share a system), and otherwise creates one on the
+## caller's scene root. Returns null only for a null context.
+static func ensure(context: Node) -> OutlineFeedbackManager:
+	if context == null:
+		return null
+	var node := context
+	while node != null:
+		var found := _find_manager_child(node)
+		if found != null:
+			return found
+		node = node.get_parent()
+	var anchor: Node = context.owner if context.owner != null else context
+	var manager := OutlineFeedbackManager.new()
+	manager.name = "OutlineFeedbackManager"
+	anchor.add_child(manager)
+	return manager
+
+static func _find_manager_child(node: Node) -> OutlineFeedbackManager:
+	for child in node.get_children():
+		if child is OutlineFeedbackManager:
+			return child as OutlineFeedbackManager
+	return null
+
+# --- Outline-target builder (data -> representation) ---
+
+## Build an OutlineSurfaceTarget around `meshes`, register them as highlight meshes,
+## and bind it to this manager so its hover/selected feedback is live. `opts` overrides
+## OUTLINE_DEFAULTS per key, plus two specials: "delegate" (set_interaction_delegate)
+## and "metadata" (a dict of set_meta calls). Returns the target node.
+func create_outline_target(
+		parent: Node3D,
+		target_name: String,
+		center: Vector3,
+		size: Vector3,
+		meshes: Array,
+		element_id: String,
+		radius: float = 1.0,
+		opts: Dictionary = {}
+	) -> Node3D:
+	var target := StaticBody3D.new()
+	target.name = target_name
+	target.set_script(OUTLINE_TARGET_SCRIPT)
+	target.position = center
+	target.set("outline_highlight_radius", radius)
+	target.set("outline_highlight_extents", size * 0.5)
+	var props := OUTLINE_DEFAULTS.duplicate()
+	for key in opts.keys():
+		if key == "delegate" or key == "metadata":
+			continue
+		props[key] = opts[key]
+	for key in props.keys():
+		target.set(key, props[key])
+	target.set_meta("room_element_id", element_id)
+	if opts.has("metadata") and opts["metadata"] is Dictionary:
+		for meta_key in (opts["metadata"] as Dictionary).keys():
+			target.set_meta(meta_key, opts["metadata"][meta_key])
+
+	var collision_shape := CollisionShape3D.new()
+	collision_shape.name = "CollisionShape3D"
+	var box := BoxShape3D.new()
+	box.size = size
+	collision_shape.shape = box
+	target.add_child(collision_shape)
+	parent.add_child(target)
+
+	for mesh in meshes:
+		if mesh is MeshInstance3D:
+			target.call("register_highlight_mesh", mesh)
+	if opts.has("delegate") and opts["delegate"] != null and target.has_method("set_interaction_delegate"):
+		target.call("set_interaction_delegate", opts["delegate"])
+	if not Engine.is_editor_hint():
+		bind_target(target)
+	return target
+
+## Like create_outline_target but derives the enclosing box from the meshes' own
+## world bounds, so callers don't hand-tune a size. Returns null if no usable mesh.
+func outline_meshes(
+		parent: Node3D,
+		target_name: String,
+		meshes: Array,
+		element_id: String,
+		radius: float = 1.0,
+		opts: Dictionary = {},
+		padding: float = 0.12
+	) -> Node3D:
+	var bounds := combined_world_bounds(meshes)
+	if bounds.size == Vector3.ZERO:
+		return null
+	var center := bounds.position + bounds.size * 0.5
+	var size := bounds.size + Vector3.ONE * (padding * 2.0)
+	return create_outline_target(parent, target_name, center, size, meshes, element_id, radius, opts)
+
+## World-space AABB enclosing every MeshInstance3D in `meshes` (empty if none).
+static func combined_world_bounds(meshes: Array) -> AABB:
+	var bounds := AABB()
+	var started := false
+	for mesh in meshes:
+		if not (mesh is MeshInstance3D):
+			continue
+		var mi := mesh as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		var world := mi.global_transform * mi.mesh.get_aabb()
+		if not started:
+			bounds = world
+			started = true
+		else:
+			bounds = bounds.merge(world)
+	return bounds
+
+## Gather every MeshInstance3D at or under `node` (objects often nest their meshes).
+static func collect_mesh_instances(node: Node) -> Array:
+	var result: Array = []
+	if node is MeshInstance3D:
+		result.append(node)
+	for child in node.get_children():
+		result.append_array(collect_mesh_instances(child))
+	return result

@@ -113,6 +113,9 @@ func _ready() -> void:
 			"--test-interactable-outline-particles":
 				ran_test = true
 				_test_interactable_outline_particles()
+			"--test-outline-feedback-system":
+				ran_test = true
+				_test_outline_feedback_system()
 			"--test-interactable-data":
 				ran_test = true
 				_test_interactable_data()
@@ -521,6 +524,7 @@ func _run_all_tests() -> void:
 	_test_path_renderer()
 	_test_outline_particle_emission()
 	_test_interactable_outline_particles()
+	_test_outline_feedback_system()
 	_test_interactable_data()
 	_test_chunk_party_presence()
 	_test_sim_command_api()
@@ -7254,6 +7258,69 @@ func _test_interactable_outline_particles() -> void:
 	_assert_true(it._selected_particles.emitting, "play_selected_feedback starts the emitter")
 
 	it.queue_free()
+
+# --- Test: the shared outline system (data -> representation) ---
+# OutlineFeedbackManager builds + binds outline targets for ANY branch (chunk or
+# sequence), so chunk outlines work in gameplay, not only tutorials.
+func _test_outline_feedback_system() -> void:
+	_test_name = "Outline Feedback System"
+
+	var host := Node3D.new()
+	host.name = "OutlineSystemHost"
+	get_tree().root.add_child(host)
+
+	# ensure() find-or-create, scoped to the caller's branch and idempotent.
+	var system := OutlineFeedbackManager.ensure(host)
+	_assert_true(system != null, "ensure() returns a system for a fresh branch")
+	_assert_true(system == OutlineFeedbackManager.ensure(host),
+		"ensure() is idempotent for the same branch")
+	# A descendant (e.g. a chunk under its host) finds the same system.
+	var child := Node3D.new()
+	host.add_child(child)
+	_assert_true(OutlineFeedbackManager.ensure(child) == system,
+		"A descendant finds its branch's existing system")
+
+	# Build an outlined object through the system — no TutorialSequence involved.
+	var mesh := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(1.0, 1.0, 1.0)
+	mesh.mesh = box
+	host.add_child(mesh)
+	var delegate := Node3D.new()
+	host.add_child(delegate)
+	var target := system.outline_meshes(host, "SystemOutline", [mesh], "sys", 1.0, {
+		"selected_particle_count": 42,
+		"delegate": delegate,
+		"metadata": {"sys_meta": 7},
+	})
+	_assert_true(target != null, "outline_meshes builds a target from mesh bounds")
+	if target != null:
+		_assert_true(bool(target.get("outline_particles_enabled")),
+			"Built target has outline particles enabled")
+		_assert_equals(int(target.get("selected_particle_count")), 42,
+			"opts override the per-target tuning")
+		_assert_equals(int(target.get_meta("sys_meta")), 7,
+			"opts.metadata is applied to the target")
+		if target.has_method("get_interaction_delegate"):
+			_assert_true(target.call("get_interaction_delegate") == delegate,
+				"opts.delegate wires the interaction delegate")
+		if target.has_method("get_highlight_mesh_count"):
+			_assert_true(int(target.call("get_highlight_mesh_count")) > 0,
+				"Built target wraps the object's meshes")
+		if target.has_method("is_feedback_managed"):
+			_assert_true(bool(target.call("is_feedback_managed")),
+				"Built target is bound to the system (feedback-managed)")
+
+		# The binding is live: selecting drives the system + particle feedback. This is
+		# what was dead for gameplay chunks before (no manager bound the target).
+		target.emit_signal("outline_selected", target)
+		_assert_true(system.get_selected_target() == target,
+			"Selecting a built target registers with the system")
+		if target.has_method("has_active_outline_particles"):
+			_assert_true(bool(target.call("has_active_outline_particles")),
+				"Selection lights the target's outline particles")
+
+	host.queue_free()
 
 # --- Test: data-first interactables ---
 # GameState owns interactable state; register/trigger/enable are event-logged so

@@ -423,3 +423,48 @@ func _add_inspection_interactable(
 		interaction_radius,
 		Interactable.InteractableType.INSPECTION
 	)
+
+# --- Object outlines (hover/selected edge outline + surface-emitted particles) ---
+# Any chunk can outline an object's meshes; the shared OutlineFeedbackManager for
+# this chunk's branch (the host sequence's, or a created one) drives the feedback —
+# so chunk outlines are live in gameplay, not just tutorials.
+
+var _outline_feedback_manager: OutlineFeedbackManager = null
+
+func _outline_system() -> OutlineFeedbackManager:
+	if _outline_feedback_manager == null or not is_instance_valid(_outline_feedback_manager):
+		_outline_feedback_manager = OutlineFeedbackManager.ensure(self)
+	return _outline_feedback_manager
+
+## Outline an object whose meshes are `meshes`, sizing the box from their world
+## bounds. opts overrides OutlineFeedbackManager.OUTLINE_DEFAULTS (plus "delegate" /
+## "metadata"). Returns the target, or null with no usable mesh.
+func _outline_object(
+	parent: Node3D,
+	target_name: String,
+	meshes: Array,
+	element_id: String,
+	radius := 1.0,
+	opts: Dictionary = {}
+) -> Node3D:
+	var system := _outline_system()
+	if system == null:
+		return null
+	return system.outline_meshes(parent, target_name, meshes, element_id, radius, opts)
+
+## Outline an object with an explicit center/size box (when the meshes' bounds don't
+## match the silhouette you want to pick, e.g. a tall marker over a flat pad).
+func _outline_target(
+	parent: Node3D,
+	target_name: String,
+	center: Vector3,
+	size: Vector3,
+	meshes: Array,
+	element_id: String,
+	radius := 1.0,
+	opts: Dictionary = {}
+) -> Node3D:
+	var system := _outline_system()
+	if system == null:
+		return null
+	return system.create_outline_target(parent, target_name, center, size, meshes, element_id, radius, opts)

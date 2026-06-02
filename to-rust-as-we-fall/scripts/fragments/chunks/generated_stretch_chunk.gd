@@ -3,7 +3,6 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 const StretchGeneratorScript := preload("res://scripts/generation/stretch_generator.gd")
 const CatalogScript := preload("res://scripts/generation/stretch_archetype_catalog.gd")
 const NavigationGraphScript := preload("res://scripts/system/core/navigation_graph.gd")
-const OUTLINE_TARGET_SCRIPT := preload("res://scripts/game/objects/outline_surface_target.gd")
 
 const DEFAULT_SPEC_PATH := "res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"
 const PARTY_IDS := ["aster", "peris", "endo"]
@@ -856,37 +855,25 @@ func _add_outline_target(
 	node_id: String,
 	delegate: Node
 ) -> StaticBody3D:
-	var target := StaticBody3D.new()
-	target.name = target_name
-	target.set_script(OUTLINE_TARGET_SCRIPT)
-	target.position = center
-	target.set("outline_highlight_radius", maxf(size.x, size.z) * 0.5)
-	target.set("outline_highlight_extents", size * 0.5)
-	target.set("outline_highlight_height", maxf(0.8, size.y * 0.5))
-	target.set("selected_feedback_duration", 1.4)
-	target.set("hover_object_outline_width", 0.075)
-	target.set("selected_object_outline_width", 0.12)
-	target.set("selected_object_glow_strength", 3.2)
-	target.set("selected_particle_count", 130)
-	target.set("outline_particles_enabled", true)
-	target.set("outline_particles_per_mesh", 96)
-	target.set("debug_particle_anchor_enabled", false)
-	target.set_meta("generated_node_id", node_id)
+	# Build through the shared outline system so the target is actually bound to a
+	# feedback manager in gameplay (it used to be orphaned here). Stretch tuning is
+	# slimmer than the room default (smaller particle budget, taller highlight box).
+	var metadata := {"generated_node_id": node_id}
 	if delegate is Node3D:
-		target.set_meta("interaction_target_position", (delegate as Node3D).global_position)
-
-	var collision_shape := CollisionShape3D.new()
-	var shape := BoxShape3D.new()
-	shape.size = size
-	collision_shape.shape = shape
-	target.add_child(collision_shape)
-	parent.add_child(target)
-	for mesh in meshes:
-		if mesh is MeshInstance3D:
-			target.call("register_highlight_mesh", mesh)
-	if delegate != null and target.has_method("set_interaction_delegate"):
-		target.call("set_interaction_delegate", delegate)
-	return target
+		metadata["interaction_target_position"] = (delegate as Node3D).global_position
+	var opts := {
+		"outline_highlight_height": maxf(0.8, size.y * 0.5),
+		"selected_feedback_duration": 1.4,
+		"hover_object_outline_width": 0.075,
+		"selected_object_glow_strength": 3.2,
+		"selected_particle_count": 130,
+		"outline_particles_per_mesh": 96,
+		"debug_particle_anchor_enabled": false,
+		"delegate": delegate,
+		"metadata": metadata,
+	}
+	return _outline_target(parent, target_name, center, size, meshes,
+		node_id, maxf(size.x, size.z) * 0.5, opts) as StaticBody3D
 
 func _reach_exit_shelter() -> void:
 	_shelter_reached = true
