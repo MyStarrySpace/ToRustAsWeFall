@@ -1014,7 +1014,7 @@
 					"approach_id": "overlay_combustion",
 					"blocked": false,
 					"borrows_from": "7",
-					"caption": "node_01 — Aster predicts the charge window on the overlay and seeds a gasafoetida bloom on the impact line; the enemy demolishes the barrier with its own momentum while Peris reads it from cover  ⟐ expert: later-stage technique",
+					"caption": "node_01 — Aster predicts the charge window on the overlay and seeds a gasafoetida bloom on the impact line; the enemy demolishes the barrier with its own momentum while Peris reads it from cover  ⟐ expert technique",
 					"characters": {
 						"aster": [
 							6.0,
@@ -1038,7 +1038,7 @@
 					"approach_id": "split_carry",
 					"blocked": false,
 					"borrows_from": "5",
-					"caption": "node_02 — Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention  ⟐ expert: later-stage technique",
+					"caption": "node_02 — Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention  ⟐ expert technique",
 					"characters": {
 						"aster": [
 							12.0,
@@ -1062,7 +1062,7 @@
 					"approach_id": "false_pattern_spoof",
 					"blocked": false,
 					"borrows_from": "6",
-					"caption": "node_03 — Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for  ⟐ expert: later-stage technique",
+					"caption": "node_03 — Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for  ⟐ expert technique",
 					"characters": {
 						"aster": [
 							18.0,
@@ -1086,7 +1086,7 @@
 					"approach_id": "terminal_cache_recall",
 					"blocked": false,
 					"borrows_from": "8",
-					"caption": "node_04 — Skip the scavenger hunt: Aster pulls the missing fragment from an AST terminal's cached records, reconstructing the whole from the network  ⟐ expert: later-stage technique",
+					"caption": "node_04 — Skip the scavenger hunt: Aster pulls the missing fragment from an AST terminal's cached records, reconstructing the whole from the network  ⟐ expert technique",
 					"characters": {
 						"aster": [
 							24.0,
@@ -1110,7 +1110,7 @@
 					"approach_id": "overlay_combustion",
 					"blocked": false,
 					"borrows_from": "7",
-					"caption": "node_05 — Aster predicts the charge window on the overlay and seeds a gasafoetida bloom on the impact line; the enemy demolishes the barrier with its own momentum while Peris reads it from cover  ⟐ expert: later-stage technique",
+					"caption": "node_05 — Aster predicts the charge window on the overlay and seeds a gasafoetida bloom on the impact line; the enemy demolishes the barrier with its own momentum while Peris reads it from cover  ⟐ expert technique",
 					"characters": {
 						"aster": [
 							30.0,
@@ -1134,7 +1134,7 @@
 					"approach_id": "split_carry",
 					"blocked": false,
 					"borrows_from": "5",
-					"caption": "node_06 — Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention  ⟐ expert: later-stage technique",
+					"caption": "node_06 — Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention  ⟐ expert technique",
 					"characters": {
 						"aster": [
 							36.0,
@@ -1158,7 +1158,7 @@
 					"approach_id": "false_pattern_spoof",
 					"blocked": false,
 					"borrows_from": "6",
-					"caption": "node_07 — Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for  ⟐ expert: later-stage technique",
+					"caption": "node_07 — Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for  ⟐ expert technique",
 					"characters": {
 						"aster": [
 							42.0,
@@ -1182,7 +1182,7 @@
 					"approach_id": "terminal_cache_recall",
 					"blocked": false,
 					"borrows_from": "8",
-					"caption": "node_08 — Skip the scavenger hunt: Aster pulls the missing fragment from an AST terminal's cached records, reconstructing the whole from the network  ⟐ expert: later-stage technique",
+					"caption": "node_08 — Skip the scavenger hunt: Aster pulls the missing fragment from an AST terminal's cached records, reconstructing the whole from the network  ⟐ expert technique",
 					"characters": {
 						"aster": [
 							48.0,
