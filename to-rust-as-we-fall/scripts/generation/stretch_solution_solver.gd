@@ -28,9 +28,12 @@ static func analyze_spec(spec: Dictionary) -> Dictionary:
 
 
 static func analyze(nodes: Array, tier := "teaching", progression_stage := 99) -> Dictionary:
+	# Only non-optional nodes count toward the multi-solution guarantee: the chunk's golden
+	# path (and the playtest) walk the non-optional spine, so an optional detour carrying a
+	# choice must not be what proves the stretch is solvable two ways.
 	var choice_nodes: Array[String] = []
 	for node in nodes:
-		if node is Dictionary and _presents_choice(node as Dictionary):
+		if node is Dictionary and not bool((node as Dictionary).get("optional", false)) and _presents_choice(node as Dictionary):
 			choice_nodes.append(str((node as Dictionary).get("id", "")))
 
 	var solution_paths := []
@@ -80,6 +83,12 @@ static func analyze(nodes: Array, tier := "teaching", progression_stage := 99) -
 			"code": "spotlight_out_of_stage",
 			"message": "The full-party path relies on a technique from beyond the stretch's progression stage — first-play solutions must stay in-stage.",
 		})
+	if tier in REQUIRED_TIERS and choice_nodes.is_empty():
+		warnings.append({
+			"severity": "error",
+			"code": "no_puzzle_nodes",
+			"message": "Tier '%s' must contain at least one multi-solution puzzle node, but the spine has none (an empty/degenerate archetype pool)." % tier,
+		})
 	if required and not multi_solution:
 		warnings.append({
 			"severity": "error",
@@ -105,6 +114,7 @@ static func analyze(nodes: Array, tier := "teaching", progression_stage := 99) -
 		"bare_pair_solvable": bare_pair_solvable,
 		"spotlight_within_stage": spotlight_within_stage,
 		"shadow_uses_future_technique": shadow_uses_future,
+		"shadow_techniques": shadow.get("techniques", []),
 		"multi_solution": multi_solution,
 		"distinct_nodes": distinct_nodes,
 		"distinct_node_count": distinct_nodes.size(),
@@ -114,8 +124,10 @@ static func analyze(nodes: Array, tier := "teaching", progression_stage := 99) -
 	}
 
 
-## Every node must keep at least one approach the bare Aster+Peris pair can field with
-## NO placed tool, so the pair can always finish regardless of stage or what was placed.
+## Every node must keep at least one approach the bare Aster+Peris pair can field with NO
+## placed tool — a CAPABILITY guarantee that the pair can always finish (the design law).
+## The qualifying approach may be a harder, later-stage expert technique; the pair being
+## able to do it at all is what matters here, not that it is stage-appropriate.
 static func _bare_pair_solvable(nodes: Array) -> bool:
 	var bare: Dictionary = CapabilitiesScript.bare_pair_capabilities()
 	for node in nodes:
@@ -150,6 +162,7 @@ static func _solve_loadout(nodes: Array, loadout: Dictionary, progression_stage 
 	var max_stage_used := 0
 	var uses_future := false
 	var within_stage := true
+	var techniques: Array[String] = []
 	for node in nodes:
 		if not (node is Dictionary):
 			continue
@@ -174,16 +187,24 @@ static func _solve_loadout(nodes: Array, loadout: Dictionary, progression_stage 
 		for tag in CapabilitiesScript.node_content_capabilities(node_dict).keys():
 			available[tag] = true
 		var chosen := {}
+		var first_capable := {}  # first approach the party could field IGNORING the stage gate
 		for approach in approaches:
 			if not (approach is Dictionary):
 				continue
 			var ap := approach as Dictionary
-			var ap_min_stage := int(ap.get("min_stage", node_stage))
-			if enforce_stage and ap_min_stage > progression_stage:
-				continue  # technique not yet taught at this point in the campaign
-			if CapabilitiesScript.requirements_met(ap.get("requires", []), available):
-				chosen = ap
-				break
+			if not CapabilitiesScript.requirements_met(ap.get("requires", []), available):
+				continue
+			if first_capable.is_empty():
+				first_capable = ap
+			if enforce_stage and int(ap.get("min_stage", node_stage)) > progression_stage:
+				continue  # capable, but this technique is not taught yet at this stage
+			chosen = ap
+			break
+		# If the stage gate pushed the loadout off the approach it would naturally take, the
+		# first-play party could not solve this node on its own stage-appropriate line.
+		if enforce_stage and not chosen.is_empty() and not first_capable.is_empty() \
+				and str(chosen.get("id", "")) != str(first_capable.get("id", "")):
+			within_stage = false
 		if chosen.is_empty():
 			blocked.append(node_id)
 			solvable = false
@@ -205,8 +226,9 @@ static func _solve_loadout(nodes: Array, loadout: Dictionary, progression_stage 
 		max_stage_used = maxi(max_stage_used, chosen_min_stage)
 		if stage_ahead:
 			uses_future = true
-			if enforce_stage:
-				within_stage = false
+		var taught := str(chosen.get("taught_by", ""))
+		if taught != "" and not techniques.has(taught):
+			techniques.append(taught)
 		approach_per_node.append({
 			"node": node_id,
 			"role": str(node_dict.get("role", "")),
@@ -235,6 +257,7 @@ static func _solve_loadout(nodes: Array, loadout: Dictionary, progression_stage 
 		"max_stage_used": max_stage_used,
 		"uses_future_technique": uses_future,
 		"within_stage": within_stage,
+		"techniques": techniques,
 	}
 
 

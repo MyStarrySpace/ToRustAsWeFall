@@ -1402,6 +1402,7 @@
 					"endo"
 				],
 				"solvable": true,
+				"techniques": [],
 				"total_risk": 8,
 				"uses_future_technique": false,
 				"within_stage": true
@@ -1613,6 +1614,14 @@
 					"peris"
 				],
 				"solvable": true,
+				"techniques": [
+					"flora_tending",
+					"nested_flora_zone",
+					"overlay_timing",
+					"split_carry",
+					"false_pattern_spoof",
+					"terminal_cache_recall"
+				],
 				"total_risk": 10,
 				"uses_future_technique": true,
 				"within_stage": true
@@ -1620,25 +1629,21 @@
 		],
 		"solution_summary": {
 			"bare_pair_solvable": true,
-			"choice_node_count": 8,
+			"choice_node_count": 6,
 			"choice_nodes": [
 				"node_01",
 				"node_02",
-				"node_03",
 				"node_04",
 				"node_05",
-				"node_06",
 				"node_07",
 				"node_08"
 			],
-			"distinct_node_count": 8,
+			"distinct_node_count": 6,
 			"distinct_nodes": [
 				"node_01",
 				"node_02",
-				"node_03",
 				"node_04",
 				"node_05",
-				"node_06",
 				"node_07",
 				"node_08"
 			],
@@ -1647,6 +1652,14 @@
 			"multi_solution_required": true,
 			"progression_stage": 4,
 			"shadow_solvable": true,
+			"shadow_techniques": [
+				"flora_tending",
+				"nested_flora_zone",
+				"overlay_timing",
+				"split_carry",
+				"false_pattern_spoof",
+				"terminal_cache_recall"
+			],
 			"shadow_uses_future_technique": true,
 			"solvable_loadout_count": 2,
 			"spotlight_within_stage": true

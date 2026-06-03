@@ -411,6 +411,7 @@
 					"endo"
 				],
 				"solvable": true,
+				"techniques": [],
 				"total_risk": 4,
 				"uses_future_technique": false,
 				"within_stage": true
@@ -535,6 +536,10 @@
 					"peris"
 				],
 				"solvable": true,
+				"techniques": [
+					"flora_tending",
+					"split_carry"
+				],
 				"total_risk": 4,
 				"uses_future_technique": true,
 				"within_stage": true
@@ -561,6 +566,10 @@
 			"multi_solution_required": false,
 			"progression_stage": 2,
 			"shadow_solvable": true,
+			"shadow_techniques": [
+				"flora_tending",
+				"split_carry"
+			],
 			"shadow_uses_future_technique": true,
 			"solvable_loadout_count": 2,
 			"spotlight_within_stage": true

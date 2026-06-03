@@ -351,6 +351,7 @@
 					"endo"
 				],
 				"solvable": true,
+				"techniques": [],
 				"total_risk": 2,
 				"uses_future_technique": false,
 				"within_stage": true
@@ -461,6 +462,9 @@
 					"peris"
 				],
 				"solvable": true,
+				"techniques": [
+					"nested_flora_zone"
+				],
 				"total_risk": 4,
 				"uses_future_technique": true,
 				"within_stage": true
@@ -483,6 +487,9 @@
 			"multi_solution_required": false,
 			"progression_stage": 2,
 			"shadow_solvable": true,
+			"shadow_techniques": [
+				"nested_flora_zone"
+			],
 			"shadow_uses_future_technique": true,
 			"solvable_loadout_count": 2,
 			"spotlight_within_stage": true

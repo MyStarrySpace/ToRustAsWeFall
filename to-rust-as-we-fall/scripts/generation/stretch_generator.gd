@@ -93,7 +93,8 @@ static func generate(settings: Dictionary) -> Dictionary:
 	var resolved: Dictionary = validation.get("resolved_settings", {})
 	var budget: Dictionary = resolved.get("budget", {})
 	var rng = SeededRngScript.new(int(resolved.get("seed", 0)))
-	resolved["progression_stage"] = _resolve_progression_stage(catalog, resolved)
+	# progression_stage is resolved in validate_settings (so it can hard-error an
+	# empty stage pool); resolved already carries it.
 
 	var palette_usage := _choose_palette_usage(catalog, resolved, budget, rng)
 	var random_walk := _build_archetype_random_walk(catalog, resolved, budget, rng)
@@ -147,6 +148,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 				"bare_pair_solvable": solution.get("bare_pair_solvable", false),
 				"spotlight_within_stage": solution.get("spotlight_within_stage", true),
 				"shadow_uses_future_technique": solution.get("shadow_uses_future_technique", false),
+				"shadow_techniques": solution.get("shadow_techniques", []),
 				"progression_stage": solution.get("progression_stage", int(resolved.get("progression_stage", 99))),
 				"distinct_node_count": solution.get("distinct_node_count", 0),
 				"distinct_nodes": solution.get("distinct_nodes", []),
@@ -187,6 +189,7 @@ static func validate_settings(settings: Dictionary) -> Dictionary:
 		errors.append_array(catalog_validation.get("errors", []))
 
 	var resolved := _resolve_settings(settings)
+	resolved["progression_stage"] = _resolve_progression_stage(catalog, resolved)
 	var limitations: Dictionary = resolved.get("limitations", {})
 	for mode in ["allowed", "blocked", "required"]:
 		var group: Dictionary = limitations.get(mode, {})
@@ -215,6 +218,15 @@ static func validate_settings(settings: Dictionary) -> Dictionary:
 		var available := _available_values(catalog, category, allowed, blocked)
 		if available.is_empty() and _category_slot_budget(category, resolved.get("budget", {})) > 0:
 			errors.append("No available values for %s after limitations" % category)
+		if category == "archetypes" and not available.is_empty():
+			var prog := int(resolved.get("progression_stage", 99))
+			var composition: Dictionary = resolved.get("composition", {})
+			var has_seed := not required.is_empty() \
+				or not (composition.get("chain", []) as Array).is_empty() \
+				or str(composition.get("random_walk", {}).get("start_archetype", "")) != ""
+			if not has_seed and int(resolved.get("budget", {}).get("archetype_depth", 0)) > 0 \
+					and _filter_archetypes_by_stage(catalog, available, prog).is_empty():
+				errors.append("No archetypes available at progression stage %d after the stage filter; raise progression_stage or allow earlier-stage archetypes." % prog)
 
 	_validate_composition(catalog, resolved.get("composition", {}), limitations, resolved.get("budget", {}), errors)
 

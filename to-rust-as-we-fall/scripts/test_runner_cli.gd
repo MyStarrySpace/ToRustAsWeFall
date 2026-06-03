@@ -1774,6 +1774,31 @@ func _test_generated_multi_solution() -> void:
 		spot_max = maxi(spot_max, int((e as Dictionary).get("min_stage", 0)))
 	_assert_true(spot_max <= 2, "No full-party approach exceeds progression stage 2")
 	_assert_true(int(f_shadow.get("max_stage_used", 0)) > 2, "The shadow path commits to a stage-3+ technique")
+	_assert_true((f_shadow.get("techniques", []) as Array).size() > 0, "The shadow path surfaces the technique(s) it relies on (teaching-beat transparency)")
+
+	# Stage-filter guard: an allow-list of only later-game archetypes at an early stage is a
+	# HARD error, not a silently puzzle-free corridor returned as success.
+	var empty_pool_spec: Dictionary = StretchGeneratorScript.generate({
+		"id": "generated_empty_stage_pool",
+		"seed": 5,
+		"complexity_tier": "teaching",
+		"progression_stage": 1,
+		"limitations": {"allowed": {"archetypes": ["7", "10"]}},
+	})
+	_assert_true(not bool(empty_pool_spec.get("success", true)), "An all-later-game allow-list at an early stage fails validation, not a puzzle-free spine")
+
+	# within_stage is meaningful: if a node's only specialist primary is beyond the stage,
+	# the full party is forced onto a pair approach and within_stage reports false.
+	var synth_nodes := [
+		{"id": "entry", "role": "boundary", "approaches": []},
+		{"id": "n1", "role": "danger", "stage": 2, "approaches": [
+			{"id": "future_primary", "party": "specialist", "kind": "primary", "requires": ["combat"], "min_stage": 5},
+			{"id": "pair_now", "party": "aster_peris", "kind": "shadow", "requires": ["overlay", "cover"], "min_stage": 2},
+		]},
+		{"id": "exit_shelter", "role": "shelter_arrival", "approaches": []},
+	]
+	var synth: Dictionary = StretchSolutionSolverScript.analyze(synth_nodes, "standard", 3)
+	_assert_true(not bool(synth.get("spotlight_within_stage", true)), "When the only full-party primary is beyond stage, spotlight_within_stage is false (not dead-true)")
 
 	# Catalog invariant: every archetype keeps an approach the bare pair can field with no
 	# placed tool, so the pair can ALWAYS finish (the design's "not optional" shadow law).

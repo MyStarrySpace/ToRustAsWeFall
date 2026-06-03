@@ -75,10 +75,13 @@ static func _build_solution(path: Dictionary, node_cells: Dictionary) -> Diction
 			var offset: Array = FORMATION.get(member, [0.0, 0.0])
 			characters[member] = [float(cell[0]) + float(offset[0]), float(cell[1]) + float(offset[1])]
 		var label := str((entry as Dictionary).get("label", ""))
-		var expert := bool((entry as Dictionary).get("expert", false)) or bool((entry as Dictionary).get("stage_ahead", false))
+		var expert := bool((entry as Dictionary).get("expert", false))
+		var stage_ahead := bool((entry as Dictionary).get("stage_ahead", false))
 		var caption := node_id if label == "" else "%s — %s" % [node_id, label]
-		if expert:
+		if stage_ahead:
 			caption += "  ⟐ expert: later-stage technique"
+		elif expert:
+			caption += "  ⟐ expert technique"
 		frames.append({
 			"t": t,
 			"node": node_id,
