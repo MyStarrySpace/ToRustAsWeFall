@@ -16,6 +16,7 @@ const StretchArchetypeCatalogScript = preload("res://scripts/generation/stretch_
 const StretchGeneratorScript = preload("res://scripts/generation/stretch_generator.gd")
 const StretchSolutionSolverScript = preload("res://scripts/generation/stretch_solution_solver.gd")
 const StretchReplayBuilderScript = preload("res://scripts/generation/stretch_replay_builder.gd")
+const StretchCapabilitiesScript = preload("res://scripts/generation/stretch_capabilities.gd")
 const StretchGenerationPlaytestLoopScript = preload("res://scripts/generation/stretch_generation_playtest_loop.gd")
 const PlaythroughAnimationHtmlRendererScript = preload("res://scripts/generation/playthrough_animation_html_renderer.gd")
 const NavigationGraphScript = preload("res://scripts/system/core/navigation_graph.gd")
@@ -1681,6 +1682,8 @@ func _test_generated_multi_solution() -> void:
 		_assert_true(bool(summary.get("shadow_solvable", false)), "%s: Aster+Peris can solve the whole stretch" % tier)
 		_assert_equals(int(summary.get("solvable_loadout_count", 0)), 2, "%s: both canonical loadouts solve" % tier)
 		_assert_true(bool(summary.get("multi_solution_ok", false)), "%s: multi-solution tier gate is satisfied" % tier)
+		_assert_true(bool(summary.get("bare_pair_solvable", false)), "%s: every node is solvable by the bare Aster+Peris pair" % tier)
+		_assert_true(bool(summary.get("spotlight_within_stage", false)), "%s: the first-play full party stays within its progression stage" % tier)
 
 		var paths: Array = spec.get("headless", {}).get("solution_paths", [])
 		_assert_equals(paths.size(), 2, "%s: two solution paths are emitted" % tier)
@@ -1741,6 +1744,51 @@ func _test_generated_multi_solution() -> void:
 	var narrative_summary: Dictionary = narrative_spec.get("headless", {}).get("solution_summary", {})
 	_assert_equals(int(narrative_summary.get("choice_node_count", 0)), 0, "Narrative-only stretch has no puzzle choice nodes")
 	_assert_true(bool(narrative_summary.get("multi_solution_ok", false)), "Narrative-only stretch passes the tier gate")
+
+	# An early stretch: the Aster+Peris shadow reaches for a LATER-stage (expert) technique
+	# the first-play full party cannot use yet — exactly the requested mastery layer.
+	var future_spec: Dictionary = StretchGeneratorScript.generate({
+		"id": "generated_future_technique",
+		"seed": 1234,
+		"complexity_tier": "teaching",
+		"progression_stage": 2,
+		"limitations": {
+			"required": {"archetypes": ["3"]},
+			"allowed": {"archetypes": ["1", "2", "3", "11"]},
+		},
+	})
+	var future_summary: Dictionary = future_spec.get("headless", {}).get("solution_summary", {})
+	_assert_equals(int(future_spec.get("source", {}).get("progression_stage", 0)), 2, "Early stretch resolves to progression stage 2")
+	_assert_true(bool(future_summary.get("shadow_uses_future_technique", false)), "Shadow path uses a technique from later in the game than the player has reached")
+	_assert_true(bool(future_summary.get("spotlight_within_stage", false)), "Full party stays in-stage even when the shadow goes ahead")
+	var f_spot := {}
+	var f_shadow := {}
+	for p in future_spec.get("headless", {}).get("solution_paths", []):
+		match str((p as Dictionary).get("loadout", "")):
+			"spotlight":
+				f_spot = p
+			"shadow":
+				f_shadow = p
+	var spot_max := 0
+	for e in f_spot.get("approach_per_node", []):
+		spot_max = maxi(spot_max, int((e as Dictionary).get("min_stage", 0)))
+	_assert_true(spot_max <= 2, "No full-party approach exceeds progression stage 2")
+	_assert_true(int(f_shadow.get("max_stage_used", 0)) > 2, "The shadow path commits to a stage-3+ technique")
+
+	# Catalog invariant: every archetype keeps an approach the bare pair can field with no
+	# placed tool, so the pair can ALWAYS finish (the design's "not optional" shadow law).
+	var catalog := StretchArchetypeCatalogScript.new()
+	var bare: Dictionary = StretchCapabilitiesScript.bare_pair_capabilities()
+	for aid in catalog.get_archetype_ids():
+		var arch: Dictionary = catalog.get_archetype(aid)
+		var has_bare := false
+		for ap in arch.get("approaches", []):
+			if not (ap is Dictionary) or str((ap as Dictionary).get("party", "")) == "specialist":
+				continue
+			if StretchCapabilitiesScript.requirements_met((ap as Dictionary).get("requires", []), bare):
+				has_bare = true
+				break
+		_assert_true(has_bare, "Archetype %s keeps a bare-pair shadow approach (universal solvability)" % aid)
 
 func _test_generated_replay() -> void:
 	_test_name = "Generated Replay"

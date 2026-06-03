@@ -35,6 +35,7 @@ var _unsupported_placeholder_count := 0
 var _active_loadout := "spotlight"
 var _active_party: Array[String] = ["aster", "peris", "endo"]
 var _active_capabilities: Dictionary = {}
+var _enforce_stage := true
 var _node_approach_used: Dictionary = {}
 var _blocked_nodes: Array[String] = []
 
@@ -268,10 +269,17 @@ func set_active_loadout(loadout_id: String) -> void:
 			for cid in loadout.get("party", []):
 				_active_party.append(str(cid))
 			_active_capabilities = (loadout.get("base_capabilities", {}) as Dictionary).duplicate()
+			_enforce_stage = bool(loadout.get("enforce_stage", false))
 			return
 	_active_loadout = "spotlight"
 	_active_party = ["aster", "peris", "endo"]
 	_active_capabilities = CapabilitiesScript.party_capabilities(_active_party, true)
+	_enforce_stage = true
+
+## How far the player is assumed to have progressed — the first-play full party may only
+## use techniques taught up to this stage. Read from the spec the generator produced.
+func _progression_stage() -> int:
+	return int(_spec.get("source", {}).get("progression_stage", _spec.get("settings", {}).get("progression_stage", 99)))
 
 ## The first approach the active party can field on this node, given its own
 ## capabilities plus any tool placed on the node. Marked blocked when none fit.
@@ -281,12 +289,19 @@ func _resolve_node_approach(node: Dictionary) -> Dictionary:
 		return {"approach_id": "traverse", "kind": "traverse", "party": "any", "blocked": false}
 	if _active_capabilities.is_empty():
 		set_active_loadout(_active_loadout)
+	var node_stage := int(node.get("stage", 1))
+	var prog := _progression_stage()
 	var available := _active_capabilities.duplicate()
 	for tag in CapabilitiesScript.node_content_capabilities(node).keys():
 		available[tag] = true
 	for approach in approaches:
-		if approach is Dictionary and CapabilitiesScript.requirements_met((approach as Dictionary).get("requires", []), available):
-			var resolved := (approach as Dictionary).duplicate()
+		if not (approach is Dictionary):
+			continue
+		var ap := approach as Dictionary
+		if _enforce_stage and int(ap.get("min_stage", node_stage)) > prog:
+			continue  # technique not yet taught at this point in the campaign
+		if CapabilitiesScript.requirements_met(ap.get("requires", []), available):
+			var resolved := ap.duplicate()
 			resolved["blocked"] = false
 			return resolved
 	return {"approach_id": "", "kind": "blocked", "party": "", "blocked": true}

@@ -65,6 +65,13 @@ const SPOTLIGHT_PARTY := ["aster", "peris", "endo"]
 const SHADOW_PARTY := ["aster", "peris"]
 
 
+## The capabilities Aster + Peris hold on their own, with NO placed tool. Every
+## archetype must keep at least one shadow approach satisfiable by exactly this set, so
+## the minimum pair can finish every puzzle regardless of stage or what the world placed.
+static func bare_pair_capabilities() -> Dictionary:
+	return party_capabilities(SHADOW_PARTY, false)
+
+
 ## All capability tags a set of character ids provides. `include_specialist` adds the
 ## spotlight-only specialist tags (so the full party can take a primary/combat approach).
 static func party_capabilities(character_ids: Array, include_specialist := false) -> Dictionary:
@@ -99,7 +106,10 @@ static func requirements_met(required: Array, available: Dictionary) -> bool:
 
 
 ## The two canonical loadouts, resolved to capability sets, in solver order
-## (spotlight first so it prefers the primary/specialist approach).
+## (spotlight first so it prefers the primary/specialist approach). `enforce_stage`
+## marks the first-play full party: it may only use techniques taught up to the
+## stretch's progression stage. The Aster+Peris shadow is a mastery/second-playthrough
+## run, so it carries full game-wide vocabulary and is NOT stage-gated.
 static func loadouts() -> Array:
 	return [
 		{
@@ -107,11 +117,13 @@ static func loadouts() -> Array:
 			"label": "Full party",
 			"party": SPOTLIGHT_PARTY,
 			"base_capabilities": party_capabilities(SPOTLIGHT_PARTY, true),
+			"enforce_stage": true,
 		},
 		{
 			"id": "shadow",
 			"label": "Aster + Peris (shadow)",
 			"party": SHADOW_PARTY,
 			"base_capabilities": party_capabilities(SHADOW_PARTY, false),
+			"enforce_stage": false,
 		},
 	]

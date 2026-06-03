@@ -27,7 +27,7 @@
 					-1,
 					0
 				],
-				"kind": "flure",
+				"kind": "snapbloom",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -67,7 +67,7 @@
 					11,
 					2
 				],
-				"kind": "flure",
+				"kind": "snapbloom",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -117,7 +117,7 @@
 					23,
 					1
 				],
-				"kind": "flure",
+				"kind": "snapbloom",
 				"level": 1,
 				"support": "implemented"
 			},
@@ -178,7 +178,7 @@
 				"role": "guidance"
 			},
 			{
-				"archetype_id": "4",
+				"archetype_id": "3",
 				"cell": [
 					12,
 					3
@@ -202,7 +202,7 @@
 				"role": "foraging"
 			},
 			{
-				"archetype_id": "4",
+				"archetype_id": "3",
 				"cell": [
 					24,
 					2
@@ -328,6 +328,7 @@
 		]
 	},
 	"multi_solution": true,
+	"progression_stage": 2,
 	"region": "Tutorial Outflow",
 	"schema": "trawf_stretch_replay_v1",
 	"solutions": [
@@ -338,6 +339,7 @@
 				{
 					"approach_id": "traverse",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "entry",
 					"characters": {
 						"aster": [
@@ -353,15 +355,19 @@
 							0.3
 						]
 					},
+					"expert": false,
 					"kind": "traverse",
+					"min_stage": 0,
 					"node": "entry",
 					"risk": "safe",
 					"role": "boundary",
+					"stage_ahead": false,
 					"t": 0.0
 				},
 				{
 					"approach_id": "force_clear",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "node_01 — Force the obstacle open with raw impact",
 					"characters": {
 						"aster": [
@@ -377,16 +383,20 @@
 							1.8
 						]
 					},
+					"expert": false,
 					"kind": "primary",
+					"min_stage": 1,
 					"node": "node_01",
 					"risk": "direct",
 					"role": "guidance",
+					"stage_ahead": false,
 					"t": 1.0
 				},
 				{
-					"approach_id": "loud_draw",
+					"approach_id": "guarded_escort",
 					"blocked": false,
-					"caption": "node_02 — Draw the patrol with a loud combat action",
+					"borrows_from": "",
+					"caption": "node_02 — A combat specialist guards the carrier across the open",
 					"characters": {
 						"aster": [
 							12.0,
@@ -401,15 +411,19 @@
 							3.3
 						]
 					},
+					"expert": false,
 					"kind": "primary",
+					"min_stage": 2,
 					"node": "node_02",
 					"risk": "direct",
 					"role": "route_pressure",
+					"stage_ahead": false,
 					"t": 2.0
 				},
 				{
 					"approach_id": "force_clear",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "node_03 — Force the obstacle open with raw impact",
 					"characters": {
 						"aster": [
@@ -425,16 +439,20 @@
 							0.3
 						]
 					},
+					"expert": false,
 					"kind": "primary",
+					"min_stage": 1,
 					"node": "node_03",
 					"risk": "direct",
 					"role": "foraging",
+					"stage_ahead": false,
 					"t": 3.0
 				},
 				{
-					"approach_id": "loud_draw",
+					"approach_id": "guarded_escort",
 					"blocked": false,
-					"caption": "node_04 — Draw the patrol with a loud combat action",
+					"borrows_from": "",
+					"caption": "node_04 — A combat specialist guards the carrier across the open",
 					"characters": {
 						"aster": [
 							24.0,
@@ -449,15 +467,19 @@
 							1.8
 						]
 					},
+					"expert": false,
 					"kind": "primary",
+					"min_stage": 2,
 					"node": "node_04",
 					"risk": "direct",
 					"role": "danger",
+					"stage_ahead": false,
 					"t": 4.0
 				},
 				{
 					"approach_id": "traverse",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "exit_shelter",
 					"characters": {
 						"aster": [
@@ -473,63 +495,91 @@
 							3.3
 						]
 					},
+					"expert": false,
 					"kind": "traverse",
+					"min_stage": 0,
 					"node": "exit_shelter",
 					"risk": "safe",
 					"role": "shelter_arrival",
+					"stage_ahead": false,
 					"t": 5.0
 				}
 			],
 			"label": "Full party",
 			"loadout": "spotlight",
+			"max_stage_used": 2,
 			"node_approaches": [
 				{
 					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "traverse",
 					"label": "",
+					"min_stage": 0,
 					"node": "entry",
 					"party": "any",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "force_clear",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "primary",
 					"label": "Force the obstacle open with raw impact",
+					"min_stage": 1,
 					"node": "node_01",
 					"party": "specialist",
-					"risk": "direct"
+					"risk": "direct",
+					"stage_ahead": false
 				},
 				{
-					"approach_id": "loud_draw",
+					"approach_id": "guarded_escort",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "primary",
-					"label": "Draw the patrol with a loud combat action",
+					"label": "A combat specialist guards the carrier across the open",
+					"min_stage": 2,
 					"node": "node_02",
 					"party": "specialist",
-					"risk": "direct"
+					"risk": "direct",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "force_clear",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "primary",
 					"label": "Force the obstacle open with raw impact",
+					"min_stage": 1,
 					"node": "node_03",
 					"party": "specialist",
-					"risk": "direct"
+					"risk": "direct",
+					"stage_ahead": false
 				},
 				{
-					"approach_id": "loud_draw",
+					"approach_id": "guarded_escort",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "primary",
-					"label": "Draw the patrol with a loud combat action",
+					"label": "A combat specialist guards the carrier across the open",
+					"min_stage": 2,
 					"node": "node_04",
 					"party": "specialist",
-					"risk": "direct"
+					"risk": "direct",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "traverse",
 					"label": "",
+					"min_stage": 0,
 					"node": "exit_shelter",
 					"party": "any",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				}
 			],
 			"party": [
@@ -537,7 +587,8 @@
 				"peris",
 				"endo"
 			],
-			"solvable": true
+			"solvable": true,
+			"uses_future_technique": false
 		},
 		{
 			"blocked_nodes": [],
@@ -546,6 +597,7 @@
 				{
 					"approach_id": "traverse",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "entry",
 					"characters": {
 						"aster": [
@@ -557,15 +609,19 @@
 							0.3
 						]
 					},
+					"expert": false,
 					"kind": "traverse",
+					"min_stage": 0,
 					"node": "entry",
 					"risk": "safe",
 					"role": "boundary",
+					"stage_ahead": false,
 					"t": 0.0
 				},
 				{
 					"approach_id": "flora_finesse",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "node_01 — Peris grows or tends the plant tool; Aster confirms the target",
 					"characters": {
 						"aster": [
@@ -577,16 +633,20 @@
 							1.8
 						]
 					},
+					"expert": false,
 					"kind": "shadow",
+					"min_stage": 1,
 					"node": "node_01",
 					"risk": "safe",
 					"role": "guidance",
+					"stage_ahead": false,
 					"t": 1.0
 				},
 				{
-					"approach_id": "signal_split",
+					"approach_id": "split_carry",
 					"blocked": false,
-					"caption": "node_02 — Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"borrows_from": "5",
+					"caption": "node_02 — Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention  ⟐ expert: later-stage technique",
 					"characters": {
 						"aster": [
 							12.0,
@@ -597,15 +657,19 @@
 							3.3
 						]
 					},
-					"kind": "shadow",
+					"expert": true,
+					"kind": "shadow_expert",
+					"min_stage": 3,
 					"node": "node_02",
-					"risk": "safe",
+					"risk": "risky",
 					"role": "route_pressure",
+					"stage_ahead": true,
 					"t": 2.0
 				},
 				{
 					"approach_id": "flora_finesse",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "node_03 — Peris grows or tends the plant tool; Aster confirms the target",
 					"characters": {
 						"aster": [
@@ -617,16 +681,20 @@
 							0.3
 						]
 					},
+					"expert": false,
 					"kind": "shadow",
+					"min_stage": 1,
 					"node": "node_03",
 					"risk": "safe",
 					"role": "foraging",
+					"stage_ahead": false,
 					"t": 3.0
 				},
 				{
-					"approach_id": "signal_split",
+					"approach_id": "split_carry",
 					"blocked": false,
-					"caption": "node_04 — Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"borrows_from": "5",
+					"caption": "node_04 — Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention  ⟐ expert: later-stage technique",
 					"characters": {
 						"aster": [
 							24.0,
@@ -637,15 +705,19 @@
 							1.8
 						]
 					},
-					"kind": "shadow",
+					"expert": true,
+					"kind": "shadow_expert",
+					"min_stage": 3,
 					"node": "node_04",
-					"risk": "safe",
+					"risk": "risky",
 					"role": "danger",
+					"stage_ahead": true,
 					"t": 4.0
 				},
 				{
 					"approach_id": "traverse",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "exit_shelter",
 					"characters": {
 						"aster": [
@@ -657,70 +729,99 @@
 							3.3
 						]
 					},
+					"expert": false,
 					"kind": "traverse",
+					"min_stage": 0,
 					"node": "exit_shelter",
 					"risk": "safe",
 					"role": "shelter_arrival",
+					"stage_ahead": false,
 					"t": 5.0
 				}
 			],
 			"label": "Aster + Peris (shadow)",
 			"loadout": "shadow",
+			"max_stage_used": 3,
 			"node_approaches": [
 				{
 					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "traverse",
 					"label": "",
+					"min_stage": 0,
 					"node": "entry",
 					"party": "any",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "flora_finesse",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "shadow",
 					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"min_stage": 1,
 					"node": "node_01",
 					"party": "aster_peris",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				},
 				{
-					"approach_id": "signal_split",
-					"kind": "shadow",
-					"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"approach_id": "split_carry",
+					"borrows_from": "5",
+					"expert": true,
+					"kind": "shadow_expert",
+					"label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
+					"min_stage": 3,
 					"node": "node_02",
 					"party": "aster_peris",
-					"risk": "safe"
+					"risk": "risky",
+					"stage_ahead": true
 				},
 				{
 					"approach_id": "flora_finesse",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "shadow",
 					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"min_stage": 1,
 					"node": "node_03",
 					"party": "aster_peris",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				},
 				{
-					"approach_id": "signal_split",
-					"kind": "shadow",
-					"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"approach_id": "split_carry",
+					"borrows_from": "5",
+					"expert": true,
+					"kind": "shadow_expert",
+					"label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
+					"min_stage": 3,
 					"node": "node_04",
 					"party": "aster_peris",
-					"risk": "safe"
+					"risk": "risky",
+					"stage_ahead": true
 				},
 				{
 					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "traverse",
 					"label": "",
+					"min_stage": 0,
 					"node": "exit_shelter",
 					"party": "any",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				}
 			],
 			"party": [
 				"aster",
 				"peris"
 			],
-			"solvable": true
+			"solvable": true,
+			"uses_future_technique": true
 		}
 	],
 	"spec_id": "generated_sample_teaching_first_fork",

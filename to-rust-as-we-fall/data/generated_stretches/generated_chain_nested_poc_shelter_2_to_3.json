@@ -58,6 +58,7 @@
 					"id": "redirect_combat",
 					"kind": "primary",
 					"label": "Bait a combat specialist's charge into the target",
+					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
 						"combat"
@@ -70,9 +71,27 @@
 					]
 				},
 				{
+					"borrows_from": "7",
+					"expert": true,
+					"id": "overlay_combustion",
+					"kind": "shadow_expert",
+					"label": "Aster predicts the charge window on the overlay and seeds a gasafoetida bloom on the impact line; the enemy demolishes the barrier with its own momentum while Peris reads it from cover",
+					"min_stage": 4.0,
+					"party": "aster_peris",
+					"requires": [
+						"overlay",
+						"timing",
+						"combustible"
+					],
+					"risk": "risky",
+					"taught_by": "charge_window_prediction",
+					"uses": []
+				},
+				{
 					"id": "overlay_cover",
 					"kind": "shadow",
 					"label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover",
+					"min_stage": 2.0,
 					"party": "aster_peris",
 					"requires": [
 						"overlay",
@@ -100,6 +119,7 @@
 				"aster_peris": true,
 				"notes": "Use overlay timing plus flora or scarpet cover to substitute for a combat specialist."
 			},
+			"stage": 2,
 			"step_count": 6,
 			"tags": [
 				"enemy",
@@ -115,6 +135,7 @@
 					"id": "force_clear",
 					"kind": "primary",
 					"label": "Force the obstacle open with raw impact",
+					"min_stage": 1.0,
 					"party": "specialist",
 					"requires": [
 						"impact"
@@ -126,9 +147,26 @@
 					]
 				},
 				{
+					"borrows_from": "10",
+					"expert": true,
+					"id": "flora_chain_trap",
+					"kind": "shadow_expert",
+					"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
+					"min_stage": 5.0,
+					"party": "aster_peris",
+					"requires": [
+						"flora",
+						"lure"
+					],
+					"risk": "risky",
+					"taught_by": "nested_flora_zone",
+					"uses": []
+				},
+				{
 					"id": "flora_finesse",
 					"kind": "shadow",
 					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"min_stage": 1.0,
 					"party": "aster_peris",
 					"requires": [
 						"flora"
@@ -156,6 +194,7 @@
 				"aster_peris": true,
 				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
 			},
+			"stage": 1,
 			"step_count": 5,
 			"tags": [
 				"flora",
@@ -171,6 +210,7 @@
 					"id": "guarded_escort",
 					"kind": "primary",
 					"label": "A combat specialist guards the carrier across the open",
+					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
 						"combat"
@@ -182,9 +222,27 @@
 					]
 				},
 				{
+					"borrows_from": "5",
+					"expert": true,
+					"id": "split_carry",
+					"kind": "shadow_expert",
+					"label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
+					"min_stage": 3.0,
+					"party": "aster_peris",
+					"requires": [
+						"carry",
+						"cover",
+						"data"
+					],
+					"risk": "risky",
+					"taught_by": "split_carry",
+					"uses": []
+				},
+				{
 					"id": "endo_lane",
 					"kind": "primary",
 					"label": "Endo bridges or repairs a protected carry lane",
+					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
 						"barrier"
@@ -199,6 +257,7 @@
 					"id": "drag_mask",
 					"kind": "shadow",
 					"label": "Drag the load along scarpet-masked routes with slow recovery windows",
+					"min_stage": 2.0,
 					"party": "aster_peris",
 					"requires": [
 						"carry",
@@ -225,6 +284,7 @@
 				"aster_peris": true,
 				"notes": "Use drag routes, scarpet masking, and slower recovery windows."
 			},
+			"stage": 2,
 			"step_count": 5,
 			"tags": [
 				"carry",
@@ -240,6 +300,7 @@
 					"id": "combat_retrieval",
 					"kind": "primary",
 					"label": "Fight through to retrieve the scattered fragments",
+					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
 						"combat"
@@ -251,9 +312,27 @@
 					]
 				},
 				{
+					"borrows_from": "8",
+					"expert": true,
+					"id": "terminal_cache_recall",
+					"kind": "shadow_expert",
+					"label": "Skip the scavenger hunt: Aster pulls the missing fragment from an AST terminal's cached records, reconstructing the whole from the network",
+					"min_stage": 3.0,
+					"party": "aster_peris",
+					"requires": [
+						"terminal",
+						"scan",
+						"data"
+					],
+					"risk": "risky",
+					"taught_by": "terminal_cache_recall",
+					"uses": []
+				},
+				{
 					"id": "scan_preserve",
 					"kind": "shadow",
 					"label": "Aster reads the hidden overlay structure; Peris preserves the relational context",
+					"min_stage": 3.0,
 					"party": "aster_peris",
 					"requires": [
 						"scan",
@@ -281,6 +360,7 @@
 				"aster_peris": true,
 				"notes": "Aster finds hidden structure; Peris preserves relational or flora context."
 			},
+			"stage": 3,
 			"step_count": 5,
 			"tags": [
 				"fragments",
@@ -296,6 +376,7 @@
 					"id": "loud_draw",
 					"kind": "primary",
 					"label": "Draw the patrol with a loud combat action",
+					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
 						"combat"
@@ -307,9 +388,27 @@
 					]
 				},
 				{
+					"borrows_from": "6",
+					"expert": true,
+					"id": "false_pattern_spoof",
+					"kind": "shadow_expert",
+					"label": "Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for",
+					"min_stage": 3.0,
+					"party": "aster_peris",
+					"requires": [
+						"signal",
+						"overlay",
+						"scan"
+					],
+					"risk": "risky",
+					"taught_by": "false_pattern_spoof",
+					"uses": []
+				},
+				{
 					"id": "signal_split",
 					"kind": "shadow",
 					"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"min_stage": 3.0,
 					"party": "aster_peris",
 					"requires": [
 						"electrical",
@@ -332,6 +431,7 @@
 				"aster_peris": true,
 				"notes": "Aster provides electrical/data distraction while Peris performs the physical or flora task."
 			},
+			"stage": 3,
 			"step_count": 8,
 			"tags": [
 				"patrol",
@@ -561,8 +661,11 @@
 					{
 						"approach_id": "redirect_combat",
 						"blocked": false,
+						"borrows_from": "",
+						"expert": false,
 						"kind": "primary",
 						"label": "Bait a combat specialist's charge into the target",
+						"min_stage": 2,
 						"node": "node_01",
 						"party": "specialist",
 						"requires": [
@@ -570,6 +673,7 @@
 						],
 						"risk": "direct",
 						"role": "guidance",
+						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
 							"kill_enemy",
@@ -579,8 +683,11 @@
 					{
 						"approach_id": "force_clear",
 						"blocked": false,
+						"borrows_from": "",
+						"expert": false,
 						"kind": "primary",
 						"label": "Force the obstacle open with raw impact",
+						"min_stage": 1,
 						"node": "node_02",
 						"party": "specialist",
 						"requires": [
@@ -588,6 +695,7 @@
 						],
 						"risk": "direct",
 						"role": "route_pressure",
+						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
 							"destroy"
@@ -596,8 +704,11 @@
 					{
 						"approach_id": "guarded_escort",
 						"blocked": false,
+						"borrows_from": "",
+						"expert": false,
 						"kind": "primary",
 						"label": "A combat specialist guards the carrier across the open",
+						"min_stage": 2,
 						"node": "node_03",
 						"party": "specialist",
 						"requires": [
@@ -605,6 +716,7 @@
 						],
 						"risk": "direct",
 						"role": "foraging",
+						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
 							"critical_resource"
@@ -613,8 +725,11 @@
 					{
 						"approach_id": "combat_retrieval",
 						"blocked": false,
+						"borrows_from": "",
+						"expert": false,
 						"kind": "primary",
 						"label": "Fight through to retrieve the scattered fragments",
+						"min_stage": 3,
 						"node": "node_04",
 						"party": "specialist",
 						"requires": [
@@ -622,6 +737,7 @@
 						],
 						"risk": "direct",
 						"role": "danger",
+						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
 							"combat_retrieval"
@@ -630,8 +746,11 @@
 					{
 						"approach_id": "loud_draw",
 						"blocked": false,
+						"borrows_from": "",
+						"expert": false,
 						"kind": "primary",
 						"label": "Draw the patrol with a loud combat action",
+						"min_stage": 3,
 						"node": "node_05",
 						"party": "specialist",
 						"requires": [
@@ -639,6 +758,7 @@
 						],
 						"risk": "direct",
 						"role": "shortcut",
+						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
 							"loud_action"
@@ -658,13 +778,16 @@
 				"blocked_nodes": [],
 				"label": "Full party",
 				"loadout": "spotlight",
+				"max_stage_used": 3,
 				"party": [
 					"aster",
 					"peris",
 					"endo"
 				],
 				"solvable": true,
-				"total_risk": 5
+				"total_risk": 5,
+				"uses_future_technique": false,
+				"within_stage": true
 			},
 			{
 				"approach_per_node": [
@@ -681,8 +804,11 @@
 					{
 						"approach_id": "overlay_cover",
 						"blocked": false,
+						"borrows_from": "",
+						"expert": false,
 						"kind": "shadow",
 						"label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover",
+						"min_stage": 2,
 						"node": "node_01",
 						"party": "aster_peris",
 						"requires": [
@@ -691,6 +817,7 @@
 						],
 						"risk": "risky",
 						"role": "guidance",
+						"stage_ahead": false,
 						"taught_by": "overlay_timing",
 						"uses": [
 							"reveal_plant",
@@ -700,8 +827,11 @@
 					{
 						"approach_id": "flora_finesse",
 						"blocked": false,
+						"borrows_from": "",
+						"expert": false,
 						"kind": "shadow",
 						"label": "Peris grows or tends the plant tool; Aster confirms the target",
+						"min_stage": 1,
 						"node": "node_02",
 						"party": "aster_peris",
 						"requires": [
@@ -709,6 +839,7 @@
 						],
 						"risk": "safe",
 						"role": "route_pressure",
+						"stage_ahead": false,
 						"taught_by": "flora_tending",
 						"uses": [
 							"flure_iron_decoy",
@@ -717,60 +848,67 @@
 						]
 					},
 					{
-						"approach_id": "drag_mask",
+						"approach_id": "split_carry",
 						"blocked": false,
-						"kind": "shadow",
-						"label": "Drag the load along scarpet-masked routes with slow recovery windows",
+						"borrows_from": "5",
+						"expert": true,
+						"kind": "shadow_expert",
+						"label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
+						"min_stage": 3,
 						"node": "node_03",
 						"party": "aster_peris",
 						"requires": [
 							"carry",
-							"cover"
+							"cover",
+							"data"
 						],
 						"risk": "risky",
 						"role": "foraging",
-						"taught_by": "drag_routes",
-						"uses": [
-							"puzzle_piece"
-						]
+						"stage_ahead": false,
+						"taught_by": "split_carry",
+						"uses": []
 					},
 					{
-						"approach_id": "scan_preserve",
+						"approach_id": "terminal_cache_recall",
 						"blocked": false,
-						"kind": "shadow",
-						"label": "Aster reads the hidden overlay structure; Peris preserves the relational context",
+						"borrows_from": "8",
+						"expert": true,
+						"kind": "shadow_expert",
+						"label": "Skip the scavenger hunt: Aster pulls the missing fragment from an AST terminal's cached records, reconstructing the whole from the network",
+						"min_stage": 3,
 						"node": "node_04",
 						"party": "aster_peris",
 						"requires": [
+							"terminal",
 							"scan",
-							"flora"
+							"data"
 						],
-						"risk": "safe",
+						"risk": "risky",
 						"role": "danger",
-						"taught_by": "overlay_reading",
-						"uses": [
-							"hidden_overlay",
-							"memory_pressure"
-						]
+						"stage_ahead": false,
+						"taught_by": "terminal_cache_recall",
+						"uses": []
 					},
 					{
-						"approach_id": "signal_split",
+						"approach_id": "false_pattern_spoof",
 						"blocked": false,
-						"kind": "shadow",
-						"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+						"borrows_from": "6",
+						"expert": true,
+						"kind": "shadow_expert",
+						"label": "Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for",
+						"min_stage": 3,
 						"node": "node_05",
 						"party": "aster_peris",
 						"requires": [
-							"electrical",
-							"flora"
+							"signal",
+							"overlay",
+							"scan"
 						],
-						"risk": "safe",
+						"risk": "risky",
 						"role": "shortcut",
-						"taught_by": "signal_decoy",
-						"uses": [
-							"electrical_signature",
-							"plant_tending_task"
-						]
+						"stage_ahead": false,
+						"taught_by": "false_pattern_spoof",
+						"uses": []
 					},
 					{
 						"approach_id": "traverse",
@@ -786,15 +924,19 @@
 				"blocked_nodes": [],
 				"label": "Aster + Peris (shadow)",
 				"loadout": "shadow",
+				"max_stage_used": 3,
 				"party": [
 					"aster",
 					"peris"
 				],
 				"solvable": true,
-				"total_risk": 4
+				"total_risk": 8,
+				"uses_future_technique": false,
+				"within_stage": true
 			}
 		],
 		"solution_summary": {
+			"bare_pair_solvable": true,
 			"choice_node_count": 5,
 			"choice_nodes": [
 				"node_01",
@@ -814,8 +956,11 @@
 			"multi_solution": true,
 			"multi_solution_ok": true,
 			"multi_solution_required": false,
+			"progression_stage": 3,
 			"shadow_solvable": true,
-			"solvable_loadout_count": 2
+			"shadow_uses_future_technique": false,
+			"solvable_loadout_count": 2,
+			"spotlight_within_stage": true
 		},
 		"state_paths": [
 			"chunk.generation.spec_id",
@@ -1512,6 +1657,7 @@
 				"peris": "Tend the flure and hushbloom so the carrier never needs a combat-only solution."
 			},
 			"shortcut": false,
+			"stage": 1,
 			"structures": [
 				"shelter"
 			],
@@ -1535,6 +1681,7 @@
 					"id": "redirect_combat",
 					"kind": "primary",
 					"label": "Bait a combat specialist's charge into the target",
+					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
 						"combat"
@@ -1547,9 +1694,27 @@
 					]
 				},
 				{
+					"borrows_from": "7",
+					"expert": true,
+					"id": "overlay_combustion",
+					"kind": "shadow_expert",
+					"label": "Aster predicts the charge window on the overlay and seeds a gasafoetida bloom on the impact line; the enemy demolishes the barrier with its own momentum while Peris reads it from cover",
+					"min_stage": 4.0,
+					"party": "aster_peris",
+					"requires": [
+						"overlay",
+						"timing",
+						"combustible"
+					],
+					"risk": "risky",
+					"taught_by": "charge_window_prediction",
+					"uses": []
+				},
+				{
 					"id": "overlay_cover",
 					"kind": "shadow",
 					"label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover",
+					"min_stage": 2.0,
 					"party": "aster_peris",
 					"requires": [
 						"overlay",
@@ -1659,6 +1824,7 @@
 				"notes": "Use overlay timing plus flora or scarpet cover to substitute for a combat specialist."
 			},
 			"shortcut": false,
+			"stage": 2,
 			"structures": [
 				"terminal"
 			],
@@ -1682,6 +1848,7 @@
 					"id": "force_clear",
 					"kind": "primary",
 					"label": "Force the obstacle open with raw impact",
+					"min_stage": 1.0,
 					"party": "specialist",
 					"requires": [
 						"impact"
@@ -1693,9 +1860,26 @@
 					]
 				},
 				{
+					"borrows_from": "10",
+					"expert": true,
+					"id": "flora_chain_trap",
+					"kind": "shadow_expert",
+					"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
+					"min_stage": 5.0,
+					"party": "aster_peris",
+					"requires": [
+						"flora",
+						"lure"
+					],
+					"risk": "risky",
+					"taught_by": "nested_flora_zone",
+					"uses": []
+				},
+				{
 					"id": "flora_finesse",
 					"kind": "shadow",
 					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"min_stage": 1.0,
 					"party": "aster_peris",
 					"requires": [
 						"flora"
@@ -1831,6 +2015,7 @@
 				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
 			},
 			"shortcut": false,
+			"stage": 1,
 			"structures": [
 				"terminal"
 			],
@@ -1854,6 +2039,7 @@
 					"id": "guarded_escort",
 					"kind": "primary",
 					"label": "A combat specialist guards the carrier across the open",
+					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
 						"combat"
@@ -1865,9 +2051,27 @@
 					]
 				},
 				{
+					"borrows_from": "5",
+					"expert": true,
+					"id": "split_carry",
+					"kind": "shadow_expert",
+					"label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
+					"min_stage": 3.0,
+					"party": "aster_peris",
+					"requires": [
+						"carry",
+						"cover",
+						"data"
+					],
+					"risk": "risky",
+					"taught_by": "split_carry",
+					"uses": []
+				},
+				{
 					"id": "endo_lane",
 					"kind": "primary",
 					"label": "Endo bridges or repairs a protected carry lane",
+					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
 						"barrier"
@@ -1882,6 +2086,7 @@
 					"id": "drag_mask",
 					"kind": "shadow",
 					"label": "Drag the load along scarpet-masked routes with slow recovery windows",
+					"min_stage": 2.0,
 					"party": "aster_peris",
 					"requires": [
 						"carry",
@@ -2004,6 +2209,7 @@
 				"notes": "Use drag routes, scarpet masking, and slower recovery windows."
 			},
 			"shortcut": false,
+			"stage": 2,
 			"structures": [
 				"forage_cache"
 			],
@@ -2027,6 +2233,7 @@
 					"id": "combat_retrieval",
 					"kind": "primary",
 					"label": "Fight through to retrieve the scattered fragments",
+					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
 						"combat"
@@ -2038,9 +2245,27 @@
 					]
 				},
 				{
+					"borrows_from": "8",
+					"expert": true,
+					"id": "terminal_cache_recall",
+					"kind": "shadow_expert",
+					"label": "Skip the scavenger hunt: Aster pulls the missing fragment from an AST terminal's cached records, reconstructing the whole from the network",
+					"min_stage": 3.0,
+					"party": "aster_peris",
+					"requires": [
+						"terminal",
+						"scan",
+						"data"
+					],
+					"risk": "risky",
+					"taught_by": "terminal_cache_recall",
+					"uses": []
+				},
+				{
 					"id": "scan_preserve",
 					"kind": "shadow",
 					"label": "Aster reads the hidden overlay structure; Peris preserves the relational context",
+					"min_stage": 3.0,
 					"party": "aster_peris",
 					"requires": [
 						"scan",
@@ -2190,6 +2415,7 @@
 				"notes": "Aster finds hidden structure; Peris preserves relational or flora context."
 			},
 			"shortcut": true,
+			"stage": 3,
 			"structures": [
 				"shortcut_gate"
 			],
@@ -2213,6 +2439,7 @@
 					"id": "loud_draw",
 					"kind": "primary",
 					"label": "Draw the patrol with a loud combat action",
+					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
 						"combat"
@@ -2224,9 +2451,27 @@
 					]
 				},
 				{
+					"borrows_from": "6",
+					"expert": true,
+					"id": "false_pattern_spoof",
+					"kind": "shadow_expert",
+					"label": "Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for",
+					"min_stage": 3.0,
+					"party": "aster_peris",
+					"requires": [
+						"signal",
+						"overlay",
+						"scan"
+					],
+					"risk": "risky",
+					"taught_by": "false_pattern_spoof",
+					"uses": []
+				},
+				{
 					"id": "signal_split",
 					"kind": "shadow",
 					"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"min_stage": 3.0,
 					"party": "aster_peris",
 					"requires": [
 						"electrical",
@@ -2350,6 +2595,7 @@
 				"notes": "Aster provides electrical/data distraction while Peris performs the physical or flora task."
 			},
 			"shortcut": true,
+			"stage": 3,
 			"structures": [
 				"shortcut_gate"
 			],
@@ -2466,6 +2712,7 @@
 				"peris": "Tend the flure and hushbloom so the carrier never needs a combat-only solution."
 			},
 			"shortcut": false,
+			"stage": 1,
 			"structures": [
 				"shelter"
 			],
@@ -2952,6 +3199,7 @@
 				]
 			}
 		},
+		"progression_stage": 3,
 		"seed": 2403,
 		"title": "Generated Chain/Nested POC: Shelter 2 -> Shelter 3",
 		"world_slot": {
@@ -2974,16 +3222,19 @@
 	"source": {
 		"complexity_tier": "standard",
 		"generator": "archetype_based_stretch_v1",
+		"progression_stage": 3,
 		"seed": 2403
 	},
 	"success": true,
 	"title": "Generated Chain/Nested POC: Shelter 2 -> Shelter 3",
 	"validation": {
+		"bare_pair_solvable": true,
 		"multi_solution": true,
 		"multi_solution_ok": true,
 		"multi_solution_required": false,
 		"shadow_solvable": true,
 		"solution_warnings": [],
+		"spotlight_within_stage": true,
 		"warnings": []
 	},
 	"world_slot": {

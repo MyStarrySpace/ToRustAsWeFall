@@ -1,148 +1,907 @@
 {
-  "schema": "trawf_archetype_catalog_v2",
+  "schema": "trawf_archetype_catalog_v3",
   "source": "design_archetypes.md",
-  "notes": "Each archetype carries APPROACHES: structured alternate solutions a node can be solved by. Each approach declares the capability tags it requires (resolved against stretch_capabilities.gd). A 'primary' approach leans on a spotlight specialist (combat / a class / Endo); a 'shadow' approach is the Aster+Peris minimum-viable-pair path. The solver proves at least one primary and one shadow approach are independently satisfiable, so every puzzle is solvable more than one way and always by the min pair. shadow_solution stays as the human note that the shadow approach is derived from.",
+  "notes": "Each archetype has a STAGE (campaign introduction order, 1=earliest). Approaches carry min_stage: a primary/basic-shadow approach is in-stage; a 'shadow_expert' approach borrows a later-stage technique (min_stage > stage) and is the Layer-3 mastery move Aster+Peris use on a second/expert playthrough (per design_principles_shadow_solutions.md). The solver gates the full party (spotlight) to min_stage<=progression_stage but lets the Aster+Peris shadow use any stage; every archetype still keeps a bare-pair shadow approach so the pair can ALWAYS finish.",
   "archetypes": {
     "1": {
       "name": "Redirected enemy aggression",
       "kind": "puzzle",
-      "tags": ["enemy", "impact", "barrier", "reroute"],
-      "compatible_node_roles": ["route_pressure", "danger", "shortcut", "setpiece"],
-      "steps": ["identify impact target", "position bait", "trigger charge", "dodge commitment", "enemy hits target", "use changed state"],
-      "variants": ["destroy_barrier", "kill_enemy", "reveal_plant", "reveal_terminal", "reveal_passage", "activate_mechanism"],
-      "shadow_solution": {"aster_peris": true, "notes": "Use overlay timing plus flora or scarpet cover to substitute for a combat specialist."},
+      "stage": 2,
+      "tags": [
+        "enemy",
+        "impact",
+        "barrier",
+        "reroute"
+      ],
+      "compatible_node_roles": [
+        "route_pressure",
+        "danger",
+        "shortcut",
+        "setpiece"
+      ],
+      "steps": [
+        "identify impact target",
+        "position bait",
+        "trigger charge",
+        "dodge commitment",
+        "enemy hits target",
+        "use changed state"
+      ],
+      "variants": [
+        "destroy_barrier",
+        "kill_enemy",
+        "reveal_plant",
+        "reveal_terminal",
+        "reveal_passage",
+        "activate_mechanism"
+      ],
+      "shadow_solution": {
+        "aster_peris": true,
+        "notes": "Use overlay timing plus flora or scarpet cover to substitute for a combat specialist."
+      },
       "approaches": [
-        {"id": "redirect_combat", "label": "Bait a combat specialist's charge into the target", "kind": "primary", "party": "specialist", "requires": ["combat"], "uses": ["kill_enemy", "destroy_barrier"], "risk": "direct", "taught_by": ""},
-        {"id": "overlay_cover", "label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover", "kind": "shadow", "party": "aster_peris", "requires": ["overlay", "cover"], "uses": ["reveal_plant", "reveal_passage"], "risk": "risky", "taught_by": "overlay_timing"}
+        {
+          "id": "redirect_combat",
+          "label": "Bait a combat specialist's charge into the target",
+          "kind": "primary",
+          "party": "specialist",
+          "requires": [
+            "combat"
+          ],
+          "uses": [
+            "kill_enemy",
+            "destroy_barrier"
+          ],
+          "risk": "direct",
+          "taught_by": "",
+          "min_stage": 2
+        },
+        {
+          "id": "overlay_combustion",
+          "label": "Aster predicts the charge window on the overlay and seeds a gasafoetida bloom on the impact line; the enemy demolishes the barrier with its own momentum while Peris reads it from cover",
+          "kind": "shadow_expert",
+          "party": "aster_peris",
+          "requires": [
+            "overlay",
+            "timing",
+            "combustible"
+          ],
+          "uses": [],
+          "risk": "risky",
+          "taught_by": "charge_window_prediction",
+          "borrows_from": "7",
+          "min_stage": 4,
+          "expert": true
+        },
+        {
+          "id": "overlay_cover",
+          "label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover",
+          "kind": "shadow",
+          "party": "aster_peris",
+          "requires": [
+            "overlay",
+            "cover"
+          ],
+          "uses": [
+            "reveal_plant",
+            "reveal_passage"
+          ],
+          "risk": "risky",
+          "taught_by": "overlay_timing",
+          "min_stage": 2
+        }
       ]
     },
     "2": {
       "name": "Plant as tool",
       "kind": "puzzle",
-      "tags": ["flora", "peris", "environment", "enemy_routing"],
-      "compatible_node_roles": ["foraging", "guidance", "route_pressure", "danger", "shortcut", "setpiece"],
-      "steps": ["acquire plant or seed", "identify target", "plant or tend", "wait for effect", "use effect"],
-      "variants": ["flure_iron_decoy", "hushbloom_stun", "climbvine_traversal", "resolution_roots_stabilize", "resolution_roots_break"],
-      "shadow_solution": {"aster_peris": true, "notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."},
+      "stage": 1,
+      "tags": [
+        "flora",
+        "peris",
+        "environment",
+        "enemy_routing"
+      ],
+      "compatible_node_roles": [
+        "foraging",
+        "guidance",
+        "route_pressure",
+        "danger",
+        "shortcut",
+        "setpiece"
+      ],
+      "steps": [
+        "acquire plant or seed",
+        "identify target",
+        "plant or tend",
+        "wait for effect",
+        "use effect"
+      ],
+      "variants": [
+        "flure_iron_decoy",
+        "hushbloom_stun",
+        "climbvine_traversal",
+        "resolution_roots_stabilize",
+        "resolution_roots_break"
+      ],
+      "shadow_solution": {
+        "aster_peris": true,
+        "notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
+      },
       "approaches": [
-        {"id": "force_clear", "label": "Force the obstacle open with raw impact", "kind": "primary", "party": "specialist", "requires": ["impact"], "uses": ["destroy"], "risk": "direct", "taught_by": ""},
-        {"id": "flora_finesse", "label": "Peris grows or tends the plant tool; Aster confirms the target", "kind": "shadow", "party": "aster_peris", "requires": ["flora"], "uses": ["flure_iron_decoy", "hushbloom_stun", "climbvine_traversal"], "risk": "safe", "taught_by": "flora_tending"}
+        {
+          "id": "force_clear",
+          "label": "Force the obstacle open with raw impact",
+          "kind": "primary",
+          "party": "specialist",
+          "requires": [
+            "impact"
+          ],
+          "uses": [
+            "destroy"
+          ],
+          "risk": "direct",
+          "taught_by": "",
+          "min_stage": 1
+        },
+        {
+          "id": "flora_chain_trap",
+          "label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
+          "kind": "shadow_expert",
+          "party": "aster_peris",
+          "requires": [
+            "flora",
+            "lure"
+          ],
+          "uses": [],
+          "risk": "risky",
+          "taught_by": "nested_flora_zone",
+          "borrows_from": "10",
+          "min_stage": 5,
+          "expert": true
+        },
+        {
+          "id": "flora_finesse",
+          "label": "Peris grows or tends the plant tool; Aster confirms the target",
+          "kind": "shadow",
+          "party": "aster_peris",
+          "requires": [
+            "flora"
+          ],
+          "uses": [
+            "flure_iron_decoy",
+            "hushbloom_stun",
+            "climbvine_traversal"
+          ],
+          "risk": "safe",
+          "taught_by": "flora_tending",
+          "min_stage": 1
+        }
       ]
     },
     "3": {
       "name": "Carry the heavy thing",
       "kind": "puzzle",
-      "tags": ["carry", "escort", "vulnerability", "resource"],
-      "compatible_node_roles": ["resource", "danger", "mixed", "setpiece"],
-      "steps": ["pick up carry target", "accept limitations", "cover carrier", "navigate hazards", "deliver target"],
-      "variants": ["cure_component", "puzzle_piece", "injured_party_member", "critical_resource", "information_artifact"],
-      "shadow_solution": {"aster_peris": true, "notes": "Use drag routes, scarpet masking, and slower recovery windows."},
+      "stage": 2,
+      "tags": [
+        "carry",
+        "escort",
+        "vulnerability",
+        "resource"
+      ],
+      "compatible_node_roles": [
+        "resource",
+        "danger",
+        "mixed",
+        "setpiece"
+      ],
+      "steps": [
+        "pick up carry target",
+        "accept limitations",
+        "cover carrier",
+        "navigate hazards",
+        "deliver target"
+      ],
+      "variants": [
+        "cure_component",
+        "puzzle_piece",
+        "injured_party_member",
+        "critical_resource",
+        "information_artifact"
+      ],
+      "shadow_solution": {
+        "aster_peris": true,
+        "notes": "Use drag routes, scarpet masking, and slower recovery windows."
+      },
       "approaches": [
-        {"id": "guarded_escort", "label": "A combat specialist guards the carrier across the open", "kind": "primary", "party": "specialist", "requires": ["combat"], "uses": ["critical_resource"], "risk": "direct", "taught_by": ""},
-        {"id": "endo_lane", "label": "Endo bridges or repairs a protected carry lane", "kind": "primary", "party": "specialist", "requires": ["barrier"], "uses": ["cure_component"], "risk": "safe", "taught_by": ""},
-        {"id": "drag_mask", "label": "Drag the load along scarpet-masked routes with slow recovery windows", "kind": "shadow", "party": "aster_peris", "requires": ["carry", "cover"], "uses": ["puzzle_piece"], "risk": "risky", "taught_by": "drag_routes"}
+        {
+          "id": "guarded_escort",
+          "label": "A combat specialist guards the carrier across the open",
+          "kind": "primary",
+          "party": "specialist",
+          "requires": [
+            "combat"
+          ],
+          "uses": [
+            "critical_resource"
+          ],
+          "risk": "direct",
+          "taught_by": "",
+          "min_stage": 2
+        },
+        {
+          "id": "split_carry",
+          "label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
+          "kind": "shadow_expert",
+          "party": "aster_peris",
+          "requires": [
+            "carry",
+            "cover",
+            "data"
+          ],
+          "uses": [],
+          "risk": "risky",
+          "taught_by": "split_carry",
+          "borrows_from": "5",
+          "min_stage": 3,
+          "expert": true
+        },
+        {
+          "id": "endo_lane",
+          "label": "Endo bridges or repairs a protected carry lane",
+          "kind": "primary",
+          "party": "specialist",
+          "requires": [
+            "barrier"
+          ],
+          "uses": [
+            "cure_component"
+          ],
+          "risk": "safe",
+          "taught_by": "",
+          "min_stage": 2
+        },
+        {
+          "id": "drag_mask",
+          "label": "Drag the load along scarpet-masked routes with slow recovery windows",
+          "kind": "shadow",
+          "party": "aster_peris",
+          "requires": [
+            "carry",
+            "cover"
+          ],
+          "uses": [
+            "puzzle_piece"
+          ],
+          "risk": "risky",
+          "taught_by": "drag_routes",
+          "min_stage": 2
+        }
       ]
     },
     "4": {
       "name": "Distract the patrol",
       "kind": "puzzle",
-      "tags": ["patrol", "distraction", "coordination", "timing"],
-      "compatible_node_roles": ["route_pressure", "danger", "mixed", "shortcut"],
-      "steps": ["read patrol", "choose distractor", "position distractor", "position actor", "trigger distraction", "patrol responds", "act in blind spot", "regroup"],
-      "variants": ["loud_action", "false_scent", "iron_signal", "electrical_signature", "terminal_task", "plant_tending_task", "aquatic_route"],
-      "shadow_solution": {"aster_peris": true, "notes": "Aster provides electrical/data distraction while Peris performs the physical or flora task."},
+      "stage": 3,
+      "tags": [
+        "patrol",
+        "distraction",
+        "coordination",
+        "timing"
+      ],
+      "compatible_node_roles": [
+        "route_pressure",
+        "danger",
+        "mixed",
+        "shortcut"
+      ],
+      "steps": [
+        "read patrol",
+        "choose distractor",
+        "position distractor",
+        "position actor",
+        "trigger distraction",
+        "patrol responds",
+        "act in blind spot",
+        "regroup"
+      ],
+      "variants": [
+        "loud_action",
+        "false_scent",
+        "iron_signal",
+        "electrical_signature",
+        "terminal_task",
+        "plant_tending_task",
+        "aquatic_route"
+      ],
+      "shadow_solution": {
+        "aster_peris": true,
+        "notes": "Aster provides electrical/data distraction while Peris performs the physical or flora task."
+      },
       "approaches": [
-        {"id": "loud_draw", "label": "Draw the patrol with a loud combat action", "kind": "primary", "party": "specialist", "requires": ["combat"], "uses": ["loud_action"], "risk": "direct", "taught_by": ""},
-        {"id": "signal_split", "label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot", "kind": "shadow", "party": "aster_peris", "requires": ["electrical", "flora"], "uses": ["electrical_signature", "plant_tending_task"], "risk": "safe", "taught_by": "signal_decoy"}
+        {
+          "id": "loud_draw",
+          "label": "Draw the patrol with a loud combat action",
+          "kind": "primary",
+          "party": "specialist",
+          "requires": [
+            "combat"
+          ],
+          "uses": [
+            "loud_action"
+          ],
+          "risk": "direct",
+          "taught_by": "",
+          "min_stage": 3
+        },
+        {
+          "id": "false_pattern_spoof",
+          "label": "Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for",
+          "kind": "shadow_expert",
+          "party": "aster_peris",
+          "requires": [
+            "signal",
+            "overlay",
+            "scan"
+          ],
+          "uses": [],
+          "risk": "risky",
+          "taught_by": "false_pattern_spoof",
+          "borrows_from": "6",
+          "min_stage": 3,
+          "expert": true
+        },
+        {
+          "id": "signal_split",
+          "label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+          "kind": "shadow",
+          "party": "aster_peris",
+          "requires": [
+            "electrical",
+            "flora"
+          ],
+          "uses": [
+            "electrical_signature",
+            "plant_tending_task"
+          ],
+          "risk": "safe",
+          "taught_by": "signal_decoy",
+          "min_stage": 3
+        }
       ]
     },
     "5": {
       "name": "Two-character split",
       "kind": "hybrid",
-      "tags": ["split", "coordination", "interdependence", "reunion"],
-      "compatible_node_roles": ["mixed", "setpiece", "shortcut"],
-      "steps": ["encounter separation", "divide party", "scout sides", "complete dependent tasks", "coordinate timing", "reunite"],
-      "variants": ["physical_wall", "class_restricted_access", "hazard_traversal", "sequential", "simultaneous", "sustained", "recovery"],
-      "shadow_solution": {"aster_peris": true, "notes": "Aster and Peris are the minimum viable split pair."},
+      "stage": 3,
+      "tags": [
+        "split",
+        "coordination",
+        "interdependence",
+        "reunion"
+      ],
+      "compatible_node_roles": [
+        "mixed",
+        "setpiece",
+        "shortcut"
+      ],
+      "steps": [
+        "encounter separation",
+        "divide party",
+        "scout sides",
+        "complete dependent tasks",
+        "coordinate timing",
+        "reunite"
+      ],
+      "variants": [
+        "physical_wall",
+        "class_restricted_access",
+        "hazard_traversal",
+        "sequential",
+        "simultaneous",
+        "sustained",
+        "recovery"
+      ],
+      "shadow_solution": {
+        "aster_peris": true,
+        "notes": "Aster and Peris are the minimum viable split pair."
+      },
       "approaches": [
-        {"id": "three_way_split", "label": "A third member holds one side while two advance", "kind": "primary", "party": "specialist", "requires": ["endo"], "uses": ["simultaneous"], "risk": "safe", "taught_by": ""},
-        {"id": "pair_split", "label": "Aster and Peris are the minimum viable split pair", "kind": "shadow", "party": "aster_peris", "requires": ["data", "flora"], "uses": ["sequential"], "risk": "direct", "taught_by": "coordinated_split"}
+        {
+          "id": "three_way_split",
+          "label": "A third member holds one side while two advance",
+          "kind": "primary",
+          "party": "specialist",
+          "requires": [
+            "endo"
+          ],
+          "uses": [
+            "simultaneous"
+          ],
+          "risk": "safe",
+          "taught_by": "",
+          "min_stage": 3
+        },
+        {
+          "id": "synchronized_gap_split",
+          "label": "Tick-synchronized simultaneous split: Aster's timing read fires both halves into the same patrol gap from separate hide slots",
+          "kind": "shadow_expert",
+          "party": "aster_peris",
+          "requires": [
+            "timing",
+            "cover",
+            "hide"
+          ],
+          "uses": [],
+          "risk": "risky",
+          "taught_by": "synchronized_gap_split",
+          "borrows_from": "7",
+          "min_stage": 4,
+          "expert": true
+        },
+        {
+          "id": "pair_split",
+          "label": "Aster and Peris are the minimum viable split pair",
+          "kind": "shadow",
+          "party": "aster_peris",
+          "requires": [
+            "data",
+            "flora"
+          ],
+          "uses": [
+            "sequential"
+          ],
+          "risk": "direct",
+          "taught_by": "coordinated_split",
+          "min_stage": 3
+        }
       ]
     },
     "6": {
       "name": "Pattern reconstruction",
       "kind": "puzzle",
-      "tags": ["fragments", "memory", "map", "assembly"],
-      "compatible_node_roles": ["guidance", "resource", "mixed", "setpiece"],
-      "steps": ["discover fragments", "locate fragments", "retrieve fragments", "assemble whole", "use revealed pattern"],
-      "variants": ["area_map", "flow_diagram", "document", "image_symbol", "combat_retrieval", "memory_pressure", "carry_vulnerability", "hidden_overlay"],
-      "shadow_solution": {"aster_peris": true, "notes": "Aster finds hidden structure; Peris preserves relational or flora context."},
+      "stage": 3,
+      "tags": [
+        "fragments",
+        "memory",
+        "map",
+        "assembly"
+      ],
+      "compatible_node_roles": [
+        "guidance",
+        "resource",
+        "mixed",
+        "setpiece"
+      ],
+      "steps": [
+        "discover fragments",
+        "locate fragments",
+        "retrieve fragments",
+        "assemble whole",
+        "use revealed pattern"
+      ],
+      "variants": [
+        "area_map",
+        "flow_diagram",
+        "document",
+        "image_symbol",
+        "combat_retrieval",
+        "memory_pressure",
+        "carry_vulnerability",
+        "hidden_overlay"
+      ],
+      "shadow_solution": {
+        "aster_peris": true,
+        "notes": "Aster finds hidden structure; Peris preserves relational or flora context."
+      },
       "approaches": [
-        {"id": "combat_retrieval", "label": "Fight through to retrieve the scattered fragments", "kind": "primary", "party": "specialist", "requires": ["combat"], "uses": ["combat_retrieval"], "risk": "direct", "taught_by": ""},
-        {"id": "scan_preserve", "label": "Aster reads the hidden overlay structure; Peris preserves the relational context", "kind": "shadow", "party": "aster_peris", "requires": ["scan", "flora"], "uses": ["hidden_overlay", "memory_pressure"], "risk": "safe", "taught_by": "overlay_reading"}
+        {
+          "id": "combat_retrieval",
+          "label": "Fight through to retrieve the scattered fragments",
+          "kind": "primary",
+          "party": "specialist",
+          "requires": [
+            "combat"
+          ],
+          "uses": [
+            "combat_retrieval"
+          ],
+          "risk": "direct",
+          "taught_by": "",
+          "min_stage": 3
+        },
+        {
+          "id": "terminal_cache_recall",
+          "label": "Skip the scavenger hunt: Aster pulls the missing fragment from an AST terminal's cached records, reconstructing the whole from the network",
+          "kind": "shadow_expert",
+          "party": "aster_peris",
+          "requires": [
+            "terminal",
+            "scan",
+            "data"
+          ],
+          "uses": [],
+          "risk": "risky",
+          "taught_by": "terminal_cache_recall",
+          "borrows_from": "8",
+          "min_stage": 3,
+          "expert": true
+        },
+        {
+          "id": "scan_preserve",
+          "label": "Aster reads the hidden overlay structure; Peris preserves the relational context",
+          "kind": "shadow",
+          "party": "aster_peris",
+          "requires": [
+            "scan",
+            "flora"
+          ],
+          "uses": [
+            "hidden_overlay",
+            "memory_pressure"
+          ],
+          "risk": "safe",
+          "taught_by": "overlay_reading",
+          "min_stage": 3
+        }
       ]
     },
     "7": {
       "name": "Stealth-and-time",
       "kind": "survival",
-      "tags": ["stealth", "timing", "patrol_gap", "pressure"],
-      "compatible_node_roles": ["route_pressure", "danger", "mixed"],
-      "steps": ["observe patrol", "identify gap", "position before gap", "execute objective", "disengage to cover"],
-      "variants": ["nk_patrol", "naturalizer_patrol", "chelator_presence", "pass_through", "terminal_access", "plant_objective", "extract_objective"],
-      "shadow_solution": {"aster_peris": true, "notes": "Aster reads timing; Peris creates or extends cover."},
+      "stage": 4,
+      "tags": [
+        "stealth",
+        "timing",
+        "patrol_gap",
+        "pressure"
+      ],
+      "compatible_node_roles": [
+        "route_pressure",
+        "danger",
+        "mixed"
+      ],
+      "steps": [
+        "observe patrol",
+        "identify gap",
+        "position before gap",
+        "execute objective",
+        "disengage to cover"
+      ],
+      "variants": [
+        "nk_patrol",
+        "naturalizer_patrol",
+        "chelator_presence",
+        "pass_through",
+        "terminal_access",
+        "plant_objective",
+        "extract_objective"
+      ],
+      "shadow_solution": {
+        "aster_peris": true,
+        "notes": "Aster reads timing; Peris creates or extends cover."
+      },
       "approaches": [
-        {"id": "force_window", "label": "Force the window open with raw pressure", "kind": "primary", "party": "specialist", "requires": ["combat"], "uses": ["extract_objective"], "risk": "risky", "taught_by": ""},
-        {"id": "read_and_cover", "label": "Aster reads the patrol timing; Peris creates or extends cover", "kind": "shadow", "party": "aster_peris", "requires": ["timing", "cover"], "uses": ["pass_through", "terminal_access"], "risk": "safe", "taught_by": "patrol_timing"}
+        {
+          "id": "force_window",
+          "label": "Force the window open with raw pressure",
+          "kind": "primary",
+          "party": "specialist",
+          "requires": [
+            "combat"
+          ],
+          "uses": [
+            "extract_objective"
+          ],
+          "risk": "risky",
+          "taught_by": "",
+          "min_stage": 4
+        },
+        {
+          "id": "compliant_tag_spoof",
+          "label": "Walk into the scan on purpose: Aster floods a spoofed-compliant tag signature so the patrol clears you at the checkpoint",
+          "kind": "shadow_expert",
+          "party": "aster_peris",
+          "requires": [
+            "signal",
+            "electrical",
+            "timing"
+          ],
+          "uses": [],
+          "risk": "risky",
+          "taught_by": "compliant_tag_spoof",
+          "borrows_from": "9",
+          "min_stage": 6,
+          "expert": true
+        },
+        {
+          "id": "read_and_cover",
+          "label": "Aster reads the patrol timing; Peris creates or extends cover",
+          "kind": "shadow",
+          "party": "aster_peris",
+          "requires": [
+            "timing",
+            "cover"
+          ],
+          "uses": [
+            "pass_through",
+            "terminal_access"
+          ],
+          "risk": "safe",
+          "taught_by": "patrol_timing",
+          "min_stage": 4
+        }
       ]
     },
     "8": {
       "name": "Class-gated interaction",
       "kind": "puzzle",
-      "tags": ["class", "terminal", "authority", "gate"],
-      "compatible_node_roles": ["guidance", "shortcut", "setpiece"],
-      "steps": ["encounter gate", "identify class", "position class bearer", "initiate interaction", "resolve interaction"],
-      "variants": ["ast_terminal", "pct_client", "ent_barrier", "tmc_enforcement", "door", "information", "resource", "npc_cooperation"],
-      "shadow_solution": {"aster_peris": true, "notes": "Aster/PCT coverage handles most early class gates; other classes need environmental alternatives."},
+      "stage": 3,
+      "tags": [
+        "class",
+        "terminal",
+        "authority",
+        "gate"
+      ],
+      "compatible_node_roles": [
+        "guidance",
+        "shortcut",
+        "setpiece"
+      ],
+      "steps": [
+        "encounter gate",
+        "identify class",
+        "position class bearer",
+        "initiate interaction",
+        "resolve interaction"
+      ],
+      "variants": [
+        "ast_terminal",
+        "pct_client",
+        "ent_barrier",
+        "tmc_enforcement",
+        "door",
+        "information",
+        "resource",
+        "npc_cooperation"
+      ],
+      "shadow_solution": {
+        "aster_peris": true,
+        "notes": "Aster/PCT coverage handles most early class gates; other classes need environmental alternatives."
+      },
       "approaches": [
-        {"id": "other_class_bearer", "label": "Bring the gate's required class (ENT/TMC) to the interaction", "kind": "primary", "party": "specialist", "requires": ["class_other"], "uses": ["ent_barrier", "tmc_enforcement"], "risk": "safe", "taught_by": ""},
-        {"id": "ast_or_environment", "label": "Aster's AST access clears early gates; otherwise route around environmentally", "kind": "shadow", "party": "aster_peris", "requires": ["terminal"], "uses": ["ast_terminal", "information"], "risk": "safe", "taught_by": "class_access"}
+        {
+          "id": "other_class_bearer",
+          "label": "Bring the gate's required class (ENT/TMC) to the interaction",
+          "kind": "primary",
+          "party": "specialist",
+          "requires": [
+            "class_other"
+          ],
+          "uses": [
+            "ent_barrier",
+            "tmc_enforcement"
+          ],
+          "risk": "safe",
+          "taught_by": "",
+          "min_stage": 3
+        },
+        {
+          "id": "grown_gate_bypass",
+          "label": "Beat the gate with botany: a grown seefern reveals the gate's maintenance seam and scarpet cover lets Peris work it open, no class bearer",
+          "kind": "shadow_expert",
+          "party": "aster_peris",
+          "requires": [
+            "terminal",
+            "reveal",
+            "cover"
+          ],
+          "uses": [],
+          "risk": "risky",
+          "taught_by": "grown_gate_bypass",
+          "borrows_from": "2",
+          "min_stage": 1,
+          "expert": true
+        },
+        {
+          "id": "ast_or_environment",
+          "label": "Aster's AST access clears early gates; otherwise route around environmentally",
+          "kind": "shadow",
+          "party": "aster_peris",
+          "requires": [
+            "terminal"
+          ],
+          "uses": [
+            "ast_terminal",
+            "information"
+          ],
+          "risk": "safe",
+          "taught_by": "class_access",
+          "min_stage": 3
+        }
       ]
     },
     "9": {
       "name": "Expectation subversion",
       "kind": "meta",
-      "tags": ["subversion", "rare", "commitment", "consequence"],
-      "compatible_node_roles": ["setpiece", "danger"],
-      "steps": ["establish convention", "invoke convention", "break convention", "deliver consequence"],
-      "variants": ["death_convention", "highlighted_interaction_trap", "tragic", "weaponized", "mechanical_consequence", "narrative_consequence"],
-      "shadow_solution": {"aster_peris": true, "notes": "Use sparingly; generated stretches should only flag this for designer review."},
+      "stage": 6,
+      "tags": [
+        "subversion",
+        "rare",
+        "commitment",
+        "consequence"
+      ],
+      "compatible_node_roles": [
+        "setpiece",
+        "danger"
+      ],
+      "steps": [
+        "establish convention",
+        "invoke convention",
+        "break convention",
+        "deliver consequence"
+      ],
+      "variants": [
+        "death_convention",
+        "highlighted_interaction_trap",
+        "tragic",
+        "weaponized",
+        "mechanical_consequence",
+        "narrative_consequence"
+      ],
+      "shadow_solution": {
+        "aster_peris": true,
+        "notes": "Use sparingly; generated stretches should only flag this for designer review."
+      },
       "approaches": [
-        {"id": "designer_review", "label": "Rare subversion beat — flag for designer review", "kind": "meta", "party": "any", "requires": [], "uses": [], "risk": "risky", "taught_by": ""}
+        {
+          "id": "designer_review",
+          "label": "Rare subversion beat — flag for designer review",
+          "kind": "meta",
+          "party": "any",
+          "requires": [],
+          "uses": [],
+          "risk": "risky",
+          "taught_by": "",
+          "min_stage": 6
+        }
       ]
     },
     "10": {
       "name": "Danger zone",
       "kind": "meta",
-      "tags": ["danger_zone", "cure_component", "container", "nested"],
-      "compatible_node_roles": ["setpiece", "mixed", "danger"],
-      "steps": ["entry transition", "sub-puzzle composition", "retrieve component", "exit transition"],
-      "variants": ["iron_based", "naturalizer_patrol", "atmospheric", "mixed", "single_route_shadow", "multi_route_converging", "sequence_locked"],
-      "shadow_solution": {"aster_peris": true, "notes": "Major danger zones must define an Aster/Peris composition."},
+      "stage": 5,
+      "tags": [
+        "danger_zone",
+        "cure_component",
+        "container",
+        "nested"
+      ],
+      "compatible_node_roles": [
+        "setpiece",
+        "mixed",
+        "danger"
+      ],
+      "steps": [
+        "entry transition",
+        "sub-puzzle composition",
+        "retrieve component",
+        "exit transition"
+      ],
+      "variants": [
+        "iron_based",
+        "naturalizer_patrol",
+        "atmospheric",
+        "mixed",
+        "single_route_shadow",
+        "multi_route_converging",
+        "sequence_locked"
+      ],
+      "shadow_solution": {
+        "aster_peris": true,
+        "notes": "Major danger zones must define an Aster/Peris composition."
+      },
       "approaches": [
-        {"id": "specialist_team", "label": "Bring a combat or Endo specialist team into the zone", "kind": "primary", "party": "specialist", "requires": ["combat"], "uses": ["multi_route_converging"], "risk": "direct", "taught_by": ""},
-        {"id": "aster_peris_comp", "label": "Aster/Peris composition: overlay timing, scarpet cover, slow carries", "kind": "shadow", "party": "aster_peris", "requires": ["overlay", "cover", "carry"], "uses": ["single_route_shadow"], "risk": "risky", "taught_by": "danger_zone_composition"}
+        {
+          "id": "specialist_team",
+          "label": "Bring a combat or Endo specialist team into the zone",
+          "kind": "primary",
+          "party": "specialist",
+          "requires": [
+            "combat"
+          ],
+          "uses": [
+            "multi_route_converging"
+          ],
+          "risk": "direct",
+          "taught_by": "",
+          "min_stage": 5
+        },
+        {
+          "id": "convergence_thinning",
+          "label": "Thin the convergence instead of slow-carrying it: a flure lure plus an electrical decoy peel the patrols apart, opening a fast lane Aster times to the gap",
+          "kind": "shadow_expert",
+          "party": "aster_peris",
+          "requires": [
+            "electrical",
+            "flora",
+            "timing"
+          ],
+          "uses": [],
+          "risk": "risky",
+          "taught_by": "convergence_thinning",
+          "borrows_from": "4",
+          "min_stage": 3,
+          "expert": true
+        },
+        {
+          "id": "aster_peris_comp",
+          "label": "Aster/Peris composition: overlay timing, scarpet cover, slow carries",
+          "kind": "shadow",
+          "party": "aster_peris",
+          "requires": [
+            "overlay",
+            "cover",
+            "carry"
+          ],
+          "uses": [
+            "single_route_shadow"
+          ],
+          "risk": "risky",
+          "taught_by": "danger_zone_composition",
+          "min_stage": 5
+        }
       ]
     },
     "11": {
       "name": "Narrative beat",
       "kind": "meta",
-      "tags": ["dialogue", "recognition", "transition", "party"],
-      "compatible_node_roles": ["boundary", "guidance", "regroup", "shelter_arrival"],
-      "steps": ["pre-transition state", "transition mechanism", "post-transition state"],
-      "variants": ["setup_pivot_payoff", "recognition", "realization", "confession", "memory", "silence", "two_character", "party_wide", "character_alone", "npc"],
-      "shadow_solution": {"aster_peris": true, "notes": "Narrative beat adapts to available party but should preserve state transition."},
+      "stage": 1,
+      "tags": [
+        "dialogue",
+        "recognition",
+        "transition",
+        "party"
+      ],
+      "compatible_node_roles": [
+        "boundary",
+        "guidance",
+        "regroup",
+        "shelter_arrival"
+      ],
+      "steps": [
+        "pre-transition state",
+        "transition mechanism",
+        "post-transition state"
+      ],
+      "variants": [
+        "setup_pivot_payoff",
+        "recognition",
+        "realization",
+        "confession",
+        "memory",
+        "silence",
+        "two_character",
+        "party_wide",
+        "character_alone",
+        "npc"
+      ],
+      "shadow_solution": {
+        "aster_peris": true,
+        "notes": "Narrative beat adapts to available party but should preserve state transition."
+      },
       "approaches": [
-        {"id": "play_the_beat", "label": "Adapt to the available party; preserve the state transition", "kind": "meta", "party": "any", "requires": [], "uses": [], "risk": "safe", "taught_by": ""}
+        {
+          "id": "play_the_beat",
+          "label": "Adapt to the available party; preserve the state transition",
+          "kind": "meta",
+          "party": "any",
+          "requires": [],
+          "uses": [],
+          "risk": "safe",
+          "taught_by": "",
+          "min_stage": 1
+        }
       ]
     }
   }

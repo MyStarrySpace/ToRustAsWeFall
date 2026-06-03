@@ -53,6 +53,7 @@
 					"id": "force_clear",
 					"kind": "primary",
 					"label": "Force the obstacle open with raw impact",
+					"min_stage": 1.0,
 					"party": "specialist",
 					"requires": [
 						"impact"
@@ -64,9 +65,26 @@
 					]
 				},
 				{
+					"borrows_from": "10",
+					"expert": true,
+					"id": "flora_chain_trap",
+					"kind": "shadow_expert",
+					"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
+					"min_stage": 5.0,
+					"party": "aster_peris",
+					"requires": [
+						"flora",
+						"lure"
+					],
+					"risk": "risky",
+					"taught_by": "nested_flora_zone",
+					"uses": []
+				},
+				{
 					"id": "flora_finesse",
 					"kind": "shadow",
 					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"min_stage": 1.0,
 					"party": "aster_peris",
 					"requires": [
 						"flora"
@@ -89,6 +107,7 @@
 				"aster_peris": true,
 				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
 			},
+			"stage": 1,
 			"step_count": 5,
 			"tags": [
 				"flora",
@@ -101,9 +120,10 @@
 		{
 			"approaches": [
 				{
-					"id": "loud_draw",
+					"id": "guarded_escort",
 					"kind": "primary",
-					"label": "Draw the patrol with a loud combat action",
+					"label": "A combat specialist guards the carrier across the open",
+					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
 						"combat"
@@ -111,43 +131,76 @@
 					"risk": "direct",
 					"taught_by": "",
 					"uses": [
-						"loud_action"
+						"critical_resource"
 					]
 				},
 				{
-					"id": "signal_split",
-					"kind": "shadow",
-					"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"borrows_from": "5",
+					"expert": true,
+					"id": "split_carry",
+					"kind": "shadow_expert",
+					"label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
+					"min_stage": 3.0,
 					"party": "aster_peris",
 					"requires": [
-						"electrical",
-						"flora"
+						"carry",
+						"cover",
+						"data"
+					],
+					"risk": "risky",
+					"taught_by": "split_carry",
+					"uses": []
+				},
+				{
+					"id": "endo_lane",
+					"kind": "primary",
+					"label": "Endo bridges or repairs a protected carry lane",
+					"min_stage": 2.0,
+					"party": "specialist",
+					"requires": [
+						"barrier"
 					],
 					"risk": "safe",
-					"taught_by": "signal_decoy",
+					"taught_by": "",
 					"uses": [
-						"electrical_signature",
-						"plant_tending_task"
+						"cure_component"
+					]
+				},
+				{
+					"id": "drag_mask",
+					"kind": "shadow",
+					"label": "Drag the load along scarpet-masked routes with slow recovery windows",
+					"min_stage": 2.0,
+					"party": "aster_peris",
+					"requires": [
+						"carry",
+						"cover"
+					],
+					"risk": "risky",
+					"taught_by": "drag_routes",
+					"uses": [
+						"puzzle_piece"
 					]
 				}
 			],
 			"chain_index": 1,
 			"composition_role": "required_append",
-			"id": "4",
+			"id": "3",
 			"kind": "puzzle",
-			"name": "Distract the patrol",
+			"name": "Carry the heavy thing",
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Aster provides electrical/data distraction while Peris performs the physical or flora task."
+				"notes": "Use drag routes, scarpet masking, and slower recovery windows."
 			},
-			"step_count": 8,
+			"stage": 2,
+			"step_count": 5,
 			"tags": [
-				"patrol",
-				"distraction",
-				"coordination",
-				"timing"
+				"carry",
+				"escort",
+				"vulnerability",
+				"resource"
 			],
-			"variant": "electrical_signature"
+			"variant": "cure_component"
 		}
 	],
 	"budget": {
@@ -256,8 +309,11 @@
 					{
 						"approach_id": "force_clear",
 						"blocked": false,
+						"borrows_from": "",
+						"expert": false,
 						"kind": "primary",
 						"label": "Force the obstacle open with raw impact",
+						"min_stage": 1,
 						"node": "node_01",
 						"party": "specialist",
 						"requires": [
@@ -265,16 +321,20 @@
 						],
 						"risk": "direct",
 						"role": "guidance",
+						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
 							"destroy"
 						]
 					},
 					{
-						"approach_id": "loud_draw",
+						"approach_id": "guarded_escort",
 						"blocked": false,
+						"borrows_from": "",
+						"expert": false,
 						"kind": "primary",
-						"label": "Draw the patrol with a loud combat action",
+						"label": "A combat specialist guards the carrier across the open",
+						"min_stage": 2,
 						"node": "node_02",
 						"party": "specialist",
 						"requires": [
@@ -282,16 +342,20 @@
 						],
 						"risk": "direct",
 						"role": "route_pressure",
+						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
-							"loud_action"
+							"critical_resource"
 						]
 					},
 					{
 						"approach_id": "force_clear",
 						"blocked": false,
+						"borrows_from": "",
+						"expert": false,
 						"kind": "primary",
 						"label": "Force the obstacle open with raw impact",
+						"min_stage": 1,
 						"node": "node_03",
 						"party": "specialist",
 						"requires": [
@@ -299,16 +363,20 @@
 						],
 						"risk": "direct",
 						"role": "foraging",
+						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
 							"destroy"
 						]
 					},
 					{
-						"approach_id": "loud_draw",
+						"approach_id": "guarded_escort",
 						"blocked": false,
+						"borrows_from": "",
+						"expert": false,
 						"kind": "primary",
-						"label": "Draw the patrol with a loud combat action",
+						"label": "A combat specialist guards the carrier across the open",
+						"min_stage": 2,
 						"node": "node_04",
 						"party": "specialist",
 						"requires": [
@@ -316,9 +384,10 @@
 						],
 						"risk": "direct",
 						"role": "danger",
+						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
-							"loud_action"
+							"critical_resource"
 						]
 					},
 					{
@@ -335,13 +404,16 @@
 				"blocked_nodes": [],
 				"label": "Full party",
 				"loadout": "spotlight",
+				"max_stage_used": 2,
 				"party": [
 					"aster",
 					"peris",
 					"endo"
 				],
 				"solvable": true,
-				"total_risk": 4
+				"total_risk": 4,
+				"uses_future_technique": false,
+				"within_stage": true
 			},
 			{
 				"approach_per_node": [
@@ -358,8 +430,11 @@
 					{
 						"approach_id": "flora_finesse",
 						"blocked": false,
+						"borrows_from": "",
+						"expert": false,
 						"kind": "shadow",
 						"label": "Peris grows or tends the plant tool; Aster confirms the target",
+						"min_stage": 1,
 						"node": "node_01",
 						"party": "aster_peris",
 						"requires": [
@@ -367,6 +442,7 @@
 						],
 						"risk": "safe",
 						"role": "guidance",
+						"stage_ahead": false,
 						"taught_by": "flora_tending",
 						"uses": [
 							"flure_iron_decoy",
@@ -375,29 +451,34 @@
 						]
 					},
 					{
-						"approach_id": "signal_split",
+						"approach_id": "split_carry",
 						"blocked": false,
-						"kind": "shadow",
-						"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+						"borrows_from": "5",
+						"expert": true,
+						"kind": "shadow_expert",
+						"label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
+						"min_stage": 3,
 						"node": "node_02",
 						"party": "aster_peris",
 						"requires": [
-							"electrical",
-							"flora"
+							"carry",
+							"cover",
+							"data"
 						],
-						"risk": "safe",
+						"risk": "risky",
 						"role": "route_pressure",
-						"taught_by": "signal_decoy",
-						"uses": [
-							"electrical_signature",
-							"plant_tending_task"
-						]
+						"stage_ahead": true,
+						"taught_by": "split_carry",
+						"uses": []
 					},
 					{
 						"approach_id": "flora_finesse",
 						"blocked": false,
+						"borrows_from": "",
+						"expert": false,
 						"kind": "shadow",
 						"label": "Peris grows or tends the plant tool; Aster confirms the target",
+						"min_stage": 1,
 						"node": "node_03",
 						"party": "aster_peris",
 						"requires": [
@@ -405,6 +486,7 @@
 						],
 						"risk": "safe",
 						"role": "foraging",
+						"stage_ahead": false,
 						"taught_by": "flora_tending",
 						"uses": [
 							"flure_iron_decoy",
@@ -413,23 +495,25 @@
 						]
 					},
 					{
-						"approach_id": "signal_split",
+						"approach_id": "split_carry",
 						"blocked": false,
-						"kind": "shadow",
-						"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+						"borrows_from": "5",
+						"expert": true,
+						"kind": "shadow_expert",
+						"label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
+						"min_stage": 3,
 						"node": "node_04",
 						"party": "aster_peris",
 						"requires": [
-							"electrical",
-							"flora"
+							"carry",
+							"cover",
+							"data"
 						],
-						"risk": "safe",
+						"risk": "risky",
 						"role": "danger",
-						"taught_by": "signal_decoy",
-						"uses": [
-							"electrical_signature",
-							"plant_tending_task"
-						]
+						"stage_ahead": true,
+						"taught_by": "split_carry",
+						"uses": []
 					},
 					{
 						"approach_id": "traverse",
@@ -445,15 +529,19 @@
 				"blocked_nodes": [],
 				"label": "Aster + Peris (shadow)",
 				"loadout": "shadow",
+				"max_stage_used": 3,
 				"party": [
 					"aster",
 					"peris"
 				],
 				"solvable": true,
-				"total_risk": 0
+				"total_risk": 4,
+				"uses_future_technique": true,
+				"within_stage": true
 			}
 		],
 		"solution_summary": {
+			"bare_pair_solvable": true,
 			"choice_node_count": 4,
 			"choice_nodes": [
 				"node_01",
@@ -471,8 +559,11 @@
 			"multi_solution": true,
 			"multi_solution_ok": true,
 			"multi_solution_required": false,
+			"progression_stage": 2,
 			"shadow_solvable": true,
-			"solvable_loadout_count": 2
+			"shadow_uses_future_technique": true,
+			"solvable_loadout_count": 2,
+			"spotlight_within_stage": true
 		},
 		"state_paths": [
 			"chunk.generation.spec_id",
@@ -981,25 +1072,25 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "flure",
-					"label": "flure",
+					"id": "snapbloom",
+					"label": "snapbloom",
 					"local_offset": [
 						-2.13000011444092,
-						0.725000023841858,
+						0.600000023841858,
 						-0.923999965190887
 					],
 					"position": [
 						-2.13000011444092,
-						1.17499995231628,
+						1.04999995231628,
 						-3.92400002479553
 					],
-					"role": "puzzle_flora",
+					"role": "resource",
 					"rotation_y_degrees": -11.0,
 					"shape": "plant_cluster",
 					"size": [
-						1.79999995231628,
-						1.45000004768372,
-						1.79999995231628
+						1.10000002384186,
+						1.20000004768372,
+						1.10000002384186
 					],
 					"support": "implemented"
 				},
@@ -1037,7 +1128,7 @@
 				4.19999980926514
 			],
 			"flora": [
-				"flure"
+				"snapbloom"
 			],
 			"footprint": [
 				6.0,
@@ -1066,6 +1157,7 @@
 
 			},
 			"shortcut": false,
+			"stage": 1,
 			"structures": [
 				"shelter"
 			],
@@ -1089,6 +1181,7 @@
 					"id": "force_clear",
 					"kind": "primary",
 					"label": "Force the obstacle open with raw impact",
+					"min_stage": 1.0,
 					"party": "specialist",
 					"requires": [
 						"impact"
@@ -1100,9 +1193,26 @@
 					]
 				},
 				{
+					"borrows_from": "10",
+					"expert": true,
+					"id": "flora_chain_trap",
+					"kind": "shadow_expert",
+					"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
+					"min_stage": 5.0,
+					"party": "aster_peris",
+					"requires": [
+						"flora",
+						"lure"
+					],
+					"risk": "risky",
+					"taught_by": "nested_flora_zone",
+					"uses": []
+				},
+				{
 					"id": "flora_finesse",
 					"kind": "shadow",
 					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"min_stage": 1.0,
 					"party": "aster_peris",
 					"requires": [
 						"flora"
@@ -1212,6 +1322,7 @@
 				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
 			},
 			"shortcut": false,
+			"stage": 1,
 			"structures": [
 				"pipe"
 			],
@@ -1232,9 +1343,10 @@
 			],
 			"approaches": [
 				{
-					"id": "loud_draw",
+					"id": "guarded_escort",
 					"kind": "primary",
-					"label": "Draw the patrol with a loud combat action",
+					"label": "A combat specialist guards the carrier across the open",
+					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
 						"combat"
@@ -1242,28 +1354,60 @@
 					"risk": "direct",
 					"taught_by": "",
 					"uses": [
-						"loud_action"
+						"critical_resource"
 					]
 				},
 				{
-					"id": "signal_split",
-					"kind": "shadow",
-					"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"borrows_from": "5",
+					"expert": true,
+					"id": "split_carry",
+					"kind": "shadow_expert",
+					"label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
+					"min_stage": 3.0,
 					"party": "aster_peris",
 					"requires": [
-						"electrical",
-						"flora"
+						"carry",
+						"cover",
+						"data"
+					],
+					"risk": "risky",
+					"taught_by": "split_carry",
+					"uses": []
+				},
+				{
+					"id": "endo_lane",
+					"kind": "primary",
+					"label": "Endo bridges or repairs a protected carry lane",
+					"min_stage": 2.0,
+					"party": "specialist",
+					"requires": [
+						"barrier"
 					],
 					"risk": "safe",
-					"taught_by": "signal_decoy",
+					"taught_by": "",
 					"uses": [
-						"electrical_signature",
-						"plant_tending_task"
+						"cure_component"
+					]
+				},
+				{
+					"id": "drag_mask",
+					"kind": "shadow",
+					"label": "Drag the load along scarpet-masked routes with slow recovery windows",
+					"min_stage": 2.0,
+					"party": "aster_peris",
+					"requires": [
+						"carry",
+						"cover"
+					],
+					"risk": "risky",
+					"taught_by": "drag_routes",
+					"uses": [
+						"puzzle_piece"
 					]
 				}
 			],
-			"archetype_id": "4",
-			"archetype_name": "Distract the patrol",
+			"archetype_id": "3",
+			"archetype_name": "Carry the heavy thing",
 			"chain_index": 1,
 			"chain_input": "",
 			"chain_label": "",
@@ -1272,25 +1416,25 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "flure",
-					"label": "flure",
+					"id": "snapbloom",
+					"label": "snapbloom",
 					"local_offset": [
 						-1.96200001239777,
-						0.725000023841858,
+						0.600000023841858,
 						-1.05599999427795
 					],
 					"position": [
 						22.0380001068115,
-						2.61500000953674,
+						2.49000000953674,
 						1.94400000572205
 					],
-					"role": "puzzle_flora",
+					"role": "resource",
 					"rotation_y_degrees": 11.0,
 					"shape": "plant_cluster",
 					"size": [
-						1.79999995231628,
-						1.45000004768372,
-						1.79999995231628
+						1.10000002384186,
+						1.20000004768372,
+						1.10000002384186
 					],
 					"support": "implemented"
 				},
@@ -1354,7 +1498,7 @@
 				4.80000019073486
 			],
 			"flora": [
-				"flure"
+				"snapbloom"
 			],
 			"footprint": [
 				5.40000009536743,
@@ -1381,15 +1525,16 @@
 			"role": "route_pressure",
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Aster provides electrical/data distraction while Peris performs the physical or flora task."
+				"notes": "Use drag routes, scarpet masking, and slower recovery windows."
 			},
 			"shortcut": false,
+			"stage": 2,
 			"structures": [
 				"pipe"
 			],
 			"surface_y": 1.89,
 			"title": "Route Pressure",
-			"variant": "electrical_signature",
+			"variant": "cure_component",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -1407,6 +1552,7 @@
 					"id": "force_clear",
 					"kind": "primary",
 					"label": "Force the obstacle open with raw impact",
+					"min_stage": 1.0,
 					"party": "specialist",
 					"requires": [
 						"impact"
@@ -1418,9 +1564,26 @@
 					]
 				},
 				{
+					"borrows_from": "10",
+					"expert": true,
+					"id": "flora_chain_trap",
+					"kind": "shadow_expert",
+					"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
+					"min_stage": 5.0,
+					"party": "aster_peris",
+					"requires": [
+						"flora",
+						"lure"
+					],
+					"risk": "risky",
+					"taught_by": "nested_flora_zone",
+					"uses": []
+				},
+				{
 					"id": "flora_finesse",
 					"kind": "shadow",
 					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"min_stage": 1.0,
 					"party": "aster_peris",
 					"requires": [
 						"flora"
@@ -1530,6 +1693,7 @@
 				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
 			},
 			"shortcut": false,
+			"stage": 1,
 			"structures": [
 				"shelter"
 			],
@@ -1550,9 +1714,10 @@
 			],
 			"approaches": [
 				{
-					"id": "loud_draw",
+					"id": "guarded_escort",
 					"kind": "primary",
-					"label": "Draw the patrol with a loud combat action",
+					"label": "A combat specialist guards the carrier across the open",
+					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
 						"combat"
@@ -1560,28 +1725,60 @@
 					"risk": "direct",
 					"taught_by": "",
 					"uses": [
-						"loud_action"
+						"critical_resource"
 					]
 				},
 				{
-					"id": "signal_split",
-					"kind": "shadow",
-					"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"borrows_from": "5",
+					"expert": true,
+					"id": "split_carry",
+					"kind": "shadow_expert",
+					"label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
+					"min_stage": 3.0,
 					"party": "aster_peris",
 					"requires": [
-						"electrical",
-						"flora"
+						"carry",
+						"cover",
+						"data"
+					],
+					"risk": "risky",
+					"taught_by": "split_carry",
+					"uses": []
+				},
+				{
+					"id": "endo_lane",
+					"kind": "primary",
+					"label": "Endo bridges or repairs a protected carry lane",
+					"min_stage": 2.0,
+					"party": "specialist",
+					"requires": [
+						"barrier"
 					],
 					"risk": "safe",
-					"taught_by": "signal_decoy",
+					"taught_by": "",
 					"uses": [
-						"electrical_signature",
-						"plant_tending_task"
+						"cure_component"
+					]
+				},
+				{
+					"id": "drag_mask",
+					"kind": "shadow",
+					"label": "Drag the load along scarpet-masked routes with slow recovery windows",
+					"min_stage": 2.0,
+					"party": "aster_peris",
+					"requires": [
+						"carry",
+						"cover"
+					],
+					"risk": "risky",
+					"taught_by": "drag_routes",
+					"uses": [
+						"puzzle_piece"
 					]
 				}
 			],
-			"archetype_id": "4",
-			"archetype_name": "Distract the patrol",
+			"archetype_id": "3",
+			"archetype_name": "Carry the heavy thing",
 			"chain_index": 1,
 			"chain_input": "",
 			"chain_label": "",
@@ -1590,25 +1787,25 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "flure",
-					"label": "flure",
+					"id": "snapbloom",
+					"label": "snapbloom",
 					"local_offset": [
 						-1.96200001239777,
-						0.725000023841858,
+						0.600000023841858,
 						-1.05599999427795
 					],
 					"position": [
 						46.0379981994629,
-						1.89499998092651,
+						1.76999998092651,
 						-1.05599999427795
 					],
-					"role": "puzzle_flora",
+					"role": "resource",
 					"rotation_y_degrees": 11.0,
 					"shape": "plant_cluster",
 					"size": [
-						1.79999995231628,
-						1.45000004768372,
-						1.79999995231628
+						1.10000002384186,
+						1.20000004768372,
+						1.10000002384186
 					],
 					"support": "implemented"
 				},
@@ -1646,7 +1843,7 @@
 				4.80000019073486
 			],
 			"flora": [
-				"flure"
+				"snapbloom"
 			],
 			"footprint": [
 				5.40000009536743,
@@ -1673,15 +1870,16 @@
 			"role": "danger",
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Aster provides electrical/data distraction while Peris performs the physical or flora task."
+				"notes": "Use drag routes, scarpet masking, and slower recovery windows."
 			},
 			"shortcut": false,
+			"stage": 2,
 			"structures": [
 				"pipe"
 			],
 			"surface_y": 1.17,
 			"title": "Danger Beat",
-			"variant": "electrical_signature",
+			"variant": "cure_component",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -1790,6 +1988,7 @@
 
 			},
 			"shortcut": false,
+			"stage": 1,
 			"structures": [
 				"shelter"
 			],
@@ -1809,7 +2008,7 @@
 			"naturalizers"
 		],
 		"flora": [
-			"flure",
+			"snapbloom",
 			"seefern"
 		],
 		"structures": [
@@ -2096,7 +2295,8 @@
 					"mother_flure",
 					"hushbloom",
 					"doma",
-					"snapbloom"
+					"snapbloom",
+					"gasafoetida"
 				],
 				"structures": []
 			},
@@ -2109,7 +2309,7 @@
 			"required": {
 				"archetypes": [
 					"2",
-					"4"
+					"3"
 				],
 				"enemies": [],
 				"flora": [],
@@ -2118,6 +2318,7 @@
 				]
 			}
 		},
+		"progression_stage": 2,
 		"seed": 2207,
 		"title": "Sample — First Fork (Teaching)",
 		"world_slot": {
@@ -2129,16 +2330,19 @@
 	"source": {
 		"complexity_tier": "teaching",
 		"generator": "archetype_based_stretch_v1",
+		"progression_stage": 2,
 		"seed": 2207
 	},
 	"success": true,
 	"title": "Sample — First Fork (Teaching)",
 	"validation": {
+		"bare_pair_solvable": true,
 		"multi_solution": true,
 		"multi_solution_ok": true,
 		"multi_solution_required": false,
 		"shadow_solvable": true,
 		"solution_warnings": [],
+		"spotlight_within_stage": true,
 		"warnings": []
 	},
 	"world_slot": {

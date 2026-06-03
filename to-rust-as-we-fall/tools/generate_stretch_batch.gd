@@ -13,7 +13,7 @@ const StretchGeneratorScript := preload("res://scripts/generation/stretch_genera
 const StretchSolutionSolverScript := preload("res://scripts/generation/stretch_solution_solver.gd")
 
 const PUZZLE_ARCHETYPES := ["1", "2", "3", "4", "5", "6", "7", "8", "10", "11"]
-const IMPLEMENTED_FLORA := ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "doma", "snapbloom"]
+const IMPLEMENTED_FLORA := ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "doma", "snapbloom", "gasafoetida"]
 const IMPLEMENTED_ENEMIES := ["techos", "naturalizers"]
 
 func _batch() -> Array:
@@ -23,9 +23,10 @@ func _batch() -> Array:
 			"title": "Sample — First Fork (Teaching)",
 			"seed": 2207,
 			"complexity_tier": "teaching",
+			"progression_stage": 2,
 			"limitations": {
 				"allowed": {"archetypes": PUZZLE_ARCHETYPES, "flora": IMPLEMENTED_FLORA, "enemies": IMPLEMENTED_ENEMIES},
-				"required": {"archetypes": ["2", "4"], "structures": ["shelter"]},
+				"required": {"archetypes": ["2", "3"], "structures": ["shelter"]},
 			},
 			"world_slot": {"region": "Tutorial Outflow", "entry_shelter_id": "shelter_1", "exit_shelter_id": "shelter_2"},
 		},
@@ -34,9 +35,10 @@ func _batch() -> Array:
 			"title": "Sample — Garden Patrol (Standard)",
 			"seed": 5519,
 			"complexity_tier": "standard",
+			"progression_stage": 3,
 			"limitations": {
 				"allowed": {"archetypes": PUZZLE_ARCHETYPES, "flora": IMPLEMENTED_FLORA, "enemies": IMPLEMENTED_ENEMIES},
-				"required": {"archetypes": ["1", "2", "4", "7"], "structures": ["shelter"]},
+				"required": {"archetypes": ["1", "2", "4"], "structures": ["shelter"]},
 			},
 			"composition": {
 				"mode": "archetype_random_walk",
@@ -49,6 +51,7 @@ func _batch() -> Array:
 			"title": "Sample — Ferric Carry Run (Hard)",
 			"seed": 7331,
 			"complexity_tier": "hard",
+			"progression_stage": 4,
 			"limitations": {
 				"allowed": {"archetypes": PUZZLE_ARCHETYPES, "flora": IMPLEMENTED_FLORA, "enemies": IMPLEMENTED_ENEMIES},
 				"required": {"archetypes": ["1", "3", "4", "6"], "structures": ["shelter", "carry_gear"]},
@@ -70,6 +73,7 @@ func _batch() -> Array:
 			"title": "Sample — Containment Vault (Setpiece)",
 			"seed": 9043,
 			"complexity_tier": "setpiece",
+			"progression_stage": 5,
 			"limitations": {
 				"allowed": {"archetypes": PUZZLE_ARCHETYPES, "flora": IMPLEMENTED_FLORA, "enemies": IMPLEMENTED_ENEMIES},
 				"required": {"archetypes": ["10", "1", "3", "4", "6"], "structures": ["shelter"]},
@@ -105,12 +109,14 @@ func _init() -> void:
 			skipped += 1
 			continue
 		saved += 1
-		print("  OK  %-44s tier=%-9s nodes=%2d choice=%d shadow=%s  -> %s" % [
+		print("  OK  %-44s tier=%-9s stage=%d nodes=%2d choice=%d shadow=%s future=%s -> %s" % [
 			spec_id,
 			str(spec.get("source", {}).get("complexity_tier", "")),
+			int(spec.get("source", {}).get("progression_stage", 0)),
 			(spec.get("nodes", []) as Array).size(),
 			int(analysis.get("choice_node_count", 0)),
 			str(bool(analysis.get("shadow_solvable", false))),
+			str(bool(analysis.get("shadow_uses_future_technique", false))),
 			path,
 		])
 	print("=== Batch complete: %d saved, %d skipped ===" % [saved, skipped])
@@ -125,6 +131,10 @@ func _validation_problems(spec: Dictionary, analysis: Dictionary) -> Array:
 		problems.append("only one solution path")
 	if not bool(analysis.get("shadow_solvable", false)):
 		problems.append("Aster+Peris cannot finish (shadow-broken)")
+	if not bool(analysis.get("bare_pair_solvable", false)):
+		problems.append("bare pair cannot finish without a placed tool")
+	if not bool(analysis.get("spotlight_within_stage", true)):
+		problems.append("full party exceeds the progression stage")
 	for warning in analysis.get("warnings", []):
 		if warning is Dictionary and str((warning as Dictionary).get("severity", "")) == "error":
 			problems.append(str((warning as Dictionary).get("code", "error")))

@@ -398,6 +398,7 @@
 		]
 	},
 	"multi_solution": true,
+	"progression_stage": 3,
 	"region": "Channels",
 	"schema": "trawf_stretch_replay_v1",
 	"solutions": [
@@ -408,6 +409,7 @@
 				{
 					"approach_id": "traverse",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "entry",
 					"characters": {
 						"aster": [
@@ -423,15 +425,19 @@
 							0.3
 						]
 					},
+					"expert": false,
 					"kind": "traverse",
+					"min_stage": 0,
 					"node": "entry",
 					"risk": "safe",
 					"role": "boundary",
+					"stage_ahead": false,
 					"t": 0.0
 				},
 				{
 					"approach_id": "redirect_combat",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "node_01 — Bait a combat specialist's charge into the target",
 					"characters": {
 						"aster": [
@@ -447,15 +453,19 @@
 							1.8
 						]
 					},
+					"expert": false,
 					"kind": "primary",
+					"min_stage": 2,
 					"node": "node_01",
 					"risk": "direct",
 					"role": "guidance",
+					"stage_ahead": false,
 					"t": 1.0
 				},
 				{
 					"approach_id": "force_clear",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "node_02 — Force the obstacle open with raw impact",
 					"characters": {
 						"aster": [
@@ -471,15 +481,19 @@
 							3.3
 						]
 					},
+					"expert": false,
 					"kind": "primary",
+					"min_stage": 1,
 					"node": "node_02",
 					"risk": "direct",
 					"role": "route_pressure",
+					"stage_ahead": false,
 					"t": 2.0
 				},
 				{
 					"approach_id": "guarded_escort",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "node_03 — A combat specialist guards the carrier across the open",
 					"characters": {
 						"aster": [
@@ -495,15 +509,19 @@
 							0.3
 						]
 					},
+					"expert": false,
 					"kind": "primary",
+					"min_stage": 2,
 					"node": "node_03",
 					"risk": "direct",
 					"role": "foraging",
+					"stage_ahead": false,
 					"t": 3.0
 				},
 				{
 					"approach_id": "combat_retrieval",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "node_04 — Fight through to retrieve the scattered fragments",
 					"characters": {
 						"aster": [
@@ -519,15 +537,19 @@
 							1.8
 						]
 					},
+					"expert": false,
 					"kind": "primary",
+					"min_stage": 3,
 					"node": "node_04",
 					"risk": "direct",
 					"role": "danger",
+					"stage_ahead": false,
 					"t": 4.0
 				},
 				{
 					"approach_id": "loud_draw",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "node_05 — Draw the patrol with a loud combat action",
 					"characters": {
 						"aster": [
@@ -543,15 +565,19 @@
 							3.3
 						]
 					},
+					"expert": false,
 					"kind": "primary",
+					"min_stage": 3,
 					"node": "node_05",
 					"risk": "direct",
 					"role": "shortcut",
+					"stage_ahead": false,
 					"t": 5.0
 				},
 				{
 					"approach_id": "traverse",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "exit_shelter",
 					"characters": {
 						"aster": [
@@ -567,71 +593,103 @@
 							0.3
 						]
 					},
+					"expert": false,
 					"kind": "traverse",
+					"min_stage": 0,
 					"node": "exit_shelter",
 					"risk": "safe",
 					"role": "shelter_arrival",
+					"stage_ahead": false,
 					"t": 6.0
 				}
 			],
 			"label": "Full party",
 			"loadout": "spotlight",
+			"max_stage_used": 3,
 			"node_approaches": [
 				{
 					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "traverse",
 					"label": "",
+					"min_stage": 0,
 					"node": "entry",
 					"party": "any",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "redirect_combat",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "primary",
 					"label": "Bait a combat specialist's charge into the target",
+					"min_stage": 2,
 					"node": "node_01",
 					"party": "specialist",
-					"risk": "direct"
+					"risk": "direct",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "force_clear",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "primary",
 					"label": "Force the obstacle open with raw impact",
+					"min_stage": 1,
 					"node": "node_02",
 					"party": "specialist",
-					"risk": "direct"
+					"risk": "direct",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "guarded_escort",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "primary",
 					"label": "A combat specialist guards the carrier across the open",
+					"min_stage": 2,
 					"node": "node_03",
 					"party": "specialist",
-					"risk": "direct"
+					"risk": "direct",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "combat_retrieval",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "primary",
 					"label": "Fight through to retrieve the scattered fragments",
+					"min_stage": 3,
 					"node": "node_04",
 					"party": "specialist",
-					"risk": "direct"
+					"risk": "direct",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "loud_draw",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "primary",
 					"label": "Draw the patrol with a loud combat action",
+					"min_stage": 3,
 					"node": "node_05",
 					"party": "specialist",
-					"risk": "direct"
+					"risk": "direct",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "traverse",
 					"label": "",
+					"min_stage": 0,
 					"node": "exit_shelter",
 					"party": "any",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				}
 			],
 			"party": [
@@ -639,7 +697,8 @@
 				"peris",
 				"endo"
 			],
-			"solvable": true
+			"solvable": true,
+			"uses_future_technique": false
 		},
 		{
 			"blocked_nodes": [],
@@ -648,6 +707,7 @@
 				{
 					"approach_id": "traverse",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "entry",
 					"characters": {
 						"aster": [
@@ -659,15 +719,19 @@
 							0.3
 						]
 					},
+					"expert": false,
 					"kind": "traverse",
+					"min_stage": 0,
 					"node": "entry",
 					"risk": "safe",
 					"role": "boundary",
+					"stage_ahead": false,
 					"t": 0.0
 				},
 				{
 					"approach_id": "overlay_cover",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "node_01 — Aster times the enemy charge on the overlay while Peris holds scarpet cover",
 					"characters": {
 						"aster": [
@@ -679,15 +743,19 @@
 							1.8
 						]
 					},
+					"expert": false,
 					"kind": "shadow",
+					"min_stage": 2,
 					"node": "node_01",
 					"risk": "risky",
 					"role": "guidance",
+					"stage_ahead": false,
 					"t": 1.0
 				},
 				{
 					"approach_id": "flora_finesse",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "node_02 — Peris grows or tends the plant tool; Aster confirms the target",
 					"characters": {
 						"aster": [
@@ -699,16 +767,20 @@
 							3.3
 						]
 					},
+					"expert": false,
 					"kind": "shadow",
+					"min_stage": 1,
 					"node": "node_02",
 					"risk": "safe",
 					"role": "route_pressure",
+					"stage_ahead": false,
 					"t": 2.0
 				},
 				{
-					"approach_id": "drag_mask",
+					"approach_id": "split_carry",
 					"blocked": false,
-					"caption": "node_03 — Drag the load along scarpet-masked routes with slow recovery windows",
+					"borrows_from": "5",
+					"caption": "node_03 — Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention  ⟐ expert: later-stage technique",
 					"characters": {
 						"aster": [
 							18.0,
@@ -719,16 +791,20 @@
 							0.3
 						]
 					},
-					"kind": "shadow",
+					"expert": true,
+					"kind": "shadow_expert",
+					"min_stage": 3,
 					"node": "node_03",
 					"risk": "risky",
 					"role": "foraging",
+					"stage_ahead": false,
 					"t": 3.0
 				},
 				{
-					"approach_id": "scan_preserve",
+					"approach_id": "terminal_cache_recall",
 					"blocked": false,
-					"caption": "node_04 — Aster reads the hidden overlay structure; Peris preserves the relational context",
+					"borrows_from": "8",
+					"caption": "node_04 — Skip the scavenger hunt: Aster pulls the missing fragment from an AST terminal's cached records, reconstructing the whole from the network  ⟐ expert: later-stage technique",
 					"characters": {
 						"aster": [
 							24.0,
@@ -739,16 +815,20 @@
 							1.8
 						]
 					},
-					"kind": "shadow",
+					"expert": true,
+					"kind": "shadow_expert",
+					"min_stage": 3,
 					"node": "node_04",
-					"risk": "safe",
+					"risk": "risky",
 					"role": "danger",
+					"stage_ahead": false,
 					"t": 4.0
 				},
 				{
-					"approach_id": "signal_split",
+					"approach_id": "false_pattern_spoof",
 					"blocked": false,
-					"caption": "node_05 — Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"borrows_from": "6",
+					"caption": "node_05 — Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for  ⟐ expert: later-stage technique",
 					"characters": {
 						"aster": [
 							30.0,
@@ -759,15 +839,19 @@
 							3.3
 						]
 					},
-					"kind": "shadow",
+					"expert": true,
+					"kind": "shadow_expert",
+					"min_stage": 3,
 					"node": "node_05",
-					"risk": "safe",
+					"risk": "risky",
 					"role": "shortcut",
+					"stage_ahead": false,
 					"t": 5.0
 				},
 				{
 					"approach_id": "traverse",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "exit_shelter",
 					"characters": {
 						"aster": [
@@ -779,78 +863,111 @@
 							0.3
 						]
 					},
+					"expert": false,
 					"kind": "traverse",
+					"min_stage": 0,
 					"node": "exit_shelter",
 					"risk": "safe",
 					"role": "shelter_arrival",
+					"stage_ahead": false,
 					"t": 6.0
 				}
 			],
 			"label": "Aster + Peris (shadow)",
 			"loadout": "shadow",
+			"max_stage_used": 3,
 			"node_approaches": [
 				{
 					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "traverse",
 					"label": "",
+					"min_stage": 0,
 					"node": "entry",
 					"party": "any",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "overlay_cover",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "shadow",
 					"label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover",
+					"min_stage": 2,
 					"node": "node_01",
 					"party": "aster_peris",
-					"risk": "risky"
+					"risk": "risky",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "flora_finesse",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "shadow",
 					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"min_stage": 1,
 					"node": "node_02",
 					"party": "aster_peris",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				},
 				{
-					"approach_id": "drag_mask",
-					"kind": "shadow",
-					"label": "Drag the load along scarpet-masked routes with slow recovery windows",
+					"approach_id": "split_carry",
+					"borrows_from": "5",
+					"expert": true,
+					"kind": "shadow_expert",
+					"label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
+					"min_stage": 3,
 					"node": "node_03",
 					"party": "aster_peris",
-					"risk": "risky"
+					"risk": "risky",
+					"stage_ahead": false
 				},
 				{
-					"approach_id": "scan_preserve",
-					"kind": "shadow",
-					"label": "Aster reads the hidden overlay structure; Peris preserves the relational context",
+					"approach_id": "terminal_cache_recall",
+					"borrows_from": "8",
+					"expert": true,
+					"kind": "shadow_expert",
+					"label": "Skip the scavenger hunt: Aster pulls the missing fragment from an AST terminal's cached records, reconstructing the whole from the network",
+					"min_stage": 3,
 					"node": "node_04",
 					"party": "aster_peris",
-					"risk": "safe"
+					"risk": "risky",
+					"stage_ahead": false
 				},
 				{
-					"approach_id": "signal_split",
-					"kind": "shadow",
-					"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"approach_id": "false_pattern_spoof",
+					"borrows_from": "6",
+					"expert": true,
+					"kind": "shadow_expert",
+					"label": "Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for",
+					"min_stage": 3,
 					"node": "node_05",
 					"party": "aster_peris",
-					"risk": "safe"
+					"risk": "risky",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "traverse",
 					"label": "",
+					"min_stage": 0,
 					"node": "exit_shelter",
 					"party": "any",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				}
 			],
 			"party": [
 				"aster",
 				"peris"
 			],
-			"solvable": true
+			"solvable": true,
+			"uses_future_technique": false
 		}
 	],
 	"spec_id": "generated_chain_nested_poc_shelter_2_to_3",

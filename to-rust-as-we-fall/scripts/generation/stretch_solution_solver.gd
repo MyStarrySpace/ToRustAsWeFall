@@ -23,10 +23,11 @@ const RISK_WEIGHTS := {"safe": 0, "direct": 1, "risky": 2}
 static func analyze_spec(spec: Dictionary) -> Dictionary:
 	var nodes: Array = spec.get("nodes", [])
 	var tier := str(spec.get("source", {}).get("complexity_tier", spec.get("settings", {}).get("complexity_tier", "teaching")))
-	return analyze(nodes, tier)
+	var prog := int(spec.get("source", {}).get("progression_stage", spec.get("settings", {}).get("progression_stage", 99)))
+	return analyze(nodes, tier, prog)
 
 
-static func analyze(nodes: Array, tier := "teaching") -> Dictionary:
+static func analyze(nodes: Array, tier := "teaching", progression_stage := 99) -> Dictionary:
 	var choice_nodes: Array[String] = []
 	for node in nodes:
 		if node is Dictionary and _presents_choice(node as Dictionary):
@@ -34,7 +35,7 @@ static func analyze(nodes: Array, tier := "teaching") -> Dictionary:
 
 	var solution_paths := []
 	for loadout in CapabilitiesScript.loadouts():
-		solution_paths.append(_solve_loadout(nodes, loadout))
+		solution_paths.append(_solve_loadout(nodes, loadout, progression_stage))
 
 	var spotlight := _path_for(solution_paths, "spotlight")
 	var shadow := _path_for(solution_paths, "shadow")
@@ -56,13 +57,28 @@ static func analyze(nodes: Array, tier := "teaching") -> Dictionary:
 	var multi_solution := not distinct_nodes.is_empty()
 	var shadow_solvable := bool(shadow.get("solvable", false))
 	var required := tier in REQUIRED_TIERS and not choice_nodes.is_empty()
+	var bare_pair_solvable := _bare_pair_solvable(nodes)
+	var shadow_uses_future := bool(shadow.get("uses_future_technique", false))
+	var spotlight_within_stage := bool(spotlight.get("within_stage", true))
 
 	var warnings := []
+	if not bare_pair_solvable:
+		warnings.append({
+			"severity": "error",
+			"code": "bare_pair_unsolvable",
+			"message": "A node has no shadow approach the bare Aster+Peris pair can field without a placed tool — the pair must be able to finish unconditionally.",
+		})
 	if not shadow_solvable and not (shadow.get("blocked_nodes", []) as Array).is_empty():
 		warnings.append({
 			"severity": "error",
 			"code": "shadow_broken",
 			"message": "Aster+Peris cannot solve %s — every puzzle must be solvable by the minimum pair." % str(shadow.get("blocked_nodes", [])),
+		})
+	if not spotlight_within_stage:
+		warnings.append({
+			"severity": "error",
+			"code": "spotlight_out_of_stage",
+			"message": "The full-party path relies on a technique from beyond the stretch's progression stage — first-play solutions must stay in-stage.",
 		})
 	if required and not multi_solution:
 		warnings.append({
@@ -80,11 +96,15 @@ static func analyze(nodes: Array, tier := "teaching") -> Dictionary:
 	return {
 		"contract_id": "stretch_solution_analysis_v1",
 		"tier": tier,
+		"progression_stage": progression_stage,
 		"choice_nodes": choice_nodes,
 		"choice_node_count": choice_nodes.size(),
 		"solution_paths": solution_paths,
 		"solvable_loadout_count": solvable_count,
 		"shadow_solvable": shadow_solvable,
+		"bare_pair_solvable": bare_pair_solvable,
+		"spotlight_within_stage": spotlight_within_stage,
+		"shadow_uses_future_technique": shadow_uses_future,
 		"multi_solution": multi_solution,
 		"distinct_nodes": distinct_nodes,
 		"distinct_node_count": distinct_nodes.size(),
@@ -94,14 +114,42 @@ static func analyze(nodes: Array, tier := "teaching") -> Dictionary:
 	}
 
 
+## Every node must keep at least one approach the bare Aster+Peris pair can field with
+## NO placed tool, so the pair can always finish regardless of stage or what was placed.
+static func _bare_pair_solvable(nodes: Array) -> bool:
+	var bare: Dictionary = CapabilitiesScript.bare_pair_capabilities()
+	for node in nodes:
+		if not (node is Dictionary):
+			continue
+		var approaches: Array = (node as Dictionary).get("approaches", [])
+		if approaches.is_empty():
+			continue
+		var ok := false
+		for approach in approaches:
+			if not (approach is Dictionary):
+				continue
+			if str((approach as Dictionary).get("party", "")) == "specialist":
+				continue
+			if CapabilitiesScript.requirements_met((approach as Dictionary).get("requires", []), bare):
+				ok = true
+				break
+		if not ok:
+			return false
+	return true
+
+
 ## Resolve one loadout against the node spine — the per-node approach commitments
 ## that make up a single playable solution path.
-static func _solve_loadout(nodes: Array, loadout: Dictionary) -> Dictionary:
+static func _solve_loadout(nodes: Array, loadout: Dictionary, progression_stage := 99) -> Dictionary:
 	var base_caps: Dictionary = loadout.get("base_capabilities", {})
+	var enforce_stage := bool(loadout.get("enforce_stage", false))
 	var approach_per_node := []
 	var blocked: Array[String] = []
 	var solvable := true
 	var total_risk := 0
+	var max_stage_used := 0
+	var uses_future := false
+	var within_stage := true
 	for node in nodes:
 		if not (node is Dictionary):
 			continue
@@ -121,6 +169,7 @@ static func _solve_loadout(nodes: Array, loadout: Dictionary) -> Dictionary:
 				"blocked": false,
 			})
 			continue
+		var node_stage := int(node_dict.get("stage", 1))
 		var available := base_caps.duplicate()
 		for tag in CapabilitiesScript.node_content_capabilities(node_dict).keys():
 			available[tag] = true
@@ -128,8 +177,12 @@ static func _solve_loadout(nodes: Array, loadout: Dictionary) -> Dictionary:
 		for approach in approaches:
 			if not (approach is Dictionary):
 				continue
-			if CapabilitiesScript.requirements_met((approach as Dictionary).get("requires", []), available):
-				chosen = approach as Dictionary
+			var ap := approach as Dictionary
+			var ap_min_stage := int(ap.get("min_stage", node_stage))
+			if enforce_stage and ap_min_stage > progression_stage:
+				continue  # technique not yet taught at this point in the campaign
+			if CapabilitiesScript.requirements_met(ap.get("requires", []), available):
+				chosen = ap
 				break
 		if chosen.is_empty():
 			blocked.append(node_id)
@@ -147,6 +200,13 @@ static func _solve_loadout(nodes: Array, loadout: Dictionary) -> Dictionary:
 			continue
 		var risk := str(chosen.get("risk", "safe"))
 		total_risk += int(RISK_WEIGHTS.get(risk, 1))
+		var chosen_min_stage := int(chosen.get("min_stage", node_stage))
+		var stage_ahead := chosen_min_stage > progression_stage
+		max_stage_used = maxi(max_stage_used, chosen_min_stage)
+		if stage_ahead:
+			uses_future = true
+			if enforce_stage:
+				within_stage = false
 		approach_per_node.append({
 			"node": node_id,
 			"role": str(node_dict.get("role", "")),
@@ -158,6 +218,10 @@ static func _solve_loadout(nodes: Array, loadout: Dictionary) -> Dictionary:
 			"uses": (chosen.get("uses", []) as Array).duplicate(),
 			"risk": risk,
 			"taught_by": str(chosen.get("taught_by", "")),
+			"min_stage": chosen_min_stage,
+			"expert": bool(chosen.get("expert", false)),
+			"stage_ahead": stage_ahead,
+			"borrows_from": str(chosen.get("borrows_from", "")),
 			"blocked": false,
 		})
 	return {
@@ -168,6 +232,9 @@ static func _solve_loadout(nodes: Array, loadout: Dictionary) -> Dictionary:
 		"blocked_nodes": blocked,
 		"approach_per_node": approach_per_node,
 		"total_risk": total_risk,
+		"max_stage_used": max_stage_used,
+		"uses_future_technique": uses_future,
+		"within_stage": within_stage,
 	}
 
 

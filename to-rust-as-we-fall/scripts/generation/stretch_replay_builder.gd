@@ -52,6 +52,7 @@ static func build(spec: Dictionary, options := {}) -> Dictionary:
 		"title": str(spec.get("title", "Generated Stretch")),
 		"region": str(spec.get("world_slot", {}).get("region", "")),
 		"complexity_tier": str(spec.get("source", {}).get("complexity_tier", "")),
+		"progression_stage": int(spec.get("source", {}).get("progression_stage", 99)),
 		"grid": grid,
 		"level": level,
 		"solutions": solutions,
@@ -74,7 +75,10 @@ static func _build_solution(path: Dictionary, node_cells: Dictionary) -> Diction
 			var offset: Array = FORMATION.get(member, [0.0, 0.0])
 			characters[member] = [float(cell[0]) + float(offset[0]), float(cell[1]) + float(offset[1])]
 		var label := str((entry as Dictionary).get("label", ""))
+		var expert := bool((entry as Dictionary).get("expert", false)) or bool((entry as Dictionary).get("stage_ahead", false))
 		var caption := node_id if label == "" else "%s — %s" % [node_id, label]
+		if expert:
+			caption += "  ⟐ expert: later-stage technique"
 		frames.append({
 			"t": t,
 			"node": node_id,
@@ -82,6 +86,10 @@ static func _build_solution(path: Dictionary, node_cells: Dictionary) -> Diction
 			"approach_id": str((entry as Dictionary).get("approach_id", "")),
 			"kind": str((entry as Dictionary).get("kind", "")),
 			"risk": str((entry as Dictionary).get("risk", "")),
+			"min_stage": int((entry as Dictionary).get("min_stage", 0)),
+			"expert": expert,
+			"stage_ahead": bool((entry as Dictionary).get("stage_ahead", false)),
+			"borrows_from": str((entry as Dictionary).get("borrows_from", "")),
 			"caption": caption,
 			"blocked": bool((entry as Dictionary).get("blocked", false)),
 			"characters": characters,
@@ -93,6 +101,10 @@ static func _build_solution(path: Dictionary, node_cells: Dictionary) -> Diction
 			"kind": str((entry as Dictionary).get("kind", "")),
 			"party": str((entry as Dictionary).get("party", "")),
 			"risk": str((entry as Dictionary).get("risk", "")),
+			"min_stage": int((entry as Dictionary).get("min_stage", 0)),
+			"expert": expert,
+			"stage_ahead": bool((entry as Dictionary).get("stage_ahead", false)),
+			"borrows_from": str((entry as Dictionary).get("borrows_from", "")),
 		})
 		t += NODE_BEAT
 	return {
@@ -100,6 +112,8 @@ static func _build_solution(path: Dictionary, node_cells: Dictionary) -> Diction
 		"label": str(path.get("label", "")),
 		"party": party,
 		"solvable": bool(path.get("solvable", false)),
+		"uses_future_technique": bool(path.get("uses_future_technique", false)),
+		"max_stage_used": int(path.get("max_stage_used", 0)),
 		"blocked_nodes": path.get("blocked_nodes", []),
 		"duration": maxf(0.0, t - NODE_BEAT),
 		"frames": frames,

@@ -69,6 +69,16 @@ const CATEGORY_ALIASES := {
 	"archetypes": "archetypes",
 }
 
+## Default campaign position per tier — how far the player is assumed to have progressed.
+## The first-play full party may only use techniques taught up to this stage; the
+## Aster+Peris shadow (a mastery run) may reach later. Overridable via settings.progression_stage.
+const TIER_PROGRESSION_STAGE := {
+	"teaching": 2,
+	"standard": 3,
+	"hard": 4,
+	"setpiece": 5,
+}
+
 static func generate(settings: Dictionary) -> Dictionary:
 	var validation := validate_settings(settings)
 	if not bool(validation.get("valid", false)):
@@ -83,6 +93,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 	var resolved: Dictionary = validation.get("resolved_settings", {})
 	var budget: Dictionary = resolved.get("budget", {})
 	var rng = SeededRngScript.new(int(resolved.get("seed", 0)))
+	resolved["progression_stage"] = _resolve_progression_stage(catalog, resolved)
 
 	var palette_usage := _choose_palette_usage(catalog, resolved, budget, rng)
 	var random_walk := _build_archetype_random_walk(catalog, resolved, budget, rng)
@@ -98,7 +109,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 	var world_slot := _build_world_slot(resolved, anchors)
 	var composition_summary := _build_composition_summary(resolved.get("composition", {}), archetype_chain, nodes, random_walk)
 	var warnings := _collect_warnings(catalog, palette_usage)
-	var solution := SolverScript.analyze(nodes, str(resolved.get("complexity_tier", "teaching")))
+	var solution := SolverScript.analyze(nodes, str(resolved.get("complexity_tier", "teaching")), int(resolved.get("progression_stage", 99)))
 
 	return {
 		"success": true,
@@ -110,6 +121,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 			"generator": "archetype_based_stretch_v1",
 			"seed": int(resolved.get("seed", 0)),
 			"complexity_tier": str(resolved.get("complexity_tier", "teaching")),
+			"progression_stage": int(resolved.get("progression_stage", 99)),
 		},
 		"settings": resolved,
 		"budget": budget.duplicate(true),
@@ -132,6 +144,10 @@ static func generate(settings: Dictionary) -> Dictionary:
 				"choice_nodes": solution.get("choice_nodes", []),
 				"solvable_loadout_count": solution.get("solvable_loadout_count", 0),
 				"shadow_solvable": solution.get("shadow_solvable", false),
+				"bare_pair_solvable": solution.get("bare_pair_solvable", false),
+				"spotlight_within_stage": solution.get("spotlight_within_stage", true),
+				"shadow_uses_future_technique": solution.get("shadow_uses_future_technique", false),
+				"progression_stage": solution.get("progression_stage", int(resolved.get("progression_stage", 99))),
 				"distinct_node_count": solution.get("distinct_node_count", 0),
 				"distinct_nodes": solution.get("distinct_nodes", []),
 				"multi_solution_required": solution.get("multi_solution_required", false),
@@ -158,6 +174,8 @@ static func generate(settings: Dictionary) -> Dictionary:
 			"multi_solution_ok": solution.get("multi_solution_ok", true),
 			"multi_solution_required": solution.get("multi_solution_required", false),
 			"shadow_solvable": solution.get("shadow_solvable", false),
+			"bare_pair_solvable": solution.get("bare_pair_solvable", false),
+			"spotlight_within_stage": solution.get("spotlight_within_stage", true),
 		},
 	}
 
@@ -459,12 +477,42 @@ static func _choose_palette_usage(catalog, settings: Dictionary, budget: Diction
 		"structures": _choose_values(catalog, "structures", _category_slot_budget("structures", budget), limitations, rng),
 	}
 
+## A stretch sits at least as late as the latest archetype it is forced to contain, so
+## the first-play full party always has an in-stage primary approach for every spine node.
+static func _resolve_progression_stage(catalog, resolved: Dictionary) -> int:
+	var tier := str(resolved.get("complexity_tier", "teaching"))
+	var stage := int(resolved.get("progression_stage", int(TIER_PROGRESSION_STAGE.get(tier, 2))))
+	var limitations: Dictionary = resolved.get("limitations", {})
+	for id in _category_limitations(limitations, "required", "archetypes"):
+		stage = maxi(stage, _archetype_stage(catalog, str(id)))
+	var composition: Dictionary = resolved.get("composition", {})
+	for link in composition.get("chain", []):
+		if link is Dictionary:
+			stage = maxi(stage, _archetype_stage(catalog, str((link as Dictionary).get("id", ""))))
+	for entry in composition.get("nested", []):
+		if entry is Dictionary:
+			stage = maxi(stage, _archetype_stage(catalog, str((entry as Dictionary).get("id", ""))))
+	stage = maxi(stage, _archetype_stage(catalog, str(composition.get("random_walk", {}).get("start_archetype", ""))))
+	return stage
+
+static func _archetype_stage(catalog, id: String) -> int:
+	if id == "" or not catalog.has_archetype(id):
+		return 0
+	return int(catalog.get_archetype(id).get("stage", 1))
+
+static func _filter_archetypes_by_stage(catalog, ids: Array, max_stage: int) -> Array[String]:
+	var result: Array[String] = []
+	for id in ids:
+		if _archetype_stage(catalog, str(id)) <= max_stage:
+			result.append(str(id))
+	return result
+
 static func _choose_archetype_chain(catalog, settings: Dictionary, budget: Dictionary, rng) -> Array:
 	var limitations: Dictionary = settings.get("limitations", {})
 	var required := _category_limitations(limitations, "required", "archetypes")
 	var allowed := _category_limitations(limitations, "allowed", "archetypes")
 	var blocked := _category_limitations(limitations, "blocked", "archetypes")
-	var available := _available_values(catalog, "archetypes", allowed, blocked)
+	var available := _filter_archetypes_by_stage(catalog, _available_values(catalog, "archetypes", allowed, blocked), int(settings.get("progression_stage", 99)))
 	var composition: Dictionary = settings.get("composition", {})
 	var composition_chain: Array = composition.get("chain", [])
 	var target_count := maxi(required.size(), maxi(composition_chain.size(), int(budget.get("archetype_depth", 2))))
@@ -529,6 +577,7 @@ static func _archetype_chain_entry(catalog, id: String, rng, variant_override :=
 		"step_count": (entry.get("steps", []) as Array).size() if entry.get("steps", []) is Array else 0,
 		"shadow_solution": entry.get("shadow_solution", {}),
 		"approaches": entry.get("approaches", []),
+		"stage": int(entry.get("stage", 1)),
 	}
 	if extras is Dictionary:
 		for key in (extras as Dictionary).keys():
@@ -544,7 +593,7 @@ static func _build_archetype_random_walk(catalog, settings: Dictionary, budget: 
 	var allowed := _category_limitations(limitations, "allowed", "archetypes")
 	var blocked := _category_limitations(limitations, "blocked", "archetypes")
 	var required := _category_limitations(limitations, "required", "archetypes")
-	var available := _available_values(catalog, "archetypes", allowed, blocked)
+	var available := _filter_archetypes_by_stage(catalog, _available_values(catalog, "archetypes", allowed, blocked), int(settings.get("progression_stage", 99)))
 	if available.is_empty():
 		return {}
 	var target_steps := int(walk_settings.get("step_count", 0))
@@ -815,6 +864,7 @@ static func _build_nodes(settings: Dictionary, budget: Dictionary, palette_usage
 			"pressure": 1 if not enemies.is_empty() else 0,
 			"shadow_solution": archetype.get("shadow_solution", composition.get("shadow_solution", {})),
 			"approaches": archetype.get("approaches", []),
+			"stage": int(archetype.get("stage", 1)),
 		}
 		nodes.append(node)
 		if resource_beats > 0 and role in ["foraging", "regroup"]:
