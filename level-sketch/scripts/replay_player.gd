@@ -98,7 +98,11 @@ func _build_ui() -> void:
 
 	# Top bar: sample picker, title, solution toggles, back-to-editor.
 	var top := _panel(ui)
-	top.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE, Control.PRESET_MODE_MINSIZE)
+	top.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	top.offset_left = 6
+	top.offset_right = -6
+	top.offset_top = 6
+	top.offset_bottom = 98
 	var top_v := VBoxContainer.new()
 	top_v.add_theme_constant_override("separation", 6)
 	top.add_child(top_v)
@@ -127,7 +131,11 @@ func _build_ui() -> void:
 
 	# Bottom bar: caption + transport + scrub.
 	var bottom := _panel(ui)
-	bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE, Control.PRESET_MODE_MINSIZE)
+	bottom.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	bottom.offset_left = 8
+	bottom.offset_right = -8
+	bottom.offset_top = -118
+	bottom.offset_bottom = -10
 	var bottom_v := VBoxContainer.new()
 	bottom_v.add_theme_constant_override("separation", 6)
 	bottom.add_child(bottom_v)
