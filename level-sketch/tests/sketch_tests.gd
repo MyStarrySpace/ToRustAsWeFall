@@ -37,6 +37,7 @@ func _run() -> void:
 	_test_color_json_safe()
 	_test_tint_floor_translucent()
 	_test_history()
+	_test_species_catalog()
 
 func _test_cells() -> void:
 	var m := SketchModel.new()
@@ -186,3 +187,23 @@ func _test_history() -> void:
 	_ok(not h.can_redo(), "a new edit after undo clears the redo branch")
 	_eq(m.objects.size(), 1, "the new branch's edit is present")
 	_ok(not h.commit(), "committing with no change records nothing")
+
+func _test_species_catalog() -> void:
+	_ok(SpeciesCatalog.all_flora().size() >= 8, "flora roster is populated")
+	_ok(SpeciesCatalog.all_fauna().size() >= 13, "fauna roster covers the 13 enemies")
+	_eq(SpeciesCatalog.category_of("seefern"), "flora", "seefern is flora")
+	_eq(SpeciesCatalog.category_of("spikers"), "fauna", "spikers is fauna")
+	_eq(SpeciesCatalog.category_of("shelter"), "", "non-species kinds have no category")
+	_eq(SpeciesCatalog.display_name("forget_me_nots"), "Forget-me-nots", "display name resolves")
+	# Every roster entry has a unique id and a real colour.
+	var ids := {}
+	for e in SpeciesCatalog.all_flora() + SpeciesCatalog.all_fauna():
+		_ok(not ids.has(e["id"]), "species id %s is unique" % str(e["id"]))
+		ids[e["id"]] = true
+		_ok(e["color"] is Color, "species %s has a colour" % str(e["id"]))
+	# A placed species keeps its id as the object kind and renders via the catalog.
+	var m := SketchModel.new()
+	var oid := m.add_object({"kind": "naturalizers", "x": 0, "y": 0, "level": 0})
+	_eq(str(m.get_object(oid).get("kind")), "naturalizers", "placed species keeps its kind")
+	var restored := SketchModel.from_json(m.to_json())
+	_eq(str(restored.objects[0].get("kind")), "naturalizers", "species kind survives save/load")

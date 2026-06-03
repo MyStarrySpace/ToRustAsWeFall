@@ -149,34 +149,34 @@ func _draw_object(obj: Dictionary, delta: int) -> void:
 
 func _draw_point_object(obj: Dictionary, origin: Vector2, col: Color, delta: int) -> void:
 	var center := origin + Vector2(CELL_SIZE, CELL_SIZE) * 0.5
-	match str(obj.get("kind", "")):
-		SketchModel.KIND_SHELTER:
-			# A little house: square body + roof.
-			var half := CELL_SIZE * 0.34
-			draw_rect(Rect2(center - Vector2(half, half * 0.5), Vector2(half * 2.0, half * 1.5)), col, true)
-			var roof := PackedVector2Array([
-				center + Vector2(-half * 1.15, -half * 0.5),
-				center + Vector2(half * 1.15, -half * 0.5),
-				center + Vector2(0.0, -half * 1.5),
-			])
-			draw_colored_polygon(roof, SketchModel.height_tint(col.lightened(0.15), 0))
-		SketchModel.KIND_FAUNA:
-			draw_circle(center, CELL_SIZE * 0.26, col)
-			draw_circle(center, CELL_SIZE * 0.26, SketchModel.height_tint(COLOR_BLOCKIN_EDGE, delta), false, 1.5)
-		_:
-			# Flora (and any other point object): a soft leaf-blob.
-			draw_circle(center, CELL_SIZE * 0.30, col)
+	var kind := str(obj.get("kind", ""))
+	if kind == SketchModel.KIND_SHELTER:
+		# A little house: square body + roof.
+		var half := CELL_SIZE * 0.34
+		draw_rect(Rect2(center - Vector2(half, half * 0.5), Vector2(half * 2.0, half * 1.5)), col, true)
+		var roof := PackedVector2Array([
+			center + Vector2(-half * 1.15, -half * 0.5),
+			center + Vector2(half * 1.15, -half * 0.5),
+			center + Vector2(0.0, -half * 1.5),
+		])
+		draw_colored_polygon(roof, SketchModel.height_tint(col.lightened(0.15), 0))
+	elif SpeciesCatalog.category_of(kind) == "fauna":
+		# Fauna: a creature dot with a dark outline.
+		draw_circle(center, CELL_SIZE * 0.26, col)
+		draw_circle(center, CELL_SIZE * 0.26, SketchModel.height_tint(COLOR_BLOCKIN_EDGE, delta), false, 1.5)
+	else:
+		# Flora (and any other point object): a soft leaf-blob.
+		draw_circle(center, CELL_SIZE * 0.30, col)
 
 func _object_color(obj: Dictionary) -> Color:
 	if obj.has("color") and obj["color"] is Array and (obj["color"] as Array).size() >= 3:
 		var c: Array = obj["color"]
 		return Color(float(c[0]), float(c[1]), float(c[2]))
-	match str(obj.get("kind", "")):
-		SketchModel.KIND_FLORA: return COLOR_FLORA
-		SketchModel.KIND_FAUNA: return COLOR_FAUNA
+	var kind := str(obj.get("kind", ""))
+	match kind:
 		SketchModel.KIND_SHELTER: return COLOR_SHELTER
 		SketchModel.KIND_BLOCKIN: return COLOR_BLOCKIN
-		_: return COLOR_FLORA
+		_: return SpeciesCatalog.color_of(kind)
 
 func _draw_preview() -> void:
 	if preview.is_empty():

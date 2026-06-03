@@ -17,7 +17,7 @@ var _camera: CameraRig
 var _grid: GridView
 
 var _tool := "room_rect"
-var _brush := SketchModel.KIND_FLORA  # paint brush when the Paint tool is active
+var _brush := "seefern"  # paint brush when the Paint tool is active ("room", shelter, or a species id)
 var _view_level := 0
 
 # Input state.
@@ -42,6 +42,8 @@ var _layer_objects_btn: Button
 var _undo_btn: Button
 var _redo_btn: Button
 var _confirm_new: ConfirmationDialog
+var _brush_swatch: ColorRect
+var _brush_label: Label
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -71,17 +73,21 @@ func _build_demo() -> void:
 	model.fill_rect(0, 0, 9, 6, 0, "room")
 	model.fill_rect(3, 2, 5, 4, 1, "room")    # a platform one level up
 	model.fill_rect(1, 5, 3, 7, -1, "room")   # a pit one level down
-	model.add_object({"kind": SketchModel.KIND_FLORA, "x": 1, "y": 1, "level": 0})
-	model.add_object({"kind": SketchModel.KIND_FAUNA, "x": 7, "y": 1, "level": 0})
+	model.add_object({"kind": "seefern", "x": 1, "y": 1, "level": 0})
+	model.add_object({"kind": "flure", "x": 2, "y": 1, "level": 0})
+	model.add_object({"kind": "techos", "x": 7, "y": 1, "level": 0})
+	model.add_object({"kind": "spikers", "x": 7, "y": 5, "level": 0})
 	model.add_object({"kind": SketchModel.KIND_SHELTER, "x": 8, "y": 5, "level": 0})
 	model.add_object({"kind": SketchModel.KIND_BLOCKIN, "shape": SketchModel.SHAPE_RECT, "x": 5, "y": 0, "w": 3, "h": 2, "level": 0})
 	model.add_object({"kind": SketchModel.KIND_BLOCKIN, "shape": SketchModel.SHAPE_CIRCLE, "x": 2, "y": 4, "r": 1.8, "level": 0})
-	model.add_object({"kind": SketchModel.KIND_FLORA, "x": 4, "y": 3, "level": 1})     # above -> orange
-	model.add_object({"kind": SketchModel.KIND_SHELTER, "x": 2, "y": 6, "level": -1})  # below -> blue
+	model.add_object({"kind": "capbage", "x": 4, "y": 3, "level": 1})     # above -> orange-tinted
+	model.add_object({"kind": "tanglers", "x": 2, "y": 6, "level": -1})   # below -> blue-tinted
 	_grid.set_model(model)
 	_grid.set_view_level(0)
 	_camera.global_position = Vector2(4.5, 3.5) * GridView.CELL_SIZE
 	_camera.zoom = Vector2(0.85, 0.85)
+	# Show the Paint brush row in the preview so the species palette is visible.
+	_select_tool("paint")
 
 # ------------------------------------------------------------------- World setup
 
@@ -151,12 +157,21 @@ func _build_ui() -> void:
 	brush_row.add_theme_constant_override("separation", 6)
 	top_vbox.add_child(brush_row)
 	_brush_row = brush_row
-	var brush_group := ButtonGroup.new()
-	_label(brush_row, "Brush:")
-	_brush_btn(brush_row, "Room cell", "room", brush_group, false)
-	_brush_btn(brush_row, "Flora", SketchModel.KIND_FLORA, brush_group, true)
-	_brush_btn(brush_row, "Fauna", SketchModel.KIND_FAUNA, brush_group, false)
-	_brush_btn(brush_row, "Shelter", SketchModel.KIND_SHELTER, brush_group, false)
+	_label(brush_row, "Paint:")
+	_brush_btn(brush_row, "Room cell", "room")
+	_brush_btn(brush_row, "Shelter", SketchModel.KIND_SHELTER)
+	_label(brush_row, "Flora")
+	_species_dropdown(brush_row, SpeciesCatalog.all_flora())
+	_label(brush_row, "Fauna")
+	_species_dropdown(brush_row, SpeciesCatalog.all_fauna())
+	# Active-brush indicator (colour swatch + name).
+	_brush_swatch = ColorRect.new()
+	_brush_swatch.custom_minimum_size = Vector2(26, 26)
+	_brush_swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_brush_swatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	brush_row.add_child(_brush_swatch)
+	_brush_label = _label(brush_row, "")
+	_set_brush(_brush)
 	brush_row.visible = false
 
 	top_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE, Control.PRESET_MODE_MINSIZE)
@@ -244,15 +259,47 @@ func _tool_btn(parent: Node, text: String, tool_id: String, group: ButtonGroup, 
 	b.pressed.connect(func(): _select_tool(tool_id))
 	parent.add_child(b)
 
-func _brush_btn(parent: Node, text: String, brush_id: String, group: ButtonGroup, pressed: bool) -> void:
+func _brush_btn(parent: Node, text: String, brush_id: String) -> void:
 	var b := Button.new()
 	b.text = text
-	b.toggle_mode = true
-	b.button_group = group
-	b.button_pressed = pressed
 	_style_button(b)
-	b.pressed.connect(func(): _brush = brush_id)
+	b.pressed.connect(func(): _set_brush(brush_id))
 	parent.add_child(b)
+
+## A dropdown of species (flora or fauna); selecting one sets it as the brush.
+func _species_dropdown(parent: Node, species: Array) -> OptionButton:
+	var ob := OptionButton.new()
+	ob.custom_minimum_size = Vector2(0, 50)
+	ob.add_theme_font_size_override("font_size", 18)
+	ob.focus_mode = Control.FOCUS_NONE
+	for i in range(species.size()):
+		ob.add_item(str(species[i]["name"]), i)
+		ob.set_item_metadata(i, str(species[i]["id"]))
+	ob.item_selected.connect(func(idx): _set_brush(str(ob.get_item_metadata(idx))))
+	parent.add_child(ob)
+	return ob
+
+## Set the active paint brush ("room", shelter, or a species id) and update the UI.
+func _set_brush(id: String) -> void:
+	_brush = id
+	if _brush_swatch != null:
+		_brush_swatch.color = _brush_color(id)
+	if _brush_label != null:
+		_brush_label.text = "→ " + _brush_display(id)
+
+func _brush_color(id: String) -> Color:
+	if id == "room":
+		return GridView.COLOR_ROOM
+	if id == SketchModel.KIND_SHELTER:
+		return GridView.COLOR_SHELTER
+	return SpeciesCatalog.color_of(id)
+
+func _brush_display(id: String) -> String:
+	if id == "room":
+		return "Room cell"
+	if id == SketchModel.KIND_SHELTER:
+		return "Shelter"
+	return SpeciesCatalog.display_name(id)
 
 func _label(parent: Node, text: String) -> Label:
 	var l := Label.new()
