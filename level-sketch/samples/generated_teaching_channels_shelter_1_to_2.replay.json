@@ -1,0 +1,728 @@
+{
+	"complexity_tier": "teaching",
+	"grid": {
+		"cell_world_size": 2.0,
+		"origin": [
+			0.0,
+			-3.0
+		]
+	},
+	"level": {
+		"bounds_cells": {
+			"height": 4,
+			"max": [
+				30,
+				3
+			],
+			"min": [
+				0,
+				0
+			],
+			"width": 31
+		},
+		"content": [
+			{
+				"category": "flora",
+				"cell": [
+					-1,
+					0
+				],
+				"kind": "flure",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					0,
+					0
+				],
+				"kind": "shelter",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					5,
+					1
+				],
+				"kind": "capbage",
+				"level": 1,
+				"support": "placeholder"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					6,
+					2
+				],
+				"kind": "class_gate",
+				"level": 1,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					11,
+					2
+				],
+				"kind": "flure",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					13,
+					3
+				],
+				"kind": "spikers",
+				"level": 2,
+				"support": "placeholder"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					12,
+					3
+				],
+				"kind": "shortcut_gate",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					17,
+					0
+				],
+				"kind": "capbage",
+				"level": 1,
+				"support": "placeholder"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					18,
+					0
+				],
+				"kind": "shelter",
+				"level": 1,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					23,
+					1
+				],
+				"kind": "flure",
+				"level": 1,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					24,
+					2
+				],
+				"kind": "class_gate",
+				"level": 1,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					29,
+					2
+				],
+				"kind": "capbage",
+				"level": 0,
+				"support": "placeholder"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					30,
+					3
+				],
+				"kind": "shelter",
+				"level": 0,
+				"support": "implemented"
+			}
+		],
+		"nodes": [
+			{
+				"archetype_id": "11",
+				"cell": [
+					0,
+					0
+				],
+				"id": "entry",
+				"label": "Entry Boundary",
+				"level": 0,
+				"optional": false,
+				"role": "boundary"
+			},
+			{
+				"archetype_id": "11",
+				"cell": [
+					6,
+					2
+				],
+				"id": "node_01",
+				"label": "Guidance Beat",
+				"level": 1,
+				"optional": false,
+				"role": "guidance"
+			},
+			{
+				"archetype_id": "2",
+				"cell": [
+					12,
+					3
+				],
+				"id": "node_02",
+				"label": "Route Pressure",
+				"level": 2,
+				"optional": false,
+				"role": "route_pressure"
+			},
+			{
+				"archetype_id": "11",
+				"cell": [
+					18,
+					0
+				],
+				"id": "node_03",
+				"label": "Foraging Beat",
+				"level": 1,
+				"optional": false,
+				"role": "foraging"
+			},
+			{
+				"archetype_id": "2",
+				"cell": [
+					24,
+					2
+				],
+				"id": "node_04",
+				"label": "Danger Beat",
+				"level": 1,
+				"optional": false,
+				"role": "danger"
+			},
+			{
+				"archetype_id": "11",
+				"cell": [
+					30,
+					3
+				],
+				"id": "exit_shelter",
+				"label": "Shelter Arrival",
+				"level": 0,
+				"optional": false,
+				"role": "shelter_arrival"
+			}
+		],
+		"routes": [
+			{
+				"from": "entry",
+				"from_cell": [
+					0,
+					0
+				],
+				"id": "main_00_01",
+				"kind": "safe",
+				"to": "node_01",
+				"to_cell": [
+					6,
+					2
+				]
+			},
+			{
+				"from": "node_01",
+				"from_cell": [
+					6,
+					2
+				],
+				"id": "main_01_02",
+				"kind": "safe",
+				"to": "node_02",
+				"to_cell": [
+					12,
+					3
+				]
+			},
+			{
+				"from": "node_02",
+				"from_cell": [
+					12,
+					3
+				],
+				"id": "main_02_03",
+				"kind": "safe",
+				"to": "node_03",
+				"to_cell": [
+					18,
+					0
+				]
+			},
+			{
+				"from": "node_03",
+				"from_cell": [
+					18,
+					0
+				],
+				"id": "main_03_04",
+				"kind": "safe",
+				"to": "node_04",
+				"to_cell": [
+					24,
+					2
+				]
+			},
+			{
+				"from": "node_04",
+				"from_cell": [
+					24,
+					2
+				],
+				"id": "main_04_05",
+				"kind": "safe",
+				"to": "exit_shelter",
+				"to_cell": [
+					30,
+					3
+				]
+			},
+			{
+				"from": "entry",
+				"from_cell": [
+					0,
+					0
+				],
+				"id": "risky_direct",
+				"kind": "risky",
+				"to": "exit_shelter",
+				"to_cell": [
+					30,
+					3
+				]
+			},
+			{
+				"from": "node_04",
+				"from_cell": [
+					24,
+					2
+				],
+				"id": "return_shortcut",
+				"kind": "shortcut",
+				"to": "entry",
+				"to_cell": [
+					0,
+					0
+				]
+			}
+		]
+	},
+	"multi_solution": true,
+	"region": "Channels",
+	"schema": "trawf_stretch_replay_v1",
+	"solutions": [
+		{
+			"blocked_nodes": [],
+			"duration": 5.0,
+			"frames": [
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"caption": "entry",
+					"characters": {
+						"aster": [
+							0.0,
+							-0.35
+						],
+						"endo": [
+							0.4,
+							0.3
+						],
+						"peris": [
+							-0.4,
+							0.3
+						]
+					},
+					"kind": "traverse",
+					"node": "entry",
+					"risk": "safe",
+					"role": "boundary",
+					"t": 0.0
+				},
+				{
+					"approach_id": "play_the_beat",
+					"blocked": false,
+					"caption": "node_01 — Adapt to the available party; preserve the state transition",
+					"characters": {
+						"aster": [
+							6.0,
+							1.15
+						],
+						"endo": [
+							6.4,
+							1.8
+						],
+						"peris": [
+							5.6,
+							1.8
+						]
+					},
+					"kind": "meta",
+					"node": "node_01",
+					"risk": "safe",
+					"role": "guidance",
+					"t": 1.0
+				},
+				{
+					"approach_id": "force_clear",
+					"blocked": false,
+					"caption": "node_02 — Force the obstacle open with raw impact",
+					"characters": {
+						"aster": [
+							12.0,
+							2.65
+						],
+						"endo": [
+							12.4,
+							3.3
+						],
+						"peris": [
+							11.6,
+							3.3
+						]
+					},
+					"kind": "primary",
+					"node": "node_02",
+					"risk": "direct",
+					"role": "route_pressure",
+					"t": 2.0
+				},
+				{
+					"approach_id": "play_the_beat",
+					"blocked": false,
+					"caption": "node_03 — Adapt to the available party; preserve the state transition",
+					"characters": {
+						"aster": [
+							18.0,
+							-0.35
+						],
+						"endo": [
+							18.4,
+							0.3
+						],
+						"peris": [
+							17.6,
+							0.3
+						]
+					},
+					"kind": "meta",
+					"node": "node_03",
+					"risk": "safe",
+					"role": "foraging",
+					"t": 3.0
+				},
+				{
+					"approach_id": "force_clear",
+					"blocked": false,
+					"caption": "node_04 — Force the obstacle open with raw impact",
+					"characters": {
+						"aster": [
+							24.0,
+							1.15
+						],
+						"endo": [
+							24.4,
+							1.8
+						],
+						"peris": [
+							23.6,
+							1.8
+						]
+					},
+					"kind": "primary",
+					"node": "node_04",
+					"risk": "direct",
+					"role": "danger",
+					"t": 4.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"caption": "exit_shelter",
+					"characters": {
+						"aster": [
+							30.0,
+							2.65
+						],
+						"endo": [
+							30.4,
+							3.3
+						],
+						"peris": [
+							29.6,
+							3.3
+						]
+					},
+					"kind": "traverse",
+					"node": "exit_shelter",
+					"risk": "safe",
+					"role": "shelter_arrival",
+					"t": 5.0
+				}
+			],
+			"label": "Full party",
+			"loadout": "spotlight",
+			"node_approaches": [
+				{
+					"approach_id": "traverse",
+					"kind": "traverse",
+					"label": "",
+					"node": "entry",
+					"party": "any",
+					"risk": "safe"
+				},
+				{
+					"approach_id": "play_the_beat",
+					"kind": "meta",
+					"label": "Adapt to the available party; preserve the state transition",
+					"node": "node_01",
+					"party": "any",
+					"risk": "safe"
+				},
+				{
+					"approach_id": "force_clear",
+					"kind": "primary",
+					"label": "Force the obstacle open with raw impact",
+					"node": "node_02",
+					"party": "specialist",
+					"risk": "direct"
+				},
+				{
+					"approach_id": "play_the_beat",
+					"kind": "meta",
+					"label": "Adapt to the available party; preserve the state transition",
+					"node": "node_03",
+					"party": "any",
+					"risk": "safe"
+				},
+				{
+					"approach_id": "force_clear",
+					"kind": "primary",
+					"label": "Force the obstacle open with raw impact",
+					"node": "node_04",
+					"party": "specialist",
+					"risk": "direct"
+				},
+				{
+					"approach_id": "traverse",
+					"kind": "traverse",
+					"label": "",
+					"node": "exit_shelter",
+					"party": "any",
+					"risk": "safe"
+				}
+			],
+			"party": [
+				"aster",
+				"peris",
+				"endo"
+			],
+			"solvable": true
+		},
+		{
+			"blocked_nodes": [],
+			"duration": 5.0,
+			"frames": [
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"caption": "entry",
+					"characters": {
+						"aster": [
+							0.0,
+							-0.35
+						],
+						"peris": [
+							-0.4,
+							0.3
+						]
+					},
+					"kind": "traverse",
+					"node": "entry",
+					"risk": "safe",
+					"role": "boundary",
+					"t": 0.0
+				},
+				{
+					"approach_id": "play_the_beat",
+					"blocked": false,
+					"caption": "node_01 — Adapt to the available party; preserve the state transition",
+					"characters": {
+						"aster": [
+							6.0,
+							1.15
+						],
+						"peris": [
+							5.6,
+							1.8
+						]
+					},
+					"kind": "meta",
+					"node": "node_01",
+					"risk": "safe",
+					"role": "guidance",
+					"t": 1.0
+				},
+				{
+					"approach_id": "flora_finesse",
+					"blocked": false,
+					"caption": "node_02 — Peris grows or tends the plant tool; Aster confirms the target",
+					"characters": {
+						"aster": [
+							12.0,
+							2.65
+						],
+						"peris": [
+							11.6,
+							3.3
+						]
+					},
+					"kind": "shadow",
+					"node": "node_02",
+					"risk": "safe",
+					"role": "route_pressure",
+					"t": 2.0
+				},
+				{
+					"approach_id": "play_the_beat",
+					"blocked": false,
+					"caption": "node_03 — Adapt to the available party; preserve the state transition",
+					"characters": {
+						"aster": [
+							18.0,
+							-0.35
+						],
+						"peris": [
+							17.6,
+							0.3
+						]
+					},
+					"kind": "meta",
+					"node": "node_03",
+					"risk": "safe",
+					"role": "foraging",
+					"t": 3.0
+				},
+				{
+					"approach_id": "flora_finesse",
+					"blocked": false,
+					"caption": "node_04 — Peris grows or tends the plant tool; Aster confirms the target",
+					"characters": {
+						"aster": [
+							24.0,
+							1.15
+						],
+						"peris": [
+							23.6,
+							1.8
+						]
+					},
+					"kind": "shadow",
+					"node": "node_04",
+					"risk": "safe",
+					"role": "danger",
+					"t": 4.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"caption": "exit_shelter",
+					"characters": {
+						"aster": [
+							30.0,
+							2.65
+						],
+						"peris": [
+							29.6,
+							3.3
+						]
+					},
+					"kind": "traverse",
+					"node": "exit_shelter",
+					"risk": "safe",
+					"role": "shelter_arrival",
+					"t": 5.0
+				}
+			],
+			"label": "Aster + Peris (shadow)",
+			"loadout": "shadow",
+			"node_approaches": [
+				{
+					"approach_id": "traverse",
+					"kind": "traverse",
+					"label": "",
+					"node": "entry",
+					"party": "any",
+					"risk": "safe"
+				},
+				{
+					"approach_id": "play_the_beat",
+					"kind": "meta",
+					"label": "Adapt to the available party; preserve the state transition",
+					"node": "node_01",
+					"party": "any",
+					"risk": "safe"
+				},
+				{
+					"approach_id": "flora_finesse",
+					"kind": "shadow",
+					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"node": "node_02",
+					"party": "aster_peris",
+					"risk": "safe"
+				},
+				{
+					"approach_id": "play_the_beat",
+					"kind": "meta",
+					"label": "Adapt to the available party; preserve the state transition",
+					"node": "node_03",
+					"party": "any",
+					"risk": "safe"
+				},
+				{
+					"approach_id": "flora_finesse",
+					"kind": "shadow",
+					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"node": "node_04",
+					"party": "aster_peris",
+					"risk": "safe"
+				},
+				{
+					"approach_id": "traverse",
+					"kind": "traverse",
+					"label": "",
+					"node": "exit_shelter",
+					"party": "any",
+					"risk": "safe"
+				}
+			],
+			"party": [
+				"aster",
+				"peris"
+			],
+			"solvable": true
+		}
+	],
+	"spec_id": "generated_teaching_channels_shelter_1_to_2",
+	"title": "Generated Teaching Channels: Shelter 1 -> Shelter 2"
+}

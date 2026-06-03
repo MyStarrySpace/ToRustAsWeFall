@@ -38,6 +38,7 @@ func _run() -> void:
 	_test_tint_floor_translucent()
 	_test_history()
 	_test_species_catalog()
+	_test_replay_data()
 
 func _test_cells() -> void:
 	var m := SketchModel.new()
@@ -207,3 +208,42 @@ func _test_species_catalog() -> void:
 	_eq(str(m.get_object(oid).get("kind")), "naturalizers", "placed species keeps its kind")
 	var restored := SketchModel.from_json(m.to_json())
 	_eq(str(restored.objects[0].get("kind")), "naturalizers", "species kind survives save/load")
+
+func _test_replay_data() -> void:
+	# The bundled generated-stretch replays load and interpolate the party over time.
+	var samples := ReplayData.list_samples()
+	_ok(samples.size() >= 1, "at least one bundled replay sample is present")
+	if samples.is_empty():
+		return
+	var data := ReplayData.new()
+	_ok(data.load_path(str(samples[0]["path"])), "a replay sample loads")
+	var level := data.level()
+	_ok((level.get("nodes", []) as Array).size() >= 2, "replay level has nodes")
+	_ok((level.get("routes", []) as Array).size() >= 1, "replay level has routes")
+	var solutions := data.solutions()
+	_eq(solutions.size(), 2, "replay carries spotlight + shadow solutions")
+	_ok(data.duration(0) > 0.0, "spotlight solution has a positive duration")
+	# At t=0 the party sits at the first node; partway through it has moved.
+	var start := data.characters_at(0, 0.0)
+	_ok(start.size() >= 2, "characters are positioned at t=0")
+	var mid := data.characters_at(0, data.duration(0) * 0.5)
+	var moved := false
+	for id in start.keys():
+		if mid.has(id) and (start[id] as Vector2).distance_to(mid[id]) > 0.01:
+			moved = true
+	_ok(moved, "the party moves between t=0 and the midpoint")
+	# The solved trail and caption grow with time.
+	_ok(data.visited_nodes(0, 0.0).size() < data.visited_nodes(0, data.duration(0)).size(),
+		"more nodes are solved by the end than at the start")
+	_ok(str(data.frame_at(0, data.duration(0)).get("caption", "")) != "", "the final frame has a caption")
+	# Spotlight and shadow diverge on at least one node's approach.
+	var sh := {}
+	for entry in (solutions[1] as Dictionary).get("node_approaches", []):
+		sh[str(entry.get("node", ""))] = str(entry.get("approach_id", ""))
+	var diverged := false
+	for entry in (solutions[0] as Dictionary).get("node_approaches", []):
+		var nid := str(entry.get("node", ""))
+		var aid := str(entry.get("approach_id", ""))
+		if aid != "" and sh.has(nid) and sh[nid] != aid:
+			diverged = true
+	_ok(diverged, "spotlight and shadow solutions differ on at least one node")

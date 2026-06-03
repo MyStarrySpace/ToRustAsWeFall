@@ -1,0 +1,1436 @@
+{
+	"complexity_tier": "setpiece",
+	"grid": {
+		"cell_world_size": 2.0,
+		"origin": [
+			0.0,
+			-3.20000004768372
+		]
+	},
+	"level": {
+		"bounds_cells": {
+			"height": 6,
+			"max": [
+				60,
+				5
+			],
+			"min": [
+				0,
+				0
+			],
+			"width": 61
+		},
+		"content": [
+			{
+				"category": "flora",
+				"cell": [
+					-1,
+					1
+				],
+				"kind": "seefern",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					0,
+					2
+				],
+				"kind": "shelter",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					5,
+					3
+				],
+				"kind": "snapbloom",
+				"level": 3,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					7,
+					3
+				],
+				"kind": "naturalizers",
+				"level": 3,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					6,
+					4
+				],
+				"kind": "hide_slot",
+				"level": 3,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					11,
+					4
+				],
+				"kind": "flure",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					12,
+					5
+				],
+				"kind": "terminal",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					17,
+					4
+				],
+				"kind": "mother_flure",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					18,
+					5
+				],
+				"kind": "terminal",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					23,
+					4
+				],
+				"kind": "doma",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					24,
+					5
+				],
+				"kind": "terminal",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					29,
+					4
+				],
+				"kind": "seefern",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					31,
+					5
+				],
+				"kind": "naturalizers",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					30,
+					5
+				],
+				"kind": "terminal",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					35,
+					4
+				],
+				"kind": "snapbloom",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					37,
+					5
+				],
+				"kind": "techos",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					36,
+					5
+				],
+				"kind": "barrier",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					41,
+					4
+				],
+				"kind": "flure",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					42,
+					5
+				],
+				"kind": "hide_slot",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					47,
+					3
+				],
+				"kind": "mother_flure",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					49,
+					3
+				],
+				"kind": "techos",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					48,
+					4
+				],
+				"kind": "barrier",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					53,
+					1
+				],
+				"kind": "doma",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					54,
+					2
+				],
+				"kind": "terminal",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					53,
+					1
+				],
+				"kind": "seefern",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					54,
+					2
+				],
+				"kind": "terminal",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					59,
+					-1
+				],
+				"kind": "snapbloom",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					60,
+					0
+				],
+				"kind": "shelter",
+				"level": 0,
+				"support": "implemented"
+			}
+		],
+		"nodes": [
+			{
+				"archetype_id": "11",
+				"cell": [
+					0,
+					2
+				],
+				"id": "entry",
+				"label": "Entry Boundary",
+				"level": 0,
+				"optional": false,
+				"role": "boundary"
+			},
+			{
+				"archetype_id": "10",
+				"cell": [
+					6,
+					3
+				],
+				"id": "node_01",
+				"label": "A10.1 Entry Transition",
+				"level": 3,
+				"optional": false,
+				"role": "setpiece"
+			},
+			{
+				"archetype_id": "10",
+				"cell": [
+					12,
+					5
+				],
+				"id": "node_02",
+				"label": "A10.2 Sub Puzzle Composition",
+				"level": 2,
+				"optional": false,
+				"role": "guidance"
+			},
+			{
+				"archetype_id": "1",
+				"cell": [
+					18,
+					5
+				],
+				"id": "node_03",
+				"label": "A1.1 Identify Impact Target",
+				"level": 2,
+				"optional": true,
+				"role": "guidance"
+			},
+			{
+				"archetype_id": "1",
+				"cell": [
+					24,
+					5
+				],
+				"id": "node_04",
+				"label": "A1.2 Position Bait",
+				"level": 2,
+				"optional": false,
+				"role": "guidance"
+			},
+			{
+				"archetype_id": "1",
+				"cell": [
+					30,
+					5
+				],
+				"id": "node_05",
+				"label": "A1.3 Trigger Charge",
+				"level": 2,
+				"optional": false,
+				"role": "route_pressure"
+			},
+			{
+				"archetype_id": "1",
+				"cell": [
+					36,
+					5
+				],
+				"id": "node_06",
+				"label": "A1.4 Dodge Commitment",
+				"level": 2,
+				"optional": true,
+				"role": "danger"
+			},
+			{
+				"archetype_id": "3",
+				"cell": [
+					42,
+					5
+				],
+				"id": "node_07",
+				"label": "A3.1 Pick Up Carry Target",
+				"level": 2,
+				"optional": false,
+				"role": "foraging"
+			},
+			{
+				"archetype_id": "4",
+				"cell": [
+					48,
+					3
+				],
+				"id": "node_08",
+				"label": "A4.1 Read Patrol",
+				"level": 0,
+				"optional": false,
+				"role": "danger"
+			},
+			{
+				"archetype_id": "6",
+				"cell": [
+					54,
+					2
+				],
+				"id": "node_09",
+				"label": "A6.1 Discover Fragments",
+				"level": 0,
+				"optional": true,
+				"role": "guidance"
+			},
+			{
+				"archetype_id": "10",
+				"cell": [
+					54,
+					2
+				],
+				"id": "node_10",
+				"label": "A6.1 Discover Fragments",
+				"level": 0,
+				"optional": false,
+				"role": "guidance"
+			},
+			{
+				"archetype_id": "11",
+				"cell": [
+					60,
+					0
+				],
+				"id": "exit_shelter",
+				"label": "Shelter Arrival",
+				"level": 0,
+				"optional": false,
+				"role": "shelter_arrival"
+			}
+		],
+		"routes": [
+			{
+				"from": "entry",
+				"from_cell": [
+					0,
+					2
+				],
+				"id": "main_00_01",
+				"kind": "safe",
+				"to": "node_01",
+				"to_cell": [
+					6,
+					3
+				]
+			},
+			{
+				"from": "node_01",
+				"from_cell": [
+					6,
+					3
+				],
+				"id": "main_01_02",
+				"kind": "safe",
+				"to": "node_02",
+				"to_cell": [
+					12,
+					5
+				]
+			},
+			{
+				"from": "node_02",
+				"from_cell": [
+					12,
+					5
+				],
+				"id": "main_02_03",
+				"kind": "safe",
+				"to": "node_03",
+				"to_cell": [
+					18,
+					5
+				]
+			},
+			{
+				"from": "node_03",
+				"from_cell": [
+					18,
+					5
+				],
+				"id": "main_03_04",
+				"kind": "safe",
+				"to": "node_04",
+				"to_cell": [
+					24,
+					5
+				]
+			},
+			{
+				"from": "node_04",
+				"from_cell": [
+					24,
+					5
+				],
+				"id": "main_04_05",
+				"kind": "safe",
+				"to": "node_05",
+				"to_cell": [
+					30,
+					5
+				]
+			},
+			{
+				"from": "node_05",
+				"from_cell": [
+					30,
+					5
+				],
+				"id": "main_05_06",
+				"kind": "safe",
+				"to": "node_06",
+				"to_cell": [
+					36,
+					5
+				]
+			},
+			{
+				"from": "node_06",
+				"from_cell": [
+					36,
+					5
+				],
+				"id": "main_06_07",
+				"kind": "safe",
+				"to": "node_07",
+				"to_cell": [
+					42,
+					5
+				]
+			},
+			{
+				"from": "node_07",
+				"from_cell": [
+					42,
+					5
+				],
+				"id": "main_07_08",
+				"kind": "safe",
+				"to": "node_08",
+				"to_cell": [
+					48,
+					3
+				]
+			},
+			{
+				"from": "node_08",
+				"from_cell": [
+					48,
+					3
+				],
+				"id": "main_08_09",
+				"kind": "safe",
+				"to": "node_09",
+				"to_cell": [
+					54,
+					2
+				]
+			},
+			{
+				"from": "node_09",
+				"from_cell": [
+					54,
+					2
+				],
+				"id": "main_09_10",
+				"kind": "safe",
+				"to": "node_10",
+				"to_cell": [
+					54,
+					2
+				]
+			},
+			{
+				"from": "node_10",
+				"from_cell": [
+					54,
+					2
+				],
+				"id": "main_10_11",
+				"kind": "safe",
+				"to": "exit_shelter",
+				"to_cell": [
+					60,
+					0
+				]
+			},
+			{
+				"from": "node_02",
+				"from_cell": [
+					12,
+					5
+				],
+				"id": "optional_bypass_02_04",
+				"kind": "safe",
+				"to": "node_04",
+				"to_cell": [
+					24,
+					5
+				]
+			},
+			{
+				"from": "node_05",
+				"from_cell": [
+					30,
+					5
+				],
+				"id": "optional_bypass_05_07",
+				"kind": "safe",
+				"to": "node_07",
+				"to_cell": [
+					42,
+					5
+				]
+			},
+			{
+				"from": "node_08",
+				"from_cell": [
+					48,
+					3
+				],
+				"id": "optional_bypass_08_10",
+				"kind": "safe",
+				"to": "node_10",
+				"to_cell": [
+					54,
+					2
+				]
+			},
+			{
+				"from": "entry",
+				"from_cell": [
+					0,
+					2
+				],
+				"id": "risky_direct",
+				"kind": "risky",
+				"to": "exit_shelter",
+				"to_cell": [
+					60,
+					0
+				]
+			},
+			{
+				"from": "node_10",
+				"from_cell": [
+					54,
+					2
+				],
+				"id": "return_shortcut",
+				"kind": "shortcut",
+				"to": "entry",
+				"to_cell": [
+					0,
+					2
+				]
+			}
+		]
+	},
+	"multi_solution": true,
+	"region": "Containment Vault",
+	"schema": "trawf_stretch_replay_v1",
+	"solutions": [
+		{
+			"blocked_nodes": [],
+			"duration": 11.0,
+			"frames": [
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"caption": "entry",
+					"characters": {
+						"aster": [
+							0.0,
+							1.25000002384186
+						],
+						"endo": [
+							0.4,
+							1.90000002384186
+						],
+						"peris": [
+							-0.4,
+							1.90000002384186
+						]
+					},
+					"kind": "traverse",
+					"node": "entry",
+					"risk": "safe",
+					"role": "boundary",
+					"t": 0.0
+				},
+				{
+					"approach_id": "specialist_team",
+					"blocked": false,
+					"caption": "node_01 — Bring a combat or Endo specialist team into the zone",
+					"characters": {
+						"aster": [
+							6.0,
+							2.85000004768372
+						],
+						"endo": [
+							6.4,
+							3.50000004768372
+						],
+						"peris": [
+							5.6,
+							3.50000004768372
+						]
+					},
+					"kind": "primary",
+					"node": "node_01",
+					"risk": "direct",
+					"role": "setpiece",
+					"t": 1.0
+				},
+				{
+					"approach_id": "specialist_team",
+					"blocked": false,
+					"caption": "node_02 — Bring a combat or Endo specialist team into the zone",
+					"characters": {
+						"aster": [
+							12.0,
+							4.45000007152558
+						],
+						"endo": [
+							12.4,
+							5.10000007152557
+						],
+						"peris": [
+							11.6,
+							5.10000007152557
+						]
+					},
+					"kind": "primary",
+					"node": "node_02",
+					"risk": "direct",
+					"role": "guidance",
+					"t": 2.0
+				},
+				{
+					"approach_id": "redirect_combat",
+					"blocked": false,
+					"caption": "node_03 — Bait a combat specialist's charge into the target",
+					"characters": {
+						"aster": [
+							18.0,
+							4.45000007152558
+						],
+						"endo": [
+							18.4,
+							5.10000007152557
+						],
+						"peris": [
+							17.6,
+							5.10000007152557
+						]
+					},
+					"kind": "primary",
+					"node": "node_03",
+					"risk": "direct",
+					"role": "guidance",
+					"t": 3.0
+				},
+				{
+					"approach_id": "redirect_combat",
+					"blocked": false,
+					"caption": "node_04 — Bait a combat specialist's charge into the target",
+					"characters": {
+						"aster": [
+							24.0,
+							4.45000007152558
+						],
+						"endo": [
+							24.4,
+							5.10000007152557
+						],
+						"peris": [
+							23.6,
+							5.10000007152557
+						]
+					},
+					"kind": "primary",
+					"node": "node_04",
+					"risk": "direct",
+					"role": "guidance",
+					"t": 4.0
+				},
+				{
+					"approach_id": "redirect_combat",
+					"blocked": false,
+					"caption": "node_05 — Bait a combat specialist's charge into the target",
+					"characters": {
+						"aster": [
+							30.0,
+							4.45000007152558
+						],
+						"endo": [
+							30.4,
+							5.10000007152557
+						],
+						"peris": [
+							29.6,
+							5.10000007152557
+						]
+					},
+					"kind": "primary",
+					"node": "node_05",
+					"risk": "direct",
+					"role": "route_pressure",
+					"t": 5.0
+				},
+				{
+					"approach_id": "redirect_combat",
+					"blocked": false,
+					"caption": "node_06 — Bait a combat specialist's charge into the target",
+					"characters": {
+						"aster": [
+							36.0,
+							4.45000007152558
+						],
+						"endo": [
+							36.4,
+							5.10000007152557
+						],
+						"peris": [
+							35.6,
+							5.10000007152557
+						]
+					},
+					"kind": "primary",
+					"node": "node_06",
+					"risk": "direct",
+					"role": "danger",
+					"t": 6.0
+				},
+				{
+					"approach_id": "guarded_escort",
+					"blocked": false,
+					"caption": "node_07 — A combat specialist guards the carrier across the open",
+					"characters": {
+						"aster": [
+							42.0,
+							4.45000007152558
+						],
+						"endo": [
+							42.4,
+							5.10000007152557
+						],
+						"peris": [
+							41.6,
+							5.10000007152557
+						]
+					},
+					"kind": "primary",
+					"node": "node_07",
+					"risk": "direct",
+					"role": "foraging",
+					"t": 7.0
+				},
+				{
+					"approach_id": "loud_draw",
+					"blocked": false,
+					"caption": "node_08 — Draw the patrol with a loud combat action",
+					"characters": {
+						"aster": [
+							48.0,
+							2.85000004768372
+						],
+						"endo": [
+							48.4,
+							3.50000004768372
+						],
+						"peris": [
+							47.6,
+							3.50000004768372
+						]
+					},
+					"kind": "primary",
+					"node": "node_08",
+					"risk": "direct",
+					"role": "danger",
+					"t": 8.0
+				},
+				{
+					"approach_id": "combat_retrieval",
+					"blocked": false,
+					"caption": "node_09 — Fight through to retrieve the scattered fragments",
+					"characters": {
+						"aster": [
+							54.0,
+							1.25000002384186
+						],
+						"endo": [
+							54.4,
+							1.90000002384186
+						],
+						"peris": [
+							53.6,
+							1.90000002384186
+						]
+					},
+					"kind": "primary",
+					"node": "node_09",
+					"risk": "direct",
+					"role": "guidance",
+					"t": 9.0
+				},
+				{
+					"approach_id": "specialist_team",
+					"blocked": false,
+					"caption": "node_10 — Bring a combat or Endo specialist team into the zone",
+					"characters": {
+						"aster": [
+							54.0,
+							1.25000002384186
+						],
+						"endo": [
+							54.4,
+							1.90000002384186
+						],
+						"peris": [
+							53.6,
+							1.90000002384186
+						]
+					},
+					"kind": "primary",
+					"node": "node_10",
+					"risk": "direct",
+					"role": "guidance",
+					"t": 10.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"caption": "exit_shelter",
+					"characters": {
+						"aster": [
+							60.0,
+							-0.35
+						],
+						"endo": [
+							60.4,
+							0.3
+						],
+						"peris": [
+							59.6,
+							0.3
+						]
+					},
+					"kind": "traverse",
+					"node": "exit_shelter",
+					"risk": "safe",
+					"role": "shelter_arrival",
+					"t": 11.0
+				}
+			],
+			"label": "Full party",
+			"loadout": "spotlight",
+			"node_approaches": [
+				{
+					"approach_id": "traverse",
+					"kind": "traverse",
+					"label": "",
+					"node": "entry",
+					"party": "any",
+					"risk": "safe"
+				},
+				{
+					"approach_id": "specialist_team",
+					"kind": "primary",
+					"label": "Bring a combat or Endo specialist team into the zone",
+					"node": "node_01",
+					"party": "specialist",
+					"risk": "direct"
+				},
+				{
+					"approach_id": "specialist_team",
+					"kind": "primary",
+					"label": "Bring a combat or Endo specialist team into the zone",
+					"node": "node_02",
+					"party": "specialist",
+					"risk": "direct"
+				},
+				{
+					"approach_id": "redirect_combat",
+					"kind": "primary",
+					"label": "Bait a combat specialist's charge into the target",
+					"node": "node_03",
+					"party": "specialist",
+					"risk": "direct"
+				},
+				{
+					"approach_id": "redirect_combat",
+					"kind": "primary",
+					"label": "Bait a combat specialist's charge into the target",
+					"node": "node_04",
+					"party": "specialist",
+					"risk": "direct"
+				},
+				{
+					"approach_id": "redirect_combat",
+					"kind": "primary",
+					"label": "Bait a combat specialist's charge into the target",
+					"node": "node_05",
+					"party": "specialist",
+					"risk": "direct"
+				},
+				{
+					"approach_id": "redirect_combat",
+					"kind": "primary",
+					"label": "Bait a combat specialist's charge into the target",
+					"node": "node_06",
+					"party": "specialist",
+					"risk": "direct"
+				},
+				{
+					"approach_id": "guarded_escort",
+					"kind": "primary",
+					"label": "A combat specialist guards the carrier across the open",
+					"node": "node_07",
+					"party": "specialist",
+					"risk": "direct"
+				},
+				{
+					"approach_id": "loud_draw",
+					"kind": "primary",
+					"label": "Draw the patrol with a loud combat action",
+					"node": "node_08",
+					"party": "specialist",
+					"risk": "direct"
+				},
+				{
+					"approach_id": "combat_retrieval",
+					"kind": "primary",
+					"label": "Fight through to retrieve the scattered fragments",
+					"node": "node_09",
+					"party": "specialist",
+					"risk": "direct"
+				},
+				{
+					"approach_id": "specialist_team",
+					"kind": "primary",
+					"label": "Bring a combat or Endo specialist team into the zone",
+					"node": "node_10",
+					"party": "specialist",
+					"risk": "direct"
+				},
+				{
+					"approach_id": "traverse",
+					"kind": "traverse",
+					"label": "",
+					"node": "exit_shelter",
+					"party": "any",
+					"risk": "safe"
+				}
+			],
+			"party": [
+				"aster",
+				"peris",
+				"endo"
+			],
+			"solvable": true
+		},
+		{
+			"blocked_nodes": [],
+			"duration": 11.0,
+			"frames": [
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"caption": "entry",
+					"characters": {
+						"aster": [
+							0.0,
+							1.25000002384186
+						],
+						"peris": [
+							-0.4,
+							1.90000002384186
+						]
+					},
+					"kind": "traverse",
+					"node": "entry",
+					"risk": "safe",
+					"role": "boundary",
+					"t": 0.0
+				},
+				{
+					"approach_id": "aster_peris_comp",
+					"blocked": false,
+					"caption": "node_01 — Aster/Peris composition: overlay timing, scarpet cover, slow carries",
+					"characters": {
+						"aster": [
+							6.0,
+							2.85000004768372
+						],
+						"peris": [
+							5.6,
+							3.50000004768372
+						]
+					},
+					"kind": "shadow",
+					"node": "node_01",
+					"risk": "risky",
+					"role": "setpiece",
+					"t": 1.0
+				},
+				{
+					"approach_id": "aster_peris_comp",
+					"blocked": false,
+					"caption": "node_02 — Aster/Peris composition: overlay timing, scarpet cover, slow carries",
+					"characters": {
+						"aster": [
+							12.0,
+							4.45000007152558
+						],
+						"peris": [
+							11.6,
+							5.10000007152557
+						]
+					},
+					"kind": "shadow",
+					"node": "node_02",
+					"risk": "risky",
+					"role": "guidance",
+					"t": 2.0
+				},
+				{
+					"approach_id": "overlay_cover",
+					"blocked": false,
+					"caption": "node_03 — Aster times the enemy charge on the overlay while Peris holds scarpet cover",
+					"characters": {
+						"aster": [
+							18.0,
+							4.45000007152558
+						],
+						"peris": [
+							17.6,
+							5.10000007152557
+						]
+					},
+					"kind": "shadow",
+					"node": "node_03",
+					"risk": "risky",
+					"role": "guidance",
+					"t": 3.0
+				},
+				{
+					"approach_id": "overlay_cover",
+					"blocked": false,
+					"caption": "node_04 — Aster times the enemy charge on the overlay while Peris holds scarpet cover",
+					"characters": {
+						"aster": [
+							24.0,
+							4.45000007152558
+						],
+						"peris": [
+							23.6,
+							5.10000007152557
+						]
+					},
+					"kind": "shadow",
+					"node": "node_04",
+					"risk": "risky",
+					"role": "guidance",
+					"t": 4.0
+				},
+				{
+					"approach_id": "overlay_cover",
+					"blocked": false,
+					"caption": "node_05 — Aster times the enemy charge on the overlay while Peris holds scarpet cover",
+					"characters": {
+						"aster": [
+							30.0,
+							4.45000007152558
+						],
+						"peris": [
+							29.6,
+							5.10000007152557
+						]
+					},
+					"kind": "shadow",
+					"node": "node_05",
+					"risk": "risky",
+					"role": "route_pressure",
+					"t": 5.0
+				},
+				{
+					"approach_id": "overlay_cover",
+					"blocked": false,
+					"caption": "node_06 — Aster times the enemy charge on the overlay while Peris holds scarpet cover",
+					"characters": {
+						"aster": [
+							36.0,
+							4.45000007152558
+						],
+						"peris": [
+							35.6,
+							5.10000007152557
+						]
+					},
+					"kind": "shadow",
+					"node": "node_06",
+					"risk": "risky",
+					"role": "danger",
+					"t": 6.0
+				},
+				{
+					"approach_id": "drag_mask",
+					"blocked": false,
+					"caption": "node_07 — Drag the load along scarpet-masked routes with slow recovery windows",
+					"characters": {
+						"aster": [
+							42.0,
+							4.45000007152558
+						],
+						"peris": [
+							41.6,
+							5.10000007152557
+						]
+					},
+					"kind": "shadow",
+					"node": "node_07",
+					"risk": "risky",
+					"role": "foraging",
+					"t": 7.0
+				},
+				{
+					"approach_id": "signal_split",
+					"blocked": false,
+					"caption": "node_08 — Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"characters": {
+						"aster": [
+							48.0,
+							2.85000004768372
+						],
+						"peris": [
+							47.6,
+							3.50000004768372
+						]
+					},
+					"kind": "shadow",
+					"node": "node_08",
+					"risk": "safe",
+					"role": "danger",
+					"t": 8.0
+				},
+				{
+					"approach_id": "scan_preserve",
+					"blocked": false,
+					"caption": "node_09 — Aster reads the hidden overlay structure; Peris preserves the relational context",
+					"characters": {
+						"aster": [
+							54.0,
+							1.25000002384186
+						],
+						"peris": [
+							53.6,
+							1.90000002384186
+						]
+					},
+					"kind": "shadow",
+					"node": "node_09",
+					"risk": "safe",
+					"role": "guidance",
+					"t": 9.0
+				},
+				{
+					"approach_id": "aster_peris_comp",
+					"blocked": false,
+					"caption": "node_10 — Aster/Peris composition: overlay timing, scarpet cover, slow carries",
+					"characters": {
+						"aster": [
+							54.0,
+							1.25000002384186
+						],
+						"peris": [
+							53.6,
+							1.90000002384186
+						]
+					},
+					"kind": "shadow",
+					"node": "node_10",
+					"risk": "risky",
+					"role": "guidance",
+					"t": 10.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"caption": "exit_shelter",
+					"characters": {
+						"aster": [
+							60.0,
+							-0.35
+						],
+						"peris": [
+							59.6,
+							0.3
+						]
+					},
+					"kind": "traverse",
+					"node": "exit_shelter",
+					"risk": "safe",
+					"role": "shelter_arrival",
+					"t": 11.0
+				}
+			],
+			"label": "Aster + Peris (shadow)",
+			"loadout": "shadow",
+			"node_approaches": [
+				{
+					"approach_id": "traverse",
+					"kind": "traverse",
+					"label": "",
+					"node": "entry",
+					"party": "any",
+					"risk": "safe"
+				},
+				{
+					"approach_id": "aster_peris_comp",
+					"kind": "shadow",
+					"label": "Aster/Peris composition: overlay timing, scarpet cover, slow carries",
+					"node": "node_01",
+					"party": "aster_peris",
+					"risk": "risky"
+				},
+				{
+					"approach_id": "aster_peris_comp",
+					"kind": "shadow",
+					"label": "Aster/Peris composition: overlay timing, scarpet cover, slow carries",
+					"node": "node_02",
+					"party": "aster_peris",
+					"risk": "risky"
+				},
+				{
+					"approach_id": "overlay_cover",
+					"kind": "shadow",
+					"label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover",
+					"node": "node_03",
+					"party": "aster_peris",
+					"risk": "risky"
+				},
+				{
+					"approach_id": "overlay_cover",
+					"kind": "shadow",
+					"label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover",
+					"node": "node_04",
+					"party": "aster_peris",
+					"risk": "risky"
+				},
+				{
+					"approach_id": "overlay_cover",
+					"kind": "shadow",
+					"label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover",
+					"node": "node_05",
+					"party": "aster_peris",
+					"risk": "risky"
+				},
+				{
+					"approach_id": "overlay_cover",
+					"kind": "shadow",
+					"label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover",
+					"node": "node_06",
+					"party": "aster_peris",
+					"risk": "risky"
+				},
+				{
+					"approach_id": "drag_mask",
+					"kind": "shadow",
+					"label": "Drag the load along scarpet-masked routes with slow recovery windows",
+					"node": "node_07",
+					"party": "aster_peris",
+					"risk": "risky"
+				},
+				{
+					"approach_id": "signal_split",
+					"kind": "shadow",
+					"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"node": "node_08",
+					"party": "aster_peris",
+					"risk": "safe"
+				},
+				{
+					"approach_id": "scan_preserve",
+					"kind": "shadow",
+					"label": "Aster reads the hidden overlay structure; Peris preserves the relational context",
+					"node": "node_09",
+					"party": "aster_peris",
+					"risk": "safe"
+				},
+				{
+					"approach_id": "aster_peris_comp",
+					"kind": "shadow",
+					"label": "Aster/Peris composition: overlay timing, scarpet cover, slow carries",
+					"node": "node_10",
+					"party": "aster_peris",
+					"risk": "risky"
+				},
+				{
+					"approach_id": "traverse",
+					"kind": "traverse",
+					"label": "",
+					"node": "exit_shelter",
+					"party": "any",
+					"risk": "safe"
+				}
+			],
+			"party": [
+				"aster",
+				"peris"
+			],
+			"solvable": true
+		}
+	],
+	"spec_id": "generated_sample_setpiece_containment",
+	"title": "Sample — Containment Vault (Setpiece)"
+}

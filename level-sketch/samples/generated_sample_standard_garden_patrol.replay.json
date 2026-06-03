@@ -1,0 +1,964 @@
+{
+	"complexity_tier": "standard",
+	"grid": {
+		"cell_world_size": 2.0,
+		"origin": [
+			0.0,
+			-3.20000004768372
+		]
+	},
+	"level": {
+		"bounds_cells": {
+			"height": 4,
+			"max": [
+				42,
+				3
+			],
+			"min": [
+				0,
+				0
+			],
+			"width": 43
+		},
+		"content": [
+			{
+				"category": "flora",
+				"cell": [
+					-1,
+					1
+				],
+				"kind": "hushbloom",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					0,
+					2
+				],
+				"kind": "shelter",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					5,
+					-1
+				],
+				"kind": "flure",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					7,
+					0
+				],
+				"kind": "naturalizers",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					6,
+					0
+				],
+				"kind": "root_slide",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					11,
+					1
+				],
+				"kind": "snapbloom",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					13,
+					1
+				],
+				"kind": "techos",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					12,
+					2
+				],
+				"kind": "terminal",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					17,
+					0
+				],
+				"kind": "hushbloom",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					18,
+					0
+				],
+				"kind": "terminal",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					23,
+					1
+				],
+				"kind": "flure",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					24,
+					2
+				],
+				"kind": "terminal",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					29,
+					1
+				],
+				"kind": "snapbloom",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					30,
+					2
+				],
+				"kind": "root_slide",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					35,
+					3
+				],
+				"kind": "hushbloom",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					36,
+					4
+				],
+				"kind": "terminal",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					41,
+					1
+				],
+				"kind": "flure",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					42,
+					2
+				],
+				"kind": "shelter",
+				"level": 0,
+				"support": "implemented"
+			}
+		],
+		"nodes": [
+			{
+				"archetype_id": "11",
+				"cell": [
+					0,
+					2
+				],
+				"id": "entry",
+				"label": "Entry Boundary",
+				"level": 0,
+				"optional": false,
+				"role": "boundary"
+			},
+			{
+				"archetype_id": "4",
+				"cell": [
+					6,
+					0
+				],
+				"id": "node_01",
+				"label": "A4.1 Read Patrol",
+				"level": 0,
+				"optional": false,
+				"role": "danger"
+			},
+			{
+				"archetype_id": "4",
+				"cell": [
+					12,
+					2
+				],
+				"id": "node_02",
+				"label": "A4.2 Choose Distractor",
+				"level": 2,
+				"optional": false,
+				"role": "danger"
+			},
+			{
+				"archetype_id": "4",
+				"cell": [
+					18,
+					0
+				],
+				"id": "node_03",
+				"label": "A4.3 Position Distractor",
+				"level": 0,
+				"optional": true,
+				"role": "guidance"
+			},
+			{
+				"archetype_id": "1",
+				"cell": [
+					24,
+					2
+				],
+				"id": "node_04",
+				"label": "A1.1 Identify Impact Target",
+				"level": 2,
+				"optional": false,
+				"role": "guidance"
+			},
+			{
+				"archetype_id": "2",
+				"cell": [
+					30,
+					2
+				],
+				"id": "node_05",
+				"label": "A2.1 Acquire Plant Or Seed",
+				"level": 2,
+				"optional": false,
+				"role": "foraging"
+			},
+			{
+				"archetype_id": "7",
+				"cell": [
+					36,
+					3
+				],
+				"id": "node_06",
+				"label": "A7.1 Observe Patrol",
+				"level": 2,
+				"optional": false,
+				"role": "danger"
+			},
+			{
+				"archetype_id": "11",
+				"cell": [
+					42,
+					2
+				],
+				"id": "exit_shelter",
+				"label": "Shelter Arrival",
+				"level": 0,
+				"optional": false,
+				"role": "shelter_arrival"
+			}
+		],
+		"routes": [
+			{
+				"from": "entry",
+				"from_cell": [
+					0,
+					2
+				],
+				"id": "main_00_01",
+				"kind": "safe",
+				"to": "node_01",
+				"to_cell": [
+					6,
+					0
+				]
+			},
+			{
+				"from": "node_01",
+				"from_cell": [
+					6,
+					0
+				],
+				"id": "main_01_02",
+				"kind": "safe",
+				"to": "node_02",
+				"to_cell": [
+					12,
+					2
+				]
+			},
+			{
+				"from": "node_02",
+				"from_cell": [
+					12,
+					2
+				],
+				"id": "main_02_03",
+				"kind": "safe",
+				"to": "node_03",
+				"to_cell": [
+					18,
+					0
+				]
+			},
+			{
+				"from": "node_03",
+				"from_cell": [
+					18,
+					0
+				],
+				"id": "main_03_04",
+				"kind": "safe",
+				"to": "node_04",
+				"to_cell": [
+					24,
+					2
+				]
+			},
+			{
+				"from": "node_04",
+				"from_cell": [
+					24,
+					2
+				],
+				"id": "main_04_05",
+				"kind": "safe",
+				"to": "node_05",
+				"to_cell": [
+					30,
+					2
+				]
+			},
+			{
+				"from": "node_05",
+				"from_cell": [
+					30,
+					2
+				],
+				"id": "main_05_06",
+				"kind": "safe",
+				"to": "node_06",
+				"to_cell": [
+					36,
+					3
+				]
+			},
+			{
+				"from": "node_06",
+				"from_cell": [
+					36,
+					3
+				],
+				"id": "main_06_07",
+				"kind": "safe",
+				"to": "exit_shelter",
+				"to_cell": [
+					42,
+					2
+				]
+			},
+			{
+				"from": "node_02",
+				"from_cell": [
+					12,
+					2
+				],
+				"id": "optional_bypass_02_04",
+				"kind": "safe",
+				"to": "node_04",
+				"to_cell": [
+					24,
+					2
+				]
+			},
+			{
+				"from": "entry",
+				"from_cell": [
+					0,
+					2
+				],
+				"id": "risky_direct",
+				"kind": "risky",
+				"to": "exit_shelter",
+				"to_cell": [
+					42,
+					2
+				]
+			},
+			{
+				"from": "node_06",
+				"from_cell": [
+					36,
+					3
+				],
+				"id": "return_shortcut",
+				"kind": "shortcut",
+				"to": "entry",
+				"to_cell": [
+					0,
+					2
+				]
+			}
+		]
+	},
+	"multi_solution": true,
+	"region": "Garden Causeway",
+	"schema": "trawf_stretch_replay_v1",
+	"solutions": [
+		{
+			"blocked_nodes": [],
+			"duration": 7.0,
+			"frames": [
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"caption": "entry",
+					"characters": {
+						"aster": [
+							0.0,
+							1.25000002384186
+						],
+						"endo": [
+							0.4,
+							1.90000002384186
+						],
+						"peris": [
+							-0.4,
+							1.90000002384186
+						]
+					},
+					"kind": "traverse",
+					"node": "entry",
+					"risk": "safe",
+					"role": "boundary",
+					"t": 0.0
+				},
+				{
+					"approach_id": "loud_draw",
+					"blocked": false,
+					"caption": "node_01 — Draw the patrol with a loud combat action",
+					"characters": {
+						"aster": [
+							6.0,
+							-0.35
+						],
+						"endo": [
+							6.4,
+							0.3
+						],
+						"peris": [
+							5.6,
+							0.3
+						]
+					},
+					"kind": "primary",
+					"node": "node_01",
+					"risk": "direct",
+					"role": "danger",
+					"t": 1.0
+				},
+				{
+					"approach_id": "loud_draw",
+					"blocked": false,
+					"caption": "node_02 — Draw the patrol with a loud combat action",
+					"characters": {
+						"aster": [
+							12.0,
+							1.25000002384186
+						],
+						"endo": [
+							12.4,
+							1.90000002384186
+						],
+						"peris": [
+							11.6,
+							1.90000002384186
+						]
+					},
+					"kind": "primary",
+					"node": "node_02",
+					"risk": "direct",
+					"role": "danger",
+					"t": 2.0
+				},
+				{
+					"approach_id": "loud_draw",
+					"blocked": false,
+					"caption": "node_03 — Draw the patrol with a loud combat action",
+					"characters": {
+						"aster": [
+							18.0,
+							-0.35
+						],
+						"endo": [
+							18.4,
+							0.3
+						],
+						"peris": [
+							17.6,
+							0.3
+						]
+					},
+					"kind": "primary",
+					"node": "node_03",
+					"risk": "direct",
+					"role": "guidance",
+					"t": 3.0
+				},
+				{
+					"approach_id": "redirect_combat",
+					"blocked": false,
+					"caption": "node_04 — Bait a combat specialist's charge into the target",
+					"characters": {
+						"aster": [
+							24.0,
+							1.25000002384186
+						],
+						"endo": [
+							24.4,
+							1.90000002384186
+						],
+						"peris": [
+							23.6,
+							1.90000002384186
+						]
+					},
+					"kind": "primary",
+					"node": "node_04",
+					"risk": "direct",
+					"role": "guidance",
+					"t": 4.0
+				},
+				{
+					"approach_id": "force_clear",
+					"blocked": false,
+					"caption": "node_05 — Force the obstacle open with raw impact",
+					"characters": {
+						"aster": [
+							30.0,
+							1.25000002384186
+						],
+						"endo": [
+							30.4,
+							1.90000002384186
+						],
+						"peris": [
+							29.6,
+							1.90000002384186
+						]
+					},
+					"kind": "primary",
+					"node": "node_05",
+					"risk": "direct",
+					"role": "foraging",
+					"t": 5.0
+				},
+				{
+					"approach_id": "force_window",
+					"blocked": false,
+					"caption": "node_06 — Force the window open with raw pressure",
+					"characters": {
+						"aster": [
+							36.0,
+							2.85000004768372
+						],
+						"endo": [
+							36.4,
+							3.50000004768372
+						],
+						"peris": [
+							35.6,
+							3.50000004768372
+						]
+					},
+					"kind": "primary",
+					"node": "node_06",
+					"risk": "risky",
+					"role": "danger",
+					"t": 6.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"caption": "exit_shelter",
+					"characters": {
+						"aster": [
+							42.0,
+							1.25000002384186
+						],
+						"endo": [
+							42.4,
+							1.90000002384186
+						],
+						"peris": [
+							41.6,
+							1.90000002384186
+						]
+					},
+					"kind": "traverse",
+					"node": "exit_shelter",
+					"risk": "safe",
+					"role": "shelter_arrival",
+					"t": 7.0
+				}
+			],
+			"label": "Full party",
+			"loadout": "spotlight",
+			"node_approaches": [
+				{
+					"approach_id": "traverse",
+					"kind": "traverse",
+					"label": "",
+					"node": "entry",
+					"party": "any",
+					"risk": "safe"
+				},
+				{
+					"approach_id": "loud_draw",
+					"kind": "primary",
+					"label": "Draw the patrol with a loud combat action",
+					"node": "node_01",
+					"party": "specialist",
+					"risk": "direct"
+				},
+				{
+					"approach_id": "loud_draw",
+					"kind": "primary",
+					"label": "Draw the patrol with a loud combat action",
+					"node": "node_02",
+					"party": "specialist",
+					"risk": "direct"
+				},
+				{
+					"approach_id": "loud_draw",
+					"kind": "primary",
+					"label": "Draw the patrol with a loud combat action",
+					"node": "node_03",
+					"party": "specialist",
+					"risk": "direct"
+				},
+				{
+					"approach_id": "redirect_combat",
+					"kind": "primary",
+					"label": "Bait a combat specialist's charge into the target",
+					"node": "node_04",
+					"party": "specialist",
+					"risk": "direct"
+				},
+				{
+					"approach_id": "force_clear",
+					"kind": "primary",
+					"label": "Force the obstacle open with raw impact",
+					"node": "node_05",
+					"party": "specialist",
+					"risk": "direct"
+				},
+				{
+					"approach_id": "force_window",
+					"kind": "primary",
+					"label": "Force the window open with raw pressure",
+					"node": "node_06",
+					"party": "specialist",
+					"risk": "risky"
+				},
+				{
+					"approach_id": "traverse",
+					"kind": "traverse",
+					"label": "",
+					"node": "exit_shelter",
+					"party": "any",
+					"risk": "safe"
+				}
+			],
+			"party": [
+				"aster",
+				"peris",
+				"endo"
+			],
+			"solvable": true
+		},
+		{
+			"blocked_nodes": [],
+			"duration": 7.0,
+			"frames": [
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"caption": "entry",
+					"characters": {
+						"aster": [
+							0.0,
+							1.25000002384186
+						],
+						"peris": [
+							-0.4,
+							1.90000002384186
+						]
+					},
+					"kind": "traverse",
+					"node": "entry",
+					"risk": "safe",
+					"role": "boundary",
+					"t": 0.0
+				},
+				{
+					"approach_id": "signal_split",
+					"blocked": false,
+					"caption": "node_01 — Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"characters": {
+						"aster": [
+							6.0,
+							-0.35
+						],
+						"peris": [
+							5.6,
+							0.3
+						]
+					},
+					"kind": "shadow",
+					"node": "node_01",
+					"risk": "safe",
+					"role": "danger",
+					"t": 1.0
+				},
+				{
+					"approach_id": "signal_split",
+					"blocked": false,
+					"caption": "node_02 — Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"characters": {
+						"aster": [
+							12.0,
+							1.25000002384186
+						],
+						"peris": [
+							11.6,
+							1.90000002384186
+						]
+					},
+					"kind": "shadow",
+					"node": "node_02",
+					"risk": "safe",
+					"role": "danger",
+					"t": 2.0
+				},
+				{
+					"approach_id": "signal_split",
+					"blocked": false,
+					"caption": "node_03 — Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"characters": {
+						"aster": [
+							18.0,
+							-0.35
+						],
+						"peris": [
+							17.6,
+							0.3
+						]
+					},
+					"kind": "shadow",
+					"node": "node_03",
+					"risk": "safe",
+					"role": "guidance",
+					"t": 3.0
+				},
+				{
+					"approach_id": "overlay_cover",
+					"blocked": false,
+					"caption": "node_04 — Aster times the enemy charge on the overlay while Peris holds scarpet cover",
+					"characters": {
+						"aster": [
+							24.0,
+							1.25000002384186
+						],
+						"peris": [
+							23.6,
+							1.90000002384186
+						]
+					},
+					"kind": "shadow",
+					"node": "node_04",
+					"risk": "risky",
+					"role": "guidance",
+					"t": 4.0
+				},
+				{
+					"approach_id": "flora_finesse",
+					"blocked": false,
+					"caption": "node_05 — Peris grows or tends the plant tool; Aster confirms the target",
+					"characters": {
+						"aster": [
+							30.0,
+							1.25000002384186
+						],
+						"peris": [
+							29.6,
+							1.90000002384186
+						]
+					},
+					"kind": "shadow",
+					"node": "node_05",
+					"risk": "safe",
+					"role": "foraging",
+					"t": 5.0
+				},
+				{
+					"approach_id": "read_and_cover",
+					"blocked": false,
+					"caption": "node_06 — Aster reads the patrol timing; Peris creates or extends cover",
+					"characters": {
+						"aster": [
+							36.0,
+							2.85000004768372
+						],
+						"peris": [
+							35.6,
+							3.50000004768372
+						]
+					},
+					"kind": "shadow",
+					"node": "node_06",
+					"risk": "safe",
+					"role": "danger",
+					"t": 6.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"caption": "exit_shelter",
+					"characters": {
+						"aster": [
+							42.0,
+							1.25000002384186
+						],
+						"peris": [
+							41.6,
+							1.90000002384186
+						]
+					},
+					"kind": "traverse",
+					"node": "exit_shelter",
+					"risk": "safe",
+					"role": "shelter_arrival",
+					"t": 7.0
+				}
+			],
+			"label": "Aster + Peris (shadow)",
+			"loadout": "shadow",
+			"node_approaches": [
+				{
+					"approach_id": "traverse",
+					"kind": "traverse",
+					"label": "",
+					"node": "entry",
+					"party": "any",
+					"risk": "safe"
+				},
+				{
+					"approach_id": "signal_split",
+					"kind": "shadow",
+					"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"node": "node_01",
+					"party": "aster_peris",
+					"risk": "safe"
+				},
+				{
+					"approach_id": "signal_split",
+					"kind": "shadow",
+					"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"node": "node_02",
+					"party": "aster_peris",
+					"risk": "safe"
+				},
+				{
+					"approach_id": "signal_split",
+					"kind": "shadow",
+					"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"node": "node_03",
+					"party": "aster_peris",
+					"risk": "safe"
+				},
+				{
+					"approach_id": "overlay_cover",
+					"kind": "shadow",
+					"label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover",
+					"node": "node_04",
+					"party": "aster_peris",
+					"risk": "risky"
+				},
+				{
+					"approach_id": "flora_finesse",
+					"kind": "shadow",
+					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"node": "node_05",
+					"party": "aster_peris",
+					"risk": "safe"
+				},
+				{
+					"approach_id": "read_and_cover",
+					"kind": "shadow",
+					"label": "Aster reads the patrol timing; Peris creates or extends cover",
+					"node": "node_06",
+					"party": "aster_peris",
+					"risk": "safe"
+				},
+				{
+					"approach_id": "traverse",
+					"kind": "traverse",
+					"label": "",
+					"node": "exit_shelter",
+					"party": "any",
+					"risk": "safe"
+				}
+			],
+			"party": [
+				"aster",
+				"peris"
+			],
+			"solvable": true
+		}
+	],
+	"spec_id": "generated_sample_standard_garden_patrol",
+	"title": "Sample — Garden Patrol (Standard)"
+}
