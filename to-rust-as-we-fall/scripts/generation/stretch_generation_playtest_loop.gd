@@ -104,6 +104,15 @@ func playtest_spec(spec: Dictionary, tree: SceneTree, options := {}) -> Dictiona
 	if bool(risky_report.get("has_risky_route", false)):
 		_record_check(result, "risky_recovery_applies_pressure", float(risky_report.get("damage", 0.0)) > 0.0, "Risky recovery applies pressure before rest")
 
+	var shadow_report := _play_shadow_path(preview_instance, spec, result, options)
+	result["playthroughs"]["shadow_path"] = shadow_report
+	_merge_playthrough_events(result, shadow_report)
+	var choice_node_count := int(spec.get("headless", {}).get("solution_summary", {}).get("choice_node_count", 0))
+	if choice_node_count > 0:
+		_record_check(result, "shadow_path_completes", bool(shadow_report.get("shelter_rested", false)), "Aster+Peris shadow path reaches and rests at the exit shelter")
+		_record_check(result, "shadow_path_no_specialist", bool(shadow_report.get("uses_only_pair", false)), "Shadow path never relies on a specialist approach")
+		_record_check(result, "shadow_path_distinct", _solution_paths_differ(golden_report.get("solution_path", []), shadow_report.get("solution_path", [])), "Shadow path solves at least one node a different way than the golden path")
+
 	var final_state: Dictionary = preview_instance.call("headless_get_state")
 	result["final_state"] = _summarize_preview_state(final_state)
 	_record_animation_snapshot(result, preview_instance, "final", "Final preview state", {
@@ -134,6 +143,21 @@ func _finish_result(result: Dictionary) -> Dictionary:
 	result["ok"] = errors.is_empty()
 	result["event_count"] = (result.get("events", []) as Array).size()
 	return result
+
+## Two recorded solution paths differ when any shared node was cleared with a
+## different approach — the proof that the run took a genuinely different route.
+func _solution_paths_differ(path_a: Array, path_b: Array) -> bool:
+	var by_node := {}
+	for entry in path_a:
+		if entry is Dictionary:
+			by_node[str((entry as Dictionary).get("node", ""))] = str((entry as Dictionary).get("approach_id", ""))
+	for entry in path_b:
+		if not (entry is Dictionary):
+			continue
+		var node_id := str((entry as Dictionary).get("node", ""))
+		if by_node.has(node_id) and by_node[node_id] != str((entry as Dictionary).get("approach_id", "")):
+			return true
+	return false
 
 func _record_check(result: Dictionary, check_id: String, passed: bool, failure_message: String) -> void:
 	var checks: Dictionary = result.get("checks", {})
@@ -360,12 +384,80 @@ func _play_golden_path(preview_instance: Node, spec: Dictionary, result := {}, o
 	report["first_shelter_beat_fired"] = bool(chunk.get("first_shelter_beat_fired", false))
 	report["final_phase"] = str(chunk.get("route_phase", ""))
 	report["final_outcome"] = str(chunk.get("last_outcome", ""))
+	report["solution_path"] = chunk.get("solution_path", [])
 	if bool(report.get("shelter_rested", false)):
 		_append_report_event(report, "golden_path", "shelter_rested", "Exit shelter reached and rested", {
 			"route_phase": str(chunk.get("route_phase", "")),
 			"last_outcome": str(chunk.get("last_outcome", "")),
 			"first_shelter_beat_fired": bool(chunk.get("first_shelter_beat_fired", false)),
 		})
+	return report
+
+## The Aster+Peris shadow run over the same node spine. It walks the golden node
+## order but with the shadow loadout active, so each puzzle node falls through to its
+## shadow approach — a genuinely different, recorded solution path.
+func _play_shadow_path(preview_instance: Node, spec: Dictionary, result := {}, options := {}) -> Dictionary:
+	var report := {
+		"path_id": "shadow_path",
+		"visited_nodes": [],
+		"route_ids": [],
+		"route_choices": 0,
+		"movement_commands": 0,
+		"max_path_points": 0,
+		"used_multi_y_path": false,
+		"shelter_rested": false,
+		"uses_only_pair": true,
+		"solution_path": [],
+		"events": [],
+	}
+	if not preview_instance.has_method("headless_call_chunk"):
+		return report
+	preview_instance.call("headless_call_chunk", "reset_preview_state", [])
+	preview_instance.call("headless_call_chunk", "set_active_loadout", ["shadow"])
+	_append_report_event(report, "shadow_path", "path_started", "Shadow path (Aster+Peris) started", {"path_id": "shadow_path"})
+	_record_animation_snapshot(result, preview_instance, "shadow_path", "Shadow path reset (Aster+Peris)", {
+		"event_type": "path_started",
+		"path_id": "shadow_path",
+		"loadout": "shadow",
+	})
+	var path: Array = spec.get("headless", {}).get("golden_path", [])
+	if path.is_empty():
+		path = ["entry", "exit_shelter"]
+	for i in range(path.size()):
+		var node_id := str(path[i])
+		var running_for_move := _node_suggests_running(_find_node(spec, node_id))
+		if i > 0:
+			var route_id := _find_route_id(spec, str(path[i - 1]), node_id, ["safe", "shortcut"])
+			if route_id != "":
+				var route_def := _find_route(spec, route_id)
+				running_for_move = running_for_move or _route_suggests_running(route_def)
+				(report["route_ids"] as Array).append(route_id)
+				report["route_choices"] = int(report.get("route_choices", 0)) + 1
+				preview_instance.call("headless_call_chunk", "choose_generated_route", [route_id, false])
+		var move_report := _move_party_to_node_report(preview_instance, spec, node_id, result, options, running_for_move, "shadow_path")
+		report["movement_commands"] = int(report.get("movement_commands", 0)) + int(move_report.get("commands", 0))
+		report["used_multi_y_path"] = bool(report.get("used_multi_y_path", false)) or bool(move_report.get("used_multi_y_path", false))
+		preview_instance.call("headless_call_chunk", "activate_generated_node", [node_id])
+		var node_payload := _node_event_payload(spec, node_id, preview_instance)
+		_append_report_event(report, "shadow_path", "node_activated", "Activated %s (shadow)" % node_id, node_payload)
+		_record_animation_snapshot(result, preview_instance, "shadow_path", "Shadow solved %s" % node_id, {
+			"event_type": "node_activated",
+			"node_id": node_id,
+			"node": node_payload,
+			"loadout": "shadow",
+		})
+		(report["visited_nodes"] as Array).append(node_id)
+	var state: Dictionary = preview_instance.call("headless_get_state")
+	var chunk: Dictionary = state.get("chunk", {})
+	report["shelter_rested"] = bool(chunk.get("shelter_rested", false))
+	report["final_phase"] = str(chunk.get("route_phase", ""))
+	report["final_outcome"] = str(chunk.get("last_outcome", ""))
+	report["blocked_nodes"] = chunk.get("blocked_nodes", [])
+	var solution_path: Array = chunk.get("solution_path", [])
+	report["solution_path"] = solution_path
+	for entry in solution_path:
+		if entry is Dictionary and str((entry as Dictionary).get("party", "")) == "specialist":
+			report["uses_only_pair"] = false
 	return report
 
 func _play_risky_recovery(preview_instance: Node, spec: Dictionary, result := {}, options := {}) -> Dictionary:

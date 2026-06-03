@@ -3,6 +3,7 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 const StretchGeneratorScript := preload("res://scripts/generation/stretch_generator.gd")
 const CatalogScript := preload("res://scripts/generation/stretch_archetype_catalog.gd")
 const NavigationGraphScript := preload("res://scripts/system/core/navigation_graph.gd")
+const CapabilitiesScript := preload("res://scripts/generation/stretch_capabilities.gd")
 
 const DEFAULT_SPEC_PATH := "res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"
 const PARTY_IDS := ["aster", "peris", "endo"]
@@ -31,6 +32,11 @@ var _last_outcome := ""
 var _risky_damage_total := 0.0
 var _first_shelter_beat_fired := false
 var _unsupported_placeholder_count := 0
+var _active_loadout := "spotlight"
+var _active_party: Array[String] = ["aster", "peris", "endo"]
+var _active_capabilities: Dictionary = {}
+var _node_approach_used: Dictionary = {}
+var _blocked_nodes: Array[String] = []
 
 func configure_chunk(config: Dictionary) -> void:
 	_config = config.duplicate(true)
@@ -158,6 +164,11 @@ func get_preview_state() -> Dictionary:
 		"risky_damage_total": _risky_damage_total,
 		"unsupported_placeholder_count": _unsupported_placeholder_count,
 		"content_marker_count": _content_marker_count,
+		"active_loadout": _active_loadout,
+		"active_party": _active_party.duplicate(),
+		"blocked_nodes": _blocked_nodes.duplicate(),
+		"solution_path": get_active_solution_path(),
+		"solution_summary": _spec.get("headless", {}).get("solution_summary", {}).duplicate(true),
 	}
 	return {
 		"contract_id": "generated_stretch_chunk_v1",
@@ -173,6 +184,9 @@ func get_preview_state() -> Dictionary:
 		"last_outcome": _last_outcome,
 		"risky_damage_total": _risky_damage_total,
 		"unsupported_placeholder_count": _unsupported_placeholder_count,
+		"active_loadout": _active_loadout,
+		"blocked_nodes": _blocked_nodes.duplicate(),
+		"solution_path": get_active_solution_path(),
 		"graybox": generation["graybox"],
 		"navigation": generation["navigation"],
 		"generation": generation,
@@ -237,8 +251,45 @@ func reset_preview_state() -> void:
 	_last_outcome = "ready"
 	_risky_damage_total = 0.0
 	_first_shelter_beat_fired = false
+	_node_approach_used.clear()
+	_blocked_nodes.clear()
+	set_active_loadout(_active_loadout)
 	_restore_party()
 	_set_preview_step("generated_stretch_ready")
+
+## Choose which party is solving the stretch. "spotlight" is the full party (a
+## specialist is on hand); "shadow" is the Aster+Peris pair. The active loadout's
+## capabilities decide which approach each puzzle node accepts — and whether it blocks.
+func set_active_loadout(loadout_id: String) -> void:
+	for loadout in CapabilitiesScript.loadouts():
+		if str(loadout.get("id", "")) == loadout_id:
+			_active_loadout = loadout_id
+			_active_party.clear()
+			for cid in loadout.get("party", []):
+				_active_party.append(str(cid))
+			_active_capabilities = (loadout.get("base_capabilities", {}) as Dictionary).duplicate()
+			return
+	_active_loadout = "spotlight"
+	_active_party = ["aster", "peris", "endo"]
+	_active_capabilities = CapabilitiesScript.party_capabilities(_active_party, true)
+
+## The first approach the active party can field on this node, given its own
+## capabilities plus any tool placed on the node. Marked blocked when none fit.
+func _resolve_node_approach(node: Dictionary) -> Dictionary:
+	var approaches: Array = node.get("approaches", [])
+	if approaches.is_empty():
+		return {"approach_id": "traverse", "kind": "traverse", "party": "any", "blocked": false}
+	if _active_capabilities.is_empty():
+		set_active_loadout(_active_loadout)
+	var available := _active_capabilities.duplicate()
+	for tag in CapabilitiesScript.node_content_capabilities(node).keys():
+		available[tag] = true
+	for approach in approaches:
+		if approach is Dictionary and CapabilitiesScript.requirements_met((approach as Dictionary).get("requires", []), available):
+			var resolved := (approach as Dictionary).duplicate()
+			resolved["blocked"] = false
+			return resolved
+	return {"approach_id": "", "kind": "blocked", "party": "", "blocked": true}
 
 func activate_generated_node(node_id: String) -> bool:
 	_ensure_spec_loaded()
@@ -246,6 +297,16 @@ func activate_generated_node(node_id: String) -> bool:
 	if node.is_empty():
 		_last_outcome = "missing_node:%s" % node_id
 		return false
+	var approach := _resolve_node_approach(node)
+	if bool(approach.get("blocked", false)):
+		if not _blocked_nodes.has(node_id):
+			_blocked_nodes.append(node_id)
+		_route_phase = "blocked"
+		_last_outcome = "blocked:%s" % node_id
+		_set_preview_step("generated_stretch_blocked")
+		_show_note("%s has no way through %s." % [_active_loadout.capitalize(), str(node.get("title", node_id))], 2.0)
+		return false
+	_node_approach_used[node_id] = approach
 	if not _completed_nodes.has(node_id):
 		_completed_nodes.append(node_id)
 	var role := str(node.get("role", ""))
@@ -294,16 +355,51 @@ func choose_generated_route(route_id: String, activate_target := true) -> bool:
 func run_generated_golden_path() -> bool:
 	_ensure_spec_loaded()
 	reset_preview_state()
+	set_active_loadout("spotlight")
 	_route_phase = "golden"
 	var path: Array = _spec.get("headless", {}).get("golden_path", [])
 	if path.is_empty():
 		path = ["entry", "exit_shelter"]
 	for node_id in path:
 		activate_generated_node(str(node_id))
-	if not _shelter_rested:
+	if not _shelter_rested and _blocked_nodes.is_empty():
 		_reach_exit_shelter()
 	_route_choice = "golden_path"
 	return _shelter_rested
+
+## The shadow solution: the same node spine solved by the Aster+Peris pair alone.
+## Each puzzle node falls through to its shadow approach (no specialist on hand), so a
+## completed shadow run is a genuinely different solution path than the golden run.
+func run_generated_shadow_path() -> bool:
+	_ensure_spec_loaded()
+	reset_preview_state()
+	set_active_loadout("shadow")
+	_route_phase = "shadow"
+	var path: Array = _spec.get("headless", {}).get("golden_path", [])
+	if path.is_empty():
+		path = ["entry", "exit_shelter"]
+	for node_id in path:
+		activate_generated_node(str(node_id))
+	if not _shelter_rested and _blocked_nodes.is_empty():
+		_reach_exit_shelter()
+	_route_choice = "shadow_path"
+	return _shelter_rested
+
+## The approaches the active party actually used, in the order nodes were cleared —
+## the data an in-game or Android replay animates.
+func get_active_solution_path() -> Array:
+	var path := []
+	for node_id in _completed_nodes:
+		var approach: Dictionary = _node_approach_used.get(node_id, {})
+		path.append({
+			"node": node_id,
+			"approach_id": str(approach.get("id", approach.get("approach_id", ""))),
+			"kind": str(approach.get("kind", "")),
+			"party": str(approach.get("party", "")),
+			"label": str(approach.get("label", "")),
+			"risk": str(approach.get("risk", "")),
+		})
+	return path
 
 func run_generated_risky_recovery() -> bool:
 	_ensure_spec_loaded()
