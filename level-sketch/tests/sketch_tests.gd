@@ -1,0 +1,161 @@
+extends Node
+
+## Headless test runner for the data layer. Does nothing during normal use; pass
+## `-- --test` to run:
+##   Godot_v4.6.1-stable_win64_console.exe --headless --path level-sketch -- --test
+
+var _passed := 0
+var _failed := 0
+
+func _ready() -> void:
+	if not ("--test" in OS.get_cmdline_user_args() or "--test" in OS.get_cmdline_args()):
+		return
+	_run()
+	print("\n[SketchTests] %d passed, %d failed" % [_passed, _failed])
+	get_tree().quit(1 if _failed > 0 else 0)
+
+func _ok(cond: bool, label: String) -> void:
+	if cond:
+		_passed += 1
+		print("  PASS: %s" % label)
+	else:
+		_failed += 1
+		print("  FAIL: %s" % label)
+
+func _eq(a, b, label: String) -> void:
+	_ok(a == b, "%s (got %s, want %s)" % [label, str(a), str(b)])
+
+func _run() -> void:
+	_test_cells()
+	_test_rect_fill()
+	_test_objects()
+	_test_object_cover()
+	_test_levels()
+	_test_roundtrip()
+	_test_height_tint()
+	_test_load_id_dedup()
+	_test_color_json_safe()
+	_test_tint_floor_translucent()
+
+func _test_cells() -> void:
+	var m := SketchModel.new()
+	m.set_cell(2, 3, 0)
+	_ok(m.has_cell(2, 3, 0), "cell placed")
+	_ok(not m.has_cell(2, 3, 1), "cell is level-specific")
+	_eq(str(m.get_cell(2, 3, 0).get("type", "")), "room", "cell default type is room")
+	m.erase_cell(2, 3, 0)
+	_ok(not m.has_cell(2, 3, 0), "cell erased")
+
+func _test_rect_fill() -> void:
+	var m := SketchModel.new()
+	# Inclusive 3x2 rect = 6 cells; order of corners shouldn't matter.
+	var n := m.fill_rect(5, 5, 3, 6, 0)
+	_eq(n, 6, "fill_rect counts an inclusive rectangle")
+	_ok(m.has_cell(3, 5, 0) and m.has_cell(5, 6, 0), "fill_rect covers both corners")
+	_eq(m.erase_rect(3, 5, 4, 6, 0), 4, "erase_rect removes the overlap only")
+	_ok(m.has_cell(5, 5, 0) and not m.has_cell(3, 5, 0), "erase_rect leaves cells outside it")
+
+func _test_objects() -> void:
+	var m := SketchModel.new()
+	var id1 := m.add_object({"kind": SketchModel.KIND_FLORA, "x": 1, "y": 1, "level": 0})
+	var id2 := m.add_object({"kind": SketchModel.KIND_SHELTER, "x": 4, "y": 4, "level": 0})
+	_ok(id1 != id2, "objects get unique ids")
+	_eq(m.objects.size(), 2, "two objects added")
+	_eq(m.objects_on_level(0).size(), 2, "objects_on_level finds same-level objects")
+	_eq(m.objects_on_level(1).size(), 0, "objects_on_level is level-specific")
+	_ok(m.remove_object(id1), "object removed by id")
+	_eq(m.objects.size(), 1, "one object remains")
+	# Defaults fill in for a rect block-in.
+	var rid := m.add_object({"kind": SketchModel.KIND_BLOCKIN, "shape": SketchModel.SHAPE_RECT, "x": 0, "y": 0, "w": 3, "h": 2})
+	var ro := m.get_object(rid)
+	_eq(int(ro.get("w", 0)), 3, "rect block-in keeps width")
+	_eq(str(ro.get("layer", "")), SketchModel.LAYER_OBJECTS, "object defaults to the objects layer")
+
+func _test_object_cover() -> void:
+	var m := SketchModel.new()
+	var rid := m.add_object({"kind": SketchModel.KIND_BLOCKIN, "shape": SketchModel.SHAPE_RECT, "x": 2, "y": 2, "w": 3, "h": 2, "level": 0})
+	_ok(not m.object_at(2, 2, 0).is_empty(), "rect covers its origin corner")
+	_ok(not m.object_at(4, 3, 0).is_empty(), "rect covers its far corner")
+	_ok(m.object_at(5, 2, 0).is_empty(), "rect excludes the cell past its width")
+	_ok(m.object_at(2, 2, 1).is_empty(), "rect cover is level-specific")
+	var cid := m.add_object({"kind": SketchModel.KIND_BLOCKIN, "shape": SketchModel.SHAPE_CIRCLE, "x": 10, "y": 10, "r": 2.0, "level": 0})
+	_ok(not m.object_at(10, 10, 0).is_empty(), "circle covers its centre")
+	_ok(not m.object_at(11, 10, 0).is_empty(), "circle covers a cell within radius")
+	_ok(m.object_at(13, 13, 0).is_empty(), "circle excludes a cell beyond radius")
+	_ok(rid != cid, "rect and circle are distinct objects")
+
+func _test_levels() -> void:
+	var m := SketchModel.new()
+	m.set_cell(0, 0, 0)
+	m.set_cell(0, 0, 2)
+	m.add_object({"kind": SketchModel.KIND_FLORA, "x": 0, "y": 0, "level": -1})
+	_eq(m.used_levels(), [-1, 0, 2], "used_levels is sorted and de-duplicated across cells + objects")
+
+func _test_roundtrip() -> void:
+	var m := SketchModel.new()
+	m.fill_rect(0, 0, 4, 4, 0)
+	m.set_cell(0, 0, 1)
+	m.add_object({"kind": SketchModel.KIND_SHELTER, "x": 2, "y": 2, "level": 0})
+	m.add_object({"kind": SketchModel.KIND_BLOCKIN, "shape": SketchModel.SHAPE_CIRCLE, "x": 3, "y": 3, "r": 1.5, "level": 1})
+	var restored := SketchModel.from_json(m.to_json())
+	_eq(restored.cells.size(), m.cells.size(), "roundtrip preserves cell count")
+	_eq(restored.objects.size(), m.objects.size(), "roundtrip preserves object count")
+	_ok(restored.has_cell(0, 0, 1), "roundtrip preserves a level-1 cell")
+	_ok(not restored.object_at(3, 3, 1).is_empty(), "roundtrip preserves a circle block-in's footprint")
+	# A freshly added object after load must not reuse an existing id.
+	var new_id := restored.add_object({"kind": SketchModel.KIND_FLORA, "x": 9, "y": 9})
+	var ids := {}
+	for obj in restored.objects:
+		_ok(not ids.has(int(obj["id"])), "object id %s is unique after load" % str(obj["id"]))
+		ids[int(obj["id"])] = true
+	_ok(new_id > 0, "post-load add returns a fresh id")
+
+func _test_height_tint() -> void:
+	var base := Color(0.4, 0.7, 0.5, 1.0)
+	_eq(SketchModel.height_tint(base, 0), base, "same-level content is untouched (opaque)")
+	var above := SketchModel.height_tint(base, 2)
+	var below := SketchModel.height_tint(base, -2)
+	_ok(above.a < base.a and below.a < base.a, "off-level content fades")
+	_ok(absf(above.a - below.a) < 0.0001, "fade depends on distance, not direction")
+	# Above skews orange (more red than the base), below skews blue (more blue).
+	_ok(above.r > base.r, "levels above skew warmer (orange)")
+	_ok(below.b > base.b, "levels below skew cooler (blue)")
+	var far := SketchModel.height_tint(base, 99)
+	_ok(far.a >= SketchModel.TINT_ALPHA_FLOOR - 0.0001, "very distant levels never drop below the alpha floor")
+
+func _test_load_id_dedup() -> void:
+	var m := SketchModel.new()
+	# A hand-edited save with out-of-order / non-positive / duplicate ids must load with
+	# every object holding a unique id (the old running-max scheme collided).
+	m.from_dict({"objects": [
+		{"id": 2, "kind": "flora", "x": 0, "y": 0},
+		{"id": 0, "kind": "flora", "x": 1, "y": 0},
+		{"id": 3, "kind": "flora", "x": 2, "y": 0},
+		{"id": 3, "kind": "flora", "x": 3, "y": 0},
+	]})
+	_eq(m.objects.size(), 4, "all objects load")
+	var ids := {}
+	var unique := true
+	for obj in m.objects:
+		if ids.has(int(obj["id"])):
+			unique = false
+		ids[int(obj["id"])] = true
+	_ok(unique, "from_dict assigns unique ids despite collisions / non-positive ids")
+	var nid := m.add_object({"kind": "flora", "x": 9, "y": 9})
+	_ok(not ids.has(nid), "a fresh add after load does not collide with loaded ids")
+
+func _test_color_json_safe() -> void:
+	var m := SketchModel.new()
+	m.add_object({"kind": SketchModel.KIND_BLOCKIN, "shape": SketchModel.SHAPE_RECT, "x": 0, "y": 0, "w": 1, "h": 1, "color": Color(1.0, 0.0, 0.0)})
+	_ok(m.objects[0].get("color") is Array, "a Color is normalized to a [r,g,b] array")
+	var restored := SketchModel.from_json(m.to_json())
+	var rc = restored.objects[0].get("color")
+	_ok(rc is Array and (rc as Array).size() >= 3, "color survives the JSON roundtrip as an array")
+	if rc is Array and (rc as Array).size() >= 3:
+		_ok(absf(float(rc[0]) - 1.0) < 0.001 and absf(float(rc[1])) < 0.001, "color channel values are preserved")
+
+func _test_tint_floor_translucent() -> void:
+	var base := Color(0.4, 0.6, 0.5, 0.5)
+	var far := SketchModel.height_tint(base, 99)
+	_ok(far.a <= base.a + 0.0001, "tinted alpha never exceeds the (translucent) base alpha")
+	_ok(far.a >= minf(SketchModel.TINT_ALPHA_FLOOR, base.a) - 0.0001, "translucent base still respects the alpha floor")

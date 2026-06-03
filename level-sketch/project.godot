@@ -1,0 +1,35 @@
+; Engine configuration file.
+; TRAWF Level Sketch — a touch-first Godot tool for sketching level grids on the go.
+; Standalone Godot 4.6 project (separate from the game); exports to an Android .apk.
+
+config_version=5
+
+[application]
+
+config/name="TRAWF Level Sketch"
+config/description="Touch-first grid level sketching tool for To Rust As We Fall."
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.6", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[autoload]
+
+SketchTests="res://tests/sketch_tests.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation="sensor_landscape"
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=0

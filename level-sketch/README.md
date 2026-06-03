@@ -1,0 +1,100 @@
+# TRAWF Level Sketch
+
+A touch-first **Godot 4.6** tool for sketching level grids on the go — a lightweight
+mobile companion to the in-game level editor, meant for fast ideation on a phone. It
+exports an Android `.apk` and saves a standalone JSON sketch format (a converter to
+the game's level format can come later).
+
+This is a **separate Godot project** living in the monorepo at `level-sketch/`; it does
+not depend on the game project.
+
+## What it does
+
+A top-down grid where every element also has an integer **height level**. You sketch
+terrain and objects across stacked levels and view one level at a time.
+
+### Tools (top-left toolbar)
+
+| Tool | Gesture | Result |
+| --- | --- | --- |
+| **Room ▭** | drag a rectangle | fills room cells on the current level |
+| **Paint** | tap / drag | places the selected brush (Room cell / Flora / Fauna / Shelter) |
+| **Erase** | tap / drag | removes the object (or, if none, the cell) under the finger |
+| **Block ▭** | drag a rectangle | adds a rectangular block-in (any size) |
+| **Block ●** | drag from centre out | adds a circular block-in (any radius) |
+
+### Layers & heights (top-right)
+
+- **Level** / **Obj** toggles show/hide the terrain layer and the objects layer.
+- **− / Lvl N / +** change the level you're editing/viewing.
+- Content **on the current level is opaque**. Content on other levels fades with
+  distance and is tinted: **orange** for levels above, **blue** for levels below — so
+  you can see what's stacked over/under where you're drawing.
+
+### Camera
+
+- **One finger** = active tool. **Two fingers** = pan + pinch-zoom.
+- Desktop: left-drag = tool, mouse-wheel = zoom, right-drag = pan.
+- Bottom-right: **− / + / ⌖** zoom out / in / recenter.
+
+### Files
+
+- **Save** / **Load** use a single autosave slot at `user://sketches/autosave.json`.
+- **Copy** puts the sketch JSON on the clipboard (handy for moving it off-device).
+- **New** clears the sketch.
+
+## Run it
+
+From the repo root (where the Godot binary lives):
+
+```bash
+# Desktop (for testing)
+./Godot_v4.6.1-stable_win64.exe --path level-sketch
+
+# Headless data-layer tests
+./Godot_v4.6.1-stable_win64_console.exe --headless --path level-sketch -- --test
+
+# Dev preview screenshot (writes level-sketch/preview.png, gitignored)
+./Godot_v4.6.1-stable_win64.exe --path level-sketch --rendering-driver opengl3 -- --shot
+```
+
+## Export to Android
+
+1. Open the project in the Godot editor: `Godot_v4.6.1-stable_win64.exe --path level-sketch`.
+2. Install the **Android build template** and set up the **Android SDK / debug keystore**
+   in *Editor → Editor Settings → Export → Android* (one-time).
+3. *Project → Export → Add… → Android*, then **Export Project** to an `.apk`, or use
+   **one-click deploy** with a USB-connected phone.
+
+The renderer is **GL Compatibility** (OpenGL ES 3.0) for the widest device support, and
+the project is set to `sensor_landscape` with touch emulation enabled.
+
+## Architecture
+
+Scenes are thin (just a root + script); everything is built procedurally in GDScript.
+
+| File | Role |
+| --- | --- |
+| `scripts/sketch_model.gd` | Data layer — cells, objects, layers, heights, JSON, `height_tint` (pure, tested) |
+| `scripts/grid_view.gd` | Renderer — draws the grid + content with per-level transparency/tint |
+| `scripts/camera_rig.gd` | Pan/zoom `Camera2D` |
+| `scripts/editor.gd` | Controller — builds the UI, routes touch/mouse, runs the tools, file I/O |
+| `tests/sketch_tests.gd` | Headless data-layer tests (`-- --test`) |
+
+### Sketch JSON format (v1)
+
+```jsonc
+{
+  "schema": 1,
+  "cells":   [ { "x": 0, "y": 0, "level": 0, "type": "room" }, ... ],
+  "objects": [
+    { "id": 1, "kind": "flora",   "shape": "cell",   "x": 1, "y": 1, "level": 0, "layer": "objects" },
+    { "id": 2, "kind": "blockin", "shape": "rect",   "x": 5, "y": 0, "w": 3, "h": 2, "level": 0, "layer": "objects" },
+    { "id": 3, "kind": "blockin", "shape": "circle", "x": 2, "y": 4, "r": 1.8,      "level": 0, "layer": "objects" }
+  ],
+  "next_id": 4
+}
+```
+
+- `kind`: `flora` | `fauna` | `shelter` | `blockin`
+- `shape`: `cell` (1×1 point), `rect` (`w`×`h`), `circle` (radius `r`, centred on cell `x,y`)

@@ -1,0 +1,12 @@
+# Godot 4 import cache & editor state
+.godot/
+# Exported builds
+/build/
+*.apk
+*.aab
+export_presets.cfg
+# Local saved sketches (keep the format, not personal scratch)
+/data/sketches/
+# Dev preview screenshots
+/preview.png
+/preview.png.import
