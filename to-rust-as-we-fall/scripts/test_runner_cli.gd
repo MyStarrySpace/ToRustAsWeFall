@@ -15,6 +15,7 @@ const FauxPhysicsSensorScript = preload("res://scripts/game/mechanics/faux_physi
 const StretchArchetypeCatalogScript = preload("res://scripts/generation/stretch_archetype_catalog.gd")
 const StretchGeneratorScript = preload("res://scripts/generation/stretch_generator.gd")
 const StretchSolutionSolverScript = preload("res://scripts/generation/stretch_solution_solver.gd")
+const StretchReplayBuilderScript = preload("res://scripts/generation/stretch_replay_builder.gd")
 const StretchGenerationPlaytestLoopScript = preload("res://scripts/generation/stretch_generation_playtest_loop.gd")
 const PlaythroughAnimationHtmlRendererScript = preload("res://scripts/generation/playthrough_animation_html_renderer.gd")
 const NavigationGraphScript = preload("res://scripts/system/core/navigation_graph.gd")
@@ -373,6 +374,9 @@ func _ready() -> void:
 			"--test-generated-multi-solution":
 				ran_test = true
 				_test_generated_multi_solution()
+			"--test-generated-replay":
+				ran_test = true
+				_test_generated_replay()
 			"--test-asset-pipeline":
 				ran_test = true
 				_test_asset_pipeline()
@@ -541,6 +545,7 @@ func _run_all_tests() -> void:
 	_test_sequence_input_discipline()
 	await _test_archetype_generation()
 	_test_generated_multi_solution()
+	_test_generated_replay()
 	await _test_generated_stretch_playtest_loop()
 	_test_save_load_integrity()
 	_test_save_corruption_recovery()
@@ -1736,6 +1741,64 @@ func _test_generated_multi_solution() -> void:
 	var narrative_summary: Dictionary = narrative_spec.get("headless", {}).get("solution_summary", {})
 	_assert_equals(int(narrative_summary.get("choice_node_count", 0)), 0, "Narrative-only stretch has no puzzle choice nodes")
 	_assert_true(bool(narrative_summary.get("multi_solution_ok", false)), "Narrative-only stretch passes the tier gate")
+
+func _test_generated_replay() -> void:
+	_test_name = "Generated Replay"
+
+	var spec: Dictionary = StretchGeneratorScript.generate({
+		"id": "generated_replay_test",
+		"seed": 4242,
+		"complexity_tier": "standard",
+		"limitations": {
+			"required": {"archetypes": ["1", "4"]},
+			"allowed": {"archetypes": ["1", "2", "3", "4", "6", "7", "8", "11"]},
+		},
+	})
+	_assert_true(bool(spec.get("success", false)), "Replay source spec generates")
+
+	var replay: Dictionary = StretchReplayBuilderScript.build(spec)
+	_assert_equals(str(replay.get("schema", "")), "trawf_stretch_replay_v1", "Replay reports its schema")
+	var level: Dictionary = replay.get("level", {})
+	_assert_equals((level.get("nodes", []) as Array).size(), (spec.get("nodes", []) as Array).size(), "Replay projects every node onto the grid")
+	_assert_true((level.get("routes", []) as Array).size() >= 1, "Replay projects routes onto the grid")
+	_assert_true((level.get("content", []) as Array).size() >= 1, "Replay projects placed content onto the grid")
+
+	var solutions: Array = replay.get("solutions", [])
+	_assert_equals(solutions.size(), 2, "Replay carries both solution loadouts")
+	var spotlight := {}
+	var shadow := {}
+	for s in solutions:
+		if not (s is Dictionary):
+			continue
+		match str((s as Dictionary).get("loadout", "")):
+			"spotlight":
+				spotlight = s
+			"shadow":
+				shadow = s
+	_assert_equals((spotlight.get("party", []) as Array).size(), 3, "Spotlight replay follows the full trio")
+	_assert_equals((shadow.get("party", []) as Array).size(), 2, "Shadow replay follows the Aster+Peris pair")
+	_assert_equals((spotlight.get("frames", []) as Array).size(), (spec.get("nodes", []) as Array).size(), "Spotlight replay has a keyframe per node")
+	_assert_true(bool(spotlight.get("solvable", false)) and bool(shadow.get("solvable", false)), "Both replay solutions are solvable")
+
+	var members_ok := true
+	for frame in spotlight.get("frames", []):
+		if not (frame is Dictionary) or (frame.get("characters", {}) as Dictionary).size() != 3:
+			members_ok = false
+	_assert_true(members_ok, "Every spotlight frame positions all three party members")
+
+	var shadow_by_node := {}
+	for entry in shadow.get("node_approaches", []):
+		if entry is Dictionary:
+			shadow_by_node[str((entry as Dictionary).get("node", ""))] = str((entry as Dictionary).get("approach_id", ""))
+	var diverged := false
+	for entry in spotlight.get("node_approaches", []):
+		if not (entry is Dictionary):
+			continue
+		var nid := str((entry as Dictionary).get("node", ""))
+		var aid := str((entry as Dictionary).get("approach_id", ""))
+		if aid != "" and shadow_by_node.has(nid) and shadow_by_node[nid] != aid:
+			diverged = true
+	_assert_true(diverged, "Spotlight and shadow replays show different approaches on at least one node")
 
 func _test_generated_stretch_playtest_loop() -> void:
 	_test_name = "Generated Stretch Playtest Loop"
