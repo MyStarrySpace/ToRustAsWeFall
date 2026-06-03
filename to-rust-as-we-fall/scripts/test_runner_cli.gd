@@ -14,6 +14,7 @@ const FloraMemorySystem = preload("res://scripts/system/simulation/flora_memory_
 const FauxPhysicsSensorScript = preload("res://scripts/game/mechanics/faux_physics_sensor.gd")
 const StretchArchetypeCatalogScript = preload("res://scripts/generation/stretch_archetype_catalog.gd")
 const StretchGeneratorScript = preload("res://scripts/generation/stretch_generator.gd")
+const StretchSolutionSolverScript = preload("res://scripts/generation/stretch_solution_solver.gd")
 const StretchGenerationPlaytestLoopScript = preload("res://scripts/generation/stretch_generation_playtest_loop.gd")
 const PlaythroughAnimationHtmlRendererScript = preload("res://scripts/generation/playthrough_animation_html_renderer.gd")
 const NavigationGraphScript = preload("res://scripts/system/core/navigation_graph.gd")
@@ -369,6 +370,9 @@ func _ready() -> void:
 			"--test-generated-stretch-playtest-loop":
 				ran_test = true
 				await _test_generated_stretch_playtest_loop()
+			"--test-generated-multi-solution":
+				ran_test = true
+				_test_generated_multi_solution()
 			"--test-asset-pipeline":
 				ran_test = true
 				_test_asset_pipeline()
@@ -536,6 +540,7 @@ func _run_all_tests() -> void:
 	_test_rng_no_wallclock()
 	_test_sequence_input_discipline()
 	await _test_archetype_generation()
+	_test_generated_multi_solution()
 	await _test_generated_stretch_playtest_loop()
 	_test_save_load_integrity()
 	_test_save_corruption_recovery()
@@ -1648,6 +1653,89 @@ func _test_archetype_generation() -> void:
 	_assert_true(float(state.get("chunk", {}).get("risky_damage_total", 0.0)) > 0.0, "Generated risky recovery records pressure damage")
 	preview_instance.queue_free()
 	await get_tree().process_frame
+
+func _test_generated_multi_solution() -> void:
+	_test_name = "Generated Multi-Solution"
+
+	# Puzzle-bearing stretches at every tier must be solvable two distinct ways, and
+	# the Aster+Peris pair must always have a path of its own.
+	for tier in ["teaching", "standard", "hard", "setpiece"]:
+		var spec: Dictionary = StretchGeneratorScript.generate({
+			"id": "generated_multi_solution_%s" % tier,
+			"seed": 4242,
+			"complexity_tier": tier,
+			"limitations": {
+				"required": {"archetypes": ["1", "4"]},
+				"allowed": {"archetypes": ["1", "2", "3", "4", "6", "7", "8", "11"]},
+			},
+		})
+		_assert_true(bool(spec.get("success", false)), "%s: generator returns a spec" % tier)
+		var summary: Dictionary = spec.get("headless", {}).get("solution_summary", {})
+		_assert_true(int(summary.get("choice_node_count", 0)) >= 1, "%s: stretch has at least one multi-solution puzzle node" % tier)
+		_assert_true(bool(summary.get("multi_solution", false)), "%s: spotlight and shadow loadouts solve it differently" % tier)
+		_assert_true(bool(summary.get("shadow_solvable", false)), "%s: Aster+Peris can solve the whole stretch" % tier)
+		_assert_equals(int(summary.get("solvable_loadout_count", 0)), 2, "%s: both canonical loadouts solve" % tier)
+		_assert_true(bool(summary.get("multi_solution_ok", false)), "%s: multi-solution tier gate is satisfied" % tier)
+
+		var paths: Array = spec.get("headless", {}).get("solution_paths", [])
+		_assert_equals(paths.size(), 2, "%s: two solution paths are emitted" % tier)
+		var spotlight := {}
+		var shadow := {}
+		for p in paths:
+			if not (p is Dictionary):
+				continue
+			match str((p as Dictionary).get("loadout", "")):
+				"spotlight":
+					spotlight = p
+				"shadow":
+					shadow = p
+		_assert_true(bool(spotlight.get("solvable", false)) and bool(shadow.get("solvable", false)), "%s: both paths are individually solvable" % tier)
+
+		var shadow_by_node := {}
+		var shadow_uses_only_pair := true
+		for entry in shadow.get("approach_per_node", []):
+			if not (entry is Dictionary):
+				continue
+			shadow_by_node[str((entry as Dictionary).get("node", ""))] = entry
+			if str((entry as Dictionary).get("party", "any")) == "specialist":
+				shadow_uses_only_pair = false
+		var diverged := false
+		for entry in spotlight.get("approach_per_node", []):
+			if not (entry is Dictionary):
+				continue
+			var other: Dictionary = shadow_by_node.get(str((entry as Dictionary).get("node", "")), {})
+			if not other.is_empty() and str((entry as Dictionary).get("approach_id", "")) != str(other.get("approach_id", "")):
+				diverged = true
+		_assert_true(diverged, "%s: the two paths take a different approach on at least one node" % tier)
+		_assert_true(shadow_uses_only_pair, "%s: the shadow path never relies on a specialist approach" % tier)
+
+	# The solver re-derives the same verdict straight from a spec — the path the chunk
+	# and the Android replay both consume.
+	var solver_spec: Dictionary = StretchGeneratorScript.generate({
+		"id": "generated_multi_solution_solver_check",
+		"seed": 909,
+		"complexity_tier": "standard",
+		"limitations": {"required": {"archetypes": ["1", "3"]}},
+	})
+	var analysis: Dictionary = StretchSolutionSolverScript.analyze_spec(solver_spec)
+	_assert_true(bool(analysis.get("multi_solution", false)), "Solver re-derives multi-solution from a saved spec")
+	_assert_equals(int(analysis.get("solvable_loadout_count", 0)), 2, "Solver finds both loadouts solvable")
+	_assert_true((analysis.get("warnings", []) as Array).is_empty(), "A puzzle stretch produces no shadow-broken warnings")
+
+	# A narrative-only stretch has nothing to multi-solve; that is allowed, not a failure.
+	var narrative_spec: Dictionary = StretchGeneratorScript.generate({
+		"id": "generated_narrative_only",
+		"seed": 7,
+		"complexity_tier": "teaching",
+		"budget": {"archetype_depth": 1},
+		"limitations": {
+			"allowed": {"archetypes": ["11"]},
+			"required": {"archetypes": ["11"]},
+		},
+	})
+	var narrative_summary: Dictionary = narrative_spec.get("headless", {}).get("solution_summary", {})
+	_assert_equals(int(narrative_summary.get("choice_node_count", 0)), 0, "Narrative-only stretch has no puzzle choice nodes")
+	_assert_true(bool(narrative_summary.get("multi_solution_ok", false)), "Narrative-only stretch passes the tier gate")
 
 func _test_generated_stretch_playtest_loop() -> void:
 	_test_name = "Generated Stretch Playtest Loop"

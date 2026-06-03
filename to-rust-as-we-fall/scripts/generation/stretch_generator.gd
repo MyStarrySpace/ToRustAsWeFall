@@ -3,6 +3,7 @@ extends RefCounted
 
 const CatalogScript := preload("res://scripts/generation/stretch_archetype_catalog.gd")
 const SeededRngScript := preload("res://scripts/system/random/seeded_rng.gd")
+const SolverScript := preload("res://scripts/generation/stretch_solution_solver.gd")
 
 const SPEC_SCHEMA := "trawf_generated_stretch_spec_v1"
 const DEFAULT_SPEC_DIR := "res://data/generated_stretches"
@@ -97,6 +98,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 	var world_slot := _build_world_slot(resolved, anchors)
 	var composition_summary := _build_composition_summary(resolved.get("composition", {}), archetype_chain, nodes, random_walk)
 	var warnings := _collect_warnings(catalog, palette_usage)
+	var solution := SolverScript.analyze(nodes, str(resolved.get("complexity_tier", "teaching")))
 
 	return {
 		"success": true,
@@ -123,6 +125,18 @@ static func generate(settings: Dictionary) -> Dictionary:
 		"headless": {
 			"golden_path": _golden_path(nodes),
 			"risky_recovery": _risky_recovery(routes, nodes),
+			"solution_paths": solution.get("solution_paths", []),
+			"solution_summary": {
+				"multi_solution": solution.get("multi_solution", false),
+				"choice_node_count": solution.get("choice_node_count", 0),
+				"choice_nodes": solution.get("choice_nodes", []),
+				"solvable_loadout_count": solution.get("solvable_loadout_count", 0),
+				"shadow_solvable": solution.get("shadow_solvable", false),
+				"distinct_node_count": solution.get("distinct_node_count", 0),
+				"distinct_nodes": solution.get("distinct_nodes", []),
+				"multi_solution_required": solution.get("multi_solution_required", false),
+				"multi_solution_ok": solution.get("multi_solution_ok", true),
+			},
 			"state_paths": [
 				"chunk.generation.spec_id",
 				"chunk.generation.route_choice",
@@ -131,11 +145,19 @@ static func generate(settings: Dictionary) -> Dictionary:
 				"chunk.generation.composition",
 				"chunk.generation.composition.random_walk",
 				"chunk.generation.unsupported_placeholder_count",
-				"chunk.generation.navigation"
+				"chunk.generation.navigation",
+				"chunk.generation.active_loadout",
+				"chunk.generation.solution_path",
+				"chunk.generation.blocked_nodes"
 			],
 		},
 		"validation": {
 			"warnings": warnings,
+			"solution_warnings": solution.get("warnings", []),
+			"multi_solution": solution.get("multi_solution", false),
+			"multi_solution_ok": solution.get("multi_solution_ok", true),
+			"multi_solution_required": solution.get("multi_solution_required", false),
+			"shadow_solvable": solution.get("shadow_solvable", false),
 		},
 	}
 
@@ -506,6 +528,7 @@ static func _archetype_chain_entry(catalog, id: String, rng, variant_override :=
 		"tags": entry.get("tags", []),
 		"step_count": (entry.get("steps", []) as Array).size() if entry.get("steps", []) is Array else 0,
 		"shadow_solution": entry.get("shadow_solution", {}),
+		"approaches": entry.get("approaches", []),
 	}
 	if extras is Dictionary:
 		for key in (extras as Dictionary).keys():
@@ -791,6 +814,7 @@ static func _build_nodes(settings: Dictionary, budget: Dictionary, palette_usage
 			"shortcut": role == "shortcut" or structures.has("shortcut_gate"),
 			"pressure": 1 if not enemies.is_empty() else 0,
 			"shadow_solution": archetype.get("shadow_solution", composition.get("shadow_solution", {})),
+			"approaches": archetype.get("approaches", []),
 		}
 		nodes.append(node)
 		if resource_beats > 0 and role in ["foraging", "regroup"]:
