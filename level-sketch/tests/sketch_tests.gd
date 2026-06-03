@@ -36,6 +36,7 @@ func _run() -> void:
 	_test_load_id_dedup()
 	_test_color_json_safe()
 	_test_tint_floor_translucent()
+	_test_history()
 
 func _test_cells() -> void:
 	var m := SketchModel.new()
@@ -159,3 +160,29 @@ func _test_tint_floor_translucent() -> void:
 	var far := SketchModel.height_tint(base, 99)
 	_ok(far.a <= base.a + 0.0001, "tinted alpha never exceeds the (translucent) base alpha")
 	_ok(far.a >= minf(SketchModel.TINT_ALPHA_FLOOR, base.a) - 0.0001, "translucent base still respects the alpha floor")
+
+func _test_history() -> void:
+	var m := SketchModel.new()
+	var h := SketchHistory.new(m)
+	_ok(not h.can_undo() and not h.can_redo(), "fresh history has nothing to undo/redo")
+	m.set_cell(1, 1, 0)
+	h.commit()
+	_ok(h.can_undo(), "after an edit + commit, undo is available")
+	m.set_cell(2, 2, 0)
+	h.commit()
+	_eq(m.cells.size(), 2, "two cells placed")
+	h.undo()
+	_eq(m.cells.size(), 1, "undo removes the last edit")
+	_ok(h.can_redo(), "redo is available after an undo")
+	h.undo()
+	_eq(m.cells.size(), 0, "undo back to the empty baseline")
+	_ok(not h.can_undo(), "no further undo past the baseline")
+	h.redo()
+	_eq(m.cells.size(), 1, "redo restores the first edit")
+	# A fresh edit after an undo truncates the redo branch.
+	h.undo()
+	m.add_object({"kind": "spikers", "x": 0, "y": 0})
+	h.commit()
+	_ok(not h.can_redo(), "a new edit after undo clears the redo branch")
+	_eq(m.objects.size(), 1, "the new branch's edit is present")
+	_ok(not h.commit(), "committing with no change records nothing")

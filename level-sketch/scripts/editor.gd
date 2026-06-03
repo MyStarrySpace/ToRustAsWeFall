@@ -6,8 +6,12 @@ extends Control
 ## wheel = zoom, right-drag = pan (so it's testable without a touchscreen).
 
 const SAVE_PATH := "user://sketches/autosave.json"
+# A strip along the bottom where one-finger touches don't draw, so the OS swipe-up /
+# menu gestures don't place objects.
+const BOTTOM_DEAD_ZONE := 76.0
 
 var model := SketchModel.new()
+var _history: SketchHistory
 var _world: Node2D
 var _camera: CameraRig
 var _grid: GridView
@@ -35,13 +39,18 @@ var _top_panel: PanelContainer
 var _brush_row: Control
 var _layer_level_btn: Button
 var _layer_objects_btn: Button
+var _undo_btn: Button
+var _redo_btn: Button
+var _confirm_new: ConfirmationDialog
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_world()
+	_history = SketchHistory.new(model)
 	_build_ui()
 	_load_if_present()
+	_update_history_buttons()
 	_refresh_status()
 	if "--shot" in OS.get_cmdline_user_args():
 		_capture_preview()
@@ -120,6 +129,8 @@ func _build_ui() -> void:
 	_tool_btn(top_row, "Erase", "erase", tools_group, false)
 	_tool_btn(top_row, "Block ▭", "block_rect", tools_group, false)
 	_tool_btn(top_row, "Block ●", "block_circle", tools_group, false)
+	_undo_btn = _button(top_row, "Undo", _undo)
+	_redo_btn = _button(top_row, "Redo", _redo)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -131,7 +142,7 @@ func _build_ui() -> void:
 	_button(top_row, " + ", func(): _shift_level(1))
 	_layer_level_btn = _toggle(top_row, "Level", true, func(_on): _set_layers())
 	_layer_objects_btn = _toggle(top_row, "Obj", true, func(_on): _set_layers())
-	_button(top_row, "New", _new_sketch)
+	_button(top_row, "New", _on_new_pressed)
 	_button(top_row, "Save", _save)
 	_button(top_row, "Load", _load_if_present)
 	_button(top_row, "Copy", _copy_json)
@@ -160,10 +171,35 @@ func _build_ui() -> void:
 	_button(cam_row, " ⌖ ", _recenter)
 	cam_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 10)
 
-	# Status (bottom-left).
+	# Bottom dead-zone band: a subtle strip showing where one-finger drawing is ignored
+	# (so you can swipe up for system gestures/menus without placing things).
+	var dead := ColorRect.new()
+	dead.color = Color(0.08, 0.10, 0.14, 0.45)
+	dead.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui_root.add_child(dead)
+	dead.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	dead.offset_top = -BOTTOM_DEAD_ZONE
+	dead.offset_bottom = 0
+	var dead_edge := ColorRect.new()  # a faint line marking the top of the dead zone
+	dead_edge.color = Color(0.45, 0.55, 0.70, 0.35)
+	dead_edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui_root.add_child(dead_edge)
+	dead_edge.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	dead_edge.offset_top = -BOTTOM_DEAD_ZONE
+	dead_edge.offset_bottom = -BOTTOM_DEAD_ZONE + 2.0
+
+	# Status (bottom-left, inside the dead-zone band).
 	_status_label = _label(ui_root, "")
 	_status_label.add_theme_color_override("font_color", Color(0.72, 0.8, 0.88))
 	_status_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 12)
+
+	# Confirmation before clearing the sketch with New.
+	_confirm_new = ConfirmationDialog.new()
+	_confirm_new.title = "New sketch"
+	_confirm_new.dialog_text = "Clear the current sketch and start over?"
+	_confirm_new.ok_button_text = "Clear"
+	_confirm_new.confirmed.connect(_do_new)
+	ui_root.add_child(_confirm_new)
 
 func _panel(parent: Node) -> PanelContainer:
 	var p := PanelContainer.new()
@@ -265,11 +301,41 @@ func _refresh_status() -> void:
 
 # -------------------------------------------------------------------- File I/O
 
-func _new_sketch() -> void:
+func _on_new_pressed() -> void:
+	if model.is_empty():
+		_do_new()
+	else:
+		_confirm_new.popup_centered()
+
+func _do_new() -> void:
 	model.clear()
 	_grid.set_model(model)
 	_grid.set_preview({})
+	_history.commit()
+	_update_history_buttons()
 	_refresh_status()
+
+# ----------------------------------------------------------------- Undo / redo
+
+func _undo() -> void:
+	if _history.undo():
+		_after_history_change()
+
+func _redo() -> void:
+	if _history.redo():
+		_after_history_change()
+
+func _after_history_change() -> void:
+	_grid.set_preview({})
+	_grid.queue_redraw()
+	_update_history_buttons()
+	_refresh_status()
+
+func _update_history_buttons() -> void:
+	if _undo_btn != null:
+		_undo_btn.disabled = not _history.can_undo()
+	if _redo_btn != null:
+		_redo_btn.disabled = not _history.can_redo()
 
 func _save() -> void:
 	DirAccess.make_dir_recursive_absolute(SAVE_PATH.get_base_dir())
@@ -285,9 +351,15 @@ func _load_if_present(_arg := false) -> void:
 	var f := FileAccess.open(SAVE_PATH, FileAccess.READ)
 	if f == null:
 		return
-	model = SketchModel.from_json(f.get_as_text())
+	var parsed = JSON.parse_string(f.get_as_text())
 	f.close()
+	# Mutate the model in place (keep the same object the grid + history reference).
+	if parsed is Dictionary:
+		model.from_dict(parsed)
 	_grid.set_model(model)
+	if _history != null:
+		_history.reset()
+		_update_history_buttons()
 	_refresh_status()
 
 func _copy_json() -> void:
@@ -309,12 +381,24 @@ func _unhandled_input(event: InputEvent) -> void:
 		_on_mouse_button(event)
 	elif event is InputEventMouseMotion and _mouse_panning:
 		_camera.pan_screen(event.relative)
+	elif event is InputEventKey and event.pressed and not event.echo and event.ctrl_pressed:
+		if event.keycode == KEY_Z:
+			_redo() if event.shift_pressed else _undo()
+		elif event.keycode == KEY_Y:
+			_redo()
+
+## True for the bottom strip reserved for OS swipe gestures (no one-finger drawing).
+func _in_bottom_dead_zone(pos: Vector2) -> bool:
+	return pos.y >= get_viewport_rect().size.y - BOTTOM_DEAD_ZONE
 
 func _on_touch(event: InputEventScreenTouch) -> void:
 	if event.pressed:
 		_touches[event.index] = event.position
 		if _touches.size() == 1:
-			_begin_tool(event.index, event.position)
+			# Skip the tool for touches that start in the bottom dead zone; still track
+			# the finger so a second finger can start a pan/zoom from there.
+			if not _in_bottom_dead_zone(event.position):
+				_begin_tool(event.index, event.position)
 		elif _touches.size() == 2:
 			_cancel_tool()
 			_begin_camera_gesture()
@@ -452,6 +536,9 @@ func _end_tool(screen_pos: Vector2) -> void:
 	_tool_finger = -1
 	_grid.set_preview({})
 	_grid.queue_redraw()
+	# One completed tool action = one undo step.
+	_history.commit()
+	_update_history_buttons()
 	_refresh_status()
 
 func _cancel_tool() -> void:
