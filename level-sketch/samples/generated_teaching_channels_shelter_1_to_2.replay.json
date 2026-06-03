@@ -328,6 +328,7 @@
 		]
 	},
 	"multi_solution": true,
+	"progression_stage": 2,
 	"region": "Channels",
 	"schema": "trawf_stretch_replay_v1",
 	"solutions": [
@@ -338,6 +339,7 @@
 				{
 					"approach_id": "traverse",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "entry",
 					"characters": {
 						"aster": [
@@ -353,15 +355,19 @@
 							0.3
 						]
 					},
+					"expert": false,
 					"kind": "traverse",
+					"min_stage": 0,
 					"node": "entry",
 					"risk": "safe",
 					"role": "boundary",
+					"stage_ahead": false,
 					"t": 0.0
 				},
 				{
 					"approach_id": "play_the_beat",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "node_01 — Adapt to the available party; preserve the state transition",
 					"characters": {
 						"aster": [
@@ -377,15 +383,19 @@
 							1.8
 						]
 					},
+					"expert": false,
 					"kind": "meta",
+					"min_stage": 1,
 					"node": "node_01",
 					"risk": "safe",
 					"role": "guidance",
+					"stage_ahead": false,
 					"t": 1.0
 				},
 				{
 					"approach_id": "force_clear",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "node_02 — Force the obstacle open with raw impact",
 					"characters": {
 						"aster": [
@@ -401,15 +411,19 @@
 							3.3
 						]
 					},
+					"expert": false,
 					"kind": "primary",
+					"min_stage": 1,
 					"node": "node_02",
 					"risk": "direct",
 					"role": "route_pressure",
+					"stage_ahead": false,
 					"t": 2.0
 				},
 				{
 					"approach_id": "play_the_beat",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "node_03 — Adapt to the available party; preserve the state transition",
 					"characters": {
 						"aster": [
@@ -425,15 +439,19 @@
 							0.3
 						]
 					},
+					"expert": false,
 					"kind": "meta",
+					"min_stage": 1,
 					"node": "node_03",
 					"risk": "safe",
 					"role": "foraging",
+					"stage_ahead": false,
 					"t": 3.0
 				},
 				{
 					"approach_id": "force_clear",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "node_04 — Force the obstacle open with raw impact",
 					"characters": {
 						"aster": [
@@ -449,15 +467,19 @@
 							1.8
 						]
 					},
+					"expert": false,
 					"kind": "primary",
+					"min_stage": 1,
 					"node": "node_04",
 					"risk": "direct",
 					"role": "danger",
+					"stage_ahead": false,
 					"t": 4.0
 				},
 				{
 					"approach_id": "traverse",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "exit_shelter",
 					"characters": {
 						"aster": [
@@ -473,63 +495,91 @@
 							3.3
 						]
 					},
+					"expert": false,
 					"kind": "traverse",
+					"min_stage": 0,
 					"node": "exit_shelter",
 					"risk": "safe",
 					"role": "shelter_arrival",
+					"stage_ahead": false,
 					"t": 5.0
 				}
 			],
 			"label": "Full party",
 			"loadout": "spotlight",
+			"max_stage_used": 1,
 			"node_approaches": [
 				{
 					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "traverse",
 					"label": "",
+					"min_stage": 0,
 					"node": "entry",
 					"party": "any",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "play_the_beat",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "meta",
 					"label": "Adapt to the available party; preserve the state transition",
+					"min_stage": 1,
 					"node": "node_01",
 					"party": "any",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "force_clear",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "primary",
 					"label": "Force the obstacle open with raw impact",
+					"min_stage": 1,
 					"node": "node_02",
 					"party": "specialist",
-					"risk": "direct"
+					"risk": "direct",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "play_the_beat",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "meta",
 					"label": "Adapt to the available party; preserve the state transition",
+					"min_stage": 1,
 					"node": "node_03",
 					"party": "any",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "force_clear",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "primary",
 					"label": "Force the obstacle open with raw impact",
+					"min_stage": 1,
 					"node": "node_04",
 					"party": "specialist",
-					"risk": "direct"
+					"risk": "direct",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "traverse",
 					"label": "",
+					"min_stage": 0,
 					"node": "exit_shelter",
 					"party": "any",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				}
 			],
 			"party": [
@@ -537,7 +587,8 @@
 				"peris",
 				"endo"
 			],
-			"solvable": true
+			"solvable": true,
+			"uses_future_technique": false
 		},
 		{
 			"blocked_nodes": [],
@@ -546,6 +597,7 @@
 				{
 					"approach_id": "traverse",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "entry",
 					"characters": {
 						"aster": [
@@ -557,15 +609,19 @@
 							0.3
 						]
 					},
+					"expert": false,
 					"kind": "traverse",
+					"min_stage": 0,
 					"node": "entry",
 					"risk": "safe",
 					"role": "boundary",
+					"stage_ahead": false,
 					"t": 0.0
 				},
 				{
 					"approach_id": "play_the_beat",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "node_01 — Adapt to the available party; preserve the state transition",
 					"characters": {
 						"aster": [
@@ -577,16 +633,20 @@
 							1.8
 						]
 					},
+					"expert": false,
 					"kind": "meta",
+					"min_stage": 1,
 					"node": "node_01",
 					"risk": "safe",
 					"role": "guidance",
+					"stage_ahead": false,
 					"t": 1.0
 				},
 				{
-					"approach_id": "flora_finesse",
+					"approach_id": "flora_chain_trap",
 					"blocked": false,
-					"caption": "node_02 — Peris grows or tends the plant tool; Aster confirms the target",
+					"borrows_from": "10",
+					"caption": "node_02 — Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend  ⟐ expert: later-stage technique",
 					"characters": {
 						"aster": [
 							12.0,
@@ -597,15 +657,19 @@
 							3.3
 						]
 					},
-					"kind": "shadow",
+					"expert": true,
+					"kind": "shadow_expert",
+					"min_stage": 5,
 					"node": "node_02",
-					"risk": "safe",
+					"risk": "risky",
 					"role": "route_pressure",
+					"stage_ahead": true,
 					"t": 2.0
 				},
 				{
 					"approach_id": "play_the_beat",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "node_03 — Adapt to the available party; preserve the state transition",
 					"characters": {
 						"aster": [
@@ -617,16 +681,20 @@
 							0.3
 						]
 					},
+					"expert": false,
 					"kind": "meta",
+					"min_stage": 1,
 					"node": "node_03",
 					"risk": "safe",
 					"role": "foraging",
+					"stage_ahead": false,
 					"t": 3.0
 				},
 				{
-					"approach_id": "flora_finesse",
+					"approach_id": "flora_chain_trap",
 					"blocked": false,
-					"caption": "node_04 — Peris grows or tends the plant tool; Aster confirms the target",
+					"borrows_from": "10",
+					"caption": "node_04 — Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend  ⟐ expert: later-stage technique",
 					"characters": {
 						"aster": [
 							24.0,
@@ -637,15 +705,19 @@
 							1.8
 						]
 					},
-					"kind": "shadow",
+					"expert": true,
+					"kind": "shadow_expert",
+					"min_stage": 5,
 					"node": "node_04",
-					"risk": "safe",
+					"risk": "risky",
 					"role": "danger",
+					"stage_ahead": true,
 					"t": 4.0
 				},
 				{
 					"approach_id": "traverse",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "exit_shelter",
 					"characters": {
 						"aster": [
@@ -657,70 +729,99 @@
 							3.3
 						]
 					},
+					"expert": false,
 					"kind": "traverse",
+					"min_stage": 0,
 					"node": "exit_shelter",
 					"risk": "safe",
 					"role": "shelter_arrival",
+					"stage_ahead": false,
 					"t": 5.0
 				}
 			],
 			"label": "Aster + Peris (shadow)",
 			"loadout": "shadow",
+			"max_stage_used": 5,
 			"node_approaches": [
 				{
 					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "traverse",
 					"label": "",
+					"min_stage": 0,
 					"node": "entry",
 					"party": "any",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "play_the_beat",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "meta",
 					"label": "Adapt to the available party; preserve the state transition",
+					"min_stage": 1,
 					"node": "node_01",
 					"party": "any",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				},
 				{
-					"approach_id": "flora_finesse",
-					"kind": "shadow",
-					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"approach_id": "flora_chain_trap",
+					"borrows_from": "10",
+					"expert": true,
+					"kind": "shadow_expert",
+					"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
+					"min_stage": 5,
 					"node": "node_02",
 					"party": "aster_peris",
-					"risk": "safe"
+					"risk": "risky",
+					"stage_ahead": true
 				},
 				{
 					"approach_id": "play_the_beat",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "meta",
 					"label": "Adapt to the available party; preserve the state transition",
+					"min_stage": 1,
 					"node": "node_03",
 					"party": "any",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				},
 				{
-					"approach_id": "flora_finesse",
-					"kind": "shadow",
-					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"approach_id": "flora_chain_trap",
+					"borrows_from": "10",
+					"expert": true,
+					"kind": "shadow_expert",
+					"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
+					"min_stage": 5,
 					"node": "node_04",
 					"party": "aster_peris",
-					"risk": "safe"
+					"risk": "risky",
+					"stage_ahead": true
 				},
 				{
 					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "traverse",
 					"label": "",
+					"min_stage": 0,
 					"node": "exit_shelter",
 					"party": "any",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				}
 			],
 			"party": [
 				"aster",
 				"peris"
 			],
-			"solvable": true
+			"solvable": true,
+			"uses_future_technique": true
 		}
 	],
 	"spec_id": "generated_teaching_channels_shelter_1_to_2",

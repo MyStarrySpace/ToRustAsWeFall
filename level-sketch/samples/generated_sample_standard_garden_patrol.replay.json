@@ -47,7 +47,7 @@
 					5,
 					-1
 				],
-				"kind": "flure",
+				"kind": "scarpet",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -77,7 +77,7 @@
 					11,
 					1
 				],
-				"kind": "snapbloom",
+				"kind": "flure",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -125,6 +125,26 @@
 				"category": "flora",
 				"cell": [
 					23,
+					0
+				],
+				"kind": "scarpet",
+				"level": 1,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					24,
+					0
+				],
+				"kind": "terminal",
+				"level": 1,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					29,
 					1
 				],
 				"kind": "flure",
@@ -134,30 +154,10 @@
 			{
 				"category": "structures",
 				"cell": [
-					24,
-					2
-				],
-				"kind": "terminal",
-				"level": 2,
-				"support": "implemented"
-			},
-			{
-				"category": "flora",
-				"cell": [
-					29,
-					1
-				],
-				"kind": "snapbloom",
-				"level": 2,
-				"support": "implemented"
-			},
-			{
-				"category": "structures",
-				"cell": [
 					30,
 					2
 				],
-				"kind": "root_slide",
+				"kind": "terminal",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -187,7 +187,7 @@
 					41,
 					1
 				],
-				"kind": "flure",
+				"kind": "scarpet",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -252,12 +252,24 @@
 				"role": "guidance"
 			},
 			{
-				"archetype_id": "1",
+				"archetype_id": "4",
 				"cell": [
 					24,
-					2
+					0
 				],
 				"id": "node_04",
+				"label": "A4.4 Position Actor",
+				"level": 1,
+				"optional": false,
+				"role": "guidance"
+			},
+			{
+				"archetype_id": "1",
+				"cell": [
+					30,
+					2
+				],
+				"id": "node_05",
 				"label": "A1.1 Identify Impact Target",
 				"level": 2,
 				"optional": false,
@@ -266,26 +278,14 @@
 			{
 				"archetype_id": "2",
 				"cell": [
-					30,
-					2
-				],
-				"id": "node_05",
-				"label": "A2.1 Acquire Plant Or Seed",
-				"level": 2,
-				"optional": false,
-				"role": "foraging"
-			},
-			{
-				"archetype_id": "7",
-				"cell": [
 					36,
 					3
 				],
 				"id": "node_06",
-				"label": "A7.1 Observe Patrol",
+				"label": "A2.1 Acquire Plant Or Seed",
 				"level": 2,
 				"optional": false,
-				"role": "danger"
+				"role": "foraging"
 			},
 			{
 				"archetype_id": "11",
@@ -354,14 +354,14 @@
 				"to": "node_04",
 				"to_cell": [
 					24,
-					2
+					0
 				]
 			},
 			{
 				"from": "node_04",
 				"from_cell": [
 					24,
-					2
+					0
 				],
 				"id": "main_04_05",
 				"kind": "safe",
@@ -410,7 +410,7 @@
 				"to": "node_04",
 				"to_cell": [
 					24,
-					2
+					0
 				]
 			},
 			{
@@ -444,6 +444,7 @@
 		]
 	},
 	"multi_solution": true,
+	"progression_stage": 3,
 	"region": "Garden Causeway",
 	"schema": "trawf_stretch_replay_v1",
 	"solutions": [
@@ -454,6 +455,7 @@
 				{
 					"approach_id": "traverse",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "entry",
 					"characters": {
 						"aster": [
@@ -469,15 +471,19 @@
 							1.90000002384186
 						]
 					},
+					"expert": false,
 					"kind": "traverse",
+					"min_stage": 0,
 					"node": "entry",
 					"risk": "safe",
 					"role": "boundary",
+					"stage_ahead": false,
 					"t": 0.0
 				},
 				{
 					"approach_id": "loud_draw",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "node_01 — Draw the patrol with a loud combat action",
 					"characters": {
 						"aster": [
@@ -493,15 +499,19 @@
 							0.3
 						]
 					},
+					"expert": false,
 					"kind": "primary",
+					"min_stage": 3,
 					"node": "node_01",
 					"risk": "direct",
 					"role": "danger",
+					"stage_ahead": false,
 					"t": 1.0
 				},
 				{
 					"approach_id": "loud_draw",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "node_02 — Draw the patrol with a loud combat action",
 					"characters": {
 						"aster": [
@@ -517,15 +527,19 @@
 							1.90000002384186
 						]
 					},
+					"expert": false,
 					"kind": "primary",
+					"min_stage": 3,
 					"node": "node_02",
 					"risk": "direct",
 					"role": "danger",
+					"stage_ahead": false,
 					"t": 2.0
 				},
 				{
 					"approach_id": "loud_draw",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "node_03 — Draw the patrol with a loud combat action",
 					"characters": {
 						"aster": [
@@ -541,40 +555,48 @@
 							0.3
 						]
 					},
+					"expert": false,
 					"kind": "primary",
+					"min_stage": 3,
 					"node": "node_03",
 					"risk": "direct",
 					"role": "guidance",
+					"stage_ahead": false,
 					"t": 3.0
+				},
+				{
+					"approach_id": "loud_draw",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_04 — Draw the patrol with a loud combat action",
+					"characters": {
+						"aster": [
+							24.0,
+							-0.35
+						],
+						"endo": [
+							24.4,
+							0.3
+						],
+						"peris": [
+							23.6,
+							0.3
+						]
+					},
+					"expert": false,
+					"kind": "primary",
+					"min_stage": 3,
+					"node": "node_04",
+					"risk": "direct",
+					"role": "guidance",
+					"stage_ahead": false,
+					"t": 4.0
 				},
 				{
 					"approach_id": "redirect_combat",
 					"blocked": false,
-					"caption": "node_04 — Bait a combat specialist's charge into the target",
-					"characters": {
-						"aster": [
-							24.0,
-							1.25000002384186
-						],
-						"endo": [
-							24.4,
-							1.90000002384186
-						],
-						"peris": [
-							23.6,
-							1.90000002384186
-						]
-					},
-					"kind": "primary",
-					"node": "node_04",
-					"risk": "direct",
-					"role": "guidance",
-					"t": 4.0
-				},
-				{
-					"approach_id": "force_clear",
-					"blocked": false,
-					"caption": "node_05 — Force the obstacle open with raw impact",
+					"borrows_from": "",
+					"caption": "node_05 — Bait a combat specialist's charge into the target",
 					"characters": {
 						"aster": [
 							30.0,
@@ -589,16 +611,20 @@
 							1.90000002384186
 						]
 					},
+					"expert": false,
 					"kind": "primary",
+					"min_stage": 2,
 					"node": "node_05",
 					"risk": "direct",
-					"role": "foraging",
+					"role": "guidance",
+					"stage_ahead": false,
 					"t": 5.0
 				},
 				{
-					"approach_id": "force_window",
+					"approach_id": "force_clear",
 					"blocked": false,
-					"caption": "node_06 — Force the window open with raw pressure",
+					"borrows_from": "",
+					"caption": "node_06 — Force the obstacle open with raw impact",
 					"characters": {
 						"aster": [
 							36.0,
@@ -613,15 +639,19 @@
 							3.50000004768372
 						]
 					},
+					"expert": false,
 					"kind": "primary",
+					"min_stage": 1,
 					"node": "node_06",
-					"risk": "risky",
-					"role": "danger",
+					"risk": "direct",
+					"role": "foraging",
+					"stage_ahead": false,
 					"t": 6.0
 				},
 				{
 					"approach_id": "traverse",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "exit_shelter",
 					"characters": {
 						"aster": [
@@ -637,79 +667,115 @@
 							1.90000002384186
 						]
 					},
+					"expert": false,
 					"kind": "traverse",
+					"min_stage": 0,
 					"node": "exit_shelter",
 					"risk": "safe",
 					"role": "shelter_arrival",
+					"stage_ahead": false,
 					"t": 7.0
 				}
 			],
 			"label": "Full party",
 			"loadout": "spotlight",
+			"max_stage_used": 3,
 			"node_approaches": [
 				{
 					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "traverse",
 					"label": "",
+					"min_stage": 0,
 					"node": "entry",
 					"party": "any",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "loud_draw",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "primary",
 					"label": "Draw the patrol with a loud combat action",
+					"min_stage": 3,
 					"node": "node_01",
 					"party": "specialist",
-					"risk": "direct"
+					"risk": "direct",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "loud_draw",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "primary",
 					"label": "Draw the patrol with a loud combat action",
+					"min_stage": 3,
 					"node": "node_02",
 					"party": "specialist",
-					"risk": "direct"
+					"risk": "direct",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "loud_draw",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "primary",
 					"label": "Draw the patrol with a loud combat action",
+					"min_stage": 3,
 					"node": "node_03",
 					"party": "specialist",
-					"risk": "direct"
+					"risk": "direct",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "loud_draw",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "primary",
+					"label": "Draw the patrol with a loud combat action",
+					"min_stage": 3,
+					"node": "node_04",
+					"party": "specialist",
+					"risk": "direct",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "redirect_combat",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "primary",
 					"label": "Bait a combat specialist's charge into the target",
-					"node": "node_04",
+					"min_stage": 2,
+					"node": "node_05",
 					"party": "specialist",
-					"risk": "direct"
+					"risk": "direct",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "force_clear",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "primary",
 					"label": "Force the obstacle open with raw impact",
-					"node": "node_05",
-					"party": "specialist",
-					"risk": "direct"
-				},
-				{
-					"approach_id": "force_window",
-					"kind": "primary",
-					"label": "Force the window open with raw pressure",
+					"min_stage": 1,
 					"node": "node_06",
 					"party": "specialist",
-					"risk": "risky"
+					"risk": "direct",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "traverse",
 					"label": "",
+					"min_stage": 0,
 					"node": "exit_shelter",
 					"party": "any",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				}
 			],
 			"party": [
@@ -717,7 +783,8 @@
 				"peris",
 				"endo"
 			],
-			"solvable": true
+			"solvable": true,
+			"uses_future_technique": false
 		},
 		{
 			"blocked_nodes": [],
@@ -726,6 +793,7 @@
 				{
 					"approach_id": "traverse",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "entry",
 					"characters": {
 						"aster": [
@@ -737,16 +805,20 @@
 							1.90000002384186
 						]
 					},
+					"expert": false,
 					"kind": "traverse",
+					"min_stage": 0,
 					"node": "entry",
 					"risk": "safe",
 					"role": "boundary",
+					"stage_ahead": false,
 					"t": 0.0
 				},
 				{
-					"approach_id": "signal_split",
+					"approach_id": "false_pattern_spoof",
 					"blocked": false,
-					"caption": "node_01 — Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"borrows_from": "6",
+					"caption": "node_01 — Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for  ⟐ expert: later-stage technique",
 					"characters": {
 						"aster": [
 							6.0,
@@ -757,16 +829,20 @@
 							0.3
 						]
 					},
-					"kind": "shadow",
+					"expert": true,
+					"kind": "shadow_expert",
+					"min_stage": 3,
 					"node": "node_01",
-					"risk": "safe",
+					"risk": "risky",
 					"role": "danger",
+					"stage_ahead": false,
 					"t": 1.0
 				},
 				{
-					"approach_id": "signal_split",
+					"approach_id": "false_pattern_spoof",
 					"blocked": false,
-					"caption": "node_02 — Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"borrows_from": "6",
+					"caption": "node_02 — Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for  ⟐ expert: later-stage technique",
 					"characters": {
 						"aster": [
 							12.0,
@@ -777,16 +853,20 @@
 							1.90000002384186
 						]
 					},
-					"kind": "shadow",
+					"expert": true,
+					"kind": "shadow_expert",
+					"min_stage": 3,
 					"node": "node_02",
-					"risk": "safe",
+					"risk": "risky",
 					"role": "danger",
+					"stage_ahead": false,
 					"t": 2.0
 				},
 				{
-					"approach_id": "signal_split",
+					"approach_id": "false_pattern_spoof",
 					"blocked": false,
-					"caption": "node_03 — Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"borrows_from": "6",
+					"caption": "node_03 — Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for  ⟐ expert: later-stage technique",
 					"characters": {
 						"aster": [
 							18.0,
@@ -797,36 +877,44 @@
 							0.3
 						]
 					},
-					"kind": "shadow",
+					"expert": true,
+					"kind": "shadow_expert",
+					"min_stage": 3,
 					"node": "node_03",
-					"risk": "safe",
+					"risk": "risky",
 					"role": "guidance",
+					"stage_ahead": false,
 					"t": 3.0
+				},
+				{
+					"approach_id": "false_pattern_spoof",
+					"blocked": false,
+					"borrows_from": "6",
+					"caption": "node_04 — Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for  ⟐ expert: later-stage technique",
+					"characters": {
+						"aster": [
+							24.0,
+							-0.35
+						],
+						"peris": [
+							23.6,
+							0.3
+						]
+					},
+					"expert": true,
+					"kind": "shadow_expert",
+					"min_stage": 3,
+					"node": "node_04",
+					"risk": "risky",
+					"role": "guidance",
+					"stage_ahead": false,
+					"t": 4.0
 				},
 				{
 					"approach_id": "overlay_cover",
 					"blocked": false,
-					"caption": "node_04 — Aster times the enemy charge on the overlay while Peris holds scarpet cover",
-					"characters": {
-						"aster": [
-							24.0,
-							1.25000002384186
-						],
-						"peris": [
-							23.6,
-							1.90000002384186
-						]
-					},
-					"kind": "shadow",
-					"node": "node_04",
-					"risk": "risky",
-					"role": "guidance",
-					"t": 4.0
-				},
-				{
-					"approach_id": "flora_finesse",
-					"blocked": false,
-					"caption": "node_05 — Peris grows or tends the plant tool; Aster confirms the target",
+					"borrows_from": "",
+					"caption": "node_05 — Aster times the enemy charge on the overlay while Peris holds scarpet cover",
 					"characters": {
 						"aster": [
 							30.0,
@@ -837,16 +925,20 @@
 							1.90000002384186
 						]
 					},
+					"expert": false,
 					"kind": "shadow",
+					"min_stage": 2,
 					"node": "node_05",
-					"risk": "safe",
-					"role": "foraging",
+					"risk": "risky",
+					"role": "guidance",
+					"stage_ahead": false,
 					"t": 5.0
 				},
 				{
-					"approach_id": "read_and_cover",
+					"approach_id": "flora_finesse",
 					"blocked": false,
-					"caption": "node_06 — Aster reads the patrol timing; Peris creates or extends cover",
+					"borrows_from": "",
+					"caption": "node_06 — Peris grows or tends the plant tool; Aster confirms the target",
 					"characters": {
 						"aster": [
 							36.0,
@@ -857,15 +949,19 @@
 							3.50000004768372
 						]
 					},
+					"expert": false,
 					"kind": "shadow",
+					"min_stage": 1,
 					"node": "node_06",
 					"risk": "safe",
-					"role": "danger",
+					"role": "foraging",
+					"stage_ahead": false,
 					"t": 6.0
 				},
 				{
 					"approach_id": "traverse",
 					"blocked": false,
+					"borrows_from": "",
 					"caption": "exit_shelter",
 					"characters": {
 						"aster": [
@@ -877,86 +973,123 @@
 							1.90000002384186
 						]
 					},
+					"expert": false,
 					"kind": "traverse",
+					"min_stage": 0,
 					"node": "exit_shelter",
 					"risk": "safe",
 					"role": "shelter_arrival",
+					"stage_ahead": false,
 					"t": 7.0
 				}
 			],
 			"label": "Aster + Peris (shadow)",
 			"loadout": "shadow",
+			"max_stage_used": 3,
 			"node_approaches": [
 				{
 					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "traverse",
 					"label": "",
+					"min_stage": 0,
 					"node": "entry",
 					"party": "any",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				},
 				{
-					"approach_id": "signal_split",
-					"kind": "shadow",
-					"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"approach_id": "false_pattern_spoof",
+					"borrows_from": "6",
+					"expert": true,
+					"kind": "shadow_expert",
+					"label": "Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for",
+					"min_stage": 3,
 					"node": "node_01",
 					"party": "aster_peris",
-					"risk": "safe"
+					"risk": "risky",
+					"stage_ahead": false
 				},
 				{
-					"approach_id": "signal_split",
-					"kind": "shadow",
-					"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"approach_id": "false_pattern_spoof",
+					"borrows_from": "6",
+					"expert": true,
+					"kind": "shadow_expert",
+					"label": "Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for",
+					"min_stage": 3,
 					"node": "node_02",
 					"party": "aster_peris",
-					"risk": "safe"
+					"risk": "risky",
+					"stage_ahead": false
 				},
 				{
-					"approach_id": "signal_split",
-					"kind": "shadow",
-					"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"approach_id": "false_pattern_spoof",
+					"borrows_from": "6",
+					"expert": true,
+					"kind": "shadow_expert",
+					"label": "Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for",
+					"min_stage": 3,
 					"node": "node_03",
 					"party": "aster_peris",
-					"risk": "safe"
+					"risk": "risky",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "false_pattern_spoof",
+					"borrows_from": "6",
+					"expert": true,
+					"kind": "shadow_expert",
+					"label": "Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for",
+					"min_stage": 3,
+					"node": "node_04",
+					"party": "aster_peris",
+					"risk": "risky",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "overlay_cover",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "shadow",
 					"label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover",
-					"node": "node_04",
+					"min_stage": 2,
+					"node": "node_05",
 					"party": "aster_peris",
-					"risk": "risky"
+					"risk": "risky",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "flora_finesse",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "shadow",
 					"label": "Peris grows or tends the plant tool; Aster confirms the target",
-					"node": "node_05",
-					"party": "aster_peris",
-					"risk": "safe"
-				},
-				{
-					"approach_id": "read_and_cover",
-					"kind": "shadow",
-					"label": "Aster reads the patrol timing; Peris creates or extends cover",
+					"min_stage": 1,
 					"node": "node_06",
 					"party": "aster_peris",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
 					"kind": "traverse",
 					"label": "",
+					"min_stage": 0,
 					"node": "exit_shelter",
 					"party": "any",
-					"risk": "safe"
+					"risk": "safe",
+					"stage_ahead": false
 				}
 			],
 			"party": [
 				"aster",
 				"peris"
 			],
-			"solvable": true
+			"solvable": true,
+			"uses_future_technique": false
 		}
 	],
 	"spec_id": "generated_sample_standard_garden_patrol",

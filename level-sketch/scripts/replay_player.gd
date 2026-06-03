@@ -280,6 +280,8 @@ func _sync(update_scrub: bool) -> void:
 		_suppress_scrub = false
 	var frame := _data.frame_at(_solution_index, _time)
 	_caption.text = str(frame.get("caption", ""))
+	# Expert / later-stage techniques read in violet so the mastery move stands out.
+	_caption.add_theme_color_override("font_color", Color(0.80, 0.66, 0.96) if bool(frame.get("expert", false)) else Color(0.92, 0.86, 0.6))
 	_time_label.text = "%4.1f / %4.1f" % [_time, _duration]
 
 
