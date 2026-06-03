@@ -48,6 +48,18 @@
 	},
 	"archetype_chain": [
 		{
+			"approaches": [
+				{
+					"id": "play_the_beat",
+					"kind": "meta",
+					"label": "Adapt to the available party; preserve the state transition",
+					"party": "any",
+					"requires": [],
+					"risk": "safe",
+					"taught_by": "",
+					"uses": []
+				}
+			],
 			"chain_index": 0,
 			"composition_role": "required_append",
 			"id": "11",
@@ -67,6 +79,38 @@
 			"variant": "realization"
 		},
 		{
+			"approaches": [
+				{
+					"id": "force_clear",
+					"kind": "primary",
+					"label": "Force the obstacle open with raw impact",
+					"party": "specialist",
+					"requires": [
+						"impact"
+					],
+					"risk": "direct",
+					"taught_by": "",
+					"uses": [
+						"destroy"
+					]
+				},
+				{
+					"id": "flora_finesse",
+					"kind": "shadow",
+					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"party": "aster_peris",
+					"requires": [
+						"flora"
+					],
+					"risk": "safe",
+					"taught_by": "flora_tending",
+					"uses": [
+						"flure_iron_decoy",
+						"hushbloom_stun",
+						"climbvine_traversal"
+					]
+				}
+			],
 			"chain_index": 1,
 			"composition_role": "generated_fill",
 			"id": "2",
@@ -176,6 +220,216 @@
 			"risky_direct",
 			"exit_shelter"
 		],
+		"solution_paths": [
+			{
+				"approach_per_node": [
+					{
+						"approach_id": "traverse",
+						"blocked": false,
+						"kind": "traverse",
+						"node": "entry",
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
+						"role": "boundary"
+					},
+					{
+						"approach_id": "play_the_beat",
+						"blocked": false,
+						"kind": "meta",
+						"label": "Adapt to the available party; preserve the state transition",
+						"node": "node_01",
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
+						"role": "guidance",
+						"taught_by": "",
+						"uses": []
+					},
+					{
+						"approach_id": "force_clear",
+						"blocked": false,
+						"kind": "primary",
+						"label": "Force the obstacle open with raw impact",
+						"node": "node_02",
+						"party": "specialist",
+						"requires": [
+							"impact"
+						],
+						"risk": "direct",
+						"role": "route_pressure",
+						"taught_by": "",
+						"uses": [
+							"destroy"
+						]
+					},
+					{
+						"approach_id": "play_the_beat",
+						"blocked": false,
+						"kind": "meta",
+						"label": "Adapt to the available party; preserve the state transition",
+						"node": "node_03",
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
+						"role": "foraging",
+						"taught_by": "",
+						"uses": []
+					},
+					{
+						"approach_id": "force_clear",
+						"blocked": false,
+						"kind": "primary",
+						"label": "Force the obstacle open with raw impact",
+						"node": "node_04",
+						"party": "specialist",
+						"requires": [
+							"impact"
+						],
+						"risk": "direct",
+						"role": "danger",
+						"taught_by": "",
+						"uses": [
+							"destroy"
+						]
+					},
+					{
+						"approach_id": "traverse",
+						"blocked": false,
+						"kind": "traverse",
+						"node": "exit_shelter",
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
+						"role": "shelter_arrival"
+					}
+				],
+				"blocked_nodes": [],
+				"label": "Full party",
+				"loadout": "spotlight",
+				"party": [
+					"aster",
+					"peris",
+					"endo"
+				],
+				"solvable": true,
+				"total_risk": 2
+			},
+			{
+				"approach_per_node": [
+					{
+						"approach_id": "traverse",
+						"blocked": false,
+						"kind": "traverse",
+						"node": "entry",
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
+						"role": "boundary"
+					},
+					{
+						"approach_id": "play_the_beat",
+						"blocked": false,
+						"kind": "meta",
+						"label": "Adapt to the available party; preserve the state transition",
+						"node": "node_01",
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
+						"role": "guidance",
+						"taught_by": "",
+						"uses": []
+					},
+					{
+						"approach_id": "flora_finesse",
+						"blocked": false,
+						"kind": "shadow",
+						"label": "Peris grows or tends the plant tool; Aster confirms the target",
+						"node": "node_02",
+						"party": "aster_peris",
+						"requires": [
+							"flora"
+						],
+						"risk": "safe",
+						"role": "route_pressure",
+						"taught_by": "flora_tending",
+						"uses": [
+							"flure_iron_decoy",
+							"hushbloom_stun",
+							"climbvine_traversal"
+						]
+					},
+					{
+						"approach_id": "play_the_beat",
+						"blocked": false,
+						"kind": "meta",
+						"label": "Adapt to the available party; preserve the state transition",
+						"node": "node_03",
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
+						"role": "foraging",
+						"taught_by": "",
+						"uses": []
+					},
+					{
+						"approach_id": "flora_finesse",
+						"blocked": false,
+						"kind": "shadow",
+						"label": "Peris grows or tends the plant tool; Aster confirms the target",
+						"node": "node_04",
+						"party": "aster_peris",
+						"requires": [
+							"flora"
+						],
+						"risk": "safe",
+						"role": "danger",
+						"taught_by": "flora_tending",
+						"uses": [
+							"flure_iron_decoy",
+							"hushbloom_stun",
+							"climbvine_traversal"
+						]
+					},
+					{
+						"approach_id": "traverse",
+						"blocked": false,
+						"kind": "traverse",
+						"node": "exit_shelter",
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
+						"role": "shelter_arrival"
+					}
+				],
+				"blocked_nodes": [],
+				"label": "Aster + Peris (shadow)",
+				"loadout": "shadow",
+				"party": [
+					"aster",
+					"peris"
+				],
+				"solvable": true,
+				"total_risk": 0
+			}
+		],
+		"solution_summary": {
+			"choice_node_count": 2,
+			"choice_nodes": [
+				"node_02",
+				"node_04"
+			],
+			"distinct_node_count": 2,
+			"distinct_nodes": [
+				"node_02",
+				"node_04"
+			],
+			"multi_solution": true,
+			"multi_solution_ok": true,
+			"multi_solution_required": false,
+			"shadow_solvable": true,
+			"solvable_loadout_count": 2
+		},
 		"state_paths": [
 			"chunk.generation.spec_id",
 			"chunk.generation.route_choice",
@@ -184,7 +438,10 @@
 			"chunk.generation.composition",
 			"chunk.generation.composition.random_walk",
 			"chunk.generation.unsupported_placeholder_count",
-			"chunk.generation.navigation"
+			"chunk.generation.navigation",
+			"chunk.generation.active_loadout",
+			"chunk.generation.solution_path",
+			"chunk.generation.blocked_nodes"
 		]
 	},
 	"id": "generated_teaching_channels_shelter_1_to_2",
@@ -669,6 +926,7 @@
 				0.449999988079071,
 				-1.57200002670288
 			],
+			"approaches": [],
 			"archetype_id": "11",
 			"archetype_name": "Narrative beat",
 			"chain_index": -1,
@@ -781,6 +1039,18 @@
 				12.0,
 				1.16999995708466,
 				1.36000001430511
+			],
+			"approaches": [
+				{
+					"id": "play_the_beat",
+					"kind": "meta",
+					"label": "Adapt to the available party; preserve the state transition",
+					"party": "any",
+					"requires": [],
+					"risk": "safe",
+					"taught_by": "",
+					"uses": []
+				}
 			],
 			"archetype_id": "11",
 			"archetype_name": "Narrative beat",
@@ -895,6 +1165,38 @@
 				22.8120002746582,
 				1.88999998569489,
 				4.63199996948242
+			],
+			"approaches": [
+				{
+					"id": "force_clear",
+					"kind": "primary",
+					"label": "Force the obstacle open with raw impact",
+					"party": "specialist",
+					"requires": [
+						"impact"
+					],
+					"risk": "direct",
+					"taught_by": "",
+					"uses": [
+						"destroy"
+					]
+				},
+				{
+					"id": "flora_finesse",
+					"kind": "shadow",
+					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"party": "aster_peris",
+					"requires": [
+						"flora"
+					],
+					"risk": "safe",
+					"taught_by": "flora_tending",
+					"uses": [
+						"flure_iron_decoy",
+						"hushbloom_stun",
+						"climbvine_traversal"
+					]
+				}
 			],
 			"archetype_id": "2",
 			"archetype_name": "Plant as tool",
@@ -1036,6 +1338,18 @@
 				1.16999995708466,
 				-1.50399994850159
 			],
+			"approaches": [
+				{
+					"id": "play_the_beat",
+					"kind": "meta",
+					"label": "Adapt to the available party; preserve the state transition",
+					"party": "any",
+					"requires": [],
+					"risk": "safe",
+					"taught_by": "",
+					"uses": []
+				}
+			],
 			"archetype_id": "11",
 			"archetype_name": "Narrative beat",
 			"chain_index": 0,
@@ -1149,6 +1463,38 @@
 				46.8120002746582,
 				1.16999995708466,
 				1.63200008869171
+			],
+			"approaches": [
+				{
+					"id": "force_clear",
+					"kind": "primary",
+					"label": "Force the obstacle open with raw impact",
+					"party": "specialist",
+					"requires": [
+						"impact"
+					],
+					"risk": "direct",
+					"taught_by": "",
+					"uses": [
+						"destroy"
+					]
+				},
+				{
+					"id": "flora_finesse",
+					"kind": "shadow",
+					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"party": "aster_peris",
+					"requires": [
+						"flora"
+					],
+					"risk": "safe",
+					"taught_by": "flora_tending",
+					"uses": [
+						"flure_iron_decoy",
+						"hushbloom_stun",
+						"climbvine_traversal"
+					]
+				}
 			],
 			"archetype_id": "2",
 			"archetype_name": "Plant as tool",
@@ -1264,6 +1610,7 @@
 				0.449999988079071,
 				4.83599996566772
 			],
+			"approaches": [],
 			"archetype_id": "11",
 			"archetype_name": "Narrative beat",
 			"chain_index": -1,
@@ -1693,6 +2040,11 @@
 	"success": true,
 	"title": "Generated Teaching Channels: Shelter 1 -> Shelter 2",
 	"validation": {
+		"multi_solution": true,
+		"multi_solution_ok": true,
+		"multi_solution_required": false,
+		"shadow_solvable": true,
+		"solution_warnings": [],
 		"warnings": [
 			{
 				"category": "flora",
