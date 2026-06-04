@@ -342,7 +342,7 @@ func activate_generated_node(node_id: String) -> bool:
 		"forage":
 			_apply_forage_reward(node)
 		"gauntlet", "hazard":
-			_apply_node_pressure(node)
+			_apply_node_pressure(node, approach)
 		"exploit":
 			_last_outcome = "exploit:%s" % str(node.get("exploit_target", "predator_prey"))
 			_show_message("Turned the ecology against itself.", 1.0)
@@ -1037,8 +1037,12 @@ func _apply_forage_reward(node: Dictionary) -> void:
 	_show_message("Banked %d ATP from the cache." % pips, 1.0)
 
 ## Gauntlet / attrition field: HP + stamina drain crossing it (recovered at the shelter).
-func _apply_node_pressure(node: Dictionary) -> void:
+## A specialist holding the lanes (or Endo building a protected lane) mitigates the
+## attrition; the Aster+Peris pair pays the full price — the survival cost of the shadow.
+func _apply_node_pressure(node: Dictionary, approach := {}) -> void:
 	var damage := maxf(6.0, float(int(node.get("pressure_cost", 1))) * 8.0)
+	if str(approach.get("party", "")) == "specialist":
+		damage *= 0.4
 	_pressure_taken += damage
 	for char_id in PARTY_IDS:
 		_adjust_character_stat(char_id, "hp", -damage)

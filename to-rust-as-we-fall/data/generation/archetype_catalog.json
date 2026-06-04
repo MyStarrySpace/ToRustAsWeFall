@@ -978,12 +978,12 @@
       "kind": "survival",
       "stage": 3,
       "survival_kind": "exploit",
-      "exploit_target": "predator_prey",
+      "exploit_target": "enemy_ecology",
       "tags": [
         "enemy",
-        "predator_prey",
+        "ecology",
         "exploit",
-        "ecology"
+        "predator_prey"
       ],
       "compatible_node_roles": [
         "route_pressure",
@@ -993,32 +993,32 @@
       ],
       "steps": [
         "read the ecology clock",
-        "position the prey or a decoy",
-        "trigger the predator",
-        "let them collide",
-        "cross the opened void"
+        "position the bait, decoy, or trigger",
+        "set the predators or the burst on each other",
+        "cross while they collide",
+        "regroup past the opened void"
       ],
       "variants": [
         "siderophore_into_meeb",
-        "prey_into_neutro",
-        "spiker_versus_tangler",
-        "candid_scan_drop"
+        "trigger_neutro_burst",
+        "gnawer_onto_loud_signal",
+        "candid_zone_route"
       ],
       "shadow_solution": {
         "aster_peris": true,
-        "notes": "Aster reads the ecology clock while Peris's flure decoy herds the prey into the predator."
+        "notes": "Aster reads the ecology clock while Peris's flure decoy herds siderophores into a Meeb's engulf window."
       },
       "approaches": [
         {
           "id": "draw_and_commit",
-          "label": "A combat member draws the Neutros to open the void while another times the commit",
+          "label": "A combat member triggers a Neutro burst or draws the predators to open the void while another times the commit",
           "kind": "primary",
           "party": "specialist",
           "requires": [
             "combat"
           ],
           "uses": [
-            "prey_into_neutro"
+            "trigger_neutro_burst"
           ],
           "risk": "direct",
           "taught_by": "",
@@ -1026,7 +1026,7 @@
         },
         {
           "id": "ecology_decoy",
-          "label": "Aster reads the predator-prey clock while Peris's flure decoy herds the prey into the predator",
+          "label": "Aster reads the ecology clock while Peris's flure decoy herds the siderophores into a Meeb's engulf window",
           "kind": "shadow",
           "party": "aster_peris",
           "requires": [
@@ -1035,6 +1035,21 @@
           ],
           "uses": [
             "siderophore_into_meeb"
+          ],
+          "risk": "risky",
+          "taught_by": "ecology_reading",
+          "min_stage": 3
+        },
+        {
+          "id": "weaponized_window",
+          "label": "With the predators committed (or the Candid zone read), the opened window clears the beat for anyone who times the crossing",
+          "kind": "support",
+          "party": "any",
+          "requires": [
+            "exploit"
+          ],
+          "uses": [
+            "candid_zone_route"
           ],
           "risk": "risky",
           "taught_by": "ecology_reading",

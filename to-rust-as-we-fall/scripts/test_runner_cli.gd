@@ -2049,6 +2049,16 @@ func _test_survival_archetypes() -> void:
 	_assert_true(kinds.has("forage") and kinds.has("gauntlet") and kinds.has("exploit"), "Required survival kinds (forage/gauntlet/exploit) appear on the spine")
 	_assert_true(not forage_node.is_empty() and int(forage_node.get("atp_reward", 0)) > 0, "A forage node carries an atp_reward (partial ATP top-up)")
 	_assert_true(not exploit_node.is_empty() and StretchCapabilitiesScript.node_content_capabilities(exploit_node).has("redirect"), "An exploit node's enemy configuration lends a 'redirect' tool (enemies as a tool)")
+	# The exploit capability is actually CONSUMED by an approach (not dead): archetype 13's
+	# weaponized_window requires it, so the configuration itself is a usable solve affordance.
+	var a13_consumes := false
+	for ap in catalog.get_archetype("13").get("approaches", []):
+		if (ap.get("requires", []) as Array).has("exploit"):
+			a13_consumes = true
+	_assert_true(a13_consumes, "An approach requires the 'exploit' capability, so the enemy-config tool is wired, not dead")
+	# Placed content never hands the Aster+Peris pair a specialist capability (no collapse).
+	var barrier_node := {"structures": ["barrier"], "survival_kind": "hazard"}
+	_assert_true(not StretchCapabilitiesScript.node_content_capabilities(barrier_node).has("barrier"), "A placed barrier structure does NOT grant the pair the specialist 'barrier' capability")
 
 	# Chunk: a golden run banks ATP at the forage cache and takes attrition at the gauntlet.
 	var preview_scene := load("res://scenes/fragments/generated_stretch_preview.tscn")

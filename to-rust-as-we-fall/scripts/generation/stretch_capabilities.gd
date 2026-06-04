@@ -96,8 +96,16 @@ static func node_content_capabilities(node: Dictionary) -> Dictionary:
 		var table: Dictionary = CONTENT_CAPABILITIES.get(category, {})
 		for raw_key in node.get(category, []):
 			for cap in table.get(str(raw_key), []):
-				caps[str(cap)] = true
-	if str(node.get("survival_kind", "")) == "exploit" or str(node.get("exploit_target", "")) != "":
+				# Placed content never grants a SPECIALIST capability (combat/barrier/endo/
+				# class…): those belong to a party member, not an object. Otherwise a placed
+				# barrier structure would hand the Aster+Peris pair a specialist's approach
+				# and collapse a node's specialist-vs-shadow choice.
+				if not SPECIALIST_CAPABILITIES.has(str(cap)):
+					caps[str(cap)] = true
+	# An enemy-vs-enemy (exploit) configuration is itself a usable tool: it lends a
+	# `redirect`/`exploit` affordance an approach can spend (e.g. archetype 13's
+	# weaponized_window, or a future nested puzzle).
+	if str(node.get("survival_kind", "")) == "exploit":
 		caps["redirect"] = true
 		caps["exploit"] = true
 	return caps
