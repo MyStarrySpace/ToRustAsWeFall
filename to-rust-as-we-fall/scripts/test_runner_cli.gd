@@ -17,6 +17,7 @@ const StretchGeneratorScript = preload("res://scripts/generation/stretch_generat
 const StretchSolutionSolverScript = preload("res://scripts/generation/stretch_solution_solver.gd")
 const StretchReplayBuilderScript = preload("res://scripts/generation/stretch_replay_builder.gd")
 const StretchCapabilitiesScript = preload("res://scripts/generation/stretch_capabilities.gd")
+const CampaignOrderScript = preload("res://scripts/system/campaign/campaign_order.gd")
 const StretchGenerationPlaytestLoopScript = preload("res://scripts/generation/stretch_generation_playtest_loop.gd")
 const PlaythroughAnimationHtmlRendererScript = preload("res://scripts/generation/playthrough_animation_html_renderer.gd")
 const NavigationGraphScript = preload("res://scripts/system/core/navigation_graph.gd")
@@ -378,6 +379,9 @@ func _ready() -> void:
 			"--test-generated-replay":
 				ran_test = true
 				_test_generated_replay()
+			"--test-campaign-order":
+				ran_test = true
+				_test_campaign_order()
 			"--test-asset-pipeline":
 				ran_test = true
 				_test_asset_pipeline()
@@ -547,6 +551,7 @@ func _run_all_tests() -> void:
 	await _test_archetype_generation()
 	_test_generated_multi_solution()
 	_test_generated_replay()
+	_test_campaign_order()
 	await _test_generated_stretch_playtest_loop()
 	_test_save_load_integrity()
 	_test_save_corruption_recovery()
@@ -1872,6 +1877,67 @@ func _test_generated_replay() -> void:
 		if aid != "" and shadow_by_node.has(nid) and shadow_by_node[nid] != aid:
 			diverged = true
 	_assert_true(diverged, "Spotlight and shadow replays show different approaches on at least one node")
+
+func _test_campaign_order() -> void:
+	_test_name = "Campaign Order"
+
+	# Default build groups every generated spec into Act > Region > stretch.
+	var order = CampaignOrderScript.build_default_from_dir("res://data/generated_stretches")
+	var root: Dictionary = order.root()
+	_assert_true(not (root.get("children", []) as Array).is_empty(), "Default order has at least one act")
+	_assert_true(order.flatten_stretches().size() >= 8, "Default order places every generated stretch")
+	var act0: Dictionary = root["children"][0]
+	_assert_equals(str(act0.get("kind", "")), "act", "First child of the campaign is an act")
+
+	# Multi-level hierarchy + CRUD: region > group > stretch leaf.
+	var rid := order.add_node(str(act0["id"]), "region", "Test Region")
+	_assert_true(rid != "", "Can add a region under an act")
+	var gid := order.add_node(rid, "group", "Test Group")
+	_assert_true(gid != "", "Can nest a group under a region (multi-level hierarchy)")
+	var sid := order.add_node(gid, "stretch", "Test Stretch", {"spec_id": "sx", "entry": "shelter_9", "exit": "shelter_10", "stage": 3})
+	_assert_true(sid != "", "Can add a stretch leaf under a group")
+	_assert_equals(order.add_node(sid, "group", "nope"), "", "Cannot nest under a stretch leaf")
+
+	# Reparent (the drag operation) + cycle guard + rename + reorder/indent/outdent.
+	_assert_true(order.move_node(gid, str(act0["id"]), -1), "Can reparent a group up to the act")
+	_assert_true(not order.move_node(str(act0["id"]), gid, -1), "Cannot move a node into its own subtree (no cycle)")
+	_assert_true(order.rename_node(rid, "Renamed Region"), "Can rename a node")
+	_assert_equals(str(order.locate(rid)["node"].get("title", "")), "Renamed Region", "Rename sticks")
+	var r2 := order.add_node(str(act0["id"]), "region", "Second Region")
+	var before := (order.locate(str(act0["id"]))["node"]["children"] as Array).find(order.locate(r2)["node"])
+	_assert_true(order.reorder_sibling(r2, -1), "Can reorder a sibling up")
+	_assert_true((order.locate(str(act0["id"]))["node"]["children"] as Array).find(order.locate(r2)["node"]) < before, "Reorder moved the node earlier")
+
+	# Validation flags a broken shelter link, a stage regression, and a missing spec.
+	var bad = CampaignOrderScript.new()
+	var ba := bad.add_node(str(bad.root()["id"]), "region", "R")
+	bad.add_node(ba, "stretch", "A", {"spec_id": "a", "entry": "shelter_1", "exit": "shelter_2", "stage": 4})
+	bad.add_node(ba, "stretch", "B", {"spec_id": "b", "entry": "shelter_7", "exit": "shelter_8", "stage": 2})
+	bad.add_node(ba, "stretch", "C", {"spec_id": "ghost", "entry": "shelter_8", "exit": "shelter_9", "stage": 3})
+	var rep := bad.validate(["a", "b"])
+	var codes := {}
+	for it in rep.get("issues", []):
+		codes[str(it.get("code", ""))] = true
+	_assert_true(codes.has("shelter_gap"), "Validation flags a broken shelter link")
+	_assert_true(codes.has("stage_regression"), "Validation flags a stage regression")
+	_assert_true(codes.has("missing_spec"), "Validation flags a stretch referencing a non-existent spec")
+	_assert_true(int(rep.get("error_count", 0)) >= 1, "Missing spec is an error-severity issue")
+
+	# JSON roundtrip + id-uniqueness repair.
+	var restored = CampaignOrderScript.from_json(order.to_json())
+	_assert_equals(restored.flatten_stretches().size(), order.flatten_stretches().size(), "Roundtrip preserves stretch count")
+	restored.add_node(str(restored.root()["id"]), "act", "Fresh Act")
+	var ids := {}
+	var unique := true
+	var stack := [restored.root()]
+	while not stack.is_empty():
+		var n = stack.pop_back()
+		if ids.has(str(n.get("id", ""))):
+			unique = false
+		ids[str(n.get("id", ""))] = true
+		for c in n.get("children", []):
+			stack.append(c)
+	_assert_true(unique, "All node ids are unique after load + a fresh add")
 
 func _test_generated_stretch_playtest_loop() -> void:
 	_test_name = "Generated Stretch Playtest Loop"

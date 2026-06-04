@@ -1,0 +1,85 @@
+{
+	"schema": "trawf_stretches_index_v1",
+	"stretches": [
+		{
+			"act": 1,
+			"entry": "shelter_2",
+			"exit": "shelter_3",
+			"region": "Channels",
+			"spec_id": "generated_chain_nested_poc_shelter_2_to_3",
+			"stage": 3,
+			"tier": "standard",
+			"title": "Generated Chain/Nested POC: Shelter 2 -> Shelter 3"
+		},
+		{
+			"act": 1,
+			"entry": "shelter_4",
+			"exit": "shelter_5",
+			"region": "Channels",
+			"spec_id": "generated_event_walk_shelter_4_to_5",
+			"stage": 4,
+			"tier": "hard",
+			"title": "Generated Event Walk: Shelter 4 -> Shelter 5"
+		},
+		{
+			"act": 1,
+			"entry": "shelter_3",
+			"exit": "shelter_4",
+			"region": "Channels",
+			"spec_id": "generated_random_walk_poc_shelter_3_to_4",
+			"stage": 3,
+			"tier": "standard",
+			"title": "Generated Random Walk POC: Shelter 3 -> Shelter 4"
+		},
+		{
+			"act": 1,
+			"entry": "shelter_3",
+			"exit": "shelter_4",
+			"region": "Ferric Spiral",
+			"spec_id": "generated_sample_hard_carry_run",
+			"stage": 4,
+			"tier": "hard",
+			"title": "Sample — Ferric Carry Run (Hard)"
+		},
+		{
+			"act": 1,
+			"entry": "shelter_4",
+			"exit": "shelter_5",
+			"region": "Containment Vault",
+			"spec_id": "generated_sample_setpiece_containment",
+			"stage": 5,
+			"tier": "setpiece",
+			"title": "Sample — Containment Vault (Setpiece)"
+		},
+		{
+			"act": 1,
+			"entry": "shelter_2",
+			"exit": "shelter_3",
+			"region": "Garden Causeway",
+			"spec_id": "generated_sample_standard_garden_patrol",
+			"stage": 3,
+			"tier": "standard",
+			"title": "Sample — Garden Patrol (Standard)"
+		},
+		{
+			"act": 1,
+			"entry": "shelter_1",
+			"exit": "shelter_2",
+			"region": "Tutorial Outflow",
+			"spec_id": "generated_sample_teaching_first_fork",
+			"stage": 2,
+			"tier": "teaching",
+			"title": "Sample — First Fork (Teaching)"
+		},
+		{
+			"act": 1,
+			"entry": "shelter_1",
+			"exit": "shelter_2",
+			"region": "Channels",
+			"spec_id": "generated_teaching_channels_shelter_1_to_2",
+			"stage": 2,
+			"tier": "teaching",
+			"title": "Generated Teaching Channels: Shelter 1 -> Shelter 2"
+		}
+	]
+}
