@@ -193,6 +193,38 @@ func move_node(id: String, new_parent_id: String, index := -1) -> bool:
 	return true
 
 
+## Drop a node directly into a container (used by a drag "onto" an item).
+func move_into(id: String, parent_id: String) -> bool:
+	return move_node(id, parent_id, -1)
+
+
+## Drop a node so it lands immediately before / after a target (a drag "between" items).
+## Re-locates the target after detaching the node, so same-parent index shifts are exact.
+func move_before(id: String, target_id: String) -> bool:
+	return _move_relative(id, target_id, 0)
+
+
+func move_after(id: String, target_id: String) -> bool:
+	return _move_relative(id, target_id, 1)
+
+
+func _move_relative(id: String, target_id: String, offset: int) -> bool:
+	if id == target_id:
+		return false
+	var src := locate(id)
+	var tgt := locate(target_id)
+	if src.is_empty() or tgt.is_empty() or src.get("parent") == null or tgt.get("parent") == null:
+		return false
+	var node: Dictionary = src["node"]
+	if _is_descendant(node, target_id):
+		return false  # target sits inside the node being moved — would orphan the subtree
+	(src["parent"]["children"] as Array).erase(node)
+	var t2 := locate(target_id)  # index may have shifted after the erase
+	var dest_children: Array = t2["parent"]["children"]
+	dest_children.insert(clampi(int(t2["index"]) + offset, 0, dest_children.size()), node)
+	return true
+
+
 ## Reorder a node among its siblings by delta (-1 up, +1 down).
 func reorder_sibling(id: String, delta: int) -> bool:
 	var loc := locate(id)

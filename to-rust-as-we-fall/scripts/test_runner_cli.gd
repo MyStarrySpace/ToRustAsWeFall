@@ -1908,6 +1908,16 @@ func _test_campaign_order() -> void:
 	_assert_true(order.reorder_sibling(r2, -1), "Can reorder a sibling up")
 	_assert_true((order.locate(str(act0["id"]))["node"]["children"] as Array).find(order.locate(r2)["node"]) < before, "Reorder moved the node earlier")
 
+	# Drag "between"/"onto" semantics the tree uses.
+	var aA := order.add_node(str(act0["id"]), "region", "Alpha")
+	var aB := order.add_node(str(act0["id"]), "region", "Beta")
+	_assert_true(order.move_after(aA, aB), "move_after places a node right after the target")
+	var kids: Array = order.locate(str(act0["id"]))["node"]["children"]
+	_assert_equals(kids.find(order.locate(aA)["node"]), kids.find(order.locate(aB)["node"]) + 1, "Moved node sits immediately after the target")
+	_assert_true(order.move_into(aA, aB), "move_into nests a node under a container")
+	_assert_equals(str(order.locate(aA)["parent"].get("id", "")), aB, "Moved node is now a child of the target container")
+	_assert_true(not order.move_into(aB, aA), "move_into rejects nesting a node under its own descendant")
+
 	# Validation flags a broken shelter link, a stage regression, and a missing spec.
 	var bad = CampaignOrderScript.new()
 	var ba := bad.add_node(str(bad.root()["id"]), "region", "R")
