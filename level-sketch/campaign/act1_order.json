@@ -1,5 +1,5 @@
 {
-	"next_id": 15,
+	"next_id": 17,
 	"root": {
 		"children": [
 			{
@@ -126,9 +126,29 @@
 							{
 								"branch": "main",
 								"children": [],
+								"entry": "shelter_5",
+								"exit": "shelter_6",
+								"id": "stretch_014",
+								"kind": "stretch",
+								"region": "Transit Corridors",
+								"spec_id": "generated_sample_survival_run",
+								"stage": 4,
+								"title": "Sample — Forage & Gauntlet Run (Survival)"
+							}
+						],
+						"id": "region_013",
+						"kind": "region",
+						"region": "Transit Corridors",
+						"title": "Transit Corridors"
+					},
+					{
+						"children": [
+							{
+								"branch": "main",
+								"children": [],
 								"entry": "shelter_4",
 								"exit": "shelter_5",
-								"id": "stretch_014",
+								"id": "stretch_016",
 								"kind": "stretch",
 								"region": "Containment Vault",
 								"spec_id": "generated_sample_setpiece_containment",
@@ -136,7 +156,7 @@
 								"title": "Sample — Containment Vault (Setpiece)"
 							}
 						],
-						"id": "region_013",
+						"id": "region_015",
 						"kind": "region",
 						"region": "Containment Vault",
 						"title": "Containment Vault"

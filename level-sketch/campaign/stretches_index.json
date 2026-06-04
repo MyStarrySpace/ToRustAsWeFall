@@ -63,6 +63,16 @@
 		},
 		{
 			"act": 1,
+			"entry": "shelter_5",
+			"exit": "shelter_6",
+			"region": "Transit Corridors",
+			"spec_id": "generated_sample_survival_run",
+			"stage": 4,
+			"tier": "hard",
+			"title": "Sample — Forage & Gauntlet Run (Survival)"
+		},
+		{
+			"act": 1,
 			"entry": "shelter_1",
 			"exit": "shelter_2",
 			"region": "Tutorial Outflow",
