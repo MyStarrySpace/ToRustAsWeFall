@@ -56,6 +56,14 @@ static func get_character(id: String) -> Dictionary:
 	return {}
 
 
+## Display color for a character id (falls back to a neutral grey for unknown ids).
+static func color_of(id: String) -> Color:
+	var c := get_character(id)
+	if c.is_empty():
+		return Color(0.8, 0.8, 0.85)
+	return c["color"]
+
+
 static func default_enabled() -> Array:
 	var ids := []
 	for c in CHARACTERS:

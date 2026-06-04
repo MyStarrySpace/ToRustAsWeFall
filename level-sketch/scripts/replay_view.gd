@@ -22,11 +22,8 @@ const ROUTE_COLORS := {
 	"risky": Color(0.86, 0.42, 0.40),
 	"shortcut": Color(0.45, 0.62, 0.95),
 }
-const CHAR_COLORS := {
-	"aster": Color(0.45, 0.85, 0.90),
-	"peris": Color(0.45, 0.82, 0.50),
-	"endo": Color(0.90, 0.74, 0.42),
-}
+# Per-character dot colors come from the single roster registry so the replay and the
+# Cast screen never drift; CharacterRoster covers all six.
 
 var replay: ReplayData
 var solution_index := 0
@@ -148,7 +145,7 @@ func _draw_characters() -> void:
 	for id in chars.keys():
 		var pos: Vector2 = chars[id]
 		var center := _cell_to_world(pos) + Vector2(CELL, CELL) * 0.5
-		var color: Color = CHAR_COLORS.get(str(id), Color(0.8, 0.8, 0.85))
+		var color: Color = CharacterRoster.color_of(str(id))
 		draw_circle(center, CELL * 0.22, color)
 		draw_arc(center, CELL * 0.22, 0.0, TAU, 20, Color(0.05, 0.06, 0.08, 0.9), 2.0)
 		if _font != null:

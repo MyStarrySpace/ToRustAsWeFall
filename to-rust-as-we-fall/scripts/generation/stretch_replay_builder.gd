@@ -13,10 +13,15 @@ const DEFAULT_CELL_WORLD_SIZE := 2.0
 const NODE_BEAT := 1.0  # seconds of replay time spent crossing to / solving each node
 
 ## Formation offsets (in cells) so party members read as a small group, not one dot.
+## A six-slot wedge: Aster points, the support pair flanks, the rear rank trails — every
+## canonical member gets a distinct slot so the full party never collapses onto one cell.
 const FORMATION := {
-	"aster": [0.0, -0.35],
-	"peris": [-0.4, 0.3],
-	"endo": [0.4, 0.3],
+	"aster": [0.0, -0.45],
+	"peris": [-0.42, -0.12],
+	"endo": [0.42, -0.12],
+	"myke": [0.0, 0.22],
+	"oli": [-0.42, 0.42],
+	"tyreg": [0.42, 0.42],
 }
 
 

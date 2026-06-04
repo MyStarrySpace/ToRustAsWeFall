@@ -1865,16 +1865,36 @@ func _test_generated_replay() -> void:
 				spotlight = s
 			"shadow":
 				shadow = s
-	_assert_equals((spotlight.get("party", []) as Array).size(), 3, "Spotlight replay follows the full trio")
+	# Spotlight follows the full enabled party (the canonical roster — all six by default);
+	# derive the expected size from the loadout so this stays correct as the roster grows.
+	var spotlight_loadout := {}
+	for loadout in StretchCapabilitiesScript.loadouts([]):
+		if str((loadout as Dictionary).get("id", "")) == "spotlight":
+			spotlight_loadout = loadout
+	var spotlight_size := (spotlight_loadout.get("party", []) as Array).size()
+	_assert_equals((spotlight.get("party", []) as Array).size(), spotlight_size, "Spotlight replay follows the full enabled party")
 	_assert_equals((shadow.get("party", []) as Array).size(), 2, "Shadow replay follows the Aster+Peris pair")
 	_assert_equals((spotlight.get("frames", []) as Array).size(), (spec.get("nodes", []) as Array).size(), "Spotlight replay has a keyframe per node")
 	_assert_true(bool(spotlight.get("solvable", false)) and bool(shadow.get("solvable", false)), "Both replay solutions are solvable")
 
 	var members_ok := true
+	var positions_distinct := true
 	for frame in spotlight.get("frames", []):
-		if not (frame is Dictionary) or (frame.get("characters", {}) as Dictionary).size() != 3:
+		if not (frame is Dictionary):
 			members_ok = false
-	_assert_true(members_ok, "Every spotlight frame positions all three party members")
+			continue
+		var chars := frame.get("characters", {}) as Dictionary
+		if chars.size() != spotlight_size:
+			members_ok = false
+		# Formation offsets must keep every member on its own spot — no stacking on the node cell.
+		var seen_pos := {}
+		for member in chars:
+			var key := "%.3f,%.3f" % [float(chars[member][0]), float(chars[member][1])]
+			if seen_pos.has(key):
+				positions_distinct = false
+			seen_pos[key] = true
+	_assert_true(members_ok, "Every spotlight frame positions all enabled party members")
+	_assert_true(positions_distinct, "Formation offsets keep every spotlight member on a distinct spot")
 
 	var shadow_by_node := {}
 	for entry in shadow.get("node_approaches", []):
