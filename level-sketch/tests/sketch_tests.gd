@@ -40,6 +40,7 @@ func _run() -> void:
 	_test_species_catalog()
 	_test_replay_data()
 	_test_campaign_model()
+	_test_character_roster()
 
 func _test_cells() -> void:
 	var m := SketchModel.new()
@@ -316,3 +317,19 @@ func _test_campaign_model() -> void:
 	for it in lf.validate([]).get("issues", []):
 		lc[str(it.get("code", ""))] = true
 	_ok(lc.has("leaf_has_children"), "a stretch leaf with nested nodes is flagged")
+
+func _test_character_roster() -> void:
+	# The cast mirrors the game roster, with enable/disable that changes the combat capability.
+	_eq(CharacterRoster.CHARACTERS.size(), 6, "six characters in the cast")
+	_eq(CharacterRoster.default_enabled().size(), 6, "all six enabled by default")
+	_ok(CharacterRoster.always_on("aster") and CharacterRoster.always_on("peris"), "the minimum pair is permanent")
+	_ok(not CharacterRoster.always_on("myke"), "Myke is toggleable")
+	_ok(CharacterRoster.has_combat(CharacterRoster.default_enabled()), "the full cast fields a combat specialist")
+	_ok(not CharacterRoster.has_combat(["aster", "peris", "endo"]), "without Myke/Tyreg there is no combat specialist")
+	_ok(CharacterRoster.enabled_capabilities(["aster", "peris"]).has("flora"), "the pair still provides flora/cover")
+	# Save/load roundtrip, then restore the default.
+	CharacterRoster.save_enabled(["aster", "peris", "endo"])
+	var loaded := CharacterRoster.load_enabled()
+	_ok(loaded.has("endo") and not loaded.has("myke"), "a saved roster (no Myke) round-trips")
+	_ok(loaded.has("aster") and loaded.has("peris"), "load always keeps the minimum pair")
+	CharacterRoster.save_enabled(CharacterRoster.default_enabled())
