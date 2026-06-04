@@ -2090,6 +2090,19 @@ func _test_character_roster() -> void:
 	var only_myke: Array = StretchCapabilitiesScript.normalize_roster(["myke"]).get("enabled", [])
 	_assert_true(only_myke.has("aster") and only_myke.has("peris"), "Aster + Peris are always present (they never leave)")
 
+	# Unknown / stale ids are dropped — never promoted to ghost party members.
+	var with_ghost: Array = StretchCapabilitiesScript.normalize_roster(["myke", "ghost_cell", "not_real"]).get("enabled", [])
+	_assert_true(with_ghost.has("myke") and not with_ghost.has("ghost_cell") and not with_ghost.has("not_real"), "Unknown roster ids are dropped (no ghost members)")
+
+	# Content-capability filtering is roster-aware: a placed barrier lends "barrier" only when
+	# NO enabled specialist owns it. With everyone enabled it's withheld (so the specialist-vs-
+	# pair choice survives); with the barrier specialists (Endo + Oli) disabled it passes through.
+	var barrier_node := {"structures": ["barrier"]}
+	var full_filtered: Dictionary = StretchCapabilitiesScript.node_content_capabilities(barrier_node)
+	_assert_true(not full_filtered.has("barrier"), "Full roster: a placed barrier does NOT lend the specialist 'barrier' (choice preserved)")
+	var pair_only: Dictionary = StretchCapabilitiesScript.node_content_capabilities(barrier_node, ["aster", "peris"])
+	_assert_true(pair_only.has("barrier"), "Barrier specialists disabled: a placed barrier DOES lend 'barrier' to the pair")
+
 func _test_archetype_coherence() -> void:
 	_test_name = "Archetype Coherence"
 
@@ -2105,6 +2118,21 @@ func _test_archetype_coherence() -> void:
 		},
 	})
 	_assert_true(bool(spec.get("success", false)), "Coherence spec generates")
+
+	# Every archetype must carry >= 2 variants — the per-node variant cycling relies on this so a
+	# repeated archetype never stamps the identical beat twice (a single-variant archetype would).
+	var cat_file := FileAccess.open("res://data/generation/archetype_catalog.json", FileAccess.READ)
+	if cat_file != null:
+		var cat = JSON.parse_string(cat_file.get_as_text())
+		if cat is Dictionary:
+			var arches = (cat as Dictionary).get("archetypes", {})
+			if arches is Dictionary:
+				for aid in (arches as Dictionary).keys():
+					var ad = (arches as Dictionary)[aid]
+					if not (ad is Dictionary):
+						continue
+					var vcount: int = ((ad as Dictionary).get("variants", []) as Array).size()
+					_assert_true(vcount >= 2, "Archetype %s carries >= 2 variants (cycling stays varied)" % str(aid))
 
 	var forage_ok := false
 	var exploit_ok := false

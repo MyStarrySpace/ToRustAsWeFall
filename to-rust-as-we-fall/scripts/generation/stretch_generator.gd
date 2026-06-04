@@ -860,9 +860,11 @@ static func _build_nodes(catalog, settings: Dictionary, budget: Dictionary, pale
 		# charger, an exploit gets prey + a predator, a forage gets food), not a generic slice.
 		var flora := _flora_for_node(catalog, archetype, available_flora, rng) if is_interior else _slice_usage(available_flora, i, 1)
 		# The archetype's REQUIRED actors are part of its fiction (a redirect needs a charger,
-		# an exploit needs prey + a predator) — they are placed regardless of the ambient
-		# pressure budget, which now only caps how many EXTRA threats can pile on.
-		var enemies := _enemies_for_node(catalog, archetype, available_enemies, 3, rng) if is_interior else []
+		# an exploit needs prey + a predator). The tier's pressure_budget caps how dense a
+		# SCALABLE threat (a gauntlet's enforcement line) may get, so lighter tiers stay sparser
+		# — with a floor of 2 that keeps every node's structurally-required pair intact.
+		var enemy_cap := clampi(pressure_budget, 2, 3)
+		var enemies := _enemies_for_node(catalog, archetype, available_enemies, enemy_cap, rng) if is_interior else []
 		var structures := _structure_for_node(archetype, role, available_structures)
 		var is_resource := resource_beats > 0 and role in ["foraging", "regroup"]
 		var nested_archetypes := _nested_for_archetype(archetype_id, composition)
@@ -1797,7 +1799,9 @@ static func _structure_for_node(archetype: Dictionary, role: String, available: 
 	for s in available:
 		if str(s) != "shelter" or role == "shelter_arrival":
 			return [str(s)]
-	return ["pipe"]
+	# Only "shelter" is available and this isn't the arrival beat: place no structure rather
+	# than a stray interior shelter or a "pipe" the palette may not even allow.
+	return []
 
 ## A node label that reads as the archetype + its variant, not the bare role name.
 static func _node_label(archetype: Dictionary, role: String, index: int) -> String:

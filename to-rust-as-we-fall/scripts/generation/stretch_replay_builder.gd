@@ -77,6 +77,10 @@ static func _build_solution(path: Dictionary, node_cells: Dictionary) -> Diction
 		var cell: Array = node_cells.get(node_id, [0.0, 0.0])
 		var characters := {}
 		for member in party:
+			if not FORMATION.has(member):
+				# A roster member with no formation slot would stack on the node cell — warn so
+				# FORMATION is kept in sync with the roster rather than silently colliding.
+				push_warning("stretch_replay_builder: no FORMATION slot for '%s' — add one to avoid overlap" % member)
 			var offset: Array = FORMATION.get(member, [0.0, 0.0])
 			characters[member] = [float(cell[0]) + float(offset[0]), float(cell[1]) + float(offset[1])]
 		var label := str((entry as Dictionary).get("label", ""))

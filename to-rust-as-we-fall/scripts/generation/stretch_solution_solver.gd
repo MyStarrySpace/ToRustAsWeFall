@@ -42,7 +42,7 @@ static func analyze(nodes: Array, tier := "teaching", progression_stage := 99, r
 
 	var solution_paths := []
 	for loadout in CapabilitiesScript.loadouts(roster):
-		solution_paths.append(_solve_loadout(nodes, loadout, progression_stage))
+		solution_paths.append(_solve_loadout(nodes, loadout, progression_stage, roster))
 
 	var spotlight := _path_for(solution_paths, "spotlight")
 	var shadow := _path_for(solution_paths, "shadow")
@@ -158,7 +158,7 @@ static func _bare_pair_solvable(nodes: Array) -> bool:
 
 ## Resolve one loadout against the node spine — the per-node approach commitments
 ## that make up a single playable solution path.
-static func _solve_loadout(nodes: Array, loadout: Dictionary, progression_stage := 99) -> Dictionary:
+static func _solve_loadout(nodes: Array, loadout: Dictionary, progression_stage := 99, roster = []) -> Dictionary:
 	var base_caps: Dictionary = loadout.get("base_capabilities", {})
 	var enforce_stage := bool(loadout.get("enforce_stage", false))
 	var approach_per_node := []
@@ -190,7 +190,7 @@ static func _solve_loadout(nodes: Array, loadout: Dictionary, progression_stage 
 			continue
 		var node_stage := int(node_dict.get("stage", 1))
 		var available := base_caps.duplicate()
-		for tag in CapabilitiesScript.node_content_capabilities(node_dict).keys():
+		for tag in CapabilitiesScript.node_content_capabilities(node_dict, roster).keys():
 			available[tag] = true
 		var chosen := {}
 		var first_capable := {}  # first approach the party could field IGNORING the stage gate

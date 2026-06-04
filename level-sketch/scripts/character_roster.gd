@@ -13,37 +13,37 @@ const CHARACTERS := [
 	{
 		"id": "aster", "name": "Aster", "cell": "astrocyte", "class": "AST", "color": Color(0.45, 0.85, 0.90),
 		"role": "Data analyst / scout — reads infrastructure + data overlays; half the permanent pair.",
-		"capabilities": ["data", "overlay", "terminal", "scan", "timing", "electrical", "signal"],
+		"capabilities": ["data", "electrical", "overlay", "terminal", "scan", "timing", "signal", "ast_class"],
 		"abilities": [{"name": "EMP Hack", "desc": "AoE stun pulse"}],
 	},
 	{
 		"id": "peris", "name": "Peris", "cell": "pericyte", "class": "PCT", "color": Color(0.45, 0.82, 0.50),
 		"role": "Support / social worker — flora, carries weight, reads people; half the permanent pair.",
-		"capabilities": ["flora", "carry", "physical", "protect", "cover", "tend"],
+		"capabilities": ["flora", "carry", "physical", "protect", "cover", "tend", "pct_class"],
 		"abilities": [{"name": "Protect / Wrap", "desc": "Aura absorbs ally damage"}, {"name": "Harvest", "desc": "Flora heal + vision"}],
 	},
 	{
 		"id": "endo", "name": "Endo", "cell": "endothelial", "class": "ENT", "color": Color(0.90, 0.74, 0.42),
 		"role": "Silent barrier engineer — fastest; early survival guide (junctions, repair).",
-		"capabilities": ["barrier", "junction", "repair", "gear", "carry"],
+		"capabilities": ["barrier", "junction", "repair", "gear", "carry", "endo", "ent_class"],
 		"abilities": [{"name": "NO Pulse", "desc": "Slow enemies 40%"}, {"name": "Cloak", "desc": "Invisible 10s"}],
 	},
 	{
 		"id": "myke", "name": "Myke", "cell": "microglia", "class": "MCG", "color": Color(0.86, 0.40, 0.36),
 		"role": "Burst DPS — fire kit. THE combat specialist (the redirect/gauntlet primary).",
-		"capabilities": ["combat", "impact", "force", "carry", "physical"],
+		"capabilities": ["combat", "impact", "force", "carry", "physical", "tend", "class_other"],
 		"abilities": [{"name": "Inflame", "desc": "Fire zone, attracts Neutros"}, {"name": "Engulf", "desc": "Burn + ROS swarm"}],
 	},
 	{
 		"id": "oli", "name": "Oli", "cell": "oligodendrocyte", "class": "OLG", "color": Color(0.75, 0.66, 0.92),
 		"role": "Defensive support — insulation + shields; protected lanes through hazards.",
-		"capabilities": ["barrier", "insulation", "terminal", "electrical", "cover"],
+		"capabilities": ["barrier", "insulation", "terminal", "electrical", "cover", "class_other"],
 		"abilities": [{"name": "Sheath", "desc": "Ally HP shield"}, {"name": "Conduct", "desc": "Ally speed buff"}],
 	},
 	{
 		"id": "tyreg", "name": "Tyreg", "cell": "T-regulatory", "class": "TRG", "color": Color(0.92, 0.58, 0.42),
 		"role": "Ranged enforcer — combat-pair with Myke (ranged force, suppression).",
-		"capabilities": ["combat", "force", "scan", "timing"],
+		"capabilities": ["combat", "force", "scan", "timing", "class_tmc"],
 		"abilities": [{"name": "Shoot", "desc": "Ranged 25 dmg"}, {"name": "Suppress", "desc": "Freeze enemy 5s"}],
 	},
 ]

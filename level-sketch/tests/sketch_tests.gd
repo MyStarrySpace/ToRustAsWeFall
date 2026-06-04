@@ -327,6 +327,23 @@ func _test_character_roster() -> void:
 	_ok(CharacterRoster.has_combat(CharacterRoster.default_enabled()), "the full cast fields a combat specialist")
 	_ok(not CharacterRoster.has_combat(["aster", "peris", "endo"]), "without Myke/Tyreg there is no combat specialist")
 	_ok(CharacterRoster.enabled_capabilities(["aster", "peris"]).has("flora"), "the pair still provides flora/cover")
+	# Capability parity with the game's CHARACTER_REGISTRY, incl. the class_* tags an archetype's
+	# class-gated approach reads — so the Cast screen never displays a stale capability set.
+	var expected_caps := {
+		"aster": ["data", "electrical", "overlay", "terminal", "scan", "timing", "signal", "ast_class"],
+		"peris": ["flora", "carry", "physical", "protect", "cover", "tend", "pct_class"],
+		"endo": ["barrier", "junction", "repair", "gear", "carry", "endo", "ent_class"],
+		"myke": ["combat", "impact", "force", "carry", "physical", "tend", "class_other"],
+		"oli": ["barrier", "insulation", "terminal", "electrical", "cover", "class_other"],
+		"tyreg": ["combat", "force", "scan", "timing", "class_tmc"],
+	}
+	for cid in expected_caps:
+		var got: Array = CharacterRoster.get_character(cid).get("capabilities", [])
+		var match_all := got.size() == (expected_caps[cid] as Array).size()
+		for cap in expected_caps[cid]:
+			if not got.has(cap):
+				match_all = false
+		_ok(match_all, "%s capabilities match the game registry (incl. class tag)" % cid)
 	# Save/load roundtrip, then restore the default.
 	CharacterRoster.save_enabled(["aster", "peris", "endo"])
 	var loaded := CharacterRoster.load_enabled()

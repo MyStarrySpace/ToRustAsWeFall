@@ -274,7 +274,7 @@ func reset_preview_state() -> void:
 ## specialist is on hand); "shadow" is the Aster+Peris pair. The active loadout's
 ## capabilities decide which approach each puzzle node accepts — and whether it blocks.
 func set_active_loadout(loadout_id: String) -> void:
-	var roster = _spec.get("source", {}).get("roster", _spec.get("settings", {}).get("roster", []))
+	var roster = _roster()
 	for loadout in CapabilitiesScript.loadouts(roster):
 		if str(loadout.get("id", "")) == loadout_id:
 			_active_loadout = loadout_id
@@ -284,12 +284,22 @@ func set_active_loadout(loadout_id: String) -> void:
 			_active_capabilities = (loadout.get("base_capabilities", {}) as Dictionary).duplicate()
 			_enforce_stage = bool(loadout.get("enforce_stage", false))
 			return
+	# An unrecognised loadout id should never reach here (the only ids are spotlight/shadow);
+	# warn rather than silently masquerade as spotlight, so a typo is caught instead of hidden.
+	if loadout_id != "spotlight":
+		push_warning("generated_stretch_chunk: unknown loadout '%s' — defaulting to spotlight" % loadout_id)
 	_active_loadout = "spotlight"
 	_active_party.clear()
 	for cid in (CapabilitiesScript.normalize_roster(roster).get("enabled", []) as Array):
 		_active_party.append(str(cid))
 	_active_capabilities = CapabilitiesScript.roster_capabilities(roster)
 	_enforce_stage = true
+
+
+## The enabled roster this stretch was generated for (the enable/disable choices), read from
+## the spec. Empty means the full canonical six.
+func _roster():
+	return _spec.get("source", {}).get("roster", _spec.get("settings", {}).get("roster", []))
 
 ## How far the player is assumed to have progressed — the first-play full party may only
 ## use techniques taught up to this stage. Read from the spec the generator produced.
@@ -307,7 +317,7 @@ func _resolve_node_approach(node: Dictionary) -> Dictionary:
 	var node_stage := int(node.get("stage", 1))
 	var prog := _progression_stage()
 	var available := _active_capabilities.duplicate()
-	for tag in CapabilitiesScript.node_content_capabilities(node).keys():
+	for tag in CapabilitiesScript.node_content_capabilities(node, _roster()).keys():
 		available[tag] = true
 	for approach in approaches:
 		if not (approach is Dictionary):

@@ -93,12 +93,16 @@ static func character_capabilities(id: String) -> Array:
 
 
 ## SPECIALIST capabilities = any capability NO bare-pair member (Aster/Peris) provides on
-## their own — so they can only come from an enabled specialist character, never from the
-## pair or from placed content. Derived from the registry, not a hand-kept list.
-static func specialist_capabilities() -> Dictionary:
+## their own — so they can only come from an ENABLED specialist character, never from the
+## pair or from placed content. Derived from the roster, not a hand-kept list: a capability
+## is "specialist" only while a character who provides it is actually enabled, so disabling
+## the last fighter stops `combat` being treated as a protected specialist tag. An empty
+## roster means the full canonical six (the default), so callers that pass nothing get the
+## same set as before.
+static func specialist_capabilities(roster = []) -> Dictionary:
 	var pair := bare_pair_capabilities()
 	var spec := {}
-	for id in CHARACTER_REGISTRY.keys():
+	for id in (normalize_roster(roster).get("enabled", []) as Array):
 		for cap in character_capabilities(str(id)):
 			if not pair.has(str(cap)):
 				spec[str(cap)] = true
@@ -112,18 +116,23 @@ static func normalize_roster(roster) -> Dictionary:
 	var enabled := []
 	if roster is Array and not (roster as Array).is_empty():
 		for id in roster:
-			if not enabled.has(str(id)):
-				enabled.append(str(id))
+			_add_known(enabled, str(id))
 	elif roster is Dictionary and (roster as Dictionary).has("enabled"):
 		for id in (roster as Dictionary).get("enabled", []):
-			if not enabled.has(str(id)):
-				enabled.append(str(id))
+			_add_known(enabled, str(id))
 	else:
 		enabled = CANONICAL_ROSTER.duplicate()
 	for id in SHADOW_PARTY:
 		if not enabled.has(id):
 			enabled.append(id)
 	return {"enabled": enabled}
+
+
+## Append a roster id only if it is a real registered character and not already present —
+## an unknown id (typo, stale save) is dropped so it can never become a ghost party member.
+static func _add_known(enabled: Array, id: String) -> void:
+	if CHARACTER_REGISTRY.has(id) and not enabled.has(id):
+		enabled.append(id)
 
 
 ## The combined capability set of an enabled roster.
@@ -150,7 +159,7 @@ static func bare_pair_capabilities() -> Dictionary:
 static func party_capabilities(character_ids: Array, include_specialist := false) -> Dictionary:
 	var caps := roster_capabilities(character_ids)
 	if include_specialist:
-		for cap in specialist_capabilities().keys():
+		for cap in specialist_capabilities(character_ids).keys():
 			caps[str(cap)] = true
 	return caps
 
@@ -160,9 +169,9 @@ static func party_capabilities(character_ids: Array, include_specialist := false
 ## a `redirect`/`exploit` affordance an approach can spend. Placed content never grants a
 ## SPECIALIST capability (those belong to a character), so a placed barrier can't hand the
 ## pair a specialist's approach and collapse a node's specialist-vs-shadow choice.
-static func node_content_capabilities(node: Dictionary) -> Dictionary:
+static func node_content_capabilities(node: Dictionary, roster = []) -> Dictionary:
 	var caps := {}
-	var specialist := specialist_capabilities()
+	var specialist := specialist_capabilities(roster)
 	for category in ["flora", "structures"]:
 		var table: Dictionary = CONTENT_CAPABILITIES.get(category, {})
 		for raw_key in node.get(category, []):
