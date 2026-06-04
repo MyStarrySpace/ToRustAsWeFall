@@ -590,6 +590,10 @@ static func _archetype_chain_entry(catalog, id: String, rng, variant_override :=
 		"shadow_solution": entry.get("shadow_solution", {}),
 		"approaches": entry.get("approaches", []),
 		"stage": int(entry.get("stage", 1)),
+		"survival_kind": str(entry.get("survival_kind", "")),
+		"atp_reward": int(entry.get("atp_reward", 0)),
+		"pressure_cost": int(entry.get("pressure_cost", 0)),
+		"exploit_target": str(entry.get("exploit_target", "")),
 	}
 	if extras is Dictionary:
 		for key in (extras as Dictionary).keys():
@@ -877,6 +881,10 @@ static func _build_nodes(settings: Dictionary, budget: Dictionary, palette_usage
 			"shadow_solution": archetype.get("shadow_solution", composition.get("shadow_solution", {})),
 			"approaches": archetype.get("approaches", []),
 			"stage": int(archetype.get("stage", 1)),
+			"survival_kind": str(archetype.get("survival_kind", "")),
+			"atp_reward": int(archetype.get("atp_reward", 0)),
+			"pressure_cost": int(archetype.get("pressure_cost", 0)),
+			"exploit_target": str(archetype.get("exploit_target", "")),
 		}
 		nodes.append(node)
 		if resource_beats > 0 and role in ["foraging", "regroup"]:

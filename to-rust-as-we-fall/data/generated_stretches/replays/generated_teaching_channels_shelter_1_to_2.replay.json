@@ -178,7 +178,7 @@
 				"role": "guidance"
 			},
 			{
-				"archetype_id": "2",
+				"archetype_id": "12",
 				"cell": [
 					12,
 					3
@@ -202,7 +202,7 @@
 				"role": "foraging"
 			},
 			{
-				"archetype_id": "2",
+				"archetype_id": "12",
 				"cell": [
 					24,
 					2
@@ -393,10 +393,10 @@
 					"t": 1.0
 				},
 				{
-					"approach_id": "force_clear",
+					"approach_id": "guarded_forage",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_02 — Force the obstacle open with raw impact",
+					"caption": "node_02 — A combat member covers the open while the party splits off to harvest the remains",
 					"characters": {
 						"aster": [
 							12.0,
@@ -449,10 +449,10 @@
 					"t": 3.0
 				},
 				{
-					"approach_id": "force_clear",
+					"approach_id": "guarded_forage",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_04 — Force the obstacle open with raw impact",
+					"caption": "node_04 — A combat member covers the open while the party splits off to harvest the remains",
 					"characters": {
 						"aster": [
 							24.0,
@@ -534,11 +534,11 @@
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "force_clear",
+					"approach_id": "guarded_forage",
 					"borrows_from": "",
 					"expert": false,
 					"kind": "primary",
-					"label": "Force the obstacle open with raw impact",
+					"label": "A combat member covers the open while the party splits off to harvest the remains",
 					"min_stage": 1,
 					"node": "node_02",
 					"party": "specialist",
@@ -558,11 +558,11 @@
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "force_clear",
+					"approach_id": "guarded_forage",
 					"borrows_from": "",
 					"expert": false,
 					"kind": "primary",
-					"label": "Force the obstacle open with raw impact",
+					"label": "A combat member covers the open while the party splits off to harvest the remains",
 					"min_stage": 1,
 					"node": "node_04",
 					"party": "specialist",
@@ -643,10 +643,10 @@
 					"t": 1.0
 				},
 				{
-					"approach_id": "flora_chain_trap",
+					"approach_id": "masked_forage",
 					"blocked": false,
-					"borrows_from": "10",
-					"caption": "node_02 — Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend  ⟐ expert: later-stage technique",
+					"borrows_from": "",
+					"caption": "node_02 — Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
 					"characters": {
 						"aster": [
 							12.0,
@@ -657,13 +657,13 @@
 							3.3
 						]
 					},
-					"expert": true,
-					"kind": "shadow_expert",
-					"min_stage": 5,
+					"expert": false,
+					"kind": "shadow",
+					"min_stage": 1,
 					"node": "node_02",
-					"risk": "risky",
+					"risk": "safe",
 					"role": "route_pressure",
-					"stage_ahead": true,
+					"stage_ahead": false,
 					"t": 2.0
 				},
 				{
@@ -691,10 +691,10 @@
 					"t": 3.0
 				},
 				{
-					"approach_id": "flora_chain_trap",
+					"approach_id": "masked_forage",
 					"blocked": false,
-					"borrows_from": "10",
-					"caption": "node_04 — Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend  ⟐ expert: later-stage technique",
+					"borrows_from": "",
+					"caption": "node_04 — Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
 					"characters": {
 						"aster": [
 							24.0,
@@ -705,13 +705,13 @@
 							1.8
 						]
 					},
-					"expert": true,
-					"kind": "shadow_expert",
-					"min_stage": 5,
+					"expert": false,
+					"kind": "shadow",
+					"min_stage": 1,
 					"node": "node_04",
-					"risk": "risky",
+					"risk": "safe",
 					"role": "danger",
-					"stage_ahead": true,
+					"stage_ahead": false,
 					"t": 4.0
 				},
 				{
@@ -741,7 +741,7 @@
 			],
 			"label": "Aster + Peris (shadow)",
 			"loadout": "shadow",
-			"max_stage_used": 5,
+			"max_stage_used": 1,
 			"node_approaches": [
 				{
 					"approach_id": "traverse",
@@ -768,16 +768,16 @@
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "flora_chain_trap",
-					"borrows_from": "10",
-					"expert": true,
-					"kind": "shadow_expert",
-					"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
-					"min_stage": 5,
+					"approach_id": "masked_forage",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "shadow",
+					"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+					"min_stage": 1,
 					"node": "node_02",
 					"party": "aster_peris",
-					"risk": "risky",
-					"stage_ahead": true
+					"risk": "safe",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "play_the_beat",
@@ -792,16 +792,16 @@
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "flora_chain_trap",
-					"borrows_from": "10",
-					"expert": true,
-					"kind": "shadow_expert",
-					"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
-					"min_stage": 5,
+					"approach_id": "masked_forage",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "shadow",
+					"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+					"min_stage": 1,
 					"node": "node_04",
 					"party": "aster_peris",
-					"risk": "risky",
-					"stage_ahead": true
+					"risk": "safe",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "traverse",
@@ -821,7 +821,7 @@
 				"peris"
 			],
 			"solvable": true,
-			"uses_future_technique": true
+			"uses_future_technique": false
 		}
 	],
 	"spec_id": "generated_teaching_channels_shelter_1_to_2",

@@ -1,0 +1,1365 @@
+{
+	"complexity_tier": "hard",
+	"grid": {
+		"cell_world_size": 2.0,
+		"origin": [
+			0.0,
+			-3.0
+		]
+	},
+	"level": {
+		"bounds_cells": {
+			"height": 4,
+			"max": [
+				54,
+				3
+			],
+			"min": [
+				0,
+				0
+			],
+			"width": 55
+		},
+		"content": [
+			{
+				"category": "flora",
+				"cell": [
+					-1,
+					0
+				],
+				"kind": "scarpet",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					0,
+					0
+				],
+				"kind": "shelter",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					5,
+					1
+				],
+				"kind": "capbage",
+				"level": 1,
+				"support": "placeholder"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					6,
+					2
+				],
+				"kind": "forage_cache",
+				"level": 1,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					11,
+					2
+				],
+				"kind": "flure",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					13,
+					3
+				],
+				"kind": "techos",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					12,
+					3
+				],
+				"kind": "portal",
+				"level": 2,
+				"support": "placeholder"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					17,
+					-1
+				],
+				"kind": "seefern",
+				"level": 1,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					18,
+					0
+				],
+				"kind": "forage_cache",
+				"level": 1,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					23,
+					1
+				],
+				"kind": "scarpet",
+				"level": 1,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					25,
+					1
+				],
+				"kind": "techos",
+				"level": 1,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					24,
+					2
+				],
+				"kind": "root_slide",
+				"level": 1,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					29,
+					2
+				],
+				"kind": "capbage",
+				"level": 2,
+				"support": "placeholder"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					30,
+					3
+				],
+				"kind": "shelter",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					35,
+					-1
+				],
+				"kind": "flure",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					37,
+					0
+				],
+				"kind": "techos",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					36,
+					0
+				],
+				"kind": "membrane",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					41,
+					1
+				],
+				"kind": "seefern",
+				"level": 1,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					42,
+					2
+				],
+				"kind": "portal",
+				"level": 1,
+				"support": "placeholder"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					47,
+					2
+				],
+				"kind": "scarpet",
+				"level": 3,
+				"support": "implemented"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					48,
+					3
+				],
+				"kind": "root_slide",
+				"level": 3,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					53,
+					-1
+				],
+				"kind": "capbage",
+				"level": 0,
+				"support": "placeholder"
+			},
+			{
+				"category": "structures",
+				"cell": [
+					54,
+					0
+				],
+				"kind": "shelter",
+				"level": 0,
+				"support": "implemented"
+			}
+		],
+		"nodes": [
+			{
+				"archetype_id": "11",
+				"cell": [
+					0,
+					0
+				],
+				"id": "entry",
+				"label": "Entry Boundary",
+				"level": 0,
+				"optional": false,
+				"role": "boundary"
+			},
+			{
+				"archetype_id": "12",
+				"cell": [
+					6,
+					2
+				],
+				"id": "node_01",
+				"label": "Guidance Beat",
+				"level": 1,
+				"optional": false,
+				"role": "guidance"
+			},
+			{
+				"archetype_id": "13",
+				"cell": [
+					12,
+					3
+				],
+				"id": "node_02",
+				"label": "Route Pressure",
+				"level": 2,
+				"optional": false,
+				"role": "route_pressure"
+			},
+			{
+				"archetype_id": "14",
+				"cell": [
+					18,
+					0
+				],
+				"id": "node_03",
+				"label": "Foraging Beat",
+				"level": 1,
+				"optional": true,
+				"role": "foraging"
+			},
+			{
+				"archetype_id": "15",
+				"cell": [
+					24,
+					2
+				],
+				"id": "node_04",
+				"label": "Danger Beat",
+				"level": 1,
+				"optional": false,
+				"role": "danger"
+			},
+			{
+				"archetype_id": "12",
+				"cell": [
+					30,
+					3
+				],
+				"id": "node_05",
+				"label": "Shortcut Lock",
+				"level": 2,
+				"optional": false,
+				"role": "shortcut"
+			},
+			{
+				"archetype_id": "13",
+				"cell": [
+					36,
+					0
+				],
+				"id": "node_06",
+				"label": "Mixed Node",
+				"level": 0,
+				"optional": true,
+				"role": "mixed"
+			},
+			{
+				"archetype_id": "14",
+				"cell": [
+					42,
+					2
+				],
+				"id": "node_07",
+				"label": "Regroup Pocket",
+				"level": 1,
+				"optional": false,
+				"role": "regroup"
+			},
+			{
+				"archetype_id": "15",
+				"cell": [
+					48,
+					3
+				],
+				"id": "node_08",
+				"label": "Set Piece",
+				"level": 3,
+				"optional": false,
+				"role": "setpiece"
+			},
+			{
+				"archetype_id": "11",
+				"cell": [
+					54,
+					0
+				],
+				"id": "exit_shelter",
+				"label": "Shelter Arrival",
+				"level": 0,
+				"optional": false,
+				"role": "shelter_arrival"
+			}
+		],
+		"routes": [
+			{
+				"from": "entry",
+				"from_cell": [
+					0,
+					0
+				],
+				"id": "main_00_01",
+				"kind": "safe",
+				"to": "node_01",
+				"to_cell": [
+					6,
+					2
+				]
+			},
+			{
+				"from": "node_01",
+				"from_cell": [
+					6,
+					2
+				],
+				"id": "main_01_02",
+				"kind": "safe",
+				"to": "node_02",
+				"to_cell": [
+					12,
+					3
+				]
+			},
+			{
+				"from": "node_02",
+				"from_cell": [
+					12,
+					3
+				],
+				"id": "main_02_03",
+				"kind": "safe",
+				"to": "node_03",
+				"to_cell": [
+					18,
+					0
+				]
+			},
+			{
+				"from": "node_03",
+				"from_cell": [
+					18,
+					0
+				],
+				"id": "main_03_04",
+				"kind": "safe",
+				"to": "node_04",
+				"to_cell": [
+					24,
+					2
+				]
+			},
+			{
+				"from": "node_04",
+				"from_cell": [
+					24,
+					2
+				],
+				"id": "main_04_05",
+				"kind": "safe",
+				"to": "node_05",
+				"to_cell": [
+					30,
+					3
+				]
+			},
+			{
+				"from": "node_05",
+				"from_cell": [
+					30,
+					3
+				],
+				"id": "main_05_06",
+				"kind": "safe",
+				"to": "node_06",
+				"to_cell": [
+					36,
+					0
+				]
+			},
+			{
+				"from": "node_06",
+				"from_cell": [
+					36,
+					0
+				],
+				"id": "main_06_07",
+				"kind": "safe",
+				"to": "node_07",
+				"to_cell": [
+					42,
+					2
+				]
+			},
+			{
+				"from": "node_07",
+				"from_cell": [
+					42,
+					2
+				],
+				"id": "main_07_08",
+				"kind": "safe",
+				"to": "node_08",
+				"to_cell": [
+					48,
+					3
+				]
+			},
+			{
+				"from": "node_08",
+				"from_cell": [
+					48,
+					3
+				],
+				"id": "main_08_09",
+				"kind": "safe",
+				"to": "exit_shelter",
+				"to_cell": [
+					54,
+					0
+				]
+			},
+			{
+				"from": "node_02",
+				"from_cell": [
+					12,
+					3
+				],
+				"id": "optional_bypass_02_04",
+				"kind": "safe",
+				"to": "node_04",
+				"to_cell": [
+					24,
+					2
+				]
+			},
+			{
+				"from": "node_05",
+				"from_cell": [
+					30,
+					3
+				],
+				"id": "optional_bypass_05_07",
+				"kind": "safe",
+				"to": "node_07",
+				"to_cell": [
+					42,
+					2
+				]
+			},
+			{
+				"from": "entry",
+				"from_cell": [
+					0,
+					0
+				],
+				"id": "risky_direct",
+				"kind": "risky",
+				"to": "exit_shelter",
+				"to_cell": [
+					54,
+					0
+				]
+			},
+			{
+				"from": "node_08",
+				"from_cell": [
+					48,
+					3
+				],
+				"id": "return_shortcut",
+				"kind": "shortcut",
+				"to": "entry",
+				"to_cell": [
+					0,
+					0
+				]
+			}
+		]
+	},
+	"multi_solution": true,
+	"progression_stage": 4,
+	"region": "Transit Corridors",
+	"schema": "trawf_stretch_replay_v1",
+	"solutions": [
+		{
+			"blocked_nodes": [],
+			"duration": 9.0,
+			"frames": [
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "entry",
+					"characters": {
+						"aster": [
+							0.0,
+							-0.35
+						],
+						"endo": [
+							0.4,
+							0.3
+						],
+						"peris": [
+							-0.4,
+							0.3
+						]
+					},
+					"expert": false,
+					"kind": "traverse",
+					"min_stage": 0,
+					"node": "entry",
+					"risk": "safe",
+					"role": "boundary",
+					"stage_ahead": false,
+					"t": 0.0
+				},
+				{
+					"approach_id": "guarded_forage",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_01 — A combat member covers the open while the party splits off to harvest the remains",
+					"characters": {
+						"aster": [
+							6.0,
+							1.15
+						],
+						"endo": [
+							6.4,
+							1.8
+						],
+						"peris": [
+							5.6,
+							1.8
+						]
+					},
+					"expert": false,
+					"kind": "primary",
+					"min_stage": 1,
+					"node": "node_01",
+					"risk": "direct",
+					"role": "guidance",
+					"stage_ahead": false,
+					"t": 1.0
+				},
+				{
+					"approach_id": "draw_and_commit",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_02 — A combat member draws the Neutros to open the void while another times the commit",
+					"characters": {
+						"aster": [
+							12.0,
+							2.65
+						],
+						"endo": [
+							12.4,
+							3.3
+						],
+						"peris": [
+							11.6,
+							3.3
+						]
+					},
+					"expert": false,
+					"kind": "primary",
+					"min_stage": 3,
+					"node": "node_02",
+					"risk": "direct",
+					"role": "route_pressure",
+					"stage_ahead": false,
+					"t": 2.0
+				},
+				{
+					"approach_id": "hold_lanes",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_03 — A combat specialist holds each lane while a third member relays the party through",
+					"characters": {
+						"aster": [
+							18.0,
+							-0.35
+						],
+						"endo": [
+							18.4,
+							0.3
+						],
+						"peris": [
+							17.6,
+							0.3
+						]
+					},
+					"expert": false,
+					"kind": "primary",
+					"min_stage": 4,
+					"node": "node_03",
+					"risk": "direct",
+					"role": "foraging",
+					"stage_ahead": false,
+					"t": 3.0
+				},
+				{
+					"approach_id": "insulated_lane",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_04 — Endo's junction-repair builds a protected low-dose lane across the field",
+					"characters": {
+						"aster": [
+							24.0,
+							1.15
+						],
+						"endo": [
+							24.4,
+							1.8
+						],
+						"peris": [
+							23.6,
+							1.8
+						]
+					},
+					"expert": false,
+					"kind": "primary",
+					"min_stage": 2,
+					"node": "node_04",
+					"risk": "safe",
+					"role": "danger",
+					"stage_ahead": false,
+					"t": 4.0
+				},
+				{
+					"approach_id": "guarded_forage",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_05 — A combat member covers the open while the party splits off to harvest the remains",
+					"characters": {
+						"aster": [
+							30.0,
+							2.65
+						],
+						"endo": [
+							30.4,
+							3.3
+						],
+						"peris": [
+							29.6,
+							3.3
+						]
+					},
+					"expert": false,
+					"kind": "primary",
+					"min_stage": 1,
+					"node": "node_05",
+					"risk": "direct",
+					"role": "shortcut",
+					"stage_ahead": false,
+					"t": 5.0
+				},
+				{
+					"approach_id": "draw_and_commit",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_06 — A combat member draws the Neutros to open the void while another times the commit",
+					"characters": {
+						"aster": [
+							36.0,
+							-0.35
+						],
+						"endo": [
+							36.4,
+							0.3
+						],
+						"peris": [
+							35.6,
+							0.3
+						]
+					},
+					"expert": false,
+					"kind": "primary",
+					"min_stage": 3,
+					"node": "node_06",
+					"risk": "direct",
+					"role": "mixed",
+					"stage_ahead": false,
+					"t": 6.0
+				},
+				{
+					"approach_id": "hold_lanes",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_07 — A combat specialist holds each lane while a third member relays the party through",
+					"characters": {
+						"aster": [
+							42.0,
+							1.15
+						],
+						"endo": [
+							42.4,
+							1.8
+						],
+						"peris": [
+							41.6,
+							1.8
+						]
+					},
+					"expert": false,
+					"kind": "primary",
+					"min_stage": 4,
+					"node": "node_07",
+					"risk": "direct",
+					"role": "regroup",
+					"stage_ahead": false,
+					"t": 7.0
+				},
+				{
+					"approach_id": "insulated_lane",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_08 — Endo's junction-repair builds a protected low-dose lane across the field",
+					"characters": {
+						"aster": [
+							48.0,
+							2.65
+						],
+						"endo": [
+							48.4,
+							3.3
+						],
+						"peris": [
+							47.6,
+							3.3
+						]
+					},
+					"expert": false,
+					"kind": "primary",
+					"min_stage": 2,
+					"node": "node_08",
+					"risk": "safe",
+					"role": "setpiece",
+					"stage_ahead": false,
+					"t": 8.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "exit_shelter",
+					"characters": {
+						"aster": [
+							54.0,
+							-0.35
+						],
+						"endo": [
+							54.4,
+							0.3
+						],
+						"peris": [
+							53.6,
+							0.3
+						]
+					},
+					"expert": false,
+					"kind": "traverse",
+					"min_stage": 0,
+					"node": "exit_shelter",
+					"risk": "safe",
+					"role": "shelter_arrival",
+					"stage_ahead": false,
+					"t": 9.0
+				}
+			],
+			"label": "Full party",
+			"loadout": "spotlight",
+			"max_stage_used": 4,
+			"node_approaches": [
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "traverse",
+					"label": "",
+					"min_stage": 0,
+					"node": "entry",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "guarded_forage",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "primary",
+					"label": "A combat member covers the open while the party splits off to harvest the remains",
+					"min_stage": 1,
+					"node": "node_01",
+					"party": "specialist",
+					"risk": "direct",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "draw_and_commit",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "primary",
+					"label": "A combat member draws the Neutros to open the void while another times the commit",
+					"min_stage": 3,
+					"node": "node_02",
+					"party": "specialist",
+					"risk": "direct",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "hold_lanes",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "primary",
+					"label": "A combat specialist holds each lane while a third member relays the party through",
+					"min_stage": 4,
+					"node": "node_03",
+					"party": "specialist",
+					"risk": "direct",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "insulated_lane",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "primary",
+					"label": "Endo's junction-repair builds a protected low-dose lane across the field",
+					"min_stage": 2,
+					"node": "node_04",
+					"party": "specialist",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "guarded_forage",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "primary",
+					"label": "A combat member covers the open while the party splits off to harvest the remains",
+					"min_stage": 1,
+					"node": "node_05",
+					"party": "specialist",
+					"risk": "direct",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "draw_and_commit",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "primary",
+					"label": "A combat member draws the Neutros to open the void while another times the commit",
+					"min_stage": 3,
+					"node": "node_06",
+					"party": "specialist",
+					"risk": "direct",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "hold_lanes",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "primary",
+					"label": "A combat specialist holds each lane while a third member relays the party through",
+					"min_stage": 4,
+					"node": "node_07",
+					"party": "specialist",
+					"risk": "direct",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "insulated_lane",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "primary",
+					"label": "Endo's junction-repair builds a protected low-dose lane across the field",
+					"min_stage": 2,
+					"node": "node_08",
+					"party": "specialist",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "traverse",
+					"label": "",
+					"min_stage": 0,
+					"node": "exit_shelter",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				}
+			],
+			"party": [
+				"aster",
+				"peris",
+				"endo"
+			],
+			"solvable": true,
+			"uses_future_technique": false
+		},
+		{
+			"blocked_nodes": [],
+			"duration": 9.0,
+			"frames": [
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "entry",
+					"characters": {
+						"aster": [
+							0.0,
+							-0.35
+						],
+						"peris": [
+							-0.4,
+							0.3
+						]
+					},
+					"expert": false,
+					"kind": "traverse",
+					"min_stage": 0,
+					"node": "entry",
+					"risk": "safe",
+					"role": "boundary",
+					"stage_ahead": false,
+					"t": 0.0
+				},
+				{
+					"approach_id": "masked_forage",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_01 — Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+					"characters": {
+						"aster": [
+							6.0,
+							1.15
+						],
+						"peris": [
+							5.6,
+							1.8
+						]
+					},
+					"expert": false,
+					"kind": "shadow",
+					"min_stage": 1,
+					"node": "node_01",
+					"risk": "safe",
+					"role": "guidance",
+					"stage_ahead": false,
+					"t": 1.0
+				},
+				{
+					"approach_id": "ecology_decoy",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_02 — Aster reads the predator-prey clock while Peris's flure decoy herds the prey into the predator",
+					"characters": {
+						"aster": [
+							12.0,
+							2.65
+						],
+						"peris": [
+							11.6,
+							3.3
+						]
+					},
+					"expert": false,
+					"kind": "shadow",
+					"min_stage": 3,
+					"node": "node_02",
+					"risk": "risky",
+					"role": "route_pressure",
+					"stage_ahead": false,
+					"t": 2.0
+				},
+				{
+					"approach_id": "timed_run",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_03 — Aster sequences the lane gaps into a single timed run while Peris lays scarpet and capbage relays",
+					"characters": {
+						"aster": [
+							18.0,
+							-0.35
+						],
+						"peris": [
+							17.6,
+							0.3
+						]
+					},
+					"expert": false,
+					"kind": "shadow",
+					"min_stage": 4,
+					"node": "node_03",
+					"risk": "risky",
+					"role": "foraging",
+					"stage_ahead": false,
+					"t": 3.0
+				},
+				{
+					"approach_id": "budget_or_detour",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_04 — Aster computes the damage budget for a fast crossing, or the pair takes the safe-slow detour and pays time instead of HP",
+					"characters": {
+						"aster": [
+							24.0,
+							1.15
+						],
+						"peris": [
+							23.6,
+							1.8
+						]
+					},
+					"expert": false,
+					"kind": "shadow",
+					"min_stage": 2,
+					"node": "node_04",
+					"risk": "risky",
+					"role": "danger",
+					"stage_ahead": false,
+					"t": 4.0
+				},
+				{
+					"approach_id": "masked_forage",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_05 — Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+					"characters": {
+						"aster": [
+							30.0,
+							2.65
+						],
+						"peris": [
+							29.6,
+							3.3
+						]
+					},
+					"expert": false,
+					"kind": "shadow",
+					"min_stage": 1,
+					"node": "node_05",
+					"risk": "safe",
+					"role": "shortcut",
+					"stage_ahead": false,
+					"t": 5.0
+				},
+				{
+					"approach_id": "ecology_decoy",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_06 — Aster reads the predator-prey clock while Peris's flure decoy herds the prey into the predator",
+					"characters": {
+						"aster": [
+							36.0,
+							-0.35
+						],
+						"peris": [
+							35.6,
+							0.3
+						]
+					},
+					"expert": false,
+					"kind": "shadow",
+					"min_stage": 3,
+					"node": "node_06",
+					"risk": "risky",
+					"role": "mixed",
+					"stage_ahead": false,
+					"t": 6.0
+				},
+				{
+					"approach_id": "timed_run",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_07 — Aster sequences the lane gaps into a single timed run while Peris lays scarpet and capbage relays",
+					"characters": {
+						"aster": [
+							42.0,
+							1.15
+						],
+						"peris": [
+							41.6,
+							1.8
+						]
+					},
+					"expert": false,
+					"kind": "shadow",
+					"min_stage": 4,
+					"node": "node_07",
+					"risk": "risky",
+					"role": "regroup",
+					"stage_ahead": false,
+					"t": 7.0
+				},
+				{
+					"approach_id": "budget_or_detour",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_08 — Aster computes the damage budget for a fast crossing, or the pair takes the safe-slow detour and pays time instead of HP",
+					"characters": {
+						"aster": [
+							48.0,
+							2.65
+						],
+						"peris": [
+							47.6,
+							3.3
+						]
+					},
+					"expert": false,
+					"kind": "shadow",
+					"min_stage": 2,
+					"node": "node_08",
+					"risk": "risky",
+					"role": "setpiece",
+					"stage_ahead": false,
+					"t": 8.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "exit_shelter",
+					"characters": {
+						"aster": [
+							54.0,
+							-0.35
+						],
+						"peris": [
+							53.6,
+							0.3
+						]
+					},
+					"expert": false,
+					"kind": "traverse",
+					"min_stage": 0,
+					"node": "exit_shelter",
+					"risk": "safe",
+					"role": "shelter_arrival",
+					"stage_ahead": false,
+					"t": 9.0
+				}
+			],
+			"label": "Aster + Peris (shadow)",
+			"loadout": "shadow",
+			"max_stage_used": 4,
+			"node_approaches": [
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "traverse",
+					"label": "",
+					"min_stage": 0,
+					"node": "entry",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "masked_forage",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "shadow",
+					"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+					"min_stage": 1,
+					"node": "node_01",
+					"party": "aster_peris",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "ecology_decoy",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "shadow",
+					"label": "Aster reads the predator-prey clock while Peris's flure decoy herds the prey into the predator",
+					"min_stage": 3,
+					"node": "node_02",
+					"party": "aster_peris",
+					"risk": "risky",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "timed_run",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "shadow",
+					"label": "Aster sequences the lane gaps into a single timed run while Peris lays scarpet and capbage relays",
+					"min_stage": 4,
+					"node": "node_03",
+					"party": "aster_peris",
+					"risk": "risky",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "budget_or_detour",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "shadow",
+					"label": "Aster computes the damage budget for a fast crossing, or the pair takes the safe-slow detour and pays time instead of HP",
+					"min_stage": 2,
+					"node": "node_04",
+					"party": "aster_peris",
+					"risk": "risky",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "masked_forage",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "shadow",
+					"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+					"min_stage": 1,
+					"node": "node_05",
+					"party": "aster_peris",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "ecology_decoy",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "shadow",
+					"label": "Aster reads the predator-prey clock while Peris's flure decoy herds the prey into the predator",
+					"min_stage": 3,
+					"node": "node_06",
+					"party": "aster_peris",
+					"risk": "risky",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "timed_run",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "shadow",
+					"label": "Aster sequences the lane gaps into a single timed run while Peris lays scarpet and capbage relays",
+					"min_stage": 4,
+					"node": "node_07",
+					"party": "aster_peris",
+					"risk": "risky",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "budget_or_detour",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "shadow",
+					"label": "Aster computes the damage budget for a fast crossing, or the pair takes the safe-slow detour and pays time instead of HP",
+					"min_stage": 2,
+					"node": "node_08",
+					"party": "aster_peris",
+					"risk": "risky",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "traverse",
+					"label": "",
+					"min_stage": 0,
+					"node": "exit_shelter",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				}
+			],
+			"party": [
+				"aster",
+				"peris"
+			],
+			"solvable": true,
+			"uses_future_technique": false
+		}
+	],
+	"spec_id": "generated_sample_survival_run",
+	"title": "Sample — Forage & Gauntlet Run (Survival)"
+}

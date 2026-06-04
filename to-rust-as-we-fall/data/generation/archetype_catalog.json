@@ -1,7 +1,7 @@
 {
-  "schema": "trawf_archetype_catalog_v3",
+  "schema": "trawf_archetype_catalog_v4",
   "source": "design_archetypes.md",
-  "notes": "Each archetype has a STAGE (campaign introduction order, 1=earliest). Approaches carry min_stage: a primary/basic-shadow approach is in-stage; a 'shadow_expert' approach borrows a later-stage technique (min_stage > stage) and is the Layer-3 mastery move Aster+Peris use on a second/expert playthrough (per design_principles_shadow_solutions.md). The solver gates the full party (spotlight) to min_stage<=progression_stage but lets the Aster+Peris shadow use any stage; every archetype still keeps a bare-pair shadow approach so the pair can ALWAYS finish.",
+  "notes": "Each archetype has a STAGE (campaign introduction order, 1=earliest). Approaches carry min_stage: a primary/basic-shadow approach is in-stage; a 'shadow_expert' approach borrows a later-stage technique (min_stage > stage) and is the Layer-3 mastery move Aster+Peris use on a second/expert playthrough (per design_principles_shadow_solutions.md). The solver gates the full party (spotlight) to min_stage<=progression_stage but lets the Aster+Peris shadow use any stage; every archetype still keeps a bare-pair shadow approach so the pair can ALWAYS finish. SURVIVAL archetypes (12-16, kind 'survival') carry survival metadata: survival_kind (forage|exploit|gauntlet|hazard|rest), atp_reward (pips banked at a forage cache, GDD 2.4), pressure_cost (HP/stamina attrition at a gauntlet/hazard), exploit_target (an enemy-vs-enemy pairing the party can weaponise). They keep the same primary(specialist)/shadow(aster_peris) approach split so they stay multi-solution, bare-pair solvable, and stage-gated.",
   "archetypes": {
     "1": {
       "name": "Redirected enemy aggression",
@@ -900,6 +900,347 @@
           "uses": [],
           "risk": "safe",
           "taught_by": "",
+          "min_stage": 1
+        }
+      ]
+    },
+    "12": {
+      "name": "Lysate forage cache",
+      "kind": "survival",
+      "stage": 1,
+      "survival_kind": "forage",
+      "atp_reward": 2,
+      "tags": [
+        "forage",
+        "atp",
+        "lysate",
+        "resource"
+      ],
+      "compatible_node_roles": [
+        "foraging",
+        "regroup",
+        "mixed"
+      ],
+      "steps": [
+        "spot the remains",
+        "reach the cache off the safe line",
+        "clear the dwell window",
+        "endocytose lysate",
+        "bank ATP for the next rest"
+      ],
+      "variants": [
+        "organic_remains",
+        "rich_kill",
+        "capbage_head",
+        "forage_cache_station"
+      ],
+      "shadow_solution": {
+        "aster_peris": true,
+        "notes": "Peris finds caches under scarpet cover while Aster times the dwell into a blind window."
+      },
+      "approaches": [
+        {
+          "id": "guarded_forage",
+          "label": "A combat member covers the open while the party splits off to harvest the remains",
+          "kind": "primary",
+          "party": "specialist",
+          "requires": [
+            "combat"
+          ],
+          "uses": [
+            "rich_kill"
+          ],
+          "risk": "direct",
+          "taught_by": "",
+          "min_stage": 1
+        },
+        {
+          "id": "masked_forage",
+          "label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+          "kind": "shadow",
+          "party": "aster_peris",
+          "requires": [
+            "flora",
+            "cover",
+            "timing"
+          ],
+          "uses": [
+            "forage_cache_station"
+          ],
+          "risk": "safe",
+          "taught_by": "scent_masked_dwell",
+          "min_stage": 1
+        }
+      ]
+    },
+    "13": {
+      "name": "Predator-exploit transit",
+      "kind": "survival",
+      "stage": 3,
+      "survival_kind": "exploit",
+      "exploit_target": "predator_prey",
+      "tags": [
+        "enemy",
+        "predator_prey",
+        "exploit",
+        "ecology"
+      ],
+      "compatible_node_roles": [
+        "route_pressure",
+        "danger",
+        "shortcut",
+        "mixed"
+      ],
+      "steps": [
+        "read the ecology clock",
+        "position the prey or a decoy",
+        "trigger the predator",
+        "let them collide",
+        "cross the opened void"
+      ],
+      "variants": [
+        "siderophore_into_meeb",
+        "prey_into_neutro",
+        "spiker_versus_tangler",
+        "candid_scan_drop"
+      ],
+      "shadow_solution": {
+        "aster_peris": true,
+        "notes": "Aster reads the ecology clock while Peris's flure decoy herds the prey into the predator."
+      },
+      "approaches": [
+        {
+          "id": "draw_and_commit",
+          "label": "A combat member draws the Neutros to open the void while another times the commit",
+          "kind": "primary",
+          "party": "specialist",
+          "requires": [
+            "combat"
+          ],
+          "uses": [
+            "prey_into_neutro"
+          ],
+          "risk": "direct",
+          "taught_by": "",
+          "min_stage": 3
+        },
+        {
+          "id": "ecology_decoy",
+          "label": "Aster reads the predator-prey clock while Peris's flure decoy herds the prey into the predator",
+          "kind": "shadow",
+          "party": "aster_peris",
+          "requires": [
+            "timing",
+            "flora"
+          ],
+          "uses": [
+            "siderophore_into_meeb"
+          ],
+          "risk": "risky",
+          "taught_by": "ecology_reading",
+          "min_stage": 3
+        }
+      ]
+    },
+    "14": {
+      "name": "Enemy-configuration gauntlet",
+      "kind": "survival",
+      "stage": 4,
+      "survival_kind": "gauntlet",
+      "pressure_cost": 2,
+      "tags": [
+        "enemy",
+        "gauntlet",
+        "attrition",
+        "lanes"
+      ],
+      "compatible_node_roles": [
+        "route_pressure",
+        "danger",
+        "setpiece"
+      ],
+      "steps": [
+        "scout the enemy lanes",
+        "find the gaps",
+        "stage cover and food relays",
+        "run the gauntlet",
+        "regroup past it"
+      ],
+      "variants": [
+        "patrol_lanes",
+        "sniper_lanes",
+        "swarm_surge",
+        "mixed_families"
+      ],
+      "shadow_solution": {
+        "aster_peris": true,
+        "notes": "Aster sequences the lane gaps into one timed run; Peris lays scarpet and capbage relays."
+      },
+      "approaches": [
+        {
+          "id": "hold_lanes",
+          "label": "A combat specialist holds each lane while a third member relays the party through",
+          "kind": "primary",
+          "party": "specialist",
+          "requires": [
+            "combat"
+          ],
+          "uses": [
+            "mixed_families"
+          ],
+          "risk": "direct",
+          "taught_by": "",
+          "min_stage": 4
+        },
+        {
+          "id": "timed_run",
+          "label": "Aster sequences the lane gaps into a single timed run while Peris lays scarpet and capbage relays",
+          "kind": "shadow",
+          "party": "aster_peris",
+          "requires": [
+            "timing",
+            "cover"
+          ],
+          "uses": [
+            "patrol_lanes"
+          ],
+          "risk": "risky",
+          "taught_by": "lane_gap_sequencing",
+          "min_stage": 4
+        }
+      ]
+    },
+    "15": {
+      "name": "Attrition-field crossing",
+      "kind": "survival",
+      "stage": 2,
+      "survival_kind": "hazard",
+      "pressure_cost": 2,
+      "tags": [
+        "hazard",
+        "iron_bloom",
+        "attrition",
+        "crossing"
+      ],
+      "compatible_node_roles": [
+        "route_pressure",
+        "danger",
+        "mixed"
+      ],
+      "steps": [
+        "read the field dose",
+        "weigh the short crossing against the long detour",
+        "commit the lane",
+        "manage the damage budget",
+        "clear the field"
+      ],
+      "variants": [
+        "iron_bloom",
+        "atmospheric",
+        "biofilm_mat",
+        "flooded_lane"
+      ],
+      "shadow_solution": {
+        "aster_peris": true,
+        "notes": "Aster computes the damage budget for a short crossing, or the pair takes the safe-slow detour and pays time, not HP."
+      },
+      "approaches": [
+        {
+          "id": "insulated_lane",
+          "label": "Endo's junction-repair builds a protected low-dose lane across the field",
+          "kind": "primary",
+          "party": "specialist",
+          "requires": [
+            "barrier"
+          ],
+          "uses": [
+            "iron_bloom"
+          ],
+          "risk": "safe",
+          "taught_by": "",
+          "min_stage": 2
+        },
+        {
+          "id": "budget_or_detour",
+          "label": "Aster computes the damage budget for a fast crossing, or the pair takes the safe-slow detour and pays time instead of HP",
+          "kind": "shadow",
+          "party": "aster_peris",
+          "requires": [
+            "timing"
+          ],
+          "uses": [
+            "atmospheric"
+          ],
+          "risk": "risky",
+          "taught_by": "dose_budgeting",
+          "min_stage": 2
+        }
+      ]
+    },
+    "16": {
+      "name": "Shelter-rest management",
+      "kind": "survival",
+      "stage": 1,
+      "survival_kind": "rest",
+      "atp_reward": 0,
+      "tags": [
+        "rest",
+        "shelter",
+        "atp",
+        "recovery"
+      ],
+      "compatible_node_roles": [
+        "regroup",
+        "shelter_arrival",
+        "boundary"
+      ],
+      "steps": [
+        "reach a shelter before dusk",
+        "regroup the party",
+        "bank and spend ATP",
+        "rest",
+        "clear sleep-deprivation"
+      ],
+      "variants": [
+        "full_rest",
+        "field_hide_rest",
+        "contested_rest",
+        "short_rest"
+      ],
+      "shadow_solution": {
+        "aster_peris": true,
+        "notes": "When no shelter is reachable, Peris's capbage gives a field hide-rest while Aster reads the dusk clock."
+      },
+      "approaches": [
+        {
+          "id": "held_rest",
+          "label": "The party regroups; a combat member holds the approach while a downed ally is dragged in to rest",
+          "kind": "primary",
+          "party": "specialist",
+          "requires": [
+            "combat"
+          ],
+          "uses": [
+            "contested_rest"
+          ],
+          "risk": "safe",
+          "taught_by": "",
+          "min_stage": 1
+        },
+        {
+          "id": "field_hide_rest",
+          "label": "With no shelter reachable, Peris's capbage gives a field hide-rest while Aster reads the dusk clock",
+          "kind": "shadow",
+          "party": "aster_peris",
+          "requires": [
+            "cover",
+            "timing"
+          ],
+          "uses": [
+            "field_hide_rest"
+          ],
+          "risk": "risky",
+          "taught_by": "capbage_hide_rest",
           "min_stage": 1
         }
       ]

@@ -30,6 +30,9 @@ var _shelter_reached := false
 var _shelter_rested := false
 var _last_outcome := ""
 var _risky_damage_total := 0.0
+var _atp_foraged := 0
+var _pressure_taken := 0.0
+var _rests_taken := 0
 var _first_shelter_beat_fired := false
 var _unsupported_placeholder_count := 0
 var _active_loadout := "spotlight"
@@ -163,6 +166,9 @@ func get_preview_state() -> Dictionary:
 		"first_shelter_beat_fired": _first_shelter_beat_fired,
 		"last_outcome": _last_outcome,
 		"risky_damage_total": _risky_damage_total,
+		"atp_foraged": _atp_foraged,
+		"pressure_taken": _pressure_taken,
+		"rests_taken": _rests_taken,
 		"unsupported_placeholder_count": _unsupported_placeholder_count,
 		"content_marker_count": _content_marker_count,
 		"active_loadout": _active_loadout,
@@ -184,6 +190,9 @@ func get_preview_state() -> Dictionary:
 		"first_shelter_beat_fired": _first_shelter_beat_fired,
 		"last_outcome": _last_outcome,
 		"risky_damage_total": _risky_damage_total,
+		"atp_foraged": _atp_foraged,
+		"pressure_taken": _pressure_taken,
+		"rests_taken": _rests_taken,
 		"unsupported_placeholder_count": _unsupported_placeholder_count,
 		"active_loadout": _active_loadout,
 		"blocked_nodes": _blocked_nodes.duplicate(),
@@ -251,6 +260,9 @@ func reset_preview_state() -> void:
 	_shelter_rested = false
 	_last_outcome = "ready"
 	_risky_damage_total = 0.0
+	_atp_foraged = 0
+	_pressure_taken = 0.0
+	_rests_taken = 0
 	_first_shelter_beat_fired = false
 	_node_approach_used.clear()
 	_blocked_nodes.clear()
@@ -325,7 +337,21 @@ func activate_generated_node(node_id: String) -> bool:
 	if not _completed_nodes.has(node_id):
 		_completed_nodes.append(node_id)
 	var role := str(node.get("role", ""))
-	if bool(node.get("resource", false)):
+	var survival := str(node.get("survival_kind", ""))
+	match survival:
+		"forage":
+			_apply_forage_reward(node)
+		"gauntlet", "hazard":
+			_apply_node_pressure(node)
+		"exploit":
+			_last_outcome = "exploit:%s" % str(node.get("exploit_target", "predator_prey"))
+			_show_message("Turned the ecology against itself.", 1.0)
+		"rest":
+			_rests_taken += 1
+			_restore_party()
+			_show_message("Rested before dusk.", 1.0)
+	# A plain (non-survival) resource beat is the full top-up; survival nodes did their own.
+	if bool(node.get("resource", false)) and survival == "":
 		_resources_collected += 1
 		_restore_party()
 		_show_message("Resource beat secured.", 1.0)
@@ -996,6 +1022,30 @@ func _reach_exit_shelter() -> void:
 	_highlight_node("exit_shelter", true)
 	_set_preview_step("generated_stretch_complete")
 	_show_note("Shelter reached and rested.", 2.5)
+
+## Forage cache: bank a partial ATP top-up toward the next rest (GDD 2.4 — lysate adds
+## whole pips up to the 8-pip cap). Not a full restore; the rest at the shelter is.
+func _apply_forage_reward(node: Dictionary) -> void:
+	var pips := int(node.get("atp_reward", 2))
+	if pips <= 0:
+		pips = 2
+	_atp_foraged += pips
+	for char_id in PARTY_IDS:
+		_adjust_character_stat(char_id, "atp", float(pips))
+	_route_phase = "forage"
+	_last_outcome = "forage:+%d_atp" % pips
+	_show_message("Banked %d ATP from the cache." % pips, 1.0)
+
+## Gauntlet / attrition field: HP + stamina drain crossing it (recovered at the shelter).
+func _apply_node_pressure(node: Dictionary) -> void:
+	var damage := maxf(6.0, float(int(node.get("pressure_cost", 1))) * 8.0)
+	_pressure_taken += damage
+	for char_id in PARTY_IDS:
+		_adjust_character_stat(char_id, "hp", -damage)
+		_adjust_character_stat(char_id, "stamina", -damage * 0.6)
+	_route_phase = "attrition"
+	_last_outcome = "pressure:%s" % str(node.get("survival_kind", "gauntlet"))
+	_show_message("Attrition crossing the %s." % str(node.get("survival_kind", "gauntlet")), 1.0)
 
 func _apply_risky_pressure(risk: int, route := {}) -> void:
 	var damage := maxf(8.0, float(risk) * 8.0)

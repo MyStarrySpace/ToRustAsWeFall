@@ -86,7 +86,10 @@ static func party_capabilities(character_ids: Array, include_specialist := false
 	return caps
 
 
-## Capability tags lent by the content (flora/structures) actually placed on a node.
+## Capability tags lent by the content (flora/structures) actually placed on a node — plus
+## the "enemies as a tool" hook: a survival exploit node (an enemy-vs-enemy configuration)
+## lends a `redirect`/`exploit` capability that an approach (here or in a nested puzzle)
+## can spend, so a hostile configuration can become the way to solve a beat.
 static func node_content_capabilities(node: Dictionary) -> Dictionary:
 	var caps := {}
 	for category in ["flora", "structures"]:
@@ -94,6 +97,9 @@ static func node_content_capabilities(node: Dictionary) -> Dictionary:
 		for raw_key in node.get(category, []):
 			for cap in table.get(str(raw_key), []):
 				caps[str(cap)] = true
+	if str(node.get("survival_kind", "")) == "exploit" or str(node.get("exploit_target", "")) != "":
+		caps["redirect"] = true
+		caps["exploit"] = true
 	return caps
 
 

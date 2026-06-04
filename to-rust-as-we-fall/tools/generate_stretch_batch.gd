@@ -84,6 +84,22 @@ func _batch() -> Array:
 			},
 			"world_slot": {"region": "Containment Vault", "entry_shelter_id": "shelter_4", "exit_shelter_id": "shelter_5"},
 		},
+		{
+			"id": "generated_sample_survival_run",
+			"title": "Sample — Forage & Gauntlet Run (Survival)",
+			"seed": 6160,
+			"complexity_tier": "hard",
+			"progression_stage": 4,
+			"limitations": {
+				"allowed": {
+					"archetypes": ["11", "12", "13", "14", "15", "16"],
+					"flora": ["scarpet", "flure", "capbage", "seefern", "doma", "hushbloom"],
+					"enemies": IMPLEMENTED_ENEMIES,
+				},
+				"required": {"archetypes": ["12", "13", "14", "15"], "structures": ["shelter", "forage_cache"]},
+			},
+			"world_slot": {"region": "Transit Corridors", "entry_shelter_id": "shelter_5", "exit_shelter_id": "shelter_6"},
+		},
 	]
 
 func _init() -> void:

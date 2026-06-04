@@ -382,6 +382,9 @@ func _ready() -> void:
 			"--test-campaign-order":
 				ran_test = true
 				_test_campaign_order()
+			"--test-survival-archetypes":
+				ran_test = true
+				await _test_survival_archetypes()
 			"--test-asset-pipeline":
 				ran_test = true
 				_test_asset_pipeline()
@@ -552,6 +555,7 @@ func _run_all_tests() -> void:
 	_test_generated_multi_solution()
 	_test_generated_replay()
 	_test_campaign_order()
+	await _test_survival_archetypes()
 	await _test_generated_stretch_playtest_loop()
 	_test_save_load_integrity()
 	_test_save_corruption_recovery()
@@ -1193,7 +1197,7 @@ func _test_archetype_generation() -> void:
 	var catalog := StretchArchetypeCatalogScript.new()
 	var catalog_validation: Dictionary = catalog.validate()
 	_assert_true(bool(catalog_validation.get("valid", false)), "Archetype catalog validates")
-	_assert_equals(catalog.get_archetype_ids().size(), 11, "Catalog exposes archetypes 1-11")
+	_assert_equals(catalog.get_archetype_ids().size(), 16, "Catalog exposes archetypes 1-16 (11 puzzle/meta + 5 survival)")
 	for flora_id in ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "doma", "snapbloom", "capbage", "gasafoetida", "climbvine", "resolution_roots", "forget_me_nots"]:
 		_assert_true(catalog.has_content("flora", flora_id), "Catalog includes flora %s" % flora_id)
 	for enemy_id in ["techos", "verdings", "hidras", "crusts", "candids", "meebs", "naturalizers", "gnawers", "neutros", "spikers", "tanglers", "toxos", "nosomas"]:
@@ -2003,6 +2007,64 @@ func _test_campaign_order() -> void:
 		for c in n.get("children", []):
 			stack.append(c)
 	_assert_true(unique, "All node ids are unique after load + a fresh add")
+
+func _test_survival_archetypes() -> void:
+	_test_name = "Survival Archetypes"
+
+	# The five survival archetypes exist with kind survival + the right survival_kind.
+	var catalog := StretchArchetypeCatalogScript.new()
+	var survival_kinds := {"12": "forage", "13": "exploit", "14": "gauntlet", "15": "hazard", "16": "rest"}
+	for aid in survival_kinds:
+		var a: Dictionary = catalog.get_archetype(aid)
+		_assert_equals(str(a.get("kind", "")), "survival", "Archetype %s is kind 'survival'" % aid)
+		_assert_equals(str(a.get("survival_kind", "")), str(survival_kinds[aid]), "Archetype %s survival_kind is %s" % [aid, survival_kinds[aid]])
+
+	# A survival stretch generates and is multi-solution + shadow/bare-pair solvable + in-stage.
+	var spec: Dictionary = StretchGeneratorScript.generate({
+		"id": "generated_survival_test", "seed": 808, "complexity_tier": "hard", "progression_stage": 4,
+		"limitations": {
+			"required": {"archetypes": ["12", "13", "14"]},
+			"allowed": {"archetypes": ["11", "12", "13", "14", "15", "16"], "flora": ["scarpet", "flure", "capbage", "seefern"], "enemies": ["techos", "naturalizers"]},
+		},
+	})
+	_assert_true(bool(spec.get("success", false)), "Survival stretch generates")
+	var summary: Dictionary = spec.get("headless", {}).get("solution_summary", {})
+	_assert_true(bool(summary.get("multi_solution", false)), "Survival stretch is multi-solution (get past two ways)")
+	_assert_true(bool(summary.get("shadow_solvable", false)), "Aster+Peris can survive the whole stretch")
+	_assert_true(bool(summary.get("bare_pair_solvable", false)), "Every survival node is bare-pair solvable")
+	_assert_true(bool(summary.get("spotlight_within_stage", false)), "Survival spotlight stays within the progression stage")
+
+	# Survival metadata lands on the spine nodes; an exploit node lends a 'redirect' tool.
+	var kinds := {}
+	var forage_node := {}
+	var exploit_node := {}
+	for node in spec.get("nodes", []):
+		var sk := str((node as Dictionary).get("survival_kind", ""))
+		if sk != "":
+			kinds[sk] = true
+		if sk == "forage" and forage_node.is_empty():
+			forage_node = node
+		if sk == "exploit" and exploit_node.is_empty():
+			exploit_node = node
+	_assert_true(kinds.has("forage") and kinds.has("gauntlet") and kinds.has("exploit"), "Required survival kinds (forage/gauntlet/exploit) appear on the spine")
+	_assert_true(not forage_node.is_empty() and int(forage_node.get("atp_reward", 0)) > 0, "A forage node carries an atp_reward (partial ATP top-up)")
+	_assert_true(not exploit_node.is_empty() and StretchCapabilitiesScript.node_content_capabilities(exploit_node).has("redirect"), "An exploit node's enemy configuration lends a 'redirect' tool (enemies as a tool)")
+
+	# Chunk: a golden run banks ATP at the forage cache and takes attrition at the gauntlet.
+	var preview_scene := load("res://scenes/fragments/generated_stretch_preview.tscn")
+	if preview_scene != null:
+		var preview: Node = preview_scene.instantiate()
+		preview.set("preview_chunk", "generated_stretch")
+		preview.set("preview_chunk_config", {"spec": spec})
+		get_tree().root.add_child(preview)
+		for _i in range(3):
+			await get_tree().process_frame
+		preview.call("headless_call_chunk", "run_generated_golden_path", [])
+		var cs: Dictionary = preview.call("headless_get_state").get("chunk", {})
+		_assert_true(int(cs.get("atp_foraged", 0)) > 0, "A golden run banks partial ATP at the forage cache")
+		_assert_true(float(cs.get("pressure_taken", 0.0)) > 0.0, "A golden run takes HP/stamina attrition at the gauntlet/hazard")
+		preview.queue_free()
+		await get_tree().process_frame
 
 func _test_generated_stretch_playtest_loop() -> void:
 	_test_name = "Generated Stretch Playtest Loop"

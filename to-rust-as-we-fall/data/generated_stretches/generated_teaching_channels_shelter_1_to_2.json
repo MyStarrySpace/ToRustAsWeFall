@@ -61,94 +61,86 @@
 					"uses": []
 				}
 			],
+			"atp_reward": 0,
 			"chain_index": 0,
 			"composition_role": "required_append",
+			"exploit_target": "",
 			"id": "11",
 			"kind": "meta",
 			"name": "Narrative beat",
+			"pressure_cost": 0,
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Narrative beat adapts to available party but should preserve state transition."
 			},
 			"stage": 1,
 			"step_count": 3,
+			"survival_kind": "",
 			"tags": [
 				"dialogue",
 				"recognition",
 				"transition",
 				"party"
 			],
-			"variant": "recognition"
+			"variant": "realization"
 		},
 		{
 			"approaches": [
 				{
-					"id": "force_clear",
+					"id": "guarded_forage",
 					"kind": "primary",
-					"label": "Force the obstacle open with raw impact",
+					"label": "A combat member covers the open while the party splits off to harvest the remains",
 					"min_stage": 1.0,
 					"party": "specialist",
 					"requires": [
-						"impact"
+						"combat"
 					],
 					"risk": "direct",
 					"taught_by": "",
 					"uses": [
-						"destroy"
+						"rich_kill"
 					]
 				},
 				{
-					"borrows_from": "10",
-					"expert": true,
-					"id": "flora_chain_trap",
-					"kind": "shadow_expert",
-					"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
-					"min_stage": 5.0,
-					"party": "aster_peris",
-					"requires": [
-						"flora",
-						"lure"
-					],
-					"risk": "risky",
-					"taught_by": "nested_flora_zone",
-					"uses": []
-				},
-				{
-					"id": "flora_finesse",
+					"id": "masked_forage",
 					"kind": "shadow",
-					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
 					"min_stage": 1.0,
 					"party": "aster_peris",
 					"requires": [
-						"flora"
+						"flora",
+						"cover",
+						"timing"
 					],
 					"risk": "safe",
-					"taught_by": "flora_tending",
+					"taught_by": "scent_masked_dwell",
 					"uses": [
-						"flure_iron_decoy",
-						"hushbloom_stun",
-						"climbvine_traversal"
+						"forage_cache_station"
 					]
 				}
 			],
+			"atp_reward": 2,
 			"chain_index": 1,
 			"composition_role": "generated_fill",
-			"id": "2",
-			"kind": "puzzle",
-			"name": "Plant as tool",
+			"exploit_target": "",
+			"id": "12",
+			"kind": "survival",
+			"name": "Lysate forage cache",
+			"pressure_cost": 0,
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
+				"notes": "Peris finds caches under scarpet cover while Aster times the dwell into a blind window."
 			},
 			"stage": 1,
 			"step_count": 5,
+			"survival_kind": "forage",
 			"tags": [
-				"flora",
-				"peris",
-				"environment",
-				"enemy_routing"
+				"forage",
+				"atp",
+				"lysate",
+				"resource"
 			],
-			"variant": "resolution_roots_break"
+			"variant": "forage_cache_station"
 		}
 	],
 	"budget": {
@@ -272,24 +264,24 @@
 						"uses": []
 					},
 					{
-						"approach_id": "force_clear",
+						"approach_id": "guarded_forage",
 						"blocked": false,
 						"borrows_from": "",
 						"expert": false,
 						"kind": "primary",
-						"label": "Force the obstacle open with raw impact",
+						"label": "A combat member covers the open while the party splits off to harvest the remains",
 						"min_stage": 1,
 						"node": "node_02",
 						"party": "specialist",
 						"requires": [
-							"impact"
+							"combat"
 						],
 						"risk": "direct",
 						"role": "route_pressure",
 						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
-							"destroy"
+							"rich_kill"
 						]
 					},
 					{
@@ -310,24 +302,24 @@
 						"uses": []
 					},
 					{
-						"approach_id": "force_clear",
+						"approach_id": "guarded_forage",
 						"blocked": false,
 						"borrows_from": "",
 						"expert": false,
 						"kind": "primary",
-						"label": "Force the obstacle open with raw impact",
+						"label": "A combat member covers the open while the party splits off to harvest the remains",
 						"min_stage": 1,
 						"node": "node_04",
 						"party": "specialist",
 						"requires": [
-							"impact"
+							"combat"
 						],
 						"risk": "direct",
 						"role": "danger",
 						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
-							"destroy"
+							"rich_kill"
 						]
 					},
 					{
@@ -386,24 +378,27 @@
 						"uses": []
 					},
 					{
-						"approach_id": "flora_chain_trap",
+						"approach_id": "masked_forage",
 						"blocked": false,
-						"borrows_from": "10",
-						"expert": true,
-						"kind": "shadow_expert",
-						"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
-						"min_stage": 5,
+						"borrows_from": "",
+						"expert": false,
+						"kind": "shadow",
+						"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+						"min_stage": 1,
 						"node": "node_02",
 						"party": "aster_peris",
 						"requires": [
 							"flora",
-							"lure"
+							"cover",
+							"timing"
 						],
-						"risk": "risky",
+						"risk": "safe",
 						"role": "route_pressure",
-						"stage_ahead": true,
-						"taught_by": "nested_flora_zone",
-						"uses": []
+						"stage_ahead": false,
+						"taught_by": "scent_masked_dwell",
+						"uses": [
+							"forage_cache_station"
+						]
 					},
 					{
 						"approach_id": "play_the_beat",
@@ -423,24 +418,27 @@
 						"uses": []
 					},
 					{
-						"approach_id": "flora_chain_trap",
+						"approach_id": "masked_forage",
 						"blocked": false,
-						"borrows_from": "10",
-						"expert": true,
-						"kind": "shadow_expert",
-						"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
-						"min_stage": 5,
+						"borrows_from": "",
+						"expert": false,
+						"kind": "shadow",
+						"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+						"min_stage": 1,
 						"node": "node_04",
 						"party": "aster_peris",
 						"requires": [
 							"flora",
-							"lure"
+							"cover",
+							"timing"
 						],
-						"risk": "risky",
+						"risk": "safe",
 						"role": "danger",
-						"stage_ahead": true,
-						"taught_by": "nested_flora_zone",
-						"uses": []
+						"stage_ahead": false,
+						"taught_by": "scent_masked_dwell",
+						"uses": [
+							"forage_cache_station"
+						]
 					},
 					{
 						"approach_id": "traverse",
@@ -456,17 +454,17 @@
 				"blocked_nodes": [],
 				"label": "Aster + Peris (shadow)",
 				"loadout": "shadow",
-				"max_stage_used": 5,
+				"max_stage_used": 1,
 				"party": [
 					"aster",
 					"peris"
 				],
 				"solvable": true,
 				"techniques": [
-					"nested_flora_zone"
+					"scent_masked_dwell"
 				],
-				"total_risk": 4,
-				"uses_future_technique": true,
+				"total_risk": 0,
+				"uses_future_technique": false,
 				"within_stage": true
 			}
 		],
@@ -488,9 +486,9 @@
 			"progression_stage": 2,
 			"shadow_solvable": true,
 			"shadow_techniques": [
-				"nested_flora_zone"
+				"scent_masked_dwell"
 			],
-			"shadow_uses_future_technique": true,
+			"shadow_uses_future_technique": false,
 			"solvable_loadout_count": 2,
 			"spotlight_within_stage": true
 		},
@@ -993,6 +991,7 @@
 			"approaches": [],
 			"archetype_id": "11",
 			"archetype_name": "Narrative beat",
+			"atp_reward": 0,
 			"chain_index": -1,
 			"chain_input": "",
 			"chain_label": "",
@@ -1051,6 +1050,7 @@
 			"elevation_index": 0,
 			"elevation_meters": 0.0,
 			"enemies": [],
+			"exploit_target": "",
 			"floor_size": [
 				6.0,
 				0.159999996423721,
@@ -1079,6 +1079,7 @@
 				-3.0
 			],
 			"pressure": 0,
+			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
 			"role": "boundary",
@@ -1091,6 +1092,7 @@
 				"shelter"
 			],
 			"surface_y": 0.45,
+			"survival_kind": "",
 			"title": "Entry Boundary",
 			"variant": "",
 			"walk_element": "",
@@ -1120,6 +1122,7 @@
 			],
 			"archetype_id": "11",
 			"archetype_name": "Narrative beat",
+			"atp_reward": 0,
 			"chain_index": 0,
 			"chain_input": "",
 			"chain_label": "",
@@ -1178,6 +1181,7 @@
 			"elevation_index": 1,
 			"elevation_meters": 0.72,
 			"enemies": [],
+			"exploit_target": "",
 			"floor_size": [
 				4.80000019073486,
 				0.140000000596046,
@@ -1206,6 +1210,7 @@
 				0.0
 			],
 			"pressure": 0,
+			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
 			"role": "guidance",
@@ -1219,8 +1224,9 @@
 				"class_gate"
 			],
 			"surface_y": 1.17,
+			"survival_kind": "",
 			"title": "Guidance Beat",
-			"variant": "recognition",
+			"variant": "realization",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -1235,56 +1241,41 @@
 			],
 			"approaches": [
 				{
-					"id": "force_clear",
+					"id": "guarded_forage",
 					"kind": "primary",
-					"label": "Force the obstacle open with raw impact",
+					"label": "A combat member covers the open while the party splits off to harvest the remains",
 					"min_stage": 1.0,
 					"party": "specialist",
 					"requires": [
-						"impact"
+						"combat"
 					],
 					"risk": "direct",
 					"taught_by": "",
 					"uses": [
-						"destroy"
+						"rich_kill"
 					]
 				},
 				{
-					"borrows_from": "10",
-					"expert": true,
-					"id": "flora_chain_trap",
-					"kind": "shadow_expert",
-					"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
-					"min_stage": 5.0,
-					"party": "aster_peris",
-					"requires": [
-						"flora",
-						"lure"
-					],
-					"risk": "risky",
-					"taught_by": "nested_flora_zone",
-					"uses": []
-				},
-				{
-					"id": "flora_finesse",
+					"id": "masked_forage",
 					"kind": "shadow",
-					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
 					"min_stage": 1.0,
 					"party": "aster_peris",
 					"requires": [
-						"flora"
+						"flora",
+						"cover",
+						"timing"
 					],
 					"risk": "safe",
-					"taught_by": "flora_tending",
+					"taught_by": "scent_masked_dwell",
 					"uses": [
-						"flure_iron_decoy",
-						"hushbloom_stun",
-						"climbvine_traversal"
+						"forage_cache_station"
 					]
 				}
 			],
-			"archetype_id": "2",
-			"archetype_name": "Plant as tool",
+			"archetype_id": "12",
+			"archetype_name": "Lysate forage cache",
+			"atp_reward": 2,
 			"chain_index": 1,
 			"chain_input": "",
 			"chain_label": "",
@@ -1369,6 +1360,7 @@
 			"enemies": [
 				"spikers"
 			],
+			"exploit_target": "",
 			"floor_size": [
 				5.40000009536743,
 				0.140000000596046,
@@ -1397,12 +1389,13 @@
 				3.0
 			],
 			"pressure": 1,
+			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
 			"role": "route_pressure",
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
+				"notes": "Peris finds caches under scarpet cover while Aster times the dwell into a blind window."
 			},
 			"shortcut": true,
 			"stage": 1,
@@ -1410,8 +1403,9 @@
 				"shortcut_gate"
 			],
 			"surface_y": 1.89,
+			"survival_kind": "forage",
 			"title": "Route Pressure",
-			"variant": "resolution_roots_break",
+			"variant": "forage_cache_station",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -1439,6 +1433,7 @@
 			],
 			"archetype_id": "11",
 			"archetype_name": "Narrative beat",
+			"atp_reward": 0,
 			"chain_index": 0,
 			"chain_input": "",
 			"chain_label": "",
@@ -1497,6 +1492,7 @@
 			"elevation_index": 1,
 			"elevation_meters": 0.72,
 			"enemies": [],
+			"exploit_target": "",
 			"floor_size": [
 				5.80000019073486,
 				0.140000000596046,
@@ -1525,6 +1521,7 @@
 				-3.0
 			],
 			"pressure": 0,
+			"pressure_cost": 0,
 			"resource": true,
 			"resource_beat": true,
 			"role": "foraging",
@@ -1538,8 +1535,9 @@
 				"shelter"
 			],
 			"surface_y": 1.17,
+			"survival_kind": "",
 			"title": "Foraging Beat",
-			"variant": "recognition",
+			"variant": "realization",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -1554,56 +1552,41 @@
 			],
 			"approaches": [
 				{
-					"id": "force_clear",
+					"id": "guarded_forage",
 					"kind": "primary",
-					"label": "Force the obstacle open with raw impact",
+					"label": "A combat member covers the open while the party splits off to harvest the remains",
 					"min_stage": 1.0,
 					"party": "specialist",
 					"requires": [
-						"impact"
+						"combat"
 					],
 					"risk": "direct",
 					"taught_by": "",
 					"uses": [
-						"destroy"
+						"rich_kill"
 					]
 				},
 				{
-					"borrows_from": "10",
-					"expert": true,
-					"id": "flora_chain_trap",
-					"kind": "shadow_expert",
-					"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
-					"min_stage": 5.0,
-					"party": "aster_peris",
-					"requires": [
-						"flora",
-						"lure"
-					],
-					"risk": "risky",
-					"taught_by": "nested_flora_zone",
-					"uses": []
-				},
-				{
-					"id": "flora_finesse",
+					"id": "masked_forage",
 					"kind": "shadow",
-					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
 					"min_stage": 1.0,
 					"party": "aster_peris",
 					"requires": [
-						"flora"
+						"flora",
+						"cover",
+						"timing"
 					],
 					"risk": "safe",
-					"taught_by": "flora_tending",
+					"taught_by": "scent_masked_dwell",
 					"uses": [
-						"flure_iron_decoy",
-						"hushbloom_stun",
-						"climbvine_traversal"
+						"forage_cache_station"
 					]
 				}
 			],
-			"archetype_id": "2",
-			"archetype_name": "Plant as tool",
+			"archetype_id": "12",
+			"archetype_name": "Lysate forage cache",
+			"atp_reward": 2,
 			"chain_index": 1,
 			"chain_input": "",
 			"chain_label": "",
@@ -1662,6 +1645,7 @@
 			"elevation_index": 1,
 			"elevation_meters": 0.72,
 			"enemies": [],
+			"exploit_target": "",
 			"floor_size": [
 				5.40000009536743,
 				0.140000000596046,
@@ -1690,12 +1674,13 @@
 				0.0
 			],
 			"pressure": 0,
+			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
 			"role": "danger",
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
+				"notes": "Peris finds caches under scarpet cover while Aster times the dwell into a blind window."
 			},
 			"shortcut": false,
 			"stage": 1,
@@ -1703,8 +1688,9 @@
 				"class_gate"
 			],
 			"surface_y": 1.17,
+			"survival_kind": "forage",
 			"title": "Danger Beat",
-			"variant": "resolution_roots_break",
+			"variant": "forage_cache_station",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -1720,6 +1706,7 @@
 			"approaches": [],
 			"archetype_id": "11",
 			"archetype_name": "Narrative beat",
+			"atp_reward": 0,
 			"chain_index": -1,
 			"chain_input": "",
 			"chain_label": "",
@@ -1778,6 +1765,7 @@
 			"elevation_index": 0,
 			"elevation_meters": 0.0,
 			"enemies": [],
+			"exploit_target": "",
 			"floor_size": [
 				7.19999980926514,
 				0.180000007152557,
@@ -1806,6 +1794,7 @@
 				3.0
 			],
 			"pressure": 0,
+			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
 			"role": "shelter_arrival",
@@ -1818,6 +1807,7 @@
 				"shelter"
 			],
 			"surface_y": 0.45,
+			"survival_kind": "",
 			"title": "Shelter Arrival",
 			"variant": "",
 			"walk_element": "",
@@ -2000,7 +1990,7 @@
 		},
 		{
 			"cost": 0,
-			"damage": 19.0,
+			"damage": 21.0,
 			"from": "entry",
 			"height_delta": 0.0,
 			"id": "risky_direct",

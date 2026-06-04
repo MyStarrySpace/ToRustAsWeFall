@@ -98,17 +98,21 @@
 					]
 				}
 			],
+			"atp_reward": 0,
 			"chain_index": 0,
 			"composition_role": "required_append",
+			"exploit_target": "",
 			"id": "2",
 			"kind": "puzzle",
 			"name": "Plant as tool",
+			"pressure_cost": 0,
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
 			},
 			"stage": 1,
 			"step_count": 5,
+			"survival_kind": "",
 			"tags": [
 				"flora",
 				"peris",
@@ -183,17 +187,21 @@
 					]
 				}
 			],
+			"atp_reward": 0,
 			"chain_index": 1,
 			"composition_role": "required_append",
+			"exploit_target": "",
 			"id": "3",
 			"kind": "puzzle",
 			"name": "Carry the heavy thing",
+			"pressure_cost": 0,
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Use drag routes, scarpet masking, and slower recovery windows."
 			},
 			"stage": 2,
 			"step_count": 5,
+			"survival_kind": "",
 			"tags": [
 				"carry",
 				"escort",
@@ -1073,6 +1081,7 @@
 			"approaches": [],
 			"archetype_id": "11",
 			"archetype_name": "Narrative beat",
+			"atp_reward": 0,
 			"chain_index": -1,
 			"chain_input": "",
 			"chain_label": "",
@@ -1131,6 +1140,7 @@
 			"elevation_index": 0,
 			"elevation_meters": 0.0,
 			"enemies": [],
+			"exploit_target": "",
 			"floor_size": [
 				6.0,
 				0.159999996423721,
@@ -1159,6 +1169,7 @@
 				-3.0
 			],
 			"pressure": 0,
+			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
 			"role": "boundary",
@@ -1171,6 +1182,7 @@
 				"shelter"
 			],
 			"surface_y": 0.45,
+			"survival_kind": "",
 			"title": "Entry Boundary",
 			"variant": "",
 			"walk_element": "",
@@ -1237,6 +1249,7 @@
 			],
 			"archetype_id": "2",
 			"archetype_name": "Plant as tool",
+			"atp_reward": 0,
 			"chain_index": 0,
 			"chain_input": "",
 			"chain_label": "",
@@ -1295,6 +1308,7 @@
 			"elevation_index": 1,
 			"elevation_meters": 0.72,
 			"enemies": [],
+			"exploit_target": "",
 			"floor_size": [
 				4.80000019073486,
 				0.140000000596046,
@@ -1323,6 +1337,7 @@
 				0.0
 			],
 			"pressure": 0,
+			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
 			"role": "guidance",
@@ -1336,6 +1351,7 @@
 				"pipe"
 			],
 			"surface_y": 1.17,
+			"survival_kind": "",
 			"title": "Guidance Beat",
 			"variant": "resolution_roots_stabilize",
 			"walk_element": "",
@@ -1417,6 +1433,7 @@
 			],
 			"archetype_id": "3",
 			"archetype_name": "Carry the heavy thing",
+			"atp_reward": 0,
 			"chain_index": 1,
 			"chain_input": "",
 			"chain_label": "",
@@ -1501,6 +1518,7 @@
 			"enemies": [
 				"naturalizers"
 			],
+			"exploit_target": "",
 			"floor_size": [
 				5.40000009536743,
 				0.140000000596046,
@@ -1529,6 +1547,7 @@
 				3.0
 			],
 			"pressure": 1,
+			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
 			"role": "route_pressure",
@@ -1542,6 +1561,7 @@
 				"pipe"
 			],
 			"surface_y": 1.89,
+			"survival_kind": "",
 			"title": "Route Pressure",
 			"variant": "cure_component",
 			"walk_element": "",
@@ -1608,6 +1628,7 @@
 			],
 			"archetype_id": "2",
 			"archetype_name": "Plant as tool",
+			"atp_reward": 0,
 			"chain_index": 0,
 			"chain_input": "",
 			"chain_label": "",
@@ -1666,6 +1687,7 @@
 			"elevation_index": 1,
 			"elevation_meters": 0.72,
 			"enemies": [],
+			"exploit_target": "",
 			"floor_size": [
 				5.80000019073486,
 				0.140000000596046,
@@ -1694,6 +1716,7 @@
 				-3.0
 			],
 			"pressure": 0,
+			"pressure_cost": 0,
 			"resource": true,
 			"resource_beat": true,
 			"role": "foraging",
@@ -1707,6 +1730,7 @@
 				"shelter"
 			],
 			"surface_y": 1.17,
+			"survival_kind": "",
 			"title": "Foraging Beat",
 			"variant": "resolution_roots_stabilize",
 			"walk_element": "",
@@ -1788,6 +1812,7 @@
 			],
 			"archetype_id": "3",
 			"archetype_name": "Carry the heavy thing",
+			"atp_reward": 0,
 			"chain_index": 1,
 			"chain_input": "",
 			"chain_label": "",
@@ -1846,6 +1871,7 @@
 			"elevation_index": 1,
 			"elevation_meters": 0.72,
 			"enemies": [],
+			"exploit_target": "",
 			"floor_size": [
 				5.40000009536743,
 				0.140000000596046,
@@ -1874,6 +1900,7 @@
 				0.0
 			],
 			"pressure": 0,
+			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
 			"role": "danger",
@@ -1887,6 +1914,7 @@
 				"pipe"
 			],
 			"surface_y": 1.17,
+			"survival_kind": "",
 			"title": "Danger Beat",
 			"variant": "cure_component",
 			"walk_element": "",
@@ -1904,6 +1932,7 @@
 			"approaches": [],
 			"archetype_id": "11",
 			"archetype_name": "Narrative beat",
+			"atp_reward": 0,
 			"chain_index": -1,
 			"chain_input": "",
 			"chain_label": "",
@@ -1962,6 +1991,7 @@
 			"elevation_index": 0,
 			"elevation_meters": 0.0,
 			"enemies": [],
+			"exploit_target": "",
 			"floor_size": [
 				7.19999980926514,
 				0.180000007152557,
@@ -1990,6 +2020,7 @@
 				3.0
 			],
 			"pressure": 0,
+			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
 			"role": "shelter_arrival",
@@ -2002,6 +2033,7 @@
 				"shelter"
 			],
 			"surface_y": 0.45,
+			"survival_kind": "",
 			"title": "Shelter Arrival",
 			"variant": "",
 			"walk_element": "",

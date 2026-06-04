@@ -16,7 +16,7 @@
 			-3.0
 		],
 		"exit_shelter": [
-			72.0,
+			108.0,
 			0.449999988079071,
 			-3.0
 		],
@@ -45,6 +45,21 @@
 			1.88999998569489,
 			3.0
 		],
+		"node_06": [
+			72.0,
+			0.449999988079071,
+			-3.0
+		],
+		"node_07": [
+			84.0,
+			1.16999995708466,
+			0.0
+		],
+		"node_08": [
+			96.0,
+			2.60999989509583,
+			3.0
+		],
 		"peris": [
 			-1.6,
 			0.5,
@@ -55,10 +70,10 @@
 		{
 			"approaches": [
 				{
-					"id": "redirect_combat",
+					"id": "guarded_forage",
 					"kind": "primary",
-					"label": "Bait a combat specialist's charge into the target",
-					"min_stage": 2.0,
+					"label": "A combat member covers the open while the party splits off to harvest the remains",
+					"min_stage": 1.0,
 					"party": "specialist",
 					"requires": [
 						"combat"
@@ -66,159 +81,114 @@
 					"risk": "direct",
 					"taught_by": "",
 					"uses": [
-						"kill_enemy",
-						"destroy_barrier"
+						"rich_kill"
 					]
 				},
 				{
-					"borrows_from": "7",
-					"expert": true,
-					"id": "overlay_combustion",
-					"kind": "shadow_expert",
-					"label": "Aster predicts the charge window on the overlay and seeds a gasafoetida bloom on the impact line; the enemy demolishes the barrier with its own momentum while Peris reads it from cover",
-					"min_stage": 4.0,
-					"party": "aster_peris",
-					"requires": [
-						"overlay",
-						"timing",
-						"combustible"
-					],
-					"risk": "risky",
-					"taught_by": "charge_window_prediction",
-					"uses": []
-				},
-				{
-					"id": "overlay_cover",
+					"id": "masked_forage",
 					"kind": "shadow",
-					"label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover",
-					"min_stage": 2.0,
+					"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+					"min_stage": 1.0,
 					"party": "aster_peris",
 					"requires": [
-						"overlay",
-						"cover"
+						"flora",
+						"cover",
+						"timing"
 					],
-					"risk": "risky",
-					"taught_by": "overlay_timing",
+					"risk": "safe",
+					"taught_by": "scent_masked_dwell",
 					"uses": [
-						"reveal_plant",
-						"reveal_passage"
+						"forage_cache_station"
 					]
 				}
 			],
-			"atp_reward": 0,
+			"atp_reward": 2,
 			"chain_index": 0,
-			"chain_input": "",
-			"chain_label": "Break a brittle service barrier to expose usable flure",
-			"chain_output": "flure_exposed",
-			"composition_mode": "chain_nested_poc",
-			"composition_role": "chain_link",
+			"composition_role": "required_append",
 			"exploit_target": "",
-			"id": "1",
-			"kind": "puzzle",
-			"link_ref": "chain_00",
-			"name": "Redirected enemy aggression",
+			"id": "12",
+			"kind": "survival",
+			"name": "Lysate forage cache",
 			"pressure_cost": 0,
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Use overlay timing plus flora or scarpet cover to substitute for a combat specialist."
+				"notes": "Peris finds caches under scarpet cover while Aster times the dwell into a blind window."
 			},
-			"stage": 2,
-			"step_count": 6,
-			"survival_kind": "",
+			"stage": 1,
+			"step_count": 5,
+			"survival_kind": "forage",
 			"tags": [
-				"enemy",
-				"impact",
-				"barrier",
-				"reroute"
+				"forage",
+				"atp",
+				"lysate",
+				"resource"
 			],
-			"variant": "reveal_plant"
+			"variant": "capbage_head"
 		},
 		{
 			"approaches": [
 				{
-					"id": "force_clear",
+					"id": "draw_and_commit",
 					"kind": "primary",
-					"label": "Force the obstacle open with raw impact",
-					"min_stage": 1.0,
+					"label": "A combat member draws the Neutros to open the void while another times the commit",
+					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
-						"impact"
+						"combat"
 					],
 					"risk": "direct",
 					"taught_by": "",
 					"uses": [
-						"destroy"
+						"prey_into_neutro"
 					]
 				},
 				{
-					"borrows_from": "10",
-					"expert": true,
-					"id": "flora_chain_trap",
-					"kind": "shadow_expert",
-					"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
-					"min_stage": 5.0,
-					"party": "aster_peris",
-					"requires": [
-						"flora",
-						"lure"
-					],
-					"risk": "risky",
-					"taught_by": "nested_flora_zone",
-					"uses": []
-				},
-				{
-					"id": "flora_finesse",
+					"id": "ecology_decoy",
 					"kind": "shadow",
-					"label": "Peris grows or tends the plant tool; Aster confirms the target",
-					"min_stage": 1.0,
+					"label": "Aster reads the predator-prey clock while Peris's flure decoy herds the prey into the predator",
+					"min_stage": 3.0,
 					"party": "aster_peris",
 					"requires": [
+						"timing",
 						"flora"
 					],
-					"risk": "safe",
-					"taught_by": "flora_tending",
+					"risk": "risky",
+					"taught_by": "ecology_reading",
 					"uses": [
-						"flure_iron_decoy",
-						"hushbloom_stun",
-						"climbvine_traversal"
+						"siderophore_into_meeb"
 					]
 				}
 			],
 			"atp_reward": 0,
 			"chain_index": 1,
-			"chain_input": "flure_exposed",
-			"chain_label": "Use the exposed flure as a patrol decoy",
-			"chain_output": "patrol_diverted",
-			"composition_mode": "chain_nested_poc",
-			"composition_role": "chain_link",
-			"exploit_target": "",
-			"id": "2",
-			"kind": "puzzle",
-			"link_ref": "chain_01",
-			"name": "Plant as tool",
+			"composition_role": "required_append",
+			"exploit_target": "predator_prey",
+			"id": "13",
+			"kind": "survival",
+			"name": "Predator-exploit transit",
 			"pressure_cost": 0,
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
+				"notes": "Aster reads the ecology clock while Peris's flure decoy herds the prey into the predator."
 			},
-			"stage": 1,
+			"stage": 3,
 			"step_count": 5,
-			"survival_kind": "",
+			"survival_kind": "exploit",
 			"tags": [
-				"flora",
-				"peris",
-				"environment",
-				"enemy_routing"
+				"enemy",
+				"predator_prey",
+				"exploit",
+				"ecology"
 			],
-			"variant": "flure_iron_decoy"
+			"variant": "spiker_versus_tangler"
 		},
 		{
 			"approaches": [
 				{
-					"id": "guarded_escort",
+					"id": "hold_lanes",
 					"kind": "primary",
-					"label": "A combat specialist guards the carrier across the open",
-					"min_stage": 2.0,
+					"label": "A combat specialist holds each lane while a third member relays the party through",
+					"min_stage": 4.0,
 					"party": "specialist",
 					"requires": [
 						"combat"
@@ -226,30 +196,55 @@
 					"risk": "direct",
 					"taught_by": "",
 					"uses": [
-						"critical_resource"
+						"mixed_families"
 					]
 				},
 				{
-					"borrows_from": "5",
-					"expert": true,
-					"id": "split_carry",
-					"kind": "shadow_expert",
-					"label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
-					"min_stage": 3.0,
+					"id": "timed_run",
+					"kind": "shadow",
+					"label": "Aster sequences the lane gaps into a single timed run while Peris lays scarpet and capbage relays",
+					"min_stage": 4.0,
 					"party": "aster_peris",
 					"requires": [
-						"carry",
-						"cover",
-						"data"
+						"timing",
+						"cover"
 					],
 					"risk": "risky",
-					"taught_by": "split_carry",
-					"uses": []
-				},
+					"taught_by": "lane_gap_sequencing",
+					"uses": [
+						"patrol_lanes"
+					]
+				}
+			],
+			"atp_reward": 0,
+			"chain_index": 2,
+			"composition_role": "required_append",
+			"exploit_target": "",
+			"id": "14",
+			"kind": "survival",
+			"name": "Enemy-configuration gauntlet",
+			"pressure_cost": 2,
+			"shadow_solution": {
+				"aster_peris": true,
+				"notes": "Aster sequences the lane gaps into one timed run; Peris lays scarpet and capbage relays."
+			},
+			"stage": 4,
+			"step_count": 5,
+			"survival_kind": "gauntlet",
+			"tags": [
+				"enemy",
+				"gauntlet",
+				"attrition",
+				"lanes"
+			],
+			"variant": "mixed_families"
+		},
+		{
+			"approaches": [
 				{
-					"id": "endo_lane",
+					"id": "insulated_lane",
 					"kind": "primary",
-					"label": "Endo bridges or repairs a protected carry lane",
+					"label": "Endo's junction-repair builds a protected low-dose lane across the field",
 					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
@@ -258,345 +253,71 @@
 					"risk": "safe",
 					"taught_by": "",
 					"uses": [
-						"cure_component"
+						"iron_bloom"
 					]
 				},
 				{
-					"id": "drag_mask",
+					"id": "budget_or_detour",
 					"kind": "shadow",
-					"label": "Drag the load along scarpet-masked routes with slow recovery windows",
+					"label": "Aster computes the damage budget for a fast crossing, or the pair takes the safe-slow detour and pays time instead of HP",
 					"min_stage": 2.0,
 					"party": "aster_peris",
 					"requires": [
-						"carry",
-						"cover"
+						"timing"
 					],
 					"risk": "risky",
-					"taught_by": "drag_routes",
+					"taught_by": "dose_budgeting",
 					"uses": [
-						"puzzle_piece"
-					]
-				}
-			],
-			"atp_reward": 0,
-			"chain_index": 2,
-			"chain_input": "patrol_diverted",
-			"chain_label": "Carry the shelter component through the diverted patrol lane",
-			"chain_output": "carry_component_secured",
-			"composition_mode": "chain_nested_poc",
-			"composition_role": "chain_link",
-			"exploit_target": "",
-			"id": "3",
-			"kind": "puzzle",
-			"link_ref": "chain_02",
-			"name": "Carry the heavy thing",
-			"pressure_cost": 0,
-			"shadow_solution": {
-				"aster_peris": true,
-				"notes": "Use drag routes, scarpet masking, and slower recovery windows."
-			},
-			"stage": 2,
-			"step_count": 5,
-			"survival_kind": "",
-			"tags": [
-				"carry",
-				"escort",
-				"vulnerability",
-				"resource"
-			],
-			"variant": "critical_resource"
-		},
-		{
-			"approaches": [
-				{
-					"id": "combat_retrieval",
-					"kind": "primary",
-					"label": "Fight through to retrieve the scattered fragments",
-					"min_stage": 3.0,
-					"party": "specialist",
-					"requires": [
-						"combat"
-					],
-					"risk": "direct",
-					"taught_by": "",
-					"uses": [
-						"combat_retrieval"
-					]
-				},
-				{
-					"borrows_from": "8",
-					"expert": true,
-					"id": "terminal_cache_recall",
-					"kind": "shadow_expert",
-					"label": "Skip the scavenger hunt: Aster pulls the missing fragment from an AST terminal's cached records, reconstructing the whole from the network",
-					"min_stage": 3.0,
-					"party": "aster_peris",
-					"requires": [
-						"terminal",
-						"scan",
-						"data"
-					],
-					"risk": "risky",
-					"taught_by": "terminal_cache_recall",
-					"uses": []
-				},
-				{
-					"id": "scan_preserve",
-					"kind": "shadow",
-					"label": "Aster reads the hidden overlay structure; Peris preserves the relational context",
-					"min_stage": 3.0,
-					"party": "aster_peris",
-					"requires": [
-						"scan",
-						"flora"
-					],
-					"risk": "safe",
-					"taught_by": "overlay_reading",
-					"uses": [
-						"hidden_overlay",
-						"memory_pressure"
+						"atmospheric"
 					]
 				}
 			],
 			"atp_reward": 0,
 			"chain_index": 3,
-			"chain_input": "carry_component_secured",
-			"chain_label": "Reconstruct the return map from carried fragments",
-			"chain_output": "shelter_route_reassembled",
-			"composition_mode": "chain_nested_poc",
-			"composition_role": "chain_link",
-			"exploit_target": "",
-			"id": "6",
-			"kind": "puzzle",
-			"link_ref": "chain_03",
-			"name": "Pattern reconstruction",
-			"pressure_cost": 0,
-			"shadow_solution": {
-				"aster_peris": true,
-				"notes": "Aster finds hidden structure; Peris preserves relational or flora context."
-			},
-			"stage": 3,
-			"step_count": 5,
-			"survival_kind": "",
-			"tags": [
-				"fragments",
-				"memory",
-				"map",
-				"assembly"
-			],
-			"variant": "flow_diagram"
-		},
-		{
-			"approaches": [
-				{
-					"id": "loud_draw",
-					"kind": "primary",
-					"label": "Draw the patrol with a loud combat action",
-					"min_stage": 3.0,
-					"party": "specialist",
-					"requires": [
-						"combat"
-					],
-					"risk": "direct",
-					"taught_by": "",
-					"uses": [
-						"loud_action"
-					]
-				},
-				{
-					"borrows_from": "6",
-					"expert": true,
-					"id": "false_pattern_spoof",
-					"kind": "shadow_expert",
-					"label": "Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for",
-					"min_stage": 3.0,
-					"party": "aster_peris",
-					"requires": [
-						"signal",
-						"overlay",
-						"scan"
-					],
-					"risk": "risky",
-					"taught_by": "false_pattern_spoof",
-					"uses": []
-				},
-				{
-					"id": "signal_split",
-					"kind": "shadow",
-					"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
-					"min_stage": 3.0,
-					"party": "aster_peris",
-					"requires": [
-						"electrical",
-						"flora"
-					],
-					"risk": "safe",
-					"taught_by": "signal_decoy",
-					"uses": [
-						"electrical_signature",
-						"plant_tending_task"
-					]
-				}
-			],
-			"atp_reward": 0,
-			"chain_index": 4,
 			"composition_role": "required_append",
 			"exploit_target": "",
-			"id": "4",
-			"kind": "puzzle",
-			"name": "Distract the patrol",
-			"pressure_cost": 0,
+			"id": "15",
+			"kind": "survival",
+			"name": "Attrition-field crossing",
+			"pressure_cost": 2,
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Aster provides electrical/data distraction while Peris performs the physical or flora task."
+				"notes": "Aster computes the damage budget for a short crossing, or the pair takes the safe-slow detour and pays time, not HP."
 			},
-			"stage": 3,
-			"step_count": 8,
-			"survival_kind": "",
+			"stage": 2,
+			"step_count": 5,
+			"survival_kind": "hazard",
 			"tags": [
-				"patrol",
-				"distraction",
-				"coordination",
-				"timing"
+				"hazard",
+				"iron_bloom",
+				"attrition",
+				"crossing"
 			],
-			"variant": "terminal_task"
+			"variant": "biofilm_mat"
 		}
 	],
 	"budget": {
-		"archetype_depth": 5,
-		"branch_count": 1,
-		"enemy_slots": 2,
-		"flora_slots": 3,
-		"node_count": 7,
-		"optional_node_count": 1,
-		"pressure_budget": 2,
-		"resource_beats": 1,
-		"shortcut_count": 1,
+		"archetype_depth": 4,
+		"branch_count": 2,
+		"enemy_slots": 3,
+		"flora_slots": 4,
+		"node_count": 10,
+		"optional_node_count": 2,
+		"pressure_budget": 3,
+		"resource_beats": 2,
+		"shortcut_count": 2,
 		"structures_slots": 5
 	},
 	"composition": {
-		"chain": [
-			{
-				"chain_index": 0,
-				"id": "1",
-				"input": "",
-				"label": "Break a brittle service barrier to expose usable flure",
-				"output": "flure_exposed",
-				"ref": "chain_00",
-				"role": "chain",
-				"variant": "reveal_plant"
-			},
-			{
-				"chain_index": 1,
-				"id": "2",
-				"input": "flure_exposed",
-				"label": "Use the exposed flure as a patrol decoy",
-				"output": "patrol_diverted",
-				"ref": "chain_01",
-				"role": "chain",
-				"variant": "flure_iron_decoy"
-			},
-			{
-				"chain_index": 2,
-				"id": "3",
-				"input": "patrol_diverted",
-				"label": "Carry the shelter component through the diverted patrol lane",
-				"output": "carry_component_secured",
-				"ref": "chain_02",
-				"role": "chain",
-				"variant": "critical_resource"
-			},
-			{
-				"chain_index": 3,
-				"id": "6",
-				"input": "carry_component_secured",
-				"label": "Reconstruct the return map from carried fragments",
-				"output": "shelter_route_reassembled",
-				"ref": "chain_03",
-				"role": "chain",
-				"variant": "flow_diagram"
-			}
-		],
+		"chain": [],
 		"chain_count": 4,
-		"has_nested": true,
-		"host_nodes": [
-			"node_03",
-			"node_04",
-			"node_05"
-		],
-		"links": [
-			{
-				"feeds_next": true,
-				"from_archetype": "1",
-				"from_chain_index": 0,
-				"input": "flure_exposed",
-				"output": "flure_exposed",
-				"to_archetype": "2",
-				"to_chain_index": 1
-			},
-			{
-				"feeds_next": true,
-				"from_archetype": "2",
-				"from_chain_index": 1,
-				"input": "patrol_diverted",
-				"output": "patrol_diverted",
-				"to_archetype": "3",
-				"to_chain_index": 2
-			},
-			{
-				"feeds_next": true,
-				"from_archetype": "3",
-				"from_chain_index": 2,
-				"input": "carry_component_secured",
-				"output": "carry_component_secured",
-				"to_archetype": "6",
-				"to_chain_index": 3
-			}
-		],
-		"mode": "chain_nested_poc",
-		"nested": [
-			{
-				"depth": 1,
-				"host_id": "3",
-				"host_step": 4,
-				"id": "4",
-				"input": "carry_component_secured",
-				"label": "Carrier hazard is managed as a patrol distraction",
-				"output": "carrier_window_opened",
-				"parent_ref": "",
-				"ref": "nested_00",
-				"role": "nested",
-				"variant": "false_scent"
-			},
-			{
-				"depth": 1,
-				"host_id": "4",
-				"host_step": 5,
-				"id": "2",
-				"input": "carrier_window_opened",
-				"label": "The distraction trigger is a plant tending task",
-				"output": "patrol_staggered",
-				"parent_ref": "",
-				"ref": "nested_00_00",
-				"role": "nested",
-				"variant": "hushbloom_stun"
-			},
-			{
-				"depth": 1,
-				"host_id": "6",
-				"host_step": 3,
-				"id": "3",
-				"input": "fragment_found",
-				"label": "Each map fragment is a vulnerable carry beat",
-				"output": "fragment_delivered",
-				"parent_ref": "",
-				"ref": "nested_01",
-				"role": "nested",
-				"variant": "information_artifact"
-			}
-		],
-		"nested_count": 3,
-		"nested_depth": 1,
+		"has_nested": false,
+		"host_nodes": [],
+		"links": [],
+		"mode": "",
+		"nested": [],
+		"nested_count": 0,
+		"nested_depth": 0,
 		"random_walk": {
 
 		},
@@ -607,14 +328,14 @@
 	"graybox": {
 		"bounds": {
 			"center": [
-				36.2999992370605,
-				2.75999999046326,
-				-0.149999856948853
+				54.2999992370605,
+				3.125,
+				-0.0499999523162842
 			],
 			"max": [
-				76.5999984741211,
-				5.15999984741211,
-				6.40000009536743
+				112.599998474121,
+				5.8899998664856,
+				6.59999990463257
 			],
 			"min": [
 				-4.0,
@@ -622,29 +343,30 @@
 				-6.69999980926514
 			],
 			"size": [
-				80.5999984741211,
-				4.79999971389771,
-				13.1000003814697
+				116.599998474121,
+				5.52999973297119,
+				13.2999992370605
 			]
 		},
-		"content_placement_count": 16,
+		"content_placement_count": 23,
 		"contract_id": "generated_stretch_graybox_v1",
-		"elevation_count": 3,
+		"elevation_count": 4,
 		"elevation_indices": [
 			0,
 			1,
-			2
+			2,
+			3
 		],
 		"elevation_step": 0.72,
 		"navigation_contract_id": "multi_level_navigation_graph_v1",
-		"navigation_edge_count": 9,
-		"navigation_node_count": 7,
-		"node_surface_count": 7,
-		"route_surface_count": 9,
+		"navigation_edge_count": 13,
+		"navigation_node_count": 10,
+		"node_surface_count": 10,
+		"route_surface_count": 13,
 		"source": {
-			"complexity_tier": "standard",
-			"node_budget": 7,
-			"spec_id": "generated_chain_nested_poc_shelter_2_to_3"
+			"complexity_tier": "hard",
+			"node_budget": 10,
+			"spec_id": "generated_sample_survival_run"
 		},
 		"supports_click_to_move": true,
 		"supports_multiple_elevations": true,
@@ -659,6 +381,8 @@
 			"node_02",
 			"node_04",
 			"node_05",
+			"node_07",
+			"node_08",
 			"exit_shelter"
 		],
 		"risky_recovery": [
@@ -679,13 +403,13 @@
 						"role": "boundary"
 					},
 					{
-						"approach_id": "redirect_combat",
+						"approach_id": "guarded_forage",
 						"blocked": false,
 						"borrows_from": "",
 						"expert": false,
 						"kind": "primary",
-						"label": "Bait a combat specialist's charge into the target",
-						"min_stage": 2,
+						"label": "A combat member covers the open while the party splits off to harvest the remains",
+						"min_stage": 1,
 						"node": "node_01",
 						"party": "specialist",
 						"requires": [
@@ -696,39 +420,38 @@
 						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
-							"kill_enemy",
-							"destroy_barrier"
+							"rich_kill"
 						]
 					},
 					{
-						"approach_id": "force_clear",
+						"approach_id": "draw_and_commit",
 						"blocked": false,
 						"borrows_from": "",
 						"expert": false,
 						"kind": "primary",
-						"label": "Force the obstacle open with raw impact",
-						"min_stage": 1,
+						"label": "A combat member draws the Neutros to open the void while another times the commit",
+						"min_stage": 3,
 						"node": "node_02",
 						"party": "specialist",
 						"requires": [
-							"impact"
+							"combat"
 						],
 						"risk": "direct",
 						"role": "route_pressure",
 						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
-							"destroy"
+							"prey_into_neutro"
 						]
 					},
 					{
-						"approach_id": "guarded_escort",
+						"approach_id": "hold_lanes",
 						"blocked": false,
 						"borrows_from": "",
 						"expert": false,
 						"kind": "primary",
-						"label": "A combat specialist guards the carrier across the open",
-						"min_stage": 2,
+						"label": "A combat specialist holds each lane while a third member relays the party through",
+						"min_stage": 4,
 						"node": "node_03",
 						"party": "specialist",
 						"requires": [
@@ -739,38 +462,38 @@
 						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
-							"critical_resource"
+							"mixed_families"
 						]
 					},
 					{
-						"approach_id": "combat_retrieval",
+						"approach_id": "insulated_lane",
 						"blocked": false,
 						"borrows_from": "",
 						"expert": false,
 						"kind": "primary",
-						"label": "Fight through to retrieve the scattered fragments",
-						"min_stage": 3,
+						"label": "Endo's junction-repair builds a protected low-dose lane across the field",
+						"min_stage": 2,
 						"node": "node_04",
 						"party": "specialist",
 						"requires": [
-							"combat"
+							"barrier"
 						],
-						"risk": "direct",
+						"risk": "safe",
 						"role": "danger",
 						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
-							"combat_retrieval"
+							"iron_bloom"
 						]
 					},
 					{
-						"approach_id": "loud_draw",
+						"approach_id": "guarded_forage",
 						"blocked": false,
 						"borrows_from": "",
 						"expert": false,
 						"kind": "primary",
-						"label": "Draw the patrol with a loud combat action",
-						"min_stage": 3,
+						"label": "A combat member covers the open while the party splits off to harvest the remains",
+						"min_stage": 1,
 						"node": "node_05",
 						"party": "specialist",
 						"requires": [
@@ -781,7 +504,70 @@
 						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
-							"loud_action"
+							"rich_kill"
+						]
+					},
+					{
+						"approach_id": "draw_and_commit",
+						"blocked": false,
+						"borrows_from": "",
+						"expert": false,
+						"kind": "primary",
+						"label": "A combat member draws the Neutros to open the void while another times the commit",
+						"min_stage": 3,
+						"node": "node_06",
+						"party": "specialist",
+						"requires": [
+							"combat"
+						],
+						"risk": "direct",
+						"role": "mixed",
+						"stage_ahead": false,
+						"taught_by": "",
+						"uses": [
+							"prey_into_neutro"
+						]
+					},
+					{
+						"approach_id": "hold_lanes",
+						"blocked": false,
+						"borrows_from": "",
+						"expert": false,
+						"kind": "primary",
+						"label": "A combat specialist holds each lane while a third member relays the party through",
+						"min_stage": 4,
+						"node": "node_07",
+						"party": "specialist",
+						"requires": [
+							"combat"
+						],
+						"risk": "direct",
+						"role": "regroup",
+						"stage_ahead": false,
+						"taught_by": "",
+						"uses": [
+							"mixed_families"
+						]
+					},
+					{
+						"approach_id": "insulated_lane",
+						"blocked": false,
+						"borrows_from": "",
+						"expert": false,
+						"kind": "primary",
+						"label": "Endo's junction-repair builds a protected low-dose lane across the field",
+						"min_stage": 2,
+						"node": "node_08",
+						"party": "specialist",
+						"requires": [
+							"barrier"
+						],
+						"risk": "safe",
+						"role": "setpiece",
+						"stage_ahead": false,
+						"taught_by": "",
+						"uses": [
+							"iron_bloom"
 						]
 					},
 					{
@@ -798,7 +584,7 @@
 				"blocked_nodes": [],
 				"label": "Full party",
 				"loadout": "spotlight",
-				"max_stage_used": 3,
+				"max_stage_used": 4,
 				"party": [
 					"aster",
 					"peris",
@@ -806,7 +592,7 @@
 				],
 				"solvable": true,
 				"techniques": [],
-				"total_risk": 5,
+				"total_risk": 6,
 				"uses_future_technique": false,
 				"within_stage": true
 			},
@@ -823,113 +609,180 @@
 						"role": "boundary"
 					},
 					{
-						"approach_id": "overlay_cover",
+						"approach_id": "masked_forage",
 						"blocked": false,
 						"borrows_from": "",
 						"expert": false,
 						"kind": "shadow",
-						"label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover",
-						"min_stage": 2,
+						"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+						"min_stage": 1,
 						"node": "node_01",
 						"party": "aster_peris",
 						"requires": [
-							"overlay",
-							"cover"
+							"flora",
+							"cover",
+							"timing"
 						],
-						"risk": "risky",
+						"risk": "safe",
 						"role": "guidance",
 						"stage_ahead": false,
-						"taught_by": "overlay_timing",
+						"taught_by": "scent_masked_dwell",
 						"uses": [
-							"reveal_plant",
-							"reveal_passage"
+							"forage_cache_station"
 						]
 					},
 					{
-						"approach_id": "flora_finesse",
+						"approach_id": "ecology_decoy",
 						"blocked": false,
 						"borrows_from": "",
 						"expert": false,
 						"kind": "shadow",
-						"label": "Peris grows or tends the plant tool; Aster confirms the target",
-						"min_stage": 1,
+						"label": "Aster reads the predator-prey clock while Peris's flure decoy herds the prey into the predator",
+						"min_stage": 3,
 						"node": "node_02",
 						"party": "aster_peris",
 						"requires": [
+							"timing",
 							"flora"
 						],
-						"risk": "safe",
+						"risk": "risky",
 						"role": "route_pressure",
 						"stage_ahead": false,
-						"taught_by": "flora_tending",
+						"taught_by": "ecology_reading",
 						"uses": [
-							"flure_iron_decoy",
-							"hushbloom_stun",
-							"climbvine_traversal"
+							"siderophore_into_meeb"
 						]
 					},
 					{
-						"approach_id": "split_carry",
+						"approach_id": "timed_run",
 						"blocked": false,
-						"borrows_from": "5",
-						"expert": true,
-						"kind": "shadow_expert",
-						"label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
-						"min_stage": 3,
+						"borrows_from": "",
+						"expert": false,
+						"kind": "shadow",
+						"label": "Aster sequences the lane gaps into a single timed run while Peris lays scarpet and capbage relays",
+						"min_stage": 4,
 						"node": "node_03",
 						"party": "aster_peris",
 						"requires": [
-							"carry",
-							"cover",
-							"data"
+							"timing",
+							"cover"
 						],
 						"risk": "risky",
 						"role": "foraging",
 						"stage_ahead": false,
-						"taught_by": "split_carry",
-						"uses": []
+						"taught_by": "lane_gap_sequencing",
+						"uses": [
+							"patrol_lanes"
+						]
 					},
 					{
-						"approach_id": "terminal_cache_recall",
+						"approach_id": "budget_or_detour",
 						"blocked": false,
-						"borrows_from": "8",
-						"expert": true,
-						"kind": "shadow_expert",
-						"label": "Skip the scavenger hunt: Aster pulls the missing fragment from an AST terminal's cached records, reconstructing the whole from the network",
-						"min_stage": 3,
+						"borrows_from": "",
+						"expert": false,
+						"kind": "shadow",
+						"label": "Aster computes the damage budget for a fast crossing, or the pair takes the safe-slow detour and pays time instead of HP",
+						"min_stage": 2,
 						"node": "node_04",
 						"party": "aster_peris",
 						"requires": [
-							"terminal",
-							"scan",
-							"data"
+							"timing"
 						],
 						"risk": "risky",
 						"role": "danger",
 						"stage_ahead": false,
-						"taught_by": "terminal_cache_recall",
-						"uses": []
+						"taught_by": "dose_budgeting",
+						"uses": [
+							"atmospheric"
+						]
 					},
 					{
-						"approach_id": "false_pattern_spoof",
+						"approach_id": "masked_forage",
 						"blocked": false,
-						"borrows_from": "6",
-						"expert": true,
-						"kind": "shadow_expert",
-						"label": "Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for",
-						"min_stage": 3,
+						"borrows_from": "",
+						"expert": false,
+						"kind": "shadow",
+						"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+						"min_stage": 1,
 						"node": "node_05",
 						"party": "aster_peris",
 						"requires": [
-							"signal",
-							"overlay",
-							"scan"
+							"flora",
+							"cover",
+							"timing"
 						],
-						"risk": "risky",
+						"risk": "safe",
 						"role": "shortcut",
 						"stage_ahead": false,
-						"taught_by": "false_pattern_spoof",
-						"uses": []
+						"taught_by": "scent_masked_dwell",
+						"uses": [
+							"forage_cache_station"
+						]
+					},
+					{
+						"approach_id": "ecology_decoy",
+						"blocked": false,
+						"borrows_from": "",
+						"expert": false,
+						"kind": "shadow",
+						"label": "Aster reads the predator-prey clock while Peris's flure decoy herds the prey into the predator",
+						"min_stage": 3,
+						"node": "node_06",
+						"party": "aster_peris",
+						"requires": [
+							"timing",
+							"flora"
+						],
+						"risk": "risky",
+						"role": "mixed",
+						"stage_ahead": false,
+						"taught_by": "ecology_reading",
+						"uses": [
+							"siderophore_into_meeb"
+						]
+					},
+					{
+						"approach_id": "timed_run",
+						"blocked": false,
+						"borrows_from": "",
+						"expert": false,
+						"kind": "shadow",
+						"label": "Aster sequences the lane gaps into a single timed run while Peris lays scarpet and capbage relays",
+						"min_stage": 4,
+						"node": "node_07",
+						"party": "aster_peris",
+						"requires": [
+							"timing",
+							"cover"
+						],
+						"risk": "risky",
+						"role": "regroup",
+						"stage_ahead": false,
+						"taught_by": "lane_gap_sequencing",
+						"uses": [
+							"patrol_lanes"
+						]
+					},
+					{
+						"approach_id": "budget_or_detour",
+						"blocked": false,
+						"borrows_from": "",
+						"expert": false,
+						"kind": "shadow",
+						"label": "Aster computes the damage budget for a fast crossing, or the pair takes the safe-slow detour and pays time instead of HP",
+						"min_stage": 2,
+						"node": "node_08",
+						"party": "aster_peris",
+						"requires": [
+							"timing"
+						],
+						"risk": "risky",
+						"role": "setpiece",
+						"stage_ahead": false,
+						"taught_by": "dose_budgeting",
+						"uses": [
+							"atmospheric"
+						]
 					},
 					{
 						"approach_id": "traverse",
@@ -945,51 +798,53 @@
 				"blocked_nodes": [],
 				"label": "Aster + Peris (shadow)",
 				"loadout": "shadow",
-				"max_stage_used": 3,
+				"max_stage_used": 4,
 				"party": [
 					"aster",
 					"peris"
 				],
 				"solvable": true,
 				"techniques": [
-					"overlay_timing",
-					"flora_tending",
-					"split_carry",
-					"terminal_cache_recall",
-					"false_pattern_spoof"
+					"scent_masked_dwell",
+					"ecology_reading",
+					"lane_gap_sequencing",
+					"dose_budgeting"
 				],
-				"total_risk": 8,
+				"total_risk": 12,
 				"uses_future_technique": false,
 				"within_stage": true
 			}
 		],
 		"solution_summary": {
 			"bare_pair_solvable": true,
-			"choice_node_count": 4,
+			"choice_node_count": 6,
 			"choice_nodes": [
 				"node_01",
 				"node_02",
 				"node_04",
-				"node_05"
+				"node_05",
+				"node_07",
+				"node_08"
 			],
-			"distinct_node_count": 4,
+			"distinct_node_count": 6,
 			"distinct_nodes": [
 				"node_01",
 				"node_02",
 				"node_04",
-				"node_05"
+				"node_05",
+				"node_07",
+				"node_08"
 			],
 			"multi_solution": true,
 			"multi_solution_ok": true,
-			"multi_solution_required": false,
-			"progression_stage": 3,
+			"multi_solution_required": true,
+			"progression_stage": 4,
 			"shadow_solvable": true,
 			"shadow_techniques": [
-				"overlay_timing",
-				"flora_tending",
-				"split_carry",
-				"terminal_cache_recall",
-				"false_pattern_spoof"
+				"scent_masked_dwell",
+				"ecology_reading",
+				"lane_gap_sequencing",
+				"dose_budgeting"
 			],
 			"shadow_uses_future_technique": false,
 			"solvable_loadout_count": 2,
@@ -1009,7 +864,7 @@
 			"chunk.generation.blocked_nodes"
 		]
 	},
-	"id": "generated_chain_nested_poc_shelter_2_to_3",
+	"id": "generated_sample_survival_run",
 	"navigation": {
 		"contract_id": "multi_level_navigation_graph_v1",
 		"edges": [
@@ -1196,7 +1051,7 @@
 				"risk_penalty": 0.0,
 				"route_id": "main_05_06",
 				"slope_ratio": -0.107331264981121,
-				"to": "exit_shelter",
+				"to": "node_06",
 				"traversal": "ramp",
 				"waypoints": [
 					[
@@ -1211,6 +1066,108 @@
 					],
 					[
 						72.0,
+						0.449999988079071,
+						-3.0
+					]
+				],
+				"width": 1.85
+			},
+			{
+				"bidirectional": true,
+				"from": "node_06",
+				"height_delta": 0.719999969005585,
+				"id": "main_06_07",
+				"kind": "safe",
+				"path_cost": 12.3902540206909,
+				"physical_cost": 12.3902540206909,
+				"recoverable": true,
+				"risk": "safe",
+				"risk_penalty": 0.0,
+				"route_id": "main_06_07",
+				"slope_ratio": 0.0582085466658145,
+				"to": "node_07",
+				"traversal": "ramp",
+				"waypoints": [
+					[
+						72.0,
+						0.449999988079071,
+						-3.0
+					],
+					[
+						78.0,
+						0.809999942779541,
+						-1.5
+					],
+					[
+						84.0,
+						1.16999995708466,
+						0.0
+					]
+				],
+				"width": 1.85
+			},
+			{
+				"bidirectional": true,
+				"from": "node_07",
+				"height_delta": 1.43999993801117,
+				"id": "main_07_08",
+				"kind": "safe",
+				"path_cost": 12.4528551101685,
+				"physical_cost": 12.4528551101685,
+				"recoverable": true,
+				"risk": "safe",
+				"risk_penalty": 0.0,
+				"route_id": "main_07_08",
+				"slope_ratio": 0.116417093331629,
+				"to": "node_08",
+				"traversal": "ramp",
+				"waypoints": [
+					[
+						84.0,
+						1.16999995708466,
+						0.0
+					],
+					[
+						90.0,
+						1.8899998664856,
+						1.5
+					],
+					[
+						96.0,
+						2.60999989509583,
+						3.0
+					]
+				],
+				"width": 1.85
+			},
+			{
+				"bidirectional": true,
+				"from": "node_08",
+				"height_delta": -2.15999990701675,
+				"id": "main_08_09",
+				"kind": "safe",
+				"path_cost": 13.5891723632813,
+				"physical_cost": 13.5891723632813,
+				"recoverable": true,
+				"risk": "safe",
+				"risk_penalty": 0.0,
+				"route_id": "main_08_09",
+				"slope_ratio": -0.160996890807679,
+				"to": "exit_shelter",
+				"traversal": "ramp",
+				"waypoints": [
+					[
+						96.0,
+						2.60999989509583,
+						3.0
+					],
+					[
+						102.0,
+						1.52999997138977,
+						0.0
+					],
+					[
+						108.0,
 						0.449999988079071,
 						-3.0
 					]
@@ -1253,12 +1210,46 @@
 			},
 			{
 				"bidirectional": true,
+				"from": "node_05",
+				"height_delta": -0.720000028610229,
+				"id": "optional_bypass_05_07",
+				"kind": "safe",
+				"path_cost": 24.1974868774414,
+				"physical_cost": 24.1974868774414,
+				"recoverable": true,
+				"risk": "safe",
+				"risk_penalty": 0.0,
+				"route_id": "optional_bypass_05_07",
+				"slope_ratio": -0.0297683374162664,
+				"to": "node_07",
+				"traversal": "ramp",
+				"waypoints": [
+					[
+						60.0,
+						1.88999998569489,
+						3.0
+					],
+					[
+						72.0,
+						1.52999997138977,
+						1.5
+					],
+					[
+						84.0,
+						1.16999995708466,
+						0.0
+					]
+				],
+				"width": 1.35
+			},
+			{
+				"bidirectional": true,
 				"from": "entry",
 				"height_delta": 0.0,
 				"id": "risky_direct",
 				"kind": "risky",
-				"path_cost": 100.0,
-				"physical_cost": 72.0,
+				"path_cost": 136.0,
+				"physical_cost": 108.0,
 				"recoverable": true,
 				"risk": "risky",
 				"risk_penalty": 28.0,
@@ -1273,12 +1264,12 @@
 						-3.0
 					],
 					[
-						36.0,
+						54.0,
 						0.449999988079071,
 						-3.0
 					],
 					[
-						72.0,
+						108.0,
 						0.449999988079071,
 						-3.0
 					]
@@ -1287,28 +1278,28 @@
 			},
 			{
 				"bidirectional": true,
-				"from": "node_05",
-				"height_delta": -1.43999999761581,
+				"from": "node_08",
+				"height_delta": -2.15999990701675,
 				"id": "return_shortcut",
 				"kind": "shortcut",
-				"path_cost": 64.3164443969727,
-				"physical_cost": 60.3164443969727,
+				"path_cost": 100.211570739746,
+				"physical_cost": 96.2115707397461,
 				"recoverable": true,
 				"risk": "shortcut",
 				"risk_penalty": 4.0,
 				"route_id": "return_shortcut",
-				"slope_ratio": -0.0238808918742655,
+				"slope_ratio": -0.0224561821324653,
 				"to": "entry",
 				"traversal": "ramp",
 				"waypoints": [
 					[
-						60.0,
-						1.88999998569489,
+						96.0,
+						2.60999989509583,
 						3.0
 					],
 					[
-						30.0,
-						1.16999995708466,
+						48.0,
+						1.52999997138977,
 						0.0
 					],
 					[
@@ -1323,7 +1314,8 @@
 		"elevation_indices": [
 			0,
 			1,
-			2
+			2,
+			3
 		],
 		"entry_anchor": "entry",
 		"entry_node": "entry",
@@ -1412,12 +1404,51 @@
 				"floors": [
 					{
 						"elevation_index": 0,
-						"node_id": "exit_shelter",
+						"node_id": "node_06",
 						"y": 0.449999988079071
 					}
 				],
 				"xz": [
 					72.0,
+					-3.0
+				]
+			},
+			{
+				"floors": [
+					{
+						"elevation_index": 1,
+						"node_id": "node_07",
+						"y": 1.16999995708466
+					}
+				],
+				"xz": [
+					84.0,
+					0.0
+				]
+			},
+			{
+				"floors": [
+					{
+						"elevation_index": 3,
+						"node_id": "node_08",
+						"y": 2.60999989509583
+					}
+				],
+				"xz": [
+					96.0,
+					3.0
+				]
+			},
+			{
+				"floors": [
+					{
+						"elevation_index": 0,
+						"node_id": "exit_shelter",
+						"y": 0.449999988079071
+					}
+				],
+				"xz": [
+					108.0,
 					-3.0
 				]
 			}
@@ -1428,6 +1459,8 @@
 			"node_02",
 			"node_04",
 			"node_05",
+			"node_07",
+			"node_08",
 			"exit_shelter"
 		],
 		"max_snap_distance": 9.0,
@@ -1553,6 +1586,66 @@
 				"surface_y": 1.89
 			},
 			{
+				"content_count": 3,
+				"elevation_index": 0,
+				"floor_size": [
+					5.59999990463257,
+					0.140000000596046,
+					4.59999990463257
+				],
+				"id": "node_06",
+				"position": [
+					72.0,
+					0.449999988079071,
+					-3.0
+				],
+				"radius": 2.79999995231628,
+				"role": "mixed",
+				"supports_click_to_move": true,
+				"surface_id": "node:node_06",
+				"surface_y": 0.45
+			},
+			{
+				"content_count": 2,
+				"elevation_index": 1,
+				"floor_size": [
+					5.19999980926514,
+					0.140000000596046,
+					4.19999980926514
+				],
+				"id": "node_07",
+				"position": [
+					84.0,
+					1.16999995708466,
+					0.0
+				],
+				"radius": 2.59999990463257,
+				"role": "regroup",
+				"supports_click_to_move": true,
+				"surface_id": "node:node_07",
+				"surface_y": 1.17
+			},
+			{
+				"content_count": 2,
+				"elevation_index": 3,
+				"floor_size": [
+					6.59999990463257,
+					0.159999996423721,
+					5.19999980926514
+				],
+				"id": "node_08",
+				"position": [
+					96.0,
+					2.60999989509583,
+					3.0
+				],
+				"radius": 3.29999995231628,
+				"role": "setpiece",
+				"supports_click_to_move": true,
+				"surface_id": "node:node_08",
+				"surface_y": 2.61
+			},
+			{
 				"content_count": 2,
 				"elevation_index": 0,
 				"floor_size": [
@@ -1562,7 +1655,7 @@
 				],
 				"id": "exit_shelter",
 				"position": [
-					72.0,
+					108.0,
 					0.449999988079071,
 					-3.0
 				],
@@ -1578,11 +1671,11 @@
 			"direct"
 		],
 		"source": {
-			"complexity_tier": "standard",
+			"complexity_tier": "hard",
 			"generator": "archetype_based_stretch_v1",
-			"spec_id": "generated_chain_nested_poc_shelter_2_to_3"
+			"spec_id": "generated_sample_survival_run"
 		},
-		"space_id": "generated_chain_nested_poc_shelter_2_to_3",
+		"space_id": "generated_sample_survival_run",
 		"supports_multiple_elevations": true
 	},
 	"nodes": [
@@ -1604,25 +1697,25 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "flure",
-					"label": "flure",
+					"id": "scarpet",
+					"label": "scarpet",
 					"local_offset": [
 						-2.13000011444092,
-						0.725000023841858,
+						0.0799999982118607,
 						-0.923999965190887
 					],
 					"position": [
 						-2.13000011444092,
-						1.17499995231628,
+						0.529999971389771,
 						-3.92400002479553
 					],
-					"role": "puzzle_flora",
+					"role": "cover",
 					"rotation_y_degrees": -11.0,
-					"shape": "plant_cluster",
+					"shape": "mat",
 					"size": [
-						1.79999995231628,
-						1.45000004768372,
-						1.79999995231628
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
 					],
 					"support": "implemented"
 				},
@@ -1661,7 +1754,7 @@
 				4.19999980926514
 			],
 			"flora": [
-				"flure"
+				"scarpet"
 			],
 			"footprint": [
 				6.0,
@@ -1688,9 +1781,7 @@
 			"resource_beat": false,
 			"role": "boundary",
 			"shadow_solution": {
-				"aster": "Read the patrol timing and confirm which plant effect is safe to trigger.",
-				"endo": "Marks the return shortcut and stabilizes the carried shelter component.",
-				"peris": "Tend the flure and hushbloom so the carrier never needs a combat-only solution."
+
 			},
 			"shortcut": false,
 			"stage": 1,
@@ -1715,10 +1806,10 @@
 			],
 			"approaches": [
 				{
-					"id": "redirect_combat",
+					"id": "guarded_forage",
 					"kind": "primary",
-					"label": "Bait a combat specialist's charge into the target",
-					"min_stage": 2.0,
+					"label": "A combat member covers the open while the party splits off to harvest the remains",
+					"min_stage": 1.0,
 					"party": "specialist",
 					"requires": [
 						"combat"
@@ -1726,99 +1817,81 @@
 					"risk": "direct",
 					"taught_by": "",
 					"uses": [
-						"kill_enemy",
-						"destroy_barrier"
+						"rich_kill"
 					]
 				},
 				{
-					"borrows_from": "7",
-					"expert": true,
-					"id": "overlay_combustion",
-					"kind": "shadow_expert",
-					"label": "Aster predicts the charge window on the overlay and seeds a gasafoetida bloom on the impact line; the enemy demolishes the barrier with its own momentum while Peris reads it from cover",
-					"min_stage": 4.0,
-					"party": "aster_peris",
-					"requires": [
-						"overlay",
-						"timing",
-						"combustible"
-					],
-					"risk": "risky",
-					"taught_by": "charge_window_prediction",
-					"uses": []
-				},
-				{
-					"id": "overlay_cover",
+					"id": "masked_forage",
 					"kind": "shadow",
-					"label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover",
-					"min_stage": 2.0,
+					"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+					"min_stage": 1.0,
 					"party": "aster_peris",
 					"requires": [
-						"overlay",
-						"cover"
+						"flora",
+						"cover",
+						"timing"
 					],
-					"risk": "risky",
-					"taught_by": "overlay_timing",
+					"risk": "safe",
+					"taught_by": "scent_masked_dwell",
 					"uses": [
-						"reveal_plant",
-						"reveal_passage"
+						"forage_cache_station"
 					]
 				}
 			],
-			"archetype_id": "1",
-			"archetype_name": "Redirected enemy aggression",
-			"atp_reward": 0,
+			"archetype_id": "12",
+			"archetype_name": "Lysate forage cache",
+			"atp_reward": 2,
 			"chain_index": 0,
 			"chain_input": "",
-			"chain_label": "Break a brittle service barrier to expose usable flure",
-			"chain_output": "flure_exposed",
-			"composition_role": "chain_link",
+			"chain_label": "",
+			"chain_output": "",
+			"composition_role": "required_append",
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "hushbloom",
-					"label": "hushbloom",
+					"id": "capbage",
+					"label": "capbage",
 					"local_offset": [
 						-1.7940000295639,
-						0.550000011920929,
+						0.449999988079071,
 						-0.879999995231628
 					],
 					"position": [
 						10.206000328064,
-						1.72000002861023,
+						1.61999988555908,
 						-0.879999995231628
 					],
 					"role": "resource",
 					"rotation_y_degrees": 0.0,
 					"shape": "plant_cluster",
 					"size": [
-						1.0,
-						1.10000002384186,
-						1.0
+						1.35000002384186,
+						0.899999976158142,
+						1.35000002384186
 					],
-					"support": "implemented"
+					"support": "placeholder"
 				},
 				{
 					"category": "structures",
-					"id": "terminal",
-					"label": "terminal",
+					"id": "forage_cache",
+					"label": "forage_cache",
 					"local_offset": [
 						0.0,
-						0.824999988079071,
+						0.375,
 						0.720000028610229
 					],
 					"position": [
 						12.0,
-						1.99499988555908,
+						1.54499995708466,
 						0.720000028610229
 					],
-					"role": "guidance",
+					"role": "resource",
 					"rotation_y_degrees": 37.0,
-					"shape": "console",
+					"shape": "structure_box",
 					"size": [
-						1.20000004768372,
-						1.64999997615814,
-						0.75
+						1.70000004768372,
+						0.75,
+						1.0
 					],
 					"support": "implemented"
 				}
@@ -1833,7 +1906,7 @@
 				4.0
 			],
 			"flora": [
-				"hushbloom"
+				"capbage"
 			],
 			"footprint": [
 				4.80000019073486,
@@ -1845,7 +1918,7 @@
 			"layout_step": {
 
 			},
-			"link_ref": "chain_00",
+			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
@@ -1861,17 +1934,17 @@
 			"role": "guidance",
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Use overlay timing plus flora or scarpet cover to substitute for a combat specialist."
+				"notes": "Peris finds caches under scarpet cover while Aster times the dwell into a blind window."
 			},
 			"shortcut": false,
-			"stage": 2,
+			"stage": 1,
 			"structures": [
-				"terminal"
+				"forage_cache"
 			],
 			"surface_y": 1.17,
-			"survival_kind": "",
+			"survival_kind": "forage",
 			"title": "Guidance Beat",
-			"variant": "reveal_plant",
+			"variant": "capbage_head",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -1886,91 +1959,74 @@
 			],
 			"approaches": [
 				{
-					"id": "force_clear",
+					"id": "draw_and_commit",
 					"kind": "primary",
-					"label": "Force the obstacle open with raw impact",
-					"min_stage": 1.0,
+					"label": "A combat member draws the Neutros to open the void while another times the commit",
+					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
-						"impact"
+						"combat"
 					],
 					"risk": "direct",
 					"taught_by": "",
 					"uses": [
-						"destroy"
+						"prey_into_neutro"
 					]
 				},
 				{
-					"borrows_from": "10",
-					"expert": true,
-					"id": "flora_chain_trap",
-					"kind": "shadow_expert",
-					"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
-					"min_stage": 5.0,
-					"party": "aster_peris",
-					"requires": [
-						"flora",
-						"lure"
-					],
-					"risk": "risky",
-					"taught_by": "nested_flora_zone",
-					"uses": []
-				},
-				{
-					"id": "flora_finesse",
+					"id": "ecology_decoy",
 					"kind": "shadow",
-					"label": "Peris grows or tends the plant tool; Aster confirms the target",
-					"min_stage": 1.0,
+					"label": "Aster reads the predator-prey clock while Peris's flure decoy herds the prey into the predator",
+					"min_stage": 3.0,
 					"party": "aster_peris",
 					"requires": [
+						"timing",
 						"flora"
 					],
-					"risk": "safe",
-					"taught_by": "flora_tending",
+					"risk": "risky",
+					"taught_by": "ecology_reading",
 					"uses": [
-						"flure_iron_decoy",
-						"hushbloom_stun",
-						"climbvine_traversal"
+						"siderophore_into_meeb"
 					]
 				}
 			],
-			"archetype_id": "2",
-			"archetype_name": "Plant as tool",
+			"archetype_id": "13",
+			"archetype_name": "Predator-exploit transit",
 			"atp_reward": 0,
 			"chain_index": 1,
-			"chain_input": "flure_exposed",
-			"chain_label": "Use the exposed flure as a patrol decoy",
-			"chain_output": "patrol_diverted",
-			"composition_role": "chain_link",
+			"chain_input": "",
+			"chain_label": "",
+			"chain_output": "",
+			"composition_role": "required_append",
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "scarpet",
-					"label": "scarpet",
+					"id": "flure",
+					"label": "flure",
 					"local_offset": [
 						-1.96200001239777,
-						0.0799999982118607,
+						0.725000023841858,
 						-1.05599999427795
 					],
 					"position": [
 						22.0380001068115,
-						1.97000002861023,
+						2.61500000953674,
 						1.94400000572205
 					],
-					"role": "cover",
+					"role": "puzzle_flora",
 					"rotation_y_degrees": 11.0,
-					"shape": "mat",
+					"shape": "plant_cluster",
 					"size": [
-						2.20000004768372,
-						0.159999996423721,
-						1.70000004768372
+						1.79999995231628,
+						1.45000004768372,
+						1.79999995231628
 					],
 					"support": "implemented"
 				},
 				{
 					"category": "enemies",
-					"id": "naturalizers",
-					"label": "naturalizers",
+					"id": "techos",
+					"label": "techos",
 					"local_offset": [
 						1.2960000038147,
 						0.550000011920929,
@@ -1985,50 +2041,50 @@
 					"rotation_y_degrees": 48.0,
 					"shape": "enemy_volume",
 					"size": [
-						1.5,
+						1.20000004768372,
 						1.10000002384186,
-						1.5
+						1.20000004768372
 					],
 					"support": "implemented"
 				},
 				{
 					"category": "structures",
-					"id": "terminal",
-					"label": "terminal",
+					"id": "portal",
+					"label": "portal",
 					"local_offset": [
 						0.550000011920929,
-						0.824999988079071,
+						0.5,
 						0.864000022411346
 					],
 					"position": [
 						24.5499992370605,
-						2.71499991416931,
+						2.3899998664856,
 						3.86400008201599
 					],
-					"role": "guidance",
+					"role": "structure",
 					"rotation_y_degrees": 85.0,
-					"shape": "console",
+					"shape": "structure_box",
 					"size": [
-						1.20000004768372,
-						1.64999997615814,
-						0.75
+						1.39999997615814,
+						1.0,
+						1.0
 					],
-					"support": "implemented"
+					"support": "placeholder"
 				}
 			],
 			"elevation_index": 2,
 			"elevation_meters": 1.44,
 			"enemies": [
-				"naturalizers"
+				"techos"
 			],
-			"exploit_target": "",
+			"exploit_target": "predator_prey",
 			"floor_size": [
 				5.40000009536743,
 				0.140000000596046,
 				4.80000019073486
 			],
 			"flora": [
-				"scarpet"
+				"flure"
 			],
 			"footprint": [
 				5.40000009536743,
@@ -2040,7 +2096,7 @@
 			"layout_step": {
 
 			},
-			"link_ref": "chain_01",
+			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
@@ -2056,17 +2112,17 @@
 			"role": "route_pressure",
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
+				"notes": "Aster reads the ecology clock while Peris's flure decoy herds the prey into the predator."
 			},
 			"shortcut": false,
-			"stage": 1,
+			"stage": 3,
 			"structures": [
-				"terminal"
+				"portal"
 			],
 			"surface_y": 1.89,
-			"survival_kind": "",
+			"survival_kind": "exploit",
 			"title": "Route Pressure",
-			"variant": "flure_iron_decoy",
+			"variant": "spiker_versus_tangler",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -2081,10 +2137,10 @@
 			],
 			"approaches": [
 				{
-					"id": "guarded_escort",
+					"id": "hold_lanes",
 					"kind": "primary",
-					"label": "A combat specialist guards the carrier across the open",
-					"min_stage": 2.0,
+					"label": "A combat specialist holds each lane while a third member relays the party through",
+					"min_stage": 4.0,
 					"party": "specialist",
 					"requires": [
 						"combat"
@@ -2092,88 +2148,56 @@
 					"risk": "direct",
 					"taught_by": "",
 					"uses": [
-						"critical_resource"
+						"mixed_families"
 					]
 				},
 				{
-					"borrows_from": "5",
-					"expert": true,
-					"id": "split_carry",
-					"kind": "shadow_expert",
-					"label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
-					"min_stage": 3.0,
-					"party": "aster_peris",
-					"requires": [
-						"carry",
-						"cover",
-						"data"
-					],
-					"risk": "risky",
-					"taught_by": "split_carry",
-					"uses": []
-				},
-				{
-					"id": "endo_lane",
-					"kind": "primary",
-					"label": "Endo bridges or repairs a protected carry lane",
-					"min_stage": 2.0,
-					"party": "specialist",
-					"requires": [
-						"barrier"
-					],
-					"risk": "safe",
-					"taught_by": "",
-					"uses": [
-						"cure_component"
-					]
-				},
-				{
-					"id": "drag_mask",
+					"id": "timed_run",
 					"kind": "shadow",
-					"label": "Drag the load along scarpet-masked routes with slow recovery windows",
-					"min_stage": 2.0,
+					"label": "Aster sequences the lane gaps into a single timed run while Peris lays scarpet and capbage relays",
+					"min_stage": 4.0,
 					"party": "aster_peris",
 					"requires": [
-						"carry",
+						"timing",
 						"cover"
 					],
 					"risk": "risky",
-					"taught_by": "drag_routes",
+					"taught_by": "lane_gap_sequencing",
 					"uses": [
-						"puzzle_piece"
+						"patrol_lanes"
 					]
 				}
 			],
-			"archetype_id": "3",
-			"archetype_name": "Carry the heavy thing",
+			"archetype_id": "14",
+			"archetype_name": "Enemy-configuration gauntlet",
 			"atp_reward": 0,
 			"chain_index": 2,
-			"chain_input": "patrol_diverted",
-			"chain_label": "Carry the shelter component through the diverted patrol lane",
-			"chain_output": "carry_component_secured",
-			"composition_role": "chain_link",
+			"chain_input": "",
+			"chain_label": "",
+			"chain_output": "",
+			"composition_role": "required_append",
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "flure",
-					"label": "flure",
+					"id": "seefern",
+					"label": "seefern",
 					"local_offset": [
 						-2.18599987030029,
-						0.725000023841858,
+						0.899999976158142,
 						-1.05599999427795
 					],
 					"position": [
 						33.8139991760254,
-						1.89499998092651,
+						2.0699999332428,
 						-4.05599975585938
 					],
-					"role": "puzzle_flora",
+					"role": "readable_screen",
 					"rotation_y_degrees": 22.0,
 					"shape": "plant_cluster",
 					"size": [
+						0.899999976158142,
 						1.79999995231628,
-						1.45000004768372,
-						1.79999995231628
+						0.699999988079071
 					],
 					"support": "implemented"
 				},
@@ -2212,7 +2236,7 @@
 				4.80000019073486
 			],
 			"flora": [
-				"flure"
+				"seefern"
 			],
 			"footprint": [
 				6.19999980926514,
@@ -2224,23 +2248,9 @@
 			"layout_step": {
 
 			},
-			"link_ref": "chain_02",
-			"nested_archetypes": [
-				{
-					"depth": 1,
-					"host_id": "3",
-					"host_step": 4,
-					"id": "4",
-					"input": "carry_component_secured",
-					"label": "Carrier hazard is managed as a patrol distraction",
-					"output": "carrier_window_opened",
-					"parent_ref": "",
-					"ref": "nested_00",
-					"role": "nested",
-					"variant": "false_scent"
-				}
-			],
-			"nested_depth": 1,
+			"link_ref": "",
+			"nested_archetypes": [],
+			"nested_depth": 0,
 			"optional": true,
 			"position": [
 				36.0,
@@ -2248,23 +2258,23 @@
 				-3.0
 			],
 			"pressure": 0,
-			"pressure_cost": 0,
+			"pressure_cost": 2,
 			"resource": true,
 			"resource_beat": true,
 			"role": "foraging",
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Use drag routes, scarpet masking, and slower recovery windows."
+				"notes": "Aster sequences the lane gaps into one timed run; Peris lays scarpet and capbage relays."
 			},
 			"shortcut": false,
-			"stage": 2,
+			"stage": 4,
 			"structures": [
 				"forage_cache"
 			],
 			"surface_y": 1.17,
-			"survival_kind": "",
+			"survival_kind": "gauntlet",
 			"title": "Foraging Beat",
-			"variant": "critical_resource",
+			"variant": "mixed_families",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -2279,92 +2289,73 @@
 			],
 			"approaches": [
 				{
-					"id": "combat_retrieval",
+					"id": "insulated_lane",
 					"kind": "primary",
-					"label": "Fight through to retrieve the scattered fragments",
-					"min_stage": 3.0,
+					"label": "Endo's junction-repair builds a protected low-dose lane across the field",
+					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"barrier"
 					],
-					"risk": "direct",
+					"risk": "safe",
 					"taught_by": "",
 					"uses": [
-						"combat_retrieval"
+						"iron_bloom"
 					]
 				},
 				{
-					"borrows_from": "8",
-					"expert": true,
-					"id": "terminal_cache_recall",
-					"kind": "shadow_expert",
-					"label": "Skip the scavenger hunt: Aster pulls the missing fragment from an AST terminal's cached records, reconstructing the whole from the network",
-					"min_stage": 3.0,
+					"id": "budget_or_detour",
+					"kind": "shadow",
+					"label": "Aster computes the damage budget for a fast crossing, or the pair takes the safe-slow detour and pays time instead of HP",
+					"min_stage": 2.0,
 					"party": "aster_peris",
 					"requires": [
-						"terminal",
-						"scan",
-						"data"
+						"timing"
 					],
 					"risk": "risky",
-					"taught_by": "terminal_cache_recall",
-					"uses": []
-				},
-				{
-					"id": "scan_preserve",
-					"kind": "shadow",
-					"label": "Aster reads the hidden overlay structure; Peris preserves the relational context",
-					"min_stage": 3.0,
-					"party": "aster_peris",
-					"requires": [
-						"scan",
-						"flora"
-					],
-					"risk": "safe",
-					"taught_by": "overlay_reading",
+					"taught_by": "dose_budgeting",
 					"uses": [
-						"hidden_overlay",
-						"memory_pressure"
+						"atmospheric"
 					]
 				}
 			],
-			"archetype_id": "6",
-			"archetype_name": "Pattern reconstruction",
+			"archetype_id": "15",
+			"archetype_name": "Attrition-field crossing",
 			"atp_reward": 0,
 			"chain_index": 3,
-			"chain_input": "carry_component_secured",
-			"chain_label": "Reconstruct the return map from carried fragments",
-			"chain_output": "shelter_route_reassembled",
-			"composition_role": "chain_link",
+			"chain_input": "",
+			"chain_label": "",
+			"chain_output": "",
+			"composition_role": "required_append",
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "hushbloom",
-					"label": "hushbloom",
+					"id": "scarpet",
+					"label": "scarpet",
 					"local_offset": [
 						-1.96200001239777,
-						0.550000011920929,
+						0.0799999982118607,
 						-1.05599999427795
 					],
 					"position": [
 						46.0379981994629,
-						1.72000002861023,
+						1.25,
 						-1.05599999427795
 					],
-					"role": "resource",
+					"role": "cover",
 					"rotation_y_degrees": 33.0,
-					"shape": "plant_cluster",
+					"shape": "mat",
 					"size": [
-						1.0,
-						1.10000002384186,
-						1.0
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
 					],
 					"support": "implemented"
 				},
 				{
 					"category": "enemies",
-					"id": "naturalizers",
-					"label": "naturalizers",
+					"id": "techos",
+					"label": "techos",
 					"local_offset": [
 						1.2960000038147,
 						0.550000011920929,
@@ -2379,33 +2370,33 @@
 					"rotation_y_degrees": 70.0,
 					"shape": "enemy_volume",
 					"size": [
-						1.5,
+						1.20000004768372,
 						1.10000002384186,
-						1.5
+						1.20000004768372
 					],
 					"support": "implemented"
 				},
 				{
 					"category": "structures",
-					"id": "shortcut_gate",
-					"label": "shortcut_gate",
+					"id": "root_slide",
+					"label": "root_slide",
 					"local_offset": [
 						0.550000011920929,
-						1.10000002384186,
+						0.224999994039536,
 						0.864000022411346
 					],
 					"position": [
 						48.5499992370605,
-						2.26999998092651,
+						1.39499998092651,
 						0.864000022411346
 					],
-					"role": "shortcut",
+					"role": "structure",
 					"rotation_y_degrees": 107.0,
-					"shape": "gate",
+					"shape": "slide",
 					"size": [
-						2.40000009536743,
-						2.20000004768372,
-						0.379999995231628
+						3.79999995231628,
+						0.449999988079071,
+						1.14999997615814
 					],
 					"support": "implemented"
 				}
@@ -2413,7 +2404,7 @@
 			"elevation_index": 1,
 			"elevation_meters": 0.72,
 			"enemies": [
-				"naturalizers"
+				"techos"
 			],
 			"exploit_target": "",
 			"floor_size": [
@@ -2422,7 +2413,7 @@
 				4.80000019073486
 			],
 			"flora": [
-				"hushbloom"
+				"scarpet"
 			],
 			"footprint": [
 				5.40000009536743,
@@ -2434,23 +2425,9 @@
 			"layout_step": {
 
 			},
-			"link_ref": "chain_03",
-			"nested_archetypes": [
-				{
-					"depth": 1,
-					"host_id": "6",
-					"host_step": 3,
-					"id": "3",
-					"input": "fragment_found",
-					"label": "Each map fragment is a vulnerable carry beat",
-					"output": "fragment_delivered",
-					"parent_ref": "",
-					"ref": "nested_01",
-					"role": "nested",
-					"variant": "information_artifact"
-				}
-			],
-			"nested_depth": 1,
+			"link_ref": "",
+			"nested_archetypes": [],
+			"nested_depth": 0,
 			"optional": false,
 			"position": [
 				48.0,
@@ -2458,23 +2435,23 @@
 				0.0
 			],
 			"pressure": 1,
-			"pressure_cost": 0,
+			"pressure_cost": 2,
 			"resource": false,
 			"resource_beat": false,
 			"role": "danger",
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Aster finds hidden structure; Peris preserves relational or flora context."
+				"notes": "Aster computes the damage budget for a short crossing, or the pair takes the safe-slow detour and pays time, not HP."
 			},
-			"shortcut": true,
-			"stage": 3,
+			"shortcut": false,
+			"stage": 2,
 			"structures": [
-				"shortcut_gate"
+				"root_slide"
 			],
 			"surface_y": 1.17,
-			"survival_kind": "",
+			"survival_kind": "hazard",
 			"title": "Danger Beat",
-			"variant": "flow_diagram",
+			"variant": "biofilm_mat",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -2489,10 +2466,10 @@
 			],
 			"approaches": [
 				{
-					"id": "loud_draw",
+					"id": "guarded_forage",
 					"kind": "primary",
-					"label": "Draw the patrol with a loud combat action",
-					"min_stage": 3.0,
+					"label": "A combat member covers the open while the party splits off to harvest the remains",
+					"min_stage": 1.0,
 					"party": "specialist",
 					"requires": [
 						"combat"
@@ -2500,48 +2477,31 @@
 					"risk": "direct",
 					"taught_by": "",
 					"uses": [
-						"loud_action"
+						"rich_kill"
 					]
 				},
 				{
-					"borrows_from": "6",
-					"expert": true,
-					"id": "false_pattern_spoof",
-					"kind": "shadow_expert",
-					"label": "Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for",
-					"min_stage": 3.0,
-					"party": "aster_peris",
-					"requires": [
-						"signal",
-						"overlay",
-						"scan"
-					],
-					"risk": "risky",
-					"taught_by": "false_pattern_spoof",
-					"uses": []
-				},
-				{
-					"id": "signal_split",
+					"id": "masked_forage",
 					"kind": "shadow",
-					"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
-					"min_stage": 3.0,
+					"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+					"min_stage": 1.0,
 					"party": "aster_peris",
 					"requires": [
-						"electrical",
-						"flora"
+						"flora",
+						"cover",
+						"timing"
 					],
 					"risk": "safe",
-					"taught_by": "signal_decoy",
+					"taught_by": "scent_masked_dwell",
 					"uses": [
-						"electrical_signature",
-						"plant_tending_task"
+						"forage_cache_station"
 					]
 				}
 			],
-			"archetype_id": "4",
-			"archetype_name": "Distract the patrol",
-			"atp_reward": 0,
-			"chain_index": 4,
+			"archetype_id": "12",
+			"archetype_name": "Lysate forage cache",
+			"atp_reward": 2,
+			"chain_index": 0,
 			"chain_input": "",
 			"chain_label": "",
 			"chain_output": "",
@@ -2549,49 +2509,49 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "scarpet",
-					"label": "scarpet",
+					"id": "capbage",
+					"label": "capbage",
 					"local_offset": [
 						-1.7940000295639,
-						0.0799999982118607,
+						0.449999988079071,
 						-1.05599999427795
 					],
 					"position": [
 						58.2060012817383,
-						1.97000002861023,
+						2.33999991416931,
 						1.94400000572205
 					],
-					"role": "cover",
-					"rotation_y_degrees": 44.0,
-					"shape": "mat",
+					"role": "resource",
+					"rotation_y_degrees": 0.0,
+					"shape": "plant_cluster",
 					"size": [
-						2.20000004768372,
-						0.159999996423721,
-						1.70000004768372
+						1.35000002384186,
+						0.899999976158142,
+						1.35000002384186
 					],
-					"support": "implemented"
+					"support": "placeholder"
 				},
 				{
 					"category": "structures",
-					"id": "shortcut_gate",
-					"label": "shortcut_gate",
+					"id": "shelter",
+					"label": "shelter",
 					"local_offset": [
 						0.0,
-						1.10000002384186,
+						1.20000004768372,
 						0.864000022411346
 					],
 					"position": [
 						60.0,
-						2.99000000953674,
+						3.09000015258789,
 						3.86400008201599
 					],
-					"role": "shortcut",
-					"rotation_y_degrees": 81.0,
-					"shape": "gate",
+					"role": "rest",
+					"rotation_y_degrees": 37.0,
+					"shape": "shelter_shell",
 					"size": [
+						4.80000019073486,
 						2.40000009536743,
-						2.20000004768372,
-						0.379999995231628
+						3.40000009536743
 					],
 					"support": "implemented"
 				}
@@ -2606,7 +2566,7 @@
 				4.80000019073486
 			],
 			"flora": [
-				"scarpet"
+				"capbage"
 			],
 			"footprint": [
 				4.80000019073486,
@@ -2619,22 +2579,8 @@
 
 			},
 			"link_ref": "",
-			"nested_archetypes": [
-				{
-					"depth": 1,
-					"host_id": "4",
-					"host_step": 5,
-					"id": "2",
-					"input": "carrier_window_opened",
-					"label": "The distraction trigger is a plant tending task",
-					"output": "patrol_staggered",
-					"parent_ref": "",
-					"ref": "nested_00_00",
-					"role": "nested",
-					"variant": "hushbloom_stun"
-				}
-			],
-			"nested_depth": 1,
+			"nested_archetypes": [],
+			"nested_depth": 0,
 			"optional": false,
 			"position": [
 				60.0,
@@ -2648,17 +2594,17 @@
 			"role": "shortcut",
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Aster provides electrical/data distraction while Peris performs the physical or flora task."
+				"notes": "Peris finds caches under scarpet cover while Aster times the dwell into a blind window."
 			},
 			"shortcut": true,
-			"stage": 3,
+			"stage": 1,
 			"structures": [
-				"shortcut_gate"
+				"shelter"
 			],
 			"surface_y": 1.89,
-			"survival_kind": "",
+			"survival_kind": "forage",
 			"title": "Shortcut Lock",
-			"variant": "terminal_task",
+			"variant": "capbage_head",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -2667,7 +2613,488 @@
 		},
 		{
 			"approach_position": [
-				70.7040023803711,
+				72.0,
+				0.449999988079071,
+				-1.43599998950958
+			],
+			"approaches": [
+				{
+					"id": "draw_and_commit",
+					"kind": "primary",
+					"label": "A combat member draws the Neutros to open the void while another times the commit",
+					"min_stage": 3.0,
+					"party": "specialist",
+					"requires": [
+						"combat"
+					],
+					"risk": "direct",
+					"taught_by": "",
+					"uses": [
+						"prey_into_neutro"
+					]
+				},
+				{
+					"id": "ecology_decoy",
+					"kind": "shadow",
+					"label": "Aster reads the predator-prey clock while Peris's flure decoy herds the prey into the predator",
+					"min_stage": 3.0,
+					"party": "aster_peris",
+					"requires": [
+						"timing",
+						"flora"
+					],
+					"risk": "risky",
+					"taught_by": "ecology_reading",
+					"uses": [
+						"siderophore_into_meeb"
+					]
+				}
+			],
+			"archetype_id": "13",
+			"archetype_name": "Predator-exploit transit",
+			"atp_reward": 0,
+			"chain_index": 1,
+			"chain_input": "",
+			"chain_label": "",
+			"chain_output": "",
+			"composition_role": "required_append",
+			"content_placements": [
+				{
+					"category": "flora",
+					"id": "flure",
+					"label": "flure",
+					"local_offset": [
+						-2.01799988746643,
+						0.725000023841858,
+						-1.01199996471405
+					],
+					"position": [
+						69.9820022583008,
+						1.17499995231628,
+						-4.01200008392334
+					],
+					"role": "puzzle_flora",
+					"rotation_y_degrees": 11.0,
+					"shape": "plant_cluster",
+					"size": [
+						1.79999995231628,
+						1.45000004768372,
+						1.79999995231628
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "enemies",
+					"id": "techos",
+					"label": "techos",
+					"local_offset": [
+						1.34399998188019,
+						0.550000011920929,
+						-0.229999989271164
+					],
+					"position": [
+						73.3440017700195,
+						1.0,
+						-3.23000001907349
+					],
+					"role": "pressure",
+					"rotation_y_degrees": 48.0,
+					"shape": "enemy_volume",
+					"size": [
+						1.20000004768372,
+						1.10000002384186,
+						1.20000004768372
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "structures",
+					"id": "membrane",
+					"label": "membrane",
+					"local_offset": [
+						0.550000011920929,
+						0.800000011920929,
+						0.828000009059906
+					],
+					"position": [
+						72.5500030517578,
+						1.25,
+						-2.17199993133545
+					],
+					"role": "structure",
+					"rotation_y_degrees": 85.0,
+					"shape": "structure_box",
+					"size": [
+						2.40000009536743,
+						1.60000002384186,
+						0.25
+					],
+					"support": "implemented"
+				}
+			],
+			"elevation_index": 0,
+			"elevation_meters": 0.0,
+			"enemies": [
+				"techos"
+			],
+			"exploit_target": "predator_prey",
+			"floor_size": [
+				5.59999990463257,
+				0.140000000596046,
+				4.59999990463257
+			],
+			"flora": [
+				"flure"
+			],
+			"footprint": [
+				5.59999990463257,
+				0.140000000596046,
+				4.59999990463257
+			],
+			"id": "node_06",
+			"label": "Mixed Node",
+			"layout_step": {
+
+			},
+			"link_ref": "",
+			"nested_archetypes": [],
+			"nested_depth": 0,
+			"optional": true,
+			"position": [
+				72.0,
+				0.449999988079071,
+				-3.0
+			],
+			"pressure": 1,
+			"pressure_cost": 0,
+			"resource": false,
+			"resource_beat": false,
+			"role": "mixed",
+			"shadow_solution": {
+				"aster_peris": true,
+				"notes": "Aster reads the ecology clock while Peris's flure decoy herds the prey into the predator."
+			},
+			"shortcut": false,
+			"stage": 3,
+			"structures": [
+				"membrane"
+			],
+			"surface_y": 0.45,
+			"survival_kind": "exploit",
+			"title": "Mixed Node",
+			"variant": "spiker_versus_tangler",
+			"walk_element": "",
+			"walk_index": -1,
+			"walk_ref": "",
+			"walk_step_index": -1,
+			"walk_transition": ""
+		},
+		{
+			"approach_position": [
+				84.0,
+				1.16999995708466,
+				1.42799997329712
+			],
+			"approaches": [
+				{
+					"id": "hold_lanes",
+					"kind": "primary",
+					"label": "A combat specialist holds each lane while a third member relays the party through",
+					"min_stage": 4.0,
+					"party": "specialist",
+					"requires": [
+						"combat"
+					],
+					"risk": "direct",
+					"taught_by": "",
+					"uses": [
+						"mixed_families"
+					]
+				},
+				{
+					"id": "timed_run",
+					"kind": "shadow",
+					"label": "Aster sequences the lane gaps into a single timed run while Peris lays scarpet and capbage relays",
+					"min_stage": 4.0,
+					"party": "aster_peris",
+					"requires": [
+						"timing",
+						"cover"
+					],
+					"risk": "risky",
+					"taught_by": "lane_gap_sequencing",
+					"uses": [
+						"patrol_lanes"
+					]
+				}
+			],
+			"archetype_id": "14",
+			"archetype_name": "Enemy-configuration gauntlet",
+			"atp_reward": 0,
+			"chain_index": 2,
+			"chain_input": "",
+			"chain_label": "",
+			"chain_output": "",
+			"composition_role": "required_append",
+			"content_placements": [
+				{
+					"category": "flora",
+					"id": "seefern",
+					"label": "seefern",
+					"local_offset": [
+						-1.90599989891052,
+						0.899999976158142,
+						-0.923999965190887
+					],
+					"position": [
+						82.0940017700195,
+						2.0699999332428,
+						-0.923999965190887
+					],
+					"role": "readable_screen",
+					"rotation_y_degrees": 22.0,
+					"shape": "plant_cluster",
+					"size": [
+						0.899999976158142,
+						1.79999995231628,
+						0.699999988079071
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "structures",
+					"id": "portal",
+					"label": "portal",
+					"local_offset": [
+						0.0,
+						0.5,
+						0.755999982357025
+					],
+					"position": [
+						84.0,
+						1.66999995708466,
+						0.755999982357025
+					],
+					"role": "structure",
+					"rotation_y_degrees": 59.0,
+					"shape": "structure_box",
+					"size": [
+						1.39999997615814,
+						1.0,
+						1.0
+					],
+					"support": "placeholder"
+				}
+			],
+			"elevation_index": 1,
+			"elevation_meters": 0.72,
+			"enemies": [],
+			"exploit_target": "",
+			"floor_size": [
+				5.19999980926514,
+				0.140000000596046,
+				4.19999980926514
+			],
+			"flora": [
+				"seefern"
+			],
+			"footprint": [
+				5.19999980926514,
+				0.140000000596046,
+				4.19999980926514
+			],
+			"id": "node_07",
+			"label": "Regroup Pocket",
+			"layout_step": {
+
+			},
+			"link_ref": "",
+			"nested_archetypes": [],
+			"nested_depth": 0,
+			"optional": false,
+			"position": [
+				84.0,
+				1.16999995708466,
+				0.0
+			],
+			"pressure": 0,
+			"pressure_cost": 2,
+			"resource": true,
+			"resource_beat": true,
+			"role": "regroup",
+			"shadow_solution": {
+				"aster_peris": true,
+				"notes": "Aster sequences the lane gaps into one timed run; Peris lays scarpet and capbage relays."
+			},
+			"shortcut": false,
+			"stage": 4,
+			"structures": [
+				"portal"
+			],
+			"surface_y": 1.17,
+			"survival_kind": "gauntlet",
+			"title": "Regroup Pocket",
+			"variant": "mixed_families",
+			"walk_element": "",
+			"walk_index": -1,
+			"walk_ref": "",
+			"walk_step_index": -1,
+			"walk_transition": ""
+		},
+		{
+			"approach_position": [
+				96.0,
+				2.60999989509583,
+				4.76799964904785
+			],
+			"approaches": [
+				{
+					"id": "insulated_lane",
+					"kind": "primary",
+					"label": "Endo's junction-repair builds a protected low-dose lane across the field",
+					"min_stage": 2.0,
+					"party": "specialist",
+					"requires": [
+						"barrier"
+					],
+					"risk": "safe",
+					"taught_by": "",
+					"uses": [
+						"iron_bloom"
+					]
+				},
+				{
+					"id": "budget_or_detour",
+					"kind": "shadow",
+					"label": "Aster computes the damage budget for a fast crossing, or the pair takes the safe-slow detour and pays time instead of HP",
+					"min_stage": 2.0,
+					"party": "aster_peris",
+					"requires": [
+						"timing"
+					],
+					"risk": "risky",
+					"taught_by": "dose_budgeting",
+					"uses": [
+						"atmospheric"
+					]
+				}
+			],
+			"archetype_id": "15",
+			"archetype_name": "Attrition-field crossing",
+			"atp_reward": 0,
+			"chain_index": 3,
+			"chain_input": "",
+			"chain_label": "",
+			"chain_output": "",
+			"composition_role": "required_append",
+			"content_placements": [
+				{
+					"category": "flora",
+					"id": "scarpet",
+					"label": "scarpet",
+					"local_offset": [
+						-2.2979998588562,
+						0.0799999982118607,
+						-1.14399993419647
+					],
+					"position": [
+						93.7020034790039,
+						2.68999981880188,
+						1.85600006580353
+					],
+					"role": "cover",
+					"rotation_y_degrees": 33.0,
+					"shape": "mat",
+					"size": [
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "structures",
+					"id": "root_slide",
+					"label": "root_slide",
+					"local_offset": [
+						0.0,
+						0.224999994039536,
+						0.935999989509583
+					],
+					"position": [
+						96.0,
+						2.83499979972839,
+						3.93599987030029
+					],
+					"role": "structure",
+					"rotation_y_degrees": 70.0,
+					"shape": "slide",
+					"size": [
+						3.79999995231628,
+						0.449999988079071,
+						1.14999997615814
+					],
+					"support": "implemented"
+				}
+			],
+			"elevation_index": 3,
+			"elevation_meters": 2.16,
+			"enemies": [],
+			"exploit_target": "",
+			"floor_size": [
+				6.59999990463257,
+				0.159999996423721,
+				5.19999980926514
+			],
+			"flora": [
+				"scarpet"
+			],
+			"footprint": [
+				6.59999990463257,
+				0.159999996423721,
+				5.19999980926514
+			],
+			"id": "node_08",
+			"label": "Set Piece",
+			"layout_step": {
+
+			},
+			"link_ref": "",
+			"nested_archetypes": [],
+			"nested_depth": 0,
+			"optional": false,
+			"position": [
+				96.0,
+				2.60999989509583,
+				3.0
+			],
+			"pressure": 0,
+			"pressure_cost": 2,
+			"resource": false,
+			"resource_beat": false,
+			"role": "setpiece",
+			"shadow_solution": {
+				"aster_peris": true,
+				"notes": "Aster computes the damage budget for a short crossing, or the pair takes the safe-slow detour and pays time, not HP."
+			},
+			"shortcut": false,
+			"stage": 2,
+			"structures": [
+				"root_slide"
+			],
+			"surface_y": 2.61,
+			"survival_kind": "hazard",
+			"title": "Set Piece",
+			"variant": "biofilm_mat",
+			"walk_element": "",
+			"walk_index": -1,
+			"walk_ref": "",
+			"walk_step_index": -1,
+			"walk_transition": ""
+		},
+		{
+			"approach_position": [
+				106.704002380371,
 				0.449999988079071,
 				-1.16399991512299
 			],
@@ -2683,27 +3110,27 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "flure",
-					"label": "flure",
+					"id": "capbage",
+					"label": "capbage",
 					"local_offset": [
 						-2.46599984169006,
-						0.725000023841858,
+						0.449999988079071,
 						-1.18799996376038
 					],
 					"position": [
-						69.5339965820313,
-						1.17499995231628,
+						105.533996582031,
+						0.899999976158142,
 						-4.1879997253418
 					],
-					"role": "puzzle_flora",
+					"role": "resource",
 					"rotation_y_degrees": -11.0,
 					"shape": "plant_cluster",
 					"size": [
-						1.79999995231628,
-						1.45000004768372,
-						1.79999995231628
+						1.35000002384186,
+						0.899999976158142,
+						1.35000002384186
 					],
-					"support": "implemented"
+					"support": "placeholder"
 				},
 				{
 					"category": "structures",
@@ -2715,7 +3142,7 @@
 						0.972000002861023
 					],
 					"position": [
-						72.0,
+						108.0,
 						1.65000009536743,
 						-2.02799987792969
 					],
@@ -2740,7 +3167,7 @@
 				5.40000009536743
 			],
 			"flora": [
-				"flure"
+				"capbage"
 			],
 			"footprint": [
 				7.19999980926514,
@@ -2757,7 +3184,7 @@
 			"nested_depth": 0,
 			"optional": false,
 			"position": [
-				72.0,
+				108.0,
 				0.449999988079071,
 				-3.0
 			],
@@ -2767,9 +3194,7 @@
 			"resource_beat": false,
 			"role": "shelter_arrival",
 			"shadow_solution": {
-				"aster": "Read the patrol timing and confirm which plant effect is safe to trigger.",
-				"endo": "Marks the return shortcut and stabilizes the carried shelter component.",
-				"peris": "Tend the flure and hushbloom so the carrier never needs a combat-only solution."
+
 			},
 			"shortcut": false,
 			"stage": 1,
@@ -2790,20 +3215,21 @@
 	"ok": true,
 	"palette_usage": {
 		"enemies": [
-			"naturalizers",
-			"techos"
+			"techos",
+			"naturalizers"
 		],
 		"flora": [
+			"scarpet",
+			"capbage",
 			"flure",
-			"hushbloom",
-			"scarpet"
+			"seefern"
 		],
 		"structures": [
 			"shelter",
-			"carry_gear",
-			"terminal",
 			"forage_cache",
-			"shortcut_gate"
+			"portal",
+			"membrane",
+			"root_slide"
 		]
 	},
 	"routes": [
@@ -2990,6 +3416,99 @@
 				],
 				"width": 1.85
 			},
+			"to": "node_06",
+			"width": 1.85
+		},
+		{
+			"cost": 1,
+			"from": "node_06",
+			"height_delta": 0.719999969005585,
+			"id": "main_06_07",
+			"kind": "safe",
+			"recoverable": true,
+			"risk": "safe",
+			"surface": {
+				"from": [
+					72.0,
+					0.449999988079071,
+					-3.0
+				],
+				"midpoint": [
+					78.0,
+					0.809999942779541,
+					-1.5
+				],
+				"slope": 0.719999969005585,
+				"supports_click_to_move": true,
+				"to": [
+					84.0,
+					1.16999995708466,
+					0.0
+				],
+				"width": 1.85
+			},
+			"to": "node_07",
+			"width": 1.85
+		},
+		{
+			"cost": 1,
+			"from": "node_07",
+			"height_delta": 1.43999993801117,
+			"id": "main_07_08",
+			"kind": "safe",
+			"recoverable": true,
+			"risk": "safe",
+			"surface": {
+				"from": [
+					84.0,
+					1.16999995708466,
+					0.0
+				],
+				"midpoint": [
+					90.0,
+					1.8899998664856,
+					1.5
+				],
+				"slope": 1.43999993801117,
+				"supports_click_to_move": true,
+				"to": [
+					96.0,
+					2.60999989509583,
+					3.0
+				],
+				"width": 1.85
+			},
+			"to": "node_08",
+			"width": 1.85
+		},
+		{
+			"cost": 1,
+			"from": "node_08",
+			"height_delta": -2.15999990701675,
+			"id": "main_08_09",
+			"kind": "safe",
+			"recoverable": true,
+			"risk": "safe",
+			"surface": {
+				"from": [
+					96.0,
+					2.60999989509583,
+					3.0
+				],
+				"midpoint": [
+					102.0,
+					1.52999997138977,
+					0.0
+				],
+				"slope": -2.15999990701675,
+				"supports_click_to_move": true,
+				"to": [
+					108.0,
+					0.449999988079071,
+					-3.0
+				],
+				"width": 1.85
+			},
 			"to": "exit_shelter",
 			"width": 1.85
 		},
@@ -3026,8 +3545,40 @@
 			"width": 1.35
 		},
 		{
+			"bypasses_optional": "node_06",
+			"cost": 1,
+			"from": "node_05",
+			"height_delta": -0.720000028610229,
+			"id": "optional_bypass_05_07",
+			"kind": "safe",
+			"recoverable": true,
+			"risk": "safe",
+			"surface": {
+				"from": [
+					60.0,
+					1.88999998569489,
+					3.0
+				],
+				"midpoint": [
+					72.0,
+					1.52999997138977,
+					1.5
+				],
+				"slope": -0.720000028610229,
+				"supports_click_to_move": true,
+				"to": [
+					84.0,
+					1.16999995708466,
+					0.0
+				],
+				"width": 1.35
+			},
+			"to": "node_07",
+			"width": 1.35
+		},
+		{
 			"cost": 0,
-			"damage": 26.0,
+			"damage": 23.0,
 			"from": "entry",
 			"height_delta": 0.0,
 			"id": "risky_direct",
@@ -3041,14 +3592,14 @@
 					-3.0
 				],
 				"midpoint": [
-					36.0,
+					54.0,
 					0.449999988079071,
 					-3.0
 				],
 				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					72.0,
+					108.0,
 					0.449999988079071,
 					-3.0
 				],
@@ -3059,24 +3610,24 @@
 		},
 		{
 			"cost": 0,
-			"from": "node_05",
-			"height_delta": -1.43999999761581,
+			"from": "node_08",
+			"height_delta": -2.15999990701675,
 			"id": "return_shortcut",
 			"kind": "shortcut",
 			"recoverable": true,
 			"risk": "shortcut",
 			"surface": {
 				"from": [
-					60.0,
-					1.88999998569489,
+					96.0,
+					2.60999989509583,
 					3.0
 				],
 				"midpoint": [
-					30.0,
-					1.16999995708466,
+					48.0,
+					1.52999997138977,
 					0.0
 				],
-				"slope": -1.43999999761581,
+				"slope": -2.15999990701675,
 				"supports_click_to_move": true,
 				"to": [
 					0.0,
@@ -3093,103 +3644,22 @@
 	"schema": "trawf_generated_stretch_spec_v1",
 	"settings": {
 		"budget": {
-			"archetype_depth": 5,
-			"branch_count": 1,
-			"enemy_slots": 2,
-			"flora_slots": 3,
-			"node_count": 7,
-			"optional_node_count": 1,
-			"pressure_budget": 2,
-			"resource_beats": 1,
-			"shortcut_count": 1,
+			"archetype_depth": 4,
+			"branch_count": 2,
+			"enemy_slots": 3,
+			"flora_slots": 4,
+			"node_count": 10,
+			"optional_node_count": 2,
+			"pressure_budget": 3,
+			"resource_beats": 2,
+			"shortcut_count": 2,
 			"structures_slots": 5
 		},
-		"complexity_tier": "standard",
+		"complexity_tier": "hard",
 		"composition": {
-			"chain": [
-				{
-					"chain_index": 0,
-					"id": "1",
-					"input": "",
-					"label": "Break a brittle service barrier to expose usable flure",
-					"output": "flure_exposed",
-					"ref": "chain_00",
-					"role": "chain",
-					"variant": "reveal_plant"
-				},
-				{
-					"chain_index": 1,
-					"id": "2",
-					"input": "flure_exposed",
-					"label": "Use the exposed flure as a patrol decoy",
-					"output": "patrol_diverted",
-					"ref": "chain_01",
-					"role": "chain",
-					"variant": "flure_iron_decoy"
-				},
-				{
-					"chain_index": 2,
-					"id": "3",
-					"input": "patrol_diverted",
-					"label": "Carry the shelter component through the diverted patrol lane",
-					"output": "carry_component_secured",
-					"ref": "chain_02",
-					"role": "chain",
-					"variant": "critical_resource"
-				},
-				{
-					"chain_index": 3,
-					"id": "6",
-					"input": "carry_component_secured",
-					"label": "Reconstruct the return map from carried fragments",
-					"output": "shelter_route_reassembled",
-					"ref": "chain_03",
-					"role": "chain",
-					"variant": "flow_diagram"
-				}
-			],
-			"mode": "chain_nested_poc",
-			"nested": [
-				{
-					"depth": 1,
-					"host_id": "3",
-					"host_step": 4,
-					"id": "4",
-					"input": "carry_component_secured",
-					"label": "Carrier hazard is managed as a patrol distraction",
-					"output": "carrier_window_opened",
-					"parent_ref": "",
-					"ref": "nested_00",
-					"role": "nested",
-					"variant": "false_scent"
-				},
-				{
-					"depth": 1,
-					"host_id": "4",
-					"host_step": 5,
-					"id": "2",
-					"input": "carrier_window_opened",
-					"label": "The distraction trigger is a plant tending task",
-					"output": "patrol_staggered",
-					"parent_ref": "",
-					"ref": "nested_00_00",
-					"role": "nested",
-					"variant": "hushbloom_stun"
-				},
-				{
-					"depth": 1,
-					"host_id": "6",
-					"host_step": 3,
-					"id": "3",
-					"input": "fragment_found",
-					"label": "Each map fragment is a vulnerable carry beat",
-					"output": "fragment_delivered",
-					"parent_ref": "",
-					"ref": "nested_01",
-					"role": "nested",
-					"variant": "information_artifact"
-				}
-			],
+			"chain": [],
+			"mode": "",
+			"nested": [],
 			"random_walk": {
 				"allow_revisit": true,
 				"prefer_tags": [],
@@ -3199,40 +3669,33 @@
 				"transition_chance": 0.35
 			},
 			"shadow_solution": {
-				"aster": "Read the patrol timing and confirm which plant effect is safe to trigger.",
-				"endo": "Marks the return shortcut and stabilizes the carried shelter component.",
-				"peris": "Tend the flure and hushbloom so the carrier never needs a combat-only solution."
+
 			}
 		},
-		"id": "generated_chain_nested_poc_shelter_2_to_3",
+		"id": "generated_sample_survival_run",
 		"limitations": {
 			"allowed": {
 				"archetypes": [
-					"1",
-					"2",
-					"3",
-					"4",
-					"6",
-					"11"
+					"11",
+					"12",
+					"13",
+					"14",
+					"15",
+					"16"
 				],
 				"enemies": [
 					"techos",
 					"naturalizers"
 				],
 				"flora": [
+					"scarpet",
 					"flure",
-					"hushbloom",
-					"scarpet"
+					"capbage",
+					"seefern",
+					"doma",
+					"hushbloom"
 				],
-				"structures": [
-					"shelter",
-					"barrier",
-					"forage_cache",
-					"carry_gear",
-					"shortcut_gate",
-					"terminal",
-					"pipe"
-				]
+				"structures": []
 			},
 			"blocked": {
 				"archetypes": [],
@@ -3242,76 +3705,71 @@
 			},
 			"required": {
 				"archetypes": [
-					"1",
-					"2",
-					"3",
-					"4",
-					"6"
+					"12",
+					"13",
+					"14",
+					"15"
 				],
-				"enemies": [
-					"naturalizers"
-				],
-				"flora": [
-					"flure"
-				],
+				"enemies": [],
+				"flora": [],
 				"structures": [
 					"shelter",
-					"carry_gear"
+					"forage_cache"
 				]
 			}
 		},
-		"progression_stage": 3,
-		"seed": 2403,
-		"title": "Generated Chain/Nested POC: Shelter 2 -> Shelter 3",
+		"progression_stage": 4,
+		"seed": 6160,
+		"title": "Sample — Forage & Gauntlet Run (Survival)",
 		"world_slot": {
-			"act": 1.0,
-			"canonical_party": [
-				"aster",
-				"peris",
-				"endo"
-			],
-			"entry_anchor": "entry",
-			"entry_shelter_id": "shelter_2",
-			"exit_anchor": "exit_shelter",
-			"exit_shelter_id": "shelter_3",
-			"next_slot": "generated_channels_shelter_3_to_4",
-			"preview_party_preset": "full_party_full_health",
-			"region": "Channels",
-			"slot_id": "generated_chain_nested_poc_shelter_2_to_3"
+			"entry_shelter_id": "shelter_5",
+			"exit_shelter_id": "shelter_6",
+			"region": "Transit Corridors"
 		}
 	},
 	"source": {
-		"complexity_tier": "standard",
+		"complexity_tier": "hard",
 		"generator": "archetype_based_stretch_v1",
-		"progression_stage": 3,
-		"seed": 2403
+		"progression_stage": 4,
+		"seed": 6160
 	},
 	"success": true,
-	"title": "Generated Chain/Nested POC: Shelter 2 -> Shelter 3",
+	"title": "Sample — Forage & Gauntlet Run (Survival)",
 	"validation": {
 		"bare_pair_solvable": true,
 		"multi_solution": true,
 		"multi_solution_ok": true,
-		"multi_solution_required": false,
+		"multi_solution_required": true,
 		"shadow_solvable": true,
 		"solution_warnings": [],
 		"spotlight_within_stage": true,
-		"warnings": []
+		"warnings": [
+			{
+				"category": "flora",
+				"id": "capbage",
+				"message": "capbage is represented by a generated graybox placeholder."
+			},
+			{
+				"category": "structures",
+				"id": "portal",
+				"message": "portal is represented by a generated graybox placeholder."
+			}
+		]
 	},
 	"world_slot": {
-		"act": 1.0,
+		"act": 1,
 		"canonical_party": [
 			"aster",
 			"peris",
 			"endo"
 		],
 		"entry_anchor": "entry",
-		"entry_shelter_id": "shelter_2",
+		"entry_shelter_id": "shelter_5",
 		"exit_anchor": "exit_shelter",
-		"exit_shelter_id": "shelter_3",
-		"next_slot": "generated_channels_shelter_3_to_4",
+		"exit_shelter_id": "shelter_6",
+		"next_slot": "",
 		"preview_party_preset": "full_party_full_health",
-		"region": "Channels",
-		"slot_id": "generated_chain_nested_poc_shelter_2_to_3"
+		"region": "Transit Corridors",
+		"slot_id": "generated_sample_survival_run"
 	}
 }
