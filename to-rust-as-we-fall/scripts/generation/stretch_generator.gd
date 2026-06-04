@@ -99,7 +99,11 @@ static func generate(settings: Dictionary) -> Dictionary:
 	var palette_usage := _choose_palette_usage(catalog, resolved, budget, rng)
 	var random_walk := _build_archetype_random_walk(catalog, resolved, budget, rng)
 	var archetype_chain := _chain_from_random_walk(catalog, random_walk, rng) if _uses_archetype_random_walk(resolved) else _choose_archetype_chain(catalog, resolved, budget, rng)
-	var nodes := _build_nodes(resolved, budget, palette_usage, archetype_chain, rng, random_walk)
+	var limitations: Dictionary = resolved.get("limitations", {})
+	var available_flora := _available_values(catalog, "flora", _category_limitations(limitations, "allowed", "flora"), _category_limitations(limitations, "blocked", "flora"))
+	var available_enemies := _available_values(catalog, "enemies", _category_limitations(limitations, "allowed", "enemies"), _category_limitations(limitations, "blocked", "enemies"))
+	var available_structures := _available_values(catalog, "structures", _category_limitations(limitations, "allowed", "structures"), _category_limitations(limitations, "blocked", "structures"))
+	var nodes := _build_nodes(catalog, resolved, budget, palette_usage, archetype_chain, rng, random_walk, available_flora, available_enemies, available_structures)
 	var routes := _build_routes(nodes, budget, rng)
 	var graybox := _apply_graybox_layout(nodes, routes, catalog, resolved, budget)
 	var navigation := _build_navigation_graph(nodes, routes, resolved, graybox)
@@ -109,7 +113,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 	var anchors := _build_anchors(nodes)
 	var world_slot := _build_world_slot(resolved, anchors)
 	var composition_summary := _build_composition_summary(resolved.get("composition", {}), archetype_chain, nodes, random_walk)
-	var warnings := _collect_warnings(catalog, palette_usage)
+	var warnings := _collect_warnings(catalog, nodes)
 	var solution := SolverScript.analyze(nodes, str(resolved.get("complexity_tier", "teaching")), int(resolved.get("progression_stage", 99)))
 
 	return {
@@ -589,6 +593,8 @@ static func _archetype_chain_entry(catalog, id: String, rng, variant_override :=
 		"step_count": (entry.get("steps", []) as Array).size() if entry.get("steps", []) is Array else 0,
 		"shadow_solution": entry.get("shadow_solution", {}),
 		"approaches": entry.get("approaches", []),
+		"compatible_node_roles": entry.get("compatible_node_roles", []),
+		"all_variants": entry.get("variants", []),
 		"stage": int(entry.get("stage", 1)),
 		"survival_kind": str(entry.get("survival_kind", "")),
 		"atp_reward": int(entry.get("atp_reward", 0)),
@@ -805,26 +811,42 @@ static func _visited_archetypes(visits: Array) -> Array[String]:
 			ids.append(id)
 	return ids
 
-static func _build_nodes(settings: Dictionary, budget: Dictionary, palette_usage: Dictionary, archetype_chain: Array, rng, random_walk: Dictionary = {}) -> Array:
+static func _build_nodes(catalog, settings: Dictionary, budget: Dictionary, palette_usage: Dictionary, archetype_chain: Array, rng, random_walk: Dictionary, available_flora: Array, available_enemies: Array, available_structures: Array) -> Array:
 	var node_count := int(budget.get("node_count", 6))
 	var optional_count := int(budget.get("optional_node_count", 0))
 	var resource_beats := int(budget.get("resource_beats", 1))
 	var pressure_budget := int(budget.get("pressure_budget", 1))
 	var composition: Dictionary = settings.get("composition", {})
 	var walk_visits: Array = random_walk.get("visits", [])
-	var roles := ["guidance", "route_pressure", "foraging", "danger", "shortcut", "mixed", "regroup", "setpiece"]
+	var occurrences := {}
 	var nodes := []
 	for i in range(node_count):
-		var role := "boundary" if i == 0 else ("shelter_arrival" if i == node_count - 1 else str(roles[(i - 1) % roles.size()]))
+		var is_interior := i > 0 and i < node_count - 1
 		var walk_entry := {}
-		if i > 0 and i < node_count - 1 and not walk_visits.is_empty():
+		if is_interior and not walk_visits.is_empty():
 			walk_entry = (walk_visits[mini(i - 1, walk_visits.size() - 1)] as Dictionary).duplicate(true)
-			role = str(walk_entry.get("node_role_hint", role))
-		var optional := i > 0 and i < node_count - 1 and optional_count > 0 and (i % 3 == 0)
+		var node_id := "entry" if i == 0 else ("exit_shelter" if i == node_count - 1 else "node_%02d" % i)
+		var archetype: Dictionary = archetype_chain[(i - 1) % archetype_chain.size()] if is_interior and not archetype_chain.is_empty() else {}
+		var archetype_id := str(archetype.get("id", "11" if i == 0 or i == node_count - 1 else ""))
+		# Vary the variant across repeated occurrences of the same archetype so a cycled
+		# chain doesn't read as the same beat twice — flora, actors and label follow it.
+		if is_interior and not archetype.is_empty():
+			var all_variants: Array = archetype.get("all_variants", archetype.get("variants", []))
+			if not all_variants.is_empty():
+				var occ := int(occurrences.get(archetype_id, 0))
+				occurrences[archetype_id] = occ + 1
+				archetype = archetype.duplicate(true)
+				archetype["variant"] = str(all_variants[occ % all_variants.size()])
+		# Role is the archetype's identity, not a blind cycle — so a forage beat reads as
+		# foraging, a redirect as danger, never "Guidance Beat" stamped on a plant puzzle.
+		var role := "boundary" if i == 0 else ("shelter_arrival" if i == node_count - 1 else "")
+		if role == "":
+			role = str(walk_entry.get("node_role_hint", "")) if not walk_entry.is_empty() else ""
+			if role == "":
+				role = _role_for_archetype(archetype, i - 1)
+		var optional := is_interior and optional_count > 0 and (i % 3 == 0)
 		if optional:
 			optional_count -= 1
-		var node_id := "entry" if i == 0 else ("exit_shelter" if i == node_count - 1 else "node_%02d" % i)
-		var archetype: Dictionary = archetype_chain[(i - 1) % archetype_chain.size()] if i > 0 and i < node_count - 1 and not archetype_chain.is_empty() else {}
 		var position := [float(i) * 12.0, 0.45, float(((i % 3) - 1) * 3)]
 		if i == 0 and random_walk.has("entry_position"):
 			position = random_walk.get("entry_position", position)
@@ -832,21 +854,17 @@ static func _build_nodes(settings: Dictionary, budget: Dictionary, palette_usage
 			position = random_walk.get("exit_position", position)
 		elif not walk_entry.is_empty() and walk_entry.has("position"):
 			position = walk_entry.get("position", position)
-		var flora := _slice_usage(palette_usage.get("flora", []), i, 1)
-		var enemies := _slice_usage(palette_usage.get("enemies", []), i, 1) if pressure_budget > 0 and role in ["route_pressure", "danger", "mixed", "setpiece"] else []
-		if not enemies.is_empty():
-			pressure_budget -= 1
-		var structures := _structures_for_role(role, palette_usage.get("structures", []), i)
+		# Content + structure are the archetype's required props and ACTORS (a redirect gets a
+		# charger, an exploit gets prey + a predator, a forage gets food), not a generic slice.
+		var flora := _flora_for_node(catalog, archetype, available_flora, rng) if is_interior else _slice_usage(available_flora, i, 1)
+		# The archetype's REQUIRED actors are part of its fiction (a redirect needs a charger,
+		# an exploit needs prey + a predator) — they are placed regardless of the ambient
+		# pressure budget, which now only caps how many EXTRA threats can pile on.
+		var enemies := _enemies_for_node(catalog, archetype, available_enemies, 3, rng) if is_interior else []
+		var structures := _structure_for_node(archetype, role, available_structures)
 		var is_resource := resource_beats > 0 and role in ["foraging", "regroup"]
-		var archetype_id := str(archetype.get("id", "11" if role in ["boundary", "shelter_arrival"] else ""))
 		var nested_archetypes := _nested_for_archetype(archetype_id, composition)
-		var label := _label_for_node(role, i)
-		if not walk_entry.is_empty():
-			label = "A%s.%d %s" % [
-				str(walk_entry.get("archetype_id", archetype_id)),
-				int(walk_entry.get("step_index", 0)) + 1,
-				str(walk_entry.get("element", "Element")).capitalize(),
-			]
+		var label := _node_label(archetype, role, i)
 		var node := {
 			"id": node_id,
 			"role": role,
@@ -1504,16 +1522,26 @@ static func _build_composition_summary(composition: Dictionary, archetype_chain:
 		"walk_archetype_count": (random_walk.get("visited_archetypes", []) as Array).size() if random_walk.get("visited_archetypes", []) is Array else 0,
 	}
 
-static func _collect_warnings(catalog, palette_usage: Dictionary) -> Array:
+## Flag content the generator actually PLACED (not just the featured palette) that is a
+## graybox placeholder, so the warnings match what a player would see on the spine.
+static func _collect_warnings(catalog, nodes: Array) -> Array:
 	var warnings := []
-	for category in ["flora", "enemies", "structures"]:
-		for key in palette_usage.get(category, []):
-			if catalog.support_level(category, str(key)) != "implemented":
-				warnings.append({
-					"category": category,
-					"id": key,
-					"message": "%s is represented by a generated graybox placeholder." % key,
-				})
+	var seen := {}
+	for node in nodes:
+		if not (node is Dictionary):
+			continue
+		for category in ["flora", "enemies", "structures"]:
+			for key in (node as Dictionary).get(category, []):
+				var dedupe := "%s:%s" % [category, str(key)]
+				if seen.has(dedupe):
+					continue
+				seen[dedupe] = true
+				if catalog.support_level(category, str(key)) != "implemented":
+					warnings.append({
+						"category": category,
+						"id": str(key),
+						"message": "%s is represented by a generated graybox placeholder." % str(key),
+					})
 	return warnings
 
 static func _golden_path(nodes: Array) -> Array:
@@ -1590,6 +1618,173 @@ static func _slice_usage(values: Array, index: int, count: int) -> Array:
 	for i in range(count):
 		result.append(values[(index + i) % values.size()])
 	return result
+
+## --- Archetype coherence: a node's role, structure, actors and label all derive from
+## its archetype, so a forage beat reads as foraging (not "Danger Beat"), a redirect gets
+## an actual charger to redirect, and an exploit gets the predator+prey it needs. ---
+
+## The role a node wears, driven by its archetype (survival kind first, else a compatible
+## role) rather than a blind cycle — so role never contradicts what the node is.
+static func _role_for_archetype(archetype: Dictionary, index: int) -> String:
+	match str(archetype.get("survival_kind", "")):
+		"forage":
+			return "foraging"
+		"rest":
+			return "regroup"
+		"gauntlet", "exploit":
+			return "danger"
+		"hazard":
+			return "route_pressure"
+	var roles: Array = archetype.get("compatible_node_roles", [])
+	if roles.is_empty():
+		return "mixed"
+	return str(roles[index % roles.size()])
+
+## Enemy "slots" an archetype needs, each a set of acceptable content-palette tags. A
+## redirect needs a charger; an exploit needs prey + a predator; a gauntlet needs lanes.
+static func _enemy_needs(archetype: Dictionary) -> Array:
+	var variant := str(archetype.get("variant", ""))
+	match str(archetype.get("survival_kind", "")):
+		"exploit":
+			match variant:
+				"siderophore_into_meeb":
+					return [["siderophore", "swarm"], ["engulfer", "predator", "siderophore_counter"]]
+				"trigger_neutro_burst":
+					return [["burst", "aoe", "neutral_until_triggered"], ["siderophore"]]
+				"gnawer_onto_loud_signal":
+					return [["siderophore", "swarm"], ["hunter", "metabolic"]]
+				"candid_zone_route":
+					return [["biofilm", "environment"], ["patrol", "stealth"]]
+				_:
+					return [["siderophore"], ["engulfer", "predator"]]
+		"gauntlet":
+			return [["patrol", "enforcement"], ["sniper", "line_of_sight"], ["stealth", "grapple"]]
+		"hazard":
+			return [["siderophore", "biofilm"]]
+		"forage":
+			return [["swarm", "siderophore"]]
+		"rest":
+			return []
+	match str(archetype.get("id", "")):
+		"1":
+			return [["hunter", "swarm", "siderophore", "metabolic"]]
+		"4":
+			return [["patrol", "enforcement"]]
+		"7":
+			return [["patrol", "enforcement", "sniper", "line_of_sight"]]
+		"10":
+			return [["patrol"], ["siderophore"]]
+	return []
+
+## Flora an archetype wants — the variant usually names it (hushbloom_stun -> hushbloom),
+## plus survival/cover needs — so the placed plant matches the approach that references it.
+static func _flora_needs(archetype: Dictionary) -> Array:
+	var variant := str(archetype.get("variant", ""))
+	var sk := str(archetype.get("survival_kind", ""))
+	var needs := []
+	var variant_flora := {
+		"hushbloom_stun": "hushbloom", "flure_iron_decoy": "flure", "climbvine_traversal": "climbvine",
+		"resolution_roots_stabilize": "resolution_roots", "resolution_roots_break": "resolution_roots",
+	}
+	if variant_flora.has(variant):
+		needs.append({"id": str(variant_flora[variant])})
+	match sk:
+		"forage", "rest":
+			needs.append({"id": "capbage"})
+			needs.append({"tag": "cover"})
+		"exploit":
+			needs.append({"id": "flure"})
+		"hazard":
+			needs.append({"id": "resolution_roots"})
+	match str(archetype.get("id", "")):
+		"1", "3", "7":
+			needs.append({"tag": "cover"})
+		"4":
+			needs.append({"id": "flure"})
+		"6":
+			needs.append({"tag": "reveal"})
+	if needs.is_empty():
+		needs.append({"tag": "cover"})
+	return needs
+
+## Resolve one content need (a specific id, or any of some tags) against the available pool,
+## avoiding what's already placed. Falls back from an unavailable exact id to its tags.
+static func _content_for_need(catalog, category: String, available: Array, need: Dictionary, exclude: Array, rng) -> String:
+	if need.has("id"):
+		var id := str(need["id"])
+		if available.has(id) and not exclude.has(id):
+			return id
+	var want_tags: Array = []
+	if need.has("tags"):
+		want_tags = need["tags"]
+	elif need.has("tag"):
+		want_tags = [str(need["tag"])]
+	elif need.has("id"):
+		want_tags = catalog.get_content(category, str(need["id"])).get("tags", [])
+	var candidates := []
+	for c in available:
+		if exclude.has(str(c)):
+			continue
+		var tags: Array = catalog.get_content(category, str(c)).get("tags", [])
+		for t in want_tags:
+			if tags.has(str(t)):
+				candidates.append(str(c))
+				break
+	return str(rng.pick(candidates)) if not candidates.is_empty() else ""
+
+static func _enemies_for_node(catalog, archetype: Dictionary, available: Array, max_count: int, rng) -> Array:
+	var placed := []
+	for tag_options in _enemy_needs(archetype):
+		if placed.size() >= max_count:
+			break
+		var pick := _content_for_need(catalog, "enemies", available, {"tags": tag_options}, placed, rng)
+		if pick != "":
+			placed.append(pick)
+	return placed
+
+static func _flora_for_node(catalog, archetype: Dictionary, available: Array, rng) -> Array:
+	var placed := []
+	for need in _flora_needs(archetype):
+		if placed.size() >= 2:
+			break
+		var pick := _content_for_need(catalog, "flora", available, need, placed, rng)
+		if pick != "":
+			placed.append(pick)
+	return placed
+
+const ARCHETYPE_STRUCTURE := {"1": "barrier", "2": "root_slide", "3": "carry_gear", "4": "pipe", "5": "membrane", "6": "terminal", "7": "hide_slot", "8": "class_gate", "11": "junction"}
+const SURVIVAL_STRUCTURE := {"forage": "forage_cache", "rest": "hide_slot", "gauntlet": "barrier", "hazard": "water_control", "exploit": "pipe"}
+const ROLE_STRUCTURE := {"boundary": "junction", "shelter_arrival": "shelter", "foraging": "forage_cache", "route_pressure": "pipe", "guidance": "terminal", "danger": "barrier", "shortcut": "shortcut_gate", "mixed": "membrane", "regroup": "hide_slot", "setpiece": "root_slide"}
+
+## The structure on a node, preferred by survival kind / archetype, then role — never a
+## stray shelter on an interior node (which used to undercut the find-shelter tension).
+static func _structure_for_node(archetype: Dictionary, role: String, available: Array) -> Array:
+	var pref := str(SURVIVAL_STRUCTURE.get(str(archetype.get("survival_kind", "")), ""))
+	if pref == "":
+		pref = str(ARCHETYPE_STRUCTURE.get(str(archetype.get("id", "")), ""))
+	if pref != "" and available.has(pref):
+		return [pref]
+	var role_pref := str(ROLE_STRUCTURE.get(role, "pipe"))
+	if available.has(role_pref) and (role_pref != "shelter" or role == "shelter_arrival"):
+		return [role_pref]
+	for s in available:
+		if str(s) != "shelter" or role == "shelter_arrival":
+			return [str(s)]
+	return ["pipe"]
+
+## A node label that reads as the archetype + its variant, not the bare role name.
+static func _node_label(archetype: Dictionary, role: String, index: int) -> String:
+	if role == "boundary":
+		return "Entry Boundary"
+	if role == "shelter_arrival":
+		return "Shelter Arrival"
+	var name := str(archetype.get("name", ""))
+	if name == "":
+		return _label_for_node(role, index)
+	var variant := str(archetype.get("variant", ""))
+	if variant != "":
+		return "%s · %s" % [name, variant.capitalize().replace("_", " ")]
+	return name
 
 static func _structures_for_role(role: String, structures: Array, index: int) -> Array:
 	var preferred := {

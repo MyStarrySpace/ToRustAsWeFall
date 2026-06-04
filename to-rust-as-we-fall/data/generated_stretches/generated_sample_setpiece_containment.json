@@ -78,6 +78,15 @@
 	},
 	"archetype_chain": [
 		{
+			"all_variants": [
+				"iron_based",
+				"naturalizer_patrol",
+				"atmospheric",
+				"mixed",
+				"single_route_shadow",
+				"multi_route_converging",
+				"sequence_locked"
+			],
 			"approaches": [
 				{
 					"id": "specialist_team",
@@ -132,6 +141,11 @@
 			"atp_reward": 0,
 			"chain_index": 0,
 			"chain_label": "entry transition",
+			"compatible_node_roles": [
+				"setpiece",
+				"mixed",
+				"danger"
+			],
 			"composition_mode": "archetype_random_walk",
 			"composition_role": "random_walk_element",
 			"exploit_target": "",
@@ -160,6 +174,15 @@
 			"walk_step_index": 0
 		},
 		{
+			"all_variants": [
+				"iron_based",
+				"naturalizer_patrol",
+				"atmospheric",
+				"mixed",
+				"single_route_shadow",
+				"multi_route_converging",
+				"sequence_locked"
+			],
 			"approaches": [
 				{
 					"id": "specialist_team",
@@ -214,6 +237,11 @@
 			"atp_reward": 0,
 			"chain_index": 1,
 			"chain_label": "sub-puzzle composition",
+			"compatible_node_roles": [
+				"setpiece",
+				"mixed",
+				"danger"
+			],
 			"composition_mode": "archetype_random_walk",
 			"composition_role": "random_walk_element",
 			"exploit_target": "",
@@ -242,6 +270,14 @@
 			"walk_step_index": 1
 		},
 		{
+			"all_variants": [
+				"destroy_barrier",
+				"kill_enemy",
+				"reveal_plant",
+				"reveal_terminal",
+				"reveal_passage",
+				"activate_mechanism"
+			],
 			"approaches": [
 				{
 					"id": "redirect_combat",
@@ -297,6 +333,12 @@
 			"atp_reward": 0,
 			"chain_index": 2,
 			"chain_label": "identify impact target",
+			"compatible_node_roles": [
+				"route_pressure",
+				"danger",
+				"shortcut",
+				"setpiece"
+			],
 			"composition_mode": "archetype_random_walk",
 			"composition_role": "random_walk_element",
 			"exploit_target": "",
@@ -325,6 +367,14 @@
 			"walk_step_index": 0
 		},
 		{
+			"all_variants": [
+				"destroy_barrier",
+				"kill_enemy",
+				"reveal_plant",
+				"reveal_terminal",
+				"reveal_passage",
+				"activate_mechanism"
+			],
 			"approaches": [
 				{
 					"id": "redirect_combat",
@@ -380,6 +430,12 @@
 			"atp_reward": 0,
 			"chain_index": 3,
 			"chain_label": "position bait",
+			"compatible_node_roles": [
+				"route_pressure",
+				"danger",
+				"shortcut",
+				"setpiece"
+			],
 			"composition_mode": "archetype_random_walk",
 			"composition_role": "random_walk_element",
 			"exploit_target": "",
@@ -408,6 +464,14 @@
 			"walk_step_index": 1
 		},
 		{
+			"all_variants": [
+				"destroy_barrier",
+				"kill_enemy",
+				"reveal_plant",
+				"reveal_terminal",
+				"reveal_passage",
+				"activate_mechanism"
+			],
 			"approaches": [
 				{
 					"id": "redirect_combat",
@@ -463,6 +527,12 @@
 			"atp_reward": 0,
 			"chain_index": 4,
 			"chain_label": "trigger charge",
+			"compatible_node_roles": [
+				"route_pressure",
+				"danger",
+				"shortcut",
+				"setpiece"
+			],
 			"composition_mode": "archetype_random_walk",
 			"composition_role": "random_walk_element",
 			"exploit_target": "",
@@ -491,6 +561,14 @@
 			"walk_step_index": 2
 		},
 		{
+			"all_variants": [
+				"destroy_barrier",
+				"kill_enemy",
+				"reveal_plant",
+				"reveal_terminal",
+				"reveal_passage",
+				"activate_mechanism"
+			],
 			"approaches": [
 				{
 					"id": "redirect_combat",
@@ -546,6 +624,12 @@
 			"atp_reward": 0,
 			"chain_index": 5,
 			"chain_label": "dodge commitment",
+			"compatible_node_roles": [
+				"route_pressure",
+				"danger",
+				"shortcut",
+				"setpiece"
+			],
 			"composition_mode": "archetype_random_walk",
 			"composition_role": "random_walk_element",
 			"exploit_target": "",
@@ -574,6 +658,13 @@
 			"walk_step_index": 3
 		},
 		{
+			"all_variants": [
+				"cure_component",
+				"puzzle_piece",
+				"injured_party_member",
+				"critical_resource",
+				"information_artifact"
+			],
 			"approaches": [
 				{
 					"id": "guarded_escort",
@@ -642,6 +733,12 @@
 			"atp_reward": 0,
 			"chain_index": 6,
 			"chain_label": "pick up carry target",
+			"compatible_node_roles": [
+				"resource",
+				"danger",
+				"mixed",
+				"setpiece"
+			],
 			"composition_mode": "archetype_random_walk",
 			"composition_role": "random_walk_element",
 			"exploit_target": "",
@@ -670,6 +767,15 @@
 			"walk_step_index": 0
 		},
 		{
+			"all_variants": [
+				"loud_action",
+				"false_scent",
+				"iron_signal",
+				"electrical_signature",
+				"terminal_task",
+				"plant_tending_task",
+				"aquatic_route"
+			],
 			"approaches": [
 				{
 					"id": "loud_draw",
@@ -724,6 +830,12 @@
 			"atp_reward": 0,
 			"chain_index": 7,
 			"chain_label": "read patrol",
+			"compatible_node_roles": [
+				"route_pressure",
+				"danger",
+				"mixed",
+				"shortcut"
+			],
 			"composition_mode": "archetype_random_walk",
 			"composition_role": "random_walk_element",
 			"exploit_target": "",
@@ -752,6 +864,16 @@
 			"walk_step_index": 0
 		},
 		{
+			"all_variants": [
+				"area_map",
+				"flow_diagram",
+				"document",
+				"image_symbol",
+				"combat_retrieval",
+				"memory_pressure",
+				"carry_vulnerability",
+				"hidden_overlay"
+			],
 			"approaches": [
 				{
 					"id": "combat_retrieval",
@@ -806,6 +928,12 @@
 			"atp_reward": 0,
 			"chain_index": 8,
 			"chain_label": "discover fragments",
+			"compatible_node_roles": [
+				"guidance",
+				"resource",
+				"mixed",
+				"setpiece"
+			],
 			"composition_mode": "archetype_random_walk",
 			"composition_role": "random_walk_element",
 			"exploit_target": "",
@@ -1336,7 +1464,7 @@
 				16.8999996185303
 			]
 		},
-		"content_placement_count": 28,
+		"content_placement_count": 35,
 		"contract_id": "generated_stretch_graybox_v1",
 		"elevation_count": 3,
 		"elevation_indices": [
@@ -2686,7 +2814,7 @@
 				"surface_y": 0.45
 			},
 			{
-				"content_count": 3,
+				"content_count": 4,
 				"elevation_index": 3,
 				"floor_size": [
 					6.59999990463257,
@@ -2706,7 +2834,7 @@
 				"surface_y": 2.61
 			},
 			{
-				"content_count": 2,
+				"content_count": 4,
 				"elevation_index": 2,
 				"floor_size": [
 					4.80000019073486,
@@ -2726,7 +2854,7 @@
 				"surface_y": 1.89
 			},
 			{
-				"content_count": 2,
+				"content_count": 3,
 				"elevation_index": 2,
 				"floor_size": [
 					5.19999980926514,
@@ -2746,7 +2874,7 @@
 				"surface_y": 1.89
 			},
 			{
-				"content_count": 2,
+				"content_count": 3,
 				"elevation_index": 2,
 				"floor_size": [
 					4.80000019073486,
@@ -2866,7 +2994,7 @@
 				"surface_y": 0.45
 			},
 			{
-				"content_count": 2,
+				"content_count": 4,
 				"elevation_index": 0,
 				"floor_size": [
 					4.80000019073486,
@@ -2937,49 +3065,49 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "flure",
-					"label": "flure",
+					"id": "doma",
+					"label": "doma",
 					"local_offset": [
 						-2.13000011444092,
-						0.725000023841858,
+						0.699999988079071,
 						-0.923999965190887
 					],
 					"position": [
 						-2.13000011444092,
-						1.17499995231628,
+						1.14999997615814,
 						-0.923999965190887
 					],
-					"role": "puzzle_flora",
+					"role": "resource",
 					"rotation_y_degrees": -11.0,
 					"shape": "plant_cluster",
 					"size": [
-						1.79999995231628,
-						1.45000004768372,
-						1.79999995231628
+						1.20000004768372,
+						1.39999997615814,
+						1.20000004768372
 					],
 					"support": "implemented"
 				},
 				{
 					"category": "structures",
-					"id": "shelter",
-					"label": "shelter",
+					"id": "junction",
+					"label": "junction",
 					"local_offset": [
 						0.0,
-						1.20000004768372,
+						0.600000023841858,
 						0.755999982357025
 					],
 					"position": [
 						0.0,
-						1.65000009536743,
+						1.04999995231628,
 						0.755999982357025
 					],
-					"role": "rest",
+					"role": "structure",
 					"rotation_y_degrees": 26.0,
-					"shape": "shelter_shell",
+					"shape": "structure_box",
 					"size": [
-						4.80000019073486,
-						2.40000009536743,
-						3.40000009536743
+						3.0,
+						1.20000004768372,
+						2.0
 					],
 					"support": "implemented"
 				}
@@ -2994,7 +3122,7 @@
 				4.19999980926514
 			],
 			"flora": [
-				"flure"
+				"doma"
 			],
 			"footprint": [
 				6.0,
@@ -3026,7 +3154,7 @@
 			"shortcut": false,
 			"stage": 1,
 			"structures": [
-				"shelter"
+				"junction"
 			],
 			"surface_y": 0.45,
 			"survival_kind": "",
@@ -3106,25 +3234,25 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "seefern",
-					"label": "seefern",
+					"id": "scarpet",
+					"label": "scarpet",
 					"local_offset": [
 						-2.2979998588562,
-						0.899999976158142,
+						0.0799999982118607,
 						-1.14399993419647
 					],
 					"position": [
 						9.70199966430664,
-						3.50999975204468,
+						2.68999981880188,
 						2.05600023269653
 					],
-					"role": "readable_screen",
+					"role": "cover",
 					"rotation_y_degrees": 0.0,
-					"shape": "plant_cluster",
+					"shape": "mat",
 					"size": [
-						0.899999976158142,
-						1.79999995231628,
-						0.699999988079071
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
 					],
 					"support": "implemented"
 				},
@@ -3153,26 +3281,50 @@
 					"support": "implemented"
 				},
 				{
-					"category": "structures",
-					"id": "hide_slot",
-					"label": "hide_slot",
+					"category": "enemies",
+					"id": "techos",
+					"label": "techos",
 					"local_offset": [
+						1.58399999141693,
 						0.550000011920929,
-						0.699999988079071,
+						0.290000021457672
+					],
+					"position": [
+						13.5839996337891,
+						3.15999984741211,
+						3.49000000953674
+					],
+					"role": "pressure",
+					"rotation_y_degrees": 74.0,
+					"shape": "enemy_volume",
+					"size": [
+						1.20000004768372,
+						1.10000002384186,
+						1.20000004768372
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "structures",
+					"id": "root_slide",
+					"label": "root_slide",
+					"local_offset": [
+						-0.550000011920929,
+						0.224999994039536,
 						0.935999989509583
 					],
 					"position": [
-						12.5500001907349,
-						3.30999994277954,
+						11.4499998092651,
+						2.83499979972839,
 						4.13600015640259
 					],
 					"role": "structure",
-					"rotation_y_degrees": 74.0,
-					"shape": "structure_box",
+					"rotation_y_degrees": 111.0,
+					"shape": "slide",
 					"size": [
-						1.60000002384186,
-						1.39999997615814,
-						1.0
+						3.79999995231628,
+						0.449999988079071,
+						1.14999997615814
 					],
 					"support": "implemented"
 				}
@@ -3180,7 +3332,8 @@
 			"elevation_index": 3,
 			"elevation_meters": 2.16,
 			"enemies": [
-				"naturalizers"
+				"naturalizers",
+				"techos"
 			],
 			"exploit_target": "",
 			"floor_size": [
@@ -3189,7 +3342,7 @@
 				5.19999980926514
 			],
 			"flora": [
-				"seefern"
+				"scarpet"
 			],
 			"footprint": [
 				6.59999990463257,
@@ -3197,7 +3350,7 @@
 				5.19999980926514
 			],
 			"id": "node_01",
-			"label": "A10.1 Entry Transition",
+			"label": "Danger zone · Iron Based",
 			"layout_step": {
 				"lane": 1,
 				"turn": 1,
@@ -3224,12 +3377,12 @@
 			"shortcut": false,
 			"stage": 5,
 			"structures": [
-				"hide_slot"
+				"root_slide"
 			],
 			"surface_y": 2.61,
 			"survival_kind": "",
-			"title": "A10.1 Entry Transition",
-			"variant": "sequence_locked",
+			"title": "Danger zone · Iron Based",
+			"variant": "iron_based",
 			"walk_element": "entry transition",
 			"walk_index": 0,
 			"walk_ref": "walk_00",
@@ -3304,25 +3457,73 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "snapbloom",
-					"label": "snapbloom",
+					"id": "scarpet",
+					"label": "scarpet",
 					"local_offset": [
 						-1.7940000295639,
-						0.600000023841858,
+						0.0799999982118607,
 						-0.879999995231628
 					],
 					"position": [
 						22.2059993743896,
-						2.49000000953674,
+						1.97000002861023,
 						5.51999998092651
 					],
-					"role": "resource",
+					"role": "cover",
 					"rotation_y_degrees": 11.0,
-					"shape": "plant_cluster",
+					"shape": "mat",
 					"size": [
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "enemies",
+					"id": "naturalizers",
+					"label": "naturalizers",
+					"local_offset": [
+						1.15200006961823,
+						0.550000011920929,
+						-0.200000002980232
+					],
+					"position": [
+						25.1520004272461,
+						2.44000005722046,
+						6.20000028610229
+					],
+					"role": "pressure",
+					"rotation_y_degrees": 48.0,
+					"shape": "enemy_volume",
+					"size": [
+						1.5,
 						1.10000002384186,
+						1.5
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "enemies",
+					"id": "techos",
+					"label": "techos",
+					"local_offset": [
+						1.15200006961823,
+						0.550000011920929,
+						0.349999994039536
+					],
+					"position": [
+						25.1520004272461,
+						2.44000005722046,
+						6.75
+					],
+					"role": "pressure",
+					"rotation_y_degrees": 85.0,
+					"shape": "enemy_volume",
+					"size": [
 						1.20000004768372,
-						1.10000002384186
+						1.10000002384186,
+						1.20000004768372
 					],
 					"support": "implemented"
 				},
@@ -3331,17 +3532,17 @@
 					"id": "terminal",
 					"label": "terminal",
 					"local_offset": [
-						0.0,
+						-0.550000011920929,
 						0.824999988079071,
 						0.720000028610229
 					],
 					"position": [
-						24.0,
+						23.4500007629395,
 						2.71499991416931,
 						7.11999988555908
 					],
 					"role": "guidance",
-					"rotation_y_degrees": 48.0,
+					"rotation_y_degrees": 122.0,
 					"shape": "console",
 					"size": [
 						1.20000004768372,
@@ -3353,7 +3554,10 @@
 			],
 			"elevation_index": 2,
 			"elevation_meters": 1.44,
-			"enemies": [],
+			"enemies": [
+				"naturalizers",
+				"techos"
+			],
 			"exploit_target": "",
 			"floor_size": [
 				4.80000019073486,
@@ -3361,7 +3565,7 @@
 				4.0
 			],
 			"flora": [
-				"snapbloom"
+				"scarpet"
 			],
 			"footprint": [
 				4.80000019073486,
@@ -3369,7 +3573,7 @@
 				4.0
 			],
 			"id": "node_02",
-			"label": "A10.2 Sub Puzzle Composition",
+			"label": "Danger zone · Naturalizer Patrol",
 			"layout_step": {
 				"lane": 2,
 				"turn": 1,
@@ -3384,7 +3588,7 @@
 				1.88999998569489,
 				6.40000009536743
 			],
-			"pressure": 0,
+			"pressure": 1,
 			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
@@ -3400,8 +3604,8 @@
 			],
 			"surface_y": 1.89,
 			"survival_kind": "",
-			"title": "A10.2 Sub Puzzle Composition",
-			"variant": "atmospheric",
+			"title": "Danger zone · Naturalizer Patrol",
+			"variant": "naturalizer_patrol",
 			"walk_element": "sub-puzzle composition",
 			"walk_index": 1,
 			"walk_ref": "walk_01",
@@ -3500,33 +3704,59 @@
 					"support": "implemented"
 				},
 				{
-					"category": "structures",
-					"id": "terminal",
-					"label": "terminal",
+					"category": "enemies",
+					"id": "techos",
+					"label": "techos",
 					"local_offset": [
-						0.0,
-						0.824999988079071,
+						1.24799990653992,
+						0.550000011920929,
+						-0.219999998807907
+					],
+					"position": [
+						37.2480010986328,
+						2.44000005722046,
+						6.18000030517578
+					],
+					"role": "pressure",
+					"rotation_y_degrees": 59.0,
+					"shape": "enemy_volume",
+					"size": [
+						1.20000004768372,
+						1.10000002384186,
+						1.20000004768372
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "structures",
+					"id": "barrier",
+					"label": "barrier",
+					"local_offset": [
+						0.550000011920929,
+						0.625,
 						0.791999995708466
 					],
 					"position": [
-						36.0,
-						2.71499991416931,
+						36.5499992370605,
+						2.5149998664856,
 						7.19199991226196
 					],
-					"role": "guidance",
-					"rotation_y_degrees": 59.0,
-					"shape": "console",
+					"role": "structure",
+					"rotation_y_degrees": 96.0,
+					"shape": "structure_box",
 					"size": [
-						1.20000004768372,
-						1.64999997615814,
-						0.75
+						2.59999990463257,
+						1.25,
+						0.5
 					],
 					"support": "implemented"
 				}
 			],
 			"elevation_index": 2,
 			"elevation_meters": 1.44,
-			"enemies": [],
+			"enemies": [
+				"techos"
+			],
 			"exploit_target": "",
 			"floor_size": [
 				5.19999980926514,
@@ -3542,7 +3772,7 @@
 				4.40000009536743
 			],
 			"id": "node_03",
-			"label": "A1.1 Identify Impact Target",
+			"label": "Redirected enemy aggression · Destroy Barrier",
 			"layout_step": {
 				"lane": 2,
 				"turn": 1,
@@ -3557,7 +3787,7 @@
 				1.88999998569489,
 				6.40000009536743
 			],
-			"pressure": 0,
+			"pressure": 1,
 			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
@@ -3569,11 +3799,11 @@
 			"shortcut": false,
 			"stage": 2,
 			"structures": [
-				"terminal"
+				"barrier"
 			],
 			"surface_y": 1.89,
 			"survival_kind": "",
-			"title": "A1.1 Identify Impact Target",
+			"title": "Redirected enemy aggression · Destroy Barrier",
 			"variant": "destroy_barrier",
 			"walk_element": "identify impact target",
 			"walk_index": 2,
@@ -3650,56 +3880,82 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "mother_flure",
-					"label": "mother_flure",
+					"id": "scarpet",
+					"label": "scarpet",
 					"local_offset": [
 						-1.7940000295639,
-						1.60000002384186,
+						0.0799999982118607,
 						-0.879999995231628
 					],
 					"position": [
 						46.2060012817383,
-						3.49000000953674,
+						1.97000002861023,
 						5.51999998092651
 					],
-					"role": "puzzle_flora",
+					"role": "cover",
 					"rotation_y_degrees": 33.0,
-					"shape": "canopy",
+					"shape": "mat",
 					"size": [
-						5.19999980926514,
-						3.20000004768372,
-						5.19999980926514
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "enemies",
+					"id": "techos",
+					"label": "techos",
+					"local_offset": [
+						1.15200006961823,
+						0.550000011920929,
+						-0.200000002980232
+					],
+					"position": [
+						49.1520004272461,
+						2.44000005722046,
+						6.20000028610229
+					],
+					"role": "pressure",
+					"rotation_y_degrees": 70.0,
+					"shape": "enemy_volume",
+					"size": [
+						1.20000004768372,
+						1.10000002384186,
+						1.20000004768372
 					],
 					"support": "implemented"
 				},
 				{
 					"category": "structures",
-					"id": "terminal",
-					"label": "terminal",
+					"id": "barrier",
+					"label": "barrier",
 					"local_offset": [
-						0.0,
-						0.824999988079071,
+						0.550000011920929,
+						0.625,
 						0.720000028610229
 					],
 					"position": [
-						48.0,
-						2.71499991416931,
+						48.5499992370605,
+						2.5149998664856,
 						7.11999988555908
 					],
-					"role": "guidance",
-					"rotation_y_degrees": 70.0,
-					"shape": "console",
+					"role": "structure",
+					"rotation_y_degrees": 107.0,
+					"shape": "structure_box",
 					"size": [
-						1.20000004768372,
-						1.64999997615814,
-						0.75
+						2.59999990463257,
+						1.25,
+						0.5
 					],
 					"support": "implemented"
 				}
 			],
 			"elevation_index": 2,
 			"elevation_meters": 1.44,
-			"enemies": [],
+			"enemies": [
+				"techos"
+			],
 			"exploit_target": "",
 			"floor_size": [
 				4.80000019073486,
@@ -3707,7 +3963,7 @@
 				4.0
 			],
 			"flora": [
-				"mother_flure"
+				"scarpet"
 			],
 			"footprint": [
 				4.80000019073486,
@@ -3715,7 +3971,7 @@
 				4.0
 			],
 			"id": "node_04",
-			"label": "A1.2 Position Bait",
+			"label": "Redirected enemy aggression · Kill Enemy",
 			"layout_step": {
 				"lane": 2,
 				"turn": 1,
@@ -3730,7 +3986,7 @@
 				1.88999998569489,
 				6.40000009536743
 			],
-			"pressure": 0,
+			"pressure": 1,
 			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
@@ -3742,11 +3998,11 @@
 			"shortcut": false,
 			"stage": 2,
 			"structures": [
-				"terminal"
+				"barrier"
 			],
 			"surface_y": 1.89,
 			"survival_kind": "",
-			"title": "A1.2 Position Bait",
+			"title": "Redirected enemy aggression · Kill Enemy",
 			"variant": "kill_enemy",
 			"walk_element": "position bait",
 			"walk_index": 3,
@@ -3823,32 +4079,32 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "flure",
-					"label": "flure",
+					"id": "scarpet",
+					"label": "scarpet",
 					"local_offset": [
 						-1.96200001239777,
-						0.725000023841858,
+						0.0799999982118607,
 						-1.05599999427795
 					],
 					"position": [
 						58.0379981994629,
-						2.61500000953674,
+						1.97000002861023,
 						5.3439998626709
 					],
-					"role": "puzzle_flora",
+					"role": "cover",
 					"rotation_y_degrees": 44.0,
-					"shape": "plant_cluster",
+					"shape": "mat",
 					"size": [
-						1.79999995231628,
-						1.45000004768372,
-						1.79999995231628
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
 					],
 					"support": "implemented"
 				},
 				{
 					"category": "enemies",
-					"id": "naturalizers",
-					"label": "naturalizers",
+					"id": "techos",
+					"label": "techos",
 					"local_offset": [
 						1.2960000038147,
 						0.550000011920929,
@@ -3863,33 +4119,33 @@
 					"rotation_y_degrees": 81.0,
 					"shape": "enemy_volume",
 					"size": [
-						1.5,
+						1.20000004768372,
 						1.10000002384186,
-						1.5
+						1.20000004768372
 					],
 					"support": "implemented"
 				},
 				{
 					"category": "structures",
-					"id": "terminal",
-					"label": "terminal",
+					"id": "barrier",
+					"label": "barrier",
 					"local_offset": [
 						0.550000011920929,
-						0.824999988079071,
+						0.625,
 						0.864000022411346
 					],
 					"position": [
 						60.5499992370605,
-						2.71499991416931,
+						2.5149998664856,
 						7.26399993896484
 					],
-					"role": "guidance",
+					"role": "structure",
 					"rotation_y_degrees": 118.0,
-					"shape": "console",
+					"shape": "structure_box",
 					"size": [
-						1.20000004768372,
-						1.64999997615814,
-						0.75
+						2.59999990463257,
+						1.25,
+						0.5
 					],
 					"support": "implemented"
 				}
@@ -3897,7 +4153,7 @@
 			"elevation_index": 2,
 			"elevation_meters": 1.44,
 			"enemies": [
-				"naturalizers"
+				"techos"
 			],
 			"exploit_target": "",
 			"floor_size": [
@@ -3906,7 +4162,7 @@
 				4.80000019073486
 			],
 			"flora": [
-				"flure"
+				"scarpet"
 			],
 			"footprint": [
 				5.40000009536743,
@@ -3914,7 +4170,7 @@
 				4.80000019073486
 			],
 			"id": "node_05",
-			"label": "A1.3 Trigger Charge",
+			"label": "Redirected enemy aggression · Reveal Plant",
 			"layout_step": {
 				"lane": 2,
 				"turn": 1,
@@ -3941,12 +4197,12 @@
 			"shortcut": false,
 			"stage": 2,
 			"structures": [
-				"terminal"
+				"barrier"
 			],
 			"surface_y": 1.89,
 			"survival_kind": "",
-			"title": "A1.3 Trigger Charge",
-			"variant": "destroy_barrier",
+			"title": "Redirected enemy aggression · Reveal Plant",
+			"variant": "reveal_plant",
 			"walk_element": "trigger charge",
 			"walk_index": 4,
 			"walk_ref": "walk_04",
@@ -4022,25 +4278,25 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "seefern",
-					"label": "seefern",
+					"id": "scarpet",
+					"label": "scarpet",
 					"local_offset": [
 						-2.07400012016296,
-						0.899999976158142,
+						0.0799999982118607,
 						-1.14399993419647
 					],
 					"position": [
 						69.9260025024414,
-						2.78999996185303,
+						1.97000002861023,
 						5.25600004196167
 					],
-					"role": "readable_screen",
+					"role": "cover",
 					"rotation_y_degrees": 55.0,
-					"shape": "plant_cluster",
+					"shape": "mat",
 					"size": [
-						0.899999976158142,
-						1.79999995231628,
-						0.699999988079071
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
 					],
 					"support": "implemented"
 				},
@@ -4105,7 +4361,7 @@
 				5.19999980926514
 			],
 			"flora": [
-				"seefern"
+				"scarpet"
 			],
 			"footprint": [
 				5.80000019073486,
@@ -4113,7 +4369,7 @@
 				5.19999980926514
 			],
 			"id": "node_06",
-			"label": "A1.4 Dodge Commitment",
+			"label": "Redirected enemy aggression · Reveal Terminal",
 			"layout_step": {
 				"lane": 2,
 				"turn": 1,
@@ -4144,8 +4400,8 @@
 			],
 			"surface_y": 1.89,
 			"survival_kind": "",
-			"title": "A1.4 Dodge Commitment",
-			"variant": "reveal_passage",
+			"title": "Redirected enemy aggression · Reveal Terminal",
+			"variant": "reveal_terminal",
 			"walk_element": "dodge commitment",
 			"walk_index": 5,
 			"walk_ref": "walk_05",
@@ -4234,49 +4490,49 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "snapbloom",
-					"label": "snapbloom",
+					"id": "scarpet",
+					"label": "scarpet",
 					"local_offset": [
 						-2.07400012016296,
-						0.600000023841858,
+						0.0799999982118607,
 						-0.967999994754791
 					],
 					"position": [
 						81.9260025024414,
-						2.49000000953674,
+						1.97000002861023,
 						5.43200016021729
 					],
-					"role": "resource",
+					"role": "cover",
 					"rotation_y_degrees": 66.0,
-					"shape": "plant_cluster",
+					"shape": "mat",
 					"size": [
-						1.10000002384186,
-						1.20000004768372,
-						1.10000002384186
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
 					],
 					"support": "implemented"
 				},
 				{
 					"category": "structures",
-					"id": "hide_slot",
-					"label": "hide_slot",
+					"id": "carry_gear",
+					"label": "carry_gear",
 					"local_offset": [
 						0.0,
-						0.699999988079071,
+						0.400000005960464,
 						0.791999995708466
 					],
 					"position": [
 						84.0,
-						2.58999991416931,
+						2.28999996185303,
 						7.19199991226196
 					],
 					"role": "structure",
 					"rotation_y_degrees": 103.0,
 					"shape": "structure_box",
 					"size": [
-						1.60000002384186,
-						1.39999997615814,
-						1.0
+						1.10000002384186,
+						0.800000011920929,
+						1.10000002384186
 					],
 					"support": "implemented"
 				}
@@ -4291,7 +4547,7 @@
 				4.40000009536743
 			],
 			"flora": [
-				"snapbloom"
+				"scarpet"
 			],
 			"footprint": [
 				5.80000019073486,
@@ -4299,7 +4555,7 @@
 				4.40000009536743
 			],
 			"id": "node_07",
-			"label": "A3.1 Pick Up Carry Target",
+			"label": "Carry the heavy thing · Cure Component",
 			"layout_step": {
 				"lane": 2,
 				"turn": 1,
@@ -4326,12 +4582,12 @@
 			"shortcut": false,
 			"stage": 2,
 			"structures": [
-				"hide_slot"
+				"carry_gear"
 			],
 			"surface_y": 1.89,
 			"survival_kind": "",
-			"title": "A3.1 Pick Up Carry Target",
-			"variant": "critical_resource",
+			"title": "Carry the heavy thing · Cure Component",
+			"variant": "cure_component",
 			"walk_element": "pick up carry target",
 			"walk_index": 6,
 			"walk_ref": "walk_06",
@@ -4406,32 +4662,32 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "scarpet",
-					"label": "scarpet",
+					"id": "flure",
+					"label": "flure",
 					"local_offset": [
 						-1.96200001239777,
-						0.0799999982118607,
+						0.725000023841858,
 						-1.05599999427795
 					],
 					"position": [
 						94.0380020141602,
-						0.529999971389771,
+						1.17499995231628,
 						2.14400005340576
 					],
-					"role": "cover",
+					"role": "puzzle_flora",
 					"rotation_y_degrees": 77.0,
-					"shape": "mat",
+					"shape": "plant_cluster",
 					"size": [
-						2.20000004768372,
-						0.159999996423721,
-						1.70000004768372
+						1.79999995231628,
+						1.45000004768372,
+						1.79999995231628
 					],
 					"support": "implemented"
 				},
 				{
 					"category": "enemies",
-					"id": "techos",
-					"label": "techos",
+					"id": "naturalizers",
+					"label": "naturalizers",
 					"local_offset": [
 						1.2960000038147,
 						0.550000011920929,
@@ -4446,33 +4702,33 @@
 					"rotation_y_degrees": 114.0,
 					"shape": "enemy_volume",
 					"size": [
-						1.20000004768372,
+						1.5,
 						1.10000002384186,
-						1.20000004768372
+						1.5
 					],
 					"support": "implemented"
 				},
 				{
 					"category": "structures",
-					"id": "barrier",
-					"label": "barrier",
+					"id": "pipe",
+					"label": "pipe",
 					"local_offset": [
 						0.550000011920929,
-						0.625,
+						0.275000005960464,
 						0.864000022411346
 					],
 					"position": [
 						96.5500030517578,
-						1.07500004768372,
+						0.725000023841858,
 						4.06400012969971
 					],
 					"role": "structure",
 					"rotation_y_degrees": 151.0,
-					"shape": "structure_box",
+					"shape": "pipe",
 					"size": [
-						2.59999990463257,
-						1.25,
-						0.5
+						3.29999995231628,
+						0.550000011920929,
+						0.550000011920929
 					],
 					"support": "implemented"
 				}
@@ -4480,7 +4736,7 @@
 			"elevation_index": 0,
 			"elevation_meters": 0.0,
 			"enemies": [
-				"techos"
+				"naturalizers"
 			],
 			"exploit_target": "",
 			"floor_size": [
@@ -4489,7 +4745,7 @@
 				4.80000019073486
 			],
 			"flora": [
-				"scarpet"
+				"flure"
 			],
 			"footprint": [
 				5.40000009536743,
@@ -4497,7 +4753,7 @@
 				4.80000019073486
 			],
 			"id": "node_08",
-			"label": "A4.1 Read Patrol",
+			"label": "Distract the patrol · Loud Action",
 			"layout_step": {
 				"lane": 1,
 				"turn": -1,
@@ -4524,12 +4780,12 @@
 			"shortcut": false,
 			"stage": 3,
 			"structures": [
-				"barrier"
+				"pipe"
 			],
 			"surface_y": 0.45,
 			"survival_kind": "",
-			"title": "A4.1 Read Patrol",
-			"variant": "iron_signal",
+			"title": "Distract the patrol · Loud Action",
+			"variant": "loud_action",
 			"walk_element": "read patrol",
 			"walk_index": 7,
 			"walk_ref": "walk_07",
@@ -4604,25 +4860,25 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "mother_flure",
-					"label": "mother_flure",
+					"id": "seefern",
+					"label": "seefern",
 					"local_offset": [
 						-1.90599989891052,
-						1.60000002384186,
+						0.899999976158142,
 						-0.967999994754791
 					],
 					"position": [
 						106.09400177002,
-						2.04999995231628,
+						1.34999990463257,
 						-0.967999994754791
 					],
-					"role": "puzzle_flora",
+					"role": "readable_screen",
 					"rotation_y_degrees": 88.0,
-					"shape": "canopy",
+					"shape": "plant_cluster",
 					"size": [
-						5.19999980926514,
-						3.20000004768372,
-						5.19999980926514
+						0.899999976158142,
+						1.79999995231628,
+						0.699999988079071
 					],
 					"support": "implemented"
 				},
@@ -4661,7 +4917,7 @@
 				4.40000009536743
 			],
 			"flora": [
-				"mother_flure"
+				"seefern"
 			],
 			"footprint": [
 				5.19999980926514,
@@ -4669,7 +4925,7 @@
 				4.40000009536743
 			],
 			"id": "node_09",
-			"label": "A6.1 Discover Fragments",
+			"label": "Pattern reconstruction · Area Map",
 			"layout_step": {
 				"lane": 0,
 				"turn": -1,
@@ -4700,8 +4956,8 @@
 			],
 			"surface_y": 0.45,
 			"survival_kind": "",
-			"title": "A6.1 Discover Fragments",
-			"variant": "combat_retrieval",
+			"title": "Pattern reconstruction · Area Map",
+			"variant": "area_map",
 			"walk_element": "discover fragments",
 			"walk_index": 8,
 			"walk_ref": "walk_08",
@@ -4776,25 +5032,73 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "flure",
-					"label": "flure",
+					"id": "scarpet",
+					"label": "scarpet",
 					"local_offset": [
 						-1.7940000295639,
-						0.725000023841858,
+						0.0799999982118607,
 						-0.879999995231628
 					],
 					"position": [
 						106.206001281738,
-						1.17499995231628,
+						0.529999971389771,
 						-0.879999995231628
 					],
-					"role": "puzzle_flora",
+					"role": "cover",
 					"rotation_y_degrees": 0.0,
-					"shape": "plant_cluster",
+					"shape": "mat",
 					"size": [
-						1.79999995231628,
-						1.45000004768372,
-						1.79999995231628
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "enemies",
+					"id": "naturalizers",
+					"label": "naturalizers",
+					"local_offset": [
+						1.15200006961823,
+						0.550000011920929,
+						-0.200000002980232
+					],
+					"position": [
+						109.152000427246,
+						1.0,
+						-0.200000002980232
+					],
+					"role": "pressure",
+					"rotation_y_degrees": 37.0,
+					"shape": "enemy_volume",
+					"size": [
+						1.5,
+						1.10000002384186,
+						1.5
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "enemies",
+					"id": "techos",
+					"label": "techos",
+					"local_offset": [
+						1.15200006961823,
+						0.550000011920929,
+						0.349999994039536
+					],
+					"position": [
+						109.152000427246,
+						1.0,
+						0.349999994039536
+					],
+					"role": "pressure",
+					"rotation_y_degrees": 74.0,
+					"shape": "enemy_volume",
+					"size": [
+						1.20000004768372,
+						1.10000002384186,
+						1.20000004768372
 					],
 					"support": "implemented"
 				},
@@ -4803,17 +5107,17 @@
 					"id": "terminal",
 					"label": "terminal",
 					"local_offset": [
-						0.0,
+						-0.550000011920929,
 						0.824999988079071,
 						0.720000028610229
 					],
 					"position": [
-						108.0,
+						107.449996948242,
 						1.27499997615814,
 						0.720000028610229
 					],
 					"role": "guidance",
-					"rotation_y_degrees": 37.0,
+					"rotation_y_degrees": 111.0,
 					"shape": "console",
 					"size": [
 						1.20000004768372,
@@ -4825,7 +5129,10 @@
 			],
 			"elevation_index": 0,
 			"elevation_meters": 0.0,
-			"enemies": [],
+			"enemies": [
+				"naturalizers",
+				"techos"
+			],
 			"exploit_target": "",
 			"floor_size": [
 				4.80000019073486,
@@ -4833,7 +5140,7 @@
 				4.0
 			],
 			"flora": [
-				"flure"
+				"scarpet"
 			],
 			"footprint": [
 				4.80000019073486,
@@ -4841,7 +5148,7 @@
 				4.0
 			],
 			"id": "node_10",
-			"label": "A6.1 Discover Fragments",
+			"label": "Danger zone · Atmospheric",
 			"layout_step": {
 				"lane": 0,
 				"turn": -1,
@@ -4856,7 +5163,7 @@
 				0.449999988079071,
 				0.0
 			],
-			"pressure": 0,
+			"pressure": 1,
 			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
@@ -4872,8 +5179,8 @@
 			],
 			"surface_y": 0.45,
 			"survival_kind": "",
-			"title": "A6.1 Discover Fragments",
-			"variant": "sequence_locked",
+			"title": "Danger zone · Atmospheric",
+			"variant": "atmospheric",
 			"walk_element": "entry transition",
 			"walk_index": 0,
 			"walk_ref": "walk_00",
@@ -4898,25 +5205,25 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "seefern",
-					"label": "seefern",
+					"id": "hushbloom",
+					"label": "hushbloom",
 					"local_offset": [
 						-2.46599984169006,
-						0.899999976158142,
+						0.550000011920929,
 						-1.18799996376038
 					],
 					"position": [
 						117.533996582031,
-						1.34999990463257,
+						1.0,
 						-4.38800001144409
 					],
-					"role": "readable_screen",
+					"role": "resource",
 					"rotation_y_degrees": -11.0,
 					"shape": "plant_cluster",
 					"size": [
-						0.899999976158142,
-						1.79999995231628,
-						0.699999988079071
+						1.0,
+						1.10000002384186,
+						1.0
 					],
 					"support": "implemented"
 				},
@@ -4955,7 +5262,7 @@
 				5.40000009536743
 			],
 			"flora": [
-				"seefern"
+				"hushbloom"
 			],
 			"footprint": [
 				7.19999980926514,

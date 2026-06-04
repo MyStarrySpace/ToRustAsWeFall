@@ -27,7 +27,7 @@
 					-1,
 					0
 				],
-				"kind": "flure",
+				"kind": "doma",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -47,9 +47,19 @@
 					5,
 					1
 				],
-				"kind": "gasafoetida",
+				"kind": "scarpet",
 				"level": 1,
-				"support": "placeholder"
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					7,
+					1
+				],
+				"kind": "techos",
+				"level": 1,
+				"support": "implemented"
 			},
 			{
 				"category": "structures",
@@ -57,7 +67,7 @@
 					6,
 					2
 				],
-				"kind": "carry_gear",
+				"kind": "barrier",
 				"level": 1,
 				"support": "implemented"
 			},
@@ -72,22 +82,12 @@
 				"support": "implemented"
 			},
 			{
-				"category": "enemies",
-				"cell": [
-					13,
-					3
-				],
-				"kind": "techos",
-				"level": 2,
-				"support": "implemented"
-			},
-			{
 				"category": "structures",
 				"cell": [
 					12,
 					3
 				],
-				"kind": "membrane",
+				"kind": "carry_gear",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -97,8 +97,18 @@
 					17,
 					-1
 				],
-				"kind": "snapbloom",
-				"level": 1,
+				"kind": "flure",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					19,
+					0
+				],
+				"kind": "naturalizers",
+				"level": 0,
 				"support": "implemented"
 			},
 			{
@@ -107,8 +117,8 @@
 					18,
 					0
 				],
-				"kind": "junction",
-				"level": 1,
+				"kind": "pipe",
+				"level": 0,
 				"support": "implemented"
 			},
 			{
@@ -117,18 +127,8 @@
 					23,
 					1
 				],
-				"kind": "flure",
-				"level": 1,
-				"support": "implemented"
-			},
-			{
-				"category": "enemies",
-				"cell": [
-					25,
-					1
-				],
-				"kind": "techos",
-				"level": 1,
+				"kind": "seefern",
+				"level": 2,
 				"support": "implemented"
 			},
 			{
@@ -137,8 +137,8 @@
 					24,
 					2
 				],
-				"kind": "hide_slot",
-				"level": 1,
+				"kind": "terminal",
+				"level": 2,
 				"support": "implemented"
 			},
 			{
@@ -147,9 +147,19 @@
 					29,
 					2
 				],
-				"kind": "gasafoetida",
+				"kind": "scarpet",
 				"level": 2,
-				"support": "placeholder"
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					31,
+					3
+				],
+				"kind": "techos",
+				"level": 2,
+				"support": "implemented"
 			},
 			{
 				"category": "structures",
@@ -157,7 +167,7 @@
 					30,
 					3
 				],
-				"kind": "shelter",
+				"kind": "barrier",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -172,22 +182,12 @@
 				"support": "implemented"
 			},
 			{
-				"category": "enemies",
-				"cell": [
-					37,
-					0
-				],
-				"kind": "techos",
-				"level": 0,
-				"support": "implemented"
-			},
-			{
 				"category": "structures",
 				"cell": [
 					36,
 					0
 				],
-				"kind": "membrane",
+				"kind": "carry_gear",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -197,7 +197,17 @@
 					41,
 					1
 				],
-				"kind": "snapbloom",
+				"kind": "flure",
+				"level": 1,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					43,
+					1
+				],
+				"kind": "naturalizers",
 				"level": 1,
 				"support": "implemented"
 			},
@@ -207,7 +217,7 @@
 					42,
 					2
 				],
-				"kind": "hide_slot",
+				"kind": "pipe",
 				"level": 1,
 				"support": "implemented"
 			},
@@ -217,7 +227,7 @@
 					47,
 					2
 				],
-				"kind": "flure",
+				"kind": "seefern",
 				"level": 3,
 				"support": "implemented"
 			},
@@ -227,7 +237,7 @@
 					48,
 					3
 				],
-				"kind": "junction",
+				"kind": "terminal",
 				"level": 3,
 				"support": "implemented"
 			},
@@ -237,9 +247,9 @@
 					53,
 					-1
 				],
-				"kind": "gasafoetida",
+				"kind": "flure",
 				"level": 0,
-				"support": "placeholder"
+				"support": "implemented"
 			},
 			{
 				"category": "structures",
@@ -272,10 +282,10 @@
 					2
 				],
 				"id": "node_01",
-				"label": "Guidance Beat",
+				"label": "Redirected enemy aggression · Destroy Barrier",
 				"level": 1,
 				"optional": false,
-				"role": "guidance"
+				"role": "route_pressure"
 			},
 			{
 				"archetype_id": "3",
@@ -284,10 +294,10 @@
 					3
 				],
 				"id": "node_02",
-				"label": "Route Pressure",
+				"label": "Carry the heavy thing · Cure Component",
 				"level": 2,
 				"optional": false,
-				"role": "route_pressure"
+				"role": "danger"
 			},
 			{
 				"archetype_id": "4",
@@ -296,10 +306,10 @@
 					0
 				],
 				"id": "node_03",
-				"label": "Foraging Beat",
-				"level": 1,
+				"label": "Distract the patrol · Loud Action",
+				"level": 0,
 				"optional": true,
-				"role": "foraging"
+				"role": "mixed"
 			},
 			{
 				"archetype_id": "6",
@@ -308,10 +318,10 @@
 					2
 				],
 				"id": "node_04",
-				"label": "Danger Beat",
-				"level": 1,
+				"label": "Pattern reconstruction · Area Map",
+				"level": 2,
 				"optional": false,
-				"role": "danger"
+				"role": "setpiece"
 			},
 			{
 				"archetype_id": "1",
@@ -320,10 +330,10 @@
 					3
 				],
 				"id": "node_05",
-				"label": "Shortcut Lock",
+				"label": "Redirected enemy aggression · Kill Enemy",
 				"level": 2,
 				"optional": false,
-				"role": "shortcut"
+				"role": "route_pressure"
 			},
 			{
 				"archetype_id": "3",
@@ -332,10 +342,10 @@
 					0
 				],
 				"id": "node_06",
-				"label": "Mixed Node",
+				"label": "Carry the heavy thing · Puzzle Piece",
 				"level": 0,
 				"optional": true,
-				"role": "mixed"
+				"role": "danger"
 			},
 			{
 				"archetype_id": "4",
@@ -344,10 +354,10 @@
 					2
 				],
 				"id": "node_07",
-				"label": "Regroup Pocket",
+				"label": "Distract the patrol · False Scent",
 				"level": 1,
 				"optional": false,
-				"role": "regroup"
+				"role": "mixed"
 			},
 			{
 				"archetype_id": "6",
@@ -356,7 +366,7 @@
 					3
 				],
 				"id": "node_08",
-				"label": "Set Piece",
+				"label": "Pattern reconstruction · Flow Diagram",
 				"level": 3,
 				"optional": false,
 				"role": "setpiece"
@@ -620,7 +630,7 @@
 					"min_stage": 2,
 					"node": "node_01",
 					"risk": "direct",
-					"role": "guidance",
+					"role": "route_pressure",
 					"stage_ahead": false,
 					"t": 1.0
 				},
@@ -648,7 +658,7 @@
 					"min_stage": 2,
 					"node": "node_02",
 					"risk": "direct",
-					"role": "route_pressure",
+					"role": "danger",
 					"stage_ahead": false,
 					"t": 2.0
 				},
@@ -676,7 +686,7 @@
 					"min_stage": 3,
 					"node": "node_03",
 					"risk": "direct",
-					"role": "foraging",
+					"role": "mixed",
 					"stage_ahead": false,
 					"t": 3.0
 				},
@@ -704,7 +714,7 @@
 					"min_stage": 3,
 					"node": "node_04",
 					"risk": "direct",
-					"role": "danger",
+					"role": "setpiece",
 					"stage_ahead": false,
 					"t": 4.0
 				},
@@ -732,7 +742,7 @@
 					"min_stage": 2,
 					"node": "node_05",
 					"risk": "direct",
-					"role": "shortcut",
+					"role": "route_pressure",
 					"stage_ahead": false,
 					"t": 5.0
 				},
@@ -760,7 +770,7 @@
 					"min_stage": 2,
 					"node": "node_06",
 					"risk": "direct",
-					"role": "mixed",
+					"role": "danger",
 					"stage_ahead": false,
 					"t": 6.0
 				},
@@ -788,7 +798,7 @@
 					"min_stage": 3,
 					"node": "node_07",
 					"risk": "direct",
-					"role": "regroup",
+					"role": "mixed",
 					"stage_ahead": false,
 					"t": 7.0
 				},
@@ -1011,10 +1021,10 @@
 					"t": 0.0
 				},
 				{
-					"approach_id": "overlay_combustion",
+					"approach_id": "overlay_cover",
 					"blocked": false,
-					"borrows_from": "7",
-					"caption": "node_01 — Aster predicts the charge window on the overlay and seeds a gasafoetida bloom on the impact line; the enemy demolishes the barrier with its own momentum while Peris reads it from cover  ⟐ expert technique",
+					"borrows_from": "",
+					"caption": "node_01 — Aster times the enemy charge on the overlay while Peris holds scarpet cover",
 					"characters": {
 						"aster": [
 							6.0,
@@ -1025,12 +1035,12 @@
 							1.8
 						]
 					},
-					"expert": true,
-					"kind": "shadow_expert",
-					"min_stage": 4,
+					"expert": false,
+					"kind": "shadow",
+					"min_stage": 2,
 					"node": "node_01",
 					"risk": "risky",
-					"role": "guidance",
+					"role": "route_pressure",
 					"stage_ahead": false,
 					"t": 1.0
 				},
@@ -1054,7 +1064,7 @@
 					"min_stage": 3,
 					"node": "node_02",
 					"risk": "risky",
-					"role": "route_pressure",
+					"role": "danger",
 					"stage_ahead": false,
 					"t": 2.0
 				},
@@ -1078,7 +1088,7 @@
 					"min_stage": 3,
 					"node": "node_03",
 					"risk": "risky",
-					"role": "foraging",
+					"role": "mixed",
 					"stage_ahead": false,
 					"t": 3.0
 				},
@@ -1102,15 +1112,15 @@
 					"min_stage": 3,
 					"node": "node_04",
 					"risk": "risky",
-					"role": "danger",
+					"role": "setpiece",
 					"stage_ahead": false,
 					"t": 4.0
 				},
 				{
-					"approach_id": "overlay_combustion",
+					"approach_id": "overlay_cover",
 					"blocked": false,
-					"borrows_from": "7",
-					"caption": "node_05 — Aster predicts the charge window on the overlay and seeds a gasafoetida bloom on the impact line; the enemy demolishes the barrier with its own momentum while Peris reads it from cover  ⟐ expert technique",
+					"borrows_from": "",
+					"caption": "node_05 — Aster times the enemy charge on the overlay while Peris holds scarpet cover",
 					"characters": {
 						"aster": [
 							30.0,
@@ -1121,12 +1131,12 @@
 							3.3
 						]
 					},
-					"expert": true,
-					"kind": "shadow_expert",
-					"min_stage": 4,
+					"expert": false,
+					"kind": "shadow",
+					"min_stage": 2,
 					"node": "node_05",
 					"risk": "risky",
-					"role": "shortcut",
+					"role": "route_pressure",
 					"stage_ahead": false,
 					"t": 5.0
 				},
@@ -1150,7 +1160,7 @@
 					"min_stage": 3,
 					"node": "node_06",
 					"risk": "risky",
-					"role": "mixed",
+					"role": "danger",
 					"stage_ahead": false,
 					"t": 6.0
 				},
@@ -1174,7 +1184,7 @@
 					"min_stage": 3,
 					"node": "node_07",
 					"risk": "risky",
-					"role": "regroup",
+					"role": "mixed",
 					"stage_ahead": false,
 					"t": 7.0
 				},
@@ -1229,7 +1239,7 @@
 			],
 			"label": "Aster + Peris (shadow)",
 			"loadout": "shadow",
-			"max_stage_used": 4,
+			"max_stage_used": 3,
 			"node_approaches": [
 				{
 					"approach_id": "traverse",
@@ -1244,12 +1254,12 @@
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "overlay_combustion",
-					"borrows_from": "7",
-					"expert": true,
-					"kind": "shadow_expert",
-					"label": "Aster predicts the charge window on the overlay and seeds a gasafoetida bloom on the impact line; the enemy demolishes the barrier with its own momentum while Peris reads it from cover",
-					"min_stage": 4,
+					"approach_id": "overlay_cover",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "shadow",
+					"label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover",
+					"min_stage": 2,
 					"node": "node_01",
 					"party": "aster_peris",
 					"risk": "risky",
@@ -1292,12 +1302,12 @@
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "overlay_combustion",
-					"borrows_from": "7",
-					"expert": true,
-					"kind": "shadow_expert",
-					"label": "Aster predicts the charge window on the overlay and seeds a gasafoetida bloom on the impact line; the enemy demolishes the barrier with its own momentum while Peris reads it from cover",
-					"min_stage": 4,
+					"approach_id": "overlay_cover",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "shadow",
+					"label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover",
+					"min_stage": 2,
 					"node": "node_05",
 					"party": "aster_peris",
 					"risk": "risky",

@@ -27,7 +27,7 @@
 					-1,
 					0
 				],
-				"kind": "snapbloom",
+				"kind": "doma",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -37,7 +37,7 @@
 					0,
 					0
 				],
-				"kind": "shelter",
+				"kind": "junction",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -47,8 +47,8 @@
 					5,
 					1
 				],
-				"kind": "seefern",
-				"level": 1,
+				"kind": "flure",
+				"level": 2,
 				"support": "implemented"
 			},
 			{
@@ -57,8 +57,8 @@
 					6,
 					2
 				],
-				"kind": "pipe",
-				"level": 1,
+				"kind": "root_slide",
+				"level": 2,
 				"support": "implemented"
 			},
 			{
@@ -67,17 +67,7 @@
 					11,
 					2
 				],
-				"kind": "snapbloom",
-				"level": 2,
-				"support": "implemented"
-			},
-			{
-				"category": "enemies",
-				"cell": [
-					13,
-					3
-				],
-				"kind": "naturalizers",
+				"kind": "scarpet",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -87,7 +77,7 @@
 					12,
 					3
 				],
-				"kind": "pipe",
+				"kind": "carry_gear",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -95,10 +85,10 @@
 				"category": "flora",
 				"cell": [
 					17,
-					0
+					-1
 				],
-				"kind": "seefern",
-				"level": 1,
+				"kind": "hushbloom",
+				"level": 0,
 				"support": "implemented"
 			},
 			{
@@ -107,8 +97,8 @@
 					18,
 					0
 				],
-				"kind": "shelter",
-				"level": 1,
+				"kind": "root_slide",
+				"level": 0,
 				"support": "implemented"
 			},
 			{
@@ -117,8 +107,8 @@
 					23,
 					1
 				],
-				"kind": "snapbloom",
-				"level": 1,
+				"kind": "scarpet",
+				"level": 2,
 				"support": "implemented"
 			},
 			{
@@ -127,8 +117,8 @@
 					24,
 					2
 				],
-				"kind": "pipe",
-				"level": 1,
+				"kind": "carry_gear",
+				"level": 2,
 				"support": "implemented"
 			},
 			{
@@ -137,7 +127,7 @@
 					29,
 					2
 				],
-				"kind": "seefern",
+				"kind": "scarpet",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -172,10 +162,10 @@
 					2
 				],
 				"id": "node_01",
-				"label": "Guidance Beat",
-				"level": 1,
+				"label": "Plant as tool · Flure Iron Decoy",
+				"level": 2,
 				"optional": false,
-				"role": "guidance"
+				"role": "foraging"
 			},
 			{
 				"archetype_id": "3",
@@ -184,10 +174,10 @@
 					3
 				],
 				"id": "node_02",
-				"label": "Route Pressure",
+				"label": "Carry the heavy thing · Cure Component",
 				"level": 2,
 				"optional": false,
-				"role": "route_pressure"
+				"role": "danger"
 			},
 			{
 				"archetype_id": "2",
@@ -196,10 +186,10 @@
 					0
 				],
 				"id": "node_03",
-				"label": "Foraging Beat",
-				"level": 1,
+				"label": "Plant as tool · Hushbloom Stun",
+				"level": 0,
 				"optional": false,
-				"role": "foraging"
+				"role": "route_pressure"
 			},
 			{
 				"archetype_id": "3",
@@ -208,10 +198,10 @@
 					2
 				],
 				"id": "node_04",
-				"label": "Danger Beat",
-				"level": 1,
+				"label": "Carry the heavy thing · Puzzle Piece",
+				"level": 2,
 				"optional": false,
-				"role": "danger"
+				"role": "setpiece"
 			},
 			{
 				"archetype_id": "11",
@@ -388,7 +378,7 @@
 					"min_stage": 1,
 					"node": "node_01",
 					"risk": "direct",
-					"role": "guidance",
+					"role": "foraging",
 					"stage_ahead": false,
 					"t": 1.0
 				},
@@ -416,7 +406,7 @@
 					"min_stage": 2,
 					"node": "node_02",
 					"risk": "direct",
-					"role": "route_pressure",
+					"role": "danger",
 					"stage_ahead": false,
 					"t": 2.0
 				},
@@ -444,7 +434,7 @@
 					"min_stage": 1,
 					"node": "node_03",
 					"risk": "direct",
-					"role": "foraging",
+					"role": "route_pressure",
 					"stage_ahead": false,
 					"t": 3.0
 				},
@@ -472,7 +462,7 @@
 					"min_stage": 2,
 					"node": "node_04",
 					"risk": "direct",
-					"role": "danger",
+					"role": "setpiece",
 					"stage_ahead": false,
 					"t": 4.0
 				},
@@ -619,10 +609,10 @@
 					"t": 0.0
 				},
 				{
-					"approach_id": "flora_finesse",
+					"approach_id": "flora_chain_trap",
 					"blocked": false,
-					"borrows_from": "",
-					"caption": "node_01 — Peris grows or tends the plant tool; Aster confirms the target",
+					"borrows_from": "10",
+					"caption": "node_01 — Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend  ⟐ expert: later-stage technique",
 					"characters": {
 						"aster": [
 							6.0,
@@ -633,13 +623,13 @@
 							1.8
 						]
 					},
-					"expert": false,
-					"kind": "shadow",
-					"min_stage": 1,
+					"expert": true,
+					"kind": "shadow_expert",
+					"min_stage": 5,
 					"node": "node_01",
-					"risk": "safe",
-					"role": "guidance",
-					"stage_ahead": false,
+					"risk": "risky",
+					"role": "foraging",
+					"stage_ahead": true,
 					"t": 1.0
 				},
 				{
@@ -662,7 +652,7 @@
 					"min_stage": 3,
 					"node": "node_02",
 					"risk": "risky",
-					"role": "route_pressure",
+					"role": "danger",
 					"stage_ahead": true,
 					"t": 2.0
 				},
@@ -686,7 +676,7 @@
 					"min_stage": 1,
 					"node": "node_03",
 					"risk": "safe",
-					"role": "foraging",
+					"role": "route_pressure",
 					"stage_ahead": false,
 					"t": 3.0
 				},
@@ -710,7 +700,7 @@
 					"min_stage": 3,
 					"node": "node_04",
 					"risk": "risky",
-					"role": "danger",
+					"role": "setpiece",
 					"stage_ahead": true,
 					"t": 4.0
 				},
@@ -741,7 +731,7 @@
 			],
 			"label": "Aster + Peris (shadow)",
 			"loadout": "shadow",
-			"max_stage_used": 3,
+			"max_stage_used": 5,
 			"node_approaches": [
 				{
 					"approach_id": "traverse",
@@ -756,16 +746,16 @@
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "flora_finesse",
-					"borrows_from": "",
-					"expert": false,
-					"kind": "shadow",
-					"label": "Peris grows or tends the plant tool; Aster confirms the target",
-					"min_stage": 1,
+					"approach_id": "flora_chain_trap",
+					"borrows_from": "10",
+					"expert": true,
+					"kind": "shadow_expert",
+					"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
+					"min_stage": 5,
 					"node": "node_01",
 					"party": "aster_peris",
-					"risk": "safe",
-					"stage_ahead": false
+					"risk": "risky",
+					"stage_ahead": true
 				},
 				{
 					"approach_id": "split_carry",

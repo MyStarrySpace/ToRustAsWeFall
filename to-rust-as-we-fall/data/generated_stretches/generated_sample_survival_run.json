@@ -22,7 +22,7 @@
 		],
 		"node_01": [
 			12.0,
-			1.16999995708466,
+			1.88999998569489,
 			0.0
 		],
 		"node_02": [
@@ -32,7 +32,7 @@
 		],
 		"node_03": [
 			36.0,
-			1.16999995708466,
+			0.449999988079071,
 			-3.0
 		],
 		"node_04": [
@@ -42,7 +42,7 @@
 		],
 		"node_05": [
 			60.0,
-			1.88999998569489,
+			2.60999989509583,
 			3.0
 		],
 		"node_06": [
@@ -57,7 +57,7 @@
 		],
 		"node_08": [
 			96.0,
-			2.60999989509583,
+			1.88999998569489,
 			3.0
 		],
 		"peris": [
@@ -68,6 +68,12 @@
 	},
 	"archetype_chain": [
 		{
+			"all_variants": [
+				"organic_remains",
+				"rich_kill",
+				"capbage_head",
+				"forage_cache_station"
+			],
 			"approaches": [
 				{
 					"id": "guarded_forage",
@@ -104,6 +110,11 @@
 			],
 			"atp_reward": 2,
 			"chain_index": 0,
+			"compatible_node_roles": [
+				"foraging",
+				"regroup",
+				"mixed"
+			],
 			"composition_role": "required_append",
 			"exploit_target": "",
 			"id": "12",
@@ -126,6 +137,12 @@
 			"variant": "capbage_head"
 		},
 		{
+			"all_variants": [
+				"siderophore_into_meeb",
+				"trigger_neutro_burst",
+				"gnawer_onto_loud_signal",
+				"candid_zone_route"
+			],
 			"approaches": [
 				{
 					"id": "draw_and_commit",
@@ -176,6 +193,12 @@
 			],
 			"atp_reward": 0,
 			"chain_index": 1,
+			"compatible_node_roles": [
+				"route_pressure",
+				"danger",
+				"shortcut",
+				"mixed"
+			],
 			"composition_role": "required_append",
 			"exploit_target": "enemy_ecology",
 			"id": "13",
@@ -198,6 +221,12 @@
 			"variant": "gnawer_onto_loud_signal"
 		},
 		{
+			"all_variants": [
+				"patrol_lanes",
+				"sniper_lanes",
+				"swarm_surge",
+				"mixed_families"
+			],
 			"approaches": [
 				{
 					"id": "hold_lanes",
@@ -233,6 +262,11 @@
 			],
 			"atp_reward": 0,
 			"chain_index": 2,
+			"compatible_node_roles": [
+				"route_pressure",
+				"danger",
+				"setpiece"
+			],
 			"composition_role": "required_append",
 			"exploit_target": "",
 			"id": "14",
@@ -255,6 +289,12 @@
 			"variant": "mixed_families"
 		},
 		{
+			"all_variants": [
+				"iron_bloom",
+				"atmospheric",
+				"biofilm_mat",
+				"flooded_lane"
+			],
 			"approaches": [
 				{
 					"id": "insulated_lane",
@@ -289,6 +329,11 @@
 			],
 			"atp_reward": 0,
 			"chain_index": 3,
+			"compatible_node_roles": [
+				"route_pressure",
+				"danger",
+				"mixed"
+			],
 			"composition_role": "required_append",
 			"exploit_target": "",
 			"id": "15",
@@ -344,13 +389,13 @@
 		"bounds": {
 			"center": [
 				54.2999992370605,
-				3.125,
-				-0.0499999523162842
+				3.12000012397766,
+				-0.149999856948853
 			],
 			"max": [
 				112.599998474121,
-				5.8899998664856,
-				6.59999990463257
+				5.88000011444092,
+				6.40000009536743
 			],
 			"min": [
 				-4.0,
@@ -359,11 +404,11 @@
 			],
 			"size": [
 				116.599998474121,
-				5.52999973297119,
-				13.2999992370605
+				5.51999998092651,
+				13.1000003814697
 			]
 		},
-		"content_placement_count": 23,
+		"content_placement_count": 28,
 		"contract_id": "generated_stretch_graybox_v1",
 		"elevation_count": 4,
 		"elevation_indices": [
@@ -431,7 +476,7 @@
 							"combat"
 						],
 						"risk": "direct",
-						"role": "guidance",
+						"role": "foraging",
 						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
@@ -452,7 +497,7 @@
 							"combat"
 						],
 						"risk": "direct",
-						"role": "route_pressure",
+						"role": "danger",
 						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
@@ -473,7 +518,7 @@
 							"combat"
 						],
 						"risk": "direct",
-						"role": "foraging",
+						"role": "danger",
 						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
@@ -494,7 +539,7 @@
 							"barrier"
 						],
 						"risk": "safe",
-						"role": "danger",
+						"role": "route_pressure",
 						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
@@ -515,7 +560,7 @@
 							"combat"
 						],
 						"risk": "direct",
-						"role": "shortcut",
+						"role": "foraging",
 						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
@@ -536,7 +581,7 @@
 							"combat"
 						],
 						"risk": "direct",
-						"role": "mixed",
+						"role": "danger",
 						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
@@ -557,7 +602,7 @@
 							"combat"
 						],
 						"risk": "direct",
-						"role": "regroup",
+						"role": "danger",
 						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
@@ -578,7 +623,7 @@
 							"barrier"
 						],
 						"risk": "safe",
-						"role": "setpiece",
+						"role": "route_pressure",
 						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
@@ -639,7 +684,7 @@
 							"timing"
 						],
 						"risk": "safe",
-						"role": "guidance",
+						"role": "foraging",
 						"stage_ahead": false,
 						"taught_by": "scent_masked_dwell",
 						"uses": [
@@ -661,7 +706,7 @@
 							"flora"
 						],
 						"risk": "risky",
-						"role": "route_pressure",
+						"role": "danger",
 						"stage_ahead": false,
 						"taught_by": "ecology_reading",
 						"uses": [
@@ -683,7 +728,7 @@
 							"cover"
 						],
 						"risk": "risky",
-						"role": "foraging",
+						"role": "danger",
 						"stage_ahead": false,
 						"taught_by": "lane_gap_sequencing",
 						"uses": [
@@ -704,7 +749,7 @@
 							"timing"
 						],
 						"risk": "risky",
-						"role": "danger",
+						"role": "route_pressure",
 						"stage_ahead": false,
 						"taught_by": "dose_budgeting",
 						"uses": [
@@ -727,7 +772,7 @@
 							"timing"
 						],
 						"risk": "safe",
-						"role": "shortcut",
+						"role": "foraging",
 						"stage_ahead": false,
 						"taught_by": "scent_masked_dwell",
 						"uses": [
@@ -749,7 +794,7 @@
 							"flora"
 						],
 						"risk": "risky",
-						"role": "mixed",
+						"role": "danger",
 						"stage_ahead": false,
 						"taught_by": "ecology_reading",
 						"uses": [
@@ -771,7 +816,7 @@
 							"cover"
 						],
 						"risk": "risky",
-						"role": "regroup",
+						"role": "danger",
 						"stage_ahead": false,
 						"taught_by": "lane_gap_sequencing",
 						"uses": [
@@ -792,7 +837,7 @@
 							"timing"
 						],
 						"risk": "risky",
-						"role": "setpiece",
+						"role": "route_pressure",
 						"stage_ahead": false,
 						"taught_by": "dose_budgeting",
 						"uses": [
@@ -886,16 +931,16 @@
 			{
 				"bidirectional": true,
 				"from": "entry",
-				"height_delta": 0.719999969005585,
+				"height_delta": 1.43999999761581,
 				"id": "main_00_01",
 				"kind": "safe",
-				"path_cost": 12.3902540206909,
-				"physical_cost": 12.3902540206909,
+				"path_cost": 12.4528551101685,
+				"physical_cost": 12.4528551101685,
 				"recoverable": true,
 				"risk": "safe",
 				"risk_penalty": 0.0,
 				"route_id": "main_00_01",
-				"slope_ratio": 0.0582085466658145,
+				"slope_ratio": 0.116417098150379,
 				"to": "node_01",
 				"traversal": "ramp",
 				"waypoints": [
@@ -906,12 +951,12 @@
 					],
 					[
 						6.0,
-						0.809999942779541,
+						1.16999995708466,
 						-1.5
 					],
 					[
 						12.0,
-						1.16999995708466,
+						1.88999998569489,
 						0.0
 					]
 				],
@@ -920,27 +965,27 @@
 			{
 				"bidirectional": true,
 				"from": "node_01",
-				"height_delta": 0.720000028610229,
+				"height_delta": 0.0,
 				"id": "main_01_02",
 				"kind": "safe",
-				"path_cost": 12.3902540206909,
-				"physical_cost": 12.3902540206909,
+				"path_cost": 12.3693170547485,
+				"physical_cost": 12.3693170547485,
 				"recoverable": true,
 				"risk": "safe",
 				"risk_penalty": 0.0,
 				"route_id": "main_01_02",
-				"slope_ratio": 0.0582085514845643,
+				"slope_ratio": 0.0,
 				"to": "node_02",
-				"traversal": "ramp",
+				"traversal": "walkway",
 				"waypoints": [
 					[
 						12.0,
-						1.16999995708466,
+						1.88999998569489,
 						0.0
 					],
 					[
 						18.0,
-						1.52999997138977,
+						1.88999998569489,
 						1.5
 					],
 					[
@@ -954,16 +999,16 @@
 			{
 				"bidirectional": true,
 				"from": "node_02",
-				"height_delta": -0.720000028610229,
+				"height_delta": -1.43999999761581,
 				"id": "main_02_03",
 				"kind": "safe",
-				"path_cost": 13.4357137680054,
-				"physical_cost": 13.4357137680054,
+				"path_cost": 13.4934644699097,
+				"physical_cost": 13.4934644699097,
 				"recoverable": true,
 				"risk": "safe",
 				"risk_penalty": 0.0,
 				"route_id": "main_02_03",
-				"slope_ratio": -0.0536656347118944,
+				"slope_ratio": -0.107331264981121,
 				"to": "node_03",
 				"traversal": "ramp",
 				"waypoints": [
@@ -974,12 +1019,12 @@
 					],
 					[
 						30.0,
-						1.52999997138977,
+						1.16999995708466,
 						0.0
 					],
 					[
 						36.0,
-						1.16999995708466,
+						0.449999988079071,
 						-3.0
 					]
 				],
@@ -988,27 +1033,27 @@
 			{
 				"bidirectional": true,
 				"from": "node_03",
-				"height_delta": 0.0,
+				"height_delta": 0.719999969005585,
 				"id": "main_03_04",
 				"kind": "safe",
-				"path_cost": 12.3693170547485,
-				"physical_cost": 12.3693170547485,
+				"path_cost": 12.3902540206909,
+				"physical_cost": 12.3902540206909,
 				"recoverable": true,
 				"risk": "safe",
 				"risk_penalty": 0.0,
 				"route_id": "main_03_04",
-				"slope_ratio": 0.0,
+				"slope_ratio": 0.0582085466658145,
 				"to": "node_04",
-				"traversal": "walkway",
+				"traversal": "ramp",
 				"waypoints": [
 					[
 						36.0,
-						1.16999995708466,
+						0.449999988079071,
 						-3.0
 					],
 					[
 						42.0,
-						1.16999995708466,
+						0.809999942779541,
 						-1.5
 					],
 					[
@@ -1022,16 +1067,16 @@
 			{
 				"bidirectional": true,
 				"from": "node_04",
-				"height_delta": 0.720000028610229,
+				"height_delta": 1.43999993801117,
 				"id": "main_04_05",
 				"kind": "safe",
-				"path_cost": 12.3902540206909,
-				"physical_cost": 12.3902540206909,
+				"path_cost": 12.4528551101685,
+				"physical_cost": 12.4528551101685,
 				"recoverable": true,
 				"risk": "safe",
 				"risk_penalty": 0.0,
 				"route_id": "main_04_05",
-				"slope_ratio": 0.0582085514845643,
+				"slope_ratio": 0.116417093331629,
 				"to": "node_05",
 				"traversal": "ramp",
 				"waypoints": [
@@ -1042,12 +1087,12 @@
 					],
 					[
 						54.0,
-						1.52999997138977,
+						1.8899998664856,
 						1.5
 					],
 					[
 						60.0,
-						1.88999998569489,
+						2.60999989509583,
 						3.0
 					]
 				],
@@ -1056,27 +1101,27 @@
 			{
 				"bidirectional": true,
 				"from": "node_05",
-				"height_delta": -1.43999999761581,
+				"height_delta": -2.15999990701675,
 				"id": "main_05_06",
 				"kind": "safe",
-				"path_cost": 13.4934644699097,
-				"physical_cost": 13.4934644699097,
+				"path_cost": 13.5891723632813,
+				"physical_cost": 13.5891723632813,
 				"recoverable": true,
 				"risk": "safe",
 				"risk_penalty": 0.0,
 				"route_id": "main_05_06",
-				"slope_ratio": -0.107331264981121,
+				"slope_ratio": -0.160996890807679,
 				"to": "node_06",
 				"traversal": "ramp",
 				"waypoints": [
 					[
 						60.0,
-						1.88999998569489,
+						2.60999989509583,
 						3.0
 					],
 					[
 						66.0,
-						1.16999995708466,
+						1.52999997138977,
 						0.0
 					],
 					[
@@ -1124,16 +1169,16 @@
 			{
 				"bidirectional": true,
 				"from": "node_07",
-				"height_delta": 1.43999993801117,
+				"height_delta": 0.720000028610229,
 				"id": "main_07_08",
 				"kind": "safe",
-				"path_cost": 12.4528551101685,
-				"physical_cost": 12.4528551101685,
+				"path_cost": 12.3902540206909,
+				"physical_cost": 12.3902540206909,
 				"recoverable": true,
 				"risk": "safe",
 				"risk_penalty": 0.0,
 				"route_id": "main_07_08",
-				"slope_ratio": 0.116417093331629,
+				"slope_ratio": 0.0582085514845643,
 				"to": "node_08",
 				"traversal": "ramp",
 				"waypoints": [
@@ -1144,12 +1189,12 @@
 					],
 					[
 						90.0,
-						1.8899998664856,
+						1.52999997138977,
 						1.5
 					],
 					[
 						96.0,
-						2.60999989509583,
+						1.88999998569489,
 						3.0
 					]
 				],
@@ -1158,27 +1203,27 @@
 			{
 				"bidirectional": true,
 				"from": "node_08",
-				"height_delta": -2.15999990701675,
+				"height_delta": -1.43999999761581,
 				"id": "main_08_09",
 				"kind": "safe",
-				"path_cost": 13.5891723632813,
-				"physical_cost": 13.5891723632813,
+				"path_cost": 13.4934644699097,
+				"physical_cost": 13.4934644699097,
 				"recoverable": true,
 				"risk": "safe",
 				"risk_penalty": 0.0,
 				"route_id": "main_08_09",
-				"slope_ratio": -0.160996890807679,
+				"slope_ratio": -0.107331264981121,
 				"to": "exit_shelter",
 				"traversal": "ramp",
 				"waypoints": [
 					[
 						96.0,
-						2.60999989509583,
+						1.88999998569489,
 						3.0
 					],
 					[
 						102.0,
-						1.52999997138977,
+						1.16999995708466,
 						0.0
 					],
 					[
@@ -1226,27 +1271,27 @@
 			{
 				"bidirectional": true,
 				"from": "node_05",
-				"height_delta": -0.720000028610229,
+				"height_delta": -1.43999993801117,
 				"id": "optional_bypass_05_07",
 				"kind": "safe",
-				"path_cost": 24.1974868774414,
-				"physical_cost": 24.1974868774414,
+				"path_cost": 24.2296028137207,
+				"physical_cost": 24.2296028137207,
 				"recoverable": true,
 				"risk": "safe",
 				"risk_penalty": 0.0,
 				"route_id": "optional_bypass_05_07",
-				"slope_ratio": -0.0297683374162664,
+				"slope_ratio": -0.0595366699038352,
 				"to": "node_07",
 				"traversal": "ramp",
 				"waypoints": [
 					[
 						60.0,
-						1.88999998569489,
+						2.60999989509583,
 						3.0
 					],
 					[
 						72.0,
-						1.52999997138977,
+						1.8899998664856,
 						1.5
 					],
 					[
@@ -1294,27 +1339,27 @@
 			{
 				"bidirectional": true,
 				"from": "node_08",
-				"height_delta": -2.15999990701675,
+				"height_delta": -1.43999999761581,
 				"id": "return_shortcut",
 				"kind": "shortcut",
-				"path_cost": 100.211570739746,
-				"physical_cost": 96.2115707397461,
+				"path_cost": 100.198097229004,
+				"physical_cost": 96.1980972290039,
 				"recoverable": true,
 				"risk": "shortcut",
 				"risk_penalty": 4.0,
 				"route_id": "return_shortcut",
-				"slope_ratio": -0.0224561821324653,
+				"slope_ratio": -0.0149707887079828,
 				"to": "entry",
 				"traversal": "ramp",
 				"waypoints": [
 					[
 						96.0,
-						2.60999989509583,
+						1.88999998569489,
 						3.0
 					],
 					[
 						48.0,
-						1.52999997138977,
+						1.16999995708466,
 						0.0
 					],
 					[
@@ -1353,9 +1398,9 @@
 			{
 				"floors": [
 					{
-						"elevation_index": 1,
+						"elevation_index": 2,
 						"node_id": "node_01",
-						"y": 1.16999995708466
+						"y": 1.88999998569489
 					}
 				],
 				"xz": [
@@ -1379,9 +1424,9 @@
 			{
 				"floors": [
 					{
-						"elevation_index": 1,
+						"elevation_index": 0,
 						"node_id": "node_03",
-						"y": 1.16999995708466
+						"y": 0.449999988079071
 					}
 				],
 				"xz": [
@@ -1405,9 +1450,9 @@
 			{
 				"floors": [
 					{
-						"elevation_index": 2,
+						"elevation_index": 3,
 						"node_id": "node_05",
-						"y": 1.88999998569489
+						"y": 2.60999989509583
 					}
 				],
 				"xz": [
@@ -1444,9 +1489,9 @@
 			{
 				"floors": [
 					{
-						"elevation_index": 3,
+						"elevation_index": 2,
 						"node_id": "node_08",
-						"y": 2.60999989509583
+						"y": 1.88999998569489
 					}
 				],
 				"xz": [
@@ -1501,24 +1546,24 @@
 				"surface_y": 0.45
 			},
 			{
-				"content_count": 2,
-				"elevation_index": 1,
+				"content_count": 4,
+				"elevation_index": 2,
 				"floor_size": [
-					4.80000019073486,
+					5.80000019073486,
 					0.140000000596046,
-					4.0
+					4.40000009536743
 				],
 				"id": "node_01",
 				"position": [
 					12.0,
-					1.16999995708466,
+					1.88999998569489,
 					0.0
 				],
-				"radius": 2.40000009536743,
-				"role": "guidance",
+				"radius": 2.90000009536743,
+				"role": "foraging",
 				"supports_click_to_move": true,
 				"surface_id": "node:node_01",
-				"surface_y": 1.17
+				"surface_y": 1.89
 			},
 			{
 				"content_count": 3,
@@ -1535,33 +1580,33 @@
 					3.0
 				],
 				"radius": 2.70000004768372,
-				"role": "route_pressure",
+				"role": "danger",
 				"supports_click_to_move": true,
 				"surface_id": "node:node_02",
 				"surface_y": 1.89
 			},
 			{
-				"content_count": 2,
-				"elevation_index": 1,
+				"content_count": 3,
+				"elevation_index": 0,
 				"floor_size": [
-					6.19999980926514,
+					5.80000019073486,
 					0.140000000596046,
-					4.80000019073486
+					5.19999980926514
 				],
 				"id": "node_03",
 				"position": [
 					36.0,
-					1.16999995708466,
+					0.449999988079071,
 					-3.0
 				],
-				"radius": 3.09999990463257,
-				"role": "foraging",
+				"radius": 2.90000009536743,
+				"role": "danger",
 				"supports_click_to_move": true,
 				"surface_id": "node:node_03",
-				"surface_y": 1.17
+				"surface_y": 0.45
 			},
 			{
-				"content_count": 3,
+				"content_count": 2,
 				"elevation_index": 1,
 				"floor_size": [
 					5.40000009536743,
@@ -1575,38 +1620,38 @@
 					0.0
 				],
 				"radius": 2.70000004768372,
-				"role": "danger",
+				"role": "route_pressure",
 				"supports_click_to_move": true,
 				"surface_id": "node:node_04",
 				"surface_y": 1.17
 			},
 			{
-				"content_count": 2,
-				"elevation_index": 2,
+				"content_count": 4,
+				"elevation_index": 3,
 				"floor_size": [
-					4.80000019073486,
+					5.80000019073486,
 					0.140000000596046,
-					4.80000019073486
+					4.40000009536743
 				],
 				"id": "node_05",
 				"position": [
 					60.0,
-					1.88999998569489,
+					2.60999989509583,
 					3.0
 				],
-				"radius": 2.40000009536743,
-				"role": "shortcut",
+				"radius": 2.90000009536743,
+				"role": "foraging",
 				"supports_click_to_move": true,
 				"surface_id": "node:node_05",
-				"surface_y": 1.89
+				"surface_y": 2.61
 			},
 			{
 				"content_count": 3,
 				"elevation_index": 0,
 				"floor_size": [
-					5.59999990463257,
+					5.80000019073486,
 					0.140000000596046,
-					4.59999990463257
+					5.19999980926514
 				],
 				"id": "node_06",
 				"position": [
@@ -1614,19 +1659,19 @@
 					0.449999988079071,
 					-3.0
 				],
-				"radius": 2.79999995231628,
-				"role": "mixed",
+				"radius": 2.90000009536743,
+				"role": "danger",
 				"supports_click_to_move": true,
 				"surface_id": "node:node_06",
 				"surface_y": 0.45
 			},
 			{
-				"content_count": 2,
+				"content_count": 3,
 				"elevation_index": 1,
 				"floor_size": [
-					5.19999980926514,
+					5.40000009536743,
 					0.140000000596046,
-					4.19999980926514
+					4.80000019073486
 				],
 				"id": "node_07",
 				"position": [
@@ -1634,31 +1679,31 @@
 					1.16999995708466,
 					0.0
 				],
-				"radius": 2.59999990463257,
-				"role": "regroup",
+				"radius": 2.70000004768372,
+				"role": "danger",
 				"supports_click_to_move": true,
 				"surface_id": "node:node_07",
 				"surface_y": 1.17
 			},
 			{
 				"content_count": 2,
-				"elevation_index": 3,
+				"elevation_index": 2,
 				"floor_size": [
-					6.59999990463257,
-					0.159999996423721,
-					5.19999980926514
+					5.40000009536743,
+					0.140000000596046,
+					4.80000019073486
 				],
 				"id": "node_08",
 				"position": [
 					96.0,
-					2.60999989509583,
+					1.88999998569489,
 					3.0
 				],
-				"radius": 3.29999995231628,
-				"role": "setpiece",
+				"radius": 2.70000004768372,
+				"role": "route_pressure",
 				"supports_click_to_move": true,
 				"surface_id": "node:node_08",
-				"surface_y": 2.61
+				"surface_y": 1.89
 			},
 			{
 				"content_count": 2,
@@ -1712,49 +1757,49 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "scarpet",
-					"label": "scarpet",
+					"id": "capbage",
+					"label": "capbage",
 					"local_offset": [
 						-2.13000011444092,
-						0.0799999982118607,
+						0.449999988079071,
 						-0.923999965190887
 					],
 					"position": [
 						-2.13000011444092,
-						0.529999971389771,
+						0.899999976158142,
 						-3.92400002479553
 					],
-					"role": "cover",
+					"role": "resource",
 					"rotation_y_degrees": -11.0,
-					"shape": "mat",
+					"shape": "plant_cluster",
 					"size": [
-						2.20000004768372,
-						0.159999996423721,
-						1.70000004768372
+						1.35000002384186,
+						0.899999976158142,
+						1.35000002384186
 					],
-					"support": "implemented"
+					"support": "placeholder"
 				},
 				{
 					"category": "structures",
-					"id": "shelter",
-					"label": "shelter",
+					"id": "junction",
+					"label": "junction",
 					"local_offset": [
 						0.0,
-						1.20000004768372,
+						0.600000023841858,
 						0.755999982357025
 					],
 					"position": [
 						0.0,
-						1.65000009536743,
+						1.04999995231628,
 						-2.24399995803833
 					],
-					"role": "rest",
+					"role": "structure",
 					"rotation_y_degrees": 26.0,
-					"shape": "shelter_shell",
+					"shape": "structure_box",
 					"size": [
-						4.80000019073486,
-						2.40000009536743,
-						3.40000009536743
+						3.0,
+						1.20000004768372,
+						2.0
 					],
 					"support": "implemented"
 				}
@@ -1769,7 +1814,7 @@
 				4.19999980926514
 			],
 			"flora": [
-				"scarpet"
+				"capbage"
 			],
 			"footprint": [
 				6.0,
@@ -1801,7 +1846,7 @@
 			"shortcut": false,
 			"stage": 1,
 			"structures": [
-				"shelter"
+				"junction"
 			],
 			"surface_y": 0.45,
 			"survival_kind": "",
@@ -1816,8 +1861,8 @@
 		{
 			"approach_position": [
 				12.0,
-				1.16999995708466,
-				1.36000001430511
+				1.88999998569489,
+				1.49600005149841
 			],
 			"approaches": [
 				{
@@ -1867,14 +1912,14 @@
 					"id": "capbage",
 					"label": "capbage",
 					"local_offset": [
-						-1.7940000295639,
+						-2.07400012016296,
 						0.449999988079071,
-						-0.879999995231628
+						-0.967999994754791
 					],
 					"position": [
-						10.206000328064,
-						1.61999988555908,
-						-0.879999995231628
+						9.92599964141846,
+						2.33999991416931,
+						-0.967999994754791
 					],
 					"role": "resource",
 					"rotation_y_degrees": 0.0,
@@ -1887,21 +1932,69 @@
 					"support": "placeholder"
 				},
 				{
+					"category": "flora",
+					"id": "scarpet",
+					"label": "scarpet",
+					"local_offset": [
+						-1.62400007247925,
+						0.0799999982118607,
+						-0.967999994754791
+					],
+					"position": [
+						10.3759994506836,
+						1.97000002861023,
+						-0.967999994754791
+					],
+					"role": "cover",
+					"rotation_y_degrees": 37.0,
+					"shape": "mat",
+					"size": [
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "enemies",
+					"id": "techos",
+					"label": "techos",
+					"local_offset": [
+						1.39200007915497,
+						0.550000011920929,
+						0.329999983310699
+					],
+					"position": [
+						13.3920001983643,
+						2.44000005722046,
+						0.329999983310699
+					],
+					"role": "pressure",
+					"rotation_y_degrees": 74.0,
+					"shape": "enemy_volume",
+					"size": [
+						1.20000004768372,
+						1.10000002384186,
+						1.20000004768372
+					],
+					"support": "implemented"
+				},
+				{
 					"category": "structures",
 					"id": "forage_cache",
 					"label": "forage_cache",
 					"local_offset": [
-						0.0,
+						-0.550000011920929,
 						0.375,
-						0.720000028610229
+						0.791999995708466
 					],
 					"position": [
-						12.0,
-						1.54499995708466,
-						0.720000028610229
+						11.4499998092651,
+						2.2649998664856,
+						0.791999995708466
 					],
 					"role": "resource",
-					"rotation_y_degrees": 37.0,
+					"rotation_y_degrees": 111.0,
 					"shape": "structure_box",
 					"size": [
 						1.70000004768372,
@@ -1911,25 +2004,28 @@
 					"support": "implemented"
 				}
 			],
-			"elevation_index": 1,
-			"elevation_meters": 0.72,
-			"enemies": [],
+			"elevation_index": 2,
+			"elevation_meters": 1.44,
+			"enemies": [
+				"techos"
+			],
 			"exploit_target": "",
 			"floor_size": [
-				4.80000019073486,
+				5.80000019073486,
 				0.140000000596046,
-				4.0
+				4.40000009536743
 			],
 			"flora": [
-				"capbage"
+				"capbage",
+				"scarpet"
 			],
 			"footprint": [
-				4.80000019073486,
+				5.80000019073486,
 				0.140000000596046,
-				4.0
+				4.40000009536743
 			],
 			"id": "node_01",
-			"label": "Guidance Beat",
+			"label": "Lysate forage cache · Organic Remains",
 			"layout_step": {
 
 			},
@@ -1939,14 +2035,14 @@
 			"optional": false,
 			"position": [
 				12.0,
-				1.16999995708466,
+				1.88999998569489,
 				0.0
 			],
-			"pressure": 0,
+			"pressure": 1,
 			"pressure_cost": 0,
-			"resource": false,
-			"resource_beat": false,
-			"role": "guidance",
+			"resource": true,
+			"resource_beat": true,
+			"role": "foraging",
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Peris finds caches under scarpet cover while Aster times the dwell into a blind window."
@@ -1956,10 +2052,10 @@
 			"structures": [
 				"forage_cache"
 			],
-			"surface_y": 1.17,
+			"surface_y": 1.89,
 			"survival_kind": "forage",
-			"title": "Guidance Beat",
-			"variant": "capbage_head",
+			"title": "Lysate forage cache · Organic Remains",
+			"variant": "organic_remains",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -2079,27 +2175,27 @@
 				},
 				{
 					"category": "structures",
-					"id": "portal",
-					"label": "portal",
+					"id": "pipe",
+					"label": "pipe",
 					"local_offset": [
 						0.550000011920929,
-						0.5,
+						0.275000005960464,
 						0.864000022411346
 					],
 					"position": [
 						24.5499992370605,
-						2.3899998664856,
+						2.16499996185303,
 						3.86400008201599
 					],
 					"role": "structure",
 					"rotation_y_degrees": 85.0,
-					"shape": "structure_box",
+					"shape": "pipe",
 					"size": [
-						1.39999997615814,
-						1.0,
-						1.0
+						3.29999995231628,
+						0.550000011920929,
+						0.550000011920929
 					],
-					"support": "placeholder"
+					"support": "implemented"
 				}
 			],
 			"elevation_index": 2,
@@ -2122,7 +2218,7 @@
 				4.80000019073486
 			],
 			"id": "node_02",
-			"label": "Route Pressure",
+			"label": "Predator-exploit transit · Siderophore Into Meeb",
 			"layout_step": {
 
 			},
@@ -2139,7 +2235,7 @@
 			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
-			"role": "route_pressure",
+			"role": "danger",
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Aster reads the ecology clock while Peris's flure decoy herds siderophores into a Meeb's engulf window."
@@ -2147,12 +2243,12 @@
 			"shortcut": false,
 			"stage": 3,
 			"structures": [
-				"portal"
+				"pipe"
 			],
 			"surface_y": 1.89,
 			"survival_kind": "exploit",
-			"title": "Route Pressure",
-			"variant": "gnawer_onto_loud_signal",
+			"title": "Predator-exploit transit · Siderophore Into Meeb",
+			"variant": "siderophore_into_meeb",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -2161,9 +2257,9 @@
 		},
 		{
 			"approach_position": [
-				36.0,
-				1.16999995708466,
-				-1.36799991130829
+				34.7239990234375,
+				0.449999988079071,
+				-1.23200011253357
 			],
 			"approaches": [
 				{
@@ -2209,72 +2305,98 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "seefern",
-					"label": "seefern",
+					"id": "scarpet",
+					"label": "scarpet",
 					"local_offset": [
-						-2.18599987030029,
-						0.899999976158142,
-						-1.05599999427795
+						-2.07400012016296,
+						0.0799999982118607,
+						-1.14399993419647
 					],
 					"position": [
-						33.8139991760254,
-						2.0699999332428,
-						-4.05599975585938
+						33.9259986877441,
+						0.529999971389771,
+						-4.14400005340576
 					],
-					"role": "readable_screen",
+					"role": "cover",
 					"rotation_y_degrees": 22.0,
-					"shape": "plant_cluster",
+					"shape": "mat",
 					"size": [
-						0.899999976158142,
-						1.79999995231628,
-						0.699999988079071
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "enemies",
+					"id": "naturalizers",
+					"label": "naturalizers",
+					"local_offset": [
+						1.39200007915497,
+						0.550000011920929,
+						-0.259999990463257
+					],
+					"position": [
+						37.3919982910156,
+						1.0,
+						-3.25999999046326
+					],
+					"role": "pressure",
+					"rotation_y_degrees": 59.0,
+					"shape": "enemy_volume",
+					"size": [
+						1.5,
+						1.10000002384186,
+						1.5
 					],
 					"support": "implemented"
 				},
 				{
 					"category": "structures",
-					"id": "forage_cache",
-					"label": "forage_cache",
+					"id": "barrier",
+					"label": "barrier",
 					"local_offset": [
-						0.0,
-						0.375,
-						0.864000022411346
+						0.550000011920929,
+						0.625,
+						0.935999989509583
 					],
 					"position": [
-						36.0,
-						1.54499995708466,
-						-2.13599991798401
+						36.5499992370605,
+						1.07500004768372,
+						-2.06400012969971
 					],
-					"role": "resource",
-					"rotation_y_degrees": 59.0,
+					"role": "structure",
+					"rotation_y_degrees": 96.0,
 					"shape": "structure_box",
 					"size": [
-						1.70000004768372,
-						0.75,
-						1.0
+						2.59999990463257,
+						1.25,
+						0.5
 					],
 					"support": "implemented"
 				}
 			],
-			"elevation_index": 1,
-			"elevation_meters": 0.72,
-			"enemies": [],
+			"elevation_index": 0,
+			"elevation_meters": 0.0,
+			"enemies": [
+				"naturalizers"
+			],
 			"exploit_target": "",
 			"floor_size": [
-				6.19999980926514,
+				5.80000019073486,
 				0.140000000596046,
-				4.80000019073486
+				5.19999980926514
 			],
 			"flora": [
-				"seefern"
+				"scarpet"
 			],
 			"footprint": [
-				6.19999980926514,
+				5.80000019073486,
 				0.140000000596046,
-				4.80000019073486
+				5.19999980926514
 			],
 			"id": "node_03",
-			"label": "Foraging Beat",
+			"label": "Enemy-configuration gauntlet · Patrol Lanes",
 			"layout_step": {
 
 			},
@@ -2284,14 +2406,14 @@
 			"optional": true,
 			"position": [
 				36.0,
-				1.16999995708466,
+				0.449999988079071,
 				-3.0
 			],
-			"pressure": 0,
+			"pressure": 1,
 			"pressure_cost": 2,
-			"resource": true,
-			"resource_beat": true,
-			"role": "foraging",
+			"resource": false,
+			"resource_beat": false,
+			"role": "danger",
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Aster sequences the lane gaps into one timed run; Peris lays scarpet and capbage relays."
@@ -2299,12 +2421,12 @@
 			"shortcut": false,
 			"stage": 4,
 			"structures": [
-				"forage_cache"
+				"barrier"
 			],
-			"surface_y": 1.17,
+			"surface_y": 0.45,
 			"survival_kind": "gauntlet",
-			"title": "Foraging Beat",
-			"variant": "mixed_families",
+			"title": "Enemy-configuration gauntlet · Patrol Lanes",
+			"variant": "patrol_lanes",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -2359,45 +2481,21 @@
 			"composition_role": "required_append",
 			"content_placements": [
 				{
-					"category": "flora",
-					"id": "scarpet",
-					"label": "scarpet",
-					"local_offset": [
-						-1.96200001239777,
-						0.0799999982118607,
-						-1.05599999427795
-					],
-					"position": [
-						46.0379981994629,
-						1.25,
-						-1.05599999427795
-					],
-					"role": "cover",
-					"rotation_y_degrees": 33.0,
-					"shape": "mat",
-					"size": [
-						2.20000004768372,
-						0.159999996423721,
-						1.70000004768372
-					],
-					"support": "implemented"
-				},
-				{
 					"category": "enemies",
 					"id": "techos",
 					"label": "techos",
 					"local_offset": [
 						1.2960000038147,
 						0.550000011920929,
-						-0.240000009536743
+						-0.790000021457672
 					],
 					"position": [
 						49.2960014343262,
 						1.72000002861023,
-						-0.240000009536743
+						-0.790000021457672
 					],
 					"role": "pressure",
-					"rotation_y_degrees": 70.0,
+					"rotation_y_degrees": 33.0,
 					"shape": "enemy_volume",
 					"size": [
 						1.20000004768372,
@@ -2408,25 +2506,25 @@
 				},
 				{
 					"category": "structures",
-					"id": "root_slide",
-					"label": "root_slide",
+					"id": "water_control",
+					"label": "water_control",
 					"local_offset": [
-						0.550000011920929,
-						0.224999994039536,
+						0.0,
+						0.5,
 						0.864000022411346
 					],
 					"position": [
-						48.5499992370605,
-						1.39499998092651,
+						48.0,
+						1.66999995708466,
 						0.864000022411346
 					],
 					"role": "structure",
-					"rotation_y_degrees": 107.0,
-					"shape": "slide",
+					"rotation_y_degrees": 70.0,
+					"shape": "structure_box",
 					"size": [
-						3.79999995231628,
-						0.449999988079071,
-						1.14999997615814
+						1.39999997615814,
+						1.0,
+						1.0
 					],
 					"support": "implemented"
 				}
@@ -2442,16 +2540,14 @@
 				0.140000000596046,
 				4.80000019073486
 			],
-			"flora": [
-				"scarpet"
-			],
+			"flora": [],
 			"footprint": [
 				5.40000009536743,
 				0.140000000596046,
 				4.80000019073486
 			],
 			"id": "node_04",
-			"label": "Danger Beat",
+			"label": "Attrition-field crossing · Iron Bloom",
 			"layout_step": {
 
 			},
@@ -2468,7 +2564,7 @@
 			"pressure_cost": 2,
 			"resource": false,
 			"resource_beat": false,
-			"role": "danger",
+			"role": "route_pressure",
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Aster computes the damage budget for a short crossing, or the pair takes the safe-slow detour and pays time, not HP."
@@ -2476,12 +2572,12 @@
 			"shortcut": false,
 			"stage": 2,
 			"structures": [
-				"root_slide"
+				"water_control"
 			],
 			"surface_y": 1.17,
 			"survival_kind": "hazard",
-			"title": "Danger Beat",
-			"variant": "biofilm_mat",
+			"title": "Attrition-field crossing · Iron Bloom",
+			"variant": "iron_bloom",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -2491,8 +2587,8 @@
 		{
 			"approach_position": [
 				60.0,
-				1.88999998569489,
-				4.63199996948242
+				2.60999989509583,
+				4.49600028991699
 			],
 			"approaches": [
 				{
@@ -2542,14 +2638,14 @@
 					"id": "capbage",
 					"label": "capbage",
 					"local_offset": [
-						-1.7940000295639,
+						-2.07400012016296,
 						0.449999988079071,
-						-1.05599999427795
+						-0.967999994754791
 					],
 					"position": [
-						58.2060012817383,
-						2.33999991416931,
-						1.94400000572205
+						57.9259986877441,
+						3.05999994277954,
+						2.03200006484985
 					],
 					"role": "resource",
 					"rotation_y_degrees": 0.0,
@@ -2562,49 +2658,100 @@
 					"support": "placeholder"
 				},
 				{
-					"category": "structures",
-					"id": "shelter",
-					"label": "shelter",
+					"category": "flora",
+					"id": "scarpet",
+					"label": "scarpet",
 					"local_offset": [
-						0.0,
-						1.20000004768372,
-						0.864000022411346
+						-1.62400007247925,
+						0.0799999982118607,
+						-0.967999994754791
 					],
 					"position": [
-						60.0,
-						3.09000015258789,
-						3.86400008201599
+						58.3759994506836,
+						2.68999981880188,
+						2.03200006484985
 					],
-					"role": "rest",
+					"role": "cover",
 					"rotation_y_degrees": 37.0,
-					"shape": "shelter_shell",
+					"shape": "mat",
 					"size": [
-						4.80000019073486,
-						2.40000009536743,
-						3.40000009536743
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "enemies",
+					"id": "techos",
+					"label": "techos",
+					"local_offset": [
+						1.39200007915497,
+						0.550000011920929,
+						0.329999983310699
+					],
+					"position": [
+						61.3919982910156,
+						3.15999984741211,
+						3.32999992370605
+					],
+					"role": "pressure",
+					"rotation_y_degrees": 74.0,
+					"shape": "enemy_volume",
+					"size": [
+						1.20000004768372,
+						1.10000002384186,
+						1.20000004768372
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "structures",
+					"id": "forage_cache",
+					"label": "forage_cache",
+					"local_offset": [
+						-0.550000011920929,
+						0.375,
+						0.791999995708466
+					],
+					"position": [
+						59.4500007629395,
+						2.98499989509583,
+						3.79200005531311
+					],
+					"role": "resource",
+					"rotation_y_degrees": 111.0,
+					"shape": "structure_box",
+					"size": [
+						1.70000004768372,
+						0.75,
+						1.0
 					],
 					"support": "implemented"
 				}
 			],
-			"elevation_index": 2,
-			"elevation_meters": 1.44,
-			"enemies": [],
+			"elevation_index": 3,
+			"elevation_meters": 2.16,
+			"enemies": [
+				"techos"
+			],
 			"exploit_target": "",
 			"floor_size": [
-				4.80000019073486,
+				5.80000019073486,
 				0.140000000596046,
-				4.80000019073486
+				4.40000009536743
 			],
 			"flora": [
-				"capbage"
+				"capbage",
+				"scarpet"
 			],
 			"footprint": [
-				4.80000019073486,
+				5.80000019073486,
 				0.140000000596046,
-				4.80000019073486
+				4.40000009536743
 			],
 			"id": "node_05",
-			"label": "Shortcut Lock",
+			"label": "Lysate forage cache · Rich Kill",
 			"layout_step": {
 
 			},
@@ -2614,27 +2761,27 @@
 			"optional": false,
 			"position": [
 				60.0,
-				1.88999998569489,
+				2.60999989509583,
 				3.0
 			],
-			"pressure": 0,
+			"pressure": 1,
 			"pressure_cost": 0,
-			"resource": false,
-			"resource_beat": false,
-			"role": "shortcut",
+			"resource": true,
+			"resource_beat": true,
+			"role": "foraging",
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Peris finds caches under scarpet cover while Aster times the dwell into a blind window."
 			},
-			"shortcut": true,
+			"shortcut": false,
 			"stage": 1,
 			"structures": [
-				"shelter"
+				"forage_cache"
 			],
-			"surface_y": 1.89,
+			"surface_y": 2.61,
 			"survival_kind": "forage",
-			"title": "Shortcut Lock",
-			"variant": "capbage_head",
+			"title": "Lysate forage cache · Rich Kill",
+			"variant": "rich_kill",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -2643,9 +2790,9 @@
 		},
 		{
 			"approach_position": [
-				72.0,
+				70.7239990234375,
 				0.449999988079071,
-				-1.43599998950958
+				-1.23200011253357
 			],
 			"approaches": [
 				{
@@ -2709,14 +2856,14 @@
 					"id": "flure",
 					"label": "flure",
 					"local_offset": [
-						-2.01799988746643,
+						-2.07400012016296,
 						0.725000023841858,
-						-1.01199996471405
+						-1.14399993419647
 					],
 					"position": [
-						69.9820022583008,
+						69.9260025024414,
 						1.17499995231628,
-						-4.01200008392334
+						-4.14400005340576
 					],
 					"role": "puzzle_flora",
 					"rotation_y_degrees": 11.0,
@@ -2733,14 +2880,14 @@
 					"id": "techos",
 					"label": "techos",
 					"local_offset": [
-						1.34399998188019,
+						1.39200007915497,
 						0.550000011920929,
-						-0.229999989271164
+						-0.259999990463257
 					],
 					"position": [
-						73.3440017700195,
+						73.3919982910156,
 						1.0,
-						-3.23000001907349
+						-3.25999999046326
 					],
 					"role": "pressure",
 					"rotation_y_degrees": 48.0,
@@ -2754,25 +2901,25 @@
 				},
 				{
 					"category": "structures",
-					"id": "membrane",
-					"label": "membrane",
+					"id": "pipe",
+					"label": "pipe",
 					"local_offset": [
 						0.550000011920929,
-						0.800000011920929,
-						0.828000009059906
+						0.275000005960464,
+						0.935999989509583
 					],
 					"position": [
 						72.5500030517578,
-						1.25,
-						-2.17199993133545
+						0.725000023841858,
+						-2.06400012969971
 					],
 					"role": "structure",
 					"rotation_y_degrees": 85.0,
-					"shape": "structure_box",
+					"shape": "pipe",
 					"size": [
-						2.40000009536743,
-						1.60000002384186,
-						0.25
+						3.29999995231628,
+						0.550000011920929,
+						0.550000011920929
 					],
 					"support": "implemented"
 				}
@@ -2784,20 +2931,20 @@
 			],
 			"exploit_target": "enemy_ecology",
 			"floor_size": [
-				5.59999990463257,
+				5.80000019073486,
 				0.140000000596046,
-				4.59999990463257
+				5.19999980926514
 			],
 			"flora": [
 				"flure"
 			],
 			"footprint": [
-				5.59999990463257,
+				5.80000019073486,
 				0.140000000596046,
-				4.59999990463257
+				5.19999980926514
 			],
 			"id": "node_06",
-			"label": "Mixed Node",
+			"label": "Predator-exploit transit · Trigger Neutro Burst",
 			"layout_step": {
 
 			},
@@ -2814,7 +2961,7 @@
 			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
-			"role": "mixed",
+			"role": "danger",
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Aster reads the ecology clock while Peris's flure decoy herds siderophores into a Meeb's engulf window."
@@ -2822,12 +2969,12 @@
 			"shortcut": false,
 			"stage": 3,
 			"structures": [
-				"membrane"
+				"pipe"
 			],
 			"surface_y": 0.45,
 			"survival_kind": "exploit",
-			"title": "Mixed Node",
-			"variant": "gnawer_onto_loud_signal",
+			"title": "Predator-exploit transit · Trigger Neutro Burst",
+			"variant": "trigger_neutro_burst",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -2836,9 +2983,9 @@
 		},
 		{
 			"approach_position": [
-				84.0,
+				82.8119964599609,
 				1.16999995708466,
-				1.42799997329712
+				1.63200008869171
 			],
 			"approaches": [
 				{
@@ -2884,72 +3031,98 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "seefern",
-					"label": "seefern",
+					"id": "scarpet",
+					"label": "scarpet",
 					"local_offset": [
-						-1.90599989891052,
-						0.899999976158142,
-						-0.923999965190887
+						-1.96200001239777,
+						0.0799999982118607,
+						-1.05599999427795
 					],
 					"position": [
-						82.0940017700195,
-						2.0699999332428,
-						-0.923999965190887
+						82.0380020141602,
+						1.25,
+						-1.05599999427795
 					],
-					"role": "readable_screen",
+					"role": "cover",
 					"rotation_y_degrees": 22.0,
-					"shape": "plant_cluster",
+					"shape": "mat",
 					"size": [
-						0.899999976158142,
-						1.79999995231628,
-						0.699999988079071
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "enemies",
+					"id": "naturalizers",
+					"label": "naturalizers",
+					"local_offset": [
+						1.2960000038147,
+						0.550000011920929,
+						-0.240000009536743
+					],
+					"position": [
+						85.2959976196289,
+						1.72000002861023,
+						-0.240000009536743
+					],
+					"role": "pressure",
+					"rotation_y_degrees": 59.0,
+					"shape": "enemy_volume",
+					"size": [
+						1.5,
+						1.10000002384186,
+						1.5
 					],
 					"support": "implemented"
 				},
 				{
 					"category": "structures",
-					"id": "portal",
-					"label": "portal",
+					"id": "barrier",
+					"label": "barrier",
 					"local_offset": [
-						0.0,
-						0.5,
-						0.755999982357025
+						0.550000011920929,
+						0.625,
+						0.864000022411346
 					],
 					"position": [
-						84.0,
-						1.66999995708466,
-						0.755999982357025
+						84.5500030517578,
+						1.79499995708466,
+						0.864000022411346
 					],
 					"role": "structure",
-					"rotation_y_degrees": 59.0,
+					"rotation_y_degrees": 96.0,
 					"shape": "structure_box",
 					"size": [
-						1.39999997615814,
-						1.0,
-						1.0
+						2.59999990463257,
+						1.25,
+						0.5
 					],
-					"support": "placeholder"
+					"support": "implemented"
 				}
 			],
 			"elevation_index": 1,
 			"elevation_meters": 0.72,
-			"enemies": [],
+			"enemies": [
+				"naturalizers"
+			],
 			"exploit_target": "",
 			"floor_size": [
-				5.19999980926514,
+				5.40000009536743,
 				0.140000000596046,
-				4.19999980926514
+				4.80000019073486
 			],
 			"flora": [
-				"seefern"
+				"scarpet"
 			],
 			"footprint": [
-				5.19999980926514,
+				5.40000009536743,
 				0.140000000596046,
-				4.19999980926514
+				4.80000019073486
 			],
 			"id": "node_07",
-			"label": "Regroup Pocket",
+			"label": "Enemy-configuration gauntlet · Sniper Lanes",
 			"layout_step": {
 
 			},
@@ -2962,11 +3135,11 @@
 				1.16999995708466,
 				0.0
 			],
-			"pressure": 0,
+			"pressure": 1,
 			"pressure_cost": 2,
-			"resource": true,
-			"resource_beat": true,
-			"role": "regroup",
+			"resource": false,
+			"resource_beat": false,
+			"role": "danger",
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Aster sequences the lane gaps into one timed run; Peris lays scarpet and capbage relays."
@@ -2974,12 +3147,12 @@
 			"shortcut": false,
 			"stage": 4,
 			"structures": [
-				"portal"
+				"barrier"
 			],
 			"surface_y": 1.17,
 			"survival_kind": "gauntlet",
-			"title": "Regroup Pocket",
-			"variant": "mixed_families",
+			"title": "Enemy-configuration gauntlet · Sniper Lanes",
+			"variant": "sniper_lanes",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -2988,9 +3161,9 @@
 		},
 		{
 			"approach_position": [
-				96.0,
-				2.60999989509583,
-				4.76799964904785
+				94.8119964599609,
+				1.88999998569489,
+				4.63199996948242
 			],
 			"approaches": [
 				{
@@ -3034,73 +3207,73 @@
 			"composition_role": "required_append",
 			"content_placements": [
 				{
-					"category": "flora",
-					"id": "scarpet",
-					"label": "scarpet",
+					"category": "enemies",
+					"id": "techos",
+					"label": "techos",
 					"local_offset": [
-						-2.2979998588562,
-						0.0799999982118607,
-						-1.14399993419647
+						1.2960000038147,
+						0.550000011920929,
+						-0.790000021457672
 					],
 					"position": [
-						93.7020034790039,
-						2.68999981880188,
-						1.85600006580353
+						97.2959976196289,
+						2.44000005722046,
+						2.21000003814697
 					],
-					"role": "cover",
+					"role": "pressure",
 					"rotation_y_degrees": 33.0,
-					"shape": "mat",
+					"shape": "enemy_volume",
 					"size": [
-						2.20000004768372,
-						0.159999996423721,
-						1.70000004768372
+						1.20000004768372,
+						1.10000002384186,
+						1.20000004768372
 					],
 					"support": "implemented"
 				},
 				{
 					"category": "structures",
-					"id": "root_slide",
-					"label": "root_slide",
+					"id": "water_control",
+					"label": "water_control",
 					"local_offset": [
 						0.0,
-						0.224999994039536,
-						0.935999989509583
+						0.5,
+						0.864000022411346
 					],
 					"position": [
 						96.0,
-						2.83499979972839,
-						3.93599987030029
+						2.3899998664856,
+						3.86400008201599
 					],
 					"role": "structure",
 					"rotation_y_degrees": 70.0,
-					"shape": "slide",
+					"shape": "structure_box",
 					"size": [
-						3.79999995231628,
-						0.449999988079071,
-						1.14999997615814
+						1.39999997615814,
+						1.0,
+						1.0
 					],
 					"support": "implemented"
 				}
 			],
-			"elevation_index": 3,
-			"elevation_meters": 2.16,
-			"enemies": [],
+			"elevation_index": 2,
+			"elevation_meters": 1.44,
+			"enemies": [
+				"techos"
+			],
 			"exploit_target": "",
 			"floor_size": [
-				6.59999990463257,
-				0.159999996423721,
-				5.19999980926514
+				5.40000009536743,
+				0.140000000596046,
+				4.80000019073486
 			],
-			"flora": [
-				"scarpet"
-			],
+			"flora": [],
 			"footprint": [
-				6.59999990463257,
-				0.159999996423721,
-				5.19999980926514
+				5.40000009536743,
+				0.140000000596046,
+				4.80000019073486
 			],
 			"id": "node_08",
-			"label": "Set Piece",
+			"label": "Attrition-field crossing · Atmospheric",
 			"layout_step": {
 
 			},
@@ -3110,14 +3283,14 @@
 			"optional": false,
 			"position": [
 				96.0,
-				2.60999989509583,
+				1.88999998569489,
 				3.0
 			],
-			"pressure": 0,
+			"pressure": 1,
 			"pressure_cost": 2,
 			"resource": false,
 			"resource_beat": false,
-			"role": "setpiece",
+			"role": "route_pressure",
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Aster computes the damage budget for a short crossing, or the pair takes the safe-slow detour and pays time, not HP."
@@ -3125,12 +3298,12 @@
 			"shortcut": false,
 			"stage": 2,
 			"structures": [
-				"root_slide"
+				"water_control"
 			],
-			"surface_y": 2.61,
+			"surface_y": 1.89,
 			"survival_kind": "hazard",
-			"title": "Set Piece",
-			"variant": "biofilm_mat",
+			"title": "Attrition-field crossing · Atmospheric",
+			"variant": "atmospheric",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -3155,27 +3328,27 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "capbage",
-					"label": "capbage",
+					"id": "hushbloom",
+					"label": "hushbloom",
 					"local_offset": [
 						-2.46599984169006,
-						0.449999988079071,
+						0.550000011920929,
 						-1.18799996376038
 					],
 					"position": [
 						105.533996582031,
-						0.899999976158142,
+						1.0,
 						-4.1879997253418
 					],
 					"role": "resource",
 					"rotation_y_degrees": -11.0,
 					"shape": "plant_cluster",
 					"size": [
-						1.35000002384186,
-						0.899999976158142,
-						1.35000002384186
+						1.0,
+						1.10000002384186,
+						1.0
 					],
-					"support": "placeholder"
+					"support": "implemented"
 				},
 				{
 					"category": "structures",
@@ -3212,7 +3385,7 @@
 				5.40000009536743
 			],
 			"flora": [
-				"capbage"
+				"hushbloom"
 			],
 			"footprint": [
 				7.19999980926514,
@@ -3281,7 +3454,7 @@
 		{
 			"cost": 1,
 			"from": "entry",
-			"height_delta": 0.719999969005585,
+			"height_delta": 1.43999999761581,
 			"id": "main_00_01",
 			"kind": "safe",
 			"recoverable": true,
@@ -3294,14 +3467,14 @@
 				],
 				"midpoint": [
 					6.0,
-					0.809999942779541,
+					1.16999995708466,
 					-1.5
 				],
-				"slope": 0.719999969005585,
+				"slope": 1.43999999761581,
 				"supports_click_to_move": true,
 				"to": [
 					12.0,
-					1.16999995708466,
+					1.88999998569489,
 					0.0
 				],
 				"width": 1.85
@@ -3312,7 +3485,7 @@
 		{
 			"cost": 1,
 			"from": "node_01",
-			"height_delta": 0.720000028610229,
+			"height_delta": 0.0,
 			"id": "main_01_02",
 			"kind": "safe",
 			"recoverable": true,
@@ -3320,15 +3493,15 @@
 			"surface": {
 				"from": [
 					12.0,
-					1.16999995708466,
+					1.88999998569489,
 					0.0
 				],
 				"midpoint": [
 					18.0,
-					1.52999997138977,
+					1.88999998569489,
 					1.5
 				],
-				"slope": 0.720000028610229,
+				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
 					24.0,
@@ -3343,7 +3516,7 @@
 		{
 			"cost": 1,
 			"from": "node_02",
-			"height_delta": -0.720000028610229,
+			"height_delta": -1.43999999761581,
 			"id": "main_02_03",
 			"kind": "safe",
 			"recoverable": true,
@@ -3356,14 +3529,14 @@
 				],
 				"midpoint": [
 					30.0,
-					1.52999997138977,
+					1.16999995708466,
 					0.0
 				],
-				"slope": -0.720000028610229,
+				"slope": -1.43999999761581,
 				"supports_click_to_move": true,
 				"to": [
 					36.0,
-					1.16999995708466,
+					0.449999988079071,
 					-3.0
 				],
 				"width": 1.85
@@ -3374,7 +3547,7 @@
 		{
 			"cost": 1,
 			"from": "node_03",
-			"height_delta": 0.0,
+			"height_delta": 0.719999969005585,
 			"id": "main_03_04",
 			"kind": "safe",
 			"recoverable": true,
@@ -3382,15 +3555,15 @@
 			"surface": {
 				"from": [
 					36.0,
-					1.16999995708466,
+					0.449999988079071,
 					-3.0
 				],
 				"midpoint": [
 					42.0,
-					1.16999995708466,
+					0.809999942779541,
 					-1.5
 				],
-				"slope": 0.0,
+				"slope": 0.719999969005585,
 				"supports_click_to_move": true,
 				"to": [
 					48.0,
@@ -3405,7 +3578,7 @@
 		{
 			"cost": 1,
 			"from": "node_04",
-			"height_delta": 0.720000028610229,
+			"height_delta": 1.43999993801117,
 			"id": "main_04_05",
 			"kind": "safe",
 			"recoverable": true,
@@ -3418,14 +3591,14 @@
 				],
 				"midpoint": [
 					54.0,
-					1.52999997138977,
+					1.8899998664856,
 					1.5
 				],
-				"slope": 0.720000028610229,
+				"slope": 1.43999993801117,
 				"supports_click_to_move": true,
 				"to": [
 					60.0,
-					1.88999998569489,
+					2.60999989509583,
 					3.0
 				],
 				"width": 1.85
@@ -3436,7 +3609,7 @@
 		{
 			"cost": 1,
 			"from": "node_05",
-			"height_delta": -1.43999999761581,
+			"height_delta": -2.15999990701675,
 			"id": "main_05_06",
 			"kind": "safe",
 			"recoverable": true,
@@ -3444,15 +3617,15 @@
 			"surface": {
 				"from": [
 					60.0,
-					1.88999998569489,
+					2.60999989509583,
 					3.0
 				],
 				"midpoint": [
 					66.0,
-					1.16999995708466,
+					1.52999997138977,
 					0.0
 				],
-				"slope": -1.43999999761581,
+				"slope": -2.15999990701675,
 				"supports_click_to_move": true,
 				"to": [
 					72.0,
@@ -3498,7 +3671,7 @@
 		{
 			"cost": 1,
 			"from": "node_07",
-			"height_delta": 1.43999993801117,
+			"height_delta": 0.720000028610229,
 			"id": "main_07_08",
 			"kind": "safe",
 			"recoverable": true,
@@ -3511,14 +3684,14 @@
 				],
 				"midpoint": [
 					90.0,
-					1.8899998664856,
+					1.52999997138977,
 					1.5
 				],
-				"slope": 1.43999993801117,
+				"slope": 0.720000028610229,
 				"supports_click_to_move": true,
 				"to": [
 					96.0,
-					2.60999989509583,
+					1.88999998569489,
 					3.0
 				],
 				"width": 1.85
@@ -3529,7 +3702,7 @@
 		{
 			"cost": 1,
 			"from": "node_08",
-			"height_delta": -2.15999990701675,
+			"height_delta": -1.43999999761581,
 			"id": "main_08_09",
 			"kind": "safe",
 			"recoverable": true,
@@ -3537,15 +3710,15 @@
 			"surface": {
 				"from": [
 					96.0,
-					2.60999989509583,
+					1.88999998569489,
 					3.0
 				],
 				"midpoint": [
 					102.0,
-					1.52999997138977,
+					1.16999995708466,
 					0.0
 				],
-				"slope": -2.15999990701675,
+				"slope": -1.43999999761581,
 				"supports_click_to_move": true,
 				"to": [
 					108.0,
@@ -3593,7 +3766,7 @@
 			"bypasses_optional": "node_06",
 			"cost": 1,
 			"from": "node_05",
-			"height_delta": -0.720000028610229,
+			"height_delta": -1.43999993801117,
 			"id": "optional_bypass_05_07",
 			"kind": "safe",
 			"recoverable": true,
@@ -3601,15 +3774,15 @@
 			"surface": {
 				"from": [
 					60.0,
-					1.88999998569489,
+					2.60999989509583,
 					3.0
 				],
 				"midpoint": [
 					72.0,
-					1.52999997138977,
+					1.8899998664856,
 					1.5
 				],
-				"slope": -0.720000028610229,
+				"slope": -1.43999993801117,
 				"supports_click_to_move": true,
 				"to": [
 					84.0,
@@ -3656,7 +3829,7 @@
 		{
 			"cost": 0,
 			"from": "node_08",
-			"height_delta": -2.15999990701675,
+			"height_delta": -1.43999999761581,
 			"id": "return_shortcut",
 			"kind": "shortcut",
 			"recoverable": true,
@@ -3664,15 +3837,15 @@
 			"surface": {
 				"from": [
 					96.0,
-					2.60999989509583,
+					1.88999998569489,
 					3.0
 				],
 				"midpoint": [
 					48.0,
-					1.52999997138977,
+					1.16999995708466,
 					0.0
 				],
-				"slope": -2.15999990701675,
+				"slope": -1.43999999761581,
 				"supports_click_to_move": true,
 				"to": [
 					0.0,
@@ -3793,11 +3966,6 @@
 				"category": "flora",
 				"id": "capbage",
 				"message": "capbage is represented by a generated graybox placeholder."
-			},
-			{
-				"category": "structures",
-				"id": "portal",
-				"message": "portal is represented by a generated graybox placeholder."
 			}
 		]
 	},

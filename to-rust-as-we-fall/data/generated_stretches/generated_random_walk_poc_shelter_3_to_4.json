@@ -63,6 +63,13 @@
 	},
 	"archetype_chain": [
 		{
+			"all_variants": [
+				"flure_iron_decoy",
+				"hushbloom_stun",
+				"climbvine_traversal",
+				"resolution_roots_stabilize",
+				"resolution_roots_break"
+			],
 			"approaches": [
 				{
 					"id": "force_clear",
@@ -116,6 +123,14 @@
 			"atp_reward": 0,
 			"chain_index": 0,
 			"chain_label": "acquire plant or seed",
+			"compatible_node_roles": [
+				"foraging",
+				"guidance",
+				"route_pressure",
+				"danger",
+				"shortcut",
+				"setpiece"
+			],
 			"composition_mode": "archetype_random_walk",
 			"composition_role": "random_walk_element",
 			"exploit_target": "",
@@ -144,6 +159,13 @@
 			"walk_step_index": 0
 		},
 		{
+			"all_variants": [
+				"flure_iron_decoy",
+				"hushbloom_stun",
+				"climbvine_traversal",
+				"resolution_roots_stabilize",
+				"resolution_roots_break"
+			],
 			"approaches": [
 				{
 					"id": "force_clear",
@@ -197,6 +219,14 @@
 			"atp_reward": 0,
 			"chain_index": 1,
 			"chain_label": "identify target",
+			"compatible_node_roles": [
+				"foraging",
+				"guidance",
+				"route_pressure",
+				"danger",
+				"shortcut",
+				"setpiece"
+			],
 			"composition_mode": "archetype_random_walk",
 			"composition_role": "random_walk_element",
 			"exploit_target": "",
@@ -225,6 +255,13 @@
 			"walk_step_index": 1
 		},
 		{
+			"all_variants": [
+				"cure_component",
+				"puzzle_piece",
+				"injured_party_member",
+				"critical_resource",
+				"information_artifact"
+			],
 			"approaches": [
 				{
 					"id": "guarded_escort",
@@ -293,6 +330,12 @@
 			"atp_reward": 0,
 			"chain_index": 2,
 			"chain_label": "pick up carry target",
+			"compatible_node_roles": [
+				"resource",
+				"danger",
+				"mixed",
+				"setpiece"
+			],
 			"composition_mode": "archetype_random_walk",
 			"composition_role": "random_walk_element",
 			"exploit_target": "",
@@ -321,6 +364,13 @@
 			"walk_step_index": 0
 		},
 		{
+			"all_variants": [
+				"cure_component",
+				"puzzle_piece",
+				"injured_party_member",
+				"critical_resource",
+				"information_artifact"
+			],
 			"approaches": [
 				{
 					"id": "guarded_escort",
@@ -389,6 +439,12 @@
 			"atp_reward": 0,
 			"chain_index": 3,
 			"chain_label": "accept limitations",
+			"compatible_node_roles": [
+				"resource",
+				"danger",
+				"mixed",
+				"setpiece"
+			],
 			"composition_mode": "archetype_random_walk",
 			"composition_role": "random_walk_element",
 			"exploit_target": "",
@@ -417,6 +473,13 @@
 			"walk_step_index": 1
 		},
 		{
+			"all_variants": [
+				"cure_component",
+				"puzzle_piece",
+				"injured_party_member",
+				"critical_resource",
+				"information_artifact"
+			],
 			"approaches": [
 				{
 					"id": "guarded_escort",
@@ -485,6 +548,12 @@
 			"atp_reward": 0,
 			"chain_index": 4,
 			"chain_label": "cover carrier",
+			"compatible_node_roles": [
+				"resource",
+				"danger",
+				"mixed",
+				"setpiece"
+			],
 			"composition_mode": "archetype_random_walk",
 			"composition_role": "random_walk_element",
 			"exploit_target": "",
@@ -513,6 +582,15 @@
 			"walk_step_index": 2
 		},
 		{
+			"all_variants": [
+				"loud_action",
+				"false_scent",
+				"iron_signal",
+				"electrical_signature",
+				"terminal_task",
+				"plant_tending_task",
+				"aquatic_route"
+			],
 			"approaches": [
 				{
 					"id": "loud_draw",
@@ -567,6 +645,12 @@
 			"atp_reward": 0,
 			"chain_index": 5,
 			"chain_label": "read patrol",
+			"compatible_node_roles": [
+				"route_pressure",
+				"danger",
+				"mixed",
+				"shortcut"
+			],
 			"composition_mode": "archetype_random_walk",
 			"composition_role": "random_walk_element",
 			"exploit_target": "",
@@ -595,6 +679,16 @@
 			"walk_step_index": 0
 		},
 		{
+			"all_variants": [
+				"area_map",
+				"flow_diagram",
+				"document",
+				"image_symbol",
+				"combat_retrieval",
+				"memory_pressure",
+				"carry_vulnerability",
+				"hidden_overlay"
+			],
 			"approaches": [
 				{
 					"id": "combat_retrieval",
@@ -649,6 +743,12 @@
 			"atp_reward": 0,
 			"chain_index": 6,
 			"chain_label": "discover fragments",
+			"compatible_node_roles": [
+				"guidance",
+				"resource",
+				"mixed",
+				"setpiece"
+			],
 			"composition_mode": "archetype_random_walk",
 			"composition_role": "random_walk_element",
 			"exploit_target": "",
@@ -1084,7 +1184,7 @@
 				15.8999996185303
 			]
 		},
-		"content_placement_count": 20,
+		"content_placement_count": 18,
 		"contract_id": "generated_stretch_graybox_v1",
 		"elevation_count": 3,
 		"elevation_indices": [
@@ -1323,27 +1423,24 @@
 						"role": "boundary"
 					},
 					{
-						"approach_id": "flora_finesse",
+						"approach_id": "flora_chain_trap",
 						"blocked": false,
-						"borrows_from": "",
-						"expert": false,
-						"kind": "shadow",
-						"label": "Peris grows or tends the plant tool; Aster confirms the target",
-						"min_stage": 1,
+						"borrows_from": "10",
+						"expert": true,
+						"kind": "shadow_expert",
+						"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
+						"min_stage": 5,
 						"node": "node_01",
 						"party": "aster_peris",
 						"requires": [
-							"flora"
+							"flora",
+							"lure"
 						],
-						"risk": "safe",
+						"risk": "risky",
 						"role": "foraging",
-						"stage_ahead": false,
-						"taught_by": "flora_tending",
-						"uses": [
-							"flure_iron_decoy",
-							"hushbloom_stun",
-							"climbvine_traversal"
-						]
+						"stage_ahead": true,
+						"taught_by": "nested_flora_zone",
+						"uses": []
 					},
 					{
 						"approach_id": "flora_finesse",
@@ -1487,20 +1584,21 @@
 				"blocked_nodes": [],
 				"label": "Aster + Peris (shadow)",
 				"loadout": "shadow",
-				"max_stage_used": 3,
+				"max_stage_used": 5,
 				"party": [
 					"aster",
 					"peris"
 				],
 				"solvable": true,
 				"techniques": [
+					"nested_flora_zone",
 					"flora_tending",
 					"split_carry",
 					"false_pattern_spoof",
 					"terminal_cache_recall"
 				],
-				"total_risk": 10,
-				"uses_future_technique": false,
+				"total_risk": 12,
+				"uses_future_technique": true,
 				"within_stage": true
 			}
 		],
@@ -1530,12 +1628,13 @@
 			"progression_stage": 3,
 			"shadow_solvable": true,
 			"shadow_techniques": [
+				"nested_flora_zone",
 				"flora_tending",
 				"split_carry",
 				"false_pattern_spoof",
 				"terminal_cache_recall"
 			],
-			"shadow_uses_future_technique": false,
+			"shadow_uses_future_technique": true,
 			"solvable_loadout_count": 2,
 			"spotlight_within_stage": true
 		},
@@ -2153,7 +2252,7 @@
 				"surface_y": 0.45
 			},
 			{
-				"content_count": 3,
+				"content_count": 2,
 				"elevation_index": 2,
 				"floor_size": [
 					6.59999990463257,
@@ -2213,7 +2312,7 @@
 				"surface_y": 1.17
 			},
 			{
-				"content_count": 2,
+				"content_count": 1,
 				"elevation_index": 2,
 				"floor_size": [
 					5.19999980926514,
@@ -2308,25 +2407,25 @@
 				},
 				{
 					"category": "structures",
-					"id": "shelter",
-					"label": "shelter",
+					"id": "carry_gear",
+					"label": "carry_gear",
 					"local_offset": [
 						0.0,
-						1.20000004768372,
+						0.400000005960464,
 						0.755999982357025
 					],
 					"position": [
 						0.0,
-						1.65000009536743,
+						0.850000023841858,
 						0.755999982357025
 					],
-					"role": "rest",
+					"role": "structure",
 					"rotation_y_degrees": 26.0,
-					"shape": "shelter_shell",
+					"shape": "structure_box",
 					"size": [
-						4.80000019073486,
-						2.40000009536743,
-						3.40000009536743
+						1.10000002384186,
+						0.800000011920929,
+						1.10000002384186
 					],
 					"support": "implemented"
 				}
@@ -2375,7 +2474,7 @@
 			"shortcut": false,
 			"stage": 1,
 			"structures": [
-				"shelter"
+				"carry_gear"
 			],
 			"surface_y": 0.45,
 			"survival_kind": "",
@@ -2454,25 +2553,25 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "scarpet",
-					"label": "scarpet",
+					"id": "flure",
+					"label": "flure",
 					"local_offset": [
 						-2.07400012016296,
-						0.0799999982118607,
+						0.725000023841858,
 						-0.967999994754791
 					],
 					"position": [
 						9.92599964141846,
-						1.97000002861023,
+						2.61500000953674,
 						2.23200011253357
 					],
-					"role": "cover",
+					"role": "puzzle_flora",
 					"rotation_y_degrees": 0.0,
-					"shape": "mat",
+					"shape": "plant_cluster",
 					"size": [
-						2.20000004768372,
-						0.159999996423721,
-						1.70000004768372
+						1.79999995231628,
+						1.45000004768372,
+						1.79999995231628
 					],
 					"support": "implemented"
 				},
@@ -2511,7 +2610,7 @@
 				4.40000009536743
 			],
 			"flora": [
-				"scarpet"
+				"flure"
 			],
 			"footprint": [
 				5.80000019073486,
@@ -2519,7 +2618,7 @@
 				4.40000009536743
 			],
 			"id": "node_01",
-			"label": "A2.1 Acquire Plant Or Seed",
+			"label": "Plant as tool · Flure Iron Decoy",
 			"layout_step": {
 				"lane": 1,
 				"turn": 1,
@@ -2550,8 +2649,8 @@
 			],
 			"surface_y": 1.89,
 			"survival_kind": "",
-			"title": "A2.1 Acquire Plant Or Seed",
-			"variant": "hushbloom_stun",
+			"title": "Plant as tool · Flure Iron Decoy",
+			"variant": "flure_iron_decoy",
 			"walk_element": "acquire plant or seed",
 			"walk_index": 0,
 			"walk_ref": "walk_00",
@@ -2690,7 +2789,7 @@
 				4.0
 			],
 			"id": "node_02",
-			"label": "A2.2 Identify Target",
+			"label": "Plant as tool · Hushbloom Stun",
 			"layout_step": {
 				"lane": 0,
 				"turn": -1,
@@ -2721,8 +2820,8 @@
 			],
 			"surface_y": 0.45,
 			"survival_kind": "",
-			"title": "A2.2 Identify Target",
-			"variant": "flure_iron_decoy",
+			"title": "Plant as tool · Hushbloom Stun",
+			"variant": "hushbloom_stun",
 			"walk_element": "identify target",
 			"walk_index": 1,
 			"walk_ref": "walk_01",
@@ -2811,49 +2910,49 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "flure",
-					"label": "flure",
+					"id": "scarpet",
+					"label": "scarpet",
 					"local_offset": [
 						-2.18599987030029,
-						0.725000023841858,
+						0.0799999982118607,
 						-1.05599999427795
 					],
 					"position": [
 						33.8139991760254,
-						1.17499995231628,
+						0.529999971389771,
 						-4.25600004196167
 					],
-					"role": "puzzle_flora",
+					"role": "cover",
 					"rotation_y_degrees": 22.0,
-					"shape": "plant_cluster",
+					"shape": "mat",
 					"size": [
-						1.79999995231628,
-						1.45000004768372,
-						1.79999995231628
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
 					],
 					"support": "implemented"
 				},
 				{
 					"category": "structures",
-					"id": "forage_cache",
-					"label": "forage_cache",
+					"id": "carry_gear",
+					"label": "carry_gear",
 					"local_offset": [
 						0.0,
-						0.375,
+						0.400000005960464,
 						0.864000022411346
 					],
 					"position": [
 						36.0,
-						0.824999988079071,
+						0.850000023841858,
 						-2.33599996566772
 					],
-					"role": "resource",
+					"role": "structure",
 					"rotation_y_degrees": 59.0,
 					"shape": "structure_box",
 					"size": [
-						1.70000004768372,
-						0.75,
-						1.0
+						1.10000002384186,
+						0.800000011920929,
+						1.10000002384186
 					],
 					"support": "implemented"
 				}
@@ -2868,7 +2967,7 @@
 				4.80000019073486
 			],
 			"flora": [
-				"flure"
+				"scarpet"
 			],
 			"footprint": [
 				6.19999980926514,
@@ -2876,7 +2975,7 @@
 				4.80000019073486
 			],
 			"id": "node_03",
-			"label": "A3.1 Pick Up Carry Target",
+			"label": "Carry the heavy thing · Cure Component",
 			"layout_step": {
 				"lane": -1,
 				"turn": -1,
@@ -2903,12 +3002,12 @@
 			"shortcut": false,
 			"stage": 2,
 			"structures": [
-				"forage_cache"
+				"carry_gear"
 			],
 			"surface_y": 0.45,
 			"survival_kind": "",
-			"title": "A3.1 Pick Up Carry Target",
-			"variant": "injured_party_member",
+			"title": "Carry the heavy thing · Cure Component",
+			"variant": "cure_component",
 			"walk_element": "pick up carry target",
 			"walk_index": 2,
 			"walk_ref": "walk_02",
@@ -3020,59 +3119,33 @@
 					"support": "implemented"
 				},
 				{
-					"category": "enemies",
-					"id": "naturalizers",
-					"label": "naturalizers",
-					"local_offset": [
-						1.58399999141693,
-						0.550000011920929,
-						-0.259999990463257
-					],
-					"position": [
-						49.5839996337891,
-						2.44000005722046,
-						-3.46000003814697
-					],
-					"role": "pressure",
-					"rotation_y_degrees": 70.0,
-					"shape": "enemy_volume",
-					"size": [
-						1.5,
-						1.10000002384186,
-						1.5
-					],
-					"support": "implemented"
-				},
-				{
 					"category": "structures",
-					"id": "terminal",
-					"label": "terminal",
+					"id": "carry_gear",
+					"label": "carry_gear",
 					"local_offset": [
-						0.550000011920929,
-						0.824999988079071,
+						0.0,
+						0.400000005960464,
 						0.935999989509583
 					],
 					"position": [
-						48.5499992370605,
-						2.71499991416931,
+						48.0,
+						2.28999996185303,
 						-2.26399993896484
 					],
-					"role": "guidance",
-					"rotation_y_degrees": 107.0,
-					"shape": "console",
+					"role": "structure",
+					"rotation_y_degrees": 70.0,
+					"shape": "structure_box",
 					"size": [
-						1.20000004768372,
-						1.64999997615814,
-						0.75
+						1.10000002384186,
+						0.800000011920929,
+						1.10000002384186
 					],
 					"support": "implemented"
 				}
 			],
 			"elevation_index": 2,
 			"elevation_meters": 1.44,
-			"enemies": [
-				"naturalizers"
-			],
+			"enemies": [],
 			"exploit_target": "",
 			"floor_size": [
 				6.59999990463257,
@@ -3088,7 +3161,7 @@
 				5.19999980926514
 			],
 			"id": "node_04",
-			"label": "A3.2 Accept Limitations",
+			"label": "Carry the heavy thing · Puzzle Piece",
 			"layout_step": {
 				"lane": -1,
 				"turn": 0,
@@ -3103,7 +3176,7 @@
 				1.88999998569489,
 				-3.20000004768372
 			],
-			"pressure": 1,
+			"pressure": 0,
 			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
@@ -3115,12 +3188,12 @@
 			"shortcut": false,
 			"stage": 2,
 			"structures": [
-				"terminal"
+				"carry_gear"
 			],
 			"surface_y": 1.89,
 			"survival_kind": "",
-			"title": "A3.2 Accept Limitations",
-			"variant": "critical_resource",
+			"title": "Carry the heavy thing · Puzzle Piece",
+			"variant": "puzzle_piece",
 			"walk_element": "accept limitations",
 			"walk_index": 3,
 			"walk_ref": "walk_03",
@@ -3209,49 +3282,49 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "hushbloom",
-					"label": "hushbloom",
+					"id": "scarpet",
+					"label": "scarpet",
 					"local_offset": [
 						-1.90599989891052,
-						0.550000011920929,
+						0.0799999982118607,
 						-0.923999965190887
 					],
 					"position": [
 						58.0940017700195,
-						1.0,
+						0.529999971389771,
 						-7.32399988174438
 					],
-					"role": "resource",
+					"role": "cover",
 					"rotation_y_degrees": 44.0,
-					"shape": "plant_cluster",
+					"shape": "mat",
 					"size": [
-						1.0,
-						1.10000002384186,
-						1.0
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
 					],
 					"support": "implemented"
 				},
 				{
 					"category": "structures",
-					"id": "shelter",
-					"label": "shelter",
+					"id": "carry_gear",
+					"label": "carry_gear",
 					"local_offset": [
 						0.0,
-						1.20000004768372,
+						0.400000005960464,
 						0.755999982357025
 					],
 					"position": [
 						60.0,
-						1.65000009536743,
+						0.850000023841858,
 						-5.64400005340576
 					],
-					"role": "rest",
+					"role": "structure",
 					"rotation_y_degrees": 81.0,
-					"shape": "shelter_shell",
+					"shape": "structure_box",
 					"size": [
-						4.80000019073486,
-						2.40000009536743,
-						3.40000009536743
+						1.10000002384186,
+						0.800000011920929,
+						1.10000002384186
 					],
 					"support": "implemented"
 				}
@@ -3266,7 +3339,7 @@
 				4.19999980926514
 			],
 			"flora": [
-				"hushbloom"
+				"scarpet"
 			],
 			"footprint": [
 				5.19999980926514,
@@ -3274,7 +3347,7 @@
 				4.19999980926514
 			],
 			"id": "node_05",
-			"label": "A3.3 Cover Carrier",
+			"label": "Carry the heavy thing · Injured Party Member",
 			"layout_step": {
 				"lane": -2,
 				"turn": -1,
@@ -3301,12 +3374,12 @@
 			"shortcut": false,
 			"stage": 2,
 			"structures": [
-				"shelter"
+				"carry_gear"
 			],
 			"surface_y": 0.45,
 			"survival_kind": "",
-			"title": "A3.3 Cover Carrier",
-			"variant": "cure_component",
+			"title": "Carry the heavy thing · Injured Party Member",
+			"variant": "injured_party_member",
 			"walk_element": "cover carrier",
 			"walk_index": 4,
 			"walk_ref": "walk_04",
@@ -3429,25 +3502,25 @@
 				},
 				{
 					"category": "structures",
-					"id": "carry_gear",
-					"label": "carry_gear",
+					"id": "pipe",
+					"label": "pipe",
 					"local_offset": [
 						0.550000011920929,
-						0.400000005960464,
+						0.275000005960464,
 						0.864000022411346
 					],
 					"position": [
 						72.5500030517578,
-						1.5699999332428,
+						1.4449999332428,
 						-2.33599996566772
 					],
 					"role": "structure",
 					"rotation_y_degrees": 129.0,
-					"shape": "structure_box",
+					"shape": "pipe",
 					"size": [
-						1.10000002384186,
-						0.800000011920929,
-						1.10000002384186
+						3.29999995231628,
+						0.550000011920929,
+						0.550000011920929
 					],
 					"support": "implemented"
 				}
@@ -3472,7 +3545,7 @@
 				4.80000019073486
 			],
 			"id": "node_06",
-			"label": "A4.1 Read Patrol",
+			"label": "Distract the patrol · Loud Action",
 			"layout_step": {
 				"lane": -1,
 				"turn": 1,
@@ -3499,12 +3572,12 @@
 			"shortcut": false,
 			"stage": 3,
 			"structures": [
-				"carry_gear"
+				"pipe"
 			],
 			"surface_y": 1.17,
 			"survival_kind": "",
-			"title": "A4.1 Read Patrol",
-			"variant": "iron_signal",
+			"title": "Distract the patrol · Loud Action",
+			"variant": "loud_action",
 			"walk_element": "read patrol",
 			"walk_index": 5,
 			"walk_ref": "walk_05",
@@ -3578,50 +3651,26 @@
 			"composition_role": "random_walk_element",
 			"content_placements": [
 				{
-					"category": "flora",
-					"id": "scarpet",
-					"label": "scarpet",
-					"local_offset": [
-						-1.90599989891052,
-						0.0799999982118607,
-						-0.923999965190887
-					],
-					"position": [
-						82.0940017700195,
-						1.97000002861023,
-						-0.923999965190887
-					],
-					"role": "cover",
-					"rotation_y_degrees": 66.0,
-					"shape": "mat",
-					"size": [
-						2.20000004768372,
-						0.159999996423721,
-						1.70000004768372
-					],
-					"support": "implemented"
-				},
-				{
 					"category": "structures",
-					"id": "shortcut_gate",
-					"label": "shortcut_gate",
+					"id": "terminal",
+					"label": "terminal",
 					"local_offset": [
-						0.0,
-						1.10000002384186,
+						-0.550000011920929,
+						0.824999988079071,
 						0.755999982357025
 					],
 					"position": [
-						84.0,
-						2.99000000953674,
+						83.4499969482422,
+						2.71499991416931,
 						0.755999982357025
 					],
-					"role": "shortcut",
-					"rotation_y_degrees": 103.0,
-					"shape": "gate",
+					"role": "guidance",
+					"rotation_y_degrees": 66.0,
+					"shape": "console",
 					"size": [
-						2.40000009536743,
-						2.20000004768372,
-						0.379999995231628
+						1.20000004768372,
+						1.64999997615814,
+						0.75
 					],
 					"support": "implemented"
 				}
@@ -3635,16 +3684,14 @@
 				0.140000000596046,
 				4.19999980926514
 			],
-			"flora": [
-				"scarpet"
-			],
+			"flora": [],
 			"footprint": [
 				5.19999980926514,
 				0.140000000596046,
 				4.19999980926514
 			],
 			"id": "node_07",
-			"label": "A6.1 Discover Fragments",
+			"label": "Pattern reconstruction · Area Map",
 			"layout_step": {
 				"lane": 0,
 				"turn": 1,
@@ -3668,14 +3715,14 @@
 				"aster_peris": true,
 				"notes": "Aster finds hidden structure; Peris preserves relational or flora context."
 			},
-			"shortcut": true,
+			"shortcut": false,
 			"stage": 3,
 			"structures": [
-				"shortcut_gate"
+				"terminal"
 			],
 			"surface_y": 1.89,
 			"survival_kind": "",
-			"title": "A6.1 Discover Fragments",
+			"title": "Pattern reconstruction · Area Map",
 			"variant": "area_map",
 			"walk_element": "discover fragments",
 			"walk_index": 6,
@@ -3701,25 +3748,25 @@
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "hushbloom",
-					"label": "hushbloom",
+					"id": "scarpet",
+					"label": "scarpet",
 					"local_offset": [
 						-2.46599984169006,
-						0.550000011920929,
+						0.0799999982118607,
 						-1.18799996376038
 					],
 					"position": [
 						93.5339965820313,
-						1.0,
+						0.529999971389771,
 						-1.18799996376038
 					],
-					"role": "resource",
+					"role": "cover",
 					"rotation_y_degrees": -11.0,
-					"shape": "plant_cluster",
+					"shape": "mat",
 					"size": [
-						1.0,
-						1.10000002384186,
-						1.0
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
 					],
 					"support": "implemented"
 				},
@@ -3758,7 +3805,7 @@
 				5.40000009536743
 			],
 			"flora": [
-				"hushbloom"
+				"scarpet"
 			],
 			"footprint": [
 				7.19999980926514,

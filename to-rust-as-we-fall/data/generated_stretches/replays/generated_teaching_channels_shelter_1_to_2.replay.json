@@ -27,9 +27,9 @@
 					-1,
 					0
 				],
-				"kind": "flure",
+				"kind": "capbage",
 				"level": 0,
-				"support": "implemented"
+				"support": "placeholder"
 			},
 			{
 				"category": "structures",
@@ -37,7 +37,7 @@
 					0,
 					0
 				],
-				"kind": "shelter",
+				"kind": "junction",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -47,9 +47,9 @@
 					5,
 					1
 				],
-				"kind": "capbage",
-				"level": 1,
-				"support": "placeholder"
+				"kind": "scarpet",
+				"level": 0,
+				"support": "implemented"
 			},
 			{
 				"category": "structures",
@@ -57,18 +57,28 @@
 					6,
 					2
 				],
-				"kind": "class_gate",
-				"level": 1,
+				"kind": "junction",
+				"level": 0,
 				"support": "implemented"
 			},
 			{
 				"category": "flora",
 				"cell": [
 					11,
-					2
+					3
 				],
-				"kind": "flure",
-				"level": 2,
+				"kind": "capbage",
+				"level": 3,
+				"support": "placeholder"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					11,
+					3
+				],
+				"kind": "scarpet",
+				"level": 3,
 				"support": "implemented"
 			},
 			{
@@ -77,9 +87,9 @@
 					13,
 					3
 				],
-				"kind": "spikers",
-				"level": 2,
-				"support": "placeholder"
+				"kind": "techos",
+				"level": 3,
+				"support": "implemented"
 			},
 			{
 				"category": "structures",
@@ -87,8 +97,8 @@
 					12,
 					3
 				],
-				"kind": "shortcut_gate",
-				"level": 2,
+				"kind": "forage_cache",
+				"level": 3,
 				"support": "implemented"
 			},
 			{
@@ -97,9 +107,9 @@
 					17,
 					0
 				],
-				"kind": "capbage",
-				"level": 1,
-				"support": "placeholder"
+				"kind": "scarpet",
+				"level": 0,
+				"support": "implemented"
 			},
 			{
 				"category": "structures",
@@ -107,8 +117,8 @@
 					18,
 					0
 				],
-				"kind": "shelter",
-				"level": 1,
+				"kind": "junction",
+				"level": 0,
 				"support": "implemented"
 			},
 			{
@@ -117,9 +127,29 @@
 					23,
 					1
 				],
-				"kind": "flure",
-				"level": 1,
+				"kind": "capbage",
+				"level": 2,
+				"support": "placeholder"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					23,
+					1
+				],
+				"kind": "scarpet",
+				"level": 2,
 				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					25,
+					2
+				],
+				"kind": "hidras",
+				"level": 2,
+				"support": "placeholder"
 			},
 			{
 				"category": "structures",
@@ -127,8 +157,8 @@
 					24,
 					2
 				],
-				"kind": "class_gate",
-				"level": 1,
+				"kind": "forage_cache",
+				"level": 2,
 				"support": "implemented"
 			},
 			{
@@ -137,7 +167,7 @@
 					29,
 					2
 				],
-				"kind": "capbage",
+				"kind": "gasafoetida",
 				"level": 0,
 				"support": "placeholder"
 			},
@@ -172,10 +202,10 @@
 					2
 				],
 				"id": "node_01",
-				"label": "Guidance Beat",
-				"level": 1,
+				"label": "Entry Boundary",
+				"level": 0,
 				"optional": false,
-				"role": "guidance"
+				"role": "boundary"
 			},
 			{
 				"archetype_id": "12",
@@ -184,10 +214,10 @@
 					3
 				],
 				"id": "node_02",
-				"label": "Route Pressure",
-				"level": 2,
+				"label": "Lysate forage cache · Organic Remains",
+				"level": 3,
 				"optional": false,
-				"role": "route_pressure"
+				"role": "foraging"
 			},
 			{
 				"archetype_id": "11",
@@ -196,10 +226,10 @@
 					0
 				],
 				"id": "node_03",
-				"label": "Foraging Beat",
-				"level": 1,
+				"label": "Narrative beat · Recognition",
+				"level": 0,
 				"optional": false,
-				"role": "foraging"
+				"role": "regroup"
 			},
 			{
 				"archetype_id": "12",
@@ -208,10 +238,10 @@
 					2
 				],
 				"id": "node_04",
-				"label": "Danger Beat",
-				"level": 1,
+				"label": "Lysate forage cache · Rich Kill",
+				"level": 2,
 				"optional": false,
-				"role": "danger"
+				"role": "foraging"
 			},
 			{
 				"archetype_id": "11",
@@ -388,7 +418,7 @@
 					"min_stage": 1,
 					"node": "node_01",
 					"risk": "safe",
-					"role": "guidance",
+					"role": "boundary",
 					"stage_ahead": false,
 					"t": 1.0
 				},
@@ -416,7 +446,7 @@
 					"min_stage": 1,
 					"node": "node_02",
 					"risk": "direct",
-					"role": "route_pressure",
+					"role": "foraging",
 					"stage_ahead": false,
 					"t": 2.0
 				},
@@ -444,7 +474,7 @@
 					"min_stage": 1,
 					"node": "node_03",
 					"risk": "safe",
-					"role": "foraging",
+					"role": "regroup",
 					"stage_ahead": false,
 					"t": 3.0
 				},
@@ -472,7 +502,7 @@
 					"min_stage": 1,
 					"node": "node_04",
 					"risk": "direct",
-					"role": "danger",
+					"role": "foraging",
 					"stage_ahead": false,
 					"t": 4.0
 				},
@@ -638,7 +668,7 @@
 					"min_stage": 1,
 					"node": "node_01",
 					"risk": "safe",
-					"role": "guidance",
+					"role": "boundary",
 					"stage_ahead": false,
 					"t": 1.0
 				},
@@ -662,7 +692,7 @@
 					"min_stage": 1,
 					"node": "node_02",
 					"risk": "safe",
-					"role": "route_pressure",
+					"role": "foraging",
 					"stage_ahead": false,
 					"t": 2.0
 				},
@@ -686,7 +716,7 @@
 					"min_stage": 1,
 					"node": "node_03",
 					"risk": "safe",
-					"role": "foraging",
+					"role": "regroup",
 					"stage_ahead": false,
 					"t": 3.0
 				},
@@ -710,7 +740,7 @@
 					"min_stage": 1,
 					"node": "node_04",
 					"risk": "safe",
-					"role": "danger",
+					"role": "foraging",
 					"stage_ahead": false,
 					"t": 4.0
 				},

@@ -27,7 +27,7 @@
 					-1,
 					1
 				],
-				"kind": "flure",
+				"kind": "doma",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -37,7 +37,7 @@
 					0,
 					2
 				],
-				"kind": "shelter",
+				"kind": "junction",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -47,7 +47,7 @@
 					5,
 					3
 				],
-				"kind": "seefern",
+				"kind": "scarpet",
 				"level": 3,
 				"support": "implemented"
 			},
@@ -62,12 +62,22 @@
 				"support": "implemented"
 			},
 			{
+				"category": "enemies",
+				"cell": [
+					7,
+					3
+				],
+				"kind": "techos",
+				"level": 3,
+				"support": "implemented"
+			},
+			{
 				"category": "structures",
 				"cell": [
 					6,
 					4
 				],
-				"kind": "hide_slot",
+				"kind": "root_slide",
 				"level": 3,
 				"support": "implemented"
 			},
@@ -77,7 +87,27 @@
 					11,
 					4
 				],
-				"kind": "snapbloom",
+				"kind": "scarpet",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					13,
+					5
+				],
+				"kind": "naturalizers",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					13,
+					5
+				],
+				"kind": "techos",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -102,12 +132,22 @@
 				"support": "implemented"
 			},
 			{
+				"category": "enemies",
+				"cell": [
+					19,
+					5
+				],
+				"kind": "techos",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
 				"category": "structures",
 				"cell": [
 					18,
 					5
 				],
-				"kind": "terminal",
+				"kind": "barrier",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -117,7 +157,17 @@
 					23,
 					4
 				],
-				"kind": "mother_flure",
+				"kind": "scarpet",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					25,
+					5
+				],
+				"kind": "techos",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -127,7 +177,7 @@
 					24,
 					5
 				],
-				"kind": "terminal",
+				"kind": "barrier",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -137,7 +187,7 @@
 					29,
 					4
 				],
-				"kind": "flure",
+				"kind": "scarpet",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -147,7 +197,7 @@
 					31,
 					5
 				],
-				"kind": "naturalizers",
+				"kind": "techos",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -157,7 +207,7 @@
 					30,
 					5
 				],
-				"kind": "terminal",
+				"kind": "barrier",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -167,7 +217,7 @@
 					35,
 					4
 				],
-				"kind": "seefern",
+				"kind": "scarpet",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -197,7 +247,7 @@
 					41,
 					4
 				],
-				"kind": "snapbloom",
+				"kind": "scarpet",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -207,7 +257,7 @@
 					42,
 					5
 				],
-				"kind": "hide_slot",
+				"kind": "carry_gear",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -217,7 +267,7 @@
 					47,
 					3
 				],
-				"kind": "scarpet",
+				"kind": "flure",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -227,7 +277,7 @@
 					49,
 					3
 				],
-				"kind": "techos",
+				"kind": "naturalizers",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -237,7 +287,7 @@
 					48,
 					4
 				],
-				"kind": "barrier",
+				"kind": "pipe",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -247,7 +297,7 @@
 					53,
 					1
 				],
-				"kind": "mother_flure",
+				"kind": "seefern",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -267,7 +317,27 @@
 					53,
 					1
 				],
-				"kind": "flure",
+				"kind": "scarpet",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					55,
+					2
+				],
+				"kind": "naturalizers",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					55,
+					2
+				],
+				"kind": "techos",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -287,7 +357,7 @@
 					59,
 					-1
 				],
-				"kind": "seefern",
+				"kind": "hushbloom",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -322,7 +392,7 @@
 					3
 				],
 				"id": "node_01",
-				"label": "A10.1 Entry Transition",
+				"label": "Danger zone · Iron Based",
 				"level": 3,
 				"optional": false,
 				"role": "setpiece"
@@ -334,7 +404,7 @@
 					5
 				],
 				"id": "node_02",
-				"label": "A10.2 Sub Puzzle Composition",
+				"label": "Danger zone · Naturalizer Patrol",
 				"level": 2,
 				"optional": false,
 				"role": "guidance"
@@ -346,7 +416,7 @@
 					5
 				],
 				"id": "node_03",
-				"label": "A1.1 Identify Impact Target",
+				"label": "Redirected enemy aggression · Destroy Barrier",
 				"level": 2,
 				"optional": true,
 				"role": "guidance"
@@ -358,7 +428,7 @@
 					5
 				],
 				"id": "node_04",
-				"label": "A1.2 Position Bait",
+				"label": "Redirected enemy aggression · Kill Enemy",
 				"level": 2,
 				"optional": false,
 				"role": "guidance"
@@ -370,7 +440,7 @@
 					5
 				],
 				"id": "node_05",
-				"label": "A1.3 Trigger Charge",
+				"label": "Redirected enemy aggression · Reveal Plant",
 				"level": 2,
 				"optional": false,
 				"role": "route_pressure"
@@ -382,7 +452,7 @@
 					5
 				],
 				"id": "node_06",
-				"label": "A1.4 Dodge Commitment",
+				"label": "Redirected enemy aggression · Reveal Terminal",
 				"level": 2,
 				"optional": true,
 				"role": "danger"
@@ -394,7 +464,7 @@
 					5
 				],
 				"id": "node_07",
-				"label": "A3.1 Pick Up Carry Target",
+				"label": "Carry the heavy thing · Cure Component",
 				"level": 2,
 				"optional": false,
 				"role": "foraging"
@@ -406,7 +476,7 @@
 					3
 				],
 				"id": "node_08",
-				"label": "A4.1 Read Patrol",
+				"label": "Distract the patrol · Loud Action",
 				"level": 0,
 				"optional": false,
 				"role": "danger"
@@ -418,7 +488,7 @@
 					2
 				],
 				"id": "node_09",
-				"label": "A6.1 Discover Fragments",
+				"label": "Pattern reconstruction · Area Map",
 				"level": 0,
 				"optional": true,
 				"role": "guidance"
@@ -430,7 +500,7 @@
 					2
 				],
 				"id": "node_10",
-				"label": "A6.1 Discover Fragments",
+				"label": "Danger zone · Atmospheric",
 				"level": 0,
 				"optional": false,
 				"role": "guidance"

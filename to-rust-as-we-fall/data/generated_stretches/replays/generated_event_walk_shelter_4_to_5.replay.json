@@ -37,7 +37,7 @@
 					0,
 					4
 				],
-				"kind": "shelter",
+				"kind": "barrier",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -47,7 +47,7 @@
 					5,
 					1
 				],
-				"kind": "hushbloom",
+				"kind": "flure",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -67,7 +67,7 @@
 					11,
 					1
 				],
-				"kind": "scarpet",
+				"kind": "hushbloom",
 				"level": 1,
 				"support": "implemented"
 			},
@@ -82,26 +82,6 @@
 				"support": "implemented"
 			},
 			{
-				"category": "flora",
-				"cell": [
-					17,
-					-1
-				],
-				"kind": "seefern",
-				"level": 0,
-				"support": "implemented"
-			},
-			{
-				"category": "enemies",
-				"cell": [
-					19,
-					0
-				],
-				"kind": "naturalizers",
-				"level": 0,
-				"support": "implemented"
-			},
-			{
 				"category": "structures",
 				"cell": [
 					18,
@@ -112,32 +92,12 @@
 				"support": "implemented"
 			},
 			{
-				"category": "flora",
-				"cell": [
-					23,
-					1
-				],
-				"kind": "flure",
-				"level": 1,
-				"support": "implemented"
-			},
-			{
-				"category": "enemies",
-				"cell": [
-					25,
-					1
-				],
-				"kind": "tanglers",
-				"level": 1,
-				"support": "placeholder"
-			},
-			{
 				"category": "structures",
 				"cell": [
 					24,
 					2
 				],
-				"kind": "forage_cache",
+				"kind": "barrier",
 				"level": 1,
 				"support": "implemented"
 			},
@@ -147,7 +107,17 @@
 					29,
 					3
 				],
-				"kind": "hushbloom",
+				"kind": "scarpet",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					31,
+					3
+				],
+				"kind": "techos",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -157,7 +127,7 @@
 					30,
 					4
 				],
-				"kind": "terminal",
+				"kind": "barrier",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -177,7 +147,7 @@
 					36,
 					4
 				],
-				"kind": "forage_cache",
+				"kind": "carry_gear",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -187,7 +157,7 @@
 					41,
 					1
 				],
-				"kind": "seefern",
+				"kind": "flure",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -197,9 +167,9 @@
 					43,
 					1
 				],
-				"kind": "tanglers",
+				"kind": "naturalizers",
 				"level": 0,
-				"support": "placeholder"
+				"support": "implemented"
 			},
 			{
 				"category": "structures",
@@ -207,7 +177,7 @@
 					42,
 					2
 				],
-				"kind": "shortcut_gate",
+				"kind": "pipe",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -217,7 +187,7 @@
 					47,
 					1
 				],
-				"kind": "flure",
+				"kind": "seefern",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -237,7 +207,7 @@
 					53,
 					3
 				],
-				"kind": "hushbloom",
+				"kind": "seefern",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -272,7 +242,7 @@
 					2
 				],
 				"id": "node_01",
-				"label": "A2.1 Acquire Plant Or Seed",
+				"label": "Plant as tool · Flure Iron Decoy",
 				"level": 0,
 				"optional": false,
 				"role": "foraging"
@@ -284,7 +254,7 @@
 					2
 				],
 				"id": "node_02",
-				"label": "A2.2 Identify Target",
+				"label": "Plant as tool · Hushbloom Stun",
 				"level": 1,
 				"optional": false,
 				"role": "guidance"
@@ -296,7 +266,7 @@
 					0
 				],
 				"id": "node_03",
-				"label": "A2.3 Plant Or Tend",
+				"label": "Plant as tool · Climbvine Traversal",
 				"level": 0,
 				"optional": true,
 				"role": "route_pressure"
@@ -308,7 +278,7 @@
 					2
 				],
 				"id": "node_04",
-				"label": "A2.4 Wait For Effect",
+				"label": "Plant as tool · Resolution Roots Stabilize",
 				"level": 1,
 				"optional": false,
 				"role": "danger"
@@ -320,7 +290,7 @@
 					3
 				],
 				"id": "node_05",
-				"label": "A1.1 Identify Impact Target",
+				"label": "Redirected enemy aggression · Destroy Barrier",
 				"level": 2,
 				"optional": false,
 				"role": "guidance"
@@ -332,7 +302,7 @@
 					3
 				],
 				"id": "node_06",
-				"label": "A3.1 Pick Up Carry Target",
+				"label": "Carry the heavy thing · Cure Component",
 				"level": 2,
 				"optional": true,
 				"role": "foraging"
@@ -344,7 +314,7 @@
 					2
 				],
 				"id": "node_07",
-				"label": "A4.1 Read Patrol",
+				"label": "Distract the patrol · Loud Action",
 				"level": 0,
 				"optional": false,
 				"role": "danger"
@@ -356,7 +326,7 @@
 					2
 				],
 				"id": "node_08",
-				"label": "A6.1 Discover Fragments",
+				"label": "Pattern reconstruction · Area Map",
 				"level": 2,
 				"optional": false,
 				"role": "setpiece"
@@ -1011,10 +981,10 @@
 					"t": 0.0
 				},
 				{
-					"approach_id": "flora_finesse",
+					"approach_id": "flora_chain_trap",
 					"blocked": false,
-					"borrows_from": "",
-					"caption": "node_01 — Peris grows or tends the plant tool; Aster confirms the target",
+					"borrows_from": "10",
+					"caption": "node_01 — Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend  ⟐ expert: later-stage technique",
 					"characters": {
 						"aster": [
 							6.0,
@@ -1025,13 +995,13 @@
 							1.90000002384186
 						]
 					},
-					"expert": false,
-					"kind": "shadow",
-					"min_stage": 1,
+					"expert": true,
+					"kind": "shadow_expert",
+					"min_stage": 5,
 					"node": "node_01",
-					"risk": "safe",
+					"risk": "risky",
 					"role": "foraging",
-					"stage_ahead": false,
+					"stage_ahead": true,
 					"t": 1.0
 				},
 				{
@@ -1083,10 +1053,10 @@
 					"t": 3.0
 				},
 				{
-					"approach_id": "flora_chain_trap",
+					"approach_id": "flora_finesse",
 					"blocked": false,
-					"borrows_from": "10",
-					"caption": "node_04 — Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend  ⟐ expert: later-stage technique",
+					"borrows_from": "",
+					"caption": "node_04 — Peris grows or tends the plant tool; Aster confirms the target",
 					"characters": {
 						"aster": [
 							24.0,
@@ -1097,13 +1067,13 @@
 							1.90000002384186
 						]
 					},
-					"expert": true,
-					"kind": "shadow_expert",
-					"min_stage": 5,
+					"expert": false,
+					"kind": "shadow",
+					"min_stage": 1,
 					"node": "node_04",
-					"risk": "risky",
+					"risk": "safe",
 					"role": "danger",
-					"stage_ahead": true,
+					"stage_ahead": false,
 					"t": 4.0
 				},
 				{
@@ -1244,16 +1214,16 @@
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "flora_finesse",
-					"borrows_from": "",
-					"expert": false,
-					"kind": "shadow",
-					"label": "Peris grows or tends the plant tool; Aster confirms the target",
-					"min_stage": 1,
+					"approach_id": "flora_chain_trap",
+					"borrows_from": "10",
+					"expert": true,
+					"kind": "shadow_expert",
+					"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
+					"min_stage": 5,
 					"node": "node_01",
 					"party": "aster_peris",
-					"risk": "safe",
-					"stage_ahead": false
+					"risk": "risky",
+					"stage_ahead": true
 				},
 				{
 					"approach_id": "flora_finesse",
@@ -1280,16 +1250,16 @@
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "flora_chain_trap",
-					"borrows_from": "10",
-					"expert": true,
-					"kind": "shadow_expert",
-					"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
-					"min_stage": 5,
+					"approach_id": "flora_finesse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "shadow",
+					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"min_stage": 1,
 					"node": "node_04",
 					"party": "aster_peris",
-					"risk": "risky",
-					"stage_ahead": true
+					"risk": "safe",
+					"stage_ahead": false
 				},
 				{
 					"approach_id": "overlay_cover",

@@ -27,9 +27,9 @@
 					-1,
 					0
 				],
-				"kind": "scarpet",
+				"kind": "capbage",
 				"level": 0,
-				"support": "implemented"
+				"support": "placeholder"
 			},
 			{
 				"category": "structures",
@@ -37,7 +37,7 @@
 					0,
 					0
 				],
-				"kind": "shelter",
+				"kind": "junction",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -48,8 +48,28 @@
 					1
 				],
 				"kind": "capbage",
-				"level": 1,
+				"level": 2,
 				"support": "placeholder"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					5,
+					1
+				],
+				"kind": "scarpet",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					7,
+					2
+				],
+				"kind": "techos",
+				"level": 2,
+				"support": "implemented"
 			},
 			{
 				"category": "structures",
@@ -58,7 +78,7 @@
 					2
 				],
 				"kind": "forage_cache",
-				"level": 1,
+				"level": 2,
 				"support": "implemented"
 			},
 			{
@@ -87,9 +107,9 @@
 					12,
 					3
 				],
-				"kind": "portal",
+				"kind": "pipe",
 				"level": 2,
-				"support": "placeholder"
+				"support": "implemented"
 			},
 			{
 				"category": "flora",
@@ -97,8 +117,18 @@
 					17,
 					-1
 				],
-				"kind": "seefern",
-				"level": 1,
+				"kind": "scarpet",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					19,
+					0
+				],
+				"kind": "naturalizers",
+				"level": 0,
 				"support": "implemented"
 			},
 			{
@@ -107,18 +137,8 @@
 					18,
 					0
 				],
-				"kind": "forage_cache",
-				"level": 1,
-				"support": "implemented"
-			},
-			{
-				"category": "flora",
-				"cell": [
-					23,
-					1
-				],
-				"kind": "scarpet",
-				"level": 1,
+				"kind": "barrier",
+				"level": 0,
 				"support": "implemented"
 			},
 			{
@@ -137,7 +157,7 @@
 					24,
 					2
 				],
-				"kind": "root_slide",
+				"kind": "water_control",
 				"level": 1,
 				"support": "implemented"
 			},
@@ -145,11 +165,31 @@
 				"category": "flora",
 				"cell": [
 					29,
-					2
+					3
 				],
 				"kind": "capbage",
-				"level": 2,
+				"level": 3,
 				"support": "placeholder"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					29,
+					3
+				],
+				"kind": "scarpet",
+				"level": 3,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					31,
+					3
+				],
+				"kind": "techos",
+				"level": 3,
+				"support": "implemented"
 			},
 			{
 				"category": "structures",
@@ -157,8 +197,8 @@
 					30,
 					3
 				],
-				"kind": "shelter",
-				"level": 2,
+				"kind": "forage_cache",
+				"level": 3,
 				"support": "implemented"
 			},
 			{
@@ -187,7 +227,7 @@
 					36,
 					0
 				],
-				"kind": "membrane",
+				"kind": "pipe",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -197,7 +237,17 @@
 					41,
 					1
 				],
-				"kind": "seefern",
+				"kind": "scarpet",
+				"level": 1,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					43,
+					1
+				],
+				"kind": "naturalizers",
 				"level": 1,
 				"support": "implemented"
 			},
@@ -207,18 +257,18 @@
 					42,
 					2
 				],
-				"kind": "portal",
+				"kind": "barrier",
 				"level": 1,
-				"support": "placeholder"
+				"support": "implemented"
 			},
 			{
-				"category": "flora",
+				"category": "enemies",
 				"cell": [
-					47,
-					2
+					49,
+					3
 				],
-				"kind": "scarpet",
-				"level": 3,
+				"kind": "techos",
+				"level": 2,
 				"support": "implemented"
 			},
 			{
@@ -227,8 +277,8 @@
 					48,
 					3
 				],
-				"kind": "root_slide",
-				"level": 3,
+				"kind": "water_control",
+				"level": 2,
 				"support": "implemented"
 			},
 			{
@@ -237,9 +287,9 @@
 					53,
 					-1
 				],
-				"kind": "capbage",
+				"kind": "hushbloom",
 				"level": 0,
-				"support": "placeholder"
+				"support": "implemented"
 			},
 			{
 				"category": "structures",
@@ -272,10 +322,10 @@
 					2
 				],
 				"id": "node_01",
-				"label": "Guidance Beat",
-				"level": 1,
+				"label": "Lysate forage cache · Organic Remains",
+				"level": 2,
 				"optional": false,
-				"role": "guidance"
+				"role": "foraging"
 			},
 			{
 				"archetype_id": "13",
@@ -284,10 +334,10 @@
 					3
 				],
 				"id": "node_02",
-				"label": "Route Pressure",
+				"label": "Predator-exploit transit · Siderophore Into Meeb",
 				"level": 2,
 				"optional": false,
-				"role": "route_pressure"
+				"role": "danger"
 			},
 			{
 				"archetype_id": "14",
@@ -296,10 +346,10 @@
 					0
 				],
 				"id": "node_03",
-				"label": "Foraging Beat",
-				"level": 1,
+				"label": "Enemy-configuration gauntlet · Patrol Lanes",
+				"level": 0,
 				"optional": true,
-				"role": "foraging"
+				"role": "danger"
 			},
 			{
 				"archetype_id": "15",
@@ -308,10 +358,10 @@
 					2
 				],
 				"id": "node_04",
-				"label": "Danger Beat",
+				"label": "Attrition-field crossing · Iron Bloom",
 				"level": 1,
 				"optional": false,
-				"role": "danger"
+				"role": "route_pressure"
 			},
 			{
 				"archetype_id": "12",
@@ -320,10 +370,10 @@
 					3
 				],
 				"id": "node_05",
-				"label": "Shortcut Lock",
-				"level": 2,
+				"label": "Lysate forage cache · Rich Kill",
+				"level": 3,
 				"optional": false,
-				"role": "shortcut"
+				"role": "foraging"
 			},
 			{
 				"archetype_id": "13",
@@ -332,10 +382,10 @@
 					0
 				],
 				"id": "node_06",
-				"label": "Mixed Node",
+				"label": "Predator-exploit transit · Trigger Neutro Burst",
 				"level": 0,
 				"optional": true,
-				"role": "mixed"
+				"role": "danger"
 			},
 			{
 				"archetype_id": "14",
@@ -344,10 +394,10 @@
 					2
 				],
 				"id": "node_07",
-				"label": "Regroup Pocket",
+				"label": "Enemy-configuration gauntlet · Sniper Lanes",
 				"level": 1,
 				"optional": false,
-				"role": "regroup"
+				"role": "danger"
 			},
 			{
 				"archetype_id": "15",
@@ -356,10 +406,10 @@
 					3
 				],
 				"id": "node_08",
-				"label": "Set Piece",
-				"level": 3,
+				"label": "Attrition-field crossing · Atmospheric",
+				"level": 2,
 				"optional": false,
-				"role": "setpiece"
+				"role": "route_pressure"
 			},
 			{
 				"archetype_id": "11",
@@ -620,7 +670,7 @@
 					"min_stage": 1,
 					"node": "node_01",
 					"risk": "direct",
-					"role": "guidance",
+					"role": "foraging",
 					"stage_ahead": false,
 					"t": 1.0
 				},
@@ -648,7 +698,7 @@
 					"min_stage": 3,
 					"node": "node_02",
 					"risk": "direct",
-					"role": "route_pressure",
+					"role": "danger",
 					"stage_ahead": false,
 					"t": 2.0
 				},
@@ -676,7 +726,7 @@
 					"min_stage": 4,
 					"node": "node_03",
 					"risk": "direct",
-					"role": "foraging",
+					"role": "danger",
 					"stage_ahead": false,
 					"t": 3.0
 				},
@@ -704,7 +754,7 @@
 					"min_stage": 2,
 					"node": "node_04",
 					"risk": "safe",
-					"role": "danger",
+					"role": "route_pressure",
 					"stage_ahead": false,
 					"t": 4.0
 				},
@@ -732,7 +782,7 @@
 					"min_stage": 1,
 					"node": "node_05",
 					"risk": "direct",
-					"role": "shortcut",
+					"role": "foraging",
 					"stage_ahead": false,
 					"t": 5.0
 				},
@@ -760,7 +810,7 @@
 					"min_stage": 3,
 					"node": "node_06",
 					"risk": "direct",
-					"role": "mixed",
+					"role": "danger",
 					"stage_ahead": false,
 					"t": 6.0
 				},
@@ -788,7 +838,7 @@
 					"min_stage": 4,
 					"node": "node_07",
 					"risk": "direct",
-					"role": "regroup",
+					"role": "danger",
 					"stage_ahead": false,
 					"t": 7.0
 				},
@@ -816,7 +866,7 @@
 					"min_stage": 2,
 					"node": "node_08",
 					"risk": "safe",
-					"role": "setpiece",
+					"role": "route_pressure",
 					"stage_ahead": false,
 					"t": 8.0
 				},
@@ -1030,7 +1080,7 @@
 					"min_stage": 1,
 					"node": "node_01",
 					"risk": "safe",
-					"role": "guidance",
+					"role": "foraging",
 					"stage_ahead": false,
 					"t": 1.0
 				},
@@ -1054,7 +1104,7 @@
 					"min_stage": 3,
 					"node": "node_02",
 					"risk": "risky",
-					"role": "route_pressure",
+					"role": "danger",
 					"stage_ahead": false,
 					"t": 2.0
 				},
@@ -1078,7 +1128,7 @@
 					"min_stage": 4,
 					"node": "node_03",
 					"risk": "risky",
-					"role": "foraging",
+					"role": "danger",
 					"stage_ahead": false,
 					"t": 3.0
 				},
@@ -1102,7 +1152,7 @@
 					"min_stage": 2,
 					"node": "node_04",
 					"risk": "risky",
-					"role": "danger",
+					"role": "route_pressure",
 					"stage_ahead": false,
 					"t": 4.0
 				},
@@ -1126,7 +1176,7 @@
 					"min_stage": 1,
 					"node": "node_05",
 					"risk": "safe",
-					"role": "shortcut",
+					"role": "foraging",
 					"stage_ahead": false,
 					"t": 5.0
 				},
@@ -1150,7 +1200,7 @@
 					"min_stage": 3,
 					"node": "node_06",
 					"risk": "risky",
-					"role": "mixed",
+					"role": "danger",
 					"stage_ahead": false,
 					"t": 6.0
 				},
@@ -1174,7 +1224,7 @@
 					"min_stage": 4,
 					"node": "node_07",
 					"risk": "risky",
-					"role": "regroup",
+					"role": "danger",
 					"stage_ahead": false,
 					"t": 7.0
 				},
@@ -1198,7 +1248,7 @@
 					"min_stage": 2,
 					"node": "node_08",
 					"risk": "risky",
-					"role": "setpiece",
+					"role": "route_pressure",
 					"stage_ahead": false,
 					"t": 8.0
 				},

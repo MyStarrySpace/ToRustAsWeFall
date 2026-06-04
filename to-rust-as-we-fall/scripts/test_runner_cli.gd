@@ -385,6 +385,9 @@ func _ready() -> void:
 			"--test-survival-archetypes":
 				ran_test = true
 				await _test_survival_archetypes()
+			"--test-archetype-coherence":
+				ran_test = true
+				_test_archetype_coherence()
 			"--test-asset-pipeline":
 				ran_test = true
 				_test_asset_pipeline()
@@ -555,6 +558,7 @@ func _run_all_tests() -> void:
 	_test_generated_multi_solution()
 	_test_generated_replay()
 	_test_campaign_order()
+	_test_archetype_coherence()
 	await _test_survival_archetypes()
 	await _test_generated_stretch_playtest_loop()
 	_test_save_load_integrity()
@@ -2007,6 +2011,70 @@ func _test_campaign_order() -> void:
 		for c in n.get("children", []):
 			stack.append(c)
 	_assert_true(unique, "All node ids are unique after load + a fresh add")
+
+func _test_archetype_coherence() -> void:
+	_test_name = "Archetype Coherence"
+
+	var spec: Dictionary = StretchGeneratorScript.generate({
+		"id": "coherence_test", "seed": 4477, "complexity_tier": "hard", "progression_stage": 4,
+		"limitations": {
+			"required": {"archetypes": ["2", "1", "13", "12"]},
+			"allowed": {
+				"archetypes": ["1", "2", "12", "13"],
+				"flora": ["scarpet", "flure", "hushbloom", "capbage", "seefern", "doma"],
+				"enemies": ["techos", "naturalizers", "meebs", "neutros", "gnawers", "candids", "spikers", "tanglers"],
+			},
+		},
+	})
+	_assert_true(bool(spec.get("success", false)), "Coherence spec generates")
+
+	var forage_ok := false
+	var exploit_ok := false
+	var redirect_has_enemy := false
+	var labels_named := true
+	var variants_by_arch := {}
+	for n in spec.get("nodes", []):
+		var aid := str((n as Dictionary).get("archetype_id", ""))
+		var sk := str((n as Dictionary).get("survival_kind", ""))
+		var role := str((n as Dictionary).get("role", ""))
+		var label := str((n as Dictionary).get("title", ""))
+		var enemies: Array = (n as Dictionary).get("enemies", [])
+		var structures: Array = (n as Dictionary).get("structures", [])
+		if aid in ["1", "2", "12", "13"]:
+			if not label.contains(str((n as Dictionary).get("archetype_name", ""))):
+				labels_named = false
+			if not variants_by_arch.has(aid):
+				variants_by_arch[aid] = []
+			(variants_by_arch[aid] as Array).append(str((n as Dictionary).get("variant", "")))
+		if sk == "forage":
+			forage_ok = role == "foraging" and structures.has("forage_cache") and int((n as Dictionary).get("atp_reward", 0)) > 0
+		if sk == "exploit":
+			exploit_ok = enemies.size() >= 2
+		if aid == "1" and not enemies.is_empty():
+			redirect_has_enemy = true
+	_assert_true(forage_ok, "A forage node reads as foraging with a forage_cache + atp_reward (role/structure/survival cohere)")
+	_assert_true(exploit_ok, "An exploit node places its predator + prey actors (>=2 enemies)")
+	_assert_true(redirect_has_enemy, "A redirect node has an enemy to redirect")
+	_assert_true(labels_named, "Node labels name their archetype, not a bare role label")
+
+	var varied := true
+	for aid in variants_by_arch:
+		var vs: Array = variants_by_arch[aid]
+		if vs.size() >= 2:
+			var distinct := {}
+			for v in vs:
+				distinct[v] = true
+			if distinct.size() < 2:
+				varied = false
+	_assert_true(varied, "A repeated archetype uses different variants across its occurrences")
+
+	# A redirect node's placed flora matches its variant's need (no hushbloom_stun-with-scarpet).
+	var plant_ok := true
+	for n in spec.get("nodes", []):
+		if str((n as Dictionary).get("variant", "")) == "hushbloom_stun":
+			if not ((n as Dictionary).get("flora", []) as Array).has("hushbloom"):
+				plant_ok = false
+	_assert_true(plant_ok, "A hushbloom_stun plant beat actually places hushbloom (variant matches its prop)")
 
 func _test_survival_archetypes() -> void:
 	_test_name = "Survival Archetypes"

@@ -37,7 +37,7 @@
 					0,
 					0
 				],
-				"kind": "shelter",
+				"kind": "barrier",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -47,7 +47,17 @@
 					5,
 					1
 				],
-				"kind": "hushbloom",
+				"kind": "scarpet",
+				"level": 1,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					7,
+					1
+				],
+				"kind": "techos",
 				"level": 1,
 				"support": "implemented"
 			},
@@ -57,7 +67,7 @@
 					6,
 					2
 				],
-				"kind": "terminal",
+				"kind": "barrier",
 				"level": 1,
 				"support": "implemented"
 			},
@@ -65,19 +75,9 @@
 				"category": "flora",
 				"cell": [
 					11,
-					2
-				],
-				"kind": "scarpet",
-				"level": 2,
-				"support": "implemented"
-			},
-			{
-				"category": "enemies",
-				"cell": [
-					13,
 					3
 				],
-				"kind": "naturalizers",
+				"kind": "flure",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -97,8 +97,8 @@
 					17,
 					-1
 				],
-				"kind": "flure",
-				"level": 1,
+				"kind": "scarpet",
+				"level": 0,
 				"support": "implemented"
 			},
 			{
@@ -107,28 +107,8 @@
 					18,
 					0
 				],
-				"kind": "forage_cache",
-				"level": 1,
-				"support": "implemented"
-			},
-			{
-				"category": "flora",
-				"cell": [
-					23,
-					1
-				],
-				"kind": "hushbloom",
-				"level": 1,
-				"support": "implemented"
-			},
-			{
-				"category": "enemies",
-				"cell": [
-					25,
-					1
-				],
-				"kind": "naturalizers",
-				"level": 1,
+				"kind": "carry_gear",
+				"level": 0,
 				"support": "implemented"
 			},
 			{
@@ -137,8 +117,8 @@
 					24,
 					2
 				],
-				"kind": "shortcut_gate",
-				"level": 1,
+				"kind": "terminal",
+				"level": 2,
 				"support": "implemented"
 			},
 			{
@@ -147,7 +127,17 @@
 					29,
 					2
 				],
-				"kind": "scarpet",
+				"kind": "flure",
+				"level": 2,
+				"support": "implemented"
+			},
+			{
+				"category": "enemies",
+				"cell": [
+					31,
+					3
+				],
+				"kind": "naturalizers",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -157,7 +147,7 @@
 					30,
 					3
 				],
-				"kind": "shortcut_gate",
+				"kind": "pipe",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -202,10 +192,10 @@
 					2
 				],
 				"id": "node_01",
-				"label": "Guidance Beat",
+				"label": "Redirected enemy aggression · Destroy Barrier",
 				"level": 1,
 				"optional": false,
-				"role": "guidance"
+				"role": "route_pressure"
 			},
 			{
 				"archetype_id": "2",
@@ -214,10 +204,10 @@
 					3
 				],
 				"id": "node_02",
-				"label": "Route Pressure",
+				"label": "Plant as tool · Flure Iron Decoy",
 				"level": 2,
 				"optional": false,
-				"role": "route_pressure"
+				"role": "guidance"
 			},
 			{
 				"archetype_id": "3",
@@ -226,10 +216,10 @@
 					0
 				],
 				"id": "node_03",
-				"label": "Foraging Beat",
-				"level": 1,
+				"label": "Carry the heavy thing · Cure Component",
+				"level": 0,
 				"optional": true,
-				"role": "foraging"
+				"role": "mixed"
 			},
 			{
 				"archetype_id": "6",
@@ -238,10 +228,10 @@
 					2
 				],
 				"id": "node_04",
-				"label": "Danger Beat",
-				"level": 1,
+				"label": "Pattern reconstruction · Area Map",
+				"level": 2,
 				"optional": false,
-				"role": "danger"
+				"role": "setpiece"
 			},
 			{
 				"archetype_id": "4",
@@ -250,10 +240,10 @@
 					3
 				],
 				"id": "node_05",
-				"label": "Shortcut Lock",
+				"label": "Distract the patrol · Loud Action",
 				"level": 2,
 				"optional": false,
-				"role": "shortcut"
+				"role": "route_pressure"
 			},
 			{
 				"archetype_id": "11",
@@ -458,7 +448,7 @@
 					"min_stage": 2,
 					"node": "node_01",
 					"risk": "direct",
-					"role": "guidance",
+					"role": "route_pressure",
 					"stage_ahead": false,
 					"t": 1.0
 				},
@@ -486,7 +476,7 @@
 					"min_stage": 1,
 					"node": "node_02",
 					"risk": "direct",
-					"role": "route_pressure",
+					"role": "guidance",
 					"stage_ahead": false,
 					"t": 2.0
 				},
@@ -514,7 +504,7 @@
 					"min_stage": 2,
 					"node": "node_03",
 					"risk": "direct",
-					"role": "foraging",
+					"role": "mixed",
 					"stage_ahead": false,
 					"t": 3.0
 				},
@@ -542,7 +532,7 @@
 					"min_stage": 3,
 					"node": "node_04",
 					"risk": "direct",
-					"role": "danger",
+					"role": "setpiece",
 					"stage_ahead": false,
 					"t": 4.0
 				},
@@ -570,7 +560,7 @@
 					"min_stage": 3,
 					"node": "node_05",
 					"risk": "direct",
-					"role": "shortcut",
+					"role": "route_pressure",
 					"stage_ahead": false,
 					"t": 5.0
 				},
@@ -748,15 +738,15 @@
 					"min_stage": 2,
 					"node": "node_01",
 					"risk": "risky",
-					"role": "guidance",
+					"role": "route_pressure",
 					"stage_ahead": false,
 					"t": 1.0
 				},
 				{
-					"approach_id": "flora_finesse",
+					"approach_id": "flora_chain_trap",
 					"blocked": false,
-					"borrows_from": "",
-					"caption": "node_02 — Peris grows or tends the plant tool; Aster confirms the target",
+					"borrows_from": "10",
+					"caption": "node_02 — Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend  ⟐ expert: later-stage technique",
 					"characters": {
 						"aster": [
 							12.0,
@@ -767,13 +757,13 @@
 							3.3
 						]
 					},
-					"expert": false,
-					"kind": "shadow",
-					"min_stage": 1,
+					"expert": true,
+					"kind": "shadow_expert",
+					"min_stage": 5,
 					"node": "node_02",
-					"risk": "safe",
-					"role": "route_pressure",
-					"stage_ahead": false,
+					"risk": "risky",
+					"role": "guidance",
+					"stage_ahead": true,
 					"t": 2.0
 				},
 				{
@@ -796,7 +786,7 @@
 					"min_stage": 3,
 					"node": "node_03",
 					"risk": "risky",
-					"role": "foraging",
+					"role": "mixed",
 					"stage_ahead": false,
 					"t": 3.0
 				},
@@ -820,7 +810,7 @@
 					"min_stage": 3,
 					"node": "node_04",
 					"risk": "risky",
-					"role": "danger",
+					"role": "setpiece",
 					"stage_ahead": false,
 					"t": 4.0
 				},
@@ -844,7 +834,7 @@
 					"min_stage": 3,
 					"node": "node_05",
 					"risk": "risky",
-					"role": "shortcut",
+					"role": "route_pressure",
 					"stage_ahead": false,
 					"t": 5.0
 				},
@@ -875,7 +865,7 @@
 			],
 			"label": "Aster + Peris (shadow)",
 			"loadout": "shadow",
-			"max_stage_used": 3,
+			"max_stage_used": 5,
 			"node_approaches": [
 				{
 					"approach_id": "traverse",
@@ -902,16 +892,16 @@
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "flora_finesse",
-					"borrows_from": "",
-					"expert": false,
-					"kind": "shadow",
-					"label": "Peris grows or tends the plant tool; Aster confirms the target",
-					"min_stage": 1,
+					"approach_id": "flora_chain_trap",
+					"borrows_from": "10",
+					"expert": true,
+					"kind": "shadow_expert",
+					"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
+					"min_stage": 5,
 					"node": "node_02",
 					"party": "aster_peris",
-					"risk": "safe",
-					"stage_ahead": false
+					"risk": "risky",
+					"stage_ahead": true
 				},
 				{
 					"approach_id": "split_carry",
@@ -967,7 +957,7 @@
 				"peris"
 			],
 			"solvable": true,
-			"uses_future_technique": false
+			"uses_future_technique": true
 		}
 	],
 	"spec_id": "generated_chain_nested_poc_shelter_2_to_3",
