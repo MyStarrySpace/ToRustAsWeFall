@@ -274,7 +274,8 @@ func reset_preview_state() -> void:
 ## specialist is on hand); "shadow" is the Aster+Peris pair. The active loadout's
 ## capabilities decide which approach each puzzle node accepts — and whether it blocks.
 func set_active_loadout(loadout_id: String) -> void:
-	for loadout in CapabilitiesScript.loadouts():
+	var roster = _spec.get("source", {}).get("roster", _spec.get("settings", {}).get("roster", []))
+	for loadout in CapabilitiesScript.loadouts(roster):
 		if str(loadout.get("id", "")) == loadout_id:
 			_active_loadout = loadout_id
 			_active_party.clear()
@@ -284,8 +285,10 @@ func set_active_loadout(loadout_id: String) -> void:
 			_enforce_stage = bool(loadout.get("enforce_stage", false))
 			return
 	_active_loadout = "spotlight"
-	_active_party = ["aster", "peris", "endo"]
-	_active_capabilities = CapabilitiesScript.party_capabilities(_active_party, true)
+	_active_party.clear()
+	for cid in (CapabilitiesScript.normalize_roster(roster).get("enabled", []) as Array):
+		_active_party.append(str(cid))
+	_active_capabilities = CapabilitiesScript.roster_capabilities(roster)
 	_enforce_stage = true
 
 ## How far the player is assumed to have progressed — the first-play full party may only

@@ -1402,7 +1402,10 @@
 				"party": [
 					"aster",
 					"peris",
-					"endo"
+					"endo",
+					"myke",
+					"oli",
+					"tyreg"
 				],
 				"solvable": true,
 				"techniques": [],
@@ -4308,6 +4311,7 @@
 			}
 		},
 		"progression_stage": 3,
+		"roster": [],
 		"seed": 3117,
 		"title": "Generated Random Walk POC: Shelter 3 -> Shelter 4",
 		"world_slot": {
@@ -4331,6 +4335,7 @@
 		"complexity_tier": "standard",
 		"generator": "archetype_based_stretch_v1",
 		"progression_stage": 3,
+		"roster": [],
 		"seed": 3117
 	},
 	"success": true,

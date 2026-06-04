@@ -443,7 +443,10 @@
 				"party": [
 					"aster",
 					"peris",
-					"endo"
+					"endo",
+					"myke",
+					"oli",
+					"tyreg"
 				],
 				"solvable": true,
 				"techniques": [],
@@ -2359,6 +2362,7 @@
 			}
 		},
 		"progression_stage": 2,
+		"roster": [],
 		"seed": 2207,
 		"title": "Sample — First Fork (Teaching)",
 		"world_slot": {
@@ -2371,6 +2375,7 @@
 		"complexity_tier": "teaching",
 		"generator": "archetype_based_stretch_v1",
 		"progression_stage": 2,
+		"roster": [],
 		"seed": 2207
 	},
 	"success": true,

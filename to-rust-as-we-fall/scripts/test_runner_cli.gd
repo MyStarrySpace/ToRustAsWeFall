@@ -388,6 +388,9 @@ func _ready() -> void:
 			"--test-archetype-coherence":
 				ran_test = true
 				_test_archetype_coherence()
+			"--test-character-roster":
+				ran_test = true
+				_test_character_roster()
 			"--test-asset-pipeline":
 				ran_test = true
 				_test_asset_pipeline()
@@ -559,6 +562,7 @@ func _run_all_tests() -> void:
 	_test_generated_replay()
 	_test_campaign_order()
 	_test_archetype_coherence()
+	_test_character_roster()
 	await _test_survival_archetypes()
 	await _test_generated_stretch_playtest_loop()
 	_test_save_load_integrity()
@@ -2011,6 +2015,60 @@ func _test_campaign_order() -> void:
 		for c in n.get("children", []):
 			stack.append(c)
 	_assert_true(unique, "All node ids are unique after load + a fresh add")
+
+func _spotlight_approach_for_archetype(spec: Dictionary, aid: String) -> Dictionary:
+	var node_arch := {}
+	for n in spec.get("nodes", []):
+		node_arch[str((n as Dictionary).get("id", ""))] = str((n as Dictionary).get("archetype_id", ""))
+	for p in spec.get("headless", {}).get("solution_paths", []):
+		if str((p as Dictionary).get("loadout", "")) == "spotlight":
+			for e in (p as Dictionary).get("approach_per_node", []):
+				if str(node_arch.get(str((e as Dictionary).get("node", "")), "")) == aid:
+					return e
+	return {}
+
+func _test_character_roster() -> void:
+	_test_name = "Character Roster"
+
+	# The six brain-cell characters are registered, with combat/insulation from the right cells.
+	var reg: Dictionary = StretchCapabilitiesScript.CHARACTER_REGISTRY
+	for cid in ["aster", "peris", "endo", "myke", "oli", "tyreg"]:
+		_assert_true(reg.has(cid), "Roster includes %s" % cid)
+	_assert_true((reg["myke"]["capabilities"] as Array).has("combat"), "Myke (microglia) provides combat")
+	_assert_true((reg["tyreg"]["capabilities"] as Array).has("force"), "Tyreg (T-reg) provides ranged force")
+	_assert_true((reg["oli"]["capabilities"] as Array).has("insulation"), "Oli (oligodendrocyte) provides insulation")
+	var spec_caps: Dictionary = StretchCapabilitiesScript.specialist_capabilities()
+	_assert_true(spec_caps.has("combat") and spec_caps.has("barrier"), "Specialist caps include combat + barrier")
+	_assert_true(not spec_caps.has("flora") and not spec_caps.has("overlay"), "Aster+Peris pair caps (flora/overlay) are NOT specialist")
+	_assert_true((reg["aster"]["abilities"] as Dictionary).has("emp") and (reg["myke"]["abilities"] as Dictionary).has("inflame"), "Abilities are registered (Aster EMP, Myke Inflame)")
+
+	var base := {
+		"id": "roster_test", "seed": 313, "complexity_tier": "standard", "progression_stage": 3,
+		"limitations": {"required": {"archetypes": ["1"]}, "allowed": {"archetypes": ["1", "11"], "enemies": ["techos", "gnawers"]}},
+	}
+	# FULL roster: the redirect's full-party approach is the combat specialist; multi-solution.
+	var full := StretchGeneratorScript.generate(base)
+	_assert_true(bool(full.get("headless", {}).get("solution_summary", {}).get("multi_solution", false)), "Full roster: redirect stretch is multi-solution (combat specialist vs the pair)")
+	_assert_equals(str(_spotlight_approach_for_archetype(full, "1").get("party", "")), "specialist", "Full roster: the redirect's full-party approach is the combat specialist")
+
+	# DISABLE the combat characters: the full party loses combat and the redirect falls to the
+	# Aster+Peris approach — the enable/disable option genuinely changes what's solvable.
+	var no_combat := base.duplicate(true)
+	no_combat["id"] = "roster_test_nocombat"
+	no_combat["roster"] = ["aster", "peris", "endo"]
+	var nc := StretchGeneratorScript.generate(no_combat)
+	var nc_summary: Dictionary = nc.get("headless", {}).get("solution_summary", {})
+	var sp_party := []
+	for p in nc.get("headless", {}).get("solution_paths", []):
+		if str((p as Dictionary).get("loadout", "")) == "spotlight":
+			sp_party = (p as Dictionary).get("party", [])
+	_assert_true(not sp_party.has("myke") and not sp_party.has("tyreg"), "Disabled roster: the full party has no combat character")
+	_assert_equals(str(_spotlight_approach_for_archetype(nc, "1").get("party", "")), "aster_peris", "Disabled combat: the redirect falls to the Aster+Peris approach")
+	_assert_true(bool(nc_summary.get("shadow_solvable", false)) and bool(nc_summary.get("bare_pair_solvable", false)), "Disabled combat: the pair can still finish the stretch")
+
+	# The minimum pair is never dropped, even if the roster omits them.
+	var only_myke: Array = StretchCapabilitiesScript.normalize_roster(["myke"]).get("enabled", [])
+	_assert_true(only_myke.has("aster") and only_myke.has("peris"), "Aster + Peris are always present (they never leave)")
 
 func _test_archetype_coherence() -> void:
 	_test_name = "Archetype Coherence"

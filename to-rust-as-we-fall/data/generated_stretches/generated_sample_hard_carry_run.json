@@ -841,7 +841,10 @@
 				"party": [
 					"aster",
 					"peris",
-					"endo"
+					"endo",
+					"myke",
+					"oli",
+					"tyreg"
 				],
 				"solvable": true,
 				"techniques": [],
@@ -4257,6 +4260,7 @@
 			}
 		},
 		"progression_stage": 4,
+		"roster": [],
 		"seed": 7331,
 		"title": "Sample — Ferric Carry Run (Hard)",
 		"world_slot": {
@@ -4269,6 +4273,7 @@
 		"complexity_tier": "hard",
 		"generator": "archetype_based_stretch_v1",
 		"progression_stage": 4,
+		"roster": [],
 		"seed": 7331
 	},
 	"success": true,

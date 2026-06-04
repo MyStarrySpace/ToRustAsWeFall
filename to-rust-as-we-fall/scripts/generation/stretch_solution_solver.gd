@@ -24,10 +24,14 @@ static func analyze_spec(spec: Dictionary) -> Dictionary:
 	var nodes: Array = spec.get("nodes", [])
 	var tier := str(spec.get("source", {}).get("complexity_tier", spec.get("settings", {}).get("complexity_tier", "teaching")))
 	var prog := int(spec.get("source", {}).get("progression_stage", spec.get("settings", {}).get("progression_stage", 99)))
-	return analyze(nodes, tier, prog)
+	var roster = spec.get("source", {}).get("roster", spec.get("settings", {}).get("roster", []))
+	return analyze(nodes, tier, prog, roster)
 
 
-static func analyze(nodes: Array, tier := "teaching", progression_stage := 99) -> Dictionary:
+## `roster` is the set of ENABLED characters (the enable/disable options). The spotlight
+## loadout is built from it, so disabling the combat character makes a combat-only node fall
+## to the pair's approach; the shadow (Aster+Peris) path is unaffected and always solves.
+static func analyze(nodes: Array, tier := "teaching", progression_stage := 99, roster = []) -> Dictionary:
 	# Only non-optional nodes count toward the multi-solution guarantee: the chunk's golden
 	# path (and the playtest) walk the non-optional spine, so an optional detour carrying a
 	# choice must not be what proves the stretch is solvable two ways.
@@ -37,7 +41,7 @@ static func analyze(nodes: Array, tier := "teaching", progression_stage := 99) -
 			choice_nodes.append(str((node as Dictionary).get("id", "")))
 
 	var solution_paths := []
-	for loadout in CapabilitiesScript.loadouts():
+	for loadout in CapabilitiesScript.loadouts(roster):
 		solution_paths.append(_solve_loadout(nodes, loadout, progression_stage))
 
 	var spotlight := _path_for(solution_paths, "spotlight")
@@ -106,6 +110,8 @@ static func analyze(nodes: Array, tier := "teaching", progression_stage := 99) -
 		"contract_id": "stretch_solution_analysis_v1",
 		"tier": tier,
 		"progression_stage": progression_stage,
+		"roster": (CapabilitiesScript.normalize_roster(roster).get("enabled", []) as Array),
+		"spotlight_party": (spotlight.get("party", []) as Array),
 		"choice_nodes": choice_nodes,
 		"choice_node_count": choice_nodes.size(),
 		"solution_paths": solution_paths,

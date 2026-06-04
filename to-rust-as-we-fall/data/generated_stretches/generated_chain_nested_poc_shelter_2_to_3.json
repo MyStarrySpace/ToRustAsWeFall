@@ -875,7 +875,10 @@
 				"party": [
 					"aster",
 					"peris",
-					"endo"
+					"endo",
+					"myke",
+					"oli",
+					"tyreg"
 				],
 				"solvable": true,
 				"techniques": [],
@@ -3305,6 +3308,7 @@
 			}
 		},
 		"progression_stage": 3,
+		"roster": [],
 		"seed": 2403,
 		"title": "Generated Chain/Nested POC: Shelter 2 -> Shelter 3",
 		"world_slot": {
@@ -3328,6 +3332,7 @@
 		"complexity_tier": "standard",
 		"generator": "archetype_based_stretch_v1",
 		"progression_stage": 3,
+		"roster": [],
 		"seed": 2403
 	},
 	"success": true,

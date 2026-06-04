@@ -1,30 +1,58 @@
 class_name StretchCapabilities
 extends RefCounted
 
-## What a party (and the tools it can reach) can DO, expressed as capability tags.
+## What the party (and the tools it can reach) can DO, expressed as capability tags.
 ## The solution solver resolves an archetype approach's `requires` tags against the
-## capabilities a given loadout provides. The split that matters: ASTER + PERIS (the
-## minimum-viable pair, the "shadow" loadout) never provide a SPECIALIST capability
-## (combat / Endo / a non-AST class), so any approach that needs one is reachable only
-## by the spotlight loadout — which is exactly what makes a puzzle solvable more than
-## one way, and always by the pair.
+## capabilities a loadout provides. The split that matters: ASTER + PERIS (the permanent
+## minimum-viable pair, the "shadow" loadout) hold no SPECIALIST capability, so an approach
+## that needs one is reachable only when a character who provides it is ENABLED in the
+## roster — which is what makes a puzzle solvable more than one way, and always by the pair.
+##
+## The six playable characters are brain-cell types (GDD §3); each contributes capabilities
+## and abilities. The "spotlight" loadout is the union of the ENABLED roster's capabilities,
+## so e.g. `combat` exists only if a microglia/T-reg fighter (Myke/Tyreg) is enabled.
 
-const CHARACTER_CAPABILITIES := {
-	"aster": ["data", "electrical", "overlay", "terminal", "scan", "timing", "signal", "ast_class"],
-	"peris": ["flora", "carry", "physical", "protect", "cover", "tend", "pct_class"],
-	"endo": ["barrier", "junction", "repair", "gear", "carry", "endo", "ent_class"],
+# id -> {name, cell_type, class_code, capabilities[], abilities{ id: {name, grants} }, recruit}
+const CHARACTER_REGISTRY := {
+	"aster": {
+		"name": "Aster", "cell_type": "astrocyte", "class_code": "AST", "recruit": 1,
+		"capabilities": ["data", "electrical", "overlay", "terminal", "scan", "timing", "signal", "ast_class"],
+		"abilities": {"emp": {"name": "EMP Hack", "grants": "electrical"}},
+	},
+	"peris": {
+		"name": "Peris", "cell_type": "pericyte", "class_code": "PCT", "recruit": 1,
+		"capabilities": ["flora", "carry", "physical", "protect", "cover", "tend", "pct_class"],
+		"abilities": {"protect": {"name": "Protect / Wrap", "grants": "protect"}, "harvest": {"name": "Harvest", "grants": "flora"}},
+	},
+	"endo": {
+		"name": "Endo", "cell_type": "endothelial", "class_code": "ENT", "recruit": 2,
+		"capabilities": ["barrier", "junction", "repair", "gear", "carry", "endo", "ent_class"],
+		"abilities": {"no_pulse": {"name": "NO Pulse", "grants": "endo"}, "cloak": {"name": "Cloak", "grants": "endo"}},
+	},
+	"myke": {
+		"name": "Myke", "cell_type": "microglia", "class_code": "MCG", "recruit": 3,
+		"capabilities": ["combat", "impact", "force", "carry", "physical", "tend", "class_other"],
+		"abilities": {"inflame": {"name": "Inflame", "grants": "combat"}, "engulf": {"name": "Engulf", "grants": "impact"}},
+	},
+	"oli": {
+		"name": "Oli", "cell_type": "oligodendrocyte", "class_code": "OLG", "recruit": 4,
+		"capabilities": ["barrier", "insulation", "terminal", "electrical", "cover", "class_other"],
+		"abilities": {"sheath": {"name": "Sheath", "grants": "barrier"}, "conduct": {"name": "Conduct", "grants": "electrical"}},
+	},
+	"tyreg": {
+		"name": "Tyreg", "cell_type": "T-regulatory", "class_code": "TRG", "recruit": 5,
+		"capabilities": ["combat", "force", "scan", "timing", "class_tmc"],
+		"abilities": {"shoot": {"name": "Shoot", "grants": "force"}, "suppress": {"name": "Suppress", "grants": "combat"}},
+	},
 }
 
-## Capabilities only a spotlight specialist brings (a combat class, a non-AST class
-## bearer, Endo's structural work). The shadow pair has NONE of these.
-const SPECIALIST_CAPABILITIES := [
-	"combat", "impact", "force",
-	"endo", "barrier", "junction", "repair", "gear",
-	"class_other", "class_ent", "class_tmc",
-]
+## The permanent minimum-viable pair (never depart; their overlays default ON) and the full
+## canonical roster used when no explicit roster is given.
+const SHADOW_PARTY := ["aster", "peris"]
+const CANONICAL_ROSTER := ["aster", "peris", "endo", "myke", "oli", "tyreg"]
 
-## Content the world can place that lends a capability to whoever stands in the node.
-## A shadow approach that wants "cover" is satisfiable by Peris alone, but placed
+## Content the world can place that lends a (non-specialist) capability to whoever stands in
+## the node. A shadow approach that wants "cover" is satisfiable by Peris alone, but placed
 ## scarpet / doma makes it real cover; flure/hushbloom turn a node into a usable tool.
 const CONTENT_CAPABILITIES := {
 	"flora": {
@@ -58,53 +86,89 @@ const CONTENT_CAPABILITIES := {
 	},
 }
 
-## Canonical loadouts the solver evaluates. "spotlight" is the intended full-party
-## solve (everything available, including a specialist); "shadow" is the Aster+Peris
-## minimum-viable pair.
-const SPOTLIGHT_PARTY := ["aster", "peris", "endo"]
-const SHADOW_PARTY := ["aster", "peris"]
+
+## The capabilities a single registered character provides.
+static func character_capabilities(id: String) -> Array:
+	return (CHARACTER_REGISTRY.get(str(id), {}) as Dictionary).get("capabilities", [])
 
 
-## The capabilities Aster + Peris hold on their own, with NO placed tool. Every
-## archetype must keep at least one shadow approach satisfiable by exactly this set, so
-## the minimum pair can finish every puzzle regardless of stage or what the world placed.
-static func bare_pair_capabilities() -> Dictionary:
-	return party_capabilities(SHADOW_PARTY, false)
+## SPECIALIST capabilities = any capability NO bare-pair member (Aster/Peris) provides on
+## their own — so they can only come from an enabled specialist character, never from the
+## pair or from placed content. Derived from the registry, not a hand-kept list.
+static func specialist_capabilities() -> Dictionary:
+	var pair := bare_pair_capabilities()
+	var spec := {}
+	for id in CHARACTER_REGISTRY.keys():
+		for cap in character_capabilities(str(id)):
+			if not pair.has(str(cap)):
+				spec[str(cap)] = true
+	return spec
 
 
-## All capability tags a set of character ids provides. `include_specialist` adds the
-## spotlight-only specialist tags (so the full party can take a primary/combat approach).
-static func party_capabilities(character_ids: Array, include_specialist := false) -> Dictionary:
+## Normalize a roster to {enabled: [ids]}. Accepts a bare id Array (those enabled), a dict
+## {enabled: [...]}, or empty/null (the full canonical roster). The minimum pair is always
+## present — Aster and Peris never leave.
+static func normalize_roster(roster) -> Dictionary:
+	var enabled := []
+	if roster is Array and not (roster as Array).is_empty():
+		for id in roster:
+			if not enabled.has(str(id)):
+				enabled.append(str(id))
+	elif roster is Dictionary and (roster as Dictionary).has("enabled"):
+		for id in (roster as Dictionary).get("enabled", []):
+			if not enabled.has(str(id)):
+				enabled.append(str(id))
+	else:
+		enabled = CANONICAL_ROSTER.duplicate()
+	for id in SHADOW_PARTY:
+		if not enabled.has(id):
+			enabled.append(id)
+	return {"enabled": enabled}
+
+
+## The combined capability set of an enabled roster.
+static func roster_capabilities(roster) -> Dictionary:
 	var caps := {}
-	for raw_id in character_ids:
-		var id := str(raw_id).to_lower()
-		for cap in CHARACTER_CAPABILITIES.get(id, []):
-			caps[str(cap)] = true
-	if include_specialist:
-		for cap in SPECIALIST_CAPABILITIES:
+	for id in (normalize_roster(roster).get("enabled", []) as Array):
+		for cap in character_capabilities(str(id)):
 			caps[str(cap)] = true
 	return caps
 
 
-## Capability tags lent by the content (flora/structures) actually placed on a node — plus
-## the "enemies as a tool" hook: a survival exploit node (an enemy-vs-enemy configuration)
-## lends a `redirect`/`exploit` capability that an approach (here or in a nested puzzle)
-## can spend, so a hostile configuration can become the way to solve a beat.
+## Capabilities Aster + Peris hold on their own, with NO placed tool — the universal floor
+## every archetype's shadow approach must satisfy, so the pair can always finish.
+static func bare_pair_capabilities() -> Dictionary:
+	var caps := {}
+	for id in SHADOW_PARTY:
+		for cap in character_capabilities(id):
+			caps[str(cap)] = true
+	return caps
+
+
+## Back-compat: capabilities of a set of character ids; `include_specialist` adds every
+## derived specialist tag (the full-strength party able to take any primary approach).
+static func party_capabilities(character_ids: Array, include_specialist := false) -> Dictionary:
+	var caps := roster_capabilities(character_ids)
+	if include_specialist:
+		for cap in specialist_capabilities().keys():
+			caps[str(cap)] = true
+	return caps
+
+
+## Capability tags lent by content (flora/structures) placed on a node — plus the
+## "enemies as a tool" hook: a survival exploit node (an enemy-vs-enemy configuration) lends
+## a `redirect`/`exploit` affordance an approach can spend. Placed content never grants a
+## SPECIALIST capability (those belong to a character), so a placed barrier can't hand the
+## pair a specialist's approach and collapse a node's specialist-vs-shadow choice.
 static func node_content_capabilities(node: Dictionary) -> Dictionary:
 	var caps := {}
+	var specialist := specialist_capabilities()
 	for category in ["flora", "structures"]:
 		var table: Dictionary = CONTENT_CAPABILITIES.get(category, {})
 		for raw_key in node.get(category, []):
 			for cap in table.get(str(raw_key), []):
-				# Placed content never grants a SPECIALIST capability (combat/barrier/endo/
-				# class…): those belong to a party member, not an object. Otherwise a placed
-				# barrier structure would hand the Aster+Peris pair a specialist's approach
-				# and collapse a node's specialist-vs-shadow choice.
-				if not SPECIALIST_CAPABILITIES.has(str(cap)):
+				if not specialist.has(str(cap)):
 					caps[str(cap)] = true
-	# An enemy-vs-enemy (exploit) configuration is itself a usable tool: it lends a
-	# `redirect`/`exploit` affordance an approach can spend (e.g. archetype 13's
-	# weaponized_window, or a future nested puzzle).
 	if str(node.get("survival_kind", "")) == "exploit":
 		caps["redirect"] = true
 		caps["exploit"] = true
@@ -119,25 +183,25 @@ static func requirements_met(required: Array, available: Dictionary) -> bool:
 	return true
 
 
-## The two canonical loadouts, resolved to capability sets, in solver order
-## (spotlight first so it prefers the primary/specialist approach). `enforce_stage`
-## marks the first-play full party: it may only use techniques taught up to the
-## stretch's progression stage. The Aster+Peris shadow is a mastery/second-playthrough
-## run, so it carries full game-wide vocabulary and is NOT stage-gated.
-static func loadouts() -> Array:
+## The two loadouts the solver evaluates, in order (spotlight first so it prefers a
+## specialist primary). The SPOTLIGHT is the union of the ENABLED roster's capabilities, so
+## restricting the roster (the enable/disable options) genuinely changes what's solvable; the
+## SHADOW is always the Aster+Peris pair and is never stage-gated (a mastery run).
+static func loadouts(roster = []) -> Array:
+	var norm := normalize_roster(roster)
 	return [
 		{
 			"id": "spotlight",
 			"label": "Full party",
-			"party": SPOTLIGHT_PARTY,
-			"base_capabilities": party_capabilities(SPOTLIGHT_PARTY, true),
+			"party": norm["enabled"],
+			"base_capabilities": roster_capabilities(norm["enabled"]),
 			"enforce_stage": true,
 		},
 		{
 			"id": "shadow",
 			"label": "Aster + Peris (shadow)",
 			"party": SHADOW_PARTY,
-			"base_capabilities": party_capabilities(SHADOW_PARTY, false),
+			"base_capabilities": bare_pair_capabilities(),
 			"enforce_stage": false,
 		},
 	]

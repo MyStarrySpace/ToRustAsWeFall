@@ -648,7 +648,10 @@
 				"party": [
 					"aster",
 					"peris",
-					"endo"
+					"endo",
+					"myke",
+					"oli",
+					"tyreg"
 				],
 				"solvable": true,
 				"techniques": [],
@@ -3937,6 +3940,7 @@
 			}
 		},
 		"progression_stage": 4,
+		"roster": [],
 		"seed": 6160,
 		"title": "Sample — Forage & Gauntlet Run (Survival)",
 		"world_slot": {
@@ -3949,6 +3953,7 @@
 		"complexity_tier": "hard",
 		"generator": "archetype_based_stretch_v1",
 		"progression_stage": 4,
+		"roster": [],
 		"seed": 6160
 	},
 	"success": true,

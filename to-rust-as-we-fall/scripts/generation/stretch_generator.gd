@@ -114,7 +114,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 	var world_slot := _build_world_slot(resolved, anchors)
 	var composition_summary := _build_composition_summary(resolved.get("composition", {}), archetype_chain, nodes, random_walk)
 	var warnings := _collect_warnings(catalog, nodes)
-	var solution := SolverScript.analyze(nodes, str(resolved.get("complexity_tier", "teaching")), int(resolved.get("progression_stage", 99)))
+	var solution := SolverScript.analyze(nodes, str(resolved.get("complexity_tier", "teaching")), int(resolved.get("progression_stage", 99)), resolved.get("roster", []))
 
 	return {
 		"success": true,
@@ -127,6 +127,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 			"seed": int(resolved.get("seed", 0)),
 			"complexity_tier": str(resolved.get("complexity_tier", "teaching")),
 			"progression_stage": int(resolved.get("progression_stage", 99)),
+			"roster": resolved.get("roster", []),
 		},
 		"settings": resolved,
 		"budget": budget.duplicate(true),
@@ -295,6 +296,7 @@ static func _resolve_settings(settings: Dictionary) -> Dictionary:
 	resolved["budget"] = base_budget
 	resolved["limitations"] = _normalize_limitations(settings.get("limitations", {}))
 	resolved["composition"] = _normalize_composition(settings.get("composition", {}))
+	resolved["roster"] = settings.get("roster", [])
 	var resolved_composition: Dictionary = resolved.get("composition", {})
 	if _composition_mode_uses_random_walk(str(resolved_composition.get("mode", ""))):
 		var walk_settings: Dictionary = resolved_composition.get("random_walk", {})

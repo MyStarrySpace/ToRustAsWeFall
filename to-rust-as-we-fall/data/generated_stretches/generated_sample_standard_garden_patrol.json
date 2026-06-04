@@ -1194,7 +1194,10 @@
 				"party": [
 					"aster",
 					"peris",
-					"endo"
+					"endo",
+					"myke",
+					"oli",
+					"tyreg"
 				],
 				"solvable": true,
 				"techniques": [],
@@ -3882,6 +3885,7 @@
 			}
 		},
 		"progression_stage": 3,
+		"roster": [],
 		"seed": 5519,
 		"title": "Sample — Garden Patrol (Standard)",
 		"world_slot": {
@@ -3894,6 +3898,7 @@
 		"complexity_tier": "standard",
 		"generator": "archetype_based_stretch_v1",
 		"progression_stage": 3,
+		"roster": [],
 		"seed": 5519
 	},
 	"success": true,

@@ -1750,7 +1750,10 @@
 				"party": [
 					"aster",
 					"peris",
-					"endo"
+					"endo",
+					"myke",
+					"oli",
+					"tyreg"
 				],
 				"solvable": true,
 				"techniques": [],
@@ -5921,6 +5924,7 @@
 			}
 		},
 		"progression_stage": 5,
+		"roster": [],
 		"seed": 9043,
 		"title": "Sample — Containment Vault (Setpiece)",
 		"world_slot": {
@@ -5933,6 +5937,7 @@
 		"complexity_tier": "setpiece",
 		"generator": "archetype_based_stretch_v1",
 		"progression_stage": 5,
+		"roster": [],
 		"seed": 9043
 	},
 	"success": true,

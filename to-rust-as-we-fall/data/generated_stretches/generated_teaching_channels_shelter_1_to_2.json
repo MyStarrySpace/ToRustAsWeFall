@@ -369,7 +369,10 @@
 				"party": [
 					"aster",
 					"peris",
-					"endo"
+					"endo",
+					"myke",
+					"oli",
+					"tyreg"
 				],
 				"solvable": true,
 				"techniques": [],
@@ -2217,6 +2220,7 @@
 			}
 		},
 		"progression_stage": 2,
+		"roster": [],
 		"seed": 1701,
 		"title": "Generated Teaching Channels: Shelter 1 -> Shelter 2",
 		"world_slot": {
@@ -2240,6 +2244,7 @@
 		"complexity_tier": "teaching",
 		"generator": "archetype_based_stretch_v1",
 		"progression_stage": 2,
+		"roster": [],
 		"seed": 1701
 	},
 	"success": true,
