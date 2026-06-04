@@ -356,21 +356,22 @@ func _bump_stage(delta: int) -> void:
 
 
 func _on_node_dropped(dragged_id: String, target_id: String, section: int) -> void:
-	if dragged_id == "" or target_id == "" or dragged_id == target_id:
-		return
+	if dragged_id == "" or target_id == "" or dragged_id == target_id or section < -1 or section > 1:
+		return  # ignore self-drops and ambiguous (-100 / no-item) sections
 	var target := _model.locate(target_id)
 	if target.is_empty():
 		return
 	var ok := false
-	if section == 0:
-		# Onto the item: nest inside a container, else drop just after a stretch leaf.
-		if _model.is_container(target["node"]):
-			ok = _model.move_into(dragged_id, target_id)
-		else:
-			ok = _model.move_after(dragged_id, target_id)
-	elif target.get("parent") == null:
-		# Above/below the root collapses to "into the root".
+	if section == 0 and _model.is_container(target["node"]):
+		# Onto a container: nest inside — unless it's already the parent (a no-op, not a shove to the end).
+		var src := _model.locate(dragged_id)
+		if not src.is_empty() and src.get("parent") != null and str(src["parent"].get("id", "")) == target_id:
+			return
 		ok = _model.move_into(dragged_id, target_id)
+	elif section == 0:
+		ok = _model.move_after(dragged_id, target_id)  # onto a stretch leaf -> just after it
+	elif target.get("parent") == null:
+		ok = _model.move_into(dragged_id, target_id)  # above/below the root -> into the root
 	elif section < 0:
 		ok = _model.move_before(dragged_id, target_id)
 	else:

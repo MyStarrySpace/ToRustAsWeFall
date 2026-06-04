@@ -106,12 +106,16 @@ func move_node(id: String, new_parent_id: String, index := -1) -> bool:
 		return false
 	if _is_descendant(node, new_parent_id) or str(node.get("id", "")) == new_parent_id:
 		return false
+	var src_index := int(loc["index"])
 	(loc["parent"]["children"] as Array).erase(node)
 	var dest_children: Array = dest["node"]["children"]
 	if index < 0 or index > dest_children.size():
 		dest_children.append(node)
 	else:
-		dest_children.insert(index, node)
+		var insert_at := index
+		if str(loc["parent"].get("id", "")) == str(dest["node"].get("id", "")) and src_index < index:
+			insert_at -= 1
+		dest_children.insert(clampi(insert_at, 0, dest_children.size()), node)
 	return true
 
 
@@ -240,13 +244,17 @@ func validate(known_spec_ids := []) -> Dictionary:
 			if not entry_of.has(entry):
 				entry_of[entry] = 0
 			entry_of[entry] += 1
-	for i in range(stretches.size() - 1):
-		var a: Dictionary = stretches[i]
-		var b: Dictionary = stretches[i + 1]
-		if str(a.get("exit", "")) != "" and str(b.get("entry", "")) != "" and str(a.get("exit", "")) != str(b.get("entry", "")):
-			issues.append(_issue("warning", "shelter_gap", "%s exits at %s but %s enters at %s." % [a.get("title", ""), a.get("exit", ""), b.get("title", ""), b.get("entry", "")], b))
-		if int(b.get("stage", 1)) < int(a.get("stage", 1)):
-			issues.append(_issue("warning", "stage_regression", "Stage drops %d -> %d at %s." % [int(a.get("stage", 1)), int(b.get("stage", 1)), b.get("title", "")], b))
+	var prev_main := {}
+	for st in stretches:
+		if str(st.get("branch", "main")) == "optional":
+			continue
+		if not prev_main.is_empty():
+			if str(prev_main.get("exit", "")) != "" and str(st.get("entry", "")) != "" and str(prev_main.get("exit", "")) != str(st.get("entry", "")):
+				issues.append(_issue("warning", "shelter_gap", "%s exits at %s but %s enters at %s." % [prev_main.get("title", ""), prev_main.get("exit", ""), st.get("title", ""), st.get("entry", "")], st))
+			if int(st.get("stage", 1)) < int(prev_main.get("stage", 1)):
+				issues.append(_issue("warning", "stage_regression", "Stage drops %d -> %d at %s." % [int(prev_main.get("stage", 1)), int(st.get("stage", 1)), st.get("title", "")], st))
+		prev_main = st
+	_warn_leaf_children(root(), issues)
 	for entry in entry_of.keys():
 		if int(entry_of[entry]) > 1:
 			issues.append(_issue("info", "branch", "Branch: %d stretches start at %s." % [int(entry_of[entry]), entry], null))
@@ -264,10 +272,21 @@ func validate(known_spec_ids := []) -> Dictionary:
 	return {"ok": errors == 0, "error_count": errors, "warning_count": warnings, "stretch_count": stretches.size(), "issues": issues}
 
 
+func _warn_leaf_children(node: Dictionary, issues: Array) -> void:
+	if str(node.get("kind", "")) == KIND_STRETCH:
+		if not (node.get("children", []) as Array).is_empty():
+			issues.append(_issue("warning", "leaf_has_children", "Stretch '%s' has nested nodes that won't be played." % node.get("title", node.get("id", "")), node))
+		return
+	for child in node.get("children", []):
+		if child is Dictionary:
+			_warn_leaf_children(child, issues)
+
+
 func _issue(severity: String, code: String, message: String, node) -> Dictionary:
 	var out := {"severity": severity, "code": code, "message": message}
 	if node is Dictionary:
 		out["node_id"] = str((node as Dictionary).get("id", ""))
+		out["spec_id"] = str((node as Dictionary).get("spec_id", ""))
 	return out
 
 
@@ -283,26 +302,44 @@ func from_dict(raw: Dictionary) -> void:
 		data["schema"] = SCHEMA
 	if not (data.get("root") is Dictionary):
 		data["root"] = _make_node("campaign", "Campaign")
+	# Seed next_id above every kind_NNN suffix first, then repair empty/duplicate ids with
+	# fresh collision-checked ones (a hand-authored manifest must never share an id).
 	var max_seen := [0]
-	_reid_pass(root(), max_seen, {})
-	if int(data.get("next_id", 1)) <= max_seen[0]:
-		data["next_id"] = max_seen[0] + 1
+	_scan_id_suffixes(root(), max_seen)
+	data["next_id"] = maxi(int(data.get("next_id", 1)), max_seen[0] + 1)
+	_repair_ids(root(), {})
 
 
-func _reid_pass(node: Dictionary, max_seen: Array, used: Dictionary) -> void:
+func _scan_id_suffixes(node: Dictionary, max_seen: Array) -> void:
+	var s := _id_suffix(str(node.get("id", "")))
+	if s >= 0:
+		max_seen[0] = maxi(max_seen[0], s)
+	for child in node.get("children", []):
+		if child is Dictionary:
+			_scan_id_suffixes(child, max_seen)
+
+
+func _repair_ids(node: Dictionary, used: Dictionary) -> void:
 	var id := str(node.get("id", ""))
 	if id == "" or used.has(id):
 		id = _alloc_id(str(node.get("kind", "node")))
+		while used.has(id):
+			id = _alloc_id(str(node.get("kind", "node")))
 		node["id"] = id
 	used[id] = true
-	var parts := id.split("_")
-	if parts.size() > 0:
-		max_seen[0] = maxi(max_seen[0], int(parts[parts.size() - 1]))
 	if not (node.get("children") is Array):
 		node["children"] = []
 	for child in node.get("children", []):
 		if child is Dictionary:
-			_reid_pass(child, max_seen, used)
+			_repair_ids(child, used)
+
+
+static func _id_suffix(id: String) -> int:
+	var parts := id.split("_")
+	if parts.size() < 2:
+		return -1
+	var tail := str(parts[parts.size() - 1])
+	return int(tail) if tail.is_valid_int() else -1
 
 
 func to_json() -> String:

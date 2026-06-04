@@ -1933,6 +1933,61 @@ func _test_campaign_order() -> void:
 	_assert_true(codes.has("missing_spec"), "Validation flags a stretch referencing a non-existent spec")
 	_assert_true(int(rep.get("error_count", 0)) >= 1, "Missing spec is an error-severity issue")
 
+	# id-repair: a hand-authored manifest with DUPLICATE + EMPTY ids loads with unique ids.
+	var dup = CampaignOrderScript.new({
+		"next_id": 1,
+		"root": {"id": "campaign_001", "kind": "campaign", "title": "C", "children": [
+			{"id": "region_001", "kind": "region", "title": "lit", "children": []},
+			{"id": "region_001", "kind": "region", "title": "dup", "children": []},
+			{"id": "", "kind": "region", "title": "empty", "children": []},
+		]},
+	})
+	var dup_ids := {}
+	var dup_unique := true
+	var dup_stack := [dup.root()]
+	while not dup_stack.is_empty():
+		var dn = dup_stack.pop_back()
+		var nid := str(dn.get("id", ""))
+		if nid == "" or dup_ids.has(nid):
+			dup_unique = false
+		dup_ids[nid] = true
+		for c in dn.get("children", []):
+			dup_stack.append(c)
+	_assert_true(dup_unique, "id-repair gives every node a unique non-empty id (duplicate + empty input)")
+	_assert_true(not dup_ids.has(dup.add_node(str(dup.root()["id"]), "region", "fresh")), "a fresh add after id-repair does not collide")
+
+	# move_node boundary indices land the node first / last (no off-by-one drift).
+	var mp = CampaignOrderScript.new()
+	var mpa := mp.add_node(str(mp.root()["id"]), "act", "A")
+	var ra := mp.add_node(mpa, "region", "Ra")
+	mp.add_node(mpa, "region", "Rb")
+	var rc := mp.add_node(mpa, "region", "Rc")
+	mp.move_node(rc, mpa, 0)
+	_assert_equals(str(mp.locate(mpa)["node"]["children"][0].get("title", "")), "Rc", "move_node to index 0 puts the node first")
+	mp.move_node(ra, mpa, 9)
+	var mk: Array = mp.locate(mpa)["node"]["children"]
+	_assert_equals(str(mk[mk.size() - 1].get("title", "")), "Ra", "move_node past the end appends the node last")
+
+	# An optional higher-stage side branch is NOT a false stage regression.
+	var br = CampaignOrderScript.new()
+	var brr := br.add_node(str(br.root()["id"]), "region", "R")
+	br.add_node(brr, "stretch", "M1", {"spec_id": "m1", "entry": "shelter_1", "exit": "shelter_2", "stage": 1, "branch": "main"})
+	br.add_node(brr, "stretch", "Opt", {"spec_id": "o", "entry": "shelter_2", "exit": "shelter_2", "stage": 5, "branch": "optional"})
+	br.add_node(brr, "stretch", "M2", {"spec_id": "m2", "entry": "shelter_2", "exit": "shelter_3", "stage": 2, "branch": "main"})
+	var brcodes := {}
+	for it in br.validate(["m1", "o", "m2"]).get("issues", []):
+		brcodes[str(it.get("code", ""))] = true
+	_assert_true(not brcodes.has("stage_regression"), "An optional higher-stage branch is not a false stage regression")
+
+	# A stretch leaf with nested nodes is flagged (a leaf must stay a leaf).
+	var lf = CampaignOrderScript.new({"root": {"id": "campaign_001", "kind": "campaign", "title": "C", "children": [
+		{"id": "stretch_001", "kind": "stretch", "title": "S", "spec_id": "s", "children": [
+			{"id": "stretch_002", "kind": "stretch", "title": "nested", "spec_id": "n", "children": []}]}]}})
+	var lcodes := {}
+	for it in lf.validate([]).get("issues", []):
+		lcodes[str(it.get("code", ""))] = true
+	_assert_true(lcodes.has("leaf_has_children"), "A stretch leaf with nested nodes is flagged")
+
 	# JSON roundtrip + id-uniqueness repair.
 	var restored = CampaignOrderScript.from_json(order.to_json())
 	_assert_equals(restored.flatten_stretches().size(), order.flatten_stretches().size(), "Roundtrip preserves stretch count")

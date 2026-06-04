@@ -184,12 +184,18 @@ func move_node(id: String, new_parent_id: String, index := -1) -> bool:
 	if _is_descendant(node, new_parent_id) or str(node.get("id", "")) == new_parent_id:
 		return false  # would create a cycle
 	var old_parent: Dictionary = loc["parent"]
+	var src_index := int(loc["index"])
 	(old_parent["children"] as Array).erase(node)
 	var dest_children: Array = dest_node["children"]
 	if index < 0 or index > dest_children.size():
 		dest_children.append(node)
 	else:
-		dest_children.insert(index, node)
+		# Same-parent move: detaching the node shifted everything after it down one, so a
+		# forward target index must compensate (matches move_before/move_after semantics).
+		var insert_at := index
+		if str(old_parent.get("id", "")) == str(dest_node.get("id", "")) and src_index < index:
+			insert_at -= 1
+		dest_children.insert(clampi(insert_at, 0, dest_children.size()), node)
 	return true
 
 
@@ -329,14 +335,21 @@ func validate(known_spec_ids := []) -> Dictionary:
 		if ex != "":
 			exit_set[ex] = true
 
-	# Connectivity + stage monotonicity along the flattened chain.
-	for i in range(stretches.size() - 1):
-		var a: Dictionary = stretches[i]
-		var b: Dictionary = stretches[i + 1]
-		if str(a.get("exit", "")) != "" and str(b.get("entry", "")) != "" and str(a.get("exit", "")) != str(b.get("entry", "")):
-			issues.append(_issue("warning", "shelter_gap", "Exit shelter '%s' of '%s' does not meet entry '%s' of '%s'." % [a.get("exit", ""), a.get("spec_id", a.get("id", "")), b.get("entry", ""), b.get("spec_id", b.get("id", ""))], b))
-		if int(b.get("stage", 1)) < int(a.get("stage", 1)):
-			issues.append(_issue("warning", "stage_regression", "Progression stage drops from %d to %d at '%s'." % [int(a.get("stage", 1)), int(b.get("stage", 1)), b.get("spec_id", b.get("id", ""))], b))
+	# Connectivity + stage monotonicity along the MAIN line — optional side branches are
+	# skipped, so a higher-stage detour between two main beats is not a false regression.
+	var prev_main := {}
+	for st in stretches:
+		if str(st.get("branch", "main")) == "optional":
+			continue
+		if not prev_main.is_empty():
+			if str(prev_main.get("exit", "")) != "" and str(st.get("entry", "")) != "" and str(prev_main.get("exit", "")) != str(st.get("entry", "")):
+				issues.append(_issue("warning", "shelter_gap", "Exit shelter '%s' of '%s' does not meet entry '%s' of '%s'." % [prev_main.get("exit", ""), prev_main.get("spec_id", prev_main.get("id", "")), st.get("entry", ""), st.get("spec_id", st.get("id", ""))], st))
+			if int(st.get("stage", 1)) < int(prev_main.get("stage", 1)):
+				issues.append(_issue("warning", "stage_regression", "Progression stage drops from %d to %d at '%s'." % [int(prev_main.get("stage", 1)), int(st.get("stage", 1)), st.get("spec_id", st.get("id", ""))], st))
+		prev_main = st
+
+	# A stretch is a leaf: nodes authored under it would never be played.
+	_warn_leaf_children(root(), issues)
 
 	# Fork detection (a branch): two stretches sharing an entry shelter.
 	for entry in entry_of.keys():
@@ -365,6 +378,16 @@ func validate(known_spec_ids := []) -> Dictionary:
 	}
 
 
+func _warn_leaf_children(node: Dictionary, issues: Array) -> void:
+	if str(node.get("kind", "")) == KIND_STRETCH:
+		if not (node.get("children", []) as Array).is_empty():
+			issues.append(_issue("warning", "leaf_has_children", "Stretch '%s' has nested nodes that won't be played." % node.get("title", node.get("id", "")), node))
+		return
+	for child in node.get("children", []):
+		if child is Dictionary:
+			_warn_leaf_children(child, issues)
+
+
 func _issue(severity: String, code: String, message: String, node) -> Dictionary:
 	var out := {"severity": severity, "code": code, "message": message}
 	if node is Dictionary:
@@ -385,28 +408,47 @@ func from_dict(raw: Dictionary) -> void:
 		data["schema"] = SCHEMA
 	if not (data.get("root") is Dictionary):
 		data["root"] = _make_node("campaign", "Campaign")
-	# Repair ids / next_id so edits never collide, even on a hand-authored manifest.
+	# Seed next_id ABOVE every existing kind_NNN suffix first, THEN repair empty/duplicate
+	# ids by allocating fresh, collision-checked ones — so a hand-authored or migrated
+	# manifest can never end up with two nodes sharing an id (which would break locate()).
 	var max_seen := [0]
-	_reid_pass(root(), max_seen, {})
-	if int(data.get("next_id", 1)) <= max_seen[0]:
-		data["next_id"] = max_seen[0] + 1
+	_scan_id_suffixes(root(), max_seen)
+	data["next_id"] = maxi(int(data.get("next_id", 1)), max_seen[0] + 1)
+	_repair_ids(root(), {})
 
 
-func _reid_pass(node: Dictionary, max_seen: Array, used: Dictionary) -> void:
+func _scan_id_suffixes(node: Dictionary, max_seen: Array) -> void:
+	var s := _id_suffix(str(node.get("id", "")))
+	if s >= 0:
+		max_seen[0] = maxi(max_seen[0], s)
+	for child in node.get("children", []):
+		if child is Dictionary:
+			_scan_id_suffixes(child, max_seen)
+
+
+func _repair_ids(node: Dictionary, used: Dictionary) -> void:
 	var id := str(node.get("id", ""))
 	if id == "" or used.has(id):
 		id = _alloc_id(str(node.get("kind", "node")))
+		while used.has(id):
+			id = _alloc_id(str(node.get("kind", "node")))
 		node["id"] = id
 	used[id] = true
-	var parts := id.split("_")
-	if parts.size() > 0:
-		var tail := int(parts[parts.size() - 1])
-		max_seen[0] = maxi(max_seen[0], tail)
 	if not (node.get("children") is Array):
 		node["children"] = []
 	for child in node.get("children", []):
 		if child is Dictionary:
-			_reid_pass(child, max_seen, used)
+			_repair_ids(child, used)
+
+
+## The trailing integer of a kind_NNN id, or -1 if the id is not that shape (so a literal
+## hand-authored id like "weird" never inflates next_id).
+static func _id_suffix(id: String) -> int:
+	var parts := id.split("_")
+	if parts.size() < 2:
+		return -1
+	var tail := str(parts[parts.size() - 1])
+	return int(tail) if tail.is_valid_int() else -1
 
 
 func to_json() -> String:

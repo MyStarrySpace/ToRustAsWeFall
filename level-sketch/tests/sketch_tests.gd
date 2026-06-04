@@ -289,3 +289,30 @@ func _test_campaign_model() -> void:
 	# JSON roundtrip preserves the tree.
 	var restored := CampaignModel.from_json(m.to_json())
 	_eq(restored.flatten_stretches().size(), m.flatten_stretches().size(), "roundtrip preserves stretch count")
+
+	# id-repair: a manifest with duplicate + empty ids loads with unique ids.
+	var dup := CampaignModel.new({"next_id": 1, "root": {"id": "campaign_001", "kind": "campaign", "title": "C", "children": [
+		{"id": "region_001", "kind": "region", "title": "a", "children": []},
+		{"id": "region_001", "kind": "region", "title": "b", "children": []},
+		{"id": "", "kind": "region", "title": "c", "children": []}]}})
+	var seen := {}
+	var uniq := true
+	var stk := [dup.root()]
+	while not stk.is_empty():
+		var n = stk.pop_back()
+		var nid := str(n.get("id", ""))
+		if nid == "" or seen.has(nid):
+			uniq = false
+		seen[nid] = true
+		for c in n.get("children", []):
+			stk.append(c)
+	_ok(uniq, "id-repair yields unique ids for duplicate/empty input")
+
+	# A stretch leaf with nested nodes is flagged.
+	var lf := CampaignModel.new({"root": {"id": "campaign_001", "kind": "campaign", "title": "C", "children": [
+		{"id": "stretch_001", "kind": "stretch", "title": "S", "spec_id": "s", "children": [
+			{"id": "stretch_002", "kind": "stretch", "title": "n", "spec_id": "n", "children": []}]}]}})
+	var lc := {}
+	for it in lf.validate([]).get("issues", []):
+		lc[str(it.get("code", ""))] = true
+	_ok(lc.has("leaf_has_children"), "a stretch leaf with nested nodes is flagged")
