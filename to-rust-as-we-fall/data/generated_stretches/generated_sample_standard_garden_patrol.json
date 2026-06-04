@@ -3263,25 +3263,25 @@
 				},
 				{
 					"category": "structures",
-					"id": "root_slide",
-					"label": "root_slide",
+					"id": "shortcut_gate",
+					"label": "shortcut_gate",
 					"local_offset": [
 						0.0,
-						0.224999994039536,
+						1.10000002384186,
 						0.791999995708466
 					],
 					"position": [
 						72.0,
-						2.11500000953674,
+						2.99000000953674,
 						3.99200010299683
 					],
-					"role": "structure",
+					"role": "shortcut",
 					"rotation_y_degrees": 92.0,
-					"shape": "slide",
+					"shape": "gate",
 					"size": [
-						3.79999995231628,
-						0.449999988079071,
-						1.14999997615814
+						2.40000009536743,
+						2.20000004768372,
+						0.379999995231628
 					],
 					"support": "implemented"
 				}
@@ -3328,10 +3328,10 @@
 				"aster_peris": true,
 				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
 			},
-			"shortcut": false,
+			"shortcut": true,
 			"stage": 1,
 			"structures": [
-				"root_slide"
+				"shortcut_gate"
 			],
 			"surface_y": 1.89,
 			"survival_kind": "",

@@ -907,7 +907,32 @@ static func _build_nodes(catalog, settings: Dictionary, budget: Dictionary, pale
 		nodes.append(node)
 		if resource_beats > 0 and role in ["foraging", "regroup"]:
 			resource_beats -= 1
+	# Archetype-driven roles no longer force a 'shortcut' node, so guarantee the return
+	# ratchet the budget asks for lands on a non-optional beat — the golden run still
+	# exposes shortcut state, and the return_shortcut route has a node to anchor to.
+	if int(budget.get("shortcut_count", 0)) > 0 and not _any_shortcut(nodes):
+		var pick := _designate_shortcut_node(nodes)
+		if pick >= 0:
+			(nodes[pick] as Dictionary)["shortcut"] = true
+			if available_structures.has("shortcut_gate") and not (nodes[pick]["structures"] as Array).has("shortcut_gate"):
+				nodes[pick]["structures"] = ["shortcut_gate"]
 	return nodes
+
+## A shortcut on an OPTIONAL beat never gets walked by the golden path, so only a
+## non-optional shortcut counts as "the run exposes shortcut state".
+static func _any_shortcut(nodes: Array) -> bool:
+	for n in nodes:
+		if n is Dictionary and bool((n as Dictionary).get("shortcut", false)) and not bool((n as Dictionary).get("optional", false)):
+			return true
+	return false
+
+## The last non-optional interior beat — a sensible place for a return-to-safety ratchet.
+static func _designate_shortcut_node(nodes: Array) -> int:
+	for i in range(nodes.size() - 2, 0, -1):
+		var n: Dictionary = nodes[i]
+		if not bool(n.get("optional", false)) and str(n.get("role", "")) not in ["boundary", "shelter_arrival"]:
+			return i
+	return -1
 
 static func _nested_for_archetype(archetype_id: String, composition: Dictionary) -> Array:
 	var nested := []

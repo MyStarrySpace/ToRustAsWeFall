@@ -1844,25 +1844,25 @@
 				},
 				{
 					"category": "structures",
-					"id": "carry_gear",
-					"label": "carry_gear",
+					"id": "shortcut_gate",
+					"label": "shortcut_gate",
 					"local_offset": [
 						0.0,
-						0.400000005960464,
+						1.10000002384186,
 						0.935999989509583
 					],
 					"position": [
 						48.0,
-						2.28999996185303,
+						2.99000000953674,
 						0.935999989509583
 					],
-					"role": "structure",
+					"role": "shortcut",
 					"rotation_y_degrees": 48.0,
-					"shape": "structure_box",
+					"shape": "gate",
 					"size": [
-						1.10000002384186,
-						0.800000011920929,
-						1.10000002384186
+						2.40000009536743,
+						2.20000004768372,
+						0.379999995231628
 					],
 					"support": "implemented"
 				}
@@ -1907,10 +1907,10 @@
 				"aster_peris": true,
 				"notes": "Use drag routes, scarpet masking, and slower recovery windows."
 			},
-			"shortcut": false,
+			"shortcut": true,
 			"stage": 2,
 			"structures": [
-				"carry_gear"
+				"shortcut_gate"
 			],
 			"surface_y": 1.89,
 			"survival_kind": "",

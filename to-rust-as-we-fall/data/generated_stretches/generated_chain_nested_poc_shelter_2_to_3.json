@@ -2615,25 +2615,25 @@
 				},
 				{
 					"category": "structures",
-					"id": "pipe",
-					"label": "pipe",
+					"id": "shortcut_gate",
+					"label": "shortcut_gate",
 					"local_offset": [
 						0.550000011920929,
-						0.275000005960464,
+						1.10000002384186,
 						0.864000022411346
 					],
 					"position": [
 						60.5499992370605,
-						2.16499996185303,
+						2.99000000953674,
 						3.86400008201599
 					],
-					"role": "structure",
+					"role": "shortcut",
 					"rotation_y_degrees": 118.0,
-					"shape": "pipe",
+					"shape": "gate",
 					"size": [
-						3.29999995231628,
-						0.550000011920929,
-						0.550000011920929
+						2.40000009536743,
+						2.20000004768372,
+						0.379999995231628
 					],
 					"support": "implemented"
 				}
@@ -2694,10 +2694,10 @@
 				"aster_peris": true,
 				"notes": "Aster provides electrical/data distraction while Peris performs the physical or flora task."
 			},
-			"shortcut": false,
+			"shortcut": true,
 			"stage": 3,
 			"structures": [
-				"pipe"
+				"shortcut_gate"
 			],
 			"surface_y": 1.89,
 			"survival_kind": "",

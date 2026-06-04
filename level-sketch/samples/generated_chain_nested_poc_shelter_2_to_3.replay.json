@@ -147,7 +147,7 @@
 					30,
 					3
 				],
-				"kind": "pipe",
+				"kind": "shortcut_gate",
 				"level": 2,
 				"support": "implemented"
 			},

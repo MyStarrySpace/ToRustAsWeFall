@@ -117,7 +117,7 @@
 					24,
 					2
 				],
-				"kind": "carry_gear",
+				"kind": "shortcut_gate",
 				"level": 2,
 				"support": "implemented"
 			},

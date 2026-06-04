@@ -157,7 +157,7 @@
 					24,
 					2
 				],
-				"kind": "forage_cache",
+				"kind": "shortcut_gate",
 				"level": 2,
 				"support": "implemented"
 			},

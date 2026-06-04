@@ -207,7 +207,7 @@
 					36,
 					4
 				],
-				"kind": "root_slide",
+				"kind": "shortcut_gate",
 				"level": 2,
 				"support": "implemented"
 			},

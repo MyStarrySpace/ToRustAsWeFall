@@ -277,7 +277,7 @@
 					48,
 					3
 				],
-				"kind": "water_control",
+				"kind": "shortcut_gate",
 				"level": 2,
 				"support": "implemented"
 			},

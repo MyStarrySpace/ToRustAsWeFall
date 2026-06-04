@@ -3491,25 +3491,25 @@
 				},
 				{
 					"category": "structures",
-					"id": "terminal",
-					"label": "terminal",
+					"id": "shortcut_gate",
+					"label": "shortcut_gate",
 					"local_offset": [
 						0.0,
-						0.824999988079071,
+						1.10000002384186,
 						0.935999989509583
 					],
 					"position": [
 						96.0,
-						3.43499994277954,
+						3.71000003814697,
 						3.93599987030029
 					],
-					"role": "guidance",
+					"role": "shortcut",
 					"rotation_y_degrees": 70.0,
-					"shape": "console",
+					"shape": "gate",
 					"size": [
-						1.20000004768372,
-						1.64999997615814,
-						0.75
+						2.40000009536743,
+						2.20000004768372,
+						0.379999995231628
 					],
 					"support": "implemented"
 				}
@@ -3554,10 +3554,10 @@
 				"aster_peris": true,
 				"notes": "Aster finds hidden structure; Peris preserves relational or flora context."
 			},
-			"shortcut": false,
+			"shortcut": true,
 			"stage": 3,
 			"structures": [
-				"terminal"
+				"shortcut_gate"
 			],
 			"surface_y": 2.61,
 			"survival_kind": "",

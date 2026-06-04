@@ -3232,25 +3232,25 @@
 				},
 				{
 					"category": "structures",
-					"id": "water_control",
-					"label": "water_control",
+					"id": "shortcut_gate",
+					"label": "shortcut_gate",
 					"local_offset": [
 						0.0,
-						0.5,
+						1.10000002384186,
 						0.864000022411346
 					],
 					"position": [
 						96.0,
-						2.3899998664856,
+						2.99000000953674,
 						3.86400008201599
 					],
-					"role": "structure",
+					"role": "shortcut",
 					"rotation_y_degrees": 70.0,
-					"shape": "structure_box",
+					"shape": "gate",
 					"size": [
-						1.39999997615814,
-						1.0,
-						1.0
+						2.40000009536743,
+						2.20000004768372,
+						0.379999995231628
 					],
 					"support": "implemented"
 				}
@@ -3295,10 +3295,10 @@
 				"aster_peris": true,
 				"notes": "Aster computes the damage budget for a short crossing, or the pair takes the safe-slow detour and pays time, not HP."
 			},
-			"shortcut": false,
+			"shortcut": true,
 			"stage": 2,
 			"structures": [
-				"water_control"
+				"shortcut_gate"
 			],
 			"surface_y": 1.89,
 			"survival_kind": "hazard",

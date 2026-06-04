@@ -237,7 +237,7 @@
 					48,
 					3
 				],
-				"kind": "terminal",
+				"kind": "shortcut_gate",
 				"level": 3,
 				"support": "implemented"
 			},

@@ -347,7 +347,7 @@
 					54,
 					2
 				],
-				"kind": "terminal",
+				"kind": "shortcut_gate",
 				"level": 0,
 				"support": "implemented"
 			},

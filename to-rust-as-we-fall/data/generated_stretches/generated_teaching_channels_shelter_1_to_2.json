@@ -1721,25 +1721,25 @@
 				},
 				{
 					"category": "structures",
-					"id": "forage_cache",
-					"label": "forage_cache",
+					"id": "shortcut_gate",
+					"label": "shortcut_gate",
 					"local_offset": [
 						-0.550000011920929,
-						0.375,
+						1.10000002384186,
 						0.791999995708466
 					],
 					"position": [
 						47.4500007629395,
-						2.2649998664856,
+						2.99000000953674,
 						0.791999995708466
 					],
-					"role": "resource",
+					"role": "shortcut",
 					"rotation_y_degrees": 122.0,
-					"shape": "structure_box",
+					"shape": "gate",
 					"size": [
-						1.70000004768372,
-						0.75,
-						1.0
+						2.40000009536743,
+						2.20000004768372,
+						0.379999995231628
 					],
 					"support": "implemented"
 				}
@@ -1787,10 +1787,10 @@
 				"aster_peris": true,
 				"notes": "Peris finds caches under scarpet cover while Aster times the dwell into a blind window."
 			},
-			"shortcut": false,
+			"shortcut": true,
 			"stage": 1,
 			"structures": [
-				"forage_cache"
+				"shortcut_gate"
 			],
 			"surface_y": 1.89,
 			"survival_kind": "forage",
