@@ -153,6 +153,7 @@ func _build_ui() -> void:
 	_button(top_row, "Load", _load_if_present)
 	_button(top_row, "Copy", _copy_json)
 	_button(top_row, "▶ Replay", func(): get_tree().change_scene_to_file("res://scenes/replay.tscn"))
+	_button(top_row, "▤ Campaign", func(): get_tree().change_scene_to_file("res://scenes/campaign.tscn"))
 
 	var brush_row := HBoxContainer.new()
 	brush_row.add_theme_constant_override("separation", 6)

@@ -39,6 +39,7 @@ func _run() -> void:
 	_test_history()
 	_test_species_catalog()
 	_test_replay_data()
+	_test_campaign_model()
 
 func _test_cells() -> void:
 	var m := SketchModel.new()
@@ -247,3 +248,44 @@ func _test_replay_data() -> void:
 		if aid != "" and sh.has(nid) and sh[nid] != aid:
 			diverged = true
 	_ok(diverged, "spotlight and shadow solutions differ on at least one node")
+
+func _test_campaign_model() -> void:
+	# The bundled campaign manifest + index load, and the model supports the tree edits
+	# the manager UI drives (hierarchy, drag/reparent, validation, roundtrip).
+	var index := CampaignModel.load_index("res://campaign/stretches_index.json")
+	_ok(index.size() >= 1, "bundled stretches index loads")
+	var manifest := CampaignModel.load_manifest("res://campaign/act1_order.json")
+	_ok(manifest.flatten_stretches().size() >= 1, "bundled campaign manifest loads with stretches")
+
+	var m := CampaignModel.new()
+	var act := m.add_node(str(m.root()["id"]), "act", "Act 1")
+	var region := m.add_node(act, "region", "Channels")
+	var group := m.add_node(region, "group", "Sub-area")
+	_ok(group != "", "multi-level hierarchy: group nests under region under act")
+	var s1 := m.add_node(region, "stretch", "S1", {"spec_id": "s1", "entry": "shelter_1", "exit": "shelter_2", "stage": 1})
+	var s2 := m.add_node(region, "stretch", "S2", {"spec_id": "s2", "entry": "shelter_2", "exit": "shelter_3", "stage": 2})
+	_eq(m.add_node(s1, "group", "x"), "", "cannot nest under a stretch leaf")
+	_eq(m.flatten_stretches().size(), 2, "two stretches placed")
+
+	# Drag semantics: into / before / after, with cycle guard.
+	_ok(m.move_into(s2, group), "move_into nests a stretch under a group")
+	_eq(str(m.locate(s2)["parent"].get("id", "")), group, "moved stretch is now under the group")
+	_ok(not m.move_into(region, group), "cannot move a container under its own descendant")
+	_ok(m.move_before(group, s1), "move_before reorders a node ahead of a sibling")
+
+	# Validation flags a stage regression + missing spec.
+	var bad := CampaignModel.new()
+	var r := bad.add_node(str(bad.root()["id"]), "region", "R")
+	bad.add_node(r, "stretch", "A", {"spec_id": "a", "entry": "shelter_1", "exit": "shelter_2", "stage": 3})
+	bad.add_node(r, "stretch", "B", {"spec_id": "ghost", "entry": "shelter_9", "exit": "shelter_9", "stage": 1})
+	var rep := bad.validate(["a"])
+	var codes := {}
+	for it in rep.get("issues", []):
+		codes[str(it.get("code", ""))] = true
+	_ok(codes.has("stage_regression"), "validation flags a stage regression")
+	_ok(codes.has("missing_spec"), "validation flags a missing-spec reference")
+	_ok(int(rep.get("error_count", 0)) >= 1, "missing spec is an error")
+
+	# JSON roundtrip preserves the tree.
+	var restored := CampaignModel.from_json(m.to_json())
+	_eq(restored.flatten_stretches().size(), m.flatten_stretches().size(), "roundtrip preserves stretch count")

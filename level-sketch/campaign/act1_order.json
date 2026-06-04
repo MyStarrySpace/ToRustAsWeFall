@@ -1,0 +1,156 @@
+{
+	"next_id": 15,
+	"root": {
+		"children": [
+			{
+				"act": 1,
+				"children": [
+					{
+						"children": [
+							{
+								"branch": "main",
+								"children": [],
+								"entry": "shelter_1",
+								"exit": "shelter_2",
+								"id": "stretch_003",
+								"kind": "stretch",
+								"region": "Channels",
+								"spec_id": "generated_teaching_channels_shelter_1_to_2",
+								"stage": 2,
+								"title": "Generated Teaching Channels: Shelter 1 -> Shelter 2"
+							},
+							{
+								"branch": "main",
+								"children": [],
+								"entry": "shelter_2",
+								"exit": "shelter_3",
+								"id": "stretch_004",
+								"kind": "stretch",
+								"region": "Channels",
+								"spec_id": "generated_chain_nested_poc_shelter_2_to_3",
+								"stage": 3,
+								"title": "Generated Chain/Nested POC: Shelter 2 -> Shelter 3"
+							},
+							{
+								"branch": "main",
+								"children": [],
+								"entry": "shelter_3",
+								"exit": "shelter_4",
+								"id": "stretch_005",
+								"kind": "stretch",
+								"region": "Channels",
+								"spec_id": "generated_random_walk_poc_shelter_3_to_4",
+								"stage": 3,
+								"title": "Generated Random Walk POC: Shelter 3 -> Shelter 4"
+							},
+							{
+								"branch": "main",
+								"children": [],
+								"entry": "shelter_4",
+								"exit": "shelter_5",
+								"id": "stretch_006",
+								"kind": "stretch",
+								"region": "Channels",
+								"spec_id": "generated_event_walk_shelter_4_to_5",
+								"stage": 4,
+								"title": "Generated Event Walk: Shelter 4 -> Shelter 5"
+							}
+						],
+						"id": "region_002",
+						"kind": "region",
+						"region": "Channels",
+						"title": "Channels"
+					},
+					{
+						"children": [
+							{
+								"branch": "main",
+								"children": [],
+								"entry": "shelter_1",
+								"exit": "shelter_2",
+								"id": "stretch_008",
+								"kind": "stretch",
+								"region": "Tutorial Outflow",
+								"spec_id": "generated_sample_teaching_first_fork",
+								"stage": 2,
+								"title": "Sample — First Fork (Teaching)"
+							}
+						],
+						"id": "region_007",
+						"kind": "region",
+						"region": "Tutorial Outflow",
+						"title": "Tutorial Outflow"
+					},
+					{
+						"children": [
+							{
+								"branch": "main",
+								"children": [],
+								"entry": "shelter_2",
+								"exit": "shelter_3",
+								"id": "stretch_010",
+								"kind": "stretch",
+								"region": "Garden Causeway",
+								"spec_id": "generated_sample_standard_garden_patrol",
+								"stage": 3,
+								"title": "Sample — Garden Patrol (Standard)"
+							}
+						],
+						"id": "region_009",
+						"kind": "region",
+						"region": "Garden Causeway",
+						"title": "Garden Causeway"
+					},
+					{
+						"children": [
+							{
+								"branch": "main",
+								"children": [],
+								"entry": "shelter_3",
+								"exit": "shelter_4",
+								"id": "stretch_012",
+								"kind": "stretch",
+								"region": "Ferric Spiral",
+								"spec_id": "generated_sample_hard_carry_run",
+								"stage": 4,
+								"title": "Sample — Ferric Carry Run (Hard)"
+							}
+						],
+						"id": "region_011",
+						"kind": "region",
+						"region": "Ferric Spiral",
+						"title": "Ferric Spiral"
+					},
+					{
+						"children": [
+							{
+								"branch": "main",
+								"children": [],
+								"entry": "shelter_4",
+								"exit": "shelter_5",
+								"id": "stretch_014",
+								"kind": "stretch",
+								"region": "Containment Vault",
+								"spec_id": "generated_sample_setpiece_containment",
+								"stage": 5,
+								"title": "Sample — Containment Vault (Setpiece)"
+							}
+						],
+						"id": "region_013",
+						"kind": "region",
+						"region": "Containment Vault",
+						"title": "Containment Vault"
+					}
+				],
+				"id": "act_001",
+				"kind": "act",
+				"title": "Act 1"
+			}
+		],
+		"id": "campaign_001",
+		"kind": "campaign",
+		"title": "To Rust As We Fall"
+	},
+	"schema": "trawf_campaign_order_v1",
+	"title": "Campaign"
+}
