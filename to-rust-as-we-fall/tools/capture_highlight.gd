@@ -60,8 +60,8 @@ func _init() -> void:
 	await process_frame
 	await process_frame
 	await process_frame
-	# Let particles build up.
-	for i in range(40):
+	# Let particles build up to a steady state (lifetime ~3s ≈ 180 frames).
+	for i in range(150):
 		await process_frame
 	await RenderingServer.frame_post_draw
 	var img := get_root().get_texture().get_image()

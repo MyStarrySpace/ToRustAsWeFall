@@ -327,14 +327,23 @@ func _ensure_outline_particles(mesh_instance: MeshInstance3D) -> GPUParticles3D:
 	particles.draw_pass_1 = particle_mesh
 
 	var process_material := ParticleProcessMaterial.new()
-	# Emit from the mesh SURFACE (its outline), not a solid box at the centre — the
-	# old box collapsed to a blob once the object was scaled. Sampled points wrap the
-	# silhouette; directed points push each particle out along the local surface normal.
+	# Emit from the OUTLINE itself: the outline shader is an inverted hull — each mesh vertex
+	# pushed out along its normal by outline_width — so we push the surface emission points out
+	# by the same amount. The particles then originate ON the outline shell (where the white
+	# edge is drawn) and drift outward, appearing to emanate from the outline. We can't read the
+	# GPU shader's output, but its geometry is pure normal-offset math we already have here.
 	var emission := _build_surface_emission(mesh_instance.mesh, outline_particles_per_mesh)
 	if int(emission["count"]) > 0:
+		var push := maxf(selected_object_outline_width, hover_object_outline_width)
+		var src_pos: PackedVector3Array = emission["positions"]
+		var src_nrm: PackedVector3Array = emission["normals"]
+		var shell_pos := PackedVector3Array()
+		shell_pos.resize(src_pos.size())
+		for i in range(src_pos.size()):
+			shell_pos[i] = src_pos[i] + src_nrm[i] * push
 		process_material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_DIRECTED_POINTS
 		process_material.emission_point_count = int(emission["count"])
-		process_material.emission_point_texture = _emission_points_texture(emission["positions"])
+		process_material.emission_point_texture = _emission_points_texture(shell_pos)
 		process_material.emission_normal_texture = _emission_points_texture(emission["normals"])
 	else:
 		# Degenerate mesh (no triangles): a sphere around the object still spreads.
@@ -346,6 +355,11 @@ func _ensure_outline_particles(mesh_instance: MeshInstance3D) -> GPUParticles3D:
 	process_material.initial_velocity_min = 0.01
 	process_material.initial_velocity_max = 0.08
 	process_material.gravity = Vector3.ZERO
+	# Push particles outward from the object centre — they spawn on the outline shell and drift
+	# away from it, so they read as emanating FROM the outline rather than sitting on the surface.
+	# Reliable regardless of the DIRECTED_POINTS normal-sampling bug (it's centre-relative).
+	process_material.radial_accel_min = 0.12
+	process_material.radial_accel_max = 0.3
 	process_material.scale_min = 0.1
 	process_material.scale_max = 0.24
 	process_material.color = selected_feedback_color
