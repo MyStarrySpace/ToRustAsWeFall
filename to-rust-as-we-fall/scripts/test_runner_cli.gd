@@ -163,6 +163,9 @@ func _ready() -> void:
 			"--test-state-machine":
 				ran_test = true
 				_test_state_machine()
+			"--test-elevator-enemy-engagement":
+				ran_test = true
+				_test_elevator_enemy_engagement()
 			"--test-player-cross-level":
 				ran_test = true
 				_test_player_cross_level_click()
@@ -613,6 +616,7 @@ func _run_all_tests() -> void:
 	_test_grid_pathfinding()
 	_test_game_state()
 	_test_state_machine()
+	_test_elevator_enemy_engagement()
 	_test_cooperative_pathfinding()
 	_test_path_renderer()
 	await _test_path_render_manager()
@@ -8271,6 +8275,45 @@ func _test_state_machine() -> void:
 	_assert_equals(_drive_fsm_sequence(0.05), _drive_fsm_sequence(0.5),
 		"chained timed transitions are step-size invariant (fast-forward / replay safe)")
 	_assert_equals(_drive_fsm_sequence(0.05), "s2", "the chained FSM ends in the final state")
+
+# --- Test: an enemy configured like the elevator's fork lane engages a target that walks in ---
+# Data-layer (scheduler + _process), so headless runs the same combat loop as real play: the fork
+# enemies aren't inert — walk into the lane and they detect, lock on, pursue, and attack.
+func _test_elevator_enemy_engagement() -> void:
+	_test_name = "Elevator Enemy Engagement"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	var holder := Node3D.new()
+	add_child(holder)
+	gs.register_character("aster", Vector3(10.0, 0.5, 0.0), 2.5, {"hp": 100.0})
+	# Configured exactly like a route_enemy in _build_below_chunk (default detection 6, party targets).
+	var enemy := Enemy.new()
+	enemy.game_state = gs
+	enemy.char_id = "route_enemy_probe"
+	enemy._detection_targets = ["aster", "peris"]
+	holder.add_child(enemy)
+	gs.register_character("route_enemy_probe", Vector3(0.0, 0.5, 0.0), enemy.move_speed,
+		{"detection_range": enemy.detection_range})
+	enemy.activate()
+	enemy.set_patrol([Vector3(-1.5, 0.5, 0.0), Vector3(1.5, 0.5, 0.0)])
+	_assert_equals(enemy.get_state(), "patrol", "Fork enemy starts patrolling")
+
+	# Walk Aster into the enemy's lane (a move command — exactly what a player click issues).
+	gs.command_move_to_pos("aster", Vector3(1.0, 0.5, 0.0))
+	var combat_states := ["alert", "pursuit", "windup", "charge", "recover"]
+	for _ei in range(240):
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+		if enemy.get_state() in ["windup", "charge", "recover"]:
+			break
+	_assert_true(enemy.get_state() != "patrol",
+		"The fork enemy leaves patrol when Aster enters its lane (got: %s)" % enemy.get_state())
+	_assert_equals(enemy._current_target_id, "aster", "The fork enemy locks onto Aster")
+	_assert_true(enemy.get_state() in combat_states,
+		"The fork enemy runs its combat loop instead of idling (got: %s)" % enemy.get_state())
+	enemy.queue_free()
+	holder.queue_free()
 
 func _drive_fsm_sequence(step: float) -> String:
 	var sched := EventScheduler.new()
