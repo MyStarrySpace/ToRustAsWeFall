@@ -14,6 +14,8 @@ extends Node3D
 @export var pursuit_update_interval := 0.8
 
 @export var attack_range := 3.0
+@export var roam_step_distance := 1.6  # how far a single roam hop travels
+@export var roam_interval := 1.4       # scheduler ticks between roam hops
 @export var windup_duration := 0.8
 @export var charge_speed := 8.0
 @export var charge_damage := 25.0
@@ -36,9 +38,15 @@ var _detection_targets: Array[String] = []
 var _current_target_id := ""
 var _alert_label: Label3D
 
-# --- Patrol ---
+# --- Patrol (authored routes) ---
 var _patrol_waypoints: Array[Vector3] = []
 var _patrol_index := 0
+
+# --- Roam (undirected wander: cheap local hops, NEVER pathfinding) ---
+var _roam_anchor := Vector3.ZERO
+var _roam_radius := 0.0
+var _roam_heading := Vector3(0.0, 0.0, -1.0)  # current wander direction
+var _roam_seq := 0                            # deterministic hop counter (fast-forward invariant)
 
 # --- Attack cycle ---
 var _charge_target_pos := Vector3.ZERO
@@ -77,12 +85,23 @@ func activate() -> void:
 		game_state.detection_predicted.connect(_on_detection_predicted)
 	_fsm.transition_to("idle")
 
-## Set patrol waypoints.
+## Set patrol waypoints (an AUTHORED route — pathfinds between waypoints to route around walls).
 func set_patrol(waypoints: Array[Vector3]) -> void:
 	_patrol_waypoints = waypoints
 	_patrol_index = 0
 	if get_state() != "dead":
 		_fsm.transition_to("patrol")
+
+## Begin lightweight roaming around `anchor` within `radius`. Roaming NEVER pathfinds: it's a local
+## deterministic wander — short straight hops (command_move_to_pos), an anchor-pull at the circle's
+## edge, and a cheap single-cell wall bounce on grid scenes — so a yard full of idle enemies costs
+## almost nothing. Only an actual sighting promotes to pursuit, and ONLY pursuit pathfinds.
+func set_roam(anchor: Vector3, radius: float) -> void:
+	_roam_anchor = anchor
+	_roam_radius = maxf(0.5, radius)
+	_roam_seq = 0
+	if get_state() != "dead":
+		_fsm.transition_to("roam")
 
 ## Apply damage.
 func take_damage(amount: float) -> void:
@@ -105,7 +124,7 @@ func get_state() -> String:
 
 # --- State Machine Core (reusable StateMachine: tag-scoped scheduling + exit/enter hooks) ---
 
-const ENEMY_STATES := ["idle", "patrol", "detecting", "alert", "pursuit", "windup", "charge", "recover", "dead"]
+const ENEMY_STATES := ["idle", "roam", "patrol", "detecting", "alert", "pursuit", "windup", "charge", "recover", "dead"]
 
 func _build_fsm() -> void:
 	_fsm = StateMachine.new(_get_scheduler(), _state_tag)
@@ -123,6 +142,9 @@ func _enter_state(state: String) -> void:
 	match state:
 		"idle":
 			pass  # Detection via GameState prediction signal
+		"roam":
+			_set_eye_energy(0.5)
+			_roam_step()
 		"patrol":
 			_patrol_next_waypoint()
 		"detecting":
@@ -184,6 +206,8 @@ func _enter_state(state: String) -> void:
 
 func _exit_state(state: String) -> void:
 	match state:
+		"roam":
+			_stop_movement()
 		"alert":
 			_remove_alert_label()
 		"pursuit":
@@ -198,8 +222,8 @@ func _on_detection_predicted(detector_id: String, target_id: String) -> void:
 		return
 	if target_id not in _detection_targets:
 		return
-	# Only respond to detections when in a scanning state
-	if get_state() not in ["idle", "patrol", "detecting"]:
+	# Only respond to detections when in a scanning state (roaming enemies still see)
+	if get_state() not in ["idle", "roam", "patrol", "detecting"]:
 		return
 	_current_target_id = target_id
 	target_spotted.emit(target_id)
@@ -279,6 +303,50 @@ func _begin_rescan() -> void:
 		return
 	_stop_movement()
 	_fsm.transition_to("detecting")
+
+# --- Roam (local wander, no pathfinding) ---
+
+func _roam_step() -> void:
+	if get_state() != "roam" or not game_state or not game_state.characters.has(char_id):
+		return
+	var cur := game_state.get_position(char_id)
+	var target := _pick_roam_target(cur)
+	game_state.command_move_to_pos(char_id, target)  # straight line — never A*
+	_roam_seq += 1
+	var scheduler := _get_scheduler()
+	if scheduler:
+		scheduler.schedule_after(roam_interval, _roam_step, _state_tag)
+
+## Choose the next hop: rotate the heading by a deterministic wander angle, pull back toward the
+## anchor near the circle's edge, clamp inside the radius, and bounce off a blocked grid cell. Pure
+## function of the hop counter + enemy id (no wall-clock / randf), so 1x and 10x roam identically.
+func _pick_roam_target(cur: Vector3) -> Vector3:
+	var turn := (_roam_noise(0) - 0.5) * deg_to_rad(120.0)  # +/-60 deg of wander
+	_roam_heading = _roam_heading.rotated(Vector3.UP, turn).normalized()
+	var from_anchor := cur - _roam_anchor
+	from_anchor.y = 0.0
+	if from_anchor.length() > _roam_radius * 0.8:
+		# Near the edge — steer back inward so the wander stays in its yard.
+		_roam_heading = (_roam_heading + (-from_anchor).normalized() * 1.5).normalized()
+	var target := cur + _roam_heading * roam_step_distance
+	target.y = cur.y
+	var off := target - _roam_anchor
+	off.y = 0.0
+	if off.length() > _roam_radius:
+		target = _roam_anchor + off.normalized() * _roam_radius
+		target.y = cur.y
+	if game_state and game_state.grid:
+		var lvl := game_state.get_character_level(char_id)
+		var cell := game_state.grid.world_to_grid(target)
+		if not game_state.grid.is_walkable(cell.x, cell.y, {}, {}, lvl):
+			_roam_heading = -_roam_heading  # bounce off the wall; hold this hop
+			return cur
+	return target
+
+## Deterministic pseudo-random in [0,1): a hash of the enemy id, the hop counter, and a salt. Free of
+## the wall clock and randf, so the wander is identical under fast-forward and reproducible per run.
+func _roam_noise(salt: int) -> float:
+	return float(absi(hash("%s:%d:%d" % [char_id, _roam_seq, salt])) % 100000) / 100000.0
 
 # --- Patrol ---
 

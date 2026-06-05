@@ -178,6 +178,9 @@ func _ready() -> void:
 			"--test-two-tier-detection":
 				ran_test = true
 				_test_two_tier_detection()
+			"--test-enemy-roaming":
+				ran_test = true
+				_test_enemy_roaming()
 			"--test-data-identify":
 				ran_test = true
 				_test_data_identify()
@@ -635,6 +638,7 @@ func _run_all_tests() -> void:
 	_test_data_identify()
 	_test_hidden_detection()
 	_test_two_tier_detection()
+	_test_enemy_roaming()
 	await _test_lure_relay_puzzle()
 	await _test_chromatic_aberration()
 	_test_cooperative_pathfinding()
@@ -8469,6 +8473,92 @@ func _test_two_tier_detection() -> void:
 	_assert_true(spots.call(4.0, GameState.CONCEAL_NONE, false), "An undistracted guard spots an exposed target at 4m")
 	_assert_true(not spots.call(4.0, GameState.CONCEAL_NONE, true), "A lure-distracted guard misses that same 4m target")
 	_assert_true(spots.call(1.5, GameState.CONCEAL_NONE, true), "A distracted guard still catches a target that steps right into it")
+
+# --- Test: lightweight enemy roaming wanders locally (no pathfinding), bounded, FF-invariant ---
+func _test_enemy_roaming() -> void:
+	_test_name = "Enemy Roaming"
+	var anchor := Vector3(0.0, 0.5, 0.0)
+	# 1. Roams from its anchor and stays inside its radius — no grid at all (pure straight hops).
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	var holder := Node3D.new()
+	add_child(holder)
+	var e := Enemy.new()
+	e.game_state = gs
+	e.char_id = "roamer"
+	holder.add_child(e)
+	gs.register_character("roamer", anchor, e.move_speed, {"detection_range": 6.0})
+	e.activate()
+	e.set_roam(anchor, 3.0)
+	var moved := false
+	var max_dist := 0.0
+	for _i in range(500):
+		sched.advance_ticks(0.05)
+		var p := gs.get_position("roamer")
+		var d := Vector2(p.x - anchor.x, p.z - anchor.z).length()
+		max_dist = maxf(max_dist, d)
+		if d > 0.4:
+			moved = true
+	_assert_true(moved, "A roaming enemy wanders away from its anchor")
+	_assert_true(max_dist <= 3.0 + e.roam_step_distance, "Roaming stays within its radius (max %.2f)" % max_dist)
+	_assert_equals(e.get_state(), "roam", "With no target nearby it keeps roaming")
+	e.queue_free()
+	holder.queue_free()
+
+	# 2. Fast-forward invariance: the wander DECISIONS are tick-locked, so a 1x and a 10x step that
+	#    land on the SAME tick produce the identical hop count, heading, and commanded destination.
+	var probe := func(step: float) -> Dictionary:
+		var s := EventScheduler.new()
+		var g := GameState.new()
+		g.scheduler = s
+		var h := Node3D.new()
+		add_child(h)
+		var en := Enemy.new()
+		en.game_state = g
+		en.char_id = "roamer"
+		h.add_child(en)
+		g.register_character("roamer", anchor, en.move_speed, {"detection_range": 6.0})
+		en.activate()
+		en.set_roam(anchor, 3.0)
+		while s.get_current_tick() < 12.0 - 1e-9:
+			s.advance_ticks(minf(step, 12.0 - s.get_current_tick()))
+		var dest := Vector3.ZERO
+		var ch: Dictionary = g.characters["roamer"]
+		if ch.movement != null:
+			var path: Array = ch.movement.path
+			dest = path[path.size() - 1]
+		var res := {"seq": en._roam_seq, "heading": en._roam_heading, "dest": dest}
+		en.queue_free()
+		h.queue_free()
+		return res
+	var slow: Dictionary = probe.call(0.0166)
+	var fast: Dictionary = probe.call(0.166)
+	_assert_equals(slow["seq"], fast["seq"], "Same hop count at 1x and 10x (FF-invariant decisions)")
+	_assert_true((slow["dest"] as Vector3).distance_to(fast["dest"]) < 0.01,
+		"Same commanded roam destination at 1x and 10x")
+
+	# 3. A roaming enemy still SEES: a target in range pulls it out of roam to engage.
+	var s2 := EventScheduler.new()
+	var g2 := GameState.new()
+	g2.scheduler = s2
+	var h2 := Node3D.new()
+	add_child(h2)
+	g2.register_character("aster", Vector3(2.0, 0.5, 0.0), 2.5, {})
+	var en2 := Enemy.new()
+	en2.game_state = g2
+	en2.char_id = "roamer"
+	en2._detection_targets = ["aster"]
+	h2.add_child(en2)
+	g2.register_character("roamer", anchor, en2.move_speed, {"detection_range": 6.0})
+	en2.activate()
+	en2.set_roam(anchor, 3.0)
+	for _i in range(40):
+		s2.advance_ticks(0.05)
+	_assert_true(en2.get_state() != "roam" and en2.get_state() != "idle",
+		"A roaming enemy that spots a target leaves roam to engage (got: %s)" % en2.get_state())
+	en2.queue_free()
+	h2.queue_free()
 
 # --- Test: chromatic aberration is live in the sim scenes ---
 func _test_chromatic_aberration() -> void:
