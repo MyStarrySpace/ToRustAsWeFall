@@ -579,6 +579,38 @@ func _register_gs_character(id: String, node: Node3D, speed: float = 3.0, stats:
 	if node == _player and node.has_method("bind_interaction_root"):
 		node.call("bind_interaction_root", self)
 
+# --- Multi-level scene authoring (stacked floors + ladders/ramps) ---
+#
+# A scene that stacks floors declares them on the shared grid, then moves characters
+# across floors with the cooperative cross-level pathfinder. These thin helpers wrap the
+# GridWorld/GameState API so a sequence never reaches into the grid internals directly —
+# keep new floor-based scenes on these, not on bespoke per-scene position math.
+
+## Declare how many stacked floors the grid has (and the world Y between them). Level 0 sits at
+## the grid origin Y; each higher floor is `height` above the last. Call once during scene build.
+func _configure_levels(count: int, height: float = 4.0) -> void:
+	if _game_state == null or _game_state.grid == null:
+		return
+	_game_state.grid.set_level_count(count)
+	_game_state.grid.level_height = height
+
+## Place a ladder at a cell linking two adjacent floors (climb — costs more than a flat step).
+func _add_ladder(cell: Vector2i, from_level: int, to_level: int) -> void:
+	if _game_state and _game_state.grid:
+		_game_state.grid.add_inter_level_link(cell, from_level, to_level, "ladder")
+
+## Place a ramp at a cell linking two adjacent floors (walk — cheaper than a ladder).
+func _add_ramp(cell: Vector2i, from_level: int, to_level: int) -> void:
+	if _game_state and _game_state.grid:
+		_game_state.grid.add_inter_level_link(cell, from_level, to_level, "ramp")
+
+## Move a character to a cell on a (possibly different) floor, routing over ladders/ramps. Returns
+## false if no route exists between the floors. Same floor → an ordinary cooperative move.
+func _move_to_cell_on_level(id: String, cell: Vector2i, level: int) -> bool:
+	if _game_state == null:
+		return false
+	return _game_state.command_move_cross_level(id, cell, level)
+
 ## Hand the gameplay scheduler to every interactable built before the scheduler
 ## existed (the scene tree is assembled in _build_scene, _scheduler after). Their
 ## dwell timers then ride the scheduler and pause with gameplay.

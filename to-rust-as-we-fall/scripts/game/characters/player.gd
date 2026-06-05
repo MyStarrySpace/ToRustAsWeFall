@@ -167,9 +167,27 @@ func _raycast_ground(screen_pos: Vector2) -> Vector3:
 var group_move := false
 
 func _set_click_target(world_pos: Vector3, cancel_interaction := true) -> bool:
-	# Reject a free walk across a large vertical gap (a different floor / level): the character
-	# would just lerp through the air to it. Only triggers where floors are stacked.
-	if game_state != null and char_id != "" and absf(world_pos.y - game_state.get_position(char_id).y) > LEVEL_GAP:
+	var cross_floor := game_state != null and char_id != "" \
+		and absf(world_pos.y - game_state.get_position(char_id).y) > LEVEL_GAP
+	# A click on a different stacked floor: on a MULTI-LEVEL GRID, route over ladders/ramps to it
+	# (walk to the ladder, climb, continue). Single-character moves only — party multi-floor isn't
+	# wired yet, so a group click across floors stays rejected.
+	if cross_floor and grid_world != null and grid_world.level_count > 1 and not group_move:
+		if cancel_interaction and _interaction_controller != null:
+			_interaction_controller.cancel_active_target()
+		var dest_cell := grid_world.world_to_grid(world_pos)
+		var dest_level := grid_world.level_for_y(world_pos.y)
+		if not game_state.command_move_cross_level(char_id, dest_cell, dest_level):
+			return false
+		var dest_snap := grid_world.grid_to_world(dest_cell, dest_level)
+		_dest_marker.global_position = Vector3(dest_snap.x, dest_snap.y + 0.05, dest_snap.z)
+		_moving = true
+		_dest_marker_mat.albedo_color.a = 0.6
+		_dest_marker.scale = Vector3(1.2, 1.2, 1.2)
+		return true
+	# Otherwise reject a free walk across a large vertical gap (gridless stacked floors): the
+	# character would just lerp through the air to it.
+	if cross_floor:
 		return false
 	if cancel_interaction and _interaction_controller != null:
 		_interaction_controller.cancel_active_target()

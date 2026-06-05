@@ -35,6 +35,12 @@ var inter_level_links: Dictionary = {}  # "x,z,from,to" -> {type, cost}
 func set_level_count(count: int) -> void:
 	level_count = maxi(1, count)
 
+## Which stacked floor a world Y sits on (0 for a single-floor grid). Inverse of grid_to_world's Y.
+func level_for_y(y: float) -> int:
+	if level_count <= 1 or level_height <= 0.0:
+		return 0
+	return clampi(int(round((y - origin.y) / level_height)), 0, level_count - 1)
+
 func _link_key(cell: Vector2i, from_level: int, to_level: int) -> String:
 	return "%d,%d,%d,%d" % [cell.x, cell.y, from_level, to_level]
 

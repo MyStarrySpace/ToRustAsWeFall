@@ -160,6 +160,9 @@ func _ready() -> void:
 			"--test-grid-levels":
 				ran_test = true
 				_test_grid_levels()
+			"--test-player-cross-level":
+				ran_test = true
+				_test_player_cross_level_click()
 			"--test-outline-particle-emission":
 				ran_test = true
 				_test_outline_particle_emission()
@@ -610,6 +613,7 @@ func _run_all_tests() -> void:
 	_test_path_renderer()
 	await _test_path_render_manager()
 	_test_grid_levels()
+	_test_player_cross_level_click()
 	_test_outline_particle_emission()
 	_test_interactable_outline_particles()
 	_test_outline_feedback_system()
@@ -8151,6 +8155,65 @@ func _test_grid_levels() -> void:
 	_assert_true(gy.is_moving("c2"), "Same-floor cross-level call starts a normal move")
 	_assert_true(not gy.command_move_cross_level("c2", Vector2i(6, 6), 9),
 		"No route to an absent floor -> command_move_cross_level returns false")
+
+# --- Test: clicking another floor routes the player cross-level (shared controller, every scene) ---
+# The player used to REJECT a click on a different stacked floor (it would lerp through the air).
+# On a multi-level grid it now routes over ladders/ramps via command_move_cross_level instead.
+func _test_player_cross_level_click() -> void:
+	_test_name = "Player Cross-Level Click"
+	var grid := GridWorld.new()
+	grid.create_room(8, 8)
+	grid.set_level_count(2)
+	grid.level_height = 4.0
+	grid.add_inter_level_link(Vector2i(4, 4), 0, 1, "ladder")
+
+	# level_for_y inverts grid_to_world's Y so a floor-1 point maps to level 1.
+	var floor1_point := grid.grid_to_world(Vector2i(6, 6), 1)
+	_assert_equals(grid.level_for_y(floor1_point.y), 1, "level_for_y maps a floor-1 Y to level 1")
+	_assert_equals(grid.level_for_y(0.0), 0, "level_for_y maps the ground floor to level 0")
+
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+	gs.register_character("hero", grid.grid_to_world(Vector2i(1, 1), 0), 3.0, {})
+
+	var player_scene: PackedScene = load("res://scenes/game/player_character.tscn")
+	var player = player_scene.instantiate()
+	add_child(player)  # _ready builds the dest marker etc.
+	player.grid_world = grid
+	player.game_state = gs
+	player.char_id = "hero"
+	player.global_position = grid.grid_to_world(Vector2i(1, 1), 0)
+
+	# A click on floor 1 routes across floors (returns true) instead of being rejected.
+	_assert_true(player.move_to_world_position(floor1_point),
+		"A click on another floor routes cross-level instead of being rejected")
+	for i in range(300):
+		sched.advance_ticks(0.1)
+		if not gs.is_moving("hero") and gs.get_character_level("hero") == 1:
+			break
+	_assert_equals(gs.get_character_level("hero"), 1, "The player climbs to the clicked floor")
+	_assert_equals(grid.world_to_grid(gs.get_position("hero")), Vector2i(6, 6),
+		"The player ends on the clicked cell")
+	player.queue_free()
+
+	# A single-floor grid still rejects a click far above the floor (no phantom climb without a grid level).
+	var flat := GridWorld.new()
+	flat.create_room(8, 8)  # level_count stays 1
+	var gs2 := GameState.new()
+	gs2.grid = flat
+	gs2.scheduler = EventScheduler.new()
+	gs2.register_character("hero2", flat.grid_to_world(Vector2i(1, 1)), 3.0, {})
+	var p2 = player_scene.instantiate()
+	add_child(p2)
+	p2.grid_world = flat
+	p2.game_state = gs2
+	p2.char_id = "hero2"
+	p2.global_position = flat.grid_to_world(Vector2i(1, 1))
+	_assert_true(not p2.move_to_world_position(flat.grid_to_world(Vector2i(6, 6)) + Vector3(0, 5.0, 0)),
+		"On a single-floor grid, a click far above the floor is still rejected")
+	p2.queue_free()
 
 # --- Test: outline particles emit from the object surface ---
 # The per-mesh outline feedback used a box emission shape sized from the mesh AABB,
