@@ -118,6 +118,17 @@ func _process(delta: float) -> void:
 
 	if _anchored:
 		_segment_positions[segment_count - 1] = _anchor_pos
+		# Rope constraint: pull each link back toward the anchored tail so the chain stays continuous
+		# (no link over max_stretch) AND its tail stays pinned, regardless of frame load. The per-frame
+		# lerp above provides smoothing; this backward pass enforces the hard distance constraint, so a
+		# heavy frame can't leave the chain transiently over-stretched between two checks.
+		for i in range(segment_count - 2, 0, -1):
+			var anchorward := _segment_positions[i + 1]
+			var here := _segment_positions[i]
+			var gap := anchorward.distance_to(here)
+			if gap > max_stretch and gap > 0.0001:
+				var pull := (here - anchorward).normalized() * max_stretch
+				_segment_positions[i] = anchorward + pull
 
 	_apply_segment_visuals()
 
