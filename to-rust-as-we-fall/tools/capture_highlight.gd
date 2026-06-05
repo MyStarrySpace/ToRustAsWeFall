@@ -67,5 +67,5 @@ func _init() -> void:
 	var img := get_root().get_texture().get_image()
 	img.save_png("res://highlight_capture.png")
 	print("[CAPTURE] outline+particles -> res://highlight_capture.png  shells=%d" % target.get_outline_shell_count())
-	print("[CAPTURE] mesh_outline_active=%s particles_active=%s" % [str(target.has_active_mesh_outline()), str(target.has_active_outline_particles())])
+	print("[CAPTURE] mesh_outline_active=%s glow_active=%s" % [str(target.has_active_mesh_outline()), str(target.has_active_glow())])
 	quit()

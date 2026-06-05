@@ -4773,7 +4773,7 @@ func _test_interactable_highlight() -> void:
 	it.set_highlight(true)
 	_assert_true(it._feedback_emitting, "set_highlight(true) runs the highlight")
 	_assert_true(tgt.has_active_mesh_outline(), "the OBJECT's outline SHADER turns on (not a label/ring)")
-	_assert_true(tgt.has_active_outline_particles(), "particles emit FROM the mesh surface (not a fixed ring)")
+	_assert_true(tgt.has_active_glow(), "the morphing-noise emission glow runs (energy from the outline, not a fixed ring)")
 	it.set_highlight(false)
 	_assert_true(not it._feedback_emitting, "set_highlight(false) stops the highlight")
 	_assert_true(not tgt.has_active_mesh_outline(), "the outline shader clears on release")
@@ -5349,12 +5349,8 @@ func _test_aster_sim() -> void:
 			_assert_true(macabre_origin.distance_to(awards_origin) > 4.0,
 				"Room element hover targets are independently positioned")
 			macabre_target.call("begin_queued_feedback", macabre_origin + Vector3(7.0, 0.0, 0.0))
-			var selected_particles := macabre_target.find_child("SelectedParticles", true, false) as GPUParticles3D
-			_assert_true(selected_particles != null,
-				"Room element selected feedback creates a particle emitter")
-			if selected_particles != null:
-				_assert_true(selected_particles.global_position.distance_to(macabre_origin) < 0.5,
-					"Room element selected particles stay anchored to the object, not the movement target")
+			_assert_true(bool(macabre_target.call("has_active_glow")),
+				"Room element selected feedback runs the morphing-noise emission glow on the object meshes")
 			macabre_target.call("complete_queued_feedback")
 			var surface_click := InputEventMouseButton.new()
 			surface_click.button_index = MOUSE_BUTTON_LEFT
@@ -5369,10 +5365,8 @@ func _test_aster_sim() -> void:
 				"Clicked room element remains selected while Aster moves toward it")
 			_assert_true(instance._game_state.is_moving("aster"),
 				"Clicking a room element asks the character controller to move Aster toward it")
-			_assert_true(bool(macabre_target.call("has_active_outline_particles")),
-				"Amber selected outline continuously emits particles from the outlined graybox meshes")
-			_assert_true(macabre_target.find_child("SelectedParticles", true, false) != null,
-				"Clicking a room element emits selected feedback particles")
+			_assert_true(bool(macabre_target.call("has_active_glow")),
+				"Amber selected outline runs the morphing-noise emission glow on the outlined graybox meshes")
 			macabre_target.call("_on_mouse_exited")
 			instance._sync_perception_shader()
 			_assert_true(bool(macabre_target.call("is_selected_feedback_active")),
@@ -5388,12 +5382,8 @@ func _test_aster_sim() -> void:
 				"Queued gold feedback clears after Aster reaches the object")
 			_assert_true(feedback_manager.call("get_selected_target") == null,
 				"Outline feedback manager clears selected state after arrival")
-			var cleared_selected_particles := macabre_target.find_child("SelectedParticles", true, false) as GPUParticles3D
-			if cleared_selected_particles != null:
-				_assert_true(not cleared_selected_particles.emitting and not cleared_selected_particles.visible,
-					"Room element selected feedback clears already-spawned particles after arrival")
-			_assert_true(not bool(macabre_target.call("has_active_outline_particles")),
-				"Room element outline particles stop and clear after arrival")
+			_assert_true(not bool(macabre_target.call("has_active_glow")),
+				"Room element emission glow stops and clears after arrival")
 
 		var hallway_gate := instance.find_child("HallwayGate", true, false) as Node3D
 		if hallway_gate != null:
@@ -8154,8 +8144,8 @@ func _test_outline_feedback_system() -> void:
 		target.emit_signal("outline_selected", target)
 		_assert_true(system.get_selected_target() == target,
 			"Selecting a built target registers with the system")
-		if target.has_method("has_active_outline_particles"):
-			_assert_true(bool(target.call("has_active_outline_particles")),
+		if target.has_method("has_active_glow"):
+			_assert_true(bool(target.call("has_active_glow")),
 				"Selection lights the target's outline particles")
 
 	host.queue_free()

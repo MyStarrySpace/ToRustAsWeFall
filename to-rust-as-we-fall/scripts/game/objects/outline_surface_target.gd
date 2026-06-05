@@ -3,6 +3,9 @@ class_name OutlineSurfaceTarget
 extends StaticBody3D
 
 const OBJECT_OUTLINE_SHADER := preload("res://resources/object_outline_feedback.gdshader")
+const OUTLINE_EMISSION_SHADER := preload("res://resources/outline_emission_noise.gdshader")
+# Shared morphing-noise texture for the emission shell (one for all targets).
+static var _shared_noise_tex: Texture2D
 
 ## Pickable room object with object-local outline and selected feedback.
 
@@ -32,6 +35,7 @@ var _highlight_meshes: Array[MeshInstance3D] = []
 var _original_overlays := {}
 var _outline_shells := {}
 var _outline_particles := {}
+var _glow_shells := {}  # expanded inverted-hull shells with the morphing-noise emission shader
 var _hovered := false
 var _selected := false
 var _feedback_managed := false
@@ -150,11 +154,11 @@ func set_highlight(active: bool) -> void:
 	if active:
 		if not _selected:
 			_apply_object_outline(hover_outline_color, hover_object_outline_width, 1.0)
-			_play_outline_particles()
+			_show_glow(true)
 		return
 	if not _selected:
 		_clear_object_outline()
-		_stop_outline_particles()
+		_show_glow(false)
 
 func register_highlight_mesh(mesh_instance: MeshInstance3D) -> void:
 	if mesh_instance == null or _highlight_meshes.has(mesh_instance):
@@ -191,8 +195,7 @@ func begin_queued_feedback(_origin: Vector3 = Vector3.ZERO) -> void:
 	_selected = true
 	_selection_token += 1
 	_apply_object_outline(selected_feedback_color, selected_object_outline_width, selected_object_glow_strength)
-	_play_outline_particles()
-	play_selected_feedback()
+	_show_glow(true)
 
 func complete_queued_feedback() -> void:
 	_clear_queued_feedback()
@@ -206,15 +209,15 @@ func is_selected_feedback_active() -> bool:
 func _clear_queued_feedback() -> void:
 	_selected = false
 	_selection_token += 1
-	_stop_outline_particles()
-	if _selected_particles != null:
-		_clear_particle_emitter(_selected_particles)
 	if _debug_anchor != null:
 		_debug_anchor.visible = false
+	# Fall back to the hover highlight if still hovered, else clear outline + glow entirely.
 	if _hovered:
 		_apply_object_outline(hover_outline_color, hover_object_outline_width, 1.0)
+		_show_glow(true)
 	else:
 		_clear_object_outline()
+		_show_glow(false)
 
 func _apply_object_outline(color: Color, width: float, glow_strength: float) -> void:
 	if not object_outline_enabled:
@@ -274,6 +277,60 @@ func _create_outline_material() -> ShaderMaterial:
 	material.shader = OBJECT_OUTLINE_SHADER
 	material.render_priority = 120
 	return material
+
+# --- Emission glow shell: an expanded inverted hull whose silhouette band is filled with
+# morphing noise, so the outline looks like it's shedding energy (replaces the GPU particles). ---
+
+static func _noise_texture() -> Texture2D:
+	if _shared_noise_tex != null:
+		return _shared_noise_tex
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	noise.frequency = 0.035
+	noise.fractal_octaves = 3
+	# Synchronous seamless image (not async NoiseTexture2D) so the glow has noise immediately.
+	_shared_noise_tex = ImageTexture.create_from_image(noise.get_seamless_image(256, 256))
+	return _shared_noise_tex
+
+func _ensure_glow_shell(mesh_instance: MeshInstance3D) -> MeshInstance3D:
+	if mesh_instance == null or mesh_instance.mesh == null:
+		return null
+	var mesh_id := mesh_instance.get_instance_id()
+	var existing = _glow_shells.get(mesh_id, null)
+	if existing is MeshInstance3D and is_instance_valid(existing):
+		return existing
+	var shell := MeshInstance3D.new()
+	shell.name = "OutlineEmissionShell"
+	shell.mesh = mesh_instance.mesh
+	shell.visible = false
+	shell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	shell.extra_cull_margin = maxf(mesh_instance.extra_cull_margin, 6.0)
+	shell.layers = mesh_instance.layers
+	var mat := ShaderMaterial.new()
+	mat.shader = OUTLINE_EMISSION_SHADER
+	mat.render_priority = 118  # just under the crisp outline (120)
+	mat.set_shader_parameter("noise_tex", _noise_texture())
+	shell.material_override = mat
+	mesh_instance.add_child(shell)
+	_glow_shells[mesh_id] = shell
+	return shell
+
+func _show_glow(active: bool, color: Color = selected_feedback_color) -> void:
+	_prune_highlight_meshes()
+	for mesh_instance in _highlight_meshes:
+		var shell := _ensure_glow_shell(mesh_instance)
+		if shell == null:
+			continue
+		var mat := shell.material_override as ShaderMaterial
+		if mat != null:
+			mat.set_shader_parameter("glow_color", color)
+		shell.visible = active
+
+func has_active_glow() -> bool:
+	for shell in _glow_shells.values():
+		if shell is MeshInstance3D and is_instance_valid(shell) and (shell as MeshInstance3D).visible:
+			return true
+	return false
 
 func _play_outline_particles() -> void:
 	if not outline_particles_enabled:
