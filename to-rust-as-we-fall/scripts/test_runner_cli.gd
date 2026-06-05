@@ -160,6 +160,9 @@ func _ready() -> void:
 			"--test-grid-levels":
 				ran_test = true
 				_test_grid_levels()
+			"--test-state-machine":
+				ran_test = true
+				_test_state_machine()
 			"--test-player-cross-level":
 				ran_test = true
 				_test_player_cross_level_click()
@@ -609,6 +612,7 @@ func _run_all_tests() -> void:
 	_test_syntax()
 	_test_grid_pathfinding()
 	_test_game_state()
+	_test_state_machine()
 	_test_cooperative_pathfinding()
 	_test_path_renderer()
 	await _test_path_render_manager()
@@ -8207,6 +8211,78 @@ func _test_grid_levels() -> void:
 	_assert_true(gy.is_moving("c2"), "Same-floor cross-level call starts a normal move")
 	_assert_true(not gy.command_move_cross_level("c2", Vector2i(6, 6), 9),
 		"No route to an absent floor -> command_move_cross_level returns false")
+
+# --- Test: reusable scheduler-driven state machine (StateMachine) ---
+func _test_state_machine() -> void:
+	_test_name = "State Machine"
+	var sched := EventScheduler.new()
+	var log := {"enter": [], "exit": [], "update": 0, "changes": []}
+	var fsm := StateMachine.new(sched, "test_fsm")
+	fsm.add_state("idle",
+		func(): log["enter"].append("idle"),
+		func(): log["exit"].append("idle"))
+	fsm.add_state("patrol",
+		func(): log["enter"].append("patrol"),
+		func(): log["exit"].append("patrol"),
+		func(_d): log["update"] = int(log["update"]) + 1)
+	fsm.add_state("alert", func(): log["enter"].append("alert"))
+	fsm.state_changed.connect(func(from_s, to_s): log["changes"].append("%s->%s" % [from_s, to_s]))
+
+	fsm.start("idle")
+	_assert_equals(fsm.current(), "idle", "start sets the initial state")
+	_assert_true(log["enter"] == ["idle"], "start runs the enter hook (no exit of a previous state)")
+
+	fsm.transition_to("patrol")
+	_assert_equals(fsm.current(), "patrol", "transition_to changes state")
+	_assert_true(log["exit"] == ["idle"], "transition_to runs the previous state's exit hook")
+	_assert_true(log["enter"] == ["idle", "patrol"], "transition_to runs the new state's enter hook")
+	_assert_true(log["changes"] == ["idle->patrol"], "state_changed fires with from/to")
+
+	var enters_before: int = (log["enter"] as Array).size()
+	fsm.transition_to("patrol")
+	_assert_equals((log["enter"] as Array).size(), enters_before, "a self-transition is a no-op")
+
+	fsm.update(0.1)
+	_assert_equals(int(log["update"]), 1, "update drives the current state's update hook")
+
+	# Timed transition rides the scheduler (respects delay).
+	fsm.transition_after(1.0, "alert")
+	sched.advance_ticks(0.5)
+	_assert_equals(fsm.current(), "patrol", "a scheduled transition has not fired before its delay")
+	sched.advance_ticks(0.6)
+	_assert_equals(fsm.current(), "alert", "a scheduled transition fires after the delay")
+
+	# An intervening transition cancels a pending scheduled transition (no stale state change).
+	var sm2 := StateMachine.new(sched, "test_fsm2")
+	var fired := {"v": false}
+	sm2.add_state("a")
+	sm2.add_state("b", func(): fired["v"] = true)
+	sm2.add_state("c")
+	sm2.start("a")
+	sm2.transition_after(1.0, "b")
+	sm2.transition_to("c")
+	sched.advance_ticks(2.0)
+	_assert_true(not fired["v"], "an intervening transition cancels the pending scheduled transition")
+	_assert_equals(sm2.current(), "c", "the FSM stays in the manually-chosen state")
+
+	# Replay determinism: identical tick steps (1x vs 10x) reach the same state — fast-forward safe.
+	_assert_equals(_drive_fsm_sequence(0.05), _drive_fsm_sequence(0.5),
+		"chained timed transitions are step-size invariant (fast-forward / replay safe)")
+	_assert_equals(_drive_fsm_sequence(0.05), "s2", "the chained FSM ends in the final state")
+
+func _drive_fsm_sequence(step: float) -> String:
+	var sched := EventScheduler.new()
+	var sm := StateMachine.new(sched, "drive")
+	sm.add_state("s0")
+	sm.add_state("s2")
+	sm.add_state("s1", func(): sm.transition_after(1.0, "s2"))  # chain forward on enter
+	sm.start("s0")
+	sm.transition_after(1.0, "s1")
+	var t := 0.0
+	while t < 3.0:
+		sched.advance_ticks(step)
+		t += step
+	return sm.current()
 
 # --- Test: clicking another floor routes the player cross-level (shared controller, every scene) ---
 # The player used to REJECT a click on a different stacked floor (it would lerp through the air).
