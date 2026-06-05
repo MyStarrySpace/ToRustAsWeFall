@@ -7,6 +7,8 @@ extends "res://scripts/tutorial/tutorial_sequence.gd"
 var _aster_node: CharacterBody3D
 var _peris_node: CharacterBody3D
 var _fall_landed_fired := false  # one-shot guard: bridge landing fires once
+var _fall_tween: Tween           # the cosmetic fall animation (wall-clock)
+var _collapsed_chunks_removed := false  # one-shot guard: old level chunks freed once
 var _escort_1  # NPC
 var _escort_2  # NPC
 var _active_character := "peris"
@@ -886,8 +888,12 @@ func _execute_bridge_fall() -> void:
 		tween.tween_property(char_node, "position:y", BELOW_Y + 0.5, fall_duration) \
 			.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
 	tween.tween_property(_camera, "follow_offset:y", _camera.follow_offset.y + BELOW_Y, fall_duration * 1.1)
-	# The fall animation is a cosmetic tween; the landing (which repositions the party
-	# in GameState and advances the step) rides the scheduler so fast-forward matches.
+	# The fall animation is a cosmetic tween; the landing (repositions the party in GameState and
+	# advances the step) rides the scheduler so fast-forward matches. But the FREEING of the old
+	# level chunks is cosmetic — it must wait for the visual fall to finish, or under fast-forward
+	# the scheduler races ahead and the bridge vanishes mid-air. So ride the tween's completion.
+	_fall_tween = tween
+	tween.finished.connect(_remove_collapsed_chunks)
 	_scheduler.schedule_after(fall_duration * 1.1, _on_fall_landed, "fall_landed")
 
 func _on_fall_landed() -> void:
@@ -899,6 +905,19 @@ func _on_fall_landed() -> void:
 	for char_id in ["peris", "aster"]:
 		var pos: Vector3 = _game_state.get_position(char_id)
 		_game_state.characters[char_id].position = Vector3(pos.x, BELOW_Y + 0.5, pos.z)
+	# Free the old level only once the cosmetic fall has visually finished. At 1x the tween is
+	# already done by now; under fast-forward it isn't, so let tween.finished do it. Headless /
+	# force-fire (no live tween) removes them here.
+	if _fall_tween == null or not _fall_tween.is_running():
+		_remove_collapsed_chunks()
+	_scheduler.schedule_after(1.0, _start_fallen, "fallen")
+
+## Cosmetic: free the elevator + bridge chunks (the old, fallen-away level). Idempotent — runs
+## from tween.finished (real play) or directly (headless), whichever resolves first.
+func _remove_collapsed_chunks() -> void:
+	if _collapsed_chunks_removed:
+		return
+	_collapsed_chunks_removed = true
 	_unload_chunk("elevator")
 	_unload_chunk("bridge")
 	_emergency_light = null
@@ -907,7 +926,6 @@ func _on_fall_landed() -> void:
 	_door_panel_a = null
 	_door_panel_b = null
 	_no_exit_label = null
-	_scheduler.schedule_after(1.0, _start_fallen, "fallen")
 
 func _start_fallen() -> void:
 	_enter_step("fallen")
