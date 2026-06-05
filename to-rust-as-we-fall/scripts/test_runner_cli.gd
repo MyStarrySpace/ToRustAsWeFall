@@ -7252,7 +7252,9 @@ func _advance_preview_interactables_for_idle(instance: Node, delta: float) -> vo
 		# Scheduler-driven dwell schedules on range-enter; mirror that here since we
 		# set _player_in_range directly instead of going through _on_body_entered.
 		if "_scheduler" in interactable and interactable.get("_scheduler") != null:
-			if in_range and not interactable.get("_dwell_scheduled"):
+			var dwell_fsm = interactable.get("_dwell_fsm")
+			var already_dwelling: bool = dwell_fsm != null and dwell_fsm.current() == "dwelling"
+			if in_range and not already_dwelling:
 				interactable.call("_begin_dwell")
 			elif not in_range:
 				interactable.call("_cancel_dwell")

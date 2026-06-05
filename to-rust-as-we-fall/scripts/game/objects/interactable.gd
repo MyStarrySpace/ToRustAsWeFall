@@ -37,8 +37,11 @@ var _used := false
 # Gameplay scheduler. When set, a HOLD_ACTION's dwell completion is a scheduled
 # event that pauses with gameplay; when null, dwell falls back to the wall clock.
 var _scheduler = null
-var _dwell_tag := ""
-var _dwell_scheduled := false
+# The dwell is a scheduler-driven mini state machine: armed (waiting) <-> dwelling (timer running).
+# Built once the scheduler is injected; the FSM's tag owns the scheduled completion, so leaving
+# 'dwelling' (player exits, trigger, disable) cancels it automatically. The enabled/used lifecycle
+# stays as the external flag API below (scenes set interaction_enabled directly).
+var _dwell_fsm: StateMachine
 var _dwell_start_tick := 0.0
 
 # Data-layer binding. When set, GameState owns this interactable's trigger /
@@ -161,8 +164,11 @@ func _process(delta: float) -> void:
 ## pauses with gameplay. Without it, dwell falls back to the per-frame wall clock.
 func set_scheduler(scheduler_ref) -> void:
 	_scheduler = scheduler_ref
-	if _scheduler != null and _dwell_tag == "":
-		_dwell_tag = "dwell_%d" % get_instance_id()
+	if _scheduler != null and _dwell_fsm == null:
+		_dwell_fsm = StateMachine.new(_scheduler, "dwell_%d" % get_instance_id())
+		_dwell_fsm.add_state("armed")
+		_dwell_fsm.add_state("dwelling", _enter_dwelling)
+		_dwell_fsm.start("armed")
 
 ## Bind this view to a GameState-registered interactable id. Pulls the spec's
 ## parameters into the node's fields (so all the visual/dwell code is unchanged)
@@ -186,23 +192,27 @@ func bind_data(game_state, id: String) -> void:
 	interaction_enabled = _game_state.is_interactable_enabled(id)
 
 func _begin_dwell() -> void:
-	if _scheduler == null or not _uses_hold_timer() or not _player_in_range:
+	if _dwell_fsm == null or not _uses_hold_timer() or not _player_in_range:
 		return
 	if _used or not interaction_enabled:
 		return
-	_cancel_dwell()
+	# (Re)start the dwell: bounce through 'armed' so re-entering 'dwelling' re-arms the timer even
+	# if we were already dwelling (the FSM tag cancels any prior pending completion).
+	_dwell_fsm.transition_to("armed")
+	_dwell_fsm.transition_to("dwelling")
+
+## 'dwelling' enter hook: reset progress + schedule the completion under the FSM tag.
+func _enter_dwelling() -> void:
 	_dwell_start_tick = _scheduler.get_current_tick()
 	_dwell_progress = 0.0
-	_scheduler.schedule_after(dwell_time, Callable(self, "_on_dwell_complete"), _dwell_tag)
-	_dwell_scheduled = true
+	_dwell_fsm.schedule(dwell_time, _on_dwell_complete)
 
 func _cancel_dwell() -> void:
-	if _scheduler != null and _dwell_scheduled and _dwell_tag != "":
-		_scheduler.cancel_tag(_dwell_tag)
-	_dwell_scheduled = false
+	# Back to 'armed' — the FSM cancels the pending completion via its tag.
+	if _dwell_fsm != null:
+		_dwell_fsm.transition_to("armed")
 
 func _on_dwell_complete() -> void:
-	_dwell_scheduled = false
 	if _player_in_range and not _used and interaction_enabled and _uses_hold_timer():
 		_trigger()
 		# Non-one-shot interactables re-arm while the player keeps standing in range.
