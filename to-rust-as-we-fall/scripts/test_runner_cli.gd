@@ -166,6 +166,9 @@ func _ready() -> void:
 			"--test-elevator-enemy-engagement":
 				ran_test = true
 				_test_elevator_enemy_engagement()
+			"--test-chromatic-aberration":
+				ran_test = true
+				await _test_chromatic_aberration()
 			"--test-data-identify":
 				ran_test = true
 				_test_data_identify()
@@ -621,6 +624,7 @@ func _run_all_tests() -> void:
 	_test_state_machine()
 	_test_elevator_enemy_engagement()
 	_test_data_identify()
+	await _test_chromatic_aberration()
 	_test_cooperative_pathfinding()
 	_test_path_renderer()
 	await _test_path_render_manager()
@@ -8318,6 +8322,32 @@ func _test_elevator_enemy_engagement() -> void:
 		"The fork enemy runs its combat loop instead of idling (got: %s)" % enemy.get_state())
 	enemy.queue_free()
 	holder.queue_free()
+
+# --- Test: chromatic aberration is live in the sim scenes ---
+func _test_chromatic_aberration() -> void:
+	_test_name = "Chromatic Aberration (Sims)"
+	for scene_path in ["res://scenes/tutorial/aster_sim.tscn", "res://scenes/tutorial/peris_sim.tscn"]:
+		var scene = load(scene_path)
+		if scene == null:
+			_assert_true(false, "%s loads" % scene_path)
+			continue
+		var inst = scene.instantiate()
+		get_tree().root.add_child(inst)
+		for i in range(4):
+			await get_tree().process_frame
+		_assert_true(bool(inst.get("chromatic_aberration_enabled")),
+			"%s has chromatic aberration enabled" % scene_path.get_file())
+		var layer = inst.get("_chromatic_aberration_layer")
+		var mat = inst.get("_chromatic_aberration_material")
+		_assert_true(layer != null and mat != null,
+			"%s builds the chromatic aberration post-process" % scene_path.get_file())
+		if layer != null:
+			_assert_true(layer.visible, "%s chromatic layer is active" % scene_path.get_file())
+		if mat != null:
+			_assert_true(float(mat.get_shader_parameter("strength_px")) > 0.0,
+				"%s chromatic shader carries a non-zero strength" % scene_path.get_file())
+		inst.queue_free()
+		await get_tree().process_frame
 
 # --- Test: hover-to-identify with Aster's data overlay ---
 # When the data overlay is on, hovering an interactable surfaces the object's name; off, nothing.
