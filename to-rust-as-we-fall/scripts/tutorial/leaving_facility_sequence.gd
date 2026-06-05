@@ -174,6 +174,7 @@ func _start_first_corridor() -> void:
 		_hud.routing_toggled.connect(func(mode: String): _routing_mode = mode)
 		_hud.show_run_toggle(false)
 		_hud.run_toggled.connect(func(running: bool): _toggle_run())
+		_hud.highlight_held.connect(_on_highlight_held)  # hold SHIFT: reveal all interactables
 	_set_game_time(_game_day, _game_time, true)
 
 func _start_safe_route_lesson() -> void:

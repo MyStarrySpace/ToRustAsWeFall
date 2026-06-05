@@ -580,6 +580,19 @@ func _inject_scheduler_into_interactables(node: Node) -> void:
 	for child in node.get_children():
 		_inject_scheduler_into_interactables(child)
 
+## Reveal-all overlay handler: while the player holds the highlight action (SHIFT), every
+## interactable in the scene shows its label so the player can see what's interactable. A scene
+## that builds a HUD wires it with `_hud.highlight_held.connect(_on_highlight_held)`. Input flows
+## key → HUD signal → here (no raw key polling in the sequence — keeps input discipline green).
+func _on_highlight_held(active: bool) -> void:
+	_set_all_interactables_highlighted(self, active)
+
+func _set_all_interactables_highlighted(node: Node, active: bool) -> void:
+	if node is Interactable and node.has_method("set_highlighted"):
+		node.call("set_highlighted", active)
+	for child in node.get_children():
+		_set_all_interactables_highlighted(child, active)
+
 # --- Exploration helpers ---
 
 func _create_interactable(

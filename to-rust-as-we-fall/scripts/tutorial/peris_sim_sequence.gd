@@ -83,6 +83,8 @@ func _setup_ui() -> void:
 		if id == "protect":
 			_on_protect_pressed()
 	)
+	# Hold SHIFT to reveal every interactable at once (key → HUD signal → base handler).
+	_hud.highlight_held.connect(_on_highlight_held)
 	# Keep run input gated by step.
 	_hud.bind_game_state(_game_state, "peris", false)
 
@@ -212,6 +214,11 @@ func _start_workspace() -> void:
 	_build_exploration_objects()
 	_explore_gate_unlocked = false
 	_explore_gate_fired = false
+	# Teach the reveal-all overlay while the player is hunting the room for what to interact with.
+	# UI lane so the hint shows even if gameplay is paused, and speeds with hold-F like the rest.
+	_ui_scheduler.schedule_after(2.5, func():
+		if _tutorial_prompt != null:
+			_tutorial_prompt.show_prompt("[Hold Shift] - reveal interactions", 4.0), "highlight_hint")
 	_scheduler.schedule_after(EXPLORE_MIN_TIME, _unlock_exploration_gate, "explore_gate_unlock")
 
 func _unlock_exploration_gate() -> void:

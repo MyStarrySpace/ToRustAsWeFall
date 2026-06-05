@@ -57,6 +57,8 @@ var active_character := ""
 var _progress_ring: MeshInstance3D
 var _progress_mat: StandardMaterial3D
 var _tutorial_label_3d: Label3D
+var _highlighted := false              # reveal-all overlay (hold SHIFT) is showing this one
+var _label_shown_by_sequence := false  # the sequence asked for the label (survives overlay release)
 var _collision_shape: CollisionShape3D
 var _selected_particles: GPUParticles3D
 var _selected_particle_material: ParticleProcessMaterial
@@ -254,17 +256,42 @@ func _resolve_dialogue_key() -> String:
 	return ""
 
 func show_tutorial_label() -> void:
+	_label_shown_by_sequence = true
+	_show_label_internal()
+
+func hide_tutorial_label() -> void:
+	_label_shown_by_sequence = false
+	# Keep the label up while the reveal-all overlay (hold SHIFT) is active; it clears on release.
+	if _highlighted:
+		return
+	_hide_label_internal()
+
+func _show_label_internal() -> void:
 	if _tutorial_label_3d and interaction_enabled:
 		_tutorial_label_3d.visible = true
 		_tutorial_label_3d.modulate.a = 0.0
 		var tween := create_tween()
 		tween.tween_property(_tutorial_label_3d, "modulate:a", 0.9, 0.5)
 
-func hide_tutorial_label() -> void:
+func _hide_label_internal() -> void:
 	if _tutorial_label_3d:
 		var tween := create_tween()
 		tween.tween_property(_tutorial_label_3d, "modulate:a", 0.0, 0.3)
 		tween.tween_callback(func(): _tutorial_label_3d.visible = false)
+
+## Reveal-all overlay: while the player holds the highlight action (SHIFT), every enabled
+## interactable shows its label so the player can see what's interactable; on release it hides
+## again — unless the owning sequence had explicitly shown it. No-op for interactables without
+## a label or while disabled.
+func set_highlighted(active: bool) -> void:
+	if _highlighted == active:
+		return
+	_highlighted = active
+	if active:
+		if interaction_enabled and not _used:
+			_show_label_internal()
+	elif not _label_shown_by_sequence:
+		_hide_label_internal()
 
 func _on_body_entered(body: Node3D) -> void:
 	if _used or not interaction_enabled:

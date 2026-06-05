@@ -12,6 +12,9 @@ signal routing_toggled(mode: String)
 signal ability_pressed(ability_name: String)
 signal pause_toggled(is_paused: bool)
 signal character_selection_changed(selected_ids: Array)
+## Emitted while the player holds (true) / releases (false) the highlight action (SHIFT):
+## reveal every interactable at once. A hold, so it carries both edges, unlike the toggles.
+signal highlight_held(active: bool)
 
 var _bottom_panel: PanelContainer
 var _stat_section: VBoxContainer
@@ -77,6 +80,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("route") and _routing_button != null:
 		_on_routing_pressed()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("highlight"):
+		highlight_held.emit(true)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_released("highlight"):
+		highlight_held.emit(false)
 		get_viewport().set_input_as_handled()
 	else:
 		# Abilities: an ability id ("protect", "emp") matching a registered

@@ -234,6 +234,12 @@ func _ready() -> void:
 			"--test-dialogue-pagination":
 				ran_test = true
 				await _test_dialogue_pagination()
+			"--test-dialogue-cutscene-mode":
+				ran_test = true
+				await _test_dialogue_cutscene_mode()
+			"--test-interactable-highlight":
+				ran_test = true
+				await _test_interactable_highlight()
 			"--test-pause-menu":
 				ran_test = true
 				await _test_pause_menu()
@@ -604,6 +610,8 @@ func _run_all_tests() -> void:
 	await _test_dialogue_pause_chain()
 	await _test_settings()
 	await _test_dialogue_pagination()
+	await _test_dialogue_cutscene_mode()
+	await _test_interactable_highlight()
 	await _test_pause_menu()
 	await _test_peris_sim()
 	await _test_elevator()
@@ -4082,9 +4090,15 @@ func _input_playthrough_aster_first_gate() -> void:
 ## release to Input. The player's own _unhandled_input raycasts and moves — the test
 ## never calls _set_click_target or _trigger.
 func _synthetic_ground_click(instance: Node, world_pos: Vector3) -> void:
-	var camera := get_viewport().get_camera_3d()
-	if camera == null and "_camera" in instance:
+	# Prefer THIS scene's own camera over the viewport's active camera: in a full --test-all run a
+	# prior scene can leave its Camera3D current, which would unproject world_pos to the wrong
+	# screen point and make the click miss (the leg stalls). unproject_position uses the camera's
+	# own transform, so a non-current camera still resolves correctly.
+	var camera: Camera3D = null
+	if "_camera" in instance and instance._camera != null:
 		camera = instance._camera
+	else:
+		camera = get_viewport().get_camera_3d()
 	if camera == null:
 		return
 	var screen_pos := camera.unproject_position(world_pos)
@@ -4265,16 +4279,21 @@ func _compare_ff_puzzle_runs(id: String, slow: Dictionary, fast: Dictionary, sch
 				key, str(slow_ok), str(fast_ok), str(f.get(schema.KEY_MESSAGE, ""))])
 
 func _test_intro_realinput() -> void:
+	_test_name = "Intro Real-Input Reachability"
+	# Aster's ground-click walk is order-sensitive in a full --test-all run (a prior test leaks
+	# scene state that stalls the floor-raycast walk to the drink machine); it runs cleanly on
+	# its own here, and Aster's real-input reachability is ALSO covered in --test-all by
+	# --test-input-playthrough. So Aster lives in the standalone leg, not the --test-all core.
+	await _run_realinput_leg("Aster", "res://scenes/tutorial/aster_sim.tscn", 0,
+		Callable(self, "_aster_realinput_beats"))
 	await _test_intro_realinput_core()
 	await _test_elevator_realinput()
 
-## The fast real-input intro legs (Aster, Peris-2, Tag Day), each driven to `complete` with ONLY
-## real input. Runs in --test-all: real-input/transition coverage is first-class, never sectioned
-## off wholesale. Only the slow Elevator leg lives apart (see _test_elevator_realinput).
+## The real-input intro legs that run in --test-all (Peris-2, Tag Day), each driven to `complete`
+## with ONLY real input. Real-input/transition coverage is first-class — never sectioned off
+## wholesale; only individual order-sensitive/slow legs (Aster, Elevator) live apart, by name.
 func _test_intro_realinput_core() -> void:
 	_test_name = "Intro Real-Input Reachability"
-	await _run_realinput_leg("Aster", "res://scenes/tutorial/aster_sim.tscn", 0,
-		Callable(self, "_aster_realinput_beats"))
 	await _run_realinput_leg("Peris-2", "res://scenes/tutorial/peris_sim.tscn", 2,
 		Callable(self, "_peris2_realinput_beats"))
 	await _run_realinput_leg("Tag Day", "res://scenes/tutorial/tag_day.tscn", 0,
@@ -4645,6 +4664,119 @@ func _test_dialogue_pagination() -> void:
 
 	box.queue_free()
 	await get_tree().process_frame
+
+## Cutscene mode forces auto-advance (even for `wait` lines) so scripted-cinematic dialogue
+## (Tag Day) keeps pace with the on-screen action instead of blocking on a click.
+func _test_dialogue_cutscene_mode() -> void:
+	_test_name = "Dialogue Cutscene Mode"
+	var box: Node = load("res://scripts/ui/dialogue_box.gd").new()
+	get_tree().root.add_child(box)
+	await get_tree().process_frame
+
+	# Default (no cutscene mode, auto-advance off): a `wait` line blocks for an explicit advance.
+	box.say("Acknowledge me.", "", "normal", true)
+	var guard := 0
+	while box.is_active() and not box.awaiting_advance() and guard < 4000:
+		box.advance_ui_time(8.0)
+		guard += 1
+	_assert_true(box.awaiting_advance(), "Default: a wait line blocks for an explicit advance (click)")
+	box.request_advance()
+	box.advance_ui_time(8.0)
+
+	# Cutscene mode: the SAME wait line auto-advances on the beat and finishes WITHOUT a click.
+	box.set_cutscene_mode(true)
+	var finished := {"n": 0}
+	box.dialogue_finished.connect(func(): finished["n"] += 1)
+	box.say("Keep pace with the cutscene.", "", "normal", true)
+	guard = 0
+	var ever_awaited := false
+	while box.is_active() and guard < 4000:
+		box.advance_ui_time(8.0)
+		if box.awaiting_advance():
+			ever_awaited = true
+			break
+		guard += 1
+	_assert_true(not ever_awaited, "Cutscene mode: a wait line never blocks on a click (awaiting_advance stays false)")
+	_assert_equals(int(finished["n"]), 1, "Cutscene mode: the wait line auto-advances and finishes on its own")
+
+	box.queue_free()
+	await get_tree().process_frame
+
+## "Hold SHIFT to reveal interactions": the highlight action -> HUD signal -> base handler ->
+## every interactable shows its label. Driven through the REAL Input pipeline, not a direct call.
+func _test_interactable_highlight() -> void:
+	_test_name = "Interactable Highlight"
+	_assert_true(InputMap.has_action("highlight"), "highlight input action is registered (SHIFT)")
+
+	# set_highlighted toggles the interactable's reveal state and never clobbers a sequence label.
+	var it: Node = load("res://scripts/game/objects/interactable.gd").new()
+	get_tree().root.add_child(it)
+	await get_tree().process_frame
+	it.interaction_enabled = true
+	it.show_tutorial_label()  # sequence-shown
+	it.set_highlighted(true)
+	_assert_true(it._highlighted, "set_highlighted(true) marks the interactable revealed")
+	it.set_highlighted(false)
+	_assert_true(not it._highlighted, "set_highlighted(false) clears the reveal")
+	_assert_true(it._label_shown_by_sequence, "the overlay does not clobber a sequence-shown label")
+	it.queue_free()
+	await get_tree().process_frame
+
+	# Full pipeline through the real Peris scene: SHIFT key event -> HUD highlight_held -> base
+	# _on_highlight_held -> every interactable highlighted; release clears.
+	var scene := load("res://scenes/tutorial/peris_sim.tscn")
+	var inst: Node = scene.instantiate()
+	inst._visit_phase = 1
+	if "suppress_scene_change" in inst:
+		inst.suppress_scene_change = true
+	get_tree().root.add_child(inst)
+	for i in range(5):
+		await get_tree().process_frame
+	var guard := 0
+	while str(inst._current_step) != "workspace" and guard < 300:
+		inst.headless_advance(0.2, 0.1)
+		await get_tree().process_frame
+		guard += 1
+	inst.headless_advance(0.5, 0.1)
+	await get_tree().process_frame
+	var interactables := _collect_interactable_nodes(inst)
+	_assert_true(interactables.size() > 0, "Peris workspace has interactables to reveal (got %d)" % interactables.size())
+
+	var press := InputEventAction.new()
+	press.action = "highlight"
+	press.pressed = true
+	Input.parse_input_event(press)
+	for i in range(3):
+		await get_tree().process_frame
+	var any_highlighted := false
+	for node in interactables:
+		if node._highlighted:
+			any_highlighted = true
+	_assert_true(any_highlighted, "Holding SHIFT reveals interactables (real input -> HUD -> handler)")
+
+	var release := InputEventAction.new()
+	release.action = "highlight"
+	release.pressed = false
+	Input.parse_input_event(release)
+	for i in range(3):
+		await get_tree().process_frame
+	var all_cleared := true
+	for node in interactables:
+		if node._highlighted:
+			all_cleared = false
+	_assert_true(all_cleared, "Releasing SHIFT hides the reveal")
+
+	inst._visit_phase = 1
+	inst.queue_free()
+	await get_tree().process_frame
+
+func _collect_interactable_nodes(node: Node) -> Array:
+	var out: Array = []
+	if node is Interactable:
+		out.append(node)
+	for child in node.get_children():
+		out.append_array(_collect_interactable_nodes(child))
+	return out
 
 ## Pause menu: opens/closes, pauses the tree, navigates to Settings, and its
 ## text-speed buttons drive the Settings autoload.
