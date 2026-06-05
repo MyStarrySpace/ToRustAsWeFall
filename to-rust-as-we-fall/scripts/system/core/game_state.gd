@@ -67,6 +67,9 @@ const RUN_TICK_INTERVAL := 0.1
 ## Detection ignores targets separated by more than this vertical gap (a stacked floor). Standing-
 ## height / ramp differences stay within it; a full level (grid.level_height ~4) is blocked.
 const DETECTION_VERTICAL_BAND := 2.0
+## A medium hide drops an enemy's effective spotting range to this fraction of its outer range — the
+## "inner" tier. Close enough (inside this band) and a corner/scarpet won't shake a chaser.
+const DETECTION_INNER_FACTOR := 0.45
 
 static func normalize_atp(value: float) -> float:
 	if value > ATP_MAX_PIPS + 0.001:
@@ -928,24 +931,48 @@ func _deserialize_explored(data: Dictionary) -> void:
 		for cell_arr in data[id]:
 			explored[id][Vector2i(cell_arr[0], cell_arr[1])] = true
 
-# --- Concealment (hide spots) ---
+# --- Concealment (hide spots, tiered) ---
+#
+# A character's concealment TIER throttles how close an enemy must be to spot them (two-tier
+# detection): 0 exposed -> spotted within the enemy's full (outer) range; 1 medium hide (a corner /
+# scarpet) -> spotted only within the INNER band, so it loses an outer-range chaser but not a close
+# one; 2 full hide (a tight spot / shelter) -> never spotted. Derived state (a chunk sets it from
+# hide-zone proximity), never logged; rebuilt from position on replay. Recomputing detection on
+# change makes an enemy lose/reacquire a target the instant the concealment changes.
+const CONCEAL_NONE := 0
+const CONCEAL_MEDIUM := 1
+const CONCEAL_FULL := 2
 
-## Whether a character is concealed — detection skips them entirely while true. Derived state (a
-## chunk sets it from hide-zone proximity), never logged; rebuilt from position on replay.
-func is_character_hidden(id: String) -> bool:
+func get_character_concealment(id: String) -> int:
 	if not characters.has(id):
-		return false
-	return bool(characters[id].stats.get("hidden", false))
+		return CONCEAL_NONE
+	return int(characters[id].stats.get("concealment", CONCEAL_NONE))
 
-## Conceal / reveal a character. Recomputes detection on change, so an enemy stops seeing a target
-## the instant it ducks into cover and resumes the instant it steps out.
-func set_character_hidden(id: String, hidden: bool) -> void:
+## Set a character's concealment tier (0 exposed / 1 medium / 2 full). Recomputes detection on change.
+func set_character_concealment(id: String, tier: int) -> void:
 	if not characters.has(id):
 		return
-	if bool(characters[id].stats.get("hidden", false)) == hidden:
+	var clamped := clampi(tier, CONCEAL_NONE, CONCEAL_FULL)
+	if int(characters[id].stats.get("concealment", CONCEAL_NONE)) == clamped:
 		return
-	characters[id].stats["hidden"] = hidden
+	characters[id].stats["concealment"] = clamped
 	_recompute_all_detection_predictions()
+
+## Concealed at all (tier >= 1) for reads; the bool setter maps to a FULL hide (tier 2).
+func is_character_hidden(id: String) -> bool:
+	return get_character_concealment(id) >= CONCEAL_MEDIUM
+
+func set_character_hidden(id: String, hidden: bool) -> void:
+	set_character_concealment(id, CONCEAL_FULL if hidden else CONCEAL_NONE)
+
+## The range at which a detector of `detector_outer` reach actually spots a target at concealment
+## `tier`: full range when exposed, the inner band when medium-hidden, nothing when fully hidden.
+func _effective_detection_range(detector_outer: float, target_concealment: int) -> float:
+	if target_concealment >= CONCEAL_FULL:
+		return 0.0
+	if target_concealment == CONCEAL_MEDIUM:
+		return detector_outer * DETECTION_INNER_FACTOR
+	return detector_outer
 
 # --- Predictive Detection ---
 
@@ -964,13 +991,13 @@ func _recompute_all_detection_predictions() -> void:
 			# same level. Recomputed on every move/level change, so detection resumes after a fall.
 			if absf(get_position(id_a).y - get_position(id_b).y) > DETECTION_VERTICAL_BAND:
 				continue
-			# A HIDDEN character (tucked into a hide spot) is neither spotted nor a spotter — the
-			# pair is skipped entirely. Derived from position (a chunk sets it on hide-zone proximity),
-			# recomputed on change, so detection resumes the moment they step out of cover.
-			if is_character_hidden(id_a) or is_character_hidden(id_b):
-				continue
-			var range_a: float = characters[id_a].stats.get("detection_range", 0.0)
-			var range_b: float = characters[id_b].stats.get("detection_range", 0.0)
+			# Two-tier detection: the effective range each side spots the OTHER depends on the other's
+			# concealment tier (full when exposed, the inner band when medium-hidden, nothing when fully
+			# hidden) — a medium hide loses an outer-range chaser but not a close one.
+			var range_a := _effective_detection_range(
+				float(characters[id_a].stats.get("detection_range", 0.0)), get_character_concealment(id_b))
+			var range_b := _effective_detection_range(
+				float(characters[id_b].stats.get("detection_range", 0.0)), get_character_concealment(id_a))
 			if range_a > 0.0:
 				var t := _predict_detection_time(id_a, id_b, range_a, now)
 				if t >= 0.0:

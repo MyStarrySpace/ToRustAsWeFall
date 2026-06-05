@@ -175,6 +175,9 @@ func _ready() -> void:
 			"--test-hidden-detection":
 				ran_test = true
 				_test_hidden_detection()
+			"--test-two-tier-detection":
+				ran_test = true
+				_test_two_tier_detection()
 			"--test-data-identify":
 				ran_test = true
 				_test_data_identify()
@@ -631,6 +634,7 @@ func _run_all_tests() -> void:
 	_test_elevator_enemy_engagement()
 	_test_data_identify()
 	_test_hidden_detection()
+	_test_two_tier_detection()
 	await _test_lure_relay_puzzle()
 	await _test_chromatic_aberration()
 	_test_cooperative_pathfinding()
@@ -8428,6 +8432,38 @@ func _test_lure_relay_puzzle() -> void:
 	instance.queue_free()
 	await get_tree().process_frame
 
+# --- Test: two-tier detection — a hide's TIER sets how close an enemy must be to spot you ---
+func _test_two_tier_detection() -> void:
+	_test_name = "Two-Tier Detection"
+	var spots := func(dist: float, tier: int) -> bool:
+		var sched := EventScheduler.new()
+		var gs := GameState.new()
+		gs.scheduler = sched
+		var holder := Node3D.new()
+		add_child(holder)
+		gs.register_character("aster", Vector3(dist, 0.5, 0.0), 2.5, {})
+		gs.set_character_concealment("aster", tier)
+		var enemy := Enemy.new()
+		enemy.game_state = gs
+		enemy.char_id = "guard"
+		enemy._detection_targets = ["aster"]
+		holder.add_child(enemy)
+		gs.register_character("guard", Vector3(0.0, 0.5, 0.0), enemy.move_speed, {"detection_range": 6.0})
+		enemy.activate()
+		gs._recompute_all_detection_predictions()
+		for _i in range(30):
+			sched.advance_ticks(0.05)
+		var seen := enemy.get_state() != "idle"
+		enemy.queue_free()
+		holder.queue_free()
+		return seen
+	# Outer band (~5m: inside outer 6.0, outside inner 2.7):
+	_assert_true(spots.call(5.0, GameState.CONCEAL_NONE), "Exposed at outer range is spotted")
+	_assert_true(not spots.call(5.0, GameState.CONCEAL_MEDIUM), "A medium hide loses an outer-range chaser (corner / scarpet)")
+	# Inner band (~2m: inside inner 2.7):
+	_assert_true(spots.call(2.0, GameState.CONCEAL_MEDIUM), "A medium hide does NOT save you up close (inner range)")
+	_assert_true(not spots.call(2.0, GameState.CONCEAL_FULL), "Only a full hide (tight spot / shelter) loses a close chaser")
+
 # --- Test: chromatic aberration is live in the sim scenes ---
 func _test_chromatic_aberration() -> void:
 	_test_name = "Chromatic Aberration (Sims)"
@@ -9174,11 +9210,11 @@ func _test_event_log_mutation_audit() -> void:
 	var allowlist := PackedStringArray([
 		# Pure queries
 		"get_position", "is_moving", "get_grid_cell", "get_character_level",
-		"is_character_hidden",
+		"is_character_hidden", "get_character_concealment",
 		# Concealment is DERIVED state (a chunk sets it from hide-zone proximity each frame, like a
 		# detection prediction) — not a player/sequence input, so it isn't logged; replay rebuilds it
 		# from the logged movements that carry the character into/out of cover.
-		"set_character_hidden",
+		"set_character_hidden", "set_character_concealment",
 		"get_hand_items", "get_hand_slots", "get_internal_items",
 		"has_free_hand", "has_free_hands",
 		"get_scent_radius",
