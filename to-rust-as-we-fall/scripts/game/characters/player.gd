@@ -9,6 +9,12 @@ const CHARACTER_INTERACTION_CONTROLLER := preload("res://scripts/game/characters
 @export var run_speed := 6.0
 @export var color := Color(0.29, 0.62, 1.0)  # Aster blue
 
+## A free click whose target floor sits more than this far above/below the character's current
+## level is rejected — they can't walk through the air to a different floor (which would just lerp
+## the Y and "float between levels"). Flat scenes click same-Y floors, so this only bites where
+## floors are stacked (the elevator); scripted moves bypass _set_click_target entirely.
+const LEVEL_GAP := 1.6
+
 ## Optional A* grid.
 var grid_world: GridWorld
 
@@ -168,6 +174,10 @@ func _raycast_ground(screen_pos: Vector2) -> Vector3:
 var group_move := false
 
 func _set_click_target(world_pos: Vector3, cancel_interaction := true) -> bool:
+	# Reject a free walk across a large vertical gap (a different floor / level): the character
+	# would just lerp through the air to it. Only triggers where floors are stacked.
+	if game_state != null and char_id != "" and absf(world_pos.y - game_state.get_position(char_id).y) > LEVEL_GAP:
+		return false
 	if cancel_interaction and _interaction_controller != null:
 		_interaction_controller.cancel_active_target()
 	# Group move: one click moves the whole party. On a grid they spread onto
