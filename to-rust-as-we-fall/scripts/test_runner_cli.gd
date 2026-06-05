@@ -32,6 +32,16 @@ func _flush_test_timing() -> void:
 	if _profile_tests and _test_name_storage != "":
 		print("[TIMING] %7d ms  %s" % [Time.get_ticks_msec() - _test_start_ms, _test_name_storage])
 	_test_name_storage = ""
+
+# --test-intro runs the whole suite EXCEPT the heavy puzzle/generation tests (Puzzle Fast-Forward,
+# Puzzle Fragments, the Channels previews, the playtest loop — ~110s combined). _heavy() returns
+# true to skip one, and logs it so the omission is never silent.
+var _skip_heavy := false
+func _heavy(label: String) -> bool:
+	if _skip_heavy:
+		print("  SKIP (heavy puzzle test, --test-intro): %s" % label)
+		return true
+	return false
 const DayNightCycleScript = preload("res://scripts/system/simulation/day_night_cycle.gd")
 const FloraMemorySystem = preload("res://scripts/system/simulation/flora_memory_system.gd")
 const FauxPhysicsSensorScript = preload("res://scripts/game/mechanics/faux_physics_sensor.gd")
@@ -118,6 +128,14 @@ func _ready() -> void:
 		match arg:
 			"--test-all":
 				ran_test = true
+				_profile_tests = "--profile" in args
+				await _run_all_tests()
+				_flush_test_timing()
+			"--test-intro":
+				# The full suite minus the heavy puzzle/generation tests (~110s) — fast feedback
+				# for the intro/scene/UI/feature work without the slow puzzle timing sweeps.
+				ran_test = true
+				_skip_heavy = true
 				_profile_tests = "--profile" in args
 				await _run_all_tests()
 				_flush_test_timing()
@@ -604,7 +622,8 @@ func _run_all_tests() -> void:
 	_test_archetype_coherence()
 	_test_character_roster()
 	await _test_survival_archetypes()
-	await _test_generated_stretch_playtest_loop()
+	if not _heavy("Generated Stretch Playtest Loop"):
+		await _test_generated_stretch_playtest_loop()
 	_test_save_load_integrity()
 	_test_save_corruption_recovery()
 	_test_actuator_composition_blind()
@@ -631,7 +650,8 @@ func _run_all_tests() -> void:
 	await _test_aster_playthrough()
 	await _test_input_playthrough()
 	await _test_fast_forward_invariance()
-	await _test_puzzle_fast_forward_invariance()
+	if not _heavy("Puzzle Fast-Forward Invariance"):
+		await _test_puzzle_fast_forward_invariance()
 	await _test_dialogue_pause_chain()
 	await _test_settings()
 	await _test_dialogue_pagination()
@@ -644,7 +664,8 @@ func _run_all_tests() -> void:
 	await _test_leaving_facility()
 	await _test_showcase()
 	_test_engram_and_saves()
-	await _test_puzzle_fragments()
+	if not _heavy("Puzzle Fragments"):
+		await _test_puzzle_fragments()
 	await _test_day_night_cycle()
 	await _test_survival_range_timing()
 	await _test_tag_day()
@@ -667,8 +688,10 @@ func _run_all_tests() -> void:
 	await _test_physics_comparison()
 	await _test_mother_ferrolure_preview()
 	await _test_endo_junction_stretch_preview()
-	await _test_channels_rhythm_preview()
-	await _test_channels_hide_window_preview()
+	if not _heavy("Channels Rhythm Preview"):
+		await _test_channels_rhythm_preview()
+	if not _heavy("Channels Hide Window Preview"):
+		await _test_channels_hide_window_preview()
 	await _test_peris_phase2()
 	await _test_peris_scene_transition()
 	# Real-input intro legs (Aster/Peris-2/Tag Day) — first-class, not on-demand. The slow
