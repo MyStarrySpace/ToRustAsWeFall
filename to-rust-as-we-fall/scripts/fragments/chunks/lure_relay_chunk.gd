@@ -170,12 +170,14 @@ func _commit_enemies_to(which: int) -> void:
 		if not is_instance_valid(enemy) or not enemy.is_alive():
 			continue
 		# Drop the hunt and walk to the lure (one direct move; idle on arrival). Deterministic fan
-		# offset (no wall-clock RNG) so the data layer runs the same puzzle headless.
-		enemy._detection_targets.clear()
+		# offset (no wall-clock RNG) so the data layer runs the same puzzle headless. The guard stays
+		# alert to the party but DISTRACTED — its reach shrinks, so it won't notice a runner keeping
+		# distance, yet still catches one who steps right into it. Hide as it passes; don't crowd it.
 		enemy._current_target_id = ""
 		if enemy.has_method("_change_state"):
 			enemy._change_state("idle")
 		if gs != null and gs.characters.has(enemy.char_id):
+			gs.set_character_distracted(enemy.char_id, true)
 			gs.command_move_to_pos(enemy.char_id, pos + Vector3(0.0, 0.0, float(i - 1) * 0.7))
 
 func _on_lure_expired(which: int) -> void:
@@ -199,9 +201,12 @@ func _on_lure_expired(which: int) -> void:
 		_release_enemies()
 
 func _release_enemies() -> void:
+	var gs = _get_game_state()
 	for enemy in _enemies:
 		if is_instance_valid(enemy) and enemy.is_alive():
 			enemy._detection_targets.assign(PARTY_IDS)
+			if gs != null and gs.characters.has(enemy.char_id):
+				gs.set_character_distracted(enemy.char_id, false)
 			if enemy.has_method("_change_state"):
 				enemy._change_state("idle")
 

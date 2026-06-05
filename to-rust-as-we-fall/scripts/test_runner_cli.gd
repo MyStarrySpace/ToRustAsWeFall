@@ -8435,7 +8435,7 @@ func _test_lure_relay_puzzle() -> void:
 # --- Test: two-tier detection — a hide's TIER sets how close an enemy must be to spot you ---
 func _test_two_tier_detection() -> void:
 	_test_name = "Two-Tier Detection"
-	var spots := func(dist: float, tier: int) -> bool:
+	var spots := func(dist: float, tier: int, distracted: bool) -> bool:
 		var sched := EventScheduler.new()
 		var gs := GameState.new()
 		gs.scheduler = sched
@@ -8450,6 +8450,7 @@ func _test_two_tier_detection() -> void:
 		holder.add_child(enemy)
 		gs.register_character("guard", Vector3(0.0, 0.5, 0.0), enemy.move_speed, {"detection_range": 6.0})
 		enemy.activate()
+		gs.set_character_distracted("guard", distracted)
 		gs._recompute_all_detection_predictions()
 		for _i in range(30):
 			sched.advance_ticks(0.05)
@@ -8458,11 +8459,16 @@ func _test_two_tier_detection() -> void:
 		holder.queue_free()
 		return seen
 	# Outer band (~5m: inside outer 6.0, outside inner 2.7):
-	_assert_true(spots.call(5.0, GameState.CONCEAL_NONE), "Exposed at outer range is spotted")
-	_assert_true(not spots.call(5.0, GameState.CONCEAL_MEDIUM), "A medium hide loses an outer-range chaser (corner / scarpet)")
+	_assert_true(spots.call(5.0, GameState.CONCEAL_NONE, false), "Exposed at outer range is spotted")
+	_assert_true(not spots.call(5.0, GameState.CONCEAL_MEDIUM, false), "A medium hide loses an outer-range chaser (corner / scarpet)")
 	# Inner band (~2m: inside inner 2.7):
-	_assert_true(spots.call(2.0, GameState.CONCEAL_MEDIUM), "A medium hide does NOT save you up close (inner range)")
-	_assert_true(not spots.call(2.0, GameState.CONCEAL_FULL), "Only a full hide (tight spot / shelter) loses a close chaser")
+	_assert_true(spots.call(2.0, GameState.CONCEAL_MEDIUM, false), "A medium hide does NOT save you up close (inner range)")
+	_assert_true(not spots.call(2.0, GameState.CONCEAL_FULL, false), "Only a full hide (tight spot / shelter) loses a close chaser")
+	# Distracted (near a lure): outer 6.0 -> 2.4. A target at 4m the guard would normally spot slips by,
+	# but one that walks right up (1.5m) is still caught.
+	_assert_true(spots.call(4.0, GameState.CONCEAL_NONE, false), "An undistracted guard spots an exposed target at 4m")
+	_assert_true(not spots.call(4.0, GameState.CONCEAL_NONE, true), "A lure-distracted guard misses that same 4m target")
+	_assert_true(spots.call(1.5, GameState.CONCEAL_NONE, true), "A distracted guard still catches a target that steps right into it")
 
 # --- Test: chromatic aberration is live in the sim scenes ---
 func _test_chromatic_aberration() -> void:
@@ -9210,11 +9216,12 @@ func _test_event_log_mutation_audit() -> void:
 	var allowlist := PackedStringArray([
 		# Pure queries
 		"get_position", "is_moving", "get_grid_cell", "get_character_level",
-		"is_character_hidden", "get_character_concealment",
-		# Concealment is DERIVED state (a chunk sets it from hide-zone proximity each frame, like a
-		# detection prediction) — not a player/sequence input, so it isn't logged; replay rebuilds it
-		# from the logged movements that carry the character into/out of cover.
-		"set_character_hidden", "set_character_concealment",
+		"is_character_hidden", "get_character_concealment", "is_character_distracted",
+		# Concealment and lure-distraction are DERIVED state (a chunk sets them each frame from
+		# hide-zone / lure proximity, like a detection prediction) — not a player/sequence input, so
+		# they aren't logged; replay rebuilds them from the logged movements that carry characters
+		# into/out of cover and enemies to/from the lure.
+		"set_character_hidden", "set_character_concealment", "set_character_distracted",
 		"get_hand_items", "get_hand_slots", "get_internal_items",
 		"has_free_hand", "has_free_hands",
 		"get_scent_radius",

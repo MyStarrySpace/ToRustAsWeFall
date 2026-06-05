@@ -965,6 +965,35 @@ func is_character_hidden(id: String) -> bool:
 func set_character_hidden(id: String, hidden: bool) -> void:
 	set_character_concealment(id, CONCEAL_FULL if hidden else CONCEAL_NONE)
 
+# A DISTRACTED detector (one drawn to a ferrolure) has its outer reach shrunk to this fraction — it
+# can still catch a target that walks right into it, but won't notice one keeping its distance. The
+# detector-side mirror of concealment: derived state (a chunk sets it from lure proximity), never
+# logged, rebuilt on replay. Recomputes detection on change so the shrink/restore takes effect at once.
+const DETECTION_DISTRACTED_FACTOR := 0.4
+
+func is_character_distracted(id: String) -> bool:
+	if not characters.has(id):
+		return false
+	return bool(characters[id].stats.get("distracted", false))
+
+func set_character_distracted(id: String, distracted: bool) -> void:
+	if not characters.has(id):
+		return
+	if bool(characters[id].stats.get("distracted", false)) == distracted:
+		return
+	characters[id].stats["distracted"] = distracted
+	_recompute_all_detection_predictions()
+
+## A detector's outer reach, after any distraction shrink — the base from which the target's
+## concealment tier then carves the effective spotting range.
+func _detector_outer_range(detector_id: String) -> float:
+	if not characters.has(detector_id):
+		return 0.0
+	var outer := float(characters[detector_id].stats.get("detection_range", 0.0))
+	if bool(characters[detector_id].stats.get("distracted", false)):
+		outer *= DETECTION_DISTRACTED_FACTOR
+	return outer
+
 ## The range at which a detector of `detector_outer` reach actually spots a target at concealment
 ## `tier`: full range when exposed, the inner band when medium-hidden, nothing when fully hidden.
 func _effective_detection_range(detector_outer: float, target_concealment: int) -> float:
@@ -995,9 +1024,9 @@ func _recompute_all_detection_predictions() -> void:
 			# concealment tier (full when exposed, the inner band when medium-hidden, nothing when fully
 			# hidden) — a medium hide loses an outer-range chaser but not a close one.
 			var range_a := _effective_detection_range(
-				float(characters[id_a].stats.get("detection_range", 0.0)), get_character_concealment(id_b))
+				_detector_outer_range(id_a), get_character_concealment(id_b))
 			var range_b := _effective_detection_range(
-				float(characters[id_b].stats.get("detection_range", 0.0)), get_character_concealment(id_a))
+				_detector_outer_range(id_b), get_character_concealment(id_a))
 			if range_a > 0.0:
 				var t := _predict_detection_time(id_a, id_b, range_a, now)
 				if t >= 0.0:
