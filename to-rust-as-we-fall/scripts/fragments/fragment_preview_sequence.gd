@@ -16,6 +16,7 @@ const CHANNELS_HIDE_WINDOW_CHUNK_SCENE := preload("res://scenes/fragments/chunks
 const ENDO_JUNCTION_STRETCH_CHUNK_SCENE := preload("res://scenes/fragments/chunks/endo_junction_stretch_chunk.tscn")
 const GENERATED_STRETCH_CHUNK_SCENE := preload("res://scenes/fragments/chunks/generated_stretch_chunk.tscn")
 const REFUGE_RUN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/refuge_run_chunk.tscn")
+const LURE_RELAY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/lure_relay_chunk.tscn")
 
 const CHARACTER_IDS := ["aster", "peris", "endo"]
 const CHARACTER_DISPLAY_NAMES := {
@@ -141,6 +142,8 @@ func _get_chunk_scene(chunk_name: String) -> PackedScene:
 			return GENERATED_STRETCH_CHUNK_SCENE
 		"refuge_run":
 			return REFUGE_RUN_CHUNK_SCENE
+		"lure_relay":
+			return LURE_RELAY_CHUNK_SCENE
 		_:
 			return null
 

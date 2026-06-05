@@ -169,6 +169,9 @@ func _ready() -> void:
 			"--test-chromatic-aberration":
 				ran_test = true
 				await _test_chromatic_aberration()
+			"--test-lure-relay":
+				ran_test = true
+				await _test_lure_relay_puzzle()
 			"--test-hidden-detection":
 				ran_test = true
 				_test_hidden_detection()
@@ -628,6 +631,7 @@ func _run_all_tests() -> void:
 	_test_elevator_enemy_engagement()
 	_test_data_identify()
 	_test_hidden_detection()
+	await _test_lure_relay_puzzle()
 	await _test_chromatic_aberration()
 	_test_cooperative_pathfinding()
 	_test_path_renderer()
@@ -8368,6 +8372,61 @@ func _test_hidden_detection() -> void:
 	_assert_equals(enemy._current_target_id, "aster", "The guard locks onto the revealed target")
 	enemy.queue_free()
 	holder.queue_free()
+
+# --- Test: the two-lure relay hide puzzle solves on the data layer (headless == real play) ---
+func _test_lure_relay_puzzle() -> void:
+	_test_name = "Lure Relay Puzzle"
+	var scene = load("res://scenes/fragments/lure_relay_preview.tscn")
+	if scene == null:
+		_assert_true(false, "lure_relay_preview loads")
+		return
+	var instance = scene.instantiate()
+	get_tree().root.add_child(instance)
+	for i in range(4):
+		await get_tree().process_frame
+	var chunk = instance._active_chunk
+	_assert_true(chunk != null, "Lure relay chunk loads in the shared preview")
+	if chunk == null:
+		instance.queue_free()
+		await get_tree().process_frame
+		return
+	var anchors: Dictionary = chunk.get_preview_anchors()
+
+	# --- The intended solve: Lure 2, then Lure 1, hide, let the relay pass, run the exit ---
+	chunk.reset_preview_state()
+	_assert_true(chunk.activate_lure2(), "Lure 2 (by the guards) fires")
+	instance.headless_advance(1.0, 0.1)
+	_assert_equals(int(chunk.get_preview_state()["committed_lure"]), 2, "The sentries break toward Lure 2")
+	_assert_true(chunk.activate_lure1(), "Lure 1 (near the entrance) fires")
+	instance.headless_advance(0.5, 0.1)
+	_assert_equals(int(chunk.get_preview_state()["committed_lure"]), 2, "They stay on Lure 2 while it holds (Lure 1 doesn't steal them)")
+	# Duck the runner into the offshoot before Lure 2 expires.
+	instance.headless_set_character_position("peris", anchors["hide_spot"])
+	instance.headless_advance(0.3, 0.1)
+	_assert_true(instance._game_state.is_character_hidden("peris"), "In the offshoot, the runner is concealed")
+	# Lure 2 expires -> the sentries relay onward to the still-singing Lure 1, walking back past cover.
+	instance.headless_advance(9.0, 0.1)
+	_assert_equals(int(chunk.get_preview_state()["committed_lure"]), 1, "On Lure 2's expiry they relay to Lure 1 (got: %s)" % chunk.get_preview_state()["committed_lure"])
+	_assert_true(not chunk.get_preview_state()["failed"], "The hidden runner is not caught as the sentries pass")
+	# Slip out and run the now-open exit while Lure 1 holds.
+	instance.headless_set_character_position("peris", anchors["exit"])
+	instance.headless_advance(0.3, 0.1)
+	_assert_true(chunk.get_preview_state()["complete"], "Reaching the exit after the relay completes the puzzle")
+
+	# --- The wrong way: stroll up exposed, no lures — a sentry gets onto you ---
+	chunk.reset_preview_state()
+	instance.headless_set_character_position("peris", Vector3(26.0, 0.5, 0.0))
+	# Walk toward the guarded exit (a move command recomputes detection, like a real approach).
+	instance._game_state.command_move_to_pos("peris", Vector3(34.0, 0.5, 0.0))
+	instance.headless_advance(5.0, 0.1)
+	var spotted := false
+	for e in chunk._enemies:
+		if is_instance_valid(e) and e.get_state() != "idle":
+			spotted = true
+			break
+	_assert_true(spotted, "Strolling up exposed (no lure, no hide) puts a sentry onto you")
+	instance.queue_free()
+	await get_tree().process_frame
 
 # --- Test: chromatic aberration is live in the sim scenes ---
 func _test_chromatic_aberration() -> void:
