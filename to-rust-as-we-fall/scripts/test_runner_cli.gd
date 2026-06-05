@@ -8074,6 +8074,28 @@ func _test_grid_levels() -> void:
 	_assert_equals(gs.get_character_level("up"), 0, "set_character_level records the new floor")
 	_assert_true(absf(gs.get_position("up").y) < 0.01, "set_character_level snaps the data-layer Y to the floor")
 
+	# Cross-floor A*: route from level 0 to level 1, which MUST go through the ladder cell.
+	var g2 := GridWorld.new()
+	g2.create_room(8, 8)
+	g2.set_level_count(2)
+	g2.add_inter_level_link(Vector2i(4, 4), 0, 1, "ladder")
+	var ml := g2.find_multi_level_path(Vector2i(1, 1), 0, Vector2i(6, 6), 1)
+	_assert_true(ml.size() >= 2, "Multi-level A* finds a route across floors via a ladder")
+	var crossed := false
+	for i in range(1, ml.size()):
+		if int(ml[i].level) != int(ml[i - 1].level):
+			crossed = true
+			_assert_equals(ml[i].cell, ml[i - 1].cell, "A floor change happens AT a cell (the ladder), not mid-air")
+			_assert_equals(ml[i].cell, Vector2i(4, 4), "The floor change uses the registered ladder cell")
+	_assert_true(crossed, "The cross-floor route actually changes level (climbs the ladder)")
+	_assert_true(ml[-1].cell == Vector2i(6, 6) and int(ml[-1].level) == 1, "Route ends at the destination cell on the target floor")
+	# No ladder between floors -> no cross-level route.
+	var g3 := GridWorld.new()
+	g3.create_room(8, 8)
+	g3.set_level_count(2)
+	_assert_true(g3.find_multi_level_path(Vector2i(1, 1), 0, Vector2i(6, 6), 1).is_empty(),
+		"No ladder -> no route between floors (you can't walk through the air)")
+
 # --- Test: outline particles emit from the object surface ---
 # The per-mesh outline feedback used a box emission shape sized from the mesh AABB,
 # which collapsed into a centre blob (worse once the object was scaled). It now

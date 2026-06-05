@@ -258,6 +258,97 @@ func find_path(
 	# No path found
 	return []
 
+## A* ACROSS floors: route from (start_cell, start_level) to (end_cell, end_level) using same-level
+## 8-dir moves PLUS ladder/ramp transitions at link cells. Returns an ordered list of
+## {cell: Vector2i, level: int} waypoints — a level change happens between two consecutive
+## waypoints that share a cell (the link). [] if unreachable. State space is (cell, level); grids
+## are small so this stays cheap. Used for player-directed cross-level moves.
+func find_multi_level_path(
+	start_cell: Vector2i, start_level: int, end_cell: Vector2i, end_level: int,
+	explored: Dictionary = {}, locked_doors: Dictionary = {}
+) -> Array:
+	if start_cell == end_cell and start_level == end_level:
+		return [{"cell": end_cell, "level": end_level}]
+	if not is_in_bounds(end_cell.x, end_cell.y) or not is_walkable(end_cell.x, end_cell.y, explored, locked_doors):
+		return []
+	var dirs: Array[Vector2i] = [
+		Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+		Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1),
+	]
+	var start_key := _ml_key(start_cell, start_level)
+	var open: Array = [start_key]
+	var came_from: Dictionary = {}
+	var g: Dictionary = {start_key: 0.0}
+	var f: Dictionary = {start_key: _ml_h(start_cell, start_level, end_cell, end_level)}
+	var iters := 0
+	var max_iters := width * height * maxi(1, level_count) * 6
+	while not open.is_empty() and iters < max_iters:
+		iters += 1
+		var cur_key: String = open[0]
+		var best_f: float = f.get(cur_key, INF)
+		for i in range(1, open.size()):
+			var ff: float = f.get(open[i], INF)
+			if ff < best_f:
+				best_f = ff
+				cur_key = open[i]
+		var cur_cell: Vector2i = _ml_cell(cur_key)
+		var cur_level: int = _ml_level(cur_key)
+		if cur_cell == end_cell and cur_level == end_level:
+			return _ml_reconstruct(came_from, cur_key)
+		open.erase(cur_key)
+		var cur_g: float = g.get(cur_key, INF)
+		# Same-level 8-dir moves.
+		for dir in dirs:
+			var nb := cur_cell + dir
+			if not is_in_bounds(nb.x, nb.y) or not is_walkable(nb.x, nb.y, explored, locked_doors):
+				continue
+			var is_diag := dir.x != 0 and dir.y != 0
+			if is_diag:
+				if not is_walkable(cur_cell.x + dir.x, cur_cell.y, explored, locked_doors):
+					continue
+				if not is_walkable(cur_cell.x, cur_cell.y + dir.y, explored, locked_doors):
+					continue
+			_ml_relax(_ml_key(nb, cur_level), cur_key, cur_g + (1.414 if is_diag else 1.0),
+				nb, cur_level, end_cell, end_level, came_from, g, f, open)
+		# Ladder/ramp transitions at the current cell.
+		for to_level in links_from(cur_cell, cur_level):
+			_ml_relax(_ml_key(cur_cell, to_level), cur_key, cur_g + get_link_cost(cur_cell, cur_level, to_level),
+				cur_cell, to_level, end_cell, end_level, came_from, g, f, open)
+	return []
+
+func _ml_key(cell: Vector2i, level: int) -> String:
+	return "%d,%d,%d" % [cell.x, cell.y, level]
+
+func _ml_cell(key: String) -> Vector2i:
+	var p := key.split(",")
+	return Vector2i(int(p[0]), int(p[1]))
+
+func _ml_level(key: String) -> int:
+	return int(key.split(",")[2])
+
+func _ml_h(cell: Vector2i, level: int, end_cell: Vector2i, end_level: int) -> float:
+	return _heuristic(cell, end_cell) + absf(level - end_level) * 1.5
+
+func _ml_relax(nkey: String, from_key: String, tentative_g: float, cell: Vector2i, level: int,
+		end_cell: Vector2i, end_level: int, came_from: Dictionary, g: Dictionary, f: Dictionary, open: Array) -> void:
+	if tentative_g < float(g.get(nkey, INF)):
+		came_from[nkey] = from_key
+		g[nkey] = tentative_g
+		f[nkey] = tentative_g + _ml_h(cell, level, end_cell, end_level)
+		if not open.has(nkey):
+			open.append(nkey)
+
+func _ml_reconstruct(came_from: Dictionary, current: String) -> Array:
+	var keys: Array = [current]
+	while came_from.has(current):
+		current = came_from[current]
+		keys.append(current)
+	keys.reverse()
+	var out: Array = []
+	for k in keys:
+		out.append({"cell": _ml_cell(k), "level": _ml_level(k)})
+	return out
+
 func _heuristic(a: Vector2i, b: Vector2i) -> float:
 	# Octile distance
 	var dx := absf(a.x - b.x)
