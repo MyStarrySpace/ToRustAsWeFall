@@ -154,6 +154,9 @@ func _ready() -> void:
 			"--test-path-renderer":
 				ran_test = true
 				_test_path_renderer()
+			"--test-path-render-manager":
+				ran_test = true
+				await _test_path_render_manager()
 			"--test-outline-particle-emission":
 				ran_test = true
 				_test_outline_particle_emission()
@@ -602,6 +605,7 @@ func _run_all_tests() -> void:
 	_test_game_state()
 	_test_cooperative_pathfinding()
 	_test_path_renderer()
+	await _test_path_render_manager()
 	_test_outline_particle_emission()
 	_test_interactable_outline_particles()
 	_test_outline_feedback_system()
@@ -7969,6 +7973,47 @@ func _test_path_renderer() -> void:
 	_assert_true(pr._line.mesh == null, "Cleared explicit path draws nothing")
 
 	pr.queue_free()
+
+## PathRenderManager is the reusable, scene-level path system: it draws a path for EVERY moving
+## character (player, party, NPC, escort), not just the one baked into player.gd — which is why the
+## elevator party / escorts showed no path before. Also covers queued-while-paused moves.
+func _test_path_render_manager() -> void:
+	_test_name = "Path Render Manager"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.register_character("a", Vector3.ZERO, 3.0, {})
+	gs.register_character("b", Vector3(5.0, 0.0, 0.0), 3.0, {})
+
+	var root := Node3D.new()
+	add_child(root)
+	var mgr := PathRenderManager.new()
+	root.add_child(mgr)
+	mgr.setup(gs, root)
+
+	# Two characters moving at once — the manager draws a path for EACH, not just the player.
+	gs.command_move_to_pos("a", Vector3(4.0, 0.0, 4.0))
+	gs.command_move_to_pos("b", Vector3(-3.0, 0.0, 2.0))
+	sched.advance_ticks(0.3)
+	mgr._process(0.0)
+	_assert_true(mgr._renderers.has("a") and mgr._renderers.has("b"),
+		"Manager makes a path renderer for every registered character (not just the player)")
+	var pr_a: PathRenderer = mgr._renderers.get("a")
+	var pr_b: PathRenderer = mgr._renderers.get("b")
+	_assert_true(pr_a != null and pr_a._remaining_points().size() >= 2,
+		"Character A's path is drawable (>= 2 points)")
+	_assert_true(pr_b != null and pr_b._remaining_points().size() >= 2,
+		"A second (party / NPC / escort) character's path also draws — the elevator-party gap")
+
+	# Queued while paused: a move issued while the scheduler is paused still shows its full route.
+	sched.pause()
+	gs.command_move_to_pos("a", Vector3(0.0, 0.0, -4.0))
+	mgr._process(0.0)
+	_assert_true(gs.is_moving("a") and pr_a._remaining_points().size() >= 2,
+		"A queued move (issued while paused) still shows its path")
+
+	root.queue_free()
+	await get_tree().process_frame
 
 	# Gridless party fan-out: a single party move must address EVERY member and
 	# spread them (distinct destinations), not stack them on one point.

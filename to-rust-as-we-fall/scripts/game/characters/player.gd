@@ -44,8 +44,6 @@ var _ability_marker_mat: StandardMaterial3D
 var _dest_marker: MeshInstance3D
 var _dest_marker_mat: StandardMaterial3D
 
-var _path_renderer: PathRenderer
-
 signal arrived()
 signal auto_path_complete()
 ## Emitted on every left-click that hits the ground, with the world position.
@@ -82,13 +80,8 @@ func _ready() -> void:
 	_dest_marker.top_level = true
 	add_child(_dest_marker)
 
-	# The movement-path line is the shared PathRenderer, anchored to this body so the
-	# line starts exactly where the mesh is. game_state / char_id are forwarded once
-	# they're assigned (see _update_path_line).
-	_path_renderer = PathRenderer.new()
-	_path_renderer.setup(game_state, char_id, color, self)
-	add_child(_path_renderer)
-
+	# The movement path is drawn by the scene's PathRenderManager (reusable, covers every
+	# character), not a per-player line — so it shows for the party / NPCs / escorts too.
 	_ability_marker = MeshInstance3D.new()
 	var diamond := SphereMesh.new()
 	diamond.radius = 0.2
@@ -355,23 +348,6 @@ func _update_path_line() -> void:
 	else:
 		_ability_marker_mat.albedo_color.a = 0.0
 
-	# The path line itself is drawn by the shared PathRenderer. Keep its inputs in
-	# sync (game_state / char_id are assigned after _ready) and hand it the local
-	# fallback path for the rare no-GameState case (editor / standalone previews).
-	if _path_renderer == null:
-		return
-	_path_renderer.game_state = game_state
-	_path_renderer.char_id = char_id
-	_path_renderer.color = color
-	_path_renderer.set_running(_running)
-	if game_state and char_id != "":
-		_path_renderer.clear_explicit_path()
-	elif _auto_path.size() > 0:
-		_path_renderer.set_explicit_path(_auto_path, _auto_path_index)
-	elif _moving:
-		_path_renderer.set_explicit_path([_target_pos], 0)
-	else:
-		_path_renderer.clear_explicit_path()
 
 ## Walk to a world position.
 func walk_to(pos: Vector3) -> void:

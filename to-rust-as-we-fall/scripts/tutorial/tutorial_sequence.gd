@@ -30,6 +30,7 @@ const CHROMATIC_ABERRATION_SHADER := preload("res://resources/chromatic_aberrati
 var _scheduler: EventScheduler          # gameplay lane (pausable, replay)
 var _ui_scheduler: EventScheduler       # dialogue / thought-fade / UI lane
 var _game_state: GameState
+var _path_render_manager                # PathRenderManager: movement paths for all characters
 var _current_step := ""
 var _fade_start_tick := 0.0
 
@@ -101,6 +102,12 @@ func _ready() -> void:
 	_game_state = GameState.new()
 	_game_state.scheduler = _scheduler
 	_register_characters()
+	# One scene-level path renderer for EVERY moving character (player, party, NPC, escort) — the
+	# reusable home for movement-path visuals, not a per-controller one-off.
+	_path_render_manager = PathRenderManager.new()
+	_path_render_manager.name = "PathRenderManager"
+	add_child(_path_render_manager)
+	_path_render_manager.setup(_game_state, self)
 	_inject_scheduler_into_interactables(self)
 	_init_ui()
 	_begin()
@@ -410,6 +417,7 @@ func _teardown_sequence() -> void:
 	_game_state = null
 	_scheduler = null
 	_ui_scheduler = null
+	_path_render_manager = null
 	_dialogue = null
 	_tutorial_prompt = null
 	_fade_rect = null
