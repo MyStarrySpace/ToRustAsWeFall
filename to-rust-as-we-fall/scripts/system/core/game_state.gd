@@ -928,6 +928,25 @@ func _deserialize_explored(data: Dictionary) -> void:
 		for cell_arr in data[id]:
 			explored[id][Vector2i(cell_arr[0], cell_arr[1])] = true
 
+# --- Concealment (hide spots) ---
+
+## Whether a character is concealed — detection skips them entirely while true. Derived state (a
+## chunk sets it from hide-zone proximity), never logged; rebuilt from position on replay.
+func is_character_hidden(id: String) -> bool:
+	if not characters.has(id):
+		return false
+	return bool(characters[id].stats.get("hidden", false))
+
+## Conceal / reveal a character. Recomputes detection on change, so an enemy stops seeing a target
+## the instant it ducks into cover and resumes the instant it steps out.
+func set_character_hidden(id: String, hidden: bool) -> void:
+	if not characters.has(id):
+		return
+	if bool(characters[id].stats.get("hidden", false)) == hidden:
+		return
+	characters[id].stats["hidden"] = hidden
+	_recompute_all_detection_predictions()
+
 # --- Predictive Detection ---
 
 func _recompute_all_detection_predictions() -> void:
@@ -944,6 +963,11 @@ func _recompute_all_detection_predictions() -> void:
 			# the party crossing the bridge ABOVE the lower ecology) isn't spotted until it's on the
 			# same level. Recomputed on every move/level change, so detection resumes after a fall.
 			if absf(get_position(id_a).y - get_position(id_b).y) > DETECTION_VERTICAL_BAND:
+				continue
+			# A HIDDEN character (tucked into a hide spot) is neither spotted nor a spotter — the
+			# pair is skipped entirely. Derived from position (a chunk sets it on hide-zone proximity),
+			# recomputed on change, so detection resumes the moment they step out of cover.
+			if is_character_hidden(id_a) or is_character_hidden(id_b):
 				continue
 			var range_a: float = characters[id_a].stats.get("detection_range", 0.0)
 			var range_b: float = characters[id_b].stats.get("detection_range", 0.0)

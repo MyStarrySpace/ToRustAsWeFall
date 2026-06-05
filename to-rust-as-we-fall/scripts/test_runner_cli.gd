@@ -169,6 +169,9 @@ func _ready() -> void:
 			"--test-chromatic-aberration":
 				ran_test = true
 				await _test_chromatic_aberration()
+			"--test-hidden-detection":
+				ran_test = true
+				_test_hidden_detection()
 			"--test-data-identify":
 				ran_test = true
 				_test_data_identify()
@@ -624,6 +627,7 @@ func _run_all_tests() -> void:
 	_test_state_machine()
 	_test_elevator_enemy_engagement()
 	_test_data_identify()
+	_test_hidden_detection()
 	await _test_chromatic_aberration()
 	_test_cooperative_pathfinding()
 	_test_path_renderer()
@@ -8323,6 +8327,48 @@ func _test_elevator_enemy_engagement() -> void:
 	enemy.queue_free()
 	holder.queue_free()
 
+# --- Test: a hidden character is invisible to enemy detection (hide-spot foundation) ---
+func _test_hidden_detection() -> void:
+	_test_name = "Hidden From Detection"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	var holder := Node3D.new()
+	add_child(holder)
+	gs.register_character("aster", Vector3(10.0, 0.5, 0.0), 2.5, {"hp": 100.0})
+	gs.set_character_hidden("aster", true)
+	_assert_true(gs.is_character_hidden("aster"), "set_character_hidden marks the target concealed")
+	var enemy := Enemy.new()
+	enemy.game_state = gs
+	enemy.char_id = "guard"
+	enemy._detection_targets = ["aster"]
+	holder.add_child(enemy)
+	gs.register_character("guard", Vector3(0.0, 0.5, 0.0), enemy.move_speed,
+		{"detection_range": enemy.detection_range})
+	enemy.activate()
+	enemy.set_patrol([Vector3(-1.0, 0.5, 0.0), Vector3(1.0, 0.5, 0.0)])
+
+	# Walk Aster right up to the guard WHILE HIDDEN — point-blank, but never spotted.
+	gs.command_move_to_pos("aster", Vector3(0.5, 0.5, 0.0))
+	for _i in range(80):
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+	_assert_equals(enemy.get_state(), "patrol",
+		"A hidden target is never spotted, even point-blank (got: %s)" % enemy.get_state())
+
+	# Step out of cover — now the guard sees her.
+	gs.set_character_hidden("aster", false)
+	for _i in range(80):
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+		if enemy.get_state() != "patrol":
+			break
+	_assert_true(enemy.get_state() != "patrol",
+		"Stepping out of cover gets her spotted (got: %s)" % enemy.get_state())
+	_assert_equals(enemy._current_target_id, "aster", "The guard locks onto the revealed target")
+	enemy.queue_free()
+	holder.queue_free()
+
 # --- Test: chromatic aberration is live in the sim scenes ---
 func _test_chromatic_aberration() -> void:
 	_test_name = "Chromatic Aberration (Sims)"
@@ -9069,6 +9115,11 @@ func _test_event_log_mutation_audit() -> void:
 	var allowlist := PackedStringArray([
 		# Pure queries
 		"get_position", "is_moving", "get_grid_cell", "get_character_level",
+		"is_character_hidden",
+		# Concealment is DERIVED state (a chunk sets it from hide-zone proximity each frame, like a
+		# detection prediction) — not a player/sequence input, so it isn't logged; replay rebuilds it
+		# from the logged movements that carry the character into/out of cover.
+		"set_character_hidden",
 		"get_hand_items", "get_hand_slots", "get_internal_items",
 		"has_free_hand", "has_free_hands",
 		"get_scent_radius",
