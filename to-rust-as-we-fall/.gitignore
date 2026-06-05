@@ -7,3 +7,7 @@
 
 # Godot auto-generated translation resources from CSV imports
 *.translation
+
+# Dev highlight capture (tools/capture_highlight.gd)
+/highlight_capture.png
+/highlight_capture.png.import

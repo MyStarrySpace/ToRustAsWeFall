@@ -8,7 +8,30 @@ extends Node
 
 var _passed := 0
 var _failed := 0
-var _test_name := ""
+# Per-test profiling: assigning _test_name (every test does this on entry) prints the wall-clock
+# duration of the test that just finished, so a slow/hung test in --test-all is obvious. Plus a
+# [START] marker so the culprit is named even if it never returns. _flush_test_timing() emits the
+# last test. Uses wall-clock deliberately — it's measuring real suite time, not gameplay logic.
+var _test_name_storage := ""
+var _test_start_ms := 0
+var _profile_tests := false
+var _test_name: String:
+	get:
+		return _test_name_storage
+	set(value):
+		var now := Time.get_ticks_msec()
+		if _profile_tests:
+			if _test_name_storage != "":
+				print("[TIMING] %7d ms  %s" % [now - _test_start_ms, _test_name_storage])
+			if value != "":
+				print("[START] %s" % value)
+		_test_name_storage = value
+		_test_start_ms = now
+
+func _flush_test_timing() -> void:
+	if _profile_tests and _test_name_storage != "":
+		print("[TIMING] %7d ms  %s" % [Time.get_ticks_msec() - _test_start_ms, _test_name_storage])
+	_test_name_storage = ""
 const DayNightCycleScript = preload("res://scripts/system/simulation/day_night_cycle.gd")
 const FloraMemorySystem = preload("res://scripts/system/simulation/flora_memory_system.gd")
 const FauxPhysicsSensorScript = preload("res://scripts/game/mechanics/faux_physics_sensor.gd")
@@ -95,7 +118,9 @@ func _ready() -> void:
 		match arg:
 			"--test-all":
 				ran_test = true
+				_profile_tests = "--profile" in args
 				await _run_all_tests()
+				_flush_test_timing()
 			"--test-syntax":
 				ran_test = true
 				_test_syntax()
@@ -4709,19 +4734,29 @@ func _test_interactable_highlight() -> void:
 	_test_name = "Interactable Highlight"
 	_assert_true(InputMap.has_action("highlight"), "highlight input action is registered (SHIFT)")
 
-	# set_highlight drives the particle feedback (the footprint-ring duo), not a label.
+	# set_highlight lights up the OBJECT's OutlineSurfaceTarget — the real outline SHADER and
+	# particles emitted FROM the mesh surface — NOT a label or a fixed ring on the meshless zone.
 	var it: Node = load("res://scripts/game/objects/interactable.gd").new()
 	get_tree().root.add_child(it)
+	var box := MeshInstance3D.new()
+	box.mesh = BoxMesh.new()
+	it.add_child(box)
+	var tgt: Node = OutlineSurfaceTarget.new()
+	it.add_child(tgt)
+	tgt.register_highlight_mesh(box)
+	it.set_outline_target(tgt)
 	await get_tree().process_frame
 	it.interaction_enabled = true
 	it.set_highlight(true)
-	_assert_true(it._feedback_emitting, "set_highlight(true) runs the outline/particle feedback")
-	_assert_true(it._selected_particles != null and it._selected_particles.emitting, "the footprint-ring particles emit while highlighted")
+	_assert_true(it._feedback_emitting, "set_highlight(true) runs the highlight")
+	_assert_true(tgt.has_active_mesh_outline(), "the OBJECT's outline SHADER turns on (not a label/ring)")
+	_assert_true(tgt.has_active_outline_particles(), "particles emit FROM the mesh surface (not a fixed ring)")
 	it.set_highlight(false)
-	_assert_true(not it._feedback_emitting, "set_highlight(false) stops the feedback")
-	# Hover shares the SAME feedback path (no separate label treatment).
+	_assert_true(not it._feedback_emitting, "set_highlight(false) stops the highlight")
+	_assert_true(not tgt.has_active_mesh_outline(), "the outline shader clears on release")
+	# Hover shares the SAME path — hovering shows the SAME outline shader + surface particles.
 	it.set_hover_feedback(true)
-	_assert_true(it._feedback_emitting, "hover shows the SAME outline/particle highlight")
+	_assert_true(tgt.has_active_mesh_outline(), "hover shows the SAME outline shader")
 	it.set_hover_feedback(false)
 	_assert_true(not it._feedback_emitting, "leaving hover stops the highlight")
 	it.queue_free()

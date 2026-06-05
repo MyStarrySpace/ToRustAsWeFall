@@ -60,6 +60,7 @@ var _tutorial_label_3d: Label3D
 var _hover_active := false       # mouse is over this interactable
 var _highlight_active := false   # reveal-all overlay (hold SHIFT) is on
 var _feedback_emitting := false  # the outline/particle feedback is currently running
+var _outline_target              # the object's OutlineSurfaceTarget (outline shader + surface particles)
 var _collision_shape: CollisionShape3D
 var _selected_particles: GPUParticles3D
 var _selected_particle_material: ParticleProcessMaterial
@@ -269,14 +270,22 @@ func hide_tutorial_label() -> void:
 		tween.tween_property(_tutorial_label_3d, "modulate:a", 0.0, 0.3)
 		tween.tween_callback(func(): _tutorial_label_3d.visible = false)
 
-## Reveal-all overlay (hold SHIFT): show every interactable's outline/particle highlight at once.
-## Shares the same feedback as hover — the player sees the SAME glow on a hovered object and on
-## a revealed one. An interactable is a meshless proximity zone, so the highlight is the
-## footprint-ring particle duo (selected_feedback); object meshes wrapped in an OutlineSurfaceTarget
-## get the mesh outline shader on top via their own set_highlight().
+## Reveal-all overlay (hold SHIFT): show this interactable's highlight. Shares the same feedback
+## as hover — a hovered object and a revealed one read identically. The interactable is a meshless
+## proximity zone that intercepts the hover ray, so the actual visual is its OBJECT's
+## OutlineSurfaceTarget (the outline SHADER + particles emitted from the mesh surface), linked via
+## set_outline_target(). No more stray footprint ring that ignored the object's shape.
 func set_highlight(active: bool) -> void:
 	_highlight_active = active
 	_refresh_feedback()
+
+## Link the OutlineSurfaceTarget that wraps this interactable's object meshes (set by the
+## sequence's _set_room_target_interaction_delegate). Hover / SHIFT then light up THAT — the real
+## outline + surface particles — instead of the interactable emitting its own ring.
+func set_outline_target(target) -> void:
+	_outline_target = target
+	if _outline_target != null and is_instance_valid(_outline_target):
+		_outline_target.set_highlight(_feedback_emitting)
 
 func _on_body_entered(body: Node3D) -> void:
 	if _used or not interaction_enabled:
@@ -378,25 +387,17 @@ func set_hover_feedback(active: bool) -> void:
 	_hover_active = active
 	_refresh_feedback()
 
-## Run the footprint-particle feedback while EITHER hover or the reveal overlay wants it; stop
-## when neither does. The emitter is continuous (one_shot == false), so it holds for as long as
-## the player hovers / holds SHIFT. The OBJECT's mesh outline shader is a SEPARATE
-## OutlineSurfaceTarget (built by the sequence's `_outline_object_meshes`, with this interactable
-## as its delegate) — the reveal controller drives both, so zone + mesh light up together.
+## Drive the object's outline+particle highlight while EITHER hover or the reveal overlay wants
+## it; stop when neither does. The visual is the linked OutlineSurfaceTarget (outline shader +
+## surface-emitted particles). A meshless interactable with no target shows nothing — by design,
+## there's no object to outline (and no clustered ring that ignores the shape).
 func _refresh_feedback() -> void:
 	var want := (_hover_active or _highlight_active) and interaction_enabled and not _used
 	if want == _feedback_emitting:
 		return
 	_feedback_emitting = want
-	if want:
-		play_selected_feedback()
-	else:
-		_stop_selected_feedback()
-
-func _stop_selected_feedback() -> void:
-	if _selected_particles != null:
-		_selected_particles.emitting = false
-		_selected_particles.visible = false
+	if _outline_target != null and is_instance_valid(_outline_target):
+		_outline_target.set_highlight(want)
 
 func set_interaction_enabled(active: bool) -> void:
 	interaction_enabled = active

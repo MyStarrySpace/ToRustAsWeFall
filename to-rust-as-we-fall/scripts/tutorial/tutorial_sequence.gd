@@ -770,6 +770,10 @@ func _collect_mesh_instances(node: Node) -> Array:
 func _set_room_target_interaction_delegate(target: Node, delegate: Node) -> void:
 	if target != null and delegate != null and target.has_method("set_interaction_delegate"):
 		target.call("set_interaction_delegate", delegate)
+	# Reverse link: the interactable intercepts the hover ray (it's pickable for clicks), so on
+	# hover / SHIFT it lights up ITS object's outline+particle target rather than a stray ring.
+	if target != null and delegate != null and delegate.has_method("set_outline_target"):
+		delegate.call("set_outline_target", target)
 
 ## Create a click-to-inspect zone for spoken/object text.
 func _make_exploration_zone(
