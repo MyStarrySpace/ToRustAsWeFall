@@ -816,12 +816,12 @@ func _coop_key(cell: Vector2i, t: float, t_start: float, tq: float) -> String:
 ## every reserved (cell, time) window owned by another character, inserting
 ## waits where needed. Returns {cells: Array[Vector2i], ticks: Array[float]}
 ## (absolute arrival tick per cell) or {} if no conflict-free path is found.
-func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: float, exclude_id: String) -> Dictionary:
+func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: float, exclude_id: String, level: int = 0) -> Dictionary:
 	if not grid:
 		return {}
 	if start == end:
 		return {"cells": [start] as Array[Vector2i], "ticks": [t_start] as Array[float]}
-	if not grid.is_in_bounds(end.x, end.y) or not grid.is_walkable(end.x, end.y):
+	if not grid.is_in_bounds(end.x, end.y) or not grid.is_walkable(end.x, end.y, {}, {}, level):
 		return {}
 	var card: float = (grid.cell_size / speed) if speed > 0.0 else 1.0
 	var diag: float = card * 1.4142136
@@ -862,10 +862,10 @@ func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: fl
 				var dir := dirs[di]
 				var is_diag := dir.x != 0 and dir.y != 0
 				dt = diag if is_diag else card
-				if not grid.is_in_bounds(ncell.x, ncell.y) or not grid.is_walkable(ncell.x, ncell.y):
+				if not grid.is_in_bounds(ncell.x, ncell.y) or not grid.is_walkable(ncell.x, ncell.y, {}, {}, level):
 					continue
 				if is_diag:
-					if not grid.is_walkable(ccell.x + dir.x, ccell.y) or not grid.is_walkable(ccell.x, ccell.y + dir.y):
+					if not grid.is_walkable(ccell.x + dir.x, ccell.y, {}, {}, level) or not grid.is_walkable(ccell.x, ccell.y + dir.y, {}, {}, level):
 						continue
 			var nt: float = ct + dt
 			if _cell_reserved(ncell, ct - _RESERVE_BUFFER, nt + _RESERVE_BUFFER, exclude_id):
@@ -2519,7 +2519,7 @@ func _do_move_to_cell(id: String, cell: Vector2i) -> bool:
 ## prior movement and pinned characters[id].position to current_pos.
 func _begin_cooperative_move(id: String, current_pos: Vector3, current_cell: Vector2i, dest_cell: Vector2i, speed: float) -> bool:
 	var level := get_character_level(id)  # keep waypoints on the character's current floor
-	var plan := _plan_cooperative(current_cell, dest_cell, speed, scheduler.get_current_tick(), id)
+	var plan := _plan_cooperative(current_cell, dest_cell, speed, scheduler.get_current_tick(), id, level)
 	if not plan.is_empty() and not plan.cells.is_empty():
 		var built := _build_timed_world_path(current_pos, plan.cells, plan.ticks, speed, level)
 		_start_movement(id, built.path, built.ticks)

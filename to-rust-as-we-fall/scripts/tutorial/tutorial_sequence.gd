@@ -611,6 +611,14 @@ func _move_to_cell_on_level(id: String, cell: Vector2i, level: int) -> bool:
 		return false
 	return _game_state.command_move_cross_level(id, cell, level)
 
+## Declare a level's walkable FOOTPRINT as a world-space XZ rectangle. Stacked floors usually have
+## different shapes (one deck's floor is another deck's void), so a level is walkable only inside the
+## regions you declare. Additive — call once per region. A level with NO declared region stays fully
+## walkable (the single-floor default). Pass world min/max corners on the X and Z axes.
+func _add_level_walkable_region(level: int, min_xz: Vector2, max_xz: Vector2) -> void:
+	if _game_state and _game_state.grid:
+		_game_state.grid.allow_world_region_on_level(min_xz, max_xz, level)
+
 ## Hand the gameplay scheduler to every interactable built before the scheduler
 ## existed (the scene tree is assembled in _build_scene, _scheduler after). Their
 ## dwell timers then ride the scheduler and pause with gameplay.

@@ -31,6 +31,11 @@ var dynamic_blockers: Dictionary = {}  # Vector2i → obj_id
 var level_count := 1
 var level_height := 4.0               # world Y between stacked floors
 var inter_level_links: Dictionary = {}  # "x,z,from,to" -> {type, cost}
+## Per-level walkable footprints. Stacked floors rarely share a footprint (the elevator's upper
+## deck and lower deck overlap in X but live on different levels), so walkability is per (cell,
+## level). A level ABSENT here is fully walkable — single-floor scenes never touch it, so they are
+## unchanged. Once a level has ANY allowed cell it is RESTRICTED: only its allow-set is walkable.
+var level_allowed: Dictionary = {}   # level(int) -> Dictionary of Vector2i -> true
 
 func set_level_count(count: int) -> void:
 	level_count = maxi(1, count)
@@ -65,6 +70,37 @@ func links_from(cell: Vector2i, from_level: int) -> Array:
 		if to_level != from_level and can_traverse_link(cell, from_level, to_level):
 			out.append(to_level)
 	return out
+
+# --- Per-level walkable footprints (stacked floors with different shapes) ---
+
+## Mark a single cell walkable on a level (this RESTRICTS the level to its allow-set).
+func allow_cell_on_level(cell: Vector2i, level: int) -> void:
+	if not level_allowed.has(level):
+		level_allowed[level] = {}
+	level_allowed[level][cell] = true
+
+## Mark an inclusive rectangle of cells walkable on a level.
+func allow_cell_region_on_level(min_cell: Vector2i, max_cell: Vector2i, level: int) -> void:
+	for z in range(mini(min_cell.y, max_cell.y), maxi(min_cell.y, max_cell.y) + 1):
+		for x in range(mini(min_cell.x, max_cell.x), maxi(min_cell.x, max_cell.x) + 1):
+			allow_cell_on_level(Vector2i(x, z), level)
+
+## Mark a world-space XZ rectangle walkable on a level — convenient when authoring from world
+## coordinates (a chunk's footprint). Converts the AABB corners to cells.
+func allow_world_region_on_level(min_xz: Vector2, max_xz: Vector2, level: int) -> void:
+	var a := world_to_grid(Vector3(min_xz.x, 0.0, min_xz.y))
+	var b := world_to_grid(Vector3(max_xz.x, 0.0, max_xz.y))
+	allow_cell_region_on_level(a, b, level)
+
+## True once a level has been given a footprint (only its allow-set is walkable on that level).
+func is_level_restricted(level: int) -> bool:
+	return level_allowed.has(level)
+
+## Whether a cell is inside a level's footprint. Unrestricted levels allow every cell.
+func is_cell_allowed_on_level(cell: Vector2i, level: int) -> bool:
+	if not level_allowed.has(level):
+		return true
+	return level_allowed[level].has(cell)
 
 # --- Loading ---
 
@@ -136,7 +172,7 @@ func get_tile(x: int, z: int) -> int:
 		return Tile.WALL  # Out of bounds = wall
 	return grid[z][x]
 
-func is_walkable(x: int, z: int, explored: Dictionary = {}, locked_doors: Dictionary = {}) -> bool:
+func is_walkable(x: int, z: int, explored: Dictionary = {}, locked_doors: Dictionary = {}, level: int = 0) -> bool:
 	var tile := get_tile(x, z)
 	if tile == Tile.WALL:
 		return false
@@ -145,6 +181,9 @@ func is_walkable(x: int, z: int, explored: Dictionary = {}, locked_doors: Dictio
 		if locked_doors.has(key) and locked_doors[key]:
 			return false
 	if dynamic_blockers.has(Vector2i(x, z)):
+		return false
+	# Per-level footprint: a restricted level only allows cells in its allow-set.
+	if level_allowed.has(level) and not level_allowed[level].has(Vector2i(x, z)):
 		return false
 	return true
 
@@ -187,7 +226,7 @@ func find_path(
 		return [grid_to_world(end, level)]
 	if not is_in_bounds(end.x, end.y):
 		return []
-	if not is_walkable(end.x, end.y, explored, locked_doors):
+	if not is_walkable(end.x, end.y, explored, locked_doors, level):
 		return []
 
 	# A* with octile heuristic
@@ -229,7 +268,7 @@ func find_path(
 			var neighbor := current + dir
 			if not is_in_bounds(neighbor.x, neighbor.y):
 				continue
-			if not is_walkable(neighbor.x, neighbor.y, explored, locked_doors):
+			if not is_walkable(neighbor.x, neighbor.y, explored, locked_doors, level):
 				continue
 
 			# Diagonal corner-cutting prevention
@@ -237,9 +276,9 @@ func find_path(
 			if is_diagonal:
 				var adj_a := Vector2i(current.x + dir.x, current.y)
 				var adj_b := Vector2i(current.x, current.y + dir.y)
-				if not is_walkable(adj_a.x, adj_a.y, explored, locked_doors):
+				if not is_walkable(adj_a.x, adj_a.y, explored, locked_doors, level):
 					continue
-				if not is_walkable(adj_b.x, adj_b.y, explored, locked_doors):
+				if not is_walkable(adj_b.x, adj_b.y, explored, locked_doors, level):
 					continue
 
 			# Movement cost
@@ -275,7 +314,7 @@ func find_multi_level_path(
 ) -> Array:
 	if start_cell == end_cell and start_level == end_level:
 		return [{"cell": end_cell, "level": end_level}]
-	if not is_in_bounds(end_cell.x, end_cell.y) or not is_walkable(end_cell.x, end_cell.y, explored, locked_doors):
+	if not is_in_bounds(end_cell.x, end_cell.y) or not is_walkable(end_cell.x, end_cell.y, explored, locked_doors, end_level):
 		return []
 	var dirs: Array[Vector2i] = [
 		Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
@@ -306,13 +345,13 @@ func find_multi_level_path(
 		# Same-level 8-dir moves.
 		for dir in dirs:
 			var nb := cur_cell + dir
-			if not is_in_bounds(nb.x, nb.y) or not is_walkable(nb.x, nb.y, explored, locked_doors):
+			if not is_in_bounds(nb.x, nb.y) or not is_walkable(nb.x, nb.y, explored, locked_doors, cur_level):
 				continue
 			var is_diag := dir.x != 0 and dir.y != 0
 			if is_diag:
-				if not is_walkable(cur_cell.x + dir.x, cur_cell.y, explored, locked_doors):
+				if not is_walkable(cur_cell.x + dir.x, cur_cell.y, explored, locked_doors, cur_level):
 					continue
-				if not is_walkable(cur_cell.x, cur_cell.y + dir.y, explored, locked_doors):
+				if not is_walkable(cur_cell.x, cur_cell.y + dir.y, explored, locked_doors, cur_level):
 					continue
 			_ml_relax(_ml_key(nb, cur_level), cur_key, cur_g + (1.414 if is_diag else 1.0),
 				nb, cur_level, end_cell, end_level, came_from, g, f, open)

@@ -8093,6 +8093,34 @@ func _test_grid_levels() -> void:
 			_assert_equals(ml[i].cell, Vector2i(4, 4), "The floor change uses the registered ladder cell")
 	_assert_true(crossed, "The cross-floor route actually changes level (climbs the ladder)")
 	_assert_true(ml[-1].cell == Vector2i(6, 6) and int(ml[-1].level) == 1, "Route ends at the destination cell on the target floor")
+
+	# --- Per-level walkable footprints: a cell can be walkable on one floor but void on another. ---
+	var gw := GridWorld.new()
+	gw.create_room(10, 10)
+	gw.set_level_count(2)
+	# Level 1 (upper) is restricted to a small footprint; level 0 (lower) stays fully walkable.
+	_assert_true(gw.is_cell_allowed_on_level(Vector2i(8, 8), 1), "Unrestricted level allows every cell")
+	gw.allow_cell_region_on_level(Vector2i(1, 1), Vector2i(3, 3), 1)
+	_assert_true(gw.is_level_restricted(1), "Declaring a region restricts the level to its footprint")
+	_assert_true(gw.is_cell_allowed_on_level(Vector2i(2, 2), 1), "Cells inside the footprint stay walkable on level 1")
+	_assert_true(not gw.is_cell_allowed_on_level(Vector2i(8, 8), 1), "Cells outside the footprint are void on level 1")
+	_assert_true(gw.is_walkable(2, 2, {}, {}, 1), "is_walkable(level 1) true inside the footprint")
+	_assert_true(not gw.is_walkable(8, 8, {}, {}, 1), "is_walkable(level 1) false outside the footprint (the void)")
+	# The SAME (x,z) is still walkable on the unrestricted lower floor — footprints are per level.
+	_assert_true(gw.is_walkable(8, 8, {}, {}, 0), "The same cell is walkable on the unrestricted lower floor")
+	# find_path on level 1 refuses a destination outside the footprint, but routes inside it.
+	_assert_true(gw.find_path(Vector2i(1, 1), Vector2i(8, 8), {}, false, {}, {}, 1).is_empty(),
+		"find_path(level 1) can't reach a void cell off the footprint")
+	_assert_true(not gw.find_path(Vector2i(1, 1), Vector2i(3, 3), {}, false, {}, {}, 1).is_empty(),
+		"find_path(level 1) routes within the footprint")
+	# World-space region helper maps an XZ rect to cells (cell_size 1, origin 0 → cell == floor(world)).
+	var gwr := GridWorld.new()
+	gwr.create_room(10, 10)
+	gwr.set_level_count(2)
+	gwr.allow_world_region_on_level(Vector2(0.5, 0.5), Vector2(2.5, 2.5), 1)
+	_assert_true(gwr.is_cell_allowed_on_level(Vector2i(1, 1), 1), "World region marks the covered cells walkable")
+	_assert_true(not gwr.is_cell_allowed_on_level(Vector2i(5, 5), 1), "World region leaves outside cells void")
+
 	# No ladder between floors -> no cross-level route.
 	var g3 := GridWorld.new()
 	g3.create_room(8, 8)
