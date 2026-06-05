@@ -8096,6 +8096,62 @@ func _test_grid_levels() -> void:
 	_assert_true(g3.find_multi_level_path(Vector2i(1, 1), 0, Vector2i(6, 6), 1).is_empty(),
 		"No ladder -> no route between floors (you can't walk through the air)")
 
+	# --- Cross-level EXECUTOR: a character actually WALKS between floors via the ladder. ---
+	# g2 has the ladder at (4,4) linking floors 0<->1. Record into a log so we can prove the
+	# whole multi-floor traversal is ONE command that replay reproduces.
+	var sched_x := EventScheduler.new()
+	var gx := GameState.new()
+	gx.grid = g2
+	gx.scheduler = sched_x
+	var xlog := EventLog.new()
+	gx.event_log = xlog
+	gx.register_character("climber", g2.grid_to_world(Vector2i(1, 1), 0), 3.0, {})
+	_assert_equals(gx.get_character_level("climber"), 0, "Climber starts on level 0")
+
+	_assert_true(gx.command_move_cross_level("climber", Vector2i(6, 6), 1),
+		"command_move_cross_level finds a route to another floor")
+	var ladder_visited := false
+	for i in range(300):
+		sched_x.advance_ticks(0.1)
+		if not ladder_visited and gx.get_character_level("climber") == 1:
+			ladder_visited = true
+			_assert_true(gx.get_position("climber").distance_to(g2.grid_to_world(Vector2i(4, 4), 1)) < 0.6,
+				"The floor change happens at the ladder cell (no mid-air transition)")
+		if not gx.is_moving("climber") and gx.get_character_level("climber") == 1:
+			break
+	_assert_true(ladder_visited, "The climber transitioned to level 1 during the traversal (climbed the ladder)")
+	_assert_equals(gx.get_character_level("climber"), 1, "The climber ends on the destination floor")
+	_assert_equals(g2.world_to_grid(gx.get_position("climber")), Vector2i(6, 6),
+		"The climber ends on the destination cell")
+	_assert_true(absf(gx.get_position("climber").y - 4.0) < 0.05,
+		"The climber's final Y matches the destination floor (no floating)")
+	_assert_true(not gx.is_moving("climber"), "The climber is parked at the destination")
+
+	# The whole traversal is ONE logged command; per-floor transitions are derived, not logged.
+	var x_kinds: Array[String] = []
+	for e in xlog.events:
+		x_kinds.append(String(e["kind"]))
+	_assert_equals(x_kinds.count("move_cross_level"), 1, "One move_cross_level command for the whole traversal")
+	_assert_equals(x_kinds.count("set_level"), 0, "Per-floor transitions are derived from the command, not separately logged")
+
+	# Replay reproduces the same destination floor + cell from that single command.
+	gx.flush_tick()  # extend recorded_until past the traversal so replay advances through it
+	var gx_replay := GameState.replay(xlog, g2)
+	_assert_equals(gx_replay.get_character_level("climber"), 1, "Replay lands the climber on the destination floor")
+	_assert_equals(g2.world_to_grid(gx_replay.get_position("climber")), Vector2i(6, 6),
+		"Replay lands the climber on the destination cell")
+
+	# Same-floor call delegates to an ordinary move; a floor with no route returns false.
+	var gy := GameState.new()
+	gy.grid = g2
+	gy.scheduler = EventScheduler.new()
+	gy.register_character("c2", g2.grid_to_world(Vector2i(1, 1), 0), 3.0, {})
+	_assert_true(gy.command_move_cross_level("c2", Vector2i(2, 2), 0),
+		"command_move_cross_level on the same floor falls back to an ordinary move")
+	_assert_true(gy.is_moving("c2"), "Same-floor cross-level call starts a normal move")
+	_assert_true(not gy.command_move_cross_level("c2", Vector2i(6, 6), 9),
+		"No route to an absent floor -> command_move_cross_level returns false")
+
 # --- Test: outline particles emit from the object surface ---
 # The per-mesh outline feedback used a box emission shape sized from the mesh AABB,
 # which collapsed into a centre blob (worse once the object was scaled). It now

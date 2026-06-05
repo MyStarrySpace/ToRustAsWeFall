@@ -50,6 +50,13 @@ var _running: Dictionary = {}
 ## space and time. Derived from movement, never serialized.
 var _reservations: Dictionary = {}
 
+## In-flight cross-level (multi-floor) moves: char_id → ordered Array of
+## per-level segments {level: int, cells: Array[Vector2i]}. The character walks
+## segment[0] to its last cell (a ladder/ramp), transitions floors there, then
+## walks the next segment. Derived from one KIND_MOVE_CROSS_LEVEL command, never
+## serialized — replay re-runs the command and reproduces every transition.
+var _cross_level_plan: Dictionary = {}
+
 const HP_MAX := 100.0
 const STAMINA_MAX := 100.0
 const ATP_MAX_PIPS := 8.0
@@ -191,6 +198,14 @@ func set_character_level(id: String, level: int) -> void:
 	if not characters.has(id):
 		return
 	_emit(GameEvent.KIND_SET_LEVEL, {"id": id, "level": level})
+	_apply_set_level(id, level)
+
+## Floor change without its own log entry — used by the cross-level executor so a
+## whole multi-floor traversal is one logged command (the transitions are derived,
+## not separately recorded). Snaps the data-layer Y to the target floor.
+func _apply_set_level(id: String, level: int) -> void:
+	if not characters.has(id):
+		return
 	var p := get_position(id)  # capture the current interpolated position before cancelling
 	_cancel_movement(id)
 	characters[id]["level"] = level
@@ -203,6 +218,7 @@ func set_character_level(id: String, level: int) -> void:
 
 func unregister_character(id: String) -> void:
 	_emit(GameEvent.KIND_UNREGISTER_CHARACTER, {"id": id})
+	_cross_level_plan.erase(id)
 	if characters.has(id):
 		# Cleanup only; no log entry.
 		if _running.has(id):
@@ -236,15 +252,78 @@ func get_navigation_state() -> Dictionary:
 		return navigation_graph.call("get_state")
 	return {}
 
-## A* pathfind to a grid cell. Returns true if a path was found.
+## A* pathfind to a grid cell on the character's current floor. Returns true if a path was found.
 func command_move_to_cell(id: String, cell: Vector2i) -> bool:
+	_cross_level_plan.erase(id)  # a fresh explicit move supersedes any in-flight cross-level traversal
 	_emit(GameEvent.KIND_MOVE_TO_CELL, {"id": id, "cell": GameEvent.v2i_to_arr(cell)})
 	return _do_move_to_cell(id, cell)
 
 ## Straight-line move to a world position.
 func command_move_to_pos(id: String, pos: Vector3) -> bool:
+	_cross_level_plan.erase(id)
 	_emit(GameEvent.KIND_MOVE_TO_POS, {"id": id, "pos": GameEvent.v3_to_arr(pos)})
 	return _do_move_to_pos(id, pos)
+
+## Pathfind to a cell on a (possibly different) floor, routing over ladders/ramps.
+## On the same floor this is just command_move_to_cell. Across floors it walks to the
+## ladder cell on the current floor, transitions there, then continues — one logged
+## command (KIND_MOVE_CROSS_LEVEL) that replay reproduces transition-for-transition.
+## Returns true if a (multi-floor) route exists.
+func command_move_cross_level(id: String, end_cell: Vector2i, end_level: int) -> bool:
+	_emit(GameEvent.KIND_MOVE_CROSS_LEVEL, {
+		"id": id,
+		"cell": GameEvent.v2i_to_arr(end_cell),
+		"level": end_level,
+	})
+	return _do_move_cross_level(id, end_cell, end_level)
+
+func _do_move_cross_level(id: String, end_cell: Vector2i, end_level: int) -> bool:
+	_cross_level_plan.erase(id)
+	if not characters.has(id) or not grid or not scheduler:
+		return false
+	if is_endocytosing(id):
+		return false
+	var cur_pos := get_position(id)
+	var cur_cell := grid.world_to_grid(cur_pos)
+	var cur_level := get_character_level(id)
+	if cur_level == end_level:
+		return _do_move_to_cell(id, end_cell)  # same floor — ordinary cooperative move
+	var path: Array = grid.find_multi_level_path(cur_cell, cur_level, end_cell, end_level)
+	if path.is_empty():
+		return false  # no ladder/ramp route between these floors
+	# Split the route into per-floor segments. A floor change sits between two consecutive
+	# waypoints that share the link cell, so the link cell ends one segment and begins the next.
+	var segments: Array = []
+	var seg := {"level": int(path[0]["level"]), "cells": ([] as Array)}
+	for wp in path:
+		if int(wp["level"]) != int(seg["level"]):
+			segments.append(seg)
+			seg = {"level": int(wp["level"]), "cells": ([] as Array)}
+		(seg["cells"] as Array).append(wp["cell"])
+	segments.append(seg)
+	_cross_level_plan[id] = segments
+	# The executor advances on each arrival; connect once (survives replay's fresh GameState).
+	if not character_arrived.is_connected(_on_cross_level_arrival):
+		character_arrived.connect(_on_cross_level_arrival)
+	# Walk the first segment to its last cell (the ladder, or the destination if single-floor-after-all).
+	var seg0_cells: Array = segments[0]["cells"]
+	return _do_move_to_cell(id, seg0_cells[seg0_cells.size() - 1])
+
+## On arrival, advance the cross-level plan: drop the finished segment, and if more remain,
+## transition to the next floor (no separate log entry) and walk that segment. The final
+## arrival leaves the plan empty and propagates as the genuine destination arrival.
+func _on_cross_level_arrival(id: String) -> void:
+	if not _cross_level_plan.has(id):
+		return
+	var segments: Array = _cross_level_plan[id]
+	segments.pop_front()  # the segment we just finished
+	if segments.is_empty():
+		_cross_level_plan.erase(id)
+		return
+	var next_seg: Dictionary = segments[0]
+	_apply_set_level(id, int(next_seg["level"]))  # floor change at the shared ladder cell
+	var cells: Array = next_seg["cells"]
+	_do_move_to_cell(id, cells[cells.size() - 1])
 
 # Internal move without its own log entry.
 func _do_move_to_pos(id: String, pos: Vector3) -> bool:
@@ -261,6 +340,7 @@ func _do_move_to_pos(id: String, pos: Vector3) -> bool:
 
 ## Set an explicit path (scripted waypoints).
 func command_walk_path(id: String, path: Array[Vector3]) -> void:
+	_cross_level_plan.erase(id)
 	_emit(GameEvent.KIND_WALK_PATH, {"id": id, "path": GameEvent.path_to_arr(path)})
 	if not characters.has(id) or not scheduler or path.is_empty():
 		return
@@ -275,6 +355,7 @@ func command_walk_path(id: String, path: Array[Vector3]) -> void:
 
 ## Halt movement at current interpolated position.
 func command_stop(id: String) -> void:
+	_cross_level_plan.erase(id)
 	_emit(GameEvent.KIND_STOP, {"id": id})
 	_do_stop(id)
 
@@ -2173,6 +2254,12 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			change_move_speed(String(payload["id"]), float(payload["speed"]))
 		GameEvent.KIND_SET_LEVEL:
 			set_character_level(String(payload["id"]), int(payload["level"]))
+		GameEvent.KIND_MOVE_CROSS_LEVEL:
+			command_move_cross_level(
+				String(payload["id"]),
+				GameEvent.arr_to_v2i(payload["cell"]),
+				int(payload["level"])
+			)
 		GameEvent.KIND_SPAWN_ITEM:
 			spawn_item(
 				String(payload["type"]),
@@ -2318,6 +2405,8 @@ func _main_group() -> Array[String]:
 func party_move_to_cell(cell: Vector2i) -> void:
 	_emit(GameEvent.KIND_PARTY_MOVE_TO_CELL, {"cell": GameEvent.v2i_to_arr(cell)})
 	var members := _main_group()
+	for char_id in members:
+		_cross_level_plan.erase(char_id)
 	if grid:
 		var assigned := _assign_party_cells(members, cell)
 		for char_id in members:
@@ -2329,6 +2418,8 @@ func party_move_to_cell(cell: Vector2i) -> void:
 func party_move_to_pos(pos: Vector3) -> void:
 	_emit(GameEvent.KIND_PARTY_MOVE_TO_POS, {"pos": GameEvent.v3_to_arr(pos)})
 	var members := _main_group()
+	for char_id in members:
+		_cross_level_plan.erase(char_id)
 	if grid:
 		# Snap to the grid so the party spreads onto distinct cells around the
 		# clicked point and moves cooperatively (no stacking, no overlap).

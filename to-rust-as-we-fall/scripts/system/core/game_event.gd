@@ -11,6 +11,7 @@ const KIND_UNREGISTER_CHARACTER := &"unregister_character"
 
 # --- Movement commands ---
 const KIND_MOVE_TO_CELL := &"move_to_cell"
+const KIND_MOVE_CROSS_LEVEL := &"move_cross_level"  # pathfind to a cell on another floor (over ladders/ramps)
 const KIND_MOVE_TO_POS := &"move_to_pos"
 const KIND_WALK_PATH := &"walk_path"
 const KIND_STOP := &"stop"
@@ -78,6 +79,7 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_REGISTER_CHARACTER,
 	KIND_UNREGISTER_CHARACTER,
 	KIND_MOVE_TO_CELL,
+	KIND_MOVE_CROSS_LEVEL,
 	KIND_MOVE_TO_POS,
 	KIND_WALK_PATH,
 	KIND_STOP,
