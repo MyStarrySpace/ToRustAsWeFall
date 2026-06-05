@@ -60,6 +60,8 @@ var active_character := ""
 var _progress_ring: MeshInstance3D
 var _progress_mat: StandardMaterial3D
 var _tutorial_label_3d: Label3D
+var _identify_label_3d: Label3D  # data-overlay scan readout of this object's name (hover-to-identify)
+var _data_identify := false      # Aster's data overlay is active → hovering reveals the name
 var _hover_active := false       # mouse is over this interactable
 var _highlight_active := false   # reveal-all overlay (hold SHIFT) is on
 var _feedback_emitting := false  # the outline/particle feedback is currently running
@@ -396,6 +398,52 @@ func is_feedback_managed() -> bool:
 func set_hover_feedback(active: bool) -> void:
 	_hover_active = active
 	_refresh_feedback()
+	if _data_identify:
+		_set_identify_label_visible(active)
+
+## Aster's data overlay (de)activates: when on, hovering this object reveals its name. Toggling off
+## hides the readout even if still hovered. Set by the sequence for every interactable.
+func set_data_identify(active: bool) -> void:
+	_data_identify = active
+	if not active:
+		_set_identify_label_visible(false)
+	elif _hover_active:
+		_set_identify_label_visible(true)
+
+func _identify_name() -> String:
+	if description != "":
+		return description
+	if tutorial_label != "" and tutorial_label != "Click":
+		return tutorial_label
+	return name.replace("_", " ").replace("Zone", "").strip_edges()
+
+func _set_identify_label_visible(should_show: bool) -> void:
+	if should_show and (_used or not interaction_enabled or _identify_name() == ""):
+		return
+	if should_show:
+		_ensure_identify_label()
+		_identify_label_3d.text = "// %s //" % _identify_name().to_upper()
+		_identify_label_3d.visible = true
+	elif _identify_label_3d != null:
+		_identify_label_3d.visible = false
+
+func _ensure_identify_label() -> void:
+	if _identify_label_3d != null:
+		return
+	_identify_label_3d = Label3D.new()
+	_identify_label_3d.name = "IdentifyLabel"
+	_identify_label_3d.font_size = 56
+	_identify_label_3d.fixed_size = true
+	_identify_label_3d.pixel_size = 0.0005
+	_identify_label_3d.modulate = Color(0.45, 0.78, 1.0, 0.95)  # Aster data-overlay cyan
+	_identify_label_3d.outline_modulate = Color(0.0, 0.05, 0.12, 0.85)
+	_identify_label_3d.outline_size = 12
+	_identify_label_3d.no_depth_test = true
+	_identify_label_3d.render_priority = 3
+	_identify_label_3d.position = Vector3(0.0, 1.7, 0.0)
+	_identify_label_3d.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_identify_label_3d.visible = false
+	add_child(_identify_label_3d)
 
 ## Drive the object's outline+particle highlight while EITHER hover or the reveal overlay wants
 ## it; stop when neither does. The visual is the linked OutlineSurfaceTarget (outline shader +
@@ -428,6 +476,8 @@ func set_interaction_enabled(active: bool) -> void:
 	if _tutorial_label_3d != null and not active:
 		_tutorial_label_3d.visible = false
 		_tutorial_label_3d.modulate.a = 0.0
+	if not active:
+		_set_identify_label_visible(false)  # a disabled object surfaces no scan readout
 	# A disabled / consumed interactable stops its highlight even if hover/SHIFT still wants it.
 	_refresh_feedback()
 	if active:

@@ -166,6 +166,9 @@ func _ready() -> void:
 			"--test-elevator-enemy-engagement":
 				ran_test = true
 				_test_elevator_enemy_engagement()
+			"--test-data-identify":
+				ran_test = true
+				_test_data_identify()
 			"--test-player-cross-level":
 				ran_test = true
 				_test_player_cross_level_click()
@@ -617,6 +620,7 @@ func _run_all_tests() -> void:
 	_test_game_state()
 	_test_state_machine()
 	_test_elevator_enemy_engagement()
+	_test_data_identify()
 	_test_cooperative_pathfinding()
 	_test_path_renderer()
 	await _test_path_render_manager()
@@ -8314,6 +8318,39 @@ func _test_elevator_enemy_engagement() -> void:
 		"The fork enemy runs its combat loop instead of idling (got: %s)" % enemy.get_state())
 	enemy.queue_free()
 	holder.queue_free()
+
+# --- Test: hover-to-identify with Aster's data overlay ---
+# When the data overlay is on, hovering an interactable surfaces the object's name; off, nothing.
+func _test_data_identify() -> void:
+	_test_name = "Data Identify Hover"
+	var area = load("res://scenes/game/interactable.tscn").instantiate()
+	add_child(area)
+	area.description = "Door Button"
+
+	# Data overlay OFF: hovering shows no scan readout.
+	area.set_hover_feedback(true)
+	_assert_true(area._identify_label_3d == null or not area._identify_label_3d.visible,
+		"No identify readout while the data overlay is off")
+	area.set_hover_feedback(false)
+
+	# Data overlay ON: hovering reveals the object's name.
+	area.set_data_identify(true)
+	area.set_hover_feedback(true)
+	_assert_true(area._identify_label_3d != null and area._identify_label_3d.visible,
+		"Hovering with the data overlay reveals a readout")
+	_assert_true("DOOR BUTTON" in area._identify_label_3d.text,
+		"The readout shows the object's name (got: %s)" % (area._identify_label_3d.text if area._identify_label_3d != null else ""))
+
+	# Turning the overlay off hides it even while still hovered.
+	area.set_data_identify(false)
+	_assert_true(not area._identify_label_3d.visible, "Turning off the data overlay hides the readout")
+
+	# Re-enable, then a disabled/used object shows nothing.
+	area.set_data_identify(true)
+	area.set_interaction_enabled(false)
+	area.set_hover_feedback(true)
+	_assert_true(not area._identify_label_3d.visible, "A disabled object does not surface a readout")
+	area.queue_free()
 
 func _drive_fsm_sequence(step: float) -> String:
 	var sched := EventScheduler.new()

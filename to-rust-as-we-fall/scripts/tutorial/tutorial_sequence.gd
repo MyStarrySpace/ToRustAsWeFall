@@ -54,6 +54,7 @@ var _perception_quad: MeshInstance3D
 var _perception_material: ShaderMaterial
 var _perception_mode := ""  # "", "data", "fog", "outline"
 var _perception_target: Node3D  # Character whose position drives the shader
+var _data_identify_active := false  # Aster's data overlay on → hovering an object reveals its name
 var _outline_hover_source: Node3D = null
 var _outline_selected_source: Node3D = null
 var _outline_hover_color := Color.WHITE
@@ -141,6 +142,7 @@ func _process(delta: float) -> void:
 	_sync_scheduler_animations()
 	_update_thought_fade()
 	_sync_perception_shader()
+	_update_data_identify()
 	_on_process(delta, spd)
 
 func _exit_tree() -> void:
@@ -199,6 +201,7 @@ func headless_advance(duration: float, step := 0.05) -> void:
 		_sync_scheduler_animations()
 		_update_thought_fade()
 		_sync_perception_shader()
+		_update_data_identify()
 		_on_process(dt, 1.0)
 		_headless_sync_scheduler_visuals()
 		_headless_sync_runtime(dt)
@@ -643,6 +646,31 @@ func _set_all_interactables_highlighted(node: Node, active: bool) -> void:
 	for child in node.get_children():
 		_set_all_interactables_highlighted(child, active)
 
+# --- Hover-to-identify (Aster's data overlay) ---
+#
+# While the data overlay is active, hovering an interactable surfaces the object's NAME (a cyan
+# scan readout). The overlay turning on/off flips a flag on every interactable; the per-interactable
+# hover then shows/hides the readout. Reusable: any sequence running "data" perception gets it free.
+
+## True when Aster's data overlay is live (mode == "data" and, where gated like the elevator, the
+## perception quad is actually visible).
+func _data_overlay_active() -> bool:
+	return _perception_mode == "data" and (_perception_quad == null or _perception_quad.visible)
+
+## Flip hover-to-identify on every interactable when the overlay state changes (cheap: only on edge).
+func _update_data_identify() -> void:
+	var active := _data_overlay_active()
+	if active == _data_identify_active:
+		return
+	_data_identify_active = active
+	_set_all_data_identify(self, active)
+
+func _set_all_data_identify(node: Node, active: bool) -> void:
+	if node.has_method("set_data_identify"):
+		node.call("set_data_identify", active)
+	for child in node.get_children():
+		_set_all_data_identify(child, active)
+
 # --- Exploration helpers ---
 
 func _create_interactable(
@@ -672,6 +700,9 @@ func _create_interactable(
 		_scheduler, _dialogue, _current_interaction_character()) as Area3D
 	area.set("outline_highlight_radius", radius)
 	_connect_interactable_outline_feedback(area)
+	# Inherit the current data-overlay identify state (interactables spawned after it turned on).
+	if _data_identify_active and area.has_method("set_data_identify"):
+		area.call("set_data_identify", true)
 	return area
 
 func _connect_interactable_outline_feedback(source: Node) -> void:
