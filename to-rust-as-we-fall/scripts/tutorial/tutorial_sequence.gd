@@ -588,8 +588,10 @@ func _on_highlight_held(active: bool) -> void:
 	_set_all_interactables_highlighted(self, active)
 
 func _set_all_interactables_highlighted(node: Node, active: bool) -> void:
-	if node is Interactable and node.has_method("set_highlighted"):
-		node.call("set_highlighted", active)
+	# Both Interactable (footprint-particle highlight) and OutlineSurfaceTarget (mesh outline
+	# shader + surface particles) expose set_highlight — reveal whichever the node is.
+	if node.has_method("set_highlight"):
+		node.call("set_highlight", active)
 	for child in node.get_children():
 		_set_all_interactables_highlighted(child, active)
 

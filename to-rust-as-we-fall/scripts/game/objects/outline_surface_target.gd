@@ -141,12 +141,20 @@ func is_feedback_managed() -> bool:
 
 func set_hover_feedback(active: bool) -> void:
 	_hovered = active
+	set_highlight(active)
+
+## Highlight = the outline shader PLUS surface particles (the full duo), without the one-shot
+## click-select burst. Used by BOTH hover and the hold-SHIFT reveal so they read identically.
+## While a click-selection is active it leaves the (stronger) selected feedback in place.
+func set_highlight(active: bool) -> void:
 	if active:
 		if not _selected:
 			_apply_object_outline(hover_outline_color, hover_object_outline_width, 1.0)
+			_play_outline_particles()
 		return
 	if not _selected:
 		_clear_object_outline()
+		_stop_outline_particles()
 
 func register_highlight_mesh(mesh_instance: MeshInstance3D) -> void:
 	if mesh_instance == null or _highlight_meshes.has(mesh_instance):

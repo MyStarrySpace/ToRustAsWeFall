@@ -4703,27 +4703,32 @@ func _test_dialogue_cutscene_mode() -> void:
 	await get_tree().process_frame
 
 ## "Hold SHIFT to reveal interactions": the highlight action -> HUD signal -> base handler ->
-## every interactable shows its label. Driven through the REAL Input pipeline, not a direct call.
+## every interactable runs its outline/PARTICLE highlight (the shader+particle duo, NOT a label).
+## Hover shares the same feedback path. Driven through the REAL Input pipeline.
 func _test_interactable_highlight() -> void:
 	_test_name = "Interactable Highlight"
 	_assert_true(InputMap.has_action("highlight"), "highlight input action is registered (SHIFT)")
 
-	# set_highlighted toggles the interactable's reveal state and never clobbers a sequence label.
+	# set_highlight drives the particle feedback (the footprint-ring duo), not a label.
 	var it: Node = load("res://scripts/game/objects/interactable.gd").new()
 	get_tree().root.add_child(it)
 	await get_tree().process_frame
 	it.interaction_enabled = true
-	it.show_tutorial_label()  # sequence-shown
-	it.set_highlighted(true)
-	_assert_true(it._highlighted, "set_highlighted(true) marks the interactable revealed")
-	it.set_highlighted(false)
-	_assert_true(not it._highlighted, "set_highlighted(false) clears the reveal")
-	_assert_true(it._label_shown_by_sequence, "the overlay does not clobber a sequence-shown label")
+	it.set_highlight(true)
+	_assert_true(it._feedback_emitting, "set_highlight(true) runs the outline/particle feedback")
+	_assert_true(it._selected_particles != null and it._selected_particles.emitting, "the footprint-ring particles emit while highlighted")
+	it.set_highlight(false)
+	_assert_true(not it._feedback_emitting, "set_highlight(false) stops the feedback")
+	# Hover shares the SAME feedback path (no separate label treatment).
+	it.set_hover_feedback(true)
+	_assert_true(it._feedback_emitting, "hover shows the SAME outline/particle highlight")
+	it.set_hover_feedback(false)
+	_assert_true(not it._feedback_emitting, "leaving hover stops the highlight")
 	it.queue_free()
 	await get_tree().process_frame
 
 	# Full pipeline through the real Peris scene: SHIFT key event -> HUD highlight_held -> base
-	# _on_highlight_held -> every interactable highlighted; release clears.
+	# _on_highlight_held -> every interactable's feedback running; release stops it.
 	var scene := load("res://scenes/tutorial/peris_sim.tscn")
 	var inst: Node = scene.instantiate()
 	inst._visit_phase = 1
@@ -4750,9 +4755,9 @@ func _test_interactable_highlight() -> void:
 		await get_tree().process_frame
 	var any_highlighted := false
 	for node in interactables:
-		if node._highlighted:
+		if node._feedback_emitting:
 			any_highlighted = true
-	_assert_true(any_highlighted, "Holding SHIFT reveals interactables (real input -> HUD -> handler)")
+	_assert_true(any_highlighted, "Holding SHIFT runs the outline/particle highlight (real input -> HUD -> handler)")
 
 	var release := InputEventAction.new()
 	release.action = "highlight"
@@ -4762,9 +4767,9 @@ func _test_interactable_highlight() -> void:
 		await get_tree().process_frame
 	var all_cleared := true
 	for node in interactables:
-		if node._highlighted:
+		if node._feedback_emitting:
 			all_cleared = false
-	_assert_true(all_cleared, "Releasing SHIFT hides the reveal")
+	_assert_true(all_cleared, "Releasing SHIFT stops the highlight")
 
 	inst._visit_phase = 1
 	inst.queue_free()

@@ -57,8 +57,9 @@ var active_character := ""
 var _progress_ring: MeshInstance3D
 var _progress_mat: StandardMaterial3D
 var _tutorial_label_3d: Label3D
-var _highlighted := false              # reveal-all overlay (hold SHIFT) is showing this one
-var _label_shown_by_sequence := false  # the sequence asked for the label (survives overlay release)
+var _hover_active := false       # mouse is over this interactable
+var _highlight_active := false   # reveal-all overlay (hold SHIFT) is on
+var _feedback_emitting := false  # the outline/particle feedback is currently running
 var _collision_shape: CollisionShape3D
 var _selected_particles: GPUParticles3D
 var _selected_particle_material: ParticleProcessMaterial
@@ -256,42 +257,26 @@ func _resolve_dialogue_key() -> String:
 	return ""
 
 func show_tutorial_label() -> void:
-	_label_shown_by_sequence = true
-	_show_label_internal()
-
-func hide_tutorial_label() -> void:
-	_label_shown_by_sequence = false
-	# Keep the label up while the reveal-all overlay (hold SHIFT) is active; it clears on release.
-	if _highlighted:
-		return
-	_hide_label_internal()
-
-func _show_label_internal() -> void:
 	if _tutorial_label_3d and interaction_enabled:
 		_tutorial_label_3d.visible = true
 		_tutorial_label_3d.modulate.a = 0.0
 		var tween := create_tween()
 		tween.tween_property(_tutorial_label_3d, "modulate:a", 0.9, 0.5)
 
-func _hide_label_internal() -> void:
+func hide_tutorial_label() -> void:
 	if _tutorial_label_3d:
 		var tween := create_tween()
 		tween.tween_property(_tutorial_label_3d, "modulate:a", 0.0, 0.3)
 		tween.tween_callback(func(): _tutorial_label_3d.visible = false)
 
-## Reveal-all overlay: while the player holds the highlight action (SHIFT), every enabled
-## interactable shows its label so the player can see what's interactable; on release it hides
-## again — unless the owning sequence had explicitly shown it. No-op for interactables without
-## a label or while disabled.
-func set_highlighted(active: bool) -> void:
-	if _highlighted == active:
-		return
-	_highlighted = active
-	if active:
-		if interaction_enabled and not _used:
-			_show_label_internal()
-	elif not _label_shown_by_sequence:
-		_hide_label_internal()
+## Reveal-all overlay (hold SHIFT): show every interactable's outline/particle highlight at once.
+## Shares the same feedback as hover — the player sees the SAME glow on a hovered object and on
+## a revealed one. An interactable is a meshless proximity zone, so the highlight is the
+## footprint-ring particle duo (selected_feedback); object meshes wrapped in an OutlineSurfaceTarget
+## get the mesh outline shader on top via their own set_highlight().
+func set_highlight(active: bool) -> void:
+	_highlight_active = active
+	_refresh_feedback()
 
 func _on_body_entered(body: Node3D) -> void:
 	if _used or not interaction_enabled:
@@ -386,10 +371,30 @@ func set_feedback_managed(active: bool) -> void:
 func is_feedback_managed() -> bool:
 	return _feedback_managed
 
-## Kept as a no-op so OutlineFeedbackManager's has_method() hover hook still
-## resolves; the green ground disc it used to tint has been removed.
-func set_hover_feedback(_active: bool) -> void:
-	pass
+## Hover feedback — driven by the OutlineFeedbackManager (bound interactables) or the bare
+## mouse_entered hook. Shows the SAME outline/particle highlight as the reveal overlay, so a
+## hovered object and a SHIFT-revealed one read identically.
+func set_hover_feedback(active: bool) -> void:
+	_hover_active = active
+	_refresh_feedback()
+
+## Run the outline + footprint-particle feedback while EITHER hover or the reveal overlay wants
+## it; stop when neither does. The particle emitter is continuous (one_shot == false), so it
+## holds for as long as the player hovers / holds SHIFT.
+func _refresh_feedback() -> void:
+	var want := (_hover_active or _highlight_active) and interaction_enabled and not _used
+	if want == _feedback_emitting:
+		return
+	_feedback_emitting = want
+	if want:
+		play_selected_feedback()
+	else:
+		_stop_selected_feedback()
+
+func _stop_selected_feedback() -> void:
+	if _selected_particles != null:
+		_selected_particles.emitting = false
+		_selected_particles.visible = false
 
 func set_interaction_enabled(active: bool) -> void:
 	interaction_enabled = active
@@ -410,6 +415,8 @@ func set_interaction_enabled(active: bool) -> void:
 	if _tutorial_label_3d != null and not active:
 		_tutorial_label_3d.visible = false
 		_tutorial_label_3d.modulate.a = 0.0
+	# A disabled / consumed interactable stops its highlight even if hover/SHIFT still wants it.
+	_refresh_feedback()
 	if active:
 		call_deferred("_refresh_player_range")
 
