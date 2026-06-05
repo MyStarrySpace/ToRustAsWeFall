@@ -378,9 +378,11 @@ func set_hover_feedback(active: bool) -> void:
 	_hover_active = active
 	_refresh_feedback()
 
-## Run the outline + footprint-particle feedback while EITHER hover or the reveal overlay wants
-## it; stop when neither does. The particle emitter is continuous (one_shot == false), so it
-## holds for as long as the player hovers / holds SHIFT.
+## Run the footprint-particle feedback while EITHER hover or the reveal overlay wants it; stop
+## when neither does. The emitter is continuous (one_shot == false), so it holds for as long as
+## the player hovers / holds SHIFT. The OBJECT's mesh outline shader is a SEPARATE
+## OutlineSurfaceTarget (built by the sequence's `_outline_object_meshes`, with this interactable
+## as its delegate) — the reveal controller drives both, so zone + mesh light up together.
 func _refresh_feedback() -> void:
 	var want := (_hover_active or _highlight_active) and interaction_enabled and not _used
 	if want == _feedback_emitting:

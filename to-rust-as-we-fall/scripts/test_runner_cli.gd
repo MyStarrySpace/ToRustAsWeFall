@@ -4759,6 +4759,15 @@ func _test_interactable_highlight() -> void:
 			any_highlighted = true
 	_assert_true(any_highlighted, "Holding SHIFT runs the outline/particle highlight (real input -> HUD -> handler)")
 
+	# The object meshes (wrapped in OutlineSurfaceTargets via _outline_object_meshes) get the real
+	# outline SHADER — the controller drives their set_highlight too, not just the zone particles.
+	var targets := _collect_outline_targets(inst)
+	var shader_outline_on := false
+	for t in targets:
+		if t.has_method("has_active_mesh_outline") and t.call("has_active_mesh_outline"):
+			shader_outline_on = true
+	_assert_true(targets.size() == 0 or shader_outline_on, "Holding SHIFT lights the mesh outline SHADER on object targets (got %d targets)" % targets.size())
+
 	var release := InputEventAction.new()
 	release.action = "highlight"
 	release.pressed = false
@@ -4781,6 +4790,14 @@ func _collect_interactable_nodes(node: Node) -> Array:
 		out.append(node)
 	for child in node.get_children():
 		out.append_array(_collect_interactable_nodes(child))
+	return out
+
+func _collect_outline_targets(node: Node) -> Array:
+	var out: Array = []
+	if node is OutlineSurfaceTarget:
+		out.append(node)
+	for child in node.get_children():
+		out.append_array(_collect_outline_targets(child))
 	return out
 
 ## Pause menu: opens/closes, pauses the tree, navigates to Settings, and its
