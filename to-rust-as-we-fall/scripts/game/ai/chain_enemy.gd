@@ -57,7 +57,7 @@ func _process(delta: float) -> void:
 	# tick is fast-forward-invariant. The trailing body segments still follow per frame
 	# (follow_speed * delta * spd below), so segment-hit timing is a per-frame
 	# approximation; collisions test the scheduler-authoritative target position.
-	if _charging and _state == "charge" and not _charge_hit:
+	if _charging and get_state() == "charge" and not _charge_hit:
 		for seg_pos in _segment_positions:
 			for target_id in _detection_targets:
 				var target_pos := _charge_target_world(target_id)
@@ -137,7 +137,7 @@ func _apply_segment_visuals() -> void:
 			if dir.length() > 0.01:
 				seg.look_at(_segment_positions[i] + dir, Vector3.UP)
 
-	if _state == "idle" or _state == "patrol":
+	if get_state() == "idle" or get_state() == "patrol":
 		var t := Time.get_ticks_msec() * 0.001  # @rendering_only — idle breathing animation
 		for i in range(_segments.size()):
 			_segments[i].position.y += sin(t + i * 0.5) * 0.01

@@ -82,6 +82,12 @@ func cancel_pending() -> void:
 	if _scheduler != null:
 		_scheduler.cancel_tag(_tag)
 
+## Set the current state WITHOUT running exit/enter hooks or touching scheduled work. For white-box
+## test setup or external resets that manage the state's side effects themselves. Prefer
+## transition_to / transition_after in normal use.
+func force_current(state_name: String) -> void:
+	_current = state_name
+
 ## Drive the current state's on_update hook (call from the owner's per-frame loop if it uses one).
 func update(delta: float) -> void:
 	_call(_current, "update", [delta])

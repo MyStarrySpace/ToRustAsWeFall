@@ -12552,7 +12552,7 @@ func _test_chain_enemy() -> void:
 	_assert_true(all_red, "All segments turn red on color change")
 
 	# Anchor constraint keeps head within max_reach.
-	chain._state = "idle"
+	chain._fsm.force_current("idle")
 	chain._hp = chain.max_hp
 	chain._anchored = true
 	var anchor := Vector3(0, 0, 0)
@@ -12597,7 +12597,7 @@ func _test_chain_enemy() -> void:
 	_assert_true(chain._anchor_pos.distance_to(new_anchor) < 0.01, "New anchor position set")
 
 	# HP/death inherited from Enemy; run last because it kills the chain.
-	chain._state = "idle"
+	chain._fsm.force_current("idle")
 	chain._hp = chain.max_hp
 	chain.take_damage(chain.max_hp)
 	_assert_true(not chain.is_alive(), "Chain dies when HP reaches 0")
@@ -16529,7 +16529,7 @@ func _test_dodge_roll() -> void:
 	enemy._charge_target_pos = Vector3(10, 0.5, 10)
 	enemy._charging = true
 	enemy._charge_hit = false
-	enemy._state = "charge"
+	enemy._fsm.force_current("charge")
 	# The charge is scheduler-tick-derived; record its start (as _enter_state would).
 	enemy._charge_start_pos = enemy.global_position
 	enemy._charge_start_tick = sched.get_current_tick()
@@ -16560,7 +16560,7 @@ func _test_dodge_roll() -> void:
 	enemy._charge_target_pos = Vector3(hero_pos.x, 0.5, hero_pos.z)
 	enemy._charging = true
 	enemy._charge_hit = false
-	enemy._state = "charge"
+	enemy._fsm.force_current("charge")
 	enemy._charge_start_pos = enemy.global_position
 	enemy._charge_start_tick = sched.get_current_tick()
 

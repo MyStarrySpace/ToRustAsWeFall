@@ -26,8 +26,8 @@ extends Node3D
 var game_state: GameState
 var char_id := ""
 
-# --- State machine ---
-var _state := "idle"
+# --- State machine (reusable scheduler-driven FSM) ---
+var _fsm: StateMachine
 var _state_tag := ""
 var _hp: float
 
@@ -65,27 +65,28 @@ func _ready() -> void:
 	_base_color = color
 	_state_tag = "enemy_%s" % name
 	_build_visual()
+	_build_fsm()
 
 # --- Public API ---
 
 ## Start after game_state and char_id are set.
 func activate() -> void:
-	if _state == "dead":
+	if get_state() == "dead":
 		return
 	if game_state and not game_state.detection_predicted.is_connected(_on_detection_predicted):
 		game_state.detection_predicted.connect(_on_detection_predicted)
-	_change_state("idle")
+	_fsm.transition_to("idle")
 
 ## Set patrol waypoints.
 func set_patrol(waypoints: Array[Vector3]) -> void:
 	_patrol_waypoints = waypoints
 	_patrol_index = 0
-	if _state != "dead":
-		_change_state("patrol")
+	if get_state() != "dead":
+		_fsm.transition_to("patrol")
 
 ## Apply damage.
 func take_damage(amount: float) -> void:
-	if _state == "dead":
+	if get_state() == "dead":
 		return
 	_hp = maxf(0.0, _hp - amount)
 	damaged.emit(amount, _hp)
@@ -94,25 +95,29 @@ func take_damage(amount: float) -> void:
 
 ## Kill immediately.
 func die() -> void:
-	_change_state("dead")
+	_fsm.transition_to("dead")
 
 func is_alive() -> bool:
 	return _hp > 0
 
 func get_state() -> String:
-	return _state
+	return _fsm.current() if _fsm != null else ""
 
-# --- State Machine Core ---
+# --- State Machine Core (reusable StateMachine: tag-scoped scheduling + exit/enter hooks) ---
 
+const ENEMY_STATES := ["idle", "patrol", "detecting", "alert", "pursuit", "windup", "charge", "recover", "dead"]
+
+func _build_fsm() -> void:
+	_fsm = StateMachine.new(_get_scheduler(), _state_tag)
+	for state_name in ENEMY_STATES:
+		_fsm.add_state(state_name, _enter_state.bind(state_name), _exit_state.bind(state_name))
+	_fsm.start("idle")  # default state before activate() (idle's enter is a no-op)
+
+## Force a state directly. Prefer letting the FSM drive transitions; this exists for external
+## resets (showcase / test harnesses) that pin an enemy back to a known state.
 func _change_state(new_state: String) -> void:
-	if new_state == _state and new_state != "idle":
-		return
-	var scheduler := _get_scheduler()
-	if scheduler:
-		scheduler.cancel_tag(_state_tag)
-	_exit_state(_state)
-	_state = new_state
-	_enter_state(new_state)
+	if _fsm != null:
+		_fsm.transition_to(new_state)
 
 func _enter_state(state: String) -> void:
 	match state:
@@ -194,11 +199,11 @@ func _on_detection_predicted(detector_id: String, target_id: String) -> void:
 	if target_id not in _detection_targets:
 		return
 	# Only respond to detections when in a scanning state
-	if _state not in ["idle", "patrol", "detecting"]:
+	if get_state() not in ["idle", "patrol", "detecting"]:
 		return
 	_current_target_id = target_id
 	target_spotted.emit(target_id)
-	_change_state("alert")
+	_fsm.transition_to("alert")
 
 # --- Alert ---
 
@@ -229,19 +234,19 @@ func _remove_alert_label() -> void:
 # Pursuit, windup, charge, recover.
 
 func _begin_pursuit() -> void:
-	if _state != "alert":
+	if get_state() != "alert":
 		return
 	_remove_alert_label()
-	_change_state("pursuit")
+	_fsm.transition_to("pursuit")
 
 func _pursue_target() -> void:
-	if _state != "pursuit" or _current_target_id == "" or not game_state:
+	if get_state() != "pursuit" or _current_target_id == "" or not game_state:
 		return
 	var target_pos := game_state.get_position(_current_target_id)
 	var dist := global_position.distance_to(target_pos)
 	# Close enough to wind up.
 	if dist < attack_range:
-		_change_state("windup")
+		_fsm.transition_to("windup")
 		return
 	# Otherwise keep chasing
 	if game_state.characters.has(char_id):
@@ -254,31 +259,31 @@ func _pursue_target() -> void:
 		scheduler.schedule_after(pursuit_update_interval, _pursue_target, _state_tag)
 
 func _begin_charge() -> void:
-	if _state != "windup":
+	if get_state() != "windup":
 		return
-	_change_state("charge")
+	_fsm.transition_to("charge")
 
 func _end_charge() -> void:
-	if _state != "charge":
+	if get_state() != "charge":
 		return
-	_change_state("recover")
+	_fsm.transition_to("recover")
 
 func _resume_pursuit() -> void:
-	if _state != "recover":
+	if get_state() != "recover":
 		return
 	_set_mesh_color(_base_color)
-	_change_state("pursuit")
+	_fsm.transition_to("pursuit")
 
 func _begin_rescan() -> void:
-	if _state != "pursuit":
+	if get_state() != "pursuit":
 		return
 	_stop_movement()
-	_change_state("detecting")
+	_fsm.transition_to("detecting")
 
 # --- Patrol ---
 
 func _patrol_next_waypoint() -> void:
-	if _patrol_waypoints.is_empty() or _state != "patrol":
+	if _patrol_waypoints.is_empty() or get_state() != "patrol":
 		return
 	var waypoint := _patrol_waypoints[_patrol_index]
 	if game_state and game_state.characters.has(char_id):
@@ -346,7 +351,7 @@ func _process(delta: float) -> void:
 	# Charge: position is a pure function of the scheduler tick, so the lunge covers the
 	# same distance per TICK and the contact lands at the same tick regardless of frame
 	# rate or fast-forward. _process only reads it; the scheduler is the clock.
-	if _charging and _state == "charge":
+	if _charging and get_state() == "charge":
 		var scheduler := _get_scheduler()
 		if scheduler and scheduler.is_paused():
 			return
