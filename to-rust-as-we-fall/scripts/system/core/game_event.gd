@@ -20,6 +20,7 @@ const KIND_CHANGE_SPEED := &"change_speed"
 # adjust_stat/reset_characters_to_full replay through set_stat.
 const KIND_SET_STAT := &"set_stat"
 const KIND_SET_RUNNING := &"set_running"
+const KIND_SET_LEVEL := &"set_level"  # character changed floors (ladder/ramp arrival)
 
 # --- Item commands ---
 # Spawn ids are deterministic under replay.

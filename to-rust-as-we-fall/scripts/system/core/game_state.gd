@@ -190,6 +190,7 @@ func get_character_level(id: String) -> int:
 func set_character_level(id: String, level: int) -> void:
 	if not characters.has(id):
 		return
+	_emit(GameEvent.KIND_SET_LEVEL, {"id": id, "level": level})
 	var p := get_position(id)  # capture the current interpolated position before cancelling
 	_cancel_movement(id)
 	characters[id]["level"] = level
@@ -2170,6 +2171,8 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			command_stop(String(payload["id"]))
 		GameEvent.KIND_CHANGE_SPEED:
 			change_move_speed(String(payload["id"]), float(payload["speed"]))
+		GameEvent.KIND_SET_LEVEL:
+			set_character_level(String(payload["id"]), int(payload["level"]))
 		GameEvent.KIND_SPAWN_ITEM:
 			spawn_item(
 				String(payload["type"]),

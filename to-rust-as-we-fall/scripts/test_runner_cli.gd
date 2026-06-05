@@ -8687,7 +8687,7 @@ func _test_event_log_mutation_audit() -> void:
 	# does not represent a player/sequence input that needs replaying).
 	var allowlist := PackedStringArray([
 		# Pure queries
-		"get_position", "is_moving", "get_grid_cell",
+		"get_position", "is_moving", "get_grid_cell", "get_character_level",
 		"get_hand_items", "get_hand_slots", "get_internal_items",
 		"has_free_hand", "has_free_hands",
 		"get_scent_radius",
