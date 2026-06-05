@@ -103,6 +103,7 @@ var _overlay_panel_content: VBoxContainer
 var _overlay_panel_status_label: Label
 var _overlay_panel_collapse_button: Button
 var _overlay_panel_collapsed := false
+var _overlay_panel_margin: MarginContainer
 var _overlay_stack_quad: MeshInstance3D
 var _overlay_stack_material: ShaderMaterial
 var _inventory_panel_label: Label
@@ -792,12 +793,15 @@ func _build_preview_ui() -> void:
 	_build_overlay_panel()
 
 func _build_inventory_panel() -> void:
+	# Sits just above the bottom HUD bar (the character details), not floating top-left. The HUD
+	# bar is 64px tall; offset up past it so carry/consume reads as part of the character row.
 	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	margin.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	margin.offset_left = 12
-	margin.offset_top = 132
-	margin.offset_right = 308
-	margin.offset_bottom = 364
+	margin.offset_right = 320
+	margin.offset_top = -288
+	margin.offset_bottom = -72
+	margin.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_preview_layer.add_child(margin)
 
 	var panel := PanelContainer.new()
@@ -828,13 +832,20 @@ func _build_inventory_panel() -> void:
 	box.add_child(_inventory_panel_label)
 	_refresh_inventory_panel()
 
+const OVERLAY_PANEL_TOP := 12.0
+const OVERLAY_PANEL_EXPANDED_BOTTOM := 260.0
+const OVERLAY_PANEL_COLLAPSED_BOTTOM := 56.0  # header-only height when collapsed
+
 func _build_overlay_panel() -> void:
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	margin.offset_left = -364
-	margin.offset_top = 12
+	margin.offset_top = OVERLAY_PANEL_TOP
 	margin.offset_right = -12
-	margin.offset_bottom = 260
+	margin.offset_bottom = OVERLAY_PANEL_EXPANDED_BOTTOM
+	# The PanelContainer fills the margin's rect, so a fixed height keeps the dark window full-size
+	# even when the content is hidden. Shrink the margin itself on collapse (see _set_overlay_panel_collapsed).
+	_overlay_panel_margin = margin
 	_preview_layer.add_child(margin)
 
 	var panel := PanelContainer.new()
@@ -992,6 +1003,10 @@ func _set_overlay_panel_collapsed(collapsed: bool) -> void:
 	_overlay_panel_collapsed = collapsed
 	if _overlay_panel_content != null:
 		_overlay_panel_content.visible = not collapsed
+	# Shrink the margin itself to the header height — hiding the content alone leaves the
+	# PanelContainer filling the fixed margin rect, so the dark window stays full-size.
+	if _overlay_panel_margin != null:
+		_overlay_panel_margin.offset_bottom = OVERLAY_PANEL_COLLAPSED_BOTTOM if collapsed else OVERLAY_PANEL_EXPANDED_BOTTOM
 	if _overlay_panel_collapse_button != null:
 		_overlay_panel_collapse_button.text = "SHOW  O" if collapsed else "HIDE  O"
 
