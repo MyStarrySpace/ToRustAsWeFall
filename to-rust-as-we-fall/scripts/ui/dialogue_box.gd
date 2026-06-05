@@ -46,6 +46,11 @@ var _displayed_chars := 0.0
 var _hold_timer := 0.0
 var _active := false
 var _waiting_for_input := false
+## Cutscene mode: the owning sequence forces auto-advance for dialogue tied to a scripted
+## cutscene, so lines keep pace with the on-screen action (characters walking the corridor)
+## instead of blocking on a click — regardless of the player's auto-advance preference, and
+## even for `wait` lines. Hold F still speeds it; the UI lane is F-scaled.
+var _cutscene_mode := false
 var _style := "normal"  # "normal", "poem", "data", "fragment", "whisper"
 
 # Pagination: [start, end) char windows over _current_text.
@@ -181,10 +186,18 @@ func _effective_hold() -> float:
 
 ## Auto-advance (type, hold, advance on its own) is opt-in. Default: click-only.
 func _auto_advance_enabled() -> bool:
+	if _cutscene_mode:
+		return true
 	var s := _settings()
 	if s != null and s.has_method("is_auto_advance_dialogue"):
 		return bool(s.call("is_auto_advance_dialogue"))
 	return false
+
+## Force auto-advance for a scripted cutscene (e.g. Tag Day): lines advance on the shared
+## reading beat (hold F to speed) and never block on a click — even `wait` lines — so the
+## dialogue stays synced to the on-screen action. The owning sequence sets this.
+func set_cutscene_mode(on: bool) -> void:
+	_cutscene_mode = on
 
 # --- Advancement ---
 
@@ -211,7 +224,9 @@ func advance_ui_time(delta_ticks: float) -> void:
 	if not _auto_advance_enabled():
 		return
 	if _is_last_page():
-		if _waiting_for_input:
+		# A cutscene line never blocks on a click — it rides the shared beat so it stays in
+		# step with the on-screen action (a paused-for-input line would desync the cutscene).
+		if _waiting_for_input and not _cutscene_mode:
 			return  # await request_advance()
 		_hold_timer -= dt
 		if _hold_timer <= 0.0:
@@ -250,7 +265,7 @@ func awaiting_advance() -> bool:
 	if _displayed_chars < float(_pages[_page_index].y):
 		return false
 	if _is_last_page():
-		return _waiting_for_input or not _auto_advance_enabled()
+		return (_waiting_for_input and not _cutscene_mode) or not _auto_advance_enabled()
 	return not _auto_advance_enabled()
 
 func _is_last_page() -> bool:

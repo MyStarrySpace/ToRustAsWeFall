@@ -107,6 +107,11 @@ func _setup_ui() -> void:
 	_data_overlay.add_child(data_label2)
 
 func _begin() -> void:
+	# Tag Day is a scripted cinematic — the citizen is gripped and walked through the corridor
+	# while the poem plays. Dialogue rides the shared beat (hold F to speed) instead of waiting
+	# on clicks, so it stays in step with the on-screen action and never desyncs the cutscene.
+	if _dialogue != null and _dialogue.has_method("set_cutscene_mode"):
+		_dialogue.set_cutscene_mode(true)
 	_start_arrive()
 
 # --- Event-driven steps ---
