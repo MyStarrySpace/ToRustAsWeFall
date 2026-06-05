@@ -36,8 +36,8 @@ const CHARACTER_REGISTRY := {
 	},
 	"oli": {
 		"name": "Oli", "cell_type": "oligodendrocyte", "class_code": "OLG", "recruit": 4,
-		"capabilities": ["barrier", "insulation", "terminal", "electrical", "cover", "class_other"],
-		"abilities": {"sheath": {"name": "Sheath", "grants": "barrier"}, "conduct": {"name": "Conduct", "grants": "electrical"}},
+		"capabilities": ["barrier", "insulation", "terminal", "cover", "class_other"],
+		"abilities": {"sheath": {"name": "Sheath", "grants": "barrier"}, "conduct": {"name": "Conduct", "grants": "mobility"}},
 	},
 	"tyreg": {
 		"name": "Tyreg", "cell_type": "T-regulatory", "class_code": "TRG", "recruit": 5,

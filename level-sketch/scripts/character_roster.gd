@@ -36,9 +36,9 @@ const CHARACTERS := [
 	},
 	{
 		"id": "oli", "name": "Oli", "cell": "oligodendrocyte", "class": "OLG", "color": Color(0.75, 0.66, 0.92),
-		"role": "Defensive support — insulation + shields; protected lanes through hazards.",
-		"capabilities": ["barrier", "insulation", "terminal", "electrical", "cover", "class_other"],
-		"abilities": [{"name": "Sheath", "desc": "Ally HP shield"}, {"name": "Conduct", "desc": "Ally speed buff"}],
+		"role": "Defensive support — insulation + shields; myelinated lanes that speed allies through hazards.",
+		"capabilities": ["barrier", "insulation", "terminal", "cover", "class_other"],
+		"abilities": [{"name": "Sheath", "desc": "Ally HP shield"}, {"name": "Conduct", "desc": "Ally speed buff (myelination)"}],
 	},
 	{
 		"id": "tyreg", "name": "Tyreg", "cell": "T-regulatory", "class": "TRG", "color": Color(0.92, 0.58, 0.42),

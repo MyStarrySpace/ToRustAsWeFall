@@ -334,7 +334,7 @@ func _test_character_roster() -> void:
 		"peris": ["flora", "carry", "physical", "protect", "cover", "tend", "pct_class"],
 		"endo": ["barrier", "junction", "repair", "gear", "carry", "endo", "ent_class"],
 		"myke": ["combat", "impact", "force", "carry", "physical", "tend", "class_other"],
-		"oli": ["barrier", "insulation", "terminal", "electrical", "cover", "class_other"],
+		"oli": ["barrier", "insulation", "terminal", "cover", "class_other"],
 		"tyreg": ["combat", "force", "scan", "timing", "class_tmc"],
 	}
 	for cid in expected_caps:
