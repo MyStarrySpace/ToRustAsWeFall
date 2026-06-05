@@ -342,13 +342,21 @@ func _on_process(delta: float, spd: float) -> void:
 		elif peris_at_door or aster_at_door:
 			_show_multiselect_together_hint()
 
-	# Route convergence gate: player reached the junction area
-	if _current_step == "route_choice":
-		var player_pos := _game_state.get_position("aster")
-		if player_pos.x > ROUTES_CONVERGE.x - 2.0:
+	# Bridge gate: you cross the bridge OVER the ecology (seeing the enemies below); once past them,
+	# at the far end, it gives way and drops the party onto a clear ledge beyond the enemy band.
+	if _current_step == "bridge":
+		if _game_state.get_position("aster").x > BRIDGE_END_X - 1.5:
 			_tutorial_prompt.hide_prompt()
 			_player.set_move_enabled(false)
 			_start_bridge_collapse()
+
+	# Route convergence gate: after choosing a lane and walking it, reaching convergence
+	# opens the junction (the fall already happened — this no longer triggers the collapse).
+	if _current_step == "route_choice":
+		if _game_state.get_position("aster").x > ROUTES_CONVERGE.x - 2.0:
+			_tutorial_prompt.hide_prompt()
+			_player.set_move_enabled(false)
+			_start_junction_arrive()
 
 	# Gauntlet exit gate: player passed the enemies
 	if _current_step == "gauntlet":
@@ -847,14 +855,21 @@ func _start_corridor() -> void:
 
 func _start_bridge() -> void:
 	_enter_step("bridge")
-	var bridge_pos := Vector3(ELEVATOR_SIZE.x / 2.0 + 12.0, 0, 0)
+	_player.set_move_enabled(false)
+	# Step onto the START of the bridge; the player then walks across and it gives way mid-span,
+	# dropping the party onto the broken section (where the climb prompt waits), clear of the ecology.
+	var bridge_pos := Vector3(BRIDGE_START_X, 0, 0)
 	_game_state.command_move_to_pos("aster", bridge_pos + Vector3(1.0, 0, 0))
 	_game_state.command_move_to_pos("peris", bridge_pos)
 	_dialogue_chain([
 		"elevator.peris.bodies",
 		"elevator.aster.logs",
 		"elevator.aster.ahead",
-	], func(): _scheduler.schedule_after(1.0, _start_route_fork_dialogue, "route_fork"))
+	], func():
+		# Hand control to the player: walk out across the bridge — that's what collapses it.
+		_player.set_move_enabled(true)
+		_tutorial_prompt.show_prompt("Cross the bridge")
+	)
 
 # --- Bridge Collapse ---
 
@@ -902,9 +917,12 @@ func _on_fall_landed() -> void:
 		return
 	_fall_landed_fired = true
 	_camera.shake(0.3, 6.0)
+	# Land on the clear ledge just past the bridge end — beyond the enemy band the party crossed
+	# over. The broken section juts out here (the climb prompt sits on it); the fork is ahead.
+	var land_x: float = BRIDGE_END_X + 1.0
 	for char_id in ["peris", "aster"]:
 		var pos: Vector3 = _game_state.get_position(char_id)
-		_game_state.characters[char_id].position = Vector3(pos.x, BELOW_Y + 0.5, pos.z)
+		_game_state.characters[char_id].position = Vector3(maxf(pos.x, land_x), BELOW_Y + 0.5, pos.z)
 	# Free the old level only once the cosmetic fall has visually finished. At 1x the tween is
 	# already done by now; under fast-forward it isn't, so let tween.finished do it. Headless /
 	# force-fire (no live tween) removes them here.
@@ -951,7 +969,7 @@ func _show_climb_interactable() -> void:
 	var parent := _chunks.get("below", null) as Node3D
 	if parent == null:
 		parent = find_child("Environment", false, false) as Node3D
-	var zone_pos := Vector3(BRIDGE_START_X + 5.0, BELOW_Y + 0.05, 0.0)
+	var zone_pos := Vector3(BRIDGE_END_X + 1.0, BELOW_Y + 0.05, 0.0)
 	_climb_interactable = _create_interactable(parent, zone_pos, "ClimbPromptZone", 2.4, 0.8, "Climb", true)
 	_climb_interactable.description = "Collapsed Bridge"
 	_climb_interactable.interacted.connect(_on_climb_prompt_interacted)
@@ -966,7 +984,8 @@ func _on_climb_prompt_interacted() -> void:
 	if _climb_interactable != null and is_instance_valid(_climb_interactable):
 		_climb_interactable.queue_free()
 		_climb_interactable = null
-	_scheduler.schedule_after(0.2, _start_junction_arrive, "junction_arrive")
+	# Bridge can't be retraced — now choose a way forward through the fork.
+	_scheduler.schedule_after(0.2, _start_route_fork_dialogue, "route_fork")
 
 func _start_route_fork_dialogue() -> void:
 	_enter_step("route_fork_dialogue")
@@ -1398,28 +1417,28 @@ func _build_below_chunk(parent: Node3D) -> void:
 		var cid := "chelator_%d" % i
 		chelator_ids.append(cid)
 		var enemy := _spawn_enemy(cid,
-			Vector3(bridge_start + 1.0 + i * 2.0, ground_y + 0.5, (-5.0 if i % 2 == 0 else 5.0) + randf_range(-1, 1)),
+			Vector3(bridge_start + 0.0 + i * 1.0, ground_y + 0.5, (-5.0 if i % 2 == 0 else 5.0) + randf_range(-1, 1)),
 			parent)
 		enemy.max_hp = 20.0
 		enemy._hp = 20.0
 		enemy.detection_range = 4.0
-		var patrol_a := Vector3(bridge_start + 1.0 + i * 2.0, ground_y + 0.5, enemy.position.z)
-		var patrol_b := Vector3(bridge_start + 1.0 + i * 2.0 + 4.0, ground_y + 0.5, enemy.position.z)
+		var patrol_a := Vector3(bridge_start + 0.0 + i * 1.0, ground_y + 0.5, enemy.position.z)
+		var patrol_b := Vector3(bridge_start + 0.0 + i * 1.0 + 4.0, ground_y + 0.5, enemy.position.z)
 		enemy.set_patrol([patrol_a, patrol_b])
 
 	# Predators hunt Chelators before targeting the party.
 	for i in range(2):
 		var pid := "predator_%d" % i
 		var predator := _spawn_enemy(pid,
-			Vector3(bridge_start + 3.0 + i * 6.0, ground_y + 0.5, randf_range(-2, 2)),
+			Vector3(bridge_start + 1.0 + i * 2.0, ground_y + 0.5, (-2.0 if i % 2 == 0 else 2.0)),
 			parent)
 		predator.max_hp = 80.0
 		predator._hp = 80.0
 		predator.move_speed = 2.0
 		predator.charge_speed = 10.0
 		predator.charge_damage = 35.0
-		predator.detection_range = 8.0
-		_game_state.characters[pid].stats["detection_range"] = 8.0
+		predator.detection_range = 6.0
+		_game_state.characters[pid].stats["detection_range"] = 6.0
 		predator._detection_targets = chelator_ids.duplicate()
 		if predator._mesh and predator._mesh.mesh is CapsuleMesh:
 			(predator._mesh.mesh as CapsuleMesh).radius = 0.35
@@ -1429,8 +1448,8 @@ func _build_below_chunk(parent: Node3D) -> void:
 		predator._base_color = Color(0.5, 0.12, 0.08)
 		if predator._mesh and predator._mesh.material_override:
 			(predator._mesh.material_override as StandardMaterial3D).albedo_color = Color(0.5, 0.12, 0.08)
-		var pa := Vector3(bridge_start + 2.0 + i * 6.0, ground_y + 0.5, -2.0)
-		var pb := Vector3(bridge_start + 6.0 + i * 6.0, ground_y + 0.5, 2.0)
+		var pa := Vector3(bridge_start + 0.0 + i * 2.0, ground_y + 0.5, -2.0)
+		var pb := Vector3(bridge_start + 2.0 + i * 2.0, ground_y + 0.5, 2.0)
 		predator.set_patrol([pa, pb])
 
 	# Fluor bioluminescence.
@@ -1510,9 +1529,9 @@ func _build_below_chunk(parent: Node3D) -> void:
 
 	var en_z := -4.0
 	_add_wall(parent, Vector3(fork_x + 8.0, ground_y + wall_h / 2.0, en_z - 3.0), Vector3(16, wall_h, 0.3), wall_color)
-	# Enemy-route patrols.
+	# Enemy-route patrols (sit forward of the landing, down the enemy lane).
 	for i in range(4):
-		var ex: float = fork_x + 2.0 + i * 4.0
+		var ex: float = fork_x + 14.0 + i * 3.0
 		var enemy := _spawn_enemy("route_enemy_%d" % i,
 			Vector3(ex, ground_y + 0.5, en_z - 1.5), parent)
 		var pa := Vector3(ex - 1.5, ground_y + 0.5, en_z - 1.5)
@@ -1524,7 +1543,7 @@ func _build_below_chunk(parent: Node3D) -> void:
 	_add_wall(parent, Vector3(fork_x + 8.0, ground_y + wall_h / 2.0, hz_z + 3.5), Vector3(16, wall_h, 0.3), wall_color)
 	# Iron deposit patches.
 	for i in range(3):
-		var ix: float = fork_x + 3.0 + i * 5.0
+		var ix: float = fork_x + 14.0 + i * 3.0
 		var iron_pos := Vector3(ix, ground_y + 0.02, hz_z + 1.0)
 		var iron_size := Vector3(3, 0.05, 2.5)
 		var iron := MeshInstance3D.new()

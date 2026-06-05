@@ -6252,25 +6252,28 @@ func _test_elevator() -> void:
 		_assert_true(after_shader_pos.x > before_shader_pos.x + 0.5,
 			"Aster perception shader follows scheduler movement")
 
+		# Bridge-end gate: walking to the far end of the (upper) bridge is what collapses it.
 		_clear_sequence_runtime_for_spatial_test(instance)
 		instance._load_chunk("below")
 		_assert_true(instance._enemies.size() > 0,
-			"Enemy route is present before the bridge collapse beat")
+			"Enemy/hazard route is present on the lower deck")
 		_assert_elevator_movement_gate(instance, {
-			"label": "Aster route convergence gate",
-			"start_step": "route_choice",
+			"label": "Bridge-end collapse gate",
+			"start_step": "bridge",
 			"expected_step": "bridge_collapse",
 			"characters": [
 				{
 					"id": "aster",
-					"outside": Vector3(instance.ROUTES_CONVERGE.x - 4.0, instance.BELOW_Y + 0.5, 0.0),
-					"target": instance.ROUTES_CONVERGE + Vector3(0.5, 0.5, 0.0),
+					"outside": Vector3(instance.BRIDGE_END_X - 7.0, 0.5, 0.0),
+					"target": Vector3(instance.BRIDGE_END_X, 0.5, 0.0),
 				},
 			],
-			"max_time": 3.0,
+			"max_time": 4.0,
 		})
-		_assert_true(instance._game_state.get_position("aster").x > instance.ROUTES_CONVERGE.x - 2.0,
-			"Bridge collapse starts after Aster has passed the enemy/hazard routes")
+		_assert_true(instance._game_state.get_position("aster").x > instance.BRIDGE_END_X - 1.5,
+			"Bridge collapses at the far end, once Aster is past the enemy band")
+		_set_sequence_character_position(
+			instance, "aster", Vector3(instance.BRIDGE_END_X - 1.5, 0.5, 0.0))
 		_set_sequence_character_position(
 			instance,
 			"peris",
@@ -6278,8 +6281,9 @@ func _test_elevator() -> void:
 		)
 		instance._on_fall_landed()
 		_assert_elevator_fall_lands_clear_of_enemies(instance, 1.0,
-			"Bridge collapse landing after route convergence")
+			"Fall landing clear of the lower-deck enemies")
 
+		# Post-fall: the climb prompt sits over the broken bridge; checking it opens the route fork.
 		_clear_sequence_runtime_for_spatial_test(instance)
 		instance._load_chunk("below")
 		instance._enter_step("climb_attempt")
@@ -6295,8 +6299,28 @@ func _test_elevator() -> void:
 			_set_sequence_character_position(instance, "peris", (climb_zone as Node3D).global_position)
 			_drive_interactable_zone(climb_zone, instance._peris_node, 0.9)
 			instance.headless_advance(0.3, 0.05)
-			_assert_equals(instance._current_step, "junction_arrive",
-				"Climb prompt advances to the junction after the post-route fall")
+			_assert_equals(instance._current_step, "route_fork_dialogue",
+				"Checking the broken bridge opens the route fork (can't retrace)")
+
+		# Route convergence gate: after choosing a lane and walking it, reaching convergence
+		# opens the junction (the fall already happened — this no longer triggers the collapse).
+		_clear_sequence_runtime_for_spatial_test(instance)
+		instance._load_chunk("below")
+		_assert_elevator_movement_gate(instance, {
+			"label": "Route convergence gate",
+			"start_step": "route_choice",
+			"expected_step": "junction_arrive",
+			"characters": [
+				{
+					"id": "aster",
+					"outside": Vector3(instance.ROUTES_CONVERGE.x - 4.0, instance.BELOW_Y + 0.5, 0.0),
+					"target": instance.ROUTES_CONVERGE + Vector3(0.5, 0.5, 0.0),
+				},
+			],
+			"max_time": 3.0,
+		})
+		_assert_true(instance._game_state.get_position("aster").x > instance.ROUTES_CONVERGE.x - 2.0,
+			"Junction opens after Aster passes the enemy/hazard routes")
 
 		for k in range(2):
 			await get_tree().process_frame
@@ -15733,6 +15757,14 @@ func _test_sequence_contracts() -> void:
 			)
 		actions["corridor"] = func():
 			_disable_enemy_detection(instance)
+		actions["bridge"] = func():
+			# Walk out across the bridge to its far end — the gate collapses it there.
+			_disable_enemy_detection(instance)
+			_set_sequence_character_position(
+				instance,
+				"aster",
+				Vector3(instance.BRIDGE_END_X - 1.0, 0.5, 0.0)
+			)
 		actions["bridge_collapse"] = func():
 			instance._on_fall_landed()
 		actions["climb_attempt"] = func():
@@ -15835,8 +15867,8 @@ func _test_sequence_contracts() -> void:
 			"consciousness_fragments", "waking", "approach_aster", "wake_aster",
 			"conversation", "system_restored", "units_activate", "emp_tutorial",
 			"doors_unlocked", "doors_open", "multiselect_tutorial", "corridor",
-			"bridge", "route_fork_dialogue", "route_choice", "bridge_collapse",
-			"fallen", "climb_attempt", "junction_arrive",
+			"bridge", "bridge_collapse", "fallen", "climb_attempt",
+			"route_fork_dialogue", "route_choice", "junction_arrive",
 			"endo_enters", "endo_shelter", "night_watch", "dawn", "morning",
 			"gauntlet", "complete",
 		],

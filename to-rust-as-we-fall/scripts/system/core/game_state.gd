@@ -64,6 +64,9 @@ const WALK_SPEED := 3.0
 const RUN_SPEED := 6.0
 const RUN_STAMINA_DRAIN_PER_SEC := 30.0
 const RUN_TICK_INTERVAL := 0.1
+## Detection ignores targets separated by more than this vertical gap (a stacked floor). Standing-
+## height / ramp differences stay within it; a full level (grid.level_height ~4) is blocked.
+const DETECTION_VERTICAL_BAND := 2.0
 
 static func normalize_atp(value: float) -> float:
 	if value > ATP_MAX_PIPS + 0.001:
@@ -937,6 +940,11 @@ func _recompute_all_detection_predictions() -> void:
 		for j in range(i + 1, ids.size()):
 			var id_a: String = ids[i]
 			var id_b: String = ids[j]
+			# Enemies don't see across floors: a target more than a floor's vertical gap away (e.g.
+			# the party crossing the bridge ABOVE the lower ecology) isn't spotted until it's on the
+			# same level. Recomputed on every move/level change, so detection resumes after a fall.
+			if absf(get_position(id_a).y - get_position(id_b).y) > DETECTION_VERTICAL_BAND:
+				continue
 			var range_a: float = characters[id_a].stats.get("detection_range", 0.0)
 			var range_b: float = characters[id_b].stats.get("detection_range", 0.0)
 			if range_a > 0.0:
