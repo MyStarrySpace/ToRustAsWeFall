@@ -300,20 +300,57 @@ func _patrol_next_waypoint() -> void:
 
 # --- Visual ---
 
-## Override in subclasses for different mesh types.
+## Override in subclasses for different mesh types. The body stays a CapsuleMesh (the elevator
+## predators + chain enemy resize `_mesh.mesh as CapsuleMesh`), but it's crouched forward and dressed
+## with dorsal spikes + a jutting head so it reads as a predator, not an idle sphere.
 func _build_visual() -> void:
 	_mesh = MeshInstance3D.new()
 	var capsule := CapsuleMesh.new()
-	capsule.radius = 0.22
-	capsule.height = 0.9
+	capsule.radius = 0.24
+	capsule.height = 0.78
 	_mesh.mesh = capsule
+	var body_color := color.darkened(0.25)
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
+	mat.albedo_color = body_color
+	mat.roughness = 0.85
+	mat.metallic = 0.15
 	_mesh.material_override = mat
-	_mesh.position.y = 0.45
+	# Crouched, leaning forward (predatory stance) rather than standing upright.
+	_mesh.position.y = 0.42
+	_mesh.rotation = Vector3(deg_to_rad(78.0), 0.0, 0.0)
 	add_child(_mesh)
-	_eye_left = _make_eye(Vector3(-0.1, 0.65, 0.15))
-	_eye_right = _make_eye(Vector3(0.1, 0.65, 0.15))
+	_build_creature_features(body_color)
+	_eye_left = _make_eye(Vector3(-0.11, 0.5, 0.34))
+	_eye_right = _make_eye(Vector3(0.11, 0.5, 0.34))
+
+## Dorsal spikes + a forward head wedge — silhouette cues that read as a threat at gameplay distance.
+func _build_creature_features(body_color: Color) -> void:
+	var spike_mat := StandardMaterial3D.new()
+	spike_mat.albedo_color = body_color.darkened(0.2)
+	spike_mat.roughness = 0.7
+	# A short ridge of back spikes.
+	for i in range(3):
+		var spike := MeshInstance3D.new()
+		var cone := CylinderMesh.new()
+		cone.top_radius = 0.0
+		cone.bottom_radius = 0.075
+		cone.height = 0.26 - i * 0.04
+		spike.mesh = cone
+		spike.material_override = spike_mat
+		spike.position = Vector3(0.0, 0.62 - i * 0.02, -0.16 + i * 0.16)
+		spike.rotation = Vector3(deg_to_rad(-28.0), 0.0, 0.0)
+		add_child(spike)
+	# A blunt head jutting forward over the eyes.
+	var head := MeshInstance3D.new()
+	var head_mesh := CylinderMesh.new()
+	head_mesh.top_radius = 0.02
+	head_mesh.bottom_radius = 0.17
+	head_mesh.height = 0.34
+	head.mesh = head_mesh
+	head.material_override = spike_mat
+	head.position = Vector3(0.0, 0.5, 0.28)
+	head.rotation = Vector3(deg_to_rad(90.0), 0.0, 0.0)
+	add_child(head)
 
 func _make_eye(pos: Vector3) -> OmniLight3D:
 	var eye := OmniLight3D.new()
