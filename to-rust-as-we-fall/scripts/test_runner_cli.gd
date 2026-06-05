@@ -157,6 +157,9 @@ func _ready() -> void:
 			"--test-path-render-manager":
 				ran_test = true
 				await _test_path_render_manager()
+			"--test-grid-levels":
+				ran_test = true
+				_test_grid_levels()
 			"--test-outline-particle-emission":
 				ran_test = true
 				_test_outline_particle_emission()
@@ -606,6 +609,7 @@ func _run_all_tests() -> void:
 	_test_cooperative_pathfinding()
 	_test_path_renderer()
 	await _test_path_render_manager()
+	_test_grid_levels()
 	_test_outline_particle_emission()
 	_test_interactable_outline_particles()
 	_test_outline_feedback_system()
@@ -8030,6 +8034,45 @@ func _test_path_render_manager() -> void:
 	var aster_dest: Vector3 = gs2.characters["aster"].movement.path[-1]
 	_assert_true(absf(peris_dest.z - aster_dest.z) > 0.1,
 		"Gridless party move fans members onto distinct points (no stacking)")
+
+## Multi-level grid: a LEVEL is the same (x,z) plane lifted by level_height in world Y. Cells stay
+## Vector2i (backward compatible — level defaults to 0 -> Y=0); ladders/ramps are inter-level links.
+func _test_grid_levels() -> void:
+	_test_name = "Grid Levels"
+	var grid := GridWorld.new()
+	grid.create_room(10, 10)
+	grid.set_level_count(2)
+	grid.level_height = 4.0
+
+	# grid_to_world derives Y from the level; world_to_grid ignores Y (same cell on any floor).
+	_assert_equals(grid.grid_to_world(Vector2i(5, 5), 0).y, 0.0, "Level 0 sits at Y=0 (backward compatible)")
+	_assert_equals(grid.grid_to_world(Vector2i(5, 5), 1).y, 4.0, "Level 1 sits one level_height up")
+	_assert_equals(grid.world_to_grid(grid.grid_to_world(Vector2i(5, 5), 1)), Vector2i(5, 5), "world_to_grid maps to the same cell on any floor")
+
+	# Ladder/ramp links between floors.
+	grid.add_inter_level_link(Vector2i(3, 3), 0, 1, "ladder")
+	_assert_true(grid.can_traverse_link(Vector2i(3, 3), 0, 1) and grid.can_traverse_link(Vector2i(3, 3), 1, 0),
+		"A ladder links both directions between its two floors")
+	_assert_true(grid.get_link_cost(Vector2i(3, 3), 0, 1) > 1.0, "Climbing a ladder costs more than a flat step")
+	_assert_equals(grid.links_from(Vector2i(3, 3), 0), [1], "links_from reports the reachable floor")
+	_assert_true(not grid.can_traverse_link(Vector2i(4, 4), 0, 1), "No link where none was placed")
+
+	# Character floor tracking + no-float movement: a character on level 1 stays at the level's Y.
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+	var spawn := grid.grid_to_world(Vector2i(2, 2), 1)
+	gs.register_character("up", spawn, 3.0, {})
+	_assert_equals(gs.get_character_level("up"), 1, "A character spawned at a floor's Y registers on that floor")
+	gs.command_move_to_cell("up", Vector2i(6, 6))
+	sched.advance_ticks(0.4)
+	_assert_true(gs.is_moving("up") and absf(gs.get_position("up").y - 4.0) < 0.6,
+		"Moving on level 1 keeps the character at the floor's Y (no floating down to Y=0)")
+	# set_character_level snaps Y to the new floor (a ladder/ramp arrival).
+	gs.set_character_level("up", 0)
+	_assert_equals(gs.get_character_level("up"), 0, "set_character_level records the new floor")
+	_assert_true(absf(gs.get_position("up").y) < 0.01, "set_character_level snaps the data-layer Y to the floor")
 
 # --- Test: outline particles emit from the object surface ---
 # The per-mesh outline feedback used a box emission shape sized from the mesh AABB,

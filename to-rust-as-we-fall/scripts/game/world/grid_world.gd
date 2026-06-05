@@ -24,6 +24,42 @@ var cell_size := 1.0
 var origin := Vector3.ZERO
 var dynamic_blockers: Dictionary = {}  # Vector2i → obj_id
 
+# --- Multi-level support (stacked floors). The grid stays a single 2D plane of cells; a LEVEL is
+# the same (x,z) plane lifted by level_height in world Y. A character's level is tracked in
+# GameState; grid_to_world(cell, level) places the cell at that floor's height. Ladders/ramps are
+# inter-level LINKS at a cell, registered here. Backward-compatible: level defaults to 0 → Y=0. ---
+var level_count := 1
+var level_height := 4.0               # world Y between stacked floors
+var inter_level_links: Dictionary = {}  # "x,z,from,to" -> {type, cost}
+
+func set_level_count(count: int) -> void:
+	level_count = maxi(1, count)
+
+func _link_key(cell: Vector2i, from_level: int, to_level: int) -> String:
+	return "%d,%d,%d,%d" % [cell.x, cell.y, from_level, to_level]
+
+## Register a ladder/ramp at a cell that lets a character move between two adjacent levels. Bidirectional
+## by default — adds both directions. link_type: "ladder" (climb, costlier) or "ramp" (walk).
+func add_inter_level_link(cell: Vector2i, from_level: int, to_level: int, link_type := "ladder", bidirectional := true) -> void:
+	var cost := 2.0 if link_type == "ladder" else 1.3
+	inter_level_links[_link_key(cell, from_level, to_level)] = {"type": link_type, "cost": cost}
+	if bidirectional:
+		inter_level_links[_link_key(cell, to_level, from_level)] = {"type": link_type, "cost": cost}
+
+func can_traverse_link(cell: Vector2i, from_level: int, to_level: int) -> bool:
+	return inter_level_links.has(_link_key(cell, from_level, to_level))
+
+func get_link_cost(cell: Vector2i, from_level: int, to_level: int) -> float:
+	return float(inter_level_links.get(_link_key(cell, from_level, to_level), {}).get("cost", 1.0))
+
+## The levels a character at this cell+level can step to (via a ladder/ramp here).
+func links_from(cell: Vector2i, from_level: int) -> Array:
+	var out: Array = []
+	for to_level in range(level_count):
+		if to_level != from_level and can_traverse_link(cell, from_level, to_level):
+			out.append(to_level)
+	return out
+
 # --- Loading ---
 
 ## Load from an array of strings (prototype MAP_DATA format).
@@ -118,10 +154,10 @@ func world_to_grid(world_pos: Vector3) -> Vector2i:
 	var gz := int(floor(local.z / cell_size))
 	return Vector2i(gx, gz)
 
-func grid_to_world(cell: Vector2i) -> Vector3:
+func grid_to_world(cell: Vector2i, level: int = 0) -> Vector3:
 	return origin + Vector3(
 		cell.x * cell_size + cell_size * 0.5,
-		0.0,
+		float(level) * level_height,
 		cell.y * cell_size + cell_size * 0.5
 	)
 
@@ -138,10 +174,11 @@ func find_path(
 	explored: Dictionary = {},
 	cautious: bool = false,
 	roads: Dictionary = {},
-	locked_doors: Dictionary = {}
+	locked_doors: Dictionary = {},
+	level: int = 0
 ) -> Array[Vector3]:
 	if start == end:
-		return [grid_to_world(end)]
+		return [grid_to_world(end, level)]
 	if not is_in_bounds(end.x, end.y):
 		return []
 	if not is_walkable(end.x, end.y, explored, locked_doors):
@@ -178,7 +215,7 @@ func find_path(
 				current = open_set[i]
 
 		if current == end:
-			return _reconstruct_path(came_from, current)
+			return _reconstruct_path(came_from, current, level)
 
 		open_set.erase(current)
 
@@ -227,7 +264,7 @@ func _heuristic(a: Vector2i, b: Vector2i) -> float:
 	var dz := absf(a.y - b.y)
 	return maxf(dx, dz) + (1.414 - 1.0) * minf(dx, dz)
 
-func _reconstruct_path(came_from: Dictionary, current: Vector2i) -> Array[Vector3]:
+func _reconstruct_path(came_from: Dictionary, current: Vector2i, level: int = 0) -> Array[Vector3]:
 	var cells: Array[Vector2i] = [current]
 	while came_from.has(current):
 		current = came_from[current]
@@ -236,7 +273,7 @@ func _reconstruct_path(came_from: Dictionary, current: Vector2i) -> Array[Vector
 	# Convert to world positions, skipping the occupied start cell.
 	var path: Array[Vector3] = []
 	for i in range(1, cells.size()):
-		path.append(grid_to_world(cells[i]))
+		path.append(grid_to_world(cells[i], level))
 	return path
 
 ## Find all tiles of a given type. Returns array of Vector2i grid positions.

@@ -166,6 +166,7 @@ func register_character(id: String, pos: Vector3, speed: float = 3.0, stats: Dic
 	characters[id] = {
 		"position": pos,
 		"grid_cell": cell,
+		"level": _level_for_y(pos.y),  # which stacked floor (derived from spawn Y)
 		"move_speed": speed,
 		"stats": normalized_stats,
 		"movement": null,
@@ -174,6 +175,30 @@ func register_character(id: String, pos: Vector3, speed: float = 3.0, stats: Dic
 	}
 	explored[id] = {}
 	_reserve_parked(id, cell)
+
+## Which stacked floor a world Y sits on (round to the nearest grid level). 0 without a grid.
+func _level_for_y(y: float) -> int:
+	if grid != null and grid.level_height > 0.0:
+		return int(round((y - grid.origin.y) / grid.level_height))
+	return 0
+
+func get_character_level(id: String) -> int:
+	return int((characters.get(id, {}) as Dictionary).get("level", 0))
+
+## Set a character's floor (a level transition — a ladder/ramp arrival). Stops any current move and
+## snaps the data-layer Y to that floor, so positions/paths read at the right height.
+func set_character_level(id: String, level: int) -> void:
+	if not characters.has(id):
+		return
+	var p := get_position(id)  # capture the current interpolated position before cancelling
+	_cancel_movement(id)
+	characters[id]["level"] = level
+	if grid != null:
+		p.y = grid.origin.y + float(level) * grid.level_height
+	characters[id]["position"] = p
+	if grid != null:
+		characters[id]["grid_cell"] = grid.world_to_grid(p)
+		_reserve_parked(id, characters[id]["grid_cell"])
 
 func unregister_character(id: String) -> void:
 	_emit(GameEvent.KIND_UNREGISTER_CHARACTER, {"id": id})
@@ -788,13 +813,13 @@ func _coop_reconstruct(came: Dictionary, key: String) -> Dictionary:
 ## world path that begins at the character's actual current position. A short
 ## glide from current_pos to the first cell center is timed by distance/speed,
 ## then the planner's per-cell ticks follow (shifted by that glide).
-func _build_timed_world_path(current_pos: Vector3, cells: Array, plan_ticks: Array, speed: float) -> Dictionary:
+func _build_timed_world_path(current_pos: Vector3, cells: Array, plan_ticks: Array, speed: float, level: int = 0) -> Dictionary:
 	var path: Array[Vector3] = [current_pos]
 	var ticks: Array[float] = [float(plan_ticks[0])]
-	var first_center := grid.grid_to_world(cells[0])
+	var first_center := grid.grid_to_world(cells[0], level)
 	var glide: float = (current_pos.distance_to(first_center) / speed) if speed > 0.0 else 0.0
 	for i in range(cells.size()):
-		path.append(grid.grid_to_world(cells[i]))
+		path.append(grid.grid_to_world(cells[i], level))
 		ticks.append(float(plan_ticks[i]) + glide)
 	# Drop a redundant first center identical to current_pos (zero-length lead-in).
 	if path.size() >= 2 and path[0].distance_to(path[1]) < 0.001 and absf(ticks[1] - ticks[0]) < 0.0001:
@@ -2399,12 +2424,13 @@ func _do_move_to_cell(id: String, cell: Vector2i) -> bool:
 ## briefly overlap another character). Assumes the caller already cancelled any
 ## prior movement and pinned characters[id].position to current_pos.
 func _begin_cooperative_move(id: String, current_pos: Vector3, current_cell: Vector2i, dest_cell: Vector2i, speed: float) -> bool:
+	var level := get_character_level(id)  # keep waypoints on the character's current floor
 	var plan := _plan_cooperative(current_cell, dest_cell, speed, scheduler.get_current_tick(), id)
 	if not plan.is_empty() and not plan.cells.is_empty():
-		var built := _build_timed_world_path(current_pos, plan.cells, plan.ticks, speed)
+		var built := _build_timed_world_path(current_pos, plan.cells, plan.ticks, speed, level)
 		_start_movement(id, built.path, built.ticks)
 		return true
-	var path := grid.find_path(current_cell, dest_cell)
+	var path := grid.find_path(current_cell, dest_cell, {}, false, {}, {}, level)
 	if path.is_empty():
 		_reserve_parked(id, current_cell)
 		return false
