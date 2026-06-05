@@ -409,6 +409,12 @@ func _ready() -> void:
 			"--test-peris-phase2":
 				ran_test = true
 				await _test_peris_phase2()
+			"--test-peris-scene-transition":
+				ran_test = true
+				await _test_peris_scene_transition()
+			"--drive-peris-transition":
+				ran_test = true
+				await _drive_peris_transition_child()
 			"--test-sequence-contracts":
 				ran_test = true
 				await _test_sequence_contracts()
@@ -418,6 +424,9 @@ func _ready() -> void:
 			"--test-intro-realinput":
 				ran_test = true
 				await _test_intro_realinput()
+			"--test-elevator-realinput":
+				ran_test = true
+				await _test_elevator_realinput()
 			"--test-fast-forward-invariance":
 				ran_test = true
 				await _test_fast_forward_invariance()
@@ -628,6 +637,10 @@ func _run_all_tests() -> void:
 	await _test_channels_rhythm_preview()
 	await _test_channels_hide_window_preview()
 	await _test_peris_phase2()
+	await _test_peris_scene_transition()
+	# Real-input intro legs (Aster/Peris-2/Tag Day) — first-class, not on-demand. The slow
+	# Elevator leg is sectioned to --test-elevator-realinput (by name, not by category).
+	await _test_intro_realinput_core()
 	await _test_sequence_contracts()
 	_test_items()
 	_test_queued_abilities()
@@ -4252,6 +4265,13 @@ func _compare_ff_puzzle_runs(id: String, slow: Dictionary, fast: Dictionary, sch
 				key, str(slow_ok), str(fast_ok), str(f.get(schema.KEY_MESSAGE, ""))])
 
 func _test_intro_realinput() -> void:
+	await _test_intro_realinput_core()
+	await _test_elevator_realinput()
+
+## The fast real-input intro legs (Aster, Peris-2, Tag Day), each driven to `complete` with ONLY
+## real input. Runs in --test-all: real-input/transition coverage is first-class, never sectioned
+## off wholesale. Only the slow Elevator leg lives apart (see _test_elevator_realinput).
+func _test_intro_realinput_core() -> void:
 	_test_name = "Intro Real-Input Reachability"
 	await _run_realinput_leg("Aster", "res://scenes/tutorial/aster_sim.tscn", 0,
 		Callable(self, "_aster_realinput_beats"))
@@ -4259,9 +4279,14 @@ func _test_intro_realinput() -> void:
 		Callable(self, "_peris2_realinput_beats"))
 	await _run_realinput_leg("Tag Day", "res://scenes/tutorial/tag_day.tscn", 0,
 		Callable(self, "_tagday_realinput_beats"))
-	# Elevator is real-input reachable through route_choice (incl. the EMP beat and a
-	# multi-select workaround); route_choice + gauntlet are documented blockers (see
-	# the beat comments). Assert the proven frontier, not a blocked complete.
+
+## The Elevator real-input leg, sectioned out of --test-all ONLY because its wall-clock tweens are
+## slow — not because input tests are skippable. Run it before touching the elevator. Elevator is
+## real-input reachable through route_choice (incl. the EMP beat and a multi-select workaround);
+## route_choice + gauntlet are documented blockers (see the beat comments) — assert the proven
+## frontier, not a blocked complete.
+func _test_elevator_realinput() -> void:
+	_test_name = "Intro Real-Input Reachability"
 	await _run_realinput_leg("Elevator", "res://scenes/tutorial/elevator.tscn", 0,
 		Callable(self, "_elevator_realinput_beats"), "route_choice")
 
@@ -15055,6 +15080,100 @@ func _test_peris_phase2() -> void:
 	instance._visit_phase = 1
 	instance.queue_free()
 	await get_tree().process_frame
+
+## End-of-scene crash guard. The transition crash is a NON-FATAL GDScript null-deref: it prints
+## a SCRIPT ERROR but doesn't abort, and the scene still reaches `complete` and transitions — so
+## an in-process state assertion (reached_complete / current_scene) can't tell buggy from fixed.
+## Instead, drive the REAL transition lifecycle in a CHILD headless instance and assert its log
+## carries no "on a null value". RED when a scheduled _complete tears the scheduler down
+## mid-advance and the next advance/get_current_tick derefs null; GREEN once the advance sites
+## re-guard. This is why input/transition coverage must run for real, not via a faked teardown.
+func _test_peris_scene_transition() -> void:
+	_test_name = "Peris Scene Transition"
+	var exe := OS.get_executable_path()
+	if exe == "":
+		_assert_true(false, "Executable path available for the subprocess transition guard")
+		return
+	var out: Array = []
+	var args := PackedStringArray(["--headless", "--path", ".", "--", "--drive-peris-transition"])
+	var code := OS.execute(exe, args, out, true)  # read_stderr=true → captures child SCRIPT ERRORs
+	var log := ""
+	for line in out:
+		log += str(line)
+	var drove := log.contains("[PERIS-TRANSITION-CHILD] reached_complete=true")
+	var crashed := log.contains("on a null value")
+	if crashed:
+		for raw in log.split("\n"):
+			if raw.contains("on a null value") or (raw.contains(".gd:") and raw.contains("at:")):
+				print("  [transition-crash] %s" % raw.strip_edges())
+	_assert_true(drove, "Child drove Peris-2 to complete via the real transition (exit %d)" % code)
+	_assert_true(not crashed, "Peris end-of-scene transition touches no torn-down scheduler (no 'on a null value')")
+
+## Child entry for the subprocess guard above (run via --drive-peris-transition). Drives Peris-2's
+## REAL transition lifecycle — real input to `complete`, then the actual change_scene_to_file ->
+## teardown -> final process (NOT suppressed, NOT a manual teardown) — and prints a sentinel. A
+## scheduler used after teardown surfaces as a SCRIPT ERROR in this child's stderr.
+func _drive_peris_transition_child() -> void:
+	_test_name = "Peris Transition (child)"
+	var scene := load("res://scenes/tutorial/peris_sim.tscn")
+	if scene == null:
+		print("[PERIS-TRANSITION-CHILD] reached_complete=false last_step=<no-scene>")
+		return
+	var instance: Node = scene.instantiate()
+	if "_visit_phase" in instance:
+		instance._visit_phase = 2
+	get_tree().root.add_child(instance)
+	get_tree().current_scene = instance
+	for i in range(5):
+		await get_tree().process_frame
+	var beats := _peris2_realinput_beats(instance)
+	var dialogue: Node = instance.get("_dialogue")
+	var actioned := {}
+	var last_step := ""
+	var unchanged := 0
+	var reached_complete := false
+	for i in range(30000):
+		if not is_instance_valid(instance):
+			break
+		var step := str(instance._current_step)
+		if step != last_step:
+			last_step = step
+			unchanged = 0
+		else:
+			unchanged += 1
+		if step == "complete":
+			reached_complete = true
+			break
+		if dialogue != null and is_instance_valid(dialogue):
+			_pump_dialogue(dialogue, 8.0)
+		if beats.has(step):
+			if not actioned.has(step):
+				actioned[step] = true
+				beats[step].call()
+			elif unchanged > 0 and unchanged % 40 == 0:
+				beats[step].call()
+		if unchanged > 5000:
+			break
+		# Fire the final beat through the PRODUCTION _process path (not headless_advance): a big
+		# delta makes _scheduler.advance() inside _process() fire the scheduled _complete, which
+		# tears the scene down mid-advance — exactly the real-play sequence that derefs
+		# _ui_scheduler.get_current_tick() on null when _process forgets to re-guard.
+		if step == "transition_out":
+			instance._process(3.0)
+		else:
+			instance.headless_advance(0.1, 0.05)
+		# _complete sets step="complete" then tears the scene down; catch it before the
+		# process_frame below frees the instance.
+		if is_instance_valid(instance) and str(instance._current_step) == "complete":
+			reached_complete = true
+			break
+		await get_tree().process_frame
+	# Let the deferred free + teardown + final process run for real — where the crash lives.
+	for i in range(15):
+		await get_tree().process_frame
+		await get_tree().physics_frame
+	print("[PERIS-TRANSITION-CHILD] reached_complete=%s last_step=%s current_scene=%s" % [
+		str(reached_complete), last_step, str(get_tree().current_scene)])
 
 func _test_sequence_contracts() -> void:
 	var aster_actions := func(instance: Node):

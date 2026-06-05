@@ -117,6 +117,12 @@ func _process(delta: float) -> void:
 	for node in _get_speed_recipients():
 		node.speed_multiplier = spd
 	_scheduler.advance(delta)
+	# advance() can fire a scheduled callback — e.g. a scene transition's _complete →
+	# change_scene_to_file → _teardown_sequence — that tears this sequence down synchronously,
+	# nulling both schedulers. The guard above only ran BEFORE advance, so re-check here before
+	# touching the (possibly torn-down) UI lane, or _ui_scheduler.get_current_tick() hits null.
+	if _scheduler == null or _ui_scheduler == null or _game_state == null:
+		return
 	# UI lane: dialogue + thought-fades advance here. F-scaled, but independent of
 	# gameplay pause, so pausing gameplay keeps narrative flowing.
 	var ui_before := _ui_scheduler.get_current_tick()
@@ -174,6 +180,10 @@ func headless_advance(duration: float, step := 0.05) -> void:
 	while remaining > 0.0001:
 		var dt: float = minf(step, remaining)
 		_scheduler.advance_ticks(dt)
+		# Same hazard as _process: a scheduled callback (a scene transition's _complete) can
+		# tear the sequence down mid-advance, nulling _scheduler. Bail before re-using it.
+		if _scheduler == null:
+			return
 		if _ui_scheduler:
 			_ui_scheduler.advance_ticks(dt)
 		if _dialogue:
