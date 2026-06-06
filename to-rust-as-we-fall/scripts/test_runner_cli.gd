@@ -171,6 +171,9 @@ func _ready() -> void:
 			"--test-enemy-roaming":
 				ran_test = true
 				_test_enemy_roaming()
+			"--test-fragment-preview-registry":
+				ran_test = true
+				_test_fragment_preview_registry()
 			"--test-data-identify":
 				ran_test = true
 				_test_data_identify()
@@ -629,6 +632,7 @@ func _run_all_tests() -> void:
 	_test_hidden_detection()
 	_test_two_tier_detection()
 	_test_enemy_roaming()
+	_test_fragment_preview_registry()
 	await _test_lure_relay_puzzle()
 	await _test_chromatic_aberration()
 	_test_cooperative_pathfinding()
@@ -8518,6 +8522,42 @@ func _test_enemy_roaming() -> void:
 		"A roaming enemy that spots a target leaves roam to engage (got: %s)" % en2.get_state())
 	en2.queue_free()
 	h2.queue_free()
+
+# --- Test: the fragment-preview chunk registry is internally consistent + the inspector dropdown ---
+# matches it (the chunk id is a string, but it's constrained to CHUNK_SCENES by the @export_enum and
+# load-time validation — this test is what keeps the dropdown from drifting out of sync).
+func _test_fragment_preview_registry() -> void:
+	_test_name = "Fragment Preview Registry"
+	var Reg := FragmentPreviewScript
+	# 1. Every picker entry maps to a real, loaded chunk scene.
+	for entry in Reg.PREVIEW_ENTRIES:
+		var chunk := String(entry.get("chunk", ""))
+		_assert_true(Reg.CHUNK_SCENES.has(chunk),
+			"PREVIEW_ENTRIES '%s' -> registered chunk '%s'" % [String(entry.get("id", "")), chunk])
+		_assert_true(Reg.CHUNK_SCENES.get(chunk) != null, "Chunk scene for '%s' is loaded" % chunk)
+	# 2. get_preview_entry resolves each id, and an unknown id is empty (no silent fallthrough).
+	for entry in Reg.PREVIEW_ENTRIES:
+		var got: Dictionary = Reg.get_preview_entry(String(entry.get("id", "")))
+		_assert_equals(String(got.get("chunk", "")), String(entry.get("chunk", "")),
+			"get_preview_entry('%s') resolves" % String(entry.get("id", "")))
+	_assert_true(Reg.get_preview_entry("does_not_exist").is_empty(), "Unknown preview id resolves to empty")
+	# 3. The inspector @export_enum dropdown stays in lockstep with CHUNK_SCENES (no drift on add).
+	var packed: PackedScene = load(FRAGMENT_PREVIEW_SCENE_PATH)
+	var inst: Node = packed.instantiate()
+	var hint := ""
+	for prop in inst.get_property_list():
+		if String(prop.get("name", "")) == "preview_chunk":
+			hint = String(prop.get("hint_string", ""))
+			break
+	inst.free()
+	var enum_ids: Array = []
+	for part in hint.split(",", false):
+		enum_ids.append(String(part).split(":")[0])  # tolerate "name:idx" form
+	var registry_ids: Array = Reg.CHUNK_SCENES.keys()
+	_assert_equals(enum_ids.size(), registry_ids.size(),
+		"preview_chunk dropdown lists every registered chunk (enum %d vs registry %d)" % [enum_ids.size(), registry_ids.size()])
+	for id in registry_ids:
+		_assert_true(id in enum_ids, "preview_chunk dropdown includes registered chunk '%s'" % id)
 
 # --- Test: chromatic aberration is live in the sim scenes ---
 func _test_chromatic_aberration() -> void:

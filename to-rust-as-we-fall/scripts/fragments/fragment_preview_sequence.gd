@@ -116,7 +116,13 @@ const DEFAULT_NIGHT_DURATION_SECONDS := DayNightCycleScript.DEFAULT_NIGHT_DURATI
 const STAMINA_DRAIN := 18.0
 const STAMINA_REGEN := 10.0
 
-@export var preview_chunk := "stacks"
+# The chunk this preview loads. A string (it's the serializable handle the data layer needs — the
+# puzzle JSON, the --preview=<id> CLI arg, and test .set() all key on it), but constrained to the
+# registry by an inspector dropdown + load-time validation. Keep this list == CHUNK_SCENES.keys()
+# (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
+@export_enum("stacks", "rings", "lockout", "overlay_lab", "mother_ferrolure", "survival_range",
+	"channels_rhythm", "channels_hide_window", "endo_junction_stretch", "generated_stretch",
+	"refuge_run", "lure_relay") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 ## When true, boot into a fragment PICKER instead of loading a chunk directly. The single
@@ -251,6 +257,11 @@ func _begin_chunk() -> void:
 	_in_menu = false
 	if _menu_panel != null:
 		_menu_panel.visible = false
+	# Fail LOUD on a typo'd id — otherwise _load_chunk silently builds an empty placeholder chunk and
+	# the preview looks "booted but blank". The registry is the allow-list.
+	if not CHUNK_SCENES.has(preview_chunk):
+		push_error("fragment_preview: unknown chunk '%s'. Valid: %s" % [preview_chunk, ", ".join(CHUNK_SCENES.keys())])
+		show_preview_message("Unknown fragment '%s' — see CHUNK_SCENES." % preview_chunk, 6.0)
 	set_preview_step(preview_chunk)
 	_active_chunk = _load_chunk(preview_chunk)
 	_connect_outline_feedback_sources(self)
