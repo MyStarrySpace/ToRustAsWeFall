@@ -16,63 +16,63 @@ const GENERATED_STRETCH_SPEC_PATH := "res://data/generated_stretches/generated_t
 const GENERATED_CHAIN_NESTED_POC_SPEC_PATH := "res://data/generated_stretches/generated_chain_nested_poc_shelter_2_to_3.json"
 const GENERATED_RANDOM_WALK_POC_SPEC_PATH := "res://data/generated_stretches/generated_random_walk_poc_shelter_3_to_4.json"
 const GENERATED_STRETCH_CHUNK_SCENE_PATH := "res://scenes/fragments/chunks/generated_stretch_chunk.tscn"
-const GENERATED_STRETCH_PREVIEW_SCENE_PATH := "res://scenes/fragments/generated_stretch_preview.tscn"
-const GENERATED_CHAIN_NESTED_POC_PREVIEW_SCENE_PATH := "res://scenes/fragments/generated_chain_nested_poc_preview.tscn"
-const GENERATED_RANDOM_WALK_POC_PREVIEW_SCENE_PATH := "res://scenes/fragments/generated_random_walk_poc_preview.tscn"
+const GENERATED_STRETCH_PREVIEW_SCENE_PATH := "res://scenes/fragments/fragment_preview.tscn"
+const GENERATED_CHAIN_NESTED_POC_PREVIEW_SCENE_PATH := "res://scenes/fragments/fragment_preview.tscn"
+const GENERATED_RANDOM_WALK_POC_PREVIEW_SCENE_PATH := "res://scenes/fragments/fragment_preview.tscn"
 const PLAN_SCENES := [
 	{
 		"id": "endo_junction_stretch",
 		"title": "Endo's Junction -> Shelter 1",
 		"chunk_scene": "res://scenes/fragments/chunks/endo_junction_stretch_chunk.tscn",
-		"preview_scene": "res://scenes/fragments/endo_junction_stretch_preview.tscn",
+		"preview_scene": "res://scenes/fragments/fragment_preview.tscn",
 	},
 	{
 		"id": "channels_rhythm",
 		"title": "Channels Rhythm Lane",
 		"chunk_scene": "res://scenes/fragments/chunks/channels_rhythm_chunk.tscn",
-		"preview_scene": "res://scenes/fragments/channels_rhythm_preview.tscn",
+		"preview_scene": "res://scenes/fragments/fragment_preview.tscn",
 	},
 	{
 		"id": "channels_hide_window",
 		"title": "Channels Hide Window",
 		"chunk_scene": "res://scenes/fragments/chunks/channels_hide_window_chunk.tscn",
-		"preview_scene": "res://scenes/fragments/channels_hide_window_preview.tscn",
+		"preview_scene": "res://scenes/fragments/fragment_preview.tscn",
 	},
 	{
 		"id": "stacks",
 		"title": "Processing Stacks",
 		"chunk_scene": "res://scenes/fragments/chunks/stacks_fragment_chunk.tscn",
-		"preview_scene": "res://scenes/fragments/stacks_preview.tscn",
+		"preview_scene": "res://scenes/fragments/fragment_preview.tscn",
 	},
 	{
 		"id": "mother_ferrolure",
 		"title": "Mother Flure",
 		"chunk_scene": "res://scenes/fragments/chunks/mother_ferrolure_chunk.tscn",
-		"preview_scene": "res://scenes/fragments/mother_ferrolure_preview.tscn",
+		"preview_scene": "res://scenes/fragments/fragment_preview.tscn",
 	},
 	{
 		"id": "rings",
 		"title": "Residential Rings",
 		"chunk_scene": "res://scenes/fragments/chunks/rings_fragment_chunk.tscn",
-		"preview_scene": "res://scenes/fragments/rings_preview.tscn",
+		"preview_scene": "res://scenes/fragments/fragment_preview.tscn",
 	},
 	{
 		"id": "lockout",
 		"title": "Lockout",
 		"chunk_scene": "res://scenes/fragments/chunks/lockout_fragment_chunk.tscn",
-		"preview_scene": "res://scenes/fragments/lockout_preview.tscn",
+		"preview_scene": "res://scenes/fragments/fragment_preview.tscn",
 	},
 	{
 		"id": "survival_range",
 		"title": "Shelter-To-Shelter Range",
 		"chunk_scene": "res://scenes/fragments/chunks/survival_range_chunk.tscn",
-		"preview_scene": "res://scenes/fragments/survival_range_preview.tscn",
+		"preview_scene": "res://scenes/fragments/fragment_preview.tscn",
 	},
 	{
 		"id": "overlay_lab",
 		"title": "Overlay Lab",
 		"chunk_scene": "res://scenes/fragments/chunks/overlay_lab_chunk.tscn",
-		"preview_scene": "res://scenes/fragments/overlay_lab_preview.tscn",
+		"preview_scene": "res://scenes/fragments/fragment_preview.tscn",
 	},
 	{
 		"id": "generated_teaching_channels_shelter_1_to_2",

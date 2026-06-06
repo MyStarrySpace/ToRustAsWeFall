@@ -18,6 +18,54 @@ const GENERATED_STRETCH_CHUNK_SCENE := preload("res://scenes/fragments/chunks/ge
 const REFUGE_RUN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/refuge_run_chunk.tscn")
 const LURE_RELAY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/lure_relay_chunk.tscn")
 
+# chunk name -> packed scene. The single lookup that replaced the old per-name match (and the reason
+# we no longer need one *_preview.tscn per chunk: one scene reads this registry and picks at runtime).
+const CHUNK_SCENES := {
+	"stacks": STACKS_CHUNK_SCENE,
+	"rings": RINGS_CHUNK_SCENE,
+	"lockout": LOCKOUT_CHUNK_SCENE,
+	"overlay_lab": OVERLAY_LAB_CHUNK_SCENE,
+	"mother_ferrolure": MOTHER_FERROLURE_CHUNK_SCENE,
+	"survival_range": SURVIVAL_RANGE_CHUNK_SCENE,
+	"channels_rhythm": CHANNELS_RHYTHM_CHUNK_SCENE,
+	"channels_hide_window": CHANNELS_HIDE_WINDOW_CHUNK_SCENE,
+	"endo_junction_stretch": ENDO_JUNCTION_STRETCH_CHUNK_SCENE,
+	"generated_stretch": GENERATED_STRETCH_CHUNK_SCENE,
+	"refuge_run": REFUGE_RUN_CHUNK_SCENE,
+	"lure_relay": LURE_RELAY_CHUNK_SCENE,
+}
+
+# The fragment menu, in display order. Each entry is a runnable preview: an id, the chunk it loads, a
+# display title, and an optional chunk config (the generated-stretch entries reuse one chunk with
+# different spec specs). This list REPLACES the 14 near-identical *_preview.tscn files — the single
+# fragment_preview.tscn boots into a picker built from these, and tests/tools select by id.
+const PREVIEW_ENTRIES := [
+	{"id": "stacks", "chunk": "stacks", "title": "Stacks Fragment Lab"},
+	{"id": "rings", "chunk": "rings", "title": "Rings Fragment Lab"},
+	{"id": "lockout", "chunk": "lockout", "title": "Lockout Fragment Lab"},
+	{"id": "overlay_lab", "chunk": "overlay_lab", "title": "Overlay Lab"},
+	{"id": "mother_ferrolure", "chunk": "mother_ferrolure", "title": "Mother Flure"},
+	{"id": "lure_relay", "chunk": "lure_relay", "title": "Ferrolure Relay"},
+	{"id": "channels_rhythm", "chunk": "channels_rhythm", "title": "Channels Rhythm Lane"},
+	{"id": "channels_hide_window", "chunk": "channels_hide_window", "title": "Channels Hide Window"},
+	{"id": "survival_range", "chunk": "survival_range", "title": "Shelter-To-Shelter Range"},
+	{"id": "refuge_run", "chunk": "refuge_run", "title": "Refuge Run"},
+	{"id": "endo_junction_stretch", "chunk": "endo_junction_stretch", "title": "Endo's Junction to Shelter 1"},
+	{"id": "generated_stretch", "chunk": "generated_stretch", "title": "Generated Stretch",
+		"config": {"spec_path": "res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"}},
+	{"id": "generated_chain_nested_poc", "chunk": "generated_stretch", "title": "Generated Chain/Nested POC",
+		"config": {"spec_path": "res://data/generated_stretches/generated_chain_nested_poc_shelter_2_to_3.json"}},
+	{"id": "generated_random_walk_poc", "chunk": "generated_stretch", "title": "Generated Random Walk POC",
+		"config": {"spec_path": "res://data/generated_stretches/generated_random_walk_poc_shelter_3_to_4.json"}},
+]
+
+## The menu entry for an id (or {} if none).
+static func get_preview_entry(entry_id: String) -> Dictionary:
+	for entry in PREVIEW_ENTRIES:
+		if String(entry.get("id", "")) == entry_id:
+			return entry
+	return {}
+
 const CHARACTER_IDS := ["aster", "peris", "endo"]
 const CHARACTER_DISPLAY_NAMES := {
 	"aster": "Aster",
@@ -71,6 +119,10 @@ const STAMINA_REGEN := 10.0
 @export var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
+## When true, boot into a fragment PICKER instead of loading a chunk directly. The single
+## fragment_preview.tscn sets this; selecting an entry loads it, and reloading (R) returns here.
+## A `--preview=<id>` command-line arg (or a preset preview_chunk) skips the menu and loads directly.
+@export var preview_menu := false
 
 var _characters: Dictionary = {}
 var _character_state: Dictionary = {}
@@ -112,6 +164,8 @@ var _inventory_panel_title: Label
 var _preview_item_nodes: Dictionary = {}
 
 var _preview_layer: CanvasLayer
+var _menu_panel: PanelContainer
+var _in_menu := false
 var _title_label: Label
 var _help_label: Label
 var _note_label: Label
@@ -119,33 +173,7 @@ var _note_default := ""
 var _note_timer := 0.0
 
 func _get_chunk_scene(chunk_name: String) -> PackedScene:
-	match chunk_name:
-		"stacks":
-			return STACKS_CHUNK_SCENE
-		"rings":
-			return RINGS_CHUNK_SCENE
-		"lockout":
-			return LOCKOUT_CHUNK_SCENE
-		"overlay_lab":
-			return OVERLAY_LAB_CHUNK_SCENE
-		"mother_ferrolure":
-			return MOTHER_FERROLURE_CHUNK_SCENE
-		"survival_range":
-			return SURVIVAL_RANGE_CHUNK_SCENE
-		"channels_rhythm":
-			return CHANNELS_RHYTHM_CHUNK_SCENE
-		"channels_hide_window":
-			return CHANNELS_HIDE_WINDOW_CHUNK_SCENE
-		"endo_junction_stretch":
-			return ENDO_JUNCTION_STRETCH_CHUNK_SCENE
-		"generated_stretch":
-			return GENERATED_STRETCH_CHUNK_SCENE
-		"refuge_run":
-			return REFUGE_RUN_CHUNK_SCENE
-		"lure_relay":
-			return LURE_RELAY_CHUNK_SCENE
-		_:
-			return null
+	return CHUNK_SCENES.get(chunk_name, null)
 
 func _build_scene() -> void:
 	var env := Node3D.new()
@@ -209,6 +237,20 @@ func _setup_ui() -> void:
 	_apply_selection_state(["aster"], "aster")
 
 func _begin() -> void:
+	# A command-line `--preview=<id>` always wins (headless tests / `godot ... -- --preview=lure_relay`).
+	var cli_id := _cli_preview_id()
+	if cli_id != "":
+		_apply_preview_entry(get_preview_entry(cli_id))
+	elif preview_menu:
+		_show_fragment_menu()
+		return
+	_begin_chunk()
+
+## Build (or load) the chunk named by preview_chunk and wire up the party/UI around it.
+func _begin_chunk() -> void:
+	_in_menu = false
+	if _menu_panel != null:
+		_menu_panel.visible = false
 	set_preview_step(preview_chunk)
 	_active_chunk = _load_chunk(preview_chunk)
 	_connect_outline_feedback_sources(self)
@@ -224,6 +266,69 @@ func _begin() -> void:
 	_refresh_inventory_panel()
 	_tutorial_prompt.show_prompt("Click to move")
 	show_preview_message("Preview booted with full HP, stamina, and ATP.", 2.0)
+
+# --- Fragment picker (replaces the per-chunk *_preview.tscn files) ---
+
+## Read a `--preview=<id>` (or `--preview <id>`) user arg, if present.
+func _cli_preview_id() -> String:
+	var cli: PackedStringArray = OS.get_cmdline_user_args()
+	for i in range(cli.size()):
+		var a := String(cli[i])
+		if a.begins_with("--preview="):
+			return a.substr("--preview=".length())
+		if a == "--preview" and i + 1 < cli.size():
+			return String(cli[i + 1])
+	return ""
+
+## Point the preview at a menu entry (chunk + title + config) before loading it.
+func _apply_preview_entry(entry: Dictionary) -> void:
+	if entry.is_empty():
+		return
+	preview_chunk = String(entry.get("chunk", preview_chunk))
+	scene_title_override = String(entry.get("title", scene_title_override))
+	preview_chunk_config = (entry.get("config", {}) as Dictionary).duplicate(true)
+
+## Build and show the picker: one button per PREVIEW_ENTRIES row. Selecting one loads that fragment.
+func _show_fragment_menu() -> void:
+	_in_menu = true
+	if _menu_panel == null:
+		_build_fragment_menu()
+	_menu_panel.visible = true
+	if _title_label != null:
+		_title_label.text = "Fragment Preview"
+	if _help_label != null:
+		_help_label.text = "Pick a fragment to preview  ·  R reloads back to this list"
+
+func _build_fragment_menu() -> void:
+	if _preview_layer == null:
+		return
+	_menu_panel = PanelContainer.new()
+	_menu_panel.name = "FragmentMenu"
+	_menu_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_menu_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_menu_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	var margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 18)
+	_menu_panel.add_child(margin)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	margin.add_child(col)
+	var heading := Label.new()
+	heading.text = "Select a fragment"
+	heading.add_theme_font_size_override("font_size", 20)
+	col.add_child(heading)
+	for entry in PREVIEW_ENTRIES:
+		var button := Button.new()
+		button.text = String(entry.get("title", entry.get("id", "?")))
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.pressed.connect(_on_menu_entry_pressed.bind(entry))
+		col.add_child(button)
+	_preview_layer.add_child(_menu_panel)
+
+func _on_menu_entry_pressed(entry: Dictionary) -> void:
+	_apply_preview_entry(entry)
+	_begin_chunk()
 
 func _configure_loaded_chunk(chunk: Node3D, chunk_name: String) -> void:
 	if chunk_name != preview_chunk:

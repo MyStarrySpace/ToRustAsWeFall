@@ -87,20 +87,10 @@ const FRAGMENT_CHUNK_SCENE_PATHS := [
 	"res://scenes/fragments/chunks/endo_junction_stretch_chunk.tscn",
 	"res://scenes/fragments/chunks/generated_stretch_chunk.tscn",
 ]
-const FRAGMENT_PREVIEW_SCENE_PATHS := [
-	"res://scenes/fragments/stacks_preview.tscn",
-	"res://scenes/fragments/rings_preview.tscn",
-	"res://scenes/fragments/lockout_preview.tscn",
-	"res://scenes/fragments/overlay_lab_preview.tscn",
-	"res://scenes/fragments/mother_ferrolure_preview.tscn",
-	"res://scenes/fragments/survival_range_preview.tscn",
-	"res://scenes/fragments/channels_rhythm_preview.tscn",
-	"res://scenes/fragments/channels_hide_window_preview.tscn",
-	"res://scenes/fragments/endo_junction_stretch_preview.tscn",
-	"res://scenes/fragments/generated_stretch_preview.tscn",
-	"res://scenes/fragments/generated_chain_nested_poc_preview.tscn",
-	"res://scenes/fragments/generated_random_walk_poc_preview.tscn",
-]
+# Every fragment is now previewed through ONE scene + a runtime picker (the *_preview.tscn files are
+# gone). The scene-load test drives the single scene once per registry entry.
+const FRAGMENT_PREVIEW_SCENE_PATH := "res://scenes/fragments/fragment_preview.tscn"
+const FragmentPreviewScript := preload("res://scripts/fragments/fragment_preview_sequence.gd")
 const ACT1_SEQUENCE_STEPS := [
 	"channels_enter", "channels_to_memory", "channels_memory",
 	"channels_corpse", "channels_window_one_intro", "channels_window_one_activate",
@@ -917,24 +907,46 @@ func _test_scene_load() -> void:
 			_assert_no_embedded_game_gui(chunk_instance, chunk_scene_path.get_file())
 			chunk_instance.free()
 
-	for preview_scene_path in FRAGMENT_PREVIEW_SCENE_PATHS:
-		var preview_scene: PackedScene = load(preview_scene_path)
-		_assert_true(preview_scene != null, "%s loads" % preview_scene_path.get_file())
-		if preview_scene == null:
-			continue
-		var preview_instance: Node = preview_scene.instantiate()
-		_assert_true(preview_instance != null, "%s instantiates" % preview_scene_path.get_file())
-		if preview_instance == null:
-			continue
-		get_tree().root.add_child(preview_instance)
+	var preview_packed: PackedScene = load(FRAGMENT_PREVIEW_SCENE_PATH)
+	_assert_true(preview_packed != null, "fragment_preview.tscn loads")
+	if preview_packed != null:
+		# One scene, every registry entry: instantiate the single preview, point it at the entry's
+		# chunk (menu off), and assert the same shared-GUI / overlay / ability wiring as before.
+		for entry in FragmentPreviewScript.PREVIEW_ENTRIES:
+			var label := String(entry.get("id", entry.get("chunk", "?")))
+			var preview_instance: Node = preview_packed.instantiate()
+			_assert_true(preview_instance != null, "fragment_preview instantiates for %s" % label)
+			if preview_instance == null:
+				continue
+			preview_instance.set("preview_menu", false)
+			preview_instance.set("preview_chunk", String(entry.get("chunk", "")))
+			preview_instance.set("scene_title_override", String(entry.get("title", "")))
+			preview_instance.set("preview_chunk_config", (entry.get("config", {}) as Dictionary).duplicate(true))
+			get_tree().root.add_child(preview_instance)
+			for _i in range(2):
+				await get_tree().process_frame
+			var env: Node = preview_instance.find_child("Environment", true, false)
+			_assert_true(env != null, "%s has an Environment node" % label)
+			_assert_fragment_preview_uses_shared_gui(preview_instance, label)
+			_assert_preview_overlay_vision_sources(preview_instance, label)
+			_assert_preview_main_ability_keymap(preview_instance, label)
+			preview_instance.queue_free()
+			await get_tree().process_frame
+
+		# And the picker itself boots (menu on) with a button per entry and no chunk loaded yet.
+		var menu_instance: Node = preview_packed.instantiate()
+		get_tree().root.add_child(menu_instance)
 		for _i in range(2):
 			await get_tree().process_frame
-		var env: Node = preview_instance.find_child("Environment", true, false)
-		_assert_true(env != null, "%s has an Environment node" % preview_scene_path.get_file())
-		_assert_fragment_preview_uses_shared_gui(preview_instance, preview_scene_path.get_file())
-		_assert_preview_overlay_vision_sources(preview_instance, preview_scene_path.get_file())
-		_assert_preview_main_ability_keymap(preview_instance, preview_scene_path.get_file())
-		preview_instance.queue_free()
+		var menu_panel: Node = menu_instance.find_child("FragmentMenu", true, false)
+		_assert_true(menu_panel != null, "fragment_preview boots into the picker menu")
+		if menu_panel != null:
+			var button_count := 0
+			for descendant in menu_panel.find_children("*", "Button", true, false):
+				button_count += 1
+			_assert_true(button_count >= FragmentPreviewScript.PREVIEW_ENTRIES.size(),
+				"The picker lists every fragment (got %d buttons)" % button_count)
+		menu_instance.queue_free()
 		await get_tree().process_frame
 
 	var block_lib := load("res://resources/block_library.tres")
@@ -950,7 +962,7 @@ func _test_all_scenes_load() -> void:
 	_test_name = "All Scenes Load"
 	var scene_paths := _discover_scenes("res://scenes")
 	scene_paths.sort()
-	_assert_true(scene_paths.size() >= 30,
+	_assert_true(scene_paths.size() >= 24,
 		"Discovered the scene set (%d scenes under res://scenes)" % scene_paths.size())
 	# These build a full act/sequence on _ready; their dedicated tests instantiate
 	# and drive them, so here we only confirm the resource loads.
@@ -1723,17 +1735,10 @@ func _test_archetype_generation() -> void:
 			walk_chunk.queue_free()
 			await get_tree().process_frame
 
-	var preview_scene := load("res://scenes/fragments/generated_stretch_preview.tscn")
-	_assert_true(preview_scene != null, "Generated stretch preview scene loads")
-	if preview_scene == null:
-		return
-	var preview_instance: Node = preview_scene.instantiate()
+	var preview_instance: Node = await _instantiate_preview_chunk_and_wait("generated_stretch", 3)
 	_assert_true(preview_instance != null, "Generated stretch preview instantiates")
 	if preview_instance == null:
 		return
-	get_tree().root.add_child(preview_instance)
-	for _i in range(3):
-		await get_tree().process_frame
 	var state: Dictionary = preview_instance.call("headless_get_state")
 	_assert_equals(str(state.get("preview_chunk", "")), "generated_stretch", "Generated preview reports its chunk id")
 	_assert_equals(str(state.get("preview_party_preset", "")), "full_party_full_health", "Generated preview starts with full-party preset")
@@ -2348,14 +2353,8 @@ func _test_survival_archetypes() -> void:
 	_assert_true(not StretchCapabilitiesScript.node_content_capabilities(barrier_node).has("barrier"), "A placed barrier structure does NOT grant the pair the specialist 'barrier' capability")
 
 	# Chunk: a golden run banks ATP at the forage cache and takes attrition at the gauntlet.
-	var preview_scene := load("res://scenes/fragments/generated_stretch_preview.tscn")
-	if preview_scene != null:
-		var preview: Node = preview_scene.instantiate()
-		preview.set("preview_chunk", "generated_stretch")
-		preview.set("preview_chunk_config", {"spec": spec})
-		get_tree().root.add_child(preview)
-		for _i in range(3):
-			await get_tree().process_frame
+	var preview: Node = await _instantiate_preview_chunk_and_wait("generated_stretch", 3, {"spec": spec})
+	if preview != null:
 		preview.call("headless_call_chunk", "run_generated_golden_path", [])
 		var cs: Dictionary = preview.call("headless_get_state").get("chunk", {})
 		_assert_true(int(cs.get("atp_foraged", 0)) > 0, "A golden run banks partial ATP at the forage cache")
@@ -3064,10 +3063,6 @@ func _load_png_from_res(image: Image, path: String) -> int:
 func _test_mother_ferrolure_preview() -> void:
 	_test_name = "Mother Ferrolure Preview"
 
-	var preview_scene: PackedScene = load("res://scenes/fragments/mother_ferrolure_preview.tscn")
-	_assert_true(preview_scene != null, "mother_ferrolure_preview.tscn loads")
-	if preview_scene == null:
-		return
 	await _assert_preview_scene_idle_dialogue_stability(
 		"res://scenes/fragments/mother_ferrolure_preview.tscn",
 		"Chunk_mother_ferrolure",
@@ -3088,13 +3083,10 @@ func _test_mother_ferrolure_preview() -> void:
 		"term_alpha"
 	)
 
-	var inventory_instance: Node = preview_scene.instantiate()
-	_assert_true(inventory_instance != null, "mother_ferrolure_preview.tscn instantiates")
+	var inventory_instance: Node = await _instantiate_preview_chunk_and_wait("mother_ferrolure", 2)
+	_assert_true(inventory_instance != null, "mother preview instantiates")
 	if inventory_instance == null:
 		return
-	get_tree().root.add_child(inventory_instance)
-	for _i in range(2):
-		await get_tree().process_frame
 
 	var inventory_chunk: Node = inventory_instance.find_child("Chunk_mother_ferrolure", true, false)
 	_assert_true(inventory_chunk != null, "Mother preview builds its chunk")
@@ -3161,13 +3153,10 @@ func _test_mother_ferrolure_preview() -> void:
 	inventory_instance.queue_free()
 	await get_tree().process_frame
 
-	var solve_instance: Node = preview_scene.instantiate()
-	_assert_true(solve_instance != null, "mother_ferrolure_preview.tscn instantiates for the optimal solve")
+	var solve_instance: Node = await _instantiate_preview_chunk_and_wait("mother_ferrolure", 2)
+	_assert_true(solve_instance != null, "mother preview instantiates for the optimal solve")
 	if solve_instance == null:
 		return
-	get_tree().root.add_child(solve_instance)
-	for _j in range(2):
-		await get_tree().process_frame
 
 	var solve_chunk: Node = solve_instance.find_child("Chunk_mother_ferrolure", true, false)
 	_assert_true(solve_chunk != null, "Optimal-solve preview builds its chunk")
@@ -3219,10 +3208,6 @@ func _test_mother_ferrolure_preview() -> void:
 func _test_endo_junction_stretch_preview() -> void:
 	_test_name = "Endo Junction Stretch Preview"
 
-	var preview_scene: PackedScene = load("res://scenes/fragments/endo_junction_stretch_preview.tscn")
-	_assert_true(preview_scene != null, "endo_junction_stretch_preview.tscn loads")
-	if preview_scene == null:
-		return
 	await _assert_preview_scene_idle_dialogue_stability(
 		"res://scenes/fragments/endo_junction_stretch_preview.tscn",
 		"Chunk_endo_junction_stretch",
@@ -3243,8 +3228,8 @@ func _test_endo_junction_stretch_preview() -> void:
 		true
 	)
 
-	var instance: Node = await _instantiate_scene_and_wait(preview_scene, 3)
-	_assert_true(instance != null, "endo_junction_stretch_preview.tscn instantiates")
+	var instance: Node = await _instantiate_preview_chunk_and_wait("endo_junction_stretch", 3)
+	_assert_true(instance != null, "endo_junction_stretch preview instantiates")
 	if instance == null:
 		return
 
@@ -3311,8 +3296,8 @@ func _test_endo_junction_stretch_preview() -> void:
 
 	await _dispose_scene(instance)
 
-	var direct_instance: Node = await _instantiate_scene_and_wait(preview_scene, 3)
-	_assert_true(direct_instance != null, "endo_junction_stretch_preview.tscn instantiates for the direct route")
+	var direct_instance: Node = await _instantiate_preview_chunk_and_wait("endo_junction_stretch", 3)
+	_assert_true(direct_instance != null, "endo_junction_stretch preview instantiates for the direct route")
 	if direct_instance == null:
 		return
 	var direct_chunk: Node = direct_instance.find_child("Chunk_endo_junction_stretch", true, false)
@@ -3349,18 +3334,10 @@ func _test_endo_junction_stretch_preview() -> void:
 func _test_channels_rhythm_preview() -> void:
 	_test_name = "Channels Rhythm Preview"
 
-	var preview_scene: PackedScene = load("res://scenes/fragments/channels_rhythm_preview.tscn")
-	_assert_true(preview_scene != null, "channels_rhythm_preview.tscn loads")
-	if preview_scene == null:
-		return
-
-	var instance: Node = preview_scene.instantiate()
-	_assert_true(instance != null, "channels_rhythm_preview.tscn instantiates")
+	var instance: Node = await _instantiate_preview_chunk_and_wait("channels_rhythm", 2)
+	_assert_true(instance != null, "channels_rhythm preview instantiates")
 	if instance == null:
 		return
-	get_tree().root.add_child(instance)
-	for _i in range(2):
-		await get_tree().process_frame
 
 	var chunk: Node = instance.find_child("Chunk_channels_rhythm", true, false)
 	_assert_true(chunk != null, "Channels rhythm preview builds its chunk")
@@ -3405,10 +3382,6 @@ func _test_channels_rhythm_preview() -> void:
 func _test_channels_hide_window_preview() -> void:
 	_test_name = "Channels Hide Window Preview"
 
-	var preview_scene: PackedScene = load("res://scenes/fragments/channels_hide_window_preview.tscn")
-	_assert_true(preview_scene != null, "channels_hide_window_preview.tscn loads")
-	if preview_scene == null:
-		return
 	await _assert_preview_scene_idle_dialogue_stability(
 		"res://scenes/fragments/channels_hide_window_preview.tscn",
 		"Chunk_channels_hide_window",
@@ -3416,13 +3389,10 @@ func _test_channels_hide_window_preview() -> void:
 		"This is not a corridor"
 	)
 
-	var instance: Node = preview_scene.instantiate()
-	_assert_true(instance != null, "channels_hide_window_preview.tscn instantiates")
+	var instance: Node = await _instantiate_preview_chunk_and_wait("channels_hide_window", 2)
+	_assert_true(instance != null, "channels_hide_window preview instantiates")
 	if instance == null:
 		return
-	get_tree().root.add_child(instance)
-	for _i in range(2):
-		await get_tree().process_frame
 
 	var chunk: Node = instance.find_child("Chunk_channels_hide_window", true, false)
 	_assert_true(chunk != null, "Channels hide window preview builds its chunk")
@@ -3617,12 +3587,7 @@ func _mother_profile_root_move(
 	_assert_true(bool(cross_out_result.get("result", false)), "%s brings Peris back out during timing run" % label)
 
 func _run_mother_ferrolure_profile(profile: String) -> Dictionary:
-	var preview_scene: PackedScene = load("res://scenes/fragments/mother_ferrolure_preview.tscn")
-	_assert_true(preview_scene != null, "mother_ferrolure_preview.tscn loads for %s playtime run" % profile)
-	if preview_scene == null:
-		return {}
-
-	var instance: Node = await _instantiate_scene_and_wait(preview_scene, 3)
+	var instance: Node = await _instantiate_preview_chunk_and_wait("mother_ferrolure", 3)
 	_assert_true(instance != null, "mother_ferrolure_preview.tscn instantiates for %s playtime run" % profile)
 	if instance == null:
 		return {}
@@ -6749,6 +6714,34 @@ func _instantiate_scene_and_wait(scene: PackedScene, settle_frames := 5) -> Node
 		await get_tree().process_frame
 	return instance
 
+# --- Fragment preview helpers (single fragment_preview.tscn + a chunk id, no per-chunk *_preview.tscn) ---
+
+## Chunk id from a legacy "<chunk>_preview.tscn" path — callers still name the chunk that way.
+func _preview_chunk_id_from_path(scene_path: String) -> String:
+	return scene_path.get_file().trim_suffix("_preview.tscn")
+
+## Instantiate the consolidated preview for one chunk (menu off), add it, and settle. The single
+## entry point that replaced loading a dedicated "<chunk>_preview.tscn".
+func _instantiate_preview_chunk_and_wait(chunk_id: String, settle_frames := 5, config := {}) -> Node:
+	var packed: PackedScene = load(FRAGMENT_PREVIEW_SCENE_PATH)
+	if packed == null:
+		return null
+	var instance: Node = packed.instantiate()
+	if instance == null:
+		return null
+	instance.set("preview_menu", false)
+	instance.set("preview_chunk", chunk_id)
+	var entry: Dictionary = FragmentPreviewScript.get_preview_entry(chunk_id)
+	var resolved_config: Dictionary = config if not config.is_empty() else (entry.get("config", {}) as Dictionary)
+	if not resolved_config.is_empty():
+		instance.set("preview_chunk_config", resolved_config.duplicate(true))
+	if String(entry.get("title", "")) != "":
+		instance.set("scene_title_override", String(entry.get("title", "")))
+	get_tree().root.add_child(instance)
+	for i in range(settle_frames):
+		await get_tree().process_frame
+	return instance
+
 func _dispose_scene(instance: Node) -> void:
 	if instance and is_instance_valid(instance):
 		instance.queue_free()
@@ -6991,12 +6984,7 @@ func _assert_preview_scene_idle_dialogue_stability(
 	label: String,
 	forbidden_substring := ""
 ) -> void:
-	var preview_scene: PackedScene = load(scene_path)
-	_assert_true(preview_scene != null, "%s loads for idle dialogue stability" % scene_path.get_file())
-	if preview_scene == null:
-		return
-
-	var instance: Node = await _instantiate_scene_and_wait(preview_scene, 3)
+	var instance: Node = await _instantiate_preview_chunk_and_wait(_preview_chunk_id_from_path(scene_path), 3)
 	_assert_true(instance != null, "%s instantiates for idle dialogue stability" % scene_path.get_file())
 	if instance == null:
 		return
@@ -7007,12 +6995,7 @@ func _assert_preview_scene_idle_dialogue_stability(
 	await _dispose_scene(instance)
 
 func _assert_preview_scene_main_ability_keymap(scene_path: String, label: String) -> void:
-	var preview_scene: PackedScene = load(scene_path)
-	_assert_true(preview_scene != null, "%s loads for main ability keymap" % scene_path.get_file())
-	if preview_scene == null:
-		return
-
-	var instance: Node = await _instantiate_scene_and_wait(preview_scene, 3)
+	var instance: Node = await _instantiate_preview_chunk_and_wait(_preview_chunk_id_from_path(scene_path), 3)
 	_assert_true(instance != null, "%s instantiates for main ability keymap" % scene_path.get_file())
 	if instance == null:
 		return
@@ -7029,12 +7012,7 @@ func _assert_preview_scene_interactable_click_flow(
 	expected_state_key := "",
 	expected_state_value = true
 ) -> void:
-	var preview_scene: PackedScene = load(scene_path)
-	_assert_true(preview_scene != null, "%s loads for interactable click flow" % scene_path.get_file())
-	if preview_scene == null:
-		return
-
-	var instance: Node = await _instantiate_scene_and_wait(preview_scene, 3)
+	var instance: Node = await _instantiate_preview_chunk_and_wait(_preview_chunk_id_from_path(scene_path), 3)
 	_assert_true(instance != null, "%s instantiates for interactable click flow" % scene_path.get_file())
 	if instance == null:
 		return
@@ -7296,14 +7274,9 @@ func _preview_scheduler_tick(instance: Node) -> float:
 	return 0.0
 
 func _load_survival_range_timing_predictions() -> Dictionary:
-	var preview_scene: PackedScene = load("res://scenes/fragments/survival_range_preview.tscn")
-	_assert_true(preview_scene != null, "survival_range_preview.tscn loads for timing predictions")
-	if preview_scene == null:
-		return {}
-
-	var instance: Node = await _instantiate_scene_and_wait(preview_scene, 3)
+	var instance: Node = await _instantiate_preview_chunk_and_wait("survival_range", 3)
 	if instance == null:
-		_assert_true(false, "survival_range_preview.tscn instantiates for timing predictions")
+		_assert_true(false, "survival_range preview instantiates for timing predictions")
 		return {}
 
 	var predictions_variant: Variant = null
@@ -7363,13 +7336,8 @@ func _survival_range_dwell_and_call(
 	}
 
 func _run_survival_range_profile(profile: String) -> Dictionary:
-	var preview_scene: PackedScene = load("res://scenes/fragments/survival_range_preview.tscn")
-	_assert_true(preview_scene != null, "survival_range_preview.tscn loads for %s timing run" % profile)
-	if preview_scene == null:
-		return {}
-
-	var instance: Node = await _instantiate_scene_and_wait(preview_scene, 3)
-	_assert_true(instance != null, "survival_range_preview.tscn instantiates for %s timing run" % profile)
+	var instance: Node = await _instantiate_preview_chunk_and_wait("survival_range", 3)
+	_assert_true(instance != null, "survival_range preview instantiates for %s timing run" % profile)
 	if instance == null:
 		return {}
 
@@ -7459,13 +7427,8 @@ func _test_day_night_cycle() -> void:
 	_assert_equals(int(night_boundary.get("day", 0)), 2, "A full night segment advances the calendar day")
 	_assert_true(absf(float(night_boundary.get("time", -1.0)) - DayNightCycleScript.DAY_START) <= 0.0001, "300s rolls the clock back to dawn")
 
-	var preview_scene: PackedScene = load("res://scenes/fragments/survival_range_preview.tscn")
-	_assert_true(preview_scene != null, "survival_range_preview.tscn loads for clock validation")
-	if preview_scene == null:
-		return
-
-	var instance: Node = await _instantiate_scene_and_wait(preview_scene, 3)
-	_assert_true(instance != null, "survival_range_preview.tscn instantiates for clock validation")
+	var instance: Node = await _instantiate_preview_chunk_and_wait("survival_range", 3)
+	_assert_true(instance != null, "survival_range preview instantiates for clock validation")
 	if instance == null:
 		return
 
@@ -8384,14 +8347,10 @@ func _test_hidden_detection() -> void:
 # --- Test: the two-lure relay hide puzzle solves on the data layer (headless == real play) ---
 func _test_lure_relay_puzzle() -> void:
 	_test_name = "Lure Relay Puzzle"
-	var scene = load("res://scenes/fragments/lure_relay_preview.tscn")
-	if scene == null:
-		_assert_true(false, "lure_relay_preview loads")
+	var instance = await _instantiate_preview_chunk_and_wait("lure_relay", 4)
+	if instance == null:
+		_assert_true(false, "lure_relay preview instantiates")
 		return
-	var instance = scene.instantiate()
-	get_tree().root.add_child(instance)
-	for i in range(4):
-		await get_tree().process_frame
 	var chunk = instance._active_chunk
 	_assert_true(chunk != null, "Lure relay chunk loads in the shared preview")
 	if chunk == null:

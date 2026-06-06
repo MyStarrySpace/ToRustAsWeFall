@@ -2,7 +2,7 @@ class_name StretchGenerationPlaytestLoop
 extends RefCounted
 
 const StretchGeneratorScript := preload("res://scripts/generation/stretch_generator.gd")
-const GENERATED_STRETCH_PREVIEW_SCENE_PATH := "res://scenes/fragments/generated_stretch_preview.tscn"
+const GENERATED_STRETCH_PREVIEW_SCENE_PATH := "res://scenes/fragments/fragment_preview.tscn"
 const ANIMATION_CONTRACT_ID := "playthrough_animation_v1"
 const DEFAULT_CAPTURE_STEP := 0.25
 const PARTY_IDS := ["aster", "peris", "endo"]
@@ -62,6 +62,7 @@ func playtest_spec(spec: Dictionary, tree: SceneTree, options := {}) -> Dictiona
 	if preview_instance == null:
 		return _finish_result(result)
 
+	preview_instance.set("preview_menu", false)  # drive the chunk directly, not the picker
 	preview_instance.set("preview_chunk", "generated_stretch")
 	preview_instance.set("scene_title_override", str(spec.get("title", "Generated Stretch")))
 	preview_instance.set("preview_chunk_config", {"spec": spec})

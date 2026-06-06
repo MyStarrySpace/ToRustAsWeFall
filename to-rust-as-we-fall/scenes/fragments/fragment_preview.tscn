@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/fragments/fragment_preview_sequence.gd" id="1"]
 
-[node name="RingsPreview" type="Node3D"]
+[node name="FragmentPreview" type="Node3D"]
 script = ExtResource("1")
-preview_chunk = "rings"
-scene_title_override = "Rings Fragment Lab"
+preview_chunk = ""
+preview_menu = true

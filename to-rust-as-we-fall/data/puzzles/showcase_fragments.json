@@ -305,7 +305,8 @@
 		{
 			"id": "channels_early_ferrolure_rhythm_lane",
 			"display_name": "Channels Early Ferrolure Rhythm Lane",
-			"scene": "res://scenes/fragments/channels_rhythm_preview.tscn",
+			"scene": "res://scenes/fragments/fragment_preview.tscn",
+			"preview_chunk": "channels_rhythm",
 			"kind": "puzzle",
 			"tags": ["channels", "ferrolure", "environment", "timing", "routing"],
 			"scenarios": [
@@ -435,7 +436,8 @@
 		{
 			"id": "channels_hide_window_lane",
 			"display_name": "Channels Hide Window Lane",
-			"scene": "res://scenes/fragments/channels_hide_window_preview.tscn",
+			"scene": "res://scenes/fragments/fragment_preview.tscn",
+			"preview_chunk": "channels_hide_window",
 			"kind": "puzzle",
 			"tags": ["channels", "ferrolure", "timing", "hide", "retry", "routing"],
 			"scenarios": [
@@ -510,7 +512,8 @@
 		{
 			"id": "channels_hide_window_detection_lock",
 			"display_name": "Channels Hide Window Detection Lock",
-			"scene": "res://scenes/fragments/channels_hide_window_preview.tscn",
+			"scene": "res://scenes/fragments/fragment_preview.tscn",
+			"preview_chunk": "channels_hide_window",
 			"kind": "puzzle",
 			"tags": ["channels", "hide", "detection", "timing", "failure"],
 			"scenarios": [
@@ -924,7 +927,8 @@
 		{
 			"id": "shelter_to_shelter_range",
 			"display_name": "Shelter-To-Shelter Range",
-			"scene": "res://scenes/fragments/survival_range_preview.tscn",
+			"scene": "res://scenes/fragments/fragment_preview.tscn",
+			"preview_chunk": "survival_range",
 			"kind": "survival",
 			"tags": ["shelter", "range", "route", "survival", "hide", "ferrolure", "chunk"],
 			"setup": [
@@ -998,7 +1002,9 @@
 		{
 			"id": "generated_teaching_stretch",
 			"display_name": "Generated Teaching Stretch",
-			"scene": "res://scenes/fragments/generated_stretch_preview.tscn",
+			"scene": "res://scenes/fragments/fragment_preview.tscn",
+			"preview_chunk": "generated_stretch",
+			"preview_chunk_config": {"spec_path": "res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"},
 			"kind": "survival",
 			"tags": ["generated", "archetype", "stretch", "shelter", "chunk"],
 			"setup": [
@@ -1105,7 +1111,8 @@
 		{
 			"id": "refuge_run",
 			"display_name": "Refuge Run",
-			"scene": "res://scenes/fragments/refuge_run_preview.tscn",
+			"scene": "res://scenes/fragments/fragment_preview.tscn",
+			"preview_chunk": "refuge_run",
 			"kind": "hybrid",
 			"tags": ["hiding", "enemy", "flora", "routing", "timing"],
 			"scenarios": [

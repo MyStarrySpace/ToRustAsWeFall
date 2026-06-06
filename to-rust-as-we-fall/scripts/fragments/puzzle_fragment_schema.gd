@@ -114,6 +114,10 @@ const KEY_PATH := "path"
 const KEY_POSITION := "position"
 const KEY_SCENARIOS := "scenarios"
 const KEY_SCENE := "scene"
+# When KEY_SCENE is the shared fragment_preview.tscn, these pick the chunk it loads (the consolidated
+# preview replaced the per-chunk *_preview.tscn files). Omitted for fragments that load a real scene.
+const KEY_PREVIEW_CHUNK := "preview_chunk"
+const KEY_PREVIEW_CHUNK_CONFIG := "preview_chunk_config"
 const KEY_SCRIPT := "script"
 const KEY_SECONDS := "seconds"
 const KEY_SETUP := "setup"

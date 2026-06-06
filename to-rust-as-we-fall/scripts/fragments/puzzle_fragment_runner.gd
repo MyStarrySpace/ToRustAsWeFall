@@ -75,7 +75,9 @@ func run_fragment(fragment: Dictionary) -> Dictionary:
 
 func _run_scenario(scene: PackedScene, fragment: Dictionary, scenario: Dictionary) -> Dictionary:
 	var settle_frames: int = int(fragment.get(Schema.KEY_SETTLE_FRAMES, 5))
-	var instance: Node = await _instantiate_scene(scene, settle_frames)
+	var preview_chunk := str(fragment.get(Schema.KEY_PREVIEW_CHUNK, ""))
+	var preview_config: Dictionary = fragment.get(Schema.KEY_PREVIEW_CHUNK_CONFIG, {})
+	var instance: Node = await _instantiate_scene(scene, settle_frames, preview_chunk, preview_config)
 	if instance == null:
 		return {
 			Schema.KEY_ID: str(scenario.get(Schema.KEY_ID, "")),
@@ -125,8 +127,15 @@ func _run_scenario(scene: PackedScene, fragment: Dictionary, scenario: Dictionar
 		Schema.KEY_FINAL_STATE: final_state,
 	}
 
-func _instantiate_scene(scene: PackedScene, settle_frames: int) -> Node:
+func _instantiate_scene(scene: PackedScene, settle_frames: int, preview_chunk := "", preview_config := {}) -> Node:
 	var instance: Node = scene.instantiate()
+	# When this is the shared fragment_preview.tscn, select the chunk before it enters the tree (its
+	# _ready loads the chunk). Real-scene fragments leave preview_chunk empty and skip this.
+	if preview_chunk != "":
+		instance.set("preview_menu", false)
+		instance.set("preview_chunk", preview_chunk)
+		if preview_config is Dictionary and not (preview_config as Dictionary).is_empty():
+			instance.set("preview_chunk_config", (preview_config as Dictionary).duplicate(true))
 	_tree.root.add_child(instance)
 	for _i in range(maxi(1, settle_frames)):
 		await _tree.process_frame

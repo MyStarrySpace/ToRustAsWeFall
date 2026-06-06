@@ -1,8 +1,0 @@
-[gd_scene load_steps=2 format=3]
-
-[ext_resource type="Script" path="res://scripts/fragments/fragment_preview_sequence.gd" id="1"]
-
-[node name="RefugeRunPreview" type="Node3D"]
-script = ExtResource("1")
-preview_chunk = "refuge_run"
-scene_title_override = "Refuge Run"
