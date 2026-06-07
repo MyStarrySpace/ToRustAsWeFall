@@ -1,40 +1,45 @@
 extends "res://scripts/scene_chunks/scene_chunk.gd"
 
-## Two-lure relay puzzle. A narrow hallway with an offshoot hiding spot. A group of enemies guards
-## the exit (remains of a previous runner lie between them). Two ferrolures: Lure 1 near the entrance,
-## Lure 2 near the enemies, the hiding spot between them.
+## Two-lure relay puzzle. A long narrow hallway with an offshoot hiding spot near the far (second)
+## lure. A group of enemies guards the exit (remains of a previous runner lie among them). Two
+## ferrolures: Lure 1 near the ENTRANCE (far from the hide), Lure 2 near the ENEMIES (close to the hide).
 ##
-## Intended solve: fire Lure 2 (the enemies break toward it) -> fire Lure 1 -> duck into the hiding
-## spot BEFORE Lure 2 expires -> when Lure 2 expires the enemies, still drawn, relay onward to Lure 1
-## (walking back PAST the hidden party) -> slip out and run the now-open exit while Lure 1 holds.
+## Intended solve: fire Lure 2 (the guards break toward it, clearing the path), duck into the nearby
+## hiding spot, fire Lure 1 -> when Lure 2 expires the guards relay onward to Lure 1 (walking the whole
+## hall back PAST the hidden party) -> slip out and run the now-open exit while Lure 1 holds them far away.
 ##
-## Enemies that GUARD just idle at the exit (no patrol pathfinding — roaming shouldn't pathfind); a
-## lure sends them on one direct move; only an actual sighting makes them pursue (the chase pathfinds).
-## Concealment is the shared GameState hidden flag, so the data layer runs the same puzzle headless.
+## The hide sits CLOSE to Lure 2 and FAR from Lure 1 on purpose: you can't just fire the near-entrance
+## Lure 1 and hide straight away — the guards swarming to Lure 1 fill the only corridor to the hide, so
+## you get spotted crossing. Only firing the far Lure 2 first clears that corridor. A navigation graph
+## constrains everyone to the corridor (no diagonal dodge), so the data layer plays like the real scene.
+##
+## "Spotted = caught": a guard locking onto an exposed party member fails the run (so does a charge hit).
+## Concealment is the shared GameState hidden flag, so headless runs the same puzzle as real play.
 
 const EnemyScript := preload("res://scripts/game/ai/enemy.gd")
 
 const PARTY_IDS := ["aster", "peris", "endo"]
 const SPAWNS := {
-	"aster": Vector3(4.0, 0.5, 0.0),
-	"peris": Vector3(3.0, 0.5, 1.0),
-	"endo": Vector3(3.0, 0.5, -1.0),
+	"aster": Vector3(5.0, 0.5, 0.0),
+	"peris": Vector3(4.0, 0.5, 1.0),
+	"endo": Vector3(4.0, 0.5, -1.0),
 }
 
-const HALL_CENTER := Vector3(21.0, -0.05, 0.0)
-const HALL_SIZE := Vector3(46.0, 0.1, 5.0)
-const HALL_HALF_Z := 2.0          # walkable half-width of the hallway
-const OFFSHOOT_CENTER := Vector3(20.0, -0.05, -4.5)
-const OFFSHOOT_SIZE := Vector3(5.0, 0.1, 5.0)
+const HALL_CENTER := Vector3(31.0, -0.05, 0.0)
+const HALL_SIZE := Vector3(66.0, 0.1, 5.0)   # world x in [-2, 64]
+const HALL_HALF_Z := 2.0                     # walkable half-width of the hallway
+const OFFSHOOT_CENTER := Vector3(34.0, -0.05, -5.0)
+const OFFSHOOT_SIZE := Vector3(5.0, 0.1, 6.0) # world z in [-8, -2]
 
-const LURE1_POS := Vector3(11.0, 0.5, 0.0)
-const LURE2_POS := Vector3(29.0, 0.5, 0.0)
-const HIDE_POS := Vector3(20.0, 0.5, -4.5)
-const HIDE_RADIUS := 2.2
-const EXIT_X := 42.0
-const GUARD_POSITIONS := [Vector3(35.0, 0.5, 0.0), Vector3(36.2, 0.5, 1.2), Vector3(36.2, 0.5, -1.2)]
-const CORPSE_POS := Vector3(35.5, 0.0, 0.0)
-const LURE_DURATION := 8.0        # scheduler ticks an enemy stays drawn to a lure
+const LURE1_POS := Vector3(10.0, 0.5, 0.0)   # first / near the entrance — FAR from the hide
+const LURE2_POS := Vector3(40.0, 0.5, 0.0)   # second / near the enemies — CLOSE to the hide
+const HIDE_POS := Vector3(34.0, 0.5, -5.0)
+const HIDE_RADIUS := 2.4
+const EXIT_X := 60.0
+const GUARD_POSITIONS := [Vector3(50.0, 0.5, 0.0), Vector3(51.2, 0.5, 1.2), Vector3(51.2, 0.5, -1.2)]
+const CORPSE_POS := Vector3(51.0, 0.0, 0.0)
+const LURE_DURATION := 12.0       # scheduler ticks a guard stays drawn to a lure
+const GUARD_SPEED := 4.5          # between a character's walk (~3.0) and run (6.0): threatening, escapable
 
 var _enemies: Array = []
 var _phase := "ready"             # ready | active | complete | failed
@@ -62,17 +67,24 @@ func _build_chunk() -> void:
 
 func _build_walls() -> void:
 	var wc := Color(0.06, 0.06, 0.08)
-	# North wall, solid.
-	_add_box(self, Vector3(HALL_CENTER.x, 1.4, HALL_HALF_Z + 0.2), Vector3(HALL_SIZE.x, 2.8, 0.3), wc)
-	# South wall, with a gap where the offshoot opens (x in [17.5, 22.5]).
-	_add_box(self, Vector3(9.0, 1.4, -HALL_HALF_Z - 0.2), Vector3(18.0, 2.8, 0.3), wc)
-	_add_box(self, Vector3(32.5, 1.4, -HALL_HALF_Z - 0.2), Vector3(19.0, 2.8, 0.3), wc)
+	var north_z := HALL_HALF_Z + 0.2
+	var south_z := -HALL_HALF_Z - 0.2
+	var min_x := HALL_CENTER.x - HALL_SIZE.x / 2.0
+	var max_x := HALL_CENTER.x + HALL_SIZE.x / 2.0
+	# North wall, solid the full length.
+	_add_box(self, Vector3(HALL_CENTER.x, 1.4, north_z), Vector3(HALL_SIZE.x, 2.8, 0.3), wc)
+	# South wall, broken by the offshoot mouth (a gap around the hide's x).
+	var gap_min := OFFSHOOT_CENTER.x - OFFSHOOT_SIZE.x / 2.0
+	var gap_max := OFFSHOOT_CENTER.x + OFFSHOOT_SIZE.x / 2.0
+	var left_len := gap_min - min_x
+	var right_len := max_x - gap_max
+	_add_box(self, Vector3(min_x + left_len / 2.0, 1.4, south_z), Vector3(left_len, 2.8, 0.3), wc)
+	_add_box(self, Vector3(gap_max + right_len / 2.0, 1.4, south_z), Vector3(right_len, 2.8, 0.3), wc)
 	# Offshoot pocket walls (around the hide spot).
-	_add_box(self, Vector3(17.7, 1.4, -4.5), Vector3(0.3, 2.8, 5.0), wc)
-	_add_box(self, Vector3(22.3, 1.4, -4.5), Vector3(0.3, 2.8, 5.0), wc)
-	_add_box(self, Vector3(20.0, 1.4, -7.0), Vector3(5.0, 2.8, 0.3), wc)
-	# Back wall behind the guards (the exit is the gap at the far +x end).
-	_add_box(self, Vector3(HALL_CENTER.x, 1.4, HALL_HALF_Z + 0.2), Vector3(0.0, 0.0, 0.0), wc)
+	var off_back_z := OFFSHOOT_CENTER.z - OFFSHOOT_SIZE.z / 2.0
+	_add_box(self, Vector3(gap_min - 0.15, 1.4, OFFSHOOT_CENTER.z), Vector3(0.3, 2.8, OFFSHOOT_SIZE.z), wc)
+	_add_box(self, Vector3(gap_max + 0.15, 1.4, OFFSHOOT_CENTER.z), Vector3(0.3, 2.8, OFFSHOOT_SIZE.z), wc)
+	_add_box(self, Vector3(OFFSHOOT_CENTER.x, 1.4, off_back_z - 0.15), Vector3(OFFSHOOT_SIZE.x, 2.8, 0.3), wc)
 
 func _build_lure_visual(node_name: String, pos: Vector3) -> MeshInstance3D:
 	var mesh := _add_box(self, pos, Vector3(0.4, 0.4, 0.4), Color(0.7, 0.45, 0.15),
@@ -80,7 +92,7 @@ func _build_lure_visual(node_name: String, pos: Vector3) -> MeshInstance3D:
 	return mesh
 
 func _build_corpse() -> void:
-	# Remains of a previous runner, slumped between the guards.
+	# Remains of a previous runner, slumped among the guards.
 	_add_box(self, CORPSE_POS + Vector3(0.0, 0.12, 0.0), Vector3(1.4, 0.24, 0.5),
 		Color(0.18, 0.14, 0.12), Color.BLACK, 0.0, "Remains")
 	_add_label(self, "remains", CORPSE_POS + Vector3(0.0, 0.6, 0.0), Color(0.55, 0.4, 0.38))
@@ -101,13 +113,14 @@ func _spawn_guards() -> void:
 		var enemy := EnemyScript.new()
 		enemy.name = "RelayGuard%d" % i
 		enemy.position = GUARD_POSITIONS[i]
-		enemy.move_speed = 1.7
+		enemy.move_speed = GUARD_SPEED
 		enemy.detection_range = 5.0
 		enemy._detection_targets.assign(PARTY_IDS)
 		add_child(enemy)
 		_register_enemy(enemy, "relay_guard_%d" % i, enemy.move_speed)
 		# GUARDING = idle in place (no patrol → no roaming pathfinding); they only pathfind to chase.
 		enemy.hit_target.connect(_on_guard_hit)
+		enemy.target_spotted.connect(_on_guard_spotted)
 		_enemies.append(enemy)
 
 func _register_enemy(enemy, id: String, speed: float) -> void:
@@ -119,6 +132,31 @@ func _register_enemy(enemy, id: String, speed: float) -> void:
 	gs.register_character(id, enemy.position, speed, {"detection_range": float(enemy.detection_range)})
 	if enemy.has_method("activate"):
 		enemy.activate()
+
+## Constrain everyone to the corridor + offshoot: a centerline of waypoints down the hall, with a branch
+## into the hiding spot. Movement (player AND guards) routes along these, so there's no diagonal cut to
+## the hide — the only path crosses the hall, which is what makes firing Lure 1 alone get you spotted.
+func get_navigation_graph_data() -> Dictionary:
+	var nodes: Array = []
+	var edges: Array = []
+	var xs := [4, 10, 16, 22, 28, 34, 40, 46, 52, 58, 62]
+	var prev := ""
+	for x in xs:
+		var nid := "c%d" % x
+		nodes.append({"id": nid, "position": [float(x), 0.5, 0.0]})
+		if prev != "":
+			edges.append({"from": prev, "to": nid, "bidirectional": true})
+		prev = nid
+	# Offshoot branch off the corridor node nearest the hide's x.
+	nodes.append({"id": "hide", "position": [HIDE_POS.x, 0.5, HIDE_POS.z]})
+	edges.append({"from": "c34", "to": "hide", "bidirectional": true})
+	return {
+		"entry_node": "c4",
+		"exit_node": "c62",
+		"max_snap_distance": 9.0,
+		"nodes": nodes,
+		"edges": edges,
+	}
 
 # --- Lure relay ---
 
@@ -207,8 +245,16 @@ func _release_enemies() -> void:
 			enemy._detection_targets.assign(PARTY_IDS)
 			if gs != null and gs.characters.has(enemy.char_id):
 				gs.set_character_distracted(enemy.char_id, false)
+				gs.command_move_to_pos(enemy.char_id, _guard_post_for(enemy.char_id))
 			if enemy.has_method("_change_state"):
 				enemy._change_state("idle")
+
+## The home post a guard returns to when it gives up a lure (its spawn slot).
+func _guard_post_for(char_id: String) -> Vector3:
+	for i in range(_enemies.size()):
+		if is_instance_valid(_enemies[i]) and _enemies[i].char_id == char_id:
+			return GUARD_POSITIONS[i]
+	return GUARD_POSITIONS[0]
 
 func _set_lure_emission(mesh: MeshInstance3D, energy: float) -> void:
 	if mesh != null and mesh.material_override is StandardMaterial3D:
@@ -239,6 +285,18 @@ func _update(_delta: float) -> void:
 	if _phase == "active" and _get_character_position(_get_active_character()).x >= EXIT_X:
 		_complete()
 
+func _on_guard_spotted(target_id: String) -> void:
+	# A sentry locking onto an exposed party member ends the run — this is the stealth fail that makes
+	# firing Lure 1 alone (then crossing the swarmed corridor to the distant hide) a loss.
+	if _phase in ["complete", "failed"]:
+		return
+	if not (target_id in PARTY_IDS):
+		return
+	_phase = "failed"
+	_failure_reason = "spotted"
+	_show_note("A sentry's eye locks on. Caught.", 2.5)
+	_set_preview_step("lure_relay_failed")
+
 func _on_guard_hit(_target_id: String, _damage: float) -> void:
 	if _phase in ["complete", "failed"]:
 		return
@@ -258,7 +316,7 @@ func get_scene_title() -> String:
 	return "Ferrolure Relay"
 
 func get_scene_help() -> String:
-	return "Fire the far lure, then the near one. Hide between them, let the sentries relay past you, then run the exit."
+	return "Fire the far lure to clear the path, hide by it, then fire the near one — let the sentries relay past you and run the exit."
 
 func get_default_character() -> String:
 	return "peris"
@@ -305,6 +363,7 @@ func reset_preview_state() -> void:
 		for char_id in PARTY_IDS:
 			if gs.characters.has(char_id):
 				gs.set_character_hidden(char_id, false)
+				gs.set_character_distracted(char_id, false)
 	_set_preview_step("lure_relay_briefing")
 
 func get_preview_state() -> Dictionary:

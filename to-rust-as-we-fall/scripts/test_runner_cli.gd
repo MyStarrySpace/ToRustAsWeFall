@@ -177,6 +177,9 @@ func _ready() -> void:
 			"--test-preview-party-move":
 				ran_test = true
 				await _test_preview_party_move()
+			"--test-preview-path-render":
+				ran_test = true
+				await _test_preview_path_render()
 			"--test-data-identify":
 				ran_test = true
 				_test_data_identify()
@@ -8366,40 +8369,53 @@ func _test_lure_relay_puzzle() -> void:
 		await get_tree().process_frame
 		return
 	var anchors: Dictionary = chunk.get_preview_anchors()
+	var dur: float = float(chunk.LURE_DURATION)
+	var gs = instance._game_state
 
-	# --- The intended solve: Lure 2, then Lure 1, hide, let the relay pass, run the exit ---
+	# --- Intended solve: fire far Lure 2, hide by it, circle to Lure 1 while the guards are distracted,
+	#     return to cover, let them relay the whole hall back past you, then run the now-open exit. ---
 	chunk.reset_preview_state()
-	_assert_true(chunk.activate_lure2(), "Lure 2 (by the guards) fires")
+	_assert_true(chunk.activate_lure2(), "Lure 2 (far, by the guards) fires")
+	instance.headless_set_character_position("peris", anchors["hide_spot"])
 	instance.headless_advance(1.0, 0.1)
 	_assert_equals(int(chunk.get_preview_state()["committed_lure"]), 2, "The sentries break toward Lure 2")
+	_assert_true(gs.is_character_hidden("peris"), "In the offshoot by Lure 2, the runner is concealed")
+	# Circle to the entrance Lure 1: the committed guards are DISTRACTED (range shrunk), so a runner
+	# keeping distance can reach it. Drive the real move to prove the round trip isn't spotted.
+	gs.command_move_to_pos("peris", anchors["lure_one"])
+	instance.headless_advance(3.0, 0.1)
+	_assert_true(not chunk.get_preview_state()["failed"], "Circling to Lure 1 past distracted guards is not a catch")
 	_assert_true(chunk.activate_lure1(), "Lure 1 (near the entrance) fires")
-	instance.headless_advance(0.5, 0.1)
-	_assert_equals(int(chunk.get_preview_state()["committed_lure"]), 2, "They stay on Lure 2 while it holds (Lure 1 doesn't steal them)")
-	# Duck the runner into the offshoot before Lure 2 expires.
 	instance.headless_set_character_position("peris", anchors["hide_spot"])
-	instance.headless_advance(0.3, 0.1)
-	_assert_true(instance._game_state.is_character_hidden("peris"), "In the offshoot, the runner is concealed")
-	# Lure 2 expires -> the sentries relay onward to the still-singing Lure 1, walking back past cover.
-	instance.headless_advance(9.0, 0.1)
+	instance.headless_advance(0.5, 0.1)
+	_assert_equals(int(chunk.get_preview_state()["committed_lure"]), 2, "They stay on Lure 2 while it holds")
+	# Lure 2 expires -> relay to the still-singing Lure 1, walking the whole hall back past cover.
+	instance.headless_advance(dur + 1.0, 0.1)
 	_assert_equals(int(chunk.get_preview_state()["committed_lure"]), 1, "On Lure 2's expiry they relay to Lure 1 (got: %s)" % chunk.get_preview_state()["committed_lure"])
 	_assert_true(not chunk.get_preview_state()["failed"], "The hidden runner is not caught as the sentries pass")
-	# Slip out and run the now-open exit while Lure 1 holds.
+	# Slip out and run the now-open exit while Lure 1 holds them far away.
 	instance.headless_set_character_position("peris", anchors["exit"])
 	instance.headless_advance(0.3, 0.1)
 	_assert_true(chunk.get_preview_state()["complete"], "Reaching the exit after the relay completes the puzzle")
 
-	# --- The wrong way: stroll up exposed, no lures — a sentry gets onto you ---
+	# --- Cheese FAILS: fire only Lure 1 (near entrance), then try to cross to the distant hide. The
+	#     guards swarm the corridor toward Lure 1, so the only path to the hide runs through them point
+	#     blank — spotted. Skipping Lure 2 (which clears that corridor) is a loss. ---
 	chunk.reset_preview_state()
-	instance.headless_set_character_position("peris", Vector3(26.0, 0.5, 0.0))
-	# Walk toward the guarded exit (a move command recomputes detection, like a real approach).
-	instance._game_state.command_move_to_pos("peris", Vector3(34.0, 0.5, 0.0))
+	instance.headless_set_character_position("peris", chunk.get_spawn_positions()["peris"])  # back to the entrance
+	_assert_true(chunk.activate_lure1(), "Cheese: Lure 1 alone fires")
+	instance.headless_advance(0.3, 0.1)
+	gs.command_move_to_pos("peris", anchors["hide_spot"])  # nav-routed down the corridor — no diagonal cut
+	instance.headless_advance(9.0, 0.1)
+	_assert_true(chunk.get_preview_state()["failed"], "Firing only Lure 1 and crossing to the hide gets you spotted")
+	_assert_true(not chunk.get_preview_state()["complete"], "The cheese does not solve the puzzle")
+
+	# --- Wrong way: stroll up exposed toward the guards -> spotted ---
+	chunk.reset_preview_state()
+	instance.headless_set_character_position("peris", Vector3(40.0, 0.5, 0.0))
+	gs.command_move_to_pos("peris", Vector3(50.0, 0.5, 0.0))
 	instance.headless_advance(5.0, 0.1)
-	var spotted := false
-	for e in chunk._enemies:
-		if is_instance_valid(e) and e.get_state() != "idle":
-			spotted = true
-			break
-	_assert_true(spotted, "Strolling up exposed (no lure, no hide) puts a sentry onto you")
+	_assert_true(chunk.get_preview_state()["failed"], "Strolling up exposed toward the exit puts a sentry onto you")
 	instance.queue_free()
 	await get_tree().process_frame
 
@@ -8597,6 +8613,29 @@ func _test_preview_party_move() -> void:
 	# Single-select drops back to solo control (no group move).
 	inst.headless_set_selected_characters(["peris"])
 	_assert_true(not bool(inst._player.get("group_move")), "Single select disables group move")
+	inst.queue_free()
+	await get_tree().process_frame
+
+# --- Test: the shared movement-path renderer draws in chunk previews ---
+func _test_preview_path_render() -> void:
+	_test_name = "Preview Path Render"
+	var inst = await _instantiate_preview_chunk_and_wait("lure_relay", 4)
+	if inst == null:
+		_assert_true(false, "fragment_preview instantiates")
+		return
+	var mgr = inst.find_child("PathRenderManager", true, false)
+	_assert_true(mgr != null, "Preview has a PathRenderManager")
+	var gs = inst._game_state
+	# Issue a real move and let the renderer build its ribbon over a few frames.
+	gs.command_move_to_pos("peris", Vector3(20.0, 0.5, 0.0))
+	gs.scheduler.advance_ticks(0.5)
+	for _i in range(4):
+		await get_tree().process_frame
+	if mgr != null:
+		var pr = mgr._renderers.get("peris")
+		_assert_true(pr != null, "A path renderer exists for the moving character")
+		_assert_true(pr != null and pr._line != null and pr._line.mesh != null,
+			"The moving character's path ribbon is drawn in the preview")
 	inst.queue_free()
 	await get_tree().process_frame
 

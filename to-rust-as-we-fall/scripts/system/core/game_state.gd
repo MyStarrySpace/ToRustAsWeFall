@@ -1107,6 +1107,18 @@ func _get_movement_segments(id: String) -> Array[Dictionary]:
 			"start_pos": Vector3(mv.path[i - 1].x, 0, mv.path[i - 1].z),
 			"velocity": vel,
 		})
+	# After the final waypoint the character is PARKED there, not gone. Append a trailing static
+	# segment so the predictor still sees it once it stops — otherwise a target approaching an enemy
+	# that has already arrived (e.g. a guard parked on a lure) is never predicted, because the moving
+	# segments end at arrival and nothing recomputes on arrival.
+	var last_pos: Vector3 = mv.path[mv.path.size() - 1]
+	var last_tick: float = mv.arrival_ticks[mv.arrival_ticks.size() - 1] if has_ticks else (mv.start_tick + mv.duration)
+	segments.append({
+		"start_tick": last_tick,
+		"end_tick": 1e12,
+		"start_pos": Vector3(last_pos.x, 0, last_pos.z),
+		"velocity": Vector3.ZERO,
+	})
 	return segments
 
 # --- Dodge Roll ---
