@@ -98,7 +98,7 @@ const ABILITY_KEYCODES := {
 }
 const PREVIEW_GUI_CONTRACT_ID := "fragment_preview_shared_gui_v1"
 const GAME_HUD_SCRIPT_PATH := "res://scripts/ui/game_hud.gd"
-const PREVIEW_CONTROL_HELP := "Click move  1-3 focus  Ctrl+1-3 multi-select  C cycle  Z/X abilities  V drop  T transfer  B retrieve  F1-F3 overlays  O drawer  Tab route  Space pause  R reload"
+const PREVIEW_CONTROL_HELP := "Click move  1-3 focus  Ctrl+1-3 multi-select  C cycle  Z/X abilities  V drop  T transfer  B retrieve  F1-F3 overlays  O drawer  Tab route  G dodge  Space pause  R reload"
 const PREVIEW_INVENTORY_CONTROL_HELP := "Controls: Z/X abilities  V drop  T transfer  B retrieve"
 const CANONICAL_MAIN_ABILITY_BINDINGS := {
 	"aster_focus": {"owner": "aster", "keybind": "Z", "keycode": KEY_Z},
@@ -141,6 +141,10 @@ var _active_char_id := ""
 var _selected_char_ids: Array[String] = []
 var _run_active := false
 var _routing_mode := "safe"
+## Preview-only toggle (G): when true the party can dodge-roll, so enemy strikes auto-evade. Off by
+## default — dodge isn't unlocked in every chunk, so attacks land. A chunk may default it on via
+## preview_dodge_unlocked().
+var _preview_dodge_unlocked := false
 var _preview_interactables: Array = []
 var _active_chunk: Node3D
 var _preview_day := DEFAULT_DAY
@@ -272,6 +276,10 @@ func _begin_chunk() -> void:
 	_apply_chunk_metadata()
 	_position_party_for_chunk()
 	_apply_chunk_party_presence()
+	# Dodge defaults to the chunk's declaration (off unless a chunk unlocks it). Toggle live with G.
+	if _active_chunk != null and _active_chunk.has_method("preview_dodge_unlocked"):
+		_preview_dodge_unlocked = bool(_active_chunk.call("preview_dodge_unlocked"))
+	_apply_dodge_setting()
 	_select_character(_default_chunk_character())
 	_refresh_preview_items()
 	_refresh_inventory_panel()
@@ -417,6 +425,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				_transfer_active_item()
 			KEY_B:
 				_exocytose_active_item()
+			KEY_G:
+				_preview_dodge_unlocked = not _preview_dodge_unlocked
+				_apply_dodge_setting()
+				show_preview_message("Dodge roll: %s" % ("ENABLED" if _preview_dodge_unlocked else "locked"), 1.4)
 			KEY_1:
 				if key_event.ctrl_pressed or key_event.shift_pressed:
 					_toggle_character_selected("aster")
@@ -1975,6 +1987,17 @@ func _sync_character_move_enabled() -> void:
 		var character_node = _characters.get(char_id, null)
 		if character_node != null and character_node.has_method("set_move_enabled"):
 			character_node.call("set_move_enabled", char_id == _active_char_id)
+
+## Push the dodge-roll setting onto every party member's stats. Off (the default) means enemy strikes
+## land; on means they can auto-evade. Derived preview state — set from a toggle, not the data log.
+func _apply_dodge_setting() -> void:
+	if _game_state == null:
+		return
+	for char_id in CHARACTER_IDS:
+		if _game_state.characters.has(char_id):
+			var st: Dictionary = _game_state.characters[char_id].stats
+			st["dodge_unlocked"] = _preview_dodge_unlocked
+			st["auto_dodge"] = _preview_dodge_unlocked
 
 ## Wire click-to-move for the current selection. With more than one selected, the party moves as one:
 ## the active character's controller issues a spread party move (set_party + group_move on the active

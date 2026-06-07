@@ -73,7 +73,7 @@ const ENGRAM_JOURNAL_SCRIPT_PATH := "res://scripts/system/persistence/engram_jou
 const FRAGMENT_PREVIEW_GUI_CONTRACT_ID := "fragment_preview_shared_gui_v1"
 const GAME_HUD_CONTRACT_ID := "shared_game_hud_v1"
 const GAME_HUD_SCRIPT_PATH := "res://scripts/ui/game_hud.gd"
-const FRAGMENT_PREVIEW_CONTROL_HELP := "Click move  1-3 focus  Ctrl+1-3 multi-select  C cycle  Z/X abilities  V drop  T transfer  B retrieve  F1-F3 overlays  O drawer  Tab route  Space pause  R reload"
+const FRAGMENT_PREVIEW_CONTROL_HELP := "Click move  1-3 focus  Ctrl+1-3 multi-select  C cycle  Z/X abilities  V drop  T transfer  B retrieve  F1-F3 overlays  O drawer  Tab route  G dodge  Space pause  R reload"
 const FRAGMENT_PREVIEW_INVENTORY_CONTROL_HELP := "Controls: Z/X abilities  V drop  T transfer  B retrieve"
 const FRAGMENT_CHUNK_SCENE_PATHS := [
 	"res://scenes/fragments/chunks/stacks_fragment_chunk.tscn",
@@ -180,6 +180,9 @@ func _ready() -> void:
 			"--test-preview-path-render":
 				ran_test = true
 				await _test_preview_path_render()
+			"--test-predictive-attack":
+				ran_test = true
+				_test_predictive_attack()
 			"--test-data-identify":
 				ran_test = true
 				_test_data_identify()
@@ -638,8 +641,10 @@ func _run_all_tests() -> void:
 	_test_hidden_detection()
 	_test_two_tier_detection()
 	_test_enemy_roaming()
+	_test_predictive_attack()
 	_test_fragment_preview_registry()
 	await _test_preview_party_move()
+	await _test_preview_path_render()
 	await _test_lure_relay_puzzle()
 	await _test_chromatic_aberration()
 	_test_cooperative_pathfinding()
@@ -8638,6 +8643,50 @@ func _test_preview_path_render() -> void:
 			"The moving character's path ribbon is drawn in the preview")
 	inst.queue_free()
 	await get_tree().process_frame
+
+# --- Test: enemy attacks are predictive — they land for sure (damage + lunge commit) unless dodged ---
+func _test_predictive_attack() -> void:
+	_test_name = "Predictive Attack"
+	var run := func(dodge_unlocked: bool) -> Dictionary:
+		var sched := EventScheduler.new()
+		var gs := GameState.new()
+		gs.scheduler = sched
+		var holder := Node3D.new()
+		add_child(holder)
+		gs.register_character("aster", Vector3(2.0, 0.5, 0.0), 2.5, {"hp": 100.0, "stamina": 100.0})
+		if dodge_unlocked:
+			gs.characters["aster"].stats["dodge_unlocked"] = true
+			gs.characters["aster"].stats["auto_dodge"] = true
+		var enemy := Enemy.new()
+		enemy.game_state = gs
+		enemy.char_id = "guard"
+		enemy._detection_targets = ["aster"]
+		enemy.attack_range = 3.0
+		enemy.charge_damage = 25.0
+		holder.add_child(enemy)
+		gs.register_character("guard", Vector3(0.0, 0.5, 0.0), enemy.move_speed, {"detection_range": 6.0})
+		enemy.activate()
+		gs._recompute_all_detection_predictions()
+		var start_x := gs.get_position("guard").x
+		var hit := [false]
+		enemy.hit_target.connect(func(_t, _d): hit[0] = true)
+		for _i in range(200):
+			sched.advance_ticks(0.05)
+			enemy._process(0.05)
+		var res := {"hit": hit[0], "hp": gs.get_stat("aster", "hp"),
+			"enemy_x": gs.get_position("guard").x, "start_x": start_x}
+		enemy.queue_free()
+		holder.queue_free()
+		return res
+	# Dodge LOCKED (the default): the predicted strike lands — damage taken, attacker commits its lunge.
+	var locked: Dictionary = run.call(false)
+	_assert_true(locked["hit"], "With dodge locked, the predicted strike lands")
+	_assert_true(float(locked["hp"]) < 100.0, "The struck character takes damage (hp %.0f)" % locked["hp"])
+	_assert_true(float(locked["enemy_x"]) > float(locked["start_x"]) + 0.5,
+		"The attacker commits to its lunge end, not snapping back (x %.1f -> %.1f)" % [locked["start_x"], locked["enemy_x"]])
+	# Dodge UNLOCKED + auto-evade: the strike is slipped — no damage.
+	var dodged: Dictionary = run.call(true)
+	_assert_true(float(dodged["hp"]) >= 99.99, "With dodge unlocked, the strike is evaded (no damage, hp %.0f)" % dodged["hp"])
 
 # --- Test: chromatic aberration is live in the sim scenes ---
 func _test_chromatic_aberration() -> void:
@@ -16922,7 +16971,9 @@ func _test_dodge_roll() -> void:
 	for _di in range(100):
 		if sched.pop_next().is_empty(): break
 
-	# --- Enemy charge misses during dodge i-frames ---
+	# --- Predicted enemy strike: an auto-dodging target evades it; with dodge locked it lands ---
+	# Attacks are now PREDICTIVE (the hit is scheduled for the contact tick and commits), so the
+	# dodge is checked at contact: a dodge-capable target auto-evades, an un-unlocked one is struck.
 	_test_name = "Dodge I-Frames vs Enemy"
 
 	gs = GameState.new()
@@ -16932,80 +16983,57 @@ func _test_dodge_roll() -> void:
 	gs.grid = grid2
 	gs.scheduler = sched
 
-	# Character with dodge unlocked
 	gs.register_character("hero", Vector3(10, 0, 10), 3.0, {
 		"stamina": 100.0,
 		"dodge_unlocked": true,
+		"auto_dodge": true,
 		"hp": 100.0,
 	})
-
-	# Create a hero node in the tree so the enemy can find it
 	var hero_node := Node3D.new()
 	hero_node.name = "hero"
 	hero_node.position = Vector3(10, 0.5, 10)
 	get_tree().root.add_child(hero_node)
 
-	# Create an enemy that targets the hero
 	var enemy := Enemy.new()
 	enemy.game_state = gs
 	enemy.char_id = "baddie"
 	enemy._detection_targets = ["hero"]
 	enemy.charge_damage = 25.0
+	enemy.attack_range = 3.0
 	get_tree().root.add_child(enemy)
 	gs.register_character("baddie", Vector3(11, 0, 10), 3.0, {"detection_range": 8.0})
+	enemy.activate()
 
-	# Track hits via signal
 	var hit_log: Array = []
 	enemy.hit_target.connect(func(tid, dmg): hit_log.append({"target": tid, "damage": dmg}))
 
-	# Place enemy right next to hero and trigger a charge
-	enemy.global_position = Vector3(11, 0.5, 10)
-	enemy._charge_target_pos = Vector3(10, 0.5, 10)
-	enemy._charging = true
-	enemy._charge_hit = false
-	enemy._fsm.force_current("charge")
-	# The charge is scheduler-tick-derived; record its start (as _enter_state would).
-	enemy._charge_start_pos = enemy.global_position
-	enemy._charge_start_tick = sched.get_current_tick()
+	# Phase 1: dodge unlocked + auto-evade -> the predicted strike is slipped.
+	gs._recompute_all_detection_predictions()
+	for i in range(200):
+		sched.advance_ticks(0.02)
+		enemy._process(0.02)
+	_assert_true(hit_log.size() == 0, "An auto-dodging hero evades the predicted strike (hits: %d)" % hit_log.size())
+	_assert_true(gs.get_stat("hero", "hp") >= 99.99, "Auto-dodge keeps the hero's HP (hp: %.1f)" % gs.get_stat("hero", "hp"))
 
-	# Hero dodges away BEFORE enemy's charge frame checks
-	gs.dodge_roll("hero", Vector3(-1, 0, 0))
-	_assert_true(gs.is_dodging("hero"), "Hero is dodging")
-
-	# Advance the scheduler alongside _process so the tick-derived charge moves while
-	# the hero is mid-dodge (0.32 ticks total < DODGE_DURATION 0.35, so dodge stays up).
-	for i in range(20):
-		sched.advance_ticks(0.016)
-		enemy._process(0.016)
-
-	_assert_true(hit_log.size() == 0, "Enemy charge deals NO damage during dodge i-frames (hits: %d)" % hit_log.size())
-	var hp_after: float = gs.characters["hero"].stats.get("hp", 100.0)
-	_assert_true(hp_after >= 100.0, "Hero HP unchanged (hp: %.1f)" % hp_after)
-
-	# Let dodge finish.
-	for _di in range(100):
-		if sched.pop_next().is_empty(): break
-	_assert_true(not gs.is_dodging("hero"), "Dodge finished")
-
-	# Enemy charges again while hero is vulnerable.
-	var hero_pos := gs.get_position("hero")
-	hero_node.global_position = Vector3(hero_pos.x, 0.5, hero_pos.z)
-	enemy.global_position = Vector3(hero_pos.x + 0.5, 0.5, hero_pos.z)
-	enemy._charge_target_pos = Vector3(hero_pos.x, 0.5, hero_pos.z)
-	enemy._charging = true
-	enemy._charge_hit = false
-	enemy._fsm.force_current("charge")
-	enemy._charge_start_pos = enemy.global_position
-	enemy._charge_start_tick = sched.get_current_tick()
-
-	for i in range(60):
-		sched.advance_ticks(0.016)
-		enemy._process(0.016)
-
-	_assert_true(hit_log.size() == 1, "Enemy charge HITS after dodge ends (hits: %d)" % hit_log.size())
+	# Phase 2: lock dodge, re-engage from a clean adjacent setup -> the predicted strike now lands.
+	gs.characters["hero"].stats["dodge_unlocked"] = false
+	gs.characters["hero"].stats["auto_dodge"] = false
+	gs.set_stat("hero", "hp", 100.0)
+	gs.snap_character_to("hero", Vector3(10, 0.5, 10))
+	gs.snap_character_to("baddie", Vector3(11, 0.5, 10))
+	hero_node.global_position = Vector3(10, 0.5, 10)
+	enemy._current_target_id = ""
+	enemy._change_state("idle")
+	hit_log.clear()
+	gs._recompute_all_detection_predictions()
+	for i in range(200):
+		sched.advance_ticks(0.02)
+		enemy._process(0.02)
+	_assert_true(hit_log.size() >= 1, "With dodge locked, the predicted strike lands (hits: %d)" % hit_log.size())
 	if hit_log.size() > 0:
 		_assert_true(hit_log[0].target == "hero", "Hit target is hero")
 		_assert_true(hit_log[0].damage == 25.0, "Damage is 25 (got: %.1f)" % hit_log[0].damage)
+	_assert_true(gs.get_stat("hero", "hp") < 100.0, "The struck hero takes damage (hp: %.1f)" % gs.get_stat("hero", "hp"))
 
 	enemy.queue_free()
 	hero_node.queue_free()

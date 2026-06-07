@@ -180,11 +180,15 @@ func _enter_state(state: String) -> void:
 			_charging = true
 			_charge_hit = false
 			_charge_start_pos = global_position
-			# Timeout: if we don't hit anything, recover anyway
 			var scheduler := _get_scheduler()
 			if scheduler:
 				_charge_start_tick = scheduler.get_current_tick()
-				scheduler.schedule_after(charge_max_duration, _end_charge, _state_tag)
+				# Predictive strike: schedule the hit for the contact tick. It lands for sure (the lunge
+				# commits) unless the target dodges in the window — no per-frame distance check to whiff.
+				var lunge_dist: float = Vector2(_charge_target_pos.x - _charge_start_pos.x,
+					_charge_target_pos.z - _charge_start_pos.z).length()
+				var contact_time: float = minf(lunge_dist / maxf(charge_speed, 0.1), charge_max_duration)
+				scheduler.schedule_after(contact_time, _land_attack, _state_tag)
 		"recover":
 			_charging = false
 			_stop_movement()
@@ -291,6 +295,51 @@ func _end_charge() -> void:
 	if get_state() != "charge":
 		return
 	_fsm.transition_to("recover")
+
+## The predicted strike fires here at the contact tick. It ALWAYS lands on the committed target unless
+## that target is mid-dodge (dodge_roll, gated behind dodge_unlocked). On a hit it commits the lunge
+## end to the data layer (so the body doesn't snap back next move), deals damage, and flinches the
+## target. Then recover. Replaces the old per-frame distance check that could miss.
+func _land_attack() -> void:
+	if get_state() != "charge":
+		return
+	var tid := _current_target_id
+	# Dodge window: if the target can roll (dodge_unlocked) and is set to auto-evade, it slips the
+	# committed strike. With dodge locked (the default — not unlocked in every chunk), the hit lands.
+	if tid != "" and game_state != null and game_state.has_method("dodge_roll") and game_state.characters.has(tid):
+		var st: Dictionary = game_state.characters[tid].stats
+		if bool(st.get("dodge_unlocked", false)) and bool(st.get("auto_dodge", false)) and not game_state.is_dodging(tid):
+			var ap := global_position
+			var tp := game_state.get_position(tid)
+			var approach := Vector3(ap.x - tp.x, 0.0, ap.z - tp.z)
+			var perp := Vector3(-approach.z, 0.0, approach.x)
+			perp = perp.normalized() if perp.length_squared() > 0.001 else Vector3(1.0, 0.0, 0.0)
+			game_state.dodge_roll(tid, perp)
+	var dodged := tid != "" and game_state != null and game_state.has_method("is_dodging") and game_state.is_dodging(tid)
+	if tid != "" and game_state != null and not dodged:
+		_charge_hit = true
+		# End ON the target so the strike connects, and COMMIT it so the next move starts from here.
+		var contact := _charge_target_pos
+		if game_state.characters.has(tid):
+			contact = game_state.get_position(tid)
+		global_position = Vector3(contact.x, global_position.y, contact.z)
+		if game_state.has_method("snap_character_to") and game_state.characters.has(char_id):
+			game_state.snap_character_to(char_id, contact)
+		if game_state.has_method("adjust_stat") and game_state.characters.has(tid):
+			game_state.adjust_stat(tid, "hp", -charge_damage)
+		_flash_target(tid)
+		hit_target.emit(tid, charge_damage)
+	_fsm.transition_to("recover")
+
+## Brief flinch on a struck character — a universal scale-punch on its node (cosmetic; any Node3D).
+func _flash_target(target_id: String) -> void:
+	var node := _find_character_node(target_id) as Node3D
+	if node == null:
+		return
+	var base: Vector3 = node.scale
+	var tween := create_tween()
+	tween.tween_property(node, "scale", base * 1.25, 0.07)
+	tween.tween_property(node, "scale", base, 0.18)
 
 func _resume_pursuit() -> void:
 	if get_state() != "recover":
@@ -453,9 +502,10 @@ func _process(delta: float) -> void:
 		var pos := game_state.get_position(char_id)
 		global_position = Vector3(pos.x, global_position.y, pos.z)
 
-	# Charge: position is a pure function of the scheduler tick, so the lunge covers the
-	# same distance per TICK and the contact lands at the same tick regardless of frame
-	# rate or fast-forward. _process only reads it; the scheduler is the clock.
+	# Charge: a PURELY COSMETIC lunge. The hit itself is predicted — _land_attack is scheduled for the
+	# contact tick in _enter_state("charge") and always connects (unless the target dodges), so the
+	# strike never whiffs because of a frame-rate or fast-forward sampling miss. This just animates the
+	# body toward the locked target position as a pure function of the scheduler tick.
 	if _charging and get_state() == "charge":
 		var scheduler := _get_scheduler()
 		if scheduler and scheduler.is_paused():
@@ -470,21 +520,6 @@ func _process(delta: float) -> void:
 			_charge_start_pos.x + dir.x * minf(traveled, total_dist),
 			global_position.y,
 			_charge_start_pos.z + dir.z * minf(traveled, total_dist))
-		if traveled >= total_dist - 0.3:
-			_end_charge()
-			return
-		if not _charge_hit:
-			for target_id in _detection_targets:
-				if game_state and game_state.is_dodging(target_id):
-					continue
-				var target_pos := _charge_target_world(target_id)
-				if target_pos == Vector3.INF:
-					continue
-				if global_position.distance_to(target_pos) < 0.8:
-					_charge_hit = true
-					hit_target.emit(target_id, charge_damage)
-					_end_charge()
-					return
 
 func _stop_movement() -> void:
 	if game_state and game_state.characters.has(char_id):

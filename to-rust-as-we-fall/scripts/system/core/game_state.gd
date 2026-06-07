@@ -376,6 +376,20 @@ func _do_stop(id: String) -> void:
 	_cancel_movement(id)
 	_reserve_parked(id, ch.grid_cell)
 
+## Teleport a character's DATA position to a world point with no animation — cancels any move, snaps
+## the position (keeping the character's own Y/level) + grid cell, re-parks, recomputes detection.
+## Commits an enemy's attack-lunge end-point so its next move doesn't snap back to where it began.
+func snap_character_to(id: String, pos: Vector3) -> void:
+	_emit(GameEvent.KIND_SNAP_POSITION, {"id": id, "pos": GameEvent.v3_to_arr(pos)})
+	if not characters.has(id):
+		return
+	var ch: Dictionary = characters[id]
+	_cancel_movement(id)
+	ch.position = Vector3(pos.x, ch.position.y, pos.z)
+	if grid:
+		ch.grid_cell = grid.world_to_grid(ch.position)
+	_reserve_parked(id, ch.grid_cell)
+
 ## Change movement speed. If currently moving, recalculates arrival time.
 func change_move_speed(id: String, new_speed: float) -> void:
 	_emit(GameEvent.KIND_CHANGE_SPEED, {"id": id, "speed": new_speed})
@@ -2354,6 +2368,8 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			change_move_speed(String(payload["id"]), float(payload["speed"]))
 		GameEvent.KIND_SET_LEVEL:
 			set_character_level(String(payload["id"]), int(payload["level"]))
+		GameEvent.KIND_SNAP_POSITION:
+			snap_character_to(String(payload["id"]), GameEvent.arr_to_v3(payload["pos"]))
 		GameEvent.KIND_MOVE_CROSS_LEVEL:
 			command_move_cross_level(
 				String(payload["id"]),

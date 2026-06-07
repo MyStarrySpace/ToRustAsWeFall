@@ -22,6 +22,7 @@ const KIND_CHANGE_SPEED := &"change_speed"
 const KIND_SET_STAT := &"set_stat"
 const KIND_SET_RUNNING := &"set_running"
 const KIND_SET_LEVEL := &"set_level"  # character changed floors (ladder/ramp arrival)
+const KIND_SNAP_POSITION := &"snap_position"  # teleport a character's data position (e.g. an enemy's attack-lunge end)
 
 # --- Item commands ---
 # Spawn ids are deterministic under replay.
@@ -84,6 +85,7 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_WALK_PATH,
 	KIND_STOP,
 	KIND_CHANGE_SPEED,
+	KIND_SNAP_POSITION,
 	KIND_SPAWN_ITEM,
 	KIND_REMOVE_ITEM,
 	KIND_PICK_UP_ITEM,
