@@ -44,6 +44,14 @@ var _ability_marker_mat: StandardMaterial3D
 var _dest_marker: MeshInstance3D
 var _dest_marker_mat: StandardMaterial3D
 
+# Hover grid: hovering the floor in move mode reveals a grid patch with the pointed-at cell lit, so
+# you can see exactly where a click will move you. Cosmetic; follows the cursor, snapped to cells.
+const HOVER_CELL := 1.0
+const HOVER_SPAN := 5            # NxN grid patch shown around the hovered cell
+const HOVER_LINE_WIDTH := 0.035
+const HOVER_Y := 0.05            # lifted above the floor so it doesn't z-fight
+var _hover_grid: Node3D
+
 signal arrived()
 signal auto_path_complete()
 ## Emitted on every left-click that hits the ground, with the world position.
@@ -79,6 +87,8 @@ func _ready() -> void:
 	_dest_marker.rotation.x = -PI / 2.0
 	_dest_marker.top_level = true
 	add_child(_dest_marker)
+
+	_build_hover_grid()
 
 	# The movement path is drawn by the scene's PathRenderManager (reusable, covers every
 	# character), not a per-player line — so it shows for the party / NPCs / escorts too.
@@ -118,6 +128,9 @@ func _ready() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
+		return
+	if event is InputEventMouseMotion:
+		_update_hover_from_screen((event as InputEventMouseMotion).position)
 		return
 	if not (event is InputEventMouseButton):
 		return
@@ -160,6 +173,88 @@ func _raycast_ground(screen_pos: Vector2) -> Vector3:
 	if not result.is_empty():
 		return result.position
 	return Vector3.INF
+
+# --- Hover grid (target preview) ---
+
+func _build_hover_grid() -> void:
+	_hover_grid = Node3D.new()
+	_hover_grid.top_level = true   # authored in world space; we set its global position to the cell
+	_hover_grid.visible = false
+	add_child(_hover_grid)
+	# Faint grid patch.
+	var lines := MeshInstance3D.new()
+	lines.mesh = _build_grid_lines_mesh()
+	lines.material_override = _hover_material(Color(color, 0.22))
+	_hover_grid.add_child(lines)
+	# The pointed-at cell, lit brighter.
+	var cell := MeshInstance3D.new()
+	cell.mesh = _build_cell_quad_mesh()
+	cell.material_override = _hover_material(Color(color, 0.4))
+	_hover_grid.add_child(cell)
+
+func _hover_material(c: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = c
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return m
+
+## Raycast the floor under the cursor and show the grid there. Only in move mode while move-enabled,
+## so it doesn't appear during selection prompts or for non-active party members.
+func _update_hover_from_screen(screen_pos: Vector2) -> void:
+	if _hover_grid == null:
+		return
+	if _click_mode != "move" or not _move_enabled:
+		_hover_grid.visible = false
+		return
+	var hit := _raycast_ground(screen_pos)
+	if hit == Vector3.INF:
+		_hover_grid.visible = false
+		return
+	# Snap to the cell the cursor is over (cell-centered), lifted just above the floor.
+	var cx := floorf(hit.x) + HOVER_CELL * 0.5
+	var cz := floorf(hit.z) + HOVER_CELL * 0.5
+	_hover_grid.global_position = Vector3(cx, hit.y + HOVER_Y, cz)
+	_hover_grid.visible = true
+
+func _build_grid_lines_mesh() -> Mesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_normal(Vector3.UP)
+	var half := HOVER_SPAN * HOVER_CELL * 0.5
+	var w := HOVER_LINE_WIDTH * 0.5
+	for i in range(HOVER_SPAN + 1):
+		var o := -half + i * HOVER_CELL
+		_add_grid_line(st, Vector3(o, 0.0, -half), Vector3(o, 0.0, half), w)
+		_add_grid_line(st, Vector3(-half, 0.0, o), Vector3(half, 0.0, o), w)
+	return st.commit()
+
+func _add_grid_line(st: SurfaceTool, a: Vector3, b: Vector3, w: float) -> void:
+	var dir := b - a
+	dir.y = 0.0
+	if dir.length() < 0.0001:
+		return
+	var perp := Vector3(-dir.normalized().z, 0.0, dir.normalized().x) * w
+	var p0 := a - perp
+	var p1 := a + perp
+	var p2 := b + perp
+	var p3 := b - perp
+	st.add_vertex(p0); st.add_vertex(p1); st.add_vertex(p2)
+	st.add_vertex(p0); st.add_vertex(p2); st.add_vertex(p3)
+
+func _build_cell_quad_mesh() -> Mesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_normal(Vector3.UP)
+	var h := HOVER_CELL * 0.5 - HOVER_LINE_WIDTH
+	var a := Vector3(-h, 0.0, -h)
+	var b := Vector3(h, 0.0, -h)
+	var c := Vector3(h, 0.0, h)
+	var d := Vector3(-h, 0.0, h)
+	st.add_vertex(a); st.add_vertex(b); st.add_vertex(c)
+	st.add_vertex(a); st.add_vertex(c); st.add_vertex(d)
+	return st.commit()
 
 ## When true, a ground click moves the whole party (spread onto distinct cells)
 ## via the data layer rather than just this character — so a multi-select group

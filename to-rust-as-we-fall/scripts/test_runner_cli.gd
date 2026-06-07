@@ -8641,6 +8641,12 @@ func _test_preview_path_render() -> void:
 		_assert_true(pr != null, "A path renderer exists for the moving character")
 		_assert_true(pr != null and pr._line != null and pr._line.mesh != null,
 			"The moving character's path ribbon is drawn in the preview")
+	# The active player builds a hover grid (the target-cell preview), hidden until the cursor is over
+	# the floor in move mode.
+	var player = inst._player
+	_assert_true(player != null and player.get("_hover_grid") != null, "Active player has a hover grid")
+	if player != null and player.get("_hover_grid") != null:
+		_assert_true(not player.get("_hover_grid").visible, "Hover grid is hidden until the floor is hovered")
 	inst.queue_free()
 	await get_tree().process_frame
 
