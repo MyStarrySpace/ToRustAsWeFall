@@ -52,6 +52,11 @@ const HOVER_LINE_WIDTH := 0.035
 const HOVER_Y := 0.05            # lifted above the floor so it doesn't z-fight
 var _hover_grid: Node3D
 
+# Diagnostic: trace why the hover grid does/doesn't appear. Deduped so a stationary state prints
+# once. Flip off once the hover is confirmed working.
+const HOVER_DEBUG := true
+var _hover_dbg_last := ""
+
 signal arrived()
 signal auto_path_complete()
 ## Emitted on every left-click that hits the ground, with the world position.
@@ -129,9 +134,6 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
 		return
-	if event is InputEventMouseMotion:
-		_update_hover_from_screen((event as InputEventMouseMotion).position)
-		return
 	if not (event is InputEventMouseButton):
 		return
 	var mb := event as InputEventMouseButton
@@ -204,19 +206,33 @@ func _hover_material(c: Color) -> StandardMaterial3D:
 ## so it doesn't appear during selection prompts or for non-active party members.
 func _update_hover_from_screen(screen_pos: Vector2) -> void:
 	if _hover_grid == null:
+		_hover_dbg("no hover grid node")
 		return
 	if _click_mode != "move" or not _move_enabled:
 		_hover_grid.visible = false
+		_hover_dbg("gated: mode=%s move_enabled=%s char=%s" % [_click_mode, _move_enabled, char_id])
 		return
 	var hit := _raycast_ground(screen_pos)
 	if hit == Vector3.INF:
 		_hover_grid.visible = false
+		_hover_dbg("raycast MISS char=%s screen=%s" % [char_id, str(screen_pos)])
 		return
 	# Snap to the cell the cursor is over (cell-centered), lifted just above the floor.
 	var cx := floorf(hit.x) + HOVER_CELL * 0.5
 	var cz := floorf(hit.z) + HOVER_CELL * 0.5
 	_hover_grid.global_position = Vector3(cx, hit.y + HOVER_Y, cz)
 	_hover_grid.visible = true
+	_hover_dbg("tile=(%d,%d) world=(%.2f,%.2f,%.2f) char=%s" % [int(floorf(hit.x)), int(floorf(hit.z)), cx, hit.y + HOVER_Y, cz, char_id])
+
+func _hover_dbg(msg: String) -> void:
+	if not HOVER_DEBUG:
+		return
+	if DisplayServer.get_name() == "headless":
+		return  # keep the test suite quiet; this trace is for the live (windowed) GUI run
+	if msg == _hover_dbg_last:
+		return
+	_hover_dbg_last = msg
+	print("[HOVER] ", msg)
 
 func _build_grid_lines_mesh() -> Mesh:
 	var st := SurfaceTool.new()
@@ -370,6 +386,25 @@ func walk_to_grid(cell: Vector2i) -> void:
 	var path := grid_world.find_path(current_cell, cell)
 	if not path.is_empty():
 		walk_path(path)
+
+func _process(_delta: float) -> void:
+	if Engine.is_editor_hint():
+		return
+	_update_hover_grid()
+
+## Follow the cursor with the target-cell grid every frame. We POLL the viewport mouse position
+## rather than react to InputEventMouseMotion: motion events don't reliably reach _unhandled_input
+## in every host (they don't in headless, and a Control can swallow them), and polling also re-snaps
+## the grid when the follow-camera pans under a stationary cursor. The raycast only runs for the
+## active, move-enabled player (others gate out before it), so it's one cheap ray per frame.
+func _update_hover_grid() -> void:
+	if _hover_grid == null:
+		return
+	var vp := get_viewport()
+	if vp == null:
+		_hover_grid.visible = false
+		return
+	_update_hover_from_screen(vp.get_mouse_position())
 
 func _physics_process(delta: float) -> void:
 	if Engine.is_editor_hint():

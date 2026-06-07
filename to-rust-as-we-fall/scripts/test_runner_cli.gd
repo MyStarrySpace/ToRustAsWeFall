@@ -180,6 +180,9 @@ func _ready() -> void:
 			"--test-preview-path-render":
 				ran_test = true
 				await _test_preview_path_render()
+			"--test-preview-hover-grid":
+				ran_test = true
+				await _test_preview_hover_grid()
 			"--test-predictive-attack":
 				ran_test = true
 				_test_predictive_attack()
@@ -645,6 +648,7 @@ func _run_all_tests() -> void:
 	_test_fragment_preview_registry()
 	await _test_preview_party_move()
 	await _test_preview_path_render()
+	await _test_preview_hover_grid()
 	await _test_lure_relay_puzzle()
 	await _test_chromatic_aberration()
 	_test_cooperative_pathfinding()
@@ -8649,6 +8653,66 @@ func _test_preview_path_render() -> void:
 		_assert_true(not player.get("_hover_grid").visible, "Hover grid is hidden until the floor is hovered")
 	inst.queue_free()
 	await get_tree().process_frame
+
+# --- Test: hovering the floor reveals the target-cell grid in chunk previews ---
+## The hover grid follows the cursor by POLLING get_viewport().get_mouse_position() each frame in
+## _process (it used to react to InputEventMouseMotion in _unhandled_input, which never reaches the
+## player — that was the "grid overlay isn't working in stacks" bug). The headless display server
+## stores no mouse position, so we can't feed the poll a cursor headlessly; instead we (1) run the
+## real poll to prove _process -> _update_hover_grid is wired and crash-free, then (2) drive the
+## worker with a real floor projection to prove the raycast -> snap -> reveal logic. In a window the
+## poll feeds that worker the live cursor every frame.
+func _test_preview_hover_grid() -> void:
+	_test_name = "Preview Hover Grid"
+	var inst = await _instantiate_preview_chunk_and_wait("stacks", 6)
+	if inst == null:
+		_assert_true(false, "fragment_preview instantiates for hover-grid test")
+		return
+	var player = inst._player
+	_assert_true(player != null and player.get("_hover_grid") != null,
+		"Active player has a hover grid")
+	var camera: Camera3D = inst._camera if "_camera" in inst else null
+	if player == null or player.get("_hover_grid") == null or camera == null:
+		_assert_true(false, "Hover-grid test needs the active player, its grid, and a camera")
+		await _dispose_scene(inst)
+		return
+	camera.make_current()  # so _raycast_ground (uses the current camera) matches our unprojection
+	var hover_grid: Node3D = player.get("_hover_grid")
+	_assert_true(not hover_grid.visible, "Hover grid starts hidden (no cursor over the floor yet)")
+
+	# The real per-frame poll runs. Headless has no stored mouse position (reads (0,0)), so this
+	# leaves the grid hidden — but it proves the poll path is live and doesn't crash.
+	player._update_hover_grid()
+	_assert_true(not hover_grid.visible, "Poll with no cursor over the floor keeps the grid hidden")
+
+	# Hover a cell-CENTER point on the stacks floor (x in [-2,66], z in [-12,12]) so the raycast
+	# lands mid-cell and the floorf() snap is stable away from a cell boundary.
+	var target := Vector3(8.5, 0.0, 2.5)
+	player._update_hover_from_screen(camera.unproject_position(target))
+	_assert_true(hover_grid.visible, "Hovering the floor reveals the grid")
+	_assert_true(absf(hover_grid.global_position.x - 8.5) < 0.5,
+		"Hover grid snaps to the hovered cell X (got %.2f, want ~8.5)" % hover_grid.global_position.x)
+	_assert_true(absf(hover_grid.global_position.z - 2.5) < 0.5,
+		"Hover grid snaps to the hovered cell Z (got %.2f, want ~2.5)" % hover_grid.global_position.z)
+	_assert_true(hover_grid.global_position.y > 0.0,
+		"Hover grid sits just above the floor (got y=%.3f)" % hover_grid.global_position.y)
+
+	# Sweeping to a different cell tracks the cursor.
+	var target2 := Vector3(12.5, 0.0, -3.5)
+	player._update_hover_from_screen(camera.unproject_position(target2))
+	_assert_true(hover_grid.visible, "Hover grid stays visible over the floor after a sweep")
+	_assert_true(absf(hover_grid.global_position.x - 12.5) < 0.5,
+		"Hover grid tracks to the new cell X (got %.2f, want ~12.5)" % hover_grid.global_position.x)
+	_assert_true(absf(hover_grid.global_position.z + 3.5) < 0.5,
+		"Hover grid tracks to the new cell Z (got %.2f, want ~-3.5)" % hover_grid.global_position.z)
+
+	# A "click the target" prompt switches to select mode — the hover grid must stand down.
+	player.set_click_mode("select")
+	player._update_hover_from_screen(camera.unproject_position(target))
+	_assert_true(not hover_grid.visible, "Select-mode prompt hides the hover grid")
+	player.set_click_mode("move")
+
+	await _dispose_scene(inst)
 
 # --- Test: enemy attacks are predictive — they land for sure (damage + lunge commit) unless dodged ---
 func _test_predictive_attack() -> void:
