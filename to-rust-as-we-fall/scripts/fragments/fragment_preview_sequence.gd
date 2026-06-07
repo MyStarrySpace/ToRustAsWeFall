@@ -1934,6 +1934,10 @@ func _apply_selection_state(selected_ids: Array, preferred_active := "") -> void
 		for char_id in _selected_char_ids:
 			selected_names.append(str(CHARACTER_DISPLAY_NAMES.get(char_id, char_id.capitalize())))
 		show_preview_message("Selected: %s" % ", ".join(selected_names), 1.1)
+	# Re-wire click-to-move for the new selection (party move when >1 selected). Runs on EVERY
+	# selection change, including adding a member while the active stays put (where _set_active_character
+	# early-returns and would otherwise leave group_move stale).
+	_apply_group_control()
 	_refresh_overlay_panel_status()
 	_update_survival_overlay()
 
@@ -1971,6 +1975,24 @@ func _sync_character_move_enabled() -> void:
 		var character_node = _characters.get(char_id, null)
 		if character_node != null and character_node.has_method("set_move_enabled"):
 			character_node.call("set_move_enabled", char_id == _active_char_id)
+
+## Wire click-to-move for the current selection. With more than one selected, the party moves as one:
+## the active character's controller issues a spread party move (set_party + group_move on the active
+## node only), and the others are carried by that move, not their own clicks. Single select: just the
+## active character moves. Mirrors the elevator's _apply_character_control_selection.
+func _apply_group_control() -> void:
+	var group_control := _selected_char_ids.size() > 1
+	if group_control and _game_state != null:
+		_game_state.set_party(_selected_char_ids.duplicate())
+	for char_id in CHARACTER_IDS:
+		var node = _characters.get(char_id, null)
+		if node == null:
+			continue
+		var is_active: bool = char_id == _active_char_id
+		if node.has_method("set_move_enabled"):
+			node.call("set_move_enabled", is_active)
+		if "group_move" in node:
+			node.set("group_move", group_control and is_active)
 
 func _sanitize_selected_ids(selected_ids: Array) -> Array[String]:
 	var sanitized: Array[String] = []

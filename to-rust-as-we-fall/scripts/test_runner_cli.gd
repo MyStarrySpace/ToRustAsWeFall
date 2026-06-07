@@ -174,6 +174,9 @@ func _ready() -> void:
 			"--test-fragment-preview-registry":
 				ran_test = true
 				_test_fragment_preview_registry()
+			"--test-preview-party-move":
+				ran_test = true
+				await _test_preview_party_move()
 			"--test-data-identify":
 				ran_test = true
 				_test_data_identify()
@@ -633,6 +636,7 @@ func _run_all_tests() -> void:
 	_test_two_tier_detection()
 	_test_enemy_roaming()
 	_test_fragment_preview_registry()
+	await _test_preview_party_move()
 	await _test_lure_relay_puzzle()
 	await _test_chromatic_aberration()
 	_test_cooperative_pathfinding()
@@ -8558,6 +8562,43 @@ func _test_fragment_preview_registry() -> void:
 		"preview_chunk dropdown lists every registered chunk (enum %d vs registry %d)" % [enum_ids.size(), registry_ids.size()])
 	for id in registry_ids:
 		_assert_true(id in enum_ids, "preview_chunk dropdown includes registered chunk '%s'" % id)
+
+# --- Test: multi-select party move works in the shared chunk preview (Ctrl+1-3 then one click) ---
+func _test_preview_party_move() -> void:
+	_test_name = "Preview Party Move"
+	var packed: PackedScene = load(FRAGMENT_PREVIEW_SCENE_PATH)
+	var inst: Node = packed.instantiate()
+	if inst == null:
+		_assert_true(false, "fragment_preview instantiates")
+		return
+	inst.set("preview_menu", false)
+	inst.set("preview_chunk", "lure_relay")
+	get_tree().root.add_child(inst)
+	for _i in range(5):
+		await get_tree().process_frame
+	var gs = inst._game_state
+	# Multi-select the whole party (the headless equivalent of Ctrl+1/2/3).
+	inst.headless_set_selected_characters(["aster", "peris", "endo"])
+	_assert_equals(gs.get_party().size(), 3, "Selecting 3 sets a 3-member party (got %d)" % gs.get_party().size())
+	_assert_true(bool(inst._player.get("group_move")), "The active node group-moves with >1 selected")
+	var starts := {}
+	for cid in ["aster", "peris", "endo"]:
+		starts[cid] = gs.get_position(cid)
+	# A SINGLE click on the active controller drives a party move (gridless fan around the target).
+	var target := Vector3(16.0, 0.5, 0.0)
+	inst._player.move_to_world_position(target)
+	for _i in range(120):
+		gs.scheduler.advance_ticks(0.1)
+	for cid in ["aster", "peris", "endo"]:
+		var before: float = (starts[cid] as Vector3).distance_to(target)
+		var after: float = gs.get_position(cid).distance_to(target)
+		_assert_true(after < before - 1.0,
+			"One click moved %s toward the target (%.1f -> %.1f)" % [cid, before, after])
+	# Single-select drops back to solo control (no group move).
+	inst.headless_set_selected_characters(["peris"])
+	_assert_true(not bool(inst._player.get("group_move")), "Single select disables group move")
+	inst.queue_free()
+	await get_tree().process_frame
 
 # --- Test: chromatic aberration is live in the sim scenes ---
 func _test_chromatic_aberration() -> void:
