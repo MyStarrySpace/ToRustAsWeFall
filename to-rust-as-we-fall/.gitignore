@@ -13,3 +13,7 @@
 /highlight_capture.png.import
 /path_capture.png
 /path_capture.png.import
+
+# Visual regression captures (--test-visual-regression, windowed)
+/vr_*.png
+/vr_*.png.import

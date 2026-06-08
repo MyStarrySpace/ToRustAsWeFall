@@ -186,6 +186,21 @@ func _ready() -> void:
 			"--test-preview-pathfinding":
 				ran_test = true
 				_test_preview_pathfinding()
+			"--test-overlay-materials":
+				ran_test = true
+				await _test_overlay_materials()
+			"--test-chunk-interactable-outlines":
+				ran_test = true
+				await _test_chunk_interactable_outlines()
+			"--test-preview-matches-committed":
+				ran_test = true
+				await _test_preview_matches_committed()
+			"--test-party-preview-renderers":
+				ran_test = true
+				await _test_party_preview_renderers()
+			"--test-visual-regression":
+				ran_test = true
+				await _test_visual_regression()
 			"--test-predictive-attack":
 				ran_test = true
 				_test_predictive_attack()
@@ -653,6 +668,10 @@ func _run_all_tests() -> void:
 	await _test_preview_path_render()
 	await _test_preview_hover_grid()
 	_test_preview_pathfinding()
+	await _test_overlay_materials()
+	await _test_chunk_interactable_outlines()
+	await _test_preview_matches_committed()
+	await _test_party_preview_renderers()
 	await _test_lure_relay_puzzle()
 	await _test_chromatic_aberration()
 	_test_cooperative_pathfinding()
@@ -8802,6 +8821,298 @@ func _test_preview_pathfinding() -> void:
 			max_z = maxf(max_z, z)
 	_assert_true(max_z - min_z > 0.5,
 		"Party members preview DISTINCT destinations (z spread %.2f)" % (max_z - min_z))
+
+# --- Test: floor-overlay materials render in the opaque pass (the preview scene drops alpha-blend) ---
+# The fragment-preview scene does not composite the alpha-BLEND transparent pass, so any floor overlay
+# using TRANSPARENCY_ALPHA is invisible there. The hover grid + path ribbon MUST be opaque or scissor.
+# This guards the regression that made the grid faint/invisible and the path "never show".
+func _test_overlay_materials() -> void:
+	_test_name = "Overlay Materials"
+	var player: Node3D = load("res://scenes/game/player_character.tscn").instantiate()
+	add_child(player)
+	await get_tree().process_frame
+	var hg = player.get("_hover_grid")
+	_assert_true(hg != null and hg.material_override != null, "Hover grid builds a material")
+	if hg != null and hg.material_override != null:
+		_assert_true(int(hg.material_override.transparency) != int(BaseMaterial3D.TRANSPARENCY_ALPHA),
+			"Hover grid material is NOT alpha-blend (invisible in previews) — got %d" % int(hg.material_override.transparency))
+	player.queue_free()
+	await get_tree().process_frame
+	var pr := PathRenderer.new()
+	add_child(pr)
+	await get_tree().process_frame
+	_assert_true(pr._mat != null and int(pr._mat.transparency) != int(BaseMaterial3D.TRANSPARENCY_ALPHA),
+		"Path ribbon material is NOT alpha-blend — got %d" % (int(pr._mat.transparency) if pr._mat != null else -1))
+	pr.queue_free()
+	await get_tree().process_frame
+
+# --- Test: chunk object interactables are wired to the shared outline+shimmer (auto-migration) ---
+# A chunk object's interactable must forward to an OutlineSurfaceTarget, or it shows no hover outline /
+# active shimmer. Spot-check representative meshed interactables so the auto-wiring can't silently break.
+func _test_chunk_interactable_outlines() -> void:
+	_test_name = "Chunk Interactable Outlines"
+	var checks := [
+		{"chunk": "stacks", "node": "TerminalInteractable"},
+		{"chunk": "lure_relay", "node": "Lure2Interact"},
+	]
+	for c in checks:
+		var inst = await _instantiate_preview_chunk_and_wait(c["chunk"], 4)
+		if inst == null:
+			_assert_true(false, "%s preview instantiates" % c["chunk"])
+			continue
+		var chunk = inst._active_chunk
+		var node = chunk.find_child(c["node"], true, false) if chunk != null else null
+		_assert_true(node != null, "%s exposes %s" % [c["chunk"], c["node"]])
+		if node != null:
+			var tgt = node.get("_outline_target") if "_outline_target" in node else null
+			_assert_true(tgt != null,
+				"%s/%s is wired to an outline target (hover outline + active shimmer)" % [c["chunk"], c["node"]])
+		await _dispose_scene(inst)
+
+# --- Test: the hover path preview matches the path a click actually commits (no preview lie) ---
+# compute_preview_path must equal what command_move_to_pos produces, so the dim preview is honest. This
+# catches a divergence like the nav-graph overshoot (preview fixed but committed still backtracking).
+func _test_preview_matches_committed() -> void:
+	_test_name = "Preview Matches Committed"
+	var inst = await _instantiate_preview_chunk_and_wait("lure_relay", 4)  # has a nav graph (the overshoot case)
+	if inst == null:
+		_assert_true(false, "lure_relay preview instantiates")
+		return
+	var gs = inst._game_state
+	var target := Vector3(38.0, 0.5, 0.0)  # just before node c40
+	var preview: Array[Vector3] = gs.compute_preview_path("peris", target)
+	gs.command_move_to_pos("peris", target)
+	var mv = gs.characters["peris"].movement
+	var committed: Array = (mv.path as Array) if mv != null else []
+	_assert_equals(preview.size(), committed.size(),
+		"Preview length == committed length (%d vs %d)" % [preview.size(), committed.size()])
+	if preview.size() == committed.size() and preview.size() > 0:
+		var maxd := 0.0
+		for i in range(preview.size()):
+			maxd = maxf(maxd, (preview[i] as Vector3).distance_to(committed[i]))
+		_assert_true(maxd < 0.01, "Preview path matches the committed path (max deviation %.3f)" % maxd)
+	await _dispose_scene(inst)
+
+# --- Test: a party group-move previews ONE ribbon PER member, not a single shared line (headless) ---
+# The "only one path shown" bug was that the player built a single PathRenderer for the whole party. The
+# fix gives each member its OWN renderer (_update_party_preview). This drives that path directly and asserts
+# one drawable ribbon per member with DISTINCT destinations — deterministic, no display needed.
+func _test_party_preview_renderers() -> void:
+	_test_name = "Party Preview Renderers"
+	var inst = await _instantiate_preview_chunk_and_wait("lure_relay", 6)
+	if inst == null:
+		_assert_true(false, "lure_relay preview instantiates")
+		return
+	var player = inst.get("_player")
+	var gs = inst.get("_game_state")
+	if player == null or gs == null or not inst.has_method("headless_set_selected_characters"):
+		_assert_true(false, "preview exposes player + game_state + selection API")
+		await _dispose_scene(inst)
+		return
+	# Peris first stays primary (the node we drive); a full 3-member party selected.
+	inst.headless_set_selected_characters(["peris", "aster", "endo"])
+	for cid in gs.characters.keys():
+		gs.command_stop(cid)
+	var party: Array = gs.get_party()
+	player.group_move = true
+	_assert_true(party.size() >= 2, "Multi-select builds a party (got %d members)" % party.size())
+
+	# Drive the party preview directly with a world-space hit (bypasses the screen raycast).
+	var base: Vector3 = player.global_position
+	var hit := Vector3(base.x + 3.0, base.y, base.z)
+	player._clear_path_preview()
+	player._update_party_preview(hit)
+
+	var previews: Dictionary = player.get("_party_previews")
+	_assert_equals(previews.size(), party.size(),
+		"One preview ribbon PER member, not a single shared line (got %d for %d members)" % [previews.size(), party.size()])
+	var drawable := 0
+	var dests: Array[Vector3] = []
+	for cid in previews.keys():
+		var pr = previews[cid]
+		var ep: Array = pr._explicit_path
+		if ep.size() >= 2:
+			drawable += 1
+			dests.append(ep[ep.size() - 1])
+	_assert_equals(drawable, party.size(), "Every member's ribbon has a drawable path (%d of %d)" % [drawable, party.size()])
+	# Distinct destinations — the "all members share one destination" half of the bug.
+	var max_spread := 0.0
+	for i in range(dests.size()):
+		for j in range(i + 1, dests.size()):
+			max_spread = maxf(max_spread, dests[i].distance_to(dests[j]))
+	_assert_true(max_spread > 0.5, "Members preview DISTINCT destinations (max spread %.2f)" % max_spread)
+	await _dispose_scene(inst)
+
+# --- Test: floor overlays actually COMPOSITE pixels inside the real preview scene (windowed only) ---
+# The preview scene drops the alpha-BLEND pass, so an overlay can be structurally correct yet invisible.
+# Headless has no framebuffer to read, so this is the ONE test that must run WITH a display:
+#   ../Godot_v4.6.1-stable_win64_console.exe --path "." -- --test-visual-regression
+# Method: freeze the scene, capture the floor with the hover overlay OFF, turn it ON, capture again, and
+# require that a meaningful slice of floor pixels CHANGED. Invisible overlay (the bug) -> no change -> FAIL.
+# PNGs (vr_<chunk>_*.png) are written for eyeballing — never claim an overlay works without looking.
+const _VR_DIFF_THRESHOLD := 0.06   # per-channel delta that counts a pixel as changed
+const _VR_MIN_CHANGED_FRAC := 0.01 # >=1% of sampled floor pixels must change for the overlay to "show"
+const _VR_SAMPLE_STEP := 2
+
+func _test_visual_regression() -> void:
+	_test_name = "Visual Regression"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (visual regression needs a display — run WITHOUT --headless)")
+		return
+	for chunk in ["lure_relay", "stacks"]:
+		await _vr_hover_overlay_draws(chunk)
+	# NOTE: the party "one ribbon per member" guard is the HEADLESS, deterministic
+	# _test_party_preview_renderers (a pixel diff fights the pause/process model — party ribbons are
+	# add_child'd under a paused tree and never get a _process to build their mesh).
+
+func _vr_hover_overlay_draws(chunk: String) -> void:
+	var inst = await _instantiate_preview_chunk_and_wait(chunk, 6)
+	if inst == null:
+		_assert_true(false, "[%s] preview instantiates" % chunk)
+		return
+	# Let the camera ease-in and first paint settle.
+	for i in range(60):
+		await get_tree().process_frame
+	var player = inst.get("_player")
+	var gs = inst.get("_game_state")
+	var cam: Camera3D = get_tree().root.get_viewport().get_camera_3d()
+	if player == null or gs == null or cam == null:
+		_assert_true(false, "[%s] preview exposes player + game_state + camera" % chunk)
+		await _dispose_scene(inst)
+		return
+	if not await _vr_wait_render():
+		print("  [VR] %s SKIPPED — window never rendered (no display / cold framebuffer)" % chunk)
+		await _dispose_scene(inst)
+		return
+
+	# Stop the per-frame hover re-poll (so it can't clobber our forced hover) and stop EVERY character so
+	# the PathRenderManager clears its committed-move ribbons — we want a clean floor baseline, otherwise an
+	# unrelated moving NPC's ribbon would land in the diff. Let a few UNPAUSED frames render so the clears
+	# actually paint, THEN freeze.
+	if player.has_method("set_process"):
+		player.set_process(false)
+	if player.has_method("set_move_enabled"):
+		player.set_move_enabled(true)
+	if player.has_method("set_click_mode"):
+		player.set_click_mode("move")
+	player.group_move = false
+	if player.has_method("_clear_path_preview"):
+		player._clear_path_preview()
+	var hg = player.get("_hover_grid")
+	if hg != null:
+		hg.visible = false
+	for cid in gs.characters.keys():
+		gs.command_stop(cid)
+	for i in range(12):
+		await get_tree().process_frame
+	get_tree().paused = true  # freeze everything; from here the ONLY thing that changes is our overlay
+
+	var before := await _vr_capture()
+
+	# Overlay ON — aim the hover at a walkable point a few metres ahead (corridors run along +X).
+	var base: Vector3 = player.global_position
+	var target := Vector3(base.x + 3.0, base.y, base.z)
+	var screen: Vector2 = cam.unproject_position(target)
+	player._update_hover_from_screen(screen)
+	var after := await _vr_capture()
+
+	if before != null:
+		before.save_png("res://vr_%s_before.png" % chunk)
+	if after != null:
+		after.save_png("res://vr_%s_after.png" % chunk)
+
+	# Self-locating diff region: the bounding box of the player and the hovered target on screen, padded —
+	# the hover grid + preview ribbon live entirely inside it, so the changed fraction is meaningful no
+	# matter where on the floor the overlay landed.
+	var region := _vr_overlay_region(cam, player.global_position, target, before)
+	var changed := _vr_changed_fraction(before, after, region)
+	print("  [VR] %s hover+path changed=%.4f region=%s (target %s screen %s)" % [chunk, changed, str(region), str(target), str(screen)])
+	_assert_true(changed >= _VR_MIN_CHANGED_FRAC,
+		"[%s] hover grid + path overlay draws on the floor (%.2f%% pixels changed)" % [chunk, changed * 100.0])
+
+	get_tree().paused = false
+	await _dispose_scene(inst)
+
+# Pixel bounding box covering the player→target span (where the overlay draws), padded and clamped.
+func _vr_overlay_region(cam: Camera3D, player_pos: Vector3, target: Vector3, img: Image, pad := 60.0) -> Rect2i:
+	var p := cam.unproject_position(player_pos)
+	var t := cam.unproject_position(target)
+	var r := Rect2(p, Vector2.ZERO).expand(t).grow(pad)
+	var w := img.get_width() if img != null else 1152
+	var h := img.get_height() if img != null else 648
+	var x0 := clampi(int(r.position.x), 0, w - 1)
+	var y0 := clampi(int(r.position.y), 0, h - 1)
+	var x1 := clampi(int(r.position.x + r.size.x), 0, w)
+	var y1 := clampi(int(r.position.y + r.size.y), 0, h)
+	return Rect2i(x0, y0, maxi(1, x1 - x0), maxi(1, y1 - y0))
+
+func _vr_capture() -> Image:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var tex := get_tree().root.get_texture()
+	if tex == null:
+		return null
+	return tex.get_image()
+
+# A real rendered frame has the HUD + lit scene → many bright pixels. A cold/uninitialised framebuffer
+# (the window hasn't painted yet) is near-uniform dark. We use this to tell "the overlay didn't draw"
+# (a real regression) apart from "the window never rendered" (an environment hiccup) so the test never
+# reports a false FAIL on a cold start.
+func _vr_rendered(img: Image) -> bool:
+	if img == null:
+		return false
+	var w := img.get_width()
+	var h := img.get_height()
+	var bright := 0
+	var n := 0
+	var y := 0
+	while y < h:
+		var x := 0
+		while x < w:
+			var c := img.get_pixel(x, y)
+			if c.r + c.g + c.b > 0.25:
+				bright += 1
+			n += 1
+			x += 16
+		y += 16
+	return n > 0 and float(bright) / float(n) > 0.03
+
+# Spin up to ~8 short waits until the window has actually painted. Returns false if it never did.
+func _vr_wait_render() -> bool:
+	for attempt in range(8):
+		var img := await _vr_capture()
+		if _vr_rendered(img):
+			return true
+		for i in range(15):
+			await get_tree().process_frame
+	return false
+
+func _vr_changed_fraction(a: Image, b: Image, region: Rect2i) -> float:
+	if a == null or b == null:
+		return 0.0
+	if a.get_width() != b.get_width() or a.get_height() != b.get_height():
+		return 0.0
+	var x0 := region.position.x
+	var y0 := region.position.y
+	var x1 := mini(region.position.x + region.size.x, a.get_width())
+	var y1 := mini(region.position.y + region.size.y, a.get_height())
+	var sampled := 0
+	var changed := 0
+	var y := y0
+	while y < y1:
+		var x := x0
+		while x < x1:
+			var ca := a.get_pixel(x, y)
+			var cb := b.get_pixel(x, y)
+			sampled += 1
+			if absf(ca.r - cb.r) > _VR_DIFF_THRESHOLD or absf(ca.g - cb.g) > _VR_DIFF_THRESHOLD or absf(ca.b - cb.b) > _VR_DIFF_THRESHOLD:
+				changed += 1
+			x += _VR_SAMPLE_STEP
+		y += _VR_SAMPLE_STEP
+	if sampled == 0:
+		return 0.0
+	return float(changed) / float(sampled)
 
 # --- Test: enemy attacks land predictively, the lunge never teleports, and the FSM disengages ---
 # Encodes the three bugs the redesign fixed: (1) the charge used to teleport the body onto a target
