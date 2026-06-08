@@ -198,6 +198,15 @@ func _ready() -> void:
 			"--test-party-preview-renderers":
 				ran_test = true
 				await _test_party_preview_renderers()
+			"--test-path-timed-wait-segment":
+				ran_test = true
+				_test_path_timed_wait_segment()
+			"--test-enemy-pursuit-timeout":
+				ran_test = true
+				_test_enemy_pursuit_timeout()
+			"--test-detection-vertical-band":
+				ran_test = true
+				_test_detection_vertical_band()
 			"--test-visual-regression":
 				ran_test = true
 				await _test_visual_regression()
@@ -672,6 +681,9 @@ func _run_all_tests() -> void:
 	await _test_chunk_interactable_outlines()
 	await _test_preview_matches_committed()
 	await _test_party_preview_renderers()
+	_test_path_timed_wait_segment()
+	_test_enemy_pursuit_timeout()
+	_test_detection_vertical_band()
 	await _test_lure_relay_puzzle()
 	await _test_chromatic_aberration()
 	_test_cooperative_pathfinding()
@@ -8488,6 +8500,24 @@ func _test_lure_relay_puzzle() -> void:
 		tend_inst.queue_free()
 		await get_tree().process_frame
 
+	# --- Wrong tender: a TIMED_ACTION lure requires 'peris'. With ASTER as the active character, finishing
+	#     the FULL dwell must NOT activate it (the required_character gate rejects at _trigger). The preview
+	#     re-syncs interactable.active_character from the active controller every frame, so we make Aster
+	#     active via selection (setting the node field alone would be overwritten). Fresh instance so the
+	#     lure is unused (an already-used interactable would skip the dwell for the wrong reason). ---
+	var wrong_inst = await _instantiate_preview_chunk_and_wait("lure_relay", 4)
+	if wrong_inst != null and wrong_inst.has_method("headless_set_selected_characters"):
+		wrong_inst.headless_set_selected_characters(["aster"])  # Aster is now the active character
+		var wchunk = wrong_inst._active_chunk
+		var wlure = wchunk.find_child("Lure2Interact", true, false)
+		if wlure != null:
+			wlure.on_interaction_arrived()        # Aster "tends" — the dwell runs but the gate must reject
+			wrong_inst.headless_advance(float(wlure.dwell_time) + 1.0, 0.1)
+			_assert_equals(int(wchunk.get_preview_state()["committed_lure"]), 0,
+				"A non-tender (Aster active) finishing the dwell does NOT activate the lure — required_character gate holds")
+		wrong_inst.queue_free()
+		await get_tree().process_frame
+
 # --- Test: two-tier detection — a hide's TIER sets how close an enemy must be to spot you ---
 func _test_two_tier_detection() -> void:
 	_test_name = "Two-Tier Detection"
@@ -8942,6 +8972,106 @@ func _test_party_preview_renderers() -> void:
 			max_spread = maxf(max_spread, dests[i].distance_to(dests[j]))
 	_assert_true(max_spread > 0.5, "Members preview DISTINCT destinations (max spread %.2f)" % max_spread)
 	await _dispose_scene(inst)
+
+# --- Test: position holds EXACTLY at a wait waypoint during an embedded zero-distance wait segment ---
+# A cooperative path can embed a WAIT: two consecutive waypoints share a position but span time. Position
+# is a pure function of the scheduler tick (_interpolate_path_timed), so mid-wait reads must stay pinned to
+# the wait waypoint with zero drift. Guards the lerp-of-identical-points / span handling of an embedded wait.
+func _test_path_timed_wait_segment() -> void:
+	_test_name = "Path Timed Wait Segment"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.register_character("c", Vector3(0, 0.5, 0), 2.0, {})
+	var p1 := Vector3(3.0, 0.5, 0.0)
+	var path: Array[Vector3] = [Vector3(0, 0.5, 0), p1, p1, Vector3(6.0, 0.5, 0.0)]
+	var ticks: Array[float] = [0.0, 1.0, 3.0, 4.0]  # WAIT at p1 from tick 1 to tick 3 (same pos, distinct ticks)
+	gs._start_movement("c", path, ticks)
+	# Sample strictly inside the wait window; every reading must equal p1.
+	var max_drift := 0.0
+	for i in range(1, 21):
+		var t := 1.0 + 2.0 * (float(i) / 21.0)  # in (1.0, 3.0)
+		sched.advance_ticks(t - sched.get_current_tick())
+		max_drift = maxf(max_drift, gs.get_position("c").distance_to(p1))
+	_assert_true(max_drift < 0.001, "Position holds at the wait waypoint with zero drift (max %.4f)" % max_drift)
+	# After the wait it resumes toward the final waypoint.
+	sched.advance_ticks(4.0 - sched.get_current_tick())
+	_assert_true(gs.get_position("c").distance_to(Vector3(6.0, 0.5, 0.0)) < 0.001, "Resumes to the final waypoint after the wait")
+
+# --- Test: a pursuing enemy DISENGAGES when it loses sight of the target (rescan -> search -> return) ---
+# The pursuit state arms a rescan timer. A still-visible target is correctly RE-ACQUIRED on each rescan
+# (search admits detection), so it doesn't "give up" on someone in plain view. But once the target is GONE
+# (here: fully concealed), the rescan drops to search, search finds nothing, and the enemy returns home
+# instead of pursuing a ghost forever. Guards the lose-sight disengage path end-to-end.
+func _test_enemy_pursuit_timeout() -> void:
+	_test_name = "Enemy Pursuit Disengage"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	var holder := Node3D.new()
+	add_child(holder)
+	gs.register_character("target", Vector3(6.0, 0.5, 0.0), 2.5, {"hp": 100.0})
+	var enemy := Enemy.new()
+	enemy.game_state = gs
+	enemy.char_id = "guard"
+	enemy._detection_targets = ["target"]
+	enemy.move_speed = 0.5  # too slow to close 6m before the rescan -> stays in pursuit, never windup
+	holder.add_child(enemy)
+	gs.register_character("guard", Vector3(0.0, 0.5, 0.0), enemy.move_speed, {"detection_range": 20.0})
+	enemy.activate()
+	gs._recompute_all_detection_predictions()
+	# Phase 1: spot the target and enter pursuit.
+	var reached_pursuit := false
+	for _i in range(60):  # up to 3s
+		sched.advance_ticks(0.05)
+		if enemy.get_state() == "pursuit":
+			reached_pursuit = true
+			break
+	_assert_true(reached_pursuit, "Spotting the target enters pursuit")
+	# Phase 2: the target vanishes (full concealment). The next rescan must NOT re-acquire it.
+	gs.set_character_hidden("target", true)
+	gs._recompute_all_detection_predictions()
+	var reached_search := false
+	for _i in range(260):  # ~13s — rescan -> search -> search_duration -> return -> home
+		sched.advance_ticks(0.05)
+		if enemy.get_state() == "search":
+			reached_search = true
+	var final_state := enemy.get_state()
+	_assert_true(reached_search, "Losing sight of the target drops pursuit to search (rescan), not chasing a ghost")
+	_assert_true(final_state in ["search", "return", "idle", "roam", "patrol"],
+		"After failing to re-acquire, the enemy disengages home (ended in %s, not an aggro state)" % final_state)
+	enemy.queue_free()
+	holder.queue_free()
+
+# --- Test: detection is blocked across floors (the DETECTION_VERTICAL_BAND guard) ---
+# Two characters within horizontal range but separated vertically by more than the band are on different
+# floors and must not see each other. Guards the cross-floor exemption that keeps a stacked-floor scene from
+# spuriously spotting a character one level up/down.
+func _test_detection_vertical_band() -> void:
+	_test_name = "Detection Vertical Band"
+	var spots := func(dy: float) -> bool:
+		var sched := EventScheduler.new()
+		var gs := GameState.new()
+		gs.scheduler = sched
+		var holder := Node3D.new()
+		add_child(holder)
+		gs.register_character("target", Vector3(3.0, dy, 0.0), 2.5, {})
+		var enemy := Enemy.new()
+		enemy.game_state = gs
+		enemy.char_id = "guard"
+		enemy._detection_targets = ["target"]
+		holder.add_child(enemy)
+		gs.register_character("guard", Vector3(0.0, 0.0, 0.0), enemy.move_speed, {"detection_range": 20.0})
+		enemy.activate()
+		gs._recompute_all_detection_predictions()
+		for _i in range(20):
+			sched.advance_ticks(0.05)
+		var seen := enemy.get_state() != "idle"
+		enemy.queue_free()
+		holder.queue_free()
+		return seen
+	_assert_true(spots.call(0.0), "Same-floor target within horizontal range is spotted")
+	_assert_true(not spots.call(5.0), "A target 5m above (a different floor) is NOT spotted despite horizontal range")
 
 # --- Test: floor overlays actually COMPOSITE pixels inside the real preview scene (windowed only) ---
 # The preview scene drops the alpha-BLEND pass, so an overlay can be structurally correct yet invisible.
