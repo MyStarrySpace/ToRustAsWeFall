@@ -429,6 +429,27 @@ func _resolve_world_path(current_pos: Vector3, target: Vector3) -> Array[Vector3
 			return resolved
 	return [current_pos, target]
 
+## READ-ONLY: the path a click-to-move WOULD take for `id` to reach `target_pos`, computed without
+## issuing or logging anything — pure UI, like the hover grid. It mirrors the real routing (a nav-graph
+## corridor / straight line when gridless; a plain A* route on a grid), so a hover preview matches what
+## the click commits. Touches no movement, no reservations, no EventLog. Returns [] if unreachable.
+func compute_preview_path(id: String, target_pos: Vector3) -> Array[Vector3]:
+	if not characters.has(id):
+		return []
+	var current := get_position(id)
+	if grid != null:
+		var level := get_character_level(id)
+		var start_cell := grid.world_to_grid(current)
+		var end_cell := grid.world_to_grid(target_pos)
+		var cells: Array = grid.find_path(start_cell, end_cell, {}, false, {}, {}, level)
+		if cells.is_empty():
+			return []
+		var out: Array[Vector3] = [current]
+		for c in cells:
+			out.append(grid.grid_to_world(c, level))
+		return out
+	return _resolve_world_path(current, target_pos)
+
 # --- Queries ---
 
 ## Current position, interpolated while moving.

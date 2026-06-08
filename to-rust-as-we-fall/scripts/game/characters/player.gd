@@ -51,6 +51,12 @@ const HOVER_SPAN := 5            # NxN grid patch shown around the hovered cell
 const HOVER_LIFT := 0.05         # the flat grid quad sits this far above the hovered floor point
 var _hover_grid: MeshInstance3D
 
+# Path preview: while hovering the floor in move mode, show (dim) the route a click WOULD take, before
+# committing it. Recomputed only when the hovered cell changes (per-frame pathfinding would be wasteful).
+const PREVIEW_COLOR := Color(0.55, 0.7, 0.85)  # muted blue-grey, distinct from the bright committed path
+var _path_preview: PathRenderer
+var _preview_last_cell := Vector2i(0x7fffffff, 0x7fffffff)
+
 
 signal arrived()
 signal auto_path_complete()
@@ -90,7 +96,14 @@ func _ready() -> void:
 
 	_build_hover_grid()
 
-	# The movement path is drawn by the scene's PathRenderManager (reusable, covers every
+	# Path PREVIEW renderer: bound to no char (char_id "") so it draws ONLY its explicit path (the
+	# would-be route), anchored to this player, dim — distinct from the committed path the scene's
+	# PathRenderManager draws while actually moving.
+	_path_preview = PathRenderer.new()
+	add_child(_path_preview)
+	_path_preview.setup(game_state, "", PREVIEW_COLOR, self)
+
+	# The committed movement path is drawn by the scene's PathRenderManager (reusable, covers every
 	# character), not a per-player line — so it shows for the party / NPCs / escorts too.
 	_ability_marker = MeshInstance3D.new()
 	var diamond := SphereMesh.new()
@@ -254,16 +267,43 @@ func _update_hover_from_screen(screen_pos: Vector2) -> void:
 		return
 	if _click_mode != "move" or not _move_enabled:
 		_hover_grid.visible = false
+		_clear_path_preview()
 		return
 	var hit := _raycast_ground(screen_pos)
 	if hit == Vector3.INF:
 		_hover_grid.visible = false
+		_clear_path_preview()
 		return
 	# Centre the flat grid quad over the cell the cursor is over, just above the floor.
 	var cx := floorf(hit.x) + HOVER_CELL * 0.5
 	var cz := floorf(hit.z) + HOVER_CELL * 0.5
 	_hover_grid.global_position = Vector3(cx, hit.y + HOVER_LIFT, cz)
 	_hover_grid.visible = true
+	_update_path_preview(hit)
+
+## Show the would-be route to the hovered point (dim), before a click commits it. Recomputed only when
+## the hovered CELL changes — per-frame pathfinding for a cosmetic line would be wasteful. Cleared while
+## actually moving (the committed path shows then) and when not hovering the floor.
+func _update_path_preview(hit: Vector3) -> void:
+	if _path_preview == null or game_state == null or char_id == "":
+		return
+	if game_state.is_moving(char_id):
+		_clear_path_preview()
+		return
+	var cell := Vector2i(int(floorf(hit.x)), int(floorf(hit.z)))
+	if cell == _preview_last_cell:
+		return
+	_preview_last_cell = cell
+	var path := game_state.compute_preview_path(char_id, hit)
+	if path.size() >= 2:
+		_path_preview.set_explicit_path(path, 1)  # from_index 1: the renderer prepends the live start point
+	else:
+		_path_preview.clear_explicit_path()
+
+func _clear_path_preview() -> void:
+	if _path_preview != null:
+		_path_preview.clear_explicit_path()
+	_preview_last_cell = Vector2i(0x7fffffff, 0x7fffffff)  # force a recompute on the next hover
 
 ## When true, a ground click moves the whole party (spread onto distinct cells)
 ## via the data layer rather than just this character — so a multi-select group

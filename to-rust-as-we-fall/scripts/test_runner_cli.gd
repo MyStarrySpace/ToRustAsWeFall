@@ -183,6 +183,9 @@ func _ready() -> void:
 			"--test-preview-hover-grid":
 				ran_test = true
 				await _test_preview_hover_grid()
+			"--test-preview-pathfinding":
+				ran_test = true
+				_test_preview_pathfinding()
 			"--test-predictive-attack":
 				ran_test = true
 				_test_predictive_attack()
@@ -649,6 +652,7 @@ func _run_all_tests() -> void:
 	await _test_preview_party_move()
 	await _test_preview_path_render()
 	await _test_preview_hover_grid()
+	_test_preview_pathfinding()
 	await _test_lure_relay_puzzle()
 	await _test_chromatic_aberration()
 	_test_cooperative_pathfinding()
@@ -8736,6 +8740,33 @@ func _test_preview_hover_grid() -> void:
 
 	await _dispose_scene(inst)
 
+# --- Test: compute_preview_path is a READ-ONLY route preview (no move, no log) for the hover path ---
+func _test_preview_pathfinding() -> void:
+	_test_name = "Preview Pathfinding"
+	var sched := EventScheduler.new()
+	var log := EventLog.new()
+	GameState._pending_event_log = log
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.register_character("aster", Vector3(0.0, 0.5, 0.0), 3.0, {})
+	var before: Vector3 = gs.get_position("aster")
+	var log_before: int = log.size()
+	var path: Array[Vector3] = gs.compute_preview_path("aster", Vector3(6.0, 0.5, 2.0))
+	_assert_true(path.size() >= 2, "Preview returns a route (start + end), got %d" % path.size())
+	# Pure UI: it must emit nothing and not move/mutate the character — like the hover grid.
+	_assert_equals(log.size(), log_before, "compute_preview_path emits NO event-log entries (replay-safe)")
+	_assert_true(not gs.is_moving("aster"), "compute_preview_path does NOT start a move")
+	_assert_true(gs.get_position("aster").distance_to(before) < 0.001,
+		"compute_preview_path does NOT move the character")
+	# Deterministic — the same query yields the same route.
+	var path2: Array[Vector3] = gs.compute_preview_path("aster", Vector3(6.0, 0.5, 2.0))
+	_assert_equals(path.size(), path2.size(), "Preview path is deterministic")
+	_assert_true(path[path.size() - 1].distance_to(path2[path2.size() - 1]) < 0.001,
+		"Preview endpoint is stable")
+	# Unknown character -> no preview.
+	_assert_equals(gs.compute_preview_path("nobody", Vector3(1.0, 0.0, 1.0)).size(), 0,
+		"Unknown character -> empty preview path")
+
 # --- Test: enemy attacks land predictively, the lunge never teleports, and the FSM disengages ---
 # Encodes the three bugs the redesign fixed: (1) the charge used to teleport the body onto a target
 # that moved during windup (it now lunges through the data layer); (2) the enemy attacked a downed
@@ -9661,6 +9692,9 @@ func _test_event_log_mutation_audit() -> void:
 		# is a pure query.
 		"set_navigation_graph", "set_navigation_data", "clear_navigation_graph",
 		"get_navigation_state",
+		# Read-only route preview for the hover path: computes the path a click WOULD take (nav-graph /
+		# A* / straight line) without issuing or logging a move — pure UI, like the hover grid.
+		"compute_preview_path",
 	])
 
 	var public_funcs := _parse_public_funcs(content)
