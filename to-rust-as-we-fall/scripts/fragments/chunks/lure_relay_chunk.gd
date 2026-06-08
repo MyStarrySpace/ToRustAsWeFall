@@ -39,6 +39,7 @@ const EXIT_X := 60.0
 const GUARD_POSITIONS := [Vector3(50.0, 0.5, 0.0), Vector3(51.2, 0.5, 1.2), Vector3(51.2, 0.5, -1.2)]
 const CORPSE_POS := Vector3(51.0, 0.0, 0.0)
 const LURE_DURATION := 12.0       # scheduler ticks a guard stays drawn to a lure
+const LURE_TEND_TIME := 2.5       # Peris tends a ferrolure (after walking to it) before it sings out
 const GUARD_SPEED := 4.5          # between a character's walk (~3.0) and run (6.0): threatening, escapable
 
 var _enemies: Array = []
@@ -97,12 +98,17 @@ func _build_corpse() -> void:
 		Color(0.18, 0.14, 0.12), Color.BLACK, 0.0, "Remains")
 	_add_label(self, "remains", CORPSE_POS + Vector3(0.0, 0.6, 0.0), Color(0.55, 0.4, 0.38))
 
+# The lures are TIMED_ACTION interactables (CLICK to use, never proximity): with Peris active, a click
+# walks her over, then she TENDS it for LURE_TEND_TIME (the interactable's own dwell timer, with the
+# progress ring) before `interacted` fires and the lure sings. The tend duration is the interactable's
+# dwell_time, not a hand-rolled per-chunk schedule, so terminals and other "takes time" interactables
+# reuse the same type. (Tests still drive activate_lure1/2 directly for the immediate state change.)
 func _build_interactables() -> void:
 	var lure2 := _add_interactable(self, "Lure2Interact", "Ferrolure", LURE2_POS,
-		"Lure", "peris", 0.6, true, 1.6)
+		"Tend", "peris", LURE_TEND_TIME, true, 1.6, Interactable.InteractableType.TIMED_ACTION)
 	lure2.interacted.connect(func() -> void: activate_lure2())
 	var lure1 := _add_interactable(self, "Lure1Interact", "Ferrolure", LURE1_POS,
-		"Lure", "peris", 0.6, true, 1.6)
+		"Tend", "peris", LURE_TEND_TIME, true, 1.6, Interactable.InteractableType.TIMED_ACTION)
 	lure1.interacted.connect(func() -> void: activate_lure1())
 
 func _spawn_guards() -> void:

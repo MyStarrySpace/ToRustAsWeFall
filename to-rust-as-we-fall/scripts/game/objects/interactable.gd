@@ -4,8 +4,9 @@ extends Area3D
 ## Proximity interactable with optional character-specific dialogue.
 
 enum InteractableType {
-	HOLD_ACTION,
-	INSPECTION,
+	HOLD_ACTION,   # proximity: stand near it and the dwell timer runs
+	INSPECTION,    # click to walk over; triggers instantly on arrival
+	TIMED_ACTION,  # click to walk over; then a dwell/work timer runs on arrival before it triggers
 }
 
 @export var dwell_time := 1.5
@@ -305,7 +306,8 @@ func _on_body_entered(body: Node3D) -> void:
 	if body is CharacterBody3D:
 		_player_in_range = true
 		_dwell_progress = 0.0
-		_begin_dwell()
+		if _proximity_dwell():  # only HOLD_ACTION auto-dwells on proximity; TIMED_ACTION waits for a click
+			_begin_dwell()
 
 func _on_body_exited(body: Node3D) -> void:
 	if body is CharacterBody3D:
@@ -500,6 +502,11 @@ func apply_interactable_spec(spec_id: String) -> void:
 func on_interaction_arrived() -> void:
 	if _triggers_on_arrival():
 		_trigger(false)
+	elif _works_on_arrival():
+		# Walked over via a click; now run the work/tend timer (the character is here, so it's in range),
+		# and _on_dwell_complete fires the actual trigger once dwell_time elapses.
+		_player_in_range = true
+		_begin_dwell()
 
 func _refresh_player_range() -> void:
 	if not interaction_enabled or not monitoring or _used:
@@ -509,14 +516,23 @@ func _refresh_player_range() -> void:
 		if body is CharacterBody3D:
 			_player_in_range = true
 			break
-	if _player_in_range:
+	if _player_in_range and _proximity_dwell():
 		_begin_dwell()
 
+## The dwell/work timer machinery applies (proximity HOLD_ACTION and arrival TIMED_ACTION both use it).
 func _uses_hold_timer() -> bool:
+	return interactable_type == InteractableType.HOLD_ACTION or interactable_type == InteractableType.TIMED_ACTION
+
+## Auto-begins the dwell when a body enters range — only the proximity type. TIMED_ACTION begins its
+## dwell on click-arrival instead (on_interaction_arrived), so it never triggers just by walking past.
+func _proximity_dwell() -> bool:
 	return interactable_type == InteractableType.HOLD_ACTION
 
 func _triggers_on_arrival() -> bool:
 	return interactable_type == InteractableType.INSPECTION
+
+func _works_on_arrival() -> bool:
+	return interactable_type == InteractableType.TIMED_ACTION
 
 func _make_particle_draw_material(color: Color, energy: float) -> StandardMaterial3D:
 	var material := StandardMaterial3D.new()

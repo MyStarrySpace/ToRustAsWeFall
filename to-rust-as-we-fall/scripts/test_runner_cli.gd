@@ -8428,6 +8428,28 @@ func _test_lure_relay_puzzle() -> void:
 	instance.queue_free()
 	await get_tree().process_frame
 
+	# --- Tending: a lure is a TIMED_ACTION interactable — CLICK to use (never proximity), then Peris
+	#     TENDS it for the interactable's dwell_time before it sings (the dwell timer, not a hand-rolled
+	#     per-chunk schedule). Run on a FRESH instance (the puzzle sections above scatter the guards). ---
+	var tend_inst = await _instantiate_preview_chunk_and_wait("lure_relay", 4)
+	if tend_inst != null:
+		var tchunk = tend_inst._active_chunk
+		var lure2_node = tchunk.find_child("Lure2Interact", true, false)
+		_assert_true(lure2_node != null, "Lure 2 interactable exists")
+		if lure2_node != null:
+			_assert_equals(int(lure2_node.interactable_type), int(Interactable.InteractableType.TIMED_ACTION),
+				"The lure is a click + timed-action interactable, not proximity")
+			lure2_node.active_character = "peris"      # the required tender
+			lure2_node.on_interaction_arrived()        # Peris walked over -> starts the tend dwell
+			tend_inst.headless_advance(0.5, 0.1)
+			_assert_equals(int(tchunk.get_preview_state()["committed_lure"]), 0,
+				"Reaching the lure starts Peris tending — it does NOT fire instantly")
+			tend_inst.headless_advance(float(lure2_node.dwell_time) + 0.5, 0.1)
+			_assert_equals(int(tchunk.get_preview_state()["committed_lure"]), 2,
+				"After Peris finishes tending (dwell_time), the ferrolure sings and the guards commit")
+		tend_inst.queue_free()
+		await get_tree().process_frame
+
 # --- Test: two-tier detection — a hide's TIER sets how close an enemy must be to spot you ---
 func _test_two_tier_detection() -> void:
 	_test_name = "Two-Tier Detection"
