@@ -1211,6 +1211,8 @@ func dodge_roll(char_id: String, direction: Vector3) -> bool:
 	var ch: Dictionary = characters[char_id]
 	if not ch.stats.get("dodge_unlocked", false):
 		return false
+	if float(ch.stats.get("hp", 1.0)) <= 0.0:
+		return false  # a downed character can't dodge (no spending stamina from a corpse)
 	if is_dodging(char_id):
 		return false
 	# Cooldown check
@@ -1223,25 +1225,23 @@ func dodge_roll(char_id: String, direction: Vector3) -> bool:
 	if stamina < DODGE_STAMINA_COST:
 		return false
 
-	# Consume stamina
-	ch.stats["stamina"] = stamina - DODGE_STAMINA_COST
-	ch.stats["_last_dodge_tick"] = now
-
-	# Compute dodge destination
+	# Compute the dodge destination FIRST and reject a fully wall-blocked dodge before spending anything —
+	# a dodge that never moves must cost neither stamina NOR the cooldown (else a corner traps you on cd).
 	var dir := Vector3(direction.x, 0, direction.z)
 	if dir.length_squared() < 0.001:
 		dir = Vector3(1, 0, 0)
 	dir = dir.normalized()
 	var from := get_position(char_id)
 	var to := from + dir * DODGE_DISTANCE
-
-	# Wall trace
 	if grid:
 		to = _trace_slide_against_walls(from, to)
 	var dodge_dist := Vector3(to.x - from.x, 0, to.z - from.z).length()
 	if dodge_dist < 0.1:
-		ch.stats["stamina"] = stamina  # Refund
-		return false
+		return false  # wall-blocked: nothing consumed, no cooldown armed
+
+	# Commit: spend stamina + arm the cooldown only now that the dodge will actually happen.
+	ch.stats["stamina"] = stamina - DODGE_STAMINA_COST
+	ch.stats["_last_dodge_tick"] = now
 
 	# Cancel current movement and start dodge movement
 	_cancel_movement(char_id)

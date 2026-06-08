@@ -213,6 +213,21 @@ func _ready() -> void:
 			"--test-dialogue-transcript-cap":
 				ran_test = true
 				_test_dialogue_transcript_cap()
+			"--test-combat-cycle":
+				ran_test = true
+				_test_combat_cycle()
+			"--test-dodge-combat-timing":
+				ran_test = true
+				_test_dodge_combat_timing()
+			"--test-chain-combat":
+				ran_test = true
+				_test_chain_combat()
+			"--test-dodge-failure-no-cooldown":
+				ran_test = true
+				_test_dodge_failure_no_cooldown()
+			"--test-strike-skips-corpse":
+				ran_test = true
+				_test_strike_skips_corpse()
 			"--test-showcase-gallery":
 				ran_test = true
 				await _test_showcase_gallery()
@@ -698,6 +713,11 @@ func _run_all_tests() -> void:
 	_test_detection_vertical_band()
 	_test_interactable_state_replay()
 	_test_dialogue_transcript_cap()
+	_test_combat_cycle()
+	_test_dodge_combat_timing()
+	_test_chain_combat()
+	_test_dodge_failure_no_cooldown()
+	_test_strike_skips_corpse()
 	await _test_showcase_gallery()
 	await _test_lure_relay_puzzle()
 	await _test_chromatic_aberration()
@@ -9174,6 +9194,139 @@ func _test_showcase_gallery() -> void:
 	_assert_true(bool(chunk.get_preview_state().get("complete", false)), "Reaching the EXIT completes the gallery tour")
 	await _dispose_scene(inst)
 
+# --- Test: a ChainEnemy's attack is REAL data-layer damage that respects the dodge window ---
+# Written to break the current code: a ChainEnemy segment hit only emits hit_target — it never calls
+# adjust_stat — so GameState HP (the detection/disengage authority) is untouched and the chain can't down
+# a target or be slipped by a dodge. These assert the CORRECT behaviour and should go red until fixed.
+func _make_chain_attack_ctx(target_hp: float, dodge: bool) -> Dictionary:
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	var holder := Node3D.new()
+	add_child(holder)
+	gs.register_character("aster", Vector3(3.0, 0.5, 0.0), 2.5, {"hp": target_hp, "stamina": 100.0})
+	if dodge:
+		gs.characters["aster"].stats["dodge_unlocked"] = true
+		gs.characters["aster"].stats["auto_dodge"] = true
+	var enemy := ChainEnemy.new()
+	enemy.game_state = gs
+	enemy.char_id = "chain"
+	enemy._detection_targets = ["aster"]
+	enemy.attack_range = 3.0
+	enemy.charge_damage = 25.0
+	holder.add_child(enemy)
+	gs.register_character("chain", Vector3(0.0, 0.5, 0.0), enemy.move_speed, {"detection_range": 6.0})
+	enemy.set_wall_line(Vector3(0.0, 0.5, 1.5), Vector3(0, 0, 1))  # tail anchored behind the head
+	enemy.activate()
+	gs._recompute_all_detection_predictions()
+	return {"sched": sched, "gs": gs, "enemy": enemy, "holder": holder}
+
+func _test_chain_combat() -> void:
+	_test_name = "Chain Combat"
+	# (1) A chain's attack must reduce the target's GameState HP (segment hit must be real data-layer damage).
+	var ctx := _make_chain_attack_ctx(100.0, false)
+	var sched: EventScheduler = ctx["sched"]
+	var gs: GameState = ctx["gs"]
+	var enemy: ChainEnemy = ctx["enemy"]
+	for i in range(240):
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+		if float(gs.get_stat("aster", "hp")) < 100.0:
+			break
+	_assert_true(float(gs.get_stat("aster", "hp")) < 100.0,
+		"A ChainEnemy attack reduces the target's GameState HP (got %.1f)" % gs.get_stat("aster", "hp"))
+	_cleanup_attack_ctx(ctx)
+
+	# (2) Consequence: once the chain downs the target's GameState HP, it disengages (never works a corpse).
+	var dctx := _make_chain_attack_ctx(40.0, false)
+	var dsched: EventScheduler = dctx["sched"]
+	var dgs: GameState = dctx["gs"]
+	var denemy: ChainEnemy = dctx["enemy"]
+	var downed := false
+	for i in range(600):
+		dsched.advance_ticks(0.05)
+		denemy._process(0.05)
+		if float(dgs.get_stat("aster", "hp")) <= 0.0:
+			downed = true
+			# let it re-evaluate after the kill
+			for j in range(40):
+				dsched.advance_ticks(0.05)
+				denemy._process(0.05)
+			break
+	_assert_true(downed, "The chain downs the target's GameState HP")
+	_assert_true(denemy.get_state() in ["search", "return", "idle", "roam", "patrol"],
+		"After downing the target the chain disengages (state=%s)" % denemy.get_state())
+	_cleanup_attack_ctx(dctx)
+
+	# (3) A dodging target is NOT hit by a chain segment (the dodge window must protect against segments too).
+	var xctx := _make_chain_attack_ctx(100.0, false)
+	var xsched: EventScheduler = xctx["sched"]
+	var xgs: GameState = xctx["gs"]
+	var xenemy: ChainEnemy = xctx["enemy"]
+	xgs.characters["aster"].stats["dodge_unlocked"] = true
+	var hp_when_dodging := 100.0
+	for i in range(240):
+		xsched.advance_ticks(0.05)
+		xenemy._process(0.05)
+		# Keep the target perpetually in a fresh dodge while the chain works its charge.
+		if xenemy.get_state() == "charge" and not xgs.is_dodging("aster"):
+			xgs.characters["aster"].stats["stamina"] = 100.0
+			xgs.characters["aster"].stats["_last_dodge_tick"] = -100.0
+			xgs.dodge_roll("aster", Vector3(0, 0, 1))
+			hp_when_dodging = float(xgs.get_stat("aster", "hp"))
+		if xenemy.get_state() == "recover":
+			break
+	_assert_true(absf(float(xgs.get_stat("aster", "hp")) - hp_when_dodging) < 0.01,
+		"A chain segment does NOT damage a target that is mid-dodge (hp %.1f vs %.1f at dodge)" % [xgs.get_stat("aster", "hp"), hp_when_dodging])
+	_cleanup_attack_ctx(xctx)
+
+# --- Test: a dodge that fails to move (wall-blocked) must NOT burn the cooldown ---
+# Written to break the current code: dodge_roll sets _last_dodge_tick before the wall-block check, so a
+# refunded (zero-distance) dodge wrongly puts the character on cooldown.
+func _test_dodge_failure_no_cooldown() -> void:
+	_test_name = "Dodge Failure No Cooldown"
+	var gs := GameState.new()
+	var sched := EventScheduler.new()
+	var grid := GridWorld.new()
+	grid.create_room(30, 30)
+	gs.grid = grid
+	gs.scheduler = sched
+	# Hard against the +X wall so a +X dodge is fully blocked (zero distance -> refund).
+	gs.register_character("p", grid.grid_to_world(Vector2i(28, 15)), 3.0, {"stamina": 100.0, "dodge_unlocked": true})
+	var into_wall := gs.dodge_roll("p", Vector3(1, 0, 0))
+	_assert_true(not into_wall, "A dodge straight into a wall fails (no movement)")
+	_assert_true(absf(float(gs.characters["p"].stats.stamina) - 100.0) < 0.01, "A blocked dodge refunds stamina")
+	# Immediately dodge a valid direction — it must NOT be on cooldown from the blocked attempt.
+	var away := gs.dodge_roll("p", Vector3(-1, 0, 0))
+	_assert_true(away, "A valid dodge right after a blocked one is NOT on cooldown (blocked dodge didn't move, so it can't cost the cooldown)")
+
+# --- Test: a strike never lands on a target that is already down (no hitting a corpse) ---
+# Written to break the current code: _apply_strike applies damage without re-checking the target is alive,
+# so a charge that resolves after the target died (another enemy's kill) still hits the corpse.
+func _test_strike_skips_corpse() -> void:
+	_test_name = "Strike Skips Corpse"
+	var ctx := _make_attack_ctx(500.0, false)
+	var sched: EventScheduler = ctx["sched"]
+	var gs: GameState = ctx["gs"]
+	var enemy: Enemy = ctx["enemy"]
+	var hits_after_death := [0]
+	var dead := [false]
+	enemy.hit_target.connect(func(_t, _d):
+		if dead[0]:
+			hits_after_death[0] += 1)
+	for i in range(240):
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+		# The instant the guard commits its lunge, an OUTSIDE source downs the target.
+		if enemy.get_state() == "charge" and not dead[0]:
+			dead[0] = true
+			gs.set_stat("aster", "hp", 0.0)
+		if enemy.get_state() == "recover":
+			break
+	_assert_true(dead[0], "The target is downed mid-charge by an outside source")
+	_assert_equals(hits_after_death[0], 0, "The committed strike does NOT land on the now-dead target (no corpse hit)")
+	_cleanup_attack_ctx(ctx)
+
 # --- Test: the dialogue transcript is capped at TRANSCRIPT_MAX, dropping the oldest lines ---
 # A long scene runs far more than 40 lines; the history must cap (pop_front) so it can't grow unbounded.
 # Guards the cap directly: the oldest entries fall off and the newest stay.
@@ -9535,6 +9688,102 @@ func _cleanup_attack_ctx(ctx: Dictionary) -> void:
 		ctx["enemy"].queue_free()
 	if ctx.has("holder") and is_instance_valid(ctx["holder"]):
 		ctx["holder"].queue_free()
+
+# --- Test: the enemy FSM walks the FULL attack cycle in order, loops, restores speed, and is FF-invariant ---
+# Proves the state machine drives combat end-to-end: alert -> pursuit -> windup -> charge -> impact ->
+# recover, then re-engages (the loop), the charge_speed is restored to move_speed afterwards, and the whole
+# thing produces the SAME strike count at a fine and a coarse tick step (fast-forward changes nothing).
+func _test_combat_cycle() -> void:
+	_test_name = "Combat Cycle"
+	var ctx := _make_attack_ctx(500.0, false)  # tanky target so the guard re-engages several times
+	var sched: EventScheduler = ctx["sched"]
+	var gs: GameState = ctx["gs"]
+	var enemy: Enemy = ctx["enemy"]
+	var hits := [0]
+	enemy.hit_target.connect(func(_t, _d): hits[0] += 1)
+	var seq: Array[String] = [enemy.get_state()]
+	for i in range(360):  # ~18s
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+		var st := enemy.get_state()
+		if st != seq[seq.size() - 1]:
+			seq.append(st)
+	# Every cycle state appears, and the FIRST appearance of each is in attack order.
+	var order := ["alert", "pursuit", "windup", "charge", "impact", "recover"]
+	var idx := {}
+	for s in order:
+		idx[s] = seq.find(s)
+		_assert_true(int(idx[s]) >= 0, "The cycle reaches '%s'" % s)
+	_assert_true(int(idx["alert"]) < int(idx["pursuit"]) and int(idx["pursuit"]) < int(idx["windup"])
+		and int(idx["windup"]) < int(idx["charge"]) and int(idx["charge"]) < int(idx["impact"])
+		and int(idx["impact"]) < int(idx["recover"]),
+		"States fire in attack order: alert->pursuit->windup->charge->impact->recover  (seq head: %s)" % str(seq.slice(0, 8)))
+	_assert_true(hits[0] >= 2, "The guard re-engages and strikes more than once (combat loops; %d hits)" % hits[0])
+	# Drain out of any in-flight charge, then the lunge's charge_speed must be back to move_speed.
+	var guard_speed := 0.0
+	for i in range(40):
+		guard_speed = float(gs.characters["guard"].move_speed)
+		if enemy.get_state() != "charge":
+			break
+		sched.advance_ticks(0.05)
+	_assert_true(absf(guard_speed - enemy.move_speed) < 0.01,
+		"charge_speed is restored to move_speed after the charge (got %.2f, want %.2f)" % [guard_speed, enemy.move_speed])
+	_cleanup_attack_ctx(ctx)
+
+	# Fast-forward invariance: identical strike count at a fine (0.05) and a coarse (0.5) tick step.
+	var hits_to_tick := func(step: float) -> int:
+		var c := _make_attack_ctx(500.0, false)
+		var s: EventScheduler = c["sched"]
+		var e: Enemy = c["enemy"]
+		var n := [0]
+		e.hit_target.connect(func(_t, _d): n[0] += 1)
+		while s.get_current_tick() < 12.0 - 1e-9:
+			s.advance_ticks(minf(step, 12.0 - s.get_current_tick()))
+		_cleanup_attack_ctx(c)
+		return n[0]
+	var fine := int(hits_to_tick.call(0.05))
+	var coarse := int(hits_to_tick.call(0.5))
+	_assert_true(fine >= 2, "Combat resolves multiple strikes in 12s at 1x (%d)" % fine)
+	_assert_equals(coarse, fine, "Combat is fast-forward invariant: same strike count at fine and coarse tick steps")
+
+# --- Test: the dodge is resolved at IMPACT, and a failed dodge still lets the strike land ---
+# #20: a dodge enabled only AFTER the charge commits still slips the hit (and one revoked mid-charge lands).
+# #24: an unlocked dodge that can't pay (low stamina) fails at impact, so the strike connects.
+func _test_dodge_combat_timing() -> void:
+	_test_name = "Dodge Combat Timing"
+	# Drive an attack to its first recover, optionally flipping the target's dodge stats the first time a
+	# given state is reached, and report the damage the target took.
+	var run := func(start_dodge: bool, flip_at: String, flip_to: bool, stamina: float) -> float:
+		var ctx := _make_attack_ctx(100.0, start_dodge)
+		var s: EventScheduler = ctx["sched"]
+		var gs: GameState = ctx["gs"]
+		var e: Enemy = ctx["enemy"]
+		gs.characters["aster"].stats["stamina"] = stamina
+		var flipped := [false]
+		for i in range(240):
+			s.advance_ticks(0.05)
+			e._process(0.05)
+			if flip_at != "" and not flipped[0] and e.get_state() == flip_at:
+				flipped[0] = true
+				gs.characters["aster"].stats["dodge_unlocked"] = flip_to
+				gs.characters["aster"].stats["auto_dodge"] = flip_to
+			if e.get_state() == "recover":
+				break
+		var dmg := 100.0 - float(gs.get_stat("aster", "hp"))
+		_cleanup_attack_ctx(ctx)
+		return dmg
+
+	# #20: dodge unlocked only once the charge commits still slips the strike — proving the dodge is
+	# resolved AT IMPACT, not locked in at lunge-commit. (start_dodge=false keeps the target from
+	# detection-fleeing before the charge, so the charge is actually reached.)
+	_assert_true(run.call(false, "charge", true, 100.0) < 0.01,
+		"Dodge enabled mid-charge still slips the strike (resolved at impact, not at lunge-commit)")
+	# #24: an unlocked+auto dodge with too little stamina FAILS at impact, so the strike connects.
+	_assert_true(run.call(true, "", true, 5.0) > 0.0,
+		"An unlocked dodge that can't pay stamina fails -> the strike lands")
+	# A fully-funded auto-dodge evades (it both detection-dodges away and slips the strike — no damage).
+	_assert_true(run.call(true, "", true, 100.0) < 0.01,
+		"A funded auto-dodge evades the strike")
 
 # --- Test: chromatic aberration is live in the sim scenes ---
 func _test_chromatic_aberration() -> void:

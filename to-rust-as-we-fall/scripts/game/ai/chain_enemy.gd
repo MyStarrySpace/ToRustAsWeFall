@@ -64,10 +64,13 @@ func _process(delta: float) -> void:
 				if target_pos == Vector3.INF:
 					continue
 				if seg_pos.distance_to(target_pos) < 0.6:
-					_charge_hit = true
-					hit_target.emit(target_id, charge_damage)
-					_end_charge()
-					break
+					# Route segment contact through the SHARED strike resolution so it honours the dodge
+					# window, skips a downed target, and deals REAL data-layer damage (not just a signal).
+					# A contact that's dodged/dead doesn't end the charge — the scheduled impact retries.
+					_resolve_strike(target_id)
+					if _charge_hit:
+						_end_charge()
+						break
 			if _charge_hit:
 				break
 

@@ -358,28 +358,36 @@ func _end_charge() -> void:
 		return
 	_fsm.transition_to("impact")
 
-## The strike resolves at impact. It lands on the committed target unless that target is mid-dodge
-## (dodge_roll, gated behind dodge_unlocked). _charge_hit guards against a double-apply when ChainEnemy
-## already emitted the segment hit during the charge.
-func _apply_strike() -> void:
+## Resolve a single charge strike against `tid`, exactly once per charge (deduped by _charge_hit). This is
+## the SHARED path for the standard scheduled impact AND a ChainEnemy segment contact, so both honour the
+## dodge window, never hit a downed target, and apply REAL data-layer damage (adjust_stat) — not just a
+## cosmetic signal. Returns true if the strike landed.
+func _resolve_strike(tid: String) -> bool:
 	if _charge_hit:
-		return  # already resolved this charge (e.g. a ChainEnemy segment connected)
-	var tid := _current_target_id
-	if tid == "" or game_state == null:
-		return
+		return false  # already resolved this charge
+	if tid == "" or game_state == null or not game_state.characters.has(tid):
+		return false
+	# Never strike a target that is already down (e.g. another enemy felled it mid-charge).
+	if float(game_state.characters[tid].stats.get("hp", 1.0)) <= 0.0:
+		return false
 	# Dodge window: a target that can roll (dodge_unlocked) and auto-evades slips the committed strike.
-	if game_state.has_method("dodge_roll") and game_state.characters.has(tid):
+	if game_state.has_method("dodge_roll"):
 		var st: Dictionary = game_state.characters[tid].stats
 		if bool(st.get("dodge_unlocked", false)) and bool(st.get("auto_dodge", false)) and not game_state.is_dodging(tid):
 			game_state.dodge_roll(tid, _perp_to_target(tid))
-	var dodged := game_state.has_method("is_dodging") and game_state.is_dodging(tid)
-	if dodged:
-		return
+	if game_state.has_method("is_dodging") and game_state.is_dodging(tid):
+		return false
 	_charge_hit = true
-	if game_state.has_method("adjust_stat") and game_state.characters.has(tid):
+	if game_state.has_method("adjust_stat"):
 		game_state.adjust_stat(tid, "hp", -charge_damage)
 	_flash_target(tid)
 	hit_target.emit(tid, charge_damage)
+	return true
+
+## The strike resolves at impact (standard enemy). ChainEnemy routes its segment contact through the same
+## _resolve_strike so the two paths can't diverge.
+func _apply_strike() -> void:
+	_resolve_strike(_current_target_id)
 
 func _begin_recover() -> void:
 	if get_state() != "impact":
