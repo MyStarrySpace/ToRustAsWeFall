@@ -468,3 +468,34 @@ func _outline_target(
 	if system == null:
 		return null
 	return system.create_outline_target(parent, target_name, center, size, meshes, element_id, radius, opts)
+
+## Create an interactable for an OBJECT and cross-wire it to the shared outline+particle highlight, so
+## the object gets the hover OUTLINE and the click/active SHIMMER — the SAME feedback tutorial objects
+## get (Aster's sim). This is the chunk equivalent of the tutorial's _outline_object_meshes +
+## _set_room_target_interaction_delegate: the meshless interactable forwards hover/SHIFT to the
+## OutlineSurfaceTarget wrapping `meshes` (the real silhouette), instead of showing nothing. Use this
+## for any chunk object the player can act on, so chunk interactables and tutorial objects highlight
+## identically through the one OutlineFeedbackManager.
+func _add_object_interactable(
+	parent: Node3D,
+	node_name: String,
+	description: String,
+	position: Vector3,
+	tutorial_label: String,
+	meshes: Array,
+	required_character := "",
+	dwell_time := 1.0,
+	one_shot := false,
+	interaction_radius := 1.5,
+	interactable_type := Interactable.InteractableType.HOLD_ACTION
+) -> Area3D:
+	var interactable := _add_interactable(parent, node_name, description, position, tutorial_label,
+		required_character, dwell_time, one_shot, interaction_radius, interactable_type)
+	var target := _outline_object(parent, node_name + "Outline", meshes,
+		_interactable_data_id(node_name), interaction_radius)
+	if target != null:
+		if target.has_method("set_interaction_delegate"):
+			target.call("set_interaction_delegate", interactable)
+		if interactable.has_method("set_outline_target"):
+			interactable.call("set_outline_target", target)
+	return interactable

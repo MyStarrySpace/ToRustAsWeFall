@@ -40,6 +40,7 @@ const GUARD_POSITIONS := [Vector3(50.0, 0.5, 0.0), Vector3(51.2, 0.5, 1.2), Vect
 const CORPSE_POS := Vector3(51.0, 0.0, 0.0)
 const LURE_DURATION := 12.0       # scheduler ticks a guard stays drawn to a lure
 const LURE_TEND_TIME := 2.5       # Peris tends a ferrolure (after walking to it) before it sings out
+const LURE_PICK_RADIUS := 0.8     # tight click target on the small flure, so a walk-past click misses it
 const GUARD_SPEED := 4.5          # between a character's walk (~3.0) and run (6.0): threatening, escapable
 
 var _enemies: Array = []
@@ -100,15 +101,15 @@ func _build_corpse() -> void:
 
 # The lures are TIMED_ACTION interactables (CLICK to use, never proximity): with Peris active, a click
 # walks her over, then she TENDS it for LURE_TEND_TIME (the interactable's own dwell timer, with the
-# progress ring) before `interacted` fires and the lure sings. The tend duration is the interactable's
-# dwell_time, not a hand-rolled per-chunk schedule, so terminals and other "takes time" interactables
-# reuse the same type. (Tests still drive activate_lure1/2 directly for the immediate state change.)
+# progress ring) before `interacted` fires and the lure sings. _add_object_interactable wraps each
+# flure MESH in the shared outline+particle highlight, so the flure gets the hover outline and the
+# click/active shimmer like any tutorial object (one OutlineFeedbackManager, no per-chunk divergence).
 func _build_interactables() -> void:
-	var lure2 := _add_interactable(self, "Lure2Interact", "Ferrolure", LURE2_POS,
-		"Tend", "peris", LURE_TEND_TIME, true, 1.6, Interactable.InteractableType.TIMED_ACTION)
+	var lure2 := _add_object_interactable(self, "Lure2Interact", "Ferrolure", LURE2_POS,
+		"Tend", [_lure2_mesh], "peris", LURE_TEND_TIME, true, LURE_PICK_RADIUS, Interactable.InteractableType.TIMED_ACTION)
 	lure2.interacted.connect(func() -> void: activate_lure2())
-	var lure1 := _add_interactable(self, "Lure1Interact", "Ferrolure", LURE1_POS,
-		"Tend", "peris", LURE_TEND_TIME, true, 1.6, Interactable.InteractableType.TIMED_ACTION)
+	var lure1 := _add_object_interactable(self, "Lure1Interact", "Ferrolure", LURE1_POS,
+		"Tend", [_lure1_mesh], "peris", LURE_TEND_TIME, true, LURE_PICK_RADIUS, Interactable.InteractableType.TIMED_ACTION)
 	lure1.interacted.connect(func() -> void: activate_lure1())
 
 func _spawn_guards() -> void:
