@@ -55,6 +55,7 @@ var _hover_grid: MeshInstance3D
 # committing it. Recomputed only when the hovered cell changes (per-frame pathfinding would be wasteful).
 const PREVIEW_COLOR := Color(0.55, 0.7, 0.85)  # muted blue-grey, distinct from the bright committed path
 var _path_preview: PathRenderer
+var _party_previews: Dictionary = {}   # char_id -> PathRenderer, one per member when group-moving
 var _preview_last_cell := Vector2i(0x7fffffff, 0x7fffffff)
 
 
@@ -283,7 +284,8 @@ func _update_hover_from_screen(screen_pos: Vector2) -> void:
 
 ## Show the would-be route to the hovered point (dim), before a click commits it. Recomputed only when
 ## the hovered CELL changes — per-frame pathfinding for a cosmetic line would be wasteful. Cleared while
-## actually moving (the committed path shows then) and when not hovering the floor.
+## actually moving (the committed path shows then) and when not hovering the floor. With a party selected
+## (group_move) it previews EVERY member's path to its own spread destination, not just the active one.
 func _update_path_preview(hit: Vector3) -> void:
 	if _path_preview == null or game_state == null or char_id == "":
 		return
@@ -294,16 +296,66 @@ func _update_path_preview(hit: Vector3) -> void:
 	if cell == _preview_last_cell:
 		return
 	_preview_last_cell = cell
+	if group_move and game_state.get_party().size() > 1:
+		_path_preview.clear_explicit_path()  # the per-member previews replace the single one
+		_update_party_preview(hit)
+		return
+	_clear_party_preview()
 	var path := game_state.compute_preview_path(char_id, hit)
 	if path.size() >= 2:
 		_path_preview.set_explicit_path(path, 1)  # from_index 1: the renderer prepends the live start point
 	else:
 		_path_preview.clear_explicit_path()
 
+## One dim ribbon per selected member, each in that member's colour, anchored to that member so it starts
+## at them. Mirrors the party spread, so the preview matches the click.
+func _update_party_preview(hit: Vector3) -> void:
+	var entries: Array = game_state.compute_preview_party_paths(hit)
+	var seen := {}
+	for entry in entries:
+		var cid: String = entry["char_id"]
+		var path: Array = entry["path"]
+		seen[cid] = true
+		var pr: PathRenderer = _party_previews.get(cid)
+		if pr == null:
+			pr = PathRenderer.new()
+			add_child(pr)
+			var node := _find_char_node(cid)
+			var col := PREVIEW_COLOR
+			if node != null and "color" in node:
+				col = node.color
+			pr.setup(game_state, "", col, node)  # anchor to the member so the ribbon starts at them
+			_party_previews[cid] = pr
+		if path.size() >= 2:
+			_party_previews[cid].set_explicit_path(path, 1)
+		else:
+			_party_previews[cid].clear_explicit_path()
+	for cid in _party_previews.keys():
+		if not seen.has(cid):
+			_party_previews[cid].clear_explicit_path()
+
+func _clear_party_preview() -> void:
+	for cid in _party_previews.keys():
+		_party_previews[cid].clear_explicit_path()
+
 func _clear_path_preview() -> void:
 	if _path_preview != null:
 		_path_preview.clear_explicit_path()
+	_clear_party_preview()
 	_preview_last_cell = Vector2i(0x7fffffff, 0x7fffffff)  # force a recompute on the next hover
+
+## The scene node for a character id (this player, or a sibling party member) — used to anchor each
+## member's preview ribbon to that member and tint it their colour.
+func _find_char_node(cid: String) -> Node3D:
+	if cid == char_id:
+		return self
+	var root := get_parent()
+	if root == null:
+		return null
+	for n in root.find_children("*", "", true, false):
+		if n is Node3D and "char_id" in n and str(n.char_id) == cid:
+			return n as Node3D
+	return null
 
 ## When true, a ground click moves the whole party (spread onto distinct cells)
 ## via the data layer rather than just this character — so a multi-select group

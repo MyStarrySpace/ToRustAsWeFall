@@ -8451,6 +8451,21 @@ func _test_lure_relay_puzzle() -> void:
 			tend_inst.headless_advance(float(lure2_node.dwell_time) + 0.5, 0.1)
 			_assert_equals(int(tchunk.get_preview_state()["committed_lure"]), 2,
 				"After Peris finishes tending (dwell_time), the ferrolure sings and the guards commit")
+		# Overshoot fix: a route to a point just BEFORE a corridor node (38, before node c40) must end AT
+		# the point, not run forward to the node and backtrack.
+		var tgs = tend_inst._game_state
+		var ppath: Array = tgs.compute_preview_path("peris", Vector3(38.0, 0.5, 0.0))
+		var backtracks := false
+		for i in range(2, ppath.size()):
+			var d1: Vector3 = (ppath[i - 1] as Vector3) - (ppath[i - 2] as Vector3)
+			var d2: Vector3 = (ppath[i] as Vector3) - (ppath[i - 1] as Vector3)
+			d1.y = 0.0
+			d2.y = 0.0
+			if d1.length() > 0.01 and d2.length() > 0.01 and d1.normalized().dot(d2.normalized()) < -0.5:
+				backtracks = true
+		_assert_true(not backtracks, "Route to a point before a node does NOT overshoot/backtrack")
+		_assert_true((ppath[ppath.size() - 1] as Vector3).distance_to(Vector3(38.0, 0.5, 0.0)) < 0.6,
+			"Route ends at the clicked point, not past it at the node")
 		tend_inst.queue_free()
 		await get_tree().process_frame
 
@@ -8766,6 +8781,27 @@ func _test_preview_pathfinding() -> void:
 	# Unknown character -> no preview.
 	_assert_equals(gs.compute_preview_path("nobody", Vector3(1.0, 0.0, 1.0)).size(), 0,
 		"Unknown character -> empty preview path")
+
+	# --- Party preview: each member previews its OWN route to its OWN spread destination. ---
+	gs.register_character("peris", Vector3(0.0, 0.5, 1.0), 3.0, {})
+	gs.register_character("endo", Vector3(0.0, 0.5, -1.0), 3.0, {})
+	gs.set_party(["aster", "peris", "endo"])
+	var log_party_before: int = log.size()
+	var party: Array = gs.compute_preview_party_paths(Vector3(8.0, 0.5, 0.0))
+	_assert_equals(party.size(), 3, "Party preview returns a route per member (got %d)" % party.size())
+	_assert_equals(log.size(), log_party_before, "Party preview emits NO event-log entries (replay-safe)")
+	_assert_true(not gs.is_moving("peris") and not gs.is_moving("endo"),
+		"Party preview starts no moves")
+	var min_z := 1.0e9
+	var max_z := -1.0e9
+	for e in party:
+		var p: Array = e["path"]
+		if p.size() >= 2:
+			var z: float = (p[p.size() - 1] as Vector3).z
+			min_z = minf(min_z, z)
+			max_z = maxf(max_z, z)
+	_assert_true(max_z - min_z > 0.5,
+		"Party members preview DISTINCT destinations (z spread %.2f)" % (max_z - min_z))
 
 # --- Test: enemy attacks land predictively, the lunge never teleports, and the FSM disengages ---
 # Encodes the three bugs the redesign fixed: (1) the charge used to teleport the body onto a target
@@ -9694,7 +9730,7 @@ func _test_event_log_mutation_audit() -> void:
 		"get_navigation_state",
 		# Read-only route preview for the hover path: computes the path a click WOULD take (nav-graph /
 		# A* / straight line) without issuing or logging a move — pure UI, like the hover grid.
-		"compute_preview_path",
+		"compute_preview_path", "compute_preview_party_paths",
 	])
 
 	var public_funcs := _parse_public_funcs(content)

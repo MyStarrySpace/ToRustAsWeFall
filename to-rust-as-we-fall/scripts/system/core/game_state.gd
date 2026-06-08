@@ -426,6 +426,21 @@ func _resolve_world_path(current_pos: Vector3, target: Vector3) -> Array[Vector3
 				resolved.push_front(current_pos)
 			if resolved[resolved.size() - 1].distance_to(target) > 0.01:
 				resolved.append(target)
+			# Drop a backtracking overshoot: find_path snaps the target to the nearest NODE, so a target
+			# that sits BEFORE that node leaves a path that runs forward to the node, then reverses to the
+			# real point. If the final segment reverses direction, the snapped node is redundant — drop it
+			# so movement (and its preview) ends at the point, not past it. Only a true reversal is trimmed
+			# (a genuine corner/bend keeps its node), and on-node targets (guards -> a lure node) never
+			# append a point, so they're untouched — replay-safe.
+			if resolved.size() >= 3:
+				var n := resolved.size()
+				var d1 := resolved[n - 2] - resolved[n - 3]
+				var d2 := resolved[n - 1] - resolved[n - 2]
+				d1.y = 0.0
+				d2.y = 0.0
+				if d1.length_squared() > 0.0001 and d2.length_squared() > 0.0001 \
+						and d1.normalized().dot(d2.normalized()) < -0.5:
+					resolved.remove_at(n - 2)
 			return resolved
 	return [current_pos, target]
 
@@ -449,6 +464,27 @@ func compute_preview_path(id: String, target_pos: Vector3) -> Array[Vector3]:
 			out.append(grid.grid_to_world(c, level))
 		return out
 	return _resolve_world_path(current, target_pos)
+
+## READ-ONLY per-member route preview: the path EACH party member WOULD take to its own spread
+## destination on a party move. Mirrors party_move_to_pos's spread EXACTLY — distinct grid cells via
+## _assign_party_cells, or a deterministic Z-fan when gridless — so the preview matches what the click
+## commits. Pure UI: no mutation, no move, no log. Returns [{char_id, path}].
+func compute_preview_party_paths(target_pos: Vector3) -> Array:
+	var members := _main_group()
+	var out: Array = []
+	if grid != null:
+		var assigned := _assign_party_cells(members, grid.world_to_grid(target_pos))
+		for id in members:
+			var level := get_character_level(id)
+			var dest := grid.grid_to_world(assigned[id], level)
+			out.append({"char_id": id, "path": compute_preview_path(id, dest)})
+	else:
+		var count := members.size()
+		for i in range(count):
+			var lateral := (float(i) - float(count - 1) / 2.0) * _PARTY_GRIDLESS_SPACING
+			var dest: Vector3 = target_pos + Vector3(0.0, 0.0, lateral)
+			out.append({"char_id": members[i], "path": compute_preview_path(members[i], dest)})
+	return out
 
 # --- Queries ---
 
