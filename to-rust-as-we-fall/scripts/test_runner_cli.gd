@@ -213,6 +213,12 @@ func _ready() -> void:
 			"--test-dialogue-transcript-cap":
 				ran_test = true
 				_test_dialogue_transcript_cap()
+			"--test-showcase-gallery":
+				ran_test = true
+				await _test_showcase_gallery()
+			"--test-showcase-capture":
+				ran_test = true
+				await _test_showcase_capture()
 			"--test-visual-regression":
 				ran_test = true
 				await _test_visual_regression()
@@ -692,6 +698,7 @@ func _run_all_tests() -> void:
 	_test_detection_vertical_band()
 	_test_interactable_state_replay()
 	_test_dialogue_transcript_cap()
+	await _test_showcase_gallery()
 	await _test_lure_relay_puzzle()
 	await _test_chromatic_aberration()
 	_test_cooperative_pathfinding()
@@ -9080,6 +9087,92 @@ func _test_detection_vertical_band() -> void:
 		return seen
 	_assert_true(spots.call(0.0), "Same-floor target within horizontal range is spotted")
 	_assert_true(not spots.call(5.0), "A target 5m above (a different floor) is NOT spotted despite horizontal range")
+
+# --- Windowed eyeball: capture each bay of the Showcase Gallery to a PNG (run WITHOUT --headless) ---
+# Not an assertion test — it teleports the followed character to each bay so the follow camera frames it,
+# and saves vr_showcase_*.png for visual review of the geometry/labels/flora.
+func _test_showcase_capture() -> void:
+	_test_name = "Showcase Capture"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (needs a display — run WITHOUT --headless)")
+		return
+	var inst = await _instantiate_preview_chunk_and_wait("showcase_gallery", 6)
+	if inst == null:
+		_assert_true(false, "showcase_gallery instantiates")
+		return
+	if not await _vr_wait_render():
+		print("  [VR] showcase SKIPPED — window never rendered")
+		await _dispose_scene(inst)
+		return
+	# Hide the player's hover grid so it doesn't dominate the frame (the follow camera stays live).
+	var player = inst.get("_player")
+	if player != null:
+		if player.has_method("set_process"):
+			player.set_process(false)
+		var hg = player.get("_hover_grid")
+		if hg != null:
+			hg.visible = false
+	var bays := {
+		"hiding": Vector3(16.0, 0.5, -6.0),
+		"enemies": Vector3(38.5, 0.5, -8.0),
+		"chain": Vector3(44.0, 0.5, 8.0),
+		"flora": Vector3(62.0, 0.5, -3.0),
+	}
+	for name in bays.keys():
+		inst.headless_set_character_position("peris", bays[name])
+		if player != null:
+			var hg2 = player.get("_hover_grid")
+			if hg2 != null:
+				hg2.visible = false
+		for i in range(50):
+			await get_tree().process_frame  # let the follow camera ease onto the bay
+		var img := await _vr_capture()
+		if img != null:
+			img.save_png("res://vr_showcase_%s.png" % name)
+			print("  [VR] saved vr_showcase_%s.png" % name)
+	_assert_true(true, "Showcase bays captured")
+	await _dispose_scene(inst)
+
+# --- Test: the Showcase Gallery chunk shows off all three hiding tiers, both enemy types, and flora ---
+# Validates the exhibit content (3 hide tiers, 2 named enemy types + a demo sentry, the flora line-up) AND
+# that the hiding geometry actually TEACHES: on the EXPOSED pad the pacing sentry spots you, on the MEDIUM
+# pad it holds you at range, on the FULL pad it never sees you. Reaching the exit completes the tour.
+func _test_showcase_gallery() -> void:
+	_test_name = "Showcase Gallery"
+	var inst = await _instantiate_preview_chunk_and_wait("showcase_gallery", 5)
+	if inst == null:
+		_assert_true(false, "showcase_gallery preview instantiates")
+		return
+	var chunk = inst._active_chunk
+	var state: Dictionary = chunk.get_preview_state()
+	_assert_equals(int(state.get("hiding_type_count", 0)), 3, "Three hiding tiers on display")
+	_assert_equals(int(state.get("flora_count", 0)), 6, "All six flora species on display")
+	_assert_equals(int(state.get("enemy_count", 0)), 2, "Both enemy TYPES (standard + chain) are present")
+	_assert_true((state.get("enemy_types", []) as Array).has("standard") and (state.get("enemy_types", []) as Array).has("chain"),
+		"The state reports both enemy types")
+	var demo = chunk.find_child("GalleryDemoSentry", true, false)
+	_assert_true(demo != null, "The hiding bay has a demo sentry")
+	var anchors: Dictionary = chunk.get_preview_anchors()
+
+	# Drive each pad. Order FULL -> MEDIUM -> EXPOSED so the sentry stays calm until the exposed test.
+	var aggro_states := ["alert", "pursuit", "windup", "charge", "impact", "recover", "stagger"]
+	var spotted_on := func(pad_pos: Vector3) -> bool:
+		inst.headless_set_character_position("peris", pad_pos)
+		inst.headless_advance(8.0, 0.1)  # let the sentry pace its full line past the pad
+		return demo != null and str(demo.get_state()) in aggro_states
+	if demo != null:
+		_assert_true(not spotted_on.call(anchors["pad_full"] as Vector3),
+			"FULL safehold: the sentry never spots you")
+		_assert_true(not spotted_on.call(anchors["pad_medium"] as Vector3),
+			"MEDIUM low cover: the sentry holds at range (not spotted at the pad)")
+		_assert_true(spotted_on.call(anchors["pad_exposed"] as Vector3),
+			"EXPOSED: the pacing sentry spots you")
+
+	# Reaching the exit completes the tour.
+	inst.headless_set_character_position("peris", Vector3(79.0, 0.5, 0.0))
+	inst.headless_advance(0.3, 0.1)
+	_assert_true(bool(chunk.get_preview_state().get("complete", false)), "Reaching the EXIT completes the gallery tour")
+	await _dispose_scene(inst)
 
 # --- Test: the dialogue transcript is capped at TRANSCRIPT_MAX, dropping the oldest lines ---
 # A long scene runs far more than 40 lines; the history must cap (pop_front) so it can't grow unbounded.
