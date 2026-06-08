@@ -363,7 +363,8 @@ func _add_interactable(
 	dwell_time := 1.0,
 	one_shot := false,
 	interaction_radius := 1.5,
-	interactable_type := Interactable.InteractableType.HOLD_ACTION
+	interactable_type := Interactable.InteractableType.HOLD_ACTION,
+	auto_outline := true
 ) -> Area3D:
 	var spec := {
 		"position": position,
@@ -399,7 +400,46 @@ func _add_interactable(
 	_register_interactable(interactable)
 	if interactable.has_method("show_tutorial_label"):
 		interactable.call("show_tutorial_label")
+	if auto_outline:
+		_auto_outline_interactable(interactable, parent, position, interaction_radius)
 	return interactable
+
+## Auto-wire the shared outline+shimmer to whatever object meshes sit AT this interactable's spot, so
+## every chunk interactable highlights like a tutorial object without each call site listing meshes.
+## Collects MeshInstance3D under `parent` whose bounds-centre is within the interaction radius (the
+## floor/walls sit far from any single object, so they're excluded), skipping outline shells. No-op if
+## no mesh is found or an outline target is already linked (e.g. _add_object_interactable did it).
+func _auto_outline_interactable(interactable: Node, parent: Node3D, position: Vector3, radius: float) -> void:
+	if interactable == null:
+		return
+	if "_outline_target" in interactable and interactable.get("_outline_target") != null:
+		return
+	# Cap the collect radius: it gathers the object's OWN co-located meshes, not distant walls a big
+	# interaction radius would otherwise reach.
+	var meshes := _collect_meshes_near(parent, position, clampf(radius, 0.6, 1.6))
+	if meshes.is_empty():
+		return
+	var target := _outline_object(parent, str(interactable.name) + "Outline", meshes,
+		_interactable_data_id(str(interactable.name)), radius)
+	if target == null:
+		return
+	if target.has_method("set_interaction_delegate"):
+		target.call("set_interaction_delegate", interactable)
+	if interactable.has_method("set_outline_target"):
+		interactable.call("set_outline_target", target)
+
+## MeshInstance3D under `node` whose world AABB centre is within `radius` of `position`, excluding
+## outline shells. Used to find the object an interactable belongs to (its co-located meshes).
+func _collect_meshes_near(node: Node, position: Vector3, radius: float) -> Array:
+	var out: Array = []
+	for mi in OutlineFeedbackManager.collect_mesh_instances(node):
+		if mi == null or mi.mesh == null or mi.name == "ObjectOutlineShell":
+			continue
+		var world_aabb: AABB = mi.global_transform * mi.mesh.get_aabb()
+		var center := world_aabb.position + world_aabb.size * 0.5
+		if center.distance_to(position) <= radius:
+			out.append(mi)
+	return out
 
 func _add_inspection_interactable(
 	parent: Node3D,
@@ -490,7 +530,7 @@ func _add_object_interactable(
 	interactable_type := Interactable.InteractableType.HOLD_ACTION
 ) -> Area3D:
 	var interactable := _add_interactable(parent, node_name, description, position, tutorial_label,
-		required_character, dwell_time, one_shot, interaction_radius, interactable_type)
+		required_character, dwell_time, one_shot, interaction_radius, interactable_type, false)
 	var target := _outline_object(parent, node_name + "Outline", meshes,
 		_interactable_data_id(node_name), interaction_radius)
 	if target != null:
