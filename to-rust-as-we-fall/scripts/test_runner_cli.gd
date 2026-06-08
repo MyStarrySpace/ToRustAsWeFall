@@ -207,6 +207,12 @@ func _ready() -> void:
 			"--test-detection-vertical-band":
 				ran_test = true
 				_test_detection_vertical_band()
+			"--test-interactable-state-replay":
+				ran_test = true
+				_test_interactable_state_replay()
+			"--test-dialogue-transcript-cap":
+				ran_test = true
+				_test_dialogue_transcript_cap()
 			"--test-visual-regression":
 				ran_test = true
 				await _test_visual_regression()
@@ -684,6 +690,8 @@ func _run_all_tests() -> void:
 	_test_path_timed_wait_segment()
 	_test_enemy_pursuit_timeout()
 	_test_detection_vertical_band()
+	_test_interactable_state_replay()
+	_test_dialogue_transcript_cap()
 	await _test_lure_relay_puzzle()
 	await _test_chromatic_aberration()
 	_test_cooperative_pathfinding()
@@ -9072,6 +9080,68 @@ func _test_detection_vertical_band() -> void:
 		return seen
 	_assert_true(spots.call(0.0), "Same-floor target within horizontal range is spotted")
 	_assert_true(not spots.call(5.0), "A target 5m above (a different floor) is NOT spotted despite horizontal range")
+
+# --- Test: the dialogue transcript is capped at TRANSCRIPT_MAX, dropping the oldest lines ---
+# A long scene runs far more than 40 lines; the history must cap (pop_front) so it can't grow unbounded.
+# Guards the cap directly: the oldest entries fall off and the newest stay.
+func _test_dialogue_transcript_cap() -> void:
+	_test_name = "Dialogue Transcript Cap"
+	var box = load("res://scripts/ui/dialogue_box.gd").new()
+	var cap := int(box.TRANSCRIPT_MAX)
+	var total := cap + 5
+	for i in range(total):
+		box._append_to_transcript("line_%d" % i, "spk", "normal")
+	_assert_equals(box._transcript.size(), cap, "Transcript caps at TRANSCRIPT_MAX (%d)" % cap)
+	_assert_equals(String(box._transcript[0]["text"]), "line_%d" % (total - cap),
+		"Oldest entries pop_front off the transcript (first kept is line_%d)" % (total - cap))
+	_assert_equals(String(box._transcript[box._transcript.size() - 1]["text"]), "line_%d" % (total - 1),
+		"The newest line stays at the tail")
+	box.free()
+
+# --- Test: explicit interactable enable/disable + reset round-trip through the event log & replay ---
+# Sequences lock gates with set_interactable_enabled(false) and re-arm one-shots with reset_interactable().
+# Both emit their own KIND, so replay MUST reproduce the enabled/triggered state — otherwise a gate that
+# was locked in live play is wrongly open on replay (or a re-armed terminal stays spent). The existing
+# --test-interactable-data covers register+trigger; this covers the explicit enable/disable + reset paths.
+func _test_interactable_state_replay() -> void:
+	_test_name = "Interactable State Replay"
+	var grid := GridWorld.new()
+	grid.create_room(10, 10, true)
+
+	# (1) Explicit disable: a gate locked via set_interactable_enabled(false) replays as disabled + rejects.
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = EventScheduler.new()
+	var log := EventLog.new()
+	gs.event_log = log
+	gs.register_interactable({"id": "gate", "position": grid.grid_to_world(Vector2i(4, 4)), "requires_hold": false})
+	_assert_true(gs.is_interactable_enabled("gate"), "Gate starts enabled")
+	gs.set_interactable_enabled("gate", false)
+	_assert_true(not gs.is_interactable_enabled("gate"), "Gate is locked after set_interactable_enabled(false)")
+	var replayed := GameState.replay(log, grid)
+	_assert_true(not replayed.is_interactable_enabled("gate"),
+		"Replay reproduces the explicitly-disabled gate (KIND_SET_INTERACTABLE_ENABLED round-trips)")
+	_assert_true(not replayed.trigger_interactable("gate", ""),
+		"A replayed locked gate still rejects triggers")
+
+	# (2) Reset / re-arm: a spent one-shot reset via reset_interactable() replays as enabled + fireable.
+	var gs2 := GameState.new()
+	gs2.grid = grid
+	gs2.scheduler = EventScheduler.new()
+	var log2 := EventLog.new()
+	gs2.event_log = log2
+	gs2.register_interactable({"id": "terminal", "position": grid.grid_to_world(Vector2i(5, 5)), "requires_hold": false, "one_shot": true})
+	_assert_true(gs2.trigger_interactable("terminal", ""), "One-shot terminal fires the first time")
+	_assert_true(not gs2.is_interactable_enabled("terminal"), "Spent one-shot is disabled")
+	gs2.reset_interactable("terminal")
+	_assert_true(gs2.is_interactable_enabled("terminal"), "reset_interactable re-arms the one-shot")
+	var replayed2 := GameState.replay(log2, grid)
+	_assert_true(replayed2.is_interactable_enabled("terminal"),
+		"Replay reproduces the reset (re-armed) one-shot as enabled (KIND_RESET_INTERACTABLE round-trips)")
+	_assert_true(not replayed2.get_interactable("terminal").get("triggered", false),
+		"Replay clears the triggered flag after a reset")
+	_assert_true(replayed2.trigger_interactable("terminal", ""),
+		"A replayed reset one-shot can fire again")
 
 # --- Test: floor overlays actually COMPOSITE pixels inside the real preview scene (windowed only) ---
 # The preview scene drops the alpha-BLEND pass, so an overlay can be structurally correct yet invisible.
