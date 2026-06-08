@@ -18,12 +18,12 @@ extends Node3D
 ## Purely cosmetic: it reads the scheduler clock but writes no game state, so it can
 ## live on _process and never affects determinism.
 
-const HEIGHT_OFFSET := 0.08
-const RUNNING_COLOR := Color(1.0, 0.7, 0.3, 0.7)
-const WALK_ALPHA := 0.55
+const HEIGHT_OFFSET := 0.06
+const RUNNING_COLOR := Color(1.0, 0.7, 0.3, 0.85)
+const WALK_ALPHA := 0.8
 ## The path draws as a flat ground RIBBON of this width (a 1px PRIMITIVE_LINES line was there
 ## before and was effectively invisible at gameplay-camera distance — the "no path in any scene").
-const PATH_WIDTH := 0.24
+const PATH_WIDTH := 0.34
 
 ## Data-layer character to visualize.
 var game_state: GameState
@@ -119,12 +119,13 @@ func _build_ribbon(points: Array[Vector3]) -> Mesh:
 ## fewer than 2 points when there's nothing to draw.
 func _remaining_points() -> Array[Vector3]:
 	var pts: Array[Vector3] = []
+	var gy := _ground_y()
 	if game_state != null and game_state.scheduler != null and char_id != "" and game_state.is_moving(char_id):
 		var mv = game_state.characters[char_id].movement
 		if mv:
 			var path: Array[Vector3] = mv.path
 			var current_tick := game_state.scheduler.get_current_tick()
-			pts.append(_start_point())
+			pts.append(_start_point(gy))
 			# Draw every waypoint not yet reached. Use the real per-waypoint arrival_ticks (the
 			# same source get_position interpolates from) — a linear distance estimate is wrong for
 			# cooperative paths that wait at a cell, and would cull the wrong waypoints.
@@ -132,7 +133,7 @@ func _remaining_points() -> Array[Vector3]:
 			if ticks is Array and (ticks as Array).size() == path.size():
 				for i in range(path.size()):
 					if float(ticks[i]) > current_tick:
-						pts.append(path[i] + Vector3(0.0, HEIGHT_OFFSET, 0.0))
+						pts.append(Vector3(path[i].x, gy, path[i].z))
 			else:
 				var cum_dist: Array[float] = mv.cum_dist
 				var total: float = mv.total_distance
@@ -140,16 +141,25 @@ func _remaining_points() -> Array[Vector3]:
 				var current_dist := t * total
 				for i in range(1, path.size()):
 					if cum_dist[i] > current_dist:
-						pts.append(path[i] + Vector3(0.0, HEIGHT_OFFSET, 0.0))
+						pts.append(Vector3(path[i].x, gy, path[i].z))
 	elif _explicit_path.size() > 0:
-		pts.append(_start_point())
+		pts.append(_start_point(gy))
 		for i in range(_explicit_index, _explicit_path.size()):
-			pts.append(_explicit_path[i] + Vector3(0.0, HEIGHT_OFFSET, 0.0))
+			pts.append(Vector3(_explicit_path[i].x, gy, _explicit_path[i].z))
 	return pts
 
-func _start_point() -> Vector3:
+## The ribbon hugs the FLOOR, not the character's waist. Movement waypoints carry the mover's body
+## height (~0.5 for a gridless pos-move), which made the ribbon float; flatten every point to the
+## floor under the character's level instead (grid level height when there's a grid, else y≈0).
+func _ground_y() -> float:
+	if game_state != null and game_state.grid != null and char_id != "" and game_state.characters.has(char_id):
+		return game_state.grid.level_height * float(game_state.get_character_level(char_id)) + HEIGHT_OFFSET
+	return HEIGHT_OFFSET
+
+func _start_point(gy: float) -> Vector3:
 	if anchor != null:
-		return anchor.global_position + Vector3(0.0, HEIGHT_OFFSET, 0.0)
+		return Vector3(anchor.global_position.x, gy, anchor.global_position.z)
 	if game_state != null and char_id != "":
-		return game_state.get_position(char_id) + Vector3(0.0, HEIGHT_OFFSET, 0.0)
-	return global_position + Vector3(0.0, HEIGHT_OFFSET, 0.0)
+		var p := game_state.get_position(char_id)
+		return Vector3(p.x, gy, p.z)
+	return Vector3(global_position.x, gy, global_position.z)

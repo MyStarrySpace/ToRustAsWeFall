@@ -178,27 +178,32 @@ func _build_hover_grid() -> void:
 	# A Decal projects the grid TEXTURE straight down onto whatever floor is under it — it conforms to
 	# the surface and is occlusion-correct by construction, unlike the old flat procedural line-mesh that
 	# fought transparency/depth and vanished. (Decals need the Forward+ renderer — this project's default.)
-	# The texture is a shared WHITE grid (alpha falls off from the centre); modulate tints it per-player,
-	# so the pointed-at cell reads as a bright, focused target rather than a faint solid square.
+	# The grid is driven through the EMISSION channel so it glows at full brightness regardless of scene
+	# light — a Decal's albedo is lit, and the ferrolure chamber is dark enough to swallow it otherwise.
+	var tex := _build_grid_texture()
 	_hover_grid = Decal.new()
 	_hover_grid.top_level = true   # authored in world space; we set its global position to the cell
 	_hover_grid.visible = false
-	_hover_grid.texture_albedo = _grid_texture()
+	_hover_grid.texture_albedo = tex
+	_hover_grid.texture_emission = tex
+	_hover_grid.emission_energy = 2.2
 	_hover_grid.size = Vector3(HOVER_SPAN * HOVER_CELL, HOVER_DECAL_DEPTH, HOVER_SPAN * HOVER_CELL)
-	_hover_grid.modulate = Color(color.r, color.g, color.b, 1.0)
+	_hover_grid.modulate = Color.WHITE
 	add_child(_hover_grid)
 
-## Shared HOVER_SPAN×HOVER_SPAN grid IMAGE (built once): WHITE lines + a filled centre cell, with the
-## ALPHA falling off radially from the centre so the pointed-at tile is strongly opaque and the grid
-## dissolves toward the edges. Players tint it via the Decal's modulate, so we only build it once.
-static var _shared_grid_texture: ImageTexture
+## Per-player grid IMAGE in the player's colour: lines + a filled centre cell, with the ALPHA falling
+## off radially from the centre so the pointed-at tile is strongly opaque and the grid dissolves toward
+## the edges. The expensive falloff pattern is computed ONCE (shared alpha), then tinted per colour.
+static var _grid_alpha: PackedFloat32Array
+static var _grid_dim := 0
 
-static func _grid_texture() -> ImageTexture:
-	if _shared_grid_texture != null:
-		return _shared_grid_texture
+static func _ensure_grid_alpha() -> void:
+	if _grid_dim != 0:
+		return
 	var cells := HOVER_SPAN
-	var cpx := 48
+	var cpx := 40
 	var dim := cells * cpx
+	_grid_dim = dim
 	var lw := 2
 	var is_line: Array[bool] = []
 	is_line.resize(dim)
@@ -206,8 +211,8 @@ static func _grid_texture() -> ImageTexture:
 		var p: int = clampi(c * cpx, 0, dim - 1)
 		for o in range(-lw, lw + 1):
 			is_line[clampi(p + o, 0, dim - 1)] = true
-	var img := Image.create(dim, dim, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0.0, 0.0, 0.0, 0.0))
+	_grid_alpha = PackedFloat32Array()
+	_grid_alpha.resize(dim * dim)
 	var half := dim * 0.5
 	var c_lo: int = (cells / 2) * cpx
 	var c_hi: int = c_lo + cpx
@@ -219,13 +224,22 @@ static func _grid_texture() -> ImageTexture:
 			var falloff := pow(clampf(1.0 - sqrt(fx * fx + fy * fy), 0.0, 1.0), 1.6)
 			var a := 0.0
 			if in_cy and x >= c_lo and x < c_hi:
-				a = 0.85                       # the target cell: strong, focused
+				a = 0.95                       # the target cell: strong, focused
 			elif is_line[x] or is_line[y]:
-				a = 0.8 * falloff              # grid lines fade out toward the edges
+				a = 0.85 * falloff             # grid lines fade out toward the edges
+			_grid_alpha[y * dim + x] = a
+
+func _build_grid_texture() -> ImageTexture:
+	_ensure_grid_alpha()
+	var dim := _grid_dim
+	var img := Image.create(dim, dim, false, Image.FORMAT_RGBA8)
+	img.fill(Color(color.r, color.g, color.b, 0.0))
+	for y in range(dim):
+		for x in range(dim):
+			var a := _grid_alpha[y * dim + x]
 			if a > 0.004:
-				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, a))
-	_shared_grid_texture = ImageTexture.create_from_image(img)
-	return _shared_grid_texture
+				img.set_pixel(x, y, Color(color.r, color.g, color.b, a))
+	return ImageTexture.create_from_image(img)
 
 ## Raycast the floor under the cursor and show the grid there. Only in move mode while move-enabled,
 ## so it doesn't appear during selection prompts or for non-active party members.
