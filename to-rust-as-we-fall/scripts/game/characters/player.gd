@@ -48,9 +48,8 @@ var _dest_marker_mat: StandardMaterial3D
 # you can see exactly where a click will move you. Cosmetic; follows the cursor, snapped to cells.
 const HOVER_CELL := 1.0
 const HOVER_SPAN := 5            # NxN grid patch shown around the hovered cell
-const HOVER_DECAL_DEPTH := 3.0   # the Decal's vertical projection box — must reach the floor below it
-const HOVER_DECAL_LIFT := 0.5    # decal centre sits this far above the hovered floor point
-var _hover_grid: Decal
+const HOVER_LIFT := 0.05         # the flat grid quad sits this far above the hovered floor point
+var _hover_grid: MeshInstance3D
 
 
 signal arrived()
@@ -175,20 +174,27 @@ func _raycast_ground(screen_pos: Vector2) -> Vector3:
 # --- Hover grid (target preview) ---
 
 func _build_hover_grid() -> void:
-	# A Decal projects the grid TEXTURE straight down onto whatever floor is under it — it conforms to
-	# the surface and is occlusion-correct by construction, unlike the old flat procedural line-mesh that
-	# fought transparency/depth and vanished. (Decals need the Forward+ renderer — this project's default.)
-	# The grid is driven through the EMISSION channel so it glows at full brightness regardless of scene
-	# light — a Decal's albedo is lit, and the ferrolure chamber is dark enough to swallow it otherwise.
-	var tex := _build_grid_texture()
-	_hover_grid = Decal.new()
+	# A flat quad lying on the floor, textured with the grid IMAGE. UNSHADED so it shows at full
+	# brightness regardless of scene light (the ferrolure chamber is dark), and ALPHA-transparent so the
+	# gaps between lines stay see-through — a crisp grid, not the solid glowing blob a Decal's emission
+	# channel bloomed into. A PlaneMesh is the XZ plane (faces +Y), so it sits flat under the cursor.
+	_hover_grid = MeshInstance3D.new()
 	_hover_grid.top_level = true   # authored in world space; we set its global position to the cell
 	_hover_grid.visible = false
-	_hover_grid.texture_albedo = tex
-	_hover_grid.texture_emission = tex
-	_hover_grid.emission_energy = 2.2
-	_hover_grid.size = Vector3(HOVER_SPAN * HOVER_CELL, HOVER_DECAL_DEPTH, HOVER_SPAN * HOVER_CELL)
-	_hover_grid.modulate = Color.WHITE
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(HOVER_SPAN * HOVER_CELL, HOVER_SPAN * HOVER_CELL)
+	_hover_grid.mesh = plane
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	# ALPHA_SCISSOR, not ALPHA: the alpha-BLEND pass doesn't composite in the preview's scene (Decals and
+	# opaque meshes draw, alpha-blended meshes don't), so a blended grid was invisible. Scissor renders in
+	# the OPAQUE pass and discards texels below the threshold — solid grid lines + see-through gaps. The
+	# threshold also gives the falloff for free: faint outer lines fall under it and drop out.
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	mat.alpha_scissor_threshold = 0.3
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.albedo_texture = _build_grid_texture()
+	_hover_grid.material_override = mat
 	add_child(_hover_grid)
 
 ## Per-player grid IMAGE in the player's colour: lines + a filled centre cell, with the ALPHA falling
@@ -253,10 +259,10 @@ func _update_hover_from_screen(screen_pos: Vector2) -> void:
 	if hit == Vector3.INF:
 		_hover_grid.visible = false
 		return
-	# Centre the decal over the cell the cursor is over; it projects the grid down onto the floor.
+	# Centre the flat grid quad over the cell the cursor is over, just above the floor.
 	var cx := floorf(hit.x) + HOVER_CELL * 0.5
 	var cz := floorf(hit.z) + HOVER_CELL * 0.5
-	_hover_grid.global_position = Vector3(cx, hit.y + HOVER_DECAL_LIFT, cz)
+	_hover_grid.global_position = Vector3(cx, hit.y + HOVER_LIFT, cz)
 	_hover_grid.visible = true
 
 ## When true, a ground click moves the whole party (spread onto distinct cells)

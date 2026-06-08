@@ -48,7 +48,10 @@ func _ready() -> void:
 	_line.top_level = true
 	_mat = StandardMaterial3D.new()
 	_mat.albedo_color = Color(color, WALK_ALPHA)
-	_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	# OPAQUE, not alpha-blend: the preview scene doesn't composite the alpha-blend pass (opaque + Decals
+	# draw, blended meshes don't), so a translucent ribbon was invisible — the "path never shows". A solid
+	# unshaded ribbon reads clearly as a route on the floor.
+	_mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
 	_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_mat.cull_mode = BaseMaterial3D.CULL_DISABLED  # ribbon visible from either side
 	_line.material_override = _mat
