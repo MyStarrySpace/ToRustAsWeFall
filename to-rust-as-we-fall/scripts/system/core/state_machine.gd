@@ -33,6 +33,12 @@ func _init(scheduler = null, tag := "fsm") -> void:
 	_scheduler = scheduler
 	_tag = tag
 
+## Point the FSM at its scheduler after construction. Owners that build the FSM before their scheduler
+## exists (e.g. an enemy whose game_state is assigned after _ready) call this once it's available, so
+## timed transitions and per-state schedules actually fire (and transition cancels reach the timers).
+func set_scheduler(scheduler) -> void:
+	_scheduler = scheduler
+
 ## Register a state and its (optional) hooks. on_enter()/on_exit() take no args; on_update(delta).
 func add_state(state_name: String, on_enter := Callable(), on_exit := Callable(), on_update := Callable()) -> void:
 	_states[state_name] = {"enter": on_enter, "exit": on_exit, "update": on_update}

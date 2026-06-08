@@ -433,6 +433,19 @@ func _print_state() -> void:
 		if "_stamina" in seq: print("  Stamina: %.0f" % seq._stamina)
 		if "_game_time" in seq: print("  Time: %.2f" % seq._game_time)
 		if "_routing_mode" in seq: print("  Routing: %s" % seq._routing_mode)
+	var enemies := _find_enemies()
+	if not enemies.is_empty():
+		print("  Enemies:")
+		var gs: GameState = _find_game_state()
+		for e in enemies:
+			var tgt: String = str(e._current_target_id) if "_current_target_id" in e else ""
+			var dist := -1.0
+			if gs != null and tgt != "" and gs.characters.has(tgt) and gs.characters.has(e.char_id):
+				dist = gs.get_position(e.char_id).distance_to(gs.get_position(tgt))
+			var line := "    %s: %-8s hp=%.0f" % [e.char_id, e.get_state(), e._hp]
+			if tgt != "":
+				line += " target=%s d=%.1f" % [tgt, dist]
+			print(line)
 	print("------------------")
 
 # --- Helpers ---
@@ -442,6 +455,21 @@ func _find_game_state() -> GameState:
 	if seq and "_game_state" in seq:
 		return seq._game_state
 	return null
+
+## Every Enemy in the current scene (for the CLI status readout — makes the attack loop observable
+## headlessly: state, hp, and current target/distance).
+func _find_enemies() -> Array:
+	var out: Array = []
+	var root: Node = _tree.current_scene
+	if root != null:
+		_collect_enemies(root, out)
+	return out
+
+func _collect_enemies(node: Node, out: Array) -> void:
+	if node is Enemy:
+		out.append(node)
+	for child in node.get_children():
+		_collect_enemies(child, out)
 
 func _find_player_char_id() -> String:
 	var player: Node = _find_player()

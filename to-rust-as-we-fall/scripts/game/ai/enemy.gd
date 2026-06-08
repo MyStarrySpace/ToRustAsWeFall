@@ -16,11 +16,16 @@ extends Node3D
 @export var attack_range := 3.0
 @export var roam_step_distance := 1.6  # how far a single roam hop travels
 @export var roam_interval := 1.4       # scheduler ticks between roam hops
-@export var windup_duration := 0.8
+@export var alert_duration := 0.6      # spotting beat before the chase begins
+@export var windup_duration := 0.8     # telegraph before the lunge
 @export var charge_speed := 8.0
 @export var charge_damage := 25.0
 @export var charge_max_duration := 1.5
-@export var recover_duration := 1.2
+@export var lunge_gap := 0.6           # stop the lunge this far short of the target (no body-stacking)
+@export var impact_duration := 0.14    # hitstop at the moment of connection
+@export var recover_duration := 1.2    # cooldown after a strike (vulnerable window)
+@export var stagger_duration := 0.5    # interrupt when the enemy itself is struck mid-aggro
+@export var search_duration := 3.0     # how long to hunt at the last-known spot before giving up
 @export var iframe_duration := 1.0
 @export var pursuit_rescan_delay := 4.0  # Seconds of pursuit before scanning for new targets
 
@@ -37,6 +42,10 @@ var _hp: float
 var _detection_targets: Array[String] = []
 var _current_target_id := ""
 var _alert_label: Label3D
+var _last_known_target_pos := Vector3.ZERO
+
+# --- Ambient "home" the enemy returns to after losing a target ("idle" | "roam" | "patrol") ---
+var _home_mode := "idle"
 
 # --- Patrol (authored routes) ---
 var _patrol_waypoints: Array[Vector3] = []
@@ -49,13 +58,12 @@ var _roam_heading := Vector3(0.0, 0.0, -1.0)  # current wander direction
 var _roam_seq := 0                            # deterministic hop counter (fast-forward invariant)
 
 # --- Attack cycle ---
+# The lunge is a REAL data-layer move at charge_speed (logged → replay-safe, visual follows via the
+# _process sync), so the strike never teleports. _charging / _charge_hit / _charge_target_pos are the
+# contract ChainEnemy reads (its segments deal contact damage during the same charge window).
 var _charge_target_pos := Vector3.ZERO
 var _charging := false
 var _charge_hit := false
-# Charge position is derived from the scheduler tick (not wall-clock delta) so the
-# hit lands at the same tick whether or not fast-forward is held.
-var _charge_start_tick := 0.0
-var _charge_start_pos := Vector3.ZERO
 
 # --- Visual ---
 var _mesh: MeshInstance3D
@@ -81,6 +89,10 @@ func _ready() -> void:
 func activate() -> void:
 	if get_state() == "dead":
 		return
+	# The FSM was built in _ready, possibly before game_state (chunks assign it after add_child). Now
+	# that the scheduler exists, point the FSM at it so timed transitions / per-state schedules fire.
+	if _fsm != null:
+		_fsm.set_scheduler(_get_scheduler())
 	if game_state and not game_state.detection_predicted.is_connected(_on_detection_predicted):
 		game_state.detection_predicted.connect(_on_detection_predicted)
 	_fsm.transition_to("idle")
@@ -89,6 +101,7 @@ func activate() -> void:
 func set_patrol(waypoints: Array[Vector3]) -> void:
 	_patrol_waypoints = waypoints
 	_patrol_index = 0
+	_home_mode = "patrol"
 	if get_state() != "dead":
 		_fsm.transition_to("patrol")
 
@@ -100,10 +113,12 @@ func set_roam(anchor: Vector3, radius: float) -> void:
 	_roam_anchor = anchor
 	_roam_radius = maxf(0.5, radius)
 	_roam_seq = 0
+	_home_mode = "roam"
 	if get_state() != "dead":
 		_fsm.transition_to("roam")
 
-## Apply damage.
+## Apply damage. A hit taken mid-aggro staggers the enemy (a brief interrupt → counterplay), so the
+## player can break a windup/charge by striking first.
 func take_damage(amount: float) -> void:
 	if get_state() == "dead":
 		return
@@ -111,6 +126,9 @@ func take_damage(amount: float) -> void:
 	damaged.emit(amount, _hp)
 	if _hp <= 0:
 		die()
+		return
+	if get_state() in ["alert", "pursuit", "windup", "charge", "impact", "recover"]:
+		_fsm.transition_to("stagger")
 
 ## Kill immediately.
 func die() -> void:
@@ -124,7 +142,13 @@ func get_state() -> String:
 
 # --- State Machine Core (reusable StateMachine: tag-scoped scheduling + exit/enter hooks) ---
 
-const ENEMY_STATES := ["idle", "roam", "patrol", "detecting", "alert", "pursuit", "windup", "charge", "recover", "dead"]
+const ENEMY_STATES := ["idle", "roam", "patrol", "alert", "pursuit", "windup", "charge", "impact", "recover", "stagger", "search", "return", "dead"]
+
+# Telegraph colours (the body reads its intent at a glance).
+const WINDUP_COLOR := Color(0.9, 0.15, 0.1)    # red — about to strike
+const IMPACT_COLOR := Color(1.0, 0.85, 0.5)    # flash on connection
+const RECOVER_COLOR := Color(0.2, 0.3, 0.7)    # blue — vulnerable cooldown
+const STAGGER_COLOR := Color(0.85, 0.7, 0.2)   # yellow — interrupted
 
 func _build_fsm() -> void:
 	_fsm = StateMachine.new(_get_scheduler(), _state_tag)
@@ -141,66 +165,64 @@ func _change_state(new_state: String) -> void:
 func _enter_state(state: String) -> void:
 	match state:
 		"idle":
-			pass  # Detection via GameState prediction signal
+			_set_eye_energy(0.4)
 		"roam":
 			_set_eye_energy(0.5)
 			_roam_step()
 		"patrol":
+			_set_eye_energy(0.5)
 			_patrol_next_waypoint()
-		"detecting":
-			pass  # Explicitly scanning for new targets after pursuit timeout
 		"alert":
 			_show_alert_on_target()
-			_set_eye_energy(1.5)
-			var scheduler := _get_scheduler()
-			if scheduler:
-				scheduler.schedule_after(1.0, _begin_pursuit, _state_tag)
+			_set_eye_energy(1.6)
+			_anim_pop(1.18)
+			_fsm.schedule(alert_duration, _begin_pursuit)
 		"pursuit":
 			_set_eye_energy(2.0)
+			_set_mesh_color(_base_color)
 			_pursue_target()
-			# Rescan after pursuit_rescan_delay.
-			var sched := _get_scheduler()
-			if sched and pursuit_rescan_delay > 0:
-				sched.schedule_after(pursuit_rescan_delay, _begin_rescan, _state_tag)
-		"detecting":
-			# Listening for detection_predicted signal (same as idle)
-			_set_eye_energy(0.6)
-			_current_target_id = ""
+			if pursuit_rescan_delay > 0:
+				_fsm.schedule(pursuit_rescan_delay, _begin_search)
 		"windup":
 			_stop_movement()
-			_set_mesh_color(Color(0.9, 0.15, 0.1))
+			_set_mesh_color(WINDUP_COLOR)
 			_set_eye_energy(3.0)
-			# Lock the target position at the moment of windup
-			if _current_target_id != "" and game_state:
-				_charge_target_pos = game_state.get_position(_current_target_id)
-			var scheduler := _get_scheduler()
-			if scheduler:
-				scheduler.schedule_after(windup_duration, _begin_charge, _state_tag)
+			_anim_squash()  # crouch/anticipation
+			_fsm.schedule(windup_duration, _begin_charge)
 		"charge":
-			_charging = true
-			_charge_hit = false
-			_charge_start_pos = global_position
-			var scheduler := _get_scheduler()
-			if scheduler:
-				_charge_start_tick = scheduler.get_current_tick()
-				# Predictive strike: schedule the hit for the contact tick. It lands for sure (the lunge
-				# commits) unless the target dodges in the window — no per-frame distance check to whiff.
-				var lunge_dist: float = Vector2(_charge_target_pos.x - _charge_start_pos.x,
-					_charge_target_pos.z - _charge_start_pos.z).length()
-				var contact_time: float = minf(lunge_dist / maxf(charge_speed, 0.1), charge_max_duration)
-				scheduler.schedule_after(contact_time, _land_attack, _state_tag)
+			_begin_lunge()
+		"impact":
+			_apply_strike()
+			_set_mesh_color(IMPACT_COLOR)
+			_anim_punch()
+			_fsm.schedule(impact_duration, _begin_recover)
 		"recover":
 			_charging = false
 			_stop_movement()
-			_set_mesh_color(Color(0.2, 0.3, 0.7))
-			_set_eye_energy(0.3)
-			# Fade from blue back to normal color
+			_set_mesh_color(RECOVER_COLOR)
+			_set_eye_energy(0.8)
+			_anim_settle()
+			# Cosmetic fade blue -> base over the cooldown (never gates the transition).
 			if _mesh and _mesh.material_override:
 				var tween := create_tween()
-				tween.tween_method(_set_mesh_color, Color(0.2, 0.3, 0.7), _base_color, recover_duration)
-			var scheduler := _get_scheduler()
-			if scheduler:
-				scheduler.schedule_after(recover_duration, _resume_pursuit, _state_tag)
+				tween.tween_method(_set_mesh_color, RECOVER_COLOR, _base_color, recover_duration)
+			_fsm.schedule(recover_duration, _after_recover)
+		"stagger":
+			_charging = false
+			_stop_movement()
+			_set_mesh_color(STAGGER_COLOR)
+			_set_eye_energy(0.5)
+			_anim_recoil()
+			_fsm.schedule(stagger_duration, _after_stagger)
+		"search":
+			_set_eye_energy(1.0)
+			_set_mesh_color(_base_color)
+			_begin_search_move()
+			_fsm.schedule(search_duration, _begin_return)
+		"return":
+			_set_eye_energy(0.5)
+			_set_mesh_color(_base_color)
+			_begin_return_move()
 		"dead":
 			_charging = false
 			_stop_movement()
@@ -218,6 +240,9 @@ func _exit_state(state: String) -> void:
 			_stop_movement()
 		"charge":
 			_charging = false
+			# Restore the chase speed (the lunge ran at charge_speed through the data layer).
+			if game_state != null and game_state.characters.has(char_id):
+				game_state.change_move_speed(char_id, move_speed)
 
 # --- Detection (via GameState predictive signal) ---
 
@@ -226,10 +251,17 @@ func _on_detection_predicted(detector_id: String, target_id: String) -> void:
 		return
 	if target_id not in _detection_targets:
 		return
-	# Only respond to detections when in a scanning state (roaming enemies still see)
-	if get_state() not in ["idle", "roam", "patrol", "detecting"]:
+	# Only respond to detections when in a scanning state (roaming / searching / returning still see).
+	if get_state() not in ["idle", "roam", "patrol", "search", "return"]:
 		return
+	# Never (re)acquire a downed target — that was the "alert -> chase a corpse forever" loop.
+	if game_state.characters.has(target_id):
+		var t_stats: Dictionary = game_state.characters[target_id].stats
+		if t_stats.has("hp") and float(t_stats["hp"]) <= 0.0:
+			return
 	_current_target_id = target_id
+	if game_state:
+		_last_known_target_pos = game_state.get_position(target_id)
 	target_spotted.emit(target_id)
 	_fsm.transition_to("alert")
 
@@ -259,7 +291,8 @@ func _remove_alert_label() -> void:
 		_alert_label.queue_free()
 	_alert_label = null
 
-# Pursuit, windup, charge, recover.
+# --- Attack cycle: alert -> pursuit -> windup -> charge -> impact -> recover (-> pursuit / search) ---
+# Lose the target (rescan timeout, or it goes down) -> search the last-known spot -> return home.
 
 func _begin_pursuit() -> void:
 	if get_state() != "alert":
@@ -268,68 +301,170 @@ func _begin_pursuit() -> void:
 	_fsm.transition_to("pursuit")
 
 func _pursue_target() -> void:
-	if get_state() != "pursuit" or _current_target_id == "" or not game_state:
+	if get_state() != "pursuit":
+		return
+	if not _target_engageable():
+		_fsm.transition_to("search")
 		return
 	var target_pos := game_state.get_position(_current_target_id)
-	var dist := global_position.distance_to(target_pos)
+	_last_known_target_pos = target_pos
+	var dist := _planar_dist(_self_pos(), target_pos)
 	# Close enough to wind up.
-	if dist < attack_range:
+	if dist <= attack_range:
 		_fsm.transition_to("windup")
 		return
-	# Otherwise keep chasing
+	# Otherwise keep chasing (pursuit is the ONLY state that pathfinds).
 	if game_state.characters.has(char_id):
 		if game_state.grid:
 			game_state.command_move_to_cell(char_id, game_state.grid.world_to_grid(target_pos))
 		else:
 			game_state.command_move_to_pos(char_id, target_pos)
-	var scheduler := _get_scheduler()
-	if scheduler:
-		scheduler.schedule_after(pursuit_update_interval, _pursue_target, _state_tag)
+	_fsm.schedule(pursuit_update_interval, _pursue_target)
 
 func _begin_charge() -> void:
 	if get_state() != "windup":
 		return
 	_fsm.transition_to("charge")
 
+## Commit the lunge: a fast data-layer move (logged → replay-safe, visual follows via the _process
+## sync) toward a point just short of the target, locked NOW (freshest). The strike is scheduled for
+## the contact tick — it lands for sure unless the target dodges in the window. Because the body
+## actually MOVES through the data layer, there is no teleport-snap at impact.
+func _begin_lunge() -> void:
+	_charging = true
+	_charge_hit = false
+	if not _target_engageable() or not game_state.characters.has(char_id):
+		_fsm.transition_to("recover")
+		return
+	var ep := _self_pos()
+	var tp := game_state.get_position(_current_target_id)
+	_charge_target_pos = tp
+	var flat := Vector3(tp.x - ep.x, 0.0, tp.z - ep.z)
+	var dist := flat.length()
+	var dir := flat.normalized() if dist > 0.001 else Vector3.ZERO
+	var lunge_to := tp - dir * lunge_gap
+	var lunge_dist := maxf(0.0, dist - lunge_gap)
+	game_state.change_move_speed(char_id, charge_speed)
+	if lunge_dist > 0.05:
+		game_state.command_move_to_pos(char_id, lunge_to)
+	var contact: float = minf(lunge_dist / maxf(charge_speed, 0.1), charge_max_duration)
+	_fsm.schedule(contact, _end_charge)
+
+## Resolve the charge into the impact beat. Called by the scheduled contact (standard enemy) AND by
+## ChainEnemy when one of its trailing segments touches the target early — both route through the same
+## impact, deduped by _charge_hit so the strike resolves exactly once.
 func _end_charge() -> void:
 	if get_state() != "charge":
 		return
-	_fsm.transition_to("recover")
+	_fsm.transition_to("impact")
 
-## The predicted strike fires here at the contact tick. It ALWAYS lands on the committed target unless
-## that target is mid-dodge (dodge_roll, gated behind dodge_unlocked). On a hit it commits the lunge
-## end to the data layer (so the body doesn't snap back next move), deals damage, and flinches the
-## target. Then recover. Replaces the old per-frame distance check that could miss.
-func _land_attack() -> void:
-	if get_state() != "charge":
-		return
+## The strike resolves at impact. It lands on the committed target unless that target is mid-dodge
+## (dodge_roll, gated behind dodge_unlocked). _charge_hit guards against a double-apply when ChainEnemy
+## already emitted the segment hit during the charge.
+func _apply_strike() -> void:
+	if _charge_hit:
+		return  # already resolved this charge (e.g. a ChainEnemy segment connected)
 	var tid := _current_target_id
-	# Dodge window: if the target can roll (dodge_unlocked) and is set to auto-evade, it slips the
-	# committed strike. With dodge locked (the default — not unlocked in every chunk), the hit lands.
-	if tid != "" and game_state != null and game_state.has_method("dodge_roll") and game_state.characters.has(tid):
+	if tid == "" or game_state == null:
+		return
+	# Dodge window: a target that can roll (dodge_unlocked) and auto-evades slips the committed strike.
+	if game_state.has_method("dodge_roll") and game_state.characters.has(tid):
 		var st: Dictionary = game_state.characters[tid].stats
 		if bool(st.get("dodge_unlocked", false)) and bool(st.get("auto_dodge", false)) and not game_state.is_dodging(tid):
-			var ap := global_position
-			var tp := game_state.get_position(tid)
-			var approach := Vector3(ap.x - tp.x, 0.0, ap.z - tp.z)
-			var perp := Vector3(-approach.z, 0.0, approach.x)
-			perp = perp.normalized() if perp.length_squared() > 0.001 else Vector3(1.0, 0.0, 0.0)
-			game_state.dodge_roll(tid, perp)
-	var dodged := tid != "" and game_state != null and game_state.has_method("is_dodging") and game_state.is_dodging(tid)
-	if tid != "" and game_state != null and not dodged:
-		_charge_hit = true
-		# End ON the target so the strike connects, and COMMIT it so the next move starts from here.
-		var contact := _charge_target_pos
-		if game_state.characters.has(tid):
-			contact = game_state.get_position(tid)
-		global_position = Vector3(contact.x, global_position.y, contact.z)
-		if game_state.has_method("snap_character_to") and game_state.characters.has(char_id):
-			game_state.snap_character_to(char_id, contact)
-		if game_state.has_method("adjust_stat") and game_state.characters.has(tid):
-			game_state.adjust_stat(tid, "hp", -charge_damage)
-		_flash_target(tid)
-		hit_target.emit(tid, charge_damage)
+			game_state.dodge_roll(tid, _perp_to_target(tid))
+	var dodged := game_state.has_method("is_dodging") and game_state.is_dodging(tid)
+	if dodged:
+		return
+	_charge_hit = true
+	if game_state.has_method("adjust_stat") and game_state.characters.has(tid):
+		game_state.adjust_stat(tid, "hp", -charge_damage)
+	_flash_target(tid)
+	hit_target.emit(tid, charge_damage)
+
+func _begin_recover() -> void:
+	if get_state() != "impact":
+		return
 	_fsm.transition_to("recover")
+
+## After the cooldown, re-evaluate: strike again if the target is in range, chase if it fled, else
+## hunt the last-known spot. Never loop on a downed target (that was the "attacks a corpse" bug).
+func _after_recover() -> void:
+	if get_state() != "recover":
+		return
+	if not _target_engageable():
+		_fsm.transition_to("search")
+		return
+	var dist := _planar_dist(_self_pos(), game_state.get_position(_current_target_id))
+	_fsm.transition_to("windup" if dist <= attack_range else "pursuit")
+
+func _after_stagger() -> void:
+	if get_state() != "stagger":
+		return
+	_fsm.transition_to("pursuit" if _target_engageable() else "search")
+
+func _begin_search() -> void:
+	if get_state() != "pursuit":
+		return
+	_fsm.transition_to("search")
+
+func _begin_search_move() -> void:
+	# Walk to where the target was last seen and look around; detection stays live while searching.
+	if game_state and game_state.characters.has(char_id):
+		game_state.command_move_to_pos(char_id, _last_known_target_pos)
+
+func _begin_return() -> void:
+	if get_state() != "search":
+		return
+	_fsm.transition_to("return")
+
+func _begin_return_move() -> void:
+	# Head home, then resume the ambient mode the enemy was in before it gave chase.
+	var dest := _self_pos()
+	if _home_mode == "roam":
+		dest = _roam_anchor
+		if game_state and game_state.characters.has(char_id):
+			game_state.command_move_to_pos(char_id, dest)
+	var travel := _planar_dist(_self_pos(), dest) / maxf(move_speed, 0.1) + 0.1
+	_fsm.schedule(travel, _resume_home)
+
+func _resume_home() -> void:
+	if get_state() != "return":
+		return
+	match _home_mode:
+		"roam":
+			_fsm.transition_to("roam")
+		"patrol":
+			_fsm.transition_to("patrol")
+		_:
+			_fsm.transition_to("idle")
+
+## True while the current target exists and is not downed (hp stat present and <= 0 means down).
+func _target_engageable() -> bool:
+	if _current_target_id == "" or game_state == null:
+		return false
+	if not game_state.characters.has(_current_target_id):
+		return false
+	var stats: Dictionary = game_state.characters[_current_target_id].stats
+	if stats.has("hp") and float(stats["hp"]) <= 0.0:
+		return false
+	return true
+
+## Scheduler-authoritative self position (data layer when registered, else the node).
+func _self_pos() -> Vector3:
+	if game_state and game_state.characters.has(char_id):
+		return game_state.get_position(char_id)
+	return global_position
+
+func _planar_dist(a: Vector3, b: Vector3) -> float:
+	return Vector2(a.x - b.x, a.z - b.z).length()
+
+## A sideways direction relative to the line from the target to this enemy (the dodge slip axis).
+func _perp_to_target(target_id: String) -> Vector3:
+	var ap := _self_pos()
+	var tp := game_state.get_position(target_id)
+	var approach := Vector3(ap.x - tp.x, 0.0, ap.z - tp.z)
+	var perp := Vector3(-approach.z, 0.0, approach.x)
+	return perp.normalized() if perp.length_squared() > 0.001 else Vector3(1.0, 0.0, 0.0)
 
 ## Brief flinch on a struck character — a universal scale-punch on its node (cosmetic; any Node3D).
 func _flash_target(target_id: String) -> void:
@@ -340,18 +475,6 @@ func _flash_target(target_id: String) -> void:
 	var tween := create_tween()
 	tween.tween_property(node, "scale", base * 1.25, 0.07)
 	tween.tween_property(node, "scale", base, 0.18)
-
-func _resume_pursuit() -> void:
-	if get_state() != "recover":
-		return
-	_set_mesh_color(_base_color)
-	_fsm.transition_to("pursuit")
-
-func _begin_rescan() -> void:
-	if get_state() != "pursuit":
-		return
-	_stop_movement()
-	_fsm.transition_to("detecting")
 
 # --- Roam (local wander, no pathfinding) ---
 
@@ -494,32 +617,44 @@ func _fade_out(duration: float) -> void:
 		tween.tween_property(_mesh, "transparency", 1.0, duration)
 	_set_eye_energy(0.0)
 
+# --- Attack-beat animation (cosmetic scale pulses; never gate a transition on these) ---
+# Each beat reshapes the body so the player reads intent: a squash anticipation before the lunge, a
+# punch on impact, a flinch on stagger. ChainEnemy has no _mesh (it overrides _build_visual), so these
+# safely no-op for it — its segments carry their own motion.
+var _anim_tween: Tween
+
+func _play_scale(keys: Array) -> void:
+	if _mesh == null:
+		return
+	if _anim_tween != null and _anim_tween.is_valid():
+		_anim_tween.kill()
+	_anim_tween = create_tween()
+	for k in keys:
+		_anim_tween.tween_property(_mesh, "scale", k[0], float(k[1]))
+
+func _anim_pop(peak := 1.18) -> void:      # alert: quick spot-tell
+	_play_scale([[Vector3.ONE * peak, 0.08], [Vector3.ONE, 0.12]])
+
+func _anim_squash() -> void:               # windup: crouch/anticipation
+	_play_scale([[Vector3(1.2, 0.8, 1.2), 0.12]])
+
+func _anim_punch() -> void:                # impact: sharp connect
+	_play_scale([[Vector3.ONE * 1.3, 0.05], [Vector3.ONE, 0.12]])
+
+func _anim_settle() -> void:               # recover: ease back to rest
+	_play_scale([[Vector3.ONE, 0.2]])
+
+func _anim_recoil() -> void:               # stagger: flinch inward
+	_play_scale([[Vector3.ONE * 0.78, 0.06], [Vector3.ONE, 0.18]])
+
 # --- Movement / Charge collision ---
 
-func _process(delta: float) -> void:
-	# GameState-driven position sync
+func _process(_delta: float) -> void:
+	# The body is a pure mirror of the data layer — including the charge, which is now a real
+	# data-layer move at charge_speed (so the lunge is smooth and never teleport-snaps at impact).
 	if game_state and char_id != "" and game_state.is_moving(char_id):
 		var pos := game_state.get_position(char_id)
 		global_position = Vector3(pos.x, global_position.y, pos.z)
-
-	# Charge: a PURELY COSMETIC lunge. The hit itself is predicted — _land_attack is scheduled for the
-	# contact tick in _enter_state("charge") and always connects (unless the target dodges), so the
-	# strike never whiffs because of a frame-rate or fast-forward sampling miss. This just animates the
-	# body toward the locked target position as a pure function of the scheduler tick.
-	if _charging and get_state() == "charge":
-		var scheduler := _get_scheduler()
-		if scheduler and scheduler.is_paused():
-			return
-		var to_target := _charge_target_pos - _charge_start_pos
-		to_target.y = 0
-		var total_dist := to_target.length()
-		var now_tick := scheduler.get_current_tick() if scheduler else _charge_start_tick
-		var traveled := charge_speed * (now_tick - _charge_start_tick)
-		var dir := to_target.normalized() if total_dist > 0.001 else Vector3.ZERO
-		global_position = Vector3(
-			_charge_start_pos.x + dir.x * minf(traveled, total_dist),
-			global_position.y,
-			_charge_start_pos.z + dir.z * minf(traveled, total_dist))
 
 func _stop_movement() -> void:
 	if game_state and game_state.characters.has(char_id):

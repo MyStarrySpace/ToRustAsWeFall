@@ -8714,49 +8714,134 @@ func _test_preview_hover_grid() -> void:
 
 	await _dispose_scene(inst)
 
-# --- Test: enemy attacks are predictive — they land for sure (damage + lunge commit) unless dodged ---
+# --- Test: enemy attacks land predictively, the lunge never teleports, and the FSM disengages ---
+# Encodes the three bugs the redesign fixed: (1) the charge used to teleport the body onto a target
+# that moved during windup (it now lunges through the data layer); (2) the enemy attacked a downed
+# target forever (it now disengages); (3) striking the enemy mid-windup now interrupts it (stagger).
 func _test_predictive_attack() -> void:
 	_test_name = "Predictive Attack"
-	var run := func(dodge_unlocked: bool) -> Dictionary:
-		var sched := EventScheduler.new()
-		var gs := GameState.new()
-		gs.scheduler = sched
-		var holder := Node3D.new()
-		add_child(holder)
-		gs.register_character("aster", Vector3(2.0, 0.5, 0.0), 2.5, {"hp": 100.0, "stamina": 100.0})
-		if dodge_unlocked:
-			gs.characters["aster"].stats["dodge_unlocked"] = true
-			gs.characters["aster"].stats["auto_dodge"] = true
-		var enemy := Enemy.new()
-		enemy.game_state = gs
-		enemy.char_id = "guard"
-		enemy._detection_targets = ["aster"]
-		enemy.attack_range = 3.0
-		enemy.charge_damage = 25.0
-		holder.add_child(enemy)
-		gs.register_character("guard", Vector3(0.0, 0.5, 0.0), enemy.move_speed, {"detection_range": 6.0})
-		enemy.activate()
-		gs._recompute_all_detection_predictions()
-		var start_x := gs.get_position("guard").x
-		var hit := [false]
-		enemy.hit_target.connect(func(_t, _d): hit[0] = true)
-		for _i in range(200):
-			sched.advance_ticks(0.05)
-			enemy._process(0.05)
-		var res := {"hit": hit[0], "hp": gs.get_stat("aster", "hp"),
-			"enemy_x": gs.get_position("guard").x, "start_x": start_x}
-		enemy.queue_free()
-		holder.queue_free()
-		return res
-	# Dodge LOCKED (the default): the predicted strike lands — damage taken, attacker commits its lunge.
-	var locked: Dictionary = run.call(false)
+
+	# --- No teleport: the lunge is a real data-layer move, so the guard's position never jumps even
+	# when the target slides sideways during windup (the exact case that used to snap it across the map).
+	var ctx := _make_attack_ctx(500.0, false)
+	var sched: EventScheduler = ctx["sched"]
+	var gs: GameState = ctx["gs"]
+	var enemy: Enemy = ctx["enemy"]
+	var hit_count := [0]
+	enemy.hit_target.connect(func(_t, _d): hit_count[0] += 1)
+	var max_step := 0.0
+	var prev: Vector3 = gs.get_position("guard")
+	for i in range(240):
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+		if enemy.get_state() == "windup" and i % 7 == 0:
+			gs.command_move_to_pos("aster", Vector3(4.0, 0.5, 4.0))
+		var now: Vector3 = gs.get_position("guard")
+		max_step = maxf(max_step, Vector2(now.x - prev.x, now.z - prev.z).length())
+		prev = now
+	# charge_speed (8) * dt (0.05) = 0.4 per tick; the old teleport-snap jumped >2 units in one tick.
+	_assert_true(max_step < 0.6,
+		"The lunge never teleports — max per-tick move %.2f stays near charge_speed*dt (0.4)" % max_step)
+	_assert_true(hit_count[0] > 0, "The predicted strike lands at least once")
+	_cleanup_attack_ctx(ctx)
+
+	# --- Dodge: locked (default) -> the strike lands + the attacker commits its lunge; unlocked+auto
+	# -> the first strike is evaded with no damage.
+	var locked := _run_one_attack(_make_attack_ctx(100.0, false))
 	_assert_true(locked["hit"], "With dodge locked, the predicted strike lands")
 	_assert_true(float(locked["hp"]) < 100.0, "The struck character takes damage (hp %.0f)" % locked["hp"])
 	_assert_true(float(locked["enemy_x"]) > float(locked["start_x"]) + 0.5,
-		"The attacker commits to its lunge end, not snapping back (x %.1f -> %.1f)" % [locked["start_x"], locked["enemy_x"]])
-	# Dodge UNLOCKED + auto-evade: the strike is slipped — no damage.
-	var dodged: Dictionary = run.call(true)
-	_assert_true(float(dodged["hp"]) >= 99.99, "With dodge unlocked, the strike is evaded (no damage, hp %.0f)" % dodged["hp"])
+		"The attacker commits to its lunge (moved toward the target, x %.1f -> %.1f)" % [locked["start_x"], locked["enemy_x"]])
+	var dodged := _run_one_attack(_make_attack_ctx(100.0, true))
+	_assert_true(float(dodged["hp"]) >= 99.99,
+		"With dodge unlocked, the first strike is evaded (no damage, hp %.0f)" % dodged["hp"])
+
+	# --- Disengage: once the target is downed (hp 0), the guard stops striking and leaves combat
+	# (the old FSM cycled windup/recover on a corpse forever).
+	var dctx := _make_attack_ctx(40.0, false)  # two 25-damage hits -> downed
+	var dsched: EventScheduler = dctx["sched"]
+	var denemy: Enemy = dctx["enemy"]
+	var hits_after_down := [0]
+	var downed := [false]
+	denemy.hit_target.connect(func(_t, _d):
+		if downed[0]:
+			hits_after_down[0] += 1)
+	for i in range(500):
+		dsched.advance_ticks(0.05)
+		denemy._process(0.05)
+		if not downed[0] and dctx["gs"].get_stat("aster", "hp") <= 0.0:
+			downed[0] = true
+	_assert_true(downed[0], "The target goes down under repeated strikes")
+	_assert_true(denemy.get_state() in ["search", "return", "idle", "roam", "patrol"],
+		"After the target is downed the guard disengages (state=%s)" % denemy.get_state())
+	_assert_equals(hits_after_down[0], 0, "No further strikes land on a downed target")
+	_cleanup_attack_ctx(dctx)
+
+	# --- Stagger: a hit taken mid-windup interrupts the attack (player counterplay).
+	var sctx := _make_attack_ctx(500.0, false)
+	var ssched: EventScheduler = sctx["sched"]
+	var senemy: Enemy = sctx["enemy"]
+	var saw_windup := [false]
+	var staggered := [false]
+	for i in range(200):
+		ssched.advance_ticks(0.05)
+		senemy._process(0.05)
+		if senemy.get_state() == "windup" and not saw_windup[0]:
+			saw_windup[0] = true
+			senemy.take_damage(10.0)
+		if senemy.get_state() == "stagger":
+			staggered[0] = true
+			break
+	_assert_true(saw_windup[0], "The guard reaches windup")
+	_assert_true(staggered[0], "Striking the guard mid-windup staggers it (interrupt -> counterplay)")
+	_cleanup_attack_ctx(sctx)
+
+## Build a guard-vs-target attack scenario. Guard at origin, target a few units away in range.
+func _make_attack_ctx(target_hp: float, dodge: bool) -> Dictionary:
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	var holder := Node3D.new()
+	add_child(holder)
+	gs.register_character("aster", Vector3(4.0, 0.5, 0.0), 2.5, {"hp": target_hp, "stamina": 100.0})
+	if dodge:
+		gs.characters["aster"].stats["dodge_unlocked"] = true
+		gs.characters["aster"].stats["auto_dodge"] = true
+	var enemy := Enemy.new()
+	enemy.game_state = gs
+	enemy.char_id = "guard"
+	enemy._detection_targets = ["aster"]
+	enemy.attack_range = 3.0
+	enemy.charge_damage = 25.0
+	holder.add_child(enemy)
+	gs.register_character("guard", Vector3(0.0, 0.5, 0.0), enemy.move_speed, {"detection_range": 6.0})
+	enemy.activate()
+	gs._recompute_all_detection_predictions()
+	return {"sched": sched, "gs": gs, "enemy": enemy, "holder": holder}
+
+## Drive one attack to its first resolution (the guard reaching recover). Returns hit/hp/positions.
+func _run_one_attack(ctx: Dictionary) -> Dictionary:
+	var sched: EventScheduler = ctx["sched"]
+	var gs: GameState = ctx["gs"]
+	var enemy: Enemy = ctx["enemy"]
+	var start_x: float = gs.get_position("guard").x
+	var hit := [false]
+	enemy.hit_target.connect(func(_t, _d): hit[0] = true)
+	for i in range(200):
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+		if enemy.get_state() == "recover":
+			break
+	var res := {"hit": hit[0], "hp": gs.get_stat("aster", "hp"),
+		"enemy_x": gs.get_position("guard").x, "start_x": start_x}
+	_cleanup_attack_ctx(ctx)
+	return res
+
+func _cleanup_attack_ctx(ctx: Dictionary) -> void:
+	if ctx.has("enemy") and is_instance_valid(ctx["enemy"]):
+		ctx["enemy"].queue_free()
+	if ctx.has("holder") and is_instance_valid(ctx["holder"]):
+		ctx["holder"].queue_free()
 
 # --- Test: chromatic aberration is live in the sim scenes ---
 func _test_chromatic_aberration() -> void:
@@ -12855,7 +12940,10 @@ func _test_enemy() -> void:
 	target.set("char_id", "aster")
 	target.position = Vector3(10, 0, 0)
 	chars.add_child(target)
-	gs.register_character("aster", Vector3(10, 0, 0), 3.0)
+	# Give the target real hp: the enemy now disengages from a downed (hp <= 0) target, so a stat-less
+	# target would be "killed" by the first hit (adjust_stat creates hp at -charge_damage) and the cycle
+	# would stop. A live target lets us observe the repeating attack loop.
+	gs.register_character("aster", Vector3(10, 0, 0), 3.0, {"hp": 500.0})
 
 	# Create an enemy
 	var enemy := Enemy.new()
@@ -12891,7 +12979,7 @@ func _test_enemy() -> void:
 		scheduler.advance(0.5)
 		await get_tree().process_frame
 
-	var combat_states := ["alert", "pursuit", "windup", "charge", "recover"]
+	var combat_states := ["alert", "pursuit", "windup", "charge", "impact", "recover"]
 	_assert_true(enemy.get_state() in combat_states,
 		"Detects target within range (got: %s)" % enemy.get_state())
 
@@ -12939,7 +13027,7 @@ func _test_enemy() -> void:
 	route_player.set("char_id", "player_route")
 	route_player.position = Vector3(12, 0, -4)
 	chars.add_child(route_player)
-	gs.register_character("player_route", Vector3(12, 0, -4), 3.0)
+	gs.register_character("player_route", Vector3(12, 0, -4), 3.0, {"hp": 500.0})
 
 	route_enemy.activate()
 	# Move player toward enemy (triggers predictive detection)
