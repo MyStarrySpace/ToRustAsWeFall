@@ -387,6 +387,9 @@ func _ready() -> void:
 			"--test-elevator-fall-level":
 				ran_test = true
 				await _test_elevator_fall_level()
+			"--test-act1-chunk-grids":
+				ran_test = true
+				await _test_act1_chunk_grids()
 			"--test-leaving-facility":
 				ran_test = true
 				await _test_leaving_facility()
@@ -788,6 +791,7 @@ func _run_all_tests() -> void:
 	await _test_peris_sim()
 	await _test_elevator()
 	await _test_elevator_fall_level()
+	await _test_act1_chunk_grids()
 	await _test_overlay_facility_gating()
 	await _test_leaving_facility()
 	await _test_showcase()
@@ -6153,6 +6157,56 @@ func _assert_elevator_active_player_can_move(instance: Node, label: String) -> v
 		return
 	_assert_true(bool(instance._player.get("_move_enabled")),
 		"%s leaves the active player movement-enabled" % label)
+
+# --- Test: act1 swaps a per-chunk grid as it cuts between chunks, and the party moves on each one ---
+# act1 cuts channels->stacks->rings->lockout; each chunk gets its own open grid swapped in on entry. This
+# drives the real enter functions and asserts the live grid origin tracks each chunk AND the player can
+# walk on the freshly-swapped grid (so a stale grid can't strand the party in a later chunk).
+func _test_act1_chunk_grids() -> void:
+	_test_name = "Act 1 Chunk Grids"
+	var scene := load("res://scenes/tutorial/act1.tscn")
+	if scene == null:
+		_assert_true(false, "act1 scene loads")
+		return
+	var instance: Node = scene.instantiate()
+	if "suppress_scene_change" in instance:
+		instance.suppress_scene_change = true
+	get_tree().root.add_child(instance)
+	for i in range(8):
+		await get_tree().process_frame
+	var gs = instance._game_state
+	_assert_true(gs != null and gs.grid != null, "act1 starts with a live grid")
+	# Each chunk: its enter function swaps the grid; the live origin should track the chunk's footprint and
+	# the player must be able to walk on it.
+	var legs := [
+		{"name": "channels", "start": instance.CHANNELS_START, "origin_x": -6.0, "enter": ""},
+		{"name": "stacks", "start": instance.STACKS_START, "origin_x": 234.0, "enter": "_start_stacks_enter"},
+		{"name": "rings", "start": instance.RINGS_START, "origin_x": 474.0, "enter": "_start_rings_enter"},
+		{"name": "lockout", "start": instance.LOCKOUT_START, "origin_x": 694.0, "enter": "_start_lockout_approach"},
+	]
+	for leg in legs:
+		if str(leg["enter"]) != "" and instance.has_method(str(leg["enter"])):
+			instance.call(str(leg["enter"]))
+			await get_tree().process_frame
+		_assert_true(gs.grid != null and absf(gs.grid.origin.x - float(leg["origin_x"])) < 0.5,
+			"%s: the live grid origin tracks the chunk (%.1f)" % [leg["name"], gs.grid.origin.x if gs.grid != null else -999.0])
+		# Drop Aster onto this chunk and walk him east on the freshly-swapped grid.
+		var start_pos: Vector3 = (leg["start"] as Vector3) + Vector3(3.0, 0.5, 0.0)
+		gs.command_stop("aster")
+		gs.characters["aster"]["position"] = start_pos
+		gs.characters["aster"]["grid_cell"] = gs.grid.world_to_grid(start_pos)
+		var target: Vector3 = (leg["start"] as Vector3) + Vector3(16.0, 0.0, 0.0)
+		gs.command_move_to_pos("aster", target)
+		for s in range(120):
+			instance.headless_advance(0.1, 0.05)
+			if not gs.is_moving("aster"):
+				break
+		_assert_true(gs.get_position("aster").x > start_pos.x + 2.0,
+			"%s: Aster walks east on the chunk's grid (%.1f -> %.1f)" % [leg["name"], start_pos.x, gs.get_position("aster").x])
+	if instance.has_method("_teardown_sequence"):
+		instance._teardown_sequence()
+	instance.queue_free()
+	await get_tree().process_frame
 
 # --- Test: the elevator bridge collapse is a REAL cross-level transition (upper deck -> lower deck) ---
 # The multi-level grid port: the party spawns on the UPPER deck (grid level 1) and the bridge collapse drops

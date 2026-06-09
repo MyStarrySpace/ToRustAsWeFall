@@ -126,6 +126,36 @@ const RINGS_END := Vector3(680, 0, 0)
 const LOCKOUT_START := Vector3(700, 0, 0)
 const LOCKOUT_BOUNDARY := Vector3(780, 0, 0)
 
+# --- Per-chunk grids ---
+# act1 CUTS between chunks (each loads as the previous unloads), so only one chunk is live at a time.
+# Each gets its own OPEN GridWorld over its corridor footprint (a generous bounding rect from its
+# START..END span); the active grid swaps in when its chunk loads. Movement is then cell-based +
+# cooperative per chunk, without a single impractical world-spanning grid.
+const CHUNK_GRIDS := {
+	"channels": {"origin": Vector3(-6, 0, -16), "size": Vector2i(242, 32)},   # X[-6,236]
+	"stacks": {"origin": Vector3(234, 0, -16), "size": Vector2i(232, 32)},    # X[234,466]
+	"rings": {"origin": Vector3(474, 0, -16), "size": Vector2i(212, 32)},     # X[474,686]
+	"lockout": {"origin": Vector3(694, 0, -16), "size": Vector2i(92, 32)},    # X[694,786]
+}
+var _grid: GridWorld
+
+## Build + activate the named chunk's OPEN grid, swapping it in as the live grid. The party re-derives
+## its cells on the new grid (derived state); only one chunk grid is live at a time (act1 cuts between).
+func _activate_chunk_grid(chunk_name: String) -> void:
+	var spec = CHUNK_GRIDS.get(chunk_name)
+	if spec == null or _game_state == null:
+		return
+	var size: Vector2i = spec["size"]
+	_grid = GridWorld.new()
+	_grid.origin = spec["origin"]
+	_grid.create_room(size.x, size.y, false)
+	_game_state.grid = _grid
+	for node in [_aster_node, _peris_node, _endo]:
+		if node != null and "grid_world" in node:
+			node.grid_world = _grid
+	for id in _game_state.characters.keys():
+		_game_state.characters[id]["grid_cell"] = _grid.world_to_grid(_game_state.get_position(id))
+
 # --- Chunk dispatch ---
 
 func _build_chunk(chunk_name: String, parent: Node3D) -> void:
@@ -179,6 +209,7 @@ func _build_characters() -> void:
 		_setup_game_camera(_player, Vector3(0, 10, 8))
 
 func _register_characters() -> void:
+	_activate_chunk_grid("channels")  # the live grid for the opening chunk
 	_register_gs_character("aster", _aster_node, 3.0, {"hp": CHANNELS_MAX_HP, "atp": 6.0})
 	_register_gs_character("peris", _peris_node, 2.5, {"hp": CHANNELS_MAX_HP, "atp": 6.0})
 	_register_gs_character("endo", _endo, 2.5, {"hp": CHANNELS_MAX_HP, "atp": 6.0})
@@ -1785,6 +1816,7 @@ func _start_stacks_enter() -> void:
 	_tutorial_prompt.hide_prompt()
 	_load_chunk("stacks")
 	_unload_chunk("channels")
+	_activate_chunk_grid("stacks")  # swap the live grid to the stacks footprint
 	_clear_channels_runtime_state()
 	_reset_stacks_runtime_state()
 	_select_character("aster")
@@ -1904,6 +1936,7 @@ func _start_rings_enter() -> void:
 	_tutorial_prompt.hide_prompt()
 	_load_chunk("rings")
 	_unload_chunk("stacks")
+	_activate_chunk_grid("rings")  # swap the live grid to the rings footprint
 	_dialogue_chain([
 		"rings.narration.enter",
 		"rings.aster.signal",
@@ -1950,6 +1983,7 @@ func _start_lockout_approach() -> void:
 	_tutorial_prompt.hide_prompt()
 	_load_chunk("lockout")
 	_unload_chunk("rings")
+	_activate_chunk_grid("lockout")  # swap the live grid to the lockout footprint
 	_dialogue_chain([
 		"lockout.narration.clean",
 		"lockout.aster.signals",
