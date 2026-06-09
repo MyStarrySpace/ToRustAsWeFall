@@ -330,11 +330,10 @@ func _on_input_event(_camera: Node, event: InputEvent, _event_position: Vector3,
 	if _used or not interaction_enabled:
 		return
 	if event is InputEventMouseButton:
-		var mouse_button := event as InputEventMouseButton
-		# RIGHT-click is the interact command (RTS-style). A LEFT-click is NEVER an interaction —
-		# it falls through to the player as a plain move/select, so clicking past or grazing an
-		# object's pick volume no longer walks the character onto it (the old hijack).
-		if mouse_button.button_index == MOUSE_BUTTON_RIGHT and mouse_button.pressed:
+		# The `command` action (right mouse) is the interact command (RTS-style). A `select` (left) click
+		# is NEVER an interaction — it falls through to the player as a plain move/select, so clicking
+		# past or grazing an object's pick volume no longer walks the character onto it (the old hijack).
+		if event.is_action_pressed("command"):
 			get_viewport().set_input_as_handled()
 			interaction_requested.emit(self, global_position)
 			outline_selected.emit(self)

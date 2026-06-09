@@ -78,14 +78,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventMouseButton):
 		return
 	var mb := event as InputEventMouseButton
-	if mb.button_index != MOUSE_BUTTON_LEFT:
-		return
-	if mb.pressed:
+	if mb.is_action_pressed("select"):
 		_pressed = true
 		_dragging = false
 		_press_pos = mb.position
 		# Don't consume on press — it might be a click or a drag; commit on release.
-	else:
+	elif mb.is_action_released("select"):
 		if _pressed:
 			if _press_pos.distance_to(mb.position) > DRAG_THRESHOLD:
 				_commit_box_select(Rect2(_press_pos, mb.position - _press_pos).abs())

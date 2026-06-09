@@ -146,12 +146,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventMouseButton):
 		return
 	var mb := event as InputEventMouseButton
-	if not mb.pressed:
-		return
 
-	# RIGHT-click is the RTS move command. A RIGHT-click ON an interactable is consumed by
-	# that object first (it interacts instead), so a command only reaches here for plain ground.
-	if mb.button_index == MOUSE_BUTTON_RIGHT:
+	# The `command` action (right mouse) is the RTS move command. A command ON an interactable is
+	# consumed by that object first (it interacts instead), so it only reaches here for plain ground.
+	if mb.is_action_pressed("command"):
 		if _click_mode != "move" or not _move_enabled:
 			return
 		if _auto_path.size() > 0 and not (game_state and char_id != ""):
@@ -162,17 +160,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			_set_click_target(rhit)
 		return
 
-	if mb.button_index != MOUSE_BUTTON_LEFT:
-		return
-
-	# Select mode (a "click the world target" beat): a LEFT click only reports the world position;
-	# the sequence decides what it means. The SelectionController yields LEFT to us here (is_pick_mode).
-	# In normal "move" mode LEFT belongs to the SelectionController (character select) — RIGHT moves.
-	if _click_mode == "select":
+	# `select` (left mouse) during a sequence's "click the world target" beat only reports the ground
+	# position; the sequence interprets it. The SelectionController yields `select` to us here
+	# (is_pick_mode). In normal "move" mode `select` belongs to the SelectionController (character pick).
+	if mb.is_action_pressed("select") and _click_mode == "select":
 		var hit_sel := _raycast_ground(mb.position)
 		if hit_sel != Vector3.INF:
 			ground_clicked.emit(hit_sel)
-		return
 
 ## Switch how a ground click is interpreted: "move" (default) or "select".
 func set_click_mode(mode: String) -> void:
