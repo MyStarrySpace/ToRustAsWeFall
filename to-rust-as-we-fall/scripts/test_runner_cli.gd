@@ -501,6 +501,9 @@ func _ready() -> void:
 			"--test-pick-interactor":
 				ran_test = true
 				_test_pick_interactor()
+			"--test-lure-not-waypoint":
+				ran_test = true
+				_test_lure_not_path_waypoint()
 			"--test-interaction-delegates":
 				ran_test = true
 				await _test_interaction_delegates_to_capable()
@@ -845,6 +848,7 @@ func _run_all_tests() -> void:
 	_test_camera_free_look()
 	_test_left_click_no_interact()
 	_test_pick_interactor()
+	_test_lure_not_path_waypoint()
 	_test_physics_objects()
 	_test_physics_edge_cases()
 	_test_pendulum()
@@ -16636,6 +16640,46 @@ func _test_interaction_delegates_to_capable() -> void:
 	ctrl.queue_free()
 	target.queue_free()
 	await get_tree().process_frame
+
+## The ferrolure must not BE a movement waypoint: a walk PAST a lure (down the corridor) must not route a
+## path vertex through the lure, or the ribbon visibly pivots on the decoration ("treated as a pathing
+## point"). Reproduces the user's report at the nav-graph layer AND the preview-path layer they see.
+func _test_lure_not_path_waypoint() -> void:
+	_test_name = "Lure Not A Path Waypoint"
+	var chunk: Node = preload("res://scripts/fragments/chunks/lure_relay_chunk.gd").new()
+	var data: Dictionary = chunk.get_navigation_graph_data()
+	var lure1: Vector3 = chunk.LURE1_POS
+	var lure2: Vector3 = chunk.LURE2_POS
+	var clear := 0.5  # lure box half-width (~0.25) + ribbon half-width (~0.15) + margin: closer = ON the lure
+
+	# (1) Root cause: NavigationGraph.find_path itself.
+	var nav := NavigationGraph.new()
+	nav.configure(data)
+	_assert_lure_clear(nav.find_path(Vector3(6, 0.5, 0), Vector3(58, 0.5, 0)), lure1, lure2, clear,
+		"NavigationGraph.find_path")
+
+	# (2) What the preview/committed move actually draws — game_state's path.
+	var gs := GameState.new()
+	var sched := EventScheduler.new()
+	gs.scheduler = sched
+	gs.set_navigation_data(data)
+	gs.register_character("peris", Vector3(6, 0.5, 0))
+	_assert_lure_clear(gs.compute_preview_path("peris", Vector3(58, 0.5, 0)), lure1, lure2, clear,
+		"compute_preview_path")
+
+	chunk.free()
+
+func _assert_lure_clear(path: Array, lure1: Vector3, lure2: Vector3, clear: float, label: String) -> void:
+	var hit1 := ""
+	var hit2 := ""
+	for wp in path:
+		var w: Vector3 = wp
+		if Vector2(w.x - lure1.x, w.z - lure1.z).length() < clear:
+			hit1 = str(w)
+		if Vector2(w.x - lure2.x, w.z - lure2.z).length() < clear:
+			hit2 = str(w)
+	_assert_true(hit1 == "", "%s: a walk past ferrolure 1 must NOT route a waypoint through it (vertex %s on the lure)" % [label, hit1])
+	_assert_true(hit2 == "", "%s: a walk past ferrolure 2 must NOT route a waypoint through it (vertex %s on the lure)" % [label, hit2])
 
 func _test_physics_objects() -> void:
 	_test_name = "Physics Objects"

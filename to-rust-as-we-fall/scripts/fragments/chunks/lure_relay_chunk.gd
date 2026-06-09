@@ -31,8 +31,12 @@ const HALL_HALF_Z := 2.0                     # walkable half-width of the hallwa
 const OFFSHOOT_CENTER := Vector3(34.0, -0.05, -5.0)
 const OFFSHOOT_SIZE := Vector3(5.0, 0.1, 6.0) # world z in [-8, -2]
 
-const LURE1_POS := Vector3(10.0, 0.5, 0.0)   # first / near the entrance — FAR from the hide
-const LURE2_POS := Vector3(40.0, 0.5, 0.0)   # second / near the enemies — CLOSE to the hide
+# Off the corridor CENTERLINE (z != 0): the corridor nav nodes run along z=0, so a lure sitting exactly
+# on a node made every walk-past route a path vertex straight through it — the lure read as a movement
+# waypoint. Set against the hall's +z wall (well inside HALL_HALF_Z); guards/tend still snap to the
+# nearest centerline node, so the puzzle is unchanged, but the path no longer pivots on the decoration.
+const LURE1_POS := Vector3(10.0, 0.5, 0.9)   # first / near the entrance — FAR from the hide
+const LURE2_POS := Vector3(40.0, 0.5, 0.9)   # second / near the enemies — CLOSE to the hide
 const HIDE_POS := Vector3(34.0, 0.5, -5.0)
 const HIDE_RADIUS := 2.4
 const EXIT_X := 60.0
