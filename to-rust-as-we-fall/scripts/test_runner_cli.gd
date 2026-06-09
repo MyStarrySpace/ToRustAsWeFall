@@ -498,6 +498,12 @@ func _ready() -> void:
 			"--test-selection-controller":
 				ran_test = true
 				await _test_selection_controller()
+			"--test-pick-interactor":
+				ran_test = true
+				_test_pick_interactor()
+			"--test-interaction-delegates":
+				ran_test = true
+				await _test_interaction_delegates_to_capable()
 			"--test-physics":
 				ran_test = true
 				_test_physics_objects()
@@ -799,6 +805,7 @@ func _run_all_tests() -> void:
 	await _test_input_playthrough()
 	await _test_right_click_move()
 	await _test_selection_controller()
+	await _test_interaction_delegates_to_capable()
 	await _test_fast_forward_invariance()
 	if not _heavy("Puzzle Fast-Forward Invariance"):
 		await _test_puzzle_fast_forward_invariance()
@@ -837,6 +844,7 @@ func _run_all_tests() -> void:
 	_test_camera_shake()
 	_test_camera_free_look()
 	_test_left_click_no_interact()
+	_test_pick_interactor()
 	_test_physics_objects()
 	_test_physics_edge_cases()
 	_test_pendulum()
@@ -16527,6 +16535,106 @@ func _test_selection_controller() -> void:
 	cam.queue_free()
 	hud.queue_free()
 	sel.queue_free()
+	await get_tree().process_frame
+
+## GameState.pick_interactor: who services a right-click interaction. A named required character wins;
+## otherwise the nearest candidate, preferring a free hand for a pickup. Deterministic for replay.
+func _test_pick_interactor() -> void:
+	_test_name = "Pick Interactor"
+	var gs := GameState.new()
+	var sched := EventScheduler.new()
+	gs.scheduler = sched
+	gs.register_character("aster", Vector3(0, 0, 0))
+	gs.register_character("peris", Vector3(5, 0, 0))
+	gs.register_character("endo", Vector3(2, 0, 0))
+	var party := ["aster", "peris", "endo"]
+
+	_assert_equals(gs.pick_interactor("peris", Vector3.ZERO, party), "peris",
+		"A required character is chosen regardless of distance")
+	_assert_equals(gs.pick_interactor("", Vector3(2.1, 0, 0), party), "endo",
+		"With no requirement the nearest candidate is chosen")
+	_assert_equals(gs.pick_interactor("ron", Vector3(4.9, 0, 0), party), "peris",
+		"An absent required character falls back to the nearest")
+	_assert_equals(gs.pick_interactor("", Vector3.ZERO, []), "",
+		"No candidates yields empty")
+
+	# Pickup (needs a free hand): fill aster's hands — though aster is closest, the nearest FREE-handed
+	# character is chosen instead.
+	gs.characters["aster"]["hands"] = ["item", "item"]
+	_assert_true(not gs.has_free_hands("aster"), "aster has no free hand after filling")
+	_assert_equals(gs.pick_interactor("", Vector3(0.2, 0, 0), party, true), "endo",
+		"A pickup prefers the nearest free-handed character over a closer full-handed one")
+	_assert_equals(gs.pick_interactor("", Vector3(0.2, 0, 0), party, false), "aster",
+		"Without a pickup requirement the closest character is chosen even with full hands")
+
+## Minimal stand-ins so the controller's delegation can be tested without a full scene. The character
+## drives movement through game_state by id; the target is an interactable that names a required character.
+class _MockInteractChar extends Node3D:
+	var char_id := "aster"
+	var game_state = null
+	signal arrived()
+	func is_move_enabled() -> bool: return true
+	func is_moving() -> bool: return game_state != null and game_state.is_moving(char_id)
+	func move_to_world_position(p: Vector3) -> bool:
+		return game_state != null and game_state.command_move_to_pos(char_id, p)
+
+class _MockInteractTarget extends Node3D:
+	var required_character := ""
+	var active_character := ""
+	var arrived_with := ""
+	signal interaction_requested(target: Node, world_position: Vector3)
+	func get_interaction_target_position(_from := Vector3.ZERO, _req := Vector3.INF) -> Vector3:
+		return global_position
+	func on_interaction_arrived() -> void:
+		arrived_with = active_character
+
+## A right-click interaction on an object that requires a NON-active party member routes the walk-and-use
+## to that member (not the leader) — the user's "the character able to interact will do it".
+func _test_interaction_delegates_to_capable() -> void:
+	_test_name = "Interaction Delegates To Capable"
+	var grid := GridWorld.new()
+	grid.create_room(20, 20)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+	gs.register_character("aster", grid.grid_to_world(Vector2i(3, 3)))
+	gs.register_character("peris", grid.grid_to_world(Vector2i(10, 10)))
+	gs.set_party(["aster", "peris"])
+
+	var ch := _MockInteractChar.new()
+	ch.char_id = "aster"
+	ch.game_state = gs
+	get_tree().root.add_child(ch)
+	var ctrl: Node = preload("res://scripts/game/characters/character_interaction_controller.gd").new()
+	get_tree().root.add_child(ctrl)
+	ctrl.setup(ch)
+
+	var target := _MockInteractTarget.new()
+	target.required_character = "peris"   # only peris can service it
+	get_tree().root.add_child(target)
+	target.global_position = grid.grid_to_world(Vector2i(12, 12))
+	ctrl.bind_interaction_target(target)
+
+	# Fire the request exactly as the interactable's _on_input_event would on a RIGHT-click.
+	target.interaction_requested.emit(target, target.global_position)
+
+	_assert_true(gs.is_moving("peris"), "The required character (peris) is the one walking to the object")
+	_assert_true(not gs.is_moving("aster"), "The active/leader character (aster) does NOT move")
+
+	var safety := 0
+	while gs.is_moving("peris") and safety < 6000:
+		safety += 1
+		sched.advance(0.05)
+		ctrl._process(0.05)
+		await get_tree().process_frame
+	ctrl._process(0.05)  # final poll → completes the arrival
+	_assert_equals(target.active_character, "peris", "Interactable's active_character is the picked interactor")
+	_assert_equals(target.arrived_with, "peris", "on_interaction_arrived fired with the required character")
+
+	ch.queue_free()
+	ctrl.queue_free()
+	target.queue_free()
 	await get_tree().process_frame
 
 func _test_physics_objects() -> void:

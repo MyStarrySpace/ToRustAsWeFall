@@ -1609,6 +1609,35 @@ func has_free_hand(char_id: String) -> bool:
 func has_free_hands(char_id: String, required_slots := 1) -> bool:
 	return not _find_free_hand_slots(char_id, required_slots).is_empty()
 
+## Which party member should service an interaction (RTS right-click): the required character if the
+## interactable names one and it's a candidate; otherwise the nearest candidate to the object — preferring
+## ones with a free hand when the interaction picks something up. Pure/derived (reads positions +
+## required_character only, never mutates), so it stays replay-safe and is NEVER logged. Deterministic:
+## free-hand first, then distance, then char_id, so a tie always resolves the same way on replay.
+func pick_interactor(required_char: String, target_pos: Vector3, candidates: Array, needs_free_hand := false) -> String:
+	var pool: Array[String] = []
+	for raw in candidates:
+		var id := str(raw)
+		if characters.has(id) and not pool.has(id):
+			pool.append(id)
+	if pool.is_empty():
+		return ""
+	if required_char != "" and pool.has(required_char):
+		return required_char
+	var best := ""
+	var best_penalty := 2
+	var best_dist := INF
+	for id in pool:
+		var penalty := 1 if (needs_free_hand and not has_free_hands(id)) else 0
+		var dist := get_position(id).distance_to(target_pos)
+		if best == "" or penalty < best_penalty \
+				or (penalty == best_penalty and dist < best_dist - 0.0001) \
+				or (penalty == best_penalty and absf(dist - best_dist) <= 0.0001 and id < best):
+			best = id
+			best_penalty = penalty
+			best_dist = dist
+	return best
+
 func _find_free_hand(char_id: String) -> int:
 	if not characters.has(char_id):
 		return -1
