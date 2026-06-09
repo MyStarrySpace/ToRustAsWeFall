@@ -29,6 +29,7 @@ const IRON_2_POS := Vector3(30, 0, 0)
 const SAFE_2_WAYPOINT := Vector3(30, 0, -8)
 const SAFE_2_END := Vector3(38, 0, 0)
 const SHELTER_POS := Vector3(42, 0, 0)
+var _grid: GridWorld
 const OUTDOOR_STEPS := [
 	"first_corridor",
 	"safe_route_lesson",
@@ -40,8 +41,16 @@ const OUTDOOR_STEPS := [
 # --- Virtual method overrides ---
 
 func _build_scene() -> void:
+	_build_grid()
 	_build_environment()
 	_build_decorations()
+
+## The corridor floor (50x16, world X[-3,47] Z[-8,8]) as a single-level open plane — iron spills are
+## damage zones, not walls, so the grid stays open and the party routes on it cooperatively.
+func _build_grid() -> void:
+	_grid = GridWorld.new()
+	_grid.origin = Vector3(-3.0, 0.0, -8.0)
+	_grid.create_room(50, 16, false)
 
 func _build_characters() -> void:
 	var chars := Node3D.new()
@@ -51,23 +60,30 @@ func _build_characters() -> void:
 	# Aster (player)
 	_player = _create_player_character("Aster", Color(0.29, 0.62, 1.0))
 	_player.position = EXIT_POS + Vector3(1, 0.5, 0)
+	if not Engine.is_editor_hint():
+		_player.grid_world = _grid
 	chars.add_child(_player)
 
 	# Peris (follows)
 	_peris = _create_npc("Peris", Color(1.0, 0.67, 0.27))
 	_peris.position = EXIT_POS + Vector3(0, 0, 1)
+	if not Engine.is_editor_hint():
+		_peris.grid_world = _grid
 	chars.add_child(_peris)
 
 	# Endo (hidden until joins)
 	_endo = _create_npc("Endo", Color(0.4, 0.67, 0.53))
 	_endo.position = EXIT_POS + Vector3(3, 0, -2)
 	_endo.visible = false
+	if not Engine.is_editor_hint():
+		_endo.grid_world = _grid
 	chars.add_child(_endo)
 
 	if not Engine.is_editor_hint():
 		_setup_game_camera(_player, Vector3(0, 10, 8))
 
 func _register_characters() -> void:
+	_game_state.grid = _grid
 	_register_gs_character("aster", _player, GameState.WALK_SPEED, {"hp": GameState.HP_MAX, "stamina": GameState.STAMINA_MAX})
 	_register_gs_character("peris", _peris, 2.5, {"hp": GameState.HP_MAX, "stamina": GameState.STAMINA_MAX})
 	_register_gs_character("endo", _endo, 2.5, {"hp": GameState.HP_MAX})

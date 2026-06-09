@@ -6523,6 +6523,19 @@ func _test_leaving_facility() -> void:
 		var dialogue: Node = instance.find_child("DialogueBox", true, false)
 		_assert_true(dialogue != null, "DialogueBox node exists")
 
+		# Grid port: the scene runs on a GridWorld now — command Aster east and confirm he walks on it.
+		var gs = instance._game_state
+		_assert_true(gs != null and gs.grid != null, "Leaving facility runs on a GridWorld")
+		if gs != null and gs.grid != null:
+			var start_x: float = gs.get_position("aster").x
+			gs.command_move_to_pos("aster", Vector3(8.0, 0.0, 0.0))  # short of the first iron spill
+			for s in range(120):
+				instance.headless_advance(0.1, 0.05)
+				if not gs.is_moving("aster"):
+					break
+			_assert_true(gs.get_position("aster").x > start_x + 2.0,
+				"Aster walks east on the grid (%.1f -> %.1f)" % [start_x, gs.get_position("aster").x])
+
 		instance.queue_free()
 		await get_tree().process_frame
 
