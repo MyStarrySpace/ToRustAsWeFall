@@ -6192,6 +6192,16 @@ func _test_ability_data() -> void:
 	_assert_equals(str(AbilityData.get_ability("peris_sim.protect").get("display_name", "")), "PROTECT", "peris_sim protect is PROTECT")
 	_assert_equals(str(AbilityData.get_ability("elevator.emp").get("display_name", "")), "EMP", "elevator emp is EMP")
 	_assert_true(not AbilityData.has("nonsense.key"), "An absent key reports missing")
+	# Bindings (mechanics) come from the xlsx too — keybind/owner/keycode/color, no longer hardcoded.
+	var ab := AbilityData.binding("aster_focus")
+	_assert_equals(str(ab.get("owner", "")), "aster", "aster_focus binding owner is aster")
+	_assert_equals(str(ab.get("keybind", "")), "Z", "aster_focus binding keybind is Z")
+	_assert_equals(int(ab.get("keycode", 0)), KEY_Z, "aster_focus keycode resolves from the keybind")
+	var pb := AbilityData.binding("protect")
+	_assert_equals(str(pb.get("keybind", "")), "X", "protect binding keybind is X")
+	_assert_true((pb.get("color", Color.BLACK) as Color).is_equal_approx(Color(0.8, 0.55, 0.2)), "protect color parses from r,g,b")
+	# The default-context fallback content is in the xlsx as well.
+	_assert_equals(str(AbilityData.get_ability("default.aster_focus").get("display_name", "")), "FOCUS", "default aster_focus content is FOCUS")
 	# End-to-end: a migrated chunk's get_preview_abilities() now sources from the xlsx (not a hardcoded dict).
 	var chunk_scene := load("res://scenes/fragments/chunks/refuge_run_chunk.tscn")
 	if chunk_scene != null:

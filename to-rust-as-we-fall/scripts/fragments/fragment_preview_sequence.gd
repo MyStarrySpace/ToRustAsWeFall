@@ -103,11 +103,8 @@ const PREVIEW_GUI_CONTRACT_ID := "fragment_preview_shared_gui_v1"
 const GAME_HUD_SCRIPT_PATH := "res://scripts/ui/game_hud.gd"
 const PREVIEW_CONTROL_HELP := "Click move  1-3 focus  Ctrl+1-3 multi-select  C cycle  Z/X abilities  V drop  T transfer  B retrieve  F1-F3 overlays  O drawer  Tab route  G dodge  Space pause  R reload"
 const PREVIEW_INVENTORY_CONTROL_HELP := "Controls: Z/X abilities  V drop  T transfer  B retrieve"
-const CANONICAL_MAIN_ABILITY_BINDINGS := {
-	"aster_focus": {"owner": "aster", "keybind": "Z", "keycode": KEY_Z},
-	"peris_tune": {"owner": "peris", "keybind": "X", "keycode": KEY_X},
-	"endo_patch": {"owner": "endo", "keybind": "Z", "keycode": KEY_Z},
-}
+# The canonical per-ability key/owner bindings now live in data/abilities/en/abilities.xlsx (the
+# "bindings" sheet), read via AbilityData.binding(id) — see _apply_canonical_main_ability_binding.
 
 const DEFAULT_HP := 100.0
 const DEFAULT_STAMINA := 100.0
@@ -758,9 +755,15 @@ func _get_preview_ui_state() -> Dictionary:
 
 func _get_canonical_main_ability_keymap() -> Dictionary:
 	var keymap := {}
-	for ability_id in CANONICAL_MAIN_ABILITY_BINDINGS.keys():
-		var binding: Dictionary = CANONICAL_MAIN_ABILITY_BINDINGS.get(ability_id, {})
-		keymap[ability_id] = binding.duplicate(true)
+	for ability_id in AbilityData.ABILITY_ORDER:
+		var binding := AbilityData.binding(ability_id)
+		if binding.is_empty():
+			continue
+		keymap[ability_id] = {
+			"owner": str(binding.get("owner", "")),
+			"keybind": str(binding.get("keybind", "")),
+			"keycode": int(binding.get("keycode", 0)),
+		}
 	return keymap
 
 func _active_world_slot() -> Dictionary:
@@ -1701,53 +1704,17 @@ func _apply_character_override(char_id: String, override: Dictionary) -> void:
 	_update_character_in_game_state(char_id)
 	_sync_character_hud(char_id)
 
+## The three party abilities' fallback content + mechanics, sourced from the abilities xlsx (the "default"
+## context for the content; the bindings sheet for owner/keybind/color/atp_cost/status/deltas). A chunk's
+## get_preview_abilities() overrides the content per scenario.
 func _build_default_ability_definitions() -> Dictionary:
-	return {
-		"aster_focus": {
-			"id": "aster_focus",
-			"display_name": "FOCUS",
-			"keybind": "Z",
-			"keycode": KEY_Z,
-			"owner": "aster",
-			"color": CHARACTER_COLORS["aster"],
-			"duration": 1.4,
-			"cooldown": 4.0,
-			"atp_cost": 1.0,
-			"active_status": "attacking",
-			"message": "Aster sharpens the lane read.",
-			"note": "Aster's read spikes for a second before settling back into the fragment.",
-		},
-		"peris_tune": {
-			"id": "peris_tune",
-			"display_name": "TUNE",
-			"keybind": "X",
-			"keycode": KEY_X,
-			"owner": "peris",
-			"color": CHARACTER_COLORS["peris"],
-			"duration": 1.8,
-			"cooldown": 5.0,
-			"atp_cost": 1.0,
-			"sta_delta": 18.0,
-			"active_status": "attacking",
-			"message": "Peris re-tunes the team's footing.",
-			"note": "Peris smooths the pressure in the room and gives the active lane back some stamina.",
-		},
-		"endo_patch": {
-			"id": "endo_patch",
-			"display_name": "PATCH",
-			"keybind": "Z",
-			"keycode": KEY_Z,
-			"owner": "endo",
-			"color": CHARACTER_COLORS["endo"],
-			"duration": 1.0,
-			"cooldown": 6.0,
-			"atp_cost": 1.0,
-			"hp_delta": 12.0,
-			"active_status": "resting",
-			"message": "Endo patches the party back together.",
-			"note": "Endo buys the fragment a little more survivability.",
-		},
-	}
+	var defs := {}
+	for ability_id in ["aster_focus", "peris_tune", "endo_patch"]:
+		var d := {"id": ability_id}
+		d.merge(AbilityData.get_ability("default." + ability_id), true)  # display_name, duration, cooldown, message, note
+		d = _apply_canonical_main_ability_binding(ability_id, d)         # owner, keybind, keycode, color, atp_cost, status, deltas
+		defs[ability_id] = d
+	return defs
 
 func _configure_preview_abilities(chunk_abilities: Array) -> void:
 	_ability_defs.clear()
@@ -1791,13 +1758,18 @@ func _configure_preview_abilities(chunk_abilities: Array) -> void:
 
 	_refresh_ability_display()
 
+## Apply an ability's MECHANICS from the abilities xlsx bindings sheet (owner / keybind / keycode / color /
+## atp_cost / active_status / deltas) — the canonical, per-ability_id values that don't change per context.
 func _apply_canonical_main_ability_binding(ability_id: String, ability: Dictionary) -> Dictionary:
-	if not CANONICAL_MAIN_ABILITY_BINDINGS.has(ability_id):
+	var binding := AbilityData.binding(ability_id)
+	if binding.is_empty():
 		return ability
-	var binding: Dictionary = CANONICAL_MAIN_ABILITY_BINDINGS.get(ability_id, {})
 	ability["owner"] = str(binding.get("owner", ability.get("owner", "")))
 	ability["keybind"] = str(binding.get("keybind", ability.get("keybind", "")))
 	ability["keycode"] = int(binding.get("keycode", ability.get("keycode", 0)))
+	for k in ["color", "atp_cost", "active_status", "sta_delta", "hp_delta"]:
+		if binding.has(k):
+			ability[k] = binding[k]
 	return ability
 
 func _apply_chunk_metadata() -> void:

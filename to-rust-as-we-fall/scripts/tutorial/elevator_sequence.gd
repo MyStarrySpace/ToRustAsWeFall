@@ -228,7 +228,9 @@ func _setup_ui() -> void:
 	_hud.set_portrait_stat("aster", "sta", 0)
 	_hud.show_pause_toggle(false)
 	_hud.pause_toggled.connect(_on_pause_toggled)
-	_hud.add_ability("emp", AbilityData.get_ability("elevator.emp").get("display_name", "EMP"), "E", Color(0.29, 0.62, 1.0))
+	var emp_binding := AbilityData.binding("emp")
+	_hud.add_ability("emp", AbilityData.get_ability("elevator.emp").get("display_name", "EMP"),
+		str(emp_binding.get("keybind", "E")), emp_binding.get("color", Color(0.29, 0.62, 1.0)))
 	_hud.set_ability_state("emp", "disabled")
 	_hud.ability_pressed.connect(func(id: String):
 		if id == "emp":
