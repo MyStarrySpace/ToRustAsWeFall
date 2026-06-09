@@ -269,9 +269,7 @@ func _begin_corridor_walk() -> void:
 
 
 func _start_pan_prompt() -> void:
-	_camera.set_pan_enabled(true)
-	_camera.set_wasd_pan_enabled(true)
-	_camera.max_pan_distance = 40.0
+	_camera.enable_free_look(40.0)
 	_tutorial_prompt.show_prompt("WASD — pan camera")
 	# F prompt appears after early banter.
 	_scheduler.schedule_after(20.0, _show_fastforward_prompt, "ff_prompt")
@@ -320,9 +318,7 @@ func _start_lockdown() -> void:
 
 func _start_return_focus() -> void:
 	_enter_step("return_focus")
-	_camera.set_wasd_pan_enabled(false)
-	_camera.set_pan_enabled(false)
-	_camera.max_pan_distance = 15.0
+	_camera.disable_free_look()
 	# Citizen's light dims back down
 	_citizen_light.light_color = Color(0.3, 0.3, 0.35)
 	_citizen_light.light_energy = 1.5

@@ -194,6 +194,24 @@ func set_wasd_pan_enabled(enabled: bool) -> void:
 	if not enabled:
 		_pan_offset = Vector3.ZERO
 
+## Free-look mode: the full "move the camera around" control set in one call — WASD pan + right-drag pan +
+## edge-scroll, with a generous pan radius. A left click still recenters on the target, so it never blocks
+## click-to-move. Modular replacement for the per-scene set_pan_enabled / set_wasd_pan_enabled / max_pan
+## triple — use this anywhere the player should be able to look around (the chunk preview, free-cam testing).
+func enable_free_look(max_distance := 40.0) -> void:
+	max_pan_distance = max_distance
+	set_pan_enabled(true)
+	set_wasd_pan_enabled(true)
+
+## Turn free-look off and snap the view back to the target (e.g. when a scripted/locked beat takes over).
+func disable_free_look(reset_max_distance := 15.0) -> void:
+	set_wasd_pan_enabled(false)
+	set_pan_enabled(false)
+	max_pan_distance = reset_max_distance
+
+func is_free_look() -> bool:
+	return _pan_enabled and _wasd_pan_enabled
+
 ## Trigger screen shake. Intensity is the max offset in world units.
 ## Decay rate controls how fast it fades (higher = faster).
 func shake(intensity: float = 0.3, decay: float = 5.0) -> void:

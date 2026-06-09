@@ -80,7 +80,7 @@ func _build_characters() -> void:
 	chars.add_child(_endo)
 
 	if not Engine.is_editor_hint():
-		_setup_game_camera(_player, Vector3(0, 10, 8))
+		_setup_game_camera(_player, Vector3(0, 10, 8), true)
 
 func _register_characters() -> void:
 	_game_state.grid = _grid

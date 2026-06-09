@@ -73,7 +73,7 @@ const ENGRAM_JOURNAL_SCRIPT_PATH := "res://scripts/system/persistence/engram_jou
 const FRAGMENT_PREVIEW_GUI_CONTRACT_ID := "fragment_preview_shared_gui_v1"
 const GAME_HUD_CONTRACT_ID := "shared_game_hud_v1"
 const GAME_HUD_SCRIPT_PATH := "res://scripts/ui/game_hud.gd"
-const FRAGMENT_PREVIEW_CONTROL_HELP := "Click move  1-3 focus  Ctrl+1-3 multi-select  C cycle  Z/X abilities  V drop  T transfer  B retrieve  F1-F3 overlays  O drawer  Tab route  G dodge  Space pause  R reload"
+const FRAGMENT_PREVIEW_CONTROL_HELP := "Click move  WASD/right-drag pan  1-3 focus  Ctrl+1-3 multi-select  C cycle  Z/X abilities  V drop  T transfer  B retrieve  F1-F3 overlays  O drawer  Tab route  G dodge  Space pause  R reload"
 const FRAGMENT_PREVIEW_INVENTORY_CONTROL_HELP := "Controls: Z/X abilities  V drop  T transfer  B retrieve"
 const FRAGMENT_CHUNK_SCENE_PATHS := [
 	"res://scenes/fragments/chunks/stacks_fragment_chunk.tscn",
@@ -486,6 +486,9 @@ func _ready() -> void:
 			"--test-camera-shake":
 				ran_test = true
 				_test_camera_shake()
+			"--test-camera-free-look":
+				ran_test = true
+				_test_camera_free_look()
 			"--test-physics":
 				ran_test = true
 				_test_physics_objects()
@@ -821,6 +824,7 @@ func _run_all_tests() -> void:
 	await _test_act1()
 	await _test_ferrolure()
 	_test_camera_shake()
+	_test_camera_free_look()
 	_test_physics_objects()
 	_test_physics_edge_cases()
 	_test_pendulum()
@@ -16291,6 +16295,57 @@ func _test_camera_shake() -> void:
 		if offset > locked_max_offset:
 			locked_max_offset = offset
 	_assert_true(locked_max_offset > 0.01, "Camera shakes while locked (max offset: %.4f)" % locked_max_offset)
+
+	cam.queue_free()
+	target.queue_free()
+
+func _test_camera_free_look() -> void:
+	_test_name = "Camera Free Look"
+
+	var target := Node3D.new()
+	target.position = Vector3(5, 0, 5)
+	get_tree().root.add_child(target)
+
+	var cam := Camera3D.new()
+	cam.name = "TestFreeLookCam"
+	cam.set_script(preload("res://scripts/ui/game_camera.gd"))
+	get_tree().root.add_child(cam)
+	cam.target = target
+	cam.follow_offset = Vector3(0, 10, 7)
+
+	# Default: follow-only, no free-look.
+	_assert_true(not cam.is_free_look(), "Camera is not in free-look by default")
+
+	# Enable: WASD + right-drag pan with the wide radius, one call.
+	cam.enable_free_look(40.0)
+	_assert_true(cam.is_free_look(), "enable_free_look turns on free-look")
+	_assert_true(absf(cam.max_pan_distance - 40.0) < 0.001, "enable_free_look sets the pan radius (got: %.2f)" % cam.max_pan_distance)
+
+	# A right-drag actually pans the look point in free-look.
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_RIGHT
+	press.pressed = true
+	cam._unhandled_input(press)
+	var motion := InputEventMouseMotion.new()
+	motion.relative = Vector2(60, 0)
+	cam._unhandled_input(motion)
+	_assert_true(cam._pan_offset.length() > 0.0, "Right-drag pans the camera in free-look (offset: %.3f)" % cam._pan_offset.length())
+
+	# Disable snaps back to the target and restores the tight radius.
+	cam.disable_free_look(15.0)
+	_assert_true(not cam.is_free_look(), "disable_free_look turns free-look off")
+	_assert_true(absf(cam.max_pan_distance - 15.0) < 0.001, "disable_free_look restores the pan radius (got: %.2f)" % cam.max_pan_distance)
+	_assert_true(cam._pan_offset.length() < 0.001, "disable_free_look recenters the view")
+
+	# With free-look off, a right-drag is inert — gameplay scenes stay locked on the target.
+	var press2 := InputEventMouseButton.new()
+	press2.button_index = MOUSE_BUTTON_RIGHT
+	press2.pressed = true
+	cam._unhandled_input(press2)
+	var motion2 := InputEventMouseMotion.new()
+	motion2.relative = Vector2(80, 0)
+	cam._unhandled_input(motion2)
+	_assert_true(cam._pan_offset.length() < 0.001, "Right-drag is inert when free-look is off")
 
 	cam.queue_free()
 	target.queue_free()

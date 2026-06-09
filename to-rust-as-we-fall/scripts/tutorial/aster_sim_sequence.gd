@@ -72,7 +72,7 @@ func _build_characters() -> void:
 	chars.add_child(_ron)
 
 	if in_game:
-		_setup_game_camera(_player, Vector3(0, 8, 6))
+		_setup_game_camera(_player, Vector3(0, 8, 6), true)
 
 func _register_characters() -> void:
 	_game_state.grid = _grid

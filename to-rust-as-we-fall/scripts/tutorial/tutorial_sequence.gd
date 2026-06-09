@@ -563,7 +563,10 @@ func _create_npc(npc_name: String, npc_color: Color) -> Node3D:
 	npc.color = npc_color
 	return npc
 
-func _setup_game_camera(target_node: Node3D, offset := Vector3(0, 10, 7)) -> void:
+## Build the shared follow camera. Pass free_look = true to start with the full "move the camera around"
+## control set (WASD + right-drag + edge-scroll, click recenters) — what you want when testing/exploring a
+## scene or chunk. Scripted scenes (tag_day, elevator) leave it false and drive the camera per-beat.
+func _setup_game_camera(target_node: Node3D, offset := Vector3(0, 10, 7), free_look := false) -> void:
 	var cam := Camera3D.new()
 	cam.name = "GameCamera"
 	cam.set_script(preload("res://scripts/ui/game_camera.gd"))
@@ -571,7 +574,10 @@ func _setup_game_camera(target_node: Node3D, offset := Vector3(0, 10, 7)) -> voi
 	_camera = cam
 	_camera.target = target_node
 	_camera.follow_offset = offset
-	_camera.set_pan_enabled(false)
+	if free_look:
+		_camera.enable_free_look()
+	else:
+		_camera.set_pan_enabled(false)
 
 func _register_gs_character(id: String, node: Node3D, speed: float = 3.0, stats: Dictionary = {}) -> void:
 	_game_state.register_character(id, node.position, speed, stats)
