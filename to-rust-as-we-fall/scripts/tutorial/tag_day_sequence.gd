@@ -29,11 +29,24 @@ const DEAD_END := Vector3(17, 0, -28)
 
 const BASE_NPC_SPEED := 2.0
 
+# An OPEN walkable plane spanning the checkpoint room AND the twisted corridor down to the dead end
+# (world X[-4,28], Z[-28,6]). No internal walls: the citizen's scripted command_walk_path waypoints carry
+# the twist, so the grid just makes the cinematic's NPC movement cell-based + cooperative like the rest.
+const GRID_ORIGIN := Vector3(-4.0, 0.0, -28.0)
+const GRID_SIZE := Vector2i(32, 34)
+var _grid: GridWorld
+
 # --- Virtual overrides ---
 
 func _build_scene() -> void:
+	_build_grid()
 	_build_environment()
 	_build_corridor()
+
+func _build_grid() -> void:
+	_grid = GridWorld.new()
+	_grid.origin = GRID_ORIGIN
+	_grid.create_room(GRID_SIZE.x, GRID_SIZE.y, false)
 
 func _build_characters() -> void:
 	var chars_node := Node3D.new()
@@ -43,6 +56,8 @@ func _build_characters() -> void:
 	# Aster at his Psy-Knapse device
 	_player = _create_player_character("Aster", Color(0.29, 0.62, 1.0))
 	_player.position = ASTER_DEVICE_POS + Vector3(0, 0.5, 0)
+	if not Engine.is_editor_hint():
+		_player.grid_world = _grid
 	chars_node.add_child(_player)
 
 	# Citizen (CZN-217) at the device to Aster's right
@@ -70,6 +85,7 @@ func _build_characters() -> void:
 		_setup_game_camera(_player, Vector3(0, 10, 7))
 
 func _register_characters() -> void:
+	_game_state.grid = _grid
 	_register_gs_character("aster", _player, 3.0)
 	_register_gs_character("citizen", _citizen, BASE_NPC_SPEED)
 
