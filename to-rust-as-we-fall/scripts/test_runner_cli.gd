@@ -384,6 +384,9 @@ func _ready() -> void:
 			"--test-elevator":
 				ran_test = true
 				await _test_elevator()
+			"--test-elevator-fall-level":
+				ran_test = true
+				await _test_elevator_fall_level()
 			"--test-leaving-facility":
 				ran_test = true
 				await _test_leaving_facility()
@@ -784,6 +787,7 @@ func _run_all_tests() -> void:
 	await _test_pause_menu()
 	await _test_peris_sim()
 	await _test_elevator()
+	await _test_elevator_fall_level()
 	await _test_overlay_facility_gating()
 	await _test_leaving_facility()
 	await _test_showcase()
@@ -6149,6 +6153,47 @@ func _assert_elevator_active_player_can_move(instance: Node, label: String) -> v
 		return
 	_assert_true(bool(instance._player.get("_move_enabled")),
 		"%s leaves the active player movement-enabled" % label)
+
+# --- Test: the elevator bridge collapse is a REAL cross-level transition (upper deck -> lower deck) ---
+# The multi-level grid port: the party spawns on the UPPER deck (grid level 1) and the bridge collapse drops
+# them to the LOWER deck (level 0) via set_character_level — the data-layer level + floor Y change and the
+# transition is logged (KIND_SET_LEVEL), not a hand-poked Y. Guards against regressing to a manual Y poke.
+func _test_elevator_fall_level() -> void:
+	_test_name = "Elevator Fall Level"
+	var scene := load("res://scenes/tutorial/elevator.tscn")
+	if scene == null:
+		_assert_true(false, "Elevator scene loads")
+		return
+	var instance: Node = scene.instantiate()
+	if "suppress_scene_change" in instance:
+		instance.suppress_scene_change = true
+	get_tree().root.add_child(instance)
+	for i in range(8):
+		await get_tree().process_frame
+	var gs = instance._game_state
+	_assert_true(gs != null and gs.grid != null and gs.grid.level_count >= 2,
+		"The elevator builds a two-deck stacked grid")
+	_assert_equals(gs.get_character_level("peris"), int(instance.LEVEL_UPPER), "Peris spawns on the upper deck")
+	_assert_equals(gs.get_character_level("aster"), int(instance.LEVEL_UPPER), "Aster spawns on the upper deck")
+	var upper_y: float = gs.get_position("peris").y
+	# Drive the fall landing (the bridge gives way) and assert a real cross-level transition.
+	instance._enter_step("bridge_collapse")
+	instance._on_fall_landed()
+	_assert_equals(gs.get_character_level("peris"), int(instance.LEVEL_LOWER), "After the fall Peris is on the lower deck")
+	_assert_equals(gs.get_character_level("aster"), int(instance.LEVEL_LOWER), "After the fall Aster is on the lower deck")
+	_assert_true(gs.get_position("peris").y < upper_y - 1.0,
+		"The fall drops the data-layer Y to the lower deck (%.1f -> %.1f)" % [upper_y, gs.get_position("peris").y])
+	# The transition is logged so replay reproduces the fall (not a silent position poke).
+	if gs.event_log != null:
+		var has_set_level := false
+		for e in gs.event_log.events:
+			if String(e.get("kind", "")) == GameEvent.KIND_SET_LEVEL:
+				has_set_level = true
+		_assert_true(has_set_level, "The fall logs a KIND_SET_LEVEL transition (replay reproduces it)")
+	if instance.has_method("_teardown_sequence"):
+		instance._teardown_sequence()
+	instance.queue_free()
+	await get_tree().process_frame
 
 # --- Test: Leaving Facility ---
 # --- Test: Elevator Tutorial ---
@@ -17661,6 +17706,11 @@ func _intro_leg_actions(scene_path: String, visit: int, instance: Node) -> Dicti
 			_set_sequence_character_position(instance, "peris", exit_gate + Vector3(0.0, 0.0, -0.5))
 			_set_sequence_character_position(instance, "aster", exit_gate + Vector3(0.0, 0.0, 0.5))
 		actions["corridor"] = func(): _disable_enemy_detection(instance)
+		# Cross the (upper-deck) bridge: walk Aster to the far end, which is what collapses it. Without
+		# this the leg stalls at "bridge" (the gate keys on aster.x past the span, but nothing moved her).
+		actions["bridge"] = func():
+			_disable_enemy_detection(instance)
+			_set_sequence_character_position(instance, "aster", Vector3(instance.BRIDGE_END_X, 0.5, 0.0))
 		actions["climb_attempt"] = func(): instance._on_climb_prompt_interacted()
 		actions["route_choice"] = func():
 			_disable_enemy_detection(instance)

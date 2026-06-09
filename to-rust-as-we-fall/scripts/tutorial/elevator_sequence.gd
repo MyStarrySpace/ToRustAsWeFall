@@ -101,6 +101,21 @@ const FERROLURE_POS := Vector3(BRIDGE_END_X + 28.0, BELOW_Y + 0.3, 4.0)
 const GAUNTLET_EXIT := Vector3(BRIDGE_END_X + 42.0, BELOW_Y, 0)
 const FERROLURE_DURATION := 18.0
 
+# --- Multi-level grid (two stacked decks) ---
+# The scene is two physical decks: the UPPER deck (elevator interior + bridge, world Y=0) and the
+# LOWER deck (below landing + junction + gauntlet, world Y=BELOW_Y=-4), connected one-way by the
+# bridge collapse. They map to grid levels with origin.y = BELOW_Y and level_height = -BELOW_Y, so:
+#   level 0 -> Y = -4 (lower)   level 1 -> Y = 0 (upper)
+# Choosing the origin this way keeps every literal world Y in the scene unchanged. The two decks
+# overlap in X (the bridge sits above the lower landing), so each level gets its own walkable
+# footprint (see _setup_level_footprints). Movement derives Y from the character's level; the fall
+# is a real set_character_level transition, not a hand-tweened position poke.
+const LEVEL_LOWER := 0
+const LEVEL_UPPER := 1
+const GRID_ORIGIN := Vector3(-5.0, BELOW_Y, -8.0)
+const GRID_SIZE := Vector2i(72, 16)  # world X in [-5, 67], Z in [-8, 8] — covers both decks
+var _grid: GridWorld
+
 # --- Chunk dispatch ---
 
 func _build_chunk(chunk_name: String, parent: Node3D) -> void:
@@ -130,7 +145,15 @@ func _build_scene() -> void:
 	e.glow_bloom = 0.1
 	we.environment = e
 	env.add_child(we)
+	_build_grid()
 	_load_chunk("elevator")
+
+## Two stacked decks on one grid plane. No wall border — per-level footprints define the walkable
+## area of each deck (the decks overlap in X, so a level-agnostic wall can't separate them).
+func _build_grid() -> void:
+	_grid = GridWorld.new()
+	_grid.origin = GRID_ORIGIN
+	_grid.create_room(GRID_SIZE.x, GRID_SIZE.y, false)
 
 func _build_characters() -> void:
 	var chars := Node3D.new()
@@ -162,6 +185,7 @@ func _build_characters() -> void:
 	chars.add_child(_endo)
 
 	if not Engine.is_editor_hint():
+		_player.grid_world = _grid  # player clicks route on the grid (cell snapping, per-deck footprint)
 		_setup_game_camera(_player, Vector3(0, 3.5, 2.5))
 		# Keep the view inside the elevator: pan / edge-scroll can't push the
 		# look-at past the walls. Cleared when the corridor opens up.
@@ -171,11 +195,24 @@ func _build_characters() -> void:
 			_camera.set_look_bounds(Vector3(-hx, 0.0, -hz), Vector3(hx, 0.0, hz))
 
 func _register_characters() -> void:
+	_game_state.grid = _grid          # assign BEFORE registering so each character's level derives from its spawn Y
+	_configure_levels(2, -BELOW_Y)    # 2 decks, 4m apart: level 0 = lower (Y=-4), level 1 = upper (Y=0)
+	_setup_level_footprints()
 	_register_gs_character("peris", _peris_node, 2.5)
 	_register_gs_character("aster", _aster_node, 2.5)
 	_register_gs_character("eu1", _escort_1, 2.0)
 	_register_gs_character("eu2", _escort_2, 2.0)
 	_aster_node.set_move_enabled(false)
+
+## Each deck's walkable footprint (world XZ). The decks overlap in X, so a cell walkable on the
+## upper deck (the bridge) may be void on the lower deck and vice versa. Clicks off a deck's
+## footprint are rejected by the grid, so the player can't walk into the void or off the bridge.
+func _setup_level_footprints() -> void:
+	# Upper deck (level 1): elevator interior + exit corridor + bridge span.
+	_add_level_walkable_region(LEVEL_UPPER, Vector2(-4.0, -3.5), Vector2(4.5, 3.5))   # elevator cabin
+	_add_level_walkable_region(LEVEL_UPPER, Vector2(4.0, -2.0), Vector2(BRIDGE_END_X - 1.0, 2.0))  # corridor + bridge
+	# Lower deck (level 0): the below landing / fork / junction / gauntlet run, one open span.
+	_add_level_walkable_region(LEVEL_LOWER, Vector2(-3.5, -8.0), Vector2(GAUNTLET_EXIT.x + 1.0, 8.0))
 
 func _setup_ui() -> void:
 	_hud = CanvasLayer.new()
@@ -922,7 +959,14 @@ func _on_fall_landed() -> void:
 	var land_x: float = BRIDGE_END_X + 1.0
 	for char_id in ["peris", "aster"]:
 		var pos: Vector3 = _game_state.get_position(char_id)
-		_game_state.characters[char_id].position = Vector3(maxf(pos.x, land_x), BELOW_Y + 0.5, pos.z)
+		# Real cross-level transition (logs KIND_SET_LEVEL): the data-layer Y snaps to the LOWER deck and
+		# the move stops, so movement, detection, and paths now read at the lower floor — not a hand-poked Y.
+		_game_state.set_character_level(char_id, LEVEL_LOWER)
+		# Slide onto the clear landing ledge past the bridge end, staying on the lower deck.
+		var lp: Vector3 = _game_state.get_position(char_id)
+		_game_state.characters[char_id]["position"] = Vector3(maxf(pos.x, land_x), lp.y, lp.z)
+		if _game_state.grid != null:
+			_game_state.characters[char_id]["grid_cell"] = _game_state.grid.world_to_grid(_game_state.characters[char_id]["position"])
 	# Free the old level only once the cosmetic fall has visually finished. At 1x the tween is
 	# already done by now; under fast-forward it isn't, so let tween.finished do it. Headless /
 	# force-fire (no live tween) removes them here.
