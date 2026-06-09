@@ -45,7 +45,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
-		if mb.button_index == MOUSE_BUTTON_RIGHT:
+		# Middle-drag pans (RTS-style). RIGHT is reserved for the move/interact command, and
+		# WASD + edge-scroll stay the primary pan affordances (RimWorld-like).
+		if mb.button_index == MOUSE_BUTTON_MIDDLE:
 			_panning = mb.pressed
 		# Left click snaps camera back to target
 		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:

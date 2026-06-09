@@ -101,7 +101,7 @@ const ABILITY_KEYCODES := {
 }
 const PREVIEW_GUI_CONTRACT_ID := "fragment_preview_shared_gui_v1"
 const GAME_HUD_SCRIPT_PATH := "res://scripts/ui/game_hud.gd"
-const PREVIEW_CONTROL_HELP := "Click move  WASD/right-drag pan  1-3 focus  Ctrl+1-3 multi-select  C cycle  Z/X abilities  V drop  T transfer  B retrieve  F1-F3 overlays  O drawer  Tab route  G dodge  Space pause  R reload"
+const PREVIEW_CONTROL_HELP := "Click move  WASD/middle-drag pan  1-3 focus  Ctrl+1-3 multi-select  C cycle  Z/X abilities  V drop  T transfer  B retrieve  F1-F3 overlays  O drawer  Tab route  G dodge  Space pause  R reload"
 const PREVIEW_INVENTORY_CONTROL_HELP := "Controls: Z/X abilities  V drop  T transfer  B retrieve"
 # The canonical per-ability key/owner bindings now live in data/abilities/en/abilities.xlsx (the
 # "bindings" sheet), read via AbilityData.binding(id) — see _apply_canonical_main_ability_binding.
