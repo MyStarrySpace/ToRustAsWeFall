@@ -492,6 +492,9 @@ func _ready() -> void:
 			"--test-left-click-no-interact":
 				ran_test = true
 				_test_left_click_no_interact()
+			"--test-right-click-move":
+				ran_test = true
+				await _test_right_click_move()
 			"--test-physics":
 				ran_test = true
 				_test_physics_objects()
@@ -791,6 +794,7 @@ func _run_all_tests() -> void:
 	await _test_aster_sim()
 	await _test_aster_playthrough()
 	await _test_input_playthrough()
+	await _test_right_click_move()
 	await _test_fast_forward_invariance()
 	if not _heavy("Puzzle Fast-Forward Invariance"):
 		await _test_puzzle_fast_forward_invariance()
@@ -4276,6 +4280,23 @@ func _synthetic_ground_click(instance: Node, world_pos: Vector3) -> void:
 	for pressed in [true, false]:
 		var ev := InputEventMouseButton.new()
 		ev.button_index = MOUSE_BUTTON_LEFT
+		ev.pressed = pressed
+		ev.position = screen_pos
+		Input.parse_input_event(ev)
+
+## RIGHT-click variant — the RTS move command. Same unproject-to-screen path, RIGHT button.
+func _synthetic_ground_right_click(instance: Node, world_pos: Vector3) -> void:
+	var camera: Camera3D = null
+	if "_camera" in instance and instance._camera != null:
+		camera = instance._camera
+	else:
+		camera = get_viewport().get_camera_3d()
+	if camera == null:
+		return
+	var screen_pos := camera.unproject_position(world_pos)
+	for pressed in [true, false]:
+		var ev := InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_RIGHT
 		ev.pressed = pressed
 		ev.position = screen_pos
 		Input.parse_input_event(ev)
@@ -16398,6 +16419,50 @@ func _test_left_click_no_interact() -> void:
 
 	obj.queue_free()
 	ost.queue_free()
+
+## RIGHT-click on the ground issues the RTS move command through the REAL player input path
+## (synthetic RIGHT-button via Input + the player's _unhandled_input raycast). Drives the peris
+## workspace (open room, player can move) and asserts a RIGHT-click starts a move.
+func _test_right_click_move() -> void:
+	_test_name = "Right-Click Move"
+	var scene := load("res://scenes/tutorial/peris_sim.tscn")
+	if scene == null:
+		_assert_true(false, "peris_sim loads for right-click move")
+		return
+	var instance: Node = scene.instantiate()
+	instance.set("start_phase", 1)
+	get_tree().root.add_child(instance)
+	for i in range(10):
+		await get_tree().process_frame
+	var safety := 0
+	while str(instance._current_step) != "workspace" and safety < 4000:
+		instance.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+		safety += 1
+	var player: Node3D = instance._player as Node3D
+	var gs = instance._game_state
+	if player == null or gs == null or str(instance._current_step) != "workspace":
+		_assert_true(false, "right-click move: reached the workspace with a player (step=%s)" % str(instance._current_step))
+		instance.queue_free()
+		await get_tree().process_frame
+		return
+	var cid := str(player.char_id)
+	var start_pos: Vector3 = gs.get_position(cid)
+	var target := start_pos + Vector3(2.5, 0.0, 0.0)  # a few cells away in the open room
+	var moved := false
+	safety = 0
+	while safety < 200:
+		safety += 1
+		if safety % 40 == 1:
+			_synthetic_ground_right_click(instance, target)
+		instance.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+		if gs.is_moving(cid) or gs.get_position(cid).distance_to(start_pos) > 0.3:
+			moved = true
+			break
+	_assert_true(moved, "RIGHT-click on the ground moves the player (RTS command)")
+	instance.queue_free()
+	await get_tree().process_frame
 
 func _test_physics_objects() -> void:
 	_test_name = "Physics Objects"

@@ -146,7 +146,23 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventMouseButton):
 		return
 	var mb := event as InputEventMouseButton
-	if mb.button_index != MOUSE_BUTTON_LEFT or not mb.pressed:
+	if not mb.pressed:
+		return
+
+	# RIGHT-click is the RTS move command. A RIGHT-click ON an interactable is consumed by
+	# that object first (it interacts instead), so a command only reaches here for plain ground.
+	if mb.button_index == MOUSE_BUTTON_RIGHT:
+		if _click_mode != "move" or not _move_enabled:
+			return
+		if _auto_path.size() > 0 and not (game_state and char_id != ""):
+			return  # Don't interrupt fallback auto-path with clicks
+		var rhit := _raycast_ground(mb.position)
+		if rhit != Vector3.INF:
+			ground_clicked.emit(rhit)
+			_set_click_target(rhit)
+		return
+
+	if mb.button_index != MOUSE_BUTTON_LEFT:
 		return
 
 	# Select mode: a click only reports the world position; the sequence decides
@@ -157,7 +173,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			ground_clicked.emit(hit_sel)
 		return
 
-	# Move mode (default): click-to-move.
+	# Move mode (default): LEFT click-to-move. LEGACY — once the SelectionController makes LEFT a
+	# character select, RIGHT is the sole move command; kept here so movement works between stages.
 	if not _move_enabled:
 		return
 	if _auto_path.size() > 0 and not (game_state and char_id != ""):
