@@ -34,10 +34,23 @@ const PORTAL_POS := Vector3(7, 0, 0)
 const MONOS_POS := Vector3(8.5, 0, 0)
 const PERIS_START := Vector3(0, 0.5, -1)
 
+# The workspace floor is an 18x12 box centred at (4, 0) — world X in [-5, 13], Z in [-6, 6]. The grid is
+# that footprint at 1 cell / unit, so movement is cell-based + cooperative like the other gridded scenes.
+const GRID_ORIGIN := Vector3(-5.0, 0.0, -6.0)
+const GRID_SIZE := Vector2i(18, 12)
+var _grid: GridWorld
+
 # --- Virtual method overrides ---
 
 func _build_scene() -> void:
+	_build_grid()
 	_build_environment()
+
+## A single-level walkable plane over the workspace floor (bordered to match the room walls).
+func _build_grid() -> void:
+	_grid = GridWorld.new()
+	_grid.origin = GRID_ORIGIN
+	_grid.create_room(GRID_SIZE.x, GRID_SIZE.y, true)
 	_build_decorations()
 	_build_portal()
 
@@ -48,18 +61,23 @@ func _build_characters() -> void:
 
 	_player = _create_player_character("Peris", Color(1.0, 0.67, 0.27))
 	_player.position = PERIS_START
+	if not Engine.is_editor_hint():
+		_player.grid_world = _grid
 	chars.add_child(_player)
 
 	_monos = _create_npc("Monos", Color(0.6, 0.5, 0.35))
 	_monos.display_name = "MONOS"
 	_monos.position = MONOS_POS
 	_monos.visible = false
+	if not Engine.is_editor_hint():
+		_monos.grid_world = _grid
 	chars.add_child(_monos)
 
 	if not Engine.is_editor_hint():
 		_setup_game_camera(_player, Vector3(0, 8, 6))
 
 func _register_characters() -> void:
+	_game_state.grid = _grid
 	_register_gs_character("peris", _player, GameState.WALK_SPEED, {
 		"stamina": GameState.STAMINA_MAX,
 	})
