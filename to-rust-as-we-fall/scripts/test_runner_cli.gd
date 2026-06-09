@@ -390,6 +390,9 @@ func _ready() -> void:
 			"--test-act1-chunk-grids":
 				ran_test = true
 				await _test_act1_chunk_grids()
+			"--test-grid-port-robustness":
+				ran_test = true
+				await _test_grid_port_robustness()
 			"--test-leaving-facility":
 				ran_test = true
 				await _test_leaving_facility()
@@ -792,6 +795,7 @@ func _run_all_tests() -> void:
 	await _test_elevator()
 	await _test_elevator_fall_level()
 	await _test_act1_chunk_grids()
+	await _test_grid_port_robustness()
 	await _test_overlay_facility_gating()
 	await _test_leaving_facility()
 	await _test_showcase()
@@ -6157,6 +6161,80 @@ func _assert_elevator_active_player_can_move(instance: Node, label: String) -> v
 		return
 	_assert_true(bool(instance._player.get("_move_enabled")),
 		"%s leaves the active player movement-enabled" % label)
+
+# --- Test: ADVERSARIAL probes of the grid-ported scenes — try to break the new movement system ---
+# Aimed at finding failures the happy-path tests miss: a manual click across the elevator's link-less
+# decks (must reject, not phantom-climb), a party cross-deck click (rejected), and an act1 grid swap while
+# a character is mid-move (must not crash or strand it). Drives the REAL player click path (_set_click_target).
+func _test_grid_port_robustness() -> void:
+	_test_name = "Grid Port Robustness"
+
+	# (1) Elevator: the two decks are a multi-level grid with NO inter-level link (only the scripted fall
+	# crosses them). A manual click on the lower deck must be REJECTED — the player can't climb between
+	# decks by clicking, and must not phantom-teleport or change level.
+	var ev_scene := load("res://scenes/tutorial/elevator.tscn")
+	if ev_scene != null:
+		var ev: Node = ev_scene.instantiate()
+		if "suppress_scene_change" in ev:
+			ev.suppress_scene_change = true
+		get_tree().root.add_child(ev)
+		for i in range(8):
+			await get_tree().process_frame
+		var p = ev.get("_player")
+		var gs = ev.get("_game_state")
+		if p != null and gs != null and p.has_method("_set_click_target"):
+			var start_level := int(gs.get_character_level("peris"))
+			var lower := Vector3(float(ev.JUNCTION_POS.x), float(ev.BELOW_Y), 0.0)  # a lower-deck point (level 0)
+			var accepted := bool(p._set_click_target(lower))
+			_assert_true(not accepted,
+				"Elevator: a manual click on the link-less lower deck is REJECTED (no cross-deck climb)")
+			_assert_equals(int(gs.get_character_level("peris")), start_level,
+				"Elevator: the rejected cross-deck click leaves the player on its deck (no phantom climb)")
+			# A party group-move across decks is also rejected (multi-floor party moves aren't wired).
+			p.group_move = true
+			_assert_true(not bool(p._set_click_target(lower)),
+				"Elevator: a party group click across decks is rejected")
+			p.group_move = false
+		if ev.has_method("_teardown_sequence"):
+			ev._teardown_sequence()
+		ev.queue_free()
+		await get_tree().process_frame
+
+	# (2) act1: swapping the per-chunk grid while a character is MID-MOVE must not crash or strand it — the
+	# new chunk's grid becomes live and the character is on it (cell re-derived).
+	var a1_scene := load("res://scenes/tutorial/act1.tscn")
+	if a1_scene != null:
+		var a1: Node = a1_scene.instantiate()
+		if "suppress_scene_change" in a1:
+			a1.suppress_scene_change = true
+		get_tree().root.add_child(a1)
+		for i in range(8):
+			await get_tree().process_frame
+		var ags = a1.get("_game_state")
+		if ags != null:
+			# Aster moving in channels, then a hard cut to stacks mid-move.
+			ags.command_move_to_pos("aster", a1.CHANNELS_START + Vector3(20.0, 0.0, 0.0))
+			a1.headless_advance(0.3, 0.1)
+			a1._start_stacks_enter()  # swaps the live grid out from under the in-flight move
+			a1.headless_advance(0.2, 0.1)
+			_assert_true(ags.grid != null and absf(ags.grid.origin.x - 234.0) < 0.5,
+				"act1: the grid swapped to stacks even with a move in flight (no crash)")
+			# After the swap, dropping Aster onto the stacks deck and moving still works (not stranded).
+			var sp: Vector3 = a1.STACKS_START + Vector3(3.0, 0.5, 0.0)
+			ags.command_stop("aster")
+			ags.characters["aster"]["position"] = sp
+			ags.characters["aster"]["grid_cell"] = ags.grid.world_to_grid(sp)
+			ags.command_move_to_pos("aster", a1.STACKS_START + Vector3(16.0, 0.0, 0.0))
+			for s in range(120):
+				a1.headless_advance(0.1, 0.05)
+				if not ags.is_moving("aster"):
+					break
+			_assert_true(ags.get_position("aster").x > sp.x + 2.0,
+				"act1: Aster still walks on the stacks grid after a mid-move swap (not stranded)")
+		if a1.has_method("_teardown_sequence"):
+			a1._teardown_sequence()
+		a1.queue_free()
+		await get_tree().process_frame
 
 # --- Test: act1 swaps a per-chunk grid as it cuts between chunks, and the party moves on each one ---
 # act1 cuts channels->stacks->rings->lockout; each chunk gets its own open grid swapped in on entry. This

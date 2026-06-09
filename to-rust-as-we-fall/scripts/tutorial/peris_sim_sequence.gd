@@ -36,6 +36,9 @@ const PERIS_START := Vector3(0, 0.5, -1)
 
 # The workspace floor is an 18x12 box centred at (4, 0) — world X in [-5, 13], Z in [-6, 6]. The grid is
 # that footprint at 1 cell / unit, so movement is cell-based + cooperative like the other gridded scenes.
+# OPEN (no border): the whole floor is walkable. Plants/zones sit right up against the visual walls (e.g.
+# Plant1 at x=-4.4, Wellness at x=-4.2 land in column 0) — a bordered grid would wall those edge cells off
+# and make those exploration zones unreachable.
 const GRID_ORIGIN := Vector3(-5.0, 0.0, -6.0)
 const GRID_SIZE := Vector2i(18, 12)
 var _grid: GridWorld
@@ -50,7 +53,7 @@ func _build_scene() -> void:
 func _build_grid() -> void:
 	_grid = GridWorld.new()
 	_grid.origin = GRID_ORIGIN
-	_grid.create_room(GRID_SIZE.x, GRID_SIZE.y, true)
+	_grid.create_room(GRID_SIZE.x, GRID_SIZE.y, false)
 	_build_decorations()
 	_build_portal()
 
