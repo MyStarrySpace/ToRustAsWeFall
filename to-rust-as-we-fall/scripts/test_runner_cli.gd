@@ -393,6 +393,9 @@ func _ready() -> void:
 			"--test-grid-port-robustness":
 				ran_test = true
 				await _test_grid_port_robustness()
+			"--test-ability-data":
+				ran_test = true
+				_test_ability_data()
 			"--test-leaving-facility":
 				ran_test = true
 				await _test_leaving_facility()
@@ -796,6 +799,7 @@ func _run_all_tests() -> void:
 	await _test_elevator_fall_level()
 	await _test_act1_chunk_grids()
 	await _test_grid_port_robustness()
+	_test_ability_data()
 	await _test_overlay_facility_gating()
 	await _test_leaving_facility()
 	await _test_showcase()
@@ -6161,6 +6165,43 @@ func _assert_elevator_active_player_can_move(instance: Node, label: String) -> v
 		return
 	_assert_true(bool(instance._player.get("_move_enabled")),
 		"%s leaves the active player movement-enabled" % label)
+
+# --- Test: ability content loads from the abilities xlsx (single source of truth, like dialogue) ---
+# Abilities' display names + descriptions + tuning live in data/abilities/en/abilities.xlsx. This guards
+# the loader AND that the migration preserved the per-context content (a chunk's abilities + the tutorial
+# scene abilities resolve to the same values they used to hardcode).
+func _test_ability_data() -> void:
+	_test_name = "Ability Data"
+	AbilityData.load_dir()
+	# A contextual chunk ability round-trips every field.
+	var tend := AbilityData.get_ability("refuge_run.peris_tune")
+	_assert_equals(str(tend.get("id", "")), "peris_tune", "Key resolves the ability id")
+	_assert_equals(str(tend.get("display_name", "")), "TEND", "Refuge Run peris_tune is TEND")
+	_assert_true(absf(float(tend.get("cooldown", 0.0)) - 5.0) < 0.001, "TEND cooldown is 5.0")
+	_assert_true(str(tend.get("message", "")).begins_with("Peris tends the hushbloom"), "TEND carries its message")
+	_assert_true(str(tend.get("note", "")) != "", "TEND carries its description note")
+	# A whole context returns the three party abilities, in order, with the chunk's reframed names.
+	var ch := AbilityData.for_context("channels_rhythm")
+	_assert_equals(ch.size(), 3, "channels_rhythm has three abilities")
+	if ch.size() == 3:
+		_assert_equals(str(ch[0].get("id", "")), "aster_focus", "First is aster_focus")
+		_assert_equals(str(ch[0].get("display_name", "")), "TRACE", "channels_rhythm aster_focus is TRACE")
+		_assert_equals(str(ch[1].get("display_name", "")), "BLOOM", "channels_rhythm peris_tune is BLOOM")
+		_assert_equals(str(ch[2].get("display_name", "")), "BRACE", "channels_rhythm endo_patch is BRACE")
+	# Tutorial scene abilities live here too.
+	_assert_equals(str(AbilityData.get_ability("peris_sim.protect").get("display_name", "")), "PROTECT", "peris_sim protect is PROTECT")
+	_assert_equals(str(AbilityData.get_ability("elevator.emp").get("display_name", "")), "EMP", "elevator emp is EMP")
+	_assert_true(not AbilityData.has("nonsense.key"), "An absent key reports missing")
+	# End-to-end: a migrated chunk's get_preview_abilities() now sources from the xlsx (not a hardcoded dict).
+	var chunk_scene := load("res://scenes/fragments/chunks/refuge_run_chunk.tscn")
+	if chunk_scene != null:
+		var chunk: Node = chunk_scene.instantiate()
+		if chunk.has_method("get_preview_abilities"):
+			var abil: Array = chunk.get_preview_abilities()
+			_assert_equals(abil.size(), 1, "refuge_run chunk returns its one ability from AbilityData")
+			if abil.size() > 0:
+				_assert_equals(str(abil[0].get("display_name", "")), "TEND", "Migrated chunk ability resolves from the xlsx")
+		chunk.free()
 
 # --- Test: ADVERSARIAL probes of the grid-ported scenes — try to break the new movement system ---
 # Aimed at finding failures the happy-path tests miss: a manual click across the elevator's link-less

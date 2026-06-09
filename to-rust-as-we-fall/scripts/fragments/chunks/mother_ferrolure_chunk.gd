@@ -234,33 +234,8 @@ func get_preview_time_state() -> Dictionary:
 	}
 
 func get_preview_abilities() -> Array:
-	return [
-		{
-			"id": "aster_focus",
-			"display_name": "TRACE",
-			"duration": 1.0,
-			"cooldown": 4.0,
-			"message": "Aster spikes the old portal routing tables.",
-			"note": "TRACE buys an active bank a few more seconds of stability.",
-		},
-		{
-			"id": "peris_tune",
-			"display_name": "BLOOM",
-			"duration": 1.0,
-			"cooldown": 5.0,
-			"message": "Peris reads the board through the mother's dormant buds.",
-			"note": "BLOOM sharpens the root and caretaker read in her overlay.",
-		},
-		{
-			"id": "endo_patch",
-			"display_name": "CLOAK",
-			"duration": 1.0,
-			"cooldown": 6.0,
-			"message": "Endo folds down into the chamber's blind spots.",
-			"note": "CLOAK lets Endo ignore Techo lane damage for a few seconds while carrying the gear.",
-		},
-	]
-
+	# Display names + descriptions + tuning live in data/abilities/en/abilities.xlsx (per-context rows).
+	return AbilityData.for_context("mother_ferrolure")
 func get_preview_state() -> Dictionary:
 	var current_tick := _get_scheduler_tick()
 	var roots := {}

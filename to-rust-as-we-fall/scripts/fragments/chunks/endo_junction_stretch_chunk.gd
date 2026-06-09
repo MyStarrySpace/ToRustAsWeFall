@@ -125,33 +125,8 @@ func get_preview_time_state() -> Dictionary:
 	}
 
 func get_preview_abilities() -> Array:
-	return [
-		{
-			"id": "aster_focus",
-			"display_name": "TRACE",
-			"duration": 0.9,
-			"cooldown": 4.0,
-			"message": "Aster aligns Endo's marks to the old facility grid.",
-			"note": "TRACE can mark the safe ledge once Endo has shown the wall language.",
-		},
-		{
-			"id": "peris_tune",
-			"display_name": "BLOOM",
-			"duration": 0.9,
-			"cooldown": 5.0,
-			"message": "Peris calms the dormant shelter flora.",
-			"note": "BLOOM gives the party a little stamina margin before the last shelter push.",
-		},
-		{
-			"id": "endo_patch",
-			"display_name": "GUIDE",
-			"duration": 0.8,
-			"cooldown": 4.5,
-			"message": "Endo points out the route he trusts.",
-			"note": "GUIDE steadies Endo and highlights the practical survival anchors.",
-		},
-	]
-
+	# Display names + descriptions + tuning live in data/abilities/en/abilities.xlsx (per-context rows).
+	return AbilityData.for_context("endo_junction_stretch")
 func get_preview_state() -> Dictionary:
 	return {
 		"world_slot": get_world_slot(),

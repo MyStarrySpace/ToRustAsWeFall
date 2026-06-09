@@ -120,33 +120,8 @@ func get_preview_time_state() -> Dictionary:
 	}
 
 func get_preview_abilities() -> Array:
-	return [
-		{
-			"id": "aster_focus",
-			"display_name": "MARK",
-			"duration": 1.0,
-			"cooldown": 4.0,
-			"message": "Aster tightens the route read.",
-			"note": "MARK sharpens the scout read and can stand in for a last-second lane check at the perch.",
-		},
-		{
-			"id": "peris_tune",
-			"display_name": "BLOOM",
-			"duration": 1.2,
-			"cooldown": 5.0,
-			"message": "Peris retunes the lure pulse.",
-			"note": "BLOOM stretches the lure window if the team hesitates on the way into the slit.",
-		},
-		{
-			"id": "endo_patch",
-			"display_name": "BRACE",
-			"duration": 0.9,
-			"cooldown": 6.0,
-			"message": "Endo steadies the run.",
-			"note": "BRACE buys back some margin before the shelter sprint.",
-		},
-	]
-
+	# Display names + descriptions + tuning live in data/abilities/en/abilities.xlsx (per-context rows).
+	return AbilityData.for_context("survival_range")
 func get_preview_state() -> Dictionary:
 	return {
 		"departed": _departed,

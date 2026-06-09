@@ -96,7 +96,7 @@ func _setup_ui() -> void:
 	_hud.add_stat_bar("sta", Color(0.3, 0.5, 0.7), GameState.STAMINA_MAX, GameState.STAMINA_MAX)
 	_hud.show_pause_toggle(false)
 	_hud.show_run_toggle(false)
-	_hud.add_ability("protect", "PROTECT", "X", Color(0.8, 0.55, 0.2))
+	_hud.add_ability("protect", AbilityData.get_ability("peris_sim.protect").get("display_name", "PROTECT"), "X", Color(0.8, 0.55, 0.2))
 	_hud.pause_toggled.connect(_on_pause_toggled)
 	# Step guards decide when run toggles are allowed.
 	_hud.run_toggled.connect(func(running: bool): _toggle_run())

@@ -110,33 +110,8 @@ func get_preview_time_state() -> Dictionary:
 	}
 
 func get_preview_abilities() -> Array:
-	return [
-		{
-			"id": "aster_focus",
-			"display_name": "TRACE",
-			"duration": 1.1,
-			"cooldown": 4.0,
-			"message": "Aster spikes the data lattice.",
-			"note": "Terminal links, portal IDs, and cached floor ghosts all brighten for a moment.",
-		},
-		{
-			"id": "peris_tune",
-			"display_name": "BLOOM",
-			"duration": 0.7,
-			"cooldown": 6.0,
-			"message": "Peris wakes the nearby flora network.",
-			"note": "Enemy blurs and client-memory traces ripple outward from the plants she already knows.",
-		},
-		{
-			"id": "endo_patch",
-			"display_name": "SCROUNGE",
-			"duration": 0.9,
-			"cooldown": 5.5,
-			"message": "Endo sweeps the room for survival anchors.",
-			"note": "Food caches, hiding slots, and the shelter route flare brighter in the survival pass.",
-		},
-	]
-
+	# Display names + descriptions + tuning live in data/abilities/en/abilities.xlsx (per-context rows).
+	return AbilityData.for_context("overlay_lab")
 func get_preview_state() -> Dictionary:
 	return {
 		"overlay_states": _last_overlay_states.duplicate(true),

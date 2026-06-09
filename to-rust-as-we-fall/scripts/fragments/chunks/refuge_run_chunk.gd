@@ -163,11 +163,8 @@ func get_preview_time_state() -> Dictionary:
 	}
 
 func get_preview_abilities() -> Array:
-	return [
-		{"id": "peris_tune", "display_name": "TEND", "duration": 0.9, "cooldown": 5.0,
-			"message": "Peris tends the hushbloom.", "note": "TEND the hushbloom for a small stamina buffer before the run."},
-	]
-
+	# Display names + descriptions + tuning live in data/abilities/en/abilities.xlsx (per-context rows).
+	return AbilityData.for_context("refuge_run")
 func get_preview_state() -> Dictionary:
 	return {
 		"route_phase": _route_phase,

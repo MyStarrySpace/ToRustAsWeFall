@@ -161,33 +161,8 @@ func get_preview_time_state() -> Dictionary:
 	}
 
 func get_preview_abilities() -> Array:
-	return [
-		{
-			"id": "aster_focus",
-			"display_name": "TRACE",
-			"duration": 0.8,
-			"cooldown": 4.0,
-			"message": "Aster pings the uneven surge rhythm.",
-			"note": "TRACE surfaces one known safe lure offset and one dead offset for this lane.",
-		},
-		{
-			"id": "peris_tune",
-			"display_name": "BLOOM",
-			"duration": 0.8,
-			"cooldown": 5.0,
-			"message": "Peris thickens the hush moss for a breath.",
-			"note": "BLOOM steadies the concealment patch if the pack is already sweeping the corridor mouth.",
-		},
-		{
-			"id": "endo_patch",
-			"display_name": "BRACE",
-			"duration": 0.8,
-			"cooldown": 6.0,
-			"message": "Endo commits the fallback sprint.",
-			"note": "BRACE is a timing reminder: if the wash misses, go left into the corridor immediately.",
-		},
-	]
-
+	# Display names + descriptions + tuning live in data/abilities/en/abilities.xlsx (per-context rows).
+	return AbilityData.for_context("channels_hide_window")
 func get_preview_state() -> Dictionary:
 	var channels: Array = []
 	var visible_swarm_units := 0

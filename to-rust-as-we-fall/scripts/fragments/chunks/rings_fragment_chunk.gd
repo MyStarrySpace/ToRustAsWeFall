@@ -77,33 +77,8 @@ func get_preview_time_state() -> Dictionary:
 	}
 
 func get_preview_abilities() -> Array:
-	return [
-		{
-			"id": "aster_focus",
-			"display_name": "READ",
-			"duration": 1.1,
-			"cooldown": 4.0,
-			"message": "Aster reads the floral trace.",
-			"note": "Aster treats the flora like evidence, mapping habit and memory into something legible.",
-		},
-		{
-			"id": "peris_tune",
-			"display_name": "TEND",
-			"duration": 1.8,
-			"cooldown": 5.0,
-			"message": "Peris tends the bloom.",
-			"note": "Peris coaxes the fragment back toward intimacy instead of surveillance.",
-		},
-		{
-			"id": "endo_patch",
-			"display_name": "GRAFT",
-			"duration": 1.0,
-			"cooldown": 6.0,
-			"message": "Endo grafts a steadier footing into the lane.",
-			"note": "Endo keeps the party stable enough to linger in the alcoves instead of bouncing out of them.",
-		},
-	]
-
+	# Display names + descriptions + tuning live in data/abilities/en/abilities.xlsx (per-context rows).
+	return AbilityData.for_context("rings_fragment")
 func get_preview_state() -> Dictionary:
 	return {
 		"client_seen": _client_seen,

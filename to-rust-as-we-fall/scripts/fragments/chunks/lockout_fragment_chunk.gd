@@ -91,33 +91,8 @@ func get_preview_time_state() -> Dictionary:
 	}
 
 func get_preview_abilities() -> Array:
-	return [
-		{
-			"id": "aster_focus",
-			"display_name": "BURST",
-			"duration": 0.8,
-			"cooldown": 4.0,
-			"message": "Aster forces a burst window.",
-			"note": "Burst buys Aster back a little stamina so the chase lane can be rehearsed repeatedly.",
-		},
-		{
-			"id": "peris_tune",
-			"display_name": "LURE",
-			"duration": 1.2,
-			"cooldown": 5.0,
-			"message": "Peris throws the sweep off-beat.",
-			"note": "Peris creates just enough noise to make the boundary feel briefly misaligned.",
-		},
-		{
-			"id": "endo_patch",
-			"display_name": "BRACE",
-			"duration": 0.9,
-			"cooldown": 6.0,
-			"message": "Endo braces the team for impact.",
-			"note": "Brace is a recovery tool for resetting the chase state without leaving the fragment.",
-		},
-	]
-
+	# Display names + descriptions + tuning live in data/abilities/en/abilities.xlsx (per-context rows).
+	return AbilityData.for_context("lockout_fragment")
 func get_preview_state() -> Dictionary:
 	return {
 		"access_denied": _access_denied,

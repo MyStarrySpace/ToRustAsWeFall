@@ -72,33 +72,8 @@ func get_preview_time_state() -> Dictionary:
 	}
 
 func get_preview_abilities() -> Array:
-	return [
-		{
-			"id": "aster_focus",
-			"display_name": "SCAN",
-			"duration": 1.2,
-			"cooldown": 4.0,
-			"message": "Aster scans the tuned lane.",
-			"note": "Aster peels back the polished surface and catches the hand-tuned signal work underneath it.",
-		},
-		{
-			"id": "peris_tune",
-			"display_name": "SYNC",
-			"duration": 1.5,
-			"cooldown": 5.0,
-			"message": "Peris syncs the team's pace.",
-			"note": "Peris settles the room enough for the lane to feel collaborative instead of clinical.",
-		},
-		{
-			"id": "endo_patch",
-			"display_name": "CACHE",
-			"duration": 0.9,
-			"cooldown": 6.0,
-			"message": "Endo caches the current read.",
-			"note": "Endo banks a little safety so you can stay in the lane and keep exploring the station beats.",
-		},
-	]
-
+	# Display names + descriptions + tuning live in data/abilities/en/abilities.xlsx (per-context rows).
+	return AbilityData.for_context("stacks_fragment")
 func get_preview_state() -> Dictionary:
 	return {
 		"support_log_seen": _support_log_seen,

@@ -127,33 +127,8 @@ func get_preview_time_state() -> Dictionary:
 	}
 
 func get_preview_abilities() -> Array:
-	return [
-		{
-			"id": "aster_focus",
-			"display_name": "TRACE",
-			"duration": 0.8,
-			"cooldown": 4.0,
-			"message": "Aster tags the surge rhythm.",
-			"note": "TRACE is flavor here: the lane logic itself already exposes the guarantee analysis.",
-		},
-		{
-			"id": "peris_tune",
-			"display_name": "BLOOM",
-			"duration": 0.8,
-			"cooldown": 5.0,
-			"message": "Peris reads the corpse-side flora blur.",
-			"note": "BLOOM highlights the corpse-side memory read and the lure spur, but it does not change the timing proof.",
-		},
-		{
-			"id": "endo_patch",
-			"display_name": "BRACE",
-			"duration": 0.8,
-			"cooldown": 6.0,
-			"message": "Endo marks the fallback route.",
-			"note": "BRACE calls out the safe bridge arc after the washout resolves.",
-		},
-	]
-
+	# Display names + descriptions + tuning live in data/abilities/en/abilities.xlsx (per-context rows).
+	return AbilityData.for_context("channels_rhythm")
 func get_preview_state() -> Dictionary:
 	var channels: Array = []
 	var visible_swarm_units := 0
