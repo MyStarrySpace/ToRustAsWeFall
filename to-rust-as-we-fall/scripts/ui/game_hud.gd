@@ -523,6 +523,11 @@ func get_selected_ids() -> Array:
 		return selected
 	return [_active_portrait] if _active_portrait != "" else []
 
+## Every portrait id the HUD shows — i.e. the selectable party. The SelectionController uses this to
+## know which world characters a marquee / click can pick.
+func get_portrait_ids() -> Array:
+	return _portraits.keys()
+
 func set_portrait_stat(id: String, stat_name: String, value: float) -> void:
 	if not _portraits.has(id):
 		return

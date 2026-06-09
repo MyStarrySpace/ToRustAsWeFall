@@ -495,6 +495,9 @@ func _ready() -> void:
 			"--test-right-click-move":
 				ran_test = true
 				await _test_right_click_move()
+			"--test-selection-controller":
+				ran_test = true
+				await _test_selection_controller()
 			"--test-physics":
 				ran_test = true
 				_test_physics_objects()
@@ -795,6 +798,7 @@ func _run_all_tests() -> void:
 	await _test_aster_playthrough()
 	await _test_input_playthrough()
 	await _test_right_click_move()
+	await _test_selection_controller()
 	await _test_fast_forward_invariance()
 	if not _heavy("Puzzle Fast-Forward Invariance"):
 		await _test_puzzle_fast_forward_invariance()
@@ -4260,10 +4264,11 @@ func _input_playthrough_aster_first_gate() -> void:
 	instance.queue_free()
 	await get_tree().process_frame
 
-## Click the floor at a world position through the real input pipeline: project the
-## point to a screen position via the active camera, then feed a left-click press and
-## release to Input. The player's own _unhandled_input raycasts and moves — the test
-## never calls _set_click_target or _trigger.
+## Issue a move at a world position through the real input pipeline: project the point to a screen
+## position via the active camera, then feed a RIGHT-click press + release to Input (RIGHT is the RTS
+## move command now). The player's own _unhandled_input raycasts and moves — the test never calls
+## _set_click_target or _trigger. (A RIGHT-click ON an interactable would interact, but the headless
+## display server casts no picking ray, so only the player's ground raycast fires — a plain move.)
 func _synthetic_ground_click(instance: Node, world_pos: Vector3) -> void:
 	# Prefer THIS scene's own camera over the viewport's active camera: in a full --test-all run a
 	# prior scene can leave its Camera3D current, which would unproject world_pos to the wrong
@@ -4276,23 +4281,12 @@ func _synthetic_ground_click(instance: Node, world_pos: Vector3) -> void:
 		camera = get_viewport().get_camera_3d()
 	if camera == null:
 		return
-	var screen_pos := camera.unproject_position(world_pos)
-	for pressed in [true, false]:
-		var ev := InputEventMouseButton.new()
-		ev.button_index = MOUSE_BUTTON_LEFT
-		ev.pressed = pressed
-		ev.position = screen_pos
-		Input.parse_input_event(ev)
-
-## RIGHT-click variant — the RTS move command. Same unproject-to-screen path, RIGHT button.
-func _synthetic_ground_right_click(instance: Node, world_pos: Vector3) -> void:
-	var camera: Camera3D = null
-	if "_camera" in instance and instance._camera != null:
-		camera = instance._camera
-	else:
-		camera = get_viewport().get_camera_3d()
-	if camera == null:
-		return
+	# The player's own _raycast_ground re-projects from get_viewport().get_camera_3d(); make THIS scene's
+	# camera the current one (as it is in real play) so the unproject here and the raycast there agree —
+	# otherwise a prior test scene's leftover current camera makes the ray miss the ground and the move
+	# silently no-ops. (Matches the comment above about non-current cameras.)
+	if camera.is_inside_tree() and not camera.current:
+		camera.make_current()
 	var screen_pos := camera.unproject_position(world_pos)
 	for pressed in [true, false]:
 		var ev := InputEventMouseButton.new()
@@ -16449,19 +16443,90 @@ func _test_right_click_move() -> void:
 	var cid := str(player.char_id)
 	var start_pos: Vector3 = gs.get_position(cid)
 	var target := start_pos + Vector3(2.5, 0.0, 0.0)  # a few cells away in the open room
-	var moved := false
+	var best_delta := 0.0
 	safety = 0
-	while safety < 200:
+	while safety < 240:
 		safety += 1
 		if safety % 40 == 1:
-			_synthetic_ground_right_click(instance, target)
+			_synthetic_ground_click(instance, target)
 		instance.headless_advance(0.1, 0.05)
 		await get_tree().process_frame
-		if gs.is_moving(cid) or gs.get_position(cid).distance_to(start_pos) > 0.3:
-			moved = true
+		best_delta = maxf(best_delta, gs.get_position(cid).distance_to(start_pos))
+		if best_delta > 1.0:
 			break
-	_assert_true(moved, "RIGHT-click on the ground moves the player (RTS command)")
+	_assert_true(best_delta > 1.0, "RIGHT-click on the ground actually moves the player (delta=%.2f)" % best_delta)
 	instance.queue_free()
+	await get_tree().process_frame
+
+## A minimal HUD double recording the selection calls the SelectionController makes — so the test
+## asserts the marquee / pick MATH + dispatch independent of the real HUD's portrait widgets.
+class _SelectionHudDouble extends Node:
+	var ids: Array = ["aster", "peris", "endo"]
+	var active := "aster"
+	var selected: Array = ["aster"]
+	var multi := false
+	func get_portrait_ids() -> Array: return ids
+	func set_active_portrait(id: String, _preserve := false) -> void:
+		active = str(id)
+		selected = [str(id)]
+	func set_selected_portraits(arr: Array) -> void:
+		selected = []
+		for x in arr:
+			selected.append(str(x))
+	func set_multi_select_enabled(e: bool) -> void: multi = bool(e)
+	func get_selected_ids() -> Array: return selected.duplicate()
+
+## SelectionController: a single click picks the character under the cursor; a marquee box-selects
+## everyone inside it (camera.unproject + rect.has_point — the Phylactory pattern); an empty click
+## deselects the extras. And selection is UI pacing: it must add NO EventLog entries.
+func _test_selection_controller() -> void:
+	_test_name = "Selection Controller"
+	var gs := GameState.new()
+	var sched := EventScheduler.new()
+	gs.scheduler = sched
+	gs.register_character("aster", Vector3(-3, 0, 0))
+	gs.register_character("peris", Vector3(0, 0, 0))
+	gs.register_character("endo", Vector3(3, 0, 0))
+
+	var cam := Camera3D.new()
+	get_tree().root.add_child(cam)
+	cam.position = Vector3(0, 10, 8)
+	cam.look_at(Vector3.ZERO, Vector3.UP)
+	await get_tree().process_frame
+
+	var hud := _SelectionHudDouble.new()
+	get_tree().root.add_child(hud)
+	var sel := SelectionController.new()
+	get_tree().root.add_child(sel)
+	sel.setup(gs, null)        # no scene root — inject the double + camera directly
+	sel.set_hud(hud)
+	sel.set_camera(cam)
+
+	var log_before := gs.event_log.size() if gs.event_log != null else 0
+
+	# Single-pick: a click near peris selects peris.
+	sel.headless_pick(cam.unproject_position(gs.get_position("peris")), cam)
+	_assert_equals(hud.active, "peris", "Single-click picks the character under the cursor")
+
+	# Marquee spanning aster + peris (not endo).
+	var box := Rect2(cam.unproject_position(gs.get_position("aster")), Vector2.ZERO) \
+		.expand(cam.unproject_position(gs.get_position("peris"))).grow(8.0)
+	sel.headless_box_select(box, cam)
+	var got := hud.get_selected_ids()
+	_assert_true(got.has("aster") and got.has("peris") and not got.has("endo"),
+		"Marquee box-selects exactly the characters inside it (got: %s)" % str(got))
+	_assert_true(hud.multi, "A multi-character box-select enables multi-select")
+
+	# An empty click collapses the multi-selection back to the leader.
+	sel.headless_pick(Vector2(-600, -600), cam)
+	_assert_true(hud.get_selected_ids().size() <= 1, "An empty click deselects the extras")
+
+	var log_after := gs.event_log.size() if gs.event_log != null else 0
+	_assert_equals(log_after, log_before, "Selection is UI pacing — it adds NO EventLog entries")
+
+	cam.queue_free()
+	hud.queue_free()
+	sel.queue_free()
 	await get_tree().process_frame
 
 func _test_physics_objects() -> void:

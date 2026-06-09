@@ -45,13 +45,11 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
-		# Middle-drag pans (RTS-style). RIGHT is reserved for the move/interact command, and
-		# WASD + edge-scroll stay the primary pan affordances (RimWorld-like).
+		# Middle-drag pans (RTS-style). RIGHT is the move/interact command, LEFT is character-select
+		# (owned by the SelectionController) — neither touches the camera. WASD + edge-scroll stay
+		# the primary pan affordances (RimWorld-like).
 		if mb.button_index == MOUSE_BUTTON_MIDDLE:
 			_panning = mb.pressed
-		# Left click snaps camera back to target
-		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
-			_pan_offset = Vector3.ZERO
 
 	if event is InputEventMouseMotion and _panning and _pan_enabled:
 		var mm := event as InputEventMouseMotion

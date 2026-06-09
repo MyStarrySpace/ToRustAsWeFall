@@ -31,6 +31,7 @@ var _scheduler: EventScheduler          # gameplay lane (pausable, replay)
 var _ui_scheduler: EventScheduler       # dialogue / thought-fade / UI lane
 var _game_state: GameState
 var _path_render_manager                # PathRenderManager: movement paths for all characters
+var _selection_controller               # SelectionController: RTS left-click / marquee character select
 var _current_step := ""
 var _fade_start_tick := 0.0
 
@@ -111,6 +112,13 @@ func _ready() -> void:
 	_path_render_manager.setup(_game_state, self)
 	_inject_scheduler_into_interactables(self)
 	_init_ui()
+	# One scene-level RTS selection controller (left-click / marquee character select), feeding the HUD
+	# selection set — same once-per-scene pattern as the PathRenderManager. It resolves the HUD + active
+	# player lazily from the sequence (both are created by the subclass _ready, after this base _ready).
+	_selection_controller = SelectionController.new()
+	_selection_controller.name = "SelectionController"
+	add_child(_selection_controller)
+	_selection_controller.setup(_game_state, self)
 	_begin()
 
 func _process(delta: float) -> void:
@@ -421,6 +429,7 @@ func _teardown_sequence() -> void:
 	_scheduler = null
 	_ui_scheduler = null
 	_path_render_manager = null
+	_selection_controller = null
 	_dialogue = null
 	_tutorial_prompt = null
 	_fade_rect = null

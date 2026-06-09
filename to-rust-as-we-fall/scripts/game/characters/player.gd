@@ -165,28 +165,23 @@ func _unhandled_input(event: InputEvent) -> void:
 	if mb.button_index != MOUSE_BUTTON_LEFT:
 		return
 
-	# Select mode: a click only reports the world position; the sequence decides
-	# what it means (e.g. "is that near the target?"). No movement.
+	# Select mode (a "click the world target" beat): a LEFT click only reports the world position;
+	# the sequence decides what it means. The SelectionController yields LEFT to us here (is_pick_mode).
+	# In normal "move" mode LEFT belongs to the SelectionController (character select) — RIGHT moves.
 	if _click_mode == "select":
 		var hit_sel := _raycast_ground(mb.position)
 		if hit_sel != Vector3.INF:
 			ground_clicked.emit(hit_sel)
 		return
 
-	# Move mode (default): LEFT click-to-move. LEGACY — once the SelectionController makes LEFT a
-	# character select, RIGHT is the sole move command; kept here so movement works between stages.
-	if not _move_enabled:
-		return
-	if _auto_path.size() > 0 and not (game_state and char_id != ""):
-		return  # Don't interrupt fallback auto-path with clicks
-	var hit := _raycast_ground(mb.position)
-	if hit != Vector3.INF:
-		ground_clicked.emit(hit)
-		_set_click_target(hit)
-
 ## Switch how a ground click is interpreted: "move" (default) or "select".
 func set_click_mode(mode: String) -> void:
 	_click_mode = mode if mode in ["move", "select"] else "move"
+
+## True while a sequence beat wants the player to click a world TARGET (select-mode), not move.
+## The SelectionController checks this to yield LEFT-click to player.gd's ground_clicked path.
+func is_pick_mode() -> bool:
+	return _click_mode != "move"
 
 func _raycast_ground(screen_pos: Vector2) -> Vector3:
 	var camera := get_viewport().get_camera_3d()
