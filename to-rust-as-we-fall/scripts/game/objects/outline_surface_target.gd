@@ -76,7 +76,9 @@ func _on_input_event(_camera: Node, event: InputEvent, event_position: Vector3, 
 		return
 	if event is InputEventMouseButton:
 		var mouse_button := event as InputEventMouseButton
-		if mouse_button.button_index == MOUSE_BUTTON_LEFT and mouse_button.pressed:
+		# RIGHT-click is the interact command (mirror of Interactable._on_input_event). A LEFT-click
+		# over the mesh is NEVER an interaction — it falls through to a plain move/select.
+		if mouse_button.button_index == MOUSE_BUTTON_RIGHT and mouse_button.pressed:
 			var viewport := get_viewport()
 			if viewport != null:
 				viewport.set_input_as_handled()

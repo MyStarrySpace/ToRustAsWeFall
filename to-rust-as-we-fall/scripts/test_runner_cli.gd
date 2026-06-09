@@ -489,6 +489,9 @@ func _ready() -> void:
 			"--test-camera-free-look":
 				ran_test = true
 				_test_camera_free_look()
+			"--test-left-click-no-interact":
+				ran_test = true
+				_test_left_click_no_interact()
 			"--test-physics":
 				ran_test = true
 				_test_physics_objects()
@@ -825,6 +828,7 @@ func _run_all_tests() -> void:
 	await _test_ferrolure()
 	_test_camera_shake()
 	_test_camera_free_look()
+	_test_left_click_no_interact()
 	_test_physics_objects()
 	_test_physics_edge_cases()
 	_test_pendulum()
@@ -4281,7 +4285,8 @@ func _synthetic_ground_click(instance: Node, world_pos: Vector3) -> void:
 ## _on_input_event. Deliver the left-click to that handler directly — the same entry
 ## point a real pick invokes — then let the REAL chain run: interaction_requested →
 ## the interaction controller walks the player over → triggers on arrival. We never
-## call _trigger() ourselves, so the player must still reach the object.
+## call _trigger() ourselves, so the player must still reach the object. RIGHT-click is
+## the interact command now (RTS-style); a LEFT-click would no longer interact.
 func _synthetic_click_interactable(instance: Node, interactable: Node) -> void:
 	if interactable == null or not interactable.has_method("_on_input_event"):
 		return
@@ -4290,7 +4295,7 @@ func _synthetic_click_interactable(instance: Node, interactable: Node) -> void:
 		camera = instance._camera
 	var world_pos: Vector3 = (interactable as Node3D).global_position
 	var ev := InputEventMouseButton.new()
-	ev.button_index = MOUSE_BUTTON_LEFT
+	ev.button_index = MOUSE_BUTTON_RIGHT
 	ev.pressed = true
 	if camera != null:
 		ev.position = camera.unproject_position(world_pos)
@@ -5419,7 +5424,7 @@ func _test_aster_sim() -> void:
 			_assert_true(glass_zone.has_signal("interaction_requested"),
 				"Interactable zones expose generic interaction requests")
 			var click := InputEventMouseButton.new()
-			click.button_index = MOUSE_BUTTON_LEFT
+			click.button_index = MOUSE_BUTTON_RIGHT
 			click.pressed = true
 			glass_zone.call("_on_input_event", null, click, Vector3.ZERO, Vector3.UP, 0)
 			instance._sync_perception_shader()
@@ -5472,7 +5477,7 @@ func _test_aster_sim() -> void:
 				"Room element selected feedback runs the morphing-noise emission glow on the object meshes")
 			macabre_target.call("complete_queued_feedback")
 			var surface_click := InputEventMouseButton.new()
-			surface_click.button_index = MOUSE_BUTTON_LEFT
+			surface_click.button_index = MOUSE_BUTTON_RIGHT
 			surface_click.pressed = true
 			macabre_target.call("_on_input_event", null, surface_click, macabre_origin, Vector3.UP, 0)
 			instance._sync_perception_shader()
@@ -6074,7 +6079,7 @@ func _click_target_and_advance(
 	if "_player" in instance and instance._player != null and instance._player.has_method("set_move_enabled"):
 		instance._player.set_move_enabled(true)
 	var click := InputEventMouseButton.new()
-	click.button_index = MOUSE_BUTTON_LEFT
+	click.button_index = MOUSE_BUTTON_RIGHT
 	click.pressed = true
 	var event_position: Vector3 = target.global_position if target is Node3D else start_position
 	if target.has_method("get_outline_highlight_origin"):
@@ -7402,7 +7407,7 @@ func _assert_preview_scene_interactable_click_flow(
 			"%s hover applies visible shader feedback" % label)
 
 	var click := InputEventMouseButton.new()
-	click.button_index = MOUSE_BUTTON_LEFT
+	click.button_index = MOUSE_BUTTON_RIGHT
 	click.pressed = true
 	interactable.call("_on_input_event", null, click, target_pos, Vector3.UP, 0)
 	_assert_true(feedback_manager.call("get_selected_target") == interactable,
@@ -16349,6 +16354,50 @@ func _test_camera_free_look() -> void:
 
 	cam.queue_free()
 	target.queue_free()
+
+## The interaction hijack is gone: a LEFT-click on an interactable (or its mesh OutlineSurfaceTarget)
+## must NOT request an interaction — only a RIGHT-click does. This is the bug where a click merely
+## grazing an object's pick volume walked the character onto it. Guards both emitters in lockstep.
+func _test_left_click_no_interact() -> void:
+	_test_name = "Left-Click No Interact"
+
+	var obj: Node = preload("res://scripts/game/objects/interactable.gd").new()
+	get_tree().root.add_child(obj)
+	var fired := [0]
+	obj.interaction_requested.connect(func(_t, _p): fired[0] += 1)
+
+	var left := InputEventMouseButton.new()
+	left.button_index = MOUSE_BUTTON_LEFT
+	left.pressed = true
+	obj.call("_on_input_event", null, left, Vector3.ZERO, Vector3.UP, 0)
+	_assert_equals(fired[0], 0, "LEFT-click on an interactable does NOT request interaction (no hijack)")
+
+	var right := InputEventMouseButton.new()
+	right.button_index = MOUSE_BUTTON_RIGHT
+	right.pressed = true
+	obj.call("_on_input_event", null, right, Vector3.ZERO, Vector3.UP, 0)
+	_assert_equals(fired[0], 1, "RIGHT-click on an interactable requests interaction")
+
+	# The mesh-wrapping OutlineSurfaceTarget is the second emitter — same rule.
+	var ost: Node = preload("res://scripts/game/objects/outline_surface_target.gd").new()
+	get_tree().root.add_child(ost)
+	var ost_fired := [0]
+	ost.interaction_requested.connect(func(_t, _p): ost_fired[0] += 1)
+
+	var l2 := InputEventMouseButton.new()
+	l2.button_index = MOUSE_BUTTON_LEFT
+	l2.pressed = true
+	ost.call("_on_input_event", null, l2, Vector3.ZERO, Vector3.UP, 0)
+	_assert_equals(ost_fired[0], 0, "LEFT-click on a mesh OutlineSurfaceTarget does NOT request interaction")
+
+	var r2 := InputEventMouseButton.new()
+	r2.button_index = MOUSE_BUTTON_RIGHT
+	r2.pressed = true
+	ost.call("_on_input_event", null, r2, Vector3.ZERO, Vector3.UP, 0)
+	_assert_equals(ost_fired[0], 1, "RIGHT-click on a mesh OutlineSurfaceTarget requests interaction")
+
+	obj.queue_free()
+	ost.queue_free()
 
 func _test_physics_objects() -> void:
 	_test_name = "Physics Objects"
