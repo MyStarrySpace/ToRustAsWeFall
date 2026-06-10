@@ -504,6 +504,9 @@ func _ready() -> void:
 			"--test-lure-not-waypoint":
 				ran_test = true
 				_test_lure_not_path_waypoint()
+			"--test-grid-risk":
+				ran_test = true
+				_test_grid_risk()
 			"--test-interaction-delegates":
 				ran_test = true
 				await _test_interaction_delegates_to_capable()
@@ -849,6 +852,7 @@ func _run_all_tests() -> void:
 	_test_left_click_no_interact()
 	_test_pick_interactor()
 	_test_lure_not_path_waypoint()
+	_test_grid_risk()
 	_test_physics_objects()
 	_test_physics_edge_cases()
 	_test_pendulum()
@@ -16668,6 +16672,85 @@ func _test_lure_not_path_waypoint() -> void:
 		"compute_preview_path")
 
 	chunk.free()
+
+## Per-cell risk (the safe/direct routing vocabulary on the grid): cautious routing detours around a
+## recoverable risk band, refuses non-recoverable cells outright, while direct routing ignores risk.
+## Risk flows through BOTH planners (grid.find_path + the cooperative space-time A*), the preview
+## matches the commit, and the route mode is a logged command that replays.
+func _test_grid_risk() -> void:
+	_test_name = "Grid Risk Routing"
+	var grid := GridWorld.new()
+	grid.create_room(14, 9, true)  # interior x 1..12, z 1..7
+	# A recoverable risk band on column x=6, z=1..5 — leaves a clear detour along z=6..7.
+	for z in range(1, 6):
+		grid.set_cell_risk(Vector2i(6, z), 20.0, true)
+
+	var start := Vector2i(2, 3)
+	var end := Vector2i(11, 3)
+
+	# (1) Pure A*: cautious detours, direct cuts through.
+	var safe_path := grid.find_path(start, end, {}, true)
+	var direct_path := grid.find_path(start, end, {}, false)
+	_assert_true(not safe_path.is_empty() and not direct_path.is_empty(), "Both route modes find a path")
+	_assert_true(not _path_touches_risk(grid, safe_path), "Cautious routing avoids the recoverable risk band")
+	_assert_true(_path_touches_risk(grid, direct_path), "Direct routing cuts straight through the band")
+	_assert_true(_polyline_length(direct_path) < _polyline_length(safe_path),
+		"The direct route is shorter (in distance) than the safe detour")
+
+	# (2) Non-recoverable: a full-height band has no safe crossing — cautious refuses, direct passes.
+	for z in range(1, 8):
+		grid.set_cell_risk(Vector2i(6, z), 20.0, false)
+	_assert_true(grid.find_path(start, end, {}, true).is_empty(),
+		"A non-recoverable band yields NO route in safe mode")
+	_assert_true(not grid.find_path(start, end, {}, false).is_empty(),
+		"Direct mode still routes through a non-recoverable band")
+	# Restore the partial recoverable band for the integration legs.
+	grid.risk_cells.clear()
+	for z in range(1, 6):
+		grid.set_cell_risk(Vector2i(6, z), 20.0, true)
+
+	# (3) GameState integration: the route mode steers the COMMITTED movement (via the cooperative
+	# planner) and the preview, and it round-trips through the EventLog.
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+	var log := EventLog.new()
+	gs.event_log = log
+	gs.register_character("aster", grid.grid_to_world(start))
+
+	gs.set_route_mode(true)
+	_assert_true(gs.command_move_to_cell("aster", end), "Cautious move command is accepted")
+	var committed: Array = gs.characters["aster"].movement.path
+	_assert_true(not _path_touches_risk(grid, committed),
+		"Cautious COMMITTED path (cooperative planner) avoids the risk band")
+	var preview := gs.compute_preview_path("aster", grid.grid_to_world(end))
+	_assert_true(not preview.is_empty(), "Grid preview path computes (was a silent type error returning [])")
+	_assert_true(not _path_touches_risk(grid, preview), "Cautious PREVIEW path avoids the band like the commit")
+
+	gs.command_stop("aster")
+	gs.set_route_mode(false)
+	_assert_true(gs.command_move_to_cell("aster", end), "Direct move command is accepted")
+	var committed_direct: Array = gs.characters["aster"].movement.path
+	_assert_true(_path_touches_risk(grid, committed_direct), "Direct COMMITTED path crosses the band")
+
+	# (4) Replay: the logged route-mode flips re-apply in order.
+	var replayed := GameState.replay(log, grid)
+	_assert_true(not replayed.route_cautious,
+		"Replay restores the route mode (last set_route_mode in the log wins)")
+
+func _path_touches_risk(grid: GridWorld, path: Array) -> bool:
+	for wp in path:
+		if wp is Vector3 and grid.is_cell_risky(grid.world_to_grid(wp)):
+			return true
+	return false
+
+func _polyline_length(path: Array) -> float:
+	var total := 0.0
+	for i in range(1, path.size()):
+		if path[i - 1] is Vector3 and path[i] is Vector3:
+			total += (path[i - 1] as Vector3).distance_to(path[i] as Vector3)
+	return total
 
 func _assert_lure_clear(path: Array, lure1: Vector3, lure2: Vector3, clear: float, label: String) -> void:
 	var hit1 := ""

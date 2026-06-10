@@ -21,6 +21,7 @@ const KIND_CHANGE_SPEED := &"change_speed"
 # adjust_stat/reset_characters_to_full replay through set_stat.
 const KIND_SET_STAT := &"set_stat"
 const KIND_SET_RUNNING := &"set_running"
+const KIND_SET_ROUTE_MODE := &"set_route_mode"  # global safe(cautious)/direct routing toggle (Tab) — changes pathfinding, so it must replay
 const KIND_SET_LEVEL := &"set_level"  # character changed floors (ladder/ramp arrival)
 const KIND_SNAP_POSITION := &"snap_position"  # teleport a character's data position (e.g. an enemy's attack-lunge end)
 
@@ -113,6 +114,7 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_END_SPLIT,
 	KIND_SET_STAT,
 	KIND_SET_RUNNING,
+	KIND_SET_ROUTE_MODE,
 	KIND_REGISTER_INTERACTABLE,
 	KIND_UNREGISTER_INTERACTABLE,
 	KIND_TRIGGER_INTERACTABLE,

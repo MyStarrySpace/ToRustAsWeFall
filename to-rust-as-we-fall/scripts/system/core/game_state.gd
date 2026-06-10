@@ -26,6 +26,7 @@ signal interactable_enabled_changed(id: String, enabled: bool)
 
 var grid: GridWorld
 var navigation_graph
+var route_cautious := false  # global safe/direct routing (Tab); set via set_route_mode (logged)
 var scheduler: EventScheduler
 var explored: Dictionary = {}
 var characters: Dictionary = {}
@@ -456,12 +457,12 @@ func compute_preview_path(id: String, target_pos: Vector3) -> Array[Vector3]:
 		var level := get_character_level(id)
 		var start_cell := grid.world_to_grid(current)
 		var end_cell := grid.world_to_grid(target_pos)
-		var cells: Array = grid.find_path(start_cell, end_cell, {}, false, {}, {}, level)
-		if cells.is_empty():
+		# find_path returns WORLD positions (one per cell) already on the right level.
+		var waypoints: Array[Vector3] = grid.find_path(start_cell, end_cell, {}, route_cautious, {}, {}, level)
+		if waypoints.is_empty():
 			return []
 		var out: Array[Vector3] = [current]
-		for c in cells:
-			out.append(grid.grid_to_world(c, level))
+		out.append_array(waypoints)
 		return out
 	return _resolve_world_path(current, target_pos)
 
@@ -575,6 +576,16 @@ func _apply_stat_upgrade(char_id: String, payload: Dictionary) -> void:
 
 func is_running(id: String) -> bool:
 	return _running.has(id)
+
+## Global safe(cautious)/direct routing mode (the Tab toggle). Cautious routing detours around risky
+## cells and refuses non-recoverable ones; direct ignores risk. It changes which paths the planners
+## produce, so it is a LOGGED command — replay restores it in order and recomputes identical routes.
+func set_route_mode(cautious: bool) -> void:
+	_emit(GameEvent.KIND_SET_ROUTE_MODE, {"cautious": cautious})
+	route_cautious = cautious
+
+func is_route_cautious() -> bool:
+	return route_cautious
 
 ## Enter or leave running state.
 func set_running(id: String, running: bool) -> void:
@@ -944,11 +955,21 @@ func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: fl
 				if is_diag:
 					if not grid.is_walkable(ccell.x + dir.x, ccell.y, {}, {}, level) or not grid.is_walkable(ccell.x, ccell.y + dir.y, {}, {}, level):
 						continue
+			# Cautious (safe) routing: never enter a non-recoverable risky cell; a recoverable one
+			# costs extra so the plan detours when a detour exists. Penalty is scaled to time units
+			# (g is time-shaped) via card. Direct routing ignores risk.
+			if route_cautious and not is_wait:
+				if grid.cautious_cell_blocked(ncell):
+					continue
 			var nt: float = ct + dt
 			if _cell_reserved(ncell, ct - _RESERVE_BUFFER, nt + _RESERVE_BUFFER, exclude_id):
 				continue
 			var ng: float = cur.g + dt
-			if ng > time_budget:
+			if route_cautious and not is_wait:
+				ng += grid.risk_penalty(ncell) * card
+			# Budget on ELAPSED TIME (not cost): risk penalties shape route choice but must not
+			# starve the search budget.
+			if nt - t_start > time_budget:
 				continue
 			var nkey := _coop_key(ncell, nt, t_start, tq)
 			if ng < float(best_g.get(nkey, INF)) - 0.0001:
@@ -2452,6 +2473,8 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			command_stop(String(payload["id"]))
 		GameEvent.KIND_CHANGE_SPEED:
 			change_move_speed(String(payload["id"]), float(payload["speed"]))
+		GameEvent.KIND_SET_ROUTE_MODE:
+			set_route_mode(bool(payload["cautious"]))
 		GameEvent.KIND_SET_LEVEL:
 			set_character_level(String(payload["id"]), int(payload["level"]))
 		GameEvent.KIND_SNAP_POSITION:
@@ -2726,7 +2749,7 @@ func _begin_cooperative_move(id: String, current_pos: Vector3, current_cell: Vec
 		var built := _build_timed_world_path(current_pos, plan.cells, plan.ticks, speed, level)
 		_start_movement(id, built.path, built.ticks)
 		return true
-	var path := grid.find_path(current_cell, dest_cell, {}, false, {}, {}, level)
+	var path := grid.find_path(current_cell, dest_cell, {}, route_cautious, {}, {}, level)
 	if path.is_empty():
 		_reserve_parked(id, current_cell)
 		return false

@@ -24,6 +24,13 @@ var cell_size := 1.0
 var origin := Vector3.ZERO
 var dynamic_blockers: Dictionary = {}  # Vector2i → obj_id
 
+# --- Per-cell risk (the safe/direct routing vocabulary). A risky cell stays WALKABLE — risk only
+# shapes route choice. In CAUTIOUS (safe) routing a recoverable risky cell costs extra (the planner
+# detours around it when a detour exists) and a NON-recoverable one is never entered (no safe route
+# may exist at all — the player must go direct). Direct routing ignores risk entirely; any harm from
+# crossing is gameplay applied by the scene/chunk, not the pathfinder. ---
+var risk_cells: Dictionary = {}  # Vector2i -> {"penalty": float, "recoverable": bool}
+
 # --- Multi-level support (stacked floors). The grid stays a single 2D plane of cells; a LEVEL is
 # the same (x,z) plane lifted by level_height in world Y. A character's level is tracked in
 # GameState; grid_to_world(cell, level) places the cell at that floor's height. Ladders/ramps are
@@ -193,6 +200,33 @@ func add_dynamic_blocker(cell: Vector2i, obj_id: String) -> void:
 func remove_dynamic_blocker(cell: Vector2i) -> void:
 	dynamic_blockers.erase(cell)
 
+# --- Per-cell risk authoring + queries ---
+
+func set_cell_risk(cell: Vector2i, penalty := 20.0, recoverable := true) -> void:
+	risk_cells[cell] = {"penalty": maxf(0.0, penalty), "recoverable": recoverable}
+
+func clear_cell_risk(cell: Vector2i) -> void:
+	risk_cells.erase(cell)
+
+## Mark a world-space XZ rectangle risky — authoring convenience for a hazard band/corridor.
+func set_world_region_risk(min_xz: Vector2, max_xz: Vector2, penalty := 20.0, recoverable := true) -> void:
+	var a := world_to_grid(Vector3(min_xz.x, 0.0, min_xz.y))
+	var b := world_to_grid(Vector3(max_xz.x, 0.0, max_xz.y))
+	for z in range(mini(a.y, b.y), maxi(a.y, b.y) + 1):
+		for x in range(mini(a.x, b.x), maxi(a.x, b.x) + 1):
+			set_cell_risk(Vector2i(x, z), penalty, recoverable)
+
+func is_cell_risky(cell: Vector2i) -> bool:
+	return risk_cells.has(cell)
+
+func risk_penalty(cell: Vector2i) -> float:
+	return float((risk_cells.get(cell, {}) as Dictionary).get("penalty", 0.0))
+
+## A non-recoverable risky cell is never entered by cautious (safe) routing.
+func cautious_cell_blocked(cell: Vector2i) -> bool:
+	var info: Dictionary = risk_cells.get(cell, {})
+	return not info.is_empty() and not bool(info.get("recoverable", true))
+
 func world_to_grid(world_pos: Vector3) -> Vector2i:
 	var local := world_pos - origin
 	var gx := int(floor(local.x / cell_size))
@@ -281,12 +315,18 @@ func find_path(
 				if not is_walkable(adj_b.x, adj_b.y, explored, locked_doors, level):
 					continue
 
+			# Cautious (safe) routing never enters a non-recoverable risky cell.
+			if cautious and cautious_cell_blocked(neighbor):
+				continue
+
 			# Movement cost
 			var base_cost := 1.414 if is_diagonal else 1.0
 
-			# Cautious mode: penalize IRON_BLOOM tiles
-			if cautious and get_tile(neighbor.x, neighbor.y) == Tile.IRON_BLOOM:
-				base_cost += 20.0
+			# Cautious mode: penalize IRON_BLOOM tiles and risky cells
+			if cautious:
+				if get_tile(neighbor.x, neighbor.y) == Tile.IRON_BLOOM:
+					base_cost += 20.0
+				base_cost += risk_penalty(neighbor)
 
 			# Road bonus
 			if roads.has(neighbor):
