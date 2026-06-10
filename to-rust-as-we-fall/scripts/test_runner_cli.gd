@@ -507,6 +507,9 @@ func _ready() -> void:
 			"--test-grid-risk":
 				ran_test = true
 				_test_grid_risk()
+			"--test-grid-from-data":
+				ran_test = true
+				_test_grid_from_data()
 			"--test-interaction-delegates":
 				ran_test = true
 				await _test_interaction_delegates_to_capable()
@@ -853,6 +856,7 @@ func _run_all_tests() -> void:
 	_test_pick_interactor()
 	_test_lure_not_path_waypoint()
 	_test_grid_risk()
+	_test_grid_from_data()
 	_test_physics_objects()
 	_test_physics_edge_cases()
 	_test_pendulum()
@@ -16738,6 +16742,45 @@ func _test_grid_risk() -> void:
 	var replayed := GameState.replay(log, grid)
 	_assert_true(not replayed.route_cautious,
 		"Replay restores the route mode (last set_route_mode in the log wins)")
+
+## GridWorld.from_data — the get_grid_data() contract a chunk hands the preview: world-rect footprint
+## carving, risk regions, stacked levels + links all build deterministically from plain data.
+func _test_grid_from_data() -> void:
+	_test_name = "Grid From Data"
+	var g := GridWorld.from_data({
+		"origin": [-2.0, 0.0, -2.0],
+		"cell_size": 1.0,
+		"width": 20, "height": 10,
+		"walkable_regions": [
+			{"min": [-1.0, -1.0], "max": [16.0, 1.0]},   # a hall
+			{"min": [4.0, 1.0], "max": [8.0, 6.0]},      # an offshoot
+		],
+		"risk_regions": [
+			{"min": [10.0, -1.0], "max": [12.0, 1.0], "penalty": 15.0, "recoverable": true},
+		],
+		"level_count": 2, "level_height": 3.0,
+		"level_regions": [{"level": 1, "min": [-1.0, -1.0], "max": [3.0, 1.0]}],
+		"links": [{"cell": [2, 2], "from": 0, "to": 1, "type": "ladder"}],
+	})
+	_assert_equals(g.width, 20, "from_data sets width")
+	var hall_cell := g.world_to_grid(Vector3(5.0, 0.0, 0.0))
+	var outside := g.world_to_grid(Vector3(5.0, 0.0, -1.8))
+	_assert_true(g.is_walkable(hall_cell.x, hall_cell.y), "A hall cell is carved walkable")
+	_assert_true(not g.is_walkable(outside.x, outside.y), "Outside the carved regions stays wall")
+	var offshoot_cell := g.world_to_grid(Vector3(6.0, 0.0, 4.0))
+	_assert_true(g.is_walkable(offshoot_cell.x, offshoot_cell.y), "An offshoot cell is carved walkable")
+	var risky := g.world_to_grid(Vector3(11.0, 0.0, 0.0))
+	_assert_true(g.is_cell_risky(risky), "A risk region lays per-cell risk")
+	_assert_true(absf(g.risk_penalty(risky) - 15.0) < 0.001, "Risk penalty carries through")
+	_assert_equals(g.level_count, 2, "from_data sets level_count")
+	_assert_true(g.can_traverse_link(Vector2i(2, 2), 0, 1), "An inter-level link registers (both ways)")
+	_assert_true(g.is_cell_allowed_on_level(g.world_to_grid(Vector3(0.0, 0.0, 0.0)), 1),
+		"A level-1 footprint cell is allowed")
+	_assert_true(not g.is_cell_allowed_on_level(g.world_to_grid(Vector3(10.0, 0.0, 0.0)), 1),
+		"Outside the level-1 footprint is not allowed on that level")
+	# A route across the hall exists and respects the carved footprint.
+	var path := g.find_path(g.world_to_grid(Vector3(-0.5, 0.0, 0.0)), g.world_to_grid(Vector3(15.0, 0.0, 0.0)))
+	_assert_true(not path.is_empty(), "A hall-spanning path routes on the built grid")
 
 func _path_touches_risk(grid: GridWorld, path: Array) -> bool:
 	for wp in path:

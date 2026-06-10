@@ -360,6 +360,14 @@ func _configure_loaded_chunk(chunk: Node3D, chunk_name: String) -> void:
 func _apply_chunk_navigation_graph() -> void:
 	if _game_state == null:
 		return
+	# A chunk exposing get_grid_data() routes on the unified grid (cells + per-cell risk) — the
+	# preferred representation. The nav-graph hook below remains only for not-yet-migrated chunks.
+	if _active_chunk != null and _active_chunk.has_method("get_grid_data"):
+		var grid_data: Variant = _active_chunk.call("get_grid_data")
+		if grid_data is Dictionary and not (grid_data as Dictionary).is_empty():
+			_game_state.grid = GridWorld.from_data(grid_data as Dictionary)
+			_game_state.clear_navigation_graph()
+			return
 	if _active_chunk != null and _active_chunk.has_method("get_navigation_graph_data"):
 		var data: Variant = _active_chunk.call("get_navigation_graph_data")
 		if data is Dictionary and not (data as Dictionary).is_empty():

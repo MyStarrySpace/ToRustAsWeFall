@@ -111,6 +111,76 @@ func is_cell_allowed_on_level(cell: Vector2i, level: int) -> bool:
 
 # --- Loading ---
 
+const GRID_DATA_CONTRACT_ID := "unified_grid_v1"
+
+## Build a grid from a plain-data dictionary — the contract a scene chunk's get_grid_data() returns.
+## Everything is authored in WORLD XZ rectangles (chunks think in world space): the footprint starts
+## as solid WALL and walkable_regions carve FLOOR; risk_regions lay per-cell risk on top; optional
+## stacked levels with per-level footprints and ladder/ramp links. Pure data → deterministic build,
+## so the preview, tests, and CLI all construct the identical grid.
+static func from_data(data: Dictionary) -> GridWorld:
+	var g := GridWorld.new()
+	g.origin = _arr_to_vec3(data.get("origin", [0.0, 0.0, 0.0]))
+	g.cell_size = float(data.get("cell_size", 1.0))
+	var w := int(data.get("width", 0))
+	var h := int(data.get("height", 0))
+	g.create_room(w, h, false)
+	if not bool(data.get("default_walkable", false)):
+		for z in range(h):
+			for x in range(w):
+				g.grid[z][x] = Tile.WALL
+	for region in data.get("walkable_regions", []):
+		var r := region as Dictionary
+		var a := g.world_to_grid(_xz_to_vec3(r.get("min", [0, 0])))
+		var b := g.world_to_grid(_xz_to_vec3(r.get("max", [0, 0])))
+		for z in range(maxi(0, mini(a.y, b.y)), mini(h - 1, maxi(a.y, b.y)) + 1):
+			for x in range(maxi(0, mini(a.x, b.x)), mini(w - 1, maxi(a.x, b.x)) + 1):
+				g.grid[z][x] = Tile.FLOOR
+	for cell in data.get("wall_cells", []):
+		var c := _arr_to_vec2i(cell)
+		g.set_tile(c.x, c.y, Tile.WALL)
+	for region in data.get("risk_regions", []):
+		var r := region as Dictionary
+		g.set_world_region_risk(
+			_xz_to_vec2(r.get("min", [0, 0])), _xz_to_vec2(r.get("max", [0, 0])),
+			float(r.get("penalty", 20.0)), bool(r.get("recoverable", true)))
+	g.set_level_count(int(data.get("level_count", 1)))
+	g.level_height = float(data.get("level_height", g.level_height))
+	for region in data.get("level_regions", []):
+		var r := region as Dictionary
+		g.allow_world_region_on_level(
+			_xz_to_vec2(r.get("min", [0, 0])), _xz_to_vec2(r.get("max", [0, 0])), int(r.get("level", 0)))
+	for link in data.get("links", []):
+		var l := link as Dictionary
+		g.add_inter_level_link(_arr_to_vec2i(l.get("cell", [0, 0])),
+			int(l.get("from", 0)), int(l.get("to", 1)), str(l.get("type", "ladder")))
+	return g
+
+static func _arr_to_vec3(raw: Variant) -> Vector3:
+	if raw is Vector3:
+		return raw
+	if raw is Array and (raw as Array).size() >= 3:
+		return Vector3(float(raw[0]), float(raw[1]), float(raw[2]))
+	return Vector3.ZERO
+
+static func _xz_to_vec3(raw: Variant) -> Vector3:
+	var v := _xz_to_vec2(raw)
+	return Vector3(v.x, 0.0, v.y)
+
+static func _xz_to_vec2(raw: Variant) -> Vector2:
+	if raw is Vector2:
+		return raw
+	if raw is Array and (raw as Array).size() >= 2:
+		return Vector2(float(raw[0]), float(raw[1]))
+	return Vector2.ZERO
+
+static func _arr_to_vec2i(raw: Variant) -> Vector2i:
+	if raw is Vector2i:
+		return raw
+	if raw is Array and (raw as Array).size() >= 2:
+		return Vector2i(int(raw[0]), int(raw[1]))
+	return Vector2i.ZERO
+
 ## Load from an array of strings (prototype MAP_DATA format).
 ## Each character maps to a tile type (0-9).
 func load_from_strings(data: PackedStringArray) -> void:
