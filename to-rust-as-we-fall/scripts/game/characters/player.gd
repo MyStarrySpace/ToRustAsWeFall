@@ -47,7 +47,8 @@ var _dest_marker_mat: StandardMaterial3D
 # Hover grid: hovering the floor in move mode reveals a grid patch with the pointed-at cell lit, so
 # you can see exactly where a click will move you. Cosmetic; follows the cursor, snapped to cells.
 const HOVER_CELL := 1.0
-const HOVER_SPAN := 5            # NxN grid patch shown around the hovered cell
+const HOVER_SPAN := 3            # NxN grid patch shown around the hovered cell
+const HOVER_TINT := Color(1.0, 1.0, 1.0)  # faded white — a quiet aim hint, not a character-coloured beacon
 const HOVER_LIFT := 0.05         # the flat grid quad sits this far above the hovered floor point
 var _hover_grid: MeshInstance3D
 
@@ -98,11 +99,12 @@ func _ready() -> void:
 	_build_hover_grid()
 
 	# Path PREVIEW renderer: bound to no char (char_id "") so it draws ONLY its explicit path (the
-	# would-be route), anchored to this player, dim — distinct from the committed path the scene's
-	# PathRenderManager draws while actually moving.
+	# would-be route), anchored to this player. Preview style = thin + DASHED in the character's own
+	# colour — visually distinct from the solid committed ribbon the PathRenderManager draws.
 	_path_preview = PathRenderer.new()
+	_path_preview.preview_style = true
 	add_child(_path_preview)
-	_path_preview.setup(game_state, "", PREVIEW_COLOR, self)
+	_path_preview.setup(game_state, "", _character_color(), self)
 
 	# The committed movement path is drawn by the scene's PathRenderManager (reusable, covers every
 	# character), not a per-player line — so it shows for the party / NPCs / escorts too.
@@ -250,21 +252,21 @@ static func _ensure_grid_alpha() -> void:
 			var falloff := pow(clampf(1.0 - sqrt(fx * fx + fy * fy), 0.0, 1.0), 1.6)
 			var a := 0.0
 			if in_cy and x >= c_lo and x < c_hi:
-				a = 0.95                       # the target cell: strong, focused
+				a = 0.3                        # the target cell: present but faded
 			elif is_line[x] or is_line[y]:
-				a = 0.85 * falloff             # grid lines fade out toward the edges
+				a = 0.45 * falloff             # grid lines fade out toward the edges
 			_grid_alpha[y * dim + x] = a
 
 func _build_grid_texture() -> ImageTexture:
 	_ensure_grid_alpha()
 	var dim := _grid_dim
 	var img := Image.create(dim, dim, false, Image.FORMAT_RGBA8)
-	img.fill(Color(color.r, color.g, color.b, 0.0))
+	img.fill(Color(HOVER_TINT.r, HOVER_TINT.g, HOVER_TINT.b, 0.0))
 	for y in range(dim):
 		for x in range(dim):
 			var a := _grid_alpha[y * dim + x]
 			if a > 0.004:
-				img.set_pixel(x, y, Color(color.r, color.g, color.b, a))
+				img.set_pixel(x, y, Color(HOVER_TINT.r, HOVER_TINT.g, HOVER_TINT.b, a))
 	return ImageTexture.create_from_image(img)
 
 ## Raycast the floor under the cursor and show the grid there. Only in move mode while move-enabled,
@@ -325,6 +327,7 @@ func _update_party_preview(hit: Vector3) -> void:
 		var pr: PathRenderer = _party_previews.get(cid)
 		if pr == null:
 			pr = PathRenderer.new()
+			pr.preview_style = true
 			add_child(pr)
 			var node := _find_char_node(cid)
 			var col := PREVIEW_COLOR
@@ -343,6 +346,12 @@ func _update_party_preview(hit: Vector3) -> void:
 func _clear_party_preview() -> void:
 	for cid in _party_previews.keys():
 		_party_previews[cid].clear_explicit_path()
+
+## The character's own colour for its preview ribbon (falls back to the muted preview grey).
+func _character_color() -> Color:
+	if "color" in self and self.color is Color:
+		return self.color
+	return PREVIEW_COLOR
 
 func _clear_path_preview() -> void:
 	if _path_preview != null:

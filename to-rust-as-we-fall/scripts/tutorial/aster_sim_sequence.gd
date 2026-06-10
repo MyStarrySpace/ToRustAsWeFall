@@ -197,7 +197,7 @@ func _start_fade_in() -> void:
 
 func _start_working() -> void:
 	_current_step = "working"
-	_scheduler.schedule_after(7.0, _start_ron_approaches, "ron_approaches")
+	_scheduler.schedule_after(3.0, _start_ron_approaches, "ron_approaches")
 
 func _start_ron_approaches() -> void:
 	_current_step = "ron_approaches"

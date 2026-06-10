@@ -12,6 +12,9 @@ var speed_multiplier := 1.0
 ## When set, movement commands go through GameState (interpolation-based).
 var game_state: GameState
 var char_id := ""
+## Scripted ambience walks don't advertise like player commands: the PathRenderManager skips NPCs by
+## default. A scene that WANTS an NPC's route visible (an escort the player follows) flips this on.
+var show_movement_path := false
 var _scheduler
 
 ## When set, walk_to_grid() uses A* pathfinding (fallback mode only).

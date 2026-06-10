@@ -33,6 +33,11 @@ func _process(_delta: float) -> void:
 			add_child(pr)
 			_renderers[char_id] = pr
 		var node := _node_for(char_id)
+		# A node can opt OUT of the ribbon (NPC ambience walks default off; an escort opts back in).
+		var suppressed: bool = node != null and "show_movement_path" in node and not node.show_movement_path
+		pr.visible = not suppressed
+		if suppressed:
+			continue
 		# Re-bind every frame: cheap, and it survives late node creation + chunk reloads.
 		pr.setup(game_state, char_id, _color_for(node), node)
 		pr.set_running(game_state.is_running(char_id))

@@ -24,6 +24,13 @@ const WALK_ALPHA := 0.8
 ## The path draws as a flat ground RIBBON of this width (a 1px PRIMITIVE_LINES line was there
 ## before and was effectively invisible at gameplay-camera distance — the "no path in any scene").
 const PATH_WIDTH := 0.34
+const PREVIEW_WIDTH := 0.14     # the dim hover ribbon is a hint, not a hose
+const DASH_LENGTH := 0.5
+const DASH_GAP := 0.32
+
+## Preview style: thinner and DASHED — the visual grammar for "not committed yet". A click commits
+## and the solid ribbon takes over.
+var preview_style := false
 
 ## Data-layer character to visualize.
 var game_state: GameState
@@ -90,33 +97,75 @@ func _process(_delta: float) -> void:
 		return
 	_line.mesh = _build_ribbon(points)
 
-## Build a flat ground-ribbon along the polyline (a quad per segment, PATH_WIDTH wide), so the
-## path actually reads from the gameplay camera instead of a hairline. Cosmetic only.
+## Build a flat ground-ribbon along the polyline, so the path actually reads from the gameplay camera
+## instead of a hairline. Committed paths are solid quads with a disc at every interior joint (no wedge
+## gaps on turns — one connected line); the preview style is thinner and DASHED, walking the polyline by
+## arc length so dashes flow continuously across corners. Cosmetic only.
 func _build_ribbon(points: Array[Vector3]) -> Mesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	st.set_normal(Vector3.UP)
-	var half := PATH_WIDTH * 0.5
+	var half := (PREVIEW_WIDTH if preview_style else PATH_WIDTH) * 0.5
+	if preview_style:
+		_build_dashed(st, points, half)
+	else:
+		for i in range(1, points.size()):
+			_emit_quad(st, points[i - 1], points[i], half)
+		# Joint discs: cap every interior corner so consecutive quads read as ONE connected line.
+		for i in range(1, points.size() - 1):
+			_emit_disc(st, points[i], half)
+	return st.commit()
+
+func _emit_quad(st: SurfaceTool, p0: Vector3, p1: Vector3, half: float) -> void:
+	var flat := p1 - p0
+	flat.y = 0.0
+	if flat.length() < 0.0001:
+		return
+	var dir := flat.normalized()
+	var perp := Vector3(-dir.z, 0.0, dir.x) * half
+	var a := p0 - perp
+	var b := p0 + perp
+	var c := p1 + perp
+	var d := p1 - perp
+	st.add_vertex(a)
+	st.add_vertex(b)
+	st.add_vertex(c)
+	st.add_vertex(a)
+	st.add_vertex(c)
+	st.add_vertex(d)
+
+func _emit_disc(st: SurfaceTool, center: Vector3, radius: float) -> void:
+	var sides := 8
+	for s in range(sides):
+		var a0 := TAU * float(s) / float(sides)
+		var a1 := TAU * float(s + 1) / float(sides)
+		st.add_vertex(center)
+		st.add_vertex(center + Vector3(cos(a0), 0.0, sin(a0)) * radius)
+		st.add_vertex(center + Vector3(cos(a1), 0.0, sin(a1)) * radius)
+
+## Dashes by cumulative arc length over the whole polyline (corners don't reset the cycle).
+func _build_dashed(st: SurfaceTool, points: Array[Vector3], half: float) -> void:
+	var cycle := DASH_LENGTH + DASH_GAP
+	var travelled := 0.0
 	for i in range(1, points.size()):
 		var p0 := points[i - 1]
 		var p1 := points[i]
 		var flat := p1 - p0
 		flat.y = 0.0
-		if flat.length() < 0.0001:
+		var seg_len := flat.length()
+		if seg_len < 0.0001:
 			continue
-		var dir := flat.normalized()
-		var perp := Vector3(-dir.z, 0.0, dir.x) * half
-		var a := p0 - perp
-		var b := p0 + perp
-		var c := p1 + perp
-		var d := p1 - perp
-		st.add_vertex(a)
-		st.add_vertex(b)
-		st.add_vertex(c)
-		st.add_vertex(a)
-		st.add_vertex(c)
-		st.add_vertex(d)
-	return st.commit()
+		var dir := flat / seg_len
+		var s := 0.0
+		while s < seg_len:
+			var phase := fmod(travelled + s, cycle)
+			if phase < DASH_LENGTH:
+				var run := minf(DASH_LENGTH - phase, seg_len - s)
+				_emit_quad(st, p0 + dir * s, p0 + dir * (s + run), half)
+				s += run
+			else:
+				s += cycle - phase
+		travelled += seg_len
 
 ## The not-yet-traversed leg as a polyline (start point + remaining waypoints), or
 ## fewer than 2 points when there's nothing to draw.
