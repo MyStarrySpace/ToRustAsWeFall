@@ -222,7 +222,7 @@ func _validate_preview_boot(result: Dictionary, state: Dictionary) -> void:
 	var graybox: Dictionary = chunk.get("graybox", {})
 	var navigation: Dictionary = state.get("navigation", {})
 	_record_check(result, "preview_graybox_spatial_contract", str(graybox.get("contract_id", "")) == "generated_stretch_graybox_v1", "Generated preview exposes the spatial graybox contract")
-	_record_check(result, "preview_navigation_graph_contract", str(navigation.get("contract_id", "")) == "multi_level_navigation_graph_v1", "Generated preview installs a multi-level navigation graph")
+	_record_check(result, "preview_navigation_grid_contract", str(navigation.get("contract_id", "")) == "unified_grid_v1", "Generated preview installs the unified multi-level grid")
 	_record_check(result, "preview_graybox_click_targets", bool(graybox.get("supports_click_to_move", false)) and int(graybox.get("outline_target_count", 0)) > 0, "Generated preview exposes click-to-move outline targets")
 	_record_check(result, "preview_graybox_content_placed", int(graybox.get("content_placement_count", 0)) > 0 and int(graybox.get("instanced_content_marker_count", 0)) > 0, "Generated preview instances flora/enemy/structure placements")
 	_record_check(result, "preview_graybox_elevations", bool(graybox.get("supports_multiple_elevations", false)) and int(graybox.get("elevation_count", 0)) > 1, "Generated preview includes multiple playable elevations")
@@ -243,8 +243,8 @@ func _validate_preview_boot(result: Dictionary, state: Dictionary) -> void:
 		"content_placements": int(graybox.get("content_placement_count", 0)),
 		"outline_targets": int(graybox.get("outline_target_count", 0)),
 		"elevation_count": int(graybox.get("elevation_count", 0)),
-		"navigation_nodes": int(navigation.get("node_count", 0)),
-		"navigation_edges": int(navigation.get("edge_count", 0)),
+		"navigation_walkable_cells": int(navigation.get("walkable_cell_count", 0)),
+		"navigation_links": int(navigation.get("link_count", 0)),
 	})
 
 func _party_is_full(state: Dictionary) -> bool:

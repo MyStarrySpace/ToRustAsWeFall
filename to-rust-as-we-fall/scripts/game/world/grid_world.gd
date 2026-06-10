@@ -326,6 +326,23 @@ func grid_to_world(cell: Vector2i, level: int = 0) -> Vector3:
 func is_in_bounds(x: int, z: int) -> bool:
 	return x >= 0 and x < width and z >= 0 and z < height
 
+## The nearest walkable cell to `cell` on a level (deterministic outward ring scan), or `cell` itself
+## when it's already walkable / nothing is found within max_radius. The grid equivalent of the old
+## navigation graph's snap-to-nearest-node: a character parked off the carved footprint (teleports,
+## chunk spawns, knockbacks) must still be able to route from/to the mesh.
+func nearest_walkable_cell(cell: Vector2i, level := 0, max_radius := 6, explored: Dictionary = {}, locked_doors: Dictionary = {}) -> Vector2i:
+	if is_walkable(cell.x, cell.y, explored, locked_doors, level):
+		return cell
+	for r in range(1, max_radius + 1):
+		for dz in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				if maxi(absi(dx), absi(dz)) != r:
+					continue  # ring only — inner radii already scanned
+				var c := Vector2i(cell.x + dx, cell.y + dz)
+				if is_in_bounds(c.x, c.y) and is_walkable(c.x, c.y, explored, locked_doors, level):
+					return c
+	return cell
+
 # --- Pathfinding (A*, 8-directional) ---
 
 ## Find a path from start cell to end cell.

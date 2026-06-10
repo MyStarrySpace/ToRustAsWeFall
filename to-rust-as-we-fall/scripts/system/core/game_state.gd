@@ -253,6 +253,22 @@ func clear_navigation_graph() -> void:
 	navigation_graph = null
 
 func get_navigation_state() -> Dictionary:
+	# A grid is the unified traversal layer — report it (the nav-graph branch remains only for
+	# not-yet-migrated gridless scenes).
+	if grid != null:
+		var walkable := 0
+		for z in range(grid.height):
+			for x in range(grid.width):
+				if int(grid.grid[z][x]) != GridWorld.Tile.WALL:
+					walkable += 1
+		return {
+			"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
+			"walkable_cell_count": walkable,
+			"link_count": grid.inter_level_links.size(),
+			"level_count": grid.level_count,
+			"supports_multiple_elevations": grid.level_count > 1,
+			"risk_cell_count": grid.risk_cells.size(),
+		}
 	if navigation_graph == null:
 		return {}
 	if navigation_graph.has_method("get_state"):
@@ -291,8 +307,10 @@ func _do_move_cross_level(id: String, end_cell: Vector2i, end_level: int) -> boo
 	if is_endocytosing(id):
 		return false
 	var cur_pos := get_position(id)
-	var cur_cell := grid.world_to_grid(cur_pos)
 	var cur_level := get_character_level(id)
+	# Same off-mesh-start snap as _begin_cooperative_move (the multi-level A* can't expand
+	# from a disconnected cell).
+	var cur_cell := grid.nearest_walkable_cell(grid.world_to_grid(cur_pos), cur_level)
 	if cur_level == end_level:
 		return _do_move_to_cell(id, end_cell)  # same floor — ordinary cooperative move
 	var path: Array = grid.find_multi_level_path(cur_cell, cur_level, end_cell, end_level)
@@ -340,9 +358,21 @@ func _do_move_to_pos(id: String, pos: Vector3) -> bool:
 		return false
 	# On a grid a position move routes on the CELLS (the cooperative planner, same as a cell move) —
 	# never a straight line that would cut through walls. The target quantizes to its cell, exactly
-	# what the hover preview shows. Gridless keeps the straight-line resolution.
+	# what the hover preview shows. On a multi-level grid the target LEVEL is inferred from the
+	# position's Y (same as the player's cross-floor click routing), so a move to another elevation
+	# walks the ladder/ramp links instead of failing on the current floor. Gridless keeps the
+	# straight-line resolution.
 	if grid != null:
-		return _do_move_to_cell(id, grid.world_to_grid(pos))
+		# A programmatic position move (chunks, NPC scripts) snaps an off-mesh TARGET to the nearest
+		# walkable cell — the grid equivalent of the old graph's snap-to-node. (Player clicks stay
+		# strict: command_move_to_cell still rejects an unwalkable destination.)
+		if grid.level_count > 1:
+			var target_level := grid.level_for_y(pos.y)
+			var target_cell := grid.nearest_walkable_cell(grid.world_to_grid(pos), target_level)
+			if target_level != get_character_level(id):
+				return _do_move_cross_level(id, target_cell, target_level)
+			return _do_move_to_cell(id, target_cell)
+		return _do_move_to_cell(id, grid.nearest_walkable_cell(grid.world_to_grid(pos), get_character_level(id)))
 	var current_pos := get_position(id)
 	var target := Vector3(pos.x, pos.y, pos.z)
 	_cancel_movement(id)
@@ -2761,6 +2791,9 @@ func _do_move_to_cell(id: String, cell: Vector2i) -> bool:
 ## prior movement and pinned characters[id].position to current_pos.
 func _begin_cooperative_move(id: String, current_pos: Vector3, current_cell: Vector2i, dest_cell: Vector2i, speed: float) -> bool:
 	var level := get_character_level(id)  # keep waypoints on the character's current floor
+	# A character parked off the carved footprint still routes: snap the START to the nearest walkable
+	# cell (the glide from current_pos to the first cell center walks it onto the mesh).
+	current_cell = grid.nearest_walkable_cell(current_cell, level)
 	var plan := _plan_cooperative(current_cell, dest_cell, speed, scheduler.get_current_tick(), id, level)
 	if not plan.is_empty() and not plan.cells.is_empty():
 		var built := _build_timed_world_path(current_pos, plan.cells, plan.ticks, speed, level)

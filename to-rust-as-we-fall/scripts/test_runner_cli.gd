@@ -1827,8 +1827,8 @@ func _test_archetype_generation() -> void:
 			var poc_navigation: Dictionary = poc_chunk.call("get_navigation_state")
 			_assert_equals(str(poc_graybox.get("contract_id", "")), "generated_stretch_graybox_v1",
 				"Generated chain/nested chunk builds the spatial graybox contract")
-			_assert_equals(str(poc_navigation.get("contract_id", "")), "multi_level_navigation_graph_v1",
-				"Generated chain/nested chunk builds the multi-level navigation contract")
+			_assert_equals(str(poc_navigation.get("contract_id", "")), "unified_grid_v1",
+				"Generated chain/nested chunk builds the unified-grid navigation contract")
 			_assert_true(int(poc_graybox.get("outline_target_count", 0)) > 0,
 				"Generated chain/nested chunk builds clickable node outline targets")
 			_assert_true(int(poc_graybox.get("instanced_content_marker_count", 0)) > 0,
@@ -1859,8 +1859,8 @@ func _test_archetype_generation() -> void:
 			var walk_navigation: Dictionary = walk_chunk.call("get_navigation_state")
 			_assert_equals(str(walk_graybox.get("contract_id", "")), "generated_stretch_graybox_v1",
 				"Generated random-walk chunk builds the spatial graybox contract")
-			_assert_equals(str(walk_navigation.get("contract_id", "")), "multi_level_navigation_graph_v1",
-				"Generated random-walk chunk builds the multi-level navigation contract")
+			_assert_equals(str(walk_navigation.get("contract_id", "")), "unified_grid_v1",
+				"Generated random-walk chunk builds the unified-grid navigation contract")
 			_assert_true(int(walk_graybox.get("outline_target_count", 0)) > 0,
 				"Generated random-walk chunk builds clickable node outline targets")
 			_assert_true(int(walk_graybox.get("instanced_content_marker_count", 0)) > 0,
@@ -1892,8 +1892,8 @@ func _test_archetype_generation() -> void:
 	_assert_equals(str(preview_graybox.get("contract_id", "")), "generated_stretch_graybox_v1",
 		"Generated preview reports the spatial graybox contract")
 	var preview_navigation: Dictionary = state.get("navigation", {})
-	_assert_equals(str(preview_navigation.get("contract_id", "")), "multi_level_navigation_graph_v1",
-		"Generated preview installs the multi-level navigation graph into GameState")
+	_assert_equals(str(preview_navigation.get("contract_id", "")), "unified_grid_v1",
+		"Generated preview installs the unified multi-level grid into GameState")
 	_assert_true(bool(preview_navigation.get("supports_multiple_elevations", false)),
 		"Generated preview navigation supports multiple elevations")
 	_assert_true(bool(preview_graybox.get("supports_click_to_move", false)),
@@ -2603,7 +2603,7 @@ func _test_generated_stretch_playtest_loop() -> void:
 		"world_slot_exposed",
 		"full_party_full_stats",
 		"preview_graybox_spatial_contract",
-		"preview_navigation_graph_contract",
+		"preview_navigation_grid_contract",
 		"preview_graybox_click_targets",
 		"preview_graybox_content_placed",
 		"preview_graybox_elevations",
