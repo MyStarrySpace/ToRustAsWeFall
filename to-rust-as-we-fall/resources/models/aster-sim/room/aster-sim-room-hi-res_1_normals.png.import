@@ -2,7 +2,7 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dypq2ohtqeu31"
+uid="uid://dt570yoqy45by"
 path.s3tc="res://.godot/imported/aster-sim-room-hi-res_1_normals.png-aff60a1140b4ceb6c47bb2d648d9a47a.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
@@ -26,8 +26,8 @@ compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
-roughness/mode=1
-roughness/src_normal="res://resources/models/aster-sim/room/aster-sim-room-hi-res_1_normals.png"
+roughness/mode=0
+roughness/src_normal=""
 process/channel_remap/red=0
 process/channel_remap/green=1
 process/channel_remap/blue=2

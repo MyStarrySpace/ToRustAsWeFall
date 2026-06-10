@@ -22,7 +22,7 @@ var _terminal_prev_camera_offset := Vector3.ZERO
 var _terminal_prev_camera_target: Node3D
 
 # Exploration beat (post-drink, pre-Tag-Day)
-@export var show_graybox_room := true
+@export var show_graybox_room := false  # the imported room model is the environment; flip on for graybox dev
 @export var show_high_res_room := false
 var _explore_hallway_gate  # Interactable at hallway exit
 const EXPLORE_MIN_TIME := 12.0  # scheduler ticks before the hallway gate unlocks
@@ -126,6 +126,25 @@ func _get_speed_recipients() -> Array:
 	if _drink_machine:
 		recipients.append(_drink_machine)
 	return recipients
+
+## The imported room model is the environment (the graybox is a fallback for headless/dev toggles).
+func _use_room_model() -> bool:
+	return show_high_res_room and not show_graybox_room and find_child("AsterRoom", true, false) != null
+
+## All MeshInstance3Ds under one named object of the room model (e.g. "Desk", "Shelf", "Rug").
+func _room_model_meshes(object_name: String) -> Array:
+	var room := find_child("AsterRoom", true, false)
+	if room == null:
+		return []
+	var obj := room.find_child(object_name, true, false)
+	if obj == null:
+		return []
+	var meshes: Array = []
+	if obj is MeshInstance3D:
+		meshes.append(obj)
+	for m in obj.find_children("*", "MeshInstance3D", true, false):
+		meshes.append(m)
+	return meshes
 
 func _placement_node(marker_name: String) -> Node3D:
 	var root := get_node_or_null(PLACEMENT_ROOT)
@@ -480,6 +499,14 @@ func _ensure_omni_light(
 	return light
 
 func _add_desk(parent: Node3D, pos: Vector3) -> void:
+	# With the real room model active, the MODEL's desk is the desk: skip the graybox boxes and wrap
+	# the imported meshes in the outline target so hover/SHIFT light the actual furniture.
+	if _use_room_model():
+		var model_meshes := _room_model_meshes("Desk")
+		if not model_meshes.is_empty():
+			_create_graybox_outline_target(parent, "RoomTargetDesk",
+				pos + Vector3(0.0, 0.75, -0.1), Vector3(2.4, 1.2, 1.8), model_meshes, "desk", 1.45)
+			return
 	var meshes: Array = []
 	# Desktop surface
 	var desk := MeshInstance3D.new()

@@ -1824,7 +1824,6 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	add_child(plant_interact)
 	if plant_interact.has_method("set_scheduler"):
 		plant_interact.set_scheduler(_scheduler)
-		interact.set_movement_authority(_game_state)
 		plant_interact.set_movement_authority(_game_state)
 	plant_interact.interacted.connect(func():
 		var bloom := create_tween()
@@ -1860,6 +1859,7 @@ func _add_junction_interactable(label: String, pos: Vector3, dialogue_prefix: St
 	add_child(interact)
 	if interact.has_method("set_scheduler"):
 		interact.set_scheduler(_scheduler)
+		interact.set_movement_authority(_game_state)
 
 func _build_gauntlet_chunk(parent: Node3D) -> void:
 	var ground_y := BELOW_Y

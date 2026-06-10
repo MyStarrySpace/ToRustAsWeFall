@@ -5142,8 +5142,14 @@ func _test_aster_sim() -> void:
 				"Dialogue advances while the gameplay scheduler is paused")
 			dialogue.clear()
 			instance._scheduler.resume()
-		var high_res_room := instance.find_child("default", true, false) as Node3D
-		_assert_true(high_res_room != null, "Aster sim keeps the imported high-res room instance")
+		# The room is the SEPARATED per-object model set (so objects can be highlighted/grid-placed
+		# individually) — assert the named objects, not the old combined 'default' import.
+		var room_instance := instance.find_child("AsterRoom", true, false) as Node3D
+		_assert_true(room_instance != null, "Aster sim keeps the imported room instance")
+		if room_instance != null:
+			for room_obj in ["Room", "Desk", "Rug", "Grate", "Shelf"]:
+				_assert_true(room_instance.find_child(room_obj, true, false) != null,
+					"Aster room model includes the separated %s object" % room_obj)
 		var placement := instance.find_child("ScenePlacement", true, false) as Node3D
 		_assert_true(placement != null, "Aster sim exposes authored placement markers")
 		if placement != null:
@@ -5179,11 +5185,11 @@ func _test_aster_sim() -> void:
 					"Aster sim exposes %s as a scene light" % light_name)
 			var room_origin := placement.find_child("HighResRoomOrigin", true, false) as Node3D
 			var room_center := placement.find_child("RoomCenter", true, false) as Node3D
-			if high_res_room != null and room_origin != null:
-				_assert_true(high_res_room.global_position.distance_to(room_origin.global_position) < 0.01,
-					"High-res Aster room origin is aligned through a scene placement node")
-			if high_res_room != null and room_center != null:
-				var high_res_center := high_res_room.global_position + Vector3(3.5, 0.0, 6.0625)
+			if room_instance != null and room_origin != null:
+				_assert_true(room_instance.global_position.distance_to(room_origin.global_position) < 0.01,
+					"Aster room model origin is aligned through a scene placement node")
+			if room_instance != null and room_center != null:
+				var high_res_center := room_instance.global_position + Vector3(3.5, 0.0, 6.0625)
 				var center_delta := Vector2(
 					high_res_center.x - room_center.global_position.x,
 					high_res_center.z - room_center.global_position.z
@@ -5222,8 +5228,21 @@ func _test_aster_sim() -> void:
 		var feedback_manager := instance.find_child("OutlineFeedbackManager", true, false)
 		_assert_true(feedback_manager != null, "Aster sim centralizes outline feedback state")
 		var room_surface_targets := _find_nodes_with_script(instance, "res://scripts/game/objects/outline_surface_target.gd")
-		_assert_true(room_surface_targets.size() >= 8,
-			"Aster sim high-res room keeps generated per-surface wrappers")
+		# The separated per-object room model replaced the old combined import's auto-generated
+		# per-surface wrappers: the semantic targets ARE the objects now. The desk target must wrap
+		# the REAL model's meshes (from the AsterRoom subtree), not graybox boxes.
+		_assert_true(room_surface_targets.size() >= 3,
+			"Aster sim keeps its semantic room object targets")
+		var desk_target := instance.find_child("RoomTargetDesk", true, false)
+		_assert_true(desk_target != null, "Aster sim builds the desk outline target")
+		if desk_target != null and room_instance != null:
+			var desk_meshes: Array = desk_target.get("_highlight_meshes")
+			var from_model := false
+			for dm in desk_meshes:
+				if dm is Node and room_instance.is_ancestor_of(dm):
+					from_model = true
+			_assert_true(from_model,
+				"RoomTargetDesk wraps the imported desk model's meshes (hover lights the real furniture)")
 		for target_name in [
 			"RoomTargetDesk",
 			"RoomTargetDrinkMachine",
@@ -5248,9 +5267,9 @@ func _test_aster_sim() -> void:
 			if surface_target.has_meta("source_surface"):
 				_assert_true(not bool(surface_target.get("input_ray_pickable")),
 					"Generated GLTF surface wrappers do not steal hover from semantic room targets")
-		if high_res_room != null:
-			_assert_true(not high_res_room.visible,
-				"High-res room is hidden while testing graybox object outlines")
+		if room_instance != null:
+			_assert_true(not room_instance.visible,
+				"The room model is hidden while testing graybox object outlines")
 		if perception_quad != null:
 			_assert_true(not perception_quad.visible,
 				"Aster sim fallback outline quad is hidden while object feedback is debugged")
