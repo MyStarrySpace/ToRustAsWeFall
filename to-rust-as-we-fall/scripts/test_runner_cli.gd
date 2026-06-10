@@ -518,6 +518,9 @@ func _ready() -> void:
 			"--test-preview-parked-bail":
 				ran_test = true
 				_test_preview_parked_bail()
+			"--test-drink-partial-dwell":
+				ran_test = true
+				await _test_drink_partial_dwell()
 			"--test-interaction-delegates":
 				ran_test = true
 				await _test_interaction_delegates_to_capable()
@@ -868,6 +871,7 @@ func _run_all_tests() -> void:
 	_test_generated_grid()
 	_test_dodge_knockdown()
 	_test_preview_parked_bail()
+	await _test_drink_partial_dwell()
 	_test_physics_objects()
 	_test_physics_edge_cases()
 	_test_pendulum()
@@ -16926,6 +16930,78 @@ func _test_preview_parked_bail() -> void:
 	# A destination BESIDE the parked character still plans cooperatively (the bail is dest-exact).
 	var near := gs.compute_preview_path("peris", grid.grid_to_world(Vector2i(15, 6)))
 	_assert_true(near.size() >= 2, "A destination beside a parked character still routes")
+
+## A HOLD_ACTION needs the WHOLE hold: stepping into the drink machine's range and leaving before
+## dwell_time must NOT pour the drink or fire Ron's follow-up dialogue. Reproduces the report
+## "Ron's dialogue still fires if you interact with the drink machine but don't wait the hold time".
+func _test_drink_partial_dwell() -> void:
+	_test_name = "Drink Partial Dwell"
+	var scene := load("res://scenes/tutorial/aster_sim.tscn")
+	var instance: Node = scene.instantiate()
+	get_tree().root.add_child(instance)
+	for i in range(5):
+		await get_tree().process_frame
+	var dialogue: Node = instance._dialogue
+	# Drive to the walk_to_drink step (the machine is enabled there).
+	var safety := 0
+	while str(instance._current_step) != "walk_to_drink" and safety < 4000:
+		safety += 1
+		_pump_dialogue(dialogue, 4.0)
+		instance.headless_advance(0.5, 0.25)
+		await get_tree().process_frame
+		if str(instance._current_step) == "show_terminal":
+			_synthetic_click_interactable(instance, instance._terminal)
+	_assert_equals(str(instance._current_step), "walk_to_drink", "Reached the drink beat")
+	var dm: Node = instance._drink_machine
+	if dm == null or str(instance._current_step) != "walk_to_drink":
+		_assert_true(false, "Drink machine exists at the drink beat")
+		instance.queue_free()
+		await get_tree().process_frame
+		return
+
+	# PARTIAL hold: step in, leave at 40% of the dwell, then let MORE than the full dwell elapse.
+	var player: Node3D = instance._player
+	dm._on_body_entered(player)
+	instance.headless_advance(float(dm.dwell_time) * 0.4, 0.05)
+	await get_tree().process_frame
+	dm._on_body_exited(player)
+	instance.headless_advance(float(dm.dwell_time) * 2.0, 0.05)
+	await get_tree().process_frame
+	_assert_equals(str(instance._current_step), "walk_to_drink",
+		"A partial hold does NOT pour the drink / start Ron's dialogue (step stayed)")
+	_assert_true(not bool(instance._has_drunk), "A partial hold does not count as drinking")
+
+	# WALK-THROUGH arming (the real-play leak): the zone is r=2.0 and the dwell 0.8s, so a timer armed
+	# at the EDGE during the walk-in is ~85% done before the character even stops — it then fires while
+	# they're walking away. The hold must time from ARRIVAL (standing at the machine), and starting to
+	# move must cancel it.
+	var gs = instance._game_state
+	var machine_pos: Vector3 = (dm as Node3D).global_position
+	var edge := Vector3(machine_pos.x - 2.0, 0.0, machine_pos.z)
+	gs.snap_character_to("aster", edge)
+	gs.command_move_to_pos("aster", Vector3(machine_pos.x, 0.0, machine_pos.z))
+	dm._on_body_entered(player)  # physics fires the moment the body crosses the zone edge, mid-walk
+	# Arrive (~0.67s), then immediately walk away — the perceived hold at the machine is ~0.1s.
+	var arrived := false
+	for i in range(40):
+		instance.headless_advance(0.05, 0.05)
+		if not arrived and not gs.is_moving("aster"):
+			arrived = true
+			gs.command_move_to_pos("aster", edge + Vector3(-2.0, 0.0, 0.0))
+	dm._on_body_exited(player)
+	instance.headless_advance(float(dm.dwell_time) * 2.0, 0.05)
+	await get_tree().process_frame
+	_assert_true(not bool(instance._has_drunk),
+		"Walking in and leaving does NOT pour: the hold times from ARRIVAL, not from crossing the zone edge")
+
+	# Sanity: the FULL hold still works — arrive and STAND for dwell_time.
+	gs.snap_character_to("aster", Vector3(machine_pos.x, 0.0, machine_pos.z))
+	dm._on_body_entered(player)
+	instance.headless_advance(float(dm.dwell_time) + 0.5, 0.05)
+	await get_tree().process_frame
+	_assert_true(bool(instance._has_drunk), "The full standing hold pours the drink")
+	instance.queue_free()
+	await get_tree().process_frame
 
 func _path_touches_risk(grid: GridWorld, path: Array) -> bool:
 	for wp in path:

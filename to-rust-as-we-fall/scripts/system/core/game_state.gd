@@ -6,6 +6,7 @@ extends RefCounted
 ## Positions are derived from ticks. Detection is predicted when movement changes.
 
 signal character_arrived(id: String)
+signal movement_started(id: String)  # a movement committed for id (derived event, like character_arrived)
 signal detection_predicted(detector_id: String, target_id: String)
 signal physics_collision(obj_id: String, collider_id: String, impulse: Vector3)
 signal pendulum_hit(pendulum_id: String, target_id: String, bob_velocity: Vector3)
@@ -730,6 +731,7 @@ func _start_movement(id: String, full_path: Array[Vector3], arrival_ticks: Array
 		"handle": handle,
 	}
 	_reserve_path(id, full_path, ticks)
+	movement_started.emit(id)
 	# Resume stamina drain on movement.
 	# that the character is in motion again.
 	if is_running(id) and int(_running[id].get("tick_handle", 0)) == 0:

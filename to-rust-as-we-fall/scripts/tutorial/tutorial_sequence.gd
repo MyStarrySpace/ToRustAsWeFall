@@ -643,6 +643,8 @@ func _add_level_walkable_region(level: int, min_xz: Vector2, max_xz: Vector2) ->
 func _inject_scheduler_into_interactables(node: Node) -> void:
 	if node is Interactable and node.has_method("set_scheduler"):
 		node.call("set_scheduler", _scheduler)
+		if node.has_method("set_movement_authority"):
+			node.call("set_movement_authority", _game_state)
 	for child in node.get_children():
 		_inject_scheduler_into_interactables(child)
 

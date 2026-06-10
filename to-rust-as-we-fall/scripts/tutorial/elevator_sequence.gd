@@ -1824,6 +1824,8 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	add_child(plant_interact)
 	if plant_interact.has_method("set_scheduler"):
 		plant_interact.set_scheduler(_scheduler)
+		interact.set_movement_authority(_game_state)
+		plant_interact.set_movement_authority(_game_state)
 	plant_interact.interacted.connect(func():
 		var bloom := create_tween()
 		bloom.tween_property(plant_mat, "albedo_color", Color(0.2, 0.5, 0.3), 1.5)
@@ -1908,6 +1910,7 @@ func _build_gauntlet_chunk(parent: Node3D) -> void:
 	add_child(_ferrolure_interactable)
 	if _ferrolure_interactable.has_method("set_scheduler"):
 		_ferrolure_interactable.set_scheduler(_scheduler)
+		_ferrolure_interactable.set_movement_authority(_game_state)
 	_ferrolure_interactable.interacted.connect(_on_ferrolure_activated)
 
 	# Enemy cluster blocking the direct path.

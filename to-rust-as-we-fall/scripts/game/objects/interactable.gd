@@ -71,6 +71,9 @@ var _collision_shape: CollisionShape3D
 var _selected_particles: GPUParticles3D
 var _selected_particle_material: ParticleProcessMaterial
 var _feedback_managed := false
+var _movement_gs           # GameState movement authority: dwell arms on arrival, cancels on move
+var _dwell_char_id := ""   # who armed the dwell (char_id of the body in range)
+var _dwell_pending := false  # in range but still walking — the dwell starts on arrival
 
 signal interacted()
 signal outline_hovered(interactable: Node)
@@ -199,6 +202,14 @@ func _begin_dwell() -> void:
 		return
 	if _used or not interaction_enabled:
 		return
+	# The hold times from STANDING at the object, never from crossing the zone edge mid-walk: a 2-unit
+	# radius with a sub-second dwell would otherwise be mostly elapsed before the character even stops
+	# (and then fire while they walk away). While the dwelling character is moving, the dwell is PENDING
+	# and arms on the data-layer arrival; starting a new move cancels it (see _on_authority_*).
+	if _movement_gs != null and _dwell_char_id != "" and _movement_gs.is_moving(_dwell_char_id):
+		_dwell_pending = true
+		return
+	_dwell_pending = false
 	# (Re)start the dwell: bounce through 'armed' so re-entering 'dwelling' re-arms the timer even
 	# if we were already dwelling (the FSM tag cancels any prior pending completion).
 	_dwell_fsm.transition_to("armed")
@@ -214,6 +225,35 @@ func _cancel_dwell() -> void:
 	# Back to 'armed' — the FSM cancels the pending completion via its tag.
 	if _dwell_fsm != null:
 		_dwell_fsm.transition_to("armed")
+
+## Wire the GameState whose movement events anchor the hold timer (injected by the sequence alongside
+## the scheduler). With no authority the dwell keeps the legacy edge-triggered behavior (standalone use).
+func set_movement_authority(game_state) -> void:
+	if _movement_gs == game_state or game_state == null:
+		return
+	_movement_gs = game_state
+	if _movement_gs.has_signal("character_arrived"):
+		_movement_gs.character_arrived.connect(_on_authority_arrived)
+	if _movement_gs.has_signal("movement_started"):
+		_movement_gs.movement_started.connect(_on_authority_movement_started)
+
+## The dwelling character stopped: a pending (walked-in) hold starts NOW — timed from standing still.
+func _on_authority_arrived(id: String) -> void:
+	if id != _dwell_char_id or not _player_in_range or _used or not interaction_enabled:
+		return
+	if _dwell_pending and _proximity_dwell():
+		_begin_dwell()
+
+## The dwelling character started moving again: the hold is broken (still in range → re-arms on arrival).
+func _on_authority_movement_started(id: String) -> void:
+	if id != _dwell_char_id:
+		return
+	if _is_dwelling():
+		_cancel_dwell()
+		_dwell_pending = _player_in_range and _proximity_dwell()
+
+func _is_dwelling() -> bool:
+	return _dwell_fsm != null and _dwell_fsm.current() == "dwelling"
 
 func _on_dwell_complete() -> void:
 	if _player_in_range and not _used and interaction_enabled and _uses_hold_timer():
@@ -305,6 +345,7 @@ func _on_body_entered(body: Node3D) -> void:
 		return
 	if body is CharacterBody3D:
 		_player_in_range = true
+		_dwell_char_id = str(body.get("char_id")) if body.get("char_id") != null else ""
 		_dwell_progress = 0.0
 		if _proximity_dwell():  # only HOLD_ACTION auto-dwells on proximity; TIMED_ACTION waits for a click
 			_begin_dwell()
@@ -312,6 +353,7 @@ func _on_body_entered(body: Node3D) -> void:
 func _on_body_exited(body: Node3D) -> void:
 	if body is CharacterBody3D:
 		_player_in_range = false
+		_dwell_pending = false
 		_cancel_dwell()
 
 func _on_mouse_entered() -> void:

@@ -41,6 +41,8 @@ static func spawn(
 		node.interactable_id = catalog_id
 	if game_state != null:
 		node.bind_data(game_state, id)
+		if node.has_method("set_movement_authority"):
+			node.set_movement_authority(game_state)
 	if scheduler != null and node.has_method("set_scheduler"):
 		node.set_scheduler(scheduler)
 	parent.add_child(node)
