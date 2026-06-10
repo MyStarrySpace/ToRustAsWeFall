@@ -8769,7 +8769,7 @@ func _test_lure_relay_puzzle() -> void:
 	instance.headless_set_character_position("peris", chunk.get_spawn_positions()["peris"])  # back to the entrance
 	_assert_true(chunk.activate_lure1(), "Cheese: Lure 1 alone fires")
 	instance.headless_advance(0.3, 0.1)
-	gs.command_move_to_pos("peris", anchors["hide_spot"])  # nav-routed down the corridor — no diagonal cut
+	gs.command_move_to_pos("peris", anchors["hide_spot"])  # grid-routed down the corridor — no diagonal cut
 	instance.headless_advance(9.0, 0.1)
 	_assert_true(chunk.get_preview_state()["failed"], "Firing only Lure 1 and crossing to the hide gets you spotted")
 	_assert_true(not chunk.get_preview_state()["complete"], "The cheese does not solve the puzzle")
@@ -8815,8 +8815,11 @@ func _test_lure_relay_puzzle() -> void:
 			if d1.length() > 0.01 and d2.length() > 0.01 and d1.normalized().dot(d2.normalized()) < -0.5:
 				backtracks = true
 		_assert_true(not backtracks, "Route to a point before a node does NOT overshoot/backtrack")
-		_assert_true((ppath[ppath.size() - 1] as Vector3).distance_to(Vector3(38.0, 0.5, 0.0)) < 0.6,
-			"Route ends at the clicked point, not past it at the node")
+		# Grid routing quantizes the endpoint to the clicked CELL's center — allow half a cell diagonal
+		# (+ margin) in XZ. The overshoot bug this guards ran ~2 units PAST the point and doubled back.
+		var ppend: Vector3 = ppath[ppath.size() - 1]
+		_assert_true(Vector2(ppend.x - 38.0, ppend.z - 0.0).length() < 0.75,
+			"Route ends at the clicked point (cell), not past it")
 		tend_inst.queue_free()
 		await get_tree().process_frame
 
@@ -16651,29 +16654,25 @@ func _test_interaction_delegates_to_capable() -> void:
 
 ## The ferrolure must not BE a movement waypoint: a walk PAST a lure (down the corridor) must not route a
 ## path vertex through the lure, or the ribbon visibly pivots on the decoration ("treated as a pathing
-## point"). Reproduces the user's report at the nav-graph layer AND the preview-path layer they see.
+## point"). Drives the chunk's REAL routing representation (the unified grid) at the preview-path layer.
 func _test_lure_not_path_waypoint() -> void:
 	_test_name = "Lure Not A Path Waypoint"
 	var chunk: Node = preload("res://scripts/fragments/chunks/lure_relay_chunk.gd").new()
-	var data: Dictionary = chunk.get_navigation_graph_data()
 	var lure1: Vector3 = chunk.LURE1_POS
 	var lure2: Vector3 = chunk.LURE2_POS
 	var clear := 0.5  # lure box half-width (~0.25) + ribbon half-width (~0.15) + margin: closer = ON the lure
 
-	# (1) Root cause: NavigationGraph.find_path itself.
-	var nav := NavigationGraph.new()
-	nav.configure(data)
-	_assert_lure_clear(nav.find_path(Vector3(6, 0.5, 0), Vector3(58, 0.5, 0)), lure1, lure2, clear,
-		"NavigationGraph.find_path")
-
-	# (2) What the preview/committed move actually draws — game_state's path.
 	var gs := GameState.new()
 	var sched := EventScheduler.new()
 	gs.scheduler = sched
-	gs.set_navigation_data(data)
-	gs.register_character("peris", Vector3(6, 0.5, 0))
-	_assert_lure_clear(gs.compute_preview_path("peris", Vector3(58, 0.5, 0)), lure1, lure2, clear,
-		"compute_preview_path")
+	gs.grid = GridWorld.from_data(chunk.get_grid_data())
+	gs.register_character("peris", Vector3(6, 0.0, 0))
+	# The hover-preview path down the whole hall (past BOTH lures) keeps clear of the decorations.
+	_assert_lure_clear(gs.compute_preview_path("peris", Vector3(58, 0.0, 0)), lure1, lure2, clear,
+		"compute_preview_path (grid)")
+	# And the COMMITTED move's path does too.
+	_assert_true(gs.command_move_to_pos("peris", Vector3(58, 0.0, 0)), "Hall-length move commits on the grid")
+	_assert_lure_clear(gs.characters["peris"].movement.path, lure1, lure2, clear, "committed movement path")
 
 	chunk.free()
 

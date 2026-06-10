@@ -125,7 +125,11 @@ func _spawn_guards() -> void:
 		enemy.name = "RelayGuard%d" % i
 		enemy.position = GUARD_POSITIONS[i]
 		enemy.move_speed = GUARD_SPEED
-		enemy.detection_range = 5.0
+		# Reach 7.0 → distracted reach 2.8 (×0.4): wider than any lane the 4-unit hall offers, so an
+		# EXPOSED head-on pass against the swarm is always caught (cell-based cooperative movement
+		# side-steps ~2 units; 2.0 reach made the lure-1-only cheese slip by). The hidden offshoot
+		# (full conceal) and the >9-unit standoffs in every intended beat keep their safety margins.
+		enemy.detection_range = 7.0
 		enemy._detection_targets.assign(PARTY_IDS)
 		add_child(enemy)
 		_register_enemy(enemy, "relay_guard_%d" % i, enemy.move_speed)
@@ -144,29 +148,24 @@ func _register_enemy(enemy, id: String, speed: float) -> void:
 	if enemy.has_method("activate"):
 		enemy.activate()
 
-## Constrain everyone to the corridor + offshoot: a centerline of waypoints down the hall, with a branch
-## into the hiding spot. Movement (player AND guards) routes along these, so there's no diagonal cut to
-## the hide — the only path crosses the hall, which is what makes firing Lure 1 alone get you spotted.
-func get_navigation_graph_data() -> Dictionary:
-	var nodes: Array = []
-	var edges: Array = []
-	var xs := [4, 10, 16, 22, 28, 34, 40, 46, 52, 58, 62]
-	var prev := ""
-	for x in xs:
-		var nid := "c%d" % x
-		nodes.append({"id": nid, "position": [float(x), 0.5, 0.0]})
-		if prev != "":
-			edges.append({"from": prev, "to": nid, "bidirectional": true})
-		prev = nid
-	# Offshoot branch off the corridor node nearest the hide's x.
-	nodes.append({"id": "hide", "position": [HIDE_POS.x, 0.5, HIDE_POS.z]})
-	edges.append({"from": "c34", "to": "hide", "bidirectional": true})
+## Constrain everyone to the corridor + offshoot as a GRID footprint (cells carved from the hall and
+## the hide pocket, walls everywhere else). Movement (player AND guards) routes on these cells, so
+## there's no diagonal cut to the hide — the only path crosses the hall, which is what makes firing
+## Lure 1 alone get you spotted. Cell-based A* means paths follow the open floor, never pivoting on
+## decorations like the ferrolures.
+func get_grid_data() -> Dictionary:
 	return {
-		"entry_node": "c4",
-		"exit_node": "c62",
-		"max_snap_distance": 9.0,
-		"nodes": nodes,
-		"edges": edges,
+		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
+		"origin": [-3.0, 0.0, -9.0],
+		"cell_size": 1.0,
+		"width": 68,
+		"height": 12,
+		"walkable_regions": [
+			# The hall: full length, the walkable half-width inside the long walls.
+			{"min": [-2.0, -HALL_HALF_Z], "max": [64.0, HALL_HALF_Z]},
+			# The offshoot pocket down to the hide spot (inside its three walls).
+			{"min": [32.0, -7.5], "max": [36.0, -HALL_HALF_Z]},
+		],
 	}
 
 # --- Lure relay ---
@@ -222,12 +221,16 @@ func _commit_enemies_to(which: int) -> void:
 		# offset (no wall-clock RNG) so the data layer runs the same puzzle headless. The guard stays
 		# alert to the party but DISTRACTED — its reach shrinks, so it won't notice a runner keeping
 		# distance, yet still catches one who steps right into it. Hide as it passes; don't crowd it.
+		# The fan SWEEPS the hall's walkable width (z = -1.5/0/+1.5 across the 4-unit corridor): an
+		# exposed runner crossing the swarm head-on is within even the distracted reach of SOME guard
+		# in every lane — the offshoot hide is the only safe pass. (A tight cluster left wall lanes
+		# open and the lure-1-only cheese slipped past on cooperative side-steps.)
 		enemy._current_target_id = ""
 		if enemy.has_method("_change_state"):
 			enemy._change_state("idle")
 		if gs != null and gs.characters.has(enemy.char_id):
 			gs.set_character_distracted(enemy.char_id, true)
-			gs.command_move_to_pos(enemy.char_id, pos + Vector3(0.0, 0.0, float(i - 1) * 0.7))
+			gs.command_move_to_pos(enemy.char_id, pos + Vector3(0.0, 0.0, float(i - 1) * 1.5))
 
 func _on_lure_expired(which: int) -> void:
 	if which == 2:
@@ -371,6 +374,14 @@ func reset_preview_state() -> void:
 	_release_enemies()
 	var gs = _get_game_state()
 	if gs != null:
+		# A reset TELEPORTS the guards back to their posts (mid-play lure expiry walks them home via
+		# _release_enemies — a reset must not depend on that walk's timing or the puzzle premise
+		# "sentries guard the exit" only holds whenever the previous attempt happened to end early).
+		for enemy in _enemies:
+			if is_instance_valid(enemy) and enemy.is_alive() and gs.characters.has(enemy.char_id):
+				var post := _guard_post_for(enemy.char_id)
+				gs.snap_character_to(enemy.char_id, post)
+				enemy.position = post
 		for char_id in PARTY_IDS:
 			if gs.characters.has(char_id):
 				gs.set_character_hidden(char_id, false)

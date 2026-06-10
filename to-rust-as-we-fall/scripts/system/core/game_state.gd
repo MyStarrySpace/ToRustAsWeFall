@@ -338,6 +338,11 @@ func _do_move_to_pos(id: String, pos: Vector3) -> bool:
 		return false
 	if is_endocytosing(id):
 		return false
+	# On a grid a position move routes on the CELLS (the cooperative planner, same as a cell move) —
+	# never a straight line that would cut through walls. The target quantizes to its cell, exactly
+	# what the hover preview shows. Gridless keeps the straight-line resolution.
+	if grid != null:
+		return _do_move_to_cell(id, grid.world_to_grid(pos))
 	var current_pos := get_position(id)
 	var target := Vector3(pos.x, pos.y, pos.z)
 	_cancel_movement(id)
@@ -457,11 +462,23 @@ func compute_preview_path(id: String, target_pos: Vector3) -> Array[Vector3]:
 		var level := get_character_level(id)
 		var start_cell := grid.world_to_grid(current)
 		var end_cell := grid.world_to_grid(target_pos)
+		# Mirror the COMMIT exactly — the same cooperative plan a click would start right now (read-only:
+		# no reservations written), with the same plain-A* fallback as _begin_cooperative_move. The dim
+		# hover ribbon therefore can't lie about the route the click will take.
+		var out: Array[Vector3] = [current]
+		var plan := _plan_cooperative(start_cell, end_cell, characters[id].move_speed,
+			scheduler.get_current_tick() if scheduler else 0.0, id, level)
+		if not plan.is_empty() and not (plan.cells as Array).is_empty():
+			for c in plan.cells:
+				out.append(grid.grid_to_world(c, level))
+			if out.size() >= 2 and out[0].distance_to(out[1]) < 0.001:
+				out.remove_at(0)
+			return out
 		# find_path returns WORLD positions (one per cell) already on the right level.
 		var waypoints: Array[Vector3] = grid.find_path(start_cell, end_cell, {}, route_cautious, {}, {}, level)
 		if waypoints.is_empty():
 			return []
-		var out: Array[Vector3] = [current]
+		out = [current]
 		out.append_array(waypoints)
 		return out
 	return _resolve_world_path(current, target_pos)
