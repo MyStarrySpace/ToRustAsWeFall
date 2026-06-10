@@ -16,6 +16,8 @@ signal item_transferred(from_id: String, to_id: String, item_id: String)
 signal item_exocytosed(char_id: String, item_id: String)
 signal ability_fired(char_id: String, ability: String, target_pos: Vector3)
 signal dodge_started(char_id: String, direction: Vector3)
+signal knockdown_started(char_id: String)
+signal knockdown_ended(char_id: String)
 signal dodge_finished(char_id: String)
 signal stat_changed(char_id: String, stat: String, value: float)
 signal running_changed(char_id: String, running: bool)
@@ -41,6 +43,7 @@ var interactables: Dictionary = {}
 var _next_item_id := 1
 var _endocytosing: Dictionary = {} # char_id → {item_id, handle} for in-progress endocytosis
 var _dodging: Dictionary = {}     # char_id → {end_tick, handle}
+var _knocked_down: Dictionary = {}  # char_id → {end_tick, handle} — fell on a no-stamina dodge; vulnerable
 ## Per-character running tick state. Missing key = walking.
 var _running: Dictionary = {}
 ## Cooperative-pathfinding space-time reservations: Vector2i cell →
@@ -334,7 +337,7 @@ func _on_cross_level_arrival(id: String) -> void:
 func _do_move_to_pos(id: String, pos: Vector3) -> bool:
 	if not characters.has(id) or not scheduler:
 		return false
-	if is_endocytosing(id):
+	if is_endocytosing(id) or is_knocked_down(id):
 		return false
 	# On a grid a position move routes on the CELLS (the cooperative planner, same as a cell move) —
 	# never a straight line that would cut through walls. The target quantizes to its cell, exactly
@@ -1219,6 +1222,7 @@ const DODGE_DISTANCE := 3.0
 const DODGE_DURATION := 0.35
 const DODGE_STAMINA_COST := 15.0
 const DODGE_COOLDOWN := 1.0
+const KNOCKDOWN_DURATION := 1.6  # seconds flat on the ground after a failed (no-stamina) dodge
 
 func dodge_roll(char_id: String, direction: Vector3) -> bool:
 	_emit(GameEvent.KIND_DODGE_ROLL, {
@@ -1234,31 +1238,50 @@ func dodge_roll(char_id: String, direction: Vector3) -> bool:
 		return false
 	if float(ch.stats.get("hp", 1.0)) <= 0.0:
 		return false  # a downed character can't dodge (no spending stamina from a corpse)
-	if is_dodging(char_id):
+	if is_dodging(char_id) or is_knocked_down(char_id):
 		return false
 	# Cooldown check
 	var now := scheduler.get_current_tick()
 	var last_dodge: float = ch.stats.get("_last_dodge_tick", -10.0)
 	if now - last_dodge < DODGE_COOLDOWN:
 		return false
-	# Stamina check
+	# Stamina check: a character too exhausted to roll FALLS instead — flat on the ground and
+	# vulnerable (can't move or dodge) until they pick themselves up. The fall costs nothing.
 	var stamina: float = ch.stats.get("stamina", 0.0)
 	if stamina < DODGE_STAMINA_COST:
+		_begin_knockdown(char_id)
 		return false
 
 	# Compute the dodge destination FIRST and reject a fully wall-blocked dodge before spending anything —
 	# a dodge that never moves must cost neither stamina NOR the cooldown (else a corner traps you on cd).
+	# Prefer a roll that does NOT land on another character: try the requested direction, then rotated
+	# alternatives (deterministic order); if every clear lane is occupied, take the first one that MOVES
+	# (dodging into a crowd beats eating the hit).
 	var dir := Vector3(direction.x, 0, direction.z)
 	if dir.length_squared() < 0.001:
 		dir = Vector3(1, 0, 0)
 	dir = dir.normalized()
 	var from := get_position(char_id)
-	var to := from + dir * DODGE_DISTANCE
-	if grid:
-		to = _trace_slide_against_walls(from, to)
+	var to := Vector3.INF
+	var fallback := Vector3.INF
+	for angle_deg in [0.0, 45.0, -45.0, 90.0, -90.0, 135.0, -135.0, 180.0]:
+		var cand_dir := dir.rotated(Vector3.UP, deg_to_rad(angle_deg))
+		var cand := from + cand_dir * DODGE_DISTANCE
+		if grid:
+			cand = _trace_slide_against_walls(from, cand)
+		# A lane must give a MEANINGFUL evade — a sub-cell shuffle against a wall is not a dodge.
+		if Vector3(cand.x - from.x, 0, cand.z - from.z).length() < DODGE_DISTANCE / 3.0:
+			continue  # wall-blocked lane
+		if fallback == Vector3.INF:
+			fallback = cand
+		if not _dodge_lands_on_character(char_id, cand):
+			to = cand
+			break
+	if to == Vector3.INF:
+		to = fallback
+	if to == Vector3.INF:
+		return false  # fully wall-blocked: nothing consumed, no cooldown armed
 	var dodge_dist := Vector3(to.x - from.x, 0, to.z - from.z).length()
-	if dodge_dist < 0.1:
-		return false  # wall-blocked: nothing consumed, no cooldown armed
 
 	# Commit: spend stamina + arm the cooldown only now that the dodge will actually happen.
 	ch.stats["stamina"] = stamina - DODGE_STAMINA_COST
@@ -1292,7 +1315,8 @@ func dodge_roll(char_id: String, direction: Vector3) -> bool:
 	_reserve_path(char_id, path, dodge_ticks)
 	_dodging[char_id] = {"end_tick": now + DODGE_DURATION, "handle": handle}
 
-	dodge_started.emit(char_id, dir)
+	# Emit the RESOLVED roll direction (avoidance may have rotated it off the requested vector).
+	dodge_started.emit(char_id, Vector3(to.x - from.x, 0, to.z - from.z).normalized())
 	_recompute_all_detection_predictions()
 	_recompute_physics_predictions()
 	_recompute_pendulum_predictions()
@@ -1300,6 +1324,44 @@ func dodge_roll(char_id: String, direction: Vector3) -> bool:
 
 func is_dodging(char_id: String) -> bool:
 	return _dodging.has(char_id)
+
+# --- Knockdown (the failed dodge): flat on the ground, can't move or dodge, strikes land. ---
+# Derived state: a deterministic consequence of the logged dodge_roll command + stamina, with the
+# recovery riding the scheduler — replay reproduces it; never serialized.
+
+func is_knocked_down(char_id: String) -> bool:
+	return _knocked_down.has(char_id)
+
+## Whether the destination of a candidate dodge lands on (or grazes) another living character.
+func _dodge_lands_on_character(char_id: String, dest: Vector3) -> bool:
+	for other_id in characters.keys():
+		if str(other_id) == char_id:
+			continue
+		if float(characters[other_id].stats.get("hp", 1.0)) <= 0.0:
+			continue
+		var p := get_position(str(other_id))
+		if Vector2(p.x - dest.x, p.z - dest.z).length() < 0.9:
+			return true
+	return false
+
+func _begin_knockdown(char_id: String) -> void:
+	if is_knocked_down(char_id) or not scheduler:
+		return
+	# Fall where you stand: pin the position, drop any movement.
+	var pinned := get_position(char_id)
+	_cancel_movement(char_id)
+	characters[char_id].position = pinned
+	if grid:
+		characters[char_id].grid_cell = grid.world_to_grid(pinned)
+		_reserve_parked(char_id, characters[char_id].grid_cell)
+	var cid := char_id
+	var handle := scheduler.schedule_after(KNOCKDOWN_DURATION, func(): _on_knockdown_end(cid), "knockdown_" + char_id)
+	_knocked_down[char_id] = {"end_tick": scheduler.get_current_tick() + KNOCKDOWN_DURATION, "handle": handle}
+	knockdown_started.emit(char_id)
+
+func _on_knockdown_end(char_id: String) -> void:
+	_knocked_down.erase(char_id)
+	knockdown_ended.emit(char_id)
 
 func _on_dodge_end(char_id: String) -> void:
 	_dodging.erase(char_id)
@@ -2727,7 +2789,7 @@ func end_split() -> void:
 func _do_move_to_cell(id: String, cell: Vector2i) -> bool:
 	if not characters.has(id) or not grid or not scheduler:
 		return false
-	if is_endocytosing(id):
+	if is_endocytosing(id) or is_knocked_down(id):
 		return false
 	var current_pos := get_position(id)
 	var current_cell := grid.world_to_grid(current_pos)

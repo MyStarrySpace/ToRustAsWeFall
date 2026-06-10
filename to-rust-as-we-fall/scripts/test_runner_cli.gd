@@ -512,6 +512,9 @@ func _ready() -> void:
 			"--test-generated-grid":
 				ran_test = true
 				_test_generated_grid()
+			"--test-dodge-knockdown":
+				ran_test = true
+				_test_dodge_knockdown()
 			"--test-interaction-delegates":
 				ran_test = true
 				await _test_interaction_delegates_to_capable()
@@ -860,6 +863,7 @@ func _run_all_tests() -> void:
 	_test_grid_risk()
 	_test_grid_from_data()
 	_test_generated_grid()
+	_test_dodge_knockdown()
 	_test_physics_objects()
 	_test_physics_edge_cases()
 	_test_pendulum()
@@ -9559,13 +9563,26 @@ func _test_dodge_failure_no_cooldown() -> void:
 	grid.create_room(30, 30)
 	gs.grid = grid
 	gs.scheduler = sched
-	# Hard against the +X wall so a +X dodge is fully blocked (zero distance -> refund).
+	# A dodge AIMED at a wall is no longer a dead input: the roll rotates to an open lane (direction is
+	# a preference, evading is the point) — it must succeed and actually move.
 	gs.register_character("p", grid.grid_to_world(Vector2i(28, 15)), 3.0, {"stamina": 100.0, "dodge_unlocked": true})
-	var into_wall := gs.dodge_roll("p", Vector3(1, 0, 0))
-	_assert_true(not into_wall, "A dodge straight into a wall fails (no movement)")
-	_assert_true(absf(float(gs.characters["p"].stats.stamina) - 100.0) < 0.01, "A blocked dodge refunds stamina")
-	# Immediately dodge a valid direction — it must NOT be on cooldown from the blocked attempt.
-	var away := gs.dodge_roll("p", Vector3(-1, 0, 0))
+	var start := gs.get_position("p")
+	_assert_true(gs.dodge_roll("p", Vector3(1, 0, 0)), "A wall-aimed dodge rotates to an open lane and rolls")
+	sched.advance(GameState.DODGE_DURATION + 0.05)
+	_assert_true(gs.get_position("p").distance_to(start) > 1.0, "The rotated roll actually moves")
+	# A FULLY enclosed character (walls on all 8 lanes) cannot roll at all — and that failed attempt
+	# costs NEITHER stamina NOR the cooldown (a cornered player must not be punished with a dead button).
+	for dz in range(-2, 3):
+		for dx in range(-2, 3):
+			if dx != 0 or dz != 0:
+				grid.set_tile(5 + dx, 5 + dz, GridWorld.Tile.WALL)
+	gs.register_character("boxed", grid.grid_to_world(Vector2i(5, 5)), 3.0, {"stamina": 100.0, "dodge_unlocked": true})
+	_assert_true(not gs.dodge_roll("boxed", Vector3(1, 0, 0)), "A fully enclosed dodge fails (no movement possible)")
+	_assert_true(absf(float(gs.characters["boxed"].stats.stamina) - 100.0) < 0.01, "A blocked dodge refunds stamina")
+	# Open one lane and dodge immediately — it must NOT be on cooldown from the blocked attempt.
+	grid.set_tile(4, 5, GridWorld.Tile.FLOOR)
+	grid.set_tile(3, 5, GridWorld.Tile.FLOOR)
+	var away := gs.dodge_roll("boxed", Vector3(-1, 0, 0))
 	_assert_true(away, "A valid dodge right after a blocked one is NOT on cooldown (blocked dodge didn't move, so it can't cost the cooldown)")
 
 # --- Test: a strike never lands on a target that is already down (no hitting a corpse) ---
@@ -16833,6 +16850,48 @@ func _generated_node(spec: Dictionary, id: String) -> Dictionary:
 				"elev": maxi(0, int(nd.get("elevation_index", 0))),
 			}
 	return {}
+
+## The dodge roll on the unified grid: a no-stamina dodge KNOCKS the character DOWN (flat, can't move
+## or dodge, strikes land) until they get up; a normal dodge avoids rolling INTO another character when
+## an open lane exists; everything rides the scheduler (replay/fast-forward safe).
+func _test_dodge_knockdown() -> void:
+	_test_name = "Dodge Knockdown"
+	var grid := GridWorld.new()
+	grid.create_room(16, 16, true)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+	gs.register_character("peris", grid.grid_to_world(Vector2i(8, 8)), 3.0,
+		{"dodge_unlocked": true, "stamina": 5.0, "hp": 100.0})
+
+	# (1) Too exhausted to roll: the dodge fails AND the character falls.
+	_assert_true(not gs.dodge_roll("peris", Vector3(1, 0, 0)), "A no-stamina dodge does not roll")
+	_assert_true(gs.is_knocked_down("peris"), "A no-stamina dodge knocks the character down")
+	_assert_true(absf(gs.get_stat("peris", "stamina") - 5.0) < 0.01, "The fall costs no stamina")
+	_assert_true(not gs.command_move_to_cell("peris", Vector2i(10, 8)),
+		"A knocked-down character cannot move (vulnerable while getting up)")
+	_assert_true(not gs.dodge_roll("peris", Vector3(1, 0, 0)),
+		"A knocked-down character cannot dodge again (a strike during the get-up always lands)")
+
+	# (2) Getting up: after KNOCKDOWN_DURATION on the scheduler the character recovers.
+	sched.advance(GameState.KNOCKDOWN_DURATION + 0.1)
+	_assert_true(not gs.is_knocked_down("peris"), "The character gets up after the knockdown duration")
+	_assert_true(gs.command_move_to_cell("peris", Vector2i(10, 8)), "Movement works again after getting up")
+	gs.command_stop("peris")
+
+	# (3) Avoidance: with stamina back, a dodge aimed straight AT an adjacent ally rolls somewhere else.
+	gs.set_stat("peris", "stamina", 100.0)
+	gs.register_character("endo", gs.get_position("peris") + Vector3(GameState.DODGE_DISTANCE, 0, 0))
+	var landed := []
+	gs.dodge_started.connect(func(_id, d): landed.append(d))
+	_assert_true(gs.dodge_roll("peris", Vector3(1, 0, 0)), "A stamina'd dodge aimed at an ally still rolls")
+	sched.advance(GameState.DODGE_DURATION + 0.05)
+	var dodge_end := gs.get_position("peris")
+	_assert_true(dodge_end.distance_to(gs.get_position("endo")) > 1.0,
+		"The roll avoided landing on the ally (open lanes existed)")
+	_assert_true(landed.size() == 1 and (landed[0] as Vector3).length() > 0.9,
+		"dodge_started reports the RESOLVED roll direction")
 
 func _path_touches_risk(grid: GridWorld, path: Array) -> bool:
 	for wp in path:
