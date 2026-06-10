@@ -10,7 +10,9 @@ extends Camera3D
 @export var follow_offset := Vector3(0, 12, 8)
 @export var follow_speed := 4.0
 @export var pan_speed := 0.03
-@export var edge_scroll_margin := 40.0
+## Edge-scroll fires only when the cursor is hard against the screen edge. A wide margin (this was 40)
+## catches ordinary cursor travel toward a click target and silently pans the view mid-play.
+@export var edge_scroll_margin := 6.0
 @export var edge_scroll_speed := 8.0
 @export var max_pan_distance := 15.0
 @export var wasd_pan_speed := 10.0
@@ -138,7 +140,11 @@ func _process(delta: float) -> void:
 	var look := _clamp_look(target.global_position + _pan_offset)
 	var goal := look + follow_offset
 	global_position = global_position.lerp(goal, follow_speed * delta) + _shake_offset
-	look_at(look, Vector3.UP)
+	# CONSTANT orientation: always aim along -follow_offset (the steady-state view direction), never at
+	# the live look point. Aiming at the look point while the position is still lerping toward it makes
+	# the camera visibly ROTATE during every follow/pan catch-up (the "rotates itself at an odd angle"
+	# wobble); with a fixed orientation the catch-up is a pure glide.
+	look_at(global_position - follow_offset, Vector3.UP)
 
 func _update_immediate() -> void:
 	if target:

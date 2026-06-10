@@ -4100,6 +4100,11 @@ func _test_aster_playthrough() -> void:
 		instance.headless_advance(0.5, 0.25)
 
 		var step := str(instance._current_step)
+		if OS.get_environment("ASTER_TIMING") == "1" and step != str(actioned.get("_last_step", "")):
+			print("[STEP] %-26s tick %8.2f (+%.2f)" % [step, scheduler.get_current_tick(),
+				scheduler.get_current_tick() - float(actioned.get("_last_tick", 0.0))])
+			actioned["_last_step"] = step
+			actioned["_last_tick"] = scheduler.get_current_tick()
 		if step == "terminal_focus":
 			saw_terminal_focus = true
 		if step == "complete":
