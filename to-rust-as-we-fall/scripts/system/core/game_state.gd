@@ -923,6 +923,12 @@ func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: fl
 	]
 	# A budget on total time so the planner can't wait/wander forever.
 	var time_budget: float = _coop_h(start, end, card) * 3.0 + card * _COOP_WAIT_SLACK_CELLS
+	# A destination reserved for the ENTIRE plan window by someone else (a PARKED character holds its
+	# cell to the horizon) can never be arrived at — bail now instead of exhausting the node budget on
+	# endless waits (12k space-time expansions ≈ seconds; this runs per hover frame via the preview).
+	for s in _reservations.get(end, []):
+		if s.id != exclude_id and float(s.t0) <= t_start and float(s.t1) >= t_start + time_budget:
+			return {}
 	var open: Array = [{"cell": start, "t": t_start, "g": 0.0, "f": _coop_h(start, end, card)}]
 	var start_key := _coop_key(start, t_start, t_start, tq)
 	var best_g: Dictionary = {start_key: 0.0}

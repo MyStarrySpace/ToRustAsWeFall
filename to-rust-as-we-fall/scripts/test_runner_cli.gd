@@ -515,6 +515,9 @@ func _ready() -> void:
 			"--test-dodge-knockdown":
 				ran_test = true
 				_test_dodge_knockdown()
+			"--test-preview-parked-bail":
+				ran_test = true
+				_test_preview_parked_bail()
 			"--test-interaction-delegates":
 				ran_test = true
 				await _test_interaction_delegates_to_capable()
@@ -864,6 +867,7 @@ func _run_all_tests() -> void:
 	_test_grid_from_data()
 	_test_generated_grid()
 	_test_dodge_knockdown()
+	_test_preview_parked_bail()
 	_test_physics_objects()
 	_test_physics_edge_cases()
 	_test_pendulum()
@@ -16892,6 +16896,31 @@ func _test_dodge_knockdown() -> void:
 		"The roll avoided landing on the ally (open lanes existed)")
 	_assert_true(landed.size() == 1 and (landed[0] as Vector3).length() > 0.9,
 		"dodge_started reports the RESOLVED roll direction")
+
+## Hovering (or clicking) a PARKED character's cell must not stall: the cooperative planner can never
+## arrive at a cell reserved to the horizon, and pre-fix it burned its whole 12k-node budget discovering
+## that (~2.2 SECONDS per hover frame — the "odd performance in certain map positions" report). The
+## planner now bails instantly and the preview/commit fall back to plain A* (still moves, may overlap).
+func _test_preview_parked_bail() -> void:
+	_test_name = "Preview Parked Bail"
+	var grid := GridWorld.new()
+	grid.create_room(20, 14, false)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+	gs.register_character("peris", grid.grid_to_world(Vector2i(3, 6)))
+	gs.register_character("monos", grid.grid_to_world(Vector2i(14, 6)))  # parked NPC
+
+	var t0 := Time.get_ticks_usec()
+	var path := gs.compute_preview_path("peris", grid.grid_to_world(Vector2i(14, 6)))
+	var ms := (Time.get_ticks_usec() - t0) / 1000.0
+	_assert_true(ms < 250.0, "Preview to a parked character's cell is instant, not a node-budget burn (took %.1f ms; pre-fix ~2200)" % ms)
+	_assert_true(path.size() >= 2, "The parked-cell preview still shows the fallback route (mirrors the commit)")
+	_assert_true(gs.command_move_to_pos("peris", grid.grid_to_world(Vector2i(14, 6))), "Clicking the parked cell still commits a move")
+	# A destination BESIDE the parked character still plans cooperatively (the bail is dest-exact).
+	var near := gs.compute_preview_path("peris", grid.grid_to_world(Vector2i(15, 6)))
+	_assert_true(near.size() >= 2, "A destination beside a parked character still routes")
 
 func _path_touches_risk(grid: GridWorld, path: Array) -> bool:
 	for wp in path:
