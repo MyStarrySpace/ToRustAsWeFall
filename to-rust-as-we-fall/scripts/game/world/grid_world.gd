@@ -139,17 +139,30 @@ static func from_data(data: Dictionary) -> GridWorld:
 	for cell in data.get("wall_cells", []):
 		var c := _arr_to_vec2i(cell)
 		g.set_tile(c.x, c.y, Tile.WALL)
+	# Explicit CELL lists — for carved shapes world-rects can't express (rasterized diagonal
+	# corridors from the generator). Cell coordinates, not world.
+	for cell in data.get("walkable_cells", []):
+		var wc := _arr_to_vec2i(cell)
+		g.set_tile(wc.x, wc.y, Tile.FLOOR)
 	for region in data.get("risk_regions", []):
 		var r := region as Dictionary
 		g.set_world_region_risk(
 			_xz_to_vec2(r.get("min", [0, 0])), _xz_to_vec2(r.get("max", [0, 0])),
 			float(r.get("penalty", 20.0)), bool(r.get("recoverable", true)))
+	for entry in data.get("risk_cell_list", []):
+		var rc := entry as Dictionary
+		g.set_cell_risk(_arr_to_vec2i(rc.get("cell", [0, 0])),
+			float(rc.get("penalty", 20.0)), bool(rc.get("recoverable", true)))
 	g.set_level_count(int(data.get("level_count", 1)))
 	g.level_height = float(data.get("level_height", g.level_height))
 	for region in data.get("level_regions", []):
 		var r := region as Dictionary
 		g.allow_world_region_on_level(
 			_xz_to_vec2(r.get("min", [0, 0])), _xz_to_vec2(r.get("max", [0, 0])), int(r.get("level", 0)))
+	for entry in data.get("level_cells", []):
+		var lc := entry as Dictionary
+		for cell in lc.get("cells", []):
+			g.allow_cell_on_level(_arr_to_vec2i(cell), int(lc.get("level", 0)))
 	for link in data.get("links", []):
 		var l := link as Dictionary
 		g.add_inter_level_link(_arr_to_vec2i(l.get("cell", [0, 0])),

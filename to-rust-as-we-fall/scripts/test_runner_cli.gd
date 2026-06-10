@@ -510,6 +510,9 @@ func _ready() -> void:
 			"--test-grid-from-data":
 				ran_test = true
 				_test_grid_from_data()
+			"--test-generated-grid":
+				ran_test = true
+				_test_generated_grid()
 			"--test-interaction-delegates":
 				ran_test = true
 				await _test_interaction_delegates_to_capable()
@@ -857,6 +860,7 @@ func _run_all_tests() -> void:
 	_test_lure_not_path_waypoint()
 	_test_grid_risk()
 	_test_grid_from_data()
+	_test_generated_grid()
 	_test_physics_objects()
 	_test_physics_edge_cases()
 	_test_pendulum()
@@ -16780,6 +16784,82 @@ func _test_grid_from_data() -> void:
 	# A route across the hall exists and respects the carved footprint.
 	var path := g.find_path(g.world_to_grid(Vector3(-0.5, 0.0, 0.0)), g.world_to_grid(Vector3(15.0, 0.0, 0.0)))
 	_assert_true(not path.is_empty(), "A hall-spanning path routes on the built grid")
+
+## The generator's unified-grid output: for EVERY committed stretch spec, the rasterized grid carves a
+## connected walkable space (entry reaches the exit shelter over elevations/links), risky routes lay
+## risk cells, cross-elevation routes register ramp links, and the build is deterministic.
+func _test_generated_grid() -> void:
+	_test_name = "Generated Grid"
+	var dir := DirAccess.open("res://data/generated_stretches")
+	if dir == null:
+		_assert_true(false, "generated_stretches data dir opens")
+		return
+	dir.list_dir_begin()
+	var spec_paths: Array[String] = []
+	var fname := dir.get_next()
+	while fname != "":
+		if not dir.current_is_dir() and fname.ends_with(".json"):
+			spec_paths.append("res://data/generated_stretches/" + fname)
+		fname = dir.get_next()
+	spec_paths.sort()
+	_assert_true(spec_paths.size() >= 5, "Found the committed stretch specs (got: %d)" % spec_paths.size())
+
+	for path in spec_paths:
+		var label := path.get_file().trim_suffix(".json")
+		var spec: Dictionary = StretchGeneratorScript.load_spec(path)
+		if spec.is_empty():
+			_assert_true(false, "%s loads" % label)
+			continue
+		var data: Dictionary = StretchGeneratorScript.build_navigation_grid_from_spec(spec)
+		_assert_equals(str(data.get("contract_id", "")), GridWorld.GRID_DATA_CONTRACT_ID,
+			"%s emits the unified grid contract" % label)
+		var g := GridWorld.from_data(data)
+		_assert_true(g.width > 0 and g.height > 0, "%s grid has size" % label)
+
+		# Entry + exit shelter land on walkable cells at their own elevation, and connect.
+		var entry := _generated_node(spec, "entry")
+		var exit_node := _generated_node(spec, "exit_shelter")
+		if entry.is_empty() or exit_node.is_empty():
+			_assert_true(false, "%s has entry + exit_shelter nodes" % label)
+			continue
+		var entry_cell := g.world_to_grid(entry.pos)
+		var exit_cell := g.world_to_grid(exit_node.pos)
+		_assert_true(g.is_walkable(entry_cell.x, entry_cell.y, {}, {}, entry.elev),
+			"%s entry cell is walkable on its level" % label)
+		_assert_true(g.is_walkable(exit_cell.x, exit_cell.y, {}, {}, exit_node.elev),
+			"%s exit cell is walkable on its level" % label)
+		var route: Array = g.find_multi_level_path(entry_cell, entry.elev, exit_cell, exit_node.elev)
+		_assert_true(not route.is_empty(), "%s entry connects to the exit shelter across the grid" % label)
+
+		# Risky/shortcut routes lay risk cells; cross-elevation routes register links.
+		_assert_true((data.get("risk_cell_list", []) as Array).size() > 0,
+			"%s risky routes lay risk cells" % label)
+		var has_cross := false
+		for r in spec.get("routes", []):
+			var a := _generated_node(spec, str((r as Dictionary).get("from", "")))
+			var b := _generated_node(spec, str((r as Dictionary).get("to", "")))
+			if not a.is_empty() and not b.is_empty() and a.elev != b.elev:
+				has_cross = true
+		if has_cross:
+			_assert_true((data.get("links", []) as Array).size() > 0,
+				"%s cross-elevation routes register ramp links" % label)
+
+	# Determinism: the same spec builds the identical grid data.
+	var spec0: Dictionary = StretchGeneratorScript.load_spec(spec_paths[0])
+	var d1 := JSON.stringify(StretchGeneratorScript.build_navigation_grid_from_spec(spec0))
+	var d2 := JSON.stringify(StretchGeneratorScript.build_navigation_grid_from_spec(spec0))
+	_assert_true(d1 == d2 and d1.length() > 2, "Grid build is deterministic for the same spec")
+
+func _generated_node(spec: Dictionary, id: String) -> Dictionary:
+	for n in spec.get("nodes", []):
+		if str((n as Dictionary).get("id", "")) == id:
+			var nd := n as Dictionary
+			var arr: Array = nd.get("position", [0, 0, 0])
+			return {
+				"pos": Vector3(float(arr[0]), float(arr[1]), float(arr[2])),
+				"elev": maxi(0, int(nd.get("elevation_index", 0))),
+			}
+	return {}
 
 func _path_touches_risk(grid: GridWorld, path: Array) -> bool:
 	for wp in path:

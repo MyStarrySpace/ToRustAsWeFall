@@ -107,6 +107,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 	var routes := _build_routes(nodes, budget, rng)
 	var graybox := _apply_graybox_layout(nodes, routes, catalog, resolved, budget)
 	var navigation := _build_navigation_graph(nodes, routes, resolved, graybox)
+	var navigation_grid := _build_navigation_grid(nodes, routes, resolved, graybox)
 	graybox["navigation_contract_id"] = str(navigation.get("contract_id", ""))
 	graybox["navigation_node_count"] = int((navigation.get("nodes", []) as Array).size())
 	graybox["navigation_edge_count"] = int((navigation.get("edges", []) as Array).size())
@@ -135,6 +136,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 		"anchors": anchors,
 		"graybox": graybox,
 		"navigation": navigation,
+		"navigation_grid": navigation_grid,
 		"nodes": nodes,
 		"routes": routes,
 		"archetype_chain": archetype_chain,
@@ -253,6 +255,193 @@ static func build_navigation_graph_from_spec(spec: Dictionary) -> Dictionary:
 		}
 	var graybox: Dictionary = spec.get("graybox", {}).duplicate(true)
 	return _build_navigation_graph(nodes, routes, settings, graybox)
+
+static func build_navigation_grid_from_spec(spec: Dictionary) -> Dictionary:
+	var settings: Dictionary = spec.get("settings", {}).duplicate(true)
+	if settings.is_empty():
+		settings = {"id": str(spec.get("id", "generated_stretch"))}
+	return _build_navigation_grid(
+		spec.get("nodes", []), spec.get("routes", []), settings, spec.get("graybox", {}))
+
+## The unified-grid traversal layer for a generated stretch — the GridWorld.from_data contract built
+## from the SAME semantic nodes/routes the solver reads (the solver and replay artifact never touch
+## this). Node footprints + rasterized route corridors become walkable cells; a risky/shortcut route
+## lays per-cell risk along its corridor (cautious routing detours, non-recoverable refuses); the
+## uniform elevation tiers (surface y = 0.45 + 0.72*index) become stacked grid levels with a "ramp"
+## link at each cross-elevation route's midpoint. route_cells (by route_id) gives the runtime chunk
+## the cells to lock/unlock as the route-choice state changes. Deterministic: array order + sorted
+## cell exports, no RNG.
+static func _build_navigation_grid(nodes: Array, routes: Array, settings: Dictionary, graybox: Dictionary) -> Dictionary:
+	var cell := 1.0
+	var margin := 3.0
+	var node_lookup := {}
+	var elevation_indices: Array[int] = []
+	var min_x := INF
+	var min_z := INF
+	var max_x := -INF
+	var max_z := -INF
+	for node in nodes:
+		if not (node is Dictionary):
+			continue
+		var nd := node as Dictionary
+		var nid := str(nd.get("id", ""))
+		if nid == "":
+			continue
+		var pos := _array_to_vec3(nd.get("position", []), Vector3.ZERO)
+		var foot := _array_to_vec3(nd.get("footprint", nd.get("floor_size", [])), Vector3(4.0, 0.14, 4.0))
+		var elev := maxi(0, int(nd.get("elevation_index", 0)))
+		if not elevation_indices.has(elev):
+			elevation_indices.append(elev)
+		node_lookup[nid] = {"pos": pos, "foot": foot, "elev": elev}
+		min_x = minf(min_x, pos.x - foot.x * 0.5)
+		max_x = maxf(max_x, pos.x + foot.x * 0.5)
+		min_z = minf(min_z, pos.z - foot.z * 0.5)
+		max_z = maxf(max_z, pos.z + foot.z * 0.5)
+	if node_lookup.is_empty():
+		return {}
+	for route in routes:
+		if not (route is Dictionary):
+			continue
+		var rd := route as Dictionary
+		var mid_v: Variant = rd.get("surface", {}).get("midpoint", [])
+		if mid_v is Array and (mid_v as Array).size() >= 3:
+			var mid := _array_to_vec3(mid_v, Vector3.ZERO)
+			min_x = minf(min_x, mid.x)
+			max_x = maxf(max_x, mid.x)
+			min_z = minf(min_z, mid.z)
+			max_z = maxf(max_z, mid.z)
+	min_x -= margin
+	min_z -= margin
+	max_x += margin
+	max_z += margin
+	var grid_w := int(ceil((max_x - min_x) / cell)) + 1
+	var grid_h := int(ceil((max_z - min_z) / cell)) + 1
+	var origin := Vector3(min_x, 0.45, min_z)  # y of elevation tier 0 (the graybox surface)
+	elevation_indices.sort()
+	var multi: bool = elevation_indices.size() > 1
+	var level_count: int = (int(elevation_indices[elevation_indices.size() - 1]) + 1) if multi else 1
+
+	var walk := {}          # Vector2i -> true
+	var levels := {}        # level(int) -> {Vector2i: true}
+	var risk := {}          # Vector2i -> {penalty, recoverable}  (max penalty wins on overlap)
+	var links := []         # [{cell, from, to, type}]
+	var route_cells := {}   # route_id -> {cells: [...], kind: String}
+
+	for nid in node_lookup.keys():
+		var info: Dictionary = node_lookup[nid]
+		var pos: Vector3 = info.pos
+		var foot: Vector3 = info.foot
+		var a := _ng_cell(origin, cell, pos.x - foot.x * 0.5, pos.z - foot.z * 0.5)
+		var b := _ng_cell(origin, cell, pos.x + foot.x * 0.5, pos.z + foot.z * 0.5)
+		for cz in range(a.y, b.y + 1):
+			for cx in range(a.x, b.x + 1):
+				_ng_mark(walk, levels, multi, int(info.elev), Vector2i(cx, cz))
+
+	for route in routes:
+		if not (route is Dictionary):
+			continue
+		var rd := route as Dictionary
+		var from_info: Dictionary = node_lookup.get(str(rd.get("from", "")), {})
+		var to_info: Dictionary = node_lookup.get(str(rd.get("to", "")), {})
+		if from_info.is_empty() or to_info.is_empty():
+			continue
+		var from_pos: Vector3 = from_info.pos
+		var to_pos: Vector3 = to_info.pos
+		var midpoint := _array_to_vec3(rd.get("surface", {}).get("midpoint", []), (from_pos + to_pos) * 0.5)
+		var half_width: float = maxf(0.7, float(rd.get("width", rd.get("surface", {}).get("width", 1.4))) * 0.5)
+		var kind := _route_kind(rd)
+		var corridor := {}
+		for seg in [[from_pos, midpoint], [midpoint, to_pos]]:
+			var p0: Vector3 = seg[0]
+			var p1: Vector3 = seg[1]
+			var seg_len: float = maxf(0.001, Vector2(p1.x - p0.x, p1.z - p0.z).length())
+			var steps := int(ceil(seg_len / (cell * 0.35)))
+			for s in range(steps + 1):
+				var t := float(s) / float(steps)
+				var px: float = lerpf(p0.x, p1.x, t)
+				var pz: float = lerpf(p0.z, p1.z, t)
+				var reach := int(ceil((half_width + cell * 0.45) / cell))
+				var center := _ng_cell(origin, cell, px, pz)
+				for dz in range(-reach, reach + 1):
+					for dx in range(-reach, reach + 1):
+						var cc := Vector2i(center.x + dx, center.y + dz)
+						var cw_x: float = origin.x + (float(cc.x) + 0.5) * cell
+						var cw_z: float = origin.z + (float(cc.y) + 0.5) * cell
+						if Vector2(cw_x - px, cw_z - pz).length() <= half_width + cell * 0.45:
+							corridor[cc] = true
+		var corridor_cells: Array = corridor.keys()
+		corridor_cells.sort_custom(func(p, q): return (p.y * 100000 + p.x) < (q.y * 100000 + q.x))
+		var exported: Array = []
+		for cc in corridor_cells:
+			_ng_mark(walk, levels, multi, int(from_info.elev), cc)
+			if int(to_info.elev) != int(from_info.elev):
+				_ng_mark(walk, levels, multi, int(to_info.elev), cc)
+			exported.append([cc.x, cc.y])
+			var pen := _navigation_risk_penalty(kind)
+			if pen > 0.0:
+				var existing: Dictionary = risk.get(cc, {})
+				if existing.is_empty() or float(existing.get("penalty", 0.0)) < pen:
+					risk[cc] = {"penalty": pen, "recoverable": bool(rd.get("recoverable", true))}
+		var rid := str(rd.get("id", "%s_to_%s" % [str(rd.get("from", "")), str(rd.get("to", ""))]))
+		route_cells[rid] = {"cells": exported, "kind": kind}
+		if int(to_info.elev) != int(from_info.elev):
+			links.append({
+				"cell": [_ng_cell(origin, cell, midpoint.x, midpoint.z).x, _ng_cell(origin, cell, midpoint.x, midpoint.z).y],
+				"from": int(from_info.elev), "to": int(to_info.elev), "type": "ramp",
+			})
+
+	var walk_export: Array = walk.keys()
+	walk_export.sort_custom(func(p, q): return (p.y * 100000 + p.x) < (q.y * 100000 + q.x))
+	var walk_cells: Array = []
+	for c in walk_export:
+		walk_cells.append([c.x, c.y])
+	var level_cells: Array = []
+	if multi:
+		for lv in range(level_count):
+			if not levels.has(lv):
+				continue
+			var lv_sorted: Array = (levels[lv] as Dictionary).keys()
+			lv_sorted.sort_custom(func(p, q): return (p.y * 100000 + p.x) < (q.y * 100000 + q.x))
+			var lv_cells: Array = []
+			for c in lv_sorted:
+				lv_cells.append([c.x, c.y])
+			level_cells.append({"level": lv, "cells": lv_cells})
+	var risk_export: Array = risk.keys()
+	risk_export.sort_custom(func(p, q): return (p.y * 100000 + p.x) < (q.y * 100000 + q.x))
+	var risk_list: Array = []
+	for c in risk_export:
+		risk_list.append({"cell": [c.x, c.y],
+			"penalty": float(risk[c].penalty), "recoverable": bool(risk[c].recoverable)})
+
+	return {
+		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
+		"space_id": str(settings.get("id", "generated_stretch")),
+		"supports_multiple_elevations": multi,
+		"elevation_indices": elevation_indices,
+		"origin": [origin.x, origin.y, origin.z],
+		"cell_size": cell,
+		"width": grid_w,
+		"height": grid_h,
+		"walkable_cells": walk_cells,
+		"level_cells": level_cells,
+		"risk_cell_list": risk_list,
+		"links": links,
+		"level_count": level_count,
+		"level_height": 0.72,
+		"route_cells": route_cells,
+		"entry_anchor": "entry",
+		"exit_anchor": "exit_shelter",
+	}
+
+static func _ng_cell(origin: Vector3, cell: float, x: float, z: float) -> Vector2i:
+	return Vector2i(int(floor((x - origin.x) / cell)), int(floor((z - origin.z) / cell)))
+
+static func _ng_mark(walk: Dictionary, levels: Dictionary, multi: bool, elev: int, c: Vector2i) -> void:
+	walk[c] = true
+	if multi:
+		if not levels.has(elev):
+			levels[elev] = {}
+		levels[elev][c] = true
 
 static func load_spec(path: String) -> Dictionary:
 	if not FileAccess.file_exists(path):
