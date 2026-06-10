@@ -2,7 +2,6 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 
 const StretchGeneratorScript := preload("res://scripts/generation/stretch_generator.gd")
 const CatalogScript := preload("res://scripts/generation/stretch_archetype_catalog.gd")
-const NavigationGraphScript := preload("res://scripts/system/core/navigation_graph.gd")
 const CapabilitiesScript := preload("res://scripts/generation/stretch_capabilities.gd")
 
 const DEFAULT_SPEC_PATH := "res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"
@@ -18,7 +17,6 @@ var _catalog := CatalogScript.new()
 var _node_markers: Dictionary = {}
 var _node_targets: Dictionary = {}
 var _route_surfaces: Dictionary = {}
-var _navigation_graph
 var _content_marker_count := 0
 var _route_choice := ""
 var _route_phase := "unstarted"
@@ -53,7 +51,6 @@ func _build_chunk() -> void:
 	_ensure_spec_loaded()
 	_ensure_graybox_layout()
 	_ensure_navigation_layout()
-	_configure_navigation_graph()
 	name = "GeneratedStretchChunk_%s" % str(_spec.get("id", "stretch"))
 	_unsupported_placeholder_count = 0
 	_content_marker_count = 0
@@ -202,11 +199,6 @@ func get_preview_state() -> Dictionary:
 		"generation": generation,
 	}
 
-func get_navigation_graph_data() -> Dictionary:
-	_ensure_spec_loaded()
-	_ensure_graybox_layout()
-	_ensure_navigation_layout()
-	return _spec.get("navigation", {}).duplicate(true)
 
 ## The unified-grid traversal layer (GridWorld.from_data contract): the preview installs this as the
 ## scene grid, so characters route on cells with per-cell route risk and ramp links across elevations.
@@ -232,21 +224,6 @@ func get_navigation_state() -> Dictionary:
 		"elevation_indices": nav_grid.get("elevation_indices", []),
 	}
 
-func find_generated_path(from_position: Vector3, to_position: Vector3, mode := "safe") -> Array[Vector3]:
-	_ensure_navigation_layout()
-	if _navigation_graph == null:
-		_configure_navigation_graph()
-	if _navigation_graph == null:
-		return []
-	return _navigation_graph.find_path(from_position, to_position, mode)
-
-func find_generated_node_path(from_node_id: String, to_node_id: String, mode := "safe") -> Array[String]:
-	_ensure_navigation_layout()
-	if _navigation_graph == null:
-		_configure_navigation_graph()
-	if _navigation_graph == null:
-		return []
-	return _navigation_graph.find_node_path(from_node_id, to_node_id, mode)
 
 func get_generated_node_position(node_id: String) -> Vector3:
 	_ensure_spec_loaded()
@@ -772,33 +749,17 @@ func _ensure_graybox_layout() -> void:
 func _ensure_navigation_layout() -> void:
 	if _spec.is_empty():
 		return
-	var navigation: Dictionary = _spec.get("navigation", {})
 	var nav_grid: Dictionary = _spec.get("navigation_grid", {})
-	if str(navigation.get("contract_id", "")) == "multi_level_navigation_graph_v1" \
-			and str(nav_grid.get("contract_id", "")) == GridWorld.GRID_DATA_CONTRACT_ID:
+	if str(nav_grid.get("contract_id", "")) == GridWorld.GRID_DATA_CONTRACT_ID:
 		return
 	var settings: Dictionary = _spec.get("settings", {})
 	if not settings.is_empty():
 		var regenerated := StretchGeneratorScript.generate(settings)
-		if bool(regenerated.get("success", false)) and regenerated.has("navigation"):
-			_spec["navigation"] = regenerated.get("navigation")
-			_spec["navigation_grid"] = regenerated.get("navigation_grid", {})
-			var graybox: Dictionary = _spec.get("graybox", {}).duplicate(true)
-			graybox["navigation_contract_id"] = str(_spec.get("navigation", {}).get("contract_id", ""))
-			graybox["navigation_node_count"] = int((_spec.get("navigation", {}).get("nodes", []) as Array).size())
-			graybox["navigation_edge_count"] = int((_spec.get("navigation", {}).get("edges", []) as Array).size())
-			_spec["graybox"] = graybox
+		if bool(regenerated.get("success", false)) and regenerated.has("navigation_grid"):
+			_spec["navigation_grid"] = regenerated.get("navigation_grid")
+			_spec["graybox"] = regenerated.get("graybox", _spec.get("graybox", {}))
 			return
-	_spec["navigation"] = StretchGeneratorScript.build_navigation_graph_from_spec(_spec)
 	_spec["navigation_grid"] = StretchGeneratorScript.build_navigation_grid_from_spec(_spec)
-
-func _configure_navigation_graph() -> void:
-	var navigation: Dictionary = _spec.get("navigation", {})
-	if navigation.is_empty():
-		_navigation_graph = null
-		return
-	_navigation_graph = NavigationGraphScript.new()
-	_navigation_graph.configure(navigation)
 
 func _apply_local_graybox_fallback() -> void:
 	var nodes: Array = _spec.get("nodes", [])
@@ -909,18 +870,18 @@ func _rebuild_anchors_from_nodes(nodes: Array) -> Dictionary:
 
 func _graybox_state() -> Dictionary:
 	var graybox: Dictionary = _spec.get("graybox", {})
-	var navigation: Dictionary = _spec.get("navigation", {})
+	var nav_grid: Dictionary = _spec.get("navigation_grid", {})
 	return {
 		"contract_id": str(graybox.get("contract_id", "")),
-		"navigation_contract_id": str(graybox.get("navigation_contract_id", navigation.get("contract_id", ""))),
+		"navigation_contract_id": str(graybox.get("navigation_contract_id", nav_grid.get("contract_id", ""))),
 		"supports_click_to_move": bool(graybox.get("supports_click_to_move", false)),
 		"supports_outline_targets": bool(graybox.get("supports_outline_targets", false)),
 		"supports_multiple_elevations": bool(graybox.get("supports_multiple_elevations", false)),
 		"elevation_count": int(graybox.get("elevation_count", 0)),
 		"node_surface_count": int(graybox.get("node_surface_count", _nodes().size())),
 		"route_surface_count": int(graybox.get("route_surface_count", _routes().size())),
-		"navigation_node_count": int(graybox.get("navigation_node_count", (navigation.get("nodes", []) as Array).size() if navigation.get("nodes", []) is Array else 0)),
-		"navigation_edge_count": int(graybox.get("navigation_edge_count", (navigation.get("edges", []) as Array).size() if navigation.get("edges", []) is Array else 0)),
+		"navigation_node_count": int(graybox.get("navigation_node_count", _nodes().size())),
+		"navigation_edge_count": int(graybox.get("navigation_edge_count", _routes().size())),
 		"content_placement_count": int(graybox.get("content_placement_count", _content_marker_count)),
 		"instanced_content_marker_count": _content_marker_count,
 		"outline_target_count": _node_targets.size(),

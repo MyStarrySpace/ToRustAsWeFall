@@ -1,7 +1,6 @@
 class_name GameState
 extends RefCounted
 
-const NavigationGraphScript := preload("res://scripts/system/core/navigation_graph.gd")
 
 ## Scheduler-driven state for movement, stats, items, hazards, and replay.
 ## Positions are derived from ticks. Detection is predicted when movement changes.
@@ -25,7 +24,6 @@ signal interactable_triggered(id: String, character: String)
 signal interactable_enabled_changed(id: String, enabled: bool)
 
 var grid: GridWorld
-var navigation_graph
 var route_cautious := false  # global safe/direct routing (Tab); set via set_route_mode (logged)
 var scheduler: EventScheduler
 var explored: Dictionary = {}
@@ -239,22 +237,8 @@ func unregister_character(id: String) -> void:
 
 # --- Movement Commands ---
 
-func set_navigation_graph(graph) -> void:
-	navigation_graph = graph
-
-func set_navigation_data(data: Dictionary) -> void:
-	if data.is_empty():
-		navigation_graph = null
-		return
-	navigation_graph = NavigationGraphScript.new()
-	navigation_graph.configure(data)
-
-func clear_navigation_graph() -> void:
-	navigation_graph = null
-
 func get_navigation_state() -> Dictionary:
-	# A grid is the unified traversal layer — report it (the nav-graph branch remains only for
-	# not-yet-migrated gridless scenes).
+	# The grid is the ONE traversal layer — gridless scenes resolve straight-line moves only.
 	if grid != null:
 		var walkable := 0
 		for z in range(grid.height):
@@ -269,10 +253,6 @@ func get_navigation_state() -> Dictionary:
 			"supports_multiple_elevations": grid.level_count > 1,
 			"risk_cell_count": grid.risk_cells.size(),
 		}
-	if navigation_graph == null:
-		return {}
-	if navigation_graph.has_method("get_state"):
-		return navigation_graph.call("get_state")
 	return {}
 
 ## A* pathfind to a grid cell on the character's current floor. Returns true if a path was found.
@@ -450,34 +430,7 @@ func change_move_speed(id: String, new_speed: float) -> void:
 	_start_movement(id, _resolve_world_path(current_pos, dest))
 
 func _resolve_world_path(current_pos: Vector3, target: Vector3) -> Array[Vector3]:
-	if navigation_graph != null and navigation_graph.has_method("find_path"):
-		var raw_path: Variant = navigation_graph.call("find_path", current_pos, target)
-		var resolved: Array[Vector3] = []
-		if raw_path is Array:
-			for point in raw_path:
-				if point is Vector3:
-					resolved.append(point)
-		if resolved.size() >= 2:
-			if resolved[0].distance_to(current_pos) > 0.01:
-				resolved.push_front(current_pos)
-			if resolved[resolved.size() - 1].distance_to(target) > 0.01:
-				resolved.append(target)
-			# Drop a backtracking overshoot: find_path snaps the target to the nearest NODE, so a target
-			# that sits BEFORE that node leaves a path that runs forward to the node, then reverses to the
-			# real point. If the final segment reverses direction, the snapped node is redundant — drop it
-			# so movement (and its preview) ends at the point, not past it. Only a true reversal is trimmed
-			# (a genuine corner/bend keeps its node), and on-node targets (guards -> a lure node) never
-			# append a point, so they're untouched — replay-safe.
-			if resolved.size() >= 3:
-				var n := resolved.size()
-				var d1 := resolved[n - 2] - resolved[n - 3]
-				var d2 := resolved[n - 1] - resolved[n - 2]
-				d1.y = 0.0
-				d2.y = 0.0
-				if d1.length_squared() > 0.0001 and d2.length_squared() > 0.0001 \
-						and d1.normalized().dot(d2.normalized()) < -0.5:
-					resolved.remove_at(n - 2)
-			return resolved
+	# Gridless straight line — grid scenes never reach here (_do_move_to_pos routes on cells).
 	return [current_pos, target]
 
 ## READ-ONLY: the path a click-to-move WOULD take for `id` to reach `target_pos`, computed without

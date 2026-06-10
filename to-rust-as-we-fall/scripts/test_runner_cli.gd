@@ -53,7 +53,6 @@ const StretchCapabilitiesScript = preload("res://scripts/generation/stretch_capa
 const CampaignOrderScript = preload("res://scripts/system/campaign/campaign_order.gd")
 const StretchGenerationPlaytestLoopScript = preload("res://scripts/generation/stretch_generation_playtest_loop.gd")
 const PlaythroughAnimationHtmlRendererScript = preload("res://scripts/generation/playthrough_animation_html_renderer.gd")
-const NavigationGraphScript = preload("res://scripts/system/core/navigation_graph.gd")
 const PUZZLE_FRAGMENT_CATALOG_PATH := "res://data/puzzles/showcase_fragments.json"
 const GENERATED_STRETCH_SPEC_PATH := "res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"
 const GENERATED_CHAIN_NESTED_POC_SPEC_PATH := "res://data/generated_stretches/generated_chain_nested_poc_shelter_2_to_3.json"
@@ -1728,7 +1727,7 @@ func _test_archetype_generation() -> void:
 	_assert_true(int(random_walk_spec.get("budget", {}).get("node_count", 0)) >= 9,
 		"Random-walk step count expands the node budget to fit entry and exit")
 
-	for required_key in ["anchors", "routes", "world_slot", "archetype_chain", "graybox", "navigation"]:
+	for required_key in ["anchors", "routes", "world_slot", "archetype_chain", "graybox", "navigation_grid"]:
 		_assert_true(spec_a.has(required_key), "Generated spec includes %s" % required_key)
 	_assert_equals(str(spec_a.get("world_slot", {}).get("preview_party_preset", "")), "full_party_full_health",
 		"Generated spec carries full-party/full-health preview preset")
@@ -1741,46 +1740,23 @@ func _test_archetype_generation() -> void:
 		"Generated graybox declares click-to-move support")
 	_assert_true(bool(graybox.get("supports_multiple_elevations", false)),
 		"Generated graybox can produce multiple elevations")
-	var navigation: Dictionary = spec_a.get("navigation", {})
-	_assert_equals(str(navigation.get("contract_id", "")), "multi_level_navigation_graph_v1",
-		"Generated spec exposes the multi-level navigation graph contract")
+	var navigation: Dictionary = spec_a.get("navigation_grid", {})
+	_assert_equals(str(navigation.get("contract_id", "")), GridWorld.GRID_DATA_CONTRACT_ID,
+		"Generated spec exposes the unified grid traversal layer")
 	_assert_true(bool(navigation.get("supports_multiple_elevations", false)),
-		"Generated navigation graph declares multiple elevation support")
-	_assert_true((navigation.get("nodes", []) as Array).size() >= (spec_a.get("nodes", []) as Array).size(),
-		"Generated navigation graph includes node surfaces")
-	_assert_true((navigation.get("edges", []) as Array).size() >= (spec_a.get("routes", []) as Array).size(),
-		"Generated navigation graph includes route edges")
-	var graph = NavigationGraphScript.new()
-	graph.configure(navigation)
-	var graph_node_path: Array = graph.find_node_path("entry", "exit_shelter")
-	_assert_true(graph_node_path.size() >= 2,
-		"Generated navigation graph can route from entry to exit")
-	var graph_world_path: Array = graph.find_path(Vector3(0.0, 0.5, 1.6), graph.get_node_position("exit_shelter"))
-	_assert_true(graph_world_path.size() >= 3,
-		"Generated navigation graph returns playable multi-waypoint world paths")
-	_assert_true(graph.path_uses_multiple_elevations(graph_world_path),
-		"Generated navigation path preserves Y-level changes")
-	var stacked_graph = NavigationGraphScript.new()
-	stacked_graph.configure({
-		"contract_id": "multi_level_navigation_graph_v1",
-		"supports_multiple_elevations": true,
-		"entry_node": "lower",
-		"exit_node": "upper",
-		"nodes": [
-			{"id": "lower", "position": [0.0, 0.45, 0.0], "elevation_index": 0},
-			{"id": "ramp", "position": [4.0, 1.17, 0.0], "elevation_index": 1},
-			{"id": "upper", "position": [0.0, 1.89, 0.0], "elevation_index": 2},
-		],
-		"edges": [
-			{"id": "lower_to_ramp", "from": "lower", "to": "ramp", "kind": "safe", "waypoints": [[0.0, 0.45, 0.0], [4.0, 1.17, 0.0]]},
-			{"id": "ramp_to_upper", "from": "ramp", "to": "upper", "kind": "safe", "waypoints": [[4.0, 1.17, 0.0], [0.0, 1.89, 0.0]]},
-		],
-	})
-	_assert_equals(stacked_graph.find_nearest_node_id(Vector3(0.0, 1.86, 0.05)), "upper",
-		"Navigation graph distinguishes stacked floors with the same X/Z")
-	var stacked_path: Array = stacked_graph.find_path(Vector3(0.0, 0.45, 0.0), Vector3(0.0, 1.89, 0.0))
-	_assert_true(stacked_path.size() >= 3 and stacked_graph.path_uses_multiple_elevations(stacked_path),
-		"Navigation graph routes between stacked Y-levels through explicit connectors")
+		"Generated grid declares multiple elevation support")
+	_assert_true((navigation.get("walkable_cells", []) as Array).size() > 0,
+		"Generated grid carves walkable cells")
+	_assert_true((navigation.get("links", []) as Array).size() > 0,
+		"Generated grid registers cross-elevation links")
+	var gen_grid := GridWorld.from_data(navigation)
+	var spec_entry := _generated_node(spec_a, "entry")
+	var spec_exit := _generated_node(spec_a, "exit_shelter")
+	var gen_route: Array = gen_grid.find_multi_level_path(
+		gen_grid.world_to_grid(spec_entry.pos), spec_entry.elev,
+		gen_grid.world_to_grid(spec_exit.pos), spec_exit.elev)
+	_assert_true(gen_route.size() >= 2,
+		"Generated grid routes from entry to the exit shelter")
 	var first_content_node_found := false
 	for node in spec_a.get("nodes", []):
 		if node is Dictionary and not ((node as Dictionary).get("content_placements", []) as Array).is_empty():
@@ -10867,13 +10843,10 @@ func _test_event_log_mutation_audit() -> void:
 		"adjust_stat", "toggle_running", "reset_characters_to_full",
 		# Pure ATP helpers (static, no state) — formatting/clamping only.
 		"normalize_atp", "clamp_atp", "atp_text",
-		# Navigation graph is map structure (like the grid), set from level data
-		# at scene setup — not a per-run player command. Carried with the
-		# scene/grid that replay is given, not as an event. get_navigation_state
-		# is a pure query.
-		"set_navigation_graph", "set_navigation_data", "clear_navigation_graph",
+		# Map structure (the grid) is set from level data at scene setup — not a
+		# per-run player command. get_navigation_state is a pure query.
 		"get_navigation_state",
-		# Read-only route preview for the hover path: computes the path a click WOULD take (nav-graph /
+		# Read-only route preview for the hover path: computes the path a click WOULD take (grid /
 		# A* / straight line) without issuing or logging a move — pure UI, like the hover grid.
 		"compute_preview_path", "compute_preview_party_paths",
 	])

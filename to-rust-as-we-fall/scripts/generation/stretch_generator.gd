@@ -106,11 +106,10 @@ static func generate(settings: Dictionary) -> Dictionary:
 	var nodes := _build_nodes(catalog, resolved, budget, palette_usage, archetype_chain, rng, random_walk, available_flora, available_enemies, available_structures)
 	var routes := _build_routes(nodes, budget, rng)
 	var graybox := _apply_graybox_layout(nodes, routes, catalog, resolved, budget)
-	var navigation := _build_navigation_graph(nodes, routes, resolved, graybox)
 	var navigation_grid := _build_navigation_grid(nodes, routes, resolved, graybox)
-	graybox["navigation_contract_id"] = str(navigation.get("contract_id", ""))
-	graybox["navigation_node_count"] = int((navigation.get("nodes", []) as Array).size())
-	graybox["navigation_edge_count"] = int((navigation.get("edges", []) as Array).size())
+	graybox["navigation_contract_id"] = str(navigation_grid.get("contract_id", ""))
+	graybox["navigation_node_count"] = nodes.size()
+	graybox["navigation_edge_count"] = routes.size()
 	var anchors := _build_anchors(nodes)
 	var world_slot := _build_world_slot(resolved, anchors)
 	var composition_summary := _build_composition_summary(resolved.get("composition", {}), archetype_chain, nodes, random_walk)
@@ -135,7 +134,6 @@ static func generate(settings: Dictionary) -> Dictionary:
 		"world_slot": world_slot,
 		"anchors": anchors,
 		"graybox": graybox,
-		"navigation": navigation,
 		"navigation_grid": navigation_grid,
 		"nodes": nodes,
 		"routes": routes,
@@ -244,17 +242,6 @@ static func validate_settings(settings: Dictionary) -> Dictionary:
 		"catalog": catalog,
 	}
 
-static func build_navigation_graph_from_spec(spec: Dictionary) -> Dictionary:
-	var nodes: Array = spec.get("nodes", []).duplicate(true)
-	var routes: Array = spec.get("routes", []).duplicate(true)
-	var settings: Dictionary = spec.get("settings", {}).duplicate(true)
-	if settings.is_empty():
-		settings = {
-			"id": str(spec.get("id", "generated_stretch")),
-			"complexity_tier": str(spec.get("source", {}).get("complexity_tier", "generated")),
-		}
-	var graybox: Dictionary = spec.get("graybox", {}).duplicate(true)
-	return _build_navigation_graph(nodes, routes, settings, graybox)
 
 static func build_navigation_grid_from_spec(spec: Dictionary) -> Dictionary:
 	var settings: Dictionary = spec.get("settings", {}).duplicate(true)
@@ -1299,114 +1286,6 @@ static func _apply_graybox_layout(nodes: Array, routes: Array, catalog, settings
 		},
 	}
 
-static func _build_navigation_graph(nodes: Array, routes: Array, settings: Dictionary, graybox: Dictionary) -> Dictionary:
-	var nav_nodes := []
-	var nav_edges := []
-	var elevation_indices: Array[int] = []
-	var floor_columns := {}
-	for node in nodes:
-		if not (node is Dictionary):
-			continue
-		var node_def := node as Dictionary
-		var node_id := str(node_def.get("id", ""))
-		if node_id == "":
-			continue
-		var position := _array_to_vec3(node_def.get("position", []), Vector3.ZERO)
-		var elevation_index := int(node_def.get("elevation_index", 0))
-		if not elevation_indices.has(elevation_index):
-			elevation_indices.append(elevation_index)
-		var footprint := _array_to_vec3(node_def.get("footprint", node_def.get("floor_size", [])), Vector3(4.0, 0.14, 4.0))
-		nav_nodes.append({
-			"id": node_id,
-			"position": _vec3_to_array(position),
-			"role": str(node_def.get("role", "")),
-			"surface_id": "node:%s" % node_id,
-			"surface_y": float(node_def.get("surface_y", position.y)),
-			"elevation_index": elevation_index,
-			"floor_size": _vec3_to_array(footprint),
-			"radius": maxf(footprint.x, footprint.z) * 0.5,
-			"supports_click_to_move": true,
-			"content_count": (node_def.get("content_placements", []) as Array).size() if node_def.get("content_placements", []) is Array else 0,
-		})
-		var floor_key := _navigation_floor_key(position)
-		if not floor_columns.has(floor_key):
-			floor_columns[floor_key] = {
-				"xz": [position.x, position.z],
-				"floors": [],
-			}
-		(floor_columns[floor_key]["floors"] as Array).append({
-			"node_id": node_id,
-			"y": position.y,
-			"elevation_index": elevation_index,
-		})
-
-	for route in routes:
-		if not (route is Dictionary):
-			continue
-		var route_def := route as Dictionary
-		var from_id := str(route_def.get("from", ""))
-		var to_id := str(route_def.get("to", ""))
-		var from_node := _find_node_in_list(nodes, from_id)
-		var to_node := _find_node_in_list(nodes, to_id)
-		if from_node.is_empty() or to_node.is_empty():
-			continue
-		var from_pos := _array_to_vec3(from_node.get("position", []), Vector3.ZERO)
-		var to_pos := _array_to_vec3(to_node.get("position", []), Vector3.ZERO)
-		var midpoint := _array_to_vec3(route_def.get("surface", {}).get("midpoint", []), (from_pos + to_pos) * 0.5)
-		var waypoints := [from_pos, midpoint, to_pos]
-		var kind := _route_kind(route_def)
-		var height_delta := to_pos.y - from_pos.y
-		var horizontal_length := maxf(0.001, Vector2(to_pos.x - from_pos.x, to_pos.z - from_pos.z).length())
-		var physical_cost := _path_distance_3d(waypoints)
-		var risk_penalty := _navigation_risk_penalty(kind)
-		nav_edges.append({
-			"id": str(route_def.get("id", "%s_to_%s" % [from_id, to_id])),
-			"from": from_id,
-			"to": to_id,
-			"route_id": str(route_def.get("id", "")),
-			"kind": kind,
-			"risk": str(route_def.get("risk", kind)),
-			"recoverable": bool(route_def.get("recoverable", true)),
-			"bidirectional": true,
-			"width": float(route_def.get("width", route_def.get("surface", {}).get("width", 1.4))),
-			"height_delta": height_delta,
-			"slope_ratio": height_delta / horizontal_length,
-			"traversal": "ramp" if absf(height_delta) > 0.05 else "walkway",
-			"waypoints": _vec3_path_to_arrays(waypoints),
-			"physical_cost": physical_cost,
-			"risk_penalty": risk_penalty,
-			"path_cost": physical_cost + risk_penalty,
-		})
-
-	var floor_column_list := []
-	for key in floor_columns.keys():
-		var column: Dictionary = floor_columns[key]
-		var floors: Array = column.get("floors", [])
-		floors.sort_custom(func(a, b): return float((a as Dictionary).get("y", 0.0)) < float((b as Dictionary).get("y", 0.0)))
-		column["floors"] = floors
-		floor_column_list.append(column)
-	elevation_indices.sort()
-	return {
-		"contract_id": "multi_level_navigation_graph_v1",
-		"space_id": str(settings.get("id", "generated_stretch")),
-		"supports_multiple_elevations": bool(graybox.get("supports_multiple_elevations", elevation_indices.size() > 1)),
-		"entry_node": "entry",
-		"exit_node": "exit_shelter",
-		"entry_anchor": "entry",
-		"exit_anchor": "exit_shelter",
-		"max_snap_distance": 9.0,
-		"elevation_indices": elevation_indices,
-		"nodes": nav_nodes,
-		"edges": nav_edges,
-		"floor_columns": floor_column_list,
-		"route_modes": ["safe", "direct"],
-		"golden_path_nodes": _golden_path(nodes),
-		"source": {
-			"generator": "archetype_based_stretch_v1",
-			"spec_id": str(settings.get("id", "generated_stretch")),
-			"complexity_tier": str(settings.get("complexity_tier", "generated")),
-		},
-	}
 
 static func _graybox_elevation_index(node: Dictionary, index: int, node_count: int) -> int:
 	var role := str(node.get("role", "mixed"))
