@@ -461,9 +461,10 @@ func _build_environment() -> void:
 func _apply_graybox_visibility() -> void:
 	if show_graybox_room:
 		return
-	for child in _renderer.get_children():
-		if child is MeshInstance3D:
-			(child as MeshInstance3D).visible = false
+	# Hide EVERY graybox mesh, including ones nested under the floor's StaticBody — collision
+	# stays live for click raycasts; only the visuals go.
+	for child in _renderer.find_children("*", "MeshInstance3D", true, false):
+		(child as MeshInstance3D).visible = false
 
 func _ensure_directional_light(parent: Node3D) -> DirectionalLight3D:
 	var scene_light := _placement_node("WarmDirectionalLight") as DirectionalLight3D
