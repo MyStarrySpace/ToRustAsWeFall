@@ -5207,6 +5207,26 @@ func _test_aster_sim() -> void:
 			for room_obj in ["Room", "Desk", "Rug", "Grate", "Shelf"]:
 				_assert_true(room_instance.find_child(room_obj, true, false) != null,
 					"Aster room model includes the separated %s object" % room_obj)
+		# The hi-res room's material sidecars (emissive glow + normals) keep getting LOST on
+		# re-export from the DCC tool — guard the wiring so the regression shows up red instead
+		# of as a flat-looking room. Re-wire with tools/gltf_wire_material_sidecars.py.
+		var gltf_file := FileAccess.open("res://resources/models/aster-sim/room/aster-sim-room-hi-res.gltf", FileAccess.READ)
+		_assert_true(gltf_file != null, "Aster room hi-res gltf is readable")
+		if gltf_file != null:
+			var gltf_json: Dictionary = JSON.parse_string(gltf_file.get_as_text())
+			var mats_by_name := {}
+			for mat in gltf_json.get("materials", []):
+				mats_by_name[str(mat.get("name", ""))] = mat
+			for expected in [["aster-sim-room-hi-res_1", true], ["aster-sim-room-hi-res_8", false]]:
+				var mat_name: String = expected[0]
+				var wants_normal: bool = expected[1]
+				var mat: Dictionary = mats_by_name.get(mat_name, {})
+				_assert_true(mat.has("emissiveTexture"),
+					"%s keeps its EMISSIVE sidecar wiring (lost on re-export?)" % mat_name)
+				if wants_normal:
+					_assert_true(mat.has("normalTexture"),
+						"%s keeps its NORMAL sidecar wiring (lost on re-export?)" % mat_name)
+
 		# DATA-LAYER alignment with the model: the desk occupies its grid cells (characters path
 		# around it, not through it) while the rug stays walkable and an interior route past the
 		# desk still exists (the room isn't accidentally split in two).
@@ -5342,8 +5362,8 @@ func _test_aster_sim() -> void:
 				_assert_true(not bool(surface_target.get("input_ray_pickable")),
 					"Generated GLTF surface wrappers do not steal hover from semantic room targets")
 		if room_instance != null:
-			_assert_true(not room_instance.visible,
-				"The room model is hidden while testing graybox object outlines")
+			_assert_true(room_instance.visible,
+				"The textured room model stays VISIBLE (the outline fallback used to hide it, opening the sim in a void)")
 		if perception_quad != null:
 			_assert_true(not perception_quad.visible,
 				"Aster sim fallback outline quad is hidden while object feedback is debugged")

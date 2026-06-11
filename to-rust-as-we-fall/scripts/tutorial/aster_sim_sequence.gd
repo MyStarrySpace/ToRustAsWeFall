@@ -23,7 +23,7 @@ var _terminal_prev_camera_target: Node3D
 
 # Exploration beat (post-drink, pre-Tag-Day)
 @export var show_graybox_room := false  # the imported room model is the environment; flip on for graybox dev
-@export var show_high_res_room := false
+@export var show_high_res_room := true
 var _explore_hallway_gate  # Interactable at hallway exit
 const EXPLORE_MIN_TIME := 12.0  # scheduler ticks before the hallway gate unlocks
 var _explore_gate_unlocked := false
@@ -135,9 +135,10 @@ func _probe_model_vs_grid() -> void:
 		print("[GRIDPROBE] %-16s center=%s cells=%d blocked=%d (%s..%s)" % [obj_name, str(ab.get_center()), n_cells, blocked, str(a), str(b)])
 
 func _enable_outline_preview() -> void:
-	if not OUTLINE_POST_PROCESS_ENABLED:
-		show_high_res_room = false
-		_apply_high_res_room_visibility()
+	# The textured room is ALWAYS the visible environment now (its materials carry the authored
+	# emissive/normal layers). The outline post-process toggle only governs the extra edge pass —
+	# it must never hide the room (it used to, leaving the sim starting in a black void of
+	# perception wireframes).
 	_set_imported_outline_preview_enabled(OUTLINE_POST_PROCESS_ENABLED)
 	if find_child("AsterSimRoomOutlinePreview", true, false) != null:
 		_perception_mode = "outline"
