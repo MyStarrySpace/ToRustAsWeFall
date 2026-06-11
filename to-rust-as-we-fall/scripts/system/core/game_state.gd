@@ -269,6 +269,7 @@ func command_move_to_cell(id: String, cell: Vector2i) -> bool:
 	if not _push_plans.is_empty() and _push_plans.has(id):
 		_push_plans.erase(id)    # ...and any in-flight push
 	_stop_rest(id)               # moving gets you out of bed
+	cancel_field_restore(id)     # ...and breaks a field-restore cast
 	_emit(GameEvent.KIND_MOVE_TO_CELL, {"id": id, "cell": GameEvent.v2i_to_arr(cell)})
 	return _do_move_to_cell(id, cell)
 
@@ -278,6 +279,7 @@ func command_move_to_pos(id: String, pos: Vector3) -> bool:
 	if not _push_plans.is_empty() and _push_plans.has(id):
 		_push_plans.erase(id)
 	_stop_rest(id)
+	cancel_field_restore(id)
 	_emit(GameEvent.KIND_MOVE_TO_POS, {"id": id, "pos": GameEvent.v3_to_arr(pos)})
 	return _do_move_to_pos(id, pos)
 
@@ -2250,6 +2252,74 @@ func _apply_stat_delta(char_id: String, stat: String, delta: float) -> void:
 	characters[char_id].stats[stat] = value
 	stat_changed.emit(char_id, stat, value)
 
+# --- Field Restore (GDD: the late-game exception) ----------------------------
+# Revive a downed character IN THE FIELD, no shelter: a long stationary cast with a high stamina
+# price that leaves the caster vulnerable. The emergency alternative to the long drag home.
+
+const FIELD_RESTORE_CAST_SECONDS := 8.0
+const FIELD_RESTORE_STAMINA_COST := 60.0
+const FIELD_RESTORE_RANGE := 2.0
+
+var _field_restores := {}  # caster_id -> {target_id} — derived, never serialized
+
+signal field_restore_started(caster_id: String, target_id: String)
+signal field_restore_finished(caster_id: String, target_id: String)
+signal field_restore_interrupted(caster_id: String)
+
+func is_field_restoring(caster_id: String) -> bool:
+	return _field_restores.has(caster_id)
+
+## Start the field revive. Gates: the target is DOWN and in reach, the caster is conscious,
+## standing, and can pay the stamina up front (committing is the cost — an interrupted cast does
+## not refund). The caster is rooted for the whole cast; moving or going down cancels it.
+func command_field_restore(caster_id: String, target_id: String) -> bool:
+	_emit(GameEvent.KIND_FIELD_RESTORE, {"caster_id": caster_id, "target_id": target_id})
+	return _do_field_restore(caster_id, target_id)
+
+func _do_field_restore(caster_id: String, target_id: String) -> bool:
+	if not scheduler or not characters.has(caster_id) or not characters.has(target_id):
+		return false
+	if _field_restores.has(caster_id) or is_downed(caster_id) or is_knocked_down(caster_id):
+		return false
+	if not is_downed(target_id):
+		return false
+	if get_position(caster_id).distance_to(get_position(target_id)) > FIELD_RESTORE_RANGE:
+		return false
+	if get_stat(caster_id, "stamina") < FIELD_RESTORE_STAMINA_COST:
+		return false
+	_do_stop(caster_id)
+	_stop_rest(caster_id)
+	_apply_stat_delta(caster_id, "stamina", -FIELD_RESTORE_STAMINA_COST)
+	_field_restores[caster_id] = {"target_id": target_id}
+	var cid := caster_id
+	scheduler.schedule_after(FIELD_RESTORE_CAST_SECONDS,
+		func(): _on_field_restore_complete(cid), "field_restore_" + caster_id)
+	field_restore_started.emit(caster_id, target_id)
+	return true
+
+func cancel_field_restore(caster_id: String) -> void:
+	if not _field_restores.has(caster_id):
+		return
+	_field_restores.erase(caster_id)
+	if scheduler:
+		scheduler.cancel_tag("field_restore_" + caster_id)
+	field_restore_interrupted.emit(caster_id)
+
+## Derived completion: the target stands back up at 1 HP wherever they fell.
+func _on_field_restore_complete(caster_id: String) -> void:
+	var cast: Dictionary = _field_restores.get(caster_id, {})
+	if cast.is_empty():
+		return
+	_field_restores.erase(caster_id)
+	var target_id: String = cast["target_id"]
+	if not characters.has(target_id) or not is_downed(target_id):
+		return
+	characters[target_id].stats["hp"] = REVIVE_HP
+	characters[target_id].stats["narrative_available"] = true
+	stat_changed.emit(target_id, "hp", REVIVE_HP)
+	character_revived.emit(target_id)
+	field_restore_finished.emit(caster_id, target_id)
+
 # --- Revive at shelter: presence is sufficient (GDD) -------------------------
 
 func _start_revive_watch() -> void:
@@ -2923,6 +2993,8 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			add_shelter_region(
 				Vector2(float(payload["min"][0]), float(payload["min"][1])),
 				Vector2(float(payload["max"][0]), float(payload["max"][1])))
+		GameEvent.KIND_FIELD_RESTORE:
+			command_field_restore(String(payload["caster_id"]), String(payload["target_id"]))
 		GameEvent.KIND_REST:
 			command_rest(String(payload["char_id"]))
 		GameEvent.KIND_STOP_REST:
@@ -3237,6 +3309,7 @@ func down_character(char_id: String) -> void:
 	ch.stats["stamina"] = 0.0
 	ch.stats["narrative_available"] = false
 	_do_stop(char_id)
+	cancel_field_restore(char_id)  # a downed caster drops the cast
 	character_downed.emit(char_id)
 
 func restore_character(char_id: String) -> void:

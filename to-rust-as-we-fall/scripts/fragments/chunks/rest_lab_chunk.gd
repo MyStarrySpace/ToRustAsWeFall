@@ -20,16 +20,11 @@ var _clock_label: Label3D
 
 func _build_chunk() -> void:
 	_add_floor(self, Vector3(9.0, -0.05, 6.0), Vector3(18.0, 0.1, 12.0), Color(0.1, 0.11, 0.13))
-	# The shelter pad reads as a warm island in the dark.
-	_add_floor(self, Vector3(13.0, 0.02, 6.0), Vector3(6.0, 0.1, 6.0), Color(0.16, 0.14, 0.1))
 	_add_box(self, Vector3(13.0, 0.6, 3.4), Vector3(5.6, 1.2, 0.3), Color(0.2, 0.17, 0.12))
 	_add_label(self, "SHELTER", Vector3(13.0, 2.0, 4.0), Color(0.95, 0.8, 0.5))
 	_clock_label = _add_label(self, "", Vector3(9.0, 3.2, 6.0), Color(0.7, 0.8, 0.95))
-
-	_rest_interactable = _add_interactable(
-		self, "RestInteractable", "Rest", Vector3(13.0, 0.0, 6.0),
-		"REST", "", 1.2, false, 2.5)
-	_rest_interactable.interacted.connect(_on_rest_interacted)
+	# The shared rest point also registers the shelter region — reset_preview_state re-clamps it.
+	_rest_interactable = _add_rest_point(self, Vector3(13.0, 0.0, 6.0), Vector2(6.0, 6.0))
 
 func configure_chunk(_config: Dictionary) -> void:
 	pass
@@ -58,14 +53,6 @@ func reset_preview_state() -> void:
 	if gs.characters.has("endo") and not gs.is_downed("endo"):
 		gs.set_stat("endo", "atp", 4.0)
 		gs.down_character("endo")
-
-func _on_rest_interacted() -> void:
-	var gs = _get_game_state()
-	if gs == null or _rest_interactable == null:
-		return
-	var cid := str(_rest_interactable.active_character)
-	if cid != "":
-		gs.command_rest(cid)
 
 func headless_process(_delta: float) -> void:
 	_update_clock_label()

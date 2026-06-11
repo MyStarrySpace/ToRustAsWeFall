@@ -10942,7 +10942,7 @@ func _test_event_log_mutation_audit() -> void:
 		"is_route_cautious", "is_knocked_down", "pick_interactor",
 		# Shelter rest: pure queries (the mutators command_rest/stop_rest/set_game_clock/
 		# add_shelter_region all emit); clear_shelter_regions is preview-reset plumbing.
-		"is_at_shelter", "is_resting", "clear_shelter_regions",
+		"is_at_shelter", "is_resting", "clear_shelter_regions", "is_field_restoring",
 		# Read-only route preview for the hover path: computes the path a click WOULD take (grid /
 		# A* / straight line) without issuing or logging a move — pure UI, like the hover grid.
 		"compute_preview_path", "compute_preview_party_paths",
@@ -17316,6 +17316,53 @@ func _test_shelter_rest() -> void:
 	_assert_true(not gs.is_downed("endo"), "A downed character AT the shelter revives during the skip")
 	_assert_true(absf(gs.get_stat("endo", "hp") - (GameState.REVIVE_HP + 12.5)) < 1.5,
 		"The revived sleeper gets half the skip healing (got %.1f)" % gs.get_stat("endo", "hp"))
+
+	# --- Extended morning rest: daytime sleeping heals but never skips the day ---
+	pair = make.call()
+	gs = pair[0]
+	sched = pair[1]
+	gs.set_game_clock(2, GameState.DAWN_TIME)
+	gs.set_stat("aster", "hp", 60.0)
+	gs.set_stat("aster", "atp", 3.0)
+	gs.set_stat("peris", "hp", 60.0)
+	gs.set_stat("peris", "atp", 3.0)
+	_assert_true(gs.command_rest("aster"), "Morning rest starts after dawn")
+	gs.command_rest("peris")
+	_assert_equals(gs.game_day, 2, "Everyone resting in DAYTIME does not skip the day")
+	advance.call(sched, 10.5)
+	_assert_true(absf(gs.get_stat("aster", "hp") - 70.0) <= 1.5,
+		"Morning rest heals at the same 1 HP/sec (got %.1f)" % gs.get_stat("aster", "hp"))
+
+	# --- Field Restore: the no-shelter revive (long cast, stamina price, rooted caster) ---
+	pair = make.call()
+	gs = pair[0]
+	sched = pair[1]
+	gs.set_stat("aster", "stamina", 100.0)
+	gs.snap_character_to("peris", Vector3(12, 0, 9))   # far from any shelter
+	gs.snap_character_to("aster", Vector3(12.5, 0, 9))
+	gs.down_character("peris")
+	gs.set_stat("aster", "stamina", 30.0)
+	_assert_true(not gs.command_field_restore("aster", "peris"),
+		"Field restore refuses when the caster can't pay the stamina")
+	gs.set_stat("aster", "stamina", 100.0)
+	_assert_true(gs.command_field_restore("aster", "peris"), "Field restore starts in the field")
+	_assert_true(absf(gs.get_stat("aster", "stamina") - 40.0) < 0.01,
+		"The stamina price is paid up front (got %.1f)" % gs.get_stat("aster", "stamina"))
+	advance.call(sched, 4.0)
+	_assert_true(gs.is_downed("peris"), "Half a cast has revived nobody yet")
+	gs.command_move_to_pos("aster", Vector3(14, 0, 9))
+	advance.call(sched, 6.0)
+	_assert_true(gs.is_downed("peris"), "Moving mid-cast breaks the restore (and the stamina stays spent)")
+	_assert_true(not gs.is_field_restoring("aster"), "The broken cast is cleared")
+	gs.command_field_restore("aster", "peris")
+	_assert_true(not gs.is_field_restoring("aster"), "Out of range after walking away — the cast refuses")
+	gs.snap_character_to("aster", Vector3(12.5, 0, 9))
+	gs.set_stat("aster", "stamina", 100.0)
+	_assert_true(gs.command_field_restore("aster", "peris"), "Back in range, the cast starts again")
+	advance.call(sched, 8.5)
+	_assert_true(not gs.is_downed("peris"), "The full cast revives the downed character in the field")
+	_assert_true(absf(gs.get_stat("peris", "hp") - GameState.REVIVE_HP) < 0.01,
+		"Field revive stands them up at 1 HP")
 
 	# --- Replay: the rest command log rebuilds the same stats ---
 	pair = make.call()

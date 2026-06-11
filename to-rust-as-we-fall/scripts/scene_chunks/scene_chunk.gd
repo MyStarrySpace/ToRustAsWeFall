@@ -353,6 +353,25 @@ func _add_label(
 	parent.add_child(label)
 	return label
 
+## A SHELTER REST POINT: registers the data-layer shelter region, lays a warm pad, and wires a
+## REST interactable that beds the ACTIVE character down (GameState.command_rest — heals on the
+## scheduler, costs ATP pips, night-skips when everyone conscious is asleep). One call per shelter;
+## every chunk with a shelter should use this instead of bespoke wiring.
+func _add_rest_point(parent: Node3D, center: Vector3, size: Vector2 = Vector2(5.0, 5.0)) -> Area3D:
+	var gs = _get_game_state()
+	if gs != null:
+		gs.add_shelter_region(
+			Vector2(center.x - size.x * 0.5, center.z - size.y * 0.5),
+			Vector2(center.x + size.x * 0.5, center.z + size.y * 0.5))
+	_add_floor(parent, center + Vector3(0.0, 0.03, 0.0), Vector3(size.x, 0.08, size.y), Color(0.16, 0.14, 0.1))
+	var rest = _add_interactable(
+		parent, "RestInteractable", "Rest", center, "REST", "", 1.2, false, 2.5)
+	rest.interacted.connect(func():
+		var inner_gs = _get_game_state()
+		if inner_gs != null and str(rest.active_character) != "":
+			inner_gs.command_rest(str(rest.active_character)))
+	return rest
+
 func _add_interactable(
 	parent: Node3D,
 	node_name: String,

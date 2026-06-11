@@ -637,6 +637,9 @@ func _build_hide_slit() -> void:
 	_hide_interactable.interacted.connect(commit_hide)
 
 func _build_east_shelter() -> void:
+	# Arriving is only half the loop: the destination shelter is a REAL rest point (sleep heals,
+	# costs ATP, and the night skips once everyone conscious is bedded down).
+	_add_rest_point(self, EAST_SHELTER_POS, Vector2(6.0, 5.0))
 	_add_box(self, EAST_SHELTER_POS + Vector3(0.0, -0.03, 0.0), Vector3(7.8, 0.22, 6.2), Color(0.11, 0.1, 0.09))
 	_add_box(self, EAST_SHELTER_POS + Vector3(3.9, 1.7, 0.0), Vector3(0.3, 3.4, 6.2), Color(0.14, 0.13, 0.11))
 	_add_box(self, EAST_SHELTER_POS + Vector3(0.0, 1.7, -3.0), Vector3(8.0, 3.4, 0.3), Color(0.14, 0.13, 0.11))
