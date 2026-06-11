@@ -58,6 +58,16 @@ const PREVIEW_COLOR := Color(0.55, 0.7, 0.85)  # muted blue-grey, distinct from 
 var _path_preview: PathRenderer
 var _party_previews: Dictionary = {}   # char_id -> PathRenderer, one per member when group-moving
 var _hover_last_mouse := Vector2(-1e9, -1e9)
+# Queued PUSH mode (BG3-style): command-click a pushable queues it; hovering shows ghost previews of
+# the character + object at the planned end state; command-click a reachable cell commits; the
+# blocked cursor (X) marks destinations with no plan. Pure UI until the commit (one logged command).
+const BLOCKED_CURSOR := preload("res://resources/cursors/cursor_blocked.svg")
+var _push_obj_id := ""
+var _push_plan: Dictionary = {}
+var _push_plan_cell := Vector2i(0x7fffffff, 0x7fffffff)
+var _push_ghost_char: MeshInstance3D
+var _push_ghost_obj: MeshInstance3D
+var _blocked_cursor_on := false
 var _preview_last_cell := Vector2i(0x7fffffff, 0x7fffffff)
 
 
@@ -153,6 +163,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	# The `command` action (right mouse) is the RTS move command. A command ON an interactable is
 	# consumed by that object first (it interacts instead), so it only reaches here for plain ground.
 	if mb.is_action_pressed("command"):
+		if _push_obj_id != "":
+			var push_hit := _raycast_ground(mb.position)
+			if push_hit != Vector3.INF:
+				_commit_push(push_hit)
+			return
 		if _click_mode != "move" or not _move_enabled:
 			return
 		if _auto_path.size() > 0 and not (game_state and char_id != ""):
@@ -166,6 +181,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	# `select` (left mouse) during a sequence's "click the world target" beat only reports the ground
 	# position; the sequence interprets it. The SelectionController yields `select` to us here
 	# (is_pick_mode). In normal "move" mode `select` belongs to the SelectionController (character pick).
+	# `select` while a push is queued = cancel the queue.
+	if mb.is_action_pressed("select") and _push_obj_id != "":
+		cancel_push_queue()
+		return
+
 	if mb.is_action_pressed("select") and _click_mode == "select":
 		var hit_sel := _raycast_ground(mb.position)
 		if hit_sel != Vector3.INF:
@@ -283,6 +303,14 @@ func _update_hover_from_screen(screen_pos: Vector2) -> void:
 	if hit == Vector3.INF:
 		_hover_grid.visible = false
 		_clear_path_preview()
+		if _push_obj_id != "":
+			_set_blocked_cursor(true)  # off the floor entirely: no destination here
+		return
+	# Queued-push mode replaces the hover grid with the ghost preview (the BG3-style shadow of the
+	# character + object at the planned end state), or the blocked cursor when there's no plan.
+	if _push_obj_id != "":
+		_hover_grid.visible = false
+		_update_push_preview(hit)
 		return
 	# Centre the flat grid quad over the cell the cursor is over, just above the floor.
 	var cx := floorf(hit.x) + HOVER_CELL * 0.5
@@ -347,6 +375,106 @@ func _update_party_preview(hit: Vector3) -> void:
 func _clear_party_preview() -> void:
 	for cid in _party_previews.keys():
 		_party_previews[cid].clear_explicit_path()
+
+## Enter queued-push mode for a pushable object (a command-click on its PushTarget got us here).
+func queue_push(obj_id: String) -> void:
+	_push_obj_id = obj_id
+	_push_plan = {}
+	_push_plan_cell = Vector2i(0x7fffffff, 0x7fffffff)
+	_hover_last_mouse = Vector2(-1e9, -1e9)  # force a preview refresh
+
+func is_push_queued() -> bool:
+	return _push_obj_id != ""
+
+func cancel_push_queue() -> void:
+	_push_obj_id = ""
+	_push_plan = {}
+	_set_blocked_cursor(false)
+	_clear_push_ghosts()
+	_clear_path_preview()
+
+## Hover while a push is queued: plan to the hovered cell; ghosts + the object's route when possible,
+## the blocked (X) cursor when "there is not enough space".
+func _update_push_preview(hit: Vector3) -> void:
+	if game_state == null or game_state.grid == null or char_id == "":
+		return
+	var cell: Vector2i = game_state.grid.world_to_grid(hit)
+	if cell == _push_plan_cell:
+		return
+	_push_plan_cell = cell
+	_push_plan = game_state.plan_push_for(char_id, _push_obj_id, cell)
+	if _push_plan.is_empty():
+		_set_blocked_cursor(true)
+		_clear_push_ghosts()
+		_clear_path_preview()
+		return
+	_set_blocked_cursor(false)
+	var steps: Array = _push_plan.get("steps", [])
+	# The object's route, drawn with the dashed preview ribbon.
+	var route: Array[Vector3] = [game_state.get_physics_position(_push_obj_id)]
+	for step in steps:
+		route.append(game_state.grid.grid_to_world(step["obj_to"], game_state.get_character_level(char_id)))
+	if _path_preview != null and route.size() >= 2:
+		_path_preview.set_explicit_path(route, 0)
+	# Ghosts at the END state: the object on the target cell, the character on its final push cell.
+	_ensure_push_ghosts()
+	_push_ghost_obj.global_position = route[route.size() - 1] + Vector3(0, 0.45, 0)
+	var char_end: Vector3 = game_state.grid.grid_to_world(
+		(steps[steps.size() - 1] as Dictionary)["obj_from"] if not steps.is_empty() else game_state.grid.world_to_grid(global_position),
+		game_state.get_character_level(char_id))
+	_push_ghost_char.global_position = char_end + Vector3(0, 0.5, 0)
+	_push_ghost_obj.visible = true
+	_push_ghost_char.visible = true
+
+func _commit_push(hit: Vector3) -> void:
+	if game_state == null or game_state.grid == null:
+		cancel_push_queue()
+		return
+	var cell: Vector2i = game_state.grid.world_to_grid(hit)
+	if game_state.plan_push_for(char_id, _push_obj_id, cell).is_empty():
+		return  # blocked destination: the operation does not occur (X cursor already shows why)
+	game_state.command_push_object(char_id, _push_obj_id, cell)
+	cancel_push_queue()
+
+func _ensure_push_ghosts() -> void:
+	if _push_ghost_char != null:
+		return
+	_push_ghost_char = MeshInstance3D.new()
+	var cap := CapsuleMesh.new()
+	cap.radius = 0.25
+	cap.height = 1.0
+	_push_ghost_char.mesh = cap
+	_push_ghost_char.material_override = _ghost_material(_character_color())
+	_push_ghost_char.top_level = true
+	_push_ghost_char.visible = false
+	add_child(_push_ghost_char)
+	_push_ghost_obj = MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(0.85, 0.9, 0.85)
+	_push_ghost_obj.mesh = box
+	_push_ghost_obj.material_override = _ghost_material(Color(0.8, 0.65, 0.4))
+	_push_ghost_obj.top_level = true
+	_push_ghost_obj.visible = false
+	add_child(_push_ghost_obj)
+
+func _ghost_material(tint: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(tint.r, tint.g, tint.b, 0.35)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	return m
+
+func _clear_push_ghosts() -> void:
+	if _push_ghost_char != null:
+		_push_ghost_char.visible = false
+	if _push_ghost_obj != null:
+		_push_ghost_obj.visible = false
+
+func _set_blocked_cursor(on: bool) -> void:
+	if on == _blocked_cursor_on:
+		return
+	_blocked_cursor_on = on
+	Input.set_custom_mouse_cursor(BLOCKED_CURSOR if on else null)
 
 ## The character's own colour for its preview ribbon (falls back to the muted preview grey).
 func _character_color() -> Color:

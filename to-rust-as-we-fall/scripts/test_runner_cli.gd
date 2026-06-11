@@ -17091,6 +17091,29 @@ func _test_push_lab() -> void:
 	_assert_true(not gs.plan_push_for("aster", "crate_bend", grid.world_to_grid(anchors["crate_bend"]) + Vector2i(1, 0)).is_empty(),
 		"Dead bend: pushing along the straight leg is still possible")
 
+	# (D) The queued-push UI logic (data side): queue -> ghost preview on a pushable target,
+	# the blocked state on an impossible one, and the commit executes the push.
+	var player: Node = instance._player
+	_assert_true(player.has_method("queue_push"), "Player exposes the queued-push mode")
+	player.queue_push("crate_bend")
+	_assert_true(bool(player.is_push_queued()), "Command-clicking a crate queues the push")
+	player._update_push_preview(anchors["bend_impossible"])
+	_assert_true(bool(player._blocked_cursor_on), "An impossible destination shows the blocked (X) cursor")
+	player._update_push_preview(anchors["crate_bend"] + Vector3(1.0, 0.0, 0.0))
+	_assert_true(not bool(player._blocked_cursor_on), "A pushable destination clears the blocked cursor")
+	_assert_true(player._push_ghost_obj != null and player._push_ghost_obj.visible,
+		"A pushable destination shows the object's ghost at the planned end state")
+	var bend_start: Vector3 = gs.get_physics_position("crate_bend")
+	player._commit_push(anchors["crate_bend"] + Vector3(1.0, 0.0, 0.0))
+	_assert_true(not bool(player.is_push_queued()), "Committing exits the queued mode")
+	safety = 0
+	while safety < 800 and gs.is_pushing("aster"):
+		safety += 1
+		instance.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+	_assert_true(gs.get_physics_position("crate_bend").distance_to(bend_start) > 0.5,
+		"The committed queued push actually moves the crate")
+
 	instance.queue_free()
 	await get_tree().process_frame
 

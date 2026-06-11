@@ -53,6 +53,8 @@ func _build_crates() -> void:
 		var mesh := _add_box(self, world + Vector3(0, 0.45, 0), Vector3(0.85, 0.9, 0.85),
 			Color(0.55, 0.42, 0.25), Color(0.4, 0.3, 0.15), 0.25, obj_id + "Mesh")
 		_crate_meshes[obj_id] = mesh
+		# Command-clicking the crate queues the planned push (the host connects the signal).
+		PushTarget.wrap(mesh, obj_id)
 
 ## Crate visuals track the data layer (pure cosmetics — positions are scheduler-interpolated).
 func headless_process(_delta: float) -> void:

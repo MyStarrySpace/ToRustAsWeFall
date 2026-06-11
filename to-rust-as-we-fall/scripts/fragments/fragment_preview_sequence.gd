@@ -275,6 +275,7 @@ func _begin_chunk() -> void:
 	set_preview_step(preview_chunk)
 	_active_chunk = _load_chunk(preview_chunk)
 	_connect_outline_feedback_sources(self)
+	_connect_push_targets(self)
 	_apply_chunk_runtime_preset()
 	if _active_chunk != null and _active_chunk.has_method("reset_preview_state"):
 		_active_chunk.call("reset_preview_state")
@@ -360,6 +361,17 @@ func _configure_loaded_chunk(chunk: Node3D, chunk_name: String) -> void:
 		return
 	if chunk != null and chunk.has_method("configure_chunk"):
 		chunk.call("configure_chunk", preview_chunk_config)
+
+## Wire every PushTarget in the scene to the ACTIVE player's queued-push mode. Signal plumbing only
+## (no input handling here — the target itself consumes the click; the player owns the mode).
+func _connect_push_targets(root: Node) -> void:
+	for t in root.find_children("*", "", true, false):
+		if t.has_signal("push_queue_requested") and not t.push_queue_requested.is_connected(_on_push_queue_requested):
+			t.push_queue_requested.connect(_on_push_queue_requested)
+
+func _on_push_queue_requested(obj_id: String) -> void:
+	if _player != null and _player.has_method("queue_push"):
+		_player.queue_push(obj_id)
 
 func _apply_chunk_navigation_graph() -> void:
 	if _game_state == null:
