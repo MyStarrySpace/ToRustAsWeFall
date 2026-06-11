@@ -1798,7 +1798,9 @@ func register_physics_object(id: String, pos: Vector3, radius: float = 0.5, mass
 		"grid_cell": cell,
 		"pushable": pushable,
 	}
-	if grid and pushable:
+	# Pushable objects are NOT pathfinding blockers: walking through one is exactly how a push
+	# happens (a blocker would make cell routing detour around it and pushing impossible).
+	if grid and not pushable:
 		grid.add_dynamic_blocker(cell, id)
 	_recompute_physics_predictions()
 	_recompute_pendulum_predictions()
@@ -2003,7 +2005,7 @@ func _resolve_physics_impulse(obj_id: String, obj_pos: Vector3, obj_vel: Vector3
 	if grid:
 		grid.remove_dynamic_blocker(own_cell)
 	slide_target = _trace_slide_against_walls(obj_pos, slide_target)
-	if grid:
+	if grid and not obj.get("pushable", false):
 		grid.add_dynamic_blocker(own_cell, obj_id)
 
 	slide_distance = Vector3(slide_target.x - obj_pos.x, 0, slide_target.z - obj_pos.z).length()
@@ -2045,7 +2047,8 @@ func _apply_physics_movement(obj_id: String, from: Vector3, to: Vector3, initial
 		obj.movement = null
 		if grid:
 			obj.grid_cell = grid.world_to_grid(from)
-			grid.add_dynamic_blocker(obj.grid_cell, obj_id)
+			if not obj.get("pushable", false):
+				grid.add_dynamic_blocker(obj.grid_cell, obj_id)
 		return
 
 	# Average speed during deceleration = initial_speed / 2
@@ -2088,7 +2091,8 @@ func _on_physics_arrival(obj_id: String) -> void:
 	obj.movement = null
 	if grid:
 		obj.grid_cell = grid.world_to_grid(dest)
-		grid.add_dynamic_blocker(obj.grid_cell, obj_id)
+		if not obj.get("pushable", false):
+			grid.add_dynamic_blocker(obj.grid_cell, obj_id)
 	_recompute_physics_predictions()
 
 # --- Area Impulse ---

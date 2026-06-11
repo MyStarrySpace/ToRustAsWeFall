@@ -10895,6 +10895,10 @@ func _test_event_log_mutation_audit() -> void:
 		# Map structure (the grid) is set from level data at scene setup — not a
 		# per-run player command. get_navigation_state is a pure query.
 		"get_navigation_state",
+		# Pure queries over derived state: the route-mode flag (its MUTATOR set_route_mode emits),
+		# the knockdown window (a consequence of the logged dodge_roll), and the interactor picker
+		# (reads positions/hands only — the resulting move/trigger is what gets logged).
+		"is_route_cautious", "is_knocked_down", "pick_interactor",
 		# Read-only route preview for the hover path: computes the path a click WOULD take (grid /
 		# A* / straight line) without issuing or logging a move — pure UI, like the hover grid.
 		"compute_preview_path", "compute_preview_party_paths",
@@ -17139,9 +17143,13 @@ func _test_physics_objects() -> void:
 	var wall_obj_pos := gs.get_physics_position("wall_obj")
 	_assert_true(wall_obj_pos.x < 19.0, "Object stopped before wall (got: %.2f)" % wall_obj_pos.x)
 
-	# Resting object blocks walkability.
+	# A PUSHABLE object never blocks routing — walking through it is how a push happens (a blocker
+	# would make cell paths detour around it and pushing impossible). Immovable props still block.
 	var barrel_cell := grid.world_to_grid(gs.get_physics_position("barrel1"))
-	_assert_true(not grid.is_walkable(barrel_cell.x, barrel_cell.y), "Barrel blocks grid cell at rest")
+	_assert_true(grid.is_walkable(barrel_cell.x, barrel_cell.y), "A pushable barrel does NOT block its cell (push-through routing)")
+	gs.register_physics_object("bolted_crate", Vector3(15, 0, 15), 0.5, 2.0, 0.6, false)
+	var crate_cell := grid.world_to_grid(gs.get_physics_position("bolted_crate"))
+	_assert_true(not grid.is_walkable(crate_cell.x, crate_cell.y), "A non-pushable object DOES block its cell")
 
 	# Test 7: Area impulse
 	gs.register_physics_object("blast_a", Vector3(10, 0, 15), 0.5, 1.0, 0.5)
@@ -17213,14 +17221,15 @@ func _test_physics_edge_cases() -> void:
 	grid2.create_room(30, 30)
 	gs.grid = grid2
 	gs.scheduler = sched
-	gs.register_physics_object("near_miss", Vector3(5, 0, 6.0), 0.3)
+	gs.register_physics_object("near_miss", Vector3(5, 0, 7.0), 0.3)
 	gs.register_character("grazer", Vector3(3, 0, 5), 3.0)
 	gs.command_move_to_pos("grazer", Vector3(10, 0, 5))
 	for _di in range(500):
 		if sched.pop_next().is_empty(): break
 	var near_pos := gs.get_physics_position("near_miss")
-	# collision_range = 0.7, offset in Z = 1.0, miss.
-	_assert_true(absf(near_pos.x - 5.0) < 0.01, "Near miss: Z offset 1.0 > collision range 0.7 (got: %.2f)" % near_pos.x)
+	# Cell routing walks the lane of cell centres (z+0.5), so the worst-case lateral clearance to the
+	# object is its authored offset minus half a cell: offset 2.0 -> >= 1.5 clearance > 0.7 range, miss.
+	_assert_true(absf(near_pos.x - 5.0) < 0.01, "Near miss: lateral clearance > collision range 0.7 (got: %.2f)" % near_pos.x)
 
 	# --- Diagonal push ---
 	gs = GameState.new()
