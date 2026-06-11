@@ -50,6 +50,14 @@ const KIND_UNREGISTER_PENDULUM := &"unregister_pendulum"
 # --- Dodge ---
 const KIND_DODGE_ROLL := &"dodge_roll"
 
+# --- Shelter rest (GDD 3.3) ---
+# Rest/stop are the player commands; the per-second healing ticks, the ally revive, and the
+# night skip are DERIVED (scheduler-driven, no-emit) and rebuild identically on replay.
+const KIND_REST := &"rest"
+const KIND_STOP_REST := &"stop_rest"
+const KIND_SET_GAME_CLOCK := &"set_game_clock"  # day + time-of-day beats (scripted or night skip)
+const KIND_ADD_SHELTER := &"add_shelter"        # shelter zones are data-layer state, replayed like interactables
+
 # --- Abilities ---
 # Replay looks up queued ability handlers by ability id.
 const KIND_QUEUE_ABILITY := &"queue_ability"
@@ -104,6 +112,10 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_REGISTER_PENDULUM,
 	KIND_UNREGISTER_PENDULUM,
 	KIND_DODGE_ROLL,
+	KIND_REST,
+	KIND_STOP_REST,
+	KIND_SET_GAME_CLOCK,
+	KIND_ADD_SHELTER,
 	KIND_QUEUE_ABILITY,
 	KIND_CANCEL_QUEUED_ABILITY,
 	KIND_DOWN_CHARACTER,

@@ -527,6 +527,12 @@ func _ready() -> void:
 			"--test-wrong-character-feedback":
 				ran_test = true
 				await _test_wrong_character_feedback()
+			"--test-shelter-rest":
+				ran_test = true
+				_test_shelter_rest()
+			"--test-rest-lab":
+				ran_test = true
+				await _test_rest_lab()
 			"--test-drink-partial-dwell":
 				ran_test = true
 				await _test_drink_partial_dwell()
@@ -881,6 +887,8 @@ func _run_all_tests() -> void:
 	_test_dodge_knockdown()
 	_test_preview_parked_bail()
 	await _test_wrong_character_feedback()
+	_test_shelter_rest()
+	await _test_rest_lab()
 	await _test_push_lab()
 	await _test_drink_partial_dwell()
 	_test_physics_objects()
@@ -7566,6 +7574,11 @@ func _assert_preview_main_ability_keymap(instance: Node, label: String) -> void:
 		var char_id := str(activation.get("char_id", ""))
 		var ability_id := str(activation.get("ability_id", ""))
 		var keycode := int(activation.get("keycode", 0))
+		# A chunk may deliberately open with this character DOWN (the rest lab's revive teaching) —
+		# a downed owner correctly can't cast, so the activation check doesn't apply.
+		if instance._game_state != null and instance._game_state.is_downed(char_id):
+			print("  SKIP: %s %s ability check (%s opens downed)" % [label, ability_id, char_id])
+			continue
 		instance.headless_select_character(char_id)
 		var before: Dictionary = instance.headless_get_state()
 		var before_stats: Dictionary = before.get("character_stats", {}).get(char_id, {})
@@ -10927,6 +10940,9 @@ func _test_event_log_mutation_audit() -> void:
 		# the knockdown window (a consequence of the logged dodge_roll), and the interactor picker
 		# (reads positions/hands only — the resulting move/trigger is what gets logged).
 		"is_route_cautious", "is_knocked_down", "pick_interactor",
+		# Shelter rest: pure queries (the mutators command_rest/stop_rest/set_game_clock/
+		# add_shelter_region all emit); clear_shelter_regions is preview-reset plumbing.
+		"is_at_shelter", "is_resting", "clear_shelter_regions",
 		# Read-only route preview for the hover path: computes the path a click WOULD take (grid /
 		# A* / straight line) without issuing or logging a move — pure UI, like the hover grid.
 		"compute_preview_path", "compute_preview_party_paths",
@@ -17140,6 +17156,186 @@ func _test_push_lab() -> void:
 
 	instance.queue_free()
 	await get_tree().process_frame
+
+## The Rest Lab plays the whole loop through the chunk: bed the party down via the REST
+## interactable, presence revives the downed member, the full house skips the night to dawn.
+func _test_rest_lab() -> void:
+	_test_name = "Rest Lab"
+	var instance = await _instantiate_preview_chunk_and_wait("rest_lab", 6)
+	if instance == null:
+		_assert_true(false, "Rest lab preview instantiates")
+		return
+	var gs = instance._game_state
+	for i in range(12):
+		instance.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+	_assert_true(gs.is_downed("endo"), "The lab opens with endo down at the shelter")
+	_assert_equals(gs.game_day, 1, "The lab opens on day 1 at dusk")
+	var rest_node = instance.find_child("RestInteractable", true, false)
+	_assert_true(rest_node != null, "The shelter pad has a REST interactable")
+	# Aster beds down on the pad (resting there also keeps a conscious ally beside endo).
+	gs.snap_character_to("aster", Vector3(13.0, 0.0, 6.0))
+	rest_node._trigger()
+	_assert_true(gs.is_resting("aster"), "Holding REST on the pad starts the rest")
+	var safety := 0
+	while safety < 300 and gs.is_downed("endo"):
+		safety += 1
+		instance.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+	_assert_true(not gs.is_downed("endo"), "Presence beside the downed sleeper revives them")
+	_assert_true(gs.is_resting("endo"), "The revived member goes straight to rest")
+	# The last conscious character beds down -> the night skips.
+	instance._select_character("peris")
+	for i in range(2):
+		instance.headless_advance(0.05, 0.05)
+		await get_tree().process_frame
+	gs.snap_character_to("peris", Vector3(13.5, 0.0, 6.5))
+	rest_node._trigger()
+	_assert_equals(gs.game_day, 2, "Everyone resting after nightfall skips the night")
+	_assert_true(not gs.is_downed("endo"), "Dawn finds nobody down")
+	_assert_true(gs.get_stat("aster", "hp") > 60.0,
+		"The sleepers wake healed (aster %.1f)" % gs.get_stat("aster", "hp"))
+	instance.queue_free()
+	await get_tree().process_frame
+
+## Shelter rest (GDD 3.3): real-time healing that costs ATP, the can't-afford-sleep gate,
+## movement interrupting rest, the 10s ally revive at shelter, and the night skip with the
+## restful bonus. All scheduler-driven; the replay leg proves the derived chains rebuild.
+func _test_shelter_rest() -> void:
+	_test_name = "Shelter Rest"
+	var make := func() -> Array:
+		var grid := GridWorld.new()
+		grid.create_room(20, 12, true)
+		var sched := EventScheduler.new()
+		var gs := GameState.new()
+		gs.grid = grid
+		gs.scheduler = sched
+		gs.event_log = EventLog.new()
+		gs.register_character("aster", Vector3(3, 0, 3), 3.0)
+		gs.register_character("peris", Vector3(4, 0, 3), 3.0)
+		gs.add_shelter_region(Vector2(2.0, 2.0), Vector2(6.0, 6.0))
+		return [gs, sched]
+
+	var advance := func(sched: EventScheduler, seconds: float, step := 0.05) -> void:
+		var t := 0.0
+		while t < seconds:
+			sched.advance(step)
+			t += step
+
+	# --- Gates ---
+	var pair: Array = make.call()
+	var gs: GameState = pair[0]
+	var sched: EventScheduler = pair[1]
+	gs.set_stat("aster", "hp", 40.0)
+	gs.snap_character_to("aster", Vector3(15, 0, 9))
+	_assert_true(not gs.command_rest("aster"), "Rest refuses away from a shelter")
+	gs.snap_character_to("aster", Vector3(3, 0, 3))
+	gs.set_stat("aster", "atp", 0.0)
+	_assert_true(not gs.command_rest("aster"), "Rest refuses when too low on ATP to sleep")
+	gs.set_stat("aster", "atp", 4.0)
+	gs.set_stat("aster", "hp", GameState.HP_MAX)
+	_assert_true(not gs.command_rest("aster"), "Rest refuses at full HP")
+
+	# --- Healing rate + pip cost ---
+	gs.set_stat("aster", "hp", 40.0)
+	_assert_true(gs.command_rest("aster"), "Rest starts at a shelter when hurt and fed")
+	_assert_true(gs.is_resting("aster"), "Character is resting")
+	_assert_equals(int(gs.get_stat("aster", "atp")), 3, "The first ATP pip is charged up front")
+	advance.call(sched, 10.5)
+	_assert_true(absf(gs.get_stat("aster", "hp") - 50.0) <= 1.0,
+		"Ten seconds of rest heals ~10 HP (got %.1f)" % gs.get_stat("aster", "hp"))
+	advance.call(sched, 16.0)  # past the 25s pip boundary
+	_assert_equals(int(gs.get_stat("aster", "atp")), 2, "The second pip is charged at 25s")
+
+	# --- Movement interrupts ---
+	gs.command_move_to_pos("aster", Vector3(5, 0, 3))
+	_assert_true(not gs.is_resting("aster"), "A movement command interrupts the rest")
+
+	# --- Auto-stop at full HP ---
+	gs.set_stat("aster", "hp", GameState.HP_MAX - 2.0)
+	gs.command_rest("aster")
+	advance.call(sched, 4.0)
+	_assert_true(not gs.is_resting("aster"), "Rest auto-stops when HP fills")
+	_assert_true(absf(gs.get_stat("aster", "hp") - GameState.HP_MAX) < 0.01, "HP capped at max")
+
+	# --- Revive at shelter: ally presence, 10s, reset on leave ---
+	pair = make.call()
+	gs = pair[0]
+	sched = pair[1]
+	gs.set_stat("peris", "atp", 4.0)
+	gs.down_character("peris")
+	gs.snap_character_to("peris", Vector3(3.5, 0, 3.5))
+	gs.snap_character_to("aster", Vector3(12, 0, 9))  # ally far away
+	advance.call(sched, 12.0)
+	_assert_true(gs.is_downed("peris"), "No revive without a conscious ally nearby")
+	gs.snap_character_to("aster", Vector3(4, 0, 3.5))  # ally arrives
+	advance.call(sched, 6.0)
+	gs.snap_character_to("aster", Vector3(12, 0, 9))   # ally leaves mid-timer
+	advance.call(sched, 6.0)
+	_assert_true(gs.is_downed("peris"), "The revive timer resets when the ally leaves")
+	gs.snap_character_to("aster", Vector3(4, 0, 3.5))
+	advance.call(sched, 11.5)
+	_assert_true(not gs.is_downed("peris"), "Ten seconds of ally presence revives at shelter")
+	_assert_true(gs.get_stat("peris", "hp") >= GameState.REVIVE_HP, "Revived at low HP")
+	_assert_true(gs.is_resting("peris"), "The revived character automatically begins resting")
+
+	# --- Night skip: all conscious resting at shelter -> dawn, restful bonus ---
+	pair = make.call()
+	gs = pair[0]
+	sched = pair[1]
+	gs.set_game_clock(1, 0.5)  # nightfall: the full night remains
+	gs.set_stat("aster", "hp", 30.0)
+	gs.set_stat("peris", "hp", 30.0)
+	gs.set_stat("aster", "atp", 4.0)
+	gs.set_stat("peris", "atp", 4.0)
+	gs.command_rest("aster")
+	_assert_equals(gs.game_day, 1, "No skip while one conscious character is still up")
+	gs.command_rest("peris")
+	_assert_equals(gs.game_day, 2, "All conscious characters resting at nightfall skips the night")
+	_assert_true(absf(gs.game_time - GameState.DAWN_TIME) < 0.001, "The clock lands on dawn")
+	_assert_true(absf(gs.get_stat("aster", "hp") - minf(GameState.HP_MAX, 30.0 + 50.0 * 1.5)) < 1.5,
+		"A restful full night heals 50 x 1.5, capped at max (got %.1f)" % gs.get_stat("aster", "hp"))
+	_assert_true(not gs.is_resting("aster"), "Dawn ends the rest")
+
+	# --- Night skip with a downed member: bonus lost, downed-at-shelter revives with half ---
+	pair = make.call()
+	gs = pair[0]
+	sched = pair[1]
+	gs.register_character("endo", Vector3(5, 0, 5), 3.0)
+	gs.set_game_clock(1, 0.75)  # half the night already gone
+	gs.down_character("endo")
+	gs.set_stat("aster", "hp", 30.0)
+	gs.set_stat("peris", "hp", 30.0)
+	gs.set_stat("aster", "atp", 4.0)
+	gs.set_stat("peris", "atp", 4.0)
+	gs.command_rest("aster")
+	gs.command_rest("peris")
+	_assert_equals(gs.game_day, 2, "Downed characters do not block the skip")
+	_assert_true(absf(gs.get_stat("aster", "hp") - (30.0 + 25.0)) < 1.5,
+		"Half a night with a downed member heals 25, no bonus (got %.1f)" % gs.get_stat("aster", "hp"))
+	_assert_true(not gs.is_downed("endo"), "A downed character AT the shelter revives during the skip")
+	_assert_true(absf(gs.get_stat("endo", "hp") - (GameState.REVIVE_HP + 12.5)) < 1.5,
+		"The revived sleeper gets half the skip healing (got %.1f)" % gs.get_stat("endo", "hp"))
+
+	# --- Replay: the rest command log rebuilds the same stats ---
+	pair = make.call()
+	gs = pair[0]
+	sched = pair[1]
+	gs.set_stat("aster", "hp", 40.0)
+	gs.set_stat("aster", "atp", 4.0)
+	gs.command_rest("aster")
+	advance.call(sched, 30.0)
+	var live_hp := gs.get_stat("aster", "hp")
+	var live_atp := gs.get_stat("aster", "atp")
+	var live_tick := sched.get_current_tick()
+	var grid2 := GridWorld.new()
+	grid2.create_room(20, 12, true)
+	var gs2 := GameState.replay(gs.event_log, grid2)
+	if gs2.scheduler.get_current_tick() < live_tick:
+		gs2.scheduler.advance_ticks(live_tick - gs2.scheduler.get_current_tick())
+	_assert_true(absf(gs2.get_stat("aster", "hp") - live_hp) < 1.5,
+		"Replay rebuilds the derived healing (live %.1f vs replay %.1f)" % [live_hp, gs2.get_stat("aster", "hp")])
+	_assert_true(absf(gs2.get_stat("aster", "atp") - live_atp) < 0.5, "Replay rebuilds the ATP charges")
 
 ## Walking the WRONG character onto a required-character interactable must produce visible feedback
 ## (a thought naming who is needed) — found in the fragment playtest: the rejection was a silent

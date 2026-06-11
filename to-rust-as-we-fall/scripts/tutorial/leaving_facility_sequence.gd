@@ -223,11 +223,20 @@ func _start_first_rest() -> void:
 		lt.tween_property(light, "light_energy", 3.5, 0.8)
 		lt.tween_property(light, "light_energy", 1.5, 0.8)
 	DialogueData.say_to(_dialogue, "facility.endo.rest")
-	_game_state.set_stat("aster", "hp", GameState.HP_MAX)
-	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_dawn, "dawn"),
-		CONNECT_ONE_SHOT
-	)
+	# The REAL rest mechanism: the shelter zone is here, the clock is past nightfall, and
+	# bedding Aster down triggers the night skip (which heals and lands the clock on dawn).
+	var aster_pos := _game_state.get_position("aster")
+	_game_state.add_shelter_region(
+		Vector2(aster_pos.x - 3.0, aster_pos.z - 3.0), Vector2(aster_pos.x + 3.0, aster_pos.z + 3.0))
+	_game_state.set_game_clock(_game_day, 0.55)
+	_game_state.night_skipped.connect(
+		func(_day): _scheduler.schedule_after(0.5, _start_dawn, "dawn"), CONNECT_ONE_SHOT)
+	if not _game_state.command_rest("aster"):
+		# Nothing to heal or nothing to pay with: sleep happens narratively, dawn still comes.
+		_dialogue.dialogue_finished.connect(
+			func(): _scheduler.schedule_after(0, _start_dawn, "dawn"),
+			CONNECT_ONE_SHOT
+		)
 
 func _start_dawn() -> void:
 	_current_step = "dawn"

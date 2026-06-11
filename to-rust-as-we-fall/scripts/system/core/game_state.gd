@@ -268,6 +268,7 @@ func command_move_to_cell(id: String, cell: Vector2i) -> bool:
 	_cross_level_plan.erase(id)  # a fresh explicit move supersedes any in-flight cross-level traversal
 	if not _push_plans.is_empty() and _push_plans.has(id):
 		_push_plans.erase(id)    # ...and any in-flight push
+	_stop_rest(id)               # moving gets you out of bed
 	_emit(GameEvent.KIND_MOVE_TO_CELL, {"id": id, "cell": GameEvent.v2i_to_arr(cell)})
 	return _do_move_to_cell(id, cell)
 
@@ -276,6 +277,7 @@ func command_move_to_pos(id: String, pos: Vector3) -> bool:
 	_cross_level_plan.erase(id)
 	if not _push_plans.is_empty() and _push_plans.has(id):
 		_push_plans.erase(id)
+	_stop_rest(id)
 	_emit(GameEvent.KIND_MOVE_TO_POS, {"id": id, "pos": GameEvent.v3_to_arr(pos)})
 	return _do_move_to_pos(id, pos)
 
@@ -2111,6 +2113,233 @@ func _on_physics_arrival(obj_id: String) -> void:
 			grid.add_dynamic_blocker(obj.grid_cell, obj_id)
 	_recompute_physics_predictions()
 
+# --- Shelter rest (GDD 3.3) -------------------------------------------------
+# Rest is the survival loop's sink: healing costs ATP, sleeping needs reserves, and the night
+# only skips when every conscious character is bedded down at a shelter. The COMMANDS (rest /
+# stop_rest / set_game_clock) are logged; the per-second healing chain, the ally revive timer,
+# and the night skip are DERIVED from them (scheduler-driven, no-emit) so replay rebuilds them.
+
+const REST_HP_PER_SEC := 1.0          # GDD: rest heals 1 HP/sec
+const REST_SECONDS_PER_PIP := 25.0    # one ATP pip buys 25s of resting (~50 HP night = 2 pips)
+const REVIVE_SECONDS := 10.0          # downed at shelter + conscious ally nearby -> auto revive
+const REVIVE_ALLY_RADIUS := 3.0
+const REVIVE_HP := 1.0
+const NIGHT_SKIP_MAX_HEAL := 50.0     # a full night of sleep heals up to this much
+const RESTFUL_BONUS := 1.5            # nobody downed -> restful sleep multiplier
+const NIGHT_START := 0.5              # time-of-day where night healing potential is full
+const DAWN_TIME := 0.05
+
+var game_day := 1
+var game_time := 0.25                 # 0..1 time-of-day
+
+var _shelters: Array = []             # [{min: Vector2, max: Vector2}] world-XZ rects (scene setup)
+var _resting := {}                    # char_id -> {pip_seconds: float} - derived, never serialized
+var _revive_progress := {}            # char_id -> float seconds - derived
+var _revive_watch_running := false
+
+signal rest_started(char_id: String)
+signal rest_stopped(char_id: String)
+signal character_revived(char_id: String)
+signal night_skipped(new_day: int)
+signal game_clock_changed(day: int, time: float)
+
+## Declare a shelter zone (world-XZ rect). Logged like interactable registration, so a replayed
+## log rebuilds the zones the rest commands depend on.
+func add_shelter_region(min_xz: Vector2, max_xz: Vector2) -> void:
+	_emit(GameEvent.KIND_ADD_SHELTER, {"min": [min_xz.x, min_xz.y], "max": [max_xz.x, max_xz.y]})
+	_shelters.append({"min": min_xz, "max": max_xz})
+	_start_revive_watch()
+
+func clear_shelter_regions() -> void:
+	_shelters.clear()
+
+func is_at_shelter(char_id: String) -> bool:
+	if not characters.has(char_id):
+		return false
+	var p := get_position(char_id)
+	for s in _shelters:
+		if p.x >= s.min.x and p.x <= s.max.x and p.z >= s.min.y and p.z <= s.max.y:
+			return true
+	return false
+
+func is_resting(char_id: String) -> bool:
+	return _resting.has(char_id)
+
+## Scripted day/night beats and the night skip set the clock; logged so replay carries time.
+func set_game_clock(day: int, time: float) -> void:
+	_emit(GameEvent.KIND_SET_GAME_CLOCK, {"day": day, "time": time})
+	game_day = day
+	game_time = clampf(time, 0.0, 1.0)
+	game_clock_changed.emit(game_day, game_time)
+
+## Begin resting at a shelter. Gates (GDD): must be AT a shelter, conscious, hurt, and able to
+## afford sleep - one ATP pip buys REST_SECONDS_PER_PIP seconds, charged up front. Movement
+## interrupts; healing stops when full or when the next pip can't be paid.
+func command_rest(char_id: String) -> bool:
+	_emit(GameEvent.KIND_REST, {"char_id": char_id})
+	return _do_rest(char_id)
+
+func _do_rest(char_id: String) -> bool:
+	if not scheduler or not characters.has(char_id):
+		return false
+	if _resting.has(char_id) or is_downed(char_id) or is_knocked_down(char_id):
+		return false
+	if not is_at_shelter(char_id):
+		return false
+	if get_stat(char_id, "hp") >= get_stat_cap(char_id, "hp"):
+		return false
+	if get_stat(char_id, "atp") < 1.0:
+		return false  # too low to sleep - the Rain World gate
+	_do_stop(char_id)
+	_apply_stat_delta(char_id, "atp", -1.0)
+	_resting[char_id] = {"pip_seconds": REST_SECONDS_PER_PIP}
+	rest_started.emit(char_id)
+	_schedule_rest_tick(char_id)
+	_check_night_skip()
+	return true
+
+func command_stop_rest(char_id: String) -> bool:
+	_emit(GameEvent.KIND_STOP_REST, {"char_id": char_id})
+	_stop_rest(char_id)
+	return true
+
+func _stop_rest(char_id: String) -> void:
+	if not _resting.has(char_id):
+		return
+	_resting.erase(char_id)
+	if scheduler:
+		scheduler.cancel_tag("rest_" + char_id)
+	rest_stopped.emit(char_id)
+
+func _schedule_rest_tick(char_id: String) -> void:
+	var cid := char_id
+	scheduler.schedule_after(1.0, func(): _on_rest_tick(cid), "rest_" + char_id)
+
+## One second of sleep: +1 HP, part of a pip. Derived - mutates via the no-emit path.
+func _on_rest_tick(char_id: String) -> void:
+	if not _resting.has(char_id) or not characters.has(char_id):
+		return
+	_apply_stat_delta(char_id, "hp", REST_HP_PER_SEC)
+	var state: Dictionary = _resting[char_id]
+	state["pip_seconds"] = float(state["pip_seconds"]) - 1.0
+	if get_stat(char_id, "hp") >= get_stat_cap(char_id, "hp"):
+		_stop_rest(char_id)
+		return
+	if float(state["pip_seconds"]) <= 0.0:
+		if get_stat(char_id, "atp") < 1.0:
+			_stop_rest(char_id)  # can't pay for more sleep
+			return
+		_apply_stat_delta(char_id, "atp", -1.0)
+		state["pip_seconds"] = REST_SECONDS_PER_PIP
+	_resting[char_id] = state
+	_schedule_rest_tick(char_id)
+
+## Derived stat mutation for scheduler-driven effects: replay re-derives these from the logged
+## command that started the chain, so they must NOT log themselves.
+func _apply_stat_delta(char_id: String, stat: String, delta: float) -> void:
+	if not characters.has(char_id):
+		return
+	var value: float = float(characters[char_id].stats.get(stat, 0.0)) + delta
+	match stat:
+		"hp":
+			value = clampf(value, 0.0, get_stat_cap(char_id, "hp"))
+		"atp":
+			value = clampf(roundf(value), 0.0, get_stat_cap(char_id, "atp"))
+		"stamina":
+			value = clampf(value, 0.0, get_stat_cap(char_id, "stamina"))
+	characters[char_id].stats[stat] = value
+	stat_changed.emit(char_id, stat, value)
+
+# --- Revive at shelter: presence is sufficient (GDD) -------------------------
+
+func _start_revive_watch() -> void:
+	if _revive_watch_running or not scheduler:
+		return
+	_revive_watch_running = true
+	scheduler.schedule_after(1.0, _on_revive_watch_tick, "shelter_revive_watch")
+
+## A 1s derived scan: every downed character AT a shelter with a conscious ally nearby gains
+## revive progress; the ally stepping away resets it. At REVIVE_SECONDS: up at 1 HP, auto-rest.
+func _on_revive_watch_tick() -> void:
+	if not scheduler:
+		_revive_watch_running = false
+		return
+	for char_id in characters.keys():
+		var cid := str(char_id)
+		if not is_downed(cid) or not is_at_shelter(cid):
+			_revive_progress.erase(cid)
+			continue
+		if not _conscious_ally_near(cid):
+			_revive_progress.erase(cid)
+			continue
+		var progress: float = float(_revive_progress.get(cid, 0.0)) + 1.0
+		if progress >= REVIVE_SECONDS:
+			_revive_progress.erase(cid)
+			_apply_revive(cid)
+		else:
+			_revive_progress[cid] = progress
+	scheduler.schedule_after(1.0, _on_revive_watch_tick, "shelter_revive_watch")
+
+func _conscious_ally_near(char_id: String) -> bool:
+	var p := get_position(char_id)
+	for other in characters.keys():
+		var oid := str(other)
+		if oid == char_id or is_downed(oid):
+			continue
+		if get_position(oid).distance_to(p) <= REVIVE_ALLY_RADIUS:
+			return true
+	return false
+
+## Derived revive (no-emit): up at 1 HP, narratively available again, and straight into rest.
+func _apply_revive(char_id: String) -> void:
+	if not characters.has(char_id):
+		return
+	characters[char_id].stats["hp"] = REVIVE_HP
+	characters[char_id].stats["narrative_available"] = true
+	stat_changed.emit(char_id, "hp", REVIVE_HP)
+	character_revived.emit(char_id)
+	_do_rest(char_id)
+
+# --- Night skip --------------------------------------------------------------
+
+## When EVERY conscious character is resting at a shelter after nightfall, the night skips to
+## dawn. Healing scales with how much night remained when the last head hit the pillow; a party
+## with nobody downed sleeps restfully (1.5x). Downed characters AT a shelter come up at 1 HP
+## with half healing; downed characters left outside get nothing.
+func _check_night_skip() -> void:
+	if game_time < NIGHT_START:
+		return
+	var conscious := 0
+	var any_downed := false
+	for char_id in characters.keys():
+		var cid := str(char_id)
+		if is_downed(cid):
+			any_downed = true
+			continue
+		conscious += 1
+		if not _resting.has(cid):
+			return
+	if conscious == 0:
+		return
+	var night_remaining: float = clampf((1.0 - game_time) / (1.0 - NIGHT_START), 0.0, 1.0)
+	var heal: float = NIGHT_SKIP_MAX_HEAL * night_remaining
+	if not any_downed:
+		heal *= RESTFUL_BONUS
+	for char_id in characters.keys():
+		var cid := str(char_id)
+		if is_downed(cid):
+			if is_at_shelter(cid):
+				_apply_revive(cid)
+				_stop_rest(cid)
+				_apply_stat_delta(cid, "hp", heal * 0.5)
+			continue
+		_apply_stat_delta(cid, "hp", heal)
+		_stop_rest(cid)
+	game_day += 1
+	game_time = DAWN_TIME
+	game_clock_changed.emit(game_day, game_time)
+	night_skipped.emit(game_day)
+
 # --- Sokoban push (the deliberate, planned push: queue on the object, pick a destination) ---
 
 const PUSH_STEP_TIME := 0.45  # scheduler seconds per one-cell shove
@@ -2686,6 +2915,20 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			change_move_speed(String(payload["id"]), float(payload["speed"]))
 		GameEvent.KIND_SET_ROUTE_MODE:
 			set_route_mode(bool(payload["cautious"]))
+		GameEvent.KIND_SET_STAT:
+			set_stat(String(payload["id"]), String(payload["stat"]), float(payload["value"]))
+		GameEvent.KIND_SET_RUNNING:
+			set_running(String(payload["id"]), bool(payload["running"]))
+		GameEvent.KIND_ADD_SHELTER:
+			add_shelter_region(
+				Vector2(float(payload["min"][0]), float(payload["min"][1])),
+				Vector2(float(payload["max"][0]), float(payload["max"][1])))
+		GameEvent.KIND_REST:
+			command_rest(String(payload["char_id"]))
+		GameEvent.KIND_STOP_REST:
+			command_stop_rest(String(payload["char_id"]))
+		GameEvent.KIND_SET_GAME_CLOCK:
+			set_game_clock(int(payload["day"]), float(payload["time"]))
 		GameEvent.KIND_PUSH_OBJECT:
 			command_push_object(
 				String(payload["char_id"]), String(payload["obj_id"]),
