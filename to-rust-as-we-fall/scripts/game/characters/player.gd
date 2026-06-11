@@ -580,6 +580,7 @@ func _set_click_target(world_pos: Vector3, cancel_interaction := true) -> bool:
 	if game_state and char_id != "":
 		if grid_world:
 			var target_cell := grid_world.world_to_grid(world_pos)
+			target_cell = game_state.grid.nearest_walkable_cell(target_cell, game_state.get_character_level(char_id), 3)
 			if not game_state.command_move_to_cell(char_id, target_cell):
 				return false
 			var snapped_pos := grid_world.grid_to_world(target_cell)

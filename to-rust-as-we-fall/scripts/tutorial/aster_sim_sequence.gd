@@ -93,7 +93,46 @@ func _setup_ui() -> void:
 func _begin() -> void:
 	_enable_outline_preview()
 	_connect_outline_feedback_sources(self)
+	_apply_model_occupancy_to_grid()
+	if OS.get_environment("ASTER_GRID_PROBE") == "1":
+		_probe_model_vs_grid()
 	_start_fade_in()
+
+## DATA-LAYER occupancy from the model: solid interior furniture blocks its grid cells so characters
+## path around it, not through it. Derived from the model bounds at boot (never serialized) — the
+## same scene build always derives the same blockers, so replay is unaffected. Interactions on
+## blocked furniture still work: click/walk destinations snap to the nearest walkable cell.
+func _apply_model_occupancy_to_grid() -> void:
+	if _grid == null or not _use_room_model():
+		return
+	for obj_name in ["Desk"]:
+		var ab := _room_object_aabb(obj_name)
+		if ab.size == Vector3.ZERO:
+			continue
+		var a := _grid.world_to_grid(ab.position + Vector3(0.2, 0, 0.2))
+		var b := _grid.world_to_grid(ab.position + ab.size - Vector3(0.2, 0, 0.2))
+		for cz in range(mini(a.y, b.y), maxi(a.y, b.y) + 1):
+			for cx in range(mini(a.x, b.x), maxi(a.x, b.x) + 1):
+				if _grid.is_in_bounds(cx, cz) and _grid.is_walkable(cx, cz):
+					_grid.add_dynamic_blocker(Vector2i(cx, cz), "model_" + obj_name)
+
+## Diagnostic: where each model object sits vs what the grid thinks of those cells.
+func _probe_model_vs_grid() -> void:
+	for obj_name in ["Desk", "Shelf", "drink_machine", "glass_bead_game", "Rug", "Grate"]:
+		var ab := _room_object_aabb(obj_name)
+		if ab.size == Vector3.ZERO:
+			print("[GRIDPROBE] %s: ABSENT" % obj_name)
+			continue
+		var a := _grid.world_to_grid(ab.position)
+		var b := _grid.world_to_grid(ab.position + ab.size)
+		var n_cells := 0
+		var blocked := 0
+		for cz in range(mini(a.y, b.y), maxi(a.y, b.y) + 1):
+			for cx in range(mini(a.x, b.x), maxi(a.x, b.x) + 1):
+				n_cells += 1
+				if not _grid.is_walkable(cx, cz):
+					blocked += 1
+		print("[GRIDPROBE] %-16s center=%s cells=%d blocked=%d (%s..%s)" % [obj_name, str(ab.get_center()), n_cells, blocked, str(a), str(b)])
 
 func _enable_outline_preview() -> void:
 	if not OUTLINE_POST_PROCESS_ENABLED:
@@ -129,8 +168,10 @@ func _get_speed_recipients() -> Array:
 	return recipients
 
 ## The imported room model is the environment (the graybox is a fallback for headless/dev toggles).
+## STRUCTURAL, not visual: the model's geometry drives props/occupancy/anchors even when a render
+## toggle (outline post-process fallback) hides it — headless runs exercise the same data layer.
 func _use_room_model() -> bool:
-	return show_high_res_room and not show_graybox_room and find_child("AsterRoom", true, false) != null
+	return not show_graybox_room and find_child("AsterRoom", true, false) != null
 
 ## All MeshInstance3Ds under the named object(s) of the room model. Multiple nodes can share a name
 ## (the composed export has eight "j-store" journals, two "Award N" plaques) — gather every match.
@@ -142,7 +183,12 @@ func _room_model_meshes_multi(object_names: Array) -> Array:
 	if room == null:
 		return []
 	var meshes: Array = []
+	var lookups: Array = []
 	for object_name in object_names:
+		lookups.append(str(object_name))
+		# The import's surface splitter replaces a multi-surface mesh with "<name>SurfaceTargets".
+		lookups.append(str(object_name) + "SurfaceTargets")
+	for object_name in lookups:
 		for obj in room.find_children(str(object_name), "", true, false):
 			if obj is MeshInstance3D and not meshes.has(obj):
 				meshes.append(obj)

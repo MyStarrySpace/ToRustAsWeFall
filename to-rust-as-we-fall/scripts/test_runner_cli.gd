@@ -5154,6 +5154,23 @@ func _test_aster_sim() -> void:
 			for room_obj in ["Room", "Desk", "Rug", "Grate", "Shelf"]:
 				_assert_true(room_instance.find_child(room_obj, true, false) != null,
 					"Aster room model includes the separated %s object" % room_obj)
+		# DATA-LAYER alignment with the model: the desk occupies its grid cells (characters path
+		# around it, not through it) while the rug stays walkable and an interior route past the
+		# desk still exists (the room isn't accidentally split in two).
+		var occ_grid: GridWorld = instance._grid
+		var desk_ab: AABB = instance._room_object_aabb("Desk")
+		if occ_grid != null and desk_ab.size != Vector3.ZERO:
+			var desk_center := occ_grid.world_to_grid(desk_ab.get_center())
+			_assert_true(not occ_grid.is_walkable(desk_center.x, desk_center.y),
+				"The desk's centre cell is OCCUPIED on the grid (model-derived blocker)")
+			var around := occ_grid.find_path(Vector2i(2, 2), Vector2i(13, 7))
+			_assert_true(not around.is_empty(), "A route across the room around the desk still exists")
+			var crosses_desk := false
+			for wp in around:
+				var c := occ_grid.world_to_grid(wp)
+				if c.x >= desk_center.x - 1 and c.x <= desk_center.x and c.y >= 5 and c.y <= 6:
+					crosses_desk = crosses_desk or not occ_grid.is_walkable(c.x, c.y)
+			_assert_true(not crosses_desk, "The route does not pass through occupied desk cells")
 		var placement := instance.find_child("ScenePlacement", true, false) as Node3D
 		_assert_true(placement != null, "Aster sim exposes authored placement markers")
 		if placement != null:

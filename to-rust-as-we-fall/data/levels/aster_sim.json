@@ -2,59 +2,82 @@
   "name": "aster_simulation",
   "display_name": "Aster's Simulation Workspace",
   "next_scene": "res://scenes/tutorial/tag_day.tscn",
-
   "map": [
     "111111111111111111",
+    "100000000060000001",
     "100000000000000001",
-    "100000000050000001",
     "100000000000000001",
     "100200000000000001",
-    "100000000000060001",
+    "100000000500060001",
     "100000000000000001",
     "100000000000000001",
     "111111111111111111"
   ],
-
   "room": {
-    "floor_size": [16, 12],
-    "floor_center": [4, 0],
-    "wall_color": [0.15, 0.12, 0.1],
-    "floor_color": [0.12, 0.1, 0.08],
+    "floor_size": [
+      16,
+      12
+    ],
+    "floor_center": [
+      4,
+      0
+    ],
+    "wall_color": [
+      0.15,
+      0.12,
+      0.1
+    ],
+    "floor_color": [
+      0.12,
+      0.1,
+      0.08
+    ],
     "ambient": "warm"
   },
-
   "player": {
     "name": "Aster",
-    "position": [0, -0.7],
+    "position": [
+      0,
+      -0.7
+    ],
     "color": "#4A9EFF",
-    "stats": { "hp": 100, "atp": 6, "stamina": 100 }
+    "stats": {
+      "hp": 100,
+      "atp": 6,
+      "stamina": 100
+    }
   },
-
   "npcs": [
     {
       "id": "ron",
       "name": "Ron",
       "display_name": "RON",
-      "position": [6, 3],
+      "position": [
+        6,
+        3
+      ],
       "color": "#B3994D",
       "role": "higher_up_performing_colleague"
     }
   ],
-
   "interactables": [
     {
       "id": "drink_machine",
       "type": "drink",
-      "position": [8, -3],
+      "position": [
+        8,
+        -3
+      ],
       "radius": 1.5,
       "dwell_time": 1.5,
       "one_shot": true,
       "label": "DRINKS",
       "interaction": "proximity_dwell",
-      "effect": { "atp": 8 }
+      "effect": {
+        "atp": 8
+      }
     }
   ],
-
   "sequence": [
     {
       "phase": "fade_in",
@@ -88,23 +111,52 @@
     {
       "phase": "ron_approaches",
       "duration": 3.0,
-      "npc_action": { "id": "ron", "walk_to_player": true, "offset": [1.5, 0.5] }
+      "npc_action": {
+        "id": "ron",
+        "walk_to_player": true,
+        "offset": [
+          1.5,
+          0.5
+        ]
+      }
     },
     {
       "phase": "ron_chat",
       "dialogue": [
-        { "speaker": "Ron", "text": "Hey \u2014 Aster, right? How are the forecasting models coming along?" },
-        { "speaker": "Ron", "text": "That thermal drift work is exactly the kind of initiative we like to see. Unlimited drinks for top performers like you, by the way." },
-        { "speaker": "Ron", "text": "Move fast and break, right? Keep it up." },
-        { "speaker": "", "text": "Move fast and break. Everyone says it. It's on the motivational displays.", "style": "data" }
+        {
+          "speaker": "Ron",
+          "text": "Hey \u2014 Aster, right? How are the forecasting models coming along?"
+        },
+        {
+          "speaker": "Ron",
+          "text": "That thermal drift work is exactly the kind of initiative we like to see. Unlimited drinks for top performers like you, by the way."
+        },
+        {
+          "speaker": "Ron",
+          "text": "Move fast and break, right? Keep it up."
+        },
+        {
+          "speaker": "",
+          "text": "Move fast and break. Everyone says it. It's on the motivational displays.",
+          "style": "data"
+        }
       ],
       "advance_on": "dialogue_finished"
     },
     {
       "phase": "tag_notify",
       "dialogue": [
-        { "speaker": "DEVICE", "text": "NOTIFICATION: Tag Day verification \u2014 Checkpoint 7-B. Report within 15 minutes.", "style": "data" },
-        { "speaker": "", "text": "Time for Tag Day. Routine.", "style": "data", "wait": true }
+        {
+          "speaker": "DEVICE",
+          "text": "NOTIFICATION: Tag Day verification \u2014 Checkpoint 7-B. Report within 15 minutes.",
+          "style": "data"
+        },
+        {
+          "speaker": "",
+          "text": "Time for Tag Day. Routine.",
+          "style": "data",
+          "wait": true
+        }
       ],
       "advance_on": "dialogue_finished"
     },
