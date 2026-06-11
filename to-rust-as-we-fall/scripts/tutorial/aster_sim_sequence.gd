@@ -37,6 +37,7 @@ var _renderer: GridRenderer
 var _data_displays: Array[MeshInstance3D] = []
 
 const PLACEMENT_ROOT := "ScenePlacement"
+const GLASS_BEAD_SCENE := preload("res://resources/models/aster-sim/glass-bead-game/glass-bead-game.gltf")
 
 # Start below max ATP so the drink refill is visible.
 const ATP_START := 6.0
@@ -131,20 +132,57 @@ func _get_speed_recipients() -> Array:
 func _use_room_model() -> bool:
 	return show_high_res_room and not show_graybox_room and find_child("AsterRoom", true, false) != null
 
-## All MeshInstance3Ds under one named object of the room model (e.g. "Desk", "Shelf", "Rug").
+## All MeshInstance3Ds under the named object(s) of the room model. Multiple nodes can share a name
+## (the composed export has eight "j-store" journals, two "Award N" plaques) — gather every match.
 func _room_model_meshes(object_name: String) -> Array:
+	return _room_model_meshes_multi([object_name])
+
+func _room_model_meshes_multi(object_names: Array) -> Array:
 	var room := find_child("AsterRoom", true, false)
 	if room == null:
 		return []
-	var obj := room.find_child(object_name, true, false)
-	if obj == null:
-		return []
 	var meshes: Array = []
-	if obj is MeshInstance3D:
-		meshes.append(obj)
-	for m in obj.find_children("*", "MeshInstance3D", true, false):
-		meshes.append(m)
+	for object_name in object_names:
+		for obj in room.find_children(str(object_name), "", true, false):
+			if obj is MeshInstance3D and not meshes.has(obj):
+				meshes.append(obj)
+			for m in obj.find_children("*", "MeshInstance3D", true, false):
+				if not meshes.has(m):
+					meshes.append(m)
 	return meshes
+
+## A composed-model PROP for an exploration/interaction object: its real meshes + world bounds, or {}
+## when the model doesn't carry it (the graybox fallback builds instead).
+func _model_prop(object_names: Array) -> Dictionary:
+	if not _use_room_model():
+		return {}
+	var meshes := _room_model_meshes_multi(object_names)
+	if meshes.is_empty():
+		return {}
+	var combined := AABB()
+	var first := true
+	for m in meshes:
+		var mi := m as MeshInstance3D
+		if mi == null or mi.mesh == null or not mi.is_inside_tree():
+			continue
+		var ab: AABB = mi.global_transform * mi.mesh.get_aabb()
+		combined = ab if first else combined.merge(ab)
+		first = false
+	if first or not _aabb_reads_placed(combined):
+		return {}
+	return {
+		"meshes": meshes,
+		"center": combined.get_center(),
+		"size": combined.size + Vector3(0.35, 0.35, 0.35),
+	}
+
+## Placement can be a node TRANSFORM (editor drag) or BAKED VERTICES (the composed export): an object
+## whose bounds sit away from the room origin is placed; a re-centered unplaced export piles at it.
+func _aabb_reads_placed(ab: AABB) -> bool:
+	var room := find_child("AsterRoom", true, false) as Node3D
+	var origin := room.global_position if room != null else Vector3.ZERO
+	var c := ab.get_center()
+	return Vector2(c.x - origin.x, c.z - origin.z).length() > 1.0
 
 ## Combined world-space AABB of a named room-model object (zero-size when absent).
 func _room_object_aabb(object_name: String) -> AABB:
@@ -167,18 +205,25 @@ func _room_object_placed(object_name: String) -> bool:
 	if room == null:
 		return false
 	var obj := room.find_child(object_name, true, false) as Node3D
-	return obj != null and not obj.transform.is_equal_approx(Transform3D.IDENTITY)
+	if obj == null:
+		return false
+	if not obj.transform.is_equal_approx(Transform3D.IDENTITY):
+		return true  # editor-dragged placement
+	return _aabb_reads_placed(_room_object_aabb(object_name))  # baked-vertex placement
 
-## Interaction anchors FOLLOW the room model: prefer the PLACED model object's center, then the
-## authored marker, then the grid fallback — so repositioning furniture in aster_room.tscn
-## repositions its interactions with zero marker re-authoring.
+## Interaction anchor resolution: the AUTHORED MARKER is the placement authority (the focus camera,
+## walk targets, and beat timing are tuned to it); a PLACED model object is the fallback for anchors
+## without a marker. The model always drives the highlight GEOMETRY (meshes/volumes) regardless.
 func _model_or_marker(object_name: String, marker_name: String, fallback_position: Vector3) -> Vector3:
+	var marker := _placement_node(marker_name)
+	if marker != null:
+		return marker.global_position
 	if _use_room_model() and _room_object_placed(object_name):
 		var ab := _room_object_aabb(object_name)
 		if ab.size != Vector3.ZERO:
 			var c := ab.get_center()
 			return Vector3(c.x, ab.position.y, c.z)  # ground-level under the object's center
-	return _placement_or_position(marker_name, fallback_position)
+	return fallback_position
 
 func _placement_node(marker_name: String) -> Node3D:
 	var root := get_node_or_null(PLACEMENT_ROOT)
@@ -606,44 +651,49 @@ func _create_holo_display(pos: Vector3) -> MeshInstance3D:
 	return display
 
 func _add_drink_machine_visual(parent: Node3D, pos: Vector3) -> void:
+	# The composed model carries the real drink machine: wrap ITS meshes, skip the graybox boxes.
+	var prop := _model_prop(["drink_machine"])
 	var meshes: Array = []
-	var body := MeshInstance3D.new()
-	var bb := BoxMesh.new()
-	bb.size = Vector3(0.8, 1.8, 0.6)
-	body.mesh = bb
-	var bm := StandardMaterial3D.new()
-	bm.albedo_color = Color(0.2, 0.18, 0.15)
-	body.material_override = bm
-	body.position = pos + Vector3(0, 0.9, 0)
-	parent.add_child(body)
-	meshes.append(body)
+	if prop.is_empty():
+		var body := MeshInstance3D.new()
+		var bb := BoxMesh.new()
+		bb.size = Vector3(0.8, 1.8, 0.6)
+		body.mesh = bb
+		var bm := StandardMaterial3D.new()
+		bm.albedo_color = Color(0.2, 0.18, 0.15)
+		body.material_override = bm
+		body.position = pos + Vector3(0, 0.9, 0)
+		parent.add_child(body)
+		meshes.append(body)
 
-	var screen := MeshInstance3D.new()
-	var sb := BoxMesh.new()
-	sb.size = Vector3(0.5, 0.3, 0.02)
-	screen.mesh = sb
-	var sm := StandardMaterial3D.new()
-	sm.albedo_color = Color(0.2, 0.5, 0.3, 0.9)
-	sm.emission_enabled = true
-	sm.emission = Color(0.15, 0.4, 0.25)
-	sm.emission_energy_multiplier = 1.0
-	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	screen.material_override = sm
-	screen.position = pos + Vector3(0, 1.4, -0.32)
-	parent.add_child(screen)
-	meshes.append(screen)
+		var screen := MeshInstance3D.new()
+		var sb := BoxMesh.new()
+		sb.size = Vector3(0.5, 0.3, 0.02)
+		screen.mesh = sb
+		var sm := StandardMaterial3D.new()
+		sm.albedo_color = Color(0.2, 0.5, 0.3, 0.9)
+		sm.emission_enabled = true
+		sm.emission = Color(0.15, 0.4, 0.25)
+		sm.emission_energy_multiplier = 1.0
+		sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		screen.material_override = sm
+		screen.position = pos + Vector3(0, 1.4, -0.32)
+		parent.add_child(screen)
+		meshes.append(screen)
 
-	var lbl := Label3D.new()
-	lbl.text = "DRINKS"
-	lbl.font_size = 36
-	lbl.pixel_size = 0.01
-	lbl.modulate = Color(0.4, 0.7, 0.5, 0.7)
-	lbl.position = pos + Vector3(0, 1.75, -0.32)
-	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	parent.add_child(lbl)
+		var lbl := Label3D.new()
+		lbl.text = "DRINKS"
+		lbl.font_size = 36
+		lbl.pixel_size = 0.01
+		lbl.modulate = Color(0.4, 0.7, 0.5, 0.7)
+		lbl.position = pos + Vector3(0, 1.75, -0.32)
+		lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		parent.add_child(lbl)
 
 	_create_graybox_outline_target(parent, "RoomTargetDrinkMachine",
-		pos + Vector3(0.0, 0.95, 0.0), Vector3(1.2, 2.1, 1.0), meshes, "drink_machine", 1.2)
+		prop.center if not prop.is_empty() else pos + Vector3(0.0, 0.95, 0.0),
+		prop.size if not prop.is_empty() else Vector3(1.2, 2.1, 1.0),
+		prop.meshes if not prop.is_empty() else meshes, "drink_machine", 1.2)
 
 # --- Decorations ---
 
@@ -769,8 +819,7 @@ func _build_terminal() -> void:
 		_terminal.name = "Terminal"
 		_terminal.description = "Forecasting Terminal"
 		_terminal.apply_interactable_spec("aster.terminal")
-		_terminal.position = _local_for_parent(self, term_pos + Vector3(0, 0.8, 0) if _room_object_placed("Desk")
-			else _placement_or_position("TerminalInteract", term_pos + Vector3(0, 0.8, 0)))
+		_terminal.position = _local_for_parent(self, _placement_or_position("TerminalInteract", term_pos + Vector3(0, 0.8, 0)))
 		add_child(_terminal)
 		_terminal.interacted.connect(_on_terminal_interacted)
 		_set_room_target_interaction_delegate(find_child("RoomTargetDataDisplays", true, false), _terminal)
@@ -828,6 +877,7 @@ func _build_drink_machine() -> void:
 	var machine_pos := Vector3(8, 0, -3)
 	if not drink_cells.is_empty():
 		machine_pos = _placement_or_grid("DrinkMachineAnchor", drink_cells[0], 0.0)
+	machine_pos = _model_or_marker("drink_machine", "DrinkMachineAnchor", machine_pos)
 
 	if not Engine.is_editor_hint():
 		_drink_machine = preload("res://scenes/game/interactable.tscn").instantiate()
@@ -859,6 +909,33 @@ func _build_exploration_objects() -> void:
 func _build_glass_bead_game(parent: Node3D) -> void:
 	var bead_cell := Vector2i(7, 5)
 	var world := _placement_or_grid("GlassBeadAnchor", bead_cell, 0.0)
+	# The STANDALONE animated bead game (idle animation, bead connectors, glow) is the real prop:
+	# instantiate it where the room model's embedded copy sits (or the marker), HIDE the embedded
+	# static copy so they don't double-render, and wrap the animated meshes for hover/highlight.
+	var embedded := _model_prop(["glass_bead_game"])
+	var game := GLASS_BEAD_SCENE.instantiate() as Node3D
+	if game != null:
+		var spot := world
+		if not embedded.is_empty():
+			var c: Vector3 = embedded.center
+			var s: Vector3 = embedded.size
+			spot = Vector3(c.x, c.y - s.y * 0.5, c.z)
+			for m in embedded.meshes:
+				(m as MeshInstance3D).visible = false
+		add_child(game)
+		game.global_position = spot
+		var anim := game.find_child("AnimationPlayer", true, false) as AnimationPlayer
+		if anim != null and anim.has_animation("idle"):
+			anim.get_animation("idle").loop_mode = Animation.LOOP_LINEAR
+			anim.play("idle")
+		var game_meshes: Array = game.find_children("*", "MeshInstance3D", true, false)
+		var game_target := _create_graybox_outline_target(parent, "RoomTargetGlassBeadGame",
+			spot + Vector3(0.0, 0.75, 0.0), Vector3(1.4, 1.4, 1.4), game_meshes, "glass_bead_game", 1.0)
+		var game_zone := _make_exploration_zone(
+			parent, _local_for_parent(parent, _placement_or_position("GlassBeadZoneMarker", world)),
+			"GlassBeadZone", "aster.sim_expand.glass_bead.line", 1.4, 0.6)
+		_set_room_target_interaction_delegate(game_target, game_zone)
+		return
 	var meshes: Array = []
 	var base := MeshInstance3D.new()
 	var bm := CylinderMesh.new()
@@ -908,6 +985,17 @@ func _build_glass_bead_game(parent: Node3D) -> void:
 func _build_painting_panel(parent: Node3D, canvas_cell: Vector2i, zone_cell: Vector2i, zone_name: String, palette: Color, line_key: String) -> void:
 	var marker_prefix := _exploration_marker_prefix(zone_name)
 	var canvas_world := _placement_or_grid(marker_prefix + "Canvas", canvas_cell, 0.0)
+	# Model painting (macabre_teal = "Painting 1", hunter_ash = "Painting 2"): wrap the real canvas.
+	var model_name: String = "Painting 1" if zone_name == "macabre_teal" else "Painting 2"
+	var prop := _model_prop([model_name])
+	if not prop.is_empty():
+		var model_target := _create_graybox_outline_target(parent, "RoomTarget%sPainting" % marker_prefix,
+			prop.center, prop.size, prop.meshes, "%s_painting" % zone_name, 0.95)
+		var model_zone_world := _placement_or_grid(marker_prefix + "ZoneMarker", zone_cell, 0.0)
+		var model_zone := _make_exploration_zone(parent, _local_for_parent(parent, model_zone_world),
+			zone_name + "Zone", line_key, 1.4, 0.6)
+		_set_room_target_interaction_delegate(model_target, model_zone)
+		return
 	var panel := MeshInstance3D.new()
 	var qb := BoxMesh.new()
 	qb.size = Vector3(1.4, 1.0, 0.06)
@@ -940,6 +1028,17 @@ func _build_painting_panel(parent: Node3D, canvas_cell: Vector2i, zone_cell: Vec
 func _build_awards_shelf(parent: Node3D) -> void:
 	var shelf_cell := Vector2i(14, 2)
 	var world := _placement_or_grid("AwardsShelf", shelf_cell, 0.0)
+	# Model awards ("Award 1"/"Award 2"): wrap the real plaques.
+	var prop := _model_prop(["Award 1", "Award 2"])
+	if not prop.is_empty():
+		var model_target := _create_graybox_outline_target(parent, "RoomTargetAwardsShelf",
+			prop.center, prop.size, prop.meshes, "awards_shelf", 1.35)
+		var model_center_zone := _make_exploration_zone(parent, _local_for_parent(parent, _placement_or_position("AwardsCenterZoneMarker", world + Vector3(0, 0, -0.4))),
+			"AwardsCenterZone", "aster.sim_expand.awards.line", 0.9, 0.6)
+		_make_exploration_zone(parent, _local_for_parent(parent, _placement_or_position("AwardsJournalismZoneMarker", world + Vector3(0, 0, 0.6))),
+			"AwardsJournalismZone", "aster.sim_expand.awards.journalism_line", 0.9, 0.6)
+		_set_room_target_interaction_delegate(model_target, model_center_zone)
+		return
 	var meshes: Array = []
 	var shelf := MeshInstance3D.new()
 	var sb := BoxMesh.new()
@@ -982,55 +1081,60 @@ func _build_awards_shelf(parent: Node3D) -> void:
 func _build_jstore_shelf(parent: Node3D) -> void:
 	var shelf_cell := Vector2i(14, 5)
 	var world := _placement_or_grid("JStoreShelf", shelf_cell, 0.0)
+	# Model journals + mugs: wrap the real shelf contents, skip the graybox set.
+	var prop := _model_prop(["j-store", "mug"])
 	var meshes: Array = []
-	var shelf := MeshInstance3D.new()
-	var sb := BoxMesh.new()
-	sb.size = Vector3(0.25, 1.0, 2.0)
-	shelf.mesh = sb
-	var shelf_mat := StandardMaterial3D.new()
-	shelf_mat.albedo_color = Color(0.15, 0.13, 0.1)
-	shelf.material_override = shelf_mat
-	shelf.position = world + Vector3(0.6, 1.1, 0)
-	parent.add_child(shelf)
-	meshes.append(shelf)
-	# J-store spines.
-	var spine_colors := [
-		Color(0.15, 0.2, 0.35),
-		Color(0.35, 0.18, 0.15),
-		Color(0.18, 0.3, 0.2),
-		Color(0.3, 0.25, 0.15),
-		Color(0.2, 0.2, 0.3),
-		Color(0.3, 0.2, 0.25),
-	]
-	for i in range(10):
-		var spine := MeshInstance3D.new()
-		var pb := BoxMesh.new()
-		pb.size = Vector3(0.05, 0.4, 0.15)
-		spine.mesh = pb
-		var pm := StandardMaterial3D.new()
-		pm.albedo_color = spine_colors[i % spine_colors.size()]
-		spine.material_override = pm
-		spine.position = world + Vector3(0.5, 0.9, -0.9 + i * 0.18)
-		parent.add_child(spine)
-		meshes.append(spine)
-	# Empty mugs.
-	for i in range(12):
-		var mug := MeshInstance3D.new()
-		var mb := CylinderMesh.new()
-		mb.top_radius = 0.05
-		mb.bottom_radius = 0.05
-		mb.height = 0.1
-		mug.mesh = mb
-		var mm := StandardMaterial3D.new()
-		mm.albedo_color = Color(0.25, 0.2, 0.18)
-		mug.material_override = mm
-		var row := i / 6
-		var col := i % 6
-		mug.position = world + Vector3(0.5, 1.7, -0.7 + col * 0.22 + row * 0.05)
-		parent.add_child(mug)
-		meshes.append(mug)
+	if prop.is_empty():
+		var shelf := MeshInstance3D.new()
+		var sb := BoxMesh.new()
+		sb.size = Vector3(0.25, 1.0, 2.0)
+		shelf.mesh = sb
+		var shelf_mat := StandardMaterial3D.new()
+		shelf_mat.albedo_color = Color(0.15, 0.13, 0.1)
+		shelf.material_override = shelf_mat
+		shelf.position = world + Vector3(0.6, 1.1, 0)
+		parent.add_child(shelf)
+		meshes.append(shelf)
+		# J-store spines.
+		var spine_colors := [
+			Color(0.15, 0.2, 0.35),
+			Color(0.35, 0.18, 0.15),
+			Color(0.18, 0.3, 0.2),
+			Color(0.3, 0.25, 0.15),
+			Color(0.2, 0.2, 0.3),
+			Color(0.3, 0.2, 0.25),
+		]
+		for i in range(10):
+			var spine := MeshInstance3D.new()
+			var pb := BoxMesh.new()
+			pb.size = Vector3(0.05, 0.4, 0.15)
+			spine.mesh = pb
+			var pm := StandardMaterial3D.new()
+			pm.albedo_color = spine_colors[i % spine_colors.size()]
+			spine.material_override = pm
+			spine.position = world + Vector3(0.5, 0.9, -0.9 + i * 0.18)
+			parent.add_child(spine)
+			meshes.append(spine)
+		# Empty mugs.
+		for i in range(12):
+			var mug := MeshInstance3D.new()
+			var mb := CylinderMesh.new()
+			mb.top_radius = 0.05
+			mb.bottom_radius = 0.05
+			mb.height = 0.1
+			mug.mesh = mb
+			var mm := StandardMaterial3D.new()
+			mm.albedo_color = Color(0.25, 0.2, 0.18)
+			mug.material_override = mm
+			var row := i / 6
+			var col := i % 6
+			mug.position = world + Vector3(0.5, 1.7, -0.7 + col * 0.22 + row * 0.05)
+			parent.add_child(mug)
+			meshes.append(mug)
 	var target := _create_graybox_outline_target(parent, "RoomTargetJStoreShelf",
-		world + Vector3(0.55, 1.15, 0.0), Vector3(1.0, 1.8, 2.35), meshes, "jstore_shelf", 1.45)
+		prop.center if not prop.is_empty() else world + Vector3(0.55, 1.15, 0.0),
+		prop.size if not prop.is_empty() else Vector3(1.0, 1.8, 2.35),
+		prop.meshes if not prop.is_empty() else meshes, "jstore_shelf", 1.45)
 	var main_zone := _make_exploration_sequence_zone(parent, _local_for_parent(parent, _placement_or_position("JStoreMainZoneMarker", world + Vector3(0, 0, -0.4))),
 		"JStoreMainZone",
 		[

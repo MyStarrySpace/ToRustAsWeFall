@@ -1,14 +1,6 @@
 [gd_scene format=3 uid="uid://dxd84h23tgxf7"]
 
-[ext_resource type="PackedScene" uid="uid://ch57er5n1fx38" path="res://resources/models/aster-sim/room/Room.gltf" id="1_room"]
-[ext_resource type="PackedScene" uid="uid://d0u3r8iclisld" path="res://resources/models/aster-sim/room/base.gltf" id="2_base"]
-[ext_resource type="PackedScene" uid="uid://bw86hjt1jky1f" path="res://resources/models/aster-sim/room/Object_6014.gltf" id="3_rug"]
-[ext_resource type="PackedScene" uid="uid://cm01hpi5hrm3t" path="res://resources/models/aster-sim/room/Object_5818.gltf" id="4_grate"]
-[ext_resource type="PackedScene" uid="uid://ci45fmnlv2dy5" path="res://resources/models/aster-sim/room/Desk.gltf" id="5_desk"]
-[ext_resource type="PackedScene" uid="uid://0426mr4tgwei" path="res://resources/models/aster-sim/room/Shelf.gltf" id="6_shelf"]
-[ext_resource type="PackedScene" uid="uid://bk7aufv8f5p6" path="res://resources/models/aster-sim/room/Painting_1.gltf" id="7_paint1"]
-[ext_resource type="PackedScene" uid="uid://dnawbh8os217n" path="res://resources/models/aster-sim/room/Painting_2.gltf" id="8_paint2"]
-[ext_resource type="PackedScene" uid="uid://bp6vxtyhmvod5" path="res://resources/models/aster-sim/room/Awards.gltf" id="9_awards"]
+[ext_resource type="PackedScene" uid="uid://idrlfr4gjcg2" path="res://resources/models/aster-sim/room/aster-sim-room-hi-res.gltf" id="1_oa7d7"]
 [ext_resource type="PackedScene" uid="uid://cficd47w6pn1w" path="res://resources/models/aster-sim/room/office-chair.gltf" id="10_chair"]
 
 [sub_resource type="Environment" id="Environment_oa7d7"]
@@ -20,24 +12,6 @@ glow_intensity = 0.45
 glow_bloom = 0.12
 
 [node name="Node3D2" type="Node3D" unique_id=523740759]
-
-[node name="Room" parent="." unique_id=636530284 instance=ExtResource("1_room")]
-
-[node name="Base" parent="." unique_id=675319704 instance=ExtResource("2_base")]
-
-[node name="Rug" parent="." unique_id=781111650 instance=ExtResource("3_rug")]
-
-[node name="Grate" parent="." unique_id=240877394 instance=ExtResource("4_grate")]
-
-[node name="Desk" parent="." unique_id=1399986932 instance=ExtResource("5_desk")]
-
-[node name="Shelf" parent="." unique_id=1244776283 instance=ExtResource("6_shelf")]
-
-[node name="PaintingA" parent="." unique_id=1386892290 instance=ExtResource("7_paint1")]
-
-[node name="PaintingB" parent="." unique_id=2094609640 instance=ExtResource("8_paint2")]
-
-[node name="Awards" parent="." unique_id=917885684 instance=ExtResource("9_awards")]
 
 [node name="SpotLight3D2" type="SpotLight3D" parent="." unique_id=1427866953]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 6.6681757, 4.213931, 3.011419)
@@ -56,16 +30,17 @@ light_energy = 2.037
 spot_angle = 43.33
 
 [node name="SpotLight3D" type="SpotLight3D" parent="." unique_id=81247890]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.9810238, 1.355233, 14.718454)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.3914747, 1.355233, 14.19834)
 light_color = Color(0.5792747, 0.689309, 0.5862525, 1)
 light_energy = 14.382
 light_indirect_energy = 0.0
 shadow_enabled = true
 spot_range = 557.913
-spot_attenuation = 1.73
-spot_angle = 58.11
+spot_attenuation = 0.88
+spot_angle = 72.75
+spot_angle_attenuation = 19.027308
 
-[node name="blockbench_export" parent="." unique_id=2019835640 instance=ExtResource("10_chair")]
+[node name="Chair" parent="." unique_id=2019835640 instance=ExtResource("10_chair")]
 transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.3711385e-08, 5.389263, 0.14934492, 7.2163343)
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1236719634]
@@ -74,4 +49,7 @@ environment = SubResource("Environment_oa7d7")
 [node name="OmniLight3D" type="OmniLight3D" parent="." unique_id=1457120360]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.4765387, 1.3599434, 7.237998)
 light_color = Color(0.2905756, 0.70799255, 0.8163794, 1)
+omni_range = 11.665
 omni_attenuation = 1.556
+
+[node name="Room" parent="." unique_id=871482107 instance=ExtResource("1_oa7d7")]
