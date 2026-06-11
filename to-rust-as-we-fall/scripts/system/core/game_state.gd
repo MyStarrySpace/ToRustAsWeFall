@@ -266,12 +266,16 @@ func get_navigation_state() -> Dictionary:
 ## A* pathfind to a grid cell on the character's current floor. Returns true if a path was found.
 func command_move_to_cell(id: String, cell: Vector2i) -> bool:
 	_cross_level_plan.erase(id)  # a fresh explicit move supersedes any in-flight cross-level traversal
+	if not _push_plans.is_empty() and _push_plans.has(id):
+		_push_plans.erase(id)    # ...and any in-flight push
 	_emit(GameEvent.KIND_MOVE_TO_CELL, {"id": id, "cell": GameEvent.v2i_to_arr(cell)})
 	return _do_move_to_cell(id, cell)
 
 ## Straight-line move to a world position.
 func command_move_to_pos(id: String, pos: Vector3) -> bool:
 	_cross_level_plan.erase(id)
+	if not _push_plans.is_empty() and _push_plans.has(id):
+		_push_plans.erase(id)
 	_emit(GameEvent.KIND_MOVE_TO_POS, {"id": id, "pos": GameEvent.v3_to_arr(pos)})
 	return _do_move_to_pos(id, pos)
 
@@ -2107,6 +2111,127 @@ func _on_physics_arrival(obj_id: String) -> void:
 			grid.add_dynamic_blocker(obj.grid_cell, obj_id)
 	_recompute_physics_predictions()
 
+# --- Sokoban push (the deliberate, planned push: queue on the object, pick a destination) ---
+
+const PUSH_STEP_TIME := 0.45  # scheduler seconds per one-cell shove
+
+var _push_plans := {}  # char_id -> {obj_id, steps, index, stage("approach"|"shove")} — derived, never serialized
+
+## Read-only: the plan a push to target_cell WOULD take (for ghost previews / the blocked cursor).
+func plan_push_for(char_id: String, obj_id: String, target_cell: Vector2i) -> Dictionary:
+	if not grid or not characters.has(char_id) or not physics_objects.has(obj_id):
+		return {}
+	if not bool(physics_objects[obj_id].get("pushable", false)):
+		return {}
+	return grid.plan_push(
+		grid.world_to_grid(get_physics_position(obj_id)),
+		grid.world_to_grid(get_position(char_id)),
+		target_cell, get_character_level(char_id))
+
+## Push the object to target_cell: the character walks behind it and shoves one cardinal cell at a
+## time (re-positioning between direction changes), exactly the planner's step list. ONE logged
+## command; the per-step walks/slides are derived and chain on arrivals — replay reproduces them.
+## Returns false (nothing moves) when no plan exists: "not enough space" refuses the operation.
+func command_push_object(char_id: String, obj_id: String, target_cell: Vector2i) -> bool:
+	_emit(GameEvent.KIND_PUSH_OBJECT, {
+		"char_id": char_id, "obj_id": obj_id, "cell": GameEvent.v2i_to_arr(target_cell),
+	})
+	return _do_push_object(char_id, obj_id, target_cell)
+
+func _do_push_object(char_id: String, obj_id: String, target_cell: Vector2i) -> bool:
+	if not scheduler or is_knocked_down(char_id):
+		return false
+	var plan := plan_push_for(char_id, obj_id, target_cell)
+	if plan.is_empty():
+		return false
+	_cross_level_plan.erase(char_id)
+	var steps: Array = plan.get("steps", [])
+	if steps.is_empty():
+		return true  # already at the target
+	_push_plans[char_id] = {"obj_id": obj_id, "steps": steps, "index": 0, "stage": "approach"}
+	if not character_arrived.is_connected(_on_push_char_arrived):
+		character_arrived.connect(_on_push_char_arrived)
+	_push_advance(char_id)
+	return true
+
+func is_pushing(char_id: String) -> bool:
+	return _push_plans.has(char_id)
+
+func cancel_push(char_id: String) -> void:
+	_push_plans.erase(char_id)
+
+## Drive the current step: approach = walk to the push cell (the object's own cell blocked for the
+## route so the walk never cuts through it); then shove.
+func _push_advance(char_id: String) -> void:
+	var plan: Dictionary = _push_plans.get(char_id, {})
+	if plan.is_empty():
+		return
+	var steps: Array = plan["steps"]
+	var index: int = plan["index"]
+	if index >= steps.size():
+		_push_plans.erase(char_id)
+		return
+	var step: Dictionary = steps[index]
+	var obj_id: String = plan["obj_id"]
+	if not physics_objects.has(obj_id) or not characters.has(char_id):
+		_push_plans.erase(char_id)
+		return
+	var push_cell: Vector2i = step["char_push_cell"]
+	if grid.world_to_grid(get_position(char_id)) == push_cell:
+		_push_shove(char_id)
+		return
+	var obj_cell: Vector2i = grid.world_to_grid(get_physics_position(obj_id))
+	grid.add_dynamic_blocker(obj_cell, obj_id)
+	var ok := _do_move_to_cell(char_id, push_cell)
+	grid.remove_dynamic_blocker(obj_cell)
+	if not ok:
+		_push_plans.erase(char_id)
+
+## Slide the object one cell at a constant pace (a controlled shove, not a friction skid) while the
+## character steps into the object's old cell.
+func _push_shove(char_id: String) -> void:
+	var plan: Dictionary = _push_plans.get(char_id, {})
+	if plan.is_empty():
+		return
+	var step: Dictionary = (plan["steps"] as Array)[plan["index"]]
+	var obj_id: String = plan["obj_id"]
+	var obj: Dictionary = physics_objects[obj_id]
+	var from: Vector3 = get_physics_position(obj_id)
+	var to: Vector3 = grid.grid_to_world(step["obj_to"], get_character_level(char_id))
+	to.y = from.y
+	if obj.movement != null and obj.movement.has("handle"):
+		scheduler.cancel(obj.movement.handle)
+	var oid := obj_id
+	var handle := scheduler.schedule_at(scheduler.get_current_tick() + PUSH_STEP_TIME,
+		func(): _on_physics_arrival(oid), "physics_move_" + obj_id)
+	var slide_path: Array[Vector3] = [from, to]
+	obj.movement = {
+		"path": slide_path,
+		"cum_dist": _compute_cum_dist(slide_path),
+		"total_distance": Vector3(to.x - from.x, 0, to.z - from.z).length(),
+		"start_tick": scheduler.get_current_tick(),
+		"duration": PUSH_STEP_TIME,
+		"handle": handle,
+	}
+	if grid:
+		grid.remove_dynamic_blocker(obj.grid_cell)
+	plan["stage"] = "shove"
+	_push_plans[char_id] = plan
+	_do_move_to_cell(char_id, step["obj_from"])
+	_recompute_physics_predictions()
+
+func _on_push_char_arrived(id: String) -> void:
+	var plan: Dictionary = _push_plans.get(id, {})
+	if plan.is_empty():
+		return
+	if plan["stage"] == "approach":
+		_push_shove(id)
+	else:
+		plan["index"] = int(plan["index"]) + 1
+		plan["stage"] = "approach"
+		_push_plans[id] = plan
+		_push_advance(id)
+
 # --- Area Impulse ---
 
 func apply_area_impulse(center: Vector3, radius: float, force: float) -> void:
@@ -2561,6 +2686,10 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			change_move_speed(String(payload["id"]), float(payload["speed"]))
 		GameEvent.KIND_SET_ROUTE_MODE:
 			set_route_mode(bool(payload["cautious"]))
+		GameEvent.KIND_PUSH_OBJECT:
+			command_push_object(
+				String(payload["char_id"]), String(payload["obj_id"]),
+				GameEvent.arr_to_v2i(payload["cell"]))
 		GameEvent.KIND_SET_LEVEL:
 			set_character_level(String(payload["id"]), int(payload["level"]))
 		GameEvent.KIND_SNAP_POSITION:

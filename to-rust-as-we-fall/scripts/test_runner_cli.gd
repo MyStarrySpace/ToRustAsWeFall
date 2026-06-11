@@ -518,6 +518,9 @@ func _ready() -> void:
 			"--test-preview-parked-bail":
 				ran_test = true
 				_test_preview_parked_bail()
+			"--test-push-lab":
+				ran_test = true
+				await _test_push_lab()
 			"--test-drink-partial-dwell":
 				ran_test = true
 				await _test_drink_partial_dwell()
@@ -871,6 +874,7 @@ func _run_all_tests() -> void:
 	_test_generated_grid()
 	_test_dodge_knockdown()
 	_test_preview_parked_bail()
+	await _test_push_lab()
 	await _test_drink_partial_dwell()
 	_test_physics_objects()
 	_test_physics_edge_cases()
@@ -17023,6 +17027,70 @@ func _test_drink_partial_dwell() -> void:
 	instance.headless_advance(float(dm.dwell_time) + 0.5, 0.05)
 	await get_tree().process_frame
 	_assert_true(bool(instance._has_drunk), "The full standing hold pours the drink")
+	instance.queue_free()
+	await get_tree().process_frame
+
+## The Push Lab: Sokoban pushes on the unified grid. Open room = pushable anywhere with room behind;
+## 1-wide hallway = a straight push works (the character stays behind it); a dead BEND = impossible
+## (no cell to shove from), so the command refuses and nothing moves.
+func _test_push_lab() -> void:
+	_test_name = "Push Lab"
+	var instance = await _instantiate_preview_chunk_and_wait("push_lab", 4)
+	if instance == null:
+		_assert_true(false, "Push lab preview instantiates")
+		return
+	var gs = instance._game_state
+	var chunk = instance._active_chunk
+	var grid: GridWorld = gs.grid
+	_assert_true(grid != null, "Push lab installs its grid")
+	var anchors: Dictionary = chunk.get_preview_anchors()
+
+	# (A) Open room: plans exist in multiple directions around the crate.
+	var open_cell: Vector2i = grid.world_to_grid(anchors["crate_open"])
+	for offset in [Vector2i(2, 0), Vector2i(-2, 0), Vector2i(0, 2), Vector2i(0, -2)]:
+		var plan: Dictionary = gs.plan_push_for("aster", "crate_open", open_cell + offset)
+		_assert_true(not plan.is_empty(), "Open room: push plan exists toward %s" % str(offset))
+	# Execute one: push the crate 2 cells east and watch it arrive.
+	_assert_true(gs.command_push_object("aster", "crate_open", open_cell + Vector2i(2, 0)),
+		"Open room: the push command is accepted")
+	var safety := 0
+	while safety < 1200 and gs.is_pushing("aster"):
+		safety += 1
+		instance.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+	_assert_equals(str(grid.world_to_grid(gs.get_physics_position("crate_open"))), str(open_cell + Vector2i(2, 0)),
+		"Open room: the crate arrives exactly at the chosen cell")
+
+	# (B) Hallway: the straight corridor push reaches the far room.
+	var hall_target: Vector2i = grid.world_to_grid(anchors["hall_target"])
+	gs.snap_character_to("aster", Vector3(12.5, 0.0, 2.5))  # in the start room, behind the crate
+	var hall_plan: Dictionary = gs.plan_push_for("aster", "crate_hall", hall_target)
+	_assert_true(not hall_plan.is_empty(), "Hallway: a straight corridor push has a plan")
+	_assert_true(gs.command_push_object("aster", "crate_hall", hall_target), "Hallway: the push is accepted")
+	safety = 0
+	while safety < 3000 and gs.is_pushing("aster"):
+		safety += 1
+		instance.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+	_assert_equals(str(grid.world_to_grid(gs.get_physics_position("crate_hall"))), str(hall_target),
+		"Hallway: the crate is pushed down the 1-wide corridor to the far room")
+
+	# (C) The dead bend: no room to get behind the crate for the turn — plan empty, command refuses,
+	# crate unmoved ("if there is not enough space, the operation does not occur").
+	var bend_before: Vector3 = gs.get_physics_position("crate_bend")
+	var bend_target: Vector2i = grid.world_to_grid(anchors["bend_impossible"])
+	gs.snap_character_to("aster", Vector3(11.5, 0.0, 8.5))
+	_assert_true(gs.plan_push_for("aster", "crate_bend", bend_target).is_empty(),
+		"Dead bend: the planner finds NO way around the corner")
+	_assert_true(not gs.command_push_object("aster", "crate_bend", bend_target),
+		"Dead bend: the push command refuses")
+	instance.headless_advance(1.0, 0.1)
+	_assert_true(gs.get_physics_position("crate_bend").distance_to(bend_before) < 0.01,
+		"Dead bend: the crate did not move")
+	# But pushing it ALONG the straight leg still works (the bend is the only impossibility).
+	_assert_true(not gs.plan_push_for("aster", "crate_bend", grid.world_to_grid(anchors["crate_bend"]) + Vector2i(1, 0)).is_empty(),
+		"Dead bend: pushing along the straight leg is still possible")
+
 	instance.queue_free()
 	await get_tree().process_frame
 

@@ -40,6 +40,7 @@ const KIND_EXOCYTOSE_ITEM := &"exocytose_item"
 const KIND_REGISTER_PHYSICS_OBJECT := &"register_physics_object"
 const KIND_UNREGISTER_PHYSICS_OBJECT := &"unregister_physics_object"
 const KIND_THROW_PHYSICS_OBJECT := &"throw_physics_object"
+const KIND_PUSH_OBJECT := &"push_object"  # Sokoban push: char walks behind the object and shoves it cell-by-cell to a target
 const KIND_APPLY_AREA_IMPULSE := &"apply_area_impulse"
 
 # --- Pendulum commands ---
@@ -98,6 +99,7 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_REGISTER_PHYSICS_OBJECT,
 	KIND_UNREGISTER_PHYSICS_OBJECT,
 	KIND_THROW_PHYSICS_OBJECT,
+	KIND_PUSH_OBJECT,
 	KIND_APPLY_AREA_IMPULSE,
 	KIND_REGISTER_PENDULUM,
 	KIND_UNREGISTER_PENDULUM,

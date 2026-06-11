@@ -16,6 +16,7 @@ const CHANNELS_HIDE_WINDOW_CHUNK_SCENE := preload("res://scenes/fragments/chunks
 const ENDO_JUNCTION_STRETCH_CHUNK_SCENE := preload("res://scenes/fragments/chunks/endo_junction_stretch_chunk.tscn")
 const GENERATED_STRETCH_CHUNK_SCENE := preload("res://scenes/fragments/chunks/generated_stretch_chunk.tscn")
 const REFUGE_RUN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/refuge_run_chunk.tscn")
+const PUSH_LAB_CHUNK_SCENE := preload("res://scenes/fragments/chunks/push_lab_chunk.tscn")
 const LURE_RELAY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/lure_relay_chunk.tscn")
 const SHOWCASE_GALLERY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/showcase_gallery_chunk.tscn")
 
@@ -34,6 +35,7 @@ const CHUNK_SCENES := {
 	"generated_stretch": GENERATED_STRETCH_CHUNK_SCENE,
 	"refuge_run": REFUGE_RUN_CHUNK_SCENE,
 	"lure_relay": LURE_RELAY_CHUNK_SCENE,
+	"push_lab": PUSH_LAB_CHUNK_SCENE,
 	"showcase_gallery": SHOWCASE_GALLERY_CHUNK_SCENE,
 }
 
@@ -48,6 +50,7 @@ const PREVIEW_ENTRIES := [
 	{"id": "overlay_lab", "chunk": "overlay_lab", "title": "Overlay Lab"},
 	{"id": "mother_ferrolure", "chunk": "mother_ferrolure", "title": "Mother Flure"},
 	{"id": "lure_relay", "chunk": "lure_relay", "title": "Ferrolure Relay"},
+	{"id": "push_lab", "chunk": "push_lab", "title": "Push Lab"},
 	{"id": "channels_rhythm", "chunk": "channels_rhythm", "title": "Channels Rhythm Lane"},
 	{"id": "channels_hide_window", "chunk": "channels_hide_window", "title": "Channels Hide Window"},
 	{"id": "survival_range", "chunk": "survival_range", "title": "Shelter-To-Shelter Range"},
@@ -122,7 +125,7 @@ const STAMINA_REGEN := 10.0
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
 @export_enum("stacks", "rings", "lockout", "overlay_lab", "mother_ferrolure", "survival_range",
 	"channels_rhythm", "channels_hide_window", "endo_junction_stretch", "generated_stretch",
-	"refuge_run", "lure_relay", "showcase_gallery") var preview_chunk := "stacks"
+	"refuge_run", "lure_relay", "push_lab", "showcase_gallery") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 ## When true, boot into a fragment PICKER instead of loading a chunk directly. The single

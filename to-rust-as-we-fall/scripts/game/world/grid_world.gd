@@ -552,6 +552,87 @@ func _reconstruct_path(came_from: Dictionary, current: Vector2i, level: int = 0)
 		path.append(grid_to_world(cells[i], level))
 	return path
 
+# --- Sokoban push planning -------------------------------------------------
+# A character pushes an object one CARDINAL cell at a time, standing on the cell behind it; between
+# pushes it may walk around the object (which blocks its own cell while being repositioned around).
+# Classic consequence: a 1-wide hallway bend is unpushable — there's no room to get behind the new
+# direction. Pure grid logic, deterministic (ordered direction sets, BFS) — safe for replay.
+
+const _PUSH_DIRS: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+
+## Plan pushing the object from obj_cell to target_cell with the character starting at char_cell.
+## Returns {"steps": [{"dir", "obj_from", "obj_to", "char_push_cell"}...]} — steps in order, where
+## char_push_cell is where the character stands to make that push — or {} when impossible.
+func plan_push(obj_cell: Vector2i, char_cell: Vector2i, target_cell: Vector2i, level := 0) -> Dictionary:
+	if not is_walkable(target_cell.x, target_cell.y, {}, {}, level):
+		return {}
+	if obj_cell == target_cell:
+		return {"steps": []}
+	# BFS over (object cell, push direction used to get here). The character constraint folds in via
+	# reachability: to push along d the character must REACH obj-d from where the previous push left
+	# it (obj_from of that push), with the object's cell blocked.
+	var start_key := "%d,%d|s" % [obj_cell.x, obj_cell.y]
+	var queue: Array = [{"obj": obj_cell, "char": char_cell, "key": start_key}]
+	var came := {start_key: {}}
+	var iterations := 0
+	while not queue.is_empty() and iterations < width * height * 8:
+		iterations += 1
+		var cur: Dictionary = queue.pop_front()
+		var obj: Vector2i = cur["obj"]
+		var chr: Vector2i = cur["char"]
+		for d in _PUSH_DIRS:
+			var obj_to: Vector2i = obj + d
+			var push_cell: Vector2i = obj - d
+			if not is_walkable(obj_to.x, obj_to.y, {}, {}, level):
+				continue
+			if not is_walkable(push_cell.x, push_cell.y, {}, {}, level):
+				continue
+			if not _char_can_reach(chr, push_cell, obj, level):
+				continue
+			var nkey := "%d,%d|%d,%d" % [obj_to.x, obj_to.y, d.x, d.y]
+			if came.has(nkey):
+				continue
+			came[nkey] = {"prev": cur["key"], "dir": d, "obj_from": obj, "obj_to": obj_to, "char_push_cell": push_cell}
+			if obj_to == target_cell:
+				return {"steps": _reconstruct_push(came, nkey)}
+			# After the push the character stands where the object WAS.
+			queue.append({"obj": obj_to, "char": obj, "key": nkey})
+	return {}
+
+## Can the character walk from `from` to `to` with the object's cell treated as a wall?
+func _char_can_reach(from: Vector2i, to: Vector2i, obj_cell: Vector2i, level: int) -> bool:
+	if from == to:
+		return true
+	if to == obj_cell:
+		return false
+	var frontier: Array[Vector2i] = [from]
+	var seen := {from: true}
+	while not frontier.is_empty():
+		var c: Vector2i = frontier.pop_back()
+		for d in _PUSH_DIRS:
+			var n: Vector2i = c + d
+			if n == to:
+				return true
+			if seen.has(n) or n == obj_cell:
+				continue
+			if not is_walkable(n.x, n.y, {}, {}, level):
+				continue
+			seen[n] = true
+			frontier.append(n)
+	return false
+
+func _reconstruct_push(came: Dictionary, key: String) -> Array:
+	var steps: Array = []
+	var k := key
+	while came.has(k) and not (came[k] as Dictionary).is_empty():
+		var entry: Dictionary = came[k]
+		steps.push_front({
+			"dir": entry["dir"], "obj_from": entry["obj_from"],
+			"obj_to": entry["obj_to"], "char_push_cell": entry["char_push_cell"],
+		})
+		k = str(entry["prev"])
+	return steps
+
 ## Find all tiles of a given type. Returns array of Vector2i grid positions.
 func find_tiles(tile_type: int) -> Array[Vector2i]:
 	var result: Array[Vector2i] = []
