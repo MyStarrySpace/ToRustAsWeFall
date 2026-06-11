@@ -521,6 +521,9 @@ func _ready() -> void:
 			"--test-push-lab":
 				ran_test = true
 				await _test_push_lab()
+			"--playtest-fragments":
+				ran_test = true
+				await _playtest_fragments()
 			"--test-drink-partial-dwell":
 				ran_test = true
 				await _test_drink_partial_dwell()
@@ -17133,6 +17136,86 @@ func _test_push_lab() -> void:
 
 	instance.queue_free()
 	await get_tree().process_frame
+
+## A first-minute PLAYER pass over every fragment: boot it, read the surface, walk, poke the
+## interactables, and report what actually happens. Observational (no asserts) — findings feed
+## design/bug review. Not in --test-all.
+func _playtest_fragments() -> void:
+	_test_name = "Fragment Playtest"
+	var entries: Array = FragmentPreviewScript.PREVIEW_ENTRIES
+	for entry in entries:
+		var id := str(entry.get("id", ""))
+		print("
+========== [PLAYTEST] %s (%s) ==========" % [id, str(entry.get("title", ""))])
+		var packed := load("res://scenes/fragments/fragment_preview.tscn")
+		var instance: Node = packed.instantiate()
+		instance.set("preview_menu", false)
+		instance.set("preview_chunk", str(entry.get("chunk", id)))
+		if entry.has("config"):
+			instance.set("preview_chunk_config", entry.get("config"))
+		get_tree().root.add_child(instance)
+		for i in range(6):
+			await get_tree().process_frame
+		var gs = instance._game_state
+		var chunk = instance._active_chunk
+		if chunk == null or gs == null:
+			print("[PLAYTEST] %s: FAILED TO BOOT" % id)
+			instance.queue_free()
+			await get_tree().process_frame
+			continue
+		# 1) What the player reads.
+		print("  HELP: %s" % (str(chunk.get_scene_help()).left(140) if chunk.has_method("get_scene_help") else "(none)"))
+		var abilities: Array = chunk.get_preview_abilities() if chunk.has_method("get_preview_abilities") else []
+		var ab_names := []
+		for a in abilities:
+			ab_names.append("%s(%s)" % [str(a.get("display_name", a.get("id", "?"))), str(a.get("keybind", "?"))])
+		print("  ABILITIES: %s" % (", ".join(ab_names) if not ab_names.is_empty() else "(none)"))
+		print("  GRID: %s | nav state: %s" % ["yes" if gs.grid != null else "NO", str(gs.get_navigation_state().get("contract_id", "none"))])
+		# 2) Walk: move the active character two cells and see if it arrives.
+		var active := str(instance._active_char_id)
+		var start: Vector3 = gs.get_position(active)
+		gs.command_move_to_pos(active, start + Vector3(2.0, 0.0, 0.0))
+		var moved_ticks := 0
+		while gs.is_moving(active) and moved_ticks < 200:
+			moved_ticks += 1
+			instance.headless_advance(0.1, 0.05)
+			await get_tree().process_frame
+		var dist: float = gs.get_position(active).distance_to(start)
+		print("  WALK: moved %.2f units in %d ticks %s" % [dist, moved_ticks, "(OK)" if dist > 1.0 else "(STUCK?)"])
+		# 3) Poke interactables: what is there, and does clicking it do anything visible?
+		var pokes := 0
+		for n in instance.find_children("*", "", true, false):
+			if pokes >= 3 or not (n is Interactable):
+				continue
+			var it: Interactable = n
+			if not it.interaction_enabled:
+				print("  POKE: %s — disabled (gated)" % it.name)
+				continue
+			pokes += 1
+			var fired := [false]
+			var cb := func(): fired[0] = true
+			it.interacted.connect(cb)
+			it.interaction_requested.emit(it, it.global_position)
+			for i in range(160):
+				instance.headless_advance(0.1, 0.05)
+				await get_tree().process_frame
+				if fired[0]:
+					break
+			it.interacted.disconnect(cb)
+			print("  POKE: %s -> %s" % [it.name, "INTERACTED" if fired[0] else "walked but nothing fired (dwell/required-char gate?)"])
+		if pokes == 0:
+			print("  POKE: no enabled interactables found")
+		# 4) The chunk's own verdict surface.
+		if chunk.has_method("get_preview_state"):
+			var st: Dictionary = chunk.get_preview_state()
+			var keys := []
+			for k in ["phase", "failed", "complete", "route_phase", "crates"]:
+				if st.has(k):
+					keys.append("%s=%s" % [k, str(st[k])])
+			print("  STATE: %s" % (", ".join(keys) if not keys.is_empty() else str(st.keys())))
+		instance.queue_free()
+		await get_tree().process_frame
+	_assert_true(true, "playtest sweep completed")
 
 func _path_touches_risk(grid: GridWorld, path: Array) -> bool:
 	for wp in path:
