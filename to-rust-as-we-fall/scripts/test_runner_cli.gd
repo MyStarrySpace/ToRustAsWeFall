@@ -524,6 +524,9 @@ func _ready() -> void:
 			"--playtest-fragments":
 				ran_test = true
 				await _playtest_fragments()
+			"--test-wrong-character-feedback":
+				ran_test = true
+				await _test_wrong_character_feedback()
 			"--test-drink-partial-dwell":
 				ran_test = true
 				await _test_drink_partial_dwell()
@@ -877,6 +880,7 @@ func _run_all_tests() -> void:
 	_test_generated_grid()
 	_test_dodge_knockdown()
 	_test_preview_parked_bail()
+	await _test_wrong_character_feedback()
 	await _test_push_lab()
 	await _test_drink_partial_dwell()
 	_test_physics_objects()
@@ -17134,6 +17138,43 @@ func _test_push_lab() -> void:
 	_assert_true(gs.get_physics_position("crate_bend").distance_to(bend_start) > 0.5,
 		"The committed queued push actually moves the crate")
 
+	instance.queue_free()
+	await get_tree().process_frame
+
+## Walking the WRONG character onto a required-character interactable must produce visible feedback
+## (a thought naming who is needed) — found in the fragment playtest: the rejection was a silent
+## no-op and read as "the game is broken".
+func _test_wrong_character_feedback() -> void:
+	_test_name = "Wrong-Character Feedback"
+	var instance = await _instantiate_preview_chunk_and_wait("survival_range", 4)
+	if instance == null:
+		_assert_true(false, "survival_range preview instantiates")
+		return
+	var gs = instance._game_state
+	var seam: Interactable = instance.find_child("RangeSeamInteractable", true, false)
+	_assert_true(seam != null and seam.required_character == "endo", "The seam requires endo")
+	if seam == null:
+		instance.queue_free()
+		return
+	# Play it wrong: the ACTIVE character is not endo; walk them onto the seam and dwell.
+	instance._select_character("aster")
+	var fired := [false]
+	var cb := func(): fired[0] = true
+	seam.interacted.connect(cb)
+	gs.command_move_to_pos("aster", seam.global_position + Vector3(0.4, 0.0, 0.0))
+	for i in range(400):
+		instance.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+		if not gs.is_moving("aster") and i > 60:
+			break
+	for i in range(120):
+		instance.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+	seam.interacted.disconnect(cb)
+	_assert_true(not fired[0], "The wrong character cannot fire the seam")
+	var thought: String = str(instance._thought_label.text) if instance._thought_label != null else ""
+	_assert_true(thought.findn("endo") != -1,
+		"The rejection shows a thought naming the required character (got: '%s')" % thought)
 	instance.queue_free()
 	await get_tree().process_frame
 

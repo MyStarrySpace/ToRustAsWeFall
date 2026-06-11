@@ -758,6 +758,8 @@ func _connect_outline_feedback_sources(root: Node) -> void:
 func _connect_outline_feedback_source(source: Node) -> void:
 	if source == null:
 		return
+	if source.has_signal("interaction_rejected") and not source.is_connected("interaction_rejected", _on_interaction_rejected):
+		source.connect("interaction_rejected", _on_interaction_rejected)
 	if _outline_feedback_manager != null:
 		_outline_feedback_manager.call("bind_target", source)
 		_outline_feedback_manager.call("bind_interaction_controller", source)
@@ -1031,6 +1033,14 @@ func _update_fade_out(target_color: Color, duration: float = 2.0) -> void:
 	_fade_rect.color = Color(target_color.r, target_color.g, target_color.b, alpha)
 
 # --- Thought helpers ---
+
+## Walking the wrong character onto a required-character interactable says who is needed
+## instead of silently doing nothing.
+func _on_interaction_rejected(_interactable: Node, required_character: String) -> void:
+	var line := DialogueData.text("system.interact.wrong_character")
+	if line == "":
+		return
+	_show_thought(line.replace("{name}", required_character.capitalize()))
 
 func _show_thought(text: String) -> void:
 	# Dialogue takes priority: don't stack an ambient thought over a live line.

@@ -76,6 +76,8 @@ var _dwell_char_id := ""   # who armed the dwell (char_id of the body in range)
 var _dwell_pending := false  # in range but still walking — the dwell starts on arrival
 
 signal interacted()
+## The wrong character tried this (required_character mismatch) — hosts surface "who is needed".
+signal interaction_rejected(interactable: Node, required_character: String)
 signal outline_hovered(interactable: Node)
 signal outline_unhovered(interactable: Node)
 signal outline_selected(interactable: Node)
@@ -288,8 +290,12 @@ func _trigger(play_feedback := true) -> void:
 	# Unbound, the node guards locally.
 	if _game_state != null and data_id != "":
 		if not _game_state.trigger_interactable(data_id, active_character):
+			# Not a silent no-op when the cause is the wrong character: say who is needed.
+			if required_character != "" and active_character != "" and active_character != required_character:
+				interaction_rejected.emit(self, required_character)
 			return
 	elif required_character != "" and active_character != "" and active_character != required_character:
+		interaction_rejected.emit(self, required_character)
 		return
 
 	if one_shot:
