@@ -236,6 +236,10 @@ func unregister_character(id: String) -> void:
 				scheduler.cancel(handle)
 			_running.erase(id)
 		_cancel_movement(id)
+		if scheduler:
+			for other in characters.keys():
+				if str(other) != id:
+					scheduler.cancel_tag(_detection_pair_tag(id, str(other)))
 	characters.erase(id)
 	explored.erase(id)
 
@@ -704,7 +708,7 @@ func _start_movement(id: String, full_path: Array[Vector3], arrival_ticks: Array
 		_clear_reservations(id)
 		_reserve_parked(id, ch.grid_cell)
 		character_arrived.emit(id)
-		_recompute_all_detection_predictions()
+		_recompute_all_detection_predictions(id)
 		_recompute_physics_predictions()
 		return
 	var speed: float = ch.move_speed
@@ -736,7 +740,7 @@ func _start_movement(id: String, full_path: Array[Vector3], arrival_ticks: Array
 	# that the character is in motion again.
 	if is_running(id) and int(_running[id].get("tick_handle", 0)) == 0:
 		_schedule_running_tick(id)
-	_recompute_all_detection_predictions()
+	_recompute_all_detection_predictions(id)
 	_recompute_physics_predictions()
 	_recompute_pendulum_predictions()
 
@@ -749,7 +753,7 @@ func _cancel_movement(id: String) -> void:
 			scheduler.cancel(ch.movement.handle)
 		ch.movement = null
 	_clear_reservations(id)
-	_recompute_all_detection_predictions()
+	_recompute_all_detection_predictions(id)
 	_recompute_physics_predictions()
 	_recompute_pendulum_predictions()
 
@@ -1059,7 +1063,7 @@ func set_character_concealment(id: String, tier: int) -> void:
 	if int(characters[id].stats.get("concealment", CONCEAL_NONE)) == clamped:
 		return
 	characters[id].stats["concealment"] = clamped
-	_recompute_all_detection_predictions()
+	_recompute_all_detection_predictions(id)
 
 ## Concealed at all (tier >= 1) for reads; the bool setter maps to a FULL hide (tier 2).
 func is_character_hidden(id: String) -> bool:
@@ -1085,7 +1089,7 @@ func set_character_distracted(id: String, distracted: bool) -> void:
 	if bool(characters[id].stats.get("distracted", false)) == distracted:
 		return
 	characters[id].stats["distracted"] = distracted
-	_recompute_all_detection_predictions()
+	_recompute_all_detection_predictions(id)
 
 ## A detector's outer reach, after any distraction shrink — the base from which the target's
 ## concealment tier then carves the effective spotting range.
@@ -1108,16 +1112,24 @@ func _effective_detection_range(detector_outer: float, target_concealment: int) 
 
 # --- Predictive Detection ---
 
-func _recompute_all_detection_predictions() -> void:
+## Detection predictions are scheduled under a PER-PAIR tag, so a single character's move only
+## recomputes its own pairs (only_id) instead of every detector x target in the scene — the all-pairs
+## quadratic re-solve on every move was the hottest data-layer cost in crowded scenes.
+func _detection_pair_tag(a: String, b: String) -> String:
+	return "dp_%s|%s" % [a, b] if a < b else "dp_%s|%s" % [b, a]
+
+func _recompute_all_detection_predictions(only_id: String = "") -> void:
 	if not scheduler:
 		return
-	scheduler.cancel_tag("detection_predict")
 	var now := scheduler.get_current_tick()
 	var ids := characters.keys()
 	for i in range(ids.size()):
 		for j in range(i + 1, ids.size()):
 			var id_a: String = ids[i]
 			var id_b: String = ids[j]
+			if only_id != "" and id_a != only_id and id_b != only_id:
+				continue
+			scheduler.cancel_tag(_detection_pair_tag(id_a, id_b))
 			# Enemies don't see across floors: a target more than a floor's vertical gap away (e.g.
 			# the party crossing the bridge ABOVE the lower ecology) isn't spotted until it's on the
 			# same level. Recomputed on every move/level change, so detection resumes after a fall.
@@ -1135,13 +1147,13 @@ func _recompute_all_detection_predictions() -> void:
 				if t >= 0.0:
 					var det_id := id_a
 					var tgt_id := id_b
-					scheduler.schedule_at(t, func(): _on_detection_event(det_id, tgt_id), "detection_predict")
+					scheduler.schedule_at(t, func(): _on_detection_event(det_id, tgt_id), _detection_pair_tag(id_a, id_b))
 			if range_b > 0.0:
 				var t := _predict_detection_time(id_b, id_a, range_b, now)
 				if t >= 0.0:
 					var det_id := id_b
 					var tgt_id := id_a
-					scheduler.schedule_at(t, func(): _on_detection_event(det_id, tgt_id), "detection_predict")
+					scheduler.schedule_at(t, func(): _on_detection_event(det_id, tgt_id), _detection_pair_tag(id_a, id_b))
 
 func _on_detection_event(detector_id: String, target_id: String) -> void:
 	if not characters.has(detector_id) or not characters.has(target_id):
@@ -1325,7 +1337,7 @@ func dodge_roll(char_id: String, direction: Vector3) -> bool:
 
 	# Emit the RESOLVED roll direction (avoidance may have rotated it off the requested vector).
 	dodge_started.emit(char_id, Vector3(to.x - from.x, 0, to.z - from.z).normalized())
-	_recompute_all_detection_predictions()
+	_recompute_all_detection_predictions(char_id)
 	_recompute_physics_predictions()
 	_recompute_pendulum_predictions()
 	return true

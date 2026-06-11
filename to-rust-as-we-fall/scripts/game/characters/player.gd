@@ -57,6 +57,7 @@ var _hover_grid: MeshInstance3D
 const PREVIEW_COLOR := Color(0.55, 0.7, 0.85)  # muted blue-grey, distinct from the bright committed path
 var _path_preview: PathRenderer
 var _party_previews: Dictionary = {}   # char_id -> PathRenderer, one per member when group-moving
+var _hover_last_mouse := Vector2(-1e9, -1e9)
 var _preview_last_cell := Vector2i(0x7fffffff, 0x7fffffff)
 
 
@@ -504,7 +505,14 @@ func _update_hover_grid() -> void:
 	if vp == null:
 		_hover_grid.visible = false
 		return
-	_update_hover_from_screen(vp.get_mouse_position())
+	# A stationary cursor over a stationary character changes nothing — skip the per-frame
+	# raycast + preview work entirely (the raycast used to run 60x/sec regardless).
+	var mouse := vp.get_mouse_position()
+	var self_moving := game_state != null and char_id != "" and game_state.is_moving(char_id)
+	if mouse.is_equal_approx(_hover_last_mouse) and not self_moving:
+		return
+	_hover_last_mouse = mouse
+	_update_hover_from_screen(mouse)
 
 func _physics_process(delta: float) -> void:
 	if Engine.is_editor_hint():

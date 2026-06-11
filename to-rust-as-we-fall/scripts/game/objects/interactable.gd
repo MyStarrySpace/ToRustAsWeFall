@@ -86,11 +86,16 @@ signal dialogue_triggered(key: String, character: String)
 func _ready() -> void:
 	if interactable_id != "":
 		apply_interactable_spec(interactable_id)
-	body_entered.connect(_on_body_entered)
-	body_exited.connect(_on_body_exited)
-	mouse_entered.connect(_on_mouse_entered)
-	mouse_exited.connect(_on_mouse_exited)
-	input_event.connect(_on_input_event)
+	if not body_entered.is_connected(_on_body_entered):
+		body_entered.connect(_on_body_entered)
+	if not body_exited.is_connected(_on_body_exited):
+		body_exited.connect(_on_body_exited)
+	if not mouse_entered.is_connected(_on_mouse_entered):
+		mouse_entered.connect(_on_mouse_entered)
+	if not mouse_exited.is_connected(_on_mouse_exited):
+		mouse_exited.connect(_on_mouse_exited)
+	if not input_event.is_connected(_on_input_event):
+		input_event.connect(_on_input_event)
 	# Match packed-scene physics layers for script-created zones.
 	collision_layer = 4 if interaction_enabled else 0
 	collision_mask = 2 if interaction_enabled else 0

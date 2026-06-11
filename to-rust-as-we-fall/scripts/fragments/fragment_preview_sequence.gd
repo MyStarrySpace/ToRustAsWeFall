@@ -145,6 +145,7 @@ var _routing_mode := "safe"
 ## default — dodge isn't unlocked in every chunk, so attacks land. A chunk may default it on via
 ## preview_dodge_unlocked().
 var _preview_dodge_unlocked := false
+var _pushed_active_char_id := ""
 var _preview_interactables: Array = []
 var _active_chunk: Node3D
 var _preview_day := DEFAULT_DAY
@@ -375,9 +376,13 @@ func _compute_speed() -> float:
 	return 10.0 if Input.is_key_pressed(KEY_F) else 1.0
 
 func _on_process(delta: float, spd: float) -> void:
-	for interactable in _preview_interactables:
-		if interactable != null and is_instance_valid(interactable):
-			interactable.active_character = _active_char_id
+	# Push active_character only when it changed (or the interactable set was rebuilt) — the
+	# unconditional per-frame write touched every interactable 60x/sec for nothing.
+	if _active_char_id != _pushed_active_char_id:
+		_pushed_active_char_id = _active_char_id
+		for interactable in _preview_interactables:
+			if interactable != null and is_instance_valid(interactable):
+				interactable.active_character = _active_char_id
 
 	if _preview_clock_running and spd > 0.0:
 		_advance_preview_clock(delta * spd)

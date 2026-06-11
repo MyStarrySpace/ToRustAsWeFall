@@ -18,6 +18,7 @@ var default_color := Color(1.0, 0.7, 0.3)
 
 var _renderers := {}              # char_id -> PathRenderer
 var _nodes := {}                  # char_id -> Node3D (cached anchor; re-found if freed)
+var _scan_after := {}             # char_id -> frame number gating the next full-tree rescan
 
 func setup(state: GameState, root: Node = null) -> void:
 	game_state = state
@@ -38,8 +39,10 @@ func _process(_delta: float) -> void:
 		pr.visible = not suppressed
 		if suppressed:
 			continue
-		# Re-bind every frame: cheap, and it survives late node creation + chunk reloads.
-		pr.setup(game_state, char_id, _color_for(node), node)
+		# Bind on creation and when the anchor node changes (late creation / chunk reloads), not
+		# every frame — the per-frame full re-setup was redundant field churn.
+		if pr.game_state != game_state or pr.char_id != char_id or pr.anchor != node:
+			pr.setup(game_state, char_id, _color_for(node), node)
 		pr.set_running(game_state.is_running(char_id))
 
 func _color_for(node: Node) -> Color:
@@ -51,6 +54,13 @@ func _node_for(char_id: String) -> Node3D:
 	var cached = _nodes.get(char_id)
 	if cached != null and is_instance_valid(cached):
 		return cached
+	# Throttle missing-node rescans: a character with no scene node (pure data char) would otherwise
+	# trigger a FULL tree scan every frame, forever.
+	var next_scan := int(_scan_after.get(char_id, 0))
+	var frame := Engine.get_process_frames()
+	if cached == null and _nodes.has(char_id) and frame < next_scan:
+		return null
+	_scan_after[char_id] = frame + 30
 	var found := _find_node(char_id)
 	_nodes[char_id] = found
 	return found
