@@ -146,6 +146,40 @@ func _room_model_meshes(object_name: String) -> Array:
 		meshes.append(m)
 	return meshes
 
+## Combined world-space AABB of a named room-model object (zero-size when absent).
+func _room_object_aabb(object_name: String) -> AABB:
+	var combined := AABB()
+	var first := true
+	for m in _room_model_meshes(object_name):
+		var mi := m as MeshInstance3D
+		if mi == null or mi.mesh == null or not mi.is_inside_tree():
+			continue
+		var ab: AABB = mi.global_transform * mi.mesh.get_aabb()
+		combined = ab if first else combined.merge(ab)
+		first = false
+	return combined
+
+## A room-model object counts as PLACED once its instance carries a real transform (what dragging it
+## in the editor produces). The separated exports ship identity transforms piled at the origin —
+## deriving anchors from an unplaced pile would drag interactions to the wrong spots.
+func _room_object_placed(object_name: String) -> bool:
+	var room := find_child("AsterRoom", true, false)
+	if room == null:
+		return false
+	var obj := room.find_child(object_name, true, false) as Node3D
+	return obj != null and not obj.transform.is_equal_approx(Transform3D.IDENTITY)
+
+## Interaction anchors FOLLOW the room model: prefer the PLACED model object's center, then the
+## authored marker, then the grid fallback — so repositioning furniture in aster_room.tscn
+## repositions its interactions with zero marker re-authoring.
+func _model_or_marker(object_name: String, marker_name: String, fallback_position: Vector3) -> Vector3:
+	if _use_room_model() and _room_object_placed(object_name):
+		var ab := _room_object_aabb(object_name)
+		if ab.size != Vector3.ZERO:
+			var c := ab.get_center()
+			return Vector3(c.x, ab.position.y, c.z)  # ground-level under the object's center
+	return _placement_or_position(marker_name, fallback_position)
+
 func _placement_node(marker_name: String) -> Node3D:
 	var root := get_node_or_null(PLACEMENT_ROOT)
 	if root == null:
@@ -505,8 +539,13 @@ func _add_desk(parent: Node3D, pos: Vector3) -> void:
 	if _use_room_model():
 		var model_meshes := _room_model_meshes("Desk")
 		if not model_meshes.is_empty():
-			_create_graybox_outline_target(parent, "RoomTargetDesk",
-				pos + Vector3(0.0, 0.75, -0.1), Vector3(2.4, 1.2, 1.8), model_meshes, "desk", 1.45)
+			# Centre + size from the PLACED model, so the hover/proximity volume follows the furniture.
+			# An unplaced (identity, origin-piled) desk keeps the graybox anchor for its volume.
+			var ab := _room_object_aabb("Desk")
+			var placed := _room_object_placed("Desk") and ab.size != Vector3.ZERO
+			var center := ab.get_center() if placed else pos + Vector3(0.0, 0.75, -0.1)
+			var size := (ab.size + Vector3(0.4, 0.4, 0.4)) if placed else Vector3(2.4, 1.2, 1.8)
+			_create_graybox_outline_target(parent, "RoomTargetDesk", center, size, model_meshes, "desk", 1.45)
 			return
 	var meshes: Array = []
 	# Desktop surface
@@ -722,13 +761,16 @@ func _build_terminal() -> void:
 	var term_pos := Vector3(3, 0, 0)
 	if not term_cells.is_empty():
 		term_pos = _placement_or_grid("TerminalAnchor", term_cells[0], 0.0)
+	# The terminal lives ON the desk: with the room model active it follows the placed desk.
+	term_pos = _model_or_marker("Desk", "TerminalAnchor", term_pos)
 
 	if not Engine.is_editor_hint():
 		_terminal = preload("res://scenes/game/interactable.tscn").instantiate()
 		_terminal.name = "Terminal"
 		_terminal.description = "Forecasting Terminal"
 		_terminal.apply_interactable_spec("aster.terminal")
-		_terminal.position = _local_for_parent(self, _placement_or_position("TerminalInteract", term_pos + Vector3(0, 0.8, 0)))
+		_terminal.position = _local_for_parent(self, term_pos + Vector3(0, 0.8, 0) if _room_object_placed("Desk")
+			else _placement_or_position("TerminalInteract", term_pos + Vector3(0, 0.8, 0)))
 		add_child(_terminal)
 		_terminal.interacted.connect(_on_terminal_interacted)
 		_set_room_target_interaction_delegate(find_child("RoomTargetDataDisplays", true, false), _terminal)
