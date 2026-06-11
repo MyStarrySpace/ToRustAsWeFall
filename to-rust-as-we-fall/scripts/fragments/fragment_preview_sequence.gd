@@ -2003,18 +2003,10 @@ func _apply_dodge_setting() -> void:
 ## node only), and the others are carried by that move, not their own clicks. Single select: just the
 ## active character moves. Mirrors the elevator's _apply_character_control_selection.
 func _apply_group_control() -> void:
-	var group_control := _selected_char_ids.size() > 1
-	if group_control and _game_state != null:
-		_game_state.set_party(_selected_char_ids.duplicate())
+	var nodes := {}
 	for char_id in CHARACTER_IDS:
-		var node = _characters.get(char_id, null)
-		if node == null:
-			continue
-		var is_active: bool = char_id == _active_char_id
-		if node.has_method("set_move_enabled"):
-			node.call("set_move_enabled", is_active)
-		if "group_move" in node:
-			node.set("group_move", group_control and is_active)
+		nodes[char_id] = _characters.get(char_id, null)
+	_apply_party_control(nodes, _selected_char_ids, _active_char_id, _selected_char_ids.size() > 1)
 
 func _sanitize_selected_ids(selected_ids: Array) -> Array[String]:
 	var sanitized: Array[String] = []

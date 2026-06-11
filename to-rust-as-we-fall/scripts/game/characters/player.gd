@@ -152,6 +152,9 @@ func _ready() -> void:
 	# Connect arrival signal if GameState is available
 	if game_state:
 		game_state.character_arrived.connect(_on_gs_arrived)
+		if game_state.has_signal("knockdown_started"):
+			game_state.knockdown_started.connect(_on_knockdown_started)
+			game_state.knockdown_ended.connect(_on_knockdown_ended)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
@@ -476,6 +479,23 @@ func _set_blocked_cursor(on: bool) -> void:
 	_blocked_cursor_on = on
 	Input.set_custom_mouse_cursor(BLOCKED_CURSOR if on else null)
 
+## The exhaustion fall (cosmetic only — the knockdown WINDOW is data-layer state): the body tips
+## over when the failed dodge drops it and picks itself up when the window ends. Tweens never gate
+## any transition; the data layer ends the knockdown on the scheduler regardless of the visual.
+func _on_knockdown_started(id: String) -> void:
+	if id != char_id or _mesh == null:
+		return
+	var tw := create_tween()  # @rendering_only
+	tw.tween_property(_mesh, "rotation:x", PI * 0.45, 0.22).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(_mesh, "position:y", _mesh.position.y - 0.25, 0.22).set_ease(Tween.EASE_OUT)
+
+func _on_knockdown_ended(id: String) -> void:
+	if id != char_id or _mesh == null:
+		return
+	var tw := create_tween()  # @rendering_only
+	tw.tween_property(_mesh, "rotation:x", 0.0, 0.4).set_ease(Tween.EASE_IN_OUT)
+	tw.parallel().tween_property(_mesh, "position:y", _mesh.position.y + 0.25, 0.4).set_ease(Tween.EASE_IN_OUT)
+
 ## The character's own colour for its preview ribbon (falls back to the muted preview grey).
 func _character_color() -> Color:
 	if "color" in self and self.color is Color:
@@ -490,7 +510,17 @@ func _clear_path_preview() -> void:
 
 ## The scene node for a character id (this player, or a sibling party member) — used to anchor each
 ## member's preview ribbon to that member and tint it their colour.
+var _char_node_cache := {}
+
 func _find_char_node(cid: String) -> Node3D:
+	var cached = _char_node_cache.get(cid)
+	if cached != null and is_instance_valid(cached):
+		return cached
+	var found := _find_char_node_uncached(cid)
+	_char_node_cache[cid] = found
+	return found
+
+func _find_char_node_uncached(cid: String) -> Node3D:
 	if cid == char_id:
 		return self
 	var root := get_parent()

@@ -645,8 +645,33 @@ func _inject_scheduler_into_interactables(node: Node) -> void:
 		node.call("set_scheduler", _scheduler)
 		if node.has_method("set_movement_authority"):
 			node.call("set_movement_authority", _game_state)
+	# Pushables: a PushTarget's queue request routes to the player's queued-push mode (signal
+	# plumbing only — the target consumes its own click).
+	if node.has_signal("push_queue_requested") and not node.push_queue_requested.is_connected(_on_push_queue_requested):
+		node.push_queue_requested.connect(_on_push_queue_requested)
 	for child in node.get_children():
 		_inject_scheduler_into_interactables(child)
+
+func _on_push_queue_requested(obj_id: String) -> void:
+	if _player != null and _player.has_method("queue_push"):
+		_player.call("queue_push", obj_id)
+
+## The ONE party-control invariant, shared by every scene that lets the player select characters:
+## the ACTIVE character's node is the only move-enabled one and (in group control) the only
+## group_move driver; a multi-selection becomes the GameState party. Sequences pass their own
+## node map — the lookup is scene-specific, the wiring must not be.
+func _apply_party_control(nodes: Dictionary, selected_ids: Array, active_id: String, group_control: bool) -> void:
+	if group_control and _game_state != null:
+		_game_state.set_party(selected_ids.duplicate())
+	for cid in nodes.keys():
+		var node = nodes[cid]
+		if node == null:
+			continue
+		var is_active: bool = str(cid) == active_id
+		if node.has_method("set_move_enabled"):
+			node.call("set_move_enabled", is_active)
+		if "group_move" in node:
+			node.set("group_move", group_control and is_active)
 
 ## Reveal-all overlay handler: while the player holds the highlight action (SHIFT), every
 ## interactable in the scene shows its label so the player can see what's interactable. A scene

@@ -171,6 +171,19 @@ func _process(delta: float) -> void:
 			var t := clampf(_dwell_progress / dwell_time, 0.0, 1.0)
 			_progress_mat.albedo_color.a = t * 0.3
 
+	# Self-gate: with no label pulsing, no dwell running, and no ring decaying, there is nothing
+	# per-frame to do — stop processing until a state change re-enables it (a scene full of idle
+	# interactables used to run all their _process bodies every frame).
+	if not _frame_work_pending():
+		set_process(false)
+
+func _frame_work_pending() -> bool:
+	if _tutorial_label_3d != null and _tutorial_label_3d.visible:
+		return true
+	if _uses_hold_timer() and _player_in_range:
+		return true
+	return _dwell_progress > 0.0
+
 ## Inject the gameplay scheduler so dwell completion is a scheduled event that
 ## pauses with gameplay. Without it, dwell falls back to the per-frame wall clock.
 func set_scheduler(scheduler_ref) -> void:
@@ -316,6 +329,7 @@ func _resolve_dialogue_key() -> String:
 	return ""
 
 func show_tutorial_label() -> void:
+	set_process(true)  # the label pulse is per-frame work
 	if _tutorial_label_3d and interaction_enabled:
 		_tutorial_label_3d.visible = true
 		_tutorial_label_3d.modulate.a = 0.0
@@ -349,6 +363,7 @@ func _on_body_entered(body: Node3D) -> void:
 	if _used or not interaction_enabled:
 		return
 	if body is CharacterBody3D:
+		set_process(true)  # dwell ring / label work resumes
 		_player_in_range = true
 		_dwell_char_id = str(body.get("char_id")) if body.get("char_id") != null else ""
 		_dwell_progress = 0.0
@@ -509,6 +524,8 @@ func _refresh_feedback() -> void:
 		_outline_target.set_highlight(want)
 
 func set_interaction_enabled(active: bool) -> void:
+	if active:
+		set_process(true)  # re-evaluate per-frame work (self-disables when idle)
 	interaction_enabled = active
 	# Keep the data layer's enabled flag in sync so trigger guards + range queries
 	# stay accurate (no-op + no log when unchanged).

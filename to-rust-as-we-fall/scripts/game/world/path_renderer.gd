@@ -45,8 +45,11 @@ var anchor: Node3D
 var _running := false
 var _explicit_path: Array[Vector3] = []
 var _explicit_index := 0
-var _line: MeshInstance3D
+var _line: MeshInstance3D      # the live HEAD: one quad from the interpolated start to the first waypoint
+var _tail: MeshInstance3D      # the static TAIL: the fixed remaining waypoints (rebuilt only on change)
 var _mat: StandardMaterial3D
+var _tail_cache: Array[Vector3] = []
+var _points_cache: Array[Vector3] = []
 
 func _ready() -> void:
 	_line = MeshInstance3D.new()
@@ -63,6 +66,10 @@ func _ready() -> void:
 	_mat.cull_mode = BaseMaterial3D.CULL_DISABLED  # ribbon visible from either side
 	_line.material_override = _mat
 	add_child(_line)
+	_tail = MeshInstance3D.new()
+	_tail.top_level = true
+	_tail.material_override = _mat
+	add_child(_tail)
 
 ## Bind to a data-layer character. anchor_node (optional) makes the line start track
 ## that node's position instead of the data-layer position.
@@ -94,8 +101,45 @@ func _process(_delta: float) -> void:
 	var points := _remaining_points()
 	if points.size() < 2:
 		_line.mesh = null
+		_tail.mesh = null
+		_tail_cache = []
+		_points_cache = []
 		return
-	_line.mesh = _build_ribbon(points)
+	# PREVIEW ribbons are static while hovering: rebuild only when the path itself changes.
+	if preview_style:
+		if points != _points_cache:
+			_points_cache = points.duplicate()
+			_line.mesh = _build_ribbon(points)
+		_tail.mesh = null
+		return
+	# COMMITTED ribbons split: only the start point interpolates per tick, so the fixed remaining
+	# waypoints (the TAIL — quads, corner discs, end cap) rebuild only when a waypoint is consumed;
+	# the per-frame work is one HEAD quad from the live start to the first fixed waypoint.
+	var tail := points.slice(1)
+	if tail != _tail_cache:
+		_tail_cache = tail.duplicate()
+		_tail.mesh = _build_tail(tail)
+	_line.mesh = _build_head(points[0], tail[0])
+
+## The static remainder: segment quads between fixed waypoints, a disc at every waypoint (joint with
+## the head at tail[0], rounded corners, rounded end).
+func _build_tail(tail: Array[Vector3]) -> Mesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_normal(Vector3.UP)
+	var half := PATH_WIDTH * 0.5
+	for i in range(1, tail.size()):
+		_emit_quad(st, tail[i - 1], tail[i], half)
+	for point in tail:
+		_emit_disc(st, point, half)
+	return st.commit()
+
+func _build_head(start: Vector3, first: Vector3) -> Mesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_normal(Vector3.UP)
+	_emit_quad(st, start, first, PATH_WIDTH * 0.5)
+	return st.commit()
 
 ## Build a flat ground-ribbon along the polyline, so the path actually reads from the gameplay camera
 ## instead of a hairline. Committed paths are solid quads with a disc at every interior joint (no wedge

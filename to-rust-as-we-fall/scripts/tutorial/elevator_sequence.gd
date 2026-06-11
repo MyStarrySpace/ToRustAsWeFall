@@ -595,17 +595,8 @@ func _apply_character_control_selection() -> void:
 	# the click and issues a spread party move (distinct cells, no overlap), so only
 	# it is move-enabled — the other member is carried by the party move, not its
 	# own click. Single control: only the active character moves, no group move.
-	if group_control and _game_state != null:
-		_game_state.set_party(_sanitize_character_selection(_selected_character_ids))
-	for entry in [["peris", _peris_node], ["aster", _aster_node]]:
-		var cid: String = entry[0]
-		var node = entry[1]
-		if node == null:
-			continue
-		var is_active: bool = _active_character == cid
-		node.set_move_enabled(is_active)
-		if node.has_method("set") or "group_move" in node:
-			node.set("group_move", group_control and is_active)
+	_apply_party_control({"peris": _peris_node, "aster": _aster_node},
+		_sanitize_character_selection(_selected_character_ids), _active_character, group_control)
 
 func _multiselect_has_required_pair() -> bool:
 	return _selected_character_ids.has("peris") and _selected_character_ids.has("aster")
