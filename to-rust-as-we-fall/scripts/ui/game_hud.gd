@@ -21,6 +21,7 @@ var _stat_section: VBoxContainer
 var _control_section: HBoxContainer
 var _ability_section: VBoxContainer
 var _ordered_sections: Array[Control] = []
+var _hands_section: HBoxContainer
 var _section_separators: Array[VSeparator] = []
 var _time_container: HBoxContainer
 var _time_label: Label
@@ -169,6 +170,12 @@ func _build_bottom_bar() -> void:
 	_stat_section.add_theme_constant_override("separation", 3)
 	hbox.add_child(_stat_section)
 
+	# Hands: the bound character's two hand slots (one item per hand, GDD). Slot chips exist
+	# only while something is held, so the section auto-hides with the rest of the bar.
+	_hands_section = HBoxContainer.new()
+	_hands_section.add_theme_constant_override("separation", 4)
+	hbox.add_child(_hands_section)
+
 	# Center: control buttons
 	_control_section = HBoxContainer.new()
 	_control_section.add_theme_constant_override("separation", 6)
@@ -182,7 +189,7 @@ func _build_bottom_bar() -> void:
 
 	# Thin separators between populated groups; empty groups (and their
 	# separators) auto-hide so the bar only shows what a scene actually uses.
-	_ordered_sections = [_portrait_section, _stat_section, _control_section, _ability_section]
+	_ordered_sections = [_portrait_section, _stat_section, _hands_section, _control_section, _ability_section]
 	for i in range(1, _ordered_sections.size()):
 		var sep := VSeparator.new()
 		sep.add_theme_constant_override("separation", 10)
@@ -718,12 +725,23 @@ func bind_game_state(game_state: GameState, char_id: String, auto_toggle_running
 			_game_state.stat_changed.disconnect(_on_gs_stat_changed)
 		if _game_state.running_changed.is_connected(_on_gs_running_changed):
 			_game_state.running_changed.disconnect(_on_gs_running_changed)
+		for pair in [["item_picked_up", _on_gs_item_pair], ["item_dropped", _on_gs_item_pair],
+				["item_exocytosed", _on_gs_item_pair], ["item_endocytosed", _on_gs_item_triple],
+				["item_transferred", _on_gs_item_triple]]:
+			if _game_state.is_connected(pair[0], pair[1]):
+				_game_state.disconnect(pair[0], pair[1])
 	_game_state = game_state
 	_game_state_char_id = char_id
 	_auto_toggle_running = auto_toggle_running
 	if _game_state != null:
 		_game_state.stat_changed.connect(_on_gs_stat_changed)
 		_game_state.running_changed.connect(_on_gs_running_changed)
+		_game_state.item_picked_up.connect(_on_gs_item_pair)
+		_game_state.item_dropped.connect(_on_gs_item_pair)
+		_game_state.item_exocytosed.connect(_on_gs_item_pair)
+		_game_state.item_endocytosed.connect(_on_gs_item_triple)
+		_game_state.item_transferred.connect(_on_gs_item_triple)
+		refresh_hands()
 		# Prime the UI from current GameState values so the bars show real
 		# numbers even before the first change signal.
 		for stat_name in _stat_bars.keys():
@@ -735,6 +753,36 @@ func bind_game_state(game_state: GameState, char_id: String, auto_toggle_running
 ## Unbind from GameState on teardown so signals don't fire on freed HUDs.
 func unbind_game_state() -> void:
 	bind_game_state(null, "")
+
+func _on_gs_item_pair(_char_id: String, _item_id: String) -> void:
+	refresh_hands()
+
+func _on_gs_item_triple(_a: String, _b: String, _c: String) -> void:
+	refresh_hands()
+
+## Rebuild the bound character's hand-slot chips from GameState (one chip per HELD slot; a
+## two-handed item shows once). Empty hands leave the section childless, so it auto-hides.
+func refresh_hands() -> void:
+	if _hands_section == null:
+		return
+	for child in _hands_section.get_children():
+		child.queue_free()
+	if _game_state == null or _game_state_char_id == "" or not _game_state.characters.has(_game_state_char_id):
+		return
+	var hands: Array = _game_state.characters[_game_state_char_id].get("hands", [null, null])
+	var shown := {}
+	for slot in hands:
+		if slot == null or shown.has(slot):
+			continue
+		shown[slot] = true
+		var item: Dictionary = _game_state.items.get(slot, {})
+		var chip := PanelContainer.new()
+		var label := Label.new()
+		label.text = str(item.get("type", "item")).replace("_", " ").to_upper()
+		label.add_theme_font_size_override("font_size", 12)
+		chip.add_child(label)
+		chip.tooltip_text = "Held: %s" % str(item.get("type", slot))
+		_hands_section.add_child(chip)
 
 func _on_gs_stat_changed(char_id: String, stat: String, value: float) -> void:
 	if char_id != _game_state_char_id:

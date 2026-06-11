@@ -2122,6 +2122,7 @@ func _on_physics_arrival(obj_id: String) -> void:
 # and the night skip are DERIVED from them (scheduler-driven, no-emit) so replay rebuilds them.
 
 const REST_HP_PER_SEC := 1.0          # GDD: rest heals 1 HP/sec
+const REST_STAMINA_PER_SEC := 4.0     # sleep refreshes stamina fast (free — the ATP pays for the HP)
 const REST_SECONDS_PER_PIP := 25.0    # one ATP pip buys 25s of resting (~50 HP night = 2 pips)
 const REVIVE_SECONDS := 10.0          # downed at shelter + conscious ally nearby -> auto revive
 const REVIVE_ALLY_RADIUS := 3.0
@@ -2222,6 +2223,7 @@ func _on_rest_tick(char_id: String) -> void:
 	if not _resting.has(char_id) or not characters.has(char_id):
 		return
 	_apply_stat_delta(char_id, "hp", REST_HP_PER_SEC)
+	_apply_stat_delta(char_id, "stamina", REST_STAMINA_PER_SEC)
 	var state: Dictionary = _resting[char_id]
 	state["pip_seconds"] = float(state["pip_seconds"]) - 1.0
 	if get_stat(char_id, "hp") >= get_stat_cap(char_id, "hp"):
@@ -2404,6 +2406,9 @@ func _check_night_skip() -> void:
 				_apply_stat_delta(cid, "hp", heal * 0.5)
 			continue
 		_apply_stat_delta(cid, "hp", heal)
+		# A night's sleep means fresh legs: conscious sleepers wake at full stamina.
+		characters[cid].stats["stamina"] = get_stat_cap(cid, "stamina")
+		stat_changed.emit(cid, "stamina", get_stat_cap(cid, "stamina"))
 		_stop_rest(cid)
 	game_day += 1
 	game_time = DAWN_TIME

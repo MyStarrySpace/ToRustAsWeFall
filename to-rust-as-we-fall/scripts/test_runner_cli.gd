@@ -4200,6 +4200,34 @@ func _input_playthrough_peris1() -> void:
 	var gate_pos: Vector3 = gate.global_position
 	var radius := float(gate.get("interaction_radius"))
 
+	# The watering beat gates the logbook: walk to the can, dwell to pick it up (a REAL hand-slot
+	# item), carry it to the dry fern, dwell to water. All through synthetic clicks + proximity.
+	var gs_p1 = instance._game_state
+	var can_pos: Vector3 = instance.WATERING_CAN_POS
+	var plant_pos: Vector3 = instance.DRY_PLANT_POS
+	safety = 0
+	while safety < 6000 and str(gs_p1.items.get(instance._watering_can_item_id, {}).get("holder", "")) != "peris":
+		safety += 1
+		if safety % 40 == 1:
+			_synthetic_ground_click(instance, Vector3(can_pos.x, 0.0, can_pos.z))
+		instance.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+	_assert_true(str(gs_p1.items.get(instance._watering_can_item_id, {}).get("holder", "")) == "peris",
+		"Peris picks the watering can up into a hand slot (real input)")
+	safety = 0
+	while safety < 6000 and not instance._plant_watered:
+		safety += 1
+		if safety % 40 == 1:
+			_synthetic_ground_click(instance, Vector3(plant_pos.x, 0.0, plant_pos.z))
+		# Arriving at the fern fires the plant zone's exploration LINE, which holds the gameplay
+		# lane until acknowledged — click through it like a player or the dwell never ticks.
+		_pump_dialogue(instance._dialogue, 2.0)
+		instance.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+	_assert_true(instance._plant_watered, "Carrying the can to the dry fern waters it (real input)")
+	_assert_true(str(gs_p1.items.get(instance._watering_can_item_id, {}).get("location", "")) == "ground",
+		"The can goes back down after watering (hand slot frees)")
+
 	# Walk to the gate by clicking the floor near it (synthetic mouse through the
 	# real input pipeline). Advance scheduler time so the exploration lock lifts and
 	# the proximity dwell can fire.
@@ -4209,7 +4237,10 @@ func _input_playthrough_peris1() -> void:
 	while safety < 6000:
 		safety += 1
 		if not reached and safety % 40 == 1:
-			_synthetic_ground_click(instance, Vector3(gate_pos.x, 0.0, gate_pos.z))
+			# Click a stride SHORT of the gate: dead against the wall the ray can clip scenery from
+			# some approach angles; open floor + the proximity radius is what a player does anyway.
+			_synthetic_ground_click(instance, Vector3(gate_pos.x + 0.5, 0.0, gate_pos.z - 0.9))
+		_pump_dialogue(instance._dialogue, 2.0)
 		instance.headless_advance(0.1, 0.05)
 		await get_tree().process_frame
 		var d := Vector2(player.global_position.x - gate_pos.x,
@@ -4338,6 +4369,13 @@ func _synthetic_ground_click(instance: Node, world_pos: Vector3) -> void:
 ## the interaction controller walks the player over → triggers on arrival. We never
 ## call _trigger() ourselves, so the player must still reach the object. RIGHT-click is
 ## the interact command now (RTS-style); a LEFT-click would no longer interact.
+	# Park the synthetic mouse back at the viewport centre: a cursor left at the click position
+	# (often near or past the tiny headless viewport's edge) reads as EDGE-SCROLL to the camera,
+	# which then pans away every frame and all later unprojects miss the screen entirely.
+	var recenter := InputEventMouseMotion.new()
+	recenter.position = get_viewport().get_visible_rect().size * 0.5
+	Input.parse_input_event(recenter)
+
 func _synthetic_click_interactable(instance: Node, interactable: Node) -> void:
 	if interactable == null or not interactable.has_method("_on_input_event"):
 		return
@@ -17288,6 +17326,7 @@ func _test_shelter_rest() -> void:
 	gs.set_stat("peris", "hp", 30.0)
 	gs.set_stat("aster", "atp", 4.0)
 	gs.set_stat("peris", "atp", 4.0)
+	gs.set_stat("aster", "stamina", 10.0)
 	gs.command_rest("aster")
 	_assert_equals(gs.game_day, 1, "No skip while one conscious character is still up")
 	gs.command_rest("peris")
@@ -17296,6 +17335,8 @@ func _test_shelter_rest() -> void:
 	_assert_true(absf(gs.get_stat("aster", "hp") - minf(GameState.HP_MAX, 30.0 + 50.0 * 1.5)) < 1.5,
 		"A restful full night heals 50 x 1.5, capped at max (got %.1f)" % gs.get_stat("aster", "hp"))
 	_assert_true(not gs.is_resting("aster"), "Dawn ends the rest")
+	_assert_true(absf(gs.get_stat("aster", "stamina") - GameState.STAMINA_MAX) < 0.01,
+		"A night's sleep wakes you at FULL stamina (got %.1f)" % gs.get_stat("aster", "stamina"))
 
 	# --- Night skip with a downed member: bonus lost, downed-at-shelter revives with half ---
 	pair = make.call()
@@ -17332,6 +17373,12 @@ func _test_shelter_rest() -> void:
 	advance.call(sched, 10.5)
 	_assert_true(absf(gs.get_stat("aster", "hp") - 70.0) <= 1.5,
 		"Morning rest heals at the same 1 HP/sec (got %.1f)" % gs.get_stat("aster", "hp"))
+	gs.set_stat("aster", "hp", 60.0)
+	gs.set_stat("aster", "stamina", 20.0)
+	gs.command_rest("aster")
+	advance.call(sched, 5.5)
+	_assert_true(gs.get_stat("aster", "stamina") >= 20.0 + 5.0 * GameState.REST_STAMINA_PER_SEC - 5.0,
+		"Resting restores stamina per second too (got %.1f)" % gs.get_stat("aster", "stamina"))
 
 	# --- Field Restore: the no-shelter revive (long cast, stamina price, rooted caster) ---
 	pair = make.call()
