@@ -33,6 +33,9 @@ const HALLWAY_EXIT_CELL := Vector2i(8, 13)  # east edge of the real room, just i
 # Grid system
 var _grid: GridWorld
 var _renderer: GridRenderer
+# The room model binding — ALL model lookups/floor/occupancy flow through this (see
+# RoomModelBinder). The descriptor is the scene's single declaration of its modeled room.
+var _room_binder := RoomModelBinder.new()
 
 var _data_displays: Array[MeshInstance3D] = []
 
@@ -108,23 +111,8 @@ func _begin() -> void:
 					_game_state.get_position("aster").y, _grid.origin.y]), "yprobe")
 	_start_fade_in()
 
-## DATA-LAYER occupancy from the model: solid interior furniture blocks its grid cells so characters
-## path around it, not through it. Derived from the model bounds at boot (never serialized) — the
-## same scene build always derives the same blockers, so replay is unaffected. Interactions on
-## blocked furniture still work: click/walk destinations snap to the nearest walkable cell.
 func _apply_model_occupancy_to_grid() -> void:
-	if _grid == null or not _use_room_model():
-		return
-	for obj_name in ["Desk"]:
-		var ab := _room_object_aabb(obj_name)
-		if ab.size == Vector3.ZERO:
-			continue
-		var a := _grid.world_to_grid(ab.position + Vector3(0.2, 0, 0.2))
-		var b := _grid.world_to_grid(ab.position + ab.size - Vector3(0.2, 0, 0.2))
-		for cz in range(mini(a.y, b.y), maxi(a.y, b.y) + 1):
-			for cx in range(mini(a.x, b.x), maxi(a.x, b.x) + 1):
-				if _grid.is_in_bounds(cx, cz) and _grid.is_walkable(cx, cz):
-					_grid.add_dynamic_blocker(Vector2i(cx, cz), "model_" + obj_name)
+	_room_binder.apply_occupancy()
 
 ## Diagnostic: where each model object sits vs what the grid thinks of those cells.
 func _probe_model_vs_grid() -> void:
@@ -182,116 +170,33 @@ func _get_speed_recipients() -> Array:
 ## STRUCTURAL, not visual: the model's geometry drives props/occupancy/anchors even when a render
 ## toggle (outline post-process fallback) hides it — headless runs exercise the same data layer.
 func _use_room_model() -> bool:
-	return not show_graybox_room and find_child("AsterRoom", true, false) != null
+	return not show_graybox_room and _room_binder.active()
+
 
 ## All MeshInstance3Ds under the named object(s) of the room model. Multiple nodes can share a name
 ## (the composed export has eight "j-store" journals, two "Award N" plaques) — gather every match.
 func _room_model_meshes(object_name: String) -> Array:
-	return _room_model_meshes_multi([object_name])
+	return _room_binder.object_meshes([object_name])
+
 
 func _room_model_meshes_multi(object_names: Array) -> Array:
-	var room := find_child("AsterRoom", true, false)
-	if room == null:
-		return []
-	var meshes: Array = []
-	for obj in room.find_children("*", "", true, false):
-		if not _node_matches_object_name(String(obj.name), object_names):
-			continue
-		if obj is MeshInstance3D and not meshes.has(obj):
-			meshes.append(obj)
-		for m in obj.find_children("*", "MeshInstance3D", true, false):
-			if not meshes.has(m):
-				meshes.append(m)
-	return meshes
+	return _room_binder.object_meshes(object_names)
 
-## Godot auto-suffixes duplicate siblings on import ("j-store", "j-store2"... "mug3"), and the
-## surface splitter renames split objects to "<name>SurfaceTargets" — a model lookup for one
-## logical object must match ALL of those, and nothing else ("Painting 1" never matches
-## "Painting 12" because the suffix rule only applies to the digits Godot appends).
-func _node_matches_object_name(node_name: String, object_names: Array) -> bool:
-	for raw in object_names:
-		var object_name := str(raw)
-		if node_name == object_name or node_name == object_name + "SurfaceTargets":
-			return true
-		if node_name.begins_with(object_name):
-			var suffix := node_name.substr(object_name.length())
-			if suffix.is_valid_int():
-				return true
-	return false
-
-## A composed-model PROP for an exploration/interaction object: its real meshes + world bounds, or {}
-## when the model doesn't carry it (the graybox fallback builds instead).
 func _model_prop(object_names: Array) -> Dictionary:
-	if not _use_room_model():
+	if show_graybox_room:
 		return {}
-	var meshes := _room_model_meshes_multi(object_names)
-	if meshes.is_empty():
-		return {}
-	var combined := AABB()
-	var first := true
-	for m in meshes:
-		var mi := m as MeshInstance3D
-		if mi == null or mi.mesh == null or not mi.is_inside_tree():
-			continue
-		var ab: AABB = mi.global_transform * mi.mesh.get_aabb()
-		combined = ab if first else combined.merge(ab)
-		first = false
-	if first or not _aabb_reads_placed(combined):
-		return {}
-	return {
-		"meshes": meshes,
-		"center": combined.get_center(),
-		"size": combined.size + Vector3(0.35, 0.35, 0.35),
-	}
+	return _room_binder.prop(object_names)
 
-## Placement can be a node TRANSFORM (editor drag) or BAKED VERTICES (the composed export): an object
-## whose bounds sit away from the room origin is placed; a re-centered unplaced export piles at it.
-func _aabb_reads_placed(ab: AABB) -> bool:
-	var room := find_child("AsterRoom", true, false) as Node3D
-	var origin := room.global_position if room != null else Vector3.ZERO
-	var c := ab.get_center()
-	return Vector2(c.x - origin.x, c.z - origin.z).length() > 1.0
-
-## Combined world-space AABB of a named room-model object (zero-size when absent).
 func _room_object_aabb(object_name: String) -> AABB:
-	var combined := AABB()
-	var first := true
-	for m in _room_model_meshes(object_name):
-		var mi := m as MeshInstance3D
-		if mi == null or mi.mesh == null or not mi.is_inside_tree():
-			continue
-		var ab: AABB = mi.global_transform * mi.mesh.get_aabb()
-		combined = ab if first else combined.merge(ab)
-		first = false
-	return combined
+	return _room_binder.object_aabb(object_name)
 
-## A room-model object counts as PLACED once its instance carries a real transform (what dragging it
-## in the editor produces). The separated exports ship identity transforms piled at the origin —
-## deriving anchors from an unplaced pile would drag interactions to the wrong spots.
 func _room_object_placed(object_name: String) -> bool:
-	var room := find_child("AsterRoom", true, false)
-	if room == null:
-		return false
-	var obj := room.find_child(object_name, true, false) as Node3D
-	if obj == null:
-		return false
-	if not obj.transform.is_equal_approx(Transform3D.IDENTITY):
-		return true  # editor-dragged placement
-	return _aabb_reads_placed(_room_object_aabb(object_name))  # baked-vertex placement
+	return _room_binder.object_placed(object_name)
 
-## Interaction anchor resolution: the AUTHORED MARKER is the placement authority (the focus camera,
-## walk targets, and beat timing are tuned to it); a PLACED model object is the fallback for anchors
-## without a marker. The model always drives the highlight GEOMETRY (meshes/volumes) regardless.
 func _model_or_marker(object_name: String, marker_name: String, fallback_position: Vector3) -> Vector3:
-	var marker := _placement_node(marker_name)
-	if marker != null:
-		return marker.global_position
-	if _use_room_model() and _room_object_placed(object_name):
-		var ab := _room_object_aabb(object_name)
-		if ab.size != Vector3.ZERO:
-			var c := ab.get_center()
-			return Vector3(c.x, ab.position.y, c.z)  # ground-level under the object's center
-	return fallback_position
+	if show_graybox_room:
+		return _placement_or_position(marker_name, fallback_position)
+	return _room_binder.anchor(object_name, _placement_node(marker_name), fallback_position)
 
 func _placement_node(marker_name: String) -> Node3D:
 	var root := get_node_or_null(PLACEMENT_ROOT)
@@ -532,14 +437,16 @@ func _build_environment() -> void:
 	# Load grid from level data
 	_grid = GridWorld.new()
 	_grid.load_from_json("res://data/levels/aster_sim.json")
-	# The room model's floor slab tops out at ~0.15: every ground overlay (hover grid, path
-	# ribbons, click raycast) must ride THAT surface, not world zero, or it draws inside the floor.
-	_set_floor_surface(_grid, 0.15)
-	# Align the grid's CELL SEAMS with the room's visible floor tiles: the room AABB starts at
-	# (0.5, 0.6), so the interior cells (1..8, 1..14 inside the border walls) overlay the room
-	# exactly when the origin backs up one border cell from that corner.
-	_grid.origin.x = -0.5
-	_grid.origin.z = -0.4
+	# The scene's ONE declaration of its modeled room: floor surface (overlays/raycast ride it),
+	# grid seams aligned to the floor tiles, furniture occupancy, and the re-export guards.
+	_room_binder.setup(self, _grid, {
+		"root_name": "AsterRoom",
+		"floor_surface_y": 0.15,
+		"grid_origin_xz": Vector2(-0.5, -0.4),
+		"occupants": ["Desk"],
+		"gltf_path": "res://resources/models/aster-sim/room/aster-sim-room-hi-res.gltf",
+		"wired_materials": ["aster-sim-room-hi-res_1", "aster-sim-room-hi-res_8"],
+	})
 
 	# Grid renderer creates floor collision and tile meshes.
 	_renderer = GridRenderer.new()

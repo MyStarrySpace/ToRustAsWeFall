@@ -530,6 +530,9 @@ func _ready() -> void:
 			"--test-shelter-rest":
 				ran_test = true
 				_test_shelter_rest()
+			"--test-modeled-room-binder":
+				ran_test = true
+				await _test_modeled_room_binder()
 			"--test-rest-lab":
 				ran_test = true
 				await _test_rest_lab()
@@ -888,6 +891,7 @@ func _run_all_tests() -> void:
 	_test_preview_parked_bail()
 	await _test_wrong_character_feedback()
 	_test_shelter_rest()
+	await _test_modeled_room_binder()
 	await _test_rest_lab()
 	await _test_push_lab()
 	await _test_drink_partial_dwell()
@@ -17260,6 +17264,59 @@ func _test_rest_lab() -> void:
 	_assert_true(not gs.is_downed("endo"), "Dawn finds nobody down")
 	_assert_true(gs.get_stat("aster", "hp") > 60.0,
 		"The sleepers wake healed (aster %.1f)" % gs.get_stat("aster", "hp"))
+	instance.queue_free()
+	await get_tree().process_frame
+
+## RoomModelBinder: THE system for modeled scenes. The matching rules (import duplicate
+## suffixes, splitter renames, no false prefixes), the validation pass catching the silent
+## integration failure modes (tilted root, lost sidecar wiring, missing occupants), and the
+## LIVE aster scene validating clean — so drift in any future modeled room turns red here.
+func _test_modeled_room_binder() -> void:
+	_test_name = "Modeled Room Binder"
+	# --- Matching rules on a synthetic room ---
+	var root := Node3D.new()
+	root.name = "SyntheticRoot"
+	get_tree().root.add_child(root)
+	var room := Node3D.new()
+	room.name = "SynthRoom"
+	root.add_child(room)
+	for node_name in ["j-store", "j-store2", "j-store8", "Painting 1", "Painting 12", "DeskSurfaceTargets"]:
+		var m := MeshInstance3D.new()
+		m.name = node_name
+		m.mesh = BoxMesh.new()
+		room.add_child(m)
+	var binder := RoomModelBinder.new()
+	binder.setup(root, null, {"root_name": "SynthRoom"})
+	_assert_equals(binder.object_meshes(["j-store"]).size(), 3,
+		"'j-store' matches every import-suffixed duplicate")
+	_assert_equals(binder.object_meshes(["Painting 1"]).size(), 1,
+		"'Painting 1' never swallows 'Painting 12' (digit suffixes only apply to Godot's appends)")
+	_assert_equals(binder.object_meshes(["Desk"]).size(), 1,
+		"'Desk' matches the surface-splitter's '<name>SurfaceTargets' rename")
+	# --- Validation: the tilted-root bug goes loud ---
+	_assert_true(binder.validate().is_empty(), "an untilted synthetic room validates clean")
+	root.rotation.x = 0.0146
+	var problems := binder.validate()
+	_assert_true(problems.size() == 1 and "tilt" in problems[0],
+		"a tilted ancestor is reported (the floating-characters bug)")
+	root.rotation.x = 0.0
+	# --- Validation: declared occupants must exist ---
+	binder.setup(root, null, {"root_name": "SynthRoom", "occupants": ["Ghost"]})
+	problems = binder.validate()
+	_assert_true(problems.size() == 1 and "Ghost" in problems[0],
+		"a declared occupant missing from the model is reported")
+	root.queue_free()
+	await get_tree().process_frame
+
+	# --- The LIVE aster room validates clean (sidecar wiring + floor + identity root) ---
+	var scene := load("res://scenes/tutorial/aster_sim.tscn")
+	var instance: Node = scene.instantiate()
+	get_tree().root.add_child(instance)
+	for i in range(4):
+		await get_tree().process_frame
+	var live_problems: Array = instance._room_binder.validate()
+	_assert_true(live_problems.is_empty(),
+		"the aster room binder validates CLEAN (got: %s)" % str(live_problems))
 	instance.queue_free()
 	await get_tree().process_frame
 
