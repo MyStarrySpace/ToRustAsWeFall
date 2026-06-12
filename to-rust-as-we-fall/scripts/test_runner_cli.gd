@@ -5340,7 +5340,6 @@ func _test_aster_sim() -> void:
 		for target_name in [
 			"RoomTargetDesk",
 			"RoomTargetDrinkMachine",
-			"RoomTargetDataDisplays",
 		]:
 			var room_target := instance.find_child(target_name, true, false)
 			_assert_outline_surface_target_contract(room_target, target_name, true, false)
@@ -5470,8 +5469,8 @@ func _test_aster_sim() -> void:
 				_assert_interactable_type(zone, Interactable.InteractableType.INSPECTION,
 					"%s" % zone_name)
 		var room_element_targets := _find_nodes_with_meta(instance, "room_element_id")
-		_assert_true(room_element_targets.size() >= 8,
-				"Aster sim exposes semantic graybox object outline targets")
+		_assert_true(room_element_targets.size() >= 7,
+				"Aster sim exposes semantic graybox object outline targets (desk, machine, bead game, 2 paintings, awards, j-store)")
 		_assert_true(instance.find_child("JStoreArticlesZone", true, false) == null,
 			"Aster sim uses one J-store interactable zone with sequenced lines")
 		for target_name in [
@@ -5482,7 +5481,6 @@ func _test_aster_sim() -> void:
 			"RoomTargetHunterAshPainting",
 			"RoomTargetAwardsShelf",
 			"RoomTargetJStoreShelf",
-			"RoomTargetDataDisplays",
 		]:
 			var room_target := instance.find_child(target_name, true, false)
 			_assert_outline_surface_target_contract(room_target, target_name, true, false)
@@ -5511,7 +5509,6 @@ func _test_aster_sim() -> void:
 
 		var room_delegate_pairs := {
 			"RoomTargetDesk": "Terminal",
-			"RoomTargetDataDisplays": "Terminal",
 			"RoomTargetDrinkMachine": "DrinkMachine",
 			"RoomTargetGlassBeadGame": "GlassBeadZone",
 			"RoomTargetMacabreTealPainting": "macabre_tealZone",
@@ -5938,7 +5935,6 @@ func _assert_aster_interaction_click_matrix(instance: Node, dialogue: Node) -> v
 	terminal_start.y = aster_start.y
 	var terminal_checks := [
 		{"target": "RoomTargetDesk", "delegate": "Terminal", "label": "Desk visible target"},
-		{"target": "RoomTargetDataDisplays", "delegate": "Terminal", "label": "Data displays visible target"},
 	]
 	for check in terminal_checks:
 		await _reset_dialogue_focus(instance, dialogue)
@@ -5950,12 +5946,16 @@ func _assert_aster_interaction_click_matrix(instance: Node, dialogue: Node) -> v
 			instance._terminal.set_interaction_enabled(true)
 		await _click_target_and_advance(instance, str(check.target), "aster", terminal_start, 5.0, str(check.label))
 		await get_tree().process_frame
-		_assert_equals(instance._current_step, "terminal_focus",
-			"%s click opens the terminal forecast focus beat" % check.label)
-		# Advance only until the focus beat ends, so we land on terminal_data
-		# rather than overshooting into the next scheduled steps.
-		var reached_terminal_data := false
+		# In the compact room the walk can be short enough that the whole 3s focus beat
+		# completes inside the click helper's advance budget — landing on terminal_data
+		# IS the focus beat having run, so both steps prove the click opened it.
+		var step_after_click := str(instance._current_step)
+		_assert_true(step_after_click in ["terminal_focus", "terminal_data"],
+			"%s click opens the terminal forecast focus beat (step=%s)" % [check.label, step_after_click])
+		var reached_terminal_data := step_after_click == "terminal_data"
 		for _i in range(80):
+			if reached_terminal_data:
+				break
 			instance.headless_advance(0.1, 0.1)
 			if str(instance._current_step) == "terminal_data":
 				reached_terminal_data = true

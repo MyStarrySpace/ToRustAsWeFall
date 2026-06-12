@@ -74,9 +74,10 @@ func _build_characters() -> void:
 	chars.add_child(_ron)
 
 	if in_game:
-		# Camera east of the room looking west: the 14-unit-long room lays out
-		# across the screen, walls head-on (was (0, 8, 6) — down the long axis).
-		_setup_game_camera(_player, Vector3(6.5, 8, 0), true)
+		# Camera west of the room looking east: the 14-unit-long room lays out
+		# across the screen with the scene reading the right way around (the east
+		# vantage showed everything mirrored — flipped 180).
+		_setup_game_camera(_player, Vector3(-6.5, 8, 0), true)
 
 func _register_characters() -> void:
 	_game_state.grid = _grid
