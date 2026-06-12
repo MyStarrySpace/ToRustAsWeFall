@@ -4989,6 +4989,10 @@ func _test_interactable_highlight() -> void:
 	it.interaction_enabled = true
 	it.set_highlight(true)
 	_assert_true(it._feedback_emitting, "set_highlight(true) runs the highlight")
+	_assert_equals(InputLabels.action_label("command"), "Right-click",
+		"Prompts name the LIVE interact binding (right mouse after the RTS overhaul)")
+	_assert_equals(InputLabels.expand("{command} to inspect"), "Right-click to inspect",
+		"Label tokens substitute the live binding (xlsx labels stay truthful under rebinds)")
 	_assert_true(tgt.has_active_mesh_outline(), "the OBJECT's outline SHADER turns on (not a label/ring)")
 	_assert_true(not tgt.has_active_glow(), "HOVER shows the outline ONLY — the energy glow is reserved for a queued interaction")
 	# The glow belongs to a COMMITTED interaction, tinted the servicing character's color.

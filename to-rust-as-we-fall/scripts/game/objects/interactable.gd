@@ -125,7 +125,7 @@ func _ready() -> void:
 	add_child(_progress_ring)
 
 	_tutorial_label_3d = Label3D.new()
-	_tutorial_label_3d.text = tutorial_label if tutorial_label != "" else "Click"
+	_tutorial_label_3d.text = InputLabels.expand(tutorial_label) if tutorial_label != "" else InputLabels.action_label("command")
 	_tutorial_label_3d.font_size = 72
 	# fixed_size keeps the hint a constant on-screen size: it stays legible far away
 	# and never balloons when the follow-camera is close. no_depth_test draws it over
@@ -483,7 +483,7 @@ func set_data_identify(active: bool) -> void:
 func _identify_name() -> String:
 	if description != "":
 		return description
-	if tutorial_label != "" and tutorial_label != "Click":
+	if tutorial_label != "" and tutorial_label != "Click" and tutorial_label != InputLabels.action_label("command"):
 		return tutorial_label
 	return name.replace("_", " ").replace("Zone", "").strip_edges()
 
@@ -563,7 +563,7 @@ func apply_interactable_spec(spec_id: String) -> void:
 	if catalog_script != null:
 		catalog_script.apply_spec(self, spec_id)
 	if _tutorial_label_3d != null:
-		_tutorial_label_3d.text = tutorial_label if tutorial_label != "" else "Click"
+		_tutorial_label_3d.text = InputLabels.expand(tutorial_label) if tutorial_label != "" else InputLabels.action_label("command")
 	if _collision_shape != null and _collision_shape.shape is SphereShape3D:
 		(_collision_shape.shape as SphereShape3D).radius = interaction_radius
 	if is_inside_tree():
