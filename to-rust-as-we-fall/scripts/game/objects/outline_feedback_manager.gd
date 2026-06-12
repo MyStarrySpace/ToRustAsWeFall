@@ -89,7 +89,7 @@ func _on_target_selected(target: Node) -> void:
 	selected_target = target
 	_selection_token += 1
 	if target.has_method("begin_queued_feedback"):
-		target.call("begin_queued_feedback")
+		target.call("begin_queued_feedback", Vector3.ZERO, _queued_color_for(target))
 	if not _is_controller_tracking(target):
 		var token := _selection_token
 		var duration := _read_target_float(target, "selected_feedback_duration", 0.8)
@@ -97,6 +97,15 @@ func _on_target_selected(target: Node) -> void:
 			if token == _selection_token and selected_target == target and not _is_controller_tracking(target):
 				_complete_selected(target)
 		)
+
+## The queued tint comes from whichever bound controller is servicing this target — the
+## interactor's character color (the manager itself has no notion of characters).
+func _queued_color_for(target: Node) -> Color:
+	for controller in _bound_controllers.values():
+		if controller is Node and is_instance_valid(controller) \
+				and controller.get("active_target") == target and controller.has_method("_interactor_color"):
+			return controller.call("_interactor_color")
+	return Color(0, 0, 0, 0)
 
 func _on_controller_target_reached(target: Node) -> void:
 	if selected_target == target:

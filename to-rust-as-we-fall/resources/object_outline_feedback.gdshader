@@ -13,9 +13,16 @@ uniform bool use_source_alpha = false;
 uniform sampler2D source_albedo : source_color, filter_linear_mipmap;
 uniform vec4 source_albedo_tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 uniform float alpha_cutoff = 0.35;
+// Push the hull BEHIND the source mesh in depth: on thin geometry (paintings, screens) the
+// expanded far side would otherwise land in FRONT of the mesh and fill the whole face — the
+// bias makes the mesh always win the interior, leaving only the rim. Godot uses reversed-Z,
+// so farther = smaller z.
+uniform float depth_bias = 0.004;
 
 void vertex() {
 	VERTEX += NORMAL * outline_width;
+	POSITION = PROJECTION_MATRIX * (MODELVIEW_MATRIX * vec4(VERTEX, 1.0));
+	POSITION.z -= depth_bias * POSITION.w;
 }
 
 void fragment() {

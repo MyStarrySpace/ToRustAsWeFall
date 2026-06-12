@@ -194,19 +194,30 @@ func _room_model_meshes_multi(object_names: Array) -> Array:
 	if room == null:
 		return []
 	var meshes: Array = []
-	var lookups: Array = []
-	for object_name in object_names:
-		lookups.append(str(object_name))
-		# The import's surface splitter replaces a multi-surface mesh with "<name>SurfaceTargets".
-		lookups.append(str(object_name) + "SurfaceTargets")
-	for object_name in lookups:
-		for obj in room.find_children(str(object_name), "", true, false):
-			if obj is MeshInstance3D and not meshes.has(obj):
-				meshes.append(obj)
-			for m in obj.find_children("*", "MeshInstance3D", true, false):
-				if not meshes.has(m):
-					meshes.append(m)
+	for obj in room.find_children("*", "", true, false):
+		if not _node_matches_object_name(String(obj.name), object_names):
+			continue
+		if obj is MeshInstance3D and not meshes.has(obj):
+			meshes.append(obj)
+		for m in obj.find_children("*", "MeshInstance3D", true, false):
+			if not meshes.has(m):
+				meshes.append(m)
 	return meshes
+
+## Godot auto-suffixes duplicate siblings on import ("j-store", "j-store2"... "mug3"), and the
+## surface splitter renames split objects to "<name>SurfaceTargets" — a model lookup for one
+## logical object must match ALL of those, and nothing else ("Painting 1" never matches
+## "Painting 12" because the suffix rule only applies to the digits Godot appends).
+func _node_matches_object_name(node_name: String, object_names: Array) -> bool:
+	for raw in object_names:
+		var object_name := str(raw)
+		if node_name == object_name or node_name == object_name + "SurfaceTargets":
+			return true
+		if node_name.begins_with(object_name):
+			var suffix := node_name.substr(object_name.length())
+			if suffix.is_valid_int():
+				return true
+	return false
 
 ## A composed-model PROP for an exploration/interaction object: its real meshes + world bounds, or {}
 ## when the model doesn't carry it (the graybox fallback builds instead).
@@ -1022,7 +1033,7 @@ func _build_jstore_shelf(parent: Node3D) -> void:
 	var shelf_cell := Vector2i(14, 5)
 	var world := _placement_or_grid("JStoreShelf", shelf_cell, 0.0)
 	# Model journals + mugs: wrap the real shelf contents, skip the graybox set.
-	var prop := _model_prop(["j-store", "mug"])
+	var prop := _model_prop(["j-store", "mug", "Shelf"])
 	var meshes: Array = []
 	if prop.is_empty():
 		var shelf := MeshInstance3D.new()

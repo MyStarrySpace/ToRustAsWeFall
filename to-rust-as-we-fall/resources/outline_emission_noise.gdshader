@@ -17,9 +17,15 @@ uniform sampler2D noise_tex : repeat_enable, filter_linear;
 
 varying vec3 v_world;
 
+// Same depth trick as the crisp hull: bias the glow band behind the mesh so thin geometry shows a
+// rim of energy instead of an additive wash over its whole face.
+uniform float depth_bias = 0.004;
+
 void vertex() {
 	VERTEX += NORMAL * expand;
 	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	POSITION = PROJECTION_MATRIX * (MODELVIEW_MATRIX * vec4(VERTEX, 1.0));
+	POSITION.z -= depth_bias * POSITION.w;
 }
 
 // Two scrolling samples of the noise multiplied → a churning, morphing field rather than a flat
