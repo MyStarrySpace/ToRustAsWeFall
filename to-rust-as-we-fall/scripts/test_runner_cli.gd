@@ -4986,7 +4986,19 @@ func _test_interactable_highlight() -> void:
 	it.set_highlight(true)
 	_assert_true(it._feedback_emitting, "set_highlight(true) runs the highlight")
 	_assert_true(tgt.has_active_mesh_outline(), "the OBJECT's outline SHADER turns on (not a label/ring)")
-	_assert_true(tgt.has_active_glow(), "the morphing-noise emission glow runs (energy from the outline, not a fixed ring)")
+	_assert_true(not tgt.has_active_glow(), "HOVER shows the outline ONLY — the energy glow is reserved for a queued interaction")
+	# The glow belongs to a COMMITTED interaction, tinted the servicing character's color.
+	var queue_tint := Color(0.29, 0.62, 1.0)
+	tgt.begin_queued_feedback(Vector3.ZERO, queue_tint)
+	_assert_true(tgt.has_active_glow(), "a queued interaction runs the energy glow")
+	var glow_shell_mat: ShaderMaterial = null
+	for shell in tgt._glow_shells.values():
+		if shell is MeshInstance3D and is_instance_valid(shell):
+			glow_shell_mat = (shell as MeshInstance3D).material_override as ShaderMaterial
+	_assert_true(glow_shell_mat != null and Color(glow_shell_mat.get_shader_parameter("glow_color")).is_equal_approx(queue_tint),
+		"the queued glow tints to the SERVICING CHARACTER's color")
+	tgt.cancel_queued_feedback()
+	_assert_true(not tgt.has_active_glow(), "cancelling the queue ends the glow")
 	it.set_highlight(false)
 	_assert_true(not it._feedback_emitting, "set_highlight(false) stops the highlight")
 	_assert_true(not tgt.has_active_mesh_outline(), "the outline shader clears on release")
@@ -5576,21 +5588,16 @@ func _test_aster_sim() -> void:
 				"Clicking an interactable asks the character controller to move Aster")
 			_assert_equals(glass_zone.get("selected_feedback_color"), Color(1.0, 0.62, 0.12, 1.0),
 				"Interactable selection feedback color is editable")
-			_assert_true(glass_zone.find_child("SelectedParticles", true, false) != null,
-				"Clicking an interactable emits selected feedback particles")
-			var glass_particles := glass_zone.find_child("SelectedParticles", true, false) as GPUParticles3D
-			if glass_particles != null:
-				_assert_true(glass_particles.emitting and glass_particles.visible,
-					"Interactable selected feedback is visible while Aster walks to inspect")
+			# Particle sprays are GONE: the committed-interaction feedback is the character-colored
+			# energy glow on the object's outline target, active only while the move is queued/en route.
+			_assert_true(glass_zone.find_child("SelectedParticles", true, false) == null,
+				"Clicking an interactable spawns NO legacy particles (the queued glow replaced them)")
 			instance.headless_advance(5.0, 0.05)
 			await get_tree().process_frame
 			_assert_equals(str(dialogue.get("_current_text")), DialogueData.text("aster.sim_expand.glass_bead.line"),
 				"Inspection interactable fires when Aster reaches it in headless movement")
 			_assert_true(feedback_manager.call("get_selected_target") == null,
 				"Inspection interactable clears selected feedback after arrival")
-			if glass_particles != null:
-				_assert_true(not glass_particles.emitting and not glass_particles.visible,
-					"Interactable selected feedback clears already-spawned particles")
 			dialogue.clear()
 			dialogue.dialogue_finished.emit()
 			glass_zone.call("_on_mouse_exited")

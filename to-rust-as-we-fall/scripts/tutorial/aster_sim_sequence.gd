@@ -524,6 +524,11 @@ func _build_environment() -> void:
 	# The room model's floor slab tops out at ~0.15: every ground overlay (hover grid, path
 	# ribbons, click raycast) must ride THAT surface, not world zero, or it draws inside the floor.
 	_set_floor_surface(_grid, 0.15)
+	# Align the grid's CELL SEAMS with the room's visible floor tiles: the room AABB starts at
+	# (0.5, 0.6), so the interior cells (1..8, 1..14 inside the border walls) overlay the room
+	# exactly when the origin backs up one border cell from that corner.
+	_grid.origin.x = -0.5
+	_grid.origin.z = -0.4
 
 	# Grid renderer creates floor collision and tile meshes.
 	_renderer = GridRenderer.new()

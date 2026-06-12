@@ -7,10 +7,10 @@ shader_type spatial;
 render_mode unshaded, cull_front, depth_draw_never, blend_add, shadows_disabled, fog_disabled;
 
 uniform vec4 glow_color : source_color = vec4(1.0, 0.55, 0.2, 1.0);
-uniform float expand = 0.16;        // how far the glow reaches past the surface (the mask band)
+uniform float expand = 0.34;        // how far the glow reaches past the surface (the mask band)
 uniform float glow_strength = 2.2;
-uniform float edge_power = 2.0;     // how tightly the glow hugs the silhouette
-uniform float noise_scale = 2.6;    // world-space noise frequency
+uniform float edge_power = 1.4;     // how tightly the glow hugs the silhouette (low = wider, softer band)
+uniform float noise_scale = 1.0;    // world-space noise frequency (low = large grains)
 uniform float scroll_speed = 0.13;  // how fast the noise morphs
 uniform float intensity = 1.0;      // overall on/off + fade
 uniform sampler2D noise_tex : repeat_enable, filter_linear;
@@ -38,7 +38,9 @@ void fragment() {
 	float n = morph_noise(v_world);
 	// The visible band IS already the silhouette (depth-occluded within the mesh), so keep a base
 	// glow across the whole band + an edge emphasis — the noise then breaks it into living energy.
-	float mask = clamp((0.5 + 0.6 * edge) * n * 2.4, 0.0, 1.0) * intensity;
+	// Softer overall: a lower base keeps the inner band airy, and the squared edge term makes the
+	// reach FADE OUT toward the rim instead of cutting off at the hull boundary.
+	float mask = clamp((0.3 + 0.7 * edge * edge) * n * 1.7, 0.0, 1.0) * intensity;
 	ALBEDO = glow_color.rgb;
 	EMISSION = glow_color.rgb * glow_strength;
 	ALPHA = mask * glow_color.a;

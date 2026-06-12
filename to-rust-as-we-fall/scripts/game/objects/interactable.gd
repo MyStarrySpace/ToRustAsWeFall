@@ -309,8 +309,6 @@ func _trigger(play_feedback := true) -> void:
 	if _tutorial_label_3d:
 		_tutorial_label_3d.modulate.a = 0.0
 	if play_feedback:
-		if not _feedback_managed:
-			play_selected_feedback()
 		outline_selected.emit(self)
 
 	if dialogue_key != "":
@@ -407,8 +405,8 @@ func _on_input_event(_camera: Node, event: InputEvent, _event_position: Vector3,
 			outline_selected.emit(self)
 
 func play_selected_feedback() -> void:
-	if not selected_particles_enabled:
-		return
+	# Legacy burst API: the queued energy glow replaced the particle sprays entirely.
+	return
 	_ensure_selected_particles()
 	_selected_particles.amount = maxi(1, selected_particle_count)
 	_selected_particles.lifetime = maxf(0.1, selected_feedback_duration)
@@ -642,15 +640,19 @@ func _clear_particle_emitter(particles: GPUParticles3D) -> void:
 	particles.restart()
 	particles.emitting = false
 
-func begin_queued_feedback(_origin: Vector3 = Vector3.ZERO) -> void:
-	play_selected_feedback()
+## A meshless interactable's queued feedback lives on ITS OBJECT's outline target: the character-
+## colored outline + energy glow while the interaction is committed/en route. No particles.
+func begin_queued_feedback(origin: Vector3 = Vector3.ZERO, queue_color: Color = Color(0, 0, 0, 0)) -> void:
+	if _outline_target != null and is_instance_valid(_outline_target) and _outline_target.has_method("begin_queued_feedback"):
+		_outline_target.call("begin_queued_feedback", origin, queue_color)
 
 func complete_queued_feedback() -> void:
-	if _selected_particles != null:
-		_clear_particle_emitter(_selected_particles)
+	if _outline_target != null and is_instance_valid(_outline_target) and _outline_target.has_method("complete_queued_feedback"):
+		_outline_target.call("complete_queued_feedback")
 
 func cancel_queued_feedback() -> void:
-	complete_queued_feedback()
+	if _outline_target != null and is_instance_valid(_outline_target) and _outline_target.has_method("cancel_queued_feedback"):
+		_outline_target.call("cancel_queued_feedback")
 
 func get_outline_highlight_radius() -> float:
 	return outline_highlight_radius if outline_highlight_radius > 0.0 else interaction_radius

@@ -91,8 +91,8 @@ func get_interaction_delegate() -> Node:
 	return _valid_interaction_delegate()
 
 func play_selected_feedback(origin: Vector3 = Vector3.ZERO, use_world_origin := false) -> void:
-	if not selected_particles_enabled:
-		return
+	# Legacy burst API: the queued energy glow replaced the particle sprays entirely.
+	return
 	_ensure_selected_particles()
 	_selected_particles.amount = maxi(1, selected_particle_count)
 	_selected_particles.lifetime = maxf(0.1, selected_feedback_duration)
@@ -148,18 +148,16 @@ func set_hover_feedback(active: bool) -> void:
 	_hovered = active
 	set_highlight(active)
 
-## Highlight = the outline shader PLUS surface particles (the full duo), without the one-shot
-## click-select burst. Used by BOTH hover and the hold-SHIFT reveal so they read identically.
-## While a click-selection is active it leaves the (stronger) selected feedback in place.
+## Highlight = the crisp outline hull ONLY. Used by BOTH hover and the hold-SHIFT reveal so they
+## read identically. The energy GLOW is reserved for a QUEUED interaction (click-committed, en
+## route) — it never shows on mere hover. While a queue is active the stronger feedback stays.
 func set_highlight(active: bool) -> void:
 	if active:
 		if not _selected:
 			_apply_object_outline(hover_outline_color, hover_object_outline_width, 1.0)
-			_show_glow(true)
 		return
 	if not _selected:
 		_clear_object_outline()
-		_show_glow(false)
 
 func register_highlight_mesh(mesh_instance: MeshInstance3D) -> void:
 	if mesh_instance == null or _highlight_meshes.has(mesh_instance):
@@ -192,11 +190,15 @@ func has_active_outline_particles() -> bool:
 			return true
 	return false
 
-func begin_queued_feedback(_origin: Vector3 = Vector3.ZERO) -> void:
+## A click committed an interaction with this object: the character is walking toward it (or the
+## move is queued). The outline + energy glow tint to the SERVICING CHARACTER's color — the same
+## ownership language as the hover grid and path ribbon. Cleared on arrival/trigger/cancel.
+func begin_queued_feedback(_origin: Vector3 = Vector3.ZERO, queue_color: Color = Color(0, 0, 0, 0)) -> void:
 	_selected = true
 	_selection_token += 1
-	_apply_object_outline(selected_feedback_color, selected_object_outline_width, selected_object_glow_strength)
-	_show_glow(true)
+	var tint := queue_color if queue_color.a > 0.0 else selected_feedback_color
+	_apply_object_outline(tint, selected_object_outline_width, selected_object_glow_strength)
+	_show_glow(true, tint)
 
 func complete_queued_feedback() -> void:
 	_clear_queued_feedback()
@@ -212,13 +214,12 @@ func _clear_queued_feedback() -> void:
 	_selection_token += 1
 	if _debug_anchor != null:
 		_debug_anchor.visible = false
-	# Fall back to the hover highlight if still hovered, else clear outline + glow entirely.
+	# Fall back to the hover OUTLINE if still hovered; the glow always ends with the queue.
+	_show_glow(false)
 	if _hovered:
 		_apply_object_outline(hover_outline_color, hover_object_outline_width, 1.0)
-		_show_glow(true)
 	else:
 		_clear_object_outline()
-		_show_glow(false)
 
 func _apply_object_outline(color: Color, width: float, glow_strength: float) -> void:
 	if not object_outline_enabled:

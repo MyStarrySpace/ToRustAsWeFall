@@ -68,9 +68,22 @@ func _on_interaction_requested(target: Node, requested_position: Vector3 = Vecto
 	_interactor_id = _pick_interactor_for(target, active_target_position)
 	_set_target_active_character(target, _interactor_id)
 	if not _target_feedback_is_managed(target) and target.has_method("begin_queued_feedback"):
-		target.call("begin_queued_feedback", active_target_position)
+		target.call("begin_queued_feedback", active_target_position, _interactor_color())
 	if not _drive_interactor_to(active_target_position):
 		_complete_active_target()
+
+## The queued-feedback tint: the SERVICING character's color (same ownership language as the
+## hover grid / path ribbon), falling back to the host's color, then the legacy orange.
+func _interactor_color() -> Color:
+	if character != null and "color" in character:
+		if not ("char_id" in character) or String(character.char_id) == _interactor_id or _interactor_id == "":
+			return character.color
+		if character.has_method("_find_char_node"):
+			var node = character.call("_find_char_node", _interactor_id)
+			if node != null and "color" in node:
+				return node.color
+		return character.color
+	return Color(1.0, 0.62, 0.12)
 
 ## Resolve the servicing character. Single-character scenes (empty party) → the bound character, so
 ## nothing changes. Multi-character → game_state.pick_interactor over the party.
