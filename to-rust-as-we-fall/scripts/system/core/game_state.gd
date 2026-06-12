@@ -543,7 +543,9 @@ func get_stat_cap(id: String, stat: String) -> float:
 		return float(stats[cap_key])
 	match stat:
 		"hp": return HP_MAX
-		"stamina": return STAMINA_MAX
+		"stamina":
+			# Rest deprivation (no sleep last night) cuts the stamina ceiling until they sleep.
+			return STAMINA_MAX * (REST_DEPRIVED_STAMINA_FACTOR if _rest_deprived.has(id) else 1.0)
 		"atp": return ATP_MAX_PIPS
 	return 0.0
 
@@ -2169,11 +2171,98 @@ func is_resting(char_id: String) -> bool:
 	return _resting.has(char_id)
 
 ## Scripted day/night beats and the night skip set the clock; logged so replay carries time.
+## With a day length set, this anchors the RUNNING clock at the current tick.
 func set_game_clock(day: int, time: float) -> void:
 	_emit(GameEvent.KIND_SET_GAME_CLOCK, {"day": day, "time": time})
 	game_day = day
 	game_time = clampf(time, 0.0, 1.0)
+	_clock_base_tick = scheduler.get_current_tick() if scheduler else 0.0
 	game_clock_changed.emit(game_day, game_time)
+
+# --- The RUNNING day/night cycle -------------------------------------------
+# Time of day is a PURE FUNCTION of the scheduler tick (base anchor + elapsed/day_length), so the
+# cycle is fast-forward and replay invariant by construction. day_length 0 (the default) keeps the
+# legacy scripted-beats behavior: time only moves when a beat sets it.
+
+const DAY_PHASES := {"dawn": 0.05, "day": 0.12, "dusk": 0.42, "night": 0.55}
+const REST_DEPRIVED_STAMINA_FACTOR := 0.6  # the brutal next day: stamina cap cut until they sleep
+
+var day_length_seconds := 0.0
+var _clock_base_tick := 0.0
+var _rest_deprived := {}     # char_id -> true — derived from rollovers/skips, never serialized
+var _last_polled_day := 0
+
+signal day_rolled_over(new_day: int)
+signal rest_deprivation_changed(char_id: String, deprived: bool)
+
+## Enable the running clock. Logged: replay must run the same cycle (the debuff derives from it).
+func set_day_length(seconds: float) -> void:
+	_emit(GameEvent.KIND_SET_DAY_LENGTH, {"seconds": seconds})
+	day_length_seconds = maxf(0.0, seconds)
+	_clock_base_tick = scheduler.get_current_tick() if scheduler else 0.0
+	_last_polled_day = game_day
+	if day_length_seconds > 0.0 and scheduler:
+		scheduler.cancel_tag("game_clock_poll")
+		scheduler.schedule_after(0.5, _on_clock_poll, "game_clock_poll")
+
+## The live time of day [0..1): the anchored base plus scheduler time since the anchor.
+func get_time_of_day() -> float:
+	if day_length_seconds <= 0.0 or scheduler == null:
+		return game_time
+	var elapsed := (scheduler.get_current_tick() - _clock_base_tick) / day_length_seconds
+	return fposmod(game_time + elapsed, 1.0)
+
+func get_game_day() -> int:
+	if day_length_seconds <= 0.0 or scheduler == null:
+		return game_day
+	var elapsed := (scheduler.get_current_tick() - _clock_base_tick) / day_length_seconds
+	return game_day + int(floor(game_time + elapsed))
+
+func get_day_phase() -> String:
+	var t := get_time_of_day()
+	if t < DAY_PHASES["dawn"] or t >= DAY_PHASES["night"]:
+		return "night"
+	if t < DAY_PHASES["day"]:
+		return "dawn"
+	if t < DAY_PHASES["dusk"]:
+		return "day"
+	return "dusk"
+
+## A derived poll (scheduler-driven, so it pauses/fast-forwards with gameplay): detects the day
+## ROLLING OVER without a night skip — everyone conscious who is not asleep at that moment
+## carried through the night awake and wakes up rest-deprived.
+func _on_clock_poll() -> void:
+	if not scheduler or day_length_seconds <= 0.0:
+		return
+	var live_day := get_game_day()
+	if live_day > _last_polled_day:
+		_last_polled_day = live_day
+		for char_id in characters.keys():
+			var cid := str(char_id)
+			if is_downed(cid) or _resting.has(cid):
+				continue
+			_set_rest_deprived(cid, true)
+		day_rolled_over.emit(live_day)
+		game_clock_changed.emit(live_day, get_time_of_day())
+	scheduler.schedule_after(0.5, _on_clock_poll, "game_clock_poll")
+
+func is_rest_deprived(char_id: String) -> bool:
+	return _rest_deprived.has(char_id)
+
+func _set_rest_deprived(char_id: String, deprived: bool) -> void:
+	var was := _rest_deprived.has(char_id)
+	if deprived == was:
+		return
+	if deprived:
+		_rest_deprived[char_id] = true
+		# The cut cap clamps the CURRENT stamina too — the morning starts heavy.
+		_apply_stat_delta(char_id, "stamina", 0.0)
+		if get_stat(char_id, "stamina") > get_stat_cap(char_id, "stamina"):
+			characters[char_id].stats["stamina"] = get_stat_cap(char_id, "stamina")
+			stat_changed.emit(char_id, "stamina", get_stat_cap(char_id, "stamina"))
+	else:
+		_rest_deprived.erase(char_id)
+	rest_deprivation_changed.emit(char_id, deprived)
 
 ## Begin resting at a shelter. Gates (GDD): must be AT a shelter, conscious, hurt, and able to
 ## afford sleep - one ATP pip buys REST_SECONDS_PER_PIP seconds, charged up front. Movement
@@ -2379,7 +2468,7 @@ func _apply_revive(char_id: String) -> void:
 ## with nobody downed sleeps restfully (1.5x). Downed characters AT a shelter come up at 1 HP
 ## with half healing; downed characters left outside get nothing.
 func _check_night_skip() -> void:
-	if game_time < NIGHT_START:
+	if get_time_of_day() < NIGHT_START:
 		return
 	var conscious := 0
 	var any_downed := false
@@ -2393,7 +2482,7 @@ func _check_night_skip() -> void:
 			return
 	if conscious == 0:
 		return
-	var night_remaining: float = clampf((1.0 - game_time) / (1.0 - NIGHT_START), 0.0, 1.0)
+	var night_remaining: float = clampf((1.0 - get_time_of_day()) / (1.0 - NIGHT_START), 0.0, 1.0)
 	var heal: float = NIGHT_SKIP_MAX_HEAL * night_remaining
 	if not any_downed:
 		heal *= RESTFUL_BONUS
@@ -2406,12 +2495,15 @@ func _check_night_skip() -> void:
 				_apply_stat_delta(cid, "hp", heal * 0.5)
 			continue
 		_apply_stat_delta(cid, "hp", heal)
-		# A night's sleep means fresh legs: conscious sleepers wake at full stamina.
+		# A night's sleep clears rest deprivation and means fresh legs: full (restored) stamina.
+		_set_rest_deprived(cid, false)
 		characters[cid].stats["stamina"] = get_stat_cap(cid, "stamina")
 		stat_changed.emit(cid, "stamina", get_stat_cap(cid, "stamina"))
 		_stop_rest(cid)
 	game_day += 1
 	game_time = DAWN_TIME
+	_clock_base_tick = scheduler.get_current_tick() if scheduler else 0.0
+	_last_polled_day = game_day
 	game_clock_changed.emit(game_day, game_time)
 	night_skipped.emit(game_day)
 
@@ -3006,6 +3098,8 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			command_stop_rest(String(payload["char_id"]))
 		GameEvent.KIND_SET_GAME_CLOCK:
 			set_game_clock(int(payload["day"]), float(payload["time"]))
+		GameEvent.KIND_SET_DAY_LENGTH:
+			set_day_length(float(payload["seconds"]))
 		GameEvent.KIND_PUSH_OBJECT:
 			command_push_object(
 				String(payload["char_id"]), String(payload["obj_id"]),

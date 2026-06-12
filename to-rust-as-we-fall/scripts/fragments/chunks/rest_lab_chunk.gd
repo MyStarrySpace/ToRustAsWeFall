@@ -50,6 +50,9 @@ func reset_preview_state() -> void:
 	gs.clear_shelter_regions()
 	gs.add_shelter_region(SHELTER_MIN, SHELTER_MAX)
 	gs.set_game_clock(1, 0.55)
+	# The RUNNING cycle: ~3 minutes per day, so staying up through dawn earns the
+	# rest-deprivation debuff and the clock readout visibly moves.
+	gs.set_day_length(180.0)
 	if gs.characters.has("endo") and not gs.is_downed("endo"):
 		gs.set_stat("endo", "atp", 4.0)
 		gs.down_character("endo")
@@ -68,7 +71,11 @@ func _update_clock_label() -> void:
 	for cid in ["aster", "peris", "endo"]:
 		if gs.is_resting(str(cid)):
 			resting.append(cid)
-	_clock_label.text = "DAY %d  //  T %.2f  //  RESTING: %s" % [gs.game_day, gs.game_time, ", ".join(resting) if not resting.is_empty() else "—"]
+	var deprived := []
+	for cid in ["aster", "peris", "endo"]:
+		if gs.is_rest_deprived(str(cid)):
+			deprived.append(cid)
+	_clock_label.text = "DAY %d  //  T %.2f (%s)  //  RESTING: %s%s" % [gs.get_game_day(), gs.get_time_of_day(), gs.get_day_phase(), ", ".join(resting) if not resting.is_empty() else "—", ("  //  DEPRIVED: " + ", ".join(deprived)) if not deprived.is_empty() else ""]
 
 func get_grid_data() -> Dictionary:
 	return {

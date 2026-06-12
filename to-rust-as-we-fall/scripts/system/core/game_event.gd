@@ -56,6 +56,7 @@ const KIND_DODGE_ROLL := &"dodge_roll"
 const KIND_REST := &"rest"
 const KIND_STOP_REST := &"stop_rest"
 const KIND_SET_GAME_CLOCK := &"set_game_clock"  # day + time-of-day beats (scripted or night skip)
+const KIND_SET_DAY_LENGTH := &"set_day_length"  # enables the RUNNING clock (seconds per full day; 0 = scripted-beats only)
 const KIND_ADD_SHELTER := &"add_shelter"        # shelter zones are data-layer state, replayed like interactables
 const KIND_FIELD_RESTORE := &"field_restore"    # the field revive: long cast, high stamina, no shelter needed
 
@@ -116,6 +117,7 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_REST,
 	KIND_STOP_REST,
 	KIND_SET_GAME_CLOCK,
+	KIND_SET_DAY_LENGTH,
 	KIND_ADD_SHELTER,
 	KIND_FIELD_RESTORE,
 	KIND_QUEUE_ABILITY,

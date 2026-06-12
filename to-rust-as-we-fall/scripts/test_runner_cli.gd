@@ -530,6 +530,9 @@ func _ready() -> void:
 			"--test-shelter-rest":
 				ran_test = true
 				_test_shelter_rest()
+			"--test-day-night":
+				ran_test = true
+				_test_day_night()
 			"--test-modeled-room-binder":
 				ran_test = true
 				await _test_modeled_room_binder()
@@ -891,6 +894,7 @@ func _run_all_tests() -> void:
 	_test_preview_parked_bail()
 	await _test_wrong_character_feedback()
 	_test_shelter_rest()
+	_test_day_night()
 	await _test_modeled_room_binder()
 	await _test_rest_lab()
 	await _test_push_lab()
@@ -11016,6 +11020,8 @@ func _test_event_log_mutation_audit() -> void:
 		# Shelter rest: pure queries (the mutators command_rest/stop_rest/set_game_clock/
 		# add_shelter_region all emit); clear_shelter_regions is preview-reset plumbing.
 		"is_at_shelter", "is_resting", "clear_shelter_regions", "is_field_restoring",
+		# Day/night cycle: pure tick-derived reads (set_day_length / set_game_clock emit).
+		"get_time_of_day", "get_game_day", "get_day_phase", "is_rest_deprived",
 		# Read-only route preview for the hover path: computes the path a click WOULD take (grid /
 		# A* / straight line) without issuing or logging a move — pure UI, like the hover grid.
 		"compute_preview_path", "compute_preview_party_paths",
@@ -17323,6 +17329,88 @@ func _test_modeled_room_binder() -> void:
 		"the aster room binder validates CLEAN (got: %s)" % str(live_problems))
 	instance.queue_free()
 	await get_tree().process_frame
+
+## The day/night cycle + rest-deprivation debuff (GDD: the cascading deficit). Time of day is a
+## PURE function of the scheduler tick, so the cycle is fast-forward invariant by construction;
+## staying awake through a rollover cuts the stamina ceiling until the character actually sleeps.
+func _test_day_night() -> void:
+	_test_name = "Day/Night Cycle"
+	var grid := GridWorld.new()
+	grid.create_room(20, 12, true)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+	gs.event_log = EventLog.new()
+	gs.register_character("aster", Vector3(3, 0, 3), 3.0)
+	gs.register_character("peris", Vector3(4, 0, 3), 3.0)
+	gs.add_shelter_region(Vector2(2.0, 2.0), Vector2(6.0, 6.0))
+	var advance := func(seconds: float, step := 0.05) -> void:
+		var t := 0.0
+		while t < seconds:
+			sched.advance(step)
+			t += step
+
+	# --- The clock derives from ticks ---
+	gs.set_game_clock(1, 0.25)
+	_assert_true(absf(gs.get_time_of_day() - 0.25) < 0.001, "Static clock (no day length) holds the scripted beat")
+	gs.set_day_length(100.0)  # 100s per day
+	advance.call(10.0)
+	_assert_true(absf(gs.get_time_of_day() - 0.35) < 0.02,
+		"Running clock advances with the scheduler (got %.3f, want ~0.35)" % gs.get_time_of_day())
+	_assert_equals(gs.get_game_day(), 1, "Still day 1 before the rollover")
+	_assert_equals(gs.get_day_phase(), "day", "0.35 reads as daytime")
+	advance.call(25.0)  # -> 0.60
+	_assert_equals(gs.get_day_phase(), "night", "0.60 reads as night")
+
+	# --- Fast-forward invariance: the same tick gives the same time regardless of step size ---
+	var t_fine := gs.get_time_of_day()
+	var gs2 := GameState.new()
+	var sched2 := EventScheduler.new()
+	gs2.grid = grid
+	gs2.scheduler = sched2
+	gs2.set_game_clock(1, 0.25)
+	gs2.set_day_length(100.0)
+	sched2.advance(35.0)  # one coarse jump to the same tick
+	_assert_true(absf(gs2.get_time_of_day() - t_fine) < 0.001,
+		"Time of day is a pure tick function (fine steps == one coarse jump)")
+
+	# --- Staying awake through the rollover = rest deprivation ---
+	advance.call(41.0)  # past 1.0 -> day 2, nobody slept
+	_assert_equals(gs.get_game_day(), 2, "The day rolls over on the running clock")
+	_assert_true(gs.is_rest_deprived("aster") and gs.is_rest_deprived("peris"),
+		"Everyone who stayed awake through the night wakes rest-deprived")
+	_assert_true(absf(gs.get_stat_cap("aster", "stamina") - GameState.STAMINA_MAX * 0.6) < 0.01,
+		"Deprivation cuts the stamina ceiling to 60 percent")
+	_assert_true(gs.get_stat("aster", "stamina") <= gs.get_stat_cap("aster", "stamina") + 0.01,
+		"Current stamina clamps under the cut ceiling (the heavy morning)")
+
+	# --- Sleeping clears it: rest at the shelter through a night skip ---
+	gs.set_stat("aster", "hp", 50.0)
+	gs.set_stat("peris", "hp", 50.0)
+	gs.set_stat("aster", "atp", 4.0)
+	gs.set_stat("peris", "atp", 4.0)
+	advance.call(54.0)  # into the EVENING of day 2 (past NIGHT_START on the running clock)
+	gs.command_rest("aster")
+	gs.command_rest("peris")
+	_assert_true(not gs.is_rest_deprived("aster"),
+		"A completed night's sleep clears the deprivation")
+	_assert_true(absf(gs.get_stat_cap("aster", "stamina") - GameState.STAMINA_MAX) < 0.01,
+		"The stamina ceiling restores after sleeping")
+	_assert_true(absf(gs.get_stat("aster", "stamina") - GameState.STAMINA_MAX) < 0.01,
+		"Fresh legs after the skip")
+
+	# --- Replay: the logged clock config + commands rebuild the same state ---
+	var live_day := gs.get_game_day()
+	var live_deprived := gs.is_rest_deprived("aster")
+	var live_tick := sched.get_current_tick()
+	var grid2 := GridWorld.new()
+	grid2.create_room(20, 12, true)
+	var replayed := GameState.replay(gs.event_log, grid2)
+	if replayed.scheduler.get_current_tick() < live_tick:
+		replayed.scheduler.advance_ticks(live_tick - replayed.scheduler.get_current_tick())
+	_assert_equals(replayed.get_game_day(), live_day, "Replay lands on the same day")
+	_assert_equals(replayed.is_rest_deprived("aster"), live_deprived, "Replay reproduces the deprivation state")
 
 ## Shelter rest (GDD 3.3): real-time healing that costs ATP, the can't-afford-sleep gate,
 ## movement interrupting rest, the 10s ally revive at shelter, and the night skip with the
