@@ -193,6 +193,13 @@ func validate() -> Array[String]:
 				problems.append("wired material '%s' missing from %s" % [mat_name, gltf_path])
 			elif not mat.has("emissiveTexture"):
 				problems.append("material '%s' lost its emissive sidecar wiring — re-run tools/gltf_wire_material_sidecars.py" % mat_name)
+		for raw in config.get("wired_normal_materials", []):
+			var nmat_name := str(raw)
+			var nmat: Dictionary = mats.get(nmat_name, {})
+			if nmat.is_empty():
+				problems.append("wired normal material '%s' missing from %s" % [nmat_name, gltf_path])
+			elif not nmat.has("normalTexture"):
+				problems.append("material '%s' lost its NORMAL sidecar wiring — re-run tools/gltf_wire_material_sidecars.py" % nmat_name)
 	if grid != null and config.has("floor_surface_y") \
 			and absf(grid.origin.y - float(config["floor_surface_y"])) > 0.001:
 		problems.append("grid origin y (%.3f) does not match the declared floor surface (%.3f)" % [grid.origin.y, float(config["floor_surface_y"])])

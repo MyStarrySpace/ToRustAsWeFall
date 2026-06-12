@@ -98,6 +98,7 @@ func _setup_ui() -> void:
 	_hud.bind_game_state(_game_state, "aster")
 
 func _begin() -> void:
+	_add_screen_effect("ChromaticAberration", preload("res://resources/chromatic_aberration.gdshader"))
 	_enable_outline_preview()
 	_connect_outline_feedback_sources(self)
 	_apply_model_occupancy_to_grid()
@@ -446,6 +447,7 @@ func _build_environment() -> void:
 		"occupants": ["Desk"],
 		"gltf_path": "res://resources/models/aster-sim/room/aster-sim-room-hi-res.gltf",
 		"wired_materials": ["aster-sim-room-hi-res_1", "aster-sim-room-hi-res_8"],
+		"wired_normal_materials": ["aster-sim-room-hi-res_1"],
 	})
 
 	# Grid renderer creates floor collision and tile meshes.

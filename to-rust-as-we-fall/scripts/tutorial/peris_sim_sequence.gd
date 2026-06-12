@@ -126,6 +126,7 @@ func _setup_ui() -> void:
 	_hud.bind_game_state(_game_state, "peris", false)
 
 func _begin() -> void:
+	_add_screen_effect("ChromaticAberration", preload("res://resources/chromatic_aberration.gdshader"))
 	if start_phase > 0:
 		_visit_phase = start_phase
 	_current_step = "fade_in"

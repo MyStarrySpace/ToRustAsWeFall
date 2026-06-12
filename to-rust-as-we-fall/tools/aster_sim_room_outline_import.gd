@@ -5,11 +5,16 @@ const OUTLINE_SHADER := preload("res://resources/black_outline.gdshader")
 const OUTLINE_TARGET_SCRIPT := preload("res://scripts/game/objects/outline_surface_target.gd")
 const SURFACE_TARGETS_SUFFIX := "SurfaceTargets"
 
+const SIDECAR_WIRING := preload("res://tools/sidecar_material_import.gd")
+
 func _post_import(scene: Node) -> Object:
 	var root := scene as Node3D
 	if root == null:
 		return scene
 
+	# Sidecar emissive/normal wiring FIRST (a DCC re-export drops the references; the importer
+	# re-applies them from the <albedo>_emissive/_normals files every time).
+	SIDECAR_WIRING.new()._post_import(scene)
 	_split_multi_surface_meshes(root)
 	var quad := MeshInstance3D.new()
 	quad.name = "AsterSimRoomOutlinePreview"

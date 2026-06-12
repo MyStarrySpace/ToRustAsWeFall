@@ -604,6 +604,25 @@ func _register_gs_character(id: String, node: Node3D, speed: float = 3.0, stats:
 # GridWorld/GameState API so a sequence never reaches into the grid internals directly —
 # keep new floor-based scenes on these, not on bespoke per-scene position math.
 
+## A fullscreen SCREEN EFFECT (canvas_item shader) for a scene's look — e.g. the chromatic
+## aberration both sim rooms use. Mounted on its own CanvasLayer UNDER the HUD; purely cosmetic.
+func _add_screen_effect(effect_name: String, shader: Shader, params: Dictionary = {}) -> ColorRect:
+	var layer := CanvasLayer.new()
+	layer.name = effect_name + "Layer"
+	layer.layer = 0
+	add_child(layer)
+	var rect := ColorRect.new()
+	rect.name = effect_name
+	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	for key in params:
+		mat.set_shader_parameter(key, params[key])
+	rect.material = mat
+	layer.add_child(rect)
+	return rect
+
 ## ONE KNOB for modeled scenes (Blockbench/Crocotile/Blender): the visible floor's top surface
 ## sits above world y=0 by the model's floor thickness. Setting it lifts the whole DATA PLANE —
 ## grid origin (so grid_to_world / data positions ride the visible floor), the click-raycast
