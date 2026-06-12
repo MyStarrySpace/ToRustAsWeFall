@@ -59,3 +59,7 @@ tmp_*.log
 
 # Stray temp files
 *.tmp
+
+# Visual-capture eyeball outputs (tools/capture_overlays.gd)
+/aster_*.png
+/peris_*.png

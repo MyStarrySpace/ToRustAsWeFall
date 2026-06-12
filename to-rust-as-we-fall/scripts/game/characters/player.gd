@@ -282,15 +282,33 @@ static func _ensure_grid_alpha() -> void:
 			_grid_alpha[y * dim + x] = a
 
 func _build_grid_texture() -> ImageTexture:
+	# CONTRAST is the whole game here: thin faded-white lines vanish against the room model's own
+	# white tile seams (and inside character glow). Lines render in the CHARACTER's color — the
+	# same ownership language as the ribbon and queued glow — over a dark rim (a 2px dilation of
+	# the pattern) so the grid reads on bright floors, dark floors, and bloom alike.
 	_ensure_grid_alpha()
 	var dim := _grid_dim
+	var tint := _character_color()
+	var line := Color(tint.r, tint.g, tint.b, 1.0).lightened(0.25)
+	var rim := Color(0.03, 0.04, 0.05, 1.0)
 	var img := Image.create(dim, dim, false, Image.FORMAT_RGBA8)
-	img.fill(Color(HOVER_TINT.r, HOVER_TINT.g, HOVER_TINT.b, 0.0))
+	img.fill(Color(0, 0, 0, 0))
+	var rim_px := 2
+	for y in range(dim):
+		for x in range(dim):
+			if _grid_alpha[y * dim + x] <= 0.004:
+				continue
+			for oy in range(-rim_px, rim_px + 1):
+				for ox in range(-rim_px, rim_px + 1):
+					var px: int = clampi(x + ox, 0, dim - 1)
+					var py: int = clampi(y + oy, 0, dim - 1)
+					if img.get_pixel(px, py).a < 0.5:
+						img.set_pixel(px, py, rim)
 	for y in range(dim):
 		for x in range(dim):
 			var a := _grid_alpha[y * dim + x]
 			if a > 0.004:
-				img.set_pixel(x, y, Color(HOVER_TINT.r, HOVER_TINT.g, HOVER_TINT.b, a))
+				img.set_pixel(x, y, line)
 	return ImageTexture.create_from_image(img)
 
 ## Raycast the floor under the cursor and show the grid there. Only in move mode while move-enabled,
@@ -742,6 +760,14 @@ func _on_gs_arrived(id: String) -> void:
 
 func _update_dest_marker(delta: float) -> void:
 	if _moving:
+		# The marker position derives from the DATA LAYER's actual movement destination every
+		# frame — click-time assignment alone left command/party/delegated moves with the marker
+		# stranded at the world origin (a ring floating in the void).
+		if game_state != null and char_id != "" and game_state.characters.has(char_id):
+			var mv = game_state.characters[char_id].get("movement")
+			if mv != null and mv.path.size() > 0:
+				var dest: Vector3 = mv.path[mv.path.size() - 1]
+				_dest_marker.global_position = Vector3(dest.x, dest.y + 0.05, dest.z)
 		var pulse := 0.3 + sin(Time.get_ticks_msec() * 0.004) * 0.15  # @rendering_only — destination marker pulse
 		_dest_marker_mat.albedo_color.a = pulse
 		var dist := Vector2(
