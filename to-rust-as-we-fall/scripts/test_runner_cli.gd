@@ -533,6 +533,9 @@ func _ready() -> void:
 			"--test-day-night":
 				ran_test = true
 				_test_day_night()
+			"--test-flora-network":
+				ran_test = true
+				_test_flora_network()
 			"--test-modeled-room-binder":
 				ran_test = true
 				await _test_modeled_room_binder()
@@ -895,6 +898,7 @@ func _run_all_tests() -> void:
 	await _test_wrong_character_feedback()
 	_test_shelter_rest()
 	_test_day_night()
+	_test_flora_network()
 	await _test_modeled_room_binder()
 	await _test_rest_lab()
 	await _test_push_lab()
@@ -11022,6 +11026,9 @@ func _test_event_log_mutation_audit() -> void:
 		"is_at_shelter", "is_resting", "clear_shelter_regions", "is_field_restoring",
 		# Day/night cycle: pure tick-derived reads (set_day_length / set_game_clock emit).
 		"get_time_of_day", "get_game_day", "get_day_phase", "is_rest_deprived",
+		# Floral network: pure queries over the flora registry (the commands emit).
+		"get_flora_stage", "get_flora_light_radius", "get_flora_network",
+		"get_flora_network_id", "get_flora_light_at",
 		# Read-only route preview for the hover path: computes the path a click WOULD take (grid /
 		# A* / straight line) without issuing or logging a move — pure UI, like the hover grid.
 		"compute_preview_path", "compute_preview_party_paths",
@@ -17329,6 +17336,90 @@ func _test_modeled_room_binder() -> void:
 		"the aster room binder validates CLEAN (got: %s)" % str(live_problems))
 	instance.queue_free()
 	await get_tree().process_frame
+
+## The floral network (GDD: Peris's flora tending). Seeds plant from her carried stock, a TENDED
+## growth advances at each day rollover, established growths yield once per day, flourishing
+## growths shed the most light, near growths form one mycelial network — and the whole loop
+## replays from the logged commands + the tick-derived clock.
+func _test_flora_network() -> void:
+	_test_name = "Floral Network"
+	var grid := GridWorld.new()
+	grid.create_room(20, 12, true)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+	gs.event_log = EventLog.new()
+	gs.register_character("peris", Vector3(4, 0, 4), 3.0)
+	gs.register_character("aster", Vector3(5, 0, 4), 3.0)
+	gs.set_game_clock(1, 0.2)
+	gs.set_day_length(100.0)
+	var advance := func(seconds: float) -> void:
+		var t := 0.0
+		while t < seconds:
+			sched.advance(0.05)
+			t += seconds if seconds < 0.05 else 0.05
+
+	# --- Planting needs the tender, reach, and a carried seed ---
+	_assert_true(gs.command_plant_flora("peris", Vector3(4.5, 0, 4.5)) == "",
+		"Planting refuses without a carried seed")
+	var seed := gs.spawn_item("flora_seed", Vector3(4, 0, 4))
+	gs.pick_up_item("peris", seed)
+	_assert_true(gs.command_plant_flora("aster", Vector3(4.5, 0, 4.5)) == "",
+		"Only Peris's hands grow things")
+	var f1 := gs.command_plant_flora("peris", Vector3(4.5, 0, 4.5))
+	_assert_true(f1 != "", "Peris plants a carried seed")
+	_assert_true(gs._find_carried_item("peris", "flora_seed") == "", "Planting consumes the seed")
+	_assert_equals(gs.get_flora_stage(f1), 0, "A fresh growth starts at stage 0 (planted)")
+
+	# --- Growth: tended growths advance at the rollover; untended hold ---
+	var seed2 := gs.spawn_item("flora_seed", Vector3(4, 0, 4))
+	gs.pick_up_item("peris", seed2)
+	var f2 := gs.command_plant_flora("peris", Vector3(5.8, 0, 4.2))
+	_assert_true(f2 != "", "The second seed plants within tend range")
+	advance.call(81.0)  # cross the rollover (planted growths were tended_today at planting)
+	_assert_equals(gs.get_flora_stage(f1), 1, "A tended growth advances one stage at the rollover")
+	advance.call(100.0)  # a full UNTENDED day
+	_assert_equals(gs.get_flora_stage(f1), 1, "An untended growth holds (no free growth)")
+	# Tend across two more days to flourishing.
+	for day in range(2):
+		gs.command_tend_flora("peris", f1)
+		gs.command_tend_flora("peris", f2)
+		advance.call(100.0)
+	_assert_equals(gs.get_flora_stage(f1), 3, "Tending every day reaches flourishing")
+	_assert_true(absf(gs.get_flora_light_radius(f1) - 5.0) < 0.01, "Flourishing sheds the widest light")
+	_assert_true(gs.get_flora_light_at(Vector3(4.5, 0, 4.5)) > 0.9, "Standing at the growth is fully lit")
+	_assert_true(gs.get_flora_light_at(Vector3(15, 0, 9)) == 0.0, "Far corridors stay dark")
+
+	# --- The mycelial network: near growths are ONE network ---
+	_assert_equals(gs.get_flora_network(f1).size(), 2, "Growths within reach form one network")
+	_assert_equals(gs.get_flora_network_id(f1), gs.get_flora_network_id(f2),
+		"Both growths report the same network id")
+	var seed3 := gs.spawn_item("flora_seed", Vector3(4, 0, 4))
+	gs.pick_up_item("peris", seed3)
+	gs.snap_character_to("peris", Vector3(14, 0, 8))
+	var f3 := gs.command_plant_flora("peris", Vector3(14.5, 0, 8.5))
+	_assert_true(gs.get_flora_network_id(f3) != gs.get_flora_network_id(f1),
+		"A distant growth is its own network")
+
+	# --- Harvest: established+ growths yield once per day ---
+	gs.snap_character_to("peris", Vector3(4.5, 0, 4.5))
+	var tonic := gs.command_harvest_flora("peris", f1)
+	_assert_true(tonic != "", "A flourishing growth yields a restorative")
+	_assert_true(gs.command_harvest_flora("peris", f1) == "", "One yield per growth per day")
+	_assert_true(gs.command_harvest_flora("peris", f3) == "", "A freshly planted growth has nothing to give")
+
+	# --- Replay rebuilds the garden ---
+	var live_stage := gs.get_flora_stage(f1)
+	var live_net := gs.get_flora_network_id(f1)
+	var live_tick := sched.get_current_tick()
+	var grid2 := GridWorld.new()
+	grid2.create_room(20, 12, true)
+	var replayed := GameState.replay(gs.event_log, grid2)
+	if replayed.scheduler.get_current_tick() < live_tick:
+		replayed.scheduler.advance_ticks(live_tick - replayed.scheduler.get_current_tick())
+	_assert_equals(replayed.get_flora_stage(f1), live_stage, "Replay regrows the same stage")
+	_assert_equals(replayed.get_flora_network_id(f1), live_net, "Replay rebuilds the same network")
 
 ## The day/night cycle + rest-deprivation debuff (GDD: the cascading deficit). Time of day is a
 ## PURE function of the scheduler tick, so the cycle is fast-forward invariant by construction;

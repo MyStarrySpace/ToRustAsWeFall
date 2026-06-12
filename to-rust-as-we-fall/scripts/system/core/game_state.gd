@@ -2242,6 +2242,7 @@ func _on_clock_poll() -> void:
 			if is_downed(cid) or _resting.has(cid):
 				continue
 			_set_rest_deprived(cid, true)
+		_advance_flora_day()
 		day_rolled_over.emit(live_day)
 		game_clock_changed.emit(live_day, get_time_of_day())
 	scheduler.schedule_after(0.5, _on_clock_poll, "game_clock_poll")
@@ -2500,12 +2501,170 @@ func _check_night_skip() -> void:
 		characters[cid].stats["stamina"] = get_stat_cap(cid, "stamina")
 		stat_changed.emit(cid, "stamina", get_stat_cap(cid, "stamina"))
 		_stop_rest(cid)
+	_advance_flora_day()
 	game_day += 1
 	game_time = DAWN_TIME
 	_clock_base_tick = scheduler.get_current_tick() if scheduler else 0.0
 	_last_polled_day = game_day
 	game_clock_changed.emit(game_day, game_time)
 	night_skipped.emit(game_day)
+
+# --- The floral network (GDD: flora tending / the mycelial information layer) ---------------
+# Peris plants and tends bioluminescent growths. A growth TENDED during the day advances one
+# stage at the day rollover (the living-world beat: return tomorrow and it has grown); untended
+# growths hold. Established growths yield a restorative item once per day; flourishing growths
+# shed the most light (the night counter). Growths within FLORA_CONNECT_RADIUS of each other are
+# one NETWORK — the mycelial layer that remembers (network ids are stable, derived, queryable).
+# Commands are logged; growth advances derive from the logged tends + the tick-derived clock.
+
+const FLORA_STAGES := ["planted", "sprouting", "established", "flourishing"]
+const FLORA_LIGHT_RADIUS := [0.5, 1.5, 3.0, 5.0]   # per stage — the night-vision counter
+const FLORA_CONNECT_RADIUS := 4.0                  # growths this close share a network
+const FLORA_TEND_RANGE := 2.0
+const FLORA_HARVEST_STAGE := 2                     # established+ growths yield
+const FLORA_TENDER := "peris"                      # only Peris's hands grow things
+
+var flora := {}              # flora_id -> {position, stage, tended_today, harvested_day, planted_day}
+var _flora_seq := 0
+
+signal flora_planted(flora_id: String)
+signal flora_tended(flora_id: String)
+signal flora_grew(flora_id: String, stage: int)
+signal flora_harvested(flora_id: String, item_id: String)
+
+## Plant a carried flora seed at a position. Gates: the tender (Peris), in reach of the spot,
+## actually CARRYING a seed (hand or internal storage) — the seed is consumed.
+func command_plant_flora(char_id: String, pos: Vector3) -> String:
+	_emit(GameEvent.KIND_PLANT_FLORA, {"char_id": char_id, "pos": GameEvent.v3_to_arr(pos)})
+	return _do_plant_flora(char_id, pos)
+
+func _do_plant_flora(char_id: String, pos: Vector3) -> String:
+	if char_id != FLORA_TENDER or not characters.has(char_id):
+		return ""
+	var char_pos := get_position(char_id)
+	if Vector2(char_pos.x - pos.x, char_pos.z - pos.z).length() > FLORA_TEND_RANGE:
+		return ""
+	var seed_id := _find_carried_item(char_id, "flora_seed")
+	if seed_id == "":
+		return ""
+	_consume_item(char_id, seed_id)
+	_flora_seq += 1
+	var flora_id := "flora_%d" % _flora_seq
+	flora[flora_id] = {
+		"position": pos, "stage": 0, "tended_today": true,
+		"harvested_day": -1, "planted_day": get_game_day(),
+	}
+	flora_planted.emit(flora_id)
+	return flora_id
+
+## Tend a growth: it will advance one stage at the next day rollover. Re-tending after each
+## rollover is the loop — an abandoned growth simply holds (or, later, gets colonized).
+func command_tend_flora(char_id: String, flora_id: String) -> bool:
+	_emit(GameEvent.KIND_TEND_FLORA, {"char_id": char_id, "flora_id": flora_id})
+	if char_id != FLORA_TENDER or not flora.has(flora_id) or not characters.has(char_id):
+		return false
+	var growth: Dictionary = flora[flora_id]
+	var char_pos := get_position(char_id)
+	var fp: Vector3 = growth.position
+	if Vector2(char_pos.x - fp.x, char_pos.z - fp.z).length() > FLORA_TEND_RANGE:
+		return false
+	growth["tended_today"] = true
+	flora_tended.emit(flora_id)
+	return true
+
+## Harvest an established growth: spawns a restorative item on the ground beside it (the hands
+## system carries it from there). One yield per growth per day; harvesting never regresses growth.
+func command_harvest_flora(char_id: String, flora_id: String) -> String:
+	_emit(GameEvent.KIND_HARVEST_FLORA, {"char_id": char_id, "flora_id": flora_id})
+	if not flora.has(flora_id) or not characters.has(char_id):
+		return ""
+	var growth: Dictionary = flora[flora_id]
+	if int(growth.stage) < FLORA_HARVEST_STAGE:
+		return ""
+	if int(growth.harvested_day) >= get_game_day():
+		return ""
+	var char_pos := get_position(char_id)
+	var fp: Vector3 = growth.position
+	if Vector2(char_pos.x - fp.x, char_pos.z - fp.z).length() > FLORA_TEND_RANGE:
+		return ""
+	growth["harvested_day"] = get_game_day()
+	var item_id := spawn_item("flora_tonic", fp + Vector3(0.4, 0.0, 0.2), {"hp_restore": 15.0})
+	flora_harvested.emit(flora_id, item_id)
+	return item_id
+
+## The day rollover advances every growth tended since the last one (called from BOTH day-advance
+## paths: the running clock's rollover and the night skip). Derived — replay re-derives it from
+## the logged tends and the tick-derived clock.
+func _advance_flora_day() -> void:
+	for flora_id in flora.keys():
+		var growth: Dictionary = flora[flora_id]
+		if bool(growth.tended_today) and int(growth.stage) < FLORA_STAGES.size() - 1:
+			growth["stage"] = int(growth.stage) + 1
+			flora_grew.emit(flora_id, int(growth.stage))
+		growth["tended_today"] = false
+
+func get_flora_stage(flora_id: String) -> int:
+	return int(flora.get(flora_id, {}).get("stage", -1))
+
+func get_flora_light_radius(flora_id: String) -> float:
+	var stage := get_flora_stage(flora_id)
+	return FLORA_LIGHT_RADIUS[stage] if stage >= 0 else 0.0
+
+## The mycelial network: connected components over growths within FLORA_CONNECT_RADIUS. Network
+## ids are the lexicographically-smallest member id — stable across queries and replays.
+func get_flora_network(flora_id: String) -> Array:
+	if not flora.has(flora_id):
+		return []
+	var member_ids := flora.keys()
+	member_ids.sort()
+	var component := [flora_id]
+	var frontier := [flora_id]
+	while not frontier.is_empty():
+		var current: String = frontier.pop_back()
+		var cp: Vector3 = flora[current].position
+		for other in member_ids:
+			if component.has(other):
+				continue
+			var op: Vector3 = flora[other].position
+			if Vector2(cp.x - op.x, cp.z - op.z).length() <= FLORA_CONNECT_RADIUS:
+				component.append(other)
+				frontier.append(other)
+	component.sort()
+	return component
+
+func get_flora_network_id(flora_id: String) -> String:
+	var network := get_flora_network(flora_id)
+	return network[0] if not network.is_empty() else ""
+
+## The strongest light shed on a world position by any growth (the night-vision boost).
+func get_flora_light_at(pos: Vector3) -> float:
+	var best := 0.0
+	for flora_id in flora:
+		var fp: Vector3 = flora[flora_id].position
+		var radius := get_flora_light_radius(str(flora_id))
+		var dist := Vector2(pos.x - fp.x, pos.z - fp.z).length()
+		if dist <= radius:
+			best = maxf(best, 1.0 - dist / radius)
+	return best
+
+## A carried item of a type, in a hand or internal storage ('' when not carrying one).
+func _find_carried_item(char_id: String, item_type: String) -> String:
+	var ch: Dictionary = characters[char_id]
+	for slot in ch.hands:
+		if slot != null and items.has(slot) and str(items[slot].type) == item_type:
+			return str(slot)
+	for stored in ch.internal:
+		if items.has(stored) and str(items[stored].type) == item_type:
+			return str(stored)
+	return ""
+
+func _consume_item(char_id: String, item_id: String) -> void:
+	var ch: Dictionary = characters[char_id]
+	for i in range(ch.hands.size()):
+		if ch.hands[i] == item_id:
+			ch.hands[i] = null
+	ch.internal.erase(item_id)
+	items.erase(item_id)
 
 # --- Sokoban push (the deliberate, planned push: queue on the object, pick a destination) ---
 
@@ -3100,6 +3259,12 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			set_game_clock(int(payload["day"]), float(payload["time"]))
 		GameEvent.KIND_SET_DAY_LENGTH:
 			set_day_length(float(payload["seconds"]))
+		GameEvent.KIND_PLANT_FLORA:
+			command_plant_flora(String(payload["char_id"]), GameEvent.arr_to_v3(payload["pos"]))
+		GameEvent.KIND_TEND_FLORA:
+			command_tend_flora(String(payload["char_id"]), String(payload["flora_id"]))
+		GameEvent.KIND_HARVEST_FLORA:
+			command_harvest_flora(String(payload["char_id"]), String(payload["flora_id"]))
 		GameEvent.KIND_PUSH_OBJECT:
 			command_push_object(
 				String(payload["char_id"]), String(payload["obj_id"]),
