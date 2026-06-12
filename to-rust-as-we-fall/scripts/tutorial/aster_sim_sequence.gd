@@ -521,6 +521,9 @@ func _build_environment() -> void:
 	# Load grid from level data
 	_grid = GridWorld.new()
 	_grid.load_from_json("res://data/levels/aster_sim.json")
+	# The room model's floor slab tops out at ~0.15: every ground overlay (hover grid, path
+	# ribbons, click raycast) must ride THAT surface, not world zero, or it draws inside the floor.
+	_set_floor_surface(_grid, 0.15)
 
 	# Grid renderer creates floor collision and tile meshes.
 	_renderer = GridRenderer.new()

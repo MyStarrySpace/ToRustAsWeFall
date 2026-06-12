@@ -604,6 +604,15 @@ func _register_gs_character(id: String, node: Node3D, speed: float = 3.0, stats:
 # GridWorld/GameState API so a sequence never reaches into the grid internals directly —
 # keep new floor-based scenes on these, not on bespoke per-scene position math.
 
+## ONE KNOB for modeled scenes (Blockbench/Crocotile/Blender): the visible floor's top surface
+## sits above world y=0 by the model's floor thickness. Setting it lifts the whole DATA PLANE —
+## grid origin (so grid_to_world / data positions ride the visible floor), the click-raycast
+## floor body (GridRenderer positions from grid.origin), the hover grid, path ribbons, and
+## spawn heights all follow. Call right after the grid is built, before the renderer.
+func _set_floor_surface(grid: GridWorld, height: float) -> void:
+	if grid != null:
+		grid.origin.y = height
+
 ## Declare how many stacked floors the grid has (and the world Y between them). Level 0 sits at
 ## the grid origin Y; each higher floor is `height` above the last. Call once during scene build.
 func _configure_levels(count: int, height: float = 4.0) -> void:

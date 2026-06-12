@@ -249,7 +249,7 @@ func _remaining_points() -> Array[Vector3]:
 ## floor under the character's level instead (grid level height when there's a grid, else y≈0).
 func _ground_y() -> float:
 	if game_state != null and game_state.grid != null and char_id != "" and game_state.characters.has(char_id):
-		return game_state.grid.level_height * float(game_state.get_character_level(char_id)) + HEIGHT_OFFSET
+		return game_state.grid.origin.y + game_state.grid.level_height * float(game_state.get_character_level(char_id)) + HEIGHT_OFFSET
 	return HEIGHT_OFFSET
 
 func _start_point(gy: float) -> Vector3:

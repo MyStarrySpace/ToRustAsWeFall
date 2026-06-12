@@ -164,28 +164,9 @@ func set_highlight(active: bool) -> void:
 func register_highlight_mesh(mesh_instance: MeshInstance3D) -> void:
 	if mesh_instance == null or _highlight_meshes.has(mesh_instance):
 		return
-	# An alpha-BLENDED surface (glass, holo screens) must not grow an opaque hull — the shell
-	# renders as a solid slab over the see-through part (the terminal screen bug). Such meshes
-	# still shimmer via the surface particles; only the hull is skipped.
-	if _mesh_uses_alpha_blend(mesh_instance):
-		return
 	_highlight_meshes.append(mesh_instance)
 	_original_overlays[mesh_instance.get_instance_id()] = mesh_instance.material_overlay
 	_ensure_outline_shell(mesh_instance)
-
-func _mesh_uses_alpha_blend(mesh_instance: MeshInstance3D) -> bool:
-	var mats: Array = []
-	if mesh_instance.material_override != null:
-		mats.append(mesh_instance.material_override)
-	elif mesh_instance.mesh != null:
-		for s in range(mesh_instance.mesh.get_surface_count()):
-			var m = mesh_instance.get_active_material(s)
-			if m != null:
-				mats.append(m)
-	for m in mats:
-		if m is BaseMaterial3D and (m as BaseMaterial3D).transparency == BaseMaterial3D.TRANSPARENCY_ALPHA:
-			return true
-	return false
 
 func get_highlight_mesh_count() -> int:
 	_prune_highlight_meshes()
@@ -199,9 +180,9 @@ func has_active_mesh_outline() -> bool:
 	_prune_highlight_meshes()
 	for mesh_instance in _highlight_meshes:
 		var shell := _get_outline_shell(mesh_instance)
-		if shell != null and shell.visible and shell.material_override is ShaderMaterial:
-			var material := shell.material_override as ShaderMaterial
-			if material.shader == OBJECT_OUTLINE_SHADER:
+		if shell != null and shell.visible:
+			var material := shell.get_surface_override_material(0) as ShaderMaterial
+			if material != null and material.shader == OBJECT_OUTLINE_SHADER:
 				return true
 	return false
 
@@ -247,13 +228,14 @@ func _apply_object_outline(color: Color, width: float, glow_strength: float) -> 
 		var shell := _ensure_outline_shell(mesh_instance)
 		if shell == null:
 			continue
-		var material := shell.material_override as ShaderMaterial
-		if material == null:
-			material = _create_outline_material()
-			shell.material_override = material
-		material.set_shader_parameter("outline_color", color)
-		material.set_shader_parameter("outline_width", width)
-		material.set_shader_parameter("glow_strength", glow_strength)
+		var surface_total: int = shell.mesh.get_surface_count() if shell.mesh != null else 0
+		for s in range(surface_total):
+			var material := shell.get_surface_override_material(s) as ShaderMaterial
+			if material == null:
+				continue
+			material.set_shader_parameter("outline_color", color)
+			material.set_shader_parameter("outline_width", width)
+			material.set_shader_parameter("glow_strength", glow_strength)
 		shell.visible = true
 
 func _clear_object_outline() -> void:
@@ -279,7 +261,22 @@ func _ensure_outline_shell(mesh_instance: MeshInstance3D) -> MeshInstance3D:
 	shell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	shell.extra_cull_margin = maxf(mesh_instance.extra_cull_margin, 4.0)
 	shell.layers = mesh_instance.layers
-	shell.material_override = _create_outline_material()
+	# Per-surface shell materials: a surface with transparency (blend or scissor) passes its own
+	# albedo into the shell so the hull discards see-through texels and hugs the visible
+	# silhouette; fully opaque surfaces keep the plain hull.
+	for s in range(mesh_instance.mesh.get_surface_count()):
+		var shell_mat := _create_outline_material()
+		var source := mesh_instance.get_active_material(s)
+		if source is BaseMaterial3D:
+			var base := source as BaseMaterial3D
+			var transparent: bool = base.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED \
+				or base.albedo_color.a < 0.999
+			if transparent:
+				shell_mat.set_shader_parameter("use_source_alpha", true)
+				shell_mat.set_shader_parameter("source_albedo_tint", base.albedo_color)
+				if base.albedo_texture != null:
+					shell_mat.set_shader_parameter("source_albedo", base.albedo_texture)
+		shell.set_surface_override_material(s, shell_mat)
 	mesh_instance.add_child(shell)
 	_outline_shells[mesh_instance.get_instance_id()] = shell
 	return shell
