@@ -5236,12 +5236,12 @@ func _test_aster_sim() -> void:
 			var desk_center := occ_grid.world_to_grid(desk_ab.get_center())
 			_assert_true(not occ_grid.is_walkable(desk_center.x, desk_center.y),
 				"The desk's centre cell is OCCUPIED on the grid (model-derived blocker)")
-			var around := occ_grid.find_path(Vector2i(2, 2), Vector2i(13, 7))
+			var around := occ_grid.find_path(Vector2i(2, 2), Vector2i(7, 12))
 			_assert_true(not around.is_empty(), "A route across the room around the desk still exists")
 			var crosses_desk := false
 			for wp in around:
 				var c := occ_grid.world_to_grid(wp)
-				if c.x >= desk_center.x - 1 and c.x <= desk_center.x and c.y >= 5 and c.y <= 6:
+				if c.x >= desk_center.x - 1 and c.x <= desk_center.x and c.y >= desk_center.y - 1 and c.y <= desk_center.y + 1:
 					crosses_desk = crosses_desk or not occ_grid.is_walkable(c.x, c.y)
 			_assert_true(not crosses_desk, "The route does not pass through occupied desk cells")
 		var placement := instance.find_child("ScenePlacement", true, false) as Node3D
@@ -5303,9 +5303,9 @@ func _test_aster_sim() -> void:
 		var room_spot := instance.find_child("SpotLight3D", true, false) as SpotLight3D
 		_assert_true(room_spot != null, "Aster sim keeps the imported-room spotlight")
 		if room_spot != null:
-			_assert_true(room_spot.global_position.x >= 0.0 and room_spot.global_position.x <= 18.0
-				and room_spot.global_position.z >= -2.0 and room_spot.global_position.z <= 14.0,
-				"Aster sim imported-room spotlight is repositioned onto the graybox room")
+			_assert_true(room_spot.global_position.x >= -1.0 and room_spot.global_position.x <= 10.0
+				and room_spot.global_position.z >= -1.0 and room_spot.global_position.z <= 16.0,
+				"Aster sim imported-room spotlight sits within the real room footprint")
 		var imported_outline := instance.find_child("AsterSimRoomOutlinePreview", true, false) as MeshInstance3D
 		var perception_quad := instance.find_child("PerceptionQuad", true, false) as MeshInstance3D
 		var outline_overlay: MeshInstance3D = imported_outline if imported_outline != null else perception_quad
@@ -5656,7 +5656,7 @@ func _test_aster_sim() -> void:
 
 		var hallway_gate := instance.find_child("HallwayGate", true, false) as Node3D
 		if hallway_gate != null:
-			_assert_true(hallway_gate.global_position.x >= 16.0, "Aster Continue gate is at the room edge")
+			_assert_true(hallway_gate.global_position.z >= 12.0, "Aster Continue gate is at the room edge (south-east of the real room)")
 
 		await _assert_aster_interaction_click_matrix(instance, dialogue)
 

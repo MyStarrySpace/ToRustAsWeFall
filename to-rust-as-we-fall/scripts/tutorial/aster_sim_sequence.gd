@@ -28,7 +28,7 @@ var _explore_hallway_gate  # Interactable at hallway exit
 const EXPLORE_MIN_TIME := 12.0  # scheduler ticks before the hallway gate unlocks
 var _explore_gate_unlocked := false
 var _explore_gate_fired := false
-const HALLWAY_EXIT_CELL := Vector2i(16, 4)  # right edge of the room, just inside the wall border
+const HALLWAY_EXIT_CELL := Vector2i(8, 13)  # east edge of the real room, just inside the wall border
 
 # Grid system
 var _grid: GridWorld
@@ -60,14 +60,14 @@ func _build_characters() -> void:
 	add_child(chars)
 
 	_player = _create_player_character("Aster", Color(0.29, 0.62, 1.0))
-	_player.position = _placement_or_grid("AsterStart", Vector2i(3, 4), 0.5)
+	_player.position = _placement_or_grid("AsterStart", Vector2i(4, 10), 0.5)
 	if in_game:
 		_player.grid_world = _grid
 	chars.add_child(_player)
 
 	_ron = _create_npc("Ron", Color(0.7, 0.6, 0.45))
 	_ron.display_name = "RON"
-	_ron.position = _placement_or_grid("RonStart", Vector2i(2, 6), 0.0)
+	_ron.position = _placement_or_grid("RonStart", Vector2i(3, 12), 0.0)
 	if in_game:
 		_ron.grid_world = _grid
 	chars.add_child(_ron)

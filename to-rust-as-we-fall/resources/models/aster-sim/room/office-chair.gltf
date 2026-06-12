@@ -1421,20 +1421,7 @@
       },
       "alphaMode": "MASK",
       "alphaCutoff": 0.05,
-      "doubleSided": true,
-      "emissiveTexture": {
-        "index": 5
-      },
-      "emissiveFactor": [
-        1.0,
-        1.0,
-        1.0
-      ],
-      "extensions": {
-        "KHR_materials_emissive_strength": {
-          "emissiveStrength": 2.5
-        }
-      }
+      "doubleSided": true
     },
     {
       "pbrMetallicRoughness": {
