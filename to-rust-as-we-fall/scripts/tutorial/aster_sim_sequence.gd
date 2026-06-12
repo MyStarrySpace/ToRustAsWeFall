@@ -37,7 +37,9 @@ var _renderer: GridRenderer
 var _data_displays: Array[MeshInstance3D] = []
 
 const PLACEMENT_ROOT := "ScenePlacement"
-const GLASS_BEAD_SCENE := preload("res://resources/models/aster-sim/glass-bead-game/glass-bead-game.gltf")
+# The curated display wrapper (translucent glowing beads, runtime connector
+# lines, looping idle) — NOT the raw gltf, which renders dark and inert.
+const GLASS_BEAD_SCENE := preload("res://scenes/tutorial/glass_bead_game_display.tscn")
 
 # Start below max ATP so the drink refill is visible.
 const ATP_START := 6.0
@@ -48,7 +50,6 @@ const ATP_MAX := GameState.ATP_MAX_PIPS
 func _build_scene() -> void:
 	_apply_high_res_room_visibility()
 	_build_environment()
-	_build_decorations()
 	_build_terminal()
 	_build_drink_machine()
 
@@ -73,7 +74,9 @@ func _build_characters() -> void:
 	chars.add_child(_ron)
 
 	if in_game:
-		_setup_game_camera(_player, Vector3(0, 8, 6), true)
+		# Camera east of the room looking west: the 14-unit-long room lays out
+		# across the screen, walls head-on (was (0, 8, 6) — down the long axis).
+		_setup_game_camera(_player, Vector3(6.5, 8, 0), true)
 
 func _register_characters() -> void:
 	_game_state.grid = _grid
@@ -531,19 +534,6 @@ func _build_environment() -> void:
 	var env_node := _renderer
 	var use_imported_room_lighting := show_high_res_room and not show_graybox_room
 
-	# Floating data motes.
-	var player_start := _placement_or_grid("DataMotesCenter", Vector2i(3, 4), 1.8)
-	var data_display_meshes: Array = []
-	for i in range(3):
-		var angle := i * TAU / 3.0
-		var pos := Vector3(player_start.x + cos(angle) * 1.5, 1.8, player_start.z + sin(angle) * 1.5)
-		var display := _create_holo_display(pos)
-		env_node.add_child(display)
-		_data_displays.append(display)
-		data_display_meshes.append(display)
-	_create_graybox_outline_target(env_node, "RoomTargetDataDisplays",
-		player_start, Vector3(3.8, 1.4, 3.8), data_display_meshes, "data_displays", 1.9)
-
 	# Drink machine.
 	var drink_cells := _grid.find_tiles(GridWorld.Tile.FOOD)
 	if not drink_cells.is_empty():
@@ -553,10 +543,11 @@ func _build_environment() -> void:
 	if not use_imported_room_lighting:
 		_ensure_directional_light(env_node)
 
+		var desk_area := _placement_or_grid("DataMotesCenter", Vector2i(3, 4), 1.8)
 		_ensure_omni_light(
 			env_node,
 			"DeskLight",
-			_placement_or_position("DeskLight", Vector3(player_start.x, 2.5, player_start.z)),
+			_placement_or_position("DeskLight", Vector3(desk_area.x, 2.5, desk_area.z)),
 			Color(0.9, 0.75, 0.5),
 			2.0,
 			6.0
@@ -565,7 +556,7 @@ func _build_environment() -> void:
 		_ensure_omni_light(
 			env_node,
 			"DataLight",
-			_placement_or_position("DataLight", Vector3(player_start.x, 2.0, player_start.z)),
+			_placement_or_position("DataLight", Vector3(desk_area.x, 2.0, desk_area.z)),
 			Color(0.3, 0.6, 0.8),
 			1.0,
 			4.0
@@ -742,115 +733,6 @@ func _add_drink_machine_visual(parent: Node3D, pos: Vector3) -> void:
 		prop.size if not prop.is_empty() else Vector3(1.2, 2.1, 1.0),
 		prop.meshes if not prop.is_empty() else meshes, "drink_machine", 1.2)
 
-# --- Decorations ---
-
-func _build_decorations() -> void:
-	var env_node: Node = find_child("Environment", false, false)
-	if not env_node:
-		return
-
-	# Astrocyte process fibers branch across the ceiling,
-	# representing the star-shaped processes astrocytes extend through tissue
-	var fiber_color := Color(0.12, 0.25, 0.35, 0.6)
-	var fiber_mat := StandardMaterial3D.new()
-	fiber_mat.albedo_color = fiber_color
-	fiber_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	fiber_mat.emission_enabled = true
-	fiber_mat.emission = Color(0.08, 0.18, 0.28)
-	fiber_mat.emission_energy_multiplier = 0.6
-	var player_start := _placement_or_grid("DataMotesCenter", Vector2i(3, 4), 1.8)
-	for i in range(7):
-		var angle := i * TAU / 7.0 + 0.3
-		var length := 2.5 + fmod(i * 1.7, 1.5)
-		var fiber := MeshInstance3D.new()
-		var cm := CylinderMesh.new()
-		cm.top_radius = 0.02
-		cm.bottom_radius = 0.04
-		cm.height = length
-		fiber.mesh = cm
-		fiber.material_override = fiber_mat
-		fiber.position = Vector3(
-			player_start.x + cos(angle) * 1.0,
-			2.7,
-			player_start.z + sin(angle) * 1.0
-		)
-		fiber.rotation = Vector3(0, angle, PI / 2.0 + (i % 3) * 0.15)
-		env_node.add_child(fiber)
-
-	# Nutrient conduits.
-	var conduit_mat := StandardMaterial3D.new()
-	conduit_mat.albedo_color = Color(0.15, 0.3, 0.2, 0.7)
-	conduit_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	conduit_mat.emission_enabled = true
-	conduit_mat.emission = Color(0.1, 0.25, 0.15)
-	conduit_mat.emission_energy_multiplier = 1.0
-	var conduit1 := MeshInstance3D.new()
-	var cc1 := CylinderMesh.new()
-	cc1.top_radius = 0.06
-	cc1.bottom_radius = 0.06
-	cc1.height = 14.0
-	conduit1.mesh = cc1
-	conduit1.material_override = conduit_mat
-	conduit1.position = Vector3(5, 2.6, _grid.height * _grid.cell_size - 0.3)
-	conduit1.rotation.z = PI / 2.0
-	env_node.add_child(conduit1)
-	var conduit2 := MeshInstance3D.new()
-	var cc2 := CylinderMesh.new()
-	cc2.top_radius = 0.05
-	cc2.bottom_radius = 0.05
-	cc2.height = 7.0
-	conduit2.mesh = cc2
-	conduit2.material_override = conduit_mat
-	conduit2.position = Vector3(0.3, 2.4, 4.5)
-	conduit2.rotation.x = PI / 2.0
-	env_node.add_child(conduit2)
-
-	# Neurotransmitter readout panels.
-	var panel_data := [
-		{"pos": Vector3(1.5, 1.6, 0.35), "text": "GABA  42.1", "color": Color(0.2, 0.5, 0.3)},
-		{"pos": Vector3(3.5, 1.8, 0.35), "text": "GLU   18.7", "color": Color(0.5, 0.35, 0.2)},
-		{"pos": Vector3(5.5, 1.5, 0.35), "text": "K+   4.2mM", "color": Color(0.3, 0.3, 0.55)},
-	]
-	for pd in panel_data:
-		var panel := MeshInstance3D.new()
-		var pb := BoxMesh.new()
-		pb.size = Vector3(1.0, 0.5, 0.02)
-		panel.mesh = pb
-		var pm := StandardMaterial3D.new()
-		pm.albedo_color = Color(0.05, 0.08, 0.1, 0.85)
-		pm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		pm.emission_enabled = true
-		pm.emission = pd.color * 0.4
-		pm.emission_energy_multiplier = 0.8
-		panel.material_override = pm
-		panel.position = pd.pos
-		env_node.add_child(panel)
-		var lbl := Label3D.new()
-		lbl.text = pd.text
-		lbl.font_size = 28
-		lbl.pixel_size = 0.008
-		lbl.modulate = Color(pd.color, 0.7)
-		lbl.position = pd.pos + Vector3(0, 0, -0.02)
-		env_node.add_child(lbl)
-
-	# Calcium wave floor strips.
-	var wave_mat := StandardMaterial3D.new()
-	wave_mat.albedo_color = Color(0.1, 0.2, 0.3, 0.3)
-	wave_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	wave_mat.emission_enabled = true
-	wave_mat.emission = Color(0.08, 0.15, 0.25)
-	wave_mat.emission_energy_multiplier = 0.5
-	wave_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	for i in range(4):
-		var strip := MeshInstance3D.new()
-		var sb := BoxMesh.new()
-		sb.size = Vector3(8.0 + i * 2.0, 0.005, 0.04)
-		strip.mesh = sb
-		strip.material_override = wave_mat
-		strip.position = Vector3(4.0 + i * 0.5, 0.01, 2.0 + i * 1.5)
-		strip.rotation.y = 0.1 * i
-		env_node.add_child(strip)
-
 # --- Terminal Interactable ---
 
 func _build_terminal() -> void:
@@ -869,7 +751,6 @@ func _build_terminal() -> void:
 		_terminal.position = _local_for_parent(self, _placement_or_position("TerminalInteract", term_pos + Vector3(0, 0.8, 0)))
 		add_child(_terminal)
 		_terminal.interacted.connect(_on_terminal_interacted)
-		_set_room_target_interaction_delegate(find_child("RoomTargetDataDisplays", true, false), _terminal)
 
 	var env_node: Node = find_child("Environment", false, false)
 	if env_node:
@@ -971,10 +852,7 @@ func _build_glass_bead_game(parent: Node3D) -> void:
 				(m as MeshInstance3D).visible = false
 		add_child(game)
 		game.global_position = spot
-		var anim := game.find_child("AnimationPlayer", true, false) as AnimationPlayer
-		if anim != null and anim.has_animation("idle"):
-			anim.get_animation("idle").loop_mode = Animation.LOOP_LINEAR
-			anim.play("idle")
+		# The display script drives materials, connector lines, and the idle loop.
 		var game_meshes: Array = game.find_children("*", "MeshInstance3D", true, false)
 		var game_target := _create_graybox_outline_target(parent, "RoomTargetGlassBeadGame",
 			spot + Vector3(0.0, 0.75, 0.0), Vector3(1.4, 1.4, 1.4), game_meshes, "glass_bead_game", 1.0)
