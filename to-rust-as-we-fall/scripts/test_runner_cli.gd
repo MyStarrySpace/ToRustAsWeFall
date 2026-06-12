@@ -4715,7 +4715,7 @@ func _elevator_realinput_beats(instance: Node) -> Dictionary:
 	beats["approach_aster"] = func(): _synthetic_player_click(instance, Vector3(instance.ASTER_POS.x, 0.0, instance.ASTER_POS.z))
 	# Queue EMP (E) while auto-paused, then resume (Space) to fire it.
 	beats["emp_tutorial"] = func():
-		_press_hud_action_key(instance, KEY_E)
+		_press_hud_action_key(instance, KEY_V)
 		_press_hud_action_key(instance, KEY_SPACE)
 	# Select the peris+aster pair (Ctrl+2), unpause (Space), then walk both to the
 	# door gate: click moves the active char, Tab switches active, click again. These
@@ -6621,7 +6621,7 @@ func _test_elevator() -> void:
 		instance._toggle_pause()
 		_assert_true(instance._scheduler.is_paused(),
 			"EMP tutorial cannot unpause before Aster queues EMP")
-		_assert_true(_press_hud_action_key(instance, KEY_E), "Elevator accepts E (EMP action) for Aster EMP")
+		_assert_true(_press_hud_action_key(instance, KEY_V), "Elevator accepts V (EMP action) for Aster EMP — E now rotates the camera")
 		_assert_true(instance._emp_queued, "Aster EMP queues from E while the tutorial is paused")
 		_assert_elevator_escort_standoff(instance, 2.0,
 			"Escort units are not touching the party while EMP is queued")

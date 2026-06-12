@@ -100,6 +100,12 @@ func _begin() -> void:
 	_apply_model_occupancy_to_grid()
 	if OS.get_environment("ASTER_GRID_PROBE") == "1":
 		_probe_model_vs_grid()
+	if OS.get_environment("ASTER_Y_PROBE") == "1":
+		for i in range(8):
+			_ui_scheduler.schedule_after(0.05 * (i + 1), func():
+				print("[YPROBE] aster_node=%.3f ron_node=%.3f gs_aster=%.3f grid_y=%.3f" % [
+					_player.global_position.y, _ron.global_position.y,
+					_game_state.get_position("aster").y, _grid.origin.y]), "yprobe")
 	_start_fade_in()
 
 ## DATA-LAYER occupancy from the model: solid interior furniture blocks its grid cells so characters

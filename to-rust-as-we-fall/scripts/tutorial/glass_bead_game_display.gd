@@ -78,7 +78,7 @@ func _make_bead_material(source: Material) -> Material:
 		mat.roughness = 0.08
 		mat.metallic = 0.0
 		mat.emission_enabled = true
-		mat.emission = Color(0.38, 0.76, 0.92)
+		mat.emission = Color(0.36, 0.91, 0.5)
 		mat.emission_energy_multiplier = 0.55
 		var tint := mat.albedo_color
 		tint.a = BEAD_ALPHA
@@ -86,11 +86,11 @@ func _make_bead_material(source: Material) -> Material:
 		return mat
 
 	var fallback := StandardMaterial3D.new()
-	fallback.albedo_color = Color(0.7, 0.92, 1.0, BEAD_ALPHA)
+	fallback.albedo_color = Color(0.72, 1.0, 0.8, BEAD_ALPHA)
 	fallback.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	fallback.roughness = 0.08
 	fallback.emission_enabled = true
-	fallback.emission = Color(0.38, 0.76, 0.92)
+	fallback.emission = Color(0.36, 0.91, 0.5)
 	fallback.emission_energy_multiplier = 0.55
 	fallback.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return fallback
@@ -152,11 +152,11 @@ func _build_connector_segments() -> void:
 
 	if _connector_material == null:
 		_connector_material = StandardMaterial3D.new()
-		_connector_material.albedo_color = Color(0.44, 0.86, 1.0, 0.72)
+		_connector_material.albedo_color = Color(0.45, 1.0, 0.62, 0.72)
 		_connector_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		_connector_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		_connector_material.emission_enabled = true
-		_connector_material.emission = Color(0.44, 0.86, 1.0)
+		_connector_material.emission = Color(0.36, 0.91, 0.5)
 		_connector_material.emission_energy_multiplier = 0.45
 		_connector_material.no_depth_test = true
 

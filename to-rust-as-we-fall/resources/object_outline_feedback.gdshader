@@ -10,7 +10,8 @@ void vertex() {
 }
 
 void fragment() {
+	// Opaque on purpose: writing ALPHA would put the shell in the transparent pass, where it
+	// sorts against the room unpredictably (and the preview scene drops blended meshes entirely).
 	ALBEDO = outline_color.rgb;
 	EMISSION = outline_color.rgb * glow_strength;
-	ALPHA = outline_color.a;
 }

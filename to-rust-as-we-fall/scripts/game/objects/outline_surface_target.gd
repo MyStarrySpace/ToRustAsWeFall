@@ -164,9 +164,28 @@ func set_highlight(active: bool) -> void:
 func register_highlight_mesh(mesh_instance: MeshInstance3D) -> void:
 	if mesh_instance == null or _highlight_meshes.has(mesh_instance):
 		return
+	# An alpha-BLENDED surface (glass, holo screens) must not grow an opaque hull — the shell
+	# renders as a solid slab over the see-through part (the terminal screen bug). Such meshes
+	# still shimmer via the surface particles; only the hull is skipped.
+	if _mesh_uses_alpha_blend(mesh_instance):
+		return
 	_highlight_meshes.append(mesh_instance)
 	_original_overlays[mesh_instance.get_instance_id()] = mesh_instance.material_overlay
 	_ensure_outline_shell(mesh_instance)
+
+func _mesh_uses_alpha_blend(mesh_instance: MeshInstance3D) -> bool:
+	var mats: Array = []
+	if mesh_instance.material_override != null:
+		mats.append(mesh_instance.material_override)
+	elif mesh_instance.mesh != null:
+		for s in range(mesh_instance.mesh.get_surface_count()):
+			var m = mesh_instance.get_active_material(s)
+			if m != null:
+				mats.append(m)
+	for m in mats:
+		if m is BaseMaterial3D and (m as BaseMaterial3D).transparency == BaseMaterial3D.TRANSPARENCY_ALPHA:
+			return true
+	return false
 
 func get_highlight_mesh_count() -> int:
 	_prune_highlight_meshes()

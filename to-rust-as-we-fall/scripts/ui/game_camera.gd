@@ -8,6 +8,15 @@ extends Camera3D
 
 @export var target: Node3D
 @export var follow_offset := Vector3(0, 12, 8)
+
+# Player camera controls: Q/E orbit the view around the target; the wheel zooms by scaling the
+# follow offset. Mobile later maps pinch to zoom and two-finger drag/twist to pan/rotate.
+const CAMERA_ROTATE_SPEED := 1.6   # rad/sec while Q/E held
+const CAMERA_ZOOM_STEP := 0.9      # wheel notch multiplier
+const CAMERA_ZOOM_MIN := 0.45
+const CAMERA_ZOOM_MAX := 2.2
+var _view_yaw := 0.0
+var _view_zoom := 1.0
 @export var follow_speed := 4.0
 @export var pan_speed := 0.03
 ## Edge-scroll fires only when the cursor is hard against the screen edge. A wide margin (this was 40)
@@ -42,6 +51,12 @@ func _ready() -> void:
 	_update_immediate()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("camera_zoom_in"):
+		_view_zoom = clampf(_view_zoom * CAMERA_ZOOM_STEP, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX)
+		return
+	if event.is_action_pressed("camera_zoom_out"):
+		_view_zoom = clampf(_view_zoom / CAMERA_ZOOM_STEP, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX)
+		return
 	if _locked:
 		return
 
@@ -63,9 +78,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _pan_offset.length() > max_pan_distance:
 			_pan_offset = _pan_offset.normalized() * max_pan_distance
 
+func _view_offset() -> Vector3:
+	return Basis(Vector3.UP, _view_yaw) * (follow_offset * _view_zoom)
+
 func _process(delta: float) -> void:
+	if Input.is_action_pressed("camera_rotate_left"):
+		_view_yaw += CAMERA_ROTATE_SPEED * delta
+	if Input.is_action_pressed("camera_rotate_right"):
+		_view_yaw -= CAMERA_ROTATE_SPEED * delta
 	if _locked:
-		var goal := _lock_position + follow_offset
+		var goal := _lock_position + _view_offset()
 		global_position = global_position.lerp(goal, follow_speed * delta)
 		# Apply shake even when locked
 		if _shake_intensity > 0.001:
@@ -138,13 +160,13 @@ func _process(delta: float) -> void:
 		_shake_intensity = 0.0
 
 	var look := _clamp_look(target.global_position + _pan_offset)
-	var goal := look + follow_offset
+	var goal := look + _view_offset()
 	global_position = global_position.lerp(goal, follow_speed * delta) + _shake_offset
 	# CONSTANT orientation: always aim along -follow_offset (the steady-state view direction), never at
 	# the live look point. Aiming at the look point while the position is still lerping toward it makes
 	# the camera visibly ROTATE during every follow/pan catch-up (the "rotates itself at an odd angle"
 	# wobble); with a fixed orientation the catch-up is a pure glide.
-	look_at(global_position - follow_offset, Vector3.UP)
+	look_at(global_position - _view_offset(), Vector3.UP)
 
 func _update_immediate() -> void:
 	if target:
