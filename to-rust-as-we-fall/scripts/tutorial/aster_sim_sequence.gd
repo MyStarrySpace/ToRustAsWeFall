@@ -68,6 +68,9 @@ func _build_characters() -> void:
 	if in_game:
 		_player.grid_world = _grid
 	chars.add_child(_player)
+	# Characters read small in the long room — render them at double scale. Feet sit at the node
+	# origin, so scaling about it keeps them grounded; the top_level path/marker overlays are unaffected.
+	_player.scale = Vector3(2, 2, 2)
 
 	_ron = _create_npc("Ron", Color(0.7, 0.6, 0.45))
 	_ron.display_name = "RON"
@@ -75,6 +78,7 @@ func _build_characters() -> void:
 	if in_game:
 		_ron.grid_world = _grid
 	chars.add_child(_ron)
+	_ron.scale = Vector3(2, 2, 2)
 
 	if in_game:
 		# Camera west of the room looking east: the 14-unit-long room lays out
@@ -269,7 +273,8 @@ func _start_fade_in() -> void:
 
 func _start_working() -> void:
 	_current_step = "working"
-	_scheduler.schedule_after(3.0, _start_ron_approaches, "ron_approaches")
+	# Brief settle after the fade, then Ron approaches — no long dead-air idle (was 3s).
+	_scheduler.schedule_after(0.5, _start_ron_approaches, "ron_approaches")
 
 func _start_ron_approaches() -> void:
 	_current_step = "ron_approaches"
