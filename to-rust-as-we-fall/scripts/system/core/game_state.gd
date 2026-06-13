@@ -2414,11 +2414,21 @@ func _on_field_restore_complete(caster_id: String) -> void:
 
 # --- Revive at shelter: presence is sufficient (GDD) -------------------------
 
+## The watch only runs while somebody is actually DOWN — an eternal 1s tick would keep the
+## scheduler from ever draining (and burns work in every shelter scene for nothing).
 func _start_revive_watch() -> void:
-	if _revive_watch_running or not scheduler:
+	if _revive_watch_running or not scheduler or _shelters.is_empty():
+		return
+	if not _any_character_downed():
 		return
 	_revive_watch_running = true
 	scheduler.schedule_after(1.0, _on_revive_watch_tick, "shelter_revive_watch")
+
+func _any_character_downed() -> bool:
+	for char_id in characters.keys():
+		if is_downed(str(char_id)):
+			return true
+	return false
 
 ## A 1s derived scan: every downed character AT a shelter with a conscious ally nearby gains
 ## revive progress; the ally stepping away resets it. At REVIVE_SECONDS: up at 1 HP, auto-rest.
@@ -2440,7 +2450,10 @@ func _on_revive_watch_tick() -> void:
 			_apply_revive(cid)
 		else:
 			_revive_progress[cid] = progress
-	scheduler.schedule_after(1.0, _on_revive_watch_tick, "shelter_revive_watch")
+	if _any_character_downed():
+		scheduler.schedule_after(1.0, _on_revive_watch_tick, "shelter_revive_watch")
+	else:
+		_revive_watch_running = false
 
 func _conscious_ally_near(char_id: String) -> bool:
 	var p := get_position(char_id)
@@ -3574,6 +3587,7 @@ func down_character(char_id: String) -> void:
 	ch.stats["narrative_available"] = false
 	_do_stop(char_id)
 	cancel_field_restore(char_id)  # a downed caster drops the cast
+	_start_revive_watch()
 	character_downed.emit(char_id)
 
 func restore_character(char_id: String) -> void:

@@ -18,6 +18,8 @@ const GENERATED_STRETCH_CHUNK_SCENE := preload("res://scenes/fragments/chunks/ge
 const REFUGE_RUN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/refuge_run_chunk.tscn")
 const PUSH_LAB_CHUNK_SCENE := preload("res://scenes/fragments/chunks/push_lab_chunk.tscn")
 const REST_LAB_CHUNK_SCENE := preload("res://scenes/fragments/chunks/rest_lab_chunk.tscn")
+const FLORA_GARDEN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/flora_garden_chunk.tscn")
+const DUSK_RUN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/dusk_run_chunk.tscn")
 const LURE_RELAY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/lure_relay_chunk.tscn")
 const SHOWCASE_GALLERY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/showcase_gallery_chunk.tscn")
 
@@ -38,6 +40,8 @@ const CHUNK_SCENES := {
 	"lure_relay": LURE_RELAY_CHUNK_SCENE,
 	"push_lab": PUSH_LAB_CHUNK_SCENE,
 	"rest_lab": REST_LAB_CHUNK_SCENE,
+	"flora_garden": FLORA_GARDEN_CHUNK_SCENE,
+	"dusk_run": DUSK_RUN_CHUNK_SCENE,
 	"showcase_gallery": SHOWCASE_GALLERY_CHUNK_SCENE,
 }
 
@@ -54,6 +58,8 @@ const PREVIEW_ENTRIES := [
 	{"id": "lure_relay", "chunk": "lure_relay", "title": "Ferrolure Relay"},
 	{"id": "push_lab", "chunk": "push_lab", "title": "Push Lab"},
 	{"id": "rest_lab", "chunk": "rest_lab", "title": "Shelter Rest Lab"},
+	{"id": "flora_garden", "chunk": "flora_garden", "title": "Flora Garden"},
+	{"id": "dusk_run", "chunk": "dusk_run", "title": "Dusk Run"},
 	{"id": "channels_rhythm", "chunk": "channels_rhythm", "title": "Channels Rhythm Lane"},
 	{"id": "channels_hide_window", "chunk": "channels_hide_window", "title": "Channels Hide Window"},
 	{"id": "survival_range", "chunk": "survival_range", "title": "Shelter-To-Shelter Range"},
@@ -128,7 +134,7 @@ const STAMINA_REGEN := 10.0
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
 @export_enum("stacks", "rings", "lockout", "overlay_lab", "mother_ferrolure", "survival_range",
 	"channels_rhythm", "channels_hide_window", "endo_junction_stretch", "generated_stretch",
-	"refuge_run", "lure_relay", "push_lab", "rest_lab", "showcase_gallery") var preview_chunk := "stacks"
+	"refuge_run", "lure_relay", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 ## When true, boot into a fragment PICKER instead of loading a chunk directly. The single

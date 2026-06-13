@@ -229,16 +229,21 @@ func _start_first_rest() -> void:
 	_game_state.add_shelter_region(
 		Vector2(aster_pos.x - 3.0, aster_pos.z - 3.0), Vector2(aster_pos.x + 3.0, aster_pos.z + 3.0))
 	_game_state.set_game_clock(_game_day, 0.55)
+	# BOTH dawn paths arm (first one wins; _start_dawn re-entry is step-guarded): the night skip
+	# fires only when EVERY conscious character sleeps — Endo at full HP can't rest, so the skip
+	# may never come and the narrative beat must still reach dawn (the contract driver caught the
+	# deadlock when only the rest-refused branch had the fallback).
 	_game_state.night_skipped.connect(
 		func(_day): _scheduler.schedule_after(0.5, _start_dawn, "dawn"), CONNECT_ONE_SHOT)
-	if not _game_state.command_rest("aster"):
-		# Nothing to heal or nothing to pay with: sleep happens narratively, dawn still comes.
-		_dialogue.dialogue_finished.connect(
-			func(): _scheduler.schedule_after(0, _start_dawn, "dawn"),
-			CONNECT_ONE_SHOT
-		)
+	_dialogue.dialogue_finished.connect(
+		func(): _scheduler.schedule_after(0, _start_dawn, "dawn"),
+		CONNECT_ONE_SHOT
+	)
+	_game_state.command_rest("aster")
 
 func _start_dawn() -> void:
+	if _current_step != "first_rest":
+		return
 	_current_step = "dawn"
 	_set_game_time(_game_day + 1, 0.05, true)
 	DialogueData.say_to(_dialogue, "facility.dawn")
