@@ -9313,6 +9313,40 @@ func _test_hover_grid_alignment() -> void:
 		max_err = maxf(max_err, absf(got.z - want.z))
 	_assert_true(max_err < 0.01,
 		"Hover overlay snaps to the data-grid cell center (max XZ error %.3f, want <0.01)" % max_err)
+
+	# End of the chain the player actually sees: the data grid's cell SEAMS must sit on the floor
+	# TILE seams. Measure a tile seam straight off the Room floor mesh geometry (clean 1.0 tiles at
+	# x=.5 / z=.58) and compare its phase to the grid's seam phase. This is what the 2 cm Z nudge
+	# (origin.z -0.40 -> -0.42) corrects; X was already on-phase.
+	var room: Node = inst.find_child("AsterRoom", true, false)
+	var tx: Array[float] = []
+	var tz: Array[float] = []
+	if room != null:
+		for mi in room.find_children("*", "MeshInstance3D", true, false):
+			if mi.name != "Room" or (mi as MeshInstance3D).mesh == null:
+				continue
+			var mesh: Mesh = (mi as MeshInstance3D).mesh
+			var xf: Transform3D = (mi as MeshInstance3D).global_transform
+			for s in range(mesh.get_surface_count()):
+				for v in (mesh.surface_get_arrays(s)[Mesh.ARRAY_VERTEX] as PackedVector3Array):
+					var g: Vector3 = xf * v
+					if g.y >= 0.0 and g.y <= 0.16:  # the floor plane (~0.06), not the walls rising above it
+						tx.append(fposmod(g.x, grid.cell_size))
+						tz.append(fposmod(g.z, grid.cell_size))
+	_assert_true(tz.size() > 50, "Found the Room floor geometry to measure tile seams (got %d floor verts)" % tz.size())
+	if tz.size() > 50:
+		tx.sort()
+		tz.sort()
+		var tile_x_phase: float = tx[tx.size() / 2]  # median = the dominant tile seam phase
+		var tile_z_phase: float = tz[tz.size() / 2]
+		var grid_x_phase: float = fposmod(grid.origin.x, grid.cell_size)
+		var grid_z_phase: float = fposmod(grid.origin.z, grid.cell_size)
+		var dx: float = absf(tile_x_phase - grid_x_phase)
+		dx = minf(dx, grid.cell_size - dx)
+		var dz: float = absf(tile_z_phase - grid_z_phase)
+		dz = minf(dz, grid.cell_size - dz)
+		_assert_true(dx < 0.01, "Grid X seams sit on the floor tile seams (tile %.3f vs grid %.3f)" % [tile_x_phase, grid_x_phase])
+		_assert_true(dz < 0.01, "Grid Z seams sit on the floor tile seams (tile %.3f vs grid %.3f)" % [tile_z_phase, grid_z_phase])
 	await _dispose_scene(inst)
 
 # --- Test: compute_preview_path is a READ-ONLY route preview (no move, no log) for the hover path ---

@@ -443,7 +443,7 @@ func _build_environment() -> void:
 	_room_binder.setup(self, _grid, {
 		"root_name": "AsterRoom",
 		"floor_surface_y": 0.15,
-		"grid_origin_xz": Vector2(-0.5, -0.4),
+		"grid_origin_xz": Vector2(-0.5, -0.42),
 		"occupants": ["Desk"],
 		"gltf_path": "res://resources/models/aster-sim/room/aster-sim-room-hi-res.gltf",
 		"wired_materials": ["aster-sim-room-hi-res_1", "aster-sim-room-hi-res_8"],
