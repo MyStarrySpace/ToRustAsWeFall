@@ -442,7 +442,7 @@ func _build_environment() -> void:
 	# grid seams aligned to the floor tiles, furniture occupancy, and the re-export guards.
 	_room_binder.setup(self, _grid, {
 		"root_name": "AsterRoom",
-		"floor_surface_y": 0.15,
+		"floor_surface_y": 0.063,  # the Room model's real floor TOP (measured) — characters/overlays ride it
 		"grid_origin_xz": Vector2(-0.5, -0.42),
 		"occupants": ["Desk"],
 		"gltf_path": "res://resources/models/aster-sim/room/aster-sim-room-hi-res.gltf",

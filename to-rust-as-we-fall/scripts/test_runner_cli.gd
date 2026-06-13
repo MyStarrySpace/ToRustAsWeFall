@@ -200,6 +200,9 @@ func _ready() -> void:
 			"--test-hover-grid-alignment":
 				ran_test = true
 				await _test_hover_grid_alignment()
+			"--test-characters-grounded":
+				ran_test = true
+				await _test_characters_grounded()
 			"--test-path-timed-wait-segment":
 				ran_test = true
 				_test_path_timed_wait_segment()
@@ -792,6 +795,7 @@ func _run_all_tests() -> void:
 	await _test_preview_matches_committed()
 	await _test_party_preview_renderers()
 	await _test_hover_grid_alignment()
+	await _test_characters_grounded()
 	_test_path_timed_wait_segment()
 	_test_enemy_pursuit_timeout()
 	_test_detection_vertical_band()
@@ -9347,6 +9351,51 @@ func _test_hover_grid_alignment() -> void:
 		dz = minf(dz, grid.cell_size - dz)
 		_assert_true(dx < 0.01, "Grid X seams sit on the floor tile seams (tile %.3f vs grid %.3f)" % [tile_x_phase, grid_x_phase])
 		_assert_true(dz < 0.01, "Grid Z seams sit on the floor tile seams (tile %.3f vs grid %.3f)" % [tile_z_phase, grid_z_phase])
+	await _dispose_scene(inst)
+
+# --- Test: characters stand ON the visible floor, not floating above it ---
+# The data plane rides `floor_surface_y` (grid origin Y), and spawns + movement derive their Y from
+# it. If that constant is above the model's real floor top, every character (and overlay) floats. A
+# character's visual feet sit at its node origin, so node_y must equal the measured floor top. Measure
+# the Room floor top straight off the mesh and assert the grid plane + each character sit on it.
+func _test_characters_grounded() -> void:
+	_test_name = "Characters Grounded"
+	var inst = await _instantiate_scene_and_wait(load("res://scenes/tutorial/aster_sim.tscn"), 6)
+	if inst == null:
+		_assert_true(false, "aster_sim instantiates for grounding test")
+		return
+	var gs = inst.get("_game_state")
+	if gs == null or gs.grid == null:
+		_assert_true(false, "scene exposes game_state + grid")
+		await _dispose_scene(inst)
+		return
+	var grid = gs.grid
+	# Floor top = highest Room floor-region vertex (y < 1.0 excludes walls/ceiling).
+	var room: Node = inst.find_child("AsterRoom", true, false)
+	var floor_top := -1.0e9
+	if room != null:
+		for mi in room.find_children("*", "MeshInstance3D", true, false):
+			if mi.name != "Room" or (mi as MeshInstance3D).mesh == null:
+				continue
+			var mesh: Mesh = (mi as MeshInstance3D).mesh
+			var xf: Transform3D = (mi as MeshInstance3D).global_transform
+			for s in range(mesh.get_surface_count()):
+				for v in (mesh.surface_get_arrays(s)[Mesh.ARRAY_VERTEX] as PackedVector3Array):
+					var g: Vector3 = xf * v
+					if g.y < 1.0:
+						floor_top = maxf(floor_top, g.y)
+	_assert_true(floor_top > -1.0e8, "Measured the Room floor top")
+	if floor_top > -1.0e8:
+		# The data plane (movement Y) must ride the visible floor, not above it.
+		_assert_true(absf(grid.origin.y - floor_top) < 0.04,
+			"Grid plane rides the floor top (origin.y %.3f vs floor %.3f)" % [grid.origin.y, floor_top])
+		# Each character's feet (node origin) must sit on that floor — not floating.
+		for cid in ["Aster", "Ron"]:
+			var node: Node = inst.find_child(cid, true, false)
+			if node != null:
+				var fy: float = (node as Node3D).global_position.y
+				_assert_true(absf(fy - floor_top) < 0.04,
+					"%s stands on the floor (feet %.3f vs floor %.3f, gap %.3f)" % [cid, fy, floor_top, fy - floor_top])
 	await _dispose_scene(inst)
 
 # --- Test: compute_preview_path is a READ-ONLY route preview (no move, no log) for the hover path ---
