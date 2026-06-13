@@ -334,11 +334,22 @@ func _update_hover_from_screen(screen_pos: Vector2) -> void:
 		_update_push_preview(hit)
 		return
 	# Centre the flat grid quad over the cell the cursor is over, just above the floor.
-	var cx := floorf(hit.x) + HOVER_CELL * 0.5
-	var cz := floorf(hit.z) + HOVER_CELL * 0.5
-	_hover_grid.global_position = Vector3(cx, hit.y + HOVER_LIFT, cz)
+	var center := _hover_grid_center(hit)
+	_hover_grid.global_position = Vector3(center.x, hit.y + HOVER_LIFT, center.z)
 	_hover_grid.visible = true
 	_update_path_preview(hit)
+
+## Snap a hovered floor point to the centre of the cell it falls in, so the hover overlay lands on the
+## SAME cells gameplay uses (and the floor tiles they're aligned to). Routes through the game grid's
+## own world<->cell mapping, which carries the grid's origin offset — a modeled room's seams sit on the
+## floor tiles, not on the integer lattice. Returns the centre in world XZ, keeping the hit's Y for the
+## caller to lift. Falls back to a unit lattice only when there's no grid (standalone preview).
+func _hover_grid_center(hit: Vector3) -> Vector3:
+	if game_state != null and game_state.grid != null:
+		var level := game_state.get_character_level(char_id) if char_id != "" else 0
+		var center: Vector3 = game_state.grid.grid_to_world(game_state.grid.world_to_grid(hit), level)
+		return Vector3(center.x, hit.y, center.z)
+	return Vector3(floorf(hit.x) + HOVER_CELL * 0.5, hit.y, floorf(hit.z) + HOVER_CELL * 0.5)
 
 ## Show the would-be route to the hovered point (dim), before a click commits it. Recomputed only when
 ## the hovered CELL changes — per-frame pathfinding for a cosmetic line would be wasteful. Cleared while
@@ -350,7 +361,9 @@ func _update_path_preview(hit: Vector3) -> void:
 	if game_state.is_moving(char_id):
 		_clear_path_preview()
 		return
-	var cell := Vector2i(int(floorf(hit.x)), int(floorf(hit.z)))
+	# Recompute only when the hovered DATA-grid cell changes (the grid carries its origin offset, so
+	# this tracks the same cells the move will land on — not an integer lattice).
+	var cell := game_state.grid.world_to_grid(hit) if game_state.grid != null else Vector2i(int(floorf(hit.x)), int(floorf(hit.z)))
 	if cell == _preview_last_cell:
 		return
 	_preview_last_cell = cell

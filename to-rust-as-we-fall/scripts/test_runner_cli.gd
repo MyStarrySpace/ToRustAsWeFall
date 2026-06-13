@@ -197,6 +197,9 @@ func _ready() -> void:
 			"--test-party-preview-renderers":
 				ran_test = true
 				await _test_party_preview_renderers()
+			"--test-hover-grid-alignment":
+				ran_test = true
+				await _test_hover_grid_alignment()
 			"--test-path-timed-wait-segment":
 				ran_test = true
 				_test_path_timed_wait_segment()
@@ -788,6 +791,7 @@ func _run_all_tests() -> void:
 	await _test_chunk_interactable_outlines()
 	await _test_preview_matches_committed()
 	await _test_party_preview_renderers()
+	await _test_hover_grid_alignment()
 	_test_path_timed_wait_segment()
 	_test_enemy_pursuit_timeout()
 	_test_detection_vertical_band()
@@ -9274,6 +9278,41 @@ func _test_preview_hover_grid() -> void:
 	_assert_true(not hover_grid.visible, "Select-mode prompt hides the hover grid")
 	player.set_click_mode("move")
 
+	await _dispose_scene(inst)
+
+# --- Test: the hover grid snaps to the DATA grid's cells, not a hardcoded integer lattice ---
+# The hover overlay used floorf(hit) snapping, which assumes grid cells sit on integer world
+# coordinates. A modeled room's grid is offset (aster origin x=-0.5, z=-0.4, so its cell seams land
+# on the .5/.58 floor tiles, NOT on integers). Integer snapping drew the overlay a HALF CELL out of
+# phase with both the data grid and the floor tiles. The overlay center must equal the data grid's
+# cell center for the hovered point — that's what keeps it lined up with the tiles.
+func _test_hover_grid_alignment() -> void:
+	_test_name = "Hover Grid Alignment"
+	var inst = await _instantiate_scene_and_wait(load("res://scenes/tutorial/aster_sim.tscn"), 6)
+	if inst == null:
+		_assert_true(false, "aster_sim instantiates for hover-grid alignment")
+		return
+	var player = inst.get("_player")
+	var gs = inst.get("_game_state")
+	if player == null or gs == null or gs.grid == null or not player.has_method("_hover_grid_center"):
+		_assert_true(false, "scene exposes player + game_state + grid + the snap helper")
+		await _dispose_scene(inst)
+		return
+	var grid = gs.grid
+	# Sanity: this scene's grid is genuinely offset off the integer lattice, so it exercises the bug.
+	_assert_true(absf(grid.origin.x - roundf(grid.origin.x)) > 0.05 or absf(grid.origin.z - roundf(grid.origin.z)) > 0.05,
+		"Aster grid origin is off the integer lattice (origin=%s) — exercises the offset" % str(grid.origin))
+	var level: int = gs.get_character_level("aster")
+	# Hover points well inside cells across the floor (x[1.5..8.5], z[0.58..14.58]); avoid boundaries.
+	var hits := [Vector3(4.2, 0.1, 6.3), Vector3(2.7, 0.1, 9.1), Vector3(6.9, 0.1, 11.8), Vector3(3.4, 0.1, 2.4)]
+	var max_err := 0.0
+	for hit in hits:
+		var got: Vector3 = player._hover_grid_center(hit)
+		var want: Vector3 = grid.grid_to_world(grid.world_to_grid(hit), level)
+		max_err = maxf(max_err, absf(got.x - want.x))
+		max_err = maxf(max_err, absf(got.z - want.z))
+	_assert_true(max_err < 0.01,
+		"Hover overlay snaps to the data-grid cell center (max XZ error %.3f, want <0.01)" % max_err)
 	await _dispose_scene(inst)
 
 # --- Test: compute_preview_path is a READ-ONLY route preview (no move, no log) for the hover path ---
