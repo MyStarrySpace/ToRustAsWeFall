@@ -248,8 +248,13 @@ func _remaining_points() -> Array[Vector3]:
 ## height (~0.5 for a gridless pos-move), which made the ribbon float; flatten every point to the
 ## floor under the character's level instead (grid level height when there's a grid, else y≈0).
 func _ground_y() -> float:
-	if game_state != null and game_state.grid != null and char_id != "" and game_state.characters.has(char_id):
-		return game_state.grid.origin.y + game_state.grid.level_height * float(game_state.get_character_level(char_id)) + HEIGHT_OFFSET
+	# Ride the grid's floor surface whenever there's a grid — INCLUDING preview ribbons (char_id == "").
+	# Keying this on char_id buried the hover preview under a lifted modeled floor (origin.y > HEIGHT_OFFSET).
+	if game_state != null and game_state.grid != null:
+		var lvl := 0
+		if char_id != "" and game_state.characters.has(char_id):
+			lvl = game_state.get_character_level(char_id)
+		return game_state.grid.origin.y + game_state.grid.level_height * float(lvl) + HEIGHT_OFFSET
 	return HEIGHT_OFFSET
 
 func _start_point(gy: float) -> Vector3:

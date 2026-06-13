@@ -203,6 +203,12 @@ func _ready() -> void:
 			"--test-characters-grounded":
 				ran_test = true
 				await _test_characters_grounded()
+			"--test-preview-ribbon-grounded":
+				ran_test = true
+				await _test_preview_ribbon_grounded()
+			"--test-hover-grid-edge-fade":
+				ran_test = true
+				_test_hover_grid_edge_fade()
 			"--test-path-timed-wait-segment":
 				ran_test = true
 				_test_path_timed_wait_segment()
@@ -796,6 +802,8 @@ func _run_all_tests() -> void:
 	await _test_party_preview_renderers()
 	await _test_hover_grid_alignment()
 	await _test_characters_grounded()
+	await _test_preview_ribbon_grounded()
+	_test_hover_grid_edge_fade()
 	_test_path_timed_wait_segment()
 	_test_enemy_pursuit_timeout()
 	_test_detection_vertical_band()
@@ -9397,6 +9405,53 @@ func _test_characters_grounded() -> void:
 				_assert_true(absf(fy - floor_top) < 0.04,
 					"%s stands on the floor (feet %.3f vs floor %.3f, gap %.3f)" % [cid, fy, floor_top, fy - floor_top])
 	await _dispose_scene(inst)
+
+# --- Test: a hover PREVIEW ribbon rides the grid floor, not the bare HEIGHT_OFFSET ---
+# A preview PathRenderer has char_id == "" (it draws an explicit path anchored to the player). Its
+# ground Y must still ride the grid's floor surface; otherwise on a lifted modeled floor (origin.y > 0)
+# the dashed preview is drawn UNDER the floor and never shows.
+func _test_preview_ribbon_grounded() -> void:
+	_test_name = "Preview Ribbon Grounded"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	var grid := GridWorld.new()
+	grid.origin = Vector3(0.0, 0.15, 0.0)  # a lifted modeled floor (origin.y well above HEIGHT_OFFSET)
+	gs.grid = grid
+	var pr := PathRenderer.new()
+	pr.preview_style = true
+	add_child(pr)
+	pr.setup(gs, "", Color.WHITE, null)  # preview: no char_id
+	var gy: float = pr._ground_y()
+	_assert_true(gy > grid.origin.y + 0.01,
+		"Preview ribbon rides ABOVE the floor surface (ground %.3f vs floor %.3f)" % [gy, grid.origin.y])
+	pr.queue_free()
+	await get_tree().process_frame
+
+# --- Test: the hover grid FADES toward its edges (solid centre, dissolving rim) ---
+# The 5x5 hover patch must dissolve at the edges like the old grid, not end in a hard square. The
+# shared alpha field (line-pixel value = radial fade) must drop from a solid centre to a faint rim.
+func _test_hover_grid_edge_fade() -> void:
+	_test_name = "Hover Grid Edge Fade"
+	var ps = load("res://scripts/game/characters/player.gd")
+	ps._ensure_grid_alpha()
+	var dim: int = ps._grid_dim
+	var alpha: PackedFloat32Array = ps._grid_alpha
+	var half := dim * 0.5
+	var inner := 0.0
+	var outer := 0.0
+	for y in range(dim):
+		for x in range(dim):
+			var a: float = alpha[y * dim + x]
+			if a <= 0.0:
+				continue  # non-line pixel
+			var r := Vector2((x + 0.5 - half) / half, (y + 0.5 - half) / half).length()
+			if r < 0.25:
+				inner = maxf(inner, a)
+			elif r > 0.9:
+				outer = maxf(outer, a)
+	_assert_true(inner > 0.6, "Grid lines are solid near the centre (max %.2f)" % inner)
+	_assert_true(outer < inner - 0.2, "Grid FADES toward the edges (edge max %.2f << centre %.2f)" % [outer, inner])
 
 # --- Test: compute_preview_path is a READ-ONLY route preview (no move, no log) for the hover path ---
 func _test_preview_pathfinding() -> void:

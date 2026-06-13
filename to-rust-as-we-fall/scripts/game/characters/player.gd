@@ -51,6 +51,14 @@ const HOVER_SPAN := 5            # NxN grid patch shown around the hovered cell
 const HOVER_TINT := Color(1.0, 1.0, 1.0)  # faded white — a quiet aim hint, not a character-coloured beacon
 const HOVER_LIFT := 0.05         # the flat grid quad sits this far above the hovered floor point
 var _hover_grid: MeshInstance3D
+# Ordered 4x4 Bayer thresholds (normalised) — used to stipple the radial fade into the scissor grid so
+# it dissolves smoothly toward the edges instead of cutting off in a hard ring.
+const BAYER4 := [
+	0.0 / 16.0, 8.0 / 16.0, 2.0 / 16.0, 10.0 / 16.0,
+	12.0 / 16.0, 4.0 / 16.0, 14.0 / 16.0, 6.0 / 16.0,
+	3.0 / 16.0, 11.0 / 16.0, 1.0 / 16.0, 9.0 / 16.0,
+	15.0 / 16.0, 7.0 / 16.0, 13.0 / 16.0, 5.0 / 16.0,
+]
 
 # Path preview: while hovering the floor in move mode, show (dim) the route a click WOULD take, before
 # committing it. Recomputed only when the hovered cell changes (per-frame pathfinding would be wasteful).
@@ -272,13 +280,13 @@ static func _ensure_grid_alpha() -> void:
 		var fy := (y + 0.5 - half) / half
 		for x in range(dim):
 			var fx := (x + 0.5 - half) / half
-			# Strong lines across the whole patch; a soft vignette dissolves only the outer corners (with
-			# ALPHA_SCISSOR this just sets where lines drop out, so keep it gentle to show the full 5x5).
-			var falloff := clampf(1.0 - pow(sqrt(fx * fx + fy * fy) * 0.72, 4.0), 0.0, 1.0)
-			var a := 0.0
-			if is_line[x] or is_line[y]:
-				a = 0.9 * falloff
-			_grid_alpha[y * dim + x] = a
+			# Per-line-pixel radial FADE (1 at the centre -> 0 past the rim). _build_grid_texture
+			# dithers this into a stipple so the 5x5 visibly fades toward the edges (the scissor
+			# material can't blend, so the fade is carried by dropout density). Solid out to r~0.5,
+			# fading to a faint rim by r~1.18 so the outer cells dissolve instead of ending hard.
+			var r := sqrt(fx * fx + fy * fy)
+			var fade := clampf((1.18 - r) / 0.68, 0.0, 1.0)
+			_grid_alpha[y * dim + x] = fade if (is_line[x] or is_line[y]) else 0.0
 
 func _build_grid_texture() -> ImageTexture:
 	# CONTRAST is the whole game here: thin faded-white lines vanish against the room model's own
@@ -292,10 +300,21 @@ func _build_grid_texture() -> ImageTexture:
 	var rim := Color(0.03, 0.04, 0.05, 1.0)
 	var img := Image.create(dim, dim, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
+	# Stipple the fade: a line pixel is kept (full line colour) only where its fade beats the ordered
+	# Bayer threshold — dense near the centre (fade ~1, solid), sparse toward the rim (fade ~0.2), so the
+	# grid reads as a smooth fade even though ALPHA_SCISSOR is all-or-nothing.
+	var kept := PackedByteArray()
+	kept.resize(dim * dim)
+	for y in range(dim):
+		for x in range(dim):
+			var f := _grid_alpha[y * dim + x]
+			kept[y * dim + x] = 1 if f > BAYER4[(y % 4) * 4 + (x % 4)] else 0
+	# Dark rim for contrast — only around the SOLID core lines (high fade); rimming the sparse outer
+	# stipple would smear into a muddy halo and kill the fade.
 	var rim_px := 2
 	for y in range(dim):
 		for x in range(dim):
-			if _grid_alpha[y * dim + x] <= 0.004:
+			if kept[y * dim + x] == 0 or _grid_alpha[y * dim + x] < 0.5:
 				continue
 			for oy in range(-rim_px, rim_px + 1):
 				for ox in range(-rim_px, rim_px + 1):
@@ -305,8 +324,7 @@ func _build_grid_texture() -> ImageTexture:
 						img.set_pixel(px, py, rim)
 	for y in range(dim):
 		for x in range(dim):
-			var a := _grid_alpha[y * dim + x]
-			if a > 0.004:
+			if kept[y * dim + x] == 1:
 				img.set_pixel(x, y, line)
 	return ImageTexture.create_from_image(img)
 
