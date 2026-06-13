@@ -47,7 +47,7 @@ var _dest_marker_mat: StandardMaterial3D
 # Hover grid: hovering the floor in move mode reveals a grid patch with the pointed-at cell lit, so
 # you can see exactly where a click will move you. Cosmetic; follows the cursor, snapped to cells.
 const HOVER_CELL := 1.0
-const HOVER_SPAN := 3            # NxN grid patch shown around the hovered cell
+const HOVER_SPAN := 5            # NxN grid patch shown around the hovered cell
 const HOVER_TINT := Color(1.0, 1.0, 1.0)  # faded white — a quiet aim hint, not a character-coloured beacon
 const HOVER_LIFT := 0.05         # the flat grid quad sits this far above the hovered floor point
 var _hover_grid: MeshInstance3D
@@ -105,6 +105,7 @@ func _ready() -> void:
 	_dest_marker.material_override = _dest_marker_mat
 	_dest_marker.rotation.x = -PI / 2.0
 	_dest_marker.top_level = true
+	_dest_marker.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF  # a UI overlay, not a caster
 	add_child(_dest_marker)
 
 	_build_hover_grid()
@@ -227,6 +228,7 @@ func _build_hover_grid() -> void:
 	_hover_grid = MeshInstance3D.new()
 	_hover_grid.top_level = true   # authored in world space; we set its global position to the cell
 	_hover_grid.visible = false
+	_hover_grid.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF  # a UI overlay, not a caster
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(HOVER_SPAN * HOVER_CELL, HOVER_SPAN * HOVER_CELL)
 	_hover_grid.mesh = plane
@@ -243,9 +245,9 @@ func _build_hover_grid() -> void:
 	_hover_grid.material_override = mat
 	add_child(_hover_grid)
 
-## Per-player grid IMAGE in the player's colour: lines + a filled centre cell, with the ALPHA falling
-## off radially from the centre so the pointed-at tile is strongly opaque and the grid dissolves toward
-## the edges. The expensive falloff pattern is computed ONCE (shared alpha), then tinted per colour.
+## Per-player grid IMAGE in the player's colour: grid LINES only (no filled centre cell), with a gentle
+## radial dissolve so the full patch reads as a square but its corners soften instead of ending in a hard
+## edge. The expensive pattern is computed ONCE (shared alpha), then tinted per colour.
 static var _grid_alpha: PackedFloat32Array
 static var _grid_dim := 0
 
@@ -266,19 +268,16 @@ static func _ensure_grid_alpha() -> void:
 	_grid_alpha = PackedFloat32Array()
 	_grid_alpha.resize(dim * dim)
 	var half := dim * 0.5
-	var c_lo: int = (cells / 2) * cpx
-	var c_hi: int = c_lo + cpx
 	for y in range(dim):
 		var fy := (y + 0.5 - half) / half
-		var in_cy := y >= c_lo and y < c_hi
 		for x in range(dim):
 			var fx := (x + 0.5 - half) / half
-			var falloff := pow(clampf(1.0 - sqrt(fx * fx + fy * fy), 0.0, 1.0), 1.6)
+			# Strong lines across the whole patch; a soft vignette dissolves only the outer corners (with
+			# ALPHA_SCISSOR this just sets where lines drop out, so keep it gentle to show the full 5x5).
+			var falloff := clampf(1.0 - pow(sqrt(fx * fx + fy * fy) * 0.72, 4.0), 0.0, 1.0)
 			var a := 0.0
-			if in_cy and x >= c_lo and x < c_hi:
-				a = 0.3                        # the target cell: present but faded
-			elif is_line[x] or is_line[y]:
-				a = 0.45 * falloff             # grid lines fade out toward the edges
+			if is_line[x] or is_line[y]:
+				a = 0.9 * falloff
 			_grid_alpha[y * dim + x] = a
 
 func _build_grid_texture() -> ImageTexture:
