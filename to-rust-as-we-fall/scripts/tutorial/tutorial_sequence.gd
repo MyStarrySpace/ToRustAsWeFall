@@ -97,6 +97,10 @@ func _ready() -> void:
 	_build_characters()
 	if Engine.is_editor_hint():
 		return
+	# Object hover + RTS right-click-to-interact ride the engine's physics picking (Area3D
+	# mouse_entered / input_event). It's off by default, so enable it here — without it the white hover
+	# outline never lit and the interactable's own click path was dead.
+	get_viewport().physics_object_picking = true
 	_scheduler = EventScheduler.new()
 	# Second lane: dialogue / thought-fades / UI timers. F-scaled but never frozen
 	# by gameplay pause — "pause gameplay, keep dialogue" is structural, not a hack.

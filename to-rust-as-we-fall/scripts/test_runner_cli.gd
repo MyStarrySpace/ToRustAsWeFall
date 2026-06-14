@@ -215,6 +215,9 @@ func _ready() -> void:
 			"--test-grid-nearest-walkable-world":
 				ran_test = true
 				_test_grid_nearest_walkable_world()
+			"--test-aster-hover-outline":
+				ran_test = true
+				await _test_aster_hover_outline()
 			"--test-path-timed-wait-segment":
 				ran_test = true
 				_test_path_timed_wait_segment()
@@ -812,6 +815,7 @@ func _run_all_tests() -> void:
 	_test_hover_grid_edge_fade()
 	await _test_ron_warp_in()
 	_test_grid_nearest_walkable_world()
+	await _test_aster_hover_outline()
 	_test_path_timed_wait_segment()
 	_test_enemy_pursuit_timeout()
 	_test_detection_vertical_band()
@@ -9496,6 +9500,34 @@ func _test_ron_warp_in() -> void:
 	if wm != null:
 		var d := float(wm.get_shader_parameter("dissolve"))
 		_assert_true(d < 0.0, "Ron starts UNFORMED until the portal fires (dissolve %.2f < 0)" % d)
+	await _dispose_scene(inst)
+
+# --- Test: object hover outline needs physics picking enabled (Aster interactables) ---
+# The interactable hover outline fires off Area3D mouse_entered, which only happens when the viewport's
+# physics_object_picking is ON. It's off by default, so a tutorial scene MUST enable it — otherwise the
+# white hover outline never lights (only the Shift-reveal key path works). Reset picking first so a
+# prior scene can't mask the regression.
+func _test_aster_hover_outline() -> void:
+	_test_name = "Aster Hover Outline"
+	get_tree().root.physics_object_picking = false  # clear any prior scene's setting
+	var inst = await _instantiate_scene_and_wait(load("res://scenes/tutorial/aster_sim.tscn"), 8)
+	if inst == null:
+		_assert_true(false, "aster_sim instantiates for hover-outline test")
+		return
+	var vp := inst.get_viewport()
+	_assert_true(vp != null and vp.physics_object_picking,
+		"Scene enables viewport physics object picking (the interactable hover outline depends on it)")
+	# Interactables start DISABLED (not pickable) and become pickable when their beat enables them —
+	# that's when hover should light. Enable one and confirm it goes pickable + still emits hover.
+	var inter: Node = null
+	for n in inst.find_children("*", "Interactable", true, false):
+		inter = n
+		break
+	_assert_true(inter != null, "Aster has interactables")
+	if inter != null:
+		inter.call("set_interaction_enabled", true)
+		_assert_true(bool(inter.get("input_ray_pickable")) and inter.has_signal("outline_hovered"),
+			"An enabled interactable is pickable and emits the hover signal (outline lights with picking on)")
 	await _dispose_scene(inst)
 
 # --- Test: GridWorld.nearest_walkable_world — the reusable spawn resolver (no more wall spawns) ---
