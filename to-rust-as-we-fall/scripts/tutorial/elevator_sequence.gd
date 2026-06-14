@@ -685,7 +685,11 @@ func _start_fade_in() -> void:
 func _start_waking() -> void:
 	_enter_step("waking")
 	_dialogue_chain(
-		["elevator.peris.where"],
+		[
+			"elevator.narration.room",
+			"elevator.aster.wake",
+			"elevator.peris.wake",
+		],
 		func(): _scheduler.schedule_after(1.0, _start_approach_aster, "approach")
 	)
 
@@ -700,20 +704,12 @@ func _start_wake_aster() -> void:
 	_clear_aster_wake_interactable()
 	_hud.set_portrait_status("aster", "")
 	_hud.set_portrait_stat("aster", "sta", 100)
-	DialogueData.say_to(_dialogue, "elevator.peris.hey")
+	DialogueData.say_to(_dialogue, "elevator.aster.surface")
 	# Tween Aster upright
 	var tween := create_tween()
 	tween.tween_property(_aster_node, "rotation_degrees:z", 0.0, 1.5)
 	_dialogue.dialogue_finished.connect(func():
-		_scheduler.schedule_after(0.5, func():
-			DialogueData.say_to(_dialogue, "elevator.aster.waking")
-			_dialogue.dialogue_finished.connect(func():
-				DialogueData.say_to(_dialogue, "elevator.aster.where")
-				_dialogue.dialogue_finished.connect(func():
-					_scheduler.schedule_after(0.5, _start_conversation, "conversation")
-				, CONNECT_ONE_SHOT)
-			, CONNECT_ONE_SHOT)
-		, "aster_wake")
+		_scheduler.schedule_after(0.5, _start_conversation, "conversation")
 	, CONNECT_ONE_SHOT)
 
 func _show_aster_wake_interactable() -> void:
@@ -753,25 +749,17 @@ func _start_conversation() -> void:
 	_enter_step("conversation")
 	_dialogue.default_hold_time = 3.0
 	_dialogue_chain([
-		"elevator.aster.device_locked",
-		"elevator.peris.trapped",
-		"elevator.peris.why",
-		"elevator.aster.wellness",
-		"elevator.aster.singing",
-		"elevator.peris.citizen_ok",
-		"elevator.aster.privacy",
-		"elevator.peris.speaking_of",
-		"elevator.peris.gel",
-		"elevator.aster.perks",
+		"elevator.peris.clock",
+		"elevator.aster.device",
+		"elevator.peris.doors",
 	], _start_system_restored, 0.5)
 
 func _start_system_restored() -> void:
 	_enter_step("system_restored")
 	_camera.shake(0.1, 8.0)
-	# Device access restored; Aster's overlay activates.
+	# Aster's overlay activates.
 	_setup_perception("data", _aster_node)
-	DialogueData.say_to(_dialogue, "elevator.system.restored")
-	DialogueData.say_to(_dialogue, "elevator.aster.overlay")
+	DialogueData.say_to(_dialogue, "elevator.unit.wake")
 	_dialogue.dialogue_finished.connect(
 		func(): _scheduler.schedule_after(0.5, _start_units_activate, "units_activate"),
 		CONNECT_ONE_SHOT
@@ -785,7 +773,7 @@ func _start_units_activate() -> void:
 	_escort_2.walk_to(_get_emp_guard_standoff_pos("eu2", _escort_2, party_center))
 	_camera.shake(0.2, 6.0)
 	_dialogue_chain(
-		["elevator.unit.protocol", "elevator.aster.device"],
+		["elevator.unit.protocol", "elevator.peris.urgent", "elevator.aster.emp"],
 		_start_emp_tutorial
 	)
 
@@ -827,7 +815,7 @@ func _start_doors_unlocked() -> void:
 	_exit_button.one_shot = true
 	_exit_button.tutorial_label = "OPEN"
 	_exit_button.show_tutorial_label()
-	DialogueData.say_to(_dialogue, "elevator.system.override")
+	DialogueData.say_to(_dialogue, "elevator.narration.emp")
 	_dialogue.dialogue_finished.connect(_start_doors_open, CONNECT_ONE_SHOT)
 	# Exit button remains a fallback if auto-advance misses.
 	if _exit_button.interacted.is_connected(_on_exit_button_pressed):
@@ -879,6 +867,15 @@ func _start_corridor() -> void:
 	_game_state.command_move_to_pos("aster", exit_pos)
 	_game_state.command_move_to_pos("peris", exit_pos + Vector3(0, 0, 1.0))
 	_dialogue_chain([
+		"elevator.narration.doors",
+		"elevator.peris.device_q",
+		"elevator.aster.outcome",
+		"elevator.aster.spoof",
+		"elevator.aster.only_community",
+		"elevator.peris.disgust",
+		"elevator.aster.not_into",
+		"elevator.peris.interesting",
+		"elevator.aster.curious",
 		"elevator.peris.not_supposed",
 		"elevator.aster.no_service",
 	], func(): _scheduler.schedule_after(2.0, _start_bridge, "bridge"))
@@ -892,6 +889,7 @@ func _start_bridge() -> void:
 	_game_state.command_move_to_pos("aster", bridge_pos + Vector3(1.0, 0, 0))
 	_game_state.command_move_to_pos("peris", bridge_pos)
 	_dialogue_chain([
+		"elevator.bridge.narration",
 		"elevator.peris.bodies",
 		"elevator.aster.logs",
 		"elevator.aster.ahead",
@@ -915,6 +913,7 @@ func _start_bridge_collapse() -> void:
 	if _escort_2:
 		_escort_2.visible = false
 	_camera.shake(0.4, 2.0)
+	DialogueData.say_to(_dialogue, "elevator.narration.collapse")
 	DialogueData.say_to(_dialogue, "elevator.peris.floor")
 	_scheduler.schedule_after(0.8, _execute_bridge_fall, "bridge_fall")
 
@@ -985,17 +984,21 @@ func _remove_collapsed_chunks() -> void:
 func _start_fallen() -> void:
 	_enter_step("fallen")
 	_dialogue_chain([
-		"elevator.peris.hurt",
-		"elevator.aster.sublevel",
+		"elevator.narration.landing",
+		"elevator.narration.scramble",
+		"elevator.aster.way_back",
+		"elevator.peris.laugh",
+		"elevator.aster.funny",
+		"elevator.peris.most_felt",
 	], func(): _scheduler.schedule_after(1.0, _start_climb_attempt, "climb"))
 
 func _start_climb_attempt() -> void:
 	_enter_step("climb_attempt")
 	# Establish that the bridge cannot be retraced.
 	_dialogue_chain([
+		"elevator.narration.wall_try",
 		"elevator.aster.climb",
 		"elevator.peris.climb",
-		"elevator.aster.another_way",
 	], func():
 		_show_climb_interactable()
 	)
@@ -1028,7 +1031,11 @@ func _start_route_fork_dialogue() -> void:
 	_enter_step("route_fork_dialogue")
 	_player.set_move_enabled(true)
 	_dialogue_chain([
-		"elevator.aster.two_paths",
+		"elevator.narration.fork",
+		"elevator.aster.short_way",
+		"elevator.peris.community",
+		"elevator.narration.look",
+		"elevator.aster.long_way",
 	], func(): _scheduler.schedule_after(1.5, _start_route_choice, "route_choice"))
 
 # --- Route Choice ---

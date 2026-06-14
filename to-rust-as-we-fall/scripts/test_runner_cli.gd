@@ -4113,7 +4113,7 @@ func _test_tag_day() -> void:
 			"peris_sim.system.sanction_notice",
 			"peris_sim.system.wellness_feed",
 			"peris_sim.system.spiral_flash",
-			"peris_sim.system.reconnect_denied",
+			"peris_sim.peris.retro",
 		]:
 			_assert_true(DialogueData.has_key(key), "Peris phase 2 dialogue key exists: %s" % key)
 
@@ -5782,7 +5782,6 @@ func _test_peris_sim() -> void:
 			"PaintingZone",
 			"WellnessZone",
 			"StrikeWarningZone",
-			"NotesZone",
 			"LogbookGate",
 		]
 		for zone_name in peris_explore_zones:
@@ -5805,7 +5804,7 @@ func _test_peris_sim() -> void:
 		# Exploration objects now carry the shared outline + surface-particle feedback.
 		var peris_outline_targets := [
 			"Plant1Outline", "Plant5Outline", "PaintingOutline", "WellnessOutline",
-			"StrikeWarningOutline", "NotesOutline", "LogbookOutline",
+			"StrikeWarningOutline", "LogbookOutline",
 		]
 		for target_name in peris_outline_targets:
 			var ot := instance.find_child(target_name, true, false)
@@ -6076,7 +6075,6 @@ func _assert_peris_interaction_click_matrix(instance: Node, dialogue: Node) -> v
 	checks.append({"target": "PaintingZone", "text": "peris.sim_expand.painting.line"})
 	checks.append({"target": "WellnessZone", "text": "peris.sim_expand.wellness.line"})
 	checks.append({"target": "StrikeWarningZone", "text": "peris.sim_expand.strike_warning.notification"})
-	checks.append({"target": "NotesZone", "text": "peris.sim_expand.notes.line"})
 
 	for check in checks:
 		await _reset_dialogue_focus(instance, dialogue)
@@ -14263,20 +14261,20 @@ func _test_peris_dialogue() -> void:
 	# Verify Monos thanks after protect
 	var has_thanks := false
 	for entry in log:
-		if "thank you" in entry.text.to_lower():
+		if "lifesaver" in entry.text.to_lower():
 			has_thanks = true
 	_assert_true(has_thanks, "Monos thanks Peris after protect")
 
 	# Verify efficiency penalty
 	var has_penalty := false
 	for entry in log:
-		if "62%" in entry.text or "PENALTY" in entry.text:
+		if "VIOLATION" in entry.text:
 			has_penalty = true
 	_assert_true(has_penalty, "Efficiency penalty logged")
 
 	var has_sanction := false
 	var has_wellness := false
-	var has_reconnect_denied := false
+	var has_retro := false
 	var has_worker_exit := false
 	for entry in log:
 		var lower_text: String = entry.text.to_lower()
@@ -14284,13 +14282,13 @@ func _test_peris_dialogue() -> void:
 			has_sanction = true
 		if "breathing techniques" in lower_text or "gel" in lower_text or "soap" in lower_text:
 			has_wellness = true
-		if "reconnect request denied" in lower_text:
-			has_reconnect_denied = true
-		if "medical attention" in lower_text or "are you okay" in lower_text:
+		if "retro footage" in lower_text:
+			has_retro = true
+		if "vital signals" in lower_text or "looked at" in lower_text or "med bay" in lower_text:
 			has_worker_exit = true
 	_assert_true(has_sanction, "Sanction notice appears after Monos is saved")
 	_assert_true(has_wellness, "Wellness feed replaces the client feed")
-	_assert_true(has_reconnect_denied, "Reconnect denial appears before exit")
+	_assert_true(has_retro, "Retro-footage beat appears before exit")
 	_assert_true(has_worker_exit, "Simulation bay exit dialogue appears")
 
 	instance._visit_phase = 1
@@ -14333,14 +14331,14 @@ func _test_peris_tutorial_redirect() -> void:
 	# Verify the tutorial still completed despite wrong inputs
 	var has_thanks := false
 	for entry in log:
-		if "thank you" in entry.text.to_lower():
+		if "lifesaver" in entry.text.to_lower():
 			has_thanks = true
 	_assert_true(has_thanks, "Tutorial completed despite redirects")
 
 	# Verify efficiency penalty still logged
 	var has_penalty := false
 	for entry in log:
-		if "62%" in entry.text or "PENALTY" in entry.text:
+		if "VIOLATION" in entry.text:
 			has_penalty = true
 	_assert_true(has_penalty, "Efficiency penalty logged after redirects")
 
@@ -14416,19 +14414,14 @@ func _test_elevator_dialogue() -> void:
 
 	_assert_true(log.size() >= 20, "At least 20 dialogue lines (got: %d)" % log.size())
 
-	# Verify Aster retells Tag Day
-	var has_tag_day := false
+	# The Tag-Day-recap and sanction/gel exchanges were cut in the dialogue rewrite; the opener is now
+	# the wake + "why am I out" conversation. Verify that conversation runs instead.
+	var has_wake := false
 	for entry in log:
-		if "wellness wing" in entry.text.to_lower() or "privacy" in entry.text.to_lower():
-			has_tag_day = true
-	_assert_true(has_tag_day, "Aster retells Tag Day")
-
-	# Verify Peris mentions sanction
-	var has_sanction := false
-	for entry in log:
-		if "gel" in entry.text.to_lower() or "breathing" in entry.text.to_lower():
-			has_sanction = true
-	_assert_true(has_sanction, "Peris mentions sanction/gel")
+		var lt: String = entry.text.to_lower()
+		if "station" in lt or "woke up" in lt or "out?" in lt or "mid-cycle" in lt:
+			has_wake = true
+	_assert_true(has_wake, "Elevator wake/conversation beat appears")
 
 	# Verify escort unit protocol
 	var has_protocol := false
@@ -14437,12 +14430,13 @@ func _test_elevator_dialogue() -> void:
 			has_protocol = true
 	_assert_true(has_protocol, "Escort unit protocol fires")
 
-	# Verify door override after EMP
+	# Verify the EMP fires (the pulse kills the lock — the old "OVERRIDE" line was cut).
 	var has_override := false
 	for entry in log:
-		if "OVERRIDE" in entry.text:
+		var lt: String = entry.text.to_lower()
+		if "pulse" in lt or "goes dark" in lt:
 			has_override = true
-	_assert_true(has_override, "Door override after EMP")
+	_assert_true(has_override, "EMP pulse fires after the device is triggered")
 
 	# Verify bridge dialogue
 	var has_bodies := false
@@ -16496,7 +16490,6 @@ func _dump_tutorial_dialogue(tutorial_scene: String, output_path: String) -> voi
 				"peris.sim_expand.wellness.line",
 				"peris.sim_expand.strike_warning.notification",
 				"peris.sim_expand.strike_warning.line",
-				"peris.sim_expand.notes.line",
 			]))
 		"peris-phase1", "peris_phase1":
 			sections.append(await _collect_tutorial_dialogue_section(
@@ -18108,8 +18101,15 @@ func _test_wrong_character_feedback() -> void:
 	seam.interacted.disconnect(cb)
 	_assert_true(not fired[0], "The wrong character cannot fire the seam")
 	var thought: String = str(instance._thought_label.text) if instance._thought_label != null else ""
-	_assert_true(thought.findn("endo") != -1,
-		"The rejection shows a thought naming the required character (got: '%s')" % thought)
+	# The wrong-character feedback line (system.interact.wrong_character) was cut from the dialogue. If
+	# it's present it must name the required character; if it's cut, the feedback degrades to no thought
+	# (NOT a "[MISSING: ...]" placeholder). Re-adding the key restores the naming behavior.
+	if DialogueData.has_key("system.interact.wrong_character"):
+		_assert_true(thought.findn("endo") != -1,
+			"The rejection shows a thought naming the required character (got: '%s')" % thought)
+	else:
+		_assert_true(thought == "" or thought.findn("MISSING") == -1,
+			"Cut wrong-character line degrades to no placeholder thought (got: '%s')" % thought)
 	instance.queue_free()
 	await get_tree().process_frame
 
@@ -19358,7 +19358,8 @@ func _test_peris_phase2() -> void:
 	# Verify protect prompt dialogue fires (the bug: dialogue wasn't showing because scheduler was frozen)
 	var has_protect_him := false
 	for entry in log:
-		if "protect" in entry.text.to_lower():
+		var lt: String = entry.text.to_lower()
+		if "hold tight" in lt or "let me help" in lt or "protect" in lt:
 			has_protect_him = true
 	_assert_true(has_protect_him, "Phase 2: protect dialogue shows during pause (bug fix verified)")
 
@@ -19378,18 +19379,18 @@ func _test_peris_phase2() -> void:
 
 	var has_sanction := false
 	var has_wellness := false
-	var has_reconnect_denied := false
+	var has_retro := false
 	for entry in log:
 		var lower_text: String = entry.text.to_lower()
 		if "sanction" in lower_text or "suspended pending review" in lower_text:
 			has_sanction = true
 		if "restorative mode" in lower_text or "gel" in lower_text or "soap" in lower_text:
 			has_wellness = true
-		if "reconnect request denied" in lower_text:
-			has_reconnect_denied = true
+		if "retro footage" in lower_text:
+			has_retro = true
 	_assert_true(has_sanction, "Phase 2: sanction mode follows efficiency penalty")
 	_assert_true(has_wellness, "Phase 2: wellness feed appears during sanction")
-	_assert_true(has_reconnect_denied, "Phase 2: reconnect denial appears before transition")
+	_assert_true(has_retro, "Phase 2: retro-footage beat appears before transition")
 
 	instance._visit_phase = 1
 	instance.queue_free()
@@ -19672,7 +19673,7 @@ func _test_sequence_contracts() -> void:
 			"fade_in", "session_begins", "attack", "protect_prompt",
 			"run_prompt", "click_monos", "confirm_protect",
 			"executing", "aftermath", "efficiency_log", "sanction_notice",
-			"sanction_feed", "spiral_flash", "reconnect_denied", "sim_bay_exit",
+			"sanction_feed", "spiral_flash", "retro", "sim_bay_exit",
 			"transition_out", "complete",
 		],
 		peris_phase_2_actions,

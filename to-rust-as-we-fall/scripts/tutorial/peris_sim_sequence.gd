@@ -280,13 +280,13 @@ func _start_monos_breakthrough() -> void:
 	_portal_light.light_energy = 3.0
 	_dialogue_chain([
 		"peris_sim.monos.late",
-		"peris_sim.monos.followed",
-		"peris_sim.monos.stress",
-		"peris_sim.peris.safe",
-		"peris_sim.monos.breathe",
-		"peris_sim.monos.ok",
-		"peris_sim.peris.week",
-		"peris_sim.monos.week",
+		"peris_sim.peris.purpose",
+		"peris_sim.monos.turn",
+		"peris_sim.monos.opening",
+		"peris_sim.monos.real",
+		"peris_sim.monos.heart",
+		"peris_sim.monos.mind",
+		"peris_sim.peris.fight",
 	], func():
 		_scheduler.schedule_after(3.0, _start_transition_out, "transition_out")
 	)
@@ -308,6 +308,8 @@ func _start_attack() -> void:
 	_portal_light.light_color = Color(0.8, 0.2, 0.1)
 	_camera.shake(0.15, 6.0)
 	DialogueData.say_to(_dialogue, "peris_sim.monos.hit")
+	DialogueData.say_to(_dialogue, "peris_sim.peris.alarm")
+	DialogueData.say_to(_dialogue, "peris_sim.monos.help")
 	DialogueData.say_to(_dialogue, "peris_sim.system.overtime")
 	_dialogue.dialogue_finished.connect(
 		func(): _scheduler.schedule_after(0, _start_alert_monos, "alert_monos"),
@@ -475,19 +477,18 @@ func _start_spiral_flash() -> void:
 	)
 	DialogueData.say_to(_dialogue, "peris_sim.system.spiral_flash")
 	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_reconnect_denied, "reconnect_denied"),
+		func(): _scheduler.schedule_after(0, _start_retro, "retro"),
 		CONNECT_ONE_SHOT
 	)
 
-func _start_reconnect_denied() -> void:
-	_current_step = "reconnect_denied"
+func _start_retro() -> void:
+	_current_step = "retro"
 	_show_sanction_feed_visual(
-		"RECONNECT DENIED",
-		"RESTORATIVE PROTOCOL ACTIVE",
+		"RESTORATIVE MODE",
+		"ARCHIVE FOOTAGE",
 		Color(0.68, 0.78, 0.72)
 	)
-	DialogueData.say_to(_dialogue, "peris_sim.system.reconnect_denied")
-	DialogueData.say_to(_dialogue, "peris_sim.peris.exit")
+	DialogueData.say_to(_dialogue, "peris_sim.peris.retro")
 	_dialogue.dialogue_finished.connect(
 		func(): _scheduler.schedule_after(0, _start_sim_bay_exit, "sim_bay_exit"),
 		CONNECT_ONE_SHOT
@@ -859,7 +860,6 @@ func _build_exploration_objects() -> void:
 	_build_peris_painting(env)
 	_build_peris_wellness_feed(env)
 	_build_peris_strike_warning(env)
-	_build_peris_session_notes(env)
 	_build_peris_logbook_gate(env)
 
 func _make_peris_plant(parent: Node3D, pos: Vector3, height: float, base_color: Color, bloom: bool) -> Node3D:
@@ -1131,29 +1131,6 @@ func _build_peris_strike_warning(parent: Node3D) -> void:
 	var target := _outline_object_meshes(parent, "StrikeWarningOutline",
 		[icon, strip], "peris_strike_warning", 0.7)
 	_set_room_target_interaction_delegate(target, area)
-
-func _build_peris_session_notes(parent: Node3D) -> void:
-	var pos := Vector3(1.1, 0.85, -1.7)
-	var tablet := MeshInstance3D.new()
-	var tb := BoxMesh.new()
-	tb.size = Vector3(0.25, 0.02, 0.35)
-	tablet.mesh = tb
-	var tm := StandardMaterial3D.new()
-	tm.albedo_color = Color(0.15, 0.18, 0.22)
-	tm.emission_enabled = true
-	tm.emission = Color(0.3, 0.4, 0.5)
-	tm.emission_energy_multiplier = 0.6
-	tm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	tablet.material_override = tm
-	tablet.position = pos
-	parent.add_child(tablet)
-	var zone := _make_exploration_zone(parent, Vector3(1.1, 0, -1.7),
-		"NotesZone",
-		"peris.sim_expand.notes.line",
-		0.9, 0.6)
-	var target := _outline_object_meshes(parent, "NotesOutline",
-		[tablet], "peris_notes", 0.6)
-	_set_room_target_interaction_delegate(target, zone)
 
 func _build_peris_logbook_gate(parent: Node3D) -> void:
 	# Logbook is the gate to Monos.

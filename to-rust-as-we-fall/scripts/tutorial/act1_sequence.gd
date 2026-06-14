@@ -1938,31 +1938,48 @@ func _start_rings_enter() -> void:
 	_unload_chunk("stacks")
 	_activate_chunk_grid("rings")  # swap the live grid to the rings footprint
 	_dialogue_chain([
-		"rings.narration.enter",
-		"rings.aster.signal",
-		"rings.peris.remember",
+		"ring.entry.narration",
+		"ring.entry.aster.home",
+		"ring.entry.aster.machine",
+		"ring.entry.peris.quiet",
+		"ring.entry.endo.wall_touch",
+		"ring.scatter.peris.notice",
+		"ring.scatter.aster.continue",
 	], func(): _scheduler.schedule_after(3.0, _start_rings_client, "client"))
 
 func _start_rings_client() -> void:
 	_enter_step("rings_client")
 	_dialogue_chain([
-		"rings.peris.hello",
-		"rings.narration.client",
-		"rings.peris.wall",
-		"rings.narration.empty",
-		"rings.aster.tags",
+		"ring.marco.entry.narration",
+		"ring.marco.entry.marco.warn",
+		"ring.marco.entry.peris.name",
+		"ring.marco.entry.marco.correct",
+		"ring.marco.warn.jeopardize",
+		"ring.marco.warn.c_suite",
+		"ring.marco.peris.wellness_start",
+		"ring.marco.peris.silence",
+		"ring.marco.peris.apology",
+		"ring.marco.exit.marco.brief",
+		"ring.marco.exit.narration",
+		"ring.after_marco.aster.weird",
+		"ring.after_marco.peris.quiet",
+		"ring.after_marco.aster.move_on",
+		"ring.after_marco.endo.watch",
 	], func(): _scheduler.schedule_after(3.0, _start_endo_departs, "endo_departs"))
 
 func _start_endo_departs() -> void:
 	_enter_step("endo_departs")
 	_dialogue_chain([
-		"rings.endo.discomfort",
-		"rings.endo.stops",
-		"rings.peris.endo",
-		"rings.narration.leaving",
-		"rings.peris.understands",
-		"rings.aster.just_us",
-		"rings.peris.visiting",
+		"ring.departure.narration",
+		"ring.departure.aster.question",
+		"ring.departure.peris.read",
+		"ring.departure.endo.turn",
+		"ring.departure.aster.delayed",
+		"ring.departure.peris.explain",
+		"ring.departure.aster.but",
+		"ring.departure.peris.look",
+		"ring.departure.aster.settle",
+		"ring.departure.narration.closing",
 	], func():
 		# Endo walks back and fades out
 		_endo.visible = false
@@ -1985,27 +2002,38 @@ func _start_lockout_approach() -> void:
 	_unload_chunk("rings")
 	_activate_chunk_grid("lockout")  # swap the live grid to the lockout footprint
 	_dialogue_chain([
-		"lockout.narration.clean",
-		"lockout.aster.signals",
-		"lockout.aster.panel",
+		"lockout.approach.narration",
+		"lockout.approach.aster.confident",
 	], func(): _scheduler.schedule_after(1.0, _start_lockout_rejected, "rejected"))
 
 func _start_lockout_rejected() -> void:
 	_enter_step("lockout_rejected")
 	_dialogue_chain([
-		"lockout.system.rejected",
-		"lockout.aster.again",
-		"lockout.system.rejected2",
-		"lockout.aster.hack",
-		"lockout.system.blocked",
+		"lockout.approach.panel_reject",
+		"lockout.approach.aster.glitch",
+		"lockout.approach.aster.retry",
+		"lockout.approach.aster.confused",
+		"lockout.escalate.aster.hack",
+		"lockout.escalate.hack_block",
+		"lockout.escalate.aster.recog",
+		"lockout.escalate.aster.try_again",
+		"lockout.escalate.peris.quiet",
+		"lockout.escalate.peris_approaches",
+		"lockout.escalate.aster.notices",
+		"lockout.escalate.peris.dont",
 	], func(): _scheduler.schedule_after(1.0, _start_lockout_chase, "chase"))
 
 func _start_lockout_chase() -> void:
 	_enter_step("lockout_chase")
 	_dialogue_chain([
-		"lockout.narration.footsteps",
-		"lockout.peris.run",
-		"lockout.narration.chase",
+		"lockout.dispatch.narration",
+		"lockout.dispatch.aster.frozen",
+		"lockout.dispatch.peris.hears",
+		"lockout.dispatch.aster.pulled",
+		"lockout.dispatch.peris.no",
+		"lockout.dispatch.narration.start_chase",
+		"lockout.chase.aster.lost",
+		"lockout.chase.peris.listen",
 	], func():
 		_player.set_move_enabled(true)
 		_tutorial_prompt.show_prompt("Run!")
@@ -2021,10 +2049,23 @@ func _start_lockout_exile() -> void:
 		if _game_state.characters.has("nk_%d" % i):
 			_game_state.command_stop("nk_%d" % i)
 	_dialogue_chain([
-		"lockout.narration.boundary",
-		"lockout.aster.not_in",
-		"lockout.peris.back_to",
-		"lockout.narration.forward",
+		"lockout.chase.narration.boundary",
+		"lockout.standoff.narration",
+		"lockout.standoff.aster.try",
+		"lockout.standoff.peris.back",
+		"lockout.standoff.aster.cant_answer",
+		"lockout.standoff.narration.silence",
+		"lockout.aftermath.aster.watch",
+		"lockout.aftermath.peris.answer",
+		"lockout.aftermath.aster.sit",
+		"lockout.aftermath.peris.sit",
+		"lockout.aftermath.peris.ask_word",
+		"lockout.aftermath.aster.fugacity",
+		"lockout.aftermath.aster.clarify",
+		"lockout.aftermath.peris.pressure",
+		"lockout.aftermath.aster.laugh",
+		"lockout.aftermath.peris.soft",
+		"lockout.aftermath.narration.close",
 	], func(): _scheduler.schedule_after(2.0, _complete, "complete"))
 
 func _spawn_lockout_naturalizers() -> void:
@@ -3439,7 +3480,7 @@ func _build_rings_chunk(parent: Node3D) -> void:
 	var client := preload("res://scenes/game/interactable.tscn").instantiate()
 	client.name = "ClientNPC"
 	client.description = "Former Client"
-	client.dialogue_key = "rings.peris.hello"
+	client.dialogue_key = "ring.marco.entry.marco.warn"
 	client.dialogue_box = _dialogue
 	client.active_character = "peris"
 	client.one_shot = true
@@ -3552,7 +3593,7 @@ func _build_lockout_chunk(parent: Node3D) -> void:
 	var access := preload("res://scenes/game/interactable.tscn").instantiate()
 	access.name = "AccessPanel"
 	access.description = "Access Panel"
-	access.dialogue_key = "lockout.system.rejected"
+	access.dialogue_key = "lockout.approach.panel_reject"
 	access.dialogue_box = _dialogue
 	access.active_character = "aster"
 	access.one_shot = true

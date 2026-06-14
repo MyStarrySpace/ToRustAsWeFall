@@ -1078,9 +1078,12 @@ func _update_fade_out(target_color: Color, duration: float = 2.0) -> void:
 
 # --- Thought helpers ---
 
-## Walking the wrong character onto a required-character interactable says who is needed
-## instead of silently doing nothing.
+## Walking the wrong character onto a required-character interactable says who is needed.
+## The feedback line is optional content: when the dialogue table has no entry for it,
+## the rejection stays silent rather than surfacing a placeholder thought.
 func _on_interaction_rejected(_interactable: Node, required_character: String) -> void:
+	if not DialogueData.has_key("system.interact.wrong_character"):
+		return
 	var line := DialogueData.text("system.interact.wrong_character")
 	if line == "":
 		return
