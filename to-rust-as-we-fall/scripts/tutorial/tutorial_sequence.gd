@@ -597,6 +597,18 @@ func _register_gs_character(id: String, node: Node3D, speed: float = 3.0, stats:
 	if node == _player and node.has_method("bind_interaction_root"):
 		node.call("bind_interaction_root", self)
 
+## Resolve a character SPAWN from an authored marker, snapped onto a valid grounded cell. The marker
+## is found anywhere in the scene tree (so markers parented under the room model work, not just under
+## ScenePlacement); its position is then routed through grid.nearest_walkable_world so an authored spot
+## that grazes a wall / sits off the floor still lands on a stand-able, path-able cell. `fallback` is
+## the desired position when the marker isn't found (also snapped). Use this for EVERY character spawn.
+func _spawn_at_marker(grid: GridWorld, marker_name: String, fallback: Vector3) -> Vector3:
+	var marker := find_child(marker_name, true, false) as Node3D
+	var desired: Vector3 = marker.global_position if marker != null else fallback
+	if grid != null:
+		return grid.nearest_walkable_world(desired)
+	return desired
+
 # --- Multi-level scene authoring (stacked floors + ladders/ramps) ---
 #
 # A scene that stacks floors declares them on the shared grid, then moves characters

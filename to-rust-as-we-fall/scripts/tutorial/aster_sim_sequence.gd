@@ -74,11 +74,13 @@ func _build_characters() -> void:
 
 	_ron = _create_npc("Ron", Color(0.7, 0.6, 0.45))
 	_ron.display_name = "RON"
-	_ron.position = _placement_or_grid("RonStart", Vector2i(3, 12), 0.0)
+	_ron.position = _ron_warp_spawn()
 	if in_game:
 		_ron.grid_world = _grid
 	chars.add_child(_ron)
 	_ron.scale = Vector3(2, 2, 2)
+	if in_game:
+		_ron.hide_for_warp()  # unformed until the portal fires (see _start_ron_warp_in)
 
 	if in_game:
 		# Camera west of the room looking east: the 14-unit-long room lays out
@@ -218,6 +220,12 @@ func _placement_or_grid(marker_name: String, fallback_cell: Vector2i, y: float =
 	fallback.y = y
 	return _placement_or_position(marker_name, fallback)
 
+## Ron's authored warp-in spot: the RonStartMarker placed under the room model, resolved through the
+## shared spawn helper (snaps off the wall border onto a walkable, grounded cell). Falls back to the
+## old RonStart marker / grid cell if it's missing.
+func _ron_warp_spawn() -> Vector3:
+	return _spawn_at_marker(_grid, "RonStartMarker", _placement_or_grid("RonStart", Vector2i(3, 12), _grid.origin.y))
+
 func _local_for_parent(parent: Node3D, world_pos: Vector3) -> Vector3:
 	return parent.to_local(world_pos) if parent != null else world_pos
 
@@ -273,8 +281,21 @@ func _start_fade_in() -> void:
 
 func _start_working() -> void:
 	_current_step = "working"
-	# Brief settle after the fade, then Ron approaches — no long dead-air idle (was 3s).
-	_scheduler.schedule_after(0.5, _start_ron_approaches, "ron_approaches")
+	# Brief settle after the fade, then Ron warps in (no long dead-air idle).
+	_scheduler.schedule_after(0.5, _start_ron_warp_in, "ron_warp_in")
+
+func _start_ron_warp_in() -> void:
+	_current_step = "ron_warp_in"
+	# Ron arrives through a portal: a cosmetic flash at his marker + his body materializing. The
+	# logical hand-off to the approach rides the scheduler (a tween never gates a step).
+	if _ron != null:
+		var portal := WarpPortal.new()
+		add_child(portal)
+		portal.global_position = Vector3(_ron.global_position.x, _grid.origin.y, _ron.global_position.z)
+		portal.play(WarpPortal.GREEN, 1.4)
+		if _ron.has_method("warp_in"):
+			_ron.warp_in(1.3)
+	_scheduler.schedule_after(1.3, _start_ron_approaches, "ron_approaches")
 
 func _start_ron_approaches() -> void:
 	_current_step = "ron_approaches"

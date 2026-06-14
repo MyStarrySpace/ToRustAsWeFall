@@ -31,6 +31,12 @@ var _fade_duration := 0.0
 @onready var _mesh: MeshInstance3D
 @onready var _label: Label3D
 
+## Portal warp-in: a dissolve material the body materializes through. Shared noise field (one for all
+## NPCs). _warp_mat is non-null only while/after a warp has been set up on this NPC.
+const WARP_DISSOLVE_SHADER := preload("res://resources/warp_dissolve.gdshader")
+static var _warp_noise: NoiseTexture2D
+var _warp_mat: ShaderMaterial
+
 signal path_complete()
 signal waypoint_reached(index: int)
 
@@ -149,6 +155,51 @@ func set_color(c: Color) -> void:
 		(_mesh.material_override as StandardMaterial3D).albedo_color = c
 	if _label:
 		_label.modulate = Color(c, 0.7)
+
+static func _get_warp_noise() -> NoiseTexture2D:
+	if _warp_noise == null:
+		var tex := NoiseTexture2D.new()
+		tex.width = 128
+		tex.height = 128
+		tex.seamless = true
+		var fn := FastNoiseLite.new()
+		fn.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		fn.frequency = 0.06
+		tex.noise = fn
+		_warp_noise = tex
+	return _warp_noise
+
+## Put the NPC in its pre-warp state: fully UNFORMED (invisible) via the dissolve material, label
+## hidden. Call right after spawn so it waits, hidden, until warp_in() materializes it.
+func hide_for_warp(edge_glow: Color = Color(0.36, 0.91, 0.5)) -> void:
+	if _mesh == null:
+		return
+	_warp_mat = ShaderMaterial.new()
+	_warp_mat.shader = WARP_DISSOLVE_SHADER
+	_warp_mat.set_shader_parameter("albedo", color)
+	_warp_mat.set_shader_parameter("emission_energy", 0.3)
+	_warp_mat.set_shader_parameter("edge_color", edge_glow)
+	_warp_mat.set_shader_parameter("noise_tex", _get_warp_noise())
+	_warp_mat.set_shader_parameter("dissolve", -0.1)  # below any noise value -> nothing drawn
+	_mesh.material_override = _warp_mat
+	if _label:
+		_label.modulate.a = 0.0
+
+## Materialize the NPC in over `duration` (the body forms out of the dissolve, the label fades in).
+## Cosmetic only — drive the logical "now Ron acts" hand-off on the scheduler, not on this tween.
+func warp_in(duration: float = 1.3) -> void:
+	if _warp_mat == null:
+		hide_for_warp()
+	if _mesh == null or Engine.is_editor_hint():
+		return
+	var tw := create_tween()
+	tw.tween_method(_set_warp_dissolve, -0.1, 1.05, duration).set_ease(Tween.EASE_IN_OUT)
+	if _label:
+		tw.parallel().tween_property(_label, "modulate:a", 0.7, duration * 0.6).set_delay(duration * 0.45)
+
+func _set_warp_dissolve(v: float) -> void:
+	if _warp_mat != null:
+		_warp_mat.set_shader_parameter("dissolve", v)
 
 func fade_out(duration: float) -> void:
 	if _scheduler != null:

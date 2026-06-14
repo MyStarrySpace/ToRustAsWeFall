@@ -343,6 +343,30 @@ func nearest_walkable_cell(cell: Vector2i, level := 0, max_radius := 6, explored
 					return c
 	return cell
 
+## Resolve a desired world position to a valid character SPAWN point: grounded on the floor (the
+## level's Y), and — when the desired spot lands on a NON-walkable cell (a wall border, off the floor,
+## a blocker) — moved to the centre of the CLOSEST walkable cell so the character can stand and path
+## out. A spot already on a walkable cell keeps its exact XZ (only its Y is grounded). This is the one
+## place any scene should route a spawn through, so an authored marker that grazes a wall never strands
+## a character on an un-walkable cell. `radius` is the search window in cells.
+func nearest_walkable_world(world_pos: Vector3, radius := 3, level := 0) -> Vector3:
+	var ground_y := origin.y + level_height * float(level)
+	var cell := world_to_grid(world_pos)
+	if is_walkable(cell.x, cell.y, {}, {}, level):
+		return Vector3(world_pos.x, ground_y, world_pos.z)
+	var best := cell
+	var best_d := INF
+	for dz in range(-radius, radius + 1):
+		for dx in range(-radius, radius + 1):
+			var c := Vector2i(cell.x + dx, cell.y + dz)
+			if is_in_bounds(c.x, c.y) and is_walkable(c.x, c.y, {}, {}, level):
+				var cw := grid_to_world(c, level)
+				var d := Vector2(cw.x - world_pos.x, cw.z - world_pos.z).length()
+				if d < best_d:
+					best_d = d
+					best = c
+	return grid_to_world(best, level)
+
 # --- Pathfinding (A*, 8-directional) ---
 
 ## Find a path from start cell to end cell.

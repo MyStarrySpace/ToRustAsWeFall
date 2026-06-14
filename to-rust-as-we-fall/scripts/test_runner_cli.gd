@@ -209,6 +209,12 @@ func _ready() -> void:
 			"--test-hover-grid-edge-fade":
 				ran_test = true
 				_test_hover_grid_edge_fade()
+			"--test-ron-warp-in":
+				ran_test = true
+				await _test_ron_warp_in()
+			"--test-grid-nearest-walkable-world":
+				ran_test = true
+				_test_grid_nearest_walkable_world()
 			"--test-path-timed-wait-segment":
 				ran_test = true
 				_test_path_timed_wait_segment()
@@ -804,6 +810,8 @@ func _run_all_tests() -> void:
 	await _test_characters_grounded()
 	await _test_preview_ribbon_grounded()
 	_test_hover_grid_edge_fade()
+	await _test_ron_warp_in()
+	_test_grid_nearest_walkable_world()
 	_test_path_timed_wait_segment()
 	_test_enemy_pursuit_timeout()
 	_test_detection_vertical_band()
@@ -9452,6 +9460,69 @@ func _test_hover_grid_edge_fade() -> void:
 				outer = maxf(outer, a)
 	_assert_true(inner > 0.6, "Grid lines are solid near the centre (max %.2f)" % inner)
 	_assert_true(outer < inner - 0.2, "Grid FADES toward the edges (edge max %.2f << centre %.2f)" % [outer, inner])
+
+# --- Test: Ron warps in at his marker — spawns there, unformed, until the portal materializes him ---
+# Ron now enters through a portal at the authored RonStartMarker (under the room model) instead of
+# standing pre-placed. He spawns AT the marker, grounded, and starts UNFORMED (the dissolve material
+# sits below any noise value, so nothing draws) until the warp-in beat materializes him.
+func _test_ron_warp_in() -> void:
+	_test_name = "Ron Warp In"
+	var inst = await _instantiate_scene_and_wait(load("res://scenes/tutorial/aster_sim.tscn"), 6)
+	if inst == null:
+		_assert_true(false, "aster_sim instantiates for warp-in test")
+		return
+	var ron = inst.find_child("Ron", true, false)
+	var marker = inst.find_child("RonStartMarker", true, false)
+	var gs = inst.get("_game_state")
+	if ron == null or marker == null or gs == null or gs.grid == null:
+		_assert_true(false, "scene has Ron, RonStartMarker, and a grid")
+		await _dispose_scene(inst)
+		return
+	var grid = gs.grid
+	var mk := (marker as Node3D).global_position
+	var got: Vector3 = (ron as Node3D).global_position
+	# He spawns via the shared resolver: snapped off the wall border to the closest walkable cell,
+	# grounded, and near the authored marker.
+	var want: Vector3 = grid.nearest_walkable_world(mk)
+	_assert_true(Vector2(got.x - want.x, got.z - want.z).length() < 0.2,
+		"Ron spawns where the shared spawn resolver places him (got %s, want %s)" % [str(got), str(want)])
+	_assert_true(Vector2(got.x - mk.x, got.z - mk.z).length() < 1.0,
+		"Ron's spawn stays near the authored marker (got %s, marker %s)" % [str(got), str(mk)])
+	var gc: Vector2i = grid.world_to_grid(got)
+	_assert_true(grid.is_walkable(gc.x, gc.y), "Ron spawns on a walkable cell")
+	_assert_true(absf(got.y - grid.origin.y) < 0.04, "Ron spawns grounded on the floor (y %.3f)" % got.y)
+	var wm = ron.get("_warp_mat")
+	_assert_true(wm != null, "Ron has the warp dissolve material before warp-in")
+	if wm != null:
+		var d := float(wm.get_shader_parameter("dissolve"))
+		_assert_true(d < 0.0, "Ron starts UNFORMED until the portal fires (dissolve %.2f < 0)" % d)
+	await _dispose_scene(inst)
+
+# --- Test: GridWorld.nearest_walkable_world — the reusable spawn resolver (no more wall spawns) ---
+# Any character spawn routes a desired position through this: a spot on a wall/blocker snaps to the
+# CLOSEST walkable cell centre; a spot already on a walkable cell keeps its exact XZ; both are grounded
+# on the floor. This is the shared primitive that stops authored markers stranding characters on walls.
+func _test_grid_nearest_walkable_world() -> void:
+	_test_name = "Grid Nearest Walkable World"
+	var grid := GridWorld.new()
+	grid.create_room(10, 8, true)  # border walls, floor interior
+	grid.origin.y = 0.5            # a lifted floor, to check grounding
+	# A spot on the WALL border snaps to a WALKABLE cell, grounded on the floor.
+	var wall_pt := Vector3(0.5, 0.0, 4.5)  # cell (0,4) = wall, off the floor
+	_assert_true(not grid.is_walkable(0, 4), "setup: (0,4) is a wall")
+	var snapped: Vector3 = grid.nearest_walkable_world(wall_pt)
+	var sc: Vector2i = grid.world_to_grid(snapped)
+	_assert_true(grid.is_walkable(sc.x, sc.y), "Wall spawn snaps to a WALKABLE cell (got cell %s)" % str(sc))
+	_assert_true(absf(snapped.y - grid.origin.y) < 0.001, "Snapped spawn is grounded on the floor (y %.3f)" % snapped.y)
+	_assert_true(Vector2(snapped.x - wall_pt.x, snapped.z - wall_pt.z).length() < 1.6,
+		"Snapped spawn stays near the desired spot (got %s)" % str(snapped))
+	# A spot already on a walkable FLOOR cell keeps its exact XZ (only Y grounded — no re-centering).
+	var floor_pt := Vector3(3.2, 0.0, 2.7)  # cell (3,2) = floor
+	_assert_true(grid.is_walkable(3, 2), "setup: (3,2) is floor")
+	var kept: Vector3 = grid.nearest_walkable_world(floor_pt)
+	_assert_true(absf(kept.x - 3.2) < 0.001 and absf(kept.z - 2.7) < 0.001,
+		"Walkable spot keeps its exact XZ (got %s)" % str(kept))
+	_assert_true(absf(kept.y - grid.origin.y) < 0.001, "Walkable spot is grounded (y %.3f)" % kept.y)
 
 # --- Test: compute_preview_path is a READ-ONLY route preview (no move, no log) for the hover path ---
 func _test_preview_pathfinding() -> void:
