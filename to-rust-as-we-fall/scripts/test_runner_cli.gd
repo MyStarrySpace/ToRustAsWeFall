@@ -5238,6 +5238,9 @@ func _test_aster_sim() -> void:
 			_assert_equals(instance._current_step, initial_step,
 				"Disabled drink machine cannot skip the monitor sequence")
 			instance._start_show_terminal()
+			# Isolate the terminal beat from the scene's still-pending natural intro flow (its scheduled
+			# ron_approaches/greeting beats would otherwise clobber _current_step as we advance).
+			instance._scheduler.clear()
 			await get_tree().process_frame
 			_assert_true(bool(terminal.call("is_interaction_enabled")),
 				"Aster terminal enables at the monitor tutorial step")
@@ -5245,8 +5248,14 @@ func _test_aster_sim() -> void:
 				"Aster drink machine stays disabled during the monitor tutorial step")
 			terminal.call("_trigger")
 			await get_tree().process_frame
+			_assert_equals(instance._current_step, "sit_at_desk",
+				"Clicking Aster's monitor sends him to the desk front to sit")
+			# Force the arrival at the chair (the REAL walk-to-sit is covered by --test-input-playthrough);
+			# advancing the live scheduler a long way here would also re-run the scene's own pending flow.
+			instance._on_aster_seated("aster")
+			instance.headless_advance(0.8)  # the 0.7s sit -> screen schedule fires
 			_assert_equals(instance._current_step, "terminal_focus",
-				"Clicking Aster's monitor opens the forecast screen-focus beat")
+				"After sitting at the desk front, the forecast screen-focus beat opens")
 			instance.headless_advance(instance.TERMINAL_FOCUS_DURATION + 0.1)
 			_assert_equals(instance._current_step, "terminal_data",
 				"The terminal focus beat advances the sequence to terminal_data")
@@ -6020,8 +6029,16 @@ func _assert_aster_interaction_click_matrix(instance: Node, dialogue: Node) -> v
 		# completes inside the click helper's advance budget — landing on terminal_data
 		# IS the focus beat having run, so both steps prove the click opened it.
 		var step_after_click := str(instance._current_step)
+		# The click now sends Aster to the desk front to SIT before the focus opens; drive that out.
+		if step_after_click == "sit_at_desk":
+			for _wi in range(300):
+				instance.headless_advance(0.1, 0.05)
+				await get_tree().process_frame
+				if str(instance._current_step) in ["terminal_focus", "terminal_data"]:
+					break
+			step_after_click = str(instance._current_step)
 		_assert_true(step_after_click in ["terminal_focus", "terminal_data"],
-			"%s click opens the terminal forecast focus beat (step=%s)" % [check.label, step_after_click])
+			"%s click (sit then) opens the terminal forecast focus beat (step=%s)" % [check.label, step_after_click])
 		var reached_terminal_data := step_after_click == "terminal_data"
 		for _i in range(80):
 			if reached_terminal_data:

@@ -325,7 +325,34 @@ func _on_terminal_interacted() -> void:
 	if _current_step != "show_terminal":
 		return
 	_scheduler.cancel_tag("drink_redirect")
-	_start_terminal_focus()
+	_start_sit_at_desk()
+
+## Aster walks around to the FRONT of the desk (the chair) and sits before the forecast comes up.
+func _start_sit_at_desk() -> void:
+	_current_step = "sit_at_desk"
+	_player.set_move_enabled(false)
+	if _terminal and _terminal.has_method("set_interaction_enabled"):
+		_terminal.set_interaction_enabled(false)
+	_game_state.command_move_to_pos("aster", _desk_front_sit_pos())
+	if not _game_state.character_arrived.is_connected(_on_aster_seated):
+		_game_state.character_arrived.connect(_on_aster_seated)
+
+## The chair at the front of the desk, snapped to a walkable, grounded cell.
+func _desk_front_sit_pos() -> Vector3:
+	var chair := find_child("Chair", true, false) as Node3D
+	var base: Vector3 = chair.global_position if chair != null else _terminal_screen_world + Vector3(1.9, 0, 0)
+	return _grid.nearest_walkable_world(Vector3(base.x, 0, base.z))
+
+func _on_aster_seated(id: String) -> void:
+	if id != "aster" or _current_step != "sit_at_desk":
+		return
+	if _game_state.character_arrived.is_connected(_on_aster_seated):
+		_game_state.character_arrived.disconnect(_on_aster_seated)
+	# Sit gesture: dip Aster into the chair (cosmetic; the next move resets his Y). Then bring up the
+	# screen on the gameplay scheduler so it stays headless / fast-forward correct.
+	var tw := create_tween()
+	tw.tween_property(_player, "position:y", _player.position.y - 0.35, 0.4).set_ease(Tween.EASE_OUT)
+	_scheduler.schedule_after(0.7, _start_terminal_focus, "terminal_focus")
 
 # Click the terminal → frame the screen, swap in the detailed readout, hold a
 # beat, then continue. Scheduler-driven so it runs headless and respects F.
@@ -744,10 +771,16 @@ func _create_terminal_screen_detail(world_pos: Vector3) -> Node3D:
 	mat.emission = Color(0.12, 0.34, 0.5)
 	mat.emission_energy_multiplier = 1.6
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	# Billboard the forecast so it always reads head-on to the (overhead, angled) focus camera instead
+	# of facing a fixed wrong direction. It only shows during the locked focus, so it never swims.
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	mat.billboard_keep_scale = true
 	panel.material_override = mat
 	root.add_child(panel)
 
 	var readout := Label3D.new()
+	readout.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	readout.no_depth_test = true
 	# @placeholder: stand-in forecast readout until the screen art lands.
 	readout.text = "FORECAST // BARRIER INTEGRITY\nSECTOR 07   98.2%   NOMINAL\nSECTOR 12   41.6%   WATCH\nTRANSFER LOAD       STABLE"
 	readout.font_size = 26
