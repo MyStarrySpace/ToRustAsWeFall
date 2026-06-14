@@ -7,11 +7,12 @@ extends Node3D
 ## determinism; a scene drops one in when a character should warp in.
 
 const GREEN := Color(0.36, 0.91, 0.5)
+const PORTAL_DITHER_SHADER := preload("res://resources/portal_dither.gdshader")
 
-## Animate the portal in the given colour. Builds the ring + column + sparks, runs the flash, and
-## queue_frees once the effect and its tail have finished.
+## Animate the portal in the given colour. Builds the dithering ground ring + column + sparks, runs
+## the flash, and queue_frees once the effect and its tail have finished.
 func play(glow: Color = GREEN, duration: float = 1.4) -> void:
-	_ring(glow, duration)
+	_dither_ring(glow, duration)
 	_column(glow, duration)
 	_sparks(glow)
 	var life := create_tween()
@@ -30,23 +31,27 @@ func _glow_mat(glow: Color) -> StandardMaterial3D:
 	m.emission_energy_multiplier = 3.0
 	return m
 
-## Flat ground ring that snaps open and fades — the portal's mouth on the floor.
-func _ring(glow: Color, duration: float) -> void:
-	var ring := MeshInstance3D.new()
-	var torus := TorusMesh.new()
-	torus.inner_radius = 0.5
-	torus.outer_radius = 0.64
-	ring.mesh = torus
-	ring.rotation.x = -PI / 2.0  # lay the torus flat on the floor
-	ring.position.y = 0.06
-	var mat := _glow_mat(glow)
-	ring.material_override = mat
-	add_child(ring)
-	ring.scale = Vector3(0.15, 0.15, 0.15)
+## The portal's mouth on the floor: a flat 2D quad whose ring shape DITHERS in, then stipples away —
+## the same ordered-Bayer dither as the hover grid. A PlaneMesh lies flat on the ground by default, so
+## there's no orientation to get wrong (the old torus ring stood the wrong way).
+func _dither_ring(glow: Color, duration: float) -> void:
+	var quad := MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(3.4, 3.4)  # ground footprint the ring sits inside
+	quad.mesh = plane
+	quad.position.y = 0.06
+	var mat := ShaderMaterial.new()
+	mat.shader = PORTAL_DITHER_SHADER
+	mat.set_shader_parameter("color", glow)
+	mat.set_shader_parameter("dissolve", 0.0)
+	quad.material_override = mat
+	add_child(quad)
+	# Dither IN fast (the ring resolves), then dither OUT over the rest of the beat.
 	var t := create_tween()
-	t.tween_property(ring, "scale", Vector3(1.8, 1.8, 1.8), duration * 0.7) \
-		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	t.parallel().tween_property(mat, "albedo_color:a", 0.0, duration * 0.85).set_delay(duration * 0.2)
+	t.tween_method(func(v): mat.set_shader_parameter("dissolve", v), 0.0, 1.1, duration * 0.28) \
+		.set_ease(Tween.EASE_OUT)
+	t.tween_method(func(v): mat.set_shader_parameter("dissolve", v), 1.1, 0.0, duration * 0.72) \
+		.set_ease(Tween.EASE_IN)
 
 ## Vertical energy column that flashes up and dies back — the beam the body forms inside.
 func _column(glow: Color, duration: float) -> void:
