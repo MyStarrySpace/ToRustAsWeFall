@@ -19,19 +19,20 @@ var _sanction_feed_label: Label3D
 var _portal_tween_active := false
 var _hud  # GameHUD
 
-# Watering beat (phase 1): the hand-inventory tutorial. The big fern is DRY; a watering can
-# sits by the desk as a real GameState ITEM. Pick it up (hand slot fills, HUD shows it), carry
-# it over, water the fern. The exploration gate only unlocks once the fern is watered AND the
-# wander timer has elapsed — the beat is the wait for Monos.
+# Watering beat (phase 1): the hand-inventory tutorial. Peris waters the Boston fern (Plant7) out of
+# HABIT — her plants are engineered to stay green, so it's a ritual, not survival (no drying). A
+# watering can sits by the desk as a real GameState ITEM: pick it up (hand slot fills, HUD shows it),
+# carry it over, water the fern. The exploration gate only unlocks once the fern is watered AND the
+# wander timer has elapsed — the beat is the wait for Monos. The fern's watering-tradition reflection
+# (plant_7.line / .line_repeat) lives in its inspection zone.
 var _watering_can_item_id := ""
 var _watering_can_mesh: Node3D
 var _water_plant_interactable
 var _can_pickup_interactable
 var _plant_watered := false
 var _explore_time_elapsed := false
-var _dry_leaf_materials: Array = []  # [[material, original_albedo], ...] to restore on watering
 const WATERING_CAN_POS := Vector3(8.5, 0.0, -4.2)
-const DRY_PLANT_POS := Vector3(-4.4, 0.0, -1.4)
+const FERN_POS := Vector3(3.0, 0.0, 1.2)  # Plant7 (Boston fern) — the watering target
 
 # Exploration beat (phase 1, pre-Monos-arrival)
 var _explore_logbook_gate  # Interactable at the logbook
@@ -939,10 +940,15 @@ func _build_peris_plants(parent: Node3D) -> void:
 		var plant_node := _make_peris_plant(parent, pos, height, color, bloom)
 		plant_node.name = "Plant%d" % (i + 1)
 		var zone_pos := Vector3(pos.x, 0, pos.z)
-		var zone := _make_exploration_zone(parent, zone_pos,
-			"Plant%dZone" % (i + 1),
-			line_key,
-			1.0, 0.6)
+		var zone: Area3D
+		if i == 6:  # the Boston fern: the watering-tradition line advances to a follow-up on re-inspection
+			zone = _make_exploration_sequence_zone(parent, zone_pos, "Plant7Zone",
+				[line_key, "peris.sim_expand.plant_7.line_repeat"], 1.0, 0.6)
+		else:
+			zone = _make_exploration_zone(parent, zone_pos,
+				"Plant%dZone" % (i + 1),
+				line_key,
+				1.0, 0.6)
 		var target := _outline_object_meshes(parent, "Plant%dOutline" % (i + 1),
 			_collect_mesh_instances(plant_node), "peris_plant_%d" % (i + 1), 0.7)
 		_set_room_target_interaction_delegate(target, zone)
@@ -950,17 +956,6 @@ func _build_peris_plants(parent: Node3D) -> void:
 ## The watering can is a REAL item (spawn_item + pick_up_item), not a flag: the beat teaches the
 ## hand-slot inventory. The dry fern's water spot only accepts a character actually HOLDING it.
 func _build_watering_beat(parent: Node3D) -> void:
-	# Dry the fern (Plant1): desaturate its foliage toward straw until watered.
-	var plant := find_child("Plant1", true, false)
-	if plant != null:
-		for m in _collect_mesh_instances(plant):
-			var mi := m as MeshInstance3D
-			if mi == null or not (mi.material_override is StandardMaterial3D):
-				continue
-			var mat := mi.material_override as StandardMaterial3D
-			_dry_leaf_materials.append([mat, mat.albedo_color])
-			mat.albedo_color = mat.albedo_color.lerp(Color(0.55, 0.48, 0.25), 0.65)
-
 	# The can: a small kettle by the desk, mirrored by a data-layer item.
 	_watering_can_mesh = Node3D.new()
 	_watering_can_mesh.name = "WateringCan"
@@ -996,22 +991,20 @@ func _build_watering_beat(parent: Node3D) -> void:
 	var can_target := _outline_object_meshes(parent, "WateringCanOutline",
 		_collect_mesh_instances(_watering_can_mesh), "watering_can", 0.5)
 	_set_room_target_interaction_delegate(can_target, _can_pickup_interactable)
+	# Tutorial labels show right away (like Aster's objects): the PICK UP prompt sits over the can
+	# from the start, not only once Peris is near it.
+	_can_pickup_interactable.call_deferred("show_tutorial_label")
 
-	_water_plant_interactable = _create_interactable(parent, DRY_PLANT_POS, "WaterPlantSpot",
+	# The water spot sits ON the fern (Plant7).
+	_water_plant_interactable = _create_interactable(parent, FERN_POS, "WaterPlantSpot",
 		1.3, 0.9, "WATER", false)
 	_water_plant_interactable.interacted.connect(_on_plant_watered)
-
-	# Point the player at the beat once they have had a breath of the room.
-	_ui_scheduler.schedule_after(5.0, func():
-		if not _plant_watered:
-			_show_thought(DialogueData.text("peris.sim_expand.watering.dry")), "watering_hint")
 
 func _on_watering_can_picked() -> void:
 	if _watering_can_item_id == "" or _plant_watered:
 		return
 	if not _game_state.pick_up_item("peris", _watering_can_item_id):
 		return
-	_show_thought(DialogueData.text("peris.sim_expand.watering.pickup"))
 	if _can_pickup_interactable != null:
 		_can_pickup_interactable.set_interaction_enabled(false)
 	if _water_plant_interactable != null and _water_plant_interactable.has_method("show_tutorial_label"):
@@ -1022,15 +1015,13 @@ func _on_plant_watered() -> void:
 		return
 	var item: Dictionary = _game_state.items.get(_watering_can_item_id, {})
 	if str(item.get("holder", "")) != "peris":
-		_show_thought(DialogueData.text("peris.sim_expand.watering.need_can"))
-		return
+		return  # need the can in hand first (the WATER prompt only appears after pickup, so this is rare)
 	_plant_watered = true
 	_game_state.drop_item("peris", _watering_can_item_id)
 	if _watering_can_mesh != null:
-		_watering_can_mesh.position = DRY_PLANT_POS + Vector3(0.5, 0.0, 0.3)
-	for entry in _dry_leaf_materials:
-		(entry[0] as StandardMaterial3D).albedo_color = entry[1]
-	_show_thought(DialogueData.text("peris.sim_expand.watering.done"))
+		_watering_can_mesh.position = FERN_POS + Vector3(0.5, 0.0, 0.3)
+	# The watering ACTION narration — Peris's habitual motion over the fern.
+	_show_thought(DialogueData.text("peris.sim_expand.plant_7.look"))
 	if _water_plant_interactable != null:
 		_water_plant_interactable.set_interaction_enabled(false)
 	_maybe_unlock_exploration_gate()

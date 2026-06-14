@@ -4736,14 +4736,23 @@ func _synthetic_player_click(instance: Node, world_pos: Vector3) -> void:
 	var p = instance.get("_player")
 	if p == null or not p.has_method("_unhandled_input"):
 		return
-	var cam = get_viewport().get_camera_3d()
+	# Use THIS scene's camera and make it current, like _synthetic_ground_click: the player's own
+	# _raycast_ground re-projects from get_viewport().get_camera_3d(), so unproject here must agree.
+	# A prior test scene's leftover current camera unprojects world_pos off-screen and the click
+	# misses (the leg stalls — this was the flaky Peris-2 click_monos stall).
+	var cam: Camera3D = null
+	if "_camera" in instance and instance._camera != null:
+		cam = instance._camera
+	else:
+		cam = get_viewport().get_camera_3d()
 	if cam == null:
-		cam = instance.get("_camera")
+		return
+	if cam.is_inside_tree() and not cam.current:
+		cam.make_current()
 	var ev := InputEventMouseButton.new()
 	ev.button_index = MOUSE_BUTTON_LEFT
 	ev.pressed = true
-	if cam != null:
-		ev.position = cam.unproject_position(world_pos)
+	ev.position = cam.unproject_position(world_pos)
 	p._unhandled_input(ev)
 
 ## Deliver a key (optionally with Ctrl) straight to the sequence's _unhandled_key_input
