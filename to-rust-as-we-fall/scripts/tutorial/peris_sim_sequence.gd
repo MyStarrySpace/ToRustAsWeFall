@@ -948,7 +948,7 @@ func _build_peris_plants(parent: Node3D) -> void:
 			zone = _make_exploration_zone(parent, zone_pos,
 				"Plant%dZone" % (i + 1),
 				line_key,
-				1.0, 0.6, "", true)  # re-inspectable: re-clicking a plant replays Peris's line
+				1.0, 0.6)  # re-inspectable by default: re-clicking a plant replays Peris's line
 		var target := _outline_object_meshes(parent, "Plant%dOutline" % (i + 1),
 			_collect_mesh_instances(plant_node), "peris_plant_%d" % (i + 1), 0.7)
 		_set_room_target_interaction_delegate(target, zone)
@@ -1057,7 +1057,7 @@ func _build_peris_painting(parent: Node3D) -> void:
 	var zone := _make_exploration_zone(parent, Vector3(3.2, 0, -4.8),
 		"PaintingZone",
 		"peris.sim_expand.painting.line",
-		1.3, 0.6, "", true)  # re-inspectable
+		1.3, 0.6)
 	var target := _outline_object_meshes(parent, "PaintingOutline",
 		[frame, canvas], "peris_painting", 0.95)
 	_set_room_target_interaction_delegate(target, zone)
@@ -1080,7 +1080,7 @@ func _build_peris_wellness_feed(parent: Node3D) -> void:
 	var zone := _make_exploration_zone(parent, Vector3(-4.2, 0, -4.8),
 		"WellnessZone",
 		"peris.sim_expand.wellness.line",
-		1.0, 0.6, "", true)  # re-inspectable
+		1.0, 0.6)
 	var target := _outline_object_meshes(parent, "WellnessOutline",
 		[screen], "peris_wellness", 0.8)
 	_set_room_target_interaction_delegate(target, zone)
@@ -1112,7 +1112,7 @@ func _build_peris_strike_warning(parent: Node3D) -> void:
 	var area := _make_exploration_zone(parent, Vector3(-0.9, 0, -4.7),
 		"StrikeWarningZone",
 		"",
-		1.0, 0.8, "", true)  # re-inspectable: re-opening the warning replays the document + Peris's line
+		1.0, 0.8)  # re-inspectable: re-opening the warning replays the document + Peris's line
 	area.connect("interacted", func():
 		_play_focused_dialogue_keys([
 			"peris.sim_expand.strike_warning.notification",

@@ -5591,6 +5591,10 @@ func _test_aster_sim() -> void:
 					"%s pulls inspection behavior from the interactable data catalog" % zone_name)
 				_assert_interactable_type(zone, Interactable.InteractableType.INSPECTION,
 					"%s" % zone_name)
+				# Aster's inspectables are RE-INTERACTABLE too (parity with Peris): re-inspecting replays
+				# the line instead of going silent after the first look.
+				_assert_true(not bool(zone.get("one_shot")),
+					"%s is re-interactable (re-inspecting replays the line, not one-shot)" % zone_name)
 		var room_element_targets := _find_nodes_with_meta(instance, "room_element_id")
 		_assert_true(room_element_targets.size() >= 7,
 				"Aster sim exposes semantic graybox object outline targets (desk, machine, bead game, 2 paintings, awards, j-store)")

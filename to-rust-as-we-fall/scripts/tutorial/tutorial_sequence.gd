@@ -951,11 +951,12 @@ func _make_exploration_zone(
 		radius: float = 1.5,
 		dwell: float = 0.6,
 		label: String = "",
-		re_interactable: bool = false
+		re_interactable: bool = true
 	) -> Area3D:
-	# re_interactable: a one-shot zone goes silent after its first inspection; a re-interactable one stays
-	# clickable so re-inspecting replays the line (the same re-read affordance as Aster's monitor). The
-	# tutorial.inspection catalog forces one_shot=true, so (like the sequence zone) override it on the node.
+	# Exploration inspectables are RE-INTERACTABLE by default: re-inspecting replays the line instead of
+	# going silent (the same re-read affordance as Aster's monitor). Pass re_interactable=false for a
+	# one-time-only beat. The tutorial.inspection catalog forces one_shot=true, so (like the sequence zone)
+	# override it on the node after spawn.
 	var scaled_radius := maxf(radius * EXPLORATION_RADIUS_SCALE, EXPLORATION_MIN_RADIUS)
 	var area := _create_interactable(parent, pos, zone_name, scaled_radius, dwell, label, true,
 		Interactable.InteractableType.INSPECTION, "tutorial.inspection")
