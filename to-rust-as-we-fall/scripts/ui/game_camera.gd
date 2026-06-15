@@ -37,6 +37,7 @@ var _look_bounds_max := Vector3.ZERO
 var _following := true
 var _locked := false
 var _lock_position := Vector3.ZERO
+var _lock_offset_override = null  # Vector3 to frame the lock from a fixed direction; null = gameplay offset
 var _wasd_pan_enabled := false
 
 # Screen shake state
@@ -87,7 +88,8 @@ func _process(delta: float) -> void:
 	if Input.is_action_pressed("camera_rotate_right"):
 		_view_yaw -= CAMERA_ROTATE_SPEED * delta
 	if _locked:
-		var goal := _lock_position + _view_offset()
+		var off: Vector3 = _lock_offset_override if _lock_offset_override != null else _view_offset()
+		var goal := _lock_position + off
 		global_position = global_position.lerp(goal, follow_speed * delta)
 		# Apply shake even when locked
 		if _shake_intensity > 0.001:
@@ -194,14 +196,19 @@ func set_look_bounds(min_corner: Vector3, max_corner: Vector3) -> void:
 func clear_look_bounds() -> void:
 	_look_bounds_active = false
 
-## Lock camera to a world position (for scripted sequences)
-func lock_to(pos: Vector3) -> void:
+## Lock camera to a world position (for scripted sequences). An optional `offset_override` frames the
+## lock from a FIXED direction (camera sits at pos + offset, ignoring the gameplay view yaw/zoom) — use
+## it to look at a screen head-on instead of from whatever angle the player left the camera at. Pass
+## null to keep the normal gameplay offset.
+func lock_to(pos: Vector3, offset_override = null) -> void:
 	_locked = true
 	_lock_position = pos
+	_lock_offset_override = offset_override
 
 ## Unlock camera back to following the target
 func unlock() -> void:
 	_locked = false
+	_lock_offset_override = null
 	_pan_offset = Vector3.ZERO
 
 func is_locked() -> bool:

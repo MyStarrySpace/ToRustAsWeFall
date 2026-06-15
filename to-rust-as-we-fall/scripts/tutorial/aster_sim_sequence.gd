@@ -14,11 +14,16 @@ var _hud  # GameHUD with ATP bar and portrait.
 # Terminal screen-focus cinematic (click the terminal → camera frames the
 # screen, the low-fi screen swaps for a detailed readout, then the beat ends).
 const TERMINAL_FOCUS_DURATION := 3.0
-const TERMINAL_FOCUS_OFFSET := Vector3(0.0, 1.3, 3.0)
+# The focus camera sits on the screen's FRONT — the direction the monitor faces, which is toward the
+# CHAIR (where someone sits to read it), MEASURED from the chair node (see _screen_facing), not an
+# assumed world axis. TERMINAL_FOCUS_BACK is how far back along that facing the camera sits; RISE lifts
+# it so it looks slightly down at the screen. The screen panel is rotated to face the same way, so the
+# camera reads it flat (parallel to the display), never edge-on.
+const TERMINAL_FOCUS_BACK := 1.7
+const TERMINAL_FOCUS_RISE := 0.7
 var _terminal_screen_world := Vector3.ZERO
 var _terminal_screen_lowfi: MeshInstance3D
 var _terminal_screen_detail: Node3D
-var _terminal_prev_camera_offset := Vector3.ZERO
 var _terminal_prev_camera_target: Node3D
 
 # Exploration beat (post-drink, pre-Tag-Day)
@@ -325,37 +330,12 @@ func _on_terminal_interacted() -> void:
 	if _current_step != "show_terminal":
 		return
 	_scheduler.cancel_tag("drink_redirect")
-	_start_sit_at_desk()
+	# The interaction controller already walked Aster to the terminal's reading spot (showing the queued
+	# glow on the desk in his colour while he was en route), so go straight to the screen focus.
+	_start_terminal_focus()
 
-## Aster walks around to the FRONT of the desk (the chair) and sits before the forecast comes up.
-func _start_sit_at_desk() -> void:
-	_current_step = "sit_at_desk"
-	_player.set_move_enabled(false)
-	if _terminal and _terminal.has_method("set_interaction_enabled"):
-		_terminal.set_interaction_enabled(false)
-	_game_state.command_move_to_pos("aster", _desk_front_sit_pos())
-	if not _game_state.character_arrived.is_connected(_on_aster_seated):
-		_game_state.character_arrived.connect(_on_aster_seated)
-
-## The chair at the front of the desk, snapped to a walkable, grounded cell.
-func _desk_front_sit_pos() -> Vector3:
-	var chair := find_child("Chair", true, false) as Node3D
-	var base: Vector3 = chair.global_position if chair != null else _terminal_screen_world + Vector3(1.9, 0, 0)
-	return _grid.nearest_walkable_world(Vector3(base.x, 0, base.z))
-
-func _on_aster_seated(id: String) -> void:
-	if id != "aster" or _current_step != "sit_at_desk":
-		return
-	if _game_state.character_arrived.is_connected(_on_aster_seated):
-		_game_state.character_arrived.disconnect(_on_aster_seated)
-	# Sit gesture: dip Aster into the chair (cosmetic; the next move resets his Y). Then bring up the
-	# screen on the gameplay scheduler so it stays headless / fast-forward correct.
-	var tw := create_tween()
-	tw.tween_property(_player, "position:y", _player.position.y - 0.35, 0.4).set_ease(Tween.EASE_OUT)
-	_scheduler.schedule_after(0.7, _start_terminal_focus, "terminal_focus")
-
-# Click the terminal → frame the screen, swap in the detailed readout, hold a
-# beat, then continue. Scheduler-driven so it runs headless and respects F.
+# Aster has reached the terminal's reading spot → frame the screen from the FRONT, swap in the detailed
+# readout, hold a beat, then continue. Scheduler-driven so it runs headless and respects F.
 func _start_terminal_focus() -> void:
 	_current_step = "terminal_focus"
 	_player.set_move_enabled(false)
@@ -367,24 +347,47 @@ func _end_terminal_focus() -> void:
 	_player.set_move_enabled(true)
 	_start_terminal_data()
 
+## The horizontal unit direction the desk monitor FACES — toward the chair, where someone sits to read
+## it. Measured from the actual chair node so the framing matches the modeled desk instead of an assumed
+## axis (the monitor faces +X here, not +Z). Falls back to +X if the chair can't be found.
+func _screen_facing() -> Vector3:
+	var chair := find_child("*hair*", true, false) as Node3D
+	if chair != null:
+		var f: Vector3 = chair.global_position - _terminal_screen_world
+		f.y = 0.0
+		if f.length() > 0.05:
+			return f.normalized()
+	return Vector3(1, 0, 0)
+
 func _begin_terminal_screen_focus() -> void:
 	if _terminal_screen_lowfi != null:
 		_terminal_screen_lowfi.visible = false
+	var facing := _screen_facing()
 	if _terminal_screen_detail != null:
 		_terminal_screen_detail.visible = true
+		# Turn the readable panel to face the chair (the real monitor's front) so the camera reads it flat.
+		_terminal_screen_detail.rotation.y = atan2(facing.x, facing.z)
+	# Hide Aster's floating nameplate so it doesn't dominate the tight screen shot.
+	var label = _player.get_node_or_null("Label3D") if _player != null else null
+	if label != null:
+		label.visible = false
 	if _camera != null:
-		_terminal_prev_camera_offset = _camera.follow_offset
 		_terminal_prev_camera_target = _camera.target
-		_camera.follow_offset = TERMINAL_FOCUS_OFFSET
-		_camera.lock_to(_terminal_screen_world)
+		# Sit the camera back along the monitor's facing (on the chair side) and a little up, looking at
+		# the screen head-on — parallel to the display, not edge-on. Fixed override so it ignores whatever
+		# gameplay angle the player left the camera at.
+		var off := facing * TERMINAL_FOCUS_BACK + Vector3(0.0, TERMINAL_FOCUS_RISE, 0.0)
+		_camera.lock_to(_terminal_screen_world, off)
 
 func _end_terminal_screen_focus() -> void:
 	if _terminal_screen_detail != null:
 		_terminal_screen_detail.visible = false
 	if _terminal_screen_lowfi != null:
 		_terminal_screen_lowfi.visible = true
+	var label = _player.get_node_or_null("Label3D") if _player != null else null
+	if label != null:
+		label.visible = true
 	if _camera != null:
-		_camera.follow_offset = _terminal_prev_camera_offset
 		_camera.target = _terminal_prev_camera_target
 		_camera.unlock()
 
@@ -751,6 +754,10 @@ func _build_terminal() -> void:
 		_terminal_screen_lowfi = display
 		_terminal_screen_detail = _create_terminal_screen_detail(_terminal_screen_world)
 		env_node.add_child(_terminal_screen_detail)
+		# Face both screens the way the modeled monitor does — toward the chair, not the default +Z.
+		var screen_yaw := atan2(_screen_facing().x, _screen_facing().z)
+		display.rotation.y = screen_yaw
+		_terminal_screen_detail.rotation.y = screen_yaw
 
 ## The detailed screen shown while the terminal is in focus. Placeholder art:
 ## a brighter framed panel plus a forecast readout, swapped in for the low-fi
@@ -771,20 +778,22 @@ func _create_terminal_screen_detail(world_pos: Vector3) -> Node3D:
 	mat.emission = Color(0.12, 0.34, 0.5)
 	mat.emission_energy_multiplier = 1.6
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	# Billboard the forecast so it always reads head-on to the (overhead, angled) focus camera instead
-	# of facing a fixed wrong direction. It only shows during the locked focus, so it never swims.
-	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	mat.billboard_keep_scale = true
+	# A real, fixed screen facing +Z (the side Aster reads it from); the focus camera frames it head-on
+	# from that front, so there's no need to billboard it (a swivelling screen reads as fake).
 	panel.material_override = mat
 	root.add_child(panel)
 
 	var readout := Label3D.new()
-	readout.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	readout.no_depth_test = true
-	# @placeholder: stand-in forecast readout until the screen art lands.
-	readout.text = "FORECAST // BARRIER INTEGRITY\nSECTOR 07   98.2%   NOMINAL\nSECTOR 12   41.6%   WATCH\nTRANSFER LOAD       STABLE"
-	readout.font_size = 26
-	readout.pixel_size = 0.0038
+	# Aster's monitor message thread, from the GDD's opening of his workspace: the system credits Aster
+	# for work the support crew actually did and rewards him with a drink-machine upgrade; Aster deflects
+	# the credit; the system insists he did it all. This sets up the drink-machine ATP beat (the mugs on
+	# his shelf are these rewards, accumulated). Characterisation in subtext — no narration needed.
+	readout.text = "SYSTEM: Congrats on your hard work, task NVU-MAINT-0734-NORM. Your reward is an upgrade to your drink machine!\n\nASTER: You should thank the support crew. They did most of it.\n\nSYSTEM: But you did all the hard work!"
+	readout.font_size = 22
+	readout.pixel_size = 0.0030
+	readout.width = 540  # wrap boundary (px) so the long crew line folds inside the panel
+	readout.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	readout.modulate = Color(0.6, 0.85, 1.0)
 	readout.outline_modulate = Color(0, 0, 0, 0.6)
 	readout.outline_size = 6

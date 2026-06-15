@@ -218,6 +218,15 @@ func _ready() -> void:
 			"--test-aster-hover-outline":
 				ran_test = true
 				await _test_aster_hover_outline()
+			"--test-terminal-front-focus":
+				ran_test = true
+				await _test_terminal_front_focus()
+			"--test-terminal-queued-glow":
+				ran_test = true
+				await _test_terminal_queued_glow()
+			"--test-terminal-focus-capture":
+				ran_test = true
+				await _test_terminal_focus_capture()
 			"--test-path-timed-wait-segment":
 				ran_test = true
 				_test_path_timed_wait_segment()
@@ -816,6 +825,8 @@ func _run_all_tests() -> void:
 	await _test_ron_warp_in()
 	_test_grid_nearest_walkable_world()
 	await _test_aster_hover_outline()
+	await _test_terminal_front_focus()
+	await _test_terminal_queued_glow()
 	_test_path_timed_wait_segment()
 	_test_enemy_pursuit_timeout()
 	_test_detection_vertical_band()
@@ -5248,14 +5259,8 @@ func _test_aster_sim() -> void:
 				"Aster drink machine stays disabled during the monitor tutorial step")
 			terminal.call("_trigger")
 			await get_tree().process_frame
-			_assert_equals(instance._current_step, "sit_at_desk",
-				"Clicking Aster's monitor sends him to the desk front to sit")
-			# Force the arrival at the chair (the REAL walk-to-sit is covered by --test-input-playthrough);
-			# advancing the live scheduler a long way here would also re-run the scene's own pending flow.
-			instance._on_aster_seated("aster")
-			instance.headless_advance(0.8)  # the 0.7s sit -> screen schedule fires
 			_assert_equals(instance._current_step, "terminal_focus",
-				"After sitting at the desk front, the forecast screen-focus beat opens")
+				"Interacting with Aster's monitor opens the forecast screen-focus beat")
 			instance.headless_advance(instance.TERMINAL_FOCUS_DURATION + 0.1)
 			_assert_equals(instance._current_step, "terminal_data",
 				"The terminal focus beat advances the sequence to terminal_data")
@@ -6029,16 +6034,8 @@ func _assert_aster_interaction_click_matrix(instance: Node, dialogue: Node) -> v
 		# completes inside the click helper's advance budget — landing on terminal_data
 		# IS the focus beat having run, so both steps prove the click opened it.
 		var step_after_click := str(instance._current_step)
-		# The click now sends Aster to the desk front to SIT before the focus opens; drive that out.
-		if step_after_click == "sit_at_desk":
-			for _wi in range(300):
-				instance.headless_advance(0.1, 0.05)
-				await get_tree().process_frame
-				if str(instance._current_step) in ["terminal_focus", "terminal_data"]:
-					break
-			step_after_click = str(instance._current_step)
 		_assert_true(step_after_click in ["terminal_focus", "terminal_data"],
-			"%s click (sit then) opens the terminal forecast focus beat (step=%s)" % [check.label, step_after_click])
+			"%s click opens the terminal forecast focus beat (step=%s)" % [check.label, step_after_click])
 		var reached_terminal_data := step_after_click == "terminal_data"
 		for _i in range(80):
 			if reached_terminal_data:
@@ -9554,6 +9551,119 @@ func _test_aster_hover_outline() -> void:
 			"An enabled interactable is pickable and emits the hover signal (outline lights with picking on)")
 	await _dispose_scene(inst)
 
+# --- Test: the screen focus frames the monitor from its FRONT (the chair side), flat — not edge-on ---
+# Bug the user hit: the focus framed the monitor from the wrong axis (+Z) while the monitor actually
+# FACES the chair (+X here), so the screen showed edge-on ("we're facing the desk sideways"). The fix
+# MEASURES the facing from the chair node (_screen_facing) and both rotates the panel and places the
+# camera along that axis. This test derives the same facing from the chair and asserts the camera sits on
+# that front side and looks flat at the screen — it would FAIL for the old +Z framing (camera off-axis).
+func _test_terminal_front_focus() -> void:
+	_test_name = "Terminal Front Focus"
+	var inst = await _instantiate_scene_and_wait(load("res://scenes/tutorial/aster_sim.tscn"), 8)
+	if inst == null:
+		_assert_true(false, "aster_sim instantiates for terminal-front-focus test")
+		return
+	var cam = inst.get("_camera")
+	var screen: Vector3 = inst.get("_terminal_screen_world")
+	var chair := inst.find_child("*hair*", true, false) as Node3D
+	if cam == null or not cam.has_method("lock_to") or not inst.has_method("_begin_terminal_screen_focus") or chair == null:
+		_assert_true(false, "scene exposes a lockable focus camera, the focus beat, and the chair")
+		await _dispose_scene(inst)
+		return
+	# The direction the monitor faces = from the screen toward the chair (where you sit to read it).
+	var facing: Vector3 = chair.global_position - screen
+	facing.y = 0.0
+	facing = facing.normalized()
+	# Simulate the player having rotated the gameplay camera — the focus must ignore that and frame the front.
+	cam.set("_view_yaw", PI / 2.0)
+	inst._begin_terminal_screen_focus()
+	for i in range(180):  # let the locked camera converge to its goal
+		await get_tree().process_frame
+	# The detail panel must be turned to face the chair (so its text reads toward the camera).
+	var detail = inst.get("_terminal_screen_detail")
+	if detail != null:
+		var want_yaw := atan2(facing.x, facing.z)
+		_assert_true(absf(wrapf((detail as Node3D).rotation.y - want_yaw, -PI, PI)) < 0.1,
+			"Screen panel is turned to face the chair (yaw %.3f vs want %.3f)" % [(detail as Node3D).rotation.y, want_yaw])
+	var cam_pos: Vector3 = cam.global_position
+	var to_cam: Vector3 = cam_pos - screen
+	to_cam.y = 0.0
+	to_cam = to_cam.normalized()
+	_assert_true(to_cam.dot(facing) > 0.8,
+		"Focus camera sits on the monitor's FRONT (toward the chair, facing=%s), not its side (to_cam·facing=%.2f)" % [str(facing), to_cam.dot(facing)])
+	var fwd: Vector3 = -cam.global_transform.basis.z
+	var to_screen: Vector3 = (screen - cam_pos).normalized()
+	_assert_true(fwd.dot(to_screen) > 0.95,
+		"Focus camera looks at the screen head-on (dot=%.2f)" % fwd.dot(to_screen))
+	# Face-on (parallel to the display): the camera looks roughly AGAINST the monitor's facing, not across it.
+	var fwd_h: Vector3 = Vector3(fwd.x, 0.0, fwd.z).normalized()
+	_assert_true(fwd_h.dot(-facing) > 0.8,
+		"Focus camera views the monitor's front face flat, not edge-on (fwd·-facing=%.2f)" % fwd_h.dot(-facing))
+	inst._end_terminal_screen_focus()
+	await _dispose_scene(inst)
+
+# --- Test: committing the terminal interaction lights the QUEUED energy glow (like any other object) ---
+# The user reported the terminal lacked the glowing/pulsating queued outline every other interactable
+# gets. The terminal is an INSPECTION interactable (right-click only, no dwell), and a `command`
+# right-click emits BOTH interaction_requested AND outline_selected (interactable._on_input_event).
+# Two glow paths exist, and this scene uses the FIRST:
+#  (1) LIVE here — the terminal is feedback-MANAGED (the scene binds it to the OutlineFeedbackManager),
+#      so outline_selected drives the manager → begin_queued_feedback on the desk's OutlineSurfaceTarget.
+#      The controller's own begin_queued_feedback (character_interaction_controller.gd:70) is GATED OFF
+#      for managed targets, so the manager is what lights the terminal's glow in real play.
+#  (2) The controller-commit path lights the glow directly for UN-managed objects.
+# Guard BOTH so a regression in either is caught.
+func _test_terminal_queued_glow() -> void:
+	_test_name = "Terminal Queued Glow"
+	var inst = await _instantiate_scene_and_wait(load("res://scenes/tutorial/aster_sim.tscn"), 8)
+	if inst == null:
+		_assert_true(false, "aster_sim instantiates for terminal queued-glow test")
+		return
+	var terminal = inst.get("_terminal")
+	var gs = inst.get("_game_state")
+	var player = inst.get("_player")
+	var desk_target = inst.find_child("RoomTargetDesk", true, false)
+	if terminal == null or gs == null or player == null or desk_target == null \
+			or not desk_target.has_method("is_selected_feedback_active"):
+		_assert_true(false, "scene exposes the terminal, game_state, player, and the desk outline target")
+		await _dispose_scene(inst)
+		return
+	terminal.call("set_interaction_enabled", true)
+	player.set_move_enabled(true)  # the controller only accepts an interaction from a movable character
+	# Put Aster far from the terminal so the committed interaction has a walk to glow through.
+	gs.snap_character_to("aster", Vector3(2.0, 0.0, 2.5))
+	await get_tree().process_frame
+	_assert_true(not desk_target.is_selected_feedback_active(),
+		"Desk target starts with no queued glow")
+
+	# (1) REAL-PLAY PATH for THIS terminal: it's feedback-managed, so the manager (driven by
+	# outline_selected) lights the glow. A right-click fires both signals, in the order _on_input_event does.
+	terminal.emit_signal("interaction_requested", terminal, terminal.global_position)
+	await get_tree().process_frame
+	terminal.emit_signal("outline_selected", terminal)
+	for i in range(4):
+		await get_tree().process_frame
+	_assert_true(desk_target.is_selected_feedback_active(),
+		"Right-clicking the feedback-managed terminal lights the queued glow on the desk (manager path)")
+
+	# (2) CONTROLLER-COMMIT PATH: on an UN-managed object the controller itself lights the glow on commit.
+	# Unbind management, clear, and fire ONLY interaction_requested — the desk must still light, proving the
+	# controller's begin_queued_feedback branch (character_interaction_controller.gd:70) works.
+	if desk_target.has_method("cancel_queued_feedback"):
+		desk_target.call("cancel_queued_feedback")
+	if terminal.has_method("set_feedback_managed"):
+		terminal.call("set_feedback_managed", false)
+	gs.snap_character_to("aster", Vector3(2.0, 0.0, 2.5))
+	await get_tree().process_frame
+	_assert_true(not desk_target.is_selected_feedback_active(),
+		"Glow cleared before the controller-path check")
+	terminal.emit_signal("interaction_requested", terminal, terminal.global_position)
+	for i in range(4):
+		await get_tree().process_frame
+	_assert_true(desk_target.is_selected_feedback_active(),
+		"Committing an interaction on an un-managed terminal lights the queued glow via the controller")
+	await _dispose_scene(inst)
+
 # --- Test: GridWorld.nearest_walkable_world — the reusable spawn resolver (no more wall spawns) ---
 # Any character spawn routes a desired position through this: a spot on a wall/blocker snaps to the
 # CLOSEST walkable cell centre; a spot already on a walkable cell keeps its exact XZ; both are grounded
@@ -9892,6 +10002,69 @@ func _test_showcase_capture() -> void:
 			img.save_png("res://vr_showcase_%s.png" % name)
 			print("  [VR] saved vr_showcase_%s.png" % name)
 	_assert_true(true, "Showcase bays captured")
+	await _dispose_scene(inst)
+
+# Windowed-only eyeball capture of the terminal focus: the monitor framed flat from the chair side (its
+# real front), showing the GDD message thread. Writes vr_terminal_focus.png (gitignored).
+# Not in --test-all (no framebuffer headless). Run: ../Godot_...exe --path "." -- --test-terminal-focus-capture
+func _test_terminal_focus_capture() -> void:
+	_test_name = "Terminal Focus Capture"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (needs a display — run WITHOUT --headless)")
+		return
+	var inst = await _instantiate_scene_and_wait(load("res://scenes/tutorial/aster_sim.tscn"), 8)
+	if inst == null:
+		_assert_true(false, "aster_sim instantiates for terminal focus capture")
+		return
+	if not await _vr_wait_render():
+		print("  [VR] terminal focus SKIPPED — window never rendered")
+		await _dispose_scene(inst)
+		return
+	# Roll the intro past its fade-in to the terminal beat so the room is fully lit (not a black frame).
+	var dialogue = inst.get("_dialogue")
+	var safety := 0
+	while str(inst._current_step) != "show_terminal" and safety < 4000:
+		_pump_dialogue(dialogue, 6.0)
+		inst.headless_advance(0.3, 0.2)
+		await get_tree().process_frame
+		safety += 1
+	print("  [VR] reached step: %s (after %d iters)" % [str(inst._current_step), safety])
+	var gs = inst.get("_game_state")
+	var screen: Vector3 = inst.get("_terminal_screen_world")
+	# GEOMETRY PROBE: dump chair/desk/monitor positions so the screen-facing axis is MEASURED, not assumed.
+	for key in ["chair", "desk", "monitor", "screen", "seat", "Office"]:
+		for n in inst.find_children("*" + key + "*", "Node3D", true, false):
+			print("  [GEOM] %-28s @ %s" % [n.name, str((n as Node3D).global_position)])
+	var chair_node := inst.find_child("*hair*", true, false) as Node3D
+	if chair_node != null:
+		var facing: Vector3 = (chair_node.global_position - screen)
+		facing.y = 0.0
+		facing = facing.normalized()
+		print("  [GEOM] screen=%s  chair=%s  facing(screen->chair)=%s  yaw=%.3f" % [
+			str(screen), str(chair_node.global_position), str(facing), atan2(facing.x, facing.z)])
+	# Aster stands at the terminal interactable spot (just north of the desk) during the focus.
+	var read_pos := Vector3(screen.x, 0.0, screen.z + 1.1)
+	if gs != null and gs.grid != null and gs.grid.has_method("nearest_walkable_world"):
+		read_pos = gs.grid.nearest_walkable_world(read_pos)
+	if gs != null:
+		gs.snap_character_to("aster", read_pos)
+	var player = inst.get("_player")
+	if player != null:
+		var hg = player.get("_hover_grid")
+		if hg != null:
+			hg.visible = false
+	inst._begin_terminal_screen_focus()
+	var cam = inst.get("_camera")
+	if cam != null and cam.has_method("make_current"):
+		cam.make_current()  # the capture renders the main viewport's CURRENT camera
+	for i in range(120):
+		await get_tree().process_frame  # let the locked camera ease onto its front goal
+	var img := await _vr_capture()
+	if img != null:
+		img.save_png("res://vr_terminal_focus.png")
+		print("  [VR] saved vr_terminal_focus.png")
+	_assert_true(true, "Terminal focus captured")
+	inst._end_terminal_screen_focus()
 	await _dispose_scene(inst)
 
 # --- Test: the Showcase Gallery chunk shows off all three hiding tiers, both enemy types, and flora ---
