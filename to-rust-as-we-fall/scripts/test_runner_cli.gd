@@ -5854,6 +5854,10 @@ func _test_peris_sim() -> void:
 					"%s pulls inspection behavior from the interactable data catalog" % zone_name)
 				_assert_interactable_type(zone, Interactable.InteractableType.INSPECTION,
 					"%s" % zone_name)
+				# Peris's inspectables are RE-INTERACTABLE (not one-shot): re-inspecting replays the line
+				# instead of going silent — the same re-read affordance as Aster's monitor.
+				_assert_true(not bool(zone.get("one_shot")),
+					"%s is re-interactable (re-inspecting replays the line, not one-shot)" % zone_name)
 		_assert_interactable_spacing(instance, peris_explore_zones, 2.8,
 			"Peris exploration interactables are spaced apart")
 
