@@ -14,17 +14,18 @@ var _hud  # GameHUD with ATP bar and portrait.
 # Terminal screen-focus cinematic (click the terminal → camera frames the
 # screen, the low-fi screen swaps for a detailed readout, then the beat ends).
 const TERMINAL_FOCUS_DURATION := 3.0
-# The focus camera sits on the screen's FRONT — the direction the monitor faces, which is toward the
-# CHAIR (where someone sits to read it), MEASURED from the chair node (see _screen_facing), not an
-# assumed world axis. TERMINAL_FOCUS_BACK is how far back along that facing the camera sits; RISE lifts
-# it so it looks slightly down at the screen. The screen panel is rotated to face the same way, so the
-# camera reads it flat (parallel to the display), never edge-on.
-const TERMINAL_FOCUS_BACK := 1.7
-const TERMINAL_FOCUS_RISE := 0.7
+# Aster reads the monitor from the CHAIR side (its real front, MEASURED from the chair node — see
+# _screen_facing, not an assumed world axis; the TerminalInteract marker is placed there). The focus
+# camera sits TERMINAL_FOCUS_BACK back along that same facing (behind him, over his shoulder) and RISE up,
+# looking down at the screen. The panel is rotated to face the same way, so the camera reads it flat
+# (parallel to the display), never edge-on.
+const TERMINAL_FOCUS_BACK := 2.7
+const TERMINAL_FOCUS_RISE := 1.3
 var _terminal_screen_world := Vector3.ZERO
 var _terminal_screen_lowfi: MeshInstance3D
 var _terminal_screen_detail: Node3D
 var _terminal_prev_camera_target: Node3D
+var _terminal_focus_active := false  # true while the screen is up (guards re-click mid-focus)
 
 # Exploration beat (post-drink, pre-Tag-Day)
 @export var show_graybox_room := false  # the imported room model is the environment; flip on for graybox dev
@@ -320,6 +321,8 @@ func _start_ron_greeting() -> void:
 
 func _start_show_terminal() -> void:
 	_current_step = "show_terminal"
+	# The TerminalInteract marker sits in FRONT of the monitor (the chair side), so the interaction walks
+	# Aster there to read it face-on instead of standing at the side of the desk.
 	if _terminal and _terminal.has_method("set_interaction_enabled"):
 		_terminal.set_interaction_enabled(true)
 	_terminal.show_tutorial_label()
@@ -327,12 +330,16 @@ func _start_show_terminal() -> void:
 	# Terminal interaction triggers _on_terminal_interacted (signal-driven)
 
 func _on_terminal_interacted() -> void:
-	if _current_step != "show_terminal":
-		return
-	_scheduler.cancel_tag("drink_redirect")
-	# The interaction controller already walked Aster to the terminal's reading spot (showing the queued
-	# glow on the desk in his colour while he was en route), so go straight to the screen focus.
-	_start_terminal_focus()
+	if _terminal_focus_active:
+		return  # already showing the screen; ignore re-clicks mid-focus
+	if _current_step == "show_terminal":
+		_scheduler.cancel_tag("drink_redirect")
+		# The controller already walked Aster to the reading spot (queued glow on the desk in his colour
+		# while en route); the FIRST read drives the tutorial forward.
+		_start_terminal_focus()
+	else:
+		# Later reads just re-show the screen — the monitor stays readable, but the tutorial doesn't move.
+		_replay_terminal_focus()
 
 # Aster has reached the terminal's reading spot → frame the screen from the FRONT, swap in the detailed
 # readout, hold a beat, then continue. Scheduler-driven so it runs headless and respects F.
@@ -345,7 +352,31 @@ func _start_terminal_focus() -> void:
 func _end_terminal_focus() -> void:
 	_end_terminal_screen_focus()
 	_player.set_move_enabled(true)
+	_rearm_interactable(_terminal)  # the monitor stays re-readable after the first time
 	_start_terminal_data()
+
+## Re-read the monitor after the tutorial has moved past it: same screen + framing, but no step change
+## and no progression — purely a look.
+func _replay_terminal_focus() -> void:
+	_player.set_move_enabled(false)
+	_begin_terminal_screen_focus()
+	_scheduler.schedule_after(TERMINAL_FOCUS_DURATION, _end_terminal_reread, "terminal_reread")
+
+func _end_terminal_reread() -> void:
+	_end_terminal_screen_focus()
+	_player.set_move_enabled(true)
+	_rearm_interactable(_terminal)
+
+## Re-arm a one-shot interactable so it can be used again (its trigger disabled it). Safe for a
+## HOLD_ACTION too: the dwell only re-fires on a fresh body-enter, so re-arming while the character is
+## still standing in range does not immediately re-trigger.
+func _rearm_interactable(node) -> void:
+	if node == null or not is_instance_valid(node):
+		return
+	if node.has_method("reset"):
+		node.reset()
+	if node.has_method("set_interaction_enabled"):
+		node.set_interaction_enabled(true)
 
 ## The horizontal unit direction the desk monitor FACES — toward the chair, where someone sits to read
 ## it. Measured from the actual chair node so the framing matches the modeled desk instead of an assumed
@@ -360,6 +391,7 @@ func _screen_facing() -> Vector3:
 	return Vector3(1, 0, 0)
 
 func _begin_terminal_screen_focus() -> void:
+	_terminal_focus_active = true
 	if _terminal_screen_lowfi != null:
 		_terminal_screen_lowfi.visible = false
 	var facing := _screen_facing()
@@ -380,6 +412,7 @@ func _begin_terminal_screen_focus() -> void:
 		_camera.lock_to(_terminal_screen_world, off)
 
 func _end_terminal_screen_focus() -> void:
+	_terminal_focus_active = false
 	if _terminal_screen_detail != null:
 		_terminal_screen_detail.visible = false
 	if _terminal_screen_lowfi != null:
@@ -412,18 +445,21 @@ func _show_drink_redirect() -> void:
 		_show_thought(DialogueData.text("aster_sim.drink_redirect.thought"))
 
 func _on_drink_interacted() -> void:
-	if _has_drunk:
-		return
-	if _current_step != "walk_to_drink":
-		return
-	_has_drunk = true
-	_scheduler.cancel_tag("drink_redirect")
-	_start_drink()
+	if not _has_drunk and _current_step == "walk_to_drink":
+		# First drink: the ATP tutorial.
+		_has_drunk = true
+		_scheduler.cancel_tag("drink_redirect")
+		_start_drink()
+	elif _has_drunk:
+		# Already topped up — Aster waves it off, with a glance toward Tag Day.
+		_show_thought(DialogueData.text("aster_sim.drink_again.thought"))
+		_rearm_interactable(_drink_machine)
 
 func _start_drink() -> void:
 	_current_step = "drink"
 	_game_state.set_stat("aster", "atp", ATP_MAX)
 	_hide_thought()
+	_rearm_interactable(_drink_machine)  # stays usable; a second go gives the "all good on drinks" line
 	_scheduler.schedule_after(2.0, _start_ron_move_fast, "ron_move_fast")
 
 func _start_ron_move_fast() -> void:

@@ -36,7 +36,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0, 13.5)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0, 7.7)
 
 [node name="TerminalInteract" type="Marker3D" parent="ScenePlacement/InteractableMarkers" unique_id=902480886]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0.8, 8.8)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.4, 0.8, 7.75)
 
 [node name="DrinkMachineAnchor" type="Marker3D" parent="ScenePlacement/InteractableMarkers" unique_id=964813714]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0, 1.6)

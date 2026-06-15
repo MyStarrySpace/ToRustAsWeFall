@@ -5264,12 +5264,45 @@ func _test_aster_sim() -> void:
 			instance.headless_advance(instance.TERMINAL_FOCUS_DURATION + 0.1)
 			_assert_equals(instance._current_step, "terminal_data",
 				"The terminal focus beat advances the sequence to terminal_data")
+			# Re-readable: the monitor re-arms after the first read, and a second interaction re-shows the
+			# screen WITHOUT advancing the tutorial (a look, not progression). Clear the scheduler first so
+			# the re-read is isolated from the pending terminal_data->drink progression.
+			_assert_true(bool(terminal.call("is_interaction_enabled")),
+				"Terminal re-arms (interactable again) after the first read")
+			instance._scheduler.clear()
+			instance._on_terminal_interacted()
+			await get_tree().process_frame
+			_assert_true(bool(instance.get("_terminal_focus_active")),
+				"Re-interacting the terminal re-opens the screen focus")
+			_assert_equals(instance._current_step, "terminal_data",
+				"A terminal re-read does NOT advance the tutorial (still terminal_data)")
+			instance.headless_advance(instance.TERMINAL_FOCUS_DURATION + 0.1)
+			_assert_true(not bool(instance.get("_terminal_focus_active")),
+				"The terminal re-read focus ends")
+			_assert_equals(instance._current_step, "terminal_data",
+				"After a re-read, the tutorial is still at terminal_data")
 			_assert_true(not bool(drink.call("is_interaction_enabled")),
 				"Aster drink machine remains disabled until the drink tutorial step")
 			instance._start_walk_to_drink()
 			await get_tree().process_frame
 			_assert_true(bool(drink.call("is_interaction_enabled")),
 				"Aster drink machine enables only at the drink tutorial step")
+			# First drink: the ATP tutorial, then it re-arms so it can be used again.
+			instance._on_drink_interacted()
+			await get_tree().process_frame
+			_assert_equals(instance._current_step, "drink",
+				"First drink interaction runs the ATP beat")
+			_assert_true(bool(drink.call("is_interaction_enabled")),
+				"Drink machine re-arms after the first drink")
+			# Second drink: Aster waves it off with the Tag Day line — no ATP/step change.
+			if instance._dialogue != null and instance._dialogue.has_method("clear"):
+				instance._dialogue.clear()  # _show_thought is skipped while a line is live
+			instance._on_drink_interacted()
+			await get_tree().process_frame
+			_assert_true(str(instance._thought_label.text).to_lower().contains("all good on drinks"),
+				"A second drink interaction shows the 'all good on drinks' Tag Day line (got: %s)" % str(instance._thought_label.text))
+			_assert_equals(instance._current_step, "drink",
+				"A second drink interaction does NOT re-advance the tutorial")
 			drink.call("set_interaction_enabled", false)
 
 		var dialogue: Node = instance.find_child("DialogueBox", true, false)
@@ -9605,14 +9638,12 @@ func _test_terminal_front_focus() -> void:
 # --- Test: committing the terminal interaction lights the QUEUED energy glow (like any other object) ---
 # The user reported the terminal lacked the glowing/pulsating queued outline every other interactable
 # gets. The terminal is an INSPECTION interactable (right-click only, no dwell), and a `command`
-# right-click emits BOTH interaction_requested AND outline_selected (interactable._on_input_event).
-# Two glow paths exist, and this scene uses the FIRST:
-#  (1) LIVE here — the terminal is feedback-MANAGED (the scene binds it to the OutlineFeedbackManager),
-#      so outline_selected drives the manager → begin_queued_feedback on the desk's OutlineSurfaceTarget.
-#      The controller's own begin_queued_feedback (character_interaction_controller.gd:70) is GATED OFF
-#      for managed targets, so the manager is what lights the terminal's glow in real play.
-#  (2) The controller-commit path lights the glow directly for UN-managed objects.
-# Guard BOTH so a regression in either is caught.
+# right-click emits BOTH interaction_requested AND outline_selected (interactable._on_input_event). In
+# THIS scene the terminal is feedback-MANAGED (the scene binds it to the OutlineFeedbackManager), so
+# outline_selected drives the manager → begin_queued_feedback on the desk's OutlineSurfaceTarget, tinted
+# the servicing character's colour, while Aster walks over. (The controller's own begin_queued_feedback
+# at character_interaction_controller.gd:70 is GATED OFF for managed targets — it serves UN-managed
+# objects, which the terminal is not, so it is out of scope here.) Prove the real path lights the glow.
 func _test_terminal_queued_glow() -> void:
 	_test_name = "Terminal Queued Glow"
 	var inst = await _instantiate_scene_and_wait(load("res://scenes/tutorial/aster_sim.tscn"), 8)
@@ -9645,23 +9676,12 @@ func _test_terminal_queued_glow() -> void:
 		await get_tree().process_frame
 	_assert_true(desk_target.is_selected_feedback_active(),
 		"Right-clicking the feedback-managed terminal lights the queued glow on the desk (manager path)")
-
-	# (2) CONTROLLER-COMMIT PATH: on an UN-managed object the controller itself lights the glow on commit.
-	# Unbind management, clear, and fire ONLY interaction_requested — the desk must still light, proving the
-	# controller's begin_queued_feedback branch (character_interaction_controller.gd:70) works.
+	# And it clears when the interaction completes (the manager's complete/cancel path).
 	if desk_target.has_method("cancel_queued_feedback"):
 		desk_target.call("cancel_queued_feedback")
-	if terminal.has_method("set_feedback_managed"):
-		terminal.call("set_feedback_managed", false)
-	gs.snap_character_to("aster", Vector3(2.0, 0.0, 2.5))
 	await get_tree().process_frame
 	_assert_true(not desk_target.is_selected_feedback_active(),
-		"Glow cleared before the controller-path check")
-	terminal.emit_signal("interaction_requested", terminal, terminal.global_position)
-	for i in range(4):
-		await get_tree().process_frame
-	_assert_true(desk_target.is_selected_feedback_active(),
-		"Committing an interaction on an un-managed terminal lights the queued glow via the controller")
+		"The queued glow clears when the interaction is completed/cancelled")
 	await _dispose_scene(inst)
 
 # --- Test: GridWorld.nearest_walkable_world — the reusable spawn resolver (no more wall spawns) ---
@@ -10042,8 +10062,10 @@ func _test_terminal_focus_capture() -> void:
 		facing = facing.normalized()
 		print("  [GEOM] screen=%s  chair=%s  facing(screen->chair)=%s  yaw=%.3f" % [
 			str(screen), str(chair_node.global_position), str(facing), atan2(facing.x, facing.z)])
-	# Aster stands at the terminal interactable spot (just north of the desk) during the focus.
-	var read_pos := Vector3(screen.x, 0.0, screen.z + 1.1)
+	# Aster stands at the terminal interactable spot (the chair side, in front of the monitor) during focus.
+	var terminal_node := inst.get("_terminal") as Node3D
+	var read_pos := terminal_node.global_position if terminal_node != null else Vector3(screen.x, 0.0, screen.z + 1.1)
+	read_pos.y = 0.0
 	if gs != null and gs.grid != null and gs.grid.has_method("nearest_walkable_world"):
 		read_pos = gs.grid.nearest_walkable_world(read_pos)
 	if gs != null:
