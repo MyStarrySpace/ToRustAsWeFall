@@ -84,6 +84,10 @@ const BRIDGE_END_X := 23.5    # BRIDGE_START_X + 12.0
 # The modeled span (Blender, 1/16 pixel-grid): deck planks, rusted girders, cross-beams, braces,
 # railings, abutments — each a named MeshInstance3D the hybrid collapse drops.
 const BRIDGE_MODEL := preload("res://resources/models/elevator/bridge.glb")
+# The modeled elevator car SHELL (Blender, pixel-grid; floor grate is Geometry-Nodes): paneled walls,
+# door opening + frame, ceiling light coffer, corner posts, control housing. Static; the sliding doors,
+# emergency light, and floor indicators stay procedural in Godot because they animate.
+const ELEVATOR_MODEL := preload("res://resources/models/elevator/elevator_car.glb")
 # Collapse debris physics layers (kept off every gameplay layer so debris never touches characters —
 # they move on the grid, not via physics). Pieces collide ONLY with their own catch-floor (no inter-
 # piece explosions from the initially-touching span).
@@ -2092,21 +2096,15 @@ func _add_corridor_section(parent: Node3D, pos: Vector3, size: Vector3, color: C
 
 func _build_elevator_chunk(parent: Node3D) -> void:
 	var hw := ELEVATOR_SIZE.x / 2.0
-	var hd := ELEVATOR_SIZE.z / 2.0
 	var h := ELEVATOR_SIZE.y
 
-	var floor_mesh := MeshInstance3D.new()
-	var fb := BoxMesh.new()
-	fb.size = Vector3(ELEVATOR_SIZE.x, 0.1, ELEVATOR_SIZE.z)
-	floor_mesh.mesh = fb
-	var fm := StandardMaterial3D.new()
-	fm.albedo_color = Color(0.1, 0.1, 0.12)
-	fm.metallic = 0.3
-	fm.roughness = 0.4
-	floor_mesh.material_override = fm
-	floor_mesh.position = Vector3(0, -0.05, 0)
-	parent.add_child(floor_mesh)
+	# The car SHELL is the modeled, pixel-grid elevator (Blender + a Geometry-Nodes floor grate): paneled
+	# walls, the door opening + frame, ceiling light coffer, corner posts, control housing.
+	var car := ELEVATOR_MODEL.instantiate()
+	car.name = "ElevatorCar"
+	parent.add_child(car)
 
+	# Walkable / clickable floor collision (the player moves on the grid; clicks raycast this slab).
 	var floor_body := StaticBody3D.new()
 	floor_body.position = Vector3(0, -0.01, 0)
 	floor_body.collision_layer = 1
@@ -2118,20 +2116,13 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 	floor_body.add_child(fc)
 	parent.add_child(floor_body)
 
-	var wc := Color(0.12, 0.12, 0.14)
-	_add_wall(parent, Vector3(0, h / 2.0, -hd), Vector3(ELEVATOR_SIZE.x, h, 0.2), wc)
-	_add_wall(parent, Vector3(0, h / 2.0, hd), Vector3(ELEVATOR_SIZE.x, h, 0.2), wc)
-	_add_wall(parent, Vector3(-hw, h / 2.0, 0), Vector3(0.2, h, ELEVATOR_SIZE.z), wc)
-	_add_wall(parent, Vector3(hw, h / 2.0, -hd * 0.55), Vector3(0.2, h, hd * 0.8), wc)
-	_add_wall(parent, Vector3(hw, h / 2.0, hd * 0.55), Vector3(0.2, h, hd * 0.8), wc)
+	# Sliding doors (DYNAMIC — they animate apart): fill the modeled doorway, slide out on Z to open.
+	_door_panel_a = _make_door_panel(parent, Vector3(hw - 0.05, 1.45, -0.6))
+	_door_panel_b = _make_door_panel(parent, Vector3(hw - 0.05, 1.45, 0.6))
 
-	_door_panel_a = _make_door_panel(parent, Vector3(hw - 0.05, h / 2.0, -0.6), wc)
-	_door_panel_b = _make_door_panel(parent, Vector3(hw - 0.05, h / 2.0, 0.6), wc)
-
-	_add_wall(parent, Vector3(0, h, 0), Vector3(ELEVATOR_SIZE.x, 0.1, ELEVATOR_SIZE.z), Color(0.06, 0.06, 0.08))
-
+	# Pulsing red emergency light + a dim warm fill (the modeled ceiling panel adds static ambient glow).
 	_emergency_light = OmniLight3D.new()
-	_emergency_light.position = Vector3(0, h - 0.3, 0)
+	_emergency_light.position = Vector3(0, h - 0.4, 0)
 	_emergency_light.light_color = Color(0.85, 0.15, 0.1)
 	_emergency_light.light_energy = 3.0
 	_emergency_light.omni_range = 10.0
@@ -2144,15 +2135,15 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 	fill.omni_range = 8.0
 	parent.add_child(fill)
 
-	# Floor readout "3B": the "3" steady, the "B" flickering, both glowing. HDR
+	# Floor readout "3B" on the wall beside the door: "3" steady, "B" flickering, both glowing. HDR
 	# (>1) modulate blooms through the environment glow; a small red light backs it.
-	var indicator_x := hw - 0.1
+	var indicator_x := hw - 0.14
 	_floor_indicator = Label3D.new()
 	_floor_indicator.text = "3"
 	_floor_indicator.font_size = 64
 	_floor_indicator.pixel_size = 0.012
 	_floor_indicator.modulate = Color(2.0, 0.45, 0.2, 1.0)
-	_floor_indicator.position = Vector3(indicator_x, h * 0.7, 0.18)
+	_floor_indicator.position = Vector3(indicator_x, 2.6, 1.7)
 	_floor_indicator.rotation.y = -PI / 2.0
 	parent.add_child(_floor_indicator)
 
@@ -2161,7 +2152,7 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 	_indicator_b_label.font_size = 64
 	_indicator_b_label.pixel_size = 0.012
 	_indicator_b_label.modulate = Color(2.0, 0.45, 0.2, 1.0)
-	_indicator_b_label.position = Vector3(indicator_x, h * 0.7, -0.05)
+	_indicator_b_label.position = Vector3(indicator_x, 2.6, 1.35)
 	_indicator_b_label.rotation.y = -PI / 2.0
 	parent.add_child(_indicator_b_label)
 
@@ -2169,7 +2160,7 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 	indicator_glow.light_color = Color(0.95, 0.25, 0.15)
 	indicator_glow.light_energy = 1.4
 	indicator_glow.omni_range = 1.6
-	indicator_glow.position = Vector3(indicator_x - 0.15, h * 0.7 + 0.25, 0.05)
+	indicator_glow.position = Vector3(indicator_x - 0.15, 2.85, 1.5)
 	parent.add_child(indicator_glow)
 
 	# Flashes before door access is restored.
@@ -2178,22 +2169,9 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 	_no_exit_label.font_size = 36
 	_no_exit_label.pixel_size = 0.01
 	_no_exit_label.modulate = Color(0.9, 0.15, 0.1, 0.0)
-	_no_exit_label.position = Vector3(indicator_x, h * 0.5, 0)
+	_no_exit_label.position = Vector3(indicator_x, 2.1, 1.5)
 	_no_exit_label.rotation.y = -PI / 2.0
 	parent.add_child(_no_exit_label)
-
-	var panel_mesh := MeshInstance3D.new()
-	var pb := BoxMesh.new()
-	pb.size = Vector3(0.15, 1.0, 0.6)
-	panel_mesh.mesh = pb
-	var pm := StandardMaterial3D.new()
-	pm.albedo_color = Color(0.14, 0.14, 0.17)
-	pm.emission_enabled = true
-	pm.emission = Color(0.05, 0.1, 0.2)
-	pm.emission_energy_multiplier = 0.5
-	panel_mesh.material_override = pm
-	panel_mesh.position = Vector3(indicator_x, 1.0, 0)
-	parent.add_child(panel_mesh)
 
 	for pos in [ESCORT_1_POS, ESCORT_2_POS]:
 		var standby := OmniLight3D.new()
@@ -2203,24 +2181,15 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 		standby.omni_range = 2.5
 		parent.add_child(standby)
 
-	for i in range(3):
-		var strip := MeshInstance3D.new()
-		var sb := BoxMesh.new()
-		sb.size = Vector3(ELEVATOR_SIZE.x * 0.8, 0.02, 0.15)
-		strip.mesh = sb
-		var sm := StandardMaterial3D.new()
-		sm.albedo_color = Color(0.08, 0.08, 0.1)
-		strip.material_override = sm
-		strip.position = Vector3(0, h - 0.02, -2.0 + i * 2.0)
-		parent.add_child(strip)
-
-func _make_door_panel(parent: Node3D, pos: Vector3, color: Color) -> MeshInstance3D:
+func _make_door_panel(parent: Node3D, pos: Vector3) -> MeshInstance3D:
 	var panel := MeshInstance3D.new()
 	var b := BoxMesh.new()
-	b.size = Vector3(0.15, ELEVATOR_SIZE.y, 1.2)
+	b.size = Vector3(0.12, 2.9, 1.2)  # fits the modeled 3u-tall doorway
 	panel.mesh = b
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color.darkened(0.1)
+	mat.albedo_color = Color(0.1, 0.105, 0.13)
+	mat.metallic = 0.6
+	mat.roughness = 0.45
 	panel.material_override = mat
 	panel.position = pos
 	parent.add_child(panel)
