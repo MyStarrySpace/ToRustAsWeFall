@@ -42,11 +42,11 @@ var _stamina := 100.0
 var _enemies: Array[Enemy] = []
 var _enemy_count := 0
 
-# Character HP
-var _aster_hp := 100.0
-var _peris_hp := 100.0
+# Party HP lives ONLY in GameState (the single source of truth): adjust_stat/get_stat. The HUD,
+# downed state, and game-over all react to GameState's stat_changed via _on_party_stat_changed, so
+# every damage source (enemy strikes, iron patches) just calls adjust_stat — no parallel counter.
+const PARTY_MAX_HP := GameState.HP_MAX
 var _game_over := false
-var _iframes: Dictionary = {}  # char_id -> scheduler tick when i-frames expire
 
 # Iron hazard zones: Array of {pos: Vector3, size: Vector3}.
 var _iron_patches: Array[Dictionary] = []
@@ -198,11 +198,10 @@ func _register_characters() -> void:
 	_game_state.grid = _grid          # assign BEFORE registering so each character's level derives from its spawn Y
 	_configure_levels(2, -BELOW_Y)    # 2 decks, 4m apart: level 0 = lower (Y=-4), level 1 = upper (Y=0)
 	_setup_level_footprints()
-	# The party needs a POSITIVE data-layer HP, or enemy detection treats them as downed (hp<=0) and
-	# the ecology never gives chase. The elevator tracks actual damage in _aster_hp/_peris_hp; this is
-	# the "alive" flag the AI reads.
-	_register_gs_character("peris", _peris_node, 2.5, {"hp": _peris_hp})
-	_register_gs_character("aster", _aster_node, 2.5, {"hp": _aster_hp})
+	# Party HP is GameState's (the single source). A positive HP is also the AI's "alive" flag — without
+	# it, enemy detection treats the party as downed (hp<=0) and the ecology never gives chase.
+	_register_gs_character("peris", _peris_node, 2.5, {"hp": PARTY_MAX_HP})
+	_register_gs_character("aster", _aster_node, 2.5, {"hp": PARTY_MAX_HP})
 	_register_gs_character("eu1", _escort_1, 2.0)
 	_register_gs_character("eu2", _escort_2, 2.0)
 	_aster_node.set_move_enabled(false)
@@ -225,8 +224,11 @@ func _setup_ui() -> void:
 	_hud.add_portrait("peris", "Peris", Color(1.0, 0.67, 0.27))
 	_hud.add_portrait("aster", "Aster", Color(0.29, 0.62, 1.0))
 	_hud.set_selected_portraits(_selected_character_ids)
-	_hud.set_portrait_stat("peris", "hp", 100)
-	_hud.set_portrait_stat("aster", "hp", 100)
+	# HP mirrors GameState (the single source); stat_changed keeps the portraits in sync from then on.
+	_hud.set_portrait_stat("peris", "hp", _game_state.get_stat("peris", "hp"))
+	_hud.set_portrait_stat("aster", "hp", _game_state.get_stat("aster", "hp"))
+	if not _game_state.stat_changed.is_connected(_on_party_stat_changed):
+		_game_state.stat_changed.connect(_on_party_stat_changed)
 	_hud.set_portrait_status("aster", "downed")
 	_hud.set_portrait_stat("aster", "sta", 0)
 	_hud.show_pause_toggle(false)
@@ -336,35 +338,21 @@ func _on_process(delta: float, spd: float) -> void:
 		if is_instance_valid(enemy) and enemy.is_alive():
 			enemy.rotation.y += delta * spd * 0.3
 
-	# Iron patches hurt on contact.
+	# Iron patches hurt on contact — real data-layer damage (adjust_stat); the HUD/downed/game-over all
+	# follow via _on_party_stat_changed.
 	if not _game_over and not _iron_patches.is_empty():
 		for pair in [["aster", _aster_node], ["peris", _peris_node]]:
 			var cid: String = pair[0]
 			var cnode: Node3D = pair[1]
-			if not cnode:
-				continue
-			var hp: float = _aster_hp if cid == "aster" else _peris_hp
-			if hp <= 0:
+			if cnode == null or _game_state.get_stat(cid, "hp") <= 0.0:
 				continue
 			var cpos := cnode.global_position
 			for patch in _iron_patches:
 				var ppos: Vector3 = patch.pos
 				var psz: Vector3 = patch.size
 				if absf(cpos.x - ppos.x) < psz.x / 2.0 and absf(cpos.z - ppos.z) < psz.z / 2.0:
-					var dmg := IRON_DAMAGE_PER_SEC * delta * spd
-					if cid == "aster":
-						_aster_hp = maxf(0.0, _aster_hp - dmg)
-						_hud.set_portrait_stat("aster", "hp", _aster_hp)
-						if _aster_hp <= 0:
-							_hud.set_portrait_status("aster", "downed")
-					else:
-						_peris_hp = maxf(0.0, _peris_hp - dmg)
-						_hud.set_portrait_stat("peris", "hp", _peris_hp)
-						if _peris_hp <= 0:
-							_hud.set_portrait_status("peris", "downed")
+					_game_state.adjust_stat(cid, "hp", -IRON_DAMAGE_PER_SEC * delta * spd)
 					break
-		if _aster_hp <= 0 and _peris_hp <= 0:
-			_start_game_over()
 
 	# Approach gate
 	if _current_step == "approach_aster":
@@ -1177,27 +1165,25 @@ func _build_flure(parent: Node3D, pos: Vector3) -> void:
 	mesh.position = pos + Vector3(0, 0.5, 0)
 	parent.add_child(mesh)
 
-func _on_enemy_hit(target_id: String, damage: float) -> void:
+## GameState is the single source of truth for party HP. Every hp change (enemy strikes apply it via
+## _resolve_strike's adjust_stat; iron patches via adjust_stat) fans out here to drive the HUD, the
+## downed portrait, and game-over — so no damage source maintains a parallel counter.
+func _on_party_stat_changed(id: String, stat: String, value: float) -> void:
+	if stat != "hp" or not (id == "aster" or id == "peris"):
+		return
+	if _hud != null:
+		_hud.set_portrait_stat(id, "hp", value)
+		if value <= 0.0:
+			_hud.set_portrait_status(id, "downed")
+	if not _game_over and _game_state != null \
+			and _game_state.get_stat("aster", "hp") <= 0.0 and _game_state.get_stat("peris", "hp") <= 0.0:
+		_start_game_over()
+
+## The strike already applied data-layer damage (adjust_stat → _on_party_stat_changed); this only adds
+## the cosmetic hit flash. The body is a 3D node (no `modulate`), so flash the mesh material albedo.
+func _on_enemy_hit(target_id: String, _damage: float) -> void:
 	if _game_over:
 		return
-	# Check i-frames
-	var now := _scheduler.get_current_tick()
-	if _iframes.has(target_id) and now < _iframes[target_id]:
-		return
-	_iframes[target_id] = now + 1.0
-	# Apply damage
-	if target_id == "aster" and _aster_hp > 0:
-		_aster_hp = maxf(0.0, _aster_hp - damage)
-		_hud.set_portrait_stat("aster", "hp", _aster_hp)
-		if _aster_hp <= 0:
-			_hud.set_portrait_status("aster", "downed")
-	elif target_id == "peris" and _peris_hp > 0:
-		_peris_hp = maxf(0.0, _peris_hp - damage)
-		_hud.set_portrait_stat("peris", "hp", _peris_hp)
-		if _peris_hp <= 0:
-			_hud.set_portrait_status("peris", "downed")
-	# Flash the hit character white briefly. The body is a 3D node (no `modulate` — that crashed); flash
-	# its mesh material albedo to white and back to the character's base color instead.
 	var target_node: Node3D = _aster_node if target_id == "aster" else _peris_node
 	var hit_mesh: MeshInstance3D = target_node.get_node_or_null("Mesh") if target_node != null else null
 	if hit_mesh != null and hit_mesh.material_override is StandardMaterial3D:
@@ -1206,8 +1192,6 @@ func _on_enemy_hit(target_id: String, damage: float) -> void:
 		var flash := create_tween()
 		flash.tween_property(mat, "albedo_color", Color(1, 1, 1), 0.1)
 		flash.tween_property(mat, "albedo_color", base_color, 0.3)
-	if _aster_hp <= 0 and _peris_hp <= 0:
-		_start_game_over()
 
 func _show_marker(pos: Vector3, text: String) -> void:
 	var lbl := Label3D.new()
