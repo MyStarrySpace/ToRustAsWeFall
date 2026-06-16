@@ -7,6 +7,9 @@ extends Node3D
 # --- Configuration ---
 @export var display_name := "Entity"
 @export var color := Color(0.4, 0.15, 0.1)
+# Enemies never draw a movement-path ribbon (the PathRenderManager reads this opt-out). A yard full
+# of roaming fauna tracing ribbons reads as chaos and costs per-frame ribbon rebuilds for nothing.
+var show_movement_path := false
 @export var max_hp := 50.0
 @export var move_speed := 1.5
 @export var detection_range := 6.0

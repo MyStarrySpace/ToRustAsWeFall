@@ -9,6 +9,7 @@ var _peris_node: CharacterBody3D
 var _fall_landed_fired := false  # one-shot guard: bridge landing fires once
 var _fall_tween: Tween           # the cosmetic fall animation (wall-clock)
 var _collapsed_chunks_removed := false  # one-shot guard: old level chunks freed once
+var _below_fauna_engaged := false  # the ecology stays ambient until the player takes the route through it
 var _escort_1  # NPC
 var _escort_2  # NPC
 var _active_character := "peris"
@@ -383,10 +384,12 @@ func _on_process(delta: float, spd: float) -> void:
 		elif peris_at_door or aster_at_door:
 			_show_multiselect_together_hint()
 
-	# Bridge gate: you cross the bridge OVER the ecology (seeing the enemies below); once past them,
-	# at the far end, it gives way and drops the party onto a clear ledge beyond the enemy band.
+	# Bridge gate: the span gives way MID-SPAN as the player walks out onto it (the narration's
+	# "it gives way mid-span"). The trigger sits comfortably inside the walkable bridge, NOT at the far
+	# edge — clicking the far edge raycasts down to the lower deck (no ladder there → the move is
+	# rejected and the player looks stranded), so requiring the edge stranded the player.
 	if _current_step == "bridge":
-		if _game_state.get_position("aster").x > BRIDGE_END_X - 1.5:
+		if _game_state.get_position("aster").x > BRIDGE_START_X + 4.0:
 			_tutorial_prompt.hide_prompt()
 			_player.set_move_enabled(false)
 			_start_bridge_collapse()
@@ -394,6 +397,11 @@ func _on_process(delta: float, spd: float) -> void:
 	# Route convergence gate: after choosing a lane and walking it, reaching convergence
 	# opens the junction (the fall already happened — this no longer triggers the collapse).
 	if _current_step == "route_choice":
+		# Committing to the lane THROUGH the ecology (the low-Z side, toward ENEMY_ROUTE_END) wakes the
+		# fauna against the party; the environmental-hazard lane (high-Z) leaves them calm. The fauna
+		# only ever threaten the party on the route the player actually takes.
+		if _game_state.get_position("aster").z < FORK_POS.z - 2.0:
+			_engage_below_fauna()
 		if _game_state.get_position("aster").x > ROUTES_CONVERGE.x - 2.0:
 			_tutorial_prompt.hide_prompt()
 			_player.set_move_enabled(false)
@@ -865,6 +873,7 @@ func _start_corridor() -> void:
 		_camera.clear_look_bounds()
 	_load_chunk("bridge")
 	_load_chunk("below")
+	_below_fauna_engaged = false  # ecology starts ambient each time the lower deck spins up
 	var exit_pos := Vector3(ELEVATOR_SIZE.x / 2.0 + 3.0, 0, 0)
 	_game_state.command_move_to_pos("aster", exit_pos)
 	_game_state.command_move_to_pos("peris", exit_pos + Vector3(0, 0, 1.0))
@@ -1046,6 +1055,19 @@ func _start_route_choice() -> void:
 	_enter_step("route_choice")
 	_player.set_move_enabled(true)
 	_tutorial_prompt.show_prompt("Click to move — choose a path")
+
+## Arm the ambient ecology against the party — called once the player commits to the lane THROUGH the
+## fauna at the fork (the alternative is the environmental-hazard lane, where they stay calm). The
+## roaming fauna now target the party, so a re-predicted scan promotes them to pursuit on this deck.
+func _engage_below_fauna() -> void:
+	if _below_fauna_engaged:
+		return
+	_below_fauna_engaged = true
+	for e in _enemies:
+		if is_instance_valid(e):
+			e._detection_targets = ["aster", "peris"]
+			if _game_state != null:
+				_game_state._recompute_all_detection_predictions(e.char_id)
 
 # --- Junction / Shelter ---
 
@@ -1457,7 +1479,10 @@ func _build_below_chunk(parent: Node3D) -> void:
 		bloom.omni_range = 3.0
 		parent.add_child(bloom)
 
-	# Chelators patrol the ecology walls.
+	# The ecology below is AMBIENT while the party crosses the bridge above (and on the hazard route
+	# after the fall): the fauna only WANDER locally (set_roam — no A* pathfinding, near-free for a
+	# yard full of them) and do NOT hunt the party (empty detection targets). They become a threat only
+	# if the player takes the route THROUGH them at the fork — call _engage_below_fauna() to arm them.
 	var chelator_ids: Array[String] = []
 	for i in range(6):
 		var cid := "chelator_%d" % i
@@ -1468,11 +1493,11 @@ func _build_below_chunk(parent: Node3D) -> void:
 		enemy.max_hp = 20.0
 		enemy._hp = 20.0
 		enemy.detection_range = 4.0
-		var patrol_a := Vector3(bridge_start + 0.0 + i * 1.0, ground_y + 0.5, enemy.position.z)
-		var patrol_b := Vector3(bridge_start + 0.0 + i * 1.0 + 4.0, ground_y + 0.5, enemy.position.z)
-		enemy.set_patrol([patrol_a, patrol_b])
+		enemy._detection_targets = []
+		enemy.set_roam(enemy.position, 3.0)
 
-	# Predators hunt Chelators before targeting the party.
+	# Predators are the bigger ambient fauna — same rule: roam locally, no party hunt until the player
+	# commits to the route through them (_engage_below_fauna).
 	for i in range(2):
 		var pid := "predator_%d" % i
 		var predator := _spawn_enemy(pid,
@@ -1485,7 +1510,7 @@ func _build_below_chunk(parent: Node3D) -> void:
 		predator.charge_damage = 35.0
 		predator.detection_range = 6.0
 		_game_state.characters[pid].stats["detection_range"] = 6.0
-		predator._detection_targets = chelator_ids.duplicate()
+		predator._detection_targets = []
 		if predator._mesh and predator._mesh.mesh is CapsuleMesh:
 			(predator._mesh.mesh as CapsuleMesh).radius = 0.35
 			(predator._mesh.mesh as CapsuleMesh).height = 1.2
@@ -1494,9 +1519,7 @@ func _build_below_chunk(parent: Node3D) -> void:
 		predator._base_color = Color(0.5, 0.12, 0.08)
 		if predator._mesh and predator._mesh.material_override:
 			(predator._mesh.material_override as StandardMaterial3D).albedo_color = Color(0.5, 0.12, 0.08)
-		var pa := Vector3(bridge_start + 0.0 + i * 2.0, ground_y + 0.5, -2.0)
-		var pb := Vector3(bridge_start + 2.0 + i * 2.0, ground_y + 0.5, 2.0)
-		predator.set_patrol([pa, pb])
+		predator.set_roam(predator.position, 3.0)
 
 	# Fluor bioluminescence.
 	var fluor_light := OmniLight3D.new()
@@ -1575,14 +1598,14 @@ func _build_below_chunk(parent: Node3D) -> void:
 
 	var en_z := -4.0
 	_add_wall(parent, Vector3(fork_x + 8.0, ground_y + wall_h / 2.0, en_z - 3.0), Vector3(16, wall_h, 0.3), wall_color)
-	# Enemy-route patrols (sit forward of the landing, down the enemy lane).
+	# Enemy-route fauna (down the enemy lane). Ambient roam, no party hunt, until the player commits to
+	# THIS lane at the fork (_engage_below_fauna) — taking the hazard lane leaves them calm.
 	for i in range(4):
 		var ex: float = fork_x + 14.0 + i * 3.0
 		var enemy := _spawn_enemy("route_enemy_%d" % i,
 			Vector3(ex, ground_y + 0.5, en_z - 1.5), parent)
-		var pa := Vector3(ex - 1.5, ground_y + 0.5, en_z - 1.5)
-		var pb := Vector3(ex + 1.5, ground_y + 0.5, en_z - 1.5)
-		enemy.set_patrol([pa, pb])
+		enemy._detection_targets = []
+		enemy.set_roam(enemy.position, 2.5)
 
 	# Hazard route.
 	var hz_z := 4.0

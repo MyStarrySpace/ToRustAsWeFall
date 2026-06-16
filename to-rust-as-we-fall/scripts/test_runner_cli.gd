@@ -416,6 +416,9 @@ func _ready() -> void:
 			"--test-elevator":
 				ran_test = true
 				await _test_elevator()
+			"--test-elevator-bridge":
+				ran_test = true
+				await _test_elevator_bridge_collapse()
 			"--test-elevator-fall-level":
 				ran_test = true
 				await _test_elevator_fall_level()
@@ -911,6 +914,7 @@ func _run_all_tests() -> void:
 	await _test_pause_menu()
 	await _test_peris_sim()
 	await _test_elevator()
+	await _test_elevator_bridge_collapse()
 	await _test_elevator_fall_level()
 	await _test_act1_chunk_grids()
 	await _test_act1_prepare_fragment_grids()
@@ -6446,34 +6450,6 @@ func _assert_elevator_escort_standoff(instance: Node, min_distance: float, label
 		_assert_true(nearest >= min_distance,
 			"%s: %s remains %.2fm from the party (minimum %.2fm)" % [label, guard_id, nearest, min_distance])
 
-func _assert_elevator_fall_lands_clear_of_enemies(instance: Node, min_buffer: float, label: String) -> void:
-	var checked := 0
-	var nearest_margin := INF
-	for party_id in ["peris", "aster"]:
-		var party_pos: Vector3 = instance._game_state.get_position(party_id)
-		for enemy in instance._enemies:
-			if not is_instance_valid(enemy):
-				continue
-			if enemy.has_method("is_alive") and not enemy.is_alive():
-				continue
-			if not instance._game_state.characters.has(enemy.char_id):
-				continue
-			var enemy_pos: Vector3 = instance._game_state.get_position(enemy.char_id)
-			var enemy_range := 0.0
-			if "detection_range" in enemy:
-				enemy_range = float(enemy.detection_range)
-			elif instance._game_state.characters[enemy.char_id].stats.has("detection_range"):
-				enemy_range = float(instance._game_state.characters[enemy.char_id].stats["detection_range"])
-			var horizontal_distance := Vector2(
-				party_pos.x - enemy_pos.x,
-				party_pos.z - enemy_pos.z
-			).length()
-			nearest_margin = minf(nearest_margin, horizontal_distance - enemy_range)
-			checked += 1
-	_assert_true(checked > 0, "%s checks spawned below-level enemies" % label)
-	_assert_true(nearest_margin >= min_buffer,
-		"%s: party lands outside enemy detection by %.2fm (minimum %.2fm)" % [label, nearest_margin, min_buffer])
-
 func _assert_elevator_active_player_can_move(instance: Node, label: String) -> void:
 	_assert_true(instance._player != null, "%s has an active player character" % label)
 	if instance._player == null:
@@ -6742,6 +6718,77 @@ func _test_elevator_fall_level() -> void:
 	instance.queue_free()
 	await get_tree().process_frame
 
+# --- Test: the bridge collapse triggers by WALKING across, and the ecology below does not pursue ---
+# Two stacked decks share one XZ grid plane. The party crosses the bridge (upper deck, Y=0) OVER the
+# ecology (lower deck, Y=-4). Reproduces: (1) walking to the far end fires the collapse — it must not
+# be blocked by the enemies parked below (level-agnostic cell reservations used to "wall off" the
+# bridge); (3) the enemies below never pursue the party crossing above (the vertical gap exceeds the
+# detection band).
+func _test_elevator_bridge_collapse() -> void:
+	_test_name = "Elevator Bridge Collapse"
+	var scene := load("res://scenes/tutorial/elevator.tscn")
+	if scene == null:
+		_assert_true(false, "elevator scene loads")
+		return
+	var instance: Node = scene.instantiate()
+	if "suppress_scene_change" in instance:
+		instance.suppress_scene_change = true
+	get_tree().root.add_child(instance)
+	for i in range(8):
+		await get_tree().process_frame
+	var gs = instance._game_state
+	# Isolate the bridge beat: drop the pending intro events + dialogue, load the bridge and the
+	# ecology below (so the enemies exist beneath the span, exactly as in play).
+	instance._scheduler.clear()
+	if instance._dialogue != null and instance._dialogue.has_method("clear"):
+		instance._dialogue.clear()
+	instance._load_chunk("bridge")
+	instance._load_chunk("below")
+	# Park the party at the bridge START on the upper deck.
+	for cid in ["aster", "peris"]:
+		gs.command_stop(cid)
+		gs.set_character_level(cid, instance.LEVEL_UPPER)
+		gs.characters[cid]["position"] = Vector3(float(instance.BRIDGE_START_X), 0.0, 0.0)
+		gs.characters[cid]["grid_cell"] = gs.grid.world_to_grid(gs.characters[cid]["position"])
+	instance._current_step = "bridge"
+	instance._player.set_move_enabled(true)
+	# Let the ecology spin up its wander so its reservations + states are live.
+	for s in range(10):
+		instance.headless_advance(0.1, 0.05)
+		instance._on_process(0.1, 1.0)
+	# Drive a REAL click onto the MIDDLE of the bridge (the clear upper floor — what the player can
+	# actually click; the far edge raycasts down to the lower deck). The collapse must fire from
+	# walking onto the span, NOT require reaching the far edge.
+	# Walk Aster onto the MIDDLE of the bridge — the collapse must fire mid-span, not require the far
+	# edge (which clicks can't reliably reach: the edge raycasts down to the lower deck).
+	var mid_x: float = float(instance.BRIDGE_START_X) + 5.0
+	gs.command_move_to_pos("aster", Vector3(mid_x, 0.0, 0.0))
+	var ecology_pathfound := false   # any fauna running A* (patrol/pursuit) while the party is above
+	var party_pursued := false       # any fauna actually targeting + chasing the party
+	for s in range(400):
+		instance.headless_advance(0.1, 0.05)
+		instance._on_process(0.1, 1.0)
+		for e in instance._enemies:
+			if not is_instance_valid(e):
+				continue
+			if e.get_state() in ["patrol", "alert", "pursuit", "windup", "charge", "impact"]:
+				ecology_pathfound = true
+			if e.get_state() in ["alert", "pursuit", "windup", "charge", "impact"] \
+					and str(e._current_target_id) in ["aster", "peris"]:
+				party_pursued = true
+		if instance._current_step != "bridge":
+			break
+	_assert_equals(instance._current_step, "bridge_collapse",
+		"Walking onto the mid-span (x=%.1f) triggers the collapse (step=%s)" % [mid_x, instance._current_step])
+	_assert_true(not party_pursued,
+		"The ecology below does not pursue the party while it crosses the bridge above")
+	_assert_true(not ecology_pathfound,
+		"The ecology below stays in ambient roam (no A* patrol/pursuit) while the party crosses above")
+	if instance.has_method("_teardown_sequence"):
+		instance._teardown_sequence()
+	instance.queue_free()
+	await get_tree().process_frame
+
 # --- Test: Leaving Facility ---
 # --- Test: Elevator Tutorial ---
 func _test_elevator() -> void:
@@ -6936,36 +6983,41 @@ func _test_elevator() -> void:
 		_assert_true(after_shader_pos.x > before_shader_pos.x + 0.5,
 			"Aster perception shader follows scheduler movement")
 
-		# Bridge-end gate: walking to the far end of the (upper) bridge is what collapses it.
+		# Bridge gate: the span gives way MID-SPAN as the player walks out onto it (NOT at the far edge —
+		# the edge raycasts down to the lower deck and strands the player). Standing short of mid-span
+		# doesn't fire; crossing it does.
 		_clear_sequence_runtime_for_spatial_test(instance)
 		instance._load_chunk("below")
 		_assert_true(instance._enemies.size() > 0,
 			"Enemy/hazard route is present on the lower deck")
 		_assert_elevator_movement_gate(instance, {
-			"label": "Bridge-end collapse gate",
+			"label": "Bridge mid-span collapse gate",
 			"start_step": "bridge",
 			"expected_step": "bridge_collapse",
 			"characters": [
 				{
 					"id": "aster",
-					"outside": Vector3(instance.BRIDGE_END_X - 7.0, 0.5, 0.0),
-					"target": Vector3(instance.BRIDGE_END_X, 0.5, 0.0),
+					"outside": Vector3(instance.BRIDGE_START_X + 2.0, 0.5, 0.0),
+					"target": Vector3(instance.BRIDGE_START_X + 6.0, 0.5, 0.0),
 				},
 			],
-			"max_time": 4.0,
+			"max_time": 2.0,
 		})
-		_assert_true(instance._game_state.get_position("aster").x > instance.BRIDGE_END_X - 1.5,
-			"Bridge collapses at the far end, once Aster is past the enemy band")
-		_set_sequence_character_position(
-			instance, "aster", Vector3(instance.BRIDGE_END_X - 1.5, 0.5, 0.0))
-		_set_sequence_character_position(
-			instance,
-			"peris",
-			instance._game_state.get_position("aster") + Vector3(-0.8, 0.0, 0.8)
-		)
+		_assert_true(instance._game_state.get_position("aster").x >= instance.BRIDGE_START_X + 4.0,
+			"Bridge gives way mid-span (Aster need not reach the far, un-clickable edge)")
+		# After the fall, the party shares the lower deck with the ecology — but the fauna are AMBIENT
+		# (they don't hunt the party) until the player takes the route through them, so landing among
+		# them is safe regardless of physical distance.
 		instance._on_fall_landed()
-		_assert_elevator_fall_lands_clear_of_enemies(instance, 1.0,
-			"Fall landing clear of the lower-deck enemies")
+		for j in range(8):
+			instance.headless_advance(0.1, 0.05)
+			instance._on_process(0.1, 1.0)
+		var fauna_hunting_party := false
+		for enemy in instance._enemies:
+			if is_instance_valid(enemy) and str(enemy._current_target_id) in ["aster", "peris"]:
+				fauna_hunting_party = true
+		_assert_true(not fauna_hunting_party,
+			"Fall landing is safe: the ambient ecology does not hunt the party on touchdown")
 
 		# Post-fall: the climb prompt sits over the broken bridge; checking it opens the route fork.
 		_clear_sequence_runtime_for_spatial_test(instance)
