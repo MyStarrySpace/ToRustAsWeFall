@@ -6756,17 +6756,23 @@ func _test_elevator_bridge_collapse() -> void:
 		instance._dialogue.clear()
 	instance._load_chunk("bridge")
 	instance._load_chunk("below")
-	# The bridge is built as fracturable PLANKS so the collapse can cascade plank-by-plank (not sink as
-	# one slab). Confirm the floor has independent segments to drop.
+	# The span is the MODELED bridge (Blender, pixel-grid): a BridgeModel node of named pieces (deck
+	# planks, girders, etc.) the collapse drops individually — not one rigid slab.
 	var bridge_chunk_node: Node = instance._chunks.get("bridge")
 	var bridge_floor_node: Node = bridge_chunk_node.find_child("BridgeFloor", false, false) if bridge_chunk_node != null else null
-	var plank_count := 0
-	if bridge_floor_node != null:
-		for child in bridge_floor_node.get_children():
-			if child is MeshInstance3D and str(child.name).begins_with("Plank_"):
-				plank_count += 1
-	_assert_true(plank_count >= 6,
-		"The bridge floor is built as fracturable planks (%d), not one rigid slab" % plank_count)
+	var bridge_model_node: Node = bridge_floor_node.find_child("BridgeModel", false, false) if bridge_floor_node != null else null
+	var piece_count := 0
+	var deck_planks := 0
+	if bridge_model_node != null:
+		for child in bridge_model_node.get_children():
+			if child is MeshInstance3D:
+				piece_count += 1
+				if str(child.name).begins_with("Deck_Plank_"):
+					deck_planks += 1
+	_assert_true(piece_count >= 30,
+		"The modeled bridge has many structural pieces to drop (%d)" % piece_count)
+	_assert_true(deck_planks >= 6,
+		"The bridge deck is built as separate planks (%d)" % deck_planks)
 	# Park the party at the bridge START on the upper deck.
 	for cid in ["aster", "peris"]:
 		gs.command_stop(cid)
@@ -6807,18 +6813,21 @@ func _test_elevator_bridge_collapse() -> void:
 		"The ecology below does not pursue the party while it crosses the bridge above")
 	_assert_true(not ecology_pathfound,
 		"The ecology below stays in ambient roam (no A* patrol/pursuit) while the party crosses above")
-	# Let the scheduled fall fire, then drive the cosmetic tween DETERMINISTICALLY (custom_step, not
-	# wall-clock process frames) and confirm the planks actually drop.
+	# Let the scheduled fall fire → the hybrid collapse turns every modeled piece into a physics debris
+	# body (RigidBody) and drops a catch-floor. (The tumble itself is wall-clock physics, cosmetic.)
 	instance.headless_advance(1.0, 0.05)   # past the bridge_fall delay → _execute_bridge_fall runs
-	_assert_true(instance._fall_tween != null, "The collapse kicks off a fall animation")
-	if instance._fall_tween != null and is_instance_valid(bridge_floor_node):
-		instance._fall_tween.custom_step(1.0)   # advance ~1s of the fall (not past its end → floor stays)
-		var lowest := 999.0
+	_assert_true(instance._fall_tween != null, "The collapse kicks off the fall (party + camera)")
+	var debris := 0
+	var catch_floor := false
+	if is_instance_valid(bridge_floor_node):
 		for child in bridge_floor_node.get_children():
-			if child is MeshInstance3D and str(child.name).begins_with("Plank_"):
-				lowest = minf(lowest, (child as MeshInstance3D).position.y)
-		_assert_true(lowest < -1.0,
-			"Bridge planks drop into the collapse (lowest plank y=%.2f, from -0.05)" % lowest)
+			if child is RigidBody3D:
+				debris += 1
+			elif child is StaticBody3D and str(child.name) == "DebrisCatch":
+				catch_floor = true
+	_assert_true(debris >= 30,
+		"The collapse converts the modeled pieces into physics debris bodies (%d)" % debris)
+	_assert_true(catch_floor, "The collapse drops a catch-floor for the debris to land on")
 	if instance.has_method("_teardown_sequence"):
 		instance._teardown_sequence()
 	instance.queue_free()

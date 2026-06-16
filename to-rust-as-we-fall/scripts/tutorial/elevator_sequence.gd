@@ -81,6 +81,16 @@ const BELOW_Y := -4.0
 const BRIDGE_START_X := 11.5  # ELEVATOR_SIZE.x/2 + 0.5 + 7.0
 const BRIDGE_END_X := 23.5    # BRIDGE_START_X + 12.0
 
+# The modeled span (Blender, 1/16 pixel-grid): deck planks, rusted girders, cross-beams, braces,
+# railings, abutments — each a named MeshInstance3D the hybrid collapse drops.
+const BRIDGE_MODEL := preload("res://resources/models/elevator/bridge.glb")
+# Collapse debris physics layers (kept off every gameplay layer so debris never touches characters —
+# they move on the grid, not via physics). Pieces collide ONLY with their own catch-floor (no inter-
+# piece explosions from the initially-touching span).
+const DEBRIS_PIECE_LAYER := 1 << 10
+const DEBRIS_FLOOR_LAYER := 1 << 11
+var _collapse_visual_active := false  # true while wall-clock debris physics is still settling
+
 # Route fork
 const FORK_POS := Vector3(BRIDGE_START_X + 4.0, BELOW_Y, 0)
 const ENEMY_ROUTE_END := Vector3(BRIDGE_END_X + 8.0, BELOW_Y, -6.0)
@@ -919,41 +929,97 @@ func _execute_bridge_fall() -> void:
 	var fall_duration := 1.4
 	var bridge_chunk: Node3D = _chunks.get("bridge")
 	var bridge_floor: Node3D = bridge_chunk.find_child("BridgeFloor", false, false) if bridge_chunk else null
-	# The span shears apart where the player stands and the break races OUTWARD — each plank/rail drops
-	# on its own, accelerating and tumbling as it crashes down onto the ecology below.
+	var model: Node3D = bridge_floor.find_child("BridgeModel", false, false) if bridge_floor != null else null
+	# HYBRID collapse: the span shears where the player stands and the break races outward (art-directed
+	# cascade); each modeled piece is then handed to PHYSICS to tumble and settle (believable). Cosmetic,
+	# wall-clock — the party's landing rides the scheduler (_on_fall_landed) so replay/fast-forward match.
 	var break_x: float = _game_state.get_position("aster").x
+	if model != null:
+		_collapse_bridge_model(model, break_x)
+		_spawn_collapse_dust(bridge_floor, break_x)
+	# The party rides the failing centre down (visual); the data-layer landing is the scheduler's.
 	var tween := create_tween()
 	tween.set_parallel(true)
-	if bridge_floor:
-		for child in bridge_floor.get_children():
-			if not (child is MeshInstance3D):
-				continue
-			var piece := child as MeshInstance3D
-			var stagger: float = minf(absf(piece.position.x - break_x) * 0.045, 0.45)
-			var spin: Vector3 = _bridge_piece_spin(piece.position.x)
-			tween.tween_property(piece, "position:y", BELOW_Y + 0.2, fall_duration) \
-				.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD).set_delay(stagger)
-			tween.tween_property(piece, "rotation", piece.rotation + spin, fall_duration).set_delay(stagger)
-			tween.tween_property(piece, "position:x", piece.position.x + spin.y * 0.5, fall_duration).set_delay(stagger)
-		_spawn_collapse_dust(bridge_floor, break_x)
-	# The party rides the failing centre down; the LOGICAL landing rides the scheduler (_on_fall_landed),
-	# so fast-forward matches. The FREEING of the old chunks is cosmetic — gate it on the tween finishing,
-	# or under fast-forward the scheduler races ahead and the bridge would vanish mid-air.
 	for char_node in [_peris_node, _aster_node]:
 		tween.tween_property(char_node, "position:y", BELOW_Y + 0.5, fall_duration * 0.8) \
 			.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
 	tween.tween_property(_camera, "follow_offset:y", _camera.follow_offset.y + BELOW_Y, fall_duration)
 	_fall_tween = tween
-	tween.finished.connect(_remove_collapsed_chunks)
 	_scheduler.schedule_after(fall_duration * 1.05, _on_fall_landed, "fall_landed")
 
-## Deterministic per-plank tumble (hashed from its X, never wall-clock RNG — replay-stable visuals).
-## The Y component also drives the horizontal drift sign as the piece falls.
+## Turn the modeled span into falling debris: each piece becomes a frozen RigidBody at its current pose,
+## then is RELEASED in a cascade from the break point (art-directed timing) with a shove + tumble, after
+## which gravity + the catch-floor do the believable settle. Cosmetic + wall-clock (uses SceneTree timers
+## and the physics server), so it never touches the data layer; the catch-floor is on its own physics
+## layer so debris collides with nothing but the floor (no character interference, no inter-piece blowups).
+func _collapse_bridge_model(model: Node3D, break_x: float) -> void:
+	_collapse_visual_active = true
+	var host: Node = model.get_parent()
+	# A catch-floor at the lower deck so the debris lands instead of falling forever.
+	var catch := StaticBody3D.new()
+	catch.name = "DebrisCatch"
+	catch.collision_layer = DEBRIS_FLOOR_LAYER
+	catch.collision_mask = 0
+	var ccs := CollisionShape3D.new()
+	var cbx := BoxShape3D.new()
+	cbx.size = Vector3(60, 1.0, 30)
+	ccs.shape = cbx
+	catch.add_child(ccs)
+	catch.position = Vector3(break_x, BELOW_Y - 0.4, 0)
+	host.add_child(catch)
+	# Snapshot the pieces first (we reparent them, which mutates the child list).
+	var pieces: Array[MeshInstance3D] = []
+	for child in model.get_children():
+		if child is MeshInstance3D:
+			pieces.append(child)
+	for mi in pieces:
+		var gx := mi.global_transform
+		var ab := mi.get_aabb()  # local, centred on the piece origin
+		var rb := RigidBody3D.new()
+		rb.collision_layer = DEBRIS_PIECE_LAYER
+		rb.collision_mask = DEBRIS_FLOOR_LAYER   # only the catch-floor — never each other or characters
+		rb.gravity_scale = 1.4
+		rb.freeze = true
+		host.add_child(rb)
+		rb.global_transform = gx
+		mi.get_parent().remove_child(mi)
+		rb.add_child(mi)
+		mi.transform = Transform3D()
+		var cs := CollisionShape3D.new()
+		var bx := BoxShape3D.new()
+		bx.size = ab.size.max(Vector3(0.05, 0.05, 0.05))
+		cs.shape = bx
+		cs.position = ab.position + ab.size * 0.5  # AABB centre (≈ origin for these boxes)
+		rb.add_child(cs)
+		var delay: float = minf(absf(gx.origin.x - break_x) * 0.05, 0.5)
+		_release_debris(rb, delay, break_x, _bridge_piece_spin(gx.origin.x))
+	model.queue_free()  # the (now-empty) original model node
+	# Free everything once the debris has visually settled (wall-clock; the physics is cosmetic).
+	get_tree().create_timer(3.0).timeout.connect(_remove_collapsed_chunks)
+
+## Release one debris piece: unfreeze it and give it a shove away from the break + a downward kick and
+## the deterministic tumble. `delay` staggers the cascade (a SceneTree timer; instant when ~0).
+func _release_debris(rb: RigidBody3D, delay: float, break_x: float, spin: Vector3) -> void:
+	var fire := func() -> void:
+		if not is_instance_valid(rb):
+			return
+		rb.freeze = false
+		var away: float = signf(rb.global_position.x - break_x)
+		if away == 0.0:
+			away = 1.0
+		rb.apply_central_impulse(Vector3(away * 1.3, -1.0, 0.0))
+		rb.angular_velocity = spin * 2.2
+	if delay <= 0.001:
+		fire.call()
+	else:
+		get_tree().create_timer(delay).timeout.connect(fire)
+
+## Deterministic per-piece tumble (hashed from its X, never wall-clock RNG — replay-stable seeding).
 func _bridge_piece_spin(x: float) -> Vector3:
 	var h := int(absf(x) * 17.0)
 	return Vector3(
 		0.7 + float(h % 6) * 0.22,           # pitch
-		-0.5 + float((h / 6) % 7) * 0.18,    # yaw + drift
+		-0.5 + float((h / 6) % 7) * 0.18,    # yaw
 		-0.6 + float((h / 42) % 6) * 0.24    # roll
 	)
 
@@ -1003,19 +1069,20 @@ func _on_fall_landed() -> void:
 		_game_state.characters[char_id]["position"] = Vector3(pos.x, lp.y, lp.z)
 		if _game_state.grid != null:
 			_game_state.characters[char_id]["grid_cell"] = _game_state.grid.world_to_grid(_game_state.characters[char_id]["position"])
-	# Free the old level only once the cosmetic fall has visually finished. At 1x the tween is
-	# already done by now; under fast-forward it isn't, so let tween.finished do it. Headless /
-	# force-fire (no live tween) removes them here.
-	if _fall_tween == null or not _fall_tween.is_running():
+	# Free the old level once the debris has visually settled. In real play _collapse_bridge_model set
+	# _collapse_visual_active and owns the removal (a wall-clock timer), so we don't rip the bridge away
+	# mid-fall. Headless / force-fire (no live collapse) removes here.
+	if not _collapse_visual_active:
 		_remove_collapsed_chunks()
 	_scheduler.schedule_after(1.0, _start_fallen, "fallen")
 
-## Cosmetic: free the elevator + bridge chunks (the old, fallen-away level). Idempotent — runs
-## from tween.finished (real play) or directly (headless), whichever resolves first.
+## Cosmetic: free the elevator + bridge chunks (the old, fallen-away level) once the debris has settled.
+## Idempotent — runs from the settle timer (real play) or directly (headless), whichever resolves first.
 func _remove_collapsed_chunks() -> void:
 	if _collapsed_chunks_removed:
 		return
 	_collapsed_chunks_removed = true
+	_collapse_visual_active = false
 	_unload_chunk("elevator")
 	_unload_chunk("bridge")
 	_emergency_light = null
@@ -1475,10 +1542,9 @@ func _build_bridge_chunk(parent: Node3D) -> void:
 	cor_light.omni_range = 8.0
 	parent.add_child(cor_light)
 
-	# The collapsing span lives under BridgeFloor. It is built as FRACTURABLE PLANKS (independent
-	# segments) so the collapse can cascade plank-by-plank, not sink as one rigid slab. A single
-	# invisible collision slab handles the player's click-raycast (the player walks the grid); the
-	# planks + rails are the visual pieces the collapse drops.
+	# The collapsing span is the MODELED bridge (Blender, 1/16 pixel-grid): deck planks, rusted girders,
+	# cross-beams, braces, railings and abutments — each a named piece the hybrid collapse drops. An
+	# invisible collision slab handles the player's click-raycast (the player walks the grid, not the mesh).
 	var bridge_start := start_x + 7.0
 	var bridge_floor := Node3D.new()
 	bridge_floor.name = "BridgeFloor"
@@ -1494,33 +1560,10 @@ func _build_bridge_chunk(parent: Node3D) -> void:
 	b2.add_child(c2)
 	bridge_floor.add_child(b2)
 
-	const BRIDGE_SPAN := 12.0
-	const BRIDGE_PLANKS := 8
-	var plank_w := BRIDGE_SPAN / float(BRIDGE_PLANKS)
-	var plank_x0 := bridge_start + 5.0 - BRIDGE_SPAN / 2.0
-	for i in range(BRIDGE_PLANKS):
-		var plank := MeshInstance3D.new()
-		plank.name = "Plank_%d" % i
-		var pm := BoxMesh.new()
-		pm.size = Vector3(plank_w * 0.95, 0.1, 3.0)  # slight gap so the seams read
-		plank.mesh = pm
-		var pmat := StandardMaterial3D.new()
-		pmat.albedo_color = corridor_color.lightened(0.02 * (i % 3))  # subtle plank variation
-		plank.material_override = pmat
-		plank.position = Vector3(plank_x0 + plank_w * (float(i) + 0.5), -0.05, 0)
-		bridge_floor.add_child(plank)
-
-	for i in range(5):
-		var rail := MeshInstance3D.new()
-		rail.name = "Rail_%d" % i
-		var rb := BoxMesh.new()
-		rb.size = Vector3(0.05, 0.8, 0.05)
-		rail.mesh = rb
-		var rm := StandardMaterial3D.new()
-		rm.albedo_color = Color(0.15, 0.15, 0.18)
-		rail.material_override = rm
-		rail.position = Vector3(bridge_start + 1.5 + i * 2.0, 0.4, -1.4)
-		bridge_floor.add_child(rail)
+	var bridge_model := BRIDGE_MODEL.instantiate()
+	bridge_model.name = "BridgeModel"
+	bridge_model.position = Vector3(bridge_start + 5.0, 0.0, 0.0)  # span centre; modeled deck top sits at Y=0
+	bridge_floor.add_child(bridge_model)
 
 	var bridge_light := OmniLight3D.new()
 	bridge_light.position = Vector3(bridge_start + 5.0, 3.0, 0)
