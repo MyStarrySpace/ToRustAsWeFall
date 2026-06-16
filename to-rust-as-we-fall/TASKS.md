@@ -21,7 +21,7 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 - [ ] **1.1** Import map data from prototype's `MAP_DATA` (40x28 string grid) into a TileMapLayer scene
 - [ ] **1.2** Create the six character-specific memory maps as additional data layers: `PERIS_MEMORY`, `ASTER_DATA`, `ENDO_DATA`, `OLI_DATA`, `TYREG_DATA`, and Myke's road network (generated on unlock)
 - [ ] **1.3** Implement tile property lookup: `is_walkable(x, y)`, `get_tile_type(x, y)`, `is_blocked(x, y, locked_doors)`
-- [ ] **1.4** Place interactable positions from map data: shelters, terminals, food, flora, keys, locked doors, hide rooms, ferrolures (3 fixed positions), lock terminals (2 fixed positions)
+- [ ] **1.4** Place interactable positions from map data: shelters, terminals, food, flora, keys, locked doors, hide rooms, flures (3 fixed positions), lock terminals (2 fixed positions)
 
 ---
 
@@ -122,7 +122,7 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 - [ ] **7.5** Territorial repulsion: idle Techos push apart when within 3 tiles (`push = 0.003/distance`)
 - [ ] **7.6** Daily scaling: target count = `min(20, 8 + floor((day-1) * 1.5))`. Stats scale: `maxHP = 30 + (day-1)*5`, `speed = 0.025 + (day-1)*0.002`
 - [ ] **7.7** Death/respawn: on 0 HP, teleport to home position, reset to idle, become invisible for 12s
-- [ ] **7.8** Ferrolure override: active ferrolures (within 8 tiles) attract Techos, overriding character targeting
+- [ ] **7.8** Flure override: active flures (within 8 tiles) attract Techos, overriding character targeting
 
 ---
 
@@ -162,7 +162,7 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 - [ ] **10.4** Data terminal (tile 5): Aster only, 2.0s channel. Reveals 8-tile radius on Aster's explored map. Terminal marked as used
 - [ ] **10.5** Key (tile 7): 0.5s channel. Sets `keyCollected = true`
 - [ ] **10.6** Locked door (tile 8): if key collected, instantly unlock. Otherwise "Locked. You need a key" and stop movement
-- [ ] **10.7** Ferrolure: Peris only, 1.0s channel. Activates for 18s (lures Techos within 8 tiles). Fixed positions on map
+- [ ] **10.7** Flure: Peris only, 1.0s channel. Activates for 18s (lures Techos within 8 tiles). Fixed positions on map
 - [ ] **10.8** Lock terminal: Oli or Aster, 1.5s channel. Unlocks the associated shelter (removes from blocked set, removes terminal)
 - [ ] **10.9** Ammo pickup: any character, 0.5s channel. Removes ammo spot, adds 3 rounds to Tyreg. Auto-triggers on arrival
 - [ ] **10.10** Channel progress bar: yellow bar below character, pulsing glow during channel

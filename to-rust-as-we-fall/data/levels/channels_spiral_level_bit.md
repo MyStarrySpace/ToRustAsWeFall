@@ -6,13 +6,13 @@ It is built from:
 
 - the current `act1_sequence.gd` implementation
 - the dialogue revision notes in `channels_edits.md`
-- the ferrolure and hide-run design already prototyped in the tutorial flow
+- the flure and hide-run design already prototyped in the tutorial flow
 
 The aim is to make the first `channels` section feel like a real expedition slice instead of a straight tutorial corridor.
 
 ## Level Promise
 
-Get the party through the channels, learn how ferrolures and hiding turn the ecology, and reach the shelter at the center before the route closes on you.
+Get the party through the channels, learn how flures and hiding turn the ecology, and reach the shelter at the center before the route closes on you.
 
 This is a small level bit, not a whole standalone region. It is the first example of the spiral grammar the game will reuse later.
 
@@ -22,7 +22,7 @@ This bit should establish:
 
 - Peris's memory can lead the party before anyone comments on it
 - the world outside the portal is materially harsher than Peris was allowed to feel
-- ferrolures are not just interactables, they are ecological levers
+- flures are not just interactables, they are ecological levers
 - the player can survive by reading rhythm and setting up the space
 - Endo's shelter and hide knowledge is a real party role
 - shelter is the center of the loop, not just the end of a hallway
@@ -35,7 +35,7 @@ The current runtime sequence already contains almost all of the needed pieces:
 - `channels_enter`
 - `channels_memory`
 - `channels_corpse`
-- `channels_ferrolure`
+- `channels_flure`
 - `channels_encounter_activate`
 - `channels_encounter_hide`
 - `channels_encounter_run`
@@ -69,8 +69,8 @@ That means the player should feel:
 
 - entry lane
 - memory/body lane
-- first ferrolure rhythm lane
-- second ferrolure coda
+- first flure rhythm lane
+- second flure coda
 - hide-and-run lane
 
 ### Shortcut Logic
@@ -161,21 +161,21 @@ Peris leads. Aster and Endo do not underline what the player should already be n
 - language reflects class position
 - the shelter they are moving toward is not abstract comfort, it is needed
 
-## Node 4: Ferrolure Rhythm Lane
+## Node 4: Flure Rhythm Lane
 
 **Type:** puzzle-teaching node
 
-**Current sequence:** `channels_ferrolure`
+**Current sequence:** `channels_flure`
 
 **Purpose:**
 
-- show the player that ferrolures can alter ecological flow
+- show the player that flures can alter ecological flow
 - make the player read environment rhythm rather than react in panic
 - transition from corpse-horror back into tactical attention
 
 **Beat shape from notes:**
 
-- Peris notices the dormant or partial ferrolure
+- Peris notices the dormant or partial flure
 - Aster warns: "That's a lure."
 - Peris answers: "Nothing's around to receive its signals."
 - pause
@@ -224,7 +224,7 @@ The player should understand:
 **Purpose:**
 
 - teach hiding
-- teach that ferrolures create later movement windows, not immediate escape
+- teach that flures create later movement windows, not immediate escape
 - give Endo a strong survival-guide spotlight
 
 **Current implementation surface already contains:**
@@ -278,7 +278,7 @@ The Channels bit should now read like this:
 2. learn its rhythm
 3. see Peris lead through memory
 4. confront corpse-harvest survival reality
-5. learn the first ferrolure rhythm safely
+5. learn the first flure rhythm safely
 6. glimpse the central shelter but remain locked out
 7. use hide-and-run to penetrate the inner route
 8. reach shelter
@@ -293,7 +293,7 @@ It is still teachable because:
 
 - each node introduces one major idea
 - Endo externalizes survival knowledge
-- the first ferrolure beat is safe and legible
+- the first flure beat is safe and legible
 - the hide-and-run is forgiving compared to later versions
 - the central shelter gives a strong emotional payoff
 
@@ -317,7 +317,7 @@ The Channels bit should explicitly contain both:
 
 ### Puzzle-heavy nodes
 
-- ferrolure rhythm lane
+- flure rhythm lane
 - shortcut unlock
 
 ### Narrative-perception node
@@ -348,7 +348,7 @@ The Channels bit is the smallest version of that structure.
 ### What Already Exists
 
 - the dialogue skeleton for the channels beats
-- the current ferrolure coda beat
+- the current flure coda beat
 - the hide-run encounter logic
 - the shelter destination
 
@@ -365,7 +365,7 @@ For this bit, we should eventually test at two levels:
 
 ### Node tests
 
-- ferrolure flush succeeds and clears the lane when timed correctly
+- flure flush succeeds and clears the lane when timed correctly
 - hide-and-run succeeds when hidden before lure expiry
 - hide-and-run fails when exposed
 - shelter node is reached only after successful encounter completion

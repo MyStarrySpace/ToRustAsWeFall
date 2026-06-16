@@ -2,7 +2,7 @@
 extends "res://scripts/tutorial/tutorial_sequence.gd"
 
 ## Functional showcase scene. Every station uses the live systems that the
-## real levels already rely on: enemy AI, ferrolure redirection, iron hazard
+## real levels already rely on: enemy AI, flure redirection, iron hazard
 ## damage, the hide/run encounter logic, pushable objects, throw physics,
 ## and pendulum prediction.
 
@@ -20,7 +20,7 @@ const IRON_DAMAGE_PER_SEC := 8.0
 const PENDULUM_MIN_DAMAGE := 10.0
 const PHYSICS_MIN_DAMAGE := 8.0
 
-const SHOWCASE_FERROLURE_DURATION := 8.0
+const SHOWCASE_FLURE_DURATION := 8.0
 const HIDE_LURE_DURATION := 6.0
 const HIDE_SWARM_SPEED := 8.0
 const HIDE_SWARM_DETECT_RADIUS := 1.7
@@ -31,7 +31,7 @@ const ENEMY_RECT := Rect2i(11, 6, 13, 10)
 const CHAIN_RECT := Rect2i(11, 28, 13, 10)
 const IRON_RECT := Rect2i(26, 6, 16, 10)
 const PHYSICS_RECT := Rect2i(26, 28, 18, 10)
-const FERROLURE_RECT := Rect2i(44, 14, 15, 14)
+const FLURE_RECT := Rect2i(44, 14, 15, 14)
 const HIDE_RECT := Rect2i(60, 14, 18, 14)
 
 const START_CELLS := {
@@ -92,13 +92,13 @@ const PENDULUM_ANCHOR := Vector3(15.5, 6.2, 19.5)
 const PENDULUM_LENGTH := 4.6
 const PENDULUM_PROBE := Vector3(13.4, 0.0, 19.5)
 
-const SHOWCASE_FERROLURE_CELL := Vector2i(48, 24)
-const FERROLURE_ENEMY_CELLS := [
+const SHOWCASE_FLURE_CELL := Vector2i(48, 24)
+const FLURE_ENEMY_CELLS := [
 	Vector2i(53, 21),
 	Vector2i(55, 22),
 	Vector2i(53, 24),
 ]
-const FERROLURE_PROBE_CELL := Vector2i(55, 22)
+const FLURE_PROBE_CELL := Vector2i(55, 22)
 
 const HIDE_ENTRY_CELL := Vector2i(61, 20)
 const HIDE_LURE_CELL := Vector2i(64, 20)
@@ -127,12 +127,12 @@ var _iron_patches: Array[Dictionary] = []
 var _standard_enemy: Enemy
 var _chain_enemy: ChainEnemy
 var _enemy_nodes: Array[Enemy] = []
-var _ferrolure_enemies: Array[Enemy] = []
+var _flure_enemies: Array[Enemy] = []
 
-var _showcase_ferrolure_mesh: MeshInstance3D
-var _showcase_ferrolure_light: OmniLight3D
-var _showcase_ferrolure_interactable
-var _showcase_ferrolure_active := false
+var _showcase_flure_mesh: MeshInstance3D
+var _showcase_flure_light: OmniLight3D
+var _showcase_flure_interactable
+var _showcase_flure_active := false
 
 var _hide_run_lure_mesh: MeshInstance3D
 var _hide_run_lure_light: OmniLight3D
@@ -159,7 +159,7 @@ func _build_scene() -> void:
 	_build_chain_station()
 	_build_iron_station()
 	_build_physics_station()
-	_build_ferrolure_station()
+	_build_flure_station()
 	_build_hide_station()
 
 func _build_characters() -> void:
@@ -234,7 +234,7 @@ func _setup_ui() -> void:
 	_info_label.add_theme_font_size_override("font_size", 11)
 	_info_label.add_theme_color_override("font_color", Color(0.56, 0.58, 0.62))
 	_info_label.text = (
-		"SHOWCASE: west spawn / northwest enemy / southwest chain / center iron and physics / east ferrolure / far east hide encounter\n" +
+		"SHOWCASE: west spawn / northwest enemy / southwest chain / center iron and physics / east flure / far east hide encounter\n" +
 		"CTRL: click move  1-3 select  Tab cycle  Z run  P perception  Space pause  R reload  F fast-forward"
 	)
 	panel.add_child(_info_label)
@@ -250,7 +250,7 @@ func _begin() -> void:
 	_register_pendulum_visual(PENDULUM_ID, PENDULUM_ANCHOR)
 	_reset_physics_station()
 	_reset_hide_encounter()
-	_set_showcase_ferrolure_active(false)
+	_set_showcase_flure_active(false)
 
 	for interactable in _interactables:
 		interactable.dialogue_box = _dialogue
@@ -479,8 +479,8 @@ func get_station_positions() -> Dictionary:
 		"chain_probe": _cell_world(CHAIN_PROBE_CELL, 0.5),
 		"iron_patch": _cell_world(IRON_PROBE_CELL, 0.5),
 		"iron_safe": _cell_world(IRON_SAFE_CELL, 0.5),
-		"ferrolure": _cell_world(SHOWCASE_FERROLURE_CELL, 0.5),
-		"ferrolure_probe": _cell_world(FERROLURE_PROBE_CELL, 0.5),
+		"flure": _cell_world(SHOWCASE_FLURE_CELL, 0.5),
+		"flure_probe": _cell_world(FLURE_PROBE_CELL, 0.5),
 		"hide_entry": _cell_world(HIDE_ENTRY_CELL, 0.5),
 		"hide_lure": _cell_world(HIDE_LURE_CELL, 0.5),
 		"hide_spot": _cell_world(HIDE_SPOT_CELL, 0.5),
@@ -500,13 +500,13 @@ func headless_get_anchor_positions() -> Dictionary:
 	return get_station_positions()
 
 func headless_get_state() -> Dictionary:
-	var ferrolure_anchor: Vector3 = _cell_world(SHOWCASE_FERROLURE_CELL, 0.5)
-	var ferrolure_total := 0.0
-	for enemy in _ferrolure_enemies:
+	var flure_anchor: Vector3 = _cell_world(SHOWCASE_FLURE_CELL, 0.5)
+	var flure_total := 0.0
+	for enemy in _flure_enemies:
 		if enemy and _game_state and _game_state.characters.has(enemy.char_id):
-			ferrolure_total += _game_state.get_position(enemy.char_id).distance_to(ferrolure_anchor)
+			flure_total += _game_state.get_position(enemy.char_id).distance_to(flure_anchor)
 
-	var ferrolure_count := maxf(1.0, float(_ferrolure_enemies.size()))
+	var flure_count := maxf(1.0, float(_flure_enemies.size()))
 	return {
 		"active_character": _active_char_id,
 		"character_hp": _character_hp.duplicate(true),
@@ -527,10 +527,10 @@ func headless_get_state() -> Dictionary:
 			"physics": _physics_event_log.size(),
 			"pendulum": _pendulum_event_log.size(),
 		},
-		"ferrolure_active": _showcase_ferrolure_active,
-		"ferrolure_avg_distance": ferrolure_total / ferrolure_count,
-		"ferrolure_tracking_cleared": _ferrolure_targets_cleared(),
-		"ferrolure_tracking_restored": _ferrolure_targets_restored(),
+		"flure_active": _showcase_flure_active,
+		"flure_avg_distance": flure_total / flure_count,
+		"flure_tracking_cleared": _flure_targets_cleared(),
+		"flure_tracking_restored": _flure_targets_restored(),
 		"hide_phase": _hide_phase,
 		"hide_last_outcome": _hide_last_outcome,
 		"physics_airborne": {
@@ -580,11 +580,11 @@ func headless_set_character_hp(char_id: String, hp: float) -> void:
 		elif char_id == _active_char_id:
 			node.set_move_enabled(true)
 
-func activate_showcase_ferrolure() -> void:
-	_on_showcase_ferrolure_activated()
+func activate_showcase_flure() -> void:
+	_on_showcase_flure_activated()
 
-func prime_showcase_ferrolure_window() -> void:
-	_on_showcase_ferrolure_activated()
+func prime_showcase_flure_window() -> void:
+	_on_showcase_flure_activated()
 	headless_advance(1.0)
 
 func activate_hide_lure() -> void:
@@ -617,14 +617,14 @@ func _headless_sync_runtime(delta: float) -> void:
 		if visual and is_instance_valid(visual) and visual.has_method("_process"):
 			visual._process(delta)
 
-func _ferrolure_targets_cleared() -> bool:
-	for enemy in _ferrolure_enemies:
+func _flure_targets_cleared() -> bool:
+	for enemy in _flure_enemies:
 		if enemy and not enemy._detection_targets.is_empty():
 			return false
 	return true
 
-func _ferrolure_targets_restored() -> bool:
-	for enemy in _ferrolure_enemies:
+func _flure_targets_restored() -> bool:
+	for enemy in _flure_enemies:
 		if enemy and enemy._detection_targets.size() != 3:
 			return false
 	return true
@@ -658,7 +658,7 @@ func _build_environment() -> void:
 	_mark_rect(CHAIN_RECT, GridWorld.Tile.FLOOR)
 	_mark_rect(IRON_RECT, GridWorld.Tile.FLOOR)
 	_mark_rect(PHYSICS_RECT, GridWorld.Tile.FLOOR)
-	_mark_rect(FERROLURE_RECT, GridWorld.Tile.FLOOR)
+	_mark_rect(FLURE_RECT, GridWorld.Tile.FLOOR)
 	_mark_rect(HIDE_RECT, GridWorld.Tile.FLOOR)
 
 	var floor := MeshInstance3D.new()
@@ -733,7 +733,7 @@ func _build_environment() -> void:
 	_add_floor_patch(env, CHAIN_RECT, STATION_FLOOR_COLOR)
 	_add_floor_patch(env, IRON_RECT, Color(0.08, 0.075, 0.07))
 	_add_floor_patch(env, PHYSICS_RECT, STATION_FLOOR_COLOR)
-	_add_floor_patch(env, FERROLURE_RECT, Color(0.08, 0.075, 0.07))
+	_add_floor_patch(env, FLURE_RECT, Color(0.08, 0.075, 0.07))
 	_add_floor_patch(env, HIDE_RECT, Color(0.08, 0.075, 0.07))
 
 func _build_spawn_station() -> void:
@@ -890,55 +890,55 @@ func _build_physics_station() -> void:
 	_hazards_root.add_child(launcher)
 	_interactables.append(launcher)
 
-func _build_ferrolure_station() -> void:
-	_add_station_label("Ferrolure Arena", _rect_world_center(FERROLURE_RECT) + Vector3(0, 2.2, -5.8), Color(0.95, 0.72, 0.34))
+func _build_flure_station() -> void:
+	_add_station_label("Flure Arena", _rect_world_center(FLURE_RECT) + Vector3(0, 2.2, -5.8), Color(0.95, 0.72, 0.34))
 
-	_showcase_ferrolure_mesh = MeshInstance3D.new()
-	_showcase_ferrolure_mesh.name = "ShowcaseFerrolure"
+	_showcase_flure_mesh = MeshInstance3D.new()
+	_showcase_flure_mesh.name = "ShowcaseFlure"
 	var bulb := SphereMesh.new()
 	bulb.radius = 0.3
 	bulb.height = 0.6
-	_showcase_ferrolure_mesh.mesh = bulb
+	_showcase_flure_mesh.mesh = bulb
 	var bulb_mat := StandardMaterial3D.new()
 	bulb_mat.albedo_color = Color(0.55, 0.35, 0.12)
 	bulb_mat.emission_enabled = true
 	bulb_mat.emission = Color(0.82, 0.45, 0.18)
 	bulb_mat.emission_energy_multiplier = 0.35
 	bulb_mat.metallic = 0.2
-	_showcase_ferrolure_mesh.material_override = bulb_mat
-	_showcase_ferrolure_mesh.position = _cell_world(SHOWCASE_FERROLURE_CELL, 1.05)
-	_hazards_root.add_child(_showcase_ferrolure_mesh)
+	_showcase_flure_mesh.material_override = bulb_mat
+	_showcase_flure_mesh.position = _cell_world(SHOWCASE_FLURE_CELL, 1.05)
+	_hazards_root.add_child(_showcase_flure_mesh)
 
-	_showcase_ferrolure_light = OmniLight3D.new()
-	_showcase_ferrolure_light.position = _cell_world(SHOWCASE_FERROLURE_CELL, 1.1)
-	_showcase_ferrolure_light.light_color = Color(0.95, 0.55, 0.2)
-	_showcase_ferrolure_light.light_energy = 0.45
-	_showcase_ferrolure_light.omni_range = 8.0
-	_hazards_root.add_child(_showcase_ferrolure_light)
+	_showcase_flure_light = OmniLight3D.new()
+	_showcase_flure_light.position = _cell_world(SHOWCASE_FLURE_CELL, 1.1)
+	_showcase_flure_light.light_color = Color(0.95, 0.55, 0.2)
+	_showcase_flure_light.light_energy = 0.45
+	_showcase_flure_light.omni_range = 8.0
+	_hazards_root.add_child(_showcase_flure_light)
 
-	_showcase_ferrolure_interactable = preload("res://scenes/game/interactable.tscn").instantiate()
-	_showcase_ferrolure_interactable.name = "ShowcaseFerrolureInteract"
-	_showcase_ferrolure_interactable.description = "Ferrolure"
-	_showcase_ferrolure_interactable.required_character = "peris"
-	_showcase_ferrolure_interactable.one_shot = false
-	_showcase_ferrolure_interactable.dwell_time = 1.0
-	_showcase_ferrolure_interactable.tutorial_label = "ACTIVATE"
-	_showcase_ferrolure_interactable.position = _cell_world(SHOWCASE_FERROLURE_CELL, 0.0)
-	_showcase_ferrolure_interactable.interacted.connect(_on_showcase_ferrolure_activated)
-	_hazards_root.add_child(_showcase_ferrolure_interactable)
-	_interactables.append(_showcase_ferrolure_interactable)
+	_showcase_flure_interactable = preload("res://scenes/game/interactable.tscn").instantiate()
+	_showcase_flure_interactable.name = "ShowcaseFlureInteract"
+	_showcase_flure_interactable.description = "Flure"
+	_showcase_flure_interactable.required_character = "peris"
+	_showcase_flure_interactable.one_shot = false
+	_showcase_flure_interactable.dwell_time = 1.0
+	_showcase_flure_interactable.tutorial_label = "ACTIVATE"
+	_showcase_flure_interactable.position = _cell_world(SHOWCASE_FLURE_CELL, 0.0)
+	_showcase_flure_interactable.interacted.connect(_on_showcase_flure_activated)
+	_hazards_root.add_child(_showcase_flure_interactable)
+	_interactables.append(_showcase_flure_interactable)
 
-	for i in range(FERROLURE_ENEMY_CELLS.size()):
+	for i in range(FLURE_ENEMY_CELLS.size()):
 		var enemy := Enemy.new()
-		enemy.name = "FerrolureEnemy%d" % i
-		enemy.char_id = "ferrolure_enemy_%d" % i
-		enemy.position = _cell_world(FERROLURE_ENEMY_CELLS[i], 0.0)
+		enemy.name = "FlureEnemy%d" % i
+		enemy.char_id = "flure_enemy_%d" % i
+		enemy.position = _cell_world(FLURE_ENEMY_CELLS[i], 0.0)
 		enemy.detection_range = 5.0
 		enemy.move_speed = 1.45
 		enemy._detection_targets = ["aster", "peris", "endo"]
 		_hazards_root.add_child(enemy)
 		_enemy_nodes.append(enemy)
-		_ferrolure_enemies.append(enemy)
+		_flure_enemies.append(enemy)
 
 func _build_hide_station() -> void:
 	_add_station_label("Hide / Run Encounter", _rect_world_center(HIDE_RECT) + Vector3(0, 2.2, -5.8), Color(0.75, 0.92, 0.62))
@@ -968,7 +968,7 @@ func _build_hide_station() -> void:
 
 	_hide_run_lure_interactable = preload("res://scenes/game/interactable.tscn").instantiate()
 	_hide_run_lure_interactable.name = "HideRunLureInteract"
-	_hide_run_lure_interactable.description = "Ferrolure"
+	_hide_run_lure_interactable.description = "Flure"
 	_hide_run_lure_interactable.required_character = "endo"
 	_hide_run_lure_interactable.one_shot = false
 	_hide_run_lure_interactable.dwell_time = 1.5
@@ -1035,32 +1035,32 @@ func _setup_enemy_behaviors() -> void:
 			_cell_world(CHAIN_PATROL_B, 0.0),
 		])
 
-	for i in range(_ferrolure_enemies.size()):
-		var enemy: Enemy = _ferrolure_enemies[i]
+	for i in range(_flure_enemies.size()):
+		var enemy: Enemy = _flure_enemies[i]
 		enemy.activate()
-		var base_pos := _cell_world(FERROLURE_ENEMY_CELLS[i], 0.0)
+		var base_pos := _cell_world(FLURE_ENEMY_CELLS[i], 0.0)
 		enemy.set_patrol([
 			base_pos + Vector3(-0.9, 0.0, -0.4),
 			base_pos + Vector3(0.8, 0.0, 0.4),
 		])
 
-func _set_showcase_ferrolure_active(active: bool) -> void:
-	_showcase_ferrolure_active = active
-	if _showcase_ferrolure_mesh:
-		var mat := _showcase_ferrolure_mesh.material_override as StandardMaterial3D
+func _set_showcase_flure_active(active: bool) -> void:
+	_showcase_flure_active = active
+	if _showcase_flure_mesh:
+		var mat := _showcase_flure_mesh.material_override as StandardMaterial3D
 		if mat:
 			mat.emission_energy_multiplier = 2.8 if active else 0.35
-	if _showcase_ferrolure_light:
-		_showcase_ferrolure_light.light_energy = 1.8 if active else 0.45
+	if _showcase_flure_light:
+		_showcase_flure_light.light_energy = 1.8 if active else 0.45
 
-func _on_showcase_ferrolure_activated() -> void:
-	if _showcase_ferrolure_active:
+func _on_showcase_flure_activated() -> void:
+	if _showcase_flure_active:
 		return
-	_set_showcase_ferrolure_active(true)
-	_hud.show_message("Ferrolure active: the arena pack breaks toward the lure.", 1.8)
-	_scheduler.cancel_tag("showcase_ferrolure_expire")
+	_set_showcase_flure_active(true)
+	_hud.show_message("Flure active: the arena pack breaks toward the lure.", 1.8)
+	_scheduler.cancel_tag("showcase_flure_expire")
 
-	for enemy in _ferrolure_enemies:
+	for enemy in _flure_enemies:
 		if not is_instance_valid(enemy):
 			continue
 		enemy._detection_targets = []
@@ -1068,15 +1068,15 @@ func _on_showcase_ferrolure_activated() -> void:
 		enemy._change_state("idle")
 		if enemy.game_state and enemy.game_state.characters.has(enemy.char_id):
 			if enemy.game_state.grid:
-				enemy.game_state.command_move_to_cell(enemy.char_id, enemy.game_state.grid.world_to_grid(_cell_world(SHOWCASE_FERROLURE_CELL, 0.0)))
+				enemy.game_state.command_move_to_cell(enemy.char_id, enemy.game_state.grid.world_to_grid(_cell_world(SHOWCASE_FLURE_CELL, 0.0)))
 			else:
-				enemy.game_state.command_move_to_pos(enemy.char_id, _cell_world(SHOWCASE_FERROLURE_CELL, 0.0))
+				enemy.game_state.command_move_to_pos(enemy.char_id, _cell_world(SHOWCASE_FLURE_CELL, 0.0))
 
-	_scheduler.schedule_after(SHOWCASE_FERROLURE_DURATION, _on_showcase_ferrolure_expired, "showcase_ferrolure_expire")
+	_scheduler.schedule_after(SHOWCASE_FLURE_DURATION, _on_showcase_flure_expired, "showcase_flure_expire")
 
-func _on_showcase_ferrolure_expired() -> void:
-	_set_showcase_ferrolure_active(false)
-	for enemy in _ferrolure_enemies:
+func _on_showcase_flure_expired() -> void:
+	_set_showcase_flure_active(false)
+	for enemy in _flure_enemies:
 		if not is_instance_valid(enemy):
 			continue
 		enemy._detection_targets = ["aster", "peris", "endo"]

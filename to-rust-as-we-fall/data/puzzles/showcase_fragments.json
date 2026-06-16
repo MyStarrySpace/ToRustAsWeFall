@@ -237,10 +237,10 @@
 			]
 		},
 		{
-			"id": "ferrolure_signal_lane",
-			"display_name": "Ferrolure Signal Lane",
+			"id": "flure_signal_lane",
+			"display_name": "Flure Signal Lane",
 			"kind": "puzzle",
-			"tags": ["ferrolure", "ecology", "routing"],
+			"tags": ["flure", "ecology", "routing"],
 			"scenarios": [
 				{
 					"id": "without_signal_pack_keeps_hunting",
@@ -248,8 +248,8 @@
 					"outcome": "failure",
 					"script": [
 						{"type": "advance", "seconds": 1.0},
-						{"type": "assert_path", "path": "ferrolure_active", "op": "==", "value": false},
-						{"type": "assert_path", "path": "ferrolure_tracking_cleared", "op": "==", "value": false}
+						{"type": "assert_path", "path": "flure_active", "op": "==", "value": false},
+						{"type": "assert_path", "path": "flure_tracking_cleared", "op": "==", "value": false}
 					]
 				},
 				{
@@ -258,25 +258,25 @@
 					"outcome": "success",
 					"script": [
 						{"type": "snapshot_state", "key": "before"},
-						{"type": "call", "method": "activate_showcase_ferrolure"},
+						{"type": "call", "method": "activate_showcase_flure"},
 						{"type": "advance", "seconds": 1.0},
-						{"type": "assert_path", "path": "ferrolure_active", "op": "==", "value": true},
-						{"type": "assert_path", "path": "ferrolure_tracking_cleared", "op": "==", "value": true},
-						{"type": "assert_path", "path": "ferrolure_avg_distance", "op": "<", "snapshot": "before", "snapshot_path": "ferrolure_avg_distance"},
+						{"type": "assert_path", "path": "flure_active", "op": "==", "value": true},
+						{"type": "assert_path", "path": "flure_tracking_cleared", "op": "==", "value": true},
+						{"type": "assert_path", "path": "flure_avg_distance", "op": "<", "snapshot": "before", "snapshot_path": "flure_avg_distance"},
 						{"type": "advance", "seconds": 8.5},
-						{"type": "assert_path", "path": "ferrolure_active", "op": "==", "value": false},
-						{"type": "assert_path", "path": "ferrolure_tracking_restored", "op": "==", "value": true}
+						{"type": "assert_path", "path": "flure_active", "op": "==", "value": false},
+						{"type": "assert_path", "path": "flure_tracking_restored", "op": "==", "value": true}
 					]
 				}
 			]
 		},
 		{
-			"id": "ferrolure_primed_window",
-			"display_name": "Ferrolure Primed Window",
+			"id": "flure_primed_window",
+			"display_name": "Flure Primed Window",
 			"kind": "hybrid",
-			"tags": ["ferrolure", "setup", "window", "routing"],
+			"tags": ["flure", "setup", "window", "routing"],
 			"setup": [
-				{"type": "call", "method": "prime_showcase_ferrolure_window"}
+				{"type": "call", "method": "prime_showcase_flure_window"}
 			],
 			"scenarios": [
 				{
@@ -284,10 +284,10 @@
 					"display_name": "Pack Stays Committed Mid-Window",
 					"outcome": "success",
 					"script": [
-						{"type": "assert_path", "path": "ferrolure_active", "op": "==", "value": true},
-						{"type": "assert_path", "path": "ferrolure_tracking_cleared", "op": "==", "value": true},
+						{"type": "assert_path", "path": "flure_active", "op": "==", "value": true},
+						{"type": "assert_path", "path": "flure_tracking_cleared", "op": "==", "value": true},
 						{"type": "advance", "seconds": 2.0},
-						{"type": "assert_path", "path": "ferrolure_active", "op": "==", "value": true}
+						{"type": "assert_path", "path": "flure_active", "op": "==", "value": true}
 					]
 				},
 				{
@@ -296,19 +296,19 @@
 					"outcome": "failure",
 					"script": [
 						{"type": "advance", "seconds": 7.5},
-						{"type": "assert_path", "path": "ferrolure_active", "op": "==", "value": false},
-						{"type": "assert_path", "path": "ferrolure_tracking_restored", "op": "==", "value": true}
+						{"type": "assert_path", "path": "flure_active", "op": "==", "value": false},
+						{"type": "assert_path", "path": "flure_tracking_restored", "op": "==", "value": true}
 					]
 				}
 			]
 		},
 		{
-			"id": "channels_early_ferrolure_rhythm_lane",
-			"display_name": "Channels Early Ferrolure Rhythm Lane",
+			"id": "channels_early_flure_rhythm_lane",
+			"display_name": "Channels Early Flure Rhythm Lane",
 			"scene": "res://scenes/fragments/fragment_preview.tscn",
 			"preview_chunk": "channels_rhythm",
 			"kind": "puzzle",
-			"tags": ["channels", "ferrolure", "environment", "timing", "routing"],
+			"tags": ["channels", "flure", "environment", "timing", "routing"],
 			"scenarios": [
 				{
 					"id": "environment_contract",
@@ -370,7 +370,7 @@
 			"display_name": "Channels Window One Lane",
 			"scene": "res://scenes/tutorial/act1.tscn",
 			"kind": "puzzle",
-			"tags": ["channels", "ferrolure", "timing", "routing"],
+			"tags": ["channels", "flure", "timing", "routing"],
 			"scenarios": [
 				{
 					"id": "timeout_failure",
@@ -394,7 +394,7 @@
 						{"type": "teleport", "char_id": "aster", "anchor": "channels_window_one_goal"},
 						{"type": "advance", "seconds": 0.2},
 						{"type": "assert_path", "path": "channels_window_lanes.window_one.last_outcome", "op": "==", "value": "success"},
-						{"type": "assert_path", "path": "current_step", "op": "==", "value": "channels_to_ferrolure"}
+						{"type": "assert_path", "path": "current_step", "op": "==", "value": "channels_to_flure"}
 					]
 				}
 			]
@@ -404,7 +404,7 @@
 			"display_name": "Channels Window Two Lane",
 			"scene": "res://scenes/tutorial/act1.tscn",
 			"kind": "puzzle",
-			"tags": ["channels", "ferrolure", "timing", "routing", "escalation"],
+			"tags": ["channels", "flure", "timing", "routing", "escalation"],
 			"scenarios": [
 				{
 					"id": "timeout_failure",
@@ -439,7 +439,7 @@
 			"scene": "res://scenes/fragments/fragment_preview.tscn",
 			"preview_chunk": "channels_hide_window",
 			"kind": "puzzle",
-			"tags": ["channels", "ferrolure", "timing", "hide", "retry", "routing"],
+			"tags": ["channels", "flure", "timing", "hide", "retry", "routing"],
 			"scenarios": [
 				{
 					"id": "environment_contract",
@@ -554,7 +554,7 @@
 			"id": "hide_lane",
 			"display_name": "Hide Lane",
 			"kind": "puzzle",
-			"tags": ["hide", "ferrolure", "survival", "timing"],
+			"tags": ["hide", "flure", "survival", "timing"],
 			"scenarios": [
 				{
 					"id": "exposed_failure",
@@ -930,7 +930,7 @@
 			"scene": "res://scenes/fragments/fragment_preview.tscn",
 			"preview_chunk": "survival_range",
 			"kind": "survival",
-			"tags": ["shelter", "range", "route", "survival", "hide", "ferrolure", "chunk"],
+			"tags": ["shelter", "range", "route", "survival", "hide", "flure", "chunk"],
 			"setup": [
 				{"type": "call", "method": "headless_set_selected_characters", "args": [["aster", "peris", "endo"]]},
 				{"type": "select_character", "char_id": "aster"}

@@ -235,7 +235,7 @@ func get_preview_time_state() -> Dictionary:
 
 func get_preview_abilities() -> Array:
 	# Display names + descriptions + tuning live in data/abilities/en/abilities.xlsx (per-context rows).
-	return AbilityData.for_context("mother_ferrolure")
+	return AbilityData.for_context("mother_flure")
 func get_preview_state() -> Dictionary:
 	var current_tick := _get_scheduler_tick()
 	var roots := {}
@@ -568,7 +568,7 @@ func tend_mother() -> bool:
 	_clear_dialogue()
 	_say("You're all right. You just needed the load to move.", "PERIS")
 	_say("The chamber's opening toward the Rings. That's our handoff.", "ASTER")
-	_show_note("Mother Ferrolure stabilized. This preview now runs the full board, carry, and consume loop together.", 4.0)
+	_show_note("Mother Flure stabilized. This preview now runs the full board, carry, and consume loop together.", 4.0)
 	_update_mother_visuals()
 	_update_overlay_label_states()
 	return true
@@ -679,7 +679,7 @@ func _build_chamber_shell() -> void:
 		_add_box(self, Vector3(60.0, 0.12, z_pos), Vector3(36.0, 0.18, 0.14), Color(0.22, 0.18, 0.12))
 	_add_label(self, "PORTAL BANK 12", TERM_BETA_POS + Vector3(2.2, 2.65, 0.0), Color(0.8, 0.88, 0.96))
 	_add_label(self, "COLLAPSED 12-F", COLLAPSE_POS + Vector3(8.0, 2.5, 0.0), Color(0.82, 0.72, 0.6))
-	_add_label(self, "MOTHER FERROLURE", MOTHER_POS + Vector3(-1.0, 3.2, 0.0), Color(0.94, 0.82, 0.58))
+	_add_label(self, "MOTHER FLURE", MOTHER_POS + Vector3(-1.0, 3.2, 0.0), Color(0.94, 0.82, 0.58))
 	_add_label(self, "LOT CLOT CHAMBER", Vector3(60.0, 2.8, -22.8), Color(0.72, 0.62, 0.46))
 
 func _build_terminal_bank() -> void:
@@ -776,7 +776,7 @@ func _build_mother() -> void:
 		bloom.position = MOTHER_POS + bloom_offset
 		add_child(bloom)
 		_mother_bloom_materials.append(material)
-	_mother_interactable = _add_inspection_interactable(self, "MotherTendInteractable", "Mother Ferrolure", MOTHER_POS + Vector3(-2.2, 0.4, 0.0), "TEND")
+	_mother_interactable = _add_inspection_interactable(self, "MotherTendInteractable", "Mother Flure", MOTHER_POS + Vector3(-2.2, 0.4, 0.0), "TEND")
 	_mother_interactable.interacted.connect(func() -> void: tend_mother())
 
 func _build_collapse_offshoot() -> void:

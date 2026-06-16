@@ -1082,7 +1082,7 @@ func is_character_hidden(id: String) -> bool:
 func set_character_hidden(id: String, hidden: bool) -> void:
 	set_character_concealment(id, CONCEAL_FULL if hidden else CONCEAL_NONE)
 
-# A DISTRACTED detector (one drawn to a ferrolure) has its outer reach shrunk to this fraction — it
+# A DISTRACTED detector (one drawn to a flure) has its outer reach shrunk to this fraction — it
 # can still catch a target that walks right into it, but won't notice one keeping its distance. The
 # detector-side mirror of concealment: derived state (a chunk sets it from lure proximity), never
 # logged, rebuilt on replay. Recomputes detection on change so the shrink/restore takes effect at once.

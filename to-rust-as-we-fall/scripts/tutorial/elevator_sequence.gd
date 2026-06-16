@@ -52,10 +52,10 @@ var _game_over := false
 var _iron_patches: Array[Dictionary] = []
 const IRON_DAMAGE_PER_SEC := 8.0
 
-# Ferrolure
-var _ferrolure_active := false
-var _ferrolure_mesh: MeshInstance3D
-var _ferrolure_interactable: Node
+# Flure
+var _flure_active := false
+var _flure_mesh: MeshInstance3D
+var _flure_interactable: Node
 var _gauntlet_enemies: Array[Enemy] = []
 
 # Chunk system
@@ -95,11 +95,11 @@ const SHELTER_SIZE := Vector3(6, 3, 5)
 # data overlay goes dark.
 const MAIN_FACILITY_MAX_X := JUNCTION_POS.x + SHELTER_SIZE.x
 
-# Ferrolure gauntlet
+# Flure gauntlet
 const GAUNTLET_POS := Vector3(BRIDGE_END_X + 30.0, BELOW_Y, 0)
-const FERROLURE_POS := Vector3(BRIDGE_END_X + 28.0, BELOW_Y + 0.3, 4.0)
+const FLURE_POS := Vector3(BRIDGE_END_X + 28.0, BELOW_Y + 0.3, 4.0)
 const GAUNTLET_EXIT := Vector3(BRIDGE_END_X + 42.0, BELOW_Y, 0)
-const FERROLURE_DURATION := 18.0
+const FLURE_DURATION := 18.0
 
 # --- Multi-level grid (two stacked decks) ---
 # The scene is two physical decks: the UPPER deck (elevator interior + bridge, world Y=0) and the
@@ -1299,7 +1299,7 @@ func _start_morning() -> void:
 		"junction.aster.ok",
 	], func(): _scheduler.schedule_after(1.5, _start_gauntlet, "gauntlet"))
 
-# --- Ferrolure Gauntlet ---
+# --- Flure Gauntlet ---
 
 func _start_gauntlet() -> void:
 	_enter_step("gauntlet")
@@ -1313,38 +1313,38 @@ func _start_gauntlet() -> void:
 	_game_state.command_move_to_pos("endo", entrance + Vector3(-1, 0, -1))
 	_dialogue_chain([
 		"junction.aster.blocked",
-		"junction.peris.ferrolure",
+		"junction.peris.flure",
 	], func():
-		_tutorial_prompt.show_prompt("[Interact] — activate Ferrolure (Peris only)")
+		_tutorial_prompt.show_prompt("[Interact] — activate Flure (Peris only)")
 	)
 
-func _on_ferrolure_activated() -> void:
-	if _ferrolure_active:
+func _on_flure_activated() -> void:
+	if _flure_active:
 		return
-	_ferrolure_active = true
+	_flure_active = true
 	_tutorial_prompt.hide_prompt()
-	if _ferrolure_mesh:
-		var mat := _ferrolure_mesh.material_override as StandardMaterial3D
+	if _flure_mesh:
+		var mat := _flure_mesh.material_override as StandardMaterial3D
 		if mat:
 			mat.emission_energy_multiplier = 3.0
-	# Redirect gauntlet enemies to the ferrolure.
+	# Redirect gauntlet enemies to the flure.
 	for enemy in _gauntlet_enemies:
 		if is_instance_valid(enemy) and enemy.is_alive():
 			enemy._detection_targets = []
 			enemy._current_target_id = ""
 			enemy._change_state("idle")
 			if enemy.game_state and enemy.game_state.characters.has(enemy.char_id):
-				enemy.game_state.command_move_to_pos(enemy.char_id, FERROLURE_POS)
-	_show_marker(FERROLURE_POS + Vector3(0, 1.5, 0), "LURE ACTIVE")
+				enemy.game_state.command_move_to_pos(enemy.char_id, FLURE_POS)
+	_show_marker(FLURE_POS + Vector3(0, 1.5, 0), "LURE ACTIVE")
 	_dialogue.default_hold_time = 2.0
-	DialogueData.say_to(_dialogue, "junction.ferrolure.active")
-	_scheduler.schedule_after(FERROLURE_DURATION, _on_ferrolure_expired, "ferrolure_expire")
+	DialogueData.say_to(_dialogue, "junction.flure.active")
+	_scheduler.schedule_after(FLURE_DURATION, _on_flure_expired, "flure_expire")
 
-func _on_ferrolure_expired() -> void:
-	_ferrolure_active = false
+func _on_flure_expired() -> void:
+	_flure_active = false
 	_clear_markers()
-	if _ferrolure_mesh:
-		var mat := _ferrolure_mesh.material_override as StandardMaterial3D
+	if _flure_mesh:
+		var mat := _flure_mesh.material_override as StandardMaterial3D
 		if mat:
 			mat.emission_energy_multiplier = 0.5
 	# Restore enemy targeting.
@@ -1918,33 +1918,33 @@ func _build_gauntlet_chunk(parent: Node3D) -> void:
 	_add_wall(parent, Vector3(gx + 10.0, ground_y + 1.5, 0), Vector3(0.3, 3, 14), wc)
 
 	# Peris-only iron lure.
-	_ferrolure_mesh = MeshInstance3D.new()
-	_ferrolure_mesh.name = "Ferrolure"
+	_flure_mesh = MeshInstance3D.new()
+	_flure_mesh.name = "Flure"
 	var fsp := SphereMesh.new()
 	fsp.radius = 0.25
 	fsp.height = 0.5
-	_ferrolure_mesh.mesh = fsp
+	_flure_mesh.mesh = fsp
 	var fmat := StandardMaterial3D.new()
 	fmat.albedo_color = Color(0.7, 0.4, 0.1)
 	fmat.emission_enabled = true
 	fmat.emission = Color(0.6, 0.3, 0.05)
 	fmat.emission_energy_multiplier = 0.5
 	fmat.metallic = 0.5
-	_ferrolure_mesh.material_override = fmat
-	_ferrolure_mesh.position = FERROLURE_POS
-	parent.add_child(_ferrolure_mesh)
+	_flure_mesh.material_override = fmat
+	_flure_mesh.position = FLURE_POS
+	parent.add_child(_flure_mesh)
 
-	_ferrolure_interactable = preload("res://scenes/game/interactable.tscn").instantiate()
-	_ferrolure_interactable.name = "FerrolureInteract"
-	_ferrolure_interactable.description = "Ferrolure"
-	_ferrolure_interactable.one_shot = true
-	_ferrolure_interactable.dwell_time = 1.0
-	_ferrolure_interactable.position = FERROLURE_POS
-	add_child(_ferrolure_interactable)
-	if _ferrolure_interactable.has_method("set_scheduler"):
-		_ferrolure_interactable.set_scheduler(_scheduler)
-		_ferrolure_interactable.set_movement_authority(_game_state)
-	_ferrolure_interactable.interacted.connect(_on_ferrolure_activated)
+	_flure_interactable = preload("res://scenes/game/interactable.tscn").instantiate()
+	_flure_interactable.name = "FlureInteract"
+	_flure_interactable.description = "Flure"
+	_flure_interactable.one_shot = true
+	_flure_interactable.dwell_time = 1.0
+	_flure_interactable.position = FLURE_POS
+	add_child(_flure_interactable)
+	if _flure_interactable.has_method("set_scheduler"):
+		_flure_interactable.set_scheduler(_scheduler)
+		_flure_interactable.set_movement_authority(_game_state)
+	_flure_interactable.interacted.connect(_on_flure_activated)
 
 	# Enemy cluster blocking the direct path.
 	_gauntlet_enemies.clear()

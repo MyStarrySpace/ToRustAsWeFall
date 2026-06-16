@@ -25,7 +25,7 @@ It is designed to:
 - wandering danger: siderophore pack and corridor enemies
 - side room temptation: salvage cache and ATP relief route
 - short rest: overlook nook halfway up the spiral
-- boss-equivalent finale: the dual-ferrolure reroute and escape window
+- boss-equivalent finale: the dual-flure reroute and escape window
 - treasure: sealant canister, optional salvage, and a permanent safe shortcut back to the junction
 
 ## Why This Feels Like A Campaign
@@ -36,7 +36,7 @@ The player is not just "solving rooms." They are taking a party on an expedition
 - The spiral structure lets the player see future and past routes, which creates the feeling of a dungeon with layered loops.
 - Each major encounter spotlights a different type of expertise.
 - The midpoint overlook gives a regroup beat where the player can re-plan and feel the party's vulnerability.
-- The final ferrolure sequence is a set-piece that resolves the level's central question: can the party turn a deadly route into a durable survival corridor?
+- The final flure sequence is a set-piece that resolves the level's central question: can the party turn a deadly route into a durable survival corridor?
 
 ## Assumed Roster And Current System Scope
 
@@ -51,7 +51,7 @@ Systems assumed available because we already use or prototype them:
 - direct versus safe traversal around hazards
 - ATP or stamina pressure
 - iron bloom hazard
-- ferrolure signal redirection
+- flure signal redirection
 - hide encounter timing
 - pendulum traversal hazard
 - basic enemy aggro lane
@@ -80,7 +80,7 @@ The route structure is:
 4. Midpoint regroup and optional side node
 5. Upper spiral mixed-pressure node
 6. Cache chamber retrieval node
-7. Dual-ferrolure finale
+7. Dual-flure finale
 8. Shortcut unlock back to the shelter core
 9. Eat, recuperate, and return to the junction
 
@@ -171,11 +171,11 @@ End state:
 
 **Role in level:** first real puzzle encounter
 
-**Primary insight:** a ferrolure is not an escape button; it is a way to create a later movement window
+**Primary insight:** a flure is not an escape button; it is a way to create a later movement window
 
 **Systems:**
 
-- ferrolure signal lane
+- flure signal lane
 - visible siderophore pack through grates
 - obvious but unsafe advance path
 - nearby hide space
@@ -289,7 +289,7 @@ End state:
 - verify acquiring it changes the return state
 - verify a naive grab triggers an unsafe exit condition
 
-## Encounter 8: Dual-Ferrolure Finale
+## Encounter 8: Dual-Flure Finale
 
 **Role in level:** set-piece finale and campaign promise resolution
 

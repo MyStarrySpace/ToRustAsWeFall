@@ -79,7 +79,7 @@ const FRAGMENT_CHUNK_SCENE_PATHS := [
 	"res://scenes/fragments/chunks/rings_fragment_chunk.tscn",
 	"res://scenes/fragments/chunks/lockout_fragment_chunk.tscn",
 	"res://scenes/fragments/chunks/overlay_lab_chunk.tscn",
-	"res://scenes/fragments/chunks/mother_ferrolure_chunk.tscn",
+	"res://scenes/fragments/chunks/mother_flure_chunk.tscn",
 	"res://scenes/fragments/chunks/survival_range_chunk.tscn",
 	"res://scenes/fragments/chunks/channels_rhythm_chunk.tscn",
 	"res://scenes/fragments/chunks/channels_hide_window_chunk.tscn",
@@ -93,7 +93,7 @@ const FragmentPreviewScript := preload("res://scripts/fragments/fragment_preview
 const ACT1_SEQUENCE_STEPS := [
 	"channels_enter", "channels_to_memory", "channels_memory",
 	"channels_corpse", "channels_window_one_intro", "channels_window_one_activate",
-	"channels_window_one_cross", "channels_to_ferrolure", "channels_ferrolure",
+	"channels_window_one_cross", "channels_to_flure", "channels_flure",
 	"channels_window_two_intro", "channels_window_two_activate",
 	"channels_window_two_cross", "channels_to_encounter", "channels_encounter_intro",
 	"channels_encounter_activate", "channels_encounter_hide",
@@ -483,9 +483,9 @@ func _ready() -> void:
 			"--test-detect-equiv":
 				ran_test = true
 				_test_detection_equivalence()
-			"--test-ferrolure":
+			"--test-flure":
 				ran_test = true
-				await _test_ferrolure()
+				await _test_flure()
 			"--test-hide-encounter":
 				ran_test = true
 				_test_hide_encounter()
@@ -661,9 +661,9 @@ func _ready() -> void:
 			"--test-asset-pipeline":
 				ran_test = true
 				_test_asset_pipeline()
-			"--test-mother-ferrolure":
+			"--test-mother-flure":
 				ran_test = true
-				await _test_mother_ferrolure_preview()
+				await _test_mother_flure_preview()
 			"--test-endo-junction-stretch":
 				ran_test = true
 				await _test_endo_junction_stretch_preview()
@@ -709,9 +709,9 @@ func _ready() -> void:
 			"--report-survival-range-playtime":
 				ran_test = true
 				await _report_survival_range_playtime()
-			"--report-mother-ferrolure-playtime":
+			"--report-mother-flure-playtime":
 				ran_test = true
-				await _report_mother_ferrolure_playtime()
+				await _report_mother_flure_playtime()
 
 	# --start-peris-phase2: launch the scene directly at phase 2 for manual testing
 	for i in range(args.size()):
@@ -951,7 +951,7 @@ func _run_all_tests() -> void:
 	await _test_enemy()
 	await _test_chain_enemy()
 	await _test_act1()
-	await _test_ferrolure()
+	await _test_flure()
 	_test_camera_shake()
 	_test_camera_free_look()
 	_test_left_click_no_interact()
@@ -977,7 +977,7 @@ func _run_all_tests() -> void:
 	_test_pendulum()
 	_test_throw_physics()
 	await _test_physics_comparison()
-	await _test_mother_ferrolure_preview()
+	await _test_mother_flure_preview()
 	await _test_endo_junction_stretch_preview()
 	if not _heavy("Channels Rhythm Preview"):
 		await _test_channels_rhythm_preview()
@@ -1512,9 +1512,9 @@ func _assert_level_editor_plan_browser(editor_instance: Node) -> void:
 		_assert_true(hud.find_child("GenerationAllowedEdit", true, false) != null,
 			"Level editor HUD exposes generation limitation input")
 
-	editor_instance.call("show_plan_scene", "mother_ferrolure")
+	editor_instance.call("show_plan_scene", "mother_flure")
 	state = editor_instance.call("get_editor_plan_state")
-	_assert_equals(str(state.get("active_plan_id", "")), "mother_ferrolure",
+	_assert_equals(str(state.get("active_plan_id", "")), "mother_flure",
 		"Level editor can switch plans by id")
 	_assert_equals(str(state.get("active_plan_title", "")), "Mother Flure",
 		"Level editor reads the loaded chunk title")
@@ -3297,22 +3297,22 @@ func _load_png_from_res(image: Image, path: String) -> int:
 		return ERR_FILE_CANT_READ
 	return image.load_png_from_buffer(bytes)
 
-func _test_mother_ferrolure_preview() -> void:
-	_test_name = "Mother Ferrolure Preview"
+func _test_mother_flure_preview() -> void:
+	_test_name = "Mother Flure Preview"
 
 	await _assert_preview_scene_idle_dialogue_stability(
-		"res://scenes/fragments/mother_ferrolure_preview.tscn",
-		"Chunk_mother_ferrolure",
+		"res://scenes/fragments/mother_flure_preview.tscn",
+		"Chunk_mother_flure",
 		"Mother Flure",
 		"This is not a corridor"
 	)
 	await _assert_preview_scene_main_ability_keymap(
-		"res://scenes/fragments/mother_ferrolure_preview.tscn",
+		"res://scenes/fragments/mother_flure_preview.tscn",
 		"Mother Flure"
 	)
 	await _assert_preview_scene_interactable_click_flow(
-		"res://scenes/fragments/mother_ferrolure_preview.tscn",
-		"Chunk_mother_ferrolure",
+		"res://scenes/fragments/mother_flure_preview.tscn",
+		"Chunk_mother_flure",
 		"*AlphaInteractable",
 		"aster",
 		"Mother Flure terminal",
@@ -3320,12 +3320,12 @@ func _test_mother_ferrolure_preview() -> void:
 		"term_alpha"
 	)
 
-	var inventory_instance: Node = await _instantiate_preview_chunk_and_wait("mother_ferrolure", 2)
+	var inventory_instance: Node = await _instantiate_preview_chunk_and_wait("mother_flure", 2)
 	_assert_true(inventory_instance != null, "mother preview instantiates")
 	if inventory_instance == null:
 		return
 
-	var inventory_chunk: Node = inventory_instance.find_child("Chunk_mother_ferrolure", true, false)
+	var inventory_chunk: Node = inventory_instance.find_child("Chunk_mother_flure", true, false)
 	_assert_true(inventory_chunk != null, "Mother preview builds its chunk")
 	if inventory_chunk == null:
 		inventory_instance.queue_free()
@@ -3390,12 +3390,12 @@ func _test_mother_ferrolure_preview() -> void:
 	inventory_instance.queue_free()
 	await get_tree().process_frame
 
-	var solve_instance: Node = await _instantiate_preview_chunk_and_wait("mother_ferrolure", 2)
+	var solve_instance: Node = await _instantiate_preview_chunk_and_wait("mother_flure", 2)
 	_assert_true(solve_instance != null, "mother preview instantiates for the optimal solve")
 	if solve_instance == null:
 		return
 
-	var solve_chunk: Node = solve_instance.find_child("Chunk_mother_ferrolure", true, false)
+	var solve_chunk: Node = solve_instance.find_child("Chunk_mother_flure", true, false)
 	_assert_true(solve_chunk != null, "Optimal-solve preview builds its chunk")
 	if solve_chunk == null:
 		solve_instance.queue_free()
@@ -3823,13 +3823,13 @@ func _mother_profile_root_move(
 	_mother_record_timing(measurements, totals, "%s_cross_out" % label, "interaction", cross_out_result)
 	_assert_true(bool(cross_out_result.get("result", false)), "%s brings Peris back out during timing run" % label)
 
-func _run_mother_ferrolure_profile(profile: String) -> Dictionary:
-	var instance: Node = await _instantiate_preview_chunk_and_wait("mother_ferrolure", 3)
-	_assert_true(instance != null, "mother_ferrolure_preview.tscn instantiates for %s playtime run" % profile)
+func _run_mother_flure_profile(profile: String) -> Dictionary:
+	var instance: Node = await _instantiate_preview_chunk_and_wait("mother_flure", 3)
+	_assert_true(instance != null, "mother_flure_preview.tscn instantiates for %s playtime run" % profile)
 	if instance == null:
 		return {}
 
-	var chunk: Node = instance.find_child("Chunk_mother_ferrolure", true, false)
+	var chunk: Node = instance.find_child("Chunk_mother_flure", true, false)
 	_assert_true(chunk != null, "Mother chunk exists for %s playtime run" % profile)
 	if chunk == null:
 		await _dispose_scene(instance)
@@ -4548,7 +4548,7 @@ func _run_ff_scene(scene_path: String, fast_forward: bool) -> Array:
 ## fragment's scenarios with the normal fine step and again with every `advance`
 ## collapsed to ONE big tick step (the fast-forward extreme), and assert the final
 ## scene state — and pass/fail — are identical. Covers the mechanics whose timing
-## moved onto the scheduler (enemy charge, ferrolure/hide windows, pendulum, range).
+## moved onto the scheduler (enemy charge, flure/hide windows, pendulum, range).
 func _test_puzzle_fast_forward_invariance() -> void:
 	_test_name = "Puzzle Fast-Forward Invariance"
 	var catalog_script = load("res://scripts/fragments/puzzle_fragment_catalog.gd")
@@ -4564,7 +4564,7 @@ func _test_puzzle_fast_forward_invariance() -> void:
 	var runner = runner_script.new(get_tree())
 
 	var ids := [
-		"standard_enemy_lane", "chain_enemy_lane", "ferrolure_primed_window",
+		"standard_enemy_lane", "chain_enemy_lane", "flure_primed_window",
 		"channels_hide_window_lane", "pendulum_lane", "shelter_to_shelter_range",
 	]
 	# 1x ~ 0.0166 tick/frame (60fps); 10x ~ 0.166 tick/frame. The fragment's scenario
@@ -4850,10 +4850,10 @@ func _elevator_realinput_beats(instance: Node) -> Dictionary:
 	beats["climb_attempt"] = func(): _synthetic_player_click(instance, Vector3(float(instance.BRIDGE_START_X) + 5.0, float(instance.BELOW_Y), 0.0))
 	# Dormant plant (HOLD_ACTION, wall-clock dwell).
 	beats["junction_arrive"] = func(): _synthetic_player_click(instance, Vector3(instance.JUNCTION_POS.x + float(instance.SHELTER_SIZE.x) / 2.0 - 0.8, float(instance.BELOW_Y), float(instance.SHELTER_SIZE.z) / 2.0 - 0.5))
-	# Ferrolure activation then walk east to the gauntlet exit.
+	# Flure activation then walk east to the gauntlet exit.
 	beats["gauntlet"] = func():
 		_disable_enemy_detection(instance)
-		_synthetic_player_click(instance, instance.FERROLURE_POS)
+		_synthetic_player_click(instance, instance.FLURE_POS)
 		_synthetic_player_click(instance, instance.GAUNTLET_EXIT)
 	return beats
 
@@ -5166,7 +5166,7 @@ func _test_interactable_highlight() -> void:
 # wires it once in _init_ui for every scene. Prove the FRAGMENT PREVIEW is wired and actually reveals.
 func _test_preview_highlight_wired() -> void:
 	_test_name = "Preview Highlight Wired"
-	var inst = await _instantiate_preview_chunk_and_wait("lure_relay", 6)  # has the Ferrolure interactable
+	var inst = await _instantiate_preview_chunk_and_wait("lure_relay", 6)  # has the Flure interactable
 	if inst == null:
 		_assert_true(false, "fragment preview instantiates a chunk")
 		return
@@ -7207,12 +7207,12 @@ func _test_elevator() -> void:
 		_disable_enemy_detection(instance)
 		for m in range(2):
 			await get_tree().process_frame
-		var ferrolure_zone := _assert_exploration_interactable_contract(instance, "FerrolureInteract")
-		if ferrolure_zone != null:
-			_set_sequence_character_position(instance, "peris", (ferrolure_zone as Node3D).global_position)
-			_drive_interactable_zone(ferrolure_zone, instance._peris_node, 1.2)
-			_assert_true(instance._ferrolure_active,
-				"Ferrolure activates after dwelling in its mapped zone")
+		var flure_zone := _assert_exploration_interactable_contract(instance, "FlureInteract")
+		if flure_zone != null:
+			_set_sequence_character_position(instance, "peris", (flure_zone as Node3D).global_position)
+			_drive_interactable_zone(flure_zone, instance._peris_node, 1.2)
+			_assert_true(instance._flure_active,
+				"Flure activates after dwelling in its mapped zone")
 
 		_assert_elevator_movement_gate(instance, {
 			"label": "Aster gauntlet exit gate",
@@ -7300,7 +7300,7 @@ func _test_showcase() -> void:
 	_assert_true("_characters" in instance and instance._characters.size() == 3, "Three showcase party characters registered")
 	_assert_true(instance._standard_enemy != null, "Standard enemy station exists")
 	_assert_true(instance._chain_enemy != null, "Chain enemy station exists")
-	_assert_equals(instance._ferrolure_enemies.size(), 3, "Ferrolure pack count is 3")
+	_assert_equals(instance._flure_enemies.size(), 3, "Flure pack count is 3")
 	_assert_equals(instance._hide_swarm_units.size(), 4, "Hide swarm count is 4")
 	_assert_true(instance._game_state.pendulums.has("showcase_pendulum"), "Pendulum registered in GameState")
 	_assert_true(instance._game_state.physics_objects.has("push_barrel"), "Push barrel registered in GameState")
@@ -7310,7 +7310,7 @@ func _test_showcase() -> void:
 		station_positions.has("enemy_probe")
 		and station_positions.has("chain_probe")
 		and station_positions.has("iron_patch")
-		and station_positions.has("ferrolure")
+		and station_positions.has("flure")
 		and station_positions.has("hide_spot")
 		and station_positions.has("shelter")
 		and station_positions.has("launcher"),
@@ -7360,32 +7360,32 @@ func _test_showcase() -> void:
 	await _dispose_scene(instance)
 
 	instance = await _instantiate_scene_and_wait(scene)
-	var ferrolure_positions: Dictionary = instance.get_station_positions()
-	var ferrolure_pos: Vector3 = ferrolure_positions["ferrolure"]
+	var flure_positions: Dictionary = instance.get_station_positions()
+	var flure_pos: Vector3 = flure_positions["flure"]
 	var dist_before: Array[float] = []
-	for enemy in instance._ferrolure_enemies:
-		dist_before.append(instance._game_state.get_position(enemy.char_id).distance_to(ferrolure_pos))
-	instance.activate_showcase_ferrolure()
-	_assert_true(instance._showcase_ferrolure_active, "Ferrolure can be activated headlessly")
+	for enemy in instance._flure_enemies:
+		dist_before.append(instance._game_state.get_position(enemy.char_id).distance_to(flure_pos))
+	instance.activate_showcase_flure()
+	_assert_true(instance._showcase_flure_active, "Flure can be activated headlessly")
 	_advance_showcase(instance, 1.0)
 	var targets_cleared := true
 	var moved_toward_lure := true
-	for i in range(instance._ferrolure_enemies.size()):
-		var enemy = instance._ferrolure_enemies[i]
+	for i in range(instance._flure_enemies.size()):
+		var enemy = instance._flure_enemies[i]
 		if not enemy._detection_targets.is_empty():
 			targets_cleared = false
-		var dist_now: float = instance._game_state.get_position(enemy.char_id).distance_to(ferrolure_pos)
+		var dist_now: float = instance._game_state.get_position(enemy.char_id).distance_to(flure_pos)
 		if dist_now >= dist_before[i]:
 			moved_toward_lure = false
-	_assert_true(targets_cleared, "Ferrolure clears normal target tracking while active")
-	_assert_true(moved_toward_lure, "Ferrolure pack moves toward the lure signal")
+	_assert_true(targets_cleared, "Flure clears normal target tracking while active")
+	_assert_true(moved_toward_lure, "Flure pack moves toward the lure signal")
 	_advance_showcase(instance, 8.5)
 	var targets_restored := true
-	for enemy in instance._ferrolure_enemies:
+	for enemy in instance._flure_enemies:
 		if enemy._detection_targets.size() != 3:
 			targets_restored = false
-	_assert_true(not instance._showcase_ferrolure_active, "Ferrolure expires after its timer")
-	_assert_true(targets_restored, "Ferrolure pack restores normal tracking after expiry")
+	_assert_true(not instance._showcase_flure_active, "Flure expires after its timer")
+	_assert_true(targets_restored, "Flure pack restores normal tracking after expiry")
 	await _dispose_scene(instance)
 
 	instance = await _instantiate_scene_and_wait(scene)
@@ -8444,21 +8444,21 @@ func _report_survival_range_playtime() -> void:
 	])
 	print("")
 
-func _report_mother_ferrolure_playtime() -> void:
-	_test_name = "Mother Ferrolure Playtime"
+func _report_mother_flure_playtime() -> void:
+	_test_name = "Mother Flure Playtime"
 
-	var system_optimal := await _run_mother_ferrolure_profile("system_optimal")
-	_assert_true(not system_optimal.is_empty(), "Measured Mother Ferrolure system-optimal route")
+	var system_optimal := await _run_mother_flure_profile("system_optimal")
+	_assert_true(not system_optimal.is_empty(), "Measured Mother Flure system-optimal route")
 	if system_optimal.is_empty():
 		return
 
-	var movement_optimal := await _run_mother_ferrolure_profile("movement_optimal")
-	_assert_true(not movement_optimal.is_empty(), "Measured Mother Ferrolure movement-optimal route")
+	var movement_optimal := await _run_mother_flure_profile("movement_optimal")
+	_assert_true(not movement_optimal.is_empty(), "Measured Mother Flure movement-optimal route")
 	if movement_optimal.is_empty():
 		return
 
-	var movement_wrong := await _run_mother_ferrolure_profile("movement_wrong_repair")
-	_assert_true(not movement_wrong.is_empty(), "Measured Mother Ferrolure wrong-repair detour route")
+	var movement_wrong := await _run_mother_flure_profile("movement_wrong_repair")
+	_assert_true(not movement_wrong.is_empty(), "Measured Mother Flure wrong-repair detour route")
 	if movement_wrong.is_empty():
 		return
 
@@ -8483,7 +8483,7 @@ func _report_mother_ferrolure_playtime() -> void:
 	var root_animation_lower_bound := 9.0 * MOTHER_ROOT_SETTLE_SECONDS
 
 	print("")
-	print("  === Mother Ferrolure Playtime ===")
+	print("  === Mother Flure Playtime ===")
 	print("  Root-slide lower bound: %s for 9 committed board shifts." % _format_playtime(root_animation_lower_bound))
 	print("  System-optimal route: %s (%s interactions, %s root settling)." % [
 		_format_playtime(float(system_optimal.get("measured_total", 0.0))),
@@ -9315,7 +9315,7 @@ func _test_lure_relay_puzzle() -> void:
 				"Reaching the lure starts Peris tending — it does NOT fire instantly")
 			tend_inst.headless_advance(float(lure2_node.dwell_time) + 0.5, 0.1)
 			_assert_equals(int(tchunk.get_preview_state()["committed_lure"]), 2,
-				"After Peris finishes tending (dwell_time), the ferrolure sings and the guards commit")
+				"After Peris finishes tending (dwell_time), the flure sings and the guards commit")
 		# Overshoot fix: a route to a point just BEFORE a corridor node (38, before node c40) must end AT
 		# the point, not run forward to the node and backtrack.
 		var tgs = tend_inst._game_state
@@ -13929,13 +13929,13 @@ func _make_act1_sequence_actions(instance: Node) -> Dictionary:
 			instance.CHANNELS_WINDOW_ONE_GOAL_POS
 		)
 		instance._update_channels_window_puzzles(0.1, 1.0)
-	actions["channels_to_ferrolure"] = func():
+	actions["channels_to_flure"] = func():
 		_set_sequence_character_position(
 			instance,
 			"aster",
-			Vector3(instance.CHANNELS_FERROLURE_TRIGGER_X + 1.0, 0.5, 0.0)
+			Vector3(instance.CHANNELS_FLURE_TRIGGER_X + 1.0, 0.5, 0.0)
 		)
-	actions["channels_ferrolure"] = func():
+	actions["channels_flure"] = func():
 		_clear_sequence_runtime(instance)
 		_set_sequence_character_position(instance, "aster", instance.CHANNELS_WINDOW_TWO_STAGE_POS)
 		_set_sequence_character_position(instance, "peris", instance.CHANNELS_WINDOW_TWO_STAGE_POS + Vector3(-1.6, 0.0, 1.2))
@@ -14055,12 +14055,12 @@ func _make_act1_human_actions(instance: Node) -> Dictionary:
 			"human_channels_to_memory",
 			0.5
 		)
-	actions["channels_to_ferrolure"] = func():
+	actions["channels_to_flure"] = func():
 		_schedule_human_move(
 			instance,
 			"aster",
-			Vector3(instance.CHANNELS_FERROLURE_TRIGGER_X + 1.0, 0.5, 0.0),
-			"human_channels_to_ferrolure",
+			Vector3(instance.CHANNELS_FLURE_TRIGGER_X + 1.0, 0.5, 0.0),
+			"human_channels_to_flure",
 			0.45
 		)
 	actions["channels_window_one_intro"] = func():
@@ -14339,16 +14339,16 @@ func _estimate_act1_human_playtime() -> Dictionary:
 	)
 	positions["aster"] = instance.CHANNELS_WINDOW_ONE_GOAL_POS
 
-	_mark_estimate_step(step_wall_times, "channels_to_ferrolure", system_time, dialogue_time)
-	target = Vector3(instance.CHANNELS_FERROLURE_TRIGGER_X + 1.0, 0.5, 0.0)
+	_mark_estimate_step(step_wall_times, "channels_to_flure", system_time, dialogue_time)
+	target = Vector3(instance.CHANNELS_FLURE_TRIGGER_X + 1.0, 0.5, 0.0)
 	system_time += _travel_duration(positions["aster"], target, speeds["aster"], 0.45)
 	positions["aster"] = target
 
-	_mark_estimate_step(step_wall_times, "channels_ferrolure", system_time, dialogue_time)
+	_mark_estimate_step(step_wall_times, "channels_flure", system_time, dialogue_time)
 	party_targets = {
-		"peris": instance.CHANNELS_FERROLURE_POS + Vector3(-0.8, 0.0, 0.6),
-		"aster": instance.CHANNELS_FERROLURE_POS + Vector3(-2.5, 0.0, -0.3),
-		"endo": instance.CHANNELS_FERROLURE_POS + Vector3(-3.6, 0.0, 1.2),
+		"peris": instance.CHANNELS_FLURE_POS + Vector3(-0.8, 0.0, 0.6),
+		"aster": instance.CHANNELS_FLURE_POS + Vector3(-2.5, 0.0, -0.3),
+		"endo": instance.CHANNELS_FLURE_POS + Vector3(-3.6, 0.0, 1.2),
 	}
 	system_time += _party_move_duration(positions, party_targets, speeds)
 	for id in party_targets.keys():
@@ -15522,12 +15522,12 @@ func _test_act1() -> void:
 	_assert_true(instance.find_child("ChannelsWindowBridge_window_one_0", true, false) != null, "First timed window bridge segment in channels")
 	_assert_true(instance.find_child("ChannelsWindowCorpse_window_one_0", true, false) != null, "First timed window corpse cluster in channels")
 	_assert_true(instance.find_child("ChannelsWindowSwarm_window_one_0", true, false) != null, "First timed window siderophore unit in channels")
-	_assert_true(instance.find_child("SecondFerrolure", true, false) != null, "Second ferrolure in channels")
+	_assert_true(instance.find_child("SecondFlure", true, false) != null, "Second flure in channels")
 	_assert_true(instance.find_child("ChannelsWindowLane_window_two", true, false) != null, "Second timed window lane in channels")
 	_assert_true(instance.find_child("ChannelsWindowInteract_window_two", true, false) != null, "Second timed window interactable in channels")
 	_assert_true(instance.find_child("ChannelsWindowChannel_window_two_0", true, false) != null, "Second timed window rhythm channel in channels")
-	_assert_true(instance.find_child("EncounterFerrolure", true, false) != null, "Encounter ferrolure in channels")
-	_assert_true(instance.find_child("EncounterFerrolureInteract", true, false) != null, "Encounter interactable in channels")
+	_assert_true(instance.find_child("EncounterFlure", true, false) != null, "Encounter flure in channels")
+	_assert_true(instance.find_child("EncounterFlureInteract", true, false) != null, "Encounter interactable in channels")
 	_assert_true(instance.find_child("ChannelsHideSpot", true, false) != null, "Hide spot in channels")
 	_assert_true(instance.find_child("ChannelsSwarm_0", true, false) != null, "Swarm cluster in channels")
 	_assert_true(instance.find_child("ChannelsShelterDoor", true, false) != null, "Shelter door in channels")
@@ -15541,7 +15541,7 @@ func _test_act1() -> void:
 	_assert_true(not instance._channels_shortcut_unlocked, "Channels shortcut starts locked")
 	_assert_true(not instance._channels_party_recuperated, "Party starts unrested in channels")
 
-	# Smoke the two timed ferrolure windows that pad out the Channels route.
+	# Smoke the two timed flure windows that pad out the Channels route.
 	instance.start_channels_window_puzzle("window_one")
 	await get_tree().process_frame
 	_assert_true(instance._current_step == "channels_window_one_activate", "Window one enters activation step")
@@ -15552,11 +15552,11 @@ func _test_act1() -> void:
 	_assert_true(instance._current_step == "channels_window_one_cross", "Window one activation opens the crossing window")
 	instance.headless_advance(6.0)
 	var window_one_rhythm_state: Dictionary = instance.headless_get_state().get("channels_window_lanes", {}).get("window_one", {})
-	_assert_equals(str(window_one_rhythm_state.get("swarm_state", "")), "washed", "Window one ferrolure branch washes the siderophore pack")
+	_assert_equals(str(window_one_rhythm_state.get("swarm_state", "")), "washed", "Window one flure branch washes the siderophore pack")
 	_assert_true(int(window_one_rhythm_state.get("washed_channel_index", -1)) >= 0, "Window one records which rhythm channel washed the pack")
 	instance.headless_set_character_position("aster", instance.CHANNELS_WINDOW_ONE_GOAL_POS)
 	instance._update_channels_window_puzzles(0.1, 1.0)
-	_assert_true(instance._current_step == "channels_to_ferrolure", "Window one success returns to the ferrolure travel step")
+	_assert_true(instance._current_step == "channels_to_flure", "Window one success returns to the flure travel step")
 	_assert_true(instance._channels_window_lanes["window_one"]["last_outcome"] == "success", "Window one records a success outcome")
 
 	instance.start_channels_window_puzzle("window_two")
@@ -15658,7 +15658,7 @@ func _test_act1() -> void:
 	instance._unload_chunk("channels")
 	await get_tree().process_frame
 	_assert_true(not instance._chunks.has("channels"), "Channels unloaded")
-	_assert_true(instance.find_child("EncounterFerrolureInteract", true, false) == null, "Encounter interactable unloads with channels")
+	_assert_true(instance.find_child("EncounterFlureInteract", true, false) == null, "Encounter interactable unloads with channels")
 
 	instance.queue_free()
 	await get_tree().process_frame
@@ -16055,9 +16055,9 @@ func _test_detection_equivalence() -> void:
 			all_bf_in_pred = false
 	_assert_true(all_bf_in_pred, "Mixed-10: all bf detections found in predictive (bf=%d)" % bf_c.size())
 
-# --- Test: Ferrolure Gauntlet ---
-func _test_ferrolure() -> void:
-	_test_name = "Ferrolure"
+# --- Test: Flure Gauntlet ---
+func _test_flure() -> void:
+	_test_name = "Flure"
 	var scene := load("res://scenes/tutorial/elevator.tscn")
 	if not scene:
 		_assert_true(false, "Scene loads")
@@ -16072,8 +16072,8 @@ func _test_ferrolure() -> void:
 	for i in range(3):
 		await get_tree().process_frame
 
-	# Verify ferrolure mesh exists
-	_assert_true(instance._ferrolure_mesh != null, "Ferrolure mesh exists")
+	# Verify flure mesh exists
+	_assert_true(instance._flure_mesh != null, "Flure mesh exists")
 
 	# Verify gauntlet enemies exist
 	_assert_true(instance._gauntlet_enemies.size() == 5,
@@ -16082,39 +16082,39 @@ func _test_ferrolure() -> void:
 	# Verify enemies target players initially
 	var first_enemy: Enemy = instance._gauntlet_enemies[0]
 	_assert_true("aster" in first_enemy._detection_targets or "peris" in first_enemy._detection_targets,
-		"Enemies target players before ferrolure")
+		"Enemies target players before flure")
 
-	# Activate ferrolure
-	instance._on_ferrolure_activated()
+	# Activate flure
+	instance._on_flure_activated()
 	for i in range(2):
 		await get_tree().process_frame
 
-	_assert_true(instance._ferrolure_active, "Ferrolure is active after activation")
+	_assert_true(instance._flure_active, "Flure is active after activation")
 
 	# Verify enemies ignore players.
 	_assert_true(first_enemy._detection_targets.is_empty(),
 		"Enemies stop targeting players when lure active (targets: %s)" % str(first_enemy._detection_targets))
 
-	# Enemies should move toward the ferrolure.
+	# Enemies should move toward the flure.
 	for i in range(20):
 		instance._scheduler.advance(0.3)
 		await get_tree().process_frame
 
-	# Check that enemies moved toward the ferrolure
-	var lure_pos: Vector3 = instance.FERROLURE_POS
+	# Check that enemies moved toward the flure
+	var lure_pos: Vector3 = instance.FLURE_POS
 	var near_lure := 0
 	for enemy in instance._gauntlet_enemies:
 		if is_instance_valid(enemy) and enemy.global_position.distance_to(lure_pos) < 8.0:
 			near_lure += 1
 	_assert_true(near_lure >= 3,
-		"Most enemies moved toward ferrolure (near: %d/5)" % near_lure)
+		"Most enemies moved toward flure (near: %d/5)" % near_lure)
 
-	# Expire ferrolure
-	instance._on_ferrolure_expired()
+	# Expire flure
+	instance._on_flure_expired()
 	for i in range(2):
 		await get_tree().process_frame
 
-	_assert_true(not instance._ferrolure_active, "Ferrolure deactivated after expiry")
+	_assert_true(not instance._flure_active, "Flure deactivated after expiry")
 
 	# Verify enemies re-target players
 	_assert_true("aster" in first_enemy._detection_targets or "peris" in first_enemy._detection_targets,
@@ -17646,7 +17646,7 @@ func _test_interaction_delegates_to_capable() -> void:
 	target.queue_free()
 	await get_tree().process_frame
 
-## The ferrolure must not BE a movement waypoint: a walk PAST a lure (down the corridor) must not route a
+## The flure must not BE a movement waypoint: a walk PAST a lure (down the corridor) must not route a
 ## path vertex through the lure, or the ribbon visibly pivots on the decoration ("treated as a pathing
 ## point"). Drives the chunk's REAL routing representation (the unified grid) at the preview-path layer.
 func _test_lure_not_path_waypoint() -> void:
@@ -18767,8 +18767,8 @@ func _assert_lure_clear(path: Array, lure1: Vector3, lure2: Vector3, clear: floa
 			hit1 = str(w)
 		if Vector2(w.x - lure2.x, w.z - lure2.z).length() < clear:
 			hit2 = str(w)
-	_assert_true(hit1 == "", "%s: a walk past ferrolure 1 must NOT route a waypoint through it (vertex %s on the lure)" % [label, hit1])
-	_assert_true(hit2 == "", "%s: a walk past ferrolure 2 must NOT route a waypoint through it (vertex %s on the lure)" % [label, hit2])
+	_assert_true(hit1 == "", "%s: a walk past flure 1 must NOT route a waypoint through it (vertex %s on the lure)" % [label, hit1])
+	_assert_true(hit2 == "", "%s: a walk past flure 2 must NOT route a waypoint through it (vertex %s on the lure)" % [label, hit2])
 
 func _test_physics_objects() -> void:
 	_test_name = "Physics Objects"
@@ -20166,7 +20166,7 @@ func _test_sequence_contracts() -> void:
 			instance._on_endo_delivered("endo")
 		actions["gauntlet"] = func():
 			_disable_enemy_detection(instance)
-			instance._on_ferrolure_activated()
+			instance._on_flure_activated()
 			_set_sequence_character_position(
 				instance,
 				"aster",
@@ -20412,7 +20412,7 @@ func _intro_leg_actions(scene_path: String, visit: int, instance: Node) -> Dicti
 		actions["endo_shelter"] = func(): instance._on_endo_delivered("endo")
 		actions["gauntlet"] = func():
 			_disable_enemy_detection(instance)
-			instance._on_ferrolure_activated()
+			instance._on_flure_activated()
 			_set_sequence_character_position(instance, "aster", instance.GAUNTLET_EXIT + Vector3(1.5, 0.5, 0.0))
 		actions["complete"] = func():
 			instance._change_scene_or_record("res://scenes/tutorial/act1.tscn")

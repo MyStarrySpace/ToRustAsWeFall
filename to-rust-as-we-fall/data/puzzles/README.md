@@ -10,7 +10,7 @@ Puzzle fragments are small, reusable level beats that can be tested on their own
 - [Survival Fragment Briefs](/C:/Users/quest/Programming/Games/ToRustAsWeFall/to-rust-as-we-fall/data/puzzles/survival_fragments.md): showcase combat, attrition, and hide/run fragment briefs for the survival layer
 - [Stacks Fragment Briefs](/C:/Users/quest/Programming/Games/ToRustAsWeFall/to-rust-as-we-fall/data/puzzles/stacks_fragments.md): narrative-information fragment briefs for the Processing Stacks sequence
 - [Act 1 Late Fragments](/C:/Users/quest/Programming/Games/ToRustAsWeFall/to-rust-as-we-fall/data/puzzles/act1_late_fragments.md): Rings flora-memory and Lockout chase fragment briefs for the second half of Act 1
-- [Mother Ferrolure 6x6 Board Draft](/C:/Users/quest/Programming/Games/ToRustAsWeFall/to-rust-as-we-fall/data/puzzles/mother_ferrolure_board_layout.md): implementation-facing board layout, root list, and first-pass solve chain for the enlarged Mother chamber
+- [Mother Flure 6x6 Board Draft](/C:/Users/quest/Programming/Games/ToRustAsWeFall/to-rust-as-we-fall/data/puzzles/mother_flure_board_layout.md): implementation-facing board layout, root list, and first-pass solve chain for the enlarged Mother chamber
 - [Inflammashunt Puzzle Full Spec](/C:/Users/quest/Programming/Games/ToRustAsWeFall/to-rust-as-we-fall/data/puzzles/inflammashunt_puzzle.md): canonical Resolution Catalyst danger-zone puzzle spec
 - [Inflammashunt Shadow Solution](/C:/Users/quest/Programming/Games/ToRustAsWeFall/to-rust-as-we-fall/data/puzzles/inflammashunt_shadow_solution.md): Aster-Peris reconstruction path for the Inflammashunt
 - [Teaching Beats Catalogue](/C:/Users/quest/Programming/Games/ToRustAsWeFall/to-rust-as-we-fall/data/puzzles/teaching_beats_catalogue.md): shadow-solution techniques and their diegetic teaching beats
@@ -89,7 +89,7 @@ Optional helpers make scripts easier to write:
 
 - `headless_select_character(char_id)`
 - `headless_set_character_position(char_id, pos)`
-- scenario-specific methods such as `activate_showcase_ferrolure()`
+- scenario-specific methods such as `activate_showcase_flure()`
 
 ## Authoring Pattern
 

@@ -2,7 +2,7 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 
 ## Two-lure relay puzzle. A long narrow hallway with an offshoot hiding spot near the far (second)
 ## lure. A group of enemies guards the exit (remains of a previous runner lie among them). Two
-## ferrolures: Lure 1 near the ENTRANCE (far from the hide), Lure 2 near the ENEMIES (close to the hide).
+## flures: Lure 1 near the ENTRANCE (far from the hide), Lure 2 near the ENEMIES (close to the hide).
 ##
 ## Intended solve: fire Lure 2 (the guards break toward it, clearing the path), duck into the nearby
 ## hiding spot, fire Lure 1 -> when Lure 2 expires the guards relay onward to Lure 1 (walking the whole
@@ -43,7 +43,7 @@ const EXIT_X := 60.0
 const GUARD_POSITIONS := [Vector3(50.0, 0.5, 0.0), Vector3(51.2, 0.5, 1.2), Vector3(51.2, 0.5, -1.2)]
 const CORPSE_POS := Vector3(51.0, 0.0, 0.0)
 const LURE_DURATION := 12.0       # scheduler ticks a guard stays drawn to a lure
-const LURE_TEND_TIME := 2.5       # Peris tends a ferrolure (after walking to it) before it sings out
+const LURE_TEND_TIME := 2.5       # Peris tends a flure (after walking to it) before it sings out
 const LURE_PICK_RADIUS := 0.8     # tight click target on the small flure, so a walk-past click misses it
 const GUARD_SPEED := 4.5          # between a character's walk (~3.0) and run (6.0): threatening, escapable
 
@@ -109,10 +109,10 @@ func _build_corpse() -> void:
 # flure MESH in the shared outline+particle highlight, so the flure gets the hover outline and the
 # click/active shimmer like any tutorial object (one OutlineFeedbackManager, no per-chunk divergence).
 func _build_interactables() -> void:
-	var lure2 := _add_object_interactable(self, "Lure2Interact", "Ferrolure", LURE2_POS,
+	var lure2 := _add_object_interactable(self, "Lure2Interact", "Flure", LURE2_POS,
 		"Tend", [_lure2_mesh], "peris", LURE_TEND_TIME, true, LURE_PICK_RADIUS, Interactable.InteractableType.TIMED_ACTION)
 	lure2.interacted.connect(func() -> void: activate_lure2())
-	var lure1 := _add_object_interactable(self, "Lure1Interact", "Ferrolure", LURE1_POS,
+	var lure1 := _add_object_interactable(self, "Lure1Interact", "Flure", LURE1_POS,
 		"Tend", [_lure1_mesh], "peris", LURE_TEND_TIME, true, LURE_PICK_RADIUS, Interactable.InteractableType.TIMED_ACTION)
 	lure1.interacted.connect(func() -> void: activate_lure1())
 
@@ -152,7 +152,7 @@ func _register_enemy(enemy, id: String, speed: float) -> void:
 ## the hide pocket, walls everywhere else). Movement (player AND guards) routes on these cells, so
 ## there's no diagonal cut to the hide — the only path crosses the hall, which is what makes firing
 ## Lure 1 alone get you spotted. Cell-based A* means paths follow the open floor, never pivoting on
-## decorations like the ferrolures.
+## decorations like the flures.
 func get_grid_data() -> Dictionary:
 	return {
 		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
@@ -194,7 +194,7 @@ func _activate_lure(which: int) -> bool:
 	var sched = _get_scheduler()
 	if sched != null:
 		sched.schedule_after(LURE_DURATION, func() -> void: _on_lure_expired(which), "lure_relay_%d" % which)
-	_show_message("Ferrolure %d sings out." % which, 1.4)
+	_show_message("Flure %d sings out." % which, 1.4)
 	_set_preview_step("lure_relay_active")
 	return true
 
@@ -327,7 +327,7 @@ func _complete() -> void:
 # --- SceneChunk interface ---
 
 func get_scene_title() -> String:
-	return "Ferrolure Relay"
+	return "Flure Relay"
 
 func get_scene_help() -> String:
 	return "Fire the far lure to clear the path, hide by it, then fire the near one — let the sentries relay past you and run the exit."

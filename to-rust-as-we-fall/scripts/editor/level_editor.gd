@@ -45,9 +45,9 @@ const PLAN_SCENES := [
 		"preview_scene": "res://scenes/fragments/fragment_preview.tscn",
 	},
 	{
-		"id": "mother_ferrolure",
+		"id": "mother_flure",
 		"title": "Mother Flure",
-		"chunk_scene": "res://scenes/fragments/chunks/mother_ferrolure_chunk.tscn",
+		"chunk_scene": "res://scenes/fragments/chunks/mother_flure_chunk.tscn",
 		"preview_scene": "res://scenes/fragments/fragment_preview.tscn",
 	},
 	{

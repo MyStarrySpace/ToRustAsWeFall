@@ -38,7 +38,7 @@ const SPECIES := {
 	},
 	"flure": {
 		"display_name": "Flure",
-		"old_name": "Ferrolure",
+		"old_name": "Flure",
 		"primary_function": "iron_decoy",
 		"secondary_function": "",
 		"tier": Tier.LOOSEST,
@@ -90,7 +90,7 @@ const SPECIES := {
 const LEGACY_REDIRECT := {
 	"lumivine": "seefern",
 	"rustmoss": "scarpet",
-	"ferrolure": "flure",
+	"flure": "flure",
 	"hushcap": "hushbloom",
 	"veilcap": "",  # cut entirely, no replacement
 	"rootwall": "scarpet",

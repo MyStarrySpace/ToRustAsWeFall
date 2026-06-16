@@ -1,6 +1,6 @@
-# Mother Ferrolure 6x6 Board Draft
+# Mother Flure 6x6 Board Draft
 
-This is the first-pass expansion plan for the Mother Ferrolure chamber after the current 3-lane prototype. The goal is to turn the scene into a real Lot Clot payoff: a readable traffic-jam board at architectural scale, with enough density to feel like a puzzle board while still fitting the role-based Aster/Peris/Endo loop.
+This is the first-pass expansion plan for the Mother Flure chamber after the current 3-lane prototype. The goal is to turn the scene into a real Lot Clot payoff: a readable traffic-jam board at architectural scale, with enough density to feel like a puzzle board while still fitting the role-based Aster/Peris/Endo loop.
 
 This draft is meant to be implementation-facing. It is concrete enough to wire into the chunk scene, but it is still a tuning document rather than a mathematically proven final card.
 

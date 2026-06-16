@@ -230,7 +230,7 @@ func _raycast_ground(screen_pos: Vector2) -> Vector3:
 
 func _build_hover_grid() -> void:
 	# A flat quad lying on the floor, textured with the grid IMAGE. UNSHADED so it shows at full
-	# brightness regardless of scene light (the ferrolure chamber is dark), and ALPHA-transparent so the
+	# brightness regardless of scene light (the flure chamber is dark), and ALPHA-transparent so the
 	# gaps between lines stay see-through — a crisp grid, not the solid glowing blob a Decal's emission
 	# channel bloomed into. A PlaneMesh is the XZ plane (faces +Y), so it sits flat under the cursor.
 	_hover_grid = MeshInstance3D.new()

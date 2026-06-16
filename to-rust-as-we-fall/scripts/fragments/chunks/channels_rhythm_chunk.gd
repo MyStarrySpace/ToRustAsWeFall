@@ -100,7 +100,7 @@ func get_scene_title() -> String:
 	return "Channels Rhythm Lane"
 
 func get_scene_help() -> String:
-	return "This fragment isolates the early channels ferrolure beat as a standalone preview. Aster can trigger the lure on the south spur while the Techo pack commits onto the bridge and gets taken by one of three periodic flood channels."
+	return "This fragment isolates the early channels flure beat as a standalone preview. Aster can trigger the lure on the south spur while the Techo pack commits onto the bridge and gets taken by one of three periodic flood channels."
 
 func get_default_character() -> String:
 	return "aster"
@@ -175,7 +175,7 @@ func get_preview_overlay_status(overlay_id: String, _current_tick: float) -> Arr
 	match overlay_id:
 		"aster":
 			return [
-				"DATA: ferrolure spur south, bridge arc east, three surge channels on a six-second loop.",
+				"DATA: flure spur south, bridge arc east, three surge channels on a six-second loop.",
 				"Guarantee: %s" % ("washout locked" if bool(_wash_analysis.get("guaranteed", false)) else "gap detected"),
 				"Wash lane: %s" % ("%d" % _washed_channel_index if _washed_channel_index >= 0 else "pending"),
 			]
@@ -293,7 +293,7 @@ func _build_goal() -> void:
 
 func _build_lure() -> void:
 	var lure_root := Node3D.new()
-	lure_root.name = "Ferrolure"
+	lure_root.name = "Flure"
 	lure_root.position = LURE_POS
 	add_child(lure_root)
 
@@ -319,8 +319,8 @@ func _build_lure() -> void:
 	_lure_light = _add_light(lure_root, Vector3(0.0, 1.1, 0.0), Color(0.92, 0.5, 0.2), 0.45, 7.5)
 	_lure_interactable = _add_interactable(
 		self,
-		"FerrolureInteract",
-		"Ferrolure",
+		"FlureInteract",
+		"Flure",
 		LURE_POS,
 		"HOLD",
 		"aster",
@@ -329,7 +329,7 @@ func _build_lure() -> void:
 		2.4
 	)
 	_lure_interactable.interacted.connect(_on_lure_interacted)
-	_add_label(self, "FERROLURE", LURE_POS + Vector3(0.0, 2.2, 0.0), Color(0.92, 0.68, 0.42))
+	_add_label(self, "FLURE", LURE_POS + Vector3(0.0, 2.2, 0.0), Color(0.92, 0.68, 0.42))
 
 func _build_curtain() -> void:
 	for i in range(CURTAIN_OFFSETS.size()):

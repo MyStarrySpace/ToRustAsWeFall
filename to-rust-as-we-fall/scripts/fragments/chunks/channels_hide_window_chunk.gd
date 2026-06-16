@@ -131,7 +131,7 @@ func get_scene_title() -> String:
 	return "Channels Hide Window"
 
 func get_scene_help() -> String:
-	return "This lane keeps the early ferrolure bridge idea, but the surge cadence is no longer guaranteed. Read the flood timing, and if you miss it, duck into the hush-moss corridor until the pack searches past and you can retry."
+	return "This lane keeps the early flure bridge idea, but the surge cadence is no longer guaranteed. Read the flood timing, and if you miss it, duck into the hush-moss corridor until the pack searches past and you can retry."
 
 func get_default_character() -> String:
 	return "aster"
@@ -371,7 +371,7 @@ func _build_goal() -> void:
 
 func _build_lure() -> void:
 	var lure_root := Node3D.new()
-	lure_root.name = "Ferrolure"
+	lure_root.name = "Flure"
 	lure_root.position = LURE_POS
 	add_child(lure_root)
 
@@ -397,8 +397,8 @@ func _build_lure() -> void:
 	_lure_light = _add_light(lure_root, Vector3(0.0, 1.1, 0.0), Color(0.92, 0.5, 0.2), 0.45, 7.5)
 	_lure_interactable = _add_interactable(
 		self,
-		"FerrolureInteract",
-		"Ferrolure",
+		"FlureInteract",
+		"Flure",
 		LURE_POS,
 		"HOLD",
 		"aster",
@@ -407,7 +407,7 @@ func _build_lure() -> void:
 		2.4
 	)
 	_lure_interactable.interacted.connect(_on_lure_interacted)
-	_add_label(self, "FERROLURE", LURE_POS + Vector3(0.0, 2.2, 0.0), Color(0.92, 0.68, 0.42))
+	_add_label(self, "FLURE", LURE_POS + Vector3(0.0, 2.2, 0.0), Color(0.92, 0.68, 0.42))
 
 func _build_curtain() -> void:
 	for i in range(CURTAIN_OFFSETS.size()):
@@ -1061,7 +1061,7 @@ func _concealment_active() -> bool:
 func _current_instruction() -> String:
 	match _phase:
 		"activate":
-			return "prime the ferrolure when a safe surge window lines up"
+			return "prime the flure when a safe surge window lines up"
 		"window":
 			return "watch the bridge and commit only if the wash catches"
 		"hide":

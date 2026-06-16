@@ -9,7 +9,7 @@ const STACKS_CHUNK_SCENE := preload("res://scenes/fragments/chunks/stacks_fragme
 const RINGS_CHUNK_SCENE := preload("res://scenes/fragments/chunks/rings_fragment_chunk.tscn")
 const LOCKOUT_CHUNK_SCENE := preload("res://scenes/fragments/chunks/lockout_fragment_chunk.tscn")
 const OVERLAY_LAB_CHUNK_SCENE := preload("res://scenes/fragments/chunks/overlay_lab_chunk.tscn")
-const MOTHER_FERROLURE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/mother_ferrolure_chunk.tscn")
+const MOTHER_FLURE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/mother_flure_chunk.tscn")
 const SURVIVAL_RANGE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/survival_range_chunk.tscn")
 const CHANNELS_RHYTHM_CHUNK_SCENE := preload("res://scenes/fragments/chunks/channels_rhythm_chunk.tscn")
 const CHANNELS_HIDE_WINDOW_CHUNK_SCENE := preload("res://scenes/fragments/chunks/channels_hide_window_chunk.tscn")
@@ -30,7 +30,7 @@ const CHUNK_SCENES := {
 	"rings": RINGS_CHUNK_SCENE,
 	"lockout": LOCKOUT_CHUNK_SCENE,
 	"overlay_lab": OVERLAY_LAB_CHUNK_SCENE,
-	"mother_ferrolure": MOTHER_FERROLURE_CHUNK_SCENE,
+	"mother_flure": MOTHER_FLURE_CHUNK_SCENE,
 	"survival_range": SURVIVAL_RANGE_CHUNK_SCENE,
 	"channels_rhythm": CHANNELS_RHYTHM_CHUNK_SCENE,
 	"channels_hide_window": CHANNELS_HIDE_WINDOW_CHUNK_SCENE,
@@ -54,8 +54,8 @@ const PREVIEW_ENTRIES := [
 	{"id": "rings", "chunk": "rings", "title": "Rings Fragment Lab"},
 	{"id": "lockout", "chunk": "lockout", "title": "Lockout Fragment Lab"},
 	{"id": "overlay_lab", "chunk": "overlay_lab", "title": "Overlay Lab"},
-	{"id": "mother_ferrolure", "chunk": "mother_ferrolure", "title": "Mother Flure"},
-	{"id": "lure_relay", "chunk": "lure_relay", "title": "Ferrolure Relay"},
+	{"id": "mother_flure", "chunk": "mother_flure", "title": "Mother Flure"},
+	{"id": "lure_relay", "chunk": "lure_relay", "title": "Flure Relay"},
 	{"id": "push_lab", "chunk": "push_lab", "title": "Push Lab"},
 	{"id": "rest_lab", "chunk": "rest_lab", "title": "Shelter Rest Lab"},
 	{"id": "flora_garden", "chunk": "flora_garden", "title": "Flora Garden"},
@@ -132,7 +132,7 @@ const STAMINA_REGEN := 10.0
 # puzzle JSON, the --preview=<id> CLI arg, and test .set() all key on it), but constrained to the
 # registry by an inspector dropdown + load-time validation. Keep this list == CHUNK_SCENES.keys()
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
-@export_enum("stacks", "rings", "lockout", "overlay_lab", "mother_ferrolure", "survival_range",
+@export_enum("stacks", "rings", "lockout", "overlay_lab", "mother_flure", "survival_range",
 	"channels_rhythm", "channels_hide_window", "endo_junction_stretch", "generated_stretch",
 	"refuge_run", "lure_relay", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery") var preview_chunk := "stacks"
 @export var scene_title_override := ""

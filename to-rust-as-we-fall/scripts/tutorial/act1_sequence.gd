@@ -9,8 +9,8 @@ var _aster_node: CharacterBody3D
 var _peris_node: CharacterBody3D
 var _endo: CharacterBody3D
 var _active_character := "aster"
-var _channels_ferrolure: MeshInstance3D
-var _channels_ferrolure_light: OmniLight3D
+var _channels_flure: MeshInstance3D
+var _channels_flure_light: OmniLight3D
 var _channels_flow_strips: Array[MeshInstance3D] = []
 var _channels_flush_swarm_units: Array[Dictionary] = []
 var _channels_run_lure_mesh: MeshInstance3D
@@ -85,8 +85,8 @@ const CHANNELS_WINDOW_ONE_LURE_POS := Vector3(110.0, 0.5, -13.0)
 const CHANNELS_WINDOW_ONE_CURTAIN_POS := Vector3(122.0, 0.6, -1.0)
 const CHANNELS_WINDOW_ONE_GOAL_POS := Vector3(132.0, 0.5, 0.0)
 const CHANNELS_WINDOW_ONE_DURATION := 13.5
-const CHANNELS_FERROLURE_TRIGGER_X := 146.0
-const CHANNELS_FERROLURE_POS := Vector3(156.0, 0.5, 9.0)
+const CHANNELS_FLURE_TRIGGER_X := 146.0
+const CHANNELS_FLURE_POS := Vector3(156.0, 0.5, 9.0)
 const CHANNELS_FLUSH_SWARM_POS := Vector3(162.0, 0.6, 8.8)
 const CHANNELS_FLUSH_SWARM_OFFSETS := [-1.6, -0.8, 0.0, 0.8, 1.6]
 const CHANNELS_WINDOW_TWO_STAGE_POS := Vector3(166.0, 0.5, 2.0)
@@ -274,7 +274,7 @@ func _on_process(delta: float, spd: float) -> void:
 		"channels_encounter_reset",
 		"channels_memory",
 		"channels_corpse",
-		"channels_ferrolure",
+		"channels_flure",
 		"channels_shelter",
 	]
 
@@ -300,7 +300,7 @@ func _on_process(delta: float, spd: float) -> void:
 				break
 
 	_update_channels_encounter(delta, spd)
-	_update_channels_ferrolure_flush(delta, spd)
+	_update_channels_flure_flush(delta, spd)
 	_update_channels_window_puzzles(delta, spd)
 	_update_overlay_note(delta)
 	_update_flora_system()
@@ -327,9 +327,9 @@ func _on_process(delta: float, spd: float) -> void:
 		if _game_state.get_position("aster").x > CHANNELS_MEMORY_TRIGGER_X:
 			_start_channels_memory()
 
-	if _current_step == "channels_to_ferrolure":
-		if _game_state.get_position("aster").x > CHANNELS_FERROLURE_TRIGGER_X:
-			_start_channels_ferrolure()
+	if _current_step == "channels_to_flure":
+		if _game_state.get_position("aster").x > CHANNELS_FLURE_TRIGGER_X:
+			_start_channels_flure()
 
 	if _current_step == "channels_to_encounter":
 		if _game_state.get_position("aster").x > CHANNELS_ENCOUNTER_TRIGGER_X:
@@ -801,13 +801,13 @@ func _move_party_and_continue(destinations: Dictionary, next_func: Callable, tag
 		_game_state.command_move_to_pos(id, destinations[id])
 	_wait_for_arrivals(ids, next_func, tag)
 
-func _set_channels_ferrolure_active(active: bool) -> void:
-	if _channels_ferrolure:
-		var mat := _channels_ferrolure.material_override as StandardMaterial3D
+func _set_channels_flure_active(active: bool) -> void:
+	if _channels_flure:
+		var mat := _channels_flure.material_override as StandardMaterial3D
 		if mat:
 			mat.emission_energy_multiplier = 1.4 if active else 0.25
-	if _channels_ferrolure_light:
-		_channels_ferrolure_light.light_energy = 2.0 if active else 0.45
+	if _channels_flure_light:
+		_channels_flure_light.light_energy = 2.0 if active else 0.45
 
 func _set_channels_flow_power(power: float) -> void:
 	_channels_flow_power = clampf(power, 0.0, 1.0)
@@ -987,7 +987,7 @@ func _recuperate_channels_party() -> void:
 		stats["hp"] = CHANNELS_MAX_HP
 		stats["atp"] = CHANNELS_REST_ATP
 
-func _start_channels_ferrolure_flush() -> void:
+func _start_channels_flure_flush() -> void:
 	_channels_flush_state = "pull"
 	_channels_flush_timer = 0.0
 	_set_channels_flow_power(0.55)
@@ -999,7 +999,7 @@ func _start_channels_ferrolure_flush() -> void:
 			unit["node"].visible = true
 		_channels_flush_swarm_units[i] = unit
 
-func _update_channels_ferrolure_flush(delta: float, spd: float) -> void:
+func _update_channels_flure_flush(delta: float, spd: float) -> void:
 	if _channels_flush_state == "":
 		if _channels_flow_power > 0.001:
 			_set_channels_flow_power(maxf(0.0, _channels_flow_power - delta * spd * 0.5))
@@ -1016,7 +1016,7 @@ func _update_channels_ferrolure_flush(delta: float, spd: float) -> void:
 				var node: MeshInstance3D = unit.get("node")
 				if node == null:
 					continue
-				var target := CHANNELS_FERROLURE_POS + Vector3(0.45 * CHANNELS_FLUSH_SWARM_OFFSETS[i], 0.15, -0.4)
+				var target := CHANNELS_FLURE_POS + Vector3(0.45 * CHANNELS_FLUSH_SWARM_OFFSETS[i], 0.15, -0.4)
 				node.position = node.position.move_toward(target, delta * spd * 3.2)
 			if _channels_flush_timer >= 1.1:
 				_channels_flush_state = "wash"
@@ -1265,7 +1265,7 @@ func _complete_channels_window_lane(window_id: String) -> void:
 	_tutorial_prompt.hide_prompt()
 	match window_id:
 		"window_one":
-			_start_channels_to_ferrolure()
+			_start_channels_to_flure()
 		"window_two":
 			_start_channels_to_encounter()
 
@@ -1577,8 +1577,8 @@ func _start_channels_memory() -> void:
 		], func(): _scheduler.schedule_after(0.5, _start_channels_corpse, "channels_corpse"))
 	, "channels_memory_move")
 
-func _start_channels_to_ferrolure() -> void:
-	if not _enter_step("channels_to_ferrolure"):
+func _start_channels_to_flure() -> void:
+	if not _enter_step("channels_to_flure"):
 		return
 	_focus_aster_view()
 	_player.set_move_enabled(true)
@@ -1639,18 +1639,18 @@ func _start_channels_corpse() -> void:
 		, "channels_window_one_intro")
 	)
 
-func _start_channels_ferrolure() -> void:
-	if not _enter_step("channels_ferrolure"):
+func _start_channels_flure() -> void:
+	if not _enter_step("channels_flure"):
 		return
 	_select_character("aster")
 	_player.set_move_enabled(false)
 	_tutorial_prompt.hide_prompt()
 	_game_state.command_stop("aster")
-	_set_channels_ferrolure_active(false)
+	_set_channels_flure_active(false)
 	_move_party_and_continue({
-		"peris": CHANNELS_FERROLURE_POS + Vector3(-0.8, 0.0, 0.6),
-		"aster": CHANNELS_FERROLURE_POS + Vector3(-2.5, 0.0, -0.3),
-		"endo": CHANNELS_FERROLURE_POS + Vector3(-3.6, 0.0, 1.2),
+		"peris": CHANNELS_FLURE_POS + Vector3(-0.8, 0.0, 0.6),
+		"aster": CHANNELS_FLURE_POS + Vector3(-2.5, 0.0, -0.3),
+		"endo": CHANNELS_FLURE_POS + Vector3(-3.6, 0.0, 1.2),
 	}, func():
 		_dialogue_chain([
 			"channels.narration.flora",
@@ -1658,19 +1658,19 @@ func _start_channels_ferrolure() -> void:
 			"channels.peris.signals",
 			"channels.peris.pause",
 		], func():
-			_set_channels_ferrolure_active(true)
-			_start_channels_ferrolure_flush()
+			_set_channels_flure_active(true)
+			_start_channels_flure_flush()
 			_dialogue_chain([
 				"channels.peris.touch",
 				"channels.peris.always",
 			], func():
 				_scheduler.schedule_after(2.0, func():
-					_set_channels_ferrolure_active(false)
+					_set_channels_flure_active(false)
 					_start_channels_window_intro("window_two")
 				, "channels_window_two_intro")
 			)
 		)
-	, "channels_ferrolure_move")
+	, "channels_flure_move")
 
 func _start_channels_to_encounter() -> void:
 	if not _enter_step("channels_to_encounter"):
@@ -2208,7 +2208,7 @@ func _build_channels_window_lane(
 
 	var lure_interactable = preload("res://scenes/game/interactable.tscn").instantiate()
 	lure_interactable.name = "ChannelsWindowInteract_%s" % window_id
-	lure_interactable.description = "Ferrolure"
+	lure_interactable.description = "Flure"
 	lure_interactable.required_character = "aster"
 	lure_interactable.one_shot = false
 	lure_interactable.dwell_time = 1.6
@@ -2554,45 +2554,45 @@ func _build_channels_chunk(parent: Node3D) -> void:
 		memory_body.rotation_degrees = Vector3(0, 0, 90)
 		parent.add_child(memory_body)
 
-	# Second ferrolure: dormant until Peris tends it in the coda beat.
-	var ferrolure_root := Node3D.new()
-	ferrolure_root.name = "SecondFerrolure"
-	ferrolure_root.position = CHANNELS_FERROLURE_POS
-	parent.add_child(ferrolure_root)
+	# Second flure: dormant until Peris tends it in the coda beat.
+	var flure_root := Node3D.new()
+	flure_root.name = "SecondFlure"
+	flure_root.position = CHANNELS_FLURE_POS
+	parent.add_child(flure_root)
 
-	var ferrolure_stem := MeshInstance3D.new()
-	var ferrolure_stem_mesh := CylinderMesh.new()
-	ferrolure_stem_mesh.top_radius = 0.08
-	ferrolure_stem_mesh.bottom_radius = 0.12
-	ferrolure_stem_mesh.height = 1.0
-	ferrolure_stem.mesh = ferrolure_stem_mesh
+	var flure_stem := MeshInstance3D.new()
+	var flure_stem_mesh := CylinderMesh.new()
+	flure_stem_mesh.top_radius = 0.08
+	flure_stem_mesh.bottom_radius = 0.12
+	flure_stem_mesh.height = 1.0
+	flure_stem.mesh = flure_stem_mesh
 	var stem_mat := StandardMaterial3D.new()
 	stem_mat.albedo_color = Color(0.18, 0.24, 0.18)
-	ferrolure_stem.material_override = stem_mat
-	ferrolure_stem.position = Vector3(0, 0.5, 0)
-	ferrolure_root.add_child(ferrolure_stem)
+	flure_stem.material_override = stem_mat
+	flure_stem.position = Vector3(0, 0.5, 0)
+	flure_root.add_child(flure_stem)
 
-	_channels_ferrolure = MeshInstance3D.new()
-	var ferrolure_bulb_mesh := SphereMesh.new()
-	ferrolure_bulb_mesh.radius = 0.35
-	ferrolure_bulb_mesh.height = 0.7
-	_channels_ferrolure.mesh = ferrolure_bulb_mesh
-	var ferrolure_mat := StandardMaterial3D.new()
-	ferrolure_mat.albedo_color = Color(0.22, 0.35, 0.25)
-	ferrolure_mat.emission_enabled = true
-	ferrolure_mat.emission = Color(0.2, 0.55, 0.32)
-	ferrolure_mat.emission_energy_multiplier = 0.25
-	_channels_ferrolure.material_override = ferrolure_mat
-	_channels_ferrolure.position = Vector3(0, 1.05, 0)
-	ferrolure_root.add_child(_channels_ferrolure)
+	_channels_flure = MeshInstance3D.new()
+	var flure_bulb_mesh := SphereMesh.new()
+	flure_bulb_mesh.radius = 0.35
+	flure_bulb_mesh.height = 0.7
+	_channels_flure.mesh = flure_bulb_mesh
+	var flure_mat := StandardMaterial3D.new()
+	flure_mat.albedo_color = Color(0.22, 0.35, 0.25)
+	flure_mat.emission_enabled = true
+	flure_mat.emission = Color(0.2, 0.55, 0.32)
+	flure_mat.emission_energy_multiplier = 0.25
+	_channels_flure.material_override = flure_mat
+	_channels_flure.position = Vector3(0, 1.05, 0)
+	flure_root.add_child(_channels_flure)
 
-	_channels_ferrolure_light = OmniLight3D.new()
-	_channels_ferrolure_light.position = Vector3(0, 1.0, 0)
-	_channels_ferrolure_light.light_color = Color(0.32, 0.7, 0.45)
-	_channels_ferrolure_light.light_energy = 0.45
-	_channels_ferrolure_light.omni_range = 8.0
-	ferrolure_root.add_child(_channels_ferrolure_light)
-	_set_channels_ferrolure_active(false)
+	_channels_flure_light = OmniLight3D.new()
+	_channels_flure_light.position = Vector3(0, 1.0, 0)
+	_channels_flure_light.light_color = Color(0.32, 0.7, 0.45)
+	_channels_flure_light.light_energy = 0.45
+	_channels_flure_light.omni_range = 8.0
+	flure_root.add_child(_channels_flure_light)
+	_set_channels_flure_active(false)
 	_set_channels_flow_power(0.25)
 
 	for i in range(CHANNELS_FLUSH_SWARM_OFFSETS.size()):
@@ -2638,7 +2638,7 @@ func _build_channels_chunk(parent: Node3D) -> void:
 
 	# Encounter lure: Endo uses this to pull the swarm away from the shelter route.
 	var run_lure_root := Node3D.new()
-	run_lure_root.name = "EncounterFerrolure"
+	run_lure_root.name = "EncounterFlure"
 	run_lure_root.position = CHANNELS_RUN_LURE_POS
 	parent.add_child(run_lure_root)
 
@@ -2678,8 +2678,8 @@ func _build_channels_chunk(parent: Node3D) -> void:
 	_set_channels_run_lure_active(false)
 
 	_channels_run_lure_interactable = preload("res://scenes/game/interactable.tscn").instantiate()
-	_channels_run_lure_interactable.name = "EncounterFerrolureInteract"
-	_channels_run_lure_interactable.description = "Ferrolure"
+	_channels_run_lure_interactable.name = "EncounterFlureInteract"
+	_channels_run_lure_interactable.description = "Flure"
 	_channels_run_lure_interactable.required_character = "endo"
 	_channels_run_lure_interactable.one_shot = false
 	_channels_run_lure_interactable.dwell_time = 2.0
@@ -2773,7 +2773,7 @@ func _build_channels_chunk(parent: Node3D) -> void:
 		"channels_lumivine",
 		"Lumivine",
 		"channels",
-		CHANNELS_FERROLURE_POS + Vector3(1.8, 0.0, -1.1),
+		CHANNELS_FLURE_POS + Vector3(1.8, 0.0, -1.1),
 		"iron",
 		"iron bloom",
 		CHANNELS_ENCOUNTER_ENTRY_POS + Vector3(3.0, 0.0, -0.6),
@@ -2904,7 +2904,7 @@ func headless_get_anchor_positions() -> Dictionary:
 		"channels_window_one_lure": CHANNELS_WINDOW_ONE_LURE_POS,
 		"channels_window_one_curtain": CHANNELS_WINDOW_ONE_CURTAIN_POS,
 		"channels_window_one_goal": CHANNELS_WINDOW_ONE_GOAL_POS,
-		"channels_ferrolure": CHANNELS_FERROLURE_POS,
+		"channels_flure": CHANNELS_FLURE_POS,
 		"channels_window_two_stage": CHANNELS_WINDOW_TWO_STAGE_POS,
 		"channels_window_two_lure": CHANNELS_WINDOW_TWO_LURE_POS,
 		"channels_window_two_curtain": CHANNELS_WINDOW_TWO_CURTAIN_POS,
