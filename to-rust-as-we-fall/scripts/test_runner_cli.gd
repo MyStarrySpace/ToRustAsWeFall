@@ -404,6 +404,9 @@ func _ready() -> void:
 			"--test-interactable-highlight":
 				ran_test = true
 				await _test_interactable_highlight()
+			"--test-preview-highlight-wired":
+				ran_test = true
+				await _test_preview_highlight_wired()
 			"--test-pause-menu":
 				ran_test = true
 				await _test_pause_menu()
@@ -903,6 +906,7 @@ func _run_all_tests() -> void:
 	await _test_dialogue_pagination()
 	await _test_dialogue_cutscene_mode()
 	await _test_interactable_highlight()
+	await _test_preview_highlight_wired()
 	await _test_pause_menu()
 	await _test_peris_sim()
 	await _test_elevator()
@@ -5137,6 +5141,37 @@ func _test_interactable_highlight() -> void:
 		if node._feedback_emitting:
 			all_cleared = false
 	_assert_true(all_cleared, "Releasing SHIFT stops the highlight")
+
+# Reproduce-first for the user's bug: hold-SHIFT reveal-all must work in EVERY scene that builds a HUD,
+# not just Peris's. It was a per-scene copy-paste connection that DRIFTED — the fragment preview (and
+# showcase) built a GameHUD but never connected highlight_held, so SHIFT did nothing there. The base now
+# wires it once in _init_ui for every scene. Prove the FRAGMENT PREVIEW is wired and actually reveals.
+func _test_preview_highlight_wired() -> void:
+	_test_name = "Preview Highlight Wired"
+	var inst = await _instantiate_preview_chunk_and_wait("lure_relay", 6)  # has the Ferrolure interactable
+	if inst == null:
+		_assert_true(false, "fragment preview instantiates a chunk")
+		return
+	var hud = inst.get_node_or_null("GameHUD")
+	_assert_true(hud != null and hud.has_signal("highlight_held"),
+		"fragment preview builds a GameHUD with the highlight signal")
+	if hud != null:
+		# The exact bug: the preview's HUD existed but highlight_held wasn't connected to the base handler.
+		_assert_true(hud.highlight_held.is_connected(inst._on_highlight_held),
+			"fragment preview wires hold-SHIFT reveal-all (base _wire_shared_hud_signals, not per-scene)")
+		# And it actually reveals: firing the HUD signal lights the chunk's interactables.
+		var interactables := _collect_interactable_nodes(inst)
+		_assert_true(interactables.size() > 0, "preview chunk has interactables to reveal (got %d)" % interactables.size())
+		hud.highlight_held.emit(true)
+		await get_tree().process_frame
+		var any_lit := false
+		for node in interactables:
+			if node._feedback_emitting:
+				any_lit = true
+		_assert_true(any_lit, "Hold-SHIFT reveal-all lights the preview's interactables")
+		hud.highlight_held.emit(false)
+		await get_tree().process_frame
+	await _dispose_scene(inst)
 
 	inst._visit_phase = 1
 	inst.queue_free()

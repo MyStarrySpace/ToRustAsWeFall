@@ -348,6 +348,19 @@ func _init_ui() -> void:
 
 	_init_chromatic_aberration_effect()
 	_setup_ui()
+	# Wire the shared hold-SHIFT reveal-all HERE, once, after the subclass built its HUD — so no scene
+	# has to remember the connection individually (it drifted: the fragment preview, showcase, and others
+	# were missing it). Scenes that build no HUD no-op.
+	_wire_shared_hud_signals()
+
+## Connect the universal HUD signals every scene shares (currently: hold-SHIFT reveal-all). The HUD is
+## resolved by NODE — every scene names it "GameHUD" and runs game_hud.gd (which owns highlight_held) —
+## because _hud is a per-subclass var, not a base member. Guarded so a stray per-scene connect can't
+## double-bind, and a HUD-less scene (tag_day) simply finds nothing.
+func _wire_shared_hud_signals() -> void:
+	var hud := get_node_or_null("GameHUD")
+	if hud != null and hud.has_signal("highlight_held") and not hud.highlight_held.is_connected(_on_highlight_held):
+		hud.highlight_held.connect(_on_highlight_held)
 
 func _init_chromatic_aberration_effect() -> void:
 	if _chromatic_aberration_layer != null:

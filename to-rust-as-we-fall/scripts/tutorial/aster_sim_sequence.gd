@@ -106,7 +106,6 @@ func _setup_ui() -> void:
 	_hud.set_script(preload("res://scripts/ui/game_hud.gd"))
 	add_child(_hud)
 	_hud.add_stat_bar("atp", Color(0.3, 0.7, 0.4), ATP_MAX, ATP_START)
-	_hud.highlight_held.connect(_on_highlight_held)  # hold SHIFT: reveal all interactables
 	_hud.bind_game_state(_game_state, "aster")
 
 func _begin() -> void:

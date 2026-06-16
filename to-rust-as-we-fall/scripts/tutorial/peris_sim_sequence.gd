@@ -121,8 +121,6 @@ func _setup_ui() -> void:
 		if id == "protect":
 			_on_protect_pressed()
 	)
-	# Hold SHIFT to reveal every interactable at once (key → HUD signal → base handler).
-	_hud.highlight_held.connect(_on_highlight_held)
 	# Keep run input gated by step.
 	_hud.bind_game_state(_game_state, "peris", false)
 

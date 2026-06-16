@@ -236,7 +236,6 @@ func _setup_ui() -> void:
 		if id == "emp":
 			_on_emp_pressed()
 	)
-	_hud.highlight_held.connect(_on_highlight_held)  # hold SHIFT: reveal all interactables
 	_hud.character_selection_changed.connect(_on_character_selected)
 
 	# Door button changes behavior after EMP.
