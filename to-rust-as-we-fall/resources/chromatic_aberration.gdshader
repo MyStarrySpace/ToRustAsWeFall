@@ -2,10 +2,10 @@ shader_type canvas_item;
 render_mode unshaded;
 
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
-uniform float strength_px = 2.0;
+uniform float strength_px = 5.0;
 uniform float intensity = 1.0;
-uniform float center_dead_zone = 0.08;
-uniform float edge_start = 0.18;
+uniform float center_dead_zone = 0.06;
+uniform float edge_start = 0.12;
 
 void fragment() {
 	vec2 uv = SCREEN_UV;

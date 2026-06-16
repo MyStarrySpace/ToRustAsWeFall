@@ -46,6 +46,10 @@ var _displayed_chars := 0.0
 var _hold_timer := 0.0
 var _active := false
 var _waiting_for_input := false
+## Held-advance: while the player holds LEFT-click or Enter, dialogue keeps flowing — each line types
+## out then advances on its own (no per-line click, no hold beat, acknowledge lines included). Released
+## (or when the conversation ends), it reverts to the normal click/auto-advance behavior.
+var _advance_held := false
 ## Cutscene mode: the owning sequence forces auto-advance for dialogue tied to a scripted
 ## cutscene, so lines keep pace with the on-screen action (characters walking the corridor)
 ## instead of blocking on a click — regardless of the player's auto-advance preference, and
@@ -219,22 +223,23 @@ func advance_ui_time(delta_ticks: float) -> void:
 			_on_page_typed()
 		return
 
-	# Current page fully shown. With auto-advance off (default) the box waits for
-	# an explicit advance (a click or the data layer); the clock does nothing.
-	if not _auto_advance_enabled():
+	# Current page fully shown. With auto-advance off (default) the box waits for an explicit advance
+	# (a click or the data layer) — UNLESS the player is holding to keep advancing, which flows through
+	# each line the moment it finishes typing (no hold beat, no per-line click, acknowledge lines too).
+	if not _auto_advance_enabled() and not _advance_held:
 		return
 	if _is_last_page():
 		# A cutscene line never blocks on a click — it rides the shared beat so it stays in
 		# step with the on-screen action (a paused-for-input line would desync the cutscene).
-		if _waiting_for_input and not _cutscene_mode:
+		if _waiting_for_input and not _cutscene_mode and not _advance_held:
 			return  # await request_advance()
 		_hold_timer -= dt
-		if _hold_timer <= 0.0:
+		if _hold_timer <= 0.0 or _advance_held:
 			_advance()
 	else:
 		# Intermediate page gate: hold the beat, then reveal the next page.
 		_hold_timer -= dt
-		if _hold_timer <= 0.0:
+		if _hold_timer <= 0.0 or _advance_held:
 			_next_page()
 
 ## Explicit advance: a real click and any data-layer command share this path.
@@ -344,25 +349,40 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
-		if not mb.pressed:
-			return
 		match mb.button_index:
 			MOUSE_BUTTON_LEFT:
-				request_advance()
+				# Press advances; HOLDING keeps the dialogue flowing (advance_ui_time reads _advance_held).
+				_advance_held = mb.pressed
+				if mb.pressed:
+					request_advance()
 				if is_inside_tree():
 					get_viewport().set_input_as_handled()
 			MOUSE_BUTTON_WHEEL_UP:
-				_scroll_by(-SCROLL_STEP)
-				if is_inside_tree():
-					get_viewport().set_input_as_handled()
+				if mb.pressed:
+					_scroll_by(-SCROLL_STEP)
+					if is_inside_tree():
+						get_viewport().set_input_as_handled()
 			MOUSE_BUTTON_WHEEL_DOWN:
-				_scroll_by(SCROLL_STEP)
-				if is_inside_tree():
-					get_viewport().set_input_as_handled()
+				if mb.pressed:
+					_scroll_by(SCROLL_STEP)
+					if is_inside_tree():
+						get_viewport().set_input_as_handled()
+	elif event is InputEventKey:
+		var k := event as InputEventKey
+		if k.keycode == KEY_ENTER or k.keycode == KEY_KP_ENTER:
+			# Enter mirrors the left click: press advances, HOLD keeps advancing. Ignore key-repeat
+			# echoes — the steady flow comes from _advance_held, not from repeated key events.
+			if not k.echo:
+				_advance_held = k.pressed
+				if k.pressed:
+					request_advance()
+			if is_inside_tree():
+				get_viewport().set_input_as_handled()
 
 func _advance() -> void:
 	if _queue.is_empty():
 		_active = false
+		_advance_held = false  # the conversation is over; a new one needs a fresh press/hold
 		_panel.visible = false
 		_transcript.clear()
 		_history_cache = ""

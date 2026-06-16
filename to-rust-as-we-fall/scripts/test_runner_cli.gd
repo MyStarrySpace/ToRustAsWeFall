@@ -158,6 +158,9 @@ func _ready() -> void:
 			"--test-chromatic-aberration":
 				ran_test = true
 				await _test_chromatic_aberration()
+			"--test-dialogue-hold":
+				ran_test = true
+				await _test_dialogue_hold_advance()
 			"--test-lure-relay":
 				ran_test = true
 				await _test_lure_relay_puzzle()
@@ -853,6 +856,7 @@ func _run_all_tests() -> void:
 	await _test_showcase_gallery()
 	await _test_lure_relay_puzzle()
 	await _test_chromatic_aberration()
+	await _test_dialogue_hold_advance()
 	_test_cooperative_pathfinding()
 	_test_path_renderer()
 	await _test_path_render_manager()
@@ -11014,6 +11018,54 @@ func _test_dodge_combat_timing() -> void:
 		"A funded auto-dodge evades the strike")
 
 # --- Test: chromatic aberration is live in the sim scenes ---
+# --- Test: HOLDING left-click (or Enter) keeps the dialogue advancing on its own ---
+# A single click advances one step (unchanged); holding flows through lines — even acknowledge lines —
+# as each finishes typing, so the player doesn't have to click every line.
+func _test_dialogue_hold_advance() -> void:
+	_test_name = "Dialogue Hold-to-Advance"
+	var scene := load("res://scenes/tutorial/aster_sim.tscn")
+	if scene == null:
+		_assert_true(false, "aster scene loads")
+		return
+	var instance: Node = scene.instantiate()
+	get_tree().root.add_child(instance)
+	for i in range(5):
+		await get_tree().process_frame
+	var d = instance._dialogue
+	if d == null:
+		_assert_true(false, "dialogue box present")
+		instance.queue_free()
+		await get_tree().process_frame
+		return
+	if d.has_method("clear"):
+		d.clear()
+	d.set_cutscene_mode(false)
+	# Three acknowledge (wait) lines — each normally blocks until the player advances it.
+	d.say("Hold test line one.", "TEST", "normal", true)
+	d.say("Hold test line two.", "TEST", "normal", true)
+	d.say("Hold test line three.", "TEST", "normal", true)
+	# Type out past the first line WITHOUT input: an acknowledge line must STALL.
+	for i in range(60):
+		d.advance_ui_time(1.0)
+	_assert_true(d.is_active() and d.awaiting_advance(),
+		"An acknowledge line stalls with no input (single steps need a click)")
+	# HOLD left-click (press, no release) — the real input path sets the held flag.
+	var hold_ev := InputEventMouseButton.new()
+	hold_ev.button_index = MOUSE_BUTTON_LEFT
+	hold_ev.pressed = true
+	d._unhandled_input(hold_ev)
+	# While held, the box flows through every remaining acknowledge line on its own.
+	for i in range(200):
+		if not d.is_active():
+			break
+		d.advance_ui_time(1.0)
+	_assert_true(not d.is_active(),
+		"Holding left-click flows through all acknowledge lines to the end (no per-line click)")
+	if instance.has_method("_teardown_sequence"):
+		instance._teardown_sequence()
+	instance.queue_free()
+	await get_tree().process_frame
+
 func _test_chromatic_aberration() -> void:
 	_test_name = "Chromatic Aberration (Sims)"
 	for scene_path in ["res://scenes/tutorial/aster_sim.tscn", "res://scenes/tutorial/peris_sim.tscn"]:
