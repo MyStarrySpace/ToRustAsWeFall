@@ -419,6 +419,9 @@ func _ready() -> void:
 			"--test-elevator-bridge":
 				ran_test = true
 				await _test_elevator_bridge_collapse()
+			"--test-elevator-box-select":
+				ran_test = true
+				await _test_elevator_box_select_multiselect()
 			"--test-elevator-fall-level":
 				ran_test = true
 				await _test_elevator_fall_level()
@@ -915,6 +918,7 @@ func _run_all_tests() -> void:
 	await _test_peris_sim()
 	await _test_elevator()
 	await _test_elevator_bridge_collapse()
+	await _test_elevator_box_select_multiselect()
 	await _test_elevator_fall_level()
 	await _test_act1_chunk_grids()
 	await _test_act1_prepare_fragment_grids()
@@ -6784,6 +6788,53 @@ func _test_elevator_bridge_collapse() -> void:
 		"The ecology below does not pursue the party while it crosses the bridge above")
 	_assert_true(not ecology_pathfound,
 		"The ecology below stays in ambient roam (no A* patrol/pursuit) while the party crosses above")
+	if instance.has_method("_teardown_sequence"):
+		instance._teardown_sequence()
+	instance.queue_free()
+	await get_tree().process_frame
+
+# --- Test: RTS left-drag box-select drives the elevator multiselect (no ctrl-click) ---
+# The shared SelectionController gives every scene LMB-pick + LMB-drag marquee select (RMB stays move).
+# This proves a left-drag box around the party satisfies the elevator's multiselect gate, so the player
+# never needs ctrl-click on the portraits.
+func _test_elevator_box_select_multiselect() -> void:
+	_test_name = "Elevator Box-Select Multiselect"
+	var scene := load("res://scenes/tutorial/elevator.tscn")
+	if scene == null:
+		_assert_true(false, "elevator scene loads")
+		return
+	var instance: Node = scene.instantiate()
+	if "suppress_scene_change" in instance:
+		instance.suppress_scene_change = true
+	get_tree().root.add_child(instance)
+	for i in range(8):
+		await get_tree().process_frame
+	var gs = instance._game_state
+	instance._scheduler.clear()
+	if instance._dialogue != null and instance._dialogue.has_method("clear"):
+		instance._dialogue.clear()
+	instance._start_multiselect_tutorial()
+	_drain_dialogue_box(instance._dialogue, 25.0, 0.05)
+	_assert_true(not instance._multiselect_has_required_pair(),
+		"Multiselect beat starts with only Peris selected")
+	var sel = instance._selection_controller
+	var cam: Camera3D = instance._camera
+	_assert_true(sel != null and cam != null, "Elevator has the shared SelectionController + a camera")
+	if sel == null or cam == null:
+		instance.queue_free()
+		await get_tree().process_frame
+		return
+	if cam.is_inside_tree() and not cam.current:
+		cam.make_current()
+	# A left-drag box spanning Peris and Aster (the RTS marquee), driven through the SAME commit math
+	# real input uses. No ctrl-click, no portrait clicks.
+	var box := Rect2(cam.unproject_position(gs.get_position("peris")), Vector2.ZERO) \
+		.expand(cam.unproject_position(gs.get_position("aster"))).grow(24.0)
+	sel.headless_box_select(box, cam)
+	for i in range(2):
+		await get_tree().process_frame
+	_assert_true(instance._multiselect_has_required_pair(),
+		"LMB box-select selects BOTH Peris and Aster — satisfies the multiselect gate with no ctrl-click")
 	if instance.has_method("_teardown_sequence"):
 		instance._teardown_sequence()
 	instance.queue_free()

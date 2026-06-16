@@ -447,7 +447,7 @@ func _toggle_pause() -> void:
 			return
 		if _current_step == "multiselect_tutorial" and not _multiselect_has_required_pair():
 			_hud.set_paused(true)
-			_tutorial_prompt.show_prompt("Ctrl-click Aster's portrait to select both, then move together")
+			_tutorial_prompt.show_prompt("Drag a selection box around Peris and Aster to select both, then move together")
 			_show_multiselect_together_hint()
 			return
 		_scheduler.resume()
@@ -467,7 +467,7 @@ func _on_pause_toggled(is_paused: bool) -> void:
 			return
 		if _current_step == "multiselect_tutorial" and not _multiselect_has_required_pair():
 			_hud.set_paused(true)
-			_tutorial_prompt.show_prompt("Ctrl-click Aster's portrait to select both, then move together")
+			_tutorial_prompt.show_prompt("Drag a selection box around Peris and Aster to select both, then move together")
 			_show_multiselect_together_hint()
 			return
 		_scheduler.resume()
@@ -616,7 +616,7 @@ func _update_multiselect_tutorial_prompt() -> void:
 		# Queue the move while paused, then unpause to run through together.
 		_tutorial_prompt.show_prompt("Both selected. Click the open doorway to set your path, then press %s." % InputHints.bracket("pause"))
 	else:
-		_tutorial_prompt.show_prompt("Ctrl-click Aster's portrait to select both Peris and Aster.")
+		_tutorial_prompt.show_prompt("Drag a selection box around Peris and Aster to select both.")
 
 func _show_multiselect_together_hint() -> void:
 	# The prompt carries the instruction; Aster says his line once (no repeated nag).
