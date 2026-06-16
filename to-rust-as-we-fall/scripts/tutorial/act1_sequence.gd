@@ -3048,35 +3048,48 @@ func headless_set_character_position(char_id: String, pos: Vector3) -> void:
 		_game_state.characters[char_id].position = pos
 	node.global_position = pos
 
-func prepare_channels_fragment() -> void:
+# Shared front-half of every prepare_*_fragment entry point: wipe the transient UI/scheduler
+# state and (for the chunked fragments) swap the live chunk in. channels passes "" because it is
+# the always-loaded base chunk, driven by window lanes rather than a load/unload.
+func _begin_fragment_prep(chunk_name: String) -> void:
 	if _dialogue and _dialogue.has_method("clear"):
 		_dialogue.clear()
 	if _scheduler:
 		_scheduler.clear()
 	_clear_markers()
 	_tutorial_prompt.hide_prompt()
+	if chunk_name != "":
+		_swap_to_chunk(chunk_name)
+
+# Load the named chunk and unload every other act1 chunk so only one is live (act1 cuts between
+# chunks). Unloading an already-unloaded chunk is a no-op, so this is safe from any starting state.
+func _swap_to_chunk(chunk_name: String) -> void:
+	_load_chunk(chunk_name)
+	for other in CHUNK_GRIDS.keys():
+		if other != chunk_name:
+			_unload_chunk(other)
+
+# Halt the whole party so a fragment can reposition them cleanly.
+func _stop_party() -> void:
+	if _game_state == null:
+		return
+	for cid in ["aster", "peris", "endo"]:
+		if _game_state.characters.has(cid):
+			_game_state.command_stop(cid)
+
+func prepare_channels_fragment() -> void:
+	_begin_fragment_prep("")
 	_channels_active_window_lane = ""
 	for window_id in _channels_window_lanes.keys():
 		_reset_channels_window_lane(window_id)
 	_reset_channels_encounter_nodes()
-	for cid in ["aster", "peris", "endo"]:
-		if _game_state and _game_state.characters.has(cid):
-			_game_state.command_stop(cid)
+	_stop_party()
 	_current_step = ""
 	_select_character("aster")
 	_player.set_move_enabled(true)
 
 func prepare_stacks_fragment(mode: String = "engram") -> void:
-	if _dialogue and _dialogue.has_method("clear"):
-		_dialogue.clear()
-	if _scheduler:
-		_scheduler.clear()
-	_clear_markers()
-	_tutorial_prompt.hide_prompt()
-	_load_chunk("stacks")
-	_unload_chunk("channels")
-	_unload_chunk("rings")
-	_unload_chunk("lockout")
+	_begin_fragment_prep("stacks")
 	_clear_channels_runtime_state()
 	_reset_stacks_runtime_state()
 	var journal: Node = get_node_or_null("/root/EngramJournal")
@@ -3099,21 +3112,10 @@ func prepare_stacks_fragment(mode: String = "engram") -> void:
 			_player.set_move_enabled(false)
 
 func prepare_rings_fragment(mode: String = "client") -> void:
-	if _dialogue and _dialogue.has_method("clear"):
-		_dialogue.clear()
-	if _scheduler:
-		_scheduler.clear()
-	_clear_markers()
-	_tutorial_prompt.hide_prompt()
-	_load_chunk("rings")
-	_unload_chunk("channels")
-	_unload_chunk("stacks")
-	_unload_chunk("lockout")
+	_begin_fragment_prep("rings")
 	_clear_lockout_runtime_state()
 	_endo.visible = true
-	for cid in ["aster", "peris", "endo"]:
-		if _game_state and _game_state.characters.has(cid):
-			_game_state.command_stop(cid)
+	_stop_party()
 	headless_set_character_position("aster", RINGS_START + Vector3(8.0, 0.5, 0.0))
 	headless_set_character_position("peris", RINGS_START + Vector3(6.5, 0.5, 2.0))
 	headless_set_character_position("endo", RINGS_START + Vector3(5.0, 0.5, -1.8))
@@ -3129,21 +3131,10 @@ func prepare_rings_fragment(mode: String = "client") -> void:
 			_player.set_move_enabled(true)
 
 func prepare_lockout_fragment(mode: String = "chase") -> void:
-	if _dialogue and _dialogue.has_method("clear"):
-		_dialogue.clear()
-	if _scheduler:
-		_scheduler.clear()
-	_clear_markers()
-	_tutorial_prompt.hide_prompt()
-	_load_chunk("lockout")
-	_unload_chunk("channels")
-	_unload_chunk("stacks")
-	_unload_chunk("rings")
+	_begin_fragment_prep("lockout")
 	_clear_lockout_runtime_state()
 	_endo.visible = true
-	for cid in ["aster", "peris", "endo"]:
-		if _game_state and _game_state.characters.has(cid):
-			_game_state.command_stop(cid)
+	_stop_party()
 	headless_set_character_position("aster", LOCKOUT_BOUNDARY + Vector3(-7.5, 0.5, 0.0))
 	headless_set_character_position("peris", LOCKOUT_BOUNDARY + Vector3(-9.0, 0.5, 1.4))
 	headless_set_character_position("endo", LOCKOUT_BOUNDARY + Vector3(-10.5, 0.5, -1.4))
