@@ -3049,8 +3049,8 @@ func headless_set_character_position(char_id: String, pos: Vector3) -> void:
 	node.global_position = pos
 
 # Shared front-half of every prepare_*_fragment entry point: wipe the transient UI/scheduler
-# state and (for the chunked fragments) swap the live chunk in. channels passes "" because it is
-# the always-loaded base chunk, driven by window lanes rather than a load/unload.
+# state and swap the named chunk in (load it, unload the others, activate its grid). Every
+# fragment — channels included — initializes through this one path.
 func _begin_fragment_prep(chunk_name: String) -> void:
 	if _dialogue and _dialogue.has_method("clear"):
 		_dialogue.clear()
@@ -3058,16 +3058,19 @@ func _begin_fragment_prep(chunk_name: String) -> void:
 		_scheduler.clear()
 	_clear_markers()
 	_tutorial_prompt.hide_prompt()
-	if chunk_name != "":
-		_swap_to_chunk(chunk_name)
+	_swap_to_chunk(chunk_name)
 
-# Load the named chunk and unload every other act1 chunk so only one is live (act1 cuts between
-# chunks). Unloading an already-unloaded chunk is a no-op, so this is safe from any starting state.
+# Load the named chunk, unload every other act1 chunk so only one is live (act1 cuts between
+# chunks), and swap the live grid to this chunk's footprint. This is the SINGLE way a chunk is
+# made current — the in-game enter beats and the prepare_*_fragment jump-ins both go through it,
+# so a chunk is always initialized the same way. Unloading an already-unloaded chunk is a no-op,
+# so it is safe from any starting state.
 func _swap_to_chunk(chunk_name: String) -> void:
 	_load_chunk(chunk_name)
 	for other in CHUNK_GRIDS.keys():
 		if other != chunk_name:
 			_unload_chunk(other)
+	_activate_chunk_grid(chunk_name)
 
 # Halt the whole party so a fragment can reposition them cleanly.
 func _stop_party() -> void:
@@ -3078,7 +3081,7 @@ func _stop_party() -> void:
 			_game_state.command_stop(cid)
 
 func prepare_channels_fragment() -> void:
-	_begin_fragment_prep("")
+	_begin_fragment_prep("channels")
 	_channels_active_window_lane = ""
 	for window_id in _channels_window_lanes.keys():
 		_reset_channels_window_lane(window_id)

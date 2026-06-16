@@ -422,6 +422,7 @@ func _ready() -> void:
 			"--test-act1-chunk-grids":
 				ran_test = true
 				await _test_act1_chunk_grids()
+				await _test_act1_prepare_fragment_grids()
 			"--test-grid-port-robustness":
 				ran_test = true
 				await _test_grid_port_robustness()
@@ -912,6 +913,7 @@ func _run_all_tests() -> void:
 	await _test_elevator()
 	await _test_elevator_fall_level()
 	await _test_act1_chunk_grids()
+	await _test_act1_prepare_fragment_grids()
 	await _test_grid_port_robustness()
 	_test_ability_data()
 	await _test_overlay_facility_gating()
@@ -6649,6 +6651,55 @@ func _test_act1_chunk_grids() -> void:
 		instance._teardown_sequence()
 	instance.queue_free()
 	await get_tree().process_frame
+
+# The prepare_*_fragment entry points (headless tests + the showcase jump straight into a chunk)
+# must set up the chunk's grid the SAME way the in-game enter functions do. Otherwise a jumped-into
+# fragment is stranded on the previous chunk's grid and the player walks right off it. Fresh scene
+# per assertion so there is no leftover scheduled/dialogue state from another chunk's beats.
+func _test_act1_prepare_fragment_grids() -> void:
+	_test_name = "Act 1 Prepare-Fragment Grids"
+	var scene := load("res://scenes/tutorial/act1.tscn")
+	if scene == null:
+		_assert_true(false, "act1 scene loads")
+		return
+	var prepares := [
+		{"name": "channels", "start": Vector3(0, 0, 0), "origin_x": -6.0, "call": "prepare_channels_fragment", "arg": null},
+		{"name": "stacks", "start": Vector3(240, 0, 0), "origin_x": 234.0, "call": "prepare_stacks_fragment", "arg": "explore"},
+		{"name": "rings", "start": Vector3(480, 0, 0), "origin_x": 474.0, "call": "prepare_rings_fragment", "arg": "explore"},
+		{"name": "lockout", "start": Vector3(700, 0, 0), "origin_x": 694.0, "call": "prepare_lockout_fragment", "arg": "approach"},
+	]
+	for leg in prepares:
+		var instance: Node = scene.instantiate()
+		if "suppress_scene_change" in instance:
+			instance.suppress_scene_change = true
+		get_tree().root.add_child(instance)
+		for i in range(8):
+			await get_tree().process_frame
+		var gs = instance._game_state
+		if leg["arg"] == null:
+			instance.call(str(leg["call"]))
+		else:
+			instance.call(str(leg["call"]), leg["arg"])
+		await get_tree().process_frame
+		_assert_true(gs != null and gs.grid != null and absf(gs.grid.origin.x - float(leg["origin_x"])) < 0.5,
+			"prepare %s: the live grid origin tracks the chunk (%.1f)" % [leg["name"], gs.grid.origin.x if (gs != null and gs.grid != null) else -999.0])
+		# Drop Aster onto this chunk and walk him east on the freshly-swapped grid.
+		var p_start: Vector3 = (leg["start"] as Vector3) + Vector3(3.0, 0.5, 0.0)
+		gs.command_stop("aster")
+		gs.characters["aster"]["position"] = p_start
+		gs.characters["aster"]["grid_cell"] = gs.grid.world_to_grid(p_start)
+		var p_target: Vector3 = (leg["start"] as Vector3) + Vector3(16.0, 0.0, 0.0)
+		gs.command_move_to_pos("aster", p_target)
+		for s in range(120):
+			instance.headless_advance(0.1, 0.05)
+			if not gs.is_moving("aster"):
+				break
+		_assert_true(gs.get_position("aster").x > p_start.x + 2.0,
+			"prepare %s: Aster walks east on the chunk's grid (%.1f -> %.1f)" % [leg["name"], p_start.x, gs.get_position("aster").x])
+		if instance.has_method("_teardown_sequence"):
+			instance._teardown_sequence()
+		instance.queue_free()
+		await get_tree().process_frame
 
 # --- Test: the elevator bridge collapse is a REAL cross-level transition (upper deck -> lower deck) ---
 # The multi-level grid port: the party spawns on the UPPER deck (grid level 1) and the bridge collapse drops
