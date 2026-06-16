@@ -6756,6 +6756,17 @@ func _test_elevator_bridge_collapse() -> void:
 		instance._dialogue.clear()
 	instance._load_chunk("bridge")
 	instance._load_chunk("below")
+	# The bridge is built as fracturable PLANKS so the collapse can cascade plank-by-plank (not sink as
+	# one slab). Confirm the floor has independent segments to drop.
+	var bridge_chunk_node: Node = instance._chunks.get("bridge")
+	var bridge_floor_node: Node = bridge_chunk_node.find_child("BridgeFloor", false, false) if bridge_chunk_node != null else null
+	var plank_count := 0
+	if bridge_floor_node != null:
+		for child in bridge_floor_node.get_children():
+			if child is MeshInstance3D and str(child.name).begins_with("Plank_"):
+				plank_count += 1
+	_assert_true(plank_count >= 6,
+		"The bridge floor is built as fracturable planks (%d), not one rigid slab" % plank_count)
 	# Park the party at the bridge START on the upper deck.
 	for cid in ["aster", "peris"]:
 		gs.command_stop(cid)
@@ -6796,6 +6807,17 @@ func _test_elevator_bridge_collapse() -> void:
 		"The ecology below does not pursue the party while it crosses the bridge above")
 	_assert_true(not ecology_pathfound,
 		"The ecology below stays in ambient roam (no A* patrol/pursuit) while the party crosses above")
+	# Capture a plank's start height, then let the scheduled fall fire and animate one real frame.
+	var plank0: Node3D = bridge_floor_node.find_child("Plank_0", false, false) if bridge_floor_node != null else null
+	var plank0_y0: float = plank0.position.y if plank0 != null else 0.0
+	instance.headless_advance(1.0, 0.05)   # past the bridge_fall delay → _execute_bridge_fall runs
+	for f in range(20):
+		await get_tree().process_frame    # tweens are wall-clock; let the SceneTree advance them
+	_assert_true(instance._fall_tween != null,
+		"The collapse kicks off a fall animation")
+	if plank0 != null and is_instance_valid(plank0):
+		_assert_true(plank0.position.y < plank0_y0 - 0.05,
+			"Bridge planks actually drop during the collapse (%.2f -> %.2f)" % [plank0_y0, plank0.position.y])
 	if instance.has_method("_teardown_sequence"):
 		instance._teardown_sequence()
 	instance.queue_free()

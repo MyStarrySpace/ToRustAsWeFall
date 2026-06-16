@@ -915,27 +915,76 @@ func _start_bridge_collapse() -> void:
 	_scheduler.schedule_after(0.8, _execute_bridge_fall, "bridge_fall")
 
 func _execute_bridge_fall() -> void:
-	_camera.shake(0.6, 1.5)
-	var fall_duration := 1.2
+	_camera.shake(0.75, 1.5)
+	var fall_duration := 1.4
 	var bridge_chunk: Node3D = _chunks.get("bridge")
 	var bridge_floor: Node3D = bridge_chunk.find_child("BridgeFloor", false, false) if bridge_chunk else null
+	# The span shears apart where the player stands and the break races OUTWARD — each plank/rail drops
+	# on its own, accelerating and tumbling as it crashes down onto the ecology below.
+	var break_x: float = _game_state.get_position("aster").x
 	var tween := create_tween()
 	tween.set_parallel(true)
 	if bridge_floor:
-		tween.tween_property(bridge_floor, "position:y", BELOW_Y, fall_duration) \
-			.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
-		tween.tween_property(bridge_floor, "rotation:x", 0.15, fall_duration * 0.8)
+		for child in bridge_floor.get_children():
+			if not (child is MeshInstance3D):
+				continue
+			var piece := child as MeshInstance3D
+			var stagger: float = minf(absf(piece.position.x - break_x) * 0.045, 0.45)
+			var spin: Vector3 = _bridge_piece_spin(piece.position.x)
+			tween.tween_property(piece, "position:y", BELOW_Y + 0.2, fall_duration) \
+				.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD).set_delay(stagger)
+			tween.tween_property(piece, "rotation", piece.rotation + spin, fall_duration).set_delay(stagger)
+			tween.tween_property(piece, "position:x", piece.position.x + spin.y * 0.5, fall_duration).set_delay(stagger)
+		_spawn_collapse_dust(bridge_floor, break_x)
+	# The party rides the failing centre down; the LOGICAL landing rides the scheduler (_on_fall_landed),
+	# so fast-forward matches. The FREEING of the old chunks is cosmetic — gate it on the tween finishing,
+	# or under fast-forward the scheduler races ahead and the bridge would vanish mid-air.
 	for char_node in [_peris_node, _aster_node]:
-		tween.tween_property(char_node, "position:y", BELOW_Y + 0.5, fall_duration) \
+		tween.tween_property(char_node, "position:y", BELOW_Y + 0.5, fall_duration * 0.8) \
 			.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
-	tween.tween_property(_camera, "follow_offset:y", _camera.follow_offset.y + BELOW_Y, fall_duration * 1.1)
-	# The fall animation is a cosmetic tween; the landing (repositions the party in GameState and
-	# advances the step) rides the scheduler so fast-forward matches. But the FREEING of the old
-	# level chunks is cosmetic — it must wait for the visual fall to finish, or under fast-forward
-	# the scheduler races ahead and the bridge vanishes mid-air. So ride the tween's completion.
+	tween.tween_property(_camera, "follow_offset:y", _camera.follow_offset.y + BELOW_Y, fall_duration)
 	_fall_tween = tween
 	tween.finished.connect(_remove_collapsed_chunks)
-	_scheduler.schedule_after(fall_duration * 1.1, _on_fall_landed, "fall_landed")
+	_scheduler.schedule_after(fall_duration * 1.05, _on_fall_landed, "fall_landed")
+
+## Deterministic per-plank tumble (hashed from its X, never wall-clock RNG — replay-stable visuals).
+## The Y component also drives the horizontal drift sign as the piece falls.
+func _bridge_piece_spin(x: float) -> Vector3:
+	var h := int(absf(x) * 17.0)
+	return Vector3(
+		0.7 + float(h % 6) * 0.22,           # pitch
+		-0.5 + float((h / 6) % 7) * 0.18,    # yaw + drift
+		-0.6 + float((h / 42) % 6) * 0.24    # roll
+	)
+
+## A one-shot dust burst at the break point — sells the impact as the span shears apart.
+func _spawn_collapse_dust(parent: Node3D, at_x: float) -> void:
+	if parent == null:
+		return
+	var dust := CPUParticles3D.new()
+	dust.position = Vector3(at_x, -0.1, 0.0)
+	dust.amount = 48
+	dust.lifetime = 1.8
+	dust.one_shot = true
+	dust.explosiveness = 0.6
+	dust.spread = 70.0
+	dust.direction = Vector3(0, -0.3, 0)
+	dust.gravity = Vector3(0, -3.0, 0)
+	dust.initial_velocity_min = 1.5
+	dust.initial_velocity_max = 4.0
+	dust.scale_amount_min = 0.25
+	dust.scale_amount_max = 0.7
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.5, 0.5)
+	var dmat := StandardMaterial3D.new()
+	dmat.albedo_color = Color(0.32, 0.3, 0.28, 0.45)
+	dmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	dmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	dmat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	quad.material = dmat
+	dust.mesh = quad
+	dust.emitting = true
+	parent.add_child(dust)
 
 func _on_fall_landed() -> void:
 	# Fires from the scheduled landing (or a test force-fire) — exactly once.
@@ -1426,12 +1475,14 @@ func _build_bridge_chunk(parent: Node3D) -> void:
 	cor_light.omni_range = 8.0
 	parent.add_child(cor_light)
 
-	# Named for collapse tween.
+	# The collapsing span lives under BridgeFloor. It is built as FRACTURABLE PLANKS (independent
+	# segments) so the collapse can cascade plank-by-plank, not sink as one rigid slab. A single
+	# invisible collision slab handles the player's click-raycast (the player walks the grid); the
+	# planks + rails are the visual pieces the collapse drops.
 	var bridge_start := start_x + 7.0
 	var bridge_floor := Node3D.new()
 	bridge_floor.name = "BridgeFloor"
 	parent.add_child(bridge_floor)
-	_add_corridor_section(bridge_floor, Vector3(bridge_start + 5.0, -0.05, 0), Vector3(12, 0.1, 3), corridor_color)
 	var b2 := StaticBody3D.new()
 	b2.position = Vector3(bridge_start + 5.0, -0.01, 0)
 	b2.collision_layer = 1
@@ -1443,8 +1494,25 @@ func _build_bridge_chunk(parent: Node3D) -> void:
 	b2.add_child(c2)
 	bridge_floor.add_child(b2)
 
+	const BRIDGE_SPAN := 12.0
+	const BRIDGE_PLANKS := 8
+	var plank_w := BRIDGE_SPAN / float(BRIDGE_PLANKS)
+	var plank_x0 := bridge_start + 5.0 - BRIDGE_SPAN / 2.0
+	for i in range(BRIDGE_PLANKS):
+		var plank := MeshInstance3D.new()
+		plank.name = "Plank_%d" % i
+		var pm := BoxMesh.new()
+		pm.size = Vector3(plank_w * 0.95, 0.1, 3.0)  # slight gap so the seams read
+		plank.mesh = pm
+		var pmat := StandardMaterial3D.new()
+		pmat.albedo_color = corridor_color.lightened(0.02 * (i % 3))  # subtle plank variation
+		plank.material_override = pmat
+		plank.position = Vector3(plank_x0 + plank_w * (float(i) + 0.5), -0.05, 0)
+		bridge_floor.add_child(plank)
+
 	for i in range(5):
 		var rail := MeshInstance3D.new()
+		rail.name = "Rail_%d" % i
 		var rb := BoxMesh.new()
 		rb.size = Vector3(0.05, 0.8, 0.05)
 		rail.mesh = rb
