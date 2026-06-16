@@ -229,8 +229,11 @@ func _setup_ui() -> void:
 	_hud.show_pause_toggle(false)
 	_hud.pause_toggled.connect(_on_pause_toggled)
 	var emp_binding := AbilityData.binding("emp")
+	# The key hint comes from the live `emp` binding, never a baked letter, so a rebind / controller
+	# is reflected (the xlsx keybind is only the fallback if the action somehow has no binding).
 	_hud.add_ability("emp", AbilityData.get_ability("elevator.emp").get("display_name", "EMP"),
-		str(emp_binding.get("keybind", "E")), emp_binding.get("color", Color(0.29, 0.62, 1.0)))
+		InputHints.label_for_action("emp", str(emp_binding.get("keybind", ""))),
+		emp_binding.get("color", Color(0.29, 0.62, 1.0)))
 	_hud.set_ability_state("emp", "disabled")
 	_hud.ability_pressed.connect(func(id: String):
 		if id == "emp":
@@ -432,7 +435,7 @@ func _toggle_pause() -> void:
 	if _scheduler.is_paused():
 		if _emp_pause_locked and not _emp_queued:
 			_hud.set_paused(true)
-			_tutorial_prompt.show_prompt("[E] - queue Aster's EMP before unpausing")
+			_tutorial_prompt.show_prompt("%s - queue Aster's EMP before unpausing" % InputHints.bracket("emp"))
 			return
 		if _current_step == "multiselect_tutorial" and not _multiselect_has_required_pair():
 			_hud.set_paused(true)
@@ -452,7 +455,7 @@ func _on_pause_toggled(is_paused: bool) -> void:
 	else:
 		if _emp_pause_locked and not _emp_queued:
 			_hud.set_paused(true)
-			_tutorial_prompt.show_prompt("[E] - queue Aster's EMP before unpausing")
+			_tutorial_prompt.show_prompt("%s - queue Aster's EMP before unpausing" % InputHints.bracket("emp"))
 			return
 		if _current_step == "multiselect_tutorial" and not _multiselect_has_required_pair():
 			_hud.set_paused(true)
@@ -473,7 +476,7 @@ func _on_emp_pressed() -> void:
 			_emp_queued = true
 			_emp_pause_locked = false
 			_hud.set_ability_state("emp", "queued")
-			_tutorial_prompt.show_prompt("[Space] - unpause to fire queued EMP")
+			_tutorial_prompt.show_prompt("%s - unpause to fire queued EMP" % InputHints.bracket("pause"))
 		else:
 			_fire_emp_both()
 
@@ -603,7 +606,7 @@ func _multiselect_has_required_pair() -> bool:
 func _update_multiselect_tutorial_prompt() -> void:
 	if _multiselect_has_required_pair():
 		# Queue the move while paused, then unpause to run through together.
-		_tutorial_prompt.show_prompt("Both selected. Click the open doorway to set your path, then press [Space].")
+		_tutorial_prompt.show_prompt("Both selected. Click the open doorway to set your path, then press %s." % InputHints.bracket("pause"))
 	else:
 		_tutorial_prompt.show_prompt("Ctrl-click Aster's portrait to select both Peris and Aster.")
 
@@ -798,7 +801,7 @@ func _start_emp_tutorial() -> void:
 	_emp_pause_locked = true
 	_emp_queued = false
 	_hud.set_ability_state("emp", "ready")
-	_tutorial_prompt.show_prompt("[E] - queue Aster's EMP")
+	_tutorial_prompt.show_prompt("%s - queue Aster's EMP" % InputHints.bracket("emp"))
 	_scheduler.pause()
 	_hud.set_paused(true)
 
@@ -850,7 +853,7 @@ func _start_multiselect_tutorial() -> void:
 	_hud.set_paused(true)
 	DialogueData.say_to(_dialogue, "elevator.aster.multiselect")
 	_dialogue.dialogue_finished.connect(func():
-		_tutorial_prompt.show_prompt("[Tab] — switch  [Space] — unpause")
+		_tutorial_prompt.show_prompt("[Tab] — switch  %s — unpause" % InputHints.bracket("pause"))
 	, CONNECT_ONE_SHOT)
 	_dialogue.dialogue_finished.connect(_update_multiselect_tutorial_prompt, CONNECT_ONE_SHOT)
 

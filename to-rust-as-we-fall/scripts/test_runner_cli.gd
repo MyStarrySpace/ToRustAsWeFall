@@ -4790,9 +4790,9 @@ func _elevator_realinput_beats(instance: Node) -> Dictionary:
 	var exit_gate := Vector3(float(instance.ELEVATOR_SIZE.x) / 2.0, 0.0, 0.0)
 	# Walk Peris onto the downed-Aster wake zone (HOLD_ACTION dwell).
 	beats["approach_aster"] = func(): _synthetic_player_click(instance, Vector3(instance.ASTER_POS.x, 0.0, instance.ASTER_POS.z))
-	# Queue EMP (E) while auto-paused, then resume (Space) to fire it.
+	# Queue EMP (its live binding) while auto-paused, then resume (Space) to fire it.
 	beats["emp_tutorial"] = func():
-		_press_hud_action_key(instance, KEY_V)
+		_press_hud_action_key(instance, OS.find_keycode_from_string(InputHints.label_for_action("emp")))
 		_press_hud_action_key(instance, KEY_SPACE)
 	# Select the peris+aster pair (Ctrl+2), unpause (Space), then walk both to the
 	# door gate: click moves the active char, Tab switches active, click again. These
@@ -6824,15 +6824,20 @@ func _test_elevator() -> void:
 		_assert_true(instance._scheduler.is_paused(), "EMP tutorial pauses after the prompt is available")
 		_assert_true(str(instance._tutorial_prompt._label.text).contains("EMP"),
 			"EMP tutorial prompt text is visible")
-		_assert_true(str(instance._tutorial_prompt._label.text).contains("[E]"),
-			"EMP tutorial maps Aster's main ability to E")
+		# The prompt key comes from the LIVE emp binding (no hardcoded letter) and must NOT collide with
+		# camera-rotate (Q/E). It is bound to Z; assert the prompt shows whatever the binding actually is.
+		var emp_key_label := InputHints.label_for_action("emp")
+		_assert_equals(emp_key_label, "Z", "EMP is bound to Z (no longer E, which rotates the camera)")
+		_assert_true(str(instance._tutorial_prompt._label.text).contains("[%s]" % emp_key_label),
+			"EMP tutorial prompt shows the live EMP key (%s)" % emp_key_label)
 		_assert_elevator_escort_standoff(instance, 2.0,
 			"Escort units are not touching the party at the EMP prompt")
 		instance._toggle_pause()
 		_assert_true(instance._scheduler.is_paused(),
 			"EMP tutorial cannot unpause before Aster queues EMP")
-		_assert_true(_press_hud_action_key(instance, KEY_V), "Elevator accepts V (EMP action) for Aster EMP — E now rotates the camera")
-		_assert_true(instance._emp_queued, "Aster EMP queues from E while the tutorial is paused")
+		_assert_true(_press_hud_action_key(instance, OS.find_keycode_from_string(emp_key_label)),
+			"Elevator accepts the bound EMP key (%s) for Aster EMP" % emp_key_label)
+		_assert_true(instance._emp_queued, "Aster EMP queues from its bound key while the tutorial is paused")
 		_assert_elevator_escort_standoff(instance, 2.0,
 			"Escort units are not touching the party while EMP is queued")
 		instance._toggle_pause()
