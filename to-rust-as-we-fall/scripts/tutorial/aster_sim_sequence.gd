@@ -425,11 +425,18 @@ func _end_terminal_screen_focus() -> void:
 
 func _start_terminal_data() -> void:
 	_current_step = "terminal_data"
-	_scheduler.schedule_after(0.75, _start_ron_drinks, "ron_drinks")
+	# Brief beat for the screen-focus camera to settle back before Ron pipes up.
+	_scheduler.schedule_after(0.4, _start_ron_drinks, "ron_drinks")
 
 func _start_ron_drinks() -> void:
 	_current_step = "ron_drinks"
-	_scheduler.schedule_after(0.0, _start_walk_to_drink, "walk_to_drink")
+	# Ron points out the drink machine BEFORE the prompt appears, so grabbing a drink reads as a
+	# response to him rather than coming out of nowhere. The prompt opens as he finishes the line.
+	DialogueData.say_to(_dialogue, "aster_sim.ron.drinks")
+	_dialogue.dialogue_finished.connect(
+		func(): _scheduler.schedule_after(0, _start_walk_to_drink, "walk_to_drink"),
+		CONNECT_ONE_SHOT
+	)
 
 func _start_walk_to_drink() -> void:
 	_current_step = "walk_to_drink"
@@ -471,7 +478,6 @@ func _start_ron_move_fast() -> void:
 	))
 	DialogueData.say_to(_dialogue, "aster_sim.ron.move_fast")
 	_dialogue_chain([
-		"aster_sim.ron.drinks",
 		"aster_sim.ron.lighting",
 		"aster_sim.aster.lighting",
 		"aster_sim.ron.tag_day_jobs",

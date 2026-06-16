@@ -19942,6 +19942,19 @@ func _test_sequence_contracts() -> void:
 
 	var act1_actions := Callable(self, "_make_act1_sequence_actions")
 
+	# Ron introduces the drink machine BEFORE the player drinks, so the drink is motivated rather
+	# than appearing out of nowhere. Assert the intro line is logged at/under the drink step's tick.
+	var aster_drink_intro_first := func(_instance: Node, result: Dictionary):
+		var drink_tick: float = _step_tick(result, "drink")
+		var intro_tick := -1.0
+		for entry in result.get("dialogue_log", []):
+			if String(entry.get("text", "")).to_lower().find("drink machine") != -1:
+				intro_tick = float(entry.get("tick", -1.0))
+				break
+		_assert_true(intro_tick >= 0.0, "Ron introduces the drink machine in dialogue")
+		_assert_true(drink_tick >= 0.0 and intro_tick <= drink_tick,
+			"The drink-machine intro plays before Aster drinks (intro %.1f <= drink %.1f)" % [intro_tick, drink_tick])
+
 	await _run_sequence_contract(
 		"Sequence Contract: Aster Sim",
 		"res://scenes/tutorial/aster_sim.tscn",
@@ -19953,7 +19966,10 @@ func _test_sequence_contracts() -> void:
 		],
 		aster_actions,
 		Callable(),
-		"res://scenes/tutorial/peris_sim.tscn"
+		"res://scenes/tutorial/peris_sim.tscn",
+		[],
+		"complete",
+		aster_drink_intro_first
 	)
 
 	await _run_sequence_contract(
