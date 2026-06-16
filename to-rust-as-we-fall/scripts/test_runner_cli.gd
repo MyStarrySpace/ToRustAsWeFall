@@ -6807,17 +6807,18 @@ func _test_elevator_bridge_collapse() -> void:
 		"The ecology below does not pursue the party while it crosses the bridge above")
 	_assert_true(not ecology_pathfound,
 		"The ecology below stays in ambient roam (no A* patrol/pursuit) while the party crosses above")
-	# Capture a plank's start height, then let the scheduled fall fire and animate one real frame.
-	var plank0: Node3D = bridge_floor_node.find_child("Plank_0", false, false) if bridge_floor_node != null else null
-	var plank0_y0: float = plank0.position.y if plank0 != null else 0.0
+	# Let the scheduled fall fire, then drive the cosmetic tween DETERMINISTICALLY (custom_step, not
+	# wall-clock process frames) and confirm the planks actually drop.
 	instance.headless_advance(1.0, 0.05)   # past the bridge_fall delay → _execute_bridge_fall runs
-	for f in range(20):
-		await get_tree().process_frame    # tweens are wall-clock; let the SceneTree advance them
-	_assert_true(instance._fall_tween != null,
-		"The collapse kicks off a fall animation")
-	if plank0 != null and is_instance_valid(plank0):
-		_assert_true(plank0.position.y < plank0_y0 - 0.05,
-			"Bridge planks actually drop during the collapse (%.2f -> %.2f)" % [plank0_y0, plank0.position.y])
+	_assert_true(instance._fall_tween != null, "The collapse kicks off a fall animation")
+	if instance._fall_tween != null and is_instance_valid(bridge_floor_node):
+		instance._fall_tween.custom_step(1.0)   # advance ~1s of the fall (not past its end → floor stays)
+		var lowest := 999.0
+		for child in bridge_floor_node.get_children():
+			if child is MeshInstance3D and str(child.name).begins_with("Plank_"):
+				lowest = minf(lowest, (child as MeshInstance3D).position.y)
+		_assert_true(lowest < -1.0,
+			"Bridge planks drop into the collapse (lowest plank y=%.2f, from -0.05)" % lowest)
 	if instance.has_method("_teardown_sequence"):
 		instance._teardown_sequence()
 	instance.queue_free()

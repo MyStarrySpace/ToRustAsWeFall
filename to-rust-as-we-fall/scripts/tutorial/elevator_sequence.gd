@@ -992,17 +992,15 @@ func _on_fall_landed() -> void:
 		return
 	_fall_landed_fired = true
 	_camera.shake(0.3, 6.0)
-	# Land on the clear ledge just past the bridge end — beyond the enemy band the party crossed
-	# over. The broken section juts out here (the climb prompt sits on it); the fork is ahead.
-	var land_x: float = BRIDGE_END_X + 1.0
+	# Land STRAIGHT DOWN where the span gave way — the broken section juts out mid-span here (the climb
+	# prompt + fork sit at this X), so the party drops onto the ecology below, no teleport to a far ledge.
 	for char_id in ["peris", "aster"]:
 		var pos: Vector3 = _game_state.get_position(char_id)
 		# Real cross-level transition (logs KIND_SET_LEVEL): the data-layer Y snaps to the LOWER deck and
 		# the move stops, so movement, detection, and paths now read at the lower floor — not a hand-poked Y.
 		_game_state.set_character_level(char_id, LEVEL_LOWER)
-		# Slide onto the clear landing ledge past the bridge end, staying on the lower deck.
 		var lp: Vector3 = _game_state.get_position(char_id)
-		_game_state.characters[char_id]["position"] = Vector3(maxf(pos.x, land_x), lp.y, lp.z)
+		_game_state.characters[char_id]["position"] = Vector3(pos.x, lp.y, lp.z)
 		if _game_state.grid != null:
 			_game_state.characters[char_id]["grid_cell"] = _game_state.grid.world_to_grid(_game_state.characters[char_id]["position"])
 	# Free the old level only once the cosmetic fall has visually finished. At 1x the tween is
@@ -1055,7 +1053,9 @@ func _show_climb_interactable() -> void:
 	var parent := _chunks.get("below", null) as Node3D
 	if parent == null:
 		parent = find_child("Environment", false, false) as Node3D
-	var zone_pos := Vector3(BRIDGE_END_X + 1.0, BELOW_Y + 0.05, 0.0)
+	# Sits at the mid-span landing — right under where the bridge gave way, so the party checks the
+	# collapse where they fell (no walk back to a far ledge).
+	var zone_pos := Vector3(BRIDGE_START_X + 5.0, BELOW_Y + 0.05, 0.0)
 	_climb_interactable = _create_interactable(parent, zone_pos, "ClimbPromptZone", 2.4, 0.8, "Climb", true)
 	_climb_interactable.description = "Collapsed Bridge"
 	_climb_interactable.interacted.connect(_on_climb_prompt_interacted)
