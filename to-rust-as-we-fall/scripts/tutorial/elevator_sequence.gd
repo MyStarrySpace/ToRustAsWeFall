@@ -9,7 +9,6 @@ var _peris_node: CharacterBody3D
 var _fall_landed_fired := false  # one-shot guard: bridge landing fires once
 var _fall_tween: Tween           # the cosmetic fall animation (wall-clock)
 var _collapsed_chunks_removed := false  # one-shot guard: old level chunks freed once
-var _below_fauna_engaged := false  # the ecology stays ambient until the player takes the route through it
 var _escort_1  # NPC
 var _escort_2  # NPC
 var _active_character := "peris"
@@ -199,8 +198,11 @@ func _register_characters() -> void:
 	_game_state.grid = _grid          # assign BEFORE registering so each character's level derives from its spawn Y
 	_configure_levels(2, -BELOW_Y)    # 2 decks, 4m apart: level 0 = lower (Y=-4), level 1 = upper (Y=0)
 	_setup_level_footprints()
-	_register_gs_character("peris", _peris_node, 2.5)
-	_register_gs_character("aster", _aster_node, 2.5)
+	# The party needs a POSITIVE data-layer HP, or enemy detection treats them as downed (hp<=0) and
+	# the ecology never gives chase. The elevator tracks actual damage in _aster_hp/_peris_hp; this is
+	# the "alive" flag the AI reads.
+	_register_gs_character("peris", _peris_node, 2.5, {"hp": _peris_hp})
+	_register_gs_character("aster", _aster_node, 2.5, {"hp": _aster_hp})
 	_register_gs_character("eu1", _escort_1, 2.0)
 	_register_gs_character("eu2", _escort_2, 2.0)
 	_aster_node.set_move_enabled(false)
@@ -397,11 +399,8 @@ func _on_process(delta: float, spd: float) -> void:
 	# Route convergence gate: after choosing a lane and walking it, reaching convergence
 	# opens the junction (the fall already happened — this no longer triggers the collapse).
 	if _current_step == "route_choice":
-		# Committing to the lane THROUGH the ecology (the low-Z side, toward ENEMY_ROUTE_END) wakes the
-		# fauna against the party; the environmental-hazard lane (high-Z) leaves them calm. The fauna
-		# only ever threaten the party on the route the player actually takes.
-		if _game_state.get_position("aster").z < FORK_POS.z - 2.0:
-			_engage_below_fauna()
+		# The ecology gates itself: it's distracted by its flures, so it only chases a party that cuts
+		# through the huddle (the enemy lane). The hazard lane keeps enough distance to slip past.
 		if _game_state.get_position("aster").x > ROUTES_CONVERGE.x - 2.0:
 			_tutorial_prompt.hide_prompt()
 			_player.set_move_enabled(false)
@@ -873,7 +872,6 @@ func _start_corridor() -> void:
 		_camera.clear_look_bounds()
 	_load_chunk("bridge")
 	_load_chunk("below")
-	_below_fauna_engaged = false  # ecology starts ambient each time the lower deck spins up
 	var exit_pos := Vector3(ELEVATOR_SIZE.x / 2.0 + 3.0, 0, 0)
 	_game_state.command_move_to_pos("aster", exit_pos)
 	_game_state.command_move_to_pos("peris", exit_pos + Vector3(0, 0, 1.0))
@@ -1056,19 +1054,6 @@ func _start_route_choice() -> void:
 	_player.set_move_enabled(true)
 	_tutorial_prompt.show_prompt("Click to move — choose a path")
 
-## Arm the ambient ecology against the party — called once the player commits to the lane THROUGH the
-## fauna at the fork (the alternative is the environmental-hazard lane, where they stay calm). The
-## roaming fauna now target the party, so a re-predicted scan promotes them to pursuit on this deck.
-func _engage_below_fauna() -> void:
-	if _below_fauna_engaged:
-		return
-	_below_fauna_engaged = true
-	for e in _enemies:
-		if is_instance_valid(e):
-			e._detection_targets = ["aster", "peris"]
-			if _game_state != null:
-				_game_state._recompute_all_detection_predictions(e.char_id)
-
 # --- Junction / Shelter ---
 
 func _start_junction_arrive() -> void:
@@ -1157,6 +1142,41 @@ func _spawn_enemy(id: String, pos: Vector3, parent: Node3D) -> Enemy:
 	_enemy_count += 1
 	return enemy
 
+## The below-bridge ecology huddles around flures and is DISTRACTED by them: each fauna targets the
+## party but its detection range is shrunk (DETECTION_DISTRACTED_FACTOR), so it only gives chase when
+## Aster/Peris come really close — cutting through the huddle. Keeping distance (or the hazard lane)
+## slips past. Roaming (no A*) keeps it cheap; the distraction flag is derived (not logged, replay-safe).
+func _arm_below_fauna(enemy: Enemy, anchor: Vector3, radius: float) -> void:
+	enemy._detection_targets = ["aster", "peris"]
+	enemy.set_roam(anchor, radius)
+	if _game_state != null:
+		_game_state.set_character_distracted(enemy.char_id, true)
+
+## A flure: a glowing lure the ecology clusters around (the distraction source — purely cosmetic here;
+## the distraction itself is the shrunk detection range set in _arm_below_fauna).
+func _build_flure(parent: Node3D, pos: Vector3) -> void:
+	var light := OmniLight3D.new()
+	light.position = pos + Vector3(0, 0.8, 0)
+	light.light_color = Color(0.6, 0.9, 0.2)
+	light.light_energy = 0.9
+	light.omni_range = 3.5
+	parent.add_child(light)
+	var mesh := MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radius = 0.32
+	sphere.height = 0.64
+	mesh.mesh = sphere
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.4, 0.7, 0.15, 0.75)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.emission_enabled = true
+	mat.emission = Color(0.5, 0.85, 0.2)
+	mat.emission_energy_multiplier = 1.6
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mesh.material_override = mat
+	mesh.position = pos + Vector3(0, 0.5, 0)
+	parent.add_child(mesh)
+
 func _on_enemy_hit(target_id: String, damage: float) -> void:
 	if _game_over:
 		return
@@ -1176,12 +1196,16 @@ func _on_enemy_hit(target_id: String, damage: float) -> void:
 		_hud.set_portrait_stat("peris", "hp", _peris_hp)
 		if _peris_hp <= 0:
 			_hud.set_portrait_status("peris", "downed")
-	# Flash the hit character white briefly
+	# Flash the hit character white briefly. The body is a 3D node (no `modulate` — that crashed); flash
+	# its mesh material albedo to white and back to the character's base color instead.
 	var target_node: Node3D = _aster_node if target_id == "aster" else _peris_node
-	if target_node:
+	var hit_mesh: MeshInstance3D = target_node.get_node_or_null("Mesh") if target_node != null else null
+	if hit_mesh != null and hit_mesh.material_override is StandardMaterial3D:
+		var mat := hit_mesh.material_override as StandardMaterial3D
+		var base_color: Color = target_node.color if "color" in target_node else mat.albedo_color
 		var flash := create_tween()
-		flash.tween_property(target_node, "modulate", Color(1, 1, 1, 0.4), 0.1)
-		flash.tween_property(target_node, "modulate", Color(1, 1, 1, 1), 0.3)
+		flash.tween_property(mat, "albedo_color", Color(1, 1, 1), 0.1)
+		flash.tween_property(mat, "albedo_color", base_color, 0.3)
 	if _aster_hp <= 0 and _peris_hp <= 0:
 		_start_game_over()
 
@@ -1479,10 +1503,11 @@ func _build_below_chunk(parent: Node3D) -> void:
 		bloom.omni_range = 3.0
 		parent.add_child(bloom)
 
-	# The ecology below is AMBIENT while the party crosses the bridge above (and on the hazard route
-	# after the fall): the fauna only WANDER locally (set_roam — no A* pathfinding, near-free for a
-	# yard full of them) and do NOT hunt the party (empty detection targets). They become a threat only
-	# if the player takes the route THROUGH them at the fork — call _engage_below_fauna() to arm them.
+	# The below-bridge ecology huddles around flures and is DISTRACTED by them (see _arm_below_fauna):
+	# it targets the party but only chases when Aster/Peris get really close. The party crosses the
+	# bridge ABOVE (the vertical gap blocks detection entirely), then on the lower deck can keep distance
+	# or take the hazard lane to slip past, or cut through the huddle and get caught. A flure sits with
+	# each chelator cluster.
 	var chelator_ids: Array[String] = []
 	for i in range(6):
 		var cid := "chelator_%d" % i
@@ -1493,11 +1518,11 @@ func _build_below_chunk(parent: Node3D) -> void:
 		enemy.max_hp = 20.0
 		enemy._hp = 20.0
 		enemy.detection_range = 4.0
-		enemy._detection_targets = []
-		enemy.set_roam(enemy.position, 3.0)
+		if i < 2:
+			_build_flure(parent, Vector3(bridge_start + 1.0, ground_y + 0.4, -5.0 if i == 0 else 5.0))
+		_arm_below_fauna(enemy, enemy.position, 2.0)
 
-	# Predators are the bigger ambient fauna — same rule: roam locally, no party hunt until the player
-	# commits to the route through them (_engage_below_fauna).
+	# Predators are the bigger fauna in the same huddle — same rule (distracted, only chase up close).
 	for i in range(2):
 		var pid := "predator_%d" % i
 		var predator := _spawn_enemy(pid,
@@ -1510,7 +1535,6 @@ func _build_below_chunk(parent: Node3D) -> void:
 		predator.charge_damage = 35.0
 		predator.detection_range = 6.0
 		_game_state.characters[pid].stats["detection_range"] = 6.0
-		predator._detection_targets = []
 		if predator._mesh and predator._mesh.mesh is CapsuleMesh:
 			(predator._mesh.mesh as CapsuleMesh).radius = 0.35
 			(predator._mesh.mesh as CapsuleMesh).height = 1.2
@@ -1519,7 +1543,7 @@ func _build_below_chunk(parent: Node3D) -> void:
 		predator._base_color = Color(0.5, 0.12, 0.08)
 		if predator._mesh and predator._mesh.material_override:
 			(predator._mesh.material_override as StandardMaterial3D).albedo_color = Color(0.5, 0.12, 0.08)
-		predator.set_roam(predator.position, 3.0)
+		_arm_below_fauna(predator, predator.position, 2.5)
 
 	# Fluor bioluminescence.
 	var fluor_light := OmniLight3D.new()
@@ -1598,14 +1622,16 @@ func _build_below_chunk(parent: Node3D) -> void:
 
 	var en_z := -4.0
 	_add_wall(parent, Vector3(fork_x + 8.0, ground_y + wall_h / 2.0, en_z - 3.0), Vector3(16, wall_h, 0.3), wall_color)
-	# Enemy-route fauna (down the enemy lane). Ambient roam, no party hunt, until the player commits to
-	# THIS lane at the fork (_engage_below_fauna) — taking the hazard lane leaves them calm.
+	# Enemy-lane huddle: the fauna cluster around flures that BLOCK the corridor. Distracted by the
+	# flures (shrunk detection), they ignore a party keeping its distance — but cutting straight through
+	# the huddle to get down the lane brings Aster/Peris inside their reach and they give chase.
 	for i in range(4):
 		var ex: float = fork_x + 14.0 + i * 3.0
-		var enemy := _spawn_enemy("route_enemy_%d" % i,
-			Vector3(ex, ground_y + 0.5, en_z - 1.5), parent)
-		enemy._detection_targets = []
-		enemy.set_roam(enemy.position, 2.5)
+		var hud_pos := Vector3(ex, ground_y + 0.5, en_z - 1.5)
+		var enemy := _spawn_enemy("route_enemy_%d" % i, hud_pos, parent)
+		if i % 2 == 0:
+			_build_flure(parent, Vector3(ex + 1.5, ground_y + 0.4, en_z - 1.5))
+		_arm_below_fauna(enemy, hud_pos, 1.2)
 
 	# Hazard route.
 	var hz_z := 4.0

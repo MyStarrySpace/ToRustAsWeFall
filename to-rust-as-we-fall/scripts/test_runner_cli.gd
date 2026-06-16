@@ -422,6 +422,9 @@ func _ready() -> void:
 			"--test-elevator-box-select":
 				ran_test = true
 				await _test_elevator_box_select_multiselect()
+			"--test-elevator-distraction":
+				ran_test = true
+				await _test_elevator_distracted_fauna()
 			"--test-elevator-fall-level":
 				ran_test = true
 				await _test_elevator_fall_level()
@@ -919,6 +922,7 @@ func _run_all_tests() -> void:
 	await _test_elevator()
 	await _test_elevator_bridge_collapse()
 	await _test_elevator_box_select_multiselect()
+	await _test_elevator_distracted_fauna()
 	await _test_elevator_fall_level()
 	await _test_act1_chunk_grids()
 	await _test_act1_prepare_fragment_grids()
@@ -6788,6 +6792,79 @@ func _test_elevator_bridge_collapse() -> void:
 		"The ecology below does not pursue the party while it crosses the bridge above")
 	_assert_true(not ecology_pathfound,
 		"The ecology below stays in ambient roam (no A* patrol/pursuit) while the party crosses above")
+	if instance.has_method("_teardown_sequence"):
+		instance._teardown_sequence()
+	instance.queue_free()
+	await get_tree().process_frame
+
+# --- Test: the below-bridge ecology is DISTRACTED by its flures — it only chases up close ---
+# Each fauna targets the party but is distracted (shrunk detection range), so on the lower deck a party
+# keeping its distance is ignored; one that cuts through the huddle (gets really close) gets chased.
+func _test_elevator_distracted_fauna() -> void:
+	_test_name = "Elevator Distracted Fauna"
+	var scene := load("res://scenes/tutorial/elevator.tscn")
+	if scene == null:
+		_assert_true(false, "elevator scene loads")
+		return
+	var instance: Node = scene.instantiate()
+	if "suppress_scene_change" in instance:
+		instance.suppress_scene_change = true
+	get_tree().root.add_child(instance)
+	for i in range(8):
+		await get_tree().process_frame
+	var gs = instance._game_state
+	instance._scheduler.clear()
+	instance._load_chunk("below")
+	var guard: Node = null
+	for e in instance._enemies:
+		if is_instance_valid(e) and str(e.char_id).begins_with("route_enemy"):
+			guard = e
+			break
+	_assert_true(guard != null, "Enemy-lane fauna present below the bridge")
+	if guard == null:
+		instance.queue_free()
+		await get_tree().process_frame
+		return
+	_assert_true(gs.is_character_distracted(guard.char_id),
+		"Enemy-lane fauna is distracted by its flure")
+	var normal_range: float = float(gs.characters[guard.char_id].stats.get("detection_range", 6.0))
+	var distracted_range: float = normal_range * gs.DETECTION_DISTRACTED_FACTOR
+	# MEDIUM distance: inside the fauna's NORMAL reach but outside its distracted reach — it must ignore
+	# the party (a non-distracted enemy would chase here, which is exactly what we're guarding against).
+	var mid_gap: float = (normal_range + distracted_range) * 0.5
+	var anchor: Vector3 = gs.get_position(guard.char_id)
+	gs.command_stop("aster")
+	gs.set_character_level("aster", instance.LEVEL_LOWER)
+	gs.characters["aster"]["position"] = anchor + Vector3(mid_gap, 0.0, 0.0)
+	gs.characters["aster"]["grid_cell"] = gs.grid.world_to_grid(gs.characters["aster"]["position"])
+	gs._recompute_all_detection_predictions("aster")
+	for s in range(30):
+		instance.headless_advance(0.1, 0.05)
+		instance._on_process(0.1, 1.0)
+	_assert_true(guard.get_state() in ["idle", "roam"] and str(guard._current_target_id) != "aster",
+		"Distracted fauna ignores the party at mid distance (%.1fm < normal %.1f, > distracted %.1f); state=%s" \
+			% [mid_gap, normal_range, distracted_range, guard.get_state()])
+	# CLOSE: the party cuts right into the huddle (well inside the distracted reach) and the fauna gives
+	# chase. Settle the fauna at its anchor first so the check is on proximity, not its wander phase.
+	var huddle_anchor: Vector3 = guard._roam_anchor if "_roam_anchor" in guard else gs.get_position(guard.char_id)
+	if "_fsm" in guard and guard._fsm != null:
+		guard._fsm.transition_to("idle")
+	gs.command_stop(guard.char_id)
+	gs.characters[guard.char_id]["position"] = huddle_anchor
+	gs.command_stop("aster")
+	gs.characters["aster"]["position"] = Vector3(huddle_anchor.x + 1.0, huddle_anchor.y, huddle_anchor.z)
+	gs.characters["aster"]["grid_cell"] = gs.grid.world_to_grid(gs.characters["aster"]["position"])
+	gs._recompute_all_detection_predictions("aster")
+	var chased := false
+	for s in range(40):
+		instance.headless_advance(0.1, 0.05)
+		instance._on_process(0.1, 1.0)
+		if guard.get_state() in ["alert", "pursuit", "windup", "charge", "impact"] \
+				and str(guard._current_target_id) == "aster":
+			chased = true
+			break
+	_assert_true(chased,
+		"Distracted fauna gives chase when the party gets really close (within %.1fm)" % distracted_range)
 	if instance.has_method("_teardown_sequence"):
 		instance._teardown_sequence()
 	instance.queue_free()
