@@ -5853,6 +5853,15 @@ func _test_peris_sim() -> void:
 		var env: Node = instance.find_child("Environment", true, false)
 		_assert_true(env != null, "Environment node exists")
 
+		# The modeled room is bound through RoomModelBinder; validate() turns every silent failure
+		# mode (missing root, tilted ancestor, floor mismatch) into a loud string.
+		var room: Node = instance.find_child("PerisRoom", true, false)
+		_assert_true(room != null, "Peris modeled room (PerisRoom) is instantiated")
+		if "_room_binder" in instance and instance._room_binder != null:
+			var binder_problems: Array = instance._room_binder.validate()
+			_assert_true(binder_problems.is_empty(),
+				"Peris room binder validates clean (problems: %s)" % str(binder_problems))
+
 		var chars: Node = instance.find_child("Characters", true, false)
 		_assert_true(chars != null, "Characters node exists")
 
@@ -5989,7 +5998,8 @@ func _test_peris_sim() -> void:
 
 		var logbook_gate := instance.find_child("LogbookGate", true, false) as Node3D
 		if logbook_gate != null:
-			_assert_true(logbook_gate.global_position.x <= -3.5, "Peris Continue gate is at the room edge")
+			# By the modeled bookshelf on the room's right side (X~12 in the 14-wide modeled floor).
+			_assert_true(logbook_gate.global_position.x >= 11.0, "Peris Continue gate is by the bookshelf")
 
 		await _assert_peris_interaction_click_matrix(instance, dialogue)
 

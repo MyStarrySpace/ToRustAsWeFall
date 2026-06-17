@@ -31,8 +31,10 @@ var _water_plant_interactable
 var _can_pickup_interactable
 var _plant_watered := false
 var _explore_time_elapsed := false
-const WATERING_CAN_POS := Vector3(8.5, 0.0, -4.2)
-const FERN_POS := Vector3(3.0, 0.0, 1.2)  # Plant7 (Boston fern) — the watering target
+const WATERING_CAN_POS := Vector3(10.5, 0.0, 4.5)  # front-right, beside the modeled plant stand
+const FERN_POS := Vector3(6.0, 0.0, 2.4)  # Plant7 (Boston fern) — the central watering target
+# The watering beat drives the player to the dry fern; the input playthrough drives this point.
+const DRY_PLANT_POS := FERN_POS
 
 # Exploration beat (phase 1, pre-Monos-arrival)
 var _explore_logbook_gate  # Interactable at the logbook
@@ -44,19 +46,27 @@ var _explore_gate_fired := false
 var _is_paused := false
 var _efficiency_score := 100.0
 
-const DESK_POS := Vector3(0, 0, 0)
-const PORTAL_POS := Vector3(7, 0, 0)
-const MONOS_POS := Vector3(8.5, 0, 0)
-const PERIS_START := Vector3(0, 0.5, -1)
+const DESK_POS := Vector3(2.2, 0, 2.2)  # the modeled kiosk = workspace
+const PORTAL_POS := Vector3(2.5, 0, 1.4)  # floor in front of the wall-mounted modeled portal
+const MONOS_POS := Vector3(3.8, 0, 1.6)  # near the portal, reachable but >2.5 from the click-target stand
+const PERIS_START := Vector3(7, 0.5, 4.5)  # front-center, near the open side
 
-# The workspace floor is an 18x12 box centred at (4, 0) — world X in [-5, 13], Z in [-6, 6]. The grid is
-# that footprint at 1 cell / unit, so movement is cell-based + cooperative like the other gridded scenes.
-# OPEN (no border): the whole floor is walkable. Plants/zones sit right up against the visual walls (e.g.
-# Plant1 at x=-4.4, Wellness at x=-4.2 land in column 0) — a bordered grid would wall those edge cells off
-# and make those exploration zones unreachable.
-const GRID_ORIGIN := Vector3(-5.0, 0.0, -6.0)
-const GRID_SIZE := Vector2i(18, 12)
+# The workspace is the modeled Crocotile room (peris-sim.gltf): floor X in [0, 14], Z in [0, 6], up
+# Y in [0, 5]. The grid is that footprint at 1 cell / unit, so movement is cell-based + cooperative
+# like the other gridded scenes. OPEN (no border): the whole floor is walkable. Plants/zones sit right
+# up against the visual walls — a bordered grid would wall those edge cells off and make those
+# exploration zones unreachable.
+const GRID_ORIGIN := Vector3(0.0, 0.0, 0.0)
+const GRID_SIZE := Vector2i(14, 6)
+const ROOM_FLOOR_Y := 0.0  # the modeled floor's top surface
 var _grid: GridWorld
+# The room model binding — model lookups / floor surface / occupancy flow through this (RoomModelBinder).
+var _room_binder := RoomModelBinder.new()
+
+# The composed room visuals (shell + sofas) and the authored furniture/portal/props, both authored in
+# the same Godot frame as the grid above.
+const ROOM_GLTF := preload("res://resources/models/peris-sim/peris-sim.gltf")
+const FURNITURE_GLTF := preload("res://resources/models/peris-sim/peris-furniture.gltf")
 
 # --- Virtual method overrides ---
 
@@ -64,12 +74,22 @@ func _build_scene() -> void:
 	_build_grid()
 	_build_environment()
 
-## A single-level walkable plane over the workspace floor (bordered to match the room walls).
+## A single-level walkable plane over the modeled floor (open, no border).
 func _build_grid() -> void:
 	_grid = GridWorld.new()
 	_grid.origin = GRID_ORIGIN
 	_grid.create_room(GRID_SIZE.x, GRID_SIZE.y, false)
-	_build_decorations()
+	# The scene's ONE declaration of its modeled room: the floor surface (overlays/raycast ride it),
+	# grid seams aligned to the model's floor, and the re-export guards. setup() lifts grid.origin.y
+	# to the floor top so every ground overlay sits on the modeled floor, not inside the slab.
+	_room_binder.setup(self, _grid, {
+		"root_name": "PerisRoom",
+		"floor_surface_y": ROOM_FLOOR_Y,
+		"grid_origin_xz": Vector2(0, 0),
+		"occupants": [],
+		"gltf_path": "res://resources/models/peris-sim/peris-sim.gltf",
+		"wired_materials": [],
+	})
 	_build_portal()
 
 func _build_characters() -> void:
@@ -92,7 +112,9 @@ func _build_characters() -> void:
 	chars.add_child(_monos)
 
 	if not Engine.is_editor_hint():
-		_setup_game_camera(_player, Vector3(0, 8, 6), true)
+		# The modeled room is small (14x6); pull the follow camera up/back so the whole floor frames,
+		# keeping the far corners (plant stand / bookshelf) clickable.
+		_setup_game_camera(_player, Vector3(0, 14, 10), true)
 
 func _register_characters() -> void:
 	_game_state.grid = _grid
@@ -531,51 +553,31 @@ func _build_environment() -> void:
 	env.name = "Environment"
 	add_child(env)
 
-	var floor_mesh := MeshInstance3D.new()
-	var fb := BoxMesh.new()
-	fb.size = Vector3(18, 0.1, 12)
-	floor_mesh.mesh = fb
-	var fm := StandardMaterial3D.new()
-	fm.albedo_color = Color(0.14, 0.11, 0.08)
-	fm.roughness = 0.5
-	floor_mesh.material_override = fm
-	floor_mesh.position = Vector3(4, -0.05, 0)
-	env.add_child(floor_mesh)
+	# The modeled room is the scene's space: the Crocotile shell + sofas, and the authored
+	# furniture / portal frame / props, both authored in the grid frame (X[0,14] Z[0,6]).
+	var room := Node3D.new()
+	room.name = "PerisRoom"
+	add_child(room)
+	var shell := ROOM_GLTF.instantiate()
+	shell.name = "RoomShell"
+	room.add_child(shell)
+	var furniture := FURNITURE_GLTF.instantiate()
+	furniture.name = "RoomFurniture"
+	room.add_child(furniture)
 
+	# The gltf carries no collision; a thin static slab over the floor footprint gives the shared
+	# click-raycast a surface (layer 1, mask 0 — picked by the ground ray, collides with nothing).
 	var floor_body := StaticBody3D.new()
-	floor_body.position = Vector3(4, -0.01, 0)
+	floor_body.name = "FloorCollision"
+	floor_body.position = Vector3(GRID_SIZE.x * 0.5, ROOM_FLOOR_Y - 0.01, GRID_SIZE.y * 0.5)
 	floor_body.collision_layer = 1
 	floor_body.collision_mask = 0
 	var fc := CollisionShape3D.new()
 	var fs := BoxShape3D.new()
-	fs.size = Vector3(18, 0.02, 12)
+	fs.size = Vector3(GRID_SIZE.x, 0.02, GRID_SIZE.y)
 	fc.shape = fs
 	floor_body.add_child(fc)
 	env.add_child(floor_body)
-
-	var wc := Color(0.16, 0.12, 0.09)
-	_add_wall(env, Vector3(4, 1.5, -6), Vector3(18, 3, 0.2), wc)
-	_add_wall(env, Vector3(4, 1.5, 6), Vector3(18, 3, 0.2), wc)
-	_add_wall(env, Vector3(-5, 1.5, 0), Vector3(0.2, 3, 12), wc)
-	_add_wall(env, Vector3(13, 1.5, 0), Vector3(0.2, 3, 12), wc)
-
-	_add_desk(env, DESK_POS)
-	_add_seating(env, Vector3(4, 0, 0))
-
-	for i in range(5):
-		var plant := MeshInstance3D.new()
-		var sp := SphereMesh.new()
-		sp.radius = 0.3
-		sp.height = 0.6
-		plant.mesh = sp
-		var pm := StandardMaterial3D.new()
-		pm.albedo_color = Color(0.15, 0.35, 0.2)
-		pm.emission_enabled = true
-		pm.emission = Color(0.05, 0.15, 0.08)
-		pm.emission_energy_multiplier = 0.3
-		plant.material_override = pm
-		plant.position = Vector3(-4.2, 0.3, -4 + i * 2.0)
-		env.add_child(plant)
 
 	var dir_light := DirectionalLight3D.new()
 	dir_light.rotation_degrees = Vector3(-40, -20, 0)
@@ -585,10 +587,10 @@ func _build_environment() -> void:
 	env.add_child(dir_light)
 
 	var warm_fill := OmniLight3D.new()
-	warm_fill.position = Vector3(2, 2.5, 0)
+	warm_fill.position = Vector3(7, 2.8, 3)
 	warm_fill.light_color = Color(0.9, 0.7, 0.45)
-	warm_fill.light_energy = 1.8
-	warm_fill.omni_range = 8.0
+	warm_fill.light_energy = 2.2
+	warm_fill.omni_range = 12.0
 	env.add_child(warm_fill)
 
 	var we := WorldEnvironment.new()
@@ -604,49 +606,14 @@ func _build_environment() -> void:
 	we.environment = e
 	env.add_child(we)
 
-func _add_desk(parent: Node3D, pos: Vector3) -> void:
-	var desk := MeshInstance3D.new()
-	var db := BoxMesh.new()
-	db.size = Vector3(1.6, 0.06, 0.9)
-	desk.mesh = db
-	var dm := StandardMaterial3D.new()
-	dm.albedo_color = Color(0.2, 0.15, 0.1)
-	dm.roughness = 0.4
-	desk.material_override = dm
-	desk.position = pos + Vector3(0, 0.72, 0)
-	parent.add_child(desk)
-
-func _add_seating(parent: Node3D, pos: Vector3) -> void:
-	for z in [-1.5, 1.5]:
-		var seat := MeshInstance3D.new()
-		var sb := BoxMesh.new()
-		sb.size = Vector3(0.8, 0.4, 0.8)
-		seat.mesh = sb
-		var sm := StandardMaterial3D.new()
-		sm.albedo_color = Color(0.25, 0.18, 0.12)
-		sm.roughness = 0.8
-		seat.material_override = sm
-		seat.position = pos + Vector3(0, 0.2, z)
-		parent.add_child(seat)
-
 # --- Portal ---
 
+## The modeled portal is the wall-mounted frame; this builds only the GAMEPLAY portal layer
+## (the morphing glow/light/attack flash and labels the session steps drive), in front of it.
 func _build_portal() -> void:
-	var portal_frame := MeshInstance3D.new()
-	var arch := CylinderMesh.new()
-	arch.top_radius = 0.08
-	arch.bottom_radius = 0.08
-	arch.height = 2.5
-	portal_frame.mesh = arch
-	var pfm := StandardMaterial3D.new()
-	pfm.albedo_color = Color(0.2, 0.15, 0.1)
-	portal_frame.material_override = pfm
-	portal_frame.position = PORTAL_POS + Vector3(-0.5, 1.25, 0)
-	add_child(portal_frame)
-
-	var portal_frame2 := portal_frame.duplicate()
-	portal_frame2.position = PORTAL_POS + Vector3(0.5, 1.25, 0)
-	add_child(portal_frame2)
+	# The wall-mounted modeled portal centers near (2.0, 2.4, 0.3); the glow surface sits just in
+	# front of it, lifted to that height.
+	var portal_surface := PORTAL_POS + Vector3(0, 2.4, -1.1)
 
 	_portal_visual = MeshInstance3D.new()
 	var pv := BoxMesh.new()
@@ -660,11 +627,11 @@ func _build_portal() -> void:
 	pvm.emission_energy_multiplier = 1.2
 	pvm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_portal_visual.material_override = pvm
-	_portal_visual.position = PORTAL_POS + Vector3(0, 1.0, 0)
+	_portal_visual.position = portal_surface
 	add_child(_portal_visual)
 
 	_portal_light = OmniLight3D.new()
-	_portal_light.position = PORTAL_POS + Vector3(0, 1.5, 0)
+	_portal_light.position = portal_surface + Vector3(0, 0, 0.3)
 	_portal_light.light_color = Color(0.8, 0.5, 0.25)
 	_portal_light.light_energy = 1.5
 	_portal_light.omni_range = 5.0
@@ -683,7 +650,7 @@ func _build_portal() -> void:
 	lbl.font_size = 32
 	lbl.pixel_size = 0.01
 	lbl.modulate = Color(0.7, 0.5, 0.3, 0.6)
-	lbl.position = PORTAL_POS + Vector3(0, 2.6, 0)
+	lbl.position = portal_surface + Vector3(0, 1.4, 0)
 	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	add_child(lbl)
 
@@ -695,7 +662,7 @@ func _build_portal() -> void:
 	_sanction_feed_label.modulate = Color(0.6, 0.85, 0.78, 0.95)
 	_sanction_feed_label.outline_modulate = Color(0.03, 0.04, 0.03, 0.8)
 	_sanction_feed_label.outline_size = 4
-	_sanction_feed_label.position = PORTAL_POS + Vector3(0, 1.1, 0.08)
+	_sanction_feed_label.position = portal_surface + Vector3(0, 0, 0.1)
 	_sanction_feed_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_sanction_feed_label.visible = false
 	add_child(_sanction_feed_label)
@@ -716,139 +683,9 @@ func _show_sanction_feed_visual(title: String, body: String, color: Color) -> vo
 		_portal_light.light_color = color
 		_portal_light.light_energy = 2.4
 
-# --- Decorations ---
-
-func _build_decorations() -> void:
-	var env_node: Node = find_child("Environment", false, false)
-	if not env_node:
-		return
-
-	# Vessel-wrap wall motifs: curved ridges representing the
-	# pericyte's characteristic wrapping pattern around blood vessels
-	var wrap_mat := StandardMaterial3D.new()
-	wrap_mat.albedo_color = Color(0.22, 0.16, 0.11)
-	wrap_mat.roughness = 0.7
-	for i in range(6):
-		var wrap_mesh := MeshInstance3D.new()
-		var cm := CylinderMesh.new()
-		cm.top_radius = 0.05
-		cm.bottom_radius = 0.05
-		cm.height = 2.2
-		wrap_mesh.mesh = cm
-		wrap_mesh.material_override = wrap_mat
-		wrap_mesh.position = Vector3(-4.85, 0.4 + i * 0.45, -3.0 + i * 1.0)
-		wrap_mesh.rotation.z = PI / 2.0
-		wrap_mesh.rotation.y = 0.3
-		env_node.add_child(wrap_mesh)
-
-	# Warm pendant lights.
-	var pendant_mat := StandardMaterial3D.new()
-	pendant_mat.albedo_color = Color(0.7, 0.5, 0.25)
-	pendant_mat.emission_enabled = true
-	pendant_mat.emission = Color(0.5, 0.35, 0.15)
-	pendant_mat.emission_energy_multiplier = 1.5
-	pendant_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	for pos in [Vector3(-2, 0, 0), Vector3(3, 0, 2), Vector3(3, 0, -2)]:
-		var shade := MeshInstance3D.new()
-		var sp := SphereMesh.new()
-		sp.radius = 0.12
-		sp.height = 0.18
-		shade.mesh = sp
-		shade.material_override = pendant_mat
-		shade.position = pos + Vector3(0, 2.6, 0)
-		env_node.add_child(shade)
-		var cord := MeshInstance3D.new()
-		var cc := CylinderMesh.new()
-		cc.top_radius = 0.01
-		cc.bottom_radius = 0.01
-		cc.height = 0.4
-		cord.mesh = cc
-		cord.material_override = wrap_mat
-		cord.position = pos + Vector3(0, 2.8, 0)
-		env_node.add_child(cord)
-
-	var rug := MeshInstance3D.new()
-	var rb := BoxMesh.new()
-	rb.size = Vector3(3.0, 0.01, 4.5)
-	rug.mesh = rb
-	var rug_mat := StandardMaterial3D.new()
-	rug_mat.albedo_color = Color(0.18, 0.12, 0.08)
-	rug_mat.roughness = 0.9
-	rug.material_override = rug_mat
-	rug.position = Vector3(4, 0.005, 0)
-	env_node.add_child(rug)
-
-	# Side table between the two seats
-	var table := MeshInstance3D.new()
-	var tb := CylinderMesh.new()
-	tb.top_radius = 0.3
-	tb.bottom_radius = 0.2
-	tb.height = 0.5
-	table.mesh = tb
-	var table_mat := StandardMaterial3D.new()
-	table_mat.albedo_color = Color(0.2, 0.15, 0.1)
-	table_mat.roughness = 0.4
-	table.material_override = table_mat
-	table.position = Vector3(4, 0.25, 0)
-	env_node.add_child(table)
-
-	# Wall hangings.
-	var tapestry_colors := [
-		Color(0.25, 0.15, 0.08),
-		Color(0.2, 0.12, 0.15),
-		Color(0.15, 0.18, 0.1),
-	]
-	for i in range(3):
-		var tap := MeshInstance3D.new()
-		var tapb := BoxMesh.new()
-		tapb.size = Vector3(1.5, 1.8, 0.02)
-		tap.mesh = tapb
-		var tm := StandardMaterial3D.new()
-		tm.albedo_color = tapestry_colors[i]
-		tm.roughness = 0.85
-		tap.material_override = tm
-		tap.position = Vector3(-1.5 + i * 3.5, 1.6, -5.85)
-		env_node.add_child(tap)
-
-	# Small ceramic vessels on the desk
-	var vessel_mat := StandardMaterial3D.new()
-	vessel_mat.albedo_color = Color(0.3, 0.2, 0.15)
-	vessel_mat.roughness = 0.3
-	for offset in [Vector3(-0.4, 0.82, 0.15), Vector3(0.3, 0.82, -0.1)]:
-		var vessel := MeshInstance3D.new()
-		var vc := CylinderMesh.new()
-		vc.top_radius = 0.06
-		vc.bottom_radius = 0.08
-		vc.height = 0.12
-		vessel.mesh = vc
-		vessel.material_override = vessel_mat
-		vessel.position = DESK_POS + offset
-		env_node.add_child(vessel)
-
-	# Bookshelf along the left wall
-	var shelf_mat := StandardMaterial3D.new()
-	shelf_mat.albedo_color = Color(0.18, 0.13, 0.09)
-	var shelf := MeshInstance3D.new()
-	var shb := BoxMesh.new()
-	shb.size = Vector3(0.4, 1.6, 2.0)
-	shelf.mesh = shb
-	shelf.material_override = shelf_mat
-	shelf.position = Vector3(-4.65, 0.8, 3.0)
-	env_node.add_child(shelf)
-	# Books as colored strips on the shelf
-	var book_colors := [Color(0.25, 0.12, 0.1), Color(0.1, 0.15, 0.2), Color(0.2, 0.18, 0.1), Color(0.12, 0.2, 0.15)]
-	for i in range(4):
-		var book := MeshInstance3D.new()
-		var bb := BoxMesh.new()
-		bb.size = Vector3(0.35, 0.22, 0.15)
-		book.mesh = bb
-		var bm := StandardMaterial3D.new()
-		bm.albedo_color = book_colors[i]
-		book.material_override = bm
-		book.position = Vector3(-4.65, 0.3 + i * 0.35, 2.4 + i * 0.3)
-		env_node.add_child(book)
-
 # --- Exploration objects (phase 1, pre-Monos-arrival) ---
+# The modeled room (peris-sim.gltf + peris-furniture.gltf) carries all cosmetic decor — rug, shelves,
+# sofas, props — so there is no procedural decoration pass; gameplay objects live below.
 
 func _build_exploration_objects() -> void:
 	if Engine.is_editor_hint():
@@ -861,81 +698,51 @@ func _build_exploration_objects() -> void:
 	_build_peris_strike_warning(env)
 	_build_peris_logbook_gate(env)
 
-func _make_peris_plant(parent: Node3D, pos: Vector3, height: float, base_color: Color, bloom: bool) -> Node3D:
+# The plant gltfs export at WILDLY different native scales (boston_fern ~2.9 tall, haworthia ~1.4),
+# all pot-at-Y0 and XZ-centered on their own origin. These are the measured native AABB heights — a
+# uniform scale of target/native normalizes each instance deterministically (no per-frame AABB read,
+# so movement/replay stay deterministic), and the pot lands on the floor at `pos`.
+const PLANT_NATIVE_HEIGHT := {
+	"boston_fern": 2.94, "calathea": 3.32, "haworthia": 1.36, "jade": 2.57,
+	"jasmine": 2.69, "peace_lily": 4.58, "pilea": 3.48, "pothos": 2.81, "spider": 3.93,
+}
+
+## Instance a plant gltf, normalized to `target_height` and grounded so its pot sits at `pos`.
+func _make_peris_plant(parent: Node3D, pos: Vector3, species: String, target_height: float) -> Node3D:
 	var root := Node3D.new()
 	root.position = pos
 	parent.add_child(root)
-	var pot := MeshInstance3D.new()
-	var pb := CylinderMesh.new()
-	pb.top_radius = 0.14
-	pb.bottom_radius = 0.1
-	pb.height = 0.2
-	pot.mesh = pb
-	var pot_mat := StandardMaterial3D.new()
-	pot_mat.albedo_color = Color(0.3, 0.22, 0.18)
-	pot_mat.roughness = 0.8
-	pot.material_override = pot_mat
-	pot.position = Vector3(0, 0.1, 0)
-	root.add_child(pot)
-	var foliage := MeshInstance3D.new()
-	var fb := SphereMesh.new()
-	fb.radius = 0.2
-	fb.height = height
-	foliage.mesh = fb
-	var fm := StandardMaterial3D.new()
-	fm.albedo_color = base_color
-	fm.roughness = 0.7
-	foliage.material_override = fm
-	foliage.position = Vector3(0, 0.2 + height * 0.5, 0)
-	root.add_child(foliage)
-	if bloom:
-		var bloom_mesh := MeshInstance3D.new()
-		var sm := SphereMesh.new()
-		sm.radius = 0.05
-		sm.height = 0.1
-		bloom_mesh.mesh = sm
-		var bm := StandardMaterial3D.new()
-		bm.albedo_color = Color(1.0, 0.85, 0.7)
-		bm.emission_enabled = true
-		bm.emission = Color(0.8, 0.6, 0.5)
-		bm.emission_energy_multiplier = 0.3
-		bloom_mesh.material_override = bm
-		bloom_mesh.position = Vector3(0.12, 0.2 + height * 0.8, 0.05)
-		root.add_child(bloom_mesh)
+	var native: float = float(PLANT_NATIVE_HEIGHT.get(species, 1.0))
+	var s := target_height / native if native > 0.0 else 1.0
+	var gltf: PackedScene = load("res://resources/models/peris-sim/plants/%s_instanced.gltf" % species)
+	if gltf != null:
+		var inst := gltf.instantiate() as Node3D
+		inst.scale = Vector3(s, s, s)  # uniform — the pot stays at the model origin (Y=0)
+		root.add_child(inst)
 	return root
 
 func _build_peris_plants(parent: Node3D) -> void:
-	# Placeholder plants spread across the workspace.
-	# so the player navigates between them. Species is visual only; the
-	# dialogue carries the meaning. Specs per simulation_tutorial_expansions.md.
+	# Real potted plants spread across the modeled floor (inside the furniture). Species is visual
+	# only; the dialogue carries the meaning. Plant7 = the Boston fern at FERN_POS (the watering
+	# target). Floor plants normalize to ~1.3 tall; the small succulent (haworthia) to ~0.5.
 	var plants := [
-		[Vector3(-4.4, 0, -1.4), 0.6, Color(0.2, 0.45, 0.22), false,
-			"peris.sim_expand.plant_1.line"],
-		[Vector3(-0.7, 0, 4.7), 0.3, Color(0.35, 0.45, 0.22), false,
-			"peris.sim_expand.plant_2.line"],
-		[Vector3(2.6, 0.8, 4.4), 0.18, Color(0.3, 0.5, 0.3), true,
-			"peris.sim_expand.plant_3.line"],
-		[Vector3(6.0, 0, 4.6), 0.25, Color(0.28, 0.4, 0.32), false,
-			"peris.sim_expand.plant_4.line"],
-		[Vector3(10.0, 0, 4.2), 0.45, Color(0.22, 0.48, 0.28), false,
-			"peris.sim_expand.plant_5.line"],
-		[Vector3(-0.9, 0, 1.4), 0.7, Color(0.18, 0.35, 0.22), false,
-			"peris.sim_expand.plant_6.line"],
-		[Vector3(3.0, 0, 1.2), 0.65, Color(0.25, 0.5, 0.3), false,
-			"peris.sim_expand.plant_7.line"],
-		[Vector3(7.0, 0, 1.0), 0.4, Color(0.3, 0.42, 0.22), false,
-			"peris.sim_expand.plant_8.line"],
-		[Vector3(11.0, 0, 0.0), 0.55, Color(0.2, 0.4, 0.22), false,
-			"peris.sim_expand.plant_9.line"],
+		[Vector3(0.6, 0, 5.7), "spider", 1.3, "peris.sim_expand.plant_1.line"],
+		[Vector3(13.4, 0, 0.4), "calathea", 1.3, "peris.sim_expand.plant_2.line"],
+		[Vector3(1.5, 0, 3.0), "haworthia", 0.5, "peris.sim_expand.plant_3.line"],
+		[Vector3(4.4, 0, 5.2), "jade", 1.1, "peris.sim_expand.plant_4.line"],
+		[Vector3(7.4, 0, 5.5), "jasmine", 1.3, "peris.sim_expand.plant_5.line"],
+		[Vector3(10.3, 0, 5.6), "pothos", 1.2, "peris.sim_expand.plant_6.line"],
+		[FERN_POS, "boston_fern", 1.3, "peris.sim_expand.plant_7.line"],
+		[Vector3(3.8, 0, 0.5), "pilea", 1.1, "peris.sim_expand.plant_8.line"],
+		[Vector3(8.9, 0, 2.9), "peace_lily", 1.4, "peris.sim_expand.plant_9.line"],
 	]
 	for i in range(plants.size()):
 		var p: Array = plants[i]
 		var pos: Vector3 = p[0]
-		var height: float = p[1]
-		var color: Color = p[2]
-		var bloom: bool = p[3]
-		var line_key: String = p[4]
-		var plant_node := _make_peris_plant(parent, pos, height, color, bloom)
+		var species: String = p[1]
+		var height: float = p[2]
+		var line_key: String = p[3]
+		var plant_node := _make_peris_plant(parent, pos, species, height)
 		plant_node.name = "Plant%d" % (i + 1)
 		var zone_pos := Vector3(pos.x, 0, pos.z)
 		var zone: Area3D
@@ -984,7 +791,7 @@ func _build_watering_beat(parent: Node3D) -> void:
 	_watering_can_item_id = _game_state.spawn_item("watering_can", WATERING_CAN_POS)
 
 	_can_pickup_interactable = _create_interactable(parent, WATERING_CAN_POS, "WateringCanPickup",
-		1.3, 0.7, "PICK UP", false)
+		1.8, 0.7, "PICK UP", false)
 	_can_pickup_interactable.interacted.connect(_on_watering_can_picked)
 	var can_target := _outline_object_meshes(parent, "WateringCanOutline",
 		_collect_mesh_instances(_watering_can_mesh), "watering_can", 0.5)
@@ -995,7 +802,7 @@ func _build_watering_beat(parent: Node3D) -> void:
 
 	# The water spot sits ON the fern (Plant7).
 	_water_plant_interactable = _create_interactable(parent, FERN_POS, "WaterPlantSpot",
-		1.3, 0.9, "WATER", false)
+		1.8, 0.9, "WATER", false)
 	_water_plant_interactable.interacted.connect(_on_plant_watered)
 
 func _on_watering_can_picked() -> void:
@@ -1032,7 +839,8 @@ func _maybe_unlock_exploration_gate() -> void:
 		_explore_logbook_gate.show_tutorial_label()
 
 func _build_peris_painting(parent: Node3D) -> void:
-	var pos := Vector3(3.2, 2.2, -5.82)
+	# Hung on the modeled back wall (Z~0), right of the sofas.
+	var pos := Vector3(10.4, 2.2, 0.12)
 	var frame := MeshInstance3D.new()
 	var fb := BoxMesh.new()
 	fb.size = Vector3(1.2, 0.85, 0.06)
@@ -1050,9 +858,9 @@ func _build_peris_painting(parent: Node3D) -> void:
 	cm.albedo_color = Color(0.55, 0.38, 0.45)
 	cm.roughness = 0.6
 	canvas.material_override = cm
-	canvas.position = pos + Vector3(0, 0, 0.02)
+	canvas.position = pos + Vector3(0, 0, 0.04)
 	parent.add_child(canvas)
-	var zone := _make_exploration_zone(parent, Vector3(3.2, 0, -4.8),
+	var zone := _make_exploration_zone(parent, Vector3(10.4, 0, 0.3),
 		"PaintingZone",
 		"peris.sim_expand.painting.line",
 		1.3, 0.6)
@@ -1061,10 +869,11 @@ func _build_peris_painting(parent: Node3D) -> void:
 	_set_room_target_interaction_delegate(target, zone)
 
 func _build_peris_wellness_feed(parent: Node3D) -> void:
-	var pos := Vector3(-4.65, 1.4, -4.8)
+	# Mounted on the modeled left wall (X~0), near the back corner.
+	var pos := Vector3(0.12, 1.6, 0.6)
 	var screen := MeshInstance3D.new()
 	var sb := BoxMesh.new()
-	sb.size = Vector3(0.8, 0.5, 0.04)
+	sb.size = Vector3(0.04, 0.5, 0.8)
 	screen.mesh = sb
 	var sm := StandardMaterial3D.new()
 	sm.albedo_color = Color(0.35, 0.4, 0.5, 0.85)
@@ -1075,7 +884,7 @@ func _build_peris_wellness_feed(parent: Node3D) -> void:
 	screen.material_override = sm
 	screen.position = pos
 	parent.add_child(screen)
-	var zone := _make_exploration_zone(parent, Vector3(-4.2, 0, -4.8),
+	var zone := _make_exploration_zone(parent, Vector3(0.7, 0, 0.3),
 		"WellnessZone",
 		"peris.sim_expand.wellness.line",
 		1.0, 0.6)
@@ -1084,11 +893,11 @@ func _build_peris_wellness_feed(parent: Node3D) -> void:
 	_set_room_target_interaction_delegate(target, zone)
 
 func _build_peris_strike_warning(parent: Node3D) -> void:
-	# Focused interaction plays document text plus Peris's line.
-	var pos := Vector3(-0.9, 1.8, -5.82)
+	# Pinned to the modeled right wall (X~14), near the open front corner.
+	var pos := Vector3(13.88, 1.8, 5.6)
 	var icon := MeshInstance3D.new()
 	var ib := BoxMesh.new()
-	ib.size = Vector3(0.4, 0.55, 0.04)
+	ib.size = Vector3(0.04, 0.55, 0.4)
 	icon.mesh = ib
 	var im := StandardMaterial3D.new()
 	im.albedo_color = Color(0.85, 0.8, 0.68)
@@ -1100,14 +909,14 @@ func _build_peris_strike_warning(parent: Node3D) -> void:
 	parent.add_child(icon)
 	var strip := MeshInstance3D.new()
 	var rb := BoxMesh.new()
-	rb.size = Vector3(0.4, 0.08, 0.045)
+	rb.size = Vector3(0.045, 0.08, 0.4)
 	strip.mesh = rb
 	var rm := StandardMaterial3D.new()
 	rm.albedo_color = Color(0.5, 0.2, 0.2)
 	strip.material_override = rm
-	strip.position = pos + Vector3(0, 0.24, 0.001)
+	strip.position = pos + Vector3(-0.001, 0.24, 0)
 	parent.add_child(strip)
-	var area := _make_exploration_zone(parent, Vector3(-0.9, 0, -4.7),
+	var area := _make_exploration_zone(parent, Vector3(13.4, 0, 5.6),
 		"StrikeWarningZone",
 		"",
 		1.0, 0.8)  # re-inspectable: re-opening the warning replays the document + Peris's line
@@ -1122,8 +931,8 @@ func _build_peris_strike_warning(parent: Node3D) -> void:
 	_set_room_target_interaction_delegate(target, area)
 
 func _build_peris_logbook_gate(parent: Node3D) -> void:
-	# Logbook is the gate to Monos.
-	var pos := Vector3(-4.45, 0.9, 4.4)
+	# Logbook is the gate to Monos — by the modeled bookshelf on the right side.
+	var pos := Vector3(11.3, 0.9, 3.0)
 	var console := MeshInstance3D.new()
 	var cb := BoxMesh.new()
 	cb.size = Vector3(0.5, 1.0, 0.4)
