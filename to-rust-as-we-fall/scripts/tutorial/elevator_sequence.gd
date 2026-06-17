@@ -393,7 +393,7 @@ func _on_process(delta: float, spd: float) -> void:
 	# edge — clicking the far edge raycasts down to the lower deck (no ladder there → the move is
 	# rejected and the player looks stranded), so requiring the edge stranded the player.
 	if _current_step == "bridge":
-		if _game_state.get_position("aster").x > BRIDGE_START_X + 4.0:
+		if _party_lead_x() > BRIDGE_START_X + 4.0:
 			_tutorial_prompt.hide_prompt()
 			_player.set_move_enabled(false)
 			_start_bridge_collapse()
@@ -403,18 +403,23 @@ func _on_process(delta: float, spd: float) -> void:
 	if _current_step == "route_choice":
 		# The ecology gates itself: it's distracted by its flures, so it only chases a party that cuts
 		# through the huddle (the enemy lane). The hazard lane keeps enough distance to slip past.
-		if _game_state.get_position("aster").x > ROUTES_CONVERGE.x - 2.0:
+		if _party_lead_x() > ROUTES_CONVERGE.x - 2.0:
 			_tutorial_prompt.hide_prompt()
 			_player.set_move_enabled(false)
 			_start_junction_arrive()
 
 	# Gauntlet exit gate: player passed the enemies
 	if _current_step == "gauntlet":
-		var player_pos := _game_state.get_position("aster")
-		if player_pos.x > GAUNTLET_EXIT.x - 2.0:
+		if _party_lead_x() > GAUNTLET_EXIT.x - 2.0:
 			_tutorial_prompt.hide_prompt()
 			_player.set_move_enabled(false)
 			_complete()
+
+## Whichever party member (aster/peris) is furthest east. The descent's position gates fire on the
+## LEAD member, so they trigger whether the player walks aster, peris, or both as a group (party-move)
+## — not just when aster happens to be the one who advanced.
+func _party_lead_x() -> float:
+	return maxf(_game_state.get_position("aster").x, _game_state.get_position("peris").x)
 
 # --- Input ---
 
@@ -1580,18 +1585,26 @@ func _build_below_chunk(parent: Node3D) -> void:
 	var bridge_start := ELEVATOR_SIZE.x / 2.0 + 0.5 + 7.0
 	var ground_y := BELOW_Y
 
+	# The lower deck must be WALKABLE from the fall landing all the way to the route convergence +
+	# junction approach (the convergence gate keys on x > ROUTES_CONVERGE.x - 2). The floor spans from
+	# the west landing (~-3.5) to just past the junction so a real click out there lands on collision
+	# instead of raycasting into void (the old 40-unit slab stopped at x~36.5, short of the 37.5 gate).
+	var deck_west := -3.5
+	var deck_east := JUNCTION_POS.x + 4.0
+	var deck_len := deck_east - deck_west
+	var deck_cx := (deck_west + deck_east) * 0.5
 	var ground_body := StaticBody3D.new()
-	ground_body.position = Vector3(bridge_start + 5.0, ground_y - 0.01, 0)
+	ground_body.position = Vector3(deck_cx, ground_y - 0.01, 0)
 	ground_body.collision_layer = 1
 	ground_body.collision_mask = 0
 	var gc := CollisionShape3D.new()
 	var gs := BoxShape3D.new()
-	gs.size = Vector3(40, 0.02, 16)
+	gs.size = Vector3(deck_len, 0.02, 16)
 	gc.shape = gs
 	ground_body.add_child(gc)
 	parent.add_child(ground_body)
 
-	_add_corridor_section(parent, Vector3(bridge_start + 5.0, ground_y - 0.05, 0), Vector3(40, 0.1, 16), Color(0.05, 0.05, 0.07))
+	_add_corridor_section(parent, Vector3(deck_cx, ground_y - 0.05, 0), Vector3(deck_len, 0.1, 16), Color(0.05, 0.05, 0.07))
 
 	# Iron blooms.
 	for i in range(4):
@@ -2014,23 +2027,30 @@ func _build_gauntlet_chunk(parent: Node3D) -> void:
 	var gx := GAUNTLET_POS.x
 	var wc := Color(0.09, 0.09, 0.11)
 
-	# Ground floor
-	_add_corridor_section(parent, Vector3(gx, ground_y - 0.03, 0), Vector3(20, 0.06, 14), Color(0.05, 0.05, 0.07))
+	# Ground floor — extended EAST past the exit gate so the player can actually run OUT of the gauntlet.
+	# The old chamber + east wall both ended at x = GAUNTLET_EXIT.x - 2 (exactly the exit gate), so the
+	# wall blocked the player from ever crossing it. Spans from the west entrance to the grid's east edge.
+	var g_west := gx - 10.0
+	var g_east := 67.0
+	var g_len := g_east - g_west
+	var g_cx := (g_west + g_east) * 0.5
+	_add_corridor_section(parent, Vector3(g_cx, ground_y - 0.03, 0), Vector3(g_len, 0.06, 14), Color(0.05, 0.05, 0.07))
 	var gb := StaticBody3D.new()
-	gb.position = Vector3(gx, ground_y - 0.01, 0)
+	gb.position = Vector3(g_cx, ground_y - 0.01, 0)
 	gb.collision_layer = 1
 	gb.collision_mask = 0
 	var gc := CollisionShape3D.new()
 	var gs := BoxShape3D.new()
-	gs.size = Vector3(20, 0.02, 14)
+	gs.size = Vector3(g_len, 0.02, 14)
 	gc.shape = gs
 	gb.add_child(gc)
 	parent.add_child(gb)
 
-	# Chamber walls.
-	_add_wall(parent, Vector3(gx, ground_y + 1.5, -7.0), Vector3(20, 3, 0.3), wc)
-	_add_wall(parent, Vector3(gx, ground_y + 1.5, 7.0), Vector3(20, 3, 0.3), wc)
-	_add_wall(parent, Vector3(gx + 10.0, ground_y + 1.5, 0), Vector3(0.3, 3, 14), wc)
+	# Chamber walls: z-sides run the full length; the east wall sits at the far edge, PAST the exit gate
+	# (GAUNTLET_EXIT.x - 2), so reaching the gate no longer means running into a wall.
+	_add_wall(parent, Vector3(g_cx, ground_y + 1.5, -7.0), Vector3(g_len, 3, 0.3), wc)
+	_add_wall(parent, Vector3(g_cx, ground_y + 1.5, 7.0), Vector3(g_len, 3, 0.3), wc)
+	_add_wall(parent, Vector3(g_east, ground_y + 1.5, 0), Vector3(0.3, 3, 14), wc)
 
 	# Peris-only iron lure.
 	_flure_mesh = MeshInstance3D.new()
@@ -2091,6 +2111,19 @@ func _add_corridor_section(parent: Node3D, pos: Vector3, size: Vector3, color: C
 	mesh.material_override = mat
 	mesh.position = pos
 	parent.add_child(mesh)
+	# Walkable collision under the section so click-raycasts land on it. Chunks built only via corridor
+	# sections (the junction, the gauntlet) had no floor body, so once the below chunk unloaded the player
+	# was clicking into void — the move silently failed and the descent stalled at junction_arrive.
+	var body := StaticBody3D.new()
+	body.position = pos
+	body.collision_layer = 1
+	body.collision_mask = 0
+	var cshape := CollisionShape3D.new()
+	var cbox := BoxShape3D.new()
+	cbox.size = size
+	cshape.shape = cbox
+	body.add_child(cshape)
+	parent.add_child(body)
 
 # --- Environment ---
 

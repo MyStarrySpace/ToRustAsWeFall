@@ -4645,14 +4645,17 @@ func _test_intro_realinput_core() -> void:
 		Callable(self, "_tagday_realinput_beats"))
 
 ## The Elevator real-input leg, sectioned out of --test-all ONLY because its wall-clock tweens are
-## slow — not because input tests are skippable. Run it before touching the elevator. Elevator is
-## real-input reachable through route_choice (incl. the EMP beat and a multi-select workaround);
-## route_choice + gauntlet are documented blockers (see the beat comments) — assert the proven
-## frontier, not a blocked complete.
+## slow — not because input tests are skippable. Run it before touching the elevator. The FULL descent
+## is now real-input playable to `complete`: wake -> EMP -> multi-select (party-move to the door) ->
+## corridor -> bridge -> collapse/fall -> route_choice (the two-route split) -> junction -> Endo ->
+## night -> dawn -> morning -> gauntlet -> complete. (Movement + interaction is the RIGHT-click
+## "command"; the old LEFT-click beats never actually moved anyone, so the leg used to stop at the
+## scheduled route_choice. The blockers — short below/gauntlet floors, the aster-only gates, and the
+## walled gauntlet exit — are fixed in elevator_sequence.gd.)
 func _test_elevator_realinput() -> void:
 	_test_name = "Intro Real-Input Reachability"
 	await _run_realinput_leg("Elevator", "res://scenes/tutorial/elevator.tscn", 0,
-		Callable(self, "_elevator_realinput_beats"), "route_choice")
+		Callable(self, "_elevator_realinput_beats"), "complete")
 
 ## milestone defaults to "complete"; pass an earlier step for legs with a documented
 ## real-input blocker (the elevator), where we assert reachability up to that step.
@@ -4788,6 +4791,29 @@ func _synthetic_player_click(instance: Node, world_pos: Vector3) -> void:
 	ev.position = cam.unproject_position(world_pos)
 	p._unhandled_input(ev)
 
+## Like _synthetic_player_click but the RIGHT mouse button — the "command" (move/interact) action in
+## the RTS scheme (LEFT is select). Walking the party and triggering interactables both need RIGHT.
+## Delivered straight to the player's _unhandled_input so it's reliable across the paused->unpaused
+## multiselect beat (parse_input_event is flaky there).
+func _synthetic_player_move_click(instance: Node, world_pos: Vector3) -> void:
+	var p = instance.get("_player")
+	if p == null or not p.has_method("_unhandled_input"):
+		return
+	var cam: Camera3D = null
+	if "_camera" in instance and instance._camera != null:
+		cam = instance._camera
+	else:
+		cam = get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	if cam.is_inside_tree() and not cam.current:
+		cam.make_current()
+	var ev := InputEventMouseButton.new()
+	ev.button_index = MOUSE_BUTTON_RIGHT
+	ev.pressed = true
+	ev.position = cam.unproject_position(world_pos)
+	p._unhandled_input(ev)
+
 ## Deliver a key (optionally with Ctrl) straight to the sequence's _unhandled_key_input
 ## — the real path for the elevator's TAB character-switch and Ctrl+digit multi-select,
 ## which the sequence handles directly (not through the HUD).
@@ -4804,57 +4830,45 @@ func _synthetic_sequence_key(instance: Node, keycode: int, ctrl := false) -> voi
 func _elevator_realinput_beats(instance: Node) -> Dictionary:
 	var beats := {}
 	var exit_gate := Vector3(float(instance.ELEVATOR_SIZE.x) / 2.0, 0.0, 0.0)
+	# Movement + interaction are the RIGHT-click ("command") action; LEFT is select. Every walk/interact
+	# beat uses the move-click helper (the old LEFT-click beats never moved anyone — the test only
+	# reached route_choice because that step is SCHEDULED after the fall, not walked to).
 	# Walk Peris onto the downed-Aster wake zone (HOLD_ACTION dwell).
-	beats["approach_aster"] = func(): _synthetic_player_click(instance, Vector3(instance.ASTER_POS.x, 0.0, instance.ASTER_POS.z))
+	beats["approach_aster"] = func(): _synthetic_player_move_click(instance, Vector3(instance.ASTER_POS.x, 0.0, instance.ASTER_POS.z))
 	# Queue EMP (its live binding) while auto-paused, then resume (Space) to fire it.
 	beats["emp_tutorial"] = func():
 		_press_hud_action_key(instance, OS.find_keycode_from_string(InputHints.label_for_action("emp")))
 		_press_hud_action_key(instance, KEY_SPACE)
-	# Select the peris+aster pair (Ctrl+2), unpause (Space), then walk both to the
-	# door gate: click moves the active char, Tab switches active, click again. These
-	# must be spread across frames (the selection signal has to propagate before the
-	# unpause is accepted), so step through them one per call.
-	# FINDING: a click moves only the ACTIVE character (no party-move-on-click), and
-	# Tab (_switch_character) resets the multi-select to one. So "walk both to the
-	# door" can't be done with the pair intact in one motion. Workaround: move each
-	# separately, then re-select the missing member so the both-at-door+pair gate fires.
+	# Multi-select tutorial, the PLAYABLE flow: multi-select is enabled + the scene is paused, so Ctrl+2
+	# toggles aster into the pair (group control on), Space unpauses, then ONE RIGHT click walks BOTH to
+	# the door (group_move -> GameState.party_move_to_cell). Re-issued each cycle so they re-path if they
+	# drift; the gate fires when both are within 2.5 of the door with the pair intact.
 	var ms := [0]
 	beats["multiselect_tutorial"] = func():
 		match ms[0]:
-			0: _synthetic_sequence_key(instance, KEY_2, true)   # select aster into the pair
-			1: _press_hud_action_key(instance, KEY_SPACE)        # unpause (pair satisfied)
-			2: _synthetic_player_click(instance, exit_gate)      # walk peris (active) to door
-			3: _synthetic_sequence_key(instance, KEY_TAB)         # switch to aster (drops pair)
-			4: _synthetic_player_click(instance, exit_gate)      # walk aster to door
-			_:
-				# Both parked at the door; restore the pair so the gate accepts.
-				if not instance._multiselect_has_required_pair():
-					if not instance._selected_character_ids.has("peris"):
-						_synthetic_sequence_key(instance, KEY_1, true)
-					elif not instance._selected_character_ids.has("aster"):
-						_synthetic_sequence_key(instance, KEY_2, true)
-		ms[0] = min(ms[0] + 1, 5)
-	# Enemies in the loaded combat chunks would game-over the party; neutralize
-	# detection (test setup, not a gate force-fire) so this measures reachability.
-	# Below-section beats run at BELOW_Y; click the floor at that height so the
-	# ground-ray lands on the right spot (a y=0 click lands elsewhere on a y=-4 floor).
+			0: _synthetic_sequence_key(instance, KEY_2, true)    # Ctrl+2: select the peris+aster pair
+			1: _press_hud_action_key(instance, KEY_SPACE)         # unpause
+			_: _synthetic_player_move_click(instance, exit_gate)  # RIGHT-click the door -> party-move BOTH
+		ms[0] = min(ms[0] + 1, 2)
+	# Corridor: the sequence auto-walks the party out of the elevator (command_move_to_pos); just clear
+	# enemy detection so the loaded combat chunks can't game-over the reachability run.
 	beats["corridor"] = func(): _disable_enemy_detection(instance)
-	# Route fork: walk east toward the convergence point (bridge height, y~0).
-	# KNOWN BLOCKER: this gate keys on aster.x > ROUTES_CONVERGE.x - 2 (~37.5), but the
-	# walkable bridge only reaches ~x=17, so it is unreachable by walking — the contract
-	# tests pass it only by force-commanding aster's GameState position. See findings.
+	# Bridge: walk EAST out onto the span — passing BRIDGE_START_X+4 gives way mid-span (the collapse).
+	beats["bridge"] = func(): _synthetic_player_move_click(instance, Vector3(float(instance.BRIDGE_START_X) + 7.0, 0.0, 0.0))
+	# After the fall the party is on the LOWER deck (BELOW_Y). Walk EAST to the route convergence; the
+	# floor now reaches past it and the gate fires on whichever member leads (_party_lead_x).
 	beats["route_choice"] = func():
 		_disable_enemy_detection(instance)
-		_synthetic_player_click(instance, Vector3(instance.ROUTES_CONVERGE.x, 0.0, instance.ROUTES_CONVERGE.z))
+		_synthetic_player_move_click(instance, Vector3(instance.ROUTES_CONVERGE.x, float(instance.BELOW_Y), 0.0))
 	# Climb prompt zone (HOLD_ACTION dwell).
-	beats["climb_attempt"] = func(): _synthetic_player_click(instance, Vector3(float(instance.BRIDGE_START_X) + 5.0, float(instance.BELOW_Y), 0.0))
+	beats["climb_attempt"] = func(): _synthetic_player_move_click(instance, Vector3(float(instance.BRIDGE_START_X) + 5.0, float(instance.BELOW_Y), 0.0))
 	# Dormant plant (HOLD_ACTION, wall-clock dwell).
-	beats["junction_arrive"] = func(): _synthetic_player_click(instance, Vector3(instance.JUNCTION_POS.x + float(instance.SHELTER_SIZE.x) / 2.0 - 0.8, float(instance.BELOW_Y), float(instance.SHELTER_SIZE.z) / 2.0 - 0.5))
+	beats["junction_arrive"] = func(): _synthetic_player_move_click(instance, Vector3(instance.JUNCTION_POS.x + float(instance.SHELTER_SIZE.x) / 2.0 - 0.8, float(instance.BELOW_Y), float(instance.SHELTER_SIZE.z) / 2.0 - 0.5))
 	# Flure activation then walk east to the gauntlet exit.
 	beats["gauntlet"] = func():
 		_disable_enemy_detection(instance)
-		_synthetic_player_click(instance, instance.FLURE_POS)
-		_synthetic_player_click(instance, instance.GAUNTLET_EXIT)
+		_synthetic_player_move_click(instance, instance.FLURE_POS)
+		_synthetic_player_move_click(instance, instance.GAUNTLET_EXIT)
 	return beats
 
 ## Dialogue must keep flowing while the gameplay scheduler is paused (the Peris
