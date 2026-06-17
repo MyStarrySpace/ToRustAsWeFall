@@ -194,6 +194,9 @@ func _ready() -> void:
 			"--test-chunk-interactable-outlines":
 				ran_test = true
 				await _test_chunk_interactable_outlines()
+			"--test-peris-furniture-uvs":
+				ran_test = true
+				await _test_peris_furniture_uvs()
 			"--test-preview-matches-committed":
 				ran_test = true
 				await _test_preview_matches_committed()
@@ -835,6 +838,7 @@ func _run_all_tests() -> void:
 	_test_preview_pathfinding()
 	await _test_overlay_materials()
 	await _test_chunk_interactable_outlines()
+	await _test_peris_furniture_uvs()
 	await _test_preview_matches_committed()
 	await _test_party_preview_renderers()
 	await _test_hover_grid_alignment()
@@ -10187,6 +10191,47 @@ func _test_preview_pathfinding() -> void:
 # The fragment-preview scene does not composite the alpha-BLEND transparent pass, so any floor overlay
 # using TRANSPARENCY_ALPHA is invisible there. The hover grid + path ribbon MUST be opaque or scissor.
 # This guards the regression that made the grid faint/invisible and the path "never show".
+# --- Test: modeled furniture must not bleed the atlas's transparent void ---
+# peris-furniture.gltf colours its pieces by sampling SOLID swatches from atlas textures
+# (peris-sim_7 tan, peris-sim_16 brown) whose backgrounds are transparent BLACK. The materials are
+# OPAQUE, so any UV outside [0,1] wraps into that black void and renders a black checker (the Rug
+# was the worst — a large flat floor piece). Guard: a piece sampling an atlas with transparency must
+# keep its UVs in [0,1]. (A fully-opaque texture may tile freely, so it's exempt.)
+func _test_peris_furniture_uvs() -> void:
+	_test_name = "Peris Furniture UVs"
+	var scene: Node = load("res://resources/models/peris-sim/peris-furniture.gltf").instantiate()
+	add_child(scene)
+	await get_tree().process_frame
+	var offenders: Array = []
+	for mi in scene.find_children("*", "MeshInstance3D", true, false):
+		var node := mi as MeshInstance3D
+		if node.mesh == null:
+			continue
+		for s in range(node.mesh.get_surface_count()):
+			var mat := node.get_active_material(s)
+			if not (mat is StandardMaterial3D):
+				continue
+			var tex: Texture2D = (mat as StandardMaterial3D).albedo_texture
+			if tex == null:
+				continue
+			var img := tex.get_image()
+			if img == null or img.detect_alpha() == Image.ALPHA_NONE:
+				continue  # opaque texture: out-of-range tiling can't bleed a transparent void
+			var arrays := node.mesh.surface_get_arrays(s)
+			if arrays.size() <= Mesh.ARRAY_TEX_UV:
+				continue
+			var uvs = arrays[Mesh.ARRAY_TEX_UV]
+			if uvs == null:
+				continue
+			for uv in uvs:
+				if uv.x < -0.05 or uv.x > 1.05 or uv.y < -0.05 or uv.y > 1.05:
+					offenders.append("%s surf%d uv(%.2f,%.2f)" % [node.name, s, uv.x, uv.y])
+					break
+	_assert_true(offenders.is_empty(),
+		"Furniture sampling an atlas with a transparent (black) background must keep UVs in [0,1] so wrap can't sample the void (black-checker bleed). Offenders: %s" % str(offenders.slice(0, 6)))
+	scene.queue_free()
+	await get_tree().process_frame
+
 func _test_overlay_materials() -> void:
 	_test_name = "Overlay Materials"
 	var player: Node3D = load("res://scenes/game/player_character.tscn").instantiate()
