@@ -88,6 +88,7 @@ const BRIDGE_MODEL := preload("res://resources/models/elevator/bridge.glb")
 # door opening + frame, ceiling light coffer, corner posts, control housing. Static; the sliding doors,
 # emergency light, and floor indicators stay procedural in Godot because they animate.
 const ELEVATOR_MODEL := preload("res://resources/models/elevator/elevator_car.glb")
+const ENDO_JUNCTION_MODEL := preload("res://resources/models/elevator/endo-junction.glb")
 # Collapse debris physics layers (kept off every gameplay layer so debris never touches characters —
 # they move on the grid, not via physics). Pieces collide ONLY with their own catch-floor (no inter-
 # piece explosions from the initially-touching span).
@@ -137,7 +138,7 @@ func _build_chunk(chunk_name: String, parent: Node3D) -> void:
 		"elevator": _build_elevator_chunk(parent)
 		"bridge": _build_bridge_chunk(parent)
 		"below": _build_below_chunk(parent); _apply_chunk_tiles(parent, "deck_metal", "facility_metal")
-		"junction": _build_junction_chunk(parent); _apply_chunk_tiles(parent, "sand", "rock")
+		"junction": _build_junction_chunk(parent); _apply_chunk_tiles(parent, "sand", "rock"); _add_junction_model(parent)
 		"gauntlet": _build_gauntlet_chunk(parent); _apply_chunk_tiles(parent, "deck_metal", "facility_metal")
 
 # --- Virtual overrides ---
@@ -2127,6 +2128,27 @@ func _apply_chunk_tiles(node: Node, floor_tile: String, wall_tile: String) -> vo
 			var tile := floor_tile if ab.size.y < 0.6 else wall_tile
 			if tile != "":
 				(c as MeshInstance3D).material_override = _tile_material(tile, 1.0)
+
+## Drop the modeled + textured Endo's-junction cave (Blender) in as the VISUAL backdrop for the junction
+## chunk. The procedural shelter keeps ALL its gameplay (collision, interactables, the plant->dusk
+## trigger, Endo's drink path, lights); only its plain floor slab + tall thin wall meshes are hidden so
+## the modeled cave (rock walls, bioluminescent flora, catwalk, workbench) is what reads. Pre-repaint;
+## fine alignment of the interactable zones to the model's features is a later pass.
+func _add_junction_model(parent: Node3D) -> void:
+	for c in parent.get_children():
+		if c is MeshInstance3D and (c as MeshInstance3D).mesh != null:
+			var ab: AABB = (c as MeshInstance3D).mesh.get_aabb()
+			# Only the big shell (the wide floor slab + the long tall thin walls) — NOT the small props
+			# (plant, drink, mugs) or the workbench, which stay as the interactables.
+			var is_floor := ab.size.y < 0.5 and (ab.size.x > 4.0 or ab.size.z > 4.0)
+			var is_wall := ab.size.y > 2.0 and (ab.size.x > 3.0 or ab.size.z > 3.0) and minf(ab.size.x, ab.size.z) < 1.0
+			if is_floor or is_wall:
+				(c as MeshInstance3D).visible = false
+	var m := ENDO_JUNCTION_MODEL.instantiate()
+	m.name = "EndoJunctionModel"
+	m.position = Vector3(JUNCTION_POS.x - 3.0, BELOW_Y, -3.1)
+	m.scale = Vector3(0.55, 0.55, 0.55)
+	parent.add_child(m)
 
 func _add_corridor_section(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> void:
 	var mesh := MeshInstance3D.new()
