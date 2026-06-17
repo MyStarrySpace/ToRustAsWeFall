@@ -714,7 +714,7 @@ func _make_peris_plant(parent: Node3D, pos: Vector3, species: String, target_hei
 	parent.add_child(root)
 	var native: float = float(PLANT_NATIVE_HEIGHT.get(species, 1.0))
 	var s := target_height / native if native > 0.0 else 1.0
-	var gltf: PackedScene = load("res://resources/models/peris-sim/plants/%s_instanced.gltf" % species)
+	var gltf: PackedScene = load("res://resources/models/peris-sim/plants/plant_%s.gltf" % species)
 	if gltf != null:
 		var inst := gltf.instantiate() as Node3D
 		inst.scale = Vector3(s, s, s)  # uniform — the pot stays at the model origin (Y=0)
