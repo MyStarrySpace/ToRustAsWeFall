@@ -136,9 +136,9 @@ func _build_chunk(chunk_name: String, parent: Node3D) -> void:
 	match chunk_name:
 		"elevator": _build_elevator_chunk(parent)
 		"bridge": _build_bridge_chunk(parent)
-		"below": _build_below_chunk(parent)
-		"junction": _build_junction_chunk(parent)
-		"gauntlet": _build_gauntlet_chunk(parent)
+		"below": _build_below_chunk(parent); _apply_chunk_tiles(parent, "deck_metal", "facility_metal")
+		"junction": _build_junction_chunk(parent); _apply_chunk_tiles(parent, "sand", "rock")
+		"gauntlet": _build_gauntlet_chunk(parent); _apply_chunk_tiles(parent, "deck_metal", "facility_metal")
 
 # --- Virtual overrides ---
 
@@ -2100,6 +2100,33 @@ func _build_gauntlet_chunk(parent: Node3D) -> void:
 	gauntlet_light.light_energy = 1.5
 	gauntlet_light.omni_range = 12.0
 	parent.add_child(gauntlet_light)
+
+# --- Tiling pixel-art textures (the 32 px/m atlas, house technique) ---
+# A world-triplanar material that REPEATS a tile in world space (no UV setup needed) with NEAREST
+# sampling (crisp pixel art). Tiles live in res://resources/models/elevator/tiles/ (the procedural
+# starting point in blender/textures/, for the user to repaint).
+func _tile_material(tile_name: String, world_scale := 1.0) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	var tex = load("res://resources/models/elevator/tiles/%s.png" % tile_name)
+	if tex != null:
+		m.albedo_texture = tex
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	m.uv1_triplanar = true
+	m.uv1_world_triplanar = true
+	m.uv1_scale = Vector3(world_scale, world_scale, world_scale)  # 1 tile / (1/scale) m
+	return m
+
+## Tile a chunk's STRUCTURAL surfaces (the direct mesh children that _add_corridor_section / _add_wall /
+## _add_box add): flat slabs get the floor tile, vertical slabs the wall tile, via world triplanar so
+## the tiles repeat in world space. Direct-children only, so enemies/props nested under their own nodes
+## keep their materials.
+func _apply_chunk_tiles(node: Node, floor_tile: String, wall_tile: String) -> void:
+	for c in node.get_children():
+		if c is MeshInstance3D and (c as MeshInstance3D).mesh != null:
+			var ab: AABB = (c as MeshInstance3D).mesh.get_aabb()
+			var tile := floor_tile if ab.size.y < 0.6 else wall_tile
+			if tile != "":
+				(c as MeshInstance3D).material_override = _tile_material(tile, 1.0)
 
 func _add_corridor_section(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> void:
 	var mesh := MeshInstance3D.new()
