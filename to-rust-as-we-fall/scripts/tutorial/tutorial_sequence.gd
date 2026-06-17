@@ -5,6 +5,7 @@ extends Node3D
 ## Shared scheduler, GameState, UI, camera, and scene helpers for tutorials.
 
 const INTERACTABLE_SCENE := preload("res://scenes/game/interactable.tscn")
+const ItemData = preload("res://scripts/game/objects/item_data.gd")
 const EXPLORATION_RADIUS_SCALE := 1.35
 const EXPLORATION_MIN_RADIUS := 1.6
 const EXPLORATION_FOCUS_OFFSET := Vector3(0, 4.2, 3.2)
@@ -1192,6 +1193,246 @@ func get_preview_game_state() -> GameState:
 
 func get_preview_scheduler() -> EventScheduler:
 	return _scheduler
+
+# --- Shared chunk-host interface ---
+#
+# A SceneChunk drives everything through the `*_preview_*` host methods (see
+# scene_chunk.gd). These GENERIC implementations map each one to the systems every host
+# already has — _game_state (positions / stats / movement / inventory), _dialogue, and
+# _scheduler — so a chunk loaded into ANY tutorial scene (act1, the elevator, …) behaves
+# like it does in the fragment preview, not silently no-op. The preview host overrides a
+# subset (the ones with preview-only UI side effects: messages, notes, the overlay panel,
+# the inventory mirror). Everything here null-guards the optional systems so a host without
+# them (the editor, a HUD-less scene) stays safe. Status / visibility are HUD-presentation
+# state (GameState has no status field), so they live on this small base mirror and push to
+# the scene's "GameHUD" node when one exists.
+
+## sta -> stamina: chunks speak the HUD's "sta"; GameState's stat is "stamina".
+const _CHUNK_STAT_ALIASES := {"sta": "stamina", "health": "hp", "stamina": "stamina"}
+
+var _chunk_char_status: Dictionary = {}
+
+func _chunk_stat_key(stat_name: String) -> String:
+	var key := stat_name.strip_edges().to_lower()
+	return str(_CHUNK_STAT_ALIASES.get(key, key))
+
+## The scene's HUD (every scene names it "GameHUD"); null for HUD-less scenes (tag_day).
+func _chunk_host_hud() -> Node:
+	return get_node_or_null("GameHUD")
+
+func get_preview_dialogue_box() -> Node:
+	return _dialogue
+
+func get_preview_engram_overlay() -> Node:
+	return _engram_overlay
+
+func get_preview_scheduler_tick() -> float:
+	return _scheduler.get_current_tick() if _scheduler != null else 0.0
+
+func get_preview_active_character() -> String:
+	# The move-enabled / camera-followed character is the one a chunk should service.
+	if _player != null:
+		var pid = _player.get("char_id")
+		if pid != null and str(pid) != "":
+			return str(pid)
+	return ""
+
+func get_preview_character_position(char_id: String) -> Vector3:
+	if _game_state != null and _game_state.characters.has(char_id):
+		return _game_state.get_position(char_id)
+	var node := _find_character_node(char_id)
+	return node.global_position if node != null else Vector3.ZERO
+
+func set_preview_character_position(char_id: String, pos: Vector3) -> void:
+	if _game_state != null and _game_state.characters.has(char_id):
+		_game_state.command_stop(char_id)
+		_game_state.characters[char_id]["position"] = pos
+		if _game_state.grid != null:
+			_game_state.characters[char_id]["grid_cell"] = _game_state.grid.world_to_grid(pos)
+	var node := _find_character_node(char_id)
+	if node != null:
+		node.global_position = pos
+
+func get_preview_character_move_speed(char_id: String, running := false) -> float:
+	var node := _find_character_node(char_id)
+	if running and node != null:
+		var run_speed = node.get("run_speed")
+		if run_speed != null:
+			return float(run_speed)
+	if _game_state != null and _game_state.characters.has(char_id):
+		return float(_game_state.characters[char_id].get("move_speed", 3.0))
+	return 3.0
+
+func get_preview_character_stat(char_id: String, stat_name: String) -> float:
+	if _game_state == null:
+		return 0.0
+	return _game_state.get_stat(char_id, _chunk_stat_key(stat_name))
+
+func set_preview_character_stat(char_id: String, stat_name: String, value: float) -> void:
+	if _game_state == null or not _game_state.characters.has(char_id):
+		return
+	_game_state.set_stat(char_id, _chunk_stat_key(stat_name), value)
+	_sync_chunk_portrait(char_id)
+
+func adjust_preview_character_stat(char_id: String, stat_name: String, delta: float) -> void:
+	if _game_state == null or not _game_state.characters.has(char_id):
+		return
+	_game_state.adjust_stat(char_id, _chunk_stat_key(stat_name), delta)
+	_sync_chunk_portrait(char_id)
+
+func set_preview_character_status(char_id: String, status: String) -> void:
+	_chunk_char_status[char_id] = status
+	var hud := _chunk_host_hud()
+	if hud != null and hud.has_method("set_portrait_status"):
+		hud.call("set_portrait_status", char_id, status)
+
+func set_preview_character_visible(char_id: String, visible: bool) -> void:
+	var node := _find_character_node(char_id)
+	if node != null:
+		node.visible = visible
+		if not visible and node.has_method("set_move_enabled"):
+			node.call("set_move_enabled", false)
+
+## Push a character's live GameState stats to its HUD portrait (no-op when HUD-less).
+func _sync_chunk_portrait(char_id: String) -> void:
+	var hud := _chunk_host_hud()
+	if hud == null or _game_state == null or not _game_state.characters.has(char_id):
+		return
+	if hud.has_method("set_portrait_stat"):
+		hud.call("set_portrait_stat", char_id, "hp", _game_state.get_stat(char_id, "hp"))
+		hud.call("set_portrait_stat", char_id, "sta", _game_state.get_stat(char_id, "stamina"))
+		hud.call("set_portrait_stat", char_id, "atp", _game_state.get_stat(char_id, "atp"))
+
+func show_preview_message(text: String, duration := 2.0) -> void:
+	var hud := _chunk_host_hud()
+	if hud != null and hud.has_method("show_message"):
+		hud.call("show_message", text, duration)
+
+func show_preview_note(text: String, duration := 3.0) -> void:
+	# No dedicated note band on the base HUD; surface it as a transient thought/message.
+	if _tutorial_prompt != null and _tutorial_prompt.has_method("show_prompt"):
+		_tutorial_prompt.show_prompt(text, duration)
+	else:
+		show_preview_message(text, duration)
+
+func set_preview_step(step: String) -> void:
+	_current_step = step
+
+func set_preview_ability_state(_ability_id: String, _state: String, _remaining := 0.0) -> void:
+	# Ability cooldown bookkeeping is preview-UI state; the base scene drives abilities itself.
+	pass
+
+func get_preview_routing_mode() -> String:
+	if "_routing_mode" in self:
+		return str(get("_routing_mode"))
+	return "safe"
+
+# --- Inventory / items (route through GameState; draw a minimal world view) ---
+
+var _chunk_item_nodes: Dictionary = {}
+
+func spawn_preview_item(item_type: String, position: Vector3, properties: Dictionary = {}) -> String:
+	if _game_state == null:
+		return ""
+	var item_id := _game_state.spawn_item(item_type, position, properties)
+	_ensure_chunk_item_node(item_id)
+	return item_id
+
+func remove_preview_item(item_id: String) -> void:
+	if _game_state == null:
+		return
+	_game_state.remove_item(item_id)
+	if _chunk_item_nodes.has(item_id):
+		var node: Node3D = _chunk_item_nodes[item_id]
+		if is_instance_valid(node):
+			node.queue_free()
+		_chunk_item_nodes.erase(item_id)
+
+func pick_up_preview_item(char_id: String, item_id: String) -> bool:
+	return _game_state != null and _game_state.pick_up_item(char_id, item_id)
+
+func drop_preview_item(char_id: String, item_id: String) -> bool:
+	return _game_state != null and _game_state.drop_item(char_id, item_id)
+
+func transfer_preview_item(from_id: String, to_id: String, item_id: String) -> bool:
+	return _game_state != null and _game_state.transfer_item(from_id, to_id, item_id)
+
+func endocytose_preview_item(char_id: String, item_id: String) -> bool:
+	return _game_state != null and _game_state.endocytose_item(char_id, item_id)
+
+func exocytose_preview_item(char_id: String, item_id: String) -> bool:
+	return _game_state != null and _game_state.exocytose_item(char_id, item_id)
+
+func get_preview_hand_items(char_id: String) -> Array:
+	return _game_state.get_hand_items(char_id) if _game_state != null else []
+
+func get_preview_hand_slots(char_id: String) -> Array:
+	return _game_state.get_hand_slots(char_id) if _game_state != null else []
+
+func get_preview_internal_items(char_id: String) -> Array:
+	return _game_state.get_internal_items(char_id) if _game_state != null else []
+
+func get_preview_collection_items() -> Array:
+	return _game_state.collection.duplicate() if _game_state != null else []
+
+func get_preview_item_state(item_id: String) -> Dictionary:
+	if _game_state == null or not _game_state.items.has(item_id):
+		return {}
+	return (_game_state.items[item_id] as Dictionary).duplicate(true)
+
+func get_preview_item_display_name(item_id: String, char_id := "") -> String:
+	if _game_state == null or not _game_state.items.has(item_id):
+		return item_id
+	var item: Dictionary = _game_state.items[item_id]
+	var properties: Dictionary = item.get("properties", {})
+	var display_names: Dictionary = properties.get("display_names_by_character", {})
+	if char_id != "" and display_names.has(char_id):
+		return str(display_names.get(char_id, item_id))
+	if properties.has("display_name"):
+		return str(properties.get("display_name", item_id))
+	return ItemData.get_display_name(str(item.get("type", item_id)))
+
+## A small ground/hand visual for a chunk-spawned item, so picking it up reads on screen.
+func _ensure_chunk_item_node(item_id: String) -> void:
+	if _chunk_item_nodes.has(item_id) or _game_state == null or not _game_state.items.has(item_id):
+		return
+	var item: Dictionary = _game_state.items[item_id]
+	var properties: Dictionary = item.get("properties", {})
+	var node := MeshInstance3D.new()
+	node.name = "ChunkItem_%s" % item_id
+	var sphere := SphereMesh.new()
+	sphere.radius = 0.22
+	sphere.height = 0.44
+	node.mesh = sphere
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = properties.get("visual_color", Color(0.78, 0.78, 0.82))
+	mat.emission_enabled = true
+	mat.emission = (mat.albedo_color as Color).lightened(0.1)
+	mat.emission_energy_multiplier = 0.24
+	node.material_override = mat
+	var pos: Vector3 = item.get("position", Vector3.ZERO)
+	node.global_position = Vector3(pos.x, pos.y + 0.42, pos.z)
+	add_child(node)
+	_chunk_item_nodes[item_id] = node
+
+## Register a chunk interactable with the scene's input/feedback wiring (the preview host's
+## register_preview_interactable equivalent): give it the dialogue box + active character,
+## inject the gameplay scheduler so dwell rides it, and bind hover/outline feedback so it
+## highlights and fires exactly as the scene's own interactables do.
+func register_preview_interactable(interactable: Node) -> void:
+	if interactable == null:
+		return
+	if "dialogue_box" in interactable:
+		interactable.dialogue_box = _dialogue
+	if "active_character" in interactable:
+		interactable.active_character = get_preview_active_character()
+	if interactable.has_method("set_scheduler"):
+		interactable.call("set_scheduler", _scheduler)
+	if interactable.has_method("set_movement_authority"):
+		interactable.call("set_movement_authority", _game_state)
+	_connect_interactable_outline_feedback(interactable)
+	if _player != null and _player.has_method("bind_interaction_target"):
+		_player.call("bind_interaction_target", interactable)
 
 func _load_chunk(chunk_name: String) -> Node3D:
 	if _chunks.has(chunk_name):

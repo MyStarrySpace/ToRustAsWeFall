@@ -667,6 +667,9 @@ func _ready() -> void:
 			"--test-endo-junction-stretch":
 				ran_test = true
 				await _test_endo_junction_stretch_preview()
+			"--test-endo-junction-stretch-act1":
+				ran_test = true
+				await _test_endo_junction_stretch_act1()
 			"--test-channels-rhythm":
 				ran_test = true
 				await _test_channels_rhythm_preview()
@@ -979,6 +982,7 @@ func _run_all_tests() -> void:
 	await _test_physics_comparison()
 	await _test_mother_flure_preview()
 	await _test_endo_junction_stretch_preview()
+	await _test_endo_junction_stretch_act1()
 	if not _heavy("Channels Rhythm Preview"):
 		await _test_channels_rhythm_preview()
 	if not _heavy("Channels Hide Window Preview"):
@@ -3567,6 +3571,88 @@ func _test_endo_junction_stretch_preview() -> void:
 		_assert_equals(float(direct_stats.get("hp", -1.0)), 100.0, "Direct route rest restores %s HP" % char_id)
 
 	await _dispose_scene(direct_instance)
+
+# --- Test: endo_junction_stretch runs INSIDE act1 (not just the fragment preview) ---
+# Proves Task 1+2: the chunk-host interface lifted onto tutorial_sequence means a scene chunk loaded
+# into act1 is fully live — its interactables register in act1's GameState, and driving the chunk's
+# per-action methods (read/mark/forage/route/shortcut/shelter) reaches route_phase == "complete", which
+# act1's _on_process poll then advances out of the endo leg.
+func _test_endo_junction_stretch_act1() -> void:
+	_test_name = "Endo Junction Stretch In Act1"
+
+	var scene := load("res://scenes/tutorial/act1.tscn")
+	if scene == null:
+		_assert_true(false, "act1 scene loads")
+		return
+	var instance: Node = scene.instantiate()
+	if "suppress_scene_change" in instance:
+		instance.suppress_scene_change = true
+	# Boot directly into the Endo leg (the start_chunk mechanism), set before _ready runs.
+	instance.set("start_chunk", "endo_junction_stretch")
+	get_tree().root.add_child(instance)
+	for i in range(10):
+		await get_tree().process_frame
+
+	var gs = instance.get("_game_state")
+	_assert_true(gs != null, "act1 endo leg has a live GameState")
+	_assert_equals(str(instance.get("_current_step")), "endo_junction_stretch", "act1 entered the endo_junction_stretch step")
+
+	var chunk: Node = instance.find_child("Chunk_endo_junction_stretch", true, false)
+	_assert_true(chunk != null, "act1 instantiated the Endo scene chunk")
+	if chunk == null or gs == null:
+		if instance.has_method("_teardown_sequence"):
+			instance._teardown_sequence()
+		instance.queue_free()
+		await get_tree().process_frame
+		return
+
+	# The chunk's interactables registered in ACT1's GameState (namespaced by chunk). This is the proof
+	# that the host interface is inherited — without it, _add_interactable's spawn would have no GameState.
+	_assert_true(gs.interactables.has("endo_junction_stretch_EndoJunctionReadInteractable"),
+		"Endo chunk interactable registered in act1 GameState")
+	_assert_true(gs.interactables.has("endo_junction_stretch_EndoJunctionShelterInteractable"),
+		"Endo chunk shelter interactable registered in act1 GameState")
+	# The host interface resolves through act1 (not the preview host).
+	_assert_equals(str(chunk._get_game_state()), str(gs), "chunk's host GameState is act1's")
+	_assert_true(chunk._get_scheduler() != null, "chunk's host scheduler resolves to act1's")
+
+	# Let the intro dialogue chain settle, then drive the golden path through the chunk's own methods,
+	# teleporting the servicing character onto each LOCAL station anchor (same as the preview test).
+	instance.headless_advance(2.0, 0.1)
+
+	instance.call("_select_character", "endo")
+	instance.call("set_preview_character_position", "endo", chunk.JUNCTION_POS)
+	_assert_true(chunk.read_junction(), "act1: Endo reads his junction marks")
+	instance.call("_select_character", "aster")
+	instance.call("set_preview_character_position", "aster", chunk.GUIDE_MARK_POS)
+	_assert_true(chunk.mark_safe_route(), "act1: Aster translates the safe route")
+	instance.call("_select_character", "endo")
+	instance.call("set_preview_character_position", "endo", chunk.FORAGE_CACHE_POS)
+	_assert_true(chunk.collect_forage(), "act1: Endo collects the cache (inventory routes through act1 GameState)")
+	_assert_true(gs.get_hand_items("endo").size() > 0, "act1: the cache item lands in Endo's hand via GameState")
+	instance.call("set_preview_character_position", "endo", chunk.SAFE_LEDGE_POS)
+	_assert_true(chunk.commit_safe_route(), "act1: the safe ledge route commits")
+	instance.call("set_preview_character_position", "endo", chunk.SHORTCUT_LOCK_POS)
+	_assert_true(chunk.unlock_shortcut(), "act1: Endo opens the return shortcut")
+	instance.call("set_preview_character_position", "aster", chunk.SHELTER_POS)
+	_assert_true(chunk.reach_shelter(), "act1: the party reaches and rests at Shelter 1")
+
+	var chunk_state: Dictionary = chunk.get_preview_state()
+	_assert_equals(str(chunk_state.get("route_phase", "")), "complete", "act1: chunk reports route_phase complete")
+
+	# Shelter rest restored the party through act1's GameState (stat write-through).
+	for char_id in ["aster", "peris", "endo"]:
+		_assert_equals(gs.get_stat(char_id, "hp"), 100.0, "act1: shelter rest restores %s HP in GameState" % char_id)
+
+	# The act1 _on_process poll advances OUT of the endo leg once route_phase == complete.
+	instance.headless_advance(2.0, 0.1)
+	_assert_true(str(instance.get("_current_step")) != "endo_junction_stretch",
+		"act1: completing the endo stretch advances past its leg (now %s)" % str(instance.get("_current_step")))
+
+	if instance.has_method("_teardown_sequence"):
+		instance._teardown_sequence()
+	instance.queue_free()
+	await get_tree().process_frame
 
 func _test_channels_rhythm_preview() -> void:
 	_test_name = "Channels Rhythm Preview"

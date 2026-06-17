@@ -2,7 +2,7 @@ extends "res://scripts/tutorial/tutorial_sequence.gd"
 
 const DayNightCycleScript = preload("res://scripts/system/simulation/day_night_cycle.gd")
 const GameHUDScript = preload("res://scripts/ui/game_hud.gd")
-const ItemData = preload("res://scripts/game/objects/item_data.gd")
+# ItemData is inherited from tutorial_sequence.gd (the shared chunk-host base).
 const PERCEPTION_STACK_SHADER := preload("res://resources/perception_stack.gdshader")
 
 const STACKS_CHUNK_SCENE := preload("res://scenes/fragments/chunks/stacks_fragment_chunk.tscn")

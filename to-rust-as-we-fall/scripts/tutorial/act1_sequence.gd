@@ -2,8 +2,11 @@
 extends "res://scripts/tutorial/tutorial_sequence.gd"
 
 const FloraMemorySystem = preload("res://scripts/system/simulation/flora_memory_system.gd")
+const ENDO_JUNCTION_STRETCH_CHUNK_SCENE := preload("res://scenes/fragments/chunks/endo_junction_stretch_chunk.tscn")
 
 ## Act 1 chunk sequence: Channels, Stacks, Rings, Lockout.
+## The Endo's-Junction-to-Shelter-1 SCENE chunk (a self-contained SceneChunk, unlike the four
+## procedural chunks above) is reachable as its own leg via start_chunk == "endo_junction_stretch".
 
 var _aster_node: CharacterBody3D
 var _peris_node: CharacterBody3D
@@ -136,8 +139,15 @@ const CHUNK_GRIDS := {
 	"stacks": {"origin": Vector3(234, 0, -16), "size": Vector2i(232, 32)},    # X[234,466]
 	"rings": {"origin": Vector3(474, 0, -16), "size": Vector2i(212, 32)},     # X[474,686]
 	"lockout": {"origin": Vector3(694, 0, -16), "size": Vector2i(92, 32)},    # X[694,786]
+	# The Endo scene chunk authors its OWN frame (FLOOR_CENTER (47,-0.05,0), 98x36; spawns X 3-5,
+	# anchors X 7-86). A grid covering it so its station-distance checks and cooperative moves work.
+	"endo_junction_stretch": {"origin": Vector3(-2, 0, -18), "size": Vector2i(100, 36)},
 }
 var _grid: GridWorld
+var _endo_junction_chunk: Node3D
+## True while the Endo stretch leg is running. The chunk overwrites _current_step with its own per-beat
+## step ids (via set_preview_step), so the completion poll keys off this flag, not _current_step.
+var _endo_junction_active := false
 
 ## Build + activate the named chunk's OPEN grid, swapping it in as the live grid. The party re-derives
 ## its cells on the new grid (derived state); only one chunk grid is live at a time (act1 cuts between).
@@ -157,6 +167,14 @@ func _activate_chunk_grid(chunk_name: String) -> void:
 		_game_state.characters[id]["grid_cell"] = _grid.world_to_grid(_game_state.get_position(id))
 
 # --- Chunk dispatch ---
+
+## Channels/Stacks/Rings/Lockout are PROCEDURAL (built by _build_chunk → null scene). The Endo
+## stretch is a self-contained SCENE chunk: returning its PackedScene makes the base _load_chunk
+## instantiate it and call attach_chunk_host(self, ...), wiring it to act1's GameState/scheduler/UI.
+func _get_chunk_scene(chunk_name: String) -> PackedScene:
+	if chunk_name == "endo_junction_stretch":
+		return ENDO_JUNCTION_STRETCH_CHUNK_SCENE
+	return null
 
 func _build_chunk(chunk_name: String, parent: Node3D) -> void:
 	match chunk_name:
@@ -225,6 +243,10 @@ func _setup_ui() -> void:
 func _begin() -> void:
 	_player.set_move_enabled(false)
 	if start_chunk != "":
+		if start_chunk == "endo_junction_stretch":
+			# The scene chunk owns its own world; don't load the procedural opener around it.
+			_start_endo_junction_stretch_enter()
+			return
 		_load_chunk(start_chunk)
 		_player.set_move_enabled(true)
 		match start_chunk:
@@ -338,6 +360,14 @@ func _on_process(delta: float, spd: float) -> void:
 	if _current_step == "channels_explore":
 		if _game_state.get_position("aster").x > CHANNELS_END.x - 5.0:
 			_start_stacks_enter()
+
+	# Endo stretch (its own leg): the chunk overwrites _current_step with per-beat ids, so poll on the
+	# leg flag and the chunk's route_phase (set to "complete" by reach_shelter), not _current_step.
+	if _endo_junction_active:
+		if _endo_junction_chunk != null and is_instance_valid(_endo_junction_chunk) and _endo_junction_chunk.has_method("get_preview_state"):
+			var stretch_state: Dictionary = _endo_junction_chunk.call("get_preview_state")
+			if str(stretch_state.get("route_phase", "")) == "complete":
+				_start_endo_junction_stretch_complete()
 
 	if _current_step == "stacks_explore":
 		if _game_state.get_position("aster").x > STACKS_END.x - 5.0:
@@ -2091,6 +2121,57 @@ func _clear_lockout_runtime_state() -> void:
 			if _game_state.characters.has(nk_id):
 				_game_state.unregister_character(nk_id)
 	_naturalizers.clear()
+
+# --- Endo's Junction to Shelter 1 (scene chunk, its own leg) ---
+
+## Boot the Endo stretch as its own reachable leg: load the self-contained scene chunk (its
+## attach_chunk_host wires it to act1), swap to its grid, teleport the full party onto the chunk's
+## own spawn anchors (so its LOCAL station-distance checks line up), play a short intro, then hand
+## control to the player. The chunk's interactables fire through act1 because the host interface is
+## now inherited from tutorial_sequence; reach_shelter sets route_phase == "complete".
+func _start_endo_junction_stretch_enter() -> void:
+	if not _enter_step("endo_junction_stretch"):
+		return
+	_endo_junction_active = true
+	_endo_junction_chunk = _load_chunk("endo_junction_stretch")
+	_unload_chunk("channels")
+	_clear_channels_runtime_state()
+	_activate_chunk_grid("endo_junction_stretch")
+
+	var spawns := {}
+	if _endo_junction_chunk != null and _endo_junction_chunk.has_method("get_spawn_positions"):
+		spawns = _endo_junction_chunk.call("get_spawn_positions")
+	for char_id in ["aster", "peris", "endo"]:
+		if spawns.has(char_id):
+			var node := _get_character_node(char_id)
+			if node != null:
+				node.visible = true
+			set_preview_character_position(char_id, spawns[char_id])
+
+	# The chunk already reset its story state in _build_chunk (on load). Re-set the step AFTER, because
+	# the chunk's reset writes its own "..._start" step through set_preview_step (it shares _current_step).
+	_current_step = "endo_junction_stretch"
+	_select_character("endo")
+	_player.set_move_enabled(false)
+	_tutorial_prompt.hide_prompt()
+	_dialogue_chain([
+		"endo_stretch.entry.aster_space",
+		"endo_stretch.entry.peris_home",
+		"endo_stretch.route.endo_gesture",
+	], func():
+		_player.set_move_enabled(true)
+		_tutorial_prompt.show_prompt("Read Endo's junction marks, then run the stretch to Shelter 1"))
+
+## The stretch resolved (party rested at Shelter 1). Hand off to the existing flow.
+func _start_endo_junction_stretch_complete() -> void:
+	if not _endo_junction_active:
+		return
+	_endo_junction_active = false
+	_current_step = "endo_junction_stretch_complete"
+	_player.set_move_enabled(false)
+	_tutorial_prompt.hide_prompt()
+	_unload_chunk("endo_junction_stretch")
+	_scheduler.schedule_after(1.0, _start_stacks_enter, "endo_to_stacks")
 
 func _complete() -> void:
 	_enter_step("complete")
