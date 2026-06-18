@@ -579,30 +579,32 @@ func _build_environment() -> void:
 	floor_body.add_child(fc)
 	env.add_child(floor_body)
 
+	# Cool key + cool ambient (the original peris_room.tscn palette) — a calm lavender daylight, not the
+	# warm/orange wash. The directional angle is unchanged; only the colours + glow match the old room.
 	var dir_light := DirectionalLight3D.new()
 	dir_light.rotation_degrees = Vector3(-40, -20, 0)
-	dir_light.light_color = Color(0.95, 0.8, 0.6)
-	dir_light.light_energy = 0.6
+	dir_light.light_color = Color(0.88, 0.9, 1.0)      # cool white
+	dir_light.light_energy = 0.95
 	dir_light.shadow_enabled = true
 	env.add_child(dir_light)
 
-	var warm_fill := OmniLight3D.new()
-	warm_fill.position = Vector3(7, 2.8, 3)
-	warm_fill.light_color = Color(0.9, 0.7, 0.45)
-	warm_fill.light_energy = 2.2
-	warm_fill.omni_range = 12.0
-	env.add_child(warm_fill)
+	var room_fill := OmniLight3D.new()                 # gentle COOL fill so corners aren't black
+	room_fill.position = Vector3(7, 2.8, 3)
+	room_fill.light_color = Color(0.55, 0.6, 0.8)
+	room_fill.light_energy = 1.2
+	room_fill.omni_range = 12.0
+	env.add_child(room_fill)
 
 	var we := WorldEnvironment.new()
 	var e := Environment.new()
 	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color(0.06, 0.04, 0.03)
+	e.background_color = Color(0.05, 0.05, 0.07)        # cool dark, not warm brown
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.4, 0.3, 0.22)
-	e.ambient_light_energy = 0.5
+	e.ambient_light_color = Color(0.4527142, 0.37521115, 0.5201956)   # the old room's cool lavender ambient
+	e.ambient_light_energy = 0.6
 	e.glow_enabled = true
-	e.glow_intensity = 0.5
-	e.glow_bloom = 0.2
+	e.glow_intensity = 0.45
+	e.glow_bloom = 0.12
 	we.environment = e
 	env.add_child(we)
 
