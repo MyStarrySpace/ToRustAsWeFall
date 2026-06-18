@@ -272,6 +272,9 @@ func _ready() -> void:
 			"--test-channels-arc":
 				ran_test = true
 				_test_channels_arc()
+			"--test-channels-scene":
+				ran_test = true
+				await _test_channels_scene()
 			"--test-showcase-capture":
 				ran_test = true
 				await _test_showcase_capture()
@@ -869,6 +872,7 @@ func _run_all_tests() -> void:
 	await _test_showcase_gallery()
 	await _test_wash_relay()
 	_test_channels_arc()
+	await _test_channels_scene()
 	await _test_lure_relay_puzzle()
 	await _test_chromatic_aberration()
 	await _test_dialogue_hold_advance()
@@ -10590,6 +10594,67 @@ func _test_channels_arc() -> void:
 	# progress advances along the spiral arc, not in a straight line (the path actually curves)
 	var p0 := ChannelsArc.arc_pos(0.0); var p45 := ChannelsArc.arc_pos(45.0); var p90 := ChannelsArc.arc_pos(90.0)
 	_assert_true(p0.distance_to(p90) < (p0.distance_to(p45) + p45.distance_to(p90)) - 1.0, "the path curves (not a straight line)")
+
+## Merge the global-space AABBs of every MeshInstance3D under a node.
+func _node_aabb(node: Node) -> AABB:
+	var out := AABB()
+	var has := false
+	for mi in _all_mesh_instances(node):
+		var m := mi as MeshInstance3D
+		var a: AABB = m.global_transform * m.get_aabb()
+		if not has:
+			out = a; has = true
+		else:
+			out = out.merge(a)
+	return out
+
+func _all_mesh_instances(node: Node) -> Array:
+	var acc: Array = []
+	if node is MeshInstance3D:
+		acc.append(node)
+	for c in node.get_children():
+		acc.append_array(_all_mesh_instances(c))
+	return acc
+
+## CHANNELS integration: the textured spiral GLB is game-ready, the gameplay maps onto it via
+## ChannelsArc (each section lands within the model's bounds), and the wash_relay gameplay runs. This is
+## the data-layer "hooked up" bar — the live render/click helix-warp through the shared controllers is a
+## separate input pass.
+func _test_channels_scene() -> void:
+	_test_name = "Channels Scene"
+	# 1) the textured model is game-ready
+	_assert_true(ResourceLoader.exists("res://resources/models/channels/channels.glb"), "channels.glb is present")
+	var glb = load("res://resources/models/channels/channels.glb")
+	_assert_true(glb != null, "channels.glb loads as a PackedScene")
+	if glb == null:
+		return
+	var model: Node = glb.instantiate()
+	add_child(model)
+	await get_tree().process_frame
+	var aabb := _node_aabb(model)
+	_assert_true(aabb.size.length() > 10.0, "the channels model has real geometry (extent %.0f)" % aabb.size.length())
+	# 2) the gameplay maps onto the model via ChannelsArc — section centres land inside the model bounds
+	var grown := aabb.grow(2.5)
+	for sec in [[6.0, 11.0], [38.0, 41.0], [74.0, 79.0]]:   # near, middle, far sections
+		var cs: float = (sec[0] + sec[1]) * 0.5
+		var w: Vector3 = ChannelsArc.arc_pos(cs, 0.0)
+		_assert_true(grown.has_point(w), "section at s=%.0f maps onto the model (%.1f,%.1f,%.1f)" % [cs, w.x, w.y, w.z])
+	model.queue_free()
+	await get_tree().process_frame
+	# 3) the gauntlet loads the model as its environment AND the gameplay runs
+	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	_assert_true(instance != null, "the channels gauntlet (wash_relay) instantiates")
+	if instance == null:
+		return
+	var env := instance.find_child("EnvironmentModel", true, false)
+	_assert_true(env != null, "the gauntlet loads the channels model as its environment")
+	var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
+	_assert_true(chunk != null, "the wash_relay chunk is hosted")
+	if chunk != null:
+		instance.headless_advance(3.0)
+		_assert_true(str(chunk.get_preview_state().get("phase", "")) == "active", "the channels gameplay runs (phase active)")
+	instance.queue_free()
+	await get_tree().process_frame
 
 func _test_wash_relay() -> void:
 	_test_name = "Wash Relay"

@@ -484,6 +484,11 @@ func _update() -> void:
 
 # --- Scene/preview interface ---
 
+## The modeled environment this gauntlet plays inside — the textured channels spiral. It is built along
+## the SAME helix as ChannelsArc, so arc_pos(section x, lane z) lands each section on its set piece.
+func get_environment_model() -> String:
+	return "res://resources/models/channels/channels.glb"
+
 func get_scene_title() -> String:
 	return "Wash Relay"
 

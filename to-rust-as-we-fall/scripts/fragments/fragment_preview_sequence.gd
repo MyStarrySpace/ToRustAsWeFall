@@ -286,6 +286,7 @@ func _begin_chunk() -> void:
 		show_preview_message("Unknown fragment '%s' — see CHUNK_SCENES." % preview_chunk, 6.0)
 	set_preview_step(preview_chunk)
 	_active_chunk = _load_chunk(preview_chunk)
+	_load_environment_model()
 	_connect_outline_feedback_sources(self)
 	_connect_push_targets(self)
 	_apply_chunk_runtime_preset()
@@ -304,6 +305,35 @@ func _begin_chunk() -> void:
 	_refresh_inventory_panel()
 	_tutorial_prompt.show_prompt("Click to move")
 	show_preview_message("Preview booted with full HP, stamina, and ATP.", 2.0)
+
+# If the chunk names an environment GLB (a modeled backdrop), instantiate it under the scene and force
+# NEAREST texture filtering so the pixel-art tiles stay crisp. The gameplay data layer is unchanged —
+# the model is the visual the chunk's coordinate transform (e.g. ChannelsArc) maps the gauntlet onto.
+func _load_environment_model() -> void:
+	if _active_chunk == null or not _active_chunk.has_method("get_environment_model"):
+		return
+	var path := String(_active_chunk.call("get_environment_model"))
+	if path == "" or not ResourceLoader.exists(path):
+		return
+	var packed = load(path)
+	if packed == null:
+		return
+	var model: Node3D = packed.instantiate()
+	model.name = "EnvironmentModel"
+	add_child(model)
+	_force_nearest_filter(model)
+
+func _force_nearest_filter(node: Node) -> void:
+	if node is MeshInstance3D:
+		var mi := node as MeshInstance3D
+		var mesh := mi.mesh
+		if mesh != null:
+			for i in range(mesh.get_surface_count()):
+				var m := mi.get_active_material(i)
+				if m is BaseMaterial3D:
+					(m as BaseMaterial3D).texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	for c in node.get_children():
+		_force_nearest_filter(c)
 
 # --- Fragment picker (replaces the per-chunk *_preview.tscn files) ---
 
