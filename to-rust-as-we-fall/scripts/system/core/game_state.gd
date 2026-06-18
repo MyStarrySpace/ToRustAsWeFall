@@ -505,6 +505,19 @@ func compute_preview_party_paths(target_pos: Vector3) -> Array:
 
 # --- Queries ---
 
+## RENDER-ONLY coordinate map (default null = identity). When set to an object exposing
+## `to_world(Vector3)->Vector3` / `to_data(Vector3)->Vector3`, the data layer stays FLAT (positions,
+## grid, wash, detection all run in the flat frame) while node followers render through `to_world` —
+## e.g. ChannelsCoordMap wraps the flat wash gauntlet onto the channels helix. Never serialized, never
+## logged: it's a pure presentation transform a scene installs, so gameplay/replay are unaffected.
+var coord_map = null
+
+## The position a character's NODE should render at: the flat data position warped through coord_map
+## (identity when no map is installed, so every flat scene is unchanged).
+func get_render_position(id: String) -> Vector3:
+	var p := get_position(id)
+	return p if coord_map == null else coord_map.to_world(p)
+
 ## Current position, interpolated while moving.
 func get_position(id: String) -> Vector3:
 	if not characters.has(id):

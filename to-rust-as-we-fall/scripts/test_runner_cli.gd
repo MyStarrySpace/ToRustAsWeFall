@@ -10431,6 +10431,16 @@ func _test_channels_arc() -> void:
 	# progress advances along the spiral arc, not in a straight line (the path actually curves)
 	var p0 := ChannelsArc.arc_pos(0.0); var p45 := ChannelsArc.arc_pos(45.0); var p90 := ChannelsArc.arc_pos(90.0)
 	_assert_true(p0.distance_to(p90) < (p0.distance_to(p45) + p45.distance_to(p90)) - 1.0, "the path curves (not a straight line)")
+	# GameState render warp: an installed coord_map moves node followers onto the helix while DATA stays flat.
+	var gs := GameState.new()
+	gs.register_character("t", Vector3(20.0, 0.0, 2.0))
+	_assert_true(gs.get_render_position("t").is_equal_approx(Vector3(20.0, 0.0, 2.0)), "no coord_map -> render position is the flat data position")
+	gs.coord_map = ChannelsCoordMap.new()
+	var w: Vector3 = gs.get_render_position("t")
+	_assert_true(w.is_equal_approx(ChannelsArc.arc_pos(20.0, 2.0)), "an installed coord_map warps the render position onto the helix")
+	_assert_true(gs.get_position("t").is_equal_approx(Vector3(20.0, 0.0, 2.0)), "the DATA position stays flat (gameplay/replay unaffected)")
+	var back: Vector3 = gs.coord_map.to_data(w)
+	_assert_true(absf(back.x - 20.0) < 0.01 and absf(back.z - 2.0) < 0.01, "to_data inverts a clicked helix point back to flat (s, lane)")
 
 ## Merge the global-space AABBs of every MeshInstance3D under a node.
 func _node_aabb(node: Node) -> AABB:

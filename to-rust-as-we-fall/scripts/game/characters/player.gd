@@ -726,16 +726,20 @@ func _physics_process(delta: float) -> void:
 		return
 	if game_state and char_id != "":
 		if game_state.is_moving(char_id):
-			var pos := game_state.get_position(char_id)
-			if grid_world:
+			var pos := game_state.get_render_position(char_id)
+			if game_state.coord_map != null:
+				global_position = pos          # warped (e.g. onto the channels helix) — y is meaningful
+			elif grid_world:
 				global_position = Vector3(pos.x, global_position.y, pos.z)
 			else:
 				global_position = pos
 			_moving = true
 		elif _moving:
 			_moving = false
-			var pos := game_state.get_position(char_id)
-			if grid_world:
+			var pos := game_state.get_render_position(char_id)
+			if game_state.coord_map != null:
+				global_position = pos          # warped (e.g. onto the channels helix) — y is meaningful
+			elif grid_world:
 				global_position = Vector3(pos.x, global_position.y, pos.z)
 			else:
 				global_position = pos

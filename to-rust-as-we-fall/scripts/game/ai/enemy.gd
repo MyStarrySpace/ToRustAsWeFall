@@ -664,8 +664,11 @@ func _process(_delta: float) -> void:
 	# The body is a pure mirror of the data layer — including the charge, which is now a real
 	# data-layer move at charge_speed (so the lunge is smooth and never teleport-snaps at impact).
 	if game_state and char_id != "" and game_state.is_moving(char_id):
-		var pos := game_state.get_position(char_id)
-		global_position = Vector3(pos.x, global_position.y, pos.z)
+		var pos := game_state.get_render_position(char_id)
+		if game_state.coord_map != null:
+			global_position = pos          # warped onto the helix (y meaningful)
+		else:
+			global_position = Vector3(pos.x, global_position.y, pos.z)
 
 func _stop_movement() -> void:
 	if game_state and game_state.characters.has(char_id):
