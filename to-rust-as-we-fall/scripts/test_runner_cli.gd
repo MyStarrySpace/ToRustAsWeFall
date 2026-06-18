@@ -266,6 +266,9 @@ func _ready() -> void:
 			"--test-showcase-gallery":
 				ran_test = true
 				await _test_showcase_gallery()
+			"--test-wash-relay":
+				ran_test = true
+				await _test_wash_relay()
 			"--test-showcase-capture":
 				ran_test = true
 				await _test_showcase_capture()
@@ -861,6 +864,7 @@ func _run_all_tests() -> void:
 	_test_dodge_failure_no_cooldown()
 	_test_strike_skips_corpse()
 	await _test_showcase_gallery()
+	await _test_wash_relay()
 	await _test_lure_relay_puzzle()
 	await _test_chromatic_aberration()
 	await _test_dialogue_hold_advance()
@@ -10558,6 +10562,48 @@ func _test_terminal_focus_capture() -> void:
 	_assert_true(true, "Terminal focus captured")
 	inst._end_terminal_screen_focus()
 	await _dispose_scene(inst)
+
+# --- Test: the Wash Relay chunk — timed-cadence wash washes a character on a flooding section back to ---
+# the start shelter; an OVERRIDE button stops that section's flow so it no longer washes; the chunk-end
+# RETURN device recovers washed crew. Scheduler-driven, so the wash fires at fixed ticks.
+func _test_wash_relay() -> void:
+	_test_name = "Wash Relay"
+	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	_assert_true(instance != null, "wash_relay preview instantiates")
+	if instance == null:
+		return
+	var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
+	_assert_true(chunk != null, "wash_relay builds its chunk")
+	var gs = instance.get("_game_state")
+	if chunk == null or gs == null:
+		instance.queue_free(); await get_tree().process_frame
+		return
+	# park peris/endo at the start shelter, put aster ON section 0 (x in [6,13]) — via the SAME
+	# host path the wash reads (_get/_set_character_position), not gs directly
+	chunk.call("_set_character_position", "peris", Vector3(3.0, 0.5, 1.5))
+	chunk.call("_set_character_position", "endo", Vector3(3.0, 0.5, -1.5))
+	chunk.call("_set_character_position", "aster", Vector3(10.0, 0.5, 0.0))
+	_assert_true(chunk.call("_get_character_position", "aster").x > 8.0, "aster placed on section 0 (x=%.1f)" % chunk.call("_get_character_position", "aster").x)
+	# before the first surge (FIRST_FLOOD = 2.5s) — nothing washed yet
+	instance.headless_advance(0.8)
+	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0, "no wash before the first surge")
+	# advance past section 0's first surge -> aster (on it) is washed back to the start shelter
+	instance.headless_advance(2.6)
+	var s1: Dictionary = chunk.get_preview_state()
+	_assert_true(int(s1.get("washed_count", 0)) >= 1, "a character on a flooding section is washed (got %d)" % int(s1.get("washed_count", 0)))
+	_assert_true("aster" in s1.get("washed", []), "the washed character is the one that was on the section")
+	var ap: Vector3 = chunk.call("_get_character_position", "aster")
+	_assert_true(ap.x < 5.0, "washed aster returns to the start shelter (x=%.1f)" % ap.x)
+	# OVERRIDE section 0's flow off, recover aster, and re-test: the overridden section no longer washes
+	chunk.call("_on_return_device")
+	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0, "return device recovers washed crew")
+	chunk.call("_on_override", 0)
+	_assert_true(not bool((chunk.get_preview_state().get("flow_on", [true, true]))[0]), "override turns section 0 flow off")
+	chunk.call("_set_character_position", "aster", Vector3(10.0, 0.5, 0.0))
+	instance.headless_advance(7.0)   # past at least one more section-0 cadence beat
+	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0, "an overridden section no longer washes")
+	instance.queue_free()
+	await get_tree().process_frame
 
 # --- Test: the Showcase Gallery chunk shows off all three hiding tiers, both enemy types, and flora ---
 # Validates the exhibit content (3 hide tiers, 2 named enemy types + a demo sentry, the flora line-up) AND

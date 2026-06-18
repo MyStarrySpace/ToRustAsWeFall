@@ -22,6 +22,7 @@ const FLORA_GARDEN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/flora_g
 const DUSK_RUN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/dusk_run_chunk.tscn")
 const LURE_RELAY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/lure_relay_chunk.tscn")
 const SHOWCASE_GALLERY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/showcase_gallery_chunk.tscn")
+const WASH_RELAY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/wash_relay_chunk.tscn")
 
 # chunk name -> packed scene. The single lookup that replaced the old per-name match (and the reason
 # we no longer need one *_preview.tscn per chunk: one scene reads this registry and picks at runtime).
@@ -43,6 +44,7 @@ const CHUNK_SCENES := {
 	"flora_garden": FLORA_GARDEN_CHUNK_SCENE,
 	"dusk_run": DUSK_RUN_CHUNK_SCENE,
 	"showcase_gallery": SHOWCASE_GALLERY_CHUNK_SCENE,
+	"wash_relay": WASH_RELAY_CHUNK_SCENE,
 }
 
 # The fragment menu, in display order. Each entry is a runnable preview: an id, the chunk it loads, a
@@ -62,6 +64,7 @@ const PREVIEW_ENTRIES := [
 	{"id": "dusk_run", "chunk": "dusk_run", "title": "Dusk Run"},
 	{"id": "channels_rhythm", "chunk": "channels_rhythm", "title": "Channels Rhythm Lane"},
 	{"id": "channels_hide_window", "chunk": "channels_hide_window", "title": "Channels Hide Window"},
+	{"id": "wash_relay", "chunk": "wash_relay", "title": "Wash Relay"},
 	{"id": "survival_range", "chunk": "survival_range", "title": "Shelter-To-Shelter Range"},
 	{"id": "refuge_run", "chunk": "refuge_run", "title": "Refuge Run"},
 	{"id": "showcase_gallery", "chunk": "showcase_gallery", "title": "Showcase Gallery"},
@@ -134,7 +137,7 @@ const STAMINA_REGEN := 10.0
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
 @export_enum("stacks", "rings", "lockout", "overlay_lab", "mother_flure", "survival_range",
 	"channels_rhythm", "channels_hide_window", "endo_junction_stretch", "generated_stretch",
-	"refuge_run", "lure_relay", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery") var preview_chunk := "stacks"
+	"refuge_run", "lure_relay", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 ## When true, boot into a fragment PICKER instead of loading a chunk directly. The single
