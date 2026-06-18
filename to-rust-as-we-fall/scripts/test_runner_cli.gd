@@ -10619,6 +10619,26 @@ func _test_wash_relay() -> void:
 	instance.headless_advance(1.8)   # ~29.4s -> past flood-off (~28.7s), gate open
 	_assert_true(not bool((chunk.get_preview_state().get("sections", []) as Array)[4].get("sluice_blocked", true)), "the sluice gate opens after its surge")
 	_assert_true(gw.is_walkable(gate_cell.x, gate_cell.y), "an open sluice cell is walkable again")
+	# THREAT LAYER (back half): guards + hide alcove + lure, combined with the wash.
+	var gs2 = instance.get("_game_state")
+	_assert_equals(int(chunk.get_preview_state().get("enemy_count", 0)), 2, "the back half spawns two guards (a roamer + a sentry)")
+	# a party member tucked in the hide alcove is fully concealed from the guards
+	chunk.call("_set_character_position", "endo", Vector3(49.5, 0.5, 3.3))   # the patrol-section alcove
+	instance.headless_advance(0.2)
+	_assert_true("endo" in chunk.get_preview_state().get("hidden", []), "a member in the hide alcove is fully concealed")
+	chunk.call("_set_character_position", "endo", Vector3(43.0, 0.5, 0.0))   # step out, clear of the roamer
+	instance.headless_advance(0.2)
+	_assert_true(not ("endo" in chunk.get_preview_state().get("hidden", [])), "stepping out of the alcove drops concealment")
+	# firing the flure distracts + draws the sentry off its post
+	_assert_true(not gs2.is_character_distracted("ch_sentry"), "the sentry starts undistracted")
+	chunk.call("_on_lure", 0)
+	_assert_true(gs2.is_character_distracted("ch_sentry"), "firing the flure distracts the sentry")
+	_assert_true(bool(chunk.get_preview_state().get("lure_active", false)), "the flure reads active while it draws")
+	# a guard landing a hit shoves the target into the channel — washed to the start shelter
+	chunk.call("_set_character_position", "aster", Vector3(58.0, 0.5, 0.0))
+	chunk.call("_on_enemy_hit", "aster")
+	_assert_true("aster" in chunk.get_preview_state().get("washed", []), "a guard's hit washes the target to the start shelter")
+	_assert_true(chunk.call("_get_character_position", "aster").x < 5.0, "the hit character returns to the start shelter")
 	instance.queue_free()
 	await get_tree().process_frame
 
