@@ -6,7 +6,7 @@ class_name AbilityData
 ## like dialogue.
 ##
 ## xlsx columns: key, display_name, duration, cooldown, message, note
-## Keys are "<context>.<ability_id>" — e.g. "channels_rhythm.aster_focus", "refuge_run.peris_tune",
+## Keys are "<context>.<ability_id>" — e.g. "refuge_run.aster_focus", "refuge_run.peris_tune",
 ## "peris_sim.protect". A chunk pulls its whole ability set with for_context("<chunk>").
 ##
 ## Usage:

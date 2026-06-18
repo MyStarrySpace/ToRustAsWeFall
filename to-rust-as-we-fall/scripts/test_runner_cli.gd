@@ -78,11 +78,8 @@ const FRAGMENT_CHUNK_SCENE_PATHS := [
 	"res://scenes/fragments/chunks/stacks_fragment_chunk.tscn",
 	"res://scenes/fragments/chunks/rings_fragment_chunk.tscn",
 	"res://scenes/fragments/chunks/lockout_fragment_chunk.tscn",
-	"res://scenes/fragments/chunks/overlay_lab_chunk.tscn",
 	"res://scenes/fragments/chunks/mother_flure_chunk.tscn",
 	"res://scenes/fragments/chunks/survival_range_chunk.tscn",
-	"res://scenes/fragments/chunks/channels_rhythm_chunk.tscn",
-	"res://scenes/fragments/chunks/channels_hide_window_chunk.tscn",
 	"res://scenes/fragments/chunks/endo_junction_stretch_chunk.tscn",
 	"res://scenes/fragments/chunks/generated_stretch_chunk.tscn",
 ]
@@ -682,12 +679,6 @@ func _ready() -> void:
 			"--test-endo-junction-stretch-act1":
 				ran_test = true
 				await _test_endo_junction_stretch_act1()
-			"--test-channels-rhythm":
-				ran_test = true
-				await _test_channels_rhythm_preview()
-			"--test-channels-hide":
-				ran_test = true
-				await _test_channels_hide_window_preview()
 			"--test-peris-phase2":
 				ran_test = true
 				await _test_peris_phase2()
@@ -999,10 +990,6 @@ func _run_all_tests() -> void:
 	await _test_mother_flure_preview()
 	await _test_endo_junction_stretch_preview()
 	await _test_endo_junction_stretch_act1()
-	if not _heavy("Channels Rhythm Preview"):
-		await _test_channels_rhythm_preview()
-	if not _heavy("Channels Hide Window Preview"):
-		await _test_channels_hide_window_preview()
 	await _test_peris_phase2()
 	await _test_peris_scene_transition()
 	# Real-input intro legs (Aster/Peris-2/Tag Day) — first-class, not on-demand. The slow
@@ -3670,155 +3657,6 @@ func _test_endo_junction_stretch_act1() -> void:
 	instance.queue_free()
 	await get_tree().process_frame
 
-func _test_channels_rhythm_preview() -> void:
-	_test_name = "Channels Rhythm Preview"
-
-	var instance: Node = await _instantiate_preview_chunk_and_wait("channels_rhythm", 2)
-	_assert_true(instance != null, "channels_rhythm preview instantiates")
-	if instance == null:
-		return
-
-	var chunk: Node = instance.find_child("Chunk_channels_rhythm", true, false)
-	_assert_true(chunk != null, "Channels rhythm preview builds its chunk")
-	if chunk == null:
-		instance.queue_free()
-		await get_tree().process_frame
-		return
-
-	var initial_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
-	_assert_equals(int(initial_state.get("periodic_channel_count", 0)), 3, "Channels rhythm preview exposes three periodic flood channels")
-	_assert_true(int(initial_state.get("bridge_segment_count", 0)) >= 8, "Channels rhythm preview builds the bridge arc")
-	_assert_equals(int(initial_state.get("swarm_unit_count", 0)), 5, "Channels rhythm preview spawns the siderophore pack")
-
-	var analysis: Dictionary = chunk.get_wash_analysis() if chunk.has_method("get_wash_analysis") else {}
-	_assert_true(bool(analysis.get("guaranteed", false)), "Channels rhythm preview analytically guarantees a washout")
-	_assert_true(float(analysis.get("coverage_gap", 1.0)) <= 0.001, "Channels rhythm preview has no uncovered timing gap")
-
-	var period := float(initial_state.get("flow_period", 6.0))
-	var sample_count := 72
-	for i in range(sample_count):
-		var offset := period * float(i) / float(sample_count)
-		if chunk.has_method("reset_preview_state"):
-			chunk.call("reset_preview_state")
-		if instance.has_method("headless_set_character_position"):
-			instance.headless_set_character_position("aster", chunk.STAGE_POS)
-			instance.headless_set_character_position("peris", chunk.STAGE_POS + Vector3(-1.6, 0.0, 1.4))
-			instance.headless_set_character_position("endo", chunk.STAGE_POS + Vector3(-2.0, 0.0, -1.6))
-		_assert_true(chunk.has_method("set_timing_offset"), "Channels rhythm chunk exposes timing offset controls")
-		if chunk.has_method("set_timing_offset"):
-			chunk.call("set_timing_offset", offset)
-		_assert_true(bool(chunk.call("activate_lure")), "Channels rhythm preview activates at offset %.3f" % offset)
-		if instance.has_method("headless_advance"):
-			instance.headless_advance(6.2, 0.05)
-		var offset_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
-		_assert_equals(str(offset_state.get("swarm_state", "")), "washed", "Offset %.3f washes the pack" % offset)
-		_assert_true(int(offset_state.get("washed_channel_index", -1)) >= 0, "Offset %.3f records a wash channel" % offset)
-		_assert_equals(int(offset_state.get("washed_swarm_units", 0)), 5, "Offset %.3f washes every unit" % offset)
-
-	instance.queue_free()
-	await get_tree().process_frame
-
-func _test_channels_hide_window_preview() -> void:
-	_test_name = "Channels Hide Window Preview"
-
-	await _assert_preview_scene_idle_dialogue_stability(
-		"res://scenes/fragments/channels_hide_window_preview.tscn",
-		"Chunk_channels_hide_window",
-		"Channels Hide Window",
-		"This is not a corridor"
-	)
-
-	var instance: Node = await _instantiate_preview_chunk_and_wait("channels_hide_window", 2)
-	_assert_true(instance != null, "channels_hide_window preview instantiates")
-	if instance == null:
-		return
-
-	var chunk: Node = instance.find_child("Chunk_channels_hide_window", true, false)
-	_assert_true(chunk != null, "Channels hide window preview builds its chunk")
-	if chunk == null:
-		instance.queue_free()
-		await get_tree().process_frame
-		return
-
-	var initial_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
-	_assert_equals(int(initial_state.get("periodic_channel_count", 0)), 3, "Channels hide window preview exposes three periodic flood channels")
-	_assert_true(bool(initial_state.get("corridor_present", false)), "Channels hide window preview builds the fallback corridor")
-	_assert_true(bool(initial_state.get("conceal_patch_present", false)), "Channels hide window preview builds the concealment patch")
-	_assert_equals(int(initial_state.get("swarm_unit_count", 0)), 5, "Channels hide window preview spawns the siderophore pack")
-
-	var analysis: Dictionary = chunk.get_wash_analysis() if chunk.has_method("get_wash_analysis") else {}
-	_assert_true(not bool(analysis.get("guaranteed", true)), "Channels hide window preview is not analytically guaranteed")
-	_assert_true(float(analysis.get("coverage_gap", 0.0)) >= 0.25, "Channels hide window preview leaves a meaningful timing gap")
-	_assert_true(float(analysis.get("safe_sample_offset", -1.0)) >= 0.0, "Channels hide window preview exposes a sample safe offset")
-	_assert_true(float(analysis.get("failed_sample_offset", -1.0)) >= 0.0, "Channels hide window preview exposes a sample failed offset")
-	_assert_true(int(analysis.get("failed_sample_count", 0)) > 0, "Channels hide window preview includes failing offsets")
-
-	var anchors: Dictionary = instance.headless_get_anchor_positions() if instance.has_method("headless_get_anchor_positions") else {}
-	var stage_pos: Vector3 = anchors.get("stage", Vector3.ZERO)
-	var hide_patch_pos: Vector3 = anchors.get("hide_patch", Vector3.ZERO)
-	var goal_pos: Vector3 = anchors.get("goal", Vector3.ZERO)
-
-	if chunk.has_method("reset_preview_state"):
-		chunk.call("reset_preview_state")
-	if instance.has_method("headless_set_character_position"):
-		instance.headless_set_character_position("aster", stage_pos)
-		instance.headless_set_character_position("peris", stage_pos + Vector3(-1.5, 0.0, 1.2))
-		instance.headless_set_character_position("endo", stage_pos + Vector3(-1.8, 0.0, -1.3))
-	_assert_true(bool(chunk.call("set_recommended_offset", "safe")), "Channels hide window preview can apply a safe offset preset")
-	_assert_true(bool(chunk.call("activate_lure")), "Channels hide window preview activates on the sampled safe offset")
-	if instance.has_method("headless_advance"):
-		instance.headless_advance(6.2, 0.05)
-	var washed_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
-	_assert_equals(str(washed_state.get("swarm_state", "")), "washed", "Sample safe offset washes the pack")
-	_assert_true(int(washed_state.get("washed_channel_index", -1)) >= 0, "Sample safe offset records a wash channel")
-	if instance.has_method("headless_set_character_position"):
-		instance.headless_set_character_position("aster", goal_pos)
-	if instance.has_method("headless_advance"):
-		instance.headless_advance(0.2, 0.05)
-	var success_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
-	_assert_equals(str(success_state.get("last_outcome", "")), "success", "Washing the pack still lets Aster clear the lane")
-
-	if chunk.has_method("reset_preview_state"):
-		chunk.call("reset_preview_state")
-	if instance.has_method("headless_set_character_position"):
-		instance.headless_set_character_position("aster", stage_pos)
-		instance.headless_set_character_position("peris", stage_pos + Vector3(-1.5, 0.0, 1.2))
-		instance.headless_set_character_position("endo", stage_pos + Vector3(-1.8, 0.0, -1.3))
-	_assert_true(bool(chunk.call("set_recommended_offset", "fail")), "Channels hide window preview can apply a failed offset preset")
-	_assert_true(bool(chunk.call("activate_lure")), "Channels hide window preview activates on the sampled failed offset")
-	if instance.has_method("headless_advance"):
-		instance.headless_advance(5.2, 0.05)
-	if instance.has_method("headless_set_character_position"):
-		instance.headless_set_character_position("aster", hide_patch_pos)
-	if instance.has_method("headless_advance"):
-		instance.headless_advance(5.4, 0.05)
-	var retry_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
-	_assert_true(not bool(retry_state.get("detected", true)), "Getting into the patch before reacquisition avoids detection")
-	_assert_equals(str(retry_state.get("swarm_state", "")), "idle", "The pack eventually resets after a concealed miss")
-	_assert_equals(str(retry_state.get("phase", "")), "activate", "A concealed miss returns the lane to an activatable state")
-	_assert_true(int(retry_state.get("concealed_retries", 0)) >= 1, "The preview records a concealed retry")
-
-	if chunk.has_method("reset_preview_state"):
-		chunk.call("reset_preview_state")
-	if instance.has_method("headless_set_character_position"):
-		instance.headless_set_character_position("aster", stage_pos)
-	_assert_true(bool(chunk.call("set_recommended_offset", "fail")), "Channels hide window preview can reapply the failed offset preset")
-	_assert_true(bool(chunk.call("activate_lure")), "Channels hide window preview reactivates on the failed offset")
-	if instance.has_method("headless_advance"):
-		instance.headless_advance(7.8, 0.05)
-	var fail_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
-	_assert_true(bool(fail_state.get("detected", false)), "Staying exposed after a miss gets the player detected")
-	_assert_equals(str(fail_state.get("last_outcome", "")), "detected", "Detection locks in once the pack reacquires the player")
-	if instance.has_method("headless_set_character_position"):
-		instance.headless_set_character_position("aster", hide_patch_pos)
-	if instance.has_method("headless_advance"):
-		instance.headless_advance(0.3, 0.05)
-	var locked_fail_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
-	_assert_equals(str(locked_fail_state.get("phase", "")), "failed", "Entering the patch after detection does not clear the failure")
-
-	instance.queue_free()
-	await get_tree().process_frame
-
 func _mother_execute_root_move(instance: Node, chunk: Node, terminal_id: String, root_id: String, direction: int, expected_cells: Array, label: String) -> void:
 	instance.headless_select_character("aster")
 	_assert_true(chunk.activate_terminal(terminal_id), "%s opens %s" % [label, terminal_id])
@@ -4667,7 +4505,7 @@ func _test_puzzle_fast_forward_invariance() -> void:
 
 	var ids := [
 		"standard_enemy_lane", "chain_enemy_lane", "flure_primed_window",
-		"channels_hide_window_lane", "pendulum_lane", "shelter_to_shelter_range",
+		"pendulum_lane", "shelter_to_shelter_range",
 	]
 	# 1x ~ 0.0166 tick/frame (60fps); 10x ~ 0.166 tick/frame. The fragment's scenario
 	# assertions encode the meaningful teaching outcome, so we assert that outcome
@@ -4699,8 +4537,8 @@ func _set_step_in_actions(actions: Array, step_value: float, schema) -> void:
 			action[schema.KEY_STEP] = step_value
 
 ## Scenarios known to diverge under fast-forward, tracked rather than gating the suite.
-## (Empty: channels_hide_window's surge wash/miss is now predicted analytically at lure
-## activation instead of discovered by per-frame flood sampling, so it's invariant.)
+## (Empty: every timing-puzzle outcome is now predicted analytically from the scheduler
+## tick at activation instead of discovered by per-frame sampling, so it's invariant.)
 const _KNOWN_FF_PUZZLE_DIVERGENCES := {}
 
 func _compare_ff_puzzle_runs(id: String, slow: Dictionary, fast: Dictionary, schema) -> void:
@@ -6610,13 +6448,12 @@ func _test_ability_data() -> void:
 	_assert_true(str(tend.get("message", "")).begins_with("Peris tends the hushbloom"), "TEND carries its message")
 	_assert_true(str(tend.get("note", "")) != "", "TEND carries its description note")
 	# A whole context returns the three party abilities, in order, with the chunk's reframed names.
-	var ch := AbilityData.for_context("channels_rhythm")
-	_assert_equals(ch.size(), 3, "channels_rhythm has three abilities")
+	var ch := AbilityData.for_context("mother_flure")
+	_assert_equals(ch.size(), 3, "mother_flure has three abilities")
 	if ch.size() == 3:
 		_assert_equals(str(ch[0].get("id", "")), "aster_focus", "First is aster_focus")
-		_assert_equals(str(ch[0].get("display_name", "")), "TRACE", "channels_rhythm aster_focus is TRACE")
-		_assert_equals(str(ch[1].get("display_name", "")), "BLOOM", "channels_rhythm peris_tune is BLOOM")
-		_assert_equals(str(ch[2].get("display_name", "")), "BRACE", "channels_rhythm endo_patch is BRACE")
+		_assert_equals(str(ch[1].get("id", "")), "peris_tune", "Second is peris_tune")
+		_assert_equals(str(ch[2].get("id", "")), "endo_patch", "Third is endo_patch")
 	# Tutorial scene abilities live here too.
 	_assert_equals(str(AbilityData.get_ability("peris_sim.protect").get("display_name", "")), "PROTECT", "peris_sim protect is PROTECT")
 	_assert_equals(str(AbilityData.get_ability("elevator.emp").get("display_name", "")), "EMP", "elevator emp is EMP")

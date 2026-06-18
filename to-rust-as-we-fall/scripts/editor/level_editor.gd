@@ -27,18 +27,6 @@ const PLAN_SCENES := [
 		"preview_scene": "res://scenes/fragments/fragment_preview.tscn",
 	},
 	{
-		"id": "channels_rhythm",
-		"title": "Channels Rhythm Lane",
-		"chunk_scene": "res://scenes/fragments/chunks/channels_rhythm_chunk.tscn",
-		"preview_scene": "res://scenes/fragments/fragment_preview.tscn",
-	},
-	{
-		"id": "channels_hide_window",
-		"title": "Channels Hide Window",
-		"chunk_scene": "res://scenes/fragments/chunks/channels_hide_window_chunk.tscn",
-		"preview_scene": "res://scenes/fragments/fragment_preview.tscn",
-	},
-	{
 		"id": "stacks",
 		"title": "Processing Stacks",
 		"chunk_scene": "res://scenes/fragments/chunks/stacks_fragment_chunk.tscn",
@@ -66,12 +54,6 @@ const PLAN_SCENES := [
 		"id": "survival_range",
 		"title": "Shelter-To-Shelter Range",
 		"chunk_scene": "res://scenes/fragments/chunks/survival_range_chunk.tscn",
-		"preview_scene": "res://scenes/fragments/fragment_preview.tscn",
-	},
-	{
-		"id": "overlay_lab",
-		"title": "Overlay Lab",
-		"chunk_scene": "res://scenes/fragments/chunks/overlay_lab_chunk.tscn",
 		"preview_scene": "res://scenes/fragments/fragment_preview.tscn",
 	},
 	{
