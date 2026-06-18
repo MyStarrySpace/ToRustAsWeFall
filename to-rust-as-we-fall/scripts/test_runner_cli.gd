@@ -10621,7 +10621,7 @@ func _test_wash_relay() -> void:
 	_assert_true(gw.is_walkable(gate_cell.x, gate_cell.y), "an open sluice cell is walkable again")
 	# THREAT LAYER (back half): guards + hide alcove + lure, combined with the wash.
 	var gs2 = instance.get("_game_state")
-	_assert_equals(int(chunk.get_preview_state().get("enemy_count", 0)), 2, "the back half spawns two guards (a roamer + a sentry)")
+	_assert_equals(int(chunk.get_preview_state().get("enemy_count", 0)), 3, "the back half spawns three guards (roamer + sentry + basin roamer)")
 	# a party member tucked in the hide alcove is fully concealed from the guards
 	chunk.call("_set_character_position", "endo", Vector3(49.5, 0.5, 3.3))   # the patrol-section alcove
 	instance.headless_advance(0.2)
@@ -10653,6 +10653,24 @@ func _test_wash_relay() -> void:
 	_assert_true(bool(chunk.get_preview_state().get("sloperope_deployed", false)), "dropping the sloperope deploys the line")
 	chunk.call("_on_climb")
 	_assert_true(not ("peris" in chunk.get_preview_state().get("washed", [])), "with the line dropped, climbing recovers the stranded member")
+	# EXPANDED GAUNTLET: more sections + variations
+	_assert_equals(int(chunk.get_preview_state().get("section_count", 0)), 9, "the expanded gauntlet has nine sections")
+	# DOUBLE PLATE (index 8): BOTH pads must be held to disable — one is not enough (co-op escalation)
+	chunk.call("_set_character_position", "aster", Vector3(44.0, 0.5, 0.0))   # safe gap, off the pads
+	chunk.call("_set_character_position", "peris", Vector3(72.8, 0.5, -2.5))  # pad 1
+	chunk.call("_set_character_position", "endo",  Vector3(44.0, 0.5, 0.0))   # off the pads
+	instance.headless_advance(0.3)
+	_assert_true(not bool((chunk.get_preview_state().get("sections", []) as Array)[8].get("disabled", false)), "one of the two pads held does NOT disable the double-plate")
+	chunk.call("_set_character_position", "endo", Vector3(72.8, 0.5, 2.5))    # pad 2 as well
+	instance.headless_advance(0.3)
+	_assert_true(bool((chunk.get_preview_state().get("sections", []) as Array)[8].get("disabled", false)), "both pads held disables the double-plate")
+	# BASIN (index 7): wide, slow (its own period 8), override stops it
+	_assert_true(abs(float((chunk.get_preview_state().get("sections", []) as Array)[7].get("period", 0.0)) - 8.0) < 0.01, "the basin runs on its own slow cadence (period 8)")
+	chunk.call("_on_override", 7)
+	_assert_true(bool((chunk.get_preview_state().get("sections", []) as Array)[7].get("disabled", false)), "overriding the basin stops its surge")
+	# PER-SECTION CADENCE: the fast current (period 4) has surged more often than the period-6 sluice
+	var fc: Array = chunk.get_preview_state().get("sections", [])
+	_assert_true(int(fc[1].get("flood_count", 0)) > int(fc[4].get("flood_count", 0)), "the fast current (period 4) floods more often than the period-6 sluice")
 	instance.queue_free()
 	await get_tree().process_frame
 

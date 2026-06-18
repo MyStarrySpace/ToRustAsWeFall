@@ -25,34 +25,44 @@ const START_POS := Vector3(3.0, 0.5, 0.0)
 const SPAWNS := {
 	"aster": Vector3(3.0, 0.5, 0.0), "peris": Vector3(2.0, 0.5, 1.2), "endo": Vector3(2.0, 0.5, -1.2),
 }
+# The gauntlet, front (pure wash) to back (wash + threats). Each section may override the shared cadence
+# with its own "period"/"dur" (variety: tight frantic windows vs slow long-danger surges).
 const SECTIONS := [
-	{"type": "flush",   "x0": 6.0,  "x1": 11.0, "phase": 0.0, "disable": "override"},
-	{"type": "current", "x0": 14.0, "x1": 19.0, "phase": 2.5, "disable": "timing"},
-	{"type": "jet",     "x0": 22.0, "x1": 27.0, "phase": 1.2, "disable": "override"},
-	{"type": "plate",   "x0": 30.0, "x1": 35.0, "phase": 3.6, "disable": "plate"},
-	{"type": "sluice",  "x0": 38.0, "x1": 41.0, "phase": 0.8, "disable": "timing"},
-	{"type": "patrol",  "x0": 46.0, "x1": 53.0, "phase": 4.0, "disable": "timing"},   # a roaming guard + a hide alcove
-	{"type": "lure",    "x0": 56.0, "x1": 61.0, "phase": 1.6, "disable": "timing"},   # a sentry + a flure to distract it
+	{"type": "flush",        "x0": 6.0,  "x1": 11.0, "phase": 0.0, "disable": "override"},
+	{"type": "current",      "x0": 14.0, "x1": 19.0, "phase": 2.5, "disable": "timing", "period": 4.0},   # fast beat
+	{"type": "jet",          "x0": 22.0, "x1": 27.0, "phase": 1.2, "disable": "override"},
+	{"type": "plate",        "x0": 30.0, "x1": 35.0, "phase": 3.6, "disable": "plate"},
+	{"type": "sluice",       "x0": 38.0, "x1": 41.0, "phase": 0.8, "disable": "timing"},
+	{"type": "patrol",       "x0": 46.0, "x1": 53.0, "phase": 4.0, "disable": "timing"},          # roaming guard + alcove
+	{"type": "lure",         "x0": 56.0, "x1": 61.0, "phase": 1.6, "disable": "timing"},          # sentry + flure
+	{"type": "basin",        "x0": 64.0, "x1": 71.0, "phase": 0.0, "disable": "override",
+		"period": 8.0, "dur": 2.6},                                                               # wide, slow, long danger — guarded
+	{"type": "double_plate", "x0": 74.0, "x1": 79.0, "phase": 2.0, "disable": "double_plate"},    # TWO plates, both held
 ]
 const FLOOR_Z_HALF := 4.0
 const FLOOR_MIN_X := -1.0
-const FLOOR_MAX_X := 67.0
-const CHUNK_END_X := 64.0
-# Connect-back devices at the CHUNK END (link back to the stretch start). Two flavors:
-const TERMINAL_POS := Vector3(64.0, 0.5, 2.5)     # telephone stranded crew up — one party call, instant
-const SLOPEROPE_POS := Vector3(64.0, 0.5, -2.5)   # drop a climbing line down to the start shelter
-const CLIMB_POS := Vector3(5.0, 0.5, 2.5)         # start — a washed member climbs the dropped line up
-const RETURN_LANDING := Vector3(63.0, 0.5, 0.0)   # where recovered crew rejoin the party (near the end)
-const FLOW_PERIOD := 6.0
-const FLOOD_DURATION := 1.4
+const FLOOR_MAX_X := 87.0
+const CHUNK_END_X := 84.0
+# Connect-back devices at the CHUNK END (link back to the stretch start) — positions track the end.
+const TERMINAL_POS := Vector3(CHUNK_END_X, 0.5, 2.5)     # telephone stranded crew up — one party call, instant
+const SLOPEROPE_POS := Vector3(CHUNK_END_X, 0.5, -2.5)   # drop a climbing line down to the start shelter
+const CLIMB_POS := Vector3(5.0, 0.5, 2.5)                # start — a washed member climbs the dropped line up
+const RETURN_LANDING := Vector3(CHUNK_END_X - 1.0, 0.5, 0.0)   # where recovered crew rejoin the party
+const FLOW_PERIOD := 6.0            # default cadence (a section's "period" overrides it)
+const FLOOD_DURATION := 1.4         # default danger window (a section's "dur" overrides it)
 const FIRST_FLOOD := 2.5
-const PLATE_RADIUS := 1.4          # how close a character must be to "hold" a plate
+const PLATE_RADIUS := 1.4           # how close a character must be to "hold" a plate
+const DOUBLE_PLATE_Z := 2.5         # the two pads of a double-plate sit at ±this z
 
-# --- Threat layer (guards / hide alcoves / lures, laid over the patrol + lure sections) ---
-const HIDE_ALCOVES := [{"pos": Vector3(49.5, 0.5, 3.3), "radius": 1.9}]   # a nook in the patrol section
+# --- Threat layer (guards / hide alcoves / lures, laid over the guarded sections) ---
+const HIDE_ALCOVES := [
+	{"pos": Vector3(49.5, 0.5, 3.3), "radius": 1.9},   # a nook in the patrol section
+	{"pos": Vector3(67.5, 0.5, 3.3), "radius": 1.9},   # a nook beside the guarded basin
+]
 const ENEMY_SPECS := [
 	{"id": "ch_roamer", "spawn": Vector3(49.5, 0.5, 0.0), "kind": "roam",  "radius": 2.6, "speed": 3.0, "range": 5.5},
 	{"id": "ch_sentry", "spawn": Vector3(58.5, 0.5, 0.0), "kind": "guard", "radius": 0.0, "speed": 4.0, "range": 6.0},
+	{"id": "ch_basin",  "spawn": Vector3(67.5, 0.5, 0.0), "kind": "roam",  "radius": 3.0, "speed": 3.2, "range": 5.5},
 ]
 const LURE_SPECS := [{"pos": Vector3(54.0, 0.5, 2.8), "target": "ch_sentry"}]
 const LURE_DURATION := 9.0
@@ -60,7 +70,8 @@ const LURE_DURATION := 9.0
 var _phase := "ready"
 var _override_locked := []         # per section — an override has been pressed (latched)
 var _flooding := []                # cosmetic surge window
-var _plate_held := []              # per section — a character is on the plate this frame
+var _flood_counts := []            # per section — how many surges have fired (cadence variety / tests)
+var _plate_held := []              # per section — all the section's plates are held this frame
 var _sluice_blocked := []          # per section — the sluice gate cells are currently walled off
 var _washed := {}
 var _scheduled := false
@@ -82,6 +93,8 @@ func _section_color(t: String) -> Color:
 		"sluice":  return Color(0.45, 0.20, 0.10)
 		"patrol":  return Color(0.55, 0.18, 0.20)
 		"lure":    return Color(0.55, 0.30, 0.50)
+		"basin":   return Color(0.12, 0.35, 0.60)
+		"double_plate": return Color(0.60, 0.40, 0.10)
 	return Color(0.2, 0.3, 0.5)
 
 func _build_chunk() -> void:
@@ -123,6 +136,14 @@ func _build_chunk() -> void:
 			"lure":
 				for zz in [-1.0, 1.0]:
 					_add_box(self, Vector3(cx, 1.2, zz * (FLOOR_Z_HALF - 1.0)), Vector3(w, 2.4, 2.0), Color(0.14, 0.13, 0.15))  # chokepoint walls pinch the path
+			"basin":
+				_add_box(self, Vector3(cx, -0.3, 0.0), Vector3(w, 0.4, FLOOR_Z_HALF * 1.9), Color(0.05, 0.07, 0.09))   # a wide, deep lowered basin
+				for sx in [x0 + w * 0.2, cx, x1 - w * 0.2]:
+					_add_box(self, Vector3(sx, 3.6, FLOOR_Z_HALF - 0.4), Vector3(1.1, 1.0, 1.1), Color(0.22, 0.21, 0.2))   # multiple spouts
+			"double_plate":
+				_add_box(self, Vector3(cx, 0.06, 0.0), Vector3(w, 0.12, 1.4), Color(0.12, 0.13, 0.16))                 # the bridge plank
+				for zz in [-DOUBLE_PLATE_Z, DOUBLE_PLATE_Z]:
+					_add_box(self, Vector3(x0 - 1.2, 0.04, zz), Vector3(1.0, 0.1, 1.6), Color(0.6, 0.4, 0.1))          # two pressure plates
 		# the active-flow indicator strip (pulses while flooding)
 		var strip := _add_box(self, Vector3(cx, 0.03, 0.0), Vector3(w, 0.06, FLOOR_Z_HALF * 1.7), _section_color(t))
 		var mat := StandardMaterial3D.new()
@@ -278,18 +299,26 @@ func _ensure_scheduled() -> void:
 func _make_onset(i: int) -> Callable:
 	return func() -> void: _flood_onset(i)
 
+func _period(i: int) -> float:
+	return float(SECTIONS[i].get("period", FLOW_PERIOD))
+
+func _dur(i: int) -> float:
+	return float(SECTIONS[i].get("dur", FLOOD_DURATION))
+
 func _flood_onset(i: int) -> void:
 	var sched = _get_scheduler()
 	if _phase == "active" and not _section_disabled(i):
 		_wash_section(i)
 		_flooding[i] = true
+		if i < _flood_counts.size():
+			_flood_counts[i] += 1
 		_set_strip(i, 2.6)
 		if str(SECTIONS[i]["type"]) == "sluice":
 			_set_sluice(i, true)            # the gate slams shut — the threshold is impassable
 		if sched != null:
-			sched.schedule_after(FLOOD_DURATION, func() -> void: _set_flood_off(i), "wash_off_%d" % i)
+			sched.schedule_after(_dur(i), func() -> void: _set_flood_off(i), "wash_off_%d" % i)
 	if sched != null:
-		sched.schedule_after(FLOW_PERIOD, _make_onset(i), "wash_onset_%d" % i)
+		sched.schedule_after(_period(i), _make_onset(i), "wash_onset_%d" % i)
 
 func _set_flood_off(i: int) -> void:
 	_flooding[i] = false
@@ -300,8 +329,9 @@ func _set_flood_off(i: int) -> void:
 func _section_disabled(i: int) -> bool:
 	if bool(_override_locked[i]):
 		return true
-	if str(SECTIONS[i]["disable"]) == "plate":
-		return _plate_held[i]
+	var dis := str(SECTIONS[i]["disable"])
+	if dis == "plate" or dis == "double_plate":
+		return _plate_held[i]               # double_plate: _plate_held is true only when BOTH pads are held
 	return false
 
 # The sluice gate is a real movement BLOCKER: while closed, its threshold cells are non-walkable, so
@@ -396,29 +426,39 @@ func _process(_delta: float) -> void:
 func headless_process(_delta: float) -> void:
 	_update()
 
-func _plate_x(i: int) -> float:
-	return float(SECTIONS[i]["x0"]) - 1.2
+# The pad footprint(s) a section needs HELD to disable it. A plain plate has one; a double_plate has two
+# (at ±DOUBLE_PLATE_Z), so two members must stay while the third crosses.
+func _plate_footprints(i: int) -> Array:
+	var px := float(SECTIONS[i]["x0"]) - 1.2
+	if str(SECTIONS[i]["disable"]) == "double_plate":
+		return [Vector2(px, -DOUBLE_PLATE_Z), Vector2(px, DOUBLE_PLATE_Z)]
+	return [Vector2(px, 0.0)]
 
 func _update() -> void:
 	if _phase == "ready":
 		_phase = "active"
 	_ensure_scheduled()
-	# refresh plate-held state (a character standing on a plate disables that section while held)
+	# refresh plate-held state — a section is held only when EVERY one of its pads has a member on it
 	for i in range(SECTIONS.size()):
-		if str(SECTIONS[i]["disable"]) != "plate":
+		var dis := str(SECTIONS[i]["disable"])
+		if dis != "plate" and dis != "double_plate":
 			continue
-		var held := false
-		var px := _plate_x(i)
-		for char_id in PARTY_IDS:
-			if _washed.has(char_id):
-				continue
-			var p := _get_character_position(char_id)
-			if abs(p.x - px) <= PLATE_RADIUS and abs(p.z) <= 1.6:
-				held = true
+		var all_held := true
+		for fp in _plate_footprints(i):
+			var pad_held := false
+			for char_id in PARTY_IDS:
+				if _washed.has(char_id):
+					continue
+				var p := _get_character_position(char_id)
+				if abs(p.x - fp.x) <= PLATE_RADIUS and abs(p.z - fp.y) <= PLATE_RADIUS:
+					pad_held = true
+					break
+			if not pad_held:
+				all_held = false
 				break
-		if held != _plate_held[i]:
-			_plate_held[i] = held
-			_set_strip(i, 0.15 if held else 0.4)
+		if all_held != _plate_held[i]:
+			_plate_held[i] = all_held
+			_set_strip(i, 0.15 if all_held else 0.4)
 	# hide alcoves: a party member tucked in a nook is fully concealed from the guards
 	var gsc = _get_game_state()
 	if gsc != null and not _enemies.is_empty():
@@ -448,7 +488,7 @@ func get_scene_title() -> String:
 	return "Wash Relay"
 
 func get_scene_help() -> String:
-	return "A gauntlet of timed water hazards on one cadence. Override the flush/jet sections, hold the plate for the bridge, time the current and the sluice. The back half adds guards: duck into the hide alcove (full concealment) to slip the roamer, and fire the flure to draw the sentry off the chokepoint. A guard's hit shoves you into the channel — back to the start shelter."
+	return "A long gauntlet of timed water hazards, each on its own beat. Override the flush/jet/basin, hold the plate (and the DOUBLE plate — two members stay) for the bridges, time the fast current and the sluice. Guards prowl the back half: hide in an alcove to slip a roamer, fire the flure to draw the sentry off its chokepoint, and watch the guarded basin. A guard's hit, or standing in a flooding section, shoves you back to the start shelter — telephone up or drop the sloperope to recover."
 
 func get_default_character() -> String:
 	return "endo"
@@ -459,7 +499,7 @@ func get_spawn_positions() -> Dictionary:
 func get_grid_data() -> Dictionary:
 	return {
 		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
-		"origin": [-2.0, 0.0, -6.0], "cell_size": 1.0, "width": 72, "height": 12,
+		"origin": [-2.0, 0.0, -6.0], "cell_size": 1.0, "width": 92, "height": 12,
 		"walkable_regions": [{"min": [FLOOR_MIN_X, -FLOOR_Z_HALF], "max": [FLOOR_MAX_X, FLOOR_Z_HALF]}],
 	}
 
@@ -491,9 +531,9 @@ func get_preview_overlay_status(_overlay_id: String, _current_tick: float) -> Ar
 func reset_preview_state() -> void:
 	var n := SECTIONS.size()
 	_phase = "ready"
-	_override_locked = []; _flooding = []; _plate_held = []; _sluice_blocked = []
+	_override_locked = []; _flooding = []; _plate_held = []; _sluice_blocked = []; _flood_counts = []
 	for i in range(n):
-		_override_locked.append(false); _flooding.append(false); _plate_held.append(false); _sluice_blocked.append(false)
+		_override_locked.append(false); _flooding.append(false); _plate_held.append(false); _sluice_blocked.append(false); _flood_counts.append(0)
 	_washed.clear()
 	_sloperope_deployed = false
 	if is_instance_valid(_rope_mesh):
@@ -528,7 +568,8 @@ func get_preview_state() -> Dictionary:
 			"flooding": _flooding[i] if i < _flooding.size() else false,
 			"disabled": _section_disabled(i), "overridden": _override_locked[i] if i < _override_locked.size() else false,
 			"plate_held": _plate_held[i] if i < _plate_held.size() else false,
-			"sluice_blocked": _sluice_blocked[i] if i < _sluice_blocked.size() else false})
+			"sluice_blocked": _sluice_blocked[i] if i < _sluice_blocked.size() else false,
+			"period": _period(i), "flood_count": _flood_counts[i] if i < _flood_counts.size() else 0})
 	var guards: Array = []
 	var gs = _get_game_state()
 	for enemy in _enemies:
