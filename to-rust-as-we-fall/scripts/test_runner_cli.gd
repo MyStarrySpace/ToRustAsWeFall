@@ -10589,7 +10589,7 @@ func _test_wash_relay() -> void:
 	_assert_true("aster" in chunk.get_preview_state().get("washed", []), "a character on a flooding flush section is washed")
 	_assert_true(chunk.call("_get_character_position", "aster").x < 5.0, "the washed character returns to the start shelter")
 	# OVERRIDE the flush section -> it no longer washes
-	chunk.call("_on_return_device"); chunk.call("_on_override", 0)
+	chunk.call("_on_terminal"); chunk.call("_on_override", 0)
 	chunk.call("_set_character_position", "aster", Vector3(8.0, 0.5, 0.0))
 	instance.headless_advance(6.2)   # past the next flush onset (~8.5s)
 	_assert_true(not ("aster" in chunk.get_preview_state().get("washed", [])), "an overridden section no longer washes")
@@ -10639,6 +10639,20 @@ func _test_wash_relay() -> void:
 	chunk.call("_on_enemy_hit", "aster")
 	_assert_true("aster" in chunk.get_preview_state().get("washed", []), "a guard's hit washes the target to the start shelter")
 	_assert_true(chunk.call("_get_character_position", "aster").x < 5.0, "the hit character returns to the start shelter")
+	# CONNECT-BACK at the chunk end: a TERMINAL telephones stranded crew up instantly.
+	chunk.call("_on_terminal")
+	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0, "the terminal recalls all stranded crew")
+	_assert_true(chunk.call("_get_character_position", "aster").x > 60.0, "telephoned crew rejoin near the chunk end")
+	# SLOPEROPE: the start climb point is dead until the party drops the line from the chunk end.
+	chunk.call("_set_character_position", "peris", Vector3(50.0, 0.5, 0.0))
+	chunk.call("_on_enemy_hit", "peris")
+	_assert_true("peris" in chunk.get_preview_state().get("washed", []), "peris is washed for the sloperope test")
+	chunk.call("_on_climb")
+	_assert_true("peris" in chunk.get_preview_state().get("washed", []), "the climb point does nothing before the line is dropped")
+	chunk.call("_on_sloperope")
+	_assert_true(bool(chunk.get_preview_state().get("sloperope_deployed", false)), "dropping the sloperope deploys the line")
+	chunk.call("_on_climb")
+	_assert_true(not ("peris" in chunk.get_preview_state().get("washed", [])), "with the line dropped, climbing recovers the stranded member")
 	instance.queue_free()
 	await get_tree().process_frame
 

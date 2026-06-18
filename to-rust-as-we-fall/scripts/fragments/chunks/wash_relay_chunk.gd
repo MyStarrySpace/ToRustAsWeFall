@@ -38,8 +38,11 @@ const FLOOR_Z_HALF := 4.0
 const FLOOR_MIN_X := -1.0
 const FLOOR_MAX_X := 67.0
 const CHUNK_END_X := 64.0
-const RETURN_POS := Vector3(64.0, 0.5, 2.5)
-const RETURN_LANDING := Vector3(63.0, 0.5, 0.0)
+# Connect-back devices at the CHUNK END (link back to the stretch start). Two flavors:
+const TERMINAL_POS := Vector3(64.0, 0.5, 2.5)     # telephone stranded crew up — one party call, instant
+const SLOPEROPE_POS := Vector3(64.0, 0.5, -2.5)   # drop a climbing line down to the start shelter
+const CLIMB_POS := Vector3(5.0, 0.5, 2.5)         # start — a washed member climbs the dropped line up
+const RETURN_LANDING := Vector3(63.0, 0.5, 0.0)   # where recovered crew rejoin the party (near the end)
 const FLOW_PERIOD := 6.0
 const FLOOD_DURATION := 1.4
 const FIRST_FLOOD := 2.5
@@ -65,6 +68,8 @@ var _flow_strips: Array = []
 var _enemies: Array = []
 var _lure_until: Array = []        # per lure — scheduler tick the distraction ends (<=0 = inactive)
 var _lure_meshes: Array = []
+var _sloperope_deployed := false   # the chunk-end line has been dropped (the start climb point is live)
+var _rope_mesh: MeshInstance3D
 
 # --- Build ---
 
@@ -131,12 +136,29 @@ func _build_chunk() -> void:
 				"OVERRIDE", "", 1.0, true, 1.6, Interactable.InteractableType.HOLD_ACTION)
 			ov.interacted.connect(func() -> void: _on_override(i))
 	_build_threats()
-	_build_return()
+	_build_connect_backs()
 
-func _build_return() -> void:
-	var ret := _add_interactable(self, "ReturnDevice", "Drop sloperope", RETURN_POS,
-		"DROP LINE", "", 1.4, false, 1.8, Interactable.InteractableType.HOLD_ACTION)
-	ret.interacted.connect(func() -> void: _on_return_device())
+# The connect-back points at the chunk end (plus the start climb point the sloperope feeds).
+func _build_connect_backs() -> void:
+	# TERMINAL — telephone stranded crew up; one call at the chunk end, instant.
+	var term := _add_interactable(self, "Terminal", "Telephone up", TERMINAL_POS,
+		"TERMINAL", "", 1.2, false, 1.7, Interactable.InteractableType.HOLD_ACTION)
+	term.interacted.connect(func() -> void: _on_terminal())
+	var tm := _add_box(self, TERMINAL_POS + Vector3(0.0, 0.4, 0.0), Vector3(0.8, 1.5, 0.4), Color(0.1, 0.4, 0.45))
+	var tmat := StandardMaterial3D.new()
+	tmat.albedo_color = Color(0.1, 0.4, 0.45); tmat.emission_enabled = true
+	tmat.emission = Color(0.2, 0.9, 1.0); tmat.emission_energy_multiplier = 2.0; tm.material_override = tmat
+	# SLOPEROPE — drop a climbing line down to the start; the party deploys it once.
+	var rope := _add_interactable(self, "Sloperope", "Drop sloperope", SLOPEROPE_POS,
+		"DROP LINE", "", 1.2, false, 1.7, Interactable.InteractableType.HOLD_ACTION)
+	rope.interacted.connect(func() -> void: _on_sloperope())
+	_add_box(self, SLOPEROPE_POS + Vector3(0.0, 1.4, 0.0), Vector3(0.4, 2.8, 0.4), Color(0.3, 0.22, 0.12))   # the reel post
+	# CLIMB POINT at the start — a washed member climbs the dropped line back up to the chunk end.
+	var climb := _add_interactable(self, "ClimbLine", "Climb the line", CLIMB_POS,
+		"CLIMB", "", 1.4, false, 1.7, Interactable.InteractableType.HOLD_ACTION)
+	climb.interacted.connect(func() -> void: _on_climb())
+	_rope_mesh = _add_box(self, CLIMB_POS + Vector3(0.0, 1.4, 0.0), Vector3(0.16, 2.8, 0.16), Color(0.25, 0.18, 0.1))
+	_rope_mesh.visible = false   # the line only appears once dropped from the chunk end
 
 # --- Threat layer: hide alcoves, flures, guards ---
 
@@ -335,13 +357,30 @@ func _on_override(i: int) -> void:
 	_set_strip(i, 0.15)
 	_say("// SECTION %d FLOW // OVERRIDE ENGAGED" % (i + 1))
 
-func _on_return_device() -> void:
+func _recover_washed() -> int:
 	var n := _washed.size()
 	for char_id in _washed.keys():
 		_set_character_position(char_id, RETURN_LANDING)
 	_washed.clear()
+	return n
+
+func _on_terminal() -> void:
+	var n := _recover_washed()
+	_say("// TERMINAL // %d crew telephoned up" % n if n > 0 else "// TERMINAL // no crew stranded")
+
+func _on_sloperope() -> void:
+	_sloperope_deployed = true
+	if is_instance_valid(_rope_mesh):
+		_rope_mesh.visible = true
+	_say("// SLOPEROPE DROPPED // climb it from the start")
+
+func _on_climb() -> void:
+	if not _sloperope_deployed:
+		_say("// NO LINE // drop the sloperope from the chunk end first")
+		return
+	var n := _recover_washed()
 	if n > 0:
-		_say("// LINE DROPPED // %d crew recovered" % n)
+		_say("// CLIMBED UP // %d crew recovered" % n)
 
 func _set_strip(i: int, energy: float) -> void:
 	if i < _flow_strips.size() and is_instance_valid(_flow_strips[i]):
@@ -428,7 +467,9 @@ func get_preview_anchors() -> Dictionary:
 	var anchors := get_spawn_positions()
 	anchors["start_shelter"] = START_POS
 	anchors["chunk_end"] = Vector3(CHUNK_END_X + 1.0, 0.5, 0.0)
-	anchors["return_device"] = RETURN_POS
+	anchors["terminal"] = TERMINAL_POS
+	anchors["sloperope"] = SLOPEROPE_POS
+	anchors["climb_line"] = CLIMB_POS
 	for i in range(SECTIONS.size()):
 		anchors["section_%s" % SECTIONS[i]["type"]] = Vector3((float(SECTIONS[i]["x0"]) + float(SECTIONS[i]["x1"])) * 0.5, 0.5, 0.0)
 	for ai in range(HIDE_ALCOVES.size()):
@@ -454,6 +495,9 @@ func reset_preview_state() -> void:
 	for i in range(n):
 		_override_locked.append(false); _flooding.append(false); _plate_held.append(false); _sluice_blocked.append(false)
 	_washed.clear()
+	_sloperope_deployed = false
+	if is_instance_valid(_rope_mesh):
+		_rope_mesh.visible = false
 	for i in range(_lure_until.size()):
 		_lure_until[i] = -1.0
 	var gs = _get_game_state()
@@ -506,4 +550,5 @@ func get_preview_state() -> Dictionary:
 		"flow_period": FLOW_PERIOD, "flood_duration": FLOOD_DURATION,
 		"enemy_count": _enemies.size(), "guards": guards,
 		"lure_active": _lure_active(), "hidden": hidden_ids,
+		"sloperope_deployed": _sloperope_deployed,
 	}
