@@ -35,10 +35,10 @@ const FIRST_FLOOD := 2.5
 const PLATE_RADIUS := 1.4          # how close a character must be to "hold" a plate
 
 var _phase := "ready"
-var _disabled := []                # per section — override pressed OR (plate currently held)
 var _override_locked := []         # per section — an override has been pressed (latched)
 var _flooding := []                # cosmetic surge window
 var _plate_held := []              # per section — a character is on the plate this frame
+var _sluice_blocked := []          # per section — the sluice gate cells are currently walled off
 var _washed := {}
 var _scheduled := false
 var _flow_strips: Array = []
@@ -126,6 +126,8 @@ func _flood_onset(i: int) -> void:
 		_wash_section(i)
 		_flooding[i] = true
 		_set_strip(i, 2.6)
+		if str(SECTIONS[i]["type"]) == "sluice":
+			_set_sluice(i, true)            # the gate slams shut — the threshold is impassable
 		if sched != null:
 			sched.schedule_after(FLOOD_DURATION, func() -> void: _set_flood_off(i), "wash_off_%d" % i)
 	if sched != null:
@@ -134,6 +136,8 @@ func _flood_onset(i: int) -> void:
 func _set_flood_off(i: int) -> void:
 	_flooding[i] = false
 	_set_strip(i, 0.4)
+	if i < SECTIONS.size() and str(SECTIONS[i]["type"]) == "sluice":
+		_set_sluice(i, false)               # the gate lifts — the threshold opens again
 
 func _section_disabled(i: int) -> bool:
 	if bool(_override_locked[i]):
@@ -141,6 +145,32 @@ func _section_disabled(i: int) -> bool:
 	if str(SECTIONS[i]["disable"]) == "plate":
 		return _plate_held[i]
 	return false
+
+# The sluice gate is a real movement BLOCKER: while closed, its threshold cells are non-walkable, so
+# pathfinding refuses to route a character through (they wait / route around) — not just a wash hazard.
+func _sluice_gate_cells(i: int) -> Array:
+	var s: Dictionary = SECTIONS[i]
+	var gate_x := (float(s["x0"]) + float(s["x1"])) * 0.5
+	var gs = _get_game_state()
+	var cells: Array = []
+	if gs == null or gs.grid == null:
+		return cells
+	for wz in range(-3, 4):
+		cells.append(gs.grid.world_to_grid(Vector3(gate_x, 0.0, float(wz))))
+	return cells
+
+func _set_sluice(i: int, closed: bool) -> void:
+	if i >= _sluice_blocked.size():
+		return
+	_sluice_blocked[i] = closed
+	var gs = _get_game_state()
+	if gs == null or gs.grid == null:
+		return
+	for cell in _sluice_gate_cells(i):
+		if closed:
+			gs.grid.add_dynamic_blocker(cell, "sluice_%d" % i)
+		else:
+			gs.grid.remove_dynamic_blocker(cell)
 
 func _wash_section(i: int) -> void:
 	var s: Dictionary = SECTIONS[i]
@@ -267,12 +297,17 @@ func get_preview_overlay_status(_overlay_id: String, _current_tick: float) -> Ar
 func reset_preview_state() -> void:
 	var n := SECTIONS.size()
 	_phase = "ready"
-	_override_locked = []; _flooding = []; _plate_held = []
+	_override_locked = []; _flooding = []; _plate_held = []; _sluice_blocked = []
 	for i in range(n):
-		_override_locked.append(false); _flooding.append(false); _plate_held.append(false)
+		_override_locked.append(false); _flooding.append(false); _plate_held.append(false); _sluice_blocked.append(false)
 	_washed.clear()
 	var gs = _get_game_state()
 	if gs != null:
+		if gs.grid != null:
+			for i in range(n):
+				if str(SECTIONS[i]["type"]) == "sluice":
+					for cell in _sluice_gate_cells(i):
+						gs.grid.remove_dynamic_blocker(cell)
 		for char_id in PARTY_IDS:
 			if gs.characters.has(char_id):
 				gs.snap_character_to(char_id, SPAWNS.get(char_id, START_POS))
@@ -286,7 +321,8 @@ func get_preview_state() -> Dictionary:
 		secs.append({"type": SECTIONS[i]["type"], "disable": SECTIONS[i]["disable"],
 			"flooding": _flooding[i] if i < _flooding.size() else false,
 			"disabled": _section_disabled(i), "overridden": _override_locked[i] if i < _override_locked.size() else false,
-			"plate_held": _plate_held[i] if i < _plate_held.size() else false})
+			"plate_held": _plate_held[i] if i < _plate_held.size() else false,
+			"sluice_blocked": _sluice_blocked[i] if i < _sluice_blocked.size() else false})
 	return {
 		"phase": _phase, "complete": _phase == "complete",
 		"sections": secs, "section_count": SECTIONS.size(),

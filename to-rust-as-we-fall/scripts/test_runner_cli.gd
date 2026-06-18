@@ -10606,6 +10606,19 @@ func _test_wash_relay() -> void:
 	chunk.call("_set_character_position", "peris", Vector3(20.0, 0.5, 0.0))   # step off the plate (safe gap)
 	instance.headless_advance(6.2)   # past the next plate onset, now un-held
 	_assert_true("endo" in chunk.get_preview_state().get("washed", []), "releasing the plate re-arms the section -> endo washed")
+	# SLUICE section (index 4, timing): the gate is a REAL blocker — its threshold cells go non-walkable
+	# while closed (pathfinding can't route through), and open again on the window.
+	for cid in ["aster", "peris", "endo"]:
+		chunk.call("_set_character_position", cid, Vector3(3.0, 0.5, 0.0))
+	instance.headless_advance(5.5)   # ~27.6s -> inside a sluice closed window (onset ~27.3s)
+	var ss: Dictionary = chunk.get_preview_state()
+	_assert_true(bool((ss.get("sections", []) as Array)[4].get("sluice_blocked", false)), "the sluice gate registers closed during its surge")
+	var gw = instance.get("_game_state").grid
+	var gate_cell: Vector2i = gw.world_to_grid(Vector3(39.5, 0.0, 0.0))   # sluice [38,41] threshold
+	_assert_true(not gw.is_walkable(gate_cell.x, gate_cell.y), "a closed sluice cell is non-walkable (a real blocker, not just a hazard)")
+	instance.headless_advance(1.8)   # ~29.4s -> past flood-off (~28.7s), gate open
+	_assert_true(not bool((chunk.get_preview_state().get("sections", []) as Array)[4].get("sluice_blocked", true)), "the sluice gate opens after its surge")
+	_assert_true(gw.is_walkable(gate_cell.x, gate_cell.y), "an open sluice cell is walkable again")
 	instance.queue_free()
 	await get_tree().process_frame
 
