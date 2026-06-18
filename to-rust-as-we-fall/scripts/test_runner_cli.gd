@@ -10578,30 +10578,34 @@ func _test_wash_relay() -> void:
 	if chunk == null or gs == null:
 		instance.queue_free(); await get_tree().process_frame
 		return
-	# park peris/endo at the start shelter, put aster ON section 0 (x in [6,13]) — via the SAME
-	# host path the wash reads (_get/_set_character_position), not gs directly
+	# park the party safe, then test the FLUSH section (index 0, override): aster on it during a flood
+	# is washed back to the start shelter. Place via the host path the wash reads.
 	chunk.call("_set_character_position", "peris", Vector3(3.0, 0.5, 1.5))
 	chunk.call("_set_character_position", "endo", Vector3(3.0, 0.5, -1.5))
-	chunk.call("_set_character_position", "aster", Vector3(10.0, 0.5, 0.0))
-	_assert_true(chunk.call("_get_character_position", "aster").x > 8.0, "aster placed on section 0 (x=%.1f)" % chunk.call("_get_character_position", "aster").x)
-	# before the first surge (FIRST_FLOOD = 2.5s) — nothing washed yet
+	chunk.call("_set_character_position", "aster", Vector3(8.0, 0.5, 0.0))   # in flush [6,11]
 	instance.headless_advance(0.8)
 	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0, "no wash before the first surge")
-	# advance past section 0's first surge -> aster (on it) is washed back to the start shelter
 	instance.headless_advance(2.6)
-	var s1: Dictionary = chunk.get_preview_state()
-	_assert_true(int(s1.get("washed_count", 0)) >= 1, "a character on a flooding section is washed (got %d)" % int(s1.get("washed_count", 0)))
-	_assert_true("aster" in s1.get("washed", []), "the washed character is the one that was on the section")
-	var ap: Vector3 = chunk.call("_get_character_position", "aster")
-	_assert_true(ap.x < 5.0, "washed aster returns to the start shelter (x=%.1f)" % ap.x)
-	# OVERRIDE section 0's flow off, recover aster, and re-test: the overridden section no longer washes
-	chunk.call("_on_return_device")
-	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0, "return device recovers washed crew")
-	chunk.call("_on_override", 0)
-	_assert_true(not bool((chunk.get_preview_state().get("flow_on", [true, true]))[0]), "override turns section 0 flow off")
-	chunk.call("_set_character_position", "aster", Vector3(10.0, 0.5, 0.0))
-	instance.headless_advance(7.0)   # past at least one more section-0 cadence beat
-	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0, "an overridden section no longer washes")
+	_assert_true("aster" in chunk.get_preview_state().get("washed", []), "a character on a flooding flush section is washed")
+	_assert_true(chunk.call("_get_character_position", "aster").x < 5.0, "the washed character returns to the start shelter")
+	# OVERRIDE the flush section -> it no longer washes
+	chunk.call("_on_return_device"); chunk.call("_on_override", 0)
+	chunk.call("_set_character_position", "aster", Vector3(8.0, 0.5, 0.0))
+	instance.headless_advance(6.2)   # past the next flush onset (~8.5s)
+	_assert_true(not ("aster" in chunk.get_preview_state().get("washed", [])), "an overridden section no longer washes")
+	# PLATE section (index 3, [30,35]): peris HOLDS the plate -> endo crosses the bridge safely;
+	# release the plate -> the section re-arms and washes endo.
+	chunk.call("_set_character_position", "peris", Vector3(28.8, 0.5, 0.0))   # on the plate (x0-1.2)
+	chunk.call("_set_character_position", "endo", Vector3(32.0, 0.5, 0.0))    # on the bridge [30,35]
+	instance.headless_advance(0.3)
+	var sp: Dictionary = chunk.get_preview_state()
+	_assert_true(bool((sp.get("sections", []) as Array)[3].get("plate_held", false)), "standing on the plate registers as held")
+	_assert_true(bool((sp.get("sections", []) as Array)[3].get("disabled", false)), "a held plate disables its section")
+	instance.headless_advance(6.0)   # past a plate onset while the plate is held
+	_assert_true(not ("endo" in chunk.get_preview_state().get("washed", [])), "a held plate keeps the bridge safe for the party")
+	chunk.call("_set_character_position", "peris", Vector3(20.0, 0.5, 0.0))   # step off the plate (safe gap)
+	instance.headless_advance(6.2)   # past the next plate onset, now un-held
+	_assert_true("endo" in chunk.get_preview_state().get("washed", []), "releasing the plate re-arms the section -> endo washed")
 	instance.queue_free()
 	await get_tree().process_frame
 
