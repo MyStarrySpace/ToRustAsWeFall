@@ -269,6 +269,9 @@ func _ready() -> void:
 			"--test-wash-relay":
 				ran_test = true
 				await _test_wash_relay()
+			"--test-channels-arc":
+				ran_test = true
+				_test_channels_arc()
 			"--test-showcase-capture":
 				ran_test = true
 				await _test_showcase_capture()
@@ -865,6 +868,7 @@ func _run_all_tests() -> void:
 	_test_strike_skips_corpse()
 	await _test_showcase_gallery()
 	await _test_wash_relay()
+	_test_channels_arc()
 	await _test_lure_relay_puzzle()
 	await _test_chromatic_aberration()
 	await _test_dialogue_hold_advance()
@@ -10566,6 +10570,27 @@ func _test_terminal_focus_capture() -> void:
 # --- Test: the Wash Relay chunk — timed-cadence wash washes a character on a flooding section back to ---
 # the start shelter; an OVERRIDE button stops that section's flow so it no longer washes; the chunk-end
 # RETURN device recovers washed crew. Scheduler-driven, so the wash fires at fixed ticks.
+## ChannelsArc: the linear-gauntlet <-> helix transform. Round-trips exactly for points on a deck,
+## climbs monotonically with progress, and maps lane to a radial offset.
+func _test_channels_arc() -> void:
+	_test_name = "Channels Arc"
+	# round-trip: arc_pos(s, lane) -> world -> world_to_arc -> (s, lane)
+	for sample in [[0.0, 0.0], [12.0, 2.5], [40.0, -3.0], [84.0, 1.0], [60.0, -1.5]]:
+		var s0: float = sample[0]; var lane0: float = sample[1]
+		var w: Vector3 = ChannelsArc.arc_pos(s0, lane0)
+		var back: Dictionary = ChannelsArc.world_to_arc(w)
+		_assert_true(absf(float(back["s"]) - s0) < 0.001, "arc round-trip recovers s=%.1f (got %.3f)" % [s0, float(back["s"])])
+		_assert_true(absf(float(back["lane"]) - lane0) < 0.001, "arc round-trip recovers lane=%.1f (got %.3f)" % [lane0, float(back["lane"])])
+	# the helix climbs monotonically with progress (so height encodes s unambiguously)
+	_assert_true(ChannelsArc.arc_pos(80.0).y > ChannelsArc.arc_pos(10.0).y, "the helix climbs as the gauntlet progresses")
+	# a positive lane sits farther from the spiral centre than a negative one (lane -> radius)
+	var r_out := Vector2(ChannelsArc.arc_pos(30.0, 3.0).x, ChannelsArc.arc_pos(30.0, 3.0).z).length()
+	var r_in := Vector2(ChannelsArc.arc_pos(30.0, -3.0).x, ChannelsArc.arc_pos(30.0, -3.0).z).length()
+	_assert_true(r_out > r_in, "a higher lane maps to a larger radius")
+	# progress advances along the spiral arc, not in a straight line (the path actually curves)
+	var p0 := ChannelsArc.arc_pos(0.0); var p45 := ChannelsArc.arc_pos(45.0); var p90 := ChannelsArc.arc_pos(90.0)
+	_assert_true(p0.distance_to(p90) < (p0.distance_to(p45) + p45.distance_to(p90)) - 1.0, "the path curves (not a straight line)")
+
 func _test_wash_relay() -> void:
 	_test_name = "Wash Relay"
 	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
