@@ -375,6 +375,9 @@ func _hover_grid_center(hit: Vector3) -> Vector3:
 func _update_path_preview(hit: Vector3) -> void:
 	if _path_preview == null or game_state == null or char_id == "":
 		return
+	if game_state.coord_map != null:
+		_clear_path_preview()   # the dim hover-path doesn't map onto a warped scene
+		return
 	if game_state.is_moving(char_id):
 		_clear_path_preview()
 		return
@@ -585,6 +588,10 @@ func _find_char_node_uncached(cid: String) -> Node3D:
 var group_move := false
 
 func _set_click_target(world_pos: Vector3, cancel_interaction := true) -> bool:
+	# On a warped scene (e.g. the channels helix), the click lands on the MODEL deck — map it back to a
+	# flat (s, lane) target so all the grid/move logic below runs in the flat data frame.
+	if game_state != null and game_state.coord_map != null:
+		world_pos = game_state.coord_map.to_data(world_pos)
 	var cross_floor := game_state != null and char_id != "" \
 		and absf(world_pos.y - game_state.get_position(char_id).y) > LEVEL_GAP
 	# A click on a different stacked floor: on a MULTI-LEVEL GRID, route over ladders/ramps to it
@@ -708,6 +715,9 @@ func _process(_delta: float) -> void:
 func _update_hover_grid() -> void:
 	if _hover_grid == null:
 		return
+	if game_state != null and game_state.coord_map != null:
+		_hover_grid.visible = false   # flat overlays don't map onto a warped (helix) scene
+		return
 	var vp := get_viewport()
 	if vp == null:
 		_hover_grid.visible = false
@@ -793,6 +803,10 @@ func _on_gs_arrived(id: String) -> void:
 		auto_path_complete.emit()
 
 func _update_dest_marker(delta: float) -> void:
+	if game_state != null and game_state.coord_map != null:
+		if _dest_marker != null:
+			_dest_marker.visible = false   # warped scene: the flat target ring would float below the helix
+		return
 	if _moving:
 		# The marker position derives from the DATA LAYER's actual movement destination every
 		# frame — click-time assignment alone left command/party/delegated moves with the marker

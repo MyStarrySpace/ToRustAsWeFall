@@ -489,6 +489,19 @@ func _update() -> void:
 func get_environment_model() -> String:
 	return "res://resources/models/channels/channels.glb"
 
+## Installing this on GameState moves the playable system ONTO the helix: the data layer stays flat,
+## node followers render through it, and a click on the GLB deck maps back to a flat (s, lane) target.
+func get_coord_map():
+	return ChannelsCoordMap.new()
+
+## With the textured GLB as the environment, the flat graybox geometry would double the set pieces and
+## float below the helix — hide it. Only this chunk's own DIRECT meshes go; the meshless interaction
+## zones stay live and the guard nodes (which render through the warp) are untouched.
+func hide_flat_graybox() -> void:
+	for c in get_children():
+		if c is MeshInstance3D:
+			c.visible = false
+
 func get_scene_title() -> String:
 	return "Wash Relay"
 

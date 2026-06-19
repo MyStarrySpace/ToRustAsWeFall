@@ -27,6 +27,12 @@ func setup(state: GameState, root: Node = null) -> void:
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint() or game_state == null:
 		return
+	# On a warped scene (a coord_map maps the flat data onto a curved model, e.g. the channels helix),
+	# the flat ground ribbon would float below the model — suppress it. (Warping the ribbon is future work.)
+	if game_state.coord_map != null:
+		for pr in _renderers.values():
+			pr.visible = false
+		return
 	for char_id in game_state.characters.keys():
 		var pr: PathRenderer = _renderers.get(char_id)
 		if pr == null:

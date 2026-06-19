@@ -313,6 +313,29 @@ func _load_environment_model() -> void:
 	model.name = "EnvironmentModel"
 	add_child(model)
 	_force_nearest_filter(model)
+	_add_deck_collision(model)
+	# If the chunk maps its flat gauntlet onto this model (the channels helix), install the coord_map so
+	# node followers + clicks run through it, and hide the now-redundant flat graybox.
+	if _active_chunk.has_method("get_coord_map") and _game_state != null:
+		_game_state.coord_map = _active_chunk.call("get_coord_map")
+		if _active_chunk.has_method("hide_flat_graybox"):
+			_active_chunk.call("hide_flat_graybox")
+
+## Walkable surfaces of the environment model get trimesh collision on layer 1 (the ground layer the
+## player ray queries), so a click lands on the deck under the cursor — its world height is what
+## ChannelsCoordMap.to_data reads back to a flat (s, lane) target. Walls/glows/props are skipped so the
+## ray doesn't catch a gate or spout instead of the floor.
+const _DECK_NAME_HINTS := ["deck", "apin", "apout", "near", "far", "span", "cat", "floor", "entry",
+	"exit", "stair", "conn", "well", "overlook", "ch"]
+func _add_deck_collision(node: Node) -> void:
+	if node is MeshInstance3D:
+		var nm := String(node.name).to_lower()
+		for hint in _DECK_NAME_HINTS:
+			if nm.contains(hint):
+				(node as MeshInstance3D).create_trimesh_collision()
+				break
+	for c in node.get_children():
+		_add_deck_collision(c)
 
 func _force_nearest_filter(node: Node) -> void:
 	if node is MeshInstance3D:

@@ -10500,6 +10500,22 @@ func _test_channels_scene() -> void:
 	if chunk != null:
 		instance.headless_advance(3.0)
 		_assert_true(str(chunk.get_preview_state().get("phase", "")) == "active", "the channels gameplay runs (phase active)")
+	# the playable system is moved ONTO the helix: the coord_map is installed, characters render on the
+	# spiral (data stays flat), and the flat graybox is hidden so only the textured model shows.
+	var gs3 = instance.get("_game_state")
+	_assert_true(gs3 != null and gs3.coord_map != null, "the channels scene installs the helix coord_map")
+	if gs3 != null and gs3.coord_map != null and gs3.characters.has("aster"):
+		var dp: Vector3 = gs3.get_position("aster")
+		var rp: Vector3 = gs3.get_render_position("aster")
+		_assert_true(rp.is_equal_approx(ChannelsArc.arc_pos(dp.x, dp.z)), "a party member renders on the helix")
+		_assert_true(rp.distance_to(dp) > 0.5, "the helix render position differs from the flat data position")
+	if chunk != null:
+		var graybox_hidden := false
+		for c in chunk.get_children():
+			if c is MeshInstance3D and not (c as MeshInstance3D).visible:
+				graybox_hidden = true
+				break
+		_assert_true(graybox_hidden, "the flat graybox is hidden (the textured model is the visual)")
 	instance.queue_free()
 	await get_tree().process_frame
 
