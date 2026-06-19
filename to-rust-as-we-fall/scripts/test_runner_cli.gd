@@ -293,6 +293,9 @@ func _ready() -> void:
 			"--test-nav-oracle":
 				ran_test = true
 				await _test_nav_oracle()
+			"--test-wash-relay-pathfind-perf":
+				ran_test = true
+				await _test_wash_relay_pathfind_perf()
 			"--test-channels-robustness":
 				ran_test = true
 				await _test_channels_robustness()
@@ -898,6 +901,7 @@ func _run_all_tests() -> void:
 	await _test_wash_relay_hover_sweep()
 	_test_reachability_cull()
 	await _test_nav_oracle()
+	await _test_wash_relay_pathfind_perf()
 	await _test_channels_robustness()
 	await _test_chunk_robustness()
 	await _test_lure_relay_puzzle()
@@ -10180,13 +10184,23 @@ func _test_preview_matches_committed() -> void:
 	gs.command_move_to_pos("peris", target)
 	var mv = gs.characters["peris"].movement
 	var committed: Array = (mv.path as Array) if mv != null else []
-	_assert_equals(preview.size(), committed.size(),
-		"Preview length == committed length (%d vs %d)" % [preview.size(), committed.size()])
-	if preview.size() == committed.size() and preview.size() > 0:
+	# The preview is now the cheap SPATIAL route (find_path), recomputed per hovered cell — NOT the
+	# cooperative space-time plan (that was the per-hover freeze). The click still COMMITS the cooperative
+	# route; with no other character's reservation forcing a detour (a single character here) the two track
+	# closely — same destination, essentially the same cells — differing at most by a start/wait waypoint.
+	_assert_true(preview.size() > 0 and committed.size() > 0,
+		"both preview and committed paths are non-empty (%d vs %d)" % [preview.size(), committed.size()])
+	if preview.size() > 0 and committed.size() > 0:
+		_assert_true((preview[preview.size() - 1] as Vector3).distance_to(committed[committed.size() - 1]) < 1.0,
+			"the preview ends at the committed destination")
+		_assert_true(absi(preview.size() - committed.size()) <= 2,
+			"the preview tracks the committed route closely (lengths %d vs %d)" % [preview.size(), committed.size()])
+		# Where they overlap, the cells coincide (the spatial route IS the cooperative route, absent detours).
+		var overlap := mini(preview.size(), committed.size())
 		var maxd := 0.0
-		for i in range(preview.size()):
-			maxd = maxf(maxd, (preview[i] as Vector3).distance_to(committed[i]))
-		_assert_true(maxd < 0.01, "Preview path matches the committed path (max deviation %.3f)" % maxd)
+		for i in range(overlap):
+			maxd = maxf(maxd, (preview[preview.size() - 1 - i] as Vector3).distance_to(committed[committed.size() - 1 - i]))
+		_assert_true(maxd < 1.5, "preview + committed cells coincide within a cell from the destination back (max dev %.3f)" % maxd)
 	await _dispose_scene(inst)
 
 # --- Test: a party group-move previews ONE ribbon PER member, not a single shared line (headless) ---
@@ -10872,6 +10886,48 @@ func _path_points_finite(path_renderer: Node) -> bool:
 		if p is Vector3 and not (p as Vector3).is_finite():
 			return false
 	return true
+
+## Perf probe: after the guards have roamed for a while (reservations spread), hammer the hover PREVIEW
+## (compute_preview_path) + find_path to targets across the deck/branches/far, timing each, to locate the
+## intermittent freeze. Prints per-target ms + the slowest; asserts a per-call budget the hover can afford.
+func _test_wash_relay_pathfind_perf() -> void:
+	_test_name = "Wash Relay Pathfind Perf"
+	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	if instance == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	var gs = instance.get("_game_state")
+	if gs == null or gs.grid == null:
+		_assert_true(false, "game state + grid present"); instance.queue_free(); await get_tree().process_frame; return
+	# Let the guards roam so the reservation table fills (the time-dependent state the user hits).
+	for i in range(50):
+		instance.headless_advance(0.1)
+		if i % 10 == 0:
+			await get_tree().process_frame
+	var cid := "aster" if gs.characters.has("aster") else str(gs.characters.keys()[0])
+	var targets: Array = []
+	for s in [10.0, 30.0, 50.0, 72.0, 84.0]:
+		targets.append(Vector3(s, 0.0, 0.0))     # far down the deck
+	for b in instance.find_child("Chunk_wash_relay", true, false).get_preview_state().get("branches", []):
+		targets.append(Vector3(float(b["mid_x"]), 0.0, float(b["pad_lane"])))   # branch pads
+	var max_prev := 0
+	var max_prev_target := Vector3.ZERO
+	var max_fp := 0
+	for t in targets:
+		var t0 := Time.get_ticks_msec()
+		gs.compute_preview_path(cid, t)
+		var dt := Time.get_ticks_msec() - t0
+		if dt > max_prev:
+			max_prev = dt; max_prev_target = t
+		var sc: Vector2i = gs.grid.world_to_grid(gs.get_position(cid))
+		var ec: Vector2i = gs.grid.world_to_grid(t)
+		var f0 := Time.get_ticks_msec()
+		gs.grid.find_path(sc, ec)
+		max_fp = maxi(max_fp, Time.get_ticks_msec() - f0)
+	print("[pf-perf] %d targets, max preview %d ms (at %v, coop_nodes=%d), max find_path %d ms" % [targets.size(), max_prev, max_prev_target, gs._coop_last_nodes, max_fp])
+	_assert_true(max_prev < 60, "no hover preview exceeds 60 ms (max %d ms at %v)" % [max_prev, max_prev_target])
+	_assert_true(max_fp < 60, "no find_path exceeds 60 ms (max %d ms)" % max_fp)
+	instance.queue_free()
+	await get_tree().process_frame
 
 ## The NavOracle: bake a navmesh from collision at runtime (headless), query geodesic distance + reachability,
 ## and confirm the two properties the guided A* relies on — DETERMINISM (identical query => identical result)

@@ -4,6 +4,10 @@ extends RefCounted
 ## Authoritative 2D grid for world layout and pathfinding.
 ## grid[z][x] of tile type ints. 3D rendering is a separate layer on top.
 
+## Pathfinding tracing — run with PATHFIND_DEBUG=1 to print every A* search (start/end + iters). The LAST
+## "[A*] start" with no matching "[A*] done" is the search that hung. Cached so the env lookup isn't per-call.
+static var _pf_debug: bool = OS.has_environment("PATHFIND_DEBUG")
+
 enum Tile {
 	FLOOR = 0,
 	WALL = 1,
@@ -323,6 +327,8 @@ func _reach_walkable(x: int, z: int, level: int, cautious: bool) -> bool:
 	return not (cautious and cautious_cell_blocked(Vector2i(x, z)))
 
 func reachable(start: Vector2i, end: Vector2i, level: int = 0, cautious: bool = false) -> bool:
+	if _pf_debug:
+		print("[A*] reachable BFS %v -> %v" % [start, end])
 	if start == end:
 		return true
 	if not _reach_walkable(start.x, start.y, level, cautious) or not _reach_walkable(end.x, end.y, level, cautious):
@@ -410,6 +416,45 @@ func nearest_walkable_world(world_pos: Vector3, radius := 3, level := 0) -> Vect
 
 # --- Pathfinding (A*, 8-directional) ---
 
+# Binary min-heap for the A* open set (f, then insertion seq for deterministic FIFO ties). Replaces a
+# linear min-scan + O(n) `erase` + O(n) `in open_set` membership test — which made find_path O(n²) and,
+# for a far target on a big grid, the per-hover preview's bottleneck.
+static func _gw_heap_less(a: Dictionary, b: Dictionary) -> bool:
+	if a.f != b.f:
+		return a.f < b.f
+	return int(a.seq) < int(b.seq)
+
+static func _gw_heap_push(heap: Array, node: Dictionary) -> void:
+	heap.append(node)
+	var i := heap.size() - 1
+	while i > 0:
+		var parent := (i - 1) >> 1
+		if not _gw_heap_less(heap[i], heap[parent]):
+			break
+		var tmp = heap[parent]; heap[parent] = heap[i]; heap[i] = tmp
+		i = parent
+
+static func _gw_heap_pop(heap: Array) -> Dictionary:
+	var top: Dictionary = heap[0]
+	var last: Dictionary = heap.pop_back()
+	if not heap.is_empty():
+		heap[0] = last
+		var i := 0
+		var n := heap.size()
+		while true:
+			var smallest := i
+			var l := 2 * i + 1
+			var r := 2 * i + 2
+			if l < n and _gw_heap_less(heap[l], heap[smallest]):
+				smallest = l
+			if r < n and _gw_heap_less(heap[r], heap[smallest]):
+				smallest = r
+			if smallest == i:
+				break
+			var tmp = heap[smallest]; heap[smallest] = heap[i]; heap[i] = tmp
+			i = smallest
+	return top
+
 ## Find a path from start cell to end cell.
 ## Returns array of world positions (Vector3) for the path waypoints.
 func find_path(
@@ -427,21 +472,19 @@ func find_path(
 		return []
 	if not is_walkable(end.x, end.y, explored, locked_doors, level):
 		return []
-	# Geometric-reachability fast-reject (same as the cooperative planner): a target on the far side of a
-	# wall partition can't be reached, so bail instead of sweeping the whole width*height*4 budget. Uses the
-	# bare-walkability graph (empty explored/locked_doors), which can only OVER-connect vs this call's
-	# explored/locked_doors — so it never false-bails a path this find_path would actually find.
-	if is_walkable(start.x, start.y, explored, locked_doors, level) and not reachable(start, end, level, cautious):
-		return []
+	# (No reachability pre-check here: the heap A* below already explores an unreachable target's whole
+	# component in O(n log n) — adding a BFS pre-check would just DOUBLE the cost for the common reachable
+	# case. The cull lives in _plan_cooperative, where it saves the far more expensive space-time search.)
 
-	# A* with octile heuristic
-	var open_set: Array[Vector2i] = [start]
+	# A* with octile heuristic, binary-heap open set
+	if _pf_debug:
+		print("[A*] find_path start %v -> %v (grid %dx%d, cautious=%s)" % [start, end, width, height, cautious])
 	var came_from: Dictionary = {}  # Vector2i -> Vector2i
-	var g_score: Dictionary = {}    # Vector2i -> float
-	var f_score: Dictionary = {}    # Vector2i -> float
-
-	g_score[start] = 0.0
-	f_score[start] = _heuristic(start, end)
+	var g_score: Dictionary = {start: 0.0}    # Vector2i -> float (best known cost-to-reach)
+	var closed: Dictionary = {}     # cells finalized at their best g (lazy-deletion skip)
+	var seq := 0
+	var open: Array = [{"cell": start, "f": _heuristic(start, end), "seq": seq}]
+	seq += 1
 
 	# 8 directions: cardinal + diagonal
 	var dirs: Array[Vector2i] = [
@@ -452,22 +495,20 @@ func find_path(
 	var iterations := 0
 	var max_iterations := width * height * 4
 
-	while not open_set.is_empty() and iterations < max_iterations:
+	while not open.is_empty() and iterations < max_iterations:
 		iterations += 1
 
-		# Find node with lowest f_score
-		var current := open_set[0]
-		var best_f: float = f_score.get(current, INF)
-		for i in range(1, open_set.size()):
-			var f: float = f_score.get(open_set[i], INF)
-			if f < best_f:
-				best_f = f
-				current = open_set[i]
+		var current: Vector2i = _gw_heap_pop(open).cell
+		# A stale duplicate (already finalized cheaper) — skip. Consistent (octile) heuristic, so a cell
+		# popped once is at its best g and never needs reopening.
+		if closed.has(current):
+			continue
+		closed[current] = true
 
 		if current == end:
+			if _pf_debug:
+				print("[A*] find_path done: reached in %d iters" % iterations)
 			return _reconstruct_path(came_from, current, level)
-
-		open_set.erase(current)
 
 		for dir in dirs:
 			var neighbor := current + dir
@@ -507,11 +548,12 @@ func find_path(
 			if tentative_g < g_score.get(neighbor, INF):
 				came_from[neighbor] = current
 				g_score[neighbor] = tentative_g
-				f_score[neighbor] = tentative_g + _heuristic(neighbor, end)
-				if neighbor not in open_set:
-					open_set.append(neighbor)
+				_gw_heap_push(open, {"cell": neighbor, "f": tentative_g + _heuristic(neighbor, end), "seq": seq})
+				seq += 1
 
 	# No path found
+	if _pf_debug:
+		print("[A*] find_path done: NO PATH after %d iters (max %d)" % [iterations, max_iterations])
 	return []
 
 ## A* ACROSS floors: route from (start_cell, start_level) to (end_cell, end_level) using same-level

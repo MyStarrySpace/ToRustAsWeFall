@@ -55,6 +55,9 @@ var _reservations: Dictionary = {}
 ## Space-time nodes the LAST _plan_cooperative call expanded (0 when an early-out — incl. the reachability
 ## cull — fired before the search). Derived diagnostic for perf tests; never serialized.
 var _coop_last_nodes := 0
+## Pathfinding tracing — run with PATHFIND_DEBUG=1 to print every cooperative search. The LAST "[coop A*]
+## start" with no "done" is the hang. Cached so the env lookup isn't per-call.
+static var _pf_debug: bool = OS.has_environment("PATHFIND_DEBUG")
 
 ## In-flight cross-level (multi-floor) moves: char_id → ordered Array of
 ## per-level segments {level: int, cells: Array[Vector2i]}. The character walks
@@ -459,26 +462,20 @@ func _resolve_world_path(current_pos: Vector3, target: Vector3) -> Array[Vector3
 func compute_preview_path(id: String, target_pos: Vector3) -> Array[Vector3]:
 	if not characters.has(id):
 		return []
+	if _pf_debug:
+		print("[preview] compute_preview_path '%s' -> %v" % [id, target_pos])
 	var current := get_position(id)
 	if grid != null:
 		var level := get_character_level(id)
 		var start_cell := grid.world_to_grid(current)
 		var end_cell := grid.world_to_grid(target_pos)
-		# Mirror the COMMIT exactly — the same cooperative plan a click would start right now (read-only:
-		# no reservations written), with the same plain-A* fallback as _begin_cooperative_move. The dim
-		# hover ribbon therefore can't lie about the route the click will take.
+		# The preview is a COSMETIC hint, recomputed per hovered cell — so it uses the cheap 2D find_path,
+		# NOT the cooperative space-time A*. The cooperative search expands (cell, tick) wait-states and, for
+		# a far target, explores toward its node cap (≈80ms/hover on the channels — the reported freeze). The
+		# click still COMMITS the cooperative route (which detours around other characters' reservations); the
+		# dim preview just shows the spatial route, which matches the commit whenever no reservation forces a
+		# detour. Speed over perfect fidelity for a hover hint.
 		var out: Array[Vector3] = [current]
-		# The preview caps its cooperative budget (per-hover cost); a target past it falls through to the
-		# plain find_path below — the dim ribbon may then differ slightly from the committed cooperative
-		# route on a pathologically hard target, but it never freezes the hover.
-		var plan := _plan_cooperative(start_cell, end_cell, characters[id].move_speed,
-			scheduler.get_current_tick() if scheduler else 0.0, id, level, _COOP_PREVIEW_MAX_NODES)
-		if not plan.is_empty() and not (plan.cells as Array).is_empty():
-			for c in plan.cells:
-				out.append(grid.grid_to_world(c, level))
-			if out.size() >= 2 and out[0].distance_to(out[1]) < 0.001:
-				out.remove_at(0)
-			return out
 		# find_path returns WORLD positions (one per cell) already on the right level.
 		var waypoints: Array[Vector3] = grid.find_path(start_cell, end_cell, {}, route_cautious, {}, {}, level)
 		if waypoints.is_empty():
@@ -989,6 +986,8 @@ static func _coop_heap_pop(heap: Array) -> Dictionary:
 
 func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: float, exclude_id: String, level: int = 0, max_nodes: int = _COOP_MAX_NODES) -> Dictionary:
 	_coop_last_nodes = 0
+	if _pf_debug:
+		print("[coop A*] start %v -> %v (budget %d, for '%s')" % [start, end, max_nodes, exclude_id])
 	if not grid:
 		return {}
 	if start == end:
@@ -1035,6 +1034,8 @@ func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: fl
 		if cur.g > float(best_g.get(cur_key, INF)) + 0.0001:
 			continue
 		if ccell == end:
+			if _pf_debug:
+				print("[coop A*] done: reached in %d nodes" % nodes)
 			return _coop_reconstruct(came, cur_key)
 		# Eight moves plus a wait-in-place.
 		for di in range(dirs.size() + 1):
@@ -1072,6 +1073,8 @@ func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: fl
 				came[nkey] = {"cell": ncell, "t": nt, "pkey": cur_key}
 				_coop_heap_push(open, {"cell": ncell, "t": nt, "g": ng, "f": ng + _coop_h(ncell, end, card), "seq": seq})
 				seq += 1
+	if _pf_debug:
+		print("[coop A*] done: EXHAUSTED %d nodes (budget %d) — no conflict-free path, falling back" % [nodes, max_nodes])
 	return {}
 
 func _coop_reconstruct(came: Dictionary, key: String) -> Dictionary:
