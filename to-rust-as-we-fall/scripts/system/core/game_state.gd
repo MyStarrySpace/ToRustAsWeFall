@@ -55,10 +55,9 @@ var _reservations: Dictionary = {}
 ## Space-time nodes the LAST _plan_cooperative call expanded (0 when an early-out — incl. the reachability
 ## cull — fired before the search). Derived diagnostic for perf tests; never serialized.
 var _coop_last_nodes := 0
-## Pathfinding tracing — prints every cooperative search + the preview, AND appends to the flushed file
-## GridWorld writes (user://pathfind.log) so it survives a hard crash. TEMPORARILY force-on (no env var)
-## while diagnosing the spiral crash; revert to env-gated after.
-static var _pf_debug: bool = true   # was: OS.has_environment("PATHFIND_DEBUG")
+## Pathfinding tracing — run with PATHFIND_DEBUG=1. Prints every cooperative search + the preview, AND
+## appends to the flushed file GridWorld writes (user://pathfind.log) so it survives a hard crash.
+static var _pf_debug: bool = OS.has_environment("PATHFIND_DEBUG")
 
 ## In-flight cross-level (multi-floor) moves: char_id → ordered Array of
 ## per-level segments {level: int, cells: Array[Vector2i]}. The character walks

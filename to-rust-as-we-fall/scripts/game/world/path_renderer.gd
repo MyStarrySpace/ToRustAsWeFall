@@ -192,12 +192,19 @@ func _emit_disc(st: SurfaceTool, center: Vector3, radius: float) -> void:
 		st.add_vertex(center + Vector3(cos(a1), 0.0, sin(a1)) * radius)
 
 ## Dashes by cumulative arc length over the whole polyline (corners don't reset the cycle).
+const _MAX_DASHES := 6000   # crash-proof cap (a normal preview is ~100-500). A bogus far/huge start point
+                            # would otherwise make seg_len enormous and spin this loop ~forever -> hang/OOM.
+
 func _build_dashed(st: SurfaceTool, points: Array[Vector3], half: float) -> void:
 	var cycle := DASH_LENGTH + DASH_GAP
 	var travelled := 0.0
+	var emitted := 0
 	for i in range(1, points.size()):
 		var p0 := points[i - 1]
 		var p1 := points[i]
+		# Skip any non-finite endpoint (a bad warp/position): emitting it would push NaN verts to the GPU.
+		if not p0.is_finite() or not p1.is_finite():
+			continue
 		var flat := p1 - p0
 		flat.y = 0.0
 		var seg_len := flat.length()
@@ -205,15 +212,22 @@ func _build_dashed(st: SurfaceTool, points: Array[Vector3], half: float) -> void
 			continue
 		var dir := flat / seg_len
 		var s := 0.0
-		while s < seg_len:
+		while s < seg_len and emitted < _MAX_DASHES:
+			# Count EVERY iteration (emit OR gap). For a huge `travelled` (a bogus far segment), fmod loses
+			# precision and `cycle - phase` can round to ~0, so the gap branch wouldn't advance `s` — an
+			# infinite loop that an emit-only cap never breaks. maxf() guarantees forward progress; the cap
+			# bounds the total.
+			emitted += 1
 			var phase := fmod(travelled + s, cycle)
 			if phase < DASH_LENGTH:
 				var run := minf(DASH_LENGTH - phase, seg_len - s)
 				_emit_quad(st, p0 + dir * s, p0 + dir * (s + run), half)
-				s += run
+				s += maxf(run, 0.0001)
 			else:
-				s += cycle - phase
+				s += maxf(cycle - phase, 0.0001)
 		travelled += seg_len
+		if emitted >= _MAX_DASHES:
+			break
 
 ## The not-yet-traversed leg as a polyline (start point + remaining waypoints), or
 ## fewer than 2 points when there's nothing to draw.

@@ -322,10 +322,18 @@ func _load_environment_model() -> void:
 	if _active_chunk == null or not _active_chunk.has_method("get_environment_model"):
 		return
 	var path := String(_active_chunk.call("get_environment_model"))
-	if path == "" or not ResourceLoader.exists(path):
+	if path == "":
+		return
+	# LOUD on a missing/unloadable model: without it the coord_map never installs, so a warped scene (the
+	# channels helix) silently falls back to its FLAT graybox — which is confusing AND, for a chunk whose
+	# geometry is authored pre-warped (wash_relay's branches), leaves it mismatched. Re-import if you see this.
+	if not ResourceLoader.exists(path):
+		push_warning("fragment_preview: environment model NOT FOUND (%s) — scene stays FLAT (no coord_map). Re-import the project." % path)
+		show_preview_message("Environment model missing (%s) — scene is FLAT. Re-import." % path.get_file(), 8.0)
 		return
 	var packed = load(path)
 	if packed == null:
+		push_warning("fragment_preview: environment model failed to LOAD (%s) — scene stays FLAT (no coord_map)." % path)
 		return
 	var model: Node3D = packed.instantiate()
 	model.name = "EnvironmentModel"

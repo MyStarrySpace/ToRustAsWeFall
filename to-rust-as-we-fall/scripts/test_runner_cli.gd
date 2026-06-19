@@ -905,6 +905,7 @@ func _run_all_tests() -> void:
 	_test_reachability_cull()
 	await _test_nav_oracle()
 	await _test_wash_relay_pathfind_perf()
+	await _test_wash_relay_ribbon_build()
 	await _test_channels_robustness()
 	await _test_chunk_robustness()
 	await _test_lure_relay_puzzle()
@@ -10933,6 +10934,34 @@ func _test_wash_relay_ribbon_build() -> void:
 	else:
 		print("[ribbon] %d-pt path -> no mesh surface" % path.size())
 	_assert_true(true, "the ribbon build terminates (no hang)")
+	# Crash-proofing: a PATHOLOGICAL path (a huge/non-finite first segment, e.g. from a bogus start point on
+	# a mis-warped scene — the user's warped=false crash) must NOT spin the dash loop forever. The cap bounds it.
+	var huge: Array[Vector3] = [Vector3(1.0e6, 0.0, 1.0e6), Vector3(0.0, 0.0, 0.0), Vector3(1.0, 0.0, 0.0)]
+	pr.set_explicit_path(huge, 0)
+	var t0 := Time.get_ticks_msec()
+	for i in range(3):
+		await get_tree().process_frame
+	var build_ms := Time.get_ticks_msec() - t0
+	var line2 = pr.get("_line")
+	var mesh2 = line2.mesh if line2 != null else null
+	var vcount := 0
+	if mesh2 != null and mesh2.get_surface_count() > 0:
+		vcount = (mesh2.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+	print("[ribbon] pathological huge-segment path -> %d verts in %d ms (cap holds)" % [vcount, build_ms])
+	_assert_true(vcount <= 6 * 6000 + 64, "a huge segment is capped, not unbounded (%d verts)" % vcount)
+	_assert_true(build_ms < 2000, "the capped build doesn't hang (%d ms)" % build_ms)
+	# A non-finite point is skipped (no NaN verts).
+	var nanpath: Array[Vector3] = [Vector3(0, 0, 0), Vector3(INF, 0, 0), Vector3(2, 0, 0)]
+	pr.set_explicit_path(nanpath, 0)
+	for i in range(2):
+		await get_tree().process_frame
+	var m3 = (pr.get("_line") as MeshInstance3D).mesh
+	if m3 != null and m3.get_surface_count() > 0:
+		var bad3 := 0
+		for v in (m3.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array):
+			if not (v as Vector3).is_finite():
+				bad3 += 1
+		_assert_equals(bad3, 0, "a non-finite waypoint produces no NaN vertices")
 	instance.queue_free()
 	await get_tree().process_frame
 

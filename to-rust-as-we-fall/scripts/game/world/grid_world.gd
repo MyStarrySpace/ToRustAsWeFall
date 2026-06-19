@@ -4,10 +4,10 @@ extends RefCounted
 ## Authoritative 2D grid for world layout and pathfinding.
 ## grid[z][x] of tile type ints. 3D rendering is a separate layer on top.
 
-## Pathfinding tracing. Prints every A* search (start/end + iters) AND appends to a FLUSHED file
-## (user://pathfind.log) that survives a hard crash/segfault — the LAST line is the search that died.
-## TEMPORARILY force-on (no env var needed) while diagnosing the spiral crash; revert to env-gated after.
-static var _pf_debug: bool = true   # was: OS.has_environment("PATHFIND_DEBUG")
+## Pathfinding tracing — run with PATHFIND_DEBUG=1. Prints every A* search (start/end + iters) AND appends
+## to a FLUSHED file (user://pathfind.log) that survives a hard crash/segfault — the LAST line is the search
+## that died. Env-gated so normal runs (and the test suite) aren't slowed by per-search file I/O.
+static var _pf_debug: bool = OS.has_environment("PATHFIND_DEBUG")
 static var _pf_file: FileAccess = null
 
 static func _pf_trace(msg: String) -> void:
