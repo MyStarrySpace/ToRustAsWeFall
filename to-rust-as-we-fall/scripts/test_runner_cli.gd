@@ -281,6 +281,9 @@ func _ready() -> void:
 			"--test-wash-relay-no-hang":
 				ran_test = true
 				await _test_wash_relay_no_hang()
+			"--test-wash-relay-menu-load":
+				ran_test = true
+				await _test_wash_relay_menu_load()
 			"--test-channels-robustness":
 				ran_test = true
 				await _test_channels_robustness()
@@ -882,6 +885,7 @@ func _run_all_tests() -> void:
 	await _test_interactable_warp()
 	await _test_wash_relay_branches()
 	await _test_wash_relay_no_hang()
+	await _test_wash_relay_menu_load()
 	await _test_channels_robustness()
 	await _test_chunk_robustness()
 	await _test_lure_relay_puzzle()
@@ -10734,6 +10738,43 @@ func _test_wash_relay_no_hang() -> void:
 				finite_throughout = false
 				break
 		_assert_true(finite_throughout, "data + render positions stay finite while moving onto a branch")
+	instance.queue_free()
+	await get_tree().process_frame
+
+## Loading the spiral FROM THE PICKER MENU (not --preview): the scene boots into the menu, ticks for a
+## while with no chunk, then a button press runs _begin_chunk LATE. This drives that exact path — boot
+## with preview_menu, settle, fire the wash_relay menu entry — and asserts the chunk loads, the coord_map
+## installs, and the warped scene stays finite (the menu path the user hit, which --preview bypasses).
+func _test_wash_relay_menu_load() -> void:
+	_test_name = "Wash Relay Menu Load"
+	var packed: PackedScene = load(FRAGMENT_PREVIEW_SCENE_PATH)
+	_assert_true(packed != null, "fragment preview scene loads")
+	if packed == null:
+		return
+	var instance: Node = packed.instantiate()
+	instance.set("preview_menu", true)   # boot into the picker, like a normal launch
+	get_tree().root.add_child(instance)
+	for i in range(10):
+		await get_tree().process_frame
+	# Select wash_relay exactly as the menu button does.
+	var entry: Dictionary = FragmentPreviewScript.get_preview_entry("wash_relay")
+	_assert_true(not entry.is_empty(), "wash_relay has a menu entry")
+	if instance.has_method("_on_menu_entry_pressed"):
+		instance.call("_on_menu_entry_pressed", entry)
+	for i in range(12):
+		await get_tree().process_frame
+	var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
+	_assert_true(chunk != null, "wash_relay chunk loads from the menu (no crash)")
+	var gs = instance.get("_game_state")
+	_assert_true(gs != null and gs.coord_map != null, "the helix coord_map installs on the menu load")
+	if gs != null and gs.characters.has("endo"):
+		_assert_true(gs.get_render_position("endo").is_finite(), "a party member renders at a finite helix position after the menu load")
+	# Run a few more frames of the real loop to surface any per-frame crash the menu timing exposes.
+	for i in range(10):
+		if instance.has_method("headless_advance"):
+			instance.call("headless_advance", 0.1)
+		await get_tree().process_frame
+	_assert_true(chunk != null and is_instance_valid(chunk), "the chunk survives several frames after the menu load")
 	instance.queue_free()
 	await get_tree().process_frame
 

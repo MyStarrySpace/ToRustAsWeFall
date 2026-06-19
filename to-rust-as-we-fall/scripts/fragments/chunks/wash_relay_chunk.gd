@@ -123,6 +123,7 @@ func _section_color(t: String) -> Color:
 	return Color(0.2, 0.3, 0.5)
 
 func _build_chunk() -> void:
+	_wdbg("build_chunk start")
 	var fcx := (FLOOR_MIN_X + FLOOR_MAX_X) * 0.5
 	var fw := FLOOR_MAX_X - FLOOR_MIN_X
 	_add_floor(self, Vector3(fcx, -0.05, 0.0), Vector3(fw, 0.1, FLOOR_Z_HALF * 2.0), Color(0.10, 0.11, 0.13))
@@ -181,9 +182,13 @@ func _build_chunk() -> void:
 			var ov := _add_interactable(self, "Override%d" % i, "Flow override", Vector3(x1 + 1.5, 0.5, 0.0),
 				"OVERRIDE", "", 1.0, true, 1.6, Interactable.InteractableType.HOLD_ACTION)
 			ov.interacted.connect(func() -> void: _on_override(i))
+	_wdbg("sections built")
 	_build_threats()
+	_wdbg("threats built")
 	_build_connect_backs()
+	_wdbg("connect-backs built")
 	_build_branches()
+	_wdbg("branches built")
 
 # The connect-back points at the chunk end (plus the start climb point the sloperope feeds).
 func _build_connect_backs() -> void:
@@ -208,6 +213,10 @@ func _build_connect_backs() -> void:
 	_rope_mesh.visible = false   # the line only appears once dropped from the chunk end
 
 # --- Branch puzzle offshoots ---
+
+func _wdbg(msg: String) -> void:
+	if OS.has_environment("PREVIEW_DEBUG"):
+		print("[wash_relay] → ", msg)
 
 # The mid-s of each GAP between consecutive sections (where a branch attaches).
 func _gap_mids() -> Array:
@@ -244,7 +253,9 @@ func _build_branches() -> void:
 	_branch_root.name = "Branches"
 	add_child(_branch_root)
 	var mids := _gap_mids()
+	_wdbg("generating %d branch nodes" % mids.size())
 	var nodes := _generate_branch_nodes(mids.size())
+	_wdbg("generated %d nodes" % nodes.size())
 	var guards_spawned := 0
 	for g in range(mids.size()):
 		var mid: float = mids[g]

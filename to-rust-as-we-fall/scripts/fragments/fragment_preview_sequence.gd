@@ -266,8 +266,15 @@ func _begin() -> void:
 		return
 	_begin_chunk()
 
+## Opt-in load tracing: run with PREVIEW_DEBUG=1 to print each load step (the last "→ X" before a crash
+## is the step that died). Cheap + harmless when the env var is unset.
+func _pdbg(msg: String) -> void:
+	if OS.has_environment("PREVIEW_DEBUG"):
+		print("[preview] → ", msg)
+
 ## Build (or load) the chunk named by preview_chunk and wire up the party/UI around it.
 func _begin_chunk() -> void:
+	_pdbg("begin_chunk '%s'" % preview_chunk)
 	_in_menu = false
 	if _menu_panel != null:
 		_menu_panel.visible = false
@@ -281,15 +288,21 @@ func _begin_chunk() -> void:
 		push_error("fragment_preview: unknown chunk '%s'. Valid: %s" % [preview_chunk, ", ".join(CHUNK_SCENES.keys())])
 		show_preview_message("Unknown fragment '%s' — see CHUNK_SCENES." % preview_chunk, 6.0)
 	set_preview_step(preview_chunk)
+	_pdbg("load_chunk")
 	_active_chunk = _load_chunk(preview_chunk)
+	_pdbg("load_environment_model")
 	_load_environment_model()
+	_pdbg("connect_outline_feedback")
 	_connect_outline_feedback_sources(self)
 	_connect_push_targets(self)
 	_apply_chunk_runtime_preset()
 	if _active_chunk != null and _active_chunk.has_method("reset_preview_state"):
+		_pdbg("reset_preview_state")
 		_active_chunk.call("reset_preview_state")
+	_pdbg("apply_chunk_navigation_graph")
 	_apply_chunk_navigation_graph()
 	_apply_chunk_metadata()
+	_pdbg("position_party_for_chunk")
 	_position_party_for_chunk()
 	_apply_chunk_party_presence()
 	# Dodge defaults to the chunk's declaration (off unless a chunk unlocks it). Toggle live with G.
@@ -317,18 +330,23 @@ func _load_environment_model() -> void:
 	var model: Node3D = packed.instantiate()
 	model.name = "EnvironmentModel"
 	add_child(model)
+	_pdbg("model added: %s" % path)
 	_force_nearest_filter(model)
 	_add_deck_collision(model)
+	_pdbg("deck collision added")
 	# If the chunk maps its flat gauntlet onto this model (the channels helix), install the coord_map so
 	# node followers + clicks run through it, and hide the now-redundant flat graybox.
 	if _active_chunk.has_method("get_coord_map") and _game_state != null:
 		_game_state.coord_map = _active_chunk.call("get_coord_map")
+		_pdbg("coord_map installed")
 		if _active_chunk.has_method("hide_flat_graybox"):
 			_active_chunk.call("hide_flat_graybox")
+			_pdbg("flat graybox hidden")
 		# The data layer is flat but the world is warped — move the interactable zones onto the helix
 		# so they overlap the warped character bodies (otherwise the hold-dwell could never arm).
 		if _active_chunk.has_method("warp_interactables_onto_coord_map"):
 			_active_chunk.call("warp_interactables_onto_coord_map", _game_state.coord_map)
+			_pdbg("interactables warped onto coord_map")
 
 ## Walkable surfaces of the environment model get trimesh collision on layer 1 (the ground layer the
 ## player ray queries), so a click lands on the deck under the cursor — its world height is what
