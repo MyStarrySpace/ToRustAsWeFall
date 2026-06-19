@@ -9674,7 +9674,7 @@ func _test_preview_hover_grid() -> void:
 	_assert_true(absf(hover_grid.global_position.z - 2.5) < 0.5,
 		"Hover grid snaps to the hovered cell Z (got %.2f, want ~2.5)" % hover_grid.global_position.z)
 	_assert_true(hover_grid.global_position.y > 0.0,
-		"Hover grid sits just above the floor (got y=%.3f)" % hover_grid.global_position.y)
+		"Hover Decal sits above the floor and projects down onto it (got y=%.3f)" % hover_grid.global_position.y)
 
 	# Sweeping to a different cell tracks the cursor.
 	var target2 := Vector3(12.5, 0.0, -3.5)
@@ -10144,10 +10144,19 @@ func _test_overlay_materials() -> void:
 	add_child(player)
 	await get_tree().process_frame
 	var hg = player.get("_hover_grid")
-	_assert_true(hg != null and hg.material_override != null, "Hover grid builds a material")
-	if hg != null and hg.material_override != null:
-		_assert_true(int(hg.material_override.transparency) != int(BaseMaterial3D.TRANSPARENCY_ALPHA),
-			"Hover grid material is NOT alpha-blend (invisible in previews) — got %d" % int(hg.material_override.transparency))
+	# The hover grid is a Decal that projects its grid texture straight DOWN onto the floor (so it conforms
+	# to the curved helix deck instead of clipping as a flat quad). It carries the grid on the EMISSION
+	# channel at LOW energy — self-lit so it reads in a dark scene, but under the glow bloom threshold so it
+	# never blooms into the solid glowing blob a hot emission decal produces.
+	_assert_true(hg is Decal, "Hover grid is a Decal (projects down, conforms to the floor) — got %s" % (hg.get_class() if hg != null else "null"))
+	if hg is Decal:
+		_assert_true(hg.texture_albedo != null, "Hover Decal has its grid albedo texture")
+		_assert_true(hg.texture_emission != null and hg.emission_energy > 0.0,
+			"Hover Decal self-illuminates via emission (readable in a dark scene)")
+		_assert_true(hg.emission_energy <= 1.0,
+			"Hover Decal emission stays low (under the glow bloom threshold — no glowing blob): got %.2f" % hg.emission_energy)
+		_assert_true(hg.size.y >= 1.0,
+			"Hover Decal projection box reaches below the deck so it conforms downward: got y=%.2f" % hg.size.y)
 	player.queue_free()
 	await get_tree().process_frame
 	var pr := PathRenderer.new()

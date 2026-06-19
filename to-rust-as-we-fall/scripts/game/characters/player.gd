@@ -49,17 +49,10 @@ var _dest_marker_mat: StandardMaterial3D
 const HOVER_CELL := 1.0
 const HOVER_SPAN := 5            # NxN grid patch shown around the hovered cell
 const HOVER_TINT := Color(1.0, 1.0, 1.0)  # faded white — a quiet aim hint, not a character-coloured beacon
-const HOVER_LIFT := 0.05         # the grid quad sits this far above the hovered floor point (along its normal)
-var _hover_grid: MeshInstance3D
-var _last_ground_normal := Vector3.UP   # surface normal of the last ground raycast — drapes overlays on slopes
-# Ordered 4x4 Bayer thresholds (normalised) — used to stipple the radial fade into the scissor grid so
-# it dissolves smoothly toward the edges instead of cutting off in a hard ring.
-const BAYER4 := [
-	0.0 / 16.0, 8.0 / 16.0, 2.0 / 16.0, 10.0 / 16.0,
-	12.0 / 16.0, 4.0 / 16.0, 14.0 / 16.0, 6.0 / 16.0,
-	3.0 / 16.0, 11.0 / 16.0, 1.0 / 16.0, 9.0 / 16.0,
-	15.0 / 16.0, 7.0 / 16.0, 13.0 / 16.0, 5.0 / 16.0,
-]
+const HOVER_BOX_H := 1.5          # the Decal's downward projection DEPTH — brackets the deck above and below
+const HOVER_EMISSION_ENERGY := 0.6  # low: self-lit enough to read in a dark scene, under the glow bloom threshold
+var _hover_grid: Decal
+var _last_ground_normal := Vector3.UP   # surface normal of the last ground raycast
 
 # Path preview: while hovering the floor in move mode, show (dim) the route a click WOULD take, before
 # committing it. Recomputed only when the hovered cell changes (per-frame pathfinding would be wasteful).
@@ -232,28 +225,25 @@ func _raycast_ground(screen_pos: Vector2) -> Vector3:
 # --- Hover grid (target preview) ---
 
 func _build_hover_grid() -> void:
-	# A flat quad lying on the floor, textured with the grid IMAGE. UNSHADED so it shows at full
-	# brightness regardless of scene light (the flure chamber is dark), and ALPHA-transparent so the
-	# gaps between lines stay see-through — a crisp grid, not the solid glowing blob a Decal's emission
-	# channel bloomed into. A PlaneMesh is the XZ plane (faces +Y), so it sits flat under the cursor.
-	_hover_grid = MeshInstance3D.new()
-	_hover_grid.top_level = true   # authored in world space; we set its global position to the cell
+	# A Decal that projects the grid IMAGE straight DOWN onto whatever floor sits below the cursor, so it
+	# CONFORMS to a curved/warped deck (the channels helix) instead of laying a flat quad that pokes through
+	# it. The grid rides the Decal's EMISSION channel at low energy so it self-illuminates and reads in a dark
+	# scene (the flure chamber) — a Decal's albedo is lit, so albedo alone would go dark there. The energy is
+	# kept well under the glow bloom threshold so it stays crisp lines, never the solid glowing blob a hot
+	# emission decal blooms into. Albedo carries the grid where there IS light; the texture's transparent gaps
+	# project nothing, so only the coloured lines stamp onto the floor.
+	_hover_grid = Decal.new()
+	_hover_grid.top_level = true   # authored in world space; we set its global transform to the cell
 	_hover_grid.visible = false
-	_hover_grid.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF  # a UI overlay, not a caster
-	var plane := PlaneMesh.new()
-	plane.size = Vector2(HOVER_SPAN * HOVER_CELL, HOVER_SPAN * HOVER_CELL)
-	_hover_grid.mesh = plane
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	# ALPHA_SCISSOR, not ALPHA: the alpha-BLEND pass doesn't composite in the preview's scene (Decals and
-	# opaque meshes draw, alpha-blended meshes don't), so a blended grid was invisible. Scissor renders in
-	# the OPAQUE pass and discards texels below the threshold — solid grid lines + see-through gaps. The
-	# threshold also gives the falloff for free: faint outer lines fall under it and drop out.
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-	mat.alpha_scissor_threshold = 0.3
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mat.albedo_texture = _build_grid_texture()
-	_hover_grid.material_override = mat
+	var tex := _build_grid_texture()
+	_hover_grid.texture_albedo = tex
+	_hover_grid.texture_emission = tex
+	_hover_grid.emission_energy = HOVER_EMISSION_ENERGY
+	_hover_grid.albedo_mix = 1.0
+	_hover_grid.modulate = Color(1, 1, 1, 1)   # the lines are already character-coloured inside the texture
+	_hover_grid.size = Vector3(HOVER_SPAN * HOVER_CELL, HOVER_BOX_H, HOVER_SPAN * HOVER_CELL)
+	_hover_grid.upper_fade = 0.2   # ease the projection on/off at the top and bottom of the box so the grid
+	_hover_grid.lower_fade = 0.2   # fades onto the deck instead of cutting hard where the box ends
 	add_child(_hover_grid)
 
 ## Per-player grid IMAGE in the player's colour: grid LINES only (no filled centre cell), with a gentle
@@ -292,10 +282,12 @@ static func _ensure_grid_alpha() -> void:
 			_grid_alpha[y * dim + x] = fade if (is_line[x] or is_line[y]) else 0.0
 
 func _build_grid_texture() -> ImageTexture:
-	# CONTRAST is the whole game here: thin faded-white lines vanish against the room model's own
-	# white tile seams (and inside character glow). Lines render in the CHARACTER's color — the
-	# same ownership language as the ribbon and queued glow — over a dark rim (a 2px dilation of
-	# the pattern) so the grid reads on bright floors, dark floors, and bloom alike.
+	# CONTRAST is the whole game here: thin faded lines vanish against the room model's own white tile seams
+	# (and inside character glow). Lines render in the CHARACTER's color — the same ownership language as the
+	# ribbon and queued glow — over a dark rim (a 2px dilation) so the grid reads on bright floors, dark
+	# floors, and bloom alike. The Decal blends alpha SMOOTHLY (linear), so the radial fade is written
+	# straight into the image alpha — no Bayer stipple (that hack only existed for the old all-or-nothing
+	# ALPHA_SCISSOR quad). Mipmaps keep the thin lines from shimmering as the camera moves.
 	_ensure_grid_alpha()
 	var dim := _grid_dim
 	var tint := _character_color()
@@ -303,32 +295,28 @@ func _build_grid_texture() -> ImageTexture:
 	var rim := Color(0.03, 0.04, 0.05, 1.0)
 	var img := Image.create(dim, dim, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	# Stipple the fade: a line pixel is kept (full line colour) only where its fade beats the ordered
-	# Bayer threshold — dense near the centre (fade ~1, solid), sparse toward the rim (fade ~0.2), so the
-	# grid reads as a smooth fade even though ALPHA_SCISSOR is all-or-nothing.
-	var kept := PackedByteArray()
-	kept.resize(dim * dim)
-	for y in range(dim):
-		for x in range(dim):
-			var f := _grid_alpha[y * dim + x]
-			kept[y * dim + x] = 1 if f > BAYER4[(y % 4) * 4 + (x % 4)] else 0
-	# Dark rim for contrast — only around the SOLID core lines (high fade); rimming the sparse outer
-	# stipple would smear into a muddy halo and kill the fade.
+	# Dark rim first — a 2px dilation of the SOLID core lines (high fade); the line draws over it. Rimming the
+	# faint outer fade would smear into a muddy halo, so only dilate where the line is solid.
 	var rim_px := 2
 	for y in range(dim):
 		for x in range(dim):
-			if kept[y * dim + x] == 0 or _grid_alpha[y * dim + x] < 0.5:
+			var f := _grid_alpha[y * dim + x]
+			if f < 0.5:
 				continue
 			for oy in range(-rim_px, rim_px + 1):
 				for ox in range(-rim_px, rim_px + 1):
 					var px: int = clampi(x + ox, 0, dim - 1)
 					var py: int = clampi(y + oy, 0, dim - 1)
-					if img.get_pixel(px, py).a < 0.5:
-						img.set_pixel(px, py, rim)
+					if img.get_pixel(px, py).a < f:
+						img.set_pixel(px, py, Color(rim.r, rim.g, rim.b, f * 0.7))
+	# Lines on top, alpha = the SMOOTH fade field (1 at centre -> 0 past the rim) so the grid dissolves
+	# linearly toward its edges instead of stippling.
 	for y in range(dim):
 		for x in range(dim):
-			if kept[y * dim + x] == 1:
-				img.set_pixel(x, y, line)
+			var fa := _grid_alpha[y * dim + x]
+			if fa > 0.0:
+				img.set_pixel(x, y, Color(line.r, line.g, line.b, fa))
+	img.generate_mipmaps()
 	return ImageTexture.create_from_image(img)
 
 ## Raycast the floor under the cursor and show the grid there. Only in move mode while move-enabled,
@@ -357,17 +345,31 @@ func _update_hover_from_screen(screen_pos: Vector2) -> void:
 	_apply_hover_grid(hit, _last_ground_normal)
 	_update_path_preview(hit)
 
-## Place + tilt the hover grid onto a surface point — draping it on slopes / the helix decks (lifts along
-## the normal). Cursor-free: the live cursor path and the data-layer simulate_hover_at() both route here.
-func _apply_hover_grid(hit: Vector3, normal: Vector3) -> void:
+## Project the hover grid straight DOWN from above the hovered point. The Decal stamps its texture onto the
+## floor inside its box, so it conforms to the curve below instead of laying a flat quad that clips. Cursor-
+## free: the live cursor path and the data-layer simulate_hover_at() both route here. `normal` is ignored —
+## the old quad tilted to it; a down-projecting Decal must NOT (tilting it reintroduces the clip).
+func _apply_hover_grid(hit: Vector3, _normal: Vector3) -> void:
 	if _hover_grid == null:
 		return
-	# On a warped scene the hit is already on the model deck — use it directly (the flat cell-snap would
-	# land in the wrong place); on a flat grid, snap to the cell so the grid aligns to the floor tiles.
+	# Snap to the data-grid cell so the grid overlay lands on the SAME cells gameplay uses. On a warped scene
+	# the snap happens in FLAT data space (world hit -> to_data -> snap to cell -> to_world back onto the deck),
+	# so the Decal jumps cell-to-cell on the helix just like it does on a flat floor. Only X/Z matter — the
+	# Decal supplies its own Y, projecting straight down from above the snapped point.
 	var warped := game_state != null and game_state.coord_map != null
-	var center := hit if warped else _hover_grid_center(hit)
-	var up := normal if normal.length() > 0.5 else Vector3.UP
-	_hover_grid.global_transform = Transform3D(_basis_from_up(up), Vector3(center.x, center.y, center.z) + up.normalized() * HOVER_LIFT)
+	var center: Vector3
+	if warped:
+		var flat: Vector3 = game_state.coord_map.to_data(hit)
+		center = game_state.coord_map.to_world(_hover_grid_center(flat))
+	else:
+		center = _hover_grid_center(hit)
+	# Centre the projection box HOVER_BOX_H*0.5 above the hit so it brackets the deck above AND below, then
+	# projects world -Y onto it (identity basis = straight down). Guard the warped to_world's INF case.
+	var origin := Vector3(center.x, center.y + HOVER_BOX_H * 0.5, center.z)
+	if not origin.is_finite():
+		_hover_grid.visible = false
+		return
+	_hover_grid.global_transform = Transform3D(Basis.IDENTITY, origin)
 	_hover_grid.visible = true
 
 ## Drive the hover grid from a WORLD point with no cursor/camera — raycasts straight DOWN onto the floor
@@ -387,16 +389,6 @@ func simulate_hover_at(world_point: Vector3) -> bool:
 		return false
 	_apply_hover_grid(result.position, result.get("normal", Vector3.UP))
 	return true
-
-## A basis whose +Y axis is `up` — orients the flat (XZ) hover quad to lie on a slanted surface.
-func _basis_from_up(up: Vector3) -> Basis:
-	up = up.normalized()
-	var ref := Vector3.FORWARD
-	if absf(up.dot(ref)) > 0.99:
-		ref = Vector3.RIGHT
-	var right := ref.cross(up).normalized()
-	var fwd := up.cross(right).normalized()
-	return Basis(right, up, fwd)
 
 ## Snap a hovered floor point to the centre of the cell it falls in, so the hover overlay lands on the
 ## SAME cells gameplay uses (and the floor tiles they're aligned to). Routes through the game grid's

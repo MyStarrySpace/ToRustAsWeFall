@@ -19,6 +19,10 @@ extends Node3D
 ## live on _process and never affects determinism.
 
 const HEIGHT_OFFSET := 0.06
+const WARP_RESAMPLE := 0.6       # on a warped scene, resample the polyline to this flat spacing before warping
+                                 # so the ribbon HUGS the curved deck instead of cutting a straight chord under it
+const WARP_RESAMPLE_MAX_STEPS := 128  # cap per-segment subdivisions so a degenerate huge/non-finite segment
+                                      # can't explode into millions of points (real segments are a few units)
 const RUNNING_COLOR := Color(1.0, 0.7, 0.3, 0.85)
 const WALK_ALPHA := 0.8
 ## The path draws as a flat ground RIBBON of this width (a 1px PRIMITIVE_LINES line was there
@@ -261,11 +265,21 @@ func _remaining_points() -> Array[Vector3]:
 		for i in range(_explicit_index, _explicit_path.size()):
 			pts.append(Vector3(_explicit_path[i].x, gy, _explicit_path[i].z))
 	# On a warped scene (a coord_map maps the flat data onto a curved model, e.g. the channels helix),
-	# map each flat waypoint onto the surface so the ribbon follows the deck, not the flat ground.
+	# map each flat waypoint onto the surface so the ribbon follows the deck, not the flat ground. RESAMPLE
+	# the flat polyline first: a straight segment between two sparse waypoints warps to a CHORD that cuts
+	# through the curving deck (the clip). Inserting intermediate flat points before warping makes the warped
+	# ribbon hug the curve. (A single Decal can't span an arbitrary winding path — densifying the ribbon is
+	# the conforming equivalent of the hover grid's project-down.)
 	if game_state != null and game_state.coord_map != null:
 		var warped: Array[Vector3] = []
-		for p in pts:
-			warped.append(game_state.coord_map.to_world(p))
+		for i in range(pts.size()):
+			if i > 0:
+				var a := pts[i - 1]
+				var b := pts[i]
+				var steps := clampi(int(ceil(a.distance_to(b) / WARP_RESAMPLE)), 1, WARP_RESAMPLE_MAX_STEPS)
+				for s in range(1, steps):
+					warped.append(game_state.coord_map.to_world(a.lerp(b, float(s) / float(steps))))
+			warped.append(game_state.coord_map.to_world(pts[i]))
 		return warped
 	return pts
 
