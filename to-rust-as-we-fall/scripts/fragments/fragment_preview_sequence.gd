@@ -427,7 +427,11 @@ func _build_fragment_menu() -> void:
 	grid.add_theme_constant_override("h_separation", 8)
 	grid.add_theme_constant_override("v_separation", 6)
 	col.add_child(grid)
-	for entry in PREVIEW_ENTRIES:
+	# Display NEWEST-first: PREVIEW_ENTRIES stays in canonical (append) order for the data/tests, but the
+	# picker shows it reversed, so a freshly-added fragment (appended to the list) lands at the top here.
+	var ordered := PREVIEW_ENTRIES.duplicate()
+	ordered.reverse()
+	for entry in ordered:
 		var button := Button.new()
 		button.text = String(entry.get("title", entry.get("id", "?")))
 		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
