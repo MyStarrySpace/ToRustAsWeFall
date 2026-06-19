@@ -31,8 +31,8 @@ var _water_plant_interactable
 var _can_pickup_interactable
 var _plant_watered := false
 var _explore_time_elapsed := false
-const WATERING_CAN_POS := Vector3(10.5, 0.0, 4.5)  # front-right, beside the modeled plant stand
-const FERN_POS := Vector3(6.0, 0.0, 2.4)  # Plant7 (Boston fern) — the central watering target
+const WATERING_CAN_POS := Vector3(8.0, 0.0, 2.0)  # reachable, near the fern
+const FERN_POS := Vector3(6.0, 0.0, 2.4)  # Plant7 (Boston fern) — floor-standing watering target near the seating
 # The watering beat drives the player to the dry fern; the input playthrough drives this point.
 const DRY_PLANT_POS := FERN_POS
 
@@ -297,8 +297,17 @@ func _on_exploration_gate_interacted() -> void:
 
 ## Monos breaks through on a spoofed signal — not the scheduled client. He is
 ## panicked, apologetic for the channel, and discloses why he risked it.
+## Turn Peris to face the portal — she works facing it (the session, the attack, casting Protect).
+func _face_peris_to_portal() -> void:
+	if _player == null:
+		return
+	var target := Vector3(PORTAL_PANEL.x, _player.global_position.y, PORTAL_PANEL.z)
+	if target.distance_to(_player.global_position) > 0.1:
+		_player.look_at(target, Vector3.UP)
+
 func _start_monos_breakthrough() -> void:
 	_current_step = "monos_breakthrough"
+	_face_peris_to_portal()
 	_monos.visible = true
 	_portal_light.light_color = Color(0.9, 0.6, 0.3)
 	_portal_light.light_energy = 3.0
@@ -317,6 +326,7 @@ func _start_monos_breakthrough() -> void:
 
 func _start_session_begins() -> void:
 	_current_step = "session_begins"
+	_face_peris_to_portal()
 	_portal_tween_active = true
 	var t := create_tween()
 	t.tween_property(_portal_light, "light_energy", 4.0, 0.4)
@@ -428,6 +438,7 @@ func _on_protect_pressed() -> void:
 
 func _fire_queued_protect() -> void:
 	_has_protected = true
+	_face_peris_to_portal()
 	_protect_end_tick = _scheduler.get_current_tick() + 5.0
 	if _hud:
 		_hud.set_ability_state("protect", "active", 5.0)
@@ -562,8 +573,8 @@ func _relayout_room(root: Node) -> void:
 	_place_group(root, "Armchair", Vector3(5.7, 0.0, 1.4), -35.0)
 	_place_group(root, "bench", Vector3(5.7, 0.4, 4.6), 0.0)
 	_place_group(root, "CoffeeTable", Vector3(4.5, 0.0, 3.0), 0.0)
-	_place_group(root, "PlantStand", Vector3(12.7, 0.0, 5.1), 0.0)
-	_place_group(root, "Bookshelf", Vector3(13.3, 0.0, 2.6), -90.0)  # east wall, faces -X
+	_place_group(root, "PlantStand", Vector3(4.4, 0.0, 5.2), 0.0)    # front-mid, beside the bench (holds the jade)
+	_place_group(root, "Bookshelf", Vector3(12.5, 0.0, 1.0), -90.0)  # back-east decor (by the logbook), faces -X
 
 func _place_group(root: Node, node_name: String, pos: Vector3, yaw_deg: float) -> void:
 	var n := root.find_child(node_name, true, false)
@@ -748,19 +759,25 @@ func _make_peris_plant(parent: Node3D, pos: Vector3, species: String, target_hei
 	return root
 
 func _build_peris_plants(parent: Node3D) -> void:
-	# Real potted plants spread across the modeled floor (inside the furniture). Species is visual
-	# only; the dialogue carries the meaning. Plant7 = the Boston fern at FERN_POS (the watering
-	# target). Floor plants normalize to ~1.3 tall; the small succulent (haworthia) to ~0.5.
+	# Potted plants sit ON their furniture: small ones on the bookshelf shelves (east wall), the plant
+	# stand, and the coffee table; the big Boston fern (Plant7, the watering target) + the peace lily stay
+	# floor-standing where they're reachable. Heights shrink for the surface plants so they read in scale.
+	# Each plant has its OWN walk-to inspection zone, which must stay >=2.8m from every other inspectable
+	# (the --test-peris-sim spacing guard). The room is already dense with fixed inspectables (wellness,
+	# painting, strike-warning, logbook gate, the watered fern), so the plants must stay SPREAD — they
+	# can't cluster on one shelf. The jade sits on the plant stand; the rest are floor-standing at spaced
+	# spots (Peris's plants fill her room). (To cluster more on furniture we'd switch to a shared
+	# per-shelf inspect zone — a mechanic change.)
 	var plants := [
-		[Vector3(0.6, 0, 5.7), "spider", 1.3, "peris.sim_expand.plant_1.line"],
-		[Vector3(13.4, 0, 0.4), "calathea", 1.3, "peris.sim_expand.plant_2.line"],
-		[Vector3(1.5, 0, 3.0), "haworthia", 0.5, "peris.sim_expand.plant_3.line"],
-		[Vector3(4.4, 0, 5.2), "jade", 1.1, "peris.sim_expand.plant_4.line"],
-		[Vector3(7.4, 0, 5.5), "jasmine", 1.3, "peris.sim_expand.plant_5.line"],
-		[Vector3(10.3, 0, 5.6), "pothos", 1.2, "peris.sim_expand.plant_6.line"],
-		[FERN_POS, "boston_fern", 1.3, "peris.sim_expand.plant_7.line"],
-		[Vector3(3.8, 0, 0.5), "pilea", 1.1, "peris.sim_expand.plant_8.line"],
-		[Vector3(8.9, 0, 2.9), "peace_lily", 1.4, "peris.sim_expand.plant_9.line"],
+		[Vector3(0.6, 0, 5.7), "spider", 1.2, "peris.sim_expand.plant_1.line"],        # floor, front-west
+		[Vector3(13.4, 0, 0.4), "calathea", 1.2, "peris.sim_expand.plant_2.line"],     # floor, back-east corner
+		[Vector3(1.5, 0, 3.0), "haworthia", 0.5, "peris.sim_expand.plant_3.line"],     # floor, west
+		[Vector3(4.4, 1.12, 5.2), "jade", 0.7, "peris.sim_expand.plant_4.line"],       # plant stand top
+		[Vector3(7.4, 0, 5.5), "jasmine", 1.2, "peris.sim_expand.plant_5.line"],       # floor, front
+		[Vector3(10.3, 0, 5.6), "pothos", 1.1, "peris.sim_expand.plant_6.line"],       # floor, front-east
+		[FERN_POS, "boston_fern", 1.3, "peris.sim_expand.plant_7.line"],               # floor near seating (watering)
+		[Vector3(3.8, 0, 0.5), "pilea", 1.0, "peris.sim_expand.plant_8.line"],         # floor, back-west
+		[Vector3(8.9, 0, 2.9), "peace_lily", 1.4, "peris.sim_expand.plant_9.line"],    # floor, centre-east
 	]
 	for i in range(plants.size()):
 		var p: Array = plants[i]
