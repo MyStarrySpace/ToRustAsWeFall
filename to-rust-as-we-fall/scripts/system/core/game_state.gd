@@ -55,9 +55,10 @@ var _reservations: Dictionary = {}
 ## Space-time nodes the LAST _plan_cooperative call expanded (0 when an early-out — incl. the reachability
 ## cull — fired before the search). Derived diagnostic for perf tests; never serialized.
 var _coop_last_nodes := 0
-## Pathfinding tracing — run with PATHFIND_DEBUG=1 to print every cooperative search. The LAST "[coop A*]
-## start" with no "done" is the hang. Cached so the env lookup isn't per-call.
-static var _pf_debug: bool = OS.has_environment("PATHFIND_DEBUG")
+## Pathfinding tracing — prints every cooperative search + the preview, AND appends to the flushed file
+## GridWorld writes (user://pathfind.log) so it survives a hard crash. TEMPORARILY force-on (no env var)
+## while diagnosing the spiral crash; revert to env-gated after.
+static var _pf_debug: bool = true   # was: OS.has_environment("PATHFIND_DEBUG")
 
 ## In-flight cross-level (multi-floor) moves: char_id → ordered Array of
 ## per-level segments {level: int, cells: Array[Vector2i]}. The character walks
@@ -463,7 +464,7 @@ func compute_preview_path(id: String, target_pos: Vector3) -> Array[Vector3]:
 	if not characters.has(id):
 		return []
 	if _pf_debug:
-		print("[preview] compute_preview_path '%s' -> %v" % [id, target_pos])
+		GridWorld._pf_trace("[preview] compute_preview_path '%s' -> %v" % [id, target_pos])
 	var current := get_position(id)
 	if grid != null:
 		var level := get_character_level(id)
@@ -987,7 +988,7 @@ static func _coop_heap_pop(heap: Array) -> Dictionary:
 func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: float, exclude_id: String, level: int = 0, max_nodes: int = _COOP_MAX_NODES) -> Dictionary:
 	_coop_last_nodes = 0
 	if _pf_debug:
-		print("[coop A*] start %v -> %v (budget %d, for '%s')" % [start, end, max_nodes, exclude_id])
+		GridWorld._pf_trace("[coop A*] start %v -> %v (budget %d, for '%s')" % [start, end, max_nodes, exclude_id])
 	if not grid:
 		return {}
 	if start == end:
@@ -1035,7 +1036,7 @@ func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: fl
 			continue
 		if ccell == end:
 			if _pf_debug:
-				print("[coop A*] done: reached in %d nodes" % nodes)
+				GridWorld._pf_trace("[coop A*] done: reached in %d nodes" % nodes)
 			return _coop_reconstruct(came, cur_key)
 		# Eight moves plus a wait-in-place.
 		for di in range(dirs.size() + 1):
@@ -1074,7 +1075,7 @@ func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: fl
 				_coop_heap_push(open, {"cell": ncell, "t": nt, "g": ng, "f": ng + _coop_h(ncell, end, card), "seq": seq})
 				seq += 1
 	if _pf_debug:
-		print("[coop A*] done: EXHAUSTED %d nodes (budget %d) — no conflict-free path, falling back" % [nodes, max_nodes])
+		GridWorld._pf_trace("[coop A*] done: EXHAUSTED %d nodes (budget %d) — no conflict-free path, falling back" % [nodes, max_nodes])
 	return {}
 
 func _coop_reconstruct(came: Dictionary, key: String) -> Dictionary:

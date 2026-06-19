@@ -4,9 +4,19 @@ extends RefCounted
 ## Authoritative 2D grid for world layout and pathfinding.
 ## grid[z][x] of tile type ints. 3D rendering is a separate layer on top.
 
-## Pathfinding tracing — run with PATHFIND_DEBUG=1 to print every A* search (start/end + iters). The LAST
-## "[A*] start" with no matching "[A*] done" is the search that hung. Cached so the env lookup isn't per-call.
-static var _pf_debug: bool = OS.has_environment("PATHFIND_DEBUG")
+## Pathfinding tracing. Prints every A* search (start/end + iters) AND appends to a FLUSHED file
+## (user://pathfind.log) that survives a hard crash/segfault — the LAST line is the search that died.
+## TEMPORARILY force-on (no env var needed) while diagnosing the spiral crash; revert to env-gated after.
+static var _pf_debug: bool = true   # was: OS.has_environment("PATHFIND_DEBUG")
+static var _pf_file: FileAccess = null
+
+static func _pf_trace(msg: String) -> void:
+	print(msg)
+	if _pf_file == null:
+		_pf_file = FileAccess.open("user://pathfind.log", FileAccess.WRITE)
+	if _pf_file != null:
+		_pf_file.store_line(msg)
+		_pf_file.flush()
 
 enum Tile {
 	FLOOR = 0,
@@ -328,7 +338,7 @@ func _reach_walkable(x: int, z: int, level: int, cautious: bool) -> bool:
 
 func reachable(start: Vector2i, end: Vector2i, level: int = 0, cautious: bool = false) -> bool:
 	if _pf_debug:
-		print("[A*] reachable BFS %v -> %v" % [start, end])
+		_pf_trace("[A*] reachable BFS %v -> %v" % [start, end])
 	if start == end:
 		return true
 	if not _reach_walkable(start.x, start.y, level, cautious) or not _reach_walkable(end.x, end.y, level, cautious):
@@ -478,7 +488,7 @@ func find_path(
 
 	# A* with octile heuristic, binary-heap open set
 	if _pf_debug:
-		print("[A*] find_path start %v -> %v (grid %dx%d, cautious=%s)" % [start, end, width, height, cautious])
+		_pf_trace("[A*] find_path start %v -> %v (grid %dx%d, cautious=%s)" % [start, end, width, height, cautious])
 	var came_from: Dictionary = {}  # Vector2i -> Vector2i
 	var g_score: Dictionary = {start: 0.0}    # Vector2i -> float (best known cost-to-reach)
 	var closed: Dictionary = {}     # cells finalized at their best g (lazy-deletion skip)
@@ -507,7 +517,7 @@ func find_path(
 
 		if current == end:
 			if _pf_debug:
-				print("[A*] find_path done: reached in %d iters" % iterations)
+				_pf_trace("[A*] find_path done: reached in %d iters" % iterations)
 			return _reconstruct_path(came_from, current, level)
 
 		for dir in dirs:
@@ -553,7 +563,7 @@ func find_path(
 
 	# No path found
 	if _pf_debug:
-		print("[A*] find_path done: NO PATH after %d iters (max %d)" % [iterations, max_iterations])
+		_pf_trace("[A*] find_path done: NO PATH after %d iters (max %d)" % [iterations, max_iterations])
 	return []
 
 ## A* ACROSS floors: route from (start_cell, start_level) to (end_cell, end_level) using same-level

@@ -63,8 +63,7 @@ func bake_from_collision(root: Node, p_cell_size := 0.25, agent_radius := 0.3, c
 func _path(a: Vector3, b: Vector3) -> PackedVector3Array:
 	if not _baked:
 		return PackedVector3Array()
-	if OS.has_environment("PATHFIND_DEBUG"):
-		print("[navmesh] map_get_path %v -> %v" % [a, b])
+	GridWorld._pf_trace("[navmesh] map_get_path %v -> %v" % [a, b])
 	return NavigationServer3D.map_get_path(_map, a, b, true)
 
 ## Navmesh geodesic length from a to b, or INF if unreachable. An admissible lower bound on the grid path.

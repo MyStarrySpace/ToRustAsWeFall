@@ -265,9 +265,21 @@ func _ground_y() -> float:
 	return HEIGHT_OFFSET
 
 func _start_point(gy: float) -> Vector3:
-	if anchor != null:
-		return Vector3(anchor.global_position.x, gy, anchor.global_position.z)
-	if game_state != null and char_id != "":
-		var p := game_state.get_position(char_id)
+	# On a warped scene _remaining_points warps the WHOLE polyline (incl. this start) through coord_map, so
+	# the start MUST be a FLAT (data) position. The anchor's global_position is the ALREADY-WARPED node spot;
+	# returning it would double-warp into a far, bogus point — the ribbon then starts off in space (drawn at
+	# the wrong place / not visible, and a degenerate first segment). Prefer the flat data position; convert
+	# a warped anchor/self back through to_data so every point in the polyline is in the same (flat) frame.
+	var warped: bool = game_state != null and game_state.coord_map != null
+	if game_state != null and char_id != "" and game_state.characters.has(char_id):
+		var p := game_state.get_position(char_id)   # always flat data
 		return Vector3(p.x, gy, p.z)
-	return Vector3(global_position.x, gy, global_position.z)
+	if anchor != null:
+		var ap := anchor.global_position
+		if warped:
+			ap = game_state.coord_map.to_data(ap)
+		return Vector3(ap.x, gy, ap.z)
+	var gp := global_position
+	if warped:
+		gp = game_state.coord_map.to_data(gp)
+	return Vector3(gp.x, gy, gp.z)
