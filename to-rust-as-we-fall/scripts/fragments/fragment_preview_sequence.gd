@@ -182,6 +182,7 @@ var _preview_item_nodes: Dictionary = {}
 
 var _preview_layer: CanvasLayer
 var _menu_panel: PanelContainer
+var _menu_backdrop: ColorRect
 var _in_menu := false
 var _title_label: Label
 var _help_label: Label
@@ -270,6 +271,10 @@ func _begin_chunk() -> void:
 	_in_menu = false
 	if _menu_panel != null:
 		_menu_panel.visible = false
+	if _menu_backdrop != null:
+		_menu_backdrop.visible = false
+	if _hud != null:
+		_hud.visible = true
 	# Fail LOUD on a typo'd id — otherwise _load_chunk silently builds an empty placeholder chunk and
 	# the preview looks "booted but blank". The registry is the allow-list.
 	if not CHUNK_SCENES.has(preview_chunk):
@@ -375,15 +380,21 @@ func _show_fragment_menu() -> void:
 	_in_menu = true
 	if _menu_panel == null:
 		_build_fragment_menu()
+	if _menu_backdrop != null:
+		_menu_backdrop.visible = true
 	_menu_panel.visible = true
-	if _title_label != null:
-		_title_label.text = "Fragment Preview"
-	if _help_label != null:
-		_help_label.text = "Pick a fragment to preview  ·  R reloads back to this list"
+	if _hud != null:
+		_hud.visible = false   # the gameplay HUD belongs to a loaded chunk, not the picker
 
 func _build_fragment_menu() -> void:
 	if _preview_layer == null:
 		return
+	# Full-screen dim backdrop so the picker reads as a clean modal (the gameplay panels sit behind it).
+	_menu_backdrop = ColorRect.new()
+	_menu_backdrop.name = "FragmentMenuBackdrop"
+	_menu_backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_menu_backdrop.color = Color(0.04, 0.045, 0.06, 1.0)
+	_preview_layer.add_child(_menu_backdrop)
 	_menu_panel = PanelContainer.new()
 	_menu_panel.name = "FragmentMenu"
 	_menu_panel.set_anchors_preset(Control.PRESET_CENTER)
@@ -391,21 +402,39 @@ func _build_fragment_menu() -> void:
 	_menu_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 18)
+		margin.add_theme_constant_override("margin_" + side, 24)
 	_menu_panel.add_child(margin)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 6)
+	col.add_theme_constant_override("separation", 4)
 	margin.add_child(col)
 	var heading := Label.new()
 	heading.text = "Select a fragment"
-	heading.add_theme_font_size_override("font_size", 20)
+	heading.add_theme_font_size_override("font_size", 22)
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(heading)
+	var sub := Label.new()
+	sub.text = "Pick a fragment to preview  ·  R reloads back to this list"
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.modulate = Color(0.68, 0.71, 0.78)
+	col.add_child(sub)
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(0, 10)
+	col.add_child(spacer)
+	# A wrapping grid instead of one tall column, so the list fits on screen. Columns scale with the
+	# entry count (~sqrt), capped so each cell stays wide enough for the longest title.
+	var grid := GridContainer.new()
+	grid.columns = clampi(int(ceil(sqrt(float(PREVIEW_ENTRIES.size())))), 2, 3)
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 6)
+	col.add_child(grid)
 	for entry in PREVIEW_ENTRIES:
 		var button := Button.new()
 		button.text = String(entry.get("title", entry.get("id", "?")))
 		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.custom_minimum_size = Vector2(238, 36)
+		button.clip_text = true
 		button.pressed.connect(_on_menu_entry_pressed.bind(entry))
-		col.add_child(button)
+		grid.add_child(button)
 	_preview_layer.add_child(_menu_panel)
 
 func _on_menu_entry_pressed(entry: Dictionary) -> void:
