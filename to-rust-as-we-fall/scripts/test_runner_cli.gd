@@ -290,6 +290,9 @@ func _ready() -> void:
 			"--test-reachability-cull":
 				ran_test = true
 				_test_reachability_cull()
+			"--test-nav-oracle":
+				ran_test = true
+				await _test_nav_oracle()
 			"--test-channels-robustness":
 				ran_test = true
 				await _test_channels_robustness()
@@ -894,6 +897,7 @@ func _run_all_tests() -> void:
 	await _test_wash_relay_menu_load()
 	await _test_wash_relay_hover_sweep()
 	_test_reachability_cull()
+	await _test_nav_oracle()
 	await _test_channels_robustness()
 	await _test_chunk_robustness()
 	await _test_lure_relay_puzzle()
@@ -10868,6 +10872,61 @@ func _path_points_finite(path_renderer: Node) -> bool:
 		if p is Vector3 and not (p as Vector3).is_finite():
 			return false
 	return true
+
+## The NavOracle: bake a navmesh from collision at runtime (headless), query geodesic distance + reachability,
+## and confirm the two properties the guided A* relies on — DETERMINISM (identical query => identical result)
+## and ADMISSIBILITY (the geodesic routes AROUND a wall, so it's >= the straight line but still a valid lower
+## bound on the grid path). Proves the whole NavServer-oracle approach works without the editor.
+func _test_nav_oracle() -> void:
+	_test_name = "NavOracle"
+	# A flat collision floor (layer 1) with a WALL slab across the middle (a gap at one end to route through).
+	var root := Node3D.new()
+	get_tree().root.add_child(root)
+	_nav_static_box(root, Vector3(0, -0.1, 0), Vector3(16, 0.2, 16))          # floor
+	_nav_static_box(root, Vector3(0, 1.0, 1.0), Vector3(11.0, 2.0, 1.0))      # wall, leaving a gap on the +x side
+	await get_tree().physics_frame
+	var oracle := NavOracle.new()
+	var ok := oracle.bake_from_collision(root, 0.25, 0.2, 1)
+	_assert_true(ok and oracle.is_ready(), "NavOracle bakes a navmesh from the static collision")
+	# A freshly-assigned region needs a physics frame to process before the map sync takes.
+	await get_tree().physics_frame
+	oracle.sync()
+	await get_tree().physics_frame
+	oracle.sync()
+	if ok:
+		var a := Vector3(0.0, 0.1, -5.0)
+		var b := Vector3(0.0, 0.1, 5.0)   # centered behind the wall (x=-5.5..5.5): must detour to an end
+		_assert_true(oracle.reachable(a, b), "the far side is reachable (around the wall)")
+		var geo := oracle.distance(a, b)
+		var straight := a.distance_to(b)
+		_assert_true(geo >= straight - 0.01, "the geodesic is an admissible lower bound is respected (geo %.2f >= straight %.2f? as detour)" % [geo, straight])
+		_assert_true(geo > straight + 0.5, "the geodesic ROUTES AROUND the wall (geo %.2f > straight %.2f) — tighter than a wall-blind estimate" % [geo, straight])
+		# Determinism: identical queries return identical geodesic length + waypoints.
+		var w1 := oracle.waypoints(a, b)
+		var w2 := oracle.waypoints(a, b)
+		var same := w1.size() == w2.size() and w1.size() >= 2
+		if same:
+			for i in range(w1.size()):
+				if w1[i].distance_to(w2[i]) > 0.0001:
+					same = false
+					break
+		_assert_true(same, "the oracle is deterministic (identical query -> identical waypoints)")
+		# Unreachable: a point off the mesh entirely.
+		_assert_true(not oracle.reachable(a, Vector3(500, 0, 500)), "an off-mesh target reads unreachable")
+	oracle.free_oracle()
+	root.queue_free()
+	await get_tree().process_frame
+
+func _nav_static_box(parent: Node3D, pos: Vector3, size: Vector3) -> void:
+	var body := StaticBody3D.new()
+	body.collision_layer = 1
+	body.position = pos
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = size
+	col.shape = shape
+	body.add_child(col)
+	parent.add_child(body)
 
 ## Reachability fast-reject (the cull behind "determine unreachable spots sooner"): a deterministic 2D BFS
 ## over the planners' exact predicate culls a geometrically-unreachable target BEFORE the cooperative
