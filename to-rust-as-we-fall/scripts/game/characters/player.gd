@@ -353,18 +353,40 @@ func _update_hover_from_screen(screen_pos: Vector2) -> void:
 		_hover_grid.visible = false
 		_update_push_preview(hit)
 		return
-	# Drape the grid quad onto the surface under the cursor: tilt it to the surface normal (so it lies on
-	# slopes / the helix decks instead of clipping a flat quad through them) and lift along that normal. On
-	# a warped scene the click hits the model deck directly, so use the raw hit (the flat cell-snap would
-	# land in the wrong place); on a flat grid, snap to the cell so it aligns to the floor tiles.
+	# Drape the grid onto the surface under the cursor, then preview the path to it.
+	_apply_hover_grid(hit, _last_ground_normal)
+	_update_path_preview(hit)
+
+## Place + tilt the hover grid onto a surface point — draping it on slopes / the helix decks (lifts along
+## the normal). Cursor-free: the live cursor path and the data-layer simulate_hover_at() both route here.
+func _apply_hover_grid(hit: Vector3, normal: Vector3) -> void:
+	if _hover_grid == null:
+		return
+	# On a warped scene the hit is already on the model deck — use it directly (the flat cell-snap would
+	# land in the wrong place); on a flat grid, snap to the cell so the grid aligns to the floor tiles.
 	var warped := game_state != null and game_state.coord_map != null
 	var center := hit if warped else _hover_grid_center(hit)
-	var up := _last_ground_normal
-	if up.length() < 0.5:
-		up = Vector3.UP
+	var up := normal if normal.length() > 0.5 else Vector3.UP
 	_hover_grid.global_transform = Transform3D(_basis_from_up(up), Vector3(center.x, center.y, center.z) + up.normalized() * HOVER_LIFT)
 	_hover_grid.visible = true
-	_update_path_preview(hit)
+
+## Drive the hover grid from a WORLD point with no cursor/camera — raycasts straight DOWN onto the floor
+## collision and drapes the grid there. Lets the data layer (and headless tests) verify the hover overlay
+## without simulating a mouse. Returns true if a surface was found under the point.
+func simulate_hover_at(world_point: Vector3) -> bool:
+	if _hover_grid == null:
+		return false
+	var space := get_world_3d().direct_space_state
+	if space == null:
+		return false
+	var q := PhysicsRayQueryParameters3D.create(world_point + Vector3(0, 3.0, 0), world_point - Vector3(0, 3.0, 0))
+	q.collision_mask = 1
+	var result := space.intersect_ray(q)
+	if result.is_empty():
+		_hover_grid.visible = false
+		return false
+	_apply_hover_grid(result.position, result.get("normal", Vector3.UP))
+	return true
 
 ## A basis whose +Y axis is `up` — orients the flat (XZ) hover quad to lie on a slanted surface.
 func _basis_from_up(up: Vector3) -> Basis:

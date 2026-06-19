@@ -10581,6 +10581,22 @@ func _run_chunk_robustness(chunk_id: String, config: Dictionary = {}) -> void:
 			if (node as Node3D).global_position.distance_to(gs.get_render_position(cid)) > 1.5:
 				off.append(cid)
 		_assert_true(off.is_empty(), "%s: party nodes render at their data/warp position (off: %s)" % [chunk_id, str(off)])
+	# DATA-LAYER hover: the hover grid must be drivable from a world point with NO cursor — drape it at a
+	# spawn point (warped onto the model if there's a coord_map) and confirm it lands on the surface.
+	if chars is Dictionary and chunk.has_method("get_spawn_positions"):
+		var spawns2: Dictionary = chunk.call("get_spawn_positions")
+		var pnode = null
+		var pcid := ""
+		for cid in (chars as Dictionary):
+			var n = (chars as Dictionary)[cid]
+			if n != null and n.has_method("simulate_hover_at") and spawns2.has(cid):
+				pnode = n; pcid = cid; break
+		if pnode != null:
+			await get_tree().physics_frame
+			var wp: Vector3 = spawns2[pcid]
+			if gs.coord_map != null:
+				wp = gs.coord_map.to_world(wp)
+			_assert_true(pnode.simulate_hover_at(wp), "%s: hover grid drapes onto the surface at a spawn (no cursor)" % chunk_id)
 	# reset returns to a sane state without error
 	if chunk.has_method("reset_preview_state"):
 		chunk.call("reset_preview_state")
