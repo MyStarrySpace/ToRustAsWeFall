@@ -17,6 +17,10 @@ var _portal_light: OmniLight3D
 var _attack_particles: OmniLight3D
 var _sanction_feed_label: Label3D
 var _portal_tween_active := false
+# Portal-view: a SubViewport with its own World3D renders the connected room (where Monos stands) onto the
+# portal surface, so the portal actually shows what's through it.
+var _portal_view_vp: SubViewport
+var _portal_view_surface: MeshInstance3D
 var _hud  # GameHUD
 
 # Watering beat (phase 1): the hand-inventory tutorial. Peris waters the Boston fern (Plant7) out of
@@ -674,6 +678,8 @@ func _build_portal() -> void:
 	_portal_light.omni_range = 5.0
 	add_child(_portal_light)
 
+	_build_portal_view()
+
 	_attack_particles = OmniLight3D.new()
 	_attack_particles.position = MONOS_POS + Vector3(0, 1.0, 0)
 	_attack_particles.light_color = Color(0.9, 0.15, 0.05)
@@ -703,6 +709,95 @@ func _build_portal() -> void:
 	_sanction_feed_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_sanction_feed_label.visible = false
 	add_child(_sanction_feed_label)
+
+## The portal actually SHOWS what's through it: a SubViewport with its OWN World3D renders the connected
+## room — where Monos stands — and that live view is textured onto the portal surface. Its own world keeps
+## it fully self-contained (a true portal to ELSEWHERE, not a security-camera of this room), so there's no
+## coupling to the main camera, no feedback, and Monos is visible through the portal before he steps through.
+func _build_portal_view() -> void:
+	_portal_view_vp = SubViewport.new()
+	_portal_view_vp.size = Vector2i(288, 600)   # portrait, ~ the portal panel's 0.9w x 2.0h aspect
+	_portal_view_vp.own_world_3d = true          # a separate space beyond the portal
+	_portal_view_vp.transparent_bg = false
+	_portal_view_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_portal_view_vp.handle_input_locally = false
+	add_child(_portal_view_vp)
+	_build_monos_room(_portal_view_vp)
+
+	_portal_view_surface = MeshInstance3D.new()
+	_portal_view_surface.name = "PortalViewSurface"
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.85, 1.9)
+	_portal_view_surface.mesh = quad
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_texture = _portal_view_vp.get_texture()
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_portal_view_surface.material_override = mat
+	# Just in front of the panel; the quad's +Z normal rotated to PORTAL_FACE (+X) faces the room.
+	_portal_view_surface.position = PORTAL_PANEL + PORTAL_FACE * 0.14
+	_portal_view_surface.rotation = Vector3(0.0, deg_to_rad(90.0), 0.0)
+	add_child(_portal_view_surface)
+
+## The space BEYOND the portal — a small graybox room with Monos standing in it, lit so it reads through
+## the portal. Built into the SubViewport's own world. Stand-in geometry for now; swap for the real
+## modeled facility room when it exists.
+func _build_monos_room(vp: SubViewport) -> void:
+	var cam := Camera3D.new()
+	cam.position = Vector3(0.0, 1.5, 5.4)
+	cam.look_at(Vector3(0.0, 1.0, 0.0), Vector3.UP)
+	cam.fov = 52.0
+	vp.add_child(cam)
+	# Lighting for the fresh world (no scene env): cool ambient + a key light, matching Peris's room mood.
+	var env := WorldEnvironment.new()
+	var e := Environment.new()
+	e.background_mode = Environment.BG_COLOR
+	e.background_color = Color(0.06, 0.06, 0.09)
+	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	e.ambient_light_color = Color(0.45, 0.42, 0.52)
+	e.ambient_light_energy = 1.0
+	env.environment = e
+	vp.add_child(env)
+	var key := DirectionalLight3D.new()
+	key.rotation = Vector3(deg_to_rad(-55.0), deg_to_rad(35.0), 0.0)
+	key.light_color = Color(0.95, 0.88, 0.8)
+	key.light_energy = 1.1
+	vp.add_child(key)
+	# Floor + back wall + side wall (graybox).
+	_portal_room_box(vp, Vector3(0, -0.1, 0), Vector3(8, 0.2, 8), Color(0.13, 0.13, 0.16))
+	_portal_room_box(vp, Vector3(0, 1.8, -3.6), Vector3(8, 3.6, 0.2), Color(0.16, 0.15, 0.19))
+	_portal_room_box(vp, Vector3(-3.6, 1.8, 0), Vector3(0.2, 3.6, 8), Color(0.15, 0.14, 0.18))
+	# Monos — a standing figure in his color, so the portal reads as "Monos's room".
+	var body := _portal_room_box(vp, Vector3(0, 0.85, 0), Vector3(0.5, 1.0, 0.5), Color(0.6, 0.5, 0.35))
+	var bm := CapsuleMesh.new()
+	bm.radius = 0.26
+	bm.height = 1.3
+	body.mesh = bm
+	var head := _portal_room_box(vp, Vector3(0, 1.62, 0), Vector3(0.34, 0.34, 0.34), Color(0.66, 0.56, 0.4))
+	var hm := SphereMesh.new()
+	hm.radius = 0.2
+	hm.height = 0.4
+	head.mesh = hm
+	# A soft portal glow behind Monos (the connection back to Peris's portal).
+	var glow := OmniLight3D.new()
+	glow.position = Vector3(0, 1.4, -2.0)
+	glow.light_color = Color(0.8, 0.5, 0.25)
+	glow.light_energy = 2.0
+	glow.omni_range = 6.0
+	vp.add_child(glow)
+
+func _portal_room_box(vp: SubViewport, pos: Vector3, size: Vector3, color: Color) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = size
+	mi.mesh = box
+	var m := StandardMaterial3D.new()
+	m.albedo_color = color
+	mi.material_override = m
+	mi.position = pos
+	vp.add_child(mi)
+	return mi
 
 func _show_sanction_feed_visual(title: String, body: String, color: Color) -> void:
 	if _sanction_feed_label:
