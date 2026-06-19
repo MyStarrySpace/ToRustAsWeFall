@@ -80,6 +80,7 @@ var _enemies: Array = []
 var _lure_until: Array = []        # per lure — scheduler tick the distraction ends (<=0 = inactive)
 var _lure_meshes: Array = []
 var _sloperope_deployed := false   # the chunk-end line has been dropped (the start climb point is live)
+var _debug_tick := 0               # throttles the CHANNELS_DEBUG position log
 var _rope_mesh: MeshInstance3D
 
 # --- Build ---
@@ -434,10 +435,29 @@ func _plate_footprints(i: int) -> Array:
 		return [Vector2(px, -DOUBLE_PLATE_Z), Vector2(px, DOUBLE_PLATE_Z)]
 	return [Vector2(px, 0.0)]
 
+## Run with CHANNELS_DEBUG=1 to log each party member's flat DATA position and its warped RENDER position
+## (where the node should sit on the helix) once or twice a second — for tracing anomalies like a member
+## ending up below the deck.
+func _debug_log_positions() -> void:
+	if not OS.has_environment("CHANNELS_DEBUG"):
+		return
+	_debug_tick += 1
+	if _debug_tick % 30 != 0:
+		return
+	var gsd = _get_game_state()
+	if gsd == null:
+		return
+	for cid in PARTY_IDS:
+		if gsd.characters.has(cid):
+			var d: Vector3 = gsd.get_position(cid)
+			var r: Vector3 = gsd.get_render_position(cid)
+			print("[channels] %-6s data=(%5.1f,%4.1f,%5.1f) render=(%6.1f,%5.1f,%6.1f) moving=%s" % [cid, d.x, d.y, d.z, r.x, r.y, r.z, gsd.is_moving(cid)])
+
 func _update() -> void:
 	if _phase == "ready":
 		_phase = "active"
 	_ensure_scheduled()
+	_debug_log_positions()
 	# refresh plate-held state — a section is held only when EVERY one of its pads has a member on it
 	for i in range(SECTIONS.size()):
 		var dis := str(SECTIONS[i]["disable"])

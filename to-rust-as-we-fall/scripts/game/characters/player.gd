@@ -49,8 +49,9 @@ var _dest_marker_mat: StandardMaterial3D
 const HOVER_CELL := 1.0
 const HOVER_SPAN := 5            # NxN grid patch shown around the hovered cell
 const HOVER_TINT := Color(1.0, 1.0, 1.0)  # faded white — a quiet aim hint, not a character-coloured beacon
-const HOVER_LIFT := 0.05         # the flat grid quad sits this far above the hovered floor point
+const HOVER_LIFT := 0.05         # the grid quad sits this far above the hovered floor point (along its normal)
 var _hover_grid: MeshInstance3D
+var _last_ground_normal := Vector3.UP   # surface normal of the last ground raycast — drapes overlays on slopes
 # Ordered 4x4 Bayer thresholds (normalised) — used to stipple the radial fade into the scissor grid so
 # it dissolves smoothly toward the edges instead of cutting off in a hard ring.
 const BAYER4 := [
@@ -223,7 +224,9 @@ func _raycast_ground(screen_pos: Vector2) -> Vector3:
 	query.collision_mask = 1  # Ground only
 	var result := space.intersect_ray(query)
 	if not result.is_empty():
+		_last_ground_normal = result.get("normal", Vector3.UP)
 		return result.position
+	_last_ground_normal = Vector3.UP
 	return Vector3.INF
 
 # --- Hover grid (target preview) ---
@@ -350,11 +353,28 @@ func _update_hover_from_screen(screen_pos: Vector2) -> void:
 		_hover_grid.visible = false
 		_update_push_preview(hit)
 		return
-	# Centre the flat grid quad over the cell the cursor is over, just above the floor.
-	var center := _hover_grid_center(hit)
-	_hover_grid.global_position = Vector3(center.x, hit.y + HOVER_LIFT, center.z)
+	# Drape the grid quad onto the surface under the cursor: tilt it to the surface normal (so it lies on
+	# slopes / the helix decks instead of clipping a flat quad through them) and lift along that normal. On
+	# a warped scene the click hits the model deck directly, so use the raw hit (the flat cell-snap would
+	# land in the wrong place); on a flat grid, snap to the cell so it aligns to the floor tiles.
+	var warped := game_state != null and game_state.coord_map != null
+	var center := hit if warped else _hover_grid_center(hit)
+	var up := _last_ground_normal
+	if up.length() < 0.5:
+		up = Vector3.UP
+	_hover_grid.global_transform = Transform3D(_basis_from_up(up), Vector3(center.x, center.y, center.z) + up.normalized() * HOVER_LIFT)
 	_hover_grid.visible = true
 	_update_path_preview(hit)
+
+## A basis whose +Y axis is `up` — orients the flat (XZ) hover quad to lie on a slanted surface.
+func _basis_from_up(up: Vector3) -> Basis:
+	up = up.normalized()
+	var ref := Vector3.FORWARD
+	if absf(up.dot(ref)) > 0.99:
+		ref = Vector3.RIGHT
+	var right := ref.cross(up).normalized()
+	var fwd := up.cross(right).normalized()
+	return Basis(right, up, fwd)
 
 ## Snap a hovered floor point to the centre of the cell it falls in, so the hover overlay lands on the
 ## SAME cells gameplay uses (and the floor tiles they're aligned to). Routes through the game grid's
@@ -376,8 +396,7 @@ func _update_path_preview(hit: Vector3) -> void:
 	if _path_preview == null or game_state == null or char_id == "":
 		return
 	if game_state.coord_map != null:
-		_clear_path_preview()   # the dim hover-path doesn't map onto a warped scene
-		return
+		hit = game_state.coord_map.to_data(hit)   # plan in the flat data frame; the ribbon warps back to the helix
 	if game_state.is_moving(char_id):
 		_clear_path_preview()
 		return
@@ -715,9 +734,6 @@ func _process(_delta: float) -> void:
 func _update_hover_grid() -> void:
 	if _hover_grid == null:
 		return
-	if game_state != null and game_state.coord_map != null:
-		_hover_grid.visible = false   # flat overlays don't map onto a warped (helix) scene
-		return
 	var vp := get_viewport()
 	if vp == null:
 		_hover_grid.visible = false
@@ -756,6 +772,10 @@ func _physics_process(delta: float) -> void:
 			velocity = Vector3.ZERO
 			arrived.emit()
 			auto_path_complete.emit()
+		elif game_state.coord_map != null:
+			# Idle on a warped scene: keep the node ON the helix. Without this, a party member that
+			# never moves (or has arrived) sits at its flat data position — below the curved deck.
+			global_position = game_state.get_render_position(char_id)
 		_update_dest_marker(delta)
 		_update_path_line()
 		return
@@ -803,9 +823,19 @@ func _on_gs_arrived(id: String) -> void:
 		auto_path_complete.emit()
 
 func _update_dest_marker(delta: float) -> void:
+	# Warped scene (helix): place the ring at the move target mapped onto the model surface.
 	if game_state != null and game_state.coord_map != null:
-		if _dest_marker != null:
-			_dest_marker.visible = false   # warped scene: the flat target ring would float below the helix
+		if _dest_marker == null:
+			return
+		if _moving and char_id != "" and game_state.characters.has(char_id):
+			var mv = game_state.characters[char_id].get("movement")
+			if mv != null and mv.path.size() > 0:
+				var w: Vector3 = game_state.coord_map.to_world(mv.path[mv.path.size() - 1])
+				_dest_marker.global_position = Vector3(w.x, w.y + 0.08, w.z)
+				_dest_marker.visible = true
+				_dest_marker_mat.albedo_color.a = 0.3 + sin(Time.get_ticks_msec() * 0.004) * 0.15
+				return
+		_dest_marker.visible = false
 		return
 	if _moving:
 		# The marker position derives from the DATA LAYER's actual movement destination every

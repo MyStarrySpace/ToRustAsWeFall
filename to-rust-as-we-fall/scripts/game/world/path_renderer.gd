@@ -242,6 +242,13 @@ func _remaining_points() -> Array[Vector3]:
 		pts.append(_start_point(gy))
 		for i in range(_explicit_index, _explicit_path.size()):
 			pts.append(Vector3(_explicit_path[i].x, gy, _explicit_path[i].z))
+	# On a warped scene (a coord_map maps the flat data onto a curved model, e.g. the channels helix),
+	# map each flat waypoint onto the surface so the ribbon follows the deck, not the flat ground.
+	if game_state != null and game_state.coord_map != null:
+		var warped: Array[Vector3] = []
+		for p in pts:
+			warped.append(game_state.coord_map.to_world(p))
+		return warped
 	return pts
 
 ## The ribbon hugs the FLOOR, not the character's waist. Movement waypoints carry the mover's body

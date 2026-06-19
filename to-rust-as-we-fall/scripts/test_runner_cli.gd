@@ -10560,12 +10560,14 @@ func _test_channels_robustness() -> void:
 	# D) MOVEMENT on the helix: a commanded move advances the DATA layer and the node renders ON the model
 	var env := instance.find_child("EnvironmentModel", true, false)
 	var model_aabb := _node_aabb(env).grow(2.5) if env != null else AABB()
-	gs.command_move_to_pos("aster", Vector3(22.0, 0.0, 0.0))
+	# Move within the clear start stretch (before the first section at s=6) so the wash doesn't knock the
+	# runner back mid-test — this checks movement + the render warp, not the hazards.
+	gs.command_move_to_pos("aster", Vector3(5.5, 0.0, 0.0))
 	var moved := false
 	var rendered_on_helix := false
-	for _i in range(80):
+	for _i in range(40):
 		instance.headless_advance(0.25)
-		if gs.get_position("aster").x > 12.0:
+		if gs.get_position("aster").x > 4.5:
 			moved = true
 			rendered_on_helix = env != null and model_aabb.has_point(gs.get_render_position("aster"))
 			break
