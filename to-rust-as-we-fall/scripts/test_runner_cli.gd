@@ -284,6 +284,9 @@ func _ready() -> void:
 			"--test-wash-relay-menu-load":
 				ran_test = true
 				await _test_wash_relay_menu_load()
+			"--test-wash-relay-hover-sweep":
+				ran_test = true
+				await _test_wash_relay_hover_sweep()
 			"--test-channels-robustness":
 				ran_test = true
 				await _test_channels_robustness()
@@ -886,6 +889,7 @@ func _run_all_tests() -> void:
 	await _test_wash_relay_branches()
 	await _test_wash_relay_no_hang()
 	await _test_wash_relay_menu_load()
+	await _test_wash_relay_hover_sweep()
 	await _test_channels_robustness()
 	await _test_chunk_robustness()
 	await _test_lure_relay_puzzle()
@@ -10777,6 +10781,89 @@ func _test_wash_relay_menu_load() -> void:
 	_assert_true(chunk != null and is_instance_valid(chunk), "the chunk survives several frames after the menu load")
 	instance.queue_free()
 	await get_tree().process_frame
+
+## Simulate HOVERING the mouse all over the warped spiral and exercise the grid/path display the way the
+## per-frame loop does: drive the REAL hover entry (_update_hover_from_screen → camera ray → drape the
+## hover grid + preview the path) for cursor positions over branches, the deck, the gaps, the edges, and
+## OFF the deck (ray-miss), plus a coarse full-viewport sweep. Asserts the hover-grid transform and every
+## previewed path point stay finite (a NaN there crashes the renderer windowed) and nothing hangs.
+func _test_wash_relay_hover_sweep() -> void:
+	_test_name = "Wash Relay Hover Sweep"
+	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 8)
+	_assert_true(instance != null, "the channels gauntlet instantiates")
+	if instance == null:
+		return
+	var gs = instance.get("_game_state")
+	var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
+	var player := _find_char_node(instance, "endo")
+	var cam: Camera3D = instance.get("_camera")
+	if gs == null or chunk == null or player == null or cam == null or not player.has_method("_update_hover_from_screen"):
+		_assert_true(false, "hover sweep prerequisites (game state, chunk, player, camera) present")
+		instance.queue_free(); await get_tree().process_frame; return
+	if cam.is_inside_tree() and not cam.current:
+		cam.make_current()
+	# Make sure hover actually runs (it early-returns unless this player is in move mode + move-enabled).
+	if player.has_method("set_click_mode"):
+		player.call("set_click_mode", "move")
+	player.set("_move_enabled", true)
+	var hg = player.get("_hover_grid")
+	var bad_xform := 0
+	var bad_path := 0
+	var max_hover_ms := 0
+	var sweep_start := Time.get_ticks_msec()
+	# 1) Cursor over known world points: branches, deck, gaps, edges, and well/sky (ray-miss).
+	var world_spots: Array = []
+	for b in chunk.get_preview_state().get("branches", []):
+		world_spots.append(ChannelsArc.arc_pos(float(b["mid_x"]), float(b["pad_lane"])))   # the branch pad
+		world_spots.append(ChannelsArc.arc_pos(float(b["mid_x"]), 6.0))                     # the branch neck
+	for s in [6.0, 20.0, 36.0, 50.0, 70.0, 84.0]:
+		world_spots.append(ChannelsArc.arc_pos(s, 0.0))                                     # main deck centre
+		world_spots.append(ChannelsArc.arc_pos(s, 3.5))                                     # deck rim
+	world_spots.append_array([Vector3(0, 6, 0), Vector3(0, 0, 0), Vector3(50, 30, 50)])     # off-deck / well / far
+	for wi in range(world_spots.size()):
+		var w: Vector3 = world_spots[wi]
+		var screen: Vector2 = cam.unproject_position(w)
+		var t0 := Time.get_ticks_msec()
+		player.call("_update_hover_from_screen", screen)
+		max_hover_ms = maxi(max_hover_ms, Time.get_ticks_msec() - t0)
+		if hg != null and hg.visible and not _xform_finite((hg as Node3D).global_transform):
+			bad_xform += 1
+		var pp = player.get("_path_preview")
+		if pp != null and not _path_points_finite(pp):
+			bad_path += 1
+	# 2) Coarse full-viewport sweep (catches grazing hits + misses the unproject can't enumerate).
+	var size := get_viewport().get_visible_rect().size
+	for iy in range(6):
+		for ix in range(8):
+			var screen := Vector2(size.x * (float(ix) + 0.5) / 8.0, size.y * (float(iy) + 0.5) / 6.0)
+			var th := Time.get_ticks_msec()
+			player.call("_update_hover_from_screen", screen)
+			max_hover_ms = maxi(max_hover_ms, Time.get_ticks_msec() - th)
+			if hg != null and hg.visible and not _xform_finite((hg as Node3D).global_transform):
+				bad_xform += 1
+			var pp2 = player.get("_path_preview")
+			if pp2 != null and not _path_points_finite(pp2):
+				bad_path += 1
+	var sweep_ms := Time.get_ticks_msec() - sweep_start
+	var hovers := world_spots.size() + 48
+	print("[hover-sweep] %d hovers in %d ms (max single %d ms)" % [hovers, sweep_ms, max_hover_ms])
+	_assert_equals(bad_xform, 0, "the hover grid drapes a finite transform for every cursor position")
+	_assert_equals(bad_path, 0, "every previewed path stays finite while hovering")
+	# Per-hover must stay cheap (it recomputes the path preview per hovered cell) — a slow one freezes play.
+	_assert_true(max_hover_ms < 120, "no single hover exceeds 120 ms (got max %d ms over %d hovers)" % [max_hover_ms, hovers])
+	_assert_true(sweep_ms < 8000, "the whole hover sweep stays well under a freeze budget (got %d ms)" % sweep_ms)
+	instance.free()
+
+func _path_points_finite(path_renderer: Node) -> bool:
+	if not ("_explicit_path" in path_renderer):
+		return true
+	var pts = path_renderer.get("_explicit_path")
+	if not (pts is Array):
+		return true
+	for p in pts:
+		if p is Vector3 and not (p as Vector3).is_finite():
+			return false
+	return true
 
 ## ── Per-chunk robustness FRAMEWORK ───────────────────────────────────────────────────────────────
 ## A reusable battery any stretch gets for free: given a chunk id, instantiate it and run a STANDARD set

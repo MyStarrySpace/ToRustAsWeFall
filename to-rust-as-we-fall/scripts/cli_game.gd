@@ -319,7 +319,7 @@ func _run_replay() -> void:
 		return
 	var log_bytes := lf.get_buffer(lf.get_length())
 	lf.close()
-	var log := EventLog.from_bytes(log_bytes)
+	var replay_log := EventLog.from_bytes(log_bytes)
 
 	var snap_path := _replay_path + ".snap"
 	var sf := FileAccess.open(snap_path, FileAccess.READ)
@@ -337,11 +337,11 @@ func _run_replay() -> void:
 		get_tree().quit(1)
 		return
 
-	var replayed := GameState.replay(log, gs_orig.grid)
+	var replayed := GameState.replay(replay_log, gs_orig.grid)
 	var actual_snap := replayed.serialize()
 
 	if _snapshots_equal(actual_snap, expected_snap):
-		print("[CLI/replay] OK — replayed %d events, final state matches snapshot." % log.size())
+		print("[CLI/replay] OK — replayed %d events, final state matches snapshot." % replay_log.size())
 		get_tree().quit(0)
 	else:
 		print("[CLI/replay] FAIL — replayed state does not match snapshot.")

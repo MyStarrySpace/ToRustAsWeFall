@@ -465,8 +465,11 @@ func compute_preview_path(id: String, target_pos: Vector3) -> Array[Vector3]:
 		# no reservations written), with the same plain-A* fallback as _begin_cooperative_move. The dim
 		# hover ribbon therefore can't lie about the route the click will take.
 		var out: Array[Vector3] = [current]
+		# The preview caps its cooperative budget (per-hover cost); a target past it falls through to the
+		# plain find_path below — the dim ribbon may then differ slightly from the committed cooperative
+		# route on a pathologically hard target, but it never freezes the hover.
 		var plan := _plan_cooperative(start_cell, end_cell, characters[id].move_speed,
-			scheduler.get_current_tick() if scheduler else 0.0, id, level)
+			scheduler.get_current_tick() if scheduler else 0.0, id, level, _COOP_PREVIEW_MAX_NODES)
 		if not plan.is_empty() and not (plan.cells as Array).is_empty():
 			for c in plan.cells:
 				out.append(grid.grid_to_world(c, level))
@@ -861,6 +864,12 @@ const _PARK_HORIZON := 1.0e12
 ## that need a long wait (e.g. letting a slow character clear a corridor) are
 ## found, keeping the overlap-prone plain-A* fallback a true last resort.
 const _COOP_MAX_NODES := 12000
+## The PREVIEW (dim hover ribbon, recomputed per hovered cell) caps its cooperative search far lower: a
+## hard/far target that would expand toward the full budget is "seconds" of per-node work (string keys +
+## reservation checks) EVERY hover, which froze the game. A reachable near target is found well under this;
+## anything past it falls back to plain find_path (cheap), so the preview is bounded per hover. The COMMIT
+## (a one-time click) still uses the full budget, so an actual move can still take the long cooperative route.
+const _COOP_PREVIEW_MAX_NODES := 1500
 ## Extra wait/detour slack (in cell-times) the planner may spend beyond the
 ## straight-line estimate before giving up.
 const _COOP_WAIT_SLACK_CELLS := 48.0
@@ -936,7 +945,46 @@ func _coop_key(cell: Vector2i, t: float, t_start: float, tq: float) -> String:
 ## every reserved (cell, time) window owned by another character, inserting
 ## waits where needed. Returns {cells: Array[Vector2i], ticks: Array[float]}
 ## (absolute arrival tick per cell) or {} if no conflict-free path is found.
-func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: float, exclude_id: String, level: int = 0) -> Dictionary:
+# Binary min-heap for the cooperative A* open set. Ordered by f, then by insertion seq so ties break
+# deterministically (FIFO) — replaces the old O(n) linear min-scan, which made a large/hard search
+# O(n²) (≈ seconds at the 12k-node budget) and froze the per-hover path preview.
+static func _coop_heap_less(a: Dictionary, b: Dictionary) -> bool:
+	if a.f != b.f:
+		return a.f < b.f
+	return int(a.seq) < int(b.seq)
+
+static func _coop_heap_push(heap: Array, node: Dictionary) -> void:
+	heap.append(node)
+	var i := heap.size() - 1
+	while i > 0:
+		var parent := (i - 1) >> 1
+		if not _coop_heap_less(heap[i], heap[parent]):
+			break
+		var tmp = heap[parent]; heap[parent] = heap[i]; heap[i] = tmp
+		i = parent
+
+static func _coop_heap_pop(heap: Array) -> Dictionary:
+	var top: Dictionary = heap[0]
+	var last: Dictionary = heap.pop_back()
+	if not heap.is_empty():
+		heap[0] = last
+		var i := 0
+		var n := heap.size()
+		while true:
+			var smallest := i
+			var l := 2 * i + 1
+			var r := 2 * i + 2
+			if l < n and _coop_heap_less(heap[l], heap[smallest]):
+				smallest = l
+			if r < n and _coop_heap_less(heap[r], heap[smallest]):
+				smallest = r
+			if smallest == i:
+				break
+			var tmp = heap[smallest]; heap[smallest] = heap[i]; heap[i] = tmp
+			i = smallest
+	return top
+
+func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: float, exclude_id: String, level: int = 0, max_nodes: int = _COOP_MAX_NODES) -> Dictionary:
 	if not grid:
 		return {}
 	if start == end:
@@ -958,19 +1006,16 @@ func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: fl
 	for s in _reservations.get(end, []):
 		if s.id != exclude_id and float(s.t0) <= t_start and float(s.t1) >= t_start + time_budget:
 			return {}
-	var open: Array = [{"cell": start, "t": t_start, "g": 0.0, "f": _coop_h(start, end, card)}]
+	var seq := 0
+	var open: Array = [{"cell": start, "t": t_start, "g": 0.0, "f": _coop_h(start, end, card), "seq": seq}]
+	seq += 1
 	var start_key := _coop_key(start, t_start, t_start, tq)
 	var best_g: Dictionary = {start_key: 0.0}
 	var came: Dictionary = {start_key: {"cell": start, "t": t_start, "pkey": ""}}
 	var nodes := 0
-	while not open.is_empty() and nodes < _COOP_MAX_NODES:
+	while not open.is_empty() and nodes < max_nodes:
 		nodes += 1
-		var bi := 0
-		for i in range(1, open.size()):
-			if open[i].f < open[bi].f:
-				bi = i
-		var cur: Dictionary = open[bi]
-		open.remove_at(bi)
+		var cur: Dictionary = _coop_heap_pop(open)
 		var ccell: Vector2i = cur.cell
 		var ct: float = cur.t
 		var cur_key := _coop_key(ccell, ct, t_start, tq)
@@ -1013,7 +1058,8 @@ func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: fl
 			if ng < float(best_g.get(nkey, INF)) - 0.0001:
 				best_g[nkey] = ng
 				came[nkey] = {"cell": ncell, "t": nt, "pkey": cur_key}
-				open.append({"cell": ncell, "t": nt, "g": ng, "f": ng + _coop_h(ncell, end, card)})
+				_coop_heap_push(open, {"cell": ncell, "t": nt, "g": ng, "f": ng + _coop_h(ncell, end, card), "seq": seq})
+				seq += 1
 	return {}
 
 func _coop_reconstruct(came: Dictionary, key: String) -> Dictionary:
