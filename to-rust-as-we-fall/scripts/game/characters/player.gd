@@ -629,10 +629,17 @@ func _find_char_node_uncached(cid: String) -> Node3D:
 var group_move := false
 
 func _set_click_target(world_pos: Vector3, cancel_interaction := true) -> bool:
+	# A non-finite target (a ground ray that missed the floor returns Vector3.INF; a caller that didn't
+	# pre-guard, e.g. the interaction walk-to) must NEVER enter movement: on a warped scene to_data() would
+	# carry that infinity into world_to_grid + pathfinding and the path/grid drawing "goes to infinity".
+	if not world_pos.is_finite():
+		return false
 	# On a warped scene (e.g. the channels helix), the click lands on the MODEL deck — map it back to a
 	# flat (s, lane) target so all the grid/move logic below runs in the flat data frame.
 	if game_state != null and game_state.coord_map != null:
 		world_pos = game_state.coord_map.to_data(world_pos)
+		if not world_pos.is_finite():
+			return false
 	var cross_floor := game_state != null and char_id != "" \
 		and absf(world_pos.y - game_state.get_position(char_id).y) > LEVEL_GAP
 	# A click on a different stacked floor: on a MULTI-LEVEL GRID, route over ladders/ramps to it

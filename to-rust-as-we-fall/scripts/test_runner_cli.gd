@@ -278,6 +278,9 @@ func _ready() -> void:
 			"--test-wash-relay-branches":
 				ran_test = true
 				await _test_wash_relay_branches()
+			"--test-wash-relay-no-hang":
+				ran_test = true
+				await _test_wash_relay_no_hang()
 			"--test-channels-robustness":
 				ran_test = true
 				await _test_channels_robustness()
@@ -878,6 +881,7 @@ func _run_all_tests() -> void:
 	await _test_channels_scene()
 	await _test_interactable_warp()
 	await _test_wash_relay_branches()
+	await _test_wash_relay_no_hang()
 	await _test_channels_robustness()
 	await _test_chunk_robustness()
 	await _test_lure_relay_puzzle()
@@ -10646,6 +10650,87 @@ func _test_wash_relay_branches() -> void:
 					det = false
 					break
 		_assert_true(det, "branch layout is deterministic (same archetype sequence as the live chunk) — replay-safe")
+
+func _xform_finite(t: Transform3D) -> bool:
+	return t.origin.is_finite() and t.basis.x.is_finite() and t.basis.y.is_finite() and t.basis.z.is_finite()
+
+func _find_char_node(instance: Node, cid: String) -> Node3D:
+	for n in instance.find_children("*", "", true, false):
+		if n is Node3D and "char_id" in n and str(n.char_id) == cid:
+			return n as Node3D
+	return null
+
+## The spiral must not produce a non-finite coordinate that "goes to infinity" through the warp into the
+## path/grid/overlay drawing (a NaN in a node transform crashes the renderer; headless never renders, so
+## it surfaces here as a finiteness assert). Drives the warped scene the way play does — branch geometry,
+## hover-path previews to every branch + the deck edges + OFF-deck points, a cursor-free hover drape on
+## each branch, and a live move onto a branch — and asserts every coordinate the renderer would consume
+## stays finite, and that the off-deck/ray-miss cases reject cleanly instead of pathing toward infinity.
+func _test_wash_relay_no_hang() -> void:
+	_test_name = "Wash Relay No Hang"
+	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 8)
+	_assert_true(instance != null, "the channels gauntlet instantiates")
+	if instance == null:
+		return
+	var gs = instance.get("_game_state")
+	var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
+	if gs == null or chunk == null:
+		instance.queue_free(); await get_tree().process_frame; return
+	var state: Dictionary = chunk.get_preview_state()
+	var branches: Array = state.get("branches", [])
+	# 1) Every branch geometry transform is finite (a NaN transform crashes the renderer).
+	var branch_root: Node = chunk.find_child("Branches", false, false)
+	if branch_root != null:
+		var bad_geo := 0
+		for m in branch_root.find_children("*", "MeshInstance3D", true, false):
+			if not _xform_finite((m as Node3D).global_transform):
+				bad_geo += 1
+		_assert_equals(bad_geo, 0, "every branch geometry transform is finite (no NaN into the renderer)")
+	# 2) Hover-path previews to every branch + the deck edges stay finite (the per-frame dim ribbon).
+	var targets: Array = []
+	for b in branches:
+		targets.append(Vector3(float(b["mid_x"]), 0.0, float(b["pad_lane"])))
+	targets.append_array([Vector3(84.0, 0.0, 0.0), Vector3(6.0, 0.0, 0.0), Vector3(-1.0, 0.0, -4.0), Vector3(87.0, 0.0, 4.0)])
+	var bad_prev := 0
+	for t in targets:
+		for p in gs.compute_preview_path("endo", t):
+			if not (p as Vector3).is_finite():
+				bad_prev += 1
+	_assert_equals(bad_prev, 0, "every hover-path preview (branches + edges) is finite")
+	# 3) The cursor-free hover drape on each branch yields a finite hover-grid transform.
+	var player := _find_char_node(instance, "endo")
+	if player != null and player.has_method("simulate_hover_at") and gs.coord_map != null:
+		var bad_hov := 0
+		for b in branches:
+			var w: Vector3 = gs.coord_map.to_world(Vector3(float(b["mid_x"]), 0.5, float(b["pad_lane"])))
+			player.call("simulate_hover_at", w)
+			var hg = player.get("_hover_grid")
+			if hg != null and not _xform_finite((hg as Node3D).global_transform):
+				bad_hov += 1
+		_assert_equals(bad_hov, 0, "hovering each branch drapes a finite hover grid")
+	# 4) An off-deck / ray-miss target (Vector3.INF) must be REJECTED, not mapped toward infinity — via the
+	# direct click AND via the interaction walk-to (move_to_world_position), the caller that DOESN'T pre-guard.
+	if player != null and player.has_method("_set_click_target"):
+		var moved_to_inf: bool = player.call("_set_click_target", Vector3.INF)
+		_assert_true(not moved_to_inf, "a ray-miss (INF) click is rejected, not pathed toward infinity")
+		_assert_true(gs.get_position("endo").is_finite(), "endo position stays finite after a ray-miss click")
+	if player != null and player.has_method("move_to_world_position"):
+		_assert_true(not bool(player.call("move_to_world_position", Vector3.INF)),
+			"the interaction walk-to rejects a non-finite target (no infinity into pathfinding)")
+	# 5) A live move ONTO a branch keeps both data + render positions finite throughout.
+	if not branches.is_empty():
+		var b0 := branches[0] as Dictionary
+		gs.command_move_to_pos("endo", Vector3(float(b0["mid_x"]), 0.0, float(b0["pad_lane"])))
+		var finite_throughout := true
+		for i in range(40):
+			instance.headless_advance(0.1)
+			await get_tree().process_frame
+			if not gs.get_position("endo").is_finite() or not gs.get_render_position("endo").is_finite():
+				finite_throughout = false
+				break
+		_assert_true(finite_throughout, "data + render positions stay finite while moving onto a branch")
+	instance.queue_free()
+	await get_tree().process_frame
 
 ## ── Per-chunk robustness FRAMEWORK ───────────────────────────────────────────────────────────────
 ## A reusable battery any stretch gets for free: given a chunk id, instantiate it and run a STANDARD set
