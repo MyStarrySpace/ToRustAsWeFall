@@ -272,6 +272,9 @@ func _ready() -> void:
 			"--test-channels-scene":
 				ran_test = true
 				await _test_channels_scene()
+			"--test-channels-robustness":
+				ran_test = true
+				await _test_channels_robustness()
 			"--test-showcase-capture":
 				ran_test = true
 				await _test_showcase_capture()
@@ -864,6 +867,7 @@ func _run_all_tests() -> void:
 	await _test_wash_relay()
 	_test_channels_arc()
 	await _test_channels_scene()
+	await _test_channels_robustness()
 	await _test_lure_relay_puzzle()
 	await _test_chromatic_aberration()
 	await _test_dialogue_hold_advance()
@@ -10518,6 +10522,102 @@ func _test_channels_scene() -> void:
 		_assert_true(graybox_hidden, "the flat graybox is hidden (the textured model is the visual)")
 	instance.queue_free()
 	await get_tree().process_frame
+
+## SPIRAL ROBUSTNESS: the channels gauntlet's GRID (every anchor walkable, every section crossable),
+## MOVEMENT (a route exists start->end, a commanded move advances + renders on the helix model), and
+## SOLUTION (the win fires when the party reaches the end), plus fast-forward determinism of the cadence.
+func _test_channels_robustness() -> void:
+	_test_name = "Channels Robustness"
+	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	_assert_true(instance != null, "wash_relay instantiates")
+	if instance == null:
+		return
+	var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
+	var gs = instance.get("_game_state")
+	if chunk == null or gs == null or gs.grid == null:
+		_assert_true(false, "wash_relay has a chunk + grid")
+		instance.queue_free(); await get_tree().process_frame
+		return
+	var grid = gs.grid
+	# A) GRID: every gauntlet anchor sits on a walkable cell (nothing stranded off the floor)
+	var anchors: Dictionary = chunk.get_preview_anchors()
+	var off_floor: Array = []
+	for key in anchors:
+		var c: Vector2i = grid.world_to_grid(anchors[key])
+		if not grid.is_walkable(c.x, c.y):
+			off_floor.append(key)
+	_assert_true(off_floor.is_empty(), "every gauntlet anchor is on a walkable cell (off: %s)" % str(off_floor))
+	# B) every section's centre lane is walkable — each section can be entered/crossed
+	var crossable: Array = []
+	for sx in [8.5, 16.5, 24.5, 32.5, 39.5, 49.5, 58.5, 67.5, 76.5]:
+		var sc: Vector2i = grid.world_to_grid(Vector3(sx, 0.0, 0.0))
+		if not grid.is_walkable(sc.x, sc.y):
+			crossable.append(sx)
+	_assert_true(crossable.is_empty(), "every section centre is walkable (blocked: %s)" % str(crossable))
+	# C) MOVEMENT: a grid route exists from the start to the chunk end (the gauntlet is traversable)
+	var route: Array = grid.find_path(grid.world_to_grid(Vector3(3.0, 0.0, 0.0)), grid.world_to_grid(Vector3(83.0, 0.0, 0.0)))
+	_assert_true(route.size() > 2, "a grid path exists start->end (%d cells, traversable)" % route.size())
+	# D) MOVEMENT on the helix: a commanded move advances the DATA layer and the node renders ON the model
+	var env := instance.find_child("EnvironmentModel", true, false)
+	var model_aabb := _node_aabb(env).grow(2.5) if env != null else AABB()
+	gs.command_move_to_pos("aster", Vector3(22.0, 0.0, 0.0))
+	var moved := false
+	var rendered_on_helix := false
+	for _i in range(80):
+		instance.headless_advance(0.25)
+		if gs.get_position("aster").x > 12.0:
+			moved = true
+			rendered_on_helix = env != null and model_aabb.has_point(gs.get_render_position("aster"))
+			break
+	_assert_true(moved, "a commanded move advances the character along the gauntlet")
+	_assert_true(rendered_on_helix, "while moving, the character renders on the helix model")
+	instance.queue_free()
+	await get_tree().process_frame
+	# E) SOLUTION/WIN: on a fresh gauntlet, the party reaching the end completes it
+	var win: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 4)
+	if win != null:
+		var wck: Node = win.find_child("Chunk_wash_relay", true, false)
+		for cid in ["aster", "peris", "endo"]:
+			wck.call("_set_character_position", cid, Vector3(85.0, 0.5, 0.0))
+		win.headless_advance(0.4)
+		_assert_true(str(wck.get_preview_state().get("phase", "")) == "complete", "the gauntlet completes when the party reaches the end")
+		win.queue_free()
+		await get_tree().process_frame
+	# G) a washed MOVING runner is knocked back to the start AND their move is cancelled (not left
+	#    walking on to their target — the wash must hit the data layer, not just snap the node)
+	var wl: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 4)
+	if wl != null:
+		var wc2: Node = wl.find_child("Chunk_wash_relay", true, false)
+		var gs2 = wl.get("_game_state")
+		gs2.snap_character_to("aster", Vector3(16.5, 0.5, 0.0))
+		gs2.command_move_to_pos("aster", Vector3(40.0, 0.0, 0.0))   # aster mid-move across the gauntlet
+		wl.headless_advance(0.1)
+		_assert_true(gs2.is_moving("aster"), "aster is moving before the wash")
+		wc2.call("_wash_character", "aster")                        # the wash hits a moving runner
+		wl.headless_advance(0.1)
+		_assert_true(not gs2.is_moving("aster"), "the wash cancels the washed runner's move")
+		_assert_true(gs2.get_position("aster").x < 5.0, "the washed runner is knocked back to the start, not left walking on (x=%.1f)" % gs2.get_position("aster").x)
+		wl.queue_free()
+		await get_tree().process_frame
+	# F) DETERMINISM: the wash cadence is fast-forward invariant (same surge counts at a fine vs coarse step)
+	var fine: Array = await _wash_flood_counts(0.02)
+	var coarse: Array = await _wash_flood_counts(0.2)
+	_assert_true(fine.size() > 0 and fine == coarse, "wash cadence is fast-forward invariant (fine=%s coarse=%s)" % [str(fine), str(coarse)])
+
+func _wash_flood_counts(step: float) -> Array:
+	var inst: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 4)
+	if inst == null:
+		return []
+	var ck: Node = inst.find_child("Chunk_wash_relay", true, false)
+	for cid in ["aster", "peris", "endo"]:
+		ck.call("_set_character_position", cid, Vector3(3.0, 0.5, 0.0))   # clear of every section
+	inst.headless_advance(20.0, step)
+	var out: Array = []
+	for s in (ck.get_preview_state().get("sections", []) as Array):
+		out.append(int(s.get("flood_count", 0)))
+	inst.queue_free()
+	await get_tree().process_frame
+	return out
 
 func _test_wash_relay() -> void:
 	_test_name = "Wash Relay"

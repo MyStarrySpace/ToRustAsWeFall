@@ -372,10 +372,10 @@ func _wash_section(i: int) -> void:
 
 func _wash_character(char_id: String) -> void:
 	_washed[char_id] = true
-	_set_character_position(char_id, START_POS)
 	var gs = _get_game_state()
-	if gs != null and gs.has_method("stop_character"):
-		gs.stop_character(char_id)
+	if gs != null:
+		gs.command_stop(char_id)   # cancel any in-flight move so the runner stays knocked back, not walking on
+	_set_character_position(char_id, START_POS)
 
 # --- Interactions ---
 
