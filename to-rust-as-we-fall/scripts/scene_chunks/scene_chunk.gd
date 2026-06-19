@@ -271,6 +271,24 @@ func _register_interactable(interactable: Node) -> void:
 	if host != null and host.has_method("register_preview_interactable"):
 		host.call("register_preview_interactable", interactable)
 
+## When a scene's data layer is FLAT but its world is WARPED (a coord_map is installed — e.g. the channels
+## helix), the interactable proximity zones have to move onto the warped deck too. A character body renders
+## at its WARPED world position, so a zone left at its flat authored position would never overlap it — the
+## hold-dwell (which arms on Area3D body-enter) could never fire. This repositions every registered
+## interactable's Area3D through the map. Idempotent: each remembers its FLAT authored position, so a
+## re-warp (or a swapped map) always re-derives from the original instead of compounding. The data-layer
+## interactable spec keeps its flat position (triggering checks character/enabled, never world distance),
+## and a click still maps back through the map to a flat move target, so navigation stays in the flat frame.
+func warp_interactables_onto_coord_map(coord_map) -> void:
+	if coord_map == null:
+		return
+	for it in _interactables:
+		if not is_instance_valid(it) or not (it is Node3D):
+			continue
+		if not it.has_meta("flat_authored_position"):
+			it.set_meta("flat_authored_position", it.global_position)
+		it.global_position = coord_map.to_world(it.get_meta("flat_authored_position"))
+
 func _make_material(
 	color: Color,
 	emission := Color.BLACK,

@@ -19,6 +19,8 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 ## All hazards fire on the gameplay SCHEDULER (recurring per-section onsets) — fast-forward + replay safe.
 
 const EnemyScript := preload("res://scripts/game/ai/enemy.gd")
+const ChannelsArc := preload("res://scripts/game/world/channels_arc.gd")
+const StretchGenerator := preload("res://scripts/generation/stretch_generator.gd")
 
 const PARTY_IDS := ["aster", "peris", "endo"]
 const START_POS := Vector3(3.0, 0.5, 0.0)
@@ -66,6 +68,28 @@ const ENEMY_SPECS := [
 ]
 const LURE_SPECS := [{"pos": Vector3(54.0, 0.5, 2.8), "target": "ch_sentry"}]
 const LURE_DURATION := 9.0
+
+# --- Branch puzzle offshoots (built USING the archetype generation framework) ---
+# At each GAP between sections, a puzzle fragment branches OUT away from the spiral: on the helix, +lane
+# is a RADIAL spoke jutting off the deck edge (lane 4 = the deck rim) out to the pad. One generated stretch
+# (StretchGenerator, node_count = gap count) supplies an archetype + content per branch; a guarded branch
+# also spawns a roamer (capped). Branches are OPTIONAL reward detours — a salvage cache pays off the climb
+# out and back; the gaps themselves stay walkable, so they never block the main run.
+const BRANCH_S_SPAN := 3.0          # branch footprint along s (fits inside every gap)
+const BRANCH_HALF_S := 1.5
+const BRANCH_NECK_LANE := 3.5       # walkable region starts here (overlaps the deck rim at lane 4 -> connected)
+const BRANCH_OUTER_LANE := 10.0     # walkable region reaches this far out
+const BRANCH_DECK_CENTER_LANE := 7.0
+const BRANCH_LANE_SPAN := 6.0       # the deck plank spans lane 4..10 radially
+const BRANCH_PAD_LANE := 8.5        # where the cache + content sit
+const BRANCH_GUARD_CAP := 3         # at most this many branches get a roaming guard (perf + difficulty)
+const BRANCH_GEN_SEED := 4727
+const BRANCH_REWARD := 1
+
+var _branches: Array = []           # per gap: {gap, mid_x, pad_lane, archetype, content_count, collected, cache, guard}
+var _branch_loot := 0
+var _branch_root: Node3D
+var _branch_guard_spawns := {}      # guard id -> flat spawn (so reset re-snaps branch guards too)
 
 var _phase := "ready"
 var _override_locked := []         # per section — an override has been pressed (latched)
@@ -159,6 +183,7 @@ func _build_chunk() -> void:
 			ov.interacted.connect(func() -> void: _on_override(i))
 	_build_threats()
 	_build_connect_backs()
+	_build_branches()
 
 # The connect-back points at the chunk end (plus the start climb point the sloperope feeds).
 func _build_connect_backs() -> void:
@@ -181,6 +206,175 @@ func _build_connect_backs() -> void:
 	climb.interacted.connect(func() -> void: _on_climb())
 	_rope_mesh = _add_box(self, CLIMB_POS + Vector3(0.0, 1.4, 0.0), Vector3(0.16, 2.8, 0.16), Color(0.25, 0.18, 0.1))
 	_rope_mesh.visible = false   # the line only appears once dropped from the chunk end
+
+# --- Branch puzzle offshoots ---
+
+# The mid-s of each GAP between consecutive sections (where a branch attaches).
+func _gap_mids() -> Array:
+	var mids: Array = []
+	for i in range(SECTIONS.size() - 1):
+		mids.append((float(SECTIONS[i]["x1"]) + float(SECTIONS[i + 1]["x0"])) * 0.5)
+	return mids
+
+# Generate ONE stretch (one node per gap) through the archetype framework — each node hands a branch its
+# archetype + content placements. Falls back to a fixed archetype rotation so the offshoots still build if
+# the generation catalog is unavailable (the chunk never hard-fails on missing data).
+func _generate_branch_nodes(count: int) -> Array:
+	var spec: Dictionary = StretchGenerator.generate({
+		"id": "wash_relay_branches", "title": "Wash Relay Branches",
+		"seed": BRANCH_GEN_SEED, "complexity_tier": "developing", "progression_stage": 3,
+		"budget": {"node_count": count, "branch_count": 0},
+	})
+	if bool(spec.get("ok", false)):
+		var nodes: Array = spec.get("nodes", [])
+		if nodes.size() >= count:
+			return nodes.slice(0, count)
+	var fallback: Array = []
+	var names := ["Plant as tool", "Stealth-and-time", "Carry the heavy thing", "Redirected enemy aggression",
+		"Lysate forage cache", "Narrative beat", "Plant as tool", "Stealth-and-time"]
+	for i in range(count):
+		fallback.append({"archetype_name": names[i % names.size()], "content_placements": [], "enemies": []})
+	return fallback
+
+func _build_branches() -> void:
+	_branches.clear()
+	_branch_loot = 0
+	_branch_guard_spawns.clear()
+	_branch_root = Node3D.new()
+	_branch_root.name = "Branches"
+	add_child(_branch_root)
+	var mids := _gap_mids()
+	var nodes := _generate_branch_nodes(mids.size())
+	var guards_spawned := 0
+	for g in range(mids.size()):
+		var mid: float = mids[g]
+		var node: Dictionary = nodes[g] if g < nodes.size() else {}
+		var archetype := str(node.get("archetype_name", "Offshoot"))
+		var placements: Array = node.get("content_placements", [])
+		# The radial plank: juts off the deck rim (lane 4) out to the pad (lane 10), pre-warped onto the helix.
+		var deck_color := Color(0.12, 0.14, 0.17)
+		_add_warped_deck(mid, BRANCH_DECK_CENTER_LANE, Vector3(BRANCH_LANE_SPAN, 0.2, BRANCH_S_SPAN), deck_color)
+		# A marker post at the deck rim so the offshoot reads as a turn-off from the main run.
+		_add_warped_box(mid, BRANCH_NECK_LANE + 0.4, Vector3(0.4, 1.6, 0.4), Color(0.2, 0.5, 0.55), Color(0.2, 0.7, 0.8), 0.8)
+		# The archetype's content placements, clustered on the pad (graybox identity of the puzzle).
+		var content_count := _build_branch_content(mid, placements)
+		# Reward cache — authored FLAT (the host warp pass lifts every interactable onto the helix); its mesh
+		# is a CHILD so it rides the warp and stays visible (it isn't in the GLB the flat-graybox hide replaces).
+		var cache := _add_interactable(self, "BranchCache%d" % g, "Salvage cache",
+			Vector3(mid, 0.5, BRANCH_PAD_LANE), "SALVAGE", "", 1.2, true, 1.6,
+			Interactable.InteractableType.HOLD_ACTION, false)
+		var cm := MeshInstance3D.new()
+		var cb := BoxMesh.new(); cb.size = Vector3(0.7, 0.7, 0.7); cm.mesh = cb
+		cm.material_override = _make_material(Color(0.7, 0.6, 0.2), Color(1.0, 0.85, 0.25), 1.4)
+		cm.position = Vector3(0.0, 0.45, 0.0)
+		cache.add_child(cm)
+		cache.interacted.connect(func() -> void: _on_branch_cache(g))
+		# A guarded branch (the archetype carries an enemy) spawns a roamer on the pad — a real risk detour.
+		var guard = null
+		if guards_spawned < BRANCH_GUARD_CAP and _branch_has_enemy(node):
+			guard = _spawn_branch_guard(g, mid)
+			if guard != null:
+				guards_spawned += 1
+		_branches.append({
+			"gap": g, "mid_x": mid, "pad_lane": BRANCH_PAD_LANE, "archetype": archetype,
+			"content_count": content_count, "collected": false, "cache": cache, "guard": guard,
+		})
+
+func _branch_has_enemy(node: Dictionary) -> bool:
+	if not (node.get("enemies", []) as Array).is_empty():
+		return true
+	for p in node.get("content_placements", []):
+		if (p is Dictionary) and str((p as Dictionary).get("category", "")) == "enemies":
+			return true
+	return false
+
+# Lay the archetype's content placements (capped) around the pad centre, pre-warped onto the helix.
+func _build_branch_content(mid: float, placements: Array) -> int:
+	var offsets := [Vector2(-0.8, -0.7), Vector2(0.8, -0.7), Vector2(0.0, 0.9)]   # (s, lane) relative to pad
+	var count := 0
+	for raw in placements:
+		if count >= offsets.size():
+			break
+		if not (raw is Dictionary):
+			continue
+		var p := raw as Dictionary
+		var off: Vector2 = offsets[count]
+		var sz := _branch_marker_size(p.get("size", []))
+		_add_warped_box(mid + off.x, BRANCH_PAD_LANE + off.y, sz,
+			_branch_content_color(str(p.get("category", ""))), Color.BLACK, 0.0)
+		count += 1
+	return count
+
+func _branch_marker_size(raw_size: Variant) -> Vector3:
+	if raw_size is Array and (raw_size as Array).size() >= 3:
+		var a := raw_size as Array
+		return Vector3(clampf(float(a[0]), 0.4, 1.2), clampf(float(a[1]), 0.4, 1.2), clampf(float(a[2]), 0.4, 1.2))
+	return Vector3(0.7, 0.7, 0.7)
+
+func _branch_content_color(category: String) -> Color:
+	match category:
+		"flora": return Color(0.25, 0.55, 0.3)
+		"enemies": return Color(0.6, 0.2, 0.22)
+		"structures": return Color(0.35, 0.4, 0.5)
+	return Color(0.4, 0.4, 0.45)
+
+func _spawn_branch_guard(g: int, mid: float):
+	var gs = _get_game_state()
+	if gs == null:
+		return null
+	var spawn := Vector3(mid, 0.5, BRANCH_PAD_LANE)
+	var enemy = EnemyScript.new()
+	enemy.name = "BranchGuard_%d" % g
+	enemy.position = spawn
+	enemy.move_speed = 2.8
+	enemy.detection_range = 4.5
+	enemy.char_id = "branch_guard_%d" % g
+	enemy.game_state = gs
+	enemy._detection_targets.assign(PARTY_IDS)
+	_branch_root.add_child(enemy)
+	gs.register_character(enemy.char_id, spawn, enemy.move_speed, {"detection_range": enemy.detection_range})
+	if enemy.has_method("activate"):
+		enemy.activate()
+	enemy.set_roam(spawn, 1.6)
+	enemy.hit_target.connect(func(tid: String, _dmg: float) -> void: _on_enemy_hit(tid))
+	_enemies.append(enemy)
+	_branch_guard_spawns[enemy.char_id] = spawn
+	return enemy
+
+# A box pre-warped onto the helix: authored as (lane-extent, height, s-extent) so basis_at(s) aligns local
+# x with the radial (lane) axis and local z with the tangent (s) axis. Walk-on decks also get layer-1
+# collision (the GLB's collision doesn't cover this new geometry, so the player's ground ray must hit it).
+func _branch_warp_xform(s: float, lane_center: float) -> Transform3D:
+	return Transform3D(ChannelsArc.basis_at(s), ChannelsArc.arc_pos(s, lane_center))
+
+func _add_warped_box(s: float, lane_center: float, size: Vector3, color: Color, emission := Color.BLACK, energy := 0.0) -> MeshInstance3D:
+	var mesh := MeshInstance3D.new()
+	var box := BoxMesh.new(); box.size = size; mesh.mesh = box
+	mesh.material_override = _make_material(color, emission, energy)
+	mesh.transform = _branch_warp_xform(s, lane_center)
+	_branch_root.add_child(mesh)
+	return mesh
+
+func _add_warped_deck(s: float, lane_center: float, size: Vector3, color: Color) -> void:
+	var mesh := _add_warped_box(s, lane_center, size, color)
+	var body := StaticBody3D.new()
+	body.collision_layer = 1
+	body.collision_mask = 0
+	body.transform = mesh.transform
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new(); shape.size = size
+	col.shape = shape
+	body.add_child(col)
+	_branch_root.add_child(body)
+
+func _on_branch_cache(g: int) -> void:
+	if g < 0 or g >= _branches.size():
+		return
+	if bool(_branches[g].get("collected", false)):
+		return
+	_branches[g]["collected"] = true
+	_branch_loot += BRANCH_REWARD
+	_say("// SALVAGE // cache stripped (%d)" % _branch_loot)
 
 # --- Threat layer: hide alcoves, flures, guards ---
 
@@ -235,6 +429,8 @@ func _enemy_spawn_for(id: String) -> Vector3:
 	for spec in ENEMY_SPECS:
 		if str(spec["id"]) == id:
 			return spec["spawn"]
+	if _branch_guard_spawns.has(id):
+		return _branch_guard_spawns[id]
 	return Vector3.ZERO
 
 func _on_enemy_hit(target_id: String) -> void:
@@ -535,10 +731,15 @@ func get_spawn_positions() -> Dictionary:
 	return SPAWNS.duplicate(true)
 
 func get_grid_data() -> Dictionary:
+	# The main deck lane, plus one OUTWARD spur per gap (lane 3.5..10) — the branch offshoots. Each spur
+	# overlaps the deck rim (lane 4) so it's path-connected; the height grows to admit the outer lane.
+	var regions: Array = [{"min": [FLOOR_MIN_X, -FLOOR_Z_HALF], "max": [FLOOR_MAX_X, FLOOR_Z_HALF]}]
+	for mid in _gap_mids():
+		regions.append({"min": [float(mid) - BRANCH_HALF_S, BRANCH_NECK_LANE], "max": [float(mid) + BRANCH_HALF_S, BRANCH_OUTER_LANE]})
 	return {
 		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
-		"origin": [-2.0, 0.0, -6.0], "cell_size": 1.0, "width": 92, "height": 12,
-		"walkable_regions": [{"min": [FLOOR_MIN_X, -FLOOR_Z_HALF], "max": [FLOOR_MAX_X, FLOOR_Z_HALF]}],
+		"origin": [-2.0, 0.0, -6.0], "cell_size": 1.0, "width": 92, "height": 18,
+		"walkable_regions": regions,
 	}
 
 func get_preview_anchors() -> Dictionary:
@@ -554,6 +755,8 @@ func get_preview_anchors() -> Dictionary:
 		anchors["hide_alcove_%d" % ai] = HIDE_ALCOVES[ai]["pos"]
 	for li in range(LURE_SPECS.size()):
 		anchors["flure_%d" % li] = LURE_SPECS[li]["pos"]
+	for b in _branches:
+		anchors["branch_%d" % int(b["gap"])] = Vector3(float(b["mid_x"]), 0.5, float(b["pad_lane"]))
 	return anchors
 
 func get_preview_time_state() -> Dictionary:
@@ -574,6 +777,11 @@ func reset_preview_state() -> void:
 		_override_locked.append(false); _flooding.append(false); _plate_held.append(false); _sluice_blocked.append(false); _flood_counts.append(0)
 	_washed.clear()
 	_sloperope_deployed = false
+	_branch_loot = 0
+	for b in _branches:
+		b["collected"] = false
+		if is_instance_valid(b.get("cache")) and b["cache"].has_method("reset"):
+			b["cache"].reset()
 	if is_instance_valid(_rope_mesh):
 		_rope_mesh.visible = false
 	for i in range(_lure_until.size()):
@@ -610,24 +818,41 @@ func get_preview_state() -> Dictionary:
 			"period": _period(i), "flood_count": _flood_counts[i] if i < _flood_counts.size() else 0})
 	var guards: Array = []
 	var gs = _get_game_state()
+	var branch_guard_count := 0
+	# `guards` / `enemy_count` describe the SECTION threat layer; branch-offshoot guards are reported
+	# separately (branch_guard_count + each branch's `guarded` flag) so the section semantics are stable.
 	for enemy in _enemies:
-		if is_instance_valid(enemy):
-			guards.append({
-				"id": enemy.char_id, "alive": enemy.is_alive(),
-				"state": (enemy.get_state() if enemy.has_method("get_state") else ""),
-				"distracted": (gs != null and gs.is_character_distracted(enemy.char_id)),
-			})
+		if not is_instance_valid(enemy):
+			continue
+		if _branch_guard_spawns.has(enemy.char_id):
+			branch_guard_count += 1
+			continue
+		guards.append({
+			"id": enemy.char_id, "alive": enemy.is_alive(),
+			"state": (enemy.get_state() if enemy.has_method("get_state") else ""),
+			"distracted": (gs != null and gs.is_character_distracted(enemy.char_id)),
+		})
 	var hidden_ids: Array = []
 	if gs != null:
 		for cid in PARTY_IDS:
 			if gs.characters.has(cid) and gs.get_character_concealment(cid) >= GameState.CONCEAL_FULL:
 				hidden_ids.append(cid)
+	var branches: Array = []
+	for b in _branches:
+		branches.append({
+			"gap": int(b["gap"]), "mid_x": float(b["mid_x"]), "pad_lane": float(b["pad_lane"]),
+			"archetype": str(b["archetype"]), "content_count": int(b["content_count"]),
+			"collected": bool(b.get("collected", false)),
+			"guarded": is_instance_valid(b.get("guard")),
+		})
 	return {
 		"phase": _phase, "complete": _phase == "complete",
 		"sections": secs, "section_count": SECTIONS.size(),
 		"washed_count": _washed.size(), "washed": _washed.keys(),
 		"flow_period": FLOW_PERIOD, "flood_duration": FLOOD_DURATION,
-		"enemy_count": _enemies.size(), "guards": guards,
+		"enemy_count": guards.size(), "guards": guards,
 		"lure_active": _lure_active(), "hidden": hidden_ids,
 		"sloperope_deployed": _sloperope_deployed,
+		"branches": branches, "branch_count": _branches.size(), "branch_loot": _branch_loot,
+		"branch_guard_count": branch_guard_count,
 	}

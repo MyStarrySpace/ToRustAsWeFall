@@ -272,6 +272,12 @@ func _ready() -> void:
 			"--test-channels-scene":
 				ran_test = true
 				await _test_channels_scene()
+			"--test-interactable-warp":
+				ran_test = true
+				await _test_interactable_warp()
+			"--test-wash-relay-branches":
+				ran_test = true
+				await _test_wash_relay_branches()
 			"--test-channels-robustness":
 				ran_test = true
 				await _test_channels_robustness()
@@ -870,6 +876,8 @@ func _run_all_tests() -> void:
 	await _test_wash_relay()
 	_test_channels_arc()
 	await _test_channels_scene()
+	await _test_interactable_warp()
+	await _test_wash_relay_branches()
 	await _test_channels_robustness()
 	await _test_chunk_robustness()
 	await _test_lure_relay_puzzle()
@@ -10527,6 +10535,118 @@ func _test_channels_scene() -> void:
 	instance.queue_free()
 	await get_tree().process_frame
 
+## A warped scene (a coord_map is installed) must move its interactable proximity zones ONTO the helix.
+## The character body renders at its WARPED world position, so a zone left at its flat (s, lane) authored
+## position could never overlap it — the hold-dwell (armed on Area3D body-enter) would never fire and the
+## connect-back / cache would be dead. This drove the branch work: it's the same fix branch caches need.
+func _test_interactable_warp() -> void:
+	_test_name = "Interactable Warp Onto Helix"
+	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	_assert_true(instance != null, "the channels gauntlet instantiates")
+	if instance == null:
+		return
+	var gs = instance.get("_game_state")
+	_assert_true(gs != null and gs.coord_map != null, "the helix coord_map is installed")
+	var term: Node = instance.find_child("Terminal", true, false)
+	_assert_true(term != null, "the Terminal connect-back interactable exists")
+	if term != null and gs != null and gs.coord_map != null:
+		var flat := Vector3(84.0, 0.5, 2.5)   # TERMINAL_POS (flat s, lane)
+		var on_helix: Vector3 = gs.coord_map.to_world(flat)
+		_assert_true(term.global_position.distance_to(on_helix) < 0.05,
+			"the Terminal zone is warped onto the helix (at the deck, not the flat data point)")
+		_assert_true(term.global_position.distance_to(flat) > 1.0,
+			"the Terminal zone is NOT left stranded at its flat (s, lane) position")
+		# A member standing at the Terminal's flat cell renders right inside the warped zone — reachable.
+		if gs.characters.has("aster"):
+			gs.snap_character_to("aster", flat)
+			var rp: Vector3 = gs.get_render_position("aster")
+			_assert_true(rp.distance_to(term.global_position) < 1.8,
+				"a member at the Terminal's cell renders inside the zone (the dwell can arm)")
+	instance.queue_free()
+	await get_tree().process_frame
+
+## The branch puzzle offshoots: archetype-driven side fragments that jut radially OUT from the spiral at
+## each gap between sections. Asserts there is one per gap, each is its own walkable region reachable from
+## the main deck, each carries archetype content from the generation framework, the caches warp onto the
+## helix (reachable), the layout is deterministic (replay-safe), and the guarded ones spawn a roamer.
+func _test_wash_relay_branches() -> void:
+	_test_name = "Wash Relay Branches"
+	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	_assert_true(instance != null, "the channels gauntlet instantiates")
+	if instance == null:
+		return
+	var gs = instance.get("_game_state")
+	var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
+	_assert_true(chunk != null and gs != null, "the wash_relay chunk is hosted with a game state")
+	if chunk == null or gs == null:
+		instance.queue_free(); await get_tree().process_frame; return
+	var state: Dictionary = chunk.get_preview_state()
+	var branches: Array = state.get("branches", [])
+	# One branch per gap between the 9 sections = 8 branches.
+	_assert_true(branches.size() == 8, "there is one branch per inter-section gap (got %d)" % branches.size())
+	# Every branch carries an archetype label drawn from the generation catalog (built using the framework).
+	var with_archetype := 0
+	var with_content := 0
+	for b in branches:
+		if str((b as Dictionary).get("archetype", "")) != "":
+			with_archetype += 1
+		if int((b as Dictionary).get("content_count", 0)) > 0:
+			with_content += 1
+	_assert_true(with_archetype == branches.size(), "every branch names an archetype from the framework")
+	_assert_true(with_content >= 1, "branches carry archetype content placements (got %d)" % with_content)
+	# Each branch occupies its own walkable region OUT past the main deck (lane > FLOOR_Z_HALF=4), and it
+	# connects back to the main deck (the cells between are walkable) so a member can path onto it.
+	if gs.grid != null:
+		var reachable := 0
+		for b in branches:
+			var bd := b as Dictionary
+			var mid: float = float(bd.get("mid_x", 0.0))
+			var pad_lane: float = float(bd.get("pad_lane", 8.5))
+			var pad_cell: Vector2i = gs.grid.world_to_grid(Vector3(mid, 0.0, pad_lane))
+			var deck_cell: Vector2i = gs.grid.world_to_grid(Vector3(mid, 0.0, 3.5))
+			if gs.grid.is_walkable(pad_cell.x, pad_cell.y) and gs.grid.is_walkable(deck_cell.x, deck_cell.y):
+				var path: Array = gs.grid.find_path(deck_cell, pad_cell)
+				if path.size() >= 2:
+					reachable += 1
+		_assert_true(reachable == branches.size(), "every branch pad is walkable and reachable from the deck (%d/%d)" % [reachable, branches.size()])
+	# The branch reward caches are interactables warped onto the helix (reachable like the connect-backs).
+	var cache0: Node = instance.find_child("BranchCache0", true, false)
+	_assert_true(cache0 != null, "a branch reward cache interactable exists")
+	if cache0 != null and gs.coord_map != null:
+		var b0 := branches[0] as Dictionary
+		var flat := Vector3(float(b0.get("mid_x", 0.0)), 0.5, float(b0.get("pad_lane", 8.5)))
+		_assert_true(cache0.global_position.distance_to(gs.coord_map.to_world(flat)) < 0.6,
+			"the branch cache is warped onto its pad on the helix")
+	# Collecting a cache through the data layer rewards loot (the offshoot pays off).
+	var loot_before := int(state.get("branch_loot", 0))
+	if cache0 != null:
+		cache0.call("_trigger", false)
+		await get_tree().process_frame
+		_assert_true(int(chunk.get_preview_state().get("branch_loot", 0)) > loot_before,
+			"collecting a branch cache increments loot")
+	instance.queue_free()
+	await get_tree().process_frame
+	# Determinism: the branch layout is the gap geometry (fixed constants) + the generator's archetype pick,
+	# so it's replay-safe iff the generator is deterministic. Two identical generate() calls must match the
+	# archetypes the live chunk used. (Done directly — re-instantiating the whole warped preview is needless.)
+	var settings := {"id": "wash_relay_branches", "title": "Wash Relay Branches",
+		"seed": 4727, "complexity_tier": "developing", "progression_stage": 3,
+		"budget": {"node_count": 8, "branch_count": 0}}
+	var spec_a: Dictionary = StretchGenerator.generate(settings)
+	var spec_b: Dictionary = StretchGenerator.generate(settings)
+	if bool(spec_a.get("ok", false)) and bool(spec_b.get("ok", false)):
+		var na: Array = spec_a.get("nodes", [])
+		var nb: Array = spec_b.get("nodes", [])
+		var det := na.size() == nb.size() and na.size() == branches.size()
+		if det:
+			for i in range(na.size()):
+				var name_a := str((na[i] as Dictionary).get("archetype_name", ""))
+				if name_a != str((nb[i] as Dictionary).get("archetype_name", "")) \
+						or name_a != str((branches[i] as Dictionary).get("archetype", "")):
+					det = false
+					break
+		_assert_true(det, "branch layout is deterministic (same archetype sequence as the live chunk) — replay-safe")
+
 ## ── Per-chunk robustness FRAMEWORK ───────────────────────────────────────────────────────────────
 ## A reusable battery any stretch gets for free: given a chunk id, instantiate it and run a STANDARD set
 ## of checks derived from the chunk's OWN declared data (spawns, anchors, grid, render warp) plus a short
@@ -12264,6 +12384,8 @@ func _test_event_log_mutation_audit() -> void:
 	var allowlist := PackedStringArray([
 		# Pure queries
 		"get_position", "is_moving", "get_grid_cell", "get_character_level",
+		# Render-only: warps get_position through the coord_map for node followers; reads, never mutates.
+		"get_render_position",
 		"is_character_hidden", "get_character_concealment", "is_character_distracted",
 		# Concealment and lure-distraction are DERIVED state (a chunk sets them each frame from
 		# hide-zone / lure proximity, like a detection prediction) — not a player/sequence input, so

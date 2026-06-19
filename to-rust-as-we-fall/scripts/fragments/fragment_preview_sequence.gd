@@ -325,6 +325,10 @@ func _load_environment_model() -> void:
 		_game_state.coord_map = _active_chunk.call("get_coord_map")
 		if _active_chunk.has_method("hide_flat_graybox"):
 			_active_chunk.call("hide_flat_graybox")
+		# The data layer is flat but the world is warped — move the interactable zones onto the helix
+		# so they overlap the warped character bodies (otherwise the hold-dwell could never arm).
+		if _active_chunk.has_method("warp_interactables_onto_coord_map"):
+			_active_chunk.call("warp_interactables_onto_coord_map", _game_state.coord_map)
 
 ## Walkable surfaces of the environment model get trimesh collision on layer 1 (the ground layer the
 ## player ray queries), so a click lands on the deck under the cursor — its world height is what

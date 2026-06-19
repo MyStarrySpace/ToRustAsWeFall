@@ -855,7 +855,7 @@ func _update_dest_marker(delta: float) -> void:
 				var w: Vector3 = game_state.coord_map.to_world(mv.path[mv.path.size() - 1])
 				_dest_marker.global_position = Vector3(w.x, w.y + 0.08, w.z)
 				_dest_marker.visible = true
-				_dest_marker_mat.albedo_color.a = 0.3 + sin(Time.get_ticks_msec() * 0.004) * 0.15
+				_dest_marker_mat.albedo_color.a = 0.3 + sin(Time.get_ticks_msec() * 0.004) * 0.15  # @rendering_only — destination marker pulse (helix)
 				return
 		_dest_marker.visible = false
 		return
