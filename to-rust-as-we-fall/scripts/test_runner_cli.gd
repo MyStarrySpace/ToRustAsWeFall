@@ -299,6 +299,9 @@ func _ready() -> void:
 			"--test-wash-relay-ribbon-build":
 				ran_test = true
 				await _test_wash_relay_ribbon_build()
+			"--test-wash-relay-helix-path-draws":
+				ran_test = true
+				await _test_wash_relay_helix_path_draws()
 			"--test-channels-robustness":
 				ran_test = true
 				await _test_channels_robustness()
@@ -906,6 +909,7 @@ func _run_all_tests() -> void:
 	await _test_nav_oracle()
 	await _test_wash_relay_pathfind_perf()
 	await _test_wash_relay_ribbon_build()
+	await _test_wash_relay_helix_path_draws()
 	await _test_channels_robustness()
 	await _test_chunk_robustness()
 	await _test_lure_relay_puzzle()
@@ -10895,6 +10899,49 @@ func _path_points_finite(path_renderer: Node) -> bool:
 		if p is Vector3 and not (p as Vector3).is_finite():
 			return false
 	return true
+
+## End-to-end headless proof of the fix: drive the REAL player preview (the code path that crashed) to the
+## exact far target from the user's log, and confirm the ribbon now (a) uses the live game_state, (b) builds
+## on the HELIX (points at the deck radius, not flat at lane y), (c) is finite, (d) doesn't hang.
+func _test_wash_relay_helix_path_draws() -> void:
+	_test_name = "Wash Relay Helix Path Draws"
+	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	if instance == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	var gs = instance.get("_game_state")
+	var endo := _find_char_node(instance, "endo")
+	if gs == null or endo == null or gs.coord_map == null or not endo.has_method("_update_path_preview"):
+		_assert_true(false, "warped wash_relay + endo player present"); instance.queue_free(); await get_tree().process_frame; return
+	# The hover passes the RAW warped deck hit; _update_path_preview maps it to_data, plans, sets the ribbon.
+	var far_flat := Vector3(77.8, 0.0, 0.52)             # the user's crash target (flat s, lane)
+	var far_world: Vector3 = gs.coord_map.to_world(far_flat)   # the warped deck point the cursor would hit
+	endo.set("_preview_last_cell", Vector2i(-9999, -9999))     # force a recompute
+	var t0 := Time.get_ticks_msec()
+	endo.call("_update_path_preview", far_world)
+	for i in range(3):
+		await get_tree().process_frame
+	var dt := Time.get_ticks_msec() - t0
+	var pp = endo.get("_path_preview")
+	_assert_true(pp != null and pp.game_state == gs, "the preview ribbon is on the live game_state (warps)")
+	var pts: Array = pp.call("_remaining_points") if pp != null else []
+	_assert_true(pts.size() >= 2, "the ribbon has a drawable polyline (%d pts)" % pts.size())
+	var on_helix := 0
+	var bad := 0
+	for p in pts:
+		var v := p as Vector3
+		if not v.is_finite():
+			bad += 1
+			continue
+		var radius := Vector2(v.x, v.z).length()
+		if radius > 8.0:   # the helix deck is at radius ~11-20; flat data points would be < 8 here
+			on_helix += 1
+	if pts.size() > 0:
+		print("[helix] %d ribbon pts, %d on the helix deck, first=%v last=%v, built in %d ms" % [pts.size(), on_helix, pts[0], pts[pts.size() - 1], dt])
+	_assert_equals(bad, 0, "every ribbon point is finite")
+	_assert_true(on_helix >= pts.size() - 1, "the ribbon rides the HELIX (not flat): %d/%d pts at deck radius" % [on_helix, pts.size()])
+	_assert_true(dt < 500, "the real preview builds without hanging (%d ms)" % dt)
+	instance.queue_free()
+	await get_tree().process_frame
 
 ## Reproduce the crash the user's pathfind.log pinned: find_path COMPLETES for a far target, then the crash
 ## is BUILDING the preview ribbon for that long warped path. Builds the exact ribbon (endo -> far branch on
