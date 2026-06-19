@@ -7563,8 +7563,13 @@ func _test_puzzle_outcome_coverage() -> void:
 		classified += 1
 		_assert_true(outcomes.has("success") and outcomes.has("failure"),
 			"Puzzle stretch '%s' demonstrates both a success and a failure outcome" % fragment.get("id"))
-	_assert_true(classified >= 23,
-		"Every genuine puzzle stretch stays outcome-classified (got %d, expected >= 23)" % classified)
+	# Floor = the count of genuine WIN/LOSE puzzle stretches that currently exist. It dropped from 23 to 20
+	# when the obsolete channels_rhythm / channels_hide_window / overlay_lab chunks were removed (their
+	# fragments went with them). The per-fragment assert above is the real guard — every classified stretch
+	# proves BOTH outcomes; this floor just catches silent under-coverage. The remaining `pending` are the
+	# stacks/rings NARRATIVE beats (engram/memory, no win/lose), tracked for later, not counted here.
+	_assert_true(classified >= 20,
+		"Every genuine puzzle stretch stays outcome-classified (got %d, expected >= 20)" % classified)
 	print("[D13] %d puzzle stretch(es) classified with both outcomes; %d candidate(s) still need a fail/success case: %s"
 		% [classified, pending.size(), str(pending)])
 
