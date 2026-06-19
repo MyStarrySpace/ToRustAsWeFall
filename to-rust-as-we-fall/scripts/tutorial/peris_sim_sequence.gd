@@ -46,10 +46,13 @@ var _explore_gate_fired := false
 var _is_paused := false
 var _efficiency_score := 100.0
 
-const DESK_POS := Vector3(2.2, 0, 2.2)  # the modeled kiosk = workspace
-const PORTAL_POS := Vector3(2.5, 0, 1.4)  # floor in front of the wall-mounted modeled portal
-const MONOS_POS := Vector3(3.8, 0, 1.6)  # near the portal, reachable but >2.5 from the click-target stand
-const PERIS_START := Vector3(7, 0.5, 4.5)  # front-center, near the open side
+# The portal now sits on the WEST side wall facing the room (+X); the furniture turns to face it.
+const PORTAL_PANEL := Vector3(0.7, 2.4, 3.0)   # portal panel centre on the west wall
+const PORTAL_FACE := Vector3(1, 0, 0)          # the direction the portal faces (into the room)
+const DESK_POS := Vector3(2.0, 0, 1.3)  # floor in front of the terminal (beside the portal)
+const PORTAL_POS := Vector3(2.6, 0, 3.0)  # floor in front of the portal — clear space for Peris
+const MONOS_POS := Vector3(3.7, 0, 4.4)  # Monos near the portal, off Peris's stand-spot
+const PERIS_START := Vector3(4.4, 0.5, 3.0)  # front-centre, facing the portal
 
 # The workspace is the modeled Crocotile room (peris-sim.gltf): floor X in [0, 14], Z in [0, 6], up
 # Y in [0, 5]. The grid is that footprint at 1 cell / unit, so movement is cell-based + cooperative
@@ -548,6 +551,27 @@ func _complete() -> void:
 
 # --- Environment ---
 
+## Re-lay-out the modeled room: portal onto the WEST side wall facing the room, the seating turned to
+## face it, the terminal beside it, decor along the far walls — leaving the floor in front of the portal
+## clear for Peris. The furniture are group nodes in the loaded model, so we set their transforms in the
+## gameplay frame (preserving each group's scale; yaw only).
+func _relayout_room(root: Node) -> void:
+	_place_group(root, "Portal", PORTAL_PANEL, 90.0)                  # west wall, faces +X into the room
+	_place_group(root, "Kiosk", Vector3(0.9, 0.0, 1.2), 90.0)        # terminal beside the portal
+	_place_group(root, "couch", Vector3(7.4, 0.5, 3.0), 0.0)         # faces -X toward the portal
+	_place_group(root, "Armchair", Vector3(5.7, 0.0, 1.4), -35.0)
+	_place_group(root, "bench", Vector3(5.7, 0.4, 4.6), 0.0)
+	_place_group(root, "CoffeeTable", Vector3(4.5, 0.0, 3.0), 0.0)
+	_place_group(root, "PlantStand", Vector3(12.7, 0.0, 5.1), 0.0)
+	_place_group(root, "Bookshelf", Vector3(13.3, 0.0, 2.6), -90.0)  # east wall, faces -X
+
+func _place_group(root: Node, node_name: String, pos: Vector3, yaw_deg: float) -> void:
+	var n := root.find_child(node_name, true, false)
+	if not (n is Node3D):
+		return
+	var sc: Vector3 = (n as Node3D).global_transform.basis.get_scale()
+	(n as Node3D).global_transform = Transform3D(Basis(Vector3.UP, deg_to_rad(yaw_deg)).scaled(sc), pos)
+
 func _build_environment() -> void:
 	var env := Node3D.new()
 	env.name = "Environment"
@@ -564,6 +588,7 @@ func _build_environment() -> void:
 	var furniture := FURNITURE_GLTF.instantiate()
 	furniture.name = "RoomFurniture"
 	room.add_child(furniture)
+	_relayout_room(room)
 
 	# The gltf carries no collision; a thin static slab over the floor footprint gives the shared
 	# click-raycast a surface (layer 1, mask 0 — picked by the ground ray, collides with nothing).
@@ -613,13 +638,12 @@ func _build_environment() -> void:
 ## The modeled portal is the wall-mounted frame; this builds only the GAMEPLAY portal layer
 ## (the morphing glow/light/attack flash and labels the session steps drive), in front of it.
 func _build_portal() -> void:
-	# The wall-mounted modeled portal centers near (2.0, 2.4, 0.3); the glow surface sits just in
-	# front of it, lifted to that height.
-	var portal_surface := PORTAL_POS + Vector3(0, 2.4, -1.1)
+	# The modeled portal is on the WEST wall facing +X; the glow surface sits just in front of the panel.
+	var portal_surface := PORTAL_PANEL + PORTAL_FACE * 0.12
 
 	_portal_visual = MeshInstance3D.new()
 	var pv := BoxMesh.new()
-	pv.size = Vector3(0.9, 2.0, 0.04)
+	pv.size = Vector3(0.06, 2.0, 0.9)   # thin along X — the panel faces +X
 	_portal_visual.mesh = pv
 	var pvm := StandardMaterial3D.new()
 	pvm.albedo_color = Color(0.8, 0.5, 0.2, 0.25)
@@ -633,7 +657,7 @@ func _build_portal() -> void:
 	add_child(_portal_visual)
 
 	_portal_light = OmniLight3D.new()
-	_portal_light.position = portal_surface + Vector3(0, 0, 0.3)
+	_portal_light.position = PORTAL_PANEL + PORTAL_FACE * 0.5
 	_portal_light.light_color = Color(0.8, 0.5, 0.25)
 	_portal_light.light_energy = 1.5
 	_portal_light.omni_range = 5.0
