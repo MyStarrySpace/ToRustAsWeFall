@@ -85,8 +85,11 @@ const BRANCH_PAD_LANE := 8.5        # where the cache + content sit
 const BRANCH_GUARD_CAP := 3         # at most this many branches get a roaming guard (perf + difficulty)
 const BRANCH_GEN_SEED := 4727
 const BRANCH_REWARD := 1
+const BRANCH_SWITCH_LANE := 5.0     # the gate switch sits just past the neck (the player hits it on the way out)
+const BRANCH_GATE_LANE := 6.5       # the gate bar (cosmetic barrier) between the switch and the pad cache
 
-var _branches: Array = []           # per gap: {gap, mid_x, pad_lane, archetype, content_count, collected, cache, guard}
+var _branches: Array = []           # per gap: {gap, mid_x, pad_lane, archetype, content_count, collected, cache,
+                                    #           guard, gate_kind, unlocked, switch, gate_bar}
 var _branch_loot := 0
 var _branch_root: Node3D
 var _branch_guard_spawns := {}      # guard id -> flat spawn (so reset re-snaps branch guards too)
@@ -286,9 +289,19 @@ func _build_branches() -> void:
 			guard = _spawn_branch_guard(g, mid)
 			if guard != null:
 				guards_spawned += 1
+		# The PUZZLE: the cache is GATED by an archetype-themed switch at the neck. A guarded branch's switch
+		# is a decoy that lures the roamer off the pad; an "open" (forage/narrative) branch is a free breather.
+		var gate_kind := _branch_gate_kind(archetype, guard != null)
+		var gate_bar = null
+		var switch = null
+		if gate_kind != "open":
+			cache.set_interaction_enabled(false)   # locked until the switch fires (synced to the data layer)
+			gate_bar = _build_branch_gate_bar(mid)
+			switch = _build_branch_switch(g, mid, gate_kind)
 		_branches.append({
 			"gap": g, "mid_x": mid, "pad_lane": BRANCH_PAD_LANE, "archetype": archetype,
 			"content_count": content_count, "collected": false, "cache": cache, "guard": guard,
+			"gate_kind": gate_kind, "unlocked": gate_kind == "open", "switch": switch, "gate_bar": gate_bar,
 		})
 
 func _branch_has_enemy(node: Dictionary) -> bool:
@@ -383,9 +396,83 @@ func _on_branch_cache(g: int) -> void:
 		return
 	if bool(_branches[g].get("collected", false)):
 		return
+	# Defense in depth: the cache's own enabled flag already blocks the trigger while gated, but a direct
+	# data-layer trigger shouldn't pay out a locked cache either.
+	if not bool(_branches[g].get("unlocked", true)):
+		_say("// LOCKED // clear the gate first")
+		return
 	_branches[g]["collected"] = true
 	_branch_loot += BRANCH_REWARD
 	_say("// SALVAGE // cache stripped (%d)" % _branch_loot)
+
+# Map an archetype to the kind of gate that guards its cache. A guarded branch is always a lure puzzle;
+# otherwise the archetype's theme picks the mechanism. Forage/narrative branches are free (a breather).
+func _branch_gate_kind(archetype: String, has_guard: bool) -> String:
+	var a := archetype.to_lower()
+	if has_guard or "stealth" in a or "enemy" in a or "redirect" in a or "aggress" in a:
+		return "decoy"
+	if "plant" in a or "flora" in a or "pollen" in a:
+		return "valve"
+	if "forage" in a or "lysate" in a or "narrative" in a or "beat" in a or "rest" in a:
+		return "open"
+	return "lever"   # carry / structure / unknown -> a counterweight lever
+
+# Per-gate-kind presentation + flavour (label, post colour/glow, the line played on activation).
+func _branch_gate_theme(kind: String) -> Dictionary:
+	match kind:
+		"valve":
+			return {"label": "POLLEN VALVE", "color": Color(0.22, 0.55, 0.3), "glow": Color(0.3, 0.9, 0.4),
+				"msg": "// VALVE // spores vented — cache exposed"}
+		"lever":
+			return {"label": "COUNTERWEIGHT", "color": Color(0.35, 0.4, 0.5), "glow": Color(0.5, 0.7, 0.9),
+				"msg": "// LIFT // counterweight set — gate up"}
+		"decoy":
+			return {"label": "DECOY BEACON", "color": Color(0.55, 0.4, 0.18), "glow": Color(1.0, 0.7, 0.2),
+				"msg": "// DECOY // beacon lit — guard drawn off"}
+	return {"label": "SWITCH", "color": Color(0.4, 0.4, 0.45), "glow": Color(0.7, 0.7, 0.8), "msg": "// CLEAR //"}
+
+# The gate bar: a thin warped barrier across the branch between the switch and the pad. Cosmetic (the cache's
+# enabled flag is the real lock) — it just reads the gate as closed; the switch hides it.
+func _build_branch_gate_bar(mid: float) -> MeshInstance3D:
+	return _add_warped_box(mid, BRANCH_GATE_LANE, Vector3(BRANCH_LANE_SPAN * 0.55, 1.0, 0.25),
+		Color(0.45, 0.16, 0.18), Color(0.9, 0.2, 0.22), 0.7)
+
+# The gate switch: a themed HOLD_ACTION post at the neck. Authored FLAT (the host warp pass lifts it onto the
+# helix); its post mesh is a child so it rides the warp. One-shot — firing it unlocks the branch.
+func _build_branch_switch(g: int, mid: float, kind: String) -> Area3D:
+	var theme := _branch_gate_theme(kind)
+	var switch := _add_interactable(self, "BranchSwitch%d" % g, str(theme["label"]),
+		Vector3(mid, 0.5, BRANCH_SWITCH_LANE), str(theme["label"]), "", 1.0, true, 1.4,
+		Interactable.InteractableType.HOLD_ACTION, false)
+	var post := MeshInstance3D.new()
+	var pm := BoxMesh.new(); pm.size = Vector3(0.4, 1.3, 0.4); post.mesh = pm
+	post.material_override = _make_material(theme["color"], theme["glow"], 1.0)
+	post.position = Vector3(0.0, 0.65, 0.0)
+	switch.add_child(post)
+	switch.interacted.connect(func() -> void: _on_branch_switch(g))
+	return switch
+
+# Activating a branch switch: unlock the cache, drop the gate bar, and (for a guarded branch) lure the guard
+# off the pad — distract it (shrinks its reach) and pull its roam anchor back to the neck corner.
+func _on_branch_switch(g: int) -> void:
+	if g < 0 or g >= _branches.size():
+		return
+	var b: Dictionary = _branches[g]
+	if bool(b.get("unlocked", false)):
+		return
+	b["unlocked"] = true
+	if is_instance_valid(b.get("cache")):
+		b["cache"].set_interaction_enabled(true)
+	if is_instance_valid(b.get("gate_bar")):
+		b["gate_bar"].visible = false
+	_say(str(_branch_gate_theme(str(b.get("gate_kind", ""))).get("msg", "// CLEAR //")))
+	var guard = b.get("guard")
+	if is_instance_valid(guard):
+		var gs = _get_game_state()
+		if gs != null and gs.characters.has(guard.char_id):
+			gs.set_character_distracted(guard.char_id, true)
+		if guard.has_method("set_roam"):
+			guard.set_roam(Vector3(float(b["mid_x"]) + 1.0, 0.5, BRANCH_NECK_LANE), 1.0)
 
 # --- Threat layer: hide alcoves, flures, guards ---
 
@@ -791,8 +878,19 @@ func reset_preview_state() -> void:
 	_branch_loot = 0
 	for b in _branches:
 		b["collected"] = false
+		var gated := str(b.get("gate_kind", "open")) != "open"
+		b["unlocked"] = not gated
 		if is_instance_valid(b.get("cache")) and b["cache"].has_method("reset"):
 			b["cache"].reset()
+		if gated and is_instance_valid(b.get("cache")):
+			b["cache"].set_interaction_enabled(false)   # re-lock (reset() re-enabled it)
+		if is_instance_valid(b.get("switch")) and b["switch"].has_method("reset"):
+			b["switch"].reset()
+		if is_instance_valid(b.get("gate_bar")):
+			b["gate_bar"].visible = true
+		# Send any branch guard back to roaming its pad (the decoy may have pulled its anchor to the neck).
+		if is_instance_valid(b.get("guard")) and b["guard"].has_method("set_roam"):
+			b["guard"].set_roam(Vector3(float(b["mid_x"]), 0.5, BRANCH_PAD_LANE), 1.6)
 	if is_instance_valid(_rope_mesh):
 		_rope_mesh.visible = false
 	for i in range(_lure_until.size()):
@@ -855,6 +953,8 @@ func get_preview_state() -> Dictionary:
 			"archetype": str(b["archetype"]), "content_count": int(b["content_count"]),
 			"collected": bool(b.get("collected", false)),
 			"guarded": is_instance_valid(b.get("guard")),
+			"gate_kind": str(b.get("gate_kind", "open")), "gated": str(b.get("gate_kind", "open")) != "open",
+			"unlocked": bool(b.get("unlocked", true)),
 		})
 	return {
 		"phase": _phase, "complete": _phase == "complete",

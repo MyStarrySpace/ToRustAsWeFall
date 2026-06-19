@@ -278,6 +278,9 @@ func _ready() -> void:
 			"--test-wash-relay-branches":
 				ran_test = true
 				await _test_wash_relay_branches()
+			"--test-wash-relay-branch-puzzles":
+				ran_test = true
+				await _test_wash_relay_branch_puzzles()
 			"--test-wash-relay-no-hang":
 				ran_test = true
 				await _test_wash_relay_no_hang()
@@ -902,6 +905,7 @@ func _run_all_tests() -> void:
 	await _test_channels_scene()
 	await _test_interactable_warp()
 	await _test_wash_relay_branches()
+	await _test_wash_relay_branch_puzzles()
 	await _test_wash_relay_no_hang()
 	await _test_wash_relay_menu_load()
 	await _test_wash_relay_hover_sweep()
@@ -10693,6 +10697,92 @@ func _test_wash_relay_branches() -> void:
 					det = false
 					break
 		_assert_true(det, "branch layout is deterministic (same archetype sequence as the live chunk) — replay-safe")
+
+## The branch puzzles: each offshoot's cache is GATED by an archetype-themed switch (decoy/valve/lever), with
+## forage/narrative branches left OPEN as breathers. Proves the gate is real: a gated cache is LOCKED until
+## its switch fires, an open cache pays out freely, and a decoy switch LURES (distracts) its branch guard.
+func _test_wash_relay_branch_puzzles() -> void:
+	_test_name = "Wash Relay Branch Puzzles"
+	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	if instance == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	var gs = instance.get("_game_state")
+	var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
+	if chunk == null or gs == null:
+		_assert_true(false, "chunk + game state present"); instance.queue_free(); await get_tree().process_frame; return
+	var branches: Array = chunk.get_preview_state().get("branches", [])
+	var kinds: Array = []
+	var gated_gap := -1
+	var open_gap := -1
+	var decoy_gap := -1
+	for b in branches:
+		var bd := b as Dictionary
+		kinds.append(str(bd.get("gate_kind", "?")))
+		var gap := int(bd.get("gap", -1))
+		if bool(bd.get("gated", false)):
+			if gated_gap < 0:
+				gated_gap = gap
+			if str(bd.get("gate_kind", "")) == "decoy" and bool(bd.get("guarded", false)) and decoy_gap < 0:
+				decoy_gap = gap
+		elif open_gap < 0:
+			open_gap = gap
+	print("[branch-puzzles] gate kinds: %s | first gated gap=%d, open gap=%d, decoy gap=%d" % [str(kinds), gated_gap, open_gap, decoy_gap])
+	_assert_true(gated_gap >= 0, "at least one branch is a gated puzzle")
+	_assert_true(open_gap >= 0, "at least one branch is an open breather (a free cache)")
+	# A gated cache is LOCKED until its switch fires.
+	if gated_gap >= 0:
+		var cache: Node = instance.find_child("BranchCache%d" % gated_gap, true, false)
+		var switch: Node = instance.find_child("BranchSwitch%d" % gated_gap, true, false)
+		_assert_true(cache != null and switch != null, "a gated branch has both a cache and a switch")
+		if cache != null and switch != null:
+			var did = cache.get("data_id")
+			# The lock is real at BOTH layers — the node and the data-layer enabled flag are off while gated.
+			_assert_true(not gs.is_interactable_enabled(did), "the gated cache is disabled in the data layer before the switch")
+			var loot0 := int(chunk.get_preview_state().get("branch_loot", 0))
+			cache.call("_trigger", false)   # locked -> the trigger is refused
+			await get_tree().process_frame
+			_assert_equals(int(chunk.get_preview_state().get("branch_loot", 0)), loot0,
+				"the gated cache is LOCKED before the switch (loot unchanged)")
+			switch.call("_trigger", false)  # fire the switch -> unlock
+			await get_tree().process_frame
+			_assert_true(_branch_by_gap(chunk, gated_gap).get("unlocked", false),
+				"firing the switch unlocks the gated branch")
+			_assert_true(gs.is_interactable_enabled(did), "the switch re-enables the cache in the data layer")
+			cache.call("_trigger", false)   # now the cache pays out
+			await get_tree().process_frame
+			_assert_true(int(chunk.get_preview_state().get("branch_loot", 0)) > loot0,
+				"after the switch, the gated cache pays out")
+	# An open breather cache pays out with no switch at all.
+	if open_gap >= 0:
+		var ocache: Node = instance.find_child("BranchCache%d" % open_gap, true, false)
+		if ocache != null:
+			var loot1 := int(chunk.get_preview_state().get("branch_loot", 0))
+			ocache.call("_trigger", false)
+			await get_tree().process_frame
+			_assert_true(int(chunk.get_preview_state().get("branch_loot", 0)) > loot1,
+				"an open breather cache pays out with no switch")
+	# A decoy switch LURES its guard off the pad (distraction shrinks its reach).
+	if decoy_gap >= 0:
+		var guard_id := "branch_guard_%d" % decoy_gap
+		var dswitch: Node = instance.find_child("BranchSwitch%d" % decoy_gap, true, false)
+		_assert_true(gs.characters.has(guard_id) and not gs.is_character_distracted(guard_id),
+			"the decoy branch's guard starts undistracted")
+		if dswitch != null:
+			dswitch.call("_trigger", false)
+			await get_tree().process_frame
+			_assert_true(gs.is_character_distracted(guard_id),
+				"firing the decoy switch lures (distracts) its branch guard")
+	else:
+		print("[branch-puzzles] (no guarded decoy branch this layout — guard-lure leg skipped)")
+	instance.queue_free()
+	await get_tree().process_frame
+
+# Look up a branch's live state dict by its gap index (from the chunk's preview state).
+func _branch_by_gap(chunk: Node, gap: int) -> Dictionary:
+	for b in chunk.get_preview_state().get("branches", []):
+		if int((b as Dictionary).get("gap", -1)) == gap:
+			return b as Dictionary
+	return {}
 
 func _xform_finite(t: Transform3D) -> bool:
 	return t.origin.is_finite() and t.basis.x.is_finite() and t.basis.y.is_finite() and t.basis.z.is_finite()
