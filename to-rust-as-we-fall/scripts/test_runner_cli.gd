@@ -287,6 +287,9 @@ func _ready() -> void:
 			"--test-wash-relay-hover-sweep":
 				ran_test = true
 				await _test_wash_relay_hover_sweep()
+			"--test-reachability-cull":
+				ran_test = true
+				_test_reachability_cull()
 			"--test-channels-robustness":
 				ran_test = true
 				await _test_channels_robustness()
@@ -890,6 +893,7 @@ func _run_all_tests() -> void:
 	await _test_wash_relay_no_hang()
 	await _test_wash_relay_menu_load()
 	await _test_wash_relay_hover_sweep()
+	_test_reachability_cull()
 	await _test_channels_robustness()
 	await _test_chunk_robustness()
 	await _test_lure_relay_puzzle()
@@ -10864,6 +10868,58 @@ func _path_points_finite(path_renderer: Node) -> bool:
 		if p is Vector3 and not (p as Vector3).is_finite():
 			return false
 	return true
+
+## Reachability fast-reject (the cull behind "determine unreachable spots sooner"): a deterministic 2D BFS
+## over the planners' exact predicate culls a geometrically-unreachable target BEFORE the cooperative
+## space-time search burns wait-states discovering it. Reproduce-first: the cull-fires assert (≈0 nodes)
+## goes red if the bail is removed (the search would expand hundreds). Asserts it NEVER bails a reachable
+## target, is dynamic-blocker sound, and does NOT suppress a reservation-blocked-but-reachable move.
+func _test_reachability_cull() -> void:
+	_test_name = "Reachability Cull"
+	# Two rooms split by a solid wall column (bordered room: interior x=1..14, z=1..6; wall at x=8).
+	var grid := GridWorld.new()
+	grid.create_room(16, 8, true)
+	for z in range(1, 7):
+		grid.set_tile(8, z, GridWorld.Tile.WALL)
+	var left := Vector2i(2, 3)
+	var right := Vector2i(11, 3)
+	# (a) verdicts: across the wall is unreachable; within a room is reachable.
+	_assert_true(not grid.reachable(left, right), "across a solid wall: unreachable (the cull's verdict)")
+	_assert_true(grid.reachable(left, Vector2i(5, 5)), "within the same room: reachable")
+	_assert_true(grid.reachable(right, Vector2i(13, 2)), "within the far room: reachable")
+	_assert_true(grid.reachable(left, left), "a == b: trivially reachable")
+	# (c) dynamic soundness: a blocker severing the only 1-wide neck flips reachability; removing it restores.
+	var g2 := GridWorld.new()
+	g2.create_room(9, 5, true)   # interior x=1..7, z=1..3
+	for z in [1, 3]:
+		g2.set_tile(4, z, GridWorld.Tile.WALL)   # leave only (4,2) as the neck
+	_assert_true(g2.reachable(Vector2i(2, 2), Vector2i(6, 2)), "open neck: reachable")
+	g2.add_dynamic_blocker(Vector2i(4, 2), "test_blocker")
+	_assert_true(not g2.reachable(Vector2i(2, 2), Vector2i(6, 2)), "a dynamic blocker severing the only neck: unreachable")
+	g2.remove_dynamic_blocker(Vector2i(4, 2))
+	_assert_true(g2.reachable(Vector2i(2, 2), Vector2i(6, 2)), "removing the blocker reopens reachability")
+	# (perf / cull-fires) a cooperative plan to an UNREACHABLE cell expands ~0 space-time nodes (red without the bail).
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+	gs.register_character("a", grid.grid_to_world(left), 3.0, {})
+	gs.command_move_to_cell("a", right)
+	_assert_true(gs._coop_last_nodes < 8, "the cull bails an unreachable target WITHOUT a wait-state search (nodes=%d)" % gs._coop_last_nodes)
+	_assert_true(not gs.is_moving("a"), "the character does not move toward the unreachable cell")
+	# (b) a REACHABLE target still runs the real search + moves (the cull never suppresses a valid move).
+	gs.command_move_to_cell("a", Vector2i(6, 5))
+	_assert_true(gs._coop_last_nodes > 0, "a reachable target runs the real search (nodes=%d)" % gs._coop_last_nodes)
+	_assert_true(gs.is_moving("a"), "a reachable target starts moving")
+	# (e) parked-reservation: an end blocked ONLY by a parked ally is geometrically reachable, so the cull
+	# must NOT suppress it — the cooperative/fallback search still commits a move.
+	var gs3 := GameState.new()
+	gs3.grid = grid
+	gs3.scheduler = EventScheduler.new()
+	gs3.register_character("a", grid.grid_to_world(Vector2i(2, 3)), 3.0, {})
+	gs3.register_character("b", grid.grid_to_world(Vector2i(4, 3)), 3.0, {})   # parked on the route
+	gs3.command_move_to_cell("a", Vector2i(6, 3))
+	_assert_true(gs3._coop_last_nodes > 0 or gs3.is_moving("a"), "a reservation-blocked-but-reachable target is NOT culled (still searches/moves)")
 
 ## ── Per-chunk robustness FRAMEWORK ───────────────────────────────────────────────────────────────
 ## A reusable battery any stretch gets for free: given a chunk id, instantiate it and run a STANDARD set

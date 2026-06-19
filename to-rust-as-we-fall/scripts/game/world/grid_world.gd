@@ -310,6 +310,47 @@ func cautious_cell_blocked(cell: Vector2i) -> bool:
 	var info: Dictionary = risk_cells.get(cell, {})
 	return not info.is_empty() and not bool(info.get("recoverable", true))
 
+# Geometric reachability over the EXACT same per-cell predicate the planners step with: is_walkable (with
+# empty explored/locked_doors, like _plan_cooperative + find_path), the 8-dir + diagonal corner-cut rule,
+# and cautious blocking when route-cautious. A plain 2D BFS that IGNORES time + reservations — because
+# waiting and reservations never change WHICH cells are reachable, only the timing. So a `false` return
+# means "geometrically unreachable in this mode": the space-time cooperative search and find_path both
+# provably return empty, and the caller can bail INSTANTLY instead of exhausting a 12k-node wait-state
+# search. Early-exits the moment `end` is dequeued; derived + deterministic (fixed visit order), never logged.
+func _reach_walkable(x: int, z: int, level: int, cautious: bool) -> bool:
+	if not is_walkable(x, z, {}, {}, level):
+		return false
+	return not (cautious and cautious_cell_blocked(Vector2i(x, z)))
+
+func reachable(start: Vector2i, end: Vector2i, level: int = 0, cautious: bool = false) -> bool:
+	if start == end:
+		return true
+	if not _reach_walkable(start.x, start.y, level, cautious) or not _reach_walkable(end.x, end.y, level, cautious):
+		return false
+	var dirs := [
+		Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+		Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1),
+	]
+	var seen := {start: true}
+	var queue: Array[Vector2i] = [start]
+	var head := 0
+	while head < queue.size():
+		var c: Vector2i = queue[head]
+		head += 1
+		for dir in dirs:
+			var n: Vector2i = c + dir
+			if seen.has(n) or not _reach_walkable(n.x, n.y, level, cautious):
+				continue
+			if dir.x != 0 and dir.y != 0:
+				# Diagonal corner-cut — both orthogonal neighbors must be walkable (mirrors the planners).
+				if not _reach_walkable(c.x + dir.x, c.y, level, cautious) or not _reach_walkable(c.x, c.y + dir.y, level, cautious):
+					continue
+			if n == end:
+				return true
+			seen[n] = true
+			queue.append(n)
+	return false
+
 func world_to_grid(world_pos: Vector3) -> Vector2i:
 	var local := world_pos - origin
 	var gx := int(floor(local.x / cell_size))
@@ -385,6 +426,12 @@ func find_path(
 	if not is_in_bounds(end.x, end.y):
 		return []
 	if not is_walkable(end.x, end.y, explored, locked_doors, level):
+		return []
+	# Geometric-reachability fast-reject (same as the cooperative planner): a target on the far side of a
+	# wall partition can't be reached, so bail instead of sweeping the whole width*height*4 budget. Uses the
+	# bare-walkability graph (empty explored/locked_doors), which can only OVER-connect vs this call's
+	# explored/locked_doors — so it never false-bails a path this find_path would actually find.
+	if is_walkable(start.x, start.y, explored, locked_doors, level) and not reachable(start, end, level, cautious):
 		return []
 
 	# A* with octile heuristic

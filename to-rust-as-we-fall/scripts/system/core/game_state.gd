@@ -52,6 +52,9 @@ var _running: Dictionary = {}
 ## padded time window so others can plan paths that never overlap it in
 ## space and time. Derived from movement, never serialized.
 var _reservations: Dictionary = {}
+## Space-time nodes the LAST _plan_cooperative call expanded (0 when an early-out — incl. the reachability
+## cull — fired before the search). Derived diagnostic for perf tests; never serialized.
+var _coop_last_nodes := 0
 
 ## In-flight cross-level (multi-floor) moves: char_id → ordered Array of
 ## per-level segments {level: int, cells: Array[Vector2i]}. The character walks
@@ -985,11 +988,19 @@ static func _coop_heap_pop(heap: Array) -> Dictionary:
 	return top
 
 func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: float, exclude_id: String, level: int = 0, max_nodes: int = _COOP_MAX_NODES) -> Dictionary:
+	_coop_last_nodes = 0
 	if not grid:
 		return {}
 	if start == end:
 		return {"cells": [start] as Array[Vector2i], "ticks": [t_start] as Array[float]}
 	if not grid.is_in_bounds(end.x, end.y) or not grid.is_walkable(end.x, end.y, {}, {}, level):
+		return {}
+	# Geometric-reachability fast-reject: if the destination can't be reached from a walkable start by ANY
+	# route (a wall partition no wait/reservation can bridge), bail INSTANTLY instead of exhausting the
+	# space-time wait-state search. Only when `start` is itself walkable — an off-mesh start (the preview
+	# passes an unsnapped position) must fall through, never cull. Outcome-identical to today (the search
+	# would also return {}), so replay + state_hash are unchanged; just no longer "seconds" on a dead target.
+	if grid.is_walkable(start.x, start.y, {}, {}, level) and not grid.reachable(start, end, level, route_cautious):
 		return {}
 	var card: float = (grid.cell_size / speed) if speed > 0.0 else 1.0
 	var diag: float = card * 1.4142136
@@ -1015,6 +1026,7 @@ func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: fl
 	var nodes := 0
 	while not open.is_empty() and nodes < max_nodes:
 		nodes += 1
+		_coop_last_nodes = nodes
 		var cur: Dictionary = _coop_heap_pop(open)
 		var ccell: Vector2i = cur.cell
 		var ct: float = cur.t
