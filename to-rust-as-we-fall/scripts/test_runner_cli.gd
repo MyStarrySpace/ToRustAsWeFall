@@ -10878,6 +10878,11 @@ func _test_wash_relay_hover_sweep() -> void:
 	# Per-hover must stay cheap (it recomputes the path preview per hovered cell) — a slow one freezes play.
 	_assert_true(max_hover_ms < 120, "no single hover exceeds 120 ms (got max %d ms over %d hovers)" % [max_hover_ms, hovers])
 	_assert_true(sweep_ms < 8000, "the whole hover sweep stays well under a freeze budget (got %d ms)" % sweep_ms)
+	# The preview ribbon must ride the LIVE game_state (with the coord_map), or it draws FLAT off the helix
+	# (the warped=false bug: setup() captured a null game_state in _ready, before the host assigned it).
+	var prev = player.get("_path_preview")
+	if prev != null and gs.coord_map != null:
+		_assert_true(prev.game_state == gs, "the preview ribbon uses the live game_state (so it warps onto the helix, not flat)")
 	instance.free()
 
 func _path_points_finite(path_renderer: Node) -> bool:

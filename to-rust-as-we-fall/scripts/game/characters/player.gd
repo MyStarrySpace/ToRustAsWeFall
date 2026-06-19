@@ -417,6 +417,10 @@ func _hover_grid_center(hit: Vector3) -> Vector3:
 func _update_path_preview(hit: Vector3) -> void:
 	if _path_preview == null or game_state == null or char_id == "":
 		return
+	# Keep the preview ribbon on the LIVE game_state. _path_preview.setup() ran in _ready, BEFORE the host
+	# assigns this player's game_state — so it captured null and never saw the coord_map, leaving the ribbon
+	# FLAT on a warped scene (the channels helix) instead of riding the deck. Re-sync every frame (cheap).
+	_path_preview.game_state = game_state
 	if game_state.coord_map != null:
 		hit = game_state.coord_map.to_data(hit)   # plan in the flat data frame; the ribbon warps back to the helix
 	if game_state.is_moving(char_id):
