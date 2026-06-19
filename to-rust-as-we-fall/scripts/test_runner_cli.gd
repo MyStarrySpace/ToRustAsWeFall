@@ -296,6 +296,9 @@ func _ready() -> void:
 			"--test-wash-relay-pathfind-perf":
 				ran_test = true
 				await _test_wash_relay_pathfind_perf()
+			"--test-wash-relay-ribbon-build":
+				ran_test = true
+				await _test_wash_relay_ribbon_build()
 			"--test-channels-robustness":
 				ran_test = true
 				await _test_channels_robustness()
@@ -10886,6 +10889,52 @@ func _path_points_finite(path_renderer: Node) -> bool:
 		if p is Vector3 and not (p as Vector3).is_finite():
 			return false
 	return true
+
+## Reproduce the crash the user's pathfind.log pinned: find_path COMPLETES for a far target, then the crash
+## is BUILDING the preview ribbon for that long warped path. Builds the exact ribbon (endo -> far branch on
+## the warped helix) and inspects the mesh — a huge vertex count or a non-finite vertex is what crashes the
+## GPU. Headless can't render, so a NaN/huge mesh shows up here as a finiteness/size assert.
+func _test_wash_relay_ribbon_build() -> void:
+	_test_name = "Wash Relay Ribbon Build"
+	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	if instance == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	var gs = instance.get("_game_state")
+	var endo_node := _find_char_node(instance, "endo")
+	if gs == null or endo_node == null:
+		_assert_true(false, "game state + endo node present"); instance.queue_free(); await get_tree().process_frame; return
+	# Mirror the player's preview renderer: char_id="" + anchor=the (warped) character node + preview style.
+	var PathRendererScript := load("res://scripts/game/world/path_renderer.gd")
+	var pr = PathRendererScript.new()
+	pr.preview_style = true
+	instance.add_child(pr)
+	await get_tree().process_frame
+	pr.setup(gs, "", Color.WHITE, endo_node)
+	# The exact failing target from the log (flat data coords): endo -> a far branch pad.
+	var path: Array = gs.compute_preview_path("endo", Vector3(75.9, 0.0, 1.85))
+	_assert_true(path.size() >= 2, "preview path computed (%d pts)" % path.size())
+	pr.set_explicit_path(path, 1)
+	# Force the ribbon build (PathRenderer._process) over a few frames — reaching past this without a hang
+	# is itself the proof the build terminates.
+	for i in range(4):
+		await get_tree().process_frame
+	var line = pr.get("_line")
+	var mesh = line.mesh if line != null else null
+	if mesh != null and mesh.get_surface_count() > 0:
+		var arrays: Array = mesh.surface_get_arrays(0)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var bad := 0
+		for v in verts:
+			if not (v as Vector3).is_finite():
+				bad += 1
+		print("[ribbon] %d-pt path -> %d verts (%d non-finite)" % [path.size(), verts.size(), bad])
+		_assert_equals(bad, 0, "every ribbon vertex is finite (no NaN into the GPU)")
+		_assert_true(verts.size() < 200000, "ribbon vertex count is sane (%d for %d pts)" % [verts.size(), path.size()])
+	else:
+		print("[ribbon] %d-pt path -> no mesh surface" % path.size())
+	_assert_true(true, "the ribbon build terminates (no hang)")
+	instance.queue_free()
+	await get_tree().process_frame
 
 ## Perf probe: after the guards have roamed for a while (reservations spread), hammer the hover PREVIEW
 ## (compute_preview_path) + find_path to targets across the deck/branches/far, timing each, to locate the

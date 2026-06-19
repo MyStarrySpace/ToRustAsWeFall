@@ -483,6 +483,8 @@ func compute_preview_path(id: String, target_pos: Vector3) -> Array[Vector3]:
 			return []
 		out = [current]
 		out.append_array(waypoints)
+		if _pf_debug:
+			GridWorld._pf_trace("[preview] returning %d pts" % out.size())
 		return out
 	return _resolve_world_path(current, target_pos)
 

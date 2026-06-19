@@ -109,7 +109,11 @@ func _process(_delta: float) -> void:
 	if preview_style:
 		if points != _points_cache:
 			_points_cache = points.duplicate()
+			if GridWorld._pf_debug:
+				GridWorld._pf_trace("[ribbon] preview rebuild %d pts (warped=%s)" % [points.size(), game_state != null and game_state.coord_map != null])
 			_line.mesh = _build_ribbon(points)
+			if GridWorld._pf_debug:
+				GridWorld._pf_trace("[ribbon] preview built")
 		_tail.mesh = null
 		return
 	# COMMITTED ribbons split: only the start point interpolates per tick, so the fixed remaining
