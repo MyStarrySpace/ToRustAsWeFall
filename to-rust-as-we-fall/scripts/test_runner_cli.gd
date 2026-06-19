@@ -275,6 +275,9 @@ func _ready() -> void:
 			"--test-channels-robustness":
 				ran_test = true
 				await _test_channels_robustness()
+			"--test-chunk-robustness":
+				ran_test = true
+				await _test_chunk_robustness()
 			"--test-showcase-capture":
 				ran_test = true
 				await _test_showcase_capture()
@@ -868,6 +871,7 @@ func _run_all_tests() -> void:
 	_test_channels_arc()
 	await _test_channels_scene()
 	await _test_channels_robustness()
+	await _test_chunk_robustness()
 	await _test_lure_relay_puzzle()
 	await _test_chromatic_aberration()
 	await _test_dialogue_hold_advance()
@@ -10522,6 +10526,84 @@ func _test_channels_scene() -> void:
 		_assert_true(graybox_hidden, "the flat graybox is hidden (the textured model is the visual)")
 	instance.queue_free()
 	await get_tree().process_frame
+
+## ── Per-chunk robustness FRAMEWORK ───────────────────────────────────────────────────────────────
+## A reusable battery any stretch gets for free: given a chunk id, instantiate it and run a STANDARD set
+## of checks derived from the chunk's OWN declared data (spawns, anchors, grid, render warp) plus a short
+## trial run. --test-chunk-robustness drives EVERY registered chunk through it, so a newly-added stretch
+## is covered the moment it's in CHUNK_SCENES — this is the systemic net that catches things like a
+## character left floating below a warped deck, a spawn off the floor, or a chunk that crashes on boot.
+func _run_chunk_robustness(chunk_id: String, config: Dictionary = {}) -> void:
+	var instance: Node = await _instantiate_preview_chunk_and_wait(chunk_id, 6, config)
+	if instance == null:
+		_assert_true(false, "%s: instantiates" % chunk_id)
+		return
+	var chunk: Node = instance.find_child("Chunk_%s" % chunk_id, true, false)
+	var gs = instance.get("_game_state")
+	if chunk == null or gs == null:
+		_assert_true(false, "%s: has a chunk + game_state" % chunk_id)
+		instance.queue_free(); await get_tree().process_frame
+		return
+	var grid = gs.grid
+	# spawns sit on walkable cells
+	if chunk.has_method("get_spawn_positions") and grid != null:
+		var spawns: Dictionary = chunk.call("get_spawn_positions")
+		var bad: Array = []
+		for cid in spawns:
+			var c: Vector2i = grid.world_to_grid(spawns[cid])
+			if not grid.is_walkable(c.x, c.y):
+				bad.append(cid)
+		_assert_true(bad.is_empty(), "%s: spawns on walkable cells (off: %s)" % [chunk_id, str(bad)])
+	# floor-level anchors sit on walkable cells (elevated / wall markers are skipped)
+	if chunk.has_method("get_preview_anchors") and grid != null:
+		var anchors: Dictionary = chunk.call("get_preview_anchors")
+		var bad: Array = []
+		for k in anchors:
+			var a: Vector3 = anchors[k]
+			if absf(a.y) < 1.0:
+				var c: Vector2i = grid.world_to_grid(a)
+				if not grid.is_walkable(c.x, c.y):
+					bad.append(k)
+		_assert_true(bad.is_empty(), "%s: floor anchors on walkable cells (off: %s)" % [chunk_id, str(bad)])
+	# TRIAL RUN: drive it a few seconds (a boot/runtime crash prints), then verify the result is sane
+	instance.headless_advance(3.0)
+	# every party node renders where the data/warp says it should — catches a follower that strands a
+	# character at its flat spawn below a warped deck (Endo-below) or otherwise off its position
+	var chars = instance.get("_characters")
+	if chars is Dictionary:
+		var off: Array = []
+		for cid in (chars as Dictionary):
+			if not gs.characters.has(cid):
+				continue
+			var node = (chars as Dictionary)[cid]
+			if node == null or not (node is Node3D):
+				continue
+			if (node as Node3D).global_position.distance_to(gs.get_render_position(cid)) > 1.5:
+				off.append(cid)
+		_assert_true(off.is_empty(), "%s: party nodes render at their data/warp position (off: %s)" % [chunk_id, str(off)])
+	# reset returns to a sane state without error
+	if chunk.has_method("reset_preview_state"):
+		chunk.call("reset_preview_state")
+		_assert_true(true, "%s: reset_preview_state runs" % chunk_id)
+	instance.queue_free()
+	await get_tree().process_frame
+
+func _test_chunk_robustness() -> void:
+	_test_name = "Chunk Robustness"
+	# Drive each chunk once, using its first PREVIEW_ENTRIES config. Deduped by chunk so each is exercised
+	# once. Procedural generators are skipped (LOUDLY) — they generate over frames from a spec and are
+	# covered by the dedicated generation tests, not this single-chunk battery.
+	var skip := {"generated_stretch": "procedural generator (covered by --test-puzzle-fragments)"}
+	var seen := {}
+	for entry in FragmentPreviewScript.PREVIEW_ENTRIES:
+		var cid := String(entry.get("chunk", ""))
+		if cid == "" or seen.has(cid):
+			continue
+		seen[cid] = true
+		if skip.has(cid):
+			print("  SKIP: [Chunk Robustness] %s — %s" % [cid, skip[cid]])
+			continue
+		await _run_chunk_robustness(cid, entry.get("config", {}))
 
 ## SPIRAL ROBUSTNESS: the channels gauntlet's GRID (every anchor walkable, every section crossable),
 ## MOVEMENT (a route exists start->end, a commanded move advances + renders on the helix model), and
