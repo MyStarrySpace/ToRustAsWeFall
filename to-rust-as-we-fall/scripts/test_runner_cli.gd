@@ -10736,6 +10736,11 @@ func _test_wash_relay_branch_puzzles() -> void:
 		_assert_true(cache != null and switch != null, "a gated branch has both a cache and a switch")
 		if cache != null and switch != null:
 			var did = cache.get("data_id")
+			# The switch must be warped onto the helix too (or the player can't see/reach it to solve the gate).
+			if gs.coord_map != null:
+				var sflat := Vector3(float(_branch_by_gap(chunk, gated_gap).get("mid_x", 0.0)), 0.5, 5.0)
+				_assert_true((switch as Node3D).global_position.distance_to(gs.coord_map.to_world(sflat)) < 0.8,
+					"the gate switch is warped onto the helix (reachable on the deck)")
 			# The lock is real at BOTH layers — the node and the data-layer enabled flag are off while gated.
 			_assert_true(not gs.is_interactable_enabled(did), "the gated cache is disabled in the data layer before the switch")
 			var loot0 := int(chunk.get_preview_state().get("branch_loot", 0))
