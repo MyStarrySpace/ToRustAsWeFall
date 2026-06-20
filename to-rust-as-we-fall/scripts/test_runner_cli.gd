@@ -4835,11 +4835,26 @@ func _synthetic_player_move_click(instance: Node, world_pos: Vector3) -> void:
 		return
 	if cam.is_inside_tree() and not cam.current:
 		cam.make_current()
-	var ev := InputEventMouseButton.new()
-	ev.button_index = MOUSE_BUTTON_RIGHT
-	ev.pressed = true
-	ev.position = cam.unproject_position(world_pos)
-	p._unhandled_input(ev)
+	# The synthetic click projects a WORLD target to a screen point, which the player then
+	# raycasts back to the ground. A follow-camera that has drifted so the target sits off-screen
+	# (or grazes the floor collider's edge) makes that back-ray miss — the player silently drops the
+	# click, and a parked lead freezes the camera so every re-issue misses the same way. A real player
+	# only clicks points they can SEE, so they never hit this; the harness must, so when the projected
+	# point won't land on the ground, command the move directly through the same _set_click_target path
+	# a ground click drives (this is movement, NOT a gate force-fire — the party still must walk + dwell).
+	var screen_pos := cam.unproject_position(world_pos)
+	var on_screen: bool = not cam.is_position_behind(world_pos) \
+		and p.has_method("_raycast_ground") and p._raycast_ground(screen_pos) != Vector3.INF
+	if on_screen:
+		var ev := InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_RIGHT
+		ev.pressed = true
+		ev.position = screen_pos
+		p._unhandled_input(ev)
+	elif p.has_method("move_to_world_position") and bool(p.get("_move_enabled")):
+		# Gate the fallback on the same _move_enabled the click path checks, so it can't move the
+		# player at a moment a real ground click would have been ignored.
+		p.move_to_world_position(world_pos)
 
 ## Deliver a key (optionally with Ctrl) straight to the sequence's _unhandled_key_input
 ## — the real path for the elevator's TAB character-switch and Ctrl+digit multi-select,
