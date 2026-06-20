@@ -11625,8 +11625,9 @@ func _test_channels_robustness() -> void:
 		_assert_true(str(wck.get_preview_state().get("phase", "")) == "complete", "the gauntlet completes when the party reaches the end")
 		win.queue_free()
 		await get_tree().process_frame
-	# G) a washed MOVING runner is knocked back to the start AND their move is cancelled (not left
-	#    walking on to their target — the wash must hit the data layer, not just snap the node)
+	# G) a washed MOVING runner is swept BACK to the previous gap (the tense-but-fair checkpoint) AND their
+	#    move is cancelled (not left walking on to their target — the wash must hit the data layer, not just
+	#    snap the node)
 	var wl: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 4)
 	if wl != null:
 		var wc2: Node = wl.find_child("Chunk_wash_relay", true, false)
@@ -11638,7 +11639,7 @@ func _test_channels_robustness() -> void:
 		wc2.call("_wash_character", "aster")                        # the wash hits a moving runner
 		wl.headless_advance(0.1)
 		_assert_true(not gs2.is_moving("aster"), "the wash cancels the washed runner's move")
-		_assert_true(gs2.get_position("aster").x < 5.0, "the washed runner is knocked back to the start, not left walking on (x=%.1f)" % gs2.get_position("aster").x)
+		_assert_true(gs2.get_position("aster").x < 14.0, "the washed runner is swept back to the previous gap, not left walking on (x=%.1f)" % gs2.get_position("aster").x)
 		wl.queue_free()
 		await get_tree().process_frame
 	# F) DETERMINISM: the wash cadence is fast-forward invariant (same surge counts at a fine vs coarse step)
