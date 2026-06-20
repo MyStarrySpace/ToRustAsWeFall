@@ -566,6 +566,7 @@ func _build_visual() -> void:
 	mat.roughness = 0.85
 	mat.metallic = 0.15
 	_mesh.material_override = mat
+	_mesh.layers = 2   # NO_GRID_DECAL_LAYER (player.gd): the hover-grid Decal skips it so the grid passes through
 	# Crouched, leaning forward (predatory stance) rather than standing upright.
 	_mesh.position.y = 0.42
 	_mesh.rotation = Vector3(deg_to_rad(78.0), 0.0, 0.0)

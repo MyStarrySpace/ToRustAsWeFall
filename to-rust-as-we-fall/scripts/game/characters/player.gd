@@ -49,8 +49,14 @@ var _dest_marker_mat: StandardMaterial3D
 const HOVER_CELL := 1.0
 const HOVER_SPAN := 5            # NxN grid patch shown around the hovered cell
 const HOVER_TINT := Color(1.0, 1.0, 1.0)  # faded white — a quiet aim hint, not a character-coloured beacon
-const HOVER_BOX_H := 1.5          # the Decal's downward projection DEPTH — brackets the deck above and below
+const HOVER_BOX_H := 0.6          # the Decal's downward projection DEPTH — kept TIGHT to the hovered deck so it
+                                  # can't spill onto the helix loop stacked above/below (the "grid lands away
+                                  # from where I pointed" bug); the box is centred ON the deck surface.
 const HOVER_EMISSION_ENERGY := 0.6  # low: self-lit enough to read in a dark scene, under the glow bloom threshold
+## Characters render on this dedicated VISUAL layer; the hover-grid Decal clears it from its cull_mask, so the
+## grid stamps the FLOOR but passes THROUGH bodies (it never paints on a character standing in the patch).
+## npc.gd / enemy.gd put their visual mesh on the same layer — keep these three in sync.
+const NO_GRID_DECAL_LAYER := 2
 var _hover_grid: Decal
 var _last_ground_normal := Vector3.UP   # surface normal of the last ground raycast
 
@@ -92,6 +98,7 @@ func _ready() -> void:
 	mat.emission = color.darkened(0.5)
 	mat.emission_energy_multiplier = 0.3
 	_mesh.material_override = mat
+	_mesh.layers = NO_GRID_DECAL_LAYER   # the hover-grid Decal skips this layer, so the grid passes through the body
 
 	_dest_marker = MeshInstance3D.new()
 	var torus := TorusMesh.new()
@@ -244,6 +251,9 @@ func _build_hover_grid() -> void:
 	_hover_grid.size = Vector3(HOVER_SPAN * HOVER_CELL, HOVER_BOX_H, HOVER_SPAN * HOVER_CELL)
 	_hover_grid.upper_fade = 0.2   # ease the projection on/off at the top and bottom of the box so the grid
 	_hover_grid.lower_fade = 0.2   # fades onto the deck instead of cutting hard where the box ends
+	# Project onto the floor only — clear the character visual layer so the grid passes THROUGH bodies/obstacles
+	# tagged with it instead of painting on them.
+	_hover_grid.cull_mask = _hover_grid.cull_mask & ~NO_GRID_DECAL_LAYER
 	add_child(_hover_grid)
 
 ## Per-player grid IMAGE in the player's colour: grid LINES only (no filled centre cell), with a gentle
@@ -251,6 +261,20 @@ func _build_hover_grid() -> void:
 ## edge. The expensive pattern is computed ONCE (shared alpha), then tinted per colour.
 static var _grid_alpha: PackedFloat32Array
 static var _grid_dim := 0
+
+## 8x8 ordered (Bayer) dither matrix, 0..63. The grid's radial fade is rendered as a STIPPLE against these
+## thresholds — the signature pixel-dither dissolve: solid lines at the centre breaking into sparser dots
+## toward the rim, instead of a smooth alpha ramp. Density carries the fade, so it reads as pixel art.
+const BAYER8 := [
+	0, 32, 8, 40, 2, 34, 10, 42,
+	48, 16, 56, 24, 50, 18, 58, 26,
+	12, 44, 4, 36, 14, 46, 6, 38,
+	60, 28, 52, 20, 62, 30, 54, 22,
+	3, 35, 11, 43, 1, 33, 9, 41,
+	51, 19, 59, 27, 49, 17, 57, 25,
+	15, 47, 7, 39, 13, 45, 5, 37,
+	63, 31, 55, 23, 61, 29, 53, 21,
+]
 
 static func _ensure_grid_alpha() -> void:
 	if _grid_dim != 0:
@@ -285,9 +309,9 @@ func _build_grid_texture() -> ImageTexture:
 	# CONTRAST is the whole game here: thin faded lines vanish against the room model's own white tile seams
 	# (and inside character glow). Lines render in the CHARACTER's color — the same ownership language as the
 	# ribbon and queued glow — over a dark rim (a 2px dilation) so the grid reads on bright floors, dark
-	# floors, and bloom alike. The Decal blends alpha SMOOTHLY (linear), so the radial fade is written
-	# straight into the image alpha — no Bayer stipple (that hack only existed for the old all-or-nothing
-	# ALPHA_SCISSOR quad). Mipmaps keep the thin lines from shimmering as the camera moves.
+	# floors, and bloom alike. The radial fade is rendered as a Bayer STIPPLE (the pixel-dither dissolve): the
+	# core lines stay solid and the edges break into sparser dots, so it reads as pixel art rather than a smooth
+	# alpha ramp. Mipmaps keep the thin lines from shimmering as the camera moves.
 	_ensure_grid_alpha()
 	var dim := _grid_dim
 	var tint := _character_color()
@@ -309,13 +333,18 @@ func _build_grid_texture() -> ImageTexture:
 					var py: int = clampi(y + oy, 0, dim - 1)
 					if img.get_pixel(px, py).a < f:
 						img.set_pixel(px, py, Color(rim.r, rim.g, rim.b, f * 0.7))
-	# Lines on top, alpha = the SMOOTH fade field (1 at centre -> 0 past the rim) so the grid dissolves
-	# linearly toward its edges instead of stippling.
+	# Lines on top, dithered: a line pixel lights only where its fade clears the Bayer threshold for that
+	# pixel — so the centre (fade~1) is solid and the rim (low fade) dissolves into sparse dots. Full alpha
+	# where it passes; the dropout density IS the fade.
+	var line_solid := Color(line.r, line.g, line.b, 1.0)
 	for y in range(dim):
 		for x in range(dim):
 			var fa := _grid_alpha[y * dim + x]
-			if fa > 0.0:
-				img.set_pixel(x, y, Color(line.r, line.g, line.b, fa))
+			if fa <= 0.0:
+				continue
+			var thr: float = (float(BAYER8[(y & 7) * 8 + (x & 7)]) + 0.5) / 64.0
+			if fa > thr:
+				img.set_pixel(x, y, line_solid)
 	img.generate_mipmaps()
 	return ImageTexture.create_from_image(img)
 
@@ -363,9 +392,11 @@ func _apply_hover_grid(hit: Vector3, _normal: Vector3) -> void:
 		center = game_state.coord_map.to_world(_hover_grid_center(flat))
 	else:
 		center = _hover_grid_center(hit)
-	# Centre the projection box HOVER_BOX_H*0.5 above the hit so it brackets the deck above AND below, then
-	# projects world -Y onto it (identity basis = straight down). Guard the warped to_world's INF case.
-	var origin := Vector3(center.x, center.y + HOVER_BOX_H * 0.5, center.z)
+	# Centre the projection box ON the deck surface (not lifted above it), so its half-height reaches just
+	# below and just above the floor — tight enough that a helix loop stacked overhead never falls inside the
+	# box and gets the grid stamped on it too (that doubled stamp read as "the grid landed away from where I
+	# pointed"). Identity basis = straight-down projection. Guard the warped to_world's INF case.
+	var origin := Vector3(center.x, center.y, center.z)
 	if not origin.is_finite():
 		_hover_grid.visible = false
 		return

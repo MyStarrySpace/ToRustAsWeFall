@@ -50,6 +50,7 @@ func _ready() -> void:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
 	_mesh.material_override = mat
+	_mesh.layers = 2   # NO_GRID_DECAL_LAYER (player.gd): the hover-grid Decal skips it so the grid passes through
 	_mesh.position.y = 0.45
 	add_child(_mesh)
 

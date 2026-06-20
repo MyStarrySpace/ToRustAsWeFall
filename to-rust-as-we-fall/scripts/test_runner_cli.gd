@@ -9696,8 +9696,42 @@ func _test_preview_hover_grid() -> void:
 		"Hover grid snaps to the hovered cell X (got %.2f, want ~8.5)" % hover_grid.global_position.x)
 	_assert_true(absf(hover_grid.global_position.z - 2.5) < 0.5,
 		"Hover grid snaps to the hovered cell Z (got %.2f, want ~2.5)" % hover_grid.global_position.z)
-	_assert_true(hover_grid.global_position.y > 0.0,
-		"Hover Decal sits above the floor and projects down onto it (got y=%.3f)" % hover_grid.global_position.y)
+	# The box is centred ON the deck and kept TIGHT (it must NOT spill onto a helix loop stacked overhead —
+	# that doubled stamp was the "grid landed away from where I pointed" bug). Assert it brackets the real
+	# floor surface (so it still projects down onto it) and that its height stays small.
+	var hg_space: PhysicsDirectSpaceState3D = player.get_world_3d().direct_space_state
+	var hg_rq := PhysicsRayQueryParameters3D.create(Vector3(8.5, 3.0, 2.5), Vector3(8.5, -3.0, 2.5))
+	hg_rq.collision_mask = 1
+	var hg_hit: Dictionary = hg_space.intersect_ray(hg_rq)
+	var floor_y: float = (hg_hit.position.y if not hg_hit.is_empty() else 0.0)
+	var box_top: float = hover_grid.global_position.y + hover_grid.size.y * 0.5
+	var box_bottom: float = hover_grid.global_position.y - hover_grid.size.y * 0.5
+	_assert_true(box_bottom <= floor_y + 0.01 and box_top >= floor_y - 0.01,
+		"Hover Decal box brackets the deck surface (floor y=%.2f, box [%.2f, %.2f])" % [floor_y, box_bottom, box_top])
+	_assert_true(hover_grid.size.y <= 1.0,
+		"Hover Decal box stays TIGHT so it can't spill onto a stacked helix loop (got h=%.2f)" % hover_grid.size.y)
+	_assert_true(hover_grid.global_transform.basis.is_equal_approx(Basis.IDENTITY),
+		"Hover Decal keeps an identity basis (projects straight DOWN, never tilted)")
+
+	# Pixel-dither guard: the coloured grid LINES are a 1-bit Bayer stipple (alpha 0 or 1), the signature
+	# pixel-dither dissolve — NOT a smooth alpha ramp. (The dark rim is intentionally smooth, so only sample
+	# bright line-coloured pixels.) A regression to smooth line alpha would leave mid-alpha line pixels.
+	var grid_img: Image = hover_grid.texture_albedo.get_image()
+	var line_on := 0
+	var line_mid := 0
+	var step := 3
+	for py in range(0, grid_img.get_height(), step):
+		for px in range(0, grid_img.get_width(), step):
+			var c := grid_img.get_pixel(px, py)
+			if maxf(maxf(c.r, c.g), c.b) <= 0.3:
+				continue   # transparent gap or the dark rim — not a line texel
+			if c.a >= 0.95:
+				line_on += 1
+			elif c.a > 0.05:
+				line_mid += 1
+	_assert_true(line_on > 0, "Hover grid has lit (dithered) line texels")
+	_assert_true(line_mid == 0,
+		"Hover grid line alpha is a 1-bit Bayer stipple, not a smooth ramp (mid-alpha line texels=%d)" % line_mid)
 
 	# Sweeping to a different cell tracks the cursor.
 	var target2 := Vector3(12.5, 0.0, -3.5)
@@ -10178,8 +10212,10 @@ func _test_overlay_materials() -> void:
 			"Hover Decal self-illuminates via emission (readable in a dark scene)")
 		_assert_true(hg.emission_energy <= 1.0,
 			"Hover Decal emission stays low (under the glow bloom threshold — no glowing blob): got %.2f" % hg.emission_energy)
-		_assert_true(hg.size.y >= 1.0,
-			"Hover Decal projection box reaches below the deck so it conforms downward: got y=%.2f" % hg.size.y)
+		_assert_true(hg.size.y >= 0.4 and hg.size.y <= 1.0,
+			"Hover Decal box is centred on the deck and stays TIGHT — brackets the surface (projects down) without spilling onto a stacked helix loop: got h=%.2f" % hg.size.y)
+		_assert_true((hg.cull_mask & 2) == 0,
+			"Hover Decal clears the character visual layer (2) so the grid passes THROUGH bodies/obstacles, not onto them")
 	player.queue_free()
 	await get_tree().process_frame
 	var pr := PathRenderer.new()
