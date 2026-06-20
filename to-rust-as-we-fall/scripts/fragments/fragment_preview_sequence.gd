@@ -145,6 +145,7 @@ var _ability_order: Array[String] = []
 var _hud
 var _active_char_id := ""
 var _selected_char_ids: Array[String] = []
+var _occlusion_mgr: CameraOcclusionManager   # see-through level: geometry between camera + active char dissolves
 var _run_active := false
 var _routing_mode := "safe"
 ## Preview-only toggle (G): when true the party can dodge-roll, so enemy strikes auto-evade. Off by
@@ -342,6 +343,13 @@ func _load_environment_model() -> void:
 	_force_nearest_filter(model)
 	_add_deck_collision(model)
 	_pdbg("deck collision added")
+	# See-through level: wrap the model's meshes so geometry that comes between the camera and the active
+	# character dither-dissolves around them (you never lose the party behind a wall / an upper helix loop).
+	_occlusion_mgr = CameraOcclusionManager.new()
+	add_child(_occlusion_mgr)
+	_occlusion_mgr.set_watch(_game_state, _active_char_id)
+	var wrapped: int = _occlusion_mgr.apply_to(model)
+	_pdbg("camera occlusion applied to %d surfaces" % wrapped)
 	# If the chunk maps its flat gauntlet onto this model (the channels helix), install the coord_map so
 	# node followers + clicks run through it, and hide the now-redundant flat graybox.
 	if _active_chunk.has_method("get_coord_map") and _game_state != null:
@@ -2091,6 +2099,8 @@ func _set_active_character(char_id: String) -> void:
 	_active_char_id = char_id
 	_player = _characters[char_id]
 	_sync_character_move_enabled()
+	if _occlusion_mgr != null:
+		_occlusion_mgr.watch_id = char_id   # the level reveals around whoever the camera now follows
 	if _camera != null:
 		_camera.target = _player
 

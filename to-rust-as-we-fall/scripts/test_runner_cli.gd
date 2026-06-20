@@ -143,6 +143,9 @@ func _ready() -> void:
 			"--test-path-render-manager":
 				ran_test = true
 				await _test_path_render_manager()
+			"--test-camera-occlusion":
+				ran_test = true
+				await _test_camera_occlusion()
 			"--test-grid-levels":
 				ran_test = true
 				_test_grid_levels()
@@ -945,6 +948,7 @@ func _run_all_tests() -> void:
 	_test_cooperative_pathfinding()
 	_test_path_renderer()
 	await _test_path_render_manager()
+	await _test_camera_occlusion()
 	_test_grid_levels()
 	_test_player_cross_level_click()
 	_test_outline_particle_emission()
@@ -9039,6 +9043,49 @@ func _test_path_render_manager() -> void:
 	var aster_dest: Vector3 = gs2.characters["aster"].movement.path[-1]
 	_assert_true(absf(peris_dest.z - aster_dest.z) > 0.1,
 		"Gridless party move fans members onto distinct points (no stacking)")
+
+## Camera occlusion: level geometry between the camera and the watched character dither-dissolves around
+## it (the see-through-wall shader). Structural guard — the GPU discard itself needs a display, but this
+## proves the global uniform is registered + fed, and that apply_to wraps meshes with the shader while
+## preserving the source albedo (so the level's look survives the swap).
+func _test_camera_occlusion() -> void:
+	_test_name = "Camera Occlusion"
+	_assert_true("player_world_pos" in RenderingServer.global_shader_parameter_get_list(),
+		"player_world_pos global shader uniform is registered (project.godot [shader_globals])")
+
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.register_character("a", Vector3(2.0, 0.0, 3.0), 3.0, {})
+
+	var mgr := CameraOcclusionManager.new()
+	add_child(mgr)
+	mgr.set_watch(gs, "a")
+	mgr._process(0.0)   # must not crash feeding the global uniform (the headless dummy renderer can't read it back)
+	_assert_true(mgr._watch_pos().distance_to(gs.get_render_position("a")) < 0.01,
+		"Manager resolves the watched character's render position (what it feeds the global uniform each frame)")
+
+	# apply_to wraps a mesh surface with the occlusion shader, preserving the source albedo.
+	var mi := MeshInstance3D.new()
+	mi.mesh = BoxMesh.new()
+	var std := StandardMaterial3D.new()
+	std.albedo_color = Color(0.2, 0.6, 0.9)
+	mi.material_override = std
+	add_child(mi)
+	var wrapped_n: int = mgr.apply_to(mi)
+	_assert_true(wrapped_n >= 1, "apply_to wraps the mesh's material (got %d)" % wrapped_n)
+	var wm: Material = mi.material_override
+	_assert_true(wm is ShaderMaterial, "Mesh material is now a ShaderMaterial")
+	if wm is ShaderMaterial:
+		_assert_true((wm as ShaderMaterial).shader == mgr.OCCLUSION_SHADER,
+			"Wrapped material runs the camera-occlusion shader")
+		var col: Color = (wm as ShaderMaterial).get_shader_parameter("albedo_color")
+		_assert_true(col.is_equal_approx(Color(0.2, 0.6, 0.9)),
+			"Wrapped material keeps the source albedo so the level's look is preserved (got %s)" % col)
+
+	mi.queue_free()
+	mgr.queue_free()
+	await get_tree().process_frame
 
 ## Multi-level grid: a LEVEL is the same (x,z) plane lifted by level_height in world Y. Cells stay
 ## Vector2i (backward compatible — level defaults to 0 -> Y=0); ladders/ramps are inter-level links.
