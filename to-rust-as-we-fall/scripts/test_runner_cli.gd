@@ -13430,7 +13430,7 @@ func _test_event_log_mutation_audit() -> void:
 	# does not represent a player/sequence input that needs replaying).
 	var allowlist := PackedStringArray([
 		# Pure queries
-		"get_position", "is_moving", "get_grid_cell", "get_character_level",
+		"get_position", "is_moving", "get_destination", "get_grid_cell", "get_character_level",
 		# Render-only: warps get_position through the coord_map for node followers; reads, never mutates.
 		"get_render_position",
 		"is_character_hidden", "get_character_concealment", "is_character_distracted",
