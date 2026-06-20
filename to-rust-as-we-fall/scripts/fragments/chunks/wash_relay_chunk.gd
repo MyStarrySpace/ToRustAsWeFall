@@ -134,6 +134,14 @@ var _trace_until := 0.0            # scheduler tick the TRACE read expires
 var _blooms: Array = []            # peris's flora lights: [{pos, node}] — persistent for the run
 var _bloom_root: Node3D
 
+# --- Cosmetic-only flourishes (@rendering_only — tweens/wall-clock fine here; never gate a transition) ---
+var _flush_hint_shown := false     # one-shot: the FIRST flush telegraph plays a clearer "a surge is coming" preview
+var _flush_hint_root: Node3D       # ephemeral nodes for the flush preview pulse (freed after it plays)
+var _wash_anim_root: Node3D        # parent for any in-flight "swept down the spiral" cosmetic streaks
+const PARTY_RENDER_COLORS := {     # the per-character ownership colour (matches the path ribbon / queued glow)
+	"aster": Color(0.29, 0.62, 1.0), "peris": Color(1.0, 0.67, 0.27), "endo": Color(0.4, 0.72, 0.55),
+}
+
 # --- Build ---
 
 func _section_color(t: String) -> Color:
@@ -683,6 +691,53 @@ func _make_pretel(i: int) -> Callable:
 func _pre_telegraph(i: int) -> void:
 	if _phase == "active" and not _flooding[i] and not _section_disabled(i):
 		_set_strip(i, 1.1)
+		# The VERY FIRST time the flush (section 0) tells, play a louder one-time tutorial preview so a new
+		# player reads "a surge breaks HERE — time it / run it" before the real surge ever lands. One-shot.
+		if i == 0 and not _flush_hint_shown:
+			_flush_hint_shown = true
+			_play_flush_hint()
+
+# COSMETIC tutorial preview on the flush section: a rising-then-receding ghost of the surge so the first-time
+# player sees where the water breaks before it actually does. Spawns its OWN throwaway warped boxes (NOT the
+# real _section_water — that stays driven by the scheduler, so the flood-visual/water-capture invariants hold)
+# and tweens them up then back, then frees them. Pure visuals: it never touches _flooding or the cadence.
+func _play_flush_hint() -> void:
+	_say("// FLUSH // surge incoming — read the water, then run it")
+	_say("Watch—it breaks right here. Time it and run.", "ASTER")
+	if not is_instance_valid(_flush_hint_root):
+		_flush_hint_root = Node3D.new()
+		_flush_hint_root.name = "FlushHint"
+		add_child(_flush_hint_root)
+	var s: Dictionary = SECTIONS[0]
+	var x0: float = s["x0"]; var x1: float = s["x1"]
+	var n := maxi(2, int(ceil((x1 - x0) / WATER_SEG)))
+	var segs: Array = []
+	for k in range(n):
+		var sc := lerpf(x0, x1, (k + 0.5) / float(n))
+		var seg := _warped_box(_flush_hint_root, sc, 0.0,
+			Vector3(FLOOR_Z_HALF * 1.8, WATER_THICK, (x1 - x0) / float(n) * 1.12),
+			Color(0.10, 0.45, 0.7, 0.5), Color(0.3, 0.7, 1.0), 1.0, WATER_THICK * 0.45)
+		seg.material_override.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		seg.scale = Vector3(1.0, 0.05, 1.0)
+		segs.append(seg)
+	# Rise the preview water up, hold a beat, recede — three pulses so the surge cadence reads clearly, then drop
+	# the throwaway nodes. Driven on the wall-clock tween (cosmetic only): no game-state or step transition rides it.
+	var tw := create_tween().set_parallel(false)
+	for pulse in range(3):
+		for seg in segs:
+			if is_instance_valid(seg):
+				tw.parallel().tween_property(seg, "scale", Vector3(1.0, 1.0, 1.0), 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		tw.tween_interval(0.25)
+		for seg in segs:
+			if is_instance_valid(seg):
+				tw.parallel().tween_property(seg, "scale", Vector3(1.0, 0.05, 1.0), 0.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+		tw.tween_interval(0.2)
+	tw.tween_callback(_clear_flush_hint)
+
+func _clear_flush_hint() -> void:
+	if is_instance_valid(_flush_hint_root):
+		_flush_hint_root.queue_free()
+		_flush_hint_root = null
 
 func _period(i: int) -> float:
 	return float(SECTIONS[i].get("period", FLOW_PERIOD))
@@ -773,15 +828,81 @@ func _wash_character(char_id: String) -> void:
 	var gs = _get_game_state()
 	if gs != null:
 		gs.command_stop(char_id)   # cancel any in-flight move so the runner is carried off, not walking on
+	# Capture the pre-wash RENDER position + the flat data position BEFORE the snap — the cosmetic streak slides
+	# from where the current grabbed you, down the spiral, to the start. (Purely for the visual; the data snap
+	# below is instant and authoritative — tests depend on it.)
+	var pre_flat := _get_character_position(char_id)
+	var pre_render := pre_flat
+	if gs != null and gs.characters.has(char_id):
+		pre_render = gs.get_render_position(char_id)
 	# The flood carries you all the way DOWN the spiral to the start shelter at the bottom — water flows down,
 	# so a wash washes you down. Mobile again on arrival (re-climb the gauntlet). _sweep_count tracks how rough.
 	_set_character_position(char_id, START_POS)
 	_sweep_count += 1
+	# COSMETIC ONLY: the current visibly carries you down the helix (a surge + a colour streak that follows the
+	# curve to the start, then a splash). The body already snapped above — this is just the eye-candy.
+	_play_sweep_animation(char_id, pre_render, pre_flat.x)
 	_say("// WASHED // the current carries you down to the start")
 	# After a few washes the lesson lands diegetically: you can't walk the surges, you have to RUN them.
 	if _sweep_count >= 3 and not _run_hint_shown:
 		_run_hint_shown = true
 		_say("Can't just calmly stroll past these channels. Water comes too often—we run it.", "ASTER")
+
+# COSMETIC "the current carries you down" flourish: a water surge + a streak in the washed member's colour that
+# slide from the wash point DOWN the spiral to the start, following the helix (sampled through coord_map.to_world
+# across the s-range), then a splash at START. Throwaway nodes, freed on completion. The real body already
+# snapped to START — nothing here gates state; it's all eye-candy on the wall-clock tween (@rendering_only).
+func _play_sweep_animation(char_id: String, from_render: Vector3, from_x: float) -> void:
+	var gs = _get_game_state()
+	# Sample the path the current sweeps along: from the wash point's s DOWN to the start's s, along the helix.
+	var start_render := START_POS
+	if gs != null and gs.coord_map != null:
+		start_render = gs.coord_map.to_world(START_POS)
+	elif gs != null and gs.characters.has(char_id):
+		start_render = gs.get_render_position(char_id)   # post-snap render pos = the start (identity map)
+	if not is_instance_valid(_wash_anim_root):
+		_wash_anim_root = Node3D.new()
+		_wash_anim_root.name = "WashSweep"
+		add_child(_wash_anim_root)
+	var col: Color = PARTY_RENDER_COLORS.get(char_id, Color(0.6, 0.8, 1.0))
+	# A short list of helix-sampled points from the wash s down to the start s (so the slide hugs the curve).
+	var pts: Array = []
+	var steps := 14
+	for k in range(steps + 1):
+		var t := float(k) / float(steps)
+		var sx := lerpf(from_x, START_POS.x, t)
+		if gs != null and gs.coord_map != null:
+			pts.append(gs.coord_map.to_world(Vector3(sx, START_POS.y, 0.0)))
+		else:
+			pts.append(from_render.lerp(start_render, t))
+	# The surge body (water-blue) and the character-colour streak start at the wash point.
+	var surge := _build_cosmetic_blob(_wash_anim_root, from_render, Vector3(1.6, 0.7, 1.6),
+		Color(0.10, 0.4, 0.65, 0.7), Color(0.3, 0.7, 1.0), 1.6)
+	var streak := _build_cosmetic_blob(_wash_anim_root, from_render, Vector3(0.9, 0.9, 0.9),
+		Color(col.r, col.g, col.b, 0.85), col, 2.2)
+	# Slide both down the sampled helix path, then a splash pop at the start, then free.
+	var slide := 1.2 / float(maxi(1, pts.size() - 1))
+	var tw := create_tween()
+	for k in range(1, pts.size()):
+		tw.parallel().tween_property(surge, "global_position", pts[k], slide).set_trans(Tween.TRANS_SINE)
+		tw.parallel().tween_property(streak, "global_position", pts[k], slide).set_trans(Tween.TRANS_SINE)
+	# Splash at the start: a quick scale-up + fade, then drop the throwaway nodes.
+	tw.parallel().tween_property(streak, "scale", Vector3(2.2, 0.4, 2.2), 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(surge, "scale", Vector3(2.4, 0.3, 2.4), 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.chain().tween_callback(func() -> void:
+		if is_instance_valid(surge):
+			surge.queue_free()
+		if is_instance_valid(streak):
+			streak.queue_free())
+
+func _build_cosmetic_blob(parent: Node3D, pos: Vector3, size: Vector3, color: Color, emission: Color, energy: float) -> MeshInstance3D:
+	var mesh := MeshInstance3D.new()
+	var box := BoxMesh.new(); box.size = size; mesh.mesh = box
+	var mat := _make_material(color, emission, energy, BaseMaterial3D.TRANSPARENCY_ALPHA)
+	mesh.material_override = mat
+	parent.add_child(mesh)
+	mesh.global_position = pos
+	return mesh
 
 # --- Interactions ---
 
@@ -1122,6 +1243,15 @@ func reset_preview_state() -> void:
 	if is_instance_valid(_bloom_root):
 		_bloom_root.queue_free()
 		_bloom_root = null
+	# Cosmetic flourishes: re-arm the one-time flush hint and drop any in-flight preview / sweep streak nodes so a
+	# reset mid-animation can't strand a half-played pulse or a lingering surge box.
+	_flush_hint_shown = false
+	if is_instance_valid(_flush_hint_root):
+		_flush_hint_root.queue_free()
+		_flush_hint_root = null
+	if is_instance_valid(_wash_anim_root):
+		_wash_anim_root.queue_free()
+		_wash_anim_root = null
 	_branch_loot = 0
 	for b in _branches:
 		b["collected"] = false
