@@ -10167,27 +10167,51 @@ func _test_overlay_materials() -> void:
 	pr.queue_free()
 	await get_tree().process_frame
 
-# --- Test: chunk object interactables are wired to the shared outline+shimmer (auto-migration) ---
-# A chunk object's interactable must forward to an OutlineSurfaceTarget, or it shows no hover outline /
-# active shimmer. Spot-check representative meshed interactables so the auto-wiring can't silently break.
+# --- Test: chunk interactables are CLICK-GATED and share the outline/glow shaders (the safeguard) ---
+# Enumerates EVERY interactable a representative set of chunks registers and asserts two invariants the user
+# asked us to guard so new levels can't ship "things missing":
+#   (1) ACTIVATION: click-gated (INSPECTION or TIMED_ACTION) unless its node name is an allowlisted proximity
+#       action (rest points + survival work-stations — the rare, deliberate exceptions).
+#   (2) OUTLINE: a non-null _outline_target, so it shows the same hover outline + queued glow as everything else.
+#   (3) WARP (warped chunks like the channels helix): the outline target rode onto the deck WITH its
+#       interactable (not stranded flat off-deck).
+# Goes RED on the pre-fix tree (wash_relay's caches/switches were HOLD_ACTION proximity with no outline).
 func _test_chunk_interactable_outlines() -> void:
 	_test_name = "Chunk Interactable Outlines"
-	var checks := [
-		{"chunk": "stacks", "node": "TerminalInteractable"},
-		{"chunk": "lure_relay", "node": "Lure2Interact"},
-	]
-	for c in checks:
-		var inst = await _instantiate_preview_chunk_and_wait(c["chunk"], 4)
+	# Allowlisted PROXIMITY actions (may be HOLD_ACTION), by exact node name. Rest = "bed down where you stand";
+	# the survival range's stations are deliberate stand-and-work posts. Add here ONLY with a justification.
+	var proximity_ok := {
+		"RestInteractable": true,
+		"RangeDepartureInteractable": true, "RangeScoutInteractable": true, "RangeSeamInteractable": true,
+		"RangeLureInteractable": true, "RangeHideInteractable": true,
+	}
+	var no_outline_ok := {}   # genuinely meshless zones — none today; add by exact name + justification
+	var chunks := ["wash_relay", "flora_garden", "stacks", "survival_range", "endo_junction_stretch"]
+	for cname in chunks:
+		var inst = await _instantiate_preview_chunk_and_wait(cname, 6)
 		if inst == null:
-			_assert_true(false, "%s preview instantiates" % c["chunk"])
+			_assert_true(false, "%s preview instantiates" % cname)
 			continue
 		var chunk = inst._active_chunk
-		var node = chunk.find_child(c["node"], true, false) if chunk != null else null
-		_assert_true(node != null, "%s exposes %s" % [c["chunk"], c["node"]])
-		if node != null:
-			var tgt = node.get("_outline_target") if "_outline_target" in node else null
-			_assert_true(tgt != null,
-				"%s/%s is wired to an outline target (hover outline + active shimmer)" % [c["chunk"], c["node"]])
+		var gs = inst.get("_game_state")
+		var items: Array = (chunk.get("_interactables") as Array) if chunk != null else []
+		_assert_true(items.size() > 0, "%s registers interactables (got %d)" % [cname, items.size()])
+		var warped: bool = gs != null and gs.coord_map != null
+		for it in items:
+			if not is_instance_valid(it):
+				continue
+			var nm := str(it.name)
+			var t = it.get("interactable_type")
+			var click_gated: bool = t == Interactable.InteractableType.INSPECTION or t == Interactable.InteractableType.TIMED_ACTION
+			_assert_true(click_gated or proximity_ok.has(nm),
+				"%s/%s is click-gated (or allowlisted proximity) — type=%s" % [cname, nm, str(t)])
+			var tgt = it.get("_outline_target") if ("_outline_target" in it) else null
+			_assert_true(tgt != null or no_outline_ok.has(nm),
+				"%s/%s shares the outline/glow shaders (_outline_target wired)" % [cname, nm])
+			if warped and tgt != null and is_instance_valid(tgt) and (tgt is Node3D):
+				var d: float = (tgt as Node3D).global_position.distance_to((it as Node3D).global_position)
+				_assert_true(d < 2.5,
+					"%s/%s outline target rides the helix warp onto the deck (dist %.2f, not flat off-deck)" % [cname, nm, d])
 		await _dispose_scene(inst)
 
 # --- Test: the hover path preview matches the path a click actually commits (no preview lie) ---

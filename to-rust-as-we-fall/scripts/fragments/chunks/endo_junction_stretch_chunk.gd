@@ -404,6 +404,10 @@ func _build_route_marks() -> void:
 	_add_box(self, WALL_MARKS_POS + Vector3(0.0, 0.5, -0.4), Vector3(8.5, 1.0, 0.18), Color(0.14, 0.16, 0.16), Color(0.44, 0.68, 0.58), 0.12)
 	_add_label(self, "WALL MARKS", WALL_MARKS_POS + Vector3(0.0, 1.65, -0.4), Color(0.66, 0.9, 0.75))
 	_route_interactable = _add_inspection_interactable(self, "EndoJunctionRouteMarkInteractable", "Translated Route Mark", GUIDE_MARK_POS, "MARK", "aster", INTERACT_RADIUS)
+	# The wall marks are ~8 units away, beyond auto-outline's reach — give the mark its OWN co-located post so
+	# the interactable has a visible object to outline+glow.
+	var rmark := _add_box(_route_interactable, Vector3(0.0, 0.5, 0.0), Vector3(0.4, 1.0, 0.4), Color(0.18, 0.3, 0.26), Color(0.44, 0.68, 0.58), 0.5)
+	_outline_interactable_child(_route_interactable, rmark, "EndoJunctionRouteMarkInteractable", INTERACT_RADIUS)
 	_route_interactable.interacted.connect(mark_safe_route)
 
 func _build_forage_cache() -> void:

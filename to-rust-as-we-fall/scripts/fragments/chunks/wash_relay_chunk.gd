@@ -183,7 +183,10 @@ func _build_chunk() -> void:
 		# the disable control: an override console past the section, or a held plate before it
 		if str(s["disable"]) == "override":
 			var ov := _add_interactable(self, "Override%d" % i, "Flow override", Vector3(x1 + 1.5, 0.5, 0.0),
-				"OVERRIDE", "", 1.0, true, 1.6, Interactable.InteractableType.HOLD_ACTION)
+				"OVERRIDE", "", 1.0, true, 1.6, Interactable.InteractableType.INSPECTION, false)
+			var ovm := _add_box(ov, Vector3(0.0, 0.1, 0.0), Vector3(0.6, 1.0, 0.4), Color(0.2, 0.45, 0.5),
+				Color(0.3, 0.9, 1.0), 1.0)   # a console post (child -> rides the helix warp)
+			_outline_interactable_child(ov, ovm, "Override%d" % i, 1.6)
 			ov.interacted.connect(func() -> void: _on_override(i))
 	_wdbg("sections built")
 	_build_threats()
@@ -195,25 +198,29 @@ func _build_chunk() -> void:
 
 # The connect-back points at the chunk end (plus the start climb point the sloperope feeds).
 func _build_connect_backs() -> void:
-	# TERMINAL — telephone stranded crew up; one call at the chunk end, instant.
+	# TERMINAL — telephone stranded crew up; one call at the chunk end, click to walk over. The console mesh is
+	# a CHILD of the interactable so both the visual and its outline ride the helix warp together.
 	var term := _add_interactable(self, "Terminal", "Telephone up", TERMINAL_POS,
-		"TERMINAL", "", 1.2, false, 1.7, Interactable.InteractableType.HOLD_ACTION)
+		"TERMINAL", "", 1.2, false, 1.7, Interactable.InteractableType.INSPECTION, false)
 	term.interacted.connect(func() -> void: _on_terminal())
-	var tm := _add_box(self, TERMINAL_POS + Vector3(0.0, 0.4, 0.0), Vector3(0.8, 1.5, 0.4), Color(0.1, 0.4, 0.45))
+	var tm := _add_box(term, Vector3(0.0, 0.4, 0.0), Vector3(0.8, 1.5, 0.4), Color(0.1, 0.4, 0.45))
 	var tmat := StandardMaterial3D.new()
 	tmat.albedo_color = Color(0.1, 0.4, 0.45); tmat.emission_enabled = true
 	tmat.emission = Color(0.2, 0.9, 1.0); tmat.emission_energy_multiplier = 2.0; tm.material_override = tmat
+	_outline_interactable_child(term, tm, "Terminal", 1.7)
 	# SLOPEROPE — drop a climbing line down to the start; the party deploys it once.
 	var rope := _add_interactable(self, "Sloperope", "Drop sloperope", SLOPEROPE_POS,
-		"DROP LINE", "", 1.2, false, 1.7, Interactable.InteractableType.HOLD_ACTION)
+		"DROP LINE", "", 1.2, false, 1.7, Interactable.InteractableType.INSPECTION, false)
 	rope.interacted.connect(func() -> void: _on_sloperope())
-	_add_box(self, SLOPEROPE_POS + Vector3(0.0, 1.4, 0.0), Vector3(0.4, 2.8, 0.4), Color(0.3, 0.22, 0.12))   # the reel post
+	var rpost := _add_box(rope, Vector3(0.0, 1.4, 0.0), Vector3(0.4, 2.8, 0.4), Color(0.3, 0.22, 0.12))   # the reel post
+	_outline_interactable_child(rope, rpost, "Sloperope", 1.7)
 	# CLIMB POINT at the start — a washed member climbs the dropped line back up to the chunk end.
 	var climb := _add_interactable(self, "ClimbLine", "Climb the line", CLIMB_POS,
-		"CLIMB", "", 1.4, false, 1.7, Interactable.InteractableType.HOLD_ACTION)
+		"CLIMB", "", 1.4, false, 1.7, Interactable.InteractableType.INSPECTION, false)
 	climb.interacted.connect(func() -> void: _on_climb())
-	_rope_mesh = _add_box(self, CLIMB_POS + Vector3(0.0, 1.4, 0.0), Vector3(0.16, 2.8, 0.16), Color(0.25, 0.18, 0.1))
+	_rope_mesh = _add_box(climb, Vector3(0.0, 1.4, 0.0), Vector3(0.16, 2.8, 0.16), Color(0.25, 0.18, 0.1))
 	_rope_mesh.visible = false   # the line only appears once dropped from the chunk end
+	_outline_interactable_child(climb, _rope_mesh, "ClimbLine", 1.7)
 
 # --- Branch puzzle offshoots ---
 
@@ -274,14 +281,17 @@ func _build_branches() -> void:
 		var content_count := _build_branch_content(mid, placements)
 		# Reward cache — authored FLAT (the host warp pass lifts every interactable onto the helix); its mesh
 		# is a CHILD so it rides the warp and stays visible (it isn't in the GLB the flat-graybox hide replaces).
+		# Click to walk over, then a salvage WORK beat (TIMED_ACTION). The cache box is a CHILD of the
+		# interactable so the visual + its outline+glow ride the helix warp together.
 		var cache := _add_interactable(self, "BranchCache%d" % g, "Salvage cache",
 			Vector3(mid, 0.5, BRANCH_PAD_LANE), "SALVAGE", "", 1.2, true, 1.6,
-			Interactable.InteractableType.HOLD_ACTION, false)
+			Interactable.InteractableType.TIMED_ACTION, false)
 		var cm := MeshInstance3D.new()
 		var cb := BoxMesh.new(); cb.size = Vector3(0.7, 0.7, 0.7); cm.mesh = cb
 		cm.material_override = _make_material(Color(0.7, 0.6, 0.2), Color(1.0, 0.85, 0.25), 1.4)
 		cm.position = Vector3(0.0, 0.45, 0.0)
 		cache.add_child(cm)
+		_outline_interactable_child(cache, cm, "BranchCache%d" % g, 1.6)
 		cache.interacted.connect(func() -> void: _on_branch_cache(g))
 		# A guarded branch (the archetype carries an enemy) spawns a roamer on the pad — a real risk detour.
 		var guard = null
@@ -437,18 +447,19 @@ func _build_branch_gate_bar(mid: float) -> MeshInstance3D:
 	return _add_warped_box(mid, BRANCH_GATE_LANE, Vector3(BRANCH_LANE_SPAN * 0.55, 1.0, 0.25),
 		Color(0.45, 0.16, 0.18), Color(0.9, 0.2, 0.22), 0.7)
 
-# The gate switch: a themed HOLD_ACTION post at the neck. Authored FLAT (the host warp pass lifts it onto the
-# helix); its post mesh is a child so it rides the warp. One-shot — firing it unlocks the branch.
+# The gate switch: a themed click-to-walk post at the neck. Authored FLAT (the host warp pass lifts it onto
+# the helix); its post mesh + outline are children so they ride the warp. One-shot — firing it unlocks the branch.
 func _build_branch_switch(g: int, mid: float, kind: String) -> Area3D:
 	var theme := _branch_gate_theme(kind)
 	var switch := _add_interactable(self, "BranchSwitch%d" % g, str(theme["label"]),
 		Vector3(mid, 0.5, BRANCH_SWITCH_LANE), str(theme["label"]), "", 1.0, true, 1.4,
-		Interactable.InteractableType.HOLD_ACTION, false)
+		Interactable.InteractableType.INSPECTION, false)
 	var post := MeshInstance3D.new()
 	var pm := BoxMesh.new(); pm.size = Vector3(0.4, 1.3, 0.4); post.mesh = pm
 	post.material_override = _make_material(theme["color"], theme["glow"], 1.0)
 	post.position = Vector3(0.0, 0.65, 0.0)
 	switch.add_child(post)
+	_outline_interactable_child(switch, post, "BranchSwitch%d" % g, 1.4)
 	switch.interacted.connect(func() -> void: _on_branch_switch(g))
 	return switch
 
@@ -488,17 +499,20 @@ func _build_threats() -> void:
 		glow.material_override = gm
 	for li in range(LURE_SPECS.size()):
 		var lp: Vector3 = LURE_SPECS[li]["pos"]
-		var bulb := _add_box(self, Vector3(lp.x, 0.7, lp.z), Vector3(0.5, 0.9, 0.5), Color(0.4, 0.25, 0.06))
+		var idx := li
+		# Click to walk over and fire the lure (discrete action, like lure_relay). The bulb is a CHILD of the
+		# interactable so the visual + its outline ride the helix warp together.
+		var dev := _add_interactable(self, "Flure%d" % li, "Fire flure", lp,
+			"FLURE", "", 1.0, true, 1.4, Interactable.InteractableType.INSPECTION, false)
+		dev.interacted.connect(func() -> void: _on_lure(idx))
+		var bulb := _add_box(dev, Vector3(0.0, 0.7 - lp.y, 0.0), Vector3(0.5, 0.9, 0.5), Color(0.4, 0.25, 0.06))
 		var bm := StandardMaterial3D.new()
 		bm.albedo_color = Color(0.4, 0.25, 0.06); bm.emission_enabled = true
 		bm.emission = Color(1.0, 0.55, 0.12); bm.emission_energy_multiplier = 0.6
 		bulb.material_override = bm
 		_lure_meshes.append(bulb)
 		_lure_until.append(-1.0)
-		var idx := li
-		var dev := _add_interactable(self, "Flure%d" % li, "Fire flure", lp,
-			"FLURE", "", 1.0, true, 1.4, Interactable.InteractableType.HOLD_ACTION)
-		dev.interacted.connect(func() -> void: _on_lure(idx))
+		_outline_interactable_child(dev, bulb, "Flure%d" % li, 1.4)
 	for spec in ENEMY_SPECS:
 		_spawn_enemy(spec)
 

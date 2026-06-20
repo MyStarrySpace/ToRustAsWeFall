@@ -288,6 +288,15 @@ func warp_interactables_onto_coord_map(coord_map) -> void:
 		if not it.has_meta("flat_authored_position"):
 			it.set_meta("flat_authored_position", it.global_position)
 		it.global_position = coord_map.to_world(it.get_meta("flat_authored_position"))
+		# The interactable's linked outline target (the pickable hull + glow shells) lives under the CHUNK
+		# ROOT, not under `it`, so it isn't in _interactables and wouldn't be warped — it'd stay flat off the
+		# deck, breaking hover + the queued-glow origin on the helix. Carry it onto the deck too. (Skip a
+		# target that's a descendant of `it`: it already rides `it`'s move.)
+		var tgt = it.get("_outline_target") if ("_outline_target" in it) else null
+		if tgt != null and is_instance_valid(tgt) and (tgt is Node3D) and not it.is_ancestor_of(tgt):
+			if not tgt.has_meta("flat_authored_position"):
+				tgt.set_meta("flat_authored_position", tgt.global_position)
+			tgt.global_position = coord_map.to_world(tgt.get_meta("flat_authored_position"))
 
 func _make_material(
 	color: Color,
@@ -382,14 +391,24 @@ func _add_rest_point(parent: Node3D, center: Vector3, size: Vector2 = Vector2(5.
 			Vector2(center.x - size.x * 0.5, center.z - size.y * 0.5),
 			Vector2(center.x + size.x * 0.5, center.z + size.y * 0.5))
 	_add_floor(parent, center + Vector3(0.0, 0.03, 0.0), Vector3(size.x, 0.08, size.y), Color(0.16, 0.14, 0.1))
+	# Rest is the ONE justified proximity action ("bed down where you stand"), so opt into HOLD_ACTION
+	# explicitly — the click-gated default must not silently turn resting into a click.
 	var rest = _add_interactable(
-		parent, "RestInteractable", "Rest", center, "REST", "", 1.2, false, 2.5)
+		parent, "RestInteractable", "Rest", center, "REST", "", 1.2, false, 2.5,
+		Interactable.InteractableType.HOLD_ACTION)
 	rest.interacted.connect(func():
 		var inner_gs = _get_game_state()
 		if inner_gs != null and str(rest.active_character) != "":
 			inner_gs.command_rest(str(rest.active_character)))
 	return rest
 
+## Create a chunk interactable. ACTIVATION DEFAULTS TO CLICK-GATED (INSPECTION): the player clicks it, the
+## character walks over, it fires on arrival. Pass TIMED_ACTION for an action with a work/hold beat (salvage,
+## tend, survey). Pass HOLD_ACTION (proximity auto-dwell) ONLY for a justified proximity action — currently
+## just rest points. A new level that omits the type ships CLICK-GATED, never accidental proximity. Every
+## visible interactable is auto-wired to an OutlineSurfaceTarget (shared outline+glow shaders); for a
+## procedural mesh added after this call, prefer _add_object_interactable with explicit meshes. See the
+## InteractableType enum doc and the --test-chunk-interactable-outlines guard.
 func _add_interactable(
 	parent: Node3D,
 	node_name: String,
@@ -400,7 +419,7 @@ func _add_interactable(
 	dwell_time := 1.0,
 	one_shot := false,
 	interaction_radius := 1.5,
-	interactable_type := Interactable.InteractableType.HOLD_ACTION,
+	interactable_type := Interactable.InteractableType.INSPECTION,
 	auto_outline := true
 ) -> Area3D:
 	var spec := {
@@ -439,6 +458,11 @@ func _add_interactable(
 		interactable.call("show_tutorial_label")
 	if auto_outline:
 		_auto_outline_interactable(interactable, parent, position, interaction_radius)
+		# A caller often appends the dressing mesh right AFTER this returns, so the first pass found nothing.
+		# Retry once deferred to catch the late mesh (no-op if already wired). For a WARPED scene the outline
+		# must exist before the warp pass — those call sites use _add_object_interactable with explicit meshes.
+		if "_outline_target" in interactable and interactable.get("_outline_target") == null:
+			call_deferred("_auto_outline_interactable", interactable, parent, position, interaction_radius)
 	return interactable
 
 ## Auto-wire the shared outline+shimmer to whatever object meshes sit AT this interactable's spot, so
@@ -576,3 +600,26 @@ func _add_object_interactable(
 		if interactable.has_method("set_outline_target"):
 			interactable.call("set_outline_target", target)
 	return interactable
+
+## Wire the shared outline+glow to an interactable's OWN child mesh, creating the outline target AS A CHILD
+## of the interactable. On a WARPED scene (the channels helix) this is what makes the outline ride the warp:
+## the interactable, its dressing mesh, and the outline target all move together under warp_interactables_
+## onto_coord_map. Use for a procedural interactable whose visual is its child (build the mesh as a child of
+## the interactable first, then call this). On flat scenes it behaves like any other outline.
+func _outline_interactable_child(interactable: Node3D, mesh: MeshInstance3D, element_name: String, radius := 1.5) -> Node3D:
+	if interactable == null or mesh == null:
+		return null
+	var target := _outline_object(interactable, element_name + "Outline", [mesh], _interactable_data_id(element_name), radius)
+	if target == null:
+		return null
+	# outline_meshes sets target.position from the mesh's WORLD bounds; as a CHILD of the off-origin
+	# interactable that becomes a wrong LOCAL offset (a double-count that strands the target at the authored
+	# spot). Re-anchor by GLOBAL position onto the mesh so the target sits on it and rides the interactable's
+	# warp as a child onto the helix deck.
+	if (target is Node3D) and (mesh is Node3D):
+		(target as Node3D).global_position = (mesh as Node3D).global_position
+	if target.has_method("set_interaction_delegate"):
+		target.call("set_interaction_delegate", interactable)
+	if interactable.has_method("set_outline_target"):
+		interactable.call("set_outline_target", target)
+	return target

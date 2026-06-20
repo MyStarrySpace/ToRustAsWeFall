@@ -3,9 +3,22 @@ extends Area3D
 
 ## Proximity interactable with optional character-specific dialogue.
 
+# ACTIVATION GRAMMAR — the MAJORITY of level interactables must be CLICK-GATED. Picking the type:
+#   INSPECTION   — click to walk over; fires INSTANTLY on arrival. The DEFAULT for a discrete action
+#                  (read / take / override / fire a lure / flip a switch).
+#   TIMED_ACTION — click to walk over; then a work/hold beat runs on arrival before it fires. For an action
+#                  with a real dwell (salvage, tend, survey).
+#   HOLD_ACTION  — PROXIMITY: stand near it and the dwell auto-runs, NO click. RESERVED for the rare,
+#                  justified proximity action (rest/bed-down points, work-stations). Do NOT use it for a
+#                  discrete object action — that is the "why did this fire when I walked past?" bug.
+# SceneChunk._add_interactable DEFAULTS to INSPECTION, so a new level that omits the type ships click-gated,
+# never accidental proximity; HOLD_ACTION must be opted into explicitly. Every VISIBLE interactable must also
+# be wired to an OutlineSurfaceTarget (shared outline+glow shaders) — use _add_object_interactable /
+# _outline_interactable_child for procedural meshes. The --test-chunk-interactable-outlines guard enforces
+# both invariants per interactable across representative chunks (with a small allowlist for the proximity ones).
 enum InteractableType {
-	HOLD_ACTION,   # proximity: stand near it and the dwell timer runs
-	INSPECTION,    # click to walk over; triggers instantly on arrival
+	HOLD_ACTION,   # proximity: stand near it and the dwell timer runs (opt-in; rest points / work-stations)
+	INSPECTION,    # click to walk over; triggers instantly on arrival (the default for discrete actions)
 	TIMED_ACTION,  # click to walk over; then a dwell/work timer runs on arrival before it triggers
 }
 

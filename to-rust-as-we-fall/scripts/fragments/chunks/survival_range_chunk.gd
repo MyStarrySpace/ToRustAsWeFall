@@ -538,7 +538,8 @@ func _build_west_shelter() -> void:
 		"",
 		INTERACT_DWELL,
 		false,
-		INTERACT_RADIUS
+		INTERACT_RADIUS,
+		Interactable.InteractableType.HOLD_ACTION   # work-station: stand-and-work proximity (allowlisted)
 	)
 	_departure_interactable.interacted.connect(depart_range)
 
@@ -555,7 +556,8 @@ func _build_scout_perch() -> void:
 		"aster",
 		INTERACT_DWELL,
 		false,
-		INTERACT_RADIUS
+		INTERACT_RADIUS,
+		Interactable.InteractableType.HOLD_ACTION   # work-station: stand-and-work proximity (allowlisted)
 	)
 	_scout_interactable.interacted.connect(survey_route)
 
@@ -581,7 +583,8 @@ func _build_mid_seam() -> void:
 		"endo",
 		INTERACT_DWELL,
 		false,
-		INTERACT_RADIUS
+		INTERACT_RADIUS,
+		Interactable.InteractableType.HOLD_ACTION   # work-station: stand-and-work proximity (allowlisted)
 	)
 	_seam_interactable.interacted.connect(cross_seam)
 
@@ -606,7 +609,8 @@ func _build_lure_spindle() -> void:
 		"peris",
 		INTERACT_DWELL,
 		false,
-		INTERACT_RADIUS
+		INTERACT_RADIUS,
+		Interactable.InteractableType.HOLD_ACTION   # work-station: stand-and-work proximity (allowlisted)
 	)
 	_lure_interactable.interacted.connect(activate_range_lure)
 
@@ -632,7 +636,8 @@ func _build_hide_slit() -> void:
 		"endo",
 		INTERACT_DWELL,
 		false,
-		INTERACT_RADIUS
+		INTERACT_RADIUS,
+		Interactable.InteractableType.HOLD_ACTION   # work-station: stand-and-work proximity (allowlisted)
 	)
 	_hide_interactable.interacted.connect(commit_hide)
 
