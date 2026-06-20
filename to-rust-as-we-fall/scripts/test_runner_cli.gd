@@ -19570,6 +19570,18 @@ func _test_drink_partial_dwell() -> void:
 		await get_tree().process_frame
 		return
 
+	# White-box test of the dwell TIMER: drive the zone ONLY through the explicit _on_body_entered /
+	# _on_body_exited pokes below. The player body physically sits inside the machine's Area3D, so leaving
+	# live monitoring on lets a stray physics frame re-fire body_entered during the awaits and re-arm the
+	# dwell mid-walk — a real race that flaked this test (~50% alone, ~100% under suite load). The PRODUCTION
+	# dwell is correct (real play drives enter/exit via physics + cancels on movement-start); this only
+	# isolates the timer from the live area so the white-box pokes are the sole driver.
+	if dm is Area3D:
+		(dm as Area3D).monitoring = false
+	var dm_shape: Node = dm.get_node_or_null("CollisionShape3D")
+	if dm_shape != null:
+		dm_shape.set("disabled", true)
+
 	# PARTIAL hold: step in, leave at 40% of the dwell, then let MORE than the full dwell elapse.
 	var player: Node3D = instance._player
 	dm._on_body_entered(player)
