@@ -10876,7 +10876,7 @@ func _test_wash_relay_flood_visual() -> void:
 ## not the whole run) and leaves them MOBILE — never stranded, never reset to the start. Checks several
 ## sections so the per-section checkpoint math is right end to end.
 func _test_wash_relay_checkpoint() -> void:
-	_test_name = "Wash Relay Checkpoint"
+	_test_name = "Wash Relay Wash To Bottom"
 	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
 	if instance == null:
 		_assert_true(false, "wash_relay instantiates"); return
@@ -10893,8 +10893,8 @@ func _test_wash_relay_checkpoint() -> void:
 		var ax: float = chunk.call("_get_character_position", "endo").x
 		_assert_equals(int(chunk.get_preview_state().get("sweep_count", 0)), before + 1,
 			"a wash at section %d counts one sweep" % int(c["sec"]))
-		_assert_true(ax < float(c["x"]) and ax > 4.0,
-			"section %d wash lands at the PREVIOUS gap (x=%.1f < %.1f, NOT the start)" % [int(c["sec"]), ax, float(c["x"])])
+		_assert_true(ax < 5.0,
+			"section %d wash carries you DOWN to the start at the bottom of the spiral (x=%.1f)" % [int(c["sec"]), ax])
 	# A swept member is mobile, never stranded — the legacy washed set stays empty.
 	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0,
 		"a swept member is mobile (not stranded) — washed_count stays 0")
@@ -10943,11 +10943,13 @@ func _wash_shepherd(instance: Node, chunk: Node, gs, ids: Array, target_x: float
 		t += 0.2
 	return false
 
-## REAL-PLAY playthrough of the FRONT-HALF wash gauntlet (the core mechanics, no guards): override the override
-## sections, time the current crossing, solve the PLATE (one holds, two cross, then the holder crosses), and
-## clear the SLUICE real-blocker — all under the live flood cadence + the checkpoint-wash. Proves the wash
-## gauntlet is actually BEATABLE through the data layer, not just structurally present. (The guarded back half
-## is exercised by the enemy/detection suites; a full guarded completion is a follow-up.)
+## STATE-AWARE playthrough — the robust beatability guard. The fake player READS the live puzzle state (each
+## section's footprint + disable type + its safe window via next_onset_in) and DECIDES like a real player:
+## override the override consoles, hold the plate, and RUN across each timing section only inside a safe window
+## wide enough to fully clear it. This matters because a wash now carries you to the BOTTOM — a mistimed cross
+## is a full restart, so the ONLY way through is to read the water and time it (and RUN: the fast 'current'
+## beat is uncrossable at a walk). If a section's safe window is too short to clear even at a RUN, this STALLS
+## and prints the numbers — a balance bug the dumb "keep walking forward" loop could never catch.
 func _test_wash_relay_playthrough() -> void:
 	_test_name = "Wash Relay Playthrough"
 	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
@@ -10958,32 +10960,82 @@ func _test_wash_relay_playthrough() -> void:
 	if chunk == null or gs == null:
 		_assert_true(false, "chunk + game state present"); instance.queue_free(); await get_tree().process_frame; return
 	instance.headless_advance(0.1)   # phase -> active, hazards scheduled
-	# Override the override sections (a runner presses each console).
-	var secs: Array = chunk.get_preview_state().get("sections", [])
-	for i in range(secs.size()):
-		if str((secs[i] as Dictionary).get("disable", "")) == "override":
-			chunk.call("_on_override", i)
-	# Cross to the plate gap (current is a timed crossing; the checkpoint-wash makes a mistimed cross retry).
-	var ok1: bool = await _wash_shepherd(instance, chunk, gs, ["aster", "peris", "endo"], 28.0, 45.0)
-	_assert_true(ok1, "the party reaches the plate gap (override + timed crossings work)")
-	# Solve the plate: endo holds the pad so aster+peris cross the bridge.
-	chunk.call("_set_character_position", "endo", Vector3(28.8, 0.5, 0.0))
-	instance.headless_advance(0.3)
-	var ok2: bool = await _wash_shepherd(instance, chunk, gs, ["aster", "peris"], 37.0, 45.0)
-	_assert_true(ok2, "with endo holding the plate, the others cross the bridge")
-	# The holder crosses last (no plate now — times the solo cross via checkpoint-retry).
-	var ok3: bool = await _wash_shepherd(instance, chunk, gs, ["endo"], 37.0, 45.0)
-	_assert_true(ok3, "the plate-holder crosses last")
-	# Clear the SLUICE (a real blocker while closed) into the back half.
-	var ok4: bool = await _wash_shepherd(instance, chunk, gs, ["aster", "peris", "endo"], 43.0, 55.0)
-	_assert_true(ok4, "the party clears the sluice real-blocker to the back half")
-	var all_through := true
-	for cid in ["aster", "peris", "endo"]:
-		if chunk.call("_get_character_position", cid).x < 42.0:
-			all_through = false
-	_assert_true(all_through, "all three cleared the front-half wash gauntlet through real play")
+	var ids := ["aster", "peris", "endo"]
+	# Front half (no guards): flush, current, jet, plate, sluice — the core run + the user's tight 'current'.
+	for i in range(5):
+		var ok: bool = await _smart_cross(instance, chunk, gs, ids, i, 60.0)
+		var s: Dictionary = (chunk.get_preview_state().get("sections", []) as Array)[i]
+		_assert_true(ok, "a state-aware player crosses section %d (%s/%s) by reading + timing it" % [i, str(s.get("type", "")), str(s.get("disable", ""))])
+		if not ok:
+			print("  [smart] STALLED at section %d (%s): safe window=%.2fs, RUN needs ~%.2fs (x0=%.0f x1=%.0f) — balance bug" % [i, str(s.get("type", "")), float(s.get("period", 0)) - float(s.get("dur", 0)), (float(s.get("x1", 0)) - float(s.get("x0", 0)) + 2.7) / 6.0, float(s.get("x0", 0)), float(s.get("x1", 0))])
+			break
+	var through := true
+	for id in ids:
+		if gs.get_position(id).x < 42.0:
+			through = false
+	_assert_true(through, "the state-aware party clears the front-half gauntlet (running + timing the surges)")
 	instance.queue_free()
 	await get_tree().process_frame
+
+# Cross ONE section by reading its live state: override consoles, hold plates, or RUN-and-time a timing surge.
+func _smart_cross(instance: Node, chunk: Node, gs, ids: Array, i: int, max_secs: float) -> bool:
+	var s: Dictionary = (chunk.get_preview_state().get("sections", []) as Array)[i]
+	var x0 := float(s.get("x0", 0)); var x1 := float(s.get("x1", 0)); var disable := str(s.get("disable", ""))
+	var before := x0 - 1.2; var after := x1 + 1.5
+	for id in ids:
+		gs.set_running(id, true)
+	if not await _wash_shepherd(instance, chunk, gs, ids, before, 30.0):   # stage at the safe gap before
+		return false
+	if disable == "override":
+		chunk.call("_on_override", i)   # a runner presses the console (disabled for good)
+		return await _wash_shepherd(instance, chunk, gs, ids, after, max_secs)
+	if disable == "plate" or disable == "double_plate":
+		return await _smart_plate_cross(instance, chunk, gs, ids, i, x0, after, max_secs)
+	return await _smart_time_run(instance, chunk, gs, ids, i, before, after, max_secs)
+
+# Hold the plate so the others cross, then the holder runs-and-times its own cross.
+func _smart_plate_cross(instance: Node, chunk: Node, gs, ids: Array, i: int, x0: float, after: float, max_secs: float) -> bool:
+	var holder: String = ids[ids.size() - 1]
+	var crossers: Array = ids.slice(0, ids.size() - 1)
+	chunk.call("_set_character_position", holder, Vector3(x0 - 1.2, 0.5, 0.0))   # stand on the pressure plate
+	instance.headless_advance(0.3)   # registers held -> section disabled
+	for id in crossers:
+		gs.set_running(id, true)
+	if not await _wash_shepherd(instance, chunk, gs, crossers, after, max_secs):
+		return false
+	return await _smart_time_run(instance, chunk, gs, [holder], i, x0 - 1.2, after, max_secs)
+
+# RUN across a timing section, entering only when the safe window is wide enough to fully clear it. A member
+# already mid-cross is COMMITTED (finish, don't interrupt); a staged member waits for the window; a washed
+# member (carried to the bottom) re-approaches the gap and tries again.
+func _smart_time_run(instance: Node, chunk: Node, gs, ids: Array, i: int, before: float, after: float, max_secs: float) -> bool:
+	var needs := (after - before) / 6.0 + 0.5   # RUN_SPEED 6.0 + a reaction margin
+	var t := 0.0
+	while t < max_secs:
+		var done := true
+		for id in ids:
+			if gs.get_position(id).x < after - 0.5:
+				done = false
+		if done:
+			return true
+		var s: Dictionary = (chunk.get_preview_state().get("sections", []) as Array)[i]
+		var safe: bool = not bool(s.get("flooding", false)) and float(s.get("next_onset_in", -1.0)) > needs
+		for id in ids:
+			gs.set_running(id, true)   # re-assert RUN (a fresh move must not silently drop to a walk)
+			var x: float = gs.get_position(id).x
+			if x >= after - 0.5:
+				continue
+			elif x > before - 0.3:                       # mid-cross -> committed, finish it
+				if not gs.is_moving(id):
+					gs.command_move_to_pos(id, Vector3(after, 0.5, 0.0))
+			elif safe:                                   # staged + window open wide enough -> GO
+				gs.command_move_to_pos(id, Vector3(after, 0.5, 0.0))
+			elif not gs.is_moving(id):                   # not safe -> (re)stage at the gap
+				gs.command_move_to_pos(id, Vector3(before, 0.5, 0.0))
+		instance.headless_advance(0.1)
+		await get_tree().process_frame
+		t += 0.1
+	return false
 
 ## The branch puzzles: each offshoot's cache is GATED by an archetype-themed switch (decoy/valve/lever), with
 ## forage/narrative branches left OPEN as breathers. Proves the gate is real: a gated cache is LOCKED until
@@ -11718,7 +11770,7 @@ func _test_channels_robustness() -> void:
 		wc2.call("_wash_character", "aster")                        # the wash hits a moving runner
 		wl.headless_advance(0.1)
 		_assert_true(not gs2.is_moving("aster"), "the wash cancels the washed runner's move")
-		_assert_true(gs2.get_position("aster").x < 14.0, "the washed runner is swept back to the previous gap, not left walking on (x=%.1f)" % gs2.get_position("aster").x)
+		_assert_true(gs2.get_position("aster").x < 5.0, "the washed runner is carried DOWN to the start, not left walking on (x=%.1f)" % gs2.get_position("aster").x)
 		wl.queue_free()
 		await get_tree().process_frame
 	# F) DETERMINISM: the wash cadence is fast-forward invariant (same surge counts at a fine vs coarse step)
@@ -11812,13 +11864,13 @@ func _test_wash_relay() -> void:
 	chunk.call("_on_lure", 0)
 	_assert_true(gs2.is_character_distracted("ch_sentry"), "firing the flure distracts the sentry")
 	_assert_true(bool(chunk.get_preview_state().get("lure_active", false)), "the flure reads active while it draws")
-	# a guard landing a hit shoves the target back — SWEPT to the PREVIOUS gap (lose a section, not the run)
+	# a guard landing a hit shoves the target into the channel — the current carries them DOWN to the start
 	chunk.call("_set_character_position", "aster", Vector3(58.0, 0.5, 0.0))   # in the lure section [56,61]
 	var sweeps_c := int(chunk.get_preview_state().get("sweep_count", 0))
 	chunk.call("_on_enemy_hit", "aster")
-	_assert_true(int(chunk.get_preview_state().get("sweep_count", 0)) > sweeps_c, "a guard's hit sweeps the target back")
+	_assert_true(int(chunk.get_preview_state().get("sweep_count", 0)) > sweeps_c, "a guard's hit washes the target")
 	var ax: float = chunk.call("_get_character_position", "aster").x
-	_assert_true(ax > 49.0 and ax < 57.0, "the hit sweeps to the PREVIOUS gap (lose a section, not the whole run) — got x=%.1f" % ax)
+	_assert_true(ax < 5.0, "a guard's hit washes you DOWN to the start at the bottom — got x=%.1f" % ax)
 	# The sloperope connect-back still deploys (kept as flavor; recovery is now local — you re-cross from the gap).
 	chunk.call("_on_sloperope")
 	_assert_true(bool(chunk.get_preview_state().get("sloperope_deployed", false)), "dropping the sloperope deploys the line")

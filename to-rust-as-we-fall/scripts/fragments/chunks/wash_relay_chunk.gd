@@ -689,6 +689,17 @@ func _period(i: int) -> float:
 func _dur(i: int) -> float:
 	return float(SECTIONS[i].get("dur", FLOOD_DURATION))
 
+# Seconds until section i NEXT floods (the safe-window read a player — or a state-aware test — uses to time a
+# crossing). Derived from the same cadence the onsets fire on: FIRST_FLOOD + phase + period*flood_count.
+func _section_next_onset_in(i: int) -> float:
+	var sched = _get_scheduler()
+	if sched == null:
+		return -1.0
+	var now: float = sched.get_current_tick()
+	var count: int = _flood_counts[i] if i < _flood_counts.size() else 0
+	var next_tick := FIRST_FLOOD + float(SECTIONS[i]["phase"]) + _period(i) * float(count)
+	return next_tick - now
+
 func _flood_onset(i: int) -> void:
 	var sched = _get_scheduler()
 	if _phase == "active" and not _section_disabled(i):
@@ -760,24 +771,12 @@ func _wash_section(i: int) -> void:
 func _wash_character(char_id: String) -> void:
 	var gs = _get_game_state()
 	if gs != null:
-		gs.command_stop(char_id)   # cancel any in-flight move so the runner stays knocked back, not walking on
-	var here := _get_character_position(char_id)
-	_set_character_position(char_id, _wash_checkpoint(here.x))
-	# Tense-but-fair: NOT stranded — swept back to the last gap and immediately able to re-cross. Track the
-	# count for the salvage tally / "how rough was the run" read.
+		gs.command_stop(char_id)   # cancel any in-flight move so the runner is carried off, not walking on
+	# The flood carries you all the way DOWN the spiral to the start shelter at the bottom — water flows down,
+	# so a wash washes you down. Mobile again on arrival (re-climb the gauntlet). _sweep_count tracks how rough.
+	_set_character_position(char_id, START_POS)
 	_sweep_count += 1
-	_say("// SWEPT // back to the last landing")
-
-# TENSE-BUT-FAIR failure: a wash sweeps you back to the LAST GAP you cleared (lose ONE section), not all the
-# way to the start — a per-section checkpoint. (A literal fall to a lower deck would need a coord_map redesign:
-# the helix derives height from s, so a second level at the same s can't be inverted. The checkpoint reset is
-# the in-architecture equivalent of "drop a deck and climb back".)
-func _wash_checkpoint(x: float) -> Vector3:
-	var best := START_POS.x
-	for m in _gap_mids():
-		if float(m) < x and float(m) > best:
-			best = float(m)
-	return Vector3(best, START_POS.y, 0.0)
+	_say("// WASHED // the current carries you down to the start")
 
 # --- Interactions ---
 
@@ -1162,11 +1161,13 @@ func get_preview_state() -> Dictionary:
 	var secs: Array = []
 	for i in range(SECTIONS.size()):
 		secs.append({"type": SECTIONS[i]["type"], "disable": SECTIONS[i]["disable"],
+			"x0": float(SECTIONS[i]["x0"]), "x1": float(SECTIONS[i]["x1"]),   # footprint along the spiral (s)
 			"flooding": _flooding[i] if i < _flooding.size() else false,
 			"disabled": _section_disabled(i), "overridden": _override_locked[i] if i < _override_locked.size() else false,
 			"plate_held": _plate_held[i] if i < _plate_held.size() else false,
 			"sluice_blocked": _sluice_blocked[i] if i < _sluice_blocked.size() else false,
-			"period": _period(i), "flood_count": _flood_counts[i] if i < _flood_counts.size() else 0})
+			"period": _period(i), "dur": _dur(i), "flood_count": _flood_counts[i] if i < _flood_counts.size() else 0,
+			"next_onset_in": _section_next_onset_in(i)})   # seconds until this section next floods (the safe-window read)
 	var guards: Array = []
 	var gs = _get_game_state()
 	var branch_guard_count := 0
