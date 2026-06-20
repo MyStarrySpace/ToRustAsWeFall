@@ -116,7 +116,7 @@ var _rope_mesh: MeshInstance3D
 # dark drainage + marks a safe lane. Endo BRACE (endo_patch): braces a washed/at-risk member (refunds stamina)
 # and reveals which hide alcove is deep cover. All derived from the scheduler tick / positions — never logged.
 const ABILITY_CONTEXT := "channels_rhythm"
-const TRACE_LEAD := 1.2             # seconds before an onset that TRACE pulses the section strip (the read)
+const TELEGRAPH_LEAD := 1.2         # seconds before an onset the flow strip brightens (the surge tell)
 const TRACE_HOLD := 6.0             # how long a TRACE read stays surfaced
 const ABILITY_OWNERS := {"aster_focus": "aster", "peris_tune": "peris", "endo_patch": "endo"}
 var _trace_section := -1            # section TRACE is reading (-1 = none) — derived, cleared on reset
@@ -618,9 +618,21 @@ func _ensure_scheduled() -> void:
 	_scheduled = true
 	for i in range(SECTIONS.size()):
 		sched.schedule_after(FIRST_FLOOD + float(SECTIONS[i]["phase"]), _make_onset(i), "wash_onset_%d" % i)
+		var lead := FIRST_FLOOD + float(SECTIONS[i]["phase"]) - TELEGRAPH_LEAD
+		if lead > 0.0:
+			sched.schedule_after(lead, _make_pretel(i), "wash_pretel_%d" % i)
 
 func _make_onset(i: int) -> Callable:
 	return func() -> void: _flood_onset(i)
+
+func _make_pretel(i: int) -> Callable:
+	return func() -> void: _pre_telegraph(i)
+
+# The surge TELL: a beat before a section floods, its flow strip brightens to a warning glow so the player
+# reads the coming surge instead of staring at dead water. Cosmetic only (strip energy) — never logged.
+func _pre_telegraph(i: int) -> void:
+	if _phase == "active" and not _flooding[i] and not _section_disabled(i):
+		_set_strip(i, 1.1)
 
 func _period(i: int) -> float:
 	return float(SECTIONS[i].get("period", FLOW_PERIOD))
@@ -642,6 +654,9 @@ func _flood_onset(i: int) -> void:
 			sched.schedule_after(_dur(i), func() -> void: _set_flood_off(i), "wash_off_%d" % i)
 	if sched != null:
 		sched.schedule_after(_period(i), _make_onset(i), "wash_onset_%d" % i)
+		var lead := _period(i) - TELEGRAPH_LEAD
+		if lead > 0.0:
+			sched.schedule_after(lead, _make_pretel(i), "wash_pretel_%d" % i)
 
 func _set_flood_off(i: int) -> void:
 	_flooding[i] = false
