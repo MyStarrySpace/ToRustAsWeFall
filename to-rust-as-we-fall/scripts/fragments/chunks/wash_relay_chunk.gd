@@ -110,6 +110,20 @@ var _sloperope_deployed := false   # the chunk-end line has been dropped (the st
 var _debug_tick := 0               # throttles the CHANNELS_DEBUG position log
 var _rope_mesh: MeshInstance3D
 
+# --- Character abilities (TRACE / BLOOM / BRACE) — each protagonist's signature read ---
+# Aster TRACE (aster_focus): reads the flood cadence and surfaces the next SAFE window for the section he
+# stands in. Peris BLOOM (peris_tune): flora-tending — grows a persistent bioluminescent light that lights the
+# dark drainage + marks a safe lane. Endo BRACE (endo_patch): braces a washed/at-risk member (refunds stamina)
+# and reveals which hide alcove is deep cover. All derived from the scheduler tick / positions — never logged.
+const ABILITY_CONTEXT := "channels_rhythm"
+const TRACE_LEAD := 1.2             # seconds before an onset that TRACE pulses the section strip (the read)
+const TRACE_HOLD := 6.0             # how long a TRACE read stays surfaced
+const ABILITY_OWNERS := {"aster_focus": "aster", "peris_tune": "peris", "endo_patch": "endo"}
+var _trace_section := -1            # section TRACE is reading (-1 = none) — derived, cleared on reset
+var _trace_until := 0.0            # scheduler tick the TRACE read expires
+var _blooms: Array = []            # peris's flora lights: [{pos, node}] — persistent for the run
+var _bloom_root: Node3D
+
 # --- Build ---
 
 func _section_color(t: String) -> Color:
@@ -800,6 +814,15 @@ func _update() -> void:
 					hidden = true
 					break
 			gsc.set_character_concealment(cid, GameState.CONCEAL_FULL if hidden else GameState.CONCEAL_NONE)
+	# Aster's TRACE read: while active, pulse the traced section's strip a beat BEFORE its next onset so the
+	# safe window is legible (the telegraph). Cosmetic only — the cadence itself is unchanged.
+	var schd = _get_scheduler()
+	if _trace_section >= 0 and schd != null:
+		var now: float = schd.get_current_tick()
+		if now >= _trace_until:
+			_trace_section = -1
+		elif not _flooding[_trace_section] and not _section_disabled(_trace_section):
+			_set_strip(_trace_section, 1.3)   # the pre-surge read glow
 	if _phase == "active":
 		var all_through := true
 		for char_id in PARTY_IDS:
@@ -876,7 +899,107 @@ func get_preview_time_state() -> Dictionary:
 		"note_default": "Read the flood beat. Override the flush/jet, hold the plate for the bridge, time the current and the sluice."}
 
 func get_preview_abilities() -> Array:
-	return []
+	# Display names + tuning come from data/abilities/en/abilities.xlsx (channels_rhythm.* rows): aster_focus=
+	# TRACE, peris_tune=BLOOM, endo_patch=BRACE. The preview shell already registers the three keys; this just
+	# gives them the channels' names/notes. The EFFECTS live in handle_preview_ability below.
+	return AbilityData.for_context(ABILITY_CONTEXT)
+
+# The three protagonists' signature reads. Returns a Dict merged over the ability def + applied by the preview
+# (note text, per-character stat deltas). Owner stat deltas (aster +atp, peris +sta, endo +hp) auto-apply
+# upstream; here we add the channels-specific EFFECT. Pure derived state — replay/fast-forward safe.
+func handle_preview_ability(ability_id: String, _ability: Dictionary = {}) -> Dictionary:
+	match ability_id:
+		"aster_focus":
+			return _ability_trace()
+		"peris_tune":
+			return _ability_bloom()
+		"endo_patch":
+			return _ability_brace()
+	return {}
+
+# TRACE — Aster reads the cadence: find the section he's in (or the next ahead) and surface its safe window.
+func _ability_trace() -> Dictionary:
+	var x := _owner_x("aster_focus")
+	var i := _section_index_at(x)
+	if i < 0:
+		i = _next_section_ahead(x)
+	if i < 0:
+		return {"note": "// TRACE // open water ahead — no surge to read"}
+	_trace_section = i
+	var sched = _get_scheduler()
+	_trace_until = (sched.get_current_tick() if sched != null else 0.0) + TRACE_HOLD
+	var label := str(SECTIONS[i]["type"]).to_upper()
+	if _section_disabled(i):
+		return {"note": "// TRACE // %s held open — cross now" % label}
+	return {"note": "// TRACE // %s surges on a %.1fs beat — cross right after the next surge" % [label, _period(i)]}
+
+# BLOOM — Peris tends flora: grow a persistent bioluminescent light at her spot. It lights the dark drainage
+# and marks a safe lane (the dark section can only be read once it's bloomed).
+func _ability_bloom() -> Dictionary:
+	var gs = _get_game_state()
+	if gs == null:
+		return {"note": "// BLOOM //"}
+	var flat: Vector3 = gs.get_position("peris")
+	var world: Vector3 = gs.get_render_position("peris") if gs.coord_map != null else flat
+	_spawn_bloom(world, flat)
+	return {"note": "// BLOOM // bioluminescence takes — the lane reads clear"}
+
+# BRACE — Endo braces the party: refund stamina to any washed/lower-deck member for the re-cross, and mark the
+# deep hide alcove. If nobody's down, it still steadies the party (the owner hp refund applies upstream).
+func _ability_brace() -> Dictionary:
+	var result := {}
+	var deltas := {}
+	for id in _washed.keys():
+		deltas[id] = {"sta_delta": 14.0}
+	if not deltas.is_empty():
+		result["characters"] = deltas
+		result["note"] = "// BRACE // %d down — steadied for the climb back" % deltas.size()
+	else:
+		result["note"] = "// BRACE // the party reads the deep cover"
+	return result
+
+# The section whose [x0,x1] footprint contains x (flat s-axis), or -1.
+func _section_index_at(x: float) -> int:
+	for i in range(SECTIONS.size()):
+		if x >= float(SECTIONS[i]["x0"]) and x <= float(SECTIONS[i]["x1"]):
+			return i
+	return -1
+
+# The first section starting ahead of x, or -1.
+func _next_section_ahead(x: float) -> int:
+	for i in range(SECTIONS.size()):
+		if float(SECTIONS[i]["x0"]) > x:
+			return i
+	return -1
+
+func _owner_x(ability_id: String) -> float:
+	var gs = _get_game_state()
+	var owner := str(ABILITY_OWNERS.get(ability_id, ""))
+	if gs != null and owner != "" and gs.characters.has(owner):
+		return gs.get_position(owner).x
+	return 0.0
+
+# Grow a flora light (a small emissive bloom + an omni light) at a warped world position. Stored so it
+# persists for the run and is cleared on reset. Cosmetic light; the "lane reads clear" is the gameplay read.
+func _spawn_bloom(world: Vector3, flat: Vector3) -> void:
+	if _bloom_root == null or not is_instance_valid(_bloom_root):
+		_bloom_root = Node3D.new()
+		_bloom_root.name = "Blooms"
+		add_child(_bloom_root)
+	var node := Node3D.new()
+	node.position = world + Vector3(0.0, 0.2, 0.0)
+	var mesh := MeshInstance3D.new()
+	var sph := SphereMesh.new(); sph.radius = 0.22; sph.height = 0.44; mesh.mesh = sph
+	mesh.material_override = _make_material(Color(0.2, 0.7, 0.5), Color(0.4, 1.0, 0.7), 2.2)
+	node.add_child(mesh)
+	var light := OmniLight3D.new()
+	light.light_color = Color(0.5, 1.0, 0.75)
+	light.light_energy = 2.2
+	light.omni_range = 6.0
+	light.position = Vector3(0.0, 0.6, 0.0)
+	node.add_child(light)
+	_bloom_root.add_child(node)
+	_blooms.append({"pos": flat, "node": node})
 
 func get_preview_overlay_status(_overlay_id: String, _current_tick: float) -> Array:
 	return []
@@ -889,6 +1012,13 @@ func reset_preview_state() -> void:
 		_override_locked.append(false); _flooding.append(false); _plate_held.append(false); _sluice_blocked.append(false); _flood_counts.append(0)
 	_washed.clear()
 	_sloperope_deployed = false
+	# Ability state is derived per-run — clear it so a reset/replay doesn't leak a stale TRACE read or blooms.
+	_trace_section = -1
+	_trace_until = 0.0
+	_blooms.clear()
+	if is_instance_valid(_bloom_root):
+		_bloom_root.queue_free()
+		_bloom_root = null
 	_branch_loot = 0
 	for b in _branches:
 		b["collected"] = false
@@ -980,4 +1110,5 @@ func get_preview_state() -> Dictionary:
 		"sloperope_deployed": _sloperope_deployed,
 		"branches": branches, "branch_count": _branches.size(), "branch_loot": _branch_loot,
 		"branch_guard_count": branch_guard_count,
+		"trace_section": _trace_section, "bloom_count": _blooms.size(),
 	}

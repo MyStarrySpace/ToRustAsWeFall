@@ -281,6 +281,9 @@ func _ready() -> void:
 			"--test-wash-relay-branch-puzzles":
 				ran_test = true
 				await _test_wash_relay_branch_puzzles()
+			"--test-wash-relay-abilities":
+				ran_test = true
+				await _test_wash_relay_abilities()
 			"--test-wash-relay-no-hang":
 				ran_test = true
 				await _test_wash_relay_no_hang()
@@ -906,6 +909,7 @@ func _run_all_tests() -> void:
 	await _test_interactable_warp()
 	await _test_wash_relay_branches()
 	await _test_wash_relay_branch_puzzles()
+	await _test_wash_relay_abilities()
 	await _test_wash_relay_no_hang()
 	await _test_wash_relay_menu_load()
 	await _test_wash_relay_hover_sweep()
@@ -10730,6 +10734,52 @@ func _test_wash_relay_branches() -> void:
 					det = false
 					break
 		_assert_true(det, "branch layout is deterministic (same archetype sequence as the live chunk) — replay-safe")
+
+## The channels' three character abilities (TRACE / BLOOM / BRACE) — each protagonist's signature read. Proves
+## the chunk wires the abilities (closing the "no abilities" gap) and that each effect fires: Aster's TRACE
+## reads the section he stands in, Peris's BLOOM grows a persistent flora light, Endo's BRACE returns a result.
+func _test_wash_relay_abilities() -> void:
+	_test_name = "Wash Relay Abilities"
+	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	if instance == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
+	var gs = instance.get("_game_state")
+	if chunk == null or gs == null:
+		_assert_true(false, "chunk + game state present"); instance.queue_free(); await get_tree().process_frame; return
+	# The three abilities are wired (no longer the empty list).
+	var abilities: Array = chunk.get_preview_abilities()
+	var ids: Array = []
+	for a in abilities:
+		ids.append(str((a as Dictionary).get("id", "")))
+	_assert_true(abilities.size() == 3, "the channels wires 3 abilities (got %d)" % abilities.size())
+	_assert_true(ids.has("aster_focus") and ids.has("peris_tune") and ids.has("endo_patch"),
+		"the abilities are TRACE/BLOOM/BRACE (aster_focus/peris_tune/endo_patch) — got %s" % str(ids))
+	# TRACE: put Aster in a section's footprint, read it -> trace_section locks onto that section.
+	gs.snap_character_to("aster", Vector3(8.0, 0.5, 0.0))   # section 0 (flush, x6..11)
+	var tr: Dictionary = chunk.handle_preview_ability("aster_focus")
+	_assert_true(str(tr.get("note", "")) != "", "TRACE surfaces a read note (got '%s')" % str(tr.get("note", "")))
+	_assert_true(int(chunk.get_preview_state().get("trace_section", -1)) == 0,
+		"TRACE locks onto the section Aster stands in (got %d, want 0)" % int(chunk.get_preview_state().get("trace_section", -1)))
+	# BLOOM: Peris tends flora -> a persistent bioluminescent light is grown each cast.
+	var b0 := int(chunk.get_preview_state().get("bloom_count", 0))
+	chunk.handle_preview_ability("peris_tune")
+	await get_tree().process_frame
+	chunk.handle_preview_ability("peris_tune")
+	await get_tree().process_frame
+	_assert_true(int(chunk.get_preview_state().get("bloom_count", 0)) == b0 + 2,
+		"BLOOM grows a persistent flora light each cast (got %d, want %d)" % [int(chunk.get_preview_state().get("bloom_count", 0)), b0 + 2])
+	# BRACE: returns a usable result (a note) — the survival read.
+	var br: Dictionary = chunk.handle_preview_ability("endo_patch")
+	_assert_true(str(br.get("note", "")) != "", "BRACE returns a survival read (got '%s')" % str(br.get("note", "")))
+	# Reset clears the derived ability state so a replay/repeat doesn't leak it.
+	chunk.reset_preview_state()
+	await get_tree().process_frame
+	_assert_true(int(chunk.get_preview_state().get("trace_section", -1)) == -1
+			and int(chunk.get_preview_state().get("bloom_count", 0)) == 0,
+		"reset clears TRACE + BLOOM state (trace=%d blooms=%d)" % [int(chunk.get_preview_state().get("trace_section", -1)), int(chunk.get_preview_state().get("bloom_count", 0))])
+	instance.queue_free()
+	await get_tree().process_frame
 
 ## The branch puzzles: each offshoot's cache is GATED by an archetype-themed switch (decoy/valve/lever), with
 ## forage/narrative branches left OPEN as breathers. Proves the gate is real: a gated cache is LOCKED until
