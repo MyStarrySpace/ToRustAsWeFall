@@ -694,9 +694,11 @@ func _set_pip_strip_value(pip_info: Dictionary, value: float) -> void:
 
 # --- Control Buttons ---
 
-func show_run_toggle(initial_running := false, keybind := "Z") -> void:
+func show_run_toggle(initial_running := false, keybind := "") -> void:
 	_run_active = initial_running
-	_run_keybind = str(keybind)
+	# Derive the shown key from the live "run" input map so the label is never a stale literal — rebinding
+	# the action (it lives on its OWN key, NOT an ability key) re-labels every scene automatically.
+	_run_keybind = str(keybind) if str(keybind) != "" else InputHints.label_for_action("run", "R")
 	_run_button = _make_control_button(_run_button_label(), Color(0.3, 0.5, 0.7))
 	_run_button.pressed.connect(_on_run_pressed)
 	_control_section.add_child(_run_button)

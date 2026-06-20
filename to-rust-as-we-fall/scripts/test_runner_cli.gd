@@ -4767,7 +4767,7 @@ func _aster_realinput_beats(instance: Node) -> Dictionary:
 func _peris2_realinput_beats(instance: Node) -> Dictionary:
 	var beats := {}
 	beats["protect_prompt"] = func(): _press_hud_action_key(instance, KEY_X)
-	beats["run_prompt"] = func(): _press_hud_action_key(instance, KEY_Z)
+	beats["run_prompt"] = func(): _press_hud_action_key(instance, KEY_R)
 	# Sequence puts the player in select mode here; a click reports the target.
 	beats["click_monos"] = func(): _synthetic_player_click(instance, instance.MONOS_POS)
 	beats["confirm_protect"] = func(): _press_hud_action_key(instance, KEY_SPACE)
@@ -7763,8 +7763,8 @@ func _assert_fragment_preview_uses_shared_gui(instance: Node, label: String) -> 
 		"%s GameHUD reports the shared HUD contract" % label)
 	_assert_equals(str(hud_contract.get("script", "")), GAME_HUD_SCRIPT_PATH,
 		"%s GameHUD contract points at the shared HUD script" % label)
-	_assert_equals(str(hud_contract.get("run_keybind", "")), "",
-		"%s preview HUD leaves Z free for main abilities" % label)
+	_assert_equals(str(hud_contract.get("run_keybind", "")), "R",
+		"%s preview HUD shows run on its own key (R), leaving Z free for main abilities" % label)
 	_assert_equals(str(hud_contract.get("routing_keybind", "")), "Tab",
 		"%s preview HUD keeps the shared route key" % label)
 	_assert_equals(str(hud_contract.get("pause_keybind", "")), "Space",

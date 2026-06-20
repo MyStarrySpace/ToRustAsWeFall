@@ -102,6 +102,7 @@ var _plate_held := []              # per section — all the section's plates ar
 var _sluice_blocked := []          # per section — the sluice gate cells are currently walled off
 var _washed := {}                  # legacy stranding set — kept empty now (checkpoint-wash doesn't strand)
 var _sweep_count := 0              # how many times the party was swept back this run (a "rough run" read)
+var _run_hint_shown := false       # one-shot: after enough washes, a character grumbles that you must RUN the surges
 var _scheduled := false
 var _flow_strips: Array = []
 # Flood WATER layer — the in-game flood visual. Built WARPED onto the helix under a Node3D root so it SURVIVES
@@ -777,6 +778,10 @@ func _wash_character(char_id: String) -> void:
 	_set_character_position(char_id, START_POS)
 	_sweep_count += 1
 	_say("// WASHED // the current carries you down to the start")
+	# After a few washes the lesson lands diegetically: you can't walk the surges, you have to RUN them.
+	if _sweep_count >= 3 and not _run_hint_shown:
+		_run_hint_shown = true
+		_say("Can't just calmly stroll past these channels. Water comes too often—we run it.", "ASTER")
 
 # --- Interactions ---
 
@@ -1101,6 +1106,7 @@ func reset_preview_state() -> void:
 		_override_locked.append(false); _flooding.append(false); _plate_held.append(false); _sluice_blocked.append(false); _flood_counts.append(0)
 	_washed.clear()
 	_sweep_count = 0
+	_run_hint_shown = false
 	_sloperope_deployed = false
 	# Ability state is derived per-run — clear it so a reset/replay doesn't leak a stale TRACE read or blooms.
 	_trace_section = -1

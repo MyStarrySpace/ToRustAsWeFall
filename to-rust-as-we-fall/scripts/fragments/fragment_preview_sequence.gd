@@ -547,11 +547,12 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			KEY_C:
 				_cycle_character()
 			KEY_Z:
-				if not _activate_keybound_preview_ability(KEY_Z):
-					_toggle_run()
+				# Z belongs to the main abilities (aster_focus / endo_patch). Run lives on its OWN key
+				# (the "run" action, R) so locomotion never fights an ability — see _apply_active_run_state.
+				_activate_keybound_preview_ability(KEY_Z)
 			KEY_SPACE:
 				_toggle_pause()
-			KEY_R:
+			KEY_F5:
 				get_tree().reload_current_scene()
 			KEY_F1:
 				_toggle_overlay("aster")
@@ -2162,16 +2163,22 @@ func _ensure_valid_selection() -> void:
 	_apply_selection_state(sanitized, preferred_active)
 
 func _apply_active_run_state() -> void:
-	if _active_char_id == "" or not _characters.has(_active_char_id):
-		return
-	if get_preview_character_stat(_active_char_id, "sta") <= 0.0:
+	# Run is a PARTY intent: every SELECTED member that can run does, so a group move (the channels gauntlet)
+	# crosses a surge TOGETHER instead of stranding everyone but the leader at a walk. Members out of stamina
+	# fall back to a walk individually. The toggle reads "off" if the leader is spent (that drives the UI).
+	if _active_char_id != "" and _characters.has(_active_char_id) \
+			and get_preview_character_stat(_active_char_id, "sta") <= 0.0:
 		_run_active = false
-
-	var active_node: CharacterBody3D = _characters[_active_char_id]
-	active_node.set_running(_run_active)
-	if _game_state != null and _game_state.characters.has(_active_char_id):
-		var target_speed: float = active_node.run_speed if _run_active else float(CHARACTER_SPEEDS[_active_char_id])
-		_game_state.change_move_speed(_active_char_id, target_speed)
+	var ids: Array = _selected_char_ids.duplicate() if not _selected_char_ids.is_empty() else [_active_char_id]
+	for cid in ids:
+		if cid == "" or not _characters.has(cid):
+			continue
+		var node: CharacterBody3D = _characters[cid]
+		var can_run: bool = _run_active and get_preview_character_stat(cid, "sta") > 0.0
+		node.set_running(can_run)
+		if _game_state != null and _game_state.characters.has(cid):
+			var spd: float = node.run_speed if can_run else float(CHARACTER_SPEEDS.get(cid, node.move_speed))
+			_game_state.change_move_speed(cid, spd)
 	if _hud != null:
 		_hud.set_run_mode(_run_active)
 
