@@ -284,6 +284,15 @@ func _ready() -> void:
 			"--test-wash-relay-abilities":
 				ran_test = true
 				await _test_wash_relay_abilities()
+			"--test-wash-relay-checkpoint":
+				ran_test = true
+				await _test_wash_relay_checkpoint()
+			"--test-wash-relay-trace-cadence":
+				ran_test = true
+				await _test_wash_relay_trace_cadence()
+			"--test-wash-relay-playthrough":
+				ran_test = true
+				await _test_wash_relay_playthrough()
 			"--test-wash-relay-no-hang":
 				ran_test = true
 				await _test_wash_relay_no_hang()
@@ -910,6 +919,9 @@ func _run_all_tests() -> void:
 	await _test_wash_relay_branches()
 	await _test_wash_relay_branch_puzzles()
 	await _test_wash_relay_abilities()
+	await _test_wash_relay_checkpoint()
+	await _test_wash_relay_trace_cadence()
+	await _test_wash_relay_playthrough()
 	await _test_wash_relay_no_hang()
 	await _test_wash_relay_menu_load()
 	await _test_wash_relay_hover_sweep()
@@ -10778,6 +10790,119 @@ func _test_wash_relay_abilities() -> void:
 	_assert_true(int(chunk.get_preview_state().get("trace_section", -1)) == -1
 			and int(chunk.get_preview_state().get("bloom_count", 0)) == 0,
 		"reset clears TRACE + BLOOM state (trace=%d blooms=%d)" % [int(chunk.get_preview_state().get("trace_section", -1)), int(chunk.get_preview_state().get("bloom_count", 0))])
+	instance.queue_free()
+	await get_tree().process_frame
+
+## Checkpoint-wash (tense-but-fair): a wash sweeps the member to the gap BEFORE the section (lose ONE section,
+## not the whole run) and leaves them MOBILE — never stranded, never reset to the start. Checks several
+## sections so the per-section checkpoint math is right end to end.
+func _test_wash_relay_checkpoint() -> void:
+	_test_name = "Wash Relay Checkpoint"
+	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	if instance == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
+	if chunk == null:
+		_assert_true(false, "chunk present"); instance.queue_free(); await get_tree().process_frame; return
+	# (section index, an x inside its footprint): jet[22,27], patrol[46,53], basin[64,71].
+	var cases := [{"sec": 2, "x": 24.0}, {"sec": 5, "x": 49.0}, {"sec": 7, "x": 67.0}]
+	for c in cases:
+		chunk.call("_set_character_position", "endo", Vector3(float(c["x"]), 0.5, 0.0))
+		var before := int(chunk.get_preview_state().get("sweep_count", 0))
+		chunk.call("_wash_section", int(c["sec"]))   # force the flood on that section
+		await get_tree().process_frame
+		var ax: float = chunk.call("_get_character_position", "endo").x
+		_assert_equals(int(chunk.get_preview_state().get("sweep_count", 0)), before + 1,
+			"a wash at section %d counts one sweep" % int(c["sec"]))
+		_assert_true(ax < float(c["x"]) and ax > 4.0,
+			"section %d wash lands at the PREVIOUS gap (x=%.1f < %.1f, NOT the start)" % [int(c["sec"]), ax, float(c["x"])])
+	# A swept member is mobile, never stranded — the legacy washed set stays empty.
+	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0,
+		"a swept member is mobile (not stranded) — washed_count stays 0")
+	instance.queue_free()
+	await get_tree().process_frame
+
+## Aster's TRACE reads the cadence of the section he stands in — the safe-window note names that section's
+## real beat (its period), proving the read is the actual scheduled cadence, not a guess.
+func _test_wash_relay_trace_cadence() -> void:
+	_test_name = "Wash Relay TRACE Cadence"
+	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	if instance == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
+	if chunk == null:
+		_assert_true(false, "chunk present"); instance.queue_free(); await get_tree().process_frame; return
+	# current is section 1 ([14,19]) with the fast 4.0s beat — TRACE there names that beat.
+	chunk.call("_set_character_position", "aster", Vector3(16.0, 0.5, 0.0))
+	var tr: Dictionary = chunk.handle_preview_ability("aster_focus")
+	_assert_equals(int(chunk.get_preview_state().get("trace_section", -1)), 1, "TRACE reads the section Aster stands in (current=1)")
+	_assert_true(str(tr.get("note", "")).find("4.0") != -1,
+		"TRACE names the current section's real 4.0s beat (got '%s')" % str(tr.get("note", "")))
+	# From open water before all sections, TRACE reads the NEXT section ahead (flush=0).
+	chunk.call("_set_character_position", "aster", Vector3(0.0, 0.5, 0.0))
+	chunk.handle_preview_ability("aster_focus")
+	_assert_equals(int(chunk.get_preview_state().get("trace_section", -1)), 0, "TRACE from open water reads the next section ahead (flush=0)")
+	instance.queue_free()
+	await get_tree().process_frame
+
+## Re-command any stopped member (a wash stops them) toward target_x until all arrive or it times out. Drives
+## the data layer the way real play does — moves + the live flood cadence + checkpoint-wash retries.
+func _wash_shepherd(instance: Node, chunk: Node, gs, ids: Array, target_x: float, max_secs: float) -> bool:
+	var t := 0.0
+	while t < max_secs:
+		var all_there := true
+		for cid in ids:
+			var x: float = chunk.call("_get_character_position", cid).x
+			if x < target_x - 0.6:
+				all_there = false
+				if not gs.is_moving(cid):
+					gs.command_move_to_pos(cid, Vector3(target_x, 0.5, 0.0))
+		if all_there:
+			return true
+		instance.headless_advance(0.2)
+		await get_tree().process_frame
+		t += 0.2
+	return false
+
+## REAL-PLAY playthrough of the FRONT-HALF wash gauntlet (the core mechanics, no guards): override the override
+## sections, time the current crossing, solve the PLATE (one holds, two cross, then the holder crosses), and
+## clear the SLUICE real-blocker — all under the live flood cadence + the checkpoint-wash. Proves the wash
+## gauntlet is actually BEATABLE through the data layer, not just structurally present. (The guarded back half
+## is exercised by the enemy/detection suites; a full guarded completion is a follow-up.)
+func _test_wash_relay_playthrough() -> void:
+	_test_name = "Wash Relay Playthrough"
+	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	if instance == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
+	var gs = instance.get("_game_state")
+	if chunk == null or gs == null:
+		_assert_true(false, "chunk + game state present"); instance.queue_free(); await get_tree().process_frame; return
+	instance.headless_advance(0.1)   # phase -> active, hazards scheduled
+	# Override the override sections (a runner presses each console).
+	var secs: Array = chunk.get_preview_state().get("sections", [])
+	for i in range(secs.size()):
+		if str((secs[i] as Dictionary).get("disable", "")) == "override":
+			chunk.call("_on_override", i)
+	# Cross to the plate gap (current is a timed crossing; the checkpoint-wash makes a mistimed cross retry).
+	var ok1: bool = await _wash_shepherd(instance, chunk, gs, ["aster", "peris", "endo"], 28.0, 45.0)
+	_assert_true(ok1, "the party reaches the plate gap (override + timed crossings work)")
+	# Solve the plate: endo holds the pad so aster+peris cross the bridge.
+	chunk.call("_set_character_position", "endo", Vector3(28.8, 0.5, 0.0))
+	instance.headless_advance(0.3)
+	var ok2: bool = await _wash_shepherd(instance, chunk, gs, ["aster", "peris"], 37.0, 45.0)
+	_assert_true(ok2, "with endo holding the plate, the others cross the bridge")
+	# The holder crosses last (no plate now — times the solo cross via checkpoint-retry).
+	var ok3: bool = await _wash_shepherd(instance, chunk, gs, ["endo"], 37.0, 45.0)
+	_assert_true(ok3, "the plate-holder crosses last")
+	# Clear the SLUICE (a real blocker while closed) into the back half.
+	var ok4: bool = await _wash_shepherd(instance, chunk, gs, ["aster", "peris", "endo"], 43.0, 55.0)
+	_assert_true(ok4, "the party clears the sluice real-blocker to the back half")
+	var all_through := true
+	for cid in ["aster", "peris", "endo"]:
+		if chunk.call("_get_character_position", cid).x < 42.0:
+			all_through = false
+	_assert_true(all_through, "all three cleared the front-half wash gauntlet through real play")
 	instance.queue_free()
 	await get_tree().process_frame
 
