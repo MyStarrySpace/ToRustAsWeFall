@@ -17,6 +17,7 @@ var search_root: Node             # where character nodes live (defaults to the 
 var default_color := Color(1.0, 0.7, 0.3)
 
 var _renderers := {}              # char_id -> PathRenderer
+var _dest_markers := {}           # char_id -> MeshInstance3D (the destination ring)
 var _nodes := {}                  # char_id -> Node3D (cached anchor; re-found if freed)
 var _scan_after := {}             # char_id -> frame number gating the next full-tree rescan
 
@@ -44,6 +45,61 @@ func _process(_delta: float) -> void:
 		if pr.game_state != game_state or pr.char_id != char_id or pr.anchor != node:
 			pr.setup(game_state, char_id, _color_for(node), node)
 		pr.set_running(game_state.is_running(char_id))
+		_update_dest_marker(char_id, node)
+
+## A per-character DESTINATION ring at the end of its current move — the marker the player used to carry
+## alone, now drawn for EVERY character in that character's colour. It reads the DATA-LAYER move target
+## (get_destination), so a party/escort member moved by a group command marks its destination too, not just
+## whoever was clicked. Cosmetic: reads the move target + scheduler-driven render position, writes nothing.
+func _update_dest_marker(char_id: String, node: Node3D) -> void:
+	var marker: MeshInstance3D = _dest_markers.get(char_id)
+	var dest_data: Vector3 = game_state.get_destination(char_id)
+	if not dest_data.is_finite():
+		if marker != null:
+			marker.visible = false
+		return
+	if marker == null:
+		marker = _make_dest_marker(_color_for(node))
+		add_child(marker)
+		_dest_markers[char_id] = marker
+	# Re-tint if the anchor's colour resolved late (lazy node find).
+	(marker.material_override as StandardMaterial3D).albedo_color = Color(_color_for(node), 0.0)
+	var dest_world: Vector3 = dest_data if game_state.coord_map == null else game_state.coord_map.to_world(dest_data)
+	if not dest_world.is_finite():
+		marker.visible = false
+		return
+	marker.visible = true
+	marker.global_position = Vector3(dest_world.x, dest_world.y + 0.06, dest_world.z)
+	var pulse: float = 0.3 + sin(Time.get_ticks_msec() * 0.004) * 0.15  # @rendering_only — destination ring pulse
+	(marker.material_override as StandardMaterial3D).albedo_color.a = pulse
+	# On flat scenes shrink the ring as the character closes on the target; the helix dest sits on a curved
+	# deck so leave it full-size there.
+	if game_state.coord_map == null:
+		var cur: Vector3 = game_state.get_render_position(char_id)
+		var dist: float = Vector2(cur.x - dest_world.x, cur.z - dest_world.z).length()
+		var s: float = clampf(dist / 3.0, 0.3, 1.2)
+		marker.scale = Vector3(s, s, s)
+	else:
+		marker.scale = Vector3.ONE
+
+func _make_dest_marker(col: Color) -> MeshInstance3D:
+	var m := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.2
+	torus.outer_radius = 0.3
+	torus.rings = 16
+	torus.ring_segments = 8
+	m.mesh = torus
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(col, 0.0)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.material_override = mat
+	m.rotation.x = -PI / 2.0
+	m.top_level = true   # authored in world space — we set the global position to the move target
+	m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF  # a UI overlay, not a caster
+	m.layers = 2   # NO_GRID_DECAL_LAYER (player.gd): the hover grid skips the ring too
+	return m
 
 func _color_for(node: Node) -> Color:
 	if node != null and "color" in node:

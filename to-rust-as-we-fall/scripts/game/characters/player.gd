@@ -41,8 +41,6 @@ var _ability_marker_mat: StandardMaterial3D
 @onready var _mesh: MeshInstance3D = $Mesh
 @onready var _label: Label3D = $Label3D
 
-var _dest_marker: MeshInstance3D
-var _dest_marker_mat: StandardMaterial3D
 
 # Hover grid: hovering the floor in move mode reveals a grid patch with the pointed-at cell lit, so
 # you can see exactly where a click will move you. Cosmetic; follows the cursor, snapped to cells.
@@ -99,23 +97,6 @@ func _ready() -> void:
 	mat.emission_energy_multiplier = 0.3
 	_mesh.material_override = mat
 	_mesh.layers = NO_GRID_DECAL_LAYER   # the hover-grid Decal skips this layer, so the grid passes through the body
-
-	_dest_marker = MeshInstance3D.new()
-	var torus := TorusMesh.new()
-	torus.inner_radius = 0.2
-	torus.outer_radius = 0.3
-	torus.rings = 16
-	torus.ring_segments = 8
-	_dest_marker.mesh = torus
-	_dest_marker_mat = StandardMaterial3D.new()
-	_dest_marker_mat.albedo_color = Color(color, 0.0)
-	_dest_marker_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_dest_marker_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_dest_marker.material_override = _dest_marker_mat
-	_dest_marker.rotation.x = -PI / 2.0
-	_dest_marker.top_level = true
-	_dest_marker.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF  # a UI overlay, not a caster
-	add_child(_dest_marker)
 
 	_build_hover_grid()
 
@@ -679,11 +660,7 @@ func _set_click_target(world_pos: Vector3, cancel_interaction := true) -> bool:
 		var dest_level := grid_world.level_for_y(world_pos.y)
 		if not game_state.command_move_cross_level(char_id, dest_cell, dest_level):
 			return false
-		var dest_snap := grid_world.grid_to_world(dest_cell, dest_level)
-		_dest_marker.global_position = Vector3(dest_snap.x, dest_snap.y + 0.05, dest_snap.z)
-		_moving = true
-		_dest_marker_mat.albedo_color.a = 0.6
-		_dest_marker.scale = Vector3(1.2, 1.2, 1.2)
+		_moving = true   # the destination ring is drawn by the scene PathRenderManager (every character)
 		return true
 	# Otherwise reject a free walk across a large vertical gap (gridless stacked floors): the
 	# character would just lerp through the air to it.
@@ -698,14 +675,9 @@ func _set_click_target(world_pos: Vector3, cancel_interaction := true) -> bool:
 		if grid_world:
 			var group_cell := grid_world.world_to_grid(world_pos)
 			game_state.party_move_to_cell(group_cell)
-			var group_snap := grid_world.grid_to_world(group_cell)
-			_dest_marker.global_position = Vector3(group_snap.x, 0.05, group_snap.z)
 		else:
 			game_state.party_move_to_pos(world_pos)
-			_dest_marker.global_position = Vector3(world_pos.x, world_pos.y + 0.05, world_pos.z)
 		_moving = true
-		_dest_marker_mat.albedo_color.a = 0.6
-		_dest_marker.scale = Vector3(1.2, 1.2, 1.2)
 		return true
 	if game_state and char_id != "":
 		if grid_world:
@@ -713,36 +685,24 @@ func _set_click_target(world_pos: Vector3, cancel_interaction := true) -> bool:
 			target_cell = game_state.grid.nearest_walkable_cell(target_cell, game_state.get_character_level(char_id), 3)
 			if not game_state.command_move_to_cell(char_id, target_cell):
 				return false
-			var snapped_pos := grid_world.grid_to_world(target_cell)
-			_dest_marker.global_position = Vector3(snapped_pos.x, 0.05, snapped_pos.z)
 		else:
 			if not game_state.command_move_to_pos(char_id, world_pos):
 				return false
-			_dest_marker.global_position = Vector3(world_pos.x, world_pos.y + 0.05, world_pos.z)
 		_moving = true
-		_dest_marker_mat.albedo_color.a = 0.6
-		_dest_marker.scale = Vector3(1.2, 1.2, 1.2)
 		return true
 
 	if grid_world:
 		var target_cell := grid_world.world_to_grid(world_pos)
 		var current_cell := grid_world.world_to_grid(global_position)
-		var snapped_pos := grid_world.grid_to_world(target_cell)
 		var path := grid_world.find_path(current_cell, target_cell)
 		if path.is_empty():
 			return false
 		walk_path(path)
-		_dest_marker.global_position = Vector3(snapped_pos.x, 0.05, snapped_pos.z)
-		_dest_marker_mat.albedo_color.a = 0.6
-		_dest_marker.scale = Vector3(1.2, 1.2, 1.2)
 	else:
 		_target_pos = world_pos
 		_moving = true
 		_auto_path.clear()
 		_auto_path_index = 0
-		_dest_marker.global_position = Vector3(world_pos.x, world_pos.y + 0.05, world_pos.z)
-		_dest_marker_mat.albedo_color.a = 0.6
-		_dest_marker.scale = Vector3(1.2, 1.2, 1.2)
 	return true
 
 func move_to_world_position(world_pos: Vector3) -> bool:
@@ -832,7 +792,6 @@ func _physics_process(delta: float) -> void:
 			# Idle on a warped scene: keep the node ON the helix. Without this, a party member that
 			# never moves (or has arrived) sits at its flat data position — below the curved deck.
 			global_position = game_state.get_render_position(char_id)
-		_update_dest_marker(delta)
 		_update_path_line()
 		return
 
@@ -847,14 +806,12 @@ func _physics_process(delta: float) -> void:
 				_auto_path_index = 0
 				_moving = false
 				auto_path_complete.emit()
-				_update_dest_marker(delta)
 				_update_path_line()
 				return
 		else:
 			velocity = dir.normalized() * move_speed
 			move_and_slide()
 		_update_path_line()
-		_update_dest_marker(delta)
 		return
 
 	if _moving:
@@ -869,7 +826,6 @@ func _physics_process(delta: float) -> void:
 			velocity = dir.normalized() * move_speed
 			move_and_slide()
 
-	_update_dest_marker(delta)
 	_update_path_line()
 
 func _on_gs_arrived(id: String) -> void:
@@ -877,41 +833,6 @@ func _on_gs_arrived(id: String) -> void:
 		_moving = false
 		arrived.emit()
 		auto_path_complete.emit()
-
-func _update_dest_marker(delta: float) -> void:
-	# Warped scene (helix): place the ring at the move target mapped onto the model surface.
-	if game_state != null and game_state.coord_map != null:
-		if _dest_marker == null:
-			return
-		if _moving and char_id != "" and game_state.characters.has(char_id):
-			var mv = game_state.characters[char_id].get("movement")
-			if mv != null and mv.path.size() > 0:
-				var w: Vector3 = game_state.coord_map.to_world(mv.path[mv.path.size() - 1])
-				_dest_marker.global_position = Vector3(w.x, w.y + 0.08, w.z)
-				_dest_marker.visible = true
-				_dest_marker_mat.albedo_color.a = 0.3 + sin(Time.get_ticks_msec() * 0.004) * 0.15  # @rendering_only — destination marker pulse (helix)
-				return
-		_dest_marker.visible = false
-		return
-	if _moving:
-		# The marker position derives from the DATA LAYER's actual movement destination every
-		# frame — click-time assignment alone left command/party/delegated moves with the marker
-		# stranded at the world origin (a ring floating in the void).
-		if game_state != null and char_id != "" and game_state.characters.has(char_id):
-			var mv = game_state.characters[char_id].get("movement")
-			if mv != null and mv.path.size() > 0:
-				var dest: Vector3 = mv.path[mv.path.size() - 1]
-				_dest_marker.global_position = Vector3(dest.x, dest.y + 0.05, dest.z)
-		var pulse := 0.3 + sin(Time.get_ticks_msec() * 0.004) * 0.15  # @rendering_only — destination marker pulse
-		_dest_marker_mat.albedo_color.a = pulse
-		var dist := Vector2(
-			global_position.x - _dest_marker.global_position.x,
-			global_position.z - _dest_marker.global_position.z
-		).length()
-		var s := clampf(dist / 3.0, 0.3, 1.2)
-		_dest_marker.scale = Vector3(s, s, s)
-	else:
-		_dest_marker_mat.albedo_color.a = maxf(0, _dest_marker_mat.albedo_color.a - delta * 2.0)
 
 func _update_path_line() -> void:
 	var has_queued_ability := game_state and char_id != "" and game_state.has_queued_ability(char_id)
@@ -970,8 +891,3 @@ func set_running(running: bool) -> void:
 		else:
 			_mesh.rotation.x = 0.0
 			_mesh.scale = Vector3.ONE
-	if _dest_marker_mat:
-		if running:
-			_dest_marker_mat.albedo_color = Color(1.0, 0.6, 0.2, _dest_marker_mat.albedo_color.a)
-		else:
-			_dest_marker_mat.albedo_color = Color(color.r, color.g, color.b, _dest_marker_mat.albedo_color.a)

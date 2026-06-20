@@ -543,6 +543,20 @@ func is_moving(id: String) -> bool:
 		return false
 	return characters[id].movement != null
 
+## The final waypoint of the character's current (or queued) move, in DATA space; Vector3.INF when the
+## character isn't moving. The path/marker renderers read this to mark where a move ENDS for ANY character
+## (not just whoever was clicked) — derived state, written nowhere.
+func get_destination(id: String) -> Vector3:
+	if not characters.has(id):
+		return Vector3.INF
+	var mv = characters[id].movement
+	if mv == null:
+		return Vector3.INF
+	var path: Array = mv.get("path", [])
+	if path.is_empty():
+		return Vector3.INF
+	return path[path.size() - 1]
+
 # --- Stats ---
 
 ## Read a stat (hp/stamina/atp/...). Returns 0.0 if unknown character or stat.

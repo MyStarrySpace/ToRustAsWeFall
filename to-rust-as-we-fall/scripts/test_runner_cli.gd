@@ -8998,12 +8998,28 @@ func _test_path_render_manager() -> void:
 	_assert_true(pr_b != null and pr_b._remaining_points().size() >= 2,
 		"A second (party / NPC / escort) character's path also draws — the elevator-party gap")
 
+	# Per-character DESTINATION ring: the manager marks where EACH moving character's move ENDS (data-driven
+	# off get_destination), not just whoever was clicked — so a party/escort member's destination shows too.
+	_assert_true(mgr._dest_markers.has("a") and mgr._dest_markers.has("b"),
+		"Manager draws a destination ring for EVERY moving character (party/escort, not just the player)")
+	var dm_a: MeshInstance3D = mgr._dest_markers.get("a")
+	_assert_true(dm_a != null and dm_a.visible, "A moving character's destination ring is visible")
+	var want_a: Vector3 = gs.get_destination("a")
+	_assert_true(Vector2(dm_a.global_position.x - want_a.x, dm_a.global_position.z - want_a.z).length() < 0.2,
+		"The ring sits at the character's actual move destination (got %s, want %s)" % [dm_a.global_position, want_a])
+
 	# Queued while paused: a move issued while the scheduler is paused still shows its full route.
 	sched.pause()
 	gs.command_move_to_pos("a", Vector3(0.0, 0.0, -4.0))
 	mgr._process(0.0)
 	_assert_true(gs.is_moving("a") and pr_a._remaining_points().size() >= 2,
 		"A queued move (issued while paused) still shows its path")
+
+	# The ring hides once the character is no longer moving (no stale ring left floating at an old target).
+	sched.resume()
+	gs.command_stop("a")
+	mgr._process(0.0)
+	_assert_true(not dm_a.visible, "The destination ring hides when the character stops moving")
 
 	root.queue_free()
 	await get_tree().process_frame
