@@ -104,6 +104,14 @@ var _washed := {}                  # legacy stranding set — kept empty now (ch
 var _sweep_count := 0              # how many times the party was swept back this run (a "rough run" read)
 var _scheduled := false
 var _flow_strips: Array = []
+# Flood WATER layer — the in-game flood visual. Built WARPED onto the helix under a Node3D root so it SURVIVES
+# hide_flat_graybox (which only hides the chunk's direct-child graybox meshes), unlike the flat flow strips.
+# Shown per section while it floods, so the wash always has a visible cause (the surging water you got caught in).
+var _water_root: Node3D
+var _section_water: Array = []      # per section: Array[MeshInstance3D] of warped flood-water segments
+var _sluice_gate := {}             # sluice section index -> warped gate mesh (visible while the gate is closed)
+const WATER_SEG := 2.0             # flood-water segment length along the arc (segmented to follow the curve)
+const WATER_THICK := 0.55
 var _enemies: Array = []
 var _lure_until: Array = []        # per lure — scheduler tick the distraction ends (<=0 = inactive)
 var _lure_meshes: Array = []
@@ -210,6 +218,46 @@ func _build_chunk() -> void:
 	_wdbg("connect-backs built")
 	_build_branches()
 	_wdbg("branches built")
+	_build_water_layer()
+	_wdbg("water built")
+
+# A box pre-warped onto the helix under an arbitrary parent (generalises _add_warped_box, which targets the
+# branch root). y_off lifts it along the deck's local up. Used for the flood-water layer + sluice gates.
+func _warped_box(parent: Node3D, s: float, lane: float, size: Vector3, color: Color, emission := Color.BLACK, energy := 0.0, y_off := 0.0) -> MeshInstance3D:
+	var mesh := MeshInstance3D.new()
+	var box := BoxMesh.new(); box.size = size; mesh.mesh = box
+	mesh.material_override = _make_material(color, emission, energy)
+	var xf := _branch_warp_xform(s, lane)
+	xf.origin += xf.basis.y * y_off
+	mesh.transform = xf
+	parent.add_child(mesh)
+	return mesh
+
+# Build the per-section flood-water (segmented along the arc so it follows the helix) + the sluice gates,
+# all WARPED and under _water_root (a Node3D -> survives hide_flat_graybox). Hidden until a section floods.
+func _build_water_layer() -> void:
+	_water_root = Node3D.new(); _water_root.name = "FloodWater"; add_child(_water_root)
+	_section_water = []
+	_sluice_gate = {}
+	for i in range(SECTIONS.size()):
+		var s: Dictionary = SECTIONS[i]
+		var x0: float = s["x0"]; var x1: float = s["x1"]
+		var segs: Array = []
+		var n := maxi(2, int(ceil((x1 - x0) / WATER_SEG)))
+		for k in range(n):
+			var sc := lerpf(x0, x1, (k + 0.5) / float(n))
+			var seg := _warped_box(_water_root, sc, 0.0,
+				Vector3(FLOOR_Z_HALF * 1.8, WATER_THICK, (x1 - x0) / float(n) * 1.12),
+				Color(0.08, 0.3, 0.55), Color(0.22, 0.5, 1.0), 1.4, WATER_THICK * 0.45)
+			seg.visible = false
+			segs.append(seg)
+		_section_water.append(segs)
+		if str(s["type"]) == "sluice":
+			# the gate stands across the threshold while closed (a visible, real blocker — not invisible)
+			var gate := _warped_box(_water_root, (x0 + x1) * 0.5, 0.0,
+				Vector3(FLOOR_Z_HALF * 1.8, 2.4, 0.3), Color(0.3, 0.12, 0.1), Color(1.0, 0.3, 0.18), 1.0, 1.2)
+			gate.visible = false
+			_sluice_gate[i] = gate
 
 # The connect-back points at the chunk end (plus the start climb point the sloperope feeds).
 func _build_connect_backs() -> void:
@@ -854,6 +902,17 @@ func _update() -> void:
 			_trace_section = -1
 		elif not _flooding[_trace_section] and not _section_disabled(_trace_section):
 			_set_strip(_trace_section, 1.3)   # the pre-surge read glow
+	# Flood WATER + sluice gate visibility — the in-game flood feedback. Driven by the scheduler-set _flooding /
+	# _sluice_blocked (so it's replay-safe + fast-forward invariant); the per-frame work is just the toggle, so
+	# the surging water you got washed by is always VISIBLE (and the sluice gate reads open vs closed).
+	for i in range(_section_water.size()):
+		var flooding: bool = i < _flooding.size() and _flooding[i]
+		for seg in _section_water[i]:
+			if is_instance_valid(seg):
+				seg.visible = flooding
+	for gi in _sluice_gate.keys():
+		if is_instance_valid(_sluice_gate[gi]):
+			_sluice_gate[gi].visible = gi < _sluice_blocked.size() and bool(_sluice_blocked[gi])
 	if _phase == "active":
 		var all_through := true
 		for char_id in PARTY_IDS:
@@ -1047,6 +1106,13 @@ func reset_preview_state() -> void:
 	# Ability state is derived per-run — clear it so a reset/replay doesn't leak a stale TRACE read or blooms.
 	_trace_section = -1
 	_trace_until = 0.0
+	for segs in _section_water:
+		for seg in segs:
+			if is_instance_valid(seg):
+				seg.visible = false
+	for gi in _sluice_gate.keys():
+		if is_instance_valid(_sluice_gate[gi]):
+			_sluice_gate[gi].visible = false
 	_blooms.clear()
 	if is_instance_valid(_bloom_root):
 		_bloom_root.queue_free()
@@ -1144,4 +1210,12 @@ func get_preview_state() -> Dictionary:
 		"branch_guard_count": branch_guard_count,
 		"trace_section": _trace_section, "bloom_count": _blooms.size(),
 		"sweep_count": _sweep_count,
+		"water_shown": _water_shown_state(),
 	}
+
+# Per-section: is the flood water currently visible? (Drives the flood-visual test + any HUD read.)
+func _water_shown_state() -> Array:
+	var out: Array = []
+	for segs in _section_water:
+		out.append(not segs.is_empty() and is_instance_valid(segs[0]) and segs[0].visible)
+	return out

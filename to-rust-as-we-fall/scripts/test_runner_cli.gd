@@ -287,6 +287,9 @@ func _ready() -> void:
 			"--test-wash-relay-checkpoint":
 				ran_test = true
 				await _test_wash_relay_checkpoint()
+			"--test-wash-relay-flood-visual":
+				ran_test = true
+				await _test_wash_relay_flood_visual()
 			"--test-wash-relay-trace-cadence":
 				ran_test = true
 				await _test_wash_relay_trace_cadence()
@@ -920,6 +923,7 @@ func _run_all_tests() -> void:
 	await _test_wash_relay_branch_puzzles()
 	await _test_wash_relay_abilities()
 	await _test_wash_relay_checkpoint()
+	await _test_wash_relay_flood_visual()
 	await _test_wash_relay_trace_cadence()
 	await _test_wash_relay_playthrough()
 	await _test_wash_relay_no_hang()
@@ -10790,6 +10794,45 @@ func _test_wash_relay_abilities() -> void:
 	_assert_true(int(chunk.get_preview_state().get("trace_section", -1)) == -1
 			and int(chunk.get_preview_state().get("bloom_count", 0)) == 0,
 		"reset clears TRACE + BLOOM state (trace=%d blooms=%d)" % [int(chunk.get_preview_state().get("trace_section", -1)), int(chunk.get_preview_state().get("bloom_count", 0))])
+	instance.queue_free()
+	await get_tree().process_frame
+
+## Flood VISIBILITY: a section that floods must show WATER the player can see, and that visual must SURVIVE
+## hide_flat_graybox (the in-game state with the model loaded) — otherwise the wash has no visible cause and
+## feels random. Reproduces the bug: before the fix there is no flood-water layer, so water_shown is empty.
+func _test_wash_relay_flood_visual() -> void:
+	_test_name = "Wash Relay Flood Visual"
+	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	if instance == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
+	if chunk == null:
+		_assert_true(false, "chunk present"); instance.queue_free(); await get_tree().process_frame; return
+	# Simulate the in-game state: the channels model replaces the graybox. The flood water MUST survive this.
+	chunk.call("hide_flat_graybox")
+	await get_tree().process_frame
+	chunk.call("_update")   # phase -> active
+	var sc := int(chunk.get_preview_state().get("section_count", 0))
+	var w0: Array = chunk.get_preview_state().get("water_shown", [])
+	_assert_true(w0.size() == sc, "there is a flood-water visual per section (got %d of %d)" % [w0.size(), sc])
+	_assert_true(w0.count(true) == 0, "no water is shown before a flood")
+	# Flood the flush section -> its water shows (and is visible IN-GAME, after the graybox hide).
+	chunk.call("_flood_onset", 0)
+	chunk.call("_update")
+	await get_tree().process_frame
+	var w1: Array = chunk.get_preview_state().get("water_shown", [])
+	_assert_true(w1.size() > 0 and bool(w1[0]), "a flooding section shows its WATER (the wash now has a visible cause)")
+	# The water is WARPED onto the helix deck (radius ~11), not floating in the flat data frame.
+	var sw: Array = chunk.get("_section_water")
+	if sw.size() > 0 and (sw[0] as Array).size() > 0 and is_instance_valid(sw[0][0]):
+		var wp: Vector3 = (sw[0][0] as Node3D).global_position
+		_assert_true(Vector2(wp.x, wp.z).length() > 8.0,
+			"the flood water rides the helix deck (radius %.1f), not the flat frame" % Vector2(wp.x, wp.z).length())
+	# The flood ends -> the water drains/hides.
+	chunk.call("_set_flood_off", 0)
+	chunk.call("_update")
+	var w2: Array = chunk.get_preview_state().get("water_shown", [])
+	_assert_true(w2.size() > 0 and not bool(w2[0]), "the water hides when the flood ends")
 	instance.queue_free()
 	await get_tree().process_frame
 
