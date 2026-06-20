@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ie7lp10mj7wu"
-path="res://.godot/imported/channels_deck_metal.png-da64e2e15c7829c76ba773061702aba1.ctex"
+uid="uid://bt747jy8qgxpw"
+path="res://.godot/imported/channels_rust_iron_v3.png-4768581cfa62d125e03cc342888bcbfc.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "b273b45ded26e39947153bf0c86a038e"
+"md5": "f8e222638077fe3f3e639c08861102b5"
 }
 
 [deps]
 
-source_file="res://resources/models/channels/channels_deck_metal.png"
-dest_files=["res://.godot/imported/channels_deck_metal.png-da64e2e15c7829c76ba773061702aba1.ctex"]
+source_file="res://resources/models/channels/channels_rust_iron_v3.png"
+dest_files=["res://.godot/imported/channels_rust_iron_v3.png-4768581cfa62d125e03cc342888bcbfc.ctex"]
 
 [params]
 

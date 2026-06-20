@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dtg2mmpurmaoj"
-path="res://.godot/imported/channels_wall_panel.png-5dc1908be5d0b7124bdfa2252e72b042.ctex"
+uid="uid://4ukj8atgad86"
+path="res://.godot/imported/channels_grate_v0.png-2eb10834d3c1ef996e5d2cfea9cb0bac.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "3bc756e7ec8d4e0b65f8e31f824df69a"
+"md5": "b0dfffea34b11c684d18cb895b7df078"
 }
 
 [deps]
 
-source_file="res://resources/models/channels/channels_wall_panel.png"
-dest_files=["res://.godot/imported/channels_wall_panel.png-5dc1908be5d0b7124bdfa2252e72b042.ctex"]
+source_file="res://resources/models/channels/channels_grate_v0.png"
+dest_files=["res://.godot/imported/channels_grate_v0.png-2eb10834d3c1ef996e5d2cfea9cb0bac.ctex"]
 
 [params]
 

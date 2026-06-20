@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cy8ki0sisaycy"
-path="res://.godot/imported/channels_facility_metal.png-507a915d648c275bffa17ad93b36d176.ctex"
+uid="uid://ctymexha5tg6g"
+path="res://.godot/imported/channels_deck_metal_v0.png-32256a5687201f251b6ff0ad54807c57.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "efcf828efccd9ababc1c53e63d360c11"
+"md5": "b273b45ded26e39947153bf0c86a038e"
 }
 
 [deps]
 
-source_file="res://resources/models/channels/channels_facility_metal.png"
-dest_files=["res://.godot/imported/channels_facility_metal.png-507a915d648c275bffa17ad93b36d176.ctex"]
+source_file="res://resources/models/channels/channels_deck_metal_v0.png"
+dest_files=["res://.godot/imported/channels_deck_metal_v0.png-32256a5687201f251b6ff0ad54807c57.ctex"]
 
 [params]
 

@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b6a4ja5f4au8a"
-path="res://.godot/imported/channels_rock.png-1e9d71e3dd38d89a81e2c291b1dabead.ctex"
+uid="uid://ds2su7mmxqok4"
+path="res://.godot/imported/channels_facility_metal_v2.png-6078d5b136c597b7f3b832dac43b6be4.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "fe6db055317fb304267ce53cc5c43fcd"
+"md5": "7fa6f418faf6f076e51895344943dd1c"
 }
 
 [deps]
 
-source_file="res://resources/models/channels/channels_rock.png"
-dest_files=["res://.godot/imported/channels_rock.png-1e9d71e3dd38d89a81e2c291b1dabead.ctex"]
+source_file="res://resources/models/channels/channels_facility_metal_v2.png"
+dest_files=["res://.godot/imported/channels_facility_metal_v2.png-6078d5b136c597b7f3b832dac43b6be4.ctex"]
 
 [params]
 

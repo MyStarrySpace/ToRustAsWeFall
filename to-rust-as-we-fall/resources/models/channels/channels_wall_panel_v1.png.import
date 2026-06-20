@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dcich4afmewov"
-path="res://.godot/imported/channels_rust_iron.png-5b6804dac1a1cf170222f75e1a21582d.ctex"
+uid="uid://hn3vegyjfivp"
+path="res://.godot/imported/channels_wall_panel_v1.png-b88282c7bafe5544d3c4e26a7dac16e4.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "234420eee5334dcb45db7dfc732142c3"
+"md5": "3bc756e7ec8d4e0b65f8e31f824df69a"
 }
 
 [deps]
 
-source_file="res://resources/models/channels/channels_rust_iron.png"
-dest_files=["res://.godot/imported/channels_rust_iron.png-5b6804dac1a1cf170222f75e1a21582d.ctex"]
+source_file="res://resources/models/channels/channels_wall_panel_v1.png"
+dest_files=["res://.godot/imported/channels_wall_panel_v1.png-b88282c7bafe5544d3c4e26a7dac16e4.ctex"]
 
 [params]
 
