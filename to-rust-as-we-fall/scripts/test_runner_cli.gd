@@ -4765,7 +4765,15 @@ func _aster_realinput_beats(instance: Node) -> Dictionary:
 	# HOLD_ACTION drink machine: walk into range, proximity dwell fires.
 	beats["walk_to_drink"] = func(): _synthetic_ground_click(instance, Vector3(13.5, 0.0, 5.5))
 	# HOLD_ACTION hallway gate: unlocks on its own after EXPLORE_MIN_TIME; walk into range.
-	beats["explore_workspace"] = func(): _synthetic_ground_click(instance, Vector3(16.5, 0.0, 4.5))
+	# Aim the RIGHT-click move at the gate's real position (tracks the room layout, not a fixed coord)
+	# and deliver it straight to the player's _unhandled_input — parse_input_event doesn't propagate in
+	# the headless harness, so a ground-click never moved Aster and the leg stalled here.
+	beats["explore_workspace"] = func():
+		var gate = instance.get("_explore_hallway_gate")
+		var dest := Vector3(8.4, 0.0, 13.5)
+		if gate != null and is_instance_valid(gate):
+			dest = (gate as Node3D).global_position
+		_synthetic_player_move_click(instance, dest)
 	return beats
 
 func _peris2_realinput_beats(instance: Node) -> Dictionary:
