@@ -11548,34 +11548,37 @@ func _test_wash_relay() -> void:
 	if chunk == null or gs == null:
 		instance.queue_free(); await get_tree().process_frame
 		return
-	# park the party safe, then test the FLUSH section (index 0, override): aster on it during a flood
-	# is washed back to the start shelter. Place via the host path the wash reads.
+	# park the party safe, then test the FLUSH section (index 0, override): aster on it during a flood is
+	# SWEPT back (tense-but-fair: swept to the last gap, not stranded). Section 0's checkpoint is the start.
 	chunk.call("_set_character_position", "peris", Vector3(3.0, 0.5, 1.5))
 	chunk.call("_set_character_position", "endo", Vector3(3.0, 0.5, -1.5))
 	chunk.call("_set_character_position", "aster", Vector3(8.0, 0.5, 0.0))   # in flush [6,11]
 	instance.headless_advance(0.8)
-	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0, "no wash before the first surge")
+	_assert_equals(int(chunk.get_preview_state().get("sweep_count", -1)), 0, "no wash before the first surge")
 	instance.headless_advance(2.6)
-	_assert_true("aster" in chunk.get_preview_state().get("washed", []), "a character on a flooding flush section is washed")
-	_assert_true(chunk.call("_get_character_position", "aster").x < 5.0, "the washed character returns to the start shelter")
+	_assert_true(int(chunk.get_preview_state().get("sweep_count", 0)) >= 1, "a character on a flooding flush section is swept back")
+	_assert_true(chunk.call("_get_character_position", "aster").x < 5.0, "a flush (section 0) wash lands at the start landing")
 	# OVERRIDE the flush section -> it no longer washes
-	chunk.call("_on_terminal"); chunk.call("_on_override", 0)
+	chunk.call("_on_override", 0)
 	chunk.call("_set_character_position", "aster", Vector3(8.0, 0.5, 0.0))
+	var sweeps_a := int(chunk.get_preview_state().get("sweep_count", 0))
 	instance.headless_advance(6.2)   # past the next flush onset (~8.5s)
-	_assert_true(not ("aster" in chunk.get_preview_state().get("washed", [])), "an overridden section no longer washes")
+	_assert_equals(int(chunk.get_preview_state().get("sweep_count", 0)), sweeps_a, "an overridden section no longer washes")
 	# PLATE section (index 3, [30,35]): peris HOLDS the plate -> endo crosses the bridge safely;
-	# release the plate -> the section re-arms and washes endo.
+	# release the plate -> the section re-arms and sweeps endo.
 	chunk.call("_set_character_position", "peris", Vector3(28.8, 0.5, 0.0))   # on the plate (x0-1.2)
 	chunk.call("_set_character_position", "endo", Vector3(32.0, 0.5, 0.0))    # on the bridge [30,35]
 	instance.headless_advance(0.3)
 	var sp: Dictionary = chunk.get_preview_state()
 	_assert_true(bool((sp.get("sections", []) as Array)[3].get("plate_held", false)), "standing on the plate registers as held")
 	_assert_true(bool((sp.get("sections", []) as Array)[3].get("disabled", false)), "a held plate disables its section")
+	var sweeps_b := int(chunk.get_preview_state().get("sweep_count", 0))
 	instance.headless_advance(6.0)   # past a plate onset while the plate is held
-	_assert_true(not ("endo" in chunk.get_preview_state().get("washed", [])), "a held plate keeps the bridge safe for the party")
+	_assert_equals(int(chunk.get_preview_state().get("sweep_count", 0)), sweeps_b, "a held plate keeps the bridge safe for the party")
 	chunk.call("_set_character_position", "peris", Vector3(20.0, 0.5, 0.0))   # step off the plate (safe gap)
+	chunk.call("_set_character_position", "endo", Vector3(32.0, 0.5, 0.0))    # back on the bridge
 	instance.headless_advance(6.2)   # past the next plate onset, now un-held
-	_assert_true("endo" in chunk.get_preview_state().get("washed", []), "releasing the plate re-arms the section -> endo washed")
+	_assert_true(int(chunk.get_preview_state().get("sweep_count", 0)) > sweeps_b, "releasing the plate re-arms the section -> endo swept")
 	# SLUICE section (index 4, timing): the gate is a REAL blocker — its threshold cells go non-walkable
 	# while closed (pathfinding can't route through), and open again on the window.
 	for cid in ["aster", "peris", "endo"]:
@@ -11604,25 +11607,16 @@ func _test_wash_relay() -> void:
 	chunk.call("_on_lure", 0)
 	_assert_true(gs2.is_character_distracted("ch_sentry"), "firing the flure distracts the sentry")
 	_assert_true(bool(chunk.get_preview_state().get("lure_active", false)), "the flure reads active while it draws")
-	# a guard landing a hit shoves the target into the channel — washed to the start shelter
-	chunk.call("_set_character_position", "aster", Vector3(58.0, 0.5, 0.0))
+	# a guard landing a hit shoves the target back — SWEPT to the PREVIOUS gap (lose a section, not the run)
+	chunk.call("_set_character_position", "aster", Vector3(58.0, 0.5, 0.0))   # in the lure section [56,61]
+	var sweeps_c := int(chunk.get_preview_state().get("sweep_count", 0))
 	chunk.call("_on_enemy_hit", "aster")
-	_assert_true("aster" in chunk.get_preview_state().get("washed", []), "a guard's hit washes the target to the start shelter")
-	_assert_true(chunk.call("_get_character_position", "aster").x < 5.0, "the hit character returns to the start shelter")
-	# CONNECT-BACK at the chunk end: a TERMINAL telephones stranded crew up instantly.
-	chunk.call("_on_terminal")
-	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0, "the terminal recalls all stranded crew")
-	_assert_true(chunk.call("_get_character_position", "aster").x > 60.0, "telephoned crew rejoin near the chunk end")
-	# SLOPEROPE: the start climb point is dead until the party drops the line from the chunk end.
-	chunk.call("_set_character_position", "peris", Vector3(50.0, 0.5, 0.0))
-	chunk.call("_on_enemy_hit", "peris")
-	_assert_true("peris" in chunk.get_preview_state().get("washed", []), "peris is washed for the sloperope test")
-	chunk.call("_on_climb")
-	_assert_true("peris" in chunk.get_preview_state().get("washed", []), "the climb point does nothing before the line is dropped")
+	_assert_true(int(chunk.get_preview_state().get("sweep_count", 0)) > sweeps_c, "a guard's hit sweeps the target back")
+	var ax: float = chunk.call("_get_character_position", "aster").x
+	_assert_true(ax > 49.0 and ax < 57.0, "the hit sweeps to the PREVIOUS gap (lose a section, not the whole run) — got x=%.1f" % ax)
+	# The sloperope connect-back still deploys (kept as flavor; recovery is now local — you re-cross from the gap).
 	chunk.call("_on_sloperope")
 	_assert_true(bool(chunk.get_preview_state().get("sloperope_deployed", false)), "dropping the sloperope deploys the line")
-	chunk.call("_on_climb")
-	_assert_true(not ("peris" in chunk.get_preview_state().get("washed", [])), "with the line dropped, climbing recovers the stranded member")
 	# EXPANDED GAUNTLET: more sections + variations
 	_assert_equals(int(chunk.get_preview_state().get("section_count", 0)), 9, "the expanded gauntlet has nine sections")
 	# DOUBLE PLATE (index 8): BOTH pads must be held to disable — one is not enough (co-op escalation)

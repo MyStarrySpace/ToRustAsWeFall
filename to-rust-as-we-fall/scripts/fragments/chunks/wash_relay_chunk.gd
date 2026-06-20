@@ -100,7 +100,8 @@ var _flooding := []                # cosmetic surge window
 var _flood_counts := []            # per section — how many surges have fired (cadence variety / tests)
 var _plate_held := []              # per section — all the section's plates are held this frame
 var _sluice_blocked := []          # per section — the sluice gate cells are currently walled off
-var _washed := {}
+var _washed := {}                  # legacy stranding set — kept empty now (checkpoint-wash doesn't strand)
+var _sweep_count := 0              # how many times the party was swept back this run (a "rough run" read)
 var _scheduled := false
 var _flow_strips: Array = []
 var _enemies: Array = []
@@ -709,11 +710,26 @@ func _wash_section(i: int) -> void:
 			_wash_character(char_id)
 
 func _wash_character(char_id: String) -> void:
-	_washed[char_id] = true
 	var gs = _get_game_state()
 	if gs != null:
 		gs.command_stop(char_id)   # cancel any in-flight move so the runner stays knocked back, not walking on
-	_set_character_position(char_id, START_POS)
+	var here := _get_character_position(char_id)
+	_set_character_position(char_id, _wash_checkpoint(here.x))
+	# Tense-but-fair: NOT stranded — swept back to the last gap and immediately able to re-cross. Track the
+	# count for the salvage tally / "how rough was the run" read.
+	_sweep_count += 1
+	_say("// SWEPT // back to the last landing")
+
+# TENSE-BUT-FAIR failure: a wash sweeps you back to the LAST GAP you cleared (lose ONE section), not all the
+# way to the start — a per-section checkpoint. (A literal fall to a lower deck would need a coord_map redesign:
+# the helix derives height from s, so a second level at the same s can't be inverted. The checkpoint reset is
+# the in-architecture equivalent of "drop a deck and climb back".)
+func _wash_checkpoint(x: float) -> Vector3:
+	var best := START_POS.x
+	for m in _gap_mids():
+		if float(m) < x and float(m) > best:
+			best = float(m)
+	return Vector3(best, START_POS.y, 0.0)
 
 # --- Interactions ---
 
@@ -1026,6 +1042,7 @@ func reset_preview_state() -> void:
 	for i in range(n):
 		_override_locked.append(false); _flooding.append(false); _plate_held.append(false); _sluice_blocked.append(false); _flood_counts.append(0)
 	_washed.clear()
+	_sweep_count = 0
 	_sloperope_deployed = false
 	# Ability state is derived per-run — clear it so a reset/replay doesn't leak a stale TRACE read or blooms.
 	_trace_section = -1
@@ -1126,4 +1143,5 @@ func get_preview_state() -> Dictionary:
 		"branches": branches, "branch_count": _branches.size(), "branch_loot": _branch_loot,
 		"branch_guard_count": branch_guard_count,
 		"trace_section": _trace_section, "bloom_count": _blooms.size(),
+		"sweep_count": _sweep_count,
 	}
