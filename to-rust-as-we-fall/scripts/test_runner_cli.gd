@@ -290,6 +290,9 @@ func _ready() -> void:
 			"--test-wash-relay-flood-visual":
 				ran_test = true
 				await _test_wash_relay_flood_visual()
+			"--test-wash-relay-water-capture":
+				ran_test = true
+				await _test_wash_relay_water_capture()
 			"--test-wash-relay-trace-cadence":
 				ran_test = true
 				await _test_wash_relay_trace_cadence()
@@ -10796,6 +10799,39 @@ func _test_wash_relay_abilities() -> void:
 		"reset clears TRACE + BLOOM state (trace=%d blooms=%d)" % [int(chunk.get_preview_state().get("trace_section", -1)), int(chunk.get_preview_state().get("bloom_count", 0))])
 	instance.queue_free()
 	await get_tree().process_frame
+
+## WINDOWED eyeball: force floods + capture the channels so the flood water (and sluice gate) can be SEEN on
+## the helix. Writes vr_channels_water.png (gitignored). Not in --test-all (needs a display).
+func _test_wash_relay_water_capture() -> void:
+	_test_name = "Wash Relay Water Capture"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (needs a display — run WITHOUT --headless)")
+		return
+	var inst = await _instantiate_preview_chunk_and_wait("wash_relay", 8)
+	if inst == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	for i in range(70):
+		await get_tree().process_frame   # model load + camera ease-in
+	var chunk = inst.find_child("Chunk_wash_relay", true, false)
+	# Force floods across the gauntlet so the water shows on many sections at once.
+	for i in range(9):
+		chunk.call("_flood_onset", i)
+	chunk.call("_update")
+	# Pause so the preview's camera controller stops overriding our framing, then aim at the spiral.
+	get_tree().paused = true
+	var cam: Camera3D = get_tree().root.get_viewport().get_camera_3d()
+	if cam != null:
+		cam.global_position = Vector3(25.0, 22.0, -25.0)
+		cam.look_at(Vector3(0.0, 7.0, 0.0))
+	for i in range(6):
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var tex := get_tree().root.get_texture()
+	if tex != null:
+		tex.get_image().save_png("res://vr_channels_water.png")
+		print("  [water-capture] wrote vr_channels_water.png (water_shown=%s)" % str(chunk.get_preview_state().get("water_shown", [])))
+	_assert_true(true, "captured the channels flood water")
+	await _dispose_scene(inst)
 
 ## Flood VISIBILITY: a section that floods must show WATER the player can see, and that visual must SURVIVE
 ## hide_flat_graybox (the in-game state with the model loaded) — otherwise the wash has no visible cause and
