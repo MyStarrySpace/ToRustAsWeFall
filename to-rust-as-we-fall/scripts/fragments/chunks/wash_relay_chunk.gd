@@ -21,6 +21,9 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 const EnemyScript := preload("res://scripts/game/ai/enemy.gd")
 const ChannelsArc := preload("res://scripts/game/world/channels_arc.gd")
 const StretchGenerator := preload("res://scripts/generation/stretch_generator.gd")
+const WaterShader := preload("res://resources/channels_water.gdshader")
+const WaterTexV0 := preload("res://resources/models/channels/channels_water_v0.png")
+const WaterTexV1 := preload("res://resources/models/channels/channels_water_v1.png")
 
 const PARTY_IDS := ["aster", "peris", "endo"]
 const START_POS := Vector3(3.0, 0.5, 0.0)
@@ -138,6 +141,7 @@ var _bloom_root: Node3D
 var _flush_hint_shown := false     # one-shot: the FIRST flush telegraph plays a clearer "a surge is coming" preview
 var _flush_hint_root: Node3D       # ephemeral nodes for the flush preview pulse (freed after it plays)
 var _wash_anim_root: Node3D        # parent for any in-flight "swept down the spiral" cosmetic streaks
+var _surge_root: Node3D            # parent for the on-onset foam/surge accents (throwaway, freed after each)
 const PARTY_RENDER_COLORS := {     # the per-character ownership colour (matches the path ribbon / queued glow)
 	"aster": Color(0.29, 0.62, 1.0), "peris": Color(1.0, 0.67, 0.27), "endo": Color(0.4, 0.72, 0.55),
 }
@@ -242,6 +246,15 @@ func _warped_box(parent: Node3D, s: float, lane: float, size: Vector3, color: Co
 	parent.add_child(mesh)
 	return mesh
 
+# A ShaderMaterial running channels_water.gdshader — the animated, textured flood-water look. Each flood
+# segment gets its OWN instance so a per-segment surge accent can nudge its uniforms without affecting the
+# others. `variant` picks the tile (v0/v1) so adjacent sections aren't perfectly synced. Purely cosmetic.
+func _make_water_material(variant := 0) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = WaterShader
+	mat.set_shader_parameter("water_tex", WaterTexV1 if variant % 2 == 1 else WaterTexV0)
+	return mat
+
 # Build the per-section flood-water (segmented along the arc so it follows the helix) + the sluice gates,
 # all WARPED and under _water_root (a Node3D -> survives hide_flat_graybox). Hidden until a section floods.
 func _build_water_layer() -> void:
@@ -258,6 +271,10 @@ func _build_water_layer() -> void:
 			var seg := _warped_box(_water_root, sc, 0.0,
 				Vector3(FLOOR_Z_HALF * 1.8, WATER_THICK, (x1 - x0) / float(n) * 1.12),
 				Color(0.08, 0.3, 0.55), Color(0.22, 0.5, 1.0), 1.4, WATER_THICK * 0.45)
+			# Swap the flat box material for the animated, textured water shader (alternating tile per
+			# segment so the surface isn't perfectly tiled). The scheduler-driven `visible` toggle below
+			# is UNCHANGED — only the LOOK changes.
+			seg.material_override = _make_water_material(i + k)
 			seg.visible = false
 			segs.append(seg)
 		_section_water.append(segs)
@@ -739,6 +756,48 @@ func _clear_flush_hint() -> void:
 		_flush_hint_root.queue_free()
 		_flush_hint_root = null
 
+# COSMETIC flood-ONSET accent (consistent with _play_flush_hint / _play_sweep_animation): when a section
+# starts flooding, its real water segments rise-pop (a quick scale-in so the surge "arrives") and a few
+# throwaway foam/spray blobs burst up off the surface, then fade + free. Pure eye-candy on the wall-clock
+# tween (@rendering_only) — it touches NO game state, the cadence, _flooding, or visibility. The real
+# segments' `visible` is already on (set in _flood_onset before this runs); _update keeps driving it.
+func _play_water_surge(i: int) -> void:
+	if i < 0 or i >= _section_water.size():
+		return
+	# Rise-pop the section's water segments: a brief vertical squash->settle so the flood reads as arriving.
+	for seg in _section_water[i]:
+		if is_instance_valid(seg):
+			var rest: Vector3 = seg.scale
+			seg.scale = Vector3(rest.x, rest.y * 0.15, rest.z)
+			var st := create_tween()
+			st.tween_property(seg, "scale", Vector3(rest.x, rest.y * 1.35, rest.z), 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			st.tween_property(seg, "scale", rest, 0.32).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	# Foam/spray burst: a handful of throwaway blobs lifting off the surge crest, then fading + freeing.
+	if not is_instance_valid(_surge_root):
+		_surge_root = Node3D.new()
+		_surge_root.name = "WaterSurge"
+		add_child(_surge_root)
+	var s: Dictionary = SECTIONS[i]
+	var x0: float = s["x0"]; var x1: float = s["x1"]
+	var foam_col := Color(0.7, 0.95, 1.0)
+	for k in range(4):
+		var sc := lerpf(x0, x1, (k + 0.5) / 4.0)
+		var lane := lerpf(-2.2, 2.2, float((k * 7) % 5) / 4.0)   # spread across the channel, deterministic
+		var xf := _branch_warp_xform(sc, lane)
+		xf.origin += xf.basis.y * (WATER_THICK * 0.45)
+		var blob := _build_cosmetic_blob(_surge_root, xf.origin, Vector3(0.7, 0.5, 0.7),
+			Color(foam_col.r, foam_col.g, foam_col.b, 0.85), foam_col, 1.8)
+		var up: Vector3 = xf.origin + xf.basis.y * 1.6
+		var tw := create_tween()
+		tw.parallel().tween_property(blob, "global_position", up, 0.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(blob, "scale", Vector3(1.8, 0.4, 1.8), 0.4).set_trans(Tween.TRANS_SINE)
+		var m := blob.material_override as StandardMaterial3D
+		if m != null:
+			tw.parallel().tween_property(m, "albedo_color:a", 0.0, 0.4)
+		tw.chain().tween_callback(func() -> void:
+			if is_instance_valid(blob):
+				blob.queue_free())
+
 func _period(i: int) -> float:
 	return float(SECTIONS[i].get("period", FLOW_PERIOD))
 
@@ -764,6 +823,7 @@ func _flood_onset(i: int) -> void:
 		if i < _flood_counts.size():
 			_flood_counts[i] += 1
 		_set_strip(i, 2.6)
+		_play_water_surge(i)            # COSMETIC: a foam/spray accent + rise-pop as the section floods
 		if str(SECTIONS[i]["type"]) == "sluice":
 			_set_sluice(i, true)            # the gate slams shut — the threshold is impassable
 		if sched != null:
@@ -1236,6 +1296,7 @@ func reset_preview_state() -> void:
 		for seg in segs:
 			if is_instance_valid(seg):
 				seg.visible = false
+				seg.scale = Vector3.ONE   # clear any in-flight surge rise-pop so a reset can't strand a squashed segment
 	for gi in _sluice_gate.keys():
 		if is_instance_valid(_sluice_gate[gi]):
 			_sluice_gate[gi].visible = false
@@ -1252,6 +1313,9 @@ func reset_preview_state() -> void:
 	if is_instance_valid(_wash_anim_root):
 		_wash_anim_root.queue_free()
 		_wash_anim_root = null
+	if is_instance_valid(_surge_root):
+		_surge_root.queue_free()
+		_surge_root = null
 	_branch_loot = 0
 	for b in _branches:
 		b["collected"] = false
