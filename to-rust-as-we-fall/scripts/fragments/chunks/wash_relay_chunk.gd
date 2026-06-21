@@ -637,6 +637,7 @@ func _enemy_spawn_for(id: String) -> Vector3:
 func _on_enemy_hit(target_id: String) -> void:
 	if target_id in PARTY_IDS:
 		_wash_character(target_id)   # the guard shoves you into the channel -> back to the start shelter
+		_announce_wash()
 
 func _on_lure(idx: int) -> void:
 	if idx < 0 or idx >= LURE_SPECS.size():
@@ -877,12 +878,16 @@ func _set_sluice(i: int, closed: bool) -> void:
 func _wash_section(i: int) -> void:
 	var s: Dictionary = SECTIONS[i]
 	var x0: float = s["x0"]; var x1: float = s["x1"]
+	var washed_any := false
 	for char_id in PARTY_IDS:
 		if _washed.has(char_id):
 			continue
 		var p := _get_character_position(char_id)
 		if p.x >= x0 and p.x <= x1 and abs(p.z) <= FLOOR_Z_HALF:
 			_wash_character(char_id)
+			washed_any = true
+	if washed_any:
+		_announce_wash()   # one line + one sweep tally for the whole event, however many members got caught
 
 func _wash_character(char_id: String) -> void:
 	var gs = _get_game_state()
@@ -898,57 +903,56 @@ func _wash_character(char_id: String) -> void:
 	# The flood carries you all the way DOWN the spiral to the start shelter at the bottom — water flows down,
 	# so a wash washes you down. Mobile again on arrival (re-climb the gauntlet). _sweep_count tracks how rough.
 	_set_character_position(char_id, START_POS)
-	_sweep_count += 1
 	# COSMETIC ONLY: the current visibly carries you down the helix (a surge + a colour streak that follows the
 	# curve to the start, then a splash). The body already snapped above — this is just the eye-candy.
 	_play_sweep_animation(char_id, pre_render, pre_flat.x)
+
+## One announcement + sweep tally per wash EVENT (not per character): washing the whole party at once is a
+## single "// WASHED //" line, and the run-hint counts events, not bodies (3 washes, not 3 swept members).
+func _announce_wash() -> void:
+	_sweep_count += 1
 	_say("// WASHED // the current carries you down to the start")
 	# After a few washes the lesson lands diegetically: you can't walk the surges, you have to RUN them.
 	if _sweep_count >= 3 and not _run_hint_shown:
 		_run_hint_shown = true
 		_say("Can't just calmly stroll past these channels. Water comes too often—we run it.", "ASTER")
 
-# COSMETIC "the current carries you down" flourish: a water surge + a streak in the washed member's colour that
-# slide from the wash point DOWN the spiral to the start, following the helix (sampled through coord_map.to_world
-# across the s-range), then a splash at START. Throwaway nodes, freed on completion. The real body already
+# COSMETIC "the current shoves you off the deck" flourish. The spiral winds around its central axis (the
+# origin in XZ), so the WATER SOURCE is the OUTER wall — the side facing AWAY from the centre. A surge rises at
+# that outer source and drives the caught member INWARD (toward the centre, away from the source), shrinking
+# and fading as the current carries them off. Throwaway nodes, freed on completion. The real body already
 # snapped to START — nothing here gates state; it's all eye-candy on the wall-clock tween (@rendering_only).
-func _play_sweep_animation(char_id: String, from_render: Vector3, from_x: float) -> void:
-	var gs = _get_game_state()
-	# Sample the path the current sweeps along: from the wash point's s DOWN to the start's s, along the helix.
-	var start_render := START_POS
-	if gs != null and gs.coord_map != null:
-		start_render = gs.coord_map.to_world(START_POS)
-	elif gs != null and gs.characters.has(char_id):
-		start_render = gs.get_render_position(char_id)   # post-snap render pos = the start (identity map)
+func _play_sweep_animation(char_id: String, from_render: Vector3, _from_x: float) -> void:
 	if not is_instance_valid(_wash_anim_root):
 		_wash_anim_root = Node3D.new()
 		_wash_anim_root.name = "WashSweep"
 		add_child(_wash_anim_root)
 	var col: Color = PARTY_RENDER_COLORS.get(char_id, Color(0.6, 0.8, 1.0))
-	# A short list of helix-sampled points from the wash s down to the start s (so the slide hugs the curve).
-	var pts: Array = []
-	var steps := 14
-	for k in range(steps + 1):
-		var t := float(k) / float(steps)
-		var sx := lerpf(from_x, START_POS.x, t)
-		if gs != null and gs.coord_map != null:
-			pts.append(gs.coord_map.to_world(Vector3(sx, START_POS.y, 0.0)))
-		else:
-			pts.append(from_render.lerp(start_render, t))
-	# The surge body (water-blue) and the character-colour streak start at the wash point.
-	var surge := _build_cosmetic_blob(_wash_anim_root, from_render, Vector3(1.6, 0.7, 1.6),
-		Color(0.10, 0.4, 0.65, 0.7), Color(0.3, 0.7, 1.0), 1.6)
+	# Inward = toward the spiral's central axis (origin in XZ); outward (= the water source) is the reverse.
+	var inward := Vector3(-from_render.x, 0.0, -from_render.z)
+	inward = inward.normalized() if inward.length() > 0.01 else Vector3(0, 0, -1)
+	var outward := -inward
+	var source := from_render + outward * 1.3 + Vector3(0.0, 0.35, 0.0)   # the surge wells up at the outer wall
+	var push_to := from_render + inward * 3.2 - Vector3(0.0, 0.5, 0.0)     # shoved toward the centre + a touch down
+	# Water surge at the outer source + the character-colour streak at the wash point.
+	var surge := _build_cosmetic_blob(_wash_anim_root, source, Vector3(1.4, 0.7, 1.4),
+		Color(0.10, 0.42, 0.66, 0.8), Color(0.3, 0.78, 1.0), 2.2)
 	var streak := _build_cosmetic_blob(_wash_anim_root, from_render, Vector3(0.9, 0.9, 0.9),
-		Color(col.r, col.g, col.b, 0.85), col, 2.2)
-	# Slide both down the sampled helix path, then a splash pop at the start, then free.
-	var slide := 1.2 / float(maxi(1, pts.size() - 1))
+		Color(col.r, col.g, col.b, 0.92), col, 2.6)
 	var tw := create_tween()
-	for k in range(1, pts.size()):
-		tw.parallel().tween_property(surge, "global_position", pts[k], slide).set_trans(Tween.TRANS_SINE)
-		tw.parallel().tween_property(streak, "global_position", pts[k], slide).set_trans(Tween.TRANS_SINE)
-	# Splash at the start: a quick scale-up + fade, then drop the throwaway nodes.
-	tw.parallel().tween_property(streak, "scale", Vector3(2.2, 0.4, 2.2), 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.parallel().tween_property(surge, "scale", Vector3(2.4, 0.3, 2.4), 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	# Both driven INWARD (toward the centre, away from the source); the streak accelerates (EASE_IN) as it's
+	# carried off, shrinking, while both fade out (albedo alpha + emission glow) so the member dissolves.
+	tw.parallel().tween_property(surge, "global_position", from_render + inward * 1.6, 0.8).set_trans(Tween.TRANS_SINE)
+	tw.parallel().tween_property(streak, "global_position", push_to, 0.85).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(streak, "scale", Vector3(0.35, 0.35, 0.35), 0.85)
+	var sm := streak.material_override as StandardMaterial3D
+	var um := surge.material_override as StandardMaterial3D
+	if sm != null:
+		tw.parallel().tween_property(sm, "albedo_color:a", 0.0, 0.85).set_ease(Tween.EASE_IN)
+		tw.parallel().tween_property(sm, "emission_energy_multiplier", 0.0, 0.85)
+	if um != null:
+		tw.parallel().tween_property(um, "albedo_color:a", 0.0, 0.7)
+		tw.parallel().tween_property(um, "emission_energy_multiplier", 0.0, 0.7)
 	tw.chain().tween_callback(func() -> void:
 		if is_instance_valid(surge):
 			surge.queue_free()
