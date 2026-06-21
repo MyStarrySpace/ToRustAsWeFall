@@ -68,6 +68,9 @@ const ENEMY_SPECS := [
 	{"id": "ch_roamer", "spawn": Vector3(49.5, 0.5, 0.0), "kind": "roam",  "radius": 2.6, "speed": 3.0, "range": 5.5},
 	{"id": "ch_sentry", "spawn": Vector3(58.5, 0.5, 0.0), "kind": "guard", "radius": 0.0, "speed": 4.0, "range": 6.0},
 	{"id": "ch_basin",  "spawn": Vector3(67.5, 0.5, 0.0), "kind": "roam",  "radius": 3.0, "speed": 3.2, "range": 5.5},
+	# The drain-loop guard: posts on the DRY salvage ledge across the flooding run. Short reach so it never
+	# harasses a runner on the main deck (lane 0) — it only engages a player who detours INTO the loop.
+	{"id": "ch_drain", "spawn": Vector3(81.25, 0.5, 9.3), "kind": "guard", "radius": 0.0, "speed": 4.2, "range": 5.0},  # DRAIN_GUARD_ID
 ]
 const LURE_SPECS := [{"pos": Vector3(54.0, 0.5, 2.8), "target": "ch_sentry"}]
 const LURE_DURATION := 9.0
@@ -96,6 +99,30 @@ var _branches: Array = []           # per gap: {gap, mid_x, pad_lane, archetype,
 var _branch_loot := 0
 var _branch_root: Node3D
 var _branch_guard_spawns := {}      # guard id -> flat spawn (so reset re-snaps branch guards too)
+
+# --- Drain loop: an OPTIONAL flooding DETOUR off the spiral ("out the deck rim and back in"). It leaves the
+# deck at S0, runs a flooding channel along the OUTER lane, and rejoins at S1, with a DRY salvage ledge across
+# the water. A guard posts on that ledge; you BAIT it across the flooding run and let the current DROWN it
+# (the bait pulls it in, then the chase keeps it there). The whole thing is bypassed by the main deck (lane 0),
+# and the guard's reach is short so it never harasses a straight-through runner. Like every hazard here it
+# floods on the GAMEPLAY SCHEDULER (exact ticks), and the kill is decided AT the onset tick — never per-frame —
+# so it is fast-forward + replay invariant.
+const DRAIN_GUARD_ID := "ch_drain"
+const DRAIN_LOOP_S0 := 79.0          # entry leg: the loop leaves the deck rim here
+const DRAIN_LOOP_S1 := 83.5          # exit leg: the loop rejoins the deck rim here
+const DRAIN_RUN_LANE := 7.0          # the outward flooding channel (radial offset from the deck centreline)
+const DRAIN_RUN_HALF := 1.3          # flood footprint half-width in lane (a guard/runner within this band is caught)
+const DRAIN_LEDGE_LANE := 9.3        # the DRY salvage ledge across the run — outside the flood band (guard posts here)
+const DRAIN_LOOP_PERIOD := 5.0       # the loop's own flood cadence (independent of the section beats)
+const DRAIN_LOOP_DUR := 1.6          # how long the run stays flooded per surge
+const DRAIN_LOOP_PHASE := 1.0        # stagger from FIRST_FLOOD so the loop isn't synced to section 0
+const DRAIN_BAIT_PULL := 3.0         # seconds the bait holds the guard committed (walking the run) before the chase resumes
+const DRAIN_KILL_DELAY := 0.7        # the drowned guard's body lingers this long (cosmetic dissolve) then is removed
+var _drain_root: Node3D
+var _drain_water: Array = []         # the run's flood-water segments (toggled by _drain_flooding)
+var _drain_flooding := false         # the run is mid-surge this window (scheduler-set)
+var _drain_flood_count := 0          # surges fired (for the analytic next-onset read)
+var _drowned_count := 0             # guards the current has taken down the drain this run
 
 var _phase := "ready"
 var _override_locked := []         # per section — an override has been pressed (latched)
@@ -233,6 +260,8 @@ func _build_chunk() -> void:
 	_wdbg("branches built")
 	_build_water_layer()
 	_wdbg("water built")
+	_build_drain_loop()
+	_wdbg("drain loop built")
 
 # A box pre-warped onto the helix under an arbitrary parent (generalises _add_warped_box, which targets the
 # branch root). y_off lifts it along the deck's local up. Used for the flood-water layer + sluice gates.
@@ -490,6 +519,83 @@ func _add_warped_deck(s: float, lane_center: float, size: Vector3, color: Color)
 	body.add_child(col)
 	_branch_root.add_child(body)
 
+# --- Drain loop (the flooding detour) ---
+
+# A walkable warped plank under _drain_root (its own Node3D root so it survives hide_flat_graybox). Same as
+# _add_warped_deck but parented to the drain loop, not the branch root — keeps the two systems independent.
+func _add_drain_deck(s: float, lane_center: float, size: Vector3, color: Color) -> void:
+	var mesh := _warped_box(_drain_root, s, lane_center, size, color)
+	var body := StaticBody3D.new()
+	body.collision_layer = 1
+	body.collision_mask = 0
+	body.transform = mesh.transform
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new(); shape.size = size
+	col.shape = shape
+	body.add_child(col)
+	_drain_root.add_child(body)
+
+# Build the loop: entry/exit legs off the deck rim, the flooding run between them (segmented so it follows the
+# curve), a stub out to the DRY salvage ledge across the water, the run's flood-water (hidden until it surges),
+# an outer source wall, and the bait that draws the guard across the current. Authored in flat (s, lane); the
+# warp helpers place it on the helix. The cache + the bait interactable are authored FLAT and lifted by the
+# host's warp pass like every other interactable here.
+func _build_drain_loop() -> void:
+	_drain_root = Node3D.new(); _drain_root.name = "DrainLoop"; add_child(_drain_root)
+	var s0 := DRAIN_LOOP_S0; var s1 := DRAIN_LOOP_S1; var smid := (s0 + s1) * 0.5
+	var deck_color := Color(0.10, 0.13, 0.17)
+	var leg_center := (BRANCH_NECK_LANE + DRAIN_RUN_LANE + 0.6) * 0.5
+	var leg_span := (DRAIN_RUN_LANE + 0.6) - BRANCH_NECK_LANE
+	# Entry + exit legs — radial planks bridging the deck rim (lane 4) to the run (lane ~7).
+	_add_drain_deck(s0, leg_center, Vector3(leg_span, 0.2, 1.6), deck_color)
+	_add_drain_deck(s1, leg_center, Vector3(leg_span, 0.2, 1.6), deck_color)
+	# The flooding run — segmented along the arc so the deck follows the helix instead of chording across it.
+	var run_len := s1 - s0
+	var nseg := maxi(2, int(ceil(run_len / 2.0)))
+	for k in range(nseg):
+		var sc := lerpf(s0, s1, (k + 0.5) / float(nseg))
+		_add_drain_deck(sc, DRAIN_RUN_LANE, Vector3(DRAIN_RUN_HALF * 2.0, 0.2, run_len / float(nseg) * 1.12), deck_color)
+	# The stub out to the DRY salvage ledge (crossing the run reaches it) + the ledge pad itself.
+	_add_drain_deck(smid, (DRAIN_RUN_LANE + DRAIN_LEDGE_LANE + 0.6) * 0.5,
+		Vector3((DRAIN_LEDGE_LANE + 0.6) - DRAIN_RUN_LANE, 0.2, 2.0), Color(0.11, 0.15, 0.18))
+	# Outer "water source" wall along the run's far edge (the side the surge wells up from) + a ledge marker post.
+	_warped_box(_drain_root, smid, DRAIN_RUN_LANE + DRAIN_RUN_HALF + 0.3, Vector3(0.3, 2.6, run_len + 1.0),
+		Color(0.12, 0.13, 0.16), Color(0.15, 0.4, 0.6), 0.5)
+	_warped_box(_drain_root, smid, DRAIN_LEDGE_LANE, Vector3(0.4, 1.6, 0.4),
+		Color(0.2, 0.5, 0.55), Color(0.2, 0.7, 0.8), 0.7)
+	# Flood water on the run (own segments so the toggle is independent of the section water). Hidden until surge.
+	_drain_water = []
+	for k in range(nseg):
+		var sc := lerpf(s0, s1, (k + 0.5) / float(nseg))
+		var seg := _warped_box(_drain_root, sc, DRAIN_RUN_LANE,
+			Vector3(DRAIN_RUN_HALF * 1.9, WATER_THICK, run_len / float(nseg) * 1.12),
+			Color(0.08, 0.3, 0.55), Color(0.22, 0.5, 1.0), 1.4, WATER_THICK * 0.45)
+		seg.material_override = _make_water_material(k)
+		seg.visible = false
+		_drain_water.append(seg)
+	# A salvage cache on the dry ledge — the reward that makes the crossing worth it.
+	var cache := _add_interactable(self, "DrainCache", "Strip cache", Vector3(smid, 0.5, DRAIN_LEDGE_LANE),
+		"SALVAGE", "", 1.2, true, 1.6, Interactable.InteractableType.TIMED_ACTION, false)
+	var cm := _add_box(cache, Vector3(0.0, 0.1, 0.0), Vector3(0.7, 0.7, 0.7), Color(0.3, 0.35, 0.2),
+		Color(0.6, 0.8, 0.3), 0.6)
+	_outline_interactable_child(cache, cm, "DrainCache", 1.6)
+	cache.interacted.connect(func() -> void: _on_drain_cache())
+	_build_drain_bait()
+
+# The bait: a click-to-walk decoy at the loop mouth (a SAFE spot just inside, below the flood band). Firing it
+# pulls the ledge guard DOWN across the flooding run toward the song — straight through the current.
+func _build_drain_bait() -> void:
+	var bp := Vector3(DRAIN_LOOP_S0, 0.5, BRANCH_NECK_LANE + 0.8)   # lane ~4.3 — inside the loop, below the flood
+	var bait := _add_interactable(self, "DrainBait", "Fire bait", bp,
+		"BAIT", "", 1.0, true, 1.4, Interactable.InteractableType.INSPECTION, false)
+	bait.interacted.connect(func() -> void: _on_drain_bait())
+	var bm := _add_box(bait, Vector3(0.0, 0.7 - bp.y, 0.0), Vector3(0.5, 0.9, 0.5), Color(0.45, 0.2, 0.5))
+	var bmat := StandardMaterial3D.new()
+	bmat.albedo_color = Color(0.45, 0.2, 0.5); bmat.emission_enabled = true
+	bmat.emission = Color(0.9, 0.3, 1.0); bmat.emission_energy_multiplier = 0.7
+	bm.material_override = bmat
+	_outline_interactable_child(bait, bm, "DrainBait", 1.4)
+
 func _on_branch_cache(g: int) -> void:
 	if g < 0 or g >= _branches.size():
 		return
@@ -697,6 +803,8 @@ func _ensure_scheduled() -> void:
 		var lead := FIRST_FLOOD + float(SECTIONS[i]["phase"]) - TELEGRAPH_LEAD
 		if lead > 0.0:
 			sched.schedule_after(lead, _make_pretel(i), "wash_pretel_%d" % i)
+	# The drain loop floods on its own recurring beat (self-rescheduling like a section, gated on "active").
+	sched.schedule_after(FIRST_FLOOD + DRAIN_LOOP_PHASE, func() -> void: _drain_onset(), "wash_drain_onset")
 
 func _make_onset(i: int) -> Callable:
 	return func() -> void: _flood_onset(i)
@@ -917,6 +1025,137 @@ func _announce_wash() -> void:
 		_run_hint_shown = true
 		_say("Can't just calmly stroll past these channels. Water comes too often—we run it.", "ASTER")
 
+# --- Drain loop flood + drown (the recurring hazard on the detour) ---
+
+# The recurring loop surge. Mirrors _flood_onset: washes whatever's in the run AT THE TICK (so the decision is
+# identical at 1x and 10x), flags the cosmetic flood window, and self-reschedules the next onset.
+func _drain_onset() -> void:
+	var sched = _get_scheduler()
+	if _phase == "active":
+		_wash_drain()
+		_drain_flooding = true
+		_drain_flood_count += 1
+		if sched != null:
+			sched.schedule_after(DRAIN_LOOP_DUR, func() -> void: _set_drain_off(), "wash_drain_off")
+	if sched != null:
+		sched.schedule_after(DRAIN_LOOP_PERIOD, func() -> void: _drain_onset(), "wash_drain_onset")
+
+func _set_drain_off() -> void:
+	_drain_flooding = false
+
+# Seconds until the loop next floods — analytic from the cadence (the safe-window read; mirrors _section_next_onset_in).
+func _drain_next_onset_in() -> float:
+	var sched = _get_scheduler()
+	if sched == null:
+		return -1.0
+	var now: float = sched.get_current_tick()
+	var next_tick := FIRST_FLOOD + DRAIN_LOOP_PHASE + DRAIN_LOOP_PERIOD * float(_drain_flood_count)
+	return next_tick - now
+
+# Is a flat (s, lane) position inside the flooding run? (lane = flat z; the dry ledge sits OUTSIDE this band.)
+func _in_drain_channel(p: Vector3) -> bool:
+	return p.x >= DRAIN_LOOP_S0 and p.x <= DRAIN_LOOP_S1 and absf(p.z - DRAIN_RUN_LANE) <= DRAIN_RUN_HALF
+
+# Decide the loop wash AT THE ONSET TICK: a party member caught in the run is washed to the start (same as a
+# section); an ENEMY caught in the run is DROWNED — swept down the central drain and removed. Never per-frame.
+func _wash_drain() -> void:
+	var washed_any := false
+	for char_id in PARTY_IDS:
+		if _washed.has(char_id):
+			continue
+		if _in_drain_channel(_get_character_position(char_id)):
+			_wash_character(char_id)
+			washed_any = true
+	if washed_any:
+		_announce_wash()
+	# Enemies in the run go down the drain. Iterate a copy so _drown_enemy can schedule removal safely.
+	for enemy in _enemies.duplicate():
+		if is_instance_valid(enemy) and enemy.is_alive() and enemy.char_id != "" \
+				and _in_drain_channel(_get_character_position(enemy.char_id)):
+			_drown_enemy(enemy)
+
+# Kill an enemy caught by the loop flood: real data-layer death (take_damage to 0 hp -> FSM 'dead', stops it,
+# is_alive() flips false) decided at the onset tick, plus the cosmetic "current drags it down the drain" streak
+# (the same inward-toward-centre sweep the party gets). The registered character + node are removed a beat
+# later on the SCHEDULER (tick-locked, not a tween) so a re-run can respawn the guard.
+func _drown_enemy(enemy) -> void:
+	var id: String = enemy.char_id
+	var gs = _get_game_state()
+	var rp := _get_character_position(id)
+	if gs != null and gs.characters.has(id):
+		rp = gs.get_render_position(id)
+		gs.command_stop(id)
+	enemy.take_damage(enemy.max_hp)   # _hp -> 0, die() -> FSM 'dead' (stops moving, emits died); is_alive() == false
+	_play_sweep_animation(id, rp, rp.x)   # cosmetic: the current carries it inward toward the central drain, dissolving
+	_drowned_count += 1
+	_say("// DRAINED // the current took the guard down the shaft")
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.schedule_after(DRAIN_KILL_DELAY, func() -> void: _remove_enemy(id), "wash_drain_kill_%s" % id)
+	else:
+		_remove_enemy(id)
+
+# Fully remove a drowned enemy: drop it from _enemies, unregister its GameState character, free the node.
+func _remove_enemy(id: String) -> void:
+	var gs = _get_game_state()
+	for i in range(_enemies.size() - 1, -1, -1):
+		var e = _enemies[i]
+		if is_instance_valid(e) and e.char_id == id:
+			_enemies.remove_at(i)
+			if gs != null and gs.has_method("unregister_character") and gs.characters.has(id):
+				gs.unregister_character(id)
+			e.queue_free()
+
+# A drowned section/drain guard (removed mid-run) must come BACK on a reset/re-run — respawn any ENEMY_SPECS
+# guard that's no longer present, before reset re-snaps the survivors.
+func _respawn_missing_enemies() -> void:
+	for spec in ENEMY_SPECS:
+		var id := str(spec["id"])
+		var present := false
+		for e in _enemies:
+			if is_instance_valid(e) and e.char_id == id:
+				present = true
+				break
+		if not present:
+			_spawn_enemy(spec)
+
+# --- Drain loop: lead the guard in (bait, then chase) ---
+
+# Fire the bait: the ledge guard commits to the song and walks DOWN across the flooding run toward it (distracted
+# so it ignores the party at range while it crosses). The chase resumes a beat later (_drain_chase_resume), so a
+# player running the loop then keeps it in the current. The next surge catches it mid-run.
+func _on_drain_bait() -> void:
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	var bait_flat := Vector3(DRAIN_LOOP_S0, 0.5, BRANCH_NECK_LANE + 0.8)
+	var committed := false
+	for enemy in _enemies:
+		if is_instance_valid(enemy) and enemy.char_id == DRAIN_GUARD_ID and gs.characters.has(DRAIN_GUARD_ID):
+			gs.set_character_distracted(DRAIN_GUARD_ID, true)
+			# Pathfind across the run (the straight line would cut the corner) — _to_cell when the grid exists.
+			if gs.grid != null:
+				gs.command_move_to_cell(DRAIN_GUARD_ID, gs.grid.world_to_grid(bait_flat))
+			else:
+				gs.command_move_to_pos(DRAIN_GUARD_ID, bait_flat)
+			committed = true
+	if committed:
+		_say("// BAIT // the guard takes the lure into the channel")
+		var sched = _get_scheduler()
+		if sched != null:
+			sched.schedule_after(DRAIN_BAIT_PULL, func() -> void: _drain_chase_resume(), "wash_drain_bait")
+
+# The bait window ends: clear the distraction so the guard's detection resumes — now a player in the loop is
+# spotted and the guard CHASES them through the flooding run (it stays in the current).
+func _drain_chase_resume() -> void:
+	var gs = _get_game_state()
+	if gs != null and gs.characters.has(DRAIN_GUARD_ID):
+		gs.set_character_distracted(DRAIN_GUARD_ID, false)
+
+func _on_drain_cache() -> void:
+	_branch_loot += BRANCH_REWARD
+	_say("// SALVAGE // drain cache stripped (%d)" % _branch_loot)
+
 # COSMETIC "the current shoves you off the deck" flourish. The spiral winds around its central axis (the
 # origin in XZ), so the WATER SOURCE is the OUTER wall — the side facing AWAY from the centre. A surge rises at
 # that outer source and drives the caught member INWARD (toward the centre, away from the source), shrinking
@@ -1099,6 +1338,9 @@ func _update() -> void:
 		for seg in _section_water[i]:
 			if is_instance_valid(seg):
 				seg.visible = flooding
+	for seg in _drain_water:
+		if is_instance_valid(seg):
+			seg.visible = _drain_flooding
 	for gi in _sluice_gate.keys():
 		if is_instance_valid(_sluice_gate[gi]):
 			_sluice_gate[gi].visible = gi < _sluice_blocked.size() and bool(_sluice_blocked[gi])
@@ -1150,6 +1392,13 @@ func get_grid_data() -> Dictionary:
 	var regions: Array = [{"min": [FLOOR_MIN_X, -FLOOR_Z_HALF], "max": [FLOOR_MAX_X, FLOOR_Z_HALF]}]
 	for mid in _gap_mids():
 		regions.append({"min": [float(mid) - BRANCH_HALF_S, BRANCH_NECK_LANE], "max": [float(mid) + BRANCH_HALF_S, BRANCH_OUTER_LANE]})
+	# The drain loop: entry/exit legs (overlap the deck rim -> connected), the flooding run between them, and
+	# the stub out to the dry salvage ledge across the water. Authored flat in (s, lane) exactly like the branches.
+	var drain_mid := (DRAIN_LOOP_S0 + DRAIN_LOOP_S1) * 0.5
+	regions.append({"min": [DRAIN_LOOP_S0 - 0.8, BRANCH_NECK_LANE], "max": [DRAIN_LOOP_S0 + 0.8, DRAIN_RUN_LANE + 0.6]})
+	regions.append({"min": [DRAIN_LOOP_S1 - 0.8, BRANCH_NECK_LANE], "max": [DRAIN_LOOP_S1 + 0.8, DRAIN_RUN_LANE + 0.6]})
+	regions.append({"min": [DRAIN_LOOP_S0 - 0.8, DRAIN_RUN_LANE - DRAIN_RUN_HALF], "max": [DRAIN_LOOP_S1 + 0.8, DRAIN_RUN_LANE + 0.6]})
+	regions.append({"min": [drain_mid - 1.1, DRAIN_RUN_LANE - 0.3], "max": [drain_mid + 1.1, DRAIN_LEDGE_LANE + 0.6]})
 	return {
 		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
 		"origin": [-2.0, 0.0, -6.0], "cell_size": 1.0, "width": 92, "height": 18,
@@ -1171,6 +1420,12 @@ func get_preview_anchors() -> Dictionary:
 		anchors["flure_%d" % li] = LURE_SPECS[li]["pos"]
 	for b in _branches:
 		anchors["branch_%d" % int(b["gap"])] = Vector3(float(b["mid_x"]), 0.5, float(b["pad_lane"]))
+	var drain_mid := (DRAIN_LOOP_S0 + DRAIN_LOOP_S1) * 0.5
+	anchors["drain_run"] = Vector3(drain_mid, 0.5, DRAIN_RUN_LANE)              # mid of the flooding run
+	anchors["drain_ledge"] = Vector3(drain_mid, 0.5, DRAIN_LEDGE_LANE)          # the dry salvage ledge + guard post
+	anchors["drain_bait"] = Vector3(DRAIN_LOOP_S0, 0.5, BRANCH_NECK_LANE + 0.8) # the bait at the loop mouth
+	anchors["drain_entry"] = Vector3(DRAIN_LOOP_S0, 0.5, BRANCH_NECK_LANE)      # where the loop leaves the deck
+	anchors["drain_exit"] = Vector3(DRAIN_LOOP_S1, 0.5, BRANCH_NECK_LANE)       # where it rejoins
 	return anchors
 
 func get_preview_time_state() -> Dictionary:
@@ -1285,10 +1540,20 @@ func get_preview_overlay_status(_overlay_id: String, _current_tick: float) -> Ar
 
 func reset_preview_state() -> void:
 	var n := SECTIONS.size()
+	# A guard drowned in the drain loop was unregistered + freed — bring it (and any other missing spec guard) back
+	# before the re-snap below assumes every guard still exists.
+	_respawn_missing_enemies()
 	_phase = "ready"
 	_override_locked = []; _flooding = []; _plate_held = []; _sluice_blocked = []; _flood_counts = []
 	for i in range(n):
 		_override_locked.append(false); _flooding.append(false); _plate_held.append(false); _sluice_blocked.append(false); _flood_counts.append(0)
+	# Drain-loop run state.
+	_drain_flooding = false
+	_drain_flood_count = 0
+	_drowned_count = 0
+	for seg in _drain_water:
+		if is_instance_valid(seg):
+			seg.visible = false
 	_washed.clear()
 	_sweep_count = 0
 	_run_hint_shown = false
@@ -1375,13 +1640,21 @@ func get_preview_state() -> Dictionary:
 	var guards: Array = []
 	var gs = _get_game_state()
 	var branch_guard_count := 0
-	# `guards` / `enemy_count` describe the SECTION threat layer; branch-offshoot guards are reported
-	# separately (branch_guard_count + each branch's `guarded` flag) so the section semantics are stable.
+	var drain_guard := {}
+	# `guards` / `enemy_count` describe the SECTION threat layer; branch-offshoot guards AND the drain-loop guard
+	# are reported separately (branch_guard_count / drain_guard) so the section semantics stay stable.
 	for enemy in _enemies:
 		if not is_instance_valid(enemy):
 			continue
 		if _branch_guard_spawns.has(enemy.char_id):
 			branch_guard_count += 1
+			continue
+		if enemy.char_id == DRAIN_GUARD_ID:
+			drain_guard = {
+				"id": DRAIN_GUARD_ID, "alive": enemy.is_alive(),
+				"state": (enemy.get_state() if enemy.has_method("get_state") else ""),
+				"distracted": (gs != null and gs.is_character_distracted(DRAIN_GUARD_ID)),
+			}
 			continue
 		guards.append({
 			"id": enemy.char_id, "alive": enemy.is_alive(),
@@ -1416,6 +1689,8 @@ func get_preview_state() -> Dictionary:
 		"trace_section": _trace_section, "bloom_count": _blooms.size(),
 		"sweep_count": _sweep_count,
 		"water_shown": _water_shown_state(),
+		"drain_flooding": _drain_flooding, "drain_next_onset_in": _drain_next_onset_in(),
+		"drowned_count": _drowned_count, "drain_guard": drain_guard,
 	}
 
 # Per-section: is the flood water currently visible? (Drives the flood-visual test + any HUD read.)

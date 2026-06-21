@@ -290,6 +290,9 @@ func _ready() -> void:
 			"--test-wash-relay-checkpoint":
 				ran_test = true
 				await _test_wash_relay_checkpoint()
+			"--test-wash-drain-loop":
+				ran_test = true
+				await _test_wash_drain_loop()
 			"--test-wash-relay-flood-visual":
 				ran_test = true
 				await _test_wash_relay_flood_visual()
@@ -938,6 +941,7 @@ func _run_all_tests() -> void:
 	await _test_wash_relay_branch_puzzles()
 	await _test_wash_relay_abilities()
 	await _test_wash_relay_checkpoint()
+	await _test_wash_drain_loop()
 	await _test_wash_relay_flood_visual()
 	await _test_wash_relay_trace_cadence()
 	await _test_wash_relay_playthrough()
@@ -12254,6 +12258,112 @@ func _test_wash_relay() -> void:
 	_assert_true(int(fc[1].get("flood_count", 0)) > int(fc[4].get("flood_count", 0)), "the fast current (period 4) floods more often than the period-6 sluice")
 	instance.queue_free()
 	await get_tree().process_frame
+
+# --- Test: the drain loop — an OPTIONAL flooding detour where you LEAD a guard into the current and drown it ---
+# Covers the whole beat: the loop geometry + a separately-reported drain guard; a guard on the DRY ledge survives
+# a surge (red) but one caught in the flooding RUN is drowned (green, is_alive flips false via take_damage) and
+# removed after the cosmetic delay; reset RESPAWNS the drowned guard; the run also washes the PARTY (consistency);
+# the BAIT commits + walks the guard across the run (the lead-in); and the kill is FAST-FORWARD INVARIANT
+# (decided at the onset tick — same drown at a fine and a coarse step).
+func _test_wash_drain_loop() -> void:
+	_test_name = "Wash Drain Loop"
+	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	_assert_true(instance != null, "wash_relay preview instantiates")
+	if instance == null:
+		return
+	var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
+	var gs = instance.get("_game_state")
+	if chunk == null or gs == null:
+		_assert_true(false, "wash_relay chunk + game_state present")
+		instance.queue_free(); await get_tree().process_frame
+		return
+
+	# The loop exposes its anchors and the drain guard, reported SEPARATELY from the section guards.
+	var anchors: Dictionary = chunk.get_preview_anchors()
+	_assert_true(anchors.has("drain_run") and anchors.has("drain_ledge") and anchors.has("drain_bait"),
+		"the drain loop exposes its run / ledge / bait anchors")
+	var st0: Dictionary = chunk.get_preview_state()
+	var dg0: Dictionary = st0.get("drain_guard", {})
+	_assert_true(not dg0.is_empty() and bool(dg0.get("alive", false)), "the drain-loop guard starts alive on its ledge")
+	_assert_equals(int(st0.get("drowned_count", -1)), 0, "no guard drowned yet")
+	_assert_equals(int(st0.get("enemy_count", 0)), 3, "the drain guard is NOT counted among the three section guards")
+
+	var run_pos: Vector3 = anchors["drain_run"]
+	var ledge_pos: Vector3 = anchors["drain_ledge"]
+	for cid in ["aster", "peris", "endo"]:
+		gs.snap_character_to(cid, Vector3(3.0, 0.5, 0.0))   # park the party so the guard stays idle (no chase)
+
+	# RED: a guard on the DRY ledge is OUTSIDE the flood footprint — a surge doesn't touch it.
+	gs.snap_character_to("ch_drain", ledge_pos)
+	chunk.call("_wash_drain")
+	_assert_equals(int(chunk.get_preview_state().get("drowned_count", 0)), 0,
+		"a guard on the dry ledge survives a surge (the flood footprint excludes the ledge)")
+
+	# GREEN: a guard caught IN the flooding run is drowned at the onset.
+	gs.snap_character_to("ch_drain", run_pos)
+	chunk.call("_wash_drain")
+	_assert_equals(int(chunk.get_preview_state().get("drowned_count", 0)), 1, "a guard caught in the flooding run is drowned")
+	var dg1: Dictionary = chunk.get_preview_state().get("drain_guard", {})
+	_assert_true(dg1.is_empty() or not bool(dg1.get("alive", true)),
+		"the drowned guard reads dead (take_damage zeroed its hp -> is_alive false)")
+	instance.headless_advance(1.4)   # past DRAIN_KILL_DELAY (0.7) -> the body is removed from the roster
+	_assert_true((chunk.get_preview_state().get("drain_guard", {}) as Dictionary).is_empty(),
+		"the drowned guard is fully removed after the sweep delay")
+
+	# RESET respawns the drowned guard for a fresh run.
+	chunk.call("reset_preview_state")
+	var dgr: Dictionary = chunk.get_preview_state().get("drain_guard", {})
+	_assert_true(not dgr.is_empty() and bool(dgr.get("alive", false)), "reset respawns the drowned drain guard")
+	_assert_equals(int(chunk.get_preview_state().get("drowned_count", 0)), 0, "reset clears the drowned tally")
+
+	# The run washes the PARTY too (same as a section) — a mistimed crossing carries you down to the start.
+	instance.headless_advance(0.2)   # re-activate the phase after reset
+	for cid in ["aster", "peris", "endo"]:
+		gs.snap_character_to(cid, Vector3(3.0, 0.5, 0.0))
+	gs.snap_character_to("aster", run_pos)
+	var sweeps0 := int(chunk.get_preview_state().get("sweep_count", 0))
+	chunk.call("_wash_drain")
+	_assert_true(int(chunk.get_preview_state().get("sweep_count", 0)) > sweeps0, "a party member in the drain run is washed")
+	_assert_true(float(chunk.call("_get_character_position", "aster").x) < 5.0, "the drain wash carries them down to the start")
+
+	# LEAD-IN (bait): firing the bait commits the ledge guard and walks it DOWN across the run toward the lure.
+	gs.snap_character_to("ch_drain", ledge_pos)
+	_assert_true(not gs.is_character_distracted("ch_drain"), "the drain guard starts undistracted")
+	chunk.call("_on_drain_bait")
+	_assert_true(gs.is_character_distracted("ch_drain"), "firing the bait commits (distracts) the guard")
+	_assert_true(gs.is_moving("ch_drain"), "the baited guard walks toward the bait")
+	var dest: Vector3 = gs.get_destination("ch_drain")
+	_assert_true(dest.z < run_pos.z, "the baited guard heads INWARD across the flooding run (toward the deck-side bait)")
+	chunk.call("_drain_chase_resume")
+	_assert_true(not gs.is_character_distracted("ch_drain"), "the chase resumes after the bait window (distraction clears)")
+
+	instance.queue_free()
+	await get_tree().process_frame
+
+	# FAST-FORWARD INVARIANCE: drive the REAL scheduled onset at a fine (1x) and coarse (10x) step; the guard
+	# standing in the run must drown in BOTH — the kill is decided at the onset TICK, never by per-frame sampling.
+	var drowned_fine := await _drain_ff_run(0.0166)
+	var drowned_coarse := await _drain_ff_run(0.166)
+	_assert_equals(drowned_fine, 1, "the scheduled drain onset drowns the in-run guard at a fine (1x) tick step")
+	_assert_equals(drowned_coarse, drowned_fine, "the drain kill is fast-forward invariant (identical at a coarse 10x step)")
+
+# Helper: a fresh wash_relay, guard snapped into the run, driven past the first scheduled drain onset at `step`.
+func _drain_ff_run(step: float) -> int:
+	var inst: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	if inst == null:
+		return -1
+	var chunk: Node = inst.find_child("Chunk_wash_relay", true, false)
+	var gs = inst.get("_game_state")
+	if chunk == null or gs == null:
+		inst.queue_free(); await get_tree().process_frame
+		return -1
+	for cid in ["aster", "peris", "endo"]:
+		gs.snap_character_to(cid, Vector3(3.0, 0.5, 0.0))
+	gs.snap_character_to("ch_drain", chunk.get_preview_anchors()["drain_run"])
+	inst.headless_advance(6.0, step)   # past FIRST_FLOOD + DRAIN_LOOP_PHASE (3.5s) -> the onset fires once
+	var drowned := int(chunk.get_preview_state().get("drowned_count", 0))
+	inst.queue_free(); await get_tree().process_frame
+	return drowned
 
 # --- Test: the Showcase Gallery chunk shows off all three hiding tiers, both enemy types, and flora ---
 # Validates the exhibit content (3 hide tiers, 2 named enemy types + a demo sentry, the flora line-up) AND
