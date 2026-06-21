@@ -299,6 +299,9 @@ func _ready() -> void:
 			"--test-wash-relay-water-capture":
 				ran_test = true
 				await _test_wash_relay_water_capture()
+			"--test-wash-drain-loop-capture":
+				ran_test = true
+				await _test_wash_drain_loop_capture()
 			"--test-peris-room-capture":
 				ran_test = true
 				await _test_peris_room_capture()
@@ -12290,6 +12293,30 @@ func _test_wash_drain_loop() -> void:
 
 	var run_pos: Vector3 = anchors["drain_run"]
 	var ledge_pos: Vector3 = anchors["drain_ledge"]
+
+	# GEOMETRY (data layer — the authoritative shape check). The loop is a real U: the ONLY walkable route from
+	# the deck to the dry salvage ledge crosses the flooding run, so reaching the cache (or leading a guard to it)
+	# means crossing the current. An ASCII walkable map is printed for an eyeball read of the out-and-back shape.
+	var grid = gs.grid
+	if grid != null:
+		var rows: Array = []
+		for lane_i in range(11, 2, -1):   # outer lane at the top
+			var row := "lane %2d  " % lane_i
+			for s_i in range(76, 87):
+				var c: Vector2i = grid.world_to_grid(Vector3(float(s_i), 0.0, float(lane_i)))
+				row += "#" if grid.is_walkable(c.x, c.y) else "."
+			rows.append(row)
+		print("  [drain-geo] walkable map (s 76..86 across, lane 11..3 down; # = walkable):\n    " + "\n    ".join(rows))
+		var entry_cell: Vector2i = grid.world_to_grid(anchors["drain_entry"])   # deck rim at the loop mouth
+		var ledge_cell: Vector2i = grid.world_to_grid(ledge_pos)
+		var path: Array = grid.find_path(entry_cell, ledge_cell)
+		_assert_true(path.size() > 0, "the loop is walkable: a route runs from the deck to the salvage ledge")
+		var crosses_run := false
+		for wp in path:
+			if absf(float((wp as Vector3).z) - run_pos.z) <= 1.3:   # within DRAIN_RUN_HALF of the run centreline
+				crosses_run = true
+				break
+		_assert_true(crosses_run, "the only route to the ledge CROSSES the flooding run (a true U, no inner shortcut)")
 	for cid in ["aster", "peris", "endo"]:
 		gs.snap_character_to(cid, Vector3(3.0, 0.5, 0.0))   # park the party so the guard stays idle (no chase)
 
@@ -12346,6 +12373,86 @@ func _test_wash_drain_loop() -> void:
 	var drowned_coarse := await _drain_ff_run(0.166)
 	_assert_equals(drowned_fine, 1, "the scheduled drain onset drowns the in-run guard at a fine (1x) tick step")
 	_assert_equals(drowned_coarse, drowned_fine, "the drain kill is fast-forward invariant (identical at a coarse 10x step)")
+
+# WINDOWED visual check (dispatch-only, skips headless): frame the drain loop on the helix with the run
+# flooded and the guard on its ledge, so the geometry ("out the deck and back, with a ledge across the
+# water") and the flood read can be EYEBALLED. Writes res://vr_drain_loop.png.
+func _test_wash_drain_loop_capture() -> void:
+	_test_name = "Wash Drain Loop Capture"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (needs a display — run WITHOUT --headless)")
+		return
+	var inst = await _instantiate_preview_chunk_and_wait("wash_relay", 8)
+	if inst == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	for i in range(70):
+		await get_tree().process_frame   # model load + camera ease-in
+	var chunk = inst.find_child("Chunk_wash_relay", true, false)
+	get_tree().paused = true   # stop the follow-camera drift + freeze the scheduler so the flood stays up
+	var gs = chunk.call("_get_game_state")
+	var anchors: Dictionary = chunk.get_preview_anchors()
+	# Populate the loop: party at the entry/run, the guard on its ledge — then flood the run.
+	if gs != null:
+		if gs.characters.has("aster"):
+			gs.snap_character_to("aster", anchors["drain_entry"])
+		if gs.characters.has("peris"):
+			gs.snap_character_to("peris", anchors["drain_run"])
+		if gs.characters.has("endo"):
+			gs.snap_character_to("endo", Vector3(anchors["drain_exit"].x, 0.5, anchors["drain_exit"].z))
+		if gs.characters.has("ch_drain"):
+			gs.snap_character_to("ch_drain", anchors["drain_ledge"])
+	chunk.set("_drain_flooding", true)
+	chunk.call("_update")
+	for i in range(4):
+		await get_tree().process_frame
+	# Focus on the run midpoint (warped onto the helix); frame STEEPLY from above so the loop's U-shape
+	# (deck rim -> legs out -> run -> ledge across the water) reads. The channels are dark, so add a
+	# capture-only fill light to make the geometry legible (the instance is disposed right after).
+	var focus := Vector3(0.0, 11.0, 0.0)
+	if gs != null and gs.coord_map != null:
+		focus = gs.coord_map.to_world(anchors["drain_run"])
+	var fill := OmniLight3D.new()
+	fill.light_energy = 9.0
+	fill.omni_range = 30.0
+	get_tree().root.add_child(fill)
+	fill.global_position = focus + Vector3(0.0, 7.0, 0.0)
+	var outward := Vector3(focus.x, 0.0, focus.z).normalized()
+	var cam_pos := focus + outward * 3.0 + Vector3(0.0, 11.0, 0.0)
+	var cam := get_tree().root.get_viewport().get_camera_3d()
+	if cam != null and cam.is_inside_tree():
+		cam.global_transform = Transform3D(Basis(), cam_pos).looking_at(focus, Vector3.UP)
+	print("  [diag] focus=%s cam=%s drain_flooding=%s" % [str(focus), str(cam_pos), str(chunk.get_preview_state().get("drain_flooding"))])
+	for i in range(2):
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var tex := get_tree().root.get_texture()
+	if tex != null:
+		tex.get_image().save_png("res://vr_drain_loop.png")
+		print("  [drain-capture] wrote vr_drain_loop.png (real view)")
+	# Second shot — hide the textured GLB so ONLY the warped graybox decks show, straight top-down, so the
+	# loop's U-shape (legs out, run along, ledge stub across the water) reads against empty space. Brighten the
+	# (near-black) loop decks with an unshaded override so they stand out for the eyeball check.
+	var env_model := inst.find_child("EnvironmentModel", true, false)
+	if env_model != null:
+		(env_model as Node3D).visible = false
+	var drain_root := chunk.find_child("DrainLoop", true, false)
+	if drain_root != null:
+		for m in drain_root.find_children("*", "MeshInstance3D", true, false):
+			var bm := StandardMaterial3D.new()
+			bm.albedo_color = Color(0.35, 0.85, 0.95)
+			bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			(m as MeshInstance3D).material_override = bm
+	if cam != null and cam.is_inside_tree():
+		cam.global_transform = Transform3D(Basis(), focus + Vector3(0.0, 7.5, 0.0)).looking_at(focus, Vector3(0.0, 0.0, -1.0))
+	for i in range(3):
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var tex2 := get_tree().root.get_texture()
+	if tex2 != null:
+		tex2.get_image().save_png("res://vr_drain_loop_geo.png")
+		print("  [drain-capture] wrote vr_drain_loop_geo.png (graybox top-down)")
+	_assert_true(true, "captured the drain loop")
+	await _dispose_scene(inst)
 
 # Helper: a fresh wash_relay, guard snapped into the run, driven past the first scheduled drain onset at `step`.
 func _drain_ff_run(step: float) -> int:
