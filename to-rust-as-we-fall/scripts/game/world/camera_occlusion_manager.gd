@@ -37,8 +37,14 @@ func _process(_delta: float) -> void:
 		RenderingServer.global_shader_parameter_set(PLAYER_PARAM, pos)
 
 func _watch_pos() -> Vector3:
-	if game_state != null and watch_id != "" and game_state.characters.has(watch_id):
-		return game_state.get_render_position(watch_id)
+	if game_state != null:
+		# Track the watched (active/lead) character; if its id isn't set/registered yet, fall back to ANY
+		# registered character so the reveal centre is never left stale at the origin (the "hole is in the
+		# wrong place / not on the player" failure mode).
+		if watch_id != "" and game_state.characters.has(watch_id):
+			return game_state.get_render_position(watch_id)
+		for cid in game_state.characters.keys():
+			return game_state.get_render_position(cid)
 	if _player_node != null and is_instance_valid(_player_node):
 		return _player_node.global_position
 	return Vector3.INF

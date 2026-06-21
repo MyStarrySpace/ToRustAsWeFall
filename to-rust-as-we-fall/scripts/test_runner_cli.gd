@@ -299,6 +299,9 @@ func _ready() -> void:
 			"--test-peris-room-capture":
 				ran_test = true
 				await _test_peris_room_capture()
+			"--test-occlusion-shader-capture":
+				ran_test = true
+				await _test_occlusion_shader_capture()
 			"--test-wash-relay-trace-cadence":
 				ran_test = true
 				await _test_wash_relay_trace_cadence()
@@ -11061,6 +11064,46 @@ func _test_wash_relay_abilities() -> void:
 
 ## WINDOWED eyeball: force floods + capture the channels so the flood water (and sluice gate) can be SEEN on
 ## the helix. Writes vr_channels_water.png (gitignored). Not in --test-all (needs a display).
+func _test_occlusion_shader_capture() -> void:
+	_test_name = "Occlusion Shader Capture"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (needs a display — run WITHOUT --headless)")
+		return
+	var root := Node3D.new()
+	get_tree().root.add_child(root)
+	var player := Vector3(0.0, 0.0, -5.0)
+	# Bright green backdrop BEHIND the player so the hole reveals something obvious.
+	var bg := MeshInstance3D.new()
+	var bgq := QuadMesh.new(); bgq.size = Vector2(24, 24); bg.mesh = bgq
+	var bgm := StandardMaterial3D.new()
+	bgm.albedo_color = Color(0.15, 0.85, 0.3); bgm.emission_enabled = true; bgm.emission = Color(0.15, 0.85, 0.3)
+	bg.material_override = bgm; bg.position = Vector3(0, 0, -10)
+	root.add_child(bg)
+	# A RED wall directly between the camera and the player, wrapped in the occlusion shader.
+	var wall := MeshInstance3D.new()
+	var wq := QuadMesh.new(); wq.size = Vector2(12, 12); wall.mesh = wq
+	var wm := ShaderMaterial.new(); wm.shader = load("res://resources/camera_occlusion.gdshader")
+	wm.set_shader_parameter("albedo_color", Color(0.85, 0.18, 0.16))
+	wm.set_shader_parameter("emission_color", Color(0.85, 0.18, 0.16))
+	wm.set_shader_parameter("emission_energy", 0.6)
+	wall.material_override = wm; wall.position = Vector3(0, 0, 0)
+	root.add_child(wall)
+	var light := DirectionalLight3D.new(); light.rotation_degrees = Vector3(-50, 20, 0); root.add_child(light)
+	var cam := Camera3D.new(); root.add_child(cam)
+	cam.global_transform = Transform3D(Basis(), Vector3(0, 0, 6)).looking_at(player, Vector3.UP)
+	cam.make_current()
+	RenderingServer.global_shader_parameter_set("player_world_pos", player)
+	for i in range(5):
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var tex := get_tree().root.get_texture()
+	if tex != null:
+		tex.get_image().save_png("res://vr_occlusion_test.png")
+		print("  [occlusion-test] wrote vr_occlusion_test.png (RED wall should show a GREEN dithered hole on the camera->player line)")
+	_assert_true(true, "occlusion shader capture")
+	root.queue_free()
+	await get_tree().process_frame
+
 func _test_peris_room_capture() -> void:
 	_test_name = "Peris Room Capture"
 	if DisplayServer.get_name() == "headless":
