@@ -296,6 +296,9 @@ func _ready() -> void:
 			"--test-wash-relay-water-capture":
 				ran_test = true
 				await _test_wash_relay_water_capture()
+			"--test-peris-room-capture":
+				ran_test = true
+				await _test_peris_room_capture()
 			"--test-wash-relay-trace-cadence":
 				ran_test = true
 				await _test_wash_relay_trace_cadence()
@@ -11058,6 +11061,33 @@ func _test_wash_relay_abilities() -> void:
 
 ## WINDOWED eyeball: force floods + capture the channels so the flood water (and sluice gate) can be SEEN on
 ## the helix. Writes vr_channels_water.png (gitignored). Not in --test-all (needs a display).
+func _test_peris_room_capture() -> void:
+	_test_name = "Peris Room Capture"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (needs a display — run WITHOUT --headless)")
+		return
+	var inst: Node = load("res://scenes/tutorial/peris_sim.tscn").instantiate()
+	get_tree().root.add_child(inst)
+	for i in range(60):
+		await get_tree().process_frame   # room builds + the sequence starts
+	get_tree().paused = true
+	for i in range(2):
+		await get_tree().process_frame
+	# Overview the modeled room (floor X[0,14] Z[0,6]) from above-front to read the prop layout.
+	var cam := get_tree().root.get_viewport().get_camera_3d()
+	if cam != null and cam.is_inside_tree():
+		cam.global_transform = Transform3D(Basis(), Vector3(7.0, 12.0, -9.0)).looking_at(Vector3(7.0, 1.0, 3.0), Vector3.UP)
+	for i in range(3):
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var tex := get_tree().root.get_texture()
+	if tex != null:
+		tex.get_image().save_png("res://vr_peris_room.png")
+		print("  [peris-capture] wrote vr_peris_room.png")
+	_assert_true(true, "captured the peris room")
+	inst.queue_free()
+	await get_tree().process_frame
+
 func _test_wash_relay_water_capture() -> void:
 	_test_name = "Wash Relay Water Capture"
 	if DisplayServer.get_name() == "headless":

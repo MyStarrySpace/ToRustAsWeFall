@@ -571,14 +571,12 @@ func _complete() -> void:
 ## clear for Peris. The furniture are group nodes in the loaded model, so we set their transforms in the
 ## gameplay frame (preserving each group's scale; yaw only).
 func _relayout_room(root: Node) -> void:
+	# The furniture is authored in a coherent layout in the model (peris-furniture.gltf), so we KEEP those
+	# authored positions instead of re-typing scattered coordinates here. Only the gameplay fixtures are
+	# placed by script: the Portal is oriented as a wall panel Peris faces, and the Kiosk sits beside it.
 	_place_group(root, "Portal", PORTAL_PANEL, 90.0)                  # west wall, faces +X into the room
 	_place_group(root, "Kiosk", Vector3(0.9, 0.0, 1.2), 90.0)        # terminal beside the portal
-	_place_group(root, "couch", Vector3(7.4, 0.5, 3.0), 0.0)         # faces -X toward the portal
-	_place_group(root, "Armchair", Vector3(5.7, 0.0, 1.4), -35.0)
-	_place_group(root, "bench", Vector3(5.7, 0.4, 4.6), 0.0)
-	_place_group(root, "CoffeeTable", Vector3(4.5, 0.0, 3.0), 0.0)
-	_place_group(root, "PlantStand", Vector3(4.4, 0.0, 5.2), 0.0)    # front-mid, beside the bench (holds the jade)
-	_place_group(root, "Bookshelf", Vector3(12.5, 0.0, 1.0), -90.0)  # back-east decor (by the logbook), faces -X
+	_place_group(root, "PlantStand", Vector3(4.4, 0.0, 5.2), 0.0)    # holds the jade plant (Plant4) — kept at its spread spot
 
 func _place_group(root: Node, node_name: String, pos: Vector3, yaw_deg: float) -> void:
 	var n := root.find_child(node_name, true, false)
