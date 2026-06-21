@@ -20065,6 +20065,15 @@ func _test_modeled_room_binder() -> void:
 	var live_problems: Array = instance._room_binder.validate()
 	_assert_true(live_problems.is_empty(),
 		"the aster room binder validates CLEAN (got: %s)" % str(live_problems))
+	# Solid occupants land on the no-grid VISUAL layer (2) at apply_occupancy, so the hover-grid Decal
+	# (which clears that bit from its cull_mask) passes THROUGH the furniture and only stamps the floor.
+	var desk_meshes: Array = instance._room_binder.object_meshes(["Desk"])
+	var desk_all_no_grid := not desk_meshes.is_empty()
+	for m in desk_meshes:
+		if (m as MeshInstance3D).layers != 2:
+			desk_all_no_grid = false
+	_assert_true(desk_all_no_grid,
+		"occupant furniture (Desk) renders on the no-grid layer so the hover grid passes through it")
 	instance.queue_free()
 	await get_tree().process_frame
 
