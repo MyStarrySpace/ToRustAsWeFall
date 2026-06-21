@@ -19,6 +19,20 @@ const REQUIRED_TIERS := ["hard", "setpiece"]
 
 const RISK_WEIGHTS := {"safe": 0, "direct": 1, "risky": 2}
 
+## Combination-pressure model. Every committed approach carries a base attrition cost (its
+## risk plus the node's own survival pressure). On a choice node — one offering both the
+## combined (specialist/multi-character) approach and the Aster+Peris pair approach — the
+## combined line is the cleaner one, so the PAIR pays an extra premium that grows with the
+## progression stage: the pair-solve stays valid everywhere, but becomes visibly costlier
+## the later the stretch sits, which is how "combination becomes needed, not required" reads.
+const PRESSURE_PER_RISK := 1.0
+const PRESSURE_SURVIVAL := {"forage": 0.0, "rest": 0.0, "exploit": 1.0, "hazard": 2.0, "gauntlet": 2.0}
+const COMBINATION_PREMIUM_BASE := 1.0
+const COMBINATION_PREMIUM_PER_STAGE := 1.0
+## The combined (specialist) line shaves a little off the base at a choice node — the clean
+## solve — so even at stage 0 the two costs differ in the pair's disfavour.
+const COMBINATION_SPOTLIGHT_RELIEF := 0.5
+
 
 static func analyze_spec(spec: Dictionary) -> Dictionary:
 	var nodes: Array = spec.get("nodes", [])
@@ -36,9 +50,14 @@ static func analyze(nodes: Array, tier := "teaching", progression_stage := 99, r
 	# path (and the playtest) walk the non-optional spine, so an optional detour carrying a
 	# choice must not be what proves the stretch is solvable two ways.
 	var choice_nodes: Array[String] = []
+	var diagnosis_nodes: Array[String] = []
 	for node in nodes:
-		if node is Dictionary and not bool((node as Dictionary).get("optional", false)) and _presents_choice(node as Dictionary):
+		if not (node is Dictionary) or bool((node as Dictionary).get("optional", false)):
+			continue
+		if _presents_choice(node as Dictionary):
 			choice_nodes.append(str((node as Dictionary).get("id", "")))
+		if _is_diagnosis(node as Dictionary):
+			diagnosis_nodes.append(str((node as Dictionary).get("id", "")))
 
 	var solution_paths := []
 	for loadout in CapabilitiesScript.loadouts(roster):
@@ -126,6 +145,13 @@ static func analyze(nodes: Array, tier := "teaching", progression_stage := 99, r
 		"distinct_node_count": distinct_nodes.size(),
 		"multi_solution_required": required,
 		"multi_solution_ok": (not required) or multi_solution,
+		"spotlight_pressure": float(spotlight.get("pressure", 0.0)),
+		"shadow_pressure": float(shadow.get("pressure", 0.0)),
+		"shadow_combination_premium": float(shadow.get("combination_premium", 0.0)),
+		"combination_pressure_gap": float(shadow.get("pressure", 0.0)) - float(spotlight.get("pressure", 0.0)),
+		"diagnosis_nodes": diagnosis_nodes,
+		"diagnosis_node_count": diagnosis_nodes.size(),
+		"diagnosis_penalty": float(shadow.get("diagnosis_penalty", 0.0)),
 		"warnings": warnings,
 	}
 
@@ -161,10 +187,20 @@ static func _bare_pair_solvable(nodes: Array) -> bool:
 static func _solve_loadout(nodes: Array, loadout: Dictionary, progression_stage := 99, roster = []) -> Dictionary:
 	var base_caps: Dictionary = loadout.get("base_capabilities", {})
 	var enforce_stage := bool(loadout.get("enforce_stage", false))
+	var is_pair := str(loadout.get("id", "")) == "shadow"
+	# The premium the pair pays at a choice node grows with the campaign stage (clamped so an
+	# uncapped stage like 99 doesn't run away). Spotlight gets a small relief there instead.
+	var premium_stage := mini(maxi(0, progression_stage), 8)
+	var choice_premium := COMBINATION_PREMIUM_BASE + COMBINATION_PREMIUM_PER_STAGE * float(premium_stage)
 	var approach_per_node := []
 	var blocked: Array[String] = []
 	var solvable := true
 	var total_risk := 0
+	var pressure := 0.0
+	var combination_premium := 0.0
+	var choice_nodes_taken := 0
+	var diagnosis_nodes_taken := 0
+	var diagnosis_penalty := 0.0
 	var max_stage_used := 0
 	var uses_future := false
 	var within_stage := true
@@ -235,7 +271,24 @@ static func _solve_loadout(nodes: Array, loadout: Dictionary, progression_stage 
 		var taught := str(chosen.get("taught_by", ""))
 		if taught != "" and not techniques.has(taught):
 			techniques.append(taught)
-		approach_per_node.append({
+		# Base attrition for this node + the combination premium on a choice node. The pair
+		# (shadow) takes the cleaner combined line's place with its own labour, so it pays the
+		# stage-scaled premium; the spotlight gets the relief. A non-choice node costs the same
+		# either way (no combination to forgo there).
+		var node_pressure := PRESSURE_PER_RISK * float(RISK_WEIGHTS.get(risk, 1))
+		node_pressure += float(PRESSURE_SURVIVAL.get(str(node_dict.get("survival_kind", "")), 0.0))
+		node_pressure += float(int(node_dict.get("pressure_cost", 0)))
+		var node_premium := 0.0
+		if _presents_choice(node_dict):
+			choice_nodes_taken += 1
+			if is_pair:
+				node_premium = choice_premium
+			else:
+				node_premium = -COMBINATION_SPOTLIGHT_RELIEF
+		combination_premium += node_premium
+		pressure += maxf(0.0, node_pressure + node_premium)
+		var is_diagnosis := _is_diagnosis(node_dict)
+		var record := {
 			"node": node_id,
 			"role": str(node_dict.get("role", "")),
 			"approach_id": str(chosen.get("id", "")),
@@ -250,8 +303,19 @@ static func _solve_loadout(nodes: Array, loadout: Dictionary, progression_stage 
 			"expert": bool(chosen.get("expert", false)),
 			"stage_ahead": stage_ahead,
 			"borrows_from": str(chosen.get("borrows_from", "")),
+			"node_pressure": node_pressure,
+			"combination_premium": node_premium,
 			"blocked": false,
-		})
+		}
+		if is_diagnosis:
+			diagnosis_nodes_taken += 1
+			# The solve commits the CORRECT read (no penalty); the wrong-read sting is what a
+			# misdiagnosis would have cost, carried so the UI can show the stakes.
+			record["diagnosis"] = true
+			record["correct_read"] = diagnosis_correct_read(node_dict)
+			record["wrong_read_penalty"] = diagnosis_wrong_penalty(node_dict)
+			diagnosis_penalty += diagnosis_wrong_penalty(node_dict)
+		approach_per_node.append(record)
 	return {
 		"loadout": str(loadout.get("id", "")),
 		"label": str(loadout.get("label", "")),
@@ -260,11 +324,49 @@ static func _solve_loadout(nodes: Array, loadout: Dictionary, progression_stage 
 		"blocked_nodes": blocked,
 		"approach_per_node": approach_per_node,
 		"total_risk": total_risk,
+		"pressure": pressure,
+		"combination_premium": combination_premium,
+		"choice_nodes_taken": choice_nodes_taken,
+		"diagnosis_nodes_taken": diagnosis_nodes_taken,
+		"diagnosis_penalty": diagnosis_penalty,
 		"max_stage_used": max_stage_used,
 		"uses_future_technique": uses_future,
 		"within_stage": within_stage,
 		"techniques": techniques,
 	}
+
+
+## A diagnosis node presents multiple character reads, exactly one correct. The "solve" is
+## naming the correct read; a wrong read is a pressure setback, never a hard block.
+static func _is_diagnosis(node: Dictionary) -> bool:
+	return str(node.get("kind", "")) == "diagnosis" or str(node.get("solve", "")) == "deduce" \
+		or not (node.get("reads", []) as Array).is_empty()
+
+
+## The pressure penalty a wrong diagnosis read costs — the worst of the wrong reads' authored
+## penalties (a min of 1 so a diagnosis node always has a wrong-read sting). Zero for a node
+## with no reads (not a diagnosis node).
+static func diagnosis_wrong_penalty(node: Dictionary) -> float:
+	var reads: Array = node.get("reads", [])
+	if reads.is_empty():
+		return 0.0
+	var worst := 0.0
+	for read in reads:
+		if read is Dictionary and not bool((read as Dictionary).get("correct", false)):
+			worst = maxf(worst, float((read as Dictionary).get("penalty", 1)))
+	return maxf(1.0, worst)
+
+
+## The id of the correct read on a diagnosis node (the node's own `correct_read`, else the
+## one read flagged correct). Empty for a non-diagnosis node.
+static func diagnosis_correct_read(node: Dictionary) -> String:
+	var explicit := str(node.get("correct_read", "")).strip_edges()
+	if explicit != "":
+		return explicit
+	for read in node.get("reads", []):
+		if read is Dictionary and bool((read as Dictionary).get("correct", false)):
+			return str((read as Dictionary).get("id", ""))
+	return ""
 
 
 ## A node presents a genuine choice when it offers both a specialist primary approach

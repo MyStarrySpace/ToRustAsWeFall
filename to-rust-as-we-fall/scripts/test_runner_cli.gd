@@ -718,6 +718,9 @@ func _ready() -> void:
 			"--test-campaign-order":
 				ran_test = true
 				_test_campaign_order()
+			"--test-curriculum-ramp":
+				ran_test = true
+				_test_curriculum_ramp()
 			"--test-survival-archetypes":
 				ran_test = true
 				await _test_survival_archetypes()
@@ -970,6 +973,7 @@ func _run_all_tests() -> void:
 	_test_campaign_order()
 	_test_archetype_coherence()
 	_test_character_roster()
+	_test_curriculum_ramp()
 	await _test_survival_archetypes()
 	if not _heavy("Generated Stretch Playtest Loop"):
 		await _test_generated_stretch_playtest_loop()
@@ -1673,7 +1677,7 @@ func _test_archetype_generation() -> void:
 	var catalog := StretchArchetypeCatalogScript.new()
 	var catalog_validation: Dictionary = catalog.validate()
 	_assert_true(bool(catalog_validation.get("valid", false)), "Archetype catalog validates")
-	_assert_equals(catalog.get_archetype_ids().size(), 16, "Catalog exposes archetypes 1-16 (11 puzzle/meta + 5 survival)")
+	_assert_equals(catalog.get_archetype_ids().size(), 17, "Catalog exposes archetypes 1-17 (11 puzzle/meta + 5 survival + 1 diagnosis)")
 	for flora_id in ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "doma", "snapbloom", "capbage", "gasafoetida", "climbvine", "resolution_roots", "forget_me_nots"]:
 		_assert_true(catalog.has_content("flora", flora_id), "Catalog includes flora %s" % flora_id)
 	for enemy_id in ["techos", "verdings", "hidras", "crusts", "candids", "meebs", "naturalizers", "gnawers", "neutros", "spikers", "tanglers", "toxos", "nosomas"]:
@@ -2473,6 +2477,136 @@ func _test_campaign_order() -> void:
 		for c in n.get("children", []):
 			stack.append(c)
 	_assert_true(unique, "All node ids are unique after load + a fresh add")
+
+## The combine-characters learning ramp: generating stretches across progression stages 1..6
+## must escalate — deeper/bigger, the shadow (pair) solve increasingly costlier than the
+## combined solve while staying solvable, diagnosis only at the high end, and a stage-monotonic
+## campaign order. This is the guard for the whole curriculum directive.
+func _test_curriculum_ramp() -> void:
+	_test_name = "Curriculum Ramp"
+
+	# A broad, fixed pool spanning the ladder, so each stage pulls in stage-appropriate
+	# archetypes; the teaching tier (natural stage 2) makes depth grow from stage 3 up.
+	var pool := ["2", "12", "16", "15", "11", "1", "3", "8", "4", "5", "6", "7", "14", "13", "10", "17"]
+	var by_stage := {}
+	for stage in [1, 2, 3, 4, 5, 6]:
+		var settings := {
+			"id": "ramp_stage_%d" % stage,
+			"seed": 73,
+			"complexity_tier": "teaching",
+			"progression_stage": stage,
+			"limitations": {"allowed": {"archetypes": pool}},
+		}
+		# Force a diagnosis node into the top stage so its presence is testable, not luck.
+		if stage >= 6:
+			settings["limitations"]["required"] = {"archetypes": ["17"]}
+		var spec: Dictionary = StretchGeneratorScript.generate(settings)
+		_assert_true(bool(spec.get("success", false)), "Stage %d stretch generates" % stage)
+		by_stage[stage] = spec
+
+	# (a) Effective depth/size grows with stage (non-decreasing across the ladder, strictly
+	# bigger at the top than near the bottom — the tier stays the floor, stage adds depth).
+	var prev_nodes := 0
+	var prev_depth := 0
+	for stage in [1, 2, 3, 4, 5, 6]:
+		var budget: Dictionary = by_stage[stage].get("budget", {})
+		var nc := int(budget.get("node_count", 0))
+		var depth := int(budget.get("archetype_depth", 0))
+		_assert_true(nc >= prev_nodes, "Stage %d node_count does not shrink (%d >= %d)" % [stage, nc, prev_nodes])
+		_assert_true(depth >= prev_depth, "Stage %d archetype_depth does not shrink (%d >= %d)" % [stage, depth, prev_depth])
+		prev_nodes = nc
+		prev_depth = depth
+	_assert_true(int(by_stage[6].get("budget", {}).get("node_count", 0)) > int(by_stage[2].get("budget", {}).get("node_count", 0)),
+		"A stage-6 stretch is genuinely bigger than a stage-2 stretch")
+	_assert_true(int(by_stage[6].get("budget", {}).get("archetype_depth", 0)) > int(by_stage[2].get("budget", {}).get("archetype_depth", 0)),
+		"A stage-6 stretch has a deeper archetype chain than a stage-2 stretch")
+
+	# Every stage stays solvable by the pair and bare-pair (the law holds at every stage).
+	for stage in [1, 2, 3, 4, 5, 6]:
+		var summary: Dictionary = by_stage[stage].get("headless", {}).get("solution_summary", {})
+		_assert_true(bool(summary.get("shadow_solvable", false)), "Stage %d: the Aster+Peris pair can still solve it" % stage)
+		_assert_true(bool(summary.get("bare_pair_solvable", false)), "Stage %d: every node stays bare-pair solvable" % stage)
+
+	# (b) Holding the puzzle SET fixed (the same choice-bearing archetypes at every stage), the
+	# shadow (pair) pressure rises STRICTLY with stage — combination becomes increasingly needed
+	# while the pair stays solvable. A fixed required set isolates the stage-scaled premium from
+	# the archetype-sample noise that a broad pool introduces.
+	var prev_fixed_shadow := -1.0
+	var prev_fixed_gap := -1.0
+	for stage in [2, 3, 4, 5, 6]:
+		var fixed: Dictionary = StretchGeneratorScript.generate({
+			"id": "ramp_fixed_%d" % stage,
+			"seed": 73,
+			"complexity_tier": "teaching",
+			"progression_stage": stage,
+			"budget": {"node_count": 6, "archetype_depth": 2, "branch_count": 1},
+			"limitations": {
+				"required": {"archetypes": ["1", "3"]},
+				"allowed": {"archetypes": ["1", "3", "11"]},
+			},
+		})
+		var s: Dictionary = fixed.get("headless", {}).get("solution_summary", {})
+		_assert_true(bool(s.get("shadow_solvable", false)), "Fixed-set stage %d stays pair-solvable" % stage)
+		var sp := float(s.get("shadow_pressure", 0.0))
+		var gap := float(s.get("combination_pressure_gap", 0.0))
+		_assert_true(sp > prev_fixed_shadow, "Fixed-set stage %d shadow pressure rises (%.1f > %.1f)" % [stage, sp, prev_fixed_shadow])
+		_assert_true(gap > prev_fixed_gap, "Fixed-set stage %d combination gap rises (%.1f > %.1f)" % [stage, gap, prev_fixed_gap])
+		_assert_true(sp > float(s.get("spotlight_pressure", 0.0)), "Fixed-set stage %d: pair pays more than the combined solve" % stage)
+		prev_fixed_shadow = sp
+		prev_fixed_gap = gap
+
+	# (c) Diagnosis nodes appear only at high stages (the stage-6 primitive), never early.
+	for stage in [1, 2, 3, 4]:
+		_assert_equals(int(by_stage[stage].get("headless", {}).get("solution_summary", {}).get("diagnosis_node_count", 0)), 0,
+			"Stage %d has no diagnosis nodes (it is a late-game primitive)" % stage)
+	_assert_true(int(by_stage[6].get("headless", {}).get("solution_summary", {}).get("diagnosis_node_count", 0)) >= 1,
+		"Stage 6 surfaces at least one diagnosis node")
+
+	# (d) Choice-node / multi-character density grows with stage (more combine beats later).
+	_assert_true(int(by_stage[6].get("headless", {}).get("solution_summary", {}).get("choice_node_count", 0))
+			>= int(by_stage[2].get("headless", {}).get("solution_summary", {}).get("choice_node_count", 0)),
+		"Choice-node density does not shrink from stage 2 to stage 6")
+	_assert_true(int(by_stage[6].get("headless", {}).get("solution_summary", {}).get("choice_node_count", 0)) > 0,
+		"A late-stage stretch carries multiple specialist-vs-pair choice nodes")
+
+	# (e) The campaign order is stage-monotonic: the default build sorts each region's stretches
+	# by ascending progression stage (different regions are parallel content, so monotonicity is
+	# a within-region property — the curriculum climbs as you advance a region).
+	var order = CampaignOrderScript.build_default_from_dir("res://data/generated_stretches")
+	var per_region := {}
+	for st in order.flatten_stretches():
+		var region := str((st as Dictionary).get("region", ""))
+		if not per_region.has(region):
+			per_region[region] = []
+		(per_region[region] as Array).append(int((st as Dictionary).get("stage", 1)))
+	var regions_monotonic := true
+	for region in per_region.keys():
+		var stages: Array = per_region[region]
+		for i in range(1, stages.size()):
+			if int(stages[i]) < int(stages[i - 1]):
+				regions_monotonic = false
+	_assert_true(regions_monotonic, "Each campaign region orders its stretches by ascending progression stage")
+	# A controlled stage-ascending main line validates with no stage regression — the ordering
+	# law itself, isolated from the parallel-region sample data.
+	var mono = CampaignOrderScript.new()
+	var mreg := mono.add_node(str(mono.root()["id"]), "region", "Ramp")
+	mono.add_node(mreg, "stretch", "S1", {"spec_id": "s1", "entry": "shelter_1", "exit": "shelter_2", "stage": 1, "branch": "main"})
+	mono.add_node(mreg, "stretch", "S2", {"spec_id": "s2", "entry": "shelter_2", "exit": "shelter_3", "stage": 3, "branch": "main"})
+	mono.add_node(mreg, "stretch", "S3", {"spec_id": "s3", "entry": "shelter_3", "exit": "shelter_4", "stage": 6, "branch": "main"})
+	var mono_codes := {}
+	for it in mono.validate(["s1", "s2", "s3"]).get("issues", []):
+		mono_codes[str((it as Dictionary).get("code", ""))] = true
+	_assert_true(not mono_codes.has("stage_regression"), "A stage-ascending main line validates with no regression")
+
+	# The preview picker (the hand-authored ramp) is authored in ascending stage order.
+	var prev_preview_stage := 0
+	var preview_monotonic := true
+	for entry in FragmentPreviewScript.PREVIEW_ENTRIES:
+		var es := int((entry as Dictionary).get("stage", 1))
+		if es < prev_preview_stage:
+			preview_monotonic = false
+		prev_preview_stage = es
+	_assert_true(preview_monotonic, "The fragment preview picker is ordered along the learning ramp (ascending stage)")
 
 func _spotlight_approach_for_archetype(spec: Dictionary, aid: String) -> Dictionary:
 	var node_arch := {}
@@ -11175,7 +11309,7 @@ func _test_wash_relay_branch_puzzles() -> void:
 	var kinds: Array = []
 	var gated_gap := -1
 	var open_gap := -1
-	var decoy_gap := -1
+	var decoy_gaps: Array[int] = []
 	for b in branches:
 		var bd := b as Dictionary
 		kinds.append(str(bd.get("gate_kind", "?")))
@@ -11183,10 +11317,20 @@ func _test_wash_relay_branch_puzzles() -> void:
 		if bool(bd.get("gated", false)):
 			if gated_gap < 0:
 				gated_gap = gap
-			if str(bd.get("gate_kind", "")) == "decoy" and bool(bd.get("guarded", false)) and decoy_gap < 0:
-				decoy_gap = gap
+			if str(bd.get("gate_kind", "")) == "decoy" and bool(bd.get("guarded", false)):
+				decoy_gaps.append(gap)
 		elif open_gap < 0:
 			open_gap = gap
+	# The gated sub-test below FIRES the switch at gated_gap (which distracts that branch's guard
+	# if it is a decoy), so the "starts undistracted" decoy check must read a DIFFERENT decoy
+	# branch — prefer one that isn't the gated branch we fire, falling back only if it is the lone decoy.
+	var decoy_gap := -1
+	for g in decoy_gaps:
+		if g != gated_gap:
+			decoy_gap = g
+			break
+	if decoy_gap < 0 and not decoy_gaps.is_empty():
+		decoy_gap = decoy_gaps[0]
 	print("[branch-puzzles] gate kinds: %s | first gated gap=%d, open gap=%d, decoy gap=%d" % [str(kinds), gated_gap, open_gap, decoy_gap])
 	_assert_true(gated_gap >= 0, "at least one branch is a gated puzzle")
 	_assert_true(open_gap >= 0, "at least one branch is an open breather (a free cache)")
@@ -11231,8 +11375,11 @@ func _test_wash_relay_branch_puzzles() -> void:
 	if decoy_gap >= 0:
 		var guard_id := "branch_guard_%d" % decoy_gap
 		var dswitch: Node = instance.find_child("BranchSwitch%d" % decoy_gap, true, false)
-		_assert_true(gs.characters.has(guard_id) and not gs.is_character_distracted(guard_id),
-			"the decoy branch's guard starts undistracted")
+		# Skip the "starts undistracted" check only when this decoy IS the gated branch the
+		# unlock leg above already fired (its guard is intentionally distracted by now).
+		if decoy_gap != gated_gap:
+			_assert_true(gs.characters.has(guard_id) and not gs.is_character_distracted(guard_id),
+				"the decoy branch's guard starts undistracted")
 		if dswitch != null:
 			dswitch.call("_trigger", false)
 			await get_tree().process_frame

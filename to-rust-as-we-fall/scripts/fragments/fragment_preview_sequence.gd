@@ -41,31 +41,35 @@ const CHUNK_SCENES := {
 	"wash_relay": WASH_RELAY_CHUNK_SCENE,
 }
 
-# The fragment menu, in display order. Each entry is a runnable preview: an id, the chunk it loads, a
-# display title, and an optional chunk config (the generated-stretch entries reuse one chunk with
+# The fragment menu, ordered along the combine-characters learning ramp (its `stage` ascending). Each
+# entry is a runnable preview: an id, the chunk it loads, a display title, the campaign progression
+# stage it sits at, and an optional chunk config (the generated-stretch entries reuse one chunk with
 # different spec specs). This list REPLACES the 14 near-identical *_preview.tscn files — the single
-# fragment_preview.tscn boots into a picker built from these, and tests/tools select by id.
+# fragment_preview.tscn boots into a picker built from these, and tests/tools select by id. The stage
+# is the curriculum position: 1 = intro / single-mechanic, climbing to 6 = the Mother-Flure diagnosis.
 const PREVIEW_ENTRIES := [
-	{"id": "stacks", "chunk": "stacks", "title": "Stacks Fragment Lab"},
-	{"id": "rings", "chunk": "rings", "title": "Rings Fragment Lab"},
-	{"id": "lockout", "chunk": "lockout", "title": "Lockout Fragment Lab"},
-	{"id": "mother_flure", "chunk": "mother_flure", "title": "Mother Flure"},
-	{"id": "lure_relay", "chunk": "lure_relay", "title": "Flure Relay"},
-	{"id": "push_lab", "chunk": "push_lab", "title": "Push Lab"},
-	{"id": "rest_lab", "chunk": "rest_lab", "title": "Shelter Rest Lab"},
-	{"id": "flora_garden", "chunk": "flora_garden", "title": "Flora Garden"},
-	{"id": "dusk_run", "chunk": "dusk_run", "title": "Dusk Run"},
-	{"id": "wash_relay", "chunk": "wash_relay", "title": "Wash Relay"},
-	{"id": "survival_range", "chunk": "survival_range", "title": "Shelter-To-Shelter Range"},
-	{"id": "refuge_run", "chunk": "refuge_run", "title": "Refuge Run"},
-	{"id": "showcase_gallery", "chunk": "showcase_gallery", "title": "Showcase Gallery"},
-	{"id": "endo_junction_stretch", "chunk": "endo_junction_stretch", "title": "Endo's Junction to Shelter 1"},
-	{"id": "generated_stretch", "chunk": "generated_stretch", "title": "Generated Stretch",
+	{"id": "endo_junction_stretch", "chunk": "endo_junction_stretch", "title": "Endo's Junction to Shelter 1", "stage": 1},
+	{"id": "showcase_gallery", "chunk": "showcase_gallery", "title": "Showcase Gallery", "stage": 1},
+	{"id": "stacks", "chunk": "stacks", "title": "Stacks Fragment Lab", "stage": 1},
+	{"id": "rings", "chunk": "rings", "title": "Rings Fragment Lab", "stage": 1},
+	{"id": "push_lab", "chunk": "push_lab", "title": "Push Lab", "stage": 2},
+	{"id": "rest_lab", "chunk": "rest_lab", "title": "Shelter Rest Lab", "stage": 2},
+	{"id": "lockout", "chunk": "lockout", "title": "Lockout Fragment Lab", "stage": 2},
+	{"id": "generated_stretch", "chunk": "generated_stretch", "title": "Generated Stretch", "stage": 2,
 		"config": {"spec_path": "res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"}},
-	{"id": "generated_chain_nested_poc", "chunk": "generated_stretch", "title": "Generated Chain/Nested POC",
+	{"id": "dusk_run", "chunk": "dusk_run", "title": "Dusk Run", "stage": 3},
+	{"id": "flora_garden", "chunk": "flora_garden", "title": "Flora Garden", "stage": 3},
+	{"id": "lure_relay", "chunk": "lure_relay", "title": "Flure Relay", "stage": 3},
+	{"id": "generated_chain_nested_poc", "chunk": "generated_stretch", "title": "Generated Chain/Nested POC", "stage": 3,
 		"config": {"spec_path": "res://data/generated_stretches/generated_chain_nested_poc_shelter_2_to_3.json"}},
-	{"id": "generated_random_walk_poc", "chunk": "generated_stretch", "title": "Generated Random Walk POC",
+	{"id": "generated_random_walk_poc", "chunk": "generated_stretch", "title": "Generated Random Walk POC", "stage": 4,
 		"config": {"spec_path": "res://data/generated_stretches/generated_random_walk_poc_shelter_3_to_4.json"}},
+	{"id": "survival_range", "chunk": "survival_range", "title": "Shelter-To-Shelter Range", "stage": 4},
+	{"id": "refuge_run", "chunk": "refuge_run", "title": "Refuge Run", "stage": 4},
+	{"id": "wash_relay", "chunk": "wash_relay", "title": "Wash Relay", "stage": 5},
+	{"id": "generated_diagnosis_setpiece", "chunk": "generated_stretch", "title": "Generated Diagnosis Setpiece", "stage": 6,
+		"config": {"spec_path": "res://data/generated_stretches/generated_diagnosis_setpiece_shelter_5_to_6.json"}},
+	{"id": "mother_flure", "chunk": "mother_flure", "title": "Mother Flure", "stage": 6},
 ]
 
 ## The menu entry for an id (or {} if none).
@@ -74,6 +78,12 @@ static func get_preview_entry(entry_id: String) -> Dictionary:
 		if String(entry.get("id", "")) == entry_id:
 			return entry
 	return {}
+
+## The curriculum progression stage a preview entry sits at (1 = intro, climbing to the
+## Mother-Flure diagnosis). The picker is authored in ascending-stage order, so this reads
+## straight off the entry; missing/unknown ids report stage 1 (the intro floor).
+static func get_preview_stage(entry_id: String) -> int:
+	return int(get_preview_entry(entry_id).get("stage", 1))
 
 const CHARACTER_IDS := ["aster", "peris", "endo"]
 const CHARACTER_DISPLAY_NAMES := {

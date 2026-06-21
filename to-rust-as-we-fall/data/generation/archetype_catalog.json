@@ -7,6 +7,7 @@
       "name": "Redirected enemy aggression",
       "kind": "puzzle",
       "stage": 2,
+      "notes": "Stage 2: the first specialist-vs-pair choice — bait a combat charge or read the overlay window with the pair.",
       "tags": [
         "enemy",
         "impact",
@@ -96,6 +97,7 @@
       "name": "Plant as tool",
       "kind": "puzzle",
       "stage": 1,
+      "notes": "Stage 1: a single-character, single-mechanic flora beat — grow or tend one plant to clear the way.",
       "tags": [
         "flora",
         "peris",
@@ -183,6 +185,7 @@
       "name": "Carry the heavy thing",
       "kind": "puzzle",
       "stage": 2,
+      "notes": "Stage 2: a specialist-vs-pair choice — a combat escort guards the carrier, or the pair splits the carry and masks the route.",
       "tags": [
         "carry",
         "escort",
@@ -283,6 +286,7 @@
       "name": "Distract the patrol",
       "kind": "puzzle",
       "stage": 3,
+      "notes": "Stage 3: the first coordination beat — two characters split a distraction from the real task.",
       "tags": [
         "patrol",
         "distraction",
@@ -374,6 +378,7 @@
       "name": "Two-character split",
       "kind": "hybrid",
       "stage": 3,
+      "notes": "Stage 3: explicit two-character split — divide the party, complete dependent tasks, reunite.",
       "tags": [
         "split",
         "coordination",
@@ -461,6 +466,7 @@
       "name": "Pattern reconstruction",
       "kind": "puzzle",
       "stage": 3,
+      "notes": "Stage 3: assemble fragments into a whole — a read-and-combine beat that pairs Aster's structure with Peris's context.",
       "tags": [
         "fragments",
         "memory",
@@ -550,6 +556,7 @@
       "name": "Stealth-and-time",
       "kind": "survival",
       "stage": 4,
+      "notes": "Stage 4: coordination under pressure — read the patrol gap and combine timing with cover to slip through.",
       "tags": [
         "stealth",
         "timing",
@@ -637,6 +644,7 @@
       "name": "Class-gated interaction",
       "kind": "puzzle",
       "stage": 3,
+      "notes": "Stage 3: a specialist-vs-pair choice — bring the gate's class, or beat it with Aster's access and botany.",
       "tags": [
         "class",
         "terminal",
@@ -725,6 +733,7 @@
       "name": "Expectation subversion",
       "kind": "meta",
       "stage": 6,
+      "notes": "Stage 6: a rare danger-zone subversion that breaks an established convention — flagged for designer review.",
       "tags": [
         "subversion",
         "rare",
@@ -771,6 +780,7 @@
       "name": "Danger zone",
       "kind": "meta",
       "stage": 5,
+      "notes": "Stage 5: a layered set-piece that nests sub-puzzles inside one zone — the high end of the combination tier.",
       "tags": [
         "danger_zone",
         "cure_component",
@@ -857,6 +867,7 @@
       "name": "Narrative beat",
       "kind": "meta",
       "stage": 1,
+      "notes": "Stage 1: a transition/dialogue beat with no mechanical gate — passable by any party.",
       "tags": [
         "dialogue",
         "recognition",
@@ -908,6 +919,7 @@
       "name": "Lysate forage cache",
       "kind": "survival",
       "stage": 1,
+      "notes": "Stage 1: a single-mechanic forage beat — reach the cache, clear the dwell, bank ATP.",
       "survival_kind": "forage",
       "atp_reward": 2,
       "tags": [
@@ -976,7 +988,8 @@
     "13": {
       "name": "Predator-exploit transit",
       "kind": "survival",
-      "stage": 3,
+      "stage": 4,
+      "notes": "Stage 4: a combination beat — read the enemy ecology and set predators on each other to open a window.",
       "survival_kind": "exploit",
       "exploit_target": "enemy_ecology",
       "tags": [
@@ -1022,7 +1035,7 @@
           ],
           "risk": "direct",
           "taught_by": "",
-          "min_stage": 3
+          "min_stage": 4
         },
         {
           "id": "ecology_decoy",
@@ -1038,7 +1051,7 @@
           ],
           "risk": "risky",
           "taught_by": "ecology_reading",
-          "min_stage": 3
+          "min_stage": 4
         },
         {
           "id": "weaponized_window",
@@ -1053,7 +1066,7 @@
           ],
           "risk": "risky",
           "taught_by": "ecology_reading",
-          "min_stage": 3
+          "min_stage": 4
         }
       ]
     },
@@ -1061,6 +1074,7 @@
       "name": "Enemy-configuration gauntlet",
       "kind": "survival",
       "stage": 4,
+      "notes": "Stage 4: a combination gauntlet — sequence the enemy lanes into one timed run, paying attrition.",
       "survival_kind": "gauntlet",
       "pressure_cost": 2,
       "tags": [
@@ -1128,7 +1142,8 @@
     "15": {
       "name": "Attrition-field crossing",
       "kind": "survival",
-      "stage": 2,
+      "stage": 1,
+      "notes": "Stage 1: a single-mechanic read — weigh the short dosed crossing against the long detour, then commit.",
       "survival_kind": "hazard",
       "pressure_cost": 2,
       "tags": [
@@ -1173,7 +1188,7 @@
           ],
           "risk": "safe",
           "taught_by": "",
-          "min_stage": 2
+          "min_stage": 1
         },
         {
           "id": "budget_or_detour",
@@ -1188,7 +1203,7 @@
           ],
           "risk": "risky",
           "taught_by": "dose_budgeting",
-          "min_stage": 2
+          "min_stage": 1
         }
       ]
     },
@@ -1196,6 +1211,7 @@
       "name": "Shelter-rest management",
       "kind": "survival",
       "stage": 1,
+      "notes": "Stage 1: a single-mechanic rest beat — reach shelter before dusk, regroup, rest.",
       "survival_kind": "rest",
       "atp_reward": 0,
       "tags": [
@@ -1257,6 +1273,107 @@
           "risk": "risky",
           "taught_by": "capbage_hide_rest",
           "min_stage": 1
+        }
+      ]
+    },
+    "17": {
+      "name": "Three-read diagnosis",
+      "kind": "diagnosis",
+      "solve": "deduce",
+      "stage": 6,
+      "notes": "Stage 6: the diagnosis primitive generalised from the Mother Flure. The node presents one read per character perspective; exactly one is the correct combined repair. A wrong read is a pressure setback, never a hard block. The combined solve reads all three and deduces; the pair can deduce it too, slower and costlier.",
+      "tags": [
+        "diagnosis",
+        "deduce",
+        "perspective",
+        "repair"
+      ],
+      "compatible_node_roles": [
+        "guidance",
+        "setpiece",
+        "mixed"
+      ],
+      "steps": [
+        "gather the three reads",
+        "weigh logistics against stress against structure",
+        "name the correct repair",
+        "commit the read",
+        "resolve the consequence"
+      ],
+      "variants": [
+        "junction_repair",
+        "bloom_regulation",
+        "load_balance",
+        "signal_reroute"
+      ],
+      "reads": [
+        {
+          "id": "aster_logistics",
+          "character": "aster",
+          "perspective": "logistics",
+          "label": "Reroute the carry lane",
+          "correct": false,
+          "penalty": 2,
+          "note": "Aster's route read shaves seconds but never touches the failing load — the repair skews and the gear is rejected."
+        },
+        {
+          "id": "endo_structural",
+          "character": "endo",
+          "perspective": "structural",
+          "label": "Seat the load regulator",
+          "correct": true,
+          "penalty": 0,
+          "note": "Endo's structural read names the real fault: the regulator takes the weight off the failing junction and the repair holds."
+        },
+        {
+          "id": "peris_stress",
+          "character": "peris",
+          "perspective": "stress",
+          "label": "Bleed the bloom pressure",
+          "correct": false,
+          "penalty": 2,
+          "note": "Peris's stress read sheds signal into the wrong lane — pressure drops where it was never the problem and the fault stays."
+        }
+      ],
+      "correct_read": "endo_structural",
+      "shadow_solution": {
+        "aster_peris": true,
+        "notes": "The pair gathers all three reads and deduces the correct repair without the specialist on hand — the same right answer, paid for in time and pressure."
+      },
+      "approaches": [
+        {
+          "id": "structural_diagnosis",
+          "label": "Endo's structural read names the correct repair and the full party seats it cleanly",
+          "kind": "primary",
+          "party": "specialist",
+          "requires": [
+            "barrier"
+          ],
+          "uses": [
+            "junction_repair"
+          ],
+          "risk": "safe",
+          "taught_by": "",
+          "correct_read": "endo_structural",
+          "min_stage": 6
+        },
+        {
+          "id": "pair_deduction",
+          "label": "Aster and Peris read all three perspectives and deduce the correct repair, paying the slower cost",
+          "kind": "shadow",
+          "party": "aster_peris",
+          "requires": [
+            "scan",
+            "overlay"
+          ],
+          "uses": [
+            "bloom_regulation",
+            "load_balance"
+          ],
+          "risk": "risky",
+          "taught_by": "perspective_deduction",
+          "correct_read": "endo_structural",
+          "min_stage": 6
         }
       ]
     }

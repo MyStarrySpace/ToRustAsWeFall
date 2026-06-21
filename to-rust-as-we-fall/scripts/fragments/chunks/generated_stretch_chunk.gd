@@ -39,6 +39,14 @@ var _active_capabilities: Dictionary = {}
 var _enforce_stage := true
 var _node_approach_used: Dictionary = {}
 var _blocked_nodes: Array[String] = []
+# Diagnosis state: a node awaiting a read (the player must pick a perspective), the read each
+# diagnosis node was resolved with, and the running tally of misdiagnoses (each a pressure
+# setback, never a hard block).
+var _pending_diagnosis := ""
+var _diagnosis_reads: Dictionary = {}
+var _misdiagnosis_count := 0
+var _last_diagnosis_read := ""
+var _last_diagnosis_correct := false
 
 func configure_chunk(config: Dictionary) -> void:
 	_config = config.duplicate(true)
@@ -172,6 +180,12 @@ func get_preview_state() -> Dictionary:
 		"active_party": _active_party.duplicate(),
 		"blocked_nodes": _blocked_nodes.duplicate(),
 		"solution_path": get_active_solution_path(),
+		"diagnosis_reads": _diagnosis_reads.duplicate(true),
+		"pending_diagnosis": _pending_diagnosis,
+		"misdiagnosis_count": _misdiagnosis_count,
+		"last_diagnosis_read": _last_diagnosis_read,
+		"last_diagnosis_correct": _last_diagnosis_correct,
+		"diagnosis_node_count": int(_spec.get("headless", {}).get("solution_summary", {}).get("diagnosis_node_count", 0)),
 		"solution_summary": _spec.get("headless", {}).get("solution_summary", {}).duplicate(true),
 	}
 	return {
@@ -194,6 +208,9 @@ func get_preview_state() -> Dictionary:
 		"active_loadout": _active_loadout,
 		"blocked_nodes": _blocked_nodes.duplicate(),
 		"solution_path": get_active_solution_path(),
+		"pending_diagnosis": _pending_diagnosis,
+		"misdiagnosis_count": _misdiagnosis_count,
+		"diagnosis_node_count": generation["diagnosis_node_count"],
 		"graybox": generation["graybox"],
 		"navigation": generation["navigation"],
 		"generation": generation,
@@ -249,6 +266,11 @@ func reset_preview_state() -> void:
 	_first_shelter_beat_fired = false
 	_node_approach_used.clear()
 	_blocked_nodes.clear()
+	_pending_diagnosis = ""
+	_diagnosis_reads.clear()
+	_misdiagnosis_count = 0
+	_last_diagnosis_read = ""
+	_last_diagnosis_correct = false
 	set_active_loadout(_active_loadout)
 	_restore_party()
 	_set_preview_step("generated_stretch_ready")
@@ -329,6 +351,11 @@ func activate_generated_node(node_id: String) -> bool:
 		_set_preview_step("generated_stretch_blocked")
 		_show_note("%s has no way through %s." % [_active_loadout.capitalize(), str(node.get("title", node_id))], 2.0)
 		return false
+	# A diagnosis node is cleared by NAMING the correct read, not by walking up. If it hasn't
+	# been diagnosed yet, commit the clean (correct) read — the data-layer solve. A player
+	# picks a specific perspective through diagnose_generated_node (where a wrong read stings).
+	if _is_diagnosis_node(node) and not _diagnosis_reads.has(node_id):
+		return diagnose_generated_node(node_id, _correct_read_id(node))
 	_node_approach_used[node_id] = approach
 	if not _completed_nodes.has(node_id):
 		_completed_nodes.append(node_id)
@@ -361,6 +388,78 @@ func activate_generated_node(node_id: String) -> bool:
 		_last_outcome = "node:%s" % node_id
 		_set_preview_step("generated_stretch_%s" % node_id)
 	_highlight_node(node_id, true)
+	return true
+
+## True when a node is the three-read diagnosis primitive — it presents one read per
+## character perspective and is cleared by naming the correct one.
+func _is_diagnosis_node(node: Dictionary) -> bool:
+	return str(node.get("kind", "")) == "diagnosis" or str(node.get("solve", "")) == "deduce" \
+		or not (node.get("reads", []) as Array).is_empty()
+
+## The reads a diagnosis node offers (one per perspective), or [] for a non-diagnosis node.
+func get_diagnosis_reads(node_id: String) -> Array:
+	var node := _find_node(node_id)
+	return (node.get("reads", []) as Array).duplicate(true)
+
+func _correct_read_id(node: Dictionary) -> String:
+	var explicit := str(node.get("correct_read", "")).strip_edges()
+	if explicit != "":
+		return explicit
+	for read in node.get("reads", []):
+		if read is Dictionary and bool((read as Dictionary).get("correct", false)):
+			return str((read as Dictionary).get("id", ""))
+	return ""
+
+func _read_def(node: Dictionary, read_id: String) -> Dictionary:
+	for read in node.get("reads", []):
+		if read is Dictionary and str((read as Dictionary).get("id", "")) == read_id:
+			return (read as Dictionary).duplicate(true)
+	return {}
+
+## Commit a perspective read at a diagnosis node — the data-layer path a real pick (the read
+## buttons) and a headless/CLI run both use. The CORRECT read clears the node cleanly; a WRONG
+## read is a pressure setback (the read's penalty) and leaves the node UNRESOLVED so the player
+## can try again — a misdiagnosis penalises, it never hard-blocks.
+func diagnose_generated_node(node_id: String, read_id: String) -> bool:
+	_ensure_spec_loaded()
+	var node := _find_node(node_id)
+	if node.is_empty() or not _is_diagnosis_node(node):
+		_last_outcome = "not_diagnosis:%s" % node_id
+		return false
+	var correct_id := _correct_read_id(node)
+	if read_id == "":
+		read_id = correct_id
+	var read := _read_def(node, read_id)
+	var is_correct := read_id == correct_id and correct_id != ""
+	_last_diagnosis_read = read_id
+	_last_diagnosis_correct = is_correct
+	if not is_correct:
+		var penalty := maxf(1.0, float(read.get("penalty", 2)))
+		var damage := penalty * 8.0
+		_misdiagnosis_count += 1
+		_pressure_taken += damage
+		for char_id in PARTY_IDS:
+			_adjust_character_stat(char_id, "hp", -damage)
+			_adjust_character_stat(char_id, "stamina", -damage * 0.5)
+		_pending_diagnosis = node_id
+		_route_phase = "misdiagnosis"
+		_last_outcome = "misdiagnosis:%s:%s" % [node_id, read_id]
+		_set_preview_step("generated_stretch_misdiagnosis")
+		var note := str(read.get("note", "Wrong read — the repair skews and the gear is rejected."))
+		_show_note("%s %s" % [str(read.get("label", read_id)).to_upper() + " //", note], 2.5)
+		return false
+	# Correct read — clear the node like a normal solve.
+	_diagnosis_reads[node_id] = read_id
+	_pending_diagnosis = ""
+	var approach := _resolve_node_approach(node)
+	_node_approach_used[node_id] = approach
+	if not _completed_nodes.has(node_id):
+		_completed_nodes.append(node_id)
+	_route_phase = "diagnosed"
+	_last_outcome = "diagnosed:%s:%s" % [node_id, read_id]
+	_set_preview_step("generated_stretch_%s" % node_id)
+	_highlight_node(node_id, true)
+	_show_message("Correct read: %s." % str(read.get("label", read_id)), 1.2)
 	return true
 
 func choose_generated_route(route_id: String, activate_target := true) -> bool:
@@ -632,6 +731,53 @@ func _build_generated_node(node: Dictionary) -> void:
 		interactable
 	)
 	_node_targets[node_id] = target
+	if _is_diagnosis_node(node):
+		_build_diagnosis_reads(node, pos, pad_size)
+
+## Generalise the Mother-Flure "three perspectives, deduce the repair" model into the
+## generated stretch: one read station per character perspective, each its own inspection
+## interactable. Picking the correct read clears the node; a wrong read is a pressure setback
+## (handled in diagnose_generated_node) and the stations stay live so the player can re-pick.
+func _build_diagnosis_reads(node: Dictionary, pos: Vector3, pad_size: Vector3) -> void:
+	var node_id := str(node.get("id", "node"))
+	var reads: Array = node.get("reads", [])
+	var count := reads.size()
+	if count <= 0:
+		return
+	for i in range(count):
+		if not (reads[i] is Dictionary):
+			continue
+		var read := reads[i] as Dictionary
+		var read_id := str(read.get("id", "read_%d" % i))
+		var character := str(read.get("character", ""))
+		var spread := (float(i) - float(count - 1) * 0.5) * 2.2
+		var read_pos := pos + Vector3(spread, 0.4, pad_size.z * 0.5 + 1.4)
+		var read_color := _character_color(character)
+		_add_box(self, read_pos, Vector3(0.9, 0.8, 0.9), read_color.darkened(0.1), read_color.lightened(0.2), 0.18, "DiagnosisRead_%s_%s" % [node_id, read_id])
+		_add_label(self, "%s // %s" % [character.to_upper(), str(read.get("label", read_id))], read_pos + Vector3(0.0, 0.9, 0.0), read_color.lightened(0.3))
+		var read_interactable := _add_inspection_interactable(
+			self,
+			"DiagnosisReadZone_%s_%s" % [node_id, read_id],
+			str(read.get("label", read_id)),
+			read_pos + Vector3(0.0, -0.2, 0.0),
+			"READ",
+			"",
+			1.4,
+			false
+		)
+		read_interactable.interacted.connect(Callable(self, "diagnose_generated_node").bind(node_id, read_id))
+
+## A character's signature colour for a diagnosis read station (matches the preview palette).
+func _character_color(character: String) -> Color:
+	match character:
+		"aster":
+			return Color(0.29, 0.62, 1.0)
+		"peris":
+			return Color(1.0, 0.67, 0.27)
+		"endo":
+			return Color(0.4, 0.72, 0.55)
+		_:
+			return Color(0.7, 0.72, 0.76)
 
 func _build_node_content_markers(node: Dictionary, pos: Vector3) -> Array[MeshInstance3D]:
 	var meshes: Array[MeshInstance3D] = []

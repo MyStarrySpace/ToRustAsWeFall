@@ -112,7 +112,9 @@ static func generate(settings: Dictionary) -> Dictionary:
 	graybox["navigation_edge_count"] = routes.size()
 	var anchors := _build_anchors(nodes)
 	var world_slot := _build_world_slot(resolved, anchors)
+	var teaching_chain := _teaching_chain_edges(catalog, archetype_chain)
 	var composition_summary := _build_composition_summary(resolved.get("composition", {}), archetype_chain, nodes, random_walk)
+	composition_summary["teaching_chain"] = teaching_chain
 	var warnings := _collect_warnings(catalog, nodes)
 	var solution := SolverScript.analyze(nodes, str(resolved.get("complexity_tier", "teaching")), int(resolved.get("progression_stage", 99)), resolved.get("roster", []))
 
@@ -138,6 +140,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 		"nodes": nodes,
 		"routes": routes,
 		"archetype_chain": archetype_chain,
+		"teaching_chain": teaching_chain,
 		"composition": composition_summary,
 		"palette_usage": palette_usage,
 		"headless": {
@@ -159,6 +162,13 @@ static func generate(settings: Dictionary) -> Dictionary:
 				"distinct_nodes": solution.get("distinct_nodes", []),
 				"multi_solution_required": solution.get("multi_solution_required", false),
 				"multi_solution_ok": solution.get("multi_solution_ok", true),
+				"spotlight_pressure": solution.get("spotlight_pressure", 0.0),
+				"shadow_pressure": solution.get("shadow_pressure", 0.0),
+				"shadow_combination_premium": solution.get("shadow_combination_premium", 0.0),
+				"combination_pressure_gap": solution.get("combination_pressure_gap", 0.0),
+				"diagnosis_node_count": solution.get("diagnosis_node_count", 0),
+				"diagnosis_nodes": solution.get("diagnosis_nodes", []),
+				"diagnosis_penalty": solution.get("diagnosis_penalty", 0.0),
 			},
 			"state_paths": [
 				"chunk.generation.spec_id",
@@ -195,6 +205,7 @@ static func validate_settings(settings: Dictionary) -> Dictionary:
 
 	var resolved := _resolve_settings(settings)
 	resolved["progression_stage"] = _resolve_progression_stage(catalog, resolved)
+	_apply_stage_depth_scaling(resolved)
 	var limitations: Dictionary = resolved.get("limitations", {})
 	for mode in ["allowed", "blocked", "required"]:
 		var group: Dictionary = limitations.get(mode, {})
@@ -456,10 +467,13 @@ static func _resolve_settings(settings: Dictionary) -> Dictionary:
 	if not TIER_BUDGETS.has(tier):
 		tier = "teaching"
 	var rng = SeededRngScript.new(seed ^ 911)
-	var base_budget: Dictionary = (TIER_BUDGETS[tier] as Dictionary).duplicate(true)
+	var tier_floor: Dictionary = (TIER_BUDGETS[tier] as Dictionary).duplicate(true)
+	var base_budget: Dictionary = tier_floor.duplicate(true)
 	var override_budget: Dictionary = settings.get("budget", {})
+	var overridden_keys := []
 	for key in override_budget.keys():
 		base_budget[key] = _resolve_budget_value(override_budget[key], int(base_budget.get(key, 0)), rng)
+		overridden_keys.append(str(key))
 	base_budget["node_count"] = maxi(4, int(base_budget.get("node_count", 6)))
 	base_budget["branch_count"] = maxi(0, int(base_budget.get("branch_count", 0)))
 	base_budget["archetype_depth"] = maxi(1, int(base_budget.get("archetype_depth", 1)))
@@ -470,6 +484,11 @@ static func _resolve_settings(settings: Dictionary) -> Dictionary:
 	resolved["seed"] = seed
 	resolved["complexity_tier"] = tier
 	resolved["budget"] = base_budget
+	# Stash the tier floor + which budget keys the caller pinned, so the stage-driven depth
+	# scaling (applied once the progression stage is known) can grow the auto keys above the
+	# floor while leaving an explicit override exactly as authored.
+	resolved["budget_tier_floor"] = tier_floor
+	resolved["budget_overridden_keys"] = overridden_keys
 	resolved["limitations"] = _normalize_limitations(settings.get("limitations", {}))
 	resolved["composition"] = _normalize_composition(settings.get("composition", {}))
 	resolved["roster"] = settings.get("roster", [])
@@ -694,6 +713,46 @@ static func _archetype_stage(catalog, id: String) -> int:
 		return 0
 	return int(catalog.get_archetype(id).get("stage", 1))
 
+## Per-stage growth ABOVE the tier each scalable budget key gains for every progression
+## stage past the tier's natural stage, and the bound it may not exceed. The tier stays the
+## base/floor; a late-stage stretch is genuinely bigger and deeper (more nodes, a longer
+## archetype chain, an extra branch), not just a wider archetype pool.
+const STAGE_DEPTH_SCALING := {
+	"node_count": {"per_stage": 1.0, "max": 16},
+	"archetype_depth": {"per_stage": 0.6, "max": 7},
+	"branch_count": {"per_stage": 0.34, "max": 4},
+}
+
+## Grow the auto (non-overridden) scalable budget keys with the resolved progression stage,
+## measured from the tier's natural stage so the tier remains the floor and an explicitly
+## pinned key is never touched. Runs once after the stage is resolved; deterministic.
+static func _apply_stage_depth_scaling(resolved: Dictionary) -> void:
+	var budget: Dictionary = resolved.get("budget", {})
+	var floor_budget: Dictionary = resolved.get("budget_tier_floor", budget)
+	var overridden := _string_array(resolved.get("budget_overridden_keys", []))
+	var tier := str(resolved.get("complexity_tier", "teaching"))
+	var natural_stage := int(TIER_PROGRESSION_STAGE.get(tier, 2))
+	var stage := int(resolved.get("progression_stage", natural_stage))
+	var steps := maxi(0, stage - natural_stage)
+	resolved["stage_depth_steps"] = steps
+	if steps <= 0:
+		return
+	for key in STAGE_DEPTH_SCALING.keys():
+		if overridden.has(str(key)):
+			continue
+		var spec: Dictionary = STAGE_DEPTH_SCALING[key]
+		var floor_value := int(floor_budget.get(key, budget.get(key, 0)))
+		var grown := floor_value + int(floor(float(steps) * float(spec.get("per_stage", 0.0))))
+		grown = mini(grown, int(spec.get("max", grown)))
+		budget[key] = maxi(int(budget.get(key, floor_value)), grown)
+	# Keep the random-walk floor the composition expects (node_count >= step_count + 2).
+	var composition: Dictionary = resolved.get("composition", {})
+	if _composition_mode_uses_random_walk(str(composition.get("mode", ""))):
+		var walk_steps := int(composition.get("random_walk", {}).get("step_count", 0))
+		if walk_steps > 0:
+			budget["node_count"] = maxi(int(budget.get("node_count", 6)), walk_steps + 2)
+	resolved["budget"] = budget
+
 static func _filter_archetypes_by_stage(catalog, ids: Array, max_stage: int) -> Array[String]:
 	var result: Array[String] = []
 	for id in ids:
@@ -754,7 +813,107 @@ static func _choose_archetype_chain(catalog, settings: Dictionary, budget: Dicti
 			"composition_role": "required_append" if required.has(id) else "generated_fill",
 			"chain_index": chain.size(),
 		}))
-	return chain
+	return _order_chain_by_teaching(catalog, chain)
+
+## Reorder a chain so an archetype that TEACHES a technique sits before an archetype whose
+## expert approach USES it (its `borrows_from`), so the stretch introduces a technique before
+## it is leaned on. Cycle-tolerant: a Kahn pass with a deterministic tie-break (original
+## order), falling back to original order when a borrow cycle leaves nothing unblocked, so it
+## never drops or duplicates a node. chain_index is renumbered to the new play order.
+static func _order_chain_by_teaching(catalog, chain: Array) -> Array:
+	if chain.size() < 2:
+		return chain
+	var present := {}
+	for i in range(chain.size()):
+		if chain[i] is Dictionary:
+			present[str((chain[i] as Dictionary).get("id", ""))] = i
+	# prereqs[id] = the archetypes (present in this chain) this id borrows a technique from.
+	var prereqs := {}
+	for i in range(chain.size()):
+		if not (chain[i] is Dictionary):
+			continue
+		var id := str((chain[i] as Dictionary).get("id", ""))
+		var needs := {}
+		for src in _archetype_borrows_from(catalog, id):
+			if present.has(src) and src != id:
+				needs[src] = true
+		prereqs[id] = needs
+	var ordered := []
+	var placed := {}
+	while ordered.size() < chain.size():
+		var picked_index := -1
+		for i in range(chain.size()):
+			if not (chain[i] is Dictionary) or placed.has(i):
+				continue
+			var id := str((chain[i] as Dictionary).get("id", ""))
+			var ready := true
+			for src in (prereqs.get(id, {}) as Dictionary).keys():
+				var src_index := int(present.get(src, -1))
+				if src_index >= 0 and not placed.has(src_index):
+					ready = false
+					break
+			if ready:
+				picked_index = i
+				break
+		if picked_index < 0:
+			# A borrow cycle blocks every remaining node — break it by original order.
+			for i in range(chain.size()):
+				if chain[i] is Dictionary and not placed.has(i):
+					picked_index = i
+					break
+		if picked_index < 0:
+			break
+		placed[picked_index] = true
+		ordered.append(chain[picked_index])
+	for i in range(ordered.size()):
+		if ordered[i] is Dictionary:
+			(ordered[i] as Dictionary)["chain_index"] = i
+	return ordered
+
+## The archetype ids whose techniques an archetype's approaches borrow (the `borrows_from`
+## links) — the teaching prerequisites of that archetype.
+static func _archetype_borrows_from(catalog, id: String) -> Array:
+	var result := []
+	if id == "" or not catalog.has_archetype(id):
+		return result
+	for approach in catalog.get_archetype(id).get("approaches", []):
+		if not (approach is Dictionary):
+			continue
+		var src := str((approach as Dictionary).get("borrows_from", "")).strip_edges()
+		if src != "" and not result.has(src):
+			result.append(src)
+	return result
+
+## The teaching-dependency edges present in a built chain: each {from, to, technique} says
+## the `from` archetype teaches a technique the `to` archetype's expert approach uses, and
+## (after _order_chain_by_teaching) `from` precedes `to` whenever the order is acyclic. Emitted
+## on the spec so the chunk/UI can show the prerequisite before the payoff.
+static func _teaching_chain_edges(catalog, chain: Array) -> Array:
+	var index_of := {}
+	for i in range(chain.size()):
+		if chain[i] is Dictionary:
+			index_of[str((chain[i] as Dictionary).get("id", ""))] = i
+	var edges := []
+	for i in range(chain.size()):
+		if not (chain[i] is Dictionary):
+			continue
+		var id := str((chain[i] as Dictionary).get("id", ""))
+		for approach in catalog.get_archetype(id).get("approaches", []):
+			if not (approach is Dictionary):
+				continue
+			var src := str((approach as Dictionary).get("borrows_from", "")).strip_edges()
+			if src == "" or not index_of.has(src) or src == id:
+				continue
+			edges.append({
+				"from": src,
+				"to": id,
+				"technique": str((approach as Dictionary).get("taught_by", "")),
+				"approach": str((approach as Dictionary).get("id", "")),
+				"from_index": int(index_of.get(src, -1)),
+				"to_index": int(index_of.get(id, -1)),
+				"ordered": int(index_of.get(src, -1)) < int(index_of.get(id, -1)),
+			})
+	return edges
 
 static func _archetype_chain_entry(catalog, id: String, rng, variant_override := "", extras := {}) -> Dictionary:
 	var entry: Dictionary = catalog.get_archetype(id)
@@ -778,6 +937,9 @@ static func _archetype_chain_entry(catalog, id: String, rng, variant_override :=
 		"atp_reward": int(entry.get("atp_reward", 0)),
 		"pressure_cost": int(entry.get("pressure_cost", 0)),
 		"exploit_target": str(entry.get("exploit_target", "")),
+		"solve": str(entry.get("solve", "")),
+		"reads": entry.get("reads", []),
+		"correct_read": str(entry.get("correct_read", "")),
 	}
 	if extras is Dictionary:
 		for key in (extras as Dictionary).keys():
@@ -1083,6 +1245,9 @@ static func _build_nodes(catalog, settings: Dictionary, budget: Dictionary, pale
 			"atp_reward": int(archetype.get("atp_reward", 0)),
 			"pressure_cost": int(archetype.get("pressure_cost", 0)),
 			"exploit_target": str(archetype.get("exploit_target", "")),
+			"solve": str(archetype.get("solve", "")),
+			"reads": (archetype.get("reads", []) as Array).duplicate(true),
+			"correct_read": str(archetype.get("correct_read", "")),
 		}
 		nodes.append(node)
 		if resource_beats > 0 and role in ["foraging", "regroup"]:
@@ -1723,6 +1888,10 @@ static func _slice_usage(values: Array, index: int, count: int) -> Array:
 ## The role a node wears, driven by its archetype (survival kind first, else a compatible
 ## role) rather than a blind cycle — so role never contradicts what the node is.
 static func _role_for_archetype(archetype: Dictionary, index: int) -> String:
+	# A diagnosis node is a read-and-deduce beat — it wears the guidance role so it reads as
+	# a station the party studies, never a danger pad.
+	if str(archetype.get("kind", "")) == "diagnosis" or str(archetype.get("solve", "")) == "deduce":
+		return "guidance"
 	match str(archetype.get("survival_kind", "")):
 		"forage":
 			return "foraging"
