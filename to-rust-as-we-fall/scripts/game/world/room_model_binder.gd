@@ -150,6 +150,12 @@ func apply_occupancy() -> void:
 		return
 	for raw in config.get("occupants", []):
 		var obj_name := str(raw)
+		# Put solid furniture on the no-grid visual layer (2 = NO_GRID_DECAL_LAYER in player.gd): the
+		# hover-grid Decal clears that bit from its cull_mask, so the grid passes THROUGH the furniture and
+		# only stamps the floor. A Decal targets surfaces by VISUAL LAYER — not collision flags or the
+		# target's material — so this is the lever for "the grid should ignore non-floor things".
+		for m in object_meshes([obj_name]):
+			(m as MeshInstance3D).layers = 2
 		var ab := object_aabb(obj_name)
 		if ab.size == Vector3.ZERO:
 			continue
