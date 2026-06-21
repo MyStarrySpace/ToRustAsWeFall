@@ -11069,17 +11069,35 @@ func _test_wash_relay_water_capture() -> void:
 	for i in range(70):
 		await get_tree().process_frame   # model load + camera ease-in
 	var chunk = inst.find_child("Chunk_wash_relay", true, false)
-	# Force floods across the gauntlet so the water shows on many sections at once.
+	# Move the party to a mid-spiral section and let the preview's REAL follow-camera ease to it (the actual
+	# gameplay framing — don't fight the controller), then force the floods and capture fast while the water
+	# is up. This is the view the player sees, so the reported bugs (invisible water, wrong occlusion hole)
+	# show here.
+	# PAUSE (stops the follow-camera drift + keeps the floods up since the scheduler freezes), snap the party
+	# to a mid-spiral section, force the floods, then frame it CLOSE from a fixed side-above angle. Fetch the
+	# camera AFTER the await — an await can invalidate an earlier get_camera_3d() (look_at "not in tree").
+	get_tree().paused = true
+	var gs = chunk.call("_get_game_state")
+	if gs != null:
+		var lanes := {"aster": -0.8, "peris": 0.0, "endo": 0.8}
+		for cid in lanes.keys():
+			if gs.characters.has(cid):
+				gs.snap_character_to(cid, Vector3(16.0, 0.5, float(lanes[cid])))
 	for i in range(9):
 		chunk.call("_flood_onset", i)
 	chunk.call("_update")
-	# Pause so the preview's camera controller stops overriding our framing, then aim at the spiral.
-	get_tree().paused = true
-	var cam: Camera3D = get_tree().root.get_viewport().get_camera_3d()
-	if cam != null:
-		cam.global_position = Vector3(25.0, 22.0, -25.0)
-		cam.look_at(Vector3(0.0, 7.0, 0.0))
-	for i in range(6):
+	for i in range(4):
+		await get_tree().process_frame
+	var focus: Vector3 = gs.get_render_position("peris") if (gs != null and gs.characters.has("peris")) else Vector3(0.0, 7.0, 0.0)
+	var cam := get_tree().root.get_viewport().get_camera_3d()
+	if cam != null and cam.is_inside_tree():
+		cam.global_transform = Transform3D(Basis(), focus + Vector3(4.5, 3.5, 4.5)).looking_at(focus, Vector3.UP)
+	var _sw = chunk.get("_section_water")
+	var _wpos := "nil"
+	if _sw != null and _sw.size() > 1 and _sw[1].size() > 0:
+		_wpos = "%s vis=%s" % [str(_sw[1][0].global_position), str(_sw[1][0].visible)]
+	print("  [diag] cam=%s in_tree=%s focus=%s water[1][0]=%s" % [str(cam.global_position) if cam else "nil", str(cam.is_inside_tree()) if cam else "nil", str(focus), _wpos])
+	for i in range(2):
 		await get_tree().process_frame
 	await RenderingServer.frame_post_draw
 	var tex := get_tree().root.get_texture()
