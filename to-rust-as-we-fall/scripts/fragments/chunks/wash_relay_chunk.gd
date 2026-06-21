@@ -116,13 +116,18 @@ const DRAIN_LEDGE_LANE := 9.3        # the DRY salvage ledge across the run — 
 const DRAIN_LOOP_PERIOD := 5.0       # the loop's own flood cadence (independent of the section beats)
 const DRAIN_LOOP_DUR := 1.6          # how long the run stays flooded per surge
 const DRAIN_LOOP_PHASE := 1.0        # stagger from FIRST_FLOOD so the loop isn't synced to section 0
-const DRAIN_BAIT_PULL := 3.0         # seconds the bait holds the guard committed (walking the run) before the chase resumes
+const DRAIN_BAIT_PULL := 6.5         # the bait holds the guard committed in the run a bit longer than one flood
+                                     # PERIOD, so a surge is GUARANTEED to catch it while it's parked there
 const DRAIN_KILL_DELAY := 0.7        # the drowned guard's body lingers this long (cosmetic dissolve) then is removed
+const DRAIN_DROWN_SWEEPS := 4        # enemy-drown re-checks spread across the flood WINDOW (not just the onset tick)
 var _drain_root: Node3D
 var _drain_water: Array = []         # the run's flood-water segments (toggled by _drain_flooding)
 var _drain_flooding := false         # the run is mid-surge this window (scheduler-set)
 var _drain_flood_count := 0          # surges fired (for the analytic next-onset read)
 var _drowned_count := 0             # guards the current has taken down the drain this run
+var _cadence_t0 := 0.0              # scheduler tick the hazard cadence was (re)armed at — the analytic safe-window
+                                    # reads are relative to THIS, so a reset that re-arms at a non-zero tick stays
+                                    # self-consistent (the real onset and the predicted onset agree)
 
 var _phase := "ready"
 var _override_locked := []         # per section — an override has been pressed (latched)
@@ -558,8 +563,9 @@ func _build_drain_loop() -> void:
 	# The stub out to the DRY salvage ledge (crossing the run reaches it) + the ledge pad itself.
 	_add_drain_deck(smid, (DRAIN_RUN_LANE + DRAIN_LEDGE_LANE + 0.6) * 0.5,
 		Vector3((DRAIN_LEDGE_LANE + 0.6) - DRAIN_RUN_LANE, 0.2, 2.0), Color(0.11, 0.15, 0.18))
-	# Outer "water source" wall along the run's far edge (the side the surge wells up from) + a ledge marker post.
-	_warped_box(_drain_root, smid, DRAIN_RUN_LANE + DRAIN_RUN_HALF + 0.3, Vector3(0.3, 2.6, run_len + 1.0),
+	# Outer "water source" wall along the loop's OUTER RIM, just past the salvage ledge (the side the surge wells
+	# up from). Placed beyond the ledge so it bounds the loop instead of bisecting the run->ledge crossing.
+	_warped_box(_drain_root, smid, DRAIN_LEDGE_LANE + 0.7, Vector3(0.3, 2.6, run_len + 1.0),
 		Color(0.12, 0.13, 0.16), Color(0.15, 0.4, 0.6), 0.5)
 	_warped_box(_drain_root, smid, DRAIN_LEDGE_LANE, Vector3(0.4, 1.6, 0.4),
 		Color(0.2, 0.5, 0.55), Color(0.2, 0.7, 0.8), 0.7)
@@ -798,6 +804,7 @@ func _ensure_scheduled() -> void:
 	if sched == null:
 		return
 	_scheduled = true
+	_cadence_t0 = sched.get_current_tick()   # anchor the cadence to NOW (so a re-arm after reset stays consistent)
 	for i in range(SECTIONS.size()):
 		sched.schedule_after(FIRST_FLOOD + float(SECTIONS[i]["phase"]), _make_onset(i), "wash_onset_%d" % i)
 		var lead := FIRST_FLOOD + float(SECTIONS[i]["phase"]) - TELEGRAPH_LEAD
@@ -921,7 +928,7 @@ func _section_next_onset_in(i: int) -> float:
 		return -1.0
 	var now: float = sched.get_current_tick()
 	var count: int = _flood_counts[i] if i < _flood_counts.size() else 0
-	var next_tick := FIRST_FLOOD + float(SECTIONS[i]["phase"]) + _period(i) * float(count)
+	var next_tick := _cadence_t0 + FIRST_FLOOD + float(SECTIONS[i]["phase"]) + _period(i) * float(count)
 	return next_tick - now
 
 func _flood_onset(i: int) -> void:
@@ -1036,6 +1043,12 @@ func _drain_onset() -> void:
 		_drain_flooding = true
 		_drain_flood_count += 1
 		if sched != null:
+			# Re-check enemies across the visible flood WINDOW, not just this instant: a guard that's baited or
+			# chased INTO the run mid-surge still drowns, so the lead-it-in kill can't depend on landing the one
+			# onset tick. The sweeps ride the scheduler, so they're fast-forward invariant.
+			for k in range(1, DRAIN_DROWN_SWEEPS + 1):
+				sched.schedule_after(DRAIN_LOOP_DUR * float(k) / float(DRAIN_DROWN_SWEEPS),
+					func() -> void: _drown_enemies_in_run(), "wash_drain_sweep_%d" % k)
 			sched.schedule_after(DRAIN_LOOP_DUR, func() -> void: _set_drain_off(), "wash_drain_off")
 	if sched != null:
 		sched.schedule_after(DRAIN_LOOP_PERIOD, func() -> void: _drain_onset(), "wash_drain_onset")
@@ -1049,7 +1062,7 @@ func _drain_next_onset_in() -> float:
 	if sched == null:
 		return -1.0
 	var now: float = sched.get_current_tick()
-	var next_tick := FIRST_FLOOD + DRAIN_LOOP_PHASE + DRAIN_LOOP_PERIOD * float(_drain_flood_count)
+	var next_tick := _cadence_t0 + FIRST_FLOOD + DRAIN_LOOP_PHASE + DRAIN_LOOP_PERIOD * float(_drain_flood_count)
 	return next_tick - now
 
 # Is a flat (s, lane) position inside the flooding run? (lane = flat z; the dry ledge sits OUTSIDE this band.)
@@ -1068,7 +1081,12 @@ func _wash_drain() -> void:
 			washed_any = true
 	if washed_any:
 		_announce_wash()
-	# Enemies in the run go down the drain. Iterate a copy so _drown_enemy can schedule removal safely.
+	_drown_enemies_in_run()
+
+# Drown every alive enemy currently standing in the flooding run. Called at the onset AND a few times across the
+# flood window (the sweeps in _drain_onset), so a guard that walks/chases IN mid-surge is caught — the lead-it-in
+# kill doesn't hinge on landing the single onset instant. Iterate a copy so _drown_enemy can schedule removal.
+func _drown_enemies_in_run() -> void:
 	for enemy in _enemies.duplicate():
 		if is_instance_valid(enemy) and enemy.is_alive() and enemy.char_id != "" \
 				and _in_drain_channel(_get_character_position(enemy.char_id)):
@@ -1107,37 +1125,42 @@ func _remove_enemy(id: String) -> void:
 			e.queue_free()
 
 # A drowned section/drain guard (removed mid-run) must come BACK on a reset/re-run — respawn any ENEMY_SPECS
-# guard that's no longer present, before reset re-snaps the survivors.
+# guard that's no longer present, before reset re-snaps the survivors. A guard that is still in _enemies but
+# DEAD (drowned this run, its cosmetic-removal tick not yet elapsed) counts as missing: tear the dead body
+# down and respawn a live one, so a reset always yields a LIVE guard regardless of the removal delay.
 func _respawn_missing_enemies() -> void:
 	for spec in ENEMY_SPECS:
 		var id := str(spec["id"])
-		var present := false
+		var live := false
 		for e in _enemies:
-			if is_instance_valid(e) and e.char_id == id:
-				present = true
+			if is_instance_valid(e) and e.char_id == id and e.is_alive():
+				live = true
 				break
-		if not present:
+		if not live:
+			_remove_enemy(id)   # drop a lingering dead body (no-op if already gone)
 			_spawn_enemy(spec)
 
 # --- Drain loop: lead the guard in (bait, then chase) ---
 
-# Fire the bait: the ledge guard commits to the song and walks DOWN across the flooding run toward it (distracted
-# so it ignores the party at range while it crosses). The chase resumes a beat later (_drain_chase_resume), so a
-# player running the loop then keeps it in the current. The next surge catches it mid-run.
+# Fire the bait: the ledge guard commits and walks DOWN INTO the flooding run (the lure target is mid-run, IN the
+# flood band — NOT the player's spot at the mouth, which would make the guard charge the baiter instead). It's
+# distracted so it ignores the party at range, and it idles in the run for DRAIN_BAIT_PULL — a span longer than
+# one flood PERIOD, so a surge is guaranteed to catch it there. The chase resumes after (a player still in the
+# loop then keeps it in the current). The player clicks the bait from the SAFE mouth, then steps clear.
 func _on_drain_bait() -> void:
 	var gs = _get_game_state()
 	if gs == null:
 		return
-	var bait_flat := Vector3(DRAIN_LOOP_S0, 0.5, BRANCH_NECK_LANE + 0.8)
+	var lure_flat := Vector3((DRAIN_LOOP_S0 + DRAIN_LOOP_S1) * 0.5, 0.5, DRAIN_RUN_LANE)   # mid-run, IN the flood band
 	var committed := false
 	for enemy in _enemies:
 		if is_instance_valid(enemy) and enemy.char_id == DRAIN_GUARD_ID and gs.characters.has(DRAIN_GUARD_ID):
 			gs.set_character_distracted(DRAIN_GUARD_ID, true)
-			# Pathfind across the run (the straight line would cut the corner) — _to_cell when the grid exists.
+			# Pathfind across the run (a straight line would cut the corner) — _to_cell when the grid exists.
 			if gs.grid != null:
-				gs.command_move_to_cell(DRAIN_GUARD_ID, gs.grid.world_to_grid(bait_flat))
+				gs.command_move_to_cell(DRAIN_GUARD_ID, gs.grid.world_to_grid(lure_flat))
 			else:
-				gs.command_move_to_pos(DRAIN_GUARD_ID, bait_flat)
+				gs.command_move_to_pos(DRAIN_GUARD_ID, lure_flat)
 			committed = true
 	if committed:
 		_say("// BAIT // the guard takes the lure into the channel")
@@ -1397,7 +1420,7 @@ func get_grid_data() -> Dictionary:
 	var drain_mid := (DRAIN_LOOP_S0 + DRAIN_LOOP_S1) * 0.5
 	regions.append({"min": [DRAIN_LOOP_S0 - 0.8, BRANCH_NECK_LANE], "max": [DRAIN_LOOP_S0 + 0.8, DRAIN_RUN_LANE + 0.6]})
 	regions.append({"min": [DRAIN_LOOP_S1 - 0.8, BRANCH_NECK_LANE], "max": [DRAIN_LOOP_S1 + 0.8, DRAIN_RUN_LANE + 0.6]})
-	regions.append({"min": [DRAIN_LOOP_S0 - 0.8, DRAIN_RUN_LANE - DRAIN_RUN_HALF], "max": [DRAIN_LOOP_S1 + 0.8, DRAIN_RUN_LANE + 0.6]})
+	regions.append({"min": [DRAIN_LOOP_S0 - 0.8, DRAIN_RUN_LANE - DRAIN_RUN_HALF], "max": [DRAIN_LOOP_S1 + 0.8, DRAIN_RUN_LANE + DRAIN_RUN_HALF]})
 	regions.append({"min": [drain_mid - 1.1, DRAIN_RUN_LANE - 0.3], "max": [drain_mid + 1.1, DRAIN_LEDGE_LANE + 0.6]})
 	return {
 		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
@@ -1540,6 +1563,21 @@ func get_preview_overlay_status(_overlay_id: String, _current_tick: float) -> Ar
 
 func reset_preview_state() -> void:
 	var n := SECTIONS.size()
+	# The host scheduler PERSISTS across an in-place reset, and every hazard onset self-reschedules forever — so a
+	# reset must CANCEL the live cadence and re-arm it, or the old (un-rebased) chain keeps firing while the
+	# analytic safe-window reads recompute from the zeroed counts (predicted vs real onset drift). Cancel every
+	# recurring tag + the pending drowned-guard removals, then clear _scheduled so _ensure_scheduled re-anchors
+	# the whole cadence to the post-reset 'now' (matching a fresh boot).
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.cancel_tag("wash_drain_onset"); sched.cancel_tag("wash_drain_off"); sched.cancel_tag("wash_drain_bait")
+		for k in range(1, DRAIN_DROWN_SWEEPS + 1):
+			sched.cancel_tag("wash_drain_sweep_%d" % k)
+		for i in range(n):
+			sched.cancel_tag("wash_onset_%d" % i); sched.cancel_tag("wash_off_%d" % i); sched.cancel_tag("wash_pretel_%d" % i)
+		for spec in ENEMY_SPECS:
+			sched.cancel_tag("wash_drain_kill_%s" % str(spec["id"]))
+	_scheduled = false   # _ensure_scheduled re-arms (and re-captures _cadence_t0) on the next _update
 	# A guard drowned in the drain loop was unregistered + freed — bring it (and any other missing spec guard) back
 	# before the re-snap below assumes every guard still exists.
 	_respawn_missing_enemies()
