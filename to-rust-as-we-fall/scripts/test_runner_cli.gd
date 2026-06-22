@@ -314,6 +314,12 @@ func _ready() -> void:
 			"--test-channels-probe-coverage":
 				ran_test = true
 				await _test_channels_probe_coverage()
+			"--test-channels-splash-capture":
+				ran_test = true
+				await _test_channels_splash_capture()
+			"--test-channels-pipe-splash":
+				ran_test = true
+				await _test_channels_pipe_splash()
 			"--test-wash-relay-flood-visual":
 				ran_test = true
 				await _test_wash_relay_flood_visual()
@@ -969,6 +975,7 @@ func _run_all_tests() -> void:
 	await _test_wash_relay_flush_hint()
 	await _test_channels_click_alignment()
 	await _test_channels_probe_coverage()
+	await _test_channels_pipe_splash()
 	await _test_channels_textures()
 	await _test_wash_relay_flood_visual()
 	await _test_wash_relay_trace_cadence()
@@ -11139,6 +11146,87 @@ func _test_wash_relay_abilities() -> void:
 
 ## WINDOWED eyeball: force floods + capture the channels so the flood water (and sluice gate) can be SEEN on
 ## the helix. Writes vr_channels_water.png (gitignored). Not in --test-all (needs a display).
+# The pipe-mouth splash LEADS IN before the water (a warning so the flood doesn't blink in) and runs while the
+# water runs. Drives the real per-frame loop and asserts section 0's splash appears AT OR BEFORE its flood,
+# never after, and is full WHILE flooding.
+func _test_channels_pipe_splash() -> void:
+	_test_name = "Channels Pipe Splash"
+	var inst = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	if inst == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	var chunk = inst.find_child("Chunk_wash_relay", true, false)
+	var gs = inst.get("_game_state")
+	if chunk == null or gs == null:
+		_assert_true(false, "chunk + game_state present"); inst.queue_free(); await get_tree().process_frame; return
+	for cid in ["aster", "peris", "endo"]:
+		gs.snap_character_to(cid, Vector3(3.0, 0.5, 0.0))   # parked at the start; we only watch section 0's splash vs flood
+	var planes: Array = chunk.get("_splash_planes")
+	_assert_true(planes.size() == (chunk.get("_flooding") as Array).size() and planes.size() > 0,
+		"one pipe-splash plane per section")
+	var splash_t := -1.0
+	var flood_t := -1.0
+	var t := 0.0
+	while t < 5.0 and (splash_t < 0.0 or flood_t < 0.0):
+		inst.headless_advance(0.1, 0.1)
+		t += 0.1
+		var inten: Array = chunk.get("_splash_intensity")
+		var flooding: Array = chunk.get("_flooding")
+		if splash_t < 0.0 and inten.size() > 0 and float(inten[0]) > 0.05:
+			splash_t = t
+		if flood_t < 0.0 and flooding.size() > 0 and bool(flooding[0]):
+			flood_t = t
+	_assert_true(splash_t >= 0.0, "section 0's pipe splash appears (intensity ramps up)")
+	_assert_true(flood_t >= 0.0, "section 0 floods")
+	_assert_true(splash_t >= 0.0 and flood_t >= 0.0 and splash_t < flood_t and (flood_t - splash_t) >= 0.5,
+		"the splash LEADS IN well before the flood (a real warning, not a blink) — splash@%.1fs flood@%.1fs lead=%.1fs" % [splash_t, flood_t, flood_t - splash_t])
+	_assert_true(float((chunk.get("_splash_intensity") as Array)[0]) > 0.5, "the splash is full WHILE the water runs")
+	_assert_true(is_instance_valid(planes[0]) and (planes[0] as Node3D).visible, "the splash plane is visible during the flood")
+	inst.queue_free()
+	await get_tree().process_frame
+
+# WINDOWED: capture a pipe-mouth splash on a flooding section (the rough splash blob billboard).
+func _test_channels_splash_capture() -> void:
+	_test_name = "Channels Splash Capture"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (needs a display)")
+		return
+	var inst = await _instantiate_preview_chunk_and_wait("wash_relay", 8)
+	if inst == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	for i in range(90):
+		await get_tree().process_frame
+	var chunk = inst.find_child("Chunk_wash_relay", true, false)
+	# Flood section 0 and force its splash to full, then apply the visual.
+	chunk.call("_flood_onset", 0)
+	var inten: Array = chunk.get("_splash_intensity")
+	if inten.size() > 0:
+		inten[0] = 0.9
+	chunk.call("_update", 0.0)
+	get_tree().paused = true
+	for i in range(2):
+		await get_tree().process_frame
+	var planes: Array = chunk.get("_splash_planes")
+	var focus := Vector3.ZERO
+	if planes.size() > 0 and is_instance_valid(planes[0]):
+		focus = (planes[0] as Node3D).global_position
+	var outward := Vector3(focus.x, 0.0, focus.z).normalized()
+	var cam := get_tree().root.get_viewport().get_camera_3d()
+	if cam != null and cam.is_inside_tree():
+		cam.global_transform = Transform3D(Basis(), focus + outward * 4.5 + Vector3(0.0, 1.5, 0.0)).looking_at(focus, Vector3.UP)
+	RenderingServer.global_shader_parameter_set("player_world_pos", focus)
+	for i in range(2):
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var img := get_tree().root.get_texture().get_image()
+	var sp := cam.unproject_position(focus) if cam != null else Vector2(img.get_width() * 0.5, img.get_height() * 0.5)
+	var crop := 240
+	var rx := clampi(int(sp.x) - crop / 2, 0, maxi(0, img.get_width() - crop))
+	var ry := clampi(int(sp.y) - crop / 2, 0, maxi(0, img.get_height() - crop))
+	img.get_region(Rect2i(rx, ry, mini(crop, img.get_width()), mini(crop, img.get_height()))).save_png("res://vr_pipe_splash.png")
+	print("  [splash] focus=%s  wrote vr_pipe_splash.png (splash blob at the pipe mouth)" % str(focus))
+	_assert_true(true, "captured the pipe splash")
+	await _dispose_scene(inst)
+
 # COLLISION-COVERAGE PROBE: ray straight down on EVERY walkable cell (the data layer says you can stand there,
 # so there must be deck collision under it for a click to land). Plots an ASCII hit/miss map in the FLAT (s,lane)
 # frame (no spiral overlap) + drops red 3D markers at every miss for a windowed look. Misses = geometry the

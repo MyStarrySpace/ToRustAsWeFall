@@ -176,6 +176,15 @@ var _flush_hint_shown := false     # one-shot: the FIRST flush telegraph plays a
 var _flush_hint_root: Node3D       # ephemeral nodes for the flush preview pulse (freed after it plays)
 var _wash_anim_root: Node3D        # parent for any in-flight "swept down the spiral" cosmetic streaks
 var _surge_root: Node3D            # parent for the on-onset foam/surge accents (throwaway, freed after each)
+# Pipe-mouth SPLASH planes: a rough splash blob billboard at each section's pipe mouth that fades in slightly
+# BEFORE the flood (a lead-in so the water doesn't blink in) and runs while the water runs, then eases out.
+# Intensity is scheduler-driven (the telegraph lead + _flooding); the per-frame ease is @rendering_only.
+const SPLASH_LEAD := 1.2           # the splash starts ramping in this long before the onset (matches the telegraph)
+const SPLASH_SMOOTH := 7.0         # how fast the splash eases toward its target intensity (cosmetic)
+var _splash_root: Node3D
+var _splash_planes: Array = []     # per section: MeshInstance3D billboard quad at the pipe mouth
+var _splash_intensity: Array = []  # per section: current eased 0..1 splash strength
+var _splash_tex: Texture2D
 const PARTY_RENDER_COLORS := {     # the per-character ownership colour (matches the path ribbon / queued glow)
 	"aster": Color(0.29, 0.62, 1.0), "peris": Color(1.0, 0.67, 0.27), "endo": Color(0.4, 0.72, 0.55),
 }
@@ -269,6 +278,8 @@ func _build_chunk() -> void:
 	_wdbg("water built")
 	_build_drain_loop()
 	_wdbg("drain loop built")
+	_build_splash_planes()
+	_wdbg("pipe splashes built")
 
 # A box pre-warped onto the helix under an arbitrary parent (generalises _add_warped_box, which targets the
 # branch root). y_off lifts it along the deck's local up. Used for the flood-water layer + sluice gates.
@@ -1238,6 +1249,104 @@ func _build_cosmetic_blob(parent: Node3D, pos: Vector3, size: Vector3, color: Co
 	mesh.global_position = pos
 	return mesh
 
+# --- Pipe-mouth splash planes ---
+
+## A rough, lumpy splash-blob texture (white on transparent) — irregular radial edges + a ring of droplet
+## specks, drawn deterministically (no wall-clock RNG) so it's stable. The material tints it the water colour.
+func _build_splash_texture() -> Texture2D:
+	var size := 64
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color(1, 1, 1, 0))
+	var c := float(size) * 0.5
+	var base_r := float(size) * 0.28
+	for y in range(size):
+		for x in range(size):
+			var dx := float(x) - c
+			var dy := float(y) - c
+			var d := sqrt(dx * dx + dy * dy)
+			var ang := atan2(dy, dx)
+			# lumpy radius from summed harmonics — an organic, splashy silhouette
+			var lump := 1.0 + 0.20 * sin(ang * 5.0) + 0.13 * sin(ang * 8.0 + 1.3) + 0.08 * sin(ang * 13.0 + 2.1)
+			var r := base_r * lump
+			if d <= r:
+				img.set_pixel(x, y, Color(1, 1, 1, clampf((r - d) / 6.0, 0.0, 1.0)))   # soft outer edge
+	# a scatter of droplet specks flung beyond the blob rim
+	for k in range(8):
+		var a := float(k) / 8.0 * TAU + 0.4
+		var rr := base_r * (1.25 + 0.3 * sin(a * 3.0))
+		var px := int(c + cos(a) * rr)
+		var py := int(c + sin(a) * rr)
+		var dsz := 1 + (k % 3)
+		for oy in range(-dsz, dsz + 1):
+			for ox in range(-dsz, dsz + 1):
+				if ox * ox + oy * oy <= dsz * dsz:
+					var xx := px + ox
+					var yy := py + oy
+					if xx >= 0 and xx < size and yy >= 0 and yy < size:
+						img.set_pixel(xx, yy, Color(1, 1, 1, 0.85))
+	return ImageTexture.create_from_image(img)
+
+## One splash billboard at each section's pipe mouth (above the section, on the back-wall/pipe side), warped
+## onto the helix. Hidden by default; _update fades/scales it from the scheduler (lead-in + flood). Under a
+## Node3D root so it survives hide_flat_graybox; render_priority above the perception overlay so it shows in data-view.
+func _build_splash_planes() -> void:
+	_splash_root = Node3D.new()
+	_splash_root.name = "PipeSplashes"
+	add_child(_splash_root)
+	_splash_tex = _build_splash_texture()
+	_splash_planes = []
+	_splash_intensity = []
+	for i in range(SECTIONS.size()):
+		var cx: float = (float(SECTIONS[i]["x0"]) + float(SECTIONS[i]["x1"])) * 0.5
+		var mat := StandardMaterial3D.new()
+		mat.albedo_texture = _splash_tex
+		mat.albedo_color = Color(0.62, 0.86, 1.0, 0.0)   # teal-white; alpha driven each frame
+		mat.emission_enabled = true
+		mat.emission = Color(0.35, 0.7, 1.0)
+		mat.emission_energy_multiplier = 1.8
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		mat.billboard_keep_scale = true
+		mat.render_priority = 127   # draw after the perception overlay (like the flood water) so it reads in data-view
+		var quad := QuadMesh.new()
+		quad.size = Vector2(2.4, 2.4)
+		var mi := MeshInstance3D.new()
+		mi.mesh = quad
+		mi.material_override = mat
+		mi.top_level = true
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.layers = 2   # NO_GRID_DECAL_LAYER
+		mi.visible = false
+		_splash_root.add_child(mi)
+		mi.global_position = ChannelsArc.arc_pos(cx, FLOOR_Z_HALF - 0.4) + Vector3(0.0, 3.3, 0.0)   # the pipe mouth
+		_splash_planes.append(mi)
+		_splash_intensity.append(0.0)
+
+## Drive every pipe splash from the scheduler: ramp IN over the SPLASH_LEAD before the onset (so the water
+## leads in instead of blinking), hold full while the section floods, ease out after. Eased per-frame (cosmetic).
+func _update_pipe_splashes(delta: float) -> void:
+	for i in range(_splash_planes.size()):
+		var mi: MeshInstance3D = _splash_planes[i]
+		if mi == null or not is_instance_valid(mi):
+			continue
+		var target := 0.0
+		if i < _flooding.size() and _flooding[i]:
+			target = 1.0
+		elif not _section_disabled(i):
+			var until := _section_next_onset_in(i)
+			if until > 0.0 and until <= SPLASH_LEAD:
+				target = (1.0 - until / SPLASH_LEAD) * 0.7   # building warning, up to 0.7 just before onset
+		_splash_intensity[i] = move_toward(float(_splash_intensity[i]), target, delta * SPLASH_SMOOTH)
+		var inten: float = _splash_intensity[i]
+		mi.visible = inten > 0.02
+		if mi.visible:
+			var sc := 0.55 + 0.85 * inten
+			mi.scale = Vector3(sc, sc, sc)
+			var m := mi.material_override as StandardMaterial3D
+			if m != null:
+				m.albedo_color.a = clampf(inten * 1.15, 0.0, 1.0)
+
 # --- Interactions ---
 
 func _on_override(i: int) -> void:
@@ -1281,11 +1390,11 @@ func _set_strip(i: int, energy: float) -> void:
 
 # --- Lifecycle ---
 
-func _process(_delta: float) -> void:
-	_update()
+func _process(delta: float) -> void:
+	_update(delta)
 
-func headless_process(_delta: float) -> void:
-	_update()
+func headless_process(delta: float) -> void:
+	_update(delta)
 
 # The pad footprint(s) a section needs HELD to disable it. A plain plate has one; a double_plate has two
 # (at ±DOUBLE_PLATE_Z), so two members must stay while the third crosses.
@@ -1313,11 +1422,12 @@ func _debug_log_positions() -> void:
 			var r: Vector3 = gsd.get_render_position(cid)
 			print("[channels] %-6s data=(%5.1f,%4.1f,%5.1f) render=(%6.1f,%5.1f,%6.1f) moving=%s" % [cid, d.x, d.y, d.z, r.x, r.y, r.z, gsd.is_moving(cid)])
 
-func _update() -> void:
+func _update(delta := 0.0) -> void:
 	if _phase == "ready":
 		_phase = "active"
 	_ensure_scheduled()
 	_debug_log_positions()
+	_update_pipe_splashes(delta)
 	# refresh plate-held state — a section is held only when EVERY one of its pads has a member on it
 	for i in range(SECTIONS.size()):
 		var dis := str(SECTIONS[i]["disable"])
@@ -1593,6 +1703,12 @@ func reset_preview_state() -> void:
 	_override_locked = []; _flooding = []; _plate_held = []; _sluice_blocked = []; _flood_counts = []; _section_wash_counts = []
 	for i in range(n):
 		_override_locked.append(false); _flooding.append(false); _plate_held.append(false); _sluice_blocked.append(false); _flood_counts.append(0); _section_wash_counts.append(0)
+	# Pipe-mouth splashes back to rest (no lead-in showing).
+	for i in range(_splash_intensity.size()):
+		_splash_intensity[i] = 0.0
+	for mi in _splash_planes:
+		if is_instance_valid(mi):
+			mi.visible = false
 	# Drain-loop run state.
 	_drain_flooding = false
 	_drain_flood_count = 0
