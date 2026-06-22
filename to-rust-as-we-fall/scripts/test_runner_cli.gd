@@ -311,6 +311,9 @@ func _ready() -> void:
 			"--test-channels-click-alignment":
 				ran_test = true
 				await _test_channels_click_alignment()
+			"--test-channels-probe-coverage":
+				ran_test = true
+				await _test_channels_probe_coverage()
 			"--test-wash-relay-flood-visual":
 				ran_test = true
 				await _test_wash_relay_flood_visual()
@@ -11135,6 +11138,86 @@ func _test_wash_relay_abilities() -> void:
 
 ## WINDOWED eyeball: force floods + capture the channels so the flood water (and sluice gate) can be SEEN on
 ## the helix. Writes vr_channels_water.png (gitignored). Not in --test-all (needs a display).
+# COLLISION-COVERAGE PROBE: ray straight down on EVERY walkable cell (the data layer says you can stand there,
+# so there must be deck collision under it for a click to land). Plots an ASCII hit/miss map in the FLAT (s,lane)
+# frame (no spiral overlap) + drops red 3D markers at every miss for a windowed look. Misses = geometry the
+# click ray can't hit = unreachable-by-click spots (like the plate section gap found earlier).
+func _test_channels_probe_coverage() -> void:
+	_test_name = "Channels Probe Coverage"
+	var inst = await _instantiate_preview_chunk_and_wait("wash_relay", 8)
+	if inst == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	for i in range(6):
+		await get_tree().process_frame
+	for i in range(4):
+		await get_tree().physics_frame
+	var gs = inst.get("_game_state")
+	if gs == null or gs.grid == null or gs.coord_map == null:
+		_assert_true(false, "grid + coord_map present"); inst.queue_free(); await get_tree().process_frame; return
+	var grid = gs.grid
+	var space = inst.get_world_3d().direct_space_state
+	var walkable := 0
+	var hits := 0
+	var misses: Array = []
+	var rows: Array = []
+	var marker_root := Node3D.new()
+	marker_root.name = "ProbeMarkers"
+	add_child(marker_root)
+	for cz in range(grid.height - 1, -1, -1):
+		var row := ""
+		for cx in range(grid.width):
+			if not grid.is_in_bounds(cx, cz) or not grid.is_walkable(cx, cz):
+				row += " "
+				continue
+			walkable += 1
+			var flat: Vector3 = grid.grid_to_world(Vector2i(cx, cz))
+			var world: Vector3 = gs.coord_map.to_world(flat)
+			var q := PhysicsRayQueryParameters3D.create(world + Vector3(0, 6, 0), world - Vector3(0, 6, 0))
+			q.collision_mask = 1
+			var r: Dictionary = space.intersect_ray(q)
+			if r.is_empty():
+				row += "X"
+				misses.append({"cx": cx, "cz": cz, "s": flat.x, "lane": flat.z})
+				var mk := MeshInstance3D.new()
+				var sp := SphereMesh.new(); sp.radius = 0.25; sp.height = 0.5; mk.mesh = sp
+				var mm := StandardMaterial3D.new()
+				mm.albedo_color = Color(1, 0.1, 0.1); mm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+				mm.render_priority = 127
+				mk.material_override = mm
+				mk.top_level = true
+				marker_root.add_child(mk)
+				mk.global_position = world + Vector3(0, 0.3, 0)
+			else:
+				row += "#"
+				hits += 1
+		rows.append(row)
+	print("  [probe] walkable=%d  hits=%d  MISSES=%d  (%.1f%% of walkable cells have deck collision)" % [walkable, hits, misses.size(), 100.0 * float(hits) / float(maxi(1, walkable))])
+	print("  [probe] FLAT map — s across (col 0..%d), lane top->bottom (z %d..0); '#'=collision  'X'=MISS  ' '=non-walkable:" % [grid.width - 1, grid.height - 1])
+	for r in rows:
+		print("    |" + r + "|")
+	# Cluster misses by their s-column so the gaps read as ranges, not a wall of cells.
+	var by_s := {}
+	for m in misses:
+		by_s[m["s"]] = int(by_s.get(m["s"], 0)) + 1
+	var s_keys: Array = by_s.keys(); s_keys.sort()
+	for sk in s_keys:
+		print("    MISS at s=%.0f : %d walkable cell(s) with NO deck collision" % [sk, by_s[sk]])
+	if DisplayServer.get_name() != "headless":
+		get_tree().paused = true
+		var cam := get_tree().root.get_viewport().get_camera_3d()
+		if cam != null and cam.is_inside_tree():
+			cam.global_transform = Transform3D(Basis(), Vector3(0, 70, 0.01)).looking_at(Vector3.ZERO, Vector3(0, 0, -1))
+		for i in range(3):
+			await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		var tex := get_tree().root.get_texture()
+		if tex != null:
+			tex.get_image().save_png("res://vr_probe_coverage.png")
+			print("  [probe] wrote vr_probe_coverage.png (top-down; red dots = miss locations on the helix)")
+	_assert_true(true, "probed channels collision coverage")
+	inst.queue_free()
+	await get_tree().process_frame
+
 # Cursor alignment on the warped helix: a click maps cursor -> deck hit -> to_data -> cell. If the deck the ray
 # HITS sits above the arc centreline (deck thickness / surface), to_data over/under-reads s and the grid + ghost
 # land OFF the cursor. Measure the round-trip: flat -> to_world -> raycast the REAL deck -> to_data, and assert
