@@ -46,10 +46,8 @@ Each loop pass does ONE item end-to-end, commits, marks it done here, and the lo
 ### P1 — overlay/visual completeness (concrete, verifiable)
 - [x] `ui-dataview-dest-ring` **DONE** — dest ring now `render_priority = 127` so it survives the data-view;
   guarded in `--test-path-render-manager`. (See Done log.)
-- [ ] `ui-dataview-sweep` **READY** — Audit the remaining transparent gameplay overlays (queued-glow particles
-  on `OutlineSurfaceTarget`, selection markers, the hover-grid) and give any that should read in data-view the
-  same `render_priority` treatment. **Done-when:** each audited element either has render_priority > 126 or a
-  documented reason it shouldn't; a guard test covers the ones fixed.
+- [x] `ui-dataview-sweep` **DONE** — Audited every transparent gameplay overlay for data-view survival; the
+  queued energy GLOW shell was the one offender (transparent at 118 → now 127), guarded. (See Done log.)
 - [ ] `splash-droplets-round` **READY** — The pipe-splash texture's droplet specks render cross/plus-shaped at
   64px (1–3px discs + nearest filter). Make them read as round droplets (filled discs with a soft edge, or
   upscale the texture). **Done-when:** `--test-channels-splash-capture` PNG shows round droplets (capture +
@@ -70,6 +68,16 @@ Each loop pass does ONE item end-to-end, commits, marks it done here, and the lo
   GLB outlet nodes. **Done-when:** the jet section shows ≥2 splashes at its outlets (capture + look) and the
   splash test still passes. *(If outlet positions aren't derivable from data/the model, retag NEEDS-HUMAN.)*
 
+### Scenes
+- [ ] `scene-tag-day-flesh` **NEEDS-HUMAN** — Flesh out the Tag Day checkpoint scene (`tag_day.tscn` /
+  `tag_day_sequence.gd`). The scene already plays end-to-end (covered by `--test-tag-day` ×3 and reached in
+  `--test-intro-realinput`), so the remaining work is **creative/content**: the checkpoint-queue staging, the
+  naturalizer grip-and-walk choreography, the "Hollow Men" poem beats + timing, and any new dialogue — all of
+  which are authorship the loop must not guess. **Loop-safe sub-tasks** (split these out as `READY` if/when the
+  human specifies them): a `--test-tag-day-playthrough` data-layer beatability guard (wash-relay pattern), a
+  flat-collision probe for its grid (see `cov-flat-collision-probe`), and data-view/render_priority audits of any
+  overlays it adds. **Done-when:** the human defines the concrete beats; until then this stays NEEDS-HUMAN.
+
 ### NEEDS-HUMAN (loop must NOT attempt — flagged for review)
 - [ ] `tune-water-alpha` **NEEDS-HUMAN** — final flood-water translucency (`water_alpha`, currently 0.88) and
   splash alpha/lead-in feel are aesthetic calls.
@@ -83,3 +91,11 @@ Each loop pass does ONE item end-to-end, commits, marks it done here, and the lo
 <!-- The loop appends finished items here with their commit hash. -->
 - `ui-dataview-dest-ring` (2026-06-22) — destination ring draws over the perception overlay (render_priority
   127); red/green-verified in `--test-path-render-manager`. First validating pass of the framework.
+- `ui-dataview-sweep` (2026-06-22) — transparent-overlay data-view audit. Findings: selection = 2D marquee on a
+  CanvasLayer (UI, survives inherently); crisp outline HULL = opaque (`unshaded, cull_front, depth_draw_always` →
+  always in the screen texture); highlight PARTICLES = opaque `StandardMaterial3D` (default `TRANSPARENCY_DISABLED`
+  → survives); dest ring + ghost = already 127. The ONE offender: the queued/selected ENERGY GLOW shell
+  (`outline_emission_noise.gdshader`, `blend_add` = transparent) was `render_priority = 118` < the overlay quad's
+  126, so it vanished in data-view. Fix: 118 → 127 in `outline_surface_target.gd::_ensure_glow_shell`; guarded
+  red/green in `--test-outline-feedback-system` (builds a target, fires `begin_queued_feedback`, asserts the
+  `OutlineEmissionShell` material `render_priority > 126`).

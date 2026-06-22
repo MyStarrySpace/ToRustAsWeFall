@@ -326,7 +326,11 @@ func _ensure_glow_shell(mesh_instance: MeshInstance3D) -> MeshInstance3D:
 	shell.layers = mesh_instance.layers
 	var mat := ShaderMaterial.new()
 	mat.shader = OUTLINE_EMISSION_SHADER
-	mat.render_priority = 118  # just under the crisp outline (120)
+	# The glow is blend_add (transparent), so it must draw AFTER the perception-overlay quad (render_priority
+	# 126) or it vanishes in data-view (the flood-water / dest-ring bug class — transparent surfaces are excluded
+	# from the screen texture the overlay rewrites from). Opaque draws before all transparent regardless of
+	# priority, so this never reorders it under the crisp opaque hull.
+	mat.render_priority = 127
 	mat.set_shader_parameter("noise_tex", _noise_texture())
 	shell.material_override = mat
 	mesh_instance.add_child(shell)

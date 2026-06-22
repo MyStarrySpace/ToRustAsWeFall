@@ -14063,6 +14063,15 @@ func _test_outline_feedback_system() -> void:
 	})
 	_assert_true(target != null, "outline_meshes builds a target from mesh bounds")
 	if target != null:
+		# The queued/selected ENERGY GLOW is blend_add (transparent), so it must draw OVER the perception-overlay
+		# quad (render_priority 126) or it vanishes in data-view (the flood-water bug class). FLESH_OUT ui-dataview-sweep.
+		target.begin_queued_feedback(Vector3.ZERO, Color(0.3, 0.7, 1.0))
+		var glow_shell := host.find_child("OutlineEmissionShell", true, false) as MeshInstance3D
+		_assert_true(glow_shell != null, "queued feedback builds the energy glow shell")
+		if glow_shell != null:
+			_assert_true((glow_shell.material_override as ShaderMaterial).render_priority > 126,
+				"the queued energy glow draws over the perception overlay (render_priority > 126) so it shows in data-view")
+		target.cancel_queued_feedback()
 		_assert_true(bool(target.get("outline_particles_enabled")),
 			"Built target has outline particles enabled")
 		_assert_equals(int(target.get("selected_particle_count")), 42,
