@@ -293,6 +293,12 @@ func _ready() -> void:
 			"--test-wash-drain-loop":
 				ran_test = true
 				await _test_wash_drain_loop()
+			"--test-wash-relay-flush-hint":
+				ran_test = true
+				await _test_wash_relay_flush_hint()
+			"--test-channels-textures":
+				ran_test = true
+				await _test_channels_textures()
 			"--test-wash-relay-flood-visual":
 				ran_test = true
 				await _test_wash_relay_flood_visual()
@@ -945,6 +951,8 @@ func _run_all_tests() -> void:
 	await _test_wash_relay_abilities()
 	await _test_wash_relay_checkpoint()
 	await _test_wash_drain_loop()
+	await _test_wash_relay_flush_hint()
+	await _test_channels_textures()
 	await _test_wash_relay_flood_visual()
 	await _test_wash_relay_trace_cadence()
 	await _test_wash_relay_playthrough()
@@ -11078,26 +11086,40 @@ func _test_occlusion_shader_capture() -> void:
 		return
 	var root := Node3D.new()
 	get_tree().root.add_child(root)
-	var player := Vector3(0.0, 0.0, -5.0)
-	# Bright green backdrop BEHIND the player so the hole reveals something obvious.
+	# Offset the whole controlled scene FAR from origin so the booted main scene (near origin) isn't also
+	# rendered through this test camera (make_current draws every 3D node in the tree).
+	var base := Vector3(1000.0, 0.0, 1000.0)
+	var player := base + Vector3(0.0, 0.0, -4.0)
+	var occ_shader := load("res://resources/camera_occlusion.gdshader")
+	var wrap := func(c: Color) -> ShaderMaterial:
+		var m := ShaderMaterial.new(); m.shader = occ_shader
+		m.set_shader_parameter("albedo_color", c)
+		m.set_shader_parameter("emission_color", c); m.set_shader_parameter("emission_energy", 0.6)
+		return m
+	# Bright green backdrop BEHIND the player so a hole reveals something obvious.
 	var bg := MeshInstance3D.new()
-	var bgq := QuadMesh.new(); bgq.size = Vector2(24, 24); bg.mesh = bgq
+	var bgq := QuadMesh.new(); bgq.size = Vector2(30, 30); bg.mesh = bgq
 	var bgm := StandardMaterial3D.new()
 	bgm.albedo_color = Color(0.15, 0.85, 0.3); bgm.emission_enabled = true; bgm.emission = Color(0.15, 0.85, 0.3)
-	bg.material_override = bgm; bg.position = Vector3(0, 0, -10)
+	bg.material_override = bgm; bg.position = base + Vector3(0, 0, -12)
 	root.add_child(bg)
-	# A RED wall directly between the camera and the player, wrapped in the occlusion shader.
+	# A RED WALL (vertical, normal toward camera) between camera and player — SHOULD be cut (green hole).
 	var wall := MeshInstance3D.new()
-	var wq := QuadMesh.new(); wq.size = Vector2(12, 12); wall.mesh = wq
-	var wm := ShaderMaterial.new(); wm.shader = load("res://resources/camera_occlusion.gdshader")
-	wm.set_shader_parameter("albedo_color", Color(0.85, 0.18, 0.16))
-	wm.set_shader_parameter("emission_color", Color(0.85, 0.18, 0.16))
-	wm.set_shader_parameter("emission_energy", 0.6)
-	wall.material_override = wm; wall.position = Vector3(0, 0, 0)
+	var wq := QuadMesh.new(); wq.size = Vector2(14, 8); wall.mesh = wq
+	wall.material_override = wrap.call(Color(0.85, 0.18, 0.16))
+	wall.position = base + Vector3(0, 1.0, -1.0)
 	root.add_child(wall)
+	# A BLUE FLOOR (horizontal, normal UP) under the player, also between camera and player along the line —
+	# it must NOT be cut (the floor-skip): the cone should leave the ground solid, no hole around the player.
+	var floor_mi := MeshInstance3D.new()
+	var fq := QuadMesh.new(); fq.size = Vector2(20, 20); floor_mi.mesh = fq
+	floor_mi.material_override = wrap.call(Color(0.18, 0.4, 0.95))
+	floor_mi.rotation_degrees = Vector3(-90, 0, 0)   # face +Y (a floor)
+	floor_mi.position = base + Vector3(0, -0.5, -4.0)
+	root.add_child(floor_mi)
 	var light := DirectionalLight3D.new(); light.rotation_degrees = Vector3(-50, 20, 0); root.add_child(light)
 	var cam := Camera3D.new(); root.add_child(cam)
-	cam.global_transform = Transform3D(Basis(), Vector3(0, 0, 6)).looking_at(player, Vector3.UP)
+	cam.global_transform = Transform3D(Basis(), base + Vector3(0, 7, 7)).looking_at(player, Vector3.UP)
 	cam.make_current()
 	RenderingServer.global_shader_parameter_set("player_world_pos", player)
 	for i in range(5):
@@ -11106,7 +11128,7 @@ func _test_occlusion_shader_capture() -> void:
 	var tex := get_tree().root.get_texture()
 	if tex != null:
 		tex.get_image().save_png("res://vr_occlusion_test.png")
-		print("  [occlusion-test] wrote vr_occlusion_test.png (RED wall should show a GREEN dithered hole on the camera->player line)")
+		print("  [occlusion-test] wrote vr_occlusion_test.png (RED wall: GREEN dithered hole; BLUE floor: NO hole — floor-skip)")
 	_assert_true(true, "occlusion shader capture")
 	root.queue_free()
 	await get_tree().process_frame
@@ -12259,6 +12281,86 @@ func _test_wash_relay() -> void:
 	# PER-SECTION CADENCE: the fast current (period 4) has surged more often than the period-6 sluice
 	var fc: Array = chunk.get_preview_state().get("sections", [])
 	_assert_true(int(fc[1].get("flood_count", 0)) > int(fc[4].get("flood_count", 0)), "the fast current (period 4) floods more often than the period-6 sluice")
+	instance.queue_free()
+	await get_tree().process_frame
+
+# --- Test: the channels environment model carries albedo textures, and the occlusion wrap preserves them ---
+# Answers "are textures loading in the chunk preview?": the preview wraps EVERY GLB material in the occlusion
+# shader, so a textured look only survives if (a) the GLB materials carry albedo textures and (b) the wrap
+# copies them onto the ShaderMaterial. Both are asserted here, headless.
+func _test_channels_textures() -> void:
+	_test_name = "Channels Textures"
+	var scene = load("res://resources/models/channels/channels.glb")
+	_assert_true(scene != null, "channels.glb loads as a PackedScene")
+	if scene == null:
+		return
+	var inst: Node = scene.instantiate()
+	get_tree().root.add_child(inst)
+	await get_tree().process_frame
+	var meshes := inst.find_children("*", "MeshInstance3D", true, false)
+	_assert_true(meshes.size() > 0, "channels.glb has mesh instances (got %d)" % meshes.size())
+	var with_tex := 0
+	var total_surfaces := 0
+	var sample_tex: Texture2D = null
+	for n in meshes:
+		var mi := n as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		for s in range(mi.mesh.get_surface_count()):
+			total_surfaces += 1
+			var m := mi.get_active_material(s)
+			if m is StandardMaterial3D and (m as StandardMaterial3D).albedo_texture != null:
+				with_tex += 1
+				if sample_tex == null:
+					sample_tex = (m as StandardMaterial3D).albedo_texture
+	_assert_true(with_tex > 0, "channels.glb materials carry albedo TEXTURES (%d of %d surfaces textured)" % [with_tex, total_surfaces])
+	# The preview replaces every material with the occlusion ShaderMaterial — verify the wrap PRESERVES the
+	# albedo texture, so the chunk preview stays textured (not a flat color).
+	var mgr := CameraOcclusionManager.new()
+	var src := StandardMaterial3D.new()
+	src.albedo_texture = sample_tex
+	src.albedo_color = Color(0.7, 0.7, 0.7)
+	var wrapped = mgr.call("_wrap", src)
+	_assert_true(wrapped is ShaderMaterial, "the occlusion wrap returns a ShaderMaterial")
+	_assert_true(wrapped != null and wrapped.get_shader_parameter("albedo_tex") == sample_tex,
+		"the occlusion wrap PRESERVES the albedo texture (preview stays textured, not flat)")
+	mgr.free()
+	inst.queue_free()
+	await get_tree().process_frame
+
+# --- Test: the flush hint appears ONLY after a single section washes the party 3x (NOT on a startup timer) ---
+# Reproduces the reported bug: the flush hint/dialogue used to fire from the get-go (a pre-telegraph timer at
+# ~1.3s). It must be EARNED — three washes in the SAME section — so it teaches "read THIS surge" when you keep
+# failing it, and never interrupts the opening. Washes spread across different sections must NOT trigger it.
+func _test_wash_relay_flush_hint() -> void:
+	_test_name = "Wash Relay Flush Hint"
+	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	_assert_true(instance != null, "wash_relay preview instantiates")
+	if instance == null:
+		return
+	var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
+	var gs = instance.get("_game_state")
+	if chunk == null or gs == null:
+		_assert_true(false, "chunk + game_state present")
+		instance.queue_free(); await get_tree().process_frame
+		return
+	# NO startup trigger: park the party at the start and run well past the old ~1.3s pre-telegraph timer.
+	for cid in ["aster", "peris", "endo"]:
+		gs.snap_character_to(cid, Vector3(3.0, 0.5, 0.0))
+	instance.headless_advance(4.0)
+	_assert_true(not bool(chunk.get_preview_state().get("flush_hint_shown", true)),
+		"the flush hint does NOT fire on a startup timer (nobody's been washed yet)")
+	# Spread washes across DIFFERENT sections — two on flush (0), two on current (1): no single section hits 3.
+	for sec_x in [[0, 8.0], [0, 8.0], [1, 16.5], [1, 16.5]]:
+		gs.snap_character_to("aster", Vector3(float(sec_x[1]), 0.5, 0.0))
+		chunk.call("_wash_section", int(sec_x[0]))
+	_assert_true(not bool(chunk.get_preview_state().get("flush_hint_shown", true)),
+		"washes SPREAD across sections (2+2) do not trigger the hint — it's per-section")
+	# A THIRD wash on the SAME section (flush, 0) crosses the threshold -> the hint appears.
+	gs.snap_character_to("aster", Vector3(8.0, 0.5, 0.0))
+	chunk.call("_wash_section", 0)
+	_assert_true(bool(chunk.get_preview_state().get("flush_hint_shown", false)),
+		"the flush hint appears after the THIRD wash in the SAME section")
 	instance.queue_free()
 	await get_tree().process_frame
 

@@ -23,12 +23,16 @@ uniform float metallic : hint_range(0.0, 1.0) = 0.0;
 
 // Reveal cone tuning (world units). radius grows from reveal_radius*min_factor at the camera to
 // reveal_radius at the player, so the tunnel hugs the camera->player line and opens onto the character.
-uniform float reveal_radius : hint_range(0.0, 6.0) = 2.5;
+uniform float reveal_radius : hint_range(0.0, 8.0) = 3.5;
 uniform float reveal_min_factor : hint_range(0.0, 1.0) = 0.5;
-uniform float reveal_softness : hint_range(0.0, 1.0) = 0.35;   // fraction of the radius that feathers (dither band)
+uniform float reveal_softness : hint_range(0.0, 1.0) = 0.65;   // fraction of the radius that feathers (dither band)
 uniform float reveal_strength : hint_range(0.0, 1.0) = 1.0;    // 0 => occlusion disabled for this material
+// Surfaces facing UP more steeply than this (the FLOOR/deck the player stands on) are NEVER cut — otherwise the
+// cone punches a hole in the ground around the player's feet. Only WALLS / overhead structure get cut away.
+uniform float floor_skip_cutoff : hint_range(0.0, 1.0) = 0.55;
 
-varying vec3 v_world;   // fragment position in WORLD space
+varying vec3 v_world;          // fragment position in WORLD space
+varying vec3 v_world_normal;   // world-space surface normal (used to leave the floor uncut)
 
 const float BAYER4[16] = float[](
 	 0.0 / 16.0,  8.0 / 16.0,  2.0 / 16.0, 10.0 / 16.0,
@@ -39,6 +43,7 @@ const float BAYER4[16] = float[](
 
 void vertex() {
 	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	v_world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
 
 void fragment() {
@@ -49,8 +54,10 @@ void fragment() {
 	NORMAL_MAP = texture(normal_tex, UV).rgb;
 	NORMAL_MAP_DEPTH = normal_scale;
 
-	// GDShader forbids `return` in fragment(); the gates are NESTED ifs (discard IS allowed).
-	if (reveal_strength > 0.001) {
+	// GDShader forbids `return` in fragment(); the gates are NESTED ifs (discard IS allowed). Skip up-facing
+	// FLOOR surfaces entirely so the cone never punches a hole in the ground under the player — only walls and
+	// overhead structure get cut away.
+	if (reveal_strength > 0.001 && v_world_normal.y < floor_skip_cutoff) {
 		vec3 cam = CAMERA_POSITION_WORLD;
 		vec3 to_player = player_world_pos - cam;
 		float player_dist = length(to_player);

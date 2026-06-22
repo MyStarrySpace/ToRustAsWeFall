@@ -95,7 +95,7 @@ const BRANCH_SWITCH_LANE := 5.0     # the gate switch sits just past the neck (t
 const BRANCH_GATE_LANE := 6.5       # the gate bar (cosmetic barrier) between the switch and the pad cache
 
 var _branches: Array = []           # per gap: {gap, mid_x, pad_lane, archetype, content_count, collected, cache,
-                                    #           guard, gate_kind, unlocked, switch, gate_bar}
+									#           guard, gate_kind, unlocked, switch, gate_bar}
 var _branch_loot := 0
 var _branch_root: Node3D
 var _branch_guard_spawns := {}      # guard id -> flat spawn (so reset re-snaps branch guards too)
@@ -117,7 +117,7 @@ const DRAIN_LOOP_PERIOD := 5.0       # the loop's own flood cadence (independent
 const DRAIN_LOOP_DUR := 1.6          # how long the run stays flooded per surge
 const DRAIN_LOOP_PHASE := 1.0        # stagger from FIRST_FLOOD so the loop isn't synced to section 0
 const DRAIN_BAIT_PULL := 6.5         # the bait holds the guard committed in the run a bit longer than one flood
-                                     # PERIOD, so a surge is GUARANTEED to catch it while it's parked there
+									 # PERIOD, so a surge is GUARANTEED to catch it while it's parked there
 const DRAIN_KILL_DELAY := 0.7        # the drowned guard's body lingers this long (cosmetic dissolve) then is removed
 const DRAIN_DROWN_SWEEPS := 4        # enemy-drown re-checks spread across the flood WINDOW (not just the onset tick)
 var _drain_root: Node3D
@@ -126,8 +126,8 @@ var _drain_flooding := false         # the run is mid-surge this window (schedul
 var _drain_flood_count := 0          # surges fired (for the analytic next-onset read)
 var _drowned_count := 0             # guards the current has taken down the drain this run
 var _cadence_t0 := 0.0              # scheduler tick the hazard cadence was (re)armed at — the analytic safe-window
-                                    # reads are relative to THIS, so a reset that re-arms at a non-zero tick stays
-                                    # self-consistent (the real onset and the predicted onset agree)
+									# reads are relative to THIS, so a reset that re-arms at a non-zero tick stays
+									# self-consistent (the real onset and the predicted onset agree)
 
 var _phase := "ready"
 var _override_locked := []         # per section — an override has been pressed (latched)
@@ -137,7 +137,9 @@ var _plate_held := []              # per section — all the section's plates ar
 var _sluice_blocked := []          # per section — the sluice gate cells are currently walled off
 var _washed := {}                  # legacy stranding set — kept empty now (checkpoint-wash doesn't strand)
 var _sweep_count := 0              # how many times the party was swept back this run (a "rough run" read)
+var _section_wash_counts := []     # per section — times THIS section has washed the party (the flush hint trigger)
 var _run_hint_shown := false       # one-shot: after enough washes, a character grumbles that you must RUN the surges
+const FLUSH_HINT_THRESHOLD := 3    # the flush hint only appears once a SINGLE section has washed you this many times
 var _scheduled := false
 var _flow_strips: Array = []
 # Flood WATER layer — the in-game flood visual. Built WARPED onto the helix under a Node3D root so it SURVIVES
@@ -824,24 +826,19 @@ func _make_pretel(i: int) -> Callable:
 func _pre_telegraph(i: int) -> void:
 	if _phase == "active" and not _flooding[i] and not _section_disabled(i):
 		_set_strip(i, 1.1)
-		# The VERY FIRST time the flush (section 0) tells, play a louder one-time tutorial preview so a new
-		# player reads "a surge breaks HERE — time it / run it" before the real surge ever lands. One-shot.
-		if i == 0 and not _flush_hint_shown:
-			_flush_hint_shown = true
-			_play_flush_hint()
 
 # COSMETIC tutorial preview on the flush section: a rising-then-receding ghost of the surge so the first-time
 # player sees where the water breaks before it actually does. Spawns its OWN throwaway warped boxes (NOT the
 # real _section_water — that stays driven by the scheduler, so the flood-visual/water-capture invariants hold)
 # and tweens them up then back, then frees them. Pure visuals: it never touches _flooding or the cadence.
-func _play_flush_hint() -> void:
+func _play_flush_hint(i: int = 0) -> void:
 	_say("// FLUSH // surge incoming — read the water, then run it")
 	_say("Watch—it breaks right here. Time it and run.", "ASTER")
 	if not is_instance_valid(_flush_hint_root):
 		_flush_hint_root = Node3D.new()
 		_flush_hint_root.name = "FlushHint"
 		add_child(_flush_hint_root)
-	var s: Dictionary = SECTIONS[0]
+	var s: Dictionary = SECTIONS[clampi(i, 0, SECTIONS.size() - 1)]   # ghost the section you keep failing
 	var x0: float = s["x0"]; var x1: float = s["x1"]
 	var n := maxi(2, int(ceil((x1 - x0) / WATER_SEG)))
 	var segs: Array = []
@@ -1003,6 +1000,14 @@ func _wash_section(i: int) -> void:
 			washed_any = true
 	if washed_any:
 		_announce_wash()   # one line + one sweep tally for the whole event, however many members got caught
+		# Per-section tally: the flush hint (a preview of where THIS section's surge breaks) only appears once a
+		# SINGLE section has caught the party FLUSH_HINT_THRESHOLD times — you keep getting washed HERE, so here's
+		# the read. It never fires on a startup timer; it's earned by repeated failure on the same section.
+		if i < _section_wash_counts.size():
+			_section_wash_counts[i] += 1
+			if _section_wash_counts[i] >= FLUSH_HINT_THRESHOLD and not _flush_hint_shown:
+				_flush_hint_shown = true
+				_play_flush_hint(i)
 
 func _wash_character(char_id: String) -> void:
 	var gs = _get_game_state()
@@ -1582,9 +1587,9 @@ func reset_preview_state() -> void:
 	# before the re-snap below assumes every guard still exists.
 	_respawn_missing_enemies()
 	_phase = "ready"
-	_override_locked = []; _flooding = []; _plate_held = []; _sluice_blocked = []; _flood_counts = []
+	_override_locked = []; _flooding = []; _plate_held = []; _sluice_blocked = []; _flood_counts = []; _section_wash_counts = []
 	for i in range(n):
-		_override_locked.append(false); _flooding.append(false); _plate_held.append(false); _sluice_blocked.append(false); _flood_counts.append(0)
+		_override_locked.append(false); _flooding.append(false); _plate_held.append(false); _sluice_blocked.append(false); _flood_counts.append(0); _section_wash_counts.append(0)
 	# Drain-loop run state.
 	_drain_flooding = false
 	_drain_flood_count = 0
@@ -1725,7 +1730,8 @@ func get_preview_state() -> Dictionary:
 		"branches": branches, "branch_count": _branches.size(), "branch_loot": _branch_loot,
 		"branch_guard_count": branch_guard_count,
 		"trace_section": _trace_section, "bloom_count": _blooms.size(),
-		"sweep_count": _sweep_count,
+		"sweep_count": _sweep_count, "section_wash_counts": _section_wash_counts.duplicate(),
+		"flush_hint_shown": _flush_hint_shown,
 		"water_shown": _water_shown_state(),
 		"drain_flooding": _drain_flooding, "drain_next_onset_in": _drain_next_onset_in(),
 		"drowned_count": _drowned_count, "drain_guard": drain_guard,
