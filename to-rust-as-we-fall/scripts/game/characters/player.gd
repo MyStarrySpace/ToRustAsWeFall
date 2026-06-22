@@ -75,6 +75,9 @@ var _push_ghost_char: MeshInstance3D
 var _push_ghost_obj: MeshInstance3D
 var _blocked_cursor_on := false
 var _preview_last_cell := Vector2i(0x7fffffff, 0x7fffffff)
+## The FLAT hovered move target while planning (Vector3.INF when not hovering). The scene's PathRenderManager
+## reads this to draw a BG3-style destination ghost at the cursor BEFORE a move is committed.
+var preview_move_target := Vector3.INF
 
 
 signal arrived()
@@ -446,6 +449,8 @@ func _update_path_preview(hit: Vector3) -> void:
 		_path_preview.set_explicit_path(path, 1)  # from_index 1: the renderer prepends the live start point
 	else:
 		_path_preview.clear_explicit_path()
+	# Tell the path manager where to ghost this character (the flat path END, or the raw hover if no route).
+	preview_move_target = path[path.size() - 1] if path.size() >= 1 else hit
 
 ## One dim ribbon per selected member, each in that member's colour, anchored to that member so it starts
 ## at them. Mirrors the party spread, so the preview matches the click.
@@ -471,13 +476,23 @@ func _update_party_preview(hit: Vector3) -> void:
 			_party_previews[cid].set_explicit_path(path, 1)
 		else:
 			_party_previews[cid].clear_explicit_path()
+		# Ghost each member at its OWN spread destination (the manager reads preview_move_target on the node).
+		var mnode := _find_char_node(cid)
+		if mnode != null and "preview_move_target" in mnode:
+			mnode.preview_move_target = path[path.size() - 1] if path.size() >= 1 else hit
 	for cid in _party_previews.keys():
 		if not seen.has(cid):
 			_party_previews[cid].clear_explicit_path()
+			var mnode := _find_char_node(cid)
+			if mnode != null and "preview_move_target" in mnode:
+				mnode.preview_move_target = Vector3.INF
 
 func _clear_party_preview() -> void:
 	for cid in _party_previews.keys():
 		_party_previews[cid].clear_explicit_path()
+		var mnode := _find_char_node(cid)
+		if mnode != null and "preview_move_target" in mnode:
+			mnode.preview_move_target = Vector3.INF
 
 ## Enter queued-push mode for a pushable object (a command-click on its PushTarget got us here).
 func queue_push(obj_id: String) -> void:
@@ -607,6 +622,7 @@ func _clear_path_preview() -> void:
 		_path_preview.clear_explicit_path()
 	_clear_party_preview()
 	_preview_last_cell = Vector2i(0x7fffffff, 0x7fffffff)  # force a recompute on the next hover
+	preview_move_target = Vector3.INF   # stop ghosting a destination once we're no longer planning one
 
 ## The scene node for a character id (this player, or a sibling party member) — used to anchor each
 ## member's preview ribbon to that member and tint it their colour.

@@ -9219,7 +9219,7 @@ func _test_path_render_manager() -> void:
 	# DESTINATION GHOST (BG3-style): a character WITH a scene mesh shows a translucent ghost of its mesh standing
 	# at the move target, tinted by the character, and it hides when the character stops.
 	var gscript := GDScript.new()
-	gscript.source_code = "extends Node3D\nvar char_id := \"\"\nvar color := Color.WHITE\n"
+	gscript.source_code = "extends Node3D\nvar char_id := \"\"\nvar color := Color.WHITE\nvar preview_move_target := Vector3.INF\n"
 	gscript.reload()
 	var gnode := Node3D.new()
 	gnode.set_script(gscript)
@@ -9247,6 +9247,17 @@ func _test_path_render_manager() -> void:
 	gs.command_stop("a")
 	mgr._process(0.0)
 	_assert_true(ghost != null and not ghost.visible, "The destination ghost hides when the character stops")
+
+	# PREVIEW (BG3 "before the move"): with NO committed move, a hovered target on the node shows the ghost there.
+	gnode.set("preview_move_target", Vector3(2.0, 0.0, 3.0))
+	mgr._process(0.0)
+	var pghost: Node3D = mgr._dest_ghosts.get("a")
+	_assert_true(pghost != null and pghost.visible, "The ghost PREVIEWS at the hovered target before any move is committed")
+	_assert_true(pghost != null and Vector2(pghost.global_position.x - 2.0, pghost.global_position.z - 3.0).length() < 0.2,
+		"The preview ghost stands at the hovered target (got %s)" % [pghost.global_position if pghost != null else Vector3.ZERO])
+	gnode.set("preview_move_target", Vector3.INF)
+	mgr._process(0.0)
+	_assert_true(pghost != null and not pghost.visible, "The preview ghost hides when the hover clears")
 
 	root.queue_free()
 	await get_tree().process_frame

@@ -113,6 +113,12 @@ func _make_dest_marker(col: Color) -> MeshInstance3D:
 func _update_dest_ghost(char_id: String, node: Node3D) -> void:
 	var ghost: Node3D = _dest_ghosts.get(char_id)
 	var dest_data: Vector3 = game_state.get_destination(char_id)
+	# Before a move is committed, preview the ghost at the character's HOVERED target — the controller writes the
+	# flat hover point to `preview_move_target` while planning, so the ghost shows where a click WOULD send it.
+	if not dest_data.is_finite() and node != null and "preview_move_target" in node:
+		var pv = node.preview_move_target
+		if pv is Vector3 and (pv as Vector3).is_finite():
+			dest_data = pv
 	if not dest_data.is_finite() or node == null:
 		if ghost != null and is_instance_valid(ghost):
 			ghost.visible = false
