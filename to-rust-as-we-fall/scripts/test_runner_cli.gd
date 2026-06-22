@@ -299,6 +299,9 @@ func _ready() -> void:
 			"--test-channels-textures":
 				ran_test = true
 				await _test_channels_textures()
+			"--test-channels-occlusion-live":
+				ran_test = true
+				await _test_channels_occlusion_live()
 			"--test-wash-relay-flood-visual":
 				ran_test = true
 				await _test_wash_relay_flood_visual()
@@ -11079,6 +11082,92 @@ func _test_wash_relay_abilities() -> void:
 
 ## WINDOWED eyeball: force floods + capture the channels so the flood water (and sluice gate) can be SEEN on
 ## the helix. Writes vr_channels_water.png (gitignored). Not in --test-all (needs a display).
+# LIVE channels occlusion: instrument the REAL preview (no pause, so the manager feeds player_world_pos like
+# in play) and print ground-truth numbers — what point the reveal is aimed at vs where the player actually
+# renders, the camera, and a few pixel samples ALONG the camera->player screen line so the diagnosis is
+# numeric, not eyeballed. Also writes a PNG for cross-checking.
+func _test_channels_occlusion_live() -> void:
+	_test_name = "Channels Occlusion Live"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (needs a display)")
+		return
+	var inst = await _instantiate_preview_chunk_and_wait("wash_relay", 8)
+	if inst == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	for i in range(100):
+		await get_tree().process_frame   # model load + camera ease-in; occlusion _process runs live (NOT paused)
+	var gs = inst.get("_game_state")
+	var mgr = inst.get("_occlusion_mgr")
+	var active: String = str(inst.get("_active_char_id"))
+	var fed := Vector3.INF
+	if mgr != null and mgr.has_method("_watch_pos"):
+		fed = mgr.call("_watch_pos")
+	var render_pos := Vector3.INF
+	if gs != null and gs.characters.has(active):
+		render_pos = gs.get_render_position(active)
+	var global_param = RenderingServer.global_shader_parameter_get("player_world_pos")
+	var cam := get_tree().root.get_viewport().get_camera_3d()
+	print("  [occ-live] active=%s" % active)
+	print("  [occ-live] manager feeds player_world_pos = %s" % str(fed))
+	print("  [occ-live] active char RENDER pos          = %s" % str(render_pos))
+	print("  [occ-live] global param player_world_pos   = %s" % str(global_param))
+	if cam != null:
+		print("  [occ-live] camera pos = %s  | looking_at(player) dist = %.2f" % [str(cam.global_position), cam.global_position.distance_to(render_pos) if render_pos.is_finite() else -1.0])
+		if render_pos.is_finite():
+			var on_screen := cam.unproject_position(render_pos)
+			print("  [occ-live] player projects to screen = %s  (viewport %s)" % [str(on_screen), str(get_tree().root.get_viewport().get_visible_rect().size)])
+	await RenderingServer.frame_post_draw
+	var img_on: Image = get_tree().root.get_texture().get_image()
+	img_on.save_png("res://vr_channels_occlusion.png")
+	# A NATIVE-RES CROP around the player (small enough that the image viewer won't downscale it to an
+	# unreadable thumbnail — that downscaling is what made my earlier "checks" worthless).
+	var vp_size: Vector2 = get_tree().root.get_viewport().get_visible_rect().size
+	var sp := Vector2(vp_size.x * 0.5, vp_size.y * 0.5)
+	if cam != null and render_pos.is_finite():
+		sp = cam.unproject_position(render_pos)
+	var crop := 220
+	var rx := clampi(int(sp.x) - crop / 2, 0, maxi(0, img_on.get_width() - crop))
+	var ry := clampi(int(sp.y) - crop / 2, 0, maxi(0, img_on.get_height() - crop))
+	var rect := Rect2i(rx, ry, mini(crop, img_on.get_width()), mini(crop, img_on.get_height()))
+	img_on.get_region(rect).save_png("res://vr_occ_crop_on.png")
+	# Now DISABLE occlusion on every wrapped material (reveal_strength = 0) and recapture the SAME crop, so an
+	# ON-vs-OFF pixel diff says NUMERICALLY whether the occlusion is cutting anything in the player's region.
+	var model := inst.find_child("EnvironmentModel", true, false)
+	var touched := 0
+	if model != null:
+		for n in model.find_children("*", "MeshInstance3D", true, false):
+			var mi := n as MeshInstance3D
+			if mi == null:
+				continue
+			if mi.material_override is ShaderMaterial:
+				(mi.material_override as ShaderMaterial).set_shader_parameter("reveal_strength", 0.0); touched += 1
+			for s in range(mi.get_surface_override_material_count()):
+				var sm = mi.get_surface_override_material(s)
+				if sm is ShaderMaterial:
+					(sm as ShaderMaterial).set_shader_parameter("reveal_strength", 0.0); touched += 1
+	for i in range(3):
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var img_off: Image = get_tree().root.get_texture().get_image()
+	img_off.get_region(rect).save_png("res://vr_occ_crop_off.png")
+	# Diff the crop: how many pixels did turning occlusion OFF change? >0 => occlusion is actively cutting in
+	# the player's region (working); ~0 => it does nothing there (broken or nothing to cut).
+	var changed := 0
+	var co := img_on.get_region(rect)
+	var cf := img_off.get_region(rect)
+	for y in range(co.get_height()):
+		for x in range(co.get_width()):
+			var a := co.get_pixel(x, y)
+			var b := cf.get_pixel(x, y)
+			if absf(a.r - b.r) + absf(a.g - b.g) + absf(a.b - b.b) > 0.08:
+				changed += 1
+	var total := co.get_width() * co.get_height()
+	print("  [occ-live] wrapped materials toggled OFF: %d" % touched)
+	print("  [occ-live] crop %s  pixels changed ON->OFF: %d / %d (%.1f%%)" % [str(rect), changed, total, 100.0 * float(changed) / float(maxi(1, total))])
+	print("  [occ-live] wrote vr_occ_crop_on.png + vr_occ_crop_off.png (native-res, readable)")
+	_assert_true(true, "captured live channels occlusion")
+	await _dispose_scene(inst)
+
 func _test_occlusion_shader_capture() -> void:
 	_test_name = "Occlusion Shader Capture"
 	if DisplayServer.get_name() == "headless":
