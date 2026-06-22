@@ -302,6 +302,9 @@ func _ready() -> void:
 			"--test-channels-occlusion-live":
 				ran_test = true
 				await _test_channels_occlusion_live()
+			"--test-channels-water-crop":
+				ran_test = true
+				await _test_channels_water_crop()
 			"--test-wash-relay-flood-visual":
 				ran_test = true
 				await _test_wash_relay_flood_visual()
@@ -11082,6 +11085,73 @@ func _test_wash_relay_abilities() -> void:
 
 ## WINDOWED eyeball: force floods + capture the channels so the flood water (and sluice gate) can be SEEN on
 ## the helix. Writes vr_channels_water.png (gitignored). Not in --test-all (needs a display).
+# Capture a FLOODED section's water in NORMAL mode (no overlay) at native resolution, to see whether the
+# flood water renders at all (isolates "water shader broken" from "transparent water hidden by the data-view
+# overlay's screen-texture, which excludes transparent objects").
+func _test_channels_water_crop() -> void:
+	_test_name = "Channels Water Crop"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (needs a display)")
+		return
+	var inst = await _instantiate_preview_chunk_and_wait("wash_relay", 8)
+	if inst == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	for i in range(90):
+		await get_tree().process_frame
+	var chunk = inst.find_child("Chunk_wash_relay", true, false)
+	var gs = inst.get("_game_state")
+	for i in range(9):
+		chunk.call("_flood_onset", i)   # force every section to flood so its water layer shows
+	chunk.call("_update")
+	get_tree().paused = true
+	for i in range(2):
+		await get_tree().process_frame
+	var focus := Vector3(0.0, 6.0, 0.0)
+	if gs != null and gs.coord_map != null:
+		focus = gs.coord_map.to_world(Vector3(8.5, 0.6, 0.0))   # flush section (0) water, flat s~8.5 lane 0
+	var outward := Vector3(focus.x, 0.0, focus.z).normalized()
+	var cam := get_tree().root.get_viewport().get_camera_3d()
+	if cam != null and cam.is_inside_tree():
+		cam.global_transform = Transform3D(Basis(), focus + outward * 6.0 + Vector3(0.0, 5.0, 0.0)).looking_at(focus, Vector3.UP)
+	RenderingServer.global_shader_parameter_set("player_world_pos", focus)
+	for i in range(2):
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var img := get_tree().root.get_texture().get_image()
+	var sp := cam.unproject_position(focus) if cam != null else Vector2(img.get_width() * 0.5, img.get_height() * 0.5)
+	var crop := 260
+	var rx := clampi(int(sp.x) - crop / 2, 0, maxi(0, img.get_width() - crop))
+	var ry := clampi(int(sp.y) - crop / 2, 0, maxi(0, img.get_height() - crop))
+	var rect := Rect2i(rx, ry, mini(crop, img.get_width()), mini(crop, img.get_height()))
+	img.get_region(rect).save_png("res://vr_water_crop.png")
+	print("  [water-crop] focus=%s  water_shown=%s" % [str(focus), str(chunk.get_preview_state().get("water_shown"))])
+	print("  [water-crop] wrote vr_water_crop.png (NORMAL mode)")
+	# Now turn ON the data-view (Aster) overlay and recapture the SAME crop — proves the (now opaque) flood
+	# survives the perception post-process that the transparent version vanished under.
+	get_tree().paused = false
+	if inst.has_method("headless_set_overlay_state"):
+		inst.call("headless_set_overlay_state", "aster", true)
+	for i in range(14):
+		await get_tree().process_frame   # let _update_overlay_runtime activate the data-view quad
+	for i in range(9):
+		chunk.call("_flood_onset", i)
+	chunk.call("_update")
+	get_tree().paused = true
+	if cam != null and cam.is_inside_tree():
+		cam.global_transform = Transform3D(Basis(), focus + outward * 6.0 + Vector3(0.0, 5.0, 0.0)).looking_at(focus, Vector3.UP)
+	RenderingServer.global_shader_parameter_set("player_world_pos", focus)
+	for i in range(2):
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var ov_quad = inst.get("_overlay_stack_quad")
+	var ov_visible = (ov_quad != null and is_instance_valid(ov_quad) and (ov_quad as Node3D).visible)
+	print("  [water-crop] overlay quad visible=%s  enabled_overlays=%s" % [str(ov_visible), str(inst.call("_get_enabled_overlays") if inst.has_method("_get_enabled_overlays") else "?")])
+	var img2 := get_tree().root.get_texture().get_image()
+	img2.get_region(rect).save_png("res://vr_water_crop_overlay.png")
+	print("  [water-crop] wrote vr_water_crop_overlay.png (DATA-VIEW mode)")
+	_assert_true(true, "captured the flood water")
+	await _dispose_scene(inst)
+
 # LIVE channels occlusion: instrument the REAL preview (no pause, so the manager feeds player_world_pos like
 # in play) and print ground-truth numbers — what point the reveal is aimed at vs where the player actually
 # renders, the camera, and a few pixel samples ALONG the camera->player screen line so the diagnosis is
