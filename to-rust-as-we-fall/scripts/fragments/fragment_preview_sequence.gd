@@ -374,6 +374,11 @@ func _load_environment_model() -> void:
 		if _active_chunk.has_method("warp_interactables_onto_coord_map"):
 			_active_chunk.call("warp_interactables_onto_coord_map", _game_state.coord_map)
 			_pdbg("interactables warped onto coord_map")
+		# Generate ground collision DIRECTLY from the chunk's walkable_regions, warped onto the deck. The GLB's
+		# set-piece decks + the chunk's straight collision planks don't match the declared walkable footprint
+		# (narrow set-pieces, chord-vs-curve branch boxes), so ~30% of walkable cells had no deck to ray-hit and
+		# were un-clickable. This makes collision == walkable by construction for ANY coord_map chunk.
+		_add_warped_walkable_collision()
 
 ## Walkable surfaces of the environment model get trimesh collision on layer 1 (the ground layer the
 ## player ray queries), so a click lands on the deck under the cursor — its world height is what
@@ -390,6 +395,66 @@ func _add_deck_collision(node: Node) -> void:
 				break
 	for c in node.get_children():
 		_add_deck_collision(c)
+
+## Build ground collision (layer 1) from the active chunk's DECLARED walkable_regions, warped onto the deck via
+## the coord_map — so a click/hover ray finds deck under EVERY walkable cell, regardless of where the model's
+## set-piece meshes or the chunk's straight collision planks happen to sit. Each region is tiled into thin boxes
+## ALONG the curve (re-warped per segment so the box tangent tracks the local arc, no chord gaps), sized from
+## the region rect so collision-extent == walkable-extent. Collision-only (no mesh); derived, rebuilt on load.
+const _WARP_COLL_SEG_S := 1.2     # flat-s per collision segment (fine enough the chord error stays under a cell)
+const _WARP_COLL_THICK := 0.4
+func _add_warped_walkable_collision() -> void:
+	if _game_state == null or _game_state.coord_map == null or _active_chunk == null:
+		return
+	if not _active_chunk.has_method("get_grid_data"):
+		return
+	var data: Dictionary = _active_chunk.call("get_grid_data")
+	var regions: Array = data.get("walkable_regions", [])
+	if regions.is_empty():
+		return
+	var cm = _game_state.coord_map
+	# The grid rasterizes a region to every cell it OVERLAPS, so walkable cell CENTRES extend ~half a cell past
+	# the region rect — pad the collision by half a cell on every side so those edge cells get deck too.
+	var cell_pad: float = float(data.get("cell_size", 1.0)) * 0.5
+	var root := Node3D.new()
+	root.name = "WarpedWalkCollision"
+	add_child(root)
+	var boxes := 0
+	for region in regions:
+		var mn: Array = region["min"]
+		var mx: Array = region["max"]
+		var s0: float = float(mn[0]) - cell_pad; var lane0: float = float(mn[1]) - cell_pad
+		var s1: float = float(mx[0]) + cell_pad; var lane1: float = float(mx[1]) + cell_pad
+		var lane_c := (lane0 + lane1) * 0.5
+		var lane_span: float = absf(lane1 - lane0)
+		var s_span: float = absf(s1 - s0)
+		var nseg: int = maxi(1, int(ceil(s_span / _WARP_COLL_SEG_S)))
+		var ds := s_span / float(nseg)
+		for k in range(nseg):
+			var sc: float = lerpf(s0, s1, (k + 0.5) / float(nseg))
+			var center = cm.to_world(Vector3(sc, 0.0, lane_c))
+			var p0 = cm.to_world(Vector3(sc - ds * 0.5, 0.0, lane_c))
+			var p1 = cm.to_world(Vector3(sc + ds * 0.5, 0.0, lane_c))
+			if not (center is Vector3 and (center as Vector3).is_finite() and p0 is Vector3 and p1 is Vector3):
+				continue
+			var basis := Basis.IDENTITY
+			if cm.has_method("to_basis"):
+				var b = cm.to_basis(Vector3(sc, 0.0, lane_c))
+				if b is Basis:
+					basis = b
+			var seg_len: float = (p1 as Vector3).distance_to(p0 as Vector3) * 1.4 + 0.2   # overlap so segments never gap
+			var body := StaticBody3D.new()
+			body.collision_layer = 1
+			body.collision_mask = 0
+			var col := CollisionShape3D.new()
+			var shape := BoxShape3D.new()
+			shape.size = Vector3(lane_span + 0.3, _WARP_COLL_THICK, seg_len)
+			col.shape = shape
+			body.add_child(col)
+			root.add_child(body)
+			body.global_transform = Transform3D(basis, center as Vector3)
+			boxes += 1
+	_pdbg("warped walkable collision: %d boxes over %d regions" % [boxes, regions.size()])
 
 func _force_nearest_filter(node: Node) -> void:
 	if node is MeshInstance3D:

@@ -968,6 +968,7 @@ func _run_all_tests() -> void:
 	await _test_wash_drain_loop()
 	await _test_wash_relay_flush_hint()
 	await _test_channels_click_alignment()
+	await _test_channels_probe_coverage()
 	await _test_channels_textures()
 	await _test_wash_relay_flood_visual()
 	await _test_wash_relay_trace_cadence()
@@ -11214,7 +11215,12 @@ func _test_channels_probe_coverage() -> void:
 		if tex != null:
 			tex.get_image().save_png("res://vr_probe_coverage.png")
 			print("  [probe] wrote vr_probe_coverage.png (top-down; red dots = miss locations on the helix)")
-	_assert_true(true, "probed channels collision coverage")
+	# Every walkable cell must have deck collision under it, or it's un-clickable as a destination. The
+	# procedural warped collision floor (built from the same walkable_regions) makes this hold by construction.
+	_assert_true(walkable > 0, "the channels grid has walkable cells to probe")
+	_assert_true(misses.size() == 0, "EVERY walkable cell has deck collision under it (misses=%d of %d)" % [misses.size(), walkable])
+	if is_instance_valid(marker_root):
+		marker_root.queue_free()
 	inst.queue_free()
 	await get_tree().process_frame
 
