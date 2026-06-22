@@ -44,11 +44,8 @@ Each loop pass does ONE item end-to-end, commits, marks it done here, and the lo
 ## Backlog
 
 ### P1 — overlay/visual completeness (concrete, verifiable)
-- [ ] `ui-dataview-dest-ring` **READY** — The destination RING (`path_render_manager._make_dest_marker`) is
-  transparent and has no `render_priority`, so it vanishes in the perception data-view (same bug class as the
-  flood water). Give it `render_priority = 127` so it draws over the overlay. **Done-when:** a headless guard
-  asserts the dest-ring material's render_priority > the overlay quad's (126), and the existing
-  `--test-path-render-manager` stays green.
+- [x] `ui-dataview-dest-ring` **DONE** — dest ring now `render_priority = 127` so it survives the data-view;
+  guarded in `--test-path-render-manager`. (See Done log.)
 - [ ] `ui-dataview-sweep` **READY** — Audit the remaining transparent gameplay overlays (queued-glow particles
   on `OutlineSurfaceTarget`, selection markers, the hover-grid) and give any that should read in data-view the
   same `render_priority` treatment. **Done-when:** each audited element either has render_priority > 126 or a
@@ -84,3 +81,5 @@ Each loop pass does ONE item end-to-end, commits, marks it done here, and the lo
 
 ## Done log
 <!-- The loop appends finished items here with their commit hash. -->
+- `ui-dataview-dest-ring` (2026-06-22) — destination ring draws over the perception overlay (render_priority
+  127); red/green-verified in `--test-path-render-manager`. First validating pass of the framework.

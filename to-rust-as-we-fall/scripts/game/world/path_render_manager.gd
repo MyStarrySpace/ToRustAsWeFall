@@ -99,6 +99,9 @@ func _make_dest_marker(col: Color) -> MeshInstance3D:
 	mat.albedo_color = Color(col, 0.0)
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	# Draw after the perception-overlay quad (render_priority 126) so the ring survives the data-view (a
+	# transparent surface is otherwise excluded from the overlay's screen texture and vanishes under it).
+	mat.render_priority = 127
 	m.material_override = mat
 	m.rotation.x = -PI / 2.0
 	m.top_level = true   # authored in world space — we set the global position to the move target

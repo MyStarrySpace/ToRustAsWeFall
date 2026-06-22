@@ -9210,6 +9210,10 @@ func _test_path_render_manager() -> void:
 		"Manager draws a destination ring for EVERY moving character (party/escort, not just the player)")
 	var dm_a: MeshInstance3D = mgr._dest_markers.get("a")
 	_assert_true(dm_a != null and dm_a.visible, "A moving character's destination ring is visible")
+	# The ring is transparent, so it must draw AFTER the perception-overlay quad (render_priority 126) or it
+	# vanishes in data-view (the flood-water bug class). FLESH_OUT ui-dataview-dest-ring.
+	_assert_true(dm_a != null and (dm_a.material_override as StandardMaterial3D).render_priority > 126,
+		"the destination ring draws over the perception overlay (render_priority > 126) so it shows in data-view")
 	var want_a: Vector3 = gs.get_destination("a")
 	_assert_true(Vector2(dm_a.global_position.x - want_a.x, dm_a.global_position.z - want_a.z).length() < 0.2,
 		"The ring sits at the character's actual move destination (got %s, want %s)" % [dm_a.global_position, want_a])
