@@ -308,6 +308,9 @@ func _ready() -> void:
 			"--test-dest-ghost-capture":
 				ran_test = true
 				await _test_dest_ghost_capture()
+			"--test-channels-click-alignment":
+				ran_test = true
+				await _test_channels_click_alignment()
 			"--test-wash-relay-flood-visual":
 				ran_test = true
 				await _test_wash_relay_flood_visual()
@@ -961,6 +964,7 @@ func _run_all_tests() -> void:
 	await _test_wash_relay_checkpoint()
 	await _test_wash_drain_loop()
 	await _test_wash_relay_flush_hint()
+	await _test_channels_click_alignment()
 	await _test_channels_textures()
 	await _test_wash_relay_flood_visual()
 	await _test_wash_relay_trace_cadence()
@@ -11120,6 +11124,46 @@ func _test_wash_relay_abilities() -> void:
 
 ## WINDOWED eyeball: force floods + capture the channels so the flood water (and sluice gate) can be SEEN on
 ## the helix. Writes vr_channels_water.png (gitignored). Not in --test-all (needs a display).
+# Cursor alignment on the warped helix: a click maps cursor -> deck hit -> to_data -> cell. If the deck the ray
+# HITS sits above the arc centreline (deck thickness / surface), to_data over/under-reads s and the grid + ghost
+# land OFF the cursor. Measure the round-trip: flat -> to_world -> raycast the REAL deck -> to_data, and assert
+# it returns near the start. Goes red on a misaligned warp inverse. Headless (physics runs headless).
+func _test_channels_click_alignment() -> void:
+	_test_name = "Channels Click Alignment"
+	var inst = await _instantiate_preview_chunk_and_wait("wash_relay", 8)
+	if inst == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	for i in range(6):
+		await get_tree().process_frame
+	for i in range(4):
+		await get_tree().physics_frame
+	var gs = inst.get("_game_state")
+	if gs == null or gs.coord_map == null:
+		_assert_true(false, "coord_map installed"); inst.queue_free(); await get_tree().process_frame; return
+	var space = inst.get_world_3d().direct_space_state
+	var max_err := 0.0
+	var hits := 0
+	for spec in [[8.0, 0.0], [20.0, 0.0], [40.0, 2.0], [60.0, -2.0]]:
+		var flat := Vector3(float(spec[0]), 0.5, float(spec[1]))
+		var world: Vector3 = gs.coord_map.to_world(flat)
+		var q := PhysicsRayQueryParameters3D.create(world + Vector3(0, 6, 0), world - Vector3(0, 6, 0))
+		q.collision_mask = 1
+		var r: Dictionary = space.intersect_ray(q)
+		if r.is_empty():
+			print("  [click-align] flat s=%.1f lane=%.1f -> NO deck hit (world %s)" % [flat.x, flat.z, str(world)])
+			continue
+		hits += 1
+		var hit: Vector3 = r.position
+		var back: Vector3 = gs.coord_map.to_data(hit)
+		var serr: float = absf(back.x - flat.x)
+		var lerr: float = absf(back.z - flat.z)
+		max_err = maxf(max_err, maxf(serr, lerr))
+		print("  [click-align] flat s=%.1f lane=%.1f | hit.y=%.3f arc.y=%.3f | back s=%.2f lane=%.2f | s_err=%.2f lane_err=%.2f" % [flat.x, flat.z, hit.y, world.y, back.x, back.z, serr, lerr])
+	_assert_true(hits > 0, "the deck collision is hit under the cursor points")
+	_assert_true(max_err < 0.3, "click round-trip (cursor -> deck -> data) lands within ~0.3 of the cursor (max_err=%.2f)" % max_err)
+	inst.queue_free()
+	await get_tree().process_frame
+
 # WINDOWED: queue a move and capture the BG3-style destination GHOST (a translucent copy of the character at
 # its move target) next to the real character at the start, native-res so it's readable.
 func _test_dest_ghost_capture() -> void:

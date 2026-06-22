@@ -29,11 +29,20 @@ static func arc_pos(s: float, lane: float = 0.0) -> Vector3:
 	var rad := R0 + lane
 	return Vector3(CENTER.x + rad * cos(ang), Y0 + s * KCLIMB, CENTER.z + rad * sin(ang))
 
-## World point (assumed on a deck) -> linear (s, lane). s from height (monotonic), lane from radius.
+## World point (assumed on a deck) -> linear (s, lane). lane from radius; s from the helix ANGLE, with the TURN
+## disambiguated by height. Deriving s from angle (not height) keeps a CLICK aligned with the cursor even though
+## the deck the ray hits sits a little off the arc centreline (deck thickness / surface) — a height-only inverse
+## turned that small Y offset into a ~2-unit s error, so the grid/ghost landed off the cursor. Turns are ~9.24
+## world-units apart in Y (TAU/KTHETA * KCLIMB), far more than any deck offset, so the height-based turn pick is
+## robust. Round-trips exactly for a point actually on the helix.
 static func world_to_arc(world: Vector3) -> Dictionary:
-	var s := (world.y - Y0) / KCLIMB
 	var d := Vector2(world.x - CENTER.x, world.z - CENTER.z).length()
-	return {"s": s, "lane": d - R0}
+	var period_s := TAU / KTHETA
+	var ang := atan2(world.z - CENTER.z, world.x - CENTER.x) - A0   # helix angle (wrapped to [-PI, PI])
+	var s_in_turn := ang / KTHETA
+	var s_height := (world.y - Y0) / KCLIMB
+	var turn := roundf((s_height - s_in_turn) / period_s)
+	return {"s": s_in_turn + turn * period_s, "lane": d - R0}
 
 ## The forward (increasing-s) horizontal heading at progress s — for facing characters along the path.
 static func tangent(s: float) -> Vector3:
