@@ -289,6 +289,9 @@ func _make_water_material(variant := 0) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = WaterShader
 	mat.set_shader_parameter("water_tex", WaterTexV1 if variant % 2 == 1 else WaterTexV0)
+	# Draw the translucent flood AFTER the perception-overlay quad (render_priority 126) so it blends on TOP of
+	# the data-view instead of vanishing under it (transparent surfaces aren't in the overlay's screen texture).
+	mat.render_priority = 127
 	return mat
 
 # Build the per-section flood-water (segmented along the arc so it follows the helix) + the sluice gates,

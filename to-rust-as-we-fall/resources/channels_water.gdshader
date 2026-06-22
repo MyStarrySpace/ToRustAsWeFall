@@ -1,10 +1,11 @@
 shader_type spatial;
-// OPAQUE on purpose: a transparent (blend_mix) surface is EXCLUDED from Godot's screen/depth textures
-// (hint_screen_texture / hint_depth_texture), so the perception-overlay post-process (which rewrites the
-// scene from those textures) renders right OVER it and the flood vanishes in data-view. The flood is a
-// HAZARD the player must see in every view, so it's opaque — it lands in the screen+depth buffers and
-// survives the overlay pass. (Slight translucency is sacrificed for guaranteed visibility.)
-render_mode cull_disabled, diffuse_burley;
+// TRANSLUCENT water (blend_mix) — but it must also survive the perception overlay. A transparent surface is
+// excluded from Godot's screen/depth textures (hint_screen_texture/hint_depth_texture), so the overlay's
+// screen-space post-process (which rewrites the scene from those) draws right over it and the flood vanishes
+// in data-view. The fix is RENDER ORDER, not opacity: the water material's render_priority is set ABOVE the
+// overlay quad's (in _make_water_material) so the translucent water draws AFTER the overlay in the transparent
+// pass and blends on top — visible in normal AND overlay modes while keeping its translucency + fresnel.
+render_mode blend_mix, cull_disabled, depth_draw_opaque, diffuse_burley;
 
 // Animated FLOOD-WATER surface for the channels (flooded Sector 12). The brightness comes from the BASE
 // colours + a strong self-EMISSION (so it reads as glowing teal water in the dark drainage) — the dark
@@ -63,5 +64,5 @@ void fragment() {
 	ROUGHNESS = 0.18;
 	METALLIC = 0.0;
 	EMISSION = col * emission_strength;   // bright, flat self-glow so the flood is unmistakable in the dark
-	// Opaque (no ALPHA write) — see the render_mode note: transparency would hide the flood under the overlay.
+	ALPHA = clamp(water_alpha + foam * 0.1, 0.0, 1.0);   // semi-translucent (fresnel foam firms the crests)
 }
