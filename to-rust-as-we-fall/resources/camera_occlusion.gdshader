@@ -27,14 +27,13 @@ uniform float reveal_radius : hint_range(0.0, 8.0) = 3.5;
 uniform float reveal_min_factor : hint_range(0.0, 1.0) = 0.5;
 uniform float reveal_softness : hint_range(0.0, 1.0) = 0.65;   // fraction of the radius that feathers (dither band)
 uniform float reveal_strength : hint_range(0.0, 1.0) = 1.0;    // 0 => occlusion disabled for this material
-// Skip only the player's OWN floor: an up-facing surface (normal.y > floor_skip_cutoff) within floor_band of
-// the player's feet height. That deck stays solid (no hole around the feet) while the deck of the helix turn
-// ABOVE the player — also up-facing, but far above floor_band — is STILL cut, so the player shows through it.
-uniform float floor_skip_cutoff : hint_range(0.0, 1.0) = 0.55;
-uniform float floor_band : hint_range(0.0, 8.0) = 2.5;   // vertical half-height of "the player's own floor"
+// The CUT PLANE: only geometry ABOVE a horizontal plane this far over the player can be cut. Everything at or
+// below it (the deck the player stands on, low walls, props at their level) stays solid — so the cone never
+// holes the ground under the player; only OVERHEAD structure (the helix deck above, ceilings) dissolves. Tune
+// this one knob: lower => cut closer over the head; higher => only tall overhead geometry cuts.
+uniform float cut_above_player : hint_range(-2.0, 8.0) = 1.8;
 
 varying vec3 v_world;          // fragment position in WORLD space
-varying vec3 v_world_normal;   // world-space surface normal (used to leave the floor uncut)
 
 const float BAYER4[16] = float[](
 	 0.0 / 16.0,  8.0 / 16.0,  2.0 / 16.0, 10.0 / 16.0,
@@ -45,7 +44,6 @@ const float BAYER4[16] = float[](
 
 void vertex() {
 	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	v_world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
 
 void fragment() {
@@ -56,11 +54,10 @@ void fragment() {
 	NORMAL_MAP = texture(normal_tex, UV).rgb;
 	NORMAL_MAP_DEPTH = normal_scale;
 
-	// GDShader forbids `return` in fragment(); the gates are NESTED ifs (discard IS allowed). Skip ONLY the
-	// player's own floor (up-facing AND near their feet height) so the cone never holes the ground under them,
-	// while overhead structure — including the up-facing deck of the helix turn above — is still cut.
-	bool is_own_floor = v_world_normal.y > floor_skip_cutoff && abs(v_world.y - player_world_pos.y) < floor_band;
-	if (reveal_strength > 0.001 && !is_own_floor) {
+	// GDShader forbids `return` in fragment(); the gates are NESTED ifs (discard IS allowed). Only fragments
+	// ABOVE the cut plane (a set height over the player) are eligible — so the player's own deck and anything at
+	// their level stays solid (no hole in the ground), and only OVERHEAD structure dissolves to reveal them.
+	if (reveal_strength > 0.001 && v_world.y > player_world_pos.y + cut_above_player) {
 		vec3 cam = CAMERA_POSITION_WORLD;
 		vec3 to_player = player_world_pos - cam;
 		float player_dist = length(to_player);

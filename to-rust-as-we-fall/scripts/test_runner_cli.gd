@@ -11116,6 +11116,17 @@ func _test_channels_occlusion_live() -> void:
 		if render_pos.is_finite():
 			var on_screen := cam.unproject_position(render_pos)
 			print("  [occ-live] player projects to screen = %s  (viewport %s)" % [str(on_screen), str(get_tree().root.get_viewport().get_visible_rect().size)])
+	# DETERMINISTIC framing: PAUSE (freezes the drifting follow-camera; player_world_pos was just set by the live
+	# manager, so it's correct) and look at the player from outside-and-above so the crop reliably frames the
+	# deck around them. Re-assert the global param after pause to be safe.
+	get_tree().paused = true
+	if render_pos.is_finite() and cam != null and cam.is_inside_tree():
+		RenderingServer.global_shader_parameter_set("player_world_pos", render_pos)
+		var outward := Vector3(render_pos.x, 0.0, render_pos.z).normalized()
+		var cam_pos := render_pos + outward * 7.0 + Vector3(0.0, 6.0, 0.0)
+		cam.global_transform = Transform3D(Basis(), cam_pos).looking_at(render_pos, Vector3.UP)
+	for i in range(2):
+		await get_tree().process_frame
 	await RenderingServer.frame_post_draw
 	var img_on: Image = get_tree().root.get_texture().get_image()
 	img_on.save_png("res://vr_channels_occlusion.png")
