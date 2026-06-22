@@ -305,6 +305,9 @@ func _ready() -> void:
 			"--test-channels-water-crop":
 				ran_test = true
 				await _test_channels_water_crop()
+			"--test-dest-ghost-capture":
+				ran_test = true
+				await _test_dest_ghost_capture()
 			"--test-wash-relay-flood-visual":
 				ran_test = true
 				await _test_wash_relay_flood_visual()
@@ -9209,6 +9212,38 @@ func _test_path_render_manager() -> void:
 	mgr._process(0.0)
 	_assert_true(not dm_a.visible, "The destination ring hides when the character stops moving")
 
+	# DESTINATION GHOST (BG3-style): a character WITH a scene mesh shows a translucent ghost of its mesh standing
+	# at the move target, tinted by the character, and it hides when the character stops.
+	var gscript := GDScript.new()
+	gscript.source_code = "extends Node3D\nvar char_id := \"\"\nvar color := Color.WHITE\n"
+	gscript.reload()
+	var gnode := Node3D.new()
+	gnode.set_script(gscript)
+	gnode.set("char_id", "a")
+	gnode.set("color", Color(0.3, 0.6, 1.0))
+	var gmesh := MeshInstance3D.new()
+	var gcap := CapsuleMesh.new(); gcap.radius = 0.25; gcap.height = 1.0
+	gmesh.mesh = gcap; gmesh.position.y = 0.75   # feet at the node origin
+	gnode.add_child(gmesh)
+	root.add_child(gnode)
+	gnode.global_position = Vector3.ZERO
+	mgr._nodes.erase("a"); mgr._scan_after.erase("a")   # "a" had no node earlier; force a fresh find of the new mesh node
+	gs.command_move_to_pos("a", Vector3(6.0, 0.0, 2.0))
+	mgr._process(0.0)
+	_assert_true(mgr._dest_ghosts.has("a"), "Manager builds a destination ghost for a character that has a mesh")
+	var ghost: Node3D = mgr._dest_ghosts.get("a")
+	_assert_true(ghost != null and ghost.visible, "The destination ghost is visible while the character has a move target")
+	_assert_true(ghost != null and ghost.get_child_count() >= 1, "The ghost duplicated the character's mesh(es)")
+	var gdest: Vector3 = gs.get_destination("a")
+	_assert_true(ghost != null and Vector2(ghost.global_position.x - gdest.x, ghost.global_position.z - gdest.z).length() < 0.2,
+		"The ghost stands at the character's move destination (got %s, want %s)" % [ghost.global_position if ghost != null else Vector3.ZERO, gdest])
+	var gchild := ghost.get_child(0) as MeshInstance3D
+	var gmat := gchild.material_override as StandardMaterial3D
+	_assert_true(gmat != null and gmat.albedo_color.a < 1.0, "The ghost mesh is translucent (faded), tinted by the character")
+	gs.command_stop("a")
+	mgr._process(0.0)
+	_assert_true(ghost != null and not ghost.visible, "The destination ghost hides when the character stops")
+
 	root.queue_free()
 	await get_tree().process_frame
 
@@ -11085,6 +11120,53 @@ func _test_wash_relay_abilities() -> void:
 
 ## WINDOWED eyeball: force floods + capture the channels so the flood water (and sluice gate) can be SEEN on
 ## the helix. Writes vr_channels_water.png (gitignored). Not in --test-all (needs a display).
+# WINDOWED: queue a move and capture the BG3-style destination GHOST (a translucent copy of the character at
+# its move target) next to the real character at the start, native-res so it's readable.
+func _test_dest_ghost_capture() -> void:
+	_test_name = "Dest Ghost Capture"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (needs a display)")
+		return
+	var inst = await _instantiate_preview_chunk_and_wait("wash_relay", 8)
+	if inst == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	for i in range(90):
+		await get_tree().process_frame
+	var gs = inst.get("_game_state")
+	var active: String = str(inst.get("_active_char_id"))
+	var start_flat: Vector3 = gs.get_position(active)
+	var dest_flat := start_flat + Vector3(4.0, 0.0, 0.0)   # 4 units forward along the deck
+	# Freeze the gameplay clock so the move stays QUEUED (character at start, ghost at the target) — the
+	# tree keeps running so the path manager builds the ghost.
+	if gs.scheduler != null:
+		gs.scheduler.pause()
+	gs.command_move_to_pos(active, dest_flat)
+	for i in range(8):
+		await get_tree().process_frame
+	var char_render: Vector3 = gs.get_render_position(active)
+	var dest_render: Vector3 = dest_flat if gs.coord_map == null else gs.coord_map.to_world(dest_flat)
+	var mgr = inst.get("_path_render_manager")
+	var has_ghost = (mgr != null and "_dest_ghosts" in mgr and mgr._dest_ghosts.has(active) and mgr._dest_ghosts[active] != null)
+	print("  [dest-ghost] manager ghost for %s = %s" % [active, str(has_ghost)])
+	var focus: Vector3 = dest_render   # center on the GHOST (the move target) so it reads clearly
+	var outward := Vector3(focus.x, 0.0, focus.z).normalized()
+	var cam := get_tree().root.get_viewport().get_camera_3d()
+	if cam != null and cam.is_inside_tree():
+		cam.global_transform = Transform3D(Basis(), focus + outward * 4.0 + Vector3(0.0, 3.0, 0.0)).looking_at(focus, Vector3.UP)
+	RenderingServer.global_shader_parameter_set("player_world_pos", char_render)
+	for i in range(2):
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var img := get_tree().root.get_texture().get_image()
+	var sp := cam.unproject_position(focus) if cam != null else Vector2(img.get_width() * 0.5, img.get_height() * 0.5)
+	var crop := 220
+	var rx := clampi(int(sp.x) - crop / 2, 0, maxi(0, img.get_width() - crop))
+	var ry := clampi(int(sp.y) - crop / 2, 0, maxi(0, img.get_height() - crop))
+	img.get_region(Rect2i(rx, ry, mini(crop, img.get_width()), mini(crop, img.get_height()))).save_png("res://vr_dest_ghost.png")
+	print("  [dest-ghost] active=%s start=%s dest=%s  wrote vr_dest_ghost.png (solid char at start, faded ghost at target)" % [active, str(char_render), str(dest_render)])
+	_assert_true(true, "captured the destination ghost")
+	await _dispose_scene(inst)
+
 # Capture a FLOODED section's water in NORMAL mode (no overlay) at native resolution, to see whether the
 # flood water renders at all (isolates "water shader broken" from "transparent water hidden by the data-view
 # overlay's screen-texture, which excludes transparent objects").

@@ -18,8 +18,12 @@ var default_color := Color(1.0, 0.7, 0.3)
 
 var _renderers := {}              # char_id -> PathRenderer
 var _dest_markers := {}           # char_id -> MeshInstance3D (the destination ring)
+var _dest_ghosts := {}            # char_id -> Node3D (a translucent ghost of the character at its move target)
+var _ghost_built_from := {}       # char_id -> Node3D the ghost was duplicated from (rebuild on node change)
 var _nodes := {}                  # char_id -> Node3D (cached anchor; re-found if freed)
 var _scan_after := {}             # char_id -> frame number gating the next full-tree rescan
+
+const GHOST_ALPHA := 0.45         # BG3-style faded destination preview (unshaded full-colour so it reads in the dark)
 
 func setup(state: GameState, root: Node = null) -> void:
 	game_state = state
@@ -46,6 +50,7 @@ func _process(_delta: float) -> void:
 			pr.setup(game_state, char_id, _color_for(node), node)
 		pr.set_running(game_state.is_running(char_id))
 		_update_dest_marker(char_id, node)
+		_update_dest_ghost(char_id, node)
 
 ## A per-character DESTINATION ring at the end of its current move — the marker the player used to carry
 ## alone, now drawn for EVERY character in that character's colour. It reads the DATA-LAYER move target
@@ -101,6 +106,84 @@ func _make_dest_marker(col: Color) -> MeshInstance3D:
 	m.layers = 2   # NO_GRID_DECAL_LAYER (player.gd): the hover grid skips the ring too
 	return m
 
+## A BG3-style DESTINATION GHOST: a faded, character-tinted copy of the character's mesh standing at its move
+## target — so the player reads where each queued/moving character is HEADED before (and while) it walks there.
+## Reads the data-layer move target (get_destination) so a party/escort member moved by a group command shows a
+## ghost too. Cosmetic: duplicates meshes + reads the move target / coord_map, writes nothing.
+func _update_dest_ghost(char_id: String, node: Node3D) -> void:
+	var ghost: Node3D = _dest_ghosts.get(char_id)
+	var dest_data: Vector3 = game_state.get_destination(char_id)
+	if not dest_data.is_finite() or node == null:
+		if ghost != null and is_instance_valid(ghost):
+			ghost.visible = false
+		return
+	# (Re)build when missing or the source node changed (late spawn / chunk reload): the ghost mirrors whatever
+	# meshes the character actually has, so it stays correct as character visuals evolve.
+	if ghost == null or not is_instance_valid(ghost) or _ghost_built_from.get(char_id) != node:
+		if ghost != null and is_instance_valid(ghost):
+			ghost.queue_free()
+		ghost = _build_dest_ghost(node, _color_for(node))
+		_dest_ghosts[char_id] = ghost
+		_ghost_built_from[char_id] = node
+		if ghost == null:
+			return
+	var dest_world: Vector3 = dest_data if game_state.coord_map == null else game_state.coord_map.to_world(dest_data)
+	if not dest_world.is_finite():
+		ghost.visible = false
+		return
+	# Orient to the destination's deck basis on a warped scene (the helix deck tilts), upright otherwise.
+	var basis := Basis()
+	if game_state.coord_map != null and game_state.coord_map.has_method("to_basis"):
+		var b = game_state.coord_map.to_basis(dest_data)
+		if b is Basis:
+			basis = b
+	ghost.global_transform = Transform3D(basis, dest_world)
+	ghost.visible = true
+
+## Duplicate every MeshInstance3D under the character into a top-level ghost root, sharing one translucent
+## tinted material. Returns null when the character has no meshes yet (rebuilt next frame). The mesh transforms
+## are captured RELATIVE to the character node, so the ghost reproduces the character's silhouette + feet offset.
+func _build_dest_ghost(node: Node3D, col: Color) -> Node3D:
+	if node == null or not is_instance_valid(node):
+		return null
+	var sources: Array = node.find_children("*", "MeshInstance3D", true, false)
+	if node is MeshInstance3D:
+		sources.append(node)
+	var ghost := Node3D.new()
+	ghost.name = "DestGhost_%s" % str(node.name)
+	ghost.top_level = true   # placed in world space at the move target
+	add_child(ghost)
+	var mat := _make_ghost_material(col)
+	var node_inv := node.global_transform.affine_inverse()
+	var built := false
+	for s in sources:
+		var mi := s as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		var g := MeshInstance3D.new()
+		g.mesh = mi.mesh
+		g.transform = node_inv * mi.global_transform
+		g.material_override = mat
+		g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		g.layers = 2   # NO_GRID_DECAL_LAYER: the hover grid skips the ghost too
+		ghost.add_child(g)
+		built = true
+	if not built:
+		ghost.queue_free()
+		return null
+	return ghost
+
+func _make_ghost_material(col: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(col.r, col.g, col.b, GHOST_ALPHA)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# Draw after the perception-overlay quad (render_priority 126) so the ghost stays visible in data-view too
+	# (transparent surfaces are excluded from the screen texture the overlay rewrites from).
+	m.render_priority = 127
+	return m
+
 func _color_for(node: Node) -> Color:
 	if node != null and "color" in node:
 		return node.color
@@ -125,6 +208,10 @@ func _find_node(char_id: String) -> Node3D:
 	if search_root == null or not is_instance_valid(search_root):
 		return null
 	for n in search_root.find_children("*", "", true, false):
+		# Skip the manager's OWN subtree: PathRenderers (which also carry a char_id) and the dest markers/ghosts
+		# live under here, so a naive char_id match would return a ribbon renderer instead of the character node.
+		if n == self or is_ancestor_of(n):
+			continue
 		if n is Node3D and "char_id" in n and str(n.char_id) == char_id:
 			return n
 	return null
