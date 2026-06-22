@@ -72,7 +72,7 @@ const ENGRAM_JOURNAL_SCRIPT_PATH := "res://scripts/system/persistence/engram_jou
 const FRAGMENT_PREVIEW_GUI_CONTRACT_ID := "fragment_preview_shared_gui_v1"
 const GAME_HUD_CONTRACT_ID := "shared_game_hud_v1"
 const GAME_HUD_SCRIPT_PATH := "res://scripts/ui/game_hud.gd"
-const FRAGMENT_PREVIEW_CONTROL_HELP := "Click move  WASD/middle-drag pan  1-3 focus  Ctrl+1-3 multi-select  C cycle  Z/X abilities  V drop  T transfer  B retrieve  F1-F3 overlays  O drawer  Tab route  G dodge  Space pause  R reload"
+const FRAGMENT_PREVIEW_CONTROL_HELP := "Click move  WASD/middle-drag pan  1-3 focus  Ctrl+1-3 multi-select  C cycle  Z/X abilities  V drop  T transfer  B retrieve  F1-F3 overlays  O drawer  Tab route  G dodge  Space pause  R reload  H hide"
 const FRAGMENT_PREVIEW_INVENTORY_CONTROL_HELP := "Controls: Z/X abilities  V drop  T transfer  B retrieve"
 const FRAGMENT_CHUNK_SCENE_PATHS := [
 	"res://scenes/fragments/chunks/stacks_fragment_chunk.tscn",

@@ -117,7 +117,7 @@ const ABILITY_KEYCODES := {
 }
 const PREVIEW_GUI_CONTRACT_ID := "fragment_preview_shared_gui_v1"
 const GAME_HUD_SCRIPT_PATH := "res://scripts/ui/game_hud.gd"
-const PREVIEW_CONTROL_HELP := "Click move  WASD/middle-drag pan  1-3 focus  Ctrl+1-3 multi-select  C cycle  Z/X abilities  V drop  T transfer  B retrieve  F1-F3 overlays  O drawer  Tab route  G dodge  Space pause  R reload"
+const PREVIEW_CONTROL_HELP := "Click move  WASD/middle-drag pan  1-3 focus  Ctrl+1-3 multi-select  C cycle  Z/X abilities  V drop  T transfer  B retrieve  F1-F3 overlays  O drawer  Tab route  G dodge  Space pause  R reload  H hide"
 const PREVIEW_INVENTORY_CONTROL_HELP := "Controls: Z/X abilities  V drop  T transfer  B retrieve"
 # The canonical per-ability key/owner bindings now live in data/abilities/en/abilities.xlsx (the
 # "bindings" sheet), read via AbilityData.binding(id) — see _apply_canonical_main_ability_binding.
@@ -195,6 +195,7 @@ var _preview_layer: CanvasLayer
 var _menu_panel: PanelContainer
 var _menu_backdrop: ColorRect
 var _in_menu := false
+var _instructions_margin: MarginContainer   # the top briefing/instructions panel — toggled with H
 var _title_label: Label
 var _help_label: Label
 var _note_label: Label
@@ -558,6 +559,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		var key_event := event as InputEventKey
 		match key_event.keycode:
+			KEY_H:
+				_toggle_instructions_panel()
 			KEY_O:
 				_toggle_overlay_panel()
 			KEY_TAB:
@@ -1060,6 +1063,7 @@ func _build_preview_ui() -> void:
 	margin.add_theme_constant_override("margin_right", 12)
 	margin.add_theme_constant_override("margin_top", 10)
 	_preview_layer.add_child(margin)
+	_instructions_margin = margin   # remembered so H can hide/show the whole instructions panel
 
 	var panel := PanelContainer.new()
 	var style := StyleBoxFlat.new()
@@ -1299,6 +1303,12 @@ func _refresh_overlay_button(overlay_id: String) -> void:
 func _refresh_all_overlay_buttons() -> void:
 	for overlay_id in _overlay_buttons.keys():
 		_refresh_overlay_button(str(overlay_id))
+
+## Hide/show the top instructions (briefing + controls) panel — H. Hiding the whole margin frees the view;
+## pressing H again brings it back.
+func _toggle_instructions_panel() -> void:
+	if _instructions_margin != null:
+		_instructions_margin.visible = not _instructions_margin.visible
 
 func _toggle_overlay_panel() -> void:
 	_set_overlay_panel_collapsed(not _overlay_panel_collapsed)
