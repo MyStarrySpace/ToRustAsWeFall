@@ -63,13 +63,23 @@ func _on_interaction_requested(target: Node, requested_position: Vector3 = Vecto
 	cancel_active_target()
 	active_target = target
 	active_target_position = _resolve_target_position(target, requested_position)
+	# On a WARPED scene (the channels helix) command_move_to_pos and pick_interactor are FLAT data-layer APIs,
+	# but the resolved target is in WORLD space. Translate ONCE to flat data space for the nearest-member pick and
+	# the non-self servicer's move. The SELF path keeps the WORLD position (player._set_click_target re-applies
+	# coord_map.to_data, so handing it flat would double-warp), as does the glow origin. Flat scenes (no coord_map)
+	# are byte-identical: flat == world. Without this a non-self party member walked to a wrong cell on the helix
+	# and never reached the object, so the queued glow never tracked the real walk-to-arrival.
+	var gs = _character_game_state()
+	var flat_target := active_target_position
+	if gs != null and gs.coord_map != null:
+		flat_target = gs.coord_map.to_data(active_target_position)
 	# Pick WHO services this interaction: a required character if the object names one, else the nearest
 	# party member (preferring a free hand for a pickup). May be a party member other than the leader.
-	_interactor_id = _pick_interactor_for(target, active_target_position)
+	_interactor_id = _pick_interactor_for(target, flat_target)
 	_set_target_active_character(target, _interactor_id)
 	if not _target_feedback_is_managed(target) and target.has_method("begin_queued_feedback"):
 		target.call("begin_queued_feedback", active_target_position, _interactor_color())
-	if not _drive_interactor_to(active_target_position):
+	if not _drive_interactor_to(active_target_position, flat_target):
 		_complete_active_target()
 
 ## The queued-feedback tint: the SERVICING character's color (same ownership language as the
@@ -99,13 +109,14 @@ func _pick_interactor_for(target: Node, target_pos: Vector3) -> String:
 		_target_required_character(target), target_pos, candidates, _target_needs_free_hand(target)))
 	return picked if picked != "" else self_id
 
-## Walk the servicing character to the object. The bound character uses its own controller path; any
-## other party member is driven by char_id through the data layer (so the move is logged + replay-safe).
-func _drive_interactor_to(world_position: Vector3) -> bool:
+## Walk the servicing character to the object. The bound character uses its own controller path with the WORLD
+## position (it re-translates warped scenes itself); any OTHER party member is driven by char_id through the FLAT
+## data layer (command_move_to_pos), so it's logged + replay-safe and lands on the right cell on the helix.
+func _drive_interactor_to(world_position: Vector3, flat_position: Vector3) -> bool:
 	var gs = _character_game_state()
 	if _interactor_id == "" or _interactor_id == _self_id() or gs == null:
 		return _move_character_to(world_position)
-	return bool(gs.command_move_to_pos(_interactor_id, world_position))
+	return bool(gs.command_move_to_pos(_interactor_id, flat_position))
 
 func _self_id() -> String:
 	return str(character.get("char_id")) if character != null else ""

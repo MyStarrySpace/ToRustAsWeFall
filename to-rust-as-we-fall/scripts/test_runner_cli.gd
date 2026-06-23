@@ -356,6 +356,9 @@ func _ready() -> void:
 			"--test-wash-relay-playthrough":
 				ran_test = true
 				await _test_wash_relay_playthrough()
+			"--test-wash-relay-queued-glow":
+				ran_test = true
+				await _test_wash_relay_queued_glow()
 			"--test-wash-relay-no-hang":
 				ran_test = true
 				await _test_wash_relay_no_hang()
@@ -1002,6 +1005,7 @@ func _run_all_tests() -> void:
 	await _test_wash_relay_flood_visual()
 	await _test_wash_relay_trace_cadence()
 	await _test_wash_relay_playthrough()
+	await _test_wash_relay_queued_glow()
 	await _test_wash_relay_no_hang()
 	await _test_wash_relay_menu_load()
 	await _test_wash_relay_hover_sweep()
@@ -12063,6 +12067,65 @@ func _wash_shepherd(instance: Node, chunk: Node, gs, ids: Array, target_x: float
 ## is a full restart, so the ONLY way through is to read the water and time it (and RUN: the fast 'current'
 ## beat is uncrossable at a walk). If a section's safe window is too short to clear even at a RUN, this STALLS
 ## and prints the numbers — a balance bug the dumb "keep walking forward" loop could never catch.
+# Outline grammar on the WARPED channels: a right-click queues the energy glow on a chunk interactable and the
+# SERVICING character walks to the object (glow until arrival). The bug: when a NON-SELF party member services
+# the interaction, the controller fed command_move_to_pos the WARPED world position (a FLAT-space API), so the
+# member walked to a wrong cell on the helix and never reached the object — the glow never tracked the real walk.
+# The self path translates via coord_map; the controller path now does too. Drive a forced non-self servicer and
+# assert it walks to the interactable's FLAT cell.
+func _test_wash_relay_queued_glow() -> void:
+	_test_name = "Wash Relay Queued Glow"
+	var inst = await _instantiate_preview_chunk_and_wait("wash_relay", 8)
+	if inst == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	for i in range(6):
+		await get_tree().process_frame
+	var gs = inst.get("_game_state")
+	var chunk = inst.find_child("Chunk_wash_relay", true, false)
+	if gs == null or chunk == null or gs.coord_map == null:
+		_assert_true(false, "wash_relay booted with a coord_map (the warp is installed — the bug can't reproduce flat)")
+		inst.queue_free(); await get_tree().process_frame; return
+	# Multi-member party so a NON-SELF servicer can be picked (the channels case).
+	gs.set_party(["aster", "peris", "endo"])
+	var player = inst.get("_player")
+	var controller = player.find_child("CharacterInteractionController", true, false) if player != null else null
+	if player == null or controller == null:
+		_assert_true(false, "player + interaction controller present"); inst.queue_free(); await get_tree().process_frame; return
+	if player.has_method("set_move_enabled"):
+		player.set_move_enabled(true)
+	# An enabled, warped interactable with an outline target (any wash_relay interactable — all are click-gated).
+	var it = null
+	for cand in (chunk.get("_interactables") as Array):
+		if cand != null and is_instance_valid(cand) and cand.has_meta("flat_authored_position") \
+				and ("_outline_target" in cand) and cand.get("_outline_target") != null \
+				and bool(cand.get("interaction_enabled")):
+			it = cand; break
+	if it == null:
+		_assert_true(false, "found a warped interactable with an outline target"); inst.queue_free(); await get_tree().process_frame; return
+	var tgt = it.get("_outline_target")
+	controller.bind_interaction_target(it)          # ensure the controller hears this object's signal (idempotent)
+	it.required_character = "peris"                  # force a NON-SELF servicer (the bound character is aster)
+	# Drive the REAL right-click path: interaction_requested THEN outline_selected (the order _on_input_event uses).
+	it.interaction_requested.emit(it, it.global_position)
+	it.outline_selected.emit(it)
+	for i in range(2):
+		await get_tree().process_frame
+	_assert_equals(str(controller.get("_interactor_id")), "peris",
+		"a required non-self party member is chosen to service the interaction")
+	# CORE red/green: the servicer's data-layer destination must be the interactable's FLAT cell, NOT
+	# world_to_grid of the WARPED world position. Pre-fix it walked to a wrong cell (or no move at all).
+	var dest: Vector3 = gs.get_destination("peris")
+	var flat_auth: Vector3 = it.get_meta("flat_authored_position")
+	var derr: float = Vector2(dest.x - flat_auth.x, dest.z - flat_auth.z).length() if dest.is_finite() else 1.0e9
+	_assert_true(dest.is_finite() and derr < 2.5,
+		"the non-self servicer walks to the interactable's FLAT cell on the helix (dest=%s flat=%s err=%.2f)" % [str(dest), str(flat_auth), derr])
+	# Grammar: the queued glow is lit on the interactable while the servicer is en route.
+	if tgt.has_method("is_selected_feedback_active"):
+		_assert_true(bool(tgt.call("is_selected_feedback_active")),
+			"the queued energy glow is lit on the interactable while the servicer walks to it")
+	inst.queue_free()
+	await get_tree().process_frame
+
 func _test_wash_relay_playthrough() -> void:
 	_test_name = "Wash Relay Playthrough"
 	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
