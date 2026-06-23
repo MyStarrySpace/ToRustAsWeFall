@@ -1448,18 +1448,25 @@ func _update_overlay_runtime(delta: float) -> void:
 	_refresh_preview_items()
 
 func _sync_overlay_stack() -> void:
-	if _overlay_stack_material == null or _overlay_stack_quad == null:
-		return
-
 	var vision_positions := _get_overlay_vision_positions()
 	var data_enabled := bool(_overlay_states.get("aster", false)) and not vision_positions.is_empty()
 	var fog_enabled := bool(_overlay_states.get("peris", false)) and not vision_positions.is_empty()
-	_overlay_stack_quad.visible = data_enabled or fog_enabled
-
 	var source_0 := _overlay_vision_source_at(vision_positions, 0)
 	var source_1 := _overlay_vision_source_at(vision_positions, 1)
 	var source_2 := _overlay_vision_source_at(vision_positions, 2)
 	var source_count := mini(vision_positions.size(), CHARACTER_IDS.size())
+
+	# Shared "visible range" globals: transparent effects (the flood water) fade THEMSELVES past the clear
+	# radius, since a transparent surface is excluded from the perception overlay's screen rewrite and can't be
+	# data-viewed like the opaque geometry. Set even when the quad is absent so the water tracks the live view.
+	RenderingServer.global_shader_parameter_set("visible_range_active", data_enabled or fog_enabled)
+	RenderingServer.global_shader_parameter_set("vision_pos_0", source_0)
+	RenderingServer.global_shader_parameter_set("vision_pos_1", source_1)
+	RenderingServer.global_shader_parameter_set("vision_pos_2", source_2)
+
+	if _overlay_stack_material == null or _overlay_stack_quad == null:
+		return
+	_overlay_stack_quad.visible = data_enabled or fog_enabled
 
 	_overlay_stack_material.set_shader_parameter("data_enabled", data_enabled)
 	_overlay_stack_material.set_shader_parameter("data_character_pos", source_0)

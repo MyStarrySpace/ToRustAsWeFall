@@ -305,6 +305,9 @@ func _ready() -> void:
 			"--test-perception-los-capture":
 				ran_test = true
 				await _test_perception_los_capture()
+			"--test-channels-water-visible-range":
+				ran_test = true
+				await _test_channels_water_visible_range()
 			"--test-channels-occlusion-live":
 				ran_test = true
 				await _test_channels_occlusion_live()
@@ -11286,6 +11289,53 @@ func _test_channels_splash_droplets() -> void:
 	flat.resize(size * 8, size * 8, Image.INTERPOLATE_NEAREST)
 	flat.save_png("res://vr_splash_droplets.png")
 	chunk.free()
+
+# WINDOWED, CONTROLLED: the flood water must FADE OUTSIDE the visible range (a transparent surface is excluded
+# from the perception overlay's screen rewrite, so without this it stays fully visible in the unseen distance).
+# A water plane + a single vision source: toggle the `visible_range_active` global and assert the FAR water
+# (outside the clear radius) fades while the NEAR water (at the source) stays. Red pre-fix (water ignores it).
+func _test_channels_water_visible_range() -> void:
+	_test_name = "Channels Water Visible Range"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (needs a display)"); return
+	var B := Vector3(2000.0, 0.0, 2000.0)
+	var root := Node3D.new(); get_tree().root.add_child(root)
+	var bg := MeshInstance3D.new(); var bb := BoxMesh.new(); bb.size = Vector3(70, 0.4, 70); bg.mesh = bb
+	var bgm := StandardMaterial3D.new(); bgm.albedo_color = Color(0.02, 0.02, 0.03); bgm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bg.material_override = bgm; bg.position = B + Vector3(0, -0.6, 0); root.add_child(bg)
+	var water := MeshInstance3D.new(); var wq := QuadMesh.new(); wq.size = Vector2(60, 60); water.mesh = wq
+	water.rotation.x = -PI / 2.0   # face up
+	var wmat := ShaderMaterial.new(); wmat.shader = load("res://resources/channels_water.gdshader")
+	water.material_override = wmat; water.position = B; root.add_child(water)
+	var cam := Camera3D.new(); root.add_child(cam)
+	cam.global_transform = Transform3D(Basis(), B + Vector3(0.0, 32.0, 0.0)).looking_at(B, Vector3(0.0, 0.0, -1.0))
+	cam.current = true
+	RenderingServer.global_shader_parameter_set("vision_pos_0", B + Vector3(0, 0.5, 0))
+	RenderingServer.global_shader_parameter_set("vision_pos_1", B + Vector3(0, 0.5, 0))
+	RenderingServer.global_shader_parameter_set("vision_pos_2", B + Vector3(0, 0.5, 0))
+	RenderingServer.global_shader_parameter_set("vision_clear_radius", 5.0)
+	RenderingServer.global_shader_parameter_set("vision_blend_width", 2.0)
+	var near := B + Vector3(0.0, 0.02, 0.0)     # at the vision source (within the clear radius)
+	var far := B + Vector3(0.0, 0.02, 16.0)     # well outside clear+blend (5+2)
+	var sample := func(active: bool) -> Array:
+		RenderingServer.global_shader_parameter_set("visible_range_active", active)
+		for _i in range(3):
+			await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		var img: Image = get_tree().root.get_texture().get_image()
+		var ln := img.get_pixel(clampi(int(cam.unproject_position(near).x), 0, img.get_width() - 1), clampi(int(cam.unproject_position(near).y), 0, img.get_height() - 1))
+		var lf := img.get_pixel(clampi(int(cam.unproject_position(far).x), 0, img.get_width() - 1), clampi(int(cam.unproject_position(far).y), 0, img.get_height() - 1))
+		return [ln.r * 0.3 + ln.g * 0.59 + ln.b * 0.11, lf.r * 0.3 + lf.g * 0.59 + lf.b * 0.11]
+	var off: Array = await sample.call(false)   # full water everywhere
+	var on: Array = await sample.call(true)     # faded past the clear radius
+	get_tree().root.get_texture().get_image().save_png("res://vr_water_visible_range.png")
+	print("  [water-vis] near on/off=%.3f/%.3f  far on/off=%.3f/%.3f" % [on[0], off[0], on[1], off[1]])
+	_assert_true(off[1] > 0.08, "with the visible-range OFF the far water is fully visible (bright) — %.3f" % off[1])
+	_assert_true(on[1] < 0.5 * off[1], "the FAR water (outside the visible range) FADES when a perception view is active — on=%.3f off=%.3f" % [on[1], off[1]])
+	_assert_true(on[0] > 0.6 * off[0], "the NEAR water (at the vision source) stays visible when active — on=%.3f off=%.3f" % [on[0], off[0]])
+	RenderingServer.global_shader_parameter_set("visible_range_active", false)   # don't leak into later water tests
+	root.queue_free()
+	await get_tree().process_frame
 
 ## WINDOWED eyeball: force floods + capture the channels so the flood water (and sluice gate) can be SEEN on
 ## the helix. Writes vr_channels_water.png (gitignored). Not in --test-all (needs a display).

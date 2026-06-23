@@ -122,3 +122,27 @@ player_world_pos={
 "type": "vec3",
 "value": Vector3(0, 0, 0)
 }
+visible_range_active={
+"type": "bool",
+"value": false
+}
+vision_pos_0={
+"type": "vec3",
+"value": Vector3(0, 0, -9999)
+}
+vision_pos_1={
+"type": "vec3",
+"value": Vector3(0, 0, -9999)
+}
+vision_pos_2={
+"type": "vec3",
+"value": Vector3(0, 0, -9999)
+}
+vision_clear_radius={
+"type": "float",
+"value": 14.0
+}
+vision_blend_width={
+"type": "float",
+"value": 4.5
+}

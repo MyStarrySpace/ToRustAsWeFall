@@ -30,6 +30,17 @@ uniform float foam_strength : hint_range(0.0, 2.0) = 0.8;
 uniform float water_alpha : hint_range(0.0, 1.0) = 0.88;    // translucency (see the deck faintly through it)
 uniform float emission_strength : hint_range(0.0, 4.0) = 2.2;  // self-glow — what makes the flood READ
 
+// VISIBLE-RANGE fade (shared globals the perception view sets). A transparent surface is excluded from the
+// perception overlay's screen rewrite, so it can't be data-viewed like opaque geometry — the flood would stay
+// fully visible in the unseen, fogged distance. So when a perception view is active, the water fades its OWN
+// alpha out past the clear radius around the nearest vision source. Off (no overlay) => fully visible.
+global uniform bool visible_range_active;
+global uniform vec3 vision_pos_0;
+global uniform vec3 vision_pos_1;
+global uniform vec3 vision_pos_2;
+global uniform float vision_clear_radius;
+global uniform float vision_blend_width;
+
 varying vec3 v_world;
 varying vec3 v_normal;
 
@@ -60,9 +71,19 @@ void fragment() {
 	float foam = clamp(fres * 0.5 + crest * 0.8, 0.0, 1.0) * foam_strength;
 	col = mix(col, foam_color, clamp(foam, 0.0, 1.0));
 
+	// Fade the flood out beyond the visible range (nearest vision source) when a perception view is active,
+	// so the water doesn't show in the unseen distance where opaque geometry is already data-viewed/fogged.
+	float vis = 1.0;
+	if (visible_range_active) {
+		float d = distance(v_world, vision_pos_0);
+		d = min(d, distance(v_world, vision_pos_1));
+		d = min(d, distance(v_world, vision_pos_2));
+		vis = 1.0 - smoothstep(vision_clear_radius, vision_clear_radius + vision_blend_width, d);
+	}
+
 	ALBEDO = col;
 	ROUGHNESS = 0.18;
 	METALLIC = 0.0;
-	EMISSION = col * emission_strength;   // bright, flat self-glow so the flood is unmistakable in the dark
-	ALPHA = clamp(water_alpha + foam * 0.1, 0.0, 1.0);   // semi-translucent (fresnel foam firms the crests)
+	EMISSION = col * emission_strength * vis;   // bright, flat self-glow so the flood is unmistakable in the dark
+	ALPHA = clamp((water_alpha + foam * 0.1) * vis, 0.0, 1.0);   // semi-translucent; fades to nothing past the visible range
 }
