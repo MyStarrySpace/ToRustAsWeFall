@@ -132,6 +132,12 @@ func _update_dest_ghost(char_id: String, node: Node3D) -> void:
 	# meshes the character actually has, so it stays correct as character visuals evolve.
 	if ghost == null or not is_instance_valid(ghost) or _ghost_built_from.get(char_id) != node:
 		if ghost != null and is_instance_valid(ghost):
+			# queue_free() is DEFERRED — a top_level ghost stays valid, visible, and drawn by the
+			# RenderingServer at its old world position until end-of-frame. Since the new ghost is built and
+			# shown THIS same _process call, that left two ghosts on screen for the frame (the "ghost at
+			# multiple positions" bug). Hide + detach synchronously first so only one ever draws.
+			ghost.visible = false
+			remove_child(ghost)
 			ghost.queue_free()
 		ghost = _build_dest_ghost(node, _color_for(node))
 		_dest_ghosts[char_id] = ghost

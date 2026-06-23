@@ -9297,6 +9297,33 @@ func _test_path_render_manager() -> void:
 	mgr._process(0.0)
 	_assert_true(pghost != null and not pghost.visible, "The preview ghost hides when the hover clears")
 
+	# REGRESSION (ghost drawn at MULTIPLE positions): on a rebuild (the character's node instance changed —
+	# late spawn / chunk reload / _find_node flip) the old ghost was only queue_free()'d, which is DEFERRED, so
+	# it stayed valid + visible + parented at its OLD destination while the NEW ghost was added + shown the SAME
+	# frame -> two ghosts. Force a rebuild and assert exactly ONE drawable ghost THIS frame (no await — the bug
+	# is the same-frame double draw). First make the ghost VISIBLE at an old dest, THEN swap the node.
+	gs.command_move_to_pos("a", Vector3(6.0, 0.0, 2.0))
+	mgr._process(0.0)   # old ghost now visible at (6,0,2) on the current node
+	var n2 := Node3D.new()
+	n2.set_script(gscript)
+	n2.set("char_id", "a")
+	n2.set("color", Color(0.3, 0.6, 1.0))
+	var m2 := MeshInstance3D.new()
+	var c2 := CapsuleMesh.new(); c2.radius = 0.25; c2.height = 1.0
+	m2.mesh = c2; m2.position.y = 0.75
+	n2.add_child(m2)
+	root.add_child(n2)
+	n2.global_position = Vector3.ZERO
+	mgr._nodes["a"] = n2   # force _node_for to return a DIFFERENT node instance -> ghost rebuild
+	gs.command_move_to_pos("a", Vector3(-5.0, 0.0, -3.0))   # a new dest, so a stale ghost would sit elsewhere
+	mgr._process(0.0)
+	var drawable_ghosts := 0
+	for ch in mgr.get_children():
+		if ch is Node3D and str(ch.name).begins_with("DestGhost") and (ch as Node3D).visible and ch.get_parent() != null:
+			drawable_ghosts += 1
+	_assert_equals(drawable_ghosts, 1,
+		"exactly ONE destination ghost draws after a rebuild (the old queued-for-deletion ghost must be hidden + detached, not left rendering at its old position)")
+
 	root.queue_free()
 	await get_tree().process_frame
 
