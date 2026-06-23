@@ -66,7 +66,11 @@ Each loop pass does ONE item end-to-end, commits, marks it done here, and the lo
   - **Done-when:** each READY chunk above has a `--test-<chunk>-playthrough` reaching `complete` in `--test-all`.
 - [ ] `cov-flat-collision-probe` **READY** — Generalize `--test-channels-probe-coverage` (walkable cell ⇒ deck
   collision under it) to the FLAT (non-warped) chunks, so "walkable == clickable" is guarded everywhere, not just
-  the helix. **Done-when:** a probe asserts 0 walkable-but-uncollided cells on at least the flat chunks with a grid.
+  the helix. **Scoping (2026-06-23):** of the 15 chunks, only `generated_stretch` and `wash_relay` build their own
+  grid; `wash_relay` is the warped one already probed, so the flat target is essentially `generated_stretch`
+  (verify its floors are colliders, not mesh-only `_add_box`). The mesh-only chunks have no grid, so "walkable"
+  isn't defined for them — N/A. **Done-when:** `--test-generated-stretch-probe-coverage` asserts 0
+  walkable-but-uncollided cells (probe straight down on each `grid.grid_to_world(cell)`, no coord_map).
 
 ### P1 — visibility / line-of-sight wiring
 - [ ] `los-wire-chunk-sight-blockers` **READY** — Enemy-detection LOS is live (`grid.has_line_of_sight` gates
