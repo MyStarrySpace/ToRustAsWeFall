@@ -23,10 +23,16 @@ uniform float metallic : hint_range(0.0, 1.0) = 0.0;
 
 // Reveal cone tuning (world units). radius grows from reveal_radius*min_factor at the camera to
 // reveal_radius at the player, so the tunnel hugs the camera->player line and opens onto the character.
-uniform float reveal_radius : hint_range(0.0, 8.0) = 3.5;
+uniform float reveal_radius : hint_range(0.0, 12.0) = 5.5;
 uniform float reveal_min_factor : hint_range(0.0, 1.0) = 0.5;
-uniform float reveal_softness : hint_range(0.0, 1.0) = 0.65;   // fraction of the radius that feathers (dither band)
+uniform float reveal_softness : hint_range(0.0, 1.0) = 0.75;   // fraction of the radius that feathers (dither band)
 uniform float reveal_strength : hint_range(0.0, 1.0) = 1.0;    // 0 => occlusion disabled for this material
+// ZOOM-OUT auto-off: the reveal cut only matters when the camera is close enough that walls hide the player.
+// Past `reveal_max_cam_dist` (the camera sits this far from the watched character — i.e. zoomed well out, where
+// the view is already near top-down and nothing hides them) the cut fades to nothing, so the fade circle simply
+// disappears when you zoom out. `reveal_cam_fade` is the world-unit band it fades across before that distance.
+uniform float reveal_max_cam_dist : hint_range(0.0, 60.0) = 26.0;
+uniform float reveal_cam_fade : hint_range(0.5, 24.0) = 9.0;
 // The CUT PLANE: only geometry ABOVE a horizontal plane this far over the player can be cut. Everything at or
 // below it (the deck the player stands on, low walls, props at their level) stays solid — so the cone never
 // holes the ground under the player; only OVERHEAD structure (the helix deck above, ceilings) dissolves. Tune
@@ -61,7 +67,9 @@ void fragment() {
 		vec3 cam = CAMERA_POSITION_WORLD;
 		vec3 to_player = player_world_pos - cam;
 		float player_dist = length(to_player);
-		if (player_dist > 0.05) {
+		// Fade the whole cut out as the camera pulls back (zoom-out auto-off).
+		float zoom_fade = 1.0 - smoothstep(reveal_max_cam_dist - reveal_cam_fade, reveal_max_cam_dist, player_dist);
+		if (player_dist > 0.05 && zoom_fade > 0.001) {
 			vec3 dir = to_player / player_dist;
 			float t = dot(v_world - cam, dir);   // how far along the camera->player line this fragment projects
 			// Only fragments BETWEEN the camera and the player (just short of the player) can occlude it.
@@ -69,7 +77,7 @@ void fragment() {
 				vec3 closest = cam + dir * t;
 				float perp = length(v_world - closest);                  // distance from the camera->player line
 				float radius = reveal_radius * mix(reveal_min_factor, 1.0, t / player_dist);  // cone, wider at the player
-				float reveal = (1.0 - smoothstep(radius * (1.0 - reveal_softness), radius, perp)) * reveal_strength;
+				float reveal = (1.0 - smoothstep(radius * (1.0 - reveal_softness), radius, perp)) * reveal_strength * zoom_fade;
 				if (reveal > 0.0) {
 					int bx = int(FRAGCOORD.x) & 3;
 					int by = int(FRAGCOORD.y) & 3;

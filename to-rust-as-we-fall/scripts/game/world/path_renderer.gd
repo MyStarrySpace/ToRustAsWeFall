@@ -68,6 +68,11 @@ func _ready() -> void:
 	_mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
 	_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_mat.cull_mode = BaseMaterial3D.CULL_DISABLED  # ribbon visible from either side
+	# Draw the route THROUGH occluders: a wall (or the helix deck overhead) between the camera and the floor
+	# would otherwise depth-hide the ribbon, so where the wall is faded by the occlusion cut the path vanished
+	# with it. No depth test => the planned route always reads on the floor, including behind/under faded geometry
+	# (RTS convention). Reusable: every PathRenderer the manager spawns inherits this.
+	_mat.no_depth_test = true
 	_line.material_override = _mat
 	add_child(_line)
 	_tail = MeshInstance3D.new()
