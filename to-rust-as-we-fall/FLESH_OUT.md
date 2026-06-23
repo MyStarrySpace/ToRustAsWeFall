@@ -71,12 +71,14 @@ Each loop pass does ONE item end-to-end, commits, marks it done here, and the lo
   Same probe logic that found the channels' real 29% gap, so it's a real red-capable guard. (See Done log.)
 
 ### P1 — visibility / line-of-sight wiring
-- [ ] `los-wire-chunk-sight-blockers` **READY** — Enemy-detection LOS is live (`grid.has_line_of_sight` gates
-  `_on_detection_event`), but it only bites where a scene marks walls as grid `WALL` tiles or registers
-  `grid.add_sight_blocker(cell)`. Chunks that build walls as mesh-only `_add_box` get no enemy LOS yet. Wire
-  sight-blockers from each gridded chunk's wall geometry (derive from the wall boxes at build, like occupancy —
-  derived, never logged). Do ONE chunk per pass. **Done-when:** a `--test-<chunk>-detection-los` shows a guard
-  failing to spot a target across one of that chunk's real walls (and spotting it in the open).
+- [ ] `los-wire-chunk-sight-blockers` **NEEDS-HUMAN** — Enemy-detection LOS is live + unit-tested
+  (`grid.has_line_of_sight` gates `_on_detection_event`, `--test-detection-los`), but **no current enemy chunk is
+  set up to use it**: of the chunks with enemies, `refuge_run` + `showcase_gallery` build NO grid (detection is
+  pure distance), and `wash_relay` is the warped helix (grid is the flat data plane, not wall-shaped). So this
+  isn't a wire-up — it needs a grid (with wall cells / `add_sight_blocker`) added to an enemy chunk, which is a
+  design call: do we want grid-backed detection in these chunks, or is distance-only intended? Flagged for a human
+  decision. Once decided, the wiring per chunk becomes a normal `READY` loop task. **Done-when (per chunk):** a
+  `--test-<chunk>-detection-los` shows a guard failing to spot a target across one of that chunk's real walls.
 
 ### P2 — channels enrichment
 - [ ] `splash-per-outlet` **READY** — Sections with MULTIPLE visible outlets in the GLB (e.g. the jet section's
