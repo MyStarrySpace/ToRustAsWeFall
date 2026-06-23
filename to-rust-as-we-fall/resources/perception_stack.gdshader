@@ -17,6 +17,13 @@ uniform vec3 data_blackout_pos = vec3(0.0, 0.0, -9999.0);
 uniform float data_blackout_radius = 0.0;
 uniform float data_blackout_blend = 2.0;
 
+// Line-of-sight: a fragment hidden behind a wall from every vision source reads as unseen (data-view / fog)
+// even inside the clear radius, so the visibility hugs walls instead of being a flat circle. Screen-space:
+// march the segment source->fragment, project each step, and compare the depth buffer — a closer surface on
+// the line means an occluder is between them. Cosmetic (the player's perception view only).
+uniform bool los_enabled = true;
+uniform float los_bias = 0.4;        // world-unit tolerance so the floor/source don't self-occlude
+
 uniform bool fog_enabled = false;
 uniform vec3 fog_character_pos = vec3(0.0);
 uniform int fog_vision_count = 1;
@@ -38,6 +45,40 @@ float vision_distance(vec3 world_pos, int source_count, vec3 primary_pos, vec3 s
 	return dist;
 }
 
+// The vision source NEAREST a fragment (the one that decides its clear-radius distance) — we test LOS from it.
+vec3 nearest_source(vec3 world_pos, int count, vec3 p0, vec3 p1, vec3 p2) {
+	vec3 best = p0;
+	float bd = distance(world_pos, p0);
+	if (count > 1) { float d = distance(world_pos, p1); if (d < bd) { bd = d; best = p1; } }
+	if (count > 2) { float d = distance(world_pos, p2); if (d < bd) { bd = d; best = p2; } }
+	return best;
+}
+
+// 1.0 = clear line of sight from src to world_pos; 0.0 = a wall/barrier is between them. Screen-space: march
+// the 3D segment, project each step to the screen, and if the depth buffer there shows a surface CLOSER to the
+// camera than the step, an occluder sits on the line. Built-in matrices aren't visible in helpers, so they're
+// passed in. Cheap approximation (a few samples) — cosmetic, for the player's perception view only.
+float los_visible(vec3 src, vec3 world_pos, sampler2D depth, mat4 view, mat4 proj, mat4 inv_proj, mat4 inv_view, vec3 cam) {
+	const int STEPS = 14;
+	vec3 seg = world_pos - src;
+	for (int i = 2; i < STEPS - 1; i++) {              // skip the endpoints (self-occlusion at the source/fragment)
+		float f = float(i) / float(STEPS);
+		vec3 s = src + seg * f;
+		vec4 clip = proj * view * vec4(s, 1.0);
+		if (clip.w <= 0.0001) { continue; }
+		vec2 suv = (clip.xy / clip.w) * 0.5 + 0.5;
+		if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) { continue; }
+		float raw = texture(depth, suv).x;
+		vec4 vc = inv_proj * vec4(vec3(suv * 2.0 - 1.0, raw), 1.0);
+		vc.xyz /= vc.w;
+		vec3 w = (inv_view * vec4(vc.xyz, 1.0)).xyz;
+		if (length(w - cam) < length(s - cam) - los_bias) {
+			return 0.0;                                // a closer surface lies on the line => blocked
+		}
+	}
+	return 1.0;
+}
+
 void vertex() {
 	POSITION = vec4(VERTEX.xy, 1.0, 1.0);
 }
@@ -54,6 +95,14 @@ void fragment() {
 	if (data_enabled) {
 		float data_dist = vision_distance(world_pos, data_vision_count, data_character_pos, data_vision_pos_1, data_vision_pos_2);
 		float data_blend = smoothstep(data_clear_radius, data_clear_radius + data_blend_width, data_dist);
+
+		// LOS: even within the clear radius, a fragment hidden behind a wall from its nearest source reads as
+		// unseen (data-view), so the clear zone hugs walls instead of being a flat circle.
+		if (los_enabled && data_blend < 0.999) {
+			vec3 src = nearest_source(world_pos, data_vision_count, data_character_pos, data_vision_pos_1, data_vision_pos_2);
+			float vis = los_visible(src, world_pos, depth_tex, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, INV_VIEW_MATRIX[3].xyz);
+			data_blend = max(data_blend, 1.0 - vis);
+		}
 
 		if (data_blend > 0.005) {
 			vec2 ps = (1.0 / VIEWPORT_SIZE) * data_edge_width;
@@ -99,6 +148,13 @@ void fragment() {
 	if (fog_enabled) {
 		float fog_dist = vision_distance(world_pos, fog_vision_count, fog_character_pos, fog_vision_pos_1, fog_vision_pos_2);
 		float fog_blend = smoothstep(fog_clear_radius, fog_clear_radius + fog_blend_width, fog_dist);
+
+		// LOS: fog rolls in behind walls too (a fragment with no line of sight from its nearest source).
+		if (los_enabled && fog_blend < 0.999) {
+			vec3 src = nearest_source(world_pos, fog_vision_count, fog_character_pos, fog_vision_pos_1, fog_vision_pos_2);
+			float vis = los_visible(src, world_pos, depth_tex, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, INV_VIEW_MATRIX[3].xyz);
+			fog_blend = max(fog_blend, 1.0 - vis);
+		}
 
 		if (fog_blend > 0.005) {
 			float lum = dot(current, vec3(0.3, 0.59, 0.11));

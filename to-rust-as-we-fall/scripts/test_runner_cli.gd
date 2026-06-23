@@ -299,6 +299,9 @@ func _ready() -> void:
 			"--test-channels-textures":
 				ran_test = true
 				await _test_channels_textures()
+			"--test-perception-los-capture":
+				ran_test = true
+				await _test_perception_los_capture()
 			"--test-channels-occlusion-live":
 				ran_test = true
 				await _test_channels_occlusion_live()
@@ -11628,6 +11631,78 @@ func _test_channels_occlusion_live() -> void:
 	print("  [occ-live] crop %s  pixels changed ON->OFF: %d / %d (%.1f%%)" % [str(rect), changed, total, 100.0 * float(changed) / float(maxi(1, total))])
 	print("  [occ-live] wrote vr_occ_crop_on.png + vr_occ_crop_off.png (native-res, readable)")
 	_assert_true(true, "captured live channels occlusion")
+	await _dispose_scene(inst)
+
+# WINDOWED eyeball: enable the data (aster) perception overlay and capture the channels so the LOS effect can be
+# SEEN — within the clear radius, geometry the character has no line of sight to (behind walls/structure) should
+# read as the data-view (unseen), so the clear zone hugs walls instead of being a flat circle.
+func _test_perception_los_capture() -> void:
+	_test_name = "Perception LOS Capture"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (needs a display)")
+		return
+	var inst = await _instantiate_preview_chunk_and_wait("wash_relay", 8)
+	if inst == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	for i in range(100):
+		await get_tree().process_frame
+	if inst.has_method("headless_set_overlay_state"):
+		inst.call("headless_set_overlay_state", "aster", true)   # data view ON
+	var gs = inst.get("_game_state")
+	var active: String = str(inst.get("_active_char_id"))
+	var render_pos := Vector3.INF
+	if gs != null and gs.characters.has(active):
+		render_pos = gs.get_render_position(active)
+	for i in range(8):
+		await get_tree().process_frame   # let _sync_overlay_stack push the vision uniforms
+	var data_on = RenderingServer.global_shader_parameter_get("player_world_pos")
+	print("  [los] active=%s render=%s  (data overlay enabled)" % [active, str(render_pos)])
+	print("  [los] player_world_pos global=%s" % str(data_on))
+	get_tree().paused = true
+	var cam := get_tree().root.get_viewport().get_camera_3d()
+	if render_pos.is_finite() and cam != null and cam.is_inside_tree():
+		var outward := Vector3(render_pos.x, 0.0, render_pos.z).normalized()
+		var cam_pos := render_pos + outward * 9.0 + Vector3(0.0, 8.0, 0.0)
+		cam.global_transform = Transform3D(Basis(), cam_pos).looking_at(render_pos, Vector3.UP)
+	for i in range(3):
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var sp := Vector2(640.0, 360.0)
+	if cam != null and render_pos.is_finite():
+		sp = cam.unproject_position(render_pos)
+	var crop := 280
+	var mat = inst.get("_overlay_stack_material")
+	# Capture with LOS ON, then OFF (flat distance circle), and diff the crop — a non-zero change PROVES the LOS
+	# is actually shadowing pixels (geometry hidden behind walls within the clear radius), and where.
+	if mat != null:
+		mat.set_shader_parameter("los_enabled", true)
+	for i in range(2):
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var img_on: Image = get_tree().root.get_texture().get_image()
+	var rx := clampi(int(sp.x) - crop / 2, 0, maxi(0, img_on.get_width() - crop))
+	var ry := clampi(int(sp.y) - crop / 2, 0, maxi(0, img_on.get_height() - crop))
+	var rect := Rect2i(rx, ry, mini(crop, img_on.get_width()), mini(crop, img_on.get_height()))
+	img_on.get_region(rect).save_png("res://vr_perception_los_on.png")
+	if mat != null:
+		mat.set_shader_parameter("los_enabled", false)
+	for i in range(2):
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var img_off: Image = get_tree().root.get_texture().get_image()
+	img_off.get_region(rect).save_png("res://vr_perception_los_off.png")
+	var co := img_on.get_region(rect)
+	var cf := img_off.get_region(rect)
+	var changed := 0
+	for y in range(co.get_height()):
+		for x in range(co.get_width()):
+			var a := co.get_pixel(x, y); var b := cf.get_pixel(x, y)
+			if absf(a.r - b.r) + absf(a.g - b.g) + absf(a.b - b.b) > 0.08:
+				changed += 1
+	var total := co.get_width() * co.get_height()
+	print("  [los] crop %s  pixels changed LOS on->off: %d / %d (%.1f%%)" % [str(rect), changed, total, 100.0 * float(changed) / float(maxi(1, total))])
+	print("  [los] wrote vr_perception_los_on.png + vr_perception_los_off.png (diff = where walls shadow the clear zone)")
+	_assert_true(changed > 0, "LOS actually shadows the clear zone (on vs off differ) — %d px" % changed)
 	await _dispose_scene(inst)
 
 func _test_occlusion_shader_capture() -> void:
