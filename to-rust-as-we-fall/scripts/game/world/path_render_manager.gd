@@ -102,6 +102,8 @@ func _make_dest_marker(col: Color) -> MeshInstance3D:
 	# Draw after the perception-overlay quad (render_priority 126) so the ring survives the data-view (a
 	# transparent surface is otherwise excluded from the overlay's screen texture and vanishes under it).
 	mat.render_priority = 127
+	# No depth test: like the ghost + ribbon, the destination ring reads through a wall / faded overhead deck.
+	mat.no_depth_test = true
 	m.material_override = mat
 	m.rotation.x = -PI / 2.0
 	m.top_level = true   # authored in world space — we set the global position to the move target
@@ -191,6 +193,10 @@ func _make_ghost_material(col: Color) -> StandardMaterial3D:
 	# Draw after the perception-overlay quad (render_priority 126) so the ghost stays visible in data-view too
 	# (transparent surfaces are excluded from the screen texture the overlay rewrites from).
 	m.render_priority = 127
+	# No depth test: a wall or the helix coil overhead between camera and target would otherwise depth-hide the
+	# destination ghost, so it vanished behind faded geometry. The ghost is a UI preview of where the character is
+	# headed — it should always read, like the route ribbon.
+	m.no_depth_test = true
 	return m
 
 func _color_for(node: Node) -> Color:

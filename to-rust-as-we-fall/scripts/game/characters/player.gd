@@ -15,6 +15,16 @@ const CHARACTER_INTERACTION_CONTROLLER := preload("res://scripts/game/characters
 ## floors are stacked (the elevator); scripted moves bypass _set_click_target entirely.
 const LEVEL_GAP := 1.6
 
+## Overhead-deck pierce: on the warped helix the camera looks down THROUGH an upper coil onto the deck the
+## character is on. A move click would otherwise land on that overhead coil (the destination ghost appears up
+## there, the move walks the wrong way). So when zoomed IN, the ground raycast skips any hit sitting more than
+## this far ABOVE the character and keeps casting to the deck below — UNLESS the camera is pulled back past
+## ZOOM_OUT_FREE_DIST (zoomed out to read the structure / actually navigate an upper level), where the high hit
+## is intended. The deck only climbs ~0.13/unit, so a near click never legitimately clears this; an upper coil
+## sits a full turn (~9 units) above, well beyond it.
+const CLIMB_HEIGHT_GATE := 3.0
+const ZOOM_OUT_FREE_DIST := 24.0
+
 ## Optional A* grid.
 var grid_world: GridWorld
 
@@ -204,14 +214,33 @@ func _raycast_ground(screen_pos: Vector2) -> Vector3:
 	var from := camera.project_ray_origin(screen_pos)
 	var dir := camera.project_ray_normal(screen_pos)
 	var space := get_world_3d().direct_space_state
-	var query := PhysicsRayQueryParameters3D.create(from, from + dir * 100.0)
-	query.collision_mask = 1  # Ground only
-	var result := space.intersect_ray(query)
-	if not result.is_empty():
-		_last_ground_normal = result.get("normal", Vector3.UP)
-		return result.position
+	# Pierce overhead decks when zoomed in: skip a hit that sits well above the character (an upper helix coil)
+	# and keep casting to the deck below, so the destination/ghost lands where the player is, not on the loop
+	# overhead. Zoomed out far enough, take the first hit (reaching an upper level is then intended).
+	var cam_dist := camera.global_position.distance_to(global_position)
+	var exclude: Array[RID] = []
+	for _i in range(6):   # pierce at most a few stacked coils
+		var query := PhysicsRayQueryParameters3D.create(from, from + dir * 100.0)
+		query.collision_mask = 1  # Ground only
+		query.exclude = exclude
+		var result := space.intersect_ray(query)
+		if result.is_empty():
+			break
+		var hitpos: Vector3 = result.position
+		if _hit_height_ok(hitpos.y, global_position.y, cam_dist):
+			_last_ground_normal = result.get("normal", Vector3.UP)
+			return hitpos
+		exclude.append(result.get("rid"))   # too high for this zoom: drop this deck and look beneath it
 	_last_ground_normal = Vector3.UP
 	return Vector3.INF
+
+## Whether a ground-ray hit at world height `hit_y` is an acceptable move target for a character standing at
+## `char_y`, given the camera sits `cam_dist` from that character. Zoomed IN (camera close), a hit more than
+## CLIMB_HEIGHT_GATE above the character is an overhead deck (an upper helix coil) and is rejected so the ray
+## pierces to the deck below; zoomed OUT past ZOOM_OUT_FREE_DIST, any height is allowed (navigating the structure
+## is then intended). Pure decision so it's unit-testable without a camera/physics scene.
+func _hit_height_ok(hit_y: float, char_y: float, cam_dist: float) -> bool:
+	return cam_dist > ZOOM_OUT_FREE_DIST or hit_y <= char_y + CLIMB_HEIGHT_GATE
 
 # --- Hover grid (target preview) ---
 

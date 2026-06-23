@@ -392,6 +392,9 @@ func _ready() -> void:
 			"--test-player-cross-level":
 				ran_test = true
 				_test_player_cross_level_click()
+			"--test-player-overhead-gate":
+				ran_test = true
+				await _test_player_overhead_height_gate()
 			"--test-outline-particle-emission":
 				ran_test = true
 				_test_outline_particle_emission()
@@ -1007,6 +1010,7 @@ func _run_all_tests() -> void:
 	await _test_camera_occlusion()
 	_test_grid_levels()
 	_test_player_cross_level_click()
+	await _test_player_overhead_height_gate()
 	_test_outline_particle_emission()
 	_test_interactable_outline_particles()
 	_test_outline_feedback_system()
@@ -14034,6 +14038,31 @@ func _test_player_cross_level_click() -> void:
 	_assert_true(not p2.move_to_world_position(flat.grid_to_world(Vector2i(6, 6)) + Vector3(0, 5.0, 0)),
 		"On a single-floor grid, a click far above the floor is still rejected")
 	p2.queue_free()
+
+# The move-raycast height gate: on the warped helix the camera looks down through an upper coil onto the
+# character's deck. Zoomed in, a hit well above the character (the overhead coil) must be rejected so the ray
+# pierces to the deck below (the destination/ghost lands where the player is); zoomed out, the high hit is
+# allowed. Tests the pure decision (no camera/physics scene needed).
+func _test_player_overhead_height_gate() -> void:
+	_test_name = "Player Overhead Height Gate"
+	var player_scene: PackedScene = load("res://scenes/game/player_character.tscn")
+	var player = player_scene.instantiate()
+	add_child(player)
+	var char_y := 0.0
+	var zoomed_in := 14.0    # camera ~one notch out: below ZOOM_OUT_FREE_DIST (24)
+	var zoomed_out := 30.0   # pulled well back: above ZOOM_OUT_FREE_DIST
+	# Zoomed in: a near same-deck hit is fine; an overhead coil (~9 up) is rejected (pierce past it).
+	_assert_true(player._hit_height_ok(0.4, char_y, zoomed_in),
+		"zoomed in: a hit on the character's own deck is accepted")
+	_assert_true(player._hit_height_ok(2.0, char_y, zoomed_in),
+		"zoomed in: a small climb along the deck is still accepted")
+	_assert_true(not player._hit_height_ok(9.0, char_y, zoomed_in),
+		"zoomed in: an overhead coil (~9 up) is rejected so the ray pierces to the deck below")
+	# Zoomed out: the same overhead hit is allowed (navigating an upper level is then intended).
+	_assert_true(player._hit_height_ok(9.0, char_y, zoomed_out),
+		"zoomed out: the overhead hit is allowed (reach the upper level)")
+	player.queue_free()
+	await get_tree().process_frame
 
 # --- Test: outline particles emit from the object surface ---
 # The per-mesh outline feedback used a box emission shape sized from the mesh AABB,
