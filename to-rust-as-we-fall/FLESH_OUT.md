@@ -53,10 +53,17 @@ Each loop pass does ONE item end-to-end, commits, marks it done here, and the lo
   read as round droplets. (See Done log.)
 
 ### P1 — test coverage (every chunk earns a guard)
-- [ ] `cov-playthrough-audit` **READY** — For each chunk in `scripts/fragments/chunks/` that has NO data-layer
-  playthrough/beatability test, add one (`--test-<chunk>-playthrough`, the wash-relay pattern: drive the chunk
-  to `complete` via the data layer, prove it's beatable). Do ONE chunk per pass; add a new `READY` line per
-  remaining chunk as you go. **Done-when:** the new `--test-<chunk>-playthrough` reaches `complete` in `--test-all`.
+- [~] `cov-playthrough-audit` **IN PROGRESS** — Beatability test per chunk that lacks one (wash-relay pattern:
+  drive to `complete` via the data layer). ONE chunk per pass. Audit of the 15 chunks:
+  - Covered: `wash_relay` (`--test-wash-relay-playthrough`), `lure_relay` (`--test-lure-relay` reaches `complete`),
+    `showcase_gallery` (`--test-showcase-gallery` asserts the tour completes), `refuge_run`
+    (`--test-refuge-run-playthrough`, **DONE** this pass — see Done log).
+  - **READY** (have a `complete`/win concept, still need a playthrough): `endo_junction_stretch`,
+    `generated_stretch`, `mother_flure`, `survival_range`. (Do one per pass.)
+  - N/A — sandbox/showcase chunks with no beatable objective (a playthrough test doesn't apply; they have their
+    own feature tests): `push_lab`, `rest_lab`, `flora_garden`, `dusk_run`, `rings_fragment`, `lockout_fragment`,
+    `stacks_fragment`. (Revisit only if one gains a win/exit condition.)
+  - **Done-when:** each READY chunk above has a `--test-<chunk>-playthrough` reaching `complete` in `--test-all`.
 - [ ] `cov-flat-collision-probe` **READY** — Generalize `--test-channels-probe-coverage` (walkable cell ⇒ deck
   collision under it) to the FLAT (non-warped) chunks, so "walkable == clickable" is guarded everywhere, not just
   the helix. **Done-when:** a probe asserts 0 walkable-but-uncollided cells on at least the flat chunks with a grid.
@@ -90,6 +97,11 @@ Each loop pass does ONE item end-to-end, commits, marks it done here, and the lo
 <!-- The loop appends finished items here with their commit hash. -->
 - `ui-dataview-dest-ring` (2026-06-22) — destination ring draws over the perception overlay (render_priority
   127); red/green-verified in `--test-path-render-manager`. First validating pass of the framework.
+- `cov-playthrough-audit: refuge_run` (2026-06-23) — added `--test-refuge-run-playthrough` (in `--test-all`):
+  drives the composite refuge stretch to `complete` via the chunk's own commands — safe north route, stage the
+  slit + open the lure window (→ slit safe), gather the party on the shelter spot + ride the sweep (→ spot safe),
+  gather at the exit + `reach_exit()` (→ route_phase `complete`). Proves the slit/spot/exit gates line up and the
+  stretch is beatable. (cov-playthrough-audit remains IN PROGRESS — 4 chunks still queued.)
 - `splash-droplets-round` (2026-06-23) — pipe-splash droplet specks now render as round soft discs (min radius 2
   + radial alpha falloff) instead of 1px plus/crosses. Guarded red/green in `--test-channels-splash-droplets`
   (re-derives the generator's droplet centres, asserts each flung droplet has a solid 3×3 core — impossible for a

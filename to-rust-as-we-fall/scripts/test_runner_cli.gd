@@ -323,6 +323,9 @@ func _ready() -> void:
 			"--test-channels-splash-droplets":
 				ran_test = true
 				await _test_channels_splash_droplets()
+			"--test-refuge-run-playthrough":
+				ran_test = true
+				await _test_refuge_run_playthrough()
 			"--test-wash-relay-flood-visual":
 				ran_test = true
 				await _test_wash_relay_flood_visual()
@@ -980,6 +983,7 @@ func _run_all_tests() -> void:
 	await _test_channels_probe_coverage()
 	await _test_channels_pipe_splash()
 	await _test_channels_splash_droplets()
+	await _test_refuge_run_playthrough()
 	await _test_channels_textures()
 	await _test_wash_relay_flood_visual()
 	await _test_wash_relay_trace_cadence()
@@ -11893,6 +11897,54 @@ func _test_wash_relay_playthrough() -> void:
 		if gs.get_position(id).x < 42.0:
 			through = false
 	_assert_true(through, "the state-aware party clears the front-half gauntlet (running + timing the surges)")
+	instance.queue_free()
+	await get_tree().process_frame
+
+# Data-layer beatability: the Refuge Run completes only if the slit window, the shelter-spot sweep, and the
+# exit gather all line up. Drive the win path through the chunk's own commands (route -> slit -> spot -> exit)
+# and assert it reaches `complete` — proves the composite refuge stretch is beatable, not just present.
+func _test_refuge_run_playthrough() -> void:
+	_test_name = "Refuge Run Playthrough"
+	var instance: Node = await _instantiate_preview_chunk_and_wait("refuge_run", 6)
+	if instance == null:
+		_assert_true(false, "refuge_run instantiates"); return
+	var chunk: Node = instance.find_child("Chunk_refuge_run", true, false)
+	var gs = instance.get("_game_state")
+	if chunk == null or gs == null:
+		_assert_true(false, "chunk + game state present"); instance.queue_free(); await get_tree().process_frame; return
+	instance.headless_advance(0.1)
+	var ids := ["aster", "peris", "endo"]
+	# 1) Take the SAFE north route (no HP bleed) — the run is underway.
+	_assert_true(bool(chunk.call("choose_route", "north")), "fork: choose the safe north route")
+	_assert_equals(str(chunk.get_preview_state().get("route_phase", "")), "underway", "route locked -> underway")
+	# 2) Slit refuge: stage the party in the slit (whichever is active must be in range), open the lure window,
+	#    hold through it -> the slit goes safe.
+	var slit: Vector3 = chunk.get_preview_anchors().get("hide_slit")
+	for i in ids.size():
+		chunk.call("_set_character_position", ids[i], slit + Vector3(float(i) * 0.7 - 0.7, 0.0, 0.0))
+	instance.headless_advance(0.1)
+	_assert_true(bool(chunk.call("activate_slit_lure")), "open the slit lure window")
+	var t := 0.0
+	while t < 8.0 and str(chunk.get_preview_state().get("slit_phase", "")) != "safe":
+		instance.headless_advance(0.2); await get_tree().process_frame; t += 0.2
+	_assert_equals(str(chunk.get_preview_state().get("slit_phase", "")), "safe", "the slit window held -> safe")
+	# 3) Shelter spot: gather the WHOLE party on the spot and ride out the sweep without anyone leaving.
+	var spot: Vector3 = chunk.get_preview_anchors().get("hide_spot")
+	_assert_true(bool(chunk.call("activate_spot_sweep")), "start the shelter-spot sweep")
+	t = 0.0
+	while t < 8.0 and str(chunk.get_preview_state().get("spot_phase", "")) != "safe":
+		for i in ids.size():
+			chunk.call("_set_character_position", ids[i], spot + Vector3(float(i) - 1.0, 0.0, 0.0))
+		instance.headless_advance(0.2); await get_tree().process_frame; t += 0.2
+	_assert_equals(str(chunk.get_preview_state().get("spot_phase", "")), "safe", "the party held the spot through the sweep -> safe")
+	# 4) Exit shelter: gather the party at the exit and reach it -> complete.
+	var exit_pos: Vector3 = chunk.get_preview_anchors().get("exit_shelter")
+	for i in ids.size():
+		chunk.call("_set_character_position", ids[i], exit_pos + Vector3(float(i) - 1.0, 0.0, 0.0))
+	instance.headless_advance(0.1)
+	_assert_true(bool(chunk.call("reach_exit")), "reach the exit shelter")
+	_assert_equals(str(chunk.get_preview_state().get("route_phase", "")), "complete",
+		"refuge run reaches complete via the data layer (beatable)")
 	instance.queue_free()
 	await get_tree().process_frame
 
