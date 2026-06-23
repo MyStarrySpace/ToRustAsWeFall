@@ -297,6 +297,42 @@ func add_dynamic_blocker(cell: Vector2i, obj_id: String) -> void:
 func remove_dynamic_blocker(cell: Vector2i) -> void:
 	dynamic_blockers.erase(cell)
 
+# --- Sight blocking (line of sight). A cell blocks sight if it's a WALL / locked door, or an explicitly
+# registered sight blocker (for scenes whose walls aren't WALL tiles). Declared at build like occupancy —
+# derived, never logged, rebuilt on replay. Used by detection so enemies can't see through walls. ---
+var sight_blockers: Dictionary = {}   # Vector2i -> true
+
+func add_sight_blocker(cell: Vector2i) -> void:
+	sight_blockers[cell] = true
+
+func clear_sight_blocker(cell: Vector2i) -> void:
+	sight_blockers.erase(cell)
+
+func is_opaque_cell(cell: Vector2i) -> bool:
+	if sight_blockers.has(cell):
+		return true
+	var tile := get_tile(cell.x, cell.y)
+	return tile == Tile.WALL or tile == Tile.LOCKED_DOOR
+
+## True if nothing blocks the straight line between two world points (XZ only). The endpoints' own cells are
+## ignored, so a detector/target standing in a doorway never self-blocks. Pure grid query — deterministic, so
+## detection that gates on it stays replay-safe (a physics raycast would not).
+func has_line_of_sight(from_world: Vector3, to_world: Vector3) -> bool:
+	var a := world_to_grid(from_world)
+	var b := world_to_grid(to_world)
+	if a == b:
+		return true
+	var dist := Vector2(to_world.x - from_world.x, to_world.z - from_world.z).length()
+	var steps := maxi(2, int(ceil(dist / (cell_size * 0.5))))   # sample at least twice per cell so no wall slips through
+	for i in range(1, steps):
+		var f := float(i) / float(steps)
+		var cell := world_to_grid(Vector3(lerpf(from_world.x, to_world.x, f), 0.0, lerpf(from_world.z, to_world.z, f)))
+		if cell == a or cell == b:
+			continue
+		if is_opaque_cell(cell):
+			return false
+	return true
+
 # --- Per-cell risk authoring + queries ---
 
 func set_cell_risk(cell: Vector2i, penalty := 20.0, recoverable := true) -> void:

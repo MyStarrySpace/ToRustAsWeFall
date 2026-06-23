@@ -1258,6 +1258,11 @@ func _recompute_all_detection_predictions(only_id: String = "") -> void:
 func _on_detection_event(detector_id: String, target_id: String) -> void:
 	if not characters.has(detector_id) or not characters.has(target_id):
 		return
+	# Line of sight: a wall between detector and target blocks the spot (enemies can't see through walls). LOS
+	# changes only when someone moves, and every move recomputes predictions and re-fires this at the new
+	# positions, so it re-evaluates without a polling loop — and the grid query keeps it replay-deterministic.
+	if not _has_detection_los(detector_id, target_id):
+		return
 	if is_dodging(target_id):
 		return
 	# Auto-dodge: if target has dodge queued, automatically evade
@@ -1272,6 +1277,14 @@ func _on_detection_event(detector_id: String, target_id: String) -> void:
 			if dodge_roll(target_id, perp):
 				return
 	detection_predicted.emit(detector_id, target_id)
+
+## Grid line-of-sight gate for detection. No grid, or a scene whose walls aren't grid cells, => always visible
+## (unchanged behaviour — only scenes that mark walls/sight-blockers get LOS). Pure grid query, so it stays
+## replay-deterministic. Cross-floor cases are already handled by DETECTION_VERTICAL_BAND upstream.
+func _has_detection_los(detector_id: String, target_id: String) -> bool:
+	if grid == null:
+		return true
+	return grid.has_line_of_sight(get_position(detector_id), get_position(target_id))
 
 func _predict_detection_time(detector_id: String, target_id: String, det_range: float, now: float) -> float:
 	var segs_a := _get_movement_segments(detector_id)

@@ -170,6 +170,9 @@ func _ready() -> void:
 			"--test-two-tier-detection":
 				ran_test = true
 				_test_two_tier_detection()
+			"--test-detection-los":
+				ran_test = true
+				_test_detection_los()
 			"--test-enemy-roaming":
 				ran_test = true
 				_test_enemy_roaming()
@@ -943,6 +946,7 @@ func _run_all_tests() -> void:
 	_test_data_identify()
 	_test_hidden_detection()
 	_test_two_tier_detection()
+	_test_detection_los()
 	_test_enemy_roaming()
 	_test_predictive_attack()
 	_test_fragment_preview_registry()
@@ -9794,6 +9798,40 @@ func _test_two_tier_detection() -> void:
 	_assert_true(spots.call(4.0, GameState.CONCEAL_NONE, false), "An undistracted guard spots an exposed target at 4m")
 	_assert_true(not spots.call(4.0, GameState.CONCEAL_NONE, true), "A lure-distracted guard misses that same 4m target")
 	_assert_true(spots.call(1.5, GameState.CONCEAL_NONE, true), "A distracted guard still catches a target that steps right into it")
+
+# Enemy detection respects line of sight: a wall between the guard and an in-range target blocks the spot
+# (enemies can't see through walls). Grid-based so it stays replay-deterministic.
+func _test_detection_los() -> void:
+	_test_name = "Detection Line of Sight"
+	var spots := func(wall: bool) -> bool:
+		var grid := GridWorld.new()
+		grid.create_room(12, 8, false)   # all floor; no border wall to interfere
+		if wall:
+			for z in range(0, 8):
+				grid.set_tile(5, z, GridWorld.Tile.WALL)   # an opaque column between guard(x=2) and target(x=9)
+		var sched := EventScheduler.new()
+		var gs := GameState.new()
+		gs.grid = grid
+		gs.scheduler = sched
+		var holder := Node3D.new()
+		add_child(holder)
+		gs.register_character("aster", grid.grid_to_world(Vector2i(9, 4)), 2.5, {})
+		var enemy := Enemy.new()
+		enemy.game_state = gs
+		enemy.char_id = "guard"
+		enemy._detection_targets = ["aster"]
+		holder.add_child(enemy)
+		gs.register_character("guard", grid.grid_to_world(Vector2i(2, 4)), enemy.move_speed, {"detection_range": 12.0})
+		enemy.activate()
+		gs._recompute_all_detection_predictions()
+		for _i in range(30):
+			sched.advance_ticks(0.05)
+		var seen := enemy.get_state() != "idle"
+		enemy.queue_free()
+		holder.queue_free()
+		return seen
+	_assert_true(spots.call(false), "Clear line of sight: the guard spots the in-range target")
+	_assert_true(not spots.call(true), "A wall between them blocks the spot (enemies can't see through walls)")
 
 # --- Test: lightweight enemy roaming wanders locally (no pathfinding), bounded, FF-invariant ---
 func _test_enemy_roaming() -> void:
