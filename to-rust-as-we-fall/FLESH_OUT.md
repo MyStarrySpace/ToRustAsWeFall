@@ -68,6 +68,14 @@ Each loop pass does ONE item end-to-end, commits, marks it done here, and the lo
   collision under it) to the FLAT (non-warped) chunks, so "walkable == clickable" is guarded everywhere, not just
   the helix. **Done-when:** a probe asserts 0 walkable-but-uncollided cells on at least the flat chunks with a grid.
 
+### P1 — visibility / line-of-sight wiring
+- [ ] `los-wire-chunk-sight-blockers` **READY** — Enemy-detection LOS is live (`grid.has_line_of_sight` gates
+  `_on_detection_event`), but it only bites where a scene marks walls as grid `WALL` tiles or registers
+  `grid.add_sight_blocker(cell)`. Chunks that build walls as mesh-only `_add_box` get no enemy LOS yet. Wire
+  sight-blockers from each gridded chunk's wall geometry (derive from the wall boxes at build, like occupancy —
+  derived, never logged). Do ONE chunk per pass. **Done-when:** a `--test-<chunk>-detection-los` shows a guard
+  failing to spot a target across one of that chunk's real walls (and spotting it in the open).
+
 ### P2 — channels enrichment
 - [ ] `splash-per-outlet` **READY** — Sections with MULTIPLE visible outlets in the GLB (e.g. the jet section's
   jets) currently get one centre splash. Place a splash per real outlet derived from the section dressing /
@@ -97,6 +105,13 @@ Each loop pass does ONE item end-to-end, commits, marks it done here, and the lo
 <!-- The loop appends finished items here with their commit hash. -->
 - `ui-dataview-dest-ring` (2026-06-22) — destination ring draws over the perception overlay (render_priority
   127); red/green-verified in `--test-path-render-manager`. First validating pass of the framework.
+- `occlusion/visibility overhaul` (2026-06-23, user request — several commits) — (1) camera-occlusion reveal
+  larger (3.5→5.5) + zoom-out auto-off (the fade circle fades as the camera pulls back); (2) perception clear
+  zone 8→14; (3) route ribbon + dest ghost/ring draw through faded/occluding geometry (no depth test); (4)
+  move-raycast pierces overhead helix decks when zoomed in (`_hit_height_ok`, `--test-player-overhead-gate`);
+  (5) perception LOS — the clear zone hugs walls via screen-space line of sight (`--test-perception-los-capture`,
+  17.4% on/off diff verified); (6) enemy-detection LOS — grid `has_line_of_sight` gates the spot
+  (`--test-detection-los`), replay-deterministic. Follow-up `los-wire-chunk-sight-blockers` queued above.
 - `cov-playthrough-audit: refuge_run` (2026-06-23) — added `--test-refuge-run-playthrough` (in `--test-all`):
   drives the composite refuge stretch to `complete` via the chunk's own commands — safe north route, stage the
   slit + open the lure window (→ slit safe), gather the party on the shelter spot + ride the sweep (→ spot safe),
