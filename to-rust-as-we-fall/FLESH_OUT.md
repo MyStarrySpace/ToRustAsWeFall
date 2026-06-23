@@ -48,10 +48,9 @@ Each loop pass does ONE item end-to-end, commits, marks it done here, and the lo
   guarded in `--test-path-render-manager`. (See Done log.)
 - [x] `ui-dataview-sweep` **DONE** — Audited every transparent gameplay overlay for data-view survival; the
   queued energy GLOW shell was the one offender (transparent at 118 → now 127), guarded. (See Done log.)
-- [ ] `splash-droplets-round` **READY** — The pipe-splash texture's droplet specks render cross/plus-shaped at
-  64px (1–3px discs + nearest filter). Make them read as round droplets (filled discs with a soft edge, or
-  upscale the texture). **Done-when:** `--test-channels-splash-capture` PNG shows round droplets (capture +
-  look); `--test-channels-pipe-splash` stays green.
+- [x] `splash-droplets-round` **DONE** — Droplet specks were 1px "discs" → a 5px plus/cross (diagonals excluded
+  by `ox²+oy²<=1`) with hard alpha. Now min radius 2 + a soft radial falloff (solid core, soft 1px rim) so they
+  read as round droplets. (See Done log.)
 
 ### P1 — test coverage (every chunk earns a guard)
 - [ ] `cov-playthrough-audit` **READY** — For each chunk in `scripts/fragments/chunks/` that has NO data-layer
@@ -91,6 +90,11 @@ Each loop pass does ONE item end-to-end, commits, marks it done here, and the lo
 <!-- The loop appends finished items here with their commit hash. -->
 - `ui-dataview-dest-ring` (2026-06-22) — destination ring draws over the perception overlay (render_priority
   127); red/green-verified in `--test-path-render-manager`. First validating pass of the framework.
+- `splash-droplets-round` (2026-06-23) — pipe-splash droplet specks now render as round soft discs (min radius 2
+  + radial alpha falloff) instead of 1px plus/crosses. Guarded red/green in `--test-channels-splash-droplets`
+  (re-derives the generator's droplet centres, asserts each flung droplet has a solid 3×3 core — impossible for a
+  plus); eyeballed via `vr_splash_droplets.png` (dark-composited so the white-on-transparent splash is visible).
+  `--test-channels-pipe-splash` stays green.
 - `ui-dataview-sweep` (2026-06-22) — transparent-overlay data-view audit. Findings: selection = 2D marquee on a
   CanvasLayer (UI, survives inherently); crisp outline HULL = opaque (`unshaded, cull_front, depth_draw_always` →
   always in the screen texture); highlight PARTICLES = opaque `StandardMaterial3D` (default `TRANSPARENCY_DISABLED`

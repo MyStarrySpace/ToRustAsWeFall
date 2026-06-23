@@ -320,6 +320,9 @@ func _ready() -> void:
 			"--test-channels-pipe-splash":
 				ran_test = true
 				await _test_channels_pipe_splash()
+			"--test-channels-splash-droplets":
+				ran_test = true
+				await _test_channels_splash_droplets()
 			"--test-wash-relay-flood-visual":
 				ran_test = true
 				await _test_wash_relay_flood_visual()
@@ -976,6 +979,7 @@ func _run_all_tests() -> void:
 	await _test_channels_click_alignment()
 	await _test_channels_probe_coverage()
 	await _test_channels_pipe_splash()
+	await _test_channels_splash_droplets()
 	await _test_channels_textures()
 	await _test_wash_relay_flood_visual()
 	await _test_wash_relay_trace_cadence()
@@ -11147,6 +11151,57 @@ func _test_wash_relay_abilities() -> void:
 		"reset clears TRACE + BLOOM state (trace=%d blooms=%d)" % [int(chunk.get_preview_state().get("trace_section", -1)), int(chunk.get_preview_state().get("bloom_count", 0))])
 	instance.queue_free()
 	await get_tree().process_frame
+
+# The flung droplet specks in the splash texture must read as ROUND discs, not 1px plus/cross shapes. A droplet
+# of radius 1 (the old `1 + (k % 3)`) renders as a 5px plus (diagonals excluded by ox²+oy²<=1) — the bug. This
+# re-derives the generator's droplet centres and asserts each flung droplet (one outside the main blob) has a
+# SOLID 3x3 core (centre + all 8 neighbours, diagonals included) — impossible for a plus, guaranteed for a disc.
+func _test_channels_splash_droplets() -> void:
+	_test_name = "Channels Splash Droplets"
+	var chunk = load("res://scripts/fragments/chunks/wash_relay_chunk.gd").new()
+	var tex = chunk.call("_build_splash_texture")
+	_assert_true(tex != null, "splash texture builds")
+	if tex == null:
+		chunk.free(); return
+	var img: Image = tex.get_image()
+	var size := img.get_width()
+	var c := float(size) * 0.5
+	var base_r := float(size) * 0.28
+	var checked := 0
+	var round_ok := 0
+	for k in range(8):
+		var a := float(k) / 8.0 * TAU + 0.4
+		var rr := base_r * (1.25 + 0.3 * sin(a * 3.0))
+		# Only check droplets clearly OUTSIDE the lumpy blob (the flung specks) — inner ones are filled by the
+		# blob regardless, so they can't reveal the plus/cross bug.
+		if rr <= base_r * 1.45:
+			continue
+		var px := int(round(c + cos(a) * rr))
+		var py := int(round(c + sin(a) * rr))
+		if px - 1 < 0 or px + 1 >= size or py - 1 < 0 or py + 1 >= size:
+			continue
+		checked += 1
+		var solid := true
+		for oy in range(-1, 2):
+			for ox in range(-1, 2):
+				if img.get_pixel(px + ox, py + oy).a < 0.5:
+					solid = false
+		if solid:
+			round_ok += 1
+	_assert_true(checked > 0, "at least one flung droplet lands outside the blob to check")
+	_assert_true(round_ok == checked,
+		"every flung droplet renders as a round disc (solid 3x3 core, no plus/cross): %d/%d round" % [round_ok, checked])
+	# Eyeball artifact (gitignored): composite the white-on-transparent splash over a DARK bg (so it's visible at
+	# all — white-on-transparent renders invisible on a white viewer), then upscale 8x nearest to read shapes.
+	var bg := Color(0.04, 0.06, 0.10)
+	var flat := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	for yy in range(size):
+		for xx in range(size):
+			var p := img.get_pixel(xx, yy)
+			flat.set_pixel(xx, yy, bg.lerp(Color(0.6, 0.85, 1.0), p.a))
+	flat.resize(size * 8, size * 8, Image.INTERPOLATE_NEAREST)
+	flat.save_png("res://vr_splash_droplets.png")
+	chunk.free()
 
 ## WINDOWED eyeball: force floods + capture the channels so the flood water (and sluice gate) can be SEEN on
 ## the helix. Writes vr_channels_water.png (gitignored). Not in --test-all (needs a display).

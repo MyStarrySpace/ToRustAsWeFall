@@ -1270,20 +1270,28 @@ func _build_splash_texture() -> Texture2D:
 			var r := base_r * lump
 			if d <= r:
 				img.set_pixel(x, y, Color(1, 1, 1, clampf((r - d) / 6.0, 0.0, 1.0)))   # soft outer edge
-	# a scatter of droplet specks flung beyond the blob rim
+	# a scatter of droplet specks flung beyond the blob rim — soft ROUND discs (min radius 2 so none collapse
+	# to a 1px plus/cross), each with a radial alpha falloff: a solid core and a soft rim, so they read as
+	# water droplets rather than blocky aliased pixels. Max-blended so overlapping droplets stay opaque.
 	for k in range(8):
 		var a := float(k) / 8.0 * TAU + 0.4
 		var rr := base_r * (1.25 + 0.3 * sin(a * 3.0))
-		var px := int(c + cos(a) * rr)
-		var py := int(c + sin(a) * rr)
-		var dsz := 1 + (k % 3)
+		var px := c + cos(a) * rr
+		var py := c + sin(a) * rr
+		var dsz := 2 + (k % 3)   # 2..4 px radius — always a visible round disc, never a bare cross
 		for oy in range(-dsz, dsz + 1):
 			for ox in range(-dsz, dsz + 1):
-				if ox * ox + oy * oy <= dsz * dsz:
-					var xx := px + ox
-					var yy := py + oy
-					if xx >= 0 and xx < size and yy >= 0 and yy < size:
-						img.set_pixel(xx, yy, Color(1, 1, 1, 0.85))
+				var dist := sqrt(float(ox * ox + oy * oy))
+				if dist > float(dsz):
+					continue
+				var xx := int(round(px)) + ox
+				var yy := int(round(py)) + oy
+				if xx < 0 or xx >= size or yy < 0 or yy >= size:
+					continue
+				# solid core, soft 1px rim — the +1.0 keeps the inner disc fully opaque
+				var da := clampf((float(dsz) - dist + 1.0) / 1.5, 0.0, 1.0) * 0.9
+				var prev := img.get_pixel(xx, yy).a
+				img.set_pixel(xx, yy, Color(1, 1, 1, maxf(prev, da)))
 	return ImageTexture.create_from_image(img)
 
 ## One splash billboard at each section's pipe mouth (above the section, on the back-wall/pipe side), warped
