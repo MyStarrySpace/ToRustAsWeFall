@@ -320,6 +320,9 @@ func _ready() -> void:
 			"--test-channels-probe-coverage":
 				ran_test = true
 				await _test_channels_probe_coverage()
+			"--test-generated-stretch-probe-coverage":
+				ran_test = true
+				await _test_generated_stretch_probe_coverage()
 			"--test-channels-splash-capture":
 				ran_test = true
 				await _test_channels_splash_capture()
@@ -991,6 +994,7 @@ func _run_all_tests() -> void:
 	await _test_wash_relay_flush_hint()
 	await _test_channels_click_alignment()
 	await _test_channels_probe_coverage()
+	await _test_generated_stretch_probe_coverage()
 	await _test_channels_pipe_splash()
 	await _test_channels_splash_droplets()
 	await _test_refuge_run_playthrough()
@@ -11417,6 +11421,48 @@ func _test_channels_probe_coverage() -> void:
 	_assert_true(misses.size() == 0, "EVERY walkable cell has deck collision under it (misses=%d of %d)" % [misses.size(), walkable])
 	if is_instance_valid(marker_root):
 		marker_root.queue_free()
+	inst.queue_free()
+	await get_tree().process_frame
+
+# The FLAT analogue of the channels probe: on a non-warped gridded chunk, every walkable cell must have deck
+# collision straight under it, or it's un-clickable as a move destination. generated_stretch is the one flat
+# chunk that builds its own grid (the rest are mesh-only without a grid; wash_relay is the warped one).
+func _test_generated_stretch_probe_coverage() -> void:
+	_test_name = "Generated Stretch Probe Coverage"
+	var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 8)
+	if inst == null:
+		_assert_true(false, "generated_stretch instantiates"); return
+	for i in range(6):
+		await get_tree().process_frame
+	for i in range(4):
+		await get_tree().physics_frame
+	var gs = inst.get("_game_state")
+	if gs == null or gs.grid == null:
+		_assert_true(false, "grid present"); inst.queue_free(); await get_tree().process_frame; return
+	_assert_true(gs.coord_map == null, "generated_stretch is FLAT (no warp coord_map)")
+	var grid = gs.grid
+	var space = inst.get_world_3d().direct_space_state
+	var walkable := 0
+	var hits := 0
+	var misses: Array = []
+	for cz in range(grid.height):
+		for cx in range(grid.width):
+			if not grid.is_in_bounds(cx, cz) or not grid.is_walkable(cx, cz):
+				continue
+			walkable += 1
+			var world: Vector3 = grid.grid_to_world(Vector2i(cx, cz))
+			var q := PhysicsRayQueryParameters3D.create(world + Vector3(0, 6, 0), world - Vector3(0, 6, 0))
+			q.collision_mask = 1
+			var r: Dictionary = space.intersect_ray(q)
+			if r.is_empty():
+				misses.append(Vector2i(cx, cz))
+			else:
+				hits += 1
+	print("  [flat-probe] generated_stretch walkable=%d hits=%d MISSES=%d (%.1f%% have deck collision)" % [walkable, hits, misses.size(), 100.0 * float(hits) / float(maxi(1, walkable))])
+	if misses.size() > 0:
+		print("  [flat-probe] first misses: %s" % str(misses.slice(0, mini(12, misses.size()))))
+	_assert_true(walkable > 0, "generated_stretch has walkable cells to probe")
+	_assert_true(misses.size() == 0, "EVERY walkable cell has deck collision under it (misses=%d of %d)" % [misses.size(), walkable])
 	inst.queue_free()
 	await get_tree().process_frame
 

@@ -64,13 +64,11 @@ Each loop pass does ONE item end-to-end, commits, marks it done here, and the lo
     own feature tests): `push_lab`, `rest_lab`, `flora_garden`, `dusk_run`, `rings_fragment`, `lockout_fragment`,
     `stacks_fragment`. (Revisit only if one gains a win/exit condition.)
   - **Done-when:** each READY chunk above has a `--test-<chunk>-playthrough` reaching `complete` in `--test-all`.
-- [ ] `cov-flat-collision-probe` **READY** — Generalize `--test-channels-probe-coverage` (walkable cell ⇒ deck
-  collision under it) to the FLAT (non-warped) chunks, so "walkable == clickable" is guarded everywhere, not just
-  the helix. **Scoping (2026-06-23):** of the 15 chunks, only `generated_stretch` and `wash_relay` build their own
-  grid; `wash_relay` is the warped one already probed, so the flat target is essentially `generated_stretch`
-  (verify its floors are colliders, not mesh-only `_add_box`). The mesh-only chunks have no grid, so "walkable"
-  isn't defined for them — N/A. **Done-when:** `--test-generated-stretch-probe-coverage` asserts 0
-  walkable-but-uncollided cells (probe straight down on each `grid.grid_to_world(cell)`, no coord_map).
+- [x] `cov-flat-collision-probe` **DONE** — `--test-generated-stretch-probe-coverage` (in `--test-all`): the flat
+  analogue of the channels probe. Of the 15 chunks only `generated_stretch` and `wash_relay` build their own grid;
+  `wash_relay` is the warped one already probed, the rest are mesh-only (no grid → "walkable" undefined → N/A). The
+  flat probe confirms generated_stretch is 100% clickable (349/349 walkable cells have deck collision, 0 misses).
+  Same probe logic that found the channels' real 29% gap, so it's a real red-capable guard. (See Done log.)
 
 ### P1 — visibility / line-of-sight wiring
 - [ ] `los-wire-chunk-sight-blockers` **READY** — Enemy-detection LOS is live (`grid.has_line_of_sight` gates
@@ -109,6 +107,9 @@ Each loop pass does ONE item end-to-end, commits, marks it done here, and the lo
 <!-- The loop appends finished items here with their commit hash. -->
 - `ui-dataview-dest-ring` (2026-06-22) — destination ring draws over the perception overlay (render_priority
   127); red/green-verified in `--test-path-render-manager`. First validating pass of the framework.
+- `cov-flat-collision-probe` (2026-06-23) — `--test-generated-stretch-probe-coverage`: generated_stretch (the one
+  flat gridded chunk) is 100% clickable (349/349 walkable cells have deck collision under them). Flat analogue of
+  the channels probe; other chunks are mesh-only (no grid) → N/A.
 - `occlusion/visibility overhaul` (2026-06-23, user request — several commits) — (1) camera-occlusion reveal
   larger (3.5→5.5) + zoom-out auto-off (the fade circle fades as the camera pulls back); (2) perception clear
   zone 8→14; (3) route ribbon + dest ghost/ring draw through faded/occluding geometry (no depth test); (4)
