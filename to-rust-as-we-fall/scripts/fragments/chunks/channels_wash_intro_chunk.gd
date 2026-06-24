@@ -52,9 +52,11 @@ const CHANNEL_PERIOD := 3.0
 const CHANNEL_DUR := 1.6                          # flood on-time; with 3 strips phased 0/1/2 over a 3s period
 const CHANNEL_PHASE := [0.0, 1.0, 2.0]            # => at every instant at least one strip is flooding
 
-const PORTAL_IN_POS := Vector3(8.0, 0.5, -2.0)    # near-bank pad: step on it -> teleport across
-const PORTAL_OUT_POS := Vector3(21.0, 0.5, -2.0)  # far-bank arrival
+const PORTAL_IN_POS := Vector3(8.0, 0.5, -2.0)    # near-bank portal — activatable, bidirectional
+const PORTAL_OUT_POS := Vector3(21.0, 0.5, -2.0)  # far-bank portal
 const PORTAL_RADIUS := 1.2
+
+const WASH_BACK_POS := Vector3(2.0, 0.5, 0.0)     # a player flushed by a channel is swept back here (section start)
 
 const FAR_BANK_X := 19.5
 const EXIT_POS := Vector3(27.0, 0.5, 0.0)         # reach here -> complete (-> the spiral)
@@ -76,14 +78,22 @@ var _flure_mesh: MeshInstance3D
 var _flure_mat: StandardMaterial3D
 var _enemies := []
 var _drowned := 0
-var _portal_used := {}                             # char_id -> true (teleported across)
+var _drowned_ids := {}                             # char_id -> true: dedupe the drown (once per hunter, one line)
+var _washed_back := 0                              # how many times a party member was flushed by a channel
+var _portal_near                                   # the two portal interactables (activatable, bidirectional)
+var _portal_far
 var _scheduled := false
 var _last_outcome := ""
 
 func _build_chunk() -> void:
-	_add_floor(self, FLOOR_CENTER, FLOOR_SIZE, Color(0.09, 0.11, 0.13))
-	_add_box(self, Vector3(FLOOR_CENTER.x, 2.0, -Z_HALF - 0.2), Vector3(FLOOR_SIZE.x, 4.0, 0.4), Color(0.13, 0.14, 0.16))
-	_add_box(self, Vector3(FLOOR_CENTER.x, 2.0, Z_HALF + 0.2), Vector3(FLOOR_SIZE.x, 4.0, 0.4), Color(0.13, 0.14, 0.16))
+	# A readable floor + walls (the bare graybox rendered black for want of light — these are lit, plus the
+	# lights below). Endo's junction: damp stone-grey deck, darker channel-iron walls.
+	_add_floor(self, FLOOR_CENTER, FLOOR_SIZE, Color(0.34, 0.36, 0.40))
+	_add_box(self, Vector3(FLOOR_CENTER.x, 2.0, -Z_HALF - 0.2), Vector3(FLOOR_SIZE.x, 4.0, 0.4), Color(0.24, 0.25, 0.28))
+	_add_box(self, Vector3(FLOOR_CENTER.x, 2.0, Z_HALF + 0.2), Vector3(FLOOR_SIZE.x, 4.0, 0.4), Color(0.24, 0.25, 0.28))
+	# Lights so the room READS (the chunk geometry isn't lit by the preview environment alone).
+	for lx in [3.0, 11.0, 19.0, 27.0]:
+		_add_light(self, Vector3(lx, 4.2, 0.0), Color(0.62, 0.68, 0.78), 2.4, 16.0)
 	_add_label(self, "TO SPIRAL", EXIT_POS + Vector3(0.0, 2.0, 0.0), Color(0.5, 0.8, 0.9))
 	_add_marker(EXIT_POS, Vector3(EXIT_RADIUS * 1.6, 0.4, EXIT_RADIUS * 1.6), Color(0.3, 0.7, 0.55), 1.4, "")
 
@@ -115,9 +125,19 @@ func _build_chunk() -> void:
 	_outline_interactable_child(flure, _flure_mesh, "Flure", 1.4)
 	flure.interacted.connect(func() -> void: activate_flure())
 
-	# Portal pads (free teleport across the channels).
-	_add_marker(PORTAL_IN_POS, Vector3(PORTAL_RADIUS * 1.7, 0.3, PORTAL_RADIUS * 1.7), Color(0.5, 0.4, 0.95), 1.6, "PORTAL")
-	_add_marker(PORTAL_OUT_POS, Vector3(PORTAL_RADIUS * 1.7, 0.3, PORTAL_RADIUS * 1.7), Color(0.5, 0.4, 0.95), 1.0, "")
+	# Portal — an ACTIVATABLE pair (not an area). Click one, the active member walks to it and steps through;
+	# only that one member crosses (whoever arrives first), and it's bidirectional + reusable so they can return.
+	_portal_near = _add_interactable(self, "PortalNear", "Step through", PORTAL_IN_POS, "PORTAL", "", 0.6, false, PORTAL_RADIUS,
+		Interactable.InteractableType.INSPECTION, false)
+	var pn := _add_object_glow(_portal_near, Vector3(0.0, 0.6, 0.0), 0.5, Color(0.55, 0.42, 0.98), 0.8)
+	_outline_interactable_child(_portal_near, pn, "PortalNear", 1.4)
+	_add_label(self, "PORTAL", PORTAL_IN_POS + Vector3(0.0, 1.6, 0.0), Color(0.6, 0.5, 1.0))
+	_portal_near.interacted.connect(func() -> void: _teleport_via_portal(true))
+	_portal_far = _add_interactable(self, "PortalFar", "Step through", PORTAL_OUT_POS, "PORTAL", "", 0.6, false, PORTAL_RADIUS,
+		Interactable.InteractableType.INSPECTION, false)
+	var pf := _add_object_glow(_portal_far, Vector3(0.0, 0.6, 0.0), 0.5, Color(0.55, 0.42, 0.98), 0.8)
+	_outline_interactable_child(_portal_far, pf, "PortalFar", 1.4)
+	_portal_far.interacted.connect(func() -> void: _teleport_via_portal(false))
 
 	_spawn_enemies()
 	reset_preview_state()
@@ -238,15 +258,19 @@ func _update(_delta: float) -> void:
 		if ci >= 0 and _flooding[ci]:
 			_drown_enemy(enemy)
 
-	# Portal: stepping a member onto the near pad teleports them across (free crossing).
+	# The wash flushes PLAYERS too: a member standing in a flooding channel is swept back to the section start
+	# (for now the left bank; eventually a spot near Endo's junction). Snapping them out clears the footprint, so
+	# it can't re-fire every frame. The portal is the safe way across — the channels themselves are lethal.
 	for cid in PARTY_IDS:
-		if not gs.characters.has(cid) or _portal_used.has(cid):
+		if not gs.characters.has(cid):
 			continue
-		var pp := _get_character_position(cid)
-		if Vector2(pp.x - PORTAL_IN_POS.x, pp.z - PORTAL_IN_POS.z).length() <= PORTAL_RADIUS:
-			_portal_used[cid] = true
+		var mp := _get_character_position(cid)
+		var mci := _channel_index_at(mp.x)
+		if mci >= 0 and _flooding[mci] and abs(mp.z) <= Z_HALF:
 			gs.command_stop(cid)
-			_set_character_position(cid, PORTAL_OUT_POS)
+			_set_character_position(cid, WASH_BACK_POS)
+			_washed_back += 1
+			_say("// WASH // the current takes you back")
 
 	# Win: any member reaches the far exit (via the portal) -> the wash intro is cleared.
 	for cid in PARTY_IDS:
@@ -259,19 +283,25 @@ func _update(_delta: float) -> void:
 func _drown_enemy(enemy) -> void:
 	if not is_instance_valid(enemy) or not enemy.is_alive():
 		return
+	# Dedupe: take_damage doesn't necessarily flip is_alive() the same frame, and the body can sit in the
+	# flooding strip for a tick or two — so without this guard the drown counted (and announced) twice.
+	if _drowned_ids.has(enemy.char_id):
+		return
+	_drowned_ids[enemy.char_id] = true
 	if enemy.has_method("take_damage"):
 		enemy.take_damage(enemy.max_hp)   # die() doesn't zero hp; full damage downs it cleanly
 	_drowned += 1
 	var gs = _get_game_state()
 	if gs != null and gs.characters.has(enemy.char_id):
 		gs.set_character_distracted(enemy.char_id, false)
-	_say("// WASH // a hunter went into the channel")
+	_say("// WASH // the channel takes the one drawn into it")
 
 # --- Flure (the lure) ---
 
-## Light the flure: every enemy within the flure's (large) attract range drops the hunt and walks to it,
-## crossing the channels to reach it — and drowning. Its range is bigger than the enemies' player-sense range,
-## so they prefer the flure to you (they don't immediately come across at the party).
+## Activate the flure: it EMITS A SIGNAL the hunters home in on. Every hunter within the flure's (large) signal
+## range drops the hunt and moves to it, crossing the channels to reach it — and drowning. The signal range is
+## bigger than the hunters' player-sense range, so they lock onto the flure rather than the party (they don't
+## immediately come across at you).
 func activate_flure() -> bool:
 	if _phase in ["complete", "failed"]:
 		return false
@@ -287,12 +317,31 @@ func activate_flure() -> bool:
 			continue
 		if gs.get_position(enemy.char_id).distance_to(FLURE_POS) <= FLURE_ATTRACT:
 			gs.set_character_distracted(enemy.char_id, true)   # it stops noticing the party at range
-			gs.command_move_to_pos(enemy.char_id, FLURE_POS)    # and walks to the song — across the channels
+			gs.command_move_to_pos(enemy.char_id, FLURE_POS)    # and tracks the signal — across the channels
 			pulled += 1
 	_last_outcome = "flure_lit"
 	_set_preview_step("channels_wash_intro_flure")
-	_say("// FLURE // the hunters turn toward the song")
+	_say("// FLURE // signal up — the hunters lock onto it")
 	return pulled > 0
+
+## Step a SINGLE member through the portal — the one who activated it (whoever arrived first). Bidirectional
+## (near <-> far) and reusable, so a member can return. Never teleports the whole party at once.
+func _teleport_via_portal(to_far: bool) -> void:
+	if _phase in ["complete", "failed"]:
+		return
+	var src = _portal_near if to_far else _portal_far
+	var dest: Vector3 = PORTAL_OUT_POS if to_far else PORTAL_IN_POS
+	var who := ""
+	if src != null and ("active_character" in src):
+		who = str(src.active_character)
+	if who == "":
+		who = _get_active_character()
+	var gs = _get_game_state()
+	if gs == null or who == "" or not gs.characters.has(who):
+		return
+	gs.command_stop(who)
+	_set_character_position(who, dest)
+	_say("// PORTAL // through")
 
 func _complete() -> void:
 	if _phase == "complete":
@@ -316,6 +365,21 @@ func get_default_character() -> String:
 func get_spawn_positions() -> Dictionary:
 	return SPAWNS.duplicate(true)
 
+## A flat room grid so movement, the hover grid, and the path preview snap to cells (the gridless fallback
+## drew the hover patch off the deck). The WHOLE room is walkable — the channels are hazards, not walls, so
+## both the party and the lured hunters path THROUGH them (and get washed); the wash is the gate, not the grid.
+func get_grid_data() -> Dictionary:
+	return {
+		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
+		"origin": [-3.0, 0.0, -7.0],
+		"cell_size": 1.0,
+		"width": 34,
+		"height": 14,
+		"walkable_regions": [
+			{"min": [-2.0, -5.0], "max": [30.0, 5.0]},
+		],
+	}
+
 func get_preview_anchors() -> Dictionary:
 	var anchors := get_spawn_positions()
 	anchors.merge({
@@ -336,7 +400,8 @@ func reset_preview_state() -> void:
 	_flooding = [false, false, false]
 	_flure_active = false
 	_drowned = 0
-	_portal_used = {}
+	_drowned_ids = {}
+	_washed_back = 0
 	_scheduled = false
 	_last_outcome = ""
 	if _flure_mat != null:

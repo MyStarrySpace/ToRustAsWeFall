@@ -374,6 +374,9 @@ func _ready() -> void:
 			"--test-channels-wash-intro":
 				ran_test = true
 				await _test_channels_wash_intro()
+			"--test-channels-wash-intro-capture":
+				ran_test = true
+				await _test_channels_wash_intro_capture()
 			"--test-wash-relay-no-hang":
 				ran_test = true
 				await _test_wash_relay_no_hang()
@@ -12250,6 +12253,13 @@ func _test_channels_wash_intro() -> void:
 		if not bool(chunk.get_preview_state().get("any_channel_flooding", false)):
 			always = false
 	_assert_true(always, "at least one of the three channels is always flooding")
+	# The wash flushes PLAYERS too: a member standing in a flooding channel is swept back to the section start.
+	chunk.call("_channel_onset", 0)   # force channel 0 to flood
+	chunk.call("_set_character_position", "aster", Vector3(11.0, 0.5, 0.0))   # CHANNEL_X[0]
+	chunk.call("_update", 0.0)
+	var back_x: float = chunk.call("_get_character_position", "aster").x
+	_assert_true(back_x < 4.0 and int(chunk.get_preview_state().get("any_channel_flooding", true)) != 0,
+		"a player in a flooding channel is flushed back to the section start (x=%.1f)" % back_x)
 	# SOLVE: light the flure -> the hunters cross the channels toward it and drown.
 	_assert_true(bool(chunk.call("activate_flure")), "lighting the flure pulls the hunters toward it")
 	var t := 0.0
@@ -12257,19 +12267,66 @@ func _test_channels_wash_intro() -> void:
 		inst.headless_advance(0.2); await get_tree().process_frame; t += 0.2
 	_assert_equals(int(chunk.get_preview_state().get("enemies_alive", -1)), 0,
 		"the lured hunters drown crossing the channels (drowned=%d)" % int(chunk.get_preview_state().get("drowned", 0)))
-	# PORTAL: stepping on the near pad teleports a member across the channels (free crossing).
-	chunk.call("_set_character_position", "endo", chunk.get_preview_anchors().get("portal_in"))
-	inst.headless_advance(0.1)
+	# Drown is deduped: exactly one drown per hunter, not double-counted (the dialogue-fires-twice bug).
+	_assert_equals(int(chunk.get_preview_state().get("drowned", -1)), 2,
+		"each hunter drowns exactly once (no double count / double line)")
+	# PORTAL is an ACTIVATABLE, one-at-a-time, BIDIRECTIONAL teleport (not an area, not one-shot).
+	var portal_near = chunk.get("_portal_near")
 	var portal_out: Vector3 = chunk.get_preview_anchors().get("portal_out")
+	var portal_in: Vector3 = chunk.get_preview_anchors().get("portal_in")
+	portal_near.active_character = "endo"
+	portal_near.emit_signal("interacted")
 	_assert_true(chunk.call("_get_character_position", "endo").x > portal_out.x - 2.0,
-		"the portal teleports the member across to the far bank")
+		"activating the portal teleports the activating member across to the far bank")
+	# Only that one member crossed (aster, who didn't activate, stays on the near side).
+	_assert_true(chunk.call("_get_character_position", "aster").x < portal_out.x - 4.0,
+		"only the activating member crosses — the portal moves one at a time")
+	# Bidirectional + reusable: activating the FAR portal returns a member to the near side.
+	var portal_far = chunk.get("_portal_far")
+	portal_far.active_character = "endo"
+	portal_far.emit_signal("interacted")
+	_assert_true(chunk.call("_get_character_position", "endo").x < portal_in.x + 2.0,
+		"the portal is bidirectional + reusable — a member can return through it")
 	# Reach the exit -> complete.
+	portal_near.active_character = "endo"
+	portal_near.emit_signal("interacted")   # back across
 	chunk.call("_set_character_position", "endo", chunk.get_preview_anchors().get("exit"))
 	inst.headless_advance(0.1)
 	_assert_equals(str(chunk.get_preview_state().get("phase", "")), "complete",
 		"clearing the hunters + crossing via the portal completes the wash intro")
 	inst.queue_free()
 	await get_tree().process_frame
+
+# WINDOWED: eyeball the wash-intro room is LIT (not the black graybox) — top-down capture of the whole room.
+func _test_channels_wash_intro_capture() -> void:
+	_test_name = "Channels Wash Intro Capture"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (needs a display)"); return
+	var inst = await _instantiate_preview_chunk_and_wait("channels_wash_intro", 8)
+	if inst == null:
+		_assert_true(false, "instantiates"); return
+	for i in range(60):
+		await get_tree().process_frame
+	get_tree().paused = true
+	var cam := get_tree().root.get_viewport().get_camera_3d()
+	if cam != null and cam.is_inside_tree():
+		cam.global_transform = Transform3D(Basis(), Vector3(14.0, 26.0, 6.0)).looking_at(Vector3(14.0, 0.0, 0.0), Vector3(0, 0, -1))
+	for i in range(3):
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var img: Image = get_tree().root.get_texture().get_image()
+	img.save_png("res://vr_wash_intro.png")
+	# Numeric: the room must not be near-black (the reported bug). Sample the floor centre region brightness.
+	var lit := 0
+	var w := img.get_width(); var h := img.get_height()
+	for sy in range(int(h * 0.35), int(h * 0.7), 6):
+		for sx in range(int(w * 0.25), int(w * 0.75), 6):
+			var c := img.get_pixel(sx, sy)
+			if c.r + c.g + c.b > 0.18:
+				lit += 1
+	print("  [wash-intro] wrote vr_wash_intro.png  lit-samples=%d" % lit)
+	_assert_true(lit > 30, "the wash-intro room is lit, not black (lit samples=%d)" % lit)
+	await _dispose_scene(inst)
 
 # HID it (and it sat off the helix anyway), leaving the player no "about-to-flood" tell without TRACE. This drives
 # the REAL environment path (coord_map installed => hide_flat_graybox ran) and asserts every strip is still
