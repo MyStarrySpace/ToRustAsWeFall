@@ -374,6 +374,9 @@ func _ready() -> void:
 			"--test-channels-wash-intro":
 				ran_test = true
 				await _test_channels_wash_intro()
+			"--test-channels-wash-intro-grammar":
+				ran_test = true
+				await _test_channels_wash_intro_grammar()
 			"--test-channels-wash-intro-capture":
 				ran_test = true
 				await _test_channels_wash_intro_capture()
@@ -1028,6 +1031,7 @@ func _run_all_tests() -> void:
 	await _test_wash_relay_strand_recover()
 	await _test_wash_relay_held_override()
 	await _test_channels_wash_intro()
+	await _test_channels_wash_intro_grammar()
 	await _test_wash_relay_no_hang()
 	await _test_wash_relay_menu_load()
 	await _test_wash_relay_hover_sweep()
@@ -10667,7 +10671,9 @@ func _test_chunk_interactable_outlines() -> void:
 		"RangeLureInteractable": true, "RangeHideInteractable": true,
 	}
 	var no_outline_ok := {}   # genuinely meshless zones — none today; add by exact name + justification
-	var chunks := ["wash_relay", "flora_garden", "stacks", "survival_range", "endo_junction_stretch"]
+	# EVERY chunk in the registry, not an allowlist — so a NEW chunk's interactables are enforced automatically
+	# and the outline/shift-reveal/queued-glow grammar can never be silently missed again (the recurring ask).
+	var chunks: Array = FragmentPreviewScript.CHUNK_SCENES.keys()
 	for cname in chunks:
 		var inst = await _instantiate_preview_chunk_and_wait(cname, 6)
 		if inst == null:
@@ -10676,7 +10682,10 @@ func _test_chunk_interactable_outlines() -> void:
 		var chunk = inst._active_chunk
 		var gs = inst.get("_game_state")
 		var items: Array = (chunk.get("_interactables") as Array) if chunk != null else []
-		_assert_true(items.size() > 0, "%s registers interactables (got %d)" % [cname, items.size()])
+		# A chunk with no interactables is fine (nothing to outline); the grammar applies only to those it has.
+		if items.is_empty():
+			await _dispose_scene(inst)
+			continue
 		var warped: bool = gs != null and gs.coord_map != null
 		for it in items:
 			if not is_instance_valid(it):
@@ -10684,7 +10693,10 @@ func _test_chunk_interactable_outlines() -> void:
 			var nm := str(it.name)
 			var t = it.get("interactable_type")
 			var click_gated: bool = t == Interactable.InteractableType.INSPECTION or t == Interactable.InteractableType.TIMED_ACTION
-			_assert_true(click_gated or proximity_ok.has(nm),
+			# Rest points (bed-down-where-you-stand) are the canonical proximity exception — allowlist them by
+			# prefix so any chunk's rest pad(s) are covered (a chunk may have several: dusk_run has west+east).
+			var rest_point: bool = nm.begins_with("RestInteractable")
+			_assert_true(click_gated or rest_point or proximity_ok.has(nm),
 				"%s/%s is click-gated (or allowlisted proximity) — type=%s" % [cname, nm, str(t)])
 			var tgt = it.get("_outline_target") if ("_outline_target" in it) else null
 			_assert_true(tgt != null or no_outline_ok.has(nm),
@@ -10693,6 +10705,21 @@ func _test_chunk_interactable_outlines() -> void:
 				var d: float = (tgt as Node3D).global_position.distance_to((it as Node3D).global_position)
 				_assert_true(d < 2.5,
 					"%s/%s outline target rides the helix warp onto the deck (dist %.2f, not flat off-deck)" % [cname, nm, d])
+		# The grammar must actually FIRE, not just have a target: hover the first click-gated interactable and
+		# assert its white outline hull lights (the auto-connected OutlineFeedbackManager path) — catches a chunk
+		# whose interactables are wired but not connected to the hover/glow grammar (the recurring ask).
+		for it2 in items:
+			var t2 = it2.get("interactable_type")
+			var cg: bool = t2 == Interactable.InteractableType.INSPECTION or t2 == Interactable.InteractableType.TIMED_ACTION
+			var tg2 = it2.get("_outline_target") if ("_outline_target" in it2) else null
+			if not cg or tg2 == null or not is_instance_valid(tg2) or not tg2.has_method("has_active_mesh_outline"):
+				continue
+			it2.emit_signal("outline_hovered", it2)
+			await get_tree().process_frame
+			_assert_true(bool(tg2.call("has_active_mesh_outline")),
+				"%s: hovering an interactable lights the white outline hull (grammar fires, not just wired)" % cname)
+			it2.emit_signal("outline_unhovered", it2)
+			break
 		await _dispose_scene(inst)
 
 # --- Test: the hover path preview matches the path a click actually commits (no preview lie) ---
@@ -12298,6 +12325,43 @@ func _test_channels_wash_intro() -> void:
 	await get_tree().process_frame
 
 # WINDOWED: eyeball the wash-intro room is LIT (not the black graybox) — top-down capture of the whole room.
+# The outline GRAMMAR actually FIRES on this chunk's interactables (not just that the target exists): hover ->
+# white hull, hold-SHIFT -> reveal, click -> the queued glow. Proves the common pattern works here, headless.
+func _test_channels_wash_intro_grammar() -> void:
+	_test_name = "Channels Wash Intro Outline Grammar"
+	var inst = await _instantiate_preview_chunk_and_wait("channels_wash_intro", 6)
+	if inst == null:
+		_assert_true(false, "instantiates"); return
+	var chunk = inst.find_child("Chunk_channels_wash_intro", true, false)
+	if chunk == null:
+		_assert_true(false, "chunk present"); inst.queue_free(); await get_tree().process_frame; return
+	var flure = null
+	for it in (chunk.get("_interactables") as Array):
+		if is_instance_valid(it) and str(it.name) == "Flure":
+			flure = it; break
+	_assert_true(flure != null, "the chunk has the Flure interactable")
+	if flure == null:
+		inst.queue_free(); await get_tree().process_frame; return
+	var tgt = flure.get("_outline_target")
+	_assert_true(tgt != null, "the Flure has an outline target (the grammar prerequisite)")
+	# HOVER -> the white outline hull (via the auto-connected OutlineFeedbackManager).
+	flure.emit_signal("outline_hovered", flure)
+	await get_tree().process_frame
+	_assert_true(bool(tgt.call("has_active_mesh_outline")), "hovering an interactable shows the white outline hull")
+	flure.emit_signal("outline_unhovered", flure)
+	await get_tree().process_frame
+	# HOLD-SHIFT reveal -> set_highlight shows the hull too.
+	flure.call("set_highlight", true)
+	_assert_true(bool(tgt.call("has_active_mesh_outline")), "hold-SHIFT reveal shows the interactable outline")
+	flure.call("set_highlight", false)
+	# CLICK (interaction_requested + outline_selected, the real right-click order) -> the queued GLOW.
+	flure.emit_signal("interaction_requested", flure, flure.global_position)
+	flure.emit_signal("outline_selected", flure)
+	await get_tree().process_frame
+	_assert_true(bool(tgt.call("is_selected_feedback_active")), "selecting it lights the queued glow (white -> glow)")
+	inst.queue_free()
+	await get_tree().process_frame
+
 func _test_channels_wash_intro_capture() -> void:
 	_test_name = "Channels Wash Intro Capture"
 	if DisplayServer.get_name() == "headless":
