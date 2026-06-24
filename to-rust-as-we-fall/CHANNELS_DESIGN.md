@@ -75,12 +75,16 @@ these isn't "polish-later," it's unfinished.
    (a bloomed cell is the only walkable read of a dark section; the TRACE window is the only safe
    cross), not a flavor toast. Test: if reverting an ability doesn't make the section unsolvable or
    strictly harder, it isn't load-bearing — fix it.
-3. **The geometry teaches on first approach, never gated behind failure.** The mechanic is legible
-   from the layout + binding icon on first sight; any line lands *as* the player attempts it (the
-   first held-override visibly calms the basin and re-surges the instant it's vacated — hold=calm,
-   release=surge, no text). The bridge overlook pre-teaches the whole stretch. Move the surge
-   preview to the FIRST encounter of each section *type*; the wash-counter line is character color
-   ("we run these"), never the rule.
+3. **The geometry teaches on first approach; explicit hand-holding is earned, not default.** The
+   *implicit* tell is always present from first sight — the flow-strip telegraph brightens before
+   every surge (now visible on the real GLB scene), the binding icon, the layout, the bridge
+   overlook pre-reading the whole stretch, and the first held-override visibly calming-then-
+   resurging (hold=calm, release=surge, no text). That implicit layer is the primary teacher and
+   is NEVER gated behind failure. The *explicit* spelled-out aid (the ghost flush-preview + Aster's
+   "time it here" line) is deliberately **earned** — it appears only after the party is washed
+   ~3× in the SAME section (a struggling-player escalation), so the tutorial isn't spammed up
+   front. Keep the explicit hint gated; never gate the implicit tell. (The wash-counter "we run
+   these" line is character color, not a rule.)
 4. **Escalate by degradation and new pressure, never by shrinking the window.** A later section is
    harder because a register decayed (Peris's flora read flickers/mis-marks; a bloom germinates
    slower or fails) or a NEW pressure stacks (a guard laid over a timing surge → solve WHEN-to-cross
