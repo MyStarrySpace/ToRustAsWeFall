@@ -31,33 +31,46 @@ territory), a self-contained room TEACHES the wash mechanic diegetically (GDD §
 scene) so the player meets the spiral already understanding it. Layout (from the design sketch),
 three bands:
 
-- **Top shelf:** the tools laid out — **caploage ×3** (a flora/forage item; role TBD, see opens),
-  the **flure** (the lure flower), and a **portal**.
+- **Top shelf:** the tools laid out — **Capbage ×3** (TIGHT-tier hide flora; GDD §7.9 — a
+  self-sealing leaf head a character steps into and is *fully undetectable* inside, one per
+  Capbage), the **flure** (the lure flower), and a **portal**.
 - **Middle:** **three channels (washes) side by side**, phased so **at least one is always
   flooding** (Channel 1 flooded, Channels 2–3 alternating) — you **cannot walk straight across**.
-- **Bottom:** a **portal** (left), **enemies** (they guard/block the crossing), and the exit
+- **Bottom:** a **portal** (left), **enemies** (they patrol/guard the crossing), and the exit
   **→ TO SPIRAL** (right).
 
-**The teaching solve:** activate the **flure** to **lure an enemy into the alternating channels**;
-the enemy is **washed (drowned)** crossing them; then **take the portal across** to the spiral.
+**The teaching solve:** **hide in a Capbage** to slip the patrolling enemy (tight-hide,
+undetectable), **activate the flure** to **lure that enemy into the alternating channels**; it's
+**washed (drowned)** crossing them; then **take the portal across** to the spiral.
 
-**What it teaches, before any of it can kill the player, all in one room:**
-1. **The wash** — timed water, alternating, lethal (you learn it by watching the enemy die in it,
+**What it teaches, before any of it can kill the player, all in one room — the channels' whole
+stealth+wash vocabulary:**
+1. **Hiding** — the Capbage tight-hide (the hide verb, on Peris's flora; ties to the spiral's hide
+   alcoves later).
+2. **The flure** — lure an enemy where you want it.
+3. **The wash** — timed water, alternating, lethal (you learn it by watching the enemy die in it,
    not by dying yourself).
-2. **The flure** — lure an enemy where you want it (the channels' core stealth verb).
-3. **Wash kills enemies** — the drain-loop drown, planted here first as the lesson.
-4. **Portal traversal** — cross a wash barrier you cannot walk.
+4. **Wash kills enemies** — the drain-loop drown, planted here first as the lesson.
+5. **Portal traversal** — cross a wash barrier you cannot walk.
 
-**Reuses / new:** the flure reuses `lure_relay`'s lure mechanic; the lure-into-wash drown reuses
-the drain-loop's `_drown`/`take_damage` path; it sits in the existing **Endo's Junction** region
-(`endo_junction_stretch`, `next_slot: act1_channels_first_spiral`). NEW: the "three adjacent
-channels, ≥1 always on" tutorial layout; a **portal traversal** mechanic (step in → cross; today
-only the warp-in VFX exists, not a player teleport); and the **caploage** item.
+**Reuses / new:** the Capbage is a flora `CONCEAL_FULL` tight hide (reuses the existing
+concealment system + the spiral's hide-alcove model); the flure reuses `lure_relay`'s lure; the
+lure-into-wash drown reuses the drain-loop's `_drown`/`take_damage` path; it sits in the existing
+**Endo's Junction** region (`endo_junction_stretch`, `next_slot: act1_channels_first_spiral`). NEW:
+the "three adjacent channels, ≥1 always on" tutorial layout; a **portal traversal** mechanic
+(step in → cross; today only the warp-in VFX exists, not a player teleport); and a Capbage as a
+placeable/standing tight-hide prop here.
 
-**Open questions for this room:** (a) what is *caploage ×3* — a forage/flora resource, the flure's
-fuel, or something the portal needs? (b) is the portal a free teleport, or does clearing the enemy
-(or planting caploage) power/unlock it? (c) does this live as the final beat of the existing
-junction chunk, or its own small `channels_wash_intro` chunk between the junction and the spiral?
+**Capbage group-interaction (general Capbage behavior, taught here with the 3-pack):** with
+multiple members selected, clicking a *group* of Capbages **assigns one member per Capbage** (a
+one-to-one hide). If there are MORE selected members than Capbages, the **closest** members get
+the hides and the rest don't fit (one character per Capbage; rare larger specimens fit two — GDD
+§7.9). This rides the existing party-assignment machinery (the `_assign_party_cells` distinct-cell
+outward-ring spread used for party moves), just targeting Capbage slots instead of free cells.
+
+**Open questions for this room:** (a) is the portal a free teleport, or does clearing the enemy
+power/unlock it? (b) does this live as the final beat of the existing junction chunk, or its own
+small `channels_wash_intro` chunk between the junction and the spiral?
 
 ## Failure & recovery (the core loop)
 

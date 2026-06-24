@@ -48,6 +48,10 @@ kitbash-tool/
 # Kept on disk outside the game folder, out of version control.
 reference-images/
 
+# Canonical design docs (GDD, taxonomies) copied in for reference — consult before adding/naming
+# game content (see .claude/CLAUDE.md). Large/source; mirror of the Downloads originals, untracked.
+reference-docs/
+
 # Generated reports + run artifacts
 to-rust-as-we-fall/reports/
 
