@@ -6,11 +6,15 @@ this doc as the target the chunk should grow toward.
 
 ## Spatial structure (nested)
 
-- **Stretch** — the whole channels level, bookended by **two shelters** (a start shelter and
-  an end shelter). You descend the spiral from one to the other.
+- **Stretch** — the whole channels level, bookended by **two shelters**: the **START shelter at
+  the BOTTOM of the spiral**, and the **END shelter at the TOP** (just below the bridge you enter
+  from). You **ASCEND** the spiral, climbing against the downward flow — a wash carries you back
+  DOWN to the bottom start shelter.
 - **Entry** — you arrive on a **bridge atop the spiral**, where you can see the WHOLE stretch
-  at a glance: every plant, every terminal, the layout of the descent. This vantage is the
-  in-fiction reason **Peris knows the plants' positions later** (she read them from the bridge).
+  laid out below at a glance: every plant, every terminal, the whole climb. Then you drop in and
+  the climb begins from the bottom. That overlook is the in-fiction reason **Peris knows the
+  plants' positions later** — she read them from the bridge, so they stay marked in her flora
+  overlay even where the party can't currently see them (see "Perception in the channels").
 - **Chunk** — the stretch is divided into chunks. A chunk is the span from the previous chunk
   down to **the thing that connects it back to the stretch start** — a **sloperope** or a
   **terminal**. That connect-back device is the chunk's "checkpoint": a washed member uses it to
