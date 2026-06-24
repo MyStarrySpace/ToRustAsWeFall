@@ -130,7 +130,6 @@ var _cadence_t0 := 0.0              # scheduler tick the hazard cadence was (re)
 									# self-consistent (the real onset and the predicted onset agree)
 
 var _phase := "ready"
-var _override_locked := []         # per section — an override has been pressed (latched)
 var _flooding := []                # cosmetic surge window
 var _flood_counts := []            # per section — how many surges have fired (cadence variety / tests)
 var _plate_held := []              # per section — all the section's plates are held this frame
@@ -973,11 +972,12 @@ func _set_flood_off(i: int) -> void:
 		_set_sluice(i, false)               # the gate lifts — the threshold opens again
 
 func _section_disabled(i: int) -> bool:
-	if bool(_override_locked[i]):
-		return true
 	var dis := str(SECTIONS[i]["disable"])
-	if dis == "plate" or dis == "double_plate":
-		return _plate_held[i]               # double_plate: _plate_held is true only when BOTH pads are held
+	# plate / double_plate / override are all HELD controls: disabled only WHILE a member stands on the
+	# plate(s) / the override console. Vacate and the flow resumes — no permanent latch (principle #5). The
+	# held state is refreshed positionally in _update; double_plate needs BOTH pads, override needs the console.
+	if dis == "plate" or dis == "double_plate" or dis == "override":
+		return _plate_held[i]
 	return false
 
 # The sluice gate is a real movement BLOCKER: while closed, its threshold cells are non-walkable, so
@@ -1366,12 +1366,11 @@ func _update_pipe_splashes(delta: float) -> void:
 # --- Interactions ---
 
 func _on_override(i: int) -> void:
-	if i < 0 or i >= _override_locked.size():
+	# The override is a HELD console — the hold is positional (refreshed in _update like a plate), so arriving
+	# only confirms the member is manning the station. Step off and the flow resumes (no permanent latch).
+	if i < 0 or i >= SECTIONS.size():
 		return
-	_override_locked[i] = true
-	_set_flood_off(i)
-	_set_strip(i, 0.15)
-	_say("// SECTION %d FLOW // OVERRIDE ENGAGED" % (i + 1))
+	_say("// SECTION %d FLOW // HOLD THE OVERRIDE" % (i + 1))
 
 func _recover_washed() -> int:
 	var n := _washed.size()
@@ -1415,8 +1414,13 @@ func headless_process(delta: float) -> void:
 # The pad footprint(s) a section needs HELD to disable it. A plain plate has one; a double_plate has two
 # (at ±DOUBLE_PLATE_Z), so two members must stay while the third crosses.
 func _plate_footprints(i: int) -> Array:
+	var dis := str(SECTIONS[i]["disable"])
+	# The override console sits PAST the section (x1+1.5): one member times a solo cross of the flooding section
+	# to reach it, then HOLDS it open for the others — the activator is exposed/committed, the role inheritable.
+	if dis == "override":
+		return [Vector2(float(SECTIONS[i]["x1"]) + 1.5, 0.0)]
 	var px := float(SECTIONS[i]["x0"]) - 1.2
-	if str(SECTIONS[i]["disable"]) == "double_plate":
+	if dis == "double_plate":
 		return [Vector2(px, -DOUBLE_PLATE_Z), Vector2(px, DOUBLE_PLATE_Z)]
 	return [Vector2(px, 0.0)]
 
@@ -1453,7 +1457,7 @@ func _update(delta := 0.0) -> void:
 	# refresh plate-held state — a section is held only when EVERY one of its pads has a member on it
 	for i in range(SECTIONS.size()):
 		var dis := str(SECTIONS[i]["disable"])
-		if dis != "plate" and dis != "double_plate":
+		if dis != "plate" and dis != "double_plate" and dis != "override":
 			continue
 		var all_held := true
 		for fp in _plate_footprints(i):
@@ -1722,9 +1726,9 @@ func reset_preview_state() -> void:
 	# before the re-snap below assumes every guard still exists.
 	_respawn_missing_enemies()
 	_phase = "ready"
-	_override_locked = []; _flooding = []; _plate_held = []; _sluice_blocked = []; _flood_counts = []; _section_wash_counts = []
+	_flooding = []; _plate_held = []; _sluice_blocked = []; _flood_counts = []; _section_wash_counts = []
 	for i in range(n):
-		_override_locked.append(false); _flooding.append(false); _plate_held.append(false); _sluice_blocked.append(false); _flood_counts.append(0); _section_wash_counts.append(0)
+		_flooding.append(false); _plate_held.append(false); _sluice_blocked.append(false); _flood_counts.append(0); _section_wash_counts.append(0)
 	# Pipe-mouth splashes back to rest (no lead-in showing).
 	for i in range(_splash_intensity.size()):
 		_splash_intensity[i] = 0.0
@@ -1816,7 +1820,8 @@ func get_preview_state() -> Dictionary:
 		secs.append({"type": SECTIONS[i]["type"], "disable": SECTIONS[i]["disable"],
 			"x0": float(SECTIONS[i]["x0"]), "x1": float(SECTIONS[i]["x1"]),   # footprint along the spiral (s)
 			"flooding": _flooding[i] if i < _flooding.size() else false,
-			"disabled": _section_disabled(i), "overridden": _override_locked[i] if i < _override_locked.size() else false,
+			"disabled": _section_disabled(i),
+			"overridden": (i < _plate_held.size() and str(SECTIONS[i]["disable"]) == "override" and bool(_plate_held[i])),
 			"plate_held": _plate_held[i] if i < _plate_held.size() else false,
 			"sluice_blocked": _sluice_blocked[i] if i < _sluice_blocked.size() else false,
 			"period": _period(i), "dur": _dur(i), "flood_count": _flood_counts[i] if i < _flood_counts.size() else 0,

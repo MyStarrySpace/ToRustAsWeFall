@@ -368,6 +368,9 @@ func _ready() -> void:
 			"--test-wash-relay-strand":
 				ran_test = true
 				await _test_wash_relay_strand_recover()
+			"--test-wash-relay-held-override":
+				ran_test = true
+				await _test_wash_relay_held_override()
 			"--test-wash-relay-no-hang":
 				ran_test = true
 				await _test_wash_relay_no_hang()
@@ -1017,6 +1020,7 @@ func _run_all_tests() -> void:
 	await _test_wash_relay_queued_glow()
 	await _test_wash_relay_telegraph_visible()
 	await _test_wash_relay_strand_recover()
+	await _test_wash_relay_held_override()
 	await _test_wash_relay_no_hang()
 	await _test_wash_relay_menu_load()
 	await _test_wash_relay_hover_sweep()
@@ -12173,6 +12177,47 @@ func _test_wash_relay_strand_recover() -> void:
 		"the Terminal telephones the stranded crew up — no one left stranded")
 	var aster_x: float = chunk.call("_get_character_position", "aster").x
 	_assert_true(aster_x > 60.0, "the rescued member rejoins the party up at the chunk end (x=%.1f)" % aster_x)
+	inst.queue_free()
+	await get_tree().process_frame
+
+# Held override (principle #5 / critique #1): a flow override is a HELD console, not a one-shot permanent latch.
+# A member standing on the console (past the section) holds the flow open for the others; vacating it RE-FLOODS.
+# That's what makes the activator exposed + committed and the role inheritable on a wash.
+func _test_wash_relay_held_override() -> void:
+	_test_name = "Wash Relay Held Override"
+	var inst = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	if inst == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	for i in range(4):
+		await get_tree().process_frame
+	var chunk = inst.find_child("Chunk_wash_relay", true, false)
+	if chunk == null:
+		_assert_true(false, "chunk present"); inst.queue_free(); await get_tree().process_frame; return
+	var secs: Array = chunk.get_preview_state().get("sections", [])
+	var ov_i := -1
+	for i in range(secs.size()):
+		if str((secs[i] as Dictionary).get("disable", "")) == "override":
+			ov_i = i; break
+	_assert_true(ov_i >= 0, "the chunk has an override section")
+	if ov_i < 0:
+		inst.queue_free(); await get_tree().process_frame; return
+	var console_x: float = float((secs[ov_i] as Dictionary).get("x1", 0)) + 1.5
+	# Park everyone away — nobody holds the console, so the override section is NOT disabled (it floods).
+	for cid in ["aster", "peris", "endo"]:
+		chunk.call("_set_character_position", cid, Vector3(2.0, 0.5, 0.0))
+	chunk.call("_update", 0.0)
+	_assert_true(not bool(chunk.call("_section_disabled", ov_i)),
+		"the override section floods until someone holds the console")
+	# Stand a member ON the console -> flow HELD.
+	chunk.call("_set_character_position", "endo", Vector3(console_x, 0.5, 0.0))
+	chunk.call("_update", 0.0)
+	_assert_true(bool(chunk.call("_section_disabled", ov_i)),
+		"standing on the override console HOLDS the flow open (held, not a one-shot latch)")
+	# Vacate -> the flow RESUMES (the whole point: not a permanent latch).
+	chunk.call("_set_character_position", "endo", Vector3(2.0, 0.5, 0.0))
+	chunk.call("_update", 0.0)
+	_assert_true(not bool(chunk.call("_section_disabled", ov_i)),
+		"vacating the console RE-FLOODS the section (no permanent latch)")
 	inst.queue_free()
 	await get_tree().process_frame
 
