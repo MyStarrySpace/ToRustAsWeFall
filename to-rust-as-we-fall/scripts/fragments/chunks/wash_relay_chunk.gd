@@ -1039,9 +1039,12 @@ func _wash_character(char_id: String) -> void:
 	var pre_render := pre_flat
 	if gs != null and gs.characters.has(char_id):
 		pre_render = gs.get_render_position(char_id)
-	# The flood carries you all the way DOWN the spiral to the start shelter at the bottom — water flows down,
-	# so a wash washes you down. Mobile again on arrival (re-climb the gauntlet). _sweep_count tracks how rough.
+	# The flood carries you all the way DOWN the spiral to the start shelter, where the member is STRANDED until
+	# the party recovers them — telephone up (Terminal) or climb (sloperope) back to rejoin at the chunk end (see
+	# CHANNELS_DESIGN.md). Recording them in _washed is what gives the recovery devices + Endo's BRACE a real job:
+	# a stranded member doesn't count toward plates, can be refunded by BRACE, and is what the Terminal calls up.
 	_set_character_position(char_id, START_POS)
+	_washed[char_id] = true
 	# COSMETIC ONLY: the current visibly carries you down the helix (a surge + a colour streak that follows the
 	# curve to the start, then a splash). The body already snapped above — this is just the eye-candy.
 	_play_sweep_animation(char_id, pre_render, pre_flat.x)
@@ -1441,6 +1444,12 @@ func _update(delta := 0.0) -> void:
 	_ensure_scheduled()
 	_debug_log_positions()
 	_update_pipe_splashes(delta)
+	# A stranded member who has rejoined the party up at the chunk end (recovered by a device, or who climbed all
+	# the way back up) is no longer stranded — clear them so plates/BRACE stop treating them as down. (Iterating
+	# .keys() returns a copy, so erasing mid-loop is safe.)
+	for id in _washed.keys():
+		if _get_character_position(id).x >= RETURN_LANDING.x - 2.0:
+			_washed.erase(id)
 	# refresh plate-held state — a section is held only when EVERY one of its pads has a member on it
 	for i in range(SECTIONS.size()):
 		var dis := str(SECTIONS[i]["disable"])

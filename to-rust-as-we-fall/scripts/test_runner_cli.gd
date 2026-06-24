@@ -365,6 +365,9 @@ func _ready() -> void:
 			"--test-wash-relay-telegraph":
 				ran_test = true
 				await _test_wash_relay_telegraph_visible()
+			"--test-wash-relay-strand":
+				ran_test = true
+				await _test_wash_relay_strand_recover()
 			"--test-wash-relay-no-hang":
 				ran_test = true
 				await _test_wash_relay_no_hang()
@@ -1013,6 +1016,7 @@ func _run_all_tests() -> void:
 	await _test_wash_relay_playthrough()
 	await _test_wash_relay_queued_glow()
 	await _test_wash_relay_telegraph_visible()
+	await _test_wash_relay_strand_recover()
 	await _test_wash_relay_no_hang()
 	await _test_wash_relay_menu_load()
 	await _test_wash_relay_hover_sweep()
@@ -12043,32 +12047,48 @@ func _test_wash_relay_flood_visual() -> void:
 	instance.queue_free()
 	await get_tree().process_frame
 
-## Checkpoint-wash (tense-but-fair): a wash sweeps the member to the gap BEFORE the section (lose ONE section,
-## not the whole run) and leaves them MOBILE — never stranded, never reset to the start. Checks several
-## sections so the per-section checkpoint math is right end to end.
+## Wash + strand + recover (per CHANNELS_DESIGN.md): a wash sweeps the member DOWN to the start of the stretch
+## and STRANDS them there; the party recovers them via a device (Terminal / sloperope) to rejoin at the chunk
+## end. A stranded member is skipped by further washes until recovered, so the loop is wash -> strand -> recover.
 func _test_wash_relay_checkpoint() -> void:
-	_test_name = "Wash Relay Wash To Bottom"
+	_test_name = "Wash Relay Wash And Strand"
 	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
 	if instance == null:
 		_assert_true(false, "wash_relay instantiates"); return
 	var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
 	if chunk == null:
 		_assert_true(false, "chunk present"); instance.queue_free(); await get_tree().process_frame; return
-	# (section index, an x inside its footprint): jet[22,27], patrol[46,53], basin[64,71].
+	# (section index, an x inside its footprint): jet[22,27], patrol[46,53], basin[64,71]. Recover between each,
+	# since a stranded member can't be re-washed until they're back in play.
 	var cases := [{"sec": 2, "x": 24.0}, {"sec": 5, "x": 49.0}, {"sec": 7, "x": 67.0}]
+	var sweep := 0
 	for c in cases:
 		chunk.call("_set_character_position", "endo", Vector3(float(c["x"]), 0.5, 0.0))
-		var before := int(chunk.get_preview_state().get("sweep_count", 0))
 		chunk.call("_wash_section", int(c["sec"]))   # force the flood on that section
 		await get_tree().process_frame
-		var ax: float = chunk.call("_get_character_position", "endo").x
-		_assert_equals(int(chunk.get_preview_state().get("sweep_count", 0)), before + 1,
+		sweep += 1
+		_assert_equals(int(chunk.get_preview_state().get("sweep_count", 0)), sweep,
 			"a wash at section %d counts one sweep" % int(c["sec"]))
-		_assert_true(ax < 5.0,
-			"section %d wash carries you DOWN to the start at the bottom of the spiral (x=%.1f)" % [int(c["sec"]), ax])
-	# A swept member is mobile, never stranded — the legacy washed set stays empty.
-	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0,
-		"a swept member is mobile (not stranded) — washed_count stays 0")
+		_assert_true(chunk.call("_get_character_position", "endo").x < 5.0,
+			"section %d wash carries the member DOWN to the start of the stretch" % int(c["sec"]))
+		_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 1,
+			"the swept member is STRANDED at the start (washed_count=1) until the party recovers them")
+		chunk.call("_on_terminal")   # the party telephones the stranded crew up
+		await get_tree().process_frame
+		_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0,
+			"the Terminal rescues the stranded member (washed_count back to 0)")
+		_assert_true(chunk.call("_get_character_position", "endo").x > 60.0,
+			"the rescued member rejoins the party up at the chunk end")
+	# A stranded member is SKIPPED by a fresh wash (no double-strand): strand once, then a re-flood does nothing.
+	chunk.call("_set_character_position", "endo", Vector3(24.0, 0.5, 0.0))
+	chunk.call("_wash_section", 2)
+	await get_tree().process_frame
+	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 1, "stranded again after a fresh wash")
+	var sweep_after := int(chunk.get_preview_state().get("sweep_count", 0))
+	chunk.call("_wash_section", 2)   # endo is now at the start (stranded), not in section 2 -> no new wash
+	await get_tree().process_frame
+	_assert_equals(int(chunk.get_preview_state().get("sweep_count", 0)), sweep_after,
+		"a stranded member isn't re-washed (no double-strand)")
 	instance.queue_free()
 	await get_tree().process_frame
 
@@ -12123,6 +12143,39 @@ func _wash_shepherd(instance: Node, chunk: Node, gs, ids: Array, target_x: float
 ## and prints the numbers — a balance bug the dumb "keep walking forward" loop could never catch.
 # The surge TELEGRAPH (the flow strip that brightens a beat before a section floods) must survive the real GLB
 # environment. It was a flat direct-child box, so hide_flat_graybox() — which runs when channels.glb loads —
+# Strand-and-rescue (per CHANNELS_DESIGN.md): a washed member is STRANDED at the start (not silently teleported
+# mobile), so the recovery devices (Terminal/sloperope) and Endo's BRACE refund have a real job. These were DEAD
+# CODE — they read a `_washed` set that was never populated. Drive a wash and assert: the member is stranded
+# (washed_count rises), BRACE refunds the stranded member, and the Terminal rejoins them at the chunk end.
+func _test_wash_relay_strand_recover() -> void:
+	_test_name = "Wash Relay Strand Recover"
+	var inst = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	if inst == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	for i in range(4):
+		await get_tree().process_frame
+	var chunk = inst.find_child("Chunk_wash_relay", true, false)
+	var gs = inst.get("_game_state")
+	if chunk == null or gs == null:
+		_assert_true(false, "chunk + game state present"); inst.queue_free(); await get_tree().process_frame; return
+	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0, "nobody stranded at the start")
+	# Wash a member — they should be STRANDED (recorded), not just teleported.
+	chunk.call("_wash_character", "aster")
+	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 1,
+		"a washed member is STRANDED (recorded in the recovery set), not silently teleported")
+	# BRACE now has a real job: it refunds the stranded member's stamina.
+	var brace: Dictionary = chunk.call("_ability_brace")
+	_assert_true(brace.has("characters") and (brace["characters"] as Dictionary).has("aster"),
+		"Endo's BRACE refunds the stranded member (was dead — _washed never populated)")
+	# The Terminal rescues: the stranded member rejoins the party at the chunk end and is no longer stranded.
+	chunk.call("_on_terminal")
+	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0,
+		"the Terminal telephones the stranded crew up — no one left stranded")
+	var aster_x: float = chunk.call("_get_character_position", "aster").x
+	_assert_true(aster_x > 60.0, "the rescued member rejoins the party up at the chunk end (x=%.1f)" % aster_x)
+	inst.queue_free()
+	await get_tree().process_frame
+
 # HID it (and it sat off the helix anyway), leaving the player no "about-to-flood" tell without TRACE. This drives
 # the REAL environment path (coord_map installed => hide_flat_graybox ran) and asserts every strip is still
 # visible AND rides the helix (co-located with the warped section water). Structurally uncatchable by graybox tests.
