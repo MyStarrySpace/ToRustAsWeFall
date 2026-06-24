@@ -371,6 +371,9 @@ func _ready() -> void:
 			"--test-wash-relay-held-override":
 				ran_test = true
 				await _test_wash_relay_held_override()
+			"--test-channels-wash-intro":
+				ran_test = true
+				await _test_channels_wash_intro()
 			"--test-wash-relay-no-hang":
 				ran_test = true
 				await _test_wash_relay_no_hang()
@@ -1021,6 +1024,7 @@ func _run_all_tests() -> void:
 	await _test_wash_relay_telegraph_visible()
 	await _test_wash_relay_strand_recover()
 	await _test_wash_relay_held_override()
+	await _test_channels_wash_intro()
 	await _test_wash_relay_no_hang()
 	await _test_wash_relay_menu_load()
 	await _test_wash_relay_hover_sweep()
@@ -12218,6 +12222,52 @@ func _test_wash_relay_held_override() -> void:
 	chunk.call("_update", 0.0)
 	_assert_true(not bool(chunk.call("_section_disabled", ov_i)),
 		"vacating the console RE-FLOODS the section (no permanent latch)")
+	inst.queue_free()
+	await get_tree().process_frame
+
+# The channels WASH-INTRO (Endo's Junction teacher, CHANNELS_DESIGN.md): three channels phased so ≥1 always
+# floods; the FLURE (attract range > the enemies' player-sense range) pulls the hunters across the channels where
+# they DROWN; then a free PORTAL crosses to the exit. Proves the room is beatable via the intended solve, the
+# always-flooding invariant, and the flure>player range asymmetry the design hinges on.
+func _test_channels_wash_intro() -> void:
+	_test_name = "Channels Wash Intro"
+	var inst = await _instantiate_preview_chunk_and_wait("channels_wash_intro", 6)
+	if inst == null:
+		_assert_true(false, "channels_wash_intro instantiates"); return
+	var chunk = inst.find_child("Chunk_channels_wash_intro", true, false)
+	var gs = inst.get("_game_state")
+	if chunk == null or gs == null:
+		_assert_true(false, "chunk + game state present"); inst.queue_free(); await get_tree().process_frame; return
+	inst.headless_advance(0.1)   # phase -> active, channel cadence scheduled
+	var st0: Dictionary = chunk.get_preview_state()
+	_assert_true(float(st0.get("flure_attract_range", 0)) > float(st0.get("player_sense_range", 1e9)),
+		"the flure's attract range exceeds the enemies' player-sense range (flure=%.0f player=%.0f)" % [float(st0.get("flure_attract_range", 0)), float(st0.get("player_sense_range", 0))])
+	_assert_equals(int(st0.get("enemies_alive", -1)), 2, "two hunters guard the crossing")
+	# At least one channel is always flooding (sample across more than a full period) — no straight walk.
+	var always := true
+	for k in range(40):
+		inst.headless_advance(0.1)
+		if not bool(chunk.get_preview_state().get("any_channel_flooding", false)):
+			always = false
+	_assert_true(always, "at least one of the three channels is always flooding")
+	# SOLVE: light the flure -> the hunters cross the channels toward it and drown.
+	_assert_true(bool(chunk.call("activate_flure")), "lighting the flure pulls the hunters toward it")
+	var t := 0.0
+	while t < 14.0 and int(chunk.get_preview_state().get("enemies_alive", 2)) > 0:
+		inst.headless_advance(0.2); await get_tree().process_frame; t += 0.2
+	_assert_equals(int(chunk.get_preview_state().get("enemies_alive", -1)), 0,
+		"the lured hunters drown crossing the channels (drowned=%d)" % int(chunk.get_preview_state().get("drowned", 0)))
+	# PORTAL: stepping on the near pad teleports a member across the channels (free crossing).
+	chunk.call("_set_character_position", "endo", chunk.get_preview_anchors().get("portal_in"))
+	inst.headless_advance(0.1)
+	var portal_out: Vector3 = chunk.get_preview_anchors().get("portal_out")
+	_assert_true(chunk.call("_get_character_position", "endo").x > portal_out.x - 2.0,
+		"the portal teleports the member across to the far bank")
+	# Reach the exit -> complete.
+	chunk.call("_set_character_position", "endo", chunk.get_preview_anchors().get("exit"))
+	inst.headless_advance(0.1)
+	_assert_equals(str(chunk.get_preview_state().get("phase", "")), "complete",
+		"clearing the hunters + crossing via the portal completes the wash intro")
 	inst.queue_free()
 	await get_tree().process_frame
 

@@ -13,6 +13,7 @@ const SURVIVAL_RANGE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/survi
 const ENDO_JUNCTION_STRETCH_CHUNK_SCENE := preload("res://scenes/fragments/chunks/endo_junction_stretch_chunk.tscn")
 const GENERATED_STRETCH_CHUNK_SCENE := preload("res://scenes/fragments/chunks/generated_stretch_chunk.tscn")
 const REFUGE_RUN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/refuge_run_chunk.tscn")
+const CHANNELS_WASH_INTRO_CHUNK_SCENE := preload("res://scenes/fragments/chunks/channels_wash_intro_chunk.tscn")
 const PUSH_LAB_CHUNK_SCENE := preload("res://scenes/fragments/chunks/push_lab_chunk.tscn")
 const REST_LAB_CHUNK_SCENE := preload("res://scenes/fragments/chunks/rest_lab_chunk.tscn")
 const FLORA_GARDEN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/flora_garden_chunk.tscn")
@@ -32,6 +33,7 @@ const CHUNK_SCENES := {
 	"endo_junction_stretch": ENDO_JUNCTION_STRETCH_CHUNK_SCENE,
 	"generated_stretch": GENERATED_STRETCH_CHUNK_SCENE,
 	"refuge_run": REFUGE_RUN_CHUNK_SCENE,
+	"channels_wash_intro": CHANNELS_WASH_INTRO_CHUNK_SCENE,
 	"lure_relay": LURE_RELAY_CHUNK_SCENE,
 	"push_lab": PUSH_LAB_CHUNK_SCENE,
 	"rest_lab": REST_LAB_CHUNK_SCENE,
@@ -66,6 +68,7 @@ const PREVIEW_ENTRIES := [
 		"config": {"spec_path": "res://data/generated_stretches/generated_random_walk_poc_shelter_3_to_4.json"}},
 	{"id": "survival_range", "chunk": "survival_range", "title": "Shelter-To-Shelter Range", "stage": 4},
 	{"id": "refuge_run", "chunk": "refuge_run", "title": "Refuge Run", "stage": 4},
+	{"id": "channels_wash_intro", "chunk": "channels_wash_intro", "title": "Channels — Wash Intro", "stage": 1},
 	{"id": "wash_relay", "chunk": "wash_relay", "title": "Wash Relay", "stage": 5},
 	{"id": "generated_diagnosis_setpiece", "chunk": "generated_stretch", "title": "Generated Diagnosis Setpiece", "stage": 6,
 		"config": {"spec_path": "res://data/generated_stretches/generated_diagnosis_setpiece_shelter_5_to_6.json"}},
