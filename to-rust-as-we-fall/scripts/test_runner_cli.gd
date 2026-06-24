@@ -362,6 +362,9 @@ func _ready() -> void:
 			"--test-wash-relay-queued-glow":
 				ran_test = true
 				await _test_wash_relay_queued_glow()
+			"--test-wash-relay-telegraph":
+				ran_test = true
+				await _test_wash_relay_telegraph_visible()
 			"--test-wash-relay-no-hang":
 				ran_test = true
 				await _test_wash_relay_no_hang()
@@ -1009,6 +1012,7 @@ func _run_all_tests() -> void:
 	await _test_wash_relay_trace_cadence()
 	await _test_wash_relay_playthrough()
 	await _test_wash_relay_queued_glow()
+	await _test_wash_relay_telegraph_visible()
 	await _test_wash_relay_no_hang()
 	await _test_wash_relay_menu_load()
 	await _test_wash_relay_hover_sweep()
@@ -12117,6 +12121,47 @@ func _wash_shepherd(instance: Node, chunk: Node, gs, ids: Array, target_x: float
 ## is a full restart, so the ONLY way through is to read the water and time it (and RUN: the fast 'current'
 ## beat is uncrossable at a walk). If a section's safe window is too short to clear even at a RUN, this STALLS
 ## and prints the numbers — a balance bug the dumb "keep walking forward" loop could never catch.
+# The surge TELEGRAPH (the flow strip that brightens a beat before a section floods) must survive the real GLB
+# environment. It was a flat direct-child box, so hide_flat_graybox() — which runs when channels.glb loads —
+# HID it (and it sat off the helix anyway), leaving the player no "about-to-flood" tell without TRACE. This drives
+# the REAL environment path (coord_map installed => hide_flat_graybox ran) and asserts every strip is still
+# visible AND rides the helix (co-located with the warped section water). Structurally uncatchable by graybox tests.
+func _test_wash_relay_telegraph_visible() -> void:
+	_test_name = "Wash Relay Telegraph Visible"
+	var inst = await _instantiate_preview_chunk_and_wait("wash_relay", 8)
+	if inst == null:
+		_assert_true(false, "wash_relay instantiates"); return
+	for i in range(6):
+		await get_tree().process_frame
+	var chunk = inst.find_child("Chunk_wash_relay", true, false)
+	var gs = inst.get("_game_state")
+	if chunk == null or gs == null or gs.coord_map == null:
+		_assert_true(false, "wash_relay booted with the GLB (coord_map present => hide_flat_graybox ran)")
+		inst.queue_free(); await get_tree().process_frame; return
+	var strips: Array = chunk.get("_flow_strips")
+	var water: Array = chunk.get("_section_water")
+	_assert_true(strips.size() > 0 and strips.size() == water.size(), "one flow-strip telegraph per section")
+	var visible_count := 0
+	var on_helix := 0
+	for i in range(strips.size()):
+		var strip = strips[i]
+		if strip == null or not is_instance_valid(strip):
+			continue
+		if (strip as Node3D).is_visible_in_tree():
+			visible_count += 1
+		# The warped section water is the known-good on-helix reference: the strip must sit with it, not on the
+		# flat z=0 line. (Pre-fix the strip is at flat (cx,0.03,0), far from the warped water.)
+		var segs: Array = water[i]
+		if segs.size() > 0 and is_instance_valid(segs[0]):
+			if (strip as Node3D).global_position.distance_to((segs[0] as Node3D).global_position) < 3.0:
+				on_helix += 1
+	_assert_equals(visible_count, strips.size(),
+		"every surge telegraph survives hide_flat_graybox on the real GLB scene (%d/%d visible)" % [visible_count, strips.size()])
+	_assert_equals(on_helix, strips.size(),
+		"every telegraph rides the helix with its section water, not the flat line (%d/%d on-helix)" % [on_helix, strips.size()])
+	inst.queue_free()
+	await get_tree().process_frame
+
 # Outline grammar on the WARPED channels: a right-click queues the energy glow on a chunk interactable and the
 # SERVICING character walks to the object (glow until arrival). The bug: when a NON-SELF party member services
 # the interaction, the controller fed command_move_to_pos the WARPED world position (a FLAT-space API), so the

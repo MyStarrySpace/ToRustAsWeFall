@@ -142,6 +142,10 @@ var _run_hint_shown := false       # one-shot: after enough washes, a character 
 const FLUSH_HINT_THRESHOLD := 3    # the flush hint only appears once a SINGLE section has washed you this many times
 var _scheduled := false
 var _flow_strips: Array = []
+# The surge-telegraph strips ride the helix under their OWN Node3D root, so they survive hide_flat_graybox (which
+# hides the chunk's flat direct-child graybox) — the strip is the only "about-to-flood" tell without TRACE, and it
+# was vanishing the moment the real channels.glb loaded.
+var _strip_root: Node3D
 # Flood WATER layer — the in-game flood visual. Built WARPED onto the helix under a Node3D root so it SURVIVES
 # hide_flat_graybox (which only hides the chunk's direct-child graybox meshes), unlike the flat flow strips.
 # Shown per section while it floods, so the wash always has a visible cause (the surging water you got caught in).
@@ -217,6 +221,7 @@ func _build_chunk() -> void:
 	var px0: float = SECTIONS[0]["x0"]; var px1: float = SECTIONS[SECTIONS.size() - 1]["x1"]
 	_add_box(self, Vector3((px0 + px1) * 0.5, 4.4, FLOOR_Z_HALF - 0.4), Vector3(px1 - px0 + 2.0, 1.2, 1.2), Color(0.2, 0.19, 0.18))
 
+	_strip_root = Node3D.new(); _strip_root.name = "FlowStrips"; add_child(_strip_root)
 	for i in range(SECTIONS.size()):
 		var s: Dictionary = SECTIONS[i]
 		var t := str(s["type"]); var x0: float = s["x0"]; var x1: float = s["x1"]; var cx := (x0 + x1) * 0.5; var w := x1 - x0
@@ -252,12 +257,12 @@ func _build_chunk() -> void:
 				_add_box(self, Vector3(cx, 0.06, 0.0), Vector3(w, 0.12, 1.4), Color(0.12, 0.13, 0.16))                 # the bridge plank
 				for zz in [-DOUBLE_PLATE_Z, DOUBLE_PLATE_Z]:
 					_add_box(self, Vector3(x0 - 1.2, 0.04, zz), Vector3(1.0, 0.1, 1.6), Color(0.6, 0.4, 0.1))          # two pressure plates
-		# the active-flow indicator strip (pulses while flooding)
-		var strip := _add_box(self, Vector3(cx, 0.03, 0.0), Vector3(w, 0.06, FLOOR_Z_HALF * 1.7), _section_color(t))
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = _section_color(t) * 0.6; mat.emission_enabled = true
-		mat.emission = _section_color(t); mat.emission_energy_multiplier = 0.4
-		strip.material_override = mat
+		# The active-flow indicator strip — the surge TELEGRAPH (brightens a beat before a flood). Built WARPED
+		# onto the helix under _strip_root so it rides the deck AND survives hide_flat_graybox (it was a flat
+		# direct-child box before, so it both vanished and sat off the helix on the real channels.glb scene).
+		# _warped_box authors size as (lane-extent, height, s-extent) and gives a StandardMaterial3D _set_strip drives.
+		var strip := _warped_box(_strip_root, cx, 0.0, Vector3(FLOOR_Z_HALF * 1.7, 0.06, w),
+			_section_color(t) * 0.6, _section_color(t), 0.4, 0.03)
 		_flow_strips.append(strip)
 		# the disable control: an override console past the section, or a held plate before it
 		if str(s["disable"]) == "override":
