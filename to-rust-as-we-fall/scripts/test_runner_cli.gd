@@ -12533,6 +12533,29 @@ func _test_channels_wash_intro_hover_capture() -> void:
 			if _color_delta(ov_off.get_pixel(sx, sy), ov_on.get_pixel(sx, sy)) > 0.06:
 				ov_changed += 1
 	print("  [hover-capture] overlay-ON floor changed=%d (vs overlay-OFF %d) -> wrote vr_wash_overlay_on.png" % [ov_changed, changed])
+
+	# Phase D — REAL PICK probe for the hover outline. Everything above forced the outline directly; this drives
+	# the actual engine path the live cursor uses: a synthetic mouse MOTION over the flure's screen point, then
+	# checks whether the PHYSICS PICK alone lit its outline (mouse_entered -> outline). This is the one path the
+	# headless harness can't run; a windowed instance casts a real pick ray.
+	if flure != null:
+		var ftgt = flure.get("_outline_target")
+		# Clear any forced/lingering hover first so we measure the pick alone.
+		flure.call("set_hover_feedback", false)
+		if ftgt != null and ftgt.has_method("set_hover_feedback"):
+			ftgt.call("set_hover_feedback", false)
+		for i in range(3): await get_tree().process_frame
+		var before := (ftgt != null and bool(ftgt.call("has_active_mesh_outline")))
+		var fl_screen := cam.unproject_position(flure.global_position)
+		for i in range(8):
+			var mm := InputEventMouseMotion.new()
+			mm.position = fl_screen
+			mm.global_position = fl_screen
+			Input.parse_input_event(mm)
+			await get_tree().process_frame
+		var after := (ftgt != null and bool(ftgt.call("has_active_mesh_outline")))
+		print("  [hover-capture] REAL PICK over flure @%s: outline before=%s after=%s" % [str(fl_screen), str(before), str(after)])
+		_assert_true(after, "a real mouse hover over the flure lights its outline via the physics pick (the live hover-outline path)")
 	await _dispose_scene(inst)
 
 ## Sum of absolute per-channel RGB difference between two colours (Color has no distance_to).
