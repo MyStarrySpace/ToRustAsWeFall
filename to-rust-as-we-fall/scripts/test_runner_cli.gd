@@ -377,6 +377,12 @@ func _ready() -> void:
 			"--test-channels-wash-intro-grammar":
 				ran_test = true
 				await _test_channels_wash_intro_grammar()
+			"--test-channels-wash-intro-hover":
+				ran_test = true
+				await _test_channels_wash_intro_hover()
+			"--test-channels-wash-intro-hover-capture":
+				ran_test = true
+				await _test_channels_wash_intro_hover_capture()
 			"--test-channels-wash-intro-capture":
 				ran_test = true
 				await _test_channels_wash_intro_capture()
@@ -1032,6 +1038,7 @@ func _run_all_tests() -> void:
 	await _test_wash_relay_held_override()
 	await _test_channels_wash_intro()
 	await _test_channels_wash_intro_grammar()
+	await _test_channels_wash_intro_hover()
 	await _test_wash_relay_no_hang()
 	await _test_wash_relay_menu_load()
 	await _test_wash_relay_hover_sweep()
@@ -12361,6 +12368,187 @@ func _test_channels_wash_intro_grammar() -> void:
 	_assert_true(bool(tgt.call("is_selected_feedback_active")), "selecting it lights the queued glow (white -> glow)")
 	inst.queue_free()
 	await get_tree().process_frame
+
+## DIAGNOSTIC: drive the REAL hover path over the channels floor and report what the player's hover grid +
+## position preview actually do (the "weird square" + "previews aren't working" report). _update_hover_from_screen
+## is the same worker the live cursor poll feeds, so this exercises the in-game path headlessly (physics-picked
+## interactable hover is windowed-only and excluded here). Prints the raw numbers so the failure is legible.
+func _test_channels_wash_intro_hover() -> void:
+	_test_name = "Channels Wash Intro Hover/Preview"
+	var inst = await _instantiate_preview_chunk_and_wait("channels_wash_intro", 8)
+	if inst == null:
+		_assert_true(false, "channels_wash_intro instantiates"); return
+	var player = inst.get("_player")
+	var camera: Camera3D = inst.get("_camera")
+	var gs = inst.get("_game_state")
+	_assert_true(player != null, "the preview has an active player")
+	_assert_true(camera != null, "the preview has a camera")
+	_assert_true(gs != null, "the preview has a game state")
+	if player == null or camera == null or gs == null:
+		await _dispose_scene(inst); return
+	camera.make_current()
+	var cid := str(player.get("char_id"))
+	print("  [hover-diag] player char_id=%s  registered=%s  grid=%s" % [cid, str(gs.characters.has(cid)), str(gs.grid != null)])
+	_assert_true(cid != "" and gs.characters.has(cid), "the active player is a registered character (char_id=%s)" % cid)
+	_assert_true(gs.grid != null, "the chunk installed a data grid (needed by the hover grid + preview)")
+
+	var hover_grid: Node3D = player.get("_hover_grid")
+	_assert_true(hover_grid != null, "the player has a hover grid")
+	# Hover a clearly-walkable near-bank cell centre (origin -3 + cell+0.5 lands on x.5/z.5 centres).
+	var target := Vector3(4.5, 0.0, 0.5)
+	player._update_hover_from_screen(camera.unproject_position(target))
+	if hover_grid != null:
+		print("  [hover-diag] hover@(4.5,0,0.5) -> visible=%s pos=%s size=%s" % [
+			str(hover_grid.visible), str(hover_grid.global_position), str(hover_grid.size)])
+		_assert_true(hover_grid.visible, "hovering the near-bank floor reveals the hover grid")
+		_assert_true(absf(hover_grid.global_position.x - 4.5) < 0.6,
+			"hover grid snaps to the hovered cell X (got %.2f want ~4.5)" % hover_grid.global_position.x)
+		_assert_true(absf(hover_grid.global_position.z - 0.5) < 0.6,
+			"hover grid snaps to the hovered cell Z (got %.2f want ~0.5)" % hover_grid.global_position.z)
+		_assert_true(absf(hover_grid.global_position.y) < 0.7,
+			"hover grid sits on the floor surface, not lifted onto a box (y=%.2f)" % hover_grid.global_position.y)
+
+	# Position preview: the route the active player WOULD take to the hovered cell.
+	var hit := Vector3(4.5, 0.5, 0.5)
+	var preview_path: Array = gs.compute_preview_path(cid, hit)
+	print("  [hover-diag] compute_preview_path(%s, %s) -> %d points: %s" % [cid, str(hit), preview_path.size(), str(preview_path)])
+	_assert_true(preview_path.size() >= 2,
+		"the position preview computes a route to the hovered cell (got %d points)" % preview_path.size())
+	await _dispose_scene(inst)
+
+## WINDOWED: the data layer for hover/preview is correct (see _test_channels_wash_intro_hover), so the reported
+## bugs ("weird square", previews not drawing, no hover outline) live in RENDERING. Shoot the live preview camera
+## (the same view the player sees) with hover OFF then ON, so the eyeball diff isolates which element is wrong.
+func _test_channels_wash_intro_hover_capture() -> void:
+	_test_name = "Channels Wash Intro Hover Capture"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (needs a display)"); return
+	var inst = await _instantiate_preview_chunk_and_wait("channels_wash_intro", 8)
+	if inst == null:
+		_assert_true(false, "instantiates"); return
+	for i in range(40):
+		await get_tree().process_frame
+	var player = inst.get("_player")
+	var cam: Camera3D = get_tree().root.get_viewport().get_camera_3d()
+	var chunk = inst.find_child("Chunk_channels_wash_intro", true, false)
+	if player == null or cam == null:
+		_assert_true(false, "needs player + camera"); await _dispose_scene(inst); return
+	player.set("_click_mode", "move")
+	# Turn the perception overlay OFF at the SOURCE (just hiding the quad doesn't stick — _sync_overlay_stack
+	# re-shows it every _process while the lens state is enabled). This is the key isolation: if the hover grid /
+	# ribbon / outline appear with the overlay off but vanish with it on, the overlay is washing them out.
+	if inst.has_method("headless_set_overlay_state"):
+		for ov in ["aster", "peris", "endo"]:
+			inst.call("headless_set_overlay_state", ov, false)
+	# Force the Flure's hover outline ON directly (bypasses the physics pick, which is windowed+live-mouse only),
+	# so the capture shows whether the OUTLINE renders at all — separating a render bug from a pick bug.
+	var flure = null
+	if chunk != null:
+		for it in (chunk.get("_interactables") as Array):
+			if is_instance_valid(it) and str(it.name) == "Flure":
+				flure = it; break
+	# Freeze the camera rig's own follow/zoom processing so our transform sticks (it re-derives its transform in
+	# _process/_physics_process every frame, overriding a one-shot set). Keep the TREE running so the preview
+	# ribbon's _process still builds its mesh.
+	cam.set_process(false); cam.set_physics_process(false)
+	var cam_parent := cam.get_parent()
+	if cam_parent != null:
+		cam_parent.set_process(false); cam_parent.set_physics_process(false)
+	# Tight angled close-up over the near-bank objects + the hovered cell, so the hover grid square, the path
+	# ribbon, and the forced Flure outline are large and lit (the omni at x=3 is close here).
+	cam.global_transform = Transform3D(Basis(), Vector3(4.0, 6.0, 5.5)).looking_at(Vector3(5.5, 0.3, 0.0), Vector3.UP)
+	var target := Vector3(6.5, 0.0, 0.5)
+
+	# Phase A — hover OFF: cursor off the floor (grid + ribbon clear), outline NOT forced. Let _process settle.
+	for i in range(6):
+		await get_tree().process_frame
+		_hide_overlay_quads(inst)
+		player.call("_update_hover_from_screen", Vector2(-100, -100))
+		if flure != null:
+			flure.call("set_hover_feedback", false)
+	await RenderingServer.frame_post_draw
+	var img_off: Image = get_tree().root.get_texture().get_image()
+	img_off.save_png("res://vr_wash_hover_off.png")
+
+	# Phase B — hover ON: drive the worker at the near-bank cell + force the Flure outline. Let the ribbon build.
+	for i in range(8):
+		await get_tree().process_frame
+		_hide_overlay_quads(inst)
+		player.call("_update_hover_from_screen", cam.unproject_position(target))
+		if flure != null:
+			flure.call("set_hover_feedback", true)
+	await RenderingServer.frame_post_draw
+	var img_on: Image = get_tree().root.get_texture().get_image()
+	img_on.save_png("res://vr_wash_hover_on.png")
+
+	# Numeric diff: how many FLOOR pixels changed between hover-off and hover-on. The hover grid (a teal 5x5 Decal
+	# at the cell), the dashed path ribbon, and the forced Flure outline should ALL stamp pixels here. ~0 changed =
+	# none of them render (the live bug), turning "I can't see it" into a hard fail.
+	var w := img_on.get_width(); var h := img_on.get_height()
+	# Central floor band, clear of the HUD panels (title top, carry-left, overlay-right, hotbar-bottom).
+	var x0 := int(w * 0.30); var x1 := int(w * 0.72)
+	var y0 := int(h * 0.32); var y1 := int(h * 0.82)
+	var changed := 0; var sampled := 0
+	for sy in range(y0, y1, 2):
+		for sx in range(x0, x1, 2):
+			sampled += 1
+			if _color_delta(img_off.get_pixel(sx, sy), img_on.get_pixel(sx, sy)) > 0.06:
+				changed += 1
+	# Tight box around the Flure's screen position — isolates the outline specifically.
+	var fl_sp := cam.unproject_position(flure.global_position) if flure != null else Vector2(w * 0.5, h * 0.5)
+	var fl_changed := 0
+	for sy in range(maxi(0, int(fl_sp.y) - 40), mini(h, int(fl_sp.y) + 40), 2):
+		for sx in range(maxi(0, int(fl_sp.x) - 40), mini(w, int(fl_sp.x) + 40), 2):
+			if _color_delta(img_off.get_pixel(sx, sy), img_on.get_pixel(sx, sy)) > 0.06:
+				fl_changed += 1
+	print("  [hover-capture] floor changed=%d/%d (%.1f%%)  flure-box changed=%d  -> wrote vr_wash_hover_off/on.png" % [
+		changed, sampled, 100.0 * changed / maxi(1, sampled), fl_changed])
+	_assert_true(changed > 40,
+		"the hover grid + path ribbon RENDER on the floor (changed floor px=%d; ~0 means they don't draw — the live bug)" % changed)
+	_assert_true(fl_changed > 4,
+		"the forced Flure hover OUTLINE renders (changed px near the flure=%d; ~0 means the outline doesn't draw)" % fl_changed)
+
+	# Phase C — overlays back ON (the player's actual condition): re-drive the same hover and shoot. Diff the same
+	# floor band hover-off(overlay-on) vs hover-on(overlay-on): if the change COLLAPSES vs phase A/B, the perception
+	# overlay is washing the hover grid + ribbon out (the "weird square" / "previews not working" with the data view up).
+	if inst.has_method("headless_set_overlay_state"):
+		for ov in ["aster", "peris", "endo"]:
+			inst.call("headless_set_overlay_state", ov, true)
+	for i in range(6):
+		await get_tree().process_frame
+		player.call("_update_hover_from_screen", Vector2(-100, -100))
+	await RenderingServer.frame_post_draw
+	var ov_off: Image = get_tree().root.get_texture().get_image()
+	for i in range(8):
+		await get_tree().process_frame
+		player.call("_update_hover_from_screen", cam.unproject_position(target))
+		if flure != null:
+			flure.call("set_hover_feedback", true)
+	await RenderingServer.frame_post_draw
+	var ov_on: Image = get_tree().root.get_texture().get_image()
+	ov_on.save_png("res://vr_wash_overlay_on.png")
+	var ov_changed := 0
+	for sy in range(y0, y1, 2):
+		for sx in range(x0, x1, 2):
+			if _color_delta(ov_off.get_pixel(sx, sy), ov_on.get_pixel(sx, sy)) > 0.06:
+				ov_changed += 1
+	print("  [hover-capture] overlay-ON floor changed=%d (vs overlay-OFF %d) -> wrote vr_wash_overlay_on.png" % [ov_changed, changed])
+	await _dispose_scene(inst)
+
+## Sum of absolute per-channel RGB difference between two colours (Color has no distance_to).
+func _color_delta(a: Color, b: Color) -> float:
+	return absf(a.r - b.r) + absf(a.g - b.g) + absf(a.b - b.b)
+
+## Hide every full-screen perception/overlay quad under `root` (the render_priority-127 screen quads + any
+## node named *Quad / Perception*), so a capture shows raw geometry. Used only by windowed capture tests.
+func _hide_overlay_quads(root: Node) -> void:
+	for child in root.get_children():
+		if child is MeshInstance3D:
+			var mi := child as MeshInstance3D
+			var nm := str(mi.name).to_lower()
+			if nm.contains("perception") or nm.contains("overlay") or mi.extra_cull_margin > 1000.0:
+				mi.visible = false
+		_hide_overlay_quads(child)
 
 func _test_channels_wash_intro_capture() -> void:
 	_test_name = "Channels Wash Intro Capture"

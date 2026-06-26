@@ -35,14 +35,17 @@ const FLOOR_CENTER := Vector3(14.0, -0.05, 0.0)
 const FLOOR_SIZE := Vector3(34.0, 0.1, 14.0)
 const Z_HALF := 5.0
 
+# Every placement sits on a grid CELL CENTRE (grid origin -3/-7, cell 1.0 => centres land on integer+0.5).
+# Movement, the hover grid, and the position preview all snap to those cells, so off-centre props made the
+# first preview segment jump sideways onto the nearest cell. Authoring on-centre keeps objects + routes aligned.
 const SPAWNS := {
-	"aster": Vector3(3.4, 0.5, 1.4),
-	"peris": Vector3(2.2, 0.5, 0.0),
-	"endo": Vector3(2.8, 0.5, -1.6),
+	"aster": Vector3(3.5, 0.5, 1.5),
+	"peris": Vector3(2.5, 0.5, 0.5),
+	"endo": Vector3(2.5, 0.5, -1.5),
 }
 
-const FLURE_POS := Vector3(6.0, 0.5, 0.0)        # near bank — the player reaches + lights it
-const CAPBAGE_POS := [Vector3(2.0, 0.5, 3.6), Vector3(4.0, 0.5, -3.6), Vector3(7.5, 0.5, 3.4)]
+const FLURE_POS := Vector3(6.5, 0.5, 0.5)        # near bank — the player reaches + lights it
+const CAPBAGE_POS := [Vector3(2.5, 0.5, 3.5), Vector3(4.5, 0.5, -3.5), Vector3(7.5, 0.5, 3.5)]
 const CAPBAGE_RADIUS := 1.4                       # inside this of an open Capbage = fully concealed (tight hide)
 
 # Three adjacent channels spanning the room's z-width, between the near bank and the far bank.
@@ -52,19 +55,19 @@ const CHANNEL_PERIOD := 3.0
 const CHANNEL_DUR := 1.6                          # flood on-time; with 3 strips phased 0/1/2 over a 3s period
 const CHANNEL_PHASE := [0.0, 1.0, 2.0]            # => at every instant at least one strip is flooding
 
-const PORTAL_IN_POS := Vector3(8.0, 0.5, -2.0)    # near-bank portal — activatable, bidirectional
-const PORTAL_OUT_POS := Vector3(21.0, 0.5, -2.0)  # far-bank portal
+const PORTAL_IN_POS := Vector3(8.5, 0.5, -1.5)    # near-bank portal — activatable, bidirectional
+const PORTAL_OUT_POS := Vector3(21.5, 0.5, -1.5)  # far-bank portal
 const PORTAL_RADIUS := 1.2
 
-const WASH_BACK_POS := Vector3(2.0, 0.5, 0.0)     # a player flushed by a channel is swept back here (section start)
+const WASH_BACK_POS := Vector3(2.5, 0.5, 0.5)     # a player flushed by a channel is swept back here (section start)
 
 const FAR_BANK_X := 19.5
-const EXIT_POS := Vector3(27.0, 0.5, 0.0)         # reach here -> complete (-> the spiral)
+const EXIT_POS := Vector3(27.5, 0.5, 0.5)         # reach here -> complete (-> the spiral)
 const EXIT_RADIUS := 2.2
 
 const ENEMY_SPECS := [
-	{"id": "wash_intro_guard_0", "pos": Vector3(23.0, 0.5, 2.4)},
-	{"id": "wash_intro_guard_1", "pos": Vector3(24.5, 0.5, -2.0)},
+	{"id": "wash_intro_guard_0", "pos": Vector3(23.5, 0.5, 2.5)},
+	{"id": "wash_intro_guard_1", "pos": Vector3(24.5, 0.5, -1.5)},
 ]
 const ENEMY_SPEED := 2.4
 const ENEMY_DETECT := 4.0                          # PLAYER-sense range (small): they don't notice you across the room
