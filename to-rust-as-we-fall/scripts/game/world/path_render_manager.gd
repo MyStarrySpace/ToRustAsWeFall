@@ -154,7 +154,12 @@ func _update_dest_ghost(char_id: String, node: Node3D) -> void:
 		var b = game_state.coord_map.to_basis(dest_data)
 		if b is Basis:
 			basis = b
-	ghost.global_transform = Transform3D(basis, dest_world)
+	# Match the character's WORLD scale: the ghost meshes are captured as char-LOCAL transforms (node_inv strips
+	# the character's scale), and the ghost root is top_level (no inherited parent scale), so without re-applying
+	# the scale the ghost rendered at 1x — half-size in a scene whose root is scaled 2x (aster sim). get_scale()
+	# folds the character's world scale back in so the ghost matches the body the player sees, at any scene scale.
+	var char_scale: Vector3 = node.global_transform.basis.get_scale()
+	ghost.global_transform = Transform3D(basis.scaled(char_scale), dest_world)
 	ghost.visible = true
 
 ## Duplicate every MeshInstance3D under the character into a top-level ghost root, sharing one translucent

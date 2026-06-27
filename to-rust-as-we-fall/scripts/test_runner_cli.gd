@@ -386,6 +386,9 @@ func _ready() -> void:
 			"--test-channels-slab-isolate":
 				ran_test = true
 				await _test_channels_slab_isolate()
+			"--test-aster-outline-render":
+				ran_test = true
+				await _test_aster_outline_render()
 			"--test-channels-wash-intro-capture":
 				ran_test = true
 				await _test_channels_wash_intro_capture()
@@ -12676,6 +12679,85 @@ func _test_channels_slab_isolate() -> void:
 			print("  [slab-isolate] DEST GHOST(endo) world-bounds size=%s (FIX: body <2.5u wide, not ~6.6u slab)" % str(gb.size))
 			_assert_true(gb.size.x < 2.5, "the dest ghost is body-sized, not the ribbon slab (ghost width=%.2f)" % gb.size.x)
 	_assert_true(true, "slab isolation captured (see [slab-isolate] line + vr_slab_*.png)")
+	await _dispose_scene(inst)
+
+## WINDOWED: does the interactable OUTLINE actually RENDER in ASTER-SIM? Force an interactable's outline (bypass
+## the physics pick), hide the dest ghost, and pixel-diff the object's screen region OFF vs ON. >0 changed = the
+## shell renders (so the live failure is the PICK not firing, or the ghost covering it). ~0 changed = the shell
+## is "active" in data but invisible (shader / render-order / scale). Prints FX traces (sets _fx_debug).
+func _test_aster_outline_render() -> void:
+	_test_name = "Aster Outline Render"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (needs a display)"); return
+	GridWorld._fx_debug = true
+	var scene := load("res://scenes/tutorial/aster_sim.tscn")
+	if scene == null:
+		_assert_true(false, "aster_sim loads"); GridWorld._fx_debug = false; return
+	var inst: Node = scene.instantiate()
+	get_tree().root.add_child(inst)
+	for i in range(50):
+		await get_tree().process_frame
+	var targets := inst.find_children("*", "OutlineSurfaceTarget", true, false)
+	var tgt: Node = null
+	for t in targets:
+		if t.has_method("get_highlight_mesh_count") and int(t.call("get_highlight_mesh_count")) > 0:
+			tgt = t; break
+	print("  [aster-outline] %d outline targets; chosen='%s'" % [targets.size(), str(tgt.name) if tgt != null else "<none>"])
+	_assert_true(tgt != null, "aster-sim has an outline target with registered highlight meshes")
+	if tgt == null:
+		inst.queue_free(); await get_tree().process_frame; GridWorld._fx_debug = false; return
+	var tnode := tgt as Node3D
+	print("  [aster-outline] target '%s' meshes=%d scale=%s pos=%s" % [
+		tgt.name, int(tgt.call("get_highlight_mesh_count")), str(tnode.global_transform.basis.get_scale()), str(tnode.global_position)])
+	# Hide every dest ghost so we measure the OUTLINE alone (not a ghost covering it).
+	for prm in inst.find_children("*", "PathRenderManager", true, false):
+		for c in prm.get_children():
+			if c is Node3D: (c as Node3D).visible = false
+	get_tree().paused = true
+	for i in range(2): await get_tree().process_frame
+	var cam := get_tree().root.get_viewport().get_camera_3d()
+	if cam != null:
+		cam.set_process(false); cam.set_physics_process(false)
+		var cp := cam.get_parent()
+		if cp != null: cp.set_process(false); cp.set_physics_process(false)
+		# Frame the object close (its meshes are ~1u; sit back a few units, slightly above).
+		cam.global_transform = Transform3D(Basis(), tnode.global_position + Vector3(0.0, 2.5, 4.5)).looking_at(tnode.global_position + Vector3(0, 0.5, 0), Vector3.UP)
+	var sp := cam.unproject_position(tnode.global_position) if cam != null else Vector2(288, 288)
+	var shoot2 := func() -> Image:
+		for i in range(3): await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		return get_tree().root.get_texture().get_image()
+	tgt.call("set_highlight", false)
+	var off: Image = await shoot2.call()
+	off.save_png("res://vr_aster_outline_off.png")
+	tgt.call("set_highlight", true)
+	_assert_true(bool(tgt.call("has_active_mesh_outline")), "forcing the outline makes the shell ACTIVE (data layer)")
+	var on: Image = await shoot2.call()
+	on.save_png("res://vr_aster_outline_on.png")
+	var w := on.get_width(); var h := on.get_height()
+	# Sample the central frame (the object is centre-screen). A box around the target collision-POINT misses it —
+	# the mesh sits ~2u below the collision centre.
+	var changed := _band_changed(off, on)
+	print("  [aster-outline] OUTLINE render (shipped settings): changed central px = %d  (0 => shell active but INVISIBLE: the depth_bias regression; >0 => renders)" % changed)
+	_assert_true(changed > 30, "the interactable outline actually RENDERS in aster-sim (changed px=%d; 0 = the depth_bias occluded it)" % changed)
+
+	# Dump the shell facts that this diagnosis turned on (scale/normals/layers/position) for the record.
+	var shells = tgt.get("_outline_shells")
+	if shells is Dictionary:
+		for sh in (shells as Dictionary).values():
+			if is_instance_valid(sh) and sh is MeshInstance3D and (sh as MeshInstance3D).mesh != null:
+				var shm := sh as MeshInstance3D
+				var arr0 = shm.mesh.surface_get_arrays(0) if shm.mesh.get_surface_count() > 0 else []
+				var has_normals := arr0.size() > Mesh.ARRAY_NORMAL and arr0[Mesh.ARRAY_NORMAL] != null and (arr0[Mesh.ARRAY_NORMAL] as PackedVector3Array).size() > 0
+				var par := shm.get_parent() as VisualInstance3D
+				print("  [aster-outline] shell '%s' aabb=%s scale=%s surfaces=%d normals=%s layers=%d gpos=%s | parent vis=%s | cam cull=%d" % [
+					shm.name, str(shm.mesh.get_aabb().size), str(shm.global_transform.basis.get_scale()), shm.mesh.get_surface_count(),
+					has_normals, shm.layers, str(shm.global_position), str(par.visible) if par != null else "?", cam.cull_mask if cam != null else -1])
+	if sp == Vector2.ZERO:
+		pass  # sp retained for framing reference; central-band sampling is what the assertion uses
+	get_tree().paused = false
+	GridWorld._fx_debug = false
+	_assert_true(true, "aster outline render measured (see [aster-outline] + vr_aster_outline_*.png)")
 	await _dispose_scene(inst)
 
 ## Hide every full-screen perception/overlay quad under `root` (the render_priority-127 screen quads + any

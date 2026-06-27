@@ -16,8 +16,11 @@ uniform float alpha_cutoff = 0.35;
 // Push the hull BEHIND the source mesh in depth: on thin geometry (paintings, screens) the
 // expanded far side would otherwise land in FRONT of the mesh and fill the whole face — the
 // bias makes the mesh always win the interior, leaving only the rim. Godot uses reversed-Z,
-// so farther = smaller z.
-uniform float depth_bias = 0.004;
+// so farther = smaller z. Kept SMALL: a large bias (0.004) pushed the rim of a THICK object
+// (a vending machine standing in front of a wall) so far back it landed inside the wall/floor
+// behind it and got occluded — the outline vanished entirely in enclosed rooms. This value
+// only needs to break the coincident-surface tie on thin geometry, not clear a real depth gap.
+uniform float depth_bias = 0.0008;
 
 void vertex() {
 	VERTEX += NORMAL * outline_width;
