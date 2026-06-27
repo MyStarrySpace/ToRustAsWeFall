@@ -12698,10 +12698,34 @@ func _test_aster_outline_render() -> void:
 	for i in range(50):
 		await get_tree().process_frame
 	var targets := inst.find_children("*", "OutlineSurfaceTarget", true, false)
+	# Dump EVERY target's registered HIGHLIGHT MESH world position/scale/aabb. The shell is a child of the mesh,
+	# so the outline draws AT the mesh — a mesh far from the visible object means "the outline draws nowhere".
+	for t in targets:
+		var cnt := int(t.call("get_highlight_mesh_count")) if t.has_method("get_highlight_mesh_count") else 0
+		var hmeshes = t.get("_highlight_meshes")
+		var detail := ""
+		if hmeshes is Array:
+			for hm in hmeshes:
+				if is_instance_valid(hm) and hm is MeshInstance3D and (hm as MeshInstance3D).mesh != null:
+					var mi := hm as MeshInstance3D
+					detail += " | mesh '%s' gpos=%s aabb=%s" % [mi.name, str(mi.global_position), str(mi.mesh.get_aabb().size)]
+		# Pick info: a target that is ray-pickable with a big collision box but NO mesh would steal hover picks
+		# from real objects (the "outline only on the terminal" smell).
+		var body := t as StaticBody3D
+		var shape_sz := "?"
+		var cs := t.get_node_or_null("CollisionShape3D") if t != null else null
+		if cs != null and cs.shape is BoxShape3D:
+			shape_sz = str((cs.shape as BoxShape3D).size)
+		print("  [aster-outline] TARGET '%s' meshes=%d pickable=%s layer=%d box=%s%s" % [
+			t.name, cnt, body.input_ray_pickable if body != null else "?", body.collision_layer if body != null else -1, shape_sz, detail])
 	var tgt: Node = null
 	for t in targets:
-		if t.has_method("get_highlight_mesh_count") and int(t.call("get_highlight_mesh_count")) > 0:
+		if t.has_method("get_highlight_mesh_count") and int(t.call("get_highlight_mesh_count")) > 0 and str(t.name) == "RoomTargetDrinkMachine":
 			tgt = t; break
+	if tgt == null:
+		for t in targets:
+			if t.has_method("get_highlight_mesh_count") and int(t.call("get_highlight_mesh_count")) > 0:
+				tgt = t; break
 	print("  [aster-outline] %d outline targets; chosen='%s'" % [targets.size(), str(tgt.name) if tgt != null else "<none>"])
 	_assert_true(tgt != null, "aster-sim has an outline target with registered highlight meshes")
 	if tgt == null:
@@ -12709,10 +12733,51 @@ func _test_aster_outline_render() -> void:
 	var tnode := tgt as Node3D
 	print("  [aster-outline] target '%s' meshes=%d scale=%s pos=%s" % [
 		tgt.name, int(tgt.call("get_highlight_mesh_count")), str(tnode.global_transform.basis.get_scale()), str(tnode.global_position)])
-	# Hide every dest ghost so we measure the OUTLINE alone (not a ghost covering it).
-	for prm in inst.find_children("*", "PathRenderManager", true, false):
-		for c in prm.get_children():
-			if c is Node3D: (c as Node3D).visible = false
+	# REAL PICK probe: does a synthetic mouse-hover over the drink machine light its outline via the ENGINE pick
+	# (the live trigger the user exercises), or only when forced? Tree running, camera framing the machine.
+	var pick_cam := get_tree().root.get_viewport().get_camera_3d()
+	if pick_cam != null:
+		pick_cam.set_process(false); pick_cam.set_physics_process(false)
+		var pcp := pick_cam.get_parent()
+		if pcp != null: pcp.set_process(false); pcp.set_physics_process(false)
+		pick_cam.global_transform = Transform3D(Basis(), tnode.global_position + Vector3(0.0, 2.5, 4.5)).looking_at(tnode.global_position + Vector3(0, 0.5, 0), Vector3.UP)
+		pick_cam.make_current()
+	tgt.call("set_highlight", false)
+	for i in range(3): await get_tree().process_frame
+	var pick_before := bool(tgt.call("has_active_mesh_outline"))
+	var machine_screen := pick_cam.unproject_position(tnode.global_position - Vector3(0, 0.5, 0)) if pick_cam != null else Vector2(288, 288)
+	for i in range(10):
+		var mm := InputEventMouseMotion.new()
+		mm.position = machine_screen; mm.global_position = machine_screen
+		Input.parse_input_event(mm)
+		await get_tree().process_frame
+	var pick_after := bool(tgt.call("has_active_mesh_outline"))
+	print("  [aster-outline] REAL PICK over drink machine: outline before=%s after=%s  (after=false => the live hover never reaches it — a PICK problem, not render)" % [pick_before, pick_after])
+	# What does the ray actually hit first? (the blocker, or the machine's collider)
+	if pick_cam != null:
+		var space := pick_cam.get_world_3d().direct_space_state
+		var ro := pick_cam.project_ray_origin(machine_screen)
+		var rd := pick_cam.project_ray_normal(machine_screen)
+		var q := PhysicsRayQueryParameters3D.create(ro, ro + rd * 100.0)
+		q.collide_with_areas = true; q.collide_with_bodies = true
+		var hit := space.intersect_ray(q)
+		if hit.is_empty():
+			print("  [aster-outline]   ray hits NOTHING pickable in the machine's path")
+		else:
+			var col = hit.get("collider")
+			print("  [aster-outline]   ray FIRST hit: '%s' (%s) layer=%s pickable=%s at %s" % [
+				str(col.name) if col != null else "?", col.get_class() if col != null else "?",
+				str(col.collision_layer) if col != null and "collision_layer" in col else "?",
+				str(col.input_ray_pickable) if col != null and "input_ray_pickable" in col else "?", str(hit.position)])
+
+	# Preview the dest ghost AT the machine (the floor cell under it), exactly as a live hover would, to test
+	# whether the ghost (rp127 + no_depth_test) COVERS the interactable outline. Set it BEFORE pausing so the
+	# manager's _process builds + shows the ghost there.
+	var player = inst.get("_player")
+	var mesh_floor := tnode.global_position - Vector3(0.0, 2.0, 0.0)   # the floor under the collision centre
+	if player != null and "preview_move_target" in player:
+		player.set("preview_move_target", mesh_floor)
+	for i in range(6): await get_tree().process_frame
 	get_tree().paused = true
 	for i in range(2): await get_tree().process_frame
 	var cam := get_tree().root.get_viewport().get_camera_3d()
@@ -12720,13 +12785,23 @@ func _test_aster_outline_render() -> void:
 		cam.set_process(false); cam.set_physics_process(false)
 		var cp := cam.get_parent()
 		if cp != null: cp.set_process(false); cp.set_physics_process(false)
-		# Frame the object close (its meshes are ~1u; sit back a few units, slightly above).
 		cam.global_transform = Transform3D(Basis(), tnode.global_position + Vector3(0.0, 2.5, 4.5)).looking_at(tnode.global_position + Vector3(0, 0.5, 0), Vector3.UP)
 	var sp := cam.unproject_position(tnode.global_position) if cam != null else Vector2(288, 288)
 	var shoot2 := func() -> Image:
 		for i in range(3): await get_tree().process_frame
 		await RenderingServer.frame_post_draw
 		return get_tree().root.get_texture().get_image()
+	# Phase G — ghost PRESENT (previewing at the machine): how much of the outline survives?
+	tgt.call("set_highlight", false)
+	var g_off: Image = await shoot2.call()
+	tgt.call("set_highlight", true)
+	var g_on: Image = await shoot2.call()
+	g_on.save_png("res://vr_aster_outline_ghost.png")
+	var changed_with_ghost := _band_changed(g_off, g_on)
+	# Phase N — ghost HIDDEN: the outline alone.
+	for prm in inst.find_children("*", "PathRenderManager", true, false):
+		for c in prm.get_children():
+			if c is Node3D: (c as Node3D).visible = false
 	tgt.call("set_highlight", false)
 	var off: Image = await shoot2.call()
 	off.save_png("res://vr_aster_outline_off.png")
@@ -12735,11 +12810,9 @@ func _test_aster_outline_render() -> void:
 	var on: Image = await shoot2.call()
 	on.save_png("res://vr_aster_outline_on.png")
 	var w := on.get_width(); var h := on.get_height()
-	# Sample the central frame (the object is centre-screen). A box around the target collision-POINT misses it —
-	# the mesh sits ~2u below the collision centre.
 	var changed := _band_changed(off, on)
-	print("  [aster-outline] OUTLINE render (shipped settings): changed central px = %d  (0 => shell active but INVISIBLE: the depth_bias regression; >0 => renders)" % changed)
-	_assert_true(changed > 30, "the interactable outline actually RENDERS in aster-sim (changed px=%d; 0 = the depth_bias occluded it)" % changed)
+	print("  [aster-outline] OUTLINE render: ghost-HIDDEN=%d px  vs  ghost-PRESENT=%d px  (PRESENT << HIDDEN => the dest ghost COVERS the outline — the real bug)" % [changed, changed_with_ghost])
+	_assert_true(changed > 30, "the interactable outline RENDERS in aster-sim with the ghost hidden (changed px=%d)" % changed)
 
 	# Dump the shell facts that this diagnosis turned on (scale/normals/layers/position) for the record.
 	var shells = tgt.get("_outline_shells")

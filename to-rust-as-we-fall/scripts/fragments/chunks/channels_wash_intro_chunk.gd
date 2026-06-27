@@ -147,9 +147,15 @@ func _build_chunk() -> void:
 	_set_preview_step("channels_wash_intro_start")
 
 func _build_capbage(pos: Vector3, j: int) -> void:
-	# A tight-hide leaf head (cosmetic dome) the player tucks into; concealment is positional (CONCEAL_FULL).
-	var head := _add_box(self, pos + Vector3(0.0, 0.2, 0.0), Vector3(1.5, 1.0, 1.5), Color(0.16, 0.34, 0.18),
-		Color(0.3, 0.7, 0.35), 0.25, "Capbage%d" % j)
+	# A tight-hide leaf head the player tucks into (concealment stays positional, CONCEAL_FULL). Highlightable
+	# like the flure + portal: an INSPECTION interactable whose dome mesh carries the SHARED outline/glow — hover
+	# lights the white hull, hold-SHIFT reveals it, a click lights the queued glow while the member walks in.
+	var cap := _add_interactable(self, "Capbage%d" % j, "Tuck into the Capbage", pos, "HIDE", "", 0.8, false,
+		CAPBAGE_RADIUS, Interactable.InteractableType.INSPECTION, false)
+	var head := _add_box(cap, Vector3(0.0, 0.2, 0.0), Vector3(1.5, 1.0, 1.5), Color(0.16, 0.34, 0.18),
+		Color(0.3, 0.7, 0.35), 0.25, "CapbageHead%d" % j)
+	_outline_interactable_child(cap, head, "Capbage%d" % j, CAPBAGE_RADIUS)
+	cap.interacted.connect(func() -> void: _say("// HIDE // tucked into the Capbage"))
 	_add_label(self, "CAPBAGE", pos + Vector3(0.0, 1.5, 0.0), Color(0.5, 0.85, 0.55))
 
 func _add_marker(pos: Vector3, size: Vector3, color: Color, energy: float, label: String) -> void:
