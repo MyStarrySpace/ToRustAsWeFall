@@ -105,9 +105,25 @@ func _ready() -> void:
 	# Wait one frame so the _ready chain completes before scene tests add_child to root
 	await get_tree().process_frame
 
+	# The project's run/main_scene (peris_sim) auto-instantiates on every launch that does NOT name a scene on the
+	# command line — i.e. every `godot --path . -- --test-*` run. It renders through its OWN camera and runs its
+	# sequence alongside whatever scene a test builds, so windowed captures showed peris/aster instead of the scene
+	# under test, and its pickable colliders muddied physics picks. Free it for any --test run so tests see ONLY the
+	# scene they instantiate. (A real preview/game run NAMES its scene — fragment_preview.tscn / the game — so the
+	# default main scene never loads there and this is a no-op for the user.)
 	var args := OS.get_cmdline_user_args()
 	if args.is_empty():
 		args = OS.get_cmdline_args()
+	var _is_test_run := false
+	for _a in args:
+		if String(_a).begins_with("--test"):
+			_is_test_run = true
+			break
+	if _is_test_run and get_tree().current_scene != null:
+		var _stale_main := get_tree().current_scene
+		get_tree().current_scene = null
+		_stale_main.queue_free()
+		await get_tree().process_frame
 
 	var ran_test := false
 	for arg in args:
@@ -380,6 +396,9 @@ func _ready() -> void:
 			"--test-channels-wash-intro-hover":
 				ran_test = true
 				await _test_channels_wash_intro_hover()
+			"--test-channels-wash-intro-live-input":
+				ran_test = true
+				await _test_channels_wash_intro_live_input()
 			"--test-channels-wash-intro-hover-capture":
 				ran_test = true
 				await _test_channels_wash_intro_hover_capture()
@@ -12446,6 +12465,74 @@ func _test_channels_wash_intro_hover() -> void:
 	print("  [hover-diag] compute_preview_path(%s, %s) -> %d points: %s" % [cid, str(hit), preview_path.size(), str(preview_path)])
 	_assert_true(preview_path.size() >= 2,
 		"the position preview computes a route to the hovered cell (got %d points)" % preview_path.size())
+	await _dispose_scene(inst)
+
+## WINDOWED, FAITHFUL: drive the channels wash-intro the way the PLAYER does — warp the real OS cursor over the
+## viewport and let the per-frame poll + physics pick run (NO direct _update_hover_from_screen / outline_hovered
+## calls). Every prior test bypassed the live input path, so they passed while the real thing stayed broken. This
+## reproduces what the user actually sees. Dumps player/process/picking state + FX traces so the break is legible.
+func _test_channels_wash_intro_live_input() -> void:
+	_test_name = "Channels Wash Intro LIVE Input"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (needs a display — physics picking + cursor warp don't work headless)"); return
+	GridWorld._fx_debug = true
+	var inst = await _instantiate_preview_chunk_and_wait("channels_wash_intro", 8)
+	if inst == null:
+		_assert_true(false, "instantiates"); GridWorld._fx_debug = false; return
+	for i in range(40):
+		await get_tree().process_frame
+	var player = inst.get("_player")
+	var chunk = inst.find_child("Chunk_channels_wash_intro", true, false)
+	var vp := get_tree().root.get_viewport()
+	var cam := vp.get_camera_3d()
+	print("  [live] player=%s char_id=%s player_processing=%s viewport.physics_object_picking=%s" % [
+		player != null, str(player.get("char_id")) if player != null else "?",
+		str(player.is_processing()) if player != null else "?", str(vp.physics_object_picking)])
+	_assert_true(player != null and cam != null, "preview has a player + camera")
+	if player == null or cam == null:
+		GridWorld._fx_debug = false; await _dispose_scene(inst); return
+
+	# --- LIVE HOVER over a floor cell: warp the cursor + let player._process poll it (no direct call) ---
+	var floor_world := Vector3(5.5, 0.05, 0.5)
+	var floor_screen := cam.unproject_position(floor_world)
+	# Two distinct warps so the poll's "mouse moved?" gate definitely fires.
+	for sp in [floor_screen + Vector2(3, 3), floor_screen]:
+		Input.warp_mouse(sp)
+		var mm := InputEventMouseMotion.new(); mm.position = sp; mm.global_position = sp
+		Input.parse_input_event(mm)
+		for i in range(4): await get_tree().process_frame
+	var hg: Node3D = player.get("_hover_grid")
+	var pp = player.get("_path_preview")
+	var ribbon_drawable := false
+	if pp != null and pp.get("_line") != null:
+		ribbon_drawable = (pp.get("_line") as MeshInstance3D).mesh != null
+	print("  [live] after cursor-over-floor: hover_grid.visible=%s pos=%s | ribbon_drawable=%s" % [
+		str(hg.visible) if hg != null else "?", str(hg.global_position) if hg != null else "?", ribbon_drawable])
+	_assert_true(hg != null and hg.visible, "LIVE: hovering the floor (real cursor + poll) shows the hover grid")
+	_assert_true(ribbon_drawable, "LIVE: hovering the floor draws the position-preview ribbon")
+
+	# --- LIVE OUTLINE: warp the cursor over the FLURE + let physics picking fire mouse_entered (no direct emit) ---
+	var flure = null
+	if chunk != null:
+		for it in (chunk.get("_interactables") as Array):
+			if is_instance_valid(it) and str(it.name) == "Flure":
+				flure = it; break
+	if flure != null:
+		var ftgt = flure.get("_outline_target")
+		var flure_screen := cam.unproject_position((flure as Node3D).global_position)
+		for sp in [flure_screen + Vector2(2, 2), flure_screen]:
+			Input.warp_mouse(sp)
+			var mm := InputEventMouseMotion.new(); mm.position = sp; mm.global_position = sp
+			Input.parse_input_event(mm)
+			for i in range(5): await get_tree().process_frame
+		var lit := ftgt != null and bool(ftgt.call("has_active_mesh_outline"))
+		print("  [live] cursor over FLURE @%s: outline lit by the real pick = %s" % [str(flure_screen), lit])
+		_assert_true(lit, "LIVE: hovering the flure (real cursor + physics pick) lights its outline")
+
+	await RenderingServer.frame_post_draw
+	get_tree().root.get_texture().get_image().save_png("res://vr_wash_live.png")
+	print("  [live] wrote vr_wash_live.png (what the player sees with the cursor on the flure)")
+	GridWorld._fx_debug = false
 	await _dispose_scene(inst)
 
 ## WINDOWED: the data layer for hover/preview is correct (see _test_channels_wash_intro_hover), so the reported
