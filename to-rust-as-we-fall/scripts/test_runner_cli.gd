@@ -383,6 +383,9 @@ func _ready() -> void:
 			"--test-channels-wash-intro-hover-capture":
 				ran_test = true
 				await _test_channels_wash_intro_hover_capture()
+			"--test-channels-slab-isolate":
+				ran_test = true
+				await _test_channels_slab_isolate()
 			"--test-channels-wash-intro-capture":
 				ran_test = true
 				await _test_channels_wash_intro_capture()
@@ -9361,6 +9364,32 @@ func _test_path_render_manager() -> void:
 	_assert_equals(drawable_ghosts, 1,
 		"exactly ONE destination ghost draws after a rebuild (the old queued-for-deletion ghost must be hidden + detached, not left rendering at its old position)")
 
+	# REGRESSION (the giant green slab + hidden outlines): the active player's path-preview ribbon AND the
+	# party-preview renderers are CHILDREN of the character node — the ribbon meshes are top_level (world-space)
+	# and live under a PathRenderer. find_children swept them into the ghost, so the ghost duplicated ~6u-wide
+	# ribbon geometry: a giant translucent green slab at the move target. Drawing at render_priority 127 +
+	# no_depth_test, it covered nearby interactable outline hulls (opaque, priority 120) — the "outlines don't
+	# appear" report. The ghost must copy the BODY mesh only. Attach BOTH a top_level overlay mesh and a
+	# PathRenderer-owned mesh to the live node and assert the rebuilt ghost stays body-width.
+	var tl_ribbon := MeshInstance3D.new()
+	var tlm := BoxMesh.new(); tlm.size = Vector3(6.0, 0.05, 0.5); tl_ribbon.mesh = tlm
+	tl_ribbon.top_level = true   # like PathRenderer._line/_tail (world-space vertices)
+	n2.add_child(tl_ribbon)
+	var pr_child := PathRenderer.new()
+	n2.add_child(pr_child)
+	var pr_mesh := MeshInstance3D.new()
+	var prm_box := BoxMesh.new(); prm_box.size = Vector3(5.0, 0.05, 0.5); pr_mesh.mesh = prm_box
+	pr_child.add_child(pr_mesh)   # non-top_level, but UNDER a PathRenderer (the route ribbon)
+	mgr._dest_ghosts.erase("a"); mgr._ghost_built_from.erase("a")   # force a fresh ghost build that re-scans children
+	n2.set("preview_move_target", Vector3(2.0, 0.0, 3.0))
+	mgr._process(0.0)
+	var slab_ghost: Node3D = mgr._dest_ghosts.get("a")
+	_assert_true(slab_ghost != null and slab_ghost.visible, "the ghost rebuilds with the ribbons attached to the node")
+	if slab_ghost != null:
+		var gb := OutlineFeedbackManager.combined_world_bounds(OutlineFeedbackManager.collect_mesh_instances(slab_ghost))
+		_assert_true(gb.size.x < 1.5,
+			"the dest ghost EXCLUDES the path ribbons — body-width %.2f, not the ~6u green slab (the slab covered interactable outlines)" % gb.size.x)
+
 	root.queue_free()
 	await get_tree().process_frame
 
@@ -12561,6 +12590,93 @@ func _test_channels_wash_intro_hover_capture() -> void:
 ## Sum of absolute per-channel RGB difference between two colours (Color has no distance_to).
 func _color_delta(a: Color, b: Color) -> float:
 	return absf(a.r - b.r) + absf(a.g - b.g) + absf(a.b - b.b)
+
+## Count pixels in a central band that differ between two images (the "slab" lives centre-frame).
+func _band_changed(a: Image, b: Image) -> int:
+	var w := a.get_width(); var h := a.get_height()
+	var c := 0
+	for sy in range(int(h * 0.20), int(h * 0.80), 2):
+		for sx in range(int(w * 0.28), int(w * 0.74), 2):
+			if _color_delta(a.get_pixel(sx, sy), b.get_pixel(sx, sy)) > 0.06:
+				c += 1
+	return c
+
+## WINDOWED ISOLATION: which hover/path element IS the tall green slab? Drive a hover, then shoot with EACH
+## element toggled off and diff the central band vs the all-on baseline. Whichever toggle removes the most
+## central pixels is the slab. Side-low camera so a vertical slab reads against the void.
+func _test_channels_slab_isolate() -> void:
+	_test_name = "Channels Slab Isolate"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (needs a display)"); return
+	var inst = await _instantiate_preview_chunk_and_wait("channels_wash_intro", 8)
+	if inst == null:
+		_assert_true(false, "instantiates"); return
+	for i in range(30):
+		await get_tree().process_frame
+	var player = inst.get("_player")
+	var cam: Camera3D = get_tree().root.get_viewport().get_camera_3d()
+	var prm = inst.get("_path_render_manager")
+	var gs = inst.get("_game_state")
+	if player == null or cam == null:
+		_assert_true(false, "needs player + camera"); await _dispose_scene(inst); return
+	player.set("_click_mode", "move")
+	if inst.has_method("headless_set_overlay_state"):
+		for ov in ["aster", "peris", "endo"]:
+			inst.call("headless_set_overlay_state", ov, false)
+	cam.set_process(false); cam.set_physics_process(false)
+	var cp := cam.get_parent()
+	if cp != null: cp.set_process(false); cp.set_physics_process(false)
+	# Side-low: look slightly UP at the hover cell so a vertical slab stands out against the dark void.
+	cam.global_transform = Transform3D(Basis(), Vector3(6.5, 3.0, 8.5)).looking_at(Vector3(6.5, 1.0, 0.5), Vector3.UP)
+	var target := Vector3(6.5, 0.0, 0.5)
+	var hg: Node3D = player.get("_hover_grid")
+	var pp: Node3D = player.get("_path_preview")
+
+	var shoot := func() -> Image:
+		for i in range(4):
+			await get_tree().process_frame
+			_hide_overlay_quads(inst)
+			player.call("_update_hover_from_screen", cam.unproject_position(target))
+		await RenderingServer.frame_post_draw
+		return get_tree().root.get_texture().get_image()
+
+	var base: Image = await shoot.call()
+	base.save_png("res://vr_slab_base.png")
+	# (1) hover grid Decal off
+	if hg != null: hg.visible = false
+	var no_grid: Image = await shoot.call()
+	no_grid.save_png("res://vr_slab_no_grid.png")
+	if hg != null: hg.visible = true
+	# (2) path preview ribbon off
+	if pp != null: pp.visible = false
+	var no_ribbon: Image = await shoot.call()
+	if pp != null: pp.visible = true
+	# (3) dest ghosts off (hide the manager's ghost/ring children — PathRenderManager extends Node, no `visible`)
+	if prm != null:
+		for c in prm.get_children():
+			if c is Node3D:
+				c.visible = false
+	var no_ghost: Image = await shoot.call()
+	no_ghost.save_png("res://vr_slab_no_ghost.png")
+
+	var d_grid := _band_changed(base, no_grid)
+	var d_ribbon := _band_changed(base, no_ribbon)
+	var d_ghost := _band_changed(base, no_ghost)
+	print("  [slab-isolate] central-band px removed by toggling OFF: hover_grid=%d  ribbon=%d  dest_ghost=%d" % [d_grid, d_ribbon, d_ghost])
+	# Endo's NODE footprint is inflated by its attached ribbon children; the ACTUAL dest ghost must be body-only.
+	if gs != null:
+		var endo_node = player.call("_find_char_node", "endo") if player.has_method("_find_char_node") else null
+		if endo_node != null:
+			var ms := OutlineFeedbackManager.combined_world_bounds(OutlineFeedbackManager.collect_mesh_instances(endo_node))
+			print("  [slab-isolate] endo NODE world-bounds size=%s (inflated by the attached ribbon children)" % str(ms.size))
+	if prm != null:
+		var ghosts = prm.get("_dest_ghosts")
+		if ghosts is Dictionary and ghosts.has("endo") and is_instance_valid(ghosts["endo"]):
+			var gb := OutlineFeedbackManager.combined_world_bounds(OutlineFeedbackManager.collect_mesh_instances(ghosts["endo"]))
+			print("  [slab-isolate] DEST GHOST(endo) world-bounds size=%s (FIX: body <2.5u wide, not ~6.6u slab)" % str(gb.size))
+			_assert_true(gb.size.x < 2.5, "the dest ghost is body-sized, not the ribbon slab (ghost width=%.2f)" % gb.size.x)
+	_assert_true(true, "slab isolation captured (see [slab-isolate] line + vr_slab_*.png)")
+	await _dispose_scene(inst)
 
 ## Hide every full-screen perception/overlay quad under `root` (the render_priority-127 screen quads + any
 ## node named *Quad / Perception*), so a capture shows raw geometry. Used only by windowed capture tests.

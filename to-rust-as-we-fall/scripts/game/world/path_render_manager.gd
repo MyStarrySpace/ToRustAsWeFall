@@ -175,7 +175,12 @@ func _build_dest_ghost(node: Node3D, col: Color) -> Node3D:
 	var built := false
 	for s in sources:
 		var mi := s as MeshInstance3D
-		if mi == null or mi.mesh == null:
+		# The ghost is the character's BODY silhouette ONLY. Skip top_level meshes: the active player's own
+		# path-preview ribbon and the party-preview renderers (PathRenderer, top_level so their vertices are
+		# world-space) are CHILDREN of the player node, so find_children swept them in — duplicating ribbon
+		# geometry into the ghost stamped a giant garbled green slab at the move target (it spanned to the
+		# hovered cell, so it grew/shrank with the hover). A body mesh follows the character (never top_level).
+		if mi == null or mi.mesh == null or mi.top_level or _is_under_path_renderer(mi):
 			continue
 		var g := MeshInstance3D.new()
 		g.mesh = mi.mesh
@@ -189,6 +194,16 @@ func _build_dest_ghost(node: Node3D, col: Color) -> Node3D:
 		ghost.queue_free()
 		return null
 	return ghost
+
+## True if `node` sits under a PathRenderer (the route/preview ribbon). Those meshes are attached to the
+## character but are NOT body geometry, so the destination ghost must never duplicate them.
+func _is_under_path_renderer(node: Node) -> bool:
+	var p := node.get_parent()
+	while p != null:
+		if p is PathRenderer:
+			return true
+		p = p.get_parent()
+	return false
 
 func _make_ghost_material(col: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
