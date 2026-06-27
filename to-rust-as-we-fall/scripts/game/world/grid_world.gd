@@ -10,6 +10,11 @@ extends RefCounted
 static var _pf_debug: bool = OS.has_environment("PATHFIND_DEBUG")
 static var _pf_file: FileAccess = null
 
+## FX/render tracing — run with FX_DEBUG=1. A SEPARATE channel from the A* path tracing above, for the path
+## PREVIEW ribbon + the interactable OUTLINE hit chain (so a hover-debug session isn't buried under per-search
+## A* spam). Routes through the same _pf_trace printer. Env-gated; off in normal runs and the test suite.
+static var _fx_debug: bool = OS.has_environment("FX_DEBUG")
+
 static func _pf_trace(msg: String) -> void:
 	print(msg)
 	if _pf_file == null:

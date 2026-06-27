@@ -60,6 +60,9 @@ func _ready() -> void:
 		input_event.connect(_on_input_event)
 
 func _on_mouse_entered() -> void:
+	if GridWorld._fx_debug:
+		GridWorld._pf_trace("[outline] HIT surface-target '%s' (hover_enabled=%s managed=%s layer=%d pickable=%s)" % [
+			name, hover_enabled, _feedback_managed, collision_layer, input_ray_pickable])
 	if not hover_enabled:
 		return
 	if not _feedback_managed:
@@ -152,6 +155,9 @@ func set_hover_feedback(active: bool) -> void:
 ## read identically. The energy GLOW is reserved for a QUEUED interaction (click-committed, en
 ## route) — it never shows on mere hover. While a queue is active the stronger feedback stays.
 func set_highlight(active: bool) -> void:
+	if GridWorld._fx_debug:
+		GridWorld._pf_trace("[outline] target '%s'.set_highlight(%s) selected=%s highlight_meshes=%d enabled=%s" % [
+			name, active, _selected, _highlight_meshes.size(), object_outline_enabled])
 	if active:
 		if not _selected:
 			_apply_object_outline(hover_outline_color, hover_object_outline_width, 1.0)
@@ -223,8 +229,11 @@ func _clear_queued_feedback() -> void:
 
 func _apply_object_outline(color: Color, width: float, glow_strength: float) -> void:
 	if not object_outline_enabled:
+		if GridWorld._fx_debug:
+			GridWorld._pf_trace("[outline] target '%s' _apply ABORT: object_outline_enabled=false" % name)
 		return
 	_prune_highlight_meshes()
+	var shown := 0
 	for mesh_instance in _highlight_meshes:
 		var shell := _ensure_outline_shell(mesh_instance)
 		if shell == null:
@@ -238,6 +247,10 @@ func _apply_object_outline(color: Color, width: float, glow_strength: float) -> 
 			material.set_shader_parameter("outline_width", width)
 			material.set_shader_parameter("glow_strength", glow_strength)
 		shell.visible = true
+		shown += 1
+	if GridWorld._fx_debug:
+		GridWorld._pf_trace("[outline] target '%s' _apply: %d highlight_meshes -> %d shells VISIBLE (color=%s width=%.3f). If meshes=0 the object never registered a mesh; if shells visible but nothing shows, it's the shader/render-order." % [
+			name, _highlight_meshes.size(), shown, str(color), width])
 
 func _clear_object_outline() -> void:
 	_prune_highlight_meshes()

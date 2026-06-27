@@ -452,6 +452,8 @@ func _hover_grid_center(hit: Vector3) -> Vector3:
 ## (group_move) it previews EVERY member's path to its own spread destination, not just the active one.
 func _update_path_preview(hit: Vector3) -> void:
 	if _path_preview == null or game_state == null or char_id == "":
+		if GridWorld._fx_debug:
+			GridWorld._pf_trace("[preview] SKIP (path_preview=%s game_state=%s char_id='%s')" % [_path_preview != null, game_state != null, char_id])
 		return
 	# Keep the preview ribbon on the LIVE game_state. _path_preview.setup() ran in _ready, BEFORE the host
 	# assigns this player's game_state — so it captured null and never saw the coord_map, leaving the ribbon
@@ -460,6 +462,8 @@ func _update_path_preview(hit: Vector3) -> void:
 	if game_state.coord_map != null:
 		hit = game_state.coord_map.to_data(hit)   # plan in the flat data frame; the ribbon warps back to the helix
 	if game_state.is_moving(char_id):
+		if GridWorld._fx_debug:
+			GridWorld._pf_trace("[preview] clear — %s is MOVING (committed ribbon shows instead)" % char_id)
 		_clear_path_preview()
 		return
 	# Recompute only when the hovered DATA-grid cell changes (the grid carries its origin offset, so
@@ -474,10 +478,14 @@ func _update_path_preview(hit: Vector3) -> void:
 		return
 	_clear_party_preview()
 	var path := game_state.compute_preview_path(char_id, hit)
+	if GridWorld._fx_debug:
+		GridWorld._pf_trace("[preview] hit=%s cell=%s char=%s -> compute_preview_path = %d pts: %s" % [str(hit), str(cell), char_id, path.size(), str(path)])
 	if path.size() >= 2:
 		_path_preview.set_explicit_path(path, 1)  # from_index 1: the renderer prepends the live start point
 	else:
 		_path_preview.clear_explicit_path()
+		if GridWorld._fx_debug:
+			GridWorld._pf_trace("[preview] CLEARED — compute_preview_path returned < 2 points (no route to this cell)")
 	# Tell the path manager where to ghost this character (the flat path END, or the raw hover if no route).
 	preview_move_target = path[path.size() - 1] if path.size() >= 1 else hit
 

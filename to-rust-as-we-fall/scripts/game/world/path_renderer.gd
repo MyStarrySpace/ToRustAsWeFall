@@ -96,6 +96,8 @@ func set_running(running: bool) -> void:
 func set_explicit_path(path: Array[Vector3], from_index: int = 0) -> void:
 	_explicit_path = path
 	_explicit_index = from_index
+	if GridWorld._fx_debug:
+		GridWorld._pf_trace("[ribbon preview=%s] set_explicit_path %d pts from=%d: %s" % [preview_style, path.size(), from_index, str(path)])
 
 func clear_explicit_path() -> void:
 	_explicit_path = []
@@ -109,6 +111,11 @@ func _process(_delta: float) -> void:
 	# Collect the remaining waypoints first; only build a surface if there's a line to draw.
 	var points := _remaining_points()
 	if points.size() < 2:
+		# A preview that HAS an explicit path but yields <2 drawable points means the start point or the warp
+		# culled it (e.g. a degenerate first segment / a double-warped anchor) — the ribbon silently vanishes.
+		if GridWorld._fx_debug and preview_style and _explicit_path.size() > 0:
+			GridWorld._pf_trace("[ribbon] preview NO-DRAW: remaining=%d but explicit=%d from=%d (start_point=%s warped=%s)" % [
+				points.size(), _explicit_path.size(), _explicit_index, str(_start_point(_ground_y())), game_state != null and game_state.coord_map != null])
 		_line.mesh = null
 		_tail.mesh = null
 		_tail_cache = []
@@ -118,11 +125,12 @@ func _process(_delta: float) -> void:
 	if preview_style:
 		if points != _points_cache:
 			_points_cache = points.duplicate()
-			if GridWorld._pf_debug:
-				GridWorld._pf_trace("[ribbon] preview rebuild %d pts (warped=%s)" % [points.size(), game_state != null and game_state.coord_map != null])
+			if GridWorld._fx_debug:
+				GridWorld._pf_trace("[ribbon] preview REBUILD %d pts (visible=%s warped=%s): %s" % [
+					points.size(), visible, game_state != null and game_state.coord_map != null, str(points)])
 			_line.mesh = _build_ribbon(points)
-			if GridWorld._pf_debug:
-				GridWorld._pf_trace("[ribbon] preview built")
+			if GridWorld._fx_debug:
+				GridWorld._pf_trace("[ribbon] preview built (surfaces=%d)" % (_line.mesh.get_surface_count() if _line.mesh != null else 0))
 		_tail.mesh = null
 		return
 	# COMMITTED ribbons split: only the start point interpolates per tick, so the fixed remaining

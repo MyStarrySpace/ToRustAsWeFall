@@ -394,6 +394,9 @@ func _on_body_exited(body: Node3D) -> void:
 		_cancel_dwell()
 
 func _on_mouse_entered() -> void:
+	if GridWorld._fx_debug:
+		GridWorld._pf_trace("[outline] HIT interactable '%s' (used=%s enabled=%s managed=%s outline_target=%s)" % [
+			name, _used, interaction_enabled, _feedback_managed, _outline_target != null])
 	if _used or not interaction_enabled:
 		return
 	if not _feedback_managed:
@@ -537,6 +540,9 @@ func _refresh_feedback() -> void:
 	if want == _feedback_emitting:
 		return
 	_feedback_emitting = want
+	if GridWorld._fx_debug:
+		GridWorld._pf_trace("[outline] interactable '%s' _refresh_feedback want=%s -> forward to target=%s" % [
+			name, want, _outline_target != null and is_instance_valid(_outline_target)])
 	if _outline_target != null and is_instance_valid(_outline_target):
 		_outline_target.set_highlight(want)
 
