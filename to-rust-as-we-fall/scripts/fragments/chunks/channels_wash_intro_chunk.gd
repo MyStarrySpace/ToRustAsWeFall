@@ -76,9 +76,7 @@ const FLURE_ATTRACT := 32.0                        # FLURE-sense range (large): 
 var _phase := "ready"
 var _flooding := [false, false, false]
 var _channel_water := []                           # per channel: the flood mesh
-var _flure_active := false
-var _flure_mesh: MeshInstance3D
-var _flure_mat: StandardMaterial3D
+var _flure: Flure                                  # the lure flower — a self-contained gameplay object (Flure class)
 var _enemies := []
 var _drowned := 0
 var _drowned_ids := {}                             # char_id -> true: dedupe the drown (once per hunter, one line)
@@ -120,13 +118,17 @@ func _build_chunk() -> void:
 	for j in range(CAPBAGE_POS.size()):
 		_build_capbage(CAPBAGE_POS[j], j)
 
-	# The flure (near bank) — an INSPECTION interactable: click -> walk -> light it on arrival.
-	var flure := _add_interactable(self, "Flure", "Light the flure", FLURE_POS, "FLURE", "", 1.2, true, 1.6,
-		Interactable.InteractableType.INSPECTION, false)
-	_flure_mesh = _add_object_glow(flure, Vector3(0.0, 0.35, 0.0), 0.45, Color(0.95, 0.78, 0.2), 0.5)
-	_flure_mat = _flure_mesh.material_override as StandardMaterial3D
-	_outline_interactable_child(flure, _flure_mesh, "Flure", 1.4)
-	flure.interacted.connect(func() -> void: activate_flure())
+	# The flure (near bank) — a self-contained Flure object that owns its glow, outline + lure logic. The chunk just
+	# composes it: place it + inject the hunters it lures. (First of the modular gameplay objects.)
+	var enemy_ids: Array = []
+	for spec in ENEMY_SPECS:
+		enemy_ids.append(str(spec["id"]))
+	_flure = Flure.new()
+	_flure.name = "Flure"
+	_flure.configure(_get_game_state(), FLURE_POS, enemy_ids, FLURE_ATTRACT, 1.6, Color(0.95, 0.78, 0.2))
+	add_child(_flure)
+	_register_interactable(_flure)   # into _interactables + host binding, like every other interactable
+	_flure.flure_activated.connect(_on_flure_activated)
 
 	# Portal — an ACTIVATABLE pair (not an area). Click one, the active member walks to it and steps through;
 	# only that one member crosses (whoever arrives first), and it's bidirectional + reusable so they can return.
@@ -307,31 +309,20 @@ func _drown_enemy(enemy) -> void:
 
 # --- Flure (the lure) ---
 
-## Activate the flure: it EMITS A SIGNAL the hunters home in on. Every hunter within the flure's (large) signal
-## range drops the hunt and moves to it, crossing the channels to reach it — and drowning. The signal range is
-## bigger than the hunters' player-sense range, so they lock onto the flure rather than the party (they don't
-## immediately come across at you).
+## Light the flure (the lure logic lives in the Flure object now; this just gates on phase + delegates). Kept for
+## the data-layer playthrough + tests that trigger it by name. The Flure also self-fires on a real click.
 func activate_flure() -> bool:
+	if _phase in ["complete", "failed"] or _flure == null:
+		return false
+	return _flure.activate()
+
+## The Flure pulled the hunters (via a click or activate_flure) — the CHUNK-level reaction: the beat + the line.
+func _on_flure_activated(_pulled: int) -> void:
 	if _phase in ["complete", "failed"]:
-		return false
-	_flure_active = true
-	if _flure_mat != null:
-		_flure_mat.emission_energy_multiplier = 3.0
-	var gs = _get_game_state()
-	if gs == null:
-		return false
-	var pulled := 0
-	for enemy in _enemies:
-		if not is_instance_valid(enemy) or not enemy.is_alive() or not gs.characters.has(enemy.char_id):
-			continue
-		if gs.get_position(enemy.char_id).distance_to(FLURE_POS) <= FLURE_ATTRACT:
-			gs.set_character_distracted(enemy.char_id, true)   # it stops noticing the party at range
-			gs.command_move_to_pos(enemy.char_id, FLURE_POS)    # and tracks the signal — across the channels
-			pulled += 1
+		return
 	_last_outcome = "flure_lit"
 	_set_preview_step("channels_wash_intro_flure")
 	_say("// FLURE // signal up — the hunters lock onto it")
-	return pulled > 0
 
 ## Step a SINGLE member through the portal — the one who activated it (whoever arrived first). Bidirectional
 ## (near <-> far) and reusable, so a member can return. Never teleports the whole party at once.
@@ -407,14 +398,13 @@ func get_preview_abilities() -> Array:
 func reset_preview_state() -> void:
 	_phase = "ready"
 	_flooding = [false, false, false]
-	_flure_active = false
+	if _flure != null:
+		_flure.reset_flure()
 	_drowned = 0
 	_drowned_ids = {}
 	_washed_back = 0
 	_scheduled = false
 	_last_outcome = ""
-	if _flure_mat != null:
-		_flure_mat.emission_energy_multiplier = 0.5
 	for w in _channel_water:
 		if is_instance_valid(w):
 			w.visible = false
@@ -437,7 +427,7 @@ func get_preview_state() -> Dictionary:
 	return {
 		"phase": _phase,
 		"complete": _phase == "complete",
-		"flure_active": _flure_active,
+		"flure_active": _flure.is_active() if _flure != null else false,
 		"any_channel_flooding": any_flooding,
 		"flooding": _flooding.duplicate(),
 		"drowned": _drowned,
