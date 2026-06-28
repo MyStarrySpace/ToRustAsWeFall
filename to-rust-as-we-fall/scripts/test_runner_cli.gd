@@ -14046,6 +14046,10 @@ func _test_wash_relay() -> void:
 	_assert_true(bool(chunk.get_preview_state().get("sloperope_deployed", false)), "dropping the sloperope deploys the line")
 	# EXPANDED GAUNTLET: more sections + variations
 	_assert_equals(int(chunk.get_preview_state().get("section_count", 0)), 9, "the expanded gauntlet has nine sections")
+	# The front-half drive above swept some crew into the wash (they're _washed — swept down to the start). A
+	# swept member legitimately can't man a station, so recover the crew first (real play telephones/climbs them
+	# up) before the plate + override sub-tests, exactly as a player would before manning the back-half controls.
+	chunk.call("_recover_washed")
 	# DOUBLE PLATE (index 8): BOTH pads must be held to disable — one is not enough (co-op escalation)
 	chunk.call("_set_character_position", "aster", Vector3(44.0, 0.5, 0.0))   # safe gap, off the pads
 	chunk.call("_set_character_position", "peris", Vector3(72.8, 0.5, -2.5))  # pad 1
@@ -14055,10 +14059,18 @@ func _test_wash_relay() -> void:
 	chunk.call("_set_character_position", "endo", Vector3(72.8, 0.5, 2.5))    # pad 2 as well
 	instance.headless_advance(0.3)
 	_assert_true(bool((chunk.get_preview_state().get("sections", []) as Array)[8].get("disabled", false)), "both pads held disables the double-plate")
-	# BASIN (index 7): wide, slow (its own period 8), override stops it
+	# BASIN (index 7): wide, slow (its own period 8), override stops it. The override is a HELD console PAST the
+	# section (x1+1.5) — a member mans it and holds it open (step off and the flow resumes), so the test mans it.
 	_assert_true(abs(float((chunk.get_preview_state().get("sections", []) as Array)[7].get("period", 0.0)) - 8.0) < 0.01, "the basin runs on its own slow cadence (period 8)")
-	chunk.call("_on_override", 7)
-	_assert_true(bool((chunk.get_preview_state().get("sections", []) as Array)[7].get("disabled", false)), "overriding the basin stops its surge")
+	var basin_console: Vector2 = (chunk.call("_plate_footprints", 7) as Array)[0]
+	chunk.call("_on_override", 7)   # arriving at the console confirms the member is manning the station
+	chunk.call("_set_character_position", "aster", Vector3(basin_console.x, 0.5, basin_console.y))
+	instance.headless_advance(0.3)
+	_assert_true(bool((chunk.get_preview_state().get("sections", []) as Array)[7].get("disabled", false)), "manning the override console stops the basin surge")
+	_assert_true(bool(chunk.get_preview_state().get("sections", [])[7].get("overridden", false)), "the basin reads as overridden while the console is manned")
+	chunk.call("_set_character_position", "aster", Vector3(44.0, 0.5, 0.0))   # step off the console
+	instance.headless_advance(0.3)
+	_assert_true(not bool((chunk.get_preview_state().get("sections", []) as Array)[7].get("disabled", false)), "stepping off the override lets the basin surge resume (no permanent latch)")
 	# PER-SECTION CADENCE: the fast current (period 4) has surged more often than the period-6 sluice
 	var fc: Array = chunk.get_preview_state().get("sections", [])
 	_assert_true(int(fc[1].get("flood_count", 0)) > int(fc[4].get("flood_count", 0)), "the fast current (period 4) floods more often than the period-6 sluice")
