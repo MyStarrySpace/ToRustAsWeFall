@@ -834,10 +834,12 @@ func exocytose_preview_item(char_id: String, item_id: String) -> bool:
 	return exocytosed
 
 func get_preview_character_position(char_id: String) -> Vector3:
-	# Chunk logic runs in the flat DATA frame. On a warped scene the rendered node sits on the curved
-	# model (the helix), so return the flat DATA position there — otherwise the chunk's wash / plate /
-	# completion checks would read helix coordinates and break.
-	if _game_state != null and _game_state.coord_map != null and _game_state.characters.has(char_id):
+	# Chunk logic runs in the flat DATA frame, so return the DATA position whenever the data layer knows the
+	# character — the data is the authority. (On a warped scene the rendered node sits on the curved helix; on a
+	# flat scene the node usually matches the data but LAGS a frame after a data-layer snap — e.g. a Portal
+	# teleport via snap_character_to — so reading the node would report the stale spot.) Fall back to the node only
+	# for a character with no data-layer entry.
+	if _game_state != null and _game_state.characters.has(char_id):
 		return _game_state.get_position(char_id)
 	if not _characters.has(char_id):
 		return Vector3.ZERO

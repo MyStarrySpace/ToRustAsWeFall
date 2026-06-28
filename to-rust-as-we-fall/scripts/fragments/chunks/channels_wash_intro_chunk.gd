@@ -77,12 +77,13 @@ var _phase := "ready"
 var _flooding := [false, false, false]
 var _channel_water := []                           # per channel: the flood mesh
 var _flure: Flure                                  # the lure flower — a self-contained gameplay object (Flure class)
+var _capbages: Array = []                          # the Capbage hide objects (own their visual/outline/hide radius)
 var _enemies := []
 var _drowned := 0
 var _drowned_ids := {}                             # char_id -> true: dedupe the drown (once per hunter, one line)
 var _washed_back := 0                              # how many times a party member was flushed by a channel
-var _portal_near                                   # the two portal interactables (activatable, bidirectional)
-var _portal_far
+var _portal_near: Portal                           # the two portal objects (activatable, bidirectional)
+var _portal_far: Portal
 var _scheduled := false
 var _last_outcome := ""
 
@@ -130,34 +131,40 @@ func _build_chunk() -> void:
 	_register_interactable(_flure)   # into _interactables + host binding, like every other interactable
 	_flure.flure_activated.connect(_on_flure_activated)
 
-	# Portal — an ACTIVATABLE pair (not an area). Click one, the active member walks to it and steps through;
-	# only that one member crosses (whoever arrives first), and it's bidirectional + reusable so they can return.
-	_portal_near = _add_interactable(self, "PortalNear", "Step through", PORTAL_IN_POS, "PORTAL", "", 0.6, false, PORTAL_RADIUS,
-		Interactable.InteractableType.INSPECTION, false)
-	var pn := _add_object_glow(_portal_near, Vector3(0.0, 0.6, 0.0), 0.5, Color(0.55, 0.42, 0.98), 0.8)
-	_outline_interactable_child(_portal_near, pn, "PortalNear", 1.4)
+	# Portal — a bidirectional pair of self-contained Portal objects. Each owns its glow + outline + teleport;
+	# the chunk just places them pointed at each other. Only the activating member crosses (whoever arrives first).
+	_portal_near = _build_portal("PortalNear", PORTAL_IN_POS, PORTAL_OUT_POS)
 	_add_label(self, "PORTAL", PORTAL_IN_POS + Vector3(0.0, 1.6, 0.0), Color(0.6, 0.5, 1.0))
-	_portal_near.interacted.connect(func() -> void: _teleport_via_portal(true))
-	_portal_far = _add_interactable(self, "PortalFar", "Step through", PORTAL_OUT_POS, "PORTAL", "", 0.6, false, PORTAL_RADIUS,
-		Interactable.InteractableType.INSPECTION, false)
-	var pf := _add_object_glow(_portal_far, Vector3(0.0, 0.6, 0.0), 0.5, Color(0.55, 0.42, 0.98), 0.8)
-	_outline_interactable_child(_portal_far, pf, "PortalFar", 1.4)
-	_portal_far.interacted.connect(func() -> void: _teleport_via_portal(false))
+	_portal_far = _build_portal("PortalFar", PORTAL_OUT_POS, PORTAL_IN_POS)
 
 	_spawn_enemies()
 	reset_preview_state()
 	_set_preview_step("channels_wash_intro_start")
 
+func _build_portal(node_name: String, pos: Vector3, dest: Vector3) -> Portal:
+	var p := Portal.new()
+	p.name = node_name
+	p.configure(_get_game_state(), pos, dest, PORTAL_RADIUS, Color(0.55, 0.42, 0.98))
+	add_child(p)
+	_register_interactable(p)
+	p.stepped_through.connect(_on_portal_stepped)
+	return p
+
+func _on_portal_stepped(_who: String, _dest: Vector3) -> void:
+	if _phase in ["complete", "failed"]:
+		return
+	_say("// PORTAL // through")
+
 func _build_capbage(pos: Vector3, j: int) -> void:
-	# A tight-hide leaf head the player tucks into (concealment stays positional, CONCEAL_FULL). Highlightable
-	# like the flure + portal: an INSPECTION interactable whose dome mesh carries the SHARED outline/glow — hover
-	# lights the white hull, hold-SHIFT reveals it, a click lights the queued glow while the member walks in.
-	var cap := _add_interactable(self, "Capbage%d" % j, "Tuck into the Capbage", pos, "HIDE", "", 0.8, false,
-		CAPBAGE_RADIUS, Interactable.InteractableType.INSPECTION, false)
-	var head := _add_box(cap, Vector3(0.0, 0.2, 0.0), Vector3(1.5, 1.0, 1.5), Color(0.16, 0.34, 0.18),
-		Color(0.3, 0.7, 0.35), 0.25, "CapbageHead%d" % j)
-	_outline_interactable_child(cap, head, "Capbage%d" % j, CAPBAGE_RADIUS)
-	cap.interacted.connect(func() -> void: _say("// HIDE // tucked into the Capbage"))
+	# A self-contained Capbage object: it owns its leaf-head visual, its outline, and its hide radius. The chunk
+	# composes it + aggregates concealment from each Capbage's conceals() in _update.
+	var cap := Capbage.new()
+	cap.name = "Capbage%d" % j
+	cap.configure(_get_game_state(), pos, CAPBAGE_RADIUS)
+	add_child(cap)
+	_register_interactable(cap)
+	cap.tucked_in.connect(func() -> void: _say("// HIDE // tucked into the Capbage"))
+	_capbages.append(cap)
 	_add_label(self, "CAPBAGE", pos + Vector3(0.0, 1.5, 0.0), Color(0.5, 0.85, 0.55))
 
 func _add_marker(pos: Vector3, size: Vector3, color: Color, energy: float, label: String) -> void:
@@ -248,14 +255,15 @@ func _update(_delta: float) -> void:
 	if gs == null:
 		return
 
-	# Capbage concealment: a party member inside an open Capbage is fully undetectable (tight hide).
+	# Capbage concealment: a party member inside ANY Capbage's hide radius is fully undetectable (tight hide).
+	# Each Capbage owns its own conceals() check; the chunk just aggregates (FULL if inside one, else NONE).
 	for cid in PARTY_IDS:
 		if not gs.characters.has(cid):
 			continue
 		var p := _get_character_position(cid)
 		var hidden := false
-		for cpos in CAPBAGE_POS:
-			if Vector2(p.x - cpos.x, p.z - cpos.z).length() <= CAPBAGE_RADIUS:
+		for cap in _capbages:
+			if is_instance_valid(cap) and cap.conceals(p):
 				hidden = true
 				break
 		gs.set_character_concealment(cid, GameState.CONCEAL_FULL if hidden else GameState.CONCEAL_NONE)
@@ -324,24 +332,6 @@ func _on_flure_activated(_pulled: int) -> void:
 	_set_preview_step("channels_wash_intro_flure")
 	_say("// FLURE // signal up — the hunters lock onto it")
 
-## Step a SINGLE member through the portal — the one who activated it (whoever arrived first). Bidirectional
-## (near <-> far) and reusable, so a member can return. Never teleports the whole party at once.
-func _teleport_via_portal(to_far: bool) -> void:
-	if _phase in ["complete", "failed"]:
-		return
-	var src = _portal_near if to_far else _portal_far
-	var dest: Vector3 = PORTAL_OUT_POS if to_far else PORTAL_IN_POS
-	var who := ""
-	if src != null and ("active_character" in src):
-		who = str(src.active_character)
-	if who == "":
-		who = _get_active_character()
-	var gs = _get_game_state()
-	if gs == null or who == "" or not gs.characters.has(who):
-		return
-	gs.command_stop(who)
-	_set_character_position(who, dest)
-	_say("// PORTAL // through")
 
 func _complete() -> void:
 	if _phase == "complete":
