@@ -14144,9 +14144,13 @@ func _test_wash_relay_flush_hint() -> void:
 	_assert_true(not bool(chunk.get_preview_state().get("flush_hint_shown", true)),
 		"the flush hint does NOT fire on a startup timer (nobody's been washed yet)")
 	# Spread washes across DIFFERENT sections — two on flush (0), two on current (1): no single section hits 3.
+	# A washed member is swept to the start and STRANDED until recovered, so a single character can't be re-washed
+	# while down. Recover after each wash (the shared terminal/climb path) so each _wash_section catches a mobile
+	# aster — the real recover->re-cross loop a player runs to get washed on the same section repeatedly.
 	for sec_x in [[0, 8.0], [0, 8.0], [1, 16.5], [1, 16.5]]:
 		gs.snap_character_to("aster", Vector3(float(sec_x[1]), 0.5, 0.0))
 		chunk.call("_wash_section", int(sec_x[0]))
+		chunk.call("_recover_washed")
 	_assert_true(not bool(chunk.get_preview_state().get("flush_hint_shown", true)),
 		"washes SPREAD across sections (2+2) do not trigger the hint — it's per-section")
 	# A THIRD wash on the SAME section (flush, 0) crosses the threshold -> the hint appears.
