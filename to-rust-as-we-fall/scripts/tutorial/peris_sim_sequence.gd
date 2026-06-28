@@ -744,9 +744,9 @@ func _build_portal_view() -> void:
 func _build_monos_room(vp: SubViewport) -> void:
 	var cam := Camera3D.new()
 	cam.position = Vector3(0.0, 1.5, 5.4)
-	cam.look_at(Vector3(0.0, 1.0, 0.0), Vector3.UP)
 	cam.fov = 52.0
 	vp.add_child(cam)
+	cam.look_at(Vector3(0.0, 1.0, 0.0), Vector3.UP)   # orient AFTER it's in the tree (look_at needs a global xform)
 	# Lighting for the fresh world (no scene env): cool ambient + a key light, matching Peris's room mood.
 	var env := WorldEnvironment.new()
 	var e := Environment.new()

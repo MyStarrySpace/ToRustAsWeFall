@@ -24050,12 +24050,17 @@ func _test_peris_scene_transition() -> void:
 		log += str(line)
 	var drove := log.contains("[PERIS-TRANSITION-CHILD] reached_complete=true")
 	var crashed := log.contains("on a null value")
-	if crashed:
+	# Building the portal view used to call Camera3D.look_at BEFORE the camera was in the tree — a
+	# print-only "Node not inside tree" error in 4.7 that an in-process state assert can't see. The
+	# child builds the full Peris scene (portal view included), so it surfaces here.
+	var not_in_tree := log.contains("Node not inside tree")
+	if crashed or not_in_tree:
 		for raw in log.split("\n"):
-			if raw.contains("on a null value") or (raw.contains(".gd:") and raw.contains("at:")):
+			if raw.contains("on a null value") or raw.contains("Node not inside tree") or (raw.contains(".gd:") and raw.contains("at:")):
 				print("  [transition-crash] %s" % raw.strip_edges())
 	_assert_true(drove, "Child drove Peris-2 to complete via the real transition (exit %d)" % code)
 	_assert_true(not crashed, "Peris end-of-scene transition touches no torn-down scheduler (no 'on a null value')")
+	_assert_true(not not_in_tree, "Peris scene build calls no node-transform op before the node is in the tree (no 'Node not inside tree')")
 
 ## Child entry for the subprocess guard above (run via --drive-peris-transition). Drives Peris-2's
 ## REAL transition lifecycle — real input to `complete`, then the actual change_scene_to_file ->
