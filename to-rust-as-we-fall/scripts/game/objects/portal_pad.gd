@@ -1,8 +1,10 @@
-class_name Portal
+class_name PortalPad
 extends Interactable
 
-## A PORTAL: a free, reusable teleport. Click it and the activating member (whoever arrives first) steps through to
-## the paired destination — bidirectional (place two pointed at each other) and reusable, so a member can return.
+## A PORTAL PAD: the in-world, clickable realization of a "portal" (GDD: the teleport network that eliminates
+## backtracking). The abstract zone-graph EDGE is the `Portal` RefCounted data class; THIS is the physical pad a
+## member steps onto. Click it and the activating member (whoever arrives first) steps through to the paired
+## destination — bidirectional (place two pointed at each other) and reusable, so a member can return.
 ## Only the one who activated it crosses; it never moves the whole party.
 ##
 ## Self-contained + reusable like Flure: owns its glow visual, its outline/hover wiring (consistent highlight), and

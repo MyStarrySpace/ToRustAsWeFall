@@ -15,7 +15,6 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 ## per-frame work is cosmetic toggles + positional checks.
 
 const EnemyScript := preload("res://scripts/game/ai/enemy.gd")
-const WaterShader := preload("res://resources/channels_water.gdshader")
 
 const WORLD_SLOT := {
 	"slot_id": "act1_channels_wash_intro",
@@ -74,16 +73,15 @@ const ENEMY_DETECT := 4.0                          # PLAYER-sense range (small):
 const FLURE_ATTRACT := 32.0                        # FLURE-sense range (large): activating it grabs them room-wide
 
 var _phase := "ready"
-var _flooding := [false, false, false]
-var _channel_water := []                           # per channel: the flood mesh
+var _channels: Array = []                          # the Channel hazard objects (own their visual + flood cadence)
 var _flure: Flure                                  # the lure flower — a self-contained gameplay object (Flure class)
 var _capbages: Array = []                          # the Capbage hide objects (own their visual/outline/hide radius)
 var _enemies := []
 var _drowned := 0
 var _drowned_ids := {}                             # char_id -> true: dedupe the drown (once per hunter, one line)
 var _washed_back := 0                              # how many times a party member was flushed by a channel
-var _portal_near: Portal                           # the two portal objects (activatable, bidirectional)
-var _portal_far: Portal
+var _portal_near: PortalPad                        # the two portal pads (activatable, bidirectional)
+var _portal_far: PortalPad
 var _scheduled := false
 var _last_outcome := ""
 
@@ -99,21 +97,16 @@ func _build_chunk() -> void:
 	_add_label(self, "TO SPIRAL", EXIT_POS + Vector3(0.0, 2.0, 0.0), Color(0.5, 0.8, 0.9))
 	_add_marker(EXIT_POS, Vector3(EXIT_RADIUS * 1.6, 0.4, EXIT_RADIUS * 1.6), Color(0.3, 0.7, 0.55), 1.4, "")
 
-	# Three channels (flood strips). Built under a Node3D root so they survive a future hide pass; flat here.
-	_channel_water = []
+	# Three channels (flood strips) as self-contained Channel objects — each owns its bed + water visual and its
+	# scheduler-driven flood cadence. Phased 0/1/2 over the period so at least one is always flooding.
+	_channels = []
 	for i in range(CHANNEL_X.size()):
-		var cx: float = CHANNEL_X[i]
-		var bed := _add_box(self, Vector3(cx, -0.16, 0.0), Vector3(CHANNEL_HALF * 2.0, 0.18, Z_HALF * 2.0), Color(0.05, 0.07, 0.09))
-		bed.name = "ChannelBed%d" % i
-		var water := MeshInstance3D.new()
-		var bm := BoxMesh.new(); bm.size = Vector3(CHANNEL_HALF * 2.0, 0.34, Z_HALF * 2.0); water.mesh = bm
-		var wmat := ShaderMaterial.new(); wmat.shader = WaterShader; wmat.render_priority = 127
-		water.material_override = wmat
-		water.position = Vector3(cx, 0.12, 0.0)
-		water.visible = false
-		add_child(water)
-		_channel_water.append(water)
-		_add_label(self, "Channel %d" % (i + 1), Vector3(cx, 1.4, 0.0), Color(0.4, 0.75, 0.85))
+		var ch := Channel.new()
+		ch.name = "Channel%d" % i
+		ch.configure(CHANNEL_X[i], CHANNEL_HALF, Z_HALF, CHANNEL_PERIOD, CHANNEL_DUR, CHANNEL_PHASE[i], "wi_ch%d" % i)
+		add_child(ch)
+		_channels.append(ch)
+		_add_label(self, "Channel %d" % (i + 1), Vector3(CHANNEL_X[i], 1.4, 0.0), Color(0.4, 0.75, 0.85))
 
 	# Capbage tight hides (×3) on the near bank.
 	for j in range(CAPBAGE_POS.size()):
@@ -141,8 +134,8 @@ func _build_chunk() -> void:
 	reset_preview_state()
 	_set_preview_step("channels_wash_intro_start")
 
-func _build_portal(node_name: String, pos: Vector3, dest: Vector3) -> Portal:
-	var p := Portal.new()
+func _build_portal(node_name: String, pos: Vector3, dest: Vector3) -> PortalPad:
+	var p := PortalPad.new()
 	p.name = node_name
 	p.configure(_get_game_state(), pos, dest, PORTAL_RADIUS, Color(0.55, 0.42, 0.98))
 	add_child(p)
@@ -215,33 +208,15 @@ func _ensure_scheduled() -> void:
 	if sched == null:
 		return
 	_scheduled = true
-	for i in range(CHANNEL_X.size()):
-		sched.schedule_after(CHANNEL_PHASE[i] + 0.01, _make_onset(i), "wi_onset_%d" % i)
+	for ch in _channels:
+		ch.start(sched)   # each Channel owns its own scheduler-driven cadence
 
-func _make_onset(i: int) -> Callable:
-	return func() -> void: _channel_onset(i)
-
+## Force channel `i` to flood now — scripted beats / tests. (The cadence itself lives in the Channel object.)
 func _channel_onset(i: int) -> void:
 	if _phase in ["complete", "failed"]:
 		return
-	_flooding[i] = true
-	if i < _channel_water.size() and is_instance_valid(_channel_water[i]):
-		_channel_water[i].visible = true
-	var sched = _get_scheduler()
-	if sched != null:
-		sched.schedule_after(CHANNEL_DUR, func() -> void: _channel_off(i), "wi_off_%d" % i)
-		sched.schedule_after(CHANNEL_PERIOD, _make_onset(i), "wi_onset_%d" % i)
-
-func _channel_off(i: int) -> void:
-	_flooding[i] = false
-	if i < _channel_water.size() and is_instance_valid(_channel_water[i]):
-		_channel_water[i].visible = false
-
-func _channel_index_at(x: float) -> int:
-	for i in range(CHANNEL_X.size()):
-		if abs(x - CHANNEL_X[i]) <= CHANNEL_HALF:
-			return i
-	return -1
+	if i >= 0 and i < _channels.size() and is_instance_valid(_channels[i]):
+		_channels[i].flood_now()
 
 # --- Per-frame state ---
 
@@ -268,13 +243,12 @@ func _update(_delta: float) -> void:
 				break
 		gs.set_character_concealment(cid, GameState.CONCEAL_FULL if hidden else GameState.CONCEAL_NONE)
 
-	# Drown: an enemy caught in a flooding channel strip is swept off (the wash kills it).
+	# Drown: an enemy caught in a flooding channel is swept off (the wash kills it). Each Channel owns floods_at().
 	for enemy in _enemies:
 		if not is_instance_valid(enemy) or not enemy.is_alive():
 			continue
-		var ex: float = gs.get_position(enemy.char_id).x if gs.characters.has(enemy.char_id) else enemy.position.x
-		var ci := _channel_index_at(ex)
-		if ci >= 0 and _flooding[ci]:
+		var ep: Vector3 = gs.get_position(enemy.char_id) if gs.characters.has(enemy.char_id) else enemy.position
+		if _any_channel_floods_at(ep.x, ep.z):
 			_drown_enemy(enemy)
 
 	# The wash flushes PLAYERS too: a member standing in a flooding channel is swept back to the section start
@@ -284,8 +258,7 @@ func _update(_delta: float) -> void:
 		if not gs.characters.has(cid):
 			continue
 		var mp := _get_character_position(cid)
-		var mci := _channel_index_at(mp.x)
-		if mci >= 0 and _flooding[mci] and abs(mp.z) <= Z_HALF:
+		if _any_channel_floods_at(mp.x, mp.z):
 			gs.command_stop(cid)
 			_set_character_position(cid, WASH_BACK_POS)
 			_washed_back += 1
@@ -387,7 +360,6 @@ func get_preview_abilities() -> Array:
 
 func reset_preview_state() -> void:
 	_phase = "ready"
-	_flooding = [false, false, false]
 	if _flure != null:
 		_flure.reset_flure()
 	_drowned = 0
@@ -395,21 +367,19 @@ func reset_preview_state() -> void:
 	_washed_back = 0
 	_scheduled = false
 	_last_outcome = ""
-	for w in _channel_water:
-		if is_instance_valid(w):
-			w.visible = false
-	var sched = _get_scheduler()
-	if sched != null:
-		for i in range(CHANNEL_X.size()):
-			sched.cancel_tag("wi_onset_%d" % i); sched.cancel_tag("wi_off_%d" % i)
+	for ch in _channels:                 # each Channel cancels its own cadence + hides its water
+		if is_instance_valid(ch):
+			ch.reset()
 	_set_preview_step("channels_wash_intro_start")
 
 func get_preview_state() -> Dictionary:
 	var any_flooding := false
-	for f in _flooding:
+	var flooding: Array = []
+	for ch in _channels:
+		var f: bool = is_instance_valid(ch) and ch.is_flooding()
+		flooding.append(f)
 		if f:
 			any_flooding = true
-			break
 	var enemies_alive := 0
 	for enemy in _enemies:
 		if is_instance_valid(enemy) and enemy.is_alive():
@@ -419,10 +389,17 @@ func get_preview_state() -> Dictionary:
 		"complete": _phase == "complete",
 		"flure_active": _flure.is_active() if _flure != null else false,
 		"any_channel_flooding": any_flooding,
-		"flooding": _flooding.duplicate(),
+		"flooding": flooding,
 		"drowned": _drowned,
 		"enemies_alive": enemies_alive,
 		"flure_attract_range": FLURE_ATTRACT,
 		"player_sense_range": ENEMY_DETECT,
 		"last_outcome": _last_outcome,
 	}
+
+## True if any channel is flooding at (x, z) right now — the per-frame drown/wash check delegates to each Channel.
+func _any_channel_floods_at(x: float, z: float) -> bool:
+	for ch in _channels:
+		if is_instance_valid(ch) and ch.floods_at(x, z):
+			return true
+	return false
