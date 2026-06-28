@@ -784,6 +784,7 @@ func _ready() -> void:
 			"--test-physics":
 				ran_test = true
 				_test_physics_objects()
+				_test_airborne_strike_survives_recompute()
 				_test_physics_edge_cases()
 			"--test-pendulum":
 				ran_test = true
@@ -1196,6 +1197,7 @@ func _run_all_tests() -> void:
 	await _test_push_lab()
 	await _test_drink_partial_dwell()
 	_test_physics_objects()
+	_test_airborne_strike_survives_recompute()
 	_test_physics_edge_cases()
 	_test_pendulum()
 	_test_throw_physics()
@@ -22992,6 +22994,42 @@ func _test_physics_objects() -> void:
 	gs.unregister_physics_object("barrel1")
 	_assert_true(not gs.physics_objects.has("barrel1"), "Barrel unregistered")
 	_assert_true(grid.is_walkable(barrel_cell.x, barrel_cell.y), "Grid cell freed after unregister")
+
+# An AIRBORNE thrown object must still strike a character even when physics predictions are recomputed every
+# frame (e.g. a patrolling enemy re-issuing a move). `_recompute_physics_predictions` cancels the pending
+# physics_predict and reschedules; the old `t > now + 0.01` guard silently dropped a strike whose contact
+# aliased that window, so the barrel passed THROUGH the victim and no physics event fired (the flaky
+# launcher_throw_lane / aster_eats_the_barrel failure). This drives the recompute deterministically EVERY step,
+# so the imminent-contact drop fires every run, not 1-in-N. Red before the airborne guard, green after.
+func _test_airborne_strike_survives_recompute() -> void:
+	_test_name = "Airborne Strike Survives Recompute"
+	var grid := GridWorld.new()
+	grid.create_room(30, 20)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = sched
+	# A victim standing still in the lane; a barrel launched straight down the lane through them.
+	gs.register_character("victim", Vector3(8, 0, 5), 3.0)
+	gs.register_physics_object("barrel", Vector3(2, 0, 5), 0.8, 2.0, 0.6, true)
+	var struck: Array = []
+	gs.physics_collision.connect(func(_oid, cid, _imp): if cid == "victim": struck.append(cid))
+	gs.throw_physics_object_to("barrel", Vector3(11, 0, 5), 0.9)   # past the victim, still airborne at contact
+	# Setup sanity: a strike on the standing victim IS predicted (so a green result can't be vacuous).
+	var now0 := sched.get_current_tick()
+	var t_pred := gs._predict_collision_time(
+		gs._get_movement_segments("victim"), gs._get_physics_segments("barrel"),
+		GameState.PHYSICS_COLLISION_RADIUS + 0.8, now0)
+	_assert_true(t_pred > now0, "setup: the thrown barrel is on a strike course with the standing victim (t=%.3f)" % t_pred)
+	_assert_true(gs.physics_objects["barrel"].throw != null, "setup: the barrel is airborne (throw active)")
+	# Drive to impact while recomputing predictions EVERY step (the enemy-move recompute that triggers the drop).
+	var steps := 0
+	while steps < 400 and struck.is_empty():
+		gs._recompute_physics_predictions()
+		sched.advance_ticks(0.01)
+		steps += 1
+	_assert_true(struck.size() > 0,
+		"the airborne barrel strikes the victim even under per-step prediction recompute (strikes=%d)" % struck.size())
 
 func _test_physics_edge_cases() -> void:
 	_test_name = "Physics Edge Cases"

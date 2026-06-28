@@ -2022,11 +2022,19 @@ func _recompute_physics_predictions() -> void:
 			var segs_c := _get_movement_segments(char_id)
 			var segs_o := _get_physics_segments(obj_id)
 			var t := _predict_collision_time(segs_c, segs_o, collision_range, now)
-			# Skip collisions at current tick (already being resolved)
-			if t >= 0.0 and t > now + 0.01:
+			# Normally skip a collision at (or within a hair of) the current tick — for a PUSHABLE object that
+			# would otherwise re-fire a contact already being resolved on every recompute. But an AIRBORNE thrown
+			# object hasn't landed yet (its `throw` stays live and clears only on impact via _on_throw_landing), so
+			# an imminent strike that aliases the 0.01 guard must NOT be dropped: a recompute timed against contact
+			# (e.g. a patrolling enemy re-issuing a move) cancels the pending physics_predict, and without this the
+			# strike is lost and never re-fires (the barrel "passes through"). Clamp it just past `now` and still
+			# fire it — the throw-landing dedup makes it strike exactly once.
+			var obj_airborne: bool = obj.has("throw") and obj.throw != null
+			if t >= 0.0 and (t > now + 0.01 or obj_airborne):
 				var cid: String = char_id
 				var oid: String = obj_id
-				scheduler.schedule_at(t, func(): _on_physics_collision_event(oid, cid), "physics_predict")
+				var sched_t: float = t if t > now + 0.01 else now + 0.0001
+				scheduler.schedule_at(sched_t, func(): _on_physics_collision_event(oid, cid), "physics_predict")
 
 	# PhysicsObject vs PhysicsObject
 	var obj_ids := physics_objects.keys()
