@@ -13680,14 +13680,18 @@ func _test_nav_oracle() -> void:
 	var oracle := NavOracle.new()
 	var ok := oracle.bake_from_collision(root, 0.25, 0.2, 1)
 	_assert_true(ok and oracle.is_ready(), "NavOracle bakes a navmesh from the static collision")
-	# A freshly-assigned region needs a physics frame to process before the map sync takes.
-	await get_tree().physics_frame
-	oracle.sync()
-	await get_tree().physics_frame
-	oracle.sync()
 	if ok:
 		var a := Vector3(0.0, 0.1, -5.0)
 		var b := Vector3(0.0, 0.1, 5.0)   # centered behind the wall (x=-5.5..5.5): must detour to an end
+		# A freshly-assigned region's polygons land on the map only after the server processes the queued region
+		# command. One frame suffices in isolation, but under full-suite NavServer load it can take several — poll
+		# (force-update each frame) until a query resolves, so the assertions run against a SYNCED map rather than
+		# racing the sync. Bounded: if it never syncs, the assertions below still run and fail (no masking).
+		for _i in range(60):
+			await get_tree().physics_frame
+			oracle.sync()
+			if oracle.waypoints(a, b).size() >= 2:
+				break
 		_assert_true(oracle.reachable(a, b), "the far side is reachable (around the wall)")
 		var geo := oracle.distance(a, b)
 		var straight := a.distance_to(b)
