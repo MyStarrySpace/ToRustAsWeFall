@@ -141,7 +141,7 @@ const STAMINA_REGEN := 10.0
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
 @export_enum("stacks", "rings", "lockout", "mother_flure", "survival_range",
 	"endo_junction_stretch", "generated_stretch",
-	"refuge_run", "lure_relay", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay") var preview_chunk := "stacks"
+	"refuge_run", "channels_wash_intro", "lure_relay", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 ## When true, boot into a fragment PICKER instead of loading a chunk directly. The single
