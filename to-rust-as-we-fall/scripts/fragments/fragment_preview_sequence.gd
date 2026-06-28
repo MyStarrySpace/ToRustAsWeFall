@@ -68,7 +68,7 @@ const PREVIEW_ENTRIES := [
 		"config": {"spec_path": "res://data/generated_stretches/generated_random_walk_poc_shelter_3_to_4.json"}},
 	{"id": "survival_range", "chunk": "survival_range", "title": "Shelter-To-Shelter Range", "stage": 4},
 	{"id": "refuge_run", "chunk": "refuge_run", "title": "Refuge Run", "stage": 4},
-	{"id": "channels_wash_intro", "chunk": "channels_wash_intro", "title": "Channels — Wash Intro", "stage": 1},
+	{"id": "channels_wash_intro", "chunk": "channels_wash_intro", "title": "Channels — Wash Intro", "stage": 5},
 	{"id": "wash_relay", "chunk": "wash_relay", "title": "Wash Relay", "stage": 5},
 	{"id": "generated_diagnosis_setpiece", "chunk": "generated_stretch", "title": "Generated Diagnosis Setpiece", "stage": 6,
 		"config": {"spec_path": "res://data/generated_stretches/generated_diagnosis_setpiece_shelter_5_to_6.json"}},
