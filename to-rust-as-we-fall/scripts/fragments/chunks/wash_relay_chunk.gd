@@ -1680,25 +1680,19 @@ func _owner_x(ability_id: String) -> float:
 		return gs.get_position(owner).x
 	return 0.0
 
-# Grow a flora light (a small emissive bloom + an omni light) at a warped world position. Stored so it
-# persists for the run and is cleared on reset. Cosmetic light; the "lane reads clear" is the gameplay read.
+# Grow a flora light (the shared FloraLight: emissive bloom + omni light) at a warped world position. Stored
+# so it persists for the run and is cleared on reset. Cosmetic light; the "lane reads clear" is the gameplay read.
 func _spawn_bloom(world: Vector3, flat: Vector3) -> void:
 	if _bloom_root == null or not is_instance_valid(_bloom_root):
 		_bloom_root = Node3D.new()
 		_bloom_root.name = "Blooms"
 		add_child(_bloom_root)
-	var node := Node3D.new()
+	var node := FloraLight.new()
 	node.position = world + Vector3(0.0, 0.2, 0.0)
-	var mesh := MeshInstance3D.new()
-	var sph := SphereMesh.new(); sph.radius = 0.22; sph.height = 0.44; mesh.mesh = sph
-	mesh.material_override = _make_material(Color(0.2, 0.7, 0.5), Color(0.4, 1.0, 0.7), 2.2)
-	node.add_child(mesh)
-	var light := OmniLight3D.new()
-	light.light_color = Color(0.5, 1.0, 0.75)
-	light.light_energy = 2.2
-	light.omni_range = 6.0
-	light.position = Vector3(0.0, 0.6, 0.0)
-	node.add_child(light)
+	node.configure({
+		"albedo": Color(0.2, 0.7, 0.5), "emission": Color(0.4, 1.0, 0.7), "emission_energy": 2.2,
+		"bloom_radius": 0.22, "light_color": Color(0.5, 1.0, 0.75), "light_energy": 2.2, "light_range": 6.0,
+	})
 	_bloom_root.add_child(node)
 	_blooms.append({"pos": flat, "node": node})
 

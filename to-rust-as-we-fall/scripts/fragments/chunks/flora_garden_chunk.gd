@@ -19,7 +19,7 @@ const SPAWNS := {
 
 var _clock_label: Label3D
 var _pad_interactables: Array = []
-var _flora_visuals := {}      # flora_id -> {root, mesh, light}
+var _flora_visuals := {}      # flora_id -> FloraLight (glowing bloom; scale + light range track the stage)
 var _flora_interactables := {}  # flora_id -> Interactable (tend/harvest)
 
 func _build_chunk() -> void:
@@ -77,32 +77,13 @@ func _on_pad_planted(pad) -> void:
 	pad.set_interaction_enabled(false)
 	_ensure_flora_nodes(flora_id, pad_pos)
 
-## Each growth gets a TEND/HARVEST interactable + a glowing visual that scales with its stage.
+## Each growth gets a TEND/HARVEST interactable + a glowing FloraLight that scales with its stage.
 func _ensure_flora_nodes(flora_id: String, pos: Vector3) -> void:
-	var root := Node3D.new()
-	root.name = "FloraVisual_" + flora_id
-	root.position = pos
-	add_child(root)
-	var mesh := MeshInstance3D.new()
-	var sphere := SphereMesh.new()
-	sphere.radius = 0.18
-	sphere.height = 0.36
-	mesh.mesh = sphere
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.35, 0.8, 0.5)
-	mat.emission_enabled = true
-	mat.emission = Color(0.36, 0.91, 0.5)
-	mat.emission_energy_multiplier = 1.6
-	mesh.material_override = mat
-	mesh.position = Vector3(0, 0.25, 0)
-	root.add_child(mesh)
-	var light := OmniLight3D.new()
-	light.light_color = Color(0.5, 1.0, 0.65)
-	light.omni_range = 0.5
-	light.light_energy = 0.8
-	light.position = Vector3(0, 0.6, 0)
-	root.add_child(light)
-	_flora_visuals[flora_id] = {"root": root, "mesh": mesh, "light": light}
+	var bloom := FloraLight.new()
+	bloom.name = "FloraVisual_" + flora_id
+	bloom.position = pos
+	add_child(bloom)
+	_flora_visuals[flora_id] = bloom
 
 	var it = _add_interactable(self, "Flora_" + flora_id, "Tend or harvest the growth",
 		pos + Vector3(0.0, 0.0, 0.8), "TEND", "peris", 0.9, false, 1.5)
@@ -135,9 +116,9 @@ func _sync_flora() -> void:
 		if not _flora_visuals.has(fid):
 			_ensure_flora_nodes(fid, gs.flora[fid].position)
 		var stage: int = gs.get_flora_stage(fid)
-		var visual: Dictionary = _flora_visuals[fid]
-		(visual.mesh as MeshInstance3D).scale = Vector3.ONE * (1.0 + stage * 0.8)
-		(visual.light as OmniLight3D).omni_range = gs.get_flora_light_radius(fid)
+		var bloom: FloraLight = _flora_visuals[fid]
+		bloom.set_growth_scale(1.0 + stage * 0.8)
+		bloom.set_light_range(gs.get_flora_light_radius(fid))
 	if _clock_label != null:
 		var grown := []
 		for fid in gs.flora.keys():
