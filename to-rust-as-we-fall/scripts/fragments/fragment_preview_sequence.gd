@@ -222,6 +222,13 @@ func _build_scene() -> void:
 	environment.ambient_light_energy = 0.55
 	environment.glow_enabled = true
 	environment.glow_intensity = 0.25
+	# 4.7 performs glow BEFORE tonemapping with full HDR (HDR output landed in 4.7), so moderate emissive feedback
+	# — the hover-grid Decal, outline hulls, object glows — bloomed into solid glowing blobs (the reported "weird
+	# glowing square" + washed-out previews/outlines). Pin the threshold high so ONLY genuine highlights bloom and
+	# the UI feedback stays crisp, and kill additive sub-threshold bloom. (Was riding the engine default, which 4.7
+	# changed.)
+	environment.glow_hdr_threshold = 1.5
+	environment.glow_bloom = 0.0
 	world_environment.environment = environment
 	env.add_child(world_environment)
 	_preview_environment = environment
