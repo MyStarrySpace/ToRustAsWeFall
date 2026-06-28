@@ -222,13 +222,6 @@ func _build_scene() -> void:
 	environment.ambient_light_energy = 0.55
 	environment.glow_enabled = true
 	environment.glow_intensity = 0.25
-	# 4.7 performs glow BEFORE tonemapping with full HDR (HDR output landed in 4.7), so moderate emissive feedback
-	# — the hover-grid Decal, outline hulls, object glows — bloomed into solid glowing blobs (the reported "weird
-	# glowing square" + washed-out previews/outlines). Pin the threshold high so ONLY genuine highlights bloom and
-	# the UI feedback stays crisp, and kill additive sub-threshold bloom. (Was riding the engine default, which 4.7
-	# changed.)
-	environment.glow_hdr_threshold = 1.5
-	environment.glow_bloom = 0.0
 	world_environment.environment = environment
 	env.add_child(world_environment)
 	_preview_environment = environment
@@ -669,6 +662,13 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				_preview_dodge_unlocked = not _preview_dodge_unlocked
 				_apply_dodge_setting()
 				show_preview_message("Dodge roll: %s" % ("ENABLED" if _preview_dodge_unlocked else "locked"), 1.4)
+			KEY_QUOTELEFT:
+				# Backtick/tilde toggles the FX path-preview + outline-hit traces (GridWorld._fx_debug) IN-GAME,
+				# without the FX_DEBUG env var — so the loader's [preview]/[ribbon]/[outline] prints work when you
+				# run the fragment loader from the editor (where setting an env var is awkward).
+				GridWorld._fx_debug = not GridWorld._fx_debug
+				print("[fx-debug] path/outline traces %s" % ("ON" if GridWorld._fx_debug else "off"))
+				show_preview_message("FX debug traces: %s" % ("ON (see console)" if GridWorld._fx_debug else "off"), 1.6)
 			KEY_1:
 				if key_event.ctrl_pressed or key_event.shift_pressed:
 					_toggle_character_selected("aster")

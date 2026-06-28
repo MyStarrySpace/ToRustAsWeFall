@@ -60,9 +60,7 @@ const HOVER_TINT := Color(1.0, 1.0, 1.0)  # faded white — a quiet aim hint, no
 const HOVER_BOX_H := 0.6          # the Decal's downward projection DEPTH — kept TIGHT to the hovered deck so it
                                   # can't spill onto the helix loop stacked above/below (the "grid lands away
                                   # from where I pointed" bug); the box is centred ON the deck surface.
-const HOVER_EMISSION_ENERGY := 0.15  # self-lit enough to read in a dark scene without blooming. Godot 4.7 renders
-                                     # emission far brighter (HDR emission, glow-before-tonemapping), so the old 0.6
-                                     # (subtle in 4.6.1) glared into a solid glowing square — the "weird square".
+const HOVER_EMISSION_ENERGY := 0.6  # low: self-lit enough to read in a dark scene, under the glow bloom threshold
 ## Characters render on this dedicated VISUAL layer; the hover-grid Decal clears it from its cull_mask, so the
 ## grid stamps the FLOOR but passes THROUGH bodies (it never paints on a character standing in the patch).
 ## npc.gd / enemy.gd put their visual mesh on the same layer — keep these three in sync.
@@ -262,9 +260,7 @@ func _build_hover_grid() -> void:
 	_hover_grid.texture_emission = tex
 	_hover_grid.emission_energy = HOVER_EMISSION_ENERGY
 	_hover_grid.albedo_mix = 1.0
-	# Dim the whole projection: 4.7 renders the Decal's (unclamped) lit albedo + emission much brighter than 4.6.1,
-	# so a full-white modulate glared into a solid glowing square. ~0.3 restores the subtle grid the design intends.
-	_hover_grid.modulate = Color(0.3, 0.3, 0.3, 1.0)   # the lines are already character-coloured inside the texture
+	_hover_grid.modulate = Color(1, 1, 1, 1)   # the lines are already character-coloured inside the texture
 	_hover_grid.size = Vector3(HOVER_SPAN * HOVER_CELL, HOVER_BOX_H, HOVER_SPAN * HOVER_CELL)
 	_hover_grid.upper_fade = 0.2   # ease the projection on/off at the top and bottom of the box so the grid
 	_hover_grid.lower_fade = 0.2   # fades onto the deck instead of cutting hard where the box ends
