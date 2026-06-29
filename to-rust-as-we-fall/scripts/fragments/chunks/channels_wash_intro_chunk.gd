@@ -30,6 +30,8 @@ var _drowned_ids := {}                # char_id -> true: dedupe the drown (once 
 var _washed_back := 0                 # how many times a party member was flushed by a channel
 var _last_outcome := ""
 var _flure: Flure                     # cached from the loader's flures()[0]
+var _portal_near: PortalPad           # cached from the loader's _portals (near bank / far bank)
+var _portal_far: PortalPad
 
 # Logic knobs read from the fragment's params (the .tres is the source of truth).
 var _party_ids: Array = []
@@ -53,6 +55,10 @@ func _build_chunk() -> void:
 	if not _flures.is_empty():
 		_flure = _flures[0]
 		_flure.flure_activated.connect(_on_flure_activated)
+	if _portals.size() >= 1:
+		_portal_near = _portals[0]
+	if _portals.size() >= 2:
+		_portal_far = _portals[1]
 	for prt in _portals:
 		prt.stepped_through.connect(_on_portal_stepped)
 	for cap in _capbages:
