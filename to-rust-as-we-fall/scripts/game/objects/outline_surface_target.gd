@@ -2,10 +2,6 @@
 class_name OutlineSurfaceTarget
 extends StaticBody3D
 
-const OUTLINE_EMISSION_SHADER := preload("res://resources/outline_emission_noise.gdshader")
-# Shared morphing-noise texture for the emission shell (one for all targets).
-static var _shared_noise_tex: Texture2D
-
 ## Pickable room object with object-local outline and selected feedback.
 
 @export var hover_enabled := true
@@ -34,7 +30,6 @@ var _debug_anchor: MeshInstance3D
 var _highlight_meshes: Array[MeshInstance3D] = []
 var _original_overlays := {}
 var _outline_particles := {}
-var _glow_shells := {}  # expanded inverted-hull shells with the morphing-noise emission shader
 var _hovered := false
 var _selected := false
 var _feedback_managed := false
@@ -43,6 +38,7 @@ var _selection_token := 0
 # at any distance. _outline_active is the logical "outline showing" flag (what has_active_mesh_outline reports);
 # the manager does the actual rendering. Null manager (headless test / standalone) => flag only, no render.
 var _outline_active := false
+var _glow_active := false      # the QUEUED energy glow (set on begin_queued_feedback); has_active_glow() reports it
 var _active_outline_color := Color.WHITE
 var _mask_manager: OutlineMaskManager = null
 
@@ -167,7 +163,7 @@ func set_highlight(active: bool) -> void:
 			name, active, _selected, _highlight_meshes.size(), object_outline_enabled])
 	if active:
 		if not _selected:
-			_apply_object_outline(hover_outline_color, hover_object_outline_width, 1.0)
+			_apply_object_outline(hover_outline_color, false)
 		return
 	if not _selected:
 		_clear_object_outline()
@@ -179,7 +175,7 @@ func register_highlight_mesh(mesh_instance: MeshInstance3D) -> void:
 	_original_overlays[mesh_instance.get_instance_id()] = mesh_instance.material_overlay
 	# If the outline is already showing (mesh registered after a hover), feed the new mesh into the mask too.
 	if _outline_active:
-		_register_mask(_active_outline_color)
+		_register_mask(_active_outline_color, _glow_active)
 
 func get_highlight_mesh_count() -> int:
 	_prune_highlight_meshes()
@@ -212,8 +208,7 @@ func begin_queued_feedback(_origin: Vector3 = Vector3.ZERO, queue_color: Color =
 	_selected = true
 	_selection_token += 1
 	var tint := queue_color if queue_color.a > 0.0 else selected_feedback_color
-	_apply_object_outline(tint, selected_object_outline_width, selected_object_glow_strength)
-	_show_glow(true, tint)
+	_apply_object_outline(tint, true)
 
 func complete_queued_feedback() -> void:
 	_clear_queued_feedback()
@@ -230,35 +225,38 @@ func _clear_queued_feedback() -> void:
 	if _debug_anchor != null:
 		_debug_anchor.visible = false
 	# Fall back to the hover OUTLINE if still hovered; the glow always ends with the queue.
-	_show_glow(false)
 	if _hovered:
-		_apply_object_outline(hover_outline_color, hover_object_outline_width, 1.0)
+		_apply_object_outline(hover_outline_color, false)
 	else:
 		_clear_object_outline()
 
-func _apply_object_outline(color: Color, _width: float, _glow_strength: float) -> void:
+## active=hover outline (glow_on=false) OR the queued energy glow (glow_on=true). The crisp outline + the morphing
+## energy halo are both the screen-space mask now (OutlineMaskManager); glow_on flips the mask's fill-alpha flag.
+func _apply_object_outline(color: Color, glow_on: bool) -> void:
 	if not object_outline_enabled:
 		return
 	_active_outline_color = color
 	_outline_active = true
-	_register_mask(color)
+	_glow_active = glow_on
+	_register_mask(color, glow_on)
 
 func _clear_object_outline() -> void:
 	_outline_active = false
+	_glow_active = false
 	_unregister_mask()
 	_prune_highlight_meshes()
 	for mesh_instance in _highlight_meshes:
 		var original = _original_overlays.get(mesh_instance.get_instance_id(), null)
 		mesh_instance.material_overlay = original
 
-## Hand the highlight meshes to the scene's OutlineMaskManager (the screen-space outline). No manager (headless
-## test / standalone target) is fine — the logical _outline_active flag still reflects "outlined".
-func _register_mask(color: Color) -> void:
+## Hand the highlight meshes to the scene's OutlineMaskManager (the screen-space outline + glow). No manager
+## (headless test / standalone target) is fine — the logical _outline_active/_glow_active flags still reflect state.
+func _register_mask(color: Color, glow_on: bool) -> void:
 	_prune_highlight_meshes()
 	var manager := _get_mask_manager()
 	if manager == null:
 		return
-	manager.register(get_instance_id(), _highlight_meshes, color)
+	manager.register(get_instance_id(), _highlight_meshes, color, glow_on)
 
 func _unregister_mask() -> void:
 	if _mask_manager != null and is_instance_valid(_mask_manager):
@@ -272,123 +270,10 @@ func _get_mask_manager() -> OutlineMaskManager:
 	_mask_manager = OutlineMaskManager.find_for(self)
 	return _mask_manager
 
-# Cache: source mesh RID id -> smooth-normal hull mesh (built once per unique mesh, shared across targets).
-static var _smooth_hull_cache := {}
-
-## Build a hull mesh whose normals are SMOOTH (averaged across every vertex that shares a POSITION), used ONLY
-## for the outline/glow shells. Flat-shaded meshes (the room props) duplicate vertices at every hard edge with
-## per-FACE normals, so an inverted hull expanded along those normals TEARS at the edges — the broken, partial
-## outline. Averaging the normal per shared position makes adjacent faces expand TOGETHER, so the hull stays a
-## continuous silhouette. Positions + UVs are preserved (the alpha-cutout discard still works); only the normals
-## change. The VISIBLE object keeps its own flat mesh — this copy is the outline hull alone.
-static func _smooth_hull_mesh(source: Mesh) -> Mesh:
-	if source == null:
-		return source
-	var key: int = source.get_rid().get_id()
-	if _smooth_hull_cache.has(key):
-		return _smooth_hull_cache[key]
-	var out := ArrayMesh.new()
-	for s in range(source.get_surface_count()):
-		var arrays: Array = source.surface_get_arrays(s)
-		if arrays.is_empty():
-			continue
-		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-		if verts.is_empty():
-			continue
-		var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
-		var tris: PackedInt32Array = indices
-		if tris.is_empty():
-			tris = PackedInt32Array()
-			for i in range(verts.size()):
-				tris.append(i)
-		var accum := {}   # position key -> accumulated (area-weighted) face normal
-		for t in range(0, tris.size() - 2, 3):
-			var a := verts[tris[t]]
-			var b := verts[tris[t + 1]]
-			var c := verts[tris[t + 2]]
-			var fn := (b - a).cross(c - a)
-			for p in [a, b, c]:
-				var pk := _pos_key(p)
-				accum[pk] = accum.get(pk, Vector3.ZERO) + fn
-		var smooth := PackedVector3Array()
-		smooth.resize(verts.size())
-		for i in range(verts.size()):
-			var n: Vector3 = accum.get(_pos_key(verts[i]), Vector3.UP)
-			smooth[i] = n.normalized() if n.length() > 0.00001 else Vector3.UP
-		var na: Array = []
-		na.resize(Mesh.ARRAY_MAX)
-		na[Mesh.ARRAY_VERTEX] = verts
-		na[Mesh.ARRAY_NORMAL] = smooth
-		if arrays[Mesh.ARRAY_TEX_UV] != null:
-			na[Mesh.ARRAY_TEX_UV] = arrays[Mesh.ARRAY_TEX_UV]
-		if not indices.is_empty():
-			na[Mesh.ARRAY_INDEX] = indices
-		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, na)
-	var result: Mesh = out if out.get_surface_count() > 0 else source
-	_smooth_hull_cache[key] = result
-	return result
-
-static func _pos_key(p: Vector3) -> String:
-	return "%.3f|%.3f|%.3f" % [p.x, p.y, p.z]
-
-
-# --- Emission glow shell: an expanded inverted hull whose silhouette band is filled with
-# morphing noise, so the outline looks like it's shedding energy (replaces the GPU particles). ---
-
-static func _noise_texture() -> Texture2D:
-	if _shared_noise_tex != null:
-		return _shared_noise_tex
-	var noise := FastNoiseLite.new()
-	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	noise.frequency = 0.035
-	noise.fractal_octaves = 3
-	# Synchronous seamless image (not async NoiseTexture2D) so the glow has noise immediately.
-	_shared_noise_tex = ImageTexture.create_from_image(noise.get_seamless_image(256, 256))
-	return _shared_noise_tex
-
-func _ensure_glow_shell(mesh_instance: MeshInstance3D) -> MeshInstance3D:
-	if mesh_instance == null or mesh_instance.mesh == null:
-		return null
-	var mesh_id := mesh_instance.get_instance_id()
-	var existing = _glow_shells.get(mesh_id, null)
-	if existing is MeshInstance3D and is_instance_valid(existing):
-		return existing
-	var shell := MeshInstance3D.new()
-	shell.name = "OutlineEmissionShell"
-	shell.mesh = _smooth_hull_mesh(mesh_instance.mesh)
-	shell.visible = false
-	shell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	shell.extra_cull_margin = maxf(mesh_instance.extra_cull_margin, 6.0)
-	shell.layers = mesh_instance.layers
-	var mat := ShaderMaterial.new()
-	mat.shader = OUTLINE_EMISSION_SHADER
-	# The glow is blend_add (transparent), so it must draw AFTER the perception-overlay quad (render_priority
-	# 126) or it vanishes in data-view (the flood-water / dest-ring bug class — transparent surfaces are excluded
-	# from the screen texture the overlay rewrites from). Opaque draws before all transparent regardless of
-	# priority, so this never reorders it under the crisp opaque hull.
-	mat.render_priority = 127
-	mat.set_shader_parameter("noise_tex", _noise_texture())
-	shell.material_override = mat
-	mesh_instance.add_child(shell)
-	_glow_shells[mesh_id] = shell
-	return shell
-
-func _show_glow(active: bool, color: Color = selected_feedback_color) -> void:
-	_prune_highlight_meshes()
-	for mesh_instance in _highlight_meshes:
-		var shell := _ensure_glow_shell(mesh_instance)
-		if shell == null:
-			continue
-		var mat := shell.material_override as ShaderMaterial
-		if mat != null:
-			mat.set_shader_parameter("glow_color", color)
-		shell.visible = active
-
+## The QUEUED energy glow is now the screen-space mask's noise-morphed halo (OutlineMaskManager), keyed off the
+## queued fill-alpha flag — no more inverted-hull emission shell. This is the logical "glow on" state.
 func has_active_glow() -> bool:
-	for shell in _glow_shells.values():
-		if shell is MeshInstance3D and is_instance_valid(shell) and (shell as MeshInstance3D).visible:
-			return true
-	return false
+	return _glow_active
 
 func _play_outline_particles() -> void:
 	if not outline_particles_enabled:

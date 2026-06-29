@@ -3299,8 +3299,9 @@ func _test_asset_pipeline() -> void:
 	_assert_true(
 		mask_outline_shader_text.contains("mask_tex")
 		and mask_outline_shader_text.contains("sqrt(gx * gx + gy * gy)")
-		and mask_outline_shader_text.contains("EMISSION = col * edge * glow"),
-		"Screen-space outline shader Sobels the object mask and emits a glow"
+		and mask_outline_shader_text.contains("morph_noise")
+		and mask_outline_shader_text.contains("EMISSION ="),
+		"Screen-space outline shader Sobels the object mask and emits a noise-morphed glow"
 	)
 	var outline_shader_text := FileAccess.get_file_as_string("res://resources/black_outline.gdshader")
 	_assert_true(
@@ -5417,11 +5418,9 @@ func _test_interactable_highlight() -> void:
 	var queue_tint := Color(0.29, 0.62, 1.0)
 	tgt.begin_queued_feedback(Vector3.ZERO, queue_tint)
 	_assert_true(tgt.has_active_glow(), "a queued interaction runs the energy glow")
-	var glow_shell_mat: ShaderMaterial = null
-	for shell in tgt._glow_shells.values():
-		if shell is MeshInstance3D and is_instance_valid(shell):
-			glow_shell_mat = (shell as MeshInstance3D).material_override as ShaderMaterial
-	_assert_true(glow_shell_mat != null and Color(glow_shell_mat.get_shader_parameter("glow_color")).is_equal_approx(queue_tint),
+	# The queued outline + energy halo tint to the servicing character's colour (the mask manager fills the
+	# silhouette with it; the target records it as the active outline colour).
+	_assert_true(Color(tgt._active_outline_color).is_equal_approx(queue_tint),
 		"the queued glow tints to the SERVICING CHARACTER's color")
 	tgt.cancel_queued_feedback()
 	_assert_true(not tgt.has_active_glow(), "cancelling the queue ends the glow")
@@ -15460,15 +15459,14 @@ func _test_outline_feedback_system() -> void:
 	})
 	_assert_true(target != null, "outline_meshes builds a target from mesh bounds")
 	if target != null:
-		# The queued/selected ENERGY GLOW is blend_add (transparent), so it must draw OVER the perception-overlay
-		# quad (render_priority 126) or it vanishes in data-view (the flood-water bug class). FLESH_OUT ui-dataview-sweep.
+		# The queued ENERGY GLOW is now the screen-space mask's noise-morphed halo (OutlineMaskManager), not an
+		# inverted-hull shell — has_active_glow() is the logical state; cancelling ends it.
 		target.begin_queued_feedback(Vector3.ZERO, Color(0.3, 0.7, 1.0))
-		var glow_shell := host.find_child("OutlineEmissionShell", true, false) as MeshInstance3D
-		_assert_true(glow_shell != null, "queued feedback builds the energy glow shell")
-		if glow_shell != null:
-			_assert_true((glow_shell.material_override as ShaderMaterial).render_priority > 126,
-				"the queued energy glow draws over the perception overlay (render_priority > 126) so it shows in data-view")
+		_assert_true(bool(target.call("has_active_glow")), "queued feedback runs the energy glow")
+		_assert_true(Color(target.get("_active_outline_color")).is_equal_approx(Color(0.3, 0.7, 1.0)),
+			"the queued glow tints to the servicing character's colour")
 		target.cancel_queued_feedback()
+		_assert_true(not bool(target.call("has_active_glow")), "cancelling the queue ends the glow")
 		_assert_true(bool(target.get("outline_particles_enabled")),
 			"Built target has outline particles enabled")
 		_assert_equals(int(target.get("selected_particle_count")), 42,

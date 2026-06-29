@@ -15,9 +15,18 @@ extends Node3D
 const MASK_SHADER := preload("res://resources/screen_outline_mask.gdshader")
 const FILL_SHADER := preload("res://resources/outline_mask_fill.gdshader")
 
+# The fill ALPHA encodes intent (read back by the composite): a HOVER object outlines only, a QUEUED one also
+# radiates the energy glow. Kept well apart so the shader's queued_threshold separates them cleanly.
+const HOVER_ALPHA := 0.5
+const QUEUED_ALPHA := 1.0
+
 @export var thickness := 2.0
 @export var glow := 1.15
+@export var glow_radius := 22.0
+@export var glow_strength := 2.4
 @export var fallback_color := Color.WHITE
+
+static var _shared_noise_tex: Texture2D
 
 var _sub: SubViewport
 var _sub_cam: Camera3D
@@ -64,6 +73,9 @@ func _ensure_built() -> void:
 	_mask_mat.set_shader_parameter("mask_tex", _sub.get_texture())
 	_mask_mat.set_shader_parameter("thickness", thickness)
 	_mask_mat.set_shader_parameter("glow", glow)
+	_mask_mat.set_shader_parameter("glow_radius", glow_radius)
+	_mask_mat.set_shader_parameter("glow_strength", glow_strength)
+	_mask_mat.set_shader_parameter("noise_tex", _noise_texture())
 	_mask_mat.set_shader_parameter("fallback_color", fallback_color)
 	_quad.material_override = _mask_mat
 	_quad.extra_cull_margin = 1.0e6   # the vertex shader places it fullscreen; never frustum-cull it
@@ -78,16 +90,18 @@ func _viewport_size() -> Vector2i:
 	var s := vp.get_visible_rect().size
 	return Vector2i(maxi(8, int(s.x)), maxi(8, int(s.y)))
 
-## (Re)register an object's meshes for outlining at `color`. `key` is the owning target's instance id.
-func register(key: int, meshes: Array, color: Color) -> void:
+## (Re)register an object's meshes for outlining at `color`. `glow` = true adds the queued energy halo (a queued
+## interaction), false = outline only (hover). `key` is the owning target's instance id.
+func register(key: int, meshes: Array, color: Color, glow_on: bool = false) -> void:
 	if Engine.is_editor_hint():
 		return
 	_ensure_built()
 	if _entries.has(key):
-		# Already shown — just retint (hover -> queued recolours the same object).
-		set_color(key, color)
+		# Already shown — just retint + flip the glow flag (hover -> queued recolours/relights the same object).
+		set_color(key, color, glow_on)
 		return
 	var copies: Array = []
+	var fill_alpha: float = QUEUED_ALPHA if glow_on else HOVER_ALPHA
 	for m in meshes:
 		if not (m is MeshInstance3D) or (m as MeshInstance3D).mesh == null:
 			continue
@@ -96,18 +110,20 @@ func register(key: int, meshes: Array, color: Color) -> void:
 		copy.mesh = src.mesh
 		copy.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		copy.extra_cull_margin = maxf(src.extra_cull_margin, 4.0)
-		_apply_fill_materials(copy, src, color)
+		_apply_fill_materials(copy, src, color, fill_alpha)
 		_sub.add_child(copy)
 		copy.global_transform = src.global_transform
 		copies.append({"copy": copy, "src": src})
-	_entries[key] = {"color": color, "copies": copies}
+	_entries[key] = {"color": color, "glow": glow_on, "copies": copies}
 	_refresh_visibility()
 
-func set_color(key: int, color: Color) -> void:
+func set_color(key: int, color: Color, glow_on: bool = false) -> void:
 	var e = _entries.get(key)
 	if e == null:
 		return
 	e["color"] = color
+	e["glow"] = glow_on
+	var fill_alpha: float = QUEUED_ALPHA if glow_on else HOVER_ALPHA
 	for c in e["copies"]:
 		var copy := c["copy"] as MeshInstance3D
 		if not is_instance_valid(copy):
@@ -116,6 +132,7 @@ func set_color(key: int, color: Color) -> void:
 			var mat := copy.get_surface_override_material(s) as ShaderMaterial
 			if mat != null:
 				mat.set_shader_parameter("fill_color", color)
+				mat.set_shader_parameter("fill_alpha", fill_alpha)
 
 func unregister(key: int) -> void:
 	var e = _entries.get(key)
@@ -139,14 +156,15 @@ func _refresh_visibility() -> void:
 	if _sub != null:
 		_sub.render_target_update_mode = SubViewport.UPDATE_ALWAYS if active else SubViewport.UPDATE_DISABLED
 
-## Per-surface fill material: a flat tint, with alpha-cutout discard when the source surface is transparent
-## (so foliage/decals mask to the leaf shape, not the bounding quad).
-func _apply_fill_materials(copy: MeshInstance3D, src: MeshInstance3D, color: Color) -> void:
+## Per-surface fill material: a flat tint at `fill_alpha` (the glow flag), with alpha-cutout discard when the
+## source surface is transparent (so foliage/decals mask to the leaf shape, not the bounding quad).
+func _apply_fill_materials(copy: MeshInstance3D, src: MeshInstance3D, color: Color, fill_alpha: float) -> void:
 	var surfaces: int = copy.mesh.get_surface_count() if copy.mesh != null else 0
 	for s in range(surfaces):
 		var mat := ShaderMaterial.new()
 		mat.shader = FILL_SHADER
 		mat.set_shader_parameter("fill_color", color)
+		mat.set_shader_parameter("fill_alpha", fill_alpha)
 		var source := src.get_active_material(s)
 		if source is BaseMaterial3D:
 			var base := source as BaseMaterial3D
@@ -155,6 +173,17 @@ func _apply_fill_materials(copy: MeshInstance3D, src: MeshInstance3D, color: Col
 				mat.set_shader_parameter("use_alpha", true)
 				mat.set_shader_parameter("src_albedo", base.albedo_texture)
 		copy.set_surface_override_material(s, mat)
+
+## Shared morphing-noise texture for the energy-glow halo (one synchronous seamless image for all managers).
+static func _noise_texture() -> Texture2D:
+	if _shared_noise_tex != null:
+		return _shared_noise_tex
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	noise.frequency = 0.035
+	noise.fractal_octaves = 3
+	_shared_noise_tex = ImageTexture.create_from_image(noise.get_seamless_image(256, 256))
+	return _shared_noise_tex
 
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint() or not _built:
