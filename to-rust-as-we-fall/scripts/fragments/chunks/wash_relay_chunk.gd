@@ -1,4 +1,4 @@
-extends "res://scripts/scene_chunks/scene_chunk.gd"
+extends "res://scripts/fragments/chunks/data_fragment_chunk.gd"
 
 ## WASH RELAY — the early-stretch traversal gauntlet.
 ##
@@ -18,62 +18,41 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 ## Reach the chunk end with the whole party; a RETURN device pulls washed members back up.
 ## All hazards fire on the gameplay SCHEDULER (recurring per-section onsets) — fast-forward + replay safe.
 
-const EnemyScript := preload("res://scripts/game/ai/enemy.gd")
 const ChannelsArc := preload("res://scripts/game/world/channels_arc.gd")
 const StretchGenerator := preload("res://scripts/generation/stretch_generator.gd")
 const WaterShader := preload("res://resources/channels_water.gdshader")
 const WaterTexV0 := preload("res://resources/models/channels/channels_water_v0.png")
 const WaterTexV1 := preload("res://resources/models/channels/channels_water_v1.png")
 
+# The LEVEL DATA (environment model + section layout + level tunables). The .tres is the authoritative source;
+# the values below are fallbacks. Read into member vars (initialized at instantiation, before get_grid_data /
+# _build_chunk) so the ~200 downstream references (SECTIONS[i], FLOW_PERIOD, …) are unchanged. The warp/flood/
+# branch/drain MECHANICS stay in this subclass — the "thin logic" half of the hybrid.
+const FRAGMENT := preload("res://data/fragments/wash_relay.tres")
+
 const PARTY_IDS := ["aster", "peris", "endo"]
-const START_POS := Vector3(3.0, 0.5, 0.0)
-const SPAWNS := {
-	"aster": Vector3(3.0, 0.5, 0.0), "peris": Vector3(2.0, 0.5, 1.2), "endo": Vector3(2.0, 0.5, -1.2),
-}
-# The gauntlet, front (pure wash) to back (wash + threats). Each section may override the shared cadence
-# with its own "period"/"dur" (variety: tight frantic windows vs slow long-danger surges).
-const SECTIONS := [
-	{"type": "flush",        "x0": 6.0,  "x1": 11.0, "phase": 0.0, "disable": "override"},
-	{"type": "current",      "x0": 14.0, "x1": 19.0, "phase": 2.5, "disable": "timing", "period": 4.0},   # fast beat
-	{"type": "jet",          "x0": 22.0, "x1": 27.0, "phase": 1.2, "disable": "override"},
-	{"type": "plate",        "x0": 30.0, "x1": 35.0, "phase": 3.6, "disable": "plate"},
-	{"type": "sluice",       "x0": 38.0, "x1": 41.0, "phase": 0.8, "disable": "timing"},
-	{"type": "patrol",       "x0": 46.0, "x1": 53.0, "phase": 4.0, "disable": "timing"},          # roaming guard + alcove
-	{"type": "lure",         "x0": 56.0, "x1": 61.0, "phase": 1.6, "disable": "timing"},          # sentry + flure
-	{"type": "basin",        "x0": 64.0, "x1": 71.0, "phase": 0.0, "disable": "override",
-		"period": 8.0, "dur": 2.6},                                                               # wide, slow, long danger — guarded
-	{"type": "double_plate", "x0": 74.0, "x1": 79.0, "phase": 2.0, "disable": "double_plate"},    # TWO plates, both held
-]
-const FLOOR_Z_HALF := 4.0
-const FLOOR_MIN_X := -1.0
-const FLOOR_MAX_X := 87.0
-const CHUNK_END_X := 84.0
-# Connect-back devices at the CHUNK END (link back to the stretch start) — positions track the end.
-const TERMINAL_POS := Vector3(CHUNK_END_X, 0.5, 2.5)     # telephone stranded crew up — one party call, instant
-const SLOPEROPE_POS := Vector3(CHUNK_END_X, 0.5, -2.5)   # drop a climbing line down to the start shelter
-const CLIMB_POS := Vector3(5.0, 0.5, 2.5)                # start — a washed member climbs the dropped line up
-const RETURN_LANDING := Vector3(CHUNK_END_X - 1.0, 0.5, 0.0)   # where recovered crew rejoin the party
-const FLOW_PERIOD := 6.0            # default cadence (a section's "period" overrides it)
-const FLOOD_DURATION := 1.4         # default danger window (a section's "dur" overrides it)
-const FIRST_FLOOD := 2.5
+var SPAWNS: Dictionary = FRAGMENT.spawns
+var SECTIONS: Array = FRAGMENT.params.get("sections", [])
+var START_POS: Vector3 = FRAGMENT.params.get("start_pos", Vector3(3.0, 0.5, 0.0))
+var FLOOR_Z_HALF: float = FRAGMENT.params.get("floor_z_half", 4.0)
+var FLOOR_MIN_X: float = FRAGMENT.params.get("floor_min_x", -1.0)
+var FLOOR_MAX_X: float = FRAGMENT.params.get("floor_max_x", 87.0)
+var CHUNK_END_X: float = FRAGMENT.params.get("chunk_end_x", 84.0)
+var TERMINAL_POS: Vector3 = FRAGMENT.params.get("terminal_pos", Vector3(84.0, 0.5, 2.5))
+var SLOPEROPE_POS: Vector3 = FRAGMENT.params.get("sloperope_pos", Vector3(84.0, 0.5, -2.5))
+var CLIMB_POS: Vector3 = FRAGMENT.params.get("climb_pos", Vector3(5.0, 0.5, 2.5))
+var RETURN_LANDING: Vector3 = FRAGMENT.params.get("return_landing", Vector3(83.0, 0.5, 0.0))
+var FLOW_PERIOD: float = FRAGMENT.params.get("flow_period", 6.0)
+var FLOOD_DURATION: float = FRAGMENT.params.get("flood_duration", 1.4)
+var FIRST_FLOOD: float = FRAGMENT.params.get("first_flood", 2.5)
 const PLATE_RADIUS := 1.4           # how close a character must be to "hold" a plate
 const DOUBLE_PLATE_Z := 2.5         # the two pads of a double-plate sit at ±this z
 
-# --- Threat layer (guards / hide alcoves / lures, laid over the guarded sections) ---
-const HIDE_ALCOVES := [
-	{"pos": Vector3(49.5, 0.5, 3.3), "radius": 1.9},   # a nook in the patrol section
-	{"pos": Vector3(67.5, 0.5, 3.3), "radius": 1.9},   # a nook beside the guarded basin
-]
-const ENEMY_SPECS := [
-	{"id": "ch_roamer", "spawn": Vector3(49.5, 0.5, 0.0), "kind": "roam",  "radius": 2.6, "speed": 3.0, "range": 5.5},
-	{"id": "ch_sentry", "spawn": Vector3(58.5, 0.5, 0.0), "kind": "guard", "radius": 0.0, "speed": 4.0, "range": 6.0},
-	{"id": "ch_basin",  "spawn": Vector3(67.5, 0.5, 0.0), "kind": "roam",  "radius": 3.0, "speed": 3.2, "range": 5.5},
-	# The drain-loop guard: posts on the DRY salvage ledge across the flooding run. Short reach so it never
-	# harasses a runner on the main deck (lane 0) — it only engages a player who detours INTO the loop.
-	{"id": "ch_drain", "spawn": Vector3(81.25, 0.5, 9.3), "kind": "guard", "radius": 0.0, "speed": 4.2, "range": 5.0},  # DRAIN_GUARD_ID
-]
-const LURE_SPECS := [{"pos": Vector3(54.0, 0.5, 2.8), "target": "ch_sentry"}]
-const LURE_DURATION := 9.0
+# --- Threat layer (guards / hide alcoves / lures, laid over the guarded sections) — authored data ---
+var HIDE_ALCOVES: Array = FRAGMENT.params.get("hide_alcoves", [])
+var ENEMY_SPECS: Array = FRAGMENT.params.get("enemy_specs", [])
+var LURE_SPECS: Array = FRAGMENT.params.get("lure_specs", [])
+var LURE_DURATION: float = FRAGMENT.params.get("lure_duration", 9.0)
 
 # --- Branch puzzle offshoots (built USING the archetype generation framework) ---
 # At each GAP between sections, a puzzle fragment branches OUT away from the spiral: on the helix, +lane
@@ -139,7 +118,7 @@ var _sweep_count := 0              # how many times the party was swept back thi
 var _section_wash_counts := []     # per section — times THIS section has washed the party (the flush hint trigger)
 var _run_hint_shown := false       # one-shot: after enough washes, a character grumbles that you must RUN the surges
 const FLUSH_HINT_THRESHOLD := 3    # the flush hint only appears once a SINGLE section has washed you this many times
-var _scheduled := false
+# _scheduled is inherited from DataFragmentChunk (same one-time-scheduling guard).
 var _flow_strips: Array = []
 # The surge-telegraph strips ride the helix under their OWN Node3D root, so they survive hide_flat_graybox (which
 # hides the chunk's flat direct-child graybox) — the strip is the only "about-to-flood" tell without TRACE, and it
@@ -153,7 +132,7 @@ var _section_water: Array = []      # per section: Array[MeshInstance3D] of warp
 var _sluice_gate := {}             # sluice section index -> warped gate mesh (visible while the gate is closed)
 const WATER_SEG := 2.0             # flood-water segment length along the arc (segmented to follow the curve)
 const WATER_THICK := 0.55
-var _enemies: Array = []
+# _enemies is inherited from DataFragmentChunk (this chunk keeps its own enemy spawners that push to it).
 var _lure_until: Array = []        # per lure — scheduler tick the distraction ends (<=0 = inactive)
 var _lure_meshes: Array = []
 var _sloperope_deployed := false   # the chunk-end line has been dropped (the start climb point is live)
@@ -208,6 +187,7 @@ func _section_color(t: String) -> Color:
 	return Color(0.2, 0.3, 0.5)
 
 func _build_chunk() -> void:
+	fragment = FRAGMENT   # the data this chunk is built from (the base interface reads it; the build below uses it)
 	_wdbg("build_chunk start")
 	var fcx := (FLOOR_MIN_X + FLOOR_MAX_X) * 0.5
 	var fw := FLOOR_MAX_X - FLOOR_MIN_X
@@ -735,9 +715,9 @@ func _build_threats() -> void:
 		_lure_until.append(-1.0)
 		_outline_interactable_child(dev, bulb, "Flure%d" % li, 1.4)
 	for spec in ENEMY_SPECS:
-		_spawn_enemy(spec)
+		_spawn_ch_enemy(spec)
 
-func _spawn_enemy(spec: Dictionary) -> void:
+func _spawn_ch_enemy(spec: Dictionary) -> void:
 	var gs = _get_game_state()
 	if gs == null:
 		return
@@ -1165,7 +1145,7 @@ func _respawn_missing_enemies() -> void:
 				break
 		if not live:
 			_remove_enemy(id)   # drop a lingering dead body (no-op if already gone)
-			_spawn_enemy(spec)
+			_spawn_ch_enemy(spec)
 
 # --- Drain loop: lead the guard in (bait, then chase) ---
 
@@ -1526,7 +1506,7 @@ func _update(delta := 0.0) -> void:
 ## The modeled environment this gauntlet plays inside — the textured channels spiral. It is built along
 ## the SAME helix as ChannelsArc, so arc_pos(section x, lane z) lands each section on its set piece.
 func get_environment_model() -> String:
-	return "res://resources/models/channels/channels.glb"
+	return FRAGMENT.environment_model
 
 ## Installing this on GameState moves the playable system ONTO the helix: the data layer stays flat,
 ## node followers render through it, and a click on the GLB deck maps back to a flat (s, lane) target.
@@ -1542,13 +1522,13 @@ func hide_flat_graybox() -> void:
 			c.visible = false
 
 func get_scene_title() -> String:
-	return "Wash Relay"
+	return FRAGMENT.title
 
 func get_scene_help() -> String:
-	return "A long gauntlet of timed water hazards, each on its own beat. Override the flush/jet/basin, hold the plate (and the DOUBLE plate — two members stay) for the bridges, time the fast current and the sluice. Guards prowl the back half: hide in an alcove to slip a roamer, fire the flure to draw the sentry off its chokepoint, and watch the guarded basin. A guard's hit, or standing in a flooding section, shoves you back to the start shelter — telephone up or drop the sloperope to recover."
+	return FRAGMENT.help
 
 func get_default_character() -> String:
-	return "endo"
+	return FRAGMENT.default_character
 
 func get_spawn_positions() -> Dictionary:
 	return SPAWNS.duplicate(true)
@@ -1596,8 +1576,7 @@ func get_preview_anchors() -> Dictionary:
 	return anchors
 
 func get_preview_time_state() -> Dictionary:
-	return {"day": 2, "time": 0.5, "routing_mode": "safe",
-		"note_default": "Read the flood beat. Override the flush/jet, hold the plate for the bridge, time the current and the sluice."}
+	return (FRAGMENT.time_state as Dictionary).duplicate(true)
 
 func get_preview_abilities() -> Array:
 	# Display names + tuning come from data/abilities/en/abilities.xlsx (channels_rhythm.* rows): aster_focus=

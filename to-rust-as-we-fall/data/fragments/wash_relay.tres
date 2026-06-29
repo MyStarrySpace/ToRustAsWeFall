@@ -1,0 +1,136 @@
+[gd_resource type="Resource" script_class="Fragment" format=3]
+
+[ext_resource type="Script" path="res://scenes/fragments/fragment.gd" id="1_uttmt"]
+
+[resource]
+script = ExtResource("1_uttmt")
+id = "wash_relay"
+title = "Wash Relay"
+help = "A long gauntlet of timed water hazards, each on its own beat. Override the flush/jet/basin, hold the plate (and the DOUBLE plate — two members stay) for the bridges, time the fast current and the sluice. Guards prowl the back half: hide in an alcove to slip a roamer, fire the flure to draw the sentry off its chokepoint, and watch the guarded basin. A guard's hit, or standing in a flooding section, shoves you back to the start shelter — telephone up or drop the sloperope to recover."
+default_character = "endo"
+party_ids = PackedStringArray("aster", "peris", "endo")
+spawns = {
+"aster": Vector3(3, 0.5, 0),
+"endo": Vector3(2, 0.5, -1.2),
+"peris": Vector3(2, 0.5, 1.2)
+}
+environment_model = "res://resources/models/channels/channels.glb"
+time_state = {
+"day": 2,
+"note_default": "Read the flood beat. Override the flush/jet, hold the plate for the bridge, time the current and the sluice.",
+"routing_mode": "safe",
+"time": 0.5
+}
+params = {
+"chunk_end_x": 84.0,
+"climb_pos": Vector3(5, 0.5, 2.5),
+"enemy_specs": [{
+"id": "ch_roamer",
+"kind": "roam",
+"radius": 2.6,
+"range": 5.5,
+"spawn": Vector3(49.5, 0.5, 0),
+"speed": 3.0
+}, {
+"id": "ch_sentry",
+"kind": "guard",
+"radius": 0.0,
+"range": 6.0,
+"spawn": Vector3(58.5, 0.5, 0),
+"speed": 4.0
+}, {
+"id": "ch_basin",
+"kind": "roam",
+"radius": 3.0,
+"range": 5.5,
+"spawn": Vector3(67.5, 0.5, 0),
+"speed": 3.2
+}, {
+"id": "ch_drain",
+"kind": "guard",
+"radius": 0.0,
+"range": 5.0,
+"spawn": Vector3(81.25, 0.5, 9.3),
+"speed": 4.2
+}],
+"first_flood": 2.5,
+"flood_duration": 1.4,
+"floor_max_x": 87.0,
+"floor_min_x": -1.0,
+"floor_z_half": 4.0,
+"flow_period": 6.0,
+"hide_alcoves": [{
+"pos": Vector3(49.5, 0.5, 3.3),
+"radius": 1.9
+}, {
+"pos": Vector3(67.5, 0.5, 3.3),
+"radius": 1.9
+}],
+"lure_duration": 9.0,
+"lure_specs": [{
+"pos": Vector3(54, 0.5, 2.8),
+"target": "ch_sentry"
+}],
+"return_landing": Vector3(83, 0.5, 0),
+"sections": [{
+"disable": "override",
+"phase": 0.0,
+"type": "flush",
+"x0": 6.0,
+"x1": 11.0
+}, {
+"disable": "timing",
+"period": 4.0,
+"phase": 2.5,
+"type": "current",
+"x0": 14.0,
+"x1": 19.0
+}, {
+"disable": "override",
+"phase": 1.2,
+"type": "jet",
+"x0": 22.0,
+"x1": 27.0
+}, {
+"disable": "plate",
+"phase": 3.6,
+"type": "plate",
+"x0": 30.0,
+"x1": 35.0
+}, {
+"disable": "timing",
+"phase": 0.8,
+"type": "sluice",
+"x0": 38.0,
+"x1": 41.0
+}, {
+"disable": "timing",
+"phase": 4.0,
+"type": "patrol",
+"x0": 46.0,
+"x1": 53.0
+}, {
+"disable": "timing",
+"phase": 1.6,
+"type": "lure",
+"x0": 56.0,
+"x1": 61.0
+}, {
+"disable": "override",
+"dur": 2.6,
+"period": 8.0,
+"phase": 0.0,
+"type": "basin",
+"x0": 64.0,
+"x1": 71.0
+}, {
+"disable": "double_plate",
+"phase": 2.0,
+"type": "double_plate",
+"x0": 74.0,
+"x1": 79.0
+}],
+"sloperope_pos": Vector3(84, 0.5, -2.5),
+"start_pos": Vector3(3, 0.5, 0),
+"terminal_pos": Vector3(84, 0.5, 2.5)
+}
