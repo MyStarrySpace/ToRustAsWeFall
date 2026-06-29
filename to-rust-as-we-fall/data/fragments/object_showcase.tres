@@ -1,0 +1,145 @@
+[gd_resource type="Resource" script_class="Fragment" format=3]
+
+[ext_resource type="Script" path="res://scenes/fragments/fragment.gd" id="1_jcjwv"]
+
+[resource]
+script = ExtResource("1_jcjwv")
+id = "object_showcase"
+title = "Object Showcase (data)"
+help = "A data-driven fragment: floor, flure, portals, capbages, channels, flora light, and roamers — all from a .tres."
+default_character = "peris"
+party_ids = PackedStringArray("aster", "peris", "endo")
+spawns = {
+"aster": Vector3(3.5, 0.5, 1.5),
+"endo": Vector3(2.5, 0.5, -1.5),
+"peris": Vector3(2.5, 0.5, 0.5)
+}
+floors = Array[Dictionary]([{
+"color": Color(0.09, 0.1, 0.12, 1),
+"pos": Vector3(14, -0.05, 0),
+"size": Vector3(34, 0.1, 14)
+}])
+walls = Array[Dictionary]([{
+"color": Color(0.06, 0.06, 0.08, 1),
+"pos": Vector3(14, 1.4, 7.2),
+"size": Vector3(34, 2.8, 0.3)
+}, {
+"color": Color(0.06, 0.06, 0.08, 1),
+"pos": Vector3(14, 1.4, -7.2),
+"size": Vector3(34, 2.8, 0.3)
+}])
+lights = Array[Dictionary]([{
+"color": Color(0.5, 0.8, 1, 1),
+"energy": 1.0,
+"pos": Vector3(8, 2, 0),
+"range": 12.0
+}])
+labels = Array[Dictionary]([{
+"color": Color(0.7, 0.85, 0.95, 1),
+"pos": Vector3(8, 2.6, 0),
+"text": "OBJECT SHOWCASE"
+}])
+objects = Array[Dictionary]([{
+"attract": 32.0,
+"color": Color(0.95, 0.78, 0.2, 1),
+"name": "Flure",
+"pos": Vector3(6.5, 0.5, 0.5),
+"radius": 1.6,
+"targets": ["show_guard_0", "show_guard_1"],
+"type": "flure"
+}, {
+"dest": Vector3(21.5, 0.5, -1.5),
+"name": "PortalNear",
+"pos": Vector3(8.5, 0.5, -1.5),
+"type": "portal_pad"
+}, {
+"dest": Vector3(8.5, 0.5, -1.5),
+"name": "PortalFar",
+"pos": Vector3(21.5, 0.5, -1.5),
+"type": "portal_pad"
+}, {
+"name": "Capbage0",
+"pos": Vector3(2.5, 0.5, 3.5),
+"radius": 1.4,
+"type": "capbage"
+}, {
+"name": "Capbage1",
+"pos": Vector3(4.5, 0.5, -3.5),
+"radius": 1.4,
+"type": "capbage"
+}, {
+"name": "Capbage2",
+"pos": Vector3(7.5, 0.5, 3.5),
+"radius": 1.4,
+"type": "capbage"
+}, {
+"dur": 1.6,
+"half": 1.25,
+"name": "Channel0",
+"period": 3.0,
+"phase": 0.0,
+"tag": "sc_ch0",
+"type": "channel",
+"x": 11.0,
+"z_half": 5.0
+}, {
+"dur": 1.6,
+"half": 1.25,
+"name": "Channel1",
+"period": 3.0,
+"phase": 1.0,
+"tag": "sc_ch1",
+"type": "channel",
+"x": 13.5,
+"z_half": 5.0
+}, {
+"dur": 1.6,
+"half": 1.25,
+"name": "Channel2",
+"period": 3.0,
+"phase": 2.0,
+"tag": "sc_ch2",
+"type": "channel",
+"x": 16.0,
+"z_half": 5.0
+}, {
+"name": "Bloom",
+"opts": {
+"emission": Color(0.4, 1, 0.7, 1),
+"light_range": 4.0
+},
+"pos": Vector3(5, 0, -3),
+"type": "flora_light"
+}, {
+"detect": 4.0,
+"id": "show_guard_0",
+"pos": Vector3(23.5, 0.5, 2.5),
+"roam": {
+"radius": 3.0
+},
+"speed": 2.4,
+"targets": ["aster", "peris", "endo"],
+"type": "enemy"
+}, {
+"detect": 4.0,
+"id": "show_guard_1",
+"pos": Vector3(24.5, 0.5, -1.5),
+"roam": {
+"radius": 3.0
+},
+"speed": 2.4,
+"targets": ["aster", "peris", "endo"],
+"type": "enemy"
+}, {
+"color": Color(0.3, 0.7, 0.55, 1),
+"label": "EXIT",
+"pos": Vector3(28, 0.5, 0),
+"size": Vector3(2, 0.4, 2),
+"type": "marker"
+}])
+time_state = {
+"day": 2,
+"note_default": "A data-driven fragment loaded from a .tres.",
+"routing_mode": "safe",
+"time": 0.6
+}

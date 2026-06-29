@@ -21,6 +21,7 @@ const DUSK_RUN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/dusk_run_ch
 const LURE_RELAY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/lure_relay_chunk.tscn")
 const SHOWCASE_GALLERY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/showcase_gallery_chunk.tscn")
 const WASH_RELAY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/wash_relay_chunk.tscn")
+const DATA_FRAGMENT_CHUNK_SCENE := preload("res://scenes/fragments/chunks/data_fragment.tscn")
 
 # chunk name -> packed scene. The single lookup that replaced the old per-name match (and the reason
 # we no longer need one *_preview.tscn per chunk: one scene reads this registry and picks at runtime).
@@ -41,6 +42,7 @@ const CHUNK_SCENES := {
 	"dusk_run": DUSK_RUN_CHUNK_SCENE,
 	"showcase_gallery": SHOWCASE_GALLERY_CHUNK_SCENE,
 	"wash_relay": WASH_RELAY_CHUNK_SCENE,
+	"data_fragment": DATA_FRAGMENT_CHUNK_SCENE,
 }
 
 # The fragment menu, ordered along the combine-characters learning ramp (its `stage` ascending). Each
@@ -73,6 +75,10 @@ const PREVIEW_ENTRIES := [
 	{"id": "generated_diagnosis_setpiece", "chunk": "generated_stretch", "title": "Generated Diagnosis Setpiece", "stage": 6,
 		"config": {"spec_path": "res://data/generated_stretches/generated_diagnosis_setpiece_shelter_5_to_6.json"}},
 	{"id": "mother_flure", "chunk": "mother_flure", "title": "Mother Flure", "stage": 6},
+	# A DATA-driven fragment: the DataFragmentChunk loader composes this entirely from a .tres (no bespoke chunk
+	# code) — point it at any Fragment resource via the config below.
+	{"id": "object_showcase", "chunk": "data_fragment", "title": "Object Showcase (data)", "stage": 6,
+		"config": {"fragment_path": "res://data/fragments/object_showcase.tres"}},
 ]
 
 ## The menu entry for an id (or {} if none).
@@ -141,7 +147,7 @@ const STAMINA_REGEN := 10.0
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
 @export_enum("stacks", "rings", "lockout", "mother_flure", "survival_range",
 	"endo_junction_stretch", "generated_stretch",
-	"refuge_run", "channels_wash_intro", "lure_relay", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay") var preview_chunk := "stacks"
+	"refuge_run", "channels_wash_intro", "lure_relay", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 ## When true, boot into a fragment PICKER instead of loading a chunk directly. The single

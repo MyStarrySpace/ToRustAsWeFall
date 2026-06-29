@@ -195,6 +195,9 @@ func _ready() -> void:
 			"--test-fragment-preview-registry":
 				ran_test = true
 				_test_fragment_preview_registry()
+			"--test-data-fragment":
+				ran_test = true
+				await _test_data_fragment_loader()
 			"--test-preview-party-move":
 				ran_test = true
 				await _test_preview_party_move()
@@ -1009,6 +1012,7 @@ func _run_all_tests() -> void:
 	_test_enemy_roaming()
 	_test_predictive_attack()
 	_test_fragment_preview_registry()
+	await _test_data_fragment_loader()
 	await _test_preview_party_move()
 	await _test_preview_path_render()
 	await _test_preview_hover_grid()
@@ -10075,6 +10079,56 @@ func _test_fragment_preview_registry() -> void:
 		"preview_chunk dropdown lists every registered chunk (enum %d vs registry %d)" % [enum_ids.size(), registry_ids.size()])
 	for id in registry_ids:
 		_assert_true(id in enum_ids, "preview_chunk dropdown includes registered chunk '%s'" % id)
+
+# --- Test: the data-driven loader composes a fragment from a .tres ---
+# A fragment as DATA (object_showcase.tres) listing spawnable objects + map; DataFragmentChunk reads it and
+# composes the scene from the shared modular classes. Proves the .tres round-trips and the loader adds everything.
+func _test_data_fragment_loader() -> void:
+	_test_name = "Data Fragment Loader"
+	var frag := load("res://data/fragments/object_showcase.tres") as Fragment
+	_assert_true(frag != null, "the showcase fragment .tres loads as a Fragment resource")
+	if frag == null:
+		return
+	_assert_equals(frag.objects.size(), 13, "the fragment data carries its object list (got %d)" % frag.objects.size())
+	var host := ChunkHostStub.new()
+	host.setup()
+	get_tree().root.add_child(host)
+	host.register_party(frag.spawns)
+	var chunk = load("res://scripts/fragments/chunks/data_fragment_chunk.gd").new()
+	chunk.attach_chunk_host(host, "data_fragment")
+	chunk.fragment = frag
+	host.add_child(chunk)   # _ready -> _build_chunk loads the data
+	# Every modular type was composed from the data.
+	_assert_equals(chunk.flures().size(), 1, "loader spawned the flure (got %d)" % chunk.flures().size())
+	_assert_equals(chunk.portals().size(), 2, "loader spawned the portal pair (got %d)" % chunk.portals().size())
+	_assert_equals(chunk.capbages().size(), 3, "loader spawned three capbages (got %d)" % chunk.capbages().size())
+	_assert_equals(chunk.channels().size(), 3, "loader spawned three channels (got %d)" % chunk.channels().size())
+	_assert_equals(chunk.flora().size(), 1, "loader spawned the flora light (got %d)" % chunk.flora().size())
+	_assert_equals(chunk.enemies().size(), 2, "loader spawned two roamers (got %d)" % chunk.enemies().size())
+	# Spawned objects are the REAL modular classes, configured from the data.
+	_assert_true(chunk.flures()[0] is Flure, "the spawned flure is a Flure")
+	_assert_true(chunk.portals()[0] is PortalPad, "the spawned portal is a PortalPad")
+	_assert_true(chunk.capbages()[0] is Capbage, "the spawned hide is a Capbage")
+	_assert_true(chunk.channels()[0] is Channel, "the spawned hazard is a Channel")
+	_assert_true(chunk.flora()[0] is FloraLight, "the spawned bloom is a FloraLight")
+	# The data enemy is a real GameState character; the data-configured flure pulls + distracts it.
+	_assert_true(host.game_state.characters.has("show_guard_0"), "the data enemy is registered in GameState")
+	_assert_true(chunk.flures()[0].activate(), "the data-configured flure pulls its lure targets (within attract range)")
+	_assert_true(host.game_state.is_character_distracted("show_guard_0"), "lighting the data flure distracts the targeted enemy")
+	# The capbage conceals at its own position (positional hide read from the data radius).
+	var cap = chunk.capbages()[0]
+	_assert_true(cap.conceals(cap.global_position), "a data Capbage conceals a member at its position")
+	# Drive the scheduler: the data channels run their flood cadence (channel 0 floods at phase 0).
+	chunk.call("headless_process", 0.05)   # ensure_scheduled starts each channel
+	host.scheduler.advance_ticks(0.1)
+	_assert_true(chunk.channels()[0].is_flooding(), "a data Channel runs its flood cadence after start")
+	# Host wiring + data-driven interface.
+	_assert_equals(host.interactables.size(), 6, "every interactable object (flure+2 portals+3 capbages) registered (got %d)" % host.interactables.size())
+	_assert_equals(chunk.get_scene_title(), "Object Showcase (data)", "the chunk title comes from the fragment data")
+	_assert_equals(chunk.get_default_character(), "peris", "the default character comes from the fragment data")
+	chunk.queue_free()
+	host.queue_free()
+	await get_tree().process_frame
 
 # --- Test: multi-select party move works in the shared chunk preview (Ctrl+1-3 then one click) ---
 func _test_preview_party_move() -> void:
