@@ -13,8 +13,8 @@ const OUTLINE_TARGET_SCRIPT := preload("res://scripts/game/objects/outline_surfa
 const OUTLINE_DEFAULTS := {
 	"outline_highlight_height": 0.0,
 	"selected_feedback_duration": 3.0,
-	"hover_object_outline_width": 0.08,
-	"selected_object_outline_width": 0.12,
+	"hover_object_outline_width": 0.012,
+	"selected_object_outline_width": 0.02,
 	"selected_object_glow_strength": 3.8,
 	"selected_particle_count": 180,
 	"outline_particles_enabled": true,

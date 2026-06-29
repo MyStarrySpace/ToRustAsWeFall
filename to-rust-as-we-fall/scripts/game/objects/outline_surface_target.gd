@@ -2,7 +2,6 @@
 class_name OutlineSurfaceTarget
 extends StaticBody3D
 
-const OBJECT_OUTLINE_SHADER := preload("res://resources/object_outline_feedback.gdshader")
 const OUTLINE_EMISSION_SHADER := preload("res://resources/outline_emission_noise.gdshader")
 # Shared morphing-noise texture for the emission shell (one for all targets).
 static var _shared_noise_tex: Texture2D
@@ -13,8 +12,9 @@ static var _shared_noise_tex: Texture2D
 @export var hover_outline_color := Color.WHITE
 @export var selected_feedback_color := Color(1.0, 0.62, 0.12, 1.0)
 @export var object_outline_enabled := true
-@export var hover_object_outline_width := 0.08
-@export var selected_object_outline_width := 0.12
+# Outline widths are now SCREEN-SPACE (fraction of viewport height), constant at any distance — see the shader.
+@export var hover_object_outline_width := 0.012
+@export var selected_object_outline_width := 0.02
 @export var selected_object_glow_strength := 3.8
 @export var outline_highlight_radius := 0.0
 @export var outline_highlight_extents := Vector3.ZERO
@@ -33,13 +33,18 @@ var _selected_particle_material: ParticleProcessMaterial
 var _debug_anchor: MeshInstance3D
 var _highlight_meshes: Array[MeshInstance3D] = []
 var _original_overlays := {}
-var _outline_shells := {}
 var _outline_particles := {}
 var _glow_shells := {}  # expanded inverted-hull shells with the morphing-noise emission shader
 var _hovered := false
 var _selected := false
 var _feedback_managed := false
 var _selection_token := 0
+# The crisp outline is now a SCREEN-SPACE mask (OutlineMaskManager) — clean on flat-shaded meshes, constant width
+# at any distance. _outline_active is the logical "outline showing" flag (what has_active_mesh_outline reports);
+# the manager does the actual rendering. Null manager (headless test / standalone) => flag only, no render.
+var _outline_active := false
+var _active_outline_color := Color.WHITE
+var _mask_manager: OutlineMaskManager = null
 
 signal outline_hovered(interactable: Node)
 signal outline_unhovered(interactable: Node)
@@ -148,6 +153,8 @@ func is_feedback_managed() -> bool:
 	return _feedback_managed
 
 func set_hover_feedback(active: bool) -> void:
+	if GridWorld._fx_debug:
+		GridWorld._pf_trace("[outline] '%s'.set_hover_feedback(%s) -> set_highlight" % [name, active])
 	_hovered = active
 	set_highlight(active)
 
@@ -170,25 +177,27 @@ func register_highlight_mesh(mesh_instance: MeshInstance3D) -> void:
 		return
 	_highlight_meshes.append(mesh_instance)
 	_original_overlays[mesh_instance.get_instance_id()] = mesh_instance.material_overlay
-	_ensure_outline_shell(mesh_instance)
+	# If the outline is already showing (mesh registered after a hover), feed the new mesh into the mask too.
+	if _outline_active:
+		_register_mask(_active_outline_color)
 
 func get_highlight_mesh_count() -> int:
 	_prune_highlight_meshes()
 	return _highlight_meshes.size()
 
+## Number of meshes this target outlines. Named "shell count" for the historical inverted-hull shells; the crisp
+## outline is now the screen-space mask, so this is the count of registered outline meshes (the contract callers
+## assert: a visible object registered geometry to outline).
 func get_outline_shell_count() -> int:
 	_prune_highlight_meshes()
-	return _outline_shells.size()
+	var count := 0
+	for mesh_instance in _highlight_meshes:
+		if mesh_instance != null and mesh_instance.mesh != null:
+			count += 1
+	return count
 
 func has_active_mesh_outline() -> bool:
-	_prune_highlight_meshes()
-	for mesh_instance in _highlight_meshes:
-		var shell := _get_outline_shell(mesh_instance)
-		if shell != null and shell.visible:
-			var material := shell.get_surface_override_material(0) as ShaderMaterial
-			if material != null and material.shader == OBJECT_OUTLINE_SHADER:
-				return true
-	return false
+	return _outline_active
 
 func has_active_outline_particles() -> bool:
 	for particles in _outline_particles.values():
@@ -227,87 +236,101 @@ func _clear_queued_feedback() -> void:
 	else:
 		_clear_object_outline()
 
-func _apply_object_outline(color: Color, width: float, glow_strength: float) -> void:
+func _apply_object_outline(color: Color, _width: float, _glow_strength: float) -> void:
 	if not object_outline_enabled:
-		if GridWorld._fx_debug:
-			GridWorld._pf_trace("[outline] target '%s' _apply ABORT: object_outline_enabled=false" % name)
 		return
-	_prune_highlight_meshes()
-	var shown := 0
-	for mesh_instance in _highlight_meshes:
-		var shell := _ensure_outline_shell(mesh_instance)
-		if shell == null:
-			continue
-		var surface_total: int = shell.mesh.get_surface_count() if shell.mesh != null else 0
-		for s in range(surface_total):
-			var material := shell.get_surface_override_material(s) as ShaderMaterial
-			if material == null:
-				continue
-			material.set_shader_parameter("outline_color", color)
-			material.set_shader_parameter("outline_width", width)
-			material.set_shader_parameter("glow_strength", glow_strength)
-		shell.visible = true
-		shown += 1
-	if GridWorld._fx_debug:
-		GridWorld._pf_trace("[outline] target '%s' _apply: %d highlight_meshes -> %d shells VISIBLE (color=%s width=%.3f). If meshes=0 the object never registered a mesh; if shells visible but nothing shows, it's the shader/render-order." % [
-			name, _highlight_meshes.size(), shown, str(color), width])
+	_active_outline_color = color
+	_outline_active = true
+	_register_mask(color)
 
 func _clear_object_outline() -> void:
+	_outline_active = false
+	_unregister_mask()
 	_prune_highlight_meshes()
 	for mesh_instance in _highlight_meshes:
-		var shell := _get_outline_shell(mesh_instance)
-		if shell != null:
-			shell.visible = false
 		var original = _original_overlays.get(mesh_instance.get_instance_id(), null)
 		mesh_instance.material_overlay = original
 
-func _ensure_outline_shell(mesh_instance: MeshInstance3D) -> MeshInstance3D:
-	if mesh_instance == null or mesh_instance.mesh == null:
+## Hand the highlight meshes to the scene's OutlineMaskManager (the screen-space outline). No manager (headless
+## test / standalone target) is fine — the logical _outline_active flag still reflects "outlined".
+func _register_mask(color: Color) -> void:
+	_prune_highlight_meshes()
+	var manager := _get_mask_manager()
+	if manager == null:
+		return
+	manager.register(get_instance_id(), _highlight_meshes, color)
+
+func _unregister_mask() -> void:
+	if _mask_manager != null and is_instance_valid(_mask_manager):
+		_mask_manager.unregister(get_instance_id())
+
+func _get_mask_manager() -> OutlineMaskManager:
+	if _mask_manager != null and is_instance_valid(_mask_manager):
+		return _mask_manager
+	if Engine.is_editor_hint() or not is_inside_tree():
 		return null
-	var existing := _get_outline_shell(mesh_instance)
-	if existing != null:
-		return existing
+	_mask_manager = OutlineMaskManager.find_for(self)
+	return _mask_manager
 
-	var shell := MeshInstance3D.new()
-	shell.name = "ObjectOutlineShell"
-	shell.mesh = mesh_instance.mesh
-	shell.visible = false
-	shell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	shell.extra_cull_margin = maxf(mesh_instance.extra_cull_margin, 4.0)
-	shell.layers = mesh_instance.layers
-	# Per-surface shell materials: a surface with transparency (blend or scissor) passes its own
-	# albedo into the shell so the hull discards see-through texels and hugs the visible
-	# silhouette; fully opaque surfaces keep the plain hull.
-	for s in range(mesh_instance.mesh.get_surface_count()):
-		var shell_mat := _create_outline_material()
-		var source := mesh_instance.get_active_material(s)
-		if source is BaseMaterial3D:
-			var base := source as BaseMaterial3D
-			var transparent: bool = base.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED \
-				or base.albedo_color.a < 0.999
-			if transparent:
-				shell_mat.set_shader_parameter("use_source_alpha", true)
-				shell_mat.set_shader_parameter("source_albedo_tint", base.albedo_color)
-				if base.albedo_texture != null:
-					shell_mat.set_shader_parameter("source_albedo", base.albedo_texture)
-		shell.set_surface_override_material(s, shell_mat)
-	mesh_instance.add_child(shell)
-	_outline_shells[mesh_instance.get_instance_id()] = shell
-	return shell
+# Cache: source mesh RID id -> smooth-normal hull mesh (built once per unique mesh, shared across targets).
+static var _smooth_hull_cache := {}
 
-func _get_outline_shell(mesh_instance: MeshInstance3D) -> MeshInstance3D:
-	if mesh_instance == null:
-		return null
-	var existing = _outline_shells.get(mesh_instance.get_instance_id(), null)
-	if existing is MeshInstance3D and is_instance_valid(existing):
-		return existing
-	return null
+## Build a hull mesh whose normals are SMOOTH (averaged across every vertex that shares a POSITION), used ONLY
+## for the outline/glow shells. Flat-shaded meshes (the room props) duplicate vertices at every hard edge with
+## per-FACE normals, so an inverted hull expanded along those normals TEARS at the edges — the broken, partial
+## outline. Averaging the normal per shared position makes adjacent faces expand TOGETHER, so the hull stays a
+## continuous silhouette. Positions + UVs are preserved (the alpha-cutout discard still works); only the normals
+## change. The VISIBLE object keeps its own flat mesh — this copy is the outline hull alone.
+static func _smooth_hull_mesh(source: Mesh) -> Mesh:
+	if source == null:
+		return source
+	var key: int = source.get_rid().get_id()
+	if _smooth_hull_cache.has(key):
+		return _smooth_hull_cache[key]
+	var out := ArrayMesh.new()
+	for s in range(source.get_surface_count()):
+		var arrays: Array = source.surface_get_arrays(s)
+		if arrays.is_empty():
+			continue
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		if verts.is_empty():
+			continue
+		var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+		var tris: PackedInt32Array = indices
+		if tris.is_empty():
+			tris = PackedInt32Array()
+			for i in range(verts.size()):
+				tris.append(i)
+		var accum := {}   # position key -> accumulated (area-weighted) face normal
+		for t in range(0, tris.size() - 2, 3):
+			var a := verts[tris[t]]
+			var b := verts[tris[t + 1]]
+			var c := verts[tris[t + 2]]
+			var fn := (b - a).cross(c - a)
+			for p in [a, b, c]:
+				var pk := _pos_key(p)
+				accum[pk] = accum.get(pk, Vector3.ZERO) + fn
+		var smooth := PackedVector3Array()
+		smooth.resize(verts.size())
+		for i in range(verts.size()):
+			var n: Vector3 = accum.get(_pos_key(verts[i]), Vector3.UP)
+			smooth[i] = n.normalized() if n.length() > 0.00001 else Vector3.UP
+		var na: Array = []
+		na.resize(Mesh.ARRAY_MAX)
+		na[Mesh.ARRAY_VERTEX] = verts
+		na[Mesh.ARRAY_NORMAL] = smooth
+		if arrays[Mesh.ARRAY_TEX_UV] != null:
+			na[Mesh.ARRAY_TEX_UV] = arrays[Mesh.ARRAY_TEX_UV]
+		if not indices.is_empty():
+			na[Mesh.ARRAY_INDEX] = indices
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, na)
+	var result: Mesh = out if out.get_surface_count() > 0 else source
+	_smooth_hull_cache[key] = result
+	return result
 
-func _create_outline_material() -> ShaderMaterial:
-	var material := ShaderMaterial.new()
-	material.shader = OBJECT_OUTLINE_SHADER
-	material.render_priority = 120
-	return material
+static func _pos_key(p: Vector3) -> String:
+	return "%.3f|%.3f|%.3f" % [p.x, p.y, p.z]
+
 
 # --- Emission glow shell: an expanded inverted hull whose silhouette band is filled with
 # morphing noise, so the outline looks like it's shedding energy (replaces the GPU particles). ---
@@ -332,7 +355,7 @@ func _ensure_glow_shell(mesh_instance: MeshInstance3D) -> MeshInstance3D:
 		return existing
 	var shell := MeshInstance3D.new()
 	shell.name = "OutlineEmissionShell"
-	shell.mesh = mesh_instance.mesh
+	shell.mesh = _smooth_hull_mesh(mesh_instance.mesh)
 	shell.visible = false
 	shell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	shell.extra_cull_margin = maxf(mesh_instance.extra_cull_margin, 6.0)
@@ -634,8 +657,6 @@ func _prune_highlight_meshes() -> void:
 	for i in range(_highlight_meshes.size() - 1, -1, -1):
 		var mesh_instance := _highlight_meshes[i]
 		if not is_instance_valid(mesh_instance):
-			_outline_particles.erase(mesh_instance.get_instance_id())
-			_outline_shells.erase(mesh_instance.get_instance_id())
 			_highlight_meshes.remove_at(i)
 
 func get_outline_highlight_radius() -> float:

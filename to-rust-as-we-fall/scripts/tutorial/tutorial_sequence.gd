@@ -32,6 +32,7 @@ var _scheduler: EventScheduler          # gameplay lane (pausable, replay)
 var _ui_scheduler: EventScheduler       # dialogue / thought-fade / UI lane
 var _game_state: GameState
 var _path_render_manager                # PathRenderManager: movement paths for all characters
+var _outline_mask_manager               # OutlineMaskManager: screen-space object outlines for all targets
 var _selection_controller               # SelectionController: RTS left-click / marquee character select
 var _current_step := ""
 var _fade_start_tick := 0.0
@@ -115,6 +116,12 @@ func _ready() -> void:
 	_path_render_manager.name = "PathRenderManager"
 	add_child(_path_render_manager)
 	_path_render_manager.setup(_game_state, self)
+	# One scene-level screen-space outline manager: OutlineSurfaceTargets register their meshes with it to show
+	# the crisp object outline (clean on flat-shaded meshes, constant width at any distance). Same once-per-scene
+	# pattern as the path renderer — every OutlineSurfaceTarget in the scene finds it via OutlineMaskManager.find_for.
+	_outline_mask_manager = OutlineMaskManager.new()
+	_outline_mask_manager.name = "OutlineMaskManager"
+	add_child(_outline_mask_manager)
 	_inject_scheduler_into_interactables(self)
 	_init_ui()
 	# One scene-level RTS selection controller (left-click / marquee character select), feeding the HUD
@@ -447,6 +454,7 @@ func _teardown_sequence() -> void:
 	_scheduler = null
 	_ui_scheduler = null
 	_path_render_manager = null
+	_outline_mask_manager = null
 	_selection_controller = null
 	_dialogue = null
 	_tutorial_prompt = null
@@ -605,6 +613,24 @@ func _setup_game_camera(target_node: Node3D, offset := Vector3(0, 10, 7), free_l
 		_camera.enable_free_look()
 	else:
 		_camera.set_pan_enabled(false)
+
+## Clamp the camera's look-at to the LEVEL's world bounds (derived from the grid extent), so pan / edge-scroll /
+## look-around can never drift the view off the level and "lose the room". Reusable: any scene passes its grid
+## (the base doesn't own one — subclasses do) once it + the camera exist (no-ops without them). `inset` pulls the
+## bound IN from the edge so the view stays over the interior instead of centring on a wall; `extra` grows it.
+func _bind_camera_to_level_bounds(grid, inset := 0.0, extra := 0.0) -> void:
+	if _camera == null or grid == null or grid.width <= 0 or grid.height <= 0:
+		return
+	var c0: Vector3 = grid.grid_to_world(Vector2i(0, 0))
+	var c1: Vector3 = grid.grid_to_world(Vector2i(grid.width - 1, grid.height - 1))
+	var pad := inset - extra
+	var mn := Vector3(minf(c0.x, c1.x) + pad, 0.0, minf(c0.z, c1.z) + pad)
+	var mx := Vector3(maxf(c0.x, c1.x) - pad, 0.0, maxf(c0.z, c1.z) - pad)
+	if mn.x > mx.x or mn.z > mx.z:   # inset too large for a tiny level — fall back to the raw extent
+		mn = Vector3(minf(c0.x, c1.x), 0.0, minf(c0.z, c1.z))
+		mx = Vector3(maxf(c0.x, c1.x), 0.0, maxf(c0.z, c1.z))
+	if _camera.has_method("set_look_bounds"):
+		_camera.set_look_bounds(mn, mx)
 
 func _register_gs_character(id: String, node: Node3D, speed: float = 3.0, stats: Dictionary = {}) -> void:
 	_game_state.register_character(id, node.position, speed, stats)

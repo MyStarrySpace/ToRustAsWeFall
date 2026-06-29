@@ -3289,15 +3289,18 @@ func _test_asset_pipeline() -> void:
 			"Aster drink machine starts disabled from data")
 		_assert_equals(str(interactable_specs["peris.logbook_gate"].interactable_type), "HOLD_ACTION",
 			"Peris logbook gate is declared as a hold/action interactable")
+	# The crisp object outline is now a SCREEN-SPACE mask Sobel (OutlineMaskManager), not an inverted hull — it
+	# stays clean on the flat-shaded pixel-art meshes the hull used to tear on, and constant-width at any distance.
 	_assert_true(
-		FileAccess.file_exists("res://resources/object_outline_feedback.gdshader"),
-		"Object-level outline feedback shader exists"
+		FileAccess.file_exists("res://resources/screen_outline_mask.gdshader"),
+		"Screen-space outline mask shader exists"
 	)
-	var object_outline_shader_text := FileAccess.get_file_as_string("res://resources/object_outline_feedback.gdshader")
+	var mask_outline_shader_text := FileAccess.get_file_as_string("res://resources/screen_outline_mask.gdshader")
 	_assert_true(
-		object_outline_shader_text.contains("VERTEX += NORMAL * outline_width")
-		and object_outline_shader_text.contains("EMISSION = outline_color.rgb * glow_strength"),
-		"Object-level outline shader expands meshes and emits glow"
+		mask_outline_shader_text.contains("mask_tex")
+		and mask_outline_shader_text.contains("sqrt(gx * gx + gy * gy)")
+		and mask_outline_shader_text.contains("EMISSION = col * edge * glow"),
+		"Screen-space outline shader Sobels the object mask and emits a glow"
 	)
 	var outline_shader_text := FileAccess.get_file_as_string("res://resources/black_outline.gdshader")
 	_assert_true(
