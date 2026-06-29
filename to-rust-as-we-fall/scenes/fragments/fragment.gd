@@ -34,6 +34,15 @@ extends Resource
 ## Optional grid data (the GridWorld contract dict) — omit for a gridless fragment.
 @export var grid: Dictionary = {}
 
+## Optional LEVEL MESH: a modeled environment (a .glb/.gltf/.tscn) the chunk plays inside — the DataFragmentChunk
+## returns it from get_environment_model(), and the preview host loads it, applies deck collision + the occlusion
+## wrap, and (for a warped scene) installs the coord map. Empty = a procedural/graybox-only fragment.
+@export var environment_model: String = ""
+
+## Optional placed model instances: each {path:String (a .glb/.tscn/.obj), pos:Vector3, rot:Vector3 (deg), scale:Vector3}.
+## For static modeled props a level builder drops in alongside the procedural geometry. The loader instances each.
+@export var meshes: Array[Dictionary] = []
+
 ## Optional preview metadata (day/time/routing/note) the host reads for get_preview_time_state().
 @export var time_state: Dictionary = {}
 

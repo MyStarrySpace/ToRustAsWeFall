@@ -53,6 +53,28 @@ func _build_environment() -> void:
 		_add_light(self, _v3(l, "pos"), _col(l, "color", Color.WHITE), _f(l, "energy", 1.0), _f(l, "range", 4.0))
 	for lb in fragment.labels:
 		_add_label(self, str(lb.get("text", "")), _v3(lb, "pos"), _col(lb, "color", Color(0.82, 0.86, 0.92)))
+	for m in fragment.meshes:
+		_instance_mesh(m)
+
+## Instance a placed model (a static modeled prop). The level MESH (the whole environment) goes through
+## get_environment_model() instead — the host loads + warps that.
+func _instance_mesh(spec: Dictionary) -> void:
+	var path := str(spec.get("path", ""))
+	if path == "":
+		return
+	var packed := load(path)
+	if packed == null or not (packed is PackedScene):
+		push_warning("DataFragmentChunk: mesh '%s' is not a loadable PackedScene" % path)
+		return
+	var node := (packed as PackedScene).instantiate()
+	if node is Node3D:
+		var n3 := node as Node3D
+		var r := _v3(spec, "rot")
+		n3.transform = Transform3D(Basis.from_euler(Vector3(deg_to_rad(r.x), deg_to_rad(r.y), deg_to_rad(r.z))), _v3(spec, "pos"))
+		var sc := _v3(spec, "scale", Vector3.ONE)
+		if sc != Vector3.ONE:
+			n3.scale = sc
+	add_child(node)
 
 # --- Object spawning: one branch per object `type`. This list is the .tres authoring contract. ---
 
@@ -175,6 +197,10 @@ func get_default_character() -> String:
 	if fragment != null and fragment.default_character != "":
 		return fragment.default_character
 	return "aster"
+
+## The level mesh (a modeled environment). The preview host loads + warps it; empty = procedural-only.
+func get_environment_model() -> String:
+	return fragment.environment_model if fragment != null else ""
 
 func get_spawn_positions() -> Dictionary:
 	return (fragment.spawns as Dictionary).duplicate(true) if fragment != null else {}
