@@ -36,3 +36,8 @@ extends Resource
 
 ## Optional preview metadata (day/time/routing/note) the host reads for get_preview_time_state().
 @export var time_state: Dictionary = {}
+
+## Fragment-specific LOGIC knobs a thin behavior subclass reads (win thresholds, hazard targets, named anchors —
+## anything the unique mechanics need that isn't a spawnable). Pure data so the .tres stays the full source of
+## truth; the subclass holds only behavior. E.g. the wash-intro stores exit_pos/exit_radius/wash_back_pos here.
+@export var params: Dictionary = {}

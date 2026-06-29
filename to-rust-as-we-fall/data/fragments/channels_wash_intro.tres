@@ -1,0 +1,206 @@
+[gd_resource type="Resource" script_class="Fragment" format=3]
+
+[ext_resource type="Script" path="res://scenes/fragments/fragment.gd" id="1_5hiys"]
+
+[resource]
+script = ExtResource("1_5hiys")
+id = "channels_wash_intro"
+title = "Channels — Wash Intro"
+help = "The hunters guard the way down. Light the flure to draw them into the channels — the wash takes them — then step through the portal across. Tuck into a Capbage if one gets close."
+default_character = "endo"
+party_ids = PackedStringArray("aster", "peris", "endo")
+spawns = {
+"aster": Vector3(3.5, 0.5, 1.5),
+"endo": Vector3(2.5, 0.5, -1.5),
+"peris": Vector3(2.5, 0.5, 0.5)
+}
+floors = Array[Dictionary]([{
+"color": Color(0.34, 0.36, 0.4, 1),
+"pos": Vector3(14, -0.05, 0),
+"size": Vector3(34, 0.1, 14)
+}])
+walls = Array[Dictionary]([{
+"color": Color(0.24, 0.25, 0.28, 1),
+"pos": Vector3(14, 2, -5.2),
+"size": Vector3(34, 4, 0.4)
+}, {
+"color": Color(0.24, 0.25, 0.28, 1),
+"pos": Vector3(14, 2, 5.2),
+"size": Vector3(34, 4, 0.4)
+}])
+lights = Array[Dictionary]([{
+"color": Color(0.62, 0.68, 0.78, 1),
+"energy": 2.4,
+"pos": Vector3(3, 4.2, 0),
+"range": 16.0
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"energy": 2.4,
+"pos": Vector3(11, 4.2, 0),
+"range": 16.0
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"energy": 2.4,
+"pos": Vector3(19, 4.2, 0),
+"range": 16.0
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"energy": 2.4,
+"pos": Vector3(27, 4.2, 0),
+"range": 16.0
+}])
+labels = Array[Dictionary]([{
+"color": Color(0.5, 0.8, 0.9, 1),
+"pos": Vector3(27.5, 2.5, 0.5),
+"text": "TO SPIRAL"
+}, {
+"color": Color(0.4, 0.75, 0.85, 1),
+"pos": Vector3(11, 1.4, 0),
+"text": "Channel 1"
+}, {
+"color": Color(0.4, 0.75, 0.85, 1),
+"pos": Vector3(13.5, 1.4, 0),
+"text": "Channel 2"
+}, {
+"color": Color(0.4, 0.75, 0.85, 1),
+"pos": Vector3(16, 1.4, 0),
+"text": "Channel 3"
+}, {
+"color": Color(0.5, 0.85, 0.55, 1),
+"pos": Vector3(2.5, 2, 3.5),
+"text": "CAPBAGE"
+}, {
+"color": Color(0.5, 0.85, 0.55, 1),
+"pos": Vector3(4.5, 2, -3.5),
+"text": "CAPBAGE"
+}, {
+"color": Color(0.5, 0.85, 0.55, 1),
+"pos": Vector3(7.5, 2, 3.5),
+"text": "CAPBAGE"
+}, {
+"color": Color(0.6, 0.5, 1, 1),
+"pos": Vector3(8.5, 2.1, -1.5),
+"text": "PORTAL"
+}])
+objects = Array[Dictionary]([{
+"dur": 1.6,
+"half": 1.25,
+"name": "Channel0",
+"period": 3.0,
+"phase": 0.0,
+"tag": "wi_ch0",
+"type": "channel",
+"x": 11.0,
+"z_half": 5.0
+}, {
+"dur": 1.6,
+"half": 1.25,
+"name": "Channel1",
+"period": 3.0,
+"phase": 1.0,
+"tag": "wi_ch1",
+"type": "channel",
+"x": 13.5,
+"z_half": 5.0
+}, {
+"dur": 1.6,
+"half": 1.25,
+"name": "Channel2",
+"period": 3.0,
+"phase": 2.0,
+"tag": "wi_ch2",
+"type": "channel",
+"x": 16.0,
+"z_half": 5.0
+}, {
+"name": "Capbage0",
+"pos": Vector3(2.5, 0.5, 3.5),
+"radius": 1.4,
+"type": "capbage"
+}, {
+"name": "Capbage1",
+"pos": Vector3(4.5, 0.5, -3.5),
+"radius": 1.4,
+"type": "capbage"
+}, {
+"name": "Capbage2",
+"pos": Vector3(7.5, 0.5, 3.5),
+"radius": 1.4,
+"type": "capbage"
+}, {
+"attract": 32.0,
+"color": Color(0.95, 0.78, 0.2, 1),
+"name": "Flure",
+"pos": Vector3(6.5, 0.5, 0.5),
+"radius": 1.6,
+"targets": ["wash_intro_guard_0", "wash_intro_guard_1"],
+"type": "flure"
+}, {
+"color": Color(0.55, 0.42, 0.98, 1),
+"dest": Vector3(21.5, 0.5, -1.5),
+"name": "PortalNear",
+"pos": Vector3(8.5, 0.5, -1.5),
+"radius": 1.2,
+"type": "portal_pad"
+}, {
+"color": Color(0.55, 0.42, 0.98, 1),
+"dest": Vector3(8.5, 0.5, -1.5),
+"name": "PortalFar",
+"pos": Vector3(21.5, 0.5, -1.5),
+"radius": 1.2,
+"type": "portal_pad"
+}, {
+"detect": 4.0,
+"id": "wash_intro_guard_0",
+"pos": Vector3(23.5, 0.5, 2.5),
+"speed": 2.4,
+"targets": ["aster", "peris", "endo"],
+"type": "enemy"
+}, {
+"detect": 4.0,
+"id": "wash_intro_guard_1",
+"pos": Vector3(24.5, 0.5, -1.5),
+"speed": 2.4,
+"targets": ["aster", "peris", "endo"],
+"type": "enemy"
+}, {
+"color": Color(0.3, 0.7, 0.55, 1),
+"energy": 1.4,
+"label": "",
+"pos": Vector3(27.5, 0.5, 0.5),
+"size": Vector3(3.52, 0.4, 3.52),
+"type": "marker"
+}])
+grid = {
+"cell_size": 1.0,
+"contract_id": "unified_grid_v1",
+"height": 14,
+"origin": [-3.0, 0.0, -7.0],
+"walkable_regions": [{
+"max": [30.0, 5.0],
+"min": [-2.0, -5.0]
+}],
+"width": 34
+}
+time_state = {
+"day": 2,
+"note_default": "Endo's junction. The hunters guard the drop to the spiral — read the channels, use the flure.",
+"routing_mode": "safe",
+"time": 0.6
+}
+params = {
+"anchors": {
+"capbage_0": Vector3(2.5, 0.5, 3.5),
+"capbage_1": Vector3(4.5, 0.5, -3.5),
+"capbage_2": Vector3(7.5, 0.5, 3.5),
+"exit": Vector3(27.5, 0.5, 0.5),
+"flure": Vector3(6.5, 0.5, 0.5),
+"portal_in": Vector3(8.5, 0.5, -1.5),
+"portal_out": Vector3(21.5, 0.5, -1.5)
+},
+"enemy_detect": 4.0,
+"exit_pos": Vector3(27.5, 0.5, 0.5),
+"exit_radius": 2.2,
+"flure_attract": 32.0,
+"wash_back_pos": Vector3(2.5, 0.5, 0.5)
+}
