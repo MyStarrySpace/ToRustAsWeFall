@@ -837,6 +837,9 @@ func _ready() -> void:
 			"--test-curriculum-ramp":
 				ran_test = true
 				_test_curriculum_ramp()
+			"--test-roompiece-catalog":
+				ran_test = true
+				_test_roompiece_catalog()
 			"--test-survival-archetypes":
 				ran_test = true
 				await _test_survival_archetypes()
@@ -1109,6 +1112,7 @@ func _run_all_tests() -> void:
 	_test_archetype_coherence()
 	_test_character_roster()
 	_test_curriculum_ramp()
+	_test_roompiece_catalog()
 	await _test_survival_archetypes()
 	if not _heavy("Generated Stretch Playtest Loop"):
 		await _test_generated_stretch_playtest_loop()
@@ -2618,6 +2622,51 @@ func _test_campaign_order() -> void:
 ## must escalate — deeper/bigger, the shadow (pair) solve increasingly costlier than the
 ## combined solve while staying solvable, diagnosis only at the high end, and a stage-monotonic
 ## campaign order. This is the guard for the whole curriculum directive.
+func _test_roompiece_catalog() -> void:
+	_test_name = "Room-Piece Catalog"
+	var RoomPieceCatalogScript = load("res://scripts/generation/roompiece_catalog.gd")
+	var cat = RoomPieceCatalogScript.new()
+	var v: Dictionary = cat.validate()
+	_assert_true(bool(v.get("valid", false)), "room-piece catalog validates clean (errors: %s)" % str(v.get("errors", [])))
+	_assert_true(int(v.get("piece_count", 0)) >= 5, "catalog has the v1 pieces (got %d)" % int(v.get("piece_count", 0)))
+	for needed in ["corridor_straight", "junction_t", "junction_x", "arena", "alcove"]:
+		_assert_true(cat.has_piece(needed), "catalog has piece '%s'" % needed)
+
+	# Every archetype node ROLE must have at least one eligible piece (so a slot's domain is never empty).
+	for role in ["boundary", "shelter", "shelter_arrival", "foraging", "guidance", "route_pressure", "danger", "shortcut", "setpiece", "mixed"]:
+		_assert_true(cat.pieces_for_tags([role, "traverse"]).size() > 0,
+			"role '%s' has at least one eligible room-piece" % role)
+
+	# Socket compatibility truth table (the one seam rule).
+	_assert_true(RoomPieceCatalogScript.sockets_compatible(["wall"], ["wall"]), "wall|wall compatible")
+	_assert_true(not RoomPieceCatalogScript.sockets_compatible(["wall"], ["open"]), "wall|open incompatible")
+	_assert_true(RoomPieceCatalogScript.sockets_compatible(["open"], ["open"]), "open|open compatible")
+	_assert_true(RoomPieceCatalogScript.sockets_compatible(["open"], ["door"]), "open|door compatible")
+	_assert_true(not RoomPieceCatalogScript.sockets_compatible(["open"], ["open", "open"]), "mismatched length incompatible")
+
+	# open_sides: corridor_straight is open E/W only.
+	var corridor: Dictionary = cat.get_piece("corridor_straight")
+	var os: Dictionary = RoomPieceCatalogScript.open_sides(corridor)
+	_assert_true(bool(os["e"]) and bool(os["w"]) and not bool(os["n"]) and not bool(os["s"]),
+		"corridor_straight opens E/W only (got %s)" % str(os))
+
+	# Rotating it 90° CW swaps the footprint and the open sides become N/S.
+	var rot: Dictionary = RoomPieceCatalogScript.rotate_piece(corridor, 90)
+	_assert_equals(int(rot["size"][0]), int(corridor["size"][1]), "rotation swaps width/height (w)")
+	_assert_equals(int(rot["size"][1]), int(corridor["size"][0]), "rotation swaps width/height (h)")
+	var ros: Dictionary = RoomPieceCatalogScript.open_sides(rot)
+	_assert_true(bool(ros["n"]) and bool(ros["s"]) and not bool(ros["e"]) and not bool(ros["w"]),
+		"rotated corridor opens N/S only (got %s)" % str(ros))
+	# Walkable dims track the rotated size, every row the new width.
+	_assert_equals((rot["walkable"] as Array).size(), int(rot["size"][1]), "rotated walkable row count == new h")
+	for r in rot["walkable"]:
+		_assert_equals(str(r).length(), int(rot["size"][0]), "rotated walkable row width == new w")
+
+	# 4 rotations return to the original footprint (closure).
+	var back: Dictionary = RoomPieceCatalogScript.rotate_piece(corridor, 360)
+	_assert_equals(int(back["size"][0]), int(corridor["size"][0]), "360-degree rotation restores width")
+	_assert_equals(int(back["size"][1]), int(corridor["size"][1]), "360-degree rotation restores height")
+
 func _test_curriculum_ramp() -> void:
 	_test_name = "Curriculum Ramp"
 

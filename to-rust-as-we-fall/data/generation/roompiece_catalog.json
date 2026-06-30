@@ -1,0 +1,82 @@
+{
+	"schema": "trawf_roompiece_catalog_v1",
+	"socket_kinds": ["wall", "open", "door"],
+	"tile_size": 1,
+	"pieces": {
+		"corridor_straight": {
+			"display_name": "Straight Corridor",
+			"size": [3, 1],
+			"elevation_span": 0,
+			"weight": 6,
+			"tags": ["traverse", "guidance", "route_pressure", "shortcut", "boundary", "mixed"],
+			"walkable": ["..."],
+			"sockets": {
+				"n": ["wall", "wall", "wall"],
+				"s": ["wall", "wall", "wall"],
+				"e": ["open"],
+				"w": ["open"]
+			},
+			"connection_points": {"w": [0, 0], "e": [2, 0]}
+		},
+		"junction_t": {
+			"display_name": "T Junction",
+			"size": [3, 3],
+			"elevation_span": 0,
+			"weight": 4,
+			"tags": ["guidance", "route_pressure", "danger", "traverse", "mixed"],
+			"walkable": ["...", "...", ".#."],
+			"sockets": {
+				"n": ["wall", "wall", "wall"],
+				"s": ["wall", "open", "wall"],
+				"e": ["wall", "open", "wall"],
+				"w": ["wall", "open", "wall"]
+			},
+			"connection_points": {"s": [1, 2], "w": [0, 1], "e": [2, 1]}
+		},
+		"junction_x": {
+			"display_name": "Cross Junction",
+			"size": [3, 3],
+			"elevation_span": 0,
+			"weight": 2,
+			"tags": ["traverse", "guidance", "route_pressure", "danger", "mixed", "shortcut", "boundary", "foraging", "setpiece", "shelter", "shelter_arrival"],
+			"walkable": [".#.", "...", ".#."],
+			"sockets": {
+				"n": ["wall", "open", "wall"],
+				"s": ["wall", "open", "wall"],
+				"e": ["wall", "open", "wall"],
+				"w": ["wall", "open", "wall"]
+			},
+			"connection_points": {"n": [1, 0], "s": [1, 2], "w": [0, 1], "e": [2, 1]}
+		},
+		"arena": {
+			"display_name": "Open Arena",
+			"size": [5, 5],
+			"elevation_span": 0,
+			"weight": 3,
+			"tags": ["setpiece", "danger", "foraging", "shelter", "shelter_arrival", "route_pressure", "mixed"],
+			"walkable": [".....", ".....", ".....", ".....", "....."],
+			"sockets": {
+				"n": ["wall", "wall", "open", "wall", "wall"],
+				"s": ["wall", "wall", "open", "wall", "wall"],
+				"e": ["wall", "wall", "open", "wall", "wall"],
+				"w": ["wall", "wall", "open", "wall", "wall"]
+			},
+			"connection_points": {"n": [2, 0], "s": [2, 4], "w": [0, 2], "e": [4, 2]}
+		},
+		"alcove": {
+			"display_name": "Alcove",
+			"size": [2, 2],
+			"elevation_span": 0,
+			"weight": 3,
+			"tags": ["boundary", "foraging", "shortcut", "guidance", "shelter", "shelter_arrival", "mixed"],
+			"walkable": ["..", ".."],
+			"sockets": {
+				"n": ["wall", "wall"],
+				"s": ["open", "wall"],
+				"e": ["wall", "wall"],
+				"w": ["wall", "wall"]
+			},
+			"connection_points": {"s": [0, 1]}
+		}
+	}
+}
