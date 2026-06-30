@@ -840,6 +840,9 @@ func _ready() -> void:
 			"--test-roompiece-catalog":
 				ran_test = true
 				_test_roompiece_catalog()
+			"--test-wfc-layout":
+				ran_test = true
+				_test_wfc_layout()
 			"--test-survival-archetypes":
 				ran_test = true
 				await _test_survival_archetypes()
@@ -1113,6 +1116,7 @@ func _run_all_tests() -> void:
 	_test_character_roster()
 	_test_curriculum_ramp()
 	_test_roompiece_catalog()
+	_test_wfc_layout()
 	await _test_survival_archetypes()
 	if not _heavy("Generated Stretch Playtest Loop"):
 		await _test_generated_stretch_playtest_loop()
@@ -2666,6 +2670,66 @@ func _test_roompiece_catalog() -> void:
 	var back: Dictionary = RoomPieceCatalogScript.rotate_piece(corridor, 360)
 	_assert_equals(int(back["size"][0]), int(corridor["size"][0]), "360-degree rotation restores width")
 	_assert_equals(int(back["size"][1]), int(corridor["size"][1]), "360-degree rotation restores height")
+
+func _test_wfc_layout() -> void:
+	_test_name = "WFC Layout"
+	var Cat = load("res://scripts/generation/roompiece_catalog.gd")
+	var Wfc = load("res://scripts/generation/stretch_wfc_layout.gd")
+	var Stitch = load("res://scripts/generation/stretch_grid_stitcher.gd")
+	var cat = Cat.new()
+	var nodes: Array = [
+		{"id": "entry", "role": "boundary", "layout_step": {"turn": 0}},
+		{"id": "node_01", "role": "guidance", "layout_step": {"turn": 1}},
+		{"id": "node_02", "role": "danger", "layout_step": {"turn": -1}},
+		{"id": "node_03", "role": "foraging", "layout_step": {"turn": 0}},
+		{"id": "exit_shelter", "role": "shelter", "layout_step": {"turn": 0}},
+	]
+	var routes: Array = [
+		{"id": "r0", "from": "entry", "to": "node_01", "kind": "safe"},
+		{"id": "r1", "from": "node_01", "to": "node_02", "kind": "safe"},
+		{"id": "r2", "from": "node_02", "to": "node_03", "kind": "safe"},
+		{"id": "r3", "from": "node_03", "to": "exit_shelter", "kind": "safe"},
+	]
+	var settings := {"seed": 1701, "id": "wfc_test"}
+
+	var layout: Dictionary = Wfc.solve(nodes, routes, settings, {}, cat)
+	_assert_true(bool(layout.get("ok", false)), "solve returns ok")
+	_assert_equals((layout["placements"] as Array).size(), nodes.size(), "one room-piece placement per node")
+	_assert_equals((layout["corridors"] as Array).size(), routes.size(), "one corridor per route")
+	_assert_true(not bool(layout.get("fallback_used", true)), "no universal-fallback needed for the basic chain")
+
+	# Determinism: same seed -> byte-identical placements; a different seed changes the layout somewhere.
+	var layout_b: Dictionary = Wfc.solve(nodes, routes, settings, {}, cat)
+	_assert_equals(JSON.stringify(layout["placements"]), JSON.stringify(layout_b["placements"]),
+		"same seed -> identical placements")
+	var any_diff := false
+	for seed in range(1702, 1714):
+		var alt: Dictionary = Wfc.solve(nodes, routes, {"seed": seed, "id": "wfc_test"}, {}, cat)
+		if JSON.stringify(alt["placements"]) != JSON.stringify(layout["placements"]):
+			any_diff = true
+			break
+	_assert_true(any_diff, "the seed actually drives piece choice (some seed yields a different layout)")
+
+	# Grid contract: the stitched output is a unified_grid_v1 GridWorld.from_data payload.
+	var grid_data: Dictionary = Stitch.build(layout["placements"], layout["corridors"], layout["slot_cells"], settings)
+	_assert_equals(str(grid_data.get("contract_id", "")), str(GridWorld.GRID_DATA_CONTRACT_ID), "grid is unified_grid_v1")
+	_assert_true((grid_data.get("walkable_cells", []) as Array).size() > 0, "grid has walkable cells")
+	_assert_true(int(grid_data.get("width", 0)) > 0 and int(grid_data.get("height", 0)) > 0, "grid has a size")
+	_assert_equals(str(grid_data.get("entry_anchor", "")), "entry", "entry anchor preserved")
+	_assert_equals(str(grid_data.get("exit_anchor", "")), "exit_shelter", "exit anchor preserved")
+
+	# Connectivity: entry reaches exit on the stitched grid (the core invariant).
+	var grid = GridWorld.from_data(grid_data)
+	var entry_cell: Vector2i = grid.world_to_grid(Stitch.node_world(layout["slot_cells"], "entry"))
+	var exit_cell: Vector2i = grid.world_to_grid(Stitch.node_world(layout["slot_cells"], "exit_shelter"))
+	_assert_true(grid.is_walkable(entry_cell.x, entry_cell.y), "entry node cell is walkable")
+	_assert_true(grid.is_walkable(exit_cell.x, exit_cell.y), "exit node cell is walkable")
+	var path: Array = grid.find_multi_level_path(entry_cell, 0, exit_cell, 0)
+	_assert_true(path.size() >= 1, "entry reaches exit on the WFC-stitched grid (path len %d)" % path.size())
+
+	# Determinism of the stitched grid JSON too (no RNG in the stitcher).
+	var grid_b: Dictionary = Stitch.build(layout["placements"], layout["corridors"], layout["slot_cells"], settings)
+	_assert_equals(JSON.stringify(grid_data), JSON.stringify(grid_b), "stitched grid JSON is deterministic")
 
 func _test_curriculum_ramp() -> void:
 	_test_name = "Curriculum Ramp"
