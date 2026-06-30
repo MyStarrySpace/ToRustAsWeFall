@@ -10,6 +10,8 @@ extends RefCounted
 ##
 ## Deterministic: the pattern + both children's seeds are hashed from (run seed, depth), so a run is reproducible.
 
+const BiomesScript := preload("res://scripts/generation/biomes.gd")
+
 const TIERS := ["teaching", "standard", "hard", "setpiece"]
 const CORE_PAIR := ["aster", "peris"]          # the shadow pair — always in the party, never recruited
 # Canonical roguelike-playable roster beyond the core pair (GDD 14.3): the base-game main cast first, then the
@@ -110,12 +112,14 @@ static func _opt(id: String, label: String, desc: String, risk: String, settings
 
 ## Generation settings for one branch child — a child seed hashed from the branch so it's reproducible + distinct.
 static func _settings(seed: int, depth: int, branch_id: String, tier: String, roster: Array, budget: Dictionary = {}) -> Dictionary:
+	var biome := BiomesScript.for_key("%d:%d:%s" % [seed, depth, branch_id])
 	var s := {
 		"seed": int(hash("level:%d:%d:%s" % [seed, depth, branch_id])),
 		"complexity_tier": tier,
 		"roster": roster.duplicate(),
+		"biome": biome,
 		"id": "roguelike_d%d_%s" % [depth, branch_id],
-		"title": "Depth %d — %s" % [depth + 1, branch_id],
+		"title": "%s — Depth %d" % [BiomesScript.display_name(biome), depth + 1],
 	}
 	if not budget.is_empty():
 		s["budget"] = budget

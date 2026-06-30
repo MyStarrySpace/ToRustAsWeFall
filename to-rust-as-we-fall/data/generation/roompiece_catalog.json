@@ -77,6 +77,51 @@
 				"w": ["wall", "wall"]
 			},
 			"connection_points": {"s": [0, 1]}
+		},
+		"hall": {
+			"display_name": "Long Hall",
+			"size": [4, 2],
+			"elevation_span": 0,
+			"weight": 4,
+			"tags": ["traverse", "guidance", "route_pressure", "danger", "mixed"],
+			"walkable": ["....", "...."],
+			"sockets": {
+				"n": ["wall", "wall", "wall", "wall"],
+				"s": ["wall", "wall", "wall", "wall"],
+				"e": ["open", "open"],
+				"w": ["open", "open"]
+			},
+			"connection_points": {"w": [0, 0], "e": [3, 0]}
+		},
+		"chamber": {
+			"display_name": "Chamber",
+			"size": [4, 3],
+			"elevation_span": 0,
+			"weight": 3,
+			"tags": ["foraging", "danger", "route_pressure", "guidance", "mixed"],
+			"walkable": ["....", "....", "...."],
+			"sockets": {
+				"n": ["wall", "open", "open", "wall"],
+				"s": ["wall", "open", "open", "wall"],
+				"e": ["wall", "open", "wall"],
+				"w": ["wall", "open", "wall"]
+			},
+			"connection_points": {"n": [1, 0], "s": [1, 2], "w": [0, 1], "e": [3, 1]}
+		},
+		"vault": {
+			"display_name": "Vault",
+			"size": [4, 4],
+			"elevation_span": 0,
+			"weight": 2,
+			"tags": ["setpiece", "shelter", "shelter_arrival", "danger", "mixed"],
+			"walkable": ["....", "....", "....", "...."],
+			"sockets": {
+				"n": ["wall", "open", "open", "wall"],
+				"s": ["wall", "open", "open", "wall"],
+				"e": ["wall", "open", "open", "wall"],
+				"w": ["wall", "open", "open", "wall"]
+			},
+			"connection_points": {"n": [1, 0], "s": [1, 3], "w": [0, 1], "e": [3, 1]}
 		}
 	}
 }

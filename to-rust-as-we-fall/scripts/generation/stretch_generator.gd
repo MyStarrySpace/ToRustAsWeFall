@@ -7,6 +7,7 @@ const SolverScript := preload("res://scripts/generation/stretch_solution_solver.
 const RoomPieceCatalogScript := preload("res://scripts/generation/roompiece_catalog.gd")
 const WfcLayoutScript := preload("res://scripts/generation/stretch_wfc_layout.gd")
 const GridStitcherScript := preload("res://scripts/generation/stretch_grid_stitcher.gd")
+const BiomesScript := preload("res://scripts/generation/biomes.gd")
 
 const SPEC_SCHEMA := "trawf_generated_stretch_spec_v1"
 const DEFAULT_SPEC_DIR := "res://data/generated_stretches"
@@ -145,6 +146,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 		"schema": SPEC_SCHEMA,
 		"id": str(resolved.get("id", "generated_stretch")),
 		"title": str(resolved.get("title", "Generated Stretch")),
+		"biome": str(resolved.get("biome", "")),
 		"source": {
 			"generator": "archetype_based_stretch_v1",
 			"seed": int(resolved.get("seed", 0)),
@@ -530,7 +532,15 @@ static func _resolve_settings(settings: Dictionary) -> Dictionary:
 	# floor while leaving an explicit override exactly as authored.
 	resolved["budget_tier_floor"] = tier_floor
 	resolved["budget_overridden_keys"] = overridden_keys
-	resolved["limitations"] = _normalize_limitations(settings.get("limitations", {}))
+	# A BIOME is a named content preset: if the caller named one (and didn't pin explicit
+	# limitations), restrict generation to that biome's slice of the palette via the existing
+	# limitations.allowed machinery. The biome id is preserved on the spec for downstream display.
+	var biome := str(settings.get("biome", ""))
+	var raw_limitations: Variant = settings.get("limitations", {})
+	if biome != "" and BiomesScript.has_biome(biome) and (not (raw_limitations is Dictionary) or (raw_limitations as Dictionary).is_empty()):
+		raw_limitations = BiomesScript.limitations_for(biome)
+	resolved["biome"] = biome
+	resolved["limitations"] = _normalize_limitations(raw_limitations)
 	resolved["composition"] = _normalize_composition(settings.get("composition", {}))
 	resolved["roster"] = settings.get("roster", [])
 	var resolved_composition: Dictionary = resolved.get("composition", {})

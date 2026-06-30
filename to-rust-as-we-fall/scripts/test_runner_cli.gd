@@ -840,6 +840,9 @@ func _ready() -> void:
 			"--test-roompiece-catalog":
 				ran_test = true
 				_test_roompiece_catalog()
+			"--test-biomes":
+				ran_test = true
+				_test_biomes()
 			"--test-wfc-layout":
 				ran_test = true
 				_test_wfc_layout()
@@ -1125,6 +1128,7 @@ func _run_all_tests() -> void:
 	_test_character_roster()
 	_test_curriculum_ramp()
 	_test_roompiece_catalog()
+	_test_biomes()
 	_test_wfc_layout()
 	_test_roguelike_run()
 	_test_run_branch_decisions()
@@ -2645,8 +2649,8 @@ func _test_roompiece_catalog() -> void:
 	var cat = RoomPieceCatalogScript.new()
 	var v: Dictionary = cat.validate()
 	_assert_true(bool(v.get("valid", false)), "room-piece catalog validates clean (errors: %s)" % str(v.get("errors", [])))
-	_assert_true(int(v.get("piece_count", 0)) >= 5, "catalog has the v1 pieces (got %d)" % int(v.get("piece_count", 0)))
-	for needed in ["corridor_straight", "junction_t", "junction_x", "arena", "alcove"]:
+	_assert_true(int(v.get("piece_count", 0)) >= 8, "catalog has the v1 + variety pieces (got %d)" % int(v.get("piece_count", 0)))
+	for needed in ["corridor_straight", "junction_t", "junction_x", "arena", "alcove", "hall", "chamber", "vault"]:
 		_assert_true(cat.has_piece(needed), "catalog has piece '%s'" % needed)
 
 	# Every archetype node ROLE must have at least one eligible piece (so a slot's domain is never empty).
@@ -2683,6 +2687,58 @@ func _test_roompiece_catalog() -> void:
 	var back: Dictionary = RoomPieceCatalogScript.rotate_piece(corridor, 360)
 	_assert_equals(int(back["size"][0]), int(corridor["size"][0]), "360-degree rotation restores width")
 	_assert_equals(int(back["size"][1]), int(corridor["size"][1]), "360-degree rotation restores height")
+
+func _test_biomes() -> void:
+	_test_name = "Biomes"
+	var Biomes = load("res://scripts/generation/biomes.gd")
+	var ids: Array = Biomes.biome_ids()
+	for needed in ["channels", "stacks", "garden", "deadzone"]:
+		_assert_true(ids.has(needed), "biome registry has '%s'" % needed)
+		_assert_true(Biomes.has_biome(needed), "has_biome('%s')" % needed)
+		_assert_true(Biomes.display_name(needed) != "", "biome '%s' has a display name" % needed)
+		# Each biome has a real content slice; a fully concealing flora must be reachable so the shadow pair can
+		# always hide (the bare pair carries base cover, so this is a content-richness floor, not a hard gate).
+		var lim: Dictionary = Biomes.limitations_for(needed)
+		var allowed: Dictionary = lim.get("allowed", {})
+		_assert_true((allowed.get("flora", []) as Array).size() > 0, "biome '%s' allows flora" % needed)
+		_assert_true((allowed.get("enemies", []) as Array).size() > 0, "biome '%s' allows enemies" % needed)
+		_assert_true((allowed.get("structures", []) as Array).size() > 0, "biome '%s' allows structures" % needed)
+		_assert_true((allowed.get("structures", []) as Array).has("shelter"), "biome '%s' allows a shelter" % needed)
+
+	# A biome RESTRICTS generation to its palette slice: every placed flora/enemy/structure is in the biome's lists,
+	# the spec records the biome, and the level still connects entry->exit and stays bare-pair solvable.
+	for biome in ["channels", "stacks", "garden", "deadzone"]:
+		var lim2: Dictionary = Biomes.limitations_for(biome)
+		var allow: Dictionary = lim2.get("allowed", {})
+		var spec: Dictionary = StretchGeneratorScript.generate({
+			"seed": int(hash("biome_test:" + biome)), "complexity_tier": "standard",
+			"biome": biome, "id": "biome_test_%s" % biome})
+		_assert_true(bool(spec.get("success", false)), "biome '%s' generates a level" % biome)
+		if not bool(spec.get("success", false)):
+			continue
+		_assert_equals(str(spec.get("biome", "")), biome, "spec records its biome")
+		var usage: Dictionary = spec.get("palette_usage", {})
+		for cat_key in ["flora", "enemies", "structures"]:
+			for used in usage.get(cat_key, []):
+				_assert_true((allow.get(cat_key, []) as Array).has(str(used)),
+					"biome '%s' only places allowed %s (saw '%s')" % [biome, cat_key, str(used)])
+		# Still completable: connects + the bare Aster+Peris pair can clear it.
+		var grid_data: Dictionary = StretchGeneratorScript.build_navigation_grid_from_spec(spec)
+		var g := GridWorld.from_data(grid_data)
+		var entry := _generated_node(spec, "entry")
+		var exit_node := _generated_node(spec, "exit_shelter")
+		if not entry.is_empty() and not exit_node.is_empty():
+			var path: Array = g.find_multi_level_path(g.world_to_grid(entry.pos), entry.elev, g.world_to_grid(exit_node.pos), exit_node.elev)
+			_assert_true(path.size() >= 1, "biome '%s' level connects entry -> exit" % biome)
+		_assert_true(bool(spec.get("headless", {}).get("solution_summary", {}).get("bare_pair_solvable", false)),
+			"biome '%s' level is bare-pair solvable" % biome)
+
+	# Deterministic + varied biome selection.
+	_assert_equals(Biomes.for_key("7:2:deep"), Biomes.for_key("7:2:deep"), "for_key is deterministic")
+	var distinct := {}
+	for d in range(12):
+		distinct[Biomes.for_depth(99, d)] = true
+	_assert_true(distinct.size() >= 2, "descending rotates through multiple biomes (saw %d)" % distinct.size())
 
 func _test_wfc_layout() -> void:
 	_test_name = "WFC Layout"
