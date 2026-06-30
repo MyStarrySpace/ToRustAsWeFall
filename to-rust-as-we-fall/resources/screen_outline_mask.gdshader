@@ -6,24 +6,38 @@ render_mode unshaded, cull_disabled, depth_test_disabled, depth_draw_never, fog_
 // encodes intent: a HOVER object fills LOW alpha (outline only), a QUEUED one fills FULL alpha (outline + glow).
 //   * Crisp outline = Sobel of the mask coverage. The mask is a flat solid, so its only edge is each object's
 //     OUTER silhouette: gap-free, constant pixel width at any distance, immune to the geometry normals.
-//   * Energy glow = a soft, noise-MORPHED halo radiating from the QUEUED (high-alpha) pixels only — two scrolling
-//     noise samples multiplied so it churns like shed energy (the same recipe as the old emission shell).
+//   * Energy glow = a noise-MORPHED, pixel-DITHERED halo that radiates ONLY from the QUEUED (clicked) silhouette.
+//     A screen-space DISTANCE FIELD (nearest queued pixel) drives the visibility, so the glow only appears
+//     OUTSIDE the object, fades smoothly with distance from the edge, and stipples through an ordered 4x4 Bayer
+//     dither (the same grammar as the hover grid / portal VFX). Hover shows the crisp outline only — no noise.
 // Both read their colour straight from the mask, so several objects can carry different tints in one pass.
-uniform sampler2D mask_tex : filter_linear;
+uniform sampler2D mask_tex : filter_linear;          // every highlighted object (drives the crisp outline)
+uniform sampler2D glow_mask_tex : filter_linear;     // QUEUED objects only (drives the energy glow)
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
 uniform sampler2D noise_tex : repeat_enable, filter_linear;
 uniform float thickness : hint_range(0.5, 6.0, 0.1) = 2.0;
 uniform float glow : hint_range(0.0, 4.0, 0.05) = 1.15;             // crisp-outline emission boost
-uniform float glow_radius : hint_range(2.0, 64.0, 1.0) = 22.0;      // queued halo reach (px)
+uniform float glow_radius : hint_range(2.0, 64.0, 1.0) = 22.0;      // queued halo reach (px) = the SDF fade distance
 uniform float glow_strength : hint_range(0.0, 6.0, 0.05) = 2.4;     // queued halo intensity
 uniform float noise_scale : hint_range(0.2, 12.0, 0.1) = 3.0;       // halo noise frequency
 uniform float noise_speed : hint_range(0.0, 1.0, 0.01) = 0.13;      // how fast the halo morphs
-uniform float queued_threshold : hint_range(0.5, 1.0, 0.01) = 0.78; // alpha above this = "queued" (glows)
+uniform float queued_threshold : hint_range(0.1, 1.0, 0.01) = 0.5;  // glow-mask coverage above this = inside a queued object
 uniform bool flip_y = false;
 uniform vec4 fallback_color : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 
-void vertex() {
-	POSITION = vec4(VERTEX.xy, 1.0, 1.0);
+// Ordered 4x4 Bayer thresholds — the same matrix the hover grid + portal_dither use, so the glow stipples in the
+// project's house dither style.
+const float BAYER[16] = float[](
+	0.0 / 16.0, 8.0 / 16.0, 2.0 / 16.0, 10.0 / 16.0,
+	12.0 / 16.0, 4.0 / 16.0, 14.0 / 16.0, 6.0 / 16.0,
+	3.0 / 16.0, 11.0 / 16.0, 1.0 / 16.0, 9.0 / 16.0,
+	15.0 / 16.0, 7.0 / 16.0, 13.0 / 16.0, 5.0 / 16.0
+);
+
+float bayer(vec2 frag) {
+	int x = int(mod(frag.x, 4.0));
+	int y = int(mod(frag.y, 4.0));
+	return BAYER[y * 4 + x];
 }
 
 // Two scrolling samples of the noise multiplied -> a churning, morphing field (not a flat scroll), so the halo
@@ -67,33 +81,33 @@ void fragment() {
 	if (br.a > best) { best = br.a; oc = br.rgb; }
 	if (best <= 0.001) { oc = fallback_color.rgb; }
 
-	// --- queued energy glow: a soft halo of the QUEUED (high-alpha) silhouette, morphed by noise ---
-	float qsum = 0.0;
-	float wsum = 0.0;
-	vec3 gcol = vec3(0.0);
-	for (int i = 0; i < 12; i++) {
-		float ang = float(i) / 12.0 * 6.2831853;
+	// --- queued energy glow: a screen-space DISTANCE FIELD of the GLOW mask (queued objects ONLY) drives a
+	// noise-dithered halo. March outward in a ring of directions to the NEAREST queued pixel; that distance is the
+	// SDF. The glow mask is empty for a hover-only object, so HOVER produces no glow at all — structurally. ---
+	float min_d = glow_radius + 1.0;
+	vec3 gcol = oc;
+	const int DIRS = 12;
+	const int STEPS = 6;
+	for (int i = 0; i < DIRS; i++) {
+		float ang = float(i) / float(DIRS) * 6.2831853;
 		vec2 dir = vec2(cos(ang), sin(ang));
-		for (int r = 1; r <= 2; r++) {
-			float rad = glow_radius * (float(r) / 2.0);
-			vec4 s = texture(mask_tex, muv + dir * rad * inv);
-			float q = smoothstep(queued_threshold - 0.08, queued_threshold + 0.1, s.a);
-			float w = 1.0 - (rad / glow_radius) * 0.45;
-			qsum += q * w;
-			wsum += w;
-			gcol += s.rgb * q * w;
+		for (int s = 1; s <= STEPS; s++) {
+			float rad = float(s) / float(STEPS) * glow_radius;
+			vec4 smp = texture(glow_mask_tex, muv + dir * rad * inv);
+			if (smp.a >= queued_threshold) {
+				if (rad < min_d) { min_d = rad; gcol = smp.rgb; }
+				break;   // nearest hit along this direction
+			}
 		}
 	}
-	float halo = (wsum > 0.0) ? qsum / wsum : 0.0;
-	if (qsum > 0.001) {
-		gcol = gcol / qsum;
-	} else {
-		gcol = oc;
-	}
-	float here_q = smoothstep(queued_threshold - 0.08, queued_threshold + 0.1, cc.a);
-	float band = halo * (1.0 - here_q * 0.85);          // mostly OUTSIDE the solid (a radiating rim, not a face wash)
+	float here_q = step(queued_threshold, texture(glow_mask_tex, muv).a);   // 1 inside a queued object
+	// SDF visibility: bright at the silhouette (d=0), smooth fade to 0 at glow_radius, OUTSIDE the object only.
+	float vis = (1.0 - here_q) * (1.0 - smoothstep(0.0, glow_radius, min_d));
 	float n = morph_noise(muv);
-	float glow_amt = band * (0.12 + 0.88 * n) * glow_strength;   // noise breaks the band into shed energy
+	float energy = vis * (0.35 + 0.65 * n);                      // distance-faded, noise-broken energy field [0,1]
+	// Pixel DITHER: stipple the glow where the energy strictly beats the ordered Bayer cell (project house style).
+	float keep = (energy > bayer(FRAGCOORD.xy)) ? 1.0 : 0.0;
+	float glow_amt = keep * energy * glow_strength;
 
 	vec3 base = texture(screen_tex, uv).rgb;
 	vec3 outline_rgb = mix(base, oc, edge);

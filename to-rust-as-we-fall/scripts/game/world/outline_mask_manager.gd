@@ -15,10 +15,9 @@ extends Node3D
 const MASK_SHADER := preload("res://resources/screen_outline_mask.gdshader")
 const FILL_SHADER := preload("res://resources/outline_mask_fill.gdshader")
 
-# The fill ALPHA encodes intent (read back by the composite): a HOVER object outlines only, a QUEUED one also
-# radiates the energy glow. Kept well apart so the shader's queued_threshold separates them cleanly.
-const HOVER_ALPHA := 0.5
-const QUEUED_ALPHA := 1.0
+# TWO mask viewports keep "outline" and "glow" cleanly separate (no fragile opaque-alpha flag): _sub holds EVERY
+# highlighted object (drives the crisp outline), _glow_sub holds ONLY the QUEUED objects (drives the energy halo).
+# So a HOVER object is structurally absent from the glow pass and can never glow.
 
 @export var thickness := 2.0
 @export var glow := 1.15
@@ -28,11 +27,13 @@ const QUEUED_ALPHA := 1.0
 
 static var _shared_noise_tex: Texture2D
 
-var _sub: SubViewport
+var _sub: SubViewport          # outline mask: every highlighted object
 var _sub_cam: Camera3D
+var _glow_sub: SubViewport      # glow mask: queued objects only
+var _glow_cam: Camera3D
 var _quad: MeshInstance3D
 var _mask_mat: ShaderMaterial
-var _entries := {}     # key:int -> { color:Color, copies:Array[Dictionary{copy,src}] }
+var _entries := {}     # key:int -> { color, glow, copies:[{copy,src}], glow_copies:[{copy,src}] }
 var _built := false
 
 func _ready() -> void:
@@ -45,20 +46,19 @@ func _ensure_built() -> void:
 		return
 	_built = true
 
-	_sub = SubViewport.new()
-	_sub.name = "OutlineMaskViewport"
-	_sub.own_world_3d = true
-	_sub.transparent_bg = true
-	_sub.render_target_update_mode = SubViewport.UPDATE_DISABLED   # only renders while something is highlighted
-	_sub.handle_input_locally = false
-	_sub.msaa_3d = Viewport.MSAA_DISABLED
-	_sub.size = _viewport_size()
+	_sub = _make_mask_viewport("OutlineMaskViewport")
 	add_child(_sub)
-
 	_sub_cam = Camera3D.new()
 	_sub_cam.name = "OutlineMaskCamera"
 	_sub.add_child(_sub_cam)
 	_sub_cam.current = true
+
+	_glow_sub = _make_mask_viewport("OutlineGlowViewport")
+	add_child(_glow_sub)
+	_glow_cam = Camera3D.new()
+	_glow_cam.name = "OutlineGlowCamera"
+	_glow_sub.add_child(_glow_cam)
+	_glow_cam.current = true
 
 	_quad = MeshInstance3D.new()
 	_quad.name = "OutlineMaskComposite"
@@ -71,6 +71,7 @@ func _ensure_built() -> void:
 	# and the UI ribbons/ghosts/rings (127) — the outline is object feedback, not a perception layer.
 	_mask_mat.render_priority = 8
 	_mask_mat.set_shader_parameter("mask_tex", _sub.get_texture())
+	_mask_mat.set_shader_parameter("glow_mask_tex", _glow_sub.get_texture())
 	_mask_mat.set_shader_parameter("thickness", thickness)
 	_mask_mat.set_shader_parameter("glow", glow)
 	_mask_mat.set_shader_parameter("glow_radius", glow_radius)
@@ -83,6 +84,17 @@ func _ensure_built() -> void:
 	_quad.visible = false             # only composite while something is highlighted
 	add_child(_quad)
 
+func _make_mask_viewport(vp_name: String) -> SubViewport:
+	var vp := SubViewport.new()
+	vp.name = vp_name
+	vp.own_world_3d = true
+	vp.transparent_bg = true
+	vp.render_target_update_mode = SubViewport.UPDATE_DISABLED   # only renders while it has content
+	vp.handle_input_locally = false
+	vp.msaa_3d = Viewport.MSAA_DISABLED
+	vp.size = _viewport_size()
+	return vp
+
 func _viewport_size() -> Vector2i:
 	var vp := get_viewport()
 	if vp == null:
@@ -90,8 +102,8 @@ func _viewport_size() -> Vector2i:
 	var s := vp.get_visible_rect().size
 	return Vector2i(maxi(8, int(s.x)), maxi(8, int(s.y)))
 
-## (Re)register an object's meshes for outlining at `color`. `glow` = true adds the queued energy halo (a queued
-## interaction), false = outline only (hover). `key` is the owning target's instance id.
+## (Re)register an object's meshes for outlining at `color`. `glow_on` = true ALSO renders the object into the glow
+## viewport so it radiates the queued energy halo; false = outline only (hover). `key` is the owning target's id.
 func register(key: int, meshes: Array, color: Color, glow_on: bool = false) -> void:
 	if Engine.is_editor_hint():
 		return
@@ -100,8 +112,15 @@ func register(key: int, meshes: Array, color: Color, glow_on: bool = false) -> v
 		# Already shown — just retint + flip the glow flag (hover -> queued recolours/relights the same object).
 		set_color(key, color, glow_on)
 		return
+	var copies := _spawn_copies(_sub, meshes, color)
+	var glow_copies: Array = _spawn_copies(_glow_sub, meshes, color) if glow_on else []
+	_entries[key] = {"color": color, "glow": glow_on, "copies": copies, "glow_copies": glow_copies}
+	_refresh_visibility()
+
+## Mesh copies of `meshes` parented into `vp`, filled flat with `color`, transform synced once. Returned as
+## [{copy, src}] so _process can keep each copy tracking its source.
+func _spawn_copies(vp: SubViewport, meshes: Array, color: Color) -> Array:
 	var copies: Array = []
-	var fill_alpha: float = QUEUED_ALPHA if glow_on else HOVER_ALPHA
 	for m in meshes:
 		if not (m is MeshInstance3D) or (m as MeshInstance3D).mesh == null:
 			continue
@@ -110,21 +129,32 @@ func register(key: int, meshes: Array, color: Color, glow_on: bool = false) -> v
 		copy.mesh = src.mesh
 		copy.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		copy.extra_cull_margin = maxf(src.extra_cull_margin, 4.0)
-		_apply_fill_materials(copy, src, color, fill_alpha)
-		_sub.add_child(copy)
+		_apply_fill_materials(copy, src, color)
+		vp.add_child(copy)
 		copy.global_transform = src.global_transform
 		copies.append({"copy": copy, "src": src})
-	_entries[key] = {"color": color, "glow": glow_on, "copies": copies}
-	_refresh_visibility()
+	return copies
 
 func set_color(key: int, color: Color, glow_on: bool = false) -> void:
 	var e = _entries.get(key)
 	if e == null:
 		return
 	e["color"] = color
+	_retint(e["copies"], color)
+	# Toggle the glow pass: add copies into the glow viewport when becoming queued, free them when leaving.
+	var had_glow: bool = not (e["glow_copies"] as Array).is_empty()
+	if glow_on and not had_glow:
+		e["glow_copies"] = _spawn_copies(_glow_sub, _source_meshes(e["copies"]), color)
+	elif not glow_on and had_glow:
+		_free_copies(e["glow_copies"])
+		e["glow_copies"] = []
+	else:
+		_retint(e["glow_copies"], color)
 	e["glow"] = glow_on
-	var fill_alpha: float = QUEUED_ALPHA if glow_on else HOVER_ALPHA
-	for c in e["copies"]:
+	_refresh_visibility()
+
+func _retint(copies: Array, color: Color) -> void:
+	for c in copies:
 		var copy := c["copy"] as MeshInstance3D
 		if not is_instance_valid(copy):
 			continue
@@ -132,16 +162,26 @@ func set_color(key: int, color: Color, glow_on: bool = false) -> void:
 			var mat := copy.get_surface_override_material(s) as ShaderMaterial
 			if mat != null:
 				mat.set_shader_parameter("fill_color", color)
-				mat.set_shader_parameter("fill_alpha", fill_alpha)
+
+func _source_meshes(copies: Array) -> Array:
+	var out: Array = []
+	for c in copies:
+		if is_instance_valid(c["src"]):
+			out.append(c["src"])
+	return out
+
+func _free_copies(copies: Array) -> void:
+	for c in copies:
+		var copy := c["copy"] as MeshInstance3D
+		if is_instance_valid(copy):
+			copy.queue_free()
 
 func unregister(key: int) -> void:
 	var e = _entries.get(key)
 	if e == null:
 		return
-	for c in e["copies"]:
-		var copy := c["copy"] as MeshInstance3D
-		if is_instance_valid(copy):
-			copy.queue_free()
+	_free_copies(e["copies"])
+	_free_copies(e["glow_copies"])
 	_entries.erase(key)
 	_refresh_visibility()
 
@@ -150,21 +190,28 @@ func is_registered(key: int) -> bool:
 
 func _refresh_visibility() -> void:
 	var active := not _entries.is_empty()
+	var any_glow := false
+	for e in _entries.values():
+		if not (e["glow_copies"] as Array).is_empty():
+			any_glow = true
+			break
 	if _quad != null:
 		_quad.visible = active
-	# Don't re-render an empty mask viewport every frame during normal play (nothing hovered is the common case).
+	# Don't re-render an empty viewport every frame: outline pass renders while anything is highlighted, the glow
+	# pass only while something is QUEUED (the rarer state).
 	if _sub != null:
 		_sub.render_target_update_mode = SubViewport.UPDATE_ALWAYS if active else SubViewport.UPDATE_DISABLED
+	if _glow_sub != null:
+		_glow_sub.render_target_update_mode = SubViewport.UPDATE_ALWAYS if any_glow else SubViewport.UPDATE_DISABLED
 
-## Per-surface fill material: a flat tint at `fill_alpha` (the glow flag), with alpha-cutout discard when the
-## source surface is transparent (so foliage/decals mask to the leaf shape, not the bounding quad).
-func _apply_fill_materials(copy: MeshInstance3D, src: MeshInstance3D, color: Color, fill_alpha: float) -> void:
+## Per-surface fill material: a flat opaque tint, with alpha-cutout discard when the source surface is transparent
+## (so foliage/decals mask to the leaf shape, not the bounding quad).
+func _apply_fill_materials(copy: MeshInstance3D, src: MeshInstance3D, color: Color) -> void:
 	var surfaces: int = copy.mesh.get_surface_count() if copy.mesh != null else 0
 	for s in range(surfaces):
 		var mat := ShaderMaterial.new()
 		mat.shader = FILL_SHADER
 		mat.set_shader_parameter("fill_color", color)
-		mat.set_shader_parameter("fill_alpha", fill_alpha)
 		var source := src.get_active_material(s)
 		if source is BaseMaterial3D:
 			var base := source as BaseMaterial3D
@@ -195,15 +242,12 @@ func _process(_delta: float) -> void:
 	var want := _viewport_size()
 	if _sub.size != want:
 		_sub.size = want
-	# Mirror the main camera so the mask projects identically to the main render.
-	_sub_cam.global_transform = cam.global_transform
-	_sub_cam.fov = cam.fov
-	_sub_cam.projection = cam.projection
-	_sub_cam.near = cam.near
-	_sub_cam.far = cam.far
-	_sub_cam.size = cam.size
-	_sub_cam.keep_aspect = cam.keep_aspect
-	# Follow each highlighted object so the mask tracks it (moving props, the helix deck, etc.).
+	if _glow_sub.size != want:
+		_glow_sub.size = want
+	# Mirror the main camera in BOTH passes so the masks project identically to the main render.
+	_sync_cam(_sub_cam, cam)
+	_sync_cam(_glow_cam, cam)
+	# Follow each highlighted object so the masks track it (moving props, the helix deck, etc.).
 	for key in _entries.keys():
 		var e = _entries[key]
 		var alive := false
@@ -213,9 +257,23 @@ func _process(_delta: float) -> void:
 			if is_instance_valid(copy) and is_instance_valid(src):
 				copy.global_transform = src.global_transform
 				alive = true
+		for c in e["glow_copies"]:
+			var gcopy := c["copy"] as MeshInstance3D
+			var gsrc := c["src"] as MeshInstance3D
+			if is_instance_valid(gcopy) and is_instance_valid(gsrc):
+				gcopy.global_transform = gsrc.global_transform
 		# The source object was freed (chunk reload) — drop the stale registration.
 		if not alive and not e["copies"].is_empty():
 			unregister(key)
+
+func _sync_cam(dst: Camera3D, cam: Camera3D) -> void:
+	dst.global_transform = cam.global_transform
+	dst.fov = cam.fov
+	dst.projection = cam.projection
+	dst.near = cam.near
+	dst.far = cam.far
+	dst.size = cam.size
+	dst.keep_aspect = cam.keep_aspect
 
 ## Find the OutlineMaskManager for `context`'s branch (the one tutorial_sequence created for the scene), or null.
 ## FIND-ONLY by design: a headless test or a standalone OutlineSurfaceTarget must not spawn a SubViewport — when
