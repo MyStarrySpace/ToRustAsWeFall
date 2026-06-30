@@ -79,6 +79,11 @@ const PREVIEW_ENTRIES := [
 	# code) — point it at any Fragment resource via the config below.
 	{"id": "object_showcase", "chunk": "data_fragment", "title": "Object Showcase (data)", "stage": 6,
 		"config": {"fragment_path": "res://data/fragments/object_showcase.tres"}},
+	# PROCEDURAL ROGUELIKE: generate a fresh stretch on load and, each time the party rests at the exit shelter,
+	# descend — regenerate the next level (deeper seed, escalating tier) and reload. The fragment loader IS the
+	# roguelike driver; no separate scene.
+	{"id": "roguelike", "chunk": "generated_stretch", "title": "Roguelike Run (procedural)", "stage": 1,
+		"config": {"roguelike": true, "seed": 1}},
 ]
 
 ## The menu entry for an id (or {} if none).
@@ -150,6 +155,13 @@ const STAMINA_REGEN := 10.0
 	"refuge_run", "channels_wash_intro", "lure_relay", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
+
+# --- Procedural roguelike run state (driven from this fragment loader) ---
+const ROGUELIKE_TIERS := ["teaching", "standard", "hard", "setpiece"]
+var _roguelike_active := false
+var _roguelike_depth := 0
+var _roguelike_seed := 1
+var _roguelike_advancing := false
 ## When true, boot into a fragment PICKER instead of loading a chunk directly. The single
 ## fragment_preview.tscn sets this; selecting an entry loads it, and reloading (R) returns here.
 ## A `--preview=<id>` command-line arg (or a preset preview_chunk) skips the menu and loads directly.
@@ -497,6 +509,61 @@ func _apply_preview_entry(entry: Dictionary) -> void:
 	preview_chunk = String(entry.get("chunk", preview_chunk))
 	scene_title_override = String(entry.get("title", scene_title_override))
 	preview_chunk_config = (entry.get("config", {}) as Dictionary).duplicate(true)
+	# Roguelike entry: generate the first procedural level right here, so the loaded chunk plays it.
+	if bool(preview_chunk_config.get("roguelike", false)):
+		_roguelike_active = true
+		_roguelike_depth = 0
+		_roguelike_seed = int(preview_chunk_config.get("seed", 1))
+		_roguelike_build_level()
+
+## Generate the current-depth stretch and point the chunk config at it (seed deepens + tier escalates with depth).
+func _roguelike_build_level() -> void:
+	var tier: String = ROGUELIKE_TIERS[mini(_roguelike_depth, ROGUELIKE_TIERS.size() - 1)]
+	var seed: int = _roguelike_seed if _roguelike_depth == 0 else int(hash("roguelike:%d:%d" % [_roguelike_seed, _roguelike_depth]))
+	var spec: Dictionary = StretchGenerator.generate({
+		"seed": seed, "complexity_tier": tier,
+		"id": "roguelike_depth_%d" % _roguelike_depth,
+		"title": "Roguelike — Depth %d" % (_roguelike_depth + 1),
+	})
+	if not bool(spec.get("success", false)):
+		show_preview_message("Roguelike generation failed (depth %d)." % _roguelike_depth, 6.0)
+		return
+	preview_chunk_config = {"spec": spec, "roguelike": true}
+	scene_title_override = "Roguelike — Depth %d (%s)" % [_roguelike_depth + 1, tier]
+
+## Descend: regenerate the next level and reload the chunk in place, respawning the party at the new entry.
+func _roguelike_advance() -> void:
+	_roguelike_depth += 1
+	show_preview_message("Shelter reached — descending to Depth %d…" % (_roguelike_depth + 1), 3.0)
+	_roguelike_build_level()
+	_unload_chunk(preview_chunk)
+	_begin_chunk()
+	_roguelike_respawn_party()
+	_roguelike_advancing = false
+
+## Move the party to the freshly-loaded level's spawn anchors (the data layer is the authority).
+func _roguelike_respawn_party() -> void:
+	if _active_chunk == null or not _active_chunk.has_method("get_spawn_positions") or _game_state == null:
+		return
+	var spawns: Dictionary = _active_chunk.call("get_spawn_positions")
+	for cid in spawns.keys():
+		if _game_state.characters.has(cid):
+			_game_state.snap_character_to(cid, spawns[cid])
+
+func _process(delta: float) -> void:
+	super._process(delta)
+	_roguelike_poll()
+
+## When the roguelike party rests at the exit shelter, descend to the next generated level.
+func _roguelike_poll() -> void:
+	if not _roguelike_active or _roguelike_advancing or _active_chunk == null:
+		return
+	if not _active_chunk.has_method("get_preview_state"):
+		return
+	var st: Dictionary = _active_chunk.call("get_preview_state")
+	if bool(st.get("shelter_rested", false)):
+		_roguelike_advancing = true
+		_roguelike_advance()
 
 ## Build and show the picker: one button per PREVIEW_ENTRIES row. Selecting one loads that fragment.
 func _show_fragment_menu() -> void:

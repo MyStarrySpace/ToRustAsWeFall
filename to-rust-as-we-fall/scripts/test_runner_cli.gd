@@ -843,6 +843,9 @@ func _ready() -> void:
 			"--test-wfc-layout":
 				ran_test = true
 				_test_wfc_layout()
+			"--test-roguelike-run":
+				ran_test = true
+				_test_roguelike_run()
 			"--test-survival-archetypes":
 				ran_test = true
 				await _test_survival_archetypes()
@@ -1117,6 +1120,7 @@ func _run_all_tests() -> void:
 	_test_curriculum_ramp()
 	_test_roompiece_catalog()
 	_test_wfc_layout()
+	_test_roguelike_run()
 	await _test_survival_archetypes()
 	if not _heavy("Generated Stretch Playtest Loop"):
 		await _test_generated_stretch_playtest_loop()
@@ -2730,6 +2734,50 @@ func _test_wfc_layout() -> void:
 	# Determinism of the stitched grid JSON too (no RNG in the stitcher).
 	var grid_b: Dictionary = Stitch.build(layout["placements"], layout["corridors"], layout["slot_cells"], settings)
 	_assert_equals(JSON.stringify(grid_data), JSON.stringify(grid_b), "stitched grid JSON is deterministic")
+
+func _test_roguelike_run() -> void:
+	_test_name = "Roguelike Run"
+	# The procedural roguelike is driven from the fragment loader: a preview entry on the generated_stretch chunk.
+	var found := false
+	for e in FragmentPreviewScript.PREVIEW_ENTRIES:
+		if str((e as Dictionary).get("id", "")) == "roguelike":
+			found = true
+			_assert_equals(str((e as Dictionary).get("chunk", "")), "generated_stretch",
+				"roguelike entry drives the generated_stretch chunk")
+			_assert_true(bool(((e as Dictionary).get("config", {}) as Dictionary).get("roguelike", false)),
+				"roguelike entry is flagged roguelike")
+	_assert_true(found, "the fragment loader exposes a 'roguelike' preview entry")
+
+	# Each descend generates a fresh, connected, WFC level (the per-level guarantee of the run loop), with the
+	# tier escalating by depth — mirrors _roguelike_build_level.
+	var tiers := ["teaching", "standard", "hard", "setpiece"]
+	for depth in range(4):
+		var tier: String = tiers[mini(depth, tiers.size() - 1)]
+		var seed: int = 1 if depth == 0 else int(hash("roguelike:1:%d" % depth))
+		var spec: Dictionary = StretchGeneratorScript.generate({
+			"seed": seed, "complexity_tier": tier, "id": "roguelike_depth_%d" % depth})
+		_assert_true(bool(spec.get("success", false)), "depth %d generates a level" % depth)
+		if not bool(spec.get("success", false)):
+			continue
+		_assert_true(not ((spec.get("roompieces", {}) as Dictionary).get("placements", []) as Array).is_empty(),
+			"depth %d level is WFC-generated (carries room-pieces)" % depth)
+		var grid_data: Dictionary = StretchGeneratorScript.build_navigation_grid_from_spec(spec)
+		var g := GridWorld.from_data(grid_data)
+		var entry := _generated_node(spec, "entry")
+		var exit_node := _generated_node(spec, "exit_shelter")
+		if entry.is_empty() or exit_node.is_empty():
+			_assert_true(false, "depth %d has entry + exit" % depth)
+			continue
+		var ec := g.world_to_grid(entry.pos)
+		var xc := g.world_to_grid(exit_node.pos)
+		var path: Array = g.find_multi_level_path(ec, entry.elev, xc, exit_node.elev)
+		_assert_true(path.size() >= 1, "depth %d level connects entry -> exit shelter" % depth)
+
+	# Determinism: the same depth (seed+tier) regenerates the identical level, so a run is reproducible.
+	var a: Dictionary = StretchGeneratorScript.generate({"seed": 1, "complexity_tier": "teaching", "id": "rl"})
+	var b: Dictionary = StretchGeneratorScript.generate({"seed": 1, "complexity_tier": "teaching", "id": "rl"})
+	_assert_equals(JSON.stringify(a.get("navigation_grid", {})), JSON.stringify(b.get("navigation_grid", {})),
+		"a roguelike depth is reproducible from its seed")
 
 func _test_curriculum_ramp() -> void:
 	_test_name = "Curriculum Ramp"
