@@ -18,7 +18,9 @@
 /vr_*.png
 /vr_*.png.import
 
-# Dev outline capture (tools/capture_aster_outline.gd)
+# Dev outline capture (tools/capture_aster_outline.gd, tools/capture_chunk_outline.gd)
 /aster_outline_cap.png
 /aster_outline_cap.png.import
 /outline_cap_*.png
+/chunk_outline_*.png
+/chunk_outline_*.png.import

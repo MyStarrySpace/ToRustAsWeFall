@@ -10834,7 +10834,20 @@ func _test_chunk_interactable_outlines() -> void:
 			await get_tree().process_frame
 			_assert_true(bool(tg2.call("has_active_mesh_outline")),
 				"%s: hovering an interactable lights the white outline hull (grammar fires, not just wired)" % cname)
+			# The crisp outline + glow are a SCREEN-SPACE mask (OutlineMaskManager) — the chunk preview (which
+			# extends tutorial_sequence) must own one, and hovering must REGISTER the target's meshes with it, or
+			# the outline lights logically but renders nothing. Proves the new system reaches EVERY chunk, not just
+			# the tutorial rooms (the recurring ask).
+			var mask_mgr = OutlineMaskManager.find_for(tg2)
+			_assert_true(mask_mgr != null,
+				"%s: the chunk preview owns an OutlineMaskManager (screen-space outline reaches chunks)" % cname)
+			if mask_mgr != null:
+				_assert_true(mask_mgr.is_registered(tg2.get_instance_id()),
+					"%s: hovering registers the interactable's meshes with the OutlineMaskManager (outline actually renders)" % cname)
 			it2.emit_signal("outline_unhovered", it2)
+			if mask_mgr != null:
+				_assert_true(not mask_mgr.is_registered(tg2.get_instance_id()),
+					"%s: unhovering unregisters from the OutlineMaskManager (no leaked mask render)" % cname)
 			break
 		await _dispose_scene(inst)
 
