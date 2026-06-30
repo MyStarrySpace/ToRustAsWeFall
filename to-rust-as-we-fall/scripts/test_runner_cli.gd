@@ -843,6 +843,12 @@ func _ready() -> void:
 			"--test-biomes":
 				ran_test = true
 				_test_biomes()
+			"--test-poi-distribution":
+				ran_test = true
+				_test_poi_distribution()
+			"--test-poi-determinism":
+				ran_test = true
+				_test_poi_determinism()
 			"--test-wfc-layout":
 				ran_test = true
 				_test_wfc_layout()
@@ -1129,6 +1135,8 @@ func _run_all_tests() -> void:
 	_test_curriculum_ramp()
 	_test_roompiece_catalog()
 	_test_biomes()
+	_test_poi_distribution()
+	_test_poi_determinism()
 	_test_wfc_layout()
 	_test_roguelike_run()
 	_test_run_branch_decisions()
@@ -2740,6 +2748,85 @@ func _test_biomes() -> void:
 		distinct[Biomes.for_depth(99, d)] = true
 	_assert_true(distinct.size() >= 2, "descending rotates through multiple biomes (saw %d)" % distinct.size())
 
+func _test_poi_distribution() -> void:
+	_test_name = "POI Distribution"
+	var Dist = load("res://scripts/generation/stretch_poi_distribution.gd")
+	var Biomes = load("res://scripts/generation/biomes.gd")
+	var dist = Dist.new()
+	var v: Dictionary = dist.validate()
+	_assert_true(bool(v.get("valid", false)), "poi distribution validates (errors: %s)" % str(v.get("errors", [])))
+
+	# Element<->content inversion is read from CONTENT_CAPABILITIES.
+	_assert_true((dist.satisfies("flora", "scarpet") as Array).has("cover"), "scarpet satisfies cover")
+	_assert_true((dist.satisfies("structures", "barrier") as Array).has("barrier"), "barrier satisfies barrier")
+	# crucial_elements_for keeps content-suppliable caps, drops character-only ones (overlay/timing).
+	var probe := {"approaches": [{"kind": "shadow", "requires": ["overlay", "cover", "timing"]}], "survival_kind": "", "variant": ""}
+	var crux: Array = dist.crucial_elements_for(probe)
+	_assert_true(crux.has("cover"), "crucial element keeps the content-suppliable 'cover'")
+	_assert_true(not crux.has("overlay") and not crux.has("timing"), "crucial element drops character-only caps")
+
+	# On a FULL palette, every archetype's crucial element is covered; a late stretch requires more + shares some.
+	var teach: Dictionary = StretchGeneratorScript.generate({"seed": 7, "complexity_tier": "teaching", "progression_stage": 1, "id": "poi_teach"})
+	var setp: Dictionary = StretchGeneratorScript.generate({"seed": 7, "complexity_tier": "setpiece", "progression_stage": 6, "id": "poi_setp"})
+	var cov_t: Dictionary = teach.get("composition", {}).get("element_coverage", {})
+	var cov_s: Dictionary = setp.get("composition", {}).get("element_coverage", {})
+	_assert_true(bool(cov_t.get("complete", false)), "teaching stretch covers all crucial elements")
+	_assert_true(bool(cov_s.get("complete", false)), "setpiece stretch covers all crucial elements")
+	_assert_true(int(cov_s.get("required_count", 0)) > int(cov_t.get("required_count", 0)), "a richer stretch requires more distinct elements")
+
+	# MERGE: a shared element (needed by >1 archetype) is placed ONCE and covers all of them.
+	var shared: Array = cov_s.get("shared_elements", [])
+	_assert_true(shared.size() > 0, "the setpiece stretch shares at least one element across archetypes")
+	for key in shared:
+		var entry: Dictionary = cov_s.get("elements", {}).get(str(key), {})
+		_assert_true(bool(entry.get("covered", false)), "shared element '%s' is covered" % str(key))
+		_assert_true((entry.get("required_by", []) as Array).size() > 1, "shared element '%s' is needed by >1 archetype" % str(key))
+		_assert_true((entry.get("supplied_by", []) as Array).size() >= 1, "shared element '%s' is supplied (placed once, used by all)" % str(key))
+
+	# DENSITY scales with progression (mastery): the loader's curve is monotone, and a stage-6 stretch is denser.
+	_assert_true(dist.ambient_count(6) > dist.ambient_count(1), "ambient density rises with stage")
+	_assert_true(dist.ambient_variety(6) > dist.ambient_variety(1), "ambient variety rises with stage")
+	var den_t: Dictionary = teach.get("composition", {}).get("poi_density", {})
+	var den_s: Dictionary = setp.get("composition", {}).get("poi_density", {})
+	_assert_true(int(den_s.get("per_node_count", 0)) > int(den_t.get("per_node_count", 0)), "late stretch has denser POIs per node")
+	_assert_true(int(den_s.get("total_ambient", 0)) > int(den_t.get("total_ambient", 0)), "late stretch has more total ambient POIs")
+	_assert_true(int(den_s.get("distinct_ambient", 0)) >= int(den_t.get("distinct_ambient", 0)), "late stretch is at least as varied")
+
+	# A RESTRICTED palette (biome) reports coverage HONESTLY: an uncovered element is one the palette genuinely
+	# can't supply — never a silent gap — and the level still completes (the bare pair carries base capabilities).
+	var spec_b: Dictionary = StretchGeneratorScript.generate({"seed": 3, "complexity_tier": "standard", "biome": "deadzone", "id": "poi_biome"})
+	var cov_b: Dictionary = spec_b.get("composition", {}).get("element_coverage", {})
+	var allow: Dictionary = Biomes.limitations_for("deadzone").get("allowed", {})
+	for key in cov_b.get("uncovered", []):
+		var ec: Dictionary = dist.element_content(str(key))
+		var supplyable := false
+		for fid in ec.get("flora", []):
+			if (allow.get("flora", []) as Array).has(str(fid)):
+				supplyable = true
+		for sid in ec.get("structures", []):
+			if (allow.get("structures", []) as Array).has(str(sid)):
+				supplyable = true
+		_assert_true(not supplyable, "uncovered element '%s' is genuinely unsupplyable by the biome (honest report)" % str(key))
+	_assert_true(bool(spec_b.get("headless", {}).get("solution_summary", {}).get("bare_pair_solvable", false)),
+		"a restricted-palette stretch is still bare-pair solvable despite uncovered ambient elements")
+
+func _test_poi_determinism() -> void:
+	_test_name = "POI Determinism"
+	var cfg := {"seed": 91, "complexity_tier": "hard", "progression_stage": 5, "id": "poi_det"}
+	var a: Dictionary = StretchGeneratorScript.generate(cfg)
+	var b: Dictionary = StretchGeneratorScript.generate(cfg.duplicate())
+	_assert_equals(JSON.stringify(a.get("composition", {}).get("element_coverage", {})),
+		JSON.stringify(b.get("composition", {}).get("element_coverage", {})), "element coverage is reproducible from the seed")
+	_assert_equals(JSON.stringify(a.get("composition", {}).get("poi_density", {})),
+		JSON.stringify(b.get("composition", {}).get("poi_density", {})), "ambient density is reproducible from the seed")
+	# The ambient POIs actually landed on interior nodes (the density is real, not just a count).
+	var saw_ambient := false
+	for node in a.get("nodes", []):
+		if not (node.get("ambient_flora", []) as Array).is_empty():
+			saw_ambient = true
+			break
+	_assert_true(saw_ambient, "ambient POIs are placed on nodes")
+
 func _test_wfc_layout() -> void:
 	_test_name = "WFC Layout"
 	var Cat = load("res://scripts/generation/roompiece_catalog.gd")
@@ -3014,6 +3101,21 @@ func _test_curriculum_ramp() -> void:
 		"A stage-6 stretch is genuinely bigger than a stage-2 stretch")
 	_assert_true(int(by_stage[6].get("budget", {}).get("archetype_depth", 0)) > int(by_stage[2].get("budget", {}).get("archetype_depth", 0)),
 		"A stage-6 stretch has a deeper archetype chain than a stage-2 stretch")
+
+	# (a2) POI density rises with stage too — a late stretch reads denser/richer (mastery), and crucial-element
+	# COVERAGE stays complete at every stage on the full pool (no archetype loses its essential element as the
+	# pool deepens). Density is solver-neutral, so this strengthens the ramp without touching the pressure math.
+	var prev_poi := -1
+	for stage in [1, 2, 3, 4, 5, 6]:
+		var comp: Dictionary = by_stage[stage].get("composition", {})
+		_assert_true(bool(comp.get("element_coverage", {}).get("complete", false)),
+			"Stage %d: every archetype's crucial element is covered" % stage)
+		var pn := int(comp.get("poi_density", {}).get("per_node_count", 0))
+		_assert_true(pn >= prev_poi, "Stage %d POI density does not shrink (%d >= %d)" % [stage, pn, prev_poi])
+		prev_poi = pn
+	_assert_true(int(by_stage[6].get("composition", {}).get("poi_density", {}).get("total_ambient", 0)) >
+		int(by_stage[2].get("composition", {}).get("poi_density", {}).get("total_ambient", 0)),
+		"A stage-6 stretch scatters more ambient POIs than a stage-2 stretch")
 
 	# Every stage stays solvable by the pair and bare-pair (the law holds at every stage).
 	for stage in [1, 2, 3, 4, 5, 6]:

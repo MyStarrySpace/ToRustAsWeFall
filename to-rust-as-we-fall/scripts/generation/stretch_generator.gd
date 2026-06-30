@@ -8,6 +8,7 @@ const RoomPieceCatalogScript := preload("res://scripts/generation/roompiece_cata
 const WfcLayoutScript := preload("res://scripts/generation/stretch_wfc_layout.gd")
 const GridStitcherScript := preload("res://scripts/generation/stretch_grid_stitcher.gd")
 const BiomesScript := preload("res://scripts/generation/biomes.gd")
+const PoiDistributionScript := preload("res://scripts/generation/stretch_poi_distribution.gd")
 
 const SPEC_SCHEMA := "trawf_generated_stretch_spec_v1"
 const DEFAULT_SPEC_DIR := "res://data/generated_stretches"
@@ -108,6 +109,17 @@ static func generate(settings: Dictionary) -> Dictionary:
 	var available_enemies := _available_values(catalog, "enemies", _category_limitations(limitations, "allowed", "enemies"), _category_limitations(limitations, "blocked", "enemies"))
 	var available_structures := _available_values(catalog, "structures", _category_limitations(limitations, "allowed", "structures"), _category_limitations(limitations, "blocked", "structures"))
 	var nodes := _build_nodes(catalog, resolved, budget, palette_usage, archetype_chain, rng, random_walk, available_flora, available_enemies, available_structures)
+	# POI distribution (Layer A): guarantee every archetype's CRUCIAL ELEMENT is realized as content (a shared
+	# element is placed once and covers all archetypes needing it — dedup at the element level), then scatter
+	# progression-scaled AMBIENT POIs (denser/more varied at higher stages = mastery, solver-neutral). The guarantee
+	# runs BEFORE the solver so any injected content is part of the analysis; ambient POIs live on a separate list
+	# the solver ignores. On the default palette the per-node needs already cover everything, so injection is a
+	# safety net (it only fires when a restricted/biome palette would otherwise strand a crucial element).
+	var poi_distribution = PoiDistributionScript.new()
+	var progression_stage := int(resolved.get("progression_stage", 2))
+	_guarantee_element_coverage(nodes, poi_distribution, available_flora, available_structures)
+	var poi_density := _apply_poi_density(nodes, poi_distribution, progression_stage, rng)
+	var element_coverage := _compute_element_coverage(nodes, poi_distribution)
 	var routes := _build_routes(nodes, budget, rng)
 	# SPATIAL layer: WFC drops a room-piece into each archetype-node slot, stitched into one unified grid (the
 	# node-graph semantics above are untouched — WFC runs on an isolated RNG stream). Falls back to the proven
@@ -137,6 +149,8 @@ static func generate(settings: Dictionary) -> Dictionary:
 	var teaching_chain := _teaching_chain_edges(catalog, archetype_chain)
 	var composition_summary := _build_composition_summary(resolved.get("composition", {}), archetype_chain, nodes, random_walk)
 	composition_summary["teaching_chain"] = teaching_chain
+	composition_summary["element_coverage"] = element_coverage
+	composition_summary["poi_density"] = poi_density
 	var warnings := _collect_warnings(catalog, nodes)
 	var solution := SolverScript.analyze(nodes, str(resolved.get("complexity_tier", "teaching")), int(resolved.get("progression_stage", 99)), resolved.get("roster", []))
 
@@ -2200,6 +2214,133 @@ static func _structure_for_node(archetype: Dictionary, role: String, available: 
 	# Only "shelter" is available and this isn't the arrival beat: place no structure rather
 	# than a stray interior shelter or a "pipe" the palette may not even allow.
 	return []
+
+# --- POI distribution (Layer A: crucial-element coverage + shared-element merge + progression density) ----------
+
+## The element keys a node's PLACED content (flora + structures) currently supplies.
+static func _node_supplied_elements(node: Dictionary, distribution) -> Array:
+	var out := {}
+	for fid in node.get("flora", []):
+		for key in distribution.satisfies("flora", str(fid)):
+			out[key] = true
+	for sid in node.get("structures", []):
+		for key in distribution.satisfies("structures", str(sid)):
+			out[key] = true
+	return out.keys()
+
+## Guarantee every archetype's crucial element is realized as content SOMEWHERE in the stretch. Because coverage is
+## keyed by ELEMENT (not by node), a shared element placed once already covers every archetype that needs it — the
+## merge is structural. We only inject when an element is entirely absent AND the palette can supply it; otherwise
+## the element is left unsatisfiable (the bare pair's base capabilities still guarantee solvability via the solver).
+static func _guarantee_element_coverage(nodes: Array, distribution, available_flora: Array, available_structures: Array) -> void:
+	var covered := {}
+	for node in nodes:
+		if node is Dictionary:
+			for key in _node_supplied_elements(node, distribution):
+				covered[key] = true
+	for node in nodes:
+		if not (node is Dictionary):
+			continue
+		for key in distribution.crucial_elements_for(node):
+			if covered.has(key):
+				continue
+			var ec: Dictionary = distribution.element_content(str(key))
+			var injected := false
+			# Prefer flora (cheap, no structure-placement rules), capped so a node never floods with plants.
+			if (node.get("flora", []) as Array).size() < 3:
+				for fid in ec.get("flora", []):
+					if available_flora.has(str(fid)) and not (node["flora"] as Array).has(str(fid)):
+						(node["flora"] as Array).append(str(fid))
+						covered[key] = true
+						injected = true
+						break
+			if injected:
+				continue
+			if (node.get("structures", []) as Array).size() < 2:
+				for sid in ec.get("structures", []):
+					if available_structures.has(str(sid)) and not (node["structures"] as Array).has(str(sid)):
+						(node["structures"] as Array).append(str(sid))
+						covered[key] = true
+						break
+
+## Compute the coverage report for the spec: which crucial elements each stretch requires, which are covered, and
+## which are SHARED (required by more than one distinct archetype — placed once, used by all). Pure read, no mutation.
+static func _compute_element_coverage(nodes: Array, distribution) -> Dictionary:
+	var required_by := {}     # element key -> {archetype_id: true}
+	var covered_by := {}      # element key -> [node ids that supply it]
+	for node in nodes:
+		if not (node is Dictionary):
+			continue
+		var arche := str(node.get("archetype_id", ""))
+		for key in distribution.crucial_elements_for(node):
+			if not required_by.has(key):
+				required_by[key] = {}
+			if arche != "":
+				required_by[key][arche] = true
+		for key in _node_supplied_elements(node, distribution):
+			if not covered_by.has(key):
+				covered_by[key] = []
+			(covered_by[key] as Array).append(str(node.get("id", "")))
+	var elements := {}
+	var uncovered := []
+	var shared := []
+	for key in required_by.keys():
+		var archs: Array = (required_by[key] as Dictionary).keys()
+		var supply: Array = covered_by.get(key, [])
+		var is_covered := not supply.is_empty()
+		elements[key] = {"covered": is_covered, "supplied_by": supply, "required_by": archs}
+		if not is_covered:
+			uncovered.append(str(key))
+		if archs.size() > 1:
+			shared.append(str(key))
+	uncovered.sort()
+	shared.sort()
+	return {
+		"contract_id": "trawf_element_coverage_v1",
+		"elements": elements,
+		"required_count": required_by.size(),
+		"covered_count": required_by.size() - uncovered.size(),
+		"uncovered": uncovered,
+		"complete": uncovered.is_empty(),
+		"shared_elements": shared,
+	}
+
+## Scatter progression-scaled AMBIENT POIs onto interior nodes — denser + more varied at higher stages (mastery).
+## These live on a separate `ambient_flora` list the SOLVER IGNORES (it reads only `flora`/`structures`), so density
+## never perturbs the pressure/multi-solution math; a renderer draws them as flavor. Deterministic (seeded scatter).
+static func _apply_poi_density(nodes: Array, distribution, stage: int, rng) -> Dictionary:
+	var count: int = distribution.ambient_count(stage)
+	var variety: int = distribution.ambient_variety(stage)
+	var pool: Array = distribution.ambient_flora()
+	var total := 0
+	var used := {}
+	for node in nodes:
+		if not (node is Dictionary):
+			continue
+		if str(node.get("role", "")) in ["boundary", "shelter_arrival"]:
+			continue
+		if pool.is_empty():
+			continue
+		var ambient := []
+		var allowed_variety := mini(variety, pool.size())
+		for k in range(count):
+			# Round-robin through the first `allowed_variety` pool entries, jittered by the node + index so two
+			# nodes don't read identically but the choice stays seed-deterministic (no wall-clock).
+			var jitter := int(rng.call("randi_range", 0, maxi(0, allowed_variety - 1))) if allowed_variety > 0 else 0
+			var pick := str(pool[(k + jitter) % allowed_variety]) if allowed_variety > 0 else ""
+			if pick != "":
+				ambient.append(pick)
+				used[pick] = true
+				total += 1
+		node["ambient_flora"] = ambient
+	return {
+		"contract_id": "trawf_poi_density_v1",
+		"stage": stage,
+		"per_node_count": count,
+		"per_node_variety": variety,
+		"total_ambient": total,
+		"distinct_ambient": used.keys().size(),
+	}
 
 ## A node label that reads as the archetype + its variant, not the bare role name.
 static func _node_label(archetype: Dictionary, role: String, index: int) -> String:

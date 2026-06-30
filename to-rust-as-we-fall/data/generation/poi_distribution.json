@@ -1,0 +1,27 @@
+{
+	"schema": "trawf_poi_distribution_v1",
+	"notes": "Archetype-driven POI distribution. The element<->content inversion is DERIVED from StretchCapabilities.CONTENT_CAPABILITIES (single source of truth, no duplication) — this file holds only the survival/variant element mappings (which crucial element each survival kind / variant leans on) and the progression-scaled ambient DENSITY knobs. A 'crucial element' is the content-suppliable capability an archetype's shadow approach requires; coverage guarantees every archetype in a stretch has its element placed, and a shared element (one needed by several archetypes) is placed ONCE (merge).",
+	"survival_elements": {
+		"forage": ["forage", "cover"],
+		"rest": ["cover"],
+		"hazard": ["stabilize", "wash"],
+		"exploit": ["lure", "channel"],
+		"gauntlet": ["barrier"]
+	},
+	"variant_elements": {
+		"hushbloom_stun": "stun",
+		"flure_iron_decoy": "iron_decoy",
+		"climbvine_traversal": "traversal",
+		"resolution_roots_stabilize": "stabilize",
+		"resolution_roots_break": "stabilize"
+	},
+	"density": {
+		"base_ambient": 1,
+		"ambient_per_stage": 0.8,
+		"ambient_max": 6,
+		"variety_base": 1,
+		"variety_per_stage": 0.6,
+		"variety_max": 5,
+		"ambient_flora": ["capbage", "seefern", "scarpet", "forget_me_nots", "gasafoetida", "snapbloom"]
+	}
+}
