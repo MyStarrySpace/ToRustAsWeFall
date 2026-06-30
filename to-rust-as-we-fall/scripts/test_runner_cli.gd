@@ -846,6 +846,9 @@ func _ready() -> void:
 			"--test-roguelike-run":
 				ran_test = true
 				_test_roguelike_run()
+			"--test-run-branch-decisions":
+				ran_test = true
+				_test_run_branch_decisions()
 			"--test-survival-archetypes":
 				ran_test = true
 				await _test_survival_archetypes()
@@ -1121,6 +1124,7 @@ func _run_all_tests() -> void:
 	_test_roompiece_catalog()
 	_test_wfc_layout()
 	_test_roguelike_run()
+	_test_run_branch_decisions()
 	await _test_survival_archetypes()
 	if not _heavy("Generated Stretch Playtest Loop"):
 		await _test_generated_stretch_playtest_loop()
@@ -2778,6 +2782,73 @@ func _test_roguelike_run() -> void:
 	var b: Dictionary = StretchGeneratorScript.generate({"seed": 1, "complexity_tier": "teaching", "id": "rl"})
 	_assert_equals(JSON.stringify(a.get("navigation_grid", {})), JSON.stringify(b.get("navigation_grid", {})),
 		"a roguelike depth is reproducible from its seed")
+
+func _test_run_branch_decisions() -> void:
+	_test_name = "Run Branch Decisions"
+	var Branch = load("res://scripts/generation/run_branch_decisions.gd")
+	var TIERS: Array = Branch.TIERS
+
+	# A decision is a well-formed fork: a prompt + exactly two options, the first costly/high-risk, the second safe.
+	var seen_patterns := {}
+	var checked := 0
+	for seed in range(0, 120):
+		var ctx := {"depth": seed % 4, "seed": seed, "roster": ["aster", "peris"]}
+		var d: Dictionary = Branch.decide(ctx)
+		seen_patterns[str(d.get("pattern", ""))] = true
+		var opts: Array = d.get("options", [])
+		_assert_equals(opts.size(), 2, "a branch offers exactly two options")
+		if opts.size() != 2:
+			continue
+		_assert_equals(str(opts[0]["risk"]), "high", "option 0 is the costly/high-risk path")
+		_assert_equals(str(opts[1]["risk"]), "low", "option 1 is the safe path")
+		# The risk differential: the costly path is at least as hard a tier as the safe one.
+		var ti0: int = TIERS.find(str(opts[0]["settings"]["complexity_tier"]))
+		var ti1: int = TIERS.find(str(opts[1]["settings"]["complexity_tier"]))
+		_assert_true(ti0 >= ti1, "the costly path's tier >= the safe path's tier (real risk)")
+		# Distinct child seeds so the two levels differ.
+		_assert_true(int(opts[0]["settings"]["seed"]) != int(opts[1]["settings"]["seed"]),
+			"the two branches generate distinct levels")
+		# Reward-bearing patterns put the unique reward ONLY on the costly path (the choice is meaningful).
+		if str(d["pattern"]) in ["recruit", "shortcut", "gear"]:
+			_assert_true(not (opts[0]["reward"] as Dictionary).is_empty(), "the costly path carries a reward")
+			_assert_true((opts[1]["reward"] as Dictionary).is_empty(), "the safe path carries no reward")
+		checked += 1
+	_assert_true(checked > 0, "decisions were produced")
+
+	# The FAMILY: more than one pattern fires across the seed space (it's a registry, not one fork).
+	_assert_true(seen_patterns.size() >= 4, "several distinct meta-decision patterns appear (got %d)" % seen_patterns.size())
+
+	# Recruit pattern: offered only while a specialist is un-joined, and it grants the NEXT canonical one (GDD 14.3).
+	_assert_equals(str(Branch.next_recruit(["aster", "peris"])), "endo", "first recruit is endo")
+	_assert_equals(str(Branch.next_recruit(["aster", "peris", "endo"])), "myke", "next recruit after endo is myke")
+	_assert_equals(str(Branch.next_recruit(["aster", "peris", "endo", "myke"])), "oli", "next recruit after myke is oli")
+	_assert_equals(str(Branch.display_name("marco")), "Makrov Mage", "Marco's roguelike persona is Makrov Mage")
+	var full_roster: Array = (Branch.CORE_PAIR as Array) + (Branch.RECRUIT_ORDER as Array)
+	_assert_equals(str(Branch.next_recruit(full_roster)), "", "no recruit offered once the roster is full")
+	var full_seen_recruit := false
+	for seed in range(0, 80):
+		var d2: Dictionary = Branch.decide({"depth": 1, "seed": seed, "roster": full_roster})
+		if str(d2.get("pattern", "")) == "recruit":
+			full_seen_recruit = true
+	_assert_true(not full_seen_recruit, "recruit is never offered when the roster is already full")
+
+	# Determinism: the same context yields the identical decision (a run is reproducible).
+	var c := {"depth": 2, "seed": 4242, "roster": ["aster", "peris"]}
+	_assert_equals(JSON.stringify(Branch.decide(c)), JSON.stringify(Branch.decide(c)),
+		"a branch decision is reproducible from its run context")
+
+	# Integration: a chosen branch's settings generate a connected, WFC level.
+	var pick: Dictionary = Branch.decide({"depth": 1, "seed": 7, "roster": ["aster", "peris"]})
+	var spec: Dictionary = StretchGeneratorScript.generate((pick["options"][0]["settings"] as Dictionary))
+	_assert_true(bool(spec.get("success", false)), "a branch option generates a level")
+	if bool(spec.get("success", false)):
+		var grid_data: Dictionary = StretchGeneratorScript.build_navigation_grid_from_spec(spec)
+		var g := GridWorld.from_data(grid_data)
+		var en := _generated_node(spec, "entry")
+		var ex := _generated_node(spec, "exit_shelter")
+		if not en.is_empty() and not ex.is_empty():
+			var path: Array = g.find_multi_level_path(g.world_to_grid(en.pos), en.elev, g.world_to_grid(ex.pos), ex.elev)
+			_assert_true(path.size() >= 1, "the chosen branch's level connects entry -> exit")
 
 func _test_curriculum_ramp() -> void:
 	_test_name = "Curriculum Ramp"

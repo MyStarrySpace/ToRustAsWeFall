@@ -82,7 +82,7 @@ const PREVIEW_ENTRIES := [
 	# PROCEDURAL ROGUELIKE: generate a fresh stretch on load and, each time the party rests at the exit shelter,
 	# descend — regenerate the next level (deeper seed, escalating tier) and reload. The fragment loader IS the
 	# roguelike driver; no separate scene.
-	{"id": "roguelike", "chunk": "generated_stretch", "title": "Roguelike Run (procedural)", "stage": 1,
+	{"id": "roguelike", "chunk": "generated_stretch", "title": "Roguelike Run (procedural)", "stage": 6,
 		"config": {"roguelike": true, "seed": 1}},
 ]
 
@@ -162,6 +162,8 @@ var _roguelike_active := false
 var _roguelike_depth := 0
 var _roguelike_seed := 1
 var _roguelike_advancing := false
+var _roguelike_roster: Array = ["aster", "peris"]   # grows via recruit branches (RunBranchDecisions)
+var _branch_modal: Control = null
 ## When true, boot into a fragment PICKER instead of loading a chunk directly. The single
 ## fragment_preview.tscn sets this; selecting an entry loads it, and reloading (R) returns here.
 ## A `--preview=<id>` command-line arg (or a preset preview_chunk) skips the menu and loads directly.
@@ -514,32 +516,19 @@ func _apply_preview_entry(entry: Dictionary) -> void:
 		_roguelike_active = true
 		_roguelike_depth = 0
 		_roguelike_seed = int(preview_chunk_config.get("seed", 1))
-		_roguelike_build_level()
+		_roguelike_roster = ["aster", "peris"]
+		var first := RunBranchDecisions._settings(_roguelike_seed, 0, "entry", "teaching", _roguelike_roster)
+		_roguelike_generate(first)
 
-## Generate the current-depth stretch and point the chunk config at it (seed deepens + tier escalates with depth).
-func _roguelike_build_level() -> void:
-	var tier: String = ROGUELIKE_TIERS[mini(_roguelike_depth, ROGUELIKE_TIERS.size() - 1)]
-	var seed: int = _roguelike_seed if _roguelike_depth == 0 else int(hash("roguelike:%d:%d" % [_roguelike_seed, _roguelike_depth]))
-	var spec: Dictionary = StretchGenerator.generate({
-		"seed": seed, "complexity_tier": tier,
-		"id": "roguelike_depth_%d" % _roguelike_depth,
-		"title": "Roguelike — Depth %d" % (_roguelike_depth + 1),
-	})
+## Generate a stretch from explicit settings and point the chunk config at it.
+func _roguelike_generate(settings: Dictionary) -> void:
+	settings["roster"] = _roguelike_roster.duplicate()
+	var spec: Dictionary = StretchGenerator.generate(settings)
 	if not bool(spec.get("success", false)):
 		show_preview_message("Roguelike generation failed (depth %d)." % _roguelike_depth, 6.0)
 		return
 	preview_chunk_config = {"spec": spec, "roguelike": true}
-	scene_title_override = "Roguelike — Depth %d (%s)" % [_roguelike_depth + 1, tier]
-
-## Descend: regenerate the next level and reload the chunk in place, respawning the party at the new entry.
-func _roguelike_advance() -> void:
-	_roguelike_depth += 1
-	show_preview_message("Shelter reached — descending to Depth %d…" % (_roguelike_depth + 1), 3.0)
-	_roguelike_build_level()
-	_unload_chunk(preview_chunk)
-	_begin_chunk()
-	_roguelike_respawn_party()
-	_roguelike_advancing = false
+	scene_title_override = "Roguelike — Depth %d (%s)" % [_roguelike_depth + 1, str(settings.get("complexity_tier", "teaching"))]
 
 ## Move the party to the freshly-loaded level's spawn anchors (the data layer is the authority).
 func _roguelike_respawn_party() -> void:
@@ -554,7 +543,7 @@ func _process(delta: float) -> void:
 	super._process(delta)
 	_roguelike_poll()
 
-## When the roguelike party rests at the exit shelter, descend to the next generated level.
+## When the roguelike party rests at the exit shelter, present the run's next branch CHOICE (the meta-decision).
 func _roguelike_poll() -> void:
 	if not _roguelike_active or _roguelike_advancing or _active_chunk == null:
 		return
@@ -562,8 +551,99 @@ func _roguelike_poll() -> void:
 		return
 	var st: Dictionary = _active_chunk.call("get_preview_state")
 	if bool(st.get("shelter_rested", false)):
-		_roguelike_advancing = true
-		_roguelike_advance()
+		_roguelike_advancing = true   # latched until the player picks a branch
+		_roguelike_present_branch()
+
+## Build a branch decision for the next descent and show the choice modal.
+func _roguelike_present_branch() -> void:
+	var decision: Dictionary = RunBranchDecisions.decide({
+		"depth": _roguelike_depth, "seed": _roguelike_seed, "roster": _roguelike_roster})
+	_show_branch_modal(decision)
+
+## The player picked a branch: apply its reward, then generate + load that level and descend.
+func _roguelike_choose(option: Dictionary) -> void:
+	_close_branch_modal()
+	var reward: Dictionary = option.get("reward", {})
+	if reward.has("recruit"):
+		var who := str(reward["recruit"])
+		if not _roguelike_roster.has(who):
+			_roguelike_roster.append(who)
+		show_preview_message("%s joins the run." % RunBranchDecisions.display_name(who), 3.5)
+	_roguelike_depth += 1 + int(reward.get("depth_skip", 0))
+	var settings: Dictionary = (option.get("settings", {}) as Dictionary).duplicate(true)
+	_roguelike_generate(settings)
+	_unload_chunk(preview_chunk)
+	_begin_chunk()
+	_roguelike_respawn_party()
+	# A head-start ATP reward lands after the new level is live + the party registered.
+	if reward.has("atp_head_start") and _game_state != null:
+		for cid in _roguelike_roster:
+			if _game_state.characters.has(cid):
+				_game_state.adjust_stat(cid, "atp", float(reward["atp_head_start"]))
+	if reward.has("gear"):
+		show_preview_message("Salvaged: %s." % str(reward["gear"]).capitalize(), 3.0)
+	_roguelike_advancing = false
+
+## A modal showing the branch prompt + one button per option (label, risk, and the tradeoff). Picking calls
+## _roguelike_choose. Built on the same UI layer as the fragment picker.
+func _show_branch_modal(decision: Dictionary) -> void:
+	_close_branch_modal()
+	if _preview_layer == null:
+		return
+	var backdrop := ColorRect.new()
+	backdrop.name = "BranchBackdrop"
+	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	backdrop.color = Color(0.03, 0.035, 0.05, 0.82)
+	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	_preview_layer.add_child(backdrop)
+	var panel := PanelContainer.new()
+	panel.name = "BranchModal"
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	var margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 24)
+	panel.add_child(margin)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 10)
+	margin.add_child(col)
+	var prompt := Label.new()
+	prompt.text = str(decision.get("prompt", "The route forks."))
+	prompt.add_theme_font_size_override("font_size", 20)
+	prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	prompt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	prompt.custom_minimum_size = Vector2(560, 0)
+	col.add_child(prompt)
+	var sub := Label.new()
+	sub.text = "Choose your descent — Depth %d" % (_roguelike_depth + 2)
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.modulate = Color(0.68, 0.71, 0.78)
+	col.add_child(sub)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_child(row)
+	for opt in decision.get("options", []):
+		var o: Dictionary = opt
+		var b := Button.new()
+		b.text = "%s\n[%s RISK]\n\n%s" % [str(o.get("label", "?")), str(o.get("risk", "")).to_upper(), str(o.get("desc", ""))]
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		b.clip_text = false
+		b.custom_minimum_size = Vector2(270, 140)
+		b.pressed.connect(_roguelike_choose.bind(o))
+		row.add_child(b)
+	_preview_layer.add_child(panel)
+	panel.set_meta("backdrop", backdrop)
+	_branch_modal = panel
+
+func _close_branch_modal() -> void:
+	if _branch_modal != null and is_instance_valid(_branch_modal):
+		var bd = _branch_modal.get_meta("backdrop", null)
+		if bd != null and is_instance_valid(bd):
+			(bd as Node).queue_free()
+		_branch_modal.queue_free()
+	_branch_modal = null
 
 ## Build and show the picker: one button per PREVIEW_ENTRIES row. Selecting one loads that fragment.
 func _show_fragment_menu() -> void:
