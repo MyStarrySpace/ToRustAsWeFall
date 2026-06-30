@@ -156,13 +156,10 @@ const STAMINA_REGEN := 10.0
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 
-# --- Procedural roguelike run state (driven from this fragment loader) ---
-const ROGUELIKE_TIERS := ["teaching", "standard", "hard", "setpiece"]
+# --- Procedural roguelike run (the loader is a thin presenter over RunSession, the headless run authority) ---
 var _roguelike_active := false
-var _roguelike_depth := 0
-var _roguelike_seed := 1
 var _roguelike_advancing := false
-var _roguelike_roster: Array = ["aster", "peris"]   # grows via recruit branches (RunBranchDecisions)
+var _run_session: RunSession = null
 var _branch_modal: Control = null
 ## When true, boot into a fragment PICKER instead of loading a chunk directly. The single
 ## fragment_preview.tscn sets this; selecting an entry loads it, and reloading (R) returns here.
@@ -511,24 +508,21 @@ func _apply_preview_entry(entry: Dictionary) -> void:
 	preview_chunk = String(entry.get("chunk", preview_chunk))
 	scene_title_override = String(entry.get("title", scene_title_override))
 	preview_chunk_config = (entry.get("config", {}) as Dictionary).duplicate(true)
-	# Roguelike entry: generate the first procedural level right here, so the loaded chunk plays it.
+	# Roguelike entry: start a RunSession and point the chunk config at its opening level.
 	if bool(preview_chunk_config.get("roguelike", false)):
 		_roguelike_active = true
-		_roguelike_depth = 0
-		_roguelike_seed = int(preview_chunk_config.get("seed", 1))
-		_roguelike_roster = ["aster", "peris"]
-		var first := RunBranchDecisions._settings(_roguelike_seed, 0, "entry", "teaching", _roguelike_roster)
-		_roguelike_generate(first)
+		_run_session = RunSession.new(int(preview_chunk_config.get("seed", 1)))
+		_run_session.start()
+		_roguelike_sync_config()
 
-## Generate a stretch from explicit settings and point the chunk config at it.
-func _roguelike_generate(settings: Dictionary) -> void:
-	settings["roster"] = _roguelike_roster.duplicate()
-	var spec: Dictionary = StretchGenerator.generate(settings)
-	if not bool(spec.get("success", false)):
-		show_preview_message("Roguelike generation failed (depth %d)." % _roguelike_depth, 6.0)
+## Point the chunk config at the session's current level (or warn if generation failed).
+func _roguelike_sync_config() -> void:
+	if _run_session == null or not bool(_run_session.spec.get("success", false)):
+		show_preview_message("Roguelike generation failed.", 6.0)
 		return
-	preview_chunk_config = {"spec": spec, "roguelike": true}
-	scene_title_override = "Roguelike — Depth %d (%s)" % [_roguelike_depth + 1, str(settings.get("complexity_tier", "teaching"))]
+	preview_chunk_config = {"spec": _run_session.spec, "roguelike": true}
+	var tier := str(_run_session.spec.get("source", {}).get("complexity_tier", "teaching"))
+	scene_title_override = "Roguelike — Depth %d (%s)" % [_run_session.depth + 1, tier]
 
 ## Move the party to the freshly-loaded level's spawn anchors (the data layer is the authority).
 func _roguelike_respawn_party() -> void:
@@ -556,28 +550,26 @@ func _roguelike_poll() -> void:
 
 ## Build a branch decision for the next descent and show the choice modal.
 func _roguelike_present_branch() -> void:
-	var decision: Dictionary = RunBranchDecisions.decide({
-		"depth": _roguelike_depth, "seed": _roguelike_seed, "roster": _roguelike_roster})
-	_show_branch_modal(decision)
+	if _run_session == null:
+		return
+	_show_branch_modal(_run_session.branch())
 
-## The player picked a branch: apply its reward, then generate + load that level and descend.
+## The player picked a branch: the session applies its reward + generates the next level; reload + respawn here.
 func _roguelike_choose(option: Dictionary) -> void:
 	_close_branch_modal()
+	if _run_session == null:
+		return
 	var reward: Dictionary = option.get("reward", {})
 	if reward.has("recruit"):
-		var who := str(reward["recruit"])
-		if not _roguelike_roster.has(who):
-			_roguelike_roster.append(who)
-		show_preview_message("%s joins the run." % RunBranchDecisions.display_name(who), 3.5)
-	_roguelike_depth += 1 + int(reward.get("depth_skip", 0))
-	var settings: Dictionary = (option.get("settings", {}) as Dictionary).duplicate(true)
-	_roguelike_generate(settings)
+		show_preview_message("%s joins the run." % RunBranchDecisions.display_name(str(reward["recruit"])), 3.5)
+	_run_session.choose(option)   # grows the roster, deepens, generates the next level
+	_roguelike_sync_config()
 	_unload_chunk(preview_chunk)
 	_begin_chunk()
 	_roguelike_respawn_party()
 	# A head-start ATP reward lands after the new level is live + the party registered.
 	if reward.has("atp_head_start") and _game_state != null:
-		for cid in _roguelike_roster:
+		for cid in _run_session.roster:
 			if _game_state.characters.has(cid):
 				_game_state.adjust_stat(cid, "atp", float(reward["atp_head_start"]))
 	if reward.has("gear"):
@@ -616,7 +608,7 @@ func _show_branch_modal(decision: Dictionary) -> void:
 	prompt.custom_minimum_size = Vector2(560, 0)
 	col.add_child(prompt)
 	var sub := Label.new()
-	sub.text = "Choose your descent — Depth %d" % (_roguelike_depth + 2)
+	sub.text = "Choose your descent — Depth %d" % ((_run_session.depth if _run_session != null else 0) + 2)
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.modulate = Color(0.68, 0.71, 0.78)
 	col.add_child(sub)

@@ -849,6 +849,9 @@ func _ready() -> void:
 			"--test-run-branch-decisions":
 				ran_test = true
 				_test_run_branch_decisions()
+			"--test-run-session-e2e":
+				ran_test = true
+				await _test_run_session_e2e()
 			"--test-survival-archetypes":
 				ran_test = true
 				await _test_survival_archetypes()
@@ -1125,6 +1128,8 @@ func _run_all_tests() -> void:
 	_test_wfc_layout()
 	_test_roguelike_run()
 	_test_run_branch_decisions()
+	if not _heavy("Run Session E2E"):
+		await _test_run_session_e2e()
 	await _test_survival_archetypes()
 	if not _heavy("Generated Stretch Playtest Loop"):
 		await _test_generated_stretch_playtest_loop()
@@ -2849,6 +2854,71 @@ func _test_run_branch_decisions() -> void:
 		if not en.is_empty() and not ex.is_empty():
 			var path: Array = g.find_multi_level_path(g.world_to_grid(en.pos), en.elev, g.world_to_grid(ex.pos), ex.elev)
 			_assert_true(path.size() >= 1, "the chosen branch's level connects entry -> exit")
+
+## Does a generated spec's level connect entry -> exit on its own grid?
+func _run_level_connects(spec: Dictionary) -> bool:
+	var g := GridWorld.from_data(spec.get("navigation_grid", {}))
+	var en := _generated_node(spec, "entry")
+	var ex := _generated_node(spec, "exit_shelter")
+	if en.is_empty() or ex.is_empty():
+		return false
+	return g.find_multi_level_path(g.world_to_grid(en.pos), en.elev, g.world_to_grid(ex.pos), ex.elev).size() >= 1
+
+## END-TO-END: a RunSession drives a full procedural roguelike run — generate, descend through branch choices,
+## apply rewards (recruit grows the party), regenerate — and one level is actually BOOTED and walked to its exit.
+func _test_run_session_e2e() -> void:
+	_test_name = "Run Session E2E"
+	var Session = load("res://scripts/generation/run_session.gd")
+
+	# Opening level is generated, connects, and is clearable by the bare pair.
+	var s = Session.new(2024)
+	s.start()
+	_assert_true(s.current_is_playable(), "depth 0 generates a playable (bare-pair-solvable) level")
+	_assert_true(_run_level_connects(s.spec), "depth 0 connects entry -> exit on its grid")
+	_assert_equals((s.spec.get("settings", {}) as Dictionary).get("roster", []), s.roster,
+		"the level is generated with the run's roster")
+
+	# Descend several depths taking the costly branch each time: every level stays playable + connected, and a
+	# recruit branch grows the roster (and the NEXT level is generated with the grown party).
+	var recruited := false
+	for i in range(6):
+		var before := (s.roster as Array).size()
+		var b: Dictionary = s.branch()
+		var pat := str(b.get("pattern", ""))
+		s.choose((b.get("options", []) as Array)[0])
+		_assert_true(s.current_is_playable(), "depth %d stays playable (solvable by the current roster)" % s.depth)
+		_assert_true(_run_level_connects(s.spec), "depth %d connects entry -> exit" % s.depth)
+		_assert_equals((s.spec.get("settings", {}) as Dictionary).get("roster", []), s.roster,
+			"depth %d is generated with the run's (possibly grown) roster" % s.depth)
+		if pat == "recruit":
+			_assert_equals((s.roster as Array).size(), before + 1, "a recruit branch grows the party by one")
+			recruited = true
+	_assert_true(recruited, "across the run, a recruit branch fired and grew the party")
+
+	# Reproducibility: same seed + same policy -> identical run history; a different policy diverges.
+	var a = Session.new(2024); a.start()
+	for i in range(6):
+		a.descend("risky")
+	var b2 = Session.new(2024); b2.start()
+	for i in range(6):
+		b2.descend("risky")
+	_assert_equals(JSON.stringify(a.history), JSON.stringify(b2.history), "a run is reproducible from seed + choices")
+	var c = Session.new(2024); c.start()
+	for i in range(6):
+		c.descend("safe")
+	_assert_true(JSON.stringify(c.history) != JSON.stringify(a.history), "risky vs safe choices produce different runs")
+
+	# The real thing: boot a generated run level and walk it to its exit shelter via the data layer.
+	var loop = StretchGenerationPlaytestLoopScript.new()
+	var play = Session.new(777); play.start()
+	var result: Dictionary = await loop.playtest_spec(play.spec, get_tree(), {})
+	# The e2e bar for a run level is the data-layer EVENT TIMELINE — it BOOTS, walks nodes, and reaches the exit
+	# shelter — independent of the rich-spec QA checks (multi-solution divergence etc.) that vary by tier.
+	var ev: Array = result.get("events", [])
+	_assert_true(_event_type_seen(ev, "spec_ready"), "the run level's spec loads")
+	_assert_true(_event_type_seen(ev, "preview_ready"), "the run level boots into the preview")
+	_assert_true(_event_type_seen(ev, "node_activated"), "the end-to-end playthrough walks + activates nodes")
+	_assert_true(_event_type_seen(ev, "shelter_rested"), "the end-to-end playthrough reaches the exit shelter")
 
 func _test_curriculum_ramp() -> void:
 	_test_name = "Curriculum Ramp"
