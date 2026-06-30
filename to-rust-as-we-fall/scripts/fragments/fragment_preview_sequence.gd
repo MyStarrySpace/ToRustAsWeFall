@@ -565,6 +565,9 @@ func _roguelike_choose(option: Dictionary) -> void:
 	_run_session.choose(option)   # grows the roster, deepens, generates the next level
 	_roguelike_sync_config()
 	_unload_chunk(preview_chunk)
+	# The unloaded chunk's interactables are queue_free'd; drop them from the preview's caches so the speed-recipient
+	# list (and the active-character push) never touch a freed node. _begin_chunk repopulates from the new chunk.
+	_preview_interactables.clear()
 	_begin_chunk()
 	_roguelike_respawn_party()
 	# A head-start ATP reward lands after the new level is live + the party registered.

@@ -861,6 +861,9 @@ func _ready() -> void:
 			"--test-run-session-e2e":
 				ran_test = true
 				await _test_run_session_e2e()
+			"--test-roguelike-loader-descent":
+				ran_test = true
+				await _test_roguelike_loader_descent()
 			"--test-survival-archetypes":
 				ran_test = true
 				await _test_survival_archetypes()
@@ -1142,6 +1145,8 @@ func _run_all_tests() -> void:
 	_test_run_branch_decisions()
 	if not _heavy("Run Session E2E"):
 		await _test_run_session_e2e()
+	if not _heavy("Roguelike Loader Descent"):
+		await _test_roguelike_loader_descent()
 	await _test_survival_archetypes()
 	if not _heavy("Generated Stretch Playtest Loop"):
 		await _test_generated_stretch_playtest_loop()
@@ -3062,6 +3067,89 @@ func _test_run_session_e2e() -> void:
 	_assert_true(_event_type_seen(ev, "preview_ready"), "the run level boots into the preview")
 	_assert_true(_event_type_seen(ev, "node_activated"), "the end-to-end playthrough walks + activates nodes")
 	_assert_true(_event_type_seen(ev, "shelter_rested"), "the end-to-end playthrough reaches the exit shelter")
+
+## End-to-end through the FRAGMENT LOADER (the thin presenter over RunSession): boot the real preview scene on the
+## roguelike entry, present the branch modal, pick a recruit branch, and prove the loader reloads the next level,
+## advances depth, grows the roster, and applies the reward. Covers the loader glue the headless run-session e2e
+## can't (modal, chunk reload + respawn, ATP reward), driving the REAL methods on a live scene.
+func _test_roguelike_loader_descent() -> void:
+	_test_name = "Roguelike Loader Descent"
+	var tree := get_tree()
+	var Branch = load("res://scripts/generation/run_branch_decisions.gd")
+	var scene = load("res://scenes/fragments/fragment_preview.tscn")
+	var inst = scene.instantiate()
+	inst.set("preview_menu", true)   # show the picker; don't auto-load the default chunk
+	tree.root.add_child(inst)
+	for i in range(4):
+		await tree.process_frame
+	# Force the roguelike entry, then boot its opening level (what a picker click does).
+	inst.call("_apply_preview_entry", inst.call("get_preview_entry", "roguelike"))
+	inst.call("_begin_chunk")
+	for i in range(6):
+		await tree.process_frame
+
+	var session = inst.get("_run_session")
+	_assert_true(session != null, "the loader created a RunSession for the roguelike entry")
+	if session == null:
+		inst.queue_free()
+		await tree.process_frame
+		return
+	_assert_equals(str(inst.get("preview_chunk")), "generated_stretch", "roguelike drives the generated_stretch chunk")
+	_assert_equals(int(session.depth), 0, "the run starts at depth 0")
+	_assert_equals(session.roster, ["aster", "peris"], "the run starts with the shadow pair")
+	_assert_true(bool(session.spec.get("success", false)), "the opening level generated")
+	var depth_before := int(session.depth)
+	var roster_before := (session.roster as Array).size()
+	var spec_before := str(session.spec.get("id", ""))
+
+	# The loader glue: present the branch -> a modal appears in the preview layer.
+	inst.call("_roguelike_present_branch")
+	await tree.process_frame
+	var layer = inst.get("_preview_layer")
+	_assert_true(layer != null, "the preview has a UI layer")
+	_assert_true(layer != null and layer.find_child("BranchModal", true, false) != null, "the branch choice modal appears")
+
+	# Find a RECRUIT branch option (deterministic over depths) so we can prove the roster grows, then choose it.
+	var recruit_opt := {}
+	for d in range(10):
+		var dd: Dictionary = Branch.decide({"depth": d, "seed": int(session.seed), "roster": ["aster", "peris"]})
+		for o in dd.get("options", []):
+			if ((o as Dictionary).get("reward", {}) as Dictionary).has("recruit"):
+				recruit_opt = o
+				break
+		if not recruit_opt.is_empty():
+			break
+	_assert_true(not recruit_opt.is_empty(), "a recruit branch exists to drive")
+	var who := str((recruit_opt.get("reward", {}) as Dictionary).get("recruit", ""))
+
+	inst.call("_roguelike_choose", recruit_opt)
+	for i in range(8):
+		await tree.process_frame
+
+	# The descent applied: modal closed, depth advanced, a NEW level generated + loaded, roster grew by the recruit.
+	_assert_true(layer.find_child("BranchModal", true, false) == null, "the modal closes after choosing")
+	_assert_true(int(session.depth) > depth_before, "the descent advanced the depth")
+	_assert_true(str(session.spec.get("id", "")) != spec_before, "a new level was generated for the next depth")
+	var cfg: Dictionary = inst.get("preview_chunk_config")
+	_assert_equals(str((cfg.get("spec", {}) as Dictionary).get("id", "")), str(session.spec.get("id", "")),
+		"the reloaded chunk config points at the freshly generated level")
+	if who != "":
+		_assert_true((session.roster as Array).has(who), "the recruit branch added %s to the roster" % who)
+		_assert_equals((session.roster as Array).size(), roster_before + 1, "the roster grew by one on a recruit")
+	_assert_true(session.current_is_playable(), "the descended-into level is playable")
+	_assert_true(inst.get("_active_chunk") != null, "a fresh chunk is live after the reload")
+	# The reload must not leave freed nodes in the per-frame speed-recipient list (the 'previously freed' write
+	# during reload). Goes red if _preview_interactables keeps the unloaded chunk's queue_free'd interactables.
+	var recipients: Array = inst.call("_get_speed_recipients")
+	var all_valid := true
+	for node in recipients:
+		if node == null or not is_instance_valid(node):
+			all_valid = false
+			break
+	_assert_true(all_valid, "after reload, every per-frame speed recipient is a live node (no freed interactables)")
+
+	inst.queue_free()
+	await tree.process_frame
 
 func _test_curriculum_ramp() -> void:
 	_test_name = "Curriculum Ramp"

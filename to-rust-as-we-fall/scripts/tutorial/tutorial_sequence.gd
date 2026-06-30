@@ -143,7 +143,10 @@ func _process(delta: float) -> void:
 	var spd := _compute_speed()
 	_scheduler.set_speed(spd)
 	for node in _get_speed_recipients():
-		node.speed_multiplier = spd
+		# A chunk reload (the roguelike loader) queue_frees the old chunk's recipients; skip any that a
+		# subclass list hasn't pruned yet rather than writing to a freed node.
+		if is_instance_valid(node):
+			node.speed_multiplier = spd
 	_scheduler.advance(delta)
 	# advance() can fire a scheduled callback — e.g. a scene transition's _complete →
 	# change_scene_to_file → _teardown_sequence — that tears this sequence down synchronously,
