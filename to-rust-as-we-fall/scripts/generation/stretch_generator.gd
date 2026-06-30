@@ -4,6 +4,9 @@ extends RefCounted
 const CatalogScript := preload("res://scripts/generation/stretch_archetype_catalog.gd")
 const SeededRngScript := preload("res://scripts/system/random/seeded_rng.gd")
 const SolverScript := preload("res://scripts/generation/stretch_solution_solver.gd")
+const RoomPieceCatalogScript := preload("res://scripts/generation/roompiece_catalog.gd")
+const WfcLayoutScript := preload("res://scripts/generation/stretch_wfc_layout.gd")
+const GridStitcherScript := preload("res://scripts/generation/stretch_grid_stitcher.gd")
 
 const SPEC_SCHEMA := "trawf_generated_stretch_spec_v1"
 const DEFAULT_SPEC_DIR := "res://data/generated_stretches"
@@ -105,8 +108,26 @@ static func generate(settings: Dictionary) -> Dictionary:
 	var available_structures := _available_values(catalog, "structures", _category_limitations(limitations, "allowed", "structures"), _category_limitations(limitations, "blocked", "structures"))
 	var nodes := _build_nodes(catalog, resolved, budget, palette_usage, archetype_chain, rng, random_walk, available_flora, available_enemies, available_structures)
 	var routes := _build_routes(nodes, budget, rng)
-	var graybox := _apply_graybox_layout(nodes, routes, catalog, resolved, budget)
-	var navigation_grid := _build_navigation_grid(nodes, routes, resolved, graybox)
+	# SPATIAL layer: WFC drops a room-piece into each archetype-node slot, stitched into one unified grid (the
+	# node-graph semantics above are untouched — WFC runs on an isolated RNG stream). Falls back to the proven
+	# legacy rasterizer if WFC ever yields nothing usable, so the generator never returns an unplayable grid.
+	var piece_catalog = RoomPieceCatalogScript.new()
+	# Elevation per node from the existing role/layout logic, so WFC stacks the pieces across floors (and lays a
+	# ramp link on cross-floor routes) exactly where the legacy grid did — keeps the multi-elevation invariant.
+	var levels := {}
+	for li in range(nodes.size()):
+		if nodes[li] is Dictionary:
+			levels[str((nodes[li] as Dictionary).get("id", ""))] = _graybox_elevation_index(nodes[li], li, nodes.size())
+	var layout: Dictionary = WfcLayoutScript.solve(nodes, routes, resolved, budget, piece_catalog, levels)
+	var navigation_grid: Dictionary = GridStitcherScript.build(
+		layout.get("placements", []), layout.get("corridors", []), layout.get("slot_cells", {}), resolved)
+	var graybox: Dictionary
+	if navigation_grid.is_empty():
+		layout = {}   # signal legacy in the roompieces block
+		graybox = _apply_graybox_layout(nodes, routes, catalog, resolved, budget)
+		navigation_grid = _build_navigation_grid_legacy(nodes, routes, resolved, graybox)
+	else:
+		graybox = _apply_wfc_graybox(nodes, routes, layout, catalog, resolved, budget)
 	graybox["navigation_contract_id"] = str(navigation_grid.get("contract_id", ""))
 	graybox["navigation_node_count"] = nodes.size()
 	graybox["navigation_edge_count"] = routes.size()
@@ -137,6 +158,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 		"anchors": anchors,
 		"graybox": graybox,
 		"navigation_grid": navigation_grid,
+		"roompieces": _roompieces_block(layout),
 		"nodes": nodes,
 		"routes": routes,
 		"archetype_chain": archetype_chain,
@@ -258,8 +280,27 @@ static func build_navigation_grid_from_spec(spec: Dictionary) -> Dictionary:
 	var settings: Dictionary = spec.get("settings", {}).duplicate(true)
 	if settings.is_empty():
 		settings = {"id": str(spec.get("id", "generated_stretch"))}
-	return _build_navigation_grid(
+	# WFC specs carry a roompieces block → rebuild the grid deterministically from the placements/corridors.
+	# Older (legacy-rasterized) specs lack it → the legacy node-footprint rasterizer rebuilds them as before.
+	var rp: Dictionary = spec.get("roompieces", {})
+	if rp is Dictionary and not (rp.get("placements", []) as Array).is_empty():
+		return GridStitcherScript.build(
+			rp.get("placements", []), rp.get("corridors", []), rp.get("slot_cells", {}), settings)
+	return _build_navigation_grid_legacy(
 		spec.get("nodes", []), spec.get("routes", []), settings, spec.get("graybox", {}))
+
+## A room-pieces block for the spec — the deterministic rebuild input for build_navigation_grid_from_spec. An
+## empty layout (legacy fallback) yields no placements, so the rebuild routes through the legacy rasterizer.
+static func _roompieces_block(layout: Dictionary) -> Dictionary:
+	return {
+		"contract_id": "trawf_roompieces_v1",
+		"tile_size": 1,
+		"layout_engine": "wfc_v1" if not (layout.get("placements", []) as Array).is_empty() else "legacy",
+		"fallback_used": bool(layout.get("fallback_used", false)),
+		"placements": layout.get("placements", []),
+		"corridors": layout.get("corridors", []),
+		"slot_cells": layout.get("slot_cells", {}),
+	}
 
 ## The unified-grid traversal layer for a generated stretch — the GridWorld.from_data contract built
 ## from the SAME semantic nodes/routes the solver reads (the solver and replay artifact never touch
@@ -269,7 +310,7 @@ static func build_navigation_grid_from_spec(spec: Dictionary) -> Dictionary:
 ## link at each cross-elevation route's midpoint. route_cells (by route_id) gives the runtime chunk
 ## the cells to lock/unlock as the route-choice state changes. Deterministic: array order + sorted
 ## cell exports, no RNG.
-static func _build_navigation_grid(nodes: Array, routes: Array, settings: Dictionary, graybox: Dictionary) -> Dictionary:
+static func _build_navigation_grid_legacy(nodes: Array, routes: Array, settings: Dictionary, graybox: Dictionary) -> Dictionary:
 	var cell := 1.0
 	var margin := 3.0
 	var node_lookup := {}
@@ -1451,6 +1492,116 @@ static func _apply_graybox_layout(nodes: Array, routes: Array, catalog, settings
 		},
 	}
 
+
+## The WFC analogue of _apply_graybox_layout: node spatial fields come from the room-piece each slot collapsed
+## to (position = piece centre, footprint = piece size), not the role-based footprint. Content placements + route
+## surfaces + the graybox contract block are otherwise identical, so the chunk + the grid test consume it unchanged.
+static func _apply_wfc_graybox(nodes: Array, routes: Array, layout: Dictionary, catalog, settings: Dictionary, budget: Dictionary) -> Dictionary:
+	var slot_cells: Dictionary = layout.get("slot_cells", {})
+	var min_point := Vector3(1.0e20, 1.0e20, 1.0e20)
+	var max_point := Vector3(-1.0e20, -1.0e20, -1.0e20)
+	var has_bounds := false
+	var content_placement_count := 0
+	var elevation_indices: Array[int] = []
+	var route_surface_count := 0
+
+	for i in range(nodes.size()):
+		if not (nodes[i] is Dictionary):
+			continue
+		var node: Dictionary = nodes[i]
+		var nid := str(node.get("id", ""))
+		var role := str(node.get("role", "mixed"))
+		var sc: Dictionary = slot_cells.get(nid, {})
+		var level := maxi(0, int(sc.get("level", 0)))
+		if not elevation_indices.has(level):
+			elevation_indices.append(level)
+		var position: Vector3
+		var footprint: Vector3
+		if sc.is_empty():
+			position = _array_to_vec3(node.get("position", [float(i) * 8.0, 0.45, 0.0]), Vector3(float(i) * 8.0, 0.45, 0.0))
+			footprint = _graybox_node_footprint(role, node)
+		else:
+			position = GridStitcherScript.node_world(slot_cells, nid)
+			var fc: Array = sc.get("footprint", [4, 4])
+			footprint = Vector3(float(fc[0]), 0.14, float(fc[1]))
+		var surface_y := position.y
+		var approach := position + _graybox_approach_offset(role, footprint)
+		var placements := _build_graybox_content_placements(node, position, footprint, catalog)
+		content_placement_count += placements.size()
+
+		node["position"] = _vec3_to_array(position)
+		node["elevation_index"] = level
+		node["surface_y"] = surface_y
+		node["elevation_meters"] = surface_y - 0.45
+		node["footprint"] = _vec3_to_array(footprint)
+		node["floor_size"] = _vec3_to_array(footprint)
+		node["approach_position"] = _vec3_to_array(approach)
+		node["content_placements"] = placements
+		nodes[i] = node
+
+		var half := footprint * 0.5 + Vector3(1.0, 0.0, 1.0)
+		var node_min := position - half
+		var node_max := position + half + Vector3(0.0, 3.2, 0.0)
+		min_point = node_min if not has_bounds else min_point.min(node_min)
+		max_point = node_max if not has_bounds else max_point.max(node_max)
+		has_bounds = true
+
+	for i in range(routes.size()):
+		if not (routes[i] is Dictionary):
+			continue
+		var route: Dictionary = routes[i]
+		var from_node := _find_node_in_list(nodes, str(route.get("from", "")))
+		var to_node := _find_node_in_list(nodes, str(route.get("to", "")))
+		if from_node.is_empty() or to_node.is_empty():
+			continue
+		var from_pos := _array_to_vec3(from_node.get("position", []), Vector3.ZERO)
+		var to_pos := _array_to_vec3(to_node.get("position", []), Vector3.ZERO)
+		var width := _graybox_route_width(route)
+		route["width"] = width
+		route["height_delta"] = to_pos.y - from_pos.y
+		route["surface"] = {
+			"from": _vec3_to_array(from_pos),
+			"to": _vec3_to_array(to_pos),
+			"midpoint": _vec3_to_array((from_pos + to_pos) * 0.5),
+			"width": width,
+			"supports_click_to_move": true,
+			"slope": to_pos.y - from_pos.y,
+		}
+		routes[i] = route
+		route_surface_count += 1
+
+	elevation_indices.sort()
+	if not has_bounds:
+		min_point = Vector3.ZERO
+		max_point = Vector3(20.0, 3.0, 12.0)
+
+	return {
+		"contract_id": "generated_stretch_graybox_v1",
+		"unit_scale": 1.0,
+		"surface_y_base": 0.45,
+		"elevation_step": 0.72,
+		"elevation_indices": elevation_indices,
+		"elevation_count": elevation_indices.size(),
+		"supports_click_to_move": true,
+		"supports_outline_targets": true,
+		"supports_multiple_elevations": elevation_indices.size() > 1,
+		"node_surface_count": nodes.size(),
+		"route_surface_count": route_surface_count,
+		"content_placement_count": content_placement_count,
+		"layout_engine": "wfc_v1",
+		"roompiece_catalog": "trawf_roompiece_catalog_v1",
+		"bounds": {
+			"min": _vec3_to_array(min_point),
+			"max": _vec3_to_array(max_point),
+			"center": _vec3_to_array((min_point + max_point) * 0.5),
+			"size": _vec3_to_array(max_point - min_point),
+		},
+		"source": {
+			"spec_id": str(settings.get("id", "generated_stretch")),
+			"complexity_tier": str(settings.get("complexity_tier", "teaching")),
+			"node_budget": int(budget.get("node_count", nodes.size())),
+		},
+	}
 
 static func _graybox_elevation_index(node: Dictionary, index: int, node_count: int) -> int:
 	var role := str(node.get("role", "mixed"))

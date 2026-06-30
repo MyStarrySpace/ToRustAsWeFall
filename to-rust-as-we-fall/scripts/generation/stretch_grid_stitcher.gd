@@ -16,6 +16,7 @@ static func build(placements: Array, corridors: Array, slot_cells: Dictionary, s
 	var walk := {}          # level:int -> { Vector2i(abs): true }
 	var risk := {}          # Vector2i(abs) -> {penalty, recoverable}
 	var route_cells := {}   # route_id -> {cells:[abs], kind}
+	var links := []         # [{cell:Vector2i(abs), from, to}] ramp links at cross-level corridor arrivals
 
 	# Room-piece floor cells.
 	for p in placements:
@@ -32,30 +33,38 @@ static func build(placements: Array, corridors: Array, slot_cells: Dictionary, s
 				if rowstr[nx] == ".":
 					_mark(walk, lvl, Vector2i(origin.x + nx, origin.y + ny))
 
-	# Corridor cells (+ risk on risky/shortcut routes).
+	# Corridor cells (+ risk on risky/shortcut routes). A cross-level corridor is walkable on BOTH floors with a
+	# ramp link at the arrival cell (mirrors the legacy elevation behaviour, so find_multi_level_path traverses).
 	for c in corridors:
 		if not (c is Dictionary):
 			continue
-		var lvl2 := int(c["level"])
+		var from_lvl := int(c.get("from_level", c.get("level", 0)))
+		var to_lvl := int(c.get("to_level", from_lvl))
 		var kind := str(c.get("kind", "safe"))
 		var pen := _risk_penalty(kind)
+		var cells_in: Array = c["cells"]
 		var exported: Array = []
-		for cellpt in c["cells"]:
+		for cellpt in cells_in:
 			var v := Vector2i(int(cellpt[0]), int(cellpt[1]))
-			_mark(walk, lvl2, v)
+			_mark(walk, from_lvl, v)
+			if to_lvl != from_lvl:
+				_mark(walk, to_lvl, v)
 			exported.append(v)
 			if pen > 0.0:
 				var existing: Dictionary = risk.get(v, {})
 				if existing.is_empty() or float(existing.get("penalty", 0.0)) < pen:
 					risk[v] = {"penalty": pen, "recoverable": bool(c.get("recoverable", true))}
 		route_cells[str(c["route"])] = {"cells": exported, "kind": kind}
+		if to_lvl != from_lvl and not cells_in.is_empty():
+			var last: Array = cells_in[cells_in.size() - 1]
+			links.append({"cell": Vector2i(int(last[0]), int(last[1])), "from": from_lvl, "to": to_lvl})
 
 	if walk.is_empty():
 		return {}
 
-	# Connectivity guard: flood from the entry; force-carve a straight link to any unreachable component the
-	# exit lands in (belt-and-suspenders — the spine corridors already connect entry->exit by construction).
-	_ensure_connected(walk, route_cells, slot_cells)
+	# Connectivity guard: multi-level flood from entry over same-floor moves + ramp links; force-carve a straight
+	# link if entry->exit ever land in separate components (the spine corridors already connect them by construction).
+	_ensure_connected(walk, links, slot_cells)
 
 	# Global cell bounds over every level.
 	var min_x := 0x7fffffff
@@ -108,6 +117,11 @@ static func build(placements: Array, corridors: Array, slot_cells: Dictionary, s
 			cells_out.append([v.x - off.x, v.y - off.y])
 		route_cells_out[rid] = {"cells": cells_out, "kind": str(src["kind"])}
 
+	var links_out: Array = []
+	for lk in links:
+		var lc: Vector2i = lk["cell"]
+		links_out.append({"cell": [lc.x - off.x, lc.y - off.y], "from": int(lk["from"]), "to": int(lk["to"]), "type": "ramp"})
+
 	return {
 		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
 		"space_id": str(settings.get("id", "generated_stretch")),
@@ -120,7 +134,7 @@ static func build(placements: Array, corridors: Array, slot_cells: Dictionary, s
 		"walkable_cells": walk_cells,
 		"level_cells": level_cells,
 		"risk_cell_list": risk_list,
-		"links": [],
+		"links": links_out,
 		"level_count": level_count,
 		"level_height": LEVEL_HEIGHT,
 		"route_cells": route_cells_out,
@@ -162,43 +176,53 @@ static func _sorted_keys(keys: Array) -> Array:
 	arr.sort_custom(func(p, q): return (p.y * 100000 + p.x) < (q.y * 100000 + q.x))
 	return arr
 
-## BFS from the entry over the combined walkable set (per level). If exit_shelter's cell isn't reached, carve a
-## straight axis-first corridor from the nearest reached cell to it on the exit's level.
-static func _ensure_connected(walk: Dictionary, route_cells: Dictionary, slot_cells: Dictionary) -> void:
+## Multi-level BFS from the entry over same-floor moves + ramp links. If exit_shelter isn't reached, force-carve
+## a straight corridor between the two on the exit's floor (a safety — spine corridors connect them by construction).
+static func _ensure_connected(walk: Dictionary, links: Array, slot_cells: Dictionary) -> void:
 	var entry: Dictionary = slot_cells.get("entry", {})
 	var exit: Dictionary = slot_cells.get("exit_shelter", {})
 	if entry.is_empty() or exit.is_empty():
 		return
 	var start := Vector2i(int(entry["connection_cell"][0]), int(entry["connection_cell"][1]))
+	var start_lvl := int(entry.get("level", 0))
 	var goal := Vector2i(int(exit["connection_cell"][0]), int(exit["connection_cell"][1]))
 	var goal_lvl := int(exit.get("level", 0))
-	# Flood on the goal's level only (Phase 1 is single-level; cross-level links come later).
-	var cells: Dictionary = walk.get(goal_lvl, {})
-	if cells.is_empty():
-		return
+	# link transitions keyed by (cell, level) -> other level.
+	var link_at := {}
+	for lk in links:
+		var c: Vector2i = lk["cell"]
+		link_at[[c, int(lk["from"])]] = int(lk["to"])
+		link_at[[c, int(lk["to"])]] = int(lk["from"])
 	var seen := {}
-	var queue: Array = [start]
-	seen[start] = true
+	var queue: Array = [[start, start_lvl]]
+	seen[[start, start_lvl]] = true
 	while not queue.is_empty():
-		var cur: Vector2i = queue.pop_front()
+		var cur = queue.pop_front()
+		var cc: Vector2i = cur[0]
+		var cl: int = cur[1]
+		var cells: Dictionary = walk.get(cl, {})
 		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-			var nx: Vector2i = cur + d
-			if cells.has(nx) and not seen.has(nx):
-				seen[nx] = true
-				queue.append(nx)
-	if seen.has(goal):
+			var nx: Vector2i = cc + d
+			var key := [nx, cl]
+			if cells.has(nx) and not seen.has(key):
+				seen[key] = true
+				queue.append(key)
+		if link_at.has([cc, cl]):
+			var other: int = link_at[[cc, cl]]
+			var lk_key := [cc, other]
+			if (walk.get(other, {}) as Dictionary).has(cc) and not seen.has(lk_key):
+				seen[lk_key] = true
+				queue.append(lk_key)
+	if seen.has([goal, goal_lvl]):
 		return
-	# Force-carve a straight L from start to goal on the goal level.
-	var carved: Array = []
+	# Force-carve a straight L from start to goal on the goal floor.
 	var x := start.x
 	while x != goal.x:
-		var v := Vector2i(x, start.y)
-		_mark(walk, goal_lvl, v); carved.append(v)
+		_mark(walk, goal_lvl, Vector2i(x, start.y))
 		x += 1 if goal.x > start.x else -1
 	var y := start.y
 	while y != goal.y:
-		var v2 := Vector2i(goal.x, y)
-		_mark(walk, goal_lvl, v2); carved.append(v2)
+		_mark(walk, goal_lvl, Vector2i(goal.x, y))
 		y += 1 if goal.y > start.y else -1
 	_mark(walk, goal_lvl, goal)
-	route_cells["__forced_connect"] = {"cells": carved, "kind": "safe"}
+	_mark(walk, goal_lvl, start)

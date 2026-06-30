@@ -16,12 +16,16 @@ const SeededRngScript := preload("res://scripts/system/random/seeded_rng.gd")
 const PITCH := 8         # tile-cells between adjacent slot lattice points (> max piece dim, leaves a corridor gap)
 const ROTATIONS := [0, 90, 180, 270]
 
-## solve(nodes, routes, settings, budget, piece_catalog) ->
+## solve(nodes, routes, settings, budget, piece_catalog, levels) ->
 ##   { ok, placements:[...], corridors:[...], slot_cells:{id->...}, level_count, fallback_used }
-static func solve(nodes: Array, routes: Array, settings: Dictionary, _budget: Dictionary, piece_catalog) -> Dictionary:
+## `levels` (node_id -> elevation index) places each slot's piece on that stacked floor; a cross-level route
+## becomes a corridor walkable on both floors with a ramp link (matches the legacy elevation behaviour). Default
+## {} = a single flat floor.
+static func solve(nodes: Array, routes: Array, settings: Dictionary, _budget: Dictionary, piece_catalog, levels: Dictionary = {}) -> Dictionary:
 	var base_seed := int(settings.get("seed", 0))
 	var slots: Array = []
 	var by_id := {}
+	var max_level := 0
 	for i in range(nodes.size()):
 		if not (nodes[i] is Dictionary):
 			continue
@@ -31,8 +35,10 @@ static func solve(nodes: Array, routes: Array, settings: Dictionary, _budget: Di
 			continue
 		var layout: Dictionary = nd.get("layout_step", {})
 		var row: int = clampi(int(layout.get("turn", 0)), -1, 1)
+		var level := maxi(0, int(levels.get(sid, 0)))
+		max_level = maxi(max_level, level)
 		var slot := {
-			"id": sid, "index": i,
+			"id": sid, "index": i, "level": level,
 			"lx": i * PITCH, "ly": row * PITCH,
 			"tags": _slot_tags(nd),
 			"neighbors": [], "required": {},
@@ -84,14 +90,15 @@ static func solve(nodes: Array, routes: Array, settings: Dictionary, _budget: Di
 		var h := int(piece["size"][1])
 		var ox := int(s["lx"])
 		var oy := int(s["ly"])
+		var lvl := int(s["level"])
 		placements.append({
 			"node": s["id"], "piece": str(s["choice"]["piece_id"]), "rotation": int(s["choice"]["rotation"]),
-			"origin_cell": [ox, oy], "level": 0, "size": [w, h],
+			"origin_cell": [ox, oy], "level": lvl, "size": [w, h],
 		})
 		@warning_ignore("integer_division")
 		var center := [ox + w / 2, oy + h / 2]
 		slot_cells[s["id"]] = {
-			"origin_cell": [ox, oy], "level": 0, "footprint": [w, h],
+			"origin_cell": [ox, oy], "level": lvl, "footprint": [w, h],
 			"walkable": piece["walkable"], "connection_points": piece.get("connection_points", {}),
 			"connection_cell": center,
 		}
@@ -111,13 +118,14 @@ static func solve(nodes: Array, routes: Array, settings: Dictionary, _budget: Di
 		corridors.append({
 			"route": str(r.get("id", "%s_to_%s" % [a["id"], b["id"]])),
 			"kind": _route_kind(r), "recoverable": bool(r.get("recoverable", true)),
-			"level": 0, "from": a["id"], "to": b["id"],
+			"from_level": int(a["level"]), "to_level": int(b["level"]),
+			"from": a["id"], "to": b["id"],
 			"cells": _carve_l(ca, cb),
 		})
 
 	return {
 		"ok": true, "placements": placements, "corridors": corridors,
-		"slot_cells": slot_cells, "level_count": 1, "fallback_used": fallback_used,
+		"slot_cells": slot_cells, "level_count": max_level + 1, "fallback_used": fallback_used,
 	}
 
 # --- domain / collapse ---
