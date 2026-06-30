@@ -130,6 +130,9 @@ const LEVEL_UPPER := 1
 const GRID_ORIGIN := Vector3(-5.0, BELOW_Y, -8.0)
 const GRID_SIZE := Vector2i(72, 16)  # world X in [-5, 67], Z in [-8, 8] — covers both decks
 var _grid: GridWorld
+# See-through level occlusion (the channels-spiral shader): level geometry between the camera and the active
+# character dither-dissolves around the character, so the party is never lost behind an elevator wall / girder.
+var _occlusion_mgr: CameraOcclusionManager
 
 # --- Chunk dispatch ---
 
@@ -140,6 +143,10 @@ func _build_chunk(chunk_name: String, parent: Node3D) -> void:
 		"below": _build_below_chunk(parent); _apply_chunk_tiles(parent, "deck_metal", "facility_metal")
 		"junction": _build_junction_chunk(parent); _apply_chunk_tiles(parent, "sand", "rock"); _add_junction_model(parent)
 		"gauntlet": _build_gauntlet_chunk(parent); _apply_chunk_tiles(parent, "deck_metal", "facility_metal")
+	# Wrap each chunk's level meshes in the see-through occlusion shader as it loads (characters live under
+	# "Characters", outside the chunk, so they're never dissolved).
+	if _occlusion_mgr != null:
+		_occlusion_mgr.apply_to(parent)
 
 # --- Virtual overrides ---
 
@@ -160,6 +167,11 @@ func _build_scene() -> void:
 	e.glow_bloom = 0.1
 	we.environment = e
 	env.add_child(we)
+	# Create the see-through occlusion manager BEFORE the first chunk loads so its meshes get wrapped on build.
+	# It tracks the active character once the GameState exists (set_watch in _register_characters).
+	_occlusion_mgr = CameraOcclusionManager.new()
+	_occlusion_mgr.name = "CameraOcclusionManager"
+	add_child(_occlusion_mgr)
 	_build_grid()
 	_load_chunk("elevator")
 
@@ -220,6 +232,9 @@ func _register_characters() -> void:
 	_register_gs_character("eu1", _escort_1, 2.0)
 	_register_gs_character("eu2", _escort_2, 2.0)
 	_aster_node.set_move_enabled(false)
+	# Reveal the level around the active character (data-layer position) now that the GameState is live.
+	if _occlusion_mgr != null:
+		_occlusion_mgr.set_watch(_game_state, _active_character)
 
 ## Each deck's walkable footprint (world XZ). The decks overlap in X, so a cell walkable on the
 ## upper deck (the bridge) may be void on the lower deck and vice versa. Clicks off a deck's
@@ -569,6 +584,8 @@ func _select_character(id: String, preserve_multi_selection := false) -> void:
 		_player = _aster_node
 		_camera.target = _aster_node
 	_active_character = id
+	if _occlusion_mgr != null:
+		_occlusion_mgr.watch_id = id   # the level reveals around whoever the camera now follows
 	if not preserve_multi_selection:
 		_selected_character_ids = [id]
 	elif not _selected_character_ids.has(id):
