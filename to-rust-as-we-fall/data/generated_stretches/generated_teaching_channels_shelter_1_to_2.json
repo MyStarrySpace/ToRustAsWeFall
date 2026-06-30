@@ -1364,8 +1364,8 @@
 				},
 				{
 					"category": "enemies",
-					"id": "techos",
-					"label": "techos",
+					"id": "sapscraps",
+					"label": "sapscraps",
 					"local_offset": [
 						1.39200007915497,
 						0.550000011920929,
@@ -1414,7 +1414,7 @@
 			"elevation_index": 3,
 			"elevation_meters": 2.16,
 			"enemies": [
-				"techos"
+				"sapscraps"
 			],
 			"exploit_target": "",
 			"floor_size": [

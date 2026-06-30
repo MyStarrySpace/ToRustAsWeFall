@@ -3285,8 +3285,8 @@
 				},
 				{
 					"category": "enemies",
-					"id": "techos",
-					"label": "techos",
+					"id": "sapscraps",
+					"label": "sapscraps",
 					"local_offset": [
 						1.58399999141693,
 						0.550000011920929,
@@ -3336,7 +3336,7 @@
 			"elevation_meters": 2.16,
 			"enemies": [
 				"naturalizers",
-				"techos"
+				"sapscraps"
 			],
 			"exploit_target": "",
 			"floor_size": [
@@ -3508,8 +3508,8 @@
 				},
 				{
 					"category": "enemies",
-					"id": "techos",
-					"label": "techos",
+					"id": "sapscraps",
+					"label": "sapscraps",
 					"local_offset": [
 						1.15200006961823,
 						0.550000011920929,
@@ -3559,7 +3559,7 @@
 			"elevation_meters": 1.44,
 			"enemies": [
 				"naturalizers",
-				"techos"
+				"sapscraps"
 			],
 			"exploit_target": "",
 			"floor_size": [
@@ -3708,8 +3708,8 @@
 				},
 				{
 					"category": "enemies",
-					"id": "techos",
-					"label": "techos",
+					"id": "sapscraps",
+					"label": "sapscraps",
 					"local_offset": [
 						1.24799990653992,
 						0.550000011920929,
@@ -3758,7 +3758,7 @@
 			"elevation_index": 2,
 			"elevation_meters": 1.44,
 			"enemies": [
-				"techos"
+				"sapscraps"
 			],
 			"exploit_target": "",
 			"floor_size": [
@@ -3907,8 +3907,8 @@
 				},
 				{
 					"category": "enemies",
-					"id": "techos",
-					"label": "techos",
+					"id": "sapscraps",
+					"label": "sapscraps",
 					"local_offset": [
 						1.15200006961823,
 						0.550000011920929,
@@ -3957,7 +3957,7 @@
 			"elevation_index": 2,
 			"elevation_meters": 1.44,
 			"enemies": [
-				"techos"
+				"sapscraps"
 			],
 			"exploit_target": "",
 			"floor_size": [
@@ -4106,8 +4106,8 @@
 				},
 				{
 					"category": "enemies",
-					"id": "techos",
-					"label": "techos",
+					"id": "sapscraps",
+					"label": "sapscraps",
 					"local_offset": [
 						1.2960000038147,
 						0.550000011920929,
@@ -4156,7 +4156,7 @@
 			"elevation_index": 2,
 			"elevation_meters": 1.44,
 			"enemies": [
-				"techos"
+				"sapscraps"
 			],
 			"exploit_target": "",
 			"floor_size": [
@@ -4305,8 +4305,8 @@
 				},
 				{
 					"category": "enemies",
-					"id": "techos",
-					"label": "techos",
+					"id": "sapscraps",
+					"label": "sapscraps",
 					"local_offset": [
 						1.39200007915497,
 						0.550000011920929,
@@ -4355,7 +4355,7 @@
 			"elevation_index": 2,
 			"elevation_meters": 1.44,
 			"enemies": [
-				"techos"
+				"sapscraps"
 			],
 			"exploit_target": "",
 			"floor_size": [
@@ -5083,8 +5083,8 @@
 				},
 				{
 					"category": "enemies",
-					"id": "techos",
-					"label": "techos",
+					"id": "sapscraps",
+					"label": "sapscraps",
 					"local_offset": [
 						1.15200006961823,
 						0.550000011920929,
@@ -5134,7 +5134,7 @@
 			"elevation_meters": 0.0,
 			"enemies": [
 				"naturalizers",
-				"techos"
+				"sapscraps"
 			],
 			"exploit_target": "",
 			"floor_size": [
@@ -5313,7 +5313,7 @@
 	"ok": true,
 	"palette_usage": {
 		"enemies": [
-			"techos",
+			"sapscraps",
 			"naturalizers"
 		],
 		"flora": [
@@ -5887,7 +5887,7 @@
 					"11"
 				],
 				"enemies": [
-					"techos",
+					"sapscraps",
 					"naturalizers"
 				],
 				"flora": [

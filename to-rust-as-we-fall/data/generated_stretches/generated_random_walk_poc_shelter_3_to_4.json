@@ -3859,7 +3859,7 @@
 	"palette_usage": {
 		"enemies": [
 			"naturalizers",
-			"techos"
+			"sapscraps"
 		],
 		"flora": [
 			"flure",
@@ -4269,7 +4269,7 @@
 					"11"
 				],
 				"enemies": [
-					"techos",
+					"sapscraps",
 					"naturalizers"
 				],
 				"flora": [

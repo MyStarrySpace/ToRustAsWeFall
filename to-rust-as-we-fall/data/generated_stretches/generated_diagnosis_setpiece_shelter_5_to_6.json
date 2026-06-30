@@ -24542,8 +24542,8 @@
 				},
 				{
 					"category": "enemies",
-					"id": "techos",
-					"label": "techos",
+					"id": "sapscraps",
+					"label": "sapscraps",
 					"local_offset": [
 						1.15200006961823,
 						0.550000011920929,
@@ -24593,7 +24593,7 @@
 			"elevation_index": 1,
 			"elevation_meters": 0.72,
 			"enemies": [
-				"techos"
+				"sapscraps"
 			],
 			"exploit_target": "",
 			"floor_size": [
@@ -25507,7 +25507,7 @@
 		"enemies": [
 			"gnawers",
 			"meebs",
-			"techos",
+			"sapscraps",
 			"naturalizers"
 		],
 		"flora": [
@@ -26116,7 +26116,7 @@
 					"17"
 				],
 				"enemies": [
-					"techos",
+					"sapscraps",
 					"naturalizers",
 					"meebs",
 					"gnawers"

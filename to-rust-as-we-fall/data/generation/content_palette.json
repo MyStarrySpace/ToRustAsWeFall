@@ -15,19 +15,19 @@
     "forget_me_nots": {"display_name": "Forget-me-nots", "support": "placeholder", "tags": ["relationship", "memory", "ambient"]}
   },
   "enemies": {
-    "techos": {"display_name": "Techos", "support": "implemented", "tags": ["siderophore", "swarm", "iron"]},
-    "verdings": {"display_name": "Verdings", "support": "placeholder", "tags": ["siderophore", "breach", "fluorescent"]},
+    "sapscraps": {"display_name": "Sapscraps", "support": "implemented", "tags": ["siderophore", "swarm", "iron"]},
+    "aembers": {"display_name": "Aembers", "support": "placeholder", "tags": ["siderophore", "breach", "fluorescent"]},
     "hidras": {"display_name": "Hidras", "support": "placeholder", "tags": ["siderophore", "infrastructure", "mimic"]},
     "crusts": {"display_name": "Crusts", "support": "placeholder", "tags": ["siderophore", "surface", "biofilm"]},
     "candids": {"display_name": "Candids", "support": "placeholder", "tags": ["biofilm", "environment", "slow"]},
     "meebs": {"display_name": "Meebs", "support": "placeholder", "tags": ["engulfer", "predator", "siderophore_counter"]},
     "naturalizers": {"display_name": "Naturalizers", "support": "implemented", "tags": ["patrol", "enforcement", "tag_scan"]},
     "gnawers": {"display_name": "Gnawers", "support": "placeholder", "tags": ["metabolic", "hunter"]},
-    "neutros": {"display_name": "Neutros", "support": "placeholder", "tags": ["burst", "aoe", "neutral_until_triggered"]},
+    "flares": {"display_name": "Flares", "support": "placeholder", "tags": ["burst", "aoe", "neutral_until_triggered"]},
     "spikers": {"display_name": "Spikers", "support": "placeholder", "tags": ["line_of_sight", "sniper"]},
     "tanglers": {"display_name": "Tanglers", "support": "placeholder", "tags": ["stealth", "grapple", "tau"]},
     "toxos": {"display_name": "Toxos", "support": "placeholder", "tags": ["setpiece", "parasite"]},
-    "nosomas": {"display_name": "Nosomas", "support": "placeholder", "tags": ["late_game", "invisible", "enforcer"]}
+    "redactors": {"display_name": "Redactors", "support": "placeholder", "tags": ["late_game", "invisible", "enforcer"]}
   },
   "structures": {
     "shelter": {"display_name": "Shelter", "support": "implemented", "tags": ["rest", "checkpoint", "hub"]},

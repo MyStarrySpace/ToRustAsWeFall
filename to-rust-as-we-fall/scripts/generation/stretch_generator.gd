@@ -1774,7 +1774,7 @@ static func _graybox_content_size(category: String, content_id: String) -> Vecto
 				return Vector3(1.1, 1.0, 1.1)
 	if category == "enemies":
 		match content_id:
-			"hidras", "nosomas":
+			"hidras", "redactors":
 				return Vector3(1.8, 1.5, 1.8)
 			"tanglers":
 				return Vector3(1.9, 1.0, 1.9)

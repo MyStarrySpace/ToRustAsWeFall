@@ -1873,8 +1873,8 @@
 				},
 				{
 					"category": "enemies",
-					"id": "techos",
-					"label": "techos",
+					"id": "sapscraps",
+					"label": "sapscraps",
 					"local_offset": [
 						1.2960000038147,
 						0.550000011920929,
@@ -1923,7 +1923,7 @@
 			"elevation_index": 1,
 			"elevation_meters": 0.72,
 			"enemies": [
-				"techos"
+				"sapscraps"
 			],
 			"exploit_target": "",
 			"floor_size": [
@@ -2838,7 +2838,7 @@
 	"palette_usage": {
 		"enemies": [
 			"naturalizers",
-			"techos"
+			"sapscraps"
 		],
 		"flora": [
 			"flure",
@@ -3263,7 +3263,7 @@
 					"11"
 				],
 				"enemies": [
-					"techos",
+					"sapscraps",
 					"naturalizers"
 				],
 				"flora": [

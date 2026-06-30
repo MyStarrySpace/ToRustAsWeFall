@@ -67,7 +67,7 @@
 					7,
 					2
 				],
-				"kind": "techos",
+				"kind": "sapscraps",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -97,7 +97,7 @@
 					13,
 					3
 				],
-				"kind": "techos",
+				"kind": "sapscraps",
 				"level": 2,
 				"support": "implemented"
 			},
@@ -147,7 +147,7 @@
 					25,
 					1
 				],
-				"kind": "techos",
+				"kind": "sapscraps",
 				"level": 1,
 				"support": "implemented"
 			},
@@ -187,7 +187,7 @@
 					31,
 					3
 				],
-				"kind": "techos",
+				"kind": "sapscraps",
 				"level": 3,
 				"support": "implemented"
 			},
@@ -217,7 +217,7 @@
 					37,
 					0
 				],
-				"kind": "techos",
+				"kind": "sapscraps",
 				"level": 0,
 				"support": "implemented"
 			},
@@ -267,7 +267,7 @@
 					49,
 					3
 				],
-				"kind": "techos",
+				"kind": "sapscraps",
 				"level": 2,
 				"support": "implemented"
 			},

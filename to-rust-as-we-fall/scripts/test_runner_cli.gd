@@ -1832,7 +1832,7 @@ func _test_archetype_generation() -> void:
 	_assert_equals(catalog.get_archetype_ids().size(), 17, "Catalog exposes archetypes 1-17 (11 puzzle/meta + 5 survival + 1 diagnosis)")
 	for flora_id in ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "doma", "snapbloom", "capbage", "gasafoetida", "climbvine", "resolution_roots", "forget_me_nots"]:
 		_assert_true(catalog.has_content("flora", flora_id), "Catalog includes flora %s" % flora_id)
-	for enemy_id in ["techos", "verdings", "hidras", "crusts", "candids", "meebs", "naturalizers", "gnawers", "neutros", "spikers", "tanglers", "toxos", "nosomas"]:
+	for enemy_id in ["sapscraps", "aembers", "hidras", "crusts", "candids", "meebs", "naturalizers", "gnawers", "flares", "spikers", "tanglers", "toxos", "redactors"]:
 		_assert_true(catalog.has_content("enemies", enemy_id), "Catalog includes enemy %s" % enemy_id)
 
 	var base_settings := {
@@ -1896,7 +1896,7 @@ func _test_archetype_generation() -> void:
 		"limitations": {
 			"allowed": {
 				"flora": ["flure"],
-				"enemies": ["techos"],
+				"enemies": ["sapscraps"],
 				"structures": ["shelter", "forage_cache", "shortcut_gate"],
 				"archetypes": ["2", "11"]
 			},
@@ -1905,7 +1905,7 @@ func _test_archetype_generation() -> void:
 			},
 			"required": {
 				"flora": ["flure"],
-				"enemies": ["techos"],
+				"enemies": ["sapscraps"],
 				"structures": ["shelter"],
 				"archetypes": ["11"]
 			}
@@ -1914,7 +1914,7 @@ func _test_archetype_generation() -> void:
 	_assert_true(bool(limited_spec.get("success", false)), "Allowed/blocked/required limitations can produce a valid spec")
 	var limited_usage: Dictionary = limited_spec.get("palette_usage", {})
 	_assert_equals(limited_usage.get("flora", []), ["flure"], "Allowed flora limits generated flora")
-	_assert_equals(limited_usage.get("enemies", []), ["techos"], "Allowed enemy limits generated enemies")
+	_assert_equals(limited_usage.get("enemies", []), ["sapscraps"], "Allowed enemy limits generated enemies")
 	_assert_true(not (limited_usage.get("flora", []) as Array).has("scarpet"), "Blocked flora is excluded")
 	for chain_entry in limited_spec.get("archetype_chain", []):
 		if chain_entry is Dictionary:
@@ -1949,7 +1949,7 @@ func _test_archetype_generation() -> void:
 		"limitations": {
 			"allowed": {
 				"flora": ["flure", "hushbloom", "scarpet"],
-				"enemies": ["techos", "naturalizers"],
+				"enemies": ["sapscraps", "naturalizers"],
 				"structures": ["shelter", "barrier", "forage_cache", "carry_gear", "shortcut_gate", "terminal", "pipe"],
 				"archetypes": ["1", "2", "3", "4", "6", "11"],
 			},
@@ -2025,7 +2025,7 @@ func _test_archetype_generation() -> void:
 		"limitations": {
 			"allowed": {
 				"flora": ["flure", "hushbloom", "scarpet"],
-				"enemies": ["techos", "naturalizers"],
+				"enemies": ["sapscraps", "naturalizers"],
 				"structures": ["shelter", "forage_cache", "terminal", "carry_gear", "shortcut_gate", "pipe"],
 				"archetypes": ["2", "3", "4", "6", "11"],
 			},
@@ -3004,7 +3004,7 @@ func _test_character_roster() -> void:
 
 	var base := {
 		"id": "roster_test", "seed": 313, "complexity_tier": "standard", "progression_stage": 3,
-		"limitations": {"required": {"archetypes": ["1"]}, "allowed": {"archetypes": ["1", "11"], "enemies": ["techos", "gnawers"]}},
+		"limitations": {"required": {"archetypes": ["1"]}, "allowed": {"archetypes": ["1", "11"], "enemies": ["sapscraps", "gnawers"]}},
 	}
 	# FULL roster: the redirect's full-party approach is the combat specialist; multi-solution.
 	var full := StretchGeneratorScript.generate(base)
@@ -3053,7 +3053,7 @@ func _test_archetype_coherence() -> void:
 			"allowed": {
 				"archetypes": ["1", "2", "12", "13"],
 				"flora": ["scarpet", "flure", "hushbloom", "capbage", "seefern", "doma"],
-				"enemies": ["techos", "naturalizers", "meebs", "neutros", "gnawers", "candids", "spikers", "tanglers"],
+				"enemies": ["sapscraps", "naturalizers", "meebs", "flares", "gnawers", "candids", "spikers", "tanglers"],
 			},
 		},
 	})
@@ -3138,7 +3138,7 @@ func _test_survival_archetypes() -> void:
 		"id": "generated_survival_test", "seed": 808, "complexity_tier": "hard", "progression_stage": 4,
 		"limitations": {
 			"required": {"archetypes": ["12", "13", "14"]},
-			"allowed": {"archetypes": ["11", "12", "13", "14", "15", "16"], "flora": ["scarpet", "flure", "capbage", "seefern"], "enemies": ["techos", "naturalizers"]},
+			"allowed": {"archetypes": ["11", "12", "13", "14", "15", "16"], "flora": ["scarpet", "flure", "capbage", "seefern"], "enemies": ["sapscraps", "naturalizers"]},
 		},
 	})
 	_assert_true(bool(spec.get("success", false)), "Survival stretch generates")
@@ -3207,7 +3207,7 @@ func _test_generated_stretch_playtest_loop() -> void:
 		"limitations": {
 			"allowed": {
 				"flora": ["flure", "hushbloom", "scarpet"],
-				"enemies": ["techos", "naturalizers"],
+				"enemies": ["sapscraps", "naturalizers"],
 				"structures": ["shelter", "forage_cache", "terminal", "carry_gear", "shortcut_gate", "pipe"],
 				"archetypes": ["2", "3", "4", "6", "11"],
 			},
@@ -3392,7 +3392,7 @@ func _generated_stretch_event_report_settings() -> Dictionary:
 		"limitations": {
 			"allowed": {
 				"flora": ["flure", "hushbloom", "scarpet", "seefern", "forget_me_nots"],
-				"enemies": ["techos", "naturalizers", "tanglers"],
+				"enemies": ["sapscraps", "naturalizers", "tanglers"],
 				"structures": ["shelter", "forage_cache", "terminal", "carry_gear", "shortcut_gate", "pipe", "barrier"],
 				"archetypes": ["1", "2", "3", "4", "6", "8", "11"],
 			},
