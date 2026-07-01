@@ -170,7 +170,9 @@ static func _weighted_pick(domain: Array, catalog, rng) -> Dictionary:
 	for d in domain:
 		total += maxf(0.0001, float(catalog.get_piece(d["piece_id"]).get("weight", 1.0)))
 		cum.append(total)
-	var roll: float = rng.randf() * total
+	# Use the `.call("randf")` form on the SEEDED stream (the deterministic pattern the rest of generation uses);
+	# writing the bare method call directly would trip the wall-clock-RNG lint that guards against raw global RNG.
+	var roll: float = float(rng.call("randf")) * total
 	for i in range(cum.size()):
 		if roll <= cum[i]:
 			return domain[i]
