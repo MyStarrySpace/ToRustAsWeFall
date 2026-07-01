@@ -58,6 +58,71 @@ static func render(grid_data: Dictionary, nodes: Array = []) -> String:
 			out += "\n"
 	return out
 
+const CH_BASE := "#"
+
+## A Dwarf-Fortress-style HEIGHT-SLICED view: the flat data grid is single-level, but once warped onto the hub/
+## spiral each cell has a real WORLD height, so slice by Y into bands and draw a top-down ASCII map per band —
+## highest layer first (the base + entry), descending each loop of the spiral down to the exit. `coord_map` (the
+## chunk's) warps each cell; null = flat (one layer). `nodes` overlays E/X/o. Read like DF z-levels top-to-bottom.
+static func render_height_layers(grid_data: Dictionary, coord_map = null, nodes: Array = [], band_height := 1.6, max_cols := 60) -> String:
+	if grid_data.is_empty():
+		return "(empty grid)\n"
+	var grid = GridWorldScript.from_data(grid_data)
+	var risk := _risk_set(grid_data)
+	var node_sym := _node_symbols(grid_data, nodes)
+	# Warp every walkable cell + tag its char; collect world bounds.
+	var pts: Array = []   # {w:Vector3, ch:String, rank:int}
+	var minx := 1e20; var maxx := -1e20; var minz := 1e20; var maxz := -1e20; var miny := 1e20; var maxy := -1e20
+	var walk_by_level := _walk_by_level(grid_data)
+	var has_base: bool = coord_map != null and ("base_span" in coord_map) and float(coord_map.base_span) > 0.0
+	for lvl in walk_by_level.keys():
+		for cell in (walk_by_level[lvl] as Dictionary).keys():
+			var flat: Vector3 = grid.grid_to_world(cell, int(lvl))
+			var w: Vector3 = coord_map.to_world(flat) if coord_map != null else flat
+			var ch := CH_RISK if risk.has(cell) else CH_FLOOR
+			var rank := 2 if risk.has(cell) else 1
+			if has_base and (flat.x - float(coord_map.s_offset)) < 0.0:
+				ch = CH_BASE; rank = 3
+			if node_sym.has([cell, int(lvl)]):
+				ch = str(node_sym[[cell, int(lvl)]]); rank = 9
+			pts.append({"w": w, "ch": ch, "rank": rank})
+			minx = minf(minx, w.x); maxx = maxf(maxx, w.x); minz = minf(minz, w.z); maxz = maxf(maxz, w.z)
+			miny = minf(miny, w.y); maxy = maxf(maxy, w.y)
+	if pts.is_empty():
+		return "(no walkable cells)\n"
+	# One char per `res` world units, same for X and Z (no distortion); cap the width.
+	var res: float = maxf(1.0, (maxx - minx) / float(max_cols))
+	var cols := int((maxx - minx) / res) + 1
+	var rows := int((maxz - minz) / res) + 1
+	var band_count := maxi(1, int(ceil((maxy - miny) / maxf(0.01, band_height))))
+	var out := "Height layers (%d, top y=%.1f -> bottom y=%.1f, %d x %d chars, %.1fm/char):\n" % [band_count, maxy, miny, cols, rows, res]
+	# Top (highest y) first, DF-style descending.
+	for b in range(band_count):
+		var hi := maxy - float(b) * band_height
+		var lo := hi - band_height
+		# Include the very bottom in the last band.
+		if b == band_count - 1:
+			lo = miny - 0.001
+		var grid_chars := {}   # [row,col] -> {ch, rank}
+		var count := 0
+		for p in pts:
+			var wy: float = (p["w"] as Vector3).y
+			if wy <= hi + 0.0001 and wy > lo:
+				var col := clampi(int(((p["w"] as Vector3).x - minx) / res), 0, cols - 1)
+				var row := clampi(int(((p["w"] as Vector3).z - minz) / res), 0, rows - 1)
+				var key := [row, col]
+				if not grid_chars.has(key) or int(p["rank"]) > int(grid_chars[key]["rank"]):
+					grid_chars[key] = {"ch": str(p["ch"]), "rank": int(p["rank"])}
+					count += 1
+		out += "\n-- layer %d  y %.1f..%.1f  (%d cells) --\n" % [b, hi, lo, count]
+		for row in range(rows):
+			var line := ""
+			for col in range(cols):
+				var key := [row, col]
+				line += str(grid_chars[key]["ch"]) if grid_chars.has(key) else CH_VOID
+			out += line.rstrip(" ") + "\n"
+	return out
+
 ## Parse an ASCII block (single level, or the first level) back into a partial `unified_grid_v1` grid_data:
 ## walkable_cells + risk_cell_list + width/height + a default origin/cell_size. Node identity is not preserved
 ## (E/X/o become plain walkable); a builder layers nodes on separately. render->parse->render is stable.

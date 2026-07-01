@@ -363,6 +363,9 @@ func _ready() -> void:
 			"--test-hub-base-playable":
 				ran_test = true
 				await _test_hub_base_playable()
+			"--test-ascii-height-layers":
+				ran_test = true
+				await _test_ascii_height_layers()
 			"--test-generated-solution-replay":
 				ran_test = true
 				await _test_generated_solution_replay()
@@ -1143,6 +1146,7 @@ func _run_all_tests() -> void:
 	await _test_stretch_branches()
 	await _test_hub_shapes()
 	await _test_hub_base_playable()
+	await _test_ascii_height_layers()
 	await _test_generated_solution_replay()
 	await _test_generated_solution_realinput()
 	await _test_channels_pipe_splash()
@@ -13116,6 +13120,50 @@ func _branch_shapes(branches: Array) -> Array:
 	for b in branches:
 		out.append(str(b.get("shape", "")))
 	return out
+
+## Dwarf-Fortress-style HEIGHT-SLICED ASCII of a generated hub level: the flat grid is single-level, but warped onto
+## the hub each cell has a real world Y, so we slice by height into z-levels and print a top-down map per band. Prints
+## it (so we can SEE it) and asserts it slices into multiple layers with the base/entry up top and the exit down low.
+func _test_ascii_height_layers() -> void:
+	_test_name = "ASCII Height Layers"
+	var Ascii = load("res://scripts/generation/grid_ascii.gd")
+	var spec: Dictionary = StretchGeneratorScript.generate({"seed": 7, "complexity_tier": "setpiece", "id": "ascii_layers", "budget": {"node_count": 10}})
+	var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 8, {"spec": spec, "hub_shape": {"type": "rect", "aspect": 1.7}})
+	if inst == null:
+		_assert_true(false, "hub level boots"); return
+	for i in range(6):
+		await get_tree().process_frame
+	var chunk = inst.get("_active_chunk")
+	var gs = inst.get("_game_state")
+	var grid_data: Dictionary = chunk.call("get_grid_data")
+	var cm = gs.coord_map
+	# Flat (top-down, single block) for reference.
+	print("\n[ascii-flat] the level's flat data grid (top-down):\n" + Ascii.render(grid_data, spec.get("nodes", [])))
+	# Height-sliced z-levels of the WARPED hub.
+	var layers: String = Ascii.render_height_layers(grid_data, cm, spec.get("nodes", []), 1.6, 58)
+	print("\n[ascii-layers] " + layers)
+	var layer_count := layers.count("-- layer")
+	_assert_true(layer_count >= 3, "the warped hub slices into multiple height layers (got %d)" % layer_count)
+	_assert_true(layers.contains("E"), "the entry (E) shows in the layers")
+	_assert_true(layers.contains("X"), "the exit shelter (X) shows in the layers")
+	_assert_true(layers.contains("#"), "the flat BASE floor (#) shows in the layers")
+	# The entry sits ABOVE the exit (the hub descends): E appears in an earlier (higher) layer than X.
+	var e_layer := _first_layer_containing(layers, "E")
+	var x_layer := _first_layer_containing(layers, "X")
+	print("  [ascii-layers] entry in layer %d, exit in layer %d (of %d)" % [e_layer, x_layer, layer_count])
+	_assert_true(e_layer >= 0 and x_layer >= 0 and e_layer < x_layer, "the hub DESCENDS: entry (layer %d) sits above the exit (layer %d)" % [e_layer, x_layer])
+	inst.queue_free()
+	await get_tree().process_frame
+
+## Which height layer (0 = top) the first `sym` appears in, scanning the rendered layers text. -1 if absent.
+func _first_layer_containing(layers: String, sym: String) -> int:
+	var layer := -1
+	for line in layers.split("\n"):
+		if str(line).begins_with("-- layer"):
+			layer += 1
+		elif str(line).contains(sym):
+			return layer
+	return -1
 
 ## The BASE must be PLAYABLE: boot a hub-shape stretch with a base floor and assert the base is real, flat, and
 ## connected — it's added to the installed grid, its cells are FLAT at y0 (a floor, not warped), every base cell
