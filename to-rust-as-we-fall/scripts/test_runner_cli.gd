@@ -754,6 +754,9 @@ func _ready() -> void:
 			"--test-generated-stretch-quality":
 				ran_test = true
 				await _test_generated_stretch_quality()
+			"--test-generated-stretch-walk":
+				ran_test = true
+				await _test_generated_stretch_walk()
 			"--test-dodge-knockdown":
 				ran_test = true
 				_test_dodge_knockdown()
@@ -1247,6 +1250,7 @@ func _run_all_tests() -> void:
 	_test_generated_grid()
 	_test_generated_traversible()
 	await _test_generated_stretch_quality()
+	await _test_generated_stretch_walk()
 	_test_dodge_knockdown()
 	_test_preview_parked_bail()
 	await _test_wrong_character_feedback()
@@ -3229,6 +3233,50 @@ func _collect_node_names(n: Node, acc: Array) -> void:
 	acc.append(String(n.name))
 	for c in n.get_children():
 		_collect_node_names(c, acc)
+
+## REAL-INPUT proof that the player can walk ONTO + across a generated level: a synthetic ground click (which
+## raycasts the deck collision, then pathfinds the grid) must actually move the player a long way to a distant
+## walkable cell. Fails if the floor collision doesn't register the click (the "characters can't walk on it" bug)
+## or the grid can't route there.
+func _test_generated_stretch_walk() -> void:
+	_test_name = "Generated Stretch Walk"
+	var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 8)
+	if inst == null:
+		_assert_true(false, "generated_stretch instantiates"); return
+	for i in range(6):
+		await get_tree().process_frame
+	var gs = inst.get("_game_state")
+	if gs == null or gs.grid == null:
+		_assert_true(false, "grid present"); inst.queue_free(); await get_tree().process_frame; return
+	var grid = gs.grid
+	var start: Vector3 = gs.get_position("aster")
+	var start_cell: Vector2i = grid.world_to_grid(start)
+	# Pick the walkable level-0 cell furthest from the player as the destination.
+	var best_cell := start_cell
+	var best_d := -1.0
+	for cz in range(grid.height):
+		for cx in range(grid.width):
+			if not grid.is_walkable(cx, cz):
+				continue
+			var d := start_cell.distance_to(Vector2i(cx, cz))
+			if d > best_d:
+				best_d = d
+				best_cell = Vector2i(cx, cz)
+	_assert_true(best_d > 4.0, "there is a distant walkable cell to walk to (%.1f cells away)" % best_d)
+	var target: Vector3 = grid.grid_to_world(best_cell)
+	# Real click → deck raycast → grid path → walk. Interleave scheduler time + frames (input/node sync).
+	_synthetic_player_move_click(inst, target)
+	for i in range(240):
+		inst.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+		if gs.get_position("aster").distance_to(target) < 1.5:
+			break
+	var moved: float = gs.get_position("aster").distance_to(start)
+	_assert_true(moved > 3.0, "a real ground click walks the player across the generated floor (moved %.1f units)" % moved)
+	var end_cell: Vector2i = grid.world_to_grid(gs.get_position("aster"))
+	_assert_true(grid.is_walkable(end_cell.x, end_cell.y), "the player ends on a walkable floor cell")
+	inst.queue_free()
+	await get_tree().process_frame
 
 func _names_any_prefix(names: Array, prefix: String) -> bool:
 	for nm in names:
