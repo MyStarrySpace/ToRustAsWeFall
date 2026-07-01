@@ -748,6 +748,9 @@ func _ready() -> void:
 			"--test-generated-grid":
 				ran_test = true
 				_test_generated_grid()
+			"--test-generated-traversible":
+				ran_test = true
+				_test_generated_traversible()
 			"--test-dodge-knockdown":
 				ran_test = true
 				_test_dodge_knockdown()
@@ -1239,6 +1242,7 @@ func _run_all_tests() -> void:
 	_test_grid_risk()
 	_test_grid_from_data()
 	_test_generated_grid()
+	_test_generated_traversible()
 	_test_dodge_knockdown()
 	_test_preview_parked_bail()
 	await _test_wrong_character_feedback()
@@ -3101,6 +3105,81 @@ func _test_run_economy() -> void:
 	var d0: Dictionary = Branch.decide({"depth": 0, "seed": 7, "roster": ["aster", "peris"]})
 	_assert_equals(JSON.stringify(Econ.evaluate_branch(d0, 0.5)), JSON.stringify(Econ.evaluate_branch(d0, 0.5)),
 		"the branch economy is deterministic")
+
+## TRAVERSIBILITY: a generated level must not contain floor you can't reach. Across many seeds/tiers, flood the
+## walkable grid from ENTRY with the game's exact rule (8-dir, a diagonal only when both orthogonal neighbours are
+## walkable, plus ramp/ladder links) and assert EVERY walkable cell is reached (no isolated pockets) and every node
+## is reachable. This is what the render draws its tiled floor from, so "reachable floor" == "visible floor".
+func _test_generated_traversible() -> void:
+	_test_name = "Generated Traversible"
+	var tiers := ["teaching", "standard", "hard", "setpiece"]
+	var checked := 0
+	for seed in range(8):
+		for ti in range(tiers.size()):
+			var spec: Dictionary = StretchGeneratorScript.generate({
+				"seed": seed * 13 + ti, "complexity_tier": tiers[ti], "id": "trav_%d_%d" % [seed, ti]})
+			if not bool(spec.get("success", false)):
+				continue
+			checked += 1
+			var gd: Dictionary = StretchGeneratorScript.build_navigation_grid_from_spec(spec)
+			var g := GridWorld.from_data(gd)
+			var entry := _generated_node(spec, "entry")
+			if entry.is_empty():
+				_assert_true(false, "generated level has an entry")
+				continue
+			var ecell: Vector2i = g.world_to_grid(entry.pos)
+			# Total walkable cells (per level) vs cells reachable from entry by the game's own movement rule.
+			var total := 0
+			var lc: Array = gd.get("level_cells", [])
+			if not lc.is_empty():
+				for e in lc:
+					total += (e.get("cells", []) as Array).size()
+			else:
+				total = (gd.get("walkable_cells", []) as Array).size()
+			var reached: Dictionary = _flood_grid_reachable(g, ecell, entry.elev)
+			_assert_equals(reached.size(), total,
+				"seed %d %s: every walkable cell is reachable from entry (%d/%d) — no isolated floor" % [seed, tiers[ti], reached.size(), total])
+			# And every NODE is reachable (the player can visit each beat).
+			for n in spec.get("nodes", []):
+				if not (n is Dictionary):
+					continue
+				var npa: Array = (n as Dictionary).get("position", [0, 0, 0])
+				var np := Vector3(float(npa[0]), float(npa[1]), float(npa[2]))
+				var path: Array = g.find_multi_level_path(ecell, entry.elev, g.world_to_grid(np), int((n as Dictionary).get("elevation_index", 0)))
+				_assert_true(path.size() >= 1, "seed %d %s: node '%s' is reachable" % [seed, tiers[ti], str((n as Dictionary).get("id", ""))])
+	_assert_true(checked >= 20, "sampled enough generated levels (%d)" % checked)
+
+## Flood every reachable (cell, level) from a start, mirroring GridWorld.find_multi_level_path's neighbour rule
+## exactly (8-dir; a diagonal needs both orthogonal neighbours walkable; plus ramp/ladder links).
+func _flood_grid_reachable(g: GridWorld, start: Vector2i, start_lvl: int) -> Dictionary:
+	var dirs := [
+		Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+		Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1),
+	]
+	var reached := {}
+	var queue: Array = [[start, start_lvl]]
+	reached[[start, start_lvl]] = true
+	while not queue.is_empty():
+		var cur = queue.pop_front()
+		var cc: Vector2i = cur[0]
+		var cl: int = cur[1]
+		for d in dirs:
+			var nb: Vector2i = cc + d
+			if not g.is_walkable(nb.x, nb.y, {}, {}, cl):
+				continue
+			if d.x != 0 and d.y != 0:
+				if not g.is_walkable(cc.x + d.x, cc.y, {}, {}, cl) or not g.is_walkable(cc.x, cc.y + d.y, {}, {}, cl):
+					continue
+			var k := [nb, cl]
+			if not reached.has(k):
+				reached[k] = true
+				queue.append(k)
+		for other in g.links_from(cc, cl):
+			var lk := [cc, int(other)]
+			if not reached.has(lk):
+				reached[lk] = true
+				queue.append(lk)
+	return reached
 
 ## Does a generated spec's level connect entry -> exit on its own grid?
 func _run_level_connects(spec: Dictionary) -> bool:

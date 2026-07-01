@@ -176,53 +176,101 @@ static func _sorted_keys(keys: Array) -> Array:
 	arr.sort_custom(func(p, q): return (p.y * 100000 + p.x) < (q.y * 100000 + q.x))
 	return arr
 
-## Multi-level BFS from the entry over same-floor moves + ramp links. If exit_shelter isn't reached, force-carve
-## a straight corridor between the two on the exit's floor (a safety — spine corridors connect them by construction).
+## Guarantee the ENTIRE walkable floor is traversable, not just entry->exit. Two passes:
+##   A. Every node's connection cell must be reachable from entry — force-carve an orthogonal L to any that
+##      isn't (a stranded room/node joined to the spine before pruning).
+##   B. PRUNE to the entry-connected component — drop every walkable cell the player can't actually reach, so
+##      the rendered/collidable floor is exactly the traversable set (no isolated pockets = floor you can see
+##      but can't stand on). The flood mirrors find_multi_level_path EXACTLY (8-dir, diagonal only when both
+##      orthogonal neighbours are walkable, plus ramp/ladder links), so a kept cell is genuinely reachable.
 static func _ensure_connected(walk: Dictionary, links: Array, slot_cells: Dictionary) -> void:
 	var entry: Dictionary = slot_cells.get("entry", {})
-	var exit: Dictionary = slot_cells.get("exit_shelter", {})
-	if entry.is_empty() or exit.is_empty():
+	if entry.is_empty() or not entry.has("connection_cell"):
 		return
 	var start := Vector2i(int(entry["connection_cell"][0]), int(entry["connection_cell"][1]))
 	var start_lvl := int(entry.get("level", 0))
-	var goal := Vector2i(int(exit["connection_cell"][0]), int(exit["connection_cell"][1]))
-	var goal_lvl := int(exit.get("level", 0))
-	# link transitions keyed by (cell, level) -> other level.
-	var link_at := {}
+
+	# A. Join any node whose connection cell the entry can't reach (rare — spine corridors connect them by
+	# construction — but a hard guarantee so pruning never strands a real node).
+	var reached := _flood_component(walk, links, start, start_lvl)
+	for node_id in slot_cells.keys():
+		var info: Dictionary = slot_cells[node_id]
+		if not (info is Dictionary) or not info.has("connection_cell"):
+			continue
+		var cc := Vector2i(int(info["connection_cell"][0]), int(info["connection_cell"][1]))
+		var cl := int(info.get("level", 0))
+		if not reached.has([cc, cl]):
+			_carve_l(walk, start, cc, cl)
+			reached = _flood_component(walk, links, start, start_lvl)
+
+	# B. Prune every walkable cell not in the entry component.
+	reached = _flood_component(walk, links, start, start_lvl)
+	for lvl in walk.keys():
+		var cells: Dictionary = walk[lvl]
+		var to_drop: Array = []
+		for c in cells.keys():
+			if not reached.has([c, lvl]):
+				to_drop.append(c)
+		for c in to_drop:
+			cells.erase(c)
+
+## Flood the walkable set from (start, start_lvl) using the SAME rule as GridWorld.find_multi_level_path:
+## 8-dir moves where a diagonal is allowed only if both orthogonal neighbours are walkable, plus ramp links.
+## Returns { [Vector2i, level]: true } of every reachable (cell, level).
+static func _flood_component(walk: Dictionary, links: Array, start: Vector2i, start_lvl: int) -> Dictionary:
+	var link_at := {}   # [cell, level] -> [other levels]
 	for lk in links:
 		var c: Vector2i = lk["cell"]
-		link_at[[c, int(lk["from"])]] = int(lk["to"])
-		link_at[[c, int(lk["to"])]] = int(lk["from"])
-	var seen := {}
+		var kf := [c, int(lk["from"])]
+		var kt := [c, int(lk["to"])]
+		if not link_at.has(kf):
+			link_at[kf] = []
+		(link_at[kf] as Array).append(int(lk["to"]))
+		if not link_at.has(kt):
+			link_at[kt] = []
+		(link_at[kt] as Array).append(int(lk["from"]))
+	var dirs := [
+		Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+		Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1),
+	]
+	var reached := {}
+	if not (walk.get(start_lvl, {}) as Dictionary).has(start):
+		return reached
 	var queue: Array = [[start, start_lvl]]
-	seen[[start, start_lvl]] = true
+	reached[[start, start_lvl]] = true
 	while not queue.is_empty():
 		var cur = queue.pop_front()
 		var cc: Vector2i = cur[0]
 		var cl: int = cur[1]
 		var cells: Dictionary = walk.get(cl, {})
-		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-			var nx: Vector2i = cc + d
-			var key := [nx, cl]
-			if cells.has(nx) and not seen.has(key):
-				seen[key] = true
-				queue.append(key)
-		if link_at.has([cc, cl]):
-			var other: int = link_at[[cc, cl]]
-			var lk_key := [cc, other]
-			if (walk.get(other, {}) as Dictionary).has(cc) and not seen.has(lk_key):
-				seen[lk_key] = true
-				queue.append(lk_key)
-	if seen.has([goal, goal_lvl]):
-		return
-	# Force-carve a straight L from start to goal on the goal floor.
-	var x := start.x
-	while x != goal.x:
-		_mark(walk, goal_lvl, Vector2i(x, start.y))
-		x += 1 if goal.x > start.x else -1
-	var y := start.y
-	while y != goal.y:
-		_mark(walk, goal_lvl, Vector2i(goal.x, y))
-		y += 1 if goal.y > start.y else -1
-	_mark(walk, goal_lvl, goal)
-	_mark(walk, goal_lvl, start)
+		for d in dirs:
+			var nb: Vector2i = cc + d
+			if not cells.has(nb):
+				continue
+			if d.x != 0 and d.y != 0:
+				if not cells.has(Vector2i(cc.x + d.x, cc.y)) or not cells.has(Vector2i(cc.x, cc.y + d.y)):
+					continue
+			var k := [nb, cl]
+			if not reached.has(k):
+				reached[k] = true
+				queue.append(k)
+		for other in link_at.get([cc, cl], []):
+			if (walk.get(int(other), {}) as Dictionary).has(cc):
+				var lk_key := [cc, int(other)]
+				if not reached.has(lk_key):
+					reached[lk_key] = true
+					queue.append(lk_key)
+	return reached
+
+## Force-carve an orthogonal L (marking walkable cells) from `from` to `to` on floor `lvl`.
+static func _carve_l(walk: Dictionary, from: Vector2i, to: Vector2i, lvl: int) -> void:
+	var x := from.x
+	while x != to.x:
+		_mark(walk, lvl, Vector2i(x, from.y))
+		x += 1 if to.x > from.x else -1
+	var y := from.y
+	while y != to.y:
+		_mark(walk, lvl, Vector2i(to.x, y))
+		y += 1 if to.y > from.y else -1
+	_mark(walk, lvl, to)
+	_mark(walk, lvl, from)

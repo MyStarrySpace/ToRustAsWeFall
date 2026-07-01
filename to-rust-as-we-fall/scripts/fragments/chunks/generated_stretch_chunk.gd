@@ -643,19 +643,101 @@ func _clear_generated_children() -> void:
 	_node_targets.clear()
 	_route_surfaces.clear()
 
+const TILE_DIR := "res://resources/models/elevator/tiles/"
+
 func _build_foundation() -> void:
+	# The floor is built FROM the walkable grid cells as atlas TILES — so the visible surface (and its collision)
+	# is EXACTLY where the player can walk. No more big rectangular slab that eats clicks the grid then rejects.
+	_build_walkable_floor()
 	var graybox: Dictionary = _spec.get("graybox", {})
 	var bounds: Dictionary = graybox.get("bounds", {})
 	var bounds_center := _vec3(bounds.get("center", []), Vector3(12.0, 0.0, 0.0))
 	var bounds_size := _vec3(bounds.get("size", []), Vector3(24.0, 3.0, 10.0))
 	var min_point := _vec3(bounds.get("min", []), bounds_center - bounds_size * 0.5)
-	var center := Vector3(bounds_center.x, min_point.y - 0.18, bounds_center.z)
-	var size := Vector3(maxf(8.0, bounds_size.x + 8.0), 0.14, maxf(7.0, bounds_size.z + 5.0))
-	_add_graybox_slab(self, center, size, Color(0.06, 0.072, 0.08), "GeneratedFoundation", Vector3.ZERO, true)
-	_add_box(self, center + Vector3(0.0, 0.04, -size.z * 0.5), Vector3(size.x, 0.18, 0.16), Color(0.14, 0.16, 0.17))
-	_add_box(self, center + Vector3(0.0, 0.04, size.z * 0.5), Vector3(size.x, 0.18, 0.16), Color(0.14, 0.16, 0.17))
-	_add_label(self, str(_spec.get("title", "Generated Stretch")).to_upper(), Vector3(center.x, min_point.y + 3.0, min_point.z - 2.8), Color(0.78, 0.88, 0.94))
-	_add_light(self, center + Vector3(0.0, 8.0, 0.0), Color(0.72, 0.86, 0.96), 1.25, maxf(34.0, bounds_size.x * 0.5))
+	_add_label(self, str(_spec.get("title", "Generated Stretch")).to_upper(), Vector3(bounds_center.x, min_point.y + 3.0, min_point.z - 2.8), Color(0.78, 0.88, 0.94))
+	_add_light(self, Vector3(bounds_center.x, min_point.y + 8.0, bounds_center.z), Color(0.72, 0.86, 0.96), 1.25, maxf(34.0, bounds_size.x * 0.5))
+
+## A pixel-atlas material that tiles across a surface in world space (the sim-room / bridge technique): 1 tile/m,
+## NEAREST sampled, world-triplanar so it repeats crisply regardless of the mesh's size or UVs.
+func _tiled_floor_material(tile_name: String) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	var tex = load(TILE_DIR + tile_name + ".png")
+	if tex != null:
+		m.albedo_texture = tex
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	m.uv1_triplanar = true
+	m.uv1_world_triplanar = true
+	m.uv1_scale = Vector3.ONE
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return m
+
+## Draw a tiled floor quad for every WALKABLE grid cell (per level), risky cells rusted, and give it collision so
+## the player's ground-click raycast only lands where they can actually move. Visible floor == traversable floor.
+func _build_walkable_floor() -> void:
+	var nav: Dictionary = _spec.get("navigation_grid", {})
+	if nav.is_empty():
+		return
+	var grid = GridWorld.from_data(nav)
+	var cell := float(nav.get("cell_size", 1.0))
+	var risk := {}
+	for r in nav.get("risk_cell_list", []):
+		if r is Dictionary and r.has("cell"):
+			risk[Vector2i(int((r.cell as Array)[0]), int((r.cell as Array)[1]))] = true
+	var cells_by_level := {}
+	var level_cells: Array = nav.get("level_cells", [])
+	if not level_cells.is_empty():
+		for entry in level_cells:
+			if entry is Dictionary:
+				cells_by_level[int(entry.get("level", 0))] = entry.get("cells", [])
+	else:
+		cells_by_level[0] = nav.get("walkable_cells", [])
+	for lvl in cells_by_level.keys():
+		_build_floor_surface(grid, int(lvl), cells_by_level[lvl], risk, cell)
+
+func _build_floor_surface(grid, lvl: int, cells: Array, risk: Dictionary, cell: float) -> void:
+	var st_main := SurfaceTool.new()
+	st_main.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var st_risk := SurfaceTool.new()
+	st_risk.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var has_risk := false
+	var h := cell * 0.5
+	for cp in cells:
+		var v := Vector2i(int((cp as Array)[0]), int((cp as Array)[1]))
+		var w: Vector3 = grid.grid_to_world(v, lvl)
+		var is_risk: bool = risk.has(v)
+		if is_risk:
+			has_risk = true
+		_floor_quad(st_risk if is_risk else st_main, Vector3(w.x, w.y + 0.02, w.z), h)
+	_commit_floor_surface(st_main, "GeneratedFloor_L%d" % lvl, _tiled_floor_material("deck_metal"))
+	if has_risk:
+		_commit_floor_surface(st_risk, "GeneratedFloorRisk_L%d" % lvl, _tiled_floor_material("rust_iron"))
+
+func _floor_quad(st: SurfaceTool, center: Vector3, h: float) -> void:
+	var a := Vector3(center.x - h, center.y, center.z - h)
+	var b := Vector3(center.x + h, center.y, center.z - h)
+	var c := Vector3(center.x + h, center.y, center.z + h)
+	var d := Vector3(center.x - h, center.y, center.z + h)
+	st.set_normal(Vector3.UP)
+	for vtx in [a, c, b, a, d, c]:
+		st.add_vertex(vtx)
+
+func _commit_floor_surface(st: SurfaceTool, node_name: String, mat: Material) -> void:
+	var mesh := st.commit()
+	if mesh == null or mesh.get_surface_count() == 0:
+		return
+	var mi := MeshInstance3D.new()
+	mi.name = node_name
+	mi.mesh = mesh
+	mi.material_override = mat
+	add_child(mi)
+	var body := StaticBody3D.new()
+	body.name = node_name + "Collision"
+	body.collision_layer = 1
+	body.collision_mask = 0
+	var cs := CollisionShape3D.new()
+	cs.shape = mesh.create_trimesh_shape()
+	body.add_child(cs)
+	add_child(body)
 
 func _build_generated_routes() -> void:
 	for route in _routes():
@@ -674,6 +756,8 @@ func _build_route_segment(route: Dictionary, from_pos: Vector3, to_pos: Vector3)
 	var horizontal_length := maxf(0.8, sqrt(delta.x * delta.x + delta.z * delta.z))
 	var width := maxf(0.4, float(route.get("width", route.get("surface", {}).get("width", 1.2))))
 	var route_rotation := Vector3(0.0, atan2(delta.z, delta.x), -atan2(delta.y, horizontal_length))
+	# Visual-only accent (no collision) — the tiled walkable floor owns click collision, so a straight route box
+	# spanning non-walkable cells can't eat a click.
 	var route_box := _add_graybox_slab(
 		self,
 		middle + Vector3(0.0, 0.045, 0.0),
@@ -681,7 +765,7 @@ func _build_route_segment(route: Dictionary, from_pos: Vector3, to_pos: Vector3)
 		_route_color(route),
 		"Route_%s" % str(route.get("id", "")),
 		route_rotation,
-		true
+		false
 	)
 	_route_surfaces[str(route.get("id", ""))] = route_box
 	var label_pos := middle + Vector3(0.0, 0.82, 0.0)
@@ -701,7 +785,8 @@ func _build_generated_node(node: Dictionary) -> void:
 	var role := str(node.get("role", "route"))
 	var pad_size := _vec3(node.get("footprint", node.get("floor_size", [])), _node_pad_size(role))
 	var highlight_meshes: Array[MeshInstance3D] = []
-	var pad := _add_graybox_slab(self, pos + Vector3(0.0, -0.03, 0.0), pad_size, _role_color(role), "NodePad_%s" % node_id, Vector3.ZERO, true)
+	# Role-tinted accent ON the tiled floor (no collision — the floor owns clicks); slightly raised to read over it.
+	var pad := _add_graybox_slab(self, pos + Vector3(0.0, 0.035, 0.0), pad_size, _role_color(role), "NodePad_%s" % node_id, Vector3.ZERO, false)
 	highlight_meshes.append(pad)
 	_build_elevation_posts(pos, pad_size, int(node.get("elevation_index", 0)), _role_color(role))
 	var marker := _add_box(self, pos + Vector3(0.0, 0.48, 0.0), Vector3(1.35, 0.96, 1.35), _role_color(role).lightened(0.08), _role_color(role).lightened(0.22), 0.18, "NodeMarker_%s" % node_id)
