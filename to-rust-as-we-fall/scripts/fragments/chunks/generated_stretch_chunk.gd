@@ -27,6 +27,10 @@ var _woven_nav: Dictionary = {}
 # Drop-down portal pads placed on the spiral (each teleports the active member from a cell on one turn to the
 # cell directly BELOW it — one turn forward — a "drop down as needed" shortcut that skips a loop of walking).
 var _drop_downs: Array = []
+# Salvage caches placed at the far end of each branch spoke — the OPTIONAL reward that makes exploring a spoke
+# (instead of pushing straight down the spine to the shelter) worth the day/night time it costs.
+var _branch_caches: Array = []
+var _branch_atp_collected := 0
 var _catalog := CatalogScript.new()
 var _node_markers: Dictionary = {}
 var _node_targets: Dictionary = {}
@@ -80,6 +84,8 @@ func _build_chunk() -> void:
 	_node_targets.clear()
 	_route_surfaces.clear()
 	_drop_downs.clear()
+	_branch_caches.clear()
+	_branch_atp_collected = 0
 	_woven_nav = {}
 	_build_coord_map()
 	_ensure_woven_grid()
@@ -92,6 +98,9 @@ func _build_chunk() -> void:
 	# (warped at the vertex level in _build_walkable_floor) and the fill light keep their own transforms.
 	var flat_child_start := get_child_count()
 	_build_generated_nodes()
+	# Branch caches are authored FLAT like the node dressing, so build them BEFORE the warp pass and let it re-seat
+	# them onto the helix too (keeps their interactable + outline target together on the deck).
+	_build_branch_content()
 	if _coord_map != null:
 		for i in range(flat_child_start, get_child_count()):
 			_warp_child(get_child(i))
@@ -102,7 +111,13 @@ func _build_chunk() -> void:
 ## long level curls compactly around a centre (the player still walks a linear grid); a hand-authored builder
 ## level or a test can opt OUT with config "spiral": false to keep the painted flat layout.
 func _spiral_enabled() -> bool:
-	return bool(_config.get("spiral", true))
+	if _config.has("spiral"):
+		return bool(_config["spiral"])
+	# A hand-authored / ASCII level (from the builder) plays as the FLAT layout the user drew — no spiral warp,
+	# no woven branch spokes. Only procedurally GENERATED stretches spiral. Detected by the authored schema.
+	if str(_spec.get("schema", "")) == "authored_ascii_v1":
+		return false
+	return true
 
 ## Build the per-level spiral coord_map from this stretch's flat navigation grid (parameterised to its length),
 ## or leave it null for a flat render. Cleared + rebuilt every time the chunk (re)builds.
@@ -296,6 +311,8 @@ func get_preview_state() -> Dictionary:
 		"rests_taken": _rests_taken,
 		"unsupported_placeholder_count": _unsupported_placeholder_count,
 		"drop_down_count": _drop_downs.size(),
+		"branch_cache_count": _branch_caches.size(),
+		"branch_atp_collected": _branch_atp_collected,
 		"active_loadout": _active_loadout,
 		"blocked_nodes": _blocked_nodes.duplicate(),
 		"solution_path": get_active_solution_path(),
@@ -945,6 +962,69 @@ func _find_drop_pair(grid, cx: int, period_cells: int) -> Dictionary:
 ## How many drop-down shortcut pads the spiral placed (0 on a flat / too-short stretch). For tests + overlays.
 func get_drop_down_count() -> int:
 	return _drop_downs.size()
+
+## Place a SALVAGE CACHE at the far end of every branch spoke: an optional, one-shot forage reward the player has
+## to detour off the spine to reach. This is the risk/reward that makes a run cost real day/night time (explore the
+## spokes for ATP, or push straight to the shelter). Warped onto the helix like the node dressing.
+const BRANCH_ATP := 2
+func _build_branch_content() -> void:
+	if _coord_map == null:
+		return
+	var nav := _nav_grid()
+	var branches: Array = nav.get("branches", [])
+	if branches.is_empty():
+		return
+	var grid = GridWorld.from_data(nav)
+	for i in range(branches.size()):
+		var b: Dictionary = branches[i]
+		var far := _branch_far_cell(b.get("cells", []), b.get("neck", [0, 0]))
+		if far == Vector2i(0x7fffffff, 0):
+			continue
+		var flat: Vector3 = grid.grid_to_world(far)
+		var color := Color(0.95, 0.78, 0.28)
+		var marker := _add_box(self, flat + Vector3(0.0, 0.42, 0.0), Vector3(0.7, 0.7, 0.7), color, color.lightened(0.3), 0.4, "BranchCache_%d" % i)
+		var interactable := _add_inspection_interactable(
+			self, "BranchCacheZone_%d" % i, "Salvage cache", flat + Vector3(0.0, 0.12, 0.0), "SALVAGE", "", 1.6, true)
+		interactable.interacted.connect(Callable(self, "_collect_branch_reward").bind(i))
+		_add_outline_target(
+			self, "BranchCacheTarget_%d" % i, flat + Vector3(0.0, 0.5, 0.0), Vector3(1.2, 1.0, 1.2),
+			[marker] as Array[MeshInstance3D], "branch_cache_%d" % i, interactable)
+		# The cache trio (marker, interactable, outline target) is authored flat here; the _build_chunk warp pass
+		# re-seats all of them onto the helix together (same path as the node dressing).
+		_branch_caches.append({"index": i, "cell": [far.x, far.y], "collected": false, "interactable": interactable})
+
+## The cell in a branch furthest from its neck (the back of the room) — where the reward sits, so the player has
+## to walk the whole spoke to claim it.
+func _branch_far_cell(cells: Array, neck: Array) -> Vector2i:
+	var nx := int((neck as Array)[0]) if neck.size() >= 2 else 0
+	var nz := int((neck as Array)[1]) if neck.size() >= 2 else 0
+	var best := Vector2i(0x7fffffff, 0)
+	var best_d := -1.0
+	for c in cells:
+		var v := Vector2i(int((c as Array)[0]), int((c as Array)[1]))
+		var d := Vector2(v.x - nx, v.y - nz).length()
+		if d > best_d:
+			best_d = d
+			best = v
+	return best
+
+func _collect_branch_reward(index: int) -> void:
+	for cache in _branch_caches:
+		if int(cache.get("index", -1)) != index or bool(cache.get("collected", false)):
+			continue
+		cache["collected"] = true
+		_branch_atp_collected += BRANCH_ATP
+		for char_id in PARTY_IDS:
+			_adjust_character_stat(char_id, "atp", float(BRANCH_ATP))
+		_show_message("Salvaged %d ATP from the cache." % BRANCH_ATP, 1.0)
+		return
+
+## How many branch salvage caches exist / were collected — for tests + overlays.
+func get_branch_cache_count() -> int:
+	return _branch_caches.size()
+
+func get_branch_atp_collected() -> int:
+	return _branch_atp_collected
 
 func _build_generated_nodes() -> void:
 	for node in _nodes():

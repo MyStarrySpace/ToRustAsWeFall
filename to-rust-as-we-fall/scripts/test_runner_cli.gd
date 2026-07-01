@@ -1762,8 +1762,10 @@ func _assert_level_editor_plan_browser(editor_instance: Node) -> void:
 				"Generated plan exposes the spatial graybox contract")
 			_assert_true(bool(plan_graybox.get("supports_click_to_move", false)),
 				"Generated plan graybox declares click-to-move support")
-			_assert_true(bool(plan_graybox.get("supports_multiple_elevations", false)),
-				"Generated plan graybox includes multiple elevations")
+			# This committed plan is a TEACHING stretch, which is FLAT by design (verticality is tier-gated to
+			# hard/setpiece) — so it should NOT declare multiple elevations.
+			_assert_true(not bool(plan_graybox.get("supports_multiple_elevations", false)),
+				"A teaching plan graybox is single-level (verticality is tier-gated)")
 			_assert_true(int(plan_graybox.get("content_placement_count", 0)) > 0,
 				"Generated plan graybox exposes placed flora/enemy/structure content")
 			var generation: Dictionary = per_plan_state.get("generation", {})
@@ -2014,7 +2016,9 @@ func _test_archetype_generation() -> void:
 		"id": "generated_chain_nested_runtime_test",
 		"title": "Generated Chain Nested Runtime Test",
 		"seed": 2403,
-		"complexity_tier": "standard",
+		# setpiece: verticality is tier-gated (teaching/standard flat, hard +1, setpiece +2), so this capability
+		# proof — that a generated chunk builds multiple elevations — must use a tier that HAS them.
+		"complexity_tier": "setpiece",
 		"budget": {
 			"node_count": 7,
 			"optional_node_count": 1,
@@ -2090,7 +2094,8 @@ func _test_archetype_generation() -> void:
 		"id": "generated_random_walk_runtime_test",
 		"title": "Generated Random Walk Runtime Test",
 		"seed": 3117,
-		"complexity_tier": "standard",
+		# setpiece: multi-elevation is tier-gated, so this random-walk capability proof needs a vertical tier.
+		"complexity_tier": "setpiece",
 		"budget": {
 			"node_count": 8,
 			"optional_node_count": 1,
@@ -2173,17 +2178,27 @@ func _test_archetype_generation() -> void:
 		"Generated spec exposes the graybox layout contract")
 	_assert_true(bool(graybox.get("supports_click_to_move", false)),
 		"Generated graybox declares click-to-move support")
-	_assert_true(bool(graybox.get("supports_multiple_elevations", false)),
-		"Generated graybox can produce multiple elevations")
+	# Verticality is tier-gated: a STANDARD stretch is flat (single level), a SETPIECE one stacks floors. So the
+	# multi-elevation capability is proved on a setpiece spec, while standard is asserted FLAT below.
+	var vert_settings := base_settings.duplicate(true)
+	vert_settings["id"] = "generated_test_setpiece"
+	vert_settings["complexity_tier"] = "setpiece"
+	var spec_vert: Dictionary = StretchGeneratorScript.generate(vert_settings)
+	var vgraybox: Dictionary = spec_vert.get("graybox", {})
+	var vnav: Dictionary = spec_vert.get("navigation_grid", {})
+	_assert_true(bool(vgraybox.get("supports_multiple_elevations", false)),
+		"A setpiece graybox produces multiple elevations")
+	_assert_true(bool(vnav.get("supports_multiple_elevations", false)),
+		"A setpiece grid declares multiple elevation support")
+	_assert_true((vnav.get("links", []) as Array).size() > 0,
+		"A setpiece grid registers cross-elevation links")
 	var navigation: Dictionary = spec_a.get("navigation_grid", {})
 	_assert_equals(str(navigation.get("contract_id", "")), GridWorld.GRID_DATA_CONTRACT_ID,
 		"Generated spec exposes the unified grid traversal layer")
-	_assert_true(bool(navigation.get("supports_multiple_elevations", false)),
-		"Generated grid declares multiple elevation support")
+	_assert_true(not bool(navigation.get("supports_multiple_elevations", false)),
+		"A standard grid is FLAT (verticality is tier-gated to hard/setpiece)")
 	_assert_true((navigation.get("walkable_cells", []) as Array).size() > 0,
 		"Generated grid carves walkable cells")
-	_assert_true((navigation.get("links", []) as Array).size() > 0,
-		"Generated grid registers cross-elevation links")
 	var gen_grid := GridWorld.from_data(navigation)
 	var spec_entry := _generated_node(spec_a, "entry")
 	var spec_exit := _generated_node(spec_a, "exit_shelter")
@@ -2292,7 +2307,8 @@ func _test_archetype_generation() -> void:
 			walk_chunk.queue_free()
 			await get_tree().process_frame
 
-	var preview_instance: Node = await _instantiate_preview_chunk_and_wait("generated_stretch", 3)
+	# Boot the preview on a SETPIECE spec so the installed grid is multi-level (verticality is tier-gated).
+	var preview_instance: Node = await _instantiate_preview_chunk_and_wait("generated_stretch", 3, {"spec": spec_vert})
 	_assert_true(preview_instance != null, "Generated stretch preview instantiates")
 	if preview_instance == null:
 		return
@@ -13002,6 +13018,16 @@ func _test_spiral_drop_down() -> void:
 	_assert_true(jumped > period * 0.6, "stepping the drop-down jumps the member a loop FORWARD along the flat grid (jumped %.1f)" % jumped)
 	var land_cell: Vector2i = gs.grid.world_to_grid(after)
 	_assert_true(gs.grid.is_walkable(land_cell.x, land_cell.y), "the drop lands on a walkable floor cell")
+	# Branch salvage caches: the spokes carry an optional forage reward (the reason to detour + spend day/night time).
+	var cache_count: int = int(chunk.call("get_branch_cache_count"))
+	print("  [drop-down] branch caches=%d" % cache_count)
+	_assert_true(cache_count >= 2, "the branch spokes carry salvage caches to reward exploring them (got %d)" % cache_count)
+	var caches: Array = chunk.get("_branch_caches")
+	if not caches.is_empty():
+		var before_atp: int = int(chunk.call("get_branch_atp_collected"))
+		caches[0]["interactable"].interacted.emit()
+		var after_atp: int = int(chunk.call("get_branch_atp_collected"))
+		_assert_true(after_atp > before_atp, "reaching a branch cache banks ATP (%d -> %d)" % [before_atp, after_atp])
 	inst.queue_free()
 	await get_tree().process_frame
 
