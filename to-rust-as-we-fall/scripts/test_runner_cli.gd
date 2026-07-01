@@ -3290,8 +3290,11 @@ func _test_generated_stretch_walk() -> void:
 				best_cell = Vector2i(cx, cz)
 	_assert_true(best_d > 4.0, "there is a distant walkable cell to walk to (%.1f cells away)" % best_d)
 	var target: Vector3 = grid.grid_to_world(best_cell)
+	# On a spiral the deck is warped, so the CLICK must land on the helix (to_world of the flat cell); the arrival
+	# check below stays in the flat data frame (gs.get_position is flat). Flat scene => click == target unchanged.
+	var click_target: Vector3 = target if gs.coord_map == null else gs.coord_map.to_world(target)
 	# Real click → deck raycast → grid path → walk. Interleave scheduler time + frames (input/node sync).
-	_synthetic_player_move_click(inst, target)
+	_synthetic_player_move_click(inst, click_target)
 	for i in range(240):
 		inst.headless_advance(0.1, 0.05)
 		await get_tree().process_frame
@@ -12894,18 +12897,25 @@ func _test_generated_stretch_probe_coverage() -> void:
 	var gs = inst.get("_game_state")
 	if gs == null or gs.grid == null:
 		_assert_true(false, "grid present"); inst.queue_free(); await get_tree().process_frame; return
-	_assert_true(gs.coord_map == null, "generated_stretch is FLAT (no warp coord_map)")
+	# A generated stretch now renders as a SPIRAL: the data grid stays flat but a coord_map warps it onto a helix.
+	# So the deck the player's ray must find sits at coord_map.to_world(flat_cell), not at the flat cell. Probe the
+	# WARPED positions — every walkable cell must have deck collision on the helix, or clicks fall through it.
+	_assert_true(gs.coord_map != null, "generated_stretch renders as a SPIRAL (coord_map installed)")
+	var cm = gs.coord_map
 	var grid = gs.grid
 	var space = inst.get_world_3d().direct_space_state
 	var walkable := 0
 	var hits := 0
 	var misses: Array = []
+	var warped_pts: Array = []
 	for cz in range(grid.height):
 		for cx in range(grid.width):
 			if not grid.is_in_bounds(cx, cz) or not grid.is_walkable(cx, cz):
 				continue
 			walkable += 1
-			var world: Vector3 = grid.grid_to_world(Vector2i(cx, cz))
+			var flat: Vector3 = grid.grid_to_world(Vector2i(cx, cz))
+			var world: Vector3 = cm.to_world(flat) if cm != null else flat
+			warped_pts.append(world)
 			var q := PhysicsRayQueryParameters3D.create(world + Vector3(0, 6, 0), world - Vector3(0, 6, 0))
 			q.collision_mask = 1
 			var r: Dictionary = space.intersect_ray(q)
@@ -12913,11 +12923,26 @@ func _test_generated_stretch_probe_coverage() -> void:
 				misses.append(Vector2i(cx, cz))
 			else:
 				hits += 1
-	print("  [flat-probe] generated_stretch walkable=%d hits=%d MISSES=%d (%.1f%% have deck collision)" % [walkable, hits, misses.size(), 100.0 * float(hits) / float(maxi(1, walkable))])
+	print("  [spiral-probe] generated_stretch walkable=%d hits=%d MISSES=%d (%.1f%% have deck collision)" % [walkable, hits, misses.size(), 100.0 * float(hits) / float(maxi(1, walkable))])
 	if misses.size() > 0:
-		print("  [flat-probe] first misses: %s" % str(misses.slice(0, mini(12, misses.size()))))
+		print("  [spiral-probe] first misses: %s" % str(misses.slice(0, mini(12, misses.size()))))
 	_assert_true(walkable > 0, "generated_stretch has walkable cells to probe")
-	_assert_true(misses.size() == 0, "EVERY walkable cell has deck collision under it (misses=%d of %d)" % [misses.size(), walkable])
+	_assert_true(misses.size() == 0, "EVERY walkable cell has warped deck collision under it (misses=%d of %d)" % [misses.size(), walkable])
+	# Spiral-ness: the flat grid is a long thin corridor (span_x >> span_z). Warped onto a helix it should CURL —
+	# the world XZ footprint becomes far more square (it wraps a centre), and the deck CLIMBS (world Y varies well
+	# past a flat deck's thickness). A straight (unwarped) render would fail both. Guards the warp actually bends.
+	var minp: Vector3 = warped_pts[0]
+	var maxp: Vector3 = warped_pts[0]
+	for p in warped_pts:
+		minp = Vector3(minf(minp.x, p.x), minf(minp.y, p.y), minf(minp.z, p.z))
+		maxp = Vector3(maxf(maxp.x, p.x), maxf(maxp.y, p.y), maxf(maxp.z, p.z))
+	var span_x: float = maxp.x - minp.x
+	var span_z: float = maxp.z - minp.z
+	var span_y: float = maxp.y - minp.y
+	var flat_span_x := float(grid.width) * float(grid.grid_to_world(Vector2i(1, 0)).x - grid.grid_to_world(Vector2i(0, 0)).x)
+	print("  [spiral-probe] warped footprint span x=%.1f z=%.1f y=%.1f (flat grid width~%.1f)" % [span_x, span_z, span_y, absf(flat_span_x)])
+	_assert_true(span_z > 6.0, "the warp CURLS the corridor across a wide lateral span (z=%.1f — a straight deck would be near-zero)" % span_z)
+	_assert_true(span_y > 1.0, "the spiral CLIMBS (world Y span=%.1f > a flat deck's thickness)" % span_y)
 	inst.queue_free()
 	await get_tree().process_frame
 

@@ -514,7 +514,9 @@ func _on_play() -> void:
 	var inst := scene.instantiate()
 	inst.set("preview_menu", false)
 	inst.set("preview_chunk", "generated_stretch")
-	inst.set("preview_chunk_config", {"spec": spec})
+	# A hand-painted level plays as the flat layout the user drew — the spiral warp is for GENERATED stretches
+	# (a long procedural level curled compactly around a centre), not authored ones.
+	inst.set("preview_chunk_config", {"spec": spec, "spiral": false})
 	get_tree().root.add_child(inst)
 	get_tree().current_scene = inst
 	queue_free()

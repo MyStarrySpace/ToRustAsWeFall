@@ -3,6 +3,7 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 const StretchGeneratorScript := preload("res://scripts/generation/stretch_generator.gd")
 const CatalogScript := preload("res://scripts/generation/stretch_archetype_catalog.gd")
 const CapabilitiesScript := preload("res://scripts/generation/stretch_capabilities.gd")
+const SpiralCoordMapScript := preload("res://scripts/generation/spiral_coord_map.gd")
 
 const DEFAULT_SPEC_PATH := "res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"
 const PARTY_IDS := ["aster", "peris", "endo"]
@@ -13,6 +14,11 @@ const FULL_STAMINA := 100.0
 
 var _config: Dictionary = {}
 var _spec: Dictionary = {}
+# When the level is warped onto a helix (the default for a generated stretch — the player walks a linear grid
+# while the WORLD spirals around a centre), this is the flat-data<->warped-world map. Null = flat render. The
+# data layer (grid/movement/detection) stays flat regardless; only the floor render, node dressing, interactable
+# zones, and the installed GameState.coord_map (character render + click inverse) go through it.
+var _coord_map = null
 var _catalog := CatalogScript.new()
 var _node_markers: Dictionary = {}
 var _node_targets: Dictionary = {}
@@ -65,12 +71,55 @@ func _build_chunk() -> void:
 	_node_markers.clear()
 	_node_targets.clear()
 	_route_surfaces.clear()
+	_build_coord_map()
 	# The tiled walkable floor IS the level now — the old abstract scaffolding (a big foundation slab, straight
 	# route-connector boxes, big role pads, a palette legend) was redundant clutter over it, so it's gone. Only the
 	# floor + the per-node markers/interactables the player actually uses remain.
 	_build_foundation()
+	# Everything _build_generated_nodes adds (markers, labels, content, interactables, outline targets) is authored
+	# FLAT; capture the boundary so the warp pass below re-seats only those children onto the helix — the floor
+	# (warped at the vertex level in _build_walkable_floor) and the fill light keep their own transforms.
+	var flat_child_start := get_child_count()
 	_build_generated_nodes()
+	if _coord_map != null:
+		for i in range(flat_child_start, get_child_count()):
+			_warp_child(get_child(i))
 	reset_preview_state()
+
+## Whether this stretch renders as a helix (the default) or stays a flat grid. Generated stretches spiral so a
+## long level curls compactly around a centre (the player still walks a linear grid); a hand-authored builder
+## level or a test can opt OUT with config "spiral": false to keep the painted flat layout.
+func _spiral_enabled() -> bool:
+	return bool(_config.get("spiral", true))
+
+## Build the per-level spiral coord_map from this stretch's flat navigation grid (parameterised to its length),
+## or leave it null for a flat render. Cleared + rebuilt every time the chunk (re)builds.
+func _build_coord_map() -> void:
+	_coord_map = null
+	if not _spiral_enabled():
+		return
+	var nav: Dictionary = _spec.get("navigation_grid", {})
+	if nav.is_empty():
+		return
+	_coord_map = SpiralCoordMapScript.from_grid(nav)
+
+func get_coord_map():
+	return _coord_map
+
+## The warp transform at a flat point: on a spiral, the oriented helix frame (right = radial, up = world up,
+## forward = tangent) lifted per level; flat, just a translation. Used to place a slab/marker onto the deck.
+func _warp_xform(flat: Vector3) -> Transform3D:
+	if _coord_map == null:
+		return Transform3D(Basis.IDENTITY, flat)
+	return _coord_map.to_xform(flat)
+
+## Re-seat one already-built (flat-authored) child onto the helix at its own (s, lane) — its authored height above
+## the deck rides along (to_xform carries the per-level lift). Boxes/labels/zones all warp uniformly this way.
+func _warp_child(child: Node) -> void:
+	if not (child is Node3D):
+		return
+	var n3 := child as Node3D
+	n3.transform = _coord_map.to_xform(n3.position) * Transform3D(n3.basis, Vector3.ZERO)
 
 func get_scene_title() -> String:
 	_ensure_spec_loaded()
@@ -708,48 +757,47 @@ func _build_floor_surface(grid, lvl: int, cells: Array, risk: Dictionary, cell: 
 		if is_risk:
 			has_risk = true
 		# Top surface at floor Y (+0.02 so overlays read above it); a thin SOLID slab so the click-raycast
-		# reliably lands on it (a flat zero-thickness trimesh doesn't register a downward ray).
-		_add_floor_slab(st_risk if is_risk else st_main, Vector3(w.x, w.y + 0.02, w.z), h, 0.16)
+		# reliably lands on it (a flat zero-thickness trimesh doesn't register a downward ray). On a spiral the
+		# slab is built in the cell's helix frame (oriented to the deck tangent) so the whole floor curls; flat,
+		# _warp_xform is a plain translation and the slab is axis-aligned exactly as before.
+		_add_floor_slab(st_risk if is_risk else st_main, _warp_xform(w), h, 0.16)
 	_commit_floor_surface(st_main, "GeneratedFloor_L%d" % lvl, _tiled_floor_material("deck_metal"))
 	if has_risk:
 		_commit_floor_surface(st_risk, "GeneratedFloorRisk_L%d" % lvl, _tiled_floor_material("rust_iron"))
 
-func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, n: Vector3) -> void:
-	st.set_normal(n)
-	st.add_vertex(a)
-	st.add_vertex(b)
-	st.add_vertex(c)
+func _tri(st: SurfaceTool, xf: Transform3D, a: Vector3, b: Vector3, c: Vector3, n: Vector3) -> void:
+	st.set_normal((xf.basis * n).normalized())
+	st.add_vertex(xf * a)
+	st.add_vertex(xf * b)
+	st.add_vertex(xf * c)
 
-## A thin box (floor tile with thickness) whose TOP is at `top.y`. A closed solid so its trimesh collision is a
-## dependable ray target from above (a flat quad isn't). World-triplanar tiles the top; the ~0.16 sides read as a
-## floor lip.
-func _add_floor_slab(st: SurfaceTool, top: Vector3, h: float, thick: float) -> void:
-	var yt := top.y
-	var yb := top.y - thick
-	var x0 := top.x - h
-	var x1 := top.x + h
-	var z0 := top.z - h
-	var z1 := top.z + h
-	var A := Vector3(x0, yt, z0)
-	var B := Vector3(x1, yt, z0)
-	var C := Vector3(x1, yt, z1)
-	var D := Vector3(x0, yt, z1)
-	var E := Vector3(x0, yb, z0)
-	var F := Vector3(x1, yb, z0)
-	var G := Vector3(x1, yb, z1)
-	var H := Vector3(x0, yb, z1)
-	_tri(st, A, C, B, Vector3.UP)
-	_tri(st, A, D, C, Vector3.UP)          # top
-	_tri(st, E, F, G, Vector3.DOWN)
-	_tri(st, E, G, H, Vector3.DOWN)        # bottom
-	_tri(st, A, B, F, Vector3(0, 0, -1))
-	_tri(st, A, F, E, Vector3(0, 0, -1))   # -Z side
-	_tri(st, D, H, G, Vector3(0, 0, 1))
-	_tri(st, D, G, C, Vector3(0, 0, 1))    # +Z side
-	_tri(st, A, E, H, Vector3(-1, 0, 0))
-	_tri(st, A, H, D, Vector3(-1, 0, 0))   # -X side
-	_tri(st, B, C, G, Vector3(1, 0, 0))
-	_tri(st, B, G, F, Vector3(1, 0, 0))    # +X side
+## A thin box (floor tile with thickness) built in the cell frame `xf` — its TOP is at local y=0.02 (just above
+## the deck so overlays read), extending +/-h laterally and `thick` down. A closed solid so its trimesh collision
+## is a dependable ray target from above (a flat quad isn't). `xf` is a plain translation on a flat level and the
+## oriented helix frame on a spiral, so the same box code tiles a straight deck or curls onto the helix.
+func _add_floor_slab(st: SurfaceTool, xf: Transform3D, h: float, thick: float) -> void:
+	var yt := 0.02
+	var yb := 0.02 - thick
+	var A := Vector3(-h, yt, -h)
+	var B := Vector3(h, yt, -h)
+	var C := Vector3(h, yt, h)
+	var D := Vector3(-h, yt, h)
+	var E := Vector3(-h, yb, -h)
+	var F := Vector3(h, yb, -h)
+	var G := Vector3(h, yb, h)
+	var H := Vector3(-h, yb, h)
+	_tri(st, xf, A, C, B, Vector3.UP)
+	_tri(st, xf, A, D, C, Vector3.UP)          # top
+	_tri(st, xf, E, F, G, Vector3.DOWN)
+	_tri(st, xf, E, G, H, Vector3.DOWN)        # bottom
+	_tri(st, xf, A, B, F, Vector3(0, 0, -1))
+	_tri(st, xf, A, F, E, Vector3(0, 0, -1))   # -Z side
+	_tri(st, xf, D, H, G, Vector3(0, 0, 1))
+	_tri(st, xf, D, G, C, Vector3(0, 0, 1))    # +Z side
+	_tri(st, xf, A, E, H, Vector3(-1, 0, 0))
+	_tri(st, xf, A, H, D, Vector3(-1, 0, 0))   # -X side
+	_tri(st, xf, B, C, G, Vector3(1, 0, 0))
+	_tri(st, xf, B, G, F, Vector3(1, 0, 0))    # +X side
 
 func _commit_floor_surface(st: SurfaceTool, node_name: String, mat: Material) -> void:
 	var mesh := st.commit()

@@ -324,6 +324,7 @@ func _begin_chunk() -> void:
 	_active_chunk = _load_chunk(preview_chunk)
 	_pdbg("load_environment_model")
 	_load_environment_model()
+	_maybe_install_chunk_coord_map()
 	_pdbg("connect_outline_feedback")
 	_connect_outline_feedback_sources(self)
 	_connect_push_targets(self)
@@ -399,6 +400,22 @@ func _load_environment_model() -> void:
 		# (narrow set-pieces, chord-vs-curve branch boxes), so ~30% of walkable cells had no deck to ray-hit and
 		# were un-clickable. This makes collision == walkable by construction for ANY coord_map chunk.
 		_add_warped_walkable_collision()
+
+## A chunk can WARP its OWN procedural geometry (the generated stretch builds its tiled floor + node dressing
+## pre-warped onto a helix) and expose a coord_map WITHOUT an environment GLB. Install it so character render +
+## the click inverse run through the same warp the geometry used. The GLB path above already installs one for a
+## modeled scene (guarded here so we never double-install); and because the chunk warps its own interactable
+## zones at build, we deliberately do NOT call warp_interactables_onto_coord_map (that would double-warp them).
+func _maybe_install_chunk_coord_map() -> void:
+	if _game_state == null or _game_state.coord_map != null:
+		return
+	if _active_chunk == null or not _active_chunk.has_method("get_coord_map"):
+		return
+	var cm = _active_chunk.call("get_coord_map")
+	if cm == null:
+		return
+	_game_state.coord_map = cm
+	_pdbg("chunk coord_map installed (self-warped chunk, no env model)")
 
 ## Walkable surfaces of the environment model get trimesh collision on layer 1 (the ground layer the
 ## player ray queries), so a click lands on the deck under the cursor — its world height is what
