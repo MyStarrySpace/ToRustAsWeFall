@@ -357,6 +357,9 @@ func _ready() -> void:
 			"--test-stretch-branches":
 				ran_test = true
 				await _test_stretch_branches()
+			"--test-hub-shapes":
+				ran_test = true
+				await _test_hub_shapes()
 			"--test-generated-solution-replay":
 				ran_test = true
 				await _test_generated_solution_replay()
@@ -1135,6 +1138,7 @@ func _run_all_tests() -> void:
 	await _test_generated_stretch_probe_coverage()
 	await _test_spiral_drop_down()
 	await _test_stretch_branches()
+	await _test_hub_shapes()
 	await _test_generated_solution_replay()
 	await _test_generated_solution_realinput()
 	await _test_channels_pipe_splash()
@@ -13108,6 +13112,46 @@ func _branch_shapes(branches: Array) -> Array:
 	for b in branches:
 		out.append(str(b.get("shape", "")))
 	return out
+
+## Parameterised hub SHAPE: HubShapeCoordMap wraps the flat stretch around ANY shape (circle/rect/hexagon/polygon)
+## as its hub. Assert per shape: the flat<->world warp ROUND-TRIPS (a click on the deck inverts back to its flat
+## cell), the warp CURLS the corridor into a compact hub footprint (not a straight line), and it DESCENDS. Proves
+## "plug any shape in as a parameter" holds — the inverse is what makes clicks land on the deck for every shape.
+func _test_hub_shapes() -> void:
+	_test_name = "Hub Shapes"
+	var HubShape = load("res://scripts/generation/hub_shape_coord_map.gd")
+	var nav := {"origin": [0.0, 0.45, 0.0], "cell_size": 1.0, "width": 60, "height": 10}
+	# Mid-edge s samples (avoid exact polygon corners, where the nearest-edge inverse is ambiguous by design).
+	var s_samples := [5.0, 13.0, 23.0, 34.0, 47.0]
+	# Deck z sits around the centreline (lane_center = origin.z + height/2 = 5); sample real deck offsets there.
+	var lane_center := 0.0 + 10.0 * 0.5
+	var lanes := [lane_center - 3.0, lane_center, lane_center + 3.0]
+	for shape in [{"type": "circle"}, {"type": "rect", "aspect": 1.8}, {"type": "hexagon"}, {"type": "triangle"}, {"type": "polygon", "points": [[-3, -2], [3, -2], [4, 1], [0, 3], [-4, 1]]}]:
+		var cm = HubShape.from_grid(nav, shape)
+		var max_err := 0.0
+		var worst := ""
+		var minp := Vector3(1e9, 1e9, 1e9)
+		var maxp := Vector3(-1e9, -1e9, -1e9)
+		for s in s_samples:
+			for lane in lanes:
+				var flat := Vector3(float(s), 0.45, float(lane))
+				var world: Vector3 = cm.to_world(flat)
+				var back: Vector3 = cm.to_data(world)
+				var e := maxf(absf(back.x - flat.x), absf(back.z - flat.z))
+				if e > max_err:
+					max_err = e
+					worst = "s=%.0f lane=%.0f -> back s=%.1f z=%.1f" % [flat.x, flat.z - lane_center, back.x, back.z]
+				max_err = maxf(max_err, absf(back.x - flat.x))
+				max_err = maxf(max_err, absf(back.z - flat.z))
+				minp = Vector3(minf(minp.x, world.x), minf(minp.y, world.y), minf(minp.z, world.z))
+				maxp = Vector3(maxf(maxp.x, world.x), maxf(maxp.y, world.y), maxf(maxp.z, world.z))
+		var span_x := maxp.x - minp.x
+		var span_z := maxp.z - minp.z
+		var span_y := maxp.y - minp.y
+		print("  [hub] shape=%-8s perimeter=%.1f roundtrip_err=%.3f (worst: %s) | footprint x=%.1f z=%.1f y=%.1f" % [str(shape.get("type", "")), cm.period_s(), max_err, worst, span_x, span_z, span_y])
+		_assert_true(max_err < 0.75, "shape %s: a click on the deck inverts back to its flat cell (round-trip err %.3f)" % [str(shape.get("type", "")), max_err])
+		_assert_true(span_x > 4.0 and span_z > 4.0, "shape %s: the warp CURLS the corridor into a hub footprint (x=%.1f z=%.1f)" % [str(shape.get("type", "")), span_x, span_z])
+		_assert_true(span_y > 1.0, "shape %s: the hub DESCENDS (y span=%.1f)" % [str(shape.get("type", "")), span_y])
 
 ## Solution-as-data: a generated puzzle emits its SOLUTION (spec.headless.solution — the ordered per-node approach
 ## for the golden path). This proves (1) the same seed regenerates the IDENTICAL puzzle + solution (determinism),

@@ -8,16 +8,23 @@ extends SceneTree
 func _init() -> void:
 	DisplayServer.window_set_size(Vector2i(1360, 900))
 	var seed_val := 7
+	var shape_name := ""
 	for a in OS.get_cmdline_user_args():
 		if str(a).begins_with("--seed="):
 			seed_val = int(str(a).split("=")[1])
+		elif str(a).begins_with("--shape="):
+			shape_name = str(a).split("=")[1]
 
 	var StretchGen = load("res://scripts/generation/stretch_generator.gd")
 	# A long (setpiece) stretch so it wraps 2+ turns and the meta-template's drop/climbvine return points appear.
 	var spec: Dictionary = StretchGen.generate({"seed": seed_val, "complexity_tier": "setpiece", "id": "spiral_capture", "budget": {"node_count": 12}})
+	var config := {"spec": spec}
+	# Plug the hub SHAPE in as a parameter: --shape=rect / hexagon / triangle / circle (default circle == spiral).
+	if shape_name != "":
+		config["hub_shape"] = {"type": "rect", "aspect": 1.7} if shape_name == "rect" else {"type": shape_name}
 
 	var chunk: Node3D = load("res://scripts/fragments/chunks/generated_stretch_chunk.gd").new()
-	chunk.call("configure_chunk", {"spec": spec})   # loads the spec before _ready builds it
+	chunk.call("configure_chunk", config)   # loads the spec before _ready builds it
 	get_root().add_child(chunk)                       # _ready -> _build_chunk (warps floor + dressing)
 	for i in range(30):
 		await process_frame
@@ -43,7 +50,8 @@ func _init() -> void:
 	for i in range(8):
 		await process_frame
 	await RenderingServer.frame_post_draw
-	var out := "res://spiral_capture_seed%d.png" % seed_val
+	var tag := shape_name if shape_name != "" else "circle"
+	var out := "res://spiral_capture_%s_seed%d.png" % [tag, seed_val]
 	get_root().get_texture().get_image().save_png(out)
-	print("[CAPTURE] generated spiral (seed %d) -> %s | coord_map=%s" % [seed_val, out, str(cm != null)])
+	print("[CAPTURE] generated hub (shape=%s seed %d) -> %s | coord_map=%s" % [tag, seed_val, out, str(cm != null)])
 	quit()

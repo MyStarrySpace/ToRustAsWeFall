@@ -124,14 +124,20 @@ func _spiral_enabled() -> bool:
 		return false
 	return true
 
-## Resolve the META-TEMPLATE (macro shape) for this stretch: the spiral for a generated level, or the flat base
-## for an authored/opted-out one. A future config "meta_template" selects other shapes (rectangle/ring hub).
+## Resolve the META-TEMPLATE (macro shape) for this stretch. The hub SHAPE is a PARAMETER: pass config
+## "hub_shape" = {type:"circle"|"rect"|"hexagon"|"triangle"|"polygon", ...} to generate the level AROUND that shape
+## as its hub (circle == the plain spiral). Flat/authored levels get the no-warp base template.
 func _resolve_meta_template() -> MetaTemplate:
 	if not _spiral_enabled():
 		return MetaTemplate.new()
+	var shape = _config.get("hub_shape", null)
+	if shape is Dictionary and not (shape as Dictionary).is_empty():
+		return HubMetaTemplate.new(shape)
 	match str(_config.get("meta_template", "spiral")):
 		"flat":
 			return MetaTemplate.new()
+		"hub":
+			return HubMetaTemplate.new({"type": "circle"})
 		_:
 			return SpiralMetaTemplate.new()
 
