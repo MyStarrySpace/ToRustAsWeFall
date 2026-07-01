@@ -9,19 +9,27 @@ extends MetaTemplate
 
 const HubShapeCoordMapScript := preload("res://scripts/generation/hub_shape_coord_map.gd")
 const _MAX_RETURN_POINTS := 4
+const DEFAULT_BASE_CELLS := 10
 
 var _shape: Dictionary = {"type": "circle"}
+var _base_cells := DEFAULT_BASE_CELLS
 
 func _init(shape := {"type": "circle"}) -> void:
 	_shape = shape.duplicate(true) if shape is Dictionary else {"type": "circle"}
+	# The shape can carry its own base depth (0 = no base floor); default a modest base.
+	_base_cells = int(_shape.get("base_cells", DEFAULT_BASE_CELLS))
 
 func template_id() -> String:
 	return "hub:%s" % str(_shape.get("type", "circle"))
 
+## Flat cells of the flat BASE FLOOR (the shape as a floor) the chunk prepends before the entry. 0 = no base.
+func base_cells() -> int:
+	return maxi(0, _base_cells)
+
 func build_coord_map(spine_nav: Dictionary):
 	if spine_nav.is_empty():
 		return null
-	return HubShapeCoordMapScript.from_grid(spine_nav, _shape)
+	return HubShapeCoordMapScript.from_grid(spine_nav, _shape, 0.0, 6.0, 0.45, base_cells())
 
 func return_point_specs(spine_nav: Dictionary, coord_map) -> Array:
 	if coord_map == null or spine_nav.is_empty():

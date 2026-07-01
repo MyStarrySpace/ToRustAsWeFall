@@ -360,6 +360,9 @@ func _ready() -> void:
 			"--test-hub-shapes":
 				ran_test = true
 				await _test_hub_shapes()
+			"--test-hub-base-playable":
+				ran_test = true
+				await _test_hub_base_playable()
 			"--test-generated-solution-replay":
 				ran_test = true
 				await _test_generated_solution_replay()
@@ -1139,6 +1142,7 @@ func _run_all_tests() -> void:
 	await _test_spiral_drop_down()
 	await _test_stretch_branches()
 	await _test_hub_shapes()
+	await _test_hub_base_playable()
 	await _test_generated_solution_replay()
 	await _test_generated_solution_realinput()
 	await _test_channels_pipe_splash()
@@ -13113,6 +13117,81 @@ func _branch_shapes(branches: Array) -> Array:
 		out.append(str(b.get("shape", "")))
 	return out
 
+## The BASE must be PLAYABLE: boot a hub-shape stretch with a base floor and assert the base is real, flat, and
+## connected — it's added to the installed grid, its cells are FLAT at y0 (a floor, not warped), every base cell
+## has warped deck collision (a click lands), the base is path-connected to the exit shelter, and a REAL ground
+## click walks the player across the base. Also: the base connects to the entry, and the EXIT stays at the far end.
+func _test_hub_base_playable() -> void:
+	_test_name = "Hub Base Playable"
+	var spec: Dictionary = StretchGeneratorScript.generate({"seed": 5, "complexity_tier": "standard", "id": "hub_base", "budget": {"node_count": 6}})
+	var spine_w := int(spec.get("navigation_grid", {}).get("width", 0))
+	var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 8, {"spec": spec, "hub_shape": {"type": "rect", "aspect": 1.6}})
+	if inst == null:
+		_assert_true(false, "hub-shape stretch boots"); return
+	for i in range(6):
+		await get_tree().process_frame
+	for i in range(4):
+		await get_tree().physics_frame
+	var gs = inst.get("_game_state")
+	if gs == null or gs.grid == null or gs.coord_map == null:
+		_assert_true(false, "grid + coord_map installed"); inst.queue_free(); await get_tree().process_frame; return
+	var grid = gs.grid
+	var cm = gs.coord_map
+	# The base floor was prepended: the installed grid is wider than the bare spine.
+	print("  [hub-base] spine width=%d -> grid width=%d (base prepended)" % [spine_w, grid.width])
+	_assert_true(grid.width > spine_w, "the base floor is added to the playable grid (width %d > spine %d)" % [grid.width, spine_w])
+	# The base columns (first ~10) are FLAT at y0 (a floor), and have warped deck collision (a click lands).
+	var space = inst.get_world_3d().direct_space_state
+	var flat_dev := 0.0
+	var base_hits := 0
+	var base_probed := 0
+	var mid := int(grid.height / 2)
+	for bx in range(mini(8, grid.width)):
+		if not grid.is_walkable(bx, mid):
+			continue
+		base_probed += 1
+		var world: Vector3 = cm.to_world(grid.grid_to_world(Vector2i(bx, mid)))
+		flat_dev = maxf(flat_dev, absf(world.y - 0.45))
+		var q := PhysicsRayQueryParameters3D.create(world + Vector3(0, 6, 0), world - Vector3(0, 6, 0))
+		q.collision_mask = 1
+		if not space.intersect_ray(q).is_empty():
+			base_hits += 1
+	print("  [hub-base] base cells probed=%d deck-hits=%d flat_dev=%.3f" % [base_probed, base_hits, flat_dev])
+	_assert_true(base_probed >= 4, "the base has walkable floor cells (%d)" % base_probed)
+	_assert_true(flat_dev < 0.3, "the base stays FLAT at y0 — a real floor (dev=%.3f)" % flat_dev)
+	_assert_equals(base_hits, base_probed, "every base cell has warped deck collision (a click lands on the base)")
+	# The base is path-connected to the EXIT shelter (the whole thing is traversable, base -> deck -> exit).
+	var exit_world: Vector3 = inst.get("_active_chunk").call("get_generated_node_position", "exit_shelter")
+	var start_base := Vector2i(2, mid)
+	var conn := false
+	if grid.is_walkable(start_base.x, start_base.y) and exit_world != Vector3.INF:
+		var exit_cell: Vector2i = grid.world_to_grid(exit_world)
+		conn = not grid.find_multi_level_path(start_base, 0, exit_cell, 0).is_empty()
+	_assert_true(conn, "the base is path-connected to the exit shelter (base -> deck -> exit is traversable)")
+	# PLAYABLE: a real ground click on the deck walks the player a long way (spawned on/near the base).
+	var start_pos: Vector3 = gs.get_position("aster")
+	var far_cell := start_base
+	var far_d := -1.0
+	for cz in range(grid.height):
+		for cx in range(grid.width):
+			if not grid.is_walkable(cx, cz):
+				continue
+			var d := Vector2(start_pos.x, start_pos.z).distance_to(Vector2(grid.grid_to_world(Vector2i(cx, cz)).x, grid.grid_to_world(Vector2i(cx, cz)).z))
+			if d > far_d:
+				far_d = d; far_cell = Vector2i(cx, cz)
+	var click_target: Vector3 = cm.to_world(grid.grid_to_world(far_cell))
+	_synthetic_player_move_click(inst, click_target)
+	for i in range(240):
+		inst.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+		if gs.get_position("aster").distance_to(gs.grid.grid_to_world(far_cell)) < 1.5:
+			break
+	var moved: float = gs.get_position("aster").distance_to(start_pos)
+	print("  [hub-base] real click moved the player %.1f units across the hub" % moved)
+	_assert_true(moved > 3.0, "a real ground click walks the player across the hub+base (moved %.1f)" % moved)
+	inst.queue_free()
+	await get_tree().process_frame
+
 ## Parameterised hub SHAPE: HubShapeCoordMap wraps the flat stretch around ANY shape (circle/rect/hexagon/polygon)
 ## as its hub. Assert per shape: the flat<->world warp ROUND-TRIPS (a click on the deck inverts back to its flat
 ## cell), the warp CURLS the corridor into a compact hub footprint (not a straight line), and it DESCENDS. Proves
@@ -13152,6 +13231,28 @@ func _test_hub_shapes() -> void:
 		_assert_true(max_err < 0.75, "shape %s: a click on the deck inverts back to its flat cell (round-trip err %.3f)" % [str(shape.get("type", "")), max_err])
 		_assert_true(span_x > 4.0 and span_z > 4.0, "shape %s: the warp CURLS the corridor into a hub footprint (x=%.1f z=%.1f)" % [str(shape.get("type", "")), span_x, span_z])
 		_assert_true(span_y > 1.0, "shape %s: the hub DESCENDS (y span=%.1f)" % [str(shape.get("type", "")), span_y])
+
+	# THE BASE: a flat central floor (the shape as a floor) before the perimeter, that the ENTRY shelter sits on.
+	# Enable it (base_cells>0) and assert: base cells are FLAT (at y0, no descent), round-trip exactly, and join the
+	# deck seamlessly at s=0 (the last base cell and the first deck cell are adjacent in the world — walkable).
+	var cm_base = HubShape.from_grid({"origin": [0.0, 0.45, 0.0], "cell_size": 1.0, "width": 68, "height": 10}, {"type": "rect", "aspect": 1.6}, 0.0, 6.0, 0.45, 8)
+	var base_flat := 0.0
+	var base_max_err := 0.0
+	for bs in [-1.0, -3.0, -6.0]:           # base region is s in [-8, 0)
+		for lane in lanes:
+			var flat := Vector3(cm_base.s_offset + bs, 0.45, float(lane))
+			var world: Vector3 = cm_base.to_world(flat)
+			var back: Vector3 = cm_base.to_data(world)
+			base_max_err = maxf(base_max_err, maxf(absf(back.x - flat.x), absf(back.z - flat.z)))
+			base_flat = maxf(base_flat, absf(world.y - 0.45))   # base must stay FLAT at y0
+	# Seam: the last base cell (s=0-) and the first deck cell (s=0+) at the same lane sit ~1 cell apart (walkable).
+	var seam_flat := Vector3(cm_base.s_offset - 0.001, 0.45, lane_center)
+	var seam_deck := Vector3(cm_base.s_offset + 1.0, 0.45, lane_center)
+	var seam_gap: float = cm_base.to_world(seam_flat).distance_to(cm_base.to_world(seam_deck))
+	print("  [hub-base] round-trip err=%.3f | base flat dev=%.3f | seam gap=%.2f" % [base_max_err, base_flat, seam_gap])
+	_assert_true(base_max_err < 0.4, "base cells round-trip exactly (a click on the base lands, err=%.3f)" % base_max_err)
+	_assert_true(base_flat < 0.05, "the base stays FLAT at y0 (no descent) — a real floor (dev=%.3f)" % base_flat)
+	_assert_true(seam_gap < 2.0, "the base joins the deck SEAMLESSLY at the entry (gap=%.2f, walkable)" % seam_gap)
 
 ## Solution-as-data: a generated puzzle emits its SOLUTION (spec.headless.solution — the ordered per-node approach
 ## for the golden path). This proves (1) the same seed regenerates the IDENTICAL puzzle + solution (determinism),

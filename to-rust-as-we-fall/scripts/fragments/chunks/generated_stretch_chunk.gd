@@ -168,6 +168,13 @@ func _ensure_woven_grid() -> void:
 		})
 	else:
 		_woven_nav = spine.duplicate(true)
+	# The hub template's flat BASE FLOOR (the shape as a floor) — prepend it before the entry so the party rests +
+	# walks on it, then steps onto the descending deck. The coord_map maps these front cells (s < 0) to the flat base.
+	var base_n := 0
+	if _meta_template != null and _meta_template.has_method("base_cells"):
+		base_n = int(_meta_template.call("base_cells"))
+	if base_n > 0:
+		_woven_nav = _prepend_base_to_grid(_woven_nav, base_n)
 
 ## Deterministic seed for the branch weave — from the level's own seed so the same spec always grows the same
 ## spokes (replay-safe; the chunk reproduces them every build).
@@ -177,6 +184,95 @@ func _weave_seed() -> int:
 func _nav_grid() -> Dictionary:
 	_ensure_woven_grid()
 	return _woven_nav if not _woven_nav.is_empty() else _spec.get("navigation_grid", {})
+
+## Prepend a flat BASE FLOOR block (base_cells x height) BEFORE the spine (cells x < 0), connected to the entry
+## column, then renormalise so indices are >= 0 again — shifting the origin in lockstep preserves every spine
+## cell's WORLD position (so the coord_map, built on the spine, still lines up; base cells land at world x < the
+## spine origin, which the coord_map maps to s < 0 = the flat base). The base is a full-height rectangle so the
+## whole entry face connects to it. Records _base_x_range for placing the entry shelter + spawn on the base.
+var _base_x_range := Vector2i(0, 0)   # [min_x, max_x) of base columns in the FINAL (shifted) grid; empty if none
+func _prepend_base_to_grid(nav: Dictionary, base_cells: int) -> Dictionary:
+	if base_cells <= 0 or nav.is_empty():
+		return nav
+	var out: Dictionary = nav.duplicate(true)
+	var cs := float(nav.get("cell_size", 1.0))
+	var height := int(nav.get("height", 1))
+	var cells := {}
+	for c in nav.get("walkable_cells", []):
+		cells[Vector2i(int(c[0]), int(c[1]))] = true
+	for bx in range(-base_cells, 0):
+		for bz in range(height):
+			cells[Vector2i(bx, bz)] = true
+	# Renormalise (shift so min index = 0); origin shifts the opposite way so world positions are preserved.
+	var min_x := 0x7fffffff; var min_z := 0x7fffffff; var max_x := -0x7fffffff; var max_z := -0x7fffffff
+	for v in cells.keys():
+		min_x = mini(min_x, v.x); min_z = mini(min_z, v.y); max_x = maxi(max_x, v.x); max_z = maxi(max_z, v.y)
+	var shift := Vector2i(min_x, min_z)
+	var origin: Array = out.get("origin", [0.0, 0.45, 0.0])
+	out["origin"] = [float(origin[0]) + float(shift.x) * cs, float(origin[1]), float(origin[2]) + float(shift.y) * cs]
+	out["width"] = (max_x - min_x) + 1
+	out["height"] = (max_z - min_z) + 1
+	out["walkable_cells"] = _shift_cell_list(cells.keys(), shift)
+	out["risk_cell_list"] = _shift_risk_list(out.get("risk_cell_list", []), shift)
+	out["route_cells"] = _shift_route_cells(out.get("route_cells", {}), shift)
+	out["links"] = _shift_link_list(out.get("links", []), shift)
+	var level_cells: Array = out.get("level_cells", [])
+	if not level_cells.is_empty():
+		var base_set := {}
+		for bx in range(-base_cells, 0):
+			for bz in range(height):
+				base_set[Vector2i(bx, bz)] = true
+		out["level_cells"] = _shift_levels_with_base(level_cells, base_set, shift)
+	# The base columns, in the FINAL shifted frame, are the first base_cells columns.
+	_base_x_range = Vector2i(0, base_cells)
+	return out
+
+func _shift_cell_list(keys, shift: Vector2i) -> Array:
+	var arr: Array = []
+	for v in keys:
+		arr.append(v)
+	arr.sort_custom(func(p, q): return (p.y * 100000 + p.x) < (q.y * 100000 + q.x))
+	var out: Array = []
+	for v in arr:
+		out.append([v.x - shift.x, v.y - shift.y])
+	return out
+
+func _shift_risk_list(risk_list: Array, shift: Vector2i) -> Array:
+	var out: Array = []
+	for r in risk_list:
+		var c: Array = r.get("cell", [0, 0])
+		out.append({"cell": [int(c[0]) - shift.x, int(c[1]) - shift.y], "penalty": float(r.get("penalty", 0.0)), "recoverable": bool(r.get("recoverable", true))})
+	return out
+
+func _shift_route_cells(route_cells: Dictionary, shift: Vector2i) -> Dictionary:
+	var out := {}
+	for rid in route_cells.keys():
+		var src: Dictionary = route_cells[rid]
+		var cells_out: Array = []
+		for c in src.get("cells", []):
+			cells_out.append([int(c[0]) - shift.x, int(c[1]) - shift.y])
+		out[rid] = {"cells": cells_out, "kind": str(src.get("kind", ""))}
+	return out
+
+func _shift_link_list(links: Array, shift: Vector2i) -> Array:
+	var out: Array = []
+	for lk in links:
+		var c: Array = lk.get("cell", [0, 0])
+		out.append({"cell": [int(c[0]) - shift.x, int(c[1]) - shift.y], "from": int(lk.get("from", 0)), "to": int(lk.get("to", 0)), "type": str(lk.get("type", "ramp"))})
+	return out
+
+func _shift_levels_with_base(level_cells: Array, base_set: Dictionary, shift: Vector2i) -> Array:
+	var out: Array = []
+	for entry in level_cells:
+		var lvl := int(entry.get("level", 0))
+		var lset := {}
+		for c in entry.get("cells", []):
+			lset[Vector2i(int(c[0]), int(c[1]))] = true
+		if lvl == 0:
+			for c in base_set.keys():
+				lset[c] = true
+		out.append({"level": lvl, "cells": _shift_cell_list(lset.keys(), shift)})
+	return out
 
 ## The warp transform at a flat point: on a spiral, the oriented helix frame (right = radial, up = world up,
 ## forward = tangent) lifted per level; flat, just a translation. Used to place a slab/marker onto the deck.

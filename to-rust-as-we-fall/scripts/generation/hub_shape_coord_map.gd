@@ -18,6 +18,11 @@ var s_offset := 0.0
 var lane_center := 0.0
 var perimeter := 1.0       # arc-length of one loop around the shape (in the same units as s / cells)
 var shape_id := "circle"
+# The BASE: a flat central floor (the shape as a floor) at y0 that the ENTRY shelter connects to. It occupies the
+# flat cells BEFORE the perimeter start (s < 0), mapped to a flat rectangle at the hub centre — NOT warped, so the
+# player rests + walks on it, then steps out onto the descending deck. base_span = 0 -> no base (plain hub/spiral).
+var base_span := 0.0       # flat-s extent of the base region (cells before s=0)
+var base_half_lane := 0.0  # lateral half-width of the base rectangle (world units, = deck half-width)
 # Edges of the (centred) shape polygon in the XZ plane: each {a:Vector2, b:Vector2, len:float, cum:float,
 # tan:Vector2 (unit a->b), nrm:Vector2 (unit outward)}.
 var _edges: Array = []
@@ -27,13 +32,18 @@ const MIN_INRADIUS_PAD := 4.0   # keep the shape big enough that the inner deck 
 ## Build from a unified_grid_v1 grid + a shape descriptor:
 ##   {type:"circle"} | {type:"rect", aspect:float} | {type:"polygon", points:[[x,y],...] (centred, any scale)}
 ## `turns` ~ loops around the shape; `descent_per_turn` = world-units dropped per loop.
-static func from_grid(grid_data: Dictionary, shape := {}, turns := 0.0, descent_per_turn := 6.0, base_y := 0.45) -> HubShapeCoordMap:
+static func from_grid(grid_data: Dictionary, shape := {}, turns := 0.0, descent_per_turn := 6.0, base_y := 0.45, base_cells := 0) -> HubShapeCoordMap:
 	var m := HubShapeCoordMap.new()
 	var origin: Array = grid_data.get("origin", [0.0, 0.45, 0.0])
 	var cs := float(grid_data.get("cell_size", 1.0))
+	# Build from the SPINE grid: its width IS the perimeter length. The base is a SEPARATE flat region the chunk
+	# prepends at world x < origin.x, so s = 0 (the entry / perimeter start) stays at the spine's origin.x and base
+	# cells (world x < origin.x) map to s < 0. r0/height therefore size off the real spine, not base+branches.
 	var w := float(int(grid_data.get("width", 1))) * cs
 	var h := float(int(grid_data.get("height", 1))) * cs
 	var t: float = turns if turns > 0.0 else clampf(w / 40.0, 1.0, 2.5)
+	m.base_span = float(base_cells) * cs
+	m.base_half_lane = h * 0.5
 	m.s_offset = float(origin[0])
 	m.lane_center = float(origin[2]) + h * 0.5
 	m.y0 = base_y
@@ -274,18 +284,59 @@ func world_to_arc(world: Vector3) -> Dictionary:
 func period_s() -> float:
 	return perimeter
 
+# --- the base: a flat central floor before the perimeter (s < 0) ----------------------------------------------
+
+## The base is a flat rectangle at the hub centre at y0. It joins the deck SEAMLESSLY at s = 0: the entry cross-
+## section (radial, along the entry normal) is continued backward along the entry TANGENT, so a member walks off
+## the base straight onto the deck. lane keeps the deck's radial meaning; s (negative) runs backward off the rim.
+func _base_world(s: float, lane: float) -> Vector3:
+	var e := _sample(0.0)
+	var pt: Vector2 = e["pt"]
+	var nrm: Vector2 = e["nrm"]
+	var tan: Vector2 = e["tan"]
+	var planar := pt + nrm * lane + tan * s   # s<0 -> backward along the entry tangent, flat
+	return Vector3(center.x + planar.x, y0, center.z + planar.y)
+
+func _base_data(world: Vector3) -> Dictionary:
+	var e := _sample(0.0)
+	var pt: Vector2 = e["pt"]
+	var nrm: Vector2 = e["nrm"]
+	var tan: Vector2 = e["tan"]
+	var v := Vector2(world.x - center.x, world.z - center.z) - pt
+	return {"s": v.dot(tan), "lane": v.dot(nrm)}
+
+## Is this flat point (s already offset) in the base region?
+func _is_base_s(s: float) -> bool:
+	return base_span > 0.0 and s < 0.0
+
 # --- coord_map interface --------------------------------------------------------------------------------------
 
 func to_world(p: Vector3) -> Vector3:
-	return arc_pos(p.x - s_offset, p.z - lane_center) + Vector3.UP * (p.y - y0)
+	var s := p.x - s_offset
+	if _is_base_s(s):
+		return _base_world(s, p.z - lane_center) + Vector3.UP * (p.y - y0)
+	return arc_pos(s, p.z - lane_center) + Vector3.UP * (p.y - y0)
 
 func to_data(w: Vector3) -> Vector3:
+	# Base if the world point sits on the flat base rectangle (near y0, backward off the entry rim); else perimeter.
+	if base_span > 0.0:
+		var b := _base_data(w)
+		if float(b["s"]) < 0.0 and float(b["s"]) > -base_span - 1.0 and absf(float(b["lane"])) < base_half_lane + 1.0 and absf(w.y - y0) < 1.5:
+			return Vector3(float(b["s"]) + s_offset, y0, float(b["lane"]) + lane_center)
 	var r := world_to_arc(w)
 	return Vector3(float(r["s"]) + s_offset, y0, float(r["lane"]) + lane_center)
 
 func to_basis(p: Vector3) -> Basis:
-	return basis_at(p.x - s_offset)
+	var s := p.x - s_offset
+	if _is_base_s(s):
+		var e := _sample(0.0)
+		var nrm: Vector2 = e["nrm"]
+		var tan: Vector2 = e["tan"]
+		return Basis(Vector3(nrm.x, 0.0, nrm.y), Vector3.UP, Vector3(tan.x, 0.0, tan.y))
+	return basis_at(s)
 
 func to_xform(p: Vector3) -> Transform3D:
 	var s := p.x - s_offset
+	if _is_base_s(s):
+		return Transform3D(to_basis(p), _base_world(s, p.z - lane_center) + Vector3.UP * (p.y - y0))
 	return Transform3D(basis_at(s), arc_pos(s, p.z - lane_center) + Vector3.UP * (p.y - y0))
