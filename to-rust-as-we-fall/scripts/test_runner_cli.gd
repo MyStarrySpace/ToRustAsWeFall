@@ -13135,11 +13135,19 @@ func _test_chunk_atoms() -> void:
 	for arch in ["holdfast", "redirect", "vinebridge", "split"]:
 		var chunk: Dictionary = Chunk.generate(arch, 7)
 		print(Chunk.render_ascii(chunk))
-		var v: Dictionary = Chunk.verify_gated(chunk)
+		var v: Dictionary = Chunk.verify(chunk)
 		_assert_true(bool(v["locked_blocks"]), "%s: you CANNOT walk start->end without solving (locked blocks it)" % arch)
 		_assert_true(bool(v["solved_connects"]), "%s: solving the puzzle OPENS start->end" % arch)
-		# The end must genuinely be behind the gate (not trivially adjacent to start).
 		_assert_true(Vector2i(chunk["start"]).distance_to(Vector2i(chunk["end"])) > 4.0, "%s: the end is across the room from the start" % arch)
+	# DEEPER NESTING: a chunk that is a puzzle-to-reach-the-puzzle — a chain of gates, each behind the last.
+	print("\n[chunks] DEEPER NESTING — each gate's mechanism sits past the previous gate (a puzzle inside a puzzle):\n")
+	var nested: Dictionary = Chunk.compose(["redirect", "holdfast", "vinebridge"], 7)
+	print(Chunk.render_ascii(nested))
+	var nv: Dictionary = Chunk.verify(nested)
+	_assert_equals(int((nested["gates"] as Array).size()), 3, "the nested chunk has 3 gates")
+	_assert_true(bool(nv["locked_blocks"]), "nested: end is unreachable while any gate is shut")
+	_assert_true(bool(nv["solved_connects"]), "nested: solving ALL gates opens start->end")
+	_assert_true(bool(nv["ordering_ok"]), "nested: each gate's mechanism is reachable ONLY after the previous gate opens (real nesting)")
 	# Deterministic + varied across seeds.
 	_assert_equals(str(Chunk.generate("holdfast", 3)["grid"]), str(Chunk.generate("holdfast", 3)["grid"]), "same seed -> same chunk")
 	_assert_true(str(Chunk.generate("holdfast", 3)["grid"]) != str(Chunk.generate("holdfast", 9)["grid"]), "different seed -> different chunk")

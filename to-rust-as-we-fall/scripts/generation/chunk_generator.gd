@@ -6,11 +6,12 @@ extends RefCounted
 ##   2. an END point,
 ##   3. a PUZZLE (a composition of nested archetypes, per reference-docs/design_archetypes.md) that must be solved,
 ##   4. and the hard invariant: you CANNOT walk start->end without solving it.
-## The invariant is real, not decorative: a chunk owns a GATE (cells that are impassable until the puzzle is
-## solved). `verify_gated` flood-fills and asserts start->end is BLOCKED while locked and OPEN once solved — so a
-## generated chunk that could be walked straight through is a hard error, not a slip. Each chunk also carries its
-## PRESENTED solve (a hook member) and its SHADOW solve (Aster+Peris alone), because a section without both is,
-## per the design docs, unfinished.
+## A chunk owns a list of GATES (in solve order). Each gate is cells that are impassable until its mechanism is
+## activated. Gates can NEST: gate N's mechanism sits past gate N-1, so you must solve N-1 to even attempt N — a
+## puzzle to reach the puzzle. `verify` flood-fills (the game's 8-dir, no diagonal-squeeze rule) and asserts:
+## start->end is BLOCKED while any gate is shut, OPEN once all are solved, AND each gate's mechanism is reachable
+## only after the previous gate is open (the nesting order). Each chunk carries a Presented solve + a Shadow
+## (Aster+Peris) solve, because a section without both is, per the docs, unfinished.
 
 const SYM_WALL := "#"
 const SYM_FLOOR := "."
@@ -19,21 +20,176 @@ const SYM_END := "E"
 
 const ARCHETYPES := ["holdfast", "redirect", "vinebridge", "split"]
 
+# --- entry points ---------------------------------------------------------------------------------------------
+
+## An ATOMIC chunk (one gate) for `archetype_id`.
 static func generate(archetype_id: String, seed: int) -> Dictionary:
 	var rng := SeededRng.new(seed ^ 0x0c00c11c)
-	match archetype_id:
-		"holdfast": return _build_holdfast(rng)
-		"redirect": return _build_redirect(rng)
-		"vinebridge": return _build_vinebridge(rng)
-		"split": return _build_split(rng)
-	return _build_holdfast(rng)
+	var w := _ri(rng, 12, 14)
+	var h := _ri(rng, 8, 10)
+	var g := _room(w, h)
+	var start := Vector2i(1, h / 2)
+	g[start] = SYM_START
+	var gate_col := _ri(rng, w / 2 - 1, w / 2 + 1)
+	var gate := _stage(g, 1, gate_col, gate_col, h, archetype_id, rng)
+	var end := Vector2i(w - 2, h / 2)
+	g[end] = SYM_END
+	return _finish({
+		"id": archetype_id, "w": w, "h": h, "start": start, "end": end, "grid": g, "gates": [gate],
+	})
 
-# --- shared layout helpers ------------------------------------------------------------------------------------
+## A NESTED chunk: a chain of gated chambers (`stages` = archetype ids, in solve order). end sits behind ALL of
+## them; each gate's mechanism is in its own chamber, reachable only after the previous gate opens.
+static func compose(stages: Array, seed: int) -> Dictionary:
+	var rng := SeededRng.new(seed ^ 0x0c00c11c)
+	var cw := 4                                   # chamber interior width
+	var n := stages.size()
+	var w := 1 + cw + n * (1 + cw) + 1            # borders + chamber0 + n*(gate + chamber)
+	var h := 9
+	var g := _room(w, h)
+	var start := Vector2i(1, h / 2)
+	g[start] = SYM_START
+	var gates: Array = []
+	var cx := 1                                   # interior x of the current chamber
+	for i in range(n):
+		var chamber_x0 := cx
+		var gate_col := chamber_x0 + cw           # the gate sits right after this chamber
+		gates.append(_stage(g, chamber_x0, gate_col, gate_col, h, str(stages[i]), rng))
+		cx = gate_col + 1
+	var end := Vector2i(w - 2, h / 2)
+	g[end] = SYM_END
+	return _finish({
+		"id": "nested", "w": w, "h": h, "start": start, "end": end, "grid": g, "gates": gates,
+	})
+
+# --- one gate + its mechanism (an archetype), placed in [chamber_x0, gate_col) with the gate band at gate_col ---
+
+static func _stage(g: Dictionary, chamber_x0: int, chamber_x1: int, gate_col: int, h: int, arch: String, rng: SeededRng) -> Dictionary:
+	var cells := _vgate(g, gate_col, h, _gate_sym(arch))
+	var row := _ri(rng, 2, h - 3)
+	var mech := Vector2i(gate_col - 1, row)       # mechanism against the gate, inside the chamber
+	var elements: Array = []
+	match arch:
+		"holdfast":
+			mech = Vector2i(clampi(chamber_x0 + 1, chamber_x0, gate_col - 1), 1)
+			g[mech] = "O"
+			var guard := Vector2i(clampi(chamber_x0 + 1, chamber_x0, gate_col - 1), _ri(rng, 3, h - 3))
+			if guard != mech:
+				g[guard] = "g"
+				elements.append({"sym": "g", "cell": guard})
+			return {"cells": cells, "open_row": -1, "mechanism": mech, "sym": "~", "arch": arch,
+				"elements": [{"sym": "O", "cell": mech}] + elements,
+				"role": "held flow-override — hold it and the wash stops"}
+		"redirect":
+			g[mech] = "B"
+			var enemy := Vector2i(clampi(chamber_x0, chamber_x0, gate_col - 2), row)
+			if enemy == mech:
+				enemy = Vector2i(chamber_x0, row)
+			g[enemy] = "g"
+			return {"cells": cells, "open_row": row, "mechanism": mech, "sym": "X", "arch": arch,
+				"elements": [{"sym": "B", "cell": mech}, {"sym": "g", "cell": enemy}],
+				"role": "bait tile — stand, then dodge as the enemy charges the wall"}
+		"vinebridge":
+			g[mech] = "V"
+			var flure := Vector2i(clampi(chamber_x0, chamber_x0, gate_col - 2), clampi(row + 1, 1, h - 2))
+			if g.get(flure) == SYM_FLOOR:
+				g[flure] = "F"
+			return {"cells": cells, "open_row": row, "mechanism": mech, "sym": ":", "arch": arch,
+				"elements": [{"sym": "V", "cell": mech}, {"sym": "F", "cell": flure}],
+				"role": "fertile lip — plant a climbvine; it bridges the chasm"}
+		"split":
+			var p1 := Vector2i(clampi(chamber_x0 + 1, chamber_x0, gate_col - 1), 1)
+			var p2 := Vector2i(clampi(chamber_x0 + 1, chamber_x0, gate_col - 1), h - 2)
+			g[p1] = "P"
+			g[p2] = "P"
+			return {"cells": cells, "open_row": -1, "mechanism": p1, "sym": "=", "arch": arch,
+				"elements": [{"sym": "P", "cell": p1}, {"sym": "P", "cell": p2}],
+				"role": "held plates — both must be held at once (split the party)"}
+	# default: a plain wall + a lever
+	g[mech] = "L"
+	return {"cells": cells, "open_row": -1, "mechanism": mech, "sym": "=", "arch": "lever",
+		"elements": [{"sym": "L", "cell": mech}], "role": "lever"}
+
+static func _gate_sym(arch: String) -> String:
+	match arch:
+		"holdfast": return "~"
+		"redirect": return "X"
+		"vinebridge": return ":"
+		"split": return "="
+	return "="
+
+# --- metadata + solve/shadow text -----------------------------------------------------------------------------
+
+static func _finish(chunk: Dictionary) -> Dictionary:
+	var gates: Array = chunk["gates"]
+	var titles := {"holdfast": "Holdfast Crossing", "redirect": "The Charger's Breach", "vinebridge": "The Lured Causeway", "split": "The Two-Hand Door"}
+	if gates.size() == 1:
+		var a := str(gates[0]["arch"])
+		chunk["title"] = titles.get(a, "Chunk")
+		chunk["archetype"] = _arch_label(a)
+	else:
+		var labels: Array = []
+		for gt in gates:
+			labels.append(str(gt["arch"]))
+		chunk["title"] = "Nested: " + " -> ".join(labels)
+		chunk["archetype"] = "%d gates, each behind the last (nested)" % gates.size()
+	chunk["solve"] = _solve_text(gates)
+	chunk["shadow"] = _shadow_text(gates)
+	chunk["legend"] = _legend(gates)
+	return chunk
+
+static func _arch_label(a: String) -> String:
+	match a:
+		"holdfast": return "held-override wash crossing (channels) — NESTS A7 stealth-and-time"
+		"redirect": return "Archetype 1 redirected aggression (break the barrier) — NESTS a dodge beat"
+		"vinebridge": return "Archetype 2-C plant-as-tool (climbvine bridge) — NESTS Archetype 4 distract-the-patrol"
+		"split": return "Archetype 5 two-character split (a door that needs two held plates)"
+	return a
+
+static func _solve_step(a: String) -> String:
+	match a:
+		"holdfast": return "sneak past the guard to the override (O) and HOLD it so the wash (~) calms, then cross"
+		"redirect": return "bait the enemy (g) at (B) and dodge so it breaches the wall (X)"
+		"vinebridge": return "flure (F) the guard off the lip, plant a climbvine at (V) to bridge the chasm (:)"
+		"split": return "split the party to hold BOTH plates (P) at once so the door (=) opens"
+	return "activate the mechanism"
+
+static func _solve_text(gates: Array) -> String:
+	if gates.size() == 1:
+		return _solve_step(str(gates[0]["arch"])).capitalize() + "."
+	var parts: Array = []
+	for i in range(gates.size()):
+		parts.append("(%d) %s" % [i + 1, _solve_step(str(gates[i]["arch"]))])
+	return "In order, each behind the last: " + "; then ".join(parts) + " — only then is the end reachable."
+
+static func _shadow_text(gates: Array) -> String:
+	var a := str(gates[0]["arch"])
+	match a:
+		"holdfast": return "Aster+Peris: Aster TRACE times the wash's dark window; Peris BLOOM causeways one lane — cross unheld."
+		"redirect": return "Aster+Peris: Peris Hushbloom-stuns the charger at the commit (no dodge window)."
+		"vinebridge": return "Aster+Peris: Peris plants+BLOOMs the vine herself; Aster times/EMPs the guard instead of the flure."
+		"split": return "Aster+Peris (two bodies): Aster hacks one plate to a timed latch while Peris holds the other, then dashes."
+	return "Aster+Peris compose the same skeleton with substitute variants."
+
+static func _legend(gates: Array) -> Dictionary:
+	var syms := {
+		"~": "wash (blocks; calm only while O is HELD)", "O": "held flow-override", "g": "enemy / guard",
+		"X": "breakable wall (an enemy must charge it)", "B": "bait tile (stand, then dodge)",
+		":": "chasm (blocks until bridged)", "V": "fertile lip (plant a climbvine)", "F": "flure (lure the guard)",
+		"=": "sealed door (both plates held)", "P": "held plate",
+	}
+	var out := {}
+	for gt in gates:
+		out[str(gt["sym"])] = syms.get(str(gt["sym"]), "gate")
+		for e in gt.get("elements", []):
+			out[str(e["sym"])] = syms.get(str(e["sym"]), "element")
+	return out
+
+# --- layout primitives ----------------------------------------------------------------------------------------
 
 static func _ri(rng: SeededRng, a: int, b: int) -> int:
 	return int(rng.call("randi_range", a, b))
 
-## A rectangular room: border walls, floor interior.
 static func _room(w: int, h: int) -> Dictionary:
 	var g := {}
 	for y in range(h):
@@ -41,7 +197,6 @@ static func _room(w: int, h: int) -> Dictionary:
 			g[Vector2i(x, y)] = SYM_WALL if (x == 0 or y == 0 or x == w - 1 or y == h - 1) else SYM_FLOOR
 	return g
 
-## A full-height vertical band of `sym` at column `col` (the gate that splits the room in two). Returns the cells.
 static func _vgate(g: Dictionary, col: int, h: int, sym: String) -> Array:
 	var cells: Array = []
 	for y in range(1, h - 1):
@@ -49,181 +204,72 @@ static func _vgate(g: Dictionary, col: int, h: int, sym: String) -> Array:
 		cells.append(Vector2i(col, y))
 	return cells
 
-# --- the archetypes -------------------------------------------------------------------------------------------
+# --- the invariant: prove you cannot walk start->end without solving, in order --------------------------------
 
-## HOLDFAST CROSSING — a wash you cannot walk. Main archetype: the channels HELD-override crossing. NESTS
-## Archetype 7 (stealth-and-time): the override sits past a guard, so you must sneak to it. Hold it -> the wash
-## stops -> the party crosses.
-static func _build_holdfast(rng: SeededRng) -> Dictionary:
-	var w := _ri(rng, 12, 14)
-	var h := _ri(rng, 8, 10)
-	var g := _room(w, h)
-	var start := Vector2i(1, h / 2)
-	var end := Vector2i(w - 2, h / 2)
-	g[start] = SYM_START
-	g[end] = SYM_END
-	var col := _ri(rng, w / 2 - 1, w / 2 + 1)   # wash band roughly centred
-	var gate := _vgate(g, col, h, "~")
-	# Override + guard on the START side (you reach them without crossing the wash; the guard is the nested stealth).
-	var ov := Vector2i(_ri(rng, 2, col - 2), 1)
-	g[ov] = "O"
-	var guard := Vector2i(_ri(rng, 2, col - 2), _ri(rng, 2, h - 3))
-	if guard == ov or guard == start:
-		guard = Vector2i(2, 2)
-	g[guard] = "g"
-	return {
-		"id": "holdfast", "title": "Holdfast Crossing",
-		"archetype": "held-override wash crossing (channels) — NESTS A7 stealth-and-time",
-		"w": w, "h": h, "start": start, "end": end, "grid": g, "gate": gate,
-		"nests": ["A7 stealth-and-time: reach the override past the guard"],
-		"solve": "Sneak past the guard (g) to the flow-override (O); a member HOLDS it and the wash stops; the rest cross the dry channel to the end. Lose the holder and the crossers are exposed — the role is inheritable.",
-		"shadow": "Aster+Peris, no holder: Aster TRACE names the wash's dark window; Peris BLOOM raises a flora causeway across one lane — cross in timed dashes, unheld.",
-		"legend": {"~": "wash (lethal; blocks; calm only while O is HELD)", "O": "held flow-override", "g": "guard (nested stealth)"},
-	}
+## Returns {ok, locked_blocks, solved_connects, ordering_ok}. locked_blocks: end unreachable with any gate shut.
+## solved_connects: end reachable with all open. ordering_ok: gate i's mechanism is reachable only after gate i-1
+## opens (a puzzle to reach the puzzle) — the nesting property.
+static func verify(chunk: Dictionary) -> Dictionary:
+	var gates: Array = chunk["gates"]
+	var n := gates.size()
+	var all_closed := _flags(n, -1)            # nothing open
+	var all_open := _flags(n, n)               # everything open
+	var locked_blocks := not _reach(chunk, chunk["end"], all_closed)
+	var solved_connects := _reach(chunk, chunk["end"], all_open)
+	var ordering_ok := true
+	for i in range(n):
+		var mech: Vector2i = gates[i]["mechanism"]
+		# gates 0..i-1 open -> mechanism i reachable.
+		if not _reach(chunk, mech, _flags(n, i)):
+			ordering_ok = false
+		# gate i-1 NOT open (only 0..i-2 open) -> mechanism i must be UNreachable (else it isn't gated by i-1).
+		if i > 0 and _reach(chunk, mech, _flags(n, i - 1)):
+			ordering_ok = false
+	return {"ok": locked_blocks and solved_connects and ordering_ok,
+		"locked_blocks": locked_blocks, "solved_connects": solved_connects, "ordering_ok": ordering_ok}
 
-## REDIRECTED AGGRESSION (Archetype 1) — a solid wall you cannot pass. Bait an enemy into charging the wall so it
-## breaches. NESTS a dodge beat (step off the bait line as it commits).
-static func _build_redirect(rng: SeededRng) -> Dictionary:
-	var w := _ri(rng, 12, 14)
-	var h := _ri(rng, 8, 10)
-	var g := _room(w, h)
-	var start := Vector2i(1, h / 2)
-	var end := Vector2i(w - 2, h / 2)
-	g[start] = SYM_START
-	g[end] = SYM_END
-	var col := _ri(rng, w / 2 - 1, w / 2 + 1)
-	var gate := _vgate(g, col, h, "X")
-	# Bait sits against the wall on the line to the end; the enemy charges through it into the wall.
-	var brow := _ri(rng, 2, h - 3)
-	var bait := Vector2i(col - 1, brow)
-	var enemy := Vector2i(_ri(rng, 2, col - 2), brow)
-	if enemy == start:
-		enemy = Vector2i(2, brow)
-	g[bait] = "B"
-	g[enemy] = "g"
-	return {
-		"id": "redirect", "title": "The Charger's Breach",
-		"archetype": "Archetype 1 redirected aggression (break the barrier) — NESTS a dodge beat",
-		"w": w, "h": h, "start": start, "end": end, "grid": g, "gate": gate,
-		"gate_open_row": brow,   # only the impacted segment breaches
-		"nests": ["dodge: step off the bait line at the enemy's commit"],
-		"solve": "Stand on the bait (B) in the enemy's charge lane; DODGE as it commits; the enemy (g) slams the wall (X) and breaches it — cross through the hole to the end.",
-		"shadow": "Aster+Peris: Peris plants a Hushbloom to stun g at the commit (no dodge window needed), or a Flure iron-decoy sets the charge line; same breach.",
-		"legend": {"X": "breakable wall (blocks until an enemy charges it)", "g": "enemy (charges when baited)", "B": "bait tile (stand, then dodge)"},
-	}
+## Open flags: gates with index < open_upto are OPEN.
+static func _flags(n: int, open_upto: int) -> Array:
+	var f: Array = []
+	for i in range(n):
+		f.append(i < open_upto)
+	return f
 
-## PLANT AS TOOL (Archetype 2-C, climbvine) — a chasm you cannot cross. Grow a bridge. NESTS Archetype 4 (distract
-## the patrol): a guard holds the fertile lip, so you lure it off with a flure before you can plant.
-static func _build_vinebridge(rng: SeededRng) -> Dictionary:
-	var w := _ri(rng, 12, 14)
-	var h := _ri(rng, 8, 10)
-	var g := _room(w, h)
-	var start := Vector2i(1, h / 2)
-	var end := Vector2i(w - 2, h / 2)
-	g[start] = SYM_START
-	g[end] = SYM_END
-	var col := _ri(rng, w / 2 - 1, w / 2 + 1)
-	var gate := _vgate(g, col, h, ":")
-	var vrow := _ri(rng, 2, h - 3)
-	var vine := Vector2i(col - 1, vrow)         # fertile lip against the chasm
-	g[vine] = "V"
-	var flure := Vector2i(_ri(rng, 2, col - 2), _ri(rng, 2, h - 3))
-	var guard := Vector2i(col - 1, vrow + 1 if vrow + 1 < h - 1 else vrow - 1)
-	if flure == start:
-		flure = Vector2i(2, 2)
-	g[flure] = "F"
-	g[guard] = "g"
-	return {
-		"id": "vinebridge", "title": "The Lured Causeway",
-		"archetype": "Archetype 2-C plant-as-tool (climbvine bridge) — NESTS Archetype 4 distract-the-patrol",
-		"w": w, "h": h, "start": start, "end": end, "grid": g, "gate": gate,
-		"gate_open_row": vrow,   # the vine bridges one lane
-		"nests": ["A4 distract-the-patrol: pull the guard off the fertile lip"],
-		"solve": "Fire the flure (F) to pull the guard (g) off the fertile lip; plant a climbvine at (V); it matures into a bridge over the chasm (:) — cross to the end.",
-		"shadow": "Aster+Peris: Peris plants + BLOOMs the vine herself (Endo's home read not needed); Aster EMPs / times the guard's sweep instead of the flure.",
-		"legend": {":": "chasm (blocks until bridged)", "V": "fertile lip (plant a climbvine -> bridge)", "F": "flure (lure the guard away)", "g": "patrol guard"},
-	}
-
-## TWO-CHARACTER SPLIT (Archetype 5) — a sealed door you cannot open alone. Two override plates in separate alcoves
-## must be HELD at once, so the party must split across both stations — one body can't hold both.
-static func _build_split(rng: SeededRng) -> Dictionary:
-	var w := _ri(rng, 12, 14)
-	var h := 10
-	var g := _room(w, h)
-	var start := Vector2i(1, h / 2)
-	var end := Vector2i(w - 2, h / 2)
-	g[start] = SYM_START
-	g[end] = SYM_END
-	var col := _ri(rng, w / 2, w / 2 + 1)
-	var gate := _vgate(g, col, h, "=")
-	# Two plates in the START region, far apart (top + bottom alcoves) — no single member reaches both.
-	var p1 := Vector2i(_ri(rng, 2, col - 2), 1)
-	var p2 := Vector2i(_ri(rng, 2, col - 2), h - 2)
-	g[p1] = "P"
-	g[p2] = "P"
-	return {
-		"id": "split", "title": "The Two-Hand Door",
-		"archetype": "Archetype 5 two-character split (a door that needs two held plates)",
-		"w": w, "h": h, "start": start, "end": end, "grid": g, "gate": gate,
-		"nests": ["simultaneity: both plates held at once — the party must divide"],
-		"solve": "Split the party: one member holds the top plate (P), another the bottom plate (P) at the same time; the sealed door (=) opens while both are held — the third crosses to the end, then the holders follow before it re-seals.",
-		"shadow": "Aster+Peris (only two bodies): both must hold, leaving none to cross — so Aster hacks one plate to a TIMED latch (a short hold-open) while Peris holds the other, then dashes across in the window.",
-		"legend": {"=": "sealed door (opens only while BOTH plates are held)", "P": "held override plate"},
-	}
-
-# --- the invariant: prove you cannot walk start->end without solving ------------------------------------------
-
-## Flood-fill start->end under LOCKED passability (gate impassable) and SOLVED passability (gate passable). A valid
-## chunk BLOCKS while locked and CONNECTS once solved. Uses the game's move rule (8-dir, a diagonal only when both
-## orthogonals are open) so a 1-wide gate can't be diagonally squeezed. Returns {ok, locked_blocks, solved_connects}.
-static func verify_gated(chunk: Dictionary) -> Dictionary:
-	var gate_set := {}
-	for c in chunk.get("gate", []):
-		gate_set[c] = true
-	var locked_reach := _reaches(chunk, gate_set, false, {})
-	# On solve the gate opens. Default: the whole band opens (nothing left blocked). For a breach/bridge only the
-	# IMPACTED row opens, so every OTHER gate cell stays blocked.
-	var still_blocked := {}
-	if chunk.has("gate_open_row"):
-		var row := int(chunk["gate_open_row"])
-		for c in chunk.get("gate", []):
-			if (c as Vector2i).y != row:
-				still_blocked[c] = true
-	var solved_reach := _reaches(chunk, still_blocked, false, {})
-	var locked_blocks := not locked_reach
-	var solved_connects := solved_reach
-	return {"ok": locked_blocks and solved_connects, "locked_blocks": locked_blocks, "solved_connects": solved_connects}
-
-## Can start reach end? `blocked` = cells that are impassable on top of walls (the still-closed gate cells).
-static func _reaches(chunk: Dictionary, blocked: Dictionary, _unused: bool, _u2: Dictionary) -> bool:
-	var start: Vector2i = chunk["start"]
-	var end: Vector2i = chunk["end"]
+static func _reach(chunk: Dictionary, target: Vector2i, open_flags: Array) -> bool:
 	var grid: Dictionary = chunk["grid"]
+	var gates: Array = chunk["gates"]
+	var blocked := {}
+	for i in range(gates.size()):
+		var gt: Dictionary = gates[i]
+		var is_open: bool = open_flags[i]
+		var open_row := int(gt.get("open_row", -1))
+		for c in gt["cells"]:
+			if not is_open:
+				blocked[c] = true
+			elif open_row >= 0 and (c as Vector2i).y != open_row:
+				blocked[c] = true   # a breach/bridge opens only its impacted row
+	var start: Vector2i = chunk["start"]
 	var passable := func(c: Vector2i) -> bool:
-		if not grid.has(c):
-			return false
-		return str(grid[c]) != SYM_WALL and not blocked.has(c)
+		return grid.has(c) and str(grid[c]) != SYM_WALL and not blocked.has(c)
 	var seen := {start: true}
 	var stack := [start]
 	while not stack.is_empty():
 		var c: Vector2i = stack.pop_back()
-		if c == end:
+		if c == target:
 			return true
 		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]:
-			var n: Vector2i = c + d
-			if seen.has(n) or not passable.call(n):
+			var nc: Vector2i = c + d
+			if seen.has(nc) or not passable.call(nc):
 				continue
-			# Diagonal only if both orthogonal neighbours are open (no squeezing past a 1-wide gate).
-			if d.x != 0 and d.y != 0:
-				if not passable.call(Vector2i(c.x + d.x, c.y)) or not passable.call(Vector2i(c.x, c.y + d.y)):
-					continue
-			seen[n] = true
-			stack.append(n)
+			if d.x != 0 and d.y != 0 and (not passable.call(Vector2i(c.x + d.x, c.y)) or not passable.call(Vector2i(c.x, c.y + d.y))):
+				continue
+			seen[nc] = true
+			stack.append(nc)
 	return false
 
 # --- ASCII render ---------------------------------------------------------------------------------------------
 
-static func render_ascii(chunk: Dictionary, verify := true) -> String:
+static func render_ascii(chunk: Dictionary, show_verify := true) -> String:
 	var w := int(chunk["w"])
 	var h := int(chunk["h"])
 	var grid: Dictionary = chunk["grid"]
@@ -233,17 +279,14 @@ static func render_ascii(chunk: Dictionary, verify := true) -> String:
 		for x in range(w):
 			row += str(grid.get(Vector2i(x, y), " "))
 		out += "  " + row + "\n"
-	# Legend
 	out += "  legend: S=start  E=end  #=wall  .=floor"
 	for k in chunk.get("legend", {}).keys():
 		out += "  %s=%s" % [k, str(chunk["legend"][k])]
-	out += "\n"
-	out += "  NESTS: %s\n" % ", ".join(chunk.get("nests", []))
-	out += "  SOLVE:  %s\n" % str(chunk.get("solve", ""))
+	out += "\n  SOLVE:  %s\n" % str(chunk.get("solve", ""))
 	out += "  SHADOW: %s\n" % str(chunk.get("shadow", ""))
-	if verify:
-		var v := verify_gated(chunk)
-		out += "  GATED?  locked blocks start->end: %s | solving opens it: %s | %s\n" % [
-			str(v["locked_blocks"]), str(v["solved_connects"]),
-			"OK — you cannot walk through without solving" if v["ok"] else "BROKEN"]
+	if show_verify:
+		var v := verify(chunk)
+		out += "  GATED?  locked blocks start->end: %s | all solved opens it: %s | nesting order enforced: %s | %s\n" % [
+			str(v["locked_blocks"]), str(v["solved_connects"]), str(v["ordering_ok"]),
+			"OK — no walkthrough without solving, in order" if v["ok"] else "BROKEN"]
 	return out
