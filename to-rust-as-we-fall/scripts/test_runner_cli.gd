@@ -13140,8 +13140,9 @@ func _test_generated_solution_replay() -> void:
 ## End-to-end AS A REAL PLAYER: from a seed, regenerate the identical puzzle, then drive its EMITTED solution
 ## through the real input path — click each node in the solution's order, let the player WALK there and the
 ## click→walk→interact (INSPECTION) fire on arrival, node by node — and assert the shelter is reached. No
-## activate_generated_node force-fire; the party must actually reach + interact each node. Flat layout (the warp is
-## a render concern; the solution is coordinate-agnostic) so the synthetic clicks stay deterministic.
+## activate_generated_node force-fire; the party must actually reach + interact each node. Run on BOTH the flat
+## spine AND the WARPED spiral (what a real player actually sees): the interaction controller inverts the click's
+## warped world position back through coord_map.to_data, so the same solution drives the same nodes either way.
 func _test_generated_solution_realinput() -> void:
 	_test_name = "Generated Solution Real-Input Replay"
 	var settings := {"seed": 5, "complexity_tier": "standard", "id": "sol_ri", "budget": {"node_count": 7}}
@@ -13149,10 +13150,17 @@ func _test_generated_solution_realinput() -> void:
 	var sol: Dictionary = spec.get("headless", {}).get("solution", {})
 	var actions: Array = sol.get("actions", [])
 	_assert_true(not actions.is_empty(), "the puzzle emits a solution to replay (%d actions)" % actions.size())
-	# spiral:false -> the flat spine, so a click maps straight to the deck under it (no warp inverse to chase).
-	var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 10, {"spec": spec, "spiral": false})
+	# Flat spine (deterministic clicks) AND the warped spiral (what the player actually walks).
+	await _drive_solution_realinput(spec, false, "flat")
+	await _drive_solution_realinput(spec, true, "spiral")
+
+## Drive the emitted solution through real clicks on one layout (spiral on/off). Asserts every solution node is
+## reached + interacted and the shelter is reached.
+func _drive_solution_realinput(spec: Dictionary, spiral: bool, label: String) -> void:
+	var actions: Array = spec.get("headless", {}).get("solution", {}).get("actions", [])
+	var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 10, {"spec": spec, "spiral": spiral})
 	if inst == null:
-		_assert_true(false, "the generated stretch boots"); return
+		_assert_true(false, "[%s] the generated stretch boots" % label); return
 	for i in range(6):
 		await get_tree().process_frame
 	var chunk = inst.get("_active_chunk")
@@ -13165,7 +13173,7 @@ func _test_generated_solution_realinput() -> void:
 		wanted += 1
 		var it = _find_generated_node_interactable(chunk, node_id)
 		if it == null:
-			print("  [solution-ri] node %s has no interactable" % node_id)
+			print("  [solution-ri:%s] node %s has no interactable" % [label, node_id])
 			continue
 		_synthetic_click_interactable(inst, it)
 		var done := false
@@ -13181,11 +13189,11 @@ func _test_generated_solution_realinput() -> void:
 		if done:
 			cleared += 1
 		else:
-			print("  [solution-ri] node %s NOT reached/cleared by real input" % node_id)
+			print("  [solution-ri:%s] node %s NOT reached/cleared by real input" % [label, node_id])
 	var st: Dictionary = chunk.call("get_preview_state")
-	print("  [solution-ri] cleared %d/%d solution nodes by real clicks | shelter_rested=%s step=%s" % [cleared, wanted, str(st.get("shelter_rested", false)), str(inst.get("_preview_step"))])
-	_assert_equals(cleared, wanted, "every solution node was reached + interacted by REAL clicks (walk + dwell), not force-fired")
-	_assert_true(bool(st.get("shelter_rested", false)), "the EMITTED solution, replayed node-by-node as a REAL PLAYER, reaches the shelter")
+	print("  [solution-ri:%s] cleared %d/%d solution nodes by real clicks | shelter_rested=%s" % [label, cleared, wanted, str(st.get("shelter_rested", false))])
+	_assert_equals(cleared, wanted, "[%s] every solution node was reached + interacted by REAL clicks (walk + dwell), not force-fired" % label)
+	_assert_true(bool(st.get("shelter_rested", false)), "[%s] the EMITTED solution, replayed node-by-node as a REAL PLAYER, reaches the shelter" % label)
 	inst.queue_free()
 	await get_tree().process_frame
 
