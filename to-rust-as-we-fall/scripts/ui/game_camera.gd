@@ -45,6 +45,12 @@ var _shake_intensity := 0.0
 var _shake_decay := 5.0
 var _shake_offset := Vector3.ZERO
 
+# Touch (Android): TWO fingers pan + pinch-zoom the view. One finger stays gameplay (move/select).
+var _touches := {}
+var _cam_fingers: Array = []
+var _cam_last_mid := Vector2.ZERO
+var _cam_last_dist := 1.0
+
 # Pan hint for off-screen targets.
 signal pan_hint_triggered(direction: Vector2)
 
@@ -59,6 +65,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		_view_zoom = clampf(_view_zoom / CAMERA_ZOOM_STEP, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX)
 		return
 	if _locked:
+		return
+
+	if event is InputEventScreenTouch:
+		_on_cam_touch(event as InputEventScreenTouch)
+		return
+	if event is InputEventScreenDrag:
+		_on_cam_drag(event as InputEventScreenDrag)
 		return
 
 	if event is InputEventMouseButton:
@@ -78,6 +91,51 @@ func _unhandled_input(event: InputEvent) -> void:
 		# Clamp pan distance
 		if _pan_offset.length() > max_pan_distance:
 			_pan_offset = _pan_offset.normalized() * max_pan_distance
+
+func _on_cam_touch(t: InputEventScreenTouch) -> void:
+	if t.pressed:
+		_touches[t.index] = t.position
+	else:
+		_touches.erase(t.index)
+	if _touches.size() >= 2:
+		_cam_fingers = _touches.keys().slice(0, 2)
+		_reseed_cam()
+	else:
+		_cam_fingers = []
+
+func _on_cam_drag(d: InputEventScreenDrag) -> void:
+	_touches[d.index] = d.position
+	if _touches.size() >= 2 and _cam_pair():
+		_update_cam_gesture()
+
+func _cam_pair() -> bool:
+	return _cam_fingers.size() >= 2 and _touches.has(_cam_fingers[0]) and _touches.has(_cam_fingers[1])
+
+func _reseed_cam() -> void:
+	if not _cam_pair():
+		return
+	var p0: Vector2 = _touches[_cam_fingers[0]]
+	var p1: Vector2 = _touches[_cam_fingers[1]]
+	_cam_last_mid = (p0 + p1) * 0.5
+	_cam_last_dist = maxf(1.0, p0.distance_to(p1))
+
+## Two-finger drag pans (same right/forward mapping as the middle-mouse pan) + pinch zooms (spread = zoom in).
+func _update_cam_gesture() -> void:
+	var p0: Vector2 = _touches[_cam_fingers[0]]
+	var p1: Vector2 = _touches[_cam_fingers[1]]
+	var mid := (p0 + p1) * 0.5
+	var dist := maxf(1.0, p0.distance_to(p1))
+	if _pan_enabled:
+		var right := global_transform.basis.x.normalized()
+		var forward := Vector3(-global_transform.basis.z.x, 0, -global_transform.basis.z.z).normalized()
+		var dmid := mid - _cam_last_mid
+		_pan_offset += right * -dmid.x * pan_speed
+		_pan_offset += forward * dmid.y * pan_speed
+		if _pan_offset.length() > max_pan_distance:
+			_pan_offset = _pan_offset.normalized() * max_pan_distance
+	_view_zoom = clampf(_view_zoom / (dist / _cam_last_dist), CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX)
+	_cam_last_mid = mid
+	_cam_last_dist = dist
 
 func _view_offset() -> Vector3:
 	return Basis(Vector3.UP, _view_yaw) * (follow_offset * _view_zoom)

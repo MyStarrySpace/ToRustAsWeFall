@@ -106,6 +106,14 @@ camera_pan={
 ]
 }
 
+[display]
+
+window/handheld/orientation=4
+
+[input_devices]
+
+pointing/emulate_mouse_from_touch=true
+
 [physics]
 
 3d/physics_engine="Jolt Physics"

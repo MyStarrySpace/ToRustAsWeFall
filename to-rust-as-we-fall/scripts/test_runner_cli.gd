@@ -772,6 +772,9 @@ func _ready() -> void:
 			"--test-builder":
 				ran_test = true
 				await _test_builder()
+			"--test-builder-touch":
+				ran_test = true
+				await _test_builder_touch()
 			"--test-generated-stretch-walk":
 				ran_test = true
 				await _test_generated_stretch_walk()
@@ -1272,6 +1275,7 @@ func _run_all_tests() -> void:
 	await _test_ascii_to_playable()
 	await _test_main_menu()
 	await _test_builder()
+	await _test_builder_touch()
 	await _test_generated_stretch_walk()
 	_test_dodge_knockdown()
 	_test_preview_parked_bail()
@@ -3411,6 +3415,50 @@ func _test_builder() -> void:
 	if not en.is_empty() and not ex.is_empty():
 		var path: Array = g.find_multi_level_path(g.world_to_grid(en.pos), en.elev, g.world_to_grid(ex.pos), ex.elev)
 		_assert_true(path.size() >= 1, "the built level is traversable (entry reaches exit)")
+	b.queue_free()
+	await get_tree().process_frame
+
+## TOUCH controls (Android): the builder paints with one finger and pans+pinch-zooms with two (the level-sketch
+## model), driven by synthetic screen-touch events so it's guarded without a device.
+func _test_builder_touch() -> void:
+	_test_name = "Builder Touch"
+	var scene := load("res://scenes/builder/level_builder.tscn")
+	if scene == null:
+		_assert_true(false, "builder scene loads"); return
+	var b = scene.instantiate()
+	get_tree().root.add_child(b)
+	for i in range(4):
+		await get_tree().process_frame
+	var center := get_viewport().get_visible_rect().size * 0.5
+
+	# One finger = paint. Press begins a paint gesture; drag paints along; release ends it.
+	var t := InputEventScreenTouch.new()
+	t.index = 0
+	t.position = center + Vector2(40, 0)
+	t.pressed = true
+	b._unhandled_input(t)
+	_assert_equals(str(b._gesture), "paint", "one-finger touch begins a paint gesture")
+	_assert_equals((b._touches as Dictionary).size(), 1, "the finger is tracked")
+	var before := (b._floor as Dictionary).size()
+	var d := InputEventScreenDrag.new()
+	d.index = 0
+	d.position = center + Vector2(140, 0)
+	b._unhandled_input(d)
+	_assert_true((b._floor as Dictionary).size() >= before, "dragging one finger paints floor")
+	t.pressed = false
+	b._unhandled_input(t)
+	_assert_equals(str(b._gesture), "", "lifting the finger ends the gesture")
+
+	# Two fingers = camera: a pinch-spread zooms the builder camera in (smaller ortho size).
+	var f0 := InputEventScreenTouch.new(); f0.index = 0; f0.position = Vector2(300, 300); f0.pressed = true
+	b._unhandled_input(f0)
+	var f1 := InputEventScreenTouch.new(); f1.index = 1; f1.position = Vector2(500, 300); f1.pressed = true
+	b._unhandled_input(f1)
+	_assert_equals(str(b._gesture), "camera", "two fingers begin a camera gesture")
+	var size_before: float = b._cam_size
+	var dm := InputEventScreenDrag.new(); dm.index = 1; dm.position = Vector2(720, 300)
+	b._unhandled_input(dm)
+	_assert_true(b._cam_size < size_before, "pinch-spread zooms the builder camera in (%.1f -> %.1f)" % [size_before, b._cam_size])
 	b.queue_free()
 	await get_tree().process_frame
 

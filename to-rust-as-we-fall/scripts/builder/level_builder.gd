@@ -29,6 +29,13 @@ var _cam_size := 22.0
 var _visual: Node3D
 var _painting := false
 var _paint_erase := false
+# Touch (Android): one finger paints, two fingers pan + pinch-zoom (the level-sketch model).
+var _touches := {}                 # finger index -> screen position
+var _gesture := ""                 # "" | "paint" | "camera"
+var _paint_finger := -1
+var _cam_fingers: Array = []
+var _cam_last_mid := Vector2.ZERO
+var _cam_last_dist := 1.0
 var _status: Label
 var _name_edit: LineEdit
 var _brush_buttons := {}
@@ -81,6 +88,15 @@ func _build_lighting() -> void:
 # --- input / painting ------------------------------------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch:
+		_on_touch(event as InputEventScreenTouch)
+		return
+	if event is InputEventScreenDrag:
+		_on_drag(event as InputEventScreenDrag)
+		return
+	# Ignore mouse events emulated from an active touch (emulate_mouse_from_touch) — the touch path already ran.
+	if not _touches.is_empty():
+		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
@@ -109,18 +125,19 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_A: _cam_target.x -= 2.0; _place_camera()
 			KEY_D: _cam_target.x += 2.0; _place_camera()
 
-func _cell_under_mouse() -> Vector2i:
-	var vp := get_viewport()
-	var mouse := vp.get_mouse_position()
-	var origin := _camera.project_ray_origin(mouse)
-	var dir := _camera.project_ray_normal(mouse)
+func _cell_at(pos: Vector2) -> Vector2i:
+	var origin := _camera.project_ray_origin(pos)
+	var dir := _camera.project_ray_normal(pos)
 	var hit = Plane(Vector3.UP, 0.0).intersects_ray(origin, dir)
 	if hit == null:
 		return Vector2i(2147483647, 2147483647)
 	return Vector2i(int(floor(hit.x)), int(floor(hit.z)))
 
 func _paint_at_mouse(erase: bool) -> void:
-	var cell := _cell_under_mouse()
+	_paint_at(get_viewport().get_mouse_position(), erase)
+
+func _paint_at(pos: Vector2, erase: bool) -> void:
+	var cell := _cell_at(pos)
 	if cell.x == 2147483647:
 		return
 	if erase or _brush == Brush.ERASE:
@@ -152,6 +169,64 @@ func _paint_at_mouse(erase: bool) -> void:
 				_nodes[cell] = true
 	_rebuild_visual()
 	_refresh_status()
+
+# --- touch (Android): 1 finger paints with the current brush, 2 fingers pan + pinch-zoom -----------------------
+
+func _on_touch(e: InputEventScreenTouch) -> void:
+	if e.pressed:
+		_touches[e.index] = e.position
+		if _touches.size() == 1:
+			_gesture = "paint"
+			_paint_finger = e.index
+			_paint_at(e.position, false)
+		elif _touches.size() == 2:
+			_gesture = "camera"
+			_cam_fingers = _touches.keys().slice(0, 2)
+			_reseed_cam()
+	else:
+		_touches.erase(e.index)
+		if _touches.is_empty():
+			_gesture = ""
+			_paint_finger = -1
+		elif _gesture == "camera" and _touches.size() >= 2:
+			_cam_fingers = _touches.keys().slice(0, 2)
+			_reseed_cam()
+		elif _touches.size() < 2:
+			_gesture = ""
+
+func _on_drag(e: InputEventScreenDrag) -> void:
+	_touches[e.index] = e.position
+	if _gesture == "paint" and e.index == _paint_finger:
+		_paint_at(e.position, false)
+	elif _gesture == "camera" and _touches.size() >= 2:
+		_update_cam_gesture()
+
+func _cam_pair() -> bool:
+	return _cam_fingers.size() >= 2 and _touches.has(_cam_fingers[0]) and _touches.has(_cam_fingers[1])
+
+func _reseed_cam() -> void:
+	if not _cam_pair():
+		return
+	var p0: Vector2 = _touches[_cam_fingers[0]]
+	var p1: Vector2 = _touches[_cam_fingers[1]]
+	_cam_last_mid = (p0 + p1) * 0.5
+	_cam_last_dist = maxf(1.0, p0.distance_to(p1))
+
+func _update_cam_gesture() -> void:
+	if not _cam_pair():
+		return
+	var p0: Vector2 = _touches[_cam_fingers[0]]
+	var p1: Vector2 = _touches[_cam_fingers[1]]
+	var mid := (p0 + p1) * 0.5
+	var dist := maxf(1.0, p0.distance_to(p1))
+	var vp_h := maxf(1.0, get_viewport().get_visible_rect().size.y)
+	var world_per_px := _cam_size / vp_h
+	var dmid := mid - _cam_last_mid
+	_cam_target -= Vector3(dmid.x, 0.0, dmid.y) * world_per_px
+	_cam_size = clampf(_cam_size / (dist / _cam_last_dist), 6.0, 60.0)
+	_place_camera()
+	_cam_last_mid = mid
+	_cam_last_dist = dist
 
 # --- rendering -------------------------------------------------------------------------------------------------
 

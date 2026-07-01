@@ -67,3 +67,6 @@ tmp_*.log
 # Visual-capture eyeball outputs (tools/capture_overlays.gd)
 /aster_*.png
 /peris_*.png
+
+# Android export output
+to-rust-as-we-fall/build/
