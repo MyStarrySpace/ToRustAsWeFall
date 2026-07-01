@@ -766,6 +766,12 @@ func _ready() -> void:
 			"--test-ascii-to-playable":
 				ran_test = true
 				await _test_ascii_to_playable()
+			"--test-main-menu":
+				ran_test = true
+				await _test_main_menu()
+			"--test-builder":
+				ran_test = true
+				await _test_builder()
 			"--test-generated-stretch-walk":
 				ran_test = true
 				await _test_generated_stretch_walk()
@@ -1264,6 +1270,8 @@ func _run_all_tests() -> void:
 	await _test_generated_stretch_quality()
 	_test_grid_ascii()
 	await _test_ascii_to_playable()
+	await _test_main_menu()
+	await _test_builder()
 	await _test_generated_stretch_walk()
 	_test_dodge_knockdown()
 	_test_preview_parked_bail()
@@ -3350,6 +3358,61 @@ func _test_grid_ascii() -> void:
 	# render(parse(text)) is STABLE — the floor block renders identically (node letters collapse to '.').
 	var reparsed: String = Ascii.render(parsed, [])
 	_assert_true(reparsed.length() > 0 and reparsed.contains("."), "the parsed grid re-renders to ASCII floor")
+
+## The main menu boots the game and its options target real scenes (Play / Builder / Fragments).
+func _test_main_menu() -> void:
+	_test_name = "Main Menu"
+	var scene := load("res://scenes/ui/main_menu.tscn")
+	_assert_true(scene != null, "main menu scene loads")
+	if scene == null:
+		return
+	var m = scene.instantiate()
+	get_tree().root.add_child(m)
+	await get_tree().process_frame
+	_assert_true(ResourceLoader.exists(m.PLAY_SCENE), "menu 'Play' targets a real scene")
+	_assert_true(ResourceLoader.exists(m.BUILDER_SCENE), "menu 'Level Builder' targets a real scene")
+	_assert_true(ResourceLoader.exists(m.FRAGMENTS_SCENE), "menu 'Fragments' targets a real scene")
+	# The menu is the game's entry point.
+	_assert_equals(ProjectSettings.get_setting("application/run/main_scene", ""), "res://scenes/ui/main_menu.tscn",
+		"the game boots into the main menu")
+	m.queue_free()
+	await get_tree().process_frame
+
+## The LEVEL BUILDER: paint a floor, and its ASCII round-trips + builds a playable, traversable level (the same
+## pipeline the procedural levels + the authored .txt use — the builder IS the game in a builder mode).
+func _test_builder() -> void:
+	_test_name = "Level Builder"
+	var Ascii = load("res://scripts/generation/grid_ascii.gd")
+	var scene := load("res://scenes/builder/level_builder.tscn")
+	_assert_true(scene != null, "builder scene loads")
+	if scene == null:
+		return
+	var b = scene.instantiate()
+	get_tree().root.add_child(b)
+	for i in range(4):
+		await get_tree().process_frame
+
+	# The builder starts with a paintable floor + an entry and exit.
+	var ascii: String = b.to_ascii()
+	_assert_true(ascii.length() > 0, "the builder starts with a floor to paint")
+	_assert_true(ascii.contains("E") and ascii.contains("X"), "the builder has an entry + exit")
+	var cells_before: int = (b._floor as Dictionary).size()
+
+	# to_ascii -> from_ascii round-trips the painted floor.
+	b.from_ascii(ascii)
+	_assert_equals((b._floor as Dictionary).size(), cells_before, "builder ASCII round-trips the painted floor")
+
+	# The painted level builds a playable, traversable spec (entry reaches exit) — Play would boot exactly this.
+	var spec: Dictionary = Ascii.spec_from_ascii(ascii, "built", "built")
+	_assert_true(bool(spec.get("success", false)), "the built level makes a playable spec")
+	var g := GridWorld.from_data(spec.get("navigation_grid", {}))
+	var en := _generated_node(spec, "entry")
+	var ex := _generated_node(spec, "exit_shelter")
+	if not en.is_empty() and not ex.is_empty():
+		var path: Array = g.find_multi_level_path(g.world_to_grid(en.pos), en.elev, g.world_to_grid(ex.pos), ex.elev)
+		_assert_true(path.size() >= 1, "the built level is traversable (entry reaches exit)")
+	b.queue_free()
+	await get_tree().process_frame
 
 ## PORT an authored ASCII map into the game as a real playable level: parse -> spec -> the generated_stretch
 ## chunk installs the ASCII grid + tiles the floor, and a real ground click walks the player across it. This is
