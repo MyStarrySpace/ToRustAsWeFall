@@ -291,9 +291,15 @@ func _is_dwelling() -> bool:
 func _on_dwell_complete() -> void:
 	if _player_in_range and not _used and interaction_enabled and _uses_hold_timer():
 		_trigger()
-		# Non-one-shot interactables re-arm while the player keeps standing in range.
-		if not _used and _player_in_range and interaction_enabled:
-			_begin_dwell()
+		# Non-one-shot interactables re-arm while the player keeps standing in range — verified against
+		# REAL overlapping bodies, not the sticky flag. on_interaction_arrived sets _player_in_range from
+		# a DATA-layer arrival (no body event ever clears it), so re-arming on the flag alone made a
+		# non-one-shot TIMED_ACTION re-tend itself forever after the character had left (The Watched
+		# Gap's flure kept re-firing, endlessly yo-yoing the lured sentry).
+		if not _used and interaction_enabled:
+			_refresh_player_range()
+			if _player_in_range and not _is_dwelling():
+				_begin_dwell()
 
 func _trigger(play_feedback := true) -> void:
 	if _used or not interaction_enabled:

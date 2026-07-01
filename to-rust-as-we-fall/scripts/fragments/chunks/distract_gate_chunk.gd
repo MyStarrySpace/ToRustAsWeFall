@@ -43,9 +43,12 @@ const END_X := 19.5                             # crossing this = the end point 
 var _sentry = null
 var _phase := "ready"          # ready | active | complete
 var _caught_count := 0
-var _flure_fired := false
+var _flure_fired := false      # has the flure EVER sung this attempt (telemetry; not a permanent latch)
 var _lure_until := -1.0
+var _lure_returning := false   # the lure expired and the sentry is walking home (still distracted until it arrives)
 var _flure_mesh: MeshInstance3D
+
+const WIN_POLL_INTERVAL := 0.1  # the completion check rides the scheduler at a FIXED cadence (frame-rate free)
 
 # --- Build ---
 
@@ -80,10 +83,12 @@ func _build_walls() -> void:
 	_add_box(self, Vector3(22.35, 1.4, 0.0), Vector3(0.3, 2.8, ROOM_HALF_Z * 2.0), wc)
 
 ## The flure is a TIMED_ACTION interactable (click -> Peris walks over -> tends for FLURE_TEND_TIME on the
-## scheduler's dwell -> fires). Same real path as lure_relay; wrapped in the shared outline highlight.
+## scheduler's dwell -> fires). NOT one-shot: a missed window must never soft-lock the fragment ("beatable,
+## never soft-lock") — the flure re-tends after expiry/a catch; activate_flure rejects a re-fire only while
+## a lure is already in flight.
 func _build_flure_interactable() -> void:
 	var flure := _add_object_interactable(self, "FlureInteract", "Flure", FLURE_POS,
-		"Tend", [_flure_mesh], "peris", FLURE_TEND_TIME, true, FLURE_PICK_RADIUS, Interactable.InteractableType.TIMED_ACTION)
+		"Tend", [_flure_mesh], "peris", FLURE_TEND_TIME, false, FLURE_PICK_RADIUS, Interactable.InteractableType.TIMED_ACTION)
 	flure.interacted.connect(func() -> void: activate_flure())
 
 func _spawn_sentry() -> void:
@@ -103,7 +108,19 @@ func _spawn_sentry() -> void:
 	enemy.activate()
 	enemy.target_spotted.connect(_on_spotted)
 	enemy.hit_target.connect(func(tid: String, _dmg: float) -> void: _on_spotted(tid))
+	# The sentry stays DISTRACTED for its whole walk home after a lure expires — full range comes back only
+	# once it ARRIVES at the post. Restoring it at expiry (while parked in the west pocket) put the START
+	# inside its clear-LOS 6.0 reach and insta-spotted the party for playing correctly.
+	gs.character_arrived.connect(_on_character_arrived)
 	_sentry = enemy
+
+func _on_character_arrived(id: String) -> void:
+	if id != "gap_sentry" or not _lure_returning:
+		return
+	_lure_returning = false
+	var gs = _get_game_state()
+	if gs != null and gs.characters.has("gap_sentry"):
+		gs.set_character_distracted("gap_sentry", false)
 
 ## The grid IS the room shape: west room + the one-lane gap + east room. Everything else is WALL tiles —
 ## non-walkable AND opaque (movement and sightlines agree by construction).
@@ -129,14 +146,13 @@ func get_grid_data() -> Dictionary:
 ## west pocket), DISTRACTED — its reach shrinks (x0.4) but it still catches anyone who crowds it. The gap is
 ## clear while it's away; the flure holds it for LURE_DURATION, then it walks back to its post and re-arms.
 func activate_flure() -> bool:
-	if _phase == "complete" or _flure_fired:
-		return false
+	var now := _get_scheduler_tick()
+	if _phase == "complete" or _lure_until > now or _lure_returning:
+		return false   # one lure in flight at a time; re-tending after expiry/a catch is always allowed
 	_phase = "active"
 	_flure_fired = true
-	var now := _get_scheduler_tick()
 	_lure_until = now + LURE_DURATION
-	if _flure_mesh != null and _flure_mesh.material_override is StandardMaterial3D:
-		(_flure_mesh.material_override as StandardMaterial3D).emission_energy_multiplier = 3.0
+	_set_flure_emission(3.0)
 	var gs = _get_game_state()
 	if _sentry != null and is_instance_valid(_sentry) and gs != null and gs.characters.has("gap_sentry"):
 		_sentry._current_target_id = ""
@@ -146,6 +162,7 @@ func activate_flure() -> bool:
 		gs.command_move_to_pos("gap_sentry", LURE_SETTLE_POS)
 	var sched = _get_scheduler()
 	if sched != null:
+		sched.cancel_tag("distract_gate_lure")
 		sched.schedule_after(LURE_DURATION, _on_lure_expired, "distract_gate_lure")
 	_show_message("The flure sings out. The sentry turns.", 1.4)
 	_set_preview_step("distract_gate_lured")
@@ -153,14 +170,20 @@ func activate_flure() -> bool:
 
 func _on_lure_expired() -> void:
 	_lure_until = -1.0
-	if _flure_mesh != null and _flure_mesh.material_override is StandardMaterial3D:
-		(_flure_mesh.material_override as StandardMaterial3D).emission_energy_multiplier = 0.5
+	_set_flure_emission(0.5)
 	var gs = _get_game_state()
 	if _sentry != null and is_instance_valid(_sentry) and _sentry.is_alive() and gs != null and gs.characters.has("gap_sentry"):
-		gs.set_character_distracted("gap_sentry", false)
-		gs.command_move_to_pos("gap_sentry", SENTRY_POST)
+		# Walk home still DISTRACTED (reach stays shrunken until it re-posts) — _on_character_arrived
+		# restores the full watch. Un-distracting here, parked in the west pocket, put the START inside
+		# its restored 6.0 reach with clear room LOS and insta-caught a correctly retreating party.
+		_lure_returning = true
 		if _sentry.has_method("_change_state"):
 			_sentry._change_state("idle")
+		gs.command_move_to_pos("gap_sentry", SENTRY_POST)
+
+func _set_flure_emission(energy: float) -> void:
+	if _flure_mesh != null and _flure_mesh.material_override is StandardMaterial3D:
+		(_flure_mesh.material_override as StandardMaterial3D).emission_energy_multiplier = energy
 
 ## Spotted in the open = CAUGHT. The failure costs progress, it doesn't end the run: the caught member is
 ## swept back to the start (escorted off, in fiction) AND the sentry returns to its post, re-armed — the
@@ -182,7 +205,17 @@ func _on_spotted(target_id: String) -> void:
 	_show_note("Spotted in the gap. Escorted back to the start.", 2.2)
 	_set_preview_step("distract_gate_caught")
 
+## The catch is ONE atomic beat: the sentry re-posts AND every scrap of lure state clears with it — the
+## pending expiry tag, the distracted flag, the running window, the glow. Leaving any of them (the review
+## caught the sentry sitting at its post distracted at 0.4x reach for the rest of the window, with
+## get_preview_state still reporting lure_active) makes "re-armed" a lie.
 func _reset_sentry_to_post() -> void:
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.cancel_tag("distract_gate_lure")
+	_lure_until = -1.0
+	_lure_returning = false
+	_set_flure_emission(0.5)
 	var gs = _get_game_state()
 	if _sentry == null or not is_instance_valid(_sentry) or gs == null or not gs.characters.has("gap_sentry"):
 		return
@@ -190,29 +223,37 @@ func _reset_sentry_to_post() -> void:
 	if _sentry.has_method("_change_state"):
 		_sentry._change_state("idle")
 	gs.command_stop("gap_sentry")
+	gs.set_character_distracted("gap_sentry", false)
 	gs.snap_character_to("gap_sentry", SENTRY_POST)
 	_sentry.position = SENTRY_POST
 
-# --- Per-frame: the win check ---
+# --- The win check: a FIXED-cadence scheduler poll, never a per-frame sample ---
+# Completion races the tick-exact catch sweep (a member can cross END_X and be spotted within the same
+# coarse frame). Polling per frame made the verdict depend on the frame/step size — win at 1x, swept at
+# 10x, the exact fast-forward divergence the project forbids. On the scheduler the sampling grid is the
+# same at every speed, so the verdict is deterministic.
 
-func _process(delta: float) -> void:
-	_update(delta)
+func _start_win_poll() -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	sched.cancel_tag("distract_gate_win")
+	sched.schedule_after(WIN_POLL_INTERVAL, _win_poll_tick, "distract_gate_win")
 
-func headless_process(delta: float) -> void:
-	_update(delta)
-
-func _update(_delta: float) -> void:
+func _win_poll_tick() -> void:
 	if _phase == "complete":
 		return
 	var gs = _get_game_state()
-	if gs == null:
-		return
-	for char_id in PARTY_IDS:
-		if gs.characters.has(char_id) and _get_character_position(char_id).x >= END_X:
-			_phase = "complete"
-			_show_note("Through the gap while the flure held. The end is yours.", 2.5)
-			_set_preview_step("distract_gate_complete")
-			return
+	if gs != null:
+		for char_id in PARTY_IDS:
+			if gs.characters.has(char_id) and _get_character_position(char_id).x >= END_X:
+				_phase = "complete"
+				_show_note("Through the gap while the flure held. The end is yours.", 2.5)
+				_set_preview_step("distract_gate_complete")
+				return
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.schedule_after(WIN_POLL_INTERVAL, _win_poll_tick, "distract_gate_win")
 
 # --- SceneChunk interface ---
 
@@ -254,11 +295,12 @@ func reset_preview_state() -> void:
 	_caught_count = 0
 	_flure_fired = false
 	_lure_until = -1.0
-	if _flure_mesh != null and _flure_mesh.material_override is StandardMaterial3D:
-		(_flure_mesh.material_override as StandardMaterial3D).emission_energy_multiplier = 0.5
+	_lure_returning = false
+	_set_flure_emission(0.5)
 	var sched = _get_scheduler()
 	if sched != null:
 		sched.cancel_tag("distract_gate_lure")
+		sched.cancel_tag("distract_gate_catch")
 	var gs = _get_game_state()
 	if gs != null and _sentry != null and is_instance_valid(_sentry) and gs.characters.has("gap_sentry"):
 		gs.set_character_distracted("gap_sentry", false)
@@ -266,6 +308,7 @@ func reset_preview_state() -> void:
 		_sentry.position = SENTRY_POST
 		if _sentry.has_method("_change_state"):
 			_sentry._change_state("idle")
+	_start_win_poll()
 	_set_preview_step("distract_gate_briefing")
 
 func get_preview_state() -> Dictionary:
@@ -275,6 +318,7 @@ func get_preview_state() -> Dictionary:
 		"caught_count": _caught_count,
 		"flure_fired": _flure_fired,
 		"lure_active": _lure_until > now,
+		"lure_returning": _lure_returning,
 		"sentry_state": _sentry.get_state() if _sentry != null and is_instance_valid(_sentry) else "",
 		"complete": _phase == "complete",
 	}

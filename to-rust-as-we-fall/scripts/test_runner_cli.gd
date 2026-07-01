@@ -11099,6 +11099,54 @@ func _test_distract_gate() -> void:
 	print("  [watched-gap] solve cross: complete=%s caught=%d (was %d)" % [str(st["complete"]), int(st["caught_count"]), caught_before])
 	_assert_true(bool(st["complete"]), "with the sentry lured away the cross reaches the END — solving the puzzle IS the gate")
 	_assert_equals(int(st["caught_count"]), caught_before, "the legal solve crosses uncaught")
+
+	# --- 4. Expiry safety + no soft-lock: tend, fall back to the START, let the lure EXPIRE unused. The
+	#     party at the start must NOT be spotted when the window closes (the sentry walks home distracted,
+	#     re-arming only AT the post), and the flure must re-arm (a missed window is never a dead run). ---
+	chunk.reset_preview_state()
+	for cid in ["aster", "peris", "endo"]:
+		inst.headless_set_character_position(cid, chunk.SPAWNS[cid])
+	inst.headless_advance(0.5, 0.1)
+	_assert_equals(int(chunk.get_preview_state()["caught_count"]), 0, "reset zeroes the catch count (clean part-4 baseline)")
+	gs.command_move_to_pos("peris", chunk.FLURE_POS)
+	inst.headless_advance(5.0, 0.1)
+	flure_node.on_interaction_arrived()
+	inst.headless_advance(float(flure_node.dwell_time) + 0.4, 0.1)
+	_assert_true(bool(chunk.get_preview_state()["lure_active"]), "the re-armed flure fires again after a reset")
+	gs.command_move_to_pos("peris", Vector3(3.0, 0.5, 0.0))
+	inst.headless_advance(3.0, 0.1)
+	inst.headless_advance(float(chunk.LURE_DURATION) + 10.0, 0.1)   # expiry + the full walk home
+	st = chunk.get_preview_state()
+	print("  [watched-gap] expiry: caught=%d sentry=%s distracted=%s" % [int(st["caught_count"]), str(st["sentry_state"]), str(gs.is_character_distracted("gap_sentry"))])
+	_assert_equals(int(st["caught_count"]), 0, "the WHOLE legal lure cycle (tend, retreat, expiry, walk home) catches nobody — the start stays safe")
+	_assert_true(gs.get_position("gap_sentry").distance_to(chunk.SENTRY_POST) < 1.5, "after expiry the sentry walked home to its post")
+	_assert_true(not gs.is_character_distracted("gap_sentry"), "back at the post the sentry's full watch is restored")
+	_assert_true(flure_node.is_interaction_enabled(), "the flure RE-ARMS after expiry — a missed window never soft-locks the run")
+
+	# --- 5. Crowd-the-lure: re-tend (proving re-arm end-to-end), then walk into the lured sentry's shrunken
+	#     reach — still caught (distraction shrinks the watch, it does not blind it) — and the catch beat
+	#     cleans the WHOLE lure state atomically (no distracted-at-post half-state, no stale window). ---
+	gs.command_move_to_pos("peris", chunk.FLURE_POS)
+	inst.headless_advance(5.0, 0.1)
+	flure_node.on_interaction_arrived()
+	inst.headless_advance(float(flure_node.dwell_time) + 0.4, 0.1)
+	_assert_true(bool(chunk.get_preview_state()["lure_active"]), "the flure fires a THIRD time (re-arm is not a one-off)")
+	var caught_pre_crowd := int(chunk.get_preview_state()["caught_count"])
+	gs.command_move_to_pos("peris", Vector3(5.5, 0.5, 3.0))   # inside the settled sentry's 0.4x bubble
+	var crowded := false
+	for i in range(24):
+		inst.headless_advance(0.5, 0.1)
+		if int(chunk.get_preview_state()["caught_count"]) > caught_pre_crowd:
+			crowded = true
+			break
+	_assert_true(crowded, "crowding the lured sentry still gets you caught (distraction shrinks, never blinds)")
+	inst.headless_advance(2.0, 0.1)
+	st = chunk.get_preview_state()
+	print("  [watched-gap] crowd catch cleanup: lure_active=%s returning=%s distracted=%s sentry=%s" % [str(st["lure_active"]), str(st["lure_returning"]), str(gs.is_character_distracted("gap_sentry")), str(st["sentry_state"])])
+	_assert_true(not bool(st["lure_active"]), "the catch beat cancels the running lure window (no stale clock)")
+	_assert_true(not gs.is_character_distracted("gap_sentry"), "the re-posted sentry is NOT left distracted at 0.4x reach")
+	_assert_true(gs.get_position("gap_sentry").distance_to(chunk.SENTRY_POST) < 1.5, "the catch beat re-posts the sentry")
+	_assert_true(flure_node.is_interaction_enabled(), "the flure re-arms after a catch too")
 	inst.queue_free()
 	await get_tree().process_frame
 
