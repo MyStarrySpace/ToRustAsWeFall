@@ -8,6 +8,7 @@ var _aster_node: CharacterBody3D
 var _peris_node: CharacterBody3D
 var _fall_landed_fired := false  # one-shot guard: bridge landing fires once
 var _fall_tween: Tween           # the cosmetic fall animation (wall-clock)
+var _fall_prev_offset_y := 12.0  # camera follow_offset.y before the fall dipped it (restored on landing)
 var _collapsed_chunks_removed := false  # one-shot guard: old level chunks freed once
 var _escort_1  # NPC
 var _escort_2  # NPC
@@ -965,6 +966,10 @@ func _execute_bridge_fall() -> void:
 		_collapse_bridge_model(model, break_x)
 		_spawn_collapse_dust(bridge_floor, break_x)
 	# The party rides the failing centre down (visual); the data-layer landing is the scheduler's.
+	# Remember the pre-fall camera height so the landing can restore it — the fall DIPS follow_offset.y for a
+	# plunging framing, and since the camera also follows the target's Y down, leaving the dip in would frame the
+	# lower deck a full BELOW_Y too low (the "camera stuck in an odd location" after the collapse).
+	_fall_prev_offset_y = _camera.follow_offset.y
 	var tween := create_tween()
 	tween.set_parallel(true)
 	for char_node in [_peris_node, _aster_node]:
@@ -1085,6 +1090,13 @@ func _on_fall_landed() -> void:
 		return
 	_fall_landed_fired = true
 	_camera.shake(0.3, 6.0)
+	# The party is now on the lower deck (their node Y carries the drop via the level transition below), so undo
+	# the fall's camera DIP or the lower deck frames a full BELOW_Y too low. Kill the cosmetic wall-clock fall
+	# tween first so it can't animate follow_offset.y back down after we restore it (matters under fast-forward,
+	# where the scheduled landing fires before the wall-clock tween finishes).
+	if _fall_tween != null and _fall_tween.is_valid():
+		_fall_tween.kill()
+	_camera.follow_offset.y = _fall_prev_offset_y
 	# Land STRAIGHT DOWN where the span gave way — the broken section juts out mid-span here (the climb
 	# prompt + fork sit at this X), so the party drops onto the ecology below, no teleport to a far ledge.
 	for char_id in ["peris", "aster"]:

@@ -606,6 +606,9 @@ func _ready() -> void:
 			"--test-elevator-bridge":
 				ran_test = true
 				await _test_elevator_bridge_collapse()
+			"--test-elevator-camera-collapse":
+				ran_test = true
+				await _test_elevator_camera_after_collapse()
 			"--test-elevator-box-select":
 				ran_test = true
 				await _test_elevator_box_select_multiselect()
@@ -1196,6 +1199,7 @@ func _run_all_tests() -> void:
 	await _test_peris_sim()
 	await _test_elevator()
 	await _test_elevator_bridge_collapse()
+	await _test_elevator_camera_after_collapse()
 	await _test_elevator_box_select_multiselect()
 	await _test_elevator_distracted_fauna()
 	await _test_elevator_fall_level()
@@ -7804,6 +7808,62 @@ func _test_elevator_bridge_collapse() -> void:
 	_assert_true(debris >= 30,
 		"The collapse converts the modeled pieces into physics debris bodies (%d)" % debris)
 	_assert_true(catch_floor, "The collapse drops a catch-floor for the debris to land on")
+	if instance.has_method("_teardown_sequence"):
+		instance._teardown_sequence()
+	instance.queue_free()
+	await get_tree().process_frame
+
+# --- Test: after the bridge collapse, the camera frames the lower deck (its plunge dip is restored) ---
+# Repro: the fall DIPS follow_offset.y by BELOW_Y for a plunging shot, but the camera also follows the target's
+# Y down onto the lower deck — so if the dip is left in, the lower deck is framed a full BELOW_Y too low (the
+# "camera stuck in an odd location" after the collapse). The landing must restore the pre-fall offset.
+func _test_elevator_camera_after_collapse() -> void:
+	_test_name = "Elevator Camera After Collapse"
+	var scene := load("res://scenes/tutorial/elevator.tscn")
+	if scene == null:
+		_assert_true(false, "elevator scene loads")
+		return
+	var instance: Node = scene.instantiate()
+	if "suppress_scene_change" in instance:
+		instance.suppress_scene_change = true
+	get_tree().root.add_child(instance)
+	for i in range(8):
+		await get_tree().process_frame
+	var gs = instance._game_state
+	instance._scheduler.clear()
+	if instance._dialogue != null and instance._dialogue.has_method("clear"):
+		instance._dialogue.clear()
+	instance._load_chunk("bridge")
+	instance._load_chunk("below")
+	for cid in ["aster", "peris"]:
+		gs.command_stop(cid)
+		gs.set_character_level(cid, instance.LEVEL_UPPER)
+		gs.characters[cid]["position"] = Vector3(float(instance.BRIDGE_START_X), 0.0, 0.0)
+		gs.characters[cid]["grid_cell"] = gs.grid.world_to_grid(gs.characters[cid]["position"])
+	instance._current_step = "bridge"
+
+	var cam = instance._camera
+	var original_offset_y: float = cam.follow_offset.y
+
+	# Kick the fall directly (the scheduled path just delays this), then drive the COSMETIC wall-clock tween to
+	# completion deterministically with custom_step (headless_advance only moves the scheduler, not the tween).
+	instance._start_bridge_collapse()
+	instance._execute_bridge_fall()
+	_assert_true(instance._fall_tween != null, "the fall kicks off its camera/party tween")
+	if instance._fall_tween != null:
+		instance._fall_tween.pause()
+		instance._fall_tween.custom_step(2.0)   # past fall_duration (1.4s) → the plunge dip is fully applied
+	# Sanity: the plunge actually dipped the camera (so the restore below is meaningful, not a no-op).
+	_assert_true(cam.follow_offset.y < original_offset_y - 0.1,
+		"the fall dips the camera offset for the plunge (%.1f -> %.1f)" % [original_offset_y, cam.follow_offset.y])
+
+	# Land: the party drops to the lower deck AND the camera offset must be restored (not left dipped).
+	instance._on_fall_landed()
+	_assert_equals(cam.follow_offset.y, original_offset_y,
+		"after the collapse the camera offset is restored, so the lower deck is framed normally (not BELOW_Y too low)")
+	# And the party really is on the lower deck now (so the framing is genuinely the lower-deck framing).
+	_assert_equals(gs.get_character_level("aster"), instance.LEVEL_LOWER, "the party landed on the lower deck")
+
 	if instance.has_method("_teardown_sequence"):
 		instance._teardown_sequence()
 	instance.queue_free()
