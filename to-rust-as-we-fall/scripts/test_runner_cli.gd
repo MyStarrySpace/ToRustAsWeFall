@@ -751,6 +751,9 @@ func _ready() -> void:
 			"--test-generated-traversible":
 				ran_test = true
 				_test_generated_traversible()
+			"--test-generated-stretch-quality":
+				ran_test = true
+				await _test_generated_stretch_quality()
 			"--test-dodge-knockdown":
 				ran_test = true
 				_test_dodge_knockdown()
@@ -1243,6 +1246,7 @@ func _run_all_tests() -> void:
 	_test_grid_from_data()
 	_test_generated_grid()
 	_test_generated_traversible()
+	await _test_generated_stretch_quality()
 	_test_dodge_knockdown()
 	_test_preview_parked_bail()
 	await _test_wrong_character_feedback()
@@ -2271,8 +2275,6 @@ func _test_archetype_generation() -> void:
 		"Generated preview exposes clickable node outline targets")
 	_assert_true(int(preview_graybox.get("instanced_content_marker_count", 0)) > 0,
 		"Generated preview instances sized flora/enemy/structure markers")
-	_assert_true(int(preview_graybox.get("route_surface_instance_count", 0)) > 0,
-		"Generated preview instances route surfaces between nodes")
 	for char_id in ["aster", "peris", "endo"]:
 		var stats: Dictionary = state.get("character_stats", {}).get(char_id, {})
 		_assert_equals(float(stats.get("hp", -1.0)), 100.0, "%s starts at max HP" % char_id)
@@ -3180,6 +3182,59 @@ func _flood_grid_reachable(g: GridWorld, start: Vector2i, start_lvl: int) -> Dic
 				reached[lk] = true
 				queue.append(lk)
 	return reached
+
+## Quality guards for generated levels the user flagged: the party spawns ON the stretch (not off at world
+## origin), corridors vary in width (not uniform width-1), and the renderer is the tiled floor + node markers —
+## none of the old scaffolding clutter (foundation slab, route-connector boxes, big role pads).
+func _test_generated_stretch_quality() -> void:
+	_test_name = "Generated Stretch Quality"
+	var Wfc = load("res://scripts/generation/stretch_wfc_layout.gd")
+
+	# (a) Corridor WIDTH mechanism: a wider carve lays down more cells (varied hallway widths).
+	var c1: Array = Wfc._carve_l(Vector2i(0, 0), Vector2i(7, 3), 1)
+	var c2: Array = Wfc._carve_l(Vector2i(0, 0), Vector2i(7, 3), 2)
+	var c3: Array = Wfc._carve_l(Vector2i(0, 0), Vector2i(7, 3), 3)
+	_assert_true(c1.size() < c2.size() and c2.size() < c3.size(),
+		"wider corridor width carves more cells (%d < %d < %d)" % [c1.size(), c2.size(), c3.size()])
+
+	# (b) The party spawns ON the stretch — its anchors sit AT the entry node, not at world origin off to the side.
+	var spec: Dictionary = StretchGeneratorScript.generate({"seed": 5, "complexity_tier": "standard", "id": "q"})
+	var entry := _generated_node(spec, "entry")
+	var anchors: Dictionary = spec.get("anchors", {})
+	for cid in ["aster", "peris", "endo"]:
+		var a := _vec3_from_array(anchors.get(cid, []), Vector3.INF)
+		_assert_true(a != Vector3.INF, "%s has a spawn anchor" % cid)
+		if a != Vector3.INF:
+			_assert_true(a.distance_to(entry.pos) < 1.5,
+				"%s spawns on the stretch at the entry (%.2f from entry, not off at origin)" % [cid, a.distance_to(entry.pos)])
+
+	# (c) The generated chunk renders a TILED FLOOR + node markers, and NONE of the old scaffolding clutter.
+	var chunk = load("res://scenes/fragments/chunks/generated_stretch_chunk.tscn").instantiate()
+	chunk.configure_chunk({"spec": spec})
+	get_tree().root.add_child(chunk)
+	if chunk.has_method("_build_chunk"):
+		chunk._build_chunk()
+	await get_tree().process_frame
+	var names: Array = []
+	_collect_node_names(chunk, names)
+	_assert_true(_names_any_prefix(names, "GeneratedFloor"), "the generated level renders a tiled walkable floor")
+	_assert_true(_names_any_prefix(names, "NodeMarker_"), "nodes still have a marker to click")
+	_assert_true(not _names_any_prefix(names, "GeneratedFoundation"), "no big foundation slab (clutter removed)")
+	_assert_true(not _names_any_prefix(names, "Route_"), "no route-connector boxes (clutter removed)")
+	_assert_true(not _names_any_prefix(names, "NodePad_"), "no big role pads over the floor (clutter removed)")
+	chunk.queue_free()
+	await get_tree().process_frame
+
+func _collect_node_names(n: Node, acc: Array) -> void:
+	acc.append(String(n.name))
+	for c in n.get_children():
+		_collect_node_names(c, acc)
+
+func _names_any_prefix(names: Array, prefix: String) -> bool:
+	for nm in names:
+		if String(nm).begins_with(prefix):
+			return true
+	return false
 
 ## Does a generated spec's level connect entry -> exit on its own grid?
 func _run_level_connects(spec: Dictionary) -> bool:

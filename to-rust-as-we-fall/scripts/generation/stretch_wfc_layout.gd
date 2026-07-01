@@ -115,12 +115,18 @@ static func solve(nodes: Array, routes: Array, settings: Dictionary, _budget: Di
 		var dir_ab := _dir(a, b)
 		var ca := _conn_cell(slot_cells[a["id"]], dir_ab)
 		var cb := _conn_cell(slot_cells[b["id"]], _opposite(dir_ab))
+		var route_id := str(r.get("id", "%s_to_%s" % [a["id"], b["id"]]))
+		# Corridor width VARIES (deterministic, seeded): safe routes read as broad hallways (2-3), risky/shortcut
+		# ones as tighter squeezes (1-2) — so width itself carries the route's danger, and levels aren't uniform.
+		var kind := _route_kind(r)
+		var span: int = 3 if kind == "safe" else 2
+		var width: int = 1 + abs(int(hash("corridor_width:%s:%d" % [route_id, int(settings.get("seed", 0))]))) % span
 		corridors.append({
-			"route": str(r.get("id", "%s_to_%s" % [a["id"], b["id"]])),
-			"kind": _route_kind(r), "recoverable": bool(r.get("recoverable", true)),
+			"route": route_id,
+			"kind": kind, "recoverable": bool(r.get("recoverable", true)),
 			"from_level": int(a["level"]), "to_level": int(b["level"]),
 			"from": a["id"], "to": b["id"],
-			"cells": _carve_l(ca, cb),
+			"cells": _carve_l(ca, cb, width),
 		})
 
 	return {
@@ -208,20 +214,38 @@ static func _conn_cell(slot_cell: Dictionary, side: String) -> Vector2i:
 	var center: Array = slot_cell["connection_cell"]
 	return Vector2i(int(center[0]), int(center[1]))
 
-## Axis-first L between two cells (horizontal run, then vertical). Deterministic; width-1 (Phase 1).
-static func _carve_l(a: Vector2i, b: Vector2i) -> Array:
+## Axis-first L between two cells (horizontal run, then vertical), thickened to `width` cells so corridors read as
+## real hallways of varying width (each segment thickens along its PERPENDICULAR axis). Deterministic.
+static func _carve_l(a: Vector2i, b: Vector2i, width: int = 1) -> Array:
+	var w := maxi(1, width)
+	var lo := -(w / 2)
+	var hi := w - (w / 2)   # offsets = [lo, hi) → w cells, centred for odd, biased for even
+	var seen := {}
 	var cells: Array = []
+	var add := func(cx: int, cz: int) -> void:
+		var k := [cx, cz]
+		if not seen.has(k):
+			seen[k] = true
+			cells.append(k)
+	# Horizontal run at y=a.y, thickened in Z.
 	var x := a.x
 	var step_x: int = 1 if b.x >= a.x else -1
 	while x != b.x:
-		cells.append([x, a.y])
+		for dz in range(lo, hi):
+			add.call(x, a.y + dz)
 		x += step_x
+	# Vertical run at x=b.x, thickened in X.
 	var y := a.y
 	var step_y: int = 1 if b.y >= a.y else -1
 	while y != b.y:
-		cells.append([b.x, y])
+		for dx in range(lo, hi):
+			add.call(b.x + dx, y)
 		y += step_y
-	cells.append([b.x, b.y])
+	# Corner + far endpoint, thickened both ways so the elbow isn't pinched.
+	for dz in range(lo, hi):
+		for dx in range(lo, hi):
+			add.call(b.x + dx, b.y + dz)
+			add.call(b.x + dx, a.y + dz)
 	return cells
 
 static func _route_kind(route: Dictionary) -> String:

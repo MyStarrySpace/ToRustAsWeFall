@@ -1889,14 +1889,23 @@ static func _navigation_floor_key(position: Vector3) -> String:
 	return "%d:%d" % [int(roundf(position.x * 10.0)), int(roundf(position.z * 10.0))]
 
 static func _build_anchors(nodes: Array) -> Dictionary:
-	var anchors := {
-		"aster": [0.0, 0.5, 1.6],
-		"peris": [-1.6, 0.5, 0.0],
-		"endo": [-1.2, 0.5, -1.8],
-	}
+	var anchors := {}
+	var entry_pos: Array = [0.0, 0.45, 0.0]
 	for node in nodes:
 		if node is Dictionary:
-			anchors[str((node as Dictionary).get("id", ""))] = (node as Dictionary).get("position", [0.0, 0.45, 0.0])
+			var id := str((node as Dictionary).get("id", ""))
+			var pos: Array = (node as Dictionary).get("position", [0.0, 0.45, 0.0])
+			anchors[id] = pos
+			if id == "entry":
+				entry_pos = pos
+	# The party spawns ON the entry cell (the start of the stretch), fanned by small sub-cell offsets so they read
+	# as three characters without stacking — NOT at world origin off to the side of the level.
+	var ex := float(entry_pos[0])
+	var ey := float(entry_pos[1]) + 0.05
+	var ez := float(entry_pos[2])
+	anchors["aster"] = [ex, ey, ez]
+	anchors["peris"] = [ex + 0.4, ey, ez + 0.4]
+	anchors["endo"] = [ex - 0.4, ey, ez - 0.4]
 	return anchors
 
 static func _build_world_slot(settings: Dictionary, anchors: Dictionary) -> Dictionary:

@@ -65,10 +65,11 @@ func _build_chunk() -> void:
 	_node_markers.clear()
 	_node_targets.clear()
 	_route_surfaces.clear()
+	# The tiled walkable floor IS the level now — the old abstract scaffolding (a big foundation slab, straight
+	# route-connector boxes, big role pads, a palette legend) was redundant clutter over it, so it's gone. Only the
+	# floor + the per-node markers/interactables the player actually uses remain.
 	_build_foundation()
-	_build_generated_routes()
 	_build_generated_nodes()
-	_build_palette_legend()
 	reset_preview_state()
 
 func get_scene_title() -> String:
@@ -654,7 +655,6 @@ func _build_foundation() -> void:
 	var bounds_center := _vec3(bounds.get("center", []), Vector3(12.0, 0.0, 0.0))
 	var bounds_size := _vec3(bounds.get("size", []), Vector3(24.0, 3.0, 10.0))
 	var min_point := _vec3(bounds.get("min", []), bounds_center - bounds_size * 0.5)
-	_add_label(self, str(_spec.get("title", "Generated Stretch")).to_upper(), Vector3(bounds_center.x, min_point.y + 3.0, min_point.z - 2.8), Color(0.78, 0.88, 0.94))
 	_add_light(self, Vector3(bounds_center.x, min_point.y + 8.0, bounds_center.z), Color(0.72, 0.86, 0.96), 1.25, maxf(34.0, bounds_size.x * 0.5))
 
 ## A pixel-atlas material that tiles across a surface in world space (the sim-room / bridge technique): 1 tile/m,
@@ -707,19 +707,49 @@ func _build_floor_surface(grid, lvl: int, cells: Array, risk: Dictionary, cell: 
 		var is_risk: bool = risk.has(v)
 		if is_risk:
 			has_risk = true
-		_floor_quad(st_risk if is_risk else st_main, Vector3(w.x, w.y + 0.02, w.z), h)
+		# Top surface at floor Y (+0.02 so overlays read above it); a thin SOLID slab so the click-raycast
+		# reliably lands on it (a flat zero-thickness trimesh doesn't register a downward ray).
+		_add_floor_slab(st_risk if is_risk else st_main, Vector3(w.x, w.y + 0.02, w.z), h, 0.16)
 	_commit_floor_surface(st_main, "GeneratedFloor_L%d" % lvl, _tiled_floor_material("deck_metal"))
 	if has_risk:
 		_commit_floor_surface(st_risk, "GeneratedFloorRisk_L%d" % lvl, _tiled_floor_material("rust_iron"))
 
-func _floor_quad(st: SurfaceTool, center: Vector3, h: float) -> void:
-	var a := Vector3(center.x - h, center.y, center.z - h)
-	var b := Vector3(center.x + h, center.y, center.z - h)
-	var c := Vector3(center.x + h, center.y, center.z + h)
-	var d := Vector3(center.x - h, center.y, center.z + h)
-	st.set_normal(Vector3.UP)
-	for vtx in [a, c, b, a, d, c]:
-		st.add_vertex(vtx)
+func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, n: Vector3) -> void:
+	st.set_normal(n)
+	st.add_vertex(a)
+	st.add_vertex(b)
+	st.add_vertex(c)
+
+## A thin box (floor tile with thickness) whose TOP is at `top.y`. A closed solid so its trimesh collision is a
+## dependable ray target from above (a flat quad isn't). World-triplanar tiles the top; the ~0.16 sides read as a
+## floor lip.
+func _add_floor_slab(st: SurfaceTool, top: Vector3, h: float, thick: float) -> void:
+	var yt := top.y
+	var yb := top.y - thick
+	var x0 := top.x - h
+	var x1 := top.x + h
+	var z0 := top.z - h
+	var z1 := top.z + h
+	var A := Vector3(x0, yt, z0)
+	var B := Vector3(x1, yt, z0)
+	var C := Vector3(x1, yt, z1)
+	var D := Vector3(x0, yt, z1)
+	var E := Vector3(x0, yb, z0)
+	var F := Vector3(x1, yb, z0)
+	var G := Vector3(x1, yb, z1)
+	var H := Vector3(x0, yb, z1)
+	_tri(st, A, C, B, Vector3.UP)
+	_tri(st, A, D, C, Vector3.UP)          # top
+	_tri(st, E, F, G, Vector3.DOWN)
+	_tri(st, E, G, H, Vector3.DOWN)        # bottom
+	_tri(st, A, B, F, Vector3(0, 0, -1))
+	_tri(st, A, F, E, Vector3(0, 0, -1))   # -Z side
+	_tri(st, D, H, G, Vector3(0, 0, 1))
+	_tri(st, D, G, C, Vector3(0, 0, 1))    # +Z side
+	_tri(st, A, E, H, Vector3(-1, 0, 0))
+	_tri(st, A, H, D, Vector3(-1, 0, 0))   # -X side
+	_tri(st, B, C, G, Vector3(1, 0, 0))
+	_tri(st, B, G, F, Vector3(1, 0, 0))    # +X side
 
 func _commit_floor_surface(st: SurfaceTool, node_name: String, mat: Material) -> void:
 	var mesh := st.commit()
@@ -785,11 +815,10 @@ func _build_generated_node(node: Dictionary) -> void:
 	var role := str(node.get("role", "route"))
 	var pad_size := _vec3(node.get("footprint", node.get("floor_size", [])), _node_pad_size(role))
 	var highlight_meshes: Array[MeshInstance3D] = []
-	# Role-tinted accent ON the tiled floor (no collision — the floor owns clicks); slightly raised to read over it.
-	var pad := _add_graybox_slab(self, pos + Vector3(0.0, 0.035, 0.0), pad_size, _role_color(role), "NodePad_%s" % node_id, Vector3.ZERO, false)
-	highlight_meshes.append(pad)
+	# No big role pad over the tiled floor anymore — just a compact marker post the player reads + clicks, plus the
+	# content markers below. Elevation posts still show when a node sits on an upper floor.
 	_build_elevation_posts(pos, pad_size, int(node.get("elevation_index", 0)), _role_color(role))
-	var marker := _add_box(self, pos + Vector3(0.0, 0.48, 0.0), Vector3(1.35, 0.96, 1.35), _role_color(role).lightened(0.08), _role_color(role).lightened(0.22), 0.18, "NodeMarker_%s" % node_id)
+	var marker := _add_box(self, pos + Vector3(0.0, 0.42, 0.0), Vector3(0.9, 0.84, 0.9), _role_color(role).lightened(0.08), _role_color(role).lightened(0.22), 0.16, "NodeMarker_%s" % node_id)
 	highlight_meshes.append(marker)
 	_node_markers[node_id] = marker
 	_add_label(self, str(node.get("title", node_id)).to_upper(), pos + Vector3(0.0, 1.78, 0.0), Color(0.88, 0.93, 0.95))
