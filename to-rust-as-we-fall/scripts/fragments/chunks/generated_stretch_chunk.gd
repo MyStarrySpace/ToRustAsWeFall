@@ -622,6 +622,47 @@ func run_generated_golden_path() -> bool:
 	_route_choice = "golden_path"
 	return _shelter_rested
 
+## The emitted solution as replayable data (spec.headless.solution) — the ordered, per-node approach a full party
+## takes to clear the golden path. For tests + an in-game/Android replay to CONSUME (not re-derive).
+func get_solution_script() -> Dictionary:
+	_ensure_spec_loaded()
+	return (_spec.get("headless", {}).get("solution", {}) as Dictionary).duplicate(true)
+
+## REPLAY the emitted solution end-to-end at the data layer, CONSUMING spec.headless.solution (not re-deriving the
+## plan): drive each node in the solution's order and check the approach that actually clears it MATCHES the emitted
+## approach_id — so the shipped solution data faithfully describes a real playthrough. Returns
+## {complete, steps, approach_mismatches, blocked}. `complete` proves the emitted solution beats the puzzle.
+func replay_generated_solution() -> Dictionary:
+	_ensure_spec_loaded()
+	reset_preview_state()
+	var sol: Dictionary = _spec.get("headless", {}).get("solution", {})
+	set_active_loadout(str(sol.get("loadout", "spotlight")))
+	_route_phase = "solution_replay"
+	var actions: Array = sol.get("actions", [])
+	var mismatches := 0
+	var steps := 0
+	for action in actions:
+		if not (action is Dictionary):
+			continue
+		var node_id := str((action as Dictionary).get("node", ""))
+		activate_generated_node(node_id)
+		steps += 1
+		var used: Dictionary = _node_approach_used.get(node_id, {})
+		var used_id := str(used.get("id", used.get("approach_id", "")))
+		var want_id := str((action as Dictionary).get("approach_id", ""))
+		# Only real puzzle approaches are comparable — traverse / entry / exit carry no chosen approach.
+		if want_id != "" and want_id != "traverse" and used_id != "" and used_id != want_id:
+			mismatches += 1
+	if not _shelter_rested and _blocked_nodes.is_empty():
+		_reach_exit_shelter()
+	_route_choice = "solution_replay"
+	return {
+		"complete": _shelter_rested,
+		"steps": steps,
+		"approach_mismatches": mismatches,
+		"blocked": _blocked_nodes.duplicate(),
+	}
+
 ## The shadow solution: the same node spine solved by the Aster+Peris pair alone.
 ## Each puzzle node falls through to its shadow approach (no specialist on hand), so a
 ## completed shadow run is a genuinely different solution path than the golden run.

@@ -185,6 +185,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 		"headless": {
 			"golden_path": _golden_path(nodes),
 			"risky_recovery": _risky_recovery(routes, nodes),
+			"solution": _solution_script(solution, _golden_path(nodes)),
 			"solution_paths": solution.get("solution_paths", []),
 			"solution_summary": {
 				"multi_solution": solution.get("multi_solution", false),
@@ -2012,6 +2013,43 @@ static func _golden_path(nodes: Array) -> Array:
 		if node is Dictionary and not bool((node as Dictionary).get("optional", false)):
 			path.append(str((node as Dictionary).get("id", "")))
 	return path
+
+## The generated puzzle's SOLUTION as replayable DATA: the golden (full-party) path as an ordered list of the
+## exact action to take at each node — which APPROACH clears it, its kind/risk, and any ability the approach needs.
+## Emitted into the spec so a test can, from the same seed, regenerate the identical puzzle AND drive this solution
+## end-to-end (walk to each node, interact, cast the ability) as if a real player were playing it. Deterministic:
+## the solver is a pure function of the (deterministic) spec, so the same seed yields the same solution.
+static func _solution_script(solution: Dictionary, golden_path: Array) -> Dictionary:
+	var paths: Array = solution.get("solution_paths", [])
+	var chosen := {}
+	for p in paths:
+		if p is Dictionary and str((p as Dictionary).get("loadout", "")) == "spotlight":
+			chosen = p
+			break
+	if chosen.is_empty() and not paths.is_empty() and paths[0] is Dictionary:
+		chosen = paths[0]
+	var per_node := {}
+	for ap in chosen.get("approach_per_node", []):
+		if ap is Dictionary:
+			per_node[str((ap as Dictionary).get("node", ""))] = ap
+	var actions: Array = []
+	for node_id in golden_path:
+		var ap: Dictionary = per_node.get(str(node_id), {})
+		var requires: Array = ap.get("requires", [])
+		actions.append({
+			"node": str(node_id),
+			"approach_id": str(ap.get("approach_id", ap.get("id", "traverse"))),
+			"kind": str(ap.get("kind", "traverse")),
+			"risk": str(ap.get("risk", "safe")),
+			"party": str(ap.get("party", "any")),
+			"requires": requires.duplicate() if requires is Array else [],
+		})
+	return {
+		"loadout": str(chosen.get("loadout", "spotlight")),
+		"reaches": "exit_shelter",
+		"solvable": bool(chosen.get("solvable", true)),
+		"actions": actions,
+	}
 
 static func _risky_recovery(routes: Array, nodes: Array) -> Array:
 	for route in routes:

@@ -357,6 +357,12 @@ func _ready() -> void:
 			"--test-stretch-branches":
 				ran_test = true
 				await _test_stretch_branches()
+			"--test-generated-solution-replay":
+				ran_test = true
+				await _test_generated_solution_replay()
+			"--test-generated-solution-realinput":
+				ran_test = true
+				await _test_generated_solution_realinput()
 			"--test-channels-splash-capture":
 				ran_test = true
 				await _test_channels_splash_capture()
@@ -1129,6 +1135,8 @@ func _run_all_tests() -> void:
 	await _test_generated_stretch_probe_coverage()
 	await _test_spiral_drop_down()
 	await _test_stretch_branches()
+	await _test_generated_solution_replay()
+	await _test_generated_solution_realinput()
 	await _test_channels_pipe_splash()
 	await _test_channels_splash_droplets()
 	await _test_refuge_run_playthrough()
@@ -13100,6 +13108,96 @@ func _branch_shapes(branches: Array) -> Array:
 	for b in branches:
 		out.append(str(b.get("shape", "")))
 	return out
+
+## Solution-as-data: a generated puzzle emits its SOLUTION (spec.headless.solution — the ordered per-node approach
+## for the golden path). This proves (1) the same seed regenerates the IDENTICAL puzzle + solution (determinism),
+## (2) replaying the EMITTED solution (consuming the data, not re-deriving) BEATS the puzzle, and (3) the emitted
+## approach MATCHES the one that actually clears each node — so the shipped solution faithfully describes a
+## playthrough. This is the data-layer half; --test-generated-solution-realinput drives it as a real player.
+func _test_generated_solution_replay() -> void:
+	_test_name = "Generated Solution Replay"
+	for seed in [5, 9, 21]:
+		var settings := {"seed": seed, "complexity_tier": "standard", "id": "sol_%d" % seed, "budget": {"node_count": 7}}
+		var spec: Dictionary = StretchGeneratorScript.generate(settings)
+		var spec2: Dictionary = StretchGeneratorScript.generate(settings)
+		var sol: Dictionary = spec.get("headless", {}).get("solution", {})
+		var sol2: Dictionary = spec2.get("headless", {}).get("solution", {})
+		_assert_equals(JSON.stringify(sol), JSON.stringify(sol2), "seed %d: the same seed emits the IDENTICAL solution data" % seed)
+		var actions: Array = sol.get("actions", [])
+		_assert_true(not actions.is_empty(), "seed %d: the generated puzzle emits a solution action list (%d actions)" % [seed, actions.size()])
+		var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 6, {"spec": spec})
+		if inst == null:
+			_assert_true(false, "seed %d generated stretch boots" % seed)
+			continue
+		var chunk = inst.get("_active_chunk")
+		var result: Dictionary = chunk.call("replay_generated_solution")
+		print("  [solution] seed %d actions=%d steps=%d complete=%s mismatches=%d blocked=%s" % [seed, actions.size(), int(result.get("steps", 0)), str(result.get("complete", false)), int(result.get("approach_mismatches", -1)), str(result.get("blocked", []))])
+		_assert_true(bool(result.get("complete", false)), "seed %d: replaying the EMITTED solution beats the puzzle (reaches the shelter)" % seed)
+		_assert_equals(int(result.get("approach_mismatches", -1)), 0, "seed %d: the emitted approach MATCHES what actually clears each node" % seed)
+		inst.queue_free()
+		await get_tree().process_frame
+
+## End-to-end AS A REAL PLAYER: from a seed, regenerate the identical puzzle, then drive its EMITTED solution
+## through the real input path — click each node in the solution's order, let the player WALK there and the
+## click→walk→interact (INSPECTION) fire on arrival, node by node — and assert the shelter is reached. No
+## activate_generated_node force-fire; the party must actually reach + interact each node. Flat layout (the warp is
+## a render concern; the solution is coordinate-agnostic) so the synthetic clicks stay deterministic.
+func _test_generated_solution_realinput() -> void:
+	_test_name = "Generated Solution Real-Input Replay"
+	var settings := {"seed": 5, "complexity_tier": "standard", "id": "sol_ri", "budget": {"node_count": 7}}
+	var spec: Dictionary = StretchGeneratorScript.generate(settings)
+	var sol: Dictionary = spec.get("headless", {}).get("solution", {})
+	var actions: Array = sol.get("actions", [])
+	_assert_true(not actions.is_empty(), "the puzzle emits a solution to replay (%d actions)" % actions.size())
+	# spiral:false -> the flat spine, so a click maps straight to the deck under it (no warp inverse to chase).
+	var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 10, {"spec": spec, "spiral": false})
+	if inst == null:
+		_assert_true(false, "the generated stretch boots"); return
+	for i in range(6):
+		await get_tree().process_frame
+	var chunk = inst.get("_active_chunk")
+	var cleared := 0
+	var wanted := 0
+	for action in actions:
+		var node_id := str((action as Dictionary).get("node", ""))
+		if node_id == "entry":
+			continue
+		wanted += 1
+		var it = _find_generated_node_interactable(chunk, node_id)
+		if it == null:
+			print("  [solution-ri] node %s has no interactable" % node_id)
+			continue
+		_synthetic_click_interactable(inst, it)
+		var done := false
+		for i in range(400):
+			inst.headless_advance(0.1, 0.05)
+			await get_tree().process_frame
+			var completed: Array = chunk.get("_completed_nodes")
+			if node_id == "exit_shelter":
+				if bool(chunk.call("get_preview_state").get("shelter_rested", false)):
+					done = true; break
+			elif completed.has(node_id):
+				done = true; break
+		if done:
+			cleared += 1
+		else:
+			print("  [solution-ri] node %s NOT reached/cleared by real input" % node_id)
+	var st: Dictionary = chunk.call("get_preview_state")
+	print("  [solution-ri] cleared %d/%d solution nodes by real clicks | shelter_rested=%s step=%s" % [cleared, wanted, str(st.get("shelter_rested", false)), str(inst.get("_preview_step"))])
+	_assert_equals(cleared, wanted, "every solution node was reached + interacted by REAL clicks (walk + dwell), not force-fired")
+	_assert_true(bool(st.get("shelter_rested", false)), "the EMITTED solution, replayed node-by-node as a REAL PLAYER, reaches the shelter")
+	inst.queue_free()
+	await get_tree().process_frame
+
+## The scene-tree interactable a generated node built (named GeneratedNode_<id>), for real-click driving.
+func _find_generated_node_interactable(chunk, node_id: String):
+	if chunk == null:
+		return null
+	var want := "GeneratedNode_%s" % node_id
+	for it in (chunk.get("_interactables") as Array):
+		if is_instance_valid(it) and str(it.name) == want:
+			return it
+	return null
 
 func _first_walkable_cell(nav: Dictionary) -> Vector2i:
 	var cells: Array = nav.get("walkable_cells", [])
