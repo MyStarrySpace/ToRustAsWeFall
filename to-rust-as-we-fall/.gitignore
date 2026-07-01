@@ -22,6 +22,10 @@
 /spiral_capture_*.png
 /spiral_capture_*.png.import
 
+# Dev Watched Gap capture (tools/capture_watched_gap.gd, windowed)
+/watched_gap_capture.png
+/watched_gap_capture.png.import
+
 # Dev outline capture (tools/capture_aster_outline.gd, tools/capture_chunk_outline.gd)
 /aster_outline_cap.png
 /aster_outline_cap.png.import
