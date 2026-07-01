@@ -13018,6 +13018,21 @@ func _test_spiral_drop_down() -> void:
 	_assert_true(jumped > period * 0.6, "stepping the drop-down jumps the member a loop FORWARD along the flat grid (jumped %.1f)" % jumped)
 	var land_cell: Vector2i = gs.grid.world_to_grid(after)
 	_assert_true(gs.grid.is_walkable(land_cell.x, land_cell.y), "the drop lands on a walkable floor cell")
+	# Climbvine return points: the meta-template also places the UP counterpart — a climbvine on the lower deck that
+	# returns you to the turn above (the "return point" of the fall-to-plane grammar).
+	var climbs: int = int(chunk.call("get_climbvine_count"))
+	print("  [return-points] drops=%d climbvines=%d" % [int(chunk.call("get_drop_down_count")), climbs])
+	_assert_true(climbs >= 1, "the spiral places climbvine return points back UP the stack (got %d)" % climbs)
+	var vines: Array = chunk.get("_climbvines")
+	if not vines.is_empty():
+		var vine = vines[0]
+		gs.snap_character_to(active, cm.to_data(vine.position))
+		vine.active_character = active
+		var cb: Vector3 = gs.get_position(active)
+		vine.step_through()
+		var ca: Vector3 = gs.get_position(active)
+		print("  [return-points] climbvine before s=%.1f -> after s=%.1f (climbed %.1f)" % [cb.x, ca.x, cb.x - ca.x])
+		_assert_true(ca.x < cb.x - period * 0.6, "the climbvine returns the member a loop back UP the spiral (s %.1f -> %.1f)" % [cb.x, ca.x])
 	# Branch salvage caches: the spokes carry an optional forage reward (the reason to detour + spend day/night time).
 	var cache_count: int = int(chunk.call("get_branch_cache_count"))
 	print("  [drop-down] branch caches=%d" % cache_count)

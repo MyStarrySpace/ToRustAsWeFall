@@ -19,14 +19,18 @@ var _spec: Dictionary = {}
 # data layer (grid/movement/detection) stays flat regardless; only the floor render, node dressing, interactable
 # zones, and the installed GameState.coord_map (character render + click inverse) go through it.
 var _coord_map = null
+# The meta-template (macro shape) this stretch is built on — spiral by default; owns the coord_map + return-point
+# strategy. A future config selects other shapes (rectangle/ring hub).
+var _meta_template: MetaTemplate = null
 # The playable grid the chunk actually renders + installs: the generator's linear SPINE grid WOVEN with lateral
 # branch rooms (spokes off the spiral) when spiralling. Empty until first built; get_grid_data returns it. The
 # generator's own spec.navigation_grid stays the bare spine (what the solver/curriculum ran on) — branches are
 # optional explorable space layered on at build, so solvability is untouched.
 var _woven_nav: Dictionary = {}
-# Drop-down portal pads placed on the spiral (each teleports the active member from a cell on one turn to the
-# cell directly BELOW it — one turn forward — a "drop down as needed" shortcut that skips a loop of walking).
+# Return-point nodes placed by the meta-template: DROP portals (fall a loop forward + down) and CLIMBVINES (the
+# return back UP the same stack) — the "fall to the plane, take a return point back up" grammar.
 var _drop_downs: Array = []
+var _climbvines: Array = []
 # Salvage caches placed at the far end of each branch spoke — the OPTIONAL reward that makes exploring a spoke
 # (instead of pushing straight down the spine to the shelter) worth the day/night time it costs.
 var _branch_caches: Array = []
@@ -84,6 +88,7 @@ func _build_chunk() -> void:
 	_node_targets.clear()
 	_route_surfaces.clear()
 	_drop_downs.clear()
+	_climbvines.clear()
 	_branch_caches.clear()
 	_branch_atp_collected = 0
 	_woven_nav = {}
@@ -104,7 +109,7 @@ func _build_chunk() -> void:
 	if _coord_map != null:
 		for i in range(flat_child_start, get_child_count()):
 			_warp_child(get_child(i))
-		_build_drop_downs()
+		_build_return_points()
 	reset_preview_state()
 
 ## Whether this stretch renders as a helix (the default) or stays a flat grid. Generated stretches spiral so a
@@ -119,16 +124,22 @@ func _spiral_enabled() -> bool:
 		return false
 	return true
 
-## Build the per-level spiral coord_map from this stretch's flat navigation grid (parameterised to its length),
-## or leave it null for a flat render. Cleared + rebuilt every time the chunk (re)builds.
-func _build_coord_map() -> void:
-	_coord_map = null
+## Resolve the META-TEMPLATE (macro shape) for this stretch: the spiral for a generated level, or the flat base
+## for an authored/opted-out one. A future config "meta_template" selects other shapes (rectangle/ring hub).
+func _resolve_meta_template() -> MetaTemplate:
 	if not _spiral_enabled():
-		return
-	var nav: Dictionary = _spec.get("navigation_grid", {})
-	if nav.is_empty():
-		return
-	_coord_map = SpiralCoordMapScript.from_grid(nav)
+		return MetaTemplate.new()
+	match str(_config.get("meta_template", "spiral")):
+		"flat":
+			return MetaTemplate.new()
+		_:
+			return SpiralMetaTemplate.new()
+
+## Build the coord_map for this stretch THROUGH its meta-template (the spiral warps onto a descending helix; the
+## flat template returns null). Cleared + rebuilt every time the chunk (re)builds.
+func _build_coord_map() -> void:
+	_meta_template = _resolve_meta_template()
+	_coord_map = _meta_template.build_coord_map(_spec.get("navigation_grid", {}))
 
 func get_coord_map():
 	return _coord_map
@@ -907,61 +918,54 @@ func _build_route_segment(route: Dictionary, from_pos: Vector3, to_pos: Vector3)
 	var label_pos := middle + Vector3(0.0, 0.82, 0.0)
 	_add_label(self, "%s / R%d" % [_route_kind(route).to_upper(), _route_risk_value(route)], label_pos, _route_color(route).lightened(0.28))
 
-## Place drop-down PORTAL PADS on the spiral: where the corridor at a cell and the cell ONE FULL TURN AHEAD (which
-## the descending helix seats directly BELOW it, same angle) are both walkable, a pad lets the active member drop
-## straight down to that lower turn — a shortcut skipping a whole loop toward the exit ("drop down as needed").
-## PortalPad owns the teleport (it maps the warped destination back through the coord_map to a flat cell), so this
-## stays replay-safe and works on the flat data layer. Standalone (no host game_state) the pad still renders; its
-## step-through just no-ops.
-const _DROP_MAX := 3
-func _build_drop_downs() -> void:
-	if _coord_map == null:
-		return
-	var nav: Dictionary = _spec.get("navigation_grid", {})
-	if nav.is_empty():
-		return
-	var grid = GridWorld.from_data(nav)
-	var period_cells := int(round(_coord_map.period_s()))
-	# Need at least one full stacked turn inside the level to have somewhere below to drop to.
-	if period_cells < 6 or period_cells > grid.width - 3:
+## Build the meta-template's RETURN POINTS: DROP portals (fall a loop forward + down) and CLIMBVINES (climb the
+## same stack back UP). The template decides WHERE (the spiral stacks a cell one turn ahead directly below); the
+## chunk builds the physical PortalPad + climbvine visual at the warped positions. Both are PortalPads (which map
+## the warped destination back through the coord_map to a flat cell, so it stays replay-safe); the climbvine adds
+## a vertical vine mesh so it reads as "climb up here". Standalone (no host game_state) they still render.
+func _build_return_points() -> void:
+	if _coord_map == null or _meta_template == null:
 		return
 	var gs = _get_game_state()
-	var deck_y := float((nav.get("origin", [0.0, 0.45, 0.0]) as Array)[1])
-	var placed := 0
-	# Step by a full turn so drops don't cluster; at each step take the walkable cell nearest the centre lane whose
-	# one-turn-ahead cell is also walkable.
-	var cx := int(round(period_cells * 0.5))
-	while cx + period_cells < grid.width - 1 and placed < _DROP_MAX:
-		var pair := _find_drop_pair(grid, cx, period_cells)
-		if not pair.is_empty():
-			var upper: Vector2i = pair["upper"]
-			var lower: Vector2i = pair["lower"]
-			var upper_flat: Vector3 = grid.grid_to_world(upper); upper_flat.y = deck_y
-			var lower_flat: Vector3 = grid.grid_to_world(lower); lower_flat.y = deck_y
+	var specs: Array = _meta_template.return_point_specs(_spec.get("navigation_grid", {}), _coord_map)
+	var drops := 0
+	var climbs := 0
+	for spec in specs:
+		var kind := str(spec.get("kind", "drop"))
+		var upper: Vector3 = spec.get("upper", Vector3.ZERO)
+		var lower: Vector3 = spec.get("lower", Vector3.ZERO)
+		if kind == "climb":
+			# CLIMBVINE: stands on the LOWER deck, returns you UP to the upper turn. A tall vine mesh marks it.
 			var pad := PortalPad.new()
-			pad.name = "SpiralDrop_%d" % placed
-			pad.configure(gs, _coord_map.to_world(upper_flat), _coord_map.to_world(lower_flat), 1.3, Color(0.5, 0.85, 1.0))
+			pad.name = "Climbvine_%d" % climbs
+			pad.configure(gs, _coord_map.to_world(lower), _coord_map.to_world(upper), 1.3, Color(0.42, 0.82, 0.4))
+			add_child(pad)
+			_add_climbvine_visual(pad)
+			_register_interactable(pad)
+			_climbvines.append(pad)
+			climbs += 1
+		else:
+			# DROP: stands on the UPPER deck, falls down the shortcut to the lower turn.
+			var pad := PortalPad.new()
+			pad.name = "SpiralDrop_%d" % drops
+			pad.configure(gs, _coord_map.to_world(upper), _coord_map.to_world(lower), 1.3, Color(0.5, 0.85, 1.0))
 			add_child(pad)
 			_register_interactable(pad)
 			_drop_downs.append(pad)
-			placed += 1
-		cx += period_cells
+			drops += 1
 
-## At column `cx`, find a walkable cell whose cell `period_cells` ahead (directly below on the descending helix)
-## is also walkable — searching outward from the centre row so the pad lands on the main corridor. Empty if none.
-func _find_drop_pair(grid, cx: int, period_cells: int) -> Dictionary:
-	var mid := int(grid.height / 2)
-	for dz in range(grid.height):
-		for cz in ([mid] if dz == 0 else [mid + dz, mid - dz]):
-			if cz < 0 or cz >= grid.height:
-				continue
-			if grid.is_walkable(cx, cz) and grid.is_walkable(cx + period_cells, cz):
-				return {"upper": Vector2i(cx, cz), "lower": Vector2i(cx + period_cells, cz)}
-	return {}
+## A tall green vine climbing out of a climbvine pad — the visual cue that this return point goes UP (vs the flat
+## disc of a drop pad). Cosmetic; the pad owns the teleport.
+func _add_climbvine_visual(pad: Node3D) -> void:
+	var vine := _add_box(pad, Vector3(0.0, 1.6, 0.0), Vector3(0.22, 3.2, 0.22), Color(0.32, 0.62, 0.34), Color(0.4, 0.85, 0.42), 0.5, "Vine")
+	vine.rotation.z = 0.08
 
-## How many drop-down shortcut pads the spiral placed (0 on a flat / too-short stretch). For tests + overlays.
+## How many drop-down / climbvine return points the meta-template placed (0 on a flat / too-short stretch).
 func get_drop_down_count() -> int:
 	return _drop_downs.size()
+
+func get_climbvine_count() -> int:
+	return _climbvines.size()
 
 ## Place a SALVAGE CACHE at the far end of every branch spoke: an optional, one-shot forage reward the player has
 ## to detour off the spine to reach. This is the risk/reward that makes a run cost real day/night time (explore the

@@ -13,7 +13,8 @@ func _init() -> void:
 			seed_val = int(str(a).split("=")[1])
 
 	var StretchGen = load("res://scripts/generation/stretch_generator.gd")
-	var spec: Dictionary = StretchGen.generate({"seed": seed_val, "complexity_tier": "standard", "id": "spiral_capture", "budget": {"node_count": 6}})
+	# A long (setpiece) stretch so it wraps 2+ turns and the meta-template's drop/climbvine return points appear.
+	var spec: Dictionary = StretchGen.generate({"seed": seed_val, "complexity_tier": "setpiece", "id": "spiral_capture", "budget": {"node_count": 12}})
 
 	var chunk: Node3D = load("res://scripts/fragments/chunks/generated_stretch_chunk.gd").new()
 	chunk.call("configure_chunk", {"spec": spec})   # loads the spec before _ready builds it
