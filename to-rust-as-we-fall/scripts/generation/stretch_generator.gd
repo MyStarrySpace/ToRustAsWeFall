@@ -127,10 +127,11 @@ static func generate(settings: Dictionary) -> Dictionary:
 	var piece_catalog = RoomPieceCatalogScript.new()
 	# Elevation per node from the existing role/layout logic, so WFC stacks the pieces across floors (and lays a
 	# ramp link on cross-floor routes) exactly where the legacy grid did — keeps the multi-elevation invariant.
+	var max_levels := int(TIER_MAX_LEVELS.get(str(resolved.get("complexity_tier", "teaching")), 1))
 	var levels := {}
 	for li in range(nodes.size()):
 		if nodes[li] is Dictionary:
-			levels[str((nodes[li] as Dictionary).get("id", ""))] = _graybox_elevation_index(nodes[li], li, nodes.size())
+			levels[str((nodes[li] as Dictionary).get("id", ""))] = _graybox_elevation_index(nodes[li], li, nodes.size(), max_levels)
 	var layout: Dictionary = WfcLayoutScript.solve(nodes, routes, resolved, budget, piece_catalog, levels)
 	var navigation_grid: Dictionary = GridStitcherScript.build(
 		layout.get("placements", []), layout.get("corridors", []), layout.get("slot_cells", {}), resolved)
@@ -1433,7 +1434,7 @@ static func _apply_graybox_layout(nodes: Array, routes: Array, catalog, settings
 			continue
 		var node: Dictionary = nodes[i]
 		var role := str(node.get("role", "mixed"))
-		var elevation_index := _graybox_elevation_index(node, i, nodes.size())
+		var elevation_index := _graybox_elevation_index(node, i, nodes.size(), int(TIER_MAX_LEVELS.get(str(settings.get("complexity_tier", "teaching")), 1)))
 		if not elevation_indices.has(elevation_index):
 			elevation_indices.append(elevation_index)
 		var surface_y := _graybox_surface_y(elevation_index)
@@ -1627,21 +1628,30 @@ static func _apply_wfc_graybox(nodes: Array, routes: Array, layout: Dictionary, 
 		},
 	}
 
-static func _graybox_elevation_index(node: Dictionary, index: int, node_count: int) -> int:
+# How many stacked DATA floors a tier may use. Verticality is EARNED, not the default: teaching/standard levels
+# are FLAT (1 floor) — the old per-node-index elevation made every level 3 floors, which read as confusing stacked
+# ribbons. (Note: the RENDER can still spiral a flat level into a climbing helix via the coord_map — that's a
+# separate warp, not data floors.)
+const TIER_MAX_LEVELS := {"teaching": 1, "standard": 1, "hard": 2, "setpiece": 3}
+
+static func _graybox_elevation_index(node: Dictionary, index: int, node_count: int, max_levels: int = 3) -> int:
+	if max_levels <= 1:
+		return 0
 	var role := str(node.get("role", "mixed"))
 	if index == 0 or index == node_count - 1 or role in ["boundary", "shelter", "shelter_arrival"]:
 		return 0
 	var layout: Dictionary = node.get("layout_step", {})
 	var turn := int(layout.get("turn", (index % 3) - 1))
 	var lane := int(layout.get("lane", 0))
-	var elevation_index := clampi(1 + turn, 0, 3)
+	var top := max_levels - 1
+	var elevation_index := clampi(1 + turn, 0, top)
 	if role == "setpiece":
 		elevation_index += 1
 	elif role == "danger" and lane < 0:
 		elevation_index -= 1
 	elif role == "foraging" and lane == 0:
 		elevation_index += 1
-	return clampi(elevation_index, 0, 3)
+	return clampi(elevation_index, 0, top)
 
 static func _graybox_surface_y(elevation_index: int) -> float:
 	return 0.45 + float(maxi(0, elevation_index)) * 0.72
