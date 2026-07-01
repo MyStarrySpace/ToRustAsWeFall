@@ -763,6 +763,9 @@ func _ready() -> void:
 			"--test-grid-ascii":
 				ran_test = true
 				_test_grid_ascii()
+			"--test-ascii-to-playable":
+				ran_test = true
+				await _test_ascii_to_playable()
 			"--test-generated-stretch-walk":
 				ran_test = true
 				await _test_generated_stretch_walk()
@@ -1260,6 +1263,7 @@ func _run_all_tests() -> void:
 	_test_generated_traversible()
 	await _test_generated_stretch_quality()
 	_test_grid_ascii()
+	await _test_ascii_to_playable()
 	await _test_generated_stretch_walk()
 	_test_dodge_knockdown()
 	_test_preview_parked_bail()
@@ -3346,6 +3350,64 @@ func _test_grid_ascii() -> void:
 	# render(parse(text)) is STABLE — the floor block renders identically (node letters collapse to '.').
 	var reparsed: String = Ascii.render(parsed, [])
 	_assert_true(reparsed.length() > 0 and reparsed.contains("."), "the parsed grid re-renders to ASCII floor")
+
+## PORT an authored ASCII map into the game as a real playable level: parse -> spec -> the generated_stretch
+## chunk installs the ASCII grid + tiles the floor, and a real ground click walks the player across it. This is
+## the "author.txt -> load -> walk it" pipeline end-to-end.
+func _test_ascii_to_playable() -> void:
+	_test_name = "ASCII To Playable"
+	var Ascii = load("res://scripts/generation/grid_ascii.gd")
+	var ascii := FileAccess.get_file_as_string("res://data/levels/sample_authored.txt")
+	_assert_true(ascii.length() > 0, "the sample authored ASCII level loads")
+	var spec: Dictionary = Ascii.spec_from_ascii(ascii, "Sample Authored", "sample_authored")
+	_assert_true(bool(spec.get("success", false)), "an authored ASCII map builds a playable spec")
+	var authored_cells := (spec.get("navigation_grid", {}).get("walkable_cells", []) as Array).size()
+	_assert_true(authored_cells > 0, "the authored floor has walkable cells (%d)" % authored_cells)
+	_assert_true(not _generated_node(spec, "entry").is_empty(), "authored spec has an entry")
+	_assert_true(not _generated_node(spec, "exit_shelter").is_empty(), "authored spec has an exit")
+
+	# Boot the authored level in the game (the generated_stretch chunk consumes the spec).
+	var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 10, {"spec": spec})
+	if inst == null:
+		_assert_true(false, "authored level boots"); return
+	for i in range(6):
+		await get_tree().process_frame
+	var gs = inst.get("_game_state")
+	if gs == null or gs.grid == null:
+		_assert_true(false, "the authored grid installs into the game"); inst.queue_free(); await get_tree().process_frame; return
+	var grid = gs.grid
+	# The installed game grid IS the authored floor.
+	var game_cells := 0
+	for cz in range(grid.height):
+		for cx in range(grid.width):
+			if grid.is_walkable(cx, cz):
+				game_cells += 1
+	_assert_equals(game_cells, authored_cells, "the game grid is exactly the authored ASCII floor")
+
+	# Walk it: a real ground click carries the player a long way across the authored floor.
+	var start: Vector3 = gs.get_position("aster")
+	var start_cell: Vector2i = grid.world_to_grid(start)
+	var best := start_cell
+	var best_d := -1.0
+	for cz in range(grid.height):
+		for cx in range(grid.width):
+			if not grid.is_walkable(cx, cz):
+				continue
+			var d := start_cell.distance_to(Vector2i(cx, cz))
+			if d > best_d:
+				best_d = d
+				best = Vector2i(cx, cz)
+	var target: Vector3 = grid.grid_to_world(best)
+	_synthetic_player_move_click(inst, target)
+	for i in range(240):
+		inst.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+		if gs.get_position("aster").distance_to(target) < 1.5:
+			break
+	var moved: float = gs.get_position("aster").distance_to(start)
+	_assert_true(moved > 3.0, "the player walks the AUTHORED ASCII level via a real click (moved %.1f units)" % moved)
+	inst.queue_free()
+	await get_tree().process_frame
 
 func _args_has(args, flag: String) -> bool:
 	for a in args:

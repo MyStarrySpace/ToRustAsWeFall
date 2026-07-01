@@ -62,22 +62,7 @@ static func render(grid_data: Dictionary, nodes: Array = []) -> String:
 ## walkable_cells + risk_cell_list + width/height + a default origin/cell_size. Node identity is not preserved
 ## (E/X/o become plain walkable); a builder layers nodes on separately. render->parse->render is stable.
 static func parse(ascii: String) -> Dictionary:
-	var rows := []
-	var started := false
-	for line in ascii.split("\n"):
-		var s := str(line)
-		if s.begins_with("Level ") or s.begins_with("("):
-			if started:
-				break            # the next level's header ends the first block
-			continue
-		if s.length() == 0:
-			if started:
-				break            # a TRULY empty line is the separator between level blocks
-			continue
-		# A grid row — possibly all spaces (a void row). Keep it, so the z-rows stay aligned (dropping leading
-		# void rows would shift every cell up). Grid rows are `width` chars; only "" separates blocks.
-		started = true
-		rows.append(s)
+	var rows := _first_block_rows(ascii)
 	var walkable := []
 	var risk := []
 	var w := 0
@@ -110,6 +95,103 @@ static func parse(ascii: String) -> Dictionary:
 		"entry_anchor": "entry",
 		"exit_anchor": "exit_shelter",
 	}
+
+## The rows of the FIRST level block (headers + the "" separator stripped, void rows kept for z-alignment).
+static func _first_block_rows(ascii: String) -> Array:
+	var rows := []
+	var started := false
+	for line in ascii.split("\n"):
+		var s := str(line)
+		if s.begins_with("Level ") or s.begins_with("("):
+			if started:
+				break
+			continue
+		if s.length() == 0:
+			if started:
+				break
+			continue
+		started = true
+		rows.append(s)
+	return rows
+
+## Build a MINIMAL playable generated-stretch spec from an authored ASCII map: the tiled floor + grid come from
+## the ASCII, and E/X/o become entry / exit / interior nodes. The generated_stretch chunk renders + plays it
+## (it uses the provided unified_grid_v1 navigation_grid as-is). Single-level (an authored map is one floor).
+static func spec_from_ascii(ascii: String, title := "Authored Level", id := "authored_level") -> Dictionary:
+	var grid_data := parse(ascii)
+	var grid = GridWorldScript.from_data(grid_data)
+	var rows := _first_block_rows(ascii)
+	var node_cells := []   # {cell:[x,z], id, role}
+	var interior := 0
+	for z in range(rows.size()):
+		var line: String = rows[z]
+		for x in range(line.length()):
+			var ch := line[x]
+			if ch == CH_ENTRY:
+				node_cells.append({"cell": [x, z], "id": "entry", "role": "boundary"})
+			elif ch == CH_EXIT:
+				node_cells.append({"cell": [x, z], "id": "exit_shelter", "role": "shelter_arrival"})
+			elif ch == CH_NODE:
+				node_cells.append({"cell": [x, z], "id": "node_%02d" % interior, "role": "mixed"})
+				interior += 1
+	# Guarantee an entry + exit: if the author didn't mark them, use the first / last walkable cell.
+	var walkable: Array = grid_data.get("walkable_cells", [])
+	if not _has_node(node_cells, "entry") and not walkable.is_empty():
+		node_cells.push_front({"cell": walkable[0], "id": "entry", "role": "boundary"})
+	if not _has_node(node_cells, "exit_shelter") and not walkable.is_empty():
+		node_cells.append({"cell": walkable[walkable.size() - 1], "id": "exit_shelter", "role": "shelter_arrival"})
+
+	var nodes := []
+	var golden := []
+	for nc in node_cells:
+		var cell := Vector2i(int(nc.cell[0]), int(nc.cell[1]))
+		var wp: Vector3 = grid.grid_to_world(cell, 0)
+		nodes.append({
+			"id": nc.id, "role": nc.role, "title": String(nc.id).capitalize().replace("_", " "),
+			"position": [wp.x, wp.y, wp.z], "elevation_index": 0, "surface_y": wp.y,
+			"footprint": [1.4, 0.2, 1.4], "approach_position": [wp.x, wp.y, wp.z],
+			"content_placements": [], "flora": [], "enemies": [], "structures": [],
+			"approaches": [], "stage": 1, "optional": false, "variant": "",
+		})
+		golden.append(nc.id)
+
+	var origin: Array = grid_data.get("origin", [0.0, 0.45, 0.0])
+	var cs := float(grid_data.get("cell_size", 1.0))
+	var gw := int(grid_data.get("width", 0)) * cs
+	var gh := int(grid_data.get("height", 0)) * cs
+	var center := [float(origin[0]) + gw * 0.5, float(origin[1]), float(origin[2]) + gh * 0.5]
+	var graybox := {
+		"contract_id": "generated_stretch_graybox_v1",
+		"bounds": {"center": center, "size": [gw, 3.0, gh], "min": [float(origin[0]), float(origin[1]), float(origin[2])]},
+		"layout_engine": "ascii",
+	}
+	var entry_pos: Array = _node_pos(nodes, "entry")
+	var anchors := {
+		"aster": entry_pos, "peris": [entry_pos[0] + 0.4, entry_pos[1], entry_pos[2] + 0.4],
+		"endo": [entry_pos[0] - 0.4, entry_pos[1], entry_pos[2] - 0.4],
+	}
+	for n in nodes:
+		anchors[str(n.id)] = n.position
+	return {
+		"success": true, "ok": true, "schema": "authored_ascii_v1", "id": id, "title": title, "biome": "",
+		"navigation_grid": grid_data, "nodes": nodes, "routes": [], "anchors": anchors, "graybox": graybox,
+		"roompieces": {}, "composition": {"chain": [], "nested": [], "teaching_chain": []},
+		"headless": {"golden_path": golden, "solution_summary": {"bare_pair_solvable": true}},
+		"source": {"generator": "ascii_authored_v1"}, "palette_usage": {"flora": [], "enemies": [], "structures": []},
+		"world_slot": {}, "budget": {},
+	}
+
+static func _has_node(node_cells: Array, id: String) -> bool:
+	for nc in node_cells:
+		if str(nc.get("id", "")) == id:
+			return true
+	return false
+
+static func _node_pos(nodes: Array, id: String) -> Array:
+	for n in nodes:
+		if str(n.get("id", "")) == id:
+			return n.get("position", [0.0, 0.45, 0.0])
+	return [0.0, 0.45, 0.0]
 
 # --- helpers ---------------------------------------------------------------------------------------------------
 
