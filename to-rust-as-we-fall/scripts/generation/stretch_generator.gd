@@ -1398,10 +1398,16 @@ static func _build_routes(nodes: Array, budget: Dictionary, rng) -> Array:
 				"bypasses_optional": str((nodes[i] as Dictionary).get("id", "")),
 			})
 	if int(budget.get("branch_count", 0)) > 0 and nodes.size() >= 4:
+		# A risky SHORTCUT across the middle SECTION — not the whole entry->exit. Bypassing the interior nodes
+		# (their rooms) via a tight risky straight shot is a real choice; the safe spine stays the clear backbone,
+		# so the level reads as "safe main path + a risky stretch", not a blanket of risk end to end.
+		var n := nodes.size()
+		var from_i := clampi(int(n / 4), 1, n - 2)
+		var to_i := clampi(int(3 * n / 4), from_i + 1, n - 2)
 		routes.append({
 			"id": "risky_direct",
-			"from": "entry",
-			"to": "exit_shelter",
+			"from": (nodes[from_i] as Dictionary).get("id", "entry"),
+			"to": (nodes[to_i] as Dictionary).get("id", "exit_shelter"),
 			"kind": "risky",
 			"risk": "risky",
 			"cost": 0,
