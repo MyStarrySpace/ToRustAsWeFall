@@ -139,6 +139,8 @@ func _process(delta: float) -> void:
 	# Scene changes can dispatch one final _process after teardown.
 	if _scheduler == null or _game_state == null:
 		return
+	# Cosmetic: keep background chunk streams building a slice per frame (independent of the gameplay clock).
+	_advance_chunk_streams()
 	# Gameplay lane.
 	var spd := _compute_speed()
 	_scheduler.set_speed(spd)
@@ -1463,9 +1465,10 @@ func register_preview_interactable(interactable: Node) -> void:
 	if _player != null and _player.has_method("bind_interaction_target"):
 		_player.call("bind_interaction_target", interactable)
 
-func _load_chunk(chunk_name: String) -> Node3D:
-	if _chunks.has(chunk_name):
-		return _chunks[chunk_name]
+# Create + register a chunk's ROOT node (PackedScene instance or an empty Node3D for a procedural chunk) and
+# parent it under Environment — WITHOUT building the procedural body. `_load_chunk` and `stream_chunk` share this
+# so the tree wiring stays identical whether a chunk is built in one shot or streamed across frames.
+func _create_chunk_root(chunk_name: String) -> Node3D:
 	var chunk_scene: PackedScene = _get_chunk_scene(chunk_name)
 	var chunk: Node3D
 	if chunk_scene != null:
@@ -1487,11 +1490,22 @@ func _load_chunk(chunk_name: String) -> Node3D:
 	else:
 		add_child(chunk)
 	_chunks[chunk_name] = chunk
-	if chunk_scene == null:
+	return chunk
+
+func _load_chunk(chunk_name: String) -> Node3D:
+	# A background stream may have created the root but not finished building it — finish + reveal it now so a
+	# _load_chunk caller always gets a COMPLETE, visible chunk (never a half-streamed hidden one).
+	if _chunk_streams.has(chunk_name):
+		return reveal_chunk(chunk_name)
+	if _chunks.has(chunk_name):
+		return _chunks[chunk_name]
+	var chunk := _create_chunk_root(chunk_name)
+	if _get_chunk_scene(chunk_name) == null:
 		_build_chunk(chunk_name, chunk)
 	return chunk
 
 func _unload_chunk(chunk_name: String) -> void:
+	_chunk_streams.erase(chunk_name)
 	if not _chunks.has(chunk_name):
 		return
 	var chunk: Node3D = _chunks[chunk_name]
@@ -1499,6 +1513,74 @@ func _unload_chunk(chunk_name: String) -> void:
 		chunk.call("detach_chunk_host")
 	chunk.queue_free()
 	_chunks.erase(chunk_name)
+
+# --- Reusable chunk STREAMING (prewarm + incremental build) --------------------------------------------------
+# A chunk built the instant it's needed hitches on that frame (a GLB instantiate + a level's worth of nodes). The
+# streamer builds it AHEAD of time, spread across frames into a HIDDEN root, so revealing it later costs only a
+# `visible = true`. A procedural chunk opts in by returning batched build Callables from `_chunk_build_steps`;
+# without them it builds in one shot during the (quiet) prewarm. Correctness never depends on streaming timing —
+# `reveal_chunk` finishes any remaining steps synchronously before the chunk is used, so it's purely cosmetic
+# smoothing and stays replay/headless-safe (headless simply reveals, which block-finishes).
+var _chunk_streams := {}   # chunk_name -> {chunk: Node3D, steps: Array[Callable], i: int}
+const _CHUNK_STREAM_STEPS_PER_FRAME := 1
+
+## Begin building a chunk across frames, hidden, so a later reveal has no hitch. Idempotent; safe if the chunk is
+## already loaded or streaming. Call it during a quiet moment (stationary dialogue) ahead of when it's revealed.
+func stream_chunk(chunk_name: String) -> void:
+	if _chunks.has(chunk_name) or _chunk_streams.has(chunk_name):
+		return
+	var chunk := _create_chunk_root(chunk_name)
+	chunk.visible = false
+	var steps: Array = []
+	if _get_chunk_scene(chunk_name) == null:
+		steps = _chunk_build_steps(chunk_name, chunk)
+		if steps.is_empty():
+			_build_chunk(chunk_name, chunk)   # one-shot prewarm (no batches provided)
+	if not steps.is_empty():
+		_chunk_streams[chunk_name] = {"chunk": chunk, "steps": steps, "i": 0}
+
+## Advance in-progress streams a few build-steps per frame (cosmetic; correctness comes from reveal_chunk).
+func _advance_chunk_streams() -> void:
+	if _chunk_streams.is_empty():
+		return
+	for chunk_name in _chunk_streams.keys():
+		var st: Dictionary = _chunk_streams[chunk_name]
+		var steps: Array = st["steps"]
+		var ran := 0
+		while int(st["i"]) < steps.size() and ran < _CHUNK_STREAM_STEPS_PER_FRAME:
+			(steps[int(st["i"])] as Callable).call()
+			st["i"] = int(st["i"]) + 1
+			ran += 1
+		if int(st["i"]) >= steps.size():
+			_chunk_streams.erase(chunk_name)
+
+## Reveal a (possibly streamed) chunk: finish any remaining build synchronously, make it visible, return it.
+## Falls back to a full synchronous load if the chunk was never streamed (so callers can always use it).
+func reveal_chunk(chunk_name: String) -> Node3D:
+	if _chunk_streams.has(chunk_name):
+		var st: Dictionary = _chunk_streams[chunk_name]
+		var steps: Array = st["steps"]
+		while int(st["i"]) < steps.size():
+			(steps[int(st["i"])] as Callable).call()
+			st["i"] = int(st["i"]) + 1
+		_chunk_streams.erase(chunk_name)
+	var chunk: Node3D = _chunks.get(chunk_name)
+	if chunk == null:
+		chunk = _load_chunk(chunk_name)
+	if chunk != null:
+		chunk.visible = true
+	return chunk
+
+## True while a chunk is still being built in the background (nothing revealed it yet).
+func is_chunk_streaming(chunk_name: String) -> bool:
+	return _chunk_streams.has(chunk_name)
+
+## Subclass hook: break a procedural chunk's build into batched Callables (each builds a slice into `parent`),
+## so the streamer can spread it across frames. Return [] to build the chunk in one shot. Only consulted for
+## procedural (non-PackedScene) chunks; the synchronous `_build_chunk` must produce the SAME result as running
+## every step in order (keep them in sync — a scene can implement one in terms of the other).
+func _chunk_build_steps(_chunk_name: String, _parent: Node3D) -> Array:
+	return []
 
 func _build_chunk(_chunk_name: String, _parent: Node3D) -> void:
 	pass

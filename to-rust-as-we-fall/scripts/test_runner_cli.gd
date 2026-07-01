@@ -609,6 +609,9 @@ func _ready() -> void:
 			"--test-elevator-camera-collapse":
 				ran_test = true
 				await _test_elevator_camera_after_collapse()
+			"--test-chunk-streaming":
+				ran_test = true
+				await _test_chunk_streaming()
 			"--test-elevator-box-select":
 				ran_test = true
 				await _test_elevator_box_select_multiselect()
@@ -1200,6 +1203,7 @@ func _run_all_tests() -> void:
 	await _test_elevator()
 	await _test_elevator_bridge_collapse()
 	await _test_elevator_camera_after_collapse()
+	await _test_chunk_streaming()
 	await _test_elevator_box_select_multiselect()
 	await _test_elevator_distracted_fauna()
 	await _test_elevator_fall_level()
@@ -5812,15 +5816,16 @@ func _elevator_realinput_beats(instance: Node) -> Dictionary:
 	# Corridor: the sequence auto-walks the party out of the elevator (command_move_to_pos); just clear
 	# enemy detection so the loaded combat chunks can't game-over the reachability run.
 	beats["corridor"] = func(): _disable_enemy_detection(instance)
-	# Bridge: walk EAST out onto the span — passing BRIDGE_START_X+4 gives way mid-span (the collapse).
-	beats["bridge"] = func(): _synthetic_player_move_click(instance, Vector3(float(instance.BRIDGE_START_X) + 7.0, 0.0, 0.0))
+	# Bridge: walk EAST across the (long) span toward the far end — passing BRIDGE_COLLAPSE_X (~2/3 across) gives
+	# way (the collapse). Click well past the trigger so the walk crosses it instead of arriving short and stopping.
+	beats["bridge"] = func(): _synthetic_player_move_click(instance, Vector3(float(instance.BRIDGE_END_X) - 2.0, 0.0, 0.0))
 	# After the fall the party is on the LOWER deck (BELOW_Y). Walk EAST to the route convergence; the
 	# floor now reaches past it and the gate fires on whichever member leads (_party_lead_x).
 	beats["route_choice"] = func():
 		_disable_enemy_detection(instance)
 		_synthetic_player_move_click(instance, Vector3(instance.ROUTES_CONVERGE.x, float(instance.BELOW_Y), 0.0))
-	# Climb prompt zone (HOLD_ACTION dwell).
-	beats["climb_attempt"] = func(): _synthetic_player_move_click(instance, Vector3(float(instance.BRIDGE_START_X) + 5.0, float(instance.BELOW_Y), 0.0))
+	# Climb prompt zone (HOLD_ACTION dwell) — now at the landing under where the span gave way (~BRIDGE_COLLAPSE_X).
+	beats["climb_attempt"] = func(): _synthetic_player_move_click(instance, Vector3(float(instance.BRIDGE_COLLAPSE_X), float(instance.BELOW_Y), 0.0))
 	# Dormant plant (HOLD_ACTION, wall-clock dwell).
 	beats["junction_arrive"] = func(): _synthetic_player_move_click(instance, Vector3(instance.JUNCTION_POS.x + float(instance.SHELTER_SIZE.x) / 2.0 - 0.8, float(instance.BELOW_Y), float(instance.SHELTER_SIZE.z) / 2.0 - 0.5))
 	# Flure activation then walk east to the gauntlet exit.
@@ -7765,12 +7770,9 @@ func _test_elevator_bridge_collapse() -> void:
 	for s in range(10):
 		instance.headless_advance(0.1, 0.05)
 		instance._on_process(0.1, 1.0)
-	# Drive a REAL click onto the MIDDLE of the bridge (the clear upper floor — what the player can
-	# actually click; the far edge raycasts down to the lower deck). The collapse must fire from
-	# walking onto the span, NOT require reaching the far edge.
-	# Walk Aster onto the MIDDLE of the bridge — the collapse must fire mid-span, not require the far
-	# edge (which clicks can't reliably reach: the edge raycasts down to the lower deck).
-	var mid_x: float = float(instance.BRIDGE_START_X) + 5.0
+	# Walk Aster across the (now long) span past BRIDGE_COLLAPSE_X (~2/3 across) — the collapse fires there, not
+	# at the far edge (which clicks can't reliably reach: the edge raycasts down to the lower deck).
+	var mid_x: float = float(instance.BRIDGE_COLLAPSE_X) + 2.0
 	gs.command_move_to_pos("aster", Vector3(mid_x, 0.0, 0.0))
 	var ecology_pathfound := false   # any fauna running A* (patrol/pursuit) while the party is above
 	var party_pursued := false       # any fauna actually targeting + chasing the party
@@ -7863,6 +7865,61 @@ func _test_elevator_camera_after_collapse() -> void:
 		"after the collapse the camera offset is restored, so the lower deck is framed normally (not BELOW_Y too low)")
 	# And the party really is on the lower deck now (so the framing is genuinely the lower-deck framing).
 	_assert_equals(gs.get_character_level("aster"), instance.LEVEL_LOWER, "the party landed on the lower deck")
+
+	if instance.has_method("_teardown_sequence"):
+		instance._teardown_sequence()
+	instance.queue_free()
+	await get_tree().process_frame
+
+# --- Test: the reusable chunk STREAMING feature (prewarm + incremental build, revealed with no hitch) ---
+# Driven through the elevator (its real consumer): _begin streams the bridge + lower-deck ecology in the
+# background, hidden, spread across frames (the heavy GLB isolated to its own step); the corridor reveals them
+# with only a `visible = true`. reveal_chunk always block-finishes an in-flight build, so correctness never
+# depends on the stream timing.
+func _test_chunk_streaming() -> void:
+	_test_name = "Chunk Streaming"
+	var scene := load("res://scenes/tutorial/elevator.tscn")
+	if scene == null:
+		_assert_true(false, "elevator scene loads")
+		return
+	var instance: Node = scene.instantiate()
+	if "suppress_scene_change" in instance:
+		instance.suppress_scene_change = true
+	get_tree().root.add_child(instance)
+	for i in range(10):
+		await get_tree().process_frame
+
+	# (A) The opening streamed the bridge in the background: its root exists but stays HIDDEN until revealed.
+	_assert_true(instance._chunks.has("bridge"), "the bridge began streaming during the opening")
+	_assert_true(not (instance._chunks["bridge"] as Node3D).visible, "a streamed-but-unrevealed chunk stays hidden")
+
+	# (B) Incremental: a fresh stream builds ACROSS frames, and the heavy GLB is deferred to a later step (so no
+	# single frame instantiates it alongside everything else).
+	instance._unload_chunk("bridge")
+	instance.stream_chunk("bridge")
+	_assert_true(instance.is_chunk_streaming("bridge"), "stream_chunk begins a background build")
+	var b1: Node3D = instance._chunks["bridge"]
+	_assert_true(b1.find_child("BridgeModel", true, false) == null, "the GLB is not built on the first frame (incremental)")
+	instance._advance_chunk_streams()
+	instance._advance_chunk_streams()
+	_assert_true(b1.find_child("BridgeModel", true, false) == null, "the GLB is still deferred after the first couple steps")
+	for i in range(8):
+		instance._advance_chunk_streams()
+	_assert_true(not instance.is_chunk_streaming("bridge"), "the stream completes across frames")
+	_assert_true(b1.find_child("BridgeModel", true, false) != null, "the GLB is built once the stream finishes")
+
+	# (C) reveal_chunk block-finishes an in-flight stream (correctness is independent of stream timing).
+	instance._unload_chunk("below")
+	instance.stream_chunk("below")
+	_assert_true(instance.is_chunk_streaming("below"), "below streams in the background")
+	var below: Node3D = instance.reveal_chunk("below")
+	_assert_true(not instance.is_chunk_streaming("below"), "reveal_chunk finishes the remaining build synchronously")
+	_assert_true(below.visible, "the revealed chunk is visible")
+	_assert_true(below.get_child_count() > 0, "the revealed chunk is fully built")
+
+	# (D) Revealing a chunk that was never streamed falls back to a plain synchronous load.
+	var g: Node3D = instance.reveal_chunk("gauntlet")
+	_assert_true(g != null and g.visible, "revealing a never-streamed chunk loads it synchronously")
 
 	if instance.has_method("_teardown_sequence"):
 		instance._teardown_sequence()
@@ -8197,14 +8254,14 @@ func _test_elevator() -> void:
 			"characters": [
 				{
 					"id": "aster",
-					"outside": Vector3(instance.BRIDGE_START_X + 2.0, 0.5, 0.0),
-					"target": Vector3(instance.BRIDGE_START_X + 6.0, 0.5, 0.0),
+					"outside": Vector3(instance.BRIDGE_COLLAPSE_X - 3.0, 0.5, 0.0),
+					"target": Vector3(instance.BRIDGE_COLLAPSE_X + 3.0, 0.5, 0.0),
 				},
 			],
-			"max_time": 2.0,
+			"max_time": 2.5,
 		})
-		_assert_true(instance._game_state.get_position("aster").x >= instance.BRIDGE_START_X + 4.0,
-			"Bridge gives way mid-span (Aster need not reach the far, un-clickable edge)")
+		_assert_true(instance._game_state.get_position("aster").x >= instance.BRIDGE_COLLAPSE_X - 0.5,
+			"Bridge gives way ~2/3 across (Aster need not reach the far, un-clickable edge)")
 		# After the fall, the party shares the lower deck with the ecology — but the fauna are AMBIENT
 		# (they don't hunt the party) until the player takes the route through them, so landing among
 		# them is safe regardless of physical distance.

@@ -10,6 +10,8 @@ var _fall_landed_fired := false  # one-shot guard: bridge landing fires once
 var _fall_tween: Tween           # the cosmetic fall animation (wall-clock)
 var _fall_prev_offset_y := 12.0  # camera follow_offset.y before the fall dipped it (restored on landing)
 var _fall_offset_dipped := false # true once _execute_bridge_fall dipped the camera (so landing knows to restore)
+var _bridge_lines_pending: Array = []  # crossing dialogue fired by POSITION as the party walks the span
+var _bridge_lines_fired := 0
 var _collapsed_chunks_removed := false  # one-shot guard: old level chunks freed once
 var _escort_1  # NPC
 var _escort_2  # NPC
@@ -81,7 +83,10 @@ const EMP_GUARD_STANDOFF_DISTANCE := 2.6
 # Below-level ecology
 const BELOW_Y := -4.0
 const BRIDGE_START_X := 11.5  # ELEVATOR_SIZE.x/2 + 0.5 + 7.0
-const BRIDGE_END_X := 23.5    # BRIDGE_START_X + 12.0
+const BRIDGE_LENGTH := 24.0   # a real crossing (2x the old 12) so dialogue paces across the walk, not up front
+const BRIDGE_END_X := BRIDGE_START_X + BRIDGE_LENGTH
+const BRIDGE_MODEL_SPAN := 13.1   # bridge.glb native X extent (measured); the model scales X to fill BRIDGE_LENGTH
+const BRIDGE_COLLAPSE_X := BRIDGE_START_X + BRIDGE_LENGTH * 0.66  # the span gives way ~2/3 across, not after 4 steps
 
 # The modeled span (Blender, 1/16 pixel-grid): deck planks, rusted girders, cross-beams, braces,
 # railings, abutments — each a named MeshInstance3D the hybrid collapse drops.
@@ -130,7 +135,9 @@ const FLURE_DURATION := 18.0
 const LEVEL_LOWER := 0
 const LEVEL_UPPER := 1
 const GRID_ORIGIN := Vector3(-5.0, BELOW_Y, -8.0)
-const GRID_SIZE := Vector2i(72, 16)  # world X in [-5, 67], Z in [-8, 8] — covers both decks
+# DERIVED from the layout so it always covers to just past the gauntlet exit — a longer bridge shifts the whole
+# lower-deck run east, and a hardcoded width would leave the far end off-grid (non-walkable → stranded player).
+const GRID_SIZE := Vector2i(int(GAUNTLET_EXIT.x - GRID_ORIGIN.x + 3.0), 16)  # Z in [-8, 8] — covers both decks
 var _grid: GridWorld
 # See-through level occlusion (the channels-spiral shader): level geometry between the camera and the active
 # character dither-dissolves around the character, so the party is never lost behind an elevator wall / girder.
@@ -149,6 +156,33 @@ func _build_chunk(chunk_name: String, parent: Node3D) -> void:
 	# "Characters", outside the chunk, so they're never dissolved).
 	if _occlusion_mgr != null:
 		_occlusion_mgr.apply_to(parent)
+
+## Wrap the chunk's meshes in the see-through occlusion shader — the final STREAM step (after every mesh exists),
+## mirroring the post-`_build_chunk` apply above for chunks built in one shot.
+func _chunk_occlusion_step(parent: Node3D) -> void:
+	if _occlusion_mgr != null:
+		_occlusion_mgr.apply_to(parent)
+
+# Break the streamable chunks (bridge + its lower-deck ecology) into batched build steps so the streamer can
+# spread them across frames — the heavy bridge GLB instantiate gets its OWN frame during the quiet elevator
+# opening. The synchronous _build_chunk path above produces the identical result (keep them in lock-step).
+func _chunk_build_steps(chunk_name: String, parent: Node3D) -> Array:
+	match chunk_name:
+		"bridge":
+			return [
+				_bridge_step_corridor.bind(parent),
+				_bridge_step_floor.bind(parent),
+				_bridge_step_model.bind(parent),
+				_bridge_step_light.bind(parent),
+				_chunk_occlusion_step.bind(parent),
+			]
+		"below":
+			return [
+				_build_below_chunk.bind(parent),
+				_apply_chunk_tiles.bind(parent, "deck_metal", "facility_metal"),
+				_chunk_occlusion_step.bind(parent),
+			]
+	return []
 
 # --- Virtual overrides ---
 
@@ -316,6 +350,11 @@ func _begin() -> void:
 				_player.global_position = Vector3.ZERO
 		return
 	_scheduler.schedule_after(1.0, _start_consciousness_fragments, "fragments")
+	# Stream the BRIDGE (its heavy GLB instantiate is the hitch) in the BACKGROUND now, across the long stationary
+	# opening (consciousness fragments → conversation → EMP → doors → multiselect), so revealing the span at the
+	# corridor costs only a `visible = true`. The lower-deck ecology is NOT streamed here — its roaming fauna would
+	# come alive during the opening (extra scheduler traffic); it's built at the corridor, one beat before it matters.
+	stream_chunk("bridge")
 
 func _compute_speed() -> float:
 	return 10.0 if Input.is_action_pressed("fast_forward") else 1.0
@@ -411,7 +450,15 @@ func _on_process(delta: float, spd: float) -> void:
 	# edge — clicking the far edge raycasts down to the lower deck (no ladder there → the move is
 	# rejected and the player looks stranded), so requiring the edge stranded the player.
 	if _current_step == "bridge":
-		if _party_lead_x() > BRIDGE_START_X + 4.0:
+		var lead := _party_lead_x()
+		# Pace the crossing dialogue by DISTANCE: fire each remaining line at evenly spaced thresholds up to the
+		# collapse point, so the party talks WHILE crossing the long span instead of before stepping on.
+		var span := BRIDGE_COLLAPSE_X - BRIDGE_START_X
+		while _bridge_lines_fired < _bridge_lines_pending.size() \
+				and lead > BRIDGE_START_X + span * (float(_bridge_lines_fired + 1) / float(_bridge_lines_pending.size() + 1)):
+			DialogueData.say_to(_dialogue, str(_bridge_lines_pending[_bridge_lines_fired]))
+			_bridge_lines_fired += 1
+		if lead > BRIDGE_COLLAPSE_X:
 			_tutorial_prompt.hide_prompt()
 			_player.set_move_enabled(false)
 			_start_bridge_collapse()
@@ -897,8 +944,10 @@ func _start_corridor() -> void:
 	# Leaving the elevator: the view can follow the party out into the corridor.
 	if _camera != null and _camera.has_method("clear_look_bounds"):
 		_camera.clear_look_bounds()
-	_load_chunk("bridge")
-	_load_chunk("below")
+	# Reveal the chunks streamed in during the opening (instant if the background build finished; otherwise this
+	# block-finishes the remainder — never worse than the old synchronous load).
+	reveal_chunk("bridge")
+	reveal_chunk("below")
 	var exit_pos := Vector3(ELEVATOR_SIZE.x / 2.0 + 3.0, 0, 0)
 	_game_state.command_move_to_pos("aster", exit_pos)
 	_game_state.command_move_to_pos("peris", exit_pos + Vector3(0, 0, 1.0))
@@ -924,16 +973,16 @@ func _start_bridge() -> void:
 	var bridge_pos := Vector3(BRIDGE_START_X, 0, 0)
 	_game_state.command_move_to_pos("aster", bridge_pos + Vector3(1.0, 0, 0))
 	_game_state.command_move_to_pos("peris", bridge_pos)
-	_dialogue_chain([
-		"elevator.bridge.narration",
-		"elevator.peris.bodies",
-		"elevator.aster.logs",
-		"elevator.aster.ahead",
-	], func():
+	# One line at the bridge mouth, THEN hand control — the rest of the crossing dialogue fires by POSITION as the
+	# party walks the (now long) span (_process), so it paces across the crossing instead of stacking up front.
+	_bridge_lines_pending = ["elevator.peris.bodies", "elevator.aster.logs", "elevator.aster.ahead"]
+	_bridge_lines_fired = 0
+	DialogueData.say_to(_dialogue, "elevator.bridge.narration")
+	_dialogue.dialogue_finished.connect(func():
 		# Hand control to the player: walk out across the bridge — that's what collapses it.
 		_player.set_move_enabled(true)
 		_tutorial_prompt.show_prompt("Cross the bridge")
-	)
+	, CONNECT_ONE_SHOT)
 
 # --- Bridge Collapse ---
 
@@ -1163,9 +1212,10 @@ func _show_climb_interactable() -> void:
 	var parent := _chunks.get("below", null) as Node3D
 	if parent == null:
 		parent = find_child("Environment", false, false) as Node3D
-	# Sits at the mid-span landing — right under where the bridge gave way, so the party checks the
-	# collapse where they fell (no walk back to a far ledge).
-	var zone_pos := Vector3(BRIDGE_START_X + 5.0, BELOW_Y + 0.05, 0.0)
+	# Sits under where the bridge gave way (~2/3 across), so the party checks the collapse right where they fell,
+	# not a walk back to a far ledge. Derived from the party's landing X so it tracks BRIDGE_COLLAPSE_X.
+	var land_x: float = _game_state.get_position("aster").x if _game_state != null and _game_state.characters.has("aster") else BRIDGE_COLLAPSE_X
+	var zone_pos := Vector3(land_x, BELOW_Y + 0.05, 0.0)
 	_climb_interactable = _create_interactable(parent, zone_pos, "ClimbPromptZone", 2.4, 0.8, "Climb", true)
 	_climb_interactable.description = "Collapsed Bridge"
 	_climb_interactable.interacted.connect(_on_climb_prompt_interacted)
@@ -1558,11 +1608,18 @@ func _show_game_over_text() -> void:
 	var tween := create_tween()
 	tween.tween_property(label, "theme_override_colors/font_color:a", 1.0, 2.0)
 
+# The bridge chunk is built in STREAMABLE steps (see _chunk_build_steps): the sync path calls them in order, the
+# streamer spreads them across frames so the heavy GLB instantiate lands on its own frame during a quiet moment.
 func _build_bridge_chunk(parent: Node3D) -> void:
+	_bridge_step_corridor(parent)
+	_bridge_step_floor(parent)
+	_bridge_step_model(parent)
+	_bridge_step_light(parent)
+
+func _bridge_step_corridor(parent: Node3D) -> void:
 	var start_x := ELEVATOR_SIZE.x / 2.0 + 0.5
 	var corridor_color := Color(0.07, 0.07, 0.09)
 	var wall_color := Color(0.1, 0.1, 0.12)
-
 	# Corridor floor leading out of elevator
 	_add_corridor_section(parent, Vector3(start_x + 3.0, -0.05, 0), Vector3(7, 0.1, 4), corridor_color)
 	var body := StaticBody3D.new()
@@ -1577,7 +1634,6 @@ func _build_bridge_chunk(parent: Node3D) -> void:
 	parent.add_child(body)
 	_add_wall(parent, Vector3(start_x + 3.0, 2.0, -2.0), Vector3(7, 4, 0.2), wall_color)
 	_add_wall(parent, Vector3(start_x + 3.0, 2.0, 2.0), Vector3(7, 4, 0.2), wall_color)
-
 	var cor_light := OmniLight3D.new()
 	cor_light.position = Vector3(start_x + 3.0, 3.0, 0)
 	cor_light.light_color = Color(0.3, 0.2, 0.15)
@@ -1585,31 +1641,47 @@ func _build_bridge_chunk(parent: Node3D) -> void:
 	cor_light.omni_range = 8.0
 	parent.add_child(cor_light)
 
-	# The collapsing span is the MODELED bridge (Blender, 1/16 pixel-grid): deck planks, rusted girders,
-	# cross-beams, braces, railings and abutments — each a named piece the hybrid collapse drops. An
-	# invisible collision slab handles the player's click-raycast (the player walks the grid, not the mesh).
-	var bridge_start := start_x + 7.0
+# The collapsing span's WALKABLE collision slab (invisible): the player walks the grid, not the mesh. Spans the
+# full BRIDGE_LENGTH so a click anywhere on the span lands on collision.
+func _bridge_step_floor(parent: Node3D) -> void:
+	var bridge_start := ELEVATOR_SIZE.x / 2.0 + 0.5 + 7.0
 	var bridge_floor := Node3D.new()
 	bridge_floor.name = "BridgeFloor"
 	parent.add_child(bridge_floor)
+	# Slab spans [bridge_start-1, bridge_start+LENGTH]: the -1 overlaps the corridor so a click at the seam still
+	# lands on collision (the player walks the grid; this is only the click-raycast surface).
+	var slab_west := bridge_start - 1.0
+	var slab_east := bridge_start + BRIDGE_LENGTH
 	var b2 := StaticBody3D.new()
-	b2.position = Vector3(bridge_start + 5.0, -0.01, 0)
+	b2.position = Vector3((slab_west + slab_east) * 0.5, -0.01, 0)
 	b2.collision_layer = 1
 	b2.collision_mask = 0
 	var c2 := CollisionShape3D.new()
 	var s2 := BoxShape3D.new()
-	s2.size = Vector3(12, 0.02, 3)
+	s2.size = Vector3(slab_east - slab_west, 0.02, 3)
 	c2.shape = s2
 	b2.add_child(c2)
 	bridge_floor.add_child(b2)
 
+# The MODELED bridge (Blender, 1/16 pixel-grid): deck planks, rusted girders, cross-beams, braces, railings and
+# abutments — each a named piece the hybrid collapse drops. Isolated to its OWN step: this GLB instantiate is the
+# heaviest single beat, so the streamer gives it a whole frame during the quiet elevator opening.
+func _bridge_step_model(parent: Node3D) -> void:
+	var bridge_start := ELEVATOR_SIZE.x / 2.0 + 0.5 + 7.0
+	var bridge_floor := parent.find_child("BridgeFloor", false, false)
+	if bridge_floor == null:
+		return
 	var bridge_model := BRIDGE_MODEL.instantiate()
 	bridge_model.name = "BridgeModel"
-	bridge_model.position = Vector3(bridge_start + 5.0, 0.0, 0.0)  # span centre; modeled deck top sits at Y=0
+	# Tile the ~2-unit modeled span across the longer walkable slab so the deck reads continuous end to end.
+	bridge_model.position = Vector3(bridge_start + BRIDGE_LENGTH * 0.5, 0.0, 0.0)  # span centre; modeled deck top sits at Y=0
+	bridge_model.scale = Vector3(BRIDGE_LENGTH / BRIDGE_MODEL_SPAN, 1.0, 1.0)
 	bridge_floor.add_child(bridge_model)
 
+func _bridge_step_light(parent: Node3D) -> void:
+	var bridge_start := ELEVATOR_SIZE.x / 2.0 + 0.5 + 7.0
 	var bridge_light := OmniLight3D.new()
-	bridge_light.position = Vector3(bridge_start + 5.0, 3.0, 0)
+	bridge_light.position = Vector3(bridge_start + BRIDGE_LENGTH * 0.5, 3.0, 0)
 	bridge_light.light_color = Color(0.25, 0.18, 0.12)
 	bridge_light.light_energy = 1.0
 	bridge_light.omni_range = 10.0
