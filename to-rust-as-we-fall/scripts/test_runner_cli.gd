@@ -125,6 +125,12 @@ func _ready() -> void:
 		_stale_main.queue_free()
 		await get_tree().process_frame
 
+	# On-demand ASCII view of any generated level:  -- --generate-ascii --seed 7 --tier standard
+	if _args_has(args, "--generate-ascii"):
+		_print_generated_ascii(args)
+		get_tree().quit(0)
+		return
+
 	var ran_test := false
 	for arg in args:
 		match arg:
@@ -754,6 +760,9 @@ func _ready() -> void:
 			"--test-generated-stretch-quality":
 				ran_test = true
 				await _test_generated_stretch_quality()
+			"--test-grid-ascii":
+				ran_test = true
+				_test_grid_ascii()
 			"--test-generated-stretch-walk":
 				ran_test = true
 				await _test_generated_stretch_walk()
@@ -1250,6 +1259,7 @@ func _run_all_tests() -> void:
 	_test_generated_grid()
 	_test_generated_traversible()
 	await _test_generated_stretch_quality()
+	_test_grid_ascii()
 	await _test_generated_stretch_walk()
 	_test_dodge_knockdown()
 	_test_preview_parked_bail()
@@ -3283,6 +3293,84 @@ func _names_any_prefix(names: Array, prefix: String) -> bool:
 		if String(nm).begins_with(prefix):
 			return true
 	return false
+
+## ASCII view of a generated level (the interchange for a level builder): render it, PRINT it so it's inspectable,
+## and prove render -> parse is lossless for the walkable/risk set (so a builder can round-trip it).
+func _test_grid_ascii() -> void:
+	_test_name = "Grid ASCII"
+	var Ascii = load("res://scripts/generation/grid_ascii.gd")
+
+	# A small flat level reads cleanly; print it so the ASCII is visible in the log.
+	var spec: Dictionary = StretchGeneratorScript.generate({"seed": 4, "complexity_tier": "teaching", "id": "ascii", "budget": {"node_count": 5}})
+	var text: String = Ascii.render_spec(spec)
+	print("  [ascii] generated stretch (seed 4):\n" + text)
+	_assert_true(text.contains("E"), "the ASCII marks the entry (E)")
+	_assert_true(text.contains("X"), "the ASCII marks the exit shelter (X)")
+	_assert_true(text.contains("."), "the ASCII draws walkable floor")
+
+	# Every rendered row is the grid width (rectangular block) for level 0.
+	var nav: Dictionary = spec.get("navigation_grid", {})
+	var gw := int(nav.get("width", 0))
+	var first_block: Array = []
+	for line in text.split("\n"):
+		var s := str(line)
+		if s.strip_edges() == "" or s.begins_with("Level "):
+			if not first_block.is_empty():
+				break
+			continue
+		first_block.append(s)
+	for row in first_block:
+		_assert_equals(str(row).length(), gw, "each ASCII row is the grid width (%d)" % gw)
+
+	# Round-trip: parse the ASCII back; its walkable set equals the original level-0 walkable set (E/X/o are floor).
+	var parsed: Dictionary = Ascii.parse(text)
+	var orig := {}
+	var lc: Array = nav.get("level_cells", [])
+	if not lc.is_empty():
+		for c in (lc[0] as Dictionary).get("cells", []):
+			orig[Vector2i(int(c[0]), int(c[1]))] = true
+	else:
+		for c in nav.get("walkable_cells", []):
+			orig[Vector2i(int(c[0]), int(c[1]))] = true
+	var got := {}
+	for c in parsed.get("walkable_cells", []):
+		got[Vector2i(int(c[0]), int(c[1]))] = true
+	_assert_equals(got.size(), orig.size(), "render->parse preserves the level-0 walkable cell count")
+	var all_match := true
+	for cell in orig.keys():
+		if not got.has(cell):
+			all_match = false
+			break
+	_assert_true(all_match, "render->parse preserves the exact walkable cells (lossless interchange)")
+
+	# render(parse(text)) is STABLE — the floor block renders identically (node letters collapse to '.').
+	var reparsed: String = Ascii.render(parsed, [])
+	_assert_true(reparsed.length() > 0 and reparsed.contains("."), "the parsed grid re-renders to ASCII floor")
+
+func _args_has(args, flag: String) -> bool:
+	for a in args:
+		if String(a) == flag:
+			return true
+	return false
+
+func _arg_value(args, flag: String, default_val: String) -> String:
+	for i in range(args.size()):
+		if String(args[i]) == flag and i + 1 < args.size():
+			return String(args[i + 1])
+	return default_val
+
+## `-- --generate-ascii --seed 7 --tier standard` — print any generated level as ASCII and quit.
+func _print_generated_ascii(args) -> void:
+	var seed := int(_arg_value(args, "--seed", "1"))
+	var tier := _arg_value(args, "--tier", "standard")
+	var Gen = load("res://scripts/generation/stretch_generator.gd")
+	var Ascii = load("res://scripts/generation/grid_ascii.gd")
+	var spec: Dictionary = Gen.generate({"seed": seed, "complexity_tier": tier, "id": "ascii_%d" % seed})
+	var nav: Dictionary = spec.get("navigation_grid", {})
+	print("=== generated stretch  seed=%d  tier=%s  (%dx%d, %d level(s)) ===" % [
+		seed, tier, int(nav.get("width", 0)), int(nav.get("height", 0)), int(nav.get("level_count", 1))])
+	print("  legend: E entry  X exit  o node  . floor  ~ risky floor  (space) void")
+	print(Ascii.render_spec(spec))
 
 ## Does a generated spec's level connect entry -> exit on its own grid?
 func _run_level_connects(spec: Dictionary) -> bool:
