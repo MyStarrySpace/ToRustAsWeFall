@@ -357,6 +357,9 @@ func _ready() -> void:
 			"--test-stretch-branches":
 				ran_test = true
 				await _test_stretch_branches()
+			"--test-chunk-atoms":
+				ran_test = true
+				await _test_chunk_atoms()
 			"--test-hub-shapes":
 				ran_test = true
 				await _test_hub_shapes()
@@ -1143,6 +1146,7 @@ func _run_all_tests() -> void:
 	await _test_channels_probe_coverage()
 	await _test_generated_stretch_probe_coverage()
 	await _test_spiral_drop_down()
+	await _test_chunk_atoms()
 	await _test_stretch_branches()
 	await _test_hub_shapes()
 	await _test_hub_base_playable()
@@ -13120,6 +13124,25 @@ func _branch_shapes(branches: Array) -> Array:
 	for b in branches:
 		out.append(str(b.get("shape", "")))
 	return out
+
+## THE CHUNK ATOM: a chunk = start + end + a puzzle-GATE you must solve, made of nested archetypes. Generates one
+## per archetype, PROVES the invariant (flood-fill: locked BLOCKS start->end, solving OPENS it), and PRINTS each as
+## ASCII so the design reads at a glance. A chunk that can be walked straight through fails here.
+func _test_chunk_atoms() -> void:
+	_test_name = "Chunk Atoms"
+	var Chunk = load("res://scripts/generation/chunk_generator.gd")
+	print("\n[chunks] the atomic unit — start, end, a puzzle you MUST solve to cross, built from nested archetypes:\n")
+	for arch in ["holdfast", "redirect", "vinebridge", "split"]:
+		var chunk: Dictionary = Chunk.generate(arch, 7)
+		print(Chunk.render_ascii(chunk))
+		var v: Dictionary = Chunk.verify_gated(chunk)
+		_assert_true(bool(v["locked_blocks"]), "%s: you CANNOT walk start->end without solving (locked blocks it)" % arch)
+		_assert_true(bool(v["solved_connects"]), "%s: solving the puzzle OPENS start->end" % arch)
+		# The end must genuinely be behind the gate (not trivially adjacent to start).
+		_assert_true(Vector2i(chunk["start"]).distance_to(Vector2i(chunk["end"])) > 4.0, "%s: the end is across the room from the start" % arch)
+	# Deterministic + varied across seeds.
+	_assert_equals(str(Chunk.generate("holdfast", 3)["grid"]), str(Chunk.generate("holdfast", 3)["grid"]), "same seed -> same chunk")
+	_assert_true(str(Chunk.generate("holdfast", 3)["grid"]) != str(Chunk.generate("holdfast", 9)["grid"]), "different seed -> different chunk")
 
 ## Dwarf-Fortress-style HEIGHT-SLICED ASCII of a generated hub level: the flat grid is single-level, but warped onto
 ## the hub each cell has a real world Y, so we slice by height into z-levels and print a top-down map per band. Prints
