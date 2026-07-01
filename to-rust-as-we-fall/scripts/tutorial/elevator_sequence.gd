@@ -85,12 +85,8 @@ const BELOW_Y := -4.0
 const BRIDGE_START_X := 11.5  # ELEVATOR_SIZE.x/2 + 0.5 + 7.0
 const BRIDGE_LENGTH := 24.0   # a real crossing (2x the old 12) so dialogue paces across the walk, not up front
 const BRIDGE_END_X := BRIDGE_START_X + BRIDGE_LENGTH
-const BRIDGE_MODEL_SPAN := 13.1   # bridge.glb native X extent (measured); the model scales X to fill BRIDGE_LENGTH
 const BRIDGE_COLLAPSE_X := BRIDGE_START_X + BRIDGE_LENGTH * 0.66  # the span gives way ~2/3 across, not after 4 steps
 
-# The modeled span (Blender, 1/16 pixel-grid): deck planks, rusted girders, cross-beams, braces,
-# railings, abutments — each a named MeshInstance3D the hybrid collapse drops.
-const BRIDGE_MODEL := preload("res://resources/models/elevator/bridge.glb")
 # The modeled elevator car SHELL (Blender, pixel-grid; floor grate is Geometry-Nodes): paneled walls,
 # door opening + frame, ceiling light coffer, corner posts, control housing. Static; the sliding doors,
 # emergency light, and floor indicators stay procedural in Godot because they animate.
@@ -350,7 +346,7 @@ func _begin() -> void:
 				_player.global_position = Vector3.ZERO
 		return
 	_scheduler.schedule_after(1.0, _start_consciousness_fragments, "fragments")
-	# Stream the BRIDGE (its heavy GLB instantiate is the hitch) in the BACKGROUND now, across the long stationary
+	# Stream the BRIDGE (its tiled span is dozens of meshes) in the BACKGROUND now, across the long stationary
 	# opening (consciousness fragments → conversation → EMP → doors → multiselect), so revealing the span at the
 	# corridor costs only a `visible = true`. The lower-deck ecology is NOT streamed here — its roaming fauna would
 	# come alive during the opening (extra scheduler traffic); it's built at the corridor, one beat before it matters.
@@ -1663,20 +1659,49 @@ func _bridge_step_floor(parent: Node3D) -> void:
 	b2.add_child(c2)
 	bridge_floor.add_child(b2)
 
-# The MODELED bridge (Blender, 1/16 pixel-grid): deck planks, rusted girders, cross-beams, braces, railings and
-# abutments — each a named piece the hybrid collapse drops. Isolated to its OWN step: this GLB instantiate is the
-# heaviest single beat, so the streamer gives it a whole frame during the quiet elevator opening.
+# The span is built from REPEATED TILE geometry sampling the pixel atlas (the same technique as the sim rooms /
+# below deck): deck planks (deck_metal), segmented rusted girders (rust_iron) and cross-beams (facility_metal),
+# each a discrete tiled box. A longer bridge just adds MORE planks — the world-triplanar atlas repeats crisply
+# at any length (no stretching), and the discrete pieces are exactly what the hybrid collapse shatters + drops.
 func _bridge_step_model(parent: Node3D) -> void:
 	var bridge_start := ELEVATOR_SIZE.x / 2.0 + 0.5 + 7.0
 	var bridge_floor := parent.find_child("BridgeFloor", false, false)
 	if bridge_floor == null:
 		return
-	var bridge_model := BRIDGE_MODEL.instantiate()
-	bridge_model.name = "BridgeModel"
-	# Tile the ~2-unit modeled span across the longer walkable slab so the deck reads continuous end to end.
-	bridge_model.position = Vector3(bridge_start + BRIDGE_LENGTH * 0.5, 0.0, 0.0)  # span centre; modeled deck top sits at Y=0
-	bridge_model.scale = Vector3(BRIDGE_LENGTH / BRIDGE_MODEL_SPAN, 1.0, 1.0)
-	bridge_floor.add_child(bridge_model)
+	var model := Node3D.new()
+	model.name = "BridgeModel"
+	bridge_floor.add_child(model)
+	# Deck: plank segments (~1.5 m each), deck top at Y=0 to match the walkable slab.
+	var plank_count := maxi(6, int(round(BRIDGE_LENGTH / 1.5)))
+	var plank_len := BRIDGE_LENGTH / float(plank_count)
+	for i in range(plank_count):
+		var px := bridge_start + (i + 0.5) * plank_len
+		_add_bridge_piece(model, "Deck_Plank_%d" % i, Vector3(px, -0.075, 0.0), Vector3(plank_len * 0.97, 0.15, 3.0), "deck_metal")
+	# Two rusted side girders, segmented so they shatter with the deck.
+	var rail_count := maxi(3, int(round(BRIDGE_LENGTH / 3.0)))
+	var rail_len := BRIDGE_LENGTH / float(rail_count)
+	for side in [-1.0, 1.0]:
+		for i in range(rail_count):
+			var rx := bridge_start + (i + 0.5) * rail_len
+			_add_bridge_piece(model, "Girder_%s_%d" % ["R" if side > 0.0 else "L", i],
+				Vector3(rx, 0.25, side * 1.4), Vector3(rail_len * 0.95, 0.5, 0.2), "rust_iron")
+	# Cross supports under the deck.
+	var beam_count := maxi(2, int(round(BRIDGE_LENGTH / 4.0)))
+	for i in range(beam_count):
+		var bx := bridge_start + (i + 0.5) * (BRIDGE_LENGTH / float(beam_count))
+		_add_bridge_piece(model, "Crossbeam_%d" % i, Vector3(bx, -0.3, 0.0), Vector3(0.3, 0.35, 3.2), "facility_metal")
+
+## One tiled bridge piece: a box mesh sampling the atlas tile via the world-triplanar tiling material. Named so
+## the collapse can identify deck planks; a discrete MeshInstance3D so _collapse_bridge_model drops it as debris.
+func _add_bridge_piece(model: Node3D, piece_name: String, pos: Vector3, size: Vector3, tile: String) -> void:
+	var mi := MeshInstance3D.new()
+	mi.name = piece_name
+	var b := BoxMesh.new()
+	b.size = size
+	mi.mesh = b
+	mi.material_override = _tile_material(tile, 1.0)
+	mi.position = pos
+	model.add_child(mi)
 
 func _bridge_step_light(parent: Node3D) -> void:
 	var bridge_start := ELEVATOR_SIZE.x / 2.0 + 0.5 + 7.0
