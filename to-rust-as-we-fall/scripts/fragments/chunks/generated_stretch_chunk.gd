@@ -19,6 +19,11 @@ var _spec: Dictionary = {}
 # data layer (grid/movement/detection) stays flat regardless; only the floor render, node dressing, interactable
 # zones, and the installed GameState.coord_map (character render + click inverse) go through it.
 var _coord_map = null
+# The playable grid the chunk actually renders + installs: the generator's linear SPINE grid WOVEN with lateral
+# branch rooms (spokes off the spiral) when spiralling. Empty until first built; get_grid_data returns it. The
+# generator's own spec.navigation_grid stays the bare spine (what the solver/curriculum ran on) — branches are
+# optional explorable space layered on at build, so solvability is untouched.
+var _woven_nav: Dictionary = {}
 # Drop-down portal pads placed on the spiral (each teleports the active member from a cell on one turn to the
 # cell directly BELOW it — one turn forward — a "drop down as needed" shortcut that skips a loop of walking).
 var _drop_downs: Array = []
@@ -75,7 +80,9 @@ func _build_chunk() -> void:
 	_node_targets.clear()
 	_route_surfaces.clear()
 	_drop_downs.clear()
+	_woven_nav = {}
 	_build_coord_map()
+	_ensure_woven_grid()
 	# The tiled walkable floor IS the level now — the old abstract scaffolding (a big foundation slab, straight
 	# route-connector boxes, big role pads, a palette legend) was redundant clutter over it, so it's gone. Only the
 	# floor + the per-node markers/interactables the player actually uses remain.
@@ -110,6 +117,34 @@ func _build_coord_map() -> void:
 
 func get_coord_map():
 	return _coord_map
+
+## The playable grid = the spine woven with branch spokes (when spiralling). Built once; both the floor render and
+## the installed GameState grid read this, so the walkable floor, collision, detection and pathing all agree.
+func _ensure_woven_grid() -> void:
+	if not _woven_nav.is_empty():
+		return
+	_ensure_navigation_layout()
+	var spine: Dictionary = _spec.get("navigation_grid", {})
+	if spine.is_empty():
+		return
+	if _spiral_enabled() and bool(_config.get("branches", true)):
+		var BranchWeaver = load("res://scripts/generation/stretch_branch_weaver.gd")
+		_woven_nav = BranchWeaver.weave(spine, {
+			"seed": _weave_seed(),
+			"tier": str(_spec.get("source", {}).get("complexity_tier", _spec.get("settings", {}).get("complexity_tier", "standard"))),
+			"stage": _progression_stage(),
+		})
+	else:
+		_woven_nav = spine.duplicate(true)
+
+## Deterministic seed for the branch weave — from the level's own seed so the same spec always grows the same
+## spokes (replay-safe; the chunk reproduces them every build).
+func _weave_seed() -> int:
+	return int(_spec.get("source", {}).get("seed", _spec.get("settings", {}).get("seed", 0)))
+
+func _nav_grid() -> Dictionary:
+	_ensure_woven_grid()
+	return _woven_nav if not _woven_nav.is_empty() else _spec.get("navigation_grid", {})
 
 ## The warp transform at a flat point: on a spiral, the oriented helix frame (right = radial, up = world up,
 ## forward = tangent) lifted per level; flat, just a translation. Used to place a slab/marker onto the deck.
@@ -280,7 +315,7 @@ func get_grid_data() -> Dictionary:
 	_ensure_spec_loaded()
 	_ensure_graybox_layout()
 	_ensure_navigation_layout()
-	return _spec.get("navigation_grid", {}).duplicate(true)
+	return _nav_grid().duplicate(true)
 
 func get_navigation_state() -> Dictionary:
 	_ensure_spec_loaded()
@@ -729,7 +764,7 @@ func _tiled_floor_material(tile_name: String) -> StandardMaterial3D:
 ## Draw a tiled floor quad for every WALKABLE grid cell (per level), risky cells rusted, and give it collision so
 ## the player's ground-click raycast only lands where they can actually move. Visible floor == traversable floor.
 func _build_walkable_floor() -> void:
-	var nav: Dictionary = _spec.get("navigation_grid", {})
+	var nav: Dictionary = _nav_grid()
 	if nav.is_empty():
 		return
 	var grid = GridWorld.from_data(nav)

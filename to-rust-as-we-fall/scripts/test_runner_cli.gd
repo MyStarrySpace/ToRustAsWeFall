@@ -354,6 +354,9 @@ func _ready() -> void:
 			"--test-spiral-drop-down":
 				ran_test = true
 				await _test_spiral_drop_down()
+			"--test-stretch-branches":
+				ran_test = true
+				await _test_stretch_branches()
 			"--test-channels-splash-capture":
 				ran_test = true
 				await _test_channels_splash_capture()
@@ -1125,6 +1128,7 @@ func _run_all_tests() -> void:
 	await _test_channels_probe_coverage()
 	await _test_generated_stretch_probe_coverage()
 	await _test_spiral_drop_down()
+	await _test_stretch_branches()
 	await _test_channels_pipe_splash()
 	await _test_channels_splash_droplets()
 	await _test_refuge_run_playthrough()
@@ -13000,6 +13004,67 @@ func _test_spiral_drop_down() -> void:
 	_assert_true(gs.grid.is_walkable(land_cell.x, land_cell.y), "the drop lands on a walkable floor cell")
 	inst.queue_free()
 	await get_tree().process_frame
+
+## Spine-with-branches: the weaver hangs varied lateral ROOMS (spokes) off the spine's outer rim so the warped
+## level reads as a hub/star, not a bare corridor. Assert (data-layer, no scene): branches are placed, they ADD
+## walkable floor, every branch cell is REACHABLE from the spine (traversable — not a floating pocket), the
+## entry->exit spine still solves, the grid contract keys survive, spine WORLD positions are preserved (so the
+## coord_map built on the spine still aligns), and the weave is deterministic from the seed.
+func _test_stretch_branches() -> void:
+	_test_name = "Stretch Branches"
+	var Weaver = load("res://scripts/generation/stretch_branch_weaver.gd")
+	var spec: Dictionary = StretchGeneratorScript.generate({"seed": 9, "complexity_tier": "standard", "id": "branch_test", "budget": {"node_count": 7}})
+	var spine: Dictionary = spec.get("navigation_grid", {})
+	_assert_true(not spine.is_empty(), "the generated stretch has a spine navigation grid")
+	var spine_cells := (spine.get("walkable_cells", []) as Array).size()
+	var woven: Dictionary = Weaver.weave(spine, {"seed": 9, "tier": "standard", "stage": 3})
+	var branches: Array = woven.get("branches", [])
+	var woven_cells := (woven.get("walkable_cells", []) as Array).size()
+	print("  [branches] spine cells=%d -> woven=%d | branches=%d shapes=%s" % [spine_cells, woven_cells, branches.size(), str(_branch_shapes(branches))])
+	_assert_true(branches.size() >= 2, "the weaver hangs at least 2 branch spokes off the spine (got %d)" % branches.size())
+	_assert_true(woven_cells > spine_cells + 8, "branches ADD explorable floor (woven %d > spine %d)" % [woven_cells, spine_cells])
+	# Contract survives.
+	for key in ["contract_id", "origin", "cell_size", "width", "height", "walkable_cells", "risk_cell_list", "links", "level_count", "level_height", "route_cells", "entry_anchor", "exit_anchor"]:
+		_assert_true(woven.has(key), "woven grid keeps the '%s' contract key" % key)
+	_assert_equals(str(woven.get("contract_id", "")), GridWorld.GRID_DATA_CONTRACT_ID, "woven grid keeps the unified_grid_v1 contract id")
+	# Spine WORLD positions preserved: a spine cell's world point stays a walkable cell at the same spot in the
+	# woven grid (so the coord_map, built on the spine, still lands on the deck after weaving).
+	var spine_grid = GridWorld.from_data(spine)
+	var woven_grid = GridWorld.from_data(woven)
+	var spine_c0: Vector2i = _first_walkable_cell(spine)
+	var spine_w: Vector3 = spine_grid.grid_to_world(spine_c0)
+	var spine_woven_cell: Vector2i = woven_grid.world_to_grid(spine_w)
+	_assert_true(woven_grid.is_walkable(spine_woven_cell.x, spine_woven_cell.y), "a spine cell's world point is still walkable in the woven grid (world positions preserved)")
+	_assert_true(spine_grid.grid_to_world(spine_c0).distance_to(woven_grid.grid_to_world(spine_woven_cell)) < 0.6, "the spine cell maps to the SAME world point in the woven grid")
+	# Reachability: every branch cell can be reached from the spine (pathfind entry->branch neck), and entry->exit still solves.
+	var start: Vector2i = _first_walkable_cell(woven)
+	var reach_fail := 0
+	for b in branches:
+		var neck: Array = b.get("neck", [0, 0])
+		var path: Array = woven_grid.find_multi_level_path(start, 0, Vector2i(int(neck[0]), int(neck[1])), 0)
+		if path.is_empty():
+			reach_fail += 1
+	_assert_true(reach_fail == 0, "every branch spoke is REACHABLE from the spine (unreachable=%d of %d)" % [reach_fail, branches.size()])
+	# Determinism: same seed -> identical woven cells; different seed -> differs.
+	var woven_b: Dictionary = Weaver.weave(spine, {"seed": 9, "tier": "standard", "stage": 3})
+	var woven_c: Dictionary = Weaver.weave(spine, {"seed": 40, "tier": "standard", "stage": 3})
+	_assert_equals(str(woven.get("walkable_cells")), str(woven_b.get("walkable_cells")), "the weave is deterministic (same seed -> identical branches)")
+	_assert_true(str(woven.get("walkable_cells")) != str(woven_c.get("walkable_cells")), "a different seed grows different branches")
+	# Bigger tier -> more branches (harder/longer).
+	var woven_set: Dictionary = Weaver.weave(spine, {"seed": 9, "tier": "setpiece", "stage": 6})
+	_assert_true((woven_set.get("branches", []) as Array).size() >= branches.size(), "a harder tier hangs at least as many branches (setpiece %d >= standard %d)" % [(woven_set.get("branches", []) as Array).size(), branches.size()])
+
+func _branch_shapes(branches: Array) -> Array:
+	var out: Array = []
+	for b in branches:
+		out.append(str(b.get("shape", "")))
+	return out
+
+func _first_walkable_cell(nav: Dictionary) -> Vector2i:
+	var cells: Array = nav.get("walkable_cells", [])
+	if cells.is_empty():
+		return Vector2i.ZERO
+	return Vector2i(int(cells[0][0]), int(cells[0][1]))
 
 # Cursor alignment on the warped helix: a click maps cursor -> deck hit -> to_data -> cell. If the deck the ray
 # HITS sits above the arc centreline (deck thickness / surface), to_data over/under-reads s and the grid + ghost
