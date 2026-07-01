@@ -1,26 +1,29 @@
 class_name SpiralCoordMap
 extends RefCounted
 
-## A GameState.coord_map that warps a generated level's FLAT grid onto an ascending HELIX — the same trick the
+## A GameState.coord_map that warps a generated level's FLAT grid onto a DESCENDING HELIX — the same trick the
 ## hand-authored Channels use (see ChannelsArc), but PARAMETERIZED to the level's own dimensions. The data layer
 ## stays flat (grid, movement, detection, traversibility all unchanged); only the WORLD render + click inverse go
 ## through here, so the player walks a straight linear grid while the world is a big spiral around a centre. Height
-## climbs monotonically with progress, so the spiral never self-collides and world->flat is exact (turn picked by
-## height). Build it from the level's navigation_grid: s = progress along the level (data x, normalised to 0), lane
-## = lateral offset (data z, centred).
+## DESCENDS monotonically with progress (entry at the top, exit shelter at the bottom), so the spiral never self-
+## collides, world->flat is exact (turn picked by height), and a "drop down" to the turn directly below is a
+## shortcut FORWARD toward the exit. Build it from the level's navigation_grid: s = progress along the level (data
+## x, normalised to 0), lane = lateral offset (data z, centred).
 
 var center := Vector3.ZERO
 var r0 := 9.0            # helix radius at the path centreline (lane 0)
 var a0 := 0.0            # start angle
 var ktheta := 0.12      # radians of sweep per unit s (turns * TAU / length)
-var y0 := 0.45          # world height at s = 0
-var kclimb := 0.15      # world height climbed per unit s
+var y0 := 0.45          # world height at s = 0 (the top of the descent)
+var kclimb := -0.15     # world height gained per unit s — NEGATIVE: the helix descends with progress
 var s_offset := 0.0     # data-world x that maps to s = 0 (the grid origin)
 var lane_center := 0.0  # data-world z of the path centreline
 
-## Build from a unified_grid_v1 grid_data. `turns` ~ how many times the level wraps; `radius`/`climb_per_turn`
+## Build from a unified_grid_v1 grid_data. `turns` ~ how many times the level wraps; `radius`/`descent_per_turn`
 ## shape the spiral. Radius is kept > the lane half-width so the effective radius stays positive across the deck.
-static func from_grid(grid_data: Dictionary, turns := 0.0, radius := 9.0, climb_per_turn := 6.0, base_y := 0.45) -> SpiralCoordMap:
+## The helix DESCENDS (kclimb < 0): each full turn drops `descent_per_turn` world-units, so the cell one turn
+## ahead sits directly below — the geometry that makes a drop-down pad a real shortcut.
+static func from_grid(grid_data: Dictionary, turns := 0.0, radius := 9.0, descent_per_turn := 6.0, base_y := 0.45) -> SpiralCoordMap:
 	var m := SpiralCoordMap.new()
 	var origin: Array = grid_data.get("origin", [0.0, 0.45, 0.0])
 	var cs := float(grid_data.get("cell_size", 1.0))
@@ -32,8 +35,13 @@ static func from_grid(grid_data: Dictionary, turns := 0.0, radius := 9.0, climb_
 	m.r0 = maxf(radius, h * 0.5 + 2.5)
 	m.y0 = base_y
 	m.ktheta = t * TAU / maxf(1.0, w)
-	m.kclimb = climb_per_turn * t / maxf(1.0, w)   # -> climb_per_turn world-units of Y per full turn
+	m.kclimb = -(descent_per_turn * t / maxf(1.0, w))   # -> descent_per_turn world-units of DROP per full turn
 	return m
+
+## Flat cells (data-x span) per full turn of the helix — the forward jump a drop-down to the turn directly below
+## covers. Positive; independent of climb/descent direction.
+func period_s() -> float:
+	return absf(TAU / ktheta) if ktheta != 0.0 else INF
 
 # --- helix math (parameterised ChannelsArc) --------------------------------------------------------------------
 

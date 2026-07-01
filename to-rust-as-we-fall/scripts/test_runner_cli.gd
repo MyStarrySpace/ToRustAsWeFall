@@ -351,6 +351,9 @@ func _ready() -> void:
 			"--test-generated-stretch-probe-coverage":
 				ran_test = true
 				await _test_generated_stretch_probe_coverage()
+			"--test-spiral-drop-down":
+				ran_test = true
+				await _test_spiral_drop_down()
 			"--test-channels-splash-capture":
 				ran_test = true
 				await _test_channels_splash_capture()
@@ -1121,6 +1124,7 @@ func _run_all_tests() -> void:
 	await _test_channels_click_alignment()
 	await _test_channels_probe_coverage()
 	await _test_generated_stretch_probe_coverage()
+	await _test_spiral_drop_down()
 	await _test_channels_pipe_splash()
 	await _test_channels_splash_droplets()
 	await _test_refuge_run_playthrough()
@@ -12942,7 +12946,58 @@ func _test_generated_stretch_probe_coverage() -> void:
 	var flat_span_x := float(grid.width) * float(grid.grid_to_world(Vector2i(1, 0)).x - grid.grid_to_world(Vector2i(0, 0)).x)
 	print("  [spiral-probe] warped footprint span x=%.1f z=%.1f y=%.1f (flat grid width~%.1f)" % [span_x, span_z, span_y, absf(flat_span_x)])
 	_assert_true(span_z > 6.0, "the warp CURLS the corridor across a wide lateral span (z=%.1f — a straight deck would be near-zero)" % span_z)
-	_assert_true(span_y > 1.0, "the spiral CLIMBS (world Y span=%.1f > a flat deck's thickness)" % span_y)
+	_assert_true(span_y > 1.0, "the spiral DESCENDS (world Y span=%.1f > a flat deck's thickness)" % span_y)
+	inst.queue_free()
+	await get_tree().process_frame
+
+## Drop-down shortcut: the descending spiral stacks the cell one full turn ahead directly BELOW the current one, so
+## a PortalPad there lets a member drop straight down to that lower turn — skipping a whole loop of walking toward
+## the exit. Assert the pads exist on a long (standard-tier) stretch, that each really drops DOWN and lands a full
+## turn FORWARD, and that stepping through teleports the active member forward along the flat data grid.
+func _test_spiral_drop_down() -> void:
+	_test_name = "Spiral Drop Down"
+	# A long stretch (>= 2 full helix turns) so a cell has a full turn stacked directly BELOW it to drop to.
+	var spec: Dictionary = StretchGeneratorScript.generate({"seed": 12, "complexity_tier": "setpiece", "id": "spiral_drop", "budget": {"node_count": 14}})
+	var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 8, {"spec": spec})
+	if inst == null:
+		_assert_true(false, "generated_stretch instantiates"); return
+	for i in range(6):
+		await get_tree().process_frame
+	var gs = inst.get("_game_state")
+	var chunk = inst.get("_active_chunk")
+	if gs == null or gs.coord_map == null or chunk == null:
+		_assert_true(false, "coord_map + chunk present"); inst.queue_free(); await get_tree().process_frame; return
+	var cm = gs.coord_map
+	var period: float = cm.period_s()
+	var pads: Array = chunk.get("_drop_downs")
+	print("  [drop-down] period_s=%.1f cells | placed=%d pads" % [period, pads.size()])
+	_assert_true(pads.size() >= 1, "a long spiral places at least one drop-down shortcut (got %d)" % pads.size())
+	if pads.is_empty():
+		inst.queue_free(); await get_tree().process_frame; return
+	# Geometry: the pad sits ABOVE its destination (a real drop) and the destination is a full turn FORWARD.
+	var pad = pads[0]
+	var upper_flat: Vector3 = cm.to_data(pad.position)
+	var lower_flat: Vector3 = cm.to_data(pad.get("_dest"))
+	var forward: float = lower_flat.x - upper_flat.x
+	print("  [drop-down] pad upper s=%.1f (y=%.2f) -> lower s=%.1f (y=%.2f) | forward=%.1f" % [upper_flat.x, pad.position.y, lower_flat.x, pad.get("_dest").y, forward])
+	_assert_true(pad.position.y > pad.get("_dest").y + 1.0, "the pad DROPS DOWN (upper y=%.2f is well above dest y=%.2f)" % [pad.position.y, pad.get("_dest").y])
+	_assert_true(absf(forward - period) < 2.5, "the drop lands a full turn FORWARD toward the exit (forward=%.1f ~ period=%.1f)" % [forward, period])
+	# Teleport: put the active member on the pad's upper cell, step through, assert the flat data position jumped
+	# forward by ~a full turn (a shortcut), and lands on a walkable cell.
+	var active: String = str(inst.get("_active_char_id"))
+	if not gs.characters.has(active):
+		active = "aster"
+	gs.snap_character_to(active, upper_flat)
+	pad.active_character = active
+	var before: Vector3 = gs.get_position(active)
+	var ok: bool = pad.step_through()
+	var after: Vector3 = gs.get_position(active)
+	var jumped: float = after.x - before.x
+	print("  [drop-down] step_through=%s | before s=%.1f -> after s=%.1f (jumped %.1f)" % [str(ok), before.x, after.x, jumped])
+	_assert_true(ok, "the drop-down pad teleports the active member (step_through succeeds — the chunk gets a game_state)")
+	_assert_true(jumped > period * 0.6, "stepping the drop-down jumps the member a loop FORWARD along the flat grid (jumped %.1f)" % jumped)
+	var land_cell: Vector2i = gs.grid.world_to_grid(after)
+	_assert_true(gs.grid.is_walkable(land_cell.x, land_cell.y), "the drop lands on a walkable floor cell")
 	inst.queue_free()
 	await get_tree().process_frame
 

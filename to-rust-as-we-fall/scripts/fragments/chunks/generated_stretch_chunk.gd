@@ -19,6 +19,9 @@ var _spec: Dictionary = {}
 # data layer (grid/movement/detection) stays flat regardless; only the floor render, node dressing, interactable
 # zones, and the installed GameState.coord_map (character render + click inverse) go through it.
 var _coord_map = null
+# Drop-down portal pads placed on the spiral (each teleports the active member from a cell on one turn to the
+# cell directly BELOW it — one turn forward — a "drop down as needed" shortcut that skips a loop of walking).
+var _drop_downs: Array = []
 var _catalog := CatalogScript.new()
 var _node_markers: Dictionary = {}
 var _node_targets: Dictionary = {}
@@ -71,6 +74,7 @@ func _build_chunk() -> void:
 	_node_markers.clear()
 	_node_targets.clear()
 	_route_surfaces.clear()
+	_drop_downs.clear()
 	_build_coord_map()
 	# The tiled walkable floor IS the level now — the old abstract scaffolding (a big foundation slab, straight
 	# route-connector boxes, big role pads, a palette legend) was redundant clutter over it, so it's gone. Only the
@@ -84,6 +88,7 @@ func _build_chunk() -> void:
 	if _coord_map != null:
 		for i in range(flat_child_start, get_child_count()):
 			_warp_child(get_child(i))
+		_build_drop_downs()
 	reset_preview_state()
 
 ## Whether this stretch renders as a helix (the default) or stays a flat grid. Generated stretches spiral so a
@@ -255,6 +260,7 @@ func get_preview_state() -> Dictionary:
 		"pressure_taken": _pressure_taken,
 		"rests_taken": _rests_taken,
 		"unsupported_placeholder_count": _unsupported_placeholder_count,
+		"drop_down_count": _drop_downs.size(),
 		"active_loadout": _active_loadout,
 		"blocked_nodes": _blocked_nodes.duplicate(),
 		"solution_path": get_active_solution_path(),
@@ -848,6 +854,62 @@ func _build_route_segment(route: Dictionary, from_pos: Vector3, to_pos: Vector3)
 	_route_surfaces[str(route.get("id", ""))] = route_box
 	var label_pos := middle + Vector3(0.0, 0.82, 0.0)
 	_add_label(self, "%s / R%d" % [_route_kind(route).to_upper(), _route_risk_value(route)], label_pos, _route_color(route).lightened(0.28))
+
+## Place drop-down PORTAL PADS on the spiral: where the corridor at a cell and the cell ONE FULL TURN AHEAD (which
+## the descending helix seats directly BELOW it, same angle) are both walkable, a pad lets the active member drop
+## straight down to that lower turn — a shortcut skipping a whole loop toward the exit ("drop down as needed").
+## PortalPad owns the teleport (it maps the warped destination back through the coord_map to a flat cell), so this
+## stays replay-safe and works on the flat data layer. Standalone (no host game_state) the pad still renders; its
+## step-through just no-ops.
+const _DROP_MAX := 3
+func _build_drop_downs() -> void:
+	if _coord_map == null:
+		return
+	var nav: Dictionary = _spec.get("navigation_grid", {})
+	if nav.is_empty():
+		return
+	var grid = GridWorld.from_data(nav)
+	var period_cells := int(round(_coord_map.period_s()))
+	# Need at least one full stacked turn inside the level to have somewhere below to drop to.
+	if period_cells < 6 or period_cells > grid.width - 3:
+		return
+	var gs = _get_game_state()
+	var deck_y := float((nav.get("origin", [0.0, 0.45, 0.0]) as Array)[1])
+	var placed := 0
+	# Step by a full turn so drops don't cluster; at each step take the walkable cell nearest the centre lane whose
+	# one-turn-ahead cell is also walkable.
+	var cx := int(round(period_cells * 0.5))
+	while cx + period_cells < grid.width - 1 and placed < _DROP_MAX:
+		var pair := _find_drop_pair(grid, cx, period_cells)
+		if not pair.is_empty():
+			var upper: Vector2i = pair["upper"]
+			var lower: Vector2i = pair["lower"]
+			var upper_flat: Vector3 = grid.grid_to_world(upper); upper_flat.y = deck_y
+			var lower_flat: Vector3 = grid.grid_to_world(lower); lower_flat.y = deck_y
+			var pad := PortalPad.new()
+			pad.name = "SpiralDrop_%d" % placed
+			pad.configure(gs, _coord_map.to_world(upper_flat), _coord_map.to_world(lower_flat), 1.3, Color(0.5, 0.85, 1.0))
+			add_child(pad)
+			_register_interactable(pad)
+			_drop_downs.append(pad)
+			placed += 1
+		cx += period_cells
+
+## At column `cx`, find a walkable cell whose cell `period_cells` ahead (directly below on the descending helix)
+## is also walkable — searching outward from the centre row so the pad lands on the main corridor. Empty if none.
+func _find_drop_pair(grid, cx: int, period_cells: int) -> Dictionary:
+	var mid := int(grid.height / 2)
+	for dz in range(grid.height):
+		for cz in ([mid] if dz == 0 else [mid + dz, mid - dz]):
+			if cz < 0 or cz >= grid.height:
+				continue
+			if grid.is_walkable(cx, cz) and grid.is_walkable(cx + period_cells, cz):
+				return {"upper": Vector2i(cx, cz), "lower": Vector2i(cx + period_cells, cz)}
+	return {}
+
+## How many drop-down shortcut pads the spiral placed (0 on a flat / too-short stretch). For tests + overlays.
+func get_drop_down_count() -> int:
+	return _drop_downs.size()
 
 func _build_generated_nodes() -> void:
 	for node in _nodes():
