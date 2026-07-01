@@ -19,6 +19,7 @@ const REST_LAB_CHUNK_SCENE := preload("res://scenes/fragments/chunks/rest_lab_ch
 const FLORA_GARDEN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/flora_garden_chunk.tscn")
 const DUSK_RUN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/dusk_run_chunk.tscn")
 const LURE_RELAY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/lure_relay_chunk.tscn")
+const DISTRACT_GATE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/distract_gate_chunk.tscn")
 const SHOWCASE_GALLERY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/showcase_gallery_chunk.tscn")
 const WASH_RELAY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/wash_relay_chunk.tscn")
 const DATA_FRAGMENT_CHUNK_SCENE := preload("res://scenes/fragments/chunks/data_fragment.tscn")
@@ -36,6 +37,7 @@ const CHUNK_SCENES := {
 	"refuge_run": REFUGE_RUN_CHUNK_SCENE,
 	"channels_wash_intro": CHANNELS_WASH_INTRO_CHUNK_SCENE,
 	"lure_relay": LURE_RELAY_CHUNK_SCENE,
+	"distract_gate": DISTRACT_GATE_CHUNK_SCENE,
 	"push_lab": PUSH_LAB_CHUNK_SCENE,
 	"rest_lab": REST_LAB_CHUNK_SCENE,
 	"flora_garden": FLORA_GARDEN_CHUNK_SCENE,
@@ -63,6 +65,7 @@ const PREVIEW_ENTRIES := [
 		"config": {"spec_path": "res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"}},
 	{"id": "dusk_run", "chunk": "dusk_run", "title": "Dusk Run", "stage": 3},
 	{"id": "flora_garden", "chunk": "flora_garden", "title": "Flora Garden", "stage": 3},
+	{"id": "distract_gate", "chunk": "distract_gate", "title": "The Watched Gap", "stage": 3},
 	{"id": "lure_relay", "chunk": "lure_relay", "title": "Flure Relay", "stage": 3},
 	{"id": "generated_chain_nested_poc", "chunk": "generated_stretch", "title": "Generated Chain/Nested POC", "stage": 3,
 		"config": {"spec_path": "res://data/generated_stretches/generated_chain_nested_poc_shelter_2_to_3.json"}},
@@ -152,7 +155,7 @@ const STAMINA_REGEN := 10.0
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
 @export_enum("stacks", "rings", "lockout", "mother_flure", "survival_range",
 	"endo_junction_stretch", "generated_stretch",
-	"refuge_run", "channels_wash_intro", "lure_relay", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment") var preview_chunk := "stacks"
+	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 
@@ -858,6 +861,12 @@ func register_preview_interactable(interactable: Node) -> void:
 	_preview_interactables.append(interactable)
 	interactable.dialogue_box = _dialogue
 	interactable.active_character = _active_char_id
+	# Chunk-built interactables must ride the GAMEPLAY scheduler like every other interactable (the
+	# tutorial base's tree-walk injection runs before chunks load, so it never reaches them). Without
+	# this a TIMED_ACTION dwell falls back to the wall clock — non-deterministic under headless_advance
+	# and not fast-forward invariant (The Watched Gap's flure tend caught it firing late).
+	if _scheduler != null and interactable.has_method("set_scheduler"):
+		interactable.call("set_scheduler", _scheduler)
 	_connect_interactable_outline_feedback(interactable)
 	for char_id in CHARACTER_IDS:
 		var character_node: Node = _characters.get(char_id, null)

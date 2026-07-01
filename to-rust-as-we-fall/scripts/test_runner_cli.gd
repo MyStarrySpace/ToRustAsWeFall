@@ -186,6 +186,9 @@ func _ready() -> void:
 			"--test-lure-relay":
 				ran_test = true
 				await _test_lure_relay_puzzle()
+			"--test-distract-gate":
+				ran_test = true
+				await _test_distract_gate()
 			"--test-hidden-detection":
 				ran_test = true
 				_test_hidden_detection()
@@ -1178,6 +1181,7 @@ func _run_all_tests() -> void:
 	await _test_channels_robustness()
 	await _test_chunk_robustness()
 	await _test_lure_relay_puzzle()
+	await _test_distract_gate()
 	await _test_chromatic_aberration()
 	await _test_dialogue_hold_advance()
 	_test_cooperative_pathfinding()
@@ -11017,6 +11021,87 @@ func _test_hidden_detection() -> void:
 	holder.queue_free()
 
 # --- Test: the two-lure relay hide puzzle solves on the data layer (headless == real play) ---
+## THE WATCHED GAP — the atomic distract-the-patrol chunk, tested AS BUILT with the real mechanics (the
+## "test fragments as we make them" loop). Three proofs, all driven through real detection/movement/dwell:
+##   1. LOS honesty: standing INSIDE detection range but behind the wall -> never spotted (walls blind enemies;
+##      the user's correction, now a permanent regression).
+##   2. The gate is real: walking straight for the end gets you spotted in the watched lane and swept back to
+##      the start — you CANNOT walk start->end unsolved. The sentry's own FSM then disengages back to its post.
+##   3. The solve works: tend the flure (real TIMED_ACTION dwell) -> the sentry commits away through the gap ->
+##      cross behind it -> complete, uncaught.
+## A mechanically broken puzzle (like the retired redirect chunk) fails here — that's the point of the test.
+func _test_distract_gate() -> void:
+	_test_name = "Distract Gate (The Watched Gap)"
+	var inst = await _instantiate_preview_chunk_and_wait("distract_gate", 4)
+	if inst == null:
+		_assert_true(false, "distract_gate preview instantiates")
+		return
+	var chunk = inst._active_chunk
+	var gs = inst._game_state
+	_assert_true(chunk != null and gs != null, "The Watched Gap boots in the shared preview")
+
+	# --- 1. LOS honesty: in range, behind the wall -> invisible. ---
+	gs.command_move_to_pos("peris", Vector3(7.5, 0.5, -2.5))
+	inst.headless_advance(6.0, 0.1)
+	var d: float = gs.get_position("peris").distance_to(gs.get_position("gap_sentry"))
+	print("  [watched-gap] LOS probe: dist to sentry %.2f (range %.1f), state=%s caught=%d" % [d, float(chunk.SENTRY_RANGE), str(chunk.get_preview_state()["sentry_state"]), int(chunk.get_preview_state()["caught_count"])])
+	_assert_true(d < float(chunk.SENTRY_RANGE), "the probe point is INSIDE detection range (%.2f < %.1f) — only the wall hides her" % [d, float(chunk.SENTRY_RANGE)])
+	_assert_equals(int(chunk.get_preview_state()["caught_count"]), 0, "behind the wall she is NEVER spotted (enemies cannot detect through walls)")
+	_assert_equals(str(chunk.get_preview_state()["sentry_state"]), "idle", "the sentry never even alerts at a wall-hidden target")
+
+	# --- 2. The gate is real: walk straight for the end -> spotted in the lane -> swept back. ---
+	gs.command_move_to_pos("peris", Vector3(20.0, 0.5, 0.0))
+	inst.headless_advance(12.0, 0.1)
+	var st: Dictionary = chunk.get_preview_state()
+	print("  [watched-gap] exposed cross: caught=%d complete=%s peris.x=%.1f" % [int(st["caught_count"]), str(st["complete"]), gs.get_position("peris").x])
+	_assert_true(int(st["caught_count"]) >= 1, "walking straight to the end gets you SPOTTED — the gate is the real detection, not a wall")
+	_assert_true(not bool(st["complete"]), "no free walkthrough: the end was NOT reached unsolved")
+	_assert_true(gs.get_position("peris").x < 5.0, "the caught member was swept back to the start (failure costs progress)")
+	# The catch beat also resets the sentry to its post, re-armed (one beat, like a wash sweep — otherwise
+	# it camps the spawn and re-spots the idle party forever, which this playtest originally caught).
+	var settled := false
+	for i in range(30):
+		inst.headless_advance(1.0, 0.1)
+		st = chunk.get_preview_state()
+		if str(st["sentry_state"]) == "idle" and gs.get_position("gap_sentry").distance_to(chunk.SENTRY_POST) < 1.5:
+			settled = true
+			break
+	_assert_true(settled, "after the catch the sentry is back at its post, re-armed (state=%s)" % str(st["sentry_state"]))
+	var caught_after_settle := int(st["caught_count"])
+	_assert_true(caught_after_settle <= 2, "the catch is ONE beat, not a camp-the-spawn loop (caught=%d)" % caught_after_settle)
+
+	# --- 3. The solve: tend the flure (real dwell), the sentry commits away, cross behind it. ---
+	var flure_node = chunk.find_child("FlureInteract", true, false)
+	_assert_true(flure_node != null, "the flure interactable exists")
+	_assert_equals(int(flure_node.interactable_type), int(Interactable.InteractableType.TIMED_ACTION),
+		"the flure is a click + timed-action interactable (never proximity)")
+	gs.command_move_to_pos("peris", chunk.FLURE_POS)
+	inst.headless_advance(5.0, 0.1)
+	flure_node.active_character = "peris"
+	flure_node.on_interaction_arrived()          # Peris walked over -> the tend dwell starts (scheduler-timed)
+	inst.headless_advance(float(flure_node.dwell_time) + 0.4, 0.1)
+	st = chunk.get_preview_state()
+	_assert_true(bool(st["flure_fired"]), "Peris tends the flure and it sings")
+	# Fall back out of the lured sentry's (shrunken) reach, and let it commit west through the gap.
+	gs.command_move_to_pos("peris", Vector3(2.5, 0.5, -2.0))
+	var lured := false
+	for i in range(30):
+		inst.headless_advance(0.5, 0.1)
+		if gs.get_position("gap_sentry").x < 8.0:
+			lured = true
+			break
+	print("  [watched-gap] lure: sentry at %s, distracted cross window open=%s" % [str(gs.get_position("gap_sentry")), str(lured)])
+	_assert_true(lured, "the flure pulls the sentry off its watch, through the gap, to the west pocket")
+	var caught_before := int(chunk.get_preview_state()["caught_count"])
+	gs.command_move_to_pos("peris", Vector3(20.0, 0.5, 0.0))
+	inst.headless_advance(12.0, 0.1)
+	st = chunk.get_preview_state()
+	print("  [watched-gap] solve cross: complete=%s caught=%d (was %d)" % [str(st["complete"]), int(st["caught_count"]), caught_before])
+	_assert_true(bool(st["complete"]), "with the sentry lured away the cross reaches the END — solving the puzzle IS the gate")
+	_assert_equals(int(st["caught_count"]), caught_before, "the legal solve crosses uncaught")
+	inst.queue_free()
+	await get_tree().process_frame
+
 func _test_lure_relay_puzzle() -> void:
 	_test_name = "Lure Relay Puzzle"
 	var instance = await _instantiate_preview_chunk_and_wait("lure_relay", 4)

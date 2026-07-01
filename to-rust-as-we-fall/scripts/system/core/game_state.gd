@@ -79,6 +79,9 @@ const DETECTION_VERTICAL_BAND := 2.0
 ## A medium hide drops an enemy's effective spotting range to this fraction of its outer range — the
 ## "inner" tier. Close enough (inside this band) and a corner/scarpet won't shake a chaser.
 const DETECTION_INNER_FACTOR := 0.45
+## How often a wall-BLOCKED spot re-checks while the pair is still moving (scheduler ticks). Coarse enough
+## to stay cheap, fine enough that stepping out of cover mid-move is seen within a step.
+const DETECTION_LOS_RECHECK_INTERVAL := 0.25
 
 static func normalize_atp(value: float) -> float:
 	if value > ATP_MAX_PIPS + 0.001:
@@ -1258,10 +1261,18 @@ func _recompute_all_detection_predictions(only_id: String = "") -> void:
 func _on_detection_event(detector_id: String, target_id: String) -> void:
 	if not characters.has(detector_id) or not characters.has(target_id):
 		return
-	# Line of sight: a wall between detector and target blocks the spot (enemies can't see through walls). LOS
-	# changes only when someone moves, and every move recomputes predictions and re-fires this at the new
-	# positions, so it re-evaluates without a polling loop — and the grid query keeps it replay-deterministic.
+	# Line of sight: a wall between detector and target blocks the spot (enemies can't see through walls).
+	# A blocked spot is NOT the last word while the pair is still in motion: the range-crossing event fires
+	# once per recompute, so a target that entered range BEHIND a wall and then walked into the open within
+	# the SAME move would otherwise never be re-checked — cover would grant immunity for the rest of the
+	# move (The Watched Gap caught this). While either side is moving, re-arm a short scheduler re-check
+	# under the pair tag (any recompute replaces it; both parked = frozen geometry = no re-arm needed, the
+	# next move recomputes). Scheduler-driven, so it stays replay-deterministic and fast-forward invariant.
 	if not _has_detection_los(detector_id, target_id):
+		if scheduler != null and (is_moving(detector_id) or is_moving(target_id)):
+			scheduler.schedule_after(DETECTION_LOS_RECHECK_INTERVAL,
+				func(): _recheck_detection_after_los_block(detector_id, target_id),
+				_detection_pair_tag(detector_id, target_id))
 		return
 	if is_dodging(target_id):
 		return
@@ -1285,6 +1296,26 @@ func _has_detection_los(detector_id: String, target_id: String) -> bool:
 	if grid == null:
 		return true
 	return grid.has_line_of_sight(get_position(detector_id), get_position(target_id))
+
+## The follow-up to a wall-blocked spot on a pair still in motion. Unlike the primary event (whose scheduled
+## tick IS the range-crossing proof), time has passed — so re-verify the pair is STILL spottable now (band,
+## concealment tier, effective range) before handing back to _on_detection_event, which redoes the LOS gate
+## and re-arms this if the wall still intervenes. Ends silently when the pair separates; any recompute
+## (new move/concealment change) cancels it via the shared pair tag and starts fresh.
+func _recheck_detection_after_los_block(detector_id: String, target_id: String) -> void:
+	if not characters.has(detector_id) or not characters.has(target_id):
+		return
+	if absf(get_position(detector_id).y - get_position(target_id).y) > DETECTION_VERTICAL_BAND:
+		return
+	var eff := _effective_detection_range(
+		_detector_outer_range(detector_id), get_character_concealment(target_id))
+	if eff <= 0.0:
+		return
+	var dpos := get_position(detector_id)
+	var tpos := get_position(target_id)
+	if Vector2(dpos.x - tpos.x, dpos.z - tpos.z).length() > eff:
+		return
+	_on_detection_event(detector_id, target_id)
 
 func _predict_detection_time(detector_id: String, target_id: String, det_range: float, now: float) -> float:
 	var segs_a := _get_movement_segments(detector_id)
