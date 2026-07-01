@@ -146,6 +146,19 @@ static func _arch_label(a: String) -> String:
 		"split": return "Archetype 5 two-character split (a door that needs two held plates)"
 	return a
 
+## Whether this archetype can be built from mechanics that EXIST TODAY, and which real mechanic backs it. The
+## flood-fill invariant proves a chunk's TOPOLOGY (you can't walk it unsolved); it does NOT prove the solve is
+## mechanically possible — that only a real in-engine playtest can. This keeps the generator honest about which
+## archetypes have a real mechanic vs. which are design placeholders waiting on one.
+static func mechanic(a: String) -> Dictionary:
+	match a:
+		"holdfast": return {"buildable": true, "mechanic": "wash + HELD override + sweep (wash_relay_chunk) — real, tested"}
+		"vinebridge": return {"buildable": false, "mechanic": "a climbvine that BRIDGES a chasm — flora-causeway exists in wash_relay, standalone bridge NOT verified"}
+		"split": return {"buildable": true, "mechanic": "two HELD plates + a dynamic_blocker gate — real (hold interactable + grid)"}
+		"distract": return {"buildable": true, "mechanic": "real enemy detection (LOS-blocked) + Flure lure (lure_relay_chunk) — real, tested"}
+		"redirect": return {"buildable": false, "mechanic": "an enemy that BREAKS a structure on charge impact — NO such mechanic exists (charges don't collide with structures)"}
+	return {"buildable": false, "mechanic": "unknown"}
+
 static func _solve_step(a: String) -> String:
 	match a:
 		"holdfast": return "sneak past the guard to the override (O) and HOLD it so the wash (~) calms, then cross"
@@ -284,6 +297,10 @@ static func render_ascii(chunk: Dictionary, show_verify := true) -> String:
 		out += "  %s=%s" % [k, str(chunk["legend"][k])]
 	out += "\n  SOLVE:  %s\n" % str(chunk.get("solve", ""))
 	out += "  SHADOW: %s\n" % str(chunk.get("shadow", ""))
+	# Honesty: does a real mechanic back each gate's solve? (topology gating != mechanically solvable)
+	for gt in chunk.get("gates", []):
+		var m := mechanic(str(gt.get("arch", "")))
+		out += "  MECHANIC (%s): %s — %s\n" % [str(gt.get("arch", "")), "BUILDABLE TODAY" if m["buildable"] else "NOT BUILDABLE YET", str(m["mechanic"])]
 	if show_verify:
 		var v := verify(chunk)
 		out += "  GATED?  locked blocks start->end: %s | all solved opens it: %s | nesting order enforced: %s | %s\n" % [
