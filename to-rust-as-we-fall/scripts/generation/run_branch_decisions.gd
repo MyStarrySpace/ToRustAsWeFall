@@ -88,23 +88,27 @@ static func _build(pattern: String, depth: int, seed: int, roster: Array) -> Dic
 				]}
 		"respite":
 			# The inverse fork: the SAFE path costs TIME (longer, more exposure) but restores more ATP via an extra
-			# shelter; the risky path is a short brutal sprint.
+			# shelter; the risky path is a short brutal sprint. Tuned (run_economy) so clean play prefers the banked
+			# ATP of the haul while sloppy play prefers the short sprint — a crossover, neither dominates.
 			return {
 				"pattern": "respite", "prompt": "The route splits: a long sheltered haul, or a short brutal sprint.",
 				"options": [
 					_opt("sprint", "Sprint it", "Short and savage — no mid-rest.",
 						"high", _settings(seed, depth, "sprint", hard_tier, roster, {"node_count": [4, 5]}), {}),
 					_opt("haul", "Take the long haul", "Longer and more exposed, but an extra shelter to rest at.",
-						"low", _settings(seed, depth, "haul", base_tier, roster, {"node_count": [9, 11], "resource_beats": 2}), {"atp_head_start": 25}),
+						"low", _settings(seed, depth, "haul", base_tier, roster, {"node_count": [9, 11], "resource_beats": 2}), {"atp_head_start": 18}),
 				]}
 		_:  # risk_reward (the decided default)
+			# The costly vein is LONGER + richer (more forage), not just higher-tier: its extra length is extra
+			# exposure, so it out-values the shallow cut for clean play but is punished by sloppy play (run_economy
+			# tunes the head-start + length so the crossover lands mid-range — neither branch dominates).
 			return {
 				"pattern": "risk_reward", "prompt": "The vein forks — deep and rich, or shallow and lean.",
 				"options": [
 					_opt("deep", "Work the deep vein", "Harder fighting and water, far more to forage.",
-						"high", _settings(seed, depth, "deep", hard_tier, roster, {"flora_slots": [4, 6], "resource_beats": 2}), {"atp_head_start": 15}),
+						"high", _settings(seed, depth, "deep", hard_tier, roster, {"node_count": [8, 10], "flora_slots": [4, 6], "resource_beats": 2}), {"atp_head_start": 10}),
 					_opt("shallow", "Take the shallow cut", "Easier going, leaner pickings.",
-						"low", _settings(seed, depth, "shallow", base_tier, roster), {}),
+						"low", _settings(seed, depth, "shallow", base_tier, roster, {"node_count": [5, 6]}), {}),
 				]}
 
 static func _opt(id: String, label: String, desc: String, risk: String, settings: Dictionary, reward: Dictionary) -> Dictionary:

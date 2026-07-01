@@ -858,6 +858,9 @@ func _ready() -> void:
 			"--test-run-branch-decisions":
 				ran_test = true
 				_test_run_branch_decisions()
+			"--test-run-economy":
+				ran_test = true
+				_test_run_economy()
 			"--test-run-session-e2e":
 				ran_test = true
 				await _test_run_session_e2e()
@@ -1143,6 +1146,8 @@ func _run_all_tests() -> void:
 	_test_wfc_layout()
 	_test_roguelike_run()
 	_test_run_branch_decisions()
+	if not _heavy("Run Economy"):
+		_test_run_economy()
 	if not _heavy("Run Session E2E"):
 		await _test_run_session_e2e()
 	if not _heavy("Roguelike Loader Descent"):
@@ -3002,6 +3007,92 @@ func _test_run_branch_decisions() -> void:
 		if not en.is_empty() and not ex.is_empty():
 			var path: Array = g.find_multi_level_path(g.world_to_grid(en.pos), en.elev, g.world_to_grid(ex.pos), ex.elev)
 			_assert_true(path.size() >= 1, "the chosen branch's level connects entry -> exit")
+
+## The run ECONOMY (Layer B): a fork is only a real choice if NEITHER branch dominates across play quality. The
+## measured guarantee (direction-agnostic, so it holds for the normal fork AND the inverse respite fork): the
+## RICHER path (more ATP gain + head-start) wins for CLEAN play, the LEANER-EXPOSURE path wins for SLOPPY play,
+## and a healthy majority of forks have a clean->sloppy crossover. Categorical-reward forks (recruit/shortcut/gear)
+## are ATP-NEUTRAL by design — their draw is the reward, not ATP — yet still trade real exposure.
+func _test_run_economy() -> void:
+	_test_name = "Run Economy"
+	var Econ = load("res://scripts/generation/run_economy.gd")
+	var Branch = load("res://scripts/generation/run_branch_decisions.gd")
+
+	# Model sanity: gain counts atp_reward + a shelter restore; load counts exposure incl. route length; net falls
+	# with miss_rate; expected_net is monotone in head_start.
+	var rich := {"nodes": [{"role": "foraging", "atp_reward": 6, "pressure": 0}, {"role": "foraging", "atp_reward": 6, "pressure": 0}]}
+	var lean := {"nodes": [{"role": "guidance", "atp_reward": 0, "pressure": 0}]}
+	_assert_true(Econ.atp_gain(rich) > Econ.atp_gain(lean), "more atp_reward -> more gain")
+	var longer := {"nodes": [{"role": "danger", "pressure": 1}, {"role": "danger", "pressure": 1}, {"role": "danger", "pressure": 1}]}
+	var shorter := {"nodes": [{"role": "danger", "pressure": 1}]}
+	_assert_true(Econ.pressure_load(longer) > Econ.pressure_load(shorter), "a longer/more-exposed route has more load")
+	_assert_true(Econ.expected_net(longer, 0.0, 0.0) > Econ.expected_net(longer, 0.0, 1.0), "expected net falls as play gets sloppier")
+	# Entry/exit shelters are not interior exposure.
+	_assert_equals(Econ.pressure_load({"nodes": [{"role": "boundary", "pressure": 1}, {"role": "shelter_arrival", "pressure": 1}]}), 0.0,
+		"boundary + shelter nodes carry no traversal exposure")
+
+	# Aggregate sweep per pattern, across depths (the tier/length differential — and so the crossover — grows with
+	# depth, so sampling only depth 0 understates it). Generate each option's level ONCE and score net at both miss
+	# rates from the same spec (net is a cheap formula), keeping the sweep fast.
+	var atp_forks := {"risk_reward": true, "respite": true}
+	var stats := {}
+	for seed in range(0, 40):
+		for depth in range(0, 5):
+			var d: Dictionary = Branch.decide({"depth": depth, "seed": seed, "roster": ["aster", "peris"]})
+			var pat := str(d.get("pattern", ""))
+			var opts: Array = d.get("options", [])
+			if opts.size() < 2:
+				continue
+			if not stats.has(pat):
+				stats[pat] = {"n": 0, "rich_clean": 0, "lean_sloppy": 0, "cross": 0, "atp_neutral": 0}
+			var c_spec: Dictionary = StretchGeneratorScript.generate((opts[0].get("settings", {}) as Dictionary).duplicate(true))
+			var s_spec: Dictionary = StretchGeneratorScript.generate((opts[1].get("settings", {}) as Dictionary).duplicate(true))
+			var c_hs := float((opts[0].get("reward", {}) as Dictionary).get("atp_head_start", 0))
+			var s_hs := float((opts[1].get("reward", {}) as Dictionary).get("atp_head_start", 0))
+			var c_gain: float = Econ.atp_gain(c_spec)
+			var s_gain: float = Econ.atp_gain(s_spec)
+			var c_load: float = Econ.pressure_load(c_spec)
+			var s_load: float = Econ.pressure_load(s_spec)
+			var costly_richer: bool = (c_gain + c_hs) >= (s_gain + s_hs)
+			var costly_leaner: bool = c_load <= s_load
+			var clean_costly_wins: bool = Econ.expected_net(c_spec, c_hs, 0.15) > Econ.expected_net(s_spec, s_hs, 0.15)
+			var sloppy_costly_wins: bool = Econ.expected_net(c_spec, c_hs, 0.85) > Econ.expected_net(s_spec, s_hs, 0.85)
+			var row: Dictionary = stats[pat]
+			row.n += 1
+			if clean_costly_wins == costly_richer:
+				row.rich_clean += 1                      # the richer path wins clean
+			if sloppy_costly_wins == costly_leaner:
+				row.lean_sloppy += 1                     # the leaner-exposure path wins sloppy
+			if clean_costly_wins != sloppy_costly_wins:
+				row.cross += 1                           # crossover: different winner at the two extremes
+			# ATP-neutral = the two paths' (gain+head_start) are within a small band (categorical-reward forks).
+			if absf((c_gain + c_hs) - (s_gain + s_hs)) <= 6.0:
+				row.atp_neutral += 1
+
+	for pat in atp_forks.keys():
+		var r: Dictionary = stats.get(pat, {"n": 0})
+		var n := int(r.get("n", 0))
+		_assert_true(n >= 10, "sampled enough %s forks (%d)" % [pat, n])
+		if n < 10:
+			continue
+		_assert_true(int(r.rich_clean) * 100 / n >= 80, "%s: the richer path wins CLEAN play in most forks (%d/%d)" % [pat, int(r.rich_clean), n])
+		_assert_true(int(r.lean_sloppy) * 100 / n >= 80, "%s: the leaner path wins SLOPPY play in most forks (%d/%d)" % [pat, int(r.lean_sloppy), n])
+		_assert_true(int(r.cross) * 100 / n >= 60, "%s: a majority of forks cross over (neither path dominates) (%d/%d)" % [pat, int(r.cross), n])
+
+	# Categorical-reward forks trade a non-ATP reward for exposure: ATP is roughly neutral (the reward is the draw),
+	# yet the costly path is genuinely more exposed so the safe path stays a real out for sloppy players.
+	for pat in ["recruit", "shortcut", "gear"]:
+		var r2: Dictionary = stats.get(pat, {"n": 0})
+		var n2 := int(r2.get("n", 0))
+		if n2 < 10:
+			continue
+		_assert_true(int(r2.atp_neutral) * 100 / n2 >= 60, "%s: the fork is ATP-neutral (reward-driven, not ATP) (%d/%d)" % [pat, int(r2.atp_neutral), n2])
+		_assert_true(int(r2.lean_sloppy) * 100 / n2 >= 70, "%s: the safe path is still leaner-exposure for sloppy play (%d/%d)" % [pat, int(r2.lean_sloppy), n2])
+
+	# Determinism: the same decision evaluates to the identical economy (a run is reproducible).
+	var d0: Dictionary = Branch.decide({"depth": 0, "seed": 7, "roster": ["aster", "peris"]})
+	_assert_equals(JSON.stringify(Econ.evaluate_branch(d0, 0.5)), JSON.stringify(Econ.evaluate_branch(d0, 0.5)),
+		"the branch economy is deterministic")
 
 ## Does a generated spec's level connect entry -> exit on its own grid?
 func _run_level_connects(spec: Dictionary) -> bool:
