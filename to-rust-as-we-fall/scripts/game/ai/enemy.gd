@@ -25,6 +25,7 @@ var show_movement_path := false
 @export var charge_damage := 25.0
 @export var charge_max_duration := 1.5
 @export var lunge_gap := 0.6           # stop the lunge this far short of the target (no body-stacking)
+@export var strike_reach := 1.4        # the scheduled impact only LANDS within this planar reach
 @export var impact_duration := 0.14    # hitstop at the moment of connection
 @export var recover_duration := 1.2    # cooldown after a strike (vulnerable window)
 @export var stagger_duration := 0.5    # interrupt when the enemy itself is struck mid-aggro
@@ -451,6 +452,13 @@ func _resolve_strike(tid: String) -> bool:
 ## The strike resolves at impact (standard enemy). ChainEnemy routes its segment contact through the same
 ## _resolve_strike so the two paths can't diverge.
 func _apply_strike() -> void:
+	# A committed charge is not a homing missile: the scheduled impact only lands if the target is
+	# ACTUALLY within reach at the impact tick — a runner who read the telegraph and cleared the
+	# locked lunge point makes the charge WHIFF (recover -> re-evaluate handles the rest).
+	# ChainEnemy's segment-contact path checks physical touch itself and keeps its own semantics.
+	if _current_target_id != "" and game_state != null and game_state.characters.has(_current_target_id):
+		if _planar_dist(_self_pos(), game_state.get_position(_current_target_id)) > strike_reach:
+			return
 	_resolve_strike(_current_target_id)
 
 func _begin_recover() -> void:

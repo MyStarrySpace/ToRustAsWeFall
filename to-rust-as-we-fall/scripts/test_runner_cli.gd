@@ -378,6 +378,15 @@ func _ready() -> void:
 			"--test-pump-hall":
 				ran_test = true
 				await _test_pump_hall()
+			"--test-pump-hall-live":
+				ran_test = true
+				await _test_pump_hall_live()
+			"--test-run-stamina-budget":
+				ran_test = true
+				await _test_run_stamina_budget()
+			"--test-charge-whiff":
+				ran_test = true
+				await _test_charge_whiff()
 			"--test-drag-retrieve":
 				ran_test = true
 				await _test_drag_retrieve()
@@ -1184,6 +1193,8 @@ func _run_all_tests() -> void:
 	await _test_generated_atom_playable()
 	await _test_roguelike_atom_run()
 	await _test_pump_hall()
+	await _test_run_stamina_budget()
+	await _test_charge_whiff()
 	await _test_drag_retrieve()
 	await _test_downed_carry()
 	await _test_pump_hall_grammar()
@@ -17382,6 +17393,202 @@ func _test_predictive_attack() -> void:
 	_cleanup_attack_ctx(sctx)
 
 ## Build a guard-vs-target attack scenario. Guard at origin, target a few units away in range.
+## WINDOWED, FAITHFUL (pump hall): the reported "hover doesn't light / can't pick up allies" — drive
+## the REAL paths: OS cursor warp -> physics pick -> hover outline + the // NAME // label on the
+## flure; then down a member and RIGHT-CLICK the body (the command action through the real input
+## stack) -> the selected member walks over + takes hold. Saves vr_pump_live.png for the eyeball.
+func _test_pump_hall_live() -> void:
+	_test_name = "Pump Hall LIVE"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (needs a display — physics picking + cursor warp don't work headless)")
+		return
+	DisplayServer.window_move_to_foreground()
+	var inst = await _instantiate_preview_chunk_and_wait("pump_hall", 8)
+	if inst == null:
+		_assert_true(false, "instantiates")
+		return
+	for i in range(40):
+		await get_tree().process_frame
+	var gs = inst._game_state
+	var vp := get_tree().root.get_viewport()
+	var cam := vp.get_camera_3d()
+	_assert_true(cam != null, "live camera present")
+	# --- HOVER the flure: outline + name label through the REAL physics pick. Walk the party camera
+	# into range first (the boot camera opens on the spawn corner; an off-frustum unproject warps the
+	# cursor nowhere useful), and retry the warp — OS cursor + window focus are flaky by nature.
+	var flure = inst.find_child("PumpFlure", true, false)
+	_assert_true(flure != null, "flure present")
+	gs.command_move_to_pos("peris", (flure as Node3D).global_position + Vector3(2.0, 0.0, 0.0))
+	var tw := 0.0
+	while tw < 10.0 and gs.is_moving("peris"):
+		await get_tree().process_frame
+		tw += get_process_delta_time()
+	for i in range(10):
+		await get_tree().process_frame
+	for cid in ["aster", "peris", "endo"]:
+		var cnode = inst._characters.get(cid, null)
+		print("  [sync-diag] %s: gs=%s node=%s" % [cid,
+			str(gs.get_position(cid).snapped(Vector3(0.1, 0.1, 0.1))),
+			str((cnode as Node3D).global_position.snapped(Vector3(0.1, 0.1, 0.1))) if cnode != null else "none"])
+	var ftgt = flure.get("_outline_target")
+	var f_lit := await _live_hover((flure as Node3D).global_position + Vector3(0, 0.4, 0), cam,
+		func() -> bool: return ftgt != null and bool(ftgt.call("has_active_mesh_outline")))
+	var ident = flure.get("_identify_label_3d")
+	var f_named := ident != null and bool(ident.visible)
+	print("  [pump-live] flure hover: outline=%s name=%s" % [f_lit, f_named])
+	_assert_true(f_lit, "LIVE: hovering the flure lights the outline (real cursor + pick)")
+	_assert_true(f_named, "LIVE: hovering the flure shows the // NAME // label")
+	# --- DOWN a member; hover the body; REAL RIGHT-CLICK -> the selected member carries. ---
+	gs.down_character("aster")
+	for i in range(5):
+		await get_tree().process_frame
+	var body = inst.find_child("DownedBody_aster", true, false)
+	_assert_true(body != null, "the body zone exists")
+	inst.call("_select_character", "peris")
+	for i in range(3):
+		await get_tree().process_frame
+	# Bring peris (and the follow camera) back to the fallen friend before the click.
+	gs.command_move_to_pos("peris", gs.get_position("aster") + Vector3(2.0, 0.0, 0.0))
+	tw = 0.0
+	while tw < 10.0 and gs.is_moving("peris"):
+		await get_tree().process_frame
+		tw += get_process_delta_time()
+	for i in range(10):
+		await get_tree().process_frame
+	var btgt = body.get("_outline_target")
+	var b_lit := await _live_hover(gs.get_position("aster") + Vector3(0, 0.4, 0), cam,
+		func() -> bool: return btgt != null and bool(btgt.call("has_active_mesh_outline")))
+	print("  [pump-live] body hover: outline_target=%s lit=%s" % [btgt != null, b_lit])
+	_assert_true(b_lit, "LIVE: hovering the fallen friend lights their silhouette")
+	var bs := cam.unproject_position(gs.get_position("aster") + Vector3(0, 0.4, 0))
+	var down_click := InputEventMouseButton.new()
+	down_click.button_index = MOUSE_BUTTON_RIGHT
+	down_click.pressed = true
+	down_click.position = bs
+	down_click.global_position = bs
+	Input.parse_input_event(down_click)
+	var up_click := InputEventMouseButton.new()
+	up_click.button_index = MOUSE_BUTTON_RIGHT
+	up_click.pressed = false
+	up_click.position = bs
+	up_click.global_position = bs
+	Input.parse_input_event(up_click)
+	var t := 0.0
+	while t < 8.0 and not gs.is_dragging("peris"):
+		await get_tree().process_frame
+		t += get_process_delta_time()
+	print("  [pump-live] after right-click: dragging=%s hands=%s" % [gs.is_dragging("peris"), str(gs.get_hand_items("peris"))])
+	_assert_true(gs.is_dragging("peris"), "LIVE: right-clicking the fallen friend starts the carry")
+	await RenderingServer.frame_post_draw
+	get_tree().root.get_texture().get_image().save_png("res://vr_pump_live.png")
+	print("  [pump-live] wrote vr_pump_live.png")
+	inst.queue_free()
+	await get_tree().process_frame
+
+## Warp the OS cursor over a world point and wait for the physics pick to light `check` — retried
+## with jitters because OS cursor delivery + window focus are inherently racy. Returns the check.
+func _live_hover(world_pos: Vector3, cam: Camera3D, check: Callable) -> bool:
+	for attempt in range(3):
+		var live_cam := get_tree().root.get_viewport().get_camera_3d()
+		if live_cam != null:
+			cam = live_cam   # the preview may have swapped cameras since boot
+		var sp := cam.unproject_position(world_pos)
+		print("    [hover-diag] attempt=%d cam=%s campos=%s world=%s screen=%s viewport=%s behind=%s" % [
+			attempt, cam.name, str(cam.global_position.snapped(Vector3(0.1, 0.1, 0.1))),
+			str(world_pos.snapped(Vector3(0.1, 0.1, 0.1))), str(sp.snapped(Vector2(1, 1))),
+			str(get_tree().root.get_viewport().get_visible_rect().size), cam.is_position_behind(world_pos)])
+		for jitter in [Vector2(4, 4), Vector2.ZERO, Vector2(-2, 1)]:
+			Input.warp_mouse(sp + jitter)
+			var mm := InputEventMouseMotion.new()
+			mm.position = sp + jitter
+			mm.global_position = sp + jitter
+			Input.parse_input_event(mm)
+			for i in range(6):
+				await get_tree().process_frame
+			if bool(check.call()):
+				return true
+	return false
+
+## RUN STAMINA IS A REAL BUDGET: the drain tick must survive a stop-start. The tick parks while the
+## runner stands still (correct — no drain while idle) but it must RE-ARM when they move again;
+## without that, any pause mid-run bought infinite free sprint afterwards — the exact economy the
+## stamina-tension puzzles price their routes in.
+func _test_run_stamina_budget() -> void:
+	_test_name = "Run Stamina Budget"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.register_character("peris", Vector3.ZERO, 3.0, {"hp": 100.0, "stamina": 100.0})
+	gs.set_running("peris", true)
+	# Leg 1: sprint 6wu east (1s at RUN_SPEED 6) -> ~30 stamina spent.
+	gs.command_move_to_pos("peris", Vector3(6.0, 0.0, 0.0))
+	for i in range(40):
+		sched.advance_ticks(0.05)
+	var after_leg1: float = float(gs.get_stat("peris", "stamina"))
+	_assert_true(absf(after_leg1 - 70.0) < 6.0, "leg 1 (6wu sprint) costs ~30 stamina (at %.0f)" % after_leg1)
+	# Stand still a while: NO drain while parked.
+	for i in range(60):
+		sched.advance_ticks(0.05)
+	_assert_true(absf(float(gs.get_stat("peris", "stamina")) - after_leg1) < 0.01,
+		"standing still drains nothing (the pause is free)")
+	# Leg 2: sprint again — the drain must RESUME (this was the free-sprint bug).
+	gs.command_move_to_pos("peris", Vector3(12.0, 0.0, 0.0))
+	for i in range(40):
+		sched.advance_ticks(0.05)
+	var after_leg2: float = float(gs.get_stat("peris", "stamina"))
+	_assert_true(after_leg1 - after_leg2 > 20.0,
+		"the drain RESUMES on the second leg (%.0f -> %.0f) — no free sprint after a pause" % [after_leg1, after_leg2])
+	# The whole-bar truth the puzzles are tuned in: 100 stamina = ~20wu of sprint, then forced to walk.
+	gs.set_stat("peris", "stamina", 100.0)
+	gs.command_move_to_pos("peris", Vector3(60.0, 0.0, 0.0))
+	var t := 0.0
+	while t < 20.0 and gs.is_running("peris"):
+		sched.advance_ticks(0.05)
+		t += 0.05
+	var dry_x: float = gs.get_position("peris").x
+	_assert_true(absf((dry_x - 12.0) - 20.0) < 3.0,
+		"a full bar buys ~20wu of sprint before running dry (got %.1fwu)" % (dry_x - 12.0))
+	_assert_true(not gs.is_running("peris"), "dry = dropped to a walk (the mid-fan nightmare)")
+
+## A COMMITTED CHARGE CAN MISS: the lunge locks its point at charge start, so a target who reads the
+## telegraph and RUNS clears it — the strike must only land if the target is actually within reach at
+## the impact tick. (Reported: the sentry charged a point the player had left and the hit landed
+## anyway.) A parked target still gets hit (the fair side), and a whiff is not a stall — the guard
+## recovers and re-engages the runner.
+func _test_charge_whiff() -> void:
+	_test_name = "Charge Whiff"
+	var ctx := _make_attack_ctx(100.0, false)
+	var sched: EventScheduler = ctx["sched"]
+	var gs: GameState = ctx["gs"]
+	var enemy: Enemy = ctx["enemy"]
+	var t := 0.0
+	while t < 20.0 and str(enemy.get_state()) != "windup":
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+		t += 0.05
+	_assert_equals(str(enemy.get_state()), "windup", "the guard winds up on the target")
+	# Read the telegraph and RUN: by the impact tick the runner has cleared the lunge point.
+	gs.command_move_to_pos("aster", gs.get_position("aster") + Vector3(10.0, 0.0, 0.0))
+	for i in range(80):
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+	print("  [whiff] after charge: hp=%.0f dist=%.2f state=%s" % [float(gs.get_stat("aster", "hp")),
+		gs.get_position("guard").distance_to(gs.get_position("aster")), str(enemy.get_state())])
+	_assert_true(float(gs.get_stat("aster", "hp")) >= 100.0,
+		"a charge at a point the runner LEFT whiffs — no hit from range (hp=%.0f)" % float(gs.get_stat("aster", "hp")))
+	# The whiff is not a stall: the guard re-engages the still-visible runner.
+	t = 0.0
+	var reengaged := false
+	while t < 15.0:
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+		t += 0.05
+		if str(enemy.get_state()) in ["pursuit", "windup", "charge", "alert"]:
+			reengaged = true
+			break
+	_assert_true(reengaged, "the whiffed guard re-engages (state=%s)" % str(enemy.get_state()))
+	_cleanup_attack_ctx(ctx)
+
 ## DRAG / RETRIEVE (GDD 2.4.3): a conscious member drags a downed one — the dead weight follows as
 ## a pure function of the dragger, the dragger is slower and burns stamina while hauling, the body
 ## parks where it is set down, and hauling a fallen friend INTO a shelter closes the retrieve loop
@@ -17498,13 +17705,15 @@ func _test_pump_hall_grammar() -> void:
 		_assert_true(tgt != null, "%s has an outline target (the grammar prerequisite)" % label)
 		if tgt == null:
 			continue
-		it.emit_signal("outline_hovered", it)
+		# Hover the OBJECT SURFACE (the mesh target) — that is where the real cursor lands in play.
+		# The outline lights AND the delegate interactable names itself; both must fire from THIS side.
+		tgt.call("set_hover_feedback", true)
 		await get_tree().process_frame
 		_assert_true(bool(tgt.call("has_active_mesh_outline")), "%s: hover shows the white outline hull" % label)
 		var ident = it.get("_identify_label_3d")
 		_assert_true(ident != null and bool(ident.visible) and str(ident.text) != "",
-			"%s: hover shows the NAME label (%s)" % [label, str(ident.text) if ident != null else "none"])
-		it.emit_signal("outline_unhovered", it)
+			"%s: hovering the OBJECT shows the NAME label (%s)" % [label, str(ident.text) if ident != null else "none"])
+		tgt.call("set_hover_feedback", false)
 		await get_tree().process_frame
 		_assert_true(ident == null or not bool(ident.visible), "%s: the name hides on unhover" % label)
 		it.emit_signal("interaction_requested", it, it.global_position)
@@ -17531,6 +17740,8 @@ func _test_downed_carry() -> void:
 	await get_tree().process_frame
 	var body = inst.find_child("DownedBody_aster", true, false)
 	_assert_true(body != null, "a downed member grows a clickable body zone")
+	_assert_true(body != null and (body in (inst._preview_interactables as Array)),
+		"the body zone is REGISTERED with the host — real click + hover wiring, not just a node in the tree")
 	if body == null:
 		inst.queue_free()
 		await get_tree().process_frame

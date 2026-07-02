@@ -561,7 +561,7 @@ objects = Array[Dictionary]([{
 "label": "SHELTER",
 "name": "PumpExitShelter",
 "pos": Vector3(45.75, 0.5, -0.75),
-"radius": 1.2,
+"radius": 2.4,
 "type": "exit_shelter"
 }, {
 "detect": 4.0,
@@ -589,11 +589,11 @@ objects = Array[Dictionary]([{
 "type": "enemy"
 }])
 shelters = Array[Dictionary]([{
-"max": Vector2(7.65, 3.15),
-"min": Vector2(2.85, -1.65)
+"max": Vector2(8.45, 3.95),
+"min": Vector2(2.05, -2.45)
 }, {
-"max": Vector2(47.55, 1.05),
-"min": Vector2(43.95, -2.55)
+"max": Vector2(48.95, 2.45),
+"min": Vector2(42.55, -3.95)
 }])
 grid = {
 "cell_size": 1.5,

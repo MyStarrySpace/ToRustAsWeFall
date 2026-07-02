@@ -153,6 +153,13 @@ func set_hover_feedback(active: bool) -> void:
 		GridWorld._pf_trace("[outline] '%s'.set_hover_feedback(%s) -> set_highlight" % [name, active])
 	_hovered = active
 	set_highlight(active)
+	# Hovering the OBJECT is hovering the INTERACTABLE: forward to the delegate (same as clicks), so
+	# its hover semantics — the // NAME // readout above all — fire no matter which surface the
+	# cursor found. (The delegate drives set_highlight on this target, never back into this method,
+	# so there is no ping-pong.)
+	var delegate := _valid_interaction_delegate()
+	if delegate != null and delegate.has_method("set_hover_feedback"):
+		delegate.call("set_hover_feedback", active)
 
 ## Highlight = the crisp outline hull ONLY. Used by BOTH hover and the hold-SHIFT reveal so they
 ## read identically. The energy GLOW is reserved for a QUEUED interaction (click-committed, en

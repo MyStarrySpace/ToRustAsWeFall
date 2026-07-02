@@ -61,6 +61,11 @@ func _on_character_downed(cid: String) -> void:
 	it.position = _gs.get_position(cid)
 	it.interacted.connect(_on_body_clicked.bind(cid))
 	_wire_body_outline(it, cid, node)
+	# Register with the host like any chunk interactable — this is what wires the REAL play paths:
+	# click servicing (bind_interaction_target on every character), hover feedback, the scheduler,
+	# and the active-character sync. A zone that skips this looks alive in tests and is dead in play.
+	if _search_root != null and is_instance_valid(_search_root) and _search_root.has_method("register_preview_interactable"):
+		_search_root.call("register_preview_interactable", it)
 	_bodies[cid] = it
 
 ## Hover lights the fallen character's REAL silhouette (their scene node's meshes) through the shared

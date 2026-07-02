@@ -250,7 +250,8 @@ func _update_shared_concealment() -> void:
 func _spawn_exit_shelter(spec: Dictionary) -> void:
 	var p := _v3(spec, "pos")
 	var color := _col(spec, "color", Color(0.3, 0.7, 0.45))
-	var pad := _add_box(self, p + Vector3(0, 0.1, 0), Vector3(1.3, 0.2, 1.3), Color(0.2, 0.28, 0.22), color, 0.5, _name(spec, "ExitShelterPad") + "Pad")
+	var pad_w: float = _f(spec, "radius", 1.2) * 2.0
+	var pad := _add_box(self, p + Vector3(0, 0.1, 0), Vector3(pad_w, 0.2, pad_w), Color(0.2, 0.28, 0.22), color, 0.5, _name(spec, "ExitShelterPad") + "Pad")
 	var label := str(spec.get("label", "SHELTER"))
 	if label != "":
 		_add_label(self, label, p + Vector3(0, 2.0, 0), Color(0.6, 0.9, 0.65))
