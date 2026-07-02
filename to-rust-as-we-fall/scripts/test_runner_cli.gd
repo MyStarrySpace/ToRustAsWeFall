@@ -1159,6 +1159,8 @@ func _run_all_tests() -> void:
 	await _test_generated_stretch_probe_coverage()
 	await _test_spiral_drop_down()
 	await _test_chunk_atoms()
+	_test_chunk_batch()
+	await _test_generated_atom_playable()
 	await _test_stretch_branches()
 	await _test_hub_shapes()
 	await _test_hub_base_playable()
