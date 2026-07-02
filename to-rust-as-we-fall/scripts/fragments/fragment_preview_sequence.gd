@@ -69,6 +69,8 @@ const PREVIEW_ENTRIES := [
 	{"id": "flora_garden", "chunk": "flora_garden", "title": "Flora Garden", "stage": 3},
 	{"id": "pump_hall", "chunk": "data_fragment", "title": "Pump Hall (tactical stealth)", "stage": 3,
 		"config": {"fragment_path": "res://data/fragments/pump_hall.tres"}},
+	{"id": "sprint_gap", "chunk": "data_fragment", "title": "Sprint Gap (stamina tension)", "stage": 3,
+		"config": {"fragment_path": "res://data/fragments/sprint_gap.tres"}},
 	{"id": "distract_gate", "chunk": "distract_gate", "title": "The Watched Gap", "stage": 3},
 	{"id": "puzzle_atom", "chunk": "puzzle_atom", "title": "Generated Atom Chain", "stage": 3,
 		"config": {"stages": ["distract:lure", "distract:patrol", "distract:twin"], "seed": 7}},
@@ -2765,12 +2767,23 @@ func _update_stamina(delta: float, spd: float) -> void:
 				_apply_active_run_state()
 				show_preview_message("Stamina exhausted.", 1.2)
 	elif moving:
-		next_stamina += STAMINA_REGEN * 0.35 * delta * spd
+		if _stamina_field_regen_allowed(_active_char_id):
+			next_stamina += STAMINA_REGEN * 0.35 * delta * spd
 	else:
-		next_stamina += STAMINA_REGEN * delta * spd
+		if _stamina_field_regen_allowed(_active_char_id):
+			next_stamina += STAMINA_REGEN * delta * spd
 
 	if absf(next_stamina - current_stamina) > 0.001:
 		set_preview_character_stat(_active_char_id, "sta", next_stamina)
+
+## A tension level can CLOSE the field stamina economy (fragment params.stamina_field_regen=false):
+## the bar then only comes back on SHELTER ground — havens are recovery points, the field is scarce,
+## and "do I have enough stamina for this plan" is a real question. Default: the legacy open economy.
+func _stamina_field_regen_allowed(char_id: String) -> bool:
+	if _active_chunk != null and _active_chunk.has_method("preview_field_stamina_regen"):
+		if not bool(_active_chunk.call("preview_field_stamina_regen")):
+			return _game_state != null and _game_state.is_at_shelter(char_id)
+	return true
 
 func _update_character_in_game_state(char_id: String) -> void:
 	if _game_state == null or not _game_state.characters.has(char_id):

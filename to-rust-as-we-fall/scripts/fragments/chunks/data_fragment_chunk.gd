@@ -363,6 +363,11 @@ func get_spawn_positions() -> Dictionary:
 func get_grid_data() -> Dictionary:
 	return (fragment.grid as Dictionary).duplicate(true) if fragment != null and not fragment.grid.is_empty() else {}
 
+## Whether the FIELD regenerates stamina here (false = only shelter ground does; the closed
+## economy the stamina-tension fragments are priced in).
+func preview_field_stamina_regen() -> bool:
+	return bool(fragment.params.get("stamina_field_regen", true)) if fragment != null else true
+
 func get_preview_time_state() -> Dictionary:
 	return (fragment.time_state as Dictionary).duplicate(true) if fragment != null else {}
 

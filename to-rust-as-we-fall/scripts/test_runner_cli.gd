@@ -381,6 +381,9 @@ func _ready() -> void:
 			"--test-pump-hall-live":
 				ran_test = true
 				await _test_pump_hall_live()
+			"--test-sprint-gap":
+				ran_test = true
+				await _test_sprint_gap()
 			"--test-run-stamina-budget":
 				ran_test = true
 				await _test_run_stamina_budget()
@@ -1193,6 +1196,7 @@ func _run_all_tests() -> void:
 	await _test_generated_atom_playable()
 	await _test_roguelike_atom_run()
 	await _test_pump_hall()
+	await _test_sprint_gap()
 	await _test_run_stamina_budget()
 	await _test_charge_whiff()
 	await _test_drag_retrieve()
@@ -17508,6 +17512,83 @@ func _live_hover(world_pos: Vector3, cam: Camera3D, check: Callable) -> bool:
 			if bool(check.call()):
 				return true
 	return false
+
+## SPRINT GAP — the first micro TENSION chunk, proven as a PUZZLE, not a walk: (1) the clean route
+## (launch on the east sweep, HOLD on the scarpet through the west pass, burst as it clears) reaches
+## the exit unspotted with a TIGHT stamina margin; (2) the tuning invariant — the sprint distance
+## prices at 80-98%% of the whole bar (less efficient play would NOT have made it); (3) the naive
+## walk gets spotted = attacked (real hp loss). Positioning + timing + budget in one screen.
+func _test_sprint_gap() -> void:
+	_test_name = "Sprint Gap"
+	var inst = await _instantiate_preview_chunk_and_wait("sprint_gap", 4)
+	if inst == null:
+		_assert_true(false, "sprint_gap instantiates")
+		return
+	var chunk = inst._active_chunk
+	var gs = inst._game_state
+	var a: Dictionary = chunk.get_preview_anchors()
+	_assert_true(gs.characters.has("gap_watcher"), "the watcher is registered")
+	_assert_true(bool(gs.is_at_shelter("peris")), "the start haven is engine shelter ground")
+
+	# The TUNING INVARIANT: the two sprint legs price at 80-98% of one full stamina bar.
+	var leg1: float = (a["launch"] as Vector3).distance_to(a["pad"])
+	var leg2: float = (a["pad"] as Vector3).distance_to(a["exit"])
+	var bar_wu: float = 100.0 / GameState.RUN_STAMINA_DRAIN_PER_SEC * GameState.RUN_SPEED
+	var price: float = (leg1 + leg2) / bar_wu
+	print("  [gap] legs %.1f + %.1f = %.1fwu of %.1fwu bar (%.0f%%)" % [leg1, leg2, leg1 + leg2, bar_wu, price * 100.0])
+	_assert_true(price >= 0.80 and price <= 0.98,
+		"the route prices at 80-98%% of the bar — just enough, never comfortable (%.0f%%)" % (price * 100.0))
+
+	# THE CLEAN ROUTE. Step 0: walk to the launch lip (inside the haven edge, free).
+	gs.command_move_to_pos("peris", a["launch"])
+	_advance_to_arrival(inst, gs, "peris")
+	# Step 1: wait for the watcher to sweep EAST past mid-beat (the analytic wait), then SPRINT to the pad.
+	var opened := _advance_to_proximity(inst, gs, "gap_watcher", a["beat_east"], 3.5, 40.0)
+	_assert_true(opened, "the beat can be read (watcher near its east turn)")
+	gs.set_running("peris", true)
+	gs.command_move_to_pos("peris", a["pad"])
+	_advance_to_arrival(inst, gs, "peris")
+	var sta_pad: float = float(gs.get_stat("peris", "stamina"))
+	_assert_equals(int(gs.get_character_concealment("peris")), GameState.CONCEAL_MEDIUM,
+		"holding on the scarpet is MEDIUM conceal")
+	# Step 2: HOLD through the west pass (the watcher sweeps within its outer range — the tier eats it).
+	var passed := _advance_to_proximity(inst, gs, "gap_watcher", a["beat_west"], 3.0, 40.0)
+	_assert_true(passed, "the west pass sweeps by while you hold")
+	var st_mid: Dictionary = chunk.get_preview_state()
+	_assert_equals(int(st_mid["spotted_count"]), 0, "the held pad beats the pass (MEDIUM at ~3.0wu)")
+	_assert_true(absf(float(gs.get_stat("peris", "stamina")) - sta_pad) < 0.01,
+		"the hold is FREE — stamina only burns while sprinting")
+	# Step 3: the watch is west and pointed away — burst to the exit.
+	gs.command_move_to_pos("peris", a["exit"])
+	_advance_to_arrival(inst, gs, "peris")
+	gs.set_running("peris", false)
+	var sta_end: float = float(gs.get_stat("peris", "stamina"))
+	var st: Dictionary = chunk.get_preview_state()
+	print("  [gap] clean route: spotted=%d stamina=%.0f hp=%.0f" % [int(st["spotted_count"]), sta_end, float(gs.get_stat("peris", "hp"))])
+	_assert_equals(int(st["spotted_count"]), 0, "the clean route is never spotted")
+	_assert_true(float(gs.get_stat("peris", "hp")) >= 100.0, "the clean route takes no hits")
+	_assert_true(sta_end < 25.0, "the exit is reached with the bar nearly DRY (%.0f left) — the heart-race margin" % sta_end)
+	_assert_true(bool(gs.is_at_shelter("peris")), "the exit pad is engine shelter ground")
+	var shelter = chunk.find_child("SprintExitShelter", true, false)
+	_assert_true(shelter != null, "the exit shelter exists")
+	shelter.active_character = "peris"
+	shelter.on_interaction_arrived()
+	inst.headless_advance(0.5, 0.1)
+	_assert_true(bool(chunk.get_preview_state()["complete"]), "resting at the exit completes the gap")
+
+	# THE NAIVE ROUTE FAILS: reset, then WALK the strip with no timing — the watch has you (= attacked).
+	inst.call("reset_active_chunk") if inst.has_method("reset_active_chunk") else chunk.reset_preview_state()
+	gs.set_stat("aster", "hp", 100.0)
+	gs.command_move_to_pos("aster", a["exit"])
+	var t := 0.0
+	while t < 30.0 and int(chunk.get_preview_state()["spotted_count"]) == 0:
+		inst.headless_advance(0.3, 0.1)
+		await get_tree().process_frame
+		t += 0.3
+	_assert_true(int(chunk.get_preview_state()["spotted_count"]) >= 1,
+		"walking the strip blind gets you SPOTTED — and spotted means attacked")
+	inst.queue_free()
+	await get_tree().process_frame
 
 ## RUN STAMINA IS A REAL BUDGET: the drain tick must survive a stop-start. The tick parks while the
 ## runner stands still (correct — no drain while idle) but it must RE-ARM when they move again;

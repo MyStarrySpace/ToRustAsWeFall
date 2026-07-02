@@ -1,0 +1,123 @@
+[gd_resource type="Resource" script_class="Fragment" format=3]
+
+[ext_resource type="Script" path="res://scenes/fragments/fragment.gd" id="1_spgap"]
+
+[resource]
+script = ExtResource("1_spgap")
+id = "sprint_gap"
+title = "Sprint Gap"
+help = "One watcher, one scarpet, one bar of stamina. The bar buys twenty units of sprint and the gap costs nearly all of it — launch when the watch sweeps away, hold your breath on the scarpet through the pass, and spend the rest in one clean burst. Walk it or waste it and the watch has you."
+default_character = "peris"
+party_ids = PackedStringArray("aster", "peris", "endo")
+spawns = {
+"aster": Vector3(1.9, 0.5, -1.0),
+"endo": Vector3(1.9, 0.5, 1.0),
+"peris": Vector3(3.1, 0.5, 0.0)
+}
+floors = Array[Dictionary]([{
+"color": Color(0.1, 0.11, 0.13, 1),
+"pos": Vector3(12.75, -0.05, 0.0),
+"size": Vector3(25.5, 0.1, 9.0)
+}])
+walls = Array[Dictionary]([{
+"color": Color(0.15, 0.15, 0.2, 1),
+"emission": Color(0.22, 0.24, 0.34, 1),
+"energy": 0.12,
+"pos": Vector3(12.75, 1.4, -5.0),
+"size": Vector3(27.5, 2.8, 1.0)
+}, {
+"color": Color(0.15, 0.15, 0.2, 1),
+"emission": Color(0.22, 0.24, 0.34, 1),
+"energy": 0.12,
+"pos": Vector3(12.75, 1.4, 5.0),
+"size": Vector3(27.5, 2.8, 1.0)
+}, {
+"color": Color(0.15, 0.15, 0.2, 1),
+"emission": Color(0.22, 0.24, 0.34, 1),
+"energy": 0.12,
+"pos": Vector3(-0.5, 1.4, 0.0),
+"size": Vector3(1.0, 2.8, 9.0)
+}, {
+"color": Color(0.15, 0.15, 0.2, 1),
+"emission": Color(0.22, 0.24, 0.34, 1),
+"energy": 0.12,
+"pos": Vector3(26.0, 1.4, 0.0),
+"size": Vector3(1.0, 2.8, 9.0)
+}])
+lights = Array[Dictionary]([{
+"color": Color(0.7, 0.8, 0.75, 1),
+"energy": 0.9,
+"pos": Vector3(2.6, 2.2, 0.0),
+"range": 8.0
+}, {
+"color": Color(0.6, 0.7, 0.9, 1),
+"energy": 1.0,
+"pos": Vector3(13.5, 3.0, 0.0),
+"range": 7.0
+}, {
+"color": Color(0.55, 0.9, 0.6, 1),
+"energy": 0.8,
+"pos": Vector3(22.5, 2.2, 0.0),
+"range": 6.0
+}])
+labels = Array[Dictionary]([{
+"color": Color(0.55, 0.8, 0.65, 1),
+"pos": Vector3(2.6, 1.3, 0.0),
+"text": "haven"
+}])
+objects = Array[Dictionary]([{
+"color": Color(0.45, 0.3, 0.1, 1),
+"energy": 0.25,
+"label": "",
+"pos": Vector3(13.5, 0.015, 0.0),
+"size": Vector3(12.0, 0.03, 0.9)
+,"type": "marker"
+}, {
+"pos": Vector3(12.75, 0.5, 3.0),
+"radius": 1.65,
+"type": "scarpet"
+}, {
+"label": "SHELTER",
+"name": "SprintExitShelter",
+"pos": Vector3(22.5, 0.5, 0.0),
+"radius": 2.2,
+"type": "exit_shelter"
+}, {
+"detect": 5.0,
+"id": "gap_watcher",
+"patrol": [Vector3(7.5, 0.5, 0.0), Vector3(19.5, 0.5, 0.0)],
+"pos": Vector3(19.5, 0.5, 0.0),
+"speed": 1.2,
+"targets": ["aster", "peris", "endo"],
+"type": "enemy"
+}])
+shelters = Array[Dictionary]([{
+"max": Vector2(4.2, 3.8),
+"min": Vector2(0.75, -3.8)
+}, {
+"max": Vector2(24.7, 3.0),
+"min": Vector2(20.3, -3.0)
+}])
+grid = {
+"cell_size": 1.5,
+"contract_id": "unified_grid_v1",
+"height": 6,
+"origin": [0.0, 0.0, -4.5],
+"walkable_cells": [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0], [7, 0], [8, 0], [9, 0], [10, 0], [11, 0], [12, 0], [13, 0], [14, 0], [15, 0], [16, 0], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [5, 1], [6, 1], [7, 1], [8, 1], [9, 1], [10, 1], [11, 1], [12, 1], [13, 1], [14, 1], [15, 1], [16, 1], [0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [5, 2], [6, 2], [7, 2], [8, 2], [9, 2], [10, 2], [11, 2], [12, 2], [13, 2], [14, 2], [15, 2], [16, 2], [0, 3], [1, 3], [2, 3], [3, 3], [4, 3], [5, 3], [6, 3], [7, 3], [8, 3], [9, 3], [10, 3], [11, 3], [12, 3], [13, 3], [14, 3], [15, 3], [16, 3], [0, 4], [1, 4], [2, 4], [3, 4], [4, 4], [5, 4], [6, 4], [7, 4], [8, 4], [9, 4], [10, 4], [11, 4], [12, 4], [13, 4], [14, 4], [15, 4], [16, 4], [0, 5], [1, 5], [2, 5], [3, 5], [4, 5], [5, 5], [6, 5], [7, 5], [8, 5], [9, 5], [10, 5], [11, 5], [12, 5], [13, 5], [14, 5], [15, 5], [16, 5]],
+"width": 17
+}
+time_state = {
+"note_default": "The gap. Read the beat, spend the bar in two clean bursts.",
+"routing_mode": "safe"
+}
+params = {
+"stamina_field_regen": false,
+"anchors": {
+"beat_east": Vector3(19.5, 0.5, 0.0),
+"beat_west": Vector3(7.5, 0.5, 0.0),
+"exit": Vector3(22.5, 0.5, 0.0),
+"launch": Vector3(4.0, 0.5, 3.0),
+"pad": Vector3(12.75, 0.5, 3.0)
+},
+"restart_on_wipe": true
+}
