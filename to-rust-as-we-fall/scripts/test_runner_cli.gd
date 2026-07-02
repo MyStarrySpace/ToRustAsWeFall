@@ -375,6 +375,9 @@ func _ready() -> void:
 			"--test-roguelike-atom-run":
 				ran_test = true
 				await _test_roguelike_atom_run()
+			"--test-pump-hall":
+				ran_test = true
+				await _test_pump_hall()
 			"--test-hub-shapes":
 				ran_test = true
 				await _test_hub_shapes()
@@ -1165,6 +1168,7 @@ func _run_all_tests() -> void:
 	_test_chunk_batch()
 	await _test_generated_atom_playable()
 	await _test_roguelike_atom_run()
+	await _test_pump_hall()
 	await _test_stretch_branches()
 	await _test_hub_shapes()
 	await _test_hub_base_playable()
@@ -13288,6 +13292,93 @@ func _branch_shapes(branches: Array) -> Array:
 ## THE CHUNK ATOM: a chunk = start + end + a puzzle-GATE you must solve, made of nested archetypes. Generates one
 ## per archetype, PROVES the invariant (flood-fill: locked BLOCKS start->end, solving OPENS it), and PRINTS each as
 ## ASCII so the design reads at a glance. A chunk that can be walked straight through fails here.
+## PUMP HALL, played like a player: the hand-authored tactical stealth level, driven route-by-route with
+## analytic jumps. Proves the fun-critical facts: the aisle watch is real (exposed = spotted, swept to the
+## RALLY pad, not the run's end), Scarpet SAVES an outer-range pass (the tier teach), the beat is crossable
+## behind the sentry, the flure buys the door, the orbit can be slipped, and the shelter completes it.
+func _test_pump_hall() -> void:
+	_test_name = "Pump Hall"
+	var inst = await _instantiate_preview_chunk_and_wait("pump_hall", 4)
+	if inst == null:
+		_assert_true(false, "pump_hall instantiates")
+		return
+	var chunk = inst._active_chunk
+	var gs = inst._game_state
+	_assert_true(chunk != null and gs != null, "Pump Hall boots in the shared preview")
+	var a: Dictionary = chunk.get_preview_anchors()
+	for i in range(3):
+		_assert_true(gs.characters.has("pump_sentry_%d" % i), "sentry %d is registered" % i)
+
+	# --- The aisle watch is real: stand exposed in the patrol's path -> spotted -> swept to RALLY 0. ---
+	var aisle_mid: Vector3 = (a["post_0"] + a["s1_far"]) * 0.5
+	gs.command_move_to_pos("peris", aisle_mid)
+	_advance_to_arrival(inst, gs, "peris")
+	_advance_to_proximity(inst, gs, "pump_sentry_0", aisle_mid, 3.5, 30.0)
+	inst.headless_advance(1.5, 0.1)
+	var st: Dictionary = chunk.get_preview_state()
+	print("  [pump] exposed aisle: caught=%d peris=%s" % [int(st["caught_count"]), str(gs.get_position("peris"))])
+	_assert_equals(int(st["caught_count"]), 1, "standing exposed in the aisle watch gets you spotted")
+	_assert_true(gs.get_position("peris").distance_to(chunk.get_spawn_positions()["peris"]) < 4.0,
+		"the catch pulls you back to the rally pad - distance lost, run intact")
+	inst.headless_advance(3.0, 0.1)
+
+	# --- Scarpet is a real tier: MEDIUM conceal survives the sentry's outer-range pass. ---
+	gs.command_move_to_pos("peris", a["scarpet_1"])
+	_advance_to_arrival(inst, gs, "peris")
+	inst.headless_advance(0.3, 0.1)
+	_assert_equals(int(gs.get_character_concealment("peris")), GameState.CONCEAL_MEDIUM,
+		"standing on Scarpet is MEDIUM conceal")
+	_advance_to_proximity(inst, gs, "pump_sentry_0", a["scarpet_1"] + Vector3(3.0, 0.0, 0.0), 2.0, 30.0)
+	inst.headless_advance(1.0, 0.1)
+	_assert_equals(int(chunk.get_preview_state()["caught_count"]), 1,
+		"the sentry passes 3.0wu away and the Scarpet HOLDS (outer range beaten, the tier teach)")
+
+	# --- Lure first (the flure is WEST — no aisle crossing needed to tend it), then cross, then door. ---
+	gs.command_move_to_pos("peris", a["flure"])
+	_advance_to_arrival(inst, gs, "peris")
+	_assert_equals(int(chunk.get_preview_state()["caught_count"]), 1, "the flure corner is OUTSIDE the aisle watch (tending is safe)")
+	var flure = chunk.find_child("PumpFlure", true, false)
+	_assert_true(flure != null, "the flure exists")
+	flure.active_character = "peris"
+	flure.on_interaction_arrived()
+	inst.headless_advance(float(flure.dwell_time) + 0.4, 0.1)
+	_assert_true(bool(chunk.get_preview_state()["lure_active"]), "the flure sings")
+	# STAND STILL until the lured watcher has walked its LONG west transit and PARKED — the park is the
+	# signal the door is clean (plan-end jump on the SENTRY, the analytic wait).
+	_advance_to_arrival(inst, gs, "pump_sentry_1", 0.4)
+	var s2_parked: float = gs.get_position("pump_sentry_1").distance_to(a["settle"])
+	_assert_true(s2_parked < 2.5, "the door watcher commits west and PARKS (%.1f from the settle)" % s2_parked)
+	# NOW open the aisle window and run the whole east leg inside the lure window.
+	var crossed := _advance_to_proximity(inst, gs, "pump_sentry_0", a["post_0"], 1.2, 30.0)
+	_assert_true(crossed, "the aisle beat can be waited out (jump to its far turn)")
+	gs.command_move_to_pos("peris", a["door_stage"])
+	_advance_to_arrival(inst, gs, "peris")
+	gs.command_move_to_pos("peris", a["door"] + Vector3(1.5, 0.0, 0.0))
+	_advance_to_arrival(inst, gs, "peris")
+	gs.command_move_to_pos("peris", a["rally_1"])
+	_advance_to_arrival(inst, gs, "peris")
+	var caught_mid := int(chunk.get_preview_state()["caught_count"])
+	_assert_equals(caught_mid, 1, "the lured door crossing is clean")
+	# The orbit: wait for the third sentry at its north-west turn, then run the south flank to the shelter.
+	var s3_nw: Vector3 = a["post_2"]
+	var slipped := _advance_to_proximity(inst, gs, "pump_sentry_2", s3_nw, 1.2, 40.0)
+	_assert_true(slipped, "the orbit can be read (jump to its NW turn)")
+	gs.command_move_to_pos("peris", a["exit"] + Vector3(0.0, 0.0, 4.5))
+	_advance_to_arrival(inst, gs, "peris")
+	gs.command_move_to_pos("peris", a["exit"])
+	_advance_to_arrival(inst, gs, "peris")
+	var shelter = chunk.find_child("PumpExitShelter", true, false)
+	_assert_true(shelter != null, "the shelter exists")
+	shelter.active_character = "peris"
+	shelter.on_interaction_arrived()
+	inst.headless_advance(1.0, 0.1)
+	st = chunk.get_preview_state()
+	print("  [pump] finish: complete=%s caught=%d" % [str(st["complete"]), int(st["caught_count"])])
+	_assert_true(bool(st["complete"]), "Pump Hall plays start to shelter through the data layer")
+	_assert_equals(int(st["caught_count"]), 1, "the clean route stays clean (only the deliberate catch)")
+	inst.queue_free()
+	await get_tree().process_frame
+
 ## THE ROGUELIKE, SERVED BY THE NEW SYSTEM: the run generates graded atom-chain skeletons (report card =
 ## the playability gate), lays each on a seeded hub SHAPE with the base floor (entry shelter behind, exit
 ## shelter at the end of the final stretch), and the loader flow (rest -> branch -> descend) runs on them.
@@ -13321,7 +13412,7 @@ func _test_roguelike_atom_run() -> void:
 	_assert_equals(str(s2.spec.get("stages", [])), str(s1.spec.get("stages", [])),
 		"a run is reproducible from seed + choices")
 	_assert_equals(str(s2.spec.get("hub_shape", {})), str(s1.spec.get("hub_shape", {})),
-		"the shape rotation is reproducible too")
+		"the (flat) shape field is reproducible too")
 
 	# --- The loader flow, PLAYED: boot, play depth 0, rest, branch, land in depth 1. ---
 	var tree := get_tree()
@@ -13341,12 +13432,8 @@ func _test_roguelike_atom_run() -> void:
 	var gs = inst.get("_game_state")
 	var st: Dictionary = chunk.get_preview_state()
 	_assert_true(bool(st["skeleton_ok"]), "the loaded level's own skeleton grades SHIPPABLE (provenance)")
-	_assert_true(str(st["hub_shape"]) != "flat", "the level lies on a hub shape (%s)" % str(st["hub_shape"]))
-	_assert_true(chunk.get_coord_map() != null and gs.coord_map != null, "the shape coord_map is installed")
-	var dp: Vector3 = gs.get_position("peris")
-	var rp: Vector3 = gs.get_render_position("peris")
-	_assert_true(Vector2(dp.x - rp.x, dp.z - rp.z).length() > 0.5 or absf(dp.y - rp.y) > 0.25,
-		"character render runs through the warp (data flat, world shaped)")
+	_assert_equals(str(st["hub_shape"]), "flat", "run levels are FLAT (the warp is parked until rebuilt + playtested)")
+	_assert_true(chunk.get_coord_map() == null, "no coord_map on a flat level (nothing to mis-install across descents)")
 	# Play the whole depth-0 chain (all-lure) with analytic jumps.
 	var n := int((session.spec.get("stages", []) as Array).size())
 	var a: Dictionary = chunk.get_preview_anchors()

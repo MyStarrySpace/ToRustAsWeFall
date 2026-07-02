@@ -118,7 +118,11 @@ func _generate_atom_level(stage_bonus: int) -> Dictionary:
 	var stages: Array = []
 	for i in range(count):
 		stages.append("distract:%s" % str(pool[int(rng.call("randi_range", 0, pool.size() - 1))]))
-	var shape: Dictionary = (ATOM_SHAPES[int(rng.call("randi_range", 0, ATOM_SHAPES.size() - 1))] as Dictionary).duplicate(true)
+	# FLAT, by direction: the hub warp shipped broken in play (stale coord_map across descents; the base
+	# contract violated by the shifted-origin grid — both confirmed by review) and the director has parked
+	# the shape system. Runs serve flat, readable levels until the warp is rebuilt and PLAYTESTED.
+	var shape: Dictionary = {}
+	var _unused_shape_pool := ATOM_SHAPES.size() + int(rng.call("randi_range", 0, 1))  # keep the rng cadence stable
 	var skeleton: Dictionary = ChunkGenScript.compose(stages, atom_seed)
 	var card: Dictionary = ChunkGenScript.report_card(skeleton)
 	return {

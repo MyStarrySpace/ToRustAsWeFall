@@ -34,3 +34,7 @@
 /chunk_outline_*.png.import
 /glow_*.png
 /glow_*.png.import
+
+# Dev Pump Hall capture (tools/capture_pump_hall.gd, windowed)
+/pump_hall_capture.png
+/pump_hall_capture.png.import
