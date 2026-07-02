@@ -17689,6 +17689,10 @@ func _test_capbage_retrieve() -> void:
 		"home ground REFILLS the bar while he wakes (%.0f -> %.0f) — the closed economy's recovery loop" % [sta_setdown, sta_end])
 	var shelter = chunk.find_child("RetrieveHavenShelter", true, false)
 	_assert_true(shelter != null, "the haven shelter exists")
+	if shelter == null:
+		inst.queue_free()
+		await get_tree().process_frame
+		return
 	shelter.active_character = "peris"
 	shelter.on_interaction_arrived()
 	inst.headless_advance(0.5, 0.1)
@@ -17702,6 +17706,11 @@ func _test_capbage_retrieve() -> void:
 	gs.restore_character("peris")
 	gs.snap_character_to("peris", gs.get_position("aster") + Vector3(-0.9, 0.0, 0.0))
 	var body2 = inst.find_child("DownedBody_aster", true, false)
+	_assert_true(body2 != null, "the body zone re-exists after the reset")
+	if body2 == null:
+		inst.queue_free()
+		await get_tree().process_frame
+		return
 	body2.active_character = "peris"
 	body2.on_interaction_arrived()
 	_assert_true(gs.is_dragging("peris"), "take hold for the blind haul")
@@ -19382,6 +19391,9 @@ func _test_event_log_mutation_audit() -> void:
 		# the knockdown window (a consequence of the logged dodge_roll), and the interactor picker
 		# (reads positions/hands only — the resulting move/trigger is what gets logged).
 		"is_route_cautious", "is_knocked_down", "pick_interactor",
+		# Pure analytic future-read over the COMMITTED movement plan (the leading-lunge aim and any
+		# scheduler-time prediction). Reads path interpolation only; mutates nothing; never logged.
+		"predict_position",
 		# Shelter rest: pure queries (the mutators command_rest/stop_rest/set_game_clock/
 		# add_shelter_region all emit); clear_shelter_regions is preview-reset plumbing.
 		"is_at_shelter", "is_resting", "clear_shelter_regions", "is_field_restoring",

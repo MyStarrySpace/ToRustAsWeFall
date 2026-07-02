@@ -113,6 +113,10 @@ func _on_character_up(cid: String) -> void:
 		return
 	var it = _bodies[cid]
 	if is_instance_valid(it):
+		# queue_free is DEFERRED: the dying node holds its name until end of frame, and a fresh zone
+		# created the same frame (revive -> reset -> re-down) would get auto-renamed past every
+		# find_child lookup. Vacate the canonical name before letting go.
+		it.name = str(it.name) + "_gone"
 		it.queue_free()
 	_bodies.erase(cid)
 	var target = _outline_targets.get(cid)
