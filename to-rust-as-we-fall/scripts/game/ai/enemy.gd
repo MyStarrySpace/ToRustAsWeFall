@@ -54,6 +54,10 @@ var _home_mode := "idle"
 var _patrol_waypoints: Array[Vector3] = []
 var _patrol_index := 0
 
+# --- Lure (a flure's song: walk to the settle point, park distracted, then walk home) ---
+var _lure_settle := Vector3.ZERO
+var _lure_duration := 20.0
+
 # --- Roam (undirected wander: cheap local hops, NEVER pathfinding) ---
 var _roam_anchor := Vector3.ZERO
 var _roam_radius := 0.0
@@ -120,6 +124,41 @@ func set_roam(anchor: Vector3, radius: float) -> void:
 	if get_state() != "dead":
 		_fsm.transition_to("roam")
 
+## A flure's song: pull this enemy off its watch to `settle_pos` for `duration` seconds. Only an
+## un-alerted enemy takes the bait (one mid-attack ignores it; an already-lured one stays lured).
+## While lured it is DISTRACTED — its own outer reach shrinks, but a runner who crowds it still gets
+## caught — and when the song ends it walks home and resumes its ambient mode.
+func lure_to(settle_pos: Vector3, duration: float) -> void:
+	if get_state() not in ["idle", "roam", "patrol", "search", "return"]:
+		return
+	_lure_settle = settle_pos
+	_lure_duration = maxf(0.5, duration)
+	_fsm.transition_to("lured")
+
+func _end_lure() -> void:
+	if get_state() != "lured":
+		return
+	_fsm.transition_to("return")
+
+## Snap back to a post and stand the watch again (level reset / wipe restart): clears the target and
+## any lure/distraction, re-parks the data-layer body, and resumes the ambient home mode from the top.
+func re_post(post: Vector3) -> void:
+	if get_state() == "dead":
+		return
+	_current_target_id = ""
+	if game_state and game_state.characters.has(char_id):
+		game_state.command_stop(char_id)
+		game_state.set_character_distracted(char_id, false)
+		game_state.snap_character_to(char_id, post)
+	position = post
+	_patrol_index = 0
+	_fsm.transition_to("idle")   # clean re-entry even if the home mode is the current state
+	match _home_mode:
+		"patrol":
+			_fsm.transition_to("patrol")
+		"roam":
+			_fsm.transition_to("roam")
+
 ## Apply damage. A hit taken mid-aggro staggers the enemy (a brief interrupt → counterplay), so the
 ## player can break a windup/charge by striking first.
 func take_damage(amount: float) -> void:
@@ -145,7 +184,7 @@ func get_state() -> String:
 
 # --- State Machine Core (reusable StateMachine: tag-scoped scheduling + exit/enter hooks) ---
 
-const ENEMY_STATES := ["idle", "roam", "patrol", "alert", "pursuit", "windup", "charge", "impact", "recover", "stagger", "search", "return", "dead"]
+const ENEMY_STATES := ["idle", "roam", "patrol", "lured", "alert", "pursuit", "windup", "charge", "impact", "recover", "stagger", "search", "return", "dead"]
 
 # Telegraph colours (the body reads its intent at a glance).
 const WINDUP_COLOR := Color(0.9, 0.15, 0.1)    # red — about to strike
@@ -175,6 +214,15 @@ func _enter_state(state: String) -> void:
 		"patrol":
 			_set_eye_energy(0.5)
 			_patrol_next_waypoint()
+		"lured":
+			_current_target_id = ""
+			_remove_alert_label()
+			_set_eye_energy(0.9)
+			_set_mesh_color(_base_color)
+			if game_state and game_state.characters.has(char_id):
+				game_state.set_character_distracted(char_id, true)
+				game_state.command_move_to_pos(char_id, _lure_settle)
+			_fsm.schedule(_lure_duration, _end_lure)
 		"alert":
 			_show_alert_on_target()
 			_set_eye_energy(1.6)
@@ -237,6 +285,12 @@ func _exit_state(state: String) -> void:
 	match state:
 		"roam":
 			_stop_movement()
+		"lured":
+			# However the song ends (expiry -> return, or a point-blank spot -> alert), the
+			# distraction lifts and the walk-to-settle stops.
+			_stop_movement()
+			if game_state and game_state.characters.has(char_id):
+				game_state.set_character_distracted(char_id, false)
 		"alert":
 			_remove_alert_label()
 		"pursuit":
@@ -255,7 +309,7 @@ func _on_detection_predicted(detector_id: String, target_id: String) -> void:
 	if target_id not in _detection_targets:
 		return
 	# Only respond to detections when in a scanning state (roaming / searching / returning still see).
-	if get_state() not in ["idle", "roam", "patrol", "search", "return"]:
+	if get_state() not in ["idle", "roam", "patrol", "lured", "search", "return"]:
 		return
 	# Never (re)acquire a downed target — that was the "alert -> chase a corpse forever" loop.
 	if game_state.characters.has(target_id):

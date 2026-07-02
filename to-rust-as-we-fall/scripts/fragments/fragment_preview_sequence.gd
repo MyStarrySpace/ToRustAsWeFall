@@ -21,7 +21,6 @@ const DUSK_RUN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/dusk_run_ch
 const LURE_RELAY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/lure_relay_chunk.tscn")
 const DISTRACT_GATE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/distract_gate_chunk.tscn")
 const PUZZLE_ATOM_CHUNK_SCENE := preload("res://scenes/fragments/chunks/puzzle_atom_chunk.tscn")
-const PUMP_HALL_CHUNK_SCENE := preload("res://scenes/fragments/chunks/pump_hall_chunk.tscn")
 const SHOWCASE_GALLERY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/showcase_gallery_chunk.tscn")
 const WASH_RELAY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/wash_relay_chunk.tscn")
 const DATA_FRAGMENT_CHUNK_SCENE := preload("res://scenes/fragments/chunks/data_fragment.tscn")
@@ -41,7 +40,6 @@ const CHUNK_SCENES := {
 	"lure_relay": LURE_RELAY_CHUNK_SCENE,
 	"distract_gate": DISTRACT_GATE_CHUNK_SCENE,
 	"puzzle_atom": PUZZLE_ATOM_CHUNK_SCENE,
-	"pump_hall": PUMP_HALL_CHUNK_SCENE,
 	"push_lab": PUSH_LAB_CHUNK_SCENE,
 	"rest_lab": REST_LAB_CHUNK_SCENE,
 	"flora_garden": FLORA_GARDEN_CHUNK_SCENE,
@@ -69,7 +67,8 @@ const PREVIEW_ENTRIES := [
 		"config": {"spec_path": "res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"}},
 	{"id": "dusk_run", "chunk": "dusk_run", "title": "Dusk Run", "stage": 3},
 	{"id": "flora_garden", "chunk": "flora_garden", "title": "Flora Garden", "stage": 3},
-	{"id": "pump_hall", "chunk": "pump_hall", "title": "Pump Hall (tactical stealth)", "stage": 3},
+	{"id": "pump_hall", "chunk": "data_fragment", "title": "Pump Hall (tactical stealth)", "stage": 3,
+		"config": {"fragment_path": "res://data/fragments/pump_hall.tres"}},
 	{"id": "distract_gate", "chunk": "distract_gate", "title": "The Watched Gap", "stage": 3},
 	{"id": "puzzle_atom", "chunk": "puzzle_atom", "title": "Generated Atom Chain", "stage": 3,
 		"config": {"stages": ["distract:lure", "distract:patrol", "distract:twin"], "seed": 7}},
@@ -164,7 +163,7 @@ const STAMINA_REGEN := 10.0
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
 @export_enum("stacks", "rings", "lockout", "mother_flure", "survival_range",
 	"endo_junction_stretch", "generated_stretch",
-	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "pump_hall", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment") var preview_chunk := "stacks"
+	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 

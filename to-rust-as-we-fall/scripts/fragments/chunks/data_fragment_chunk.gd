@@ -22,7 +22,13 @@ var _capbages: Array = []
 var _channels: Array = []
 var _flora: Array = []
 var _enemies: Array = []
+var _scarpets: Array = []
+var _exit_shelters: Array = []
+var _enemy_posts := {}        # char_id -> spawn post (re_post targets on a wipe restart)
 var _scheduled := false
+var _phase := "ready"
+var _spotted_count := 0
+var _wipe_count := 0
 
 func configure_chunk(config: Dictionary) -> void:
 	if config.has("fragment"):
@@ -40,6 +46,11 @@ func _build_chunk() -> void:
 	_apply_shelters()
 	for spec in fragment.objects:
 		_spawn_object(spec)
+	# Loader-owned failure wiring: a full party wipe restarts the fragment when the data asks for it.
+	var gs = _get_game_state()
+	if gs != null and bool(fragment.params.get("restart_on_wipe", false)):
+		if not gs.character_downed.is_connected(_on_fragment_character_downed):
+			gs.character_downed.connect(_on_fragment_character_downed)
 	_set_preview_step((fragment.id if fragment.id != "" else "data_fragment") + "_start")
 
 # --- Environment ---
@@ -99,6 +110,15 @@ func _spawn_object(spec: Dictionary) -> void:
 			fl.name = _name(spec, "Flure")
 			fl.configure(gs, _v3(spec, "pos"), _str_arr(spec, "targets"),
 				_f(spec, "attract", 32.0), _f(spec, "radius", 1.6), _col(spec, "color", Color(0.95, 0.78, 0.2)))
+			if spec.has("settle"):
+				fl.settle_pos = _v3(spec, "settle")
+			fl.lure_duration = _f(spec, "duration", fl.lure_duration)
+			if _f(spec, "dwell", 0.0) > 0.0:
+				fl.interactable_type = Interactable.InteractableType.TIMED_ACTION
+				fl.dwell_time = _f(spec, "dwell", 2.0)
+			if spec.has("one_shot"):
+				fl.one_shot = bool(spec["one_shot"])
+			fl.set_enemy_resolver(_enemy_by_id)
 			add_child(fl)
 			_register_interactable(fl)
 			_flures.append(fl)
@@ -136,6 +156,16 @@ func _spawn_object(spec: Dictionary) -> void:
 			bloom.configure(spec.get("opts", {}) as Dictionary)
 			add_child(bloom)
 			_flora.append(bloom)
+		"scarpet":
+			# {pos:Vector3, radius:float} — a MEDIUM-tier hide mat (the loader's concealment pass reads it)
+			var mat := Scarpet.new()
+			mat.name = _name(spec, "Scarpet")
+			mat.configure(_v3(spec, "pos"), _f(spec, "radius", 1.65))
+			add_child(mat)
+			_scarpets.append(mat)
+		"exit_shelter":
+			# {pos:Vector3, radius:float, label:String, color:Color} — the fragment's win pad: rest -> complete
+			_spawn_exit_shelter(spec)
 		"enemy":
 			# {id:String, pos:Vector3, speed:float, detect:float, targets:Array[String], roam?:{radius:float}, patrol?:Array}
 			_spawn_enemy(spec, gs)
@@ -166,11 +196,14 @@ func _spawn_enemy(spec: Dictionary, gs) -> void:
 	gs.register_character(eid, enemy.position, enemy.move_speed, {"detection_range": float(enemy.detection_range)})
 	if enemy.has_method("activate"):
 		enemy.activate()
+	_enemy_posts[eid] = enemy.position
+	if enemy.has_signal("target_spotted"):
+		enemy.target_spotted.connect(_on_fragment_target_spotted)
 	if spec.has("roam") and enemy.has_method("set_roam"):
 		var roam: Dictionary = spec["roam"]
 		enemy.set_roam(enemy.position, _f(roam, "radius", 4.0))
 	elif spec.has("patrol") and enemy.has_method("set_patrol"):
-		var pts: Array = []
+		var pts: Array[Vector3] = []
 		for p in (spec["patrol"] as Array):
 			pts.append(p if p is Vector3 else _v3({"p": p}, "p"))
 		enemy.set_patrol(pts)
@@ -186,6 +219,116 @@ func headless_process(delta: float) -> void:
 
 func _update(_delta: float) -> void:
 	_ensure_scheduled()
+	_update_shared_concealment()
+
+## The LOADER owns the hide-tier pass: Capbage = FULL beats Scarpet = MEDIUM beats exposed, from each
+## member's REAL position every frame. Chunks never re-implement hide logic.
+func _update_shared_concealment() -> void:
+	if fragment == null or (_capbages.is_empty() and _scarpets.is_empty()):
+		return
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	for cid_v in fragment.party_ids:
+		var cid := str(cid_v)
+		if not gs.characters.has(cid):
+			continue
+		var pos: Vector3 = gs.get_position(cid)
+		var tier: int = GameState.CONCEAL_NONE
+		for cap in _capbages:
+			if is_instance_valid(cap) and cap.conceals(pos):
+				tier = GameState.CONCEAL_FULL
+				break
+		if tier == GameState.CONCEAL_NONE:
+			for mat in _scarpets:
+				if is_instance_valid(mat) and mat.conceals(pos):
+					tier = GameState.CONCEAL_MEDIUM
+					break
+		gs.set_character_concealment(cid, tier)
+
+## The fragment's win pad: a click-gated INSPECTION interactable; resting there completes the fragment.
+func _spawn_exit_shelter(spec: Dictionary) -> void:
+	var p := _v3(spec, "pos")
+	var color := _col(spec, "color", Color(0.3, 0.7, 0.45))
+	var pad := _add_box(self, p + Vector3(0, 0.1, 0), Vector3(1.3, 0.2, 1.3), Color(0.2, 0.28, 0.22), color, 0.5, _name(spec, "ExitShelterPad") + "Pad")
+	var label := str(spec.get("label", "SHELTER"))
+	if label != "":
+		_add_label(self, label, p + Vector3(0, 2.0, 0), Color(0.6, 0.9, 0.65))
+	var it := _add_object_interactable(self, _name(spec, "ExitShelter"), "Shelter", p + Vector3(0, 0.1, 0),
+		"Rest", [pad], "", 0.0, true, _f(spec, "radius", 1.2), Interactable.InteractableType.INSPECTION)
+	it.interacted.connect(_on_exit_shelter_rested)
+	_register_interactable(it)
+	_exit_shelters.append(it)
+
+func _on_exit_shelter_rested() -> void:
+	if _phase == "complete":
+		return
+	_phase = "complete"
+	_show_note("Safe ground. Rest.", 2.5)
+	_set_preview_step((fragment.id if fragment != null and fragment.id != "" else "data_fragment") + "_complete")
+
+func _on_fragment_target_spotted(target_id: String) -> void:
+	if fragment == null or _phase == "complete" or not (target_id in Array(fragment.party_ids)):
+		return
+	_spotted_count += 1
+	_show_note("Spotted. It's coming.", 2.0)
+
+## A member beaten to 0 hp stays where they fell (the engine owns the down). The loader's only job:
+## notice a FULL wipe and restart the fragment from the entry when the data asked for that.
+func _on_fragment_character_downed(cid: String) -> void:
+	if fragment == null or _phase == "complete" or not (cid in Array(fragment.party_ids)):
+		return
+	_show_note("%s is down. They stay where they fell." % cid.capitalize(), 2.4)
+	var gs = _get_game_state()
+	if gs == null or not gs.is_party_downed(Array(fragment.party_ids)):
+		return
+	_wipe_count += 1
+	_show_note("It takes everyone. From the top.", 2.6)
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.cancel_tag(_restart_tag())
+		sched.schedule_after(1.5, _restart_fragment, _restart_tag())
+
+func _restart_tag() -> String:
+	return "frag_restart_" + (fragment.id if fragment != null and fragment.id != "" else "data_fragment")
+
+## Full wipe -> restart from the entry: every member restored at their spawn (logged restore + snap,
+## so the restart replays), every enemy re-posted, the flure re-armed.
+func _restart_fragment() -> void:
+	var gs = _get_game_state()
+	if gs == null or fragment == null:
+		return
+	for cid_v in fragment.party_ids:
+		var cid := str(cid_v)
+		if not gs.characters.has(cid):
+			continue
+		gs.restore_character(cid)
+		if fragment.spawns.has(cid):
+			gs.snap_character_to(cid, fragment.spawns[cid])
+	for enemy in _enemies:
+		if is_instance_valid(enemy) and enemy.has_method("re_post") and _enemy_posts.has(enemy.char_id):
+			enemy.re_post(_enemy_posts[enemy.char_id])
+	for fl in _flures:
+		if is_instance_valid(fl):
+			fl.reset_flure()
+	_phase = "ready"
+	_set_preview_step((fragment.id if fragment.id != "" else "data_fragment") + "_restart")
+
+func _enemy_by_id(cid: String):
+	for enemy in _enemies:
+		if is_instance_valid(enemy) and str(enemy.char_id) == cid:
+			return enemy
+	return null
+
+## Freed while the scheduler lives (preview reloads): retract every tag this loader owns.
+func _exit_tree() -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	sched.cancel_tag(_restart_tag())
+	for fl in _flures:
+		if is_instance_valid(fl):
+			sched.cancel_tag("flure_reset_" + str(fl.name))
 
 func _ensure_scheduled() -> void:
 	if _scheduled or _channels.is_empty():
@@ -223,6 +366,37 @@ func get_grid_data() -> Dictionary:
 func get_preview_time_state() -> Dictionary:
 	return (fragment.time_state as Dictionary).duplicate(true) if fragment != null else {}
 
+## Anchors = the spawns + whatever the data's params.anchors names (posts, doors, hides, exits).
+func get_preview_anchors() -> Dictionary:
+	var anchors: Dictionary = {}
+	if fragment != null:
+		for k in fragment.spawns.keys():
+			anchors[str(k)] = fragment.spawns[k]
+		var pa: Dictionary = fragment.params.get("anchors", {})
+		for k in pa.keys():
+			anchors[str(k)] = pa[k]
+	return anchors
+
+func get_preview_state() -> Dictionary:
+	var downed: Array = []
+	var gs = _get_game_state()
+	if gs != null and fragment != null:
+		for cid_v in fragment.party_ids:
+			if gs.is_downed(str(cid_v)):
+				downed.append(str(cid_v))
+	var lure_active := false
+	for fl in _flures:
+		if is_instance_valid(fl) and fl.is_active():
+			lure_active = true
+	return {
+		"phase": _phase,
+		"complete": _phase == "complete",
+		"downed": downed,
+		"spotted_count": _spotted_count,
+		"wipe_count": _wipe_count,
+		"lure_active": lure_active,
+	}
+
 func get_preview_abilities() -> Array:
 	return []
 
@@ -233,6 +407,12 @@ func reset_preview_state() -> void:
 	for ch in _channels:
 		if is_instance_valid(ch):
 			ch.reset()
+	_phase = "ready"
+	_spotted_count = 0
+	_wipe_count = 0
+	for enemy in _enemies:
+		if is_instance_valid(enemy) and enemy.has_method("re_post") and _enemy_posts.has(enemy.char_id):
+			enemy.re_post(_enemy_posts[enemy.char_id])
 	_scheduled = false
 	_set_preview_step((fragment.id if fragment != null and fragment.id != "" else "data_fragment") + "_start")
 

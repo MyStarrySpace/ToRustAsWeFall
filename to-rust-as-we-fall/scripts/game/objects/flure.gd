@@ -17,7 +17,12 @@ signal flure_activated(pulled: int)
 @export var glow_color := Color(0.95, 0.78, 0.2)
 @export var glow_radius := 0.45
 
+## Optional park point for lured FSM enemies (INF = the flure itself) + how long the song holds.
+var settle_pos := Vector3.INF
+var lure_duration := 60.0
+
 var _active := false
+var _enemy_resolver: Callable = Callable()   # id -> Enemy node; the loader installs it
 var _glow: MeshInstance3D
 var _glow_mat: StandardMaterial3D
 var _lure_target_ids: Array = []
@@ -104,12 +109,28 @@ func activate() -> bool:
 	for tid in _lure_target_ids:
 		if not _gs.characters.has(tid):
 			continue
-		if _gs.get_position(tid).distance_to(flat) <= attract_range:
+		if _gs.get_position(tid).distance_to(flat) > attract_range:
+			continue
+		var enemy_node = _enemy_resolver.call(tid) if _enemy_resolver.is_valid() else null
+		if enemy_node != null and is_instance_valid(enemy_node) and enemy_node.has_method("lure_to"):
+			var park := settle_pos if settle_pos != Vector3.INF else flat
+			enemy_node.lure_to(park, lure_duration)
+		else:
 			_gs.set_character_distracted(tid, true)
 			_gs.command_move_to_pos(tid, flat)
-			pulled += 1
+		pulled += 1
+	# A re-tendable flure re-arms itself when the song ends (scheduler-driven, derived on replay).
+	if not one_shot and _gs.scheduler != null:
+		_gs.scheduler.cancel_tag("flure_reset_" + str(name))
+		_gs.scheduler.schedule_after(lure_duration, reset_flure, "flure_reset_" + str(name))
 	flure_activated.emit(pulled)
 	return pulled > 0
+
+## The loader hands the flure a way to find the Enemy NODE behind a lure-target id, so an FSM enemy
+## is lured through its own `lured` state (walk to settle, park distracted, walk home) instead of a
+## raw data-layer move its state machine would fight.
+func set_enemy_resolver(resolver: Callable) -> void:
+	_enemy_resolver = resolver
 
 func is_active() -> bool:
 	return _active

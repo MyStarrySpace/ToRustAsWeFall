@@ -24,7 +24,6 @@ const WORLD_SLOT := {
 	"next_slot": "act1_channels_first_spiral",
 }
 
-var _phase := "ready"
 var _drowned := 0
 var _drowned_ids := {}                # char_id -> true: dedupe the drown (once per hunter, one line)
 var _washed_back := 0                 # how many times a party member was flushed by a channel
@@ -77,17 +76,8 @@ func _update(_delta: float) -> void:
 	if gs == null:
 		return
 
-	# Capbage concealment: a member inside ANY Capbage's hide radius is fully undetectable (each owns conceals()).
-	for cid in _party_ids:
-		if not gs.characters.has(cid):
-			continue
-		var pos := _get_character_position(cid)
-		var hidden := false
-		for cap in _capbages:
-			if is_instance_valid(cap) and cap.conceals(pos):
-				hidden = true
-				break
-		gs.set_character_concealment(cid, GameState.CONCEAL_FULL if hidden else GameState.CONCEAL_NONE)
+	# Hide tiers are the LOADER's shared pass now (Capbage FULL > Scarpet MEDIUM > exposed).
+	_update_shared_concealment()
 
 	# Drown: a guard caught in a flooding channel is swept off (the wash kills it).
 	for enemy in _enemies:

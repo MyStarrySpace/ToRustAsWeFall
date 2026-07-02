@@ -9,7 +9,8 @@ func _init() -> void:
 	var scene: PackedScene = load("res://scenes/fragments/fragment_preview.tscn")
 	var inst: Node = scene.instantiate()
 	inst.set("preview_menu", false)
-	inst.set("preview_chunk", "pump_hall")
+	inst.set("preview_chunk", "data_fragment")
+	inst.set("preview_chunk_config", {"fragment_path": "res://data/fragments/pump_hall.tres"})
 	get_root().add_child(inst)
 	current_scene = inst
 	for i in range(60):

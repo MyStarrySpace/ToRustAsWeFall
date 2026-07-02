@@ -9285,8 +9285,10 @@ func _instantiate_preview_chunk_and_wait(chunk_id: String, settle_frames := 5, c
 	if instance == null:
 		return null
 	instance.set("preview_menu", false)
-	instance.set("preview_chunk", chunk_id)
 	var entry: Dictionary = FragmentPreviewScript.get_preview_entry(chunk_id)
+	# An entry id and its chunk name can diverge (a data fragment loads through the generic
+	# "data_fragment" chunk) — resolve the CHUNK the same way the picker does.
+	instance.set("preview_chunk", String(entry.get("chunk", chunk_id)))
 	var resolved_config: Dictionary = config if not config.is_empty() else (entry.get("config", {}) as Dictionary)
 	if not resolved_config.is_empty():
 		instance.set("preview_chunk_config", resolved_config.duplicate(true))
@@ -13350,7 +13352,7 @@ func _test_pump_hall() -> void:
 	inst.headless_advance(1.5, 0.1)
 	_assert_true(gs.get_position("peris").distance_to(fell_at) < 0.5,
 		"a downed member is dead weight — left where they fell")
-	var s0 = chunk._sentries[0]["enemy"]
+	var s0 = chunk._enemies[0]
 	t = 0.0
 	while t < 40.0 and not (str(s0.get_state()) in ["patrol", "return", "idle", "search"]):
 		inst.headless_advance(0.3, 0.1)

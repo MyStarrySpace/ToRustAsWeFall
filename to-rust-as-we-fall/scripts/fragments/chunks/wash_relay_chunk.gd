@@ -108,7 +108,6 @@ var _cadence_t0 := 0.0              # scheduler tick the hazard cadence was (re)
 									# reads are relative to THIS, so a reset that re-arms at a non-zero tick stays
 									# self-consistent (the real onset and the predicted onset agree)
 
-var _phase := "ready"
 var _flooding := []                # cosmetic surge window
 var _flood_counts := []            # per section — how many surges have fired (cadence variety / tests)
 var _plate_held := []              # per section — all the section's plates are held this frame
