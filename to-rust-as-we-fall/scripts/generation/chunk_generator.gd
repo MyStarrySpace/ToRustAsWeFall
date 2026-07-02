@@ -106,23 +106,39 @@ static func _stage(g: Dictionary, chamber_x0: int, chamber_x1: int, gate_col: in
 				"elements": [{"sym": "P", "cell": p1}, {"sym": "P", "cell": p2}],
 				"role": "held plates — both must be held at once (split the party)"}
 		"distract":
-			# The Watched Gap kit, generated: the gate is a watched LANE (!) — topologically crossable in the
-			# real game but enforcement is DETECTION (spotted = swept to start), so the model treats it as
-			# blocked until the sentry commits away. Sentry (s) watches from the far mouth; the flure (F) sits
-			# in a pocket reachable WITHOUT entering the lane; the conceal pocket (c) is the Shadow's stage.
+			# The Watched Gap kit, generated. Geometry matters here: the gate is a GAP in a WALL band — the
+			# watched lane (!) is only the middle rows; the rest of the column is wall. The wall is what makes
+			# the sentry's sight honest (it watches THROUGH the gap; the chambers on both sides are blind to
+			# it), the same one-truth geometry the built fragment proved. Enforcement is DETECTION (spotted =
+			# swept to start), so the model treats the lane as blocked until the sentry commits away. The
+			# flure (F) sits in a pocket reachable WITHOUT entering the lane; conceal pocket (c) = the
+			# Shadow's stage; sentry (s) posts at the gap's far mouth.
+			var mid := h / 2
+			var lane: Array = []
+			for c0 in cells:
+				var cy := (c0 as Vector2i).y
+				if cy >= mid - 1 and cy <= mid + 1:
+					lane.append(c0)
+				else:
+					g[c0] = SYM_WALL
+			for lc in lane:
+				g[lc] = "!"
 			mech = Vector2i(clampi(chamber_x0 + 1, chamber_x0, gate_col - 1), 1)
 			g[mech] = "F"
-			var sentry := Vector2i(gate_col + 1, row)
-			if g.get(sentry) == SYM_FLOOR:
-				g[sentry] = "s"
+			# The sentry posts IN the gap it guards: the gap walls shield both chambers from its radial
+			# sight, so its watch is a readable corridor through the gap (lane + mid-row approach strips),
+			# never a disc dominating the next chamber's work area — the chain stays solvable after it
+			# re-arms (the built bridge caught the in-chamber-post version spotting stage i+1's solve).
+			var sentry := Vector2i(gate_col, mid)
+			g[sentry] = "s"
 			var conceal := Vector2i(clampi(chamber_x0 + 1, chamber_x0, gate_col - 1), h - 2)
 			var elems: Array = [{"sym": "F", "cell": mech}, {"sym": "s", "cell": sentry}]
 			if g.get(conceal) == SYM_FLOOR:
 				g[conceal] = "c"
 				elems.append({"sym": "c", "cell": conceal})
-			return {"cells": cells, "open_row": -1, "mechanism": mech, "sym": "!", "arch": arch,
+			return {"cells": lane, "open_row": -1, "mechanism": mech, "sym": "!", "arch": arch,
 				"elements": elems,
-				"role": "watched lane — tend the flure so the sentry commits off its watch, then cross"}
+				"role": "watched gap — tend the flure so the sentry commits off its watch, then cross the lane"}
 	# default: a plain wall + a lever
 	g[mech] = "L"
 	return {"cells": cells, "open_row": -1, "mechanism": mech, "sym": "=", "arch": "lever",

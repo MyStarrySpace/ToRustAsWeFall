@@ -369,6 +369,9 @@ func _ready() -> void:
 			"--test-chunk-batch":
 				ran_test = true
 				_test_chunk_batch()
+			"--test-generated-atom-playable":
+				ran_test = true
+				await _test_generated_atom_playable()
 			"--test-hub-shapes":
 				ran_test = true
 				await _test_hub_shapes()
@@ -13268,6 +13271,90 @@ func _branch_shapes(branches: Array) -> Array:
 ## THE CHUNK ATOM: a chunk = start + end + a puzzle-GATE you must solve, made of nested archetypes. Generates one
 ## per archetype, PROVES the invariant (flood-fill: locked BLOCKS start->end, solving OPENS it), and PRINTS each as
 ## ASCII so the design reads at a glance. A chunk that can be walked straight through fails here.
+## THE BRIDGE, played: a GENERATED chunk skeleton (graded by the report card) built as a REAL walkable room —
+## real sentries, real LOS detection, real flure dwell — and played end-to-end through the data layer. Proves
+## the whole pipeline: seed -> graded sketch -> real room -> the gate holds (exposed = caught, swept to START
+## per P11) -> the solve works per stage -> complete. A broken bridge (skeleton geometry that doesn't play,
+## detection that doesn't match the sketch's walls) fails HERE, not in a shipped level.
+func _test_generated_atom_playable() -> void:
+	_test_name = "Generated Atom Playable"
+	var inst = await _instantiate_preview_chunk_and_wait("puzzle_atom", 4)
+	if inst == null:
+		_assert_true(false, "puzzle_atom preview instantiates")
+		return
+	var chunk = inst._active_chunk
+	var gs = inst._game_state
+	_assert_true(chunk != null and gs != null, "the generated atom chain boots in the shared preview")
+	var st: Dictionary = chunk.get_preview_state()
+	_assert_true(bool(st["skeleton_ok"]), "the SAME skeleton the room was built from grades SHIPPABLE (provenance)")
+	_assert_equals(int((st["stages"] as Array).size()), 2, "two generated stages, two real sentries")
+	var anchors: Dictionary = chunk.get_preview_anchors()
+	var spawn_x: float = gs.get_position("peris").x
+
+	# --- Stage 1, the gate is real: walk straight for the end -> spotted in lane 0 -> swept to START. ---
+	gs.command_move_to_pos("peris", anchors["end"])
+	inst.headless_advance(14.0, 0.1)
+	st = chunk.get_preview_state()
+	print("  [atom] exposed: caught=%d complete=%s peris.x=%.1f" % [int(st["caught_count"]), str(st["complete"]), gs.get_position("peris").x])
+	_assert_true(int(st["caught_count"]) >= 1, "walking straight through a GENERATED watched gap gets you caught")
+	_assert_true(not bool(st["complete"]), "no free walkthrough of a generated chain")
+	_assert_true(absf(gs.get_position("peris").x - spawn_x) < 3.0, "the catch swept her back to the START (P11: the bottom)")
+	inst.headless_advance(4.0, 0.1)
+
+	# --- Stage 1 solve: tend flure 0, retreat to the conceal pocket, cross while the sentry is away. ---
+	var flure0 = chunk.find_child("AtomFlure0", true, false)
+	_assert_true(flure0 != null, "generated flure 0 exists")
+	gs.command_move_to_pos("peris", anchors["flure_0"])
+	inst.headless_advance(6.0, 0.1)
+	flure0.active_character = "peris"
+	flure0.on_interaction_arrived()
+	inst.headless_advance(float(flure0.dwell_time) + 0.4, 0.1)
+	st = chunk.get_preview_state()
+	_assert_true(bool((st["stages"] as Array)[0]["lure_active"]), "flure 0 sings")
+	gs.command_move_to_pos("peris", anchors["conceal_0"])
+	var lured0 := false
+	for k in range(30):
+		inst.headless_advance(0.5, 0.1)
+		if gs.get_position("atom_sentry_0").x < float(anchors["post_0"].x) - 2.0:
+			lured0 = true
+			break
+	_assert_true(lured0, "sentry 0 commits off its watch")
+	var caught_before := int(chunk.get_preview_state()["caught_count"])
+	# Cross lane 0 straight to flure 1 (sentry 0 is committed west; the flure pocket sits outside every
+	# re-armed watch strip, so arriving there is safe even after sentry 0 walks home).
+	gs.command_move_to_pos("peris", anchors["flure_1"])
+	inst.headless_advance(10.0, 0.1)
+	st = chunk.get_preview_state()
+	print("  [atom] stage-1 cross: caught=%d (was %d) peris=%s" % [int(st["caught_count"]), caught_before, str(gs.get_position("peris"))])
+	_assert_equals(int(st["caught_count"]), caught_before, "crossing lane 0 while sentry 0 is lured is safe")
+
+	# --- Stage 2 solve: tend flure 1, fall back clear of the settle, cross to the END. ---
+	var flure1 = chunk.find_child("AtomFlure1", true, false)
+	_assert_true(flure1 != null, "generated flure 1 exists")
+	flure1.active_character = "peris"
+	flure1.on_interaction_arrived()
+	inst.headless_advance(float(flure1.dwell_time) + 0.4, 0.1)
+	st = chunk.get_preview_state()
+	_assert_true(bool((st["stages"] as Array)[1]["lure_active"]), "flure 1 sings")
+	# Fall back north-east: out of the arriving sentry's shrunken reach AND off the watched mid-row strips.
+	gs.command_move_to_pos("peris", anchors["flure_1"] + Vector3(3.0, 0.0, 3.0))
+	var lured1 := false
+	for k in range(30):
+		inst.headless_advance(0.5, 0.1)
+		if gs.get_position("atom_sentry_1").x < float(anchors["post_1"].x) - 2.0:
+			lured1 = true
+			break
+	_assert_true(lured1, "sentry 1 commits off its watch")
+	var caught_mid := int(chunk.get_preview_state()["caught_count"])
+	gs.command_move_to_pos("peris", anchors["end"])
+	inst.headless_advance(14.0, 0.1)
+	st = chunk.get_preview_state()
+	print("  [atom] finish: complete=%s caught=%d (was %d)" % [str(st["complete"]), int(st["caught_count"]), caught_mid])
+	_assert_true(bool(st["complete"]), "the GENERATED chain plays to complete through the data layer")
+	_assert_equals(int(st["caught_count"]), caught_mid, "the legal two-stage solve finishes uncaught")
+	inst.queue_free()
+	await get_tree().process_frame
+
 ## Principle-driven GENERATION BATCH: generate a seeded spread of chunk atoms + nested compositions, grade
 ## each against the machine-checkable principles (report_card), print the ASCII + cards for eyeballing, and
 ## ASSERT the proven invariants — every piece is gated (P8), lock-before-key holds (research), the honesty
