@@ -96,9 +96,13 @@ func _build_distract_stage(i: int, gt: Dictionary) -> void:
 			"Tend", [mesh], "peris", FLURE_TEND, false, FLURE_PICK_RADIUS, Interactable.InteractableType.TIMED_ACTION)
 		flure.interacted.connect(func() -> void: activate_lure(i))
 		st["flure_mesh"] = mesh
-		# The lured sentry parks two cells SOUTH of the flure: clear of the tender standing at it (outside
-		# the 0.4x distracted reach) AND off the north-east retreat diagonal.
-		st["settle"] = f_pos + Vector3(0.0, 0.5, 2.0 * CELL)
+		# The lured sentry parks two cells INTERIOR of the flure pocket (toward the chamber center):
+		# clear of the tender standing at it (3.0wu > the 0.4x distracted reach) and off the retreat
+		# diagonals. Direction matters — the pocket flips N/S by seed, and a fixed "south" offset from a
+		# SOUTH pocket lands outside the room; the move then snaps back beside the flure and the lured
+		# sentry parks on top of the tender (found by the analytic playtest on a flipped seed).
+		var interior := -1.0 if f_pos.z > 0.0 else 1.0
+		st["settle"] = f_pos + Vector3(0.0, 0.5, interior * 2.0 * CELL)
 	# Sentries. The FIRST is the lure target (twin's north watcher); a patrol sentry walks its beat.
 	var gs = _get_game_state()
 	for k in range(s_cells.size()):

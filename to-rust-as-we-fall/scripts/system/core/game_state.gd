@@ -1400,6 +1400,42 @@ func _get_movement_segments(id: String) -> Array[Dictionary]:
 	})
 	return segments
 
+## ANALYTIC WAITING — the reason the scheduler architecture exists. Position is a pure function of the
+## tick, so "when is `id` first within `radius` of `point`?" is SOLVED from its current movement plan, not
+## discovered by polling. Tests jump the scheduler exactly to the returned tick (identical to waiting,
+## none of the cost), and the WHEN register reads the same number diegetically (a patrol gate's TRACE =
+## this query against the sentry's beat). Returns the absolute tick, or -1.0 if the CURRENT plan never
+## comes that close (a future plan — the next patrol leg, a new command — needs a re-ask after it exists).
+func predict_proximity_tick(id: String, point: Vector3, radius: float) -> float:
+	if not characters.has(id) or scheduler == null:
+		return -1.0
+	var now: float = scheduler.get_current_tick()
+	var target := Vector3(point.x, 0.0, point.z)
+	for seg in _get_movement_segments(id):
+		var t0: float = maxf(float(seg["start_tick"]), now)
+		var t1: float = float(seg["end_tick"])
+		if t0 >= t1:
+			continue
+		var p0: Vector3 = (seg["start_pos"] as Vector3) + (seg["velocity"] as Vector3) * (t0 - float(seg["start_tick"]))
+		var tau := _solve_quadratic_detection(p0, seg["velocity"], target, Vector3.ZERO, radius, t1 - t0)
+		if tau >= 0.0:
+			return t0 + tau
+	return -1.0
+
+## The tick the current movement plan ARRIVES (its last waypoint), or now if parked. The analytic form of
+## "wait until they get there".
+func get_plan_end_tick(id: String) -> float:
+	if not characters.has(id) or scheduler == null:
+		return -1.0
+	var now: float = scheduler.get_current_tick()
+	var ch: Dictionary = characters[id]
+	if ch.movement == null:
+		return now
+	var mv: Dictionary = ch.movement
+	if mv.has("arrival_ticks"):
+		return maxf(float(mv.arrival_ticks[mv.arrival_ticks.size() - 1]), now)
+	return maxf(float(mv.start_tick) + float(mv.duration), now)
+
 # --- Dodge Roll ---
 
 const DODGE_DISTANCE := 3.0

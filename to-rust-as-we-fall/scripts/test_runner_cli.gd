@@ -13273,6 +13273,28 @@ func _branch_shapes(branches: Array) -> Array:
 ## THE CHUNK ATOM: a chunk = start + end + a puzzle-GATE you must solve, made of nested archetypes. Generates one
 ## per archetype, PROVES the invariant (flood-fill: locked BLOCKS start->end, solving OPENS it), and PRINTS each as
 ## ASCII so the design reads at a glance. A chunk that can be walked straight through fails here.
+## Architecture-native waiting: the scheduler exists so tests can JUMP to the tick where a condition
+## becomes true instead of polling toward it — identical outcome (position is a pure function of the
+## tick), none of the wall-clock cost. While the subject's CURRENT plan never satisfies the condition
+## (e.g. a patrol leg not yet issued), advance one coarse slice so scheduled behaviors plan the next leg,
+## then re-ask. The same predict_proximity_tick is the WHEN register's diegetic read.
+func _advance_to_proximity(inst: Node, gs, id: String, point: Vector3, radius: float, max_seconds: float) -> bool:
+	var spent := 0.0
+	while spent < max_seconds:
+		var t: float = gs.predict_proximity_tick(id, point, radius)
+		var now: float = gs.scheduler.get_current_tick()
+		if t >= 0.0:
+			inst.headless_advance(maxf(t - now, 0.0) + 0.1, 0.1)
+			return true
+		inst.headless_advance(1.0, 0.1)
+		spent += 1.0
+	return false
+
+func _advance_to_arrival(inst: Node, gs, id: String, pad := 0.3) -> void:
+	var t: float = gs.get_plan_end_tick(id)
+	var now: float = gs.scheduler.get_current_tick()
+	inst.headless_advance(maxf(t - now, 0.0) + pad, 0.1)
+
 ## THE BRIDGE, played: a GENERATED chunk skeleton (graded by the report card) built as a REAL walkable room —
 ## real sentries, real LOS detection, real flure dwell — and played end-to-end through the data layer. Proves
 ## the whole pipeline: seed -> graded sketch -> real room -> the gate holds (exposed = caught, swept to START
@@ -13294,9 +13316,11 @@ func _test_generated_atom_playable() -> void:
 	var anchors: Dictionary = chunk.get_preview_anchors()
 	var spawn_x: float = gs.get_position("peris").x
 
-	# --- Stage 1, the gate is real: walk straight for the end -> spotted in lane 0 -> swept to START. ---
+	# --- Stage 1, the gate is real: walk straight for the end -> spotted in lane 0 -> swept to START.
+	#     The catch tick is PREDICTED (first proximity to the sentry watch radius), not polled toward. ---
 	gs.command_move_to_pos("peris", anchors["end"])
-	inst.headless_advance(14.0, 0.1)
+	_advance_to_proximity(inst, gs, "peris", anchors["post_0"], float(chunk.SENTRY_RANGE), 20.0)
+	inst.headless_advance(1.5, 0.1)
 	st = chunk.get_preview_state()
 	print("  [atom] exposed: caught=%d complete=%s peris.x=%.1f" % [int(st["caught_count"]), str(st["complete"]), gs.get_position("peris").x])
 	_assert_true(int(st["caught_count"]) >= 1, "walking straight through a GENERATED watched gap gets you caught")
@@ -13308,25 +13332,24 @@ func _test_generated_atom_playable() -> void:
 	var flure0 = chunk.find_child("AtomFlure0", true, false)
 	_assert_true(flure0 != null, "generated flure 0 exists")
 	gs.command_move_to_pos("peris", anchors["flure_0"])
-	inst.headless_advance(6.0, 0.1)
+	_advance_to_arrival(inst, gs, "peris")
 	flure0.active_character = "peris"
 	flure0.on_interaction_arrived()
 	inst.headless_advance(float(flure0.dwell_time) + 0.4, 0.1)
 	st = chunk.get_preview_state()
 	_assert_true(bool((st["stages"] as Array)[0]["lure_active"]), "flure 0 sings")
-	gs.command_move_to_pos("peris", anchors["conceal_0"])
-	var lured0 := false
-	for k in range(30):
-		inst.headless_advance(0.5, 0.1)
-		if gs.get_position("atom_sentry_0").x < float(anchors["post_0"].x) - 2.0:
-			lured0 = true
-			break
-	_assert_true(lured0, "sentry 0 commits off its watch")
+	# STAND AT THE FLURE and jump to the sentry settle-parked tick: the bridge parks the lured sentry
+	# 2 cells south of the flure (3.0wu > its 1.6 distracted reach), so the tender is safe where she
+	# stands — no retreat detour needed (a detour to the opposite pocket crosses the sentry transit
+	# row, the settle-path lesson again). The jump IS the wait, at zero polling cost.
+	var settle0: Vector3 = anchors["flure_0"] + Vector3(0.0, 0.0, (-2.0 if float(anchors["flure_0"].z) > 0.0 else 2.0) * float(chunk.CELL))
+	var lured0 := _advance_to_proximity(inst, gs, "atom_sentry_0", settle0, 2.2, 12.0)
+	_assert_true(lured0, "sentry 0 commits off its watch (parked at its settle)")
 	var caught_before := int(chunk.get_preview_state()["caught_count"])
 	# Cross lane 0 straight to flure 1 (sentry 0 is committed west; the flure pocket sits outside every
 	# re-armed watch strip, so arriving there is safe even after sentry 0 walks home).
 	gs.command_move_to_pos("peris", anchors["flure_1"])
-	inst.headless_advance(10.0, 0.1)
+	_advance_to_arrival(inst, gs, "peris")
 	st = chunk.get_preview_state()
 	print("  [atom] stage-1 cross: caught=%d (was %d) peris=%s" % [int(st["caught_count"]), caught_before, str(gs.get_position("peris"))])
 	_assert_equals(int(st["caught_count"]), caught_before, "crossing lane 0 while sentry 0 is lured is safe")
@@ -13340,17 +13363,12 @@ func _test_generated_atom_playable() -> void:
 	st = chunk.get_preview_state()
 	_assert_true(bool((st["stages"] as Array)[1]["lure_active"]), "flure 1 sings")
 	# Fall back north-east: out of the arriving sentry's shrunken reach AND off the watched mid-row strips.
-	gs.command_move_to_pos("peris", anchors["flure_1"] + Vector3(3.0, 0.0, 3.0))
-	var lured1 := false
-	for k in range(30):
-		inst.headless_advance(0.5, 0.1)
-		if gs.get_position("atom_sentry_1").x < float(anchors["post_1"].x) - 2.0:
-			lured1 = true
-			break
-	_assert_true(lured1, "sentry 1 commits off its watch")
+	var settle1: Vector3 = anchors["flure_1"] + Vector3(0.0, 0.0, (-2.0 if float(anchors["flure_1"].z) > 0.0 else 2.0) * float(chunk.CELL))
+	var lured1 := _advance_to_proximity(inst, gs, "atom_sentry_1", settle1, 2.2, 12.0)
+	_assert_true(lured1, "sentry 1 commits off its watch (parked at its settle)")
 	var caught_mid := int(chunk.get_preview_state()["caught_count"])
 	gs.command_move_to_pos("peris", anchors["end"])
-	inst.headless_advance(14.0, 0.1)
+	_advance_to_arrival(inst, gs, "peris", 0.6)
 	st = chunk.get_preview_state()
 	print("  [atom] finish: complete=%s caught=%d (was %d)" % [str(st["complete"]), int(st["caught_count"]), caught_mid])
 	_assert_true(bool(st["complete"]), "the GENERATED chain plays to complete through the data layer")
@@ -13379,24 +13397,18 @@ func _test_generated_atom_playable() -> void:
 	var a2: Dictionary = chunk2.get_preview_anchors()
 	var post0: Vector3 = a2["post_0"]
 	var cell2: float = float(chunk2.CELL)
-	# Read the beat from a safe staging, cross in the look-away, straight to the END (last chamber).
+	# Read the beat ANALYTICALLY: jump the scheduler to the tick the sentry reaches its FAR waypoint
+	# (predict_proximity_tick — the same number Aster TRACE would name), then cross in the look-away.
 	gs2.command_move_to_pos("peris", Vector3(post0.x - 3.5 * cell2, 0.5, post0.z - cell2))
-	inst2.headless_advance(8.0, 0.1)
-	var prev_z: float = gs2.get_position("atom_sentry_0").z
-	var crossed := false
-	for k in range(240):
-		inst2.headless_advance(0.25, 0.05)
-		var z: float = gs2.get_position("atom_sentry_0").z
-		var away: float = z - post0.z
-		if z > prev_z + 0.01 and away > 1.2 * cell2 and away < 2.2 * cell2:
-			gs2.command_move_to_pos("peris", a2["end"])
-			inst2.headless_advance(8.0, 0.1)
-			crossed = true
-			break
-		prev_z = z
+	_advance_to_arrival(inst2, gs2, "peris")
+	var far_point := Vector3(post0.x, 0.5, post0.z + 3.0 * cell2)
+	var crossed := _advance_to_proximity(inst2, gs2, "atom_sentry_0", far_point, 0.8, 20.0)
+	if crossed:
+		gs2.command_move_to_pos("peris", a2["end"])
+		_advance_to_arrival(inst2, gs2, "peris", 0.6)
 	st2 = chunk2.get_preview_state()
 	print("  [atom-patrol] crossed=%s complete=%s caught=%d" % [str(crossed), str(st2["complete"]), int(st2["caught_count"])])
-	_assert_true(crossed, "the patrol beat can be READ (the window condition fires)")
+	_assert_true(crossed, "the patrol beat can be READ analytically (the window tick is predicted, not polled)")
 	_assert_true(bool(st2["complete"]), "the patrol gate is crossed in its look-away — a pure timing solve, no flure spent")
 	_assert_equals(int(st2["caught_count"]), 0, "a well-timed patrol cross is uncaught")
 	inst2.queue_free()
@@ -13419,7 +13431,8 @@ func _test_generated_atom_playable() -> void:
 	var spawn_x3: float = gs3.get_position("peris").x
 	# The wrong gap bites: head for the SOUTH gap — its watcher is never lured.
 	gs3.command_move_to_pos("peris", Vector3(south_post.x + 2.0 * cell3, 0.5, south_post.z))
-	inst3.headless_advance(12.0, 0.1)
+	_advance_to_proximity(inst3, gs3, "peris", south_post, float(chunk3.SENTRY_RANGE), 20.0)
+	inst3.headless_advance(1.5, 0.1)
 	st3 = chunk3.get_preview_state()
 	print("  [atom-twin] wrong gap: caught=%d peris.x=%.1f" % [int(st3["caught_count"]), gs3.get_position("peris").x])
 	_assert_equals(int(st3["caught_count"]), 1, "crossing the twin's SOUTH gap bites — its watcher is never lured")
@@ -13429,7 +13442,7 @@ func _test_generated_atom_playable() -> void:
 	var flure3 = chunk3.find_child("AtomFlure0", true, false)
 	_assert_true(flure3 != null, "the twin's flure exists")
 	gs3.command_move_to_pos("peris", a3["flure_0"])
-	inst3.headless_advance(7.0, 0.1)
+	_advance_to_arrival(inst3, gs3, "peris")
 	flure3.active_character = "peris"
 	flure3.on_interaction_arrived()
 	inst3.headless_advance(float(flure3.dwell_time) + 0.4, 0.1)
@@ -13438,19 +13451,13 @@ func _test_generated_atom_playable() -> void:
 	# to a staging just west of the north gap. (The settle-south offset lands ON the twin's own gap row,
 	# so a south retreat walks into the arriving watcher: the settle-path lesson, twin edition.)
 	gs3.command_move_to_pos("peris", Vector3(north_post.x - 1.5 * cell3, 0.5, north_post.z - 0.5))
-	inst3.headless_advance(3.0, 0.1)
-	var lured_n := false
-	for k in range(12):
-		inst3.headless_advance(0.5, 0.1)
-		if gs3.get_position("atom_sentry_0").x < north_post.x - 2.0:
-			lured_n = true
-			break
+	var lured_n := _advance_to_proximity(inst3, gs3, "atom_sentry_0", a3["flure_0"], 4.0, 10.0)
 	_assert_true(lured_n, "the NORTH watcher commits to the flure")
 	var caught_pre_end := int(chunk3.get_preview_state()["caught_count"])
 	gs3.command_move_to_pos("peris", Vector3(north_post.x + 1.5 * cell3, 0.5, north_post.z - 0.5))
-	inst3.headless_advance(4.0, 0.1)
+	_advance_to_arrival(inst3, gs3, "peris")
 	gs3.command_move_to_pos("peris", a3["end"])
-	inst3.headless_advance(8.0, 0.1)
+	_advance_to_arrival(inst3, gs3, "peris", 0.6)
 	st3 = chunk3.get_preview_state()
 	print("  [atom-twin] finish: complete=%s caught=%d (was %d)" % [str(st3["complete"]), int(st3["caught_count"]), caught_pre_end])
 	_assert_true(bool(st3["complete"]), "the twin solves through the RIGHT gap while its watcher is lured")
