@@ -18130,6 +18130,9 @@ func _test_event_log_mutation_audit() -> void:
 		"get_time_of_day", "get_game_day", "get_day_phase", "is_rest_deprived",
 		# Floral network: pure queries over the flora registry (the commands emit).
 		"get_flora_stage", "get_flora_light_radius", "get_flora_network",
+		# Analytic time queries: pure solves over the current movement plan (position is a function of
+		# the tick) — the WHEN register's read and the tests' jump-to-tick waiting. Mutate nothing.
+		"predict_proximity_tick", "get_plan_end_tick",
 		# Push/field-restore: queries + cancellations of DERIVED plans (the underlying logged
 		# command replays; a cancel always rides a logged superseding action in real play).
 		"plan_push_for", "is_pushing", "cancel_push", "cancel_field_restore",
