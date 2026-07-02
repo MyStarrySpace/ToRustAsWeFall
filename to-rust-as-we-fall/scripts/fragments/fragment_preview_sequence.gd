@@ -89,7 +89,9 @@ const PREVIEW_ENTRIES := [
 	# PROCEDURAL ROGUELIKE: generate a fresh stretch on load and, each time the party rests at the exit shelter,
 	# descend — regenerate the next level (deeper seed, escalating tier) and reload. The fragment loader IS the
 	# roguelike driver; no separate scene.
-	{"id": "roguelike", "chunk": "generated_stretch", "title": "Roguelike Run (procedural)", "stage": 6,
+	{"id": "roguelike", "chunk": "puzzle_atom", "title": "Roguelike Run (atom chains)", "stage": 6,
+		"config": {"roguelike": true, "levels": "atom", "seed": 1}},
+	{"id": "roguelike_wfc", "chunk": "generated_stretch", "title": "Roguelike Run (WFC stretches)", "stage": 6,
 		"config": {"roguelike": true, "seed": 1}},
 ]
 
@@ -535,7 +537,8 @@ func _apply_preview_entry(entry: Dictionary) -> void:
 	# Roguelike entry: start a RunSession and point the chunk config at its opening level.
 	if bool(preview_chunk_config.get("roguelike", false)):
 		_roguelike_active = true
-		_run_session = RunSession.new(int(preview_chunk_config.get("seed", 1)))
+		_run_session = RunSession.new(int(preview_chunk_config.get("seed", 1)),
+			str(preview_chunk_config.get("levels", RunSession.LEVELS_STRETCH)))
 		_run_session.start()
 		_roguelike_sync_config()
 
@@ -544,6 +547,21 @@ func _roguelike_sync_config() -> void:
 	if _run_session == null or not bool(_run_session.spec.get("success", false)):
 		show_preview_message("Roguelike generation failed.", 6.0)
 		return
+	if str(_run_session.spec.get("kind", "")) == "atom":
+		# Atom-chain level: the chunk regenerates the SAME graded skeleton from (stages, seed) and lays it
+		# on the run's hub shape — the report card the session already checked is the level's provenance.
+		preview_chunk = "puzzle_atom"
+		preview_chunk_config = {
+			"stages": (_run_session.spec.get("stages", []) as Array).duplicate(),
+			"seed": int(_run_session.spec.get("seed", 0)),
+			"hub_shape": (_run_session.spec.get("hub_shape", {}) as Dictionary).duplicate(true),
+			"roguelike": true,
+		}
+		scene_title_override = "Roguelike — Depth %d (%d gates, %s)" % [_run_session.depth + 1,
+			(_run_session.spec.get("stages", []) as Array).size(),
+			str((_run_session.spec.get("hub_shape", {}) as Dictionary).get("type", "flat"))]
+		return
+	preview_chunk = "generated_stretch"
 	preview_chunk_config = {"spec": _run_session.spec, "roguelike": true}
 	var tier := str(_run_session.spec.get("source", {}).get("complexity_tier", "teaching"))
 	scene_title_override = "Roguelike — Depth %d (%s)" % [_run_session.depth + 1, tier]

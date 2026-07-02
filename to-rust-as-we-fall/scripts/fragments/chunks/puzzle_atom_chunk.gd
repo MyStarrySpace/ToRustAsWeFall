@@ -24,6 +24,9 @@ const LURE_DURATION := 20.0
 const FLURE_TEND := 2.0
 const FLURE_PICK_RADIUS := 1.0
 const WIN_POLL_INTERVAL := 0.1
+const BASE_N := 4                  # base-pad width in cells: the run ENTRY floor, west of chamber 0. On a
+                                   # hub shape this is the shape flat centre floor (HubShapeCoordMap s<0);
+                                   # flat it is a simple pad. The shelter BEFORE sits here; the party spawns here.
 
 var _def: Dictionary = {}          # the regenerated skeleton (graded + built from the SAME data)
 var _card: Dictionary = {}         # its principle report card, kept for provenance
@@ -32,11 +35,18 @@ var _phase := "ready"
 var _caught_count := 0
 var _config_stages: Array = ["distract", "distract"]
 var _config_seed := 7
+var _hub_shape: Dictionary = {}    # optional macro shape ({type: circle|rect|hexagon|triangle|polygon,...});
+                                   # empty = flat. DATA stays flat either way (one truth); visuals warp.
+var _descent_per_turn := 2.0
+var _coord_map = null
+var _shelter_rested := false
 
 func configure_chunk(config: Dictionary) -> void:
 	if config.has("stages"):
 		_config_stages = (config["stages"] as Array).duplicate()
 	_config_seed = int(config.get("seed", _config_seed))
+	_hub_shape = (config.get("hub_shape", {}) as Dictionary).duplicate(true)
+	_descent_per_turn = float(config.get("descent_per_turn", _descent_per_turn))
 
 # --- Build: skeleton -> real room -------------------------------------------------------------------------------
 
@@ -45,24 +55,98 @@ func _build_chunk() -> void:
 	_card = ChunkGen.report_card(_def)
 	var w := int(_def["w"])
 	var h := int(_def["h"])
-	# One floor slab under everything (collision, so clicks land).
-	_add_floor(self, Vector3(w * CELL * 0.5, -0.05, 0.0), Vector3(w * CELL, 0.1, h * CELL), Color(0.09, 0.1, 0.12))
-	# Walls per skeleton cell.
+	var mid := h / 2
+	var warped := not _hub_shape.is_empty()
+	# Floors. Flat: two slabs (skeleton + base). Warped: PER-CELL tiles so each seats onto the deck.
+	if warped:
+		for cellv in _walkable_world_cells():
+			var wp: Vector3 = cellv
+			_add_floor(self, Vector3(wp.x, -0.05, wp.z), Vector3(CELL, 0.1, CELL), Color(0.09, 0.1, 0.12))
+	else:
+		_add_floor(self, Vector3(w * CELL * 0.5, -0.05, 0.0), Vector3(w * CELL, 0.1, h * CELL), Color(0.09, 0.1, 0.12))
+		_add_floor(self, Vector3(-BASE_N * CELL * 0.5, -0.05, 0.0), Vector3(BASE_N * CELL, 0.1, h * CELL), Color(0.08, 0.1, 0.11))
+	# Walls per skeleton cell — with a DOORWAY carved at chamber 0 west border (rows mid±1) so the base
+	# connects to the level (the shelter BEFORE connects to the base; the base connects to the start).
 	var grid: Dictionary = _def["grid"]
 	for c in grid.keys():
 		if str(grid[c]) == ChunkGen.SYM_WALL:
+			var cv := c as Vector2i
+			if cv.x == 0 and absi(cv.y - mid) <= 1:
+				continue
 			var p := _world(c)
 			_add_box(self, Vector3(p.x, 1.4, p.z), Vector3(CELL, 2.8, CELL), Color(0.06, 0.06, 0.08))
-	_add_label(self, "START", _world(_def["start"]) + Vector3(0, 1.8, 0), Color(0.5, 0.8, 0.6))
+	# The base pad: entry-shelter marker + spawn ground.
+	var base_c := Vector3(-BASE_N * CELL * 0.5, 0.5, 0.0)
+	_add_box(self, Vector3(base_c.x, 0.02, 0.0), Vector3(CELL * 1.6, 0.04, CELL * 1.6), Color(0.14, 0.2, 0.17))
+	_add_label(self, "ENTRY SHELTER", base_c + Vector3(0, 1.8, 0), Color(0.5, 0.8, 0.6))
 	_add_label(self, "END", _world(_def["end"]) + Vector3(0, 1.8, 0), Color(0.85, 0.8, 0.5))
-	# Stages: refuse anything the bridge can't build for REAL (the honesty ledger at build time).
+	# Stages: refuse anything the bridge cannot build for REAL (the honesty ledger at build time).
 	var gates: Array = _def["gates"]
 	for i in range(gates.size()):
 		var gt: Dictionary = gates[i]
 		if str(gt["arch"]) != "distract":
-			push_error("puzzle_atom_chunk: stage %d archetype '%s' has no REAL bridge build yet — refuse, never fake" % [i, str(gt["arch"])])
+			push_error("puzzle_atom_chunk: stage %d archetype has no REAL bridge build yet (%s) — refuse, never fake" % [i, str(gt["arch"])])
 			continue
 		_build_distract_stage(i, gt)
+	_build_exit_shelter()
+	if warped:
+		_apply_hub_warp()
+
+## Every walkable DATA cell world centre (base + doorway + skeleton floor) — the per-cell floor set.
+func _walkable_world_cells() -> Array:
+	var out: Array = []
+	var h := int(_def["h"])
+	var mid := h / 2
+	var grid: Dictionary = _def["grid"]
+	for c in grid.keys():
+		var cv := c as Vector2i
+		if str(grid[c]) != ChunkGen.SYM_WALL or (cv.x == 0 and absi(cv.y - mid) <= 1):
+			out.append(_world(cv))
+	for bx in range(1, BASE_N):
+		for by in range(1, h - 1):
+			out.append(Vector3((bx - BASE_N + 0.5) * CELL, 0.5, (float(by) - h * 0.5 + 0.5) * CELL))
+	return out
+
+## The run exit: a click-gated shelter at the END. Resting sets shelter_rested — the roguelike loader
+## descend contract (the same key generated_stretch exposes).
+func _build_exit_shelter() -> void:
+	var end_pos := _world(_def["end"])
+	var pad := _add_box(self, end_pos + Vector3(0, 0.1, 0), Vector3(1.2, 0.2, 1.2), Color(0.2, 0.28, 0.22), Color(0.3, 0.7, 0.45), 0.4, "AtomShelterPad")
+	var shelter := _add_object_interactable(self, "AtomExitShelter", "Shelter", end_pos + Vector3(0, 0.1, 0),
+		"Rest", [pad], "", 0.0, true, 1.2, Interactable.InteractableType.INSPECTION)
+	shelter.interacted.connect(_on_shelter_rested)
+
+func _on_shelter_rested() -> void:
+	if _shelter_rested:
+		return
+	_shelter_rested = true
+	_phase = "complete"
+	_show_note("Rested at the shelter. The descent continues.", 2.5)
+	_set_preview_step("atom_shelter_rested")
+
+## Lay the level onto the hub shape: the SAME warp discipline as the generated stretch — data stays flat
+## (grid/detection/analytic queries untouched: one truth), every visual child re-seats via to_xform, the
+## interactable zones + outline hulls ride warp_interactables_onto_coord_map, and the host installs the
+## coord_map so character render + the click inverse run through the same transform. The base cells map to
+## the shape flat centre floor (HubShapeCoordMap base region); the chain wraps the perimeter.
+func _apply_hub_warp() -> void:
+	_coord_map = HubShapeCoordMap.from_grid(get_grid_data(), _hub_shape, 0.0, _descent_per_turn, 0.5, BASE_N)
+	for child in get_children():
+		if child is Interactable or child is OutlineSurfaceTarget:
+			continue   # warp_interactables_onto_coord_map owns these (meta-based, no double-warp)
+		if child.has_method("get_state") and "char_id" in child:
+			continue   # enemies render through GameState.get_render_position — already warp-aware
+		_warp_child(child)
+	warp_interactables_onto_coord_map(_coord_map)
+
+func _warp_child(child: Node) -> void:
+	if not (child is Node3D):
+		return
+	var n3 := child as Node3D
+	n3.transform = _coord_map.to_xform(n3.position) * Transform3D(n3.basis, Vector3.ZERO)
+
+func get_coord_map():
+	return _coord_map
 
 func _build_distract_stage(i: int, gt: Dictionary) -> void:
 	var variant := str(gt.get("variant", "lure"))
@@ -130,6 +214,18 @@ func _build_distract_stage(i: int, gt: Dictionary) -> void:
 		(st["sentries"] as Array).append({"cid": cid, "enemy": enemy, "post": post, "waypoints": waypoints})
 	_stages.append(st)
 
+## The roguelike reload frees this chunk while the preview's SCHEDULER lives on — every self-re-arming
+## callback (the win poll) and pending stage tag must be cancelled here or they fire on a freed instance.
+func _exit_tree() -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	sched.cancel_tag("atom_win")
+	for st in _stages:
+		var i := int(st["idx"])
+		sched.cancel_tag("atom_lure_%d" % i)
+		sched.cancel_tag("atom_catch_%d" % i)
+
 func _ready_arrival_hook() -> void:
 	var gs = _get_game_state()
 	if gs != null and not gs.character_arrived.is_connected(_on_character_arrived):
@@ -144,16 +240,24 @@ func _world(c: Vector2i) -> Vector3:
 func get_grid_data() -> Dictionary:
 	var w := int(_def["w"])
 	var h := int(_def["h"])
+	var mid := h / 2
 	var cells: Array = []
 	var grid: Dictionary = _def["grid"]
 	for c in grid.keys():
-		if str(grid[c]) != ChunkGen.SYM_WALL:
-			cells.append([(c as Vector2i).x, (c as Vector2i).y])
+		var cv := c as Vector2i
+		var is_door: bool = cv.x == 0 and absi(cv.y - mid) <= 1
+		if str(grid[c]) != ChunkGen.SYM_WALL or is_door:
+			cells.append([cv.x + BASE_N, cv.y])
+	# The base pad (west of the doorway): the run entry floor. Index space shifts +BASE_N; the origin
+	# shifts west the same amount, so skeleton WORLD positions are unchanged (one authoring frame).
+	for bx in range(1, BASE_N):
+		for by in range(1, h - 1):
+			cells.append([bx, by])
 	return {
 		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
-		"origin": [0.0, 0.0, -h * 0.5 * CELL],
+		"origin": [-BASE_N * CELL, 0.0, -h * 0.5 * CELL],
 		"cell_size": CELL,
-		"width": w,
+		"width": w + BASE_N,
 		"height": h,
 		"walkable_cells": cells,
 	}
@@ -323,11 +427,12 @@ func get_default_character() -> String:
 	return "peris"
 
 func get_spawn_positions() -> Dictionary:
-	var s := _world(_def["start"])
+	# The party wakes on the BASE (the entry-shelter floor), west of the doorway into chamber 0.
+	var s := Vector3(-BASE_N * CELL * 0.5, 0.5, 0.0)
 	return {
-		"aster": s + Vector3(-0.4, 0.0, -0.9),
-		"peris": s,
-		"endo": s + Vector3(-0.4, 0.0, 0.9),
+		"aster": s + Vector3(-0.5, 0.0, -1.0),
+		"peris": s + Vector3(0.4, 0.0, 0.0),
+		"endo": s + Vector3(-0.5, 0.0, 1.0),
 	}
 
 func get_preview_anchors() -> Dictionary:
@@ -347,6 +452,7 @@ func reset_preview_state() -> void:
 	_ready_arrival_hook()
 	_phase = "ready"
 	_caught_count = 0
+	_shelter_rested = false
 	var sched = _get_scheduler()
 	for st in _stages:
 		var i := int(st["idx"])
@@ -385,6 +491,8 @@ func get_preview_state() -> Dictionary:
 		"caught_count": _caught_count,
 		"stages": stages_out,
 		"complete": _phase == "complete",
+		"shelter_rested": _shelter_rested,
+		"hub_shape": str(_hub_shape.get("type", "flat")),
 		"skeleton_ok": bool(_card.get("ok", false)),
 		"skeleton_card": _card,
 	}

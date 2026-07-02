@@ -372,6 +372,9 @@ func _ready() -> void:
 			"--test-generated-atom-playable":
 				ran_test = true
 				await _test_generated_atom_playable()
+			"--test-roguelike-atom-run":
+				ran_test = true
+				await _test_roguelike_atom_run()
 			"--test-hub-shapes":
 				ran_test = true
 				await _test_hub_shapes()
@@ -1161,6 +1164,7 @@ func _run_all_tests() -> void:
 	await _test_chunk_atoms()
 	_test_chunk_batch()
 	await _test_generated_atom_playable()
+	await _test_roguelike_atom_run()
 	await _test_stretch_branches()
 	await _test_hub_shapes()
 	await _test_hub_base_playable()
@@ -3009,14 +3013,22 @@ func _test_roguelike_run() -> void:
 	_test_name = "Roguelike Run"
 	# The procedural roguelike is driven from the fragment loader: a preview entry on the generated_stretch chunk.
 	var found := false
+	var found_wfc := false
 	for e in FragmentPreviewScript.PREVIEW_ENTRIES:
 		if str((e as Dictionary).get("id", "")) == "roguelike":
 			found = true
-			_assert_equals(str((e as Dictionary).get("chunk", "")), "generated_stretch",
-				"roguelike entry drives the generated_stretch chunk")
+			_assert_equals(str((e as Dictionary).get("chunk", "")), "puzzle_atom",
+				"the roguelike entry drives ATOM-CHAIN levels (the new system)")
+			_assert_equals(str(((e as Dictionary).get("config", {}) as Dictionary).get("levels", "")), "atom",
+				"the roguelike entry runs the session in atom mode")
 			_assert_true(bool(((e as Dictionary).get("config", {}) as Dictionary).get("roguelike", false)),
 				"roguelike entry is flagged roguelike")
+		if str((e as Dictionary).get("id", "")) == "roguelike_wfc":
+			found_wfc = true
+			_assert_equals(str((e as Dictionary).get("chunk", "")), "generated_stretch",
+				"the WFC-stretch run mode stays available as roguelike_wfc")
 	_assert_true(found, "the fragment loader exposes a 'roguelike' preview entry")
+	_assert_true(found_wfc, "the fragment loader keeps the 'roguelike_wfc' entry")
 
 	# Each descend generates a fresh, connected, WFC level (the per-level guarantee of the run loop), with the
 	# tier escalating by depth — mirrors _roguelike_build_level.
@@ -3703,7 +3715,8 @@ func _test_roguelike_loader_descent() -> void:
 		inst.queue_free()
 		await tree.process_frame
 		return
-	_assert_equals(str(inst.get("preview_chunk")), "generated_stretch", "roguelike drives the generated_stretch chunk")
+	_assert_equals(str(inst.get("preview_chunk")), "puzzle_atom", "roguelike drives the puzzle_atom chunk (atom-chain levels)")
+	_assert_equals(str(session.spec.get("kind", "")), "atom", "the session serves atom levels")
 	_assert_equals(int(session.depth), 0, "the run starts at depth 0")
 	_assert_equals(session.roster, ["aster", "peris"], "the run starts with the shadow pair")
 	_assert_true(bool(session.spec.get("success", false)), "the opening level generated")
@@ -3740,8 +3753,10 @@ func _test_roguelike_loader_descent() -> void:
 	_assert_true(int(session.depth) > depth_before, "the descent advanced the depth")
 	_assert_true(str(session.spec.get("id", "")) != spec_before, "a new level was generated for the next depth")
 	var cfg: Dictionary = inst.get("preview_chunk_config")
-	_assert_equals(str((cfg.get("spec", {}) as Dictionary).get("id", "")), str(session.spec.get("id", "")),
-		"the reloaded chunk config points at the freshly generated level")
+	_assert_equals(int(cfg.get("seed", -1)), int(session.spec.get("seed", -2)),
+		"the reloaded chunk config points at the freshly generated level (seed)")
+	_assert_equals(str(cfg.get("stages", [])), str(session.spec.get("stages", [])),
+		"the reloaded chunk config carries the new level's stage list")
 	if who != "":
 		_assert_true((session.roster as Array).has(who), "the recruit branch added %s to the roster" % who)
 		_assert_equals((session.roster as Array).size(), roster_before + 1, "the roster grew by one on a recruit")
@@ -13273,6 +13288,112 @@ func _branch_shapes(branches: Array) -> Array:
 ## THE CHUNK ATOM: a chunk = start + end + a puzzle-GATE you must solve, made of nested archetypes. Generates one
 ## per archetype, PROVES the invariant (flood-fill: locked BLOCKS start->end, solving OPENS it), and PRINTS each as
 ## ASCII so the design reads at a glance. A chunk that can be walked straight through fails here.
+## THE ROGUELIKE, SERVED BY THE NEW SYSTEM: the run generates graded atom-chain skeletons (report card =
+## the playability gate), lays each on a seeded hub SHAPE with the base floor (entry shelter behind, exit
+## shelter at the end of the final stretch), and the loader flow (rest -> branch -> descend) runs on them.
+## Depth 0 is PLAYED end-to-end with analytic jumps — the whole loop in seconds, same outcomes as waiting.
+func _test_roguelike_atom_run() -> void:
+	_test_name = "Roguelike Atom Run"
+	var Session = load("res://scripts/generation/run_session.gd")
+	# --- Session unit: scaling, honesty, reproducibility. ---
+	var s1 = Session.new(42, "atom")
+	s1.start()
+	_assert_equals(str(s1.spec.get("kind", "")), "atom", "atom mode serves atom levels")
+	_assert_true(s1.current_is_playable(), "depth 0 passes its report card (the playability gate)")
+	_assert_equals(int((s1.spec.get("stages", []) as Array).size()), 2, "depth 0 = 2 gates")
+	for stg in s1.spec.get("stages", []):
+		_assert_equals(str(stg), "distract:lure", "depth 0 is lure-only (teaching, legible)")
+	var count0 := int((s1.spec.get("stages", []) as Array).size())
+	for d in range(4):
+		s1.descend("risky")
+		_assert_true(s1.current_is_playable(), "depth %d passes its report card" % int(s1.depth))
+	_assert_true(int((s1.spec.get("stages", []) as Array).size()) >= count0,
+		"chain length grows with depth (more puzzle, never tighter windows)")
+	var mixed := false
+	for stg2 in s1.spec.get("stages", []):
+		if str(stg2) != "distract:lure":
+			mixed = true
+	_assert_true(mixed, "deeper levels mix variants (register demands rise)")
+	var s2 = Session.new(42, "atom")
+	s2.start()
+	for d in range(4):
+		s2.descend("risky")
+	_assert_equals(str(s2.spec.get("stages", [])), str(s1.spec.get("stages", [])),
+		"a run is reproducible from seed + choices")
+	_assert_equals(str(s2.spec.get("hub_shape", {})), str(s1.spec.get("hub_shape", {})),
+		"the shape rotation is reproducible too")
+
+	# --- The loader flow, PLAYED: boot, play depth 0, rest, branch, land in depth 1. ---
+	var tree := get_tree()
+	var scene = load("res://scenes/fragments/fragment_preview.tscn")
+	var inst = scene.instantiate()
+	inst.set("preview_menu", true)
+	tree.root.add_child(inst)
+	for i in range(4):
+		await tree.process_frame
+	inst.call("_apply_preview_entry", inst.call("get_preview_entry", "roguelike"))
+	inst.call("_begin_chunk")
+	for i in range(6):
+		await tree.process_frame
+	var session = inst.get("_run_session")
+	_assert_true(session != null and str(session.levels) == "atom", "the roguelike entry runs ATOM levels")
+	var chunk = inst.get("_active_chunk")
+	var gs = inst.get("_game_state")
+	var st: Dictionary = chunk.get_preview_state()
+	_assert_true(bool(st["skeleton_ok"]), "the loaded level's own skeleton grades SHIPPABLE (provenance)")
+	_assert_true(str(st["hub_shape"]) != "flat", "the level lies on a hub shape (%s)" % str(st["hub_shape"]))
+	_assert_true(chunk.get_coord_map() != null and gs.coord_map != null, "the shape coord_map is installed")
+	var dp: Vector3 = gs.get_position("peris")
+	var rp: Vector3 = gs.get_render_position("peris")
+	_assert_true(Vector2(dp.x - rp.x, dp.z - rp.z).length() > 0.5 or absf(dp.y - rp.y) > 0.25,
+		"character render runs through the warp (data flat, world shaped)")
+	# Play the whole depth-0 chain (all-lure) with analytic jumps.
+	var n := int((session.spec.get("stages", []) as Array).size())
+	var a: Dictionary = chunk.get_preview_anchors()
+	var cell: float = float(chunk.CELL)
+	var played := true
+	for i in range(n):
+		var fk := "flure_%d" % i
+		gs.command_move_to_pos("peris", a[fk])
+		_advance_to_arrival(inst, gs, "peris")
+		var fl = chunk.find_child("AtomFlure%d" % i, true, false)
+		if fl == null:
+			played = false
+			break
+		fl.active_character = "peris"
+		fl.on_interaction_arrived()
+		inst.headless_advance(float(fl.dwell_time) + 0.4, 0.1)
+		var settle: Vector3 = a[fk] + Vector3(0.0, 0.0, (-2.0 if float((a[fk] as Vector3).z) > 0.0 else 2.0) * cell)
+		if not _advance_to_proximity(inst, gs, "atom_sentry_%d" % i, settle, 2.2, 12.0):
+			played = false
+			break
+		var target: Vector3 = a["flure_%d" % (i + 1)] if i + 1 < n else a["end"]
+		gs.command_move_to_pos("peris", target)
+		_advance_to_arrival(inst, gs, "peris", 0.6)
+	_assert_true(played, "depth 0 plays end-to-end (every flure tend + settle jump resolved)")
+	# Rest at the exit shelter -> the run's branch choice appears (the descend contract).
+	var shelter = chunk.find_child("AtomExitShelter", true, false)
+	_assert_true(shelter != null, "the exit shelter sits at the end of the final stretch")
+	shelter.active_character = "peris"
+	shelter.on_interaction_arrived()
+	inst.headless_advance(1.0, 0.1)
+	for i in range(6):
+		await tree.process_frame
+	var layer = inst.get("_preview_layer")
+	_assert_true(layer != null and layer.find_child("BranchModal", true, false) != null,
+		"resting at the shelter presents the run's branch choice")
+	var b: Dictionary = session.branch()
+	inst.call("_roguelike_choose", (b.get("options", []) as Array)[0])
+	for i in range(8):
+		await tree.process_frame
+	_assert_true(int(session.depth) >= 1, "the descent advanced (a shortcut reward may skip deeper)")
+	_assert_true(session.current_is_playable(), "the descended-into level passes its report card")
+	var chunk2 = inst.get("_active_chunk")
+	_assert_true(chunk2 != null and bool((chunk2.get_preview_state() as Dictionary).get("skeleton_ok", false)),
+		"the depth-1 chunk is live and its skeleton grades SHIPPABLE")
+	inst.queue_free()
+	await tree.process_frame
+
 ## Architecture-native waiting: the scheduler exists so tests can JUMP to the tick where a condition
 ## becomes true instead of polling toward it — identical outcome (position is a pure function of the
 ## tick), none of the wall-clock cost. While the subject's CURRENT plan never satisfies the condition

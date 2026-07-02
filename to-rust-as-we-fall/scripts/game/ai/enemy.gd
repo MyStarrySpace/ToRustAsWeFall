@@ -718,3 +718,12 @@ func _get_search_roots() -> Array[Node]:
 				if sibling != parent and sibling is Node3D:
 					roots.append(sibling)
 	return roots
+
+
+## Freed while the scene's scheduler lives on (the roguelike reload frees chunks + their enemies without
+## resetting the scheduler): every FSM timer and self-re-arming callback (roam hops, patrol legs) is tagged
+## _state_tag — retract them, or they fire on a freed instance forever.
+func _exit_tree() -> void:
+	var scheduler = _get_scheduler()
+	if scheduler != null and _state_tag != "":
+		scheduler.cancel_tag(_state_tag)

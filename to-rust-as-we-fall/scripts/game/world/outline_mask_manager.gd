@@ -252,16 +252,20 @@ func _process(_delta: float) -> void:
 		var e = _entries[key]
 		var alive := false
 		for c in e["copies"]:
+			# Validate BEFORE casting: `as` on a freed instance is itself the error (the roguelike
+			# reload frees a chunk's registered meshes while this manager keeps running).
+			if not (is_instance_valid(c["copy"]) and is_instance_valid(c["src"])):
+				continue
 			var copy := c["copy"] as MeshInstance3D
 			var src := c["src"] as MeshInstance3D
-			if is_instance_valid(copy) and is_instance_valid(src):
-				copy.global_transform = src.global_transform
-				alive = true
+			copy.global_transform = src.global_transform
+			alive = true
 		for c in e["glow_copies"]:
+			if not (is_instance_valid(c["copy"]) and is_instance_valid(c["src"])):
+				continue
 			var gcopy := c["copy"] as MeshInstance3D
 			var gsrc := c["src"] as MeshInstance3D
-			if is_instance_valid(gcopy) and is_instance_valid(gsrc):
-				gcopy.global_transform = gsrc.global_transform
+			gcopy.global_transform = gsrc.global_transform
 		# The source object was freed (chunk reload) — drop the stale registration.
 		if not alive and not e["copies"].is_empty():
 			unregister(key)
