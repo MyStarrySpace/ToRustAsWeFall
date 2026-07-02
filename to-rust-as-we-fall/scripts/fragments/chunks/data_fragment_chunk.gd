@@ -23,6 +23,7 @@ var _channels: Array = []
 var _flora: Array = []
 var _enemies: Array = []
 var _scarpets: Array = []
+var _candid_zones: Array = []
 var _exit_shelters: Array = []
 var _enemy_posts := {}        # char_id -> spawn post (re_post targets on a wipe restart)
 var _scheduled := false
@@ -157,6 +158,15 @@ func _spawn_object(spec: Dictionary) -> void:
 			bloom.configure(spec.get("opts", {}) as Dictionary)
 			add_child(bloom)
 			_flora.append(bloom)
+		"candid_zone":
+			# {pos:Vector3, half:Vector2, dot:float} — biofilm ground: scan-blind (CONCEAL_FULL) + hp
+			# drain while standing in it. The risk-inversion floor (ECOLOGY_COMBOS Card 2).
+			var cz := CandidZone.new()
+			cz.name = _name(spec, "CandidZone")
+			var half = spec.get("half", Vector2(3.0, 3.0))
+			cz.configure(_v3(spec, "pos"), half if half is Vector2 else Vector2(3.0, 3.0), _f(spec, "dot", 4.0))
+			add_child(cz)
+			_candid_zones.append(cz)
 		"scarpet":
 			# {pos:Vector3, radius:float} — a MEDIUM-tier hide mat (the loader's concealment pass reads it)
 			var mat := Scarpet.new()
@@ -225,7 +235,7 @@ func _update(_delta: float) -> void:
 ## The LOADER owns the hide-tier pass: Capbage = FULL beats Scarpet = MEDIUM beats exposed, from each
 ## member's REAL position every frame. Chunks never re-implement hide logic.
 func _update_shared_concealment() -> void:
-	if fragment == null or (_capbages.is_empty() and _scarpets.is_empty()):
+	if fragment == null or (_capbages.is_empty() and _scarpets.is_empty() and _candid_zones.is_empty()):
 		return
 	var gs = _get_game_state()
 	if gs == null:
@@ -240,6 +250,11 @@ func _update_shared_concealment() -> void:
 			if is_instance_valid(cap) and cap.conceals(pos):
 				tier = GameState.CONCEAL_FULL
 				break
+		if tier == GameState.CONCEAL_NONE:
+			for cz in _candid_zones:
+				if is_instance_valid(cz) and cz.covers(pos):
+					tier = GameState.CONCEAL_FULL
+					break
 		if tier == GameState.CONCEAL_NONE:
 			for mat in _scarpets:
 				if is_instance_valid(mat) and mat.conceals(pos):
@@ -339,12 +354,41 @@ func _exit_tree() -> void:
 	if sched == null:
 		return
 	sched.cancel_tag(_restart_tag())
+	sched.cancel_tag(_candid_tag())
 	for fl in _flures:
 		if is_instance_valid(fl):
 			sched.cancel_tag("flure_reset_" + str(fl.name))
 
+const CANDID_TICK := 0.5
+
+func _candid_tag() -> String:
+	return "candid_dot_" + (fragment.id if fragment != null and fragment.id != "" else "data_fragment")
+
+func _arm_candid_tick() -> void:
+	var sched = _get_scheduler()
+	if sched == null or _candid_zones.is_empty():
+		return
+	sched.cancel_tag(_candid_tag())
+	sched.schedule_after(CANDID_TICK, _on_candid_tick, _candid_tag())
+
+func _on_candid_tick() -> void:
+	var gs = _get_game_state()
+	if gs != null and fragment != null:
+		for cid_v in fragment.party_ids:
+			var cid := str(cid_v)
+			if not gs.characters.has(cid):
+				continue
+			var pos: Vector3 = gs.get_position(cid)
+			for cz in _candid_zones:
+				if is_instance_valid(cz) and cz.covers(pos):
+					gs.adjust_stat(cid, "hp", -cz.dot_per_sec * CANDID_TICK)
+					break
+	_arm_candid_tick()
+
 func _ensure_scheduled() -> void:
-	if _scheduled or _channels.is_empty():
+	if _scheduled:
+		return
+	if _channels.is_empty() and _candid_zones.is_empty():
 		return
 	var sched = _get_scheduler()
 	if sched == null:
@@ -352,6 +396,7 @@ func _ensure_scheduled() -> void:
 	_scheduled = true
 	for ch in _channels:
 		ch.start(sched)
+	_arm_candid_tick()
 
 # --- SceneChunk interface (driven by the fragment data) ---
 

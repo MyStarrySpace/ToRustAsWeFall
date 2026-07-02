@@ -387,6 +387,9 @@ func _ready() -> void:
 			"--test-tension-sweep":
 				ran_test = true
 				await _test_tension_sweep()
+			"--test-blind-floor":
+				ran_test = true
+				await _test_blind_floor()
 			"--test-conceal-stops-strikes":
 				ran_test = true
 				await _test_conceal_stops_strikes()
@@ -1210,6 +1213,7 @@ func _run_all_tests() -> void:
 	await _test_pump_hall()
 	await _test_portal_group()
 	await _test_tension_sweep()
+	await _test_blind_floor()
 	await _test_conceal_stops_strikes()
 	await _test_capbage_retrieve()
 	await _test_sprint_gap()
@@ -17549,6 +17553,128 @@ func _live_hover(world_pos: Vector3, cam: Camera3D, check: Callable) -> bool:
 			if bool(check.call()):
 				return true
 	return false
+
+## THE BLIND FLOOR (T1b, ECOLOGY_COMBOS Card 2): the risk-inversion corridor. The keeper owns EVERY
+## open tile (no timing window exists); the Candid biofilm strip is scan-blind (CONCEAL_FULL) and
+## DRAINS 4 hp/s — the budget is HEALTH, and the exchange rate is the choice: walk the film (~24 hp)
+## or sprint it (~half the toll, most of a stamina bar). Dawdle and the floor takes you — then a
+## friend wades in after you (the carry composes with the DoT for free).
+func _test_blind_floor() -> void:
+	_test_name = "Blind Floor"
+	var inst = await _instantiate_preview_chunk_and_wait("blind_floor", 6)
+	if inst == null:
+		_assert_true(false, "blind_floor instantiates")
+		return
+	var chunk = inst._active_chunk
+	var gs = inst._game_state
+	var a: Dictionary = chunk.get_preview_anchors()
+	_assert_true(gs.characters.has("lane_keeper"), "the keeper walks the lane")
+	_assert_true((chunk.get("_candid_zones") as Array).size() == 1, "the biofilm strip is laid")
+
+	# THE OPEN LANE IS NEVER SAFE: step into it anywhere and the keeper has you.
+	gs.command_move_to_pos("aster", a["open_mid"])
+	var t := 0.0
+	while t < 25.0 and float(gs.get_stat("aster", "hp")) >= 100.0:
+		inst.headless_advance(0.3, 0.1)
+		await get_tree().process_frame
+		t += 0.3
+	_assert_true(float(gs.get_stat("aster", "hp")) < 100.0,
+		"open ground = seen = struck (hp=%.0f) — 0%% of the lane is safe" % float(gs.get_stat("aster", "hp")))
+	gs.command_move_to_pos("aster", chunk.get_spawn_positions()["aster"])
+	for i in range(60):
+		inst.headless_advance(0.3, 0.1)
+		await get_tree().process_frame
+		if not gs.is_moving("aster"):
+			break
+	gs.restore_character("aster")
+	chunk.reset_preview_state()
+	inst.headless_advance(0.5, 0.1)
+
+	# WALK THE FILM: unseen the whole way; the toll is health.
+	var hp0: float = float(gs.get_stat("peris", "hp"))
+	gs.command_move_to_pos("peris", a["mat_west"])
+	_advance_to_arrival(inst, gs, "peris")
+	gs.command_move_to_pos("peris", a["mat_mid"])
+	_advance_to_arrival(inst, gs, "peris")
+	inst.headless_advance(0.3, 0.1)
+	await get_tree().process_frame
+	_assert_equals(int(gs.get_character_concealment("peris")), GameState.CONCEAL_FULL,
+		"in the film every scan slides off (CONCEAL_FULL)")
+	gs.command_move_to_pos("peris", a["mat_east"])
+	_advance_to_arrival(inst, gs, "peris")
+	gs.command_move_to_pos("peris", a["exit"])
+	_advance_to_arrival(inst, gs, "peris")
+	var walk_toll: float = hp0 - float(gs.get_stat("peris", "hp"))
+	print("  [film] walk-cross toll: %.0f hp | spotted=%d" % [walk_toll, int(chunk.get_preview_state()["spotted_count"])])
+	_assert_equals(int(chunk.get_preview_state()["spotted_count"]), 0, "the film crossing is never seen")
+	_assert_true(walk_toll >= 14.0 and walk_toll <= 36.0,
+		"the walk toll prices around a strike's worth of health (%.0f hp)" % walk_toll)
+	_assert_true(bool(gs.is_at_shelter("peris")), "she is out the far side on shelter ground")
+
+	# SPRINT THE FILM: half the health toll, most of a stamina bar — the exchange rate is the choice.
+	var e_hp0: float = float(gs.get_stat("endo", "hp"))
+	var e_sta0: float = float(gs.get_stat("endo", "stamina"))
+	gs.command_move_to_pos("endo", a["mat_west"])
+	_advance_to_arrival(inst, gs, "endo")
+	gs.set_running("endo", true)
+	gs.command_move_to_pos("endo", a["mat_east"])
+	_advance_to_arrival(inst, gs, "endo")
+	gs.set_running("endo", false)
+	gs.command_move_to_pos("endo", a["exit"])
+	_advance_to_arrival(inst, gs, "endo")
+	var sprint_toll: float = e_hp0 - float(gs.get_stat("endo", "hp"))
+	var sprint_sta: float = e_sta0 - float(gs.get_stat("endo", "stamina"))
+	print("  [film] sprint-cross toll: %.0f hp + %.0f stamina" % [sprint_toll, sprint_sta])
+	_assert_true(sprint_toll < walk_toll, "sprinting shortens the health toll (%.0f < %.0f)" % [sprint_toll, walk_toll])
+	_assert_true(sprint_sta > 25.0, "...but the shortcut is paid in stamina (%.0f)" % sprint_sta)
+	_assert_equals(int(chunk.get_preview_state()["spotted_count"]), 0, "the sprint crossing is unseen too")
+
+	# DAWDLE AND THE FLOOR TAKES YOU: stand in the film long enough and you drop where you stand.
+	gs.command_move_to_pos("aster", a["mat_west"])
+	_advance_to_arrival(inst, gs, "aster")
+	gs.command_move_to_pos("aster", a["mat_mid"])
+	_advance_to_arrival(inst, gs, "aster")
+	t = 0.0
+	while t < 40.0 and not gs.is_downed("aster"):
+		inst.headless_advance(0.5, 0.1)
+		t += 0.5
+	_assert_true(gs.is_downed("aster"), "the film drains a dawdler to the floor")
+	_assert_true(gs.get_position("aster").distance_to(a["mat_mid"]) < 2.5, "he drops IN the film")
+
+	# THE WADE-IN RETRIEVE: a friend crosses the draining floor to carry him out (the composition).
+	await get_tree().process_frame
+	var body = inst.find_child("DownedBody_aster", true, false)
+	_assert_true(body != null, "his body is a carry target in the film")
+	var p_hp_before: float = float(gs.get_stat("peris", "hp"))
+	gs.command_move_to_pos("peris", a["mat_east"])
+	_advance_to_arrival(inst, gs, "peris")
+	gs.command_move_to_pos("peris", gs.get_position("aster") + Vector3(0.9, 0.0, 0.0))
+	_advance_to_arrival(inst, gs, "peris")
+	body.active_character = "peris"
+	body.on_interaction_arrived()
+	_assert_true(gs.is_dragging("peris"), "she wades in and takes him up")
+	gs.command_move_to_pos("peris", a["mat_east"])
+	_advance_to_arrival(inst, gs, "peris")
+	gs.command_move_to_pos("peris", a["exit"])
+	_advance_to_arrival(inst, gs, "peris")
+	gs.command_stop_drag("peris")
+	print("  [film] wade-in cost the carrier %.0f hp" % (p_hp_before - float(gs.get_stat("peris", "hp"))))
+	_assert_true(float(gs.get_stat("peris", "hp")) < p_hp_before,
+		"the wade-in costs the CARRIER film-toll too — rescue has a price")
+	_assert_true(not gs.is_downed("peris"), "...but a planned rescue survives it")
+	_assert_true(bool(gs.is_at_shelter("aster")), "he is out of the film on shelter ground")
+	t = 0.0
+	while t < 16.0 and gs.is_downed("aster"):
+		inst.headless_advance(0.5, 0.1)
+		t += 0.5
+	_assert_true(not gs.is_downed("aster"), "shelter ground wakes him")
+	var shelter = chunk.find_child("BlindFloorExitShelter", true, false)
+	shelter.active_character = "peris"
+	shelter.on_interaction_arrived()
+	inst.headless_advance(0.5, 0.1)
+	_assert_true(bool(chunk.get_preview_state()["complete"]), "resting through completes the blind floor")
+	inst.queue_free()
+	await get_tree().process_frame
 
 ## A TIGHT HIDE STOPS THE BEATING: full concealment is invisibility "even point-blank" (the
 ## hidden-detection law) — so an attacker MID-CYCLE must lose a target who reaches CONCEAL_FULL:

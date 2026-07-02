@@ -73,6 +73,8 @@ const PREVIEW_ENTRIES := [
 		"config": {"fragment_path": "res://data/fragments/sprint_gap.tres"}},
 	{"id": "capbage_retrieve", "chunk": "data_fragment", "title": "The Retrieve (carry him home)", "stage": 3,
 		"config": {"fragment_path": "res://data/fragments/capbage_retrieve.tres"}},
+	{"id": "blind_floor", "chunk": "data_fragment", "title": "The Blind Floor (risk inversion)", "stage": 3,
+		"config": {"fragment_path": "res://data/fragments/blind_floor.tres"}},
 	{"id": "distract_gate", "chunk": "distract_gate", "title": "The Watched Gap", "stage": 3},
 	{"id": "puzzle_atom", "chunk": "puzzle_atom", "title": "Generated Atom Chain", "stage": 3,
 		"config": {"stages": ["distract:lure", "distract:patrol", "distract:twin"], "seed": 7}},
