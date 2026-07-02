@@ -71,7 +71,9 @@ const STAMINA_MAX := 100.0
 const ATP_MAX_PIPS := 8.0
 const WALK_SPEED := 3.0
 const RUN_SPEED := 6.0
-const RUN_STAMINA_DRAIN_PER_SEC := 30.0
+# Tunable (not const) so the tension sweep can measure candidate economies; the DEFAULT is the
+# game-wide currency every tension chunk prices its routes in.
+var run_stamina_drain_per_sec := 15.0   # one full bar = 40wu of sprint (the tension-sweep ruling)
 const RUN_TICK_INTERVAL := 0.1
 ## Detection ignores targets separated by more than this vertical gap (a stacked floor). Standing-
 ## height / ramp differences stay within it; a full level (grid.level_height ~4) is blocked.
@@ -556,6 +558,24 @@ func get_position(id: String) -> Vector3:
 	var t := clampf((scheduler.get_current_tick() - mv.start_tick) / mv.duration, 0.0, 1.0)
 	return _interpolate_path(mv.path, mv.cum_dist, t)
 
+## Pure analytic: the position `dt` seconds from now on the CURRENT committed plan (parked
+## characters stay put; a finished plan parks at its destination). The chase/lead computations
+## read the future the same way the scheduler will play it — never by per-frame sampling.
+func predict_position(id: String, dt: float) -> Vector3:
+	if not characters.has(id):
+		return Vector3.ZERO
+	var ch: Dictionary = characters[id]
+	if ch.movement == null or not scheduler:
+		return get_position(id)
+	var mv: Dictionary = ch.movement
+	var future_tick: float = scheduler.get_current_tick() + maxf(0.0, dt)
+	if mv.has("arrival_ticks"):
+		return _interpolate_path_timed(mv.path, mv.arrival_ticks, future_tick)
+	if mv.duration <= 0.0:
+		return mv.path[mv.path.size() - 1]
+	var t := clampf((future_tick - mv.start_tick) / mv.duration, 0.0, 1.0)
+	return _interpolate_path(mv.path, mv.cum_dist, t)
+
 func is_moving(id: String) -> bool:
 	if not characters.has(id):
 		return false
@@ -703,7 +723,7 @@ func _on_running_tick(id: String) -> void:
 		if _running.has(id):
 			_running[id]["tick_handle"] = 0
 		return
-	var new_val: float = maxf(0.0, get_stat(id, "stamina") - RUN_STAMINA_DRAIN_PER_SEC * RUN_TICK_INTERVAL)
+	var new_val: float = maxf(0.0, get_stat(id, "stamina") - run_stamina_drain_per_sec * RUN_TICK_INTERVAL)
 	set_stat(id, "stamina", new_val)
 	if new_val <= 0.0:
 		set_running(id, false)

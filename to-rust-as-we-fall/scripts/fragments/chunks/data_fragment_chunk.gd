@@ -128,6 +128,7 @@ func _spawn_object(spec: Dictionary) -> void:
 			p.name = _name(spec, "PortalPad")
 			p.configure(gs, _v3(spec, "pos"), _v3(spec, "dest"), _f(spec, "radius", 1.2),
 				_col(spec, "color", Color(0.55, 0.42, 0.98)))
+			p.set_group_provider(_selected_party_ids)
 			add_child(p)
 			_register_interactable(p)
 			_portals.append(p)
@@ -313,6 +314,12 @@ func _restart_fragment() -> void:
 			fl.reset_flure()
 	_phase = "ready"
 	_set_preview_step((fragment.id if fragment.id != "" else "data_fragment") + "_restart")
+
+## The host's live selection (the portal group provider — a click moves whoever is selected).
+func _selected_party_ids() -> Array:
+	if host != null and host.has_method("get_preview_selected_characters"):
+		return host.call("get_preview_selected_characters")
+	return []
 
 func _enemy_by_id(cid: String):
 	for enemy in _enemies:

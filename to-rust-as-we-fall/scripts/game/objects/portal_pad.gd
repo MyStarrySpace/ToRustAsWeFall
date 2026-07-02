@@ -9,8 +9,19 @@ extends Interactable
 ##
 ## Self-contained + reusable like Flure: owns its glow visual, its outline/hover wiring (consistent highlight), and
 ## its teleport logic. A fragment composes it (place + give it a destination); a level builder will too.
+##
+## GROUP CROSSING: when the ACTIVATOR belongs to the current selection (the loader installs a
+## group provider), the whole selection QUEUES through — one member at a time, each teleporting and
+## then walking OFF the receiving pad to its own arrival slot so the next can step in. Hovering the
+## pad previews GHOSTS standing on those final slots; compute_group_arrivals is the ONE function
+## both the ghosts and the committed queue read, so the preview cannot lie. An activator outside
+## the selection crosses alone (the original solo semantics).
 
 signal stepped_through(who: String, dest: Vector3)
+signal group_crossing_finished(ids: Array)
+
+const GROUP_CLEAR_GAP := 0.15        # breath between one member clearing the pad and the next stepping in
+const ARRIVAL_RING_RADIUS := 1.7     # the walk-off fan on the far side
 
 @export var glow_color := Color(0.55, 0.42, 0.98)
 @export var glow_radius := 0.5
@@ -19,6 +30,11 @@ var _gs   # GameState (Interactable keeps its own _game_state for data binding; 
 var _glow: MeshInstance3D
 var _glow_mat: StandardMaterial3D
 var _dest := Vector3.ZERO
+var _group_provider: Callable = Callable()   # -> Array of selected char ids (the loader installs it)
+var _queue: Array = []
+var _queue_arrivals: Array = []
+var _queue_i := 0
+var _ghosts: Array = []
 
 ## Configure BEFORE adding to the tree. `dest_world` is the paired portal's position this one sends you to.
 func configure(gs, world_pos: Vector3, dest_world: Vector3, radius := 1.2,
@@ -78,7 +94,144 @@ func _wire_outline() -> void:
 	set_outline_target(target)
 
 func _on_interacted() -> void:
-	step_through()
+	var group := _group_for(str(active_character))
+	if group.size() <= 1:
+		step_through()
+	else:
+		step_group_through(group)
+
+## The loader hands the pad a way to read the CURRENT selection, so a click can move the party.
+func set_group_provider(provider: Callable) -> void:
+	_group_provider = provider
+
+## Who a click sends through: the selection with the activator leading, when the activator belongs
+## to it; otherwise just the activator (solo semantics — the wash-intro one-at-a-time teach).
+func _group_for(activator: String) -> Array:
+	var sel: Array = []
+	if _group_provider.is_valid():
+		for v in (_group_provider.call() as Array):
+			var cid := str(v)
+			if _gs != null and _gs.characters.has(cid) and not _gs.is_downed(cid) and not sel.has(cid):
+				sel.append(cid)
+	if activator != "" and sel.has(activator):
+		sel.erase(activator)
+		sel.push_front(activator)
+		return sel
+	if activator != "":
+		return [activator]
+	return sel
+
+## The far-side arrival slots — a walk-off fan pointing AWAY along the travel direction so nobody
+## parks on the receiving pad. Pure + deterministic: hover ghosts and the committed queue both read
+## THIS, so the preview always matches the crossing.
+func compute_group_arrivals(ids: Array) -> Array:
+	var out: Array = []
+	var away := _dest - global_position
+	away.y = 0.0
+	var base_angle := atan2(away.z, away.x) if away.length() > 0.01 else 0.0
+	for i in range(ids.size()):
+		var ang := base_angle + (float(i) - (float(ids.size()) - 1.0) * 0.5) * 0.9
+		var pos := _dest + Vector3(cos(ang), 0.0, sin(ang)) * ARRIVAL_RING_RADIUS
+		pos.y = _dest.y
+		if _gs != null and _gs.grid != null and _gs.grid.has_method("nearest_walkable_world"):
+			pos = _gs.grid.nearest_walkable_world(pos)
+			pos.y = _dest.y
+		out.append(pos)
+	return out
+
+## Queue the whole group through: one member per hop — teleport, walk off to the slot, and the next
+## steps in once the walk-off plan ENDS (read analytically off the scheduler; replay reproduces the
+## crossing from the logged snap+move pairs alone).
+func step_group_through(ids: Array) -> bool:
+	if _gs == null or ids.is_empty() or not _queue.is_empty():
+		return false
+	_queue = ids.duplicate()
+	_queue_arrivals = compute_group_arrivals(ids)
+	_queue_i = 0
+	_hop_next()
+	return true
+
+func _hop_next() -> void:
+	if _gs == null or _queue_i >= _queue.size():
+		var done := _queue.duplicate()
+		_queue.clear()
+		if not done.is_empty():
+			group_crossing_finished.emit(done)
+		return
+	var who := str(_queue[_queue_i])
+	var slot: Vector3 = _queue_arrivals[_queue_i]
+	_queue_i += 1
+	if _gs.characters.has(who) and not _gs.is_downed(who):
+		_gs.command_stop(who)
+		var dest := _dest
+		var slot_d := slot
+		if _gs.coord_map != null:
+			dest = _gs.coord_map.to_data(_dest)
+			slot_d = _gs.coord_map.to_data(slot)
+		_gs.snap_character_to(who, dest)
+		_gs.command_move_to_pos(who, slot_d)
+		stepped_through.emit(who, dest)
+	var sched = _gs.scheduler
+	if sched == null:
+		_hop_next()
+		return
+	var wait := GROUP_CLEAR_GAP
+	if _gs.has_method("get_plan_end_tick") and _gs.characters.has(who):
+		var end_tick: float = _gs.get_plan_end_tick(who)
+		if end_tick >= 0.0:
+			wait = maxf(GROUP_CLEAR_GAP, end_tick - sched.get_current_tick() + GROUP_CLEAR_GAP)
+	sched.cancel_tag(_hop_tag())
+	sched.schedule_after(wait, _hop_next, _hop_tag())
+
+func _hop_tag() -> String:
+	return "portal_hop_" + str(name)
+
+# --- Hover ghosts: the party's FINAL positions on the far side, before anyone commits. ---
+
+func set_hover_feedback(active: bool) -> void:
+	super.set_hover_feedback(active)
+	_update_ghosts(active)
+
+func _update_ghosts(show_ghosts: bool) -> void:
+	for g in _ghosts:
+		if is_instance_valid(g):
+			g.queue_free()
+	_ghosts.clear()
+	if not show_ghosts or _gs == null:
+		return
+	var ids: Array = []
+	if _group_provider.is_valid():
+		for v in (_group_provider.call() as Array):
+			var cid := str(v)
+			if _gs.characters.has(cid) and not _gs.is_downed(cid) and not ids.has(cid):
+				ids.append(cid)
+	if ids.is_empty() and active_character != "" and _gs.characters.has(str(active_character)):
+		ids = [str(active_character)]
+	if ids.is_empty():
+		return
+	var slots := compute_group_arrivals(ids)
+	for i in range(slots.size()):
+		var ghost := MeshInstance3D.new()
+		ghost.name = "PortalGhost_%d" % i
+		var cap := CapsuleMesh.new()
+		cap.radius = 0.32
+		cap.height = 1.15
+		ghost.mesh = cap
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color(glow_color.r, glow_color.g, glow_color.b, 0.35)
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.emission_enabled = true
+		m.emission = glow_color
+		m.emission_energy_multiplier = 0.6
+		ghost.material_override = m
+		add_child(ghost)
+		ghost.global_position = (slots[i] as Vector3) + Vector3(0.0, 0.6, 0.0)
+		_ghosts.append(ghost)
+
+func _exit_tree() -> void:
+	if _gs != null and _gs.scheduler != null:
+		_gs.scheduler.cancel_tag(_hop_tag())
 
 ## Step the activating member (active_character) through to the paired destination.
 func step_through() -> bool:

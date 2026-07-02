@@ -381,6 +381,12 @@ func _ready() -> void:
 			"--test-pump-hall-live":
 				ran_test = true
 				await _test_pump_hall_live()
+			"--test-portal-group":
+				ran_test = true
+				await _test_portal_group()
+			"--test-tension-sweep":
+				ran_test = true
+				await _test_tension_sweep()
 			"--test-sprint-gap":
 				ran_test = true
 				await _test_sprint_gap()
@@ -1196,6 +1202,8 @@ func _run_all_tests() -> void:
 	await _test_generated_atom_playable()
 	await _test_roguelike_atom_run()
 	await _test_pump_hall()
+	await _test_portal_group()
+	await _test_tension_sweep()
 	await _test_sprint_gap()
 	await _test_run_stamina_budget()
 	await _test_charge_whiff()
@@ -15007,9 +15015,30 @@ func _test_channels_wash_intro_live_input() -> void:
 		print("  [live] cursor over FLURE @%s: outline lit by the real pick = %s" % [str(flure_screen), lit])
 		_assert_true(lit, "LIVE: hovering the flure (real cursor + physics pick) lights its outline")
 
+	# --- LIVE PORTAL GHOSTS: select the party, hover the portal pad, capture the far-side previews. ---
+	var portal = chunk.get("_portal_near")
+	if portal != null and inst.has_method("get_preview_selected_characters"):
+		inst.call("_select_character", "aster")
+		if inst.has_method("_toggle_character_selected"):
+			inst.call("_toggle_character_selected", "peris")
+			inst.call("_toggle_character_selected", "endo")
+		for i in range(3):
+			await get_tree().process_frame
+		var ps := cam.unproject_position((portal as Node3D).global_position + Vector3(0, 0.6, 0))
+		for sp in [ps + Vector2(3, 3), ps]:
+			Input.warp_mouse(sp)
+			var pm := InputEventMouseMotion.new()
+			pm.position = sp
+			pm.global_position = sp
+			Input.parse_input_event(pm)
+			for i in range(5):
+				await get_tree().process_frame
+		var ghost_count: int = (portal.get("_ghosts") as Array).size()
+		print("  [live] portal hover: ghosts=%d (party of 3 selected)" % ghost_count)
+		_assert_true(ghost_count >= 1, "LIVE: hovering the portal shows the far-side ghost previews")
 	await RenderingServer.frame_post_draw
 	get_tree().root.get_texture().get_image().save_png("res://vr_wash_live.png")
-	print("  [live] wrote vr_wash_live.png (what the player sees with the cursor on the flure)")
+	print("  [live] wrote vr_wash_live.png (cursor on the portal, ghosts on the far side)")
 	GridWorld._fx_debug = false
 	await _dispose_scene(inst)
 
@@ -17533,7 +17562,7 @@ func _test_sprint_gap() -> void:
 	# The TUNING INVARIANT: the two sprint legs price at 80-98% of one full stamina bar.
 	var leg1: float = (a["launch"] as Vector3).distance_to(a["pad"])
 	var leg2: float = (a["pad"] as Vector3).distance_to(a["exit"])
-	var bar_wu: float = 100.0 / GameState.RUN_STAMINA_DRAIN_PER_SEC * GameState.RUN_SPEED
+	var bar_wu: float = 100.0 / gs.run_stamina_drain_per_sec * GameState.RUN_SPEED
 	var price: float = (leg1 + leg2) / bar_wu
 	print("  [gap] legs %.1f + %.1f = %.1fwu of %.1fwu bar (%.0f%%)" % [leg1, leg2, leg1 + leg2, bar_wu, price * 100.0])
 	_assert_true(price >= 0.80 and price <= 0.98,
@@ -17590,6 +17619,163 @@ func _test_sprint_gap() -> void:
 	inst.queue_free()
 	await get_tree().process_frame
 
+## PORTAL GROUP CROSSING (director spec): clicking a portal with the party selected QUEUES everyone
+## through ONE AT A TIME — each teleports, then walks OFF the receiving pad to a distinct slot so the
+## next can step in. Hovering shows GHOST previews at the FINAL post-crossing positions, and the
+## ghosts must equal where people actually end up (the preview can't lie). Solo compat: an activator
+## outside the selection crosses alone (the old behavior).
+func _test_portal_group() -> void:
+	_test_name = "Portal Group"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	var log := EventLog.new()
+	gs.event_log = log
+	var holder := Node3D.new()
+	add_child(holder)
+	for ids in [["aster", Vector3(-1.5, 0.5, 0.0)], ["peris", Vector3(-1.0, 0.5, 1.2)], ["endo", Vector3(-1.0, 0.5, -1.2)]]:
+		gs.register_character(str(ids[0]), ids[1], 2.5, {"hp": 100.0, "stamina": 100.0})
+	var portal := PortalPad.new()
+	portal.name = "GroupPortal"
+	portal.configure(gs, Vector3.ZERO, Vector3(20.0, 0.5, 0.0), 1.2)
+	holder.add_child(portal)
+	portal.set_group_provider(func() -> Array: return ["aster", "peris", "endo"])
+	portal.active_character = "peris"
+
+	# GHOSTS on hover: one per member, at the computed FINAL slots, gone on unhover.
+	portal.set_hover_feedback(true)
+	var ghosts: Array = portal.get("_ghosts")
+	_assert_equals(ghosts.size(), 3, "hovering previews one ghost per selected member")
+	var slots: Array = portal.compute_group_arrivals(["peris", "aster", "endo"])
+	for i in range(mini(ghosts.size(), slots.size())):
+		_assert_true(((ghosts[i] as Node3D).global_position - (slots[i] as Vector3)).length() < 1.0,
+			"ghost %d stands on its computed arrival slot" % i)
+	portal.set_hover_feedback(false)
+	_assert_true((portal.get("_ghosts") as Array).is_empty(), "unhovering clears the ghosts")
+
+	# CLICK: the whole selection crosses, ONE AT A TIME (the activator leads).
+	portal.emit_signal("interacted")
+	sched.advance_ticks(0.1)
+	var crossed_early := 0
+	for cid in ["aster", "peris", "endo"]:
+		if gs.get_position(cid).x > 10.0:
+			crossed_early += 1
+	_assert_equals(crossed_early, 1, "right after the click exactly ONE member has crossed (the queue is real)")
+	for i in range(200):
+		sched.advance_ticks(0.05)
+	var finals := {}
+	for cid in ["aster", "peris", "endo"]:
+		finals[cid] = gs.get_position(cid)
+		_assert_true((finals[cid] as Vector3).x > 15.0, "%s made it to the far side" % cid)
+	for a_i in range(3):
+		for b_i in range(a_i + 1, 3):
+			var da: Vector3 = finals[["aster", "peris", "endo"][a_i]]
+			var db: Vector3 = finals[["aster", "peris", "endo"][b_i]]
+			_assert_true(da.distance_to(db) > 0.9,
+				"members spread OUT OF THE WAY on arrival (%.2f apart)" % da.distance_to(db))
+	# PREVIEW-MATCHES-COMMITTED: the finals are the ghost slots.
+	var expect: Array = portal.compute_group_arrivals(["peris", "aster", "endo"])
+	var order: Array = ["peris", "aster", "endo"]
+	for i in range(3):
+		_assert_true((finals[order[i]] as Vector3).distance_to(expect[i] as Vector3) < 0.5,
+			"%s ends EXACTLY on the slot the ghost promised (%.2f off)" % [order[i], (finals[order[i]] as Vector3).distance_to(expect[i] as Vector3)])
+
+	# REPLAY: the whole queued crossing reproduces from the log alone.
+	gs.flush_tick()
+	var replayed := GameState.replay(log, null)
+	for cid in ["aster", "peris", "endo"]:
+		_assert_true(replayed.get_position(cid).distance_to(finals[cid] as Vector3) < 0.05,
+			"replay reproduces %s's crossing" % cid)
+
+	# SOLO COMPAT: an activator OUTSIDE the selection crosses alone.
+	var gs2 := GameState.new()
+	gs2.scheduler = EventScheduler.new()
+	gs2.register_character("endo", Vector3(-1.0, 0.5, 0.0), 2.5, {"hp": 100.0})
+	gs2.register_character("aster", Vector3(-1.5, 0.5, 0.0), 2.5, {"hp": 100.0})
+	var portal2 := PortalPad.new()
+	portal2.name = "SoloPortal"
+	portal2.configure(gs2, Vector3.ZERO, Vector3(20.0, 0.5, 0.0), 1.2)
+	holder.add_child(portal2)
+	portal2.set_group_provider(func() -> Array: return ["aster"])
+	portal2.active_character = "endo"
+	portal2.emit_signal("interacted")
+	gs2.scheduler.advance_ticks(2.0)
+	_assert_true(gs2.get_position("endo").x > 15.0, "the outside activator crosses")
+	_assert_true(gs2.get_position("aster").x < 5.0, "the selection stays put — solo semantics preserved")
+	portal.queue_free()
+	portal2.queue_free()
+	holder.queue_free()
+	await get_tree().process_frame
+
+## THE TENSION SWEEP — the measurement harness behind the game-wide currency. For candidate drain
+## rates it measures, in the REAL sim: (1) the full-bar sprint distance (bar -> 0), and (2) the
+## DEATH MARCH — after running dry point-blank in front of a hunter, how far the walk-of-shame gets
+## before the strike cycle downs you (and how many hits that is). Printed as a table; the director
+## reads it and sets the currency. Run standalone: --test-tension-sweep.
+func _test_tension_sweep() -> void:
+	_test_name = "Tension Sweep"
+	print("  drain | bar wu   (bar -> 0 sprint distance)")
+	for drain in [30.0, 20.0, 15.0, 12.0, 10.0]:
+		print("  %5.0f | %6.1f" % [drain, _measure_sprint_bar(drain)])
+	print("  hunter speed | death-march wu | hits | downed  (dry walker, hunter in pursuit)")
+	var rows := {}
+	for hspeed in [2.4, 3.2, 3.6, 4.2]:
+		var m := _measure_death_march(hspeed)
+		rows[hspeed] = m
+		print("  %12.1f | %14.1f | %4d | %s" % [hspeed, float(m["march"]), int(m["hits"]), str(m["downed"])])
+	# The adopted GAME-WIDE tension invariants (director ruling off this table):
+	_assert_true(not bool((rows[2.4] as Dictionary)["downed"]),
+		"a dry walker ESCAPES a standard patroller (2.4) — slow watches are area denial, not death")
+	_assert_true(bool((rows[3.6] as Dictionary)["downed"]) and float((rows[3.6] as Dictionary)["march"]) < 90.0,
+		"a dry walker vs the pressure tier (3.6) is DOWN within ~90wu (got %.0f) — dry mid-chunk means a haven or a friend" % float((rows[3.6] as Dictionary)["march"]))
+	_assert_equals(int((rows[3.6] as Dictionary)["hits"]), 4, "the down takes hp/charge_damage = 4 hits")
+
+func _measure_sprint_bar(drain: float) -> float:
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.run_stamina_drain_per_sec = drain
+	gs.register_character("runner", Vector3.ZERO, 3.0, {"hp": 100.0, "stamina": 100.0})
+	gs.set_running("runner", true)
+	gs.command_move_to_pos("runner", Vector3(400.0, 0.0, 0.0))
+	var t := 0.0
+	while t < 80.0 and gs.is_running("runner"):
+		sched.advance_ticks(0.05)
+		t += 0.05
+	return gs.get_position("runner").x
+
+## Dry, point-blank, walking away at WALK_SPEED with a hunter on you: how far until downed.
+func _measure_death_march(hunter_speed: float) -> Dictionary:
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	var holder := Node3D.new()
+	add_child(holder)
+	gs.register_character("runner", Vector3.ZERO, 3.0, {"hp": 100.0, "stamina": 0.0})
+	var enemy := Enemy.new()
+	enemy.game_state = gs
+	enemy.char_id = "hunter"
+	enemy.move_speed = hunter_speed
+	enemy._detection_targets = ["runner"]
+	holder.add_child(enemy)
+	gs.register_character("hunter", Vector3(-2.0, 0.5, 0.0), hunter_speed, {"detection_range": 6.0})
+	enemy.activate()
+	gs._recompute_all_detection_predictions()
+	gs.command_move_to_pos("runner", Vector3(400.0, 0.0, 0.0))
+	var rec := {"hits": 0}
+	enemy.hit_target.connect(func(_tid: String, _dmg: float) -> void: rec["hits"] = int(rec["hits"]) + 1)
+	var t := 0.0
+	while t < 120.0 and not gs.is_downed("runner"):
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+		t += 0.05
+		if not gs.is_moving("runner") and not gs.is_downed("runner"):
+			gs.command_move_to_pos("runner", Vector3(400.0, 0.0, 0.0))
+	var march: float = gs.get_position("runner").x
+	enemy.queue_free()
+	holder.queue_free()
+	return {"march": march, "hits": int(rec["hits"]), "downed": gs.is_downed("runner")}
+
 ## RUN STAMINA IS A REAL BUDGET: the drain tick must survive a stop-start. The tick parks while the
 ## runner stands still (correct — no drain while idle) but it must RE-ARM when they move again;
 ## without that, any pause mid-run bought infinite free sprint afterwards — the exact economy the
@@ -17600,13 +17786,14 @@ func _test_run_stamina_budget() -> void:
 	var gs := GameState.new()
 	gs.scheduler = sched
 	gs.register_character("peris", Vector3.ZERO, 3.0, {"hp": 100.0, "stamina": 100.0})
+	var leg_cost: float = 6.0 / GameState.RUN_SPEED * gs.run_stamina_drain_per_sec
 	gs.set_running("peris", true)
-	# Leg 1: sprint 6wu east (1s at RUN_SPEED 6) -> ~30 stamina spent.
+	# Leg 1: sprint 6wu east (1s at RUN_SPEED 6).
 	gs.command_move_to_pos("peris", Vector3(6.0, 0.0, 0.0))
 	for i in range(40):
 		sched.advance_ticks(0.05)
 	var after_leg1: float = float(gs.get_stat("peris", "stamina"))
-	_assert_true(absf(after_leg1 - 70.0) < 6.0, "leg 1 (6wu sprint) costs ~30 stamina (at %.0f)" % after_leg1)
+	_assert_true(absf(after_leg1 - (100.0 - leg_cost)) < 6.0, "leg 1 (6wu sprint) costs ~%.0f stamina (at %.0f)" % [leg_cost, after_leg1])
 	# Stand still a while: NO drain while parked.
 	for i in range(60):
 		sched.advance_ticks(0.05)
@@ -17617,18 +17804,20 @@ func _test_run_stamina_budget() -> void:
 	for i in range(40):
 		sched.advance_ticks(0.05)
 	var after_leg2: float = float(gs.get_stat("peris", "stamina"))
-	_assert_true(after_leg1 - after_leg2 > 20.0,
+	_assert_true(after_leg1 - after_leg2 > leg_cost * 0.7,
 		"the drain RESUMES on the second leg (%.0f -> %.0f) — no free sprint after a pause" % [after_leg1, after_leg2])
-	# The whole-bar truth the puzzles are tuned in: 100 stamina = ~20wu of sprint, then forced to walk.
+	# THE GAME-WIDE CURRENCY (tension-sweep ruling): one full bar = ~40wu of sprint, then forced to walk.
+	var bar_wu: float = 100.0 / gs.run_stamina_drain_per_sec * GameState.RUN_SPEED
+	_assert_true(absf(bar_wu - 40.0) < 0.01, "the adopted currency: one bar = 40wu of sprint (got %.1f)" % bar_wu)
 	gs.set_stat("peris", "stamina", 100.0)
-	gs.command_move_to_pos("peris", Vector3(60.0, 0.0, 0.0))
+	gs.command_move_to_pos("peris", Vector3(12.0 + bar_wu + 20.0, 0.0, 0.0))
 	var t := 0.0
-	while t < 20.0 and gs.is_running("peris"):
+	while t < 30.0 and gs.is_running("peris"):
 		sched.advance_ticks(0.05)
 		t += 0.05
 	var dry_x: float = gs.get_position("peris").x
-	_assert_true(absf((dry_x - 12.0) - 20.0) < 3.0,
-		"a full bar buys ~20wu of sprint before running dry (got %.1fwu)" % (dry_x - 12.0))
+	_assert_true(absf((dry_x - 12.0) - bar_wu) < 4.0,
+		"a full bar buys ~%.0fwu of sprint before running dry (got %.1fwu)" % [bar_wu, dry_x - 12.0])
 	_assert_true(not gs.is_running("peris"), "dry = dropped to a walk (the mid-fan nightmare)")
 
 ## A COMMITTED CHARGE CAN MISS: the lunge locks its point at charge start, so a target who reads the
@@ -17648,15 +17837,17 @@ func _test_charge_whiff() -> void:
 		enemy._process(0.05)
 		t += 0.05
 	_assert_equals(str(enemy.get_state()), "windup", "the guard winds up on the target")
-	# Read the telegraph and RUN: by the impact tick the runner has cleared the lunge point.
-	gs.command_move_to_pos("aster", gs.get_position("aster") + Vector3(10.0, 0.0, 0.0))
+	# Read the telegraph and SPRINT: the led lunge cannot close on RUN_SPEED inside its cap.
+	gs.set_running("aster", true)
+	gs.command_move_to_pos("aster", gs.get_position("aster") + Vector3(14.0, 0.0, 0.0))
 	for i in range(80):
 		sched.advance_ticks(0.05)
 		enemy._process(0.05)
-	print("  [whiff] after charge: hp=%.0f dist=%.2f state=%s" % [float(gs.get_stat("aster", "hp")),
+	print("  [whiff] after charge vs SPRINTER: hp=%.0f dist=%.2f state=%s" % [float(gs.get_stat("aster", "hp")),
 		gs.get_position("guard").distance_to(gs.get_position("aster")), str(enemy.get_state())])
 	_assert_true(float(gs.get_stat("aster", "hp")) >= 100.0,
-		"a charge at a point the runner LEFT whiffs — no hit from range (hp=%.0f)" % float(gs.get_stat("aster", "hp")))
+		"a SPRINTING target slips the led charge — no hit lands (hp=%.0f)" % float(gs.get_stat("aster", "hp")))
+	gs.set_running("aster", false)
 	# The whiff is not a stall: the guard re-engages the still-visible runner.
 	t = 0.0
 	var reengaged := false
@@ -17669,6 +17860,29 @@ func _test_charge_whiff() -> void:
 			break
 	_assert_true(reengaged, "the whiffed guard re-engages (state=%s)" % str(enemy.get_state()))
 	_cleanup_attack_ctx(ctx)
+	# The other half of the contract: a WALKER is led and CAUGHT — the body arrives ON them (the
+	# strike lands within reach, never from range). This is what makes running dry dangerous.
+	var ctx2 := _make_attack_ctx(100.0, false)
+	var sched2: EventScheduler = ctx2["sched"]
+	var gs2: GameState = ctx2["gs"]
+	var enemy2: Enemy = ctx2["enemy"]
+	var t2 := 0.0
+	while t2 < 20.0 and str(enemy2.get_state()) != "windup":
+		sched2.advance_ticks(0.05)
+		enemy2._process(0.05)
+		t2 += 0.05
+	gs2.command_move_to_pos("aster", gs2.get_position("aster") + Vector3(14.0, 0.0, 0.0))  # walk away
+	var hit_rec := {"dist": -1.0}
+	enemy2.hit_target.connect(func(_tid: String, _dmg: float) -> void:
+		hit_rec["dist"] = gs2.get_position("guard").distance_to(gs2.get_position("aster")))
+	for i in range(120):
+		sched2.advance_ticks(0.05)
+		enemy2._process(0.05)
+	print("  [whiff] vs WALKER: hp=%.0f hit_dist=%.2f" % [float(gs2.get_stat("aster", "hp")), float(hit_rec["dist"])])
+	_assert_true(float(gs2.get_stat("aster", "hp")) < 100.0, "a WALKING target is led and caught (dry = dangerous)")
+	_assert_true(float(hit_rec["dist"]) >= 0.0 and float(hit_rec["dist"]) <= enemy2.strike_reach + 0.1,
+		"the landed strike happened IN REACH (%.2f) — the body arrived, no hit-from-nowhere" % float(hit_rec["dist"]))
+	_cleanup_attack_ctx(ctx2)
 
 ## DRAG / RETRIEVE (GDD 2.4.3): a conscious member drags a downed one — the dead weight follows as
 ## a pure function of the dragger, the dragger is slower and burns stamina while hauling, the body

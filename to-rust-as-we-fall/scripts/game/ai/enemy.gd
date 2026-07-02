@@ -400,6 +400,14 @@ func _begin_lunge() -> void:
 		return
 	var ep := _self_pos()
 	var tp := game_state.get_position(_current_target_id)
+	# LEAD the lunge: aim where the target WILL be at contact, read analytically off their committed
+	# plan (predict_position), converged in two passes. A WALKER gets led and caught (the body
+	# actually arrives on them — no hit-from-nowhere); a SPRINTER outpaces what the charge can cover
+	# inside charge_max_duration and slips it. Dry bar = walking = catchable is the tension currency.
+	if game_state.has_method("predict_position"):
+		for lead_pass in range(2):
+			var t_est: float = clampf(_planar_dist(ep, tp) / maxf(charge_speed, 0.1), 0.0, charge_max_duration)
+			tp = game_state.predict_position(_current_target_id, t_est)
 	_charge_target_pos = tp
 	var flat := Vector3(tp.x - ep.x, 0.0, tp.z - ep.z)
 	var dist := flat.length()

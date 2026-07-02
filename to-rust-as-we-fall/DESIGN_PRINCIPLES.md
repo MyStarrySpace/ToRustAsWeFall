@@ -364,11 +364,19 @@ plays taut, and only then compose. Big chunks come from proven small ones, never
    not only around), is the bar *just* enough for the efficient plan? The target feel: "I made it
    with my heart racing — if I'd done any step less efficiently I wouldn't have."
 
-**The pricing currency:** one full stamina bar = `100 / RUN_STAMINA_DRAIN_PER_SEC × RUN_SPEED` =
-**20 world units of sprint** (then forced to a walk — running dry inside a watch fan is the nightmare
-the player learns to plan around). A tension chunk PRICES its route in this currency and asserts the
-price in its test: the Sprint Gap's two legs price at **95% of the bar** (clean route arrives with ~6
-stamina). Tuning law: 80–98% of the bar; below 80% the route is comfortable, above 98% it's flaky.
+**The pricing currency (SWEPT + ADOPTED, director ruling off the tension-sweep table):** one full
+stamina bar = **40 world units of sprint** (drain 15/s at RUN_SPEED 6; "20 was too short"), then
+forced to a walk. The sweep's second axis — the DEATH MARCH (run dry point-blank, walk away under
+the strike cycle): a standard 2.4 patroller NEVER downs a walker (slow watches are area denial, not
+death); the 3.6 pressure tier downs a dry walker within ~68wu (4 hits at 25); elites (4.2) within
+~51wu. Game-wide reading: dry mid-chunk near fast fauna = down before the next haven unless a
+shelter or a friend is close. `--test-run-stamina-budget` + `--test-tension-sweep` assert all of it;
+re-run the sweep (`--test-tension-sweep`) whenever speeds/damage change. Underneath sits the LEADING
+LUNGE: a charge aims where the target WILL be (predict_position off the committed plan) — walkers
+are catchable, sprinters slip it inside the charge cap, and strikes only land in reach. SPRINT
+ESCAPES, WALK EATS IT — that asymmetry IS the dry-bar tension. A tension chunk PRICES its route in
+this currency and asserts the price in its test: the Sprint Gap's two legs price at **84% of the
+bar** (clean route arrives with ~17 stamina). Tuning law: 80–98%.
 
 **The closed field economy (fragment param `stamina_field_regen: false`):** in tension chunks the bar
 regenerates ONLY on shelter ground — havens are recovery points, the field is scarce, and the pause
