@@ -397,3 +397,34 @@ promote closing it globally only after playtests.)
 
 **Emergence rule:** a tension chunk introduces NO new mechanic — it composes run/stamina, hide tiers,
 lures, portals, shelters, downs/carry. If a seed seems to need a new mechanic, it's two seeds.
+
+## The two design registers (2026-07-02) + re-ranked build-next
+
+**ENVIRONMENT_ELEMENTS.md** — 52 canon-vetted environmental puzzle elements across all 13 regions
+(24 Act 1 / 17 Act 2 / 11 Act 3 *proposals*): each one verb, telegraphed, shadow-solvable, cited, and
+honestly tiered (24 COMPOSABLE-NOW / 28 NEEDS-BUILD). **ECOLOGY_COMBOS.md** — the 130-cell flora x
+fauna interaction matrix (CANON cite-audited / DERIVED / NONE / 21 OPEN cells awaiting director
+rulings) + 12 judge-approved combo cards, each with an emergent property, a tension pricing, its
+level-element composition, and a micro-chunk seed in the 80-98% band.
+
+**Ledger additions ([BUILD] items the registers wait on, deduped, roughly by leverage):**
+1. CandidZone (DoT floor volume that blinds Naturalizer scans — the risk-inversion corridor; ONE class)
+2. Gnawer-tier pursuer (3.6-speed pack pursuer; near-term stand-in: tuned base Enemy, pack logic later)
+3. HushbloomStun (proximity stun-burst flora object, regenerating)
+4. GasafoetidaPod (carried repellent + fire-burst register)
+5. SpikerEnemy (rooted LOS turret) + TanglerEnemy (stealth grappler) — unlocks the predation duel cards
+6. Meeb engulf-freeze window (already on the leverage list)
+7. CloakedEnemy + Seefern reveal volume (the Redactor gate; late-game mandatory)
+8. Flora-network warning propagation (the tended-network read — flagship, already Tier-3 on the list)
+9. FlowRouterValve (rotate-the-pipes terminal variant), MovingPlatform/portal-ferry, conveyor-ride,
+   spike-ledge sweep toggles — the element-side classes, one each.
+
+**Re-ranked build-next (T1 = nearest real play):**
+- T1a **Capbage retrieve-under-pursuit** (Card 6): stage is composable NOW (held console + downs/carry
+  + Capbage + a tuned fast pursuer standing in for the Gnawer). The retrieve verb finally gets its
+  tension chunk.
+- T1b **Candid risk-inversion corridor** (Card 2): one new class (CandidZone) + existing Naturalizer
+  patrols; the trade-hp-for-invisibility decision is the strongest new positioning tension available.
+- T1c **Flare-lane vent stage** (Cards 3/11 stage): the Ancourage fused-heat band + Aster vent console
+  compose NOW; the Gasafoetida/Flare organisms join later without re-authoring the stage.
+- Then: Spiker/Tangler duel stages (Card 9), Meeb ferry (Card 5), Seefern/Redactor reveal gate (Card 1).
