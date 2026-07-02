@@ -13278,7 +13278,8 @@ func _branch_shapes(branches: Array) -> Array:
 ## detection that doesn't match the sketch's walls) fails HERE, not in a shipped level.
 func _test_generated_atom_playable() -> void:
 	_test_name = "Generated Atom Playable"
-	var inst = await _instantiate_preview_chunk_and_wait("puzzle_atom", 4)
+	var inst = await _instantiate_preview_chunk_and_wait("puzzle_atom", 4,
+		{"stages": ["distract:lure", "distract:lure"], "seed": 7})
 	if inst == null:
 		_assert_true(false, "puzzle_atom preview instantiates")
 		return
@@ -13355,6 +13356,106 @@ func _test_generated_atom_playable() -> void:
 	inst.queue_free()
 	await get_tree().process_frame
 
+	# ===== VARIANT ACT: each variant played to completion in its own generated room — the patrol's beat
+	# ===== is read and crossed (WHEN gate, no flure), the twin bites on the wrong gap (P11 sweep) and
+	# ===== solves through the right one. Chains of MIXED variants are fairness-PROVEN statically (the
+	# ===== safe-passage invariant + 30-seed sweep in --test-chunk-batch); walking them live needs
+	# ===== overlay-grade route reading (Endo's seen-cells build) — that playtest lands with the overlay.
+
+	# --- B1: the patrol variant alone — a pure WHEN gate. ---
+	var inst2 = await _instantiate_preview_chunk_and_wait("puzzle_atom", 4,
+		{"stages": ["distract:patrol"], "seed": 11})
+	if inst2 == null:
+		_assert_true(false, "patrol atom instantiates")
+		return
+	var chunk2 = inst2._active_chunk
+	var gs2 = inst2._game_state
+	var st2: Dictionary = chunk2.get_preview_state()
+	_assert_equals(str((st2["stages"] as Array)[0]["variant"]), "patrol", "the stage is the patrol variant")
+	_assert_true(chunk2.find_child("AtomFlure0", true, false) == null,
+		"the patrol gate has NO flure — the mechanism is the BEAT itself (WHEN register)")
+	var a2: Dictionary = chunk2.get_preview_anchors()
+	var post0: Vector3 = a2["post_0"]
+	var cell2: float = float(chunk2.CELL)
+	# Read the beat from a safe staging, cross in the look-away, straight to the END (last chamber).
+	gs2.command_move_to_pos("peris", Vector3(post0.x - 3.5 * cell2, 0.5, post0.z - cell2))
+	inst2.headless_advance(8.0, 0.1)
+	var prev_z: float = gs2.get_position("atom_sentry_0").z
+	var crossed := false
+	for k in range(240):
+		inst2.headless_advance(0.25, 0.05)
+		var z: float = gs2.get_position("atom_sentry_0").z
+		var away: float = z - post0.z
+		if z > prev_z + 0.01 and away > 1.2 * cell2 and away < 2.2 * cell2:
+			gs2.command_move_to_pos("peris", a2["end"])
+			inst2.headless_advance(8.0, 0.1)
+			crossed = true
+			break
+		prev_z = z
+	st2 = chunk2.get_preview_state()
+	print("  [atom-patrol] crossed=%s complete=%s caught=%d" % [str(crossed), str(st2["complete"]), int(st2["caught_count"])])
+	_assert_true(crossed, "the patrol beat can be READ (the window condition fires)")
+	_assert_true(bool(st2["complete"]), "the patrol gate is crossed in its look-away — a pure timing solve, no flure spent")
+	_assert_equals(int(st2["caught_count"]), 0, "a well-timed patrol cross is uncaught")
+	inst2.queue_free()
+	await get_tree().process_frame
+
+	# --- B2: the twin variant alone — one flure, two watchers, and a lesson about the wrong gap. ---
+	var inst3 = await _instantiate_preview_chunk_and_wait("puzzle_atom", 4,
+		{"stages": ["distract:twin"], "seed": 12})
+	if inst3 == null:
+		_assert_true(false, "twin atom instantiates")
+		return
+	var chunk3 = inst3._active_chunk
+	var gs3 = inst3._game_state
+	var st3: Dictionary = chunk3.get_preview_state()
+	_assert_equals(str((st3["stages"] as Array)[0]["variant"]), "twin", "the stage is the twin variant")
+	var a3: Dictionary = chunk3.get_preview_anchors()
+	var cell3: float = float(chunk3.CELL)
+	var north_post: Vector3 = a3["post_0"]
+	var south_post: Vector3 = a3["post_0_1"]
+	var spawn_x3: float = gs3.get_position("peris").x
+	# The wrong gap bites: head for the SOUTH gap — its watcher is never lured.
+	gs3.command_move_to_pos("peris", Vector3(south_post.x + 2.0 * cell3, 0.5, south_post.z))
+	inst3.headless_advance(12.0, 0.1)
+	st3 = chunk3.get_preview_state()
+	print("  [atom-twin] wrong gap: caught=%d peris.x=%.1f" % [int(st3["caught_count"]), gs3.get_position("peris").x])
+	_assert_equals(int(st3["caught_count"]), 1, "crossing the twin's SOUTH gap bites — its watcher is never lured")
+	_assert_true(absf(gs3.get_position("peris").x - spawn_x3) < 3.0, "the catch swept her back to the START (P11)")
+	inst3.headless_advance(3.0, 0.1)
+	# The informed solve: tend the flure, stage below the watcher's transit band, cross the NORTH gap.
+	var flure3 = chunk3.find_child("AtomFlure0", true, false)
+	_assert_true(flure3 != null, "the twin's flure exists")
+	gs3.command_move_to_pos("peris", a3["flure_0"])
+	inst3.headless_advance(7.0, 0.1)
+	flure3.active_character = "peris"
+	flure3.on_interaction_arrived()
+	inst3.headless_advance(float(flure3.dwell_time) + 0.4, 0.1)
+	_assert_true(bool((chunk3.get_preview_state()["stages"] as Array)[0]["lure_active"]), "the twin's flure sings")
+	# Retreat along the NORTH band (row 1-2) — never crossing the lured watcher's westward transit row —
+	# to a staging just west of the north gap. (The settle-south offset lands ON the twin's own gap row,
+	# so a south retreat walks into the arriving watcher: the settle-path lesson, twin edition.)
+	gs3.command_move_to_pos("peris", Vector3(north_post.x - 1.5 * cell3, 0.5, north_post.z - 0.5))
+	inst3.headless_advance(3.0, 0.1)
+	var lured_n := false
+	for k in range(12):
+		inst3.headless_advance(0.5, 0.1)
+		if gs3.get_position("atom_sentry_0").x < north_post.x - 2.0:
+			lured_n = true
+			break
+	_assert_true(lured_n, "the NORTH watcher commits to the flure")
+	var caught_pre_end := int(chunk3.get_preview_state()["caught_count"])
+	gs3.command_move_to_pos("peris", Vector3(north_post.x + 1.5 * cell3, 0.5, north_post.z - 0.5))
+	inst3.headless_advance(4.0, 0.1)
+	gs3.command_move_to_pos("peris", a3["end"])
+	inst3.headless_advance(8.0, 0.1)
+	st3 = chunk3.get_preview_state()
+	print("  [atom-twin] finish: complete=%s caught=%d (was %d)" % [str(st3["complete"]), int(st3["caught_count"]), caught_pre_end])
+	_assert_true(bool(st3["complete"]), "the twin solves through the RIGHT gap while its watcher is lured")
+	_assert_equals(int(st3["caught_count"]), caught_pre_end, "the informed twin solve crosses uncaught")
+	inst3.queue_free()
+	await get_tree().process_frame
+
 ## Principle-driven GENERATION BATCH: generate a seeded spread of chunk atoms + nested compositions, grade
 ## each against the machine-checkable principles (report_card), print the ASCII + cards for eyeballing, and
 ## ASSERT the proven invariants — every piece is gated (P8), lock-before-key holds (research), the honesty
@@ -13363,12 +13464,15 @@ func _test_chunk_batch() -> void:
 	_test_name = "Chunk Batch (principles)"
 	var ChunkGen = load("res://scripts/generation/chunk_generator.gd")
 	var batch: Array = [
-		{"label": "atom: distract", "chunk": ChunkGen.generate("distract", 101)},
+		{"label": "atom: distract:lure", "chunk": ChunkGen.generate("distract:lure", 101)},
+		{"label": "atom: distract:patrol", "chunk": ChunkGen.generate("distract:patrol", 107)},
+		{"label": "atom: distract:twin", "chunk": ChunkGen.generate("distract:twin", 108)},
 		{"label": "atom: holdfast", "chunk": ChunkGen.generate("holdfast", 102)},
 		{"label": "atom: split", "chunk": ChunkGen.generate("split", 103)},
-		{"label": "nested: distract->holdfast", "chunk": ChunkGen.compose(["distract", "holdfast"], 104)},
-		{"label": "nested: split->distract->holdfast", "chunk": ChunkGen.compose(["split", "distract", "holdfast"], 105)},
+		{"label": "nested: distract:lure->holdfast", "chunk": ChunkGen.compose(["distract:lure", "holdfast"], 104)},
+		{"label": "nested: split->distract:patrol->holdfast", "chunk": ChunkGen.compose(["split", "distract:patrol", "holdfast"], 105)},
 		{"label": "nested w/ BLOCKED arch: redirect->distract", "chunk": ChunkGen.compose(["redirect", "distract"], 106)},
+		{"label": "seeded-variant chain (seed picks)", "chunk": ChunkGen.compose(["distract", "distract", "distract"], 109)},
 	]
 	for entry in batch:
 		var chunk: Dictionary = entry["chunk"]
@@ -13381,14 +13485,37 @@ func _test_chunk_batch() -> void:
 	# Honesty ledger: the proven archetype is stamped buildable, the placeholder stays blocked.
 	var d_card: Dictionary = ChunkGen.report_card(batch[0]["chunk"])
 	_assert_true(bool(d_card["buildable"]), "distract atom is stamped BUILDABLE (its playtest is green)")
-	var r_card: Dictionary = ChunkGen.report_card(batch[5]["chunk"])
+	var r_card: Dictionary = ChunkGen.report_card(batch[7]["chunk"])
 	_assert_true(not bool(r_card["buildable"]) and r_card["blocked_archetypes"].has("redirect"),
 		"a composition containing redirect is honestly BLOCKED (no break-structure mechanic)")
 	# Track D: mechanisms are typed; P2: mixed-archetype chains touch two registers.
-	var n_card: Dictionary = ChunkGen.report_card(batch[3]["chunk"])
+	var n_card: Dictionary = ChunkGen.report_card(batch[5]["chunk"])
 	_assert_true(bool(n_card["two_registers"]), "distract->holdfast composes TWO registers (P2 raw material)")
 	_assert_true(str(n_card["mechanisms"][0]).begins_with("flora/") and str(n_card["mechanisms"][1]).begins_with("terminal/"),
 		"mechanisms are Track-D typed (flora/flure + terminal/flow), got %s" % str(n_card["mechanisms"]))
+	# Variants: patrol is a NO-OBJECT WHEN-register gate; twin keeps the flure (WHERE). A patrol stage in a
+	# chain makes even a same-archetype pair composite (WHEN + WHERE) — variety IS register mix.
+	var p_card: Dictionary = ChunkGen.report_card(batch[1]["chunk"])
+	_assert_true(str(p_card["mechanisms"][0]) == "timing/patrol_window" and p_card["registers"].has("WHEN (Aster)"),
+		"patrol variant is a timing/patrol_window WHEN-register gate, got %s / %s" % [str(p_card["mechanisms"]), str(p_card["registers"])])
+	var t_card: Dictionary = ChunkGen.report_card(batch[2]["chunk"])
+	_assert_true(str(t_card["mechanisms"][0]) == "flora/flure", "twin variant keeps the flure mechanism")
+	# The seeded-variant chain (no pins): whatever the seed rolled, every invariant held (asserted above in
+	# the loop) — variety never buys a broken invariant.
+	var v_chain: Dictionary = batch[8]["chunk"]
+	var v_variants: Array = []
+	for gt in v_chain["gates"]:
+		v_variants.append(str(gt.get("variant", "")))
+	print("  [batch] seeded chain variants: %s" % str(v_variants))
+	# Multi-seed sweep: 30 seeds of mixed pinned/unpinned chains — gated + lock-before-key must hold for ALL.
+	var sweep_fail := 0
+	for sweep_seed in range(200, 230):
+		var c: Dictionary = ChunkGen.compose(["distract", "distract:twin", "distract"], sweep_seed)
+		var card: Dictionary = ChunkGen.report_card(c)
+		if not (bool(card["gated"]["ok"]) and bool(card["lock_before_key"]["ok"]) and bool(card["safe_passage"]["ok"])):
+			sweep_fail += 1
+			print("  [batch] SWEEP FAIL seed %d: %s" % [sweep_seed, str(card)])
+	_assert_equals(sweep_fail, 0, "30-seed sweep: every chain is gated + lock-before-key + SAFE-PASSAGE (variety is fair)")
 
 func _test_chunk_atoms() -> void:
 	_test_name = "Chunk Atoms"

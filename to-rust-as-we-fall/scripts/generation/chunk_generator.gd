@@ -22,49 +22,91 @@ const ARCHETYPES := ["holdfast", "redirect", "vinebridge", "split", "distract"]
 
 # --- entry points ---------------------------------------------------------------------------------------------
 
-## An ATOMIC chunk (one gate) for `archetype_id`.
+## An ATOMIC chunk (one gate) for `archetype_id` (accepts "arch:variant", e.g. "distract:patrol").
 static func generate(archetype_id: String, seed: int) -> Dictionary:
-	var rng := SeededRng.new(seed ^ 0x0c00c11c)
-	var w := _ri(rng, 12, 14)
-	var h := _ri(rng, 8, 10)
-	var g := _room(w, h)
-	var start := Vector2i(1, h / 2)
-	g[start] = SYM_START
-	var gate_col := _ri(rng, w / 2 - 1, w / 2 + 1)
-	var gate := _stage(g, 1, gate_col, gate_col, h, archetype_id, rng)
-	var end := Vector2i(w - 2, h / 2)
-	g[end] = SYM_END
-	return _finish({
-		"id": archetype_id, "w": w, "h": h, "start": start, "end": end, "grid": g, "gates": [gate],
-	})
+	return compose([archetype_id], seed)
 
-## A NESTED chunk: a chain of gated chambers (`stages` = archetype ids, in solve order). end sits behind ALL of
-## them; each gate's mechanism is in its own chamber, reachable only after the previous gate opens.
+## A NESTED chunk: a chain of gated chambers (`stages` = archetype ids, in solve order; a distract stage may
+## pin its variant as "distract:lure|patrol|twin", otherwise the seed picks). end sits behind ALL of them;
+## each gate's mechanism is in its own chamber, reachable only after the previous gate opens. VARIETY is
+## seeded: chamber widths vary, watched-gap rows drift off-center, and chambers grow cover PILLARS — pillars
+## are reverted wholesale if they break the gated invariant (verified, never hoped).
 static func compose(stages: Array, seed: int) -> Dictionary:
+	# Attempt loop: a layout must pass gated + lock-before-key + SAFE-PASSAGE (fans must leave regroup
+	# ground between gates). A failing roll re-rolls with a derived seed — deterministic remediation, and
+	# the last attempt is returned regardless so the report card shows the failure honestly.
+	var chunk: Dictionary = {}
+	for attempt in range(4):
+		chunk = _compose_attempt(stages, seed ^ (attempt * 0x9e3779b9))
+		var sp := safe_passage(chunk)
+		if bool(verify(chunk)["ok"]) and bool(lock_before_key(chunk)["ok"]) and bool(sp["ok"]):
+			break
+	return chunk
+
+static func _compose_attempt(stages: Array, seed: int) -> Dictionary:
 	var rng := SeededRng.new(seed ^ 0x0c00c11c)
-	var cw := 4                                   # chamber interior width
 	var n := stages.size()
-	var w := 1 + cw + n * (1 + cw) + 1            # borders + chamber0 + n*(gate + chamber)
-	var h := 9
+	var h := 11
+	var widths: Array = []
+	var w := 2                                    # borders
+	for i in range(n + 1):
+		var cw := _ri(rng, 4, 6)                  # per-chamber interior width (seeded variety)
+		widths.append(cw)
+		w += cw + (1 if i < n else 0)             # chamber + its gate column
 	var g := _room(w, h)
 	var start := Vector2i(1, h / 2)
 	g[start] = SYM_START
 	var gates: Array = []
-	var cx := 1                                   # interior x of the current chamber
+	var chamber_spans: Array = []                 # [{x0, x1}] interiors, for pillar seeding
+	var cx := 1
 	for i in range(n):
 		var chamber_x0 := cx
-		var gate_col := chamber_x0 + cw           # the gate sits right after this chamber
-		gates.append(_stage(g, chamber_x0, gate_col, gate_col, h, str(stages[i]), rng))
+		var gate_col := chamber_x0 + int(widths[i])
+		chamber_spans.append({"x0": chamber_x0, "x1": gate_col - 1})
+		var parts := str(stages[i]).split(":")
+		var arch := parts[0]
+		var variant := parts[1] if parts.size() > 1 else ""
+		gates.append(_stage(g, chamber_x0, gate_col, gate_col, h, arch, rng, variant))
 		cx = gate_col + 1
+	chamber_spans.append({"x0": cx, "x1": w - 2})
 	var end := Vector2i(w - 2, h / 2)
 	g[end] = SYM_END
-	return _finish({
-		"id": "nested", "w": w, "h": h, "start": start, "end": end, "grid": g, "gates": gates,
-	})
+	var chunk := {
+		"id": "nested" if n > 1 else str(stages[0]), "w": w, "h": h,
+		"start": start, "end": end, "grid": g, "gates": gates,
+	}
+	_seed_pillars(chunk, chamber_spans, rng)
+	return _finish(chunk)
+
+## Cover pillars: 0-2 single-cell wall blobs per chamber, seeded. They break sightlines (the walls are
+## opaque in the built room) and give crossings texture. Placed only on bare floor, then the WHOLE set is
+## reverted if verify() reports the chunk broken — variety never buys a broken invariant.
+static func _seed_pillars(chunk: Dictionary, spans: Array, rng: SeededRng) -> void:
+	var g: Dictionary = chunk["grid"]
+	var h := int(chunk["h"])
+	var placed: Array = []
+	for span in spans:
+		var x0 := int(span["x0"])
+		var x1 := int(span["x1"])
+		if x1 - x0 < 3:
+			continue
+		for _p in range(_ri(rng, 0, 2)):
+			var cell := Vector2i(_ri(rng, x0 + 1, x1 - 1), _ri(rng, 2, h - 3))
+			if str(g.get(cell, "")) == SYM_FLOOR and absi(cell.y - h / 2) >= 1:
+				g[cell] = SYM_WALL
+				placed.append(cell)
+	if placed.is_empty():
+		return
+	var v := verify(chunk)
+	var lbk := lock_before_key(chunk)
+	var sp := safe_passage(chunk)
+	if not (bool(v["ok"]) and bool(lbk["ok"]) and bool(sp["ok"])):
+		for cell in placed:
+			g[cell] = SYM_FLOOR
 
 # --- one gate + its mechanism (an archetype), placed in [chamber_x0, gate_col) with the gate band at gate_col ---
 
-static func _stage(g: Dictionary, chamber_x0: int, chamber_x1: int, gate_col: int, h: int, arch: String, rng: SeededRng) -> Dictionary:
+static func _stage(g: Dictionary, chamber_x0: int, chamber_x1: int, gate_col: int, h: int, arch: String, rng: SeededRng, variant := "") -> Dictionary:
 	var cells := _vgate(g, gate_col, h, _gate_sym(arch))
 	var row := _ri(rng, 2, h - 3)
 	var mech := Vector2i(gate_col - 1, row)       # mechanism against the gate, inside the chamber
@@ -106,39 +148,88 @@ static func _stage(g: Dictionary, chamber_x0: int, chamber_x1: int, gate_col: in
 				"elements": [{"sym": "P", "cell": p1}, {"sym": "P", "cell": p2}],
 				"role": "held plates — both must be held at once (split the party)"}
 		"distract":
-			# The Watched Gap kit, generated. Geometry matters here: the gate is a GAP in a WALL band — the
-			# watched lane (!) is only the middle rows; the rest of the column is wall. The wall is what makes
-			# the sentry's sight honest (it watches THROUGH the gap; the chambers on both sides are blind to
-			# it), the same one-truth geometry the built fragment proved. Enforcement is DETECTION (spotted =
-			# swept to start), so the model treats the lane as blocked until the sentry commits away. The
-			# flure (F) sits in a pocket reachable WITHOUT entering the lane; conceal pocket (c) = the
-			# Shadow's stage; sentry (s) posts at the gap's far mouth.
-			var mid := h / 2
-			var lane: Array = []
-			for c0 in cells:
-				var cy := (c0 as Vector2i).y
-				if cy >= mid - 1 and cy <= mid + 1:
-					lane.append(c0)
-				else:
-					g[c0] = SYM_WALL
-			for lc in lane:
-				g[lc] = "!"
-			mech = Vector2i(clampi(chamber_x0 + 1, chamber_x0, gate_col - 1), 1)
-			g[mech] = "F"
-			# The sentry posts IN the gap it guards: the gap walls shield both chambers from its radial
-			# sight, so its watch is a readable corridor through the gap (lane + mid-row approach strips),
-			# never a disc dominating the next chamber's work area — the chain stays solvable after it
-			# re-arms (the built bridge caught the in-chamber-post version spotting stage i+1's solve).
-			var sentry := Vector2i(gate_col, mid)
-			g[sentry] = "s"
-			var conceal := Vector2i(clampi(chamber_x0 + 1, chamber_x0, gate_col - 1), h - 2)
-			var elems: Array = [{"sym": "F", "cell": mech}, {"sym": "s", "cell": sentry}]
-			if g.get(conceal) == SYM_FLOOR:
-				g[conceal] = "c"
-				elems.append({"sym": "c", "cell": conceal})
-			return {"cells": lane, "open_row": -1, "mechanism": mech, "sym": "!", "arch": arch,
-				"elements": elems,
-				"role": "watched gap — tend the flure so the sentry commits off its watch, then cross the lane"}
+			# The Watched Gap kit, generated, in three VARIANTS (all backed by the same proven mechanics).
+			# Geometry rule for all: the gate is a GAP in a WALL band — the watched lane (!) is only a few
+			# rows; the rest of the column is wall. The wall makes the sentry's sight honest (it watches
+			# THROUGH its gap; the chambers are blind to it) and the sentry POSTS IN the gap it guards.
+			var v: String = variant if variant != "" else str(["lure", "patrol", "twin"][_ri(rng, 0, 2)])
+			match v:
+				"patrol":
+					# WHEN-register gate: no flure. A TALLER watched gap (5 rows) with the sentry pacing
+					# inside it — the window is crossing the far rows while it walks the other end. A
+					# carved side-alcove was tried first and verify() caught it as a hole straight
+					# through the 1-cell band; the tall-gap form keeps the invariant by construction.
+					# Mechanism = the conceal pocket (the STAGING spot — you solve this gate by being in
+					# position when the beat opens).
+					var g_mid := _ri(rng, 3, 5)
+					var lane_p: Array = []
+					for c0 in cells:
+						var cyp := (c0 as Vector2i).y
+						if cyp >= g_mid - 1 and cyp <= g_mid + 3:
+							lane_p.append(c0)
+						else:
+							g[c0] = SYM_WALL
+					for lc in lane_p:
+						g[lc] = "!"
+					var sentry_p := Vector2i(gate_col, g_mid)
+					g[sentry_p] = "s"
+					var far := Vector2i(gate_col, g_mid + 3)
+					var conceal_p := Vector2i(clampi(chamber_x0 + 1, chamber_x0, gate_col - 1), h - 2)
+					g[conceal_p] = "c"
+					return {"cells": lane_p, "open_row": -1, "mechanism": conceal_p, "sym": "!", "arch": arch,
+						"variant": "patrol", "patrol_far": far,
+						"elements": [{"sym": "s", "cell": sentry_p}, {"sym": "c", "cell": conceal_p}],
+						"role": "patrolled gap — read the sentry's beat from the pocket, cross the far rows in its look-away"}
+				"twin":
+					# Two gaps, two watchers, ONE flure: luring pulls the NORTH sentry only — its gap
+					# clears while the south watcher keeps its own. Crossing the wrong gap still bites.
+					var lane_n: Array = []
+					var lane_s: Array = []
+					for c0 in cells:
+						var cy := (c0 as Vector2i).y
+						if cy == 2 or cy == 3:
+							lane_n.append(c0)
+						elif cy == h - 4 or cy == h - 3:
+							lane_s.append(c0)
+						else:
+							g[c0] = SYM_WALL
+					for lc in lane_n + lane_s:
+						g[lc] = "!"
+					var s_n := Vector2i(gate_col, 3)
+					var s_s := Vector2i(gate_col, h - 4)
+					g[s_n] = "s"
+					g[s_s] = "s"
+					mech = Vector2i(clampi(chamber_x0 + 1, chamber_x0, gate_col - 1), 1)
+					g[mech] = "F"
+					var conceal_t := Vector2i(clampi(chamber_x0 + 1, chamber_x0, gate_col - 1), h - 2)
+					var elems_t: Array = [{"sym": "F", "cell": mech}, {"sym": "s", "cell": s_n}, {"sym": "s", "cell": s_s}]
+					if g.get(conceal_t) == SYM_FLOOR:
+						g[conceal_t] = "c"
+						elems_t.append({"sym": "c", "cell": conceal_t})
+					return {"cells": lane_n + lane_s, "open_row": -1, "mechanism": mech, "sym": "!", "arch": arch,
+						"variant": "twin", "lured_sentry": s_n, "other_sentry": s_s,
+						"elements": elems_t,
+						"role": "twin watch — the flure pulls only the NORTH watcher; cross ITS gap, the south one still bites"}
+				_:
+					# The classic: flure pocket, conceal pocket, static in-gap sentry. Gap row drifts.
+					var g_mid_l := _ri(rng, 3, h - 4)
+					var lane_l := _carve_gap(g, cells, gate_col, g_mid_l)
+					var sentry_l := Vector2i(gate_col, g_mid_l)
+					g[sentry_l] = "s"
+					var flip := _ri(rng, 0, 1) == 1     # seeded N/S flip of flure vs conceal pockets
+					var fy := 1 if not flip else h - 2
+					var cy2 := h - 2 if not flip else 1
+					mech = Vector2i(clampi(chamber_x0 + 1, chamber_x0, gate_col - 1), fy)
+					g[mech] = "F"
+					var conceal_l := Vector2i(clampi(chamber_x0 + 1, chamber_x0, gate_col - 1), cy2)
+					var elems_l: Array = [{"sym": "F", "cell": mech}, {"sym": "s", "cell": sentry_l}]
+					if g.get(conceal_l) == SYM_FLOOR:
+						g[conceal_l] = "c"
+						elems_l.append({"sym": "c", "cell": conceal_l})
+					return {"cells": lane_l, "open_row": -1, "mechanism": mech, "sym": "!", "arch": arch,
+						"variant": "lure",
+						"elements": elems_l,
+						"role": "watched gap — tend the flure so the sentry commits off its watch, then cross the lane"}
 	# default: a plain wall + a lever
 	g[mech] = "L"
 	return {"cells": cells, "open_row": -1, "mechanism": mech, "sym": "=", "arch": "lever",
@@ -157,10 +248,14 @@ static func _gate_sym(arch: String) -> String:
 ## opaque callback — so the verifier (and later the stretch assembler) can check "this section's mechanisms
 ## are drawn from its district's native family" the same way it checks topology. `register` names which
 ## perception register (P2) reads the mechanism best — the raw material of a PERCEPTION_LOCK.
-static func mechanism_type(arch: String) -> Dictionary:
+static func mechanism_type(arch: String, variant := "") -> Dictionary:
 	match arch:
 		"holdfast": return {"family": "terminal", "subtype": "flow", "register": "survival/held (Endo)"}
-		"distract": return {"family": "flora", "subtype": "flure", "register": "WHERE (Peris)"}
+		"distract":
+			if variant == "patrol":
+				# No object at all: the mechanism is the BEAT — pure WHEN register (Archetype 7 shading).
+				return {"family": "timing", "subtype": "patrol_window", "register": "WHEN (Aster)"}
+			return {"family": "flora", "subtype": "flure", "register": "WHERE (Peris)"}
 		"vinebridge": return {"family": "flora", "subtype": "climbvine", "register": "WHERE (Peris)"}
 		"split": return {"family": "plate", "subtype": "held_pair", "register": "co-op (two bodies)"}
 		"redirect": return {"family": "bait", "subtype": "charge_line", "register": "dodge (mechanic unbuilt)"}
@@ -178,7 +273,10 @@ static func _finish(chunk: Dictionary) -> Dictionary:
 	else:
 		var labels: Array = []
 		for gt in gates:
-			labels.append(str(gt["arch"]))
+			var lbl := str(gt["arch"])
+			if str(gt.get("variant", "")) != "":
+				lbl += ":" + str(gt["variant"])
+			labels.append(lbl)
 		chunk["title"] = "Nested: " + " -> ".join(labels)
 		chunk["archetype"] = "%d gates, each behind the last (nested)" % gates.size()
 	chunk["solve"] = _solve_text(gates)
@@ -208,21 +306,26 @@ static func mechanic(a: String) -> Dictionary:
 		"redirect": return {"buildable": false, "mechanic": "an enemy that BREAKS a structure on charge impact — NO such mechanic exists (charges don't collide with structures)"}
 	return {"buildable": false, "mechanic": "unknown"}
 
-static func _solve_step(a: String) -> String:
+static func _solve_step(gt: Dictionary) -> String:
+	var a := str(gt["arch"])
 	match a:
 		"holdfast": return "sneak past the guard to the override (O) and HOLD it so the wash (~) calms, then cross"
 		"redirect": return "bait the enemy (g) at (B) and dodge so it breaches the wall (X)"
 		"vinebridge": return "flure (F) the guard off the lip, plant a climbvine at (V) to bridge the chasm (:)"
 		"split": return "split the party to hold BOTH plates (P) at once so the door (=) opens"
-		"distract": return "tend the flure (F) so the sentry (s) commits off its watch, fall back, cross the lane (!)"
+		"distract":
+			match str(gt.get("variant", "lure")):
+				"patrol": return "stage in the pocket (c), read the sentry's patrol beat, cross the lane (!) in its look-away"
+				"twin": return "tend the flure (F) — it pulls ONLY the north watcher; cross the NORTH gap while the south one keeps its own"
+				_: return "tend the flure (F) so the sentry (s) commits off its watch, fall back, cross the lane (!)"
 	return "activate the mechanism"
 
 static func _solve_text(gates: Array) -> String:
 	if gates.size() == 1:
-		return _solve_step(str(gates[0]["arch"])).capitalize() + "."
+		return _solve_step(gates[0]).capitalize() + "."
 	var parts: Array = []
 	for i in range(gates.size()):
-		parts.append("(%d) %s" % [i + 1, _solve_step(str(gates[i]["arch"]))])
+		parts.append("(%d) %s" % [i + 1, _solve_step(gates[i])])
 	return "In order, each behind the last: " + "; then ".join(parts) + " — only then is the end reachable."
 
 static func _shadow_text(gates: Array) -> String:
@@ -232,7 +335,11 @@ static func _shadow_text(gates: Array) -> String:
 		"redirect": return "Aster+Peris: Peris Hushbloom-stuns the charger at the commit (no dodge window)."
 		"vinebridge": return "Aster+Peris: Peris plants+BLOOMs the vine herself; Aster times/EMPs the guard instead of the flure."
 		"split": return "Aster+Peris (two bodies): Aster hacks one plate to a timed latch while Peris holds the other, then dashes."
-		"distract": return "Aster+Peris: Aster TRACE reads the sentry's beat; stage in the conceal pocket (c) and slip the look-away window — no flure spent."
+		"distract":
+			match str(gates[0].get("variant", "lure")):
+				"patrol": return "Aster+Peris: Peris grows a BLOOM lane light to mark the safe row; Aster calls the beat — cross split, one per window."
+				"twin": return "Aster+Peris: no flure spent — TRACE both watchers' idle drift, stage in the pocket, thread the north gap in the overlap of their look-aways."
+				_: return "Aster+Peris: Aster TRACE reads the sentry's beat; stage in the conceal pocket (c) and slip the look-away window — no flure spent."
 	return "Aster+Peris compose the same skeleton with substitute variants."
 
 static func _legend(gates: Array) -> Dictionary:
@@ -269,6 +376,20 @@ static func _vgate(g: Dictionary, col: int, h: int, sym: String) -> Array:
 		g[Vector2i(col, y)] = sym
 		cells.append(Vector2i(col, y))
 	return cells
+
+## Carve a 3-row watched gap centered on `g_mid` out of a full-column band: lane rows become "!", the rest
+## of the column becomes wall. Returns the lane cells.
+static func _carve_gap(g: Dictionary, cells: Array, _col: int, g_mid: int) -> Array:
+	var lane: Array = []
+	for c0 in cells:
+		var cy := (c0 as Vector2i).y
+		if cy >= g_mid - 1 and cy <= g_mid + 1:
+			lane.append(c0)
+		else:
+			g[c0] = SYM_WALL
+	for lc in lane:
+		g[lc] = "!"
+	return lane
 
 # --- the invariant: prove you cannot walk start->end without solving, in order --------------------------------
 
@@ -332,6 +453,110 @@ static func _reach(chunk: Dictionary, target: Vector2i, open_flags: Array) -> bo
 			seen[nc] = true
 			stack.append(nc)
 	return false
+
+# --- safe passage between watch fans (learned by PLAYING a generated chain) -------------------------------------
+
+## Watch-fan radius in CELLS (mirrors the bridge: SENTRY_RANGE 4.0 / CELL 1.5).
+const WATCH_RANGE_CELLS := 2.7
+
+## THE FAIRNESS INVARIANT for chained stealth gates: between consecutive gates there must be SAFE GROUND —
+## a route from the previous gate's exit to the next stage's mechanism (and conceal pocket) that avoids
+## EVERY posted sentry's watch fan except the just-crossed gate's own (you land in that one and walk out
+## while its sentry is still away). Without this, aligned gap rows let two gates' fans jointly cover the
+## connecting chamber and a correctly-playing runner gets caught on open floor — the bridge playtest found
+## exactly that (seed 11: patrol row == twin north row). Machine-checked here; compose() re-rolls a failing
+## layout. Fans are radial + wall-LOS, same truth the real detection uses.
+static func safe_passage(chunk: Dictionary) -> Dictionary:
+	var gates: Array = chunk["gates"]
+	var grid: Dictionary = chunk["grid"]
+	var gate_sentries: Array = []
+	for gt in gates:
+		var s: Array = []
+		for e in gt.get("elements", []):
+			if str(e["sym"]) == "s":
+				s.append(e["cell"])
+		gate_sentries.append(s)
+	var segments: Array = []
+	var all_ok := true
+	for i in range(-1, gates.size()):
+		var fan := {}
+		for gi in range(gates.size()):
+			if gi == i:
+				continue   # the just-crossed gate's own fan is excused for its own aftermath
+			for sc in gate_sentries[gi]:
+				_add_fan(grid, sc, fan)
+		var entries: Array = []
+		if i == -1:
+			entries = [chunk["start"]]
+		else:
+			for lc in gates[i]["cells"]:
+				var e2: Vector2i = (lc as Vector2i) + Vector2i(1, 0)
+				if grid.has(e2) and str(grid[e2]) != SYM_WALL:
+					entries.append(e2)
+		var targets: Array = []
+		if i + 1 < gates.size():
+			targets.append(gates[i + 1]["mechanism"])
+			for e3 in gates[i + 1].get("elements", []):
+				if str(e3["sym"]) == "c":
+					targets.append(e3["cell"])
+		else:
+			targets.append(chunk["end"])
+		var ok := _safe_flood(grid, entries, targets, fan)
+		segments.append({"segment": i, "ok": ok})
+		all_ok = all_ok and ok
+	return {"ok": all_ok, "segments": segments}
+
+static func _add_fan(grid: Dictionary, sc: Vector2i, fan: Dictionary) -> void:
+	var r := int(ceil(WATCH_RANGE_CELLS))
+	for dy in range(-r, r + 1):
+		for dx in range(-r, r + 1):
+			var c := sc + Vector2i(dx, dy)
+			if not grid.has(c) or Vector2(dx, dy).length() > WATCH_RANGE_CELLS:
+				continue
+			if _cell_los(grid, sc, c):
+				fan[c] = true
+
+## Cell-to-cell sightline: sampled line, blocked by wall cells (endpoints excluded) — the sketch mirror of
+## grid_world.has_line_of_sight.
+static func _cell_los(grid: Dictionary, a: Vector2i, b: Vector2i) -> bool:
+	if a == b:
+		return true
+	var dist := Vector2(b - a).length()
+	var steps := maxi(2, int(ceil(dist / 0.4)))
+	for s in range(1, steps):
+		var f := float(s) / float(steps)
+		var c := Vector2i(roundi(lerpf(a.x, b.x, f)), roundi(lerpf(a.y, b.y, f)))
+		if c == a or c == b:
+			continue
+		if grid.has(c) and str(grid[c]) == SYM_WALL:
+			return false
+	return true
+
+static func _safe_flood(grid: Dictionary, entries: Array, targets: Array, fan: Dictionary) -> bool:
+	var target_set := {}
+	for t in targets:
+		target_set[t] = true
+	var seen := {}
+	var queue: Array = []
+	for e in entries:
+		if not fan.has(e) and not seen.has(e):
+			seen[e] = true
+			queue.append(e)
+	var qi := 0
+	while qi < queue.size():
+		var c: Vector2i = queue[qi]
+		qi += 1
+		if target_set.has(c):
+			target_set.erase(c)
+			if target_set.is_empty():
+				return true
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var nc: Vector2i = c + (d as Vector2i)
+			if seen.has(nc) or not grid.has(nc) or str(grid[nc]) == SYM_WALL or fan.has(nc):
+				continue
+			seen[nc] = true
+			queue.append(nc)
+	return target_set.is_empty()
 
 # --- lock-before-key (Dormans; LEVEL_DESIGN_RESEARCH.md) --------------------------------------------------------
 
@@ -406,6 +631,7 @@ static func _sees_any(chunk: Dictionary, from: Vector2i, targets: Array) -> bool
 static func report_card(chunk: Dictionary) -> Dictionary:
 	var v := verify(chunk)
 	var lbk := lock_before_key(chunk)
+	var sp := safe_passage(chunk)
 	var gates: Array = chunk["gates"]
 	var blocked_archs: Array = []
 	var registers := {}
@@ -414,19 +640,20 @@ static func report_card(chunk: Dictionary) -> Dictionary:
 		var a := str(gt["arch"])
 		if not bool(mechanic(a)["buildable"]):
 			blocked_archs.append(a)
-		var mt := mechanism_type(a)
+		var mt := mechanism_type(a, str(gt.get("variant", "")))
 		registers[str(mt["register"])] = true
 		mechanisms.append("%s/%s" % [str(mt["family"]), str(mt["subtype"])])
 	return {
 		"gated": v,                                       # P8: cannot walk start->end unsolved (PROVEN)
 		"lock_before_key": lbk,                           # research: encounter the lock first (PROVEN)
+		"safe_passage": sp,                               # fairness: regroup ground exists between watch fans (PROVEN)
 		"buildable": blocked_archs.is_empty(),            # P6: every gate backed by a real mechanic
 		"blocked_archetypes": blocked_archs,
 		"mechanisms": mechanisms,                         # Track D: typed, section-keyable
 		"registers": registers.keys(),                    # P2 raw material (composite = >=2 registers)
 		"two_registers": registers.size() >= 2,           # P2: a legit SECTION composes two (atoms may be 1)
 		"shadow_verified": false,                         # P10: prose only until the ablation slot (Track B2)
-		"ok": bool(v["ok"]) and bool(lbk["ok"]) and blocked_archs.is_empty(),
+		"ok": bool(v["ok"]) and bool(lbk["ok"]) and bool(sp["ok"]) and blocked_archs.is_empty(),
 	}
 
 static func render_report(chunk: Dictionary) -> String:

@@ -18,6 +18,8 @@ const SENTRY_RANGE := 4.0          # posts IN the gap: covers its lane + a short
                                    # tuned so flure/conceal pockets sit OUTSIDE a re-posted sentry's reach
                                    # (the chain must stay solvable after earlier sentries re-arm)
 const SENTRY_SPEED := 3.5
+const PATROL_SPEED := 1.2          # patrol variant: a slow, READABLE beat — the look-away window is generous
+                                   # (P1: pressure never comes from tighter timing)
 const LURE_DURATION := 20.0
 const FLURE_TEND := 2.0
 const FLURE_PICK_RADIUS := 1.0
@@ -63,51 +65,66 @@ func _build_chunk() -> void:
 		_build_distract_stage(i, gt)
 
 func _build_distract_stage(i: int, gt: Dictionary) -> void:
-	var lane_world: Array = []
+	var variant := str(gt.get("variant", "lure"))
+	var lane_tint := Color(0.32, 0.24, 0.12)
+	if variant == "patrol":
+		lane_tint = Color(0.14, 0.26, 0.3)     # cool: a beat to read, not a lure to spend
+	elif variant == "twin":
+		lane_tint = Color(0.3, 0.16, 0.22)     # warning: one of these gaps stays watched
 	for lc in gt["cells"]:
 		var p := _world(lc)
-		lane_world.append(p)
-		_add_box(self, Vector3(p.x, 0.02, p.z), Vector3(CELL, 0.04, CELL), Color(0.32, 0.24, 0.12))  # watched-lane tint
+		_add_box(self, Vector3(p.x, 0.02, p.z), Vector3(CELL, 0.04, CELL), lane_tint)
 	var f_cell := Vector2i(-1, -1)
 	var c_cell := Vector2i(-1, -1)
-	var s_cell := Vector2i(-1, -1)
+	var s_cells: Array = []
 	for e in gt.get("elements", []):
 		match str(e["sym"]):
 			"F": f_cell = e["cell"]
 			"c": c_cell = e["cell"]
-			"s": s_cell = e["cell"]
-	var f_pos := _world(f_cell) + Vector3(0, 0.0, 0)
-	var mesh := _add_box(self, f_pos + Vector3(0, 0.5, 0), Vector3(0.4, 0.4, 0.4), Color(0.7, 0.45, 0.15), Color(0.8, 0.4, 0.1), 0.5, "AtomFlureMesh%d" % i)
-	var flure := _add_object_interactable(self, "AtomFlure%d" % i, "Flure", f_pos + Vector3(0, 0.5, 0),
-		"Tend", [mesh], "peris", FLURE_TEND, false, FLURE_PICK_RADIUS, Interactable.InteractableType.TIMED_ACTION)
-	flure.interacted.connect(func() -> void: activate_lure(i))
+			"s": s_cells.append(e["cell"])
 	var conceal_world := Vector3.INF
 	if c_cell.x >= 0:
 		conceal_world = _world(c_cell)
 		_add_box(self, Vector3(conceal_world.x, 0.02, conceal_world.z), Vector3(CELL, 0.04, CELL), Color(0.1, 0.2, 0.16))
-	var post := _world(s_cell) + Vector3(0, 0.5, 0)
-	# The lured sentry parks two cells SOUTH of the flure: clear of the tender standing at it (outside the
-	# 0.4x distracted reach) AND off the north-east retreat diagonal — the east-adjacent settle put the
-	# sentry's approach right through the retreat path and caught a correctly retreating tender.
-	var settle := f_pos + Vector3(0.0, 0.5, 2.0 * CELL)
-	var enemy := EnemyScript.new()
-	enemy.name = "AtomSentry%d" % i
-	enemy.position = post
-	enemy.move_speed = SENTRY_SPEED
-	enemy.detection_range = SENTRY_RANGE
-	enemy._detection_targets.assign(PARTY_IDS)
-	add_child(enemy)
-	var cid := "atom_sentry_%d" % i
-	enemy.char_id = cid
+	var st := {"idx": i, "variant": variant, "sentries": [], "flure_mesh": null,
+		"conceal_world": conceal_world, "lure_until": -1.0, "returning": false, "settle": Vector3.INF}
+	# The flure (lure + twin variants): a real TIMED_ACTION tend. Patrol has NO object — the beat is the gate.
+	if f_cell.x >= 0 and variant != "patrol":
+		var f_pos := _world(f_cell)
+		var mesh := _add_box(self, f_pos + Vector3(0, 0.5, 0), Vector3(0.4, 0.4, 0.4), Color(0.7, 0.45, 0.15), Color(0.8, 0.4, 0.1), 0.5, "AtomFlureMesh%d" % i)
+		var flure := _add_object_interactable(self, "AtomFlure%d" % i, "Flure", f_pos + Vector3(0, 0.5, 0),
+			"Tend", [mesh], "peris", FLURE_TEND, false, FLURE_PICK_RADIUS, Interactable.InteractableType.TIMED_ACTION)
+		flure.interacted.connect(func() -> void: activate_lure(i))
+		st["flure_mesh"] = mesh
+		# The lured sentry parks two cells SOUTH of the flure: clear of the tender standing at it (outside
+		# the 0.4x distracted reach) AND off the north-east retreat diagonal.
+		st["settle"] = f_pos + Vector3(0.0, 0.5, 2.0 * CELL)
+	# Sentries. The FIRST is the lure target (twin's north watcher); a patrol sentry walks its beat.
 	var gs = _get_game_state()
-	if gs != null:
-		enemy.game_state = gs
-		gs.register_character(cid, post, SENTRY_SPEED, {"detection_range": SENTRY_RANGE})
-		enemy.activate()
-		enemy.target_spotted.connect(_on_spotted.bind(i))
-		enemy.hit_target.connect(func(tid: String, _dmg: float) -> void: _on_spotted(tid, i))
-	_stages.append({"idx": i, "sentry": enemy, "cid": cid, "post": post, "settle": settle,
-		"flure_mesh": mesh, "conceal_world": conceal_world, "lure_until": -1.0, "returning": false})
+	for k in range(s_cells.size()):
+		var post := _world(s_cells[k]) + Vector3(0, 0.5, 0)
+		var enemy := EnemyScript.new()
+		enemy.name = "AtomSentry%d_%d" % [i, k]
+		enemy.position = post
+		enemy.move_speed = PATROL_SPEED if variant == "patrol" else SENTRY_SPEED
+		enemy.detection_range = SENTRY_RANGE
+		enemy._detection_targets.assign(PARTY_IDS)
+		add_child(enemy)
+		var cid := "atom_sentry_%d" % i if k == 0 else "atom_sentry_%d_%d" % [i, k]
+		enemy.char_id = cid
+		var waypoints: Array[Vector3] = []
+		if variant == "patrol" and gt.has("patrol_far"):
+			waypoints = [post, _world(gt["patrol_far"]) + Vector3(0, 0.5, 0)]
+		if gs != null:
+			enemy.game_state = gs
+			gs.register_character(cid, post, enemy.move_speed, {"detection_range": SENTRY_RANGE})
+			enemy.activate()
+			# NOTE: a patrol sentry's beat is armed in reset_preview_state, not here — the host installs
+			# the navigation grid AFTER the chunk builds, and patrol pathfinds on it.
+			enemy.target_spotted.connect(_on_spotted.bind(i))
+			enemy.hit_target.connect(func(tid: String, _dmg: float) -> void: _on_spotted(tid, i))
+		(st["sentries"] as Array).append({"cid": cid, "enemy": enemy, "post": post, "waypoints": waypoints})
+	_stages.append(st)
 
 func _ready_arrival_hook() -> void:
 	var gs = _get_game_state()
@@ -139,8 +156,12 @@ func get_grid_data() -> Dictionary:
 
 # --- The puzzle: lure, cross, catch (all real) -------------------------------------------------------------------
 
+## The lure target is always the stage's FIRST sentry (twin's north watcher — the south one is never lured;
+## crossing its gap stays a catch, which is the twin's whole lesson).
 func activate_lure(i: int) -> bool:
 	var st: Dictionary = _stages[i]
+	if st["flure_mesh"] == null:
+		return false
 	var now := _get_scheduler_tick()
 	if _phase == "complete" or float(st["lure_until"]) > now or bool(st["returning"]):
 		return false
@@ -148,13 +169,14 @@ func activate_lure(i: int) -> bool:
 	st["lure_until"] = now + LURE_DURATION
 	_set_emission(st["flure_mesh"], 3.0)
 	var gs = _get_game_state()
-	var enemy = st["sentry"]
-	if enemy != null and is_instance_valid(enemy) and gs != null and gs.characters.has(str(st["cid"])):
+	var target: Dictionary = (st["sentries"] as Array)[0]
+	var enemy = target["enemy"]
+	if enemy != null and is_instance_valid(enemy) and gs != null and gs.characters.has(str(target["cid"])):
 		enemy._current_target_id = ""
 		if enemy.has_method("_change_state"):
 			enemy._change_state("idle")
-		gs.set_character_distracted(str(st["cid"]), true)
-		gs.command_move_to_pos(str(st["cid"]), st["settle"])
+		gs.set_character_distracted(str(target["cid"]), true)
+		gs.command_move_to_pos(str(target["cid"]), st["settle"])
 	var sched = _get_scheduler()
 	if sched != null:
 		sched.cancel_tag("atom_lure_%d" % i)
@@ -167,18 +189,22 @@ func _on_lure_expired(i: int) -> void:
 	st["lure_until"] = -1.0
 	_set_emission(st["flure_mesh"], 0.5)
 	var gs = _get_game_state()
-	var enemy = st["sentry"]
-	if enemy != null and is_instance_valid(enemy) and enemy.is_alive() and gs != null and gs.characters.has(str(st["cid"])):
+	var target: Dictionary = (st["sentries"] as Array)[0]
+	var enemy = target["enemy"]
+	if enemy != null and is_instance_valid(enemy) and enemy.is_alive() and gs != null and gs.characters.has(str(target["cid"])):
 		# Walk home still DISTRACTED — full watch resumes only when it ARRIVES at the post (the expiry
 		# insta-spot fix the built Watched Gap proved).
 		st["returning"] = true
 		if enemy.has_method("_change_state"):
 			enemy._change_state("idle")
-		gs.command_move_to_pos(str(st["cid"]), st["post"])
+		gs.command_move_to_pos(str(target["cid"]), target["post"])
 
 func _on_character_arrived(id: String) -> void:
 	for st in _stages:
-		if str(st["cid"]) == id and bool(st["returning"]):
+		if not bool(st["returning"]):
+			continue
+		var target: Dictionary = (st["sentries"] as Array)[0]
+		if str(target["cid"]) == id:
 			st["returning"] = false
 			var gs = _get_game_state()
 			if gs != null and gs.characters.has(id):
@@ -210,16 +236,25 @@ func _reset_sentry_to_post(i: int) -> void:
 	st["returning"] = false
 	_set_emission(st["flure_mesh"], 0.5)
 	var gs = _get_game_state()
-	var enemy = st["sentry"]
-	if enemy == null or not is_instance_valid(enemy) or gs == null or not gs.characters.has(str(st["cid"])):
-		return
-	enemy._current_target_id = ""
-	if enemy.has_method("_change_state"):
-		enemy._change_state("idle")
-	gs.command_stop(str(st["cid"]))
-	gs.set_character_distracted(str(st["cid"]), false)
-	gs.snap_character_to(str(st["cid"]), st["post"])
-	enemy.position = st["post"]
+	for target in (st["sentries"] as Array):
+		var enemy = target["enemy"]
+		if enemy == null or not is_instance_valid(enemy) or gs == null or not gs.characters.has(str(target["cid"])):
+			continue
+		enemy._current_target_id = ""
+		if enemy.has_method("_change_state"):
+			enemy._change_state("idle")
+		gs.command_stop(str(target["cid"]))
+		gs.set_character_distracted(str(target["cid"]), false)
+		gs.snap_character_to(str(target["cid"]), target["post"])
+		enemy.position = target["post"]
+		if not (target["waypoints"] as Array).is_empty():
+			enemy.set_patrol(_typed_waypoints(target["waypoints"]))   # a patrol sentry resumes its beat, re-armed
+
+func _typed_waypoints(arr: Array) -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	for p in arr:
+		out.append(p as Vector3)
+	return out
 
 func _set_emission(mesh: MeshInstance3D, energy: float) -> void:
 	if mesh != null and mesh.material_override is StandardMaterial3D:
@@ -297,7 +332,9 @@ func get_preview_anchors() -> Dictionary:
 	for st in _stages:
 		var i := int(st["idx"])
 		anchors["flure_%d" % i] = _world(_def["gates"][i]["mechanism"])
-		anchors["post_%d" % i] = st["post"]
+		var sentries: Array = st["sentries"]
+		for k in range(sentries.size()):
+			anchors["post_%d%s" % [i, "" if k == 0 else "_%d" % k]] = sentries[k]["post"]
 		if st["conceal_world"] != Vector3.INF:
 			anchors["conceal_%d" % i] = st["conceal_world"]
 	return anchors
@@ -316,12 +353,15 @@ func reset_preview_state() -> void:
 		st["returning"] = false
 		_set_emission(st["flure_mesh"], 0.5)
 		var gs = _get_game_state()
-		if gs != null and gs.characters.has(str(st["cid"])) and is_instance_valid(st["sentry"]):
-			gs.set_character_distracted(str(st["cid"]), false)
-			gs.snap_character_to(str(st["cid"]), st["post"])
-			st["sentry"].position = st["post"]
-			if st["sentry"].has_method("_change_state"):
-				st["sentry"]._change_state("idle")
+		for target in (st["sentries"] as Array):
+			if gs != null and gs.characters.has(str(target["cid"])) and is_instance_valid(target["enemy"]):
+				gs.set_character_distracted(str(target["cid"]), false)
+				gs.snap_character_to(str(target["cid"]), target["post"])
+				target["enemy"].position = target["post"]
+				if target["enemy"].has_method("_change_state"):
+					target["enemy"]._change_state("idle")
+				if not (target["waypoints"] as Array).is_empty():
+					target["enemy"].set_patrol(_typed_waypoints(target["waypoints"]))
 	_start_win_poll()
 	_set_preview_step("atom_briefing")
 
@@ -329,10 +369,12 @@ func get_preview_state() -> Dictionary:
 	var now := _get_scheduler_tick()
 	var stages_out: Array = []
 	for st in _stages:
+		var lead: Dictionary = (st["sentries"] as Array)[0] if not (st["sentries"] as Array).is_empty() else {}
 		stages_out.append({
+			"variant": str(st["variant"]),
 			"lure_active": float(st["lure_until"]) > now,
 			"returning": bool(st["returning"]),
-			"sentry_state": st["sentry"].get_state() if is_instance_valid(st["sentry"]) else "",
+			"sentry_state": lead["enemy"].get_state() if not lead.is_empty() and is_instance_valid(lead["enemy"]) else "",
 		})
 	return {
 		"phase": _phase,

@@ -537,13 +537,18 @@ func _patrol_next_waypoint() -> void:
 	if _patrol_waypoints.is_empty() or get_state() != "patrol":
 		return
 	var waypoint := _patrol_waypoints[_patrol_index]
+	var from_pos := global_position
 	if game_state and game_state.characters.has(char_id):
 		if game_state.grid:
 			game_state.command_move_to_cell(char_id, game_state.grid.world_to_grid(waypoint))
 		else:
 			game_state.command_move_to_pos(char_id, waypoint)
+		# Time the leg from the DATA-layer position — the node is a cosmetic follower and lags (headless it
+		# never moves at all). Reading it here made the return leg look zero-length: a 0.5s timer re-issued
+		# the outbound move before the walk began, and the patrol camped its far waypoint in 0.5s blips.
+		from_pos = game_state.get_position(char_id)
 	_patrol_index = (_patrol_index + 1) % _patrol_waypoints.size()
-	var dist := global_position.distance_to(waypoint)
+	var dist := from_pos.distance_to(waypoint)
 	var travel_time := dist / maxf(move_speed, 0.1) + 0.5
 	var scheduler := _get_scheduler()
 	if scheduler:

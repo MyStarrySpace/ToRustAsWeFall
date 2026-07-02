@@ -69,7 +69,7 @@ const PREVIEW_ENTRIES := [
 	{"id": "flora_garden", "chunk": "flora_garden", "title": "Flora Garden", "stage": 3},
 	{"id": "distract_gate", "chunk": "distract_gate", "title": "The Watched Gap", "stage": 3},
 	{"id": "puzzle_atom", "chunk": "puzzle_atom", "title": "Generated Atom Chain", "stage": 3,
-		"config": {"stages": ["distract", "distract"], "seed": 7}},
+		"config": {"stages": ["distract:lure", "distract:patrol", "distract:twin"], "seed": 7}},
 	{"id": "lure_relay", "chunk": "lure_relay", "title": "Flure Relay", "stage": 3},
 	{"id": "generated_chain_nested_poc", "chunk": "generated_stretch", "title": "Generated Chain/Nested POC", "stage": 3,
 		"config": {"spec_path": "res://data/generated_stretches/generated_chain_nested_poc_shelter_2_to_3.json"}},
