@@ -257,7 +257,6 @@ func _spawn_exit_shelter(spec: Dictionary) -> void:
 	var it := _add_object_interactable(self, _name(spec, "ExitShelter"), "Shelter", p + Vector3(0, 0.1, 0),
 		"Rest", [pad], "", 0.0, true, _f(spec, "radius", 1.2), Interactable.InteractableType.INSPECTION)
 	it.interacted.connect(_on_exit_shelter_rested)
-	_register_interactable(it)
 	_exit_shelters.append(it)
 
 func _on_exit_shelter_rested() -> void:

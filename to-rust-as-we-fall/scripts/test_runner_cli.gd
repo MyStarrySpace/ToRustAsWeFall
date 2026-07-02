@@ -381,6 +381,12 @@ func _ready() -> void:
 			"--test-drag-retrieve":
 				ran_test = true
 				await _test_drag_retrieve()
+			"--test-downed-carry":
+				ran_test = true
+				await _test_downed_carry()
+			"--test-pump-hall-grammar":
+				ran_test = true
+				await _test_pump_hall_grammar()
 			"--test-combat-downed":
 				ran_test = true
 				await _test_combat_downed()
@@ -1179,6 +1185,8 @@ func _run_all_tests() -> void:
 	await _test_roguelike_atom_run()
 	await _test_pump_hall()
 	await _test_drag_retrieve()
+	await _test_downed_carry()
+	await _test_pump_hall_grammar()
 	await _test_combat_downed()
 	await _test_shelter_safety()
 	await _test_stretch_branches()
@@ -17395,8 +17403,14 @@ func _test_drag_retrieve() -> void:
 		if not gs.is_moving("peris"):
 			break
 	var speed_before: float = float(gs.characters["peris"].move_speed)
+	# The carry needs BOTH hands: a held item blocks it entirely.
+	gs.characters["peris"].hands[0] = "occupied_test"
+	_assert_true(not gs.command_start_drag("peris", "aster"), "a full hand blocks the carry — it takes BOTH hands")
+	gs.characters["peris"].hands[0] = null
 	_assert_true(gs.command_start_drag("peris", "aster"), "adjacent, the conscious member takes hold")
 	_assert_true(gs.is_dragging("peris") and gs.get_dragger_of("aster") == "peris", "the drag is on")
+	_assert_true(not gs.has_free_hand("peris"), "carrying dead weight OCCUPIES both hand slots")
+	_assert_true("carry:aster" in gs.get_hand_items("peris"), "the hands hold the carry (the HUD can read it)")
 	_assert_true(float(gs.characters["peris"].move_speed) < speed_before, "hauling dead weight is SLOWER")
 	_assert_true(not gs.command_start_drag("aster", "peris"), "a downed character can never be the dragger")
 	# Haul west: the body is CARRIED.
@@ -17413,6 +17427,7 @@ func _test_drag_retrieve() -> void:
 	# Set it down: the body parks; the dragger recovers speed and leaves alone.
 	gs.command_stop_drag("peris")
 	_assert_true(not gs.is_dragging("peris"), "the load is set down")
+	_assert_true(gs.has_free_hands("peris", 2), "setting the load down frees both hands")
 	_assert_true(absf(float(gs.characters["peris"].move_speed) - speed_before) < 0.001,
 		"the dragger's speed comes back after the drag")
 	var dropped: Vector3 = gs.get_position("aster")
@@ -17461,6 +17476,93 @@ func _test_drag_retrieve() -> void:
 	_assert_true(replayed.is_downed("peris") == gs.is_downed("peris")
 		and replayed.is_downed("aster") == gs.is_downed("aster"),
 		"replay reproduces the downed states")
+
+## THE OUTLINE GRAMMAR ON A PURE-DATA LEVEL: every interactable the loader composes (flure, capbages,
+## the exit shelter) carries the SAME feedback grammar as Aster's scene — hover -> the white outline
+## hull, click -> the queued energy glow (the screen-space SDF/noise halo). Enumerated, not sampled:
+## a data-fragment interactable missing the grammar goes red here.
+func _test_pump_hall_grammar() -> void:
+	_test_name = "Pump Hall Outline Grammar"
+	var inst = await _instantiate_preview_chunk_and_wait("pump_hall", 6)
+	if inst == null:
+		_assert_true(false, "instantiates")
+		return
+	var chunk = inst._active_chunk
+	var interactables: Array = chunk.get("_interactables") as Array
+	_assert_true(interactables.size() >= 3, "the data pump hall registers its interactables (got %d)" % interactables.size())
+	for it in interactables:
+		if not is_instance_valid(it):
+			continue
+		var label := str(it.name)
+		var tgt = it.get("_outline_target")
+		_assert_true(tgt != null, "%s has an outline target (the grammar prerequisite)" % label)
+		if tgt == null:
+			continue
+		it.emit_signal("outline_hovered", it)
+		await get_tree().process_frame
+		_assert_true(bool(tgt.call("has_active_mesh_outline")), "%s: hover shows the white outline hull" % label)
+		var ident = it.get("_identify_label_3d")
+		_assert_true(ident != null and bool(ident.visible) and str(ident.text) != "",
+			"%s: hover shows the NAME label (%s)" % [label, str(ident.text) if ident != null else "none"])
+		it.emit_signal("outline_unhovered", it)
+		await get_tree().process_frame
+		_assert_true(ident == null or not bool(ident.visible), "%s: the name hides on unhover" % label)
+		it.emit_signal("interaction_requested", it, it.global_position)
+		it.emit_signal("outline_selected", it)
+		await get_tree().process_frame
+		_assert_true(bool(tgt.call("is_selected_feedback_active")), "%s: selecting lights the queued glow" % label)
+		if it.has_method("complete_queued_feedback"):
+			it.complete_queued_feedback()
+	inst.queue_free()
+	await get_tree().process_frame
+
+## DOWNED BODIES ARE CLICKABLE (the retrieve verb in real play): when a member goes down, the shared
+## DownedBodyManager gives the body an INSPECTION zone — click it and the servicing member walks over
+## and takes hold (both hands), the zone RIDES the carried body, clicking again sets the friend down,
+## and reviving/restoring removes the zone. Works in every tutorial_sequence scene by construction.
+func _test_downed_carry() -> void:
+	_test_name = "Downed Carry"
+	var inst = await _instantiate_preview_chunk_and_wait("pump_hall", 4)
+	if inst == null:
+		_assert_true(false, "pump_hall instantiates")
+		return
+	var gs = inst._game_state
+	gs.down_character("aster")
+	await get_tree().process_frame
+	var body = inst.find_child("DownedBody_aster", true, false)
+	_assert_true(body != null, "a downed member grows a clickable body zone")
+	if body == null:
+		inst.queue_free()
+		await get_tree().process_frame
+		return
+	_assert_true(str(body.description).begins_with("Carry"), "the body's verb reads Carry")
+	# Peris spawns beside Aster — take hold (the INSPECTION arrival path).
+	body.active_character = "peris"
+	body.on_interaction_arrived()
+	_assert_true(gs.is_dragging("peris") and gs.get_dragger_of("aster") == "peris",
+		"clicking the body starts the carry")
+	_assert_true(not gs.has_free_hand("peris"), "the carry takes both hands")
+	# The zone rides the carried body.
+	var away: Vector3 = gs.get_position("peris") + Vector3(4.5, 0.0, 0.0)
+	gs.command_move_to_pos("peris", away)
+	_advance_to_arrival(inst, gs, "peris")
+	await get_tree().process_frame
+	_assert_true(gs.get_position("aster").distance_to(gs.get_position("peris")) < 1.5,
+		"the body is carried along")
+	_assert_true((body.position as Vector3).distance_to(gs.get_position("aster")) < 0.5,
+		"the click zone rides the carried body")
+	_assert_true(str(body.description).begins_with("Set"), "the verb flips to Set down while carrying")
+	# Click again -> set the friend down; hands free.
+	body.on_interaction_arrived()
+	_assert_true(not gs.is_dragging("peris"), "clicking the carried body sets the friend down")
+	_assert_true(gs.has_free_hands("peris", 2), "hands free again after the set-down")
+	# Revive clears the zone.
+	gs.restore_character("aster")
+	await get_tree().process_frame
+	_assert_true(inst.find_child("DownedBody_aster", true, false) == null,
+		"a restored member's body zone is gone")
+	inst.queue_free()
+	await get_tree().process_frame
 
 ## COMBAT DOWNS ARE REAL DOWNS: an enemy dropping a party member's hp to 0 must produce the CANONICAL
 ## downed state (GDD 2.4.3: knockout, not death) — is_downed true, dead weight (no movement), and the
@@ -17761,35 +17863,38 @@ func _test_chromatic_aberration() -> void:
 		inst.queue_free()
 		await get_tree().process_frame
 
-# --- Test: hover-to-identify with Aster's data overlay ---
-# When the data overlay is on, hovering an interactable surfaces the object's name; off, nothing.
+# --- Test: hover names + Aster's data overlay tint ---
+# EVERY hover names the object (identification is free — director ruling); Aster's data overlay only
+# TINTS the readout into the data register. Disabled objects surface nothing and go quiet mid-hover.
 func _test_data_identify() -> void:
 	_test_name = "Data Identify Hover"
 	var area = load("res://scenes/game/interactable.tscn").instantiate()
 	add_child(area)
 	area.description = "Door Button"
 
-	# Data overlay OFF: hovering shows no scan readout.
-	area.set_hover_feedback(true)
-	_assert_true(area._identify_label_3d == null or not area._identify_label_3d.visible,
-		"No identify readout while the data overlay is off")
-	area.set_hover_feedback(false)
-
-	# Data overlay ON: hovering reveals the object's name.
-	area.set_data_identify(true)
+	# Plain hover (no overlay): the name reads, in the neutral hover tint.
 	area.set_hover_feedback(true)
 	_assert_true(area._identify_label_3d != null and area._identify_label_3d.visible,
-		"Hovering with the data overlay reveals a readout")
+		"Hovering names the object even with the data overlay off")
 	_assert_true("DOOR BUTTON" in area._identify_label_3d.text,
-		"The readout shows the object's name (got: %s)" % (area._identify_label_3d.text if area._identify_label_3d != null else ""))
+		"The readout shows the object's name (got: %s)" % area._identify_label_3d.text)
+	var plain: Color = area._identify_label_3d.modulate
+	area.set_hover_feedback(false)
+	_assert_true(not area._identify_label_3d.visible, "Unhovering hides the name")
 
-	# Turning the overlay off hides it even while still hovered.
-	area.set_data_identify(false)
-	_assert_true(not area._identify_label_3d.visible, "Turning off the data overlay hides the readout")
-
-	# Re-enable, then a disabled/used object shows nothing.
+	# Data overlay ON: the same readout, tinted into the data register.
 	area.set_data_identify(true)
+	area.set_hover_feedback(true)
+	_assert_true(area._identify_label_3d.visible, "Hovering with the data overlay shows the readout")
+	_assert_true(area._identify_label_3d.modulate != plain, "The overlay TINTS the readout (data register)")
+	# Overlay off mid-hover: the name stays (naming is a hover feature), back in the neutral tint.
+	area.set_data_identify(false)
+	_assert_true(area._identify_label_3d.visible, "The name survives an overlay toggle while still hovered")
+	_assert_true(area._identify_label_3d.modulate == plain, "...back in the neutral hover tint")
+
+	# A disabled object goes quiet immediately and stays quiet on re-hover.
 	area.set_interaction_enabled(false)
+	_assert_true(not area._identify_label_3d.visible, "Disabling an object hides its readout mid-hover")
 	area.set_hover_feedback(true)
 	_assert_true(not area._identify_label_3d.visible, "A disabled object does not surface a readout")
 	area.queue_free()

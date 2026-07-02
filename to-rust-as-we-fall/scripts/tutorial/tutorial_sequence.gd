@@ -32,6 +32,7 @@ var _scheduler: EventScheduler          # gameplay lane (pausable, replay)
 var _ui_scheduler: EventScheduler       # dialogue / thought-fade / UI lane
 var _game_state: GameState
 var _path_render_manager                # PathRenderManager: movement paths for all characters
+var _downed_body_manager                # DownedBodyManager: fallen members become clickable carry targets
 var _outline_mask_manager               # OutlineMaskManager: screen-space object outlines for all targets
 var _selection_controller               # SelectionController: RTS left-click / marquee character select
 var _current_step := ""
@@ -131,6 +132,12 @@ func _ready() -> void:
 	_selection_controller.name = "SelectionController"
 	add_child(_selection_controller)
 	_selection_controller.setup(_game_state, self)
+	# One scene-level downed-body manager: a fallen party member becomes a clickable body (click to
+	# CARRY through the shared drag system, click again to set down) — same once-per-scene pattern.
+	_downed_body_manager = DownedBodyManager.new()
+	_downed_body_manager.name = "DownedBodyManager"
+	add_child(_downed_body_manager)
+	_downed_body_manager.setup(_game_state, self)
 	_begin()
 
 func _process(delta: float) -> void:

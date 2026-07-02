@@ -3895,9 +3895,16 @@ func command_start_drag(dragger_id: String, downed_id: String) -> bool:
 	var bp := get_position(downed_id)
 	if Vector2(dp.x - bp.x, dp.z - bp.z).length() > DRAG_PICKUP_RADIUS:
 		return false
+	# Dead weight is a TWO-HAND load: both hand slots must be free, and the carry occupies them
+	# (no tools, no pickups, no transfers while hauling a friend).
+	var carry_slots := _find_free_hand_slots(dragger_id, 2)
+	if carry_slots.size() < 2:
+		return false
 	_emit(GameEvent.KIND_START_DRAG, {"dragger": dragger_id, "downed": downed_id})
 	_do_stop(dragger_id)
 	_drags[dragger_id] = downed_id
+	for slot in carry_slots:
+		characters[dragger_id].hands[int(slot)] = _carry_hold_id(downed_id)
 	_drag_prev_speed[dragger_id] = characters[dragger_id].move_speed
 	characters[dragger_id].move_speed = float(characters[dragger_id].move_speed) * DRAG_SPEED_FACTOR
 	_arm_drag_tick(dragger_id)
@@ -3917,6 +3924,11 @@ func is_dragging(char_id: String) -> bool:
 func get_drag_target(dragger_id: String) -> String:
 	return str(_drags.get(dragger_id, ""))
 
+## The hand-slot sentinel while carrying a downed character. Not a real item: pick_up/drop/transfer
+## all no-op on it, but get_hand_items surfaces it so the HUD shows the hands are full of friend.
+func _carry_hold_id(downed_id: String) -> String:
+	return "carry:" + downed_id
+
 func get_dragger_of(downed_id: String) -> String:
 	for k in _drags.keys():
 		if str(_drags[k]) == downed_id:
@@ -3932,6 +3944,8 @@ func _end_drag_for(dragger_id: String) -> void:
 	if characters.has(downed_id):
 		characters[downed_id].position = get_position(downed_id)   # park the body where carried
 	_drags.erase(dragger_id)
+	if characters.has(dragger_id):
+		_clear_item_from_hands(characters[dragger_id], _carry_hold_id(downed_id))
 	if characters.has(dragger_id) and _drag_prev_speed.has(dragger_id):
 		characters[dragger_id].move_speed = float(_drag_prev_speed[dragger_id])
 	_drag_prev_speed.erase(dragger_id)

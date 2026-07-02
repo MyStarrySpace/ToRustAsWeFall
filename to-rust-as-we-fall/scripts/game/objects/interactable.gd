@@ -490,17 +490,15 @@ func is_feedback_managed() -> bool:
 func set_hover_feedback(active: bool) -> void:
 	_hover_active = active
 	_refresh_feedback()
-	if _data_identify:
-		_set_identify_label_visible(active)
+	# The name reads on EVERY hover — identification is free. Aster's data overlay only restyles
+	# the readout (its cyan), it no longer gates whether a hovered object names itself.
+	_set_identify_label_visible(active)
 
-## Aster's data overlay (de)activates: when on, hovering this object reveals its name. Toggling off
-## hides the readout even if still hovered. Set by the sequence for every interactable.
+## Aster's data overlay (de)activates: it tints the hover readout into the data register. The label
+## itself follows plain hover either way.
 func set_data_identify(active: bool) -> void:
 	_data_identify = active
-	if not active:
-		_set_identify_label_visible(false)
-	elif _hover_active:
-		_set_identify_label_visible(true)
+	_set_identify_label_visible(_hover_active)
 
 func _identify_name() -> String:
 	if description != "":
@@ -515,6 +513,8 @@ func _set_identify_label_visible(should_show: bool) -> void:
 	if should_show:
 		_ensure_identify_label()
 		_identify_label_3d.text = "// %s //" % _identify_name().to_upper()
+		# Plain hover reads neutral white; Aster's data overlay tints it into the data register.
+		_identify_label_3d.modulate = Color(0.45, 0.78, 1.0, 0.95) if _data_identify else Color(0.92, 0.95, 1.0, 0.95)
 		_identify_label_3d.visible = true
 	elif _identify_label_3d != null:
 		_identify_label_3d.visible = false
@@ -555,6 +555,8 @@ func _refresh_feedback() -> void:
 func set_interaction_enabled(active: bool) -> void:
 	if active:
 		set_process(true)  # re-evaluate per-frame work (self-disables when idle)
+	else:
+		_set_identify_label_visible(false)   # a dead object stops naming itself mid-hover
 	interaction_enabled = active
 	# Keep the data layer's enabled flag in sync so trigger guards + range queries
 	# stay accurate (no-op + no log when unchanged).
