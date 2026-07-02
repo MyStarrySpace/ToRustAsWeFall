@@ -690,6 +690,10 @@ func set_running(id: String, running: bool) -> void:
 	if running:
 		if get_stat(id, "stamina") <= 0.0:
 			return
+		# Dead weight cannot sprint: both hands are full of friend (canon: slower + heavier while
+		# dragging). The haul pace IS the pace.
+		if is_dragging(id):
+			return
 		_running[id] = {"tick_handle": 0}
 		change_move_speed(id, RUN_SPEED)
 		_schedule_running_tick(id)
@@ -3921,6 +3925,10 @@ func command_start_drag(dragger_id: String, downed_id: String) -> bool:
 	if carry_slots.size() < 2:
 		return false
 	_emit(GameEvent.KIND_START_DRAG, {"dragger": dragger_id, "downed": downed_id})
+	# Taking hold settles a runner into the haul: run drops FIRST so the drag multiplier applies to
+	# the walk pace, never to a sprint that would smuggle dead weight at full speed.
+	if is_running(dragger_id):
+		set_running(dragger_id, false)
 	_do_stop(dragger_id)
 	_drags[dragger_id] = downed_id
 	for slot in carry_slots:

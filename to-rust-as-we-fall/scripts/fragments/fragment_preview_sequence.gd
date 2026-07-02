@@ -71,6 +71,8 @@ const PREVIEW_ENTRIES := [
 		"config": {"fragment_path": "res://data/fragments/pump_hall.tres"}},
 	{"id": "sprint_gap", "chunk": "data_fragment", "title": "Sprint Gap (stamina tension)", "stage": 3,
 		"config": {"fragment_path": "res://data/fragments/sprint_gap.tres"}},
+	{"id": "capbage_retrieve", "chunk": "data_fragment", "title": "The Retrieve (carry him home)", "stage": 3,
+		"config": {"fragment_path": "res://data/fragments/capbage_retrieve.tres"}},
 	{"id": "distract_gate", "chunk": "distract_gate", "title": "The Watched Gap", "stage": 3},
 	{"id": "puzzle_atom", "chunk": "puzzle_atom", "title": "Generated Atom Chain", "stage": 3,
 		"config": {"stages": ["distract:lure", "distract:patrol", "distract:twin"], "seed": 7}},

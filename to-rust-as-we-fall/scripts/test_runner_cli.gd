@@ -387,6 +387,12 @@ func _ready() -> void:
 			"--test-tension-sweep":
 				ran_test = true
 				await _test_tension_sweep()
+			"--test-conceal-stops-strikes":
+				ran_test = true
+				await _test_conceal_stops_strikes()
+			"--test-capbage-retrieve":
+				ran_test = true
+				await _test_capbage_retrieve()
 			"--test-sprint-gap":
 				ran_test = true
 				await _test_sprint_gap()
@@ -1204,6 +1210,8 @@ func _run_all_tests() -> void:
 	await _test_pump_hall()
 	await _test_portal_group()
 	await _test_tension_sweep()
+	await _test_conceal_stops_strikes()
+	await _test_capbage_retrieve()
 	await _test_sprint_gap()
 	await _test_run_stamina_budget()
 	await _test_charge_whiff()
@@ -17542,6 +17550,182 @@ func _live_hover(world_pos: Vector3, cam: Camera3D, check: Callable) -> bool:
 				return true
 	return false
 
+## A TIGHT HIDE STOPS THE BEATING: full concealment is invisibility "even point-blank" (the
+## hidden-detection law) — so an attacker MID-CYCLE must lose a target who reaches CONCEAL_FULL:
+## no further strikes land on the leaf head, and the chase sheds. (Reported via the retrieve
+## playtest: a warden that chased the carrier to the Capbage beat her to death INSIDE it.)
+func _test_conceal_stops_strikes() -> void:
+	_test_name = "Conceal Stops Strikes"
+	var ctx := _make_attack_ctx(100.0, false)
+	var sched: EventScheduler = ctx["sched"]
+	var gs: GameState = ctx["gs"]
+	var enemy: Enemy = ctx["enemy"]
+	var t := 0.0
+	while t < 20.0 and str(enemy.get_state()) != "windup":
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+		t += 0.05
+	_assert_equals(str(enemy.get_state()), "windup", "the guard winds up point-blank")
+	# She reaches the tight hide mid-windup: fully concealed BEFORE the strike resolves.
+	gs.set_character_concealment("aster", GameState.CONCEAL_FULL)
+	for i in range(120):
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+	_assert_true(float(gs.get_stat("aster", "hp")) >= 100.0,
+		"no strike lands on a FULLY-concealed target — the committed swing hits leaf (hp=%.0f)" % float(gs.get_stat("aster", "hp")))
+	t = 0.0
+	while t < 20.0 and str(enemy.get_state()) not in ["search", "return", "idle", "patrol", "roam"]:
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+		t += 0.05
+	_assert_true(str(enemy.get_state()) in ["search", "return", "idle", "patrol", "roam"],
+		"the attacker LOSES the hidden target and disengages (state=%s)" % str(enemy.get_state()))
+	# Out of the head -> engageable again (hiding is a break, not a win).
+	gs.set_character_concealment("aster", GameState.CONCEAL_NONE)
+	t = 0.0
+	var reacquired := false
+	while t < 20.0:
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+		t += 0.05
+		if str(enemy.get_state()) in ["alert", "pursuit", "windup", "charge"]:
+			reacquired = true
+			break
+	_assert_true(reacquired, "stepping out is spotted again (state=%s)" % str(enemy.get_state()))
+	_cleanup_attack_ctx(ctx)
+
+## THE RETRIEVE (T1a, ECOLOGY_COMBOS Card 6): the retrieve verb's tension chunk. Aster opens DOWNED
+## at the far console (downed_at_start as data); Peris sprints out, takes hold (both hands, sprint
+## refused while loaded), and hauls him home past a pursuer she cannot outpace loaded — the mid-field
+## Capbage is the mandatory break (carrier + carried both conceal FULL, the chase sheds). Home ground
+## revives him (ally near). Negative: hauling the open lane gets the carrier STRUCK.
+func _test_capbage_retrieve() -> void:
+	_test_name = "Capbage Retrieve"
+	var inst = await _instantiate_preview_chunk_and_wait("capbage_retrieve", 6)
+	if inst == null:
+		_assert_true(false, "capbage_retrieve instantiates")
+		return
+	var chunk = inst._active_chunk
+	var gs = inst._game_state
+	var a: Dictionary = chunk.get_preview_anchors()
+	_assert_true(gs.is_downed("aster"), "the level OPENS with Aster down at the console (downed_at_start)")
+	await get_tree().process_frame
+	var body = inst.find_child("DownedBody_aster", true, false)
+	_assert_true(body != null, "his body is a carry target from the first frame")
+	_assert_true(gs.characters.has("line_warden"), "the warden walks its beat")
+
+	# OUT: sprint east along the SOUTH wall (outside the post's ring), then up to him. He lies AT the
+	# warden's feet — the pickup is inside the ring BY CONSTRUCTION; the plan prices ONE strike.
+	gs.set_running("peris", true)
+	gs.command_move_to_pos("peris", a["south_lane"])
+	_advance_to_arrival(inst, gs, "peris")
+	gs.command_move_to_pos("peris", Vector3(31.5, 0.5, -4.6))
+	_advance_to_arrival(inst, gs, "peris")
+	var sta_out: float = float(gs.get_stat("peris", "stamina"))
+	print("  [retrieve] staged under him: stamina=%.0f hp=%.0f" % [sta_out, float(gs.get_stat("peris", "hp"))])
+	_assert_true(float(gs.get_stat("peris", "hp")) >= 100.0, "the south-wall sprint stages untouched")
+	_assert_true(sta_out < 60.0, "the outbound sprint spends over a third of the bar (%.0f left)" % sta_out)
+	# Time the grab for the warden's FAR turn, dive in, take hold.
+	var far_turn := _advance_to_proximity(inst, gs, "line_warden", a["beat_east"], 1.0, 40.0)
+	_assert_true(far_turn, "the beat can be read (warden at its far turn)")
+	gs.command_move_to_pos("peris", gs.get_position("aster") + Vector3(-0.7, 0.0, -0.9))
+	_advance_to_arrival(inst, gs, "peris")
+	body.active_character = "peris"
+	body.on_interaction_arrived()
+	_assert_true(gs.is_dragging("peris"), "she takes him up under the warden's walk")
+	_assert_true(not gs.is_running("peris"), "no sprinting with a friend in both hands")
+	# THE DIVE: straight into the Capbage — the warden acquires and lands AT MOST one strike en route
+	# (the priced loss: "brace some predicted loss in execution").
+	gs.command_move_to_pos("peris", a["capbage"])
+	_advance_to_arrival(inst, gs, "peris")
+	inst.headless_advance(0.4, 0.1)
+	await get_tree().process_frame
+	var hp_dive: float = float(gs.get_stat("peris", "hp"))
+	print("  [retrieve] in the head: hp=%.0f (the dive's price)" % hp_dive)
+	_assert_true(hp_dive >= 100.0 - 25.5, "the dive costs AT MOST one strike (hp=%.0f)" % hp_dive)
+	_assert_true(not gs.is_downed("peris"), "she is standing")
+	_assert_equals(int(gs.get_character_concealment("peris")), GameState.CONCEAL_FULL,
+		"inside the Capbage the CARRIER is fully hidden")
+	_assert_equals(int(gs.get_character_concealment("aster")), GameState.CONCEAL_FULL,
+		"...and the CARRIED friend hides with her (both in the head)")
+	# THE SHED: hidden together, the chase breaks; the warden searches, then walks its return EAST.
+	var warden = null
+	for e in (chunk.get("_enemies") as Array):
+		if is_instance_valid(e) and str(e.char_id) == "line_warden":
+			warden = e
+	var t := 0.0
+	while t < 40.0 and warden != null and str(warden.get_state()) not in ["patrol", "return"]:
+		inst.headless_advance(0.3, 0.1)
+		await get_tree().process_frame
+		t += 0.3
+	_assert_true(warden != null and str(warden.get_state()) in ["patrol", "return"],
+		"hidden together, the chase SHEDS (warden=%s)" % (str(warden.get_state()) if warden != null else "?"))
+	# THE WINDOW: leave while its return walk faces away (warden well east of the head).
+	t = 0.0
+	while t < 30.0 and gs.get_position("line_warden").x < (a["capbage"] as Vector3).x + 5.5:
+		inst.headless_advance(0.2, 0.1)
+		await get_tree().process_frame
+		t += 0.2
+	gs.command_move_to_pos("peris", Vector3(20.0, 0.5, -2.5))
+	_advance_to_arrival(inst, gs, "peris")
+	gs.command_move_to_pos("peris", a["haven"])
+	_advance_to_arrival(inst, gs, "peris")
+	gs.command_stop_drag("peris")
+	_assert_true(bool(gs.is_at_shelter("aster")), "he is set down on home ground")
+	var sta_setdown: float = float(gs.get_stat("peris", "stamina"))
+	_assert_true(sta_setdown < 45.0,
+		"she sets him down with most of the bar spent (%.0f) — the haven regen starts only HERE" % sta_setdown)
+	# HOME GROUND WAKES HIM: the revive watch (ally near, 10s).
+	t = 0.0
+	while t < 16.0 and gs.is_downed("aster"):
+		inst.headless_advance(0.5, 0.1)
+		t += 0.5
+	_assert_true(not gs.is_downed("aster"), "home ground revives him (ally near)")
+	var sta_end: float = float(gs.get_stat("peris", "stamina"))
+	print("  [retrieve] home: stamina=%.0f (setdown %.0f) carrier_hp=%.0f" % [sta_end, sta_setdown, float(gs.get_stat("peris", "hp"))])
+	_assert_true(float(gs.get_stat("peris", "hp")) >= 100.0 - 25.5,
+		"the WHOLE clean route costs at most the one priced strike (hp=%.0f)" % float(gs.get_stat("peris", "hp")))
+	_assert_true(sta_end > sta_setdown,
+		"home ground REFILLS the bar while he wakes (%.0f -> %.0f) — the closed economy's recovery loop" % [sta_setdown, sta_end])
+	var shelter = chunk.find_child("RetrieveHavenShelter", true, false)
+	_assert_true(shelter != null, "the haven shelter exists")
+	shelter.active_character = "peris"
+	shelter.on_interaction_arrived()
+	inst.headless_advance(0.5, 0.1)
+	_assert_true(bool(chunk.get_preview_state()["complete"]), "resting home completes the retrieve")
+
+	# NEGATIVE: reset — hauling the OPEN lane, the loaded pace loses to the warden (real strikes land).
+	chunk.reset_preview_state()
+	inst.headless_advance(0.3, 0.1)
+	await get_tree().process_frame
+	_assert_true(gs.is_downed("aster"), "reset re-downs him at the console (the story state is data)")
+	gs.restore_character("peris")
+	gs.snap_character_to("peris", gs.get_position("aster") + Vector3(-0.9, 0.0, 0.0))
+	var body2 = inst.find_child("DownedBody_aster", true, false)
+	body2.active_character = "peris"
+	body2.on_interaction_arrived()
+	_assert_true(gs.is_dragging("peris"), "take hold for the blind haul")
+	gs.command_move_to_pos("peris", a["haven"])
+	var warden2 = null
+	for e2 in (chunk.get("_enemies") as Array):
+		if is_instance_valid(e2) and str(e2.char_id) == "line_warden":
+			warden2 = e2
+	t = 0.0
+	while t < 45.0 and float(gs.get_stat("peris", "hp")) >= 100.0 and gs.is_dragging("peris"):
+		inst.headless_advance(0.3, 0.1)
+		await get_tree().process_frame
+		t += 0.3
+		if fmod(t, 6.0) < 0.29:
+			print("    [blind] t=%.0f peris=%.1f warden=%.1f state=%s dist=%.1f" % [t,
+				gs.get_position("peris").x, gs.get_position("line_warden").x,
+				str(warden2.get_state()) if warden2 != null else "?",
+				gs.get_position("line_warden").distance_to(gs.get_position("peris"))])
+	print("  [retrieve] blind haul: hp=%.0f downed=%s after %.0fs" % [float(gs.get_stat("peris", "hp")), str(gs.is_downed("peris")), t])
+	_assert_true(float(gs.get_stat("peris", "hp")) <= 100.0 - 25.0,
+		"the blind haul is PUNISHED — the pressure tier lands on the loaded pace (hp=%.0f)" % float(gs.get_stat("peris", "hp")))
+	inst.queue_free()
+	await get_tree().process_frame
+
 ## SPRINT GAP — the first micro TENSION chunk, proven as a PUZZLE, not a walk: (1) the clean route
 ## (launch on the east sweep, HOLD on the scarpet through the west pass, burst as it clears) reaches
 ## the exit unspotted with a TIGHT stamina margin; (2) the tuning invariant — the sprint distance
@@ -17960,6 +18144,25 @@ func _test_drag_retrieve() -> void:
 			break
 	_assert_true(not gs.is_downed("aster") and float(gs.get_stat("aster", "hp")) > 0.0,
 		"the retrieve loop closes: dragged to shelter + ally near = revived")
+	# DEAD WEIGHT CANNOT SPRINT: running is refused while carrying (canon: slower + heavier while
+	# dragging), and taking hold settles a runner into the haul.
+	gs.set_stat("aster", "hp", 0.0)
+	gs.command_move_to_pos("peris", gs.get_position("aster") + Vector3(-0.8, 0.0, 0.0))
+	for i in range(300):
+		sched.advance_ticks(0.05)
+		if not gs.is_moving("peris"):
+			break
+	gs.set_running("peris", true)
+	_assert_true(gs.is_running("peris"), "free-handed, peris can run")
+	_assert_true(gs.command_start_drag("peris", "aster"), "take hold while running")
+	_assert_true(not gs.is_running("peris"), "taking hold SETTLES the runner into the haul (run drops)")
+	var haul_speed: float = float(gs.characters["peris"].move_speed)
+	gs.set_running("peris", true)
+	_assert_true(not gs.is_running("peris"), "you cannot SPRINT with a friend in both hands")
+	_assert_true(absf(float(gs.characters["peris"].move_speed) - haul_speed) < 0.001,
+		"the refused sprint leaves the haul speed untouched (%.2f)" % haul_speed)
+	gs.command_stop_drag("peris")
+
 	# A dragger who goes DOWN mid-haul drops the load where it is.
 	gs.down_character("aster")
 	gs.command_start_drag("peris", "aster")

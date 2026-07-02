@@ -258,11 +258,16 @@ func _spawn_exit_shelter(spec: Dictionary) -> void:
 		_add_label(self, label, p + Vector3(0, 2.0, 0), Color(0.6, 0.9, 0.65))
 	var it := _add_object_interactable(self, _name(spec, "ExitShelter"), "Shelter", p + Vector3(0, 0.1, 0),
 		"Rest", [pad], "", 0.0, true, _f(spec, "radius", 1.2), Interactable.InteractableType.INSPECTION)
-	it.interacted.connect(_on_exit_shelter_rested)
+	it.interacted.connect(_on_exit_shelter_rested.bind(it))
 	_exit_shelters.append(it)
 
-func _on_exit_shelter_rested() -> void:
+func _on_exit_shelter_rested(it: Node = null) -> void:
 	if _phase == "complete":
+		return
+	# A downed activator cannot rest the party home (the controller never dispatches one in real
+	# play; this guards the data-layer path to the same truth).
+	var gs = _get_game_state()
+	if it != null and gs != null and gs.is_downed(str(it.get("active_character"))):
 		return
 	_phase = "complete"
 	_show_note("Safe ground. Rest.", 2.5)
@@ -312,6 +317,7 @@ func _restart_fragment() -> void:
 	for fl in _flures:
 		if is_instance_valid(fl):
 			fl.reset_flure()
+	_apply_downed_at_start()
 	_phase = "ready"
 	_set_preview_step((fragment.id if fragment.id != "" else "data_fragment") + "_restart")
 
@@ -412,7 +418,26 @@ func get_preview_state() -> Dictionary:
 func get_preview_abilities() -> Array:
 	return []
 
+## A fragment can open with members ALREADY DOWN where they spawned (params.downed_at_start:
+## ["aster", ...]) — the retrieve scenarios' opening state. Applied on every reset/restart so the
+## story state survives host resets; the DownedBodyManager grows the carry zone off the signal.
+func _apply_downed_at_start() -> void:
+	var gs = _get_game_state()
+	if gs == null or fragment == null:
+		return
+	for cid_v in (fragment.params.get("downed_at_start", []) as Array):
+		var cid := str(cid_v)
+		if not gs.characters.has(cid):
+			continue
+		# The authored opening state, FULLY: back to where the story left them, then down. A reset
+		# that re-downed them wherever they happened to lie would drift the scenario.
+		if fragment.spawns.has(cid):
+			gs.snap_character_to(cid, fragment.spawns[cid])
+		if not gs.is_downed(cid):
+			gs.down_character(cid)
+
 func reset_preview_state() -> void:
+	_apply_downed_at_start()
 	for fl in _flures:
 		if is_instance_valid(fl):
 			fl.reset_flure()

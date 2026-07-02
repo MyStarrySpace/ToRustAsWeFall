@@ -443,6 +443,9 @@ func _resolve_strike(tid: String) -> bool:
 	# Sanctuary: a committed strike never lands on a target standing in a shelter region.
 	if game_state.has_method("is_at_shelter") and game_state.is_at_shelter(tid):
 		return false
+	# The committed swing hits LEAF, not the friend inside: a fully-concealed target cannot be struck.
+	if game_state.has_method("get_character_concealment") 			and int(game_state.get_character_concealment(tid)) == GameState.CONCEAL_FULL:
+		return false
 	# Dodge window: a target that can roll (dodge_unlocked) and auto-evades slips the committed strike.
 	if game_state.has_method("dodge_roll"):
 		var st: Dictionary = game_state.characters[tid].stats
@@ -537,6 +540,10 @@ func _target_engageable() -> bool:
 		return false
 	# Sanctuary: a target that reaches a shelter region is no longer engageable — the chase sheds.
 	if game_state.has_method("is_at_shelter") and game_state.is_at_shelter(_current_target_id):
+		return false
+	# A TIGHT hide is invisibility even point-blank (the hidden-detection law): a fully-concealed
+	# target cannot be engaged — the chase sheds at the leaf head exactly like at a shelter.
+	if game_state.has_method("get_character_concealment") 			and int(game_state.get_character_concealment(_current_target_id)) == GameState.CONCEAL_FULL:
 		return false
 	return true
 
