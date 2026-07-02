@@ -366,6 +366,9 @@ func _ready() -> void:
 			"--test-chunk-atoms":
 				ran_test = true
 				await _test_chunk_atoms()
+			"--test-chunk-batch":
+				ran_test = true
+				_test_chunk_batch()
 			"--test-hub-shapes":
 				ran_test = true
 				await _test_hub_shapes()
@@ -13265,6 +13268,41 @@ func _branch_shapes(branches: Array) -> Array:
 ## THE CHUNK ATOM: a chunk = start + end + a puzzle-GATE you must solve, made of nested archetypes. Generates one
 ## per archetype, PROVES the invariant (flood-fill: locked BLOCKS start->end, solving OPENS it), and PRINTS each as
 ## ASCII so the design reads at a glance. A chunk that can be walked straight through fails here.
+## Principle-driven GENERATION BATCH: generate a seeded spread of chunk atoms + nested compositions, grade
+## each against the machine-checkable principles (report_card), print the ASCII + cards for eyeballing, and
+## ASSERT the proven invariants — every piece is gated (P8), lock-before-key holds (research), the honesty
+## ledger stamps distract BUILDABLE (its in-engine playtest is green) and redirect BLOCKED (no mechanic).
+func _test_chunk_batch() -> void:
+	_test_name = "Chunk Batch (principles)"
+	var ChunkGen = load("res://scripts/generation/chunk_generator.gd")
+	var batch: Array = [
+		{"label": "atom: distract", "chunk": ChunkGen.generate("distract", 101)},
+		{"label": "atom: holdfast", "chunk": ChunkGen.generate("holdfast", 102)},
+		{"label": "atom: split", "chunk": ChunkGen.generate("split", 103)},
+		{"label": "nested: distract->holdfast", "chunk": ChunkGen.compose(["distract", "holdfast"], 104)},
+		{"label": "nested: split->distract->holdfast", "chunk": ChunkGen.compose(["split", "distract", "holdfast"], 105)},
+		{"label": "nested w/ BLOCKED arch: redirect->distract", "chunk": ChunkGen.compose(["redirect", "distract"], 106)},
+	]
+	for entry in batch:
+		var chunk: Dictionary = entry["chunk"]
+		print("\n=== %s ===" % str(entry["label"]))
+		print(ChunkGen.render_ascii(chunk, true))
+		print(ChunkGen.render_report(chunk))
+		var card: Dictionary = ChunkGen.report_card(chunk)
+		_assert_true(bool(card["gated"]["ok"]), "%s: gated invariant holds (P8)" % str(entry["label"]))
+		_assert_true(bool(card["lock_before_key"]["ok"]), "%s: lock-before-key holds" % str(entry["label"]))
+	# Honesty ledger: the proven archetype is stamped buildable, the placeholder stays blocked.
+	var d_card: Dictionary = ChunkGen.report_card(batch[0]["chunk"])
+	_assert_true(bool(d_card["buildable"]), "distract atom is stamped BUILDABLE (its playtest is green)")
+	var r_card: Dictionary = ChunkGen.report_card(batch[5]["chunk"])
+	_assert_true(not bool(r_card["buildable"]) and r_card["blocked_archetypes"].has("redirect"),
+		"a composition containing redirect is honestly BLOCKED (no break-structure mechanic)")
+	# Track D: mechanisms are typed; P2: mixed-archetype chains touch two registers.
+	var n_card: Dictionary = ChunkGen.report_card(batch[3]["chunk"])
+	_assert_true(bool(n_card["two_registers"]), "distract->holdfast composes TWO registers (P2 raw material)")
+	_assert_true(str(n_card["mechanisms"][0]).begins_with("flora/") and str(n_card["mechanisms"][1]).begins_with("terminal/"),
+		"mechanisms are Track-D typed (flora/flure + terminal/flow), got %s" % str(n_card["mechanisms"]))
+
 func _test_chunk_atoms() -> void:
 	_test_name = "Chunk Atoms"
 	var Chunk = load("res://scripts/generation/chunk_generator.gd")

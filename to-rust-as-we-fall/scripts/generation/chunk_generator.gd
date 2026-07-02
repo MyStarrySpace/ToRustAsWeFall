@@ -18,7 +18,7 @@ const SYM_FLOOR := "."
 const SYM_START := "S"
 const SYM_END := "E"
 
-const ARCHETYPES := ["holdfast", "redirect", "vinebridge", "split"]
+const ARCHETYPES := ["holdfast", "redirect", "vinebridge", "split", "distract"]
 
 # --- entry points ---------------------------------------------------------------------------------------------
 
@@ -105,6 +105,24 @@ static func _stage(g: Dictionary, chamber_x0: int, chamber_x1: int, gate_col: in
 			return {"cells": cells, "open_row": -1, "mechanism": p1, "sym": "=", "arch": arch,
 				"elements": [{"sym": "P", "cell": p1}, {"sym": "P", "cell": p2}],
 				"role": "held plates — both must be held at once (split the party)"}
+		"distract":
+			# The Watched Gap kit, generated: the gate is a watched LANE (!) — topologically crossable in the
+			# real game but enforcement is DETECTION (spotted = swept to start), so the model treats it as
+			# blocked until the sentry commits away. Sentry (s) watches from the far mouth; the flure (F) sits
+			# in a pocket reachable WITHOUT entering the lane; the conceal pocket (c) is the Shadow's stage.
+			mech = Vector2i(clampi(chamber_x0 + 1, chamber_x0, gate_col - 1), 1)
+			g[mech] = "F"
+			var sentry := Vector2i(gate_col + 1, row)
+			if g.get(sentry) == SYM_FLOOR:
+				g[sentry] = "s"
+			var conceal := Vector2i(clampi(chamber_x0 + 1, chamber_x0, gate_col - 1), h - 2)
+			var elems: Array = [{"sym": "F", "cell": mech}, {"sym": "s", "cell": sentry}]
+			if g.get(conceal) == SYM_FLOOR:
+				g[conceal] = "c"
+				elems.append({"sym": "c", "cell": conceal})
+			return {"cells": cells, "open_row": -1, "mechanism": mech, "sym": "!", "arch": arch,
+				"elements": elems,
+				"role": "watched lane — tend the flure so the sentry commits off its watch, then cross"}
 	# default: a plain wall + a lever
 	g[mech] = "L"
 	return {"cells": cells, "open_row": -1, "mechanism": mech, "sym": "=", "arch": "lever",
@@ -116,13 +134,27 @@ static func _gate_sym(arch: String) -> String:
 		"redirect": return "X"
 		"vinebridge": return ":"
 		"split": return "="
+		"distract": return "!"
 	return "="
+
+## Track D: the gate MECHANISM is a TYPED object from a section-keyed family (BUILD_STRATEGY.md), never an
+## opaque callback — so the verifier (and later the stretch assembler) can check "this section's mechanisms
+## are drawn from its district's native family" the same way it checks topology. `register` names which
+## perception register (P2) reads the mechanism best — the raw material of a PERCEPTION_LOCK.
+static func mechanism_type(arch: String) -> Dictionary:
+	match arch:
+		"holdfast": return {"family": "terminal", "subtype": "flow", "register": "survival/held (Endo)"}
+		"distract": return {"family": "flora", "subtype": "flure", "register": "WHERE (Peris)"}
+		"vinebridge": return {"family": "flora", "subtype": "climbvine", "register": "WHERE (Peris)"}
+		"split": return {"family": "plate", "subtype": "held_pair", "register": "co-op (two bodies)"}
+		"redirect": return {"family": "bait", "subtype": "charge_line", "register": "dodge (mechanic unbuilt)"}
+	return {"family": "lever", "subtype": "plain", "register": "any"}
 
 # --- metadata + solve/shadow text -----------------------------------------------------------------------------
 
 static func _finish(chunk: Dictionary) -> Dictionary:
 	var gates: Array = chunk["gates"]
-	var titles := {"holdfast": "Holdfast Crossing", "redirect": "The Charger's Breach", "vinebridge": "The Lured Causeway", "split": "The Two-Hand Door"}
+	var titles := {"holdfast": "Holdfast Crossing", "redirect": "The Charger's Breach", "vinebridge": "The Lured Causeway", "split": "The Two-Hand Door", "distract": "The Watched Gap (atom)"}
 	if gates.size() == 1:
 		var a := str(gates[0]["arch"])
 		chunk["title"] = titles.get(a, "Chunk")
@@ -144,6 +176,7 @@ static func _arch_label(a: String) -> String:
 		"redirect": return "Archetype 1 redirected aggression (break the barrier) — NESTS a dodge beat"
 		"vinebridge": return "Archetype 2-C plant-as-tool (climbvine bridge) — NESTS Archetype 4 distract-the-patrol"
 		"split": return "Archetype 5 two-character split (a door that needs two held plates)"
+		"distract": return "Archetype 4 distract-the-patrol — PROVEN in-engine (--test-distract-gate)"
 	return a
 
 ## Whether this archetype can be built from mechanics that EXIST TODAY, and which real mechanic backs it. The
@@ -165,6 +198,7 @@ static func _solve_step(a: String) -> String:
 		"redirect": return "bait the enemy (g) at (B) and dodge so it breaches the wall (X)"
 		"vinebridge": return "flure (F) the guard off the lip, plant a climbvine at (V) to bridge the chasm (:)"
 		"split": return "split the party to hold BOTH plates (P) at once so the door (=) opens"
+		"distract": return "tend the flure (F) so the sentry (s) commits off its watch, fall back, cross the lane (!)"
 	return "activate the mechanism"
 
 static func _solve_text(gates: Array) -> String:
@@ -182,6 +216,7 @@ static func _shadow_text(gates: Array) -> String:
 		"redirect": return "Aster+Peris: Peris Hushbloom-stuns the charger at the commit (no dodge window)."
 		"vinebridge": return "Aster+Peris: Peris plants+BLOOMs the vine herself; Aster times/EMPs the guard instead of the flure."
 		"split": return "Aster+Peris (two bodies): Aster hacks one plate to a timed latch while Peris holds the other, then dashes."
+		"distract": return "Aster+Peris: Aster TRACE reads the sentry's beat; stage in the conceal pocket (c) and slip the look-away window — no flure spent."
 	return "Aster+Peris compose the same skeleton with substitute variants."
 
 static func _legend(gates: Array) -> Dictionary:
@@ -190,6 +225,8 @@ static func _legend(gates: Array) -> Dictionary:
 		"X": "breakable wall (an enemy must charge it)", "B": "bait tile (stand, then dodge)",
 		":": "chasm (blocks until bridged)", "V": "fertile lip (plant a climbvine)", "F": "flure (lure the guard)",
 		"=": "sealed door (both plates held)", "P": "held plate",
+		"!": "watched lane (cross unsolved = spotted, swept to start)", "s": "sentry (LOS-gated watcher)",
+		"c": "conceal pocket (CONCEAL_MEDIUM — the Shadow's stage)",
 	}
 	var out := {}
 	for gt in gates:
@@ -279,6 +316,118 @@ static func _reach(chunk: Dictionary, target: Vector2i, open_flags: Array) -> bo
 			seen[nc] = true
 			stack.append(nc)
 	return false
+
+# --- lock-before-key (Dormans; LEVEL_DESIGN_RESEARCH.md) --------------------------------------------------------
+
+## The player must ENCOUNTER the lock before the key: for each gate i (with gates 0..i-1 open), the walk
+## distance at which the gate first becomes VISIBLE must not exceed the distance to its mechanism. Key-first
+## play degrades into indiscriminate collecting; a key found after its lock reads as an answer, not a chore.
+## Visibility = a clear straight row/column ray to a gate cell over non-wall cells (the chambers are boxes,
+## so axis rays are an honest sight model for the sketch layer).
+static func lock_before_key(chunk: Dictionary) -> Dictionary:
+	var gates: Array = chunk["gates"]
+	var per_gate: Array = []
+	var all_ok := true
+	for i in range(gates.size()):
+		var dists := _bfs_distances(chunk, _flags(gates.size(), i))
+		var mech: Vector2i = gates[i]["mechanism"]
+		var key_d := int(dists.get(mech, 1 << 30))
+		var lock_d := 1 << 30
+		for c in dists.keys():
+			if int(dists[c]) < lock_d and _sees_any(chunk, c, gates[i]["cells"]):
+				lock_d = int(dists[c])
+		var ok := lock_d <= key_d and key_d < (1 << 30)
+		per_gate.append({"gate": i, "arch": str(gates[i]["arch"]), "lock_dist": lock_d, "key_dist": key_d, "ok": ok})
+		all_ok = all_ok and ok
+	return {"ok": all_ok, "gates": per_gate}
+
+static func _bfs_distances(chunk: Dictionary, open_flags: Array) -> Dictionary:
+	var grid: Dictionary = chunk["grid"]
+	var gates: Array = chunk["gates"]
+	var blocked := {}
+	for i in range(gates.size()):
+		if not bool(open_flags[i]):
+			for c in gates[i]["cells"]:
+				blocked[c] = true
+	var start: Vector2i = chunk["start"]
+	var dists := {start: 0}
+	var queue := [start]
+	var qi := 0
+	while qi < queue.size():
+		var c: Vector2i = queue[qi]
+		qi += 1
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var nc: Vector2i = c + d
+			if dists.has(nc) or not grid.has(nc) or str(grid[nc]) == SYM_WALL or blocked.has(nc):
+				continue
+			dists[nc] = int(dists[c]) + 1
+			queue.append(nc)
+	return dists
+
+## Clear axis ray from `from` to any of `targets` (over non-wall cells; the target cell itself counts).
+static func _sees_any(chunk: Dictionary, from: Vector2i, targets: Array) -> bool:
+	var grid: Dictionary = chunk["grid"]
+	var target_set := {}
+	for t in targets:
+		target_set[t] = true
+	if target_set.has(from):
+		return true
+	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var c: Vector2i = from + (d as Vector2i)
+		while grid.has(c):
+			if target_set.has(c):
+				return true
+			if str(grid[c]) == SYM_WALL:
+				break
+			c += d as Vector2i
+	return false
+
+# --- the principle report card ----------------------------------------------------------------------------------
+
+## Grade a generated chunk against the MACHINE-CHECKABLE principles (DESIGN_PRINCIPLES.md). Honest about what
+## is verified vs merely authored: topology gating, nesting order, and lock-before-key are PROVEN here; the
+## Shadow is prose until the ability-ablation verifier lands (Track B); buildability comes from the ledger.
+static func report_card(chunk: Dictionary) -> Dictionary:
+	var v := verify(chunk)
+	var lbk := lock_before_key(chunk)
+	var gates: Array = chunk["gates"]
+	var blocked_archs: Array = []
+	var registers := {}
+	var mechanisms: Array = []
+	for gt in gates:
+		var a := str(gt["arch"])
+		if not bool(mechanic(a)["buildable"]):
+			blocked_archs.append(a)
+		var mt := mechanism_type(a)
+		registers[str(mt["register"])] = true
+		mechanisms.append("%s/%s" % [str(mt["family"]), str(mt["subtype"])])
+	return {
+		"gated": v,                                       # P8: cannot walk start->end unsolved (PROVEN)
+		"lock_before_key": lbk,                           # research: encounter the lock first (PROVEN)
+		"buildable": blocked_archs.is_empty(),            # P6: every gate backed by a real mechanic
+		"blocked_archetypes": blocked_archs,
+		"mechanisms": mechanisms,                         # Track D: typed, section-keyable
+		"registers": registers.keys(),                    # P2 raw material (composite = >=2 registers)
+		"two_registers": registers.size() >= 2,           # P2: a legit SECTION composes two (atoms may be 1)
+		"shadow_verified": false,                         # P10: prose only until the ablation slot (Track B2)
+		"ok": bool(v["ok"]) and bool(lbk["ok"]) and blocked_archs.is_empty(),
+	}
+
+static func render_report(chunk: Dictionary) -> String:
+	var r := report_card(chunk)
+	var out := "  REPORT CARD (vs DESIGN_PRINCIPLES.md):\n"
+	out += "    P8 gated (proven):        %s\n" % ("PASS" if bool(r["gated"]["ok"]) else "FAIL " + str(r["gated"]))
+	var lbk: Dictionary = r["lock_before_key"]
+	var lbk_bits: Array = []
+	for gd in lbk["gates"]:
+		lbk_bits.append("g%d:%s(lock@%d key@%d)" % [int(gd["gate"]), "ok" if bool(gd["ok"]) else "VIOLATED", int(gd["lock_dist"]), int(gd["key_dist"])])
+	out += "    lock-before-key (proven): %s  [%s]\n" % ["PASS" if bool(lbk["ok"]) else "FAIL", ", ".join(lbk_bits)]
+	out += "    P6 buildable today:       %s%s\n" % ["PASS" if bool(r["buildable"]) else "BLOCKED", "" if r["blocked_archetypes"].is_empty() else " — " + str(r["blocked_archetypes"])]
+	out += "    Track D mechanisms:       %s\n" % ", ".join(r["mechanisms"])
+	out += "    P2 registers touched:     %s%s\n" % [", ".join(r["registers"]), "  (composite: 2+ registers)" if bool(r["two_registers"]) else "  (single-register ATOM — a full section should compose two)"]
+	out += "    P10 shadow:               authored prose only — machine ablation check pending (Track B2)\n"
+	out += "    VERDICT:                  %s\n" % ("SHIPPABLE SKETCH" if bool(r["ok"]) else "HOLD — see failures above")
+	return out
 
 # --- ASCII render ---------------------------------------------------------------------------------------------
 
