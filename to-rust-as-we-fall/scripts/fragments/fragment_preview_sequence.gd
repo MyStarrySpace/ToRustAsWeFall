@@ -1054,6 +1054,15 @@ func set_preview_character_stat(char_id: String, stat_name: String, value: float
 		return
 
 	var normalized := _normalize_stat_name(stat_name)
+	if normalized not in ["hp", "sta", "atp"]:
+		return
+	# GameState is the ONE truth for hp/stamina/atp: a registered character writes THROUGH the logged
+	# set_stat (clamping + combat-down marking live there) and the HUD ledger mirrors back via
+	# stat_changed. Pushing the ledger INTO gs instead let the per-frame stamina regen overwrite real
+	# enemy strike damage the same frame it landed.
+	if _game_state != null and _game_state.characters.has(char_id):
+		_game_state.set_stat(char_id, "stamina" if normalized == "sta" else normalized, value)
+		return
 	var previous_value := float(_character_state[char_id].get(normalized, 0.0))
 	match normalized:
 		"hp":
@@ -1062,10 +1071,6 @@ func set_preview_character_stat(char_id: String, stat_name: String, value: float
 			_character_state[char_id][normalized] = clampf(value, 0.0, DEFAULT_STAMINA)
 		"atp":
 			_character_state[char_id][normalized] = GameState.clamp_atp(value)
-		_:
-			return
-
-	_update_character_in_game_state(char_id)
 	_sync_character_hud(char_id)
 	if normalized == "hp" and previous_value > 0.0 and float(_character_state[char_id].get("hp", 0.0)) <= 0.0:
 		_ensure_valid_selection()
@@ -1741,6 +1746,22 @@ func _connect_preview_item_signals() -> void:
 		_game_state.item_endocytosed.connect(_on_preview_item_endocytosed)
 	if not _game_state.item_exocytosed.is_connected(_on_preview_item_changed):
 		_game_state.item_exocytosed.connect(_on_preview_item_changed)
+	if not _game_state.stat_changed.is_connected(_on_gs_stat_changed):
+		_game_state.stat_changed.connect(_on_gs_stat_changed)
+
+## The mirror half of the one-truth rule: every gs stat change (combat strikes, drains, restores,
+## revives) lands in the HUD ledger — the portraits can never show a fiction again.
+func _on_gs_stat_changed(char_id: String, stat: String, value: float) -> void:
+	if not _character_state.has(char_id):
+		return
+	var normalized := _normalize_stat_name(stat)
+	if normalized not in ["hp", "sta", "atp"]:
+		return
+	var previous := float(_character_state[char_id].get(normalized, 0.0))
+	_character_state[char_id][normalized] = value
+	_sync_character_hud(char_id)
+	if normalized == "hp" and previous > 0.0 and value <= 0.0:
+		_ensure_valid_selection()
 
 func _on_preview_item_changed(_char_id: String, _item_id: String) -> void:
 	_refresh_inventory_panel()

@@ -14,8 +14,12 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 ##                   behind the machines. A Capbage grows in the south-east corner — a tight hide to
 ##                   break pursuit if it all goes wrong.
 ##
-## Getting spotted costs distance, not the run: swept to the nearest RALLY pad behind you, the sentry
-## re-posts, everything re-arms. All timing rides the scheduler; every obstacle is a visible box.
+## Getting spotted means getting ATTACKED: the sentry's real combat cycle (pursuit -> windup -> charge ->
+## strike, 25 hp a hit). A member beaten to 0 hp drops WHERE THEY FELL — dead weight, left there until
+## retrieved or the party rests. Both ends are true SHELTER ground (engine sanctuary: never spotted,
+## never struck, the revive watch runs there) — retreat is always an answer. If the WHOLE party goes
+## down, the hall takes the run: everyone restored at the entry, sentries re-posted, from the top.
+## All timing rides the scheduler; every obstacle is a visible box.
 
 const EnemyScript := preload("res://scripts/game/ai/enemy.gd")
 
@@ -59,12 +63,12 @@ const SETTLE_CELL := Vector2i(4, 17)                             # opposite side
                                                                  # touch the door corridor (classic lure design)
 const CAPBAGE_CELL := Vector2i(30, 17)
 const EXIT_CELL := Vector2i(30, 10)
-const RALLY_0 := Vector2i(3, 11)                                 # spawn-side rally
-const RALLY_1 := Vector2i(17, 18)                                # pump-room rally (past the gallery)
+const HOME_CELL := Vector2i(3, 11)                               # the entry haven (spawn + shelter ground)
 
 var _sentries: Array = []          # [{cid, enemy, post, waypoints}]
 var _phase := "ready"
-var _caught_count := 0
+var _spotted_count := 0
+var _wipe_count := 0
 var _flure_mesh: MeshInstance3D
 var _lure_until := -1.0
 var _lure_returning := false
@@ -75,7 +79,7 @@ func _build_chunk() -> void:
 	_build_scarpet_and_capbage()
 	_build_flure()
 	_build_exit()
-	_build_rally_pads()
+	_register_shelter_regions()
 	_spawn_sentries()
 	_build_lights()
 
@@ -150,14 +154,22 @@ func _build_exit() -> void:
 	shelter.interacted.connect(_on_rested)
 	_add_label(self, "SHELTER", p + Vector3(0, 2.0, 0), Color(0.6, 0.9, 0.65))
 
-func _build_rally_pads() -> void:
-	for c in [RALLY_0, RALLY_1]:
-		var p := _cell_world(c as Vector2i)
-		_add_box(self, Vector3(p.x, 0.015, p.z), Vector3(CELL * 1.2, 0.03, CELL * 1.2), Color(0.16, 0.16, 0.2))
-		_add_label(self, "rally", p + Vector3(0, 0.8, 0), Color(0.6, 0.6, 0.7))
+## Both havens are ENGINE shelter ground — the sanctuary rules (never spotted, never struck, revive
+## watch) come from GameState, not from chunk logic. The chunk only declares the WHERE.
+func _register_shelter_regions() -> void:
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	var home := _cell_world(HOME_CELL)
+	var exit := _cell_world(EXIT_CELL)
+	gs.add_shelter_region(Vector2(home.x - 2.4, home.z - 2.4), Vector2(home.x + 2.4, home.z + 2.4))
+	gs.add_shelter_region(Vector2(exit.x - 1.8, exit.z - 1.8), Vector2(exit.x + 1.8, exit.z + 1.8))
+	var p := _cell_world(HOME_CELL)
+	_add_box(self, Vector3(p.x, 0.015, p.z), Vector3(CELL * 1.2, 0.03, CELL * 1.2), Color(0.16, 0.2, 0.18), Color(0.25, 0.5, 0.35), 0.3)
+	_add_label(self, "haven", p + Vector3(0, 0.8, 0), Color(0.55, 0.8, 0.65))
 
 func _build_lights() -> void:
-	_add_light(self, _cell_world(RALLY_0) + Vector3(0, 2.2, 0), Color(0.7, 0.8, 0.75), 0.8, 6.0)
+	_add_light(self, _cell_world(HOME_CELL) + Vector3(0, 2.2, 0), Color(0.7, 0.8, 0.75), 0.8, 6.0)
 	_add_light(self, _cell_world(Vector2i(GALLERY_X, DOOR_Y0)) + Vector3(0, 2.4, 0), Color(0.85, 0.75, 0.55), 1.0, 6.0)
 	_add_light(self, _cell_world(Vector2i(23, 10)) + Vector3(0, 3.0, 0), Color(0.6, 0.7, 0.9), 1.0, 8.0)
 	_add_light(self, _cell_world(EXIT_CELL) + Vector3(0, 2.2, 0), Color(0.55, 0.9, 0.6), 1.0, 6.0)
@@ -187,8 +199,7 @@ func _add_sentry(i: int, post: Vector3, waypoints: Array) -> void:
 	enemy.game_state = gs
 	gs.register_character(cid, post, PATROL_SPEED, {"detection_range": SENTRY_RANGE})
 	enemy.activate()
-	enemy.target_spotted.connect(_on_spotted.bind(i))
-	enemy.hit_target.connect(func(tid: String, _dmg: float) -> void: _on_spotted(tid, i))
+	enemy.target_spotted.connect(_on_sentry_spotted)
 	var typed: Array[Vector3] = []
 	for w in waypoints:
 		typed.append(w as Vector3)
@@ -262,21 +273,45 @@ func _on_character_arrived(id: String) -> void:
 	if is_instance_valid(enemy):
 		enemy.set_patrol(st["waypoints"])
 
-## Spotted = swept to the nearest RALLY pad behind you + that sentry re-posts. Distance lost, run intact.
-func _on_spotted(target_id: String, sentry_i: int) -> void:
+## Spotted = ATTACKED. The Enemy FSM owns everything that follows (pursuit -> windup -> charge ->
+## strike -> disengage-from-a-downed-target -> return to the beat) — the chunk only narrates and counts.
+func _on_sentry_spotted(target_id: String) -> void:
 	if _phase == "complete" or not (target_id in PARTY_IDS):
 		return
-	_caught_count += 1
+	_spotted_count += 1
+	_show_note("Spotted. It's coming.", 2.0)
+
+## A member beaten to 0 hp drops where they fell (the engine marks the down + refuses their movement).
+## The chunk's only job: notice a FULL wipe and restart the run from the entry.
+func _on_character_downed(cid: String) -> void:
+	if _phase == "complete" or not (cid in PARTY_IDS):
+		return
+	_show_note("%s is down. They stay where they fell." % cid.capitalize(), 2.4)
 	var gs = _get_game_state()
-	if gs != null and gs.characters.has(target_id):
-		var rally := RALLY_1 if gs.get_position(target_id).x > (GALLERY_X + 2) * CELL else RALLY_0
-		gs.command_stop(target_id)
-		gs.snap_character_to(target_id, _cell_world(rally))
-	var sched = _get_scheduler()
-	if sched != null:
-		sched.cancel_tag("pump_catch_%d" % sentry_i)
-		sched.schedule_after(0.05, func() -> void: _reset_sentry(sentry_i), "pump_catch_%d" % sentry_i)
-	_show_note("Spotted. Pulled back to the rally point.", 2.2)
+	if gs != null and gs.is_party_downed(PARTY_IDS):
+		_wipe_count += 1
+		_show_note("The hall takes everyone. From the top.", 2.6)
+		var sched = _get_scheduler()
+		if sched != null:
+			sched.cancel_tag("pump_restart")
+			sched.schedule_after(1.5, _restart_level, "pump_restart")
+
+## Full wipe -> the run restarts from the entry: everyone restored at spawn, sentries re-posted,
+## the lure re-armed. Restore + snap are logged commands, so the restart replays.
+func _restart_level() -> void:
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	var spawns := get_spawn_positions()
+	for cid in PARTY_IDS:
+		if not gs.characters.has(cid):
+			continue
+		gs.restore_character(cid)
+		gs.snap_character_to(cid, spawns.get(cid, _cell_world(HOME_CELL)))
+	for i in range(_sentries.size()):
+		_reset_sentry(i)
+	_phase = "ready"
+	_set_preview_step("pump_hall_restart")
 
 func _reset_sentry(i: int) -> void:
 	var st: Dictionary = _sentries[i]
@@ -341,8 +376,7 @@ func _exit_tree() -> void:
 	if sched == null:
 		return
 	sched.cancel_tag("pump_lure")
-	for i in range(3):
-		sched.cancel_tag("pump_catch_%d" % i)
+	sched.cancel_tag("pump_restart")
 
 # --- SceneChunk interface -------------------------------------------------------------------------------
 
@@ -350,13 +384,13 @@ func get_scene_title() -> String:
 	return "Pump Hall"
 
 func get_scene_help() -> String:
-	return "Three rooms, three watchers. Read the amber walks. Scarpet hides you from a distance; the Capbage hides you completely. The flure buys a fat window on the door. Rest at the shelter."
+	return "Three rooms, three watchers. Read the amber walks — spotted means attacked. Scarpet hides you from a distance; the Capbage hides you completely. The flure buys a fat window on the door. Both havens are safe ground; a fallen member stays where they drop. Rest at the shelter."
 
 func get_default_character() -> String:
 	return "peris"
 
 func get_spawn_positions() -> Dictionary:
-	var s := _cell_world(RALLY_0)
+	var s := _cell_world(HOME_CELL)
 	return {
 		"aster": s + Vector3(-0.6, 0.0, -1.0),
 		"peris": s + Vector3(0.4, 0.0, 0.0),
@@ -373,7 +407,7 @@ func get_preview_anchors() -> Dictionary:
 	anchors["capbage"] = _cell_world(CAPBAGE_CELL)
 	anchors["scarpet_0"] = _cell_world(SCARPET_PADS[0] as Vector2i)
 	anchors["scarpet_1"] = _cell_world(SCARPET_PADS[1] as Vector2i)
-	anchors["rally_1"] = _cell_world(RALLY_1)
+	anchors["gallery_landing"] = _cell_world(Vector2i(17, 18))   # first cover past the door (the old staging spot)
 	for i in range(_sentries.size()):
 		anchors["post_%d" % i] = _sentries[i]["post"]
 	anchors["s1_far"] = _cell_world(S1_B)
@@ -383,13 +417,18 @@ func get_preview_anchors() -> Dictionary:
 
 func reset_preview_state() -> void:
 	var gs = _get_game_state()
-	if gs != null and not gs.character_arrived.is_connected(_on_character_arrived):
-		gs.character_arrived.connect(_on_character_arrived)
+	if gs != null:
+		if not gs.character_arrived.is_connected(_on_character_arrived):
+			gs.character_arrived.connect(_on_character_arrived)
+		if not gs.character_downed.is_connected(_on_character_downed):
+			gs.character_downed.connect(_on_character_downed)
 	_phase = "ready"
-	_caught_count = 0
+	_spotted_count = 0
+	_wipe_count = 0
 	var sched = _get_scheduler()
 	if sched != null:
 		sched.cancel_tag("pump_lure")
+		sched.cancel_tag("pump_restart")
 	_lure_until = -1.0
 	_lure_returning = false
 	if _flure_mesh != null and _flure_mesh.material_override is StandardMaterial3D:
@@ -400,9 +439,17 @@ func reset_preview_state() -> void:
 
 func get_preview_state() -> Dictionary:
 	var now := _get_scheduler_tick()
+	var downed: Array = []
+	var gs = _get_game_state()
+	if gs != null:
+		for cid in PARTY_IDS:
+			if gs.is_downed(cid):
+				downed.append(cid)
 	return {
 		"phase": _phase,
-		"caught_count": _caught_count,
+		"spotted_count": _spotted_count,
+		"wipe_count": _wipe_count,
+		"downed": downed,
 		"lure_active": _lure_until > now,
 		"complete": _phase == "complete",
 	}

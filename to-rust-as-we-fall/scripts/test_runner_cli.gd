@@ -378,6 +378,12 @@ func _ready() -> void:
 			"--test-pump-hall":
 				ran_test = true
 				await _test_pump_hall()
+			"--test-combat-downed":
+				ran_test = true
+				await _test_combat_downed()
+			"--test-shelter-safety":
+				ran_test = true
+				await _test_shelter_safety()
 			"--test-hub-shapes":
 				ran_test = true
 				await _test_hub_shapes()
@@ -1169,6 +1175,8 @@ func _run_all_tests() -> void:
 	await _test_generated_atom_playable()
 	await _test_roguelike_atom_run()
 	await _test_pump_hall()
+	await _test_combat_downed()
+	await _test_shelter_safety()
 	await _test_stretch_branches()
 	await _test_hub_shapes()
 	await _test_hub_base_playable()
@@ -13293,9 +13301,11 @@ func _branch_shapes(branches: Array) -> Array:
 ## per archetype, PROVES the invariant (flood-fill: locked BLOCKS start->end, solving OPENS it), and PRINTS each as
 ## ASCII so the design reads at a glance. A chunk that can be walked straight through fails here.
 ## PUMP HALL, played like a player: the hand-authored tactical stealth level, driven route-by-route with
-## analytic jumps. Proves the fun-critical facts: the aisle watch is real (exposed = spotted, swept to the
-## RALLY pad, not the run's end), Scarpet SAVES an outer-range pass (the tier teach), the beat is crossable
-## behind the sentry, the flure buys the door, the orbit can be slipped, and the shelter completes it.
+## analytic jumps. The FAILURE MODEL is real: spotted = ATTACKED (the enemy FSM's combat cycle lands real
+## data-layer damage), a member beaten to 0 hp drops WHERE THEY FELL (dead weight; the sentry disengages),
+## both havens are ENGINE shelter ground, and a FULL party wipe restarts the run from the entry. Then the
+## clean route: Scarpet survives an outer-range pass, the flure buys the door, the orbit slips, the
+## shelter completes it.
 func _test_pump_hall() -> void:
 	_test_name = "Pump Hall"
 	var inst = await _instantiate_preview_chunk_and_wait("pump_hall", 4)
@@ -13308,21 +13318,57 @@ func _test_pump_hall() -> void:
 	var a: Dictionary = chunk.get_preview_anchors()
 	for i in range(3):
 		_assert_true(gs.characters.has("pump_sentry_%d" % i), "sentry %d is registered" % i)
+	_assert_true(bool(gs.is_at_shelter("peris")), "the spawn haven is registered ENGINE shelter ground")
 
-	# --- The aisle watch is real: stand exposed in the patrol's path -> spotted -> swept to RALLY 0. ---
+	# --- Spotted = ATTACKED: stand exposed in the aisle watch -> the sentry's real combat cycle. ---
 	var aisle_mid: Vector3 = (a["post_0"] + a["s1_far"]) * 0.5
 	gs.command_move_to_pos("peris", aisle_mid)
 	_advance_to_arrival(inst, gs, "peris")
 	_advance_to_proximity(inst, gs, "pump_sentry_0", aisle_mid, 3.5, 30.0)
-	inst.headless_advance(1.5, 0.1)
+	var t := 0.0
+	while t < 30.0 and float(gs.get_stat("peris", "hp")) >= 100.0:
+		inst.headless_advance(0.2, 0.1)
+		t += 0.2
+	var hp_hit: float = float(gs.get_stat("peris", "hp"))
 	var st: Dictionary = chunk.get_preview_state()
-	print("  [pump] exposed aisle: caught=%d peris=%s" % [int(st["caught_count"]), str(gs.get_position("peris"))])
-	_assert_equals(int(st["caught_count"]), 1, "standing exposed in the aisle watch gets you spotted")
-	_assert_true(gs.get_position("peris").distance_to(chunk.get_spawn_positions()["peris"]) < 4.0,
-		"the catch pulls you back to the rally pad - distance lost, run intact")
+	print("  [pump] exposed aisle: spotted=%d hp=%.0f" % [int(st["spotted_count"]), hp_hit])
+	_assert_true(int(st["spotted_count"]) >= 1, "standing exposed in the aisle watch gets you spotted")
+	_assert_true(hp_hit < 100.0, "spotted means ATTACKED — the strike lands real data-layer damage (hp=%.0f)" % hp_hit)
+
+	# --- Beaten to 0: they drop where they fell (dead weight); the sentry disengages back to its beat. ---
+	t = 0.0
+	while t < 120.0 and not gs.is_downed("peris"):
+		inst.headless_advance(0.3, 0.1)
+		t += 0.3
+	_assert_true(gs.is_downed("peris"), "kept exposed, the strikes eventually DOWN the member")
+	var fell_at: Vector3 = gs.get_position("peris")
+	gs.command_move_to_pos("peris", a["exit"])
+	inst.headless_advance(1.5, 0.1)
+	_assert_true(gs.get_position("peris").distance_to(fell_at) < 0.5,
+		"a downed member is dead weight — left where they fell")
+	var s0 = chunk._sentries[0]["enemy"]
+	t = 0.0
+	while t < 40.0 and not (str(s0.get_state()) in ["patrol", "return", "idle", "search"]):
+		inst.headless_advance(0.3, 0.1)
+		t += 0.3
+	_assert_true(str(s0.get_state()) in ["patrol", "return", "idle", "search"],
+		"the sentry disengages from the downed member (state=%s)" % str(s0.get_state()))
+
+	# --- FULL WIPE -> the hall restarts the run from the entry (everyone RESTORED at the haven). ---
+	gs.down_character("aster")
+	gs.down_character("endo")
 	inst.headless_advance(3.0, 0.1)
+	st = chunk.get_preview_state()
+	_assert_equals(int(st["wipe_count"]), 1, "all three down = a wipe")
+	_assert_true((st["downed"] as Array).is_empty(), "the restart restores everyone")
+	_assert_true(float(gs.get_stat("peris", "hp")) >= 100.0,
+		"a restart RESTORES hp to the cap, not a walking corpse (hp=%.0f)" % float(gs.get_stat("peris", "hp")))
+	_assert_true(gs.get_position("peris").distance_to(chunk.get_spawn_positions()["peris"]) < 2.0,
+		"the party is back at the entry haven")
+	inst.headless_advance(2.0, 0.1)
 
 	# --- Scarpet is a real tier: MEDIUM conceal survives the sentry's outer-range pass. ---
+	var hp0: float = float(gs.get_stat("peris", "hp"))
 	gs.command_move_to_pos("peris", a["scarpet_1"])
 	_advance_to_arrival(inst, gs, "peris")
 	inst.headless_advance(0.3, 0.1)
@@ -13330,13 +13376,13 @@ func _test_pump_hall() -> void:
 		"standing on Scarpet is MEDIUM conceal")
 	_advance_to_proximity(inst, gs, "pump_sentry_0", a["scarpet_1"] + Vector3(3.0, 0.0, 0.0), 2.0, 30.0)
 	inst.headless_advance(1.0, 0.1)
-	_assert_equals(int(chunk.get_preview_state()["caught_count"]), 1,
+	_assert_true(float(gs.get_stat("peris", "hp")) >= hp0,
 		"the sentry passes 3.0wu away and the Scarpet HOLDS (outer range beaten, the tier teach)")
 
 	# --- Lure first (the flure is WEST — no aisle crossing needed to tend it), then cross, then door. ---
 	gs.command_move_to_pos("peris", a["flure"])
 	_advance_to_arrival(inst, gs, "peris")
-	_assert_equals(int(chunk.get_preview_state()["caught_count"]), 1, "the flure corner is OUTSIDE the aisle watch (tending is safe)")
+	_assert_true(float(gs.get_stat("peris", "hp")) >= hp0, "the flure corner is OUTSIDE the aisle watch (tending is safe)")
 	var flure = chunk.find_child("PumpFlure", true, false)
 	_assert_true(flure != null, "the flure exists")
 	flure.active_character = "peris"
@@ -13355,10 +13401,9 @@ func _test_pump_hall() -> void:
 	_advance_to_arrival(inst, gs, "peris")
 	gs.command_move_to_pos("peris", a["door"] + Vector3(1.5, 0.0, 0.0))
 	_advance_to_arrival(inst, gs, "peris")
-	gs.command_move_to_pos("peris", a["rally_1"])
+	gs.command_move_to_pos("peris", a["gallery_landing"])
 	_advance_to_arrival(inst, gs, "peris")
-	var caught_mid := int(chunk.get_preview_state()["caught_count"])
-	_assert_equals(caught_mid, 1, "the lured door crossing is clean")
+	_assert_true(float(gs.get_stat("peris", "hp")) >= hp0, "the lured door crossing is clean (no strike)")
 	# The orbit: wait for the third sentry at its north-west turn, then run the south flank to the shelter.
 	var s3_nw: Vector3 = a["post_2"]
 	var slipped := _advance_to_proximity(inst, gs, "pump_sentry_2", s3_nw, 1.2, 40.0)
@@ -13367,15 +13412,16 @@ func _test_pump_hall() -> void:
 	_advance_to_arrival(inst, gs, "peris")
 	gs.command_move_to_pos("peris", a["exit"])
 	_advance_to_arrival(inst, gs, "peris")
+	_assert_true(bool(gs.is_at_shelter("peris")), "the exit pad is registered ENGINE shelter ground")
 	var shelter = chunk.find_child("PumpExitShelter", true, false)
 	_assert_true(shelter != null, "the shelter exists")
 	shelter.active_character = "peris"
 	shelter.on_interaction_arrived()
 	inst.headless_advance(1.0, 0.1)
 	st = chunk.get_preview_state()
-	print("  [pump] finish: complete=%s caught=%d" % [str(st["complete"]), int(st["caught_count"])])
+	print("  [pump] finish: complete=%s spotted=%d hp=%.0f" % [str(st["complete"]), int(st["spotted_count"]), float(gs.get_stat("peris", "hp"))])
 	_assert_true(bool(st["complete"]), "Pump Hall plays start to shelter through the data layer")
-	_assert_equals(int(st["caught_count"]), 1, "the clean route stays clean (only the deliberate catch)")
+	_assert_true(float(gs.get_stat("peris", "hp")) >= hp0, "the clean route stays clean (no strikes after the restart)")
 	inst.queue_free()
 	await get_tree().process_frame
 
@@ -14723,6 +14769,17 @@ func _test_channels_wash_intro() -> void:
 	_assert_true(float(st0.get("flure_attract_range", 0)) > float(st0.get("player_sense_range", 1e9)),
 		"the flure's attract range exceeds the enemies' player-sense range (flure=%.0f player=%.0f)" % [float(st0.get("flure_attract_range", 0)), float(st0.get("player_sense_range", 0))])
 	_assert_equals(int(st0.get("enemies_alive", -1)), 2, "two hunters guard the crossing")
+	# SHELTERS ARE DECLARED IN THE DATA and registered as real sanctuary ground: both ends of the stretch
+	# (the start the wash returns you to, and the exit pad) are GameState shelter regions, so the engine's
+	# sanctuary gates protect anyone standing there (the hunters attacked characters IN the shelter before
+	# the fragment declared them).
+	chunk.call("_set_character_position", "peris", Vector3(2.5, 0.5, 0.5))     # wash-back / start
+	_assert_true(bool(gs.is_at_shelter("peris")), "the start (wash-back) ground is a registered shelter region")
+	chunk.call("_set_character_position", "peris", chunk.get_preview_anchors().get("exit"))
+	_assert_true(bool(gs.is_at_shelter("peris")), "the exit pad is a registered shelter region")
+	chunk.call("_set_character_position", "peris", Vector3(14.0, 0.5, 0.0))    # mid-channel = exposed
+	_assert_true(not bool(gs.is_at_shelter("peris")), "mid-channel ground is NOT shelter — sanctuary is only the two ends")
+	chunk.call("_set_character_position", "peris", Vector3(2.5, 0.5, 0.5))     # park back home
 	# At least one channel is always flooding (sample across more than a full period) — no straight walk.
 	var always := true
 	for k in range(40):
@@ -17311,6 +17368,89 @@ func _test_predictive_attack() -> void:
 	_cleanup_attack_ctx(sctx)
 
 ## Build a guard-vs-target attack scenario. Guard at origin, target a few units away in range.
+## COMBAT DOWNS ARE REAL DOWNS: an enemy dropping a party member's hp to 0 must produce the CANONICAL
+## downed state (GDD 2.4.3: knockout, not death) — is_downed true, dead weight (no movement), and the
+## existing shelter revive watch must be able to bring them back. Reported gap: only SCRIPTED downs
+## (down_character) marked the state; combat hp-0 left a walking 0-hp character and no revive.
+func _test_combat_downed() -> void:
+	_test_name = "Combat Downed"
+	var ctx := _make_attack_ctx(40.0, false)
+	var sched: EventScheduler = ctx["sched"]
+	var gs: GameState = ctx["gs"]
+	var enemy: Enemy = ctx["enemy"]
+	for i in range(600):
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+		if float(gs.get_stat("aster", "hp")) <= 0.0:
+			break
+	_assert_true(float(gs.get_stat("aster", "hp")) <= 0.0, "the guard beats aster's hp to zero")
+	_assert_true(gs.is_downed("aster"), "a COMBAT down marks the canonical downed state (not just scripted downs)")
+	# Dead weight: a downed character refuses movement commands and stays where they fell.
+	var fell_at: Vector3 = gs.get_position("aster")
+	gs.command_move_to_pos("aster", fell_at + Vector3(5.0, 0.0, 0.0))
+	for i in range(60):
+		sched.advance_ticks(0.05)
+	_assert_true(gs.get_position("aster").distance_to(fell_at) < 0.5,
+		"a downed character is dead weight — movement commands do nothing, they stay where they fell")
+	# The enemy disengages from the downed body (never strikes a corpse; returns home).
+	for i in range(400):
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+		if enemy.get_state() in ["idle", "roam", "patrol"]:
+			break
+	_assert_true(enemy.get_state() in ["idle", "roam", "patrol"], "the enemy disengages after the down (state=%s)" % enemy.get_state())
+	# Retrieval: the EXISTING shelter revive watch (GDD 3.3) brings them back — downed at a shelter with a
+	# conscious ally near revives after REVIVE_SECONDS.
+	gs.register_character("peris", fell_at + Vector3(1.0, 0.0, 0.0), 2.5, {"hp": 100.0})
+	gs.add_shelter_region(Vector2(fell_at.x - 2.5, fell_at.z - 2.5), Vector2(fell_at.x + 2.5, fell_at.z + 2.5))
+	for i in range(280):
+		sched.advance_ticks(0.05)
+		if not gs.is_downed("aster"):
+			break
+	_assert_true(not gs.is_downed("aster") and float(gs.get_stat("aster", "hp")) > 0.0,
+		"downed at a shelter with an ally near, the revive watch brings them back")
+	_cleanup_attack_ctx(ctx)
+
+## SHELTERS ARE SAFE: the revive system is built on the assumption that a shelter is a safe haven, but
+## nothing enforced it — detection and enemy engagement never queried is_at_shelter, so enemies attacked
+## characters standing IN shelters (reported in channels_wash_intro). A sheltered character must be
+## unspottable and unengageable; stepping out restores normal detection.
+func _test_shelter_safety() -> void:
+	_test_name = "Shelter Safety"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	var holder := Node3D.new()
+	add_child(holder)
+	gs.register_character("aster", Vector3(3.0, 0.5, 0.0), 2.5, {"hp": 100.0, "stamina": 100.0})
+	gs.add_shelter_region(Vector2(1.0, -2.0), Vector2(5.0, 2.0))
+	var enemy := Enemy.new()
+	enemy.game_state = gs
+	enemy.char_id = "guard"
+	enemy._detection_targets = ["aster"]
+	holder.add_child(enemy)
+	gs.register_character("guard", Vector3(7.0, 0.5, 0.0), enemy.move_speed, {"detection_range": 6.0})
+	enemy.activate()
+	gs._recompute_all_detection_predictions()
+	for i in range(120):
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+	_assert_equals(str(enemy.get_state()), "idle", "an in-range, clear-LOS target INSIDE a shelter is never spotted")
+	_assert_true(float(gs.get_stat("aster", "hp")) >= 100.0, "a sheltered character takes no damage")
+	# Stepping OUT restores normal detection — shelters protect their ground, not the world.
+	gs.command_move_to_pos("aster", Vector3(9.0, 0.5, 0.0))
+	var spotted := false
+	for i in range(200):
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+		if enemy.get_state() != "idle":
+			spotted = true
+			break
+	_assert_true(spotted, "stepping out of the shelter gets you spotted normally")
+	enemy.queue_free()
+	holder.queue_free()
+	await get_tree().process_frame
+
 func _make_attack_ctx(target_hp: float, dodge: bool) -> Dictionary:
 	var sched := EventScheduler.new()
 	var gs := GameState.new()

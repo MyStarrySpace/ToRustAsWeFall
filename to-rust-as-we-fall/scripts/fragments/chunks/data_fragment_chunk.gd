@@ -37,6 +37,7 @@ func _build_chunk() -> void:
 		push_warning("DataFragmentChunk: no fragment assigned (set `fragment` or fragment_path)")
 		return
 	_build_environment()
+	_apply_shelters()
 	for spec in fragment.objects:
 		_spawn_object(spec)
 	_set_preview_step((fragment.id if fragment.id != "" else "data_fragment") + "_start")
@@ -75,6 +76,17 @@ func _instance_mesh(spec: Dictionary) -> void:
 		if sc != Vector3.ONE:
 			n3.scale = sc
 	add_child(node)
+
+## Declared shelter rects -> GameState shelter regions (sanctuary from detection/strikes + the revive
+## watch's ground). Data, not behavior: the fragment says WHERE is safe; the engine enforces it.
+func _apply_shelters() -> void:
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	for sh in fragment.shelters:
+		var mn: Vector2 = sh.get("min", Vector2.ZERO)
+		var mx: Vector2 = sh.get("max", Vector2.ZERO)
+		gs.add_shelter_region(mn, mx)
 
 # --- Object spawning: one branch per object `type`. This list is the .tres authoring contract. ---
 

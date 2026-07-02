@@ -31,6 +31,12 @@ extends Resource
 ## DataFragmentChunk._spawn_object — flure / portal_pad / capbage / channel / flora_light / enemy / marker.
 @export var objects: Array[Dictionary] = []
 
+## Shelter regions: {min:Vector2, max:Vector2} world-XZ rects. The loader registers each with
+## GameState.add_shelter_region, so the engine's sanctuary rules (never spotted, never struck, revive
+## watch ground) hold there. Every fragment with a start/exit haven declares them HERE — safety is
+## data the engine enforces, never per-chunk logic.
+@export var shelters: Array[Dictionary] = []
+
 ## Optional grid data (the GridWorld contract dict) — omit for a gridless fragment.
 @export var grid: Dictionary = {}
 

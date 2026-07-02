@@ -363,7 +363,7 @@ func _on_cross_level_arrival(id: String) -> void:
 func _do_move_to_pos(id: String, pos: Vector3) -> bool:
 	if not characters.has(id) or not scheduler:
 		return false
-	if is_endocytosing(id) or is_knocked_down(id):
+	if is_endocytosing(id) or is_knocked_down(id) or is_downed(id):
 		return false
 	# On a grid a position move routes on the CELLS (the cooperative planner, same as a cell move) —
 	# never a straight line that would cut through walls. The target quantizes to its cell, exactly
@@ -607,6 +607,11 @@ func set_stat(id: String, stat: String, value: float) -> void:
 			clamped = clampf(roundf(value), 0.0, get_stat_cap(id, "atp"))
 	characters[id].stats[stat] = clamped
 	stat_changed.emit(id, stat, clamped)
+	# Combat damage that zeroes hp IS a down (GDD 2.4.3: a knockout, not death) — the same transition
+	# as a scripted down_character. Derived from the logged hp change itself (no extra log entry), so
+	# replaying the damage re-derives the down identically.
+	if stat == "hp" and clamped <= 0.0 and not is_downed(id) and not bool(characters[id].stats.get("dead", false)):
+		_mark_downed(id)
 
 ## Shorthand for relative stat changes (damage, drain, healing).
 func adjust_stat(id: String, stat: String, delta: float) -> void:
@@ -1277,6 +1282,13 @@ func _on_detection_event(detector_id: String, target_id: String, recheck_hops: i
 	# under the pair tag (any recompute replaces it; both parked = frozen geometry = no re-arm needed, the
 	# next move recomputes). Scheduler-driven, so it stays replay-deterministic and fast-forward invariant.
 	if not _has_detection_los(detector_id, target_id):
+		_arm_detection_los_recheck(detector_id, target_id, recheck_hops)
+		return
+	# Shelter sanctuary: a target standing INSIDE a declared shelter region is never spotted — the
+	# rest/revive system is built on shelters being safe ground. Like a wall block, a sheltered miss
+	# is not the last word while the pair is still moving (stepping OUT mid-move must still get
+	# spotted), so it re-arms the same re-check chain.
+	if is_at_shelter(target_id):
 		_arm_detection_los_recheck(detector_id, target_id, recheck_hops)
 		return
 	if is_dodging(target_id):
@@ -3736,7 +3748,7 @@ func end_split() -> void:
 func _do_move_to_cell(id: String, cell: Vector2i) -> bool:
 	if not characters.has(id) or not grid or not scheduler:
 		return false
-	if is_endocytosing(id) or is_knocked_down(id):
+	if is_endocytosing(id) or is_knocked_down(id) or is_downed(id):
 		return false
 	var current_pos := get_position(id)
 	var current_cell := grid.world_to_grid(current_pos)
@@ -3783,12 +3795,18 @@ func down_character(char_id: String) -> void:
 	_emit(GameEvent.KIND_DOWN_CHARACTER, {"char_id": char_id})
 	if not characters.has(char_id):
 		return
+	_mark_downed(char_id)
+
+## The ONE downed transition — scripted downs (down_character) and combat hp-0 (set_stat) both land
+## here, so the state can never diverge by cause. They drop where they stood, dead weight until
+## restored/revived; a downed caster drops the cast.
+func _mark_downed(char_id: String) -> void:
 	var ch: Dictionary = characters[char_id]
 	ch.stats["hp"] = 0.0
 	ch.stats["stamina"] = 0.0
 	ch.stats["narrative_available"] = false
 	_do_stop(char_id)
-	cancel_field_restore(char_id)  # a downed caster drops the cast
+	cancel_field_restore(char_id)
 	_start_revive_watch()
 	character_downed.emit(char_id)
 
@@ -3798,12 +3816,16 @@ func restore_character(char_id: String) -> void:
 		return
 	var ch: Dictionary = characters[char_id]
 	var stats: Dictionary = ch.stats
-	if stats.has("max_hp"):
-		stats["hp"] = float(stats["max_hp"])
-	if stats.has("max_stamina"):
-		stats["stamina"] = float(stats["max_stamina"])
+	# Legacy "max_hp"/"max_stamina" keys win if authored; otherwise the standard stat caps
+	# (get_stat_cap honours "<stat>_max" overrides and the engine defaults) — a restore always
+	# actually refills, never leaves a walking 0-hp character.
+	stats["hp"] = float(stats["max_hp"]) if stats.has("max_hp") else get_stat_cap(char_id, "hp")
+	stats["stamina"] = float(stats["max_stamina"]) if stats.has("max_stamina") else get_stat_cap(char_id, "stamina")
 	stats["atp"] = ATP_MAX_PIPS
 	stats["narrative_available"] = true
+	stat_changed.emit(char_id, "hp", float(stats["hp"]))
+	stat_changed.emit(char_id, "stamina", float(stats["stamina"]))
+	stat_changed.emit(char_id, "atp", ATP_MAX_PIPS)
 	character_restored.emit(char_id)
 
 func is_narratively_available(char_id: String) -> bool:

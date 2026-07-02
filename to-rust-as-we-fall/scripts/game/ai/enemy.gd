@@ -262,6 +262,10 @@ func _on_detection_predicted(detector_id: String, target_id: String) -> void:
 		var t_stats: Dictionary = game_state.characters[target_id].stats
 		if t_stats.has("hp") and float(t_stats["hp"]) <= 0.0:
 			return
+	# Never acquire a target standing in a shelter region — sanctuary ground (mirrors the
+	# detection-layer gate; this also covers direct/forced acquisitions).
+	if game_state and game_state.has_method("is_at_shelter") and game_state.is_at_shelter(target_id):
+		return
 	_current_target_id = target_id
 	if game_state:
 		_last_known_target_pos = game_state.get_position(target_id)
@@ -373,6 +377,9 @@ func _resolve_strike(tid: String) -> bool:
 	# Never strike a target that is already down (e.g. another enemy felled it mid-charge).
 	if float(game_state.characters[tid].stats.get("hp", 1.0)) <= 0.0:
 		return false
+	# Sanctuary: a committed strike never lands on a target standing in a shelter region.
+	if game_state.has_method("is_at_shelter") and game_state.is_at_shelter(tid):
+		return false
 	# Dodge window: a target that can roll (dodge_unlocked) and auto-evades slips the committed strike.
 	if game_state.has_method("dodge_roll"):
 		var st: Dictionary = game_state.characters[tid].stats
@@ -457,6 +464,9 @@ func _target_engageable() -> bool:
 		return false
 	var stats: Dictionary = game_state.characters[_current_target_id].stats
 	if stats.has("hp") and float(stats["hp"]) <= 0.0:
+		return false
+	# Sanctuary: a target that reaches a shelter region is no longer engageable — the chase sheds.
+	if game_state.has_method("is_at_shelter") and game_state.is_at_shelter(_current_target_id):
 		return false
 	return true
 
