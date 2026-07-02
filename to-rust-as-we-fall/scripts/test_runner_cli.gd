@@ -378,6 +378,9 @@ func _ready() -> void:
 			"--test-pump-hall":
 				ran_test = true
 				await _test_pump_hall()
+			"--test-drag-retrieve":
+				ran_test = true
+				await _test_drag_retrieve()
 			"--test-combat-downed":
 				ran_test = true
 				await _test_combat_downed()
@@ -1175,6 +1178,7 @@ func _run_all_tests() -> void:
 	await _test_generated_atom_playable()
 	await _test_roguelike_atom_run()
 	await _test_pump_hall()
+	await _test_drag_retrieve()
 	await _test_combat_downed()
 	await _test_shelter_safety()
 	await _test_stretch_branches()
@@ -17368,6 +17372,94 @@ func _test_predictive_attack() -> void:
 	_cleanup_attack_ctx(sctx)
 
 ## Build a guard-vs-target attack scenario. Guard at origin, target a few units away in range.
+## DRAG / RETRIEVE (GDD 2.4.3): a conscious member drags a downed one — the dead weight follows as
+## a pure function of the dragger, the dragger is slower and burns stamina while hauling, the body
+## parks where it is set down, and hauling a fallen friend INTO a shelter closes the retrieve loop
+## (the revive watch takes over). The whole episode replays from the log.
+func _test_drag_retrieve() -> void:
+	_test_name = "Drag Retrieve"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	var log := EventLog.new()
+	gs.event_log = log
+	gs.register_character("peris", Vector3(0.0, 0.5, 0.0), 2.5, {"hp": 100.0, "stamina": 100.0})
+	gs.register_character("aster", Vector3(8.0, 0.5, 0.0), 2.5, {"hp": 100.0, "stamina": 100.0})
+	gs.down_character("aster")
+	_assert_true(not gs.command_start_drag("peris", "aster"), "can't take hold from across the room")
+	gs.command_move_to_pos("peris", Vector3(7.0, 0.5, 0.0))
+	for i in range(200):
+		sched.advance_ticks(0.05)
+		if not gs.is_moving("peris"):
+			break
+	var speed_before: float = float(gs.characters["peris"].move_speed)
+	_assert_true(gs.command_start_drag("peris", "aster"), "adjacent, the conscious member takes hold")
+	_assert_true(gs.is_dragging("peris") and gs.get_dragger_of("aster") == "peris", "the drag is on")
+	_assert_true(float(gs.characters["peris"].move_speed) < speed_before, "hauling dead weight is SLOWER")
+	_assert_true(not gs.command_start_drag("aster", "peris"), "a downed character can never be the dragger")
+	# Haul west: the body is CARRIED.
+	var sta0: float = float(gs.get_stat("peris", "stamina"))
+	gs.command_move_to_pos("peris", Vector3(1.0, 0.5, 0.0))
+	for i in range(600):
+		sched.advance_ticks(0.05)
+		if not gs.is_moving("peris"):
+			break
+	var apart: float = gs.get_position("aster").distance_to(gs.get_position("peris"))
+	_assert_true(apart < 1.5, "the body tracks the dragger (%.2f apart)" % apart)
+	_assert_true(float(gs.get_stat("peris", "stamina")) < sta0,
+		"hauling burns stamina while moving (%.0f -> %.0f)" % [sta0, float(gs.get_stat("peris", "stamina"))])
+	# Set it down: the body parks; the dragger recovers speed and leaves alone.
+	gs.command_stop_drag("peris")
+	_assert_true(not gs.is_dragging("peris"), "the load is set down")
+	_assert_true(absf(float(gs.characters["peris"].move_speed) - speed_before) < 0.001,
+		"the dragger's speed comes back after the drag")
+	var dropped: Vector3 = gs.get_position("aster")
+	gs.command_move_to_pos("peris", Vector3(-3.0, 0.5, 0.0))
+	for i in range(200):
+		sched.advance_ticks(0.05)
+		if not gs.is_moving("peris"):
+			break
+	_assert_true(gs.get_position("aster").distance_to(dropped) < 0.01, "the dropped body STAYS put")
+	# RETRIEVE: haul the body into a shelter, stay close — the revive watch brings them up.
+	gs.add_shelter_region(Vector2(-6.0, -2.0), Vector2(-2.0, 2.0))
+	gs.command_move_to_pos("peris", dropped + Vector3(-0.8, 0.0, 0.0))
+	for i in range(300):
+		sched.advance_ticks(0.05)
+		if not gs.is_moving("peris"):
+			break
+	_assert_true(gs.command_start_drag("peris", "aster"), "take hold again for the carry home")
+	gs.command_move_to_pos("peris", Vector3(-4.0, 0.5, 0.0))
+	for i in range(800):
+		sched.advance_ticks(0.05)
+		if not gs.is_moving("peris"):
+			break
+	gs.command_stop_drag("peris")
+	_assert_true(gs.is_at_shelter("aster"), "the body was carried INTO the shelter")
+	for i in range(300):
+		sched.advance_ticks(0.05)
+		if not gs.is_downed("aster"):
+			break
+	_assert_true(not gs.is_downed("aster") and float(gs.get_stat("aster", "hp")) > 0.0,
+		"the retrieve loop closes: dragged to shelter + ally near = revived")
+	# A dragger who goes DOWN mid-haul drops the load where it is.
+	gs.down_character("aster")
+	gs.command_start_drag("peris", "aster")
+	_assert_true(gs.is_dragging("peris"), "hauling again")
+	gs.down_character("peris")
+	_assert_true(not gs.is_dragging("peris"), "a downed dragger drops the load")
+	# REPLAY: the whole episode (downs, drags, drops, revive, re-drag) reproduces from the log.
+	gs.flush_tick()
+	var replayed := GameState.replay(log, null)
+	_assert_true(replayed.get_position("aster").distance_to(gs.get_position("aster")) < 0.05,
+		"replay reproduces the carried body's final position")
+	_assert_true(replayed.get_position("peris").distance_to(gs.get_position("peris")) < 0.05,
+		"replay reproduces the dragger's final position")
+	_assert_true(absf(float(replayed.get_stat("peris", "stamina")) - float(gs.get_stat("peris", "stamina"))) < 0.01,
+		"replay reproduces the drag stamina burn exactly (%.1f)" % float(gs.get_stat("peris", "stamina")))
+	_assert_true(replayed.is_downed("peris") == gs.is_downed("peris")
+		and replayed.is_downed("aster") == gs.is_downed("aster"),
+		"replay reproduces the downed states")
+
 ## COMBAT DOWNS ARE REAL DOWNS: an enemy dropping a party member's hp to 0 must produce the CANONICAL
 ## downed state (GDD 2.4.3: knockout, not death) — is_downed true, dead weight (no movement), and the
 ## existing shelter revive watch must be able to bring them back. Reported gap: only SCRIPTED downs
@@ -18439,6 +18531,9 @@ func _test_event_log_mutation_audit() -> void:
 		"is_dodging", "is_endocytosing",
 		"has_queued_ability", "get_queued_ability",
 		"is_narratively_available", "is_downed", "is_party_downed",
+		# Drag queries are pure reads over derived drag state (the mutators
+		# command_start_drag / command_stop_drag emit).
+		"is_dragging", "get_drag_target", "get_dragger_of",
 		"get_party", "get_split_members", "is_split_active",
 		# Interactable registry queries (register/trigger/enable/reset emit).
 		"has_interactable", "get_interactable", "is_interactable_enabled",

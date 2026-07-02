@@ -240,6 +240,7 @@ func _apply_set_level(id: String, level: int) -> void:
 
 func unregister_character(id: String) -> void:
 	_emit(GameEvent.KIND_UNREGISTER_CHARACTER, {"id": id})
+	_end_drag_involving(id)
 	_cross_level_plan.erase(id)
 	if characters.has(id):
 		# Cleanup only; no log entry.
@@ -538,6 +539,12 @@ func get_render_position(id: String) -> Vector3:
 func get_position(id: String) -> Vector3:
 	if not characters.has(id):
 		return Vector3.ZERO
+	# A dragged (downed) character rides the dragger: their position is a pure function of the
+	# dragger's tick-interpolated position, so the carry is replay-deterministic and fast-forward
+	# invariant like all movement.
+	var drag_owner := get_dragger_of(id)
+	if drag_owner != "":
+		return get_position(drag_owner) + DRAG_TRAIL_OFFSET
 	var ch: Dictionary = characters[id]
 	if ch.movement == null or not scheduler:
 		return ch.position
@@ -2683,6 +2690,7 @@ func _conscious_ally_near(char_id: String) -> bool:
 func _apply_revive(char_id: String) -> void:
 	if not characters.has(char_id):
 		return
+	_end_drag_involving(char_id)   # they stand up out of any drag
 	characters[char_id].stats["hp"] = REVIVE_HP
 	characters[char_id].stats["narrative_available"] = true
 	stat_changed.emit(char_id, "hp", REVIVE_HP)
@@ -3584,6 +3592,10 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			cancel_queued_ability(String(payload["char_id"]))
 		GameEvent.KIND_DOWN_CHARACTER:
 			down_character(String(payload["char_id"]))
+		GameEvent.KIND_START_DRAG:
+			command_start_drag(String(payload["dragger"]), String(payload["downed"]))
+		GameEvent.KIND_STOP_DRAG:
+			command_stop_drag(String(payload["dragger"]))
 		GameEvent.KIND_RESTORE_CHARACTER:
 			restore_character(String(payload["char_id"]))
 		GameEvent.KIND_DIE_SCRIPTED:
@@ -3805,6 +3817,7 @@ func _mark_downed(char_id: String) -> void:
 	ch.stats["hp"] = 0.0
 	ch.stats["stamina"] = 0.0
 	ch.stats["narrative_available"] = false
+	_end_drag_involving(char_id)   # a downed dragger drops the load where it is
 	_do_stop(char_id)
 	cancel_field_restore(char_id)
 	_start_revive_watch()
@@ -3823,6 +3836,7 @@ func restore_character(char_id: String) -> void:
 	stats["stamina"] = float(stats["max_stamina"]) if stats.has("max_stamina") else get_stat_cap(char_id, "stamina")
 	stats["atp"] = ATP_MAX_PIPS
 	stats["narrative_available"] = true
+	_end_drag_involving(char_id)   # a restored character stands up out of any drag
 	stat_changed.emit(char_id, "hp", float(stats["hp"]))
 	stat_changed.emit(char_id, "stamina", float(stats["stamina"]))
 	stat_changed.emit(char_id, "atp", ATP_MAX_PIPS)
@@ -3846,6 +3860,109 @@ func is_party_downed(members: Array) -> bool:
 		if not is_downed(String(char_id)):
 			return false
 	return true
+
+# --- Drag / retrieve (GDD 2.4.3) --------------------------------------------
+#
+# A knocked-out character is dead weight; a conscious member can take hold and haul them — moving
+# slower and burning stamina while the load is actually moving. The body follows as a pure function
+# of the dragger's position; setting it down parks it where it was carried. Dragging a fallen friend
+# into a shelter is the RETRIEVE loop (the revive watch takes over from there).
+
+const DRAG_SPEED_FACTOR := 0.55       # the dragger's move speed while hauling dead weight
+const DRAG_PICKUP_RADIUS := 1.8       # how close the dragger must stand to take hold
+const DRAG_STAMINA_PER_SEC := 4.0     # the extra burn while the load is moving
+const DRAG_TICK := 0.5                # drain granularity (scheduler-driven, derived on replay)
+const DRAG_TRAIL_OFFSET := Vector3(-0.45, 0.0, 0.4)   # the body trails just off the dragger's heel
+
+signal drag_started(dragger_id: String, downed_id: String)
+signal drag_stopped(dragger_id: String, downed_id: String)
+
+var _drags := {}              # dragger_id -> downed_id. Rebuilt from the logged commands; never serialized.
+var _drag_prev_speed := {}    # dragger_id -> move_speed before the drag slowdown
+
+## Take hold of a downed character. Fails from too far away, for a downed/occupied dragger, or if
+## either side is already part of a drag. Taking hold stops the dragger — the next move hauls.
+func command_start_drag(dragger_id: String, downed_id: String) -> bool:
+	if dragger_id == downed_id or not characters.has(dragger_id) or not characters.has(downed_id):
+		return false
+	if not is_downed(downed_id) or is_downed(dragger_id):
+		return false
+	if is_dragging(dragger_id) or get_dragger_of(downed_id) != "":
+		return false
+	if is_endocytosing(dragger_id) or is_knocked_down(dragger_id):
+		return false
+	var dp := get_position(dragger_id)
+	var bp := get_position(downed_id)
+	if Vector2(dp.x - bp.x, dp.z - bp.z).length() > DRAG_PICKUP_RADIUS:
+		return false
+	_emit(GameEvent.KIND_START_DRAG, {"dragger": dragger_id, "downed": downed_id})
+	_do_stop(dragger_id)
+	_drags[dragger_id] = downed_id
+	_drag_prev_speed[dragger_id] = characters[dragger_id].move_speed
+	characters[dragger_id].move_speed = float(characters[dragger_id].move_speed) * DRAG_SPEED_FACTOR
+	_arm_drag_tick(dragger_id)
+	drag_started.emit(dragger_id, downed_id)
+	return true
+
+## Set the load down where it is carried; the dragger's speed comes back.
+func command_stop_drag(dragger_id: String) -> void:
+	if not _drags.has(dragger_id):
+		return
+	_emit(GameEvent.KIND_STOP_DRAG, {"dragger": dragger_id})
+	_end_drag_for(dragger_id)
+
+func is_dragging(char_id: String) -> bool:
+	return _drags.has(char_id)
+
+func get_drag_target(dragger_id: String) -> String:
+	return str(_drags.get(dragger_id, ""))
+
+func get_dragger_of(downed_id: String) -> String:
+	for k in _drags.keys():
+		if str(_drags[k]) == downed_id:
+			return str(k)
+	return ""
+
+## Shared teardown (explicit stop, dragger downed mid-haul, load revived/restored, unregister).
+## Derived — the logged START/STOP/DOWN/RESTORE commands are the causes; replay re-derives it.
+func _end_drag_for(dragger_id: String) -> void:
+	if not _drags.has(dragger_id):
+		return
+	var downed_id := str(_drags[dragger_id])
+	if characters.has(downed_id):
+		characters[downed_id].position = get_position(downed_id)   # park the body where carried
+	_drags.erase(dragger_id)
+	if characters.has(dragger_id) and _drag_prev_speed.has(dragger_id):
+		characters[dragger_id].move_speed = float(_drag_prev_speed[dragger_id])
+	_drag_prev_speed.erase(dragger_id)
+	if scheduler:
+		scheduler.cancel_tag("drag_" + dragger_id)
+	drag_stopped.emit(dragger_id, downed_id)
+
+func _end_drag_involving(char_id: String) -> void:
+	if _drags.has(char_id):
+		_end_drag_for(char_id)
+	var dragger := get_dragger_of(char_id)
+	if dragger != "":
+		_end_drag_for(dragger)
+
+## The stamina burn rides the scheduler and only bites while the dragger is actually MOVING the
+## load. Direct stat write + signal (derived, no log entry): replay re-arms this tick from the
+## logged start-drag and re-derives the identical drain.
+func _arm_drag_tick(dragger_id: String) -> void:
+	if scheduler == null:
+		return
+	scheduler.schedule_after(DRAG_TICK, func(): _on_drag_tick(dragger_id), "drag_" + dragger_id)
+
+func _on_drag_tick(dragger_id: String) -> void:
+	if not _drags.has(dragger_id) or not characters.has(dragger_id):
+		return
+	if is_moving(dragger_id):
+		var stats: Dictionary = characters[dragger_id].stats
+		var next := maxf(0.0, float(stats.get("stamina", 0.0)) - DRAG_STAMINA_PER_SEC * DRAG_TICK)
+		stats["stamina"] = next
+		stat_changed.emit(dragger_id, "stamina", next)
+	_arm_drag_tick(dragger_id)
 
 ## Permanent, scripted-only removal from the simulation.
 func die_scripted(char_id: String) -> void:

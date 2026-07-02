@@ -74,6 +74,9 @@ const KIND_CANCEL_QUEUED_ABILITY := &"cancel_queued_ability"
 # Down/restore controls narrative availability.
 const KIND_DOWN_CHARACTER := &"down_character"
 const KIND_RESTORE_CHARACTER := &"restore_character"
+# Drag/retrieve (GDD 2.4.3): a conscious member hauls a downed one.
+const KIND_START_DRAG := &"start_drag"
+const KIND_STOP_DRAG := &"stop_drag"
 # die_scripted is the only permanent death path.
 const KIND_DIE_SCRIPTED := &"die_scripted"
 
@@ -132,6 +135,8 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_CANCEL_QUEUED_ABILITY,
 	KIND_DOWN_CHARACTER,
 	KIND_RESTORE_CHARACTER,
+	KIND_START_DRAG,
+	KIND_STOP_DRAG,
 	KIND_DIE_SCRIPTED,
 	KIND_SET_PARTY,
 	KIND_PARTY_MOVE_TO_CELL,
