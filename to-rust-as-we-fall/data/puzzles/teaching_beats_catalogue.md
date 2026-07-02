@@ -36,7 +36,7 @@ Marco's drag-demonstration scene after the Mother Flure chamber. Marco demonstra
 Applied puzzles:
 
 - Mother Flure chamber return solve
-- Maintenance Warrens boulder puzzle
+- The Honeycomb Cooperative boulder puzzle
 
 ### Hushbloom-Stunned Offshoot Portal Escape
 
@@ -72,7 +72,7 @@ Teaching beat:
 
 Placement:
 
-- optional side room in the Processing Stacks, before Inflammashunt
+- optional side room in the The Open Files Initiative, before Inflammashunt
 - low danger, no survival clock pressure
 - small tangible reward, such as restorative supplies, a worker note, or a minor Engram entry
 
@@ -134,7 +134,7 @@ Aster's overlay has a deprecated diagnostic mode that reads environmental signal
 
 Teaching beat:
 
-Processing Stacks terminal logs about construction-era signal leakage and diagnostic scans.
+The Open Files Initiative terminal logs about construction-era signal leakage and diagnostic scans.
 
 Applied puzzles:
 
@@ -154,7 +154,7 @@ An earlier terminal hack where Aster emulates a credential as a curiosity or one
 
 Applied puzzles:
 
-- Archive Depths shadow solution
+- Beacon Hill shadow solution
 
 ### Peris's Doma In Tight-Corridor Pursuit Breaks
 
@@ -170,7 +170,7 @@ An Act 1 shelter conversation or low-pressure encounter where Peris uses Doma in
 
 Applied puzzles:
 
-- Maintenance Warrens shadow solution
+- The Honeycomb Cooperative shadow solution
 
 ## Design Gaps
 

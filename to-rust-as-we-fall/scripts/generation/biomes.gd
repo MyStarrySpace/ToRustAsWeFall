@@ -10,13 +10,13 @@ extends RefCounted
 
 const BIOMES := {
 	"channels": {
-		"display": "The Channels",
+		"display": "Plumbing Power Project",
 		"flora": ["scarpet", "flure", "capbage", "seefern"],
 		"enemies": ["hidras", "naturalizers", "redactors", "aembers", "flares"],
 		"structures": ["shelter", "water_control", "pipe", "terminal", "shortcut_gate", "hide_slot"],
 	},
 	"stacks": {
-		"display": "The Stacks",
+		"display": "The Open Files Initiative",
 		"flora": ["climbvine", "flure", "hushbloom", "doma"],
 		"enemies": ["spikers", "tanglers", "gnawers", "sapscraps"],
 		"structures": ["shelter", "junction", "barrier", "carry_gear", "terminal"],

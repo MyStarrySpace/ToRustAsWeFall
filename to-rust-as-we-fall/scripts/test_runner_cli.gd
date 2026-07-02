@@ -189,6 +189,9 @@ func _ready() -> void:
 			"--test-distract-gate":
 				ran_test = true
 				await _test_distract_gate()
+			"--test-canonical-location-names":
+				ran_test = true
+				_test_canonical_location_names()
 			"--test-hidden-detection":
 				ran_test = true
 				_test_hidden_detection()
@@ -1204,6 +1207,7 @@ func _run_all_tests() -> void:
 	_test_rng_determinism()
 	_test_rng_no_wallclock()
 	_test_sequence_input_discipline()
+	_test_canonical_location_names()
 	await _test_archetype_generation()
 	_test_generated_multi_solution()
 	_test_generated_replay()
@@ -4844,8 +4848,8 @@ func _test_mother_flure_preview() -> void:
 	_assert_equals(str(mother_slot.get("slot_id", "")), "act1_mother_flure", "Mother preview reports its world slot")
 	_assert_equals(str(mother_slot.get("entry_shelter_id", "")), "shelter_5", "Mother world slot enters from Shelter 5")
 	_assert_equals(str(mother_slot.get("exit_shelter_id", "")), "shelter_6", "Mother world slot exits toward Shelter 6")
-	_assert_equals(str(mother_slot.get("entry_anchor", "")), "processing_stacks_exit", "Mother world slot enters from the Processing Stacks")
-	_assert_equals(str(mother_slot.get("exit_anchor", "")), "residential_rings_approach", "Mother world slot exits toward the Residential Rings")
+	_assert_equals(str(mother_slot.get("entry_anchor", "")), "processing_stacks_exit", "Mother world slot enters from The Open Files Initiative")
+	_assert_equals(str(mother_slot.get("exit_anchor", "")), "residential_rings_approach", "Mother world slot exits toward the Greenfields Collective")
 	for char_id in ["aster", "peris", "endo"]:
 		var stats: Dictionary = initial_preview_state.get("character_stats", {}).get(char_id, {})
 		_assert_equals(float(stats.get("hp", -1.0)), 100.0, "Mother preview starts %s at full HP" % char_id)
@@ -19127,6 +19131,51 @@ func _walk_gd_files(path: String, out: Array) -> void:
 # (player.gd ground_clicked + click mode, GameHUD action→signal mapping, the
 # project input map). Per-step DECISIONS may stay in the sequence, expressed via
 # input actions and HUD signals — never raw keycodes or raycasts.
+## Guard: retired Act 1 district WORKING names must never appear in code (they render to the player). The
+## GDD §4.4 rebrand replaced them; canonical names live in reference-docs/act1_timeline.md. Internal slugs
+## ("stacks", "channels" as biome/chunk ids) are lowercase and untouched — this only catches the spaced
+## Title-Case working names in display strings. test_runner_cli.gd is allowlisted (it holds the pattern list).
+func _test_canonical_location_names() -> void:
+	_test_name = "Canonical Location Names"
+	var retired := {
+		"Perivascular Channels": "Plumbing Power Project",
+		"Processing Stacks": "The Open Files Initiative",
+		"Residential Rings": "Greenfields Collective",
+		"Basal Galleries": "Ancourage",
+		"Maintenance Warrens": "The Honeycomb Cooperative",
+		"Archive Depths": "Beacon Hill",
+		"Filtration Membranes": "Bulwark Wharf",
+		"Iron Marshes": "Welcombe Springs",
+		"Resonance Chambers": "Harmonia",
+		"The Stacks": "The Open Files Initiative",
+		"The Channels": "Plumbing Power Project",
+	}
+	var offenders: Array = []
+	_walk_for_dead_names("res://scripts/", retired, offenders)
+	_assert_equals(offenders.size(), 0,
+		"No retired district working names in code display strings (offenders: %s)" % str(offenders))
+
+func _walk_for_dead_names(path: String, retired: Dictionary, offenders: Array) -> void:
+	var d := DirAccess.open(path)
+	if d == null:
+		return
+	d.list_dir_begin()
+	var fname := d.get_next()
+	while fname != "":
+		if fname == "." or fname == "..":
+			fname = d.get_next()
+			continue
+		var full := path.path_join(fname)
+		if d.current_is_dir():
+			_walk_for_dead_names(full, retired, offenders)
+		elif fname.ends_with(".gd") and full != "res://scripts/test_runner_cli.gd":
+			var text := FileAccess.get_file_as_string(full)
+			for dead in retired.keys():
+				if text.contains(dead):
+					offenders.append("%s: '%s' → use '%s'" % [fname, dead, retired[dead]])
+		fname = d.get_next()
+	d.list_dir_end()
+
 func _test_sequence_input_discipline() -> void:
 	_test_name = "Sequence Input Discipline"
 	var bad := {

@@ -753,11 +753,11 @@ func apply_save_snapshot(data: Dictionary) -> void:
 
 func _capture_zone_label() -> String:
 	if _current_step.begins_with("channels"):
-		return "Perivascular Channels"
+		return "Plumbing Power Project"
 	if _current_step.begins_with("stacks"):
-		return "Processing Stacks"
+		return "The Open Files Initiative"
 	if _current_step.begins_with("rings"):
-		return "Residential Rings"
+		return "Greenfields Collective"
 	if _current_step.begins_with("lockout"):
 		return "Lockout Corridor"
 	return "Act 1"
@@ -1795,7 +1795,7 @@ func _ensure_stacks_support_log_entry() -> Dictionary:
 		"day": 1,
 		"time_of_day": "maintenance_shift",
 		"timestamp_label": "147 cycles ago",
-		"location": "Processing Stacks",
+		"location": "The Open Files Initiative",
 		"sub_location": "Support Team Thread",
 		"trigger_type": "story",
 		"trigger_context": "support_team_log",
@@ -2129,6 +2129,7 @@ func _clear_lockout_runtime_state() -> void:
 ## own spawn anchors (so its LOCAL station-distance checks line up), play a short intro, then hand
 ## control to the player. The chunk's interactables fire through act1 because the host interface is
 ## now inherited from tutorial_sequence; reach_shelter sets route_phase == "complete".
+
 func _start_endo_junction_stretch_enter() -> void:
 	if not _enter_step("endo_junction_stretch"):
 		return

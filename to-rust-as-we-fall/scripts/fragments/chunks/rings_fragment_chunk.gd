@@ -50,7 +50,7 @@ func get_scene_title() -> String:
 	return "Rings Fragment Lab"
 
 func get_scene_help() -> String:
-	return "Peris reads the residential rings through the former client, the propagation trail, and the forget-me-not alcove."
+	return "Peris reads the Greenfields Collective through the former client, the propagation trail, and the forget-me-not alcove."
 
 func get_default_character() -> String:
 	return "peris"

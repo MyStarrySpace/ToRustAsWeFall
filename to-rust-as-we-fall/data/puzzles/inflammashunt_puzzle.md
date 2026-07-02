@@ -12,7 +12,7 @@ This is the canonical full puzzle spec. The shadow solution is documented separa
 - `gameplay_role`: Act 1 danger-zone retrieval and Manage Conflict puzzle
 - `primary_cognitive_test`: synthesize conflicting information across character-specific routes
 - `primary_emotional_test`: resist the aggressive instinct when every confident first answer points toward escalation
-- `location`: danger zone branching off the Basal Galleries near the end of Act 1, after shelter 10
+- `location`: danger zone branching off the Ancourage near the end of Act 1, after shelter 10
 - `party_spotlight`: Myke, with Aster and Peris as equal information anchors
 - `survival_clock`: off inside the puzzle area; danger is local state, not day/night attrition
 
@@ -34,7 +34,7 @@ The device does not suppress Myke's fire. It completes what fire starts.
 
 ## Narrative Premise
 
-Myke knows the branch corridor because it leads into the maintenance routes where he used to work before being pushed farther out to the Supply Lines. He does not enter heroically. He knows there may be salvageable working tech in the old corridors, and working tech can be traded, repurposed, or used to improve the party's survival situation.
+Myke knows the branch corridor because it leads into the maintenance routes where he used to work before being pushed farther out to the The Hypelines. He does not enter heroically. He knows there may be salvageable working tech in the old corridors, and working tech can be traded, repurposed, or used to improve the party's survival situation.
 
 The player's motivation is the established danger-zone grammar:
 
@@ -193,7 +193,7 @@ Aster scans a wall diagram opposite the terminal.
 
 True specific:
 
-- drainage valve connects to Perivascular Channels
+- drainage valve connects to Plumbing Power Project
 - flow direction and pressure ratings are readable
 - the infrastructure is for water/fluid movement, not heat
 
@@ -381,7 +381,7 @@ Actor: Aster preferred, other characters can examine.
 
 Function:
 
-- opens fluid flow from the Perivascular Channels
+- opens fluid flow from the Plumbing Power Project
 - changes `char_a_state` and `char_b_state` from `dry` to `damp`
 - douses gas sac fire if popcorn event is active
 

@@ -1,6 +1,6 @@
 # Stacks Fragment Briefs
 
-These Processing Stacks fragments keep the Stacks scene atomic: one insight at a time, recognition before recall, and just enough pressure to make the fiction stick without turning the room into a combat puzzle.
+These The Open Files Initiative fragments keep the Stacks scene atomic: one insight at a time, recognition before recall, and just enough pressure to make the fiction stick without turning the room into a combat puzzle.
 
 ## `stacks_support_log_intro`
 

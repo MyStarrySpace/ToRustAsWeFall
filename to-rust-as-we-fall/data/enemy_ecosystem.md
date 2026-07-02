@@ -121,7 +121,7 @@ Tanglers are damaged by Neutro degranulation because the inflammatory environmen
 
 Tanglers are indifferent to siderophores because siderophores contain no neural tissue to convert. The two species pass each other without engaging. A corridor with both Tanglers and siderophores is a corridor where the two threats are operating in parallel without interference.
 
-Tanglers are drawn to areas with existing tau pathology, which means the NVU's old cognitive-function zones (processing stacks, signal conduit networks, anywhere neurons were dense in the living architecture). The player can read corridor history by Tangler density: heavy Tangler presence means this was an area where thinking happened once.
+Tanglers are drawn to areas with existing tau pathology, which means the NVU's old cognitive-function zones (the Open Files Initiative, signal conduit networks, anywhere neurons were dense in the living architecture). The player can read corridor history by Tangler density: heavy Tangler presence means this was an area where thinking happened once.
 
 ## Toxos are everyone's target
 
@@ -151,7 +151,7 @@ Late-game enforcement class. Membrane-cloaked pathological T-cells that have ado
 
 **Engagement.** Silent wrap-grapple, similar to Tangler mechanics but without the proximity warning. A character grappled by an unseen Nosoma is being attacked by something the player cannot address until they bring Seefern light into the area or have Tyreg confirm presence. The attack is not instantly lethal — it is a sustained contact that drains the character until they are down. Other party members can free the grappled character if they can see the Nosoma (Seefern coverage, Tyreg present) or if they attack the grapple position blind (possible but wasteful of resources).
 
-**Distribution.** Rare in late Zone 2 (Archive Depths onward). More common in Zone 3. Densest near institutional infrastructure: the Checkpoint Plazas late game, the deep Archive Depths, the Transit Corridors near the civilization's surviving institutional nodes. Thematic: the more institutional a zone is, the more Redactors. Where the institution is strongest, its most evolved enforcement class operates.
+**Distribution.** Rare in late Zone 2 (Beacon Hill onward). More common in Zone 3. Densest near institutional infrastructure: the Checkpoint Plazas late game, the deep Beacon Hill, the The Cleanstreets Initiative near the civilization's surviving institutional nodes. Thematic: the more institutional a zone is, the more Redactors. Where the institution is strongest, its most evolved enforcement class operates.
 
 **Ecosystem interactions.** Redactors occupy a specific niche — they are the institution's answer to ecological problems the civilization's standard enforcement (Naturalizers) can't handle. They hunt what Naturalizers can't see: Candid scouts, Toxo infiltrators, anyone with a tag failure that slipped past standard scanning. In this sense they are enforcement targeting the things the institution officially denies exist. They don't interact with other enemies the way most species do — they move through the ecology invisibly, picking off targets, and the ecology doesn't register their presence until biomass disappears.
 

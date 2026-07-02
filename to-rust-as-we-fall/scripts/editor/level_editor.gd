@@ -28,7 +28,7 @@ const PLAN_SCENES := [
 	},
 	{
 		"id": "stacks",
-		"title": "Processing Stacks",
+		"title": "The Open Files Initiative",
 		"chunk_scene": "res://scenes/fragments/chunks/stacks_fragment_chunk.tscn",
 		"preview_scene": "res://scenes/fragments/fragment_preview.tscn",
 	},
@@ -40,7 +40,7 @@ const PLAN_SCENES := [
 	},
 	{
 		"id": "rings",
-		"title": "Residential Rings",
+		"title": "Greenfields Collective",
 		"chunk_scene": "res://scenes/fragments/chunks/rings_fragment_chunk.tscn",
 		"preview_scene": "res://scenes/fragments/fragment_preview.tscn",
 	},

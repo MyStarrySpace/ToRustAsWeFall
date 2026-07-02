@@ -16,7 +16,7 @@
 #
 # =============================================================================
 
-# === PERIVASCULAR CHANNELS (shelters 2-3) ===
+# === PLUMBING POWER PROJECT (shelters 2-3) ===
 # Strategy: Follow flowing water (safe). Tend flora for light.
 # Explore 1 side branch for food. Avoid stagnant zones.
 # Expected: ~3-4 min (73s walk + 60s dialogue + 60s exploration)
@@ -66,7 +66,7 @@ wait 25
 
 status
 
-# === PROCESSING STACKS (shelters 4-5) ===
+# === THE OPEN FILES INITIATIVE (shelters 4-5) ===
 # Strategy: Navigate server rack corridors to terminal. Hack it.
 # Walk past Myke's workspace (notice, don't interact). Push through.
 # Expected: ~3-4 min (73s walk + 45s dialogue + 45s terminal)
@@ -100,7 +100,7 @@ wait 25
 
 status
 
-# === RESIDENTIAL RINGS (shelters 6-7) ===
+# === GREENFIELDS COLLECTIVE (shelters 6-7) ===
 # Strategy: Walk through civilization. Try to talk to client (fails).
 # Let Endo departure happen. Push through to lockout.
 # Expected: ~3-4 min (67s walk + 50s dialogue + 40s wandering)
