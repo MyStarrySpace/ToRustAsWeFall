@@ -10,9 +10,15 @@ func _init() -> void:
 	inst.set("preview_menu", false)
 	inst.set("preview_chunk", "data_fragment")
 	inst.set("preview_chunk_config", {"fragment_path": "res://data/fragments/sprint_gap.tres"})
-	inst.set("_overlay_states", {"aster": false, "peris": true, "endo": false})   # A/B: fog ONLY
+	# All three ON — the default play state. NOTE: the capture harness must PIN THE CAMERA — the
+	# windowed run inherits the real OS cursor, and a cursor parked on a window edge RTS-edge-scrolls
+	# the camera into the void mid-capture (the false "blackout" that mimicked an overlay bug TWICE).
 	root.add_child(inst)
 	await process_frame
+	Input.warp_mouse(Vector2(576, 324))   # park the cursor mid-window: no edge-scroll drift
+	var cam = inst.get("_camera")
+	if cam != null and cam.has_method("set_pan_enabled"):
+		cam.set_pan_enabled(false)
 	for i in range(30):
 		await process_frame
 	var gs = inst.get("_game_state")
@@ -33,6 +39,20 @@ func _init() -> void:
 				str((r as Node3D).global_position) if r is Node3D else "?"])
 	print("[pathchk] peris moving=%s pos=%s" % [gs.is_moving("peris"), str(gs.get_position("peris"))])
 	await RenderingServer.frame_post_draw
-	root.get_texture().get_image().save_png("res://vr_path_check.png")
-	print("[pathchk] wrote vr_path_check.png (overlays OFF)")
+	root.get_texture().get_image().save_png("res://vr_data_a.png")
+	print("[pathchk] A: data-only default params")
+	var mat = inst.get("_overlay_stack_material")
+	mat.set_shader_parameter("data_clear_radius", 100.0)
+	for i in range(5):
+		await process_frame
+	await RenderingServer.frame_post_draw
+	root.get_texture().get_image().save_png("res://vr_data_b.png")
+	print("[pathchk] B: data_clear_radius=100")
+	mat.set_shader_parameter("data_clear_radius", 14.0)
+	mat.set_shader_parameter("los_enabled", false)
+	for i in range(5):
+		await process_frame
+	await RenderingServer.frame_post_draw
+	root.get_texture().get_image().save_png("res://vr_data_c.png")
+	print("[pathchk] C: los_enabled=false")
 	quit()
