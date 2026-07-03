@@ -40,6 +40,7 @@ uniform float fog_clear_radius = 14.0;
 uniform float fog_blend_width = 5.0;
 uniform vec3 fog_color = vec3(0.15, 0.1, 0.07);
 uniform float fog_desaturation = 0.8;
+uniform float los_thickness = 2.4;   // max depth gap for a sampled surface to count as CROSSING the ray
 
 float vision_distance(vec3 world_pos, int source_count, vec3 primary_pos, vec3 secondary_pos, vec3 tertiary_pos) {
 	float dist = distance(world_pos, primary_pos);
@@ -97,6 +98,13 @@ float los_visible(vec3 src, vec3 world_pos, sampler2D depth, mat4 view, mat4 pro
 		float expected_depth = length(s - cam);
 		float sampled_depth = length(w - cam);
 		float intrusion = expected_depth - sampled_depth;   // >0 => a surface sits in front of the ray here
+
+		// FOREGROUND-CLUTTER WINDOW: a surface metres in FRONT of the ray sits between the CAMERA and
+		// the sightline (an arena's near boundary wall under a zoomed-out camera), not across it — it
+		// cannot block sight between two points behind it. Only a surface NEAR the ray's own depth is
+		// a real crossing occluder. Without this, any level enclosed by walls fogged to black whenever
+		// the near wall entered the frame.
+		if (intrusion > los_thickness) { continue; }
 
 		// HEIGHT-AWARE forgiveness for STEPS, the right way for a top-down camera: a stair/ramp riser barely rises
 		// above the sight ray, while a WALL towers over it. So forgive an occluder only when its sampled surface is

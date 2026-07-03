@@ -462,29 +462,29 @@ walls = Array[Dictionary]([{
 }])
 lights = Array[Dictionary]([{
 "color": Color(0.7, 0.8, 0.75, 1),
-"energy": 0.8,
+"energy": 2.2,
 "pos": Vector3(5.25, 2.2, 0.75),
-"range": 6.0
+"range": 14.0
 }, {
 "color": Color(0.85, 0.75, 0.55, 1),
-"energy": 1.0,
+"energy": 2.4,
 "pos": Vector3(20.25, 2.4, -0.75),
-"range": 6.0
+"range": 14.0
 }, {
 "color": Color(0.6, 0.7, 0.9, 1),
-"energy": 1.0,
+"energy": 2.4,
 "pos": Vector3(35.25, 3.0, -0.75),
-"range": 8.0
+"range": 16.0
 }, {
 "color": Color(0.55, 0.9, 0.6, 1),
-"energy": 1.0,
+"energy": 2.4,
 "pos": Vector3(45.75, 2.2, -0.75),
-"range": 6.0
+"range": 14.0
 }, {
 "color": Color(0.9, 0.6, 0.3, 1),
-"energy": 0.7,
+"energy": 2.0,
 "pos": Vector3(6.75, 1.6, 12.75),
-"range": 4.0
+"range": 10.0
 }])
 labels = Array[Dictionary]([{
 "color": Color(0.55, 0.8, 0.65, 1),
@@ -561,7 +561,7 @@ objects = Array[Dictionary]([{
 "label": "SHELTER",
 "name": "PumpExitShelter",
 "pos": Vector3(45.75, 0.5, -0.75),
-"radius": 2.4,
+"radius": 1.2,
 "type": "exit_shelter"
 }, {
 "detect": 4.0,
@@ -589,11 +589,11 @@ objects = Array[Dictionary]([{
 "type": "enemy"
 }])
 shelters = Array[Dictionary]([{
-"max": Vector2(8.45, 3.95),
-"min": Vector2(2.05, -2.45)
+"max": Vector2(7.65, 3.15),
+"min": Vector2(2.85, -1.65)
 }, {
-"max": Vector2(48.95, 2.45),
-"min": Vector2(42.55, -3.95)
+"max": Vector2(47.55, 1.05),
+"min": Vector2(43.95, -2.55)
 }])
 grid = {
 "cell_size": 1.5,
