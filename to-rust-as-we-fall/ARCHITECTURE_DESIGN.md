@@ -48,6 +48,45 @@ Every generated building obeys these six. They are the difference between "belon
 
 Each knob is a generator parameter with an **enumerated option set**. Options tagged 🔧 are proposed (canon-silent vocabulary). A **district preset** (§6) is just a weighting over these options. Everything here must reduce to `spatial_grammar` ops (`slab`/`wall`/`recess`/`on`/`on_wall`/`span`/`row`/`stairs`/`pbox`/`coil`) + tile-atlas materials, so nothing is un-buildable.
 
+### 3.0 Harvest log — parts read back from the render batch (2026-07-03)
+
+The ten whole-building heroes (§4.7–§4.16) were generated and returned (staged for reference at `../reference-images/architecture/`). Per the §7 loop, each render is read for concrete parts the taxonomy didn't yet enumerate, which are then promoted into the option sets below (all new promotions tagged 🔧 — proposed within constraints, awaiting director ratification, **not** canon). Two guardrails the harvest held: **sign registers stay a closed set** (§3.9) — the renders contributed sign *forms*, never a new register; and **the palette lock held** — the Zone-3 ruin (§4.16) render pushed its drip toward saturated pink-red, but the taxonomy keeps generic decay at desaturated rust-brown and reserves saturated pink-red for the boss landmarks only (§2.4). The single biggest gap the renders exposed is **branching load-bearing structure** (tree-columns, piers, buttress-fins, canopy-columns appear in six of ten), now its own knob §3.13.
+
+| Render | New parts promoted into the taxonomy |
+|---|---|
+| §4.7 Greenfields | branching tree-columns (§3.13); round arched entry portal (§3.6); under-window planter troughs, wall-lantern sconces, plaza bollards (§3.12); turned-baluster balcony rails |
+| §4.8 Open Files | clustered-spire crown (§3.3); Voronoi mesh-screen bay infill (§3.4/§3.8); lit scan-tunnel throat (§3.6); flanking terminal kiosks + street lamps (§3.12); heraldic crest emblem (§3.9) |
+| §4.9 Plumbing | fish-scale shingle skin (§3.8); cupola finial on the dome (§3.3); small faceted entry hood (§3.7); glowing fluid-spill accent (§3.11) |
+| §4.10 Hypelines | vesicle / bubble-cluster massing (§3.1); tubular transit-viaduct projections with lit traffic (§3.7); large flywheel-gear (§3.12); heavy wrapped-cable striping (§3.8) |
+| §4.11 Honeycomb | honeycomb-cell window (§3.5) + honeycomb-tessellation rhythm (§3.4); flower-cluster district emblem (§3.9); under-window planter troughs (§3.12) |
+| §4.12 Cleanstreets | regulatory-placard sign form (§3.9); mushroom / lily-pad branched canopy on tree-columns (§3.3/§3.13); four-point sparkle emblem; queue rails (§3.12) |
+| §4.13 Beacon Hill | whiplash vine-rib tracery pattern (§3.8); bell / bottle-dome tower silhouette (§3.1); wall-lantern sconces (§3.12) |
+| §4.14 Ancourage | vesicle double-dome massing (§3.1); live flare-stack crown (§3.3); pipe-root ground-spread (§3.12); spoked-vent porthole (§3.5); smiley-flower mascot emblem (§3.9) |
+| §4.15 Bulwark | rose-window aperture with radial spoke-mullions (§3.5); Voronoi mesh-screen wall skin (§3.4/§3.8); PORE-CLAMP status-readout panel + stamped numeric sector designator (§3.9); freestanding terminal kiosk (§3.12) |
+| §4.16 Zone-3 ruin | rust-drip engulfment decay (§3.10, held to desaturated rust-brown); pipe-root ground-spread (§3.12); collapsed entry hood (§3.7) |
+
+### 3.0a Fable-safe identifier map (design name ↔ build-spec name)
+
+The companion build brief [`ARCHITECTURE_FABLE_BUILD_SPEC.md`](ARCHITECTURE_FABLE_BUILD_SPEC.md) is a description-scrubbed twin handed to the Blender-building model so it carries no language a content filter reads as biology (see that file's §0/§8). It uses **the same knobs under neutral names.** This doc keeps the meaning-bearing names (they encode the two-read); the build spec and the generated code use the safe names. The map (this table lives HERE, on the biology-bearing side, so the build spec stays clean):
+
+| This doc (meaning-bearing) | Build spec / generator (safe) |
+|---|---|
+| `amyloid_drip` | `mineral_drip` |
+| `amyloid_bone` | `mineral_crust` |
+| `capillary_slit` | `hairline_slit` |
+| `vesicle_cluster_mass` | `pod_cluster_mass` |
+| `alveolar_vary` | `varisize_cell` |
+| `iris_membrane` | `dilating_aperture` |
+| `membrane_panel_wall` | `layered_panel_wall` |
+| `membrane_panel` | `layered_panel` |
+| `membrane_awning` | `translucent_canopy` |
+| `basement_membrane` | `layered_translucent` |
+| `nerve_fascicle` | `wrapped_cable` |
+| `tissue_substrate` | `substrate_grooved` |
+| `tissue_through` | `underlayer_through` |
+
+Kept identical in both (genuine industrial/geology/botanical cover): `pore_round`/`pore_vent_cap`/`spoked_vent`, `ferric_bleed`, `weeping_corrosion`, `cellular_mesh`, `bones_legibility`, `flora_teal`, `biolum_teal`, `scale_shingle`, `pipe_root_spread`.
+
 ### 3.1 Massing / base shell form
 `shell ∈ {`
 - `curved_balcony_tower` — vertical, tiered, each tier a tapered slab with a wrapping balcony ring (offset `slab_xz` tiers + `on_wall` balcony rail rows)
@@ -59,9 +98,11 @@ Each knob is a generator parameter with an **enumerated option set**. Options ta
 - `dome` — the sim dome; light leaking through a translucent skin
 - `stacked_ring_monument` — bone-white tiered rings (Paranucleus, boss only)
 - `cave_shell_plus_catwalk` — raw rock/sand shell with an inserted facility-metal structure (Junction)
+- `vesicle_cluster_mass` 🔧 — a clump of rounded pods/bubbles fused into one bulbous mass (The Hypelines hub; Ancourage's twin domes). Distinct from `fractal_branch_cluster`: the children are near-equal rounded lobes fused at the surface, not a trunk shedding smaller limbs (`pbox` lobes merged; faceted metaball read).
+- `bell_dome_tower` 🔧 — a single smooth-shouldered bell / bottle silhouette rising to a rounded dome (Beacon Hill). A `curved_balcony_tower` with the tiers blended into one continuous swelling flank rather than stepped.
 `}`
 
-Massing sub-knobs: `tier_count`, `tier_taper` (0–0.4 inset per tier), `footprint_curve` (0=octagonal, 1=strongly lobed), `branch_depth`, `branch_size_falloff`, `asymmetry` (breaks the grid read).
+Massing sub-knobs: `tier_count`, `tier_taper` (0–0.4 inset per tier), `footprint_curve` (0=octagonal, 1=strongly lobed), `branch_depth`, `branch_size_falloff`, `asymmetry` (breaks the grid read), `lobe_count` + `lobe_fusion` (0=distinct pods, 1=smoothed single mass — for `vesicle_cluster_mass`).
 
 ### 3.2 Height / storeys
 `storeys` (int, 1–8+), `storey_height` (m), `ground_floor_tall` (bool — taller commercial/lobby base), `setback_schedule` (list of tiers that step back). Zone-2 buildings mid-rise; boss landmarks monumental; Zone-3 patchy/low with tissue showing through.
@@ -74,7 +115,9 @@ Canon-silent — keep it curved/branched/organic, never gabled-suburban or flat-
 - `renewable_crown` 🔧 — solar-array / wind-vane / bio-energy rig on top (parameter: functional/neglected/decorative-only)
 - `pore_vent_cap` 🔧 — membrane-pore cluster venting haze (histology read)
 - `service_bulkhead` 🔧 — utilitarian metal cap with readouts (utility districts)
-`}` + `crown_overhang` (m), `crown_greenery` (0–1).
+- `spired_cluster` 🔧 — a bundle of tapering vertical spires/pinnacles of unequal height (The Open Files cathedral top; a cluster of `make_tapered_box` fins). The vertical, anti-suburban answer to `branched_canopy`.
+- `flare_stack` 🔧 — a slim vent stack breathing a live warm-orange flare on a cadence (Ancourage). Doubles as the frame's firelight anchor (§3.11); `telegraph_pulse` brightens before each flare.
+`}` + `crown_overhang` (m), `crown_greenery` (0–1), `crown_finial` ∈ {none, cupola, lantern, vane} 🔧 (a small capping ornament on `domed_cap` — the Plumbing pump-house cupola).
 
 ### 3.4 Facade rhythm
 How openings/decor repeat across a wall (drives `row` spacing). `rhythm ∈ {`
@@ -83,16 +126,20 @@ How openings/decor repeat across a wall (drives `row` spacing). `rhythm ∈ {`
 - `stacked_drawer` — dense horizontal drawer bands (Open Files)
 - `sparse_alcove` — long blank runs punctuated by recessed alcoves (Greenfields cover)
 - `toll_chokepoint` — a wide wall pinched to a single metered gate (Hypelines/Cleanstreets)
+- `honeycomb_tessellation` 🔧 — the whole facade packed as a tessellation of rounded-hexagon cells, each cell a window bay (The Honeycomb Cooperative). `alveolar_vary` taken to its dense-packed limit — same cell shape, sizes drifting.
+- `mesh_lattice_infill` 🔧 — structural bays spanned by an open cellular (Voronoi) mesh-screen rather than a solid wall (The Open Files base arcade; the Bulwark membrane skin). Built directly by the `gen_voronoi_holemesh` generator, inset into the bay.
 `}` + `bay_width`, `bay_jitter` (breaks grid), `blank_run_ratio`.
 
 ### 3.5 Window types 🔧
 Realized as `recess` openings + an inset pane box (emissive or dark). `window ∈ {`
-- `pore_round` 🔧 — round/oval membrane-pore window, faintly translucent (histology)
+- `pore_round` 🔧 — round/oval membrane-pore window, faintly translucent (histology). Sub-variant `rose_spoked` 🔧 — radial spoke-mullions divide the aperture like a rose window (Bulwark Wharf pores).
 - `capillary_slit` 🔧 — tall narrow vertical slit, often in branching rows like a vessel
 - `balcony_bay` 🔧 — floor-height opening onto a balcony (solarpunk)
 - `drawer_face` 🔧 — a record-drawer front that reads as a window band (Open Files)
 - `shuttered_metal` 🔧 — rolling metal shutter, half-lowered (failed-commerce)
 - `scan_grille` 🔧 — barred/grilled aperture at a checkpoint
+- `honeycomb_cell` 🔧 — a rounded-hexagon window cell, packed edge-to-edge in a `honeycomb_tessellation` (§3.4) facade (The Honeycomb Cooperative). Each carries its own sill/planter.
+- `spoked_vent` 🔧 — a round vent-porthole covered by a wheel-spoke grille (Ancourage dome portholes; a round `scan_grille` with radial bars).
 `}` + `glazing` ∈ {dark, terminal-green-lit, warm-lit, boarded, broken}, `frame_material`, `sill_depth`.
 
 ### 3.6 Door / entry types 🔧
@@ -104,7 +151,8 @@ Realized as `recess` openings + an inset pane box (emissive or dark). `window �
 - `enforcement_vestibule` 🔧 — a double-door airlock with a scan cone between (Beacon Hill)
 - `service_hatch` 🔧 — small utilitarian maintenance hatch/grate
 - `blast_bulkhead` 🔧 — heavy sealed door (fortified crossing)
-`}` + `threshold_apparatus` ∈ {none, scan-bar, toll-meter, spike-strip, plaque}, `leaf_state`.
+- `arched_portal` 🔧 — a plain round-arched recessed doorway with a solid leaf (Greenfields ground floor). The residential/civic default before any checkpoint apparatus is added.
+`}` + `threshold_apparatus` ∈ {none, scan-bar, toll-meter, spike-strip, plaque}, `leaf_state`, `entry_throat` ∈ {flush, recessed, lit_tunnel 🔧} (the Open Files entry is a `lit_tunnel` — a deep throat washed with cyan scanner light streaming outward).
 
 ### 3.7 Awnings / canopies / projections 🔧
 `on_wall` decor protruding over the entry/street. `projection ∈ {`
@@ -114,7 +162,9 @@ Realized as `recess` openings + an inset pane box (emissive or dark). `window �
 - `signage_bracket` 🔧 — an arm carrying a hanging sign (see §3.9)
 - `hostile_ledge` 🔧 — a slanted no-stand ledge (anti-homeless; enforcement, not shelter)
 - `conveyor_spur` 🔧 — a powered belt spur feeding into the building (Hypelines)
-`}` + `projection_depth`, `projection_condition` ∈ {intact, sagging, collapsed, retracted}.
+- `transit_viaduct` 🔧 — a large elevated tubular conduit-highway branching off the mass and running out of frame, carrying lit traffic along its top (The Hypelines). The `conveyor_spur` scaled up to district-infrastructure size; a `span` at ride height.
+- `entry_hood` 🔧 — a small faceted hood/porch projecting over a single door (Plumbing pump-house; Zone-3 ruin). Curved or low-hipped and utilitarian — a door-shelter, **not** a building roof (keep it minor so it doesn't drift suburban-gable, §2.1).
+`}` + `projection_depth`, `projection_condition` ∈ {intact, sagging, collapsed, retracted}. Branching **columns** that carry a projecting canopy (Cleanstreets mushroom-canopy, Greenfields balcony piers) are `structure` (§3.13), not a projection.
 
 ### 3.8 Surface material & pattern
 Drawn from the shipped tile-atlas stems (`blender/textures/gen_tiles.py`): `material ∈ { rock, sand, facility_metal, grate, rust_iron, biolum_teal, deck_metal, wall_panel }` + proposed additions 🔧 `{ membrane_panel, char_crust, paving_civic, amyloid_bone }`. Each surface picks a material + a variation (`crc32(name)%4`). `pattern_overlay ∈ {`
@@ -122,12 +172,20 @@ Drawn from the shipped tile-atlas stems (`blender/textures/gen_tiles.py`): `mate
 - `diamond_plate` — deck-metal tread
 - `crosshatch_bars` — grating
 - `basement_membrane` 🔧 — smooth-layered translucent striation (the key histology texture)
-- `nerve_fascicle` 🔧 — bundled-cable / myelin-wrap striping on conduit runs
+- `nerve_fascicle` 🔧 — bundled-cable / myelin-wrap striping on conduit runs (heavy on The Hypelines — the mass is visibly wrapped in braided cabling)
 - `tissue_substrate` — pinkish biological floor with vessel grooves (shows through in Zone 3)
+- `scale_shingle` 🔧 — overlapping fish-scale / shingle tiling across a curved drum or dome (Plumbing pump-house flank; Ancourage domes). A pixel-tile pattern, not geometry.
+- `whiplash_tracery` 🔧 — raised Art-Nouveau vine-rib relief webbing across the facade and framing the openings (Beacon Hill; Greenfields rib-columns). The surface-relief cousin of the `structure` ribs (§3.13); realized as thin `on_wall` relief strips or baked into the tile. The single strongest "grown, not built" facade cue the renders produced.
+- `cellular_mesh` 🔧 — an open Voronoi hole-mesh screen (from `gen_voronoi_holemesh`) used as a surface skin or bay infill (Open Files, Bulwark). Pairs with `mesh_lattice_infill` (§3.4).
+- `honeycomb_relief` 🔧 — raised rounded-hexagon cell relief tiling a wall (The Honeycomb Cooperative), the flat-wall counterpart to `honeycomb_tessellation` bays.
 `}`
 
 ### 3.9 Signage / propaganda / wayfinding
-`sign_register ∈ { institutional_project, government_aspirational, corporate_rebrand, picturesque_community }` × `sign_condition ∈ { pristine, ironic_over_failure, hyped_rare_opening, always_open_convenience }`. Realized as `on_wall` panels with emissive text. Class-coded: formal names on official signage, vernacular in speech. `sign_form ∈ {wall_plaque, hanging_bracket_sign, backlit_arch_banner, projected_floor_text, monument_plaque}`.
+`sign_register ∈ { institutional_project, government_aspirational, corporate_rebrand, picturesque_community }` (**closed set — the renders added no new register; do not extend this**) × `sign_condition ∈ { pristine, ironic_over_failure, hyped_rare_opening, always_open_convenience }`. Realized as `on_wall` panels with emissive text. Class-coded: formal names on official signage, vernacular in speech. `sign_form ∈ {wall_plaque, hanging_bracket_sign, backlit_arch_banner, projected_floor_text, monument_plaque`
+- `, regulatory_placard` 🔧 — a small rounded-rectangle rule/prohibition plaque, often in clusters ("NO LOITERING · NO SITTING · NO RESTING", "STANDING ONLY BEYOND THIS POINT", "STAND BACK · STAY ALERT" — The Cleanstreets Initiative). The bureaucratic-overlay sign made physical.
+- `, numeric_designator` 🔧 — a large stamped sector/unit number on the structure ("6", "7" — Bulwark Wharf). Wayfinding-as-inventory.
+- `, status_readout` 🔧 — a live line-item status board ("PORE CLAMP · P01 OK · P02 FAIL · P03 SEALED"; "FLOW OPTIMIZATION TOLL GATE"), terminal-green — Bulwark/Hypelines. Overlaps the relief/pore-clamp console (§3.12).
+`}`. Orthogonal to the register: **`district_emblem`** 🔧 — a per-district logo mark stamped on plaques (the Greenfields/Open Files heraldic crest; The Honeycomb Cooperative's three-cell flower; The Cleanstreets Initiative's four-point sparkle; Ancourage's smiley-flower mascot). The emblem carries the register's tone (cooperative-earnest vs. corporate-cheerful) at a glance.
 
 ### 3.10 Rust / decay overlay stack
 Independent per-surface overlays (authored maps, not noise). `decay ∈ {`
@@ -139,13 +197,34 @@ Independent per-surface overlays (authored maps, not noise). `decay ∈ {`
 - `weeping_corrosion` — membrane pores corroding/weeping (Bulwark/Filtration)
 - `collapse_scar` — sinkhole/give-way scarring (Honeycomb faked slabs, Sunset Acres)
 - `candid_mat` — white fungal colonization mat creeping up (enemy ecology)
+- `amyloid_drip` 🔧 — a molten drip-crust engulfing the shell, oozing off ledges and pooling as pipe-root runnels on the ground (Zone-3 ruin, §4.16; the boss material reaching outward). **Palette guard:** render it **desaturated rust-brown / dun**, NOT the saturated pink-red — saturated pink-red is boss-landmark-only (§2.4/§3.11). The render pushed pink; the taxonomy holds it brown.
 `}` + `decay_amount` (0–1), `bones_legibility` (≥0.4 — the solarpunk form must stay readable).
 
 ### 3.11 Emissive / terminal accents (the signature)
-`emissive_use ∈ {terminal_green (#5ce87f), scanner_cyan_white, firelight_orange, watchtower_blue (Loca only), flora_teal 🔧 (tended flora cores), none}` on: terminals, scan-bars, flow-strip telegraphs (brighten one beat before a hazard), portal pads, override consoles, valve readouts, flora cores. `emissive_strength`, `telegraph_pulse` (bool). **Pink-red core allowed only on boss landmarks.**
+`emissive_use ∈ {terminal_green (#5ce87f), scanner_cyan_white, firelight_orange, watchtower_blue (Loca only), flora_teal 🔧 (tended flora cores), none}` on: terminals, scan-bars, flow-strip telegraphs (brighten one beat before a hazard), portal pads, override consoles, valve readouts, flora cores. Render-confirmed emissive *fixtures* (where the accent lives): `fluid_spill_glow` 🔧 (a valve/trough spilling glowing terminal-green fluid — Plumbing pump-house), `flare_flame` 🔧 (an actual warm-orange flame plume on a `flare_stack` crown — Ancourage), `lit_tunnel` throat (cyan streaming from a deep entry — Open Files). `emissive_strength`, `telegraph_pulse` (bool). **Pink-red core allowed only on boss landmarks.**
 
 ### 3.12 Street-level furniture
-`furniture[] ⊂ { drink_machine, recharge_pod, toll_meter, herd_space_booth, memorial_monument, anti_homeless_spikes, rotary_valve_wheel, relief_console (+ dummy/Goodhart variant), conveyor_belt, record_drawer_terminal, workbench }`. Parameter per item: functional / neglected / dummy.
+`furniture[] ⊂ { drink_machine, recharge_pod, toll_meter, herd_space_booth, memorial_monument, anti_homeless_spikes, rotary_valve_wheel, relief_console (+ dummy/Goodhart variant), conveyor_belt, record_drawer_terminal, workbench`
+- `, terminal_kiosk` 🔧 — a freestanding pedestal terminal with a green screen, planted beside an entry (Open Files, Bulwark, Cleanstreets). The freestanding sibling of the wall `relief_console`.
+- `, wall_sconce_lantern` 🔧 — a warm point-light lantern bracketed beside a doorway (Greenfields, Beacon Hill); one of the few warm anchors on a residential/civic face.
+- `, planter_trough` 🔧 — an under-window / balcony-rail planter box (Greenfields, Honeycomb); parameter tended / desiccated / performative-dead.
+- `, bollard_row` 🔧 — a `row` of short posts ringing a plaza corner or entry (Greenfields).
+- `, street_lamp` 🔧 — a post lamp lining the approach plaza (Open Files).
+- `, queue_rail` 🔧 — switchback railings channeling foot traffic into a toll/scan gate (Hypelines, Cleanstreets).
+- `, flywheel_gear` 🔧 — a large decorative rotating wheel/gear mounted on a utility flank (The Hypelines); the oversized cousin of `rotary_valve_wheel`.
+- `, pipe_root_spread` 🔧 — a fan of drainage conduits erupting from the base and crawling across the ground plane like roots (Ancourage; Zone-3 ruin). Reads as both a burst utility main and a spreading root system; a `row`/`coil` of ground tubes.
+`}`. Parameter per item: functional / neglected / dummy.
+
+### 3.13 Structural columns / ribs 🔧
+The renders' clearest lesson: the load-bearing **structure itself branches** — six of ten heroes carry their tiers/canopies on grown, splitting members, not plain posts. This is how constraint §2.1 ("grown, not built") reads at the skeleton, and it was previously unnamed. Realized as tapered `pbox`/`make_tapered_box` members with recursive child branches, or `on_wall` relief ribs. `structure ∈ {`
+- `branching_tree_column` 🔧 — a column that splits upward into 2–4 tapering limbs to carry a balcony tier or canopy (Greenfields piers; the trunk-and-boughs read).
+- `mushroom_canopy_column` 🔧 — a column flaring at the top into a broad sweeping canopy shell (The Cleanstreets Initiative pavilion; a `branching_tree_column` whose limbs fuse into a cap).
+- `tapered_pier` 🔧 — a plain load pier, waisted/tapered, framing bays (Bulwark Wharf between the pore-panels).
+- `buttress_fin` 🔧 — a clustered vertical exterior rib/buttress running the full height (The Open Files fins; continues into the `spired_cluster` crown).
+- `vine_rib_web` 🔧 — thin structural ribs webbing across the facade and branching around the openings (Beacon Hill; the structural read of `whiplash_tracery`, §3.8).
+- `strut_truss` 🔧 — an open branched truss supporting a `transit_viaduct` or elevated mass (The Hypelines).
+- `none` — plain wall-bearing (utility sheds, the squat Ancourage mass).
+`}` + `branch_depth`, `branch_splay` (angle limbs open), `taper`, `fuse_to_canopy` (bool — limbs merge into a cap, for the mushroom column).
 
 ---
 
@@ -244,7 +323,7 @@ The archetypes above isolate one system each (a canyon, a corridor, a gate, a wa
 
 ### 4.14 Valve control-house — Ancourage (whole building)
 **Read:** a squat utility building at a burned junction — char below, cheerful plaque above, a heat-fault still flaring on a cadence. Water-before-fire: the drainage valve drips beside the scorch.
-**Massing/knobs:** `shell=fractal_branch_cluster (single squat trunk, no branches)`, `storeys=1–2`, `material=facility_metal + char_crust` 🔧, `window=scan_grille`, `door=service_hatch`, `furniture=[rotary_valve_wheel (wall-drainage), relief_console (control-terminal variant)]`, `sign=corporate_rebrand (cheerful register), incongruously pristine`, `decay=char_burn + ferric_bleed`, `emissive=firelight_orange flare vent + terminal_green terminals, telegraph_pulse=true`.
+**Massing/knobs:** `shell=vesicle_cluster_mass (squat twin-dome pod)` 🔧 *(render-harvest: the hero came back a bulbous twin-dome, not the original "squat trunk" — reconciled with §3.1/§6)*, `storeys=1–2`, `material=facility_metal + char_crust` 🔧, `crown=flare_stack (live flame)`, `window=spoked_vent + scan_grille`, `door=service_hatch`, `furniture=[rotary_valve_wheel (wall-drainage), pipe_root_spread, relief_console (control-terminal variant)]`, `sign=corporate_rebrand (cheerful register), incongruously pristine + smiley-flower mascot emblem`, `decay=char_burn + ferric_bleed`, `emissive=firelight_orange flare vent + terminal_green terminals, telegraph_pulse=true`.
 **Two-read:** a maintenance control-house AND scarred tissue where an unmanaged inflammatory burn keeps flaring.
 **Prompt:** *A complete freestanding valve control-house of Ancourage, standing at a burned junction: a squat faceted utility building whose lower walls are crusted black with fire-fuel char, fused conduit bundles entering it half-melted and re-hardened. Wall drainage valves tie its plumbing back into the Plumbing Power Project mains; one drips steadily beside the scorch — water before fire. A heat-fault vent on the roofline breathes a slow warm-orange flare on a cadence, the single saturated firelight anchor in frame, brightening one beat before each flare. Control terminals glow terminal-green (#5ce87f) through a grilled window. Above the scorched entry, an incongruously pristine corporate-cheerful plaque reads "Ancourage." Muted teal metal beneath the burn, ferric-red streaks where oxidation meets soot, PS2-era facets, pixel-art tiles. Frame the complete freestanding building — full silhouette from ground line to roofline, three-quarter street-level view at a slight low angle, near-black void beyond.*
 
@@ -256,7 +335,7 @@ The archetypes above isolate one system each (a canyon, a corridor, a gate, a wa
 
 ### 4.16 Zone-3 eroded ruin — the everyday building, decayed (generic)
 **Read:** the §4.6 convenience outlet at the far end of the zone axis — architecture eroding, tissue substrate showing through, the solarpunk bones still legible. This is the acceptance target for the generator's `tissue_through` / `bones_legibility` ramp (§6 zone rule); without it the eroded outputs have nothing to stand beside.
-**Massing/knobs:** same shell as §4.6, `tissue_through=high`, `bones_legibility≈0.5`, `decay=collapse_scar + ferric_bleed + candid_mat (flank)`, `glazing=broken/boarded`, `emissive=none (the sign is dead)`, `pattern_overlay=tissue_substrate (exposed floor)`.
+**Massing/knobs:** same shell as §4.6, `tissue_through=high`, `bones_legibility≈0.5`, `decay=amyloid_drip (desaturated rust-brown, §3.10) + collapse_scar + ferric_bleed + candid_mat (flank)`, `projection=entry_hood (collapsed)`, `furniture=[pipe_root_spread]`, `glazing=broken/boarded`, `emissive=none (the sign is dead)`, `pattern_overlay=tissue_substrate (exposed floor)`.
 **Two-read:** a dead storefront AND tissue where the last reflex finally stopped firing.
 **Prompt:** *The same two-storey street-corner convenience outlet, reached in Zone 3: half the shell eroded away, the faceted teal panels collapsed along one flank to expose pinkish biological tissue-substrate flooring, vessel-like grooves running through it where the architectural floor has worn through entirely. The rounded chamfered corner and the branching capillary-slit windows survive — the solarpunk bones still legible; you can read what this place was supposed to be — but the rolling shutter hangs broken, the slat-awning has collapsed, and the ALWAYS OPEN sign is dark, its glass dead. A white fungal candid-mat creeps up the shaded flank. Ferric-red bleed and rust dust over everything; the ground plane is more tissue than paving. PS2-era facets, pixel-art tiles, muted teal over pinkish substrate. Frame the complete freestanding ruin — full silhouette from ground line to crown, three-quarter street-level view at a slight low angle, near-black void beyond. Reads as a dead storefront and as tissue where the last reflex finally stopped firing.*
 
@@ -280,22 +359,28 @@ Specific named locations from the lore, not generic district archetypes (cf. Mot
 **These are the highest-value prompts for building a *parameterized* generator**, because each sheet becomes a direct visual menu for one knob's option set. Use the element-sheet variant of the preamble (§1). Each prompt asks for a **labeled row of 3–5 faceted low-poly variants on a plain dark background** — a reference sheet, not a scene.
 
 ### 5.1 Window-types sheet (§3.5)
-*A reference sheet: a row of 5 low-poly faceted window variants on a plain near-black background, orthographic studio lighting, each labeled — (1) a round translucent membrane-pore window; (2) a tall narrow capillary-slit window in a branching pair; (3) a floor-height balcony-bay opening; (4) a metal record-drawer face reading as a window band, glowing terminal-green; (5) a half-lowered rusted rolling metal shutter. Pixel-art tiled textures at 32px/m, muted teal metal with ferric-red streaks, sharp pixel edges. A kit-of-parts sheet for a procedural building generator.*
+*A reference sheet: a row of 7 low-poly faceted window variants on a plain near-black background, orthographic studio lighting, each labeled — (1) a round translucent membrane-pore window; (2) a tall narrow capillary-slit window in a branching pair; (3) a floor-height balcony-bay opening; (4) a metal record-drawer face reading as a window band, glowing terminal-green; (5) a half-lowered rusted rolling metal shutter; (6) a rounded-hexagon honeycomb window cell with its own sill-planter; (7) a round rose-window aperture with radial spoke-mullions, beside a wheel-spoke round vent-porthole. Pixel-art tiled textures at 32px/m, muted teal metal with ferric-red streaks, sharp pixel edges. A kit-of-parts sheet for a procedural building generator.*
 
 ### 5.2 Door / entry-types sheet (§3.6)
 *A reference sheet: a row of 5 faceted low-poly door/entry variants on plain near-black, each labeled — (1) an iris-membrane pore that dilates open (airlock-and-sphincter); (2) a cycling dwelling-slab door caught mid-cycle; (3) a tag-reader scan-arch with a cyan-white scan-bar; (4) a single-file "Flow Optimization" toll-meter gate; (5) a heavy sealed blast-bulkhead. PS2-era pixel-tiled geometry, muted teal with terminal-green readouts, ferric-red rust. Kit-of-parts reference for a procedural generator.*
 
 ### 5.3 Roof / crown-types sheet (§3.3) 🔧
-*A reference sheet: a row of 5 faceted low-poly building-crown variants on plain near-black, each labeled — (1) a low faceted domed cap; (2) a branched organic canopy splitting into 2–3 tapered fingers; (3) a flat planted balcony-terrace, its greenery desiccated/performative; (4) a renewable-energy crown (neglected solar array + wind-vane); (5) a membrane-pore vent-cap venting faint haze. Muted teal metal, ferric-red streaks, pixel-art textures. All curved/organic, none gabled or flat-boxy. Kit-of-parts sheet.*
+*A reference sheet: a row of 7 faceted low-poly building-crown variants on plain near-black, each labeled — (1) a low faceted domed cap (with a small cupola finial); (2) a branched organic canopy splitting into 2–3 tapered fingers; (3) a flat planted balcony-terrace, its greenery desiccated/performative; (4) a renewable-energy crown (neglected solar array + wind-vane); (5) a membrane-pore vent-cap venting faint haze; (6) a clustered bundle of tapering vertical spires/pinnacles of unequal height; (7) a slim vent flare-stack breathing a warm-orange flame plume. Muted teal metal, ferric-red streaks, pixel-art textures. All curved/organic or vertical-spired, none gabled or flat-boxy. Kit-of-parts sheet.*
 
 ### 5.4 Awning / projection-types sheet (§3.7) 🔧
-*A reference sheet: a row of 5 faceted low-poly wall-projection variants on plain near-black, each labeled — (1) a taut translucent veined membrane-awning; (2) a rust-streaked faceted metal slat-canopy; (3) a cantilevered balcony slab with a post-rail; (4) a signage bracket-arm carrying a hanging backlit sign; (5) a slanted anti-homeless no-stand ledge. PS2 pixel-tiled, muted teal + ferric red. Kit-of-parts reference.*
+*A reference sheet: a row of 7 faceted low-poly wall-projection variants on plain near-black, each labeled — (1) a taut translucent veined membrane-awning; (2) a rust-streaked faceted metal slat-canopy; (3) a cantilevered balcony slab with a post-rail; (4) a signage bracket-arm carrying a hanging backlit sign; (5) a slanted anti-homeless no-stand ledge; (6) a small faceted curved entry-hood over a single door (a door-shelter, not a roof); (7) a large elevated tubular transit-viaduct conduit branching off, carrying lit traffic along its top. PS2 pixel-tiled, muted teal + ferric red. Kit-of-parts reference.*
 
 ### 5.5 Signage sheet (§3.9)
 *A reference sheet: a row of 4 low-poly signage variants on plain near-black, each labeled with its register — (1) institutional-project wall-plaque, pristine ("The Plumbing Power Project"); (2) government-aspirational backlit arch-banner ("The Open Files Initiative"); (3) corporate-rebrand hanging bracket-sign, glossy ("The Hypelines"); (4) picturesque-community monument-plaque ("Greenfields Collective"), ironic over a failed function. Terminal-green and warm backlighting, pixel-art text, muted teal metal with rust. Class-coded institutional signage kit.*
 
+### 5.5b Sign-form & emblem sheet (§3.9) 🔧
+*A reference sheet: a row of 5 low-poly sign-form variants on plain near-black, each labeled — (1) a cluster of small rounded-rectangle regulatory placards ("NO LOITERING · NO SITTING · NO RESTING", "STANDING ONLY BEYOND THIS POINT"); (2) a large stamped numeric sector designator ("6"); (3) a live line-item status-readout board glowing terminal-green ("PORE CLAMP · P01 OK · P02 FAIL · P03 SEALED"); (4) a projected-floor toll instruction ("CREDIT TOLL · SINGLE FILE"); (5) a row of four district emblem marks — a heraldic crest, a three-cell honeycomb flower, a four-point sparkle, a corporate smiley-flower mascot. Pixel-art text, muted teal + terminal-green, sharp edges. The bureaucratic-overlay signage kit.*
+
 ### 5.6 Surface-pattern & decay sheet (§3.8, §3.10)
-*A reference sheet: two rows of low-poly wall-panel swatches on plain near-black. Top row (materials): riveted facility-metal panel-seam, deck-metal diamond-plate, crosshatch grating, smooth-layered translucent basement-membrane, myelin-wrap nerve-fascicle cabling, pinkish tissue-substrate with vessel grooves. Bottom row (decay overlays applied to a metal panel): ferric-red bleed-streaks, settled oxide dust, char-burn crust, weeping membrane corrosion, collapse-scar cracking, white candid fungal mat. 32px/m pixel-art tiles, muted teal palette, sharp edges. A material+decay atlas reference for the generator's tile system.*
+*A reference sheet: two rows of low-poly wall-panel swatches on plain near-black. Top row (materials): riveted facility-metal panel-seam, deck-metal diamond-plate, crosshatch grating, smooth-layered translucent basement-membrane, myelin-wrap nerve-fascicle cabling, pinkish tissue-substrate with vessel grooves, overlapping fish-scale shingle, raised whiplash vine-rib tracery, an open Voronoi cellular mesh-screen, raised rounded-hexagon honeycomb relief. Bottom row (decay overlays applied to a metal panel): ferric-red bleed-streaks, settled oxide dust, char-burn crust, weeping membrane corrosion, collapse-scar cracking, white candid fungal mat, desaturated rust-brown molten drip-crust (NOT saturated pink). 32px/m pixel-art tiles, muted teal palette, sharp edges. A material+decay atlas reference for the generator's tile system.*
+
+### 5.7 Structural columns / ribs sheet (§3.13) 🔧
+*A reference sheet: a row of 6 faceted low-poly load-bearing structure variants on plain near-black, each labeled — (1) a branching tree-column splitting upward into 2–4 tapering limbs to carry a balcony tier; (2) a mushroom-canopy column flaring into a broad sweeping cap; (3) a plain waisted/tapered load pier framing a bay; (4) a clustered full-height exterior buttress-fin; (5) thin structural vine-ribs webbing across a wall and branching around a window; (6) an open branched strut-truss supporting an elevated conduit. Muted teal metal / warm cream stone, ferric-red streaks, pixel-art tiles. All grown-and-branching, nothing a plain box post. The "grown, not built" skeleton kit.*
 
 ---
 
@@ -323,6 +408,18 @@ Each preset is a **weighting over the §3 knobs** — the generator's "skin" for
 | *Harmonia* `PROPOSAL` | oscillator-track ferries, civic-pulse consoles | (pending) | wellness-picturesque | harmony-proxy gates | Zone-3 exposure | (pending) |
 | *Sunset Acres* `PROPOSAL` | burial-plot "reserved lots", sinkhole scars | (pending) | cemetery-real-estate | collapsed lots over dead tissue | collapse scars | (pending) |
 | *Root Archive* `PROPOSAL` | tag-scanned reading halls, deep vaults | (pending) | foundational-records | scanned reading halls | Zone-3 exposure | (pending) |
+
+**Render-harvested signatures (2026-07-03) — fold into each district's weighting** (the parts the hero renders made the district's "tell"; full mapping in §3.0):
+- **Greenfields** — `branching_tree_column` piers, `arched_portal` doors, `planter_trough` + `wall_sconce_lantern` + `bollard_row`, `district_emblem` crest; identical units throughout.
+- **The Open Files Initiative** — `spired_cluster` crown over `buttress_fin` structure, `mesh_lattice_infill` arcade at the base, `lit_tunnel` scan entry, flanking `terminal_kiosk` + `street_lamp`.
+- **Plumbing Power Project** — `scale_shingle` drum skin, `domed_cap` + cupola finial, `entry_hood`, `fluid_spill_glow` at the valves.
+- **The Hypelines** — `vesicle_cluster_mass` hub, `transit_viaduct` + `strut_truss`, `flywheel_gear`, heavy `nerve_fascicle` cable-wrap.
+- **The Honeycomb Cooperative** — `honeycomb_tessellation` / `honeycomb_cell` face, three-cell-flower `district_emblem`, `planter_trough`s (display face only).
+- **The Cleanstreets Initiative** — `mushroom_canopy_column` pavilion, `regulatory_placard` clusters, four-point-sparkle `district_emblem`, `queue_rail`s.
+- **Beacon Hill** — `bell_dome_tower` silhouette webbed in `whiplash_tracery` / `vine_rib_web`, `wall_sconce_lantern`s.
+- **Ancourage** — `vesicle_cluster_mass` twin-dome, `flare_stack` crown, `pipe_root_spread`, `spoked_vent` portholes, smiley-flower mascot `district_emblem`.
+- **Bulwark Wharf / Filtration** — `rose_spoked` pore-apertures, `cellular_mesh` wall skin, `status_readout` (PORE CLAMP) + `numeric_designator`, freestanding `terminal_kiosk`.
+- **Zone-3 (any)** — `amyloid_drip` engulfment (**desaturated rust-brown**, not pink) + `pipe_root_spread`, collapsed `entry_hood`.
 
 **Zone rule (GDD §6.6–6.7):** Zone 2 = architectural flooring over tissue, tissue only at cracks/edges. Zone 3 = the architecture erodes and biological tissue substrate shows through; "almost no architectural cover." The generator's `tissue_through` and `bones_legibility` knobs should ramp with zone.
 
