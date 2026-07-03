@@ -313,6 +313,24 @@ func _make_material(
 		material.emission_energy_multiplier = emission_energy
 	return material
 
+const TILE_DIR := "res://resources/models/elevator/tiles/"
+
+## A pixel-atlas material that tiles across a surface in world space (the sim-room / bridge / generated-stretch
+## technique): 1 tile/m, NEAREST sampled, world-triplanar so it repeats crisply regardless of the mesh's size or
+## UVs — and, because the repeat is anchored to world coords, each tile seam lands on a grid-cell boundary, so
+## the grid reads through the floor. Shared home for every chunk (generated_stretch inherits this).
+func _tiled_floor_material(tile_name: String) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	var tex = load(TILE_DIR + tile_name + ".png")
+	if tex != null:
+		m.albedo_texture = tex
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	m.uv1_triplanar = true
+	m.uv1_world_triplanar = true
+	m.uv1_scale = Vector3.ONE
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return m
+
 func _add_box(
 	parent: Node3D,
 	position: Vector3,
@@ -333,8 +351,13 @@ func _add_box(
 	parent.add_child(mesh)
 	return mesh
 
-func _add_floor(parent: Node3D, position: Vector3, size: Vector3, color: Color) -> MeshInstance3D:
+## A tiled ground slab. Passing `tile` (a pixel-atlas tile name from TILE_DIR) textures the top with the
+## world-triplanar 1-tile/m deck material — each grid cell reads as one tile, so the grid is visible, matching
+## the sim-room / generated-stretch look. Omit `tile` for the old flat-colored slab (every existing caller).
+func _add_floor(parent: Node3D, position: Vector3, size: Vector3, color: Color, tile := "") -> MeshInstance3D:
 	var floor := _add_box(parent, position, size, color)
+	if tile != "":
+		floor.material_override = _tiled_floor_material(tile)
 	var body := StaticBody3D.new()
 	body.position = position
 	body.collision_layer = 1

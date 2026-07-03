@@ -13372,6 +13372,16 @@ func _test_pump_hall() -> void:
 	var chunk = inst._active_chunk
 	var gs = inst._game_state
 	_assert_true(chunk != null and gs != null, "Pump Hall boots in the shared preview")
+	# Grid readability: the ground slabs are TILED (world-triplanar deck atlas), so the grid reads through
+	# the floor like the sim room / generated stretches. A flat-colored slab (no albedo_texture) fails this.
+	var tiled_floor := false
+	for c in chunk.get_children():
+		if c is MeshInstance3D and (c as MeshInstance3D).mesh is BoxMesh:
+			var mat = (c as MeshInstance3D).material_override
+			if mat is StandardMaterial3D and (mat as StandardMaterial3D).albedo_texture != null:
+				tiled_floor = true
+				break
+	_assert_true(tiled_floor, "the data-fragment ground floor is TILED so the grid reads through it")
 	var a: Dictionary = chunk.get_preview_anchors()
 	for i in range(3):
 		_assert_true(gs.characters.has("pump_sentry_%d" % i), "sentry %d is registered" % i)

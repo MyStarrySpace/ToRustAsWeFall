@@ -912,8 +912,6 @@ func _clear_generated_children() -> void:
 	_node_targets.clear()
 	_route_surfaces.clear()
 
-const TILE_DIR := "res://resources/models/elevator/tiles/"
-
 func _build_foundation() -> void:
 	# The floor is built FROM the walkable grid cells as atlas TILES — so the visible surface (and its collision)
 	# is EXACTLY where the player can walk. No more big rectangular slab that eats clicks the grid then rejects.
@@ -924,20 +922,6 @@ func _build_foundation() -> void:
 	var bounds_size := _vec3(bounds.get("size", []), Vector3(24.0, 3.0, 10.0))
 	var min_point := _vec3(bounds.get("min", []), bounds_center - bounds_size * 0.5)
 	_add_light(self, Vector3(bounds_center.x, min_point.y + 8.0, bounds_center.z), Color(0.72, 0.86, 0.96), 1.25, maxf(34.0, bounds_size.x * 0.5))
-
-## A pixel-atlas material that tiles across a surface in world space (the sim-room / bridge technique): 1 tile/m,
-## NEAREST sampled, world-triplanar so it repeats crisply regardless of the mesh's size or UVs.
-func _tiled_floor_material(tile_name: String) -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	var tex = load(TILE_DIR + tile_name + ".png")
-	if tex != null:
-		m.albedo_texture = tex
-	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	m.uv1_triplanar = true
-	m.uv1_world_triplanar = true
-	m.uv1_scale = Vector3.ONE
-	m.cull_mode = BaseMaterial3D.CULL_DISABLED
-	return m
 
 ## Draw a tiled floor quad for every WALKABLE grid cell (per level), risky cells rusted, and give it collision so
 ## the player's ground-click raycast only lands where they can actually move. Visible floor == traversable floor.

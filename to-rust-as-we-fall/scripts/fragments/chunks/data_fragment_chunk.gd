@@ -57,8 +57,12 @@ func _build_chunk() -> void:
 # --- Environment ---
 
 func _build_environment() -> void:
+	# Ground slabs get the world-triplanar deck tile (1 tile/m) so the grid reads through the floor, like
+	# the sim room and generated stretches. A floor may name its own tile ("tile": "rust_iron", ...);
+	# default deck_metal.
 	for f in fragment.floors:
-		_add_floor(self, _v3(f, "pos"), _v3(f, "size", Vector3.ONE), _col(f, "color", Color(0.1, 0.1, 0.12)))
+		_add_floor(self, _v3(f, "pos"), _v3(f, "size", Vector3.ONE),
+			_col(f, "color", Color(0.1, 0.1, 0.12)), str(f.get("tile", "deck_metal")))
 	for w in fragment.walls:
 		_add_box(self, _v3(w, "pos"), _v3(w, "size", Vector3.ONE), _col(w, "color", Color(0.06, 0.06, 0.08)),
 			_col(w, "emission", Color.BLACK), _f(w, "energy", 0.0))
