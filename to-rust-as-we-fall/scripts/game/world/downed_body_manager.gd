@@ -28,8 +28,16 @@ func setup(state, root: Node = null) -> void:
 	if not _gs.character_revived.is_connected(_on_character_up):
 		_gs.character_revived.connect(_on_character_up)
 
+const SYNC_TICK := 0.2
+
 func _process(_delta: float) -> void:
-	# The zone rides the body (a carried friend moves), and the verb reads the carry state.
+	_sync_bodies()   # live smoothness; the DATA truth rides the scheduler tick below
+
+## The zone rides the body (a carried friend moves) and the verb reads the carry state. Runs BOTH
+## per-frame (live) and on a scheduler tick — so a headless test that jumps the scheduler without
+## rendering a single frame still sees the zone where the body is. That is the architecture's
+## promise: simulated time behaves exactly like waited time, minus the waiting.
+func _sync_bodies() -> void:
 	for cid in _bodies.keys():
 		var it = _bodies[cid]
 		if not is_instance_valid(it) or _gs == null or not _gs.characters.has(str(cid)):
@@ -37,6 +45,17 @@ func _process(_delta: float) -> void:
 		it.position = _gs.get_position(str(cid))
 		var carried: bool = _gs.get_dragger_of(str(cid)) != ""
 		it.description = ("Set %s down" if carried else "Carry %s") % str(cid).capitalize()
+
+func _arm_sync_tick() -> void:
+	if _gs == null or _gs.scheduler == null:
+		return
+	_gs.scheduler.cancel_tag("downed_body_sync")
+	_gs.scheduler.schedule_after(SYNC_TICK, _on_sync_tick, "downed_body_sync")
+
+func _on_sync_tick() -> void:
+	_sync_bodies()
+	if not _bodies.is_empty():
+		_arm_sync_tick()
 
 func _on_character_downed(cid: String) -> void:
 	if _gs == null or _bodies.has(cid):
@@ -67,6 +86,7 @@ func _on_character_downed(cid: String) -> void:
 	if _search_root != null and is_instance_valid(_search_root) and _search_root.has_method("register_preview_interactable"):
 		_search_root.call("register_preview_interactable", it)
 	_bodies[cid] = it
+	_arm_sync_tick()
 
 ## Hover lights the fallen character's REAL silhouette (their scene node's meshes) through the shared
 ## outline system — the same grammar as every object. No meshes (headless / pure-data char) → the
@@ -123,6 +143,10 @@ func _on_character_up(cid: String) -> void:
 	if target != null and is_instance_valid(target):
 		target.queue_free()
 	_outline_targets.erase(cid)
+
+func _exit_tree() -> void:
+	if _gs != null and _gs.scheduler != null:
+		_gs.scheduler.cancel_tag("downed_body_sync")
 
 func _toast(text: String) -> void:
 	if _search_root != null and is_instance_valid(_search_root) and _search_root.has_method("show_preview_message"):

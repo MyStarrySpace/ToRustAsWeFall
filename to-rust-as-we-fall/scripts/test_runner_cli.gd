@@ -17561,6 +17561,7 @@ func _live_hover(world_pos: Vector3, cam: Camera3D, check: Callable) -> bool:
 ## friend wades in after you (the carry composes with the DoT for free).
 func _test_blind_floor() -> void:
 	_test_name = "Blind Floor"
+	var wall0 := Time.get_ticks_msec()
 	var inst = await _instantiate_preview_chunk_and_wait("blind_floor", 6)
 	if inst == null:
 		_assert_true(false, "blind_floor instantiates")
@@ -17576,14 +17577,14 @@ func _test_blind_floor() -> void:
 	var t := 0.0
 	while t < 25.0 and float(gs.get_stat("aster", "hp")) >= 100.0:
 		inst.headless_advance(0.3, 0.1)
-		await get_tree().process_frame
+
 		t += 0.3
 	_assert_true(float(gs.get_stat("aster", "hp")) < 100.0,
 		"open ground = seen = struck (hp=%.0f) — 0%% of the lane is safe" % float(gs.get_stat("aster", "hp")))
 	gs.command_move_to_pos("aster", chunk.get_spawn_positions()["aster"])
 	for i in range(60):
 		inst.headless_advance(0.3, 0.1)
-		await get_tree().process_frame
+
 		if not gs.is_moving("aster"):
 			break
 	gs.restore_character("aster")
@@ -17597,7 +17598,7 @@ func _test_blind_floor() -> void:
 	gs.command_move_to_pos("peris", a["mat_mid"])
 	_advance_to_arrival(inst, gs, "peris")
 	inst.headless_advance(0.3, 0.1)
-	await get_tree().process_frame
+
 	_assert_equals(int(gs.get_character_concealment("peris")), GameState.CONCEAL_FULL,
 		"in the film every scan slides off (CONCEAL_FULL)")
 	gs.command_move_to_pos("peris", a["mat_east"])
@@ -17642,7 +17643,6 @@ func _test_blind_floor() -> void:
 	_assert_true(gs.get_position("aster").distance_to(a["mat_mid"]) < 2.5, "he drops IN the film")
 
 	# THE WADE-IN RETRIEVE: a friend crosses the draining floor to carry him out (the composition).
-	await get_tree().process_frame
 	var body = inst.find_child("DownedBody_aster", true, false)
 	_assert_true(body != null, "his body is a carry target in the film")
 	var p_hp_before: float = float(gs.get_stat("peris", "hp"))
@@ -17673,6 +17673,9 @@ func _test_blind_floor() -> void:
 	shelter.on_interaction_arrived()
 	inst.headless_advance(0.5, 0.1)
 	_assert_true(bool(chunk.get_preview_state()["complete"]), "resting through completes the blind floor")
+	var wall_ms := Time.get_ticks_msec() - wall0
+	print("  [wall] _test_blind_floor: %d ms" % wall_ms)
+	_assert_true(wall_ms < 20000, "the pop-off promise: this playthrough JUMPS time (%d ms)" % wall_ms)
 	inst.queue_free()
 	await get_tree().process_frame
 
@@ -17727,6 +17730,7 @@ func _test_conceal_stops_strikes() -> void:
 ## revives him (ally near). Negative: hauling the open lane gets the carrier STRUCK.
 func _test_capbage_retrieve() -> void:
 	_test_name = "Capbage Retrieve"
+	var wall0 := Time.get_ticks_msec()
 	var inst = await _instantiate_preview_chunk_and_wait("capbage_retrieve", 6)
 	if inst == null:
 		_assert_true(false, "capbage_retrieve instantiates")
@@ -17765,7 +17769,7 @@ func _test_capbage_retrieve() -> void:
 	gs.command_move_to_pos("peris", a["capbage"])
 	_advance_to_arrival(inst, gs, "peris")
 	inst.headless_advance(0.4, 0.1)
-	await get_tree().process_frame
+
 	var hp_dive: float = float(gs.get_stat("peris", "hp"))
 	print("  [retrieve] in the head: hp=%.0f (the dive's price)" % hp_dive)
 	_assert_true(hp_dive >= 100.0 - 25.5, "the dive costs AT MOST one strike (hp=%.0f)" % hp_dive)
@@ -17782,7 +17786,7 @@ func _test_capbage_retrieve() -> void:
 	var t := 0.0
 	while t < 40.0 and warden != null and str(warden.get_state()) not in ["patrol", "return"]:
 		inst.headless_advance(0.3, 0.1)
-		await get_tree().process_frame
+
 		t += 0.3
 	_assert_true(warden != null and str(warden.get_state()) in ["patrol", "return"],
 		"hidden together, the chase SHEDS (warden=%s)" % (str(warden.get_state()) if warden != null else "?"))
@@ -17790,7 +17794,7 @@ func _test_capbage_retrieve() -> void:
 	t = 0.0
 	while t < 30.0 and gs.get_position("line_warden").x < (a["capbage"] as Vector3).x + 5.5:
 		inst.headless_advance(0.2, 0.1)
-		await get_tree().process_frame
+
 		t += 0.2
 	gs.command_move_to_pos("peris", Vector3(20.0, 0.5, -2.5))
 	_advance_to_arrival(inst, gs, "peris")
@@ -17827,7 +17831,7 @@ func _test_capbage_retrieve() -> void:
 	# NEGATIVE: reset — hauling the OPEN lane, the loaded pace loses to the warden (real strikes land).
 	chunk.reset_preview_state()
 	inst.headless_advance(0.3, 0.1)
-	await get_tree().process_frame
+
 	_assert_true(gs.is_downed("aster"), "reset re-downs him at the console (the story state is data)")
 	gs.restore_character("peris")
 	gs.snap_character_to("peris", gs.get_position("aster") + Vector3(-0.9, 0.0, 0.0))
@@ -17848,7 +17852,7 @@ func _test_capbage_retrieve() -> void:
 	t = 0.0
 	while t < 45.0 and float(gs.get_stat("peris", "hp")) >= 100.0 and gs.is_dragging("peris"):
 		inst.headless_advance(0.3, 0.1)
-		await get_tree().process_frame
+
 		t += 0.3
 		if fmod(t, 6.0) < 0.29:
 			print("    [blind] t=%.0f peris=%.1f warden=%.1f state=%s dist=%.1f" % [t,
@@ -17858,6 +17862,9 @@ func _test_capbage_retrieve() -> void:
 	print("  [retrieve] blind haul: hp=%.0f downed=%s after %.0fs" % [float(gs.get_stat("peris", "hp")), str(gs.is_downed("peris")), t])
 	_assert_true(float(gs.get_stat("peris", "hp")) <= 100.0 - 25.0,
 		"the blind haul is PUNISHED — the pressure tier lands on the loaded pace (hp=%.0f)" % float(gs.get_stat("peris", "hp")))
+	var wall_ms := Time.get_ticks_msec() - wall0
+	print("  [wall] _test_capbage_retrieve: %d ms" % wall_ms)
+	_assert_true(wall_ms < 20000, "the pop-off promise: this playthrough JUMPS time (%d ms)" % wall_ms)
 	inst.queue_free()
 	await get_tree().process_frame
 
@@ -17868,6 +17875,7 @@ func _test_capbage_retrieve() -> void:
 ## walk gets spotted = attacked (real hp loss). Positioning + timing + budget in one screen.
 func _test_sprint_gap() -> void:
 	_test_name = "Sprint Gap"
+	var wall0 := Time.get_ticks_msec()
 	var inst = await _instantiate_preview_chunk_and_wait("sprint_gap", 4)
 	if inst == null:
 		_assert_true(false, "sprint_gap instantiates")
@@ -17931,10 +17939,13 @@ func _test_sprint_gap() -> void:
 	var t := 0.0
 	while t < 30.0 and int(chunk.get_preview_state()["spotted_count"]) == 0:
 		inst.headless_advance(0.3, 0.1)
-		await get_tree().process_frame
+
 		t += 0.3
 	_assert_true(int(chunk.get_preview_state()["spotted_count"]) >= 1,
 		"walking the strip blind gets you SPOTTED — and spotted means attacked")
+	var wall_ms := Time.get_ticks_msec() - wall0
+	print("  [wall] _test_sprint_gap: %d ms" % wall_ms)
+	_assert_true(wall_ms < 15000, "the pop-off promise: this playthrough JUMPS time (%d ms)" % wall_ms)
 	inst.queue_free()
 	await get_tree().process_frame
 
@@ -18370,7 +18381,6 @@ func _test_downed_carry() -> void:
 		return
 	var gs = inst._game_state
 	gs.down_character("aster")
-	await get_tree().process_frame
 	var body = inst.find_child("DownedBody_aster", true, false)
 	_assert_true(body != null, "a downed member grows a clickable body zone")
 	_assert_true(body != null and (body in (inst._preview_interactables as Array)),
@@ -18390,7 +18400,7 @@ func _test_downed_carry() -> void:
 	var away: Vector3 = gs.get_position("peris") + Vector3(4.5, 0.0, 0.0)
 	gs.command_move_to_pos("peris", away)
 	_advance_to_arrival(inst, gs, "peris")
-	await get_tree().process_frame
+	inst.headless_advance(0.3, 0.1)
 	_assert_true(gs.get_position("aster").distance_to(gs.get_position("peris")) < 1.5,
 		"the body is carried along")
 	_assert_true((body.position as Vector3).distance_to(gs.get_position("aster")) < 0.5,
@@ -18402,7 +18412,7 @@ func _test_downed_carry() -> void:
 	_assert_true(gs.has_free_hands("peris", 2), "hands free again after the set-down")
 	# Revive clears the zone.
 	gs.restore_character("aster")
-	await get_tree().process_frame
+	await get_tree().process_frame   # queue_free needs one real frame; the ONLY frame this test waits
 	_assert_true(inst.find_child("DownedBody_aster", true, false) == null,
 		"a restored member's body zone is gone")
 	inst.queue_free()
