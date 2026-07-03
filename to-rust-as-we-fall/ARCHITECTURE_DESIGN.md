@@ -262,6 +262,19 @@ The archetypes above isolate one system each (a canyon, a corridor, a gate, a wa
 
 ---
 
+### Named set-pieces (§4.17–)
+
+Specific named locations from the lore, not generic district archetypes (cf. Mother Flure in the flora doc). Canon fixes the **story and meaning**; the **physical form** is 🔧 extrapolation where the GDD doesn't specify it.
+
+### 4.17 PLA-8o's Pharmacy — the poisoned dispensary
+**Canon (GDD §4.11):** "PLA-8o is a pharmacy where demoralized or automated work began killing people and a crowd raised signs to shut it down... the failure of its services is not one bad firm but the whole system indicted at once, which is what turns decay into storming." The name reads as **"Plato"** — the in-world figure of Derrida's *pharmakon*, the single substance that is **remedy and poison at once**: "a pharmacy whose collapse poisons the people it was built to heal" (GDD bibliography). Register = the **demoralized-collapse socialist idiom** (The Honeycomb Cooperative's register); specific district placement is **pending** per §4.11. Everything below the story is **🔧 extrapolation** — canon fixes no physical form.
+**Read:** a Collective civic dispensary caught at the moment of its storming — a row of dispensing hatches, a jammed automated compounding line overflowing behind faked-finish panels, abandoned SHUT-IT-DOWN placards at the forced doors. The healing-green dispensary glow curdles sick and dim in the contaminated batch.
+**Massing/knobs:** `shell=fractal_branch_cluster (squat civic dispensary hall)`, `storeys=1–2`, `rhythm=even_bay (row of dispensing hatches)`, `window=shuttered_metal (hatches half-rolled) + scan_grille`, `door=cycling_slab (forced open)`, `crown=service_bulkhead`, `furniture=[degraded compounding line, overflow vats, dispensary shelving, abandoned protest placards]`, `sign=picturesque_community × ironic_over_failure`, `decay=collapse_scar + weeping_corrosion (overflow) + ferric contamination`, `emissive=terminal_green dispensary glow going sick/dim + dead cyan-white scan counter`.
+**Two-read:** a Collective pharmacy built to heal **AND** an iatrogenic lesion — the body's own remedy turned toxic, remedy and poison on the same shelf.
+**Prompt:** *A complete freestanding Collective pharmacy — PLA-8o — caught at the moment of its storming: a squat civic dispensary hall, its street face a row of dispensing hatches half-rolled shut behind their shutters. The doors are forced open; abandoned hand-lettered placards lean against the frame, one reading "SHUT IT DOWN." Behind faked-finish wall panels a degraded automated compounding line has jammed and overflowed, a rust-tinted fluid weeping down the base. On the dispensary shelves, rows of vials: the healthy stock glows a clean terminal-green (#5ce87f), but the contaminated batch beside it has curdled — the same green gone sick and dim, ferric-red contamination bleeding through the fluid, remedy and poison on one shelf. An aspirational Collective community plaque still hangs above, protest signs raised over it. Low-poly faceted PS2-era geometry, pixel-art tiles, muted teal panels streaking ferric-red. Reads at once as a civic pharmacy built to heal and as an iatrogenic wound in the tissue — the cure that became the poison. Frame the complete freestanding building — full silhouette from ground line to crown, three-quarter street-level view at a slight low angle, near-black void beyond.*
+
+---
+
 ## 5. Element sheets — the kit-of-parts references
 
 **These are the highest-value prompts for building a *parameterized* generator**, because each sheet becomes a direct visual menu for one knob's option set. Use the element-sheet variant of the preamble (§1). Each prompt asks for a **labeled row of 3–5 faceted low-poly variants on a plain dark background** — a reference sheet, not a scene.
