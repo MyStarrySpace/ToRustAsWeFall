@@ -414,7 +414,7 @@ level-element composition, and a micro-chunk seed in the 80-98% band.
 4. GasafoetidaPod (carried repellent + fire-burst register)
 5. SpikerEnemy (rooted LOS turret) + TanglerEnemy (stealth grappler) — unlocks the predation duel cards
 6. Meeb engulf-freeze window (already on the leverage list)
-7. CloakedEnemy + Seefern reveal volume (the Redactor gate; late-game mandatory)
+7. CloakedEnemy + reveal channels (the Redactor gate; late-game mandatory). Reveal mechanisms RULED 2026-07-02: material-signature mismatch under Seefern light (metallic/roughness vs surroundings — one rule covering Hidra/early-Crust/Redactor/Tangler) + gas-flow distortion inside a Gasafoetida cloud (silhouette while in the aura, cloak not stripped)
 8. Flora-network warning propagation (the tended-network read — flagship, already Tier-3 on the list)
 9. FlowRouterValve (rotate-the-pipes terminal variant), MovingPlatform/portal-ferry, conveyor-ride,
    spike-ledge sweep toggles — the element-side classes, one each.
