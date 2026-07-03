@@ -281,6 +281,13 @@ func _warp_xform(flat: Vector3) -> Transform3D:
 		return Transform3D(Basis.IDENTITY, flat)
 	return _coord_map.to_xform(flat)
 
+## The warped world POINT at a flat point — for per-vertex warping (floor tile corners), where each vertex
+## takes its own place on the helix instead of riding one rigid cell frame.
+func _warp_pos(flat: Vector3) -> Vector3:
+	if _coord_map == null:
+		return flat
+	return _coord_map.to_world(flat)
+
 ## Re-seat one already-built (flat-authored) child onto the helix at its own (s, lane) — its authored height above
 ## the deck rides along (to_xform carries the per-level lift). Boxes/labels/zones all warp uniformly this way.
 func _warp_child(child: Node) -> void:
@@ -969,47 +976,58 @@ func _build_floor_surface(grid, lvl: int, cells: Array, risk: Dictionary, cell: 
 		if is_risk:
 			has_risk = true
 		# Top surface at floor Y (+0.02 so overlays read above it); a thin SOLID slab so the click-raycast
-		# reliably lands on it (a flat zero-thickness trimesh doesn't register a downward ray). On a spiral the
-		# slab is built in the cell's helix frame (oriented to the deck tangent) so the whole floor curls; flat,
-		# _warp_xform is a plain translation and the slab is axis-aligned exactly as before.
-		_add_floor_slab(st_risk if is_risk else st_main, _warp_xform(w), h, 0.16)
+		# reliably lands on it (a flat zero-thickness trimesh doesn't register a downward ray). Each tile's
+		# top CORNERS are warped through the coord map individually — adjacent cells share their flat corner
+		# points, so their warped vertices coincide and the deck stays watertight with a tile seam on every
+		# data-cell boundary at every lane (a rigid per-cell frame left wedge gaps where the warp fans the
+		# outer lanes). Flat levels warp through identity and get the same axis-aligned tile as before.
+		var corners := [
+			_warp_pos(w + Vector3(-h, 0.0, -h)),
+			_warp_pos(w + Vector3(h, 0.0, -h)),
+			_warp_pos(w + Vector3(h, 0.0, h)),
+			_warp_pos(w + Vector3(-h, 0.0, h)),
+		]
+		_add_floor_slab(st_risk if is_risk else st_main, corners, 0.16)
 	_commit_floor_surface(st_main, "GeneratedFloor_L%d" % lvl, _tiled_floor_material("deck_metal"))
 	if has_risk:
 		_commit_floor_surface(st_risk, "GeneratedFloorRisk_L%d" % lvl, _tiled_floor_material("rust_iron"))
 
-func _tri(st: SurfaceTool, xf: Transform3D, a: Vector3, b: Vector3, c: Vector3, n: Vector3) -> void:
-	st.set_normal((xf.basis * n).normalized())
-	st.add_vertex(xf * a)
-	st.add_vertex(xf * b)
-	st.add_vertex(xf * c)
+## A thin box (floor tile with thickness) built from four already-warped TOP corner points (order: -s-lane,
+## +s-lane, +s+lane, -s+lane in the flat frame). Its top sits +0.02 above the corners (just above the deck so
+## overlays read) and drops `thick` straight down. A closed solid so its trimesh collision is a dependable ray
+## target from above (a flat quad isn't). Because the corners are warped per-vertex, adjacent cells share
+## corner points and the deck tiles watertight on flat AND warped levels alike.
+func _add_floor_slab(st: SurfaceTool, corners: Array, thick: float) -> void:
+	var lift := Vector3.UP * 0.02
+	var drop := Vector3.DOWN * thick
+	var A: Vector3 = corners[0] + lift
+	var B: Vector3 = corners[1] + lift
+	var C: Vector3 = corners[2] + lift
+	var D: Vector3 = corners[3] + lift
+	var E := A + drop
+	var F := B + drop
+	var G := C + drop
+	var H := D + drop
+	_tri_auto(st, A, C, B)
+	_tri_auto(st, A, D, C)   # top
+	_tri_auto(st, E, F, G)
+	_tri_auto(st, E, G, H)   # bottom
+	_tri_auto(st, A, B, F)
+	_tri_auto(st, A, F, E)   # -lane side
+	_tri_auto(st, D, H, G)
+	_tri_auto(st, D, G, C)   # +lane side
+	_tri_auto(st, A, E, H)
+	_tri_auto(st, A, H, D)   # -s side
+	_tri_auto(st, B, C, G)
+	_tri_auto(st, B, G, F)   # +s side
 
-## A thin box (floor tile with thickness) built in the cell frame `xf` — its TOP is at local y=0.02 (just above
-## the deck so overlays read), extending +/-h laterally and `thick` down. A closed solid so its trimesh collision
-## is a dependable ray target from above (a flat quad isn't). `xf` is a plain translation on a flat level and the
-## oriented helix frame on a spiral, so the same box code tiles a straight deck or curls onto the helix.
-func _add_floor_slab(st: SurfaceTool, xf: Transform3D, h: float, thick: float) -> void:
-	var yt := 0.02
-	var yb := 0.02 - thick
-	var A := Vector3(-h, yt, -h)
-	var B := Vector3(h, yt, -h)
-	var C := Vector3(h, yt, h)
-	var D := Vector3(-h, yt, h)
-	var E := Vector3(-h, yb, -h)
-	var F := Vector3(h, yb, -h)
-	var G := Vector3(h, yb, h)
-	var H := Vector3(-h, yb, h)
-	_tri(st, xf, A, C, B, Vector3.UP)
-	_tri(st, xf, A, D, C, Vector3.UP)          # top
-	_tri(st, xf, E, F, G, Vector3.DOWN)
-	_tri(st, xf, E, G, H, Vector3.DOWN)        # bottom
-	_tri(st, xf, A, B, F, Vector3(0, 0, -1))
-	_tri(st, xf, A, F, E, Vector3(0, 0, -1))   # -Z side
-	_tri(st, xf, D, H, G, Vector3(0, 0, 1))
-	_tri(st, xf, D, G, C, Vector3(0, 0, 1))    # +Z side
-	_tri(st, xf, A, E, H, Vector3(-1, 0, 0))
-	_tri(st, xf, A, H, D, Vector3(-1, 0, 0))   # -X side
-	_tri(st, xf, B, C, G, Vector3(1, 0, 0))
-	_tri(st, xf, B, G, F, Vector3(1, 0, 0))    # +X side
+## Emit one triangle with its face normal derived from the (possibly warped) vertices themselves.
+func _tri_auto(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
+	var n := (b - a).cross(c - a)
+	st.set_normal(n.normalized() if n.length_squared() > 1e-12 else Vector3.UP)
+	st.add_vertex(a)
+	st.add_vertex(b)
+	st.add_vertex(c)
 
 func _commit_floor_surface(st: SurfaceTool, node_name: String, mat: Material) -> void:
 	var mesh := st.commit()

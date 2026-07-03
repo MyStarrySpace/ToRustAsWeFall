@@ -19,11 +19,18 @@ var kclimb := -0.15     # world height gained per unit s — NEGATIVE: the helix
 var s_offset := 0.0     # data-world x that maps to s = 0 (the grid origin)
 var lane_center := 0.0  # data-world z of the path centreline
 
-## Build from a unified_grid_v1 grid_data. `turns` ~ how many times the level wraps; `radius`/`descent_per_turn`
-## shape the spiral. Radius is kept > the lane half-width so the effective radius stays positive across the deck.
-## The helix DESCENDS (kclimb < 0): each full turn drops `descent_per_turn` world-units, so the cell one turn
-## ahead sits directly below — the geometry that makes a drop-down pad a real shortcut.
-static func from_grid(grid_data: Dictionary, turns := 0.0, radius := 9.0, descent_per_turn := 6.0, base_y := 0.45) -> SpiralCoordMap:
+## Build from a unified_grid_v1 grid_data. `turns` ~ how many times the level wraps; `min_radius`/
+## `descent_per_turn` shape the spiral. The helix DESCENDS (kclimb < 0): each full turn drops
+## `descent_per_turn` world-units, so the cell one turn ahead sits directly below — the geometry that makes
+## a drop-down pad a real shortcut.
+##
+## The warp PRESERVES THE METRIC at the centreline: ktheta * r0 = 1 (the ChannelsArc invariant), so one flat
+## data unit of s sweeps exactly one world-unit of arc at lane 0 — adjacent cells stay one cell apart on the
+## deck, characters/tiles/the hover grid all keep the flat grid's spacing. The radius therefore DERIVES from
+## the turn target (one loop = TAU*r0 world-units of deck = w/turns flat units), grown when the deck's inner
+## lane would crowd the centre; the effective turn count is recomputed from the final radius so the
+## descent-per-turn stays honest (the HubShapeCoordMap pattern).
+static func from_grid(grid_data: Dictionary, turns := 0.0, min_radius := 0.0, descent_per_turn := 6.0, base_y := 0.45) -> SpiralCoordMap:
 	var m := SpiralCoordMap.new()
 	var origin: Array = grid_data.get("origin", [0.0, 0.45, 0.0])
 	var cs := float(grid_data.get("cell_size", 1.0))
@@ -32,10 +39,11 @@ static func from_grid(grid_data: Dictionary, turns := 0.0, radius := 9.0, descen
 	var t := turns if turns > 0.0 else clampf(w / 40.0, 1.0, 2.5)   # ~1.5 turns for a mid-length level
 	m.s_offset = float(origin[0])
 	m.lane_center = float(origin[2]) + h * 0.5
-	m.r0 = maxf(radius, h * 0.5 + 2.5)
+	m.r0 = maxf(maxf(w / (t * TAU), h * 0.5 + 2.5), min_radius)
 	m.y0 = base_y
-	m.ktheta = t * TAU / maxf(1.0, w)
-	m.kclimb = -(descent_per_turn * t / maxf(1.0, w))   # -> descent_per_turn world-units of DROP per full turn
+	m.ktheta = 1.0 / m.r0                               # arc-length parameterisation at lane 0
+	var eff_turns := w * m.ktheta / TAU                 # = t unless the radius floor grew the loop
+	m.kclimb = -(descent_per_turn * eff_turns / maxf(1.0, w))   # -> descent_per_turn world-units of DROP per full turn
 	return m
 
 ## Flat cells (data-x span) per full turn of the helix — the forward jump a drop-down to the turn directly below

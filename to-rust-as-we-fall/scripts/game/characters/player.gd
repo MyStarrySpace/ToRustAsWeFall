@@ -400,20 +400,25 @@ func _apply_hover_grid(hit: Vector3, _normal: Vector3) -> void:
 	# Decal supplies its own Y, projecting straight down from above the snapped point.
 	var warped := game_state != null and game_state.coord_map != null
 	var center: Vector3
+	var basis := Basis.IDENTITY
 	if warped:
-		var flat: Vector3 = game_state.coord_map.to_data(hit)
-		center = game_state.coord_map.to_world(_hover_grid_center(flat))
+		var flat_center: Vector3 = _hover_grid_center(game_state.coord_map.to_data(hit))
+		center = game_state.coord_map.to_world(flat_center)
+		# Turn the grid patch to the deck's local frame (a yaw-only basis: right = lane, forward = along the
+		# path), so its lines sit on the warped cells' seams instead of the world axes. Projection stays
+		# straight down — the warp basis keeps +Y up.
+		basis = game_state.coord_map.to_basis(flat_center)
 	else:
 		center = _hover_grid_center(hit)
 	# Centre the projection box ON the deck surface (not lifted above it), so its half-height reaches just
 	# below and just above the floor — tight enough that a helix loop stacked overhead never falls inside the
 	# box and gets the grid stamped on it too (that doubled stamp read as "the grid landed away from where I
-	# pointed"). Identity basis = straight-down projection. Guard the warped to_world's INF case.
+	# pointed"). Guard the warped to_world's INF case.
 	var origin := Vector3(center.x, center.y, center.z)
 	if not origin.is_finite():
 		_hover_grid.visible = false
 		return
-	_hover_grid.global_transform = Transform3D(Basis.IDENTITY, origin)
+	_hover_grid.global_transform = Transform3D(basis, origin)
 	_hover_grid.visible = true
 
 ## Drive the hover grid from a WORLD point with no cursor/camera — raycasts straight DOWN onto the floor

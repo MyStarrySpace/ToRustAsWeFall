@@ -423,6 +423,9 @@ func _ready() -> void:
 			"--test-hub-shapes":
 				ran_test = true
 				await _test_hub_shapes()
+			"--test-warp-metric":
+				ran_test = true
+				_test_warp_metric()
 			"--test-hub-base-playable":
 				ran_test = true
 				await _test_hub_base_playable()
@@ -1226,6 +1229,7 @@ func _run_all_tests() -> void:
 	await _test_shelter_safety()
 	await _test_stretch_branches()
 	await _test_hub_shapes()
+	_test_warp_metric()
 	await _test_hub_base_playable()
 	await _test_ascii_height_layers()
 	await _test_generated_solution_replay()
@@ -6343,13 +6347,17 @@ func _synthetic_player_move_click(instance: Node, world_pos: Vector3) -> void:
 	# The synthetic click projects a WORLD target to a screen point, which the player then
 	# raycasts back to the ground. A follow-camera that has drifted so the target sits off-screen
 	# (or grazes the floor collider's edge) makes that back-ray miss — the player silently drops the
-	# click, and a parked lead freezes the camera so every re-issue misses the same way. A real player
-	# only clicks points they can SEE, so they never hit this; the harness must, so when the projected
-	# point won't land on the ground, command the move directly through the same _set_click_target path
-	# a ground click drives (this is movement, NOT a gate force-fire — the party still must walk + dwell).
+	# click, and a parked lead freezes the camera so every re-issue misses the same way. The back-ray
+	# can also land on a DIFFERENT deck than the one under the target (on a helix, a nearer coil sits
+	# between the camera and a far cell, so the ray stops there and the click walks a few cells instead
+	# of across the level). A real player only clicks points they can SEE, so they never hit either;
+	# the harness must, so when the projected point won't land on the ground NEAR the target, command
+	# the move directly through the same _set_click_target path a ground click drives (this is
+	# movement, NOT a gate force-fire — the party still must walk + dwell).
 	var screen_pos := cam.unproject_position(world_pos)
+	var ray_hit: Vector3 = p._raycast_ground(screen_pos) if p.has_method("_raycast_ground") else Vector3.INF
 	var on_screen: bool = not cam.is_position_behind(world_pos) \
-		and p.has_method("_raycast_ground") and p._raycast_ground(screen_pos) != Vector3.INF
+		and ray_hit != Vector3.INF and ray_hit.distance_to(world_pos) < 1.5
 	if on_screen:
 		var ev := InputEventMouseButton.new()
 		ev.button_index = MOUSE_BUTTON_RIGHT
@@ -13976,6 +13984,39 @@ func _test_hub_base_playable() -> void:
 ## as its hub. Assert per shape: the flat<->world warp ROUND-TRIPS (a click on the deck inverts back to its flat
 ## cell), the warp CURLS the corridor into a compact hub footprint (not a straight line), and it DESCENDS. Proves
 ## "plug any shape in as a parameter" holds — the inverse is what makes clicks land on the deck for every shape.
+## The warp must PRESERVE THE METRIC at the deck centreline: two flat cells that are 1 cell_size apart in
+## the data layer must land ~1 cell_size apart on the warped deck. If the sweep rate and radius are picked
+## independently the deck stretches (characters on adjacent cells stand metres apart, floor tiles gap, and
+## the unit hover grid stops matching the deck) — the hand-authored ChannelsArc encodes the invariant as
+## KTHETA*R0 ~ 1; every generated coord map must hold it too.
+func _test_warp_metric() -> void:
+	_test_name = "Warp Metric"
+	var nav := {"origin": [0.0, 0.45, 0.0], "cell_size": 1.0, "width": 60, "height": 10}
+	var lane_center := 0.0 + 10.0 * 0.5
+	var maps := {
+		"spiral": load("res://scripts/generation/spiral_coord_map.gd").from_grid(nav),
+		"hub:circle": load("res://scripts/generation/hub_shape_coord_map.gd").from_grid(nav, {"type": "circle"}),
+		"hub:rect": load("res://scripts/generation/hub_shape_coord_map.gd").from_grid(nav, {"type": "rect", "aspect": 1.8}),
+	}
+	for id in maps:
+		var cm = maps[id]
+		var worst := 0.0
+		var sum := 0.0
+		var n := 0
+		for s in range(5, 55):
+			var a: Vector3 = cm.to_world(Vector3(float(s), 0.45, lane_center))
+			var b: Vector3 = cm.to_world(Vector3(float(s) + 1.0, 0.45, lane_center))
+			var d := a.distance_to(b)
+			sum += d
+			n += 1
+			worst = maxf(worst, absf(d - 1.0))
+		print("  [warp-metric] %-10s centreline neighbour spacing avg=%.3f worst-dev=%.3f (want ~1.0)" % [id, sum / float(n), worst])
+		_assert_true(worst < 0.2, "%s: adjacent centreline cells land ~1 world-unit apart on the deck (worst |d-1|=%.2f)" % [id, worst])
+		# The lateral (lane) metric must hold too — a cell one lane over sits ~1 world-unit away.
+		var la: Vector3 = cm.to_world(Vector3(20.0, 0.45, lane_center - 0.5))
+		var lb: Vector3 = cm.to_world(Vector3(20.0, 0.45, lane_center + 0.5))
+		_assert_true(absf(la.distance_to(lb) - 1.0) < 0.1, "%s: adjacent lanes stay ~1 world-unit apart (d=%.2f)" % [id, la.distance_to(lb)])
+
 func _test_hub_shapes() -> void:
 	_test_name = "Hub Shapes"
 	var HubShape = load("res://scripts/generation/hub_shape_coord_map.gd")
