@@ -107,6 +107,8 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 	var f_glow := _field(seed_value, "bld:glow", 0.055)
 
 	var boxes_before := frag.walls.size()
+	var props_on := bool(opts.get("props", true))
+	var prop_count := 0
 	var out_lots: Array = []
 	for lot in lots:
 		var lc: Vector2i = lot["cell"]
@@ -136,11 +138,88 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 
 		var stats := {"boxes": 0}
 		_emit_building(frag, mn, mx, height, floors, base_col, decay, glow_density, t_pal, jitter,
-			_street_dir(lc, gx, gz, walk, w, h), stats)
+			_street_dir(lc, gx, gz, walk, w, h), props_on, stats)
 		out_lots.append({"center": Vector3(center.x, 0.0, center.y), "floors": floors,
 			"height": height, "color": base_col})
 
-	return {"buildings": out_lots.size(), "boxes": frag.walls.size() - boxes_before, "lots": out_lots}
+	# --- STREET FURNITURE over the buffer band (dist==1: the non-walkable kerb between street and
+	# lots). Same field-driven cohesion: the decay field picks tended vs desiccated planters and
+	# thins the lamps; the glow field decides which lamps are actually lit. A subset of lit lamps
+	# carries a real OmniLight (capped) so the walk routes get pools of light. ---
+	if props_on:
+		var prop_rng := _rng(seed_value, "bld:props")
+		var lamp_lights := 0
+		var stats_p := {"boxes": 0}
+		for z in range(h):
+			for x in range(w):
+				var cell := Vector2i(x, z)
+				if int(dist.get(cell, 0)) != 1 or used.has(cell):
+					continue
+				if _rf(prop_rng) > 0.24:
+					continue
+				# face the adjacent street; sit pushed 0.2 toward the lot side of the kerb cell
+				var facing := Vector2i.ZERO
+				for nd in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					if walk.has(cell + nd):
+						facing = nd
+						break
+				if facing == Vector2i.ZERO:
+					continue
+				var raw_c := Vector2(origin.x + (float(x) + 0.5) * cs, origin.z + (float(z) + 0.5) * cs)
+				var cpos2 := raw_c - Vector2(float(facing.x), float(facing.y)) * 0.2
+				var decay2 := _n01(f_decay, cpos2.x, cpos2.y)
+				var lit := _rf(prop_rng) < _n01(f_glow, cpos2.x, cpos2.y) * (1.0 - decay2 * 0.6) + 0.15
+				# long furniture (troughs, rails, pipes) runs ALONG the kerb — legal only when every
+				# walkable 8-neighbour lies strictly on the FACING side (corner bulges and diagonal
+				# street cells would otherwise catch a trough end). A DOUBLE kerb (streets on both
+				# sides — a median strip) has no safe "away" side: only a centred bollard row fits it.
+				var along_v := Vector2i(absi(facing.y), absi(facing.x))
+				if walk.has(cell - facing):
+					if not walk.has(cell + along_v) and not walk.has(cell - along_v):
+						_prop_bollards(frag, raw_c, facing, stats_p)
+						prop_count += 1
+					continue
+				var clear_flanks := true
+				for n in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+						Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]:
+					if walk.has(cell + n) and n.x * facing.x + n.y * facing.y <= 0:
+						clear_flanks = false
+						break
+				var pick := _rf(prop_rng)
+				if pick < 0.36 or not clear_flanks:
+					var with_light := lit and lamp_lights < 8 and _rf(prop_rng) < 0.55
+					_prop_street_lamp(frag, cpos2, facing, lit, with_light, stats_p)
+					if with_light:
+						lamp_lights += 1
+				elif pick < 0.66:
+					_prop_planter(frag, cpos2, facing, decay2, stats_p)
+				elif pick < 0.88:
+					_prop_bollards(frag, cpos2, facing, stats_p)
+				else:
+					_prop_pipe_stub(frag, cpos2, facing, stats_p)
+				prop_count += 1
+		# A rare MEMORIAL MONUMENT on an unbuilt gap cell near the district's heart.
+		if _rf(prop_rng) < 0.35:
+			var best := Vector2i(-1, -1)
+			var best_d := 1 << 30
+			var mid := Vector2i(w / 2, h / 2)
+			for z2 in range(h):
+				for x2 in range(w):
+					var c2 := Vector2i(x2, z2)
+					var dd := int(dist.get(c2, 0))
+					if used.has(c2) or dd < 2 or dd > 3:
+						continue
+					var md: int = absi(c2.x - mid.x) + absi(c2.y - mid.y)
+					if md < best_d:
+						best_d = md
+						best = c2
+			if best.x >= 0:
+				_prop_monument(frag, Vector2(origin.x + (float(best.x) + 0.5) * cs,
+					origin.z + (float(best.y) + 0.5) * cs), stats_p)
+				prop_count += 1
+
+	return {"buildings": out_lots.size(), "boxes": frag.walls.size() - boxes_before,
+		"props": prop_count, "lots": out_lots}
 
 # --- lot geometry helpers ---
 
@@ -210,7 +289,7 @@ static func _street_dir(lc: Vector2i, gx: int, gz: int, walk: Dictionary, w: int
 
 static func _emit_building(frag: Fragment, mn: Vector2, mx: Vector2, height: float, floors: int,
 		base_col: Color, decay: float, glow_density: float, warm_bias: float, jitter: SeededRng,
-		street: Vector2i, stats: Dictionary) -> void:
+		street: Vector2i, props_on: bool, stats: Dictionary) -> void:
 	# MASSING — 1..3 setback tiers; each steps IN by a taper and slides slightly off-center
 	# (asymmetry), so the stack reads faceted-organic rather than gridded.
 	var tier_count := clampi(1 + floors / 2, 1, 3)
@@ -313,11 +392,90 @@ static func _emit_building(frag: Fragment, mn: Vector2, mx: Vector2, height: flo
 			Vector3(0.18, 0.7, 0.12) if street.y != 0 else Vector3(0.12, 0.7, 0.18),
 			Color(0.06, 0.06, 0.07), sign_col, 1.6 * (1.0 - decay * 0.5), stats)
 
+	# BUILDING-ATTACHED PROPS — a wall sconce beside the door (warm-lit follows the palette field),
+	# a terminal kiosk at healthy blocks, pipe roots spreading along the base where decay has set in.
+	if not props_on:
+		return
+	var along := Vector2(float(absi(street.y)), float(absi(street.x)))   # unit along the door face
+	if _rf(jitter) < 0.75 - decay * 0.5:
+		var sc_col := GLOW_WARM if _rf(jitter) < warm_bias else GLOW_GREEN
+		var sc_pos := dpos + Vector3(along.x * 0.85, 1.3, along.y * 0.85)
+		_box_glow(frag, sc_pos, Vector3(0.16, 0.22, 0.16), Color(0.07, 0.07, 0.08), sc_col,
+			1.1 * (1.0 - decay * 0.4), stats)
+	if _rf(jitter) < 0.18 and decay < 0.4:
+		var kpos := dpos + Vector3(along.x * -1.3 + float(street.x) * 0.22, 0.0, along.y * -1.3 + float(street.y) * 0.22)
+		_box(frag, Vector3(kpos.x, 0.75, kpos.z),
+			Vector3(0.42, 1.5, 0.5) if street.y != 0 else Vector3(0.5, 1.5, 0.42), Color(0.12, 0.15, 0.15), stats)
+		_box_glow(frag, Vector3(kpos.x + float(street.x) * 0.24, 1.05, kpos.z + float(street.y) * 0.24),
+			Vector3(0.3, 0.38, 0.04) if street.y != 0 else Vector3(0.04, 0.38, 0.3),
+			Color(0.05, 0.08, 0.06), GLOW_GREEN, 1.4, stats)
+	if decay > 0.55:
+		var pipe_col := Color(0.21, 0.13, 0.09)
+		for pr in range(2):
+			var run := (g_sz.x if street.y != 0 else g_sz.y) * (0.5 + _rf(jitter) * 0.4)
+			var slide := along * (_rf(jitter) - 0.5) * 0.8
+			_box(frag, Vector3(dpos.x + float(street.x) * 0.12 + slide.x, 0.16 + float(pr) * 0.22,
+				dpos.z + float(street.y) * 0.12 + slide.y),
+				Vector3(run, 0.14, 0.14) if street.y != 0 else Vector3(0.14, 0.14, run), pipe_col, stats)
+		_box(frag, dpos + Vector3(along.x * 0.5 + float(street.x) * 0.1, 0.9, along.y * 0.5 + float(street.y) * 0.1),
+			Vector3(0.13, 1.8, 0.13), pipe_col.darkened(0.1), stats)
+
 static func _tier_at(tiers: Array, y: float) -> Dictionary:
 	for tr in tiers:
 		if y >= float(tr["y0"]) and y <= float(tr["y1"]):
 			return tr
 	return tiers[tiers.size() - 1]
+
+# --- street furniture (canon §3.12 names; box-compound reads, no collision) ---
+
+# street_lamp: post + short arm + head. A LIT head glows; with_light adds a real OmniLight pool.
+static func _prop_street_lamp(frag: Fragment, p: Vector2, facing: Vector2i, lit: bool,
+		with_light: bool, stats: Dictionary) -> void:
+	var pole_col := Color(0.10, 0.11, 0.13)
+	_box(frag, Vector3(p.x, 1.6, p.y), Vector3(0.1, 3.2, 0.1), pole_col, stats)
+	var arm := Vector2(float(facing.x), float(facing.y)) * 0.25
+	_box(frag, Vector3(p.x + arm.x * 0.5, 3.15, p.y + arm.y * 0.5),
+		Vector3(absf(arm.x) + 0.08, 0.08, absf(arm.y) + 0.08), pole_col, stats)
+	var head := Vector3(p.x + arm.x, 3.05, p.y + arm.y)
+	if lit:
+		_box_glow(frag, head, Vector3(0.26, 0.18, 0.26), Color(0.08, 0.09, 0.08), GLOW_GREEN, 1.5, stats)
+		if with_light:
+			frag.lights.append({"pos": head - Vector3(0, 0.3, 0), "color": Color(0.45, 0.85, 0.55),
+				"energy": 1.1, "range": 4.5})
+	else:
+		_box(frag, head, Vector3(0.26, 0.18, 0.26), Color(0.08, 0.09, 0.08), stats)
+
+# planter_trough: tended (green top) or desiccated (dun top) — the decay field decides.
+static func _prop_planter(frag: Fragment, p: Vector2, facing: Vector2i, decay: float, stats: Dictionary) -> void:
+	var along_x := facing.y != 0   # trough runs parallel to the street edge
+	_box(frag, Vector3(p.x, 0.22, p.y),
+		Vector3(1.3, 0.44, 0.5) if along_x else Vector3(0.5, 0.44, 1.3), Color(0.12, 0.12, 0.13), stats)
+	var top_col := Color(0.15, 0.32, 0.19) if decay < 0.5 else Color(0.24, 0.19, 0.12)
+	_box(frag, Vector3(p.x, 0.5, p.y),
+		Vector3(1.15, 0.22, 0.38) if along_x else Vector3(0.38, 0.22, 1.15), top_col, stats)
+
+# bollard_row: three posts guarding the kerb.
+static func _prop_bollards(frag: Fragment, p: Vector2, facing: Vector2i, stats: Dictionary) -> void:
+	var along := Vector2(float(absi(facing.y)), float(absi(facing.x)))
+	for i in range(3):
+		var off := along * (float(i) - 1.0) * 0.5
+		_box(frag, Vector3(p.x + off.x, 0.35, p.y + off.y), Vector3(0.14, 0.7, 0.14),
+			Color(0.14, 0.15, 0.17), stats)
+
+# a stub of surfaced pipework breaking the kerb line (the pipe_root_spread's street-side cousin).
+static func _prop_pipe_stub(frag: Fragment, p: Vector2, facing: Vector2i, stats: Dictionary) -> void:
+	var along_x := facing.y != 0
+	var pipe_col := Color(0.21, 0.13, 0.09)
+	_box(frag, Vector3(p.x, 0.14, p.y),
+		Vector3(1.1, 0.16, 0.16) if along_x else Vector3(0.16, 0.16, 1.1), pipe_col, stats)
+	_box(frag, Vector3(p.x, 0.5, p.y), Vector3(0.15, 0.9, 0.15), pipe_col.darkened(0.1), stats)
+
+# memorial_monument: plinth + shaft + a terminal-green plaque; one per district at most.
+static func _prop_monument(frag: Fragment, p: Vector2, stats: Dictionary) -> void:
+	_box(frag, Vector3(p.x, 0.25, p.y), Vector3(1.0, 0.5, 1.0), Color(0.17, 0.18, 0.20), stats)
+	_box(frag, Vector3(p.x, 1.6, p.y), Vector3(0.46, 2.2, 0.46), Color(0.15, 0.16, 0.18), stats)
+	_box_glow(frag, Vector3(p.x, 1.0, p.y + 0.27), Vector3(0.3, 0.34, 0.04),
+		Color(0.06, 0.07, 0.06), GLOW_GREEN, 1.2, stats)
 
 static func _box(frag: Fragment, pos: Vector3, size: Vector3, color: Color, stats: Dictionary) -> void:
 	frag.walls.append({"pos": pos, "size": size, "color": color})

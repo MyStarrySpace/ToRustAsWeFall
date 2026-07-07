@@ -3235,15 +3235,34 @@ func _test_building_filler() -> void:
 			break
 	_assert_true(prefix_same, "the layout's own walls are byte-identical under the skirt (filler only appends)")
 
-	# --- determinism: the whole architecture layer reproduces from the seed ---
+	# --- determinism: the whole architecture layer reproduces from the seed (props + lamp lights too) ---
 	var built_b = Grammar.generate(7)
 	_assert_equals(str(built.walls), str(built_b.walls), "same seed -> identical architecture boxes")
+	_assert_equals(str(built.lights), str(built_b.lights), "same seed -> identical lamp light pools")
+
+	# --- props: street furniture appears, respects its own off-switch, and lamp lights stay capped ---
+	var prop_seeds := 0
+	for seed in range(1, 9):
+		if int(Grammar.generate(seed).params.get("props", 0)) >= 3:
+			prop_seeds += 1
+	_assert_true(prop_seeds >= 6, "most districts grow street furniture (%d/8 seeds with >=3 props)" % prop_seeds)
+	var no_props = Grammar.generate(7, {"props": false})
+	_assert_equals(int(no_props.params.get("props", -1)), 0, "props=false -> no street furniture")
+	_assert_true(no_props.walls.size() < built.walls.size(),
+		"props=false trims the box count (%d < %d)" % [no_props.walls.size(), built.walls.size()])
+	var light_cap_ok := true
+	for seed in range(1, 9):
+		var fl = Grammar.generate(seed)
+		var base_lights: int = Grammar.generate(seed, {"props": false}).lights.size()
+		if fl.lights.size() - base_lights > 8:
+			light_cap_ok = false
+	_assert_true(light_cap_ok, "lamp OmniLights stay within the perf cap (+8 max)")
 
 	# --- placement law: no building box touches a street (walkable cell) column or leaves the bounds ---
 	var placement_ok := true
 	var bounds_ok := true
 	var grounded_ok := true
-	for seed in range(1, 11):
+	for seed in range(1, 17):
 		var fb = Grammar.generate(seed, {"buildings": false})
 		var f = Grammar.generate(seed)
 		var cs := float(f.grid.get("cell_size", 1.5))
@@ -3260,6 +3279,8 @@ func _test_building_filler() -> void:
 			var r := Rect2(p.x - s.x * 0.5, p.z - s.z * 0.5, s.x, s.z)
 			for st in streets:
 				if r.intersects(st):
+					if placement_ok:
+						print("  [offender] seed %d wall[%d]: %s" % [seed, i, str(bx)])
 					placement_ok = false
 					break
 			if p.x - s.x * 0.5 < org.x - 0.1 or p.x + s.x * 0.5 > org.x + gw + 0.1 \
@@ -3267,7 +3288,7 @@ func _test_building_filler() -> void:
 				bounds_ok = false
 			if p.y - s.y * 0.5 < -0.1:
 				grounded_ok = false
-	_assert_true(placement_ok, "no building box intersects a street cell (0.5 clearance held, 10 seeds)")
+	_assert_true(placement_ok, "no building box intersects a street cell (0.5 clearance held, 16 seeds)")
 	_assert_true(bounds_ok, "every building box stays inside the district bounds")
 	_assert_true(grounded_ok, "every building box sits on or above the ground slab")
 
