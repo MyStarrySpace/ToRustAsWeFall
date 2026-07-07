@@ -23,6 +23,9 @@ extends RefCounted
 const CS := 1.5          # cell_size (unified_grid_v1)
 const LH := 4.0          # level_height (stacked floors)
 const MAX_LEVEL := 2     # stairs climb no higher than this (levels 0..2 — bounded towers)
+const SKIRT := 3         # extra gap cells ringing the layout when buildings fill it (a district block)
+
+const BuildingFillerScript := preload("res://scripts/generation/building_filler.gd")
 
 # Connector kinds. `walk` = open floor seam; `climb` = a vertical link (stair/ramp) — the seam registers
 # a grid inter-level link. New kinds (gap/ledge/…) extend COMPAT below; this is the typed-connector axis.
@@ -200,6 +203,7 @@ static func generate(seed_value: int, opts: Dictionary = {}) -> Fragment:
 	var budget := int(opts.get("budget", 90))
 	var max_shapes := int(opts.get("max_shapes", 26))
 	var populate := bool(opts.get("populate", true))
+	var buildings := bool(opts.get("buildings", true))
 
 	var pick_rng := _rng(seed_value, "grammar:pick")
 	var dim_rng := _rng(seed_value, "grammar:dim")
@@ -278,7 +282,7 @@ static func generate(seed_value: int, opts: Dictionary = {}) -> Fragment:
 					far_level = int(pc["level"])
 		placed_objects.append({"type": "exit_shelter", "cell": main_far, "level": far_level, "radius": 2.0})
 
-	return _emit(seed_value, placed_cells, placed_objects, links, spawn_cell, entry_bounds, entry_w, populate)
+	return _emit(seed_value, placed_cells, placed_objects, links, spawn_cell, entry_bounds, entry_w, populate, buildings)
 
 # Try each pooled builder (seeded order) until one places without overlap; else cap fails silently.
 static func _try_attach(conn: Dictionary, pick: SeededRng, dim: SeededRng, occupied: Dictionary,
@@ -381,7 +385,7 @@ static func _bounds(cells: Array) -> Dictionary:
 
 # ============================================================ EMIT (-> Fragment)
 static func _emit(seed_value: int, placed_cells: Array, placed_objects: Array, links: Array,
-		spawn_cell: Vector2i, entry_bounds: Dictionary, entry_w: int, populate: bool) -> Fragment:
+		spawn_cell: Vector2i, entry_bounds: Dictionary, entry_w: int, populate: bool, buildings: bool) -> Fragment:
 	# reachability BFS (same-level 4-neigh + links) from spawn; prune unreachable
 	var occ := {}
 	for pc in placed_cells:
@@ -419,9 +423,12 @@ static func _emit(seed_value: int, placed_cells: Array, placed_objects: Array, l
 			mn.x = mini(mn.x, c.x); mn.y = mini(mn.y, c.y)
 			mx.x = maxi(mx.x, c.x); mx.y = maxi(mx.y, c.y)
 			level_count = maxi(level_count, int(pc["level"]) + 1)
-	var origin_cell := mn - Vector2i(1, 1)      # 1-cell wall margin
-	var width := (mx.x - origin_cell.x) + 2
-	var height := (mx.y - origin_cell.y) + 2
+	# 1-cell wall margin; with buildings on, a SKIRT of extra gap cells rings the layout so the
+	# streets sit inside a district block instead of on a bare plinth.
+	var pad := 1 + (SKIRT if buildings else 0)
+	var origin_cell := mn - Vector2i(pad, pad)
+	var width := (mx.x - mn.x + 1) + 2 * pad
+	var height := (mx.y - mn.y + 1) + 2 * pad
 
 	var frag := Fragment.new()
 	frag.id = "shape_grammar_%d" % seed_value
@@ -626,11 +633,19 @@ static func _emit(seed_value: int, placed_cells: Array, placed_objects: Array, l
 				"color": Color(0.62, 0.68, 0.78), "energy": 2.0, "range": maxf(width, height) * CS})
 	frag.lights = lights
 
+	# --- architecture: fill the negative space (gap cells + skirt) with buildings whose parameters
+	# ride Perlin fields over world position — neighbours transition, districts read cohesive ---
+	var bld_stats := {"buildings": 0, "boxes": 0, "lots": []}
+	if buildings:
+		bld_stats = BuildingFillerScript.fill(frag, seed_value)
+
 	frag.params = {
 		"stamina_field_regen": true,
 		"grammar_seed": seed_value,
 		"shape_cells": kept.size(),
 		"level_count": level_count,
+		"buildings": int(bld_stats["buildings"]),
+		"building_lots": bld_stats["lots"],   # centers/floors/colors — the cohesion tests read these
 	}
 	frag.time_state = {"note_default": "Shape-grammar preview — N regenerates.", "routing_mode": "safe"}
 	return frag

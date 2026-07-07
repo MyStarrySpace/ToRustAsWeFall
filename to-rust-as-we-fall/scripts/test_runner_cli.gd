@@ -372,6 +372,9 @@ func _ready() -> void:
 			"--test-shape-grammar":
 				ran_test = true
 				_test_shape_grammar()
+			"--test-building-filler":
+				ran_test = true
+				_test_building_filler()
 			"--dump-shape-grammar":
 				ran_test = true
 				_dump_shape_grammar()
@@ -1302,6 +1305,7 @@ func _run_all_tests() -> void:
 	_test_poi_determinism()
 	_test_wfc_layout()
 	_test_shape_grammar()
+	_test_building_filler()
 	_test_roguelike_run()
 	_test_run_branch_decisions()
 	if not _heavy("Run Economy"):
@@ -3209,6 +3213,95 @@ func _test_shape_grammar() -> void:
 		if str((ob as Dictionary).get("type", "")) == "enemy":
 			bare_enemies += 1
 	_assert_equals(bare_enemies, 0, "populate=false yields a pure layout (no enemies)")
+
+func _test_building_filler() -> void:
+	_test_name = "Building Filler"
+	var Grammar = load("res://scripts/generation/fragment_grammar.gd")
+
+	# --- off-switch + layering: buildings only APPEND architecture; the layout beneath is untouched ---
+	var bare = Grammar.generate(7, {"buildings": false})
+	var built = Grammar.generate(7)
+	_assert_equals(int(bare.params.get("buildings", -1)), 0, "buildings=false -> zero buildings")
+	_assert_true(int(built.params.get("buildings", 0)) >= 4,
+		"a default generation hosts several buildings (%d)" % int(built.params.get("buildings", 0)))
+	_assert_true(built.walls.size() > bare.walls.size(),
+		"buildings add boxes (%d -> %d)" % [bare.walls.size(), built.walls.size()])
+	_assert_equals(bare.grid.get("walkable_cells", []).size(), built.grid.get("walkable_cells", []).size(),
+		"the district skirt adds no walkable cells")
+	var prefix_same := true
+	for i in range(bare.walls.size()):
+		if str(bare.walls[i]) != str(built.walls[i]):
+			prefix_same = false
+			break
+	_assert_true(prefix_same, "the layout's own walls are byte-identical under the skirt (filler only appends)")
+
+	# --- determinism: the whole architecture layer reproduces from the seed ---
+	var built_b = Grammar.generate(7)
+	_assert_equals(str(built.walls), str(built_b.walls), "same seed -> identical architecture boxes")
+
+	# --- placement law: no building box touches a street (walkable cell) column or leaves the bounds ---
+	var placement_ok := true
+	var bounds_ok := true
+	var grounded_ok := true
+	for seed in range(1, 11):
+		var fb = Grammar.generate(seed, {"buildings": false})
+		var f = Grammar.generate(seed)
+		var cs := float(f.grid.get("cell_size", 1.5))
+		var org: Vector3 = GridWorld.from_data(f.grid).origin
+		var gw := float(f.grid.get("width", 0)) * cs
+		var gh := float(f.grid.get("height", 0)) * cs
+		var streets: Array = []
+		for c in f.grid.get("walkable_cells", []):
+			streets.append(Rect2(org.x + float(int(c[0])) * cs - 0.5, org.z + float(int(c[1])) * cs - 0.5, cs + 1.0, cs + 1.0))
+		for i in range(fb.walls.size(), f.walls.size()):
+			var bx := f.walls[i] as Dictionary
+			var p: Vector3 = bx["pos"]
+			var s: Vector3 = bx["size"]
+			var r := Rect2(p.x - s.x * 0.5, p.z - s.z * 0.5, s.x, s.z)
+			for st in streets:
+				if r.intersects(st):
+					placement_ok = false
+					break
+			if p.x - s.x * 0.5 < org.x - 0.1 or p.x + s.x * 0.5 > org.x + gw + 0.1 \
+					or p.z - s.z * 0.5 < org.z - 0.1 or p.z + s.z * 0.5 > org.z + gh + 0.1:
+				bounds_ok = false
+			if p.y - s.y * 0.5 < -0.1:
+				grounded_ok = false
+	_assert_true(placement_ok, "no building box intersects a street cell (0.5 clearance held, 10 seeds)")
+	_assert_true(bounds_ok, "every building box stays inside the district bounds")
+	_assert_true(grounded_ok, "every building box sits on or above the ground slab")
+
+	# --- the Perlin cohesion law: neighbours transition smoothly, the field still varies globally ---
+	var max_floor_step := 0
+	var max_color_step := 0.0
+	var best_spread := 0
+	for seed in range(1, 17):
+		var f = Grammar.generate(seed)
+		var lots: Array = f.params.get("building_lots", [])
+		var lo := 99
+		var hi := 0
+		for a in range(lots.size()):
+			var la := lots[a] as Dictionary
+			lo = mini(lo, int(la["floors"]))
+			hi = maxi(hi, int(la["floors"]))
+			for b in range(a + 1, lots.size()):
+				var lb := lots[b] as Dictionary
+				var d: float = (la["center"] as Vector3).distance_to(lb["center"] as Vector3)
+				if d > 6.0:
+					continue
+				max_floor_step = maxi(max_floor_step, absi(int(la["floors"]) - int(lb["floors"])))
+				var ca: Color = la["color"]
+				var cb: Color = lb["color"]
+				var cd := sqrt(pow(ca.r - cb.r, 2) + pow(ca.g - cb.g, 2) + pow(ca.b - cb.b, 2))
+				max_color_step = maxf(max_color_step, cd)
+		if lots.size() >= 8:
+			best_spread = maxi(best_spread, hi - lo)
+	_assert_true(max_floor_step <= 3,
+		"adjacent buildings (<=6wu) never jump more than 3 storeys (worst step %d)" % max_floor_step)
+	_assert_true(max_color_step <= 0.30,
+		"adjacent buildings stay in-palette (worst colour step %.2f)" % max_color_step)
+	_assert_true(best_spread >= 2,
+		"the height field genuinely varies across a district (best spread %d storeys)" % best_spread)
 
 ## Dev tool: ASCII-dump a few shape-grammar generations so the layout variety is visible without a
 ## display. '.'=floor  S=spawn  X=exit  ~=channel  h=hide  E=enemy  L=ladder link. Multi-level
