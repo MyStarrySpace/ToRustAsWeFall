@@ -24,6 +24,7 @@ const PUZZLE_ATOM_CHUNK_SCENE := preload("res://scenes/fragments/chunks/puzzle_a
 const SHOWCASE_GALLERY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/showcase_gallery_chunk.tscn")
 const WASH_RELAY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/wash_relay_chunk.tscn")
 const DATA_FRAGMENT_CHUNK_SCENE := preload("res://scenes/fragments/chunks/data_fragment.tscn")
+const SHAPE_GRAMMAR_CHUNK_SCENE := preload("res://scenes/fragments/chunks/shape_grammar_preview.tscn")
 
 # chunk name -> packed scene. The single lookup that replaced the old per-name match (and the reason
 # we no longer need one *_preview.tscn per chunk: one scene reads this registry and picks at runtime).
@@ -47,6 +48,7 @@ const CHUNK_SCENES := {
 	"showcase_gallery": SHOWCASE_GALLERY_CHUNK_SCENE,
 	"wash_relay": WASH_RELAY_CHUNK_SCENE,
 	"data_fragment": DATA_FRAGMENT_CHUNK_SCENE,
+	"shape_grammar": SHAPE_GRAMMAR_CHUNK_SCENE,
 }
 
 # The fragment menu, ordered along the combine-characters learning ramp (its `stage` ascending). Each
@@ -101,6 +103,10 @@ const PREVIEW_ENTRIES := [
 		"config": {"roguelike": true, "levels": "atom", "seed": 1}},
 	{"id": "roguelike_wfc", "chunk": "generated_stretch", "title": "Roguelike Run (WFC stretches)", "stage": 6,
 		"config": {"roguelike": true, "seed": 1}},
+	# SHAPE GRAMMAR: a fragment grown from parametric shapes joined at typed connectors. Press N to
+	# regenerate a fresh deterministic variation (a new seed) in place.
+	{"id": "shape_grammar", "chunk": "shape_grammar", "title": "Shape Grammar (procedural layouts)", "stage": 6,
+		"config": {"seed": 1}},
 ]
 
 ## The menu entry for an id (or {} if none).
@@ -169,7 +175,7 @@ const STAMINA_REGEN := 10.0
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
 @export_enum("stacks", "rings", "lockout", "mother_flure", "survival_range",
 	"endo_junction_stretch", "generated_stretch",
-	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment") var preview_chunk := "stacks"
+	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 
@@ -364,6 +370,20 @@ func _begin_chunk() -> void:
 	_refresh_inventory_panel()
 	_tutorial_prompt.show_prompt("Click to move")
 	show_preview_message("Preview booted with full HP, stamina, and ATP.", 2.0)
+
+## N in a GENERATION preview (a chunk answering is_generation_preview): bump the seed and rebuild the
+## layout in place — the roguelike regenerate flow (_roguelike_choose), so all nav/party/outline wiring
+## re-runs against the fresh variation. Inert for any other chunk.
+func _regenerate_preview_variation() -> void:
+	if _active_chunk == null or not _active_chunk.has_method("is_generation_preview"):
+		return
+	var next_seed := int(preview_chunk_config.get("seed", 0)) + 1
+	preview_chunk_config = preview_chunk_config.duplicate()
+	preview_chunk_config["seed"] = next_seed
+	_unload_chunk(preview_chunk)
+	_preview_interactables.clear()
+	_begin_chunk()
+	show_preview_message("Regenerated — seed %d" % next_seed, 1.8)
 
 # If the chunk names an environment GLB (a modeled backdrop), instantiate it under the scene and force
 # NEAREST texture filtering so the pixel-art tiles stay crisp. The gameplay data layer is unchanged —
@@ -841,6 +861,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				_toggle_pause()
 			KEY_F5:
 				get_tree().reload_current_scene()
+			KEY_N:
+				_regenerate_preview_variation()
 			KEY_F1:
 				_toggle_overlay("aster")
 			KEY_F2:

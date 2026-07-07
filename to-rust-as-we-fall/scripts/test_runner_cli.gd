@@ -369,6 +369,12 @@ func _ready() -> void:
 			"--test-chunk-batch":
 				ran_test = true
 				_test_chunk_batch()
+			"--test-shape-grammar":
+				ran_test = true
+				_test_shape_grammar()
+			"--dump-shape-grammar":
+				ran_test = true
+				_dump_shape_grammar()
 			"--test-generated-atom-playable":
 				ran_test = true
 				await _test_generated_atom_playable()
@@ -1295,6 +1301,7 @@ func _run_all_tests() -> void:
 	_test_poi_distribution()
 	_test_poi_determinism()
 	_test_wfc_layout()
+	_test_shape_grammar()
 	_test_roguelike_run()
 	_test_run_branch_decisions()
 	if not _heavy("Run Economy"):
@@ -3071,6 +3078,192 @@ func _test_wfc_layout() -> void:
 	# Determinism of the stitched grid JSON too (no RNG in the stitcher).
 	var grid_b: Dictionary = Stitch.build(layout["placements"], layout["corridors"], layout["slot_cells"], settings)
 	_assert_equals(JSON.stringify(grid_data), JSON.stringify(grid_b), "stitched grid JSON is deterministic")
+
+## The SHAPE-GRAMMAR generator: a seed grows a fragment from parametric shapes joined at typed
+## connectors, emitting an in-memory Fragment on the unified_grid_v1 contract. Invariants: valid grid,
+## determinism (same seed -> identical layout), variation (seed drives it), connectivity (spawn reaches
+## the exit shelter on the emitted grid), and a real exit shelter object every run.
+func _test_shape_grammar() -> void:
+	_test_name = "Shape Grammar"
+	var Grammar = load("res://scripts/generation/fragment_grammar.gd")
+
+	# --- one generation: valid, playable fragment shape ---
+	var frag = Grammar.generate(1)
+	_assert_true(frag != null, "generate returns a Fragment")
+	var grid: Dictionary = frag.grid
+	_assert_equals(str(grid.get("contract_id", "")), str(GridWorld.GRID_DATA_CONTRACT_ID), "grid is unified_grid_v1")
+	var cells: Array = grid.get("walkable_cells", [])
+	_assert_true(cells.size() >= 12, "grid has a real footprint (%d cells)" % cells.size())
+	var gw := int(grid.get("width", 0)); var gh := int(grid.get("height", 0))
+	_assert_true(gw > 0 and gh > 0, "grid has positive size")
+	var in_bounds := true
+	for c in cells:
+		if int(c[0]) < 0 or int(c[0]) >= gw or int(c[1]) < 0 or int(c[1]) >= gh:
+			in_bounds = false; break
+	_assert_true(in_bounds, "every walkable cell lies inside width x height")
+	_assert_true(frag.spawns.has("aster"), "party has a spawn")
+	var has_exit := false
+	for ob in frag.objects:
+		if str((ob as Dictionary).get("type", "")) == "exit_shelter":
+			has_exit = true; break
+	_assert_true(has_exit, "generation always yields an exit shelter (the win pad)")
+	_assert_true(frag.shelters.size() >= 2, "start + exit shelters declared")
+
+	# --- determinism: same seed -> identical grid + objects ---
+	var frag_b = Grammar.generate(1)
+	_assert_equals(str(frag.grid.get("walkable_cells")), str(frag_b.grid.get("walkable_cells")),
+		"same seed -> identical walkable_cells")
+	_assert_equals(str(frag.objects), str(frag_b.objects), "same seed -> identical objects")
+	_assert_equals(str(frag.spawns), str(frag_b.spawns), "same seed -> identical spawns")
+
+	# --- variation: distinct seeds drive distinct layouts ---
+	var sigs := {}
+	for seed in range(1, 17):
+		var f = Grammar.generate(seed)
+		sigs[str(f.grid.get("walkable_cells"))] = true
+	_assert_true(sigs.size() >= 10, "the seed drives layout: %d distinct footprints over 16 seeds" % sigs.size())
+
+	# --- connectivity: spawn reaches the exit shelter on the emitted grid, every seed (the exit may
+	# sit on an upper floor now — route with the multi-level A* to its declared level) ---
+	var all_connected := true
+	var checked := 0
+	for seed in range(1, 13):
+		var f = Grammar.generate(seed)
+		var g = GridWorld.from_data(f.grid)
+		var spawn_cell: Vector2i = g.world_to_grid(f.spawns["aster"])
+		var exit_pos = Vector3.ZERO
+		var exit_level := 0
+		for ob in f.objects:
+			if str((ob as Dictionary).get("type", "")) == "exit_shelter":
+				exit_pos = (ob as Dictionary)["pos"]
+				exit_level = int((ob as Dictionary).get("level", 0))
+				break
+		var exit_cell: Vector2i = g.world_to_grid(exit_pos)
+		if not g.is_walkable(exit_cell.x, exit_cell.y, {}, {}, exit_level):
+			all_connected = false; continue
+		var levels := int(f.grid.get("level_count", 1))
+		var path: Array = g.find_multi_level_path(spawn_cell, 0, exit_cell, exit_level) if levels > 1 else g.find_path(spawn_cell, exit_cell)
+		if path.size() < 1:
+			all_connected = false
+		checked += 1
+	_assert_true(all_connected and checked == 12, "spawn reaches the exit shelter on every generated grid (%d/12)" % checked)
+
+	# --- the H axis: stairs occur across seeds, the link cell is a landing on BOTH floors, and the
+	# upper floor is genuinely reachable from spawn THROUGH the ladder link ---
+	var ml_seed := -1
+	for seed in range(1, 41):
+		var f = Grammar.generate(seed)
+		if int(f.grid.get("level_count", 1)) > 1:
+			ml_seed = seed
+			break
+	_assert_true(ml_seed > 0, "stairs appear across seeds (first multi-level layout at seed %d)" % ml_seed)
+	if ml_seed > 0:
+		var fm = Grammar.generate(ml_seed)
+		var gm = GridWorld.from_data(fm.grid)
+		var link_list: Array = fm.grid.get("links", [])
+		_assert_true(link_list.size() >= 1, "multi-level grid registers ladder links")
+		var landings_ok := true
+		for l in link_list:
+			var lc := Vector2i(int(l["cell"][0]), int(l["cell"][1]))
+			if not gm.is_walkable(lc.x, lc.y, {}, {}, int(l["from"])): landings_ok = false
+			if not gm.is_walkable(lc.x, lc.y, {}, {}, int(l["to"])): landings_ok = false
+		_assert_true(landings_ok, "every link cell is walkable on BOTH its floors (the landing pad)")
+		var l0: Dictionary = link_list[0]
+		var upper_path: Array = gm.find_multi_level_path(
+			gm.world_to_grid(fm.spawns["aster"]), 0,
+			Vector2i(int(l0["cell"][0]), int(l0["cell"][1])), int(l0["to"]))
+		_assert_true(upper_path.size() >= 2, "the upper floor is reachable from spawn through the ladder link")
+
+	# --- populate: the roaming pack is canon-named, roaming, on-route, priced off both sanctuaries;
+	# populate=false yields a pure layout ---
+	var seeds_with_pack := 0
+	var pack_rules_ok := true
+	for seed in range(1, 13):
+		var f = Grammar.generate(seed)
+		var g = GridWorld.from_data(f.grid)
+		var exit_pos = Vector3.ZERO
+		for ob in f.objects:
+			if str((ob as Dictionary).get("type", "")) == "exit_shelter":
+				exit_pos = (ob as Dictionary)["pos"]; break
+		var found_enemy := false
+		for ob in f.objects:
+			var od := ob as Dictionary
+			if str(od.get("type", "")) != "enemy":
+				continue
+			found_enemy = true
+			if str(od.get("species", "")) != "gnawer": pack_rules_ok = false
+			if not od.has("roam"): pack_rules_ok = false
+			var epos: Vector3 = od["pos"]
+			var ec: Vector2i = g.world_to_grid(epos)
+			if not g.is_walkable(ec.x, ec.y): pack_rules_ok = false
+			var e2 := Vector2(epos.x, epos.z)
+			if e2.distance_to(Vector2(f.spawns["aster"].x, f.spawns["aster"].z)) < 6.0: pack_rules_ok = false
+			if e2.distance_to(Vector2(exit_pos.x, exit_pos.z)) < 6.0: pack_rules_ok = false
+		if found_enemy:
+			seeds_with_pack += 1
+	_assert_true(seeds_with_pack >= 6, "most layouts host the roaming pack (%d/12 seeds)" % seeds_with_pack)
+	_assert_true(pack_rules_ok, "every enemy is canon-named (gnawer), roaming, on a walkable cell, >=1.5x detect from both sanctuaries")
+	var bare = Grammar.generate(3, {"populate": false})
+	var bare_enemies := 0
+	for ob in bare.objects:
+		if str((ob as Dictionary).get("type", "")) == "enemy":
+			bare_enemies += 1
+	_assert_equals(bare_enemies, 0, "populate=false yields a pure layout (no enemies)")
+
+## Dev tool: ASCII-dump a few shape-grammar generations so the layout variety is visible without a
+## display. '.'=floor  S=spawn  X=exit  ~=channel  h=hide  E=enemy  L=ladder link. Multi-level
+## layouts print one map per floor.
+func _dump_shape_grammar() -> void:
+	_test_name = "Shape Grammar Dump"
+	var Grammar = load("res://scripts/generation/fragment_grammar.gd")
+	for seed in range(1, 7):
+		var f = Grammar.generate(seed)
+		var g = GridWorld.from_data(f.grid)
+		var w := int(f.grid.get("width", 0)); var h := int(f.grid.get("height", 0))
+		var levels := int(f.grid.get("level_count", 1))
+		print("\n--- seed %d : %dx%d, %d cells, %d level(s) ---" % [seed, w, h, int(f.grid.get("walkable_cells", []).size()), levels])
+		for lv in range(levels):
+			var rows: Array = []
+			for z in range(h):
+				var line := ""
+				for x in range(w):
+					line += "." if g.is_walkable(x, z, {}, {}, lv) else " "
+				rows.append(line)
+			var _mark := func(pos: Vector3, ch: String) -> void:
+				var c: Vector2i = g.world_to_grid(pos)
+				if c.y >= 0 and c.y < h and c.x >= 0 and c.x < w:
+					var line: String = rows[c.y]
+					rows[c.y] = line.substr(0, c.x) + ch + line.substr(c.x + 1)
+			for ob in f.objects:
+				var od := ob as Dictionary
+				match str(od.get("type", "")):
+					"exit_shelter":
+						if int(od.get("level", 0)) == lv: _mark.call(od["pos"], "X")
+					"capbage", "scarpet":
+						if g.level_for_y(float((od["pos"] as Vector3).y)) == lv: _mark.call(od["pos"], "h")
+					"enemy":
+						if lv == 0: _mark.call(od["pos"], "E")
+					"channel":
+						if lv == 0:
+							var cx := g.world_to_grid(Vector3(float(od["x"]), 0, 0)).x   # a wash spans its column
+							for z in range(h):
+								if cx >= 0 and cx < w and (rows[z] as String)[cx] == ".":
+									var line: String = rows[z]
+									rows[z] = line.substr(0, cx) + "~" + line.substr(cx + 1)
+			for l in f.grid.get("links", []):
+				var ld := l as Dictionary
+				if int(ld["from"]) == lv or int(ld["to"]) == lv:
+					var lc := Vector2i(int(ld["cell"][0]), int(ld["cell"][1]))
+					if lc.y >= 0 and lc.y < h and lc.x >= 0 and lc.x < w:
+						var lline: String = rows[lc.y]
+						rows[lc.y] = lline.substr(0, lc.x) + "L" + lline.substr(lc.x + 1)
+			if lv == 0:
+				_mark.call(f.spawns["aster"], "S")
+			if levels > 1:
+				print("  [level %d]" % lv)
+			for line in rows:
+				print(line)
+	_assert_true(true, "dumped 6 generations")
 
 func _test_roguelike_run() -> void:
 	_test_name = "Roguelike Run"
