@@ -3916,8 +3916,37 @@ func _test_main_menu() -> void:
 	# The menu is the game's entry point.
 	_assert_equals(ProjectSettings.get_setting("application/run/main_scene", ""), "res://scenes/ui/main_menu.tscn",
 		"the game boots into the main menu")
+	# The Creature Showcase button exists and its target id is a real registry entry.
+	var button_texts := {}
+	_collect_button_texts(m, button_texts)
+	_assert_true(button_texts.has("Creature Showcase"), "the menu offers a Creature Showcase button")
+	var target_id := str(m.CREATURE_SHOWCASE_ID)
+	var id_known := false
+	for e in FragmentPreviewScript.PREVIEW_ENTRIES:
+		if str((e as Dictionary).get("id", "")) == target_id:
+			id_known = true
+	_assert_true(id_known, "the showcase button targets a registered preview entry (%s)" % target_id)
 	m.queue_free()
 	await get_tree().process_frame
+
+	# The static one-shot override boots the preview DIRECTLY into the gallery (the receiver half of
+	# the button — change_scene_to_file can't set exports, so this is the actual launch mechanism).
+	FragmentPreviewScript.menu_launch_id = target_id
+	var prev = load("res://scenes/fragments/fragment_preview.tscn").instantiate()
+	get_tree().root.add_child(prev)
+	for i in range(8):
+		await get_tree().process_frame
+	_assert_equals(str(prev.preview_chunk), target_id, "menu launch boots straight into the creature gallery")
+	_assert_true(not bool(prev._in_menu), "menu launch skips the picker")
+	_assert_equals(str(FragmentPreviewScript.menu_launch_id), "", "the launch override is one-shot (cleared)")
+	prev.queue_free()
+	await get_tree().process_frame
+
+func _collect_button_texts(n: Node, out: Dictionary) -> void:
+	if n is Button:
+		out[(n as Button).text] = true
+	for c in n.get_children():
+		_collect_button_texts(c, out)
 
 ## The LEVEL BUILDER: paint a floor, and its ASCII round-trips + builds a playable, traversable level (the same
 ## pipeline the procedural levels + the authored .txt use — the builder IS the game in a builder mode).

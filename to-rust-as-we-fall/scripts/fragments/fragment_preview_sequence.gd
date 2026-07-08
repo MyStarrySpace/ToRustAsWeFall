@@ -195,6 +195,12 @@ var _branch_modal: Control = null
 ## A `--preview=<id>` command-line arg (or a preset preview_chunk) skips the menu and loads directly.
 @export var preview_menu := false
 
+## One-shot launch override for MAIN-MENU buttons: change_scene_to_file can't set exports, so a menu
+## button stores the registry id here before switching scenes and the preview boots that entry
+## directly (the peris `_visit_phase` static pattern). Cleared on consume — R still returns to the
+## picker afterwards.
+static var menu_launch_id := ""
+
 var _characters: Dictionary = {}
 var _character_state: Dictionary = {}
 var _ability_defs: Dictionary = {}
@@ -322,6 +328,9 @@ func _begin() -> void:
 	var cli_id := _cli_preview_id()
 	if cli_id != "":
 		_apply_preview_entry(get_preview_entry(cli_id))
+	elif menu_launch_id != "":
+		_apply_preview_entry(get_preview_entry(menu_launch_id))
+		menu_launch_id = ""
 	elif preview_menu:
 		_show_fragment_menu()
 		return

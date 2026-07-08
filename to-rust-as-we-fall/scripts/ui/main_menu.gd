@@ -10,6 +10,9 @@ const DIM := Color(0.55, 0.62, 0.68)
 const PLAY_SCENE := "res://scenes/tutorial/peris_sim.tscn"
 const BUILDER_SCENE := "res://scenes/builder/level_builder.tscn"
 const FRAGMENTS_SCENE := "res://scenes/fragments/fragment_preview.tscn"
+const CREATURE_SHOWCASE_ID := "creature_grammar"
+
+const FragmentPreviewScript := preload("res://scripts/fragments/fragment_preview_sequence.gd")
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -50,6 +53,7 @@ func _build_ui() -> void:
 	_add_menu_button(col, "Play", _on_play)
 	_add_menu_button(col, "Level Builder", _on_builder)
 	_add_menu_button(col, "Fragments", _on_fragments)
+	_add_menu_button(col, "Creature Showcase", _on_creatures)
 	_add_menu_button(col, "Quit", _on_quit)
 
 func _add_menu_button(parent: Node, text: String, cb: Callable) -> Button:
@@ -69,6 +73,12 @@ func _on_builder() -> void:
 	get_tree().change_scene_to_file(BUILDER_SCENE)
 
 func _on_fragments() -> void:
+	get_tree().change_scene_to_file(FRAGMENTS_SCENE)
+
+func _on_creatures() -> void:
+	# Boot the fragment preview DIRECTLY into the creature gallery (the static one-shot override —
+	# change_scene_to_file can't set exports).
+	FragmentPreviewScript.menu_launch_id = CREATURE_SHOWCASE_ID
 	get_tree().change_scene_to_file(FRAGMENTS_SCENE)
 
 func _on_quit() -> void:
