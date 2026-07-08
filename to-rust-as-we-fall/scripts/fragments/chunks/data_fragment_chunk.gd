@@ -1,5 +1,8 @@
 extends "res://scripts/scene_chunks/scene_chunk.gd"
 
+const LatheBuilderScript := preload("res://scripts/generation/lathe_builder.gd")
+const SdfMesherScript := preload("res://scripts/generation/sdf_mesher.gd")
+
 ## The DATA-DRIVEN fragment loader. Point it at a `Fragment` resource (the data) and it COMPOSES the scene from
 ## the shared modular classes — no bespoke build code per fragment. It reads the fragment's map (floors/walls/
 ## lights/labels), spawns each object in `fragment.objects` via the right class (Flure / PortalPad / Capbage /
@@ -76,6 +79,32 @@ func _build_environment() -> void:
 		_add_label(self, str(lb.get("text", "")), _v3(lb, "pos"), _col(lb, "color", Color(0.82, 0.86, 0.92)))
 	for m in fragment.meshes:
 		_instance_mesh(m)
+	# Revolve-tower plans (params-driven pure data from the building filler) loft here — the loader
+	# owns scene nodes. Shell gets the tinted atlas material; window quads keep their emissive surface.
+	for lp in fragment.params.get("lathe_buildings", []):
+		_spawn_lathe_building(lp as Dictionary)
+
+func _spawn_lathe_building(lp: Dictionary) -> void:
+	var profile: Dictionary = LatheBuilderScript.make_profile(lp)
+	var built: Dictionary = LatheBuilderScript.build(profile)
+	if built["mesh"] == null:
+		return
+	var mesh := built["mesh"] as ArrayMesh
+	mesh.surface_set_material(0, _tinted_tile_material(str(lp.get("tile", "facility_metal")),
+		_col(lp, "color", Color(0.4, 0.4, 0.42))))
+	var mi := MeshInstance3D.new()
+	mi.name = "LatheTower"
+	mi.mesh = mesh
+	add_child(mi)
+	if bool(lp.get("coil", false)):
+		var coil: Dictionary = SdfMesherScript.build(LatheBuilderScript.coil_prims(lp), 0.2)
+		if coil["mesh"] != null:
+			var ci := MeshInstance3D.new()
+			ci.name = "LatheCoil"
+			ci.mesh = coil["mesh"]
+			ci.material_override = _tinted_tile_material("rust_iron",
+				_col(lp, "color", Color(0.35, 0.25, 0.18)).lightened(0.12))
+			add_child(ci)
 
 # tile+tint -> material, cached: a district can carry hundreds of textured boxes but only a handful
 # of (tile, palette-drift) combinations after quantising the tint.

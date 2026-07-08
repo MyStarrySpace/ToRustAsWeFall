@@ -3248,8 +3248,8 @@ func _test_building_filler() -> void:
 	var built_b = Grammar.generate(7)
 	_assert_equals(str(built.walls), str(built_b.walls), "same seed -> identical architecture boxes")
 	_assert_equals(str(built.lights), str(built_b.lights), "same seed -> identical lamp light pools")
-	_assert_equals(str(built.params.get("hero_buildings", [])), str(built_b.params.get("hero_buildings", [])),
-		"same seed -> identical hero mass plans")
+	_assert_equals(str(built.params.get("lathe_buildings", [])), str(built_b.params.get("lathe_buildings", [])),
+		"same seed -> identical lathe tower plans")
 
 	# --- pixel-art atlas texturing: masses carry tile names from the shipped set; glow strips stay
 	# untextured (a tile would fight the emissive) ---
@@ -3266,28 +3266,67 @@ func _test_building_filler() -> void:
 				tiles_legal = false
 			if float(wd.get("energy", 0.0)) > 0.0:
 				glow_pure = false
-	_assert_true(tiled_boxes >= 20, "building masses are atlas-textured (%d tiled boxes)" % tiled_boxes)
+	_assert_true(tiled_boxes >= 5, "sheds/viaduct stay atlas-textured boxes (%d tiled boxes)" % tiled_boxes)
 	_assert_true(tiles_legal, "every tile name is from the shipped pixel-art set")
 	_assert_true(glow_pure, "emissive strips never carry a tile")
 
-	# --- hero organic masses: planned as data on some districts, and the plan meshes ---
+	# --- LATHE TOWERS (the reference silhouettes — revolve masses, not rectangles): plans exist,
+	# every archetype lofts a real mesh with its emissive window surface, radii respect the plan
+	# bound, tower discs keep street clearance, and the drum coils appear ---
+	var Lathe = load("res://scripts/generation/lathe_builder.gd")
 	var Mesher = load("res://scripts/generation/sdf_mesher.gd")
-	var hero_seeds := 0
-	var hero_mesh_ok := true
+	var lathe_plans: Array = built.params.get("lathe_buildings", [])
+	_assert_true(lathe_plans.size() >= 8, "districts raise lathe towers (%d plans on seed 7)" % lathe_plans.size())
+	var kinds_seen := {}
+	var lofted_ok := true
+	var bound_ok := true
+	var window_surface_seen := false
+	for lp in lathe_plans:
+		var lpd := lp as Dictionary
+		kinds_seen[str(lpd["archetype"])] = true
+		var profile: Dictionary = Lathe.make_profile(lpd)
+		if float(profile["max_r"]) > float(lpd["base_r"]) + 0.5:
+			bound_ok = false
+		var lbuilt: Dictionary = Lathe.build(profile)
+		if lbuilt["mesh"] == null or (lbuilt["mesh"] as ArrayMesh).surface_get_array_len(0) < 60:
+			lofted_ok = false
+		elif (lbuilt["mesh"] as ArrayMesh).get_surface_count() > 1:
+			window_surface_seen = true
+	_assert_true(lofted_ok, "every lathe plan lofts a real shell")
+	_assert_true(bound_ok, "lobes/bands never exceed the plan's radius bound (+0.5)")
+	_assert_true(window_surface_seen, "some towers carry the emissive window surface")
+	var coil_seeds := 0
+	var coil_ok := true
 	for seed in range(1, 17):
-		var fh = Grammar.generate(seed)
-		var plans: Array = fh.params.get("hero_buildings", [])
-		if plans.is_empty():
-			continue
-		hero_seeds += 1
-		if hero_seeds == 1:
-			var hd := plans[0] as Dictionary
-			var prims: Array = Filler.hero_blob_prims(int(hd["seed"]), hd["center"],
-				float(hd["radius"]), float(hd["height"]))
-			var hbuilt: Dictionary = Mesher.build(prims, 0.3)
-			hero_mesh_ok = hbuilt["mesh"] != null and int(hbuilt["verts"]) > 100
-	_assert_true(hero_seeds >= 6, "hero organic masses appear across districts (%d/16 seeds)" % hero_seeds)
-	_assert_true(hero_mesh_ok, "a hero blob plan meshes into a real body")
+		var fl2 = Grammar.generate(seed)
+		for lp2 in fl2.params.get("lathe_buildings", []):
+			if bool((lp2 as Dictionary).get("coil", false)):
+				coil_seeds += 1
+				if coil_seeds == 1:
+					var cb: Dictionary = Mesher.build(Lathe.coil_prims(lp2 as Dictionary), 0.3)
+					coil_ok = cb["mesh"] != null and int(cb["verts"]) > 80
+				break
+	_assert_true(coil_seeds >= 6, "spiral flume coils wrap drums across districts (%d/16 seeds)" % coil_seeds)
+	_assert_true(coil_ok, "a coil plan meshes into a real spiral")
+	# tower discs vs streets: nearest point of every street cell stays outside max_r + 0.5
+	var lathe_clear := true
+	for seed in range(1, 9):
+		var f3 = Grammar.generate(seed)
+		var g3 = GridWorld.from_data(f3.grid)
+		var cs3 := float(f3.grid.get("cell_size", 1.5))
+		for lp3 in f3.params.get("lathe_buildings", []):
+			var lpd3 := lp3 as Dictionary
+			var c3: Vector3 = lpd3["center"]
+			var mr := float(Lathe.make_profile(lpd3)["max_r"])
+			var org3: Vector3 = g3.origin
+			for cell3 in f3.grid.get("walkable_cells", []):
+				var rx := org3.x + float(int(cell3[0])) * cs3
+				var rz := org3.z + float(int(cell3[1])) * cs3
+				var nx3 := clampf(c3.x, rx, rx + cs3)
+				var nz3 := clampf(c3.z, rz, rz + cs3)
+				if Vector2(c3.x - nx3, c3.z - nz3).length() < mr + 0.5:
+					lathe_clear = false
+	_assert_true(lathe_clear, "tower discs keep 0.5 clearance from every street cell (8 seeds)")
 
 	# --- props: street furniture appears, respects its own off-switch, and lamp lights stay capped ---
 	var prop_seeds := 0

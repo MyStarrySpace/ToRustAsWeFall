@@ -127,7 +127,8 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 	var boxes_before := frag.walls.size()
 	var props_on := bool(opts.get("props", true))
 	var prop_count := 0
-	var heroes: Array = []
+	var lathes: Array = []
+	var coil_count := 0
 	var out_lots: Array = []
 	for lot in lots:
 		var lc: Vector2i = lot["cell"]
@@ -166,30 +167,44 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 		# on the teal side of the palette, plain facility metal on the warm side.
 		var facade_tile := "rust_iron" if decay > 0.58 else ("wall_panel" if t_pal < 0.45 else "facility_metal")
 
-		# HERO ORGANIC MASSES (the blob vocabulary): up to two deep-field 3x3 lots per district trade
-		# their box massing for an SDF blob stack — planned as DATA here (prims are built by
-		# hero_blob_prims), meshed by the hosting chunk which owns scene nodes.
-		if gx >= 3 and gz >= 3 and int(lot["dist"]) >= 4 and heroes.size() < 2:
-			var far_enough := true
-			for hb in heroes:
-				if (hb["center"] as Vector3).distance_to(Vector3(center.x, 0, center.y)) < 14.0:
-					far_enough = false
-			if far_enough:
-				heroes.append({
-					"center": Vector3(center.x, 0.0, center.y),
-					"radius": minf(mx.x - mn.x, mx.y - mn.y) * 0.5 - 0.15,
-					"height": float(mini(int(lot["dist"]), 5)) * FLOOR_H * 0.95,
-					"seed": seed_value,
-					"tile": "rust_iron" if decay > 0.5 else "rock",
-					"color": base_col.lightened(0.22),
-				})
-				out_lots.append({"center": Vector3(center.x, 0.0, center.y), "floors": floors,
-					"height": height, "color": base_col})
-				continue
-
+		var street := _street_dir(lc, gx, gz, walk, w, h)
 		var stats := {"boxes": 0}
-		_emit_building(frag, mn, mx, height, floors, base_col, decay, glow_density, t_pal, jitter,
-			_street_dir(lc, gx, gz, walk, w, h), props_on, facade_tile, stats)
+		if floors >= 2:
+			# LATHE TOWER — the reference silhouettes (revolve-shaped, never boxes): drum with lobed
+			# base + dome, scalloped band stack, or ribbed spire cluster, picked by the fields.
+			# Planned as DATA; the fragment loader lofts the mesh (it owns scene nodes).
+			var near_lane := false
+			for pl in via_plans:
+				var lane := int(pl["lane"])
+				if int(pl["axis"]) == 0:
+					near_lane = near_lane or (lane >= lc.y - 1 and lane <= lc.y + gz)
+				else:
+					near_lane = near_lane or (lane >= lc.x - 1 and lane <= lc.x + gx)
+			var kind := "drum"
+			if decay < 0.5 and t_pal < 0.38:
+				kind = "ribbed"
+			elif decay < 0.5 and t_pal > 0.6:
+				kind = "banded"
+			if near_lane:
+				kind = "banded"   # flat top under the guideway — a dome would graze the deck
+			var wants_coil: bool = kind == "drum" and int(lot["dist"]) >= 3 and coil_count < 2
+			if wants_coil:
+				coil_count += 1
+			lathes.append({
+				"center": Vector3(center.x, 0.0, center.y),
+				"base_r": minf(mx.x - mn.x, mx.y - mn.y) * 0.5 - 0.1,
+				"height": height,
+				"archetype": kind,
+				"seed": seed_value ^ (lc.x * 73856093) ^ (lc.y * 19349663),
+				"warm_bias": t_pal, "glow_density": glow_density, "decay": decay,
+				"tile": facade_tile, "color": base_col,
+				"coil": wants_coil,
+			})
+			# the street-face entry kit still anchors the base (the reference towers keep a kiosk)
+			_emit_entry(frag, mn, mx, base_col, decay, t_pal, jitter, street, props_on, stats)
+		else:
+			_emit_building(frag, mn, mx, height, floors, base_col, decay, glow_density, t_pal, jitter,
+				street, props_on, facade_tile, stats)
 		out_lots.append({"center": Vector3(center.x, 0.0, center.y), "floors": floors,
 			"height": height, "color": base_col})
 
@@ -277,31 +292,7 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 			_emit_viaduct(frag, via_plans[vi], origin, cs, w, h, DECK_TOP + 0.9 * float(vi), stats_v)
 
 	return {"buildings": out_lots.size(), "boxes": frag.walls.size() - boxes_before,
-		"props": prop_count, "viaducts": via_plans.size(), "heroes": heroes, "lots": out_lots}
-
-## SDF primitives for a HERO organic mass (vesicle/blob vocabulary — meshed by the hosting chunk
-## with SdfMesher + a triplanar atlas material). A stack of fat-blended ellipsoids narrowing upward,
-## a dome cap, and a side pod or two. World coordinates; deterministic per (seed, center).
-static func hero_blob_prims(seed_value: int, center: Vector3, radius: float, height: float) -> Array:
-	var rng := _rng(seed_value, "bld:hero:%d,%d" % [int(center.x * 10.0), int(center.z * 10.0)])
-	var prims: Array = []
-	var levels := 3 + _ri(rng, 0, 2)
-	for i in range(levels):
-		var t := float(i) / float(maxi(1, levels - 1))
-		var r := radius * lerpf(1.0, 0.45, t) * (0.9 + _rf(rng) * 0.2)
-		var y := height * lerpf(0.16, 0.86, t)
-		var off := Vector2((_rf(rng) - 0.5) * radius * 0.4, (_rf(rng) - 0.5) * radius * 0.4)
-		prims.append({"type": "ellipsoid", "c": Vector3(center.x + off.x, y, center.z + off.y),
-			"r": Vector3(r, height * 0.5 / float(levels) + r * 0.35, r), "k": 0.5})
-	prims.append({"type": "sphere", "c": Vector3(center.x, height * 0.96, center.z),
-		"r1": radius * 0.34, "k": 0.4})
-	for p in range(_ri(rng, 1, 2)):
-		var ang := _rf(rng) * TAU
-		prims.append({"type": "sphere",
-			"c": Vector3(center.x + cos(ang) * radius * 0.8, height * (0.25 + _rf(rng) * 0.3),
-				center.z + sin(ang) * radius * 0.8),
-			"r1": radius * 0.3, "k": 0.45})
-	return prims
+		"props": prop_count, "viaducts": via_plans.size(), "lathes": lathes, "lots": out_lots}
 
 # --- lot geometry helpers ---
 
@@ -481,9 +472,13 @@ static func _emit_building(frag: Fragment, mn: Vector2, mx: Vector2, height: flo
 			var energy := (0.75 + _rf(jitter) * 0.35) * (1.0 - decay * 0.5)
 			_box_glow(frag, fpos, s3, Color(0.05, 0.07, 0.06), glow_col, energy, stats)
 
-	# DOOR + AWNING on the street face of the GROUND tier; sparse abstract signage (warm breaks the
-	# green occasionally — never text, so no sign-register claim is made).
-	var g_mn: Vector2 = tiers[0]["mn"]; var g_mx: Vector2 = tiers[0]["mx"]
+	_emit_entry(frag, tiers[0]["mn"], tiers[0]["mx"], base_col, decay, warm_bias, jitter, street,
+		props_on, stats)
+
+# DOOR + AWNING + signage + the building-attached props on the street face — shared by box sheds
+# and lathe towers (the reference towers keep a ground kiosk against the curved shell).
+static func _emit_entry(frag: Fragment, g_mn: Vector2, g_mx: Vector2, base_col: Color, decay: float,
+		warm_bias: float, jitter: SeededRng, street: Vector2i, props_on: bool, stats: Dictionary) -> void:
 	var g_c := Vector2((g_mn.x + g_mx.x) * 0.5, (g_mn.y + g_mx.y) * 0.5)
 	var g_sz := Vector2(g_mx.x - g_mn.x, g_mx.y - g_mn.y)
 	var dpos := Vector3(g_c.x, 1.0, g_c.y)

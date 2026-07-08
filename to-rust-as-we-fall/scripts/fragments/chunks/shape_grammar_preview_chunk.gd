@@ -11,8 +11,6 @@ extends "res://scripts/fragments/chunks/data_fragment_chunk.gd"
 ## directly; this chunk is only the preview shell.
 
 const GrammarScript := preload("res://scripts/generation/fragment_grammar.gd")
-const FillerScript := preload("res://scripts/generation/building_filler.gd")
-const MesherScript := preload("res://scripts/generation/sdf_mesher.gd")
 
 var _seed := 1
 var _opts := {}
@@ -26,21 +24,7 @@ func configure_chunk(config: Dictionary) -> void:
 
 func _build_chunk() -> void:
 	fragment = GrammarScript.generate(_seed, _opts)
-	super._build_chunk()
-	# HERO ORGANIC MASSES: the filler plans them as data (prims); the chunk owns nodes, so it meshes
-	# them here — SDF blob stacks in a tinted triplanar atlas material (the vesicle/blob vocabulary).
-	for hb in (fragment.params.get("hero_buildings", []) as Array):
-		var hd := hb as Dictionary
-		var prims: Array = FillerScript.hero_blob_prims(int(hd["seed"]), hd["center"],
-			float(hd["radius"]), float(hd["height"]))
-		var built: Dictionary = MesherScript.build(prims, 0.24, hd["color"])
-		if built["mesh"] == null:
-			continue
-		var mi := MeshInstance3D.new()
-		mi.name = "HeroMass"
-		mi.mesh = built["mesh"]
-		mi.material_override = _tinted_tile_material(str(hd["tile"]), hd["color"])
-		add_child(mi)
+	super._build_chunk()   # the base loader lofts the lathe towers from fragment.params
 
 ## Marker the host checks before treating N as "regenerate" (so the key is inert for other chunks).
 func is_generation_preview() -> bool:

@@ -650,7 +650,7 @@ static func _emit(seed_value: int, placed_cells: Array, placed_objects: Array, l
 		"props": int(bld_stats.get("props", 0)),
 		"viaducts": int(bld_stats.get("viaducts", 0)),
 		"building_lots": bld_stats["lots"],   # centers/floors/colors — the cohesion tests read these
-		"hero_buildings": bld_stats.get("heroes", []),   # SDF blob-mass plans (chunk meshes them)
+		"lathe_buildings": bld_stats.get("lathes", []),   # revolve-tower plans (the loader lofts them)
 	}
 	frag.time_state = {"note_default": "Shape-grammar preview — N regenerates.", "routing_mode": "safe"}
 	return frag
