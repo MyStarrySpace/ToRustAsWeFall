@@ -3581,6 +3581,24 @@ func _test_architecture_showcase() -> void:
 	_assert_equals(str(Base.generate("plumbing_power")), str(Base.generate("plumbing_power")),
 		"base-shape generation is deterministic")
 
+	# --- STEP 2 lattice: the Honeycomb declares + builds the honeyframe (subdivided cell grid ->
+	# a raised frame lattice + lit glass panes), deterministically and grounded within the box. ---
+	var Lat = load("res://scripts/generation/lattice_builder.gd")
+	_assert_equals(str(honey.get("lattice", "")), "honeyframe", "the Honeycomb declares the honeyframe lattice")
+	var hf: Dictionary = Lat.honeyframe(honey["size"])
+	var fr = hf.get("frame")
+	var gl = hf.get("glass")
+	_assert_true(int(hf.get("cells", 0)) >= 16, "honeyframe subdivides the box into a cell grid (%d cells)" % int(hf.get("cells", 0)))
+	_assert_true(fr != null and (fr as ArrayMesh).get_surface_count() > 0 and (fr as ArrayMesh).surface_get_array_len(0) > 60,
+		"honeyframe builds a non-empty frame mesh")
+	_assert_true(gl != null and (gl as ArrayMesh).get_surface_count() > 0, "honeyframe builds the lit glass panes")
+	var hf2: Dictionary = Lat.honeyframe(honey["size"])
+	_assert_equals((fr as ArrayMesh).surface_get_array_len(0), (hf2.get("frame") as ArrayMesh).surface_get_array_len(0),
+		"honeyframe is deterministic (same box -> same mesh)")
+	var fb: AABB = (fr as ArrayMesh).get_aabb()
+	_assert_true(fb.position.y >= -0.05 and fb.position.y + fb.size.y <= float(honey["size"].y) + 0.05,
+		"the honeyframe spans the box height, grounded (y %.2f..%.2f)" % [fb.position.y, fb.position.y + fb.size.y])
+
 	# --- registry: the showcase is a walkable preview entry ---
 	var found := false
 	for e in FragmentPreviewScript.PREVIEW_ENTRIES:
@@ -3598,6 +3616,7 @@ func _test_architecture_showcase() -> void:
 		await get_tree().process_frame
 	var found_body := false
 	var found_grime := false
+	var found_lattice := false
 	for hero in _find_nodes_prefixed(prev, "Hero_"):
 		for child in (hero as Node).get_children():
 			if child.name == "Body" and child is MeshInstance3D:
@@ -3605,8 +3624,11 @@ func _test_architecture_showcase() -> void:
 				var m: Material = (child as MeshInstance3D).mesh.surface_get_material(0)
 				if m is ShaderMaterial and (m as ShaderMaterial).shader == load("res://resources/tile_grime.gdshader"):
 					found_grime = true
+			if child.name == "HoneyFrame" and child is MeshInstance3D and (child as MeshInstance3D).mesh != null:
+				found_lattice = true
 	_assert_true(found_body, "the showcase raised the base-shape bodies")
 	_assert_true(found_grime, "base-shape bodies use the grime tile shader")
+	_assert_true(found_lattice, "the showcase raised the honeyframe lattice on the Honeycomb")
 	prev.queue_free()
 	await get_tree().process_frame
 

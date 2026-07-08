@@ -29,6 +29,7 @@ const SPECS := {
 		"height": 5.6,
 		"color": Color(0.33, 0.43, 0.43),   # weathered verdigris copper
 		"tile": "facility_metal",
+		"lattice": "tracery",               # pointed-arch window wall (NEXT — not built yet)
 	},
 	"honeycomb_cooperative": {
 		"title": "Honeycomb Cooperative",
@@ -37,6 +38,7 @@ const SPECS := {
 		"size": Vector3(4.5, 8.0, 5.5),
 		"color": Color(0.60, 0.58, 0.48),   # pale cast-stone facade
 		"tile": "facility_metal",
+		"lattice": "honeyframe",            # rounded-cell facade frame + lit panes
 	},
 }
 

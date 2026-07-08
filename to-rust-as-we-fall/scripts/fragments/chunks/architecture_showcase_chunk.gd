@@ -9,6 +9,7 @@ extends "res://scripts/fragments/chunks/data_fragment_chunk.gd"
 ## for now — nothing to reroll until we add varied detail.)
 
 const BaseShape := preload("res://scripts/generation/base_shape_builder.gd")
+const Lattice := preload("res://scripts/generation/lattice_builder.gd")
 
 const SPACING := 7.0
 const GROUND_TILE := "facility_metal"
@@ -52,8 +53,38 @@ func _build_chunk() -> void:
 			mi.mesh = body
 			root.add_child(mi)
 			verts = body.surface_get_array_len(0)
-		_specimens.append({"building": kind, "shape": str(spec.get("shape", "")), "verts": verts})
+		_add_lattice(root, spec)
+		_specimens.append({"building": kind, "shape": str(spec.get("shape", "")),
+			"lattice": str(spec.get("lattice", "")), "verts": verts})
 		_turntables.append(root)
+
+## STEP 2: layer the building's declared lattice element onto its base shape. Only honeyframe is built
+## so far (the Honeycomb facade); pipes/tracery fall through as no-ops until they land.
+func _add_lattice(root: Node3D, spec: Dictionary) -> void:
+	if str(spec.get("lattice", "")) != "honeyframe":
+		return
+	var built: Dictionary = Lattice.honeyframe(spec.get("size", Vector3(4.5, 8.0, 5.5)))
+	var frame := built.get("frame") as ArrayMesh
+	if frame != null and frame.get_surface_count() > 0:
+		var fm := MeshInstance3D.new()
+		fm.name = "HoneyFrame"
+		fm.mesh = frame
+		# Brighter cream than the base body so the strut lattice reads proud of the wall.
+		fm.material_override = _tinted_tile_material("facility_metal", Color(0.72, 0.69, 0.58))
+		root.add_child(fm)
+	var glass := built.get("glass") as ArrayMesh
+	if glass != null and glass.get_surface_count() > 0:
+		var gm := MeshInstance3D.new()
+		gm.name = "HoneyGlass"
+		gm.mesh = glass
+		var em := StandardMaterial3D.new()
+		em.albedo_color = Color(1.0, 0.72, 0.36)
+		em.emission_enabled = true
+		em.emission = Color(1.0, 0.72, 0.36)   # warm lit panes
+		em.emission_energy_multiplier = 2.2
+		em.cull_mode = BaseMaterial3D.CULL_DISABLED   # the pane is a flat fan — render both sides
+		gm.material_override = em
+		root.add_child(gm)
 
 func _process(delta: float) -> void:
 	for t in _turntables:
