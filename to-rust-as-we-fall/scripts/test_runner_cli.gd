@@ -381,6 +381,9 @@ func _ready() -> void:
 			"--test-architecture-showcase":
 				ran_test = true
 				await _test_architecture_showcase()
+			"--test-center-camera":
+				ran_test = true
+				await _test_center_camera()
 			"--test-project-hygiene":
 				ran_test = true
 				_test_project_hygiene()
@@ -1321,6 +1324,7 @@ func _run_all_tests() -> void:
 	_test_building_filler()
 	_test_creature_grammar()
 	await _test_architecture_showcase()
+	await _test_center_camera()
 	await _test_sight_mask_bake()
 	_test_roguelike_run()
 	_test_run_branch_decisions()
@@ -3613,6 +3617,75 @@ func _find_nodes_prefixed(n: Node, prefix: String) -> Array:
 	for c in n.get_children():
 		out.append_array(_find_nodes_prefixed(c, prefix))
 	return out
+
+func _test_center_camera() -> void:
+	_test_name = "Center Camera"
+	var CamScript = load("res://scripts/ui/game_camera.gd")
+
+	# --- unit: recenter_on frames a world point via the follow pan; recenter zeroes it; both no-op
+	# while locked so a center press can't fight a scripted exploration-focus. ---
+	var cam := Camera3D.new()
+	cam.set_script(CamScript)
+	var tgt := Node3D.new()
+	get_tree().root.add_child(tgt)
+	get_tree().root.add_child(cam)
+	tgt.global_position = Vector3(2.0, 0.0, -1.0)
+	cam.set("target", tgt)
+	cam.set("max_pan_distance", 40.0)
+	cam.set("_pan_offset", Vector3(5.0, 0.0, 3.0))
+	cam.call("recenter")
+	_assert_true((cam.get("_pan_offset") as Vector3).length() < 0.001, "recenter() zeroes the pan offset")
+	cam.call("recenter_on", Vector3(6.0, 0.0, 4.0))
+	var look: Vector3 = tgt.global_position + (cam.get("_pan_offset") as Vector3)
+	_assert_true(absf(look.x - 6.0) < 0.01 and absf(look.z - 4.0) < 0.01, "recenter_on frames the world point on XZ")
+	cam.call("lock_to", Vector3.ZERO)
+	cam.set("_pan_offset", Vector3(1.0, 0.0, 1.0))
+	cam.call("recenter_on", Vector3(9.0, 0.0, 9.0))
+	_assert_true((cam.get("_pan_offset") as Vector3).is_equal_approx(Vector3(1.0, 0.0, 1.0)),
+		"recenter_on no-ops while locked (won't fight a scripted focus)")
+	cam.queue_free()
+	tgt.queue_free()
+	await get_tree().process_frame
+
+	# --- integration: the preview shows the button, and the camera_center KEY routes through the HUD
+	# to recenter the camera on the whole-party centroid (key == button, input-discipline clean). ---
+	var prev = load("res://scenes/fragments/fragment_preview.tscn").instantiate()
+	prev.set("preview_menu", false)
+	prev.set("preview_chunk", "architecture_showcase")
+	prev.set("preview_chunk_config", {"seed": 1})
+	get_tree().root.add_child(prev)
+	for _i in range(12):
+		await get_tree().process_frame
+	var hud = prev.get("_hud")
+	var pcam = prev.get("_camera")
+	_assert_true(hud != null and hud.get("_center_button") != null, "the preview HUD shows a center-camera button")
+	_assert_true(hud.has_signal("center_camera_requested"), "the HUD exposes center_camera_requested")
+
+	var chars: Dictionary = prev.get("_characters")
+	var sum := Vector3.ZERO
+	var n := 0
+	for cid in ["aster", "peris", "endo"]:
+		if chars.has(cid) and is_instance_valid(chars[cid]):
+			sum += (chars[cid] as Node3D).global_position
+			n += 1
+	_assert_true(n > 0, "the preview raised party character nodes")
+	var centroid := sum / float(n)
+
+	# Fire the KEY path through the HUD (proves key == click, no sequence-side polling).
+	var fired := [false]
+	hud.center_camera_requested.connect(func(): fired[0] = true)
+	var ev := InputEventAction.new()
+	ev.action = "camera_center"
+	ev.pressed = true
+	hud._unhandled_input(ev)
+	_assert_true(fired[0], "the camera_center key routes through the HUD to center_camera_requested")
+
+	var ptgt = pcam.get("target")
+	var look2: Vector3 = (ptgt as Node3D).global_position + (pcam.get("_pan_offset") as Vector3)
+	_assert_true(absf(look2.x - centroid.x) < 0.5 and absf(look2.z - centroid.z) < 0.5,
+		"centering frames the party centroid (look %.2f,%.2f vs centroid %.2f,%.2f)" % [look2.x, look2.z, centroid.x, centroid.z])
+	prev.queue_free()
+	await get_tree().process_frame
 
 func _test_creature_grammar() -> void:
 	_test_name = "Creature Grammar"

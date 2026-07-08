@@ -2110,10 +2110,12 @@ func _build_game_hud() -> void:
 	_hud.show_pause_toggle(false)
 	_hud.show_run_toggle(false, "")
 	_hud.show_routing_toggle(_routing_mode)
+	_hud.show_center_camera_button("P")
 	_hud.pause_toggled.connect(_on_pause_toggled)
 	_hud.run_toggled.connect(_on_run_toggled)
 	_hud.routing_toggled.connect(_on_routing_toggled)
 	_hud.ability_pressed.connect(_on_ability_pressed)
+	_hud.center_camera_requested.connect(_on_center_camera_requested)
 
 	for char_id in CHARACTER_IDS:
 		_hud.add_portrait(char_id, CHARACTER_DISPLAY_NAMES[char_id], CHARACTER_COLORS[char_id])
@@ -2633,6 +2635,27 @@ func _on_character_selected(selected_ids: Array) -> void:
 
 func _on_ability_pressed(ability_id: String) -> void:
 	_activate_preview_ability(ability_id)
+
+## Recenter the camera on the whole available party. Averages the RENDERED node positions (correct on
+## warped scenes, where the data-layer positions live in the flat frame) and steers the camera pan
+## there. No-ops if a scripted focus holds the camera.
+func _on_center_camera_requested() -> void:
+	if _camera == null or not _camera.has_method("recenter_on") or _camera.is_locked():
+		return
+	var sum := Vector3.ZERO
+	var n := 0
+	for char_id in CHARACTER_IDS:
+		if not _character_is_available(char_id):
+			continue
+		var node = _characters.get(char_id, null)
+		if node == null or not is_instance_valid(node):
+			continue
+		sum += (node as Node3D).global_position
+		n += 1
+	if n == 0:
+		return
+	_camera.recenter_on(sum / float(n))
+	show_preview_message("Camera centered on the party", 1.0)
 
 func _activate_preview_ability(ability_id: String) -> void:
 	if not _ability_defs.has(ability_id) or not _ability_runtime.has(ability_id):

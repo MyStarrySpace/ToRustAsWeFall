@@ -15,6 +15,9 @@ signal character_selection_changed(selected_ids: Array)
 ## Emitted while the player holds (true) / releases (false) the highlight action (SHIFT):
 ## reveal every interactable at once. A hold, so it carries both edges, unlike the toggles.
 signal highlight_held(active: bool)
+## Emitted when the player asks to recenter the camera on the party (button or the camera_center key).
+## Momentary, like an ability press — carries no state.
+signal center_camera_requested()
 
 var _bottom_panel: PanelContainer
 var _stat_section: VBoxContainer
@@ -33,6 +36,7 @@ var _message_timer := 0.0
 var _run_button: Button
 var _routing_button: Button
 var _pause_button: Button
+var _center_button: Button
 var _run_active := false
 var _run_keybind := "Z"
 var _routing_mode := "safe"
@@ -81,6 +85,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("route") and _routing_button != null:
 		_on_routing_pressed()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("camera_center") and _center_button != null:
+		_on_center_camera_pressed()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("highlight"):
 		highlight_held.emit(true)
@@ -899,6 +906,17 @@ func _style_pause_button() -> void:
 		style.bg_color = Color(0.06, 0.06, 0.08, 0.9)
 		style.border_color = Color(0.3, 0.25, 0.15, 0.4)
 		_pause_button.add_theme_color_override("font_color", Color(0.5, 0.4, 0.3))
+
+## Add a momentary "center camera on the party" button to the controls section. Opt-in per scene —
+## a scene calls this alongside show_pause_toggle/show_run_toggle. Key and click share one handler.
+func show_center_camera_button(keybind := "P") -> void:
+	var label := "CENTER  %s" % keybind if str(keybind) != "" else "CENTER"
+	_center_button = _make_control_button(label, Color(0.4, 0.6, 0.72))
+	_center_button.pressed.connect(_on_center_camera_pressed)
+	_control_section.add_child(_center_button)
+
+func _on_center_camera_pressed() -> void:
+	center_camera_requested.emit()
 
 # --- Abilities ---
 

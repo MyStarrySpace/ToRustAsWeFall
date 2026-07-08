@@ -275,6 +275,25 @@ func is_locked() -> bool:
 func get_lock_position() -> Vector3:
 	return _lock_position
 
+## Frame the view on a world point (e.g. the party centroid) WITHOUT locking — steer the follow pan
+## so the look point lands on `world_point`, then let the normal glide + look-bounds carry it there.
+## No-ops while locked so it can't fight a scripted focus (exploration-focus owns the lock).
+func recenter_on(world_point: Vector3) -> void:
+	if _locked or target == null:
+		return
+	_panning = false
+	var d := world_point - target.global_position
+	_pan_offset = Vector3(d.x, 0.0, d.z)   # keep the look on the floor plane
+	if _pan_offset.length() > max_pan_distance:
+		_pan_offset = _pan_offset.normalized() * max_pan_distance
+
+## Recenter on the current follow target, discarding any manual WASD/edge/drag pan.
+func recenter() -> void:
+	if _locked:
+		return
+	_panning = false
+	_pan_offset = Vector3.ZERO
+
 ## Enable/disable player pan control
 func set_pan_enabled(enabled: bool) -> void:
 	_pan_enabled = enabled
