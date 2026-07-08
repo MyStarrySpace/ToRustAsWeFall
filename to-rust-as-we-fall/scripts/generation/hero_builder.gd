@@ -92,61 +92,100 @@ static func _ground_hero(spec: Dictionary, target: float) -> void:
 
 # ============================================================ RECIPES
 
+## Rebuilt from a recursive atomic decomposition of the reference (workflow decompose-plumbing).
+## The building is SQUAT (H ≈ 2.55·R) and its bottom HALF is a melted-wax cluster of 12 teardrop
+## lobes (8 standard + 4 fatter corner buttresses), each a 3-sphere stack with a fat foot, pooled
+## toe-pads spilling wider — swelling into a barrel drum, a LOW fat onion dome that overhangs the
+## drum, a lantern cupola + finial. A green helical ramp screws around it; ship-wheel valves and a
+## green effluent stream sit on the lower-left; tall lancet slits glow in the drum.
 static func _plumbing(rng: SeededRng) -> Dictionary:
 	var prims: Array = []
 	var glows: Array = []
 	var panels: Array = []
-	var lobes := _ri(rng, 6, 8)
-	var R := _rr(rng, 1.5, 1.8)          # lobe ring radius
-	var H := _rr(rng, 7.0, 8.5)
+	var R := _rr(rng, 1.75, 2.0)
+	var H := R * _rr(rng, 2.45, 2.65)          # squat, per the decomposition
 	var phase := _rf(rng) * TAU
-	# --- cluster column: each lobe a vertical stack of spheres, fat+splayed at the foot,
-	# thinning and drawing inward toward the shoulder. Fat k melts them; the gaps read as ogives.
-	for i in range(lobes):
-		var ang := phase + TAU * float(i) / float(lobes)
+	# central trunk: 4-sphere stack, flaring wide at the ground and necking to the drum foot
+	var trunk := [[0.05, 0.55], [0.19, 0.50], [0.33, 0.44], [0.46, 0.40]]
+	for t in trunk:
+		prims.append({"type": "sphere", "c": Vector3(0, t[0] * H, 0), "r1": t[1] * R, "k": 0.18 * R})
+	# 12-slot lobe ring: corners (every 3rd) are fatter buttress mega-lobes, the rest standard.
+	for i in range(12):
+		var ang := phase + TAU * float(i) / 12.0
 		var dir := Vector3(cos(ang), 0, sin(ang))
-		var stack := 5
-		for s in range(stack):
-			var t := float(s) / float(stack - 1)
-			var y := lerpf(0.3, H * 0.6, t)
-			var rad := lerpf(R * 1.18, R * 0.5, t)       # splayed foot -> tucked shoulder
-			var rr := lerpf(0.62, 0.32, t)
-			prims.append({"type": "sphere", "c": dir * rad + Vector3(0, y, 0), "r1": rr, "k": 0.6})
-	# central core so the lobes read as attached to a shaft
-	prims.append({"type": "capsule", "a": Vector3(0, 0.4, 0), "b": Vector3(0, H * 0.62, 0),
-		"r1": R * 0.85, "r2": R * 0.6, "k": 0.6})
-	# barrel drum
-	prims.append({"type": "ellipsoid", "c": Vector3(0, H * 0.68, 0),
-		"r": Vector3(R * 0.95, H * 0.16, R * 0.95), "k": 0.5})
-	# squashed dome
-	prims.append({"type": "ellipsoid", "c": Vector3(0, H * 0.82, 0),
-		"r": Vector3(R * 0.82, H * 0.14, R * 0.82), "k": 0.4})
-	# neck + cupola + finial
-	prims.append({"type": "capsule", "a": Vector3(0, H * 0.9, 0), "b": Vector3(0, H * 0.97, 0),
-		"r1": R * 0.28, "r2": R * 0.26, "k": 0.2})
-	prims.append({"type": "ellipsoid", "c": Vector3(0, H * 1.0, 0),
-		"r": Vector3(R * 0.34, R * 0.22, R * 0.34), "k": 0.2})
-	prims.append({"type": "capsule", "a": Vector3(0, H * 1.02, 0), "b": Vector3(0, H * 1.12, 0),
-		"r1": 0.06, "r2": 0.03, "k": 0.05})
-	# a couple of side pipes (thin capsules riding the shaft)
-	for p in range(2):
-		var pa := phase + TAU * (0.2 + 0.55 * float(p))
-		var pd := Vector3(cos(pa), 0, sin(pa)) * (R * 1.05)
-		prims.append({"type": "capsule", "a": pd + Vector3(0, 0.2, 0), "b": pd + Vector3(0, H * 0.66, 0),
-			"r1": 0.14, "r2": 0.12, "k": 0.08})
-	# tall slit windows in the recesses between lobes, at two heights
-	for i in range(lobes):
-		var ang2 := phase + TAU * (float(i) + 0.5) / float(lobes)
-		var dir2 := Vector3(cos(ang2), 0, sin(ang2))
-		for hh: float in [H * 0.22, H * 0.46]:
-			panels.append({"c": dir2 * (R * 1.02) + Vector3(0, hh, 0), "n": dir2,
-				"w": 0.28, "h": 1.4, "cols": 1, "rows": 1})
-	# green outflow glow at the base
-	glows.append({"pos": Vector3(cos(phase) * R * 0.9, 0.5, sin(phase) * R * 0.9), "r": 0.18,
-		"color": GLOW_GREEN, "energy": 1.6})
-	var helices := [{"center": Vector3.ZERO, "r": R * 1.12, "y0": H * 0.26, "y1": H * 0.72,
-		"turns": 1.35, "width": 0.34, "color": GLOW_GREEN, "energy": 1.4}]
-	return {"prims": prims, "cell": 0.15, "panels": panels, "helices": helices, "glows": glows,
+		var buttress := (i % 3) == 0
+		# each lobe = 3-sphere teardrop: [y_frac, radial_frac, sphere_r_frac]
+		var stack := [[0.44, 0.60, 0.09], [0.18, 0.85, 0.16], [0.05, 1.0, 0.24]] if buttress \
+			else [[0.42, 0.60, 0.06], [0.20, 0.72, 0.11], [0.05, 0.85, 0.16]]
+		for s in stack:
+			prims.append({"type": "sphere", "c": dir * (s[1] * R) + Vector3(0, s[0] * H, 0),
+				"r1": s[2] * R, "k": 0.15 * R})
+		# pooled toe pad — a flattened ellipsoid spilling wider than the lobe foot
+		var toe_r: float = 1.0 * R if buttress else 0.85 * R
+		var toe_semi: float = 0.30 * R if buttress else 0.20 * R
+		prims.append({"type": "ellipsoid", "c": dir * toe_r + Vector3(0, 0.03 * H, 0),
+			"r": Vector3(toe_semi, 0.05 * H, toe_semi), "k": 0.15 * R})
+	# barrel drum (0.48–0.70H): a fat capsule with a mid-swell ellipsoid
+	prims.append({"type": "capsule", "a": Vector3(0, 0.50 * H, 0), "b": Vector3(0, 0.68 * H, 0),
+		"r1": 0.49 * R, "r2": 0.49 * R, "k": 0.05 * R})
+	prims.append({"type": "ellipsoid", "c": Vector3(0, 0.59 * H, 0),
+		"r": Vector3(0.51 * R, 0.10 * H, 0.51 * R), "k": 0.05 * R})
+	# LOW fat onion dome overhanging the drum, + shoulder neck into the cupola
+	prims.append({"type": "ellipsoid", "c": Vector3(0, 0.77 * H, 0),
+		"r": Vector3(0.58 * R, 0.14 * H, 0.58 * R), "k": 0.05 * R})
+	prims.append({"type": "ellipsoid", "c": Vector3(0, 0.88 * H, 0),
+		"r": Vector3(0.30 * R, 0.05 * H, 0.30 * R), "k": 0.05 * R})
+	# lantern cupola + copper cap + finial knob
+	prims.append({"type": "capsule", "a": Vector3(0, 0.90 * H, 0), "b": Vector3(0, 0.945 * H, 0),
+		"r1": 0.14 * R, "r2": 0.12 * R, "k": 0.04 * R})
+	prims.append({"type": "capsule", "a": Vector3(0, 0.945 * H, 0), "b": Vector3(0, 0.974 * H, 0),
+		"r1": 0.11 * R, "r2": 0.11 * R, "k": 0.02 * R})
+	prims.append({"type": "ellipsoid", "c": Vector3(0, 0.985 * H, 0),
+		"r": Vector3(0.09 * R, 0.02 * H, 0.09 * R), "k": 0.01 * R})
+	prims.append({"type": "capsule", "a": Vector3(0, 0.988 * H, 0), "b": Vector3(0, 0.995 * H, 0),
+		"r1": 0.02 * R, "r2": 0.015 * R, "k": 0.01 * R})
+	prims.append({"type": "sphere", "c": Vector3(0, 1.0 * H, 0), "r1": 0.028 * R, "k": 0.01 * R})
+	# pipe bundle hugging the right-front flank + a valve boss
+	var pipe_az := phase + 0.5
+	for p in range(4):
+		var pa := pipe_az + (float(p) - 1.5) * 0.16
+		var pd := Vector3(cos(pa), 0, sin(pa)) * (0.52 * R)
+		prims.append({"type": "capsule", "a": pd + Vector3(0, 0.05 * H, 0), "b": pd + Vector3(0, 0.66 * H, 0),
+			"r1": 0.035 * R, "r2": 0.03 * R, "k": 0.02 * R})
+	prims.append({"type": "ellipsoid", "c": Vector3(cos(pipe_az), 0, sin(pipe_az)) * (0.52 * R) + Vector3(0, 0.57 * H, 0),
+		"r": Vector3(0.1 * R, 0.09 * H, 0.1 * R), "k": 0.03 * R})
+	# ship-wheel valves on the lower-left front (a ring of rim spheres + hub)
+	for wi in range(2):
+		var waz := phase + PI + (float(wi) - 0.5) * 0.5
+		var wdir := Vector3(cos(waz), 0, sin(waz))
+		var wc := wdir * (0.7 * R) + Vector3(0, (0.15 + 0.06 * float(wi)) * H, 0)
+		var wright := wdir.cross(Vector3.UP).normalized()
+		prims.append({"type": "sphere", "c": wc, "r1": 0.04 * R, "k": 0.02 * R})
+		for rimi in range(6):
+			var ra := TAU * float(rimi) / 6.0
+			prims.append({"type": "sphere", "c": wc + (wright * cos(ra) + Vector3.UP * sin(ra)) * (0.09 * R),
+				"r1": 0.022 * R, "k": 0.015 * R})
+	# --- emissive layers ---
+	# 12 tall lancet slits recessed in the drum
+	for i in range(12):
+		var ang3 := phase + TAU * float(i) / 12.0
+		var dir3 := Vector3(cos(ang3), 0, sin(ang3))
+		panels.append({"c": dir3 * (0.49 * R) + Vector3(0, 0.60 * H, 0), "n": dir3,
+			"w": 0.09, "h": 0.15 * H, "cols": 1, "rows": 1})
+	# 6 twin-slot windows in the onion bulge
+	for i in range(6):
+		var ang4 := phase + TAU * (float(i) + 0.5) / 6.0
+		var dir4 := Vector3(cos(ang4), 0, sin(ang4))
+		panels.append({"c": dir4 * (0.55 * R) + Vector3(0, 0.75 * H, 0), "n": dir4,
+			"w": 0.12, "h": 0.1 * H, "cols": 2, "rows": 1})
+	# green effluent stream at the lower-left porthole
+	var eff_az := phase + PI + 0.15
+	glows.append({"pos": Vector3(cos(eff_az), 0, sin(eff_az)) * (0.6 * R) + Vector3(0, 0.08 * H, 0),
+		"r": 0.12 * R, "color": GLOW_GREEN, "energy": 1.7})
+	# hero helical ramp: green inner trough, ~1.75 turns, deck r ≈ 0.54R, descending 0.78H→0.42H
+	var helices := [{"center": Vector3.ZERO, "r": 0.55 * R, "y0": 0.42 * H, "y1": 0.78 * H,
+		"turns": 1.75, "width": 0.17 * R, "color": GLOW_GREEN, "energy": 1.5}]
+	return {"prims": prims, "cell": 0.13, "panels": panels, "helices": helices, "glows": glows,
 		"accent": GLOW_GREEN, "accent_energy": 1.3, "height": H,
 		"color": Color(0.34, 0.46, 0.47), "tile": "rust_iron"}
 
