@@ -3262,6 +3262,7 @@ func _test_building_filler() -> void:
 	var placement_ok := true
 	var bounds_ok := true
 	var grounded_ok := true
+	var bridge_crossings := 0
 	for seed in range(1, 17):
 		var fb = Grammar.generate(seed, {"buildings": false})
 		var f = Grammar.generate(seed)
@@ -3279,6 +3280,11 @@ func _test_building_filler() -> void:
 			var r := Rect2(p.x - s.x * 0.5, p.z - s.z * 0.5, s.x, s.z)
 			for st in streets:
 				if r.intersects(st):
+					# an ELEVATED span (a viaduct deck bridging the street) is legal above 3.0
+					# head clearance; anything lower is a street obstruction.
+					if p.y - s.y * 0.5 >= 3.0:
+						bridge_crossings += 1
+						continue
 					if placement_ok:
 						print("  [offender] seed %d wall[%d]: %s" % [seed, i, str(bx)])
 					placement_ok = false
@@ -3288,9 +3294,26 @@ func _test_building_filler() -> void:
 				bounds_ok = false
 			if p.y - s.y * 0.5 < -0.1:
 				grounded_ok = false
-	_assert_true(placement_ok, "no building box intersects a street cell (0.5 clearance held, 16 seeds)")
+	_assert_true(placement_ok, "nothing blocks a street below 3.0 clearance (16 seeds)")
 	_assert_true(bounds_ok, "every building box stays inside the district bounds")
 	_assert_true(grounded_ok, "every building box sits on or above the ground slab")
+	_assert_true(bridge_crossings > 0,
+		"viaduct decks genuinely BRIDGE streets somewhere (%d elevated crossings)" % bridge_crossings)
+
+	# --- viaducts: most districts raise at least one line; the off-switch strips the layer ---
+	var via_seeds := 0
+	var via_seed := -1
+	for seed in range(1, 17):
+		if int(Grammar.generate(seed).params.get("viaducts", 0)) >= 1:
+			via_seeds += 1
+			if via_seed < 0:
+				via_seed = seed
+	_assert_true(via_seeds >= 10, "most districts raise a transit viaduct (%d/16 seeds)" % via_seeds)
+	if via_seed > 0:
+		var no_via = Grammar.generate(via_seed, {"viaducts": false})
+		_assert_equals(int(no_via.params.get("viaducts", -1)), 0, "viaducts=false -> no guideway")
+		_assert_true(no_via.walls.size() < Grammar.generate(via_seed).walls.size(),
+			"viaducts=false trims the box count")
 
 	# --- the Perlin cohesion law: neighbours transition smoothly, the field still varies globally ---
 	var max_floor_step := 0

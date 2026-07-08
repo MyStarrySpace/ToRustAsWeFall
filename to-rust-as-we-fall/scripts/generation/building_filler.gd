@@ -73,9 +73,27 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 	# the canyon height damping, and the drop order at the building cap.
 	var dist := _distance_field(walk, w, h)
 
+	# Cells belonging to any UPPER floor (stacked decks) — viaduct lanes avoid these columns so the
+	# guideway never threads a platform or a ladder.
+	var upper := {}
+	for lce in grid.get("level_cells", []):
+		if int((lce as Dictionary).get("level", 0)) >= 1:
+			for c in (lce as Dictionary).get("cells", []):
+				upper[Vector2i(int(c[0]), int(c[1]))] = true
+
+	# TRANSIT VIADUCTS (canon transit_viaduct): plan lanes BEFORE lot packing so piers claim their
+	# ground and no building grows into a pier cell.
+	var viaducts_on := bool(opts.get("viaducts", true))
+	var via_plans: Array = []
+	var used := {}
+	if viaducts_on:
+		via_plans = _plan_viaducts(seed_value, walk, upper, dist, w, h)
+		for pl in via_plans:
+			for pc in pl["piers"]:
+				used[pc] = true
+
 	# Greedy lot packing over gap cells, deterministic scan order.
 	var lot_rng := _rng(seed_value, "bld:lots")
-	var used := {}
 	var lots: Array = []
 	for z in range(h):
 		for x in range(w):
@@ -130,6 +148,14 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 		var damp := clampf((float(lot["dist"]) - 1.0) / 3.0, 0.3, 1.0)
 		var floors := clampi(1 + int(round(t_h * float(MAX_FLOORS - 1) * damp)), 1, MAX_FLOORS)
 		floors = mini(floors, int(lot["dist"]))
+		# The rail corridor: anything within a cell of a viaduct lane stays under its deck.
+		for pl in via_plans:
+			var lane := int(pl["lane"])
+			if int(pl["axis"]) == 0:
+				if lane >= lc.y - 1 and lane <= lc.y + gz:
+					floors = mini(floors, 2)
+			elif lane >= lc.x - 1 and lane <= lc.x + gx:
+				floors = mini(floors, 2)
 		var height := floors * FLOOR_H
 
 		# Palette: smooth cool<->warm blend, dragged toward rust by the decay field, hash-jittered a hair.
@@ -218,8 +244,15 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 					origin.z + (float(best.y) + 0.5) * cs), stats_p)
 				prop_count += 1
 
+	# Raise the planned viaducts last — deck, rails, guide strips, piers, gantries, a parked tram.
+	# The second line rides 0.9 higher so crossing guideways read as an interchange, never coplanar.
+	if viaducts_on:
+		var stats_v := {"boxes": 0}
+		for vi in range(via_plans.size()):
+			_emit_viaduct(frag, via_plans[vi], origin, cs, w, h, DECK_TOP + 0.9 * float(vi), stats_v)
+
 	return {"buildings": out_lots.size(), "boxes": frag.walls.size() - boxes_before,
-		"props": prop_count, "lots": out_lots}
+		"props": prop_count, "viaducts": via_plans.size(), "lots": out_lots}
 
 # --- lot geometry helpers ---
 
@@ -367,7 +400,7 @@ static func _emit_building(frag: Fragment, mn: Vector2, mx: Vector2, height: flo
 				fpos.z += (fsz.y * 0.5 + 0.03) * float(face.y)
 			else:
 				fpos.x += (fsz.x * 0.5 + 0.03) * float(face.x)
-			var energy := (0.9 + _rf(jitter) * 0.7) * (1.0 - decay * 0.5)
+			var energy := (0.75 + _rf(jitter) * 0.35) * (1.0 - decay * 0.5)
 			_box_glow(frag, fpos, s3, Color(0.05, 0.07, 0.06), glow_col, energy, stats)
 
 	# DOOR + AWNING on the street face of the GROUND tier; sparse abstract signage (warm breaks the
@@ -390,7 +423,7 @@ static func _emit_building(frag: Fragment, mn: Vector2, mx: Vector2, height: flo
 		var sign_col := GLOW_WARM if _rf(jitter) < 0.4 else GLOW_GREEN
 		_box_glow(frag, dpos + Vector3(0, 1.6 + _rf(jitter) * 0.8, 0),
 			Vector3(0.18, 0.7, 0.12) if street.y != 0 else Vector3(0.12, 0.7, 0.18),
-			Color(0.06, 0.06, 0.07), sign_col, 1.6 * (1.0 - decay * 0.5), stats)
+			Color(0.06, 0.06, 0.07), sign_col, 1.25 * (1.0 - decay * 0.5), stats)
 
 	# BUILDING-ATTACHED PROPS — a wall sconce beside the door (warm-lit follows the palette field),
 	# a terminal kiosk at healthy blocks, pipe roots spreading along the base where decay has set in.
@@ -425,6 +458,131 @@ static func _tier_at(tiers: Array, y: float) -> Dictionary:
 		if y >= float(tr["y0"]) and y <= float(tr["y1"]):
 			return tr
 	return tiers[tiers.size() - 1]
+
+# --- transit viaduct (canon §3.7 transit_viaduct — the elevated rail of a post-solarpunk city) ---
+
+const DECK_TOP := 7.0        # deck surface height; underside 6.5 clears characters (3.0 law),
+                             # level-1 balustrades (6.2) and every street it bridges
+const DECK_W := 1.9
+
+## Choose 1-2 lanes across the district. A lane must cross streets (that's the point of a viaduct),
+## avoid every upper-floor column (never thread a platform or ladder), keep spacing from its
+## siblings, and find ground for at least two piers.
+static func _plan_viaducts(seed_value: int, walk: Dictionary, upper: Dictionary, dist: Dictionary,
+		w: int, h: int) -> Array:
+	var rng := _rng(seed_value, "bld:viaduct")
+	var want := 1 + (1 if _rf(rng) < 0.35 else 0)
+	var plans: Array = []
+	var taken := {}
+	for _attempt in range(14):
+		if plans.size() >= want:
+			break
+		var axis := 0 if _rf(rng) < 0.5 else 1     # 0: runs along X at row `lane`; 1: along Z at column
+		var dim := h if axis == 0 else w
+		var run := w if axis == 0 else h
+		if dim < 8 or run < 8:
+			continue
+		var lane := _ri(rng, int(float(dim) * 0.25), int(float(dim) * 0.75))
+		var spaced := true
+		for tl in taken.get(axis, []):
+			if absi(int(tl) - lane) < 4:
+				spaced = false
+		if not spaced:
+			continue
+		var crossings := 0
+		var blocked := false
+		for i in range(run):
+			var c := Vector2i(i, lane) if axis == 0 else Vector2i(lane, i)
+			if upper.has(c):
+				blocked = true
+				break
+			if walk.has(c):
+				crossings += 1
+		if blocked or crossings < 2:
+			continue
+		var piers: Array = []
+		for i in range(1, run - 1, 3):
+			var c := Vector2i(i, lane) if axis == 0 else Vector2i(lane, i)
+			# a pier is FAT (0.85 sq) — kerb cells (dist 1) put it inside the street's clearance,
+			# so piers stand at dist >= 2 and the deck simply spans further over street + kerb.
+			if walk.has(c) or int(dist.get(c, 0)) < 2:
+				continue
+			piers.append(c)
+		if piers.size() < 2:
+			continue
+		var gantries: Array = []
+		for i in range(3, run - 3, 7):
+			if _window_clear(i, lane, axis, upper):
+				gantries.append(i)
+		var tram := -1
+		var tri := _ri(rng, 2, run - 3)
+		if _window_clear(tri, lane, axis, upper):
+			tram = tri
+		plans.append({"axis": axis, "lane": lane, "piers": piers, "gantries": gantries, "tram": tram})
+		if not taken.has(axis):
+			taken[axis] = []
+		taken[axis].append(lane)
+	return plans
+
+static func _window_clear(i: int, lane: int, axis: int, upper: Dictionary) -> bool:
+	for di in range(-1, 2):
+		for dl in range(-1, 2):
+			var c := Vector2i(i + di, lane + dl) if axis == 0 else Vector2i(lane + dl, i + di)
+			if upper.has(c):
+				return false
+	return true
+
+static func _emit_viaduct(frag: Fragment, plan: Dictionary, origin: Vector3, cs: float,
+		w: int, h: int, deck_top: float, stats: Dictionary) -> void:
+	var axis := int(plan["axis"])
+	var lane := int(plan["lane"])
+	var run := w if axis == 0 else h
+	var lane_c := (origin.z if axis == 0 else origin.x) + (float(lane) + 0.5) * cs
+	var run0 := (origin.x if axis == 0 else origin.z)
+	var run_len := float(run) * cs
+	var run_c := run0 + run_len * 0.5
+	var underside := deck_top - 0.5
+	var deck_col := Color(0.14, 0.16, 0.18)
+	var rail_col := Color(0.10, 0.115, 0.135)
+	var pier_col := Color(0.15, 0.16, 0.17)
+
+	# axis 0 boxes span X and sit at Z=lane_c; axis 1 swaps. _vx handles the swap once.
+	_box(frag, _vx(axis, run_c, deck_top - 0.25, lane_c), _vs(axis, run_len, 0.5, DECK_W), deck_col, stats)
+	for s: float in [-1.0, 1.0]:
+		_box(frag, _vx(axis, run_c, deck_top + 0.35, lane_c + s * (DECK_W * 0.5 - 0.08)),
+			_vs(axis, run_len, 0.7, 0.1), rail_col, stats)
+		_box_glow(frag, _vx(axis, run_c, deck_top + 0.72, lane_c + s * (DECK_W * 0.5 - 0.16)),
+			_vs(axis, run_len, 0.06, 0.05), Color(0.05, 0.08, 0.06), GLOW_GREEN, 0.7, stats)
+	for pc in plan["piers"]:
+		var pi := (pc as Vector2i).x if axis == 0 else (pc as Vector2i).y
+		var px := run0 + (float(pi) + 0.5) * cs
+		var col_h := underside - 0.3 - 4.2
+		_box(frag, _vx(axis, px, 2.1, lane_c), _vs(axis, 0.85, 4.2, 0.85), pier_col, stats)
+		_box(frag, _vx(axis, px, 4.2 + col_h * 0.5, lane_c), _vs(axis, 0.55, col_h, 0.55),
+			pier_col.darkened(0.06), stats)
+		_box(frag, _vx(axis, px, underside - 0.15, lane_c), _vs(axis, 0.5, 0.3, DECK_W + 0.2),
+			pier_col.darkened(0.12), stats)
+	var alt := true
+	for gi in plan["gantries"]:
+		var gx := run0 + (float(int(gi)) + 0.5) * cs
+		for s: float in [-1.0, 1.0]:
+			_box(frag, _vx(axis, gx, deck_top + 0.7, lane_c + s * (DECK_W * 0.5 + 0.14)),
+				_vs(axis, 0.12, 1.4, 0.12), rail_col, stats)
+		_box(frag, _vx(axis, gx, deck_top + 1.42, lane_c), _vs(axis, 0.12, 0.12, DECK_W + 0.5), rail_col, stats)
+		_box_glow(frag, _vx(axis, gx, deck_top + 1.3, lane_c), _vs(axis, 0.1, 0.12, 0.1),
+			Color(0.06, 0.06, 0.07), GLOW_GREEN if alt else GLOW_WARM, 1.0, stats)
+		alt = not alt
+	if int(plan["tram"]) >= 0:
+		var tx := run0 + (float(int(plan["tram"])) + 0.5) * cs
+		_box(frag, _vx(axis, tx, deck_top + 0.48, lane_c), _vs(axis, 2.7, 0.95, 1.24), Color(0.16, 0.20, 0.21), stats)
+		_box_glow(frag, _vx(axis, tx, deck_top + 0.62, lane_c + DECK_W * 0.5 - 0.55),
+			_vs(axis, 1.9, 0.14, 0.05), Color(0.06, 0.07, 0.07), GLOW_WARM, 0.55, stats)
+
+static func _vx(axis: int, along: float, y: float, across: float) -> Vector3:
+	return Vector3(along, y, across) if axis == 0 else Vector3(across, y, along)
+
+static func _vs(axis: int, along: float, y: float, across: float) -> Vector3:
+	return Vector3(along, y, across) if axis == 0 else Vector3(across, y, along)
 
 # --- street furniture (canon §3.12 names; box-compound reads, no collision) ---
 
