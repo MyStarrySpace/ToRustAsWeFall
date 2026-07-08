@@ -1,14 +1,16 @@
 extends "res://scripts/fragments/chunks/data_fragment_chunk.gd"
 
-## ARCHITECTURE SHOWCASE — a walkable gallery of the district HERO buildings, one per plinth, built
-## by HeroBuilder from each reference image's actual base shapes (SDF metaball bodies + emissive
-## window/helix/portal detail). This is the ITERATION SURFACE: capture it, compare each building to
-## its reference plate, tune the recipe, repeat. Press N to reseed every building (each rerolls
-## within its recipe ranges). Cosmetic turntables.
+## ARCHITECTURE SHOWCASE — a walkable gallery of the district buildings, built BOTTOM-UP, one step at
+## a time. STEP 1 (now): each building is its LOW-POLY BASE SHAPE (BaseShapeBuilder), matching the
+## reference plate's overall massing — the Plumbing Power Project is a squat cylinder, the Honeycomb
+## Cooperative is a tall box. Detail (lobes, domes, honeycomb facades, signage) gets layered on in
+## later steps; this is the iteration surface — walk the row and check the proportions against the
+## reference plates. Cosmetic turntables. (N reseeds generation previews, but base shapes are fixed
+## for now — nothing to reroll until we add varied detail.)
 
-const HeroScript := preload("res://scripts/generation/hero_builder.gd")
+const BaseShape := preload("res://scripts/generation/base_shape_builder.gd")
 
-const SPACING := 6.0
+const SPACING := 7.0
 const GROUND_TILE := "facility_metal"
 
 var _seed := 1
@@ -26,22 +28,22 @@ func get_generation_seed() -> int:
 	return _seed
 
 func get_scene_title() -> String:
-	return "Architecture Showcase — seed %d" % _seed
+	return "Architecture Showcase — base shapes"
 
 func _build_chunk() -> void:
 	fragment = _gallery_fragment()
 	super._build_chunk()
 	_turntables.clear()
 	_specimens.clear()
-	var kinds: Array = HeroScript.ARCHETYPES
+	var kinds: Array = BaseShape.BUILDINGS
 	for i in range(kinds.size()):
 		var kind := str(kinds[i])
-		var spec: Dictionary = HeroScript.generate(kind, _seed + i)
+		var spec: Dictionary = BaseShape.generate(kind)
 		var root := Node3D.new()
 		root.name = "Hero_%s" % kind
 		root.position = _plinth_pos(i, kinds.size()) + Vector3(0, 0.55, 0)
 		add_child(root)
-		var body := HeroScript.body_mesh(spec)
+		var body := BaseShape.base_mesh(spec)
 		var verts := 0
 		if body != null:
 			body.surface_set_material(0, _tinted_tile_material(str(spec.get("tile", "facility_metal")), spec.get("color", Color(0.4, 0.4, 0.42))))
@@ -50,36 +52,7 @@ func _build_chunk() -> void:
 			mi.mesh = body
 			root.add_child(mi)
 			verts = body.surface_get_array_len(0)
-		var detail := HeroScript.detail_mesh(spec)
-		if detail != null:
-			var dm := MeshInstance3D.new()
-			dm.name = "Detail"
-			dm.mesh = detail
-			var em := StandardMaterial3D.new()
-			em.albedo_color = Color(0.04, 0.05, 0.05)
-			em.emission_enabled = true
-			em.emission = spec.get("accent", Color(0.36, 0.91, 0.5))
-			em.emission_energy_multiplier = float(spec.get("accent_energy", 1.2))
-			dm.material_override = em
-			root.add_child(dm)
-		for g in spec.get("glows", []):
-			var gd := g as Dictionary
-			var gs := MeshInstance3D.new()
-			var sph := SphereMesh.new()
-			sph.radius = float(gd["r"])
-			sph.height = float(gd["r"]) * 2.0
-			sph.radial_segments = 8
-			sph.rings = 5
-			gs.mesh = sph
-			var gm := StandardMaterial3D.new()
-			gm.albedo_color = Color(0.05, 0.05, 0.05)
-			gm.emission_enabled = true
-			gm.emission = gd["color"]
-			gm.emission_energy_multiplier = float(gd["energy"])
-			gs.material_override = gm
-			gs.position = gd["pos"]
-			root.add_child(gs)
-		_specimens.append({"archetype": kind, "verts": verts})
+		_specimens.append({"building": kind, "shape": str(spec.get("shape", "")), "verts": verts})
 		_turntables.append(root)
 
 func _process(delta: float) -> void:
@@ -90,7 +63,7 @@ func _process(delta: float) -> void:
 func get_preview_state() -> Dictionary:
 	var st: Dictionary = super.get_preview_state()
 	st["seed"] = _seed
-	st["heroes"] = _specimens.size()
+	st["buildings"] = _specimens.size()
 	return st
 
 func _plinth_pos(i: int, n: int) -> Vector3:
@@ -99,12 +72,12 @@ func _plinth_pos(i: int, n: int) -> Vector3:
 func _gallery_fragment() -> Fragment:
 	var frag := Fragment.new()
 	frag.id = "architecture_showcase_%d" % _seed
-	frag.title = "Architecture Showcase — seed %d" % _seed
-	frag.help = "The district hero buildings from their references. Walk the row. Press N to reseed."
+	frag.title = "Architecture Showcase — base shapes"
+	frag.help = "The district buildings as their low-poly base shapes. Walk the row; compare to the reference plates."
 	frag.default_character = "aster"
 	frag.party_ids = PackedStringArray(["aster", "peris", "endo"])
 	var cs := 1.5
-	var kinds: Array = HeroScript.ARCHETYPES
+	var kinds: Array = BaseShape.BUILDINGS
 	var w := int(ceil(kinds.size() * SPACING / cs)) + 6
 	var h := 10
 	frag.floors = [{
@@ -139,8 +112,8 @@ func _gallery_fragment() -> Fragment:
 		"aster": Vector3(-1.5, 0.5, 4.2), "peris": Vector3(0.0, 0.5, 4.2), "endo": Vector3(1.5, 0.5, 4.2),
 	}
 	frag.shelters = [{"min": Vector2(origin_x + cs, 2.6), "max": Vector2(-origin_x - cs, 6.5)}]
-	# Gallery lighting: a key + a low fill per plinth so the tall towers read top-to-base, plus a
-	# broad front wash. Bright — the forms are the point here, not mood.
+	# Gallery lighting: a key + a low fill per plinth so the forms read top-to-base, plus a broad
+	# front wash. Bright — the silhouette is the point here, not mood.
 	var lights: Array[Dictionary] = []
 	for i in range(kinds.size()):
 		var p2 := _plinth_pos(i, kinds.size())
@@ -151,13 +124,12 @@ func _gallery_fragment() -> Fragment:
 	lights.append({"pos": Vector3(0, 7.0, 8.0), "color": Color(0.62, 0.68, 0.76), "energy": 2.0, "range": 30.0})
 	frag.lights = lights
 	var labels: Array[Dictionary] = []
-	var titles := {"plumbing": "Plumbing Power", "open_files": "Open Files", "hypelines": "Hypelines",
-		"greenfields": "Greenfields"}
 	for i in range(kinds.size()):
+		var kind := str(kinds[i])
 		var p3 := _plinth_pos(i, kinds.size())
-		labels.append({"text": str(titles.get(str(kinds[i]), str(kinds[i]))),
-			"pos": p3 + Vector3(0, 0.9, 1.6), "color": Color(0.62, 0.68, 0.6)})
+		var title := str((BaseShape.SPECS[kind] as Dictionary).get("title", kind))
+		labels.append({"text": title, "pos": p3 + Vector3(0, 0.9, 1.6), "color": Color(0.62, 0.68, 0.6)})
 	frag.labels = labels
 	frag.params = {"stamina_field_regen": true, "showcase_seed": _seed}
-	frag.time_state = {"note_default": "Architecture showcase — N reseeds.", "routing_mode": "safe"}
+	frag.time_state = {"note_default": "Architecture showcase — base shapes.", "routing_mode": "safe"}
 	return frag

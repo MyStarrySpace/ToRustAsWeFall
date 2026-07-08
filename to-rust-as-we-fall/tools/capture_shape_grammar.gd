@@ -92,7 +92,12 @@ func _init() -> void:
 		await process_frame
 	await RenderingServer.frame_post_draw
 	var img := get_root().get_texture().get_image()
-	var path := "res://%s_%d.png" % [chunk_id, seed_val]
+	# NEVER write into the project tree (project hygiene). Honour an explicit OUT_DIR (the scratchpad);
+	# fall back to user:// — never res://.
+	var out_dir := OS.get_environment("OUT_DIR")
+	if out_dir == "":
+		out_dir = "user://"
+	var path := out_dir.path_join("%s_%d.png" % [chunk_id, seed_val])
 	img.save_png(path)
 	print("[SGCAP] %s — extent %.1f, %d meshes" % [path, extent, meshes.size()])
 	quit()

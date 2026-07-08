@@ -3531,51 +3531,51 @@ func _test_project_hygiene() -> void:
 
 func _test_architecture_showcase() -> void:
 	_test_name = "Architecture Showcase"
-	var Hero = load("res://scripts/generation/hero_builder.gd")
-	var Mesher = load("res://scripts/generation/sdf_mesher.gd")
+	var Base = load("res://scripts/generation/base_shape_builder.gd")
 
-	# --- the rounded-box SDF primitive I added meshes cleanly (fins/lattice depend on it) ---
-	var boxed: Dictionary = Mesher.build([{"type": "box", "c": Vector3(0, 0.6, 0),
-		"b": Vector3(0.5, 0.6, 0.5), "round": 0.12, "k": 0.05}], 0.12)
-	_assert_true(boxed["mesh"] != null and int(boxed["verts"]) > 60, "the rounded-box SDF primitive meshes")
+	# --- STEP 1: each district building is its low-poly BASE SHAPE, honest to the reference massing.
+	# The Plumbing Power Project reads as a squat CYLINDER; the Honeycomb Cooperative as a tall BOX. ---
+	_assert_true(Base.BUILDINGS.has("plumbing_power") and Base.BUILDINGS.has("honeycomb_cooperative"),
+		"the showcase carries the PPP + Honeycomb base shapes")
 
-	# --- every district hero builds from its recipe into a real, grounded, finite SDF body ---
+	var ppp: Dictionary = Base.generate("plumbing_power")
+	_assert_equals(str(ppp["shape"]), Base.SHAPE_CYLINDER, "the Plumbing Power Project base shape is a cylinder")
+	var honey: Dictionary = Base.generate("honeycomb_cooperative")
+	_assert_equals(str(honey["shape"]), Base.SHAPE_BOX, "the Honeycomb Cooperative base shape is a box")
+
+	# proportions match the plates: PPP squat (taller than wide, but a drum not a needle);
+	# Honeycomb clearly a tall block.
+	_assert_true(float(ppp["height_total"]) > float(ppp["footprint"]) and float(ppp["height_total"]) < float(ppp["footprint"]) * 2.0,
+		"the PPP is a squat drum (taller than wide, not a needle)")
+	_assert_true(float(honey["height_total"]) > float(honey["footprint"]) * 1.3,
+		"the Honeycomb is a tall block (clearly taller than wide)")
+
+	# --- the base shapes MESH into real, grounded, LOW-POLY solids sitting on y=0 ---
 	var all_ok := true
-	for kind in Hero.ARCHETYPES:
-		var spec: Dictionary = Hero.generate(str(kind), 3)
-		_assert_true((spec["prims"] as Array).size() >= 4, "%s composes from base shapes (%d prims)" % [kind, (spec["prims"] as Array).size()])
-		var body = Hero.body_mesh(spec)
-		if body == null or (body as ArrayMesh).surface_get_array_len(0) < 200:
+	for kind in Base.BUILDINGS:
+		var spec: Dictionary = Base.generate(str(kind))
+		var mesh = Base.base_mesh(spec)
+		if mesh == null or not (mesh is ArrayMesh):
 			all_ok = false
-			print("  [hero] %s degenerate body" % kind)
+			print("  [base] %s produced no mesh" % kind)
 			continue
-		var bb: AABB = (body as ArrayMesh).get_aabb()
-		if bb.position.y < -0.2 or bb.size.y < 2.0 or bb.size.y > 16.0:
+		var am := mesh as ArrayMesh
+		var n := am.surface_get_array_len(0)
+		if n < 20 or n > 400:
 			all_ok = false
-			print("  [hero] %s bad extent %s @ y=%f" % [kind, str(bb.size), bb.position.y])
-		var vs: PackedVector3Array = (body as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
-		for i in range(0, vs.size(), maxi(1, vs.size() / 30)):
-			if not vs[i].is_finite():
-				all_ok = false
-				break
-	_assert_true(all_ok, "every district hero meshes into a grounded, finite body")
+			print("  [base] %s is not low-poly: %d verts" % [kind, n])
+		var bb: AABB = am.get_aabb()
+		if bb.position.y < -0.05:
+			all_ok = false
+			print("  [base] %s sinks below the floor (y=%f)" % [kind, bb.position.y])
+		if absf(bb.size.y - float(spec["height_total"])) > 0.1:
+			all_ok = false
+			print("  [base] %s height %f != spec %f" % [kind, bb.size.y, float(spec["height_total"])])
+	_assert_true(all_ok, "every base shape meshes into a grounded, low-poly solid at its spec height")
 
-	# --- the emissive detail layer (window grids / helix / portal) builds where the recipe declares it ---
-	var plumb: Dictionary = Hero.generate("plumbing", 3)
-	_assert_true((plumb["helices"] as Array).size() >= 1, "Plumbing carries its helical ramp")
-	_assert_true(Hero.detail_mesh(plumb) != null, "Plumbing's emissive detail (windows + ramp) meshes")
-	var of_spec: Dictionary = Hero.generate("open_files", 3)
-	_assert_true((of_spec["panels"] as Array).size() >= 6, "Open Files carries its server-rack window channels")
-	_assert_true(Hero.detail_mesh(of_spec) != null, "Open Files' window grids mesh")
-
-	# --- determinism + variation ---
-	var a: Dictionary = Hero.generate("hypelines", 9)
-	var b: Dictionary = Hero.generate("hypelines", 9)
-	_assert_equals(str(a["prims"]), str(b["prims"]), "same seed -> identical hero body")
-	var sigs := {}
-	for seed in range(1, 9):
-		sigs[str(Hero.generate("plumbing", seed)["prims"])] = true
-	_assert_true(sigs.size() >= 7, "the seed reshapes the hero: %d distinct plumbing towers over 8 seeds" % sigs.size())
+	# --- determinism: the same building resolves to the same spec every call ---
+	_assert_equals(str(Base.generate("plumbing_power")), str(Base.generate("plumbing_power")),
+		"base-shape generation is deterministic")
 
 	# --- registry: the showcase is a walkable preview entry ---
 	var found := false
@@ -3584,11 +3584,7 @@ func _test_architecture_showcase() -> void:
 			found = true
 	_assert_true(found, "the architecture showcase is a registered preview entry")
 
-	# --- PERLIN-VARIED texture: building materials are the grime shader (world-noise density), NOT a
-	# flat uniform tiled StandardMaterial3D. Boot the showcase and inspect a hero body material. ---
-	var shader_src := FileAccess.get_file_as_string("res://resources/tile_grime.gdshader")
-	_assert_true(shader_src.contains("vnoise") and shader_src.contains("v_world"),
-		"the grime shader drives density from a world-space noise field")
+	# --- the showcase boots, raises the base-shape bodies, and skins them with the grime tile shader ---
 	var prev = load("res://scenes/fragments/fragment_preview.tscn").instantiate()
 	prev.set("preview_menu", false)
 	prev.set("preview_chunk", "architecture_showcase")
@@ -3596,8 +3592,8 @@ func _test_architecture_showcase() -> void:
 	get_tree().root.add_child(prev)
 	for _i in range(10):
 		await get_tree().process_frame
-	var found_grime := false
 	var found_body := false
+	var found_grime := false
 	for hero in _find_nodes_prefixed(prev, "Hero_"):
 		for child in (hero as Node).get_children():
 			if child.name == "Body" and child is MeshInstance3D:
@@ -3605,8 +3601,8 @@ func _test_architecture_showcase() -> void:
 				var m: Material = (child as MeshInstance3D).mesh.surface_get_material(0)
 				if m is ShaderMaterial and (m as ShaderMaterial).shader == load("res://resources/tile_grime.gdshader"):
 					found_grime = true
-	_assert_true(found_body, "the showcase raised hero bodies")
-	_assert_true(found_grime, "hero bodies use the Perlin grime shader, not a flat tiled material")
+	_assert_true(found_body, "the showcase raised the base-shape bodies")
+	_assert_true(found_grime, "base-shape bodies use the grime tile shader")
 	prev.queue_free()
 	await get_tree().process_frame
 
