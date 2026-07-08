@@ -16,10 +16,11 @@ extends RefCounted
 ## - Normals are the field gradient (central differences, trilinearly sampled) — smooth organic
 ##   shading straight from the SDF, no face averaging.
 ##
-## prim: {"type": "capsule"|"ellipsoid"|"sphere",
+## prim: {"type": "capsule"|"ellipsoid"|"sphere"|"box",
 ##        capsule:  "a": Vector3, "b": Vector3, "r1": float, "r2": float   (tapered)
 ##        ellipsoid:"c": Vector3, "r": Vector3
 ##        sphere:   "c": Vector3, "r1": float
+##        box:      "c": Vector3, "b": Vector3 (half-extents), "round": float (corner radius)
 ##        all:      "k": float  (smooth-min blend radius into the accumulated field)}
 
 const FAR := 1.0e9
@@ -247,6 +248,14 @@ static func _prim_dist(pr: Dictionary, p: Vector3) -> float:
 			var k0 := Vector3(q.x / r.x, q.y / r.y, q.z / r.z).length()
 			var k1 := Vector3(q.x / (r.x * r.x), q.y / (r.y * r.y), q.z / (r.z * r.z)).length()
 			return k0 * (k0 - 1.0) / maxf(k1, 1.0e-6)
+		"box":
+			# rounded box: distance to the shrunk box, plus the corner radius (Quilez).
+			var bc: Vector3 = pr["c"]
+			var bb: Vector3 = pr["b"]
+			var rnd := float(pr.get("round", 0.05))
+			var d := (p - bc).abs() - (bb - Vector3.ONE * rnd)
+			var outside := Vector3(maxf(d.x, 0.0), maxf(d.y, 0.0), maxf(d.z, 0.0)).length()
+			return outside + minf(maxf(d.x, maxf(d.y, d.z)), 0.0) - rnd
 		_:
 			return (p - (pr["c"] as Vector3)).length() - float(pr.get("r1", 0.1))
 
@@ -263,6 +272,10 @@ static func _prim_aabb(pr: Dictionary) -> AABB:
 			var c: Vector3 = pr["c"]
 			var r2: Vector3 = (pr["r"] as Vector3) + Vector3.ONE * margin
 			return AABB(c - r2, r2 * 2.0)
+		"box":
+			var bc: Vector3 = pr["c"]
+			var bh: Vector3 = (pr["b"] as Vector3) + Vector3.ONE * margin
+			return AABB(bc - bh, bh * 2.0)
 		_:
 			var c3: Vector3 = pr["c"]
 			var r3 := float(pr.get("r1", 0.1)) + margin

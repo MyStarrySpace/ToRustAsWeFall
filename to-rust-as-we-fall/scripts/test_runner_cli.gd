@@ -378,6 +378,9 @@ func _ready() -> void:
 			"--test-creature-grammar":
 				ran_test = true
 				_test_creature_grammar()
+			"--test-architecture-showcase":
+				ran_test = true
+				_test_architecture_showcase()
 			"--test-sight-mask-bake":
 				ran_test = true
 				await _test_sight_mask_bake()
@@ -1313,6 +1316,7 @@ func _run_all_tests() -> void:
 	_test_shape_grammar()
 	_test_building_filler()
 	_test_creature_grammar()
+	_test_architecture_showcase()
 	await _test_sight_mask_bake()
 	_test_roguelike_run()
 	_test_run_branch_decisions()
@@ -3483,6 +3487,61 @@ func _test_sight_mask_bake() -> void:
 	prev.queue_free()
 	await get_tree().process_frame
 
+func _test_architecture_showcase() -> void:
+	_test_name = "Architecture Showcase"
+	var Hero = load("res://scripts/generation/hero_builder.gd")
+	var Mesher = load("res://scripts/generation/sdf_mesher.gd")
+
+	# --- the rounded-box SDF primitive I added meshes cleanly (fins/lattice depend on it) ---
+	var boxed: Dictionary = Mesher.build([{"type": "box", "c": Vector3(0, 0.6, 0),
+		"b": Vector3(0.5, 0.6, 0.5), "round": 0.12, "k": 0.05}], 0.12)
+	_assert_true(boxed["mesh"] != null and int(boxed["verts"]) > 60, "the rounded-box SDF primitive meshes")
+
+	# --- every district hero builds from its recipe into a real, grounded, finite SDF body ---
+	var all_ok := true
+	for kind in Hero.ARCHETYPES:
+		var spec: Dictionary = Hero.generate(str(kind), 3)
+		_assert_true((spec["prims"] as Array).size() >= 4, "%s composes from base shapes (%d prims)" % [kind, (spec["prims"] as Array).size()])
+		var body = Hero.body_mesh(spec)
+		if body == null or (body as ArrayMesh).surface_get_array_len(0) < 200:
+			all_ok = false
+			print("  [hero] %s degenerate body" % kind)
+			continue
+		var bb: AABB = (body as ArrayMesh).get_aabb()
+		if bb.position.y < -0.2 or bb.size.y < 2.0 or bb.size.y > 16.0:
+			all_ok = false
+			print("  [hero] %s bad extent %s @ y=%f" % [kind, str(bb.size), bb.position.y])
+		var vs: PackedVector3Array = (body as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		for i in range(0, vs.size(), maxi(1, vs.size() / 30)):
+			if not vs[i].is_finite():
+				all_ok = false
+				break
+	_assert_true(all_ok, "every district hero meshes into a grounded, finite body")
+
+	# --- the emissive detail layer (window grids / helix / portal) builds where the recipe declares it ---
+	var plumb: Dictionary = Hero.generate("plumbing", 3)
+	_assert_true((plumb["helices"] as Array).size() >= 1, "Plumbing carries its helical ramp")
+	_assert_true(Hero.detail_mesh(plumb) != null, "Plumbing's emissive detail (windows + ramp) meshes")
+	var of_spec: Dictionary = Hero.generate("open_files", 3)
+	_assert_true((of_spec["panels"] as Array).size() >= 6, "Open Files carries its server-rack window channels")
+	_assert_true(Hero.detail_mesh(of_spec) != null, "Open Files' window grids mesh")
+
+	# --- determinism + variation ---
+	var a: Dictionary = Hero.generate("hypelines", 9)
+	var b: Dictionary = Hero.generate("hypelines", 9)
+	_assert_equals(str(a["prims"]), str(b["prims"]), "same seed -> identical hero body")
+	var sigs := {}
+	for seed in range(1, 9):
+		sigs[str(Hero.generate("plumbing", seed)["prims"])] = true
+	_assert_true(sigs.size() >= 7, "the seed reshapes the hero: %d distinct plumbing towers over 8 seeds" % sigs.size())
+
+	# --- registry: the showcase is a walkable preview entry ---
+	var found := false
+	for e in FragmentPreviewScript.PREVIEW_ENTRIES:
+		if str((e as Dictionary).get("id", "")) == "architecture_showcase":
+			found = true
+	_assert_true(found, "the architecture showcase is a registered preview entry")
+
 func _test_creature_grammar() -> void:
 	_test_name = "Creature Grammar"
 	var Grammar = load("res://scripts/generation/creature_grammar.gd")
@@ -4085,6 +4144,12 @@ func _test_main_menu() -> void:
 	var button_texts := {}
 	_collect_button_texts(m, button_texts)
 	_assert_true(button_texts.has("Creature Showcase"), "the menu offers a Creature Showcase button")
+	_assert_true(button_texts.has("Architecture Showcase"), "the menu offers an Architecture Showcase button")
+	var arch_known := false
+	for e2 in FragmentPreviewScript.PREVIEW_ENTRIES:
+		if str((e2 as Dictionary).get("id", "")) == str(m.ARCHITECTURE_SHOWCASE_ID):
+			arch_known = true
+	_assert_true(arch_known, "the architecture button targets a registered entry")
 	var target_id := str(m.CREATURE_SHOWCASE_ID)
 	var id_known := false
 	for e in FragmentPreviewScript.PREVIEW_ENTRIES:

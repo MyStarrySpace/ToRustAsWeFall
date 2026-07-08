@@ -45,6 +45,8 @@ func _init() -> void:
 	if OS.get_environment("ANGLE") == "close":
 		for n in _find_named(scene, "Creature_"):
 			_collect_meshes(n, meshes)
+		for n in _find_named(scene, "Hero_"):
+			_collect_meshes(n, meshes)
 	if meshes.is_empty():
 		_collect_meshes(scene, meshes)
 	for m in meshes:
