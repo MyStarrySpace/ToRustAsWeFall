@@ -36,6 +36,15 @@ to-rust-as-we-fall/hide_encounter_*.png
 to-rust-as-we-fall/*_analysis_plots/
 to-rust-as-we-fall/dialogue_dump.txt
 
+# Debug/capture screenshots + their Godot import sidecars, and one-off scratch, written to the
+# PROJECT ROOT by capture/diagnostic tools. Throwaway — capture to the scratchpad dir, never the
+# project. Enforced by --test-project-hygiene so pollution goes RED, not silently committed.
+to-rust-as-we-fall/*.png
+to-rust-as-we-fall/*.png.import
+to-rust-as-we-fall/*_decomposition.json
+to-rust-as-we-fall/diag_*.gd
+to-rust-as-we-fall/diag_*.gd.uid
+
 # Art-tool working directories (source lives here; game-ready exports go in
 # to-rust-as-we-fall/resources/). Too large / scratch for version control.
 asesprite/

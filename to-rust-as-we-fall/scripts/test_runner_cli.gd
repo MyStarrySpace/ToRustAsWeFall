@@ -381,6 +381,9 @@ func _ready() -> void:
 			"--test-architecture-showcase":
 				ran_test = true
 				await _test_architecture_showcase()
+			"--test-project-hygiene":
+				ran_test = true
+				_test_project_hygiene()
 			"--test-sight-mask-bake":
 				ran_test = true
 				await _test_sight_mask_bake()
@@ -1311,6 +1314,7 @@ func _run_all_tests() -> void:
 	_test_roompiece_catalog()
 	_test_biomes()
 	_test_poi_distribution()
+	_test_project_hygiene()
 	_test_poi_determinism()
 	_test_wfc_layout()
 	_test_shape_grammar()
@@ -3486,6 +3490,44 @@ func _test_sight_mask_bake() -> void:
 		"the fog option toggles back off")
 	prev.queue_free()
 	await get_tree().process_frame
+
+## PROJECT HYGIENE — pollution goes RED, not silently committed. Scans the project ROOT + data/ top
+## for the clutter that keeps accreting: debug screenshots and their Godot import sidecars, scratch
+## dumps / diagnostic scripts / one-off json, loose DESIGN DOCS (those belong in docs/), and test
+## fixtures loose in data/ (those belong in data/playthroughs/). This is the enforceable version of
+## the "keep the project organized" rule — passive prose in CLAUDE.md is exactly what gets ignored.
+## Capture tools must write to the SCRATCHPAD, never the project. If this fails: move or delete the
+## named file, don't weaken the check.
+func _test_project_hygiene() -> void:
+	_test_name = "Project Hygiene"
+	var offenders: Array = []
+	var root := DirAccess.open("res://")
+	if root != null:
+		root.list_dir_begin()
+		var f := root.get_next()
+		while f != "":
+			if not root.current_is_dir():
+				var low := f.to_lower()
+				if low.ends_with(".png") or low.ends_with(".png.import"):
+					offenders.append("root screenshot/import '%s' (capture to the scratchpad, not the project)" % f)
+				elif f == "dialogue_dump.txt" or f.begins_with("diag_") or low.ends_with("_decomposition.json"):
+					offenders.append("root scratch artifact '%s'" % f)
+				elif low.ends_with(".md") and f != "README.md":
+					offenders.append("loose doc '%s' at project root (move to docs/)" % f)
+			f = root.get_next()
+		root.list_dir_end()
+	var data := DirAccess.open("res://data")
+	if data != null:
+		data.list_dir_begin()
+		var df := data.get_next()
+		while df != "":
+			if not data.current_is_dir() and df.begins_with("test_") and df.ends_with(".txt"):
+				offenders.append("test fixture 'data/%s' (move to data/playthroughs/)" % df)
+			df = data.get_next()
+		data.list_dir_end()
+	_assert_equals(offenders.size(), 0, "project root/data are unpolluted; offenders: %s" % str(offenders))
+	_assert_true(DirAccess.dir_exists_absolute("res://docs"), "docs/ exists for design docs")
+	_assert_true(DirAccess.dir_exists_absolute("res://data/playthroughs"), "data/playthroughs/ exists for CLI fixtures")
 
 func _test_architecture_showcase() -> void:
 	_test_name = "Architecture Showcase"

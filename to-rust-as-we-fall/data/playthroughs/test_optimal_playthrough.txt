@@ -4,7 +4,7 @@
 # Run with:
 #   cd to-rust-as-we-fall
 #   timeout 300 ../Godot_v4.6.1-stable_win64_console.exe --headless --path "." \
-#     -- --cli --cli-script "res://data/test_optimal_playthrough.txt"
+#     -- --cli --cli-script "res://data/playthroughs/test_optimal_playthrough.txt"
 #
 # LEVEL SIZING:
 #   Walk speed: 3.0 units/sec. Run: 6.0 units/sec.

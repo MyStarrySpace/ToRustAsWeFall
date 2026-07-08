@@ -19,7 +19,7 @@ Simulate an optimal player run through each game section to measure pacing, APM 
 ```bash
 cd to-rust-as-we-fall
 timeout 120 ../Godot_v4.6.1-stable_win64_console.exe --headless --path "." \
-  -- --cli --cli-script "res://data/test_optimal_playthrough.txt"
+  -- --cli --cli-script "res://data/playthroughs/test_optimal_playthrough.txt"
 ```
 
 The output shows each command executing and `status` dumps at section boundaries.
