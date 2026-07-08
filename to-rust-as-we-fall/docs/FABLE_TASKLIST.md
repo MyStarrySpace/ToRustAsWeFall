@@ -28,32 +28,31 @@ PPP = squat cylinder, Honeycomb = tall box. Proportions verified against the pla
 **Opus built:** subdivide each box face into a ~4×6 grid; each cell → a rounded-rect window in a
 raised constant-width cream frame + a warm lit pane. Reads as a honeycomb facade.
 
-**Gaps vs the plate (Fable pass):**
+**Gaps vs the plate — REMAINING (Fable):**
 - **Organic junctions.** The plate's frame struts *melt* together at the crossings (Gaudí-ish pinched
-  blobs, concave sides). Opus's version is a cleaner geometric lattice — the "round toward the vertex"
-  junction is approximated, not sculpted. Fable: sculpt the pinched, load-bearing-looking junctions.
-- ~~Window variation~~ — **DONE in Godot** (per-pane vertex-colour light: brightness/tint/off via the
-  `window_panes` shader). Remaining Fable-only sub-part: physical blinds at angles, planter sills,
-  little balconies (geometry, not just light).
-- **Cell aspect + irregularity.** Plate cells are slightly portrait and subtly *irregular* (hand-made,
-  not a perfect grid). Opus's grid is perfectly regular. Fable: gentle per-cell jitter.
-- **Frame profile.** Plate frames have moulded/bevelled cross-sections catching light; Opus's frame is
-  a flat raised band. Fable: a real moulding profile.
-- **Decay asymmetry.** Plate has a pristine face and a rusted, torn, vine-tangled face. Not built at
-  all yet — a decay pass (rust streaks, broken cells, exposed structure, vines).
+  blobs, concave sides). Opus's is a cleaner geometric lattice — the "round toward the vertex" junction
+  is approximated, not sculpted. Fable: sculpt the pinched, load-bearing-looking junctions.
+- **Decay asymmetry.** Plate has a pristine face and a rusted, torn, vine-tangled face. Fable: a decay
+  pass (rust streaks, broken cells, exposed structure, vines) — the painterly torn-open flank.
+- **Window furniture** (geometry, not light): physical blinds at angles, planter sills, little balconies.
+
+**DONE in Godot (was wrongly deferred):** per-pane window LIGHT variation (brightness/tint/off,
+`window_panes` shader) · portrait cells + per-cell jitter (`cell_aspect`, `jitter`) · bevelled frame
+moulding (`bevel`) · cornice + parapet + rooftop vent + stepped plinth silhouette.
 
 ## Lattice 2 — pipes  *(built by Opus)*
 **Opus built:** SeededRng edge-descent tubes (`LatticeBuilder.pipes`). Density → pipe count; each pipe
 walks down from the top with curve-sampled steps + a probability of a diagonal jog; occasionally a
 shorter follower runs alongside. Works on box faces AND the cylinder (drapes both). Low-poly swept
 tubes. On the PPP + Honeycomb.
-**Gaps vs the plate (Fable pass):**
-- **No sag.** Pipes are straight polylines; the plates have catenary droop between anchors.
-- **No fittings.** Couplings, valves, elbow joints, wall brackets, drip funnels — none. The plate pipes
-  read as plumbing *because* of the hardware.
-- **No staining / patina.** Rust runs, verdigris, drip stains under the pipes.
-- **Single gauge.** One radius + one follower; the plates bundle varied-diameter runs.
-- Pipes run down face centres, not hugging the corner edges / recesses like the reference.
+**Gaps vs the plate — REMAINING (Fable):**
+- **Spoked valve wheels** (rim + hub + radial spokes) where pipes meet the base — medium geometry.
+- **Wall drip decals** — rust stains running onto the WALL below a pipe (a projected/decal pass, not
+  the pipe mesh itself).
+
+**DONE in Godot (was wrongly deferred):** varied per-pipe gauge + mixed-gauge BUNDLES · edge-hugging
+runs · catenary sag · banded couplings · wall standoff brackets · rust/verdigris patina (per-ring
+vertex colour).
 
 ## Lattice 3 — tracery (Beacon Hill pointed-arch window wall)  *(built by Opus)*
 **Design (confirmed):** mullioned **glass curtain behind + stone tracery ribs in front** (two layers,
@@ -61,17 +60,16 @@ not holes in a solid wall). Pointed-arch (lancet) openings in vertical columns, 
 **Opus built:** `LatticeBuilder.tracery` — lancet rib rings + lit glass panes wrapped on the Beacon
 Hill cylinder. Tall pointed slots (near-parallel sides tapering to cusps), 2 rows × 12 cols, ribs
 between, warm panes behind.
-**Gaps vs the plate (Fable pass):**
-- **Solid panes, no mullions.** The plate windows are a fine grid of tiny lit panes; Opus's are one
-  emissive pane per opening (now per-pane VARIED in brightness/tint/off via the `window_panes` shader,
-  but still one pane, not a mullion sub-grid). Fable: the tiny-pane mullion grid.
+**Gaps vs the plate — REMAINING (Fable):**
 - **Straight ribs.** The plate ribs *branch, interlace, and whiplash* (Art-Nouveau/Gothic tracery);
-  Opus's are simple constant-width lancet rings. This is the biggest visual gap.
-- **No hierarchy.** Uniform lancets; the plate has a big central lancet with smaller flankers + little
-  vertical slots between, and a **crown of roundels / clerestory ring** at the top.
-- **Bell taper.** Beacon Hill's base is a straight cylinder; the plate is a bell/beehive (wider base,
-  domed top). A base-shape refinement.
-- Rib cross-section is a flat raised band, not a moulded profile.
+  Opus's are constant-width lancet rings. This is the biggest remaining visual gap.
+- **Mullion sub-grid.** Each lancet is one pane; the plate is a fine grid of tiny lit panes (needs the
+  per-row taper-clipped sub-grid — medium, and it multiplies vert count → pair with LOD).
+- **Bell/beehive taper.** The drum is a straight cylinder; the plate is a bell (wider base, domed top).
+  The base lathe is simple, but WRAPPING the tracery flush onto a varying radius is the medium part.
+
+**DONE in Godot (was wrongly deferred):** big-central width hierarchy (`col_pattern`/`bays`) · crown of
+roundels / clerestory ring (`clerestory`) · moulded rib cross-section (`bevel`) · per-pane window light.
 
 ---
 
@@ -98,8 +96,10 @@ between, warm panes behind.
 - **Texture density variation** — the grime shader varies rust/wear via world-noise, but the plates
   have *authored* grime (streaks under windows, pooling at the base, patina in the recesses). Fable:
   author-directed weathering masks, not just noise.
-- **Silhouette richness** — plates have crowns, cupolas, finials, parapets, awnings, signage. Base
-  shapes are bare. Fable: the crown/roof/signage pass per district.
+- **Silhouette richness** — the Honeycomb now has a cornice + parapet + plinth, and Beacon Hill a
+  roundel clerestory (both DONE in Godot). Still Fable-grade: cupolas, finials, awnings, and the PPP's
+  onion dome + lantern (curved/organic roof forms), plus per-district signage (the entrances/signs
+  pipeline steps).
 - **The other 8 districts** — only PPP + Honeycomb exist. Open Files, Hypelines, Greenfields,
   Ancourage, Beacon Hill, Bulwark Wharf, Cleanstreets, Zone-3 still need base + lattice (decomposition
   recipes for several are in the `hero_building_showcase` memory / earlier decomposition JSON).
