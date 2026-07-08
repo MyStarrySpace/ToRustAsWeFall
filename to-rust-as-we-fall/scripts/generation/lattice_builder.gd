@@ -193,17 +193,27 @@ static func _emit_box(st: SurfaceTool, center: Vector3, half: Vector3) -> void:
 # ============================================================================================
 
 const PIPE_DEFAULTS := {
-	"radius": 0.07,       # tube radius
-	"density": 0.35,      # pipes per metre of surface width -> target count
-	"lane_w": 0.45,       # lateral lane spacing for a diagonal jog
-	"step_min": 0.5,      # descent step per move (the CURVE_PARAMETER, sampled)
+	"density": 0.22,        # pipe runs per metre of surface width -> target count
+	"lane_w": 0.45,         # lateral lane spacing for a diagonal jog
+	"step_min": 0.5,        # descent step per move (the CURVE_PARAMETER, sampled)
 	"step_max": 1.4,
-	"diag_prob": 0.35,    # chance a step jogs diagonally to a side lane rather than straight down
-	"second_prob": 0.4,   # chance a pipe spawns a parallel follower
-	"second_gap": 0.15,   # lateral offset of the follower
-	"second_len": 0.6,    # follower length as a fraction of the lead pipe (capped by the lead's end)
-	"sides": 6,           # tube cross-section segments (low-poly)
-	"standoff": 0.05,     # how far the pipe floats off the surface
+	"diag_prob": 0.35,      # chance a step jogs diagonally to a side lane rather than straight down
+	"radius_min": 0.05,     # per-pipe gauge range (mixes fat risers + thin conduit)
+	"radius_max": 0.11,
+	"bundle_min": 1,        # how many pipes track together in a run
+	"bundle_max": 3,
+	"bundle_gap": 0.16,     # lateral spacing between bundled pipes
+	"edge_bias": 0.5,       # chance a run hugs a vertical edge instead of a random face lane
+	"sag": 0.22,            # catenary belly per unit of HORIZONTAL run (near-none on vertical runs)
+	"sag_segs": 4,          # subdivisions per segment for the sag curve
+	"coupling_every": 1.3,  # metres of run between banded couplings
+	"coupling_scale": 1.5,  # coupling radius as a multiple of the pipe radius
+	"coupling_len": 0.11,
+	"bracket_every": 2.2,   # metres between wall standoff brackets
+	"sides": 6,             # tube cross-section segments (low-poly)
+	"standoff": 0.055,      # how far the pipe floats off the surface
+	"base_color": Color(0.28, 0.31, 0.29),   # weathered metal
+	"rust_color": Color(0.34, 0.17, 0.10),   # rust brown — pools low + bands along the run
 }
 
 ## Build the pipe lattice for a base shape (`spec` carries shape/size or radius/height). One ArrayMesh.
@@ -232,17 +242,48 @@ static func _pipes_surface(surf: Dictionary, p: Dictionary, rng: SeededRng, st: 
 	var w: float = surf["w"]
 	var h: float = surf["h"]
 	var num := int(max(1, round(float(p["density"]) * w)))
+	var lane: float = p["lane_w"]
 	for _i in range(num):
-		var lead := _walk_pipe(float(rng.call("randf_range", 0.0, w)), w, h, p, rng)
-		_sweep_uv(lead, surf, float(p["radius"]), int(p["sides"]), float(p["standoff"]), st)
-		if float(rng.call("randf")) < float(p["second_prob"]) and lead.size() >= 2:
-			var frac := clampf(float(rng.call("randf_range", 0.3, float(p["second_len"]))), 0.2, 1.0)
-			var glen := int(ceil(lead.size() * frac))
-			var off := (-1.0 if float(rng.call("randf")) < 0.5 else 1.0) * float(p["second_gap"])
-			var follow := PackedVector2Array()
-			for k in range(mini(glen, lead.size())):
-				follow.append(lead[k] + Vector2(off, 0.0))
-			_sweep_uv(follow, surf, float(p["radius"]) * 0.85, int(p["sides"]), float(p["standoff"]), st)
+		# Edge-hugging: half the runs start near a vertical edge/recess (as in the plate) instead of
+		# scattering across a flat face centre.
+		var x0: float
+		if float(rng.call("randf")) < float(p["edge_bias"]):
+			var near_left := float(rng.call("randf")) < 0.5
+			x0 = float(rng.call("randf_range", 0.08, lane)) if near_left else w - float(rng.call("randf_range", 0.08, lane))
+		else:
+			x0 = float(rng.call("randf_range", 0.0, w))
+		var lead := _subdivide_sag(_walk_pipe(x0, w, h, p, rng), float(p["sag"]), int(p["sag_segs"]))
+		# A BUNDLE of parallel runs of mixed gauge track down together.
+		var bundle := int(rng.call("randi_range", int(p["bundle_min"]), int(p["bundle_max"])))
+		for b in range(bundle):
+			var pr := float(rng.call("randf_range", float(p["radius_min"]), float(p["radius_max"])))
+			var off := 0.0 if b == 0 else float(ceili(b / 2.0)) * float(p["bundle_gap"]) * (1.0 if b % 2 == 1 else -1.0)
+			var path := lead if is_zero_approx(off) else _offset_path(lead, off, w)
+			_sweep_uv(path, surf, pr, int(p["sides"]), float(p["standoff"]), p, st)
+
+# Insert a downward catenary belly into each segment. +v is down (see _surf_map), so the belly ADDS to
+# v, scaled by the segment's HORIZONTAL run — vertical runs get ~no sag, sideways spans droop.
+static func _subdivide_sag(path: PackedVector2Array, sag: float, segs: int) -> PackedVector2Array:
+	if path.size() < 2 or segs < 1:
+		return path
+	var out := PackedVector2Array()
+	for i in range(path.size() - 1):
+		var a := path[i]
+		var b := path[i + 1]
+		var belly := sag * absf(b.x - a.x) * 4.0
+		for s in range(segs):
+			var t := float(s) / float(segs)
+			var pt := a.lerp(b, t)
+			pt.y += belly * t * (1.0 - t)
+			out.append(pt)
+	out.append(path[path.size() - 1])
+	return out
+
+static func _offset_path(path: PackedVector2Array, off: float, w: float) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for pt in path:
+		out.append(Vector2(clampf(pt.x + off, 0.0, w), pt.y))
+	return out
 
 static func _walk_pipe(x0: float, w: float, h: float, p: Dictionary, rng: SeededRng) -> PackedVector2Array:
 	var pts := PackedVector2Array()
@@ -269,13 +310,51 @@ static func _walk_pipe(x0: float, w: float, h: float, p: Dictionary, rng: Seeded
 		pts.append(Vector2(x, v))
 	return pts
 
-static func _sweep_uv(path_uv: PackedVector2Array, surf: Dictionary, radius: float, sides: int, standoff: float, st: SurfaceTool) -> void:
+static func _sweep_uv(path_uv: PackedVector2Array, surf: Dictionary, radius: float, sides: int, standoff: float, p: Dictionary, st: SurfaceTool) -> void:
 	if path_uv.size() < 2:
 		return
 	var pts3: Array = []
+	var cols: Array = []
+	var base: Color = p["base_color"]
+	var rust: Color = p["rust_color"]
+	var h: float = surf["h"]
 	for uv in path_uv:
 		pts3.append(_surf_map(surf, uv, standoff + radius))
-	_sweep_tube(pts3, radius, sides, st)
+		# Rustier low on the run + a per-point band; the pipe carries its own patina as vertex colour.
+		var t := clampf((uv.y / h) * 0.6 + _h01(uv.x * 3.1 + uv.y * 7.7) * 0.4, 0.0, 1.0)
+		cols.append(base.lerp(rust, t))
+	_sweep_tube(pts3, radius, sides, cols, st)
+	_emit_pipe_hardware(path_uv, surf, radius, standoff, sides, p, st)
+
+# Banded couplings at intervals + thin standoff brackets pinning the pipe to the wall — the hardware
+# that makes a tube read as plumbing.
+static func _emit_pipe_hardware(path_uv: PackedVector2Array, surf: Dictionary, radius: float, standoff: float, sides: int, p: Dictionary, st: SurfaceTool) -> void:
+	var acc_c := 0.0
+	var acc_b := 0.0
+	var ce: float = p["coupling_every"]
+	var be: float = p["bracket_every"]
+	var cr := radius * float(p["coupling_scale"])
+	var clen: float = p["coupling_len"]
+	var dk := Color(0.16, 0.11, 0.08)
+	for i in range(1, path_uv.size()):
+		var a := path_uv[i - 1]
+		var b := path_uv[i]
+		var seg := a.distance_to(b)
+		acc_c += seg
+		acc_b += seg
+		var mid := (a + b) * 0.5
+		if acc_c >= ce:
+			acc_c = 0.0
+			var pa := _surf_map(surf, a, standoff + radius)
+			var pb := _surf_map(surf, b, standoff + radius)
+			var dir := (pb - pa)
+			if dir.length() > 1e-5:
+				dir = dir.normalized()
+				var c3 := _surf_map(surf, mid, standoff + radius)
+				_sweep_tube([c3 - dir * clen * 0.5, c3 + dir * clen * 0.5], cr, sides, [dk, dk], st)
+		if acc_b >= be:
+			acc_b = 0.0
+			_sweep_tube([_surf_map(surf, mid, 0.0), _surf_map(surf, mid, standoff + radius)], radius * 0.34, 4, [dk, dk], st)
 
 static func _surf_map(surf: Dictionary, uv: Vector2, dn: float) -> Vector3:
 	if str(surf["kind"]) == "cyl":
@@ -290,9 +369,11 @@ static func _surf_map(surf: Dictionary, uv: Vector2, dn: float) -> Vector3:
 	var uloc := uv.x - float(surf["w"]) * 0.5
 	return center + u * uloc + vax * (float(surf["h"]) * 0.5 - uv.y) + n * dn
 
-static func _sweep_tube(pts: Array, radius: float, sides: int, st: SurfaceTool) -> void:
+static func _sweep_tube(pts: Array, radius: float, sides: int, colors: Array, st: SurfaceTool) -> void:
 	if pts.size() < 2:
 		return
+	var have_cols := colors.size() == pts.size()
+	var end_col: Color = colors[0] if colors.size() > 0 else Color.WHITE
 	var rings: Array = []
 	for i in range(pts.size()):
 		var dir: Vector3
@@ -316,6 +397,8 @@ static func _sweep_tube(pts: Array, radius: float, sides: int, st: SurfaceTool) 
 			ring.append((pts[i] as Vector3) + (right * cos(ang) + fwd * sin(ang)) * radius)
 		rings.append(ring)
 	for i in range(rings.size() - 1):
+		if have_cols:
+			st.set_color(colors[i])
 		var r0: Array = rings[i]
 		var r1: Array = rings[i + 1]
 		for s in range(sides):
@@ -327,6 +410,7 @@ static func _sweep_tube(pts: Array, radius: float, sides: int, st: SurfaceTool) 
 	var last: Array = rings[rings.size() - 1]
 	var p0: Vector3 = pts[0]
 	var pn: Vector3 = pts[pts.size() - 1]
+	st.set_color(colors[colors.size() - 1] if have_cols else end_col)
 	for s in range(sides):
 		var s2 := (s + 1) % sides
 		_tri(st, p0, first[s2], first[s])

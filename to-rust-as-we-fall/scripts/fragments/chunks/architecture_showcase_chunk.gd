@@ -84,7 +84,7 @@ func _add_pipes(root: Node3D, spec: Dictionary) -> void:
 	var pipe_seed := int(str(spec.get("kind", "")).hash())
 	var mesh := Lattice.pipes(spec, pipe_seed)
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.22, 0.16, 0.13)   # dark rusted metal
+	mat.vertex_color_use_as_albedo = true   # the pipe carries its metal/rust patina as vertex colour
 	mat.metallic = 0.5
 	mat.roughness = 0.75
 	_add_lattice_mesh(root, "Pipes", mesh, mat)
