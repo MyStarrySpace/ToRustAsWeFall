@@ -3596,8 +3596,9 @@ func _test_architecture_showcase() -> void:
 	_assert_equals((fr as ArrayMesh).surface_get_array_len(0), (hf2.get("frame") as ArrayMesh).surface_get_array_len(0),
 		"honeyframe is deterministic (same box -> same mesh)")
 	var fb: AABB = (fr as ArrayMesh).get_aabb()
-	_assert_true(fb.position.y >= -0.05 and fb.position.y + fb.size.y <= float(honey["size"].y) + 0.05,
-		"the honeyframe spans the box height, grounded (y %.2f..%.2f)" % [fb.position.y, fb.position.y + fb.size.y])
+	# Grounded at the base (plinth y>=0); the top now includes the cornice/parapet crown above size.y.
+	_assert_true(fb.position.y >= -0.05 and fb.position.y + fb.size.y <= float(honey["size"].y) + 1.2,
+		"the honeyframe spans the box height + crown, grounded (y %.2f..%.2f)" % [fb.position.y, fb.position.y + fb.size.y])
 
 	# --- tracery (Beacon Hill): lancet rib rings + lit glass wrapped on the drum, deterministic ---
 	var beacon: Dictionary = Base.generate("beacon_hill")

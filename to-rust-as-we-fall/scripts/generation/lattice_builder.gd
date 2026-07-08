@@ -20,6 +20,10 @@ const HONEYFRAME_DEFAULTS := {
 	"pane": 0.02,          # lit pane depth: recessed under the frame top, a hair proud of the wall behind
 	"corner_round": 0.30,  # P (<=0.5): how much of the half-window is rounded — rounded RECTS, not circles
 	"arc_seg": 3,          # segments per rounded corner (low-poly)
+	"cell_aspect": 1.3,    # rows target taller cells (portrait windows) — height/width per cell
+	"jitter": 0.12,        # per-cell hand-made irregularity: offset + scale the WINDOW within its cell
+	"bevel": 0.05,         # frame moulding: the band crests this much above its rims (chamfered profile)
+	"crown": true,         # emit a cornice + parapet + plinth silhouette
 	"pane_color": Color(1.0, 0.72, 0.36),   # base window-light colour; per-pane brightness/tint varies off it
 }
 
@@ -46,15 +50,39 @@ static func honeyframe(size: Vector3, overrides: Dictionary = {}) -> Dictionary:
 	for sx in [hx, -hx]:
 		for sz in [hz, -hz]:
 			_emit_box(frame_st, Vector3(sx, half_y, sz), Vector3(post, half_y, post))
+	if bool(p.get("crown", true)):
+		_emit_crown_and_base(frame_st, size)
 	frame_st.generate_normals()
 	glass_st.generate_normals()
 	return {"frame": frame_st.commit(), "glass": glass_st.commit(), "cells": cells}
+
+# A cornice + parapet-wall ring + a rooftop vent up top, and a stepped plinth at the base — the
+# silhouette a bare box lacks. All closed boxes into the frame (cream) surface.
+static func _emit_crown_and_base(st: SurfaceTool, size: Vector3) -> void:
+	var hx := size.x * 0.5
+	var hz := size.z * 0.5
+	var oh := 0.18   # cornice overhang
+	var ct := 0.26   # cornice thickness
+	_emit_box(st, Vector3(0, size.y + ct * 0.5, 0), Vector3(hx + oh, ct * 0.5, hz + oh))   # cornice slab
+	# parapet-wall ring around the roof edge
+	var py := size.y + ct
+	var ph := 0.34
+	var pw := 0.09
+	_emit_box(st, Vector3(0, py + ph * 0.5, hz + oh - pw), Vector3(hx + oh, ph * 0.5, pw))
+	_emit_box(st, Vector3(0, py + ph * 0.5, -(hz + oh - pw)), Vector3(hx + oh, ph * 0.5, pw))
+	_emit_box(st, Vector3(hx + oh - pw, py + ph * 0.5, 0), Vector3(pw, ph * 0.5, hz + oh))
+	_emit_box(st, Vector3(-(hx + oh - pw), py + ph * 0.5, 0), Vector3(pw, ph * 0.5, hz + oh))
+	# a small rooftop vent/housing
+	_emit_box(st, Vector3(hx * 0.35, py + 0.28, -hz * 0.25), Vector3(hx * 0.28, 0.28, hz * 0.22))
+	# stepped plinth at the base
+	_emit_box(st, Vector3(0, 0.16, 0), Vector3(hx + 0.24, 0.16, hz + 0.24))
+	_emit_box(st, Vector3(0, 0.40, 0), Vector3(hx + 0.11, 0.10, hz + 0.11))
 
 static func _honeyframe_face(f: Dictionary, p: Dictionary, frame_st: SurfaceTool, glass_st: SurfaceTool) -> int:
 	var w: float = f["w"]
 	var h: float = f["h"]
 	var cols := int(max(1, round(w / float(p["cell_size"]))))
-	var rows := int(max(1, round(h / float(p["cell_size"]))))
+	var rows := int(max(1, round(h / (float(p["cell_size"]) * float(p["cell_aspect"])))))
 	var cw := w / float(cols)
 	var ch := h / float(rows)
 	var c: Vector3 = f["c"]
@@ -67,12 +95,13 @@ static func _honeyframe_face(f: Dictionary, p: Dictionary, frame_st: SurfaceTool
 	var pane: float = p["pane"]
 	var base_pane: Color = p["pane_color"]
 	var seg: int = int(p["arc_seg"])
+	var bevel: float = p["bevel"]
+	var jitter: float = p["jitter"]
 	# Window (inner) half-size = cell half-size minus the frame; the frame keeps a CONSTANT width by
 	# offsetting the outer outline out by `fw`, so cell_half == window_half + fw.
 	var win_hw := maxf(0.05, cw * 0.5 - fw)
 	var win_hh := maxf(0.05, ch * 0.5 - fw)
 	var r_in := minf(win_hw, win_hh) * clampf(float(p["corner_round"]) * 2.0, 0.0, 1.0)
-	var inner := _rounded_rect(win_hw, win_hh, r_in, seg)
 	# The outer outline is the FULL cell rectangle (sharp corners), so the frame tiles the whole face
 	# with no gaps and the strut fans from each sharp grid-vertex corner out to the rounded window arc
 	# — that fan IS the "round toward the vertex" junction (concave window-arc sides, solid crossings).
@@ -83,8 +112,18 @@ static func _honeyframe_face(f: Dictionary, p: Dictionary, frame_st: SurfaceTool
 			var cv := -h * 0.5 + (row + 0.5) * ch
 			var center := c + u * cu + v * cv
 			var key := absf(center.x) * 12.9 + absf(center.y) * 7.3 + absf(center.z) * 3.1
-			_emit_frame_ring(center, u, v, n, outer, inner, fd, back, frame_st)
-			_emit_glass(center, u, v, n, inner, pane, _pane_color(base_pane, key), glass_st)
+			# Per-cell irregularity: nudge + scale the WINDOW inside its cell (the frame band thickens
+			# unevenly around it). The outer cell rect stays put, so the lattice still tiles seamlessly.
+			var js := 1.0 + (_h01(key * 6.1) - 0.5) * jitter
+			var jx := (_h01(key * 2.3) - 0.5) * jitter * cw
+			var jy := (_h01(key * 4.7) - 0.5) * jitter * ch
+			var inner := _rounded_rect(win_hw * js, win_hh * js, r_in * js, seg)
+			var off := Vector2(jx, jy)
+			var inner_j := PackedVector2Array()
+			for pt in inner:
+				inner_j.append(pt + off)
+			_emit_frame_ring(center, u, v, n, outer, inner_j, fd, back, bevel, frame_st)
+			_emit_glass(center, u, v, n, inner_j, pane, _pane_color(base_pane, key), glass_st)
 	return rows * cols
 
 # A rounded rectangle outline in the (x,y) face plane, wound CCW. 4 quarter-arcs of radius r.
@@ -105,11 +144,12 @@ static func _rounded_rect(hw: float, hh: float, r: float, seg: int) -> PackedVec
 static func _p3(center: Vector3, u: Vector3, v: Vector3, n: Vector3, pt: Vector2, dn: float) -> Vector3:
 	return center + u * pt.x + v * pt.y + n * dn
 
-# A CLOSED frame-border prism between the outer (cell) and inner (window) outlines: top annulus at
-# `top` (proud), outer + inner walls dropping to `back` (into the wall), and the bottom annulus that
-# closes it. The inner wall is the visible window REVEAL. Watertight — no open underside.
+# A CLOSED frame-border prism between the outer (cell) and inner (window) outlines. The top is a
+# MOULDING: the rims sit at `top`, a mid crest rises `bevel` higher, so the cross-section reads
+# outer(low) -> crest(high) -> inner(low). Walls drop to `back` (into the wall); the bottom annulus
+# closes it. Inner wall is the window REVEAL. Watertight — no open underside.
 static func _emit_frame_ring(center: Vector3, u: Vector3, v: Vector3, n: Vector3,
-		outer: PackedVector2Array, inner: PackedVector2Array, top: float, back: float, st: SurfaceTool) -> void:
+		outer: PackedVector2Array, inner: PackedVector2Array, top: float, back: float, bevel: float, st: SurfaceTool) -> void:
 	var count := outer.size()
 	for i in range(count):
 		var j := (i + 1) % count
@@ -117,13 +157,17 @@ static func _emit_frame_ring(center: Vector3, u: Vector3, v: Vector3, n: Vector3
 		var ot_j := _p3(center, u, v, n, outer[j], top)
 		var it_i := _p3(center, u, v, n, inner[i], top)
 		var it_j := _p3(center, u, v, n, inner[j], top)
+		var mt_i := _p3(center, u, v, n, outer[i].lerp(inner[i], 0.5), top + bevel)
+		var mt_j := _p3(center, u, v, n, outer[j].lerp(inner[j], 0.5), top + bevel)
 		var ob_i := _p3(center, u, v, n, outer[i], back)
 		var ob_j := _p3(center, u, v, n, outer[j], back)
 		var ib_i := _p3(center, u, v, n, inner[i], back)
 		var ib_j := _p3(center, u, v, n, inner[j], back)
-		# top annulus (faces +n)
-		_tri(st, ot_i, ot_j, it_j)
-		_tri(st, ot_i, it_j, it_i)
+		# top moulding: outer rim -> mid crest -> inner rim (faces +n)
+		_tri(st, ot_i, ot_j, mt_j)
+		_tri(st, ot_i, mt_j, mt_i)
+		_tri(st, mt_i, mt_j, it_j)
+		_tri(st, mt_i, it_j, it_i)
 		# bottom annulus (faces -n, against the wall)
 		_tri(st, ob_i, ib_j, ob_j)
 		_tri(st, ob_i, ib_i, ib_j)
