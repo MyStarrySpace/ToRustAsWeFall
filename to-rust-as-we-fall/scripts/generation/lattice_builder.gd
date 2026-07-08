@@ -467,14 +467,20 @@ static func _sweep_tube(pts: Array, radius: float, sides: int, colors: Array, st
 # ============================================================================================
 
 const TRACERY_DEFAULTS := {
-	"cols": 12,           # lancet columns around the drum
-	"rows": 2,            # a couple of TALL openings stacked up the height
+	"rows": 2,            # a couple of TALL openings stacked up the body height
 	"frame_width": 0.26,  # rib thickness (wide ribs -> narrow lancet slots)
 	"frame_depth": 0.12,  # rib top relief off the true-circle wall
 	"back_bite": 0.07,    # how far the closed rib sinks INTO the drum (> the facet sagitta, so no float gap)
 	"taper": 0.22,        # fraction of the slot height that tapers to the pointed tips (rest is parallel)
 	"arc_seg": 14,        # points top->bottom along a slot side (smooth tall slot)
 	"pane": 0.02,         # lit pane proud of the true-circle wall (recessed under the ribs)
+	"bevel": 0.05,        # rib moulding: the band crests this much above its rims
+	"col_pattern": [1.0, 0.5, 0.72, 0.5],   # relative lancet widths per bay (a big central lancet + flankers)
+	"bays": 4,            # how many times the width pattern repeats around the drum
+	"clerestory": true,   # a ring of small roundels above the main lancets
+	"body_frac": 0.82,    # main lancets occupy this fraction of the height; the rest is the clerestory band
+	"roundels": 16,       # roundel count in the clerestory ring
+	"roundel_r": 0.32,    # roundel radius
 	"pane_color": Color(1.0, 0.74, 0.42),   # base window-light colour; per-pane brightness/tint varies off it
 }
 
@@ -483,33 +489,64 @@ static func tracery(radius: float, height: float, overrides: Dictionary = {}) ->
 	var p := TRACERY_DEFAULTS.duplicate()
 	for k in overrides.keys():
 		p[k] = overrides[k]
-	var cols := int(p["cols"])
 	var rows := int(p["rows"])
-	var cell_w := TAU * radius / float(cols)
-	var cell_h := height / float(rows)
 	var fw: float = p["frame_width"]
-	var win_hw := maxf(0.05, cell_w * 0.5 - fw)
-	var win_hh := maxf(0.05, cell_h * 0.5 - fw)
 	var seg := int(p["arc_seg"])
 	var taper: float = p["taper"]
-	var inner := _lancet(win_hw, win_hh, seg, taper)
-	var outer := _lancet(win_hw + fw, win_hh + fw, seg, taper)
+	var top := float(p["frame_depth"])
+	var back := -float(p["back_bite"])
+	var bevel := float(p["bevel"])
+	var pane := float(p["pane"])
+	var base_pane: Color = p["pane_color"]
+	var clerestory := bool(p["clerestory"])
+	var body_h := height * float(p["body_frac"]) if clerestory else height
+	var cell_h := body_h / float(rows)
+	var win_hh := maxf(0.05, cell_h * 0.5 - fw)
 	var frame_st := SurfaceTool.new()
 	frame_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var glass_st := SurfaceTool.new()
 	glass_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var back := -float(p["back_bite"])
-	var base_pane: Color = p["pane_color"]
-	for j in range(rows):
-		for i in range(cols):
-			var th := TAU * (float(i) + 0.5) / float(cols)
-			var yc := (float(j) + 0.5) * cell_h
-			var key := float(i) * 12.9 + float(j) * 57.3
-			_emit_ring_cyl(th, yc, radius, outer, inner, float(p["frame_depth"]), back, frame_st)
-			_emit_glass_cyl(th, yc, radius, inner, float(p["pane"]), _pane_color(base_pane, key), glass_st)
+	var cells := 0
+	# Main lancets: per-column WIDTHS (a big central lancet + smaller flankers) walked by a running
+	# angular cursor, the width pattern repeating `bays` times around the drum.
+	var pattern: Array = p["col_pattern"]
+	var bays := int(p["bays"])
+	var total := 0.0
+	for pw in pattern:
+		total += float(pw)
+	total *= float(bays)
+	var circ := TAU * radius
+	var cursor := 0.0
+	for _bay in range(bays):
+		for cw_rel in pattern:
+			var seg_w := circ * (float(cw_rel) / total)
+			var th := (cursor + seg_w * 0.5) / radius
+			var win_hw := maxf(0.05, seg_w * 0.5 - fw)
+			var inner := _lancet(win_hw, win_hh, seg, taper)
+			var outer := _lancet(win_hw + fw, win_hh + fw, seg, taper)
+			for j in range(rows):
+				var yc := (float(j) + 0.5) * cell_h
+				var key := cursor * 3.7 + float(j) * 57.3
+				_emit_ring_cyl(th, yc, radius, outer, inner, top, back, bevel, frame_st)
+				_emit_glass_cyl(th, yc, radius, inner, pane, _pane_color(base_pane, key), glass_st)
+				cells += 1
+			cursor += seg_w
+	# Clerestory: a ring of small ROUNDELS above the main lancets (the crown band).
+	if clerestory:
+		var nr := int(p["roundels"])
+		var rr := float(p["roundel_r"])
+		var y_cl := body_h + (height - body_h) * 0.5
+		var inner_c := _rounded_rect(rr, rr, rr, seg)
+		var outer_c := _rounded_rect(rr + fw * 0.7, rr + fw * 0.7, rr + fw * 0.7, seg)
+		for k in range(nr):
+			var th := TAU * (float(k) + 0.5) / float(nr)
+			var key := float(k) * 11.3 + 900.0
+			_emit_ring_cyl(th, y_cl, radius, outer_c, inner_c, top, back, bevel, frame_st)
+			_emit_glass_cyl(th, y_cl, radius, inner_c, pane, _pane_color(base_pane, key), glass_st)
+			cells += 1
 	frame_st.generate_normals()
 	glass_st.generate_normals()
-	return {"frame": frame_st.commit(), "glass": glass_st.commit(), "cells": cols * rows}
+	return {"frame": frame_st.commit(), "glass": glass_st.commit(), "cells": cells}
 
 # A tall pointed-arch (lancet) outline: near-parallel sides at ±hw for most of the height, tapering to
 # pointed tips at ±hh over the outer `taper` fraction. taper->0 is a rectangle; taper->0.5 is a vesica.
@@ -534,7 +571,7 @@ static func _cylp(base_th: float, yc: float, r: float, pt: Vector2, dn: float) -
 # and the bottom annulus that closes it. `back` is negative and deeper than the facet sagitta so the rib
 # always bites into the faceted drum (no float gap at facet midpoints).
 static func _emit_ring_cyl(base_th: float, yc: float, r: float,
-		outer: PackedVector2Array, inner: PackedVector2Array, top: float, back: float, st: SurfaceTool) -> void:
+		outer: PackedVector2Array, inner: PackedVector2Array, top: float, back: float, bevel: float, st: SurfaceTool) -> void:
 	var count := outer.size()
 	for i in range(count):
 		var j := (i + 1) % count
@@ -542,13 +579,17 @@ static func _emit_ring_cyl(base_th: float, yc: float, r: float,
 		var ot_j := _cylp(base_th, yc, r, outer[j], top)
 		var it_i := _cylp(base_th, yc, r, inner[i], top)
 		var it_j := _cylp(base_th, yc, r, inner[j], top)
+		var mt_i := _cylp(base_th, yc, r, outer[i].lerp(inner[i], 0.5), top + bevel)
+		var mt_j := _cylp(base_th, yc, r, outer[j].lerp(inner[j], 0.5), top + bevel)
 		var ob_i := _cylp(base_th, yc, r, outer[i], back)
 		var ob_j := _cylp(base_th, yc, r, outer[j], back)
 		var ib_i := _cylp(base_th, yc, r, inner[i], back)
 		var ib_j := _cylp(base_th, yc, r, inner[j], back)
-		# top annulus (faces outward)
-		_tri(st, ot_i, ot_j, it_j)
-		_tri(st, ot_i, it_j, it_i)
+		# top moulding: outer rim -> mid crest -> inner rim (faces outward)
+		_tri(st, ot_i, ot_j, mt_j)
+		_tri(st, ot_i, mt_j, mt_i)
+		_tri(st, mt_i, mt_j, it_j)
+		_tri(st, mt_i, it_j, it_i)
 		# bottom annulus (faces inward, into the drum)
 		_tri(st, ob_i, ib_j, ob_j)
 		_tri(st, ob_i, ib_i, ib_j)
