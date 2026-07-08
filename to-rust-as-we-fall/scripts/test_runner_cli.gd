@@ -380,7 +380,7 @@ func _ready() -> void:
 				_test_creature_grammar()
 			"--test-architecture-showcase":
 				ran_test = true
-				_test_architecture_showcase()
+				await _test_architecture_showcase()
 			"--test-sight-mask-bake":
 				ran_test = true
 				await _test_sight_mask_bake()
@@ -1316,7 +1316,7 @@ func _run_all_tests() -> void:
 	_test_shape_grammar()
 	_test_building_filler()
 	_test_creature_grammar()
-	_test_architecture_showcase()
+	await _test_architecture_showcase()
 	await _test_sight_mask_bake()
 	_test_roguelike_run()
 	_test_run_branch_decisions()
@@ -3541,6 +3541,40 @@ func _test_architecture_showcase() -> void:
 		if str((e as Dictionary).get("id", "")) == "architecture_showcase":
 			found = true
 	_assert_true(found, "the architecture showcase is a registered preview entry")
+
+	# --- PERLIN-VARIED texture: building materials are the grime shader (world-noise density), NOT a
+	# flat uniform tiled StandardMaterial3D. Boot the showcase and inspect a hero body material. ---
+	var shader_src := FileAccess.get_file_as_string("res://resources/tile_grime.gdshader")
+	_assert_true(shader_src.contains("vnoise") and shader_src.contains("v_world"),
+		"the grime shader drives density from a world-space noise field")
+	var prev = load("res://scenes/fragments/fragment_preview.tscn").instantiate()
+	prev.set("preview_menu", false)
+	prev.set("preview_chunk", "architecture_showcase")
+	prev.set("preview_chunk_config", {"seed": 1})
+	get_tree().root.add_child(prev)
+	for _i in range(10):
+		await get_tree().process_frame
+	var found_grime := false
+	var found_body := false
+	for hero in _find_nodes_prefixed(prev, "Hero_"):
+		for child in (hero as Node).get_children():
+			if child.name == "Body" and child is MeshInstance3D:
+				found_body = true
+				var m: Material = (child as MeshInstance3D).mesh.surface_get_material(0)
+				if m is ShaderMaterial and (m as ShaderMaterial).shader == load("res://resources/tile_grime.gdshader"):
+					found_grime = true
+	_assert_true(found_body, "the showcase raised hero bodies")
+	_assert_true(found_grime, "hero bodies use the Perlin grime shader, not a flat tiled material")
+	prev.queue_free()
+	await get_tree().process_frame
+
+func _find_nodes_prefixed(n: Node, prefix: String) -> Array:
+	var out: Array = []
+	if str(n.name).begins_with(prefix):
+		out.append(n)
+	for c in n.get_children():
+		out.append_array(_find_nodes_prefixed(c, prefix))
+	return out
 
 func _test_creature_grammar() -> void:
 	_test_name = "Creature Grammar"

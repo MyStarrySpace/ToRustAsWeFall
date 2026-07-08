@@ -2,6 +2,7 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 
 const LatheBuilderScript := preload("res://scripts/generation/lathe_builder.gd")
 const SdfMesherScript := preload("res://scripts/generation/sdf_mesher.gd")
+const GRIME_SHADER := preload("res://resources/tile_grime.gdshader")
 
 ## The DATA-DRIVEN fragment loader. Point it at a `Fragment` resource (the data) and it COMPOSES the scene from
 ## the shared modular classes — no bespoke build code per fragment. It reads the fragment's map (floors/walls/
@@ -110,15 +111,25 @@ func _spawn_lathe_building(lp: Dictionary) -> void:
 # of (tile, palette-drift) combinations after quantising the tint.
 var _tile_mat_cache: Dictionary = {}
 
-## The floors' world-triplanar pixel-art tile material, tinted. Tints are LIFTED (the tile albedo is
-## mid-dark already) and quantised for cache hits while the Perlin palette drift stays visible.
-func _tinted_tile_material(tile_name: String, tint: Color) -> StandardMaterial3D:
+## Pixel-art tile with PERLIN-VARIED DENSITY (tile_grime.gdshader) — the building/hero material.
+## The tile is object-space locked (no swim), grime/rust/brightness ride a WORLD-space noise field so
+## the tiling stops reading uniform and varies per facade + per building. Tint is LIFTED (the tile
+## albedo is mid-dark) and quantised for cache hits while the Perlin palette drift stays visible.
+func _tinted_tile_material(tile_name: String, tint: Color) -> ShaderMaterial:
 	var lifted := Color(minf(tint.r * 2.6, 1.2), minf(tint.g * 2.6, 1.2), minf(tint.b * 2.6, 1.2))
 	var key := "%s:%d,%d,%d" % [tile_name, int(lifted.r * 24.0), int(lifted.g * 24.0), int(lifted.b * 24.0)]
 	if _tile_mat_cache.has(key):
 		return _tile_mat_cache[key]
-	var mat := _tiled_floor_material(tile_name)
-	mat.albedo_color = lifted
+	var mat := ShaderMaterial.new()
+	mat.shader = GRIME_SHADER
+	var tex = load(TILE_DIR + tile_name + ".png")
+	if tex != null:
+		mat.set_shader_parameter("tile_tex", tex)
+	mat.set_shader_parameter("tint", lifted)
+	# a rusty tile already carries decay — soften the shader's extra rust so it doesn't double up
+	if tile_name == "rust_iron":
+		mat.set_shader_parameter("rust_amount", 0.3)
+		mat.set_shader_parameter("grime_amount", 0.55)
 	_tile_mat_cache[key] = mat
 	return mat
 
