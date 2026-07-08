@@ -15,10 +15,11 @@ extends RefCounted
 const HONEYFRAME_DEFAULTS := {
 	"cell_size": 1.25,     # target metres per cell; ~4x6 on the front face, matching the plate
 	"frame_width": 0.20,   # cream strut thickness (the window inset from the cell edge)
-	"frame_depth": 0.12,   # how far the frame stands proud of the face
+	"frame_depth": 0.12,   # how far the frame top stands proud of the wall
+	"back_bite": 0.03,     # how far the closed frame sinks INTO the wall (overlaps the box, no z-fight)
+	"pane": 0.02,          # lit pane depth: recessed under the frame top, a hair proud of the wall behind
 	"corner_round": 0.30,  # P (<=0.5): how much of the half-window is rounded — rounded RECTS, not circles
 	"arc_seg": 3,          # segments per rounded corner (low-poly)
-	"glass_proud": 0.085,  # the lit pane sits just under the frame top (recessed, but not so deep the frame occludes it)
 }
 
 ## Build the honeyframe lattice for a box of `size` (base at y=0). Returns {frame, glass} ArrayMeshes:
@@ -35,6 +36,15 @@ static func honeyframe(size: Vector3, overrides: Dictionary = {}) -> Dictionary:
 	var cells := 0
 	for f in faces:
 		cells += _honeyframe_face(f, p, frame_st, glass_st)
+	# Closed corner posts down the four vertical box edges cover the miter seam where two faces' frames
+	# meet at 90 degrees (otherwise a bare L-wedge runs the full height of every corner).
+	var hx := size.x * 0.5
+	var hz := size.z * 0.5
+	var post := float(p["frame_width"]) * 0.75
+	var half_y := size.y * 0.5
+	for sx in [hx, -hx]:
+		for sz in [hz, -hz]:
+			_emit_box(frame_st, Vector3(sx, half_y, sz), Vector3(post, half_y, post))
 	frame_st.generate_normals()
 	glass_st.generate_normals()
 	return {"frame": frame_st.commit(), "glass": glass_st.commit(), "cells": cells}
@@ -52,8 +62,9 @@ static func _honeyframe_face(f: Dictionary, p: Dictionary, frame_st: SurfaceTool
 	var v := n.cross(u).normalized()   # in-plane "up" (points +y for a vertical face)
 	var fw: float = p["frame_width"]
 	var fd: float = p["frame_depth"]
+	var back: float = -float(p["back_bite"])
+	var pane: float = p["pane"]
 	var seg: int = int(p["arc_seg"])
-	var proud: float = p["glass_proud"]
 	# Window (inner) half-size = cell half-size minus the frame; the frame keeps a CONSTANT width by
 	# offsetting the outer outline out by `fw`, so cell_half == window_half + fw.
 	var win_hw := maxf(0.05, cw * 0.5 - fw)
@@ -69,8 +80,8 @@ static func _honeyframe_face(f: Dictionary, p: Dictionary, frame_st: SurfaceTool
 			var cu := -w * 0.5 + (col + 0.5) * cw
 			var cv := -h * 0.5 + (row + 0.5) * ch
 			var center := c + u * cu + v * cv
-			_emit_frame_ring(center, u, v, n, outer, inner, fd, frame_st)
-			_emit_glass(center, u, v, n, inner, proud, glass_st)
+			_emit_frame_ring(center, u, v, n, outer, inner, fd, back, frame_st)
+			_emit_glass(center, u, v, n, inner, pane, glass_st)
 	return rows * cols
 
 # A rounded rectangle outline in the (x,y) face plane, wound CCW. 4 quarter-arcs of radius r.
@@ -91,44 +102,67 @@ static func _rounded_rect(hw: float, hh: float, r: float, seg: int) -> PackedVec
 static func _p3(center: Vector3, u: Vector3, v: Vector3, n: Vector3, pt: Vector2, dn: float) -> Vector3:
 	return center + u * pt.x + v * pt.y + n * dn
 
-# The raised frame ring between the outer (cell) and inner (window) outlines: a top face at +depth
-# plus the outer and inner walls dropping back to the face plane.
+# A CLOSED frame-border prism between the outer (cell) and inner (window) outlines: top annulus at
+# `top` (proud), outer + inner walls dropping to `back` (into the wall), and the bottom annulus that
+# closes it. The inner wall is the visible window REVEAL. Watertight — no open underside.
 static func _emit_frame_ring(center: Vector3, u: Vector3, v: Vector3, n: Vector3,
-		outer: PackedVector2Array, inner: PackedVector2Array, depth: float, st: SurfaceTool) -> void:
+		outer: PackedVector2Array, inner: PackedVector2Array, top: float, back: float, st: SurfaceTool) -> void:
 	var count := outer.size()
 	for i in range(count):
 		var j := (i + 1) % count
-		var ot_i := _p3(center, u, v, n, outer[i], depth)
-		var ot_j := _p3(center, u, v, n, outer[j], depth)
-		var it_i := _p3(center, u, v, n, inner[i], depth)
-		var it_j := _p3(center, u, v, n, inner[j], depth)
-		var ob_i := _p3(center, u, v, n, outer[i], 0.0)
-		var ob_j := _p3(center, u, v, n, outer[j], 0.0)
-		var ib_i := _p3(center, u, v, n, inner[i], 0.0)
-		var ib_j := _p3(center, u, v, n, inner[j], 0.0)
-		# top face (faces +n)
+		var ot_i := _p3(center, u, v, n, outer[i], top)
+		var ot_j := _p3(center, u, v, n, outer[j], top)
+		var it_i := _p3(center, u, v, n, inner[i], top)
+		var it_j := _p3(center, u, v, n, inner[j], top)
+		var ob_i := _p3(center, u, v, n, outer[i], back)
+		var ob_j := _p3(center, u, v, n, outer[j], back)
+		var ib_i := _p3(center, u, v, n, inner[i], back)
+		var ib_j := _p3(center, u, v, n, inner[j], back)
+		# top annulus (faces +n)
 		_tri(st, ot_i, ot_j, it_j)
 		_tri(st, ot_i, it_j, it_i)
+		# bottom annulus (faces -n, against the wall)
+		_tri(st, ob_i, ib_j, ob_j)
+		_tri(st, ob_i, ib_i, ib_j)
 		# outer wall (faces outward)
 		_tri(st, ob_i, ot_i, ot_j)
 		_tri(st, ob_i, ot_j, ob_j)
-		# inner wall (faces inward, toward the window)
+		# inner wall = the window reveal (faces inward, toward the window)
 		_tri(st, it_i, it_j, ib_j)
 		_tri(st, it_i, ib_j, ib_i)
 
-# The lit window pane: a fan over the inner outline, sitting flush (a hair proud) on the face.
+# The lit window pane: a fan over the inner outline at `depth`, wound to face OUTWARD (+n) so it needs
+# no double-siding. It sits recessed under the frame top, a hair proud of the wall behind it.
 static func _emit_glass(center: Vector3, u: Vector3, v: Vector3, n: Vector3,
-		inner: PackedVector2Array, proud: float, st: SurfaceTool) -> void:
+		inner: PackedVector2Array, depth: float, st: SurfaceTool) -> void:
 	var count := inner.size()
-	var mid := _p3(center, u, v, n, Vector2.ZERO, proud)
+	var mid := _p3(center, u, v, n, Vector2.ZERO, depth)
 	for i in range(count):
 		var j := (i + 1) % count
-		_tri(st, mid, _p3(center, u, v, n, inner[i], proud), _p3(center, u, v, n, inner[j], proud))
+		_tri(st, mid, _p3(center, u, v, n, inner[j], depth), _p3(center, u, v, n, inner[i], depth))
 
 static func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
 	st.add_vertex(a)
 	st.add_vertex(b)
 	st.add_vertex(c)
+
+# A closed axis-aligned box (12 tris), used for corner posts.
+static func _emit_box(st: SurfaceTool, center: Vector3, half: Vector3) -> void:
+	var c := center
+	var e := half
+	var vtx := [
+		c + Vector3(-e.x, -e.y, -e.z), c + Vector3(e.x, -e.y, -e.z),
+		c + Vector3(e.x, -e.y, e.z), c + Vector3(-e.x, -e.y, e.z),
+		c + Vector3(-e.x, e.y, -e.z), c + Vector3(e.x, e.y, -e.z),
+		c + Vector3(e.x, e.y, e.z), c + Vector3(-e.x, e.y, e.z),
+	]
+	var faces := [
+		[0, 1, 2, 3], [7, 6, 5, 4], [0, 4, 5, 1],
+		[1, 5, 6, 2], [2, 6, 7, 3], [3, 7, 4, 0],
+	]
+	for fq in faces:
+		_tri(st, vtx[fq[0]], vtx[fq[2]], vtx[fq[1]])
+		_tri(st, vtx[fq[0]], vtx[fq[3]], vtx[fq[2]])
 
 # ============================================================================================
 # PIPES — edge/face-descent tubes that drape down a building (works on box faces AND the cylinder).
@@ -256,6 +290,15 @@ static func _sweep_tube(pts: Array, radius: float, sides: int, st: SurfaceTool) 
 			var s2 := (s + 1) % sides
 			_tri(st, r0[s], r0[s2], r1[s2])
 			_tri(st, r0[s], r1[s2], r1[s])
+	# End caps so the tube is a closed solid (no open bore), wound opposite at the two ends.
+	var first: Array = rings[0]
+	var last: Array = rings[rings.size() - 1]
+	var p0: Vector3 = pts[0]
+	var pn: Vector3 = pts[pts.size() - 1]
+	for s in range(sides):
+		var s2 := (s + 1) % sides
+		_tri(st, p0, first[s2], first[s])
+		_tri(st, pn, last[s], last[s2])
 
 # ============================================================================================
 # TRACERY — pointed-arch (lancet) window wall wrapped on a CYLINDER (Beacon Hill). A raised stone RIB
@@ -267,10 +310,11 @@ const TRACERY_DEFAULTS := {
 	"cols": 12,           # lancet columns around the drum
 	"rows": 2,            # a couple of TALL openings stacked up the height
 	"frame_width": 0.26,  # rib thickness (wide ribs -> narrow lancet slots)
-	"frame_depth": 0.12,  # rib relief off the wall
+	"frame_depth": 0.12,  # rib top relief off the true-circle wall
+	"back_bite": 0.07,    # how far the closed rib sinks INTO the drum (> the facet sagitta, so no float gap)
 	"taper": 0.22,        # fraction of the slot height that tapers to the pointed tips (rest is parallel)
 	"arc_seg": 14,        # points top->bottom along a slot side (smooth tall slot)
-	"standoff": 0.035,    # lit pane proud of the wall (recessed under the ribs)
+	"pane": 0.02,         # lit pane proud of the true-circle wall (recessed under the ribs)
 }
 
 ## Build the tracery lattice for a drum of `radius`/`height`. Returns {frame, glass} ArrayMeshes.
@@ -293,12 +337,13 @@ static func tracery(radius: float, height: float, overrides: Dictionary = {}) ->
 	frame_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var glass_st := SurfaceTool.new()
 	glass_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var back := -float(p["back_bite"])
 	for j in range(rows):
 		for i in range(cols):
 			var th := TAU * (float(i) + 0.5) / float(cols)
 			var yc := (float(j) + 0.5) * cell_h
-			_emit_ring_cyl(th, yc, radius, outer, inner, float(p["frame_depth"]), frame_st)
-			_emit_glass_cyl(th, yc, radius, inner, float(p["standoff"]), glass_st)
+			_emit_ring_cyl(th, yc, radius, outer, inner, float(p["frame_depth"]), back, frame_st)
+			_emit_glass_cyl(th, yc, radius, inner, float(p["pane"]), glass_st)
 	frame_st.generate_normals()
 	glass_st.generate_normals()
 	return {"frame": frame_st.commit(), "glass": glass_st.commit(), "cells": cols * rows}
@@ -322,33 +367,43 @@ static func _cylp(base_th: float, yc: float, r: float, pt: Vector2, dn: float) -
 	var rr := r + dn
 	return Vector3(rr * cos(a), yc + pt.y, rr * sin(a))
 
+# A CLOSED lancet rib on the drum: top annulus at r+`top`, walls dropping to r+`back` (inside the drum),
+# and the bottom annulus that closes it. `back` is negative and deeper than the facet sagitta so the rib
+# always bites into the faceted drum (no float gap at facet midpoints).
 static func _emit_ring_cyl(base_th: float, yc: float, r: float,
-		outer: PackedVector2Array, inner: PackedVector2Array, depth: float, st: SurfaceTool) -> void:
+		outer: PackedVector2Array, inner: PackedVector2Array, top: float, back: float, st: SurfaceTool) -> void:
 	var count := outer.size()
 	for i in range(count):
 		var j := (i + 1) % count
-		var ot_i := _cylp(base_th, yc, r, outer[i], depth)
-		var ot_j := _cylp(base_th, yc, r, outer[j], depth)
-		var it_i := _cylp(base_th, yc, r, inner[i], depth)
-		var it_j := _cylp(base_th, yc, r, inner[j], depth)
-		var ob_i := _cylp(base_th, yc, r, outer[i], 0.0)
-		var ob_j := _cylp(base_th, yc, r, outer[j], 0.0)
-		var ib_i := _cylp(base_th, yc, r, inner[i], 0.0)
-		var ib_j := _cylp(base_th, yc, r, inner[j], 0.0)
+		var ot_i := _cylp(base_th, yc, r, outer[i], top)
+		var ot_j := _cylp(base_th, yc, r, outer[j], top)
+		var it_i := _cylp(base_th, yc, r, inner[i], top)
+		var it_j := _cylp(base_th, yc, r, inner[j], top)
+		var ob_i := _cylp(base_th, yc, r, outer[i], back)
+		var ob_j := _cylp(base_th, yc, r, outer[j], back)
+		var ib_i := _cylp(base_th, yc, r, inner[i], back)
+		var ib_j := _cylp(base_th, yc, r, inner[j], back)
+		# top annulus (faces outward)
 		_tri(st, ot_i, ot_j, it_j)
 		_tri(st, ot_i, it_j, it_i)
+		# bottom annulus (faces inward, into the drum)
+		_tri(st, ob_i, ib_j, ob_j)
+		_tri(st, ob_i, ib_i, ib_j)
+		# outer wall
 		_tri(st, ob_i, ot_i, ot_j)
 		_tri(st, ob_i, ot_j, ob_j)
+		# inner wall = the window reveal
 		_tri(st, it_i, it_j, ib_j)
 		_tri(st, it_i, ib_j, ib_i)
 
+# The lit lancet pane, wound to face OUTWARD (+radial) so it needs no double-siding.
 static func _emit_glass_cyl(base_th: float, yc: float, r: float,
-		inner: PackedVector2Array, standoff: float, st: SurfaceTool) -> void:
+		inner: PackedVector2Array, pane: float, st: SurfaceTool) -> void:
 	var count := inner.size()
-	var mid := _cylp(base_th, yc, r, Vector2.ZERO, standoff)
+	var mid := _cylp(base_th, yc, r, Vector2.ZERO, pane)
 	for i in range(count):
 		var j := (i + 1) % count
-		_tri(st, mid, _cylp(base_th, yc, r, inner[i], standoff), _cylp(base_th, yc, r, inner[j], standoff))
+		_tri(st, mid, _cylp(base_th, yc, r, inner[j], pane), _cylp(base_th, yc, r, inner[i], pane))
 
 # The four vertical facade faces of a box (base at y=0): centre, in-plane U axis, outward normal, w, h.
 static func _box_vertical_faces(size: Vector3) -> Array:

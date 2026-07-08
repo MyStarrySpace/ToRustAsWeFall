@@ -54,7 +54,7 @@ const SPECS := {
 	},
 }
 
-const CYL_SEGMENTS := 12   # low-poly drum — clearly faceted, still reads round
+const CYL_SEGMENTS := 24   # drum facets — smooth enough that a wrapped lattice sits flush, still low-poly
 
 ## Resolve a building to its spec, plus convenience fields for placement/labelling. The seed argument
 ## is accepted for parity with the other generation previews; base shapes are deterministic (nothing

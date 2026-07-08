@@ -87,7 +87,6 @@ func _add_pipes(root: Node3D, spec: Dictionary) -> void:
 	mat.albedo_color = Color(0.22, 0.16, 0.13)   # dark rusted metal
 	mat.metallic = 0.5
 	mat.roughness = 0.75
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_add_lattice_mesh(root, "Pipes", mesh, mat)
 
 func _add_lattice_mesh(root: Node3D, mesh_name: String, mesh, mat: Material) -> void:
@@ -105,7 +104,6 @@ func _lit_pane_material(col: Color, energy: float) -> StandardMaterial3D:
 	em.emission_enabled = true
 	em.emission = col
 	em.emission_energy_multiplier = energy
-	em.cull_mode = BaseMaterial3D.CULL_DISABLED   # flat pane fans — render both sides
 	return em
 
 func _process(delta: float) -> void:
