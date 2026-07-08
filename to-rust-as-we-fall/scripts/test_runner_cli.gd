@@ -3412,6 +3412,39 @@ func _test_creature_grammar() -> void:
 	_assert_true((Grammar.generate(2, "meeb")["glows"] as Array).size() >= 3, "Meeb carries food-cup glows")
 	_assert_true((Grammar.generate(2, "gnawer")["glows"] as Array).size() == 2, "the quadruped carries paired eye glows")
 
+	# --- the surface is a clean closed MANIFOLD: every edge shared by exactly two triangles, and no
+	# triangle spans more than a couple of voxels. A tet decomposition that fails to tile the cube
+	# (overlapping/missing volume) doubles surface sheets — edges owned by 4+ triangles, z-fighting
+	# stripes and stray internal wedges in the render. This is the guard for that whole bug class. ---
+	var manifold_ok := true
+	var edge_len_ok := true
+	for kind in Grammar.ARCHETYPES:
+		var built: Dictionary = Mesher.build(Grammar.generate(4, str(kind))["prims"], test_cell)
+		if built["mesh"] == null:
+			manifold_ok = false
+			continue
+		var arrays: Array = (built["mesh"] as ArrayMesh).surface_get_arrays(0)
+		var vs: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+		var edge_count := {}
+		for t in range(0, idx.size(), 3):
+			for e in range(3):
+				var va := idx[t + e]
+				var vb := idx[t + (e + 1) % 3]
+				var key := "%d_%d" % [mini(va, vb), maxi(va, vb)]
+				edge_count[key] = int(edge_count.get(key, 0)) + 1
+				if vs[va].distance_to(vs[vb]) > test_cell * 2.1:
+					edge_len_ok = false
+		var bad := 0
+		for k in edge_count.values():
+			if int(k) != 2:
+				bad += 1
+		if bad > 0:
+			manifold_ok = false
+			print("  [creature] %s non-manifold: %d/%d bad edges" % [kind, bad, edge_count.size()])
+	_assert_true(manifold_ok, "every archetype meshes to a closed 2-manifold (each edge owned by exactly 2 triangles)")
+	_assert_true(edge_len_ok, "no triangle spans beyond its voxel neighbourhood (no stray sheets)")
+
 ## Dev tool: ASCII-dump a few shape-grammar generations so the layout variety is visible without a
 ## display. '.'=floor  S=spawn  X=exit  ~=channel  h=hide  E=enemy  L=ladder link. Multi-level
 ## layouts print one map per floor.

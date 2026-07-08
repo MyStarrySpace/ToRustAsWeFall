@@ -73,8 +73,11 @@ static func build(prims: Array, cell: float, color: Color = Color(0.5, 0.45, 0.4
 	var verts := PackedVector3Array()
 	var indices := PackedInt32Array()
 	var vert_ids := {}
-	# 6 tets sharing the 0-6 diagonal of each cube (corner order: bit0=x, bit1=y, bit2=z)
-	var tets := [[0, 5, 1, 6], [0, 1, 3, 6], [0, 3, 2, 6], [0, 2, 7, 6], [0, 7, 4, 6], [0, 4, 5, 6]]
+	# The KUHN triangulation: 6 tets sharing the cube's MAIN diagonal 0-7, one per axis-order
+	# permutation (0 -> first axis -> first|second -> 7). This exactly tiles the cube — any other
+	# "looks plausible" tet list overlaps/misses volume and doubles the isosurface into z-fighting
+	# sheets (30-45% non-manifold edges; the manifold test guards this). Corner bits: x=1, y=2, z=4.
+	var tets := [[0, 1, 3, 7], [0, 1, 5, 7], [0, 2, 3, 7], [0, 2, 6, 7], [0, 4, 5, 7], [0, 4, 6, 7]]
 	var corner_off := [
 		Vector3i(0, 0, 0), Vector3i(1, 0, 0), Vector3i(0, 1, 0), Vector3i(1, 1, 0),
 		Vector3i(0, 0, 1), Vector3i(1, 0, 1), Vector3i(0, 1, 1), Vector3i(1, 1, 1),
@@ -160,7 +163,9 @@ static func _edge_point(ca: int, cb: int, cv: PackedFloat32Array, corner_off: Ar
 		base: Vector3, cell: float) -> Vector3:
 	var va := cv[ca]
 	var vb := cv[cb]
-	var t := clampf(va / (va - vb), 0.0, 1.0) if absf(va - vb) > 1.0e-9 else 0.5
+	# t clamped AWAY from the corners: a point landing exactly on a lattice corner welds across
+	# every tet sharing it, dropping degenerate triangles and pin-holing the surface.
+	var t := clampf(va / (va - vb), 0.02, 0.98) if absf(va - vb) > 1.0e-9 else 0.5
 	var pa := base + Vector3(corner_off[ca]) * cell
 	var pb := base + Vector3(corner_off[cb]) * cell
 	return pa.lerp(pb, t)
