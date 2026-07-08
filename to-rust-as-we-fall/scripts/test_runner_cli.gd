@@ -13413,7 +13413,7 @@ func _test_showcase_capture() -> void:
 			await get_tree().process_frame  # let the follow camera ease onto the bay
 		var img := await _vr_capture()
 		if img != null:
-			img.save_png("res://vr_showcase_%s.png" % name)
+			img.save_png("user://vr_showcase_%s.png" % name)
 			print("  [VR] saved vr_showcase_%s.png" % name)
 	_assert_true(true, "Showcase bays captured")
 	await _dispose_scene(inst)
@@ -13477,7 +13477,7 @@ func _test_terminal_focus_capture() -> void:
 		await get_tree().process_frame  # let the locked camera ease onto its front goal
 	var img := await _vr_capture()
 	if img != null:
-		img.save_png("res://vr_terminal_focus.png")
+		img.save_png("user://vr_terminal_focus.png")
 		print("  [VR] saved vr_terminal_focus.png")
 	_assert_true(true, "Terminal focus captured")
 	inst._end_terminal_screen_focus()
@@ -13800,7 +13800,7 @@ func _test_channels_splash_droplets() -> void:
 			var p := img.get_pixel(xx, yy)
 			flat.set_pixel(xx, yy, bg.lerp(Color(0.6, 0.85, 1.0), p.a))
 	flat.resize(size * 8, size * 8, Image.INTERPOLATE_NEAREST)
-	flat.save_png("res://vr_splash_droplets.png")
+	flat.save_png("user://vr_splash_droplets.png")
 	chunk.free()
 
 # WINDOWED, CONTROLLED: the flood water must FADE OUTSIDE the visible range (a transparent surface is excluded
@@ -13841,7 +13841,7 @@ func _test_channels_water_visible_range() -> void:
 		return [ln.r * 0.3 + ln.g * 0.59 + ln.b * 0.11, lf.r * 0.3 + lf.g * 0.59 + lf.b * 0.11]
 	var off: Array = await sample.call(false)   # full water everywhere
 	var on: Array = await sample.call(true)     # faded past the clear radius
-	get_tree().root.get_texture().get_image().save_png("res://vr_water_visible_range.png")
+	get_tree().root.get_texture().get_image().save_png("user://vr_water_visible_range.png")
 	print("  [water-vis] near on/off=%.3f/%.3f  far on/off=%.3f/%.3f" % [on[0], off[0], on[1], off[1]])
 	_assert_true(off[1] > 0.08, "with the visible-range OFF the far water is fully visible (bright) — %.3f" % off[1])
 	_assert_true(on[1] < 0.5 * off[1], "the FAR water (outside the visible range) FADES when a perception view is active — on=%.3f off=%.3f" % [on[1], off[1]])
@@ -13928,7 +13928,7 @@ func _test_channels_splash_capture() -> void:
 	var crop := 240
 	var rx := clampi(int(sp.x) - crop / 2, 0, maxi(0, img.get_width() - crop))
 	var ry := clampi(int(sp.y) - crop / 2, 0, maxi(0, img.get_height() - crop))
-	img.get_region(Rect2i(rx, ry, mini(crop, img.get_width()), mini(crop, img.get_height()))).save_png("res://vr_pipe_splash.png")
+	img.get_region(Rect2i(rx, ry, mini(crop, img.get_width()), mini(crop, img.get_height()))).save_png("user://vr_pipe_splash.png")
 	print("  [splash] focus=%s  wrote vr_pipe_splash.png (splash blob at the pipe mouth)" % str(focus))
 	_assert_true(true, "captured the pipe splash")
 	await _dispose_scene(inst)
@@ -14007,7 +14007,7 @@ func _test_channels_probe_coverage() -> void:
 		await RenderingServer.frame_post_draw
 		var tex := get_tree().root.get_texture()
 		if tex != null:
-			tex.get_image().save_png("res://vr_probe_coverage.png")
+			tex.get_image().save_png("user://vr_probe_coverage.png")
 			print("  [probe] wrote vr_probe_coverage.png (top-down; red dots = miss locations on the helix)")
 	# Every walkable cell must have deck collision under it, or it's un-clickable as a destination. The
 	# procedural warped collision floor (built from the same walkable_regions) makes this hold by construction.
@@ -15130,7 +15130,7 @@ func _test_dest_ghost_capture() -> void:
 	var crop := 220
 	var rx := clampi(int(sp.x) - crop / 2, 0, maxi(0, img.get_width() - crop))
 	var ry := clampi(int(sp.y) - crop / 2, 0, maxi(0, img.get_height() - crop))
-	img.get_region(Rect2i(rx, ry, mini(crop, img.get_width()), mini(crop, img.get_height()))).save_png("res://vr_dest_ghost.png")
+	img.get_region(Rect2i(rx, ry, mini(crop, img.get_width()), mini(crop, img.get_height()))).save_png("user://vr_dest_ghost.png")
 	print("  [dest-ghost] active=%s start=%s dest=%s  wrote vr_dest_ghost.png (solid char at start, faded ghost at target)" % [active, str(char_render), str(dest_render)])
 	_assert_true(true, "captured the destination ghost")
 	await _dispose_scene(inst)
@@ -15173,7 +15173,7 @@ func _test_channels_water_crop() -> void:
 	var rx := clampi(int(sp.x) - crop / 2, 0, maxi(0, img.get_width() - crop))
 	var ry := clampi(int(sp.y) - crop / 2, 0, maxi(0, img.get_height() - crop))
 	var rect := Rect2i(rx, ry, mini(crop, img.get_width()), mini(crop, img.get_height()))
-	img.get_region(rect).save_png("res://vr_water_crop.png")
+	img.get_region(rect).save_png("user://vr_water_crop.png")
 	print("  [water-crop] focus=%s  water_shown=%s" % [str(focus), str(chunk.get_preview_state().get("water_shown"))])
 	print("  [water-crop] wrote vr_water_crop.png (NORMAL mode)")
 	# Now turn ON the data-view (Aster) overlay and recapture the SAME crop — proves the (now opaque) flood
@@ -15197,7 +15197,7 @@ func _test_channels_water_crop() -> void:
 	var ov_visible = (ov_quad != null and is_instance_valid(ov_quad) and (ov_quad as Node3D).visible)
 	print("  [water-crop] overlay quad visible=%s  enabled_overlays=%s" % [str(ov_visible), str(inst.call("_get_enabled_overlays") if inst.has_method("_get_enabled_overlays") else "?")])
 	var img2 := get_tree().root.get_texture().get_image()
-	img2.get_region(rect).save_png("res://vr_water_crop_overlay.png")
+	img2.get_region(rect).save_png("user://vr_water_crop_overlay.png")
 	print("  [water-crop] wrote vr_water_crop_overlay.png (DATA-VIEW mode)")
 	_assert_true(true, "captured the flood water")
 	await _dispose_scene(inst)
@@ -15249,7 +15249,7 @@ func _test_channels_occlusion_live() -> void:
 		await get_tree().process_frame
 	await RenderingServer.frame_post_draw
 	var img_on: Image = get_tree().root.get_texture().get_image()
-	img_on.save_png("res://vr_channels_occlusion.png")
+	img_on.save_png("user://vr_channels_occlusion.png")
 	# A NATIVE-RES CROP around the player (small enough that the image viewer won't downscale it to an
 	# unreadable thumbnail — that downscaling is what made my earlier "checks" worthless).
 	var vp_size: Vector2 = get_tree().root.get_viewport().get_visible_rect().size
@@ -15260,7 +15260,7 @@ func _test_channels_occlusion_live() -> void:
 	var rx := clampi(int(sp.x) - crop / 2, 0, maxi(0, img_on.get_width() - crop))
 	var ry := clampi(int(sp.y) - crop / 2, 0, maxi(0, img_on.get_height() - crop))
 	var rect := Rect2i(rx, ry, mini(crop, img_on.get_width()), mini(crop, img_on.get_height()))
-	img_on.get_region(rect).save_png("res://vr_occ_crop_on.png")
+	img_on.get_region(rect).save_png("user://vr_occ_crop_on.png")
 	# Now DISABLE occlusion on every wrapped material (reveal_strength = 0) and recapture the SAME crop, so an
 	# ON-vs-OFF pixel diff says NUMERICALLY whether the occlusion is cutting anything in the player's region.
 	var model := inst.find_child("EnvironmentModel", true, false)
@@ -15280,7 +15280,7 @@ func _test_channels_occlusion_live() -> void:
 		await get_tree().process_frame
 	await RenderingServer.frame_post_draw
 	var img_off: Image = get_tree().root.get_texture().get_image()
-	img_off.get_region(rect).save_png("res://vr_occ_crop_off.png")
+	img_off.get_region(rect).save_png("user://vr_occ_crop_off.png")
 	# Diff the crop: how many pixels did turning occlusion OFF change? >0 => occlusion is actively cutting in
 	# the player's region (working); ~0 => it does nothing there (broken or nothing to cut).
 	var changed := 0
@@ -15349,14 +15349,14 @@ func _test_perception_los_capture() -> void:
 	var rx := clampi(int(sp.x) - crop / 2, 0, maxi(0, img_on.get_width() - crop))
 	var ry := clampi(int(sp.y) - crop / 2, 0, maxi(0, img_on.get_height() - crop))
 	var rect := Rect2i(rx, ry, mini(crop, img_on.get_width()), mini(crop, img_on.get_height()))
-	img_on.get_region(rect).save_png("res://vr_perception_los_on.png")
+	img_on.get_region(rect).save_png("user://vr_perception_los_on.png")
 	if mat != null:
 		mat.set_shader_parameter("los_enabled", false)
 	for i in range(2):
 		await get_tree().process_frame
 	await RenderingServer.frame_post_draw
 	var img_off: Image = get_tree().root.get_texture().get_image()
-	img_off.get_region(rect).save_png("res://vr_perception_los_off.png")
+	img_off.get_region(rect).save_png("user://vr_perception_los_off.png")
 	var co := img_on.get_region(rect)
 	var cf := img_off.get_region(rect)
 	var changed := 0
@@ -15419,7 +15419,7 @@ func _test_occlusion_shader_capture() -> void:
 	await RenderingServer.frame_post_draw
 	var tex := get_tree().root.get_texture()
 	if tex != null:
-		tex.get_image().save_png("res://vr_occlusion_test.png")
+		tex.get_image().save_png("user://vr_occlusion_test.png")
 		print("  [occlusion-test] wrote vr_occlusion_test.png (RED wall: GREEN dithered hole; BLUE floor: NO hole — floor-skip)")
 	_assert_true(true, "occlusion shader capture")
 	root.queue_free()
@@ -15446,7 +15446,7 @@ func _test_peris_room_capture() -> void:
 	await RenderingServer.frame_post_draw
 	var tex := get_tree().root.get_texture()
 	if tex != null:
-		tex.get_image().save_png("res://vr_peris_room.png")
+		tex.get_image().save_png("user://vr_peris_room.png")
 		print("  [peris-capture] wrote vr_peris_room.png")
 	_assert_true(true, "captured the peris room")
 	inst.queue_free()
@@ -15496,7 +15496,7 @@ func _test_wash_relay_water_capture() -> void:
 	await RenderingServer.frame_post_draw
 	var tex := get_tree().root.get_texture()
 	if tex != null:
-		tex.get_image().save_png("res://vr_channels_water.png")
+		tex.get_image().save_png("user://vr_channels_water.png")
 		print("  [water-capture] wrote vr_channels_water.png (water_shown=%s)" % str(chunk.get_preview_state().get("water_shown", [])))
 	_assert_true(true, "captured the channels flood water")
 	await _dispose_scene(inst)
@@ -15959,7 +15959,7 @@ func _test_channels_wash_intro_live_input() -> void:
 		print("  [live] portal hover: ghosts=%d (party of 3 selected)" % ghost_count)
 		_assert_true(ghost_count >= 1, "LIVE: hovering the portal shows the far-side ghost previews")
 	await RenderingServer.frame_post_draw
-	get_tree().root.get_texture().get_image().save_png("res://vr_wash_live.png")
+	get_tree().root.get_texture().get_image().save_png("user://vr_wash_live.png")
 	print("  [live] wrote vr_wash_live.png (cursor on the portal, ghosts on the far side)")
 	GridWorld._fx_debug = false
 	await _dispose_scene(inst)
@@ -16016,7 +16016,7 @@ func _test_channels_wash_intro_hover_capture() -> void:
 			flure.call("set_hover_feedback", false)
 	await RenderingServer.frame_post_draw
 	var img_off: Image = get_tree().root.get_texture().get_image()
-	img_off.save_png("res://vr_wash_hover_off.png")
+	img_off.save_png("user://vr_wash_hover_off.png")
 
 	# Phase B — hover ON: drive the worker at the near-bank cell + force the Flure outline. Let the ribbon build.
 	for i in range(8):
@@ -16027,7 +16027,7 @@ func _test_channels_wash_intro_hover_capture() -> void:
 			flure.call("set_hover_feedback", true)
 	await RenderingServer.frame_post_draw
 	var img_on: Image = get_tree().root.get_texture().get_image()
-	img_on.save_png("res://vr_wash_hover_on.png")
+	img_on.save_png("user://vr_wash_hover_on.png")
 
 	# Numeric diff: how many FLOOR pixels changed between hover-off and hover-on. The hover grid (a teal 5x5 Decal
 	# at the cell), the dashed path ribbon, and the forced Flure outline should ALL stamp pixels here. ~0 changed =
@@ -16074,7 +16074,7 @@ func _test_channels_wash_intro_hover_capture() -> void:
 			flure.call("set_hover_feedback", true)
 	await RenderingServer.frame_post_draw
 	var ov_on: Image = get_tree().root.get_texture().get_image()
-	ov_on.save_png("res://vr_wash_overlay_on.png")
+	ov_on.save_png("user://vr_wash_overlay_on.png")
 	var ov_changed := 0
 	for sy in range(y0, y1, 2):
 		for sx in range(x0, x1, 2):
@@ -16160,11 +16160,11 @@ func _test_channels_slab_isolate() -> void:
 		return get_tree().root.get_texture().get_image()
 
 	var base: Image = await shoot.call()
-	base.save_png("res://vr_slab_base.png")
+	base.save_png("user://vr_slab_base.png")
 	# (1) hover grid Decal off
 	if hg != null: hg.visible = false
 	var no_grid: Image = await shoot.call()
-	no_grid.save_png("res://vr_slab_no_grid.png")
+	no_grid.save_png("user://vr_slab_no_grid.png")
 	if hg != null: hg.visible = true
 	# (2) path preview ribbon off
 	if pp != null: pp.visible = false
@@ -16176,7 +16176,7 @@ func _test_channels_slab_isolate() -> void:
 			if c is Node3D:
 				c.visible = false
 	var no_ghost: Image = await shoot.call()
-	no_ghost.save_png("res://vr_slab_no_ghost.png")
+	no_ghost.save_png("user://vr_slab_no_ghost.png")
 
 	var d_grid := _band_changed(base, no_grid)
 	var d_ribbon := _band_changed(base, no_ribbon)
@@ -16312,7 +16312,7 @@ func _test_aster_outline_render() -> void:
 	var g_off: Image = await shoot2.call()
 	tgt.call("set_highlight", true)
 	var g_on: Image = await shoot2.call()
-	g_on.save_png("res://vr_aster_outline_ghost.png")
+	g_on.save_png("user://vr_aster_outline_ghost.png")
 	var changed_with_ghost := _band_changed(g_off, g_on)
 	# Phase N — ghost HIDDEN: the outline alone.
 	for prm in inst.find_children("*", "PathRenderManager", true, false):
@@ -16320,11 +16320,11 @@ func _test_aster_outline_render() -> void:
 			if c is Node3D: (c as Node3D).visible = false
 	tgt.call("set_highlight", false)
 	var off: Image = await shoot2.call()
-	off.save_png("res://vr_aster_outline_off.png")
+	off.save_png("user://vr_aster_outline_off.png")
 	tgt.call("set_highlight", true)
 	_assert_true(bool(tgt.call("has_active_mesh_outline")), "forcing the outline makes the shell ACTIVE (data layer)")
 	var on: Image = await shoot2.call()
-	on.save_png("res://vr_aster_outline_on.png")
+	on.save_png("user://vr_aster_outline_on.png")
 	var w := on.get_width(); var h := on.get_height()
 	var changed := _band_changed(off, on)
 	print("  [aster-outline] OUTLINE render: ghost-HIDDEN=%d px  vs  ghost-PRESENT=%d px  (PRESENT << HIDDEN => the dest ghost COVERS the outline — the real bug)" % [changed, changed_with_ghost])
@@ -16377,7 +16377,7 @@ func _test_channels_wash_intro_capture() -> void:
 		await get_tree().process_frame
 	await RenderingServer.frame_post_draw
 	var img: Image = get_tree().root.get_texture().get_image()
-	img.save_png("res://vr_wash_intro.png")
+	img.save_png("user://vr_wash_intro.png")
 	# Numeric: the room must not be near-black (the reported bug). Sample the floor centre region brightness.
 	var lit := 0
 	var w := img.get_width(); var h := img.get_height()
@@ -17781,7 +17781,7 @@ func _test_wash_drain_loop_capture() -> void:
 	await RenderingServer.frame_post_draw
 	var tex := get_tree().root.get_texture()
 	if tex != null:
-		tex.get_image().save_png("res://vr_drain_loop.png")
+		tex.get_image().save_png("user://vr_drain_loop.png")
 		print("  [drain-capture] wrote vr_drain_loop.png (real view)")
 	# Second shot — hide the textured GLB so ONLY the warped graybox decks show, straight top-down, so the
 	# loop's U-shape (legs out, run along, ledge stub across the water) reads against empty space. Brighten the
@@ -17803,7 +17803,7 @@ func _test_wash_drain_loop_capture() -> void:
 	await RenderingServer.frame_post_draw
 	var tex2 := get_tree().root.get_texture()
 	if tex2 != null:
-		tex2.get_image().save_png("res://vr_drain_loop_geo.png")
+		tex2.get_image().save_png("user://vr_drain_loop_geo.png")
 		print("  [drain-capture] wrote vr_drain_loop_geo.png (graybox top-down)")
 	_assert_true(true, "captured the drain loop")
 	await _dispose_scene(inst)
@@ -18168,9 +18168,9 @@ func _vr_hover_overlay_draws(chunk: String) -> void:
 	var after := await _vr_capture()
 
 	if before != null:
-		before.save_png("res://vr_%s_before.png" % chunk)
+		before.save_png("user://vr_%s_before.png" % chunk)
 	if after != null:
-		after.save_png("res://vr_%s_after.png" % chunk)
+		after.save_png("user://vr_%s_after.png" % chunk)
 
 	# Self-locating diff region: the bounding box of the player and the hovered target on screen, padded —
 	# the hover grid + preview ribbon live entirely inside it, so the changed fraction is meaningful no
@@ -18435,7 +18435,7 @@ func _test_pump_hall_live() -> void:
 	print("  [pump-live] after right-click: dragging=%s hands=%s" % [gs.is_dragging("peris"), str(gs.get_hand_items("peris"))])
 	_assert_true(gs.is_dragging("peris"), "LIVE: right-clicking the fallen friend starts the carry")
 	await RenderingServer.frame_post_draw
-	get_tree().root.get_texture().get_image().save_png("res://vr_pump_live.png")
+	get_tree().root.get_texture().get_image().save_png("user://vr_pump_live.png")
 	print("  [pump-live] wrote vr_pump_live.png")
 	inst.queue_free()
 	await get_tree().process_frame
