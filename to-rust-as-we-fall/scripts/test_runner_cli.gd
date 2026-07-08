@@ -375,6 +375,9 @@ func _ready() -> void:
 			"--test-building-filler":
 				ran_test = true
 				_test_building_filler()
+			"--test-creature-grammar":
+				ran_test = true
+				_test_creature_grammar()
 			"--dump-shape-grammar":
 				ran_test = true
 				_dump_shape_grammar()
@@ -1306,6 +1309,7 @@ func _run_all_tests() -> void:
 	_test_wfc_layout()
 	_test_shape_grammar()
 	_test_building_filler()
+	_test_creature_grammar()
 	_test_roguelike_run()
 	_test_run_branch_decisions()
 	if not _heavy("Run Economy"):
@@ -3346,6 +3350,67 @@ func _test_building_filler() -> void:
 		"adjacent buildings stay in-palette (worst colour step %.2f)" % max_color_step)
 	_assert_true(best_spread >= 2,
 		"the height field genuinely varies across a district (best spread %d storeys)" % best_spread)
+
+func _test_creature_grammar() -> void:
+	_test_name = "Creature Grammar"
+	var Grammar = load("res://scripts/generation/creature_grammar.gd")
+	var Mesher = load("res://scripts/generation/sdf_mesher.gd")
+	var test_cell := 0.12   # coarser than the preview — integrity, not beauty
+
+	# --- every canon-grounded archetype generates and meshes into a sane body ---
+	var all_ok := true
+	for kind in Grammar.ARCHETYPES:
+		var body: Dictionary = Grammar.generate(3, str(kind))
+		_assert_true((body["prims"] as Array).size() >= 4, "%s emits a primitive body (%d prims)" % [kind, (body["prims"] as Array).size()])
+		var built: Dictionary = Mesher.build(body["prims"], test_cell, body["color"])
+		var verts := int(built["verts"])
+		var tris := int(built["tris"])
+		if built["mesh"] == null or verts < 120 or tris < 120:
+			all_ok = false
+			print("  [creature] %s degenerate: %d verts %d tris" % [kind, verts, tris])
+			continue
+		var bb: AABB = built["aabb"]
+		if bb.size.length() < 0.3 or bb.size.length() > 4.0:
+			all_ok = false
+			print("  [creature] %s bad extent %s" % [kind, str(bb.size)])
+		if bb.position.y < -0.05:
+			all_ok = false
+			print("  [creature] %s sinks below ground (%f)" % [kind, bb.position.y])
+		# finite geometry + unit normals (sampled)
+		var arrays: Array = (built["mesh"] as ArrayMesh).surface_get_arrays(0)
+		var vs: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var ns: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		for i in range(0, vs.size(), maxi(1, vs.size() / 40)):
+			if not vs[i].is_finite() or absf(ns[i].length() - 1.0) > 0.05:
+				all_ok = false
+				break
+	_assert_true(all_ok, "every archetype meshes into a grounded, finite, well-shaded body")
+
+	# --- determinism: same seed + archetype -> identical primitives AND identical mesh ---
+	var a: Dictionary = Grammar.generate(9, "gnawer")
+	var b: Dictionary = Grammar.generate(9, "gnawer")
+	_assert_equals(str(a["prims"]), str(b["prims"]), "same seed -> identical body primitives")
+	var ma: Dictionary = Mesher.build(a["prims"], test_cell)
+	var mb: Dictionary = Mesher.build(b["prims"], test_cell)
+	_assert_true(int(ma["verts"]) == int(mb["verts"]) and int(ma["tris"]) == int(mb["tris"]),
+		"same primitives -> identical mesh (%d verts, %d tris)" % [int(ma["verts"]), int(ma["tris"])])
+
+	# --- variation: the seed drives the body within the archetype's ranges ---
+	var sigs := {}
+	for seed in range(1, 9):
+		sigs[str(Grammar.generate(seed, "hidra")["prims"])] = true
+	_assert_true(sigs.size() >= 7, "the seed reshapes the body: %d distinct hidras over 8 seeds" % sigs.size())
+
+	# --- bilateral symmetry where the plan demands it (the mirrored quadruped) ---
+	var gq: Dictionary = Mesher.build(Grammar.generate(5, "gnawer")["prims"], test_cell)
+	var qb: AABB = gq["aabb"]
+	_assert_true(absf(qb.position.x + qb.end.x) < 0.14,
+		"the quadruped is bilaterally centred (|min.x+max.x| = %.3f)" % absf(qb.position.x + qb.end.x))
+
+	# --- the glow tells exist (canon: Sapscrap's lifted palp, Meeb's food-cups, Gnawer's eyes) ---
+	_assert_true((Grammar.generate(2, "sapscrap")["glows"] as Array).size() >= 1, "Sapscrap carries the palp tell glow")
+	_assert_true((Grammar.generate(2, "meeb")["glows"] as Array).size() >= 3, "Meeb carries food-cup glows")
+	_assert_true((Grammar.generate(2, "gnawer")["glows"] as Array).size() == 2, "the quadruped carries paired eye glows")
 
 ## Dev tool: ASCII-dump a few shape-grammar generations so the layout variety is visible without a
 ## display. '.'=floor  S=spawn  X=exit  ~=channel  h=hide  E=enemy  L=ladder link. Multi-level

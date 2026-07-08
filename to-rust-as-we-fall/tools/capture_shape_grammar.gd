@@ -1,15 +1,19 @@
 extends SceneTree
 
-## Capture a top-down render of a SHAPE-GRAMMAR generation so the assembled layout is eyeball-able.
-##   SEED=3 ../Godot_v4.7-stable_win64.exe --path "." --script res://tools/capture_shape_grammar.gd
-## Writes shape_grammar_<seed>.png.
+## Capture a render of a generation-preview chunk so the output is eyeball-able.
+##   SEED=3 [CHUNK=shape_grammar|creature_grammar] [ANGLE=low] \
+##     ../Godot_v4.7-stable_win64.exe --path "." --script res://tools/capture_shape_grammar.gd
+## Writes <chunk>_<seed>.png.
 
 func _init() -> void:
 	var seed_str := OS.get_environment("SEED")
 	var seed_val := int(seed_str) if seed_str != "" else 1
+	var chunk_id := OS.get_environment("CHUNK")
+	if chunk_id == "":
+		chunk_id = "shape_grammar"
 	var scene: Node = load("res://scenes/fragments/fragment_preview.tscn").instantiate()
 	scene.set("preview_menu", false)
-	scene.set("preview_chunk", "shape_grammar")
+	scene.set("preview_chunk", chunk_id)
 	scene.set("preview_chunk_config", {"seed": seed_val})
 	get_root().add_child(scene)
 	for _i in range(150):
@@ -32,10 +36,15 @@ func _init() -> void:
 	_hide_canvas(scene)
 
 	# Bounds from every visual mesh (the floor slab + grid tiles cover the generated footprint).
+	# ANGLE=close frames only Creature_* nodes — the morphology close-up.
 	var mn := Vector3(1e9, 0, 1e9)
 	var mx := Vector3(-1e9, 0, -1e9)
 	var meshes: Array = []
-	_collect_meshes(scene, meshes)
+	if OS.get_environment("ANGLE") == "close":
+		for n in _find_named(scene, "Creature_"):
+			_collect_meshes(n, meshes)
+	if meshes.is_empty():
+		_collect_meshes(scene, meshes)
 	for m in meshes:
 		var mi := m as MeshInstance3D
 		if mi.mesh == null:
@@ -55,6 +64,10 @@ func _init() -> void:
 	if OS.get_environment("ANGLE") == "low":
 		cam.size = extent * 0.7 + 6.0
 		cam.global_position = center + Vector3(extent * 0.95, extent * 0.22 + 6.0, extent * 0.4)
+	elif OS.get_environment("ANGLE") == "close":
+		cam.size = extent * 0.6 + 2.0
+		center.y += 1.0
+		cam.global_position = center + Vector3(extent * 0.12, extent * 0.16 + 2.4, extent * 0.55 + 6.0)
 	else:
 		cam.global_position = center + Vector3(extent * 0.45, extent * 0.85 + 10.0, extent * 0.6)
 	cam.look_at(center, Vector3.UP)
@@ -64,7 +77,7 @@ func _init() -> void:
 		await process_frame
 	await RenderingServer.frame_post_draw
 	var img := get_root().get_texture().get_image()
-	var path := "res://shape_grammar_%d.png" % seed_val
+	var path := "res://%s_%d.png" % [chunk_id, seed_val]
 	img.save_png(path)
 	print("[SGCAP] %s — extent %.1f, %d meshes" % [path, extent, meshes.size()])
 	quit()
@@ -74,6 +87,14 @@ func _collect_meshes(n: Node, out: Array) -> void:
 		out.append(n)
 	for c in n.get_children():
 		_collect_meshes(c, out)
+
+func _find_named(n: Node, prefix: String) -> Array:
+	var out: Array = []
+	if str(n.name).begins_with(prefix):
+		out.append(n)
+	for c in n.get_children():
+		out.append_array(_find_named(c, prefix))
+	return out
 
 func _hide_canvas(n: Node) -> void:
 	if n is CanvasLayer:

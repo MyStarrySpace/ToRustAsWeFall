@@ -25,6 +25,7 @@ const SHOWCASE_GALLERY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/sho
 const WASH_RELAY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/wash_relay_chunk.tscn")
 const DATA_FRAGMENT_CHUNK_SCENE := preload("res://scenes/fragments/chunks/data_fragment.tscn")
 const SHAPE_GRAMMAR_CHUNK_SCENE := preload("res://scenes/fragments/chunks/shape_grammar_preview.tscn")
+const CREATURE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/creature_preview.tscn")
 
 # chunk name -> packed scene. The single lookup that replaced the old per-name match (and the reason
 # we no longer need one *_preview.tscn per chunk: one scene reads this registry and picks at runtime).
@@ -49,6 +50,7 @@ const CHUNK_SCENES := {
 	"wash_relay": WASH_RELAY_CHUNK_SCENE,
 	"data_fragment": DATA_FRAGMENT_CHUNK_SCENE,
 	"shape_grammar": SHAPE_GRAMMAR_CHUNK_SCENE,
+	"creature_grammar": CREATURE_CHUNK_SCENE,
 }
 
 # The fragment menu, ordered along the combine-characters learning ramp (its `stage` ascending). Each
@@ -106,6 +108,10 @@ const PREVIEW_ENTRIES := [
 	# SHAPE GRAMMAR: a fragment grown from parametric shapes joined at typed connectors. Press N to
 	# regenerate a fresh deterministic variation (a new seed) in place.
 	{"id": "shape_grammar", "chunk": "shape_grammar", "title": "Shape Grammar (procedural layouts)", "stage": 6,
+		"config": {"seed": 1}},
+	# CREATURE GRAMMAR: a body grammar (parts with dimension ranges) compiled to SDF primitives and
+	# smooth-min meshed — one specimen per canon-grounded archetype. Press N for a new generation.
+	{"id": "creature_grammar", "chunk": "creature_grammar", "title": "Creature Grammar (SDF morphology)", "stage": 6,
 		"config": {"seed": 1}},
 ]
 
@@ -175,7 +181,7 @@ const STAMINA_REGEN := 10.0
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
 @export_enum("stacks", "rings", "lockout", "mother_flure", "survival_range",
 	"endo_junction_stretch", "generated_stretch",
-	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar") var preview_chunk := "stacks"
+	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 
