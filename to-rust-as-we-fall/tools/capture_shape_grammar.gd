@@ -26,11 +26,13 @@ func _init() -> void:
 			var y := snappedf(float((fl["pos"] as Vector3).y), 0.1)
 			ys[y] = int(ys.get(y, 0)) + 1
 		print("[SGCAP] floor boxes by height: %s ; walls: %d" % [str(ys), chunk.get("fragment").walls.size()])
-	# Clean architecture shot: perception overlays OFF + HUD/panels hidden.
+	# Clean architecture shot: perception overlays OFF + HUD/panels hidden. OVERLAY=peris|aster
+	# instead turns exactly that overlay ON (fog/data-view eyeballing).
+	var want_overlay := OS.get_environment("OVERLAY")
 	var st = scene.get("_overlay_states")
 	if st is Dictionary:
 		for k in (st as Dictionary).keys():
-			st[k] = false
+			st[k] = str(k) == want_overlay
 		if scene.has_method("_refresh_active_overlay"):
 			scene.call("_refresh_active_overlay")
 	_hide_canvas(scene)
@@ -68,6 +70,17 @@ func _init() -> void:
 		cam.size = extent * 0.6 + 2.0
 		center.y += 1.0
 		cam.global_position = center + Vector3(extent * 0.12, extent * 0.16 + 2.4, extent * 0.55 + 6.0)
+	elif OS.get_environment("ANGLE") == "party":
+		# frame ~gameplay distance around the party (the view the player actually judges)
+		var chars = scene.get("_characters")
+		if chars is Dictionary and not (chars as Dictionary).is_empty():
+			for cid in (chars as Dictionary).keys():
+				var cn = (chars as Dictionary)[cid]
+				if cn is Node3D:
+					center = (cn as Node3D).global_position
+					break
+		cam.size = 24.0
+		cam.global_position = center + Vector3(4.0, 20.0, 13.0)
 	else:
 		cam.global_position = center + Vector3(extent * 0.45, extent * 0.85 + 10.0, extent * 0.6)
 	cam.look_at(center, Vector3.UP)

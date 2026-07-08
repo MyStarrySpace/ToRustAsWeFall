@@ -31,6 +31,18 @@ uniform float los_max_dist = 26.0;       // EXTENDED reach: occlusion is compute
 uniform float los_fade = 8.0;            // world-unit band over which distant occluders fade to no shadow before los_max_dist
 uniform float los_occluder_gain = 1.6;   // lets a real (thin) wall reach full shadow without lowering the step tolerance
 
+// BAKED OCCLUDER MASK: generated levels bake their sight-blocking cells into a small texture at
+// chunk load (SightMaskBaker); when present, the LOS march samples IT bilinearly instead of
+// reconstructing the depth buffer — cell silhouettes become smooth gradients, the march stops
+// aliasing against props/creatures, and a small ring of vision-source taps adds a PENUMBRA so the
+// fog edge rolls instead of stepping. Scenes without a grid keep the legacy depth-buffer path.
+uniform bool occ_baked_enabled = false;
+uniform sampler2D occ_tex : filter_linear, repeat_disable;
+uniform vec2 occ_origin = vec2(0.0);
+uniform float occ_cell = 1.5;
+uniform vec2 occ_size = vec2(1.0);
+uniform float los_penumbra = 0.85;   // source tap-ring radius (m) — the fog edge's softness
+
 uniform bool fog_enabled = false;
 uniform vec3 fog_character_pos = vec3(0.0);
 uniform int fog_vision_count = 1;
@@ -126,6 +138,46 @@ float los_visible(vec3 src, vec3 world_pos, sampler2D depth, mat4 view, mat4 pro
 	return clamp(1.0 - occ, 0.0, 1.0);                 // 1 = clear, partial = grazing step, 0 = wall
 }
 
+float occ_sample(vec2 xz) {
+	vec2 uv = ((xz - occ_origin) / occ_cell) / occ_size;
+	if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) { return 0.0; }
+	return texture(occ_tex, uv).r;
+}
+
+// One march through the baked mask. Endpoints skipped: the source stands in a doorway's bilinear
+// bleed and the fragment's floor cell borders its own walls — neither should self-shadow.
+float los_baked_single(vec3 src, vec3 world_pos) {
+	float seg_len = length(world_pos - src);
+	float dist_fade = 1.0 - smoothstep(los_max_dist - los_fade, los_max_dist, seg_len);
+	if (dist_fade <= 0.001) { return 1.0; }
+	const int STEPS = 18;
+	vec2 a = src.xz;
+	vec2 b = world_pos.xz;
+	float occ = 0.0;
+	for (int i = 1; i < STEPS - 1; i++) {
+		occ = max(occ, occ_sample(mix(a, b, float(i) / float(STEPS))));
+	}
+	// the bilinear gradient (one cell wide) becomes the soft shadow ramp
+	occ = smoothstep(0.18, 0.75, occ);
+	return 1.0 - occ * dist_fade;
+}
+
+// PENUMBRA: average a ring of source taps, each weighted by how clear its own cell is (a tap
+// displaced into a wall must not vote, or standing beside a wall would dim the whole view).
+float los_baked(vec3 src, vec3 world_pos) {
+	float total = los_baked_single(src, world_pos);
+	float wsum = 1.0;
+	vec2 ring[3] = vec2[](vec2(1.0, 0.0), vec2(-0.5, 0.866), vec2(-0.5, -0.866));
+	for (int i = 0; i < 3; i++) {
+		vec3 tap = src + vec3(ring[i].x, 0.0, ring[i].y) * los_penumbra;
+		float w = 1.0 - occ_sample(tap.xz);
+		if (w <= 0.01) { continue; }
+		total += los_baked_single(tap, world_pos) * w;
+		wsum += w;
+	}
+	return total / wsum;
+}
+
 void vertex() {
 	POSITION = vec4(VERTEX.xy, 1.0, 1.0);
 }
@@ -147,7 +199,9 @@ void fragment() {
 		// unseen (data-view), so the clear zone hugs walls instead of being a flat circle.
 		if (los_enabled && data_blend < 0.999) {
 			vec3 src = nearest_source(world_pos, data_vision_count, data_character_pos, data_vision_pos_1, data_vision_pos_2);
-			float vis = los_visible(src, world_pos, depth_tex, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, INV_VIEW_MATRIX[3].xyz);
+			float vis = occ_baked_enabled
+				? los_baked(src, world_pos)
+				: los_visible(src, world_pos, depth_tex, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, INV_VIEW_MATRIX[3].xyz);
 			data_blend = max(data_blend, 1.0 - vis);
 		}
 
@@ -199,7 +253,9 @@ void fragment() {
 		// LOS: fog rolls in behind walls too (a fragment with no line of sight from its nearest source).
 		if (los_enabled && fog_blend < 0.999) {
 			vec3 src = nearest_source(world_pos, fog_vision_count, fog_character_pos, fog_vision_pos_1, fog_vision_pos_2);
-			float vis = los_visible(src, world_pos, depth_tex, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, INV_VIEW_MATRIX[3].xyz);
+			float vis = occ_baked_enabled
+				? los_baked(src, world_pos)
+				: los_visible(src, world_pos, depth_tex, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, INV_VIEW_MATRIX[3].xyz);
 			fog_blend = max(fog_blend, 1.0 - vis);
 		}
 

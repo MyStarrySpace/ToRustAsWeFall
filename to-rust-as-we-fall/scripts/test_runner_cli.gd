@@ -378,6 +378,9 @@ func _ready() -> void:
 			"--test-creature-grammar":
 				ran_test = true
 				_test_creature_grammar()
+			"--test-sight-mask-bake":
+				ran_test = true
+				await _test_sight_mask_bake()
 			"--dump-shape-grammar":
 				ran_test = true
 				_dump_shape_grammar()
@@ -1310,6 +1313,7 @@ func _run_all_tests() -> void:
 	_test_shape_grammar()
 	_test_building_filler()
 	_test_creature_grammar()
+	await _test_sight_mask_bake()
 	_test_roguelike_run()
 	_test_run_branch_decisions()
 	if not _heavy("Run Economy"):
@@ -3350,6 +3354,54 @@ func _test_building_filler() -> void:
 		"adjacent buildings stay in-palette (worst colour step %.2f)" % max_color_step)
 	_assert_true(best_spread >= 2,
 		"the height field genuinely varies across a district (best spread %d storeys)" % best_spread)
+
+func _test_sight_mask_bake() -> void:
+	_test_name = "Sight Mask Bake"
+	var Baker = load("res://scripts/game/world/sight_mask_baker.gd")
+
+	# --- unit: walls bake to 1, floor to 0, frame passthrough exact ---
+	var g := GridWorld.from_data({
+		"contract_id": "unified_grid_v1", "cell_size": 1.5, "origin": [-3.0, 0.0, -1.5],
+		"width": 6, "height": 4,
+		"walkable_cells": [[1, 1], [2, 1], [3, 1], [1, 2], [3, 2]],
+	})
+	g.add_sight_blocker(Vector2i(3, 2))   # a floor cell explicitly registered as sight-blocking
+	var baked: Dictionary = Baker.bake(g)
+	_assert_true(not baked.is_empty(), "a real grid bakes a mask")
+	var img: Image = (baked["texture"] as ImageTexture).get_image()
+	_assert_equals(img.get_width(), 6, "mask width = grid width")
+	_assert_equals(img.get_height(), 4, "mask height = grid height")
+	_assert_true(img.get_pixel(0, 0).r > 0.9, "a WALL cell bakes solid")
+	_assert_true(img.get_pixel(2, 1).r < 0.1, "a FLOOR cell bakes clear")
+	_assert_true(img.get_pixel(3, 2).r > 0.9, "an explicit sight blocker bakes solid even on floor")
+	_assert_equals(str(baked["origin"]), str(Vector2(-3.0, -1.5)), "origin passes through (world XZ)")
+	_assert_true(is_equal_approx(float(baked["cell"]), 1.5), "cell size passes through")
+	_assert_true(Baker.bake(null).is_empty(), "no grid -> no mask (legacy depth path stays)")
+
+	# --- wiring: booting a generated level through the real preview host bakes the mask into the
+	# overlay shader (the soft-fog path), sized to the live grid ---
+	var prev = load("res://scenes/fragments/fragment_preview.tscn").instantiate()
+	prev.set("preview_menu", false)
+	prev.set("preview_chunk", "shape_grammar")
+	prev.set("preview_chunk_config", {"seed": 2, "overlays": {"peris": true}})
+	get_tree().root.add_child(prev)
+	for i in range(10):
+		await get_tree().process_frame
+	var mat: ShaderMaterial = prev.get("_overlay_stack_material")
+	_assert_true(mat != null, "the preview builds the overlay stack")
+	if mat != null:
+		_assert_true(bool(mat.get_shader_parameter("occ_baked_enabled")), "generated level enables the baked occluder path")
+		var tex := mat.get_shader_parameter("occ_tex") as ImageTexture
+		var gsz := mat.get_shader_parameter("occ_size") as Vector2
+		_assert_true(tex != null and Vector2(tex.get_size()) == gsz, "the baked mask matches the declared grid size")
+	# The per-entry fog option: config overlays boot the view with fog ON; the toggle stays live.
+	var states: Dictionary = prev.get("_overlay_states")
+	_assert_true(bool(states.get("peris", false)), "config overlays boot the view with fog enabled")
+	prev.call("headless_set_overlay_state", "peris", false)
+	_assert_true(not bool((prev.get("_overlay_states") as Dictionary).get("peris", true)),
+		"the fog option toggles back off")
+	prev.queue_free()
+	await get_tree().process_frame
 
 func _test_creature_grammar() -> void:
 	_test_name = "Creature Grammar"

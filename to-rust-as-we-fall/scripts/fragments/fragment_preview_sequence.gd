@@ -26,6 +26,7 @@ const WASH_RELAY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/wash_rela
 const DATA_FRAGMENT_CHUNK_SCENE := preload("res://scenes/fragments/chunks/data_fragment.tscn")
 const SHAPE_GRAMMAR_CHUNK_SCENE := preload("res://scenes/fragments/chunks/shape_grammar_preview.tscn")
 const CREATURE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/creature_preview.tscn")
+const SightMaskBakerScript := preload("res://scripts/game/world/sight_mask_baker.gd")
 
 # chunk name -> packed scene. The single lookup that replaced the old per-name match (and the reason
 # we no longer need one *_preview.tscn per chunk: one scene reads this registry and picks at runtime).
@@ -106,9 +107,10 @@ const PREVIEW_ENTRIES := [
 	{"id": "roguelike_wfc", "chunk": "generated_stretch", "title": "Roguelike Run (WFC stretches)", "stage": 6,
 		"config": {"roguelike": true, "seed": 1}},
 	# SHAPE GRAMMAR: a fragment grown from parametric shapes joined at typed connectors. Press N to
-	# regenerate a fresh deterministic variation (a new seed) in place.
+	# regenerate a fresh deterministic variation (a new seed) in place. Boots with the soft fog ON
+	# (the district reads through its sightlines) — F2 or the panel button turns it off.
 	{"id": "shape_grammar", "chunk": "shape_grammar", "title": "Shape Grammar (procedural layouts)", "stage": 6,
-		"config": {"seed": 1}},
+		"config": {"seed": 1, "overlays": {"peris": true}}},
 	# CREATURE GRAMMAR: a body grammar (parts with dimension ranges) compiled to SDF primitives and
 	# smooth-min meshed — one specimen per canon-grounded archetype. Press N for a new generation.
 	{"id": "creature_grammar", "chunk": "creature_grammar", "title": "Creature Grammar (SDF morphology)", "stage": 6,
@@ -381,6 +383,14 @@ func _begin_chunk() -> void:
 		_preview_dodge_unlocked = bool(_active_chunk.call("preview_dodge_unlocked"))
 	_apply_dodge_setting()
 	_select_character(_default_chunk_character())
+	# Per-entry overlay defaults: a config `"overlays": {"peris": true}` boots the view with that
+	# perception layer on (fog for generated districts). Applied once per ENTRY — F1-F3 / the panel
+	# buttons toggle live, and an N-regenerate keeps the player's current choice.
+	if not _overlays_config_applied:
+		_overlays_config_applied = true
+		var overlay_defaults: Dictionary = preview_chunk_config.get("overlays", {})
+		for ov_id in overlay_defaults.keys():
+			headless_set_overlay_state(str(ov_id), bool(overlay_defaults[ov_id]))
 	_refresh_preview_items()
 	_refresh_inventory_panel()
 	_tutorial_prompt.show_prompt("Click to move")
@@ -577,6 +587,7 @@ func _apply_preview_entry(entry: Dictionary) -> void:
 	preview_chunk = String(entry.get("chunk", preview_chunk))
 	scene_title_override = String(entry.get("title", scene_title_override))
 	preview_chunk_config = (entry.get("config", {}) as Dictionary).duplicate(true)
+	_overlays_config_applied = false   # a fresh entry re-applies its overlay defaults
 	# Roguelike entry: start a RunSession and point the chunk config at its opening level.
 	if bool(preview_chunk_config.get("roguelike", false)):
 		_roguelike_active = true
@@ -1705,7 +1716,35 @@ func _update_overlay_runtime(delta: float) -> void:
 		_active_chunk.call("update_preview_overlay_states", _overlay_states, get_preview_scheduler_tick(), delta)
 	_refresh_preview_items()
 
+# The grid whose sight mask is currently baked into the overlay shader (rebake on change).
+var _occ_mask_grid: Object = null
+
+# Whether the current entry's config overlay defaults have been applied (once per entry, not per
+# N-regenerate — the player's live F1-F3 choices survive a reseed).
+var _overlays_config_applied := false
+
+## Bake the live grid's sight-blocking cells into the overlay shader's occluder mask. Bilinear
+## sampling of this mask is what makes the fog edge SOFT (see perception_stack.gdshader). Object
+## identity tracks chunk reloads: a new grid (load, N-regenerate, picker return) rebakes once.
+func _sync_occluder_mask() -> void:
+	if _overlay_stack_material == null:
+		return
+	var grid: Object = _game_state.grid if _game_state != null else null
+	if grid == _occ_mask_grid:
+		return
+	_occ_mask_grid = grid
+	var baked: Dictionary = SightMaskBakerScript.bake(grid)
+	if baked.is_empty():
+		_overlay_stack_material.set_shader_parameter("occ_baked_enabled", false)
+		return
+	_overlay_stack_material.set_shader_parameter("occ_baked_enabled", true)
+	_overlay_stack_material.set_shader_parameter("occ_tex", baked["texture"])
+	_overlay_stack_material.set_shader_parameter("occ_origin", baked["origin"])
+	_overlay_stack_material.set_shader_parameter("occ_cell", baked["cell"])
+	_overlay_stack_material.set_shader_parameter("occ_size", baked["size"])
+
 func _sync_overlay_stack() -> void:
+	_sync_occluder_mask()
 	var vision_positions := _get_overlay_vision_positions()
 	var data_enabled := bool(_overlay_states.get("aster", false)) and not vision_positions.is_empty()
 	var fog_enabled := bool(_overlay_states.get("peris", false)) and not vision_positions.is_empty()
