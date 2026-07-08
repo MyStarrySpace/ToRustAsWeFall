@@ -3225,6 +3225,7 @@ func _test_shape_grammar() -> void:
 func _test_building_filler() -> void:
 	_test_name = "Building Filler"
 	var Grammar = load("res://scripts/generation/fragment_grammar.gd")
+	var Filler = load("res://scripts/generation/building_filler.gd")
 
 	# --- off-switch + layering: buildings only APPEND architecture; the layout beneath is untouched ---
 	var bare = Grammar.generate(7, {"buildings": false})
@@ -3247,6 +3248,46 @@ func _test_building_filler() -> void:
 	var built_b = Grammar.generate(7)
 	_assert_equals(str(built.walls), str(built_b.walls), "same seed -> identical architecture boxes")
 	_assert_equals(str(built.lights), str(built_b.lights), "same seed -> identical lamp light pools")
+	_assert_equals(str(built.params.get("hero_buildings", [])), str(built_b.params.get("hero_buildings", [])),
+		"same seed -> identical hero mass plans")
+
+	# --- pixel-art atlas texturing: masses carry tile names from the shipped set; glow strips stay
+	# untextured (a tile would fight the emissive) ---
+	var allowed_tiles := {"wall_panel": true, "facility_metal": true, "rust_iron": true,
+		"grate": true, "deck_metal": true, "rock": true}
+	var tiled_boxes := 0
+	var tiles_legal := true
+	var glow_pure := true
+	for wbox in built.walls:
+		var wd := wbox as Dictionary
+		if wd.has("tile"):
+			tiled_boxes += 1
+			if not allowed_tiles.has(str(wd["tile"])):
+				tiles_legal = false
+			if float(wd.get("energy", 0.0)) > 0.0:
+				glow_pure = false
+	_assert_true(tiled_boxes >= 20, "building masses are atlas-textured (%d tiled boxes)" % tiled_boxes)
+	_assert_true(tiles_legal, "every tile name is from the shipped pixel-art set")
+	_assert_true(glow_pure, "emissive strips never carry a tile")
+
+	# --- hero organic masses: planned as data on some districts, and the plan meshes ---
+	var Mesher = load("res://scripts/generation/sdf_mesher.gd")
+	var hero_seeds := 0
+	var hero_mesh_ok := true
+	for seed in range(1, 17):
+		var fh = Grammar.generate(seed)
+		var plans: Array = fh.params.get("hero_buildings", [])
+		if plans.is_empty():
+			continue
+		hero_seeds += 1
+		if hero_seeds == 1:
+			var hd := plans[0] as Dictionary
+			var prims: Array = Filler.hero_blob_prims(int(hd["seed"]), hd["center"],
+				float(hd["radius"]), float(hd["height"]))
+			var hbuilt: Dictionary = Mesher.build(prims, 0.3)
+			hero_mesh_ok = hbuilt["mesh"] != null and int(hbuilt["verts"]) > 100
+	_assert_true(hero_seeds >= 6, "hero organic masses appear across districts (%d/16 seeds)" % hero_seeds)
+	_assert_true(hero_mesh_ok, "a hero blob plan meshes into a real body")
 
 	# --- props: street furniture appears, respects its own off-switch, and lamp lights stay capped ---
 	var prop_seeds := 0

@@ -64,14 +64,34 @@ func _build_environment() -> void:
 		_add_floor(self, _v3(f, "pos"), _v3(f, "size", Vector3.ONE),
 			_col(f, "color", Color(0.1, 0.1, 0.12)), str(f.get("tile", "deck_metal")))
 	for w in fragment.walls:
-		_add_box(self, _v3(w, "pos"), _v3(w, "size", Vector3.ONE), _col(w, "color", Color(0.06, 0.06, 0.08)),
+		var wall_box := _add_box(self, _v3(w, "pos"), _v3(w, "size", Vector3.ONE), _col(w, "color", Color(0.06, 0.06, 0.08)),
 			_col(w, "emission", Color.BLACK), _f(w, "energy", 0.0))
+		# A wall box may name a pixel-art atlas tile ("tile": "wall_panel") — the same world-triplanar
+		# 1-tile/m material the floors use, TINTED by the box colour so palette fields keep working.
+		if str(w.get("tile", "")) != "":
+			wall_box.material_override = _tinted_tile_material(str(w["tile"]), _col(w, "color", Color.WHITE))
 	for l in fragment.lights:
 		_add_light(self, _v3(l, "pos"), _col(l, "color", Color.WHITE), _f(l, "energy", 1.0), _f(l, "range", 4.0))
 	for lb in fragment.labels:
 		_add_label(self, str(lb.get("text", "")), _v3(lb, "pos"), _col(lb, "color", Color(0.82, 0.86, 0.92)))
 	for m in fragment.meshes:
 		_instance_mesh(m)
+
+# tile+tint -> material, cached: a district can carry hundreds of textured boxes but only a handful
+# of (tile, palette-drift) combinations after quantising the tint.
+var _tile_mat_cache: Dictionary = {}
+
+## The floors' world-triplanar pixel-art tile material, tinted. Tints are LIFTED (the tile albedo is
+## mid-dark already) and quantised for cache hits while the Perlin palette drift stays visible.
+func _tinted_tile_material(tile_name: String, tint: Color) -> StandardMaterial3D:
+	var lifted := Color(minf(tint.r * 2.6, 1.2), minf(tint.g * 2.6, 1.2), minf(tint.b * 2.6, 1.2))
+	var key := "%s:%d,%d,%d" % [tile_name, int(lifted.r * 24.0), int(lifted.g * 24.0), int(lifted.b * 24.0)]
+	if _tile_mat_cache.has(key):
+		return _tile_mat_cache[key]
+	var mat := _tiled_floor_material(tile_name)
+	mat.albedo_color = lifted
+	_tile_mat_cache[key] = mat
+	return mat
 
 ## Instance a placed model (a static modeled prop). The level MESH (the whole environment) goes through
 ## get_environment_model() instead — the host loads + warps that.

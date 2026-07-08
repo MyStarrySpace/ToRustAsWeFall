@@ -127,6 +127,7 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 	var boxes_before := frag.walls.size()
 	var props_on := bool(opts.get("props", true))
 	var prop_count := 0
+	var heroes: Array = []
 	var out_lots: Array = []
 	for lot in lots:
 		var lc: Vector2i = lot["cell"]
@@ -161,10 +162,34 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 		# Palette: smooth cool<->warm blend, dragged toward rust by the decay field, hash-jittered a hair.
 		var base_col := PAL_COOL.lerp(PAL_WARM, t_pal).lerp(PAL_RUST, decay * 0.45)
 		base_col = base_col.darkened(_rf(jitter) * 0.08)
+		# Facade material rides the same fields: rusted panels where decay bites, cool wall panelling
+		# on the teal side of the palette, plain facility metal on the warm side.
+		var facade_tile := "rust_iron" if decay > 0.58 else ("wall_panel" if t_pal < 0.45 else "facility_metal")
+
+		# HERO ORGANIC MASSES (the blob vocabulary): up to two deep-field 3x3 lots per district trade
+		# their box massing for an SDF blob stack — planned as DATA here (prims are built by
+		# hero_blob_prims), meshed by the hosting chunk which owns scene nodes.
+		if gx >= 3 and gz >= 3 and int(lot["dist"]) >= 4 and heroes.size() < 2:
+			var far_enough := true
+			for hb in heroes:
+				if (hb["center"] as Vector3).distance_to(Vector3(center.x, 0, center.y)) < 14.0:
+					far_enough = false
+			if far_enough:
+				heroes.append({
+					"center": Vector3(center.x, 0.0, center.y),
+					"radius": minf(mx.x - mn.x, mx.y - mn.y) * 0.5 - 0.15,
+					"height": float(mini(int(lot["dist"]), 5)) * FLOOR_H * 0.95,
+					"seed": seed_value,
+					"tile": "rust_iron" if decay > 0.5 else "rock",
+					"color": base_col.lightened(0.22),
+				})
+				out_lots.append({"center": Vector3(center.x, 0.0, center.y), "floors": floors,
+					"height": height, "color": base_col})
+				continue
 
 		var stats := {"boxes": 0}
 		_emit_building(frag, mn, mx, height, floors, base_col, decay, glow_density, t_pal, jitter,
-			_street_dir(lc, gx, gz, walk, w, h), props_on, stats)
+			_street_dir(lc, gx, gz, walk, w, h), props_on, facade_tile, stats)
 		out_lots.append({"center": Vector3(center.x, 0.0, center.y), "floors": floors,
 			"height": height, "color": base_col})
 
@@ -252,7 +277,31 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 			_emit_viaduct(frag, via_plans[vi], origin, cs, w, h, DECK_TOP + 0.9 * float(vi), stats_v)
 
 	return {"buildings": out_lots.size(), "boxes": frag.walls.size() - boxes_before,
-		"props": prop_count, "viaducts": via_plans.size(), "lots": out_lots}
+		"props": prop_count, "viaducts": via_plans.size(), "heroes": heroes, "lots": out_lots}
+
+## SDF primitives for a HERO organic mass (vesicle/blob vocabulary — meshed by the hosting chunk
+## with SdfMesher + a triplanar atlas material). A stack of fat-blended ellipsoids narrowing upward,
+## a dome cap, and a side pod or two. World coordinates; deterministic per (seed, center).
+static func hero_blob_prims(seed_value: int, center: Vector3, radius: float, height: float) -> Array:
+	var rng := _rng(seed_value, "bld:hero:%d,%d" % [int(center.x * 10.0), int(center.z * 10.0)])
+	var prims: Array = []
+	var levels := 3 + _ri(rng, 0, 2)
+	for i in range(levels):
+		var t := float(i) / float(maxi(1, levels - 1))
+		var r := radius * lerpf(1.0, 0.45, t) * (0.9 + _rf(rng) * 0.2)
+		var y := height * lerpf(0.16, 0.86, t)
+		var off := Vector2((_rf(rng) - 0.5) * radius * 0.4, (_rf(rng) - 0.5) * radius * 0.4)
+		prims.append({"type": "ellipsoid", "c": Vector3(center.x + off.x, y, center.z + off.y),
+			"r": Vector3(r, height * 0.5 / float(levels) + r * 0.35, r), "k": 0.5})
+	prims.append({"type": "sphere", "c": Vector3(center.x, height * 0.96, center.z),
+		"r1": radius * 0.34, "k": 0.4})
+	for p in range(_ri(rng, 1, 2)):
+		var ang := _rf(rng) * TAU
+		prims.append({"type": "sphere",
+			"c": Vector3(center.x + cos(ang) * radius * 0.8, height * (0.25 + _rf(rng) * 0.3),
+				center.z + sin(ang) * radius * 0.8),
+			"r1": radius * 0.3, "k": 0.45})
+	return prims
 
 # --- lot geometry helpers ---
 
@@ -322,7 +371,7 @@ static func _street_dir(lc: Vector2i, gx: int, gz: int, walk: Dictionary, w: int
 
 static func _emit_building(frag: Fragment, mn: Vector2, mx: Vector2, height: float, floors: int,
 		base_col: Color, decay: float, glow_density: float, warm_bias: float, jitter: SeededRng,
-		street: Vector2i, props_on: bool, stats: Dictionary) -> void:
+		street: Vector2i, props_on: bool, facade_tile: String, stats: Dictionary) -> void:
 	# MASSING — 1..3 setback tiers; each steps IN by a taper and slides slightly off-center
 	# (asymmetry), so the stack reads faceted-organic rather than gridded.
 	var tier_count := clampi(1 + floors / 2, 1, 3)
@@ -348,9 +397,38 @@ static func _emit_building(frag: Fragment, mn: Vector2, mx: Vector2, height: flo
 		var tr: Dictionary = tiers[t]
 		var tmn: Vector2 = tr["mn"]; var tmx: Vector2 = tr["mx"]
 		var ty0 := float(tr["y0"]); var ty1 := float(tr["y1"])
-		_box(frag, Vector3((tmn.x + tmx.x) * 0.5, (ty0 + ty1) * 0.5 + 0.01, (tmn.y + tmx.y) * 0.5),
+		_boxt(frag, Vector3((tmn.x + tmx.x) * 0.5, (ty0 + ty1) * 0.5 + 0.01, (tmn.y + tmx.y) * 0.5),
 			Vector3(tmx.x - tmn.x, ty1 - ty0, tmx.y - tmn.y),
-			base_col.darkened(0.05 * t), stats)
+			base_col.darkened(0.05 * t), facade_tile, stats)
+
+	# BUTTRESS FINS pinning the ground tier's corners (canon structure vocabulary).
+	if floors >= 4 and _rf(jitter) < 0.5:
+		var f_mn: Vector2 = tiers[0]["mn"]; var f_mx: Vector2 = tiers[0]["mx"]
+		var fin_h := (float(tiers[0]["y1"]) - float(tiers[0]["y0"])) * 0.85
+		var fin_col := base_col.darkened(0.28)
+		for cx: float in [f_mn.x, f_mx.x]:
+			for cz: float in [f_mn.y, f_mx.y]:
+				_box(frag, Vector3(cx, fin_h * 0.5, cz), Vector3(0.5, fin_h, 0.13), fin_col, stats)
+				_box(frag, Vector3(cx, fin_h * 0.5, cz), Vector3(0.13, fin_h, 0.5), fin_col, stats)
+
+	# LATTICE INFILL panel (mesh_lattice vocabulary) on the street face of the upper tier — the
+	# grate tile reads as latticework at pixel-art scale. Healthy blocks only; decay strips it.
+	if floors >= 3 and decay < 0.5 and _rf(jitter) < 0.42 and tiers.size() > 1:
+		var lt: Dictionary = tiers[1]
+		var l_mn: Vector2 = lt["mn"]; var l_mx: Vector2 = lt["mx"]
+		var l_c := Vector2((l_mn.x + l_mx.x) * 0.5, (l_mn.y + l_mx.y) * 0.5)
+		var l_sz := Vector2(l_mx.x - l_mn.x, l_mx.y - l_mn.y)
+		var l_h := (float(lt["y1"]) - float(lt["y0"])) * 0.62
+		var l_y := (float(lt["y0"]) + float(lt["y1"])) * 0.5
+		var lp := Vector3(l_c.x, l_y, l_c.y)
+		var lsz: Vector3
+		if street.y != 0:
+			lp.z += (l_sz.y * 0.5 + 0.04) * float(street.y)
+			lsz = Vector3(l_sz.x * 0.72, l_h, 0.07)
+		else:
+			lp.x += (l_sz.x * 0.5 + 0.04) * float(street.x)
+			lsz = Vector3(0.07, l_h, l_sz.y * 0.72)
+		_boxt(frag, lp, lsz, base_col.lightened(0.22), "grate", stats)
 
 	# CROWN on the top tier — stepped cap | vent stack | service bulkhead; deep decay strips it.
 	var top: Dictionary = tiers[tiers.size() - 1]
@@ -362,19 +440,19 @@ static func _emit_building(frag: Fragment, mn: Vector2, mx: Vector2, height: flo
 		var crown_pick := _rf(jitter)
 		if crown_pick < 0.4:
 			# stepped cap: two shrinking slabs — a faceted dome read
-			_box(frag, Vector3(top_c.x, height + 0.14, top_c.y),
-				Vector3(top_sz.x * 0.8, 0.28, top_sz.y * 0.8), roof_col, stats)
-			_box(frag, Vector3(top_c.x, height + 0.40, top_c.y),
-				Vector3(top_sz.x * 0.5, 0.24, top_sz.y * 0.5), roof_col.darkened(0.1), stats)
+			_boxt(frag, Vector3(top_c.x, height + 0.14, top_c.y),
+				Vector3(top_sz.x * 0.8, 0.28, top_sz.y * 0.8), roof_col, facade_tile, stats)
+			_boxt(frag, Vector3(top_c.x, height + 0.40, top_c.y),
+				Vector3(top_sz.x * 0.5, 0.24, top_sz.y * 0.5), roof_col.darkened(0.1), facade_tile, stats)
 		elif crown_pick < 0.72:
 			# vent stack, planted off-center
 			var voff := Vector2((_rf(jitter) - 0.5) * top_sz.x * 0.4, (_rf(jitter) - 0.5) * top_sz.y * 0.4)
-			_box(frag, Vector3(top_c.x + voff.x, height + 0.75, top_c.y + voff.y),
-				Vector3(0.5, 1.5, 0.5), roof_col, stats)
+			_boxt(frag, Vector3(top_c.x + voff.x, height + 0.75, top_c.y + voff.y),
+				Vector3(0.5, 1.5, 0.5), roof_col, "facility_metal", stats)
 		else:
 			# service bulkhead hugging one edge
-			_box(frag, Vector3(top_c.x + top_sz.x * 0.22, height + 0.35, top_c.y - top_sz.y * 0.18),
-				Vector3(top_sz.x * 0.4, 0.7, top_sz.y * 0.42), roof_col, stats)
+			_boxt(frag, Vector3(top_c.x + top_sz.x * 0.22, height + 0.35, top_c.y - top_sz.y * 0.18),
+				Vector3(top_sz.x * 0.4, 0.7, top_sz.y * 0.42), roof_col, "facility_metal", stats)
 
 	# WINDOW STRIPS — sparse emissive bands per storey on the street face + one flank, each proud of
 	# the TIER that owns that storey. Warm-lit vs terminal green follows the palette field's warmth.
@@ -547,7 +625,7 @@ static func _emit_viaduct(frag: Fragment, plan: Dictionary, origin: Vector3, cs:
 	var pier_col := Color(0.15, 0.16, 0.17)
 
 	# axis 0 boxes span X and sit at Z=lane_c; axis 1 swaps. _vx handles the swap once.
-	_box(frag, _vx(axis, run_c, deck_top - 0.25, lane_c), _vs(axis, run_len, 0.5, DECK_W), deck_col, stats)
+	_boxt(frag, _vx(axis, run_c, deck_top - 0.25, lane_c), _vs(axis, run_len, 0.5, DECK_W), deck_col, "deck_metal", stats)
 	for s: float in [-1.0, 1.0]:
 		_box(frag, _vx(axis, run_c, deck_top + 0.35, lane_c + s * (DECK_W * 0.5 - 0.08)),
 			_vs(axis, run_len, 0.7, 0.1), rail_col, stats)
@@ -557,9 +635,9 @@ static func _emit_viaduct(frag: Fragment, plan: Dictionary, origin: Vector3, cs:
 		var pi := (pc as Vector2i).x if axis == 0 else (pc as Vector2i).y
 		var px := run0 + (float(pi) + 0.5) * cs
 		var col_h := underside - 0.3 - 4.2
-		_box(frag, _vx(axis, px, 2.1, lane_c), _vs(axis, 0.85, 4.2, 0.85), pier_col, stats)
-		_box(frag, _vx(axis, px, 4.2 + col_h * 0.5, lane_c), _vs(axis, 0.55, col_h, 0.55),
-			pier_col.darkened(0.06), stats)
+		_boxt(frag, _vx(axis, px, 2.1, lane_c), _vs(axis, 0.85, 4.2, 0.85), pier_col, "facility_metal", stats)
+		_boxt(frag, _vx(axis, px, 4.2 + col_h * 0.5, lane_c), _vs(axis, 0.55, col_h, 0.55),
+			pier_col.darkened(0.06), "facility_metal", stats)
 		_box(frag, _vx(axis, px, underside - 0.15, lane_c), _vs(axis, 0.5, 0.3, DECK_W + 0.2),
 			pier_col.darkened(0.12), stats)
 	var alt := true
@@ -637,6 +715,12 @@ static func _prop_monument(frag: Fragment, p: Vector2, stats: Dictionary) -> voi
 
 static func _box(frag: Fragment, pos: Vector3, size: Vector3, color: Color, stats: Dictionary) -> void:
 	frag.walls.append({"pos": pos, "size": size, "color": color})
+	stats["boxes"] = int(stats.get("boxes", 0)) + 1
+
+# A box carrying a pixel-art atlas tile ("tile" key — the loader tints the world-triplanar
+# 1-tile/m material with the box colour, so the palette fields survive texturing).
+static func _boxt(frag: Fragment, pos: Vector3, size: Vector3, color: Color, tile: String, stats: Dictionary) -> void:
+	frag.walls.append({"pos": pos, "size": size, "color": color, "tile": tile})
 	stats["boxes"] = int(stats.get("boxes", 0)) + 1
 
 static func _box_glow(frag: Fragment, pos: Vector3, size: Vector3, color: Color, emission: Color,
