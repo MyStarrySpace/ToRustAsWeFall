@@ -73,12 +73,12 @@ func _add_honeyframe(root: Node3D, spec: Dictionary) -> void:
 	var built: Dictionary = Lattice.honeyframe(spec.get("size", Vector3(4.5, 8.0, 5.5)))
 	# Brighter cream than the base body so the strut lattice reads proud of the wall.
 	_add_lattice_mesh(root, "HoneyFrame", built.get("frame"), _tinted_tile_material("facility_metal", Color(0.72, 0.69, 0.58)))
-	_add_lattice_mesh(root, "HoneyGlass", built.get("glass"), _lit_pane_material(Color(1.0, 0.72, 0.36), 1.8))
+	_add_lattice_mesh(root, "HoneyGlass", built.get("glass"), _window_material(1.8))
 
 func _add_tracery(root: Node3D, spec: Dictionary) -> void:
 	var built: Dictionary = Lattice.tracery(float(spec.get("radius", 2.4)), float(spec.get("height", 7.2)))
 	_add_lattice_mesh(root, "TraceryRibs", built.get("frame"), _tinted_tile_material("facility_metal", Color(0.44, 0.53, 0.50)))
-	_add_lattice_mesh(root, "TraceryGlass", built.get("glass"), _lit_pane_material(Color(1.0, 0.74, 0.42), 1.6))
+	_add_lattice_mesh(root, "TraceryGlass", built.get("glass"), _window_material(1.6))
 
 func _add_pipes(root: Node3D, spec: Dictionary) -> void:
 	var pipe_seed := int(str(spec.get("kind", "")).hash())
@@ -98,13 +98,13 @@ func _add_lattice_mesh(root: Node3D, mesh_name: String, mesh, mat: Material) -> 
 	mi.material_override = mat
 	root.add_child(mi)
 
-func _lit_pane_material(col: Color, energy: float) -> StandardMaterial3D:
-	var em := StandardMaterial3D.new()
-	em.albedo_color = col
-	em.emission_enabled = true
-	em.emission = col
-	em.emission_energy_multiplier = energy
-	return em
+## The window shader reads each pane's per-vertex COLOR as its own light, so one glass mesh shows a
+## facade of individually lit / dim / dark windows. `energy` is the global brightness multiplier.
+func _window_material(energy: float) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = load("res://resources/window_panes.gdshader")
+	m.set_shader_parameter("energy", energy)
+	return m
 
 func _process(delta: float) -> void:
 	for t in _turntables:

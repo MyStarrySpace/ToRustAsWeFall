@@ -3623,12 +3623,16 @@ func _test_architecture_showcase() -> void:
 		"pipes are deterministic for a seed")
 	_assert_true((Lat.pipes(beacon, 3) as ArrayMesh).get_surface_count() > 0, "pipes also drape a cylinder")
 
-	# --- registry: the showcase is a walkable preview entry ---
+	# --- registry: the showcase is a walkable preview entry that boots with perception overlays OFF ---
 	var found := false
+	var arch_overlays := {}
 	for e in FragmentPreviewScript.PREVIEW_ENTRIES:
 		if str((e as Dictionary).get("id", "")) == "architecture_showcase":
 			found = true
+			arch_overlays = ((e as Dictionary).get("config", {}) as Dictionary).get("overlays", {})
 	_assert_true(found, "the architecture showcase is a registered preview entry")
+	_assert_true(bool(arch_overlays.get("peris", true)) == false and bool(arch_overlays.get("aster", true)) == false,
+		"the showcase boots with perception overlays OFF (it's a look-dev gallery)")
 
 	# --- the showcase boots, raises the base-shape bodies, and skins them with the grime tile shader ---
 	var prev = load("res://scenes/fragments/fragment_preview.tscn").instantiate()

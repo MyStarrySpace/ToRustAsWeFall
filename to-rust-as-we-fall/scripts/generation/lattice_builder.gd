@@ -20,6 +20,7 @@ const HONEYFRAME_DEFAULTS := {
 	"pane": 0.02,          # lit pane depth: recessed under the frame top, a hair proud of the wall behind
 	"corner_round": 0.30,  # P (<=0.5): how much of the half-window is rounded — rounded RECTS, not circles
 	"arc_seg": 3,          # segments per rounded corner (low-poly)
+	"pane_color": Color(1.0, 0.72, 0.36),   # base window-light colour; per-pane brightness/tint varies off it
 }
 
 ## Build the honeyframe lattice for a box of `size` (base at y=0). Returns {frame, glass} ArrayMeshes:
@@ -64,6 +65,7 @@ static func _honeyframe_face(f: Dictionary, p: Dictionary, frame_st: SurfaceTool
 	var fd: float = p["frame_depth"]
 	var back: float = -float(p["back_bite"])
 	var pane: float = p["pane"]
+	var base_pane: Color = p["pane_color"]
 	var seg: int = int(p["arc_seg"])
 	# Window (inner) half-size = cell half-size minus the frame; the frame keeps a CONSTANT width by
 	# offsetting the outer outline out by `fw`, so cell_half == window_half + fw.
@@ -80,8 +82,9 @@ static func _honeyframe_face(f: Dictionary, p: Dictionary, frame_st: SurfaceTool
 			var cu := -w * 0.5 + (col + 0.5) * cw
 			var cv := -h * 0.5 + (row + 0.5) * ch
 			var center := c + u * cu + v * cv
+			var key := absf(center.x) * 12.9 + absf(center.y) * 7.3 + absf(center.z) * 3.1
 			_emit_frame_ring(center, u, v, n, outer, inner, fd, back, frame_st)
-			_emit_glass(center, u, v, n, inner, pane, glass_st)
+			_emit_glass(center, u, v, n, inner, pane, _pane_color(base_pane, key), glass_st)
 	return rows * cols
 
 # A rounded rectangle outline in the (x,y) face plane, wound CCW. 4 quarter-arcs of radius r.
@@ -132,14 +135,32 @@ static func _emit_frame_ring(center: Vector3, u: Vector3, v: Vector3, n: Vector3
 		_tri(st, it_i, ib_j, ib_i)
 
 # The lit window pane: a fan over the inner outline at `depth`, wound to face OUTWARD (+n) so it needs
-# no double-siding. It sits recessed under the frame top, a hair proud of the wall behind it.
+# no double-siding. `col` is the pane's own light (per-pane) written as vertex COLOR for the window shader.
 static func _emit_glass(center: Vector3, u: Vector3, v: Vector3, n: Vector3,
-		inner: PackedVector2Array, depth: float, st: SurfaceTool) -> void:
+		inner: PackedVector2Array, depth: float, col: Color, st: SurfaceTool) -> void:
+	st.set_color(col)
 	var count := inner.size()
 	var mid := _p3(center, u, v, n, Vector2.ZERO, depth)
 	for i in range(count):
 		var j := (i + 1) % count
 		_tri(st, mid, _p3(center, u, v, n, inner[j], depth), _p3(center, u, v, n, inner[i], depth))
+
+# Deterministic hash (Blender-parity) + per-pane window light: mostly lit at varied brightness, a few
+# unlit (dark), an occasional cool or extra-warm window — so a facade reads as many individual lives.
+static func _h01(nv: float) -> float:
+	return fmod(absf(sin(nv * 127.13) * 43758.5453), 1.0)
+
+static func _pane_color(base: Color, key: float) -> Color:
+	if _h01(key * 1.7) < 0.16:
+		return Color(0.03, 0.03, 0.035)   # an unlit window
+	var bri := 0.5 + 0.5 * _h01(key * 3.3)
+	var c := Color(base.r * bri, base.g * bri, base.b * bri)
+	var t := _h01(key * 5.1)
+	if t < 0.26:
+		c = c.lerp(Color(0.55, 0.70, 1.0) * bri, 0.4)   # a cool-lit window
+	elif t > 0.82:
+		c = c.lerp(Color(1.0, 0.50, 0.20) * bri, 0.4)   # an extra-warm window
+	return c
 
 static func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
 	st.add_vertex(a)
@@ -227,13 +248,24 @@ static func _walk_pipe(x0: float, w: float, h: float, p: Dictionary, rng: Seeded
 	var pts := PackedVector2Array()
 	var x := clampf(x0, 0.0, w)
 	var v := 0.0
+	var last_jog := 0.0   # sign of the previous horizontal move; a straight step resets it to 0
 	pts.append(Vector2(x, v))
 	var guard := 0
 	while v < h and guard < 240:
 		guard += 1
 		v = minf(h, v + float(rng.call("randf_range", float(p["step_min"]), float(p["step_max"]))))
 		if float(rng.call("randf")) < float(p["diag_prob"]):
-			x = clampf(x + (-1.0 if float(rng.call("randf")) < 0.5 else 1.0) * float(p["lane_w"]), 0.0, w)
+			# Keep drifting the SAME way on back-to-back diagonals (never reverse left<->right without a
+			# straight step between); only a straight step frees the pipe to pick a fresh side.
+			var s: float = last_jog if last_jog != 0.0 else (-1.0 if float(rng.call("randf")) < 0.5 else 1.0)
+			var nx := clampf(x + s * float(p["lane_w"]), 0.0, w)
+			if is_equal_approx(nx, x):   # blocked by the wall — reset so the next jog can go the other way
+				last_jog = 0.0
+			else:
+				x = nx
+				last_jog = s
+		else:
+			last_jog = 0.0
 		pts.append(Vector2(x, v))
 	return pts
 
@@ -315,6 +347,7 @@ const TRACERY_DEFAULTS := {
 	"taper": 0.22,        # fraction of the slot height that tapers to the pointed tips (rest is parallel)
 	"arc_seg": 14,        # points top->bottom along a slot side (smooth tall slot)
 	"pane": 0.02,         # lit pane proud of the true-circle wall (recessed under the ribs)
+	"pane_color": Color(1.0, 0.74, 0.42),   # base window-light colour; per-pane brightness/tint varies off it
 }
 
 ## Build the tracery lattice for a drum of `radius`/`height`. Returns {frame, glass} ArrayMeshes.
@@ -338,12 +371,14 @@ static func tracery(radius: float, height: float, overrides: Dictionary = {}) ->
 	var glass_st := SurfaceTool.new()
 	glass_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var back := -float(p["back_bite"])
+	var base_pane: Color = p["pane_color"]
 	for j in range(rows):
 		for i in range(cols):
 			var th := TAU * (float(i) + 0.5) / float(cols)
 			var yc := (float(j) + 0.5) * cell_h
+			var key := float(i) * 12.9 + float(j) * 57.3
 			_emit_ring_cyl(th, yc, radius, outer, inner, float(p["frame_depth"]), back, frame_st)
-			_emit_glass_cyl(th, yc, radius, inner, float(p["pane"]), glass_st)
+			_emit_glass_cyl(th, yc, radius, inner, float(p["pane"]), _pane_color(base_pane, key), glass_st)
 	frame_st.generate_normals()
 	glass_st.generate_normals()
 	return {"frame": frame_st.commit(), "glass": glass_st.commit(), "cells": cols * rows}
@@ -396,9 +431,11 @@ static func _emit_ring_cyl(base_th: float, yc: float, r: float,
 		_tri(st, it_i, it_j, ib_j)
 		_tri(st, it_i, ib_j, ib_i)
 
-# The lit lancet pane, wound to face OUTWARD (+radial) so it needs no double-siding.
+# The lit lancet pane, wound to face OUTWARD (+radial) so it needs no double-siding. `col` is the
+# per-pane window light written as vertex COLOR for the window shader.
 static func _emit_glass_cyl(base_th: float, yc: float, r: float,
-		inner: PackedVector2Array, pane: float, st: SurfaceTool) -> void:
+		inner: PackedVector2Array, pane: float, col: Color, st: SurfaceTool) -> void:
+	st.set_color(col)
 	var count := inner.size()
 	var mid := _cylp(base_th, yc, r, Vector2.ZERO, pane)
 	for i in range(count):

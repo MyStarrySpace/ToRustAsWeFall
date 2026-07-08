@@ -115,12 +115,13 @@ const PREVIEW_ENTRIES := [
 		"config": {"seed": 1, "overlays": {"peris": true}}},
 	# CREATURE GRAMMAR: a body grammar (parts with dimension ranges) compiled to SDF primitives and
 	# smooth-min meshed — one specimen per canon-grounded archetype. Press N for a new generation.
+	# Pure visual iteration surface — perception overlays (fog/data) OFF by default so the forms read clean.
 	{"id": "creature_grammar", "chunk": "creature_grammar", "title": "Creature Grammar (SDF morphology)", "stage": 6,
-		"config": {"seed": 1}},
-	# ARCHITECTURE SHOWCASE: the district HERO buildings, each built from its reference's base shapes
-	# (SDF metaball bodies + emissive detail). The iteration surface — walk the row, N reseeds.
+		"config": {"seed": 1, "overlays": {"aster": false, "peris": false, "endo": false}}},
+	# ARCHITECTURE SHOWCASE: the district buildings, each built bottom-up (base shape -> lattice). The
+	# iteration surface — walk the row, N reseeds. Overlays OFF by default (it's a look-dev gallery).
 	{"id": "architecture_showcase", "chunk": "architecture_showcase", "title": "Architecture Showcase (district heroes)", "stage": 6,
-		"config": {"seed": 1}},
+		"config": {"seed": 1, "overlays": {"aster": false, "peris": false, "endo": false}}},
 ]
 
 ## The menu entry for an id (or {} if none).

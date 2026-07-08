@@ -32,8 +32,9 @@ raised constant-width cream frame + a warm lit pane. Reads as a honeycomb facade
 - **Organic junctions.** The plate's frame struts *melt* together at the crossings (Gaudí-ish pinched
   blobs, concave sides). Opus's version is a cleaner geometric lattice — the "round toward the vertex"
   junction is approximated, not sculpted. Fable: sculpt the pinched, load-bearing-looking junctions.
-- **Window variation.** Plate windows differ — some lit, some dark, blinds at angles, planter sills,
-  little balconies. Opus's are uniform warm panes. Fable: per-window variation + sills/blinds.
+- ~~Window variation~~ — **DONE in Godot** (per-pane vertex-colour light: brightness/tint/off via the
+  `window_panes` shader). Remaining Fable-only sub-part: physical blinds at angles, planter sills,
+  little balconies (geometry, not just light).
 - **Cell aspect + irregularity.** Plate cells are slightly portrait and subtly *irregular* (hand-made,
   not a perfect grid). Opus's grid is perfectly regular. Fable: gentle per-cell jitter.
 - **Frame profile.** Plate frames have moulded/bevelled cross-sections catching light; Opus's frame is
@@ -62,7 +63,8 @@ Hill cylinder. Tall pointed slots (near-parallel sides tapering to cusps), 2 row
 between, warm panes behind.
 **Gaps vs the plate (Fable pass):**
 - **Solid panes, no mullions.** The plate windows are a fine grid of tiny lit panes; Opus's are one
-  flat emissive pane per opening.
+  emissive pane per opening (now per-pane VARIED in brightness/tint/off via the `window_panes` shader,
+  but still one pane, not a mullion sub-grid). Fable: the tiny-pane mullion grid.
 - **Straight ribs.** The plate ribs *branch, interlace, and whiplash* (Art-Nouveau/Gothic tracery);
   Opus's are simple constant-width lancet rings. This is the biggest visual gap.
 - **No hierarchy.** Uniform lancets; the plate has a big central lancet with smaller flankers + little
@@ -85,10 +87,12 @@ between, warm panes behind.
    (planters, vines), cobble apron.
 6. **Voronoi organic decorations** — a decoration pass: consider HALF the object (decor mirrored),
    scatter a few "focal points", draw Voronoi cells, then merge cells — merging harder the further from
-   a focal point. Meant to build on the earlier Fable/Blender Voronoi code (`gen_voronoi_holemesh` /
-   `gen_blob_mass`). **STATUS: that Blender code is NOT in this checkout** — `blender/` has no `.py`
-   files here and it's gitignored, so it isn't recoverable from git. Options: restore the Blender
-   sources, or reconstruct the algorithm natively in `LatticeBuilder` (GDScript) from the spec above.
+   a focal point. Builds on the existing Fable/Blender Voronoi code, which IS present (it's under the
+   gitignored `blender/`, so ripgrep/Glob skip it — use `find`):
+   `blender/skills/building-generation/gen_voronoi_holemesh.py` (Voronoi web + holes; `build_holemesh`
+   already has a `merge`/`merge_start` falloff — currently RADIAL from centre; generalize to N focal
+   points) and `gen_blob_mass.py`. Both ship near(3D)+far(impostor) LOD from the same params. Open
+   question: author the decor in Blender and export, or port the Voronoi merge natively to GDScript.
 
 ## Cross-cutting Fable tasks
 - **Texture density variation** — the grime shader varies rust/wear via world-noise, but the plates
