@@ -3599,6 +3599,30 @@ func _test_architecture_showcase() -> void:
 	_assert_true(fb.position.y >= -0.05 and fb.position.y + fb.size.y <= float(honey["size"].y) + 0.05,
 		"the honeyframe spans the box height, grounded (y %.2f..%.2f)" % [fb.position.y, fb.position.y + fb.size.y])
 
+	# --- tracery (Beacon Hill): lancet rib rings + lit glass wrapped on the drum, deterministic ---
+	var beacon: Dictionary = Base.generate("beacon_hill")
+	_assert_equals(str(beacon.get("shape", "")), Base.SHAPE_CYLINDER, "Beacon Hill is a cylinder")
+	_assert_equals(str(beacon.get("lattice", "")), "tracery", "Beacon Hill declares the tracery lattice")
+	var tr: Dictionary = Lat.tracery(float(beacon["radius"]), float(beacon["height_total"]))
+	_assert_true(int(tr.get("cells", 0)) >= 8, "tracery builds a lancet grid (%d cells)" % int(tr.get("cells", 0)))
+	_assert_true((tr.get("frame") as ArrayMesh) != null and (tr.get("frame") as ArrayMesh).get_surface_count() > 0
+		and (tr.get("glass") as ArrayMesh).get_surface_count() > 0, "tracery builds ribs + lit glass")
+	var tr2: Dictionary = Lat.tracery(float(beacon["radius"]), float(beacon["height_total"]))
+	_assert_equals((tr.get("frame") as ArrayMesh).surface_get_array_len(0), (tr2.get("frame") as ArrayMesh).surface_get_array_len(0),
+		"tracery is deterministic (same drum -> same ribs)")
+	var tb: AABB = (tr.get("frame") as ArrayMesh).get_aabb()
+	_assert_true(tb.position.y >= -0.05 and tb.position.y + tb.size.y <= float(beacon["height_total"]) + 0.05,
+		"tracery spans the drum height, grounded")
+
+	# --- pipes: SeededRng edge-descent tubes on a shape; non-empty + deterministic per seed ---
+	var pm = Lat.pipes(honey, 7)
+	_assert_true(pm != null and (pm as ArrayMesh).get_surface_count() > 0 and (pm as ArrayMesh).surface_get_array_len(0) > 30,
+		"pipes build a non-empty tube mesh")
+	var pm2 = Lat.pipes(honey, 7)
+	_assert_equals((pm as ArrayMesh).surface_get_array_len(0), (pm2 as ArrayMesh).surface_get_array_len(0),
+		"pipes are deterministic for a seed")
+	_assert_true((Lat.pipes(beacon, 3) as ArrayMesh).get_surface_count() > 0, "pipes also drape a cylinder")
+
 	# --- registry: the showcase is a walkable preview entry ---
 	var found := false
 	for e in FragmentPreviewScript.PREVIEW_ENTRIES:
@@ -3616,7 +3640,9 @@ func _test_architecture_showcase() -> void:
 		await get_tree().process_frame
 	var found_body := false
 	var found_grime := false
-	var found_lattice := false
+	var found_honey := false
+	var found_tracery := false
+	var found_pipes := false
 	for hero in _find_nodes_prefixed(prev, "Hero_"):
 		for child in (hero as Node).get_children():
 			if child.name == "Body" and child is MeshInstance3D:
@@ -3624,11 +3650,18 @@ func _test_architecture_showcase() -> void:
 				var m: Material = (child as MeshInstance3D).mesh.surface_get_material(0)
 				if m is ShaderMaterial and (m as ShaderMaterial).shader == load("res://resources/tile_grime.gdshader"):
 					found_grime = true
-			if child.name == "HoneyFrame" and child is MeshInstance3D and (child as MeshInstance3D).mesh != null:
-				found_lattice = true
+			if child is MeshInstance3D and (child as MeshInstance3D).mesh != null:
+				if child.name == "HoneyFrame":
+					found_honey = true
+				elif child.name == "TraceryRibs":
+					found_tracery = true
+				elif child.name == "Pipes":
+					found_pipes = true
 	_assert_true(found_body, "the showcase raised the base-shape bodies")
 	_assert_true(found_grime, "base-shape bodies use the grime tile shader")
-	_assert_true(found_lattice, "the showcase raised the honeyframe lattice on the Honeycomb")
+	_assert_true(found_honey, "the showcase raised the honeyframe lattice on the Honeycomb")
+	_assert_true(found_tracery, "the showcase raised the tracery lattice on Beacon Hill")
+	_assert_true(found_pipes, "the showcase raised draped pipes")
 	prev.queue_free()
 	await get_tree().process_frame
 

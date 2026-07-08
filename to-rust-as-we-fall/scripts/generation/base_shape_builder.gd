@@ -17,7 +17,7 @@ const SHAPE_CYLINDER := "cylinder"
 const SHAPE_BOX := "box"
 
 ## Ordered list the showcase walks. Add a building here as we bring each one in.
-const BUILDINGS := ["plumbing_power", "honeycomb_cooperative"]
+const BUILDINGS := ["plumbing_power", "honeycomb_cooperative", "beacon_hill"]
 
 ## Reference-derived proportions. Dimensions are metres; the base sits on y=0.
 const SPECS := {
@@ -29,7 +29,8 @@ const SPECS := {
 		"height": 5.6,
 		"color": Color(0.33, 0.43, 0.43),   # weathered verdigris copper
 		"tile": "facility_metal",
-		"lattice": "tracery",               # pointed-arch window wall (NEXT — not built yet)
+		"lattice": "",                      # facade (wheels/slits/dome) is later; draped pipes for now
+		"pipes": true,                      # the plate's draped conduit runs
 	},
 	"honeycomb_cooperative": {
 		"title": "Honeycomb Cooperative",
@@ -39,6 +40,17 @@ const SPECS := {
 		"color": Color(0.60, 0.58, 0.48),   # pale cast-stone facade
 		"tile": "facility_metal",
 		"lattice": "honeyframe",            # rounded-cell facade frame + lit panes
+		"pipes": true,                      # rust/conduit tangle down the flank
+	},
+	"beacon_hill": {
+		"title": "Beacon Hill",
+		"shape": SHAPE_CYLINDER,
+		# Tall verdigris bell-tower (the Reading Room); a cylinder base, the bell taper is a later pass.
+		"radius": 2.4,
+		"height": 7.2,
+		"color": Color(0.32, 0.42, 0.40),   # verdigris tiled stone
+		"tile": "facility_metal",
+		"lattice": "tracery",               # pointed-arch (lancet) window wall + lit glass behind
 	},
 }
 
