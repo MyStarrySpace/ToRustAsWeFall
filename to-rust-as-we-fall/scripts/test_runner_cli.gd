@@ -300,6 +300,9 @@ func _ready() -> void:
 			"--test-showcase-gallery":
 				ran_test = true
 				await _test_showcase_gallery()
+			"--test-set-piece-showcase":
+				ran_test = true
+				await _test_set_piece_showcase()
 			"--test-wash-relay":
 				ran_test = true
 				await _test_wash_relay()
@@ -1222,6 +1225,7 @@ func _run_all_tests() -> void:
 	_test_dodge_failure_no_cooldown()
 	_test_strike_skips_corpse()
 	await _test_showcase_gallery()
+	await _test_set_piece_showcase()
 	await _test_wash_relay()
 	_test_channels_arc()
 	await _test_channels_scene()
@@ -18225,6 +18229,72 @@ func _test_showcase_gallery() -> void:
 	inst.headless_set_character_position("peris", Vector3(79.0, 0.5, 0.0))
 	inst.headless_advance(0.3, 0.1)
 	_assert_true(bool(chunk.get_preview_state().get("complete", false)), "Reaching the EXIT completes the gallery tour")
+	await _dispose_scene(inst)
+
+# --- Test: the SET PIECE showcase (docs/SET_PIECES.md) — crawl pipes, rotating hub, water basin ---
+# Drives all three set-piece mechanics through the data layer: the wheel aligns the hub and opens its
+# crawl route; a crawl traverses a wall the grid forbids; the valve's committed level opens the float
+# bridge ONLY at MID and drowns the penned enemy at HIGH. The controls sit behind OTHER pieces (the
+# archetypes grammar): the valve is only reachable through the crawl pipe.
+func _test_set_piece_showcase() -> void:
+	_test_name = "Set Piece Showcase"
+	var inst = await _instantiate_preview_chunk_and_wait("set_piece_showcase", 5)
+	if inst == null:
+		_assert_true(false, "set_piece_showcase preview instantiates")
+		return
+	var chunk = inst._active_chunk
+	inst.headless_advance(0.3, 0.1)   # let the chunk's lazy runtime (blockers + pen enemy) come up
+	var gs = chunk._get_game_state()
+	var st0: Dictionary = chunk.get_preview_state()
+	_assert_true(not bool(st0.get("hub_aligned", true)), "The hub starts MISALIGNED (its crawl is shut)")
+	_assert_true(not gs.grid.is_walkable(22, 9), "The float bridge starts BLOCKED (water is not MID)")
+	_assert_true(bool(st0.get("pen_alive", false)), "The pen enemy starts alive")
+	var anchors: Dictionary = chunk.get_preview_anchors()
+
+	# B) push the wheel -> the bent pipe rotates into alignment -> its crawl route opens
+	var wheel = chunk.find_child("HubWheel", true, false)
+	_assert_true(wheel != null, "The push wheel exists")
+	wheel._trigger()
+	_assert_true(bool(chunk.get_preview_state().get("hub_aligned", false)), "One push ALIGNS the hub")
+	inst.headless_set_character_position("peris", anchors["hub_west"] as Vector3)
+	var hub_mouth = chunk.find_child("HubMouthWest", true, false)
+	hub_mouth._trigger()
+	inst.headless_advance(8.0, 0.1)
+	_assert_true((gs.get_position("peris") as Vector3).x > 17.5,
+		"Crawling the aligned hub carries the character THROUGH the yard divider")
+
+	# A) the wall pipe: the only way north (the water valve lives on the far side — the grammar)
+	inst.headless_set_character_position("peris", anchors["pipe_south"] as Vector3)
+	chunk.find_child("PipeMouthSouth", true, false)._trigger()
+	inst.headless_advance(10.0, 0.1)
+	_assert_true((gs.get_position("peris") as Vector3).z > 12.5,
+		"Crawling the wall pipe carries the character THROUGH the north wall")
+
+	# C1) valve -> MID commits on the scheduler: floats bridge the basin
+	chunk.find_child("WaterValve", true, false)._trigger()
+	inst.headless_advance(2.0, 0.1)
+	var st_mid: Dictionary = chunk.get_preview_state()
+	_assert_equals(int(st_mid.get("water_level", -1)), 1, "One valve cycle commits the water at MID")
+	_assert_true(gs.grid.is_walkable(22, 9) and gs.grid.is_walkable(23, 12),
+		"At MID the float bridge cells become walkable")
+	inst.headless_set_character_position("aster", anchors["bridge_south"] as Vector3)
+	gs.command_move_to_cell("aster", Vector2i(22, 14))
+	inst.headless_advance(12.0, 0.1)
+	_assert_true((gs.get_position("aster") as Vector3).z > 12.5,
+		"A character CROSSES the basin over the floats at MID")
+
+	# C2) valve -> HIGH: the pen shelf submerges and the penned enemy drowns; the bridge closes
+	chunk.find_child("WaterValve", true, false)._trigger()
+	inst.headless_advance(2.0, 0.1)
+	var st_high: Dictionary = chunk.get_preview_state()
+	_assert_equals(int(st_high.get("water_level", -1)), 2, "The next cycle commits HIGH")
+	_assert_true(not bool(st_high.get("pen_alive", true)), "At HIGH the penned enemy DROWNS")
+	_assert_true(not gs.grid.is_walkable(22, 9), "Above MID the floats misalign — the bridge re-closes")
+
+	# reaching the exit pad completes the tour
+	inst.headless_set_character_position("peris", anchors["exit"] as Vector3)
+	inst.headless_advance(0.3, 0.1)
+	_assert_true(bool(chunk.get_preview_state().get("complete", false)), "Reaching the EXIT pad completes the tour")
 	await _dispose_scene(inst)
 
 # --- Test: a ChainEnemy's attack is REAL data-layer damage that respects the dodge window ---

@@ -28,6 +28,7 @@ const SHAPE_GRAMMAR_CHUNK_SCENE := preload("res://scenes/fragments/chunks/shape_
 const CREATURE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/creature_preview.tscn")
 const ARCHITECTURE_SHOWCASE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/architecture_showcase.tscn")
 const GEOMETRY_LAB_CHUNK_SCENE := preload("res://scenes/fragments/chunks/geometry_lab.tscn")
+const SET_PIECE_SHOWCASE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/set_piece_showcase_chunk.tscn")
 const SightMaskBakerScript := preload("res://scripts/game/world/sight_mask_baker.gd")
 
 # chunk name -> packed scene. The single lookup that replaced the old per-name match (and the reason
@@ -56,6 +57,7 @@ const CHUNK_SCENES := {
 	"creature_grammar": CREATURE_CHUNK_SCENE,
 	"architecture_showcase": ARCHITECTURE_SHOWCASE_CHUNK_SCENE,
 	"geometry_lab": GEOMETRY_LAB_CHUNK_SCENE,
+	"set_piece_showcase": SET_PIECE_SHOWCASE_CHUNK_SCENE,
 }
 
 # The fragment menu, ordered along the combine-characters learning ramp (its `stage` ascending). Each
@@ -67,6 +69,7 @@ const CHUNK_SCENES := {
 const PREVIEW_ENTRIES := [
 	{"id": "endo_junction_stretch", "chunk": "endo_junction_stretch", "title": "Endo's Junction to Shelter 1", "stage": 1},
 	{"id": "showcase_gallery", "chunk": "showcase_gallery", "title": "Showcase Gallery", "stage": 1},
+	{"id": "set_piece_showcase", "chunk": "set_piece_showcase", "title": "Set Pieces — crawl / rotate / water", "stage": 1},
 	{"id": "stacks", "chunk": "stacks", "title": "Stacks Fragment Lab", "stage": 1},
 	{"id": "rings", "chunk": "rings", "title": "Rings Fragment Lab", "stage": 1},
 	{"id": "push_lab", "chunk": "push_lab", "title": "Push Lab", "stage": 2},
@@ -205,7 +208,7 @@ const STAMINA_REGEN := 10.0
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
 @export_enum("stacks", "rings", "lockout", "mother_flure", "survival_range",
 	"endo_junction_stretch", "generated_stretch",
-	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "architecture_showcase", "geometry_lab") var preview_chunk := "stacks"
+	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "architecture_showcase", "geometry_lab", "set_piece_showcase") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 
