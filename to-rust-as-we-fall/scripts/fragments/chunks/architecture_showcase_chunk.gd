@@ -99,6 +99,8 @@ func _add_lattice(root: Node3D, spec: Dictionary, reserved: Array) -> void:
 			_add_honeyframe(root, spec, reserved)
 		"tracery":
 			_add_tracery(root, spec, reserved)
+		"voronoi":
+			_add_voronoi(root, spec, reserved)
 	if bool(spec.get("pipes", false)):
 		_add_pipes(root, spec)
 
@@ -162,6 +164,42 @@ func _railing_texture() -> ImageTexture:
 		for y in range(3, th - 3):
 			img.set_pixel(x, y, bar)
 	return ImageTexture.create_from_image(img)
+
+## The Voronoi MEMBRANE (Bulwark Wharf): near = the watertight rib web; far = the SAME web baked to a
+## texture quad per face. GeometryInstance3D visibility ranges cross them over — decoration becomes
+## texture at distance with zero per-frame code.
+func _add_voronoi(root: Node3D, spec: Dictionary, reserved: Array) -> void:
+	var built: Dictionary = Lattice.voronoi(spec.get("size", Vector3(4.2, 5.2, 3.6)), {"reserved": reserved})
+	var lod := float(built.get("lod_switch", 30.0))
+	var mi := MeshInstance3D.new()
+	mi.name = "VoronoiMembrane"
+	mi.mesh = built["frame"]
+	mi.material_override = _tinted_tile_material("facility_metal", Color(0.72, 0.70, 0.66))
+	mi.visibility_range_end = lod
+	mi.visibility_range_end_margin = 2.0
+	mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+	root.add_child(mi)
+	for fd in (built["faces"] as Array):
+		var f := fd as Dictionary
+		var quad := MeshInstance3D.new()
+		quad.name = "VoronoiFar"
+		var qm := QuadMesh.new()
+		qm.size = Vector2(float(f["w"]), float(f["h"]))
+		quad.mesh = qm
+		var m := StandardMaterial3D.new()
+		m.albedo_texture = f["tex"]
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		m.alpha_scissor_threshold = 0.4
+		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+		m.roughness = 0.85
+		quad.material_override = m
+		var n3 := f["n"] as Vector3
+		var u3 := f["u"] as Vector3
+		quad.transform = Transform3D(Basis(u3, Vector3.UP, n3), (f["c"] as Vector3) + n3 * 0.06)
+		quad.visibility_range_begin = lod
+		quad.visibility_range_begin_margin = 2.0
+		quad.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+		root.add_child(quad)
 
 func _add_pipes(root: Node3D, spec: Dictionary) -> void:
 	var pipe_seed := int(str(spec.get("kind", "")).hash())

@@ -3766,6 +3766,26 @@ func _test_architecture_showcase() -> void:
 	_assert_equals(LG.boundary_edge_count((Lat.honeyframe(Vector3(4.5, 8.0, 5.5), {"crown": false, "base": false, "reserved": wt_hent.get("reserved", [])})["frame"]) as ArrayMesh), 0,
 		"the REAL S_A/S_B honeyframe (with its own box door reservations) is watertight")
 
+	# --- VORONOI membrane (Bulwark): seeds -> focal merge -> mirror, watertight, far LOD from same web ---
+	var bwv: Dictionary = Base.generate("bulwark_wharf")
+	var vent: Dictionary = Lat.entrances(bwv)
+	var vor: Dictionary = Lat.voronoi(bwv["size"], {"reserved": vent.get("reserved", [])})
+	_assert_true((vor["frame"] as ArrayMesh).surface_get_array_len(0) > 500,
+		"voronoi membrane builds a rib web")
+	_assert_equals(LG.boundary_edge_count(vor["frame"] as ArrayMesh), 0,
+		"voronoi membrane is WATERTIGHT")
+	var vor2: Dictionary = Lat.voronoi(bwv["size"], {"reserved": vent.get("reserved", [])})
+	_assert_equals((vor["frame"] as ArrayMesh).surface_get_array_len(0),
+		(vor2["frame"] as ArrayMesh).surface_get_array_len(0), "voronoi membrane is deterministic")
+	_assert_equals((vor["faces"] as Array).size(), 4, "voronoi bakes a far-LOD texture per face")
+	var vimg := (((vor["faces"] as Array)[0] as Dictionary)["tex"] as ImageTexture).get_image()
+	var vink := 0
+	for vy in range(0, vimg.get_height(), 4):
+		for vx in range(0, vimg.get_width(), 4):
+			if vimg.get_pixel(vx, vy).a > 0.5:
+				vink += 1
+	_assert_true(vink > 20, "the far-LOD bake actually draws the web (got %d ink samples)" % vink)
+
 	# --- ledge treatments: a tiered "cake" decorates its flat rings; a flat base leaves them bare ---
 	var Ledge = load("res://scripts/generation/ledge_builder.gd")
 	var tiered: Dictionary = Base.generate("tiered_hall")
@@ -13615,7 +13635,8 @@ func _test_lattice_holes() -> void:
 	var ent: Dictionary = Lat.entrances(beacon)
 	var tr: Dictionary = Lat.tracery(2.4, 7.2, {"reserved": ent.get("reserved", []), "bays": 7})
 	var hf: Dictionary = Lat.honeyframe(Vector3(4.5, 8.0, 5.5))
-	var specimens := {"net": nst.commit(), "tracery": tr["frame"], "honeyframe": hf["frame"]}
+	var vor: Dictionary = Lat.voronoi(Vector3(4.2, 5.2, 3.6))
+	var specimens := {"net": nst.commit(), "tracery": tr["frame"], "honeyframe": hf["frame"], "voronoi": vor["frame"]}
 	var vp := get_tree().root
 	var old_msaa := vp.msaa_3d
 	var old_ssaa := vp.screen_space_aa
@@ -13633,7 +13654,7 @@ func _test_lattice_holes() -> void:
 	# which leaks a few px of mm-deep poke-through past the depth bias. Budgets are 10-100x below any
 	# real failure (the drum-handedness bug measured 4043 total / 224 in one shot): a hole, crack,
 	# winding error, or exposed skirt blows straight through them.
-	for name2 in ["tracery", "honeyframe"]:
+	for name2 in ["tracery", "honeyframe", "voronoi"]:
 		var rr := results[name2] as Dictionary
 		_assert_true(int(rr["total"]) <= 60 and int(rr["max_shot"]) <= 12,
 			"%s red stays within the interpenetration budget (total %d <= 60, worst shot %d <= 12)" % [name2, int(rr["total"]), int(rr["max_shot"])])

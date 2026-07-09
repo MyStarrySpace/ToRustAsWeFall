@@ -106,6 +106,213 @@ static func _emit_base_plinth(st: SurfaceTool, size: Vector3) -> void:
 	_emit_box(st, Vector3(0, 0.40, 0), Vector3(hx + 0.11, 0.10, hz + 0.11))
 
 # ============================================================================================
+# VORONOI MEMBRANE — the director's decoration function, implemented as designed: (1) VORONOI —
+# scatter seeds over the face and take the cell web; (2) FOCAL POINTS — cells MERGE harder the
+# further they sit from a focal point, so the web stays fine around the focals and opens into big
+# blobs away from them; (3) MIRRORING — seeds/focals are generated on HALF the face and mirrored, so
+# the decor reads as authored symmetry. The surviving web edges feed LatticeGraph -> one watertight
+# fused rib membrane (Bulwark Wharf's plate wall). FAR LOD: the SAME 2D web bakes into a texture on
+# a flat quad; GeometryInstance3D visibility ranges cross the two over — decoration becomes texture
+# at distance, engine-native, no per-frame code.
+# ============================================================================================
+
+const VORONOI_DEFAULTS := {
+	"seeds": 34,            # Voronoi sites per face (pre-mirror total; density of the web)
+	"focals": 2,            # focal points per face (mirrored like the seeds)
+	"merge_start": 0.7,     # distance from a focal where merging begins
+	"merge_range": 2.4,     # distance over which the merge chance ramps to merge_max
+	"merge_max": 0.78,      # cells this far from every focal usually fuse
+	"sag": 0.14,            # catenary droop per metre of edge span (the plate's membrane hangs)
+	"mirror": true,
+	"rib_radius": 0.065,
+	"rib_sides": 5,
+	"rib_color": Color(0.72, 0.70, 0.66),
+	"lod_switch": 30.0,     # metres: nearer = rib GEOMETRY, farther = the baked TEXTURE quad
+	"tex_px": 256,          # far-LOD texture width (height follows the face aspect)
+}
+
+## Build the Voronoi membrane for a box of `size`. Returns {"frame": ArrayMesh (near LOD, all faces),
+## "faces": [{tex, c, u, n, w, h}] (far-LOD bake per face), "lod_switch": float}.
+static func voronoi(size: Vector3, overrides: Dictionary = {}) -> Dictionary:
+	var p := VORONOI_DEFAULTS.duplicate()
+	for k in overrides.keys():
+		p[k] = overrides[k]
+	var reserved: Array = p.get("reserved", [])
+	var frame_st := SurfaceTool.new()
+	frame_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	frame_st.set_color(p["rib_color"])
+	var faces_out: Array = []
+	for f in _box_vertical_faces(size):
+		var fd := f as Dictionary
+		var w: float = fd["w"]
+		var h: float = fd["h"]
+		var n: Vector3 = (fd["n"] as Vector3).normalized()
+		var u: Vector3 = (fd["u"] as Vector3).normalized()
+		var c: Vector3 = fd["c"]
+		var fkey := (n.x * 5.3 + n.z * 11.7) * 23.0
+		var paths := _voronoi_web(w, h, p, fkey, n, reserved)
+		var origin := c - u * (w * 0.5) + Vector3(0, -h * 0.5, 0)
+		var graph: Dictionary = LatticeGraph.build(paths, 0.012)
+		LatticeGraph.mesh(frame_st, graph, LatticeGraph.plane_surface(origin, u, Vector3(0, 1, 0)), float(p["rib_radius"]), int(p["rib_sides"]))
+		faces_out.append({"tex": _bake_web_texture(paths, w, h, int(p["tex_px"]), float(p["rib_radius"]), p["rib_color"] as Color),
+			"c": c, "u": u, "n": n, "w": w, "h": h})
+	frame_st.generate_normals()
+	return {"frame": frame_st.commit(), "faces": faces_out, "lod_switch": float(p["lod_switch"])}
+
+# The 2D web for one face: jittered-grid seeds on the half-face, mirrored; Voronoi cells by
+# half-plane clipping; interior edges dropped by the focal-falloff merge; door edges dropped.
+static func _voronoi_web(w: float, h: float, p: Dictionary, fkey: float, face_n: Vector3, reserved: Array) -> Array:
+	var mirror := bool(p["mirror"])
+	var half_w := w * 0.5 if mirror else w
+	var count := maxi(4, int(p["seeds"]) / (2 if mirror else 1))
+	# jittered-grid seed placement over the (half-)face — even coverage, deterministic
+	var seeds: Array = []
+	var gcols := maxi(1, int(round(sqrt(float(count) * half_w / h))))
+	var grows := maxi(1, int(ceil(float(count) / float(gcols))))
+	var placed := 0
+	for gj in range(grows):
+		for gi in range(gcols):
+			if placed >= count:
+				break
+			var sx := (float(gi) + 0.18 + 0.64 * _h01(fkey + float(placed) * 12.9)) * half_w / float(gcols)
+			var sy := (float(gj) + 0.18 + 0.64 * _h01(fkey + float(placed) * 7.7 + 40.0)) * h / float(grows)
+			if mirror:
+				sx = minf(sx, half_w - 0.06)   # keep off the axis so the mirror twin never degenerates
+			seeds.append(Vector2(sx, sy))
+			placed += 1
+	if mirror:
+		var mirrored: Array = []
+		for s in seeds:
+			mirrored.append(Vector2(w - (s as Vector2).x, (s as Vector2).y))
+		seeds.append_array(mirrored)
+	# focal points (mirrored the same way): the web stays FINE around these, merges away from them
+	var focals: Array = []
+	for fi in range(maxi(1, int(p["focals"]))):
+		var fx := half_w * (0.25 + 0.6 * _h01(fkey + float(fi) * 31.3 + 200.0))
+		var fy := h * (0.2 + 0.6 * _h01(fkey + float(fi) * 17.9 + 300.0))
+		focals.append(Vector2(fx, fy))
+		if mirror:
+			focals.append(Vector2(w - fx, fy))
+	# Voronoi cells by half-plane clipping (bounded by the face rect)
+	var edge_map: Dictionary = {}
+	for i in range(seeds.size()):
+		var poly := _voronoi_cell(seeds, i, w, h)
+		for e in range(poly.size()):
+			var a := poly[e] as Vector2
+			var b := poly[(e + 1) % poly.size()] as Vector2
+			if a.distance_to(b) < 0.05:
+				continue
+			var ka := "%d,%d" % [int(round(a.x * 500.0)), int(round(a.y * 500.0))]
+			var kb := "%d,%d" % [int(round(b.x * 500.0)), int(round(b.y * 500.0))]
+			var ek := ka + "|" + kb if ka < kb else kb + "|" + ka
+			if not edge_map.has(ek):
+				edge_map[ek] = {"a": a, "b": b, "n": 0}
+			(edge_map[ek] as Dictionary)["n"] = int((edge_map[ek] as Dictionary)["n"]) + 1
+	# the merge: interior edges (shared by two cells) dissolve with distance from the nearest focal
+	var ms := float(p["merge_start"])
+	var mr := maxf(0.1, float(p["merge_range"]))
+	var mm := clampf(float(p["merge_max"]), 0.0, 1.0)
+	var paths: Array = []
+	for ek in edge_map.keys():
+		var ed := edge_map[ek] as Dictionary
+		var a2 := ed["a"] as Vector2
+		var b2 := ed["b"] as Vector2
+		if int(ed["n"]) >= 2:
+			var mid := (a2 + b2) * 0.5
+			var dmin := 1.0e9
+			for fp in focals:
+				dmin = minf(dmin, mid.distance_to(fp as Vector2))
+			var chance := clampf((dmin - ms) / mr, 0.0, 1.0) * mm
+			if _h01(fkey + mid.x * 43.7 + mid.y * 91.3) < chance:
+				continue   # the two cells fuse — the web opens into a bigger blob here
+		if _seg_reserved_face(a2, b2, w, face_n, reserved):
+			continue   # never web across a doorway
+		# CATENARY sag: interior, horizontal-ish strands hang under gravity (the membrane read).
+		# Border strands and verticals stay straight; endpoints are untouched, so the weld is exact.
+		var span := a2.distance_to(b2)
+		var horiz := absf((b2 - a2).normalized().x) if span > 1.0e-6 else 0.0
+		var on_border := _on_rect_border(a2, w, h) and _on_rect_border(b2, w, h)
+		var sag := minf(0.26, span * float(p.get("sag", 0.0))) * horiz
+		if sag > 0.03 and int(ed["n"]) >= 2 and not on_border:
+			var mid2 := (a2 + b2) * 0.5
+			paths.append(PackedVector2Array([
+				a2,
+				a2.lerp(b2, 0.28) + Vector2(0, -sag * 0.8),
+				mid2 + Vector2(0, -sag),
+				a2.lerp(b2, 0.72) + Vector2(0, -sag * 0.8),
+				b2,
+			]))
+		else:
+			paths.append(PackedVector2Array([a2, b2]))
+	return paths
+
+static func _on_rect_border(pt: Vector2, w: float, h: float) -> bool:
+	return pt.x < 0.02 or pt.x > w - 0.02 or pt.y < 0.02 or pt.y > h - 0.02
+
+# One seed's Voronoi cell: the face rect clipped by the bisector half-plane against every other seed.
+static func _voronoi_cell(seeds: Array, i: int, w: float, h: float) -> Array:
+	var poly: Array = [Vector2(0, 0), Vector2(w, 0), Vector2(w, h), Vector2(0, h)]
+	var si := seeds[i] as Vector2
+	for j in range(seeds.size()):
+		if j == i:
+			continue
+		var sj := seeds[j] as Vector2
+		var mid := (si + sj) * 0.5
+		var dir := sj - si
+		if dir.length_squared() < 1.0e-10:
+			continue
+		poly = _clip_halfplane(poly, mid, dir)
+		if poly.size() < 3:
+			return []
+	return poly
+
+# Sutherland-Hodgman clip: keep the side where (p - mid) . dir <= 0 (closer to seed i).
+static func _clip_halfplane(poly: Array, mid: Vector2, dir: Vector2) -> Array:
+	var out: Array = []
+	var m := poly.size()
+	for k in range(m):
+		var a := poly[k] as Vector2
+		var b := poly[(k + 1) % m] as Vector2
+		var da := (a - mid).dot(dir)
+		var db := (b - mid).dot(dir)
+		if da <= 0.0:
+			out.append(a)
+			if db > 0.0:
+				out.append(a.lerp(b, da / (da - db)))
+		elif db <= 0.0:
+			out.append(a.lerp(b, da / (da - db)))
+	return out
+
+# FAR LOD: rasterize the SAME web into an RGBA texture (alpha background) — at distance the
+# decoration IS this texture on a flat quad. Same paths, same params -> the two LODs always agree.
+static func _bake_web_texture(paths: Array, w: float, h: float, px_w: int, rib_r: float, col: Color) -> ImageTexture:
+	var px_h := maxi(8, int(round(float(px_w) * h / maxf(w, 0.01))))
+	var img := Image.create(px_w, px_h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var sx := float(px_w) / w
+	var sy := float(px_h) / h
+	var rad := maxi(1, int(round(rib_r * sx)))
+	for pathv in paths:
+		var pts := pathv as PackedVector2Array
+		for s in range(pts.size() - 1):
+			var a := pts[s]
+			var b := pts[s + 1]
+			var steps := maxi(2, int(a.distance_to(b) * sx))
+			for t in range(steps + 1):
+				var q := a.lerp(b, float(t) / float(steps))
+				var cx := int(round(q.x * sx))
+				var cy := px_h - 1 - int(round(q.y * sy))   # face y-up -> image y-down
+				for oy in range(-rad, rad + 1):
+					for ox in range(-rad, rad + 1):
+						if ox * ox + oy * oy > rad * rad:
+							continue
+						var qx := cx + ox
+						var qy := cy + oy
+						if qx >= 0 and qx < px_w and qy >= 0 and qy < px_h:
+							img.set_pixel(qx, qy, col)
+	return ImageTexture.create_from_image(img)
+
+# ============================================================================================
 # S_A / S_B honeyframe — the director's corner-cut construction (the "Welcombe" setting), verbatim:
 # subdivide the face into a grid; per grid VERTEX pick a point at `cut` (<=50%) along each outgoing
 # edge; connect those points AROUND the vertex (S_A) and ROUND the S_A curves so they cut TOWARD the

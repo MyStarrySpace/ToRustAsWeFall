@@ -100,7 +100,7 @@ const SPECS := {
 		"size": Vector3(4.2, 5.2, 3.6),
 		"color": Color(0.40, 0.44, 0.48),
 		"tile": "facility_metal",
-		"lattice": "",
+		"lattice": "voronoi",               # the plate's catenary Voronoi MEMBRANE wall (mirrored, focal-merged)
 	},
 	"cleanstreets": {
 		"title": "The Cleanstreets Initiative",
