@@ -28,6 +28,18 @@ func _init() -> void:
 		quit()
 		return
 	(hero as Node3D).rotation = Vector3(0.0, yaw, 0.0)
+	# DIAG=1: replace every target mesh material with an UNLIT, CULL-DISABLED flat material so pure
+	# geometry coverage shows — any face missing here (vs the lit render) is a real hole, not a shadow;
+	# any face missing in the lit render but PRESENT here is a winding/cull bug.
+	if OS.get_environment("DIAG") == "1":
+		var diag := StandardMaterial3D.new()
+		diag.albedo_color = Color(0.8, 0.8, 0.85)
+		diag.cull_mode = BaseMaterial3D.CULL_DISABLED
+		diag.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		var dmeshes: Array = []
+		_collect_meshes(hero, dmeshes)
+		for m in dmeshes:
+			(m as MeshInstance3D).material_override = diag
 	_defade(scene)
 	_hide_canvas(scene)
 	var st = scene.get("_overlay_states")
@@ -61,7 +73,9 @@ func _init() -> void:
 	cam.projection = Camera3D.PROJECTION_ORTHOGONAL
 	cam.size = hgt * 1.18
 	get_root().add_child(cam)
-	cam.global_position = center + Vector3(hgt * 0.28, hgt * 0.10, hgt * 2.2)
+	var elev_str := OS.get_environment("ELEV")
+	var elev := float(elev_str) if elev_str != "" else 0.10
+	cam.global_position = center + Vector3(hgt * 0.28, hgt * elev, hgt * 2.2)
 	cam.look_at(center, Vector3.UP)
 	cam.current = true
 
