@@ -3565,7 +3565,10 @@ func _test_architecture_showcase() -> void:
 			continue
 		var am := mesh as ArrayMesh
 		var n := am.surface_get_array_len(0)
-		if n < 20 or n > 400:
+		# composite bases (e.g. the Open Files fin cluster) are a small assembly, so a higher but still
+		# low-poly cap; a single box/cylinder stays tight.
+		var vcap := 2500 if str(spec.get("shape", "")) == "composite" else 400
+		if n < 20 or n > vcap:
 			all_ok = false
 			print("  [base] %s is not low-poly: %d verts" % [kind, n])
 		var bb: AABB = am.get_aabb()

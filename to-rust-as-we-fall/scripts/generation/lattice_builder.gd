@@ -244,6 +244,7 @@ const PIPE_DEFAULTS := {
 	"diag_prob": 0.35,      # chance a step jogs diagonally to a side lane rather than straight down
 	"radius_min": 0.05,     # per-pipe gauge range (mixes fat risers + thin conduit)
 	"radius_max": 0.11,
+	"single_frac": 0.55,    # fraction of runs that are a SINGLE pipe (the rest bundle 2-3 together)
 	"bundle_min": 1,        # how many pipes track together in a run
 	"bundle_max": 3,
 	"bundle_gap": 0.16,     # lateral spacing between bundled pipes
@@ -297,8 +298,10 @@ static func _pipes_surface(surf: Dictionary, p: Dictionary, rng: SeededRng, st: 
 		else:
 			x0 = float(rng.call("randf_range", 0.0, w))
 		var lead := _subdivide_sag(_walk_pipe(x0, w, h, p, rng), float(p["sag"]), int(p["sag_segs"]))
-		# A BUNDLE of parallel runs of mixed gauge track down together.
-		var bundle := int(rng.call("randi_range", int(p["bundle_min"]), int(p["bundle_max"])))
+		# Most runs are a SINGLE pipe; the rest bundle 2-3 mixed-gauge runs together.
+		var bundle := 1
+		if float(rng.call("randf")) >= float(p["single_frac"]):
+			bundle = int(rng.call("randi_range", maxi(2, int(p["bundle_min"])), int(p["bundle_max"])))
 		for b in range(bundle):
 			var pr := float(rng.call("randf_range", float(p["radius_min"]), float(p["radius_max"])))
 			var off := 0.0 if b == 0 else float(ceili(b / 2.0)) * float(p["bundle_gap"]) * (1.0 if b % 2 == 1 else -1.0)
