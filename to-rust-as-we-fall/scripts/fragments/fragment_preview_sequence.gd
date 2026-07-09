@@ -134,6 +134,9 @@ const PREVIEW_ENTRIES := [
 	# Algorithm 3 = clean-merge crossing extruded paths (the lattice-junction fix).
 	{"id": "geometry_lab_junction", "chunk": "geometry_lab", "title": "Geometry Lab 3 (path junction merge)", "stage": 6,
 		"config": {"algorithm": 3, "overlays": {"aster": false, "peris": false, "endo": false}}},
+	# Algorithm 4 = railings via textured cards (balcony + pixel-art alpha railing).
+	{"id": "geometry_lab_railings", "chunk": "geometry_lab", "title": "Geometry Lab 4 (railings / cards)", "stage": 6,
+		"config": {"algorithm": 4, "overlays": {"aster": false, "peris": false, "endo": false}}},
 ]
 
 ## The menu entry for an id (or {} if none).

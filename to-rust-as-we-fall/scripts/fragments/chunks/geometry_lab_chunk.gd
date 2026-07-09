@@ -68,7 +68,11 @@ func _build_chunk() -> void:
 	_turntable = Node3D.new()
 	_turntable.name = "Construction"
 	add_child(_turntable)
-	if _algorithm == 3:
+	if _algorithm == 4:
+		# ALGORITHM 4: railings — a balcony slab extrudes out; the railing is drawn as flat CARDS
+		# (planes) pulled back from the edge, textured with a pixel-art railing (alpha transparency).
+		_build_railings(_turntable)
+	elif _algorithm == 3:
 		# ALGORITHM 3: clean-merge two crossing EXTRUDED paths — intersect the centerlines, find the
 		# corner points where the arm edges cross, fill the junction, seam back into the arms.
 		_build_junction(_turntable)
@@ -458,6 +462,98 @@ func _centroid(pts: Array) -> Vector3:
 func _wall(st: SurfaceTool, p0: Vector3, p1: Vector3, h: float) -> void:
 	var yh := Vector3(0.0, h, 0.0)
 	_quad(st, p0, p1, p1 + yh, p0 + yh)
+
+# --- ALGORITHM 4: railings via textured CARDS. -----------------------------------------------------
+# A balcony slab extrudes out from a wall; the railing is drawn as flat quads ("cards") pulled back a
+# little from the edge, textured with a pixel-art railing (posts + rails) using alpha transparency, so
+# we get a detailed railing for ~6 verts + one texture instead of modelling every baluster.
+func _build_railings(root: Node3D) -> void:
+	var w := 3.2       # balcony width
+	var d := 1.6       # how far the balcony extrudes out (+Z) from the wall
+	var slab_t := 0.16 # balcony floor thickness
+	var rail_h := 1.0  # railing height
+	var pull := 0.16   # pull the railing cards back from the balcony edge
+	var y0 := 1.9      # balcony floor height off the ground
+
+	# reference wall the balcony hangs off (so the demo reads as a balcony on a building)
+	var wall := MeshInstance3D.new()
+	wall.name = "Wall"
+	var wm := BoxMesh.new()
+	wm.size = Vector3(w + 1.4, 4.0, 0.3)
+	wall.mesh = wm
+	wall.position = Vector3(0.0, 2.0, -0.15)
+	var wmat := StandardMaterial3D.new()
+	wmat.albedo_color = Color(0.58, 0.61, 0.66)
+	wmat.roughness = 0.9
+	wall.material_override = wmat
+	root.add_child(wall)
+
+	# the balcony slab (opaque), extruding +Z
+	var slab := MeshInstance3D.new()
+	slab.name = "Balcony"
+	var sm := BoxMesh.new()
+	sm.size = Vector3(w, slab_t, d)
+	slab.mesh = sm
+	slab.position = Vector3(0.0, y0, d * 0.5)
+	var smat := StandardMaterial3D.new()
+	smat.albedo_color = Color(0.70, 0.68, 0.60)
+	smat.roughness = 0.88
+	slab.material_override = smat
+	root.add_child(slab)
+
+	# railing cards (pulled back from the edges), textured with the pixel-art railing + alpha
+	var rmat := StandardMaterial3D.new()
+	rmat.albedo_texture = _railing_texture()
+	rmat.albedo_color = Color(0.88, 0.84, 0.72)
+	rmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	rmat.alpha_scissor_threshold = 0.5
+	rmat.cull_mode = BaseMaterial3D.CULL_DISABLED     # a card is one plane — show it from both sides
+	rmat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST   # crisp pixel-art
+	rmat.roughness = 0.85
+	var yb := y0 + slab_t * 0.5   # railing base (top of the slab)
+	var yt := yb + rail_h
+	var zf := d - pull            # front edge, pulled back
+	var xl := -w * 0.5 + pull
+	var xr := w * 0.5 - pull
+	var per := 0.4                # a railing tile every ~0.4 m
+	_add_card(root, "RailFront", Vector3(xl, yb, zf), Vector3(xr, yb, zf), Vector3(xr, yt, zf), Vector3(xl, yt, zf), rmat, (xr - xl) / per)
+	_add_card(root, "RailLeft", Vector3(xl, yb, 0.0), Vector3(xl, yb, zf), Vector3(xl, yt, zf), Vector3(xl, yt, 0.0), rmat, zf / per)
+	_add_card(root, "RailRight", Vector3(xr, yb, zf), Vector3(xr, yb, 0.0), Vector3(xr, yt, 0.0), Vector3(xr, yt, zf), rmat, zf / per)
+
+# One repeating railing tile as a small RGBA image: a post on the left + top & bottom rails, the rest
+# transparent. Tiled across a card it reads as evenly-spaced balusters. FILTER_NEAREST keeps it crisp.
+func _railing_texture() -> ImageTexture:
+	var tw := 12
+	var th := 24
+	var img := Image.create(tw, th, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0.0, 0.0, 0.0, 0.0))
+	var bar := Color(0.90, 0.86, 0.72, 1.0)
+	for x in range(tw):
+		for y in range(0, 3):            # top rail
+			img.set_pixel(x, y, bar)
+		for y in range(th - 3, th):      # bottom rail
+			img.set_pixel(x, y, bar)
+	for x in range(1, 4):                # one post (left of the tile)
+		for y in range(3, th - 3):
+			img.set_pixel(x, y, bar)
+	return ImageTexture.create_from_image(img)
+
+func _add_card(root: Node3D, card_name: String, a: Vector3, b: Vector3, c: Vector3, d: Vector3, mat: Material, ur: float) -> void:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	# a=bottom-left b=bottom-right c=top-right d=top-left; v=0 at the top (rail), v=1 at the base
+	st.set_uv(Vector2(0.0, 1.0)); st.add_vertex(a)
+	st.set_uv(Vector2(ur, 1.0)); st.add_vertex(b)
+	st.set_uv(Vector2(ur, 0.0)); st.add_vertex(c)
+	st.set_uv(Vector2(0.0, 1.0)); st.add_vertex(a)
+	st.set_uv(Vector2(ur, 0.0)); st.add_vertex(c)
+	st.set_uv(Vector2(0.0, 0.0)); st.add_vertex(d)
+	st.generate_normals()
+	var mi := MeshInstance3D.new()
+	mi.name = card_name
+	mi.mesh = st.commit()
+	mi.material_override = mat
+	root.add_child(mi)
 
 func _add_point(root: Node3D, letter: String, pos: Vector3) -> void:
 	var s := MeshInstance3D.new()
