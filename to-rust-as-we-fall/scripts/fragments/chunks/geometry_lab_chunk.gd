@@ -23,12 +23,18 @@ const RECURSE_DEPTH := 3               # algorithm 2: how many nested awning lev
 var _turntable: Node3D
 var _angle_deg := 45.0
 var _algorithm := 1
+var _max_down_shift := 2.0   # algo 2: max extra DOWNWARD shift (grid units) of a recursed awning's A/B
+var _merge_seed := 1         # algo 2: seed for the adjacent-awning merge dice
 
 func configure_chunk(config: Dictionary) -> void:
 	if config.has("angle"):
 		_angle_deg = float(config["angle"])
 	if config.has("algorithm"):
 		_algorithm = int(config["algorithm"])
+	if config.has("max_down_shift"):
+		_max_down_shift = float(config["max_down_shift"])
+	if config.has("merge_seed"):
+		_merge_seed = int(config["merge_seed"])
 
 func is_generation_preview() -> bool:
 	return true
@@ -136,23 +142,74 @@ func _build_awning(root: Node3D) -> void:
 	for pair in [["A", A], ["B", B], ["C", C], ["D", D], ["E", E], ["F", F], ["G", G], ["H", H], ["I", I], ["J", J]]:
 		_add_point(root, str(pair[0]), pair[1] as Vector3)
 
-# --- ALGORITHM 2: an awning on all four sides, each recursing off its EFHG skirt. -----------------
+# --- ALGORITHM 2: an awning on all four sides, each recursing off its EFHG skirt, with a floored
+# --- curve-distributed DOWNWARD SHIFT per level and a curve-driven MERGE of adjacent-face awnings. ---
 func _build_recursive(root: Node3D, size: Vector3) -> void:
 	var proj := STEP / tan(deg_to_rad(clampf(_angle_deg, 5.0, 85.0)))
 	var hx := size.x * 0.5
 	var hz := size.z * 0.5
 	var yt := size.y
-	# each side: [A (top-left), B (top-right), outward normal]
-	var faces := [
-		[Vector3(-hx, yt, hz), Vector3(hx, yt, hz), Vector3(0, 0, 1)],
-		[Vector3(hx, yt, -hz), Vector3(-hx, yt, -hz), Vector3(0, 0, -1)],
-		[Vector3(hx, yt, hz), Vector3(hx, yt, -hz), Vector3(1, 0, 0)],
-		[Vector3(-hx, yt, -hz), Vector3(-hx, yt, hz), Vector3(-1, 0, 0)],
-	]
+	# 4 top corners in rotational order; face fi spans corner[fi]->corner[fi+1], outward normal[fi].
+	# So B of face fi == A of face fi+1 (they share the corner) — the merge seam.
+	var corners := [Vector3(hx, yt, hz), Vector3(-hx, yt, hz), Vector3(-hx, yt, -hz), Vector3(hx, yt, -hz)]
+	var normals := [Vector3(0, 0, 1), Vector3(-1, 0, 0), Vector3(0, 0, -1), Vector3(1, 0, 0)]
+	var shift_curve := _linear_curve()
+	var merge_curve := _linear_curve()   # likelihood rises with recursion depth (0 at top -> 1 deep)
+
+	# 1) precompute each face's awning levels, applying the floored downward shift to each next A/B.
+	var per_face: Array = []
+	for fi in range(4):
+		var levels: Array = []
+		var a: Vector3 = corners[fi]
+		var b: Vector3 = corners[(fi + 1) % 4]
+		var n: Vector3 = normals[fi]
+		var d := 0
+		while d <= RECURSE_DEPTH:
+			var pts := _awning_points(a, b, n, proj)
+			levels.append(pts)
+			var t := float(d + 1) / float(RECURSE_DEPTH)
+			var shift := floorf(_max_down_shift * shift_curve.sample(clampf(t, 0.0, 1.0)))
+			a = (pts["E"] as Vector3) - Vector3(0.0, shift, 0.0)
+			b = (pts["F"] as Vector3) - Vector3(0.0, shift, 0.0)
+			if a.y - STEP <= 0.01:
+				break
+			d += 1
+		per_face.append(levels)
+
+	# 2) roll the merge dice per adjacent corner per shared level (deterministic).
+	var rng := SeededRng.new(_merge_seed)
+	var merged: Array = []   # merged[fi][d] = face fi's RIGHT corner merges face fi+1's LEFT at level d
+	for fi in range(4):
+		var arr: Array = []
+		var la: Array = per_face[fi]
+		var lb: Array = per_face[(fi + 1) % 4]
+		var shared := mini(la.size(), lb.size())
+		for d in range((per_face[fi] as Array).size()):
+			var do_merge := false
+			if d < shared:
+				var t := float(d) / float(RECURSE_DEPTH)
+				do_merge = float(rng.call("randf")) < merge_curve.sample(clampf(t, 0.0, 1.0))
+			arr.append(do_merge)
+		merged.append(arr)
+
+	# 3) draw awnings (omitting a corner's gable+wall where it merges) + the merge bridges.
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for f in faces:
-		_awning_rec(st, f[0] as Vector3, f[1] as Vector3, f[2] as Vector3, proj, RECURSE_DEPTH)
+	for fi in range(4):
+		var levels: Array = per_face[fi]
+		var right_merge: Array = merged[fi]              # this face's RIGHT corner
+		var left_merge: Array = merged[(fi + 3) % 4]     # previous face's right == this face's LEFT
+		for d in range(levels.size()):
+			var skip_left := d < left_merge.size() and bool(left_merge[d])
+			var skip_right := d < right_merge.size() and bool(right_merge[d])
+			_draw_awning_faces(st, levels[d], skip_left, skip_right)
+	for fi in range(4):
+		var la: Array = per_face[fi]
+		var lb: Array = per_face[(fi + 1) % 4]
+		var rm: Array = merged[fi]
+		for d in range(rm.size()):
+			if bool(rm[d]) and d < la.size() and d < lb.size():
+				_draw_merge_bridge(st, la[d], lb[d])
 	st.generate_normals()
 	var mi := MeshInstance3D.new()
 	mi.name = "RecursiveAwnings"
@@ -164,25 +221,42 @@ func _build_recursive(root: Node3D, size: Vector3) -> void:
 	mi.material_override = mat
 	root.add_child(mi)
 
-# One awning off a top edge A-B (outward normal n): roof ABFE, gables AEC/BFD, walls CEGI/DFHJ, and the
-# skirt EFHG down to the base. Then recurse off the skirt's top edge E-F (stepping out + down).
-func _awning_rec(st: SurfaceTool, a: Vector3, b: Vector3, n: Vector3, proj: float, depth: int) -> void:
+# The 10 awning points off a top edge A-B (outward normal n): C/D one step below, E/F out by proj at
+# C/D's height, G/H those dropped to the base, I/J the base below A/B.
+func _awning_points(a: Vector3, b: Vector3, n: Vector3, proj: float) -> Dictionary:
 	var c := a - Vector3(0.0, STEP, 0.0)
 	var d := b - Vector3(0.0, STEP, 0.0)
-	var i := Vector3(a.x, 0.0, a.z)
-	var j := Vector3(b.x, 0.0, b.z)
 	var e := c + n * proj
 	var f := d + n * proj
-	var g := Vector3(e.x, 0.0, e.z)
-	var h := Vector3(f.x, 0.0, f.z)
-	_quad(st, a, b, f, e)   # sloped roof
-	_tri3(st, a, e, c)      # left gable
-	_tri3(st, b, f, d)      # right gable
-	_quad(st, c, e, g, i)   # left wall
-	_quad(st, d, f, h, j)   # right wall
-	_quad(st, e, f, h, g)   # front skirt
-	if depth > 0 and (e.y - STEP) > 0.01:
-		_awning_rec(st, e, f, n, proj, depth - 1)
+	return {
+		"A": a, "B": b, "C": c, "D": d, "E": e, "F": f,
+		"G": Vector3(e.x, 0.0, e.z), "H": Vector3(f.x, 0.0, f.z),
+		"I": Vector3(a.x, 0.0, a.z), "J": Vector3(b.x, 0.0, b.z),
+	}
+
+# Roof ABFE + skirt EFHG always; the left gable/wall (AEC, CEGI) and right gable/wall (BFD, DFHJ) are
+# omitted where that corner merges into a bridge.
+func _draw_awning_faces(st: SurfaceTool, pts: Dictionary, skip_left: bool, skip_right: bool) -> void:
+	_quad(st, pts["A"], pts["B"], pts["F"], pts["E"])
+	if not skip_left:
+		_tri3(st, pts["A"], pts["E"], pts["C"])
+		_quad(st, pts["C"], pts["E"], pts["G"], pts["I"])
+	if not skip_right:
+		_tri3(st, pts["B"], pts["F"], pts["D"])
+		_quad(st, pts["D"], pts["F"], pts["H"], pts["J"])
+	_quad(st, pts["E"], pts["F"], pts["H"], pts["G"])
+
+# Bridge the corner gap between face fi's right side (pa) and face fi+1's left side (pb): the top
+# triangle B1-E2-F1 and the vertical fill F1-E2-G2-H1 (their gable/wall edges were removed above).
+func _draw_merge_bridge(st: SurfaceTool, pa: Dictionary, pb: Dictionary) -> void:
+	_tri3(st, pa["B"], pb["E"], pa["F"])
+	_quad(st, pa["F"], pb["E"], pb["G"], pa["H"])
+
+func _linear_curve() -> Curve:
+	var c := Curve.new()
+	c.add_point(Vector2(0.0, 0.0))
+	c.add_point(Vector2(1.0, 1.0))
+	return c
 
 func _add_point(root: Node3D, letter: String, pos: Vector3) -> void:
 	var s := MeshInstance3D.new()
