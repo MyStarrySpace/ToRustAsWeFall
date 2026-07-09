@@ -278,14 +278,16 @@ Organic curved beamwork = the Organic-merge / SDF class. Fable owns it.
    ONLY") — text as a baked pixel-art texture on a plaque if we don't want live Label3D everywhere.
 5. **Base / foundation** — the stepped PLINTH is done (in the honeyframe crown pass + the door steps).
    Remaining: greenery (planters, vines, the Beacon Hill corner shrubs) + a cobble apron.
-6. **Voronoi organic decorations** — a decoration pass: consider HALF the object (decor mirrored),
-   scatter a few "focal points", draw Voronoi cells, then merge cells — merging harder the further from
-   a focal point. Builds on the existing Fable/Blender Voronoi code, which IS present (it's under the
-   gitignored `blender/`, so ripgrep/Glob skip it — use `find`):
-   `blender/skills/building-generation/gen_voronoi_holemesh.py` (Voronoi web + holes; `build_holemesh`
-   already has a `merge`/`merge_start` falloff — currently RADIAL from centre; generalize to N focal
-   points) and `gen_blob_mass.py`. Both ship near(3D)+far(impostor) LOD from the same params. Open
-   question: author the decor in Blender and export, or port the Voronoi merge natively to GDScript.
+6. **Voronoi organic decorations** — **DONE natively in GDScript (Fable, 2026-07-09, commit 87cdb60)**
+   as designed: HALF the face generated + MIRRORED; N focal points; Voronoi cells (half-plane clip);
+   interior walls MERGE harder the further from a focal (`merge_start`/`merge_range`/`merge_max`);
+   CATENARY sag on horizontal interior strands; the surviving web feeds LatticeGraph -> a watertight
+   fused rib membrane. Shipping on **Bulwark Wharf** (`lattice: "voronoi"` — the plate's catenary
+   membrane wall). **FAR LOD ESTABLISHED**: the SAME 2D web bakes to an alpha texture on a flat quad,
+   `GeometryInstance3D.visibility_range_*` crosses geometry -> texture at `lod_switch` (30 m), zero
+   per-frame code — decorations become textures at distance. REUSE this LOD pattern for the other
+   lattices (tracery/honeyframe far-bakes still pending). The Blender `gen_voronoi_holemesh.py`
+   remains the ancestor reference only.
 
 ## Cross-cutting Fable tasks
 - **Overlap / collision resolution** — the load-bearing one. Elements are placed independently and
