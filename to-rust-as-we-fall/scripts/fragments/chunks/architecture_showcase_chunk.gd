@@ -53,15 +53,18 @@ func _build_chunk() -> void:
 			mi.mesh = body
 			root.add_child(mi)
 			verts = body.surface_get_array_len(0)
-		_add_lattice(root, spec)
-		_add_entrances(root, spec)
+		# Entrances FIRST (front + distributed sides) so the lattice can reserve their space, then the
+		# lattice conforming to those reserved regions, then the door meshes + nameplate.
+		var ent: Dictionary = Lattice.entrances(spec)
+		_add_lattice(root, spec, ent.get("reserved", []))
+		_add_entrance_meshes(root, spec, ent)
 		_specimens.append({"building": kind, "shape": str(spec.get("shape", "")),
 			"lattice": str(spec.get("lattice", "")), "verts": verts})
 		_turntables.append(root)
 
-## STEP 3: entrances (main + side/enforcement doors) + a readable nameplate sign over the main door.
-func _add_entrances(root: Node3D, spec: Dictionary) -> void:
-	var built: Dictionary = Lattice.entrances(spec)
+## STEP 3: place the precomputed entrance meshes (main + distributed side/enforcement doors) + a
+## readable nameplate over the MAIN (front) door.
+func _add_entrance_meshes(root: Node3D, spec: Dictionary, built: Dictionary) -> void:
 	_add_lattice_mesh(root, "EntStone", built.get("stone"), _tinted_tile_material("facility_metal", Color(0.66, 0.62, 0.50)))
 	var darkmat := StandardMaterial3D.new()
 	darkmat.albedo_color = Color(0.05, 0.05, 0.06)
@@ -86,25 +89,25 @@ func _add_entrances(root: Node3D, spec: Dictionary) -> void:
 	lbl.position = built.get("main_top", Vector3(0, 3, 3))
 	root.add_child(lbl)
 
-## STEP 2: layer the building's declared lattice elements onto its base shape — a facade lattice
-## (honeyframe / tracery) plus optional draped pipes.
-func _add_lattice(root: Node3D, spec: Dictionary) -> void:
+## STEP 2: layer the building's declared lattice onto its base shape — a facade lattice (honeyframe /
+## tracery) that RESERVES space for the entrances, plus optional draped pipes.
+func _add_lattice(root: Node3D, spec: Dictionary, reserved: Array) -> void:
 	match str(spec.get("lattice", "")):
 		"honeyframe":
-			_add_honeyframe(root, spec)
+			_add_honeyframe(root, spec, reserved)
 		"tracery":
-			_add_tracery(root, spec)
+			_add_tracery(root, spec, reserved)
 	if bool(spec.get("pipes", false)):
 		_add_pipes(root, spec)
 
-func _add_honeyframe(root: Node3D, spec: Dictionary) -> void:
-	var built: Dictionary = Lattice.honeyframe(spec.get("size", Vector3(4.5, 8.0, 5.5)))
+func _add_honeyframe(root: Node3D, spec: Dictionary, reserved: Array) -> void:
+	var built: Dictionary = Lattice.honeyframe(spec.get("size", Vector3(4.5, 8.0, 5.5)), {"reserved": reserved})
 	# Brighter cream than the base body so the strut lattice reads proud of the wall.
 	_add_lattice_mesh(root, "HoneyFrame", built.get("frame"), _tinted_tile_material("facility_metal", Color(0.72, 0.69, 0.58)))
 	_add_lattice_mesh(root, "HoneyGlass", built.get("glass"), _window_material(1.8))
 
-func _add_tracery(root: Node3D, spec: Dictionary) -> void:
-	var built: Dictionary = Lattice.tracery(float(spec.get("radius", 2.4)), float(spec.get("height", 7.2)))
+func _add_tracery(root: Node3D, spec: Dictionary, reserved: Array) -> void:
+	var built: Dictionary = Lattice.tracery(float(spec.get("radius", 2.4)), float(spec.get("height", 7.2)), {"reserved": reserved})
 	_add_lattice_mesh(root, "TraceryRibs", built.get("frame"), _tinted_tile_material("facility_metal", Color(0.74, 0.70, 0.57)))
 	_add_lattice_mesh(root, "TraceryGlass", built.get("glass"), _window_material(3.6))
 

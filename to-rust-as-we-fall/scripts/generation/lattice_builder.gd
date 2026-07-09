@@ -115,6 +115,8 @@ static func _honeyframe_face(f: Dictionary, p: Dictionary, frame_st: SurfaceTool
 		for col in range(cols):
 			var cu := -w * 0.5 + (col + 0.5) * cw
 			var cv := -h * 0.5 + (row + 0.5) * ch
+			if _cell_reserved_box(cu, cv, n, h, p.get("reserved", [])):
+				continue   # keep this cell clear for a door
 			var center := c + u * cu + v * cv
 			var key := absf(center.x) * 12.9 + absf(center.y) * 7.3 + absf(center.z) * 3.1
 			# Per-cell irregularity: nudge + scale the WINDOW inside its cell (the frame band thickens
@@ -581,11 +583,14 @@ static func tracery(radius: float, height: float, overrides: Dictionary = {}) ->
 	var so := float(p["standoff"])
 	var rib_col: Color = p["rib_color"]
 	var junction_mode := str(p.get("rib_merge", "sdf")) == "junction"
+	var reserved: Array = p.get("reserved", [])
 	var all_paths: Array = []   # junction mode: accumulate every rib path for the network merge
 	var cells := 0
 	for b in range(bays):
 		var x0 := float(b) * bw          # left bay boundary (arc-length) — the mullion axis
 		var xc := x0 + bw * 0.5          # bay centre — the large window axis
+		if _arc_reserved(xc / r, reserved):
+			continue   # keep this bay clear for a door
 		var lw := float(p["large_w_frac"]) * bw
 		var hlw := lw * 0.5
 		var win_cy := (yb + ys) * 0.5
@@ -1051,11 +1056,14 @@ const ENTRANCE_DEFAULTS := {
 	"proud": 0.16,       # how far the frame stands off the wall
 	"recess": 0.42,      # how deep the doorway pocket sinks in
 	"canopy_out": 0.5,   # canopy overhang depth
-	"side_at": 0.62,     # side-door lateral placement as a fraction of the half-width
+	"side_count_min": 1, # range of SIDE entrances; the count is seeded per building
+	"side_count_max": 3,
+	"reserve_margin": 0.45,   # extra clearance (m) around a door the lattice must keep clear
 }
 
-## Build the entrances for a base shape. Returns {stone, dark, accent} ArrayMeshes + the sign anchor
-## above the main door ("main_top" world pos, "main_n" outward normal).
+## Build the entrances for a base shape: the MAIN door at the front (+Z), plus a seeded number of SIDE
+## doors DISTRIBUTED around the building. Returns {stone, dark, accent} meshes, the main sign anchor,
+## the full `anchors` list, `reserved` regions (so the lattice can carve space), and `side_count`.
 static func entrances(spec: Dictionary, overrides: Dictionary = {}) -> Dictionary:
 	var p := ENTRANCE_DEFAULTS.duplicate()
 	for k in overrides.keys():
@@ -1069,36 +1077,91 @@ static func entrances(spec: Dictionary, overrides: Dictionary = {}) -> Dictionar
 	var is_cyl := str(spec.get("shape", "box")) == "cylinder"
 	var radius := float(spec.get("radius", 2.0))
 	var size: Vector3 = spec.get("size", Vector3(4, 6, 4))
-	var half_w := radius if is_cyl else size.x * 0.5
-	var front := radius if is_cyl else size.z * 0.5
-	var mf := _door_frame(is_cyl, radius, front, 0.0)
-	_emit_door(stone, dark, dark, mf, float(p["main_w"]), float(p["main_h"]), p, false)
-	var sf := _door_frame(is_cyl, radius, front, half_w * float(p["side_at"]))
-	_emit_door(stone, dark, accent, sf, float(p["side_w"]), float(p["side_h"]), p, true)
+	var faces := _box_vertical_faces(size)
+	var main_w := float(p["main_w"])
+	var main_h := float(p["main_h"])
+	var side_w := float(p["side_w"])
+	var side_h := float(p["side_h"])
+	var margin := float(p["reserve_margin"])
+	var rng := SeededRng.new(int(str(spec.get("kind", "")).hash()) ^ 0x5177)
+	var n_side := int(rng.call("randi_range", int(p["side_count_min"]), int(p["side_count_max"])))
+
+	var anchors: Array = []
+	var reserved: Array = []
+	# MAIN door at the FRONT (drum: theta = pi/2 = +Z; box: the +Z face centre).
+	var mf := _door_frame_cyl(radius, PI * 0.5) if is_cyl else _door_frame_face(faces[0], 0.0)
+	_emit_door(stone, dark, dark, mf, main_w, main_h, p, false)
+	anchors.append({"main": true, "pos": mf["anchor"], "n": mf["n"],
+		"top": (mf["anchor"] as Vector3) + Vector3(0, 1, 0) * (main_h + 0.55) + (mf["n"] as Vector3) * 0.06})
+	reserved.append(_reserve_region(is_cyl, radius, mf, main_w, main_h, margin))
+	# SIDE doors DISTRIBUTED around the building (drum: evenly around, skipping the front; box: spread
+	# over the non-front faces).
+	for k in range(n_side):
+		var sfr: Dictionary
+		if is_cyl:
+			sfr = _door_frame_cyl(radius, PI * 0.5 + TAU * float(k + 1) / float(n_side + 1))
+		else:
+			sfr = _door_frame_face(faces[1 + (k % 3)], 0.0)
+		_emit_door(stone, dark, accent, sfr, side_w, side_h, p, true)
+		anchors.append({"main": false, "pos": sfr["anchor"], "n": sfr["n"]})
+		reserved.append(_reserve_region(is_cyl, radius, sfr, side_w, side_h, margin))
 	stone.generate_normals()
 	dark.generate_normals()
 	accent.generate_normals()
 	return {
 		"stone": stone.commit(), "dark": dark.commit(), "accent": accent.commit(),
-		"main_top": (mf["anchor"] as Vector3) + (mf["v"] as Vector3) * (float(p["main_h"]) + 0.55) + (mf["n"] as Vector3) * 0.06,
-		"main_n": mf["n"],
+		"main_top": anchors[0]["top"], "main_n": mf["n"],
+		"anchors": anchors, "reserved": reserved, "side_count": n_side,
 	}
 
-# A right-handed local frame (u x v = n) anchored on the ground at the wall, facing +Z (the gallery
-# front). `lateral` is an x-offset on a box face, or an arc-length offset around the drum.
-static func _door_frame(is_cyl: bool, radius: float, front: float, lateral: float) -> Dictionary:
-	var n: Vector3
-	var anchor: Vector3
-	if is_cyl:
-		var th := PI * 0.5 + lateral / radius   # front (+Z) is theta = pi/2
-		n = Vector3(cos(th), 0.0, sin(th))
-		anchor = Vector3(radius * cos(th), 0.0, radius * sin(th))
-	else:
-		n = Vector3(0, 0, 1)
-		anchor = Vector3(lateral, 0.0, front)
+# A right-handed door frame (u x v = n) on the ground at the drum wall, at absolute angle `theta`.
+static func _door_frame_cyl(radius: float, theta: float) -> Dictionary:
+	var n := Vector3(cos(theta), 0.0, sin(theta))
 	var v := Vector3(0, 1, 0)
-	var u := v.cross(n).normalized()   # u x v = n (right-handed, so the box winding faces outward)
-	return {"anchor": anchor, "u": u, "v": v, "n": n}
+	return {"anchor": n * radius, "u": v.cross(n).normalized(), "v": v, "n": n}
+
+# A right-handed door frame on a box FACE (from _box_vertical_faces) at lateral offset `lateral`.
+static func _door_frame_face(face: Dictionary, lateral: float) -> Dictionary:
+	var c: Vector3 = face["c"]
+	var uf: Vector3 = face["u"]
+	var n: Vector3 = face["n"]
+	var v := Vector3(0, 1, 0)
+	return {"anchor": Vector3(c.x, 0.0, c.z) + uf * lateral, "u": v.cross(n).normalized(), "v": v, "n": n}
+
+# The region the lattice must keep clear around a door. Drum: an arc {theta, half_arc, y_top}. Box:
+# {n (face normal), x_center (face-local lateral), half_w, y_top}.
+static func _reserve_region(is_cyl: bool, radius: float, frame: Dictionary, door_w: float, door_h: float, margin: float) -> Dictionary:
+	var n: Vector3 = frame["n"]
+	if is_cyl:
+		return {"cyl": true, "theta": atan2(n.z, n.x), "half_arc": (door_w * 0.5 + margin) / radius, "y_top": door_h + margin}
+	return {"cyl": false, "n": n, "x_center": 0.0, "half_w": door_w * 0.5 + margin, "y_top": door_h + margin}
+
+# Is a box cell (face-local centred cu,cv; face height h; face normal) inside a reserved door region?
+static func _cell_reserved_box(cu: float, cv: float, face_n: Vector3, h: float, reserved: Array) -> bool:
+	for reg in reserved:
+		var rd := reg as Dictionary
+		if bool(rd.get("cyl", true)):
+			continue
+		if (rd["n"] as Vector3).dot(face_n) < 0.9:
+			continue
+		if (h * 0.5 + cv) < float(rd["y_top"]) and absf(cu - float(rd["x_center"])) < float(rd["half_w"]):
+			return true
+	return false
+
+# Is a drum angle within a reserved door arc?
+static func _arc_reserved(theta: float, reserved: Array) -> bool:
+	for reg in reserved:
+		var rd := reg as Dictionary
+		if not bool(rd.get("cyl", false)):
+			continue
+		var dth := theta - float(rd["theta"])
+		while dth > PI:
+			dth -= TAU
+		while dth < -PI:
+			dth += TAU
+		if absf(dth) < float(rd["half_arc"]):
+			return true
+	return false
 
 static func _emit_door(stone: SurfaceTool, dark: SurfaceTool, acc: SurfaceTool, frame: Dictionary,
 		dw: float, dh: float, p: Dictionary, enforcement: bool) -> void:
