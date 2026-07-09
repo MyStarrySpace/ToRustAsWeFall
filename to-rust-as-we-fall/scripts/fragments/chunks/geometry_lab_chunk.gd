@@ -25,6 +25,7 @@ var _angle_deg := 45.0
 var _algorithm := 1
 var _max_down_shift := 2.0   # algo 2: max extra DOWNWARD shift (grid units) of a recursed awning's A/B
 var _merge_seed := 1         # algo 2: seed for the adjacent-awning merge dice
+var _junction_lines := 3     # algo 3: how many centrelines meet at the junction (any number)
 
 # algo 2 [PARAMETER_CURVE]s as real Godot Curve resources (editable in the inspector / assignable in the
 # .tscn). Sampled over recursion-depth t in [0,1]. Null -> a true-linear default (see _linear_curve).
@@ -40,6 +41,8 @@ func configure_chunk(config: Dictionary) -> void:
 		_max_down_shift = float(config["max_down_shift"])
 	if config.has("merge_seed"):
 		_merge_seed = int(config["merge_seed"])
+	if config.has("junction_lines"):
+		_junction_lines = maxi(2, int(config["junction_lines"]))
 
 func is_generation_preview() -> bool:
 	return true
@@ -275,11 +278,22 @@ func _linear_curve() -> Curve:
 func _build_junction(root: Node3D) -> void:
 	var w := 0.42                       # ribbon half-width
 	var h := 0.55                       # extrude height
-	# two crossing lines through the origin -> four arm far-endpoints. (P = their centreline intersection.)
-	var line_a := [Vector3(-3.2, 0.0, 0.0), Vector3(3.2, 0.0, 0.0)]
-	var line_b := [Vector3(-1.9, 0.0, -3.0), Vector3(1.9, 0.0, 3.0)]
-	var p := _line_intersect_xz(line_a[0], line_a[1] - line_a[0], line_b[0], line_b[1] - line_b[0])
-	var ends := [line_a[1], line_a[0], line_b[1], line_b[0]]
+	# ANY NUMBER of centrelines through the junction -> 2*N arm far-endpoints. Each line is a diameter
+	# through the origin at an evenly-spread angle (a clean N-way star); P = their common intersection.
+	var num := maxi(2, _junction_lines)
+	var length := 3.0
+	var lines: Array = []
+	for k in range(num):
+		var ang := PI * float(k) / float(num)
+		var dir := Vector3(cos(ang), 0.0, sin(ang))
+		lines.append([-dir * length, dir * length])
+	var p := _line_intersect_xz(
+		lines[0][0], (lines[0][1] as Vector3) - (lines[0][0] as Vector3),
+		lines[1][0], (lines[1][1] as Vector3) - (lines[1][0] as Vector3))
+	var ends: Array = []
+	for ln in lines:
+		ends.append(ln[1])
+		ends.append(ln[0])
 
 	# per-arm frame (dir + left perpendicular), sorted CCW by angle around P
 	var arms: Array = []
@@ -336,8 +350,9 @@ func _build_junction(root: Node3D) -> void:
 	# show the raw (non-extruded) centrelines + label P and the junction corners
 	var gl := SurfaceTool.new()
 	gl.begin(Mesh.PRIMITIVE_LINES)
-	gl.add_vertex(line_a[0] + yh); gl.add_vertex(line_a[1] + yh)
-	gl.add_vertex(line_b[0] + yh); gl.add_vertex(line_b[1] + yh)
+	for ln in lines:
+		gl.add_vertex((ln[0] as Vector3) + yh)
+		gl.add_vertex((ln[1] as Vector3) + yh)
 	var glm := MeshInstance3D.new()
 	glm.name = "Centrelines"
 	glm.mesh = gl.commit()
