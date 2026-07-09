@@ -25,7 +25,12 @@ const HONEYFRAME_DEFAULTS := {
 	"bevel": 0.05,         # frame moulding: the band crests this much above its rims (chamfered profile)
 	"crown": true,         # emit a cornice + parapet + plinth silhouette
 	"pane_color": Color(1.0, 0.72, 0.36),   # base window-light colour; per-pane brightness/tint varies off it
-	"rib_merge": "frame_ring",   # "frame_ring" (moulded rings — reads as a solid honeycomb) or "junction" (half-round strut grid + melting hubs)
+	"rib_merge": "sasb",   # "sasb" (the director's S_A/S_B corner-cut network — THE honeyframe) or
+	                       # "frame_ring" (the old moulded per-cell rings, kept for comparison)
+	"cut": 0.30,           # S_A: corner-cut fraction along each edge away from the vertex (capped 0.5)
+	"pinch": 0.72,         # S_A rounding pulled TOWARD the vertex (the organic pinched junction)
+	"rib_radius": 0.10,    # S_A/S_B rib crest radius (the strut gauge)
+	"rib_sides": 5,
 }
 
 ## Build the honeyframe lattice for a box of `size` (base at y=0). Returns {frame, glass} ArrayMeshes:
@@ -40,12 +45,15 @@ static func honeyframe(size: Vector3, overrides: Dictionary = {}) -> Dictionary:
 	var glass_st := SurfaceTool.new()
 	glass_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var cells := 0
-	var junction := str(p.get("rib_merge", "junction")) == "junction"
+	var mode := str(p.get("rib_merge", "sasb"))
 	for f in faces:
-		if junction:
-			cells += _honeyframe_face_junction(f, p, frame_st, glass_st)
-		else:
-			cells += _honeyframe_face(f, p, frame_st, glass_st)
+		match mode:
+			"frame_ring":
+				cells += _honeyframe_face(f as Dictionary, p, frame_st, glass_st)
+			"junction":
+				cells += _honeyframe_face_junction(f as Dictionary, p, frame_st, glass_st)
+			_:
+				cells += _honeyframe_face_sasb(f as Dictionary, p, frame_st, glass_st)
 	# Closed corner posts down the four vertical box edges cover the miter seam where two faces' frames
 	# meet at 90 degrees (otherwise a bare L-wedge runs the full height of every corner).
 	var hx := size.x * 0.5
@@ -90,6 +98,162 @@ static func _emit_base_plinth(st: SurfaceTool, size: Vector3) -> void:
 	var hz := size.z * 0.5
 	_emit_box(st, Vector3(0, 0.16, 0), Vector3(hx + 0.24, 0.16, hz + 0.24))
 	_emit_box(st, Vector3(0, 0.40, 0), Vector3(hx + 0.11, 0.10, hz + 0.11))
+
+# ============================================================================================
+# S_A / S_B honeyframe — the director's corner-cut construction (the "Welcombe" setting), verbatim:
+# subdivide the face into a grid; per grid VERTEX pick a point at `cut` (<=50%) along each outgoing
+# edge; connect those points AROUND the vertex (S_A) and ROUND the S_A curves so they cut TOWARD the
+# vertex (concave — the organic, load-bearing junction); the remaining straight runs BETWEEN adjacent
+# cut points along the edges are S_B. Every grid cell becomes a rounded opening. The whole network is
+# fused watertight by LatticeGraph (S_A+S_B endpoints weld into degree-3 dome hubs).
+# ============================================================================================
+static func _honeyframe_face_sasb(f: Dictionary, p: Dictionary, frame_st: SurfaceTool, glass_st: SurfaceTool) -> int:
+	var w: float = f["w"]
+	var h: float = f["h"]
+	var cols := int(max(1, round(w / float(p["cell_size"]))))
+	var rows := int(max(1, round(h / (float(p["cell_size"]) * float(p["cell_aspect"])))))
+	var c: Vector3 = f["c"]
+	var u: Vector3 = (f["u"] as Vector3).normalized()
+	var n: Vector3 = (f["n"] as Vector3).normalized()
+	var origin := c - u * (w * 0.5) + Vector3(0, -h * 0.5, 0)   # face bottom-left; lattice y = world up
+	var jitter := float(p["jitter"])
+	var cut := clampf(float(p["cut"]), 0.05, 0.5)
+	var pinch := clampf(float(p["pinch"]), 0.0, 1.0)
+	var reserved: Array = p.get("reserved", [])
+	var base_pane: Color = p["pane_color"]
+	var rib_r := float(p["rib_radius"])
+	# the grid rect is inset by one rib radius so border ribs sit ON the face (no under/overhang)
+	var gx0 := rib_r
+	var gy0 := rib_r
+	var cw := (w - 2.0 * rib_r) / float(cols)
+	var ch := (h - 2.0 * rib_r) / float(rows)
+	# 1. the (subdivided) grid vertices — interior ones jittered for the hand-made read, borders straight
+	var fkey := (n.x * 3.7 + n.z * 9.1) * 17.0
+	var vp: Array = []
+	for i in range(cols + 1):
+		var col_arr: Array = []
+		for j in range(rows + 1):
+			var pos := Vector2(gx0 + float(i) * cw, gy0 + float(j) * ch)
+			if i > 0 and i < cols and j > 0 and j < rows:
+				pos.x += (_h01(fkey + float(i) * 12.9 + float(j) * 7.3) - 0.5) * jitter * cw
+				pos.y += (_h01(fkey + float(i) * 5.1 + float(j) * 3.3 + 50.0) - 0.5) * jitter * ch
+			col_arr.append(pos)
+		vp.append(col_arr)
+	# 2-3. cut points at `cut` along each edge away from each vertex -> S_B spans between them,
+	# and a per-vertex registry of its cut points (for the S_A ring)
+	var paths: Array = []
+	var vpts: Dictionary = {}
+	for j in range(rows + 1):
+		for i in range(cols):
+			var a: Vector2 = (vp[i] as Array)[j]
+			var b: Vector2 = (vp[i + 1] as Array)[j]
+			var pa := a.lerp(b, cut)
+			var pb := a.lerp(b, 1.0 - cut)
+			paths.append(PackedVector2Array([pa, pb]))
+			_sasb_reg(vpts, i, j, pa, a)
+			_sasb_reg(vpts, i + 1, j, pb, b)
+	for i2 in range(cols + 1):
+		for j2 in range(rows):
+			var a2: Vector2 = (vp[i2] as Array)[j2]
+			var b2: Vector2 = (vp[i2] as Array)[j2 + 1]
+			var pa2 := a2.lerp(b2, cut)
+			var pb2 := a2.lerp(b2, 1.0 - cut)
+			paths.append(PackedVector2Array([pa2, pb2]))
+			_sasb_reg(vpts, i2, j2, pa2, a2)
+			_sasb_reg(vpts, i2, j2 + 1, pb2, b2)
+	# 4+6. S_A connectors around each vertex, ROUNDED toward the vertex (concave corner cuts)
+	for i3 in range(cols + 1):
+		for j3 in range(rows + 1):
+			var lst: Array = vpts.get("%d:%d" % [i3, j3], [])
+			if lst.size() < 2:
+				continue
+			lst.sort_custom(func(x, y) -> bool: return float((x as Dictionary)["ang"]) < float((y as Dictionary)["ang"]))
+			var vtx: Vector2 = (vp[i3] as Array)[j3]
+			var m := lst.size()
+			var conns := m if m > 2 else 1
+			for k in range(conns):
+				var pd_a := lst[k] as Dictionary
+				var pd_b := lst[(k + 1) % m] as Dictionary
+				var gap := float(pd_b["ang"]) - float(pd_a["ang"])
+				if gap <= 0.0:
+					gap += TAU
+				var pa3 := pd_a["p"] as Vector2
+				var pb3 := pd_b["p"] as Vector2
+				if gap > 2.6:
+					paths.append(PackedVector2Array([pa3, pb3]))   # wide gap (face border run): straight
+				else:
+					paths.append(_concave_arc(pa3, pb3, vtx, pinch, 5))
+	# a door region silences every rib that would cross it
+	var kept: Array = []
+	for pathv in paths:
+		if not _path_reserved_face(pathv as PackedVector2Array, w, h, n, reserved):
+			kept.append(pathv)
+	var graph: Dictionary = LatticeGraph.build(kept, 0.01)
+	frame_st.set_color(Color(0.9, 0.87, 0.78))
+	LatticeGraph.mesh(frame_st, graph, LatticeGraph.plane_surface(origin, u, Vector3(0, 1, 0)), rib_r, int(p["rib_sides"]))
+	# glass: one lit pane per (unreserved) cell, behind the rounded opening
+	var pane := float(p["pane"])
+	var cells := 0
+	for i4 in range(cols):
+		for j4 in range(rows):
+			var cu := -w * 0.5 + (float(i4) + 0.5) * cw
+			var cv := -h * 0.5 + (float(j4) + 0.5) * ch
+			if _cell_reserved_box(cu, cv, n, h, reserved):
+				continue
+			var q00: Vector2 = (vp[i4] as Array)[j4]
+			var q11: Vector2 = (vp[i4 + 1] as Array)[j4 + 1]
+			var q01: Vector2 = (vp[i4] as Array)[j4 + 1]
+			var q10: Vector2 = (vp[i4 + 1] as Array)[j4]
+			var cen := (q00 + q11 + q01 + q10) * 0.25
+			var hwp := maxf(0.06, (absf(q10.x - q00.x) + absf(q11.x - q01.x)) * 0.25 - rib_r * 0.9)
+			var hhp := maxf(0.06, (absf(q01.y - q00.y) + absf(q11.y - q10.y)) * 0.25 - rib_r * 0.9)
+			var rr := minf(hwp, hhp) * 0.5
+			var key := fkey + float(i4) * 31.7 + float(j4) * 13.9
+			_glass_fan_plane(origin, u, Vector3(0, 1, 0), n, cen, _rounded_rect(hwp, hhp, rr, 2), pane, _pane_color(base_pane, key), glass_st)
+			cells += 1
+	return cells
+
+static func _sasb_reg(vpts: Dictionary, i: int, j: int, pt: Vector2, vtx: Vector2) -> void:
+	var key := "%d:%d" % [i, j]
+	if not vpts.has(key):
+		vpts[key] = []
+	(vpts[key] as Array).append({"p": pt, "ang": atan2(pt.y - vtx.y, pt.x - vtx.x)})
+
+# Quadratic bezier from `a` to `b` whose control point is pulled toward the vertex — the S_A rounding
+# that "cuts toward the vertex" (concave, pinching in).
+static func _concave_arc(a: Vector2, b: Vector2, vtx: Vector2, pinch: float, seg: int) -> PackedVector2Array:
+	var ctrl := ((a + b) * 0.5).lerp(vtx, pinch)
+	var out := PackedVector2Array()
+	for s in range(seg + 1):
+		var t := float(s) / float(seg)
+		out.append(a.lerp(ctrl, t).lerp(ctrl.lerp(b, t), t))
+	return out
+
+# Does any point of a face-local path fall inside a reserved door rect on this face?
+static func _path_reserved_face(pts: PackedVector2Array, w: float, _h: float, face_n: Vector3, reserved: Array) -> bool:
+	for reg in reserved:
+		var rd := reg as Dictionary
+		if bool(rd.get("cyl", true)):
+			continue
+		if (rd["n"] as Vector3).dot(face_n) < 0.9:
+			continue
+		for pt in pts:
+			if pt.y < float(rd["y_top"]) and absf(pt.x - w * 0.5 - float(rd["x_center"])) < float(rd["half_w"]):
+				return true
+	return false
+
+# Glass fan on a box face with self-correcting winding (never faces into the wall regardless of the
+# outline's authored orientation). `cen` + `outline` are face-local; colour = the pane's own light.
+static func _glass_fan_plane(origin: Vector3, u: Vector3, v: Vector3, n: Vector3, cen: Vector2, outline: PackedVector2Array, dn: float, col: Color, st: SurfaceTool) -> void:
+	st.set_color(col)
+	var mid := origin + u * cen.x + v * cen.y + n * dn
+	var count := outline.size()
+	for i in range(count):
+		var a2 := cen + outline[i]
+		var b2 := cen + outline[(i + 1) % count]
+		var a3 := origin + u * a2.x + v * a2.y + n * dn
+		var b3 := origin + u * b2.x + v * b2.y + n * dn
+		LatticeGraph._face(st, mid, a3, b3, n)
 
 static func _honeyframe_face(f: Dictionary, p: Dictionary, frame_st: SurfaceTool, glass_st: SurfaceTool) -> int:
 	var w: float = f["w"]

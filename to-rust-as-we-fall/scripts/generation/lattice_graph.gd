@@ -73,12 +73,24 @@ static func build(paths: Array, eps: float = 0.02) -> Dictionary:
 		e["b"] = remap[e["b"]]
 	return {"nodes": nodes, "edges": edges, "loops": loops}
 
+static func _poly_rect(pts: PackedVector2Array) -> Rect2:
+	var rect := Rect2(pts[0], Vector2.ZERO)
+	for i in range(1, pts.size()):
+		rect = rect.expand(pts[i])
+	return rect
+
 # Interior X-crossings between every pair of segments (different paths, and non-adjacent segments of
-# the SAME path — a curl can cross itself). Both sides get a split event.
+# the SAME path — a curl can cross itself). Both sides get a split event. Path-pair AABB rejects keep
+# this near-linear on networks that mostly DON'T cross (a grid lattice, distant bays).
 static func _collect_crossings(polys: Array, splits: Array) -> void:
+	var boxes: Array = []
+	for pv in polys:
+		boxes.append(_poly_rect(pv as PackedVector2Array))
 	for i in range(polys.size()):
 		var pa := polys[i] as PackedVector2Array
 		for j in range(i, polys.size()):
+			if i != j and not (boxes[i] as Rect2).intersects(boxes[j] as Rect2):
+				continue
 			var pb := polys[j] as PackedVector2Array
 			for si in range(pa.size() - 1):
 				var sj0 := si + 2 if i == j else 0   # same path: skip self + adjacent segments
@@ -93,12 +105,17 @@ static func _collect_crossings(polys: Array, splits: Array) -> void:
 # T-touches: a path ENDPOINT lying on (or within eps of) another path's segment interior. This is the
 # joint class the old interior-only detection could never see — arch feet on mullions, sill ends, etc.
 static func _collect_touches(polys: Array, splits: Array, eps: float) -> void:
+	var boxes: Array = []
+	for pv in polys:
+		boxes.append(_poly_rect(pv as PackedVector2Array).grow(eps))
 	for i in range(polys.size()):
 		var pa := polys[i] as PackedVector2Array
 		for which in [0, pa.size() - 1]:
-			var e := pa[which]
+			var e: Vector2 = pa[which]
 			for j in range(polys.size()):
 				if j == i:
+					continue
+				if not (boxes[j] as Rect2).has_point(e):
 					continue
 				var pb := polys[j] as PackedVector2Array
 				for sj in range(pb.size() - 1):
