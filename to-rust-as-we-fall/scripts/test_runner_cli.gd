@@ -3669,6 +3669,72 @@ func _test_architecture_showcase() -> void:
 		(Lat.entrances(honey).get("stone") as ArrayMesh).surface_get_array_len(0), "entrances are deterministic")
 	_assert_true((Lat.entrances(beacon).get("stone") as ArrayMesh).get_surface_count() > 0, "entrances also build on a drum")
 
+	# --- LatticeGraph: the junction engine — planar graph topology + watertight rib meshing ---
+	var LG = load("res://scripts/generation/lattice_graph.gd")
+	# X: two crossing lines -> one degree-4 node, four edges
+	var gx: Dictionary = LG.build([
+		PackedVector2Array([Vector2(-1, 0), Vector2(1, 0)]),
+		PackedVector2Array([Vector2(0, -1), Vector2(0, 1)]),
+	])
+	var deg4 := 0
+	for nd in (gx["nodes"] as Array):
+		if ((nd as Dictionary)["arms"] as Array).size() == 4:
+			deg4 += 1
+	_assert_true(deg4 == 1 and (gx["edges"] as Array).size() == 4,
+		"graph X: a crossing becomes one degree-4 node with four edges")
+	# T: an endpoint landing ON another rib's interior -> one degree-3 node, three edges
+	var gt: Dictionary = LG.build([
+		PackedVector2Array([Vector2(-1, 0), Vector2(1, 0)]),
+		PackedVector2Array([Vector2(0, 0), Vector2(0, 1)]),
+	])
+	var deg3 := 0
+	for nd2 in (gt["nodes"] as Array):
+		if ((nd2 as Dictionary)["arms"] as Array).size() == 3:
+			deg3 += 1
+	_assert_true(deg3 == 1 and (gt["edges"] as Array).size() == 3,
+		"graph T: an endpoint touch splits the rib into a degree-3 junction (the old engine missed these)")
+	# L: two paths sharing an endpoint chain into ONE continuous rib (mitre, no hub)
+	var g_ell: Dictionary = LG.build([
+		PackedVector2Array([Vector2(0, 0), Vector2(1, 0)]),
+		PackedVector2Array([Vector2(1, 0), Vector2(1, 1)]),
+	])
+	_assert_true((g_ell["edges"] as Array).size() == 1 and (g_ell["loops"] as Array).size() == 0,
+		"graph L: endpoint-welded paths chain into one continuous rib")
+	# closed path -> a loop (no dangling nodes)
+	var glp: Dictionary = LG.build([
+		PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1), Vector2(0, 0)]),
+	])
+	_assert_true((glp["loops"] as Array).size() == 1 and (glp["edges"] as Array).size() == 0,
+		"graph loop: a closed path becomes a loop sweep")
+	# WATERTIGHT: mesh an X + T + free-end + loop network on plane AND drum -> zero boundary edges
+	var net: Array = [
+		PackedVector2Array([Vector2(-1, 0), Vector2(1, 0)]),
+		PackedVector2Array([Vector2(0, -1), Vector2(0, 1)]),
+		PackedVector2Array([Vector2(0.5, 0), Vector2(0.5, 0.8)]),
+		PackedVector2Array([Vector2(-0.6, -0.6), Vector2(-0.3, -0.6), Vector2(-0.3, -0.3), Vector2(-0.6, -0.3), Vector2(-0.6, -0.6)]),
+	]
+	var gnet: Dictionary = LG.build(net)
+	var stp := SurfaceTool.new()
+	stp.begin(Mesh.PRIMITIVE_TRIANGLES)
+	LG.mesh(stp, gnet, LG.plane_surface(Vector3.ZERO, Vector3(1, 0, 0), Vector3(0, 1, 0)), 0.07, 5)
+	stp.generate_normals()
+	var mplane: ArrayMesh = stp.commit()
+	_assert_equals(LG.boundary_edge_count(mplane), 0,
+		"lattice mesh is WATERTIGHT on a plane (zero boundary edges — no holes possible)")
+	var std := SurfaceTool.new()
+	std.begin(Mesh.PRIMITIVE_TRIANGLES)
+	LG.mesh(std, LG.build(net), LG.drum_surface(2.4), 0.07, 5)
+	std.generate_normals()
+	var mdrum: ArrayMesh = std.commit()
+	_assert_equals(LG.boundary_edge_count(mdrum), 0,
+		"lattice mesh is WATERTIGHT on the drum (facet embed skirt included)")
+	var std2 := SurfaceTool.new()
+	std2.begin(Mesh.PRIMITIVE_TRIANGLES)
+	LG.mesh(std2, LG.build(net), LG.drum_surface(2.4), 0.07, 5)
+	std2.generate_normals()
+	_assert_equals(mdrum.surface_get_array_len(0), (std2.commit() as ArrayMesh).surface_get_array_len(0),
+		"lattice graph meshing is deterministic")
+
 	# --- ledge treatments: a tiered "cake" decorates its flat rings; a flat base leaves them bare ---
 	var Ledge = load("res://scripts/generation/ledge_builder.gd")
 	var tiered: Dictionary = Base.generate("tiered_hall")
