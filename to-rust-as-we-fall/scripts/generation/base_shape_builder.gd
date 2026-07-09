@@ -234,6 +234,72 @@ static func tier_ledges(spec: Dictionary) -> Array:
 				"outer": Vector2(s.x, s.z) * fo, "inner": Vector2(s.x, s.z) * fi})
 	return out
 
+## GAMEPLAY ANCHORS — the architecture->puzzle contract (director, 2026-07-09). A generated building
+## is not scenery: it exposes SOCKETS the level/puzzle layer consumes. Deterministic positions;
+## SEMANTICS live in the consumer (a chunk decides what a weak point does when struck):
+##   weak_points   [{pos, n, radius}]        structural weaknesses — may CRUMBLE when hit (a scheduled
+##                                            collapse killing/blocking what's beneath, spawning rubble)
+##   connectors    [{kind:"road"|"bridge", pos, dir, width, main?}]  where level roads/bridges attach —
+##                                            roads at door thresholds, bridges at ledge rims/roof edges
+##   balcony_slots [{pos, out, size}]         content points on tier ledges (flora, lures, rest spots,
+##                                            set-piece controls — whatever the level assigns)
+static func gameplay_anchors(spec: Dictionary, ent: Dictionary = {}) -> Dictionary:
+	var weak: Array = []
+	var conns: Array = []
+	var balc: Array = []
+	var kb := float(str(spec.get("kind", "bld")).hash() % 1000)
+	# ROAD connectors: one per entrance threshold, facing out (the main door flagged for the level's spine)
+	for a in (ent.get("anchors", []) as Array):
+		var ad := a as Dictionary
+		conns.append({"kind": "road", "pos": ad["pos"] as Vector3, "dir": ad["n"] as Vector3,
+			"width": 1.2, "main": bool(ad.get("main", false))})
+	if str(spec.get("shape", SHAPE_BOX)) == SHAPE_CYLINDER:
+		var r := float(spec.get("radius", 2.0))
+		var hgt := float(spec.get("height", 5.0))
+		var tiers := maxi(1, int(spec.get("tiers", 1)))
+		var inset := float(spec.get("tier_inset", 0.16))
+		var band := hgt / float(tiers)
+		var nw := 2 + int(_h01(kb + 1.0) * 1.9)
+		for k in range(nw):
+			var th := TAU * _h01(kb + 10.0 + float(k) * 7.7)
+			var wy := hgt * (0.45 + 0.4 * _h01(kb + 20.0 + float(k) * 3.3))
+			# on a tiered cake the wall shrinks per drum — the weak point sits on ITS tier's wall
+			var rk := maxf(0.4, r * (1.0 - inset * float(mini(tiers - 1, int(wy / band)))))
+			var nrm := Vector3(cos(th), 0.0, sin(th))
+			weak.append({"pos": nrm * rk + Vector3(0, wy, 0), "n": nrm, "radius": 0.7})
+	else:
+		var s: Vector3 = spec.get("size", Vector3(4, 6, 4))
+		var hx := s.x * 0.5
+		var hz := s.z * 0.5
+		# cornice-corner weaknesses (two hash-picked corners) + one upper mid-face
+		var c0 := int(_h01(kb + 2.0) * 3.99)
+		for k2 in range(2):
+			var corner := (c0 + k2 * 2) % 4
+			var cx := hx if corner % 2 == 0 else -hx
+			var cz := hz if corner < 2 else -hz
+			weak.append({"pos": Vector3(cx, s.y * 0.85, cz), "n": Vector3(cx, 0, cz).normalized(), "radius": 0.7})
+		weak.append({"pos": Vector3(0, s.y * 0.7, hz), "n": Vector3(0, 0, 1), "radius": 0.8})
+		# roof-rim bridge connectors (flat boxes without tiers get their sockets at the parapet)
+		if maxi(1, int(spec.get("tiers", 1))) <= 1:
+			for fd in [[Vector3(0, s.y, hz), Vector3(0, 0, 1)], [Vector3(0, s.y, -hz), Vector3(0, 0, -1)],
+					[Vector3(hx, s.y, 0), Vector3(1, 0, 0)], [Vector3(-hx, s.y, 0), Vector3(-1, 0, 0)]]:
+				conns.append({"kind": "bridge", "pos": (fd as Array)[0] as Vector3, "dir": (fd as Array)[1] as Vector3, "width": 1.0})
+	# tier ledges (cyl or box): BRIDGE sockets at the rim quarters, BALCONY slots around the ring
+	for lg in tier_ledges(spec):
+		var ld := lg as Dictionary
+		var ly := float(ld["y"])
+		for q in range(4):
+			var smp := LedgeBuilder._ledge_center_sample(ld, (float(q) + 0.5) / 4.0)
+			var opos := smp["pos"] as Vector3
+			conns.append({"kind": "bridge", "pos": Vector3(opos.x, ly, opos.z) + (smp["outward"] as Vector3) * 0.3,
+				"dir": smp["outward"] as Vector3, "width": 1.0})
+		var ns := 3 + int(_h01(kb + 40.0) * 2.9)
+		for sl in range(ns):
+			var smp2 := LedgeBuilder._ledge_center_sample(ld, (float(sl) + 0.25) / float(ns))
+			var bpos := smp2["pos"] as Vector3
+			balc.append({"pos": Vector3(bpos.x, ly, bpos.z), "out": smp2["outward"] as Vector3, "size": 0.5})
+	return {"weak_points": weak, "connectors": conns, "balcony_slots": balc}
+
 ## A small assembly of primitives baked into one ArrayMesh (base on y=0). Dispatched by "composite".
 static func _composite(spec: Dictionary) -> ArrayMesh:
 	match str(spec.get("composite", "")):

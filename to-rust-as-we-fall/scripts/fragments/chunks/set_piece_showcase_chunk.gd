@@ -19,6 +19,7 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 const EnemyScript := preload("res://scripts/game/ai/enemy.gd")
 const WaterShader := preload("res://resources/channels_water.gdshader")
 const WaterTexV0 := preload("res://resources/models/channels/channels_water_v0.png")
+const Lattice := preload("res://scripts/generation/lattice_builder.gd")
 
 const PARTY_IDS: Array = ["peris", "aster", "endo"]
 
@@ -38,6 +39,15 @@ const BRIDGE_CELLS: Array = [
 	Vector2i(23, 9), Vector2i(23, 10), Vector2i(23, 11), Vector2i(23, 12),
 ]
 
+# Set piece D: STRUCTURAL WEAKNESS (the building->puzzle hook, docs/SET_PIECES.md). A generated
+# honeyframe slab with a WEAK POINT: pry the loose strut (north side) -> the south facade CRUMBLES —
+# the debris kills whatever roams beneath AND fills the trench into a shortcut (combat + traversal).
+const TRENCH_CELLS: Array = [Vector2i(24, 3), Vector2i(25, 3), Vector2i(26, 3), Vector2i(27, 3)]
+const RUBBLE_OPEN: Array = [Vector2i(25, 3), Vector2i(26, 3)]   # the cells the rubble fills
+const CRUMBLE_DELAY := 0.9
+const KILL_MIN := Vector2(24.4, 1.2)   # the debris field (XZ) — decided at the commit tick
+const KILL_MAX := Vector2(26.6, 3.6)
+
 var _runtime_ready := false
 var _water_level := LEVEL_LOW
 var _pending_level := -1
@@ -48,12 +58,16 @@ var _floats: Array = []
 var _pen_enemy: Node = null
 var _crawling: Dictionary = {}          # char_id -> true while inside a pipe
 var _mouth_nodes: Dictionary = {}       # name -> Area3D (for enabling the hub route)
+var _slab_enemy: Node = null
+var _slab_intact := true
+var _slab_meshes: Array = []            # facade meshes hidden on crumble
+var _rubble: Node3D = null              # the debris pile revealed on crumble
 
 func get_scene_title() -> String:
 	return "Set Pieces — crawl / rotate / water"
 
 func get_scene_help() -> String:
-	return "Push the wheel to line up the bent pipe, crawl it east. Crawl the wall pipe north to reach the water valve. Set the water to MID so the floats bridge the basin; set HIGH to drown the penned threat. Reach the northeast pad."
+	return "Push the wheel to line up the bent pipe, crawl it east. Crawl the wall pipe north to reach the water valve. Set the water to MID so the floats bridge the basin; set HIGH to drown the penned threat. Pry the loose strut behind the cracked slab — the facade falls on whatever lurks beneath and its rubble fills the trench. Reach the northeast pad."
 
 func get_default_character() -> String:
 	return "peris"
@@ -103,6 +117,7 @@ func _build_chunk() -> void:
 	_build_crawl_pipe()
 	_build_rotating_hub()
 	_build_basin()
+	_build_weak_slab()
 	_add_light(self, Vector3(8.0, 5.0, 6.0), Color(1.0, 0.95, 0.85), 1.1, 18.0)
 	_add_light(self, Vector3(23.0, 5.0, 11.0), Color(0.8, 0.92, 1.0), 1.1, 16.0)
 	_add_light(self, Vector3(14.0, 5.0, 14.0), Color(1.0, 0.95, 0.85), 0.9, 14.0)
@@ -279,6 +294,83 @@ func _build_basin() -> void:
 	_add_box(self, Vector3(27.5, 0.06, 15.0), Vector3(1.6, 0.12, 1.6), Color(0.25, 0.5, 0.3), Color(0.3, 1.0, 0.5), 0.8, "ExitPad")
 	_add_label(self, "EXIT", Vector3(27.5, 1.6, 15.0), Color(0.5, 1.0, 0.6))
 
+# D) the STRUCTURAL WEAKNESS: a generated honeyframe slab, a crack marker, a pry point, a trench
+func _build_weak_slab() -> void:
+	var slab := Node3D.new()
+	slab.name = "WeakSlab"
+	add_child(slab)
+	slab.position = Vector3(25.5, 0.0, 4.6)
+	var body := _add_box(slab, Vector3(0, 1.6, 0), Vector3(2.2, 3.2, 1.0), Color(0.34, 0.36, 0.40), Color.BLACK, 0.0, "SlabBody")
+	_slab_meshes.append(body)
+	# the generated facade: a mini S_A/S_B honeyframe wrapping the slab (the building IS the set piece)
+	var built: Dictionary = Lattice.honeyframe(Vector3(2.4, 3.2, 1.2), {"crown": false, "base": false, "cell_size": 0.8, "rib_radius": 0.07})
+	for pair in [["frame", Color(0.72, 0.69, 0.58)], ["glass", Color(1.0, 0.72, 0.36)]]:
+		var mesh: Variant = built.get(str((pair as Array)[0]))
+		if mesh == null or (mesh as ArrayMesh).get_surface_count() == 0:
+			continue
+		var mi := MeshInstance3D.new()
+		mi.name = "Slab%s" % str((pair as Array)[0]).capitalize()
+		mi.mesh = mesh
+		var m := StandardMaterial3D.new()
+		m.albedo_color = (pair as Array)[1] as Color
+		m.vertex_color_use_as_albedo = str((pair as Array)[0]) == "glass"
+		m.emission_enabled = str((pair as Array)[0]) == "glass"
+		if m.emission_enabled:
+			m.emission = Color(1.0, 0.72, 0.36)
+			m.emission_energy_multiplier = 0.9
+		slab.add_child(mi)
+		_slab_meshes.append(mi)
+	# the WEAK-POINT tell: a dark-red crack gem on the south face, present from first sight
+	var crack := _add_box(slab, Vector3(0.2, 2.4, -0.68), Vector3(0.5, 0.35, 0.08), Color(0.3, 0.08, 0.06), Color(0.85, 0.15, 0.1), 0.9, "CrackTell")
+	_slab_meshes.append(crack)
+	_add_label(self, "WEAK", Vector3(25.5, 3.9, 4.6), Color(0.95, 0.45, 0.35))
+	# the TRENCH the rubble will fill (blocked cells at z=3, visual channel)
+	_add_box(self, Vector3(26.0, -0.14, 3.5), Vector3(4.0, 0.24, 1.0), Color(0.10, 0.11, 0.13), Color.BLACK, 0.0, "Trench")
+	# the PRY point — NORTH side (the control behind the slab; the effect falls south: the grammar)
+	var strut := _add_interactable(self, "LooseStrut", "Pry the loose strut", Vector3(25.5, 0.5, 5.8),
+		"PRY", "", 1.0, true, 1.5, Interactable.InteractableType.INSPECTION, false)
+	var smesh := _add_box(strut, Vector3(0, 0.9, 0), Vector3(0.22, 1.8, 0.22), Color(0.5, 0.42, 0.3), Color(0.9, 0.6, 0.2), 0.5)
+	_outline_interactable_child(strut, smesh, "LooseStrut", 1.5)
+	strut.interacted.connect(_on_strut_pried)
+	# the rubble pile (hidden until the crumble) — covers the kill field + fills the trench cells
+	_rubble = Node3D.new()
+	_rubble.name = "RubblePile"
+	add_child(_rubble)
+	_rubble.position = Vector3(25.5, 0.0, 2.6)
+	var rk := [Vector3(-0.6, 0.25, 0.3), Vector3(0.5, 0.2, 0.8), Vector3(0.1, 0.45, -0.2), Vector3(-0.3, 0.2, 1.1), Vector3(0.7, 0.3, -0.5)]
+	for ri in range(rk.size()):
+		_add_box(_rubble, rk[ri] as Vector3, Vector3(0.9 - 0.08 * float(ri), 0.5, 0.8), Color(0.30, 0.30, 0.33), Color.BLACK, 0.0, "Rubble%d" % ri)
+	_rubble.visible = false
+
+func _on_strut_pried() -> void:
+	if not _slab_intact:
+		return
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	sched.schedule_after(CRUMBLE_DELAY, _commit_crumble, "slab_crumble")
+
+func _commit_crumble() -> void:
+	if not _slab_intact:
+		return
+	_slab_intact = false
+	var gs = _get_game_state()
+	# the debris field resolves NOW, at the commit tick (analytic, never per-frame sampled)
+	if _slab_enemy != null and is_instance_valid(_slab_enemy) and _slab_enemy.is_alive():
+		var ep: Vector3 = gs.get_position(_slab_enemy.char_id) if gs != null else Vector3.ZERO
+		if ep.x > KILL_MIN.x and ep.x < KILL_MAX.x and ep.z > KILL_MIN.y and ep.z < KILL_MAX.y:
+			if gs != null:
+				gs.command_stop(_slab_enemy.char_id)
+			_slab_enemy.take_damage(float(_slab_enemy.max_hp))
+	# the rubble fills the trench — a shortcut opens, and the slab's own footprint clears (traversal
+	# from the same strike that killed)
+	_apply_slab_blockers()
+	for m in _slab_meshes:
+		if m != null and is_instance_valid(m):
+			(m as Node3D).visible = false
+	if _rubble != null:
+		_rubble.visible = true
+
 # --- runtime state (lazy: needs the host's game_state/grid/scheduler) --------------------------
 
 func _ensure_runtime() -> void:
@@ -289,32 +381,61 @@ func _ensure_runtime() -> void:
 		return
 	_runtime_ready = true
 	_apply_bridge_blockers()
+	_apply_slab_blockers()
 	# the PEN enemy — roams its shelf; drowns at HIGH
+	_pen_enemy = _spawn_lurker("pen_lurker", "PenLurker", Vector3(27.0, 0.0, 10.5), 0.9)
+	# the SLAB enemy — roams beneath the weak facade; the crumble field resolves over its roam disc
+	_slab_enemy = _spawn_lurker("slab_lurker", "SlabLurker", Vector3(25.5, 0.0, 2.2), 0.7)
+
+func _spawn_lurker(id: String, node_name: String, anchor: Vector3, roam_r: float) -> Node:
+	var gs = _get_game_state()
 	var enemy = EnemyScript.new()
-	enemy.name = "PenLurker"
-	enemy.position = Vector3(27.0, 0.0, 10.5)
+	enemy.name = node_name
+	enemy.position = anchor
 	enemy.move_speed = 1.3
 	enemy.detection_range = 3.5
-	enemy.char_id = "pen_lurker"
+	enemy.char_id = id
 	enemy.game_state = gs
 	enemy._detection_targets.assign(PARTY_IDS)
 	add_child(enemy)
 	gs.register_character(enemy.char_id, enemy.position, enemy.move_speed,
 		{"detection_range": float(enemy.detection_range)})
 	enemy.activate()
-	enemy.set_roam(Vector3(27.0, 0.0, 10.5), 0.9)
-	_pen_enemy = enemy
+	enemy.set_roam(anchor, roam_r)
+	return enemy
+
+func _apply_slab_blockers() -> void:
+	var gs = _get_game_state()
+	if gs == null or gs.grid == null:
+		return
+	for c in TRENCH_CELLS:
+		if _slab_intact or not RUBBLE_OPEN.has(c):
+			gs.grid.add_dynamic_blocker(c as Vector2i, "trench")
+		else:
+			gs.grid.remove_dynamic_blocker(c as Vector2i)
+	for sc in [Vector2i(24, 4), Vector2i(25, 4), Vector2i(26, 4)]:
+		if _slab_intact:
+			gs.grid.add_dynamic_blocker(sc, "weak_slab")
+		else:
+			gs.grid.remove_dynamic_blocker(sc)
 
 func reset_preview_state() -> void:
 	_water_level = LEVEL_LOW
 	_pending_level = -1
 	_hub_rot = 0
 	_crawling.clear()
+	_slab_intact = true
+	for m in _slab_meshes:
+		if m != null and is_instance_valid(m):
+			(m as Node3D).visible = true
+	if _rubble != null:
+		_rubble.visible = false
 	_apply_hub_visual(false)
 	_refresh_hub_mouths()
 	_apply_water_visual()
 	if _runtime_ready:
 		_apply_bridge_blockers()
+		_apply_slab_blockers()
 
 func _process(delta: float) -> void:
 	_ensure_runtime()
@@ -451,5 +572,7 @@ func get_preview_state() -> Dictionary:
 		"bridge_open": _water_level == LEVEL_MID,
 		"pen_alive": _pen_enemy != null and is_instance_valid(_pen_enemy) and _pen_enemy.is_alive(),
 		"crawling": _crawling.size() > 0,
+		"slab_intact": _slab_intact,
+		"slab_enemy_alive": _slab_enemy != null and is_instance_valid(_slab_enemy) and _slab_enemy.is_alive(),
 		"complete": complete,
 	}

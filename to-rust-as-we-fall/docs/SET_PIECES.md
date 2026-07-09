@@ -126,5 +126,29 @@ piece, mechanics live on the data layer (scheduler-driven, replay-safe, fast-for
 - The GRAMMAR demo: bay C's valve sits across bay A's crawl pipe (control separated from effect by
   another piece), per the verbatim rule.
 
-Tests: `--test-set-piece-showcase` — data-layer playthrough of all three mechanics (crawl connects,
-rotation gates, water level rewalks the grid + aligns floats + drowns the penned enemy), replay-safe.
+- **Bay D — structural weakness (the BUILDING→PUZZLE hook):** a generated S_A/S_B honeyframe slab
+  with a cracked WEAK POINT (dark-red tell, first sight); pry the loose strut on its FAR side → the
+  facade crumbles on a scheduled beat — the debris kills the lurker roaming beneath AND the rubble
+  fills the trench into a shortcut (combat + traversal from one strike; control behind the slab,
+  effect in front: the grammar again).
+
+Tests: `--test-set-piece-showcase` — data-layer playthrough of all four mechanics (crawl connects,
+rotation gates, water level rewalks the grid + aligns floats + drowns the penned enemy, the crumble
+kills + opens the shortcut), replay-safe.
+
+## Buildings hook into the puzzle infrastructure (director, 2026-07-09)
+
+Generated buildings are not scenery — every generator emits **gameplay anchors**
+(`BaseShapeBuilder.gameplay_anchors(spec, entrances)`), the sockets the level/puzzle layer consumes:
+
+- **`weak_points`** — structural weaknesses (deterministic, on the structure): a consumer may make
+  one crumble when struck — a scheduled collapse that kills/blocks what's beneath and leaves rubble
+  (bay D is the live reference implementation).
+- **`connectors`** — road sockets at every entrance threshold (main flagged) and bridge sockets at
+  tier-ledge rims / flat-roof parapets: where the level's roads and bridges ATTACH to a building, so
+  generation can route circulation through architecture instead of around it.
+- **`balcony_slots`** — content points around tier ledges: the level assigns flora, lures, rest
+  spots, set-piece controls — a balcony is a shelf the puzzle layer stocks.
+
+The architecture showcase renders every socket as a small emissive gem (red = weak, green = road,
+cyan = bridge, amber = balcony) so anchors are inspectable while iterating.

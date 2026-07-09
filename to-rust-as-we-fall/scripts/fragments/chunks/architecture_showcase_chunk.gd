@@ -60,9 +60,43 @@ func _build_chunk() -> void:
 		_add_lattice(root, spec, ent.get("reserved", []))
 		_add_ledge_treatments(root, spec)
 		_add_entrance_meshes(root, spec, ent)
+		_add_anchor_markers(root, BaseShape.gameplay_anchors(spec, ent))
 		_specimens.append({"building": kind, "shape": str(spec.get("shape", "")),
 			"lattice": str(spec.get("lattice", "")), "verts": verts})
 		_turntables.append(root)
+
+## GAMEPLAY-ANCHOR markers (the architecture->puzzle sockets, BaseShapeBuilder.gameplay_anchors):
+## small emissive gems so the sockets are inspectable in the gallery — dark red = structural WEAK
+## point, green = ROAD connector, cyan = BRIDGE connector, amber = BALCONY slot.
+func _add_anchor_markers(root: Node3D, anchors: Dictionary) -> void:
+	var sets := [
+		{"list": anchors.get("weak_points", []), "col": Color(0.85, 0.15, 0.1), "r": 0.11},
+		{"list": anchors.get("connectors", []), "col": Color(0.2, 0.9, 0.4), "r": 0.09},
+		{"list": anchors.get("balcony_slots", []), "col": Color(1.0, 0.75, 0.2), "r": 0.08},
+	]
+	for sd in sets:
+		var s := sd as Dictionary
+		for a in (s["list"] as Array):
+			var ad := a as Dictionary
+			var col := s["col"] as Color
+			if str(ad.get("kind", "")) == "bridge":
+				col = Color(0.2, 0.8, 0.95)
+			var gem := MeshInstance3D.new()
+			gem.name = "Anchor"
+			var sm := SphereMesh.new()
+			sm.radius = float(s["r"])
+			sm.height = float(s["r"]) * 2.0
+			gem.mesh = sm
+			var m := StandardMaterial3D.new()
+			m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			m.albedo_color = col
+			m.emission_enabled = true
+			m.emission = col
+			m.emission_energy_multiplier = 0.8
+			gem.material_override = m
+			gem.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			gem.position = ad["pos"] as Vector3
+			root.add_child(gem)
 
 ## STEP 3: place the precomputed entrance meshes (main + distributed side/enforcement doors) + a
 ## readable nameplate over the MAIN (front) door.

@@ -3786,6 +3786,31 @@ func _test_architecture_showcase() -> void:
 				vink += 1
 	_assert_true(vink > 20, "the far-LOD bake actually draws the web (got %d ink samples)" % vink)
 
+	# --- GAMEPLAY ANCHORS: the architecture->puzzle contract (weak points / connectors / balconies) ---
+	var ga_h: Dictionary = Base.gameplay_anchors(honey, Lat.entrances(honey))
+	var wp := ga_h["weak_points"] as Array
+	_assert_true(wp.size() >= 2 and wp.size() <= 5, "a building exposes a few structural WEAK points")
+	var hb: AABB = (Base.base_mesh(honey) as ArrayMesh).get_aabb().grow(1.0)
+	var wp_on := true
+	for wpe in wp:
+		if not hb.has_point((wpe as Dictionary)["pos"] as Vector3):
+			wp_on = false
+	_assert_true(wp_on, "every weak point sits ON the building")
+	var roads := 0
+	for ce in (ga_h["connectors"] as Array):
+		if str((ce as Dictionary)["kind"]) == "road":
+			roads += 1
+	_assert_true(roads >= 1, "each entrance threshold is a ROAD connector")
+	var ga_t: Dictionary = Base.gameplay_anchors(Base.generate("tiered_hall"), {})
+	_assert_true((ga_t["balcony_slots"] as Array).size() >= 3, "tier ledges expose BALCONY content slots")
+	var bridges := 0
+	for ce2 in (ga_t["connectors"] as Array):
+		if str((ce2 as Dictionary)["kind"]) == "bridge":
+			bridges += 1
+	_assert_true(bridges >= 4, "tier ledges expose BRIDGE connectors")
+	_assert_equals(str(Base.gameplay_anchors(honey, Lat.entrances(honey))), str(ga_h),
+		"gameplay anchors are deterministic")
+
 	# --- ledge treatments: a tiered "cake" decorates its flat rings; a flat base leaves them bare ---
 	var Ledge = load("res://scripts/generation/ledge_builder.gd")
 	var tiered: Dictionary = Base.generate("tiered_hall")
@@ -18311,6 +18336,20 @@ func _test_set_piece_showcase() -> void:
 	_assert_equals(int(st_high.get("water_level", -1)), 2, "The next cycle commits HIGH")
 	_assert_true(not bool(st_high.get("pen_alive", true)), "At HIGH the penned enemy DROWNS")
 	_assert_true(not gs.grid.is_walkable(22, 9), "Above MID the floats misalign — the bridge re-closes")
+
+	# D) the STRUCTURAL WEAKNESS (the building->puzzle hook): pry the strut -> the generated facade
+	# crumbles on a scheduled beat -> the debris kills the lurker beneath AND fills the trench open
+	var st_d0: Dictionary = chunk.get_preview_state()
+	_assert_true(bool(st_d0.get("slab_intact", false)) and bool(st_d0.get("slab_enemy_alive", false)),
+		"The weak slab starts intact with a lurker roaming beneath")
+	_assert_true(not gs.grid.is_walkable(25, 3), "The trench starts impassable")
+	chunk.find_child("LooseStrut", true, false)._trigger()
+	inst.headless_advance(2.0, 0.1)
+	var st_d: Dictionary = chunk.get_preview_state()
+	_assert_true(not bool(st_d.get("slab_intact", true)), "Prying the strut crumbles the facade")
+	_assert_true(not bool(st_d.get("slab_enemy_alive", true)), "The debris field kills the lurker beneath")
+	_assert_true(gs.grid.is_walkable(25, 3) and gs.grid.is_walkable(26, 3),
+		"The rubble fills the trench — the shortcut opens from the same strike")
 
 	# reaching the exit pad completes the tour
 	inst.headless_set_character_position("peris", anchors["exit"] as Vector3)
