@@ -3618,6 +3618,27 @@ func _test_architecture_showcase() -> void:
 	_assert_true(tb.position.y >= -0.05 and tb.position.y + tb.size.y <= float(beacon["height_total"]) + 0.05,
 		"tracery spans the drum height, grounded")
 
+	# --- rib_junction (algorithm 3): the clean no-sausage rib merge — a 5-arm hub in the XZ plane
+	# (bulge +Y) is non-empty, stays LOCAL to the centre, and sits on the surface plane (base y>=0) ---
+	var jst := SurfaceTool.new()
+	jst.begin(Mesh.PRIMITIVE_TRIANGLES)
+	Lat.rib_junction(jst, Vector3.ZERO, Vector3(1, 0, 0), Vector3(0, 0, -1),
+		[Vector3(1, 0, 0), Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 0, -1), Vector3(0.7, 0, 0.7)], 0.12)
+	jst.generate_normals()
+	var jm: ArrayMesh = jst.commit()
+	_assert_true(jm != null and jm.get_surface_count() > 0 and jm.surface_get_array_len(0) > 30,
+		"rib_junction builds a non-empty merged hub")
+	var jb: AABB = jm.get_aabb()
+	_assert_true(jb.size.length() < 3.0 and jb.position.y >= -0.01,
+		"rib_junction stays local to the crossing + on the surface plane (bulges up)")
+	var jst2 := SurfaceTool.new()
+	jst2.begin(Mesh.PRIMITIVE_TRIANGLES)
+	Lat.rib_junction(jst2, Vector3.ZERO, Vector3(1, 0, 0), Vector3(0, 0, -1),
+		[Vector3(1, 0, 0), Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 0, -1), Vector3(0.7, 0, 0.7)], 0.12)
+	jst2.generate_normals()
+	_assert_equals(jm.surface_get_array_len(0), (jst2.commit() as ArrayMesh).surface_get_array_len(0),
+		"rib_junction is deterministic")
+
 	# --- pipes: SeededRng edge-descent tubes on a shape; non-empty + deterministic per seed ---
 	var pm = Lat.pipes(honey, 7)
 	_assert_true(pm != null and (pm as ArrayMesh).get_surface_count() > 0 and (pm as ArrayMesh).surface_get_array_len(0) > 30,

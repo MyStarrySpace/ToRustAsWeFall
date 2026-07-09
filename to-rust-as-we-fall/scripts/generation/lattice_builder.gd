@@ -602,6 +602,110 @@ static func _sweep_rib(path2d: PackedVector2Array, r: float, p: Dictionary, st: 
 		cols.append(col)
 	_sweep_tube(pts3, float(p["rib_radius"]), int(p["rib_sides"]), cols, st)
 
+# ============================================================================================
+# RIB JUNCTION (algorithm 3) — the clean, no-sausage, no-SDF way to FUSE crossing ribs. Given a
+# junction CENTRE, an in-plane frame (u,v) (n = u x v is the half-round bulge direction, e.g. the
+# surface normal), and the arm DIRECTIONS meeting there, it: intersects the arm EDGES (centreline
+# +/- radius) at the junction CORNERS, forms the merged footprint boundary, and lofts it to a
+# half-round ridge -> one watertight hub. Route each detected rib-path crossing through this instead of
+# overlapping two _sweep_tube()s (which sausage) or fielding an SDF (which is heavy). Appends to `st`.
+# `arm_len` is how far the hub reaches before the straight rib takes over (sweep the rib up to here).
+static func rib_junction(st: SurfaceTool, center: Vector3, u_in: Vector3, v_in: Vector3, arm_dirs: Array, radius: float, arm_len: float = 0.0) -> void:
+	var u := u_in.normalized()
+	var v := v_in.normalized()
+	var nrm := u.cross(v).normalized()
+	var reach := arm_len if arm_len > 0.0 else radius * 2.4
+	var arms: Array = []
+	for d3 in arm_dirs:
+		var a2 := Vector2((d3 as Vector3).dot(u), (d3 as Vector3).dot(v))
+		if a2.length() < 1.0e-6:
+			continue
+		a2 = a2.normalized()
+		arms.append({"d": a2, "p": Vector2(-a2.y, a2.x), "ang": atan2(a2.y, a2.x)})
+	arms.sort_custom(func(x, y): return float(x["ang"]) < float(y["ang"]))
+	var n := arms.size()
+	if n < 2:
+		return
+	# corner[i] = arm i's LEFT edge ∩ arm (i+1)'s RIGHT edge (in the (u,v) plane)
+	var corner: Array = []
+	for i in range(n):
+		var ai: Dictionary = arms[i]
+		var aj: Dictionary = arms[(i + 1) % n]
+		corner.append(_isect2((ai["p"] as Vector2) * radius, ai["d"], (aj["p"] as Vector2) * -radius, aj["d"]))
+	# merged footprint boundary loop (per arm: far-right, far-left, corner-to-next)
+	var loop: Array = []
+	for i in range(n):
+		var ai: Dictionary = arms[i]
+		var e := (ai["d"] as Vector2) * reach
+		var pr := (ai["p"] as Vector2) * radius
+		loop.append(e - pr)
+		loop.append(e + pr)
+		loop.append(corner[i] as Vector2)
+	var m := loop.size()
+	var cen := _centroid2(loop)
+	# loft quarter-circle layers (inset + raise) -> half-round ridge; map (u,v)+n back to 3D
+	var layers := 4
+	var pts: Array = []
+	var ys: Array = []
+	for k in range(layers + 1):
+		var a := (float(k) / float(layers)) * PI * 0.5
+		pts.append(_inset2(loop, radius * (1.0 - cos(a)) * 0.94, cen))
+		ys.append(radius * sin(a))
+	for k in range(layers):
+		var p0: Array = pts[k]
+		var p1: Array = pts[k + 1]
+		for i in range(m):
+			var j := (i + 1) % m
+			var a0 := _map2(center, u, v, nrm, p0[i], ys[k])
+			var b0 := _map2(center, u, v, nrm, p0[j], ys[k])
+			var a1 := _map2(center, u, v, nrm, p1[i], ys[k + 1])
+			var b1 := _map2(center, u, v, nrm, p1[j], ys[k + 1])
+			_tri(st, a0, b0, b1)
+			_tri(st, a0, b1, a1)
+	var top: Array = pts[layers]
+	var tc := _map2(center, u, v, nrm, _centroid2(top), float(ys[layers]))
+	var base: Array = pts[0]
+	var bc := _map2(center, u, v, nrm, _centroid2(base), 0.0)
+	for i in range(m):
+		var j := (i + 1) % m
+		_tri(st, tc, _map2(center, u, v, nrm, top[i], float(ys[layers])), _map2(center, u, v, nrm, top[j], float(ys[layers])))
+		_tri(st, bc, _map2(center, u, v, nrm, base[j], 0.0), _map2(center, u, v, nrm, base[i], 0.0))
+
+static func _map2(center: Vector3, u: Vector3, v: Vector3, nrm: Vector3, p: Vector2, y: float) -> Vector3:
+	return center + u * p.x + v * p.y + nrm * y
+
+static func _isect2(p1: Vector2, d1: Vector2, p2: Vector2, d2: Vector2) -> Vector2:
+	var den := d1.x * d2.y - d1.y * d2.x
+	if absf(den) < 1.0e-6:
+		return p1
+	var t := ((p2.x - p1.x) * d2.y - (p2.y - p1.y) * d2.x) / den
+	return p1 + d1 * t
+
+static func _centroid2(pts: Array) -> Vector2:
+	var s := Vector2.ZERO
+	for pt in pts:
+		s += pt as Vector2
+	return s / float(maxi(1, pts.size()))
+
+# Inset a CCW polygon inward by `delta` (each edge along its inward normal; new verts = adjacent
+# inset-edge intersections). Inward chosen per edge toward the centroid.
+static func _inset2(loop: Array, delta: float, centroid: Vector2) -> Array:
+	var m := loop.size()
+	var out: Array = []
+	for i in range(m):
+		var a: Vector2 = loop[(i - 1 + m) % m]
+		var b: Vector2 = loop[i]
+		var c: Vector2 = loop[(i + 1) % m]
+		out.append(_isect2(a + _inward2(a, b, centroid) * delta, b - a, b + _inward2(b, c, centroid) * delta, c - b))
+	return out
+
+static func _inward2(a: Vector2, b: Vector2, centroid: Vector2) -> Vector2:
+	var e := b - a
+	var nrm := Vector2(-e.y, e.x).normalized()
+	if nrm.dot(centroid - (a + b) * 0.5) < 0.0:
+		nrm = -nrm
+	return nrm
+
 # A subdivided straight segment (so a rib hugs the drum curvature instead of chording across facets).
 static func _line2(a: Vector2, b: Vector2, seg: int) -> PackedVector2Array:
 	var out := PackedVector2Array()
