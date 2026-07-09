@@ -3669,6 +3669,25 @@ func _test_architecture_showcase() -> void:
 		(Lat.entrances(honey).get("stone") as ArrayMesh).surface_get_array_len(0), "entrances are deterministic")
 	_assert_true((Lat.entrances(beacon).get("stone") as ArrayMesh).get_surface_count() > 0, "entrances also build on a drum")
 
+	# --- ledge treatments: a tiered "cake" decorates its flat rings; a flat base leaves them bare ---
+	var Ledge = load("res://scripts/generation/ledge_builder.gd")
+	var tiered: Dictionary = Base.generate("tiered_hall")
+	_assert_equals(Base.tier_ledges(tiered).size(), int(tiered.get("tiers", 1)) - 1,
+		"a 3-tier cake exposes 2 ledge rings")
+	var lb: Dictionary = Ledge.build(tiered)
+	_assert_true(lb.has("rails") and lb.has("planters") and lb.has("greenery")
+		and (lb["rails"] as ArrayMesh).surface_get_array_len(0) > 0
+		and (lb["planters"] as ArrayMesh).surface_get_array_len(0) > 0
+		and (lb["greenery"] as ArrayMesh).surface_get_array_len(0) > 0,
+		"ledge treatments build railings + planters + greenery on a tiered base")
+	# flat-ledged support: a single-tier base has no ledges, and a tiered base with no treatments is bare
+	_assert_true(Base.tier_ledges(beacon).is_empty() and Ledge.build(beacon).is_empty(),
+		"a flat (single-tier) base has no ledges to treat")
+	var bare_tiered: Dictionary = tiered.duplicate()
+	bare_tiered["ledge_treatments"] = []
+	_assert_true(Ledge.build(bare_tiered).is_empty(),
+		"a tiered base with an empty treatment list is flat-ledged (bare rings)")
+
 	# --- registry: the showcase is a walkable preview entry that boots with perception overlays OFF ---
 	var found := false
 	var arch_overlays := {}

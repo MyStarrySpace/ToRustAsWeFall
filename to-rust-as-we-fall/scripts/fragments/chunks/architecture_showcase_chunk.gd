@@ -10,6 +10,7 @@ extends "res://scripts/fragments/chunks/data_fragment_chunk.gd"
 
 const BaseShape := preload("res://scripts/generation/base_shape_builder.gd")
 const Lattice := preload("res://scripts/generation/lattice_builder.gd")
+const Ledge := preload("res://scripts/generation/ledge_builder.gd")
 
 const SPACING := 7.0
 const GROUND_TILE := "facility_metal"
@@ -57,6 +58,7 @@ func _build_chunk() -> void:
 			root.add_child(mi)
 			verts = body.surface_get_array_len(0)
 		_add_lattice(root, spec, ent.get("reserved", []))
+		_add_ledge_treatments(root, spec)
 		_add_entrance_meshes(root, spec, ent)
 		_specimens.append({"building": kind, "shape": str(spec.get("shape", "")),
 			"lattice": str(spec.get("lattice", "")), "verts": verts})
@@ -114,6 +116,49 @@ func _add_tracery(root: Node3D, spec: Dictionary, reserved: Array) -> void:
 		else Lattice.tracery(float(spec.get("radius", 2.4)), float(spec.get("height", 7.2)), {"reserved": reserved})
 	_add_lattice_mesh(root, "TraceryRibs", built.get("frame"), _tinted_tile_material("facility_metal", Color(0.74, 0.70, 0.57)))
 	_add_lattice_mesh(root, "TraceryGlass", built.get("glass"), _window_material(3.6))
+
+## STEP 3: decorate the flat ledge rings of a tiered "cake" base. `ledge_treatments` on the spec picks
+## railings (algorithm-4 cards) / planters / greenery; an empty list leaves the ledges FLAT (bare).
+func _add_ledge_treatments(root: Node3D, spec: Dictionary) -> void:
+	var built: Dictionary = Ledge.build(spec)
+	if built.is_empty():
+		return
+	_add_lattice_mesh(root, "LedgeRails", built.get("rails"), _railing_material())
+	var planter := StandardMaterial3D.new()
+	planter.albedo_color = Color(0.30, 0.22, 0.17)          # terracotta / dark planter box
+	planter.roughness = 0.95
+	_add_lattice_mesh(root, "LedgePlanters", built.get("planters"), planter)
+	var foliage := StandardMaterial3D.new()
+	foliage.albedo_color = Color(0.24, 0.42, 0.20)          # canopy green
+	foliage.roughness = 0.9
+	_add_lattice_mesh(root, "LedgeGreenery", built.get("greenery"), foliage)
+
+## The pixel-art railing tile (alpha-scissor) — one post + top & bottom rails, the rest transparent;
+## tiled across a card it reads as evenly-spaced balusters. FILTER_NEAREST keeps it crisp.
+func _railing_material() -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = _railing_texture()
+	m.albedo_color = Color(0.86, 0.82, 0.70)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	m.alpha_scissor_threshold = 0.5
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	m.roughness = 0.85
+	return m
+
+func _railing_texture() -> ImageTexture:
+	var tw := 12
+	var th := 24
+	var img := Image.create(tw, th, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0.0, 0.0, 0.0, 0.0))
+	var bar := Color(0.90, 0.86, 0.72, 1.0)
+	for x in range(tw):
+		img.set_pixel(x, 0, bar); img.set_pixel(x, 1, bar); img.set_pixel(x, 2, bar)
+		img.set_pixel(x, th - 3, bar); img.set_pixel(x, th - 2, bar); img.set_pixel(x, th - 1, bar)
+	for x in range(1, 4):
+		for y in range(3, th - 3):
+			img.set_pixel(x, y, bar)
+	return ImageTexture.create_from_image(img)
 
 func _add_pipes(root: Node3D, spec: Dictionary) -> void:
 	var pipe_seed := int(str(spec.get("kind", "")).hash())

@@ -122,7 +122,8 @@ const SPECS := {
 		"tiers": 3, "tier_inset": 0.16,
 		"color": Color(0.56, 0.51, 0.43),
 		"tile": "facility_metal",
-		"lattice": "tracery",               # runs PER vertical drum band; ledge treatments come next
+		"lattice": "tracery",               # runs PER vertical drum band
+		"ledge_treatments": ["railings", "planters"],   # flat rings get an edge rail + planter boxes
 	},
 }
 
