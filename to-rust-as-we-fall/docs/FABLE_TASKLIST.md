@@ -125,9 +125,10 @@ tubes. On the PPP + Honeycomb.
 - **Wall drip decals** — rust stains running onto the WALL below a pipe (a projected/decal pass, not
   the pipe mesh itself).
 
-**DONE in Godot (was wrongly deferred):** varied per-pipe gauge + mixed-gauge BUNDLES · edge-hugging
-runs · catenary sag · banded couplings · wall standoff brackets · rust/verdigris patina (per-ring
-vertex colour).
+**DONE in Godot (was wrongly deferred):** varied per-pipe gauge · a MIX of single + bundled runs
+(`single_frac` — not every run is a double) · edge-hugging runs · catenary sag · banded couplings ·
+wall standoff brackets · rust/verdigris patina (per-ring vertex colour). Sausage junctions at pipe
+couplings should route through the **Organic merge** like the tracery ribs.
 
 ## Lattice 3 — tracery (Beacon Hill)  → armature built (Opus); needs the organic merge (Fable)
 **Design:** mullioned **glass curtain behind + stone tracery ribs in front** (two layers), on a
@@ -154,6 +155,46 @@ taper, the root-splay, and the interlacing are missing. **Fable:**
 - Add the **bell/beehive taper** (wrap the ribs flush onto a varying radius) and the **root splay** at
   the base; **step** the flanking vesicas down/out; interlace the ribs where the plate does.
 - Per-pane window light + the seed plumbing are already Opus's (keep).
+
+---
+
+## Districts — bases established (Opus); lattices + complex massing for Fable
+All 10 districts now exist in the showcase (`BaseShapeBuilder.BUILDINGS`) with a base primitive, so
+Fable starts from a standing set, not a blank. Per district — what's built vs what's Fable's:
+
+### The Open Files Initiative — base BUILT (composite)
+**Shape (director's spec):** rectangular prisms combined with other rectangular prisms, each capped by
+a TRIANGULAR prism that is an EQUILATERAL triangle, the slope connecting one prism up to the next. Opus
+built this (`_open_files_mesh`) as a radial ring of tall rect-prism FINS around a core, each gabled
+with an equilateral triangular prism, stepped in height (the jagged server-rack crown).
+**Lattice (director's spec) → Fable:** like the pipes, but instead of pipes down the edges, take the
+FACES and EXTRUDE them out by a [PARAMETER] depth — the recessed server-rack CHANNELS between the fins
+(+ the emissive rack LEDs). Route junctions through the Organic merge.
+
+### Greenfields Collective — base BUILT (box placeholder); BALCONY lattice → Fable
+**Shape:** a rounded barrel block (~4 storeys); Opus placed a plain box, the rounded corners are Fable.
+**Balcony lattice (director's spec) → Fable** — wrapping balconies constructed from the edges:
+1. Mark every OTHER vertex.
+2. Subdivide them horizontally, then push the two edges NEAREST the marked vertex OUT away from the
+   building (along the building's normal).
+3. Find the CENTRE of those two extruded edges, move back slightly, then drop DOWN to the lower balcony
+   — that's the beam START point.
+4. Build the BEAM up until a point set by the indicated curve [PARAMETER].
+5. Draw the CURVE from there to the balcony.
+6. Connect the balcony curves (the wrapping rail).
+Organic curved beamwork = the Organic-merge / SDF class. Fable owns it.
+
+### The others — base placeholders BUILT, real massing + lattice → Fable
+- **The Hypelines** — placeholder drum. Real: a STACKED-BULB (onion/blob) tower with a SPLIT base
+  (splayed feet) + radiating tube VIADUCTS. Blob-stack + split base = the merged/SDF massing class.
+- **Ancourage** — placeholder squat drum. Real: a low DOME cap + heavy pipe DRAINAGE splaying from the
+  base (ties into the Plumbing mains) + vent stacks.
+- **Bulwark Wharf** — placeholder box gatehouse. Real: corner TURRETS, ROSE (circular tracery) windows,
+  and the huge draped membrane BARRIER wall flanking it.
+- **The Cleanstreets Initiative** — placeholder wide low box. Real: an open CANOPY roof on splayed
+  tree/mushroom COLUMNS (a horizontal pavilion), baffles + deterrent spikes below.
+- **Zone-3 Eroded Ruin** — placeholder faceted box. Real: the amyloid-DRIP decay melt (Organic-merge
+  class) over a faceted 2–3 storey block + a lower porch.
 
 ---
 
@@ -196,8 +237,7 @@ taper, the root-splay, and the interlacing are missing. **Fable:**
   roundel clerestory (both DONE in Godot). Still Fable-grade: cupolas, finials, awnings, and the PPP's
   onion dome + lantern (curved/organic roof forms), plus per-district signage (the entrances/signs
   pipeline steps).
-- **The other 8 districts** — only PPP + Honeycomb exist. Open Files, Hypelines, Greenfields,
-  Ancourage, Beacon Hill, Bulwark Wharf, Cleanstreets, Zone-3 still need base + lattice (decomposition
-  recipes for several are in the `hero_building_showcase` memory / earlier decomposition JSON).
-- **LOD / impostor** — showcase heroes are heavy (honeyframe alone ~28k verts). Real district use needs
-  a near/far LOD or impostor pass before these ship into a walkable level.
+- **All 10 districts now have a base** (see the Districts section above) — Fable owns their lattices +
+  the complex massing flagged there, no longer the base primitives.
+- **LOD / impostor** — showcase heroes are heavy (honeyframe ~28k verts; the SDF-fused tracery ~137k).
+  Real district use needs a near/far LOD or impostor pass before these ship into a walkable level.
