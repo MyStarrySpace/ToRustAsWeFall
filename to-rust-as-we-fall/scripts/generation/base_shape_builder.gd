@@ -65,7 +65,7 @@ const SPECS := {
 		"size": Vector3(5.6, 9.0, 5.6),
 		"color": Color(0.31, 0.35, 0.37),   # dark steel-blue with rust + teal server glow
 		"tile": "facility_metal",
-		"lattice": "extruded_fins",         # server-rack channels = extrude the fin faces by a depth
+		"lattice": "",                      # lattice deferred — see FABLE_TASKLIST (extruded-face channels)
 	},
 	"hypelines": {
 		"title": "The Hypelines",
@@ -154,31 +154,50 @@ static func _composite(spec: Dictionary) -> ArrayMesh:
 		_:
 			return _box(spec.get("size", Vector3(4.0, 6.0, 4.0)))
 
-## The Open Files massing: a radial ring of tall rectangular-prism FINS around a core, each fin capped
-## by an equilateral triangular-prism GABLE, at STEPPED heights (the jagged server-rack crown). One fin
-## reaches the full spec height so the AABB is exactly [0, size.y]. Deterministic (hash-stepped heights).
+## The Open Files massing: a SOLID faceted tower (an n-gon core prism) skinned with tall buttress FINS
+## on every facet, each fin capped by an equilateral triangular-prism GABLE, at STEPPED heights — the
+## jagged server-rack crown. The fins pack the perimeter so it reads as one solid tower (small channels
+## between them are the future rack lattice). One fin reaches the full spec height so the AABB is
+## exactly [0, size.y]. Deterministic (hash-stepped heights); all faces wound OUTWARD (no culling holes).
 static func _open_files_mesh(size: Vector3) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var n := 10
-	var ring := maxf(0.6, size.x * 0.5 - 0.9)   # fins sit inside the footprint
-	var fin_w := 0.55                            # tangential half-width
-	var fin_d := 0.45                            # radial half-depth
+	var n := 9
+	var core_r := size.x * 0.5 * 0.66            # solid faceted core radius (to a facet mid)
+	var core_top := size.y * 0.46                # the core is solid up to here; fins rise past it
+	var fin_w := 0.46                            # tangential half-width (fins nearly touch -> solid read)
+	var fin_d := 0.42                            # radial half-depth (how far the fin stands proud)
 	var gable_h := fin_w * sqrt(3.0)             # equilateral triangle over the 2*fin_w base
-	var top_fin := size.y - gable_h              # a fin whose gable apex touches size.y
-	var core_h := size.y * 0.42
-	_emit_box_st(st, Vector3(0, core_h * 0.5, 0), Vector3(ring * 0.8, core_h * 0.5, ring * 0.8))
+	var top_fin := size.y - gable_h              # the tall fin whose gable apex touches size.y
+	_emit_ngon_prism(st, n, core_r, core_top)
 	for i in range(n):
-		var a := TAU * float(i) / float(n)
-		var dir := Vector3(cos(a), 0.0, sin(a))          # radial (fin depth + outward normal)
+		var a := TAU * (float(i) + 0.5) / float(n)
+		var dir := Vector3(cos(a), 0.0, sin(a))          # radial (fin depth + outward)
 		var tang := Vector3(-sin(a), 0.0, cos(a))        # tangential (fin width)
-		var frac := 0.55 + 0.45 * _h01(float(i) * 2.7)
-		var h := top_fin if i == 0 else top_fin * frac
-		var c := dir * ring
+		var frac := 0.5 + 0.5 * _h01(float(i) * 2.7)
+		var h := top_fin if i == 0 else lerpf(core_top + 0.5, top_fin, frac)
+		var c := dir * (core_r * 0.98)                   # fin base hugs the core, standing proud
 		_emit_oriented_box_st(st, Vector3(c.x, h * 0.5, c.z), tang, Vector3.UP, dir, Vector3(fin_w, h * 0.5, fin_d))
 		_emit_gable_st(st, Vector3(c.x, h, c.z), tang, dir, fin_w, fin_d, gable_h)
 	st.generate_normals()
 	return st.commit()
+
+# A solid convex n-gon prism (base on y=0, top at `h`), every face wound OUTWARD via _tri_out.
+static func _emit_ngon_prism(st: SurfaceTool, n: int, r: float, h: float) -> void:
+	var mid := Vector3(0, h * 0.5, 0)
+	var ct := Vector3(0, h, 0)
+	var cb := Vector3.ZERO
+	for i in range(n):
+		var a0 := TAU * float(i) / float(n)
+		var a1 := TAU * float(i + 1) / float(n)
+		var t0 := Vector3(r * cos(a0), h, r * sin(a0))
+		var t1 := Vector3(r * cos(a1), h, r * sin(a1))
+		var b0 := Vector3(r * cos(a0), 0.0, r * sin(a0))
+		var b1 := Vector3(r * cos(a1), 0.0, r * sin(a1))
+		_tri_out(st, ct, t0, t1, mid)              # top fan
+		_tri_out(st, cb, b0, b1, mid)              # bottom fan
+		_tri_out(st, b0, b1, t1, mid)              # side quad
+		_tri_out(st, b0, t1, t0, mid)
 
 # An equilateral triangular prism (gable) sitting at `base_center`: base 2*fin_w along `tang`, apex
 # `gable_h` up, extruded ±fin_d along `radial`. Closed (two end triangles + two slopes + base).
@@ -212,6 +231,14 @@ static func _emit_oriented_box_st(st: SurfaceTool, center: Vector3, u: Vector3, 
 
 static func _tri_st(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
 	st.add_vertex(a); st.add_vertex(b); st.add_vertex(c)
+
+# Emit a triangle wound so its front face points AWAY from `center` (outward for a convex solid), so it
+# never culls when viewed from outside — no matter what order the caller passed the corners.
+static func _tri_out(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, center: Vector3) -> void:
+	if (b - a).cross(c - a).dot((a + b + c) / 3.0 - center) >= 0.0:
+		st.add_vertex(a); st.add_vertex(b); st.add_vertex(c)
+	else:
+		st.add_vertex(a); st.add_vertex(c); st.add_vertex(b)
 
 static func _h01(nv: float) -> float:
 	return fmod(absf(sin(nv * 127.13) * 43758.5453), 1.0)
