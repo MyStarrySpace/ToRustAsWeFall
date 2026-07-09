@@ -14,7 +14,10 @@ func _init() -> void:
 	var scene: Node = load("res://scenes/fragments/fragment_preview.tscn").instantiate()
 	scene.set("preview_menu", false)
 	scene.set("preview_chunk", chunk_id)
-	scene.set("preview_chunk_config", {"seed": seed_val})
+	var cfg := {"seed": seed_val}
+	if OS.get_environment("ALGO") != "":
+		cfg["algorithm"] = int(OS.get_environment("ALGO"))
+	scene.set("preview_chunk_config", cfg)
 	get_root().add_child(scene)
 	for _i in range(150):
 		await process_frame

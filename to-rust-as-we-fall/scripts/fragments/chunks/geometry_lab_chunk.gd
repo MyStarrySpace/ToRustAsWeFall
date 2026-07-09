@@ -15,21 +15,26 @@ extends "res://scripts/fragments/chunks/data_fragment_chunk.gd"
 ##   7. Faces ABFE (sloped roof) + AEC, BFD (gable sides).
 ##   8. Drop E, F straight down to the base -> G, H. Faces CEGI, DFHJ (side walls) + EFHG (front skirt).
 
-const BOX := Vector3(3.0, 4.0, 3.0)   # w(x) x h(y) x l(z)
+const BOX := Vector3(3.0, 4.0, 3.0)    # algorithm 1 prism: w(x) x h(y) x l(z)
+const BOX2 := Vector3(4.0, 6.0, 4.0)   # algorithm 2 (recursive) prism — larger, all sides
 const STEP := 1.0
+const RECURSE_DEPTH := 3               # algorithm 2: how many nested awning levels
 
 var _turntable: Node3D
 var _angle_deg := 45.0
+var _algorithm := 1
 
 func configure_chunk(config: Dictionary) -> void:
 	if config.has("angle"):
 		_angle_deg = float(config["angle"])
+	if config.has("algorithm"):
+		_algorithm = int(config["algorithm"])
 
 func is_generation_preview() -> bool:
 	return true
 
 func get_scene_title() -> String:
-	return "Geometry Lab — awning construction"
+	return "Geometry Lab — awning construction (algo %d)" % _algorithm
 
 func _build_chunk() -> void:
 	fragment = _lab_fragment()
@@ -37,38 +42,47 @@ func _build_chunk() -> void:
 	_turntable = Node3D.new()
 	_turntable.name = "Construction"
 	add_child(_turntable)
-	_build_subdivided_box(_turntable)
-	_build_awning(_turntable)
+	if _algorithm == 2:
+		# ALGORITHM 2: a larger prism; an awning on ALL FOUR sides, then recurse each side by drawing a
+		# fresh awning off its EFHG skirt (out + down) -> a blocky, stepped, flared mass.
+		_build_prism(_turntable, BOX2, false)
+		_build_recursive(_turntable, BOX2)
+	else:
+		# ALGORITHM 1: one awning on the front face, with the labeled construction points.
+		_build_prism(_turntable, BOX, true)
+		_build_awning(_turntable)
 
 func _process(delta: float) -> void:
 	if is_instance_valid(_turntable):
 		_turntable.rotate_y(delta * 0.2)
 
-# --- Step 1-2: the subdivided prism + the 1 m grid on the working (+Z) face. -----------------------
-func _build_subdivided_box(root: Node3D) -> void:
+# --- Step 1-2: the subdivided prism + (optional) the 1 m grid on the working (+Z) face. ------------
+func _build_prism(root: Node3D, size: Vector3, with_grid: bool) -> void:
 	var box := MeshInstance3D.new()
 	box.name = "Box"
 	var bm := BoxMesh.new()
-	bm.size = BOX
+	bm.size = size
 	box.mesh = bm
-	box.position = Vector3(0, BOX.y * 0.5, 0)
+	box.position = Vector3(0, size.y * 0.5, 0)
 	var bmat := StandardMaterial3D.new()
 	bmat.albedo_color = Color(0.60, 0.63, 0.68)
 	bmat.roughness = 0.9
 	box.material_override = bmat
 	root.add_child(box)
 
+	if not with_grid:
+		return
 	var gl := SurfaceTool.new()
 	gl.begin(Mesh.PRIMITIVE_LINES)
-	var zf := BOX.z * 0.5 + 0.01
-	var xl := -BOX.x * 0.5
-	var xr := BOX.x * 0.5
+	var zf := size.z * 0.5 + 0.01
+	var xl := -size.x * 0.5
+	var xr := size.x * 0.5
 	var x := xl
 	while x <= xr + 0.001:
-		gl.add_vertex(Vector3(x, 0.0, zf)); gl.add_vertex(Vector3(x, BOX.y, zf))
+		gl.add_vertex(Vector3(x, 0.0, zf)); gl.add_vertex(Vector3(x, size.y, zf))
 		x += STEP
 	var y := 0.0
-	while y <= BOX.y + 0.001:
+	while y <= size.y + 0.001:
 		gl.add_vertex(Vector3(xl, y, zf)); gl.add_vertex(Vector3(xr, y, zf))
 		y += STEP
 	var glm := MeshInstance3D.new()
@@ -122,6 +136,54 @@ func _build_awning(root: Node3D) -> void:
 	for pair in [["A", A], ["B", B], ["C", C], ["D", D], ["E", E], ["F", F], ["G", G], ["H", H], ["I", I], ["J", J]]:
 		_add_point(root, str(pair[0]), pair[1] as Vector3)
 
+# --- ALGORITHM 2: an awning on all four sides, each recursing off its EFHG skirt. -----------------
+func _build_recursive(root: Node3D, size: Vector3) -> void:
+	var proj := STEP / tan(deg_to_rad(clampf(_angle_deg, 5.0, 85.0)))
+	var hx := size.x * 0.5
+	var hz := size.z * 0.5
+	var yt := size.y
+	# each side: [A (top-left), B (top-right), outward normal]
+	var faces := [
+		[Vector3(-hx, yt, hz), Vector3(hx, yt, hz), Vector3(0, 0, 1)],
+		[Vector3(hx, yt, -hz), Vector3(-hx, yt, -hz), Vector3(0, 0, -1)],
+		[Vector3(hx, yt, hz), Vector3(hx, yt, -hz), Vector3(1, 0, 0)],
+		[Vector3(-hx, yt, -hz), Vector3(-hx, yt, hz), Vector3(-1, 0, 0)],
+	]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for f in faces:
+		_awning_rec(st, f[0] as Vector3, f[1] as Vector3, f[2] as Vector3, proj, RECURSE_DEPTH)
+	st.generate_normals()
+	var mi := MeshInstance3D.new()
+	mi.name = "RecursiveAwnings"
+	mi.mesh = st.commit()
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.80, 0.44, 0.28)
+	mat.roughness = 0.85
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mi.material_override = mat
+	root.add_child(mi)
+
+# One awning off a top edge A-B (outward normal n): roof ABFE, gables AEC/BFD, walls CEGI/DFHJ, and the
+# skirt EFHG down to the base. Then recurse off the skirt's top edge E-F (stepping out + down).
+func _awning_rec(st: SurfaceTool, a: Vector3, b: Vector3, n: Vector3, proj: float, depth: int) -> void:
+	var c := a - Vector3(0.0, STEP, 0.0)
+	var d := b - Vector3(0.0, STEP, 0.0)
+	var i := Vector3(a.x, 0.0, a.z)
+	var j := Vector3(b.x, 0.0, b.z)
+	var e := c + n * proj
+	var f := d + n * proj
+	var g := Vector3(e.x, 0.0, e.z)
+	var h := Vector3(f.x, 0.0, f.z)
+	_quad(st, a, b, f, e)   # sloped roof
+	_tri3(st, a, e, c)      # left gable
+	_tri3(st, b, f, d)      # right gable
+	_quad(st, c, e, g, i)   # left wall
+	_quad(st, d, f, h, j)   # right wall
+	_quad(st, e, f, h, g)   # front skirt
+	if depth > 0 and (e.y - STEP) > 0.01:
+		_awning_rec(st, e, f, n, proj, depth - 1)
+
 func _add_point(root: Node3D, letter: String, pos: Vector3) -> void:
 	var s := MeshInstance3D.new()
 	var sm := SphereMesh.new()
@@ -154,7 +216,7 @@ func _tri3(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
 
 func _lab_fragment() -> Fragment:
 	var frag := Fragment.new()
-	frag.id = "geometry_lab"
+	frag.id = "geometry_lab_%d" % _algorithm
 	frag.title = "Geometry Lab"
 	frag.help = "Minimal geometry-construction algorithms with labeled points. Walk around the turntable."
 	frag.default_character = "aster"

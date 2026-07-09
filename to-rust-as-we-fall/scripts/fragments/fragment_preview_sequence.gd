@@ -127,7 +127,10 @@ const PREVIEW_ENTRIES := [
 	# GEOMETRY LAB: minimal geometry-construction algorithms with labeled points (algorithm 1 = the
 	# awning/hood from a face rectangle). Overlays OFF (a look-dev workbench).
 	{"id": "geometry_lab", "chunk": "geometry_lab", "title": "Geometry Lab (minimal algorithms)", "stage": 6,
-		"config": {"angle": 45.0, "overlays": {"aster": false, "peris": false, "endo": false}}},
+		"config": {"algorithm": 1, "angle": 45.0, "overlays": {"aster": false, "peris": false, "endo": false}}},
+	# Same chunk, algorithm 2 = the RECURSIVE awning (all sides -> blocky stepped mass).
+	{"id": "geometry_lab_recursive", "chunk": "geometry_lab", "title": "Geometry Lab 2 (recursive awnings)", "stage": 6,
+		"config": {"algorithm": 2, "angle": 45.0, "overlays": {"aster": false, "peris": false, "endo": false}}},
 ]
 
 ## The menu entry for an id (or {} if none).
