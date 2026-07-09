@@ -130,7 +130,15 @@ tubes. On the PPP + Honeycomb.
 wall standoff brackets · rust/verdigris patina (per-ring vertex colour). Sausage junctions at pipe
 couplings should route through the **Organic merge** like the tracery ribs.
 
-## Lattice 3 — tracery (Beacon Hill)  → armature built (Opus); needs the organic merge (Fable)
+## Lattice 3 — tracery (Beacon Hill)  → DEFERRED TO FABLE (director, 2026-07-09)
+**Opus tried and it doesn't land — hand the whole tracery to Fable.** Opus built three attempts (SDF
+metaball fuse; then the algorithm-3 half-round junction merge which reads crisp at a front elevation
+but breaks up into disconnected shards at gameplay camera angles). None reads like the plate in-game.
+The current code (`LatticeBuilder.tracery`, `rib_merge:"junction"` default) is a PLACEHOLDER only —
+Fable should rebuild the tracery from the decomposition below, not patch the Opus armature. The
+entrances now RESERVE their bays (the tracery skips a bay per door via the `reserved` override), so
+Fable can assume clear door space. Keep the `reserved` param when rebuilding.
+
 **Design:** mullioned **glass curtain behind + stone tracery ribs in front** (two layers), on a
 **bell/beehive** tower (wide base, domed top) — one continuous flowing Art-Nouveau rib NETWORK.
 
