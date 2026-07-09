@@ -20,7 +20,7 @@ const SHAPE_COMPOSITE := "composite"   # a small assembly of primitives (e.g. th
 ## Ordered list the showcase walks. Add a building here as we bring each one in.
 const BUILDINGS := [
 	"plumbing_power", "honeycomb_cooperative", "beacon_hill", "open_files", "hypelines",
-	"greenfields", "ancourage", "bulwark_wharf", "cleanstreets", "zone3",
+	"greenfields", "ancourage", "bulwark_wharf", "cleanstreets", "zone3", "tiered_hall",
 ]
 
 ## Reference-derived proportions. Dimensions are metres; the base sits on y=0.
@@ -115,6 +115,15 @@ const SPECS := {
 		"tile": "facility_metal",
 		"lattice": "",
 	},
+	"tiered_hall": {
+		"title": "Tiered Hall",
+		"shape": SHAPE_CYLINDER,            # a "cake" that shrinks upward (tiers) -> exposed ledges
+		"radius": 2.6, "height": 9.0,
+		"tiers": 3, "tier_inset": 0.16,
+		"color": Color(0.56, 0.51, 0.43),
+		"tile": "facility_metal",
+		"lattice": "",                      # per-tier facade lattice + ledge treatments are the next steps
+	},
 }
 
 const CYL_SEGMENTS := 24   # drum facets — smooth enough that a wrapped lattice sits flush, still low-poly
@@ -141,16 +150,69 @@ static func generate(kind: String, _seed_value: int = 0) -> Dictionary:
 ## and framed by a recessed pocket, so the door parts don't z-fight a solid wall.
 static func base_mesh(spec: Dictionary, reserved: Array = []) -> ArrayMesh:
 	var recess := float(spec.get("door_recess", 0.5))
+	var tiers := maxi(1, int(spec.get("tiers", 1)))          # >1 = a stacked "cake" that shrinks upward
+	var inset := float(spec.get("tier_inset", 0.16))         # each tier's footprint fraction lost per level
 	match str(spec.get("shape", SHAPE_BOX)):
 		SHAPE_CYLINDER:
 			var r := float(spec.get("radius", 2.0))
 			var h := float(spec.get("height", 5.0))
+			if tiers > 1:
+				return _tiered_cylinder(r, h, tiers, inset, reserved, recess)
 			return _cylinder_with_doors(r, h, reserved, recess) if not reserved.is_empty() else _cylinder(r, h)
 		SHAPE_COMPOSITE:
 			return _composite(spec)
 		_:
 			var s: Vector3 = spec.get("size", Vector3(4.0, 6.0, 4.0))
+			if tiers > 1:
+				return _tiered_box(s, tiers, inset, reserved, recess)
 			return _box_with_doors(s, reserved, recess) if not reserved.is_empty() else _box(s)
+
+# A TIERED base ("cake"): stack `tiers` solid drums, each `inset` smaller than the one below, so each
+# lower tier's exposed top-cap ring reads as a ledge. Doors only on the bottom tier. One merged mesh.
+static func _tiered_cylinder(radius: float, height: float, tiers: int, inset: float, reserved: Array, recess: float) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var band := height / float(tiers)
+	for k in range(tiers):
+		var rk := maxf(0.4, radius * (1.0 - inset * float(k)))
+		var doors: Array = reserved if k == 0 else []
+		st.append_from(_cylinder_with_doors(rk, band, doors, recess), 0, Transform3D(Basis(), Vector3(0.0, float(k) * band, 0.0)))
+	return st.commit()
+
+static func _tiered_box(size: Vector3, tiers: int, inset: float, reserved: Array, recess: float) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var band := size.y / float(tiers)
+	for k in range(tiers):
+		var f := maxf(0.25, 1.0 - inset * float(k))
+		var doors: Array = reserved if k == 0 else []
+		st.append_from(_box_with_doors(Vector3(size.x * f, band, size.z * f), doors, recess), 0, Transform3D(Basis(), Vector3(0.0, float(k) * band, 0.0)))
+	return st.commit()
+
+## The exposed ledge rings of a tiered base: [{y, r_inner, r_outer}] per drum tier (cylinder) — where
+## a lattice/treatment sits on the flat tops. Empty for a flat (single-tier) base.
+static func tier_ledges(spec: Dictionary) -> Array:
+	var tiers := maxi(1, int(spec.get("tiers", 1)))
+	if tiers <= 1:
+		return []
+	var out: Array = []
+	if str(spec.get("shape", SHAPE_BOX)) == SHAPE_CYLINDER:
+		var radius := float(spec.get("radius", 2.0))
+		var band := float(spec.get("height", 5.0)) / float(tiers)
+		var inset := float(spec.get("tier_inset", 0.16))
+		for k in range(tiers - 1):
+			out.append({"cyl": true, "y": float(k + 1) * band,
+				"r_outer": maxf(0.4, radius * (1.0 - inset * float(k))),
+				"r_inner": maxf(0.4, radius * (1.0 - inset * float(k + 1)))})
+	else:
+		var s: Vector3 = spec.get("size", Vector3(4, 6, 4))
+		var band := s.y / float(tiers)
+		var inset := float(spec.get("tier_inset", 0.16))
+		for k in range(tiers - 1):
+			out.append({"cyl": false, "y": float(k + 1) * band,
+				"outer": Vector2(s.x, s.z) * maxf(0.25, 1.0 - inset * float(k)),
+				"inner": Vector2(s.x, s.z) * maxf(0.25, 1.0 - inset * float(k + 1))})
+	return out
 
 ## A small assembly of primitives baked into one ArrayMesh (base on y=0). Dispatched by "composite".
 static func _composite(spec: Dictionary) -> ArrayMesh:

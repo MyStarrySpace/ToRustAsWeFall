@@ -3565,9 +3565,14 @@ func _test_architecture_showcase() -> void:
 			continue
 		var am := mesh as ArrayMesh
 		var n := am.surface_get_array_len(0)
-		# composite bases (e.g. the Open Files fin cluster) are a small assembly, so a higher but still
-		# low-poly cap; a single box/cylinder stays tight.
-		var vcap := 2500 if str(spec.get("shape", "")) == "composite" else 400
+		# composite bases (e.g. the Open Files fin cluster) are a small assembly, and a tiered "cake"
+		# stacks one drum per tier, so both get a higher but still low-poly cap; a flat box/cylinder
+		# stays tight.
+		var vcap := 400
+		if str(spec.get("shape", "")) == "composite":
+			vcap = 2500
+		elif int(spec.get("tiers", 1)) > 1:
+			vcap = 400 * int(spec.get("tiers", 1))
 		if n < 20 or n > vcap:
 			all_ok = false
 			print("  [base] %s is not low-poly: %d verts" % [kind, n])
