@@ -1178,12 +1178,11 @@ static func _emit_door(stone: SurfaceTool, dark: SurfaceTool, acc: SurfaceTool, 
 	_emit_oriented_box(stone, a + u * (hw + jamb * 0.5) + v * jc + n * (proud * 0.5), u, v, n, Vector3(jamb * 0.5, jc, proud * 0.5))
 	_emit_oriented_box(stone, a - u * (hw + jamb * 0.5) + v * jc + n * (proud * 0.5), u, v, n, Vector3(jamb * 0.5, jc, proud * 0.5))
 	_emit_oriented_box(stone, a + v * (dh + jamb * 0.5) + n * (proud * 0.5), u, v, n, Vector3(hw + jamb, jamb * 0.5, proud * 0.5))
-	# recessed pocket (dark doorway interior)
-	_emit_oriented_box(dark, a + v * (dh * 0.5) - n * (recess * 0.5), u, v, n, Vector3(hw, dh * 0.5, recess * 0.5))
-	# two door leaves just inside the opening; enforcement leaves glow teal (accent)
+	# The doorway INTERIOR is now a real pocket cut into the base mesh (no z-fighting dark box here).
+	# Two door leaves set BACK inside that pocket; enforcement leaves glow teal (accent).
 	var leaf: SurfaceTool = acc if enforcement else dark
 	for side in [-1.0, 1.0]:
-		_emit_oriented_box(leaf, a + u * (side * hw * 0.5) + v * (dh * 0.5) - n * 0.05, u, v, n, Vector3(hw * 0.5 - 0.03, dh * 0.5 - 0.04, 0.03))
+		_emit_oriented_box(leaf, a + u * (side * hw * 0.5) + v * (dh * 0.5) - n * (recess * 0.55), u, v, n, Vector3(hw * 0.5 - 0.03, dh * 0.5 - 0.04, 0.03))
 	# canopy overhang + two steps down to the ground
 	_emit_oriented_box(stone, a + v * (dh + jamb + 0.05) + n * (float(p["canopy_out"]) * 0.5), u, v, n, Vector3(hw + jamb + 0.12, 0.06, float(p["canopy_out"]) * 0.5))
 	_emit_oriented_box(stone, a + v * 0.07 + n * 0.18, u, v, n, Vector3(hw + 0.12, 0.07, 0.18))

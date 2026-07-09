@@ -44,7 +44,10 @@ func _build_chunk() -> void:
 		root.name = "Hero_%s" % kind
 		root.position = _plinth_pos(i, kinds.size()) + Vector3(0, 0.55, 0)
 		add_child(root)
-		var body := BaseShape.base_mesh(spec)
+		# Entrances FIRST (front + distributed sides): their reserved regions cut real OPENINGS into the
+		# base mesh AND clear the lattice, so the door parts never z-fight a solid wall.
+		var ent: Dictionary = Lattice.entrances(spec)
+		var body := BaseShape.base_mesh(spec, ent.get("reserved", []))
 		var verts := 0
 		if body != null:
 			body.surface_set_material(0, _tinted_tile_material(str(spec.get("tile", "facility_metal")), spec.get("color", Color(0.4, 0.4, 0.42))))
@@ -53,9 +56,6 @@ func _build_chunk() -> void:
 			mi.mesh = body
 			root.add_child(mi)
 			verts = body.surface_get_array_len(0)
-		# Entrances FIRST (front + distributed sides) so the lattice can reserve their space, then the
-		# lattice conforming to those reserved regions, then the door meshes + nameplate.
-		var ent: Dictionary = Lattice.entrances(spec)
 		_add_lattice(root, spec, ent.get("reserved", []))
 		_add_entrance_meshes(root, spec, ent)
 		_specimens.append({"building": kind, "shape": str(spec.get("shape", "")),

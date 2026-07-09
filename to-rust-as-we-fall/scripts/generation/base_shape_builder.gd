@@ -137,14 +137,20 @@ static func generate(kind: String, _seed_value: int = 0) -> Dictionary:
 	return spec
 
 ## The base solid, an ArrayMesh whose base rests on y=0 so it seats on a plinth/ground.
-static func base_mesh(spec: Dictionary) -> ArrayMesh:
+## `reserved` = the door regions (from LatticeBuilder.entrances) — real OPENINGS are cut into the wall
+## and framed by a recessed pocket, so the door parts don't z-fight a solid wall.
+static func base_mesh(spec: Dictionary, reserved: Array = []) -> ArrayMesh:
+	var recess := float(spec.get("door_recess", 0.5))
 	match str(spec.get("shape", SHAPE_BOX)):
 		SHAPE_CYLINDER:
-			return _cylinder(float(spec.get("radius", 2.0)), float(spec.get("height", 5.0)))
+			var r := float(spec.get("radius", 2.0))
+			var h := float(spec.get("height", 5.0))
+			return _cylinder_with_doors(r, h, reserved, recess) if not reserved.is_empty() else _cylinder(r, h)
 		SHAPE_COMPOSITE:
 			return _composite(spec)
 		_:
-			return _box(spec.get("size", Vector3(4.0, 6.0, 4.0)))
+			var s: Vector3 = spec.get("size", Vector3(4.0, 6.0, 4.0))
+			return _box_with_doors(s, reserved, recess) if not reserved.is_empty() else _box(s)
 
 ## A small assembly of primitives baked into one ArrayMesh (base on y=0). Dispatched by "composite".
 static func _composite(spec: Dictionary) -> ArrayMesh:
@@ -258,6 +264,122 @@ static func _box(size: Vector3) -> ArrayMesh:
 	var bm := BoxMesh.new()
 	bm.size = size
 	return _seated(bm, size.y * 0.5)
+
+# A cylinder with real door OPENINGS cut into the base wall + a recessed pocket per door (back wall +
+# jambs + lintel + threshold). `doors` = drum reserved regions {theta, half_arc, y_top}. Faces OUTWARD.
+static func _cylinder_with_doors(radius: float, height: float, doors: Array, recess: float) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var seg := CYL_SEGMENTS
+	var rin := maxf(0.3, radius - recess)
+	var axis_hi := Vector3(0.0, height * 2.0, 0.0)
+	var yts: Array = []
+	for i in range(seg):
+		yts.append(_cyl_door_yt(TAU * (float(i) + 0.5) / float(seg), doors))
+	for i in range(seg):
+		var a0 := TAU * float(i) / float(seg)
+		var a1 := TAU * float(i + 1) / float(seg)
+		var yt: float = yts[i]
+		var wo0 := Vector3(radius * cos(a0), 0.0, radius * sin(a0))
+		var wo1 := Vector3(radius * cos(a1), 0.0, radius * sin(a1))
+		if yt <= 0.0:
+			_quad_out(st, wo0, wo1, wo1 + Vector3(0, height, 0), wo0 + Vector3(0, height, 0), Vector3(0, height * 0.5, 0))
+		else:
+			_quad_out(st, wo0 + Vector3(0, yt, 0), wo1 + Vector3(0, yt, 0), wo1 + Vector3(0, height, 0), wo0 + Vector3(0, height, 0), Vector3(0, (yt + height) * 0.5, 0))
+			var bi0 := Vector3(rin * cos(a0), 0.0, rin * sin(a0))
+			var bi1 := Vector3(rin * cos(a1), 0.0, rin * sin(a1))
+			_quad_out(st, bi0, bi1, bi1 + Vector3(0, yt, 0), bi0 + Vector3(0, yt, 0), Vector3(0, yt * 0.5, 0))   # pocket back
+			_quad_out(st, bi0 + Vector3(0, yt, 0), bi1 + Vector3(0, yt, 0), wo1 + Vector3(0, yt, 0), wo0 + Vector3(0, yt, 0), axis_hi)   # lintel (down)
+			_quad_out(st, bi0, bi1, wo1, wo0, Vector3(0, -height, 0))   # threshold (up)
+		var prev_door: bool = float(yts[(i - 1 + seg) % seg]) > 0.0
+		if (yt > 0.0) != prev_door:
+			var jyt := maxf(yt, float(yts[(i - 1 + seg) % seg]))
+			var jo := Vector3(radius * cos(a0), 0.0, radius * sin(a0))
+			var ji := Vector3(rin * cos(a0), 0.0, rin * sin(a0))
+			var eps := 0.09 if yt > 0.0 else -0.09   # jamb faces INTO the door; centre on the anti-door side
+			var jc := Vector3(cos(a0 - eps), 0.0, sin(a0 - eps)) * radius * 2.0 + Vector3(0, jyt * 0.5, 0)
+			_quad_out(st, ji, jo, jo + Vector3(0, jyt, 0), ji + Vector3(0, jyt, 0), jc)
+	var ct := Vector3(0, height, 0)
+	for i in range(seg):
+		var a0 := TAU * float(i) / float(seg)
+		var a1 := TAU * float(i + 1) / float(seg)
+		_tri_out(st, ct, Vector3(radius * cos(a0), height, radius * sin(a0)), Vector3(radius * cos(a1), height, radius * sin(a1)), Vector3(0, -height, 0))
+		_tri_out(st, Vector3.ZERO, Vector3(radius * cos(a0), 0.0, radius * sin(a0)), Vector3(radius * cos(a1), 0.0, radius * sin(a1)), axis_hi)
+	st.generate_normals()
+	return st.commit()
+
+static func _cyl_door_yt(theta: float, doors: Array) -> float:
+	var yt := 0.0
+	for reg in doors:
+		var rd := reg as Dictionary
+		if not bool(rd.get("cyl", false)):
+			continue
+		var dth := theta - float(rd["theta"])
+		while dth > PI:
+			dth -= TAU
+		while dth < -PI:
+			dth += TAU
+		if absf(dth) < float(rd["half_arc"]):
+			yt = maxf(yt, float(rd["y_top"]))
+	return yt
+
+# A box with real door OPENINGS on the vertical faces + a recessed pocket per door. `doors` = box
+# reserved regions {n, x_center, half_w, y_top}.
+static func _box_with_doors(size: Vector3, doors: Array, recess: float) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var hx := size.x * 0.5
+	var hz := size.z * 0.5
+	var hy := size.y * 0.5
+	var cen := Vector3(0, hy, 0)
+	var up := Vector3(0, 1, 0)
+	var faces := [
+		[Vector3(0, hy, hz), Vector3(1, 0, 0), Vector3(0, 0, 1), size.x],
+		[Vector3(0, hy, -hz), Vector3(-1, 0, 0), Vector3(0, 0, -1), size.x],
+		[Vector3(hx, hy, 0), Vector3(0, 0, -1), Vector3(1, 0, 0), size.z],
+		[Vector3(-hx, hy, 0), Vector3(0, 0, 1), Vector3(-1, 0, 0), size.z],
+	]
+	for f in faces:
+		var fc: Vector3 = f[0]
+		var u: Vector3 = f[1]
+		var n: Vector3 = f[2]
+		var fw: float = f[3]
+		var bl := Vector3(fc.x, 0.0, fc.z) - u * (fw * 0.5)   # face base-left (on the ground)
+		var door = _box_door_on(n, doors)
+		if door == null:
+			_quad_out(st, bl, bl + u * fw, bl + u * fw + up * size.y, bl + up * size.y, cen)
+		else:
+			var hw: float = float(door["half_w"])
+			var yt: float = float(door["y_top"])
+			var lx := fw * 0.5 + float(door["x_center"]) - hw   # opening left, right along u from bl
+			var rx := fw * 0.5 + float(door["x_center"]) + hw
+			_quad_out(st, bl, bl + u * lx, bl + u * lx + up * size.y, bl + up * size.y, cen)                          # left of hole
+			_quad_out(st, bl + u * rx, bl + u * fw, bl + u * fw + up * size.y, bl + u * rx + up * size.y, cen)        # right of hole
+			_quad_out(st, bl + u * lx + up * yt, bl + u * rx + up * yt, bl + u * rx + up * size.y, bl + u * lx + up * size.y, cen)  # above hole
+			var pl := bl + u * lx
+			var pr := bl + u * rx
+			var back := -n * recess
+			_quad_out(st, pl + back, pr + back, pr + back + up * yt, pl + back + up * yt, cen + back * 2.0)   # pocket back (faces +n)
+			_quad_out(st, pl, pl + back, pl + back + up * yt, pl + up * yt, pl - u + back * 0.5)              # left jamb
+			_quad_out(st, pr + back, pr, pr + up * yt, pr + back + up * yt, pr + u + back * 0.5)              # right jamb
+			_quad_out(st, pl + up * yt, pl + back + up * yt, pr + back + up * yt, pr + up * yt, Vector3(0, size.y * 2, 0))   # lintel (down)
+	_quad_out(st, Vector3(-hx, size.y, -hz), Vector3(hx, size.y, -hz), Vector3(hx, size.y, hz), Vector3(-hx, size.y, hz), Vector3(0, -1, 0))
+	_quad_out(st, Vector3(-hx, 0, -hz), Vector3(hx, 0, -hz), Vector3(hx, 0, hz), Vector3(-hx, 0, hz), Vector3(0, size.y + 1, 0))
+	st.generate_normals()
+	return st.commit()
+
+static func _box_door_on(face_n: Vector3, doors: Array):
+	for reg in doors:
+		var rd := reg as Dictionary
+		if bool(rd.get("cyl", true)):
+			continue
+		if (rd["n"] as Vector3).dot(face_n) > 0.9:
+			return rd
+	return null
+
+static func _quad_out(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, center: Vector3) -> void:
+	_tri_out(st, a, b, c, center)
+	_tri_out(st, a, c, d, center)
 
 ## Bake a centred primitive into an ArrayMesh lifted so its BASE sits on y=0.
 static func _seated(prim: PrimitiveMesh, lift: float) -> ArrayMesh:
