@@ -106,7 +106,7 @@ func _add_honeyframe(root: Node3D, spec: Dictionary) -> void:
 func _add_tracery(root: Node3D, spec: Dictionary) -> void:
 	var built: Dictionary = Lattice.tracery(float(spec.get("radius", 2.4)), float(spec.get("height", 7.2)))
 	_add_lattice_mesh(root, "TraceryRibs", built.get("frame"), _tinted_tile_material("facility_metal", Color(0.44, 0.53, 0.50)))
-	_add_lattice_mesh(root, "TraceryGlass", built.get("glass"), _window_material(1.6))
+	_add_lattice_mesh(root, "TraceryGlass", built.get("glass"), _window_material(3.6))
 
 func _add_pipes(root: Node3D, spec: Dictionary) -> void:
 	var pipe_seed := int(str(spec.get("kind", "")).hash())

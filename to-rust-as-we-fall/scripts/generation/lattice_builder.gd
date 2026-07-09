@@ -466,22 +466,35 @@ static func _sweep_tube(pts: Array, radius: float, sides: int, colors: Array, st
 # but the cell outline is a lancet and the whole thing maps onto the drum.
 # ============================================================================================
 
+## The Beacon Hill facade is not a tiled lancet grid — it is ONE continuous flowing rib NETWORK
+## (Art-Nouveau tracery). Per bay, top -> bottom: a big ARCH springs over a large gridded window;
+## OVAL "eyes" sit in the spandrels between adjacent arches; the arch springs draw DOWN into inverted
+## TEARDROPS at the bay boundaries; each teardrop's point continues as a vertical LINE (mullion) to the
+## base. Three window classes nest in the negative space: LARGE (gridded, under the arch), THIN (a slit
+## inside each teardrop AND flanking the large window under the arch), SMALL (under the teardrop point).
+## Ribs are half-round bone mouldings swept along the flowing paths (reusing the tube sweep); windows
+## are lit glass fans just proud of the drum, behind the ribs (the "glass curtain + tracery" two-layer).
 const TRACERY_DEFAULTS := {
-	"rows": 2,            # a couple of TALL openings stacked up the body height
-	"frame_width": 0.26,  # rib thickness (wide ribs -> narrow lancet slots)
-	"frame_depth": 0.12,  # rib top relief off the true-circle wall
-	"back_bite": 0.07,    # how far the closed rib sinks INTO the drum (> the facet sagitta, so no float gap)
-	"taper": 0.22,        # fraction of the slot height that tapers to the pointed tips (rest is parallel)
-	"arc_seg": 14,        # points top->bottom along a slot side (smooth tall slot)
-	"pane": 0.02,         # lit pane proud of the true-circle wall (recessed under the ribs)
-	"bevel": 0.05,        # rib moulding: the band crests this much above its rims
-	"col_pattern": [1.0, 0.5, 0.72, 0.5],   # relative lancet widths per bay (a big central lancet + flankers)
-	"bays": 4,            # how many times the width pattern repeats around the drum
-	"clerestory": true,   # a ring of small roundels above the main lancets
-	"body_frac": 0.82,    # main lancets occupy this fraction of the height; the rest is the clerestory band
-	"roundels": 16,       # roundel count in the clerestory ring
-	"roundel_r": 0.32,    # roundel radius
+	"bays": 7,                # large windows around the drum (each bay: one tall window + its arches)
+	"rib_radius": 0.075,      # bone rib gauge (swept half-round moulding)
+	"rib_sides": 5,
+	"standoff": 0.03,         # rib centreline off the drum (half sinks in -> a surface moulding)
+	"pane": 0.012,            # glass just proud of the drum, sitting BEHIND the ribs
+	"y_base": 0.16,           # bottom of the large windows (fraction of body height) — above the plinth
+	"y_spring": 0.66,         # top of the large windows / spring of the inner (window) arch
+	"y_inner": 0.77,          # inner (window) pointed-arch apex
+	"y_outer": 0.90,          # OUTER larger arch apex — a second arch nesting above the window arch
+	"large_w_frac": 0.66,     # large-window width / bay width — the windows dominate the facade
+	"grid_cols": 4,           # gridded large-window sub-panes (fills the bay with bright glass)
+	"grid_rows": 15,          # tall stack of lit panes
+	"comma_frac": 0.055,      # size of the two comma / half-yin-yang shapes in the tympanum (fraction of body H)
+	"flank_hw_frac": 0.09,    # flanking vesica half-width / bay width
+	"flank_hh_frac": 0.16,    # flanking vesica half-height / body height (a shorter pointed oval)
+	"thin_w_frac": 0.045,     # thin-lancet half-width / bay width
+	"body_frac": 0.88,        # main tracery zone; the rest up top is the domed crown band
+	"crown_windows": 26,      # small arched windows around the domed crown
 	"pane_color": Color(1.0, 0.74, 0.42),   # base window-light colour; per-pane brightness/tint varies off it
+	"rib_color": Color(0.82, 0.78, 0.64),   # bone-cream ribs
 }
 
 ## Build the tracery lattice for a drum of `radius`/`height`. Returns {frame, glass} ArrayMeshes.
@@ -489,64 +502,161 @@ static func tracery(radius: float, height: float, overrides: Dictionary = {}) ->
 	var p := TRACERY_DEFAULTS.duplicate()
 	for k in overrides.keys():
 		p[k] = overrides[k]
-	var rows := int(p["rows"])
-	var fw: float = p["frame_width"]
-	var seg := int(p["arc_seg"])
-	var taper: float = p["taper"]
-	var top := float(p["frame_depth"])
-	var back := -float(p["back_bite"])
-	var bevel := float(p["bevel"])
-	var pane := float(p["pane"])
-	var base_pane: Color = p["pane_color"]
-	var clerestory := bool(p["clerestory"])
-	var body_h := height * float(p["body_frac"]) if clerestory else height
-	var cell_h := body_h / float(rows)
-	var win_hh := maxf(0.05, cell_h * 0.5 - fw)
 	var frame_st := SurfaceTool.new()
 	frame_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var glass_st := SurfaceTool.new()
 	glass_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var cells := 0
-	# Main lancets: per-column WIDTHS (a big central lancet + smaller flankers) walked by a running
-	# angular cursor, the width pattern repeating `bays` times around the drum.
-	var pattern: Array = p["col_pattern"]
+	var r := radius
+	var circ := TAU * r
 	var bays := int(p["bays"])
-	var total := 0.0
-	for pw in pattern:
-		total += float(pw)
-	total *= float(bays)
-	var circ := TAU * radius
-	var cursor := 0.0
-	for _bay in range(bays):
-		for cw_rel in pattern:
-			var seg_w := circ * (float(cw_rel) / total)
-			var th := (cursor + seg_w * 0.5) / radius
-			var win_hw := maxf(0.05, seg_w * 0.5 - fw)
-			var inner := _lancet(win_hw, win_hh, seg, taper)
-			var outer := _lancet(win_hw + fw, win_hh + fw, seg, taper)
-			for j in range(rows):
-				var yc := (float(j) + 0.5) * cell_h
-				var key := cursor * 3.7 + float(j) * 57.3
-				_emit_ring_cyl(th, yc, radius, outer, inner, top, back, bevel, frame_st)
-				_emit_glass_cyl(th, yc, radius, inner, pane, _pane_color(base_pane, key), glass_st)
-				cells += 1
-			cursor += seg_w
-	# Clerestory: a ring of small ROUNDELS above the main lancets (the crown band).
-	if clerestory:
-		var nr := int(p["roundels"])
-		var rr := float(p["roundel_r"])
-		var y_cl := body_h + (height - body_h) * 0.5
-		var inner_c := _rounded_rect(rr, rr, rr, seg)
-		var outer_c := _rounded_rect(rr + fw * 0.7, rr + fw * 0.7, rr + fw * 0.7, seg)
-		for k in range(nr):
-			var th := TAU * (float(k) + 0.5) / float(nr)
-			var key := float(k) * 11.3 + 900.0
-			_emit_ring_cyl(th, y_cl, radius, outer_c, inner_c, top, back, bevel, frame_st)
-			_emit_glass_cyl(th, y_cl, radius, inner_c, pane, _pane_color(base_pane, key), glass_st)
+	var bw := circ / float(bays)
+	var body_h := height * float(p["body_frac"])   # the main tracery zone; crown band sits above it
+	var yb := float(p["y_base"]) * body_h
+	var ys := float(p["y_spring"]) * body_h
+	var y_inner := float(p["y_inner"]) * body_h
+	var y_outer := float(p["y_outer"]) * body_h
+	var pane := float(p["pane"])
+	var base_pane: Color = p["pane_color"]
+	var thin_hw := float(p["thin_w_frac"]) * bw
+	var flank_hw := float(p["flank_hw_frac"]) * bw
+	var flank_hh := float(p["flank_hh_frac"]) * body_h
+	var comma_sz := float(p["comma_frac"]) * body_h
+	var cells := 0
+	for b in range(bays):
+		var x0 := float(b) * bw          # left bay boundary (arc-length) — the mullion axis
+		var xc := x0 + bw * 0.5          # bay centre — the large window axis
+		var lw := float(p["large_w_frac"]) * bw
+		var hlw := lw * 0.5
+		var win_cy := (yb + ys) * 0.5
+		# --- central LARGE gridded window (dominant, tall, bright) ---
+		cells += _grid_window(xc, win_cy, hlw, (ys - yb) * 0.5, int(p["grid_cols"]), int(p["grid_rows"]), r, p, glass_st)
+		# --- inner arch: the window's OWN pointed arch ---
+		_sweep_rib(_arch_pts(xc - hlw, xc + hlw, ys, y_inner, 10), r, p, frame_st)
+		# --- OUTER larger arch nesting above it (springs a touch wider + lower, apex higher) ---
+		_sweep_rib(_arch_pts(xc - hlw * 1.18, xc + hlw * 1.18, ys - 0.02 * body_h, y_outer, 12), r, p, frame_st)
+		# --- the TWO comma / half-yin-yang shapes in the tympanum between the two arches ---
+		var tymp_y := (y_inner + y_outer) * 0.5
+		_sweep_rib(_comma_pts(xc - hlw * 0.32, tymp_y, comma_sz, -1.0, 14), r, p, frame_st)
+		_sweep_rib(_comma_pts(xc + hlw * 0.32, tymp_y, comma_sz, 1.0, 14), r, p, frame_st)
+		# --- flanking VESICA lancets (tall pointed oval rib + a lit almond window), each side ---
+		for sgn in [-1.0, 1.0]:
+			var vx := xc + float(sgn) * (hlw + flank_hw + 0.03 * bw)
+			var vcy := win_cy + 0.03 * body_h
+			_sweep_rib(_vesica_pts(vx, vcy, flank_hw, flank_hh, 16), r, p, frame_st)
+			_emit_glass_cyl(vx / r, vcy, r, _vesica_pts(0.0, 0.0, thin_hw, flank_hh * 0.82, 10), pane, _pane_color(base_pane, vx * 3.1 + 7.0), glass_st)
 			cells += 1
+		# --- boundary mullion spanning the window height (base rooting is a later Fable detail) ---
+		_sweep_rib(_line2(Vector2(x0, yb), Vector2(x0, ys), 7), r, p, frame_st)
+	# --- CROWN BAND: a ring of small arched windows around the domed top ---
+	var crown_y := body_h + (height - body_h) * 0.5
+	var nrw := int(p["crown_windows"])
+	var chw := (circ / float(nrw)) * 0.30
+	var chh := (height - body_h) * 0.32
+	for k in range(nrw):
+		var cx := (float(k) + 0.5) / float(nrw) * circ
+		_sweep_rib(_arch_pts(cx - chw, cx + chw, crown_y + chh * 0.2, crown_y + chh, 5), r, p, frame_st)
+		_emit_glass_cyl(cx / r, crown_y, r, _lancet(chw * 0.7, chh * 0.7, 5, 0.25), pane, _pane_color(base_pane, cx * 7.7 + 50.0), glass_st)
+		cells += 1
 	frame_st.generate_normals()
 	glass_st.generate_normals()
 	return {"frame": frame_st.commit(), "glass": glass_st.commit(), "cells": cells}
+
+# Sweep a half-round bone rib along a 2D (arc-length, height) path mapped onto the drum. The centreline
+# sits `standoff` off the true-circle wall so half the tube sinks into the drum -> a surface moulding.
+static func _sweep_rib(path2d: PackedVector2Array, r: float, p: Dictionary, st: SurfaceTool) -> void:
+	if path2d.size() < 2:
+		return
+	var pts3: Array = []
+	var cols: Array = []
+	var col: Color = p["rib_color"]
+	var so := float(p["standoff"])
+	for pt in path2d:
+		pts3.append(_cylp(0.0, 0.0, r, pt, so))
+		cols.append(col)
+	_sweep_tube(pts3, float(p["rib_radius"]), int(p["rib_sides"]), cols, st)
+
+# A subdivided straight segment (so a rib hugs the drum curvature instead of chording across facets).
+static func _line2(a: Vector2, b: Vector2, seg: int) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for i in range(seg + 1):
+		out.append(a.lerp(b, float(i) / float(seg)))
+	return out
+
+# A pointed (cusped) arch polyline: spring (x0,y_spring) -> cusp apex (mid,apex) -> spring (x1,y_spring).
+static func _arch_pts(x0: float, x1: float, y_spring: float, apex: float, seg: int) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var xm := (x0 + x1) * 0.5
+	var rise := apex - y_spring
+	for i in range(seg + 1):        # left half rises to the apex
+		var t := float(i) / float(seg)
+		out.append(Vector2(lerpf(x0, xm, t), y_spring + rise * sin(t * PI * 0.5)))
+	for i in range(1, seg + 1):     # right half falls back to the spring (cusp at the apex)
+		var t := float(i) / float(seg)
+		out.append(Vector2(lerpf(xm, x1, t), apex - rise * (1.0 - cos(t * PI * 0.5))))
+	return out
+
+# A closed ellipse outline (the oval "eye"), first point repeated so the swept rib closes.
+static func _ellipse_pts(cx: float, cy: float, rx: float, ry: float, seg: int) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for i in range(seg + 1):
+		var a := TAU * float(i) / float(seg)
+		out.append(Vector2(cx + rx * cos(a), cy + ry * sin(a)))
+	return out
+
+# A closed inverted-teardrop outline: a point at the bottom (cx, y_bot), rounded top near (cx, y_top),
+# widest at mid. The width vanishes at the bottom (a=0) via the sin(a/2) pinch -> the pointed tip.
+static func _teardrop_pts(cx: float, y_top: float, y_bot: float, hw: float, seg: int) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var h := y_top - y_bot
+	for i in range(seg + 1):
+		var a := TAU * float(i) / float(seg)
+		var wf := sin(a * 0.5)                    # 0 at the bottom point, 1 at the top
+		out.append(Vector2(cx + hw * sin(a) * wf * 1.6, y_bot + h * (0.5 - 0.5 * cos(a))))
+	return out
+
+# A vesica / pointed oval: pointed at TOP and BOTTOM, widest at the middle (the flanking-lancet shape
+# and the almond window inside it). Wound like _lancet so the glass fan faces outward.
+static func _vesica_pts(cx: float, cy: float, hw: float, hh: float, seg: int) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for i in range(seg + 1):            # right side, top point -> bottom point
+		var t := float(i) / float(seg)
+		var f := sin(t * PI)            # 0 at both tips, 1 at the middle
+		out.append(Vector2(cx + hw * f, cy + hh - 2.0 * hh * t))
+	for i in range(seg - 1, 0, -1):     # left side back up (skip shared tips)
+		var t := float(i) / float(seg)
+		var f := sin(t * PI)
+		out.append(Vector2(cx - hw * f, cy + hh - 2.0 * hh * t))
+	return out
+
+# A comma / half-yin-yang (mouchette): a round bulb at the top tapering to a point that HOOKS to one
+# side (`sgn`). Two mirrored commas face each other in the tympanum between the nested arches.
+static func _comma_pts(cx: float, cy: float, size: float, sgn: float, seg: int) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var h := size * 1.7
+	for i in range(seg + 1):
+		var a := TAU * float(i) / float(seg)
+		var wf := sin(a * 0.5)                      # 0 at the bottom point, 1 at the top bulb
+		var bx := size * sin(a) * wf * 1.25
+		var by := h * (0.5 - 0.5 * cos(a))          # 0 at the point, h at the bulb top
+		var hook := sgn * size * 0.9 * (1.0 - wf)   # curl the point sideways -> the comma tail
+		out.append(Vector2(cx + bx + hook, cy - h * 0.4 + by))
+	return out
+
+# The large window as a fine grid of small lit panes (bare drum shows between them as the mullions).
+static func _grid_window(xc: float, yc: float, hw: float, hh: float, cols: int, rows: int, r: float, p: Dictionary, st: SurfaceTool) -> int:
+	var cw := (hw * 2.0) / float(cols)
+	var ch := (hh * 2.0) / float(rows)
+	var gap := minf(cw, ch) * 0.10
+	var base_pane: Color = p["pane_color"]
+	var pane := float(p["pane"])
+	var n := 0
+	for cxi in range(cols):
+		for cyi in range(rows):
+			var px := xc - hw + (float(cxi) + 0.5) * cw
+			var py := yc - hh + (float(cyi) + 0.5) * ch
+			_emit_glass_cyl(px / r, py, r, _rounded_rect(cw * 0.5 - gap, ch * 0.5 - gap, 0.01, 1), pane, _pane_color(base_pane, px * 3.1 + py * 7.7), st)
+			n += 1
+	return n
 
 # A tall pointed-arch (lancet) outline: near-parallel sides at ±hw for most of the height, tapering to
 # pointed tips at ±hh over the outer `taper` fraction. taper->0 is a rectangle; taper->0.5 is a vesica.
