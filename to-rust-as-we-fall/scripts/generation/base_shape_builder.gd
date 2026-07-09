@@ -20,7 +20,7 @@ const SHAPE_COMPOSITE := "composite"   # a small assembly of primitives (e.g. th
 ## Ordered list the showcase walks. Add a building here as we bring each one in.
 const BUILDINGS := [
 	"plumbing_power", "honeycomb_cooperative", "beacon_hill", "open_files", "hypelines",
-	"greenfields", "ancourage", "bulwark_wharf", "cleanstreets", "zone3", "tiered_hall",
+	"greenfields", "ancourage", "bulwark_wharf", "cleanstreets", "zone3", "tiered_hall", "tiered_terrace",
 ]
 
 ## Reference-derived proportions. Dimensions are metres; the base sits on y=0.
@@ -125,9 +125,20 @@ const SPECS := {
 		"lattice": "tracery",               # runs PER vertical drum band
 		"ledge_treatments": ["railings", "planters"],   # flat rings get an edge rail + planter boxes
 	},
+	"tiered_terrace": {
+		"title": "Tiered Terrace",
+		"shape": SHAPE_BOX,                 # the BOX "cake": honeyframe per tier, crown only on the roof
+		"size": Vector3(4.2, 8.4, 4.2),
+		"tiers": 3, "tier_inset": 0.16,
+		"color": Color(0.60, 0.55, 0.46),
+		"tile": "facility_metal",
+		"lattice": "honeyframe",
+		"ledge_treatments": ["railings", "greenery"],   # edge rail + a low greenery hedge
+	},
 }
 
 const CYL_SEGMENTS := 24   # drum facets — smooth enough that a wrapped lattice sits flush, still low-poly
+const LEDGE_MIN_WIDTH := 0.12   # a tier ledge narrower than this (from clamped tiers) is not treatable
 
 ## Resolve a building to its spec, plus convenience fields for placement/labelling. The seed argument
 ## is accepted for parity with the other generation previews; base shapes are deterministic (nothing
@@ -202,17 +213,22 @@ static func tier_ledges(spec: Dictionary) -> Array:
 		var band := float(spec.get("height", 5.0)) / float(tiers)
 		var inset := float(spec.get("tier_inset", 0.16))
 		for k in range(tiers - 1):
-			out.append({"cyl": true, "y": float(k + 1) * band,
-				"r_outer": maxf(0.4, radius * (1.0 - inset * float(k))),
-				"r_inner": maxf(0.4, radius * (1.0 - inset * float(k + 1)))})
+			var r_out := maxf(0.4, radius * (1.0 - inset * float(k)))
+			var r_in := maxf(0.4, radius * (1.0 - inset * float(k + 1)))
+			if r_out - r_in < LEDGE_MIN_WIDTH:
+				continue   # both tiers hit the radius clamp -> a zero-width ring, nothing to stand on
+			out.append({"cyl": true, "y": float(k + 1) * band, "r_outer": r_out, "r_inner": r_in})
 	else:
 		var s: Vector3 = spec.get("size", Vector3(4, 6, 4))
 		var band := s.y / float(tiers)
 		var inset := float(spec.get("tier_inset", 0.16))
 		for k in range(tiers - 1):
+			var fo := maxf(0.25, 1.0 - inset * float(k))
+			var fi := maxf(0.25, 1.0 - inset * float(k + 1))
+			if (fo - fi) * minf(s.x, s.z) * 0.5 < LEDGE_MIN_WIDTH:
+				continue   # footprint stopped shrinking (clamp) -> collapsed ledge
 			out.append({"cyl": false, "y": float(k + 1) * band,
-				"outer": Vector2(s.x, s.z) * maxf(0.25, 1.0 - inset * float(k)),
-				"inner": Vector2(s.x, s.z) * maxf(0.25, 1.0 - inset * float(k + 1))})
+				"outer": Vector2(s.x, s.z) * fo, "inner": Vector2(s.x, s.z) * fi})
 	return out
 
 ## A small assembly of primitives baked into one ArrayMesh (base on y=0). Dispatched by "composite".

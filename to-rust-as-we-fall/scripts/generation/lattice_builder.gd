@@ -55,15 +55,19 @@ static func honeyframe(size: Vector3, overrides: Dictionary = {}) -> Dictionary:
 	for sx in [hx, -hx]:
 		for sz in [hz, -hz]:
 			_emit_box(frame_st, Vector3(sx, half_y, sz), Vector3(post, half_y, post))
+	# `crown` = the rooftop cornice/parapet/vent; `base` = the stepped ground plinth. Split flags (both
+	# default true = a flat building) so a TIERED cake puts the crown only on the top drum and the plinth
+	# only on the ground drum — not a rooftop vent baked into every inter-tier ledge.
 	if bool(p.get("crown", true)):
-		_emit_crown_and_base(frame_st, size)
+		_emit_crown(frame_st, size)
+	if bool(p.get("base", true)):
+		_emit_base_plinth(frame_st, size)
 	frame_st.generate_normals()
 	glass_st.generate_normals()
 	return {"frame": frame_st.commit(), "glass": glass_st.commit(), "cells": cells}
 
-# A cornice + parapet-wall ring + a rooftop vent up top, and a stepped plinth at the base — the
-# silhouette a bare box lacks. All closed boxes into the frame (cream) surface.
-static func _emit_crown_and_base(st: SurfaceTool, size: Vector3) -> void:
+# A cornice + parapet-wall ring + a rooftop vent — the roof silhouette a bare box lacks. Closed boxes.
+static func _emit_crown(st: SurfaceTool, size: Vector3) -> void:
 	var hx := size.x * 0.5
 	var hz := size.z * 0.5
 	var oh := 0.18   # cornice overhang
@@ -79,7 +83,11 @@ static func _emit_crown_and_base(st: SurfaceTool, size: Vector3) -> void:
 	_emit_box(st, Vector3(-(hx + oh - pw), py + ph * 0.5, 0), Vector3(pw, ph * 0.5, hz + oh))
 	# a small rooftop vent/housing
 	_emit_box(st, Vector3(hx * 0.35, py + 0.28, -hz * 0.25), Vector3(hx * 0.28, 0.28, hz * 0.22))
-	# stepped plinth at the base
+
+# The stepped plinth at the base — the ground foot a bare box lacks.
+static func _emit_base_plinth(st: SurfaceTool, size: Vector3) -> void:
+	var hx := size.x * 0.5
+	var hz := size.z * 0.5
 	_emit_box(st, Vector3(0, 0.16, 0), Vector3(hx + 0.24, 0.16, hz + 0.24))
 	_emit_box(st, Vector3(0, 0.40, 0), Vector3(hx + 0.11, 0.10, hz + 0.11))
 
@@ -691,6 +699,8 @@ static func honeyframe_tiered(spec: Dictionary, overrides: Dictionary = {}) -> D
 		var f := maxf(0.25, 1.0 - inset * float(k))
 		var ov := overrides.duplicate()
 		ov["reserved"] = reserved if k == 0 else []
+		ov["crown"] = (k == tiers - 1)   # rooftop cornice/parapet/vent only on the top drum
+		ov["base"] = (k == 0)            # stepped plinth only on the ground drum
 		var built: Dictionary = honeyframe(Vector3(size.x * f, band, size.z * f), ov)
 		var xf := Transform3D(Basis(), Vector3(0.0, float(k) * band, 0.0))
 		if built.get("frame") != null:

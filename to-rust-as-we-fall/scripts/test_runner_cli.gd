@@ -3687,6 +3687,44 @@ func _test_architecture_showcase() -> void:
 	bare_tiered["ledge_treatments"] = []
 	_assert_true(Ledge.build(bare_tiered).is_empty(),
 		"a tiered base with an empty treatment list is flat-ledged (bare rings)")
+	# the no-ledges GUARD arm specifically: a 1-tier base WITH treatments requested still decorates nothing
+	var flat_but_asked: Dictionary = beacon.duplicate()
+	flat_but_asked["ledge_treatments"] = ["railings", "planters"]
+	_assert_true(Ledge.build(flat_but_asked).is_empty(),
+		"a flat base ignores requested treatments (no ledges to stand them on)")
+	# degenerate tiers: an inset large enough to collapse a ring past the clamp emits no ledge for it
+	var collapsed: Dictionary = tiered.duplicate()
+	collapsed["tiers"] = 4
+	collapsed["tier_inset"] = 0.5
+	var cl: Array = Base.tier_ledges(collapsed)
+	var min_w := 999.0
+	for lg in cl:
+		min_w = minf(min_w, float(lg["r_outer"]) - float(lg["r_inner"]))
+	_assert_true(cl.size() < 3 and (cl.is_empty() or min_w > 0.1),
+		"a clamp-collapsed tier emits no zero-width ledge to decorate")
+	# tiered box HONEYFRAME: the rooftop crown must NOT repeat at every inter-tier ledge (only the top).
+	# (A) the split crown/base flags each actually gate geometry (so the mechanism isn't a no-op) ...
+	var terrace: Dictionary = Base.generate("tiered_terrace")
+	var bsz: Vector3 = terrace["size"]
+	var band_sz := Vector3(bsz.x, bsz.y / 3.0, bsz.z)
+	var f_none := (Lat.honeyframe(band_sz, {"crown": false, "base": false}).get("frame") as ArrayMesh).surface_get_array_len(0)
+	var f_crown := (Lat.honeyframe(band_sz, {"crown": true, "base": false}).get("frame") as ArrayMesh).surface_get_array_len(0)
+	var f_base := (Lat.honeyframe(band_sz, {"crown": false, "base": true}).get("frame") as ArrayMesh).surface_get_array_len(0)
+	_assert_true(f_crown > f_none and f_base > f_none,
+		"honeyframe crown/base flags each add rooftop/plinth geometry (the split is real)")
+	# ... (B) and the tiered builder composes exactly the INTENDED per-tier flags: plinth on the ground
+	# drum, crown on the top drum, bare in between. If it regressed to crown-on-every-tier, `actual`
+	# would exceed this correctly-flagged `expect`. (A)+(B) together are non-tautological.
+	var expect_frame := 0
+	for k in range(3):
+		var fk := maxf(0.25, 1.0 - 0.16 * float(k))
+		var built_k: Dictionary = Lat.honeyframe(Vector3(bsz.x * fk, bsz.y / 3.0, bsz.z * fk), {"crown": k == 2, "base": k == 0})
+		expect_frame += (built_k.get("frame") as ArrayMesh).surface_get_array_len(0)
+	var hf_tiered: Dictionary = Lat.honeyframe_tiered(terrace, {})
+	_assert_equals((hf_tiered.get("frame") as ArrayMesh).surface_get_array_len(0), expect_frame,
+		"tiered honeyframe crowns only the top drum + plinths only the ground drum (no mid-cake roof)")
+	_assert_true((hf_tiered.get("glass") as ArrayMesh).get_surface_count() > 0,
+		"tiered honeyframe builds per-tier glass bands")
 
 	# --- registry: the showcase is a walkable preview entry that boots with perception overlays OFF ---
 	var found := false
