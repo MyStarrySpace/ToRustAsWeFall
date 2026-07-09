@@ -55,6 +55,8 @@ const SPECS := {
 		"color": Color(0.32, 0.42, 0.40),   # verdigris tiled stone
 		"tile": "facility_metal",
 		"lattice": "tracery",               # pointed-arch (lancet) window wall + lit glass behind
+		"bays": 7,                          # bay width 2.15 — the door assembly (~2.0) fits inside a bay
+		"entrances": {"side_count_min": 1, "side_count_max": 1},   # plate: main door + ONE enforcement door
 	},
 	# --- The remaining districts: existence + a base primitive established so Fable only owns the
 	# --- lattices/complex massing. Simple massing here; the notes flag what is Fable's.

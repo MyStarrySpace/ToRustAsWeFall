@@ -536,124 +536,175 @@ static func _sweep_tube(pts: Array, radius: float, sides: int, colors: Array, st
 ## Ribs are half-round bone mouldings swept along the flowing paths (reusing the tube sweep); windows
 ## are lit glass fans just proud of the drum, behind the ribs (the "glass curtain + tracery" two-layer).
 const TRACERY_DEFAULTS := {
-	"bays": 7,                # large windows around the drum (each bay: one tall window + its arches)
-	"rib_radius": 0.075,      # bone rib gauge (capsule radius)
+	"bays": 8,                # large windows around the drum (each bay: one tall window + its arches)
+	"rib_radius": 0.08,       # rib crest radius — the plate's mouldings are FAT, not hairlines
 	"rib_sides": 5,
-	"merge_cell": 0.05,       # SDF voxel size for the organic merge (<= rib_radius or ribs facet)
-	"merge_k": 0.07,          # smooth-min blend radius — junctions FUSE (metaball merge, no sausages)
-	"standoff": 0.065,        # rib centreline off the drum — sits PROUD as a raised half-round moulding
 	"pane": 0.012,            # glass just proud of the drum, sitting BEHIND the ribs
-	"y_base": 0.16,           # bottom of the large windows (fraction of body height) — above the plinth
-	"y_spring": 0.66,         # top of the large windows / spring of the inner (window) arch
-	"y_inner": 0.77,          # inner (window) pointed-arch apex
-	"y_outer": 0.90,          # OUTER larger arch apex — a second arch nesting above the window arch
-	"large_w_frac": 0.66,     # large-window width / bay width — the windows dominate the facade
+	"y_root": 0.03,           # mullion feet (fraction of body height)
+	"y_base": 0.16,           # sill / bottom of the large windows — above the plinth
+	"y_spring": 0.60,         # top of the large windows / spring of the inner (window) arch
+	"y_inner": 0.74,          # inner (window) pointed-arch apex
+	"y_outer_spring": 0.56,   # OUTER arch spring height ON the mullion (the arch grows out of it)
+	"y_outer": 0.86,          # outer arch apex — the second, larger arch nesting over the window arch
+	"large_w_frac": 0.62,     # large-window width / bay width — the windows dominate the facade
 	"grid_cols": 4,           # gridded large-window sub-panes (fills the bay with bright glass)
 	"grid_rows": 15,          # tall stack of lit panes
-	"comma_frac": 0.055,      # size of the two comma / half-yin-yang shapes in the tympanum (fraction of body H)
-	"flank_hw_frac": 0.09,    # flanking vesica half-width / bay width
-	"flank_hh_frac": 0.16,    # flanking vesica half-height / body height (a shorter pointed oval)
-	"thin_w_frac": 0.045,     # thin-lancet half-width / bay width
+	"comma_frac": 0.055,      # size of the two comma / mouchette drops in the tympanum (fraction of body H)
+	"flank_hw_frac": 0.085,   # flanking vesica half-width / bay width
+	"flank_hh_frac": 0.15,    # flanking vesica half-height / body height (a shorter pointed oval)
 	"body_frac": 0.88,        # main tracery zone; the rest up top is the domed crown band
 	"crown_windows": 26,      # small arched windows around the domed crown
 	"pane_color": Color(1.0, 0.74, 0.42),   # base window-light colour; per-pane brightness/tint varies off it
 	"rib_color": Color(0.82, 0.78, 0.64),   # bone-cream ribs
-	"rib_merge": "junction",                # "junction" (algorithm-3 crossings, crisp + ~2.6x lighter) or "sdf" (metaball fuse)
 }
 
-## Build the tracery lattice for a drum of `radius`/`height`. Returns {frame, glass} ArrayMeshes.
+## Build the tracery lattice for a drum of `radius`/`height`. Returns {frame, glass, cells}.
+##
+## GROUND-ZERO REBUILD (Fable): the rib network is now a CONNECTED planar graph meshed watertight by
+## LatticeGraph — one flowing Art-Nouveau surface, per the plate. Per bay the paths CONNECT by
+## construction: the mullion runs root -> body course; the sill and both arches T into it; the window
+## jambs T into the sill and CHAIN through the inner arch into one continuous window rib; the two
+## mouchette drops and the flanking vesicas are closed loops kissing the arches; the crown arches
+## spring off the body course. Doors: a `reserved` bay keeps its mullions but drops everything else
+## (and the course seam hides inside it).
 static func tracery(radius: float, height: float, overrides: Dictionary = {}) -> Dictionary:
 	var p := TRACERY_DEFAULTS.duplicate()
 	for k in overrides.keys():
 		p[k] = overrides[k]
-	var frame_st := SurfaceTool.new()
-	frame_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var glass_st := SurfaceTool.new()
-	glass_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var r := radius
 	var circ := TAU * r
 	var bays := int(p["bays"])
 	var bw := circ / float(bays)
 	var body_h := height * float(p["body_frac"])   # the main tracery zone; crown band sits above it
+	var y_root := float(p["y_root"]) * body_h
 	var yb := float(p["y_base"]) * body_h
 	var ys := float(p["y_spring"]) * body_h
 	var y_inner := float(p["y_inner"]) * body_h
+	var ys2 := float(p["y_outer_spring"]) * body_h
 	var y_outer := float(p["y_outer"]) * body_h
 	var pane := float(p["pane"])
 	var base_pane: Color = p["pane_color"]
-	var thin_hw := float(p["thin_w_frac"]) * bw
 	var flank_hw := float(p["flank_hw_frac"]) * bw
 	var flank_hh := float(p["flank_hh_frac"]) * body_h
 	var comma_sz := float(p["comma_frac"]) * body_h
 	var rib_r := float(p["rib_radius"])
-	var mk := float(p["merge_k"])
-	var cell := float(p["merge_cell"])
-	var so := float(p["standoff"])
-	var rib_col: Color = p["rib_color"]
-	var junction_mode := str(p.get("rib_merge", "sdf")) == "junction"
 	var reserved: Array = p.get("reserved", [])
-	var all_paths: Array = []   # junction mode: accumulate every rib path for the network merge
-	var cells := 0
-	for b in range(bays):
-		var x0 := float(b) * bw          # left bay boundary (arc-length) — the mullion axis
-		var xc := x0 + bw * 0.5          # bay centre — the large window axis
-		if _arc_reserved(xc / r, reserved):
-			continue   # keep this bay clear for a door
-		var lw := float(p["large_w_frac"]) * bw
-		var hlw := lw * 0.5
-		var win_cy := (yb + ys) * 0.5
-		# --- central LARGE gridded window (glass, SurfaceTool) ---
-		cells += _grid_window(xc, win_cy, hlw, (ys - yb) * 0.5, int(p["grid_cols"]), int(p["grid_rows"]), r, p, glass_st)
-		# --- collect this bay's rib PATHS (used by either merge mode) ---
-		var tymp_y := (y_inner + y_outer) * 0.5
-		var bay_paths: Array = [
-			_arch_pts(xc - hlw, xc + hlw, ys, y_inner, 10),                                   # inner arch
-			_arch_pts(xc - hlw * 1.18, xc + hlw * 1.18, ys - 0.02 * body_h, y_outer, 12),     # outer arch
-			_comma_pts(xc - hlw * 0.32, tymp_y, comma_sz, -1.0, 14),                          # comma L
-			_comma_pts(xc + hlw * 0.32, tymp_y, comma_sz, 1.0, 14),                           # comma R
-			_line2(Vector2(x0, yb), Vector2(x0, ys), 7),                                      # mullion
-		]
-		for sgn in [-1.0, 1.0]:
-			var vx := xc + float(sgn) * (hlw + flank_hw + 0.03 * bw)
-			var vcy := win_cy + 0.03 * body_h
-			bay_paths.append(_vesica_pts(vx, vcy, flank_hw, flank_hh, 16))                    # flanking vesica
-			_emit_glass_cyl(vx / r, vcy, r, _vesica_pts(0.0, 0.0, thin_hw, flank_hh * 0.82, 10), pane, _pane_color(base_pane, vx * 3.1 + 7.0), glass_st)
-			cells += 1
-		if junction_mode:
-			all_paths.append_array(bay_paths)
+	# Bay grid aligned so bay b's CENTRE sits at theta = PI/2 + b*dtheta — the same centres the doors
+	# snap to. A reserved region names its bay ("bay" from entrances); fall back to nearest-centre.
+	var x_base := r * (PI * 0.5 - 0.5 * (TAU / float(bays)))   # bay 0's left mullion (arc-length)
+	var res_bays: Dictionary = {}
+	for reg in reserved:
+		var rd := reg as Dictionary
+		if not bool(rd.get("cyl", false)):
+			continue
+		if rd.has("bay"):
+			res_bays[int(rd["bay"])] = true
 		else:
-			# SDF (default): per-BAY smooth-min fuse (small AABB -> fast); append to the frame
-			var prims: Array = []
-			for path in bay_paths:
-				_rib_caps(path as PackedVector2Array, r, rib_r, mk, so, prims)
-			var bay_built := SdfMesher.build(prims, cell, rib_col)
-			if bay_built.get("mesh") != null:
-				frame_st.append_from(bay_built["mesh"] as ArrayMesh, 0, Transform3D.IDENTITY)
-	# --- CROWN BAND: small arched windows around the domed top ---
-	var crown_y := body_h + (height - body_h) * 0.5
+			res_bays[wrapi(int(round((float(rd["theta"]) - PI * 0.5) / (TAU / float(bays)))), 0, bays)] = true
+	var glass_st := SurfaceTool.new()
+	glass_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var paths: Array = []
+	var cells := 0
+	var hlw := float(p["large_w_frac"]) * bw * 0.5
+	for b in range(bays):
+		var x0 := x_base + float(b) * bw   # left bay boundary (arc-length) — the mullion axis
+		var x1 := x0 + bw
+		var xc := x0 + bw * 0.5            # bay centre — the large window / door axis
+		# the mullion ALWAYS stands (it frames a door bay too): root -> body course
+		paths.append(_line2(Vector2(x0, y_root), Vector2(x0, body_h), 8))
+		# the UPPER network runs over EVERY bay — a door bay keeps its outer arch, course, and tympanum
+		# drops (they all sit above door height; the plate arches right over the doors):
+		paths.append(_arch_pts(x0, x1, ys2, y_outer, 14))            # outer arch, springs off the mullions
+		paths.append(_line2(Vector2(x0, body_h), Vector2(x1, body_h), 6))   # body course (the dome ring)
+		for sgn in [-1.0, 1.0]:
+			# mouchette DROPS flank the inner apex in the OPEN tympanum, mirrored, leaning apart
+			var dcx := xc + float(sgn) * hlw * 0.55
+			var dcy := y_inner * 0.45 + y_outer * 0.55
+			paths.append(_drop_loop(dcx, dcy, comma_sz, float(sgn)))
+			_glass_fan_cyl(dcx / r, dcy, r, _drop_loop(0.0, 0.0, comma_sz * 0.62, float(sgn)), pane, _pane_color(base_pane, dcx * 5.3 + 11.0), glass_st)
+			cells += 1
+		if res_bays.has(b):
+			continue   # this bay holds a door — no sill / window / vesicas at door height
+		# sill across the bay — T's into both mullions
+		paths.append(_line2(Vector2(x0, yb), Vector2(x1, yb), 6))
+		# window frame: jambs T into the sill, then CHAIN through the inner arch (one flowing rib)
+		paths.append(_line2(Vector2(xc - hlw, yb), Vector2(xc - hlw, ys), 4))
+		paths.append(_line2(Vector2(xc + hlw, yb), Vector2(xc + hlw, ys), 4))
+		paths.append(_arch_pts(xc - hlw, xc + hlw, ys, y_inner, 12))
+		# flanking vesica loops, stepped DOWN and OUT (the plate's cascading almonds)
+		var gap := bw * 0.5 - hlw
+		for sgn in [-1.0, 1.0]:
+			var vx := xc + float(sgn) * (hlw + gap * 0.5)
+			var vcy := yb + (ys - yb) * 0.58
+			paths.append(_closed(_vesica_pts(vx, vcy, flank_hw, flank_hh, 12)))
+			_glass_fan_cyl(vx / r, vcy, r, _vesica_pts(0.0, 0.0, flank_hw * 0.55, flank_hh * 0.78, 10), pane, _pane_color(base_pane, vx * 3.1 + 7.0), glass_st)
+			var vx2 := xc + float(sgn) * (hlw + gap * 0.78)
+			var vcy2 := yb + (ys - yb) * 0.24
+			paths.append(_closed(_vesica_pts(vx2, vcy2, flank_hw * 0.62, flank_hh * 0.62, 10)))
+			_glass_fan_cyl(vx2 / r, vcy2, r, _vesica_pts(0.0, 0.0, flank_hw * 0.34, flank_hh * 0.47, 8), pane, _pane_color(base_pane, vx2 * 4.7 + 23.0), glass_st)
+			cells += 2
+		# the LARGE gridded window (glass curtain behind the ribs)
+		cells += _grid_window(xc, (yb + ys) * 0.5, hlw, (ys - yb) * 0.5, int(p["grid_cols"]), int(p["grid_rows"]), r, p, glass_st)
+	# --- CROWN BAND: small arches springing off the body course, lit lancets between ---
+	var crown_y := body_h + (height - body_h) * 0.45
 	var nrw := int(p["crown_windows"])
 	var chw := (circ / float(nrw)) * 0.30
-	var chh := (height - body_h) * 0.32
-	var crown_prims: Array = []
+	var chh := (height - body_h) * 0.55
 	for kk in range(nrw):
-		var cx := (float(kk) + 0.5) / float(nrw) * circ
-		var crown_arch := _arch_pts(cx - chw, cx + chw, crown_y + chh * 0.2, crown_y + chh, 5)
-		if junction_mode:
-			all_paths.append(crown_arch)
-		else:
-			_rib_caps(crown_arch, r, rib_r, mk, so, crown_prims)
-		_emit_glass_cyl(cx / r, crown_y, r, _lancet(chw * 0.7, chh * 0.7, 5, 0.25), pane, _pane_color(base_pane, cx * 7.7 + 50.0), glass_st)
+		var cx := x_base + (float(kk) + 0.5) / float(nrw) * circ
+		paths.append(_arch_pts(cx - chw, cx + chw, body_h, body_h + chh, 6))
+		_glass_fan_cyl(cx / r, crown_y, r, _lancet(chw * 0.7, chh * 0.55, 5, 0.25), pane, _pane_color(base_pane, cx * 7.7 + 50.0), glass_st)
 		cells += 1
-	if junction_mode:
-		# ALGORITHM 3: half-round rib sweeps + a junction hub at every path crossing (no SDF).
-		_build_ribs_junction(frame_st, all_paths, r, rib_r, 0.01, int(p["rib_sides"]))
-		frame_st.generate_normals()
-	else:
-		var crown_built := SdfMesher.build(crown_prims, cell, rib_col)
-		if crown_built.get("mesh") != null:
-			frame_st.append_from(crown_built["mesh"] as ArrayMesh, 0, Transform3D.IDENTITY)
-	glass_st.generate_normals()   # ribs keep the SDF gradient normals; only the glass needs flat normals
+	# --- fuse the whole network watertight ---
+	var graph: Dictionary = LatticeGraph.build(paths, 0.02)
+	var frame_st := SurfaceTool.new()
+	frame_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	frame_st.set_color(p["rib_color"])
+	LatticeGraph.mesh(frame_st, graph, LatticeGraph.drum_surface(r), rib_r, int(p["rib_sides"]))
+	frame_st.generate_normals()
+	glass_st.generate_normals()
 	return {"frame": frame_st.commit(), "glass": glass_st.commit(), "cells": cells}
+
+# Ensure an outline is exactly closed (first point repeated at the end) so the graph welds it into a
+# loop instead of leaving two near-coincident capped ends.
+static func _closed(outline: PackedVector2Array) -> PackedVector2Array:
+	var out := PackedVector2Array(outline)
+	if out.size() > 2 and out[0].distance_to(out[out.size() - 1]) > 1.0e-6:
+		out.append(out[0])
+	return out
+
+# A closed comma / mouchette DROP: a teardrop leaned sideways (`sgn` mirrors it) so the point aims
+# along the arch it nests against. First == last -> the graph sweeps it as a loop.
+static func _drop_loop(cx: float, cy: float, size: float, sgn: float) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var seg := 16
+	var tilt := float(sgn) * 0.55
+	var ct := cos(tilt)
+	var st_ := sin(tilt)
+	for i in range(seg + 1):
+		var a := TAU * float(i) / float(seg)
+		var wf := sin(a * 0.5)                       # 0 at the point, 1 at the bulb
+		var px := size * 0.85 * sin(a) * wf
+		var py := size * 1.4 * (0.5 - 0.5 * cos(a)) - size * 0.7
+		out.append(Vector2(cx + px * ct - py * st_, cy + px * st_ + py * ct))
+	return out
+
+# Glass fan with ORIENTATION-CORRECTED winding: the fan faces outward regardless of whether the
+# outline was authored CW or CCW. (The old emitter assumed CW — CCW outlines like the grid-window
+# rounded rects rendered facing INTO the drum, the "missing big windows" bug.)
+static func _glass_fan_cyl(base_th: float, yc: float, r: float, outline: PackedVector2Array, pane: float, col: Color, st: SurfaceTool) -> void:
+	var pts := outline
+	if _signed_area(pts) > 0.0:
+		pts = PackedVector2Array(outline)
+		pts.reverse()
+	_emit_glass_cyl(base_th, yc, r, pts, pane, col, st)
+
+static func _signed_area(pts: PackedVector2Array) -> float:
+	var a := 0.0
+	for i in range(pts.size()):
+		var q := pts[(i + 1) % pts.size()]
+		a += pts[i].x * q.y - q.x * pts[i].y
+	return a * 0.5
 
 # TIERED tracery: a tiered ("cake") base has N vertical drum bands, each at its own shrinking radius.
 # The lattice acts PER VERTICAL FACE — one full tracery band per tier at that tier's radius, stacked in
@@ -675,6 +726,8 @@ static func tracery_tiered(spec: Dictionary, overrides: Dictionary = {}) -> Dict
 		var rk := maxf(0.4, radius * (1.0 - inset * float(k)))
 		var ov := overrides.duplicate()
 		ov["reserved"] = reserved if k == 0 else []          # doors only on the ground tier
+		if spec.has("bays"):
+			ov["bays"] = int(spec["bays"])
 		var built: Dictionary = tracery(rk, band, ov)
 		var xf := Transform3D(Basis(), Vector3(0.0, float(k) * band, 0.0))
 		if built.get("frame") != null:
@@ -1038,7 +1091,7 @@ static func _grid_window(xc: float, yc: float, hw: float, hh: float, cols: int, 
 		for cyi in range(rows):
 			var px := xc - hw + (float(cxi) + 0.5) * cw
 			var py := yc - hh + (float(cyi) + 0.5) * ch
-			_emit_glass_cyl(px / r, py, r, _rounded_rect(cw * 0.5 - gap, ch * 0.5 - gap, 0.01, 1), pane, _pane_color(base_pane, px * 3.1 + py * 7.7), st)
+			_glass_fan_cyl(px / r, py, r, _rounded_rect(cw * 0.5 - gap, ch * 0.5 - gap, 0.01, 1), pane, _pane_color(base_pane, px * 3.1 + py * 7.7), st)
 			n += 1
 	return n
 
@@ -1140,6 +1193,9 @@ const ENTRANCE_DEFAULTS := {
 ## the full `anchors` list, `reserved` regions (so the lattice can carve space), and `side_count`.
 static func entrances(spec: Dictionary, overrides: Dictionary = {}) -> Dictionary:
 	var p := ENTRANCE_DEFAULTS.duplicate()
+	var spec_ov: Dictionary = spec.get("entrances", {})   # per-building entrance tuning lives on the spec
+	for k in spec_ov.keys():
+		p[k] = spec_ov[k]
 	for k in overrides.keys():
 		p[k] = overrides[k]
 	var stone := SurfaceTool.new()
@@ -1159,26 +1215,47 @@ static func entrances(spec: Dictionary, overrides: Dictionary = {}) -> Dictionar
 	var margin := float(p["reserve_margin"])
 	var rng := SeededRng.new(int(str(spec.get("kind", "")).hash()) ^ 0x5177)
 	var n_side := int(rng.call("randi_range", int(p["side_count_min"]), int(p["side_count_max"])))
+	# On a TRACERY drum, doors live IN bays (the plate: each door framed by its bay's mullions). Snap
+	# every door to a bay CENTRE and reserve exactly that bay — free arcs used to eat most of the drum.
+	var snap_drum := is_cyl and str(spec.get("lattice", "")) == "tracery"
+	var bays := int(spec.get("bays", int(TRACERY_DEFAULTS["bays"])))
+	var dtheta := TAU / float(bays)
+	var used_bays: Dictionary = {}
 
 	var anchors: Array = []
 	var reserved: Array = []
-	# MAIN door at the FRONT (drum: theta = pi/2 = +Z; box: the +Z face centre).
+	# MAIN door at the FRONT (drum: theta = pi/2 = +Z = bay 0's centre; box: the +Z face centre).
 	var mf := _door_frame_cyl(radius, PI * 0.5) if is_cyl else _door_frame_face(faces[0], 0.0)
 	_emit_door(stone, dark, dark, mf, main_w, main_h, p, false)
 	anchors.append({"main": true, "pos": mf["anchor"], "n": mf["n"],
 		"top": (mf["anchor"] as Vector3) + Vector3(0, 1, 0) * (main_h + 0.55) + (mf["n"] as Vector3) * 0.06})
-	reserved.append(_reserve_region(is_cyl, radius, mf, main_w, main_h, float(p["jamb"]), margin))
+	var mrr := _reserve_region(is_cyl, radius, mf, main_w, main_h, float(p["jamb"]), margin)
+	if snap_drum:
+		mrr["bay"] = 0
+		used_bays[0] = true
+	reserved.append(mrr)
 	# SIDE doors DISTRIBUTED around the building (drum: evenly around, skipping the front; box: spread
-	# over the non-front faces).
+	# over the non-front faces). On a tracery drum each snaps to the nearest FREE bay centre.
 	for k in range(n_side):
 		var sfr: Dictionary
+		var side_bay := -1
 		if is_cyl:
-			sfr = _door_frame_cyl(radius, PI * 0.5 + TAU * float(k + 1) / float(n_side + 1))
+			var theta := PI * 0.5 + TAU * float(k + 1) / float(n_side + 1)
+			if snap_drum:
+				side_bay = wrapi(int(round((theta - PI * 0.5) / dtheta)), 0, bays)
+				if used_bays.has(side_bay):
+					continue   # bay already holds a door — drop this side entrance
+				used_bays[side_bay] = true
+				theta = PI * 0.5 + float(side_bay) * dtheta
+			sfr = _door_frame_cyl(radius, theta)
 		else:
 			sfr = _door_frame_face(faces[1 + (k % 3)], 0.0)
 		_emit_door(stone, dark, accent, sfr, side_w, side_h, p, true)
 		anchors.append({"main": false, "pos": sfr["anchor"], "n": sfr["n"]})
-		reserved.append(_reserve_region(is_cyl, radius, sfr, side_w, side_h, float(p["jamb"]), margin))
+		var srr := _reserve_region(is_cyl, radius, sfr, side_w, side_h, float(p["jamb"]), margin)
+		if side_bay >= 0:
+			srr["bay"] = side_bay
+		reserved.append(srr)
 	stone.generate_normals()
 	dark.generate_normals()
 	accent.generate_normals()
