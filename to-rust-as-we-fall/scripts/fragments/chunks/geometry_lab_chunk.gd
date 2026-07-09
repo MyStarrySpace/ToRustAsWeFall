@@ -53,7 +53,11 @@ func _build_chunk() -> void:
 	_turntable = Node3D.new()
 	_turntable.name = "Construction"
 	add_child(_turntable)
-	if _algorithm == 2:
+	if _algorithm == 3:
+		# ALGORITHM 3: clean-merge two crossing EXTRUDED paths — intersect the centerlines, find the
+		# corner points where the arm edges cross, fill the junction, seam back into the arms.
+		_build_junction(_turntable)
+	elif _algorithm == 2:
 		# ALGORITHM 2: a larger prism; an awning on ALL FOUR sides, then recurse each side by drawing a
 		# fresh awning off its EFHG skirt (out + down) -> a blocky, stepped, flared mass.
 		_build_prism(_turntable, BOX2, false)
@@ -264,6 +268,106 @@ func _linear_curve() -> Curve:
 	c.add_point(Vector2(0.0, 0.0), 0.0, 0.0, Curve.TANGENT_LINEAR, Curve.TANGENT_LINEAR)
 	c.add_point(Vector2(1.0, 1.0), 0.0, 0.0, Curve.TANGENT_LINEAR, Curve.TANGENT_LINEAR)
 	return c
+
+# --- ALGORITHM 3: clean-merge crossing extruded paths (a beam profile: width 2*w, height h). --------
+# Two crossing centerlines -> intersection P -> the arm EDGES (centreline +/- w) intersect at corner
+# points around P -> fill the junction (central polygon + arm panels) + walls: one watertight surface.
+func _build_junction(root: Node3D) -> void:
+	var w := 0.42                       # ribbon half-width
+	var h := 0.55                       # extrude height
+	# two crossing lines through the origin -> four arm far-endpoints. (P = their centreline intersection.)
+	var line_a := [Vector3(-3.2, 0.0, 0.0), Vector3(3.2, 0.0, 0.0)]
+	var line_b := [Vector3(-1.9, 0.0, -3.0), Vector3(1.9, 0.0, 3.0)]
+	var p := _line_intersect_xz(line_a[0], line_a[1] - line_a[0], line_b[0], line_b[1] - line_b[0])
+	var ends := [line_a[1], line_a[0], line_b[1], line_b[0]]
+
+	# per-arm frame (dir + left perpendicular), sorted CCW by angle around P
+	var arms: Array = []
+	for e in ends:
+		var d: Vector3 = ((e - p) * Vector3(1, 0, 1)).normalized()
+		arms.append({"end": e, "dir": d, "perp": Vector3(-d.z, 0.0, d.x), "ang": atan2(d.z, d.x)})
+	arms.sort_custom(func(x, y): return float(x["ang"]) < float(y["ang"]))
+	var n := arms.size()
+
+	# corner[i] = where arm i's LEFT edge meets arm (i+1)'s RIGHT edge (the outer junction corners)
+	var corner: Array = []
+	for i in range(n):
+		var ai: Dictionary = arms[i]
+		var aj: Dictionary = arms[(i + 1) % n]
+		var pi: Vector3 = p + (ai["perp"] as Vector3) * w
+		var pj: Vector3 = p - (aj["perp"] as Vector3) * w
+		corner.append(_line_intersect_xz(pi, ai["dir"], pj, aj["dir"]))
+
+	var yh := Vector3(0.0, h, 0.0)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	# central junction polygon (top + bottom), fanned from its centroid
+	var cen: Vector3 = _centroid(corner)
+	for i in range(n):
+		var c0: Vector3 = corner[i]
+		var c1: Vector3 = corner[(i + 1) % n]
+		_tri3(st, cen + yh, c0 + yh, c1 + yh)   # top
+		_tri3(st, cen, c1, c0)                  # bottom (reversed)
+	# each arm: base corners = corner[i-1] (right) & corner[i] (left), far = end -/+ perp*w
+	for i in range(n):
+		var ai: Dictionary = arms[i]
+		var pr: Vector3 = ai["perp"]
+		var br: Vector3 = corner[(i - 1 + n) % n]   # base-right
+		var bl: Vector3 = corner[i]                 # base-left
+		var fr: Vector3 = (ai["end"] as Vector3) - pr * w   # far-right
+		var fl: Vector3 = (ai["end"] as Vector3) + pr * w   # far-left
+		_quad(st, br + yh, fr + yh, fl + yh, bl + yh)   # arm top
+		_quad(st, bl, fl, fr, br)                       # arm bottom
+		_wall(st, br, fr, h)   # right edge wall
+		_wall(st, fr, fl, h)   # far cap wall
+		_wall(st, fl, bl, h)   # left edge wall
+
+	st.generate_normals()
+	var mi := MeshInstance3D.new()
+	mi.name = "MergedJunction"
+	mi.mesh = st.commit()
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.80, 0.44, 0.28)
+	mat.roughness = 0.85
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mi.material_override = mat
+	root.add_child(mi)
+
+	# show the raw (non-extruded) centrelines + label P and the junction corners
+	var gl := SurfaceTool.new()
+	gl.begin(Mesh.PRIMITIVE_LINES)
+	gl.add_vertex(line_a[0] + yh); gl.add_vertex(line_a[1] + yh)
+	gl.add_vertex(line_b[0] + yh); gl.add_vertex(line_b[1] + yh)
+	var glm := MeshInstance3D.new()
+	glm.name = "Centrelines"
+	glm.mesh = gl.commit()
+	var lmat := StandardMaterial3D.new()
+	lmat.albedo_color = Color(0.3, 0.85, 1.0)
+	lmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	glm.material_override = lmat
+	root.add_child(glm)
+	_add_point(root, "P", p + yh)
+	for i in range(n):
+		_add_point(root, "C%d" % i, (corner[i] as Vector3) + yh)
+
+# Intersection of two lines in the XZ plane (y ignored), each given point + direction. Parallel -> p1.
+func _line_intersect_xz(p1: Vector3, d1: Vector3, p2: Vector3, d2: Vector3) -> Vector3:
+	var denom := d1.x * d2.z - d1.z * d2.x
+	if absf(denom) < 1.0e-6:
+		return p1
+	var t := ((p2.x - p1.x) * d2.z - (p2.z - p1.z) * d2.x) / denom
+	return Vector3(p1.x + d1.x * t, 0.0, p1.z + d1.z * t)
+
+func _centroid(pts: Array) -> Vector3:
+	var s := Vector3.ZERO
+	for pt in pts:
+		s += pt as Vector3
+	return s / float(maxi(1, pts.size()))
+
+# A vertical wall quad from edge p0-p1 (at y=0) up to height h.
+func _wall(st: SurfaceTool, p0: Vector3, p1: Vector3, h: float) -> void:
+	var yh := Vector3(0.0, h, 0.0)
+	_quad(st, p0, p1, p1 + yh, p0 + yh)
 
 func _add_point(root: Node3D, letter: String, pos: Vector3) -> void:
 	var s := MeshInstance3D.new()

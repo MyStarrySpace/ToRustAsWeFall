@@ -131,6 +131,9 @@ const PREVIEW_ENTRIES := [
 	# Same chunk, algorithm 2 = the RECURSIVE awning (all sides -> blocky stepped mass).
 	{"id": "geometry_lab_recursive", "chunk": "geometry_lab", "title": "Geometry Lab 2 (recursive awnings)", "stage": 6,
 		"config": {"algorithm": 2, "angle": 45.0, "overlays": {"aster": false, "peris": false, "endo": false}}},
+	# Algorithm 3 = clean-merge crossing extruded paths (the lattice-junction fix).
+	{"id": "geometry_lab_junction", "chunk": "geometry_lab", "title": "Geometry Lab 3 (path junction merge)", "stage": 6,
+		"config": {"algorithm": 3, "overlays": {"aster": false, "peris": false, "endo": false}}},
 ]
 
 ## The menu entry for an id (or {} if none).
