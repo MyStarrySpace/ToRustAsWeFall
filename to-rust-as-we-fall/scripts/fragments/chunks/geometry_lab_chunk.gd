@@ -122,6 +122,7 @@ func _build_prism(root: Node3D, size: Vector3, with_grid: bool) -> void:
 	lmat.albedo_color = Color(0.16, 0.18, 0.22)
 	lmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	glm.material_override = lmat
+	glm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	root.add_child(glm)
 
 # --- Steps 3-8: the awning construction, its faces, and the labeled points. ------------------------
@@ -369,6 +370,7 @@ func _build_junction(root: Node3D) -> void:
 	lmat.albedo_color = Color(0.3, 0.85, 1.0)
 	lmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	glm.material_override = lmat
+	glm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF   # debug guides must not shadow the arms
 	root.add_child(glm)
 	_add_point(root, "P", p + yh)
 	for i in range(n):
@@ -468,6 +470,7 @@ func _add_point(root: Node3D, letter: String, pos: Vector3) -> void:
 	smat.albedo_color = Color(1.0, 0.86, 0.2)
 	smat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	s.material_override = smat
+	s.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	root.add_child(s)
 	var lbl := Label3D.new()
 	lbl.text = letter
