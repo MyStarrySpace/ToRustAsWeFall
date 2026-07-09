@@ -26,9 +26,18 @@ Reference plates: `reference-images/architecture/*.png`. Compare the live showca
 ---
 
 ## Organic merge — the "sausages" fix (highest-leverage, cross-lattice)
-The Godot lattices sweep tubes and just OVERLAP them, so junctions read as separate sausages; the
-Blender pipeline fused parts into one organic surface. **Investigation done (2026-07-09) — the
-capability already exists in-engine.**
+**DONE (Fable, 2026-07-09) — replaced by the LatticeGraph junction engine.** The SDF/metaball route
+below is superseded for lattices: `scripts/generation/lattice_graph.gd` (`LatticeGraph`) is now THE
+merge. It builds a PLANAR GRAPH from the rib paths — splitting at X-crossings AND T-touches (an
+endpoint landing on another rib, the joint class the old interior-only detection could never see),
+welding endpoints (L-joints), chaining degree-2 runs, detecting closed loops — then meshes it
+WATERTIGHT over a surface functor (drum or box face): closed profile rings (half-round crest + an
+`embed` skirt sunk into the wall so drum faceting can't open gaps), dome hubs at every junction built
+ON the exact mouth rings the tube sweeps terminate in (shared vertices — no cracks by construction),
+caps at free ends, loop sweeps for closed shapes. Every triangle is emitted through a winding-safe
+`_face` (the inside-out-sweep class of bug is structurally impossible). Tested invariant:
+`LatticeGraph.boundary_edge_count(mesh) == 0` — zero boundary edges, holes are a red test. SDF/
+metaball (`SdfMesher`) remains for MASSING blends (lobed feet, blob stacks), not for rib lattices.
 
 - **What Blender did = METABALLS** (`blender/skills/building-generation/gen_blob_mass.py`,
   `build_blob_mass`): one metaball element per sphere, `mb.resolution ≈ 0.30`, polygonised into ONE
@@ -74,11 +83,17 @@ Proportions verified against the plates. A single lathe or box is Opus's to keep
   real foot), so these are the highest-leverage Fable base tasks.
 
 ## Lattice 1 — honeyframe (Honeycomb facade)
+**DONE (Fable, 2026-07-09): rebuilt to the director's S_A/S_B algorithm** —
+`_honeyframe_face_sasb` (default `rib_merge:"sasb"`), on LatticeGraph: grid subdivision → cut points
+at `cut` (≤50%) along each edge from every vertex → S_A connectors around each vertex ROUNDED
+concave-toward-the-vertex (quad bezier, `pinch`) → S_B straight spans between cut points → welded
+into degree-3 dome hubs, watertight. Interior vertices jitter (deterministic hash) for the hand-made
+read; per-cell lit panes behind the rounded openings; door regions silence crossing ribs. The old
+per-cell frame-ring tiling is kept behind `rib_merge:"frame_ring"` for comparison. REMAINING for a
+later pass: decay asymmetry (torn face, vines) + window furniture (blinds, sills, balconies).
 
-**Director's spec — the ALGORITHM given (verbatim), before Opus improvised its own tiling.** This is
-the vertex-corner-cut construction the honeyframe was supposed to be (the setting "used on Welcombe").
-It operates on the **subdivided box** (subdivide each face into a grid first — confirmed), per grid
-vertex:
+**Director's spec — the ALGORITHM (verbatim), now implemented as above.** It operates on the
+**subdivided box** (subdivide each face into a grid first — confirmed), per grid vertex:
 1. Get the vertices of the (subdivided) mesh.
 2. From each vertex, find the edges going out in each direction.
 3. Along each such edge, choose a point at **[PARAMETER, capped at 50%]** percent of the edge length
@@ -130,14 +145,20 @@ tubes. On the PPP + Honeycomb.
 wall standoff brackets · rust/verdigris patina (per-ring vertex colour). Sausage junctions at pipe
 couplings should route through the **Organic merge** like the tracery ribs.
 
-## Lattice 3 — tracery (Beacon Hill)  → DEFERRED TO FABLE (director, 2026-07-09)
-**Opus tried and it doesn't land — hand the whole tracery to Fable.** Opus built three attempts (SDF
-metaball fuse; then the algorithm-3 half-round junction merge which reads crisp at a front elevation
-but breaks up into disconnected shards at gameplay camera angles). None reads like the plate in-game.
-The current code (`LatticeBuilder.tracery`, `rib_merge:"junction"` default) is a PLACEHOLDER only —
-Fable should rebuild the tracery from the decomposition below, not patch the Opus armature. The
-entrances now RESERVE their bays (the tracery skips a bay per door via the `reserved` override), so
-Fable can assume clear door space. Keep the `reserved` param when rebuilding.
+## Lattice 3 — tracery (Beacon Hill)
+**REBUILT GROUND-ZERO (Fable, 2026-07-09)** on LatticeGraph — a CONNECTED flowing network: mullions
+run root → body course; the sill and BOTH arches T into them; the window jambs T into the sill and
+chain through the inner arch into one continuous rib; the outer arch springs off the mullions and
+flows bay-to-bay OVER the doors; two mirrored mouchette drops + stepped flanking vesicas are closed
+loops; the crown clerestory arches spring off the body course. Doors SNAP to bay centres and reserve
+exactly THEIR bay (`entrances` writes `bay` into each reserved region; free clearance arcs used to
+eat ~65% of the drum — the "invisible tracery" root cause). Also fixed: single-sided glass was
+winding by outline orientation (CCW rounded-rects — the big gridded windows — faced INTO the drum);
+glass now goes through orientation-corrected fans. Per-building entrance tuning rides the spec
+(`"entrances": {...}`, Beacon Hill = main + 1 enforcement door; `"bays": 7`).
+REMAINING for a later pass (still Fable): the **bell/beehive taper** (radius(y) lathe base + the
+lattice riding it), the **root/vine splay** at the mullion feet, arched door heads, and interlacing
+where the plate weaves ribs over/under.
 
 **Design:** mullioned **glass curtain behind + stone tracery ribs in front** (two layers), on a
 **bell/beehive** tower (wide base, domed top) — one continuous flowing Art-Nouveau rib NETWORK.
