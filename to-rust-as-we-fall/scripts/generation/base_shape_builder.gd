@@ -122,7 +122,7 @@ const SPECS := {
 		"tiers": 3, "tier_inset": 0.16,
 		"color": Color(0.56, 0.51, 0.43),
 		"tile": "facility_metal",
-		"lattice": "",                      # per-tier facade lattice + ledge treatments are the next steps
+		"lattice": "tracery",               # runs PER vertical drum band; ledge treatments come next
 	},
 }
 

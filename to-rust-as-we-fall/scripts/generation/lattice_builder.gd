@@ -647,6 +647,58 @@ static func tracery(radius: float, height: float, overrides: Dictionary = {}) ->
 	glass_st.generate_normals()   # ribs keep the SDF gradient normals; only the glass needs flat normals
 	return {"frame": frame_st.commit(), "glass": glass_st.commit(), "cells": cells}
 
+# TIERED tracery: a tiered ("cake") base has N vertical drum bands, each at its own shrinking radius.
+# The lattice acts PER VERTICAL FACE — one full tracery band per tier at that tier's radius, stacked in
+# Y — so a tier's ribs wrap its own drum (not the one below) and stop at the ledge. Doors (the reserved
+# bays) live on the ground tier only. Flat ledge faces are handled by `ledge_treatment`, not here.
+static func tracery_tiered(spec: Dictionary, overrides: Dictionary = {}) -> Dictionary:
+	var tiers := maxi(1, int(spec.get("tiers", 1)))
+	var radius := float(spec.get("radius", 2.4))
+	var height := float(spec.get("height", 7.2))
+	var inset := float(spec.get("tier_inset", 0.16))
+	var band := height / float(tiers)
+	var reserved: Array = overrides.get("reserved", [])
+	var fst := SurfaceTool.new()
+	fst.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var gst := SurfaceTool.new()
+	gst.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var cells := 0
+	for k in range(tiers):
+		var rk := maxf(0.4, radius * (1.0 - inset * float(k)))
+		var ov := overrides.duplicate()
+		ov["reserved"] = reserved if k == 0 else []          # doors only on the ground tier
+		var built: Dictionary = tracery(rk, band, ov)
+		var xf := Transform3D(Basis(), Vector3(0.0, float(k) * band, 0.0))
+		if built.get("frame") != null:
+			fst.append_from(built["frame"] as ArrayMesh, 0, xf)
+		if built.get("glass") != null:
+			gst.append_from(built["glass"] as ArrayMesh, 0, xf)
+		cells += int(built.get("cells", 0))
+	return {"frame": fst.commit(), "glass": gst.commit(), "cells": cells}
+
+# TIERED honeyframe: the box equivalent — one honeyframe band per tier at that tier's shrunk footprint.
+static func honeyframe_tiered(spec: Dictionary, overrides: Dictionary = {}) -> Dictionary:
+	var tiers := maxi(1, int(spec.get("tiers", 1)))
+	var size: Vector3 = spec.get("size", Vector3(4.5, 8.0, 5.5))
+	var inset := float(spec.get("tier_inset", 0.16))
+	var band := size.y / float(tiers)
+	var reserved: Array = overrides.get("reserved", [])
+	var fst := SurfaceTool.new()
+	fst.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var gst := SurfaceTool.new()
+	gst.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for k in range(tiers):
+		var f := maxf(0.25, 1.0 - inset * float(k))
+		var ov := overrides.duplicate()
+		ov["reserved"] = reserved if k == 0 else []
+		var built: Dictionary = honeyframe(Vector3(size.x * f, band, size.z * f), ov)
+		var xf := Transform3D(Basis(), Vector3(0.0, float(k) * band, 0.0))
+		if built.get("frame") != null:
+			fst.append_from(built["frame"] as ArrayMesh, 0, xf)
+		if built.get("glass") != null:
+			gst.append_from(built["glass"] as ArrayMesh, 0, xf)
+	return {"frame": fst.commit(), "glass": gst.commit()}
+
 # Convert a 2D (arc-length, height) rib path into SDF CAPSULE prims mapped onto the drum. Consecutive
 # capsules share endpoints, and every rib's capsules union with a smooth-min `k`, so where ribs cross
 # they FUSE into one organic surface (the metaball merge) instead of reading as overlapping sausages.
