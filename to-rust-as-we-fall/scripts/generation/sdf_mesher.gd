@@ -25,9 +25,21 @@ extends RefCounted
 
 const FAR := 1.0e9
 
+# The heavy field-splat + marching-tets work is ported to C++ (native/src/sdf_mesher.cpp,
+# class SdfMesherNative). When the GDExtension is loaded we delegate to it (same algorithm, ~10x+
+# faster); the GDScript below stays as the reference + the fallback when the extension is absent.
+static var _native_checked := false
+static var _native: Object = null
+
 ## Polygonise. cell = voxel size in metres (0.07-0.09 for the preview, coarser for tests).
 ## Returns {"mesh": ArrayMesh, "verts": int, "tris": int, "aabb": AABB} — null mesh if empty.
 static func build(prims: Array, cell: float, color: Color = Color(0.5, 0.45, 0.4)) -> Dictionary:
+	if not _native_checked:
+		_native_checked = true
+		if ClassDB.class_exists("SdfMesherNative"):
+			_native = ClassDB.instantiate("SdfMesherNative")
+	if _native != null:
+		return _native.call("build", prims, cell, color)
 	if prims.is_empty():
 		return {"mesh": null, "verts": 0, "tris": 0, "aabb": AABB()}
 	# --- bounds: union of primitive boxes + blend margin, snapped to the lattice ---
