@@ -75,14 +75,16 @@ roundels / clerestory ring (`clerestory`) · moulded rib cross-section (`bevel`)
 
 ## Build pipeline (the ordered steps, per the director)
 1. **Base shapes** — DONE (cylinder / box per building).
-2. **Lattice** — DONE v1 (honeyframe, pipes, tracery). Fidelity gaps above.
-3. **Entrances** — main + side entrances (e.g. maintenance, enforcement vestibule). The Beacon Hill
-   plate literally has a grand "Reading Room" main door + a teal "Enforcement Vestibule — Authorized
-   Access Only" side door.
-4. **Signs** — building nameplates + notices (Beacon Hill has the carved name cartouche + a lit
-   "READING ROOM OPENS / ONE DAY ONLY" notice).
-5. **Base / foundation** — the plinth the building sits on: elevated-from-ground step, greenery
-   (planters, vines), cobble apron.
+2. **Lattice** — DONE v1 (honeyframe, pipes, tracery) + the enrichment pass. Fidelity gaps above.
+3. **Entrances** — DONE v1 (`LatticeBuilder.entrances`): grand main portal (jambs/lintel/recessed
+   doors/canopy/steps) + a teal enforcement side door, on box + drum. Fable-grade remaining: a true
+   ARCHED head (currently rectangular), lamps/sconces flanking the door, and carving a base zone in the
+   facade so the door isn't over the bottom windows (currently the portal projects proud of them).
+4. **Signs** — DONE v1: a billboarded `Label3D` nameplate (real readable text) over each main door.
+   Remaining: the carved-plaque geometry + secondary NOTICE signs (e.g. "READING ROOM OPENS / ONE DAY
+   ONLY") — text as a baked pixel-art texture on a plaque if we don't want live Label3D everywhere.
+5. **Base / foundation** — the stepped PLINTH is done (in the honeyframe crown pass + the door steps).
+   Remaining: greenery (planters, vines, the Beacon Hill corner shrubs) + a cobble apron.
 6. **Voronoi organic decorations** — a decoration pass: consider HALF the object (decor mirrored),
    scatter a few "focal points", draw Voronoi cells, then merge cells — merging harder the further from
    a focal point. Builds on the existing Fable/Blender Voronoi code, which IS present (it's under the
