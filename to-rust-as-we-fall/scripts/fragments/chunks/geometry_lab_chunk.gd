@@ -26,6 +26,11 @@ var _algorithm := 1
 var _max_down_shift := 2.0   # algo 2: max extra DOWNWARD shift (grid units) of a recursed awning's A/B
 var _merge_seed := 1         # algo 2: seed for the adjacent-awning merge dice
 
+# algo 2 [PARAMETER_CURVE]s as real Godot Curve resources (editable in the inspector / assignable in the
+# .tscn). Sampled over recursion-depth t in [0,1]. Null -> a true-linear default (see _linear_curve).
+@export var shift_curve: Curve   # distributes the downward shift across recursion depth
+@export var merge_curve: Curve   # likelihood of merging adjacent awnings vs recursion depth
+
 func configure_chunk(config: Dictionary) -> void:
 	if config.has("angle"):
 		_angle_deg = float(config["angle"])
@@ -153,8 +158,8 @@ func _build_recursive(root: Node3D, size: Vector3) -> void:
 	# So B of face fi == A of face fi+1 (they share the corner) — the merge seam.
 	var corners := [Vector3(hx, yt, hz), Vector3(-hx, yt, hz), Vector3(-hx, yt, -hz), Vector3(hx, yt, -hz)]
 	var normals := [Vector3(0, 0, 1), Vector3(-1, 0, 0), Vector3(0, 0, -1), Vector3(1, 0, 0)]
-	var shift_curve := _linear_curve()
-	var merge_curve := _linear_curve()   # likelihood rises with recursion depth (0 at top -> 1 deep)
+	var sc: Curve = shift_curve if shift_curve != null else _linear_curve()
+	var mc: Curve = merge_curve if merge_curve != null else _linear_curve()   # rises with depth by default
 
 	# 1) precompute each face's awning levels, applying the floored downward shift to each next A/B.
 	var per_face: Array = []
@@ -168,7 +173,7 @@ func _build_recursive(root: Node3D, size: Vector3) -> void:
 			var pts := _awning_points(a, b, n, proj)
 			levels.append(pts)
 			var t := float(d + 1) / float(RECURSE_DEPTH)
-			var shift := floorf(_max_down_shift * shift_curve.sample(clampf(t, 0.0, 1.0)))
+			var shift := floorf(_max_down_shift * sc.sample(clampf(t, 0.0, 1.0)))
 			a = (pts["E"] as Vector3) - Vector3(0.0, shift, 0.0)
 			b = (pts["F"] as Vector3) - Vector3(0.0, shift, 0.0)
 			if a.y - STEP <= 0.01:
@@ -188,7 +193,7 @@ func _build_recursive(root: Node3D, size: Vector3) -> void:
 			var do_merge := false
 			if d < shared:
 				var t := float(d) / float(RECURSE_DEPTH)
-				do_merge = float(rng.call("randf")) < merge_curve.sample(clampf(t, 0.0, 1.0))
+				do_merge = float(rng.call("randf")) < mc.sample(clampf(t, 0.0, 1.0))
 			arr.append(do_merge)
 		merged.append(arr)
 
@@ -252,10 +257,12 @@ func _draw_merge_bridge(st: SurfaceTool, pa: Dictionary, pb: Dictionary) -> void
 	_tri3(st, pa["B"], pb["E"], pa["F"])
 	_quad(st, pa["F"], pb["E"], pb["G"], pa["H"])
 
+# A TRUE-linear Curve (y = t). NOTE: Curve.add_point() defaults to TANGENT_FREE, which cubic-interps to
+# a SMOOTHSTEP, not a line — so the tangent mode must be TANGENT_LINEAR on both ends.
 func _linear_curve() -> Curve:
 	var c := Curve.new()
-	c.add_point(Vector2(0.0, 0.0))
-	c.add_point(Vector2(1.0, 1.0))
+	c.add_point(Vector2(0.0, 0.0), 0.0, 0.0, Curve.TANGENT_LINEAR, Curve.TANGENT_LINEAR)
+	c.add_point(Vector2(1.0, 1.0), 0.0, 0.0, Curve.TANGENT_LINEAR, Curve.TANGENT_LINEAR)
 	return c
 
 func _add_point(root: Node3D, letter: String, pos: Vector3) -> void:
