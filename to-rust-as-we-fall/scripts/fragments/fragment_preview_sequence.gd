@@ -27,6 +27,7 @@ const DATA_FRAGMENT_CHUNK_SCENE := preload("res://scenes/fragments/chunks/data_f
 const SHAPE_GRAMMAR_CHUNK_SCENE := preload("res://scenes/fragments/chunks/shape_grammar_preview.tscn")
 const CREATURE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/creature_preview.tscn")
 const ARCHITECTURE_SHOWCASE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/architecture_showcase.tscn")
+const GEOMETRY_LAB_CHUNK_SCENE := preload("res://scenes/fragments/chunks/geometry_lab.tscn")
 const SightMaskBakerScript := preload("res://scripts/game/world/sight_mask_baker.gd")
 
 # chunk name -> packed scene. The single lookup that replaced the old per-name match (and the reason
@@ -54,6 +55,7 @@ const CHUNK_SCENES := {
 	"shape_grammar": SHAPE_GRAMMAR_CHUNK_SCENE,
 	"creature_grammar": CREATURE_CHUNK_SCENE,
 	"architecture_showcase": ARCHITECTURE_SHOWCASE_CHUNK_SCENE,
+	"geometry_lab": GEOMETRY_LAB_CHUNK_SCENE,
 }
 
 # The fragment menu, ordered along the combine-characters learning ramp (its `stage` ascending). Each
@@ -122,6 +124,10 @@ const PREVIEW_ENTRIES := [
 	# iteration surface — walk the row, N reseeds. Overlays OFF by default (it's a look-dev gallery).
 	{"id": "architecture_showcase", "chunk": "architecture_showcase", "title": "Architecture Showcase (district heroes)", "stage": 6,
 		"config": {"seed": 1, "overlays": {"aster": false, "peris": false, "endo": false}}},
+	# GEOMETRY LAB: minimal geometry-construction algorithms with labeled points (algorithm 1 = the
+	# awning/hood from a face rectangle). Overlays OFF (a look-dev workbench).
+	{"id": "geometry_lab", "chunk": "geometry_lab", "title": "Geometry Lab (minimal algorithms)", "stage": 6,
+		"config": {"angle": 45.0, "overlays": {"aster": false, "peris": false, "endo": false}}},
 ]
 
 ## The menu entry for an id (or {} if none).
@@ -190,7 +196,7 @@ const STAMINA_REGEN := 10.0
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
 @export_enum("stacks", "rings", "lockout", "mother_flure", "survival_range",
 	"endo_junction_stretch", "generated_stretch",
-	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "architecture_showcase") var preview_chunk := "stacks"
+	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "architecture_showcase", "geometry_lab") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 
