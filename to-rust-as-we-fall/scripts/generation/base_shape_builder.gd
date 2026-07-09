@@ -232,10 +232,12 @@ static func _emit_oriented_box_st(st: SurfaceTool, center: Vector3, u: Vector3, 
 static func _tri_st(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
 	st.add_vertex(a); st.add_vertex(b); st.add_vertex(c)
 
-# Emit a triangle wound so its front face points AWAY from `center` (outward for a convex solid), so it
-# never culls when viewed from outside — no matter what order the caller passed the corners.
+# Emit a triangle wound so it is FRONT-FACING (visible) from outside a convex solid — no matter what
+# order the caller passed the corners. Matches the proven `_emit_box` convention: Godot's visible outer
+# face has (b-a)x(c-a) pointing TOWARD the centre, so we keep the order when the cross product points
+# inward and flip it otherwise. (generate_normals still derives the correct outward normal for lighting.)
 static func _tri_out(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, center: Vector3) -> void:
-	if (b - a).cross(c - a).dot((a + b + c) / 3.0 - center) >= 0.0:
+	if (b - a).cross(c - a).dot((a + b + c) / 3.0 - center) <= 0.0:
 		st.add_vertex(a); st.add_vertex(b); st.add_vertex(c)
 	else:
 		st.add_vertex(a); st.add_vertex(c); st.add_vertex(b)
