@@ -25,6 +25,7 @@ const HONEYFRAME_DEFAULTS := {
 	"bevel": 0.05,         # frame moulding: the band crests this much above its rims (chamfered profile)
 	"crown": true,         # emit a cornice + parapet + plinth silhouette
 	"pane_color": Color(1.0, 0.72, 0.36),   # base window-light colour; per-pane brightness/tint varies off it
+	"rib_merge": "frame_ring",   # "frame_ring" (moulded rings — reads as a solid honeycomb) or "junction" (half-round strut grid + melting hubs)
 }
 
 ## Build the honeyframe lattice for a box of `size` (base at y=0). Returns {frame, glass} ArrayMeshes:
@@ -39,8 +40,12 @@ static func honeyframe(size: Vector3, overrides: Dictionary = {}) -> Dictionary:
 	var glass_st := SurfaceTool.new()
 	glass_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var cells := 0
+	var junction := str(p.get("rib_merge", "junction")) == "junction"
 	for f in faces:
-		cells += _honeyframe_face(f, p, frame_st, glass_st)
+		if junction:
+			cells += _honeyframe_face_junction(f, p, frame_st, glass_st)
+		else:
+			cells += _honeyframe_face(f, p, frame_st, glass_st)
 	# Closed corner posts down the four vertical box edges cover the miter seam where two faces' frames
 	# meet at 90 degrees (otherwise a bare L-wedge runs the full height of every corner).
 	var hx := size.x * 0.5
@@ -124,6 +129,49 @@ static func _honeyframe_face(f: Dictionary, p: Dictionary, frame_st: SurfaceTool
 				inner_j.append(pt + off)
 			_emit_frame_ring(center, u, v, n, outer, inner_j, fd, back, bevel, frame_st)
 			_emit_glass(center, u, v, n, inner_j, pane, _pane_color(base_pane, key), glass_st)
+	return rows * cols
+
+# JUNCTION honeyframe for one face: a grid of half-round STRUTS (a line per column + per row) with a
+# rib_junction hub at every grid crossing (the organic "melting junction"), and a lit rounded window in
+# each cell. This is the algorithm-3 way — the struts fuse at crossings instead of a per-cell inset.
+static func _honeyframe_face_junction(f: Dictionary, p: Dictionary, frame_st: SurfaceTool, glass_st: SurfaceTool) -> int:
+	var w: float = f["w"]
+	var h: float = f["h"]
+	var cols := int(max(1, round(w / float(p["cell_size"]))))
+	var rows := int(max(1, round(h / (float(p["cell_size"]) * float(p["cell_aspect"])))))
+	var cw := w / float(cols)
+	var ch := h / float(rows)
+	var c: Vector3 = f["c"]
+	var u: Vector3 = (f["u"] as Vector3).normalized()
+	var n: Vector3 = (f["n"] as Vector3).normalized()
+	var v := n.cross(u).normalized()
+	var radius := float(p["frame_width"]) * 0.72   # thicker so the struts read solid, not wiry
+	# strut centre-lines in face-centred (x,y), INSET by `radius` from the edges so the half-round width
+	# stays on the face (nothing pokes past the wall / below the base). Vertical per column, horiz per row.
+	var mx := w * 0.5 - radius
+	var my := h * 0.5 - radius
+	var paths: Array = []
+	for col in range(cols + 1):
+		var x := clampf(-w * 0.5 + col * cw, -mx, mx)
+		paths.append(PackedVector2Array([Vector2(x, -my), Vector2(x, my)]))
+	for row in range(rows + 1):
+		var y := clampf(-h * 0.5 + row * ch, -my, my)
+		paths.append(PackedVector2Array([Vector2(-mx, y), Vector2(mx, y)]))
+	_build_ribs_junction_planar(frame_st, paths, c, u, v, radius, 5)
+	# a lit rounded window inset into each cell (kept smaller than the cell so the struts dominate)
+	var base_pane: Color = p["pane_color"]
+	var win_hw := maxf(0.04, cw * 0.5 - radius * 1.85)
+	var win_hh := maxf(0.04, ch * 0.5 - radius * 1.85)
+	for row in range(rows):
+		for col in range(cols):
+			var cx := -w * 0.5 + (float(col) + 0.5) * cw
+			var cy := -h * 0.5 + (float(row) + 0.5) * ch
+			var key := absf(c.x + cx) * 12.9 + absf(c.y + cy) * 7.3 + absf(c.z) * 3.1
+			var outline := _rounded_rect(win_hw, win_hh, minf(win_hw, win_hh) * 0.4, 3)
+			var oj := PackedVector2Array()
+			for pt in outline:
+				oj.append(pt + Vector2(cx, cy))
+			_emit_glass(c, u, v, n, oj, float(p["pane"]), _pane_color(base_pane, key), glass_st)
 	return rows * cols
 
 # A rounded rectangle outline in the (x,y) face plane, wound CCW. 4 quarter-arcs of radius r.
@@ -776,6 +824,48 @@ static func _add_drum_junction(st: SurfaceTool, pos2d: Vector2, dir_a: Vector2, 
 	var ta := (u_arc * dir_a.x + Vector3(0.0, 1.0, 0.0) * dir_a.y).normalized()
 	var tb := (u_arc * dir_b.x + Vector3(0.0, 1.0, 0.0) * dir_b.y).normalized()
 	rib_junction(st, center, Vector3(0.0, 1.0, 0.0), u_arc, [ta, -ta, tb, -tb], rib_r, rib_r * 1.7)
+
+# ---- The same JUNCTION rib-merge on a FLAT FACE (origin + in-face axes u,v; n = u x v = face out). ---
+static func _build_ribs_junction_planar(st: SurfaceTool, paths: Array, origin: Vector3, u: Vector3, v: Vector3, radius: float, sides: int) -> void:
+	for path in paths:
+		_sweep_half_round_planar(st, path as PackedVector2Array, origin, u, v, radius, sides)
+	var np := paths.size()
+	for i in range(np):
+		var pa: PackedVector2Array = paths[i]
+		for j in range(i + 1, np):
+			var pb: PackedVector2Array = paths[j]
+			for si in range(pa.size() - 1):
+				for sj in range(pb.size() - 1):
+					var hit := _seg_x(pa[si], pa[si + 1], pb[sj], pb[sj + 1])
+					if bool(hit.get("hit", false)):
+						var ta := (u * (pa[si + 1] - pa[si]).x + v * (pa[si + 1] - pa[si]).y).normalized()
+						var tb := (u * (pb[sj + 1] - pb[sj]).x + v * (pb[sj + 1] - pb[sj]).y).normalized()
+						rib_junction(st, origin + u * (hit["pos"] as Vector2).x + v * (hit["pos"] as Vector2).y, u, v, [ta, -ta, tb, -tb], radius, radius * 1.7)
+
+static func _sweep_half_round_planar(st: SurfaceTool, path2d: PackedVector2Array, origin: Vector3, u: Vector3, v: Vector3, radius: float, sides: int) -> void:
+	var m := path2d.size()
+	if m < 2:
+		return
+	var nrm := u.cross(v).normalized()   # face outward = bulge direction
+	var rings: Array = []
+	for idx in range(m):
+		var pt: Vector2 = path2d[idx]
+		var center := origin + u * pt.x + v * pt.y
+		var t2: Vector2 = path2d[1] - path2d[0] if idx == 0 else (path2d[m - 1] - path2d[m - 2] if idx == m - 1 else path2d[idx + 1] - path2d[idx - 1])
+		var t3 := u * t2.x + v * t2.y
+		t3 = u if t3.length() < 1.0e-6 else t3.normalized()
+		var perp := nrm.cross(t3).normalized()
+		var ring: Array = []
+		for s in range(sides + 1):
+			var phi := PI * float(s) / float(sides)
+			ring.append(center + perp * (radius * cos(phi)) + nrm * (radius * sin(phi)))
+		rings.append(ring)
+	for i in range(m - 1):
+		var r0: Array = rings[i]
+		var r1: Array = rings[i + 1]
+		for s in range(sides):
+			_tri(st, r0[s], r0[s + 1], r1[s + 1])
+			_tri(st, r0[s], r1[s + 1], r1[s])
 
 # Segment-segment intersection in 2D (interiors only, away from endpoints). {hit:bool, pos:Vector2}.
 static func _seg_x(a1: Vector2, a2: Vector2, b1: Vector2, b2: Vector2) -> Dictionary:

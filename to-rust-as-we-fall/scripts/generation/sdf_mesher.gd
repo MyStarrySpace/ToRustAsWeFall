@@ -34,11 +34,12 @@ static var _native: Object = null
 ## Polygonise. cell = voxel size in metres (0.07-0.09 for the preview, coarser for tests).
 ## Returns {"mesh": ArrayMesh, "verts": int, "tris": int, "aabb": AABB} — null mesh if empty.
 static func build(prims: Array, cell: float, color: Color = Color(0.5, 0.45, 0.4)) -> Dictionary:
-	if not _native_checked:
+	# (Re)acquire the native instance if we haven't yet, OR if the cached one went stale (e.g. the
+	# GDExtension hot-reloaded in the editor and freed it — calling a freed Object would crash).
+	if not _native_checked or (_native != null and not is_instance_valid(_native)):
 		_native_checked = true
-		if ClassDB.class_exists("SdfMesherNative"):
-			_native = ClassDB.instantiate("SdfMesherNative")
-	if _native != null:
+		_native = ClassDB.instantiate("SdfMesherNative") if ClassDB.class_exists("SdfMesherNative") else null
+	if _native != null and is_instance_valid(_native):
 		return _native.call("build", prims, cell, color)
 	if prims.is_empty():
 		return {"mesh": null, "verts": 0, "tris": 0, "aabb": AABB()}
