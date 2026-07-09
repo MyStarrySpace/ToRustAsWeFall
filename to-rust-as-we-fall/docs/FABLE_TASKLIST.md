@@ -102,24 +102,40 @@ tubes. On the PPP + Honeycomb.
 runs · catenary sag · banded couplings · wall standoff brackets · rust/verdigris patina (per-ring
 vertex colour).
 
-## Lattice 3 — tracery (Beacon Hill pointed-arch window wall)  *(built by Opus)*
+## Lattice 3 — tracery (Beacon Hill)  → COMPLETE FABLE REBUILD
 **Design (confirmed):** mullioned **glass curtain behind + stone tracery ribs in front** (two layers,
-not holes in a solid wall). Pointed-arch (lancet) openings in vertical columns, wrapped on the drum.
-**Opus built:** `LatticeBuilder.tracery` — lancet rib rings + lit glass panes wrapped on the Beacon
-Hill cylinder. Tall pointed slots (near-parallel sides tapering to cusps), 2 rows × 12 cols, ribs
-between, warm panes behind.
-**Gaps vs the plate — REMAINING (Fable):**
-- **GEOMETRY.** The ribs still show through the drum / each other at grazing angles and the wrap isn't
-  watertight. Correct topology + the curved-surface fit is Fable's.
-- **Straight ribs.** The plate ribs *branch, interlace, and whiplash* (Art-Nouveau/Gothic tracery);
-  Opus's are constant-width lancet rings. This is the biggest remaining visual gap.
-- **Mullion sub-grid.** Each lancet is one pane; the plate is a fine grid of tiny lit panes (needs the
-  per-row taper-clipped sub-grid — medium, and it multiplies vert count → pair with LOD).
-- **Bell/beehive taper.** The drum is a straight cylinder; the plate is a bell (wider base, domed top).
-  The base lathe is simple, but WRAPPING the tracery flush onto a varying radius is the medium part.
+not holes in a solid wall), on a **bell/beehive** tower (wide base, domed top).
 
-**DONE in Godot (was wrongly deferred):** big-central width hierarchy (`col_pattern`/`bays`) · crown of
-roundels / clerestory ring (`clerestory`) · moulded rib cross-section (`bevel`) · per-pane window light.
+**Opus's version is WRONG and must be completely redone (director, 2026-07-09).** Opus just TILED
+roundels + straight lancet rings. The plate (`reference-images/architecture/beacon_hill.png`) is a
+single **flowing, branching, interlacing rib NETWORK** — Art-Nouveau organic tracery — with nothing
+tiled. Decomposition to build to (top → bottom):
+
+1. **Domed crown band.** A ring of small arched clerestory windows around the bell's domed top;
+   rooftop planters/shrubs above the parapet.
+2. **Arcs interleaved with circles/ovals.** Big rounded ARCHES spring over each large window. Between
+   adjacent arch-springs sit elongated OVAL "eyes" — the circles are *interleaved with* the arcs and
+   share the same continuous rib (NOT a separate tiled ring of roundels).
+3. **Arcs → upside-down teardrops.** Below and between the arches the ribs pinch inward into
+   **inverted-teardrop cells** (rounded top, pointed bottom).
+4. **Teardrops → lines.** Each teardrop's point draws DOWNWARD into a thin rib-line / mullion; these
+   run down the wall and, near the base, splay into ROOT/VINE tendrils that wrap around the doors and
+   the "BEACON HILL / READING ROOM" plaque.
+
+**Glass nested in the negative spaces (three sizes, placed by the rib network — this is the part Opus
+got most wrong):**
+- **Large windows** — tall gridded glass panels directly under the big arcs (the dominant lights).
+- **Thin windows** — slim vertical slits in TWO spots: (a) INSIDE the inverted teardrops, and (b) in
+  the gaps BETWEEN the large windows, right under the arcs.
+- **Small windows** — smaller openings UNDER the teardrop shapes.
+
+**Why it's Fable's:** the whole thing is one continuous branching/interlacing/whiplashing rib solid
+that must wrap flush on a varying (bell) radius and stay watertight, with three window classes clipped
+into its negative space by the rib topology itself. That's exactly the complex-geometry + overlap-fit
+class reserved for Fable — do NOT approximate it again in Opus.
+
+**Keep from the Opus pass (as cheap scaffolding, not the look):** per-pane window LIGHT (vertex-colour
+brightness/tint/off) and the seed plumbing. Everything geometric gets replaced.
 
 ---
 
