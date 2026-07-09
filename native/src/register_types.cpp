@@ -6,6 +6,7 @@
 #include <godot_cpp/godot.hpp>
 
 #include "event_scheduler.h"
+#include "lattice_geom.h"
 #include "sdf_mesher.h"
 #include "xlsx_reader.h"
 
@@ -19,6 +20,7 @@ void initialize_trwf_module(ModuleInitializationLevel p_level) {
 	ClassDB::register_class<EventScheduler>();
 	ClassDB::register_class<XlsxReader>();
 	ClassDB::register_class<SdfMesherNative>();
+	ClassDB::register_class<LatticeGeomNative>();
 }
 
 void uninitialize_trwf_module(ModuleInitializationLevel p_level) {

@@ -3638,6 +3638,14 @@ func _test_architecture_showcase() -> void:
 	jst2.generate_normals()
 	_assert_equals(jm.surface_get_array_len(0), (jst2.commit() as ArrayMesh).surface_get_array_len(0),
 		"rib_junction is deterministic")
+	# --- crossing detection (native LatticeGeomNative when the extension is loaded, else GDScript) ---
+	var xr: Array = Lat._find_crossings([
+		PackedVector2Array([Vector2(-1, 0), Vector2(1, 0)]),
+		PackedVector2Array([Vector2(0, -1), Vector2(0, 1)]),
+	])
+	_assert_equals(xr.size(), 1, "segment_crossings finds the one X crossing")
+	_assert_true(xr.size() > 0 and (xr[0]["pos"] as Vector2).is_equal_approx(Vector2.ZERO),
+		"the crossing is at the origin")
 
 	# --- pipes: SeededRng edge-descent tubes on a shape; non-empty + deterministic per seed ---
 	var pm = Lat.pipes(honey, 7)

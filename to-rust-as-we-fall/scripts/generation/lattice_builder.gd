@@ -781,16 +781,32 @@ static func _inward2(a: Vector2, b: Vector2, centroid: Vector2) -> Vector2:
 static func _build_ribs_junction(st: SurfaceTool, paths: Array, r: float, rib_r: float, standoff: float, sides: int) -> void:
 	for path in paths:
 		_sweep_half_round_on_drum(st, path as PackedVector2Array, r, rib_r, standoff, sides)
-	var np := paths.size()
-	for i in range(np):
+	for cr in _find_crossings(paths):
+		var rd := cr as Dictionary
+		_add_drum_junction(st, rd["pos"], rd["da"], rd["db"], r, rib_r, standoff)
+
+# The O(n^2) rib-crossing detection, ported to C++ (LatticeGeomNative) with a GDScript fallback (same
+# _seg_x thresholds). Returns [{pos:Vector2, da:Vector2, db:Vector2}] — one per interior crossing.
+static var _geom_checked := false
+static var _geom: Object = null
+
+static func _find_crossings(paths: Array) -> Array:
+	if not _geom_checked or (_geom != null and not is_instance_valid(_geom)):
+		_geom_checked = true
+		_geom = ClassDB.instantiate("LatticeGeomNative") if ClassDB.class_exists("LatticeGeomNative") else null
+	if _geom != null and is_instance_valid(_geom):
+		return _geom.call("segment_crossings", paths)
+	var out: Array = []
+	for i in range(paths.size()):
 		var pa: PackedVector2Array = paths[i]
-		for j in range(i + 1, np):
+		for j in range(i + 1, paths.size()):
 			var pb: PackedVector2Array = paths[j]
 			for si in range(pa.size() - 1):
 				for sj in range(pb.size() - 1):
 					var hit := _seg_x(pa[si], pa[si + 1], pb[sj], pb[sj + 1])
 					if bool(hit.get("hit", false)):
-						_add_drum_junction(st, hit["pos"], pa[si + 1] - pa[si], pb[sj + 1] - pb[sj], r, rib_r, standoff)
+						out.append({"pos": hit["pos"], "da": pa[si + 1] - pa[si], "db": pb[sj + 1] - pb[sj]})
+	return out
 
 # Sweep a HALF-ROUND moulding (flat bottom on the drum, arc bulging out) along a (arc-length, height)
 # path mapped onto the drum. The flat chord sits on the opaque drum, so only the outer arc is emitted.
@@ -834,18 +850,14 @@ static func _add_drum_junction(st: SurfaceTool, pos2d: Vector2, dir_a: Vector2, 
 static func _build_ribs_junction_planar(st: SurfaceTool, paths: Array, origin: Vector3, u: Vector3, v: Vector3, radius: float, sides: int) -> void:
 	for path in paths:
 		_sweep_half_round_planar(st, path as PackedVector2Array, origin, u, v, radius, sides)
-	var np := paths.size()
-	for i in range(np):
-		var pa: PackedVector2Array = paths[i]
-		for j in range(i + 1, np):
-			var pb: PackedVector2Array = paths[j]
-			for si in range(pa.size() - 1):
-				for sj in range(pb.size() - 1):
-					var hit := _seg_x(pa[si], pa[si + 1], pb[sj], pb[sj + 1])
-					if bool(hit.get("hit", false)):
-						var ta := (u * (pa[si + 1] - pa[si]).x + v * (pa[si + 1] - pa[si]).y).normalized()
-						var tb := (u * (pb[sj + 1] - pb[sj]).x + v * (pb[sj + 1] - pb[sj]).y).normalized()
-						rib_junction(st, origin + u * (hit["pos"] as Vector2).x + v * (hit["pos"] as Vector2).y, u, v, [ta, -ta, tb, -tb], radius, radius * 1.7)
+	for cr in _find_crossings(paths):
+		var rd := cr as Dictionary
+		var da: Vector2 = rd["da"]
+		var db: Vector2 = rd["db"]
+		var pos: Vector2 = rd["pos"]
+		var ta := (u * da.x + v * da.y).normalized()
+		var tb := (u * db.x + v * db.y).normalized()
+		rib_junction(st, origin + u * pos.x + v * pos.y, u, v, [ta, -ta, tb, -tb], radius, radius * 1.7)
 
 static func _sweep_half_round_planar(st: SurfaceTool, path2d: PackedVector2Array, origin: Vector3, u: Vector3, v: Vector3, radius: float, sides: int) -> void:
 	var m := path2d.size()
