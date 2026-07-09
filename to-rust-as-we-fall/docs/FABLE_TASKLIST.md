@@ -38,6 +38,11 @@ caps at free ends, loop sweeps for closed shapes. Every triangle is emitted thro
 `_face` (the inside-out-sweep class of bug is structurally impossible). Tested invariant:
 `LatticeGraph.boundary_edge_count(mesh) == 0` — zero boundary edges, holes are a red test. SDF/
 metaball (`SdfMesher`) remains for MASSING blends (lobed feet, blob stacks), not for rib lattices.
+Plus the **RED-SHELL render test** (`--test-lattice-holes`, windowed, director's idea): cull-front
+red copy + depth bias — a red pixel = a hidden face visible (hole / winding / exposure); it caught
+the drum-handedness gore bug the topology assert could not see. REMAINING engine pass: hub-mouth
+TRIMMING (tubes entering a hub dome / drops kissing arches still interpenetrate by ~mm — a small
+documented red-pixel budget covers it; a CSG-style trim would zero it).
 
 - **What Blender did = METABALLS** (`blender/skills/building-generation/gen_blob_mass.py`,
   `build_blob_mass`): one metaball element per sphere, `mb.resolution ≈ 0.30`, polygonised into ONE

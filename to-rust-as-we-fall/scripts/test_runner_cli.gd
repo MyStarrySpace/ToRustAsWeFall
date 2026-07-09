@@ -567,6 +567,9 @@ func _ready() -> void:
 			"--test-visual-regression":
 				ran_test = true
 				await _test_visual_regression()
+			"--test-lattice-holes":
+				ran_test = true
+				await _test_lattice_holes()
 			"--test-predictive-attack":
 				ran_test = true
 				_test_predictive_attack()
@@ -3682,6 +3685,18 @@ func _test_architecture_showcase() -> void:
 			deg4 += 1
 	_assert_true(deg4 == 1 and (gx["edges"] as Array).size() == 4,
 		"graph X: a crossing becomes one degree-4 node with four edges")
+	# X at another path's interior VERTEX: same geometry as the X above, but the vertical path has a
+	# vertex exactly at the crossing — a relative interior margin silently dropped these (review #2)
+	var gv: Dictionary = LG.build([
+		PackedVector2Array([Vector2(-1, 0), Vector2(1, 0)]),
+		PackedVector2Array([Vector2(0, -1), Vector2(0, 0), Vector2(0, 1)]),
+	])
+	var vdeg4 := 0
+	for ndv in (gv["nodes"] as Array):
+		if ((ndv as Dictionary)["arms"] as Array).size() == 4:
+			vdeg4 += 1
+	_assert_true(vdeg4 == 1 and (gv["edges"] as Array).size() == 4,
+		"graph X-at-vertex: a crossing on another path's interior vertex still fuses (degree-4 node)")
 	# T: an endpoint landing ON another rib's interior -> one degree-3 node, three edges
 	var gt: Dictionary = LG.build([
 		PackedVector2Array([Vector2(-1, 0), Vector2(1, 0)]),
@@ -3734,6 +3749,18 @@ func _test_architecture_showcase() -> void:
 	std2.generate_normals()
 	_assert_equals(mdrum.surface_get_array_len(0), (std2.commit() as ArrayMesh).surface_get_array_len(0),
 		"lattice graph meshing is deterministic")
+	# the REAL lattices are watertight too, with the REAL door reservations wired through (the
+	# entrances<->tracery bay handshake): the door bay drops its lower content (fewer glass cells)
+	var wt_ent: Dictionary = Lat.entrances(Base.generate("beacon_hill"))
+	var wt_tr: Dictionary = Lat.tracery(2.4, 7.2, {"reserved": wt_ent.get("reserved", []), "bays": 7})
+	_assert_equals(LG.boundary_edge_count(wt_tr["frame"] as ArrayMesh), 0,
+		"the REAL tracery frame (with real door reservations) is watertight")
+	var wt_open: Dictionary = Lat.tracery(2.4, 7.2, {"bays": 7})
+	_assert_true(int(wt_tr["cells"]) < int(wt_open["cells"]),
+		"a reserved door bay drops its window/vesica glass (entrances handshake reaches the tracery)")
+	var wt_hent: Dictionary = Lat.entrances(Base.generate("honeycomb_cooperative"))
+	_assert_equals(LG.boundary_edge_count((Lat.honeyframe(Vector3(4.5, 8.0, 5.5), {"crown": false, "base": false, "reserved": wt_hent.get("reserved", [])})["frame"]) as ArrayMesh), 0,
+		"the REAL S_A/S_B honeyframe (with its own box door reservations) is watertight")
 
 	# --- ledge treatments: a tiered "cake" decorates its flat rings; a flat base leaves them bare ---
 	var Ledge = load("res://scripts/generation/ledge_builder.gd")
@@ -13548,6 +13575,144 @@ func _test_detection_vertical_band() -> void:
 		return seen
 	_assert_true(spots.call(0.0), "Same-floor target within horizontal range is spotted")
 	_assert_true(not spots.call(5.0), "A target 5m above (a different floor) is NOT spotted despite horizontal range")
+
+# --- Windowed HOLE DETECTOR: the red-shell test (director's idea) --------------------------------
+# Render a lattice frame TWICE with the base hidden: the normal mesh (cull BACK) + a pure-red copy
+# (cull FRONT). From ANY exterior camera a watertight solid shows ZERO red — every ray hits a front
+# face first. A red pixel means the ray saw a face from its hidden side: a hole, a crack, an
+# inside-out winding, or an exposed buried (wall-side) face. This is the GEOMETRIC complement of the
+# topological boundary_edge_count==0 assert (which can't see winding or exposure). Frames only —
+# glass panes are intentionally single-sided. On red: saves user://vr_lattice_holes_*.png to eyeball.
+# Not in --test-all (needs a display). Run before touching lattices:
+#   ../Godot_v4.7-stable_win64_console.exe --path "." -- --test-lattice-holes
+func _test_lattice_holes() -> void:
+	_test_name = "Lattice Holes (red shell)"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (needs a display — run WITHOUT --headless)")
+		return
+	# Park the window far off-screen: rendering still runs, nothing pops up on the desktop.
+	DisplayServer.window_set_position(Vector2i(20000, 20000))
+	var LG = load("res://scripts/generation/lattice_graph.gd")
+	var Lat = load("res://scripts/generation/lattice_builder.gd")
+	var Base = load("res://scripts/generation/base_shape_builder.gd")
+	# specimen 1: the unit junction net (X + T + free end + loop) on the drum
+	var net: Array = [
+		PackedVector2Array([Vector2(-1, 0), Vector2(1, 0)]),
+		PackedVector2Array([Vector2(0, -1), Vector2(0, 1)]),
+		PackedVector2Array([Vector2(0.5, 0), Vector2(0.5, 0.8)]),
+		PackedVector2Array([Vector2(-0.6, -0.6), Vector2(-0.3, -0.6), Vector2(-0.3, -0.3), Vector2(-0.6, -0.3), Vector2(-0.6, -0.6)]),
+	]
+	var nst := SurfaceTool.new()
+	nst.begin(Mesh.PRIMITIVE_TRIANGLES)
+	LG.mesh(nst, LG.build(net), LG.drum_surface(2.4), 0.07, 5)
+	nst.generate_normals()
+	# specimens 2+3: the REAL tracery (with real door reservations) and the REAL S_A/S_B honeyframe
+	var beacon: Dictionary = Base.generate("beacon_hill")
+	var ent: Dictionary = Lat.entrances(beacon)
+	var tr: Dictionary = Lat.tracery(2.4, 7.2, {"reserved": ent.get("reserved", []), "bays": 7})
+	var hf: Dictionary = Lat.honeyframe(Vector3(4.5, 8.0, 5.5))
+	var specimens := {"net": nst.commit(), "tracery": tr["frame"], "honeyframe": hf["frame"]}
+	var vp := get_tree().root
+	var old_msaa := vp.msaa_3d
+	var old_ssaa := vp.screen_space_aa
+	vp.msaa_3d = Viewport.MSAA_DISABLED           # a red pixel must be a red pixel — no AA blending
+	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
+	var results: Dictionary = {}
+	for name in specimens.keys():
+		results[name] = await _red_shell_scan(str(name), specimens[name] as ArrayMesh)
+	vp.msaa_3d = old_msaa
+	vp.screen_space_aa = old_ssaa
+	# The pure junction NET must be perfectly clean — any red there is an ENGINE regression.
+	_assert_equals(int((results["net"] as Dictionary)["total"]), 0,
+		"the junction net shows zero red from every angle (engine holes/winding/exposure)")
+	# The real lattices intentionally overlap solids (drops kissing arches, tubes entering hub domes),
+	# which leaks a few px of mm-deep poke-through past the depth bias. Budgets are 10-100x below any
+	# real failure (the drum-handedness bug measured 4043 total / 224 in one shot): a hole, crack,
+	# winding error, or exposed skirt blows straight through them.
+	for name2 in ["tracery", "honeyframe"]:
+		var rr := results[name2] as Dictionary
+		_assert_true(int(rr["total"]) <= 60 and int(rr["max_shot"]) <= 12,
+			"%s red stays within the interpenetration budget (total %d <= 60, worst shot %d <= 12)" % [name2, int(rr["total"]), int(rr["max_shot"])])
+
+# Scan one mesh from a ring of exterior cameras; returns {"total": int, "max_shot": int}.
+func _red_shell_scan(spec_name: String, mesh: ArrayMesh) -> Dictionary:
+	if mesh == null or mesh.get_surface_count() == 0:
+		_assert_true(false, "red-shell specimen '%s' has a mesh" % spec_name)
+		return {"total": 0, "max_shot": 0}
+	var root := Node3D.new()
+	root.name = "RedShellRig"
+	get_tree().root.add_child(root)
+	var env := WorldEnvironment.new()
+	var e := Environment.new()
+	e.background_mode = Environment.BG_COLOR
+	e.background_color = Color(0, 0, 0)
+	env.environment = e
+	root.add_child(env)
+	var white := StandardMaterial3D.new()
+	white.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	white.albedo_color = Color(0.82, 0.82, 0.82)
+	white.cull_mode = BaseMaterial3D.CULL_BACK
+	# The red shell uses IDENTICAL geometry (shared silhouette edges rasterize watertight against the
+	# white pass — a grown/shrunk copy inflates back facets sub-pixel past the silhouette) plus a pure
+	# DEPTH bias so it loses every z-tie against coincident surfaces (kissing tubes) without moving a
+	# single screen-space edge. Godot 4 is reversed-Z: farther = smaller depth.
+	var red_sh := Shader.new()
+	red_sh.code = """
+shader_type spatial;
+render_mode cull_front, unshaded;
+void vertex() {
+	// bias forgives mm-scale by-design interpenetration (a tube poking through its hub dome, a drop
+	// kissing an arch) while true holes (interior views, decimetres deep) and background-exposed
+	// hidden faces stay red
+	POSITION = PROJECTION_MATRIX * (MODELVIEW_MATRIX * vec4(VERTEX, 1.0));
+	POSITION.z -= 0.005 * POSITION.w;
+}
+void fragment() { ALBEDO = vec3(1.0, 0.0, 0.0); }
+"""
+	var red := ShaderMaterial.new()
+	red.shader = red_sh
+	for mat in [white, red]:
+		var mi := MeshInstance3D.new()
+		mi.mesh = mesh
+		mi.material_override = mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(mi)
+	var cam := Camera3D.new()
+	root.add_child(cam)
+	cam.current = true
+	var bb := mesh.get_aabb()
+	var center := bb.position + bb.size * 0.5
+	var dist := bb.size.length() * 1.15
+	var red_count := 0
+	var max_shot := 0
+	var shot := 0
+	for elev in [-0.22, 0.15, 0.5]:
+		for k in range(8):
+			var a := TAU * float(k) / 8.0
+			var dir := Vector3(cos(a) * cos(elev), sin(elev), sin(a) * cos(elev))
+			cam.look_at_from_position(center + dir * dist, center, Vector3.UP)
+			var img := await _vr_capture()
+			if img == null:
+				continue
+			var found := _count_red(img)
+			if found > 0:
+				img.save_png("user://vr_lattice_holes_%s_%d.png" % [spec_name, shot])
+				print("  [HOLES] %s: %d red px at shot %d -> user://vr_lattice_holes_%s_%d.png" % [spec_name, found, shot, spec_name, shot])
+			red_count += found
+			max_shot = maxi(max_shot, found)
+			shot += 1
+	print("  [HOLES] %s: %d red pixels over %d shots (worst shot %d)" % [spec_name, red_count, shot, max_shot])
+	await _dispose_scene(root)
+	return {"total": red_count, "max_shot": max_shot}
+
+func _count_red(img: Image) -> int:
+	var n := 0
+	for y in range(0, img.get_height(), 2):     # every other row — a real hole spans many pixels
+		for x in range(0, img.get_width(), 2):
+			var c := img.get_pixel(x, y)
+			if c.r > 0.8 and c.g < 0.25 and c.b < 0.25:
+				n += 1
+	return n
 
 # --- Windowed eyeball: capture each bay of the Showcase Gallery to a PNG (run WITHOUT --headless) ---
 # Not an assertion test — it teleports the followed character to each bay so the follow camera frames it,

@@ -54,6 +54,8 @@ static func build(paths: Array, eps: float = 0.02) -> Dictionary:
 		var b := _weld(node_pos, pts[pts.size() - 1], eps)
 		pts[0] = node_pos[a]
 		pts[pts.size() - 1] = node_pos[b]
+		if a == b and _poly_len(pts) < eps * 3.0:
+			continue   # two splits inside the weld eps -> a zero-length self-edge; meshing it would crash
 		edges.append({"a": a, "b": b, "pts": pts})
 	# --- chain degree-2 nodes away; detect closed loops ---
 	var loops: Array = []
@@ -237,8 +239,10 @@ static func _chain(node_pos: Array, edges: Array, loops: Array) -> void:
 			changed = true
 			break
 
-# Segment-segment INTERIOR intersection with both params returned (relative interior margin keeps
-# endpoint touches for the weld/T passes instead).
+# Segment-segment intersection with both params returned. The margins are a hair PAST the endpoints
+# (not a fat relative dead zone — a 2% margin silently dropped every crossing that landed near another
+# path's interior VERTEX, leaving the ribs unfused). Splits at/near endpoints are harmless: they
+# produce zero-length sub-polylines that _split_poly drops, and the cut point welds into the vertex.
 static func _seg_hit(a1: Vector2, a2: Vector2, b1: Vector2, b2: Vector2) -> Dictionary:
 	var da := a2 - a1
 	var db := b2 - b1
@@ -247,8 +251,8 @@ static func _seg_hit(a1: Vector2, a2: Vector2, b1: Vector2, b2: Vector2) -> Dict
 		return {"hit": false}
 	var t := ((b1.x - a1.x) * db.y - (b1.y - a1.y) * db.x) / den
 	var u := ((b1.x - a1.x) * da.y - (b1.y - a1.y) * da.x) / den
-	if t > 0.02 and t < 0.98 and u > 0.02 and u < 0.98:
-		return {"hit": true, "t": t, "u": u}
+	if t > -1.0e-4 and t < 1.0 + 1.0e-4 and u > -1.0e-4 and u < 1.0 + 1.0e-4:
+		return {"hit": true, "t": clampf(t, 0.0, 1.0), "u": clampf(u, 0.0, 1.0)}
 	return {"hit": false}
 
 # ============================================================================================
@@ -290,6 +294,12 @@ static func _surf_max_step(surf: Dictionary) -> float:
 		return maxf(0.05, float(surf["r"]) * 0.10)
 	return 1.0e9
 
+# Mapping handedness: the 3D cross of a 2D-CCW triangle points s*n. Drum: d/dx x d/dy = u_arc x Y =
+# -radial = -n -> s = -1. Plane: u x v = +n -> s = +1. Lets hub faces wind from their 2D pre-image
+# (exact) instead of 3D dot-tests (unstable on near-vertical slivers under drum curvature).
+static func _surf_handedness(surf: Dictionary) -> float:
+	return -1.0 if str(surf["type"]) == "drum" else 1.0
+
 # ============================================================================================
 # MESH — watertight rib network. Profile ring (closed, size sides+3):
 #   s in 0..sides        : half-round arc, phi = PI*s/sides, +perp at s=0 (LEFT of travel) -> -perp
@@ -307,10 +317,11 @@ static func mesh(st: SurfaceTool, graph: Dictionary, surf: Dictionary, rib_r: fl
 	var edges := graph["edges"] as Array
 	var loops := graph["loops"] as Array
 	var max_step := _surf_max_step(surf)
-	# resample edge polylines against drum curvature (endpoints preserved -> ring mating intact)
+	# round sharp interior corners (mitre rings PINCH past ~50 degrees -> locally inside-out quads),
+	# then resample against drum curvature. Endpoints preserved -> ring mating intact.
 	var epts: Array = []
 	for e in edges:
-		epts.append(_resample((e as Dictionary)["pts"] as PackedVector2Array, max_step))
+		epts.append(_resample(_round_corners((e as Dictionary)["pts"] as PackedVector2Array, rib_r, false), max_step))
 	# --- per-node: sort arms CCW, compute reach + mouth rings, emit hubs / remember caps ---
 	var mouth: Dictionary = {}   # "edge:end" -> {"ring": Array[Vector3], "cut": float (arc-length)}
 	for n_i in range(nodes.size()):
@@ -347,12 +358,14 @@ static func mesh(st: SurfaceTool, graph: Dictionary, surf: Dictionary, rib_r: fl
 			var elen := _poly_len(epts[int(arm["edge"])] as PackedVector2Array)
 			arm["reach"] = minf(reach, elen * 0.45)
 			arms[a_i] = arm
-		# mouth rings (walk each arm's polyline out to reach)
+		# mouth rings (walk each arm's polyline out to reach) + their 2D pre-images for hub winding
 		for a_i in range(m):
 			var arm := arms[a_i] as Dictionary
 			var walk := _walk(epts[int(arm["edge"])] as PackedVector2Array, int(arm["end"]), float(arm["reach"]))
 			var ring := _ring_at(surf, walk["pos"] as Vector2, (walk["dir"] as Vector2), rib_r, sides, embed)
 			arm["ring"] = ring
+			arm["m2"] = walk["pos"]
+			arm["md"] = walk["dir"]
 			arms[a_i] = arm
 			mouth["%d:%d" % [int(arm["edge"]), int(arm["end"])]] = {"ring": ring, "cut": float(arm["reach"])}
 		_emit_hub(st, surf, npos, arms, rib_r, sides, embed)
@@ -365,24 +378,49 @@ static func mesh(st: SurfaceTool, graph: Dictionary, surf: Dictionary, rib_r: fl
 		if ma == null or mb == null:
 			continue
 		_emit_tube(st, surf, pts, ma as Dictionary, mb as Dictionary, rib_r, sides, embed)
-	# --- loops: closed ring sweeps ---
+	# --- loops: closed ring sweeps (corner-rounded with wrap — a teardrop TIP pinches otherwise) ---
 	for lp in loops:
-		_emit_loop(st, surf, _resample(lp as PackedVector2Array, max_step), rib_r, sides, embed)
+		_emit_loop(st, surf, _resample(_round_corners(lp as PackedVector2Array, rib_r, true), max_step), rib_r, sides, embed)
 
 # --- profile ring at 2D point p travelling along 2D dir d (unit) ---
-static func _ring_at(surf: Dictionary, p: Vector2, d: Vector2, rib_r: float, sides: int, embed: float) -> Array:
+# The lateral axis is the 2D LEFT vector mapped through the surface (NOT n cross t: on the drum that
+# maps to 2D-RIGHT — the handedness flip made hub gores pair the wrong physical flanks and twist).
+# Invariant: ring[0] = 2D-left of travel, ring[sides] = 2D-right, on EVERY surface.
+static func _ring_at(surf: Dictionary, p: Vector2, d: Vector2, rib_r: float, sides: int, embed: float, lat_scale: float = 1.0) -> Array:
 	var c := _surf_pos(surf, p)
 	var n := _surf_normal(surf, p)
-	var t := _surf_dir(surf, p, d)
-	var perp := n.cross(t)
-	perp = perp.normalized() if perp.length() > 1.0e-9 else Vector3(0, 1, 0)
+	var lat := _surf_dir(surf, p, Vector2(-d.y, d.x))   # 2D-left, mapped to 3D
+	var lr := rib_r * lat_scale                          # lateral half-width (tapered through tight bends)
 	var ring: Array = []
 	for s in range(sides + 1):
 		var phi := PI * float(s) / float(sides)
-		ring.append(c + perp * (rib_r * cos(phi)) + n * (rib_r * sin(phi)))
-	ring.append(c - perp * rib_r - n * embed)   # right skirt bottom
-	ring.append(c + perp * rib_r - n * embed)   # left skirt bottom
+		ring.append(c + lat * (lr * cos(phi)) + n * (rib_r * sin(phi)))
+	ring.append(c - lat * lr - n * embed)   # right skirt bottom
+	ring.append(c + lat * lr - n * embed)   # left skirt bottom
 	return ring
+
+# Lateral taper through a tight bend: rings interpenetrate when the path's curvature radius drops
+# below the rib radius (the inside of the bend folds) — the red-shell test shows it as speckle on
+# every sharp apex. Shrink the ring's lateral half-width to fit the local circumradius.
+static func _curv_scale(prev: Vector2, cur: Vector2, next: Vector2, rib_r: float) -> float:
+	var a := prev.distance_to(cur)
+	var b := cur.distance_to(next)
+	var c := prev.distance_to(next)
+	var area2 := absf((cur - prev).cross(next - prev))   # 2x triangle area
+	if area2 < 1.0e-9:
+		return 1.0
+	var r_curv := (a * b * c) / (2.0 * area2)
+	return clampf(r_curv / (rib_r * 1.25), 0.35, 1.0)
+
+# The ring's 2D pre-image (same indexing) — hub faces wind from THIS (exact, never grazing).
+static func _ring2_at(p: Vector2, d: Vector2, rib_r: float, sides: int) -> Array:
+	var lat2 := Vector2(-d.y, d.x)
+	var ring2: Array = []
+	for s in range(sides + 1):
+		ring2.append(p + lat2 * (rib_r * cos(PI * float(s) / float(sides))))
+	ring2.append(p - lat2 * rib_r)
+	ring2.append(p + lat2 * rib_r)
+	return ring2
 
 # A ring computed travelling the OPPOSITE way lists the same cross-section mirrored; this index map
 # aligns ring B (built pointing away from its node) to a tube sweeping INTO that node.
@@ -414,16 +452,16 @@ static func _emit_tube(st: SurfaceTool, surf: Dictionary, pts: PackedVector2Arra
 	var total := _poly_len(pts)
 	var cut_a := float(ma["cut"])
 	var cut_b := float(mb["cut"])
-	if cut_a + cut_b > total * 0.92:      # tiny edge between two hubs: bridge mouth to mouth
-		cut_a = total * 0.46
-		cut_b = total * 0.46
-	# stations along the trimmed middle
+	# reach clamps guarantee cut_a + cut_b <= 0.9 * total; a degenerate near-zero middle just yields a
+	# two-ring tube (its zero-area quads are dropped by _face)
 	var stations: Array = _stations_between(pts, cut_a, total - cut_b)
 	var rings: Array = []
 	rings.append(ma["ring"])              # exact hub-A ring vertices
 	for k in range(1, stations.size() - 1):
 		var stn := stations[k] as Dictionary
-		rings.append(_ring_at(surf, stn["pos"] as Vector2, stn["dir"] as Vector2, rib_r, sides, embed))
+		var sc := _curv_scale((stations[k - 1] as Dictionary)["pos"] as Vector2, stn["pos"] as Vector2,
+			(stations[k + 1] as Dictionary)["pos"] as Vector2, rib_r)
+		rings.append(_ring_at(surf, stn["pos"] as Vector2, stn["dir"] as Vector2, rib_r, sides, embed, sc))
 	rings.append(_flip_ring(mb["ring"] as Array, sides))   # exact hub-B ring, aligned to travel
 	var rn := sides + 3
 	for k in range(rings.size() - 1):
@@ -449,7 +487,7 @@ static func _emit_loop(st: SurfaceTool, surf: Dictionary, pts: PackedVector2Arra
 		var d := (next - prev)
 		if d.length() < 1.0e-9:
 			d = Vector2(1, 0)
-		rings.append(_ring_at(surf, pts[i], d.normalized(), rib_r, sides, embed))
+		rings.append(_ring_at(surf, pts[i], d.normalized(), rib_r, sides, embed, _curv_scale(prev, pts[i], next, rib_r)))
 	var rn := sides + 3
 	var last := count if closed else count - 1
 	for k in range(last):
@@ -470,41 +508,86 @@ static func _emit_hub(st: SurfaceTool, surf: Dictionary, npos: Vector2, arms: Ar
 	var n := _surf_normal(surf, npos)
 	var apex := P + n * rib_r
 	var bot := P - n * embed
-	var q := P - n * (embed * 0.5)     # interior reference: hub is star-shaped around it
 	var m := arms.size()
+	var hand := _surf_handedness(surf)
+	# WINDING IS EXACT, NEVER A 3D DOT-TEST: the hub's top and bottom are height fields over the 2D
+	# footprint, so a face's correct 3D winding equals its 2D pre-image's winding (times the mapping
+	# handedness). 3D heuristics flipped arbitrarily on the near-vertical slivers at the mouths — the
+	# red-shell test lit up on every straight-through junction until this.
 	for a_i in range(m):
 		var arm := arms[a_i] as Dictionary
 		var nxt := arms[(a_i + 1) % m] as Dictionary
 		var ring := arm["ring"] as Array
-		# dome fan over this arm's arc
+		var ring2 := _ring2_at(arm["m2"] as Vector2, arm["md"] as Vector2, rib_r, sides)
+		# dome fan over this arm's arc (upper height field)
 		for s in range(sides):
-			_face(st, apex, ring[s], ring[s + 1], (((apex + (ring[s] as Vector3) + (ring[s + 1] as Vector3)) / 3.0) - q))
-		# bottom fan under this arm's skirt edge
-		_face(st, bot, ring[sides + 1], ring[sides + 2], (((bot + (ring[sides + 1] as Vector3) + (ring[sides + 2] as Vector3)) / 3.0) - q))
-		# gore to the CCW-next arm: corner between arm LEFT flank (s=0 / s=sides+2) and next arm RIGHT
-		# flank (s=sides / s=sides+1)
-		var c2 := _mitre_corner(npos, arm["dir"] as Vector2, nxt["dir"] as Vector2, rib_r)
+			_face_hf(st, apex, ring[s], ring[s + 1], npos, ring2[s], ring2[s + 1], hand, true)
+		# bottom fan under this arm's skirt edge (lower height field)
+		_face_hf(st, bot, ring[sides + 1], ring[sides + 2], npos, ring2[sides + 1], ring2[sides + 2], hand, false)
+		# gore to the CCW-next arm: corner between arm i's 2D-LEFT flank (ring[0] / ring[sides+2]) and
+		# arm j's 2D-RIGHT flank (ring[sides] / ring[sides+1]) — ring indexing is 2D-true on any surface
+		var d_i := arm["dir"] as Vector2
+		var d_j := nxt["dir"] as Vector2
+		# the corner may never outrun the mouths (a longer tongue webs across concave openings —
+		# visible on every honeyframe S_A vertex, where adjacent arm gaps are narrow)
+		var c_cap := minf(float(arm.get("reach", rib_r * 1.4)), float(nxt.get("reach", rib_r * 1.4)))
+		var c2 := _mitre_corner(npos, d_i, d_j, rib_r, c_cap)
 		var c_top := _surf_pos(surf, c2)
 		var c_bot := c_top - n * embed
 		var nring := nxt["ring"] as Array
-		_face(st, apex, ring[0], c_top, (((apex + (ring[0] as Vector3) + c_top) / 3.0) - q))
-		_face(st, apex, c_top, nring[sides], (((apex + c_top + (nring[sides] as Vector3)) / 3.0) - q))
-		_face4(st, ring[0], ring[sides + 2], c_bot, c_top, ((((ring[0] as Vector3) + (ring[sides + 2] as Vector3) + c_bot + c_top) * 0.25) - q))
-		_face4(st, c_top, c_bot, nring[sides + 1], nring[sides], ((c_top + c_bot + (nring[sides + 1] as Vector3) + (nring[sides] as Vector3)) * 0.25 - q))
-		_face(st, bot, ring[sides + 2], c_bot, (((bot + (ring[sides + 2] as Vector3) + c_bot) / 3.0) - q))
-		_face(st, bot, c_bot, nring[sides + 1], (((bot + c_bot + (nring[sides + 1] as Vector3)) / 3.0) - q))
+		var nring2 := _ring2_at(nxt["m2"] as Vector2, nxt["md"] as Vector2, rib_r, sides)
+		_face_hf(st, apex, ring[0], c_top, npos, ring2[0], c2, hand, true)
+		_face_hf(st, apex, c_top, nring[sides], npos, c2, nring2[sides], hand, true)
+		_face_hf(st, bot, ring[sides + 2], c_bot, npos, ring2[sides + 2], c2, hand, false)
+		_face_hf(st, bot, c_bot, nring[sides + 1], npos, c2, nring2[sides + 1], hand, false)
+		# gore SIDE WALLS: vertical panels — outward = the 2D outward normal of their boundary edge
+		# (perpendicular, oriented away from the node; decisively non-degenerate)
+		var f2_i := ring2[0] as Vector2
+		var w_i := _wall_out2(f2_i, c2, npos)
+		_face4(st, ring[0], ring[sides + 2], c_bot, c_top, _surf_dir(surf, npos, w_i))
+		var f2_j := nring2[sides] as Vector2
+		var w_j := _wall_out2(f2_j, c2, npos)
+		_face4(st, c_top, c_bot, nring[sides + 1], nring[sides], _surf_dir(surf, npos, w_j))
 
-# 2D mitre corner between adjacent arms (both offset lines at rib_r): along the angular bisector at
-# rib_r / sin(theta/2), clamped so near-parallel arms can't throw the corner to infinity.
-static func _mitre_corner(npos: Vector2, d_i: Vector2, d_j: Vector2, rib_r: float) -> Vector2:
-	var bis := (d_i + d_j)
-	if bis.length() < 1.0e-6:            # opposite arms: corner sits square to the side
-		bis = Vector2(-d_i.y, d_i.x)
-	bis = bis.normalized()
-	var cos_t := clampf(d_i.dot(d_j), -1.0, 1.0)
-	var half := acos(cos_t) * 0.5
-	var dist := rib_r / maxf(sin(half), 0.29)   # clamp ~= 3.5 * rib_r
-	return npos + bis * dist
+# Emit a HEIGHT-FIELD face wound from its 2D pre-image: sign(cross3.n) == sign(area2 * handedness),
+# and a visible (Godot CW-front) outer face needs cross3.n < 0. `upper=false` = a bottom face
+# (outward -n), which inverts the requirement.
+static func _face_hf(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, a2: Vector2, b2: Vector2, c2: Vector2, hand: float, upper: bool) -> void:
+	var area2 := (b2 - a2).cross(c2 - a2)
+	if absf(area2) < 1.0e-12:
+		return
+	var neg := (area2 * hand) < 0.0
+	if neg == upper:
+		st.add_vertex(a); st.add_vertex(b); st.add_vertex(c)
+	else:
+		st.add_vertex(a); st.add_vertex(c); st.add_vertex(b)
+
+# 2D outward normal of a gore wall's boundary edge (flank point -> corner), oriented away from the node.
+static func _wall_out2(f2: Vector2, c2: Vector2, npos: Vector2) -> Vector2:
+	var e := c2 - f2
+	var w := Vector2(-e.y, e.x)
+	if w.length_squared() < 1.0e-14:
+		w = f2 - npos
+	if w.dot(f2 - npos) < 0.0:
+		w = -w
+	return w.normalized()
+
+# 2D mitre corner between CCW-adjacent arms: the corner sits at half the CCW angular gap from arm i
+# (NOT the vector bisector — for opposite arms that is degenerate and a perpendicular fallback picks
+# an arbitrary side, twisting the gore across the hub; the red-shell test caught it on every
+# straight-through junction). Distance rib_r / sin(gap/2), clamped so near-parallel arms can't throw
+# the corner to infinity.
+static func _mitre_corner(npos: Vector2, d_i: Vector2, d_j: Vector2, rib_r: float, max_dist: float = 0.0) -> Vector2:
+	var a_i := atan2(d_i.y, d_i.x)
+	var a_j := atan2(d_j.y, d_j.x)
+	var gap := a_j - a_i
+	while gap <= 1.0e-6:
+		gap += TAU
+	var mid := a_i + gap * 0.5
+	var dist := rib_r / maxf(sin(gap * 0.5), 0.29)   # clamp ~= 3.5 * rib_r
+	if max_dist > 0.0:
+		dist = minf(dist, max_dist)
+	return npos + Vector2(cos(mid), sin(mid)) * dist
 
 # cap a terminal ring (fan across the closed profile), facing away from the tube
 static func _cap_ring(st: SurfaceTool, ring: Array, surf: Dictionary, p: Vector2, d_away_from_tube: Vector2) -> void:
@@ -562,6 +645,52 @@ static func _stations_between(pts: PackedVector2Array, s0: float, s1: float) -> 
 	out.append(w1)
 	return out
 
+# Round interior corners sharper than ~52 degrees with a rib-scale fillet (quad bezier through the
+# corner). A sharp mitre ring otherwise crosses its neighbours -> locally inside-out quads (the
+# red-shell test lights up at teardrop tips / arch apexes). Endpoints are preserved on open paths;
+# closed loops round with wrap (the seam vertex is a corner too).
+static func _round_corners(pts: PackedVector2Array, rib_r: float, closed: bool) -> PackedVector2Array:
+	var m := pts.size()
+	if m < 3:
+		return pts
+	var core := pts
+	if closed and pts[0].distance_to(pts[m - 1]) < 1.0e-4:
+		core = pts.slice(0, m - 1)
+	var n := core.size()
+	if n < 3:
+		return pts
+	var out := PackedVector2Array()
+	if not closed:
+		out.append(core[0])
+	var i0 := 0 if closed else 1
+	var i1 := n if closed else n - 1
+	for i in range(i0, i1):
+		var prev := core[(i - 1 + n) % n]
+		var cur := core[i]
+		var next := core[(i + 1) % n]
+		var din := cur - prev
+		var dout := next - cur
+		var lin := din.length()
+		var lout := dout.length()
+		if lin < 1.0e-9 or lout < 1.0e-9:
+			out.append(cur)
+			continue
+		var turn := absf(din.normalized().angle_to(dout.normalized()))
+		if turn < 0.9:
+			out.append(cur)
+			continue
+		var t := minf(rib_r * 1.4, 0.4 * minf(lin, lout))
+		var pa := cur - din.normalized() * t
+		var pb := cur + dout.normalized() * t
+		for s in range(5):
+			var tt := float(s) / 4.0
+			out.append(pa.lerp(cur, tt).lerp(cur.lerp(pb, tt), tt))
+	if closed:
+		out.append(out[0])
+	else:
+		out.append(core[n - 1])
+	return out
+
 static func _resample(pts: PackedVector2Array, max_step: float) -> PackedVector2Array:
 	var out := PackedVector2Array([pts[0]])
 	for i in range(pts.size() - 1):
@@ -578,6 +707,44 @@ static func _resample(pts: PackedVector2Array, max_step: float) -> PackedVector2
 # ============================================================================================
 # TEST SUPPORT — the watertightness invariant.
 # ============================================================================================
+
+## Directed-edge ORIENTATION check: on a consistently-wound closed 2-manifold every undirected edge
+## is traversed once in EACH direction, so a directed edge appearing twice = an inconsistently-wound
+## face (visible from its hidden side — exactly what the red-shell render test shows as red).
+## Returns [{pos: Vector3}] — one entry per conflicting directed edge (midpoint), for localizing.
+static func orientation_conflicts(mesh: ArrayMesh) -> Array:
+	if mesh == null or mesh.get_surface_count() == 0:
+		return []
+	var arrays := mesh.surface_get_arrays(0)
+	var verts := arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array
+	var ids: Dictionary = {}
+	var vid := PackedInt32Array()
+	vid.resize(verts.size())
+	var rep: Array = []
+	for i in range(verts.size()):
+		var v := verts[i]
+		var key := "%d,%d,%d" % [int(round(v.x * 5000.0)), int(round(v.y * 5000.0)), int(round(v.z * 5000.0))]
+		if not ids.has(key):
+			ids[key] = ids.size()
+			rep.append(v)
+		vid[i] = int(ids[key])
+	var seen: Dictionary = {}
+	var out: Array = []
+	var tri_count := int(verts.size() / 3.0)
+	for t in range(tri_count):
+		var a := vid[t * 3]
+		var b := vid[t * 3 + 1]
+		var c := vid[t * 3 + 2]
+		if a == b or b == c or c == a:
+			continue
+		for pair in [[a, b], [b, c], [c, a]]:
+			var p0 := int((pair as Array)[0])
+			var p1 := int((pair as Array)[1])
+			var ek := "%d>%d" % [p0, p1]
+			if seen.has(ek):
+				out.append({"pos": ((rep[p0] as Vector3) + (rep[p1] as Vector3)) * 0.5})
+			seen[ek] = true
+	return out
 
 ## Count boundary edges (used by exactly ONE triangle) in the mesh, welding vertices by position.
 ## A watertight closed rib network returns 0 — any hole, crack, or unmated ring shows up here.

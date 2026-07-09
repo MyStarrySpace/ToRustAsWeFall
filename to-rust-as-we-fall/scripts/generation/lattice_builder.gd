@@ -196,14 +196,16 @@ static func _honeyframe_face_sasb(f: Dictionary, p: Dictionary, frame_st: Surfac
 	var cells := 0
 	for i4 in range(cols):
 		for j4 in range(rows):
-			var cu := -w * 0.5 + (float(i4) + 0.5) * cw
-			var cv := -h * 0.5 + (float(j4) + 0.5) * ch
-			if _cell_reserved_box(cu, cv, n, h, reserved):
-				continue
 			var q00: Vector2 = (vp[i4] as Array)[j4]
 			var q11: Vector2 = (vp[i4 + 1] as Array)[j4 + 1]
 			var q01: Vector2 = (vp[i4] as Array)[j4 + 1]
 			var q10: Vector2 = (vp[i4 + 1] as Array)[j4]
+			# a pane is dropped when its ACTUAL cell rect overlaps a door region — the same clearance
+			# the ribs use, so a door can't orphan a lit pane whose frame was silenced
+			var rmin := Vector2(minf(q00.x, q01.x), minf(q00.y, q10.y))
+			var rmax := Vector2(maxf(q10.x, q11.x), maxf(q01.y, q11.y))
+			if _rect_reserved_face(rmin, rmax, w, n, reserved):
+				continue
 			var cen := (q00 + q11 + q01 + q10) * 0.25
 			var hwp := maxf(0.06, (absf(q10.x - q00.x) + absf(q11.x - q01.x)) * 0.25 - rib_r * 0.9)
 			var hhp := maxf(0.06, (absf(q01.y - q00.y) + absf(q11.y - q10.y)) * 0.25 - rib_r * 0.9)
@@ -228,6 +230,20 @@ static func _concave_arc(a: Vector2, b: Vector2, vtx: Vector2, pinch: float, seg
 		var t := float(s) / float(seg)
 		out.append(a.lerp(ctrl, t).lerp(ctrl.lerp(b, t), t))
 	return out
+
+# Does a face-local RECT overlap a reserved door region on this face? (Same clearance the ribs use.)
+static func _rect_reserved_face(rmin: Vector2, rmax: Vector2, w: float, face_n: Vector3, reserved: Array) -> bool:
+	for reg in reserved:
+		var rd := reg as Dictionary
+		if bool(rd.get("cyl", true)):
+			continue
+		if (rd["n"] as Vector3).dot(face_n) < 0.9:
+			continue
+		var cx := w * 0.5 + float(rd["x_center"])
+		var hw := float(rd["half_w"])
+		if rmin.y < float(rd["y_top"]) and rmax.x > cx - hw and rmin.x < cx + hw:
+			return true
+	return false
 
 # Does any point of a face-local path fall inside a reserved door rect on this face?
 static func _path_reserved_face(pts: PackedVector2Array, w: float, _h: float, face_n: Vector3, reserved: Array) -> bool:
@@ -757,10 +773,12 @@ static func tracery(radius: float, height: float, overrides: Dictionary = {}) ->
 	# snap to. A reserved region names its bay ("bay" from entrances); fall back to nearest-centre.
 	var x_base := r * (PI * 0.5 - 0.5 * (TAU / float(bays)))   # bay 0's left mullion (arc-length)
 	var res_bays: Dictionary = {}
+	var door_clear_y := 0.0   # the tallest door clearance — the upper network must stay ABOVE it
 	for reg in reserved:
 		var rd := reg as Dictionary
 		if not bool(rd.get("cyl", false)):
 			continue
+		door_clear_y = maxf(door_clear_y, float(rd.get("y_top", 0.0)))
 		if rd.has("bay"):
 			res_bays[int(rd["bay"])] = true
 		else:
@@ -776,18 +794,26 @@ static func tracery(radius: float, height: float, overrides: Dictionary = {}) ->
 		var xc := x0 + bw * 0.5            # bay centre — the large window / door axis
 		# the mullion ALWAYS stands (it frames a door bay too): root -> body course
 		paths.append(_line2(Vector2(x0, y_root), Vector2(x0, body_h), 8))
-		# the UPPER network runs over EVERY bay — a door bay keeps its outer arch, course, and tympanum
-		# drops (they all sit above door height; the plate arches right over the doors):
-		paths.append(_arch_pts(x0, x1, ys2, y_outer, 14))            # outer arch, springs off the mullions
-		paths.append(_line2(Vector2(x0, body_h), Vector2(x1, body_h), 6))   # body course (the dome ring)
+		var is_door := res_bays.has(b)
+		# the UPPER network runs over a door bay too — but ONLY the parts that clear the door opening
+		# (on a short tiered band the whole bay is door height; without the gate the arch/course/drops
+		# float across the cut hole):
+		if not is_door or ys2 > door_clear_y:
+			paths.append(_arch_pts(x0, x1, ys2, y_outer, 14))        # outer arch, springs off the mullions
+		if not is_door or body_h > door_clear_y:
+			paths.append(_line2(Vector2(x0, body_h), Vector2(x1, body_h), 6))   # body course (the dome ring)
 		for sgn in [-1.0, 1.0]:
-			# mouchette DROPS flank the inner apex in the OPEN tympanum, mirrored, leaning apart
+			# mouchette DROPS flank the inner apex in the OPEN tympanum, mirrored, leaning apart.
+			# Sized/placed to stay CLEAR of both arches (an overlapping drop pokes through the outer
+			# arch — the red-shell test catches the exposed interior).
 			var dcx := xc + float(sgn) * hlw * 0.55
-			var dcy := y_inner * 0.45 + y_outer * 0.55
-			paths.append(_drop_loop(dcx, dcy, comma_sz, float(sgn)))
+			var dcy := y_inner * 0.48 + y_outer * 0.52 - comma_sz * 0.15
+			if is_door and dcy - comma_sz < door_clear_y:
+				continue
+			paths.append(_drop_loop(dcx, dcy, comma_sz * 0.85, float(sgn)))
 			_glass_fan_cyl(dcx / r, dcy, r, _drop_loop(0.0, 0.0, comma_sz * 0.62, float(sgn)), pane, _pane_color(base_pane, dcx * 5.3 + 11.0), glass_st)
 			cells += 1
-		if res_bays.has(b):
+		if is_door:
 			continue   # this bay holds a door — no sill / window / vesicas at door height
 		# sill across the bay — T's into both mullions
 		paths.append(_line2(Vector2(x0, yb), Vector2(x1, yb), 6))
@@ -816,6 +842,9 @@ static func tracery(radius: float, height: float, overrides: Dictionary = {}) ->
 	var chh := (height - body_h) * 0.55
 	for kk in range(nrw):
 		var cx := x_base + (float(kk) + 0.5) / float(nrw) * circ
+		var cb := wrapi(int(floor((cx - x_base) / bw)), 0, bays)
+		if res_bays.has(cb) and body_h <= door_clear_y:
+			continue   # short tier: the course is gated off this door bay — a crown arch would dangle
 		paths.append(_arch_pts(cx - chw, cx + chw, body_h, body_h + chh, 6))
 		_glass_fan_cyl(cx / r, crown_y, r, _lancet(chw * 0.7, chh * 0.55, 5, 0.25), pane, _pane_color(base_pane, cx * 7.7 + 50.0), glass_st)
 		cells += 1
@@ -847,7 +876,7 @@ static func _drop_loop(cx: float, cy: float, size: float, sgn: float) -> PackedV
 	var st_ := sin(tilt)
 	for i in range(seg + 1):
 		var a := TAU * float(i) / float(seg)
-		var wf := sin(a * 0.5)                       # 0 at the point, 1 at the bulb
+		var wf := maxf(sin(a * 0.5), 0.32)           # narrow at the tail but never a zero-width pinch
 		var px := size * 0.85 * sin(a) * wf
 		var py := size * 1.4 * (0.5 - 0.5 * cos(a)) - size * 0.7
 		out.append(Vector2(cx + px * ct - py * st_, cy + px * st_ + py * ct))
