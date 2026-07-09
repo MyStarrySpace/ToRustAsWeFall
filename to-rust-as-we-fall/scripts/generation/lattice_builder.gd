@@ -500,6 +500,7 @@ const TRACERY_DEFAULTS := {
 	"crown_windows": 26,      # small arched windows around the domed crown
 	"pane_color": Color(1.0, 0.74, 0.42),   # base window-light colour; per-pane brightness/tint varies off it
 	"rib_color": Color(0.82, 0.78, 0.64),   # bone-cream ribs
+	"rib_merge": "junction",                # "junction" (algorithm-3 crossings, crisp + ~2.6x lighter) or "sdf" (metaball fuse)
 }
 
 ## Build the tracery lattice for a drum of `radius`/`height`. Returns {frame, glass} ArrayMeshes.
@@ -531,6 +532,8 @@ static func tracery(radius: float, height: float, overrides: Dictionary = {}) ->
 	var cell := float(p["merge_cell"])
 	var so := float(p["standoff"])
 	var rib_col: Color = p["rib_color"]
+	var junction_mode := str(p.get("rib_merge", "sdf")) == "junction"
+	var all_paths: Array = []   # junction mode: accumulate every rib path for the network merge
 	var cells := 0
 	for b in range(bays):
 		var x0 := float(b) * bw          # left bay boundary (arc-length) — the mullion axis
@@ -540,28 +543,32 @@ static func tracery(radius: float, height: float, overrides: Dictionary = {}) ->
 		var win_cy := (yb + ys) * 0.5
 		# --- central LARGE gridded window (glass, SurfaceTool) ---
 		cells += _grid_window(xc, win_cy, hlw, (ys - yb) * 0.5, int(p["grid_cols"]), int(p["grid_rows"]), r, p, glass_st)
-		# --- rib capsule prims for this bay -> FUSED into one organic surface by the SDF smooth-min ---
-		var prims: Array = []
-		# inner arch (the window's own pointed arch) + the OUTER larger arch nesting above it
-		_rib_caps(_arch_pts(xc - hlw, xc + hlw, ys, y_inner, 10), r, rib_r, mk, so, prims)
-		_rib_caps(_arch_pts(xc - hlw * 1.18, xc + hlw * 1.18, ys - 0.02 * body_h, y_outer, 12), r, rib_r, mk, so, prims)
-		# the TWO comma / half-yin-yang shapes in the tympanum between the two arches
+		# --- collect this bay's rib PATHS (used by either merge mode) ---
 		var tymp_y := (y_inner + y_outer) * 0.5
-		_rib_caps(_comma_pts(xc - hlw * 0.32, tymp_y, comma_sz, -1.0, 14), r, rib_r, mk, so, prims)
-		_rib_caps(_comma_pts(xc + hlw * 0.32, tymp_y, comma_sz, 1.0, 14), r, rib_r, mk, so, prims)
-		# flanking VESICA lancets (tall pointed-oval rib + a lit almond window), each side
+		var bay_paths: Array = [
+			_arch_pts(xc - hlw, xc + hlw, ys, y_inner, 10),                                   # inner arch
+			_arch_pts(xc - hlw * 1.18, xc + hlw * 1.18, ys - 0.02 * body_h, y_outer, 12),     # outer arch
+			_comma_pts(xc - hlw * 0.32, tymp_y, comma_sz, -1.0, 14),                          # comma L
+			_comma_pts(xc + hlw * 0.32, tymp_y, comma_sz, 1.0, 14),                           # comma R
+			_line2(Vector2(x0, yb), Vector2(x0, ys), 7),                                      # mullion
+		]
 		for sgn in [-1.0, 1.0]:
 			var vx := xc + float(sgn) * (hlw + flank_hw + 0.03 * bw)
 			var vcy := win_cy + 0.03 * body_h
-			_rib_caps(_vesica_pts(vx, vcy, flank_hw, flank_hh, 16), r, rib_r, mk, so, prims)
+			bay_paths.append(_vesica_pts(vx, vcy, flank_hw, flank_hh, 16))                    # flanking vesica
 			_emit_glass_cyl(vx / r, vcy, r, _vesica_pts(0.0, 0.0, thin_hw, flank_hh * 0.82, 10), pane, _pane_color(base_pane, vx * 3.1 + 7.0), glass_st)
 			cells += 1
-		# boundary mullion spanning the window height (base rooting is a later Fable detail)
-		_rib_caps(_line2(Vector2(x0, yb), Vector2(x0, ys), 7), r, rib_r, mk, so, prims)
-		var bay_built := SdfMesher.build(prims, cell, rib_col)
-		if bay_built.get("mesh") != null:
-			frame_st.append_from(bay_built["mesh"] as ArrayMesh, 0, Transform3D.IDENTITY)
-	# --- CROWN BAND: small arched windows around the domed top (ribs fused too) ---
+		if junction_mode:
+			all_paths.append_array(bay_paths)
+		else:
+			# SDF (default): per-BAY smooth-min fuse (small AABB -> fast); append to the frame
+			var prims: Array = []
+			for path in bay_paths:
+				_rib_caps(path as PackedVector2Array, r, rib_r, mk, so, prims)
+			var bay_built := SdfMesher.build(prims, cell, rib_col)
+			if bay_built.get("mesh") != null:
+				frame_st.append_from(bay_built["mesh"] as ArrayMesh, 0, Transform3D.IDENTITY)
+	# --- CROWN BAND: small arched windows around the domed top ---
 	var crown_y := body_h + (height - body_h) * 0.5
 	var nrw := int(p["crown_windows"])
 	var chw := (circ / float(nrw)) * 0.30
@@ -569,12 +576,21 @@ static func tracery(radius: float, height: float, overrides: Dictionary = {}) ->
 	var crown_prims: Array = []
 	for kk in range(nrw):
 		var cx := (float(kk) + 0.5) / float(nrw) * circ
-		_rib_caps(_arch_pts(cx - chw, cx + chw, crown_y + chh * 0.2, crown_y + chh, 5), r, rib_r, mk, so, crown_prims)
+		var crown_arch := _arch_pts(cx - chw, cx + chw, crown_y + chh * 0.2, crown_y + chh, 5)
+		if junction_mode:
+			all_paths.append(crown_arch)
+		else:
+			_rib_caps(crown_arch, r, rib_r, mk, so, crown_prims)
 		_emit_glass_cyl(cx / r, crown_y, r, _lancet(chw * 0.7, chh * 0.7, 5, 0.25), pane, _pane_color(base_pane, cx * 7.7 + 50.0), glass_st)
 		cells += 1
-	var crown_built := SdfMesher.build(crown_prims, cell, rib_col)
-	if crown_built.get("mesh") != null:
-		frame_st.append_from(crown_built["mesh"] as ArrayMesh, 0, Transform3D.IDENTITY)
+	if junction_mode:
+		# ALGORITHM 3: half-round rib sweeps + a junction hub at every path crossing (no SDF).
+		_build_ribs_junction(frame_st, all_paths, r, rib_r, 0.01, int(p["rib_sides"]))
+		frame_st.generate_normals()
+	else:
+		var crown_built := SdfMesher.build(crown_prims, cell, rib_col)
+		if crown_built.get("mesh") != null:
+			frame_st.append_from(crown_built["mesh"] as ArrayMesh, 0, Transform3D.IDENTITY)
 	glass_st.generate_normals()   # ribs keep the SDF gradient normals; only the glass needs flat normals
 	return {"frame": frame_st.commit(), "glass": glass_st.commit(), "cells": cells}
 
@@ -705,6 +721,74 @@ static func _inward2(a: Vector2, b: Vector2, centroid: Vector2) -> Vector2:
 	if nrm.dot(centroid - (a + b) * 0.5) < 0.0:
 		nrm = -nrm
 	return nrm
+
+# ---- JUNCTION rib-merge for a whole rib network on the DRUM (the algorithm-3 alternative to the SDF).
+# Sweeps each rib path as a half-round moulding on the drum, then drops a rib_junction hub at every
+# detected path crossing so the crossings read fused (no sausage crease) — no voxel field.
+static func _build_ribs_junction(st: SurfaceTool, paths: Array, r: float, rib_r: float, standoff: float, sides: int) -> void:
+	for path in paths:
+		_sweep_half_round_on_drum(st, path as PackedVector2Array, r, rib_r, standoff, sides)
+	var np := paths.size()
+	for i in range(np):
+		var pa: PackedVector2Array = paths[i]
+		for j in range(i + 1, np):
+			var pb: PackedVector2Array = paths[j]
+			for si in range(pa.size() - 1):
+				for sj in range(pb.size() - 1):
+					var hit := _seg_x(pa[si], pa[si + 1], pb[sj], pb[sj + 1])
+					if bool(hit.get("hit", false)):
+						_add_drum_junction(st, hit["pos"], pa[si + 1] - pa[si], pb[sj + 1] - pb[sj], r, rib_r, standoff)
+
+# Sweep a HALF-ROUND moulding (flat bottom on the drum, arc bulging out) along a (arc-length, height)
+# path mapped onto the drum. The flat chord sits on the opaque drum, so only the outer arc is emitted.
+static func _sweep_half_round_on_drum(st: SurfaceTool, path2d: PackedVector2Array, r: float, rib_r: float, standoff: float, sides: int) -> void:
+	var m := path2d.size()
+	if m < 2:
+		return
+	var rings: Array = []
+	for idx in range(m):
+		var pt: Vector2 = path2d[idx]
+		var a := pt.x / r
+		var u_arc := Vector3(-sin(a), 0.0, cos(a))     # arc tangent
+		var rad := Vector3(cos(a), 0.0, sin(a))        # radial outward (bulge)
+		var center := _cylp(0.0, 0.0, r, pt, standoff)
+		var t2: Vector2 = path2d[1] - path2d[0] if idx == 0 else (path2d[m - 1] - path2d[m - 2] if idx == m - 1 else path2d[idx + 1] - path2d[idx - 1])
+		var t3 := u_arc * t2.x + Vector3(0.0, 1.0, 0.0) * t2.y
+		t3 = u_arc if t3.length() < 1.0e-6 else t3.normalized()
+		var perp := rad.cross(t3).normalized()         # in-surface perpendicular
+		var ring: Array = []
+		for s in range(sides + 1):
+			var phi := PI * float(s) / float(sides)
+			ring.append(center + perp * (rib_r * cos(phi)) + rad * (rib_r * sin(phi)))
+		rings.append(ring)
+	for i in range(m - 1):
+		var r0: Array = rings[i]
+		var r1: Array = rings[i + 1]
+		for s in range(sides):
+			_tri(st, r0[s], r0[s + 1], r1[s + 1])
+			_tri(st, r0[s], r1[s + 1], r1[s])
+
+# A rib_junction hub at a crossing on the drum: frame v=arc-tangent, u=vertical (so n=uxv=radial out).
+static func _add_drum_junction(st: SurfaceTool, pos2d: Vector2, dir_a: Vector2, dir_b: Vector2, r: float, rib_r: float, standoff: float) -> void:
+	var a := pos2d.x / r
+	var u_arc := Vector3(-sin(a), 0.0, cos(a))
+	var center := _cylp(0.0, 0.0, r, pos2d, standoff)
+	var ta := (u_arc * dir_a.x + Vector3(0.0, 1.0, 0.0) * dir_a.y).normalized()
+	var tb := (u_arc * dir_b.x + Vector3(0.0, 1.0, 0.0) * dir_b.y).normalized()
+	rib_junction(st, center, Vector3(0.0, 1.0, 0.0), u_arc, [ta, -ta, tb, -tb], rib_r, rib_r * 1.7)
+
+# Segment-segment intersection in 2D (interiors only, away from endpoints). {hit:bool, pos:Vector2}.
+static func _seg_x(a1: Vector2, a2: Vector2, b1: Vector2, b2: Vector2) -> Dictionary:
+	var da := a2 - a1
+	var db := b2 - b1
+	var den := da.x * db.y - da.y * db.x
+	if absf(den) < 1.0e-9:
+		return {"hit": false}
+	var t := ((b1.x - a1.x) * db.y - (b1.y - a1.y) * db.x) / den
+	var uu := ((b1.x - a1.x) * da.y - (b1.y - a1.y) * da.x) / den
+	if t > 0.02 and t < 0.98 and uu > 0.02 and uu < 0.98:
+		return {"hit": true, "pos": a1 + da * t}
+	return {"hit": false}
 
 # A subdivided straight segment (so a rib hugs the drum curvature instead of chording across facets).
 static func _line2(a: Vector2, b: Vector2, seg: int) -> PackedVector2Array:
