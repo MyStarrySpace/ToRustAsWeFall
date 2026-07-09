@@ -37,6 +37,7 @@ const SPECS := {
 		"pipes": true,                      # the plate's draped conduit runs
 	},
 	"honeycomb_cooperative": {
+		"entrances": {"reserve_margin": 0.2},   # storey-scale blobs: a fat clearance would gut the facade
 		"title": "Honeycomb Cooperative",
 		"shape": SHAPE_BOX,
 		# Tall apartment block; footprint a touch deeper than it is wide (~1.8x taller than wide).

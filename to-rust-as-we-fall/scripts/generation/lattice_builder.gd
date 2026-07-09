@@ -13,14 +13,15 @@ extends RefCounted
 ## Everything here is deterministic (a regular grid — no RNG yet) and low-poly.
 
 const HONEYFRAME_DEFAULTS := {
-	"cell_size": 1.25,     # target metres per cell; ~4x6 on the front face, matching the plate
+	"cell_size": 1.45,     # target metres per cell; ~3 blobs across the front face (plate scale)
+	# (rows come from cell_size * cell_aspect — the plate face reads ~3 wide x ~6 high)
 	"frame_width": 0.20,   # cream strut thickness (the window inset from the cell edge)
 	"frame_depth": 0.12,   # how far the frame top stands proud of the wall
 	"back_bite": 0.03,     # how far the closed frame sinks INTO the wall (overlaps the box, no z-fight)
 	"pane": 0.02,          # lit pane depth: recessed under the frame top, a hair proud of the wall behind
 	"corner_round": 0.30,  # P (<=0.5): how much of the half-window is rounded — rounded RECTS, not circles
 	"arc_seg": 3,          # segments per rounded corner (low-poly)
-	"cell_aspect": 1.3,    # rows target taller cells (portrait windows) — height/width per cell
+	"cell_aspect": 0.95,   # near-round blob target (height/width per cell); variance + merges stretch them
 	"jitter": 0.12,        # per-cell hand-made irregularity: offset + scale the WINDOW within its cell
 	"bevel": 0.05,         # frame moulding: the band crests this much above its rims (chamfered profile)
 	"crown": true,         # emit a cornice + parapet + plinth silhouette
@@ -31,6 +32,11 @@ const HONEYFRAME_DEFAULTS := {
 	"pinch": 0.72,         # S_A rounding pulled TOWARD the vertex (the organic pinched junction)
 	"rib_radius": 0.10,    # S_A/S_B rib crest radius (the strut gauge)
 	"rib_sides": 5,
+	# IRREGULAR SUBDIVISION — the plate's cells are organic blobs of DIFFERING size/shape, not a grid.
+	# The director's algorithm runs on "the subdivided mesh"; these make that mesh irregular:
+	"size_variance": 0.45, # grid-line spacing spread (rows/columns of visibly different size)
+	"merge_chance": 0.26,  # chance an interior cell wall dissolves -> two cells fuse into one big blob
+	"cut_variance": 0.4,   # per-vertex spread of the S_A cut fraction (junction pinches vary)
 }
 
 ## Build the honeyframe lattice for a box of `size` (base at y=0). Returns {frame, glass} ArrayMeshes:
@@ -122,45 +128,81 @@ static func _honeyframe_face_sasb(f: Dictionary, p: Dictionary, frame_st: Surfac
 	var reserved: Array = p.get("reserved", [])
 	var base_pane: Color = p["pane_color"]
 	var rib_r := float(p["rib_radius"])
-	# the grid rect is inset by one rib radius so border ribs sit ON the face (no under/overhang)
-	var gx0 := rib_r
-	var gy0 := rib_r
-	var cw := (w - 2.0 * rib_r) / float(cols)
-	var ch := (h - 2.0 * rib_r) / float(rows)
-	# 1. the (subdivided) grid vertices — interior ones jittered for the hand-made read, borders straight
+	var size_var := clampf(float(p.get("size_variance", 0.0)), 0.0, 0.8)
+	var merge_chance := clampf(float(p.get("merge_chance", 0.0)), 0.0, 0.45)
+	var cut_var := clampf(float(p.get("cut_variance", 0.0)), 0.0, 0.9)
 	var fkey := (n.x * 3.7 + n.z * 9.1) * 17.0
+	# 1. the SUBDIVIDED mesh — IRREGULAR on purpose (the plate's cells differ in size and shape):
+	# varied grid-line spacing + jittered interior vertices. Inset by one rib radius so border ribs
+	# sit ON the face.
+	var xs := _varied_axis(cols, rib_r, w - 2.0 * rib_r, fkey + 3.0, size_var)
+	var ys := _varied_axis(rows, rib_r, h - 2.0 * rib_r, fkey + 7.0, size_var)
+	var jbase := minf((w - 2.0 * rib_r) / float(cols), (h - 2.0 * rib_r) / float(rows))
 	var vp: Array = []
 	for i in range(cols + 1):
 		var col_arr: Array = []
 		for j in range(rows + 1):
-			var pos := Vector2(gx0 + float(i) * cw, gy0 + float(j) * ch)
+			var pos := Vector2(float(xs[i]), float(ys[j]))
 			if i > 0 and i < cols and j > 0 and j < rows:
-				pos.x += (_h01(fkey + float(i) * 12.9 + float(j) * 7.3) - 0.5) * jitter * cw
-				pos.y += (_h01(fkey + float(i) * 5.1 + float(j) * 3.3 + 50.0) - 0.5) * jitter * ch
+				pos.x += (_h01(fkey + float(i) * 12.9 + float(j) * 7.3) - 0.5) * jitter * jbase
+				pos.y += (_h01(fkey + float(i) * 5.1 + float(j) * 3.3 + 50.0) - 0.5) * jitter * jbase
 			col_arr.append(pos)
 		vp.append(col_arr)
-	# 2-3. cut points at `cut` along each edge away from each vertex -> S_B spans between them,
-	# and a per-vertex registry of its cut points (for the S_A ring)
+	# 1b. CELL MERGING: an interior wall may dissolve, fusing its two cells into one bigger blob
+	# (capped at PAIRS so no vertex loses more than two edges). `merged`: cell index -> partner.
+	var merged: Dictionary = {}
+	var dropped_h: Dictionary = {}   # "i:j" = horizontal edge (vp[i][j] -> vp[i+1][j]), j in 1..rows-1
+	var dropped_v: Dictionary = {}   # "i:j" = vertical edge (vp[i][j] -> vp[i][j+1]), i in 1..cols-1
+	for i in range(cols):
+		for j in range(1, rows):
+			var ca := i * rows + (j - 1)
+			var cb := i * rows + j
+			if not merged.has(ca) and not merged.has(cb) and _h01(fkey + float(i) * 17.3 + float(j) * 29.1 + 100.0) < merge_chance:
+				merged[ca] = cb
+				merged[cb] = ca
+				dropped_h["%d:%d" % [i, j]] = true
+	for i2 in range(1, cols):
+		for j2 in range(rows):
+			var ca2 := (i2 - 1) * rows + j2
+			var cb2 := i2 * rows + j2
+			if not merged.has(ca2) and not merged.has(cb2) and _h01(fkey + float(i2) * 23.9 + float(j2) * 11.3 + 300.0) < merge_chance:
+				merged[ca2] = cb2
+				merged[cb2] = ca2
+				dropped_v["%d:%d" % [i2, j2]] = true
+	# 2-3. cut points along each SURVIVING edge away from each vertex -> S_B spans between them,
+	# and a per-vertex registry of its cut points (for the S_A ring). The cut fraction varies per
+	# vertex, so junction pinches differ across the facade.
 	var paths: Array = []
 	var vpts: Dictionary = {}
-	for j in range(rows + 1):
-		for i in range(cols):
-			var a: Vector2 = (vp[i] as Array)[j]
-			var b: Vector2 = (vp[i + 1] as Array)[j]
-			var pa := a.lerp(b, cut)
-			var pb := a.lerp(b, 1.0 - cut)
+	# An edge in a door clearance is dropped HERE, before emission — the vertex registry then only
+	# ever sees surviving edges, so the S_A ring adapts and orphaned connector curls are impossible
+	# (a post-filter on finished paths stranded S_A arcs whose S_B partner died).
+	for j3 in range(rows + 1):
+		for i3 in range(cols):
+			if j3 > 0 and j3 < rows and dropped_h.has("%d:%d" % [i3, j3]):
+				continue   # this wall dissolved — its two cells are one blob
+			var a: Vector2 = (vp[i3] as Array)[j3]
+			var b: Vector2 = (vp[i3 + 1] as Array)[j3]
+			if _seg_reserved_face(a, b, w, n, reserved):
+				continue
+			var pa := a.lerp(b, _sasb_cut(cut, cut_var, fkey, i3, j3))
+			var pb := a.lerp(b, 1.0 - _sasb_cut(cut, cut_var, fkey, i3 + 1, j3))
 			paths.append(PackedVector2Array([pa, pb]))
-			_sasb_reg(vpts, i, j, pa, a)
-			_sasb_reg(vpts, i + 1, j, pb, b)
-	for i2 in range(cols + 1):
-		for j2 in range(rows):
-			var a2: Vector2 = (vp[i2] as Array)[j2]
-			var b2: Vector2 = (vp[i2] as Array)[j2 + 1]
-			var pa2 := a2.lerp(b2, cut)
-			var pb2 := a2.lerp(b2, 1.0 - cut)
+			_sasb_reg(vpts, i3, j3, pa, a)
+			_sasb_reg(vpts, i3 + 1, j3, pb, b)
+	for i4 in range(cols + 1):
+		for j4 in range(rows):
+			if i4 > 0 and i4 < cols and dropped_v.has("%d:%d" % [i4, j4]):
+				continue
+			var a2: Vector2 = (vp[i4] as Array)[j4]
+			var b2: Vector2 = (vp[i4] as Array)[j4 + 1]
+			if _seg_reserved_face(a2, b2, w, n, reserved):
+				continue
+			var pa2 := a2.lerp(b2, _sasb_cut(cut, cut_var, fkey, i4, j4))
+			var pb2 := a2.lerp(b2, 1.0 - _sasb_cut(cut, cut_var, fkey, i4, j4 + 1))
 			paths.append(PackedVector2Array([pa2, pb2]))
-			_sasb_reg(vpts, i2, j2, pa2, a2)
-			_sasb_reg(vpts, i2, j2 + 1, pb2, b2)
+			_sasb_reg(vpts, i4, j4, pa2, a2)
+			_sasb_reg(vpts, i4, j4 + 1, pb2, b2)
 	# 4+6. S_A connectors around each vertex, ROUNDED toward the vertex (concave corner cuts)
 	for i3 in range(cols + 1):
 		for j3 in range(rows + 1):
@@ -183,37 +225,61 @@ static func _honeyframe_face_sasb(f: Dictionary, p: Dictionary, frame_st: Surfac
 					paths.append(PackedVector2Array([pa3, pb3]))   # wide gap (face border run): straight
 				else:
 					paths.append(_concave_arc(pa3, pb3, vtx, pinch, 5))
-	# a door region silences every rib that would cross it
-	var kept: Array = []
-	for pathv in paths:
-		if not _path_reserved_face(pathv as PackedVector2Array, w, h, n, reserved):
-			kept.append(pathv)
-	var graph: Dictionary = LatticeGraph.build(kept, 0.01)
+	var graph: Dictionary = LatticeGraph.build(paths, 0.01)
 	frame_st.set_color(Color(0.9, 0.87, 0.78))
 	LatticeGraph.mesh(frame_st, graph, LatticeGraph.plane_surface(origin, u, Vector3(0, 1, 0)), rib_r, int(p["rib_sides"]))
-	# glass: one lit pane per (unreserved) cell, behind the rounded opening
+	# glass: one lit pane per REGION (a merged pair reads as one big blob opening)
 	var pane := float(p["pane"])
 	var cells := 0
-	for i4 in range(cols):
-		for j4 in range(rows):
-			var q00: Vector2 = (vp[i4] as Array)[j4]
-			var q11: Vector2 = (vp[i4 + 1] as Array)[j4 + 1]
-			var q01: Vector2 = (vp[i4] as Array)[j4 + 1]
-			var q10: Vector2 = (vp[i4 + 1] as Array)[j4]
-			# a pane is dropped when its ACTUAL cell rect overlaps a door region — the same clearance
-			# the ribs use, so a door can't orphan a lit pane whose frame was silenced
-			var rmin := Vector2(minf(q00.x, q01.x), minf(q00.y, q10.y))
-			var rmax := Vector2(maxf(q10.x, q11.x), maxf(q01.y, q11.y))
-			if _rect_reserved_face(rmin, rmax, w, n, reserved):
+	for i5 in range(cols):
+		for j5 in range(rows):
+			var cidx := i5 * rows + j5
+			if merged.has(cidx) and int(merged[cidx]) < cidx:
+				continue   # the region is emitted from its lower-index cell
+			var region_cells: Array = [Vector2i(i5, j5)]
+			if merged.has(cidx):
+				var pidx := int(merged[cidx])
+				region_cells.append(Vector2i(int(pidx / float(rows)), pidx % rows))
+			var rmin := Vector2(1.0e9, 1.0e9)
+			var rmax := Vector2(-1.0e9, -1.0e9)
+			for rc in region_cells:
+				var ci := (rc as Vector2i).x
+				var cj := (rc as Vector2i).y
+				for corner in [(vp[ci] as Array)[cj], (vp[ci + 1] as Array)[cj], (vp[ci] as Array)[cj + 1], (vp[ci + 1] as Array)[cj + 1]]:
+					rmin = Vector2(minf(rmin.x, (corner as Vector2).x), minf(rmin.y, (corner as Vector2).y))
+					rmax = Vector2(maxf(rmax.x, (corner as Vector2).x), maxf(rmax.y, (corner as Vector2).y))
+			var cen := (rmin + rmax) * 0.5
+			var hwp := maxf(0.06, (rmax.x - rmin.x) * 0.5 - rib_r * 0.9)
+			var hhp := maxf(0.06, (rmax.y - rmin.y) * 0.5 - rib_r * 0.9)
+			# a pane is dropped when the PANE ITSELF overlaps a door clearance (testing the full region
+			# rect also killed the lit cells that merely FLANK the entrance — the plate keeps those)
+			if _rect_reserved_face(cen - Vector2(hwp, hhp), cen + Vector2(hwp, hhp), w, n, reserved):
 				continue
-			var cen := (q00 + q11 + q01 + q10) * 0.25
-			var hwp := maxf(0.06, (absf(q10.x - q00.x) + absf(q11.x - q01.x)) * 0.25 - rib_r * 0.9)
-			var hhp := maxf(0.06, (absf(q01.y - q00.y) + absf(q11.y - q10.y)) * 0.25 - rib_r * 0.9)
-			var rr := minf(hwp, hhp) * 0.5
-			var key := fkey + float(i4) * 31.7 + float(j4) * 13.9
-			_glass_fan_plane(origin, u, Vector3(0, 1, 0), n, cen, _rounded_rect(hwp, hhp, rr, 2), pane, _pane_color(base_pane, key), glass_st)
+			var rr := minf(hwp, hhp) * 0.7
+			var key := fkey + float(i5) * 31.7 + float(j5) * 13.9
+			_glass_fan_plane(origin, u, Vector3(0, 1, 0), n, cen, _rounded_rect(hwp, hhp, rr, 3), pane, _pane_color(base_pane, key), glass_st)
 			cells += 1
 	return cells
+
+# Grid-line boundaries with hash-varied spacing: n spans over [start, start+span], each a different
+# width — the plate's rows/columns of visibly different size.
+static func _varied_axis(n: int, start: float, span: float, key: float, variance: float) -> Array:
+	var weights: Array = []
+	var total := 0.0
+	for i in range(n):
+		var wgt := 1.0 + (_h01(key + float(i) * 13.7) - 0.5) * 2.0 * variance
+		weights.append(wgt)
+		total += wgt
+	var out: Array = [start]
+	var acc := start
+	for i2 in range(n):
+		acc += span * (float(weights[i2]) / total)
+		out.append(acc)
+	return out
+
+# The S_A cut fraction at one vertex — varied per vertex so the junction pinches differ.
+static func _sasb_cut(cut: float, cut_var: float, fkey: float, i: int, j: int) -> float:
+	return clampf(cut * (1.0 + (_h01(fkey + float(i) * 31.1 + float(j) * 8.7 + 200.0) - 0.5) * cut_var), 0.08, 0.5)
 
 static func _sasb_reg(vpts: Dictionary, i: int, j: int, pt: Vector2, vtx: Vector2) -> void:
 	var key := "%d:%d" % [i, j]
@@ -245,16 +311,21 @@ static func _rect_reserved_face(rmin: Vector2, rmax: Vector2, w: float, face_n: 
 			return true
 	return false
 
-# Does any point of a face-local path fall inside a reserved door rect on this face?
-static func _path_reserved_face(pts: PackedVector2Array, w: float, _h: float, face_n: Vector3, reserved: Array) -> bool:
+# Does a face-local grid EDGE (sampled) cross a reserved door region on this face? Decided BEFORE
+# emission so the S_A vertex registry only ever sees surviving edges.
+static func _seg_reserved_face(a: Vector2, b: Vector2, w: float, face_n: Vector3, reserved: Array) -> bool:
 	for reg in reserved:
 		var rd := reg as Dictionary
 		if bool(rd.get("cyl", true)):
 			continue
 		if (rd["n"] as Vector3).dot(face_n) < 0.9:
 			continue
-		for pt in pts:
-			if pt.y < float(rd["y_top"]) and absf(pt.x - w * 0.5 - float(rd["x_center"])) < float(rd["half_w"]):
+		var cx := w * 0.5 + float(rd["x_center"])
+		var hw := float(rd["half_w"])
+		var yt := float(rd["y_top"])
+		for s in range(7):
+			var pt := a.lerp(b, float(s) / 6.0)
+			if pt.y < yt and absf(pt.x - cx) < hw:
 				return true
 	return false
 

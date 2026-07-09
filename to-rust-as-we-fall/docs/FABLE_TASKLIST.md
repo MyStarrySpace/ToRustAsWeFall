@@ -82,12 +82,16 @@ itemized above (ranked by read-distance per building):
   smooth tubes; 3 mouchettes should be chunky glazed drops, not thin bows; 4 glass-curtain top-row
   panes have ROUND-ARCHED heads + heavier intermediate mullions; 5 mullion feet splay into roots
   around a CARVED oval plaque (we float a Label3D); 6 dome parapet planters + dormers.
-- **Honeycomb**: 1 cell VARIETY — storey-scale organic blobs of differing size/shape (~3/row,
-  bulging out of the wall plane); our jitter nudges positions but not size/shape; 2 a cell is a
-  ROOM: rectangular sash window INSIDE each blob + blinds at varied heights + window boxes +
-  louvered spandrel vents; 3 frame section carries a centre groove/moulding seam; 4 walls are deep
-  verdigris (ours near-white); 5 roof = small-arch balustrade + corner finial lamps; 6 the torn
-  face (decay) is HALF the building's identity; 7 stoop: stairs/sconces/kiosk/hex-cartouche sign.
+- **Honeycomb**: 1 cell VARIETY — **DONE (Fable, 2026-07-09)**: the S_A/S_B subdivision is now
+  IRREGULAR (varied grid-line spacing `size_variance`, deterministic pair-MERGING of cells into
+  bigger blobs `merge_chance`, per-vertex cut variance `cut_variance`; door reservation decided at
+  the EDGE level before emission so no orphaned S_A curls; glass per merged REGION). Still open:
+  blobs bulging out of the wall plane (facade relief); 2 a cell is a ROOM: rectangular sash window
+  INSIDE each blob + blinds at varied heights + window boxes + louvered spandrel vents (this also
+  fills the bare door-throat zone, along with the hex-cartouche sign); 3 frame section centre
+  groove/moulding seam; 4 walls deep verdigris (ours near-white); 5 roof = small-arch balustrade +
+  corner finial lamps; 6 the torn face (decay) is HALF the building's identity; 7 stoop:
+  stairs/sconces/kiosk/hex-cartouche sign.
 - **PPP**: all known (merged lobed base, helix aqueduct, dome+cupola) + NEW: the entrance idiom is
   an awning-hooded CRT KIOSK, not a portal (our white door is wrong here); the ship-wheel valve
   cluster + glowing effluent shrine are geometry-lab-class builds.
