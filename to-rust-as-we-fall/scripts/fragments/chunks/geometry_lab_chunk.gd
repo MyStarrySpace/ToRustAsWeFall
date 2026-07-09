@@ -26,6 +26,7 @@ var _algorithm := 1
 var _max_down_shift := 2.0   # algo 2: max extra DOWNWARD shift (grid units) of a recursed awning's A/B
 var _merge_seed := 1         # algo 2: seed for the adjacent-awning merge dice
 var _junction_lines := 3     # algo 3: how many centrelines meet at the junction (any number)
+var _junction_seed := 1      # algo 3: varies the line ANGLES (and arm lengths); N-key rerolls it
 
 # algo 2 [PARAMETER_CURVE]s as real Godot Curve resources (editable in the inspector / assignable in the
 # .tscn). Sampled over recursion-depth t in [0,1]. Null -> a true-linear default (see _linear_curve).
@@ -43,6 +44,14 @@ func configure_chunk(config: Dictionary) -> void:
 		_merge_seed = int(config["merge_seed"])
 	if config.has("junction_lines"):
 		_junction_lines = maxi(2, int(config["junction_lines"]))
+	if config.has("junction_seed"):
+		_junction_seed = int(config["junction_seed"])
+	elif config.has("seed"):
+		_junction_seed = int(config["seed"])
+
+# N-key in the preview reseeds the generation -> reroll algorithm 3's line angles.
+func get_generation_seed() -> int:
+	return _junction_seed
 
 func is_generation_preview() -> bool:
 	return true
@@ -282,11 +291,16 @@ func _build_junction(root: Node3D) -> void:
 	# through the origin at an evenly-spread angle (a clean N-way star); P = their common intersection.
 	var num := maxi(2, _junction_lines)
 	var length := 3.0
+	var rng := SeededRng.new(_junction_seed)
 	var lines: Array = []
 	for k in range(num):
-		var ang := PI * float(k) / float(num)
+		# even spread + a seeded jitter (< half the spacing, so lines stay distinct, angles VARIED),
+		# and per-arm length variation. N-key rerolls the seed -> a fresh angle configuration.
+		var ang := PI * (float(k) + (float(rng.call("randf")) - 0.5) * 0.8) / float(num)
 		var dir := Vector3(cos(ang), 0.0, sin(ang))
-		lines.append([-dir * length, dir * length])
+		var lp := length * (0.65 + 0.5 * float(rng.call("randf")))
+		var ln := length * (0.65 + 0.5 * float(rng.call("randf")))
+		lines.append([-dir * ln, dir * lp])
 	var p := _line_intersect_xz(
 		lines[0][0], (lines[0][1] as Vector3) - (lines[0][0] as Vector3),
 		lines[1][0], (lines[1][1] as Vector3) - (lines[1][0] as Vector3))
