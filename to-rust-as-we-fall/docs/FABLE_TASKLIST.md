@@ -74,6 +74,33 @@ the capsule→SDF path once, reuse everywhere.
 
 ---
 
+## Plate-comparison deltas (director-requested side-by-side, 2026-07-09)
+Fresh reference-vs-generated comparison AFTER the LatticeGraph rebuilds. New specifics not already
+itemized above (ranked by read-distance per building):
+- **Beacon Hill** (closest match): 1 bell taper + tiled dome (known) is now THE gap; 2 rib character
+  — segmented stone joint-lines + thickness taper (springing thick → tip thin), ours are uniform
+  smooth tubes; 3 mouchettes should be chunky glazed drops, not thin bows; 4 glass-curtain top-row
+  panes have ROUND-ARCHED heads + heavier intermediate mullions; 5 mullion feet splay into roots
+  around a CARVED oval plaque (we float a Label3D); 6 dome parapet planters + dormers.
+- **Honeycomb**: 1 cell VARIETY — storey-scale organic blobs of differing size/shape (~3/row,
+  bulging out of the wall plane); our jitter nudges positions but not size/shape; 2 a cell is a
+  ROOM: rectangular sash window INSIDE each blob + blinds at varied heights + window boxes +
+  louvered spandrel vents; 3 frame section carries a centre groove/moulding seam; 4 walls are deep
+  verdigris (ours near-white); 5 roof = small-arch balustrade + corner finial lamps; 6 the torn
+  face (decay) is HALF the building's identity; 7 stoop: stairs/sconces/kiosk/hex-cartouche sign.
+- **PPP**: all known (merged lobed base, helix aqueduct, dome+cupola) + NEW: the entrance idiom is
+  an awning-hooded CRT KIOSK, not a portal (our white door is wrong here); the ship-wheel valve
+  cluster + glowing effluent shrine are geometry-lab-class builds.
+- **Open Files**: 1 fins LEAN INWARD and FUSE at the base (a converging butte, ~12+); ours stand
+  parallel/separate; 2 the recessed channels must be PACKED with server-rack strata (drawer bands +
+  green LED matrices — the director's extrude-the-faces spec), currently bare; 3 entrance = vaulted
+  hex-arch portal with a cyan scan-beam curtain; 4 emissive green sign board + crest.
+- **Cross-cutting**: palettes far too bright/clean — plates are dark desaturated verdigris + rust
+  with AUTHORED grime (streaks under openings, pooling at feet); ONE white-stone entrance is
+  stamped on every district (each plate has its own idiom: kiosk / scan-gate / reading-room arch /
+  co-op stoop); signage should be plaque GEOMETRY not Label3D; every plate grounds its building in
+  a cobble apron + bollards/lamps/planters.
+
 ## Base shapes — simple ones DONE (Opus); MERGED / SPLIT bases → Fable
 **Opus built (simple, fine):** PPP = squat cylinder, Honeycomb = tall box, Beacon Hill = cylinder.
 Proportions verified against the plates. A single lathe or box is Opus's to keep.
