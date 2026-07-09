@@ -27,6 +27,7 @@ var _max_down_shift := 2.0   # algo 2: max extra DOWNWARD shift (grid units) of 
 var _merge_seed := 1         # algo 2: seed for the adjacent-awning merge dice
 var _junction_lines := 3     # algo 3: how many centrelines meet at the junction (any number)
 var _junction_seed := 1      # algo 3: varies the line ANGLES (and arm lengths); N-key rerolls it
+var _junction_profile := "round"   # algo 3: "flat" beam or "round" (half-round tube) cross-section
 
 # algo 2 [PARAMETER_CURVE]s as real Godot Curve resources (editable in the inspector / assignable in the
 # .tscn). Sampled over recursion-depth t in [0,1]. Null -> a true-linear default (see _linear_curve).
@@ -48,6 +49,8 @@ func configure_chunk(config: Dictionary) -> void:
 		_junction_seed = int(config["junction_seed"])
 	elif config.has("seed"):
 		_junction_seed = int(config["seed"])
+	if config.has("profile"):
+		_junction_profile = str(config["profile"])
 
 # N-key in the preview reseeds the generation -> reroll algorithm 3's line angles.
 func get_generation_seed() -> int:
@@ -326,29 +329,20 @@ func _build_junction(root: Node3D) -> void:
 		var pj: Vector3 = p - (aj["perp"] as Vector3) * w
 		corner.append(_line_intersect_xz(pi, ai["dir"], pj, aj["dir"]))
 
-	var yh := Vector3(0.0, h, 0.0)
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	# central junction polygon (top + bottom), fanned from its centroid
-	var cen: Vector3 = _centroid(corner)
-	for i in range(n):
-		var c0: Vector3 = corner[i]
-		var c1: Vector3 = corner[(i + 1) % n]
-		_tri3(st, cen + yh, c0 + yh, c1 + yh)   # top
-		_tri3(st, cen, c1, c0)                  # bottom (reversed)
-	# each arm: base corners = corner[i-1] (right) & corner[i] (left), far = end -/+ perp*w
+	# the merged footprint as ONE CCW boundary loop: per arm [far-right, far-left, corner-to-next].
+	var loop: Array = []
 	for i in range(n):
 		var ai: Dictionary = arms[i]
 		var pr: Vector3 = ai["perp"]
-		var br: Vector3 = corner[(i - 1 + n) % n]   # base-right
-		var bl: Vector3 = corner[i]                 # base-left
-		var fr: Vector3 = (ai["end"] as Vector3) - pr * w   # far-right
-		var fl: Vector3 = (ai["end"] as Vector3) + pr * w   # far-left
-		_quad(st, br + yh, fr + yh, fl + yh, bl + yh)   # arm top
-		_quad(st, bl, fl, fr, br)                       # arm bottom
-		_wall(st, br, fr, h)   # right edge wall
-		_wall(st, fr, fl, h)   # far cap wall
-		_wall(st, fl, bl, h)   # left edge wall
+		loop.append((ai["end"] as Vector3) - pr * w)   # far-right
+		loop.append((ai["end"] as Vector3) + pr * w)   # far-left
+		loop.append(corner[i] as Vector3)              # corner to the next arm
+	if _junction_profile == "round":
+		_loft_rounded(st, loop, w)   # HALF-ROUND tube: quarter-circle inset-and-raise to a ridge
+	else:
+		_loft_flat(st, loop, h)      # FLAT beam: bottom + top + vertical walls
 
 	st.generate_normals()
 	var mi := MeshInstance3D.new()
@@ -362,6 +356,7 @@ func _build_junction(root: Node3D) -> void:
 	root.add_child(mi)
 
 	# show the raw (non-extruded) centrelines + label P and the junction corners
+	var yh := Vector3(0.0, h, 0.0)
 	var gl := SurfaceTool.new()
 	gl.begin(Mesh.PRIMITIVE_LINES)
 	for ln in lines:
@@ -378,6 +373,70 @@ func _build_junction(root: Node3D) -> void:
 	_add_point(root, "P", p + yh)
 	for i in range(n):
 		_add_point(root, "C%d" % i, (corner[i] as Vector3) + yh)
+
+# FLAT beam: the footprint boundary loop filled top + bottom (centroid fans) and walled up by h.
+func _loft_flat(st: SurfaceTool, loop: Array, h: float) -> void:
+	var yh := Vector3(0.0, h, 0.0)
+	var cen := _centroid(loop)
+	var m := loop.size()
+	for i in range(m):
+		var a: Vector3 = loop[i]
+		var b: Vector3 = loop[(i + 1) % m]
+		_tri3(st, cen + yh, a + yh, b + yh)   # top fan
+		_tri3(st, cen, b, a)                  # bottom fan
+		_wall(st, a, b, h)                    # vertical wall
+
+# HALF-ROUND tube: loft the boundary loop through quarter-circle layers — each layer is the footprint
+# INSET by radius*(1-cos a) and RAISED by radius*sin a, so the section rounds from the full width at
+# the base to a thin ridge at the top (a half-round moulding over the merged footprint).
+func _loft_rounded(st: SurfaceTool, loop: Array, radius: float) -> void:
+	var m := loop.size()
+	var cen := _centroid(loop)
+	var layers := 5
+	var rings: Array = []
+	for k in range(layers + 1):
+		var a := (float(k) / float(layers)) * PI * 0.5
+		var delta := radius * (1.0 - cos(a)) * 0.94
+		var y := radius * sin(a)
+		var ring: Array = []
+		for pt in _inset_polygon(loop, delta, cen):
+			ring.append((pt as Vector3) + Vector3(0.0, y, 0.0))
+		rings.append(ring)
+	for k in range(layers):
+		var r0: Array = rings[k]
+		var r1: Array = rings[k + 1]
+		for i in range(m):
+			var j := (i + 1) % m
+			_quad(st, r0[i], r0[j], r1[j], r1[i])
+	var top: Array = rings[layers]
+	var tc := _centroid(top)
+	var base: Array = rings[0]
+	var bc := _centroid(base)
+	for i in range(m):
+		var j := (i + 1) % m
+		_tri3(st, tc, top[i], top[j])       # top ridge cap
+		_tri3(st, bc, base[j], base[i])     # base cap
+
+# Inset a CCW polygon inward by `delta` (each edge shifted along its inward normal; new vertices are the
+# intersections of adjacent inset edges). Inward is decided per edge toward the centroid.
+func _inset_polygon(loop: Array, delta: float, centroid: Vector3) -> Array:
+	var m := loop.size()
+	var out: Array = []
+	for i in range(m):
+		var a: Vector3 = loop[(i - 1 + m) % m]
+		var b: Vector3 = loop[i]
+		var c: Vector3 = loop[(i + 1) % m]
+		var nab := _inward_normal(a, b, centroid)
+		var nbc := _inward_normal(b, c, centroid)
+		out.append(_line_intersect_xz(a + nab * delta, b - a, b + nbc * delta, c - b))
+	return out
+
+func _inward_normal(a: Vector3, b: Vector3, centroid: Vector3) -> Vector3:
+	var e := (b - a) * Vector3(1, 0, 1)
+	var nrm := Vector3(-e.z, 0.0, e.x).normalized()
+	if nrm.dot(centroid - (a + b) * 0.5) < 0.0:
+		nrm = -nrm
+	return nrm
 
 # Intersection of two lines in the XZ plane (y ignored), each given point + direction. Parallel -> p1.
 func _line_intersect_xz(p1: Vector3, d1: Vector3, p2: Vector3, d2: Vector3) -> Vector3:
