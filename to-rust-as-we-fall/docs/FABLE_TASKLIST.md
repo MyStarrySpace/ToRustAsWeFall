@@ -1,56 +1,62 @@
 # Fable Task List — procgen geometry pass
 
-Backlog for **Claude Fable**. The district-architecture procedural generation is being built
-bottom-up. The split is by DIFFICULTY OF THE MATH, not by pipeline stage:
+Backlog for **Claude Fable**, who LEADS the district-architecture procedural generation. The hard part
+is Fable's: boolean/CSG/blend, overlap/collision resolution, organic/curved surface fitting, and
+watertight mesh topology. Opus's swept-tube / tiled approximations leak at grazing angles and read as
+"sausages smashed together" — they are placeholders and armatures, not the target.
 
-> **Fable owns the complex math + geometry. Opus owns the simple calculations.**
-
-Anything that is boolean/CSG/blend, collision/overlap resolution, organic/curved surface fitting, or
-watertight mesh topology goes to **Fable** — Opus keeps botching those (holes, parts poking through,
-straight where the plate whiplashes). Opus keeps the cheap parametric bits: primitive placement,
-per-knob layout, per-pane window light, signage text/placement, and all the wiring
-(showcase/registry/tests/determinism). Opus should NOT keep grinding the hard-geometry items below —
-log the gap and leave it for Fable rather than shipping a leaky approximation.
+**Fable delegates DOWN to Opus.** Anything Fable finds simple and mechanical it can hand to Opus to do
+later — per-pane window LIGHT (vertex-colour brightness/tint/off), signage text + placement, seed
+plumbing, parametric knob layout, and all the wiring (showcase chunk, PREVIEW registry, tests, RNG
+lint, hygiene). That keeps Fable's effort on the geometry. Items Opus has already taken are marked
+**DONE** per section; treat them as done-unless-noted, and reclaim any you'd rather redo.
 
 Reference plates: `reference-images/architecture/*.png`. Compare the live showcase
 (`--preview=architecture_showcase`) against the plate before and after.
 
----
-
-## Division of labor
-
-**Opus (simple calculations — do these now):**
-- Primitive base shapes (a cylinder, a box) and their parametric knobs.
-- Layout math: spacing, per-cell grid subdivision indices, edge sampling, seed plumbing.
-- Per-pane window LIGHT (vertex-colour brightness/tint/off lookup) — pure data, no geometry.
-- Signage: text content + placement (Label3D / plaque transform).
-- All wiring: showcase chunk, PREVIEW registry, tests, RNG lint, hygiene.
-
-**Fable (complex math + geometry — LOG, don't grind in Opus):**
-- **All the lattices** (honeyframe, pipes, tracery). Not just painterly fidelity — the GEOMETRY
-  itself is wrong: parts show through, shells still leak, junctions are straight where the plate
-  branches/interlaces/whiplashes. The organic surface-fit + watertight topology is Fable's.
-- **Overlap / collision resolution** — keep elements from intersecting each other or the wall, and
-  clip/remove the ones that do (pipes crossing windows, an entrance sitting over the bottom windows,
-  decor punching through the lattice). Needs real occupancy/collision math, not eyeballed offsets.
-- **Complex base shapes** — a base that starts as a cylinder then MERGES with other shapes at the
-  bottom (the PPP's lobed foot), or a SPLIT-BASE structure (the Hypelines). Boolean/blend/SDF-union
-  massing, not a single lathe/box.
-- **Roads / lines cutting through buildings** — negative-space carving where a road or line optionally
-  slices a building. Boolean subtraction against the massing.
-- **Voronoi organic decorations** — the mirror-half + focal-point merge pass (see step 6 below).
-- **LOD / impostor** — near/far decimation once the heroes ship into a walkable level.
+## Ground rules
+- **Bottom-up + parametric:** base shape → lattice on edges/faces. Every knob a `[PARAMETER]`; every
+  sample through `SeededRng` (determinism law + the RNG lint).
+- **Match the plate, not the previous capture** — decompose whole → parts → primitives, rebuild.
+- **Low-poly geometry, detail in the (pixel-art) texture.**
+- **UNIFY, don't pile.** The plates' lattices are ONE fused organic surface (smooth-union / metaball
+  merge, the way the Blender pipeline did it), never overlapping tubes. This is the single biggest
+  quality lever across EVERY lattice — see **Organic merge** below.
 
 ---
 
-## Ground rules (keep, whoever builds)
-- **Bottom-up + parametric:** base shape → lattice elements layered on edges/faces. Every knob a
-  `[PARAMETER]`; every sample through `SeededRng` (determinism law + the RNG lint).
-- **Match the plate, not the previous capture** (see the recursive-decomposition memory). Look at the
-  actual reference image, decompose whole → parts → primitives, rebuild.
-- **Low-poly geometry, detail in the (pixel-art) texture.** Don't over-model what a texture can carry.
-- **Watertight or it's Fable's.** If a mesh leaks (holes, see-through at grazing angles, self-overlap),
-  that's the complex-topology signal — hand it to Fable, don't patch it in Opus.
+## Organic merge — the "sausages" fix (highest-leverage, cross-lattice)
+The Godot lattices sweep tubes and just OVERLAP them, so junctions read as separate sausages; the
+Blender pipeline fused parts into one organic surface. **Investigation done (2026-07-09) — the
+capability already exists in-engine.**
+
+- **What Blender did = METABALLS** (`blender/skills/building-generation/gen_blob_mass.py`,
+  `build_blob_mass`): one metaball element per sphere, `mb.resolution ≈ 0.30`, polygonised into ONE
+  mesh (`new_from_object`). That's a smooth-min field union — overlapping spheres melt into one mass.
+  (Cheaper parity variants also in the Blender code: `gen_voronoi_holemesh.build_holemesh` builds a
+  WELDED shared-vertex web + `wireframe`/`solidify` with a `merge`/`merge_start` radial falloff;
+  `gen_building.py` uses `remove_doubles` weld before `solidify`. No booleans/voxel-remesh anywhere.)
+- **Godot equivalent already shipped:** `scripts/generation/sdf_mesher.gd` — `SdfMesher.build(prims,
+  cell, color) -> {mesh, verts, tris, aabb}`. Prims carry a smooth-min blend radius **`k`**:
+  `{"type":"capsule","a":Vec3,"b":Vec3,"r1","r2","k"}` (+ sphere/ellipsoid/box). Polynomial smooth-min
+  + marching TETRAHEDRA + gradient normals → a clean closed manifold with fused junctions (exactly the
+  metaball result). `CreatureGrammar._cap/_ell/_sph` shows the emit pattern. `cell` = voxel size
+  (0.04–0.09 fine, 0.12 coarse); big `k` melts, small `k` stays sharp.
+- **The sausages are specifically the SWEPT TUBES** — `lattice_builder._sweep_tube` (pipes) and
+  `_sweep_rib` (tracery). The honeyframe/tracery FRAME RINGS already tile via shared cell rects (fine).
+- **Recipe:** for each consecutive rib path-pair emit a `capsule` prim (`a,b` = the two points, `r =
+  rib_radius`, `k ≈ rib_radius`); union a region's capsules and `SdfMesher.build(...)`. The smooth-min
+  fuses crossings into organic tracery. Keep the GLASS on the SurfaceTool path (SDF carries no
+  vertex-colour / two layers) — only the RIBS go through the SDF.
+- **Risks:** (1) PERF — the tet pass scans the whole union AABB / cell³, so field the ribs **PER-BAY**
+  (small AABB), never the whole drum at once (a full-facade field at cell 0.04 ≈ 12M voxels). (2) It
+  produces free-floating fused tubes, not surface mouldings — either union a local wall slab into the
+  field or let the ribs float proud. (3) `cell ≤ rib_radius` and `k ≈ rib_radius` or thin ribs facet /
+  pinch off. Fallback if per-bay SDF is still too heavy: the welded shared-vertex graph (Blender
+  technique 2/3) — dedupe path endpoints + weld coincident verts — welded-not-melted, but no sausages.
+
+Apply to honeyframe (S_A/S_B junctions), tracery (the whole rib network), and pipe couplings — build
+the capsule→SDF path once, reuse everywhere.
 
 ---
 
@@ -123,40 +129,31 @@ tubes. On the PPP + Honeycomb.
 runs · catenary sag · banded couplings · wall standoff brackets · rust/verdigris patina (per-ring
 vertex colour).
 
-## Lattice 3 — tracery (Beacon Hill)  → COMPLETE FABLE REBUILD
-**Design (confirmed):** mullioned **glass curtain behind + stone tracery ribs in front** (two layers,
-not holes in a solid wall), on a **bell/beehive** tower (wide base, domed top).
+## Lattice 3 — tracery (Beacon Hill)  → armature built (Opus); needs the organic merge (Fable)
+**Design:** mullioned **glass curtain behind + stone tracery ribs in front** (two layers), on a
+**bell/beehive** tower (wide base, domed top) — one continuous flowing Art-Nouveau rib NETWORK.
 
-**Opus's version is WRONG and must be completely redone (director, 2026-07-09).** Opus just TILED
-roundels + straight lancet rings. The plate (`reference-images/architecture/beacon_hill.png`) is a
-single **flowing, branching, interlacing rib NETWORK** — Art-Nouveau organic tracery — with nothing
-tiled. Decomposition to build to (top → bottom):
+**Corrected decomposition (from the close-up plate, director 2026-07-09) — per bay, top → bottom:**
+1. **Domed crown band** — a ring of small arched clerestory windows around the domed top; rooftop
+   planters above the parapet.
+2. **Nested double arch** — each tall window is capped by its OWN pointed arch, and a SECOND, LARGER
+   arch nests above that one.
+3. **Two commas in the tympanum** — between the inner and outer arch sit TWO comma / half-yin-yang
+   shapes (mouchettes), mirror images facing each other.
+4. **Tall gridded LARGE window** — the dominant element: a fine grid of small lit panes filling the bay.
+5. **Flanking vesica lancets** — tall pointed OVALS (pointed at both ends) either side of the large
+   window, each holding a thin lit almond light; in the plate they step DOWN and OUT in size.
+6. **Mullion lines** down the bay boundaries; near the base they splay into ROOT/VINE tendrils around
+   the doors and the "BEACON HILL / READING ROOM" plaque.
 
-1. **Domed crown band.** A ring of small arched clerestory windows around the bell's domed top;
-   rooftop planters/shrubs above the parapet.
-2. **Arcs interleaved with circles/ovals.** Big rounded ARCHES spring over each large window. Between
-   adjacent arch-springs sit elongated OVAL "eyes" — the circles are *interleaved with* the arcs and
-   share the same continuous rib (NOT a separate tiled ring of roundels).
-3. **Arcs → upside-down teardrops.** Below and between the arches the ribs pinch inward into
-   **inverted-teardrop cells** (rounded top, pointed bottom).
-4. **Teardrops → lines.** Each teardrop's point draws DOWNWARD into a thin rib-line / mullion; these
-   run down the wall and, near the base, splay into ROOT/VINE tendrils that wrap around the doors and
-   the "BEACON HILL / READING ROOM" plaque.
-
-**Glass nested in the negative spaces (three sizes, placed by the rib network — this is the part Opus
-got most wrong):**
-- **Large windows** — tall gridded glass panels directly under the big arcs (the dominant lights).
-- **Thin windows** — slim vertical slits in TWO spots: (a) INSIDE the inverted teardrops, and (b) in
-  the gaps BETWEEN the large windows, right under the arcs.
-- **Small windows** — smaller openings UNDER the teardrop shapes.
-
-**Why it's Fable's:** the whole thing is one continuous branching/interlacing/whiplashing rib solid
-that must wrap flush on a varying (bell) radius and stay watertight, with three window classes clipped
-into its negative space by the rib topology itself. That's exactly the complex-geometry + overlap-fit
-class reserved for Fable — do NOT approximate it again in Opus.
-
-**Keep from the Opus pass (as cheap scaffolding, not the look):** per-pane window LIGHT (vertex-colour
-brightness/tint/off) and the seed plumbing. Everything geometric gets replaced.
+**Opus built the ARMATURE** (`LatticeBuilder.tracery`, commit f023862): all of 1–6 present, placed,
+deterministic, tested. But the ribs are swept tubes that OVERLAP = the "sausages" read, and the bell
+taper, the root-splay, and the interlacing are missing. **Fable:**
+- Run the whole rib network through the **Organic merge** (top of doc) so it fuses into one surface —
+  this is what will make it finally read like the plate.
+- Add the **bell/beehive taper** (wrap the ribs flush onto a varying radius) and the **root splay** at
+  the base; **step** the flanking vesicas down/out; interlace the ribs where the plate does.
+- Per-pane window light + the seed plumbing are already Opus's (keep).
 
 ---
 

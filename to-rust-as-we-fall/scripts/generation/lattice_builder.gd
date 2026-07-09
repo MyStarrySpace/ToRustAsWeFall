@@ -476,9 +476,11 @@ static func _sweep_tube(pts: Array, radius: float, sides: int, colors: Array, st
 ## are lit glass fans just proud of the drum, behind the ribs (the "glass curtain + tracery" two-layer).
 const TRACERY_DEFAULTS := {
 	"bays": 7,                # large windows around the drum (each bay: one tall window + its arches)
-	"rib_radius": 0.075,      # bone rib gauge (swept half-round moulding)
+	"rib_radius": 0.075,      # bone rib gauge (capsule radius)
 	"rib_sides": 5,
-	"standoff": 0.03,         # rib centreline off the drum (half sinks in -> a surface moulding)
+	"merge_cell": 0.05,       # SDF voxel size for the organic merge (<= rib_radius or ribs facet)
+	"merge_k": 0.07,          # smooth-min blend radius — junctions FUSE (metaball merge, no sausages)
+	"standoff": 0.065,        # rib centreline off the drum — sits PROUD as a raised half-round moulding
 	"pane": 0.012,            # glass just proud of the drum, sitting BEHIND the ribs
 	"y_base": 0.16,           # bottom of the large windows (fraction of body height) — above the plinth
 	"y_spring": 0.66,         # top of the large windows / spring of the inner (window) arch
@@ -521,6 +523,11 @@ static func tracery(radius: float, height: float, overrides: Dictionary = {}) ->
 	var flank_hw := float(p["flank_hw_frac"]) * bw
 	var flank_hh := float(p["flank_hh_frac"]) * body_h
 	var comma_sz := float(p["comma_frac"]) * body_h
+	var rib_r := float(p["rib_radius"])
+	var mk := float(p["merge_k"])
+	var cell := float(p["merge_cell"])
+	var so := float(p["standoff"])
+	var rib_col: Color = p["rib_color"]
 	var cells := 0
 	for b in range(bays):
 		var x0 := float(b) * bw          # left bay boundary (arc-length) — the mullion axis
@@ -528,38 +535,55 @@ static func tracery(radius: float, height: float, overrides: Dictionary = {}) ->
 		var lw := float(p["large_w_frac"]) * bw
 		var hlw := lw * 0.5
 		var win_cy := (yb + ys) * 0.5
-		# --- central LARGE gridded window (dominant, tall, bright) ---
+		# --- central LARGE gridded window (glass, SurfaceTool) ---
 		cells += _grid_window(xc, win_cy, hlw, (ys - yb) * 0.5, int(p["grid_cols"]), int(p["grid_rows"]), r, p, glass_st)
-		# --- inner arch: the window's OWN pointed arch ---
-		_sweep_rib(_arch_pts(xc - hlw, xc + hlw, ys, y_inner, 10), r, p, frame_st)
-		# --- OUTER larger arch nesting above it (springs a touch wider + lower, apex higher) ---
-		_sweep_rib(_arch_pts(xc - hlw * 1.18, xc + hlw * 1.18, ys - 0.02 * body_h, y_outer, 12), r, p, frame_st)
-		# --- the TWO comma / half-yin-yang shapes in the tympanum between the two arches ---
+		# --- rib capsule prims for this bay -> FUSED into one organic surface by the SDF smooth-min ---
+		var prims: Array = []
+		# inner arch (the window's own pointed arch) + the OUTER larger arch nesting above it
+		_rib_caps(_arch_pts(xc - hlw, xc + hlw, ys, y_inner, 10), r, rib_r, mk, so, prims)
+		_rib_caps(_arch_pts(xc - hlw * 1.18, xc + hlw * 1.18, ys - 0.02 * body_h, y_outer, 12), r, rib_r, mk, so, prims)
+		# the TWO comma / half-yin-yang shapes in the tympanum between the two arches
 		var tymp_y := (y_inner + y_outer) * 0.5
-		_sweep_rib(_comma_pts(xc - hlw * 0.32, tymp_y, comma_sz, -1.0, 14), r, p, frame_st)
-		_sweep_rib(_comma_pts(xc + hlw * 0.32, tymp_y, comma_sz, 1.0, 14), r, p, frame_st)
-		# --- flanking VESICA lancets (tall pointed oval rib + a lit almond window), each side ---
+		_rib_caps(_comma_pts(xc - hlw * 0.32, tymp_y, comma_sz, -1.0, 14), r, rib_r, mk, so, prims)
+		_rib_caps(_comma_pts(xc + hlw * 0.32, tymp_y, comma_sz, 1.0, 14), r, rib_r, mk, so, prims)
+		# flanking VESICA lancets (tall pointed-oval rib + a lit almond window), each side
 		for sgn in [-1.0, 1.0]:
 			var vx := xc + float(sgn) * (hlw + flank_hw + 0.03 * bw)
 			var vcy := win_cy + 0.03 * body_h
-			_sweep_rib(_vesica_pts(vx, vcy, flank_hw, flank_hh, 16), r, p, frame_st)
+			_rib_caps(_vesica_pts(vx, vcy, flank_hw, flank_hh, 16), r, rib_r, mk, so, prims)
 			_emit_glass_cyl(vx / r, vcy, r, _vesica_pts(0.0, 0.0, thin_hw, flank_hh * 0.82, 10), pane, _pane_color(base_pane, vx * 3.1 + 7.0), glass_st)
 			cells += 1
-		# --- boundary mullion spanning the window height (base rooting is a later Fable detail) ---
-		_sweep_rib(_line2(Vector2(x0, yb), Vector2(x0, ys), 7), r, p, frame_st)
-	# --- CROWN BAND: a ring of small arched windows around the domed top ---
+		# boundary mullion spanning the window height (base rooting is a later Fable detail)
+		_rib_caps(_line2(Vector2(x0, yb), Vector2(x0, ys), 7), r, rib_r, mk, so, prims)
+		var bay_built := SdfMesher.build(prims, cell, rib_col)
+		if bay_built.get("mesh") != null:
+			frame_st.append_from(bay_built["mesh"] as ArrayMesh, 0, Transform3D.IDENTITY)
+	# --- CROWN BAND: small arched windows around the domed top (ribs fused too) ---
 	var crown_y := body_h + (height - body_h) * 0.5
 	var nrw := int(p["crown_windows"])
 	var chw := (circ / float(nrw)) * 0.30
 	var chh := (height - body_h) * 0.32
-	for k in range(nrw):
-		var cx := (float(k) + 0.5) / float(nrw) * circ
-		_sweep_rib(_arch_pts(cx - chw, cx + chw, crown_y + chh * 0.2, crown_y + chh, 5), r, p, frame_st)
+	var crown_prims: Array = []
+	for kk in range(nrw):
+		var cx := (float(kk) + 0.5) / float(nrw) * circ
+		_rib_caps(_arch_pts(cx - chw, cx + chw, crown_y + chh * 0.2, crown_y + chh, 5), r, rib_r, mk, so, crown_prims)
 		_emit_glass_cyl(cx / r, crown_y, r, _lancet(chw * 0.7, chh * 0.7, 5, 0.25), pane, _pane_color(base_pane, cx * 7.7 + 50.0), glass_st)
 		cells += 1
-	frame_st.generate_normals()
-	glass_st.generate_normals()
+	var crown_built := SdfMesher.build(crown_prims, cell, rib_col)
+	if crown_built.get("mesh") != null:
+		frame_st.append_from(crown_built["mesh"] as ArrayMesh, 0, Transform3D.IDENTITY)
+	glass_st.generate_normals()   # ribs keep the SDF gradient normals; only the glass needs flat normals
 	return {"frame": frame_st.commit(), "glass": glass_st.commit(), "cells": cells}
+
+# Convert a 2D (arc-length, height) rib path into SDF CAPSULE prims mapped onto the drum. Consecutive
+# capsules share endpoints, and every rib's capsules union with a smooth-min `k`, so where ribs cross
+# they FUSE into one organic surface (the metaball merge) instead of reading as overlapping sausages.
+# The centreline sits `standoff` off the true-circle wall so half the capsule sinks into the drum.
+static func _rib_caps(path2d: PackedVector2Array, radius: float, rib_r: float, k: float, standoff: float, out: Array) -> void:
+	for i in range(path2d.size() - 1):
+		var a := _cylp(0.0, 0.0, radius, path2d[i], standoff)
+		var b := _cylp(0.0, 0.0, radius, path2d[i + 1], standoff)
+		out.append({"type": "capsule", "a": a, "b": b, "r1": rib_r, "r2": rib_r, "k": k})
 
 # Sweep a half-round bone rib along a 2D (arc-length, height) path mapped onto the drum. The centreline
 # sits `standoff` off the true-circle wall so half the tube sinks into the drum -> a surface moulding.
