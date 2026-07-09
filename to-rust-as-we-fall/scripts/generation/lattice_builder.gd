@@ -622,3 +622,108 @@ static func _box_vertical_faces(size: Vector3) -> Array:
 		{"c": Vector3(hx, my, 0), "u": Vector3(0, 0, -1), "n": Vector3(1, 0, 0), "w": size.z, "h": size.y},
 		{"c": Vector3(-hx, my, 0), "u": Vector3(0, 0, 1), "n": Vector3(-1, 0, 0), "w": size.z, "h": size.y},
 	]
+
+# ============================================================================================
+# ENTRANCES — a grand MAIN portal (jambs + lintel + recessed doors + canopy + steps) at the base
+# centre-front, plus a smaller SIDE door (maintenance / enforcement) with a teal accent. Works on box
+# faces AND the drum (placed in a right-handed local frame, so the boxes sit correctly on the curve).
+# ============================================================================================
+
+const ENTRANCE_DEFAULTS := {
+	"main_w": 1.6, "main_h": 2.7,
+	"side_w": 1.1, "side_h": 2.1,
+	"jamb": 0.20,        # frame post/lintel thickness
+	"proud": 0.16,       # how far the frame stands off the wall
+	"recess": 0.42,      # how deep the doorway pocket sinks in
+	"canopy_out": 0.5,   # canopy overhang depth
+	"side_at": 0.62,     # side-door lateral placement as a fraction of the half-width
+}
+
+## Build the entrances for a base shape. Returns {stone, dark, accent} ArrayMeshes + the sign anchor
+## above the main door ("main_top" world pos, "main_n" outward normal).
+static func entrances(spec: Dictionary, overrides: Dictionary = {}) -> Dictionary:
+	var p := ENTRANCE_DEFAULTS.duplicate()
+	for k in overrides.keys():
+		p[k] = overrides[k]
+	var stone := SurfaceTool.new()
+	stone.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var dark := SurfaceTool.new()
+	dark.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var accent := SurfaceTool.new()
+	accent.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var is_cyl := str(spec.get("shape", "box")) == "cylinder"
+	var radius := float(spec.get("radius", 2.0))
+	var size: Vector3 = spec.get("size", Vector3(4, 6, 4))
+	var half_w := radius if is_cyl else size.x * 0.5
+	var front := radius if is_cyl else size.z * 0.5
+	var mf := _door_frame(is_cyl, radius, front, 0.0)
+	_emit_door(stone, dark, dark, mf, float(p["main_w"]), float(p["main_h"]), p, false)
+	var sf := _door_frame(is_cyl, radius, front, half_w * float(p["side_at"]))
+	_emit_door(stone, dark, accent, sf, float(p["side_w"]), float(p["side_h"]), p, true)
+	stone.generate_normals()
+	dark.generate_normals()
+	accent.generate_normals()
+	return {
+		"stone": stone.commit(), "dark": dark.commit(), "accent": accent.commit(),
+		"main_top": (mf["anchor"] as Vector3) + (mf["v"] as Vector3) * (float(p["main_h"]) + 0.55) + (mf["n"] as Vector3) * 0.06,
+		"main_n": mf["n"],
+	}
+
+# A right-handed local frame (u x v = n) anchored on the ground at the wall, facing +Z (the gallery
+# front). `lateral` is an x-offset on a box face, or an arc-length offset around the drum.
+static func _door_frame(is_cyl: bool, radius: float, front: float, lateral: float) -> Dictionary:
+	var n: Vector3
+	var anchor: Vector3
+	if is_cyl:
+		var th := PI * 0.5 + lateral / radius   # front (+Z) is theta = pi/2
+		n = Vector3(cos(th), 0.0, sin(th))
+		anchor = Vector3(radius * cos(th), 0.0, radius * sin(th))
+	else:
+		n = Vector3(0, 0, 1)
+		anchor = Vector3(lateral, 0.0, front)
+	var v := Vector3(0, 1, 0)
+	var u := v.cross(n).normalized()   # u x v = n (right-handed, so the box winding faces outward)
+	return {"anchor": anchor, "u": u, "v": v, "n": n}
+
+static func _emit_door(stone: SurfaceTool, dark: SurfaceTool, acc: SurfaceTool, frame: Dictionary,
+		dw: float, dh: float, p: Dictionary, enforcement: bool) -> void:
+	var a: Vector3 = frame["anchor"]
+	var u: Vector3 = frame["u"]
+	var v: Vector3 = frame["v"]
+	var n: Vector3 = frame["n"]
+	var jamb: float = p["jamb"]
+	var proud: float = p["proud"]
+	var recess: float = p["recess"]
+	var hw := dw * 0.5
+	var jc := (dh + jamb) * 0.5
+	# jambs + lintel (raised stone surround)
+	_emit_oriented_box(stone, a + u * (hw + jamb * 0.5) + v * jc + n * (proud * 0.5), u, v, n, Vector3(jamb * 0.5, jc, proud * 0.5))
+	_emit_oriented_box(stone, a - u * (hw + jamb * 0.5) + v * jc + n * (proud * 0.5), u, v, n, Vector3(jamb * 0.5, jc, proud * 0.5))
+	_emit_oriented_box(stone, a + v * (dh + jamb * 0.5) + n * (proud * 0.5), u, v, n, Vector3(hw + jamb, jamb * 0.5, proud * 0.5))
+	# recessed pocket (dark doorway interior)
+	_emit_oriented_box(dark, a + v * (dh * 0.5) - n * (recess * 0.5), u, v, n, Vector3(hw, dh * 0.5, recess * 0.5))
+	# two door leaves just inside the opening; enforcement leaves glow teal (accent)
+	var leaf: SurfaceTool = acc if enforcement else dark
+	for side in [-1.0, 1.0]:
+		_emit_oriented_box(leaf, a + u * (side * hw * 0.5) + v * (dh * 0.5) - n * 0.05, u, v, n, Vector3(hw * 0.5 - 0.03, dh * 0.5 - 0.04, 0.03))
+	# canopy overhang + two steps down to the ground
+	_emit_oriented_box(stone, a + v * (dh + jamb + 0.05) + n * (float(p["canopy_out"]) * 0.5), u, v, n, Vector3(hw + jamb + 0.12, 0.06, float(p["canopy_out"]) * 0.5))
+	_emit_oriented_box(stone, a + v * 0.07 + n * 0.18, u, v, n, Vector3(hw + 0.12, 0.07, 0.18))
+	_emit_oriented_box(stone, a + v * 0.03 + n * 0.42, u, v, n, Vector3(hw + 0.28, 0.03, 0.20))
+
+# A closed box in an arbitrary right-handed (u,v,n) frame — the oriented cousin of _emit_box.
+static func _emit_oriented_box(st: SurfaceTool, center: Vector3, u: Vector3, v: Vector3, n: Vector3, half: Vector3) -> void:
+	var vtx := [
+		center - u * half.x - v * half.y - n * half.z,
+		center + u * half.x - v * half.y - n * half.z,
+		center + u * half.x - v * half.y + n * half.z,
+		center - u * half.x - v * half.y + n * half.z,
+		center - u * half.x + v * half.y - n * half.z,
+		center + u * half.x + v * half.y - n * half.z,
+		center + u * half.x + v * half.y + n * half.z,
+		center - u * half.x + v * half.y + n * half.z,
+	]
+	var faces := [[0, 1, 2, 3], [7, 6, 5, 4], [0, 4, 5, 1], [1, 5, 6, 2], [2, 6, 7, 3], [3, 7, 4, 0]]
+	for fq in faces:
+		_tri(st, vtx[fq[0]], vtx[fq[2]], vtx[fq[1]])
+		_tri(st, vtx[fq[0]], vtx[fq[3]], vtx[fq[2]])

@@ -54,9 +54,37 @@ func _build_chunk() -> void:
 			root.add_child(mi)
 			verts = body.surface_get_array_len(0)
 		_add_lattice(root, spec)
+		_add_entrances(root, spec)
 		_specimens.append({"building": kind, "shape": str(spec.get("shape", "")),
 			"lattice": str(spec.get("lattice", "")), "verts": verts})
 		_turntables.append(root)
+
+## STEP 3: entrances (main + side/enforcement doors) + a readable nameplate sign over the main door.
+func _add_entrances(root: Node3D, spec: Dictionary) -> void:
+	var built: Dictionary = Lattice.entrances(spec)
+	_add_lattice_mesh(root, "EntStone", built.get("stone"), _tinted_tile_material("facility_metal", Color(0.66, 0.62, 0.50)))
+	var darkmat := StandardMaterial3D.new()
+	darkmat.albedo_color = Color(0.05, 0.05, 0.06)
+	darkmat.roughness = 0.92
+	_add_lattice_mesh(root, "EntDark", built.get("dark"), darkmat)
+	var teal := StandardMaterial3D.new()
+	teal.albedo_color = Color(0.10, 0.28, 0.30)
+	teal.emission_enabled = true
+	teal.emission = Color(0.22, 0.82, 0.86)   # enforcement-vestibule glow
+	teal.emission_energy_multiplier = 1.7
+	_add_lattice_mesh(root, "EntAccent", built.get("accent"), teal)
+	# Readable nameplate over the main door (billboarded so it stays legible as the plinth turntables).
+	var lbl := Label3D.new()
+	lbl.name = "Nameplate"
+	lbl.text = str(spec.get("title", "")).to_upper()
+	lbl.font_size = 44
+	lbl.pixel_size = 0.006
+	lbl.modulate = Color(0.96, 0.86, 0.56)
+	lbl.outline_size = 10
+	lbl.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
+	lbl.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	lbl.position = built.get("main_top", Vector3(0, 3, 3))
+	root.add_child(lbl)
 
 ## STEP 2: layer the building's declared lattice elements onto its base shape — a facade lattice
 ## (honeyframe / tracery) plus optional draped pipes.

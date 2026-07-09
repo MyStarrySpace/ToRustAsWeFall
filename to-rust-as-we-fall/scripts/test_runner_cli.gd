@@ -3624,6 +3624,14 @@ func _test_architecture_showcase() -> void:
 		"pipes are deterministic for a seed")
 	_assert_true((Lat.pipes(beacon, 3) as ArrayMesh).get_surface_count() > 0, "pipes also drape a cylinder")
 
+	# --- entrances: a stone portal + a teal enforcement accent, deterministic, on box AND drum ---
+	var ent: Dictionary = Lat.entrances(honey)
+	_assert_true((ent.get("stone") as ArrayMesh).get_surface_count() > 0 and (ent.get("dark") as ArrayMesh).get_surface_count() > 0
+		and (ent.get("accent") as ArrayMesh).get_surface_count() > 0, "entrances build stone + dark + teal-accent meshes")
+	_assert_equals((ent.get("stone") as ArrayMesh).surface_get_array_len(0),
+		(Lat.entrances(honey).get("stone") as ArrayMesh).surface_get_array_len(0), "entrances are deterministic")
+	_assert_true((Lat.entrances(beacon).get("stone") as ArrayMesh).get_surface_count() > 0, "entrances also build on a drum")
+
 	# --- registry: the showcase is a walkable preview entry that boots with perception overlays OFF ---
 	var found := false
 	var arch_overlays := {}
@@ -3648,6 +3656,8 @@ func _test_architecture_showcase() -> void:
 	var found_honey := false
 	var found_tracery := false
 	var found_pipes := false
+	var found_ent := false
+	var found_sign := false
 	for hero in _find_nodes_prefixed(prev, "Hero_"):
 		for child in (hero as Node).get_children():
 			if child.name == "Body" and child is MeshInstance3D:
@@ -3662,11 +3672,17 @@ func _test_architecture_showcase() -> void:
 					found_tracery = true
 				elif child.name == "Pipes":
 					found_pipes = true
+				elif child.name == "EntStone":
+					found_ent = true
+			if child is Label3D and child.name == "Nameplate":
+				found_sign = true
 	_assert_true(found_body, "the showcase raised the base-shape bodies")
 	_assert_true(found_grime, "base-shape bodies use the grime tile shader")
 	_assert_true(found_honey, "the showcase raised the honeyframe lattice on the Honeycomb")
 	_assert_true(found_tracery, "the showcase raised the tracery lattice on Beacon Hill")
 	_assert_true(found_pipes, "the showcase raised draped pipes")
+	_assert_true(found_ent, "the showcase raised the entrances")
+	_assert_true(found_sign, "the showcase raised a nameplate sign")
 	prev.queue_free()
 	await get_tree().process_frame
 
