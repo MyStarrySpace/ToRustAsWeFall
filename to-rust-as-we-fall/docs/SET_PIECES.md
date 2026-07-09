@@ -36,6 +36,81 @@ of the same controls).
 their idiom — e.g. Open Files rack-shutters, Greenfields planter-terrace weirs). Keep a growing list
 here as pieces are designed.
 
+## PROPOSED set pieces per setting (Claude, 2026-07-09 — director approval required)
+
+Each is CONTROL + EFFECT with a traversal use AND a combat/stealth use, separable per the grammar.
+Fauna/flora verbs checked against `reference-docs/fauna_roster.md` / `flora_taxonomy.md`; none
+duplicates an ENVIRONMENT_ELEMENTS entry (no new valve-rotations, no new riding).
+
+1. **Drawer-stair columns — The Open Files Initiative.** Floor-to-ceiling record cabinets; a pull
+   lever extends one COLUMN of drawers at graded depths = a climbable staircase to the stack-tops.
+   CONTROL: the lever at the aisle end. EFFECT: an inter-level link appears mid-aisle. Traversal:
+   the only way onto the overwatch shelf-tops. Combat: retract while a Gnawer pack is climbing —
+   they drop back to the floor; extended drawers also BLOCK that aisle (a re-shapeable wall).
+   Grammar: the lever sits in the next aisle over, inside a patrol's sweep. Build: runtime
+   add/remove of grid inter-level links + dynamic blockers (both exist).
+
+2. **Iron-load magnet hoist — The Hypelines.** The Iron Heart moves payloads on an overhead
+   electromagnet trolley; a charge lever energizes/drops the magnet. CONTROL: charge lever + a
+   track switch. EFFECT: whatever iron sits under the magnet. Traversal: lift an iron PLATE, run
+   the trolley out, drop it as a bridge over a conduit gap. Combat: charge it over a Sapscrap
+   swarm — the iron-laden strippers are yanked up and pinned until discharge (dump them into the
+   backwash). TWIST (canon: Sapscraps "strip iron from fixtures"): an unattended plate-bridge gets
+   EATEN — the traversal decays unless the swarm is lured off (Flure) or pinned first. Grammar:
+   the charge lever is across the gap the plate must bridge.
+
+3. **Irrigation ration sluice — Greenfields Collective.** The residential terraces share ONE daily
+   water ration; a sluice paddle routes it to a single terrace. CONTROL: the paddle at the header.
+   EFFECT: the watered terrace's flora swells — Scarpet spreads into medium-hide carpet, a Capbage
+   fattens into a tight hide, Seefern brightens — while the de-watered terrace's cover WILTS behind
+   you (cover is a spent ration, not a latch). Combat: route the ration onto the chokepoint where
+   an Aember cluster camps — dousing the cluster is its canonical counter; or swell a Gasafoetida
+   bed into a repellent hedge across a patrol lane. Grammar: the header paddle is two terraces
+   upstream of the crossing it grows.
+
+4. **Return-chute routing flaps — Beacon Hill.** The reading room's book-return chutes: one-way
+   gravity slides crisscrossing the tower, big enough to ride (crawl pipes' fast, committed
+   cousin). CONTROL: a routing flap at each junction. EFFECT: which room the chute mouths into.
+   Traversal: a concealed one-way descent past the checkpoint floors. Combat: flip the flap so the
+   Gnawer pack riding in after you dumps into the sealed holding cage; or send a PAYLOAD instead
+   of a body — a Flure down the east chute relocates every iron-seeker in the wing (lure
+   LOGISTICS: the routing network moves your tools, not just you). Grammar: flaps are set in the
+   stacks, mouths open elsewhere; you commit before you see the landing.
+
+5. **Counterweight cargo baskets — Bulwark Wharf.** Paired gantry baskets over the membrane wall on
+   a shared pulley — vesicle transport made mechanical (cargo crossing the barrier in a carrier).
+   CONTROL: ballast — load/unload iron chunks on either basket, from anywhere on the line. EFFECT:
+   the paired basket rises as yours sinks. Traversal: weigh one down to lift a character to the
+   wall-top. Combat: drop a Flure in the lowered basket, let a Sapscrap swarm pile in chasing it,
+   then load ballast — the swarm is hoisted and left swinging out of play (no kill, a REMOVAL —
+   and dumping it back out is a choice). Grammar: the ballast pile and the basket you need lifted
+   are on opposite sides of the wall.
+
+6. **Cell-shutter cranks — The Honeycomb Cooperative.** The honeyframe facade's cells hold rotating
+   shutter plates; one crank turns a whole COLUMN between OPEN / SLIT / SEALED. CONTROL: the crank
+   at the column base. EFFECT: open = a crawlable cell-to-cell route THROUGH the facade lattice;
+   slit = light bars that re-cut every sightline on the floor inside (stealth geometry changes
+   without anyone moving); sealed = the Aember breach-cells close (the ambusher camps the
+   chokepoint — seal its chokepoint away). Canon hook: Climbvine "tied between rotating surfaces"
+   can couple two cranks so one turn sets two columns. Grammar: the crank column you need open is
+   reachable only through the column a DIFFERENT crank opens. (Geometry note: the S_A/S_B
+   honeyframe lattice we ship is literally this facade — the set piece reuses it.)
+
+7. **Hydrant scour lanes — The Cleanstreets Initiative.** Sanitation hydrants with aimable nozzles;
+   opening one blasts a directional scour wash down a plaza lane. CONTROL: the hydrant valve +
+   nozzle aim. EFFECT: everything in the lane is PUSHED N cells (the queued-push grammar), the
+   lane's Scarpet is scrubbed off (your own medium cover is spendable — double-edged), and light
+   debris rafts down the gutter to pile at the drain grate into a climbable heap (traversal you
+   ACCUMULATE by repeated flushes). Combat: shove a Spiker off its ledge perch, or push a pursuer
+   across a Candid zone — the ecosystem finishes it (canonical counter). Grammar: the hydrant
+   points down the lane you'll cross two pieces later, and the debris heap builds at the far drain.
+
+**Chaining sketches (the grammar in action):** magnet hoist's charge lever behind a drawer-stair
+climb; sluice header past an Aember chokepoint that the sluice itself can douse — but only after a
+chute ride commits you to the wrong wing; shutter-crank columns interleaved so each opened column
+exposes the next crank plus one slit-state sightline change. Every pair alternates one piece's
+CONTROL with another piece's EFFECT, per the verbatim rule above.
+
 ## Showcase
 
 `set_piece_showcase` (fragment picker: "Set Pieces — crawl / rotate / water") — one bay per set
