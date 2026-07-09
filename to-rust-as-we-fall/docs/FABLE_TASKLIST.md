@@ -68,8 +68,29 @@ Proportions verified against the plates. A single lathe or box is Opus's to keep
   real foot), so these are the highest-leverage Fable base tasks.
 
 ## Lattice 1 — honeyframe (Honeycomb facade)
-**Opus built:** subdivide each box face into a ~4×6 grid; each cell → a rounded-rect window in a
-raised constant-width cream frame + a warm lit pane. Reads as a honeycomb facade.
+
+**Director's spec — the ALGORITHM given (verbatim), before Opus improvised its own tiling.** This is
+the vertex-corner-cut construction the honeyframe was supposed to be (the setting "used on Welcombe").
+It operates on the **subdivided box** (subdivide each face into a grid first — confirmed), per grid
+vertex:
+1. Get the vertices of the (subdivided) mesh.
+2. From each vertex, find the edges going out in each direction.
+3. Along each such edge, choose a point at **[PARAMETER, capped at 50%]** percent of the edge length
+   *away from the vertex*. The short segments joining these points around a vertex form the set **S_A**.
+4. Connect those points (→ the S_A corner-cut edges, one small cut across each corner near the vertex).
+5. Then connect the points BETWEEN adjacent new points *along the edges* — the longer spans — to form
+   the **S_B** edges (the straight runs between corner-cuts).
+6. **Round the S_A edges so the curves cut TOWARD the vertex points** (concave, pinching in toward
+   each grid vertex — this is what makes the junctions read organic / load-bearing, not a plain grid).
+
+Net: every grid cell becomes a rounded opening; the frame = S_A (rounded corner-cuts) + S_B (straight
+spans); the S_A rounding toward the vertices IS the melting-junction look. Opus instead did
+"rounded-rect window inset per cell", which fakes the cells but NOT the S_A-toward-vertex pinch — so
+the junctions read geometric, not organic. Build to THIS when the honeyframe is redone.
+
+**Opus built (the improvisation to replace):** subdivide each box face into a ~4×6 grid; each cell → a
+rounded-rect window in a raised constant-width cream frame + a warm lit pane. Reads as a honeycomb
+facade, but the junction is the cell-inset fan, not the S_A concave cut toward the vertex.
 
 **Gaps vs the plate — REMAINING (Fable):**
 - **GEOMETRY (not just fidelity).** The lattice still shows parts through the wall / through itself at
