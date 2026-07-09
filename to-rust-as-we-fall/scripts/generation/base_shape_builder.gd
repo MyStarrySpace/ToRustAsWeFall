@@ -319,8 +319,8 @@ static func _cyl_door_yt(theta: float, doors: Array) -> float:
 			dth -= TAU
 		while dth < -PI:
 			dth += TAU
-		if absf(dth) < float(rd["half_arc"]):
-			yt = maxf(yt, float(rd["y_top"]))
+		if absf(dth) < float(rd.get("open_half_arc", rd.get("half_arc", 0.0))):
+			yt = maxf(yt, float(rd.get("open_y_top", rd.get("y_top", 0.0))))
 	return yt
 
 # A box with real door OPENINGS on the vertical faces + a recessed pocket per door. `doors` = box
@@ -349,8 +349,8 @@ static func _box_with_doors(size: Vector3, doors: Array, recess: float) -> Array
 		if door == null:
 			_quad_out(st, bl, bl + u * fw, bl + u * fw + up * size.y, bl + up * size.y, cen)
 		else:
-			var hw: float = float(door["half_w"])
-			var yt: float = float(door["y_top"])
+			var hw: float = float(door.get("open_half_w", door.get("half_w", 0.5)))
+			var yt: float = float(door.get("open_y_top", door.get("y_top", 2.0)))
 			var lx := fw * 0.5 + float(door["x_center"]) - hw   # opening left, right along u from bl
 			var rx := fw * 0.5 + float(door["x_center"]) + hw
 			_quad_out(st, bl, bl + u * lx, bl + u * lx + up * size.y, bl + up * size.y, cen)                          # left of hole

@@ -1093,7 +1093,7 @@ static func entrances(spec: Dictionary, overrides: Dictionary = {}) -> Dictionar
 	_emit_door(stone, dark, dark, mf, main_w, main_h, p, false)
 	anchors.append({"main": true, "pos": mf["anchor"], "n": mf["n"],
 		"top": (mf["anchor"] as Vector3) + Vector3(0, 1, 0) * (main_h + 0.55) + (mf["n"] as Vector3) * 0.06})
-	reserved.append(_reserve_region(is_cyl, radius, mf, main_w, main_h, margin))
+	reserved.append(_reserve_region(is_cyl, radius, mf, main_w, main_h, float(p["jamb"]), margin))
 	# SIDE doors DISTRIBUTED around the building (drum: evenly around, skipping the front; box: spread
 	# over the non-front faces).
 	for k in range(n_side):
@@ -1104,7 +1104,7 @@ static func entrances(spec: Dictionary, overrides: Dictionary = {}) -> Dictionar
 			sfr = _door_frame_face(faces[1 + (k % 3)], 0.0)
 		_emit_door(stone, dark, accent, sfr, side_w, side_h, p, true)
 		anchors.append({"main": false, "pos": sfr["anchor"], "n": sfr["n"]})
-		reserved.append(_reserve_region(is_cyl, radius, sfr, side_w, side_h, margin))
+		reserved.append(_reserve_region(is_cyl, radius, sfr, side_w, side_h, float(p["jamb"]), margin))
 	stone.generate_normals()
 	dark.generate_normals()
 	accent.generate_normals()
@@ -1128,13 +1128,20 @@ static func _door_frame_face(face: Dictionary, lateral: float) -> Dictionary:
 	var v := Vector3(0, 1, 0)
 	return {"anchor": Vector3(c.x, 0.0, c.z) + uf * lateral, "u": v.cross(n).normalized(), "v": v, "n": n}
 
-# The region the lattice must keep clear around a door. Drum: an arc {theta, half_arc, y_top}. Box:
-# {n (face normal), x_center (face-local lateral), half_w, y_top}.
-static func _reserve_region(is_cyl: bool, radius: float, frame: Dictionary, door_w: float, door_h: float, margin: float) -> Dictionary:
+# A door region carries TWO extents: the OPENING (open_*, = the actual door size — the base mesh cuts
+# EXACTLY this so the frame sits on solid wall at the rim, not floating in an oversized hole) and the
+# CLEARANCE (half_*/y_top, = door + frame + margin — what the lattice keeps clear).
+static func _reserve_region(is_cyl: bool, radius: float, frame: Dictionary, door_w: float, door_h: float, jamb: float, margin: float) -> Dictionary:
 	var n: Vector3 = frame["n"]
+	var clear := door_w * 0.5 + jamb + margin
+	var clear_y := door_h + jamb + margin
 	if is_cyl:
-		return {"cyl": true, "theta": atan2(n.z, n.x), "half_arc": (door_w * 0.5 + margin) / radius, "y_top": door_h + margin}
-	return {"cyl": false, "n": n, "x_center": 0.0, "half_w": door_w * 0.5 + margin, "y_top": door_h + margin}
+		return {"cyl": true, "theta": atan2(n.z, n.x),
+			"open_half_arc": (door_w * 0.5) / radius, "open_y_top": door_h,
+			"half_arc": clear / radius, "y_top": clear_y}
+	return {"cyl": false, "n": n, "x_center": 0.0,
+		"open_half_w": door_w * 0.5, "open_y_top": door_h,
+		"half_w": clear, "y_top": clear_y}
 
 # Is a box cell (face-local centred cu,cv; face height h; face normal) inside a reserved door region?
 static func _cell_reserved_box(cu: float, cv: float, face_n: Vector3, h: float, reserved: Array) -> bool:
