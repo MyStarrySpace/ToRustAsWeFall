@@ -407,17 +407,29 @@ static func _plan_landmarks(seed_value: int, lots: Array, walk: Dictionary, orig
 			# the road APRON is FLOOR, not architecture (the street-blockage invariant scans walls)
 			frag.floors.append({"pos": Vector3(origin.x + (float(ac.x) + 0.5) * cs, -0.02, origin.z + (float(ac.y) + 0.5) * cs),
 				"size": Vector3(cs, 0.06, cs), "color": Color(0.17, 0.18, 0.20), "tile": "deck_metal"})
-		# world-space bridge sockets for the pairing pass
+		# world-space bridge sockets for the pairing pass; WALKABLE LANES (survey deck descriptors,
+		# e.g. the hypelines arms) dock straight into the grid — level cells + a ladder link
 		var socks: Array = []
+		var lanes: Array = []
 		for a2 in (anchors.get("connectors", []) as Array):
 			var ad2 := a2 as Dictionary
 			if str(ad2["kind"]) == "bridge":
 				var wp := pos + basis * (ad2["pos"] as Vector3)
 				var wd := basis * (ad2["dir"] as Vector3)
 				socks.append({"pos": [wp.x, wp.y, wp.z], "dir": [wd.x, wd.y, wd.z]})
+				if ad2.has("deck"):
+					var dk := ad2["deck"] as Dictionary
+					var ws := pos + basis * (dk["start"] as Vector3)
+					var we := pos + basis * (dk["end"] as Vector3)
+					lanes.append({"start": [ws.x, ws.y, ws.z], "end": [we.x, we.y, we.z],
+						"width": float(dk["width"]), "walk_y": float(dk["walk_y"]) + pos.y})
+		for lane in lanes:
+			var lplan := apply_lane_to_grid(grid, lane as Dictionary, origin, cs)
+			if not lplan.is_empty():
+				_emit_lane_stub(frag, lplan)
 		(out["landmarks"] as Array).append({"kind": kind, "pos": [pos.x, pos.y, pos.z], "yaw": yaw,
 			"street": [sdir.x, sdir.y], "door_cell": [door_cell.x, door_cell.y], "approach": approach,
-			"sockets": socks})
+			"sockets": socks, "lanes": lanes})
 		# the FIRST landmark also spends one structural WEAK POINT as a playable crumble trap: the
 		# pry point at the wall foot, the kill zone on the ground in front of the face
 		if pi == 0:
@@ -496,6 +508,44 @@ static func _carve_walkable(grid: Dictionary, cell: Vector2i) -> void:
 		for lce in (grid["level_cells"] as Array):
 			if int((lce as Dictionary).get("level", -1)) == 0:
 				((lce as Dictionary)["cells"] as Array).append([cell.x, cell.y])
+
+## Dock a WALKABLE LANE (a survey deck descriptor: {start, end, width, walk_y} in world space) into
+## the grid: the deck's cells get allowances at the level plane its walk surface snaps to, and the
+## TIP gets a ladder link down to ground. Returns the applied plan ({} if the lane doesn't reach a
+## level plane or spans under two cells). This is how a building's survey-carried lanes (the
+## hypelines arms) become playable grid, reusing the bridge machinery.
+static func apply_lane_to_grid(grid: Dictionary, lane: Dictionary, origin: Vector3, cs: float) -> Dictionary:
+	var lh := float(grid.get("level_height", 4.0))
+	var a := _arr3(lane, "start")
+	var b := _arr3(lane, "end")
+	var walk_y := float(lane.get("walk_y", (a.y + b.y) * 0.5))
+	var lvl := int(round(walk_y / lh))
+	if lvl < 1 or absf(walk_y - float(lvl) * lh) > BRIDGE_LEVEL_TOL:
+		return {}
+	var cells: Array = []
+	var seen := {}
+	var steps := maxi(1, int(ceil(a.distance_to(b) / (cs * 0.5))))
+	for i in range(steps + 1):
+		var p := a.lerp(b, float(i) / float(steps))
+		var c := Vector2i(int(floor((p.x - origin.x) / cs)), int(floor((p.z - origin.z) / cs)))
+		if not seen.has(c):
+			seen[c] = true
+			cells.append([c.x, c.y])
+	if cells.size() < 2:
+		return {}
+	var plan := {"a": [a.x, a.y, a.z], "b": [b.x, b.y, b.z], "level": lvl,
+		"y": float(lvl) * lh, "cells": cells, "links": [cells[cells.size() - 1]]}
+	_apply_bridge_to_grid(grid, plan)
+	return plan
+
+# The lane's ladder GRAB STUB at the tip (the deck itself is the building's own arm geometry).
+static func _emit_lane_stub(frag: Fragment, plan: Dictionary) -> void:
+	var tip := _arr3(plan, "b")
+	var y := float(plan["y"])
+	var stub_bot := maxf(3.05, y - 1.0)
+	frag.walls.append({"pos": Vector3(tip.x, (stub_bot + y + 0.45) * 0.5, tip.z),
+		"size": Vector3(0.16, (y + 0.45) - stub_bot, 0.16),
+		"color": Color(0.55, 0.5, 0.4), "emission": Color(0.36, 0.91, 0.50), "emission_energy": 0.4})
 
 # Append the bridge's DECK to the grid: level allowances for the deck cells + ladder links at both
 # ends. Deck cells are street cells, so level 0 stays walkable UNDER the span.

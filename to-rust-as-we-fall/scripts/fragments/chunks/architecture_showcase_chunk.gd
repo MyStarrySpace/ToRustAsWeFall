@@ -64,6 +64,8 @@ func _build_chunk() -> void:
 		_add_entrance_meshes(root, spec, ent)
 		if str(spec.get("composite", "")) == "plumbing_lobed":
 			_add_plumbing_details(root, spec)
+		if str(spec.get("composite", "")) == "hypelines_mound":
+			_add_hypelines_details(root, spec)
 		_add_anchor_markers(root, survey.anchors())
 		_specimens.append({"building": kind, "shape": str(spec.get("shape", "")),
 			"lattice": str(spec.get("lattice", "")), "verts": verts})
@@ -281,6 +283,41 @@ func _add_plumbing_details(root: Node3D, spec: Dictionary) -> void:
 	rail.albedo_color = Color(0.52, 0.40, 0.30)   # rusted mesh railing along the flume rims
 	_add_lattice_mesh(root, "PlumbRails", built.get("rails"), rail)
 	# the title label rides the PHYSICAL sign board (the plate's framed plate, not floating text)
+	var lbl := root.get_node_or_null("Nameplate")
+	if lbl != null and built.has("nameplate_pos"):
+		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
+
+## The hypelines detail passes (SURVEY REBUILD 1.2): the six arms with the walkable lane decks,
+## trestles, valve wheel, sign stack, toll-gate arch, ramp, pores and mast — from the survey.
+## The two flanking entry lamps are the plate's only WARM accents (amber where the plate demands).
+func _add_hypelines_details(root: Node3D, spec: Dictionary) -> void:
+	var built: Dictionary = BaseShape.hypelines_details(spec)
+	_add_lattice_mesh(root, "HypeBody", built.get("body"),
+		_tinted_tile_material(str(spec.get("tile", "facility_metal")), spec.get("color", Color(0.26, 0.33, 0.29))))
+	var rust := StandardMaterial3D.new()
+	rust.albedo_color = Color(0.40, 0.25, 0.16)
+	rust.roughness = 0.88
+	rust.metallic = 0.25
+	_add_lattice_mesh(root, "HypeRust", built.get("rust"), rust)
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.07, 0.09, 0.08)
+	dark.roughness = 0.94
+	_add_lattice_mesh(root, "HypeDark", built.get("dark"), dark)
+	var glow := StandardMaterial3D.new()
+	glow.albedo_color = Color(0.16, 0.42, 0.26)
+	glow.emission_enabled = true
+	glow.emission = Color(0.36, 0.91, 0.50)   # terminal green — the world's ONLY standard emissive
+	glow.emission_energy_multiplier = 2.4
+	_add_lattice_mesh(root, "HypeGlow", built.get("glow"), glow)
+	var warm := StandardMaterial3D.new()
+	warm.albedo_color = Color(0.45, 0.33, 0.18)
+	warm.emission_enabled = true
+	warm.emission = Color(0.95, 0.64, 0.32)
+	warm.emission_energy_multiplier = 1.4
+	_add_lattice_mesh(root, "HypeWarm", built.get("warm"), warm)
+	var rail := _railing_material()
+	rail.albedo_color = Color(0.52, 0.40, 0.30)
+	_add_lattice_mesh(root, "HypeRails", built.get("rails"), rail)
 	var lbl := root.get_node_or_null("Nameplate")
 	if lbl != null and built.has("nameplate_pos"):
 		(lbl as Label3D).position = built["nameplate_pos"] as Vector3

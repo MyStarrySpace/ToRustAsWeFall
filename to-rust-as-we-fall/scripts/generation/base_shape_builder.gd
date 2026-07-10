@@ -88,18 +88,19 @@ const SPECS := {
 	},
 	"hypelines": {
 		"title": "The Hypelines",
-		"shape": SHAPE_COMPOSITE,           # three-tier domed mound + radiating pipe ARMS (REVIEW P1-P2)
-		"composite": "hypelines_mound",
+		"shape": SHAPE_COMPOSITE,           # SURVEY REBUILD 1.2: ONE lofted lathe from the
+		"composite": "hypelines_mound",     # BuildingSurvey.HYPELINES ring table (skirt/drum/dome)
 		"door_frame": "cyl",
-		"radius": 2.6, "height": 6.2,
+		"door_radius": 1.53,                # the front lobe VALLEY the door cuts: 0.325H*(1-0.24)
+		"radius": 2.5, "height": 6.2,       # silhouette crest at ground: 0.403H (foot 0.81H, plate)
 		"flare": 1.0,
-		# RECONCILED AT THE SURVEY: the doors cut the tier-1 skirt, whose wall ends at 0.38H = 2.36 m —
-		# the default 2.7 m portal rose PAST the wall top (an inverted wall quad over the doorway).
-		# Plate ratio (BUILDING_REVIEW hypelines #6): entry arch ~= 24% of building height ~= 1.5 m.
-		"entrances": {"main_w": 0.9, "main_h": 1.5, "side_w": 0.8, "side_h": 1.4},
+		# RECONCILED AT THE SURVEY: doors sized to the character inside the plate's parabolic
+		# toll-gate arch (the arch idiom + toll board are survey detail passes); no canopy slab —
+		# the arch is the entry architecture.
+		"entrances": {"main_w": 0.9, "main_h": 1.5, "side_w": 0.8, "side_h": 1.4, "canopy_out": 0.0},
 		"color": Color(0.26, 0.33, 0.29),   # dark verdigris-rust
 		"tile": "facility_metal",
-		"lattice": "", "pipes": true,       # the radiating viaducts read as heavy pipes
+		"lattice": "", "pipes": true,       # the drapes stand in for the plate's vein-tendril wrap
 	},
 	"greenfields": {
 		"title": "Greenfields Collective",
@@ -312,16 +313,25 @@ static func _composite(spec: Dictionary, reserved: Array = [], recess: float = 0
 
 # --- REVIEW-DRIVEN MASSING (docs/BUILDING_REVIEW.md priority-1 alterations) ------------------------
 
-## Plumbing Power (SURVEY REBUILD 1.1): the melted-boiler massing as ONE LOFTED LATHE — the
-## BuildingSurvey.PLUMBING ring table (fused root-lobes -> shoulder drum -> onion dome -> cupola)
-## lofted column by column, with the door cut into the front lobe VALLEY (recessed pocket + jambs +
-## lintel) and closed by ground + crown fans. No intersecting primitives: every vertex sits on the
-## surveyed surface. (The survey script is loaded at runtime — the survey reads BaseShapeBuilder's
-## layout tables, so a parse-time class reference here would be a dependency cycle.)
+## Plumbing Power (SURVEY REBUILD 1.1): the melted-boiler massing as ONE LOFTED LATHE from the
+## BuildingSurvey.PLUMBING ring table (fused root-lobes -> shoulder drum -> onion dome -> cupola).
+## (The survey script is loaded at runtime — the survey reads BaseShapeBuilder's layout tables, so
+## a parse-time class reference here would be a dependency cycle.)
 static func _plumbing_lobed_mesh(spec: Dictionary, reserved: Array, recess: float) -> ArrayMesh:
 	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
-	var rings: Array = Survey.plumbing_rings(spec)
-	var h := float(spec.get("height", 5.6))
+	return _survey_ring_loft(Survey.plumbing_rings(spec), reserved, recess, float(spec.get("height", 5.6)))
+
+## Hypelines (SURVEY REBUILD 1.2): the pipeline-junction mound as the SAME survey ring loft — one
+## continuous skirt/drum/dome profile from the BuildingSurvey.HYPELINES table. The arms, decks and
+## fixtures are detail passes (hypelines_details) grown from the survey's arm table.
+static func _hypelines_mound_mesh(spec: Dictionary, reserved: Array, recess: float) -> ArrayMesh:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	return _survey_ring_loft(Survey.hypelines_rings(spec), reserved, recess, float(spec.get("height", 6.2)))
+
+## THE SURVEY RING LOFT — one lofted lathe from a survey ring table (lobe-modulated radii), with the
+## door cut into the wall (recessed pocket + jambs + lintel) and closed by ground + crown fans. No
+## intersecting primitives: every vertex sits on the surveyed surface.
+static func _survey_ring_loft(rings: Array, reserved: Array, recess: float, h: float) -> ArrayMesh:
 	var door_theta := INF
 	var door_half := 0.0
 	var door_top := 0.0
@@ -348,7 +358,10 @@ static func _plumbing_lobed_mesh(spec: Dictionary, reserved: Array, recess: floa
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var seg := CYL_SEGMENTS
-	var back_r: float = maxf(0.35, float(Survey.plumbing_local_r(rings, 0.0, door_theta if door_theta != INF else 0.0)) - recess)
+	# the pocket back wall sits `recess` behind the ground ring's local wall at the door theta
+	var r0d := rings[0] as Dictionary
+	var wall0 := float(r0d["r"]) * (1.0 + float(r0d["amp"]) * cos(float(r0d["lobes"]) * ((door_theta if door_theta != INF else 0.0) + float(r0d["phase"]))))
+	var back_r: float = maxf(0.35, wall0 - recess)
 	for i in range(rows.size() - 1):
 		var ra2 := rows[i] as Dictionary
 		var rb2 := rows[i + 1] as Dictionary
@@ -436,7 +449,7 @@ static func plumbing_details(spec: Dictionary) -> Dictionary:
 		_plumbing_rib(body, rings, rib as Dictionary)
 	_plumbing_wheels(rust, rings, frames["wheels"] as Array)
 	for slit in (frames["slits"] as Array):
-		_plumbing_slit(dark, slit as Dictionary)
+		_surface_panel(dark, slit as Dictionary)
 	_plumbing_sign(rust, dark, frames["sign"] as Dictionary)
 	_plumbing_hood(body, frames["hood"] as Dictionary)
 	_plumbing_cascade(body, dark, glow, frames["cascade"] as Dictionary)
@@ -544,7 +557,7 @@ static func _plumbing_rib(body: SurfaceTool, rings: Array, rib: Dictionary) -> v
 	var steps := 7
 	for i in range(steps + 1):
 		var y := lerpf(float(rib["y0"]), float(rib["y1"]), float(i) / float(steps))
-		var rad := float(Survey.plumbing_local_r(rings, y, th)) + rr * 0.55
+		var rad := float(Survey.lathe_local_r(rings, y, th)) + rr * 0.55
 		pts.append(Vector3(cos(th) * rad, y, sin(th) * rad))
 	_tube(body, pts, rr, 5)
 
@@ -570,7 +583,7 @@ static func _plumbing_wheels(rust: SurfaceTool, rings: Array, wheels: Array) -> 
 		_tube(rust, [center - n * dia * 0.12, center + n * dia * 0.10], dia * 0.10, 6)
 		if stub:
 			# the ground pipe stub carrying the freestanding wheel back to the wall
-			var wall_pt := n * (float(Survey.plumbing_local_r(rings, float(wd["y"]), th)) - 0.05) + Vector3(0, float(wd["y"]), 0)
+			var wall_pt := n * (float(Survey.lathe_local_r(rings, float(wd["y"]), th)) - 0.05) + Vector3(0, float(wd["y"]), 0)
 			_tube(rust, [wall_pt, center - n * dia * 0.12], 0.055, 5)
 		else:
 			var key := int(round(th * 100.0))
@@ -592,11 +605,11 @@ static func _plumbing_wheels(rust: SurfaceTool, rings: Array, wheels: Array) -> 
 		var run_pts: Array = []
 		for i in range(5):
 			var y := lerpf(y_lo, y_hi, float(i) / 4.0)
-			run_pts.append(n2 * (float(Survey.plumbing_local_r(rings, y, th2)) + 0.05) + Vector3(0, y, 0))
+			run_pts.append(n2 * (float(Survey.lathe_local_r(rings, y, th2)) + 0.05) + Vector3(0, y, 0))
 		_tube(rust, run_pts, 0.045, 5)
 
 # a capillary slit: a recessed-dark rounded-top panel riding the local surface
-static func _plumbing_slit(dark: SurfaceTool, slit: Dictionary) -> void:
+static func _surface_panel(dark: SurfaceTool, slit: Dictionary) -> void:
 	var th := float(slit["theta"])
 	var n := Vector3(cos(th), 0.0, sin(th))
 	var u := Vector3(0, 1, 0).cross(n).normalized()
@@ -693,11 +706,11 @@ static func _plumbing_side_pipe(rust: SurfaceTool, rings: Array, pipe: Dictionar
 	var steps := 8
 	for i in range(steps + 1):
 		var y := lerpf(top_y, 0.05, float(i) / float(steps))
-		var rad := float(Survey.plumbing_local_r(rings, y, th)) + pr + 0.02
+		var rad := float(Survey.lathe_local_r(rings, y, th)) + pr + 0.02
 		pts.append(Vector3(cos(th) * rad, y, sin(th) * rad))
 	_tube(rust, pts, pr, 6)
 	var vy := float(pipe["valve_y"])
-	var vrad := float(Survey.plumbing_local_r(rings, vy, th)) + pr + 0.02
+	var vrad := float(Survey.lathe_local_r(rings, vy, th)) + pr + 0.02
 	var vc := Vector3(cos(th) * vrad, vy, sin(th) * vrad)
 	_emit_torus_st(rust, vc, Vector3.UP, pr * 1.35, pr * 0.35, 10, 5)
 
@@ -871,62 +884,169 @@ static func _beacon_domed_mesh(spec: Dictionary, reserved: Array, recess: float)
 	# NO generate_normals (drops earlier append_from surfaces); sources carry their own.
 	return st.commit()
 
-## Hypelines (REVIEW P1-P2): a three-tier domed mound with radiating pipeline ARMS at the shoulder —
-## the junction-hub read. Arms are part of the massing (the silhouette), not the draped-pipes pass.
-static func _hypelines_mound_mesh(spec: Dictionary, reserved: Array, recess: float) -> ArrayMesh:
-	var r := float(spec.get("radius", 2.6))
+## Hypelines detail passes (SURVEY REBUILD 1.2), every part grown from the survey's frames: the six
+## pipe ARMS (the walkable LANE pair carries a flat deck at the level-1 datum with kerbs + railing
+## bands; the pitched viaduct pairs carry thin catwalk strips), A-frame trestles, the signature
+## valve wheel, the teal-backlit sign + IRON HEART ghost letters, the parabolic toll-gate arch with
+## its board and the two warm lamps (the plate's only warm accents), the railed approach ramp,
+## glowing membrane pores, the dome vent slit, and the antenna mast with its green lights.
+## Material families: body / rust / dark / glow (terminal green) / warm (the two lamps) / rails.
+static func hypelines_details(spec: Dictionary) -> Dictionary:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var sv = Survey.from_spec(spec)
+	var rings: Array = Survey.hypelines_rings(spec)
 	var h := float(spec.get("height", 6.2))
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	# tier 1 skirt (doors) / tier 2 mid drum / tier 3 upper drum, strong shrink-up
-	st.append_from(_cylinder_with_doors(r, h * 0.38, reserved, recess), 0, Transform3D.IDENTITY)
-	var t2 := CylinderMesh.new()
-	t2.top_radius = r * 0.62
-	t2.bottom_radius = r * 0.78
-	t2.height = h * 0.30
-	t2.radial_segments = 18
-	st.append_from(_seated(t2, t2.height * 0.5), 0, Transform3D(Basis(), Vector3(0.0, h * 0.38, 0.0)))
-	var t3 := CylinderMesh.new()
-	t3.top_radius = r * 0.38
-	t3.bottom_radius = r * 0.5
-	t3.height = h * 0.22
-	t3.radial_segments = 14
-	st.append_from(_seated(t3, t3.height * 0.5), 0, Transform3D(Basis(), Vector3(0.0, h * 0.68, 0.0)))
-	var cap := SphereMesh.new()
-	cap.radius = r * 0.4
-	cap.height = (h - h * 0.9) * 2.0
-	cap.radial_segments = 14
-	cap.rings = 7
-	st.append_from(cap, 0, Transform3D(Basis(), Vector3(0.0, h - cap.height * 0.5, 0.0)))
-	# 6 radiating LANE arms leaving the shoulder — these are level infrastructure, not dressing:
-	# each arm tip is exported as a BRIDGE connector socket (hypelines_arms), so the level layer can
-	# dock walkable lanes onto them (the director's walkable-lanes directive).
-	for a in hypelines_arms(spec):
-		var ad := a as Dictionary
-		var arm := CylinderMesh.new()
-		arm.top_radius = h * 0.045
-		arm.bottom_radius = h * 0.045
-		arm.height = r * 2.3
-		arm.radial_segments = 10
-		var dirv := ad["dir"] as Vector3
-		var basis := Basis(Quaternion(Vector3.UP, dirv.normalized()))
-		st.append_from(arm, 0, Transform3D(basis, (ad["base"] as Vector3) + dirv * r * 0.55))
-	return st.commit()
+	var hy: Dictionary = Survey.HYPELINES
+	var body := _st()
+	var rust := _st()
+	var dark := _st()
+	var glow := _st()
+	var warm := _st()
+	var rails := _st()
+	var deck: Dictionary = hy["deck"]
+	for a in Survey.hypelines_arm_table(spec):
+		_hypelines_arm(body, rails, a as Dictionary, deck)
+	# the signature valve wheel, proud of the dome face
+	var wh: Dictionary = hy["wheel"]
+	var wth: float = PI * 0.5 + float(wh["az"])
+	var wy := float(wh["y"]) * h
+	var wdia := float(wh["dia"]) * h
+	var wn := Vector3(cos(wth), 0.0, sin(wth))
+	var wc := wn * (float(Survey.lathe_local_r(rings, wy, wth)) + wdia * 0.16) + Vector3(0, wy, 0)
+	_emit_torus_st(rust, wc, wn, wdia * 0.43, wdia * 0.07, 14, 6)
+	var wbasis := Basis(Quaternion(Vector3.UP, wn))
+	for k in range(6):
+		var ang := TAU * float(k) / 6.0
+		var spoke := (wbasis * Vector3(cos(ang), 0.0, sin(ang))).normalized()
+		_tube(rust, [wc - spoke * wdia * 0.4, wc + spoke * wdia * 0.4], wdia * 0.045, 4)
+	_tube(rust, [wc - wn * wdia * 0.12, wc + wn * wdia * 0.10], wdia * 0.10, 6)
+	# the sign stack: teal-backlit board + rusted frame, ghost letters, toll board in the arch
+	var fr := PI * 0.5
+	var n_f := Vector3(0, 0, 1)
+	var u_f := Vector3(1, 0, 0)
+	var sgn: Dictionary = hy["sign"]
+	var sr := float(Survey.lathe_local_r(rings, (float(sgn["y0"]) + float(sgn["y1"])) * 0.5 * h, fr))
+	var sc := n_f * (sr + 0.12) + Vector3(0, (float(sgn["y0"]) + float(sgn["y1"])) * 0.5 * h, 0)
+	var shh := (float(sgn["y1"]) - float(sgn["y0"])) * 0.5 * h
+	_emit_oriented_box_st(glow, sc, u_f, Vector3.UP, n_f, Vector3(float(sgn["w"]) * 0.5, shh, 0.03))
+	for sx in [-1.0, 1.0]:
+		_emit_oriented_box_st(rust, sc + u_f * (float(sgn["w"]) * 0.5 * sx) + n_f * 0.01, u_f, Vector3.UP, n_f, Vector3(0.05, shh + 0.05, 0.05))
+		_emit_oriented_box_st(rust, sc + Vector3(0, shh * sx, 0) + n_f * 0.01, u_f, Vector3.UP, n_f, Vector3(float(sgn["w"]) * 0.5 + 0.05, 0.05, 0.05))
+	var gho: Dictionary = hy["ghost"]
+	var gr := float(Survey.lathe_local_r(rings, (float(gho["y0"]) + float(gho["y1"])) * 0.5 * h, fr))
+	_emit_oriented_box_st(dark, n_f * (gr + 0.03) + Vector3(0, (float(gho["y0"]) + float(gho["y1"])) * 0.5 * h, 0),
+		u_f, Vector3.UP, n_f, Vector3(float(gho["w"]) * 0.5, (float(gho["y1"]) - float(gho["y0"])) * 0.5 * h, 0.015))
+	var toll: Dictionary = hy["toll"]
+	var wall_r := float(spec.get("door_radius", 1.53))
+	_emit_oriented_box_st(glow, n_f * (wall_r + 0.10) + Vector3(0, (float(toll["y0"]) + float(toll["y1"])) * 0.5 * h, 0),
+		u_f, Vector3.UP, n_f, Vector3(float(toll["w"]) * 0.5, (float(toll["y1"]) - float(toll["y0"])) * 0.5 * h, 0.025))
+	# the lit terminal in the arch recess (proud of the door leaves so it reads from outside)
+	_emit_oriented_box_st(glow, n_f * (wall_r - 0.18) + Vector3(0, 0.95, 0),
+		u_f, Vector3.UP, n_f, Vector3(0.24, 0.32, 0.015))
+	# the parabolic entry arch rim + the two warm lamps + the railed approach ramp
+	var arch: Dictionary = hy["arch"]
+	var arch_pts: Array = []
+	for i in range(11):
+		var t := float(i) / 10.0
+		var uu := lerpf(-1.0, 1.0, t)
+		arch_pts.append(n_f * (wall_r + 0.10) + u_f * (uu * float(arch["w"]) * 0.5)
+			+ Vector3(0, maxf(0.05, float(arch["y_top"]) * h * (1.0 - uu * uu)), 0))
+	_tube(body, arch_pts, float(arch["r_tube"]), 6)
+	for lx in [-1.0, 1.0]:
+		_emit_oriented_box_st(warm, n_f * (wall_r + 0.14) + u_f * (lx * (float(arch["w"]) * 0.5 + 0.10)) + Vector3(0, 1.35, 0),
+			u_f, Vector3.UP, n_f, Vector3(0.06, 0.09, 0.06))
+	var ramp: Dictionary = hy["ramp"]
+	var rlen := float(ramp["len"])
+	var rw := float(ramp["w"])
+	_emit_oriented_box_st(body, n_f * (wall_r + rlen * 0.5) + Vector3(0, 0.045, 0), u_f, Vector3.UP, n_f,
+		Vector3(rw * 0.5, 0.045, rlen * 0.5))
+	for rx in [-1.0, 1.0]:
+		_rail_strip(rails, n_f * (wall_r + 0.1) + u_f * (rx * rw * 0.5) + Vector3(0, 0.09, 0),
+			n_f * (wall_r + rlen) + u_f * (rx * rw * 0.5) + Vector3(0, 0.09, 0), 0.30)
+	# glowing membrane pores + the dark dome vent, riding the surveyed skin
+	for p_v in (hy["pores"] as Array):
+		var p := p_v as Array
+		var pth: float = fr + float(p[0])
+		_surface_panel(glow, {"theta": pth, "y0": float(p[1]) * h, "y1": float(p[2]) * h,
+			"w": float(p[3]) * h, "r0": float(Survey.lathe_local_r(rings, float(p[1]) * h, pth)),
+			"r1": float(Survey.lathe_local_r(rings, float(p[2]) * h, pth))})
+	var vent: Dictionary = hy["vent"]
+	var vth: float = fr + float(vent["az"])
+	_surface_panel(dark, {"theta": vth, "y0": float(vent["y0"]) * h, "y1": float(vent["y1"]) * h,
+		"w": float(vent["w"]) * h, "r0": float(Survey.lathe_local_r(rings, float(vent["y0"]) * h, vth)),
+		"r1": float(Survey.lathe_local_r(rings, float(vent["y1"]) * h, vth))})
+	# the antenna mast + its tiny green lights
+	var mast: Dictionary = hy["mast"]
+	_tube(body, [Vector3(0, 0.985 * h, 0), Vector3(0, float(mast["y_top"]) * h, 0)], float(mast["r"]) * h + 0.02, 5)
+	for li in range(int(mast["lights"])):
+		var ly := lerpf(1.0, float(mast["y_top"]) - 0.005, (float(li) + 0.6) / float(mast["lights"])) * h
+		_emit_oriented_box_st(glow, Vector3(0.05, ly, 0), u_f, Vector3.UP, n_f, Vector3(0.03, 0.03, 0.03))
+	for stool in [body, rust, dark, glow, warm, rails]:
+		(stool as SurfaceTool).generate_normals()
+	var nameplate := n_f * (sr + 0.42) + Vector3(0, (float(sgn["y0"]) + float(sgn["y1"])) * 0.5 * h, 0)
+	return {"body": body.commit(), "rust": rust.commit(), "dark": dark.commit(),
+		"glow": glow.commit(), "warm": warm.commit(), "rails": rails.commit(),
+		"nameplate_pos": nameplate, "height": h}
 
-## The hypelines lane-arm table: {base, dir, tip} per arm — the ONE source both the massing mesh and
-## the gameplay bridge sockets read, so a walkable lane docked at a socket always meets its arm.
-static func hypelines_arms(spec: Dictionary) -> Array:
-	var r := float(spec.get("radius", 2.6))
-	var h := float(spec.get("height", 6.2))
-	var out: Array = []
-	for i in range(6):
-		var side := 1.0 if i < 3 else -1.0
-		var az := deg_to_rad(float([30.0, 60.0, 90.0][i % 3])) * side
-		var pitch := float([0.06, 0.2, 0.12][i % 3])
-		var dirv := Vector3(cos(az), 0.0, sin(az)).rotated(Vector3(sin(az), 0.0, -cos(az)).normalized(), pitch).normalized()
-		var base := Vector3(0.0, h * (0.55 + 0.07 * float(i % 3)), 0.0)
-		out.append({"base": base, "dir": dirv, "tip": base + dirv * (r * 0.55 + r * 1.15)})
-	return out
+# One hypelines arm: the pipe tube with root + tip collars, its trestle, and the catwalk — the LANE
+# pair gets the full deck at the level datum (kerbs + rail bands), viaducts a thin top strip.
+static func _hypelines_arm(body: SurfaceTool, rails: SurfaceTool, ad: Dictionary, deck: Dictionary) -> void:
+	var base := ad["base"] as Vector3
+	var tip := ad["tip"] as Vector3
+	var dirv := ad["dir"] as Vector3
+	var pr := float(ad["pipe_r"])
+	_tube(body, [base, tip], pr, 8)
+	_emit_torus_st(body, base + dirv * 1.35, dirv, pr * 1.1, pr * 0.15, 10, 5)
+	_emit_torus_st(body, tip - dirv * 0.18, dirv, pr * 1.05, pr * 0.13, 10, 5)
+	var side := dirv.cross(Vector3.UP)
+	if side.length() < 0.01:
+		side = Vector3.RIGHT
+	side = side.normalized()
+	if bool(ad["lane"]):
+		var a := ad["walk_base"] as Vector3
+		var b := ad["walk_tip"] as Vector3
+		var w := float(deck["deck_w"])
+		var t := float(deck["deck_t"])
+		var fwd := (b - a).normalized()
+		var mid := (a + b) * 0.5
+		var half_len := a.distance_to(b) * 0.5
+		_emit_oriented_box_st(body, mid - Vector3(0, t * 0.5, 0), side, Vector3.UP, fwd,
+			Vector3(w * 0.5, t * 0.5, half_len))
+		for s in [-1.0, 1.0]:
+			_emit_oriented_box_st(body, mid + side * (w * 0.5 * s) + Vector3(0, 0.035, 0), side, Vector3.UP, fwd,
+				Vector3(0.045, 0.055, half_len))
+			_rail_strip(rails, a + side * (w * 0.5 * s) + Vector3(0, 0.07, 0),
+				b + side * (w * 0.5 * s) + Vector3(0, 0.07, 0), float(deck["rail_h"]))
+	else:
+		# the viaduct catwalk: a thin strip riding the pipe top with low rails
+		var a2 := base + dirv * 1.3 + Vector3(0, pr + 0.03, 0)
+		var b2 := tip - dirv * 0.1 + Vector3(0, pr + 0.03, 0)
+		var fwd2 := (b2 - a2).normalized()
+		_emit_oriented_box_st(body, (a2 + b2) * 0.5 - Vector3(0, 0.03, 0), side, Vector3.UP, fwd2,
+			Vector3(0.20, 0.03, a2.distance_to(b2) * 0.5))
+		for s2 in [-1.0, 1.0]:
+			_rail_strip(rails, a2 + side * (0.20 * s2), b2 + side * (0.20 * s2), 0.22)
+	# the openwork A-frame trestle at ~62% of the run (legs splay to feet, one horizontal tie)
+	var tp := (base + dirv * (1.1 + float(ad["len"]) * 0.62))
+	if tp.y > 1.2:
+		for s3 in [-1.0, 1.0]:
+			var foot: Vector3 = Vector3(tp.x, 0.0, tp.z) + side * (float(s3) * 0.95)
+			_tube(body, [tp - Vector3(0, pr * 0.4, 0), foot], 0.10, 5)
+		var tie_y := tp.y * 0.42
+		var tie_off := 0.95 * (1.0 - tie_y / maxf(0.1, tp.y))
+		_tube(body, [Vector3(tp.x, tie_y, tp.z) - side * tie_off,
+			Vector3(tp.x, tie_y, tp.z) + side * tie_off], 0.06, 4)
+
+# A UV-tiled railing band between two points (the alpha-scissor railing texture reads as balusters;
+# the material is cull-disabled, so one quad serves both sides).
+static func _rail_strip(rails: SurfaceTool, a: Vector3, b: Vector3, height: float) -> void:
+	var u1 := a.distance_to(b) / 0.42
+	rails.set_uv(Vector2(0.0, 1.0)); rails.add_vertex(a)
+	rails.set_uv(Vector2(u1, 1.0)); rails.add_vertex(b)
+	rails.set_uv(Vector2(u1, 0.0)); rails.add_vertex(b + Vector3(0, height, 0))
+	rails.set_uv(Vector2(0.0, 1.0)); rails.add_vertex(a)
+	rails.set_uv(Vector2(u1, 0.0)); rails.add_vertex(b + Vector3(0, height, 0))
+	rails.set_uv(Vector2(0.0, 0.0)); rails.add_vertex(a + Vector3(0, height, 0))
 
 ## Greenfields (REVIEW P1): the stacked-cushions read — a box body wearing four overhanging
 ## bone-cream balcony slab rings, one above each storey.

@@ -4142,6 +4142,64 @@ func _test_building_survey() -> void:
 	_assert_true((svp2.reservations as Array).size() >= 25,
 		"the plumbing survey reserves every planned part (%d reservations)" % (svp2.reservations as Array).size())
 
+	# --- HYPELINES REBUILD (task 1.2): the arms are WALKABLE LANES — the lane pair's deck is FLAT
+	# at the level-grid datum (level 1 x 4.0 m), rides ON its pipe, and its descriptor flows through
+	# the anchors' bridge-socket table so the level layer can dock grid cells + a ladder link ---
+	var hyp: Dictionary = Base.generate("hypelines")
+	var svh = Survey.from_spec(hyp)
+	var lanes := 0
+	for arm in Survey.hypelines_arm_table(hyp):
+		var adh := arm as Dictionary
+		if not bool(adh["lane"]):
+			continue
+		lanes += 1
+		var wb := adh["walk_base"] as Vector3
+		var wt := adh["walk_tip"] as Vector3
+		_assert_true(absf(wb.y - 4.0) < 0.001 and absf(wt.y - 4.0) < 0.001,
+			"the lane deck is FLAT at the level-1 datum (4.0 m)")
+		var base_v := adh["base"] as Vector3
+		_assert_true(wb.y > base_v.y + float(adh["pipe_r"]) - 0.05 and wb.y < base_v.y + float(adh["pipe_r"]) + 0.25,
+			"the lane deck rides ON its pipe (walk %.2f vs pipe top %.2f)" % [wb.y, base_v.y + float(adh["pipe_r"])])
+	_assert_equals(lanes, 2, "the hypelines carry exactly the two walkable lane arms (the plate's mid pair)")
+	var deck_conns := 0
+	for cn in (svh.anchors()["connectors"] as Array):
+		var cd := cn as Dictionary
+		if str(cd["kind"]) == "bridge" and cd.has("deck"):
+			deck_conns += 1
+			_assert_true(absf(float((cd["deck"] as Dictionary)["walk_y"]) - 4.0) < 0.001,
+				"the lane descriptor's walk_y sits on the level plane")
+	_assert_equals(deck_conns, 2, "both lane decks flow through the bridge-socket table")
+	var deth: Dictionary = Base.hypelines_details(hyp)
+	for famh in ["body", "rust", "dark", "glow", "warm", "rails"]:
+		var mh = deth.get(famh)
+		_assert_true(mh != null and (mh as ArrayMesh).get_surface_count() > 0,
+			"hypelines details build the %s family" % famh)
+	_assert_equals((deth["body"] as ArrayMesh).surface_get_array_len(0),
+		(Base.hypelines_details(hyp)["body"] as ArrayMesh).surface_get_array_len(0),
+		"hypelines details are deterministic")
+	# the level layer DOCKS a lane: survey descriptor -> grid level cells + a tip ladder link
+	var Filler = load("res://scripts/generation/building_filler.gd")
+	var dock_grid := {"level_height": 4.0, "walkable_cells": []}
+	var lane0: Dictionary = {}
+	for cn2 in (svh.anchors()["connectors"] as Array):
+		if (cn2 as Dictionary).has("deck"):
+			var dk0 := (cn2 as Dictionary)["deck"] as Dictionary
+			lane0 = {"start": [(dk0["start"] as Vector3).x, (dk0["start"] as Vector3).y, (dk0["start"] as Vector3).z],
+				"end": [(dk0["end"] as Vector3).x, (dk0["end"] as Vector3).y, (dk0["end"] as Vector3).z],
+				"width": float(dk0["width"]), "walk_y": float(dk0["walk_y"])}
+			break
+	var lplan: Dictionary = Filler.apply_lane_to_grid(dock_grid, lane0, Vector3(-8, 0, -8), 1.5)
+	_assert_true(not lplan.is_empty() and int(lplan["level"]) == 1,
+		"a survey lane docks onto level 1 of the grid")
+	var lvl1_cells := 0
+	for lce in (dock_grid.get("level_cells", []) as Array):
+		if int((lce as Dictionary)["level"]) == 1:
+			lvl1_cells = ((lce as Dictionary)["cells"] as Array).size()
+	_assert_true(lvl1_cells >= 2, "the lane deck registers level-1 grid cells (%d)" % lvl1_cells)
+	var ladder_links := (dock_grid.get("links", []) as Array).size()
+	_assert_equals(ladder_links, 1, "the lane tip registers ONE inter-level ladder link down")
+	_assert_true(int(dock_grid.get("level_count", 1)) >= 2, "the grid grows a level for the lane")
+
 func _find_nodes_prefixed(n: Node, prefix: String) -> Array:
 	var out: Array = []
 	if str(n.name).begins_with(prefix):
