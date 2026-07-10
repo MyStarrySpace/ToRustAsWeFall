@@ -154,7 +154,7 @@ func _add_tracery(root: Node3D, spec: Dictionary, reserved: Array) -> void:
 	if spec.has("bays"):
 		ov["bays"] = int(spec["bays"])   # the entrances snapped to this bay grid — keep them aligned
 	var built: Dictionary = Lattice.tracery_tiered(spec, ov) if int(spec.get("tiers", 1)) > 1 \
-		else Lattice.tracery(float(spec.get("radius", 2.4)), float(spec.get("height", 7.2)), ov)
+		else Lattice.tracery(float(spec.get("radius", 2.4)), float(spec.get("tracery_height", spec.get("height", 7.2))), ov)
 	_add_lattice_mesh(root, "TraceryRibs", built.get("frame"), _tinted_tile_material("facility_metal", Color(0.74, 0.70, 0.57)))
 	_add_lattice_mesh(root, "TraceryGlass", built.get("glass"), _window_material(3.6))
 

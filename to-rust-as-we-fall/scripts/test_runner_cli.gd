@@ -3745,7 +3745,8 @@ func _test_architecture_showcase() -> void:
 
 	# --- tracery (Beacon Hill): lancet rib rings + lit glass wrapped on the drum, deterministic ---
 	var beacon: Dictionary = Base.generate("beacon_hill")
-	_assert_equals(str(beacon.get("shape", "")), Base.SHAPE_CYLINDER, "Beacon Hill is a cylinder")
+	_assert_equals(str(beacon["composite"]), "beacon_domed",
+		"Beacon Hill massing is the domed-shoulder composite (BUILDING_REVIEW P1)")
 	_assert_equals(str(beacon.get("lattice", "")), "tracery", "Beacon Hill declares the tracery lattice")
 	var tr: Dictionary = Lat.tracery(float(beacon["radius"]), float(beacon["height_total"]))
 	_assert_true(int(tr.get("cells", 0)) >= 8, "tracery builds a lancet grid (%d cells)" % int(tr.get("cells", 0)))

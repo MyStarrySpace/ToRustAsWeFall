@@ -43,20 +43,22 @@ const SPECS := {
 		"entrances": {"reserve_margin": 0.2},   # storey-scale blobs: a fat clearance would gut the facade
 		"title": "Honeycomb Cooperative",
 		"shape": SHAPE_BOX,
-		# Tall apartment block; footprint a touch deeper than it is wide (~1.8x taller than wide).
-		"size": Vector3(4.5, 8.0, 5.5),
-		"color": Color(0.60, 0.58, 0.48),   # pale cast-stone facade
+		# Tall slab: height 2.2x the front width, side face DEEPER than the front is wide (REVIEW P2).
+		"size": Vector3(4.5, 10.0, 6.3),
+		"color": Color(0.48, 0.46, 0.38),   # cast-stone facade, darker (plate palette)
 		"tile": "facility_metal",
 		"lattice": "honeyframe",            # rounded-cell facade frame + lit panes
 		"pipes": true,                      # rust/conduit tangle down the flank
 	},
 	"beacon_hill": {
 		"title": "Beacon Hill",
-		"shape": SHAPE_CYLINDER,
-		# Tall verdigris bell-tower (the Reading Room); a cylinder base, the bell taper is a later pass.
+		"shape": SHAPE_COMPOSITE,           # drum -> elliptical dome shoulder -> rooftop lantern (REVIEW P1)
+		"composite": "beacon_domed",
+		"door_frame": "cyl",
 		"radius": 2.4,
 		"height": 7.2,
-		"color": Color(0.32, 0.42, 0.40),   # verdigris tiled stone
+		"tracery_height": 5.4,              # the lattice climbs the DRUM only (0.75H), never the dome
+		"color": Color(0.20, 0.31, 0.28),   # dark verdigris tiled stone (REVIEW P3)
 		"tile": "facility_metal",
 		"lattice": "tracery",               # pointed-arch (lancet) window wall + lit glass behind
 		"bays": 7,                          # bay width 2.15 — the door assembly (~2.0) fits inside a bay
@@ -81,17 +83,21 @@ const SPECS := {
 	},
 	"hypelines": {
 		"title": "The Hypelines",
-		"shape": SHAPE_CYLINDER,            # PLACEHOLDER drum; real = stacked-bulb blob + SPLIT base (Fable)
+		"shape": SHAPE_COMPOSITE,           # three-tier domed mound + radiating pipe ARMS (REVIEW P1-P2)
+		"composite": "hypelines_mound",
+		"door_frame": "cyl",
 		"radius": 2.6, "height": 6.2,
-		"color": Color(0.32, 0.38, 0.34),   # verdigris-rust
+		"flare": 1.0,
+		"color": Color(0.26, 0.33, 0.29),   # dark verdigris-rust
 		"tile": "facility_metal",
 		"lattice": "", "pipes": true,       # the radiating viaducts read as heavy pipes
 	},
 	"greenfields": {
 		"title": "Greenfields Collective",
-		"shape": SHAPE_BOX,                 # rounded barrel corners are a Fable detail
+		"shape": SHAPE_COMPOSITE,           # stacked-cushions: overhanging balcony slab rings (REVIEW P1)
+		"composite": "greenfields_stack",
 		"size": Vector3(5.2, 6.4, 5.0),
-		"color": Color(0.60, 0.64, 0.56),   # pale cast-stone / teal
+		"color": Color(0.52, 0.56, 0.47),   # cast-stone over teal
 		"tile": "facility_metal",
 		"lattice": "balconies",             # wrapping per-floor balconies (Fable — beam+curve spec)
 	},
@@ -107,9 +113,10 @@ const SPECS := {
 	},
 	"bulwark_wharf": {
 		"title": "Bulwark Wharf",
-		"shape": SHAPE_BOX,                 # gatehouse; corner turrets + rose windows + barrier wall = Fable
-		"size": Vector3(4.2, 5.2, 3.6),
-		"color": Color(0.40, 0.44, 0.48),
+		"shape": SHAPE_COMPOSITE,           # squat gatehouse + two domed corner towers (REVIEW P1-P2)
+		"composite": "bulwark_towers",
+		"size": Vector3(4.6, 5.2, 3.4),     # squatter than before (plate ~1:1.15 w:h with towers)
+		"color": Color(0.32, 0.36, 0.39),
 		"tile": "facility_metal",
 		"lattice": "voronoi",               # the plate's catenary Voronoi MEMBRANE wall (mirrored, focal-merged)
 	},
@@ -124,9 +131,10 @@ const SPECS := {
 	},
 	"zone3": {
 		"title": "Zone-3 Eroded Ruin",
-		"shape": SHAPE_BOX,                 # faceted block; the amyloid-drip decay is Fable
+		"shape": SHAPE_COMPOSITE,           # main block + collapsed side wing + cornice slab (REVIEW P1-P2)
+		"composite": "zone3_split",
 		"size": Vector3(4.0, 5.4, 4.0),
-		"color": Color(0.34, 0.36, 0.34),
+		"color": Color(0.28, 0.30, 0.28),
 		"tile": "facility_metal",
 		"lattice": "",
 	},
@@ -348,6 +356,16 @@ static func _composite(spec: Dictionary, reserved: Array = [], recess: float = 0
 			return _canopy_piers_mesh(spec)
 		"ancourage_domes":
 			return _ancourage_domes_mesh(spec, reserved, recess)
+		"beacon_domed":
+			return _beacon_domed_mesh(spec, reserved, recess)
+		"hypelines_mound":
+			return _hypelines_mound_mesh(spec, reserved, recess)
+		"greenfields_stack":
+			return _greenfields_stack_mesh(spec, reserved, recess)
+		"bulwark_towers":
+			return _bulwark_towers_mesh(spec, reserved, recess)
+		"zone3_split":
+			return _zone3_split_mesh(spec, reserved, recess)
 		_:
 			return _box(spec.get("size", Vector3(4.0, 6.0, 4.0)))
 
@@ -485,6 +503,145 @@ static func _ancourage_domes_mesh(spec: Dictionary, reserved: Array, recess: flo
 	st.append_from(side, 0, Transform3D(Basis(), Vector3(r * 0.38, body_h, r * 0.12)))
 	# NO generate_normals here: on mixed append_from sources it DROPS earlier surfaces
 	# (probed live); every appended mesh already carries its normals.
+	return st.commit()
+
+## Beacon Hill (REVIEW P1): the drum ends at 0.75H, curves through an elliptical dome shoulder and
+## closes with a rooftop lantern drum — the flat merlon top read as a water tank, not the Reading Room.
+static func _beacon_domed_mesh(spec: Dictionary, reserved: Array, recess: float) -> ArrayMesh:
+	var r := float(spec.get("radius", 2.4))
+	var h := float(spec.get("height", 7.2))
+	var drum_h := h * 0.75
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.append_from(_cylinder_with_doors(r, drum_h, reserved, recess), 0, Transform3D.IDENTITY)
+	var dome := SphereMesh.new()
+	dome.radius = r * 1.0
+	dome.height = h * 0.23 * 2.0
+	dome.radial_segments = 16
+	dome.rings = 8
+	st.append_from(dome, 0, Transform3D(Basis(), Vector3(0.0, drum_h, 0.0)))
+	var lantern := CylinderMesh.new()
+	lantern.top_radius = r * 0.45
+	lantern.bottom_radius = r * 0.45
+	lantern.height = h * 0.085
+	lantern.radial_segments = 12
+	st.append_from(_seated(lantern, lantern.height * 0.5), 0, Transform3D(Basis(), Vector3(0.0, h - lantern.height - h * 0.02, 0.0)))
+	var fin := SphereMesh.new()
+	fin.radius = r * 0.16
+	fin.height = h * 0.04
+	fin.radial_segments = 10
+	fin.rings = 5
+	st.append_from(fin, 0, Transform3D(Basis(), Vector3(0.0, h - h * 0.02, 0.0)))
+	# NO generate_normals (drops earlier append_from surfaces); sources carry their own.
+	return st.commit()
+
+## Hypelines (REVIEW P1-P2): a three-tier domed mound with radiating pipeline ARMS at the shoulder —
+## the junction-hub read. Arms are part of the massing (the silhouette), not the draped-pipes pass.
+static func _hypelines_mound_mesh(spec: Dictionary, reserved: Array, recess: float) -> ArrayMesh:
+	var r := float(spec.get("radius", 2.6))
+	var h := float(spec.get("height", 6.2))
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	# tier 1 skirt (doors) / tier 2 mid drum / tier 3 upper drum, strong shrink-up
+	st.append_from(_cylinder_with_doors(r, h * 0.38, reserved, recess), 0, Transform3D.IDENTITY)
+	var t2 := CylinderMesh.new()
+	t2.top_radius = r * 0.62
+	t2.bottom_radius = r * 0.78
+	t2.height = h * 0.30
+	t2.radial_segments = 18
+	st.append_from(_seated(t2, t2.height * 0.5), 0, Transform3D(Basis(), Vector3(0.0, h * 0.38, 0.0)))
+	var t3 := CylinderMesh.new()
+	t3.top_radius = r * 0.38
+	t3.bottom_radius = r * 0.5
+	t3.height = h * 0.22
+	t3.radial_segments = 14
+	st.append_from(_seated(t3, t3.height * 0.5), 0, Transform3D(Basis(), Vector3(0.0, h * 0.68, 0.0)))
+	var cap := SphereMesh.new()
+	cap.radius = r * 0.4
+	cap.height = (h - h * 0.9) * 2.0
+	cap.radial_segments = 14
+	cap.rings = 7
+	st.append_from(cap, 0, Transform3D(Basis(), Vector3(0.0, h - cap.height * 0.5, 0.0)))
+	# 6 radiating pipe arms leaving the shoulder (3 per side, one near-horizontal + a pitched pair)
+	for i in range(6):
+		var side := 1.0 if i < 3 else -1.0
+		var az := deg_to_rad(float([30.0, 60.0, 90.0][i % 3])) * side
+		var pitch := float([0.06, 0.2, 0.12][i % 3])
+		var arm := CylinderMesh.new()
+		arm.top_radius = h * 0.045
+		arm.bottom_radius = h * 0.045
+		arm.height = r * 2.3
+		arm.radial_segments = 10
+		var dirv := Vector3(cos(az), 0.0, sin(az)).rotated(Vector3(sin(az), 0.0, -cos(az)).normalized(), pitch)
+		var basis := Basis(Quaternion(Vector3.UP, dirv.normalized()))
+		st.append_from(arm, 0, Transform3D(basis, Vector3(0.0, h * (0.55 + 0.07 * float(i % 3)), 0.0) + dirv * r * 0.9))
+	return st.commit()
+
+## Greenfields (REVIEW P1): the stacked-cushions read — a box body wearing four overhanging
+## bone-cream balcony slab rings, one above each storey.
+static func _greenfields_stack_mesh(spec: Dictionary, reserved: Array, recess: float) -> ArrayMesh:
+	var size: Vector3 = spec.get("size", Vector3(5.2, 6.4, 5.0))
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.append_from(_box_with_doors(size, reserved, recess), 0, Transform3D.IDENTITY)
+	var ground := 1.7
+	var storey := (size.y - ground) / 3.0
+	for k in range(4):
+		var slab := BoxMesh.new()
+		slab.size = Vector3(size.x + 0.7, 0.18, size.z + 0.7)
+		var y := ground + storey * float(k)
+		st.append_from(slab, 0, Transform3D(Basis(), Vector3(0.0, minf(y, size.y - 0.09), 0.0)))
+	return st.commit()
+
+## Bulwark Wharf (REVIEW P1): the gatehouse earns its two round corner towers — half-embedded at the
+## front corners, rising past the roofline, domed caps + ring collars.
+static func _bulwark_towers_mesh(spec: Dictionary, reserved: Array, recess: float) -> ArrayMesh:
+	var size: Vector3 = spec.get("size", Vector3(4.2, 5.2, 3.6))
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var body_h := size.y * 0.86
+	st.append_from(_box_with_doors(Vector3(size.x, body_h, size.z), reserved, recess), 0, Transform3D.IDENTITY)
+	var tr := size.x * 0.14
+	for sx in [-1.0, 1.0]:
+		var cx := float(sx) * (size.x * 0.5)
+		var cz := size.z * 0.5
+		var tower := CylinderMesh.new()
+		tower.top_radius = tr
+		tower.bottom_radius = tr * 1.15
+		tower.height = size.y * 0.94
+		tower.radial_segments = 12
+		st.append_from(_seated(tower, tower.height * 0.5), 0, Transform3D(Basis(), Vector3(cx, 0.0, cz)))
+		var capd := SphereMesh.new()
+		capd.radius = tr * 1.05
+		capd.height = (size.y - size.y * 0.94) * 2.0 + tr * 0.8
+		capd.radial_segments = 12
+		capd.rings = 6
+		st.append_from(capd, 0, Transform3D(Basis(), Vector3(cx, size.y - capd.height * 0.5, cz)))
+		for fr in [0.25, 0.5, 0.75]:
+			var collar := TorusMesh.new()
+			collar.inner_radius = tr * 0.95
+			collar.outer_radius = tr * 1.22
+			collar.rings = 14
+			collar.ring_segments = 6
+			st.append_from(collar, 0, Transform3D(Basis(), Vector3(cx, size.y * 0.94 * fr, cz)))
+	return st.commit()
+
+## Zone-3 (REVIEW P1-P2): the eroded ruin is a TWO-part composite — main block + a collapsed
+## side wing stepped back — crowned by a heavy projecting cornice slab on the main block only.
+static func _zone3_split_mesh(spec: Dictionary, reserved: Array, recess: float) -> ArrayMesh:
+	var size: Vector3 = spec.get("size", Vector3(4.0, 5.4, 4.0))
+	var w := size.x
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var a_h := size.y
+	st.append_from(_box_with_doors(Vector3(w, a_h, w * 0.9), reserved, recess), 0, Transform3D.IDENTITY)
+	var cornice := BoxMesh.new()
+	cornice.size = Vector3(w + w * 0.18, a_h * 0.06, w * 0.9 + w * 0.18)
+	st.append_from(cornice, 0, Transform3D(Basis(), Vector3(0.0, a_h - cornice.size.y * 0.5, 0.0)))
+	var wing := BoxMesh.new()
+	wing.size = Vector3(w * 0.6, a_h * 0.83, w * 0.7)
+	st.append_from(_seated(wing, wing.size.y * 0.5), 0,
+		Transform3D(Basis(), Vector3(w * 0.5 + wing.size.x * 0.45, 0.0, -w * 0.9 * 0.5 + wing.size.z * 0.5)))
 	return st.commit()
 
 # --- RECURSIVE CONNECTED AWNINGS (the Open Files massing — geometry-lab algorithm 2, ported) -------
