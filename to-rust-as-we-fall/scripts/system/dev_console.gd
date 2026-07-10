@@ -24,6 +24,28 @@ func _ready() -> void:
 	visible = false
 	_build_ui()
 	register_command("help", _cmd_help, "list every command")
+	if DisplayServer.is_touchscreen_available():
+		_spawn_touch_toggle.call_deferred()
+
+## A touch device has no backtick: a small translucent edge button opens the console (the LineEdit
+## then pops the OS soft keyboard). It rides its OWN layer — this layer hides while closed.
+func _spawn_touch_toggle() -> void:
+	var lay := CanvasLayer.new()
+	lay.name = "DevConsoleTouchToggle"
+	lay.layer = 89
+	lay.process_mode = Node.PROCESS_MODE_ALWAYS
+	var btn := Button.new()
+	btn.name = "ConsoleTouchButton"
+	btn.text = ">_"
+	btn.flat = true
+	btn.modulate = Color(1.0, 1.0, 1.0, 0.4)
+	btn.custom_minimum_size = Vector2(56, 44)
+	btn.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT)
+	btn.position.x = 4.0
+	btn.pressed.connect(toggle)
+	lay.add_child(btn)
+	if get_parent() != null:
+		get_parent().add_child(lay)
 
 func _build_ui() -> void:
 	_panel = PanelContainer.new()

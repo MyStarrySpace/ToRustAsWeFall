@@ -12,8 +12,19 @@ const BaseShape := preload("res://scripts/generation/base_shape_builder.gd")
 const Lattice := preload("res://scripts/generation/lattice_builder.gd")
 const Ledge := preload("res://scripts/generation/ledge_builder.gd")
 
-const SPACING := 7.0
 const GROUND_TILE := "facility_metal"
+
+## Per-hero TURNTABLE REACH (m): how far a building's widest part sweeps from its plinth centre as
+## it rotates — arms, wings, monoliths, flumes. Plinth positions are laid out cumulatively from
+## these (reach + reach + GAP), so no hero ever sweeps through its neighbour (the phone playtest
+## found the old fixed 7 m spacing let the hypelines arms and bulwark wings overlap neighbours).
+const REACH := {
+	"plumbing_power": 2.7, "honeycomb_cooperative": 3.3, "beacon_hill": 2.7, "open_files": 3.0,
+	"hypelines": 6.7, "greenfields": 3.2, "ancourage": 3.0, "bulwark_wharf": 7.2,
+	"cleanstreets": 6.1, "zone3": 3.4, "tiered_hall": 2.8, "tiered_terrace": 2.7,
+}
+const REACH_DEFAULT := 3.5
+const GAP := 1.4
 
 var _seed := 1
 var _turntables: Array = []
@@ -433,8 +444,25 @@ func get_preview_state() -> Dictionary:
 	st["buildings"] = _specimens.size()
 	return st
 
-func _plinth_pos(i: int, n: int) -> Vector3:
-	return Vector3((float(i) - float(n - 1) * 0.5) * SPACING, 0.0, -3.0)
+## Plinth centres, laid out cumulatively from each hero's turntable reach and centred as a row.
+func _plinth_xs() -> Array:
+	var kinds: Array = BaseShape.BUILDINGS
+	var xs: Array = []
+	var x := 0.0
+	var prev := 0.0
+	for i in range(kinds.size()):
+		var reach: float = float(REACH.get(str(kinds[i]), REACH_DEFAULT))
+		if i > 0:
+			x += prev + GAP + reach
+		xs.append(x)
+		prev = reach
+	var mid := x * 0.5
+	for i2 in range(xs.size()):
+		xs[i2] = float(xs[i2]) - mid
+	return xs
+
+func _plinth_pos(i: int, _n: int) -> Vector3:
+	return Vector3(float(_plinth_xs()[i]), 0.0, -3.0)
 
 func _gallery_fragment() -> Fragment:
 	var frag := Fragment.new()
@@ -445,7 +473,11 @@ func _gallery_fragment() -> Fragment:
 	frag.party_ids = PackedStringArray(["aster", "peris", "endo"])
 	var cs := 1.5
 	var kinds: Array = BaseShape.BUILDINGS
-	var w := int(ceil(kinds.size() * SPACING / cs)) + 6
+	var xs := _plinth_xs()
+	var first_reach: float = float(REACH.get(str(kinds[0]), REACH_DEFAULT))
+	var last_reach: float = float(REACH.get(str(kinds[kinds.size() - 1]), REACH_DEFAULT))
+	var extent: float = (float(xs[xs.size() - 1]) + last_reach) - (float(xs[0]) - first_reach)
+	var w := int(ceil(extent / cs)) + 6
 	var h := 10
 	frag.floors = [{
 		"pos": Vector3(0, -0.05, 0), "size": Vector3(w * cs, 0.1, h * cs),
