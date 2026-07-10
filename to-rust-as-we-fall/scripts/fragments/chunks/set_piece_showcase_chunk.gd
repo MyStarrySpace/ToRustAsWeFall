@@ -48,6 +48,18 @@ const CRUMBLE_DELAY := 0.9
 const KILL_MIN := Vector2(24.4, 1.2)   # the debris field (XZ) — decided at the commit tick
 const KILL_MAX := Vector2(26.6, 3.6)
 
+# Set piece E: the IRON-LOAD MAGNET HOIST (docs/SET_PIECES.md proposal 2, Hypelines idiom). A trolley
+# rides an overhead rail across a canal; the electromagnet lifts IRON — the bridge PLATE, or the
+# iron-laden scrap swarm. Drop the plate over the canal to cross — but living scraps EAT an
+# unattended plate (canon: they strip iron from fixtures), so the traversal DECAYS unless the swarm
+# is dealt with first: pin it under the magnet and drop it in the canal.
+const CANAL_CELLS: Array = [Vector2i(14, 19), Vector2i(15, 19), Vector2i(16, 19)]
+const STATION_X: Array = [10.5, 15.5, 21.5]   # trolley stops: 0=plate store, 1=the gap, 2=scrap pen
+const HOIST_Z := 19.5
+const RAIL_Y := 3.4
+const PLATE_EAT_TIME := 7.0                   # living scraps strip a placed plate in this long
+const PIN_RADIUS := 2.6   # the magnet's grab disc covers the pen (both scraps' roam range)
+
 var _runtime_ready := false
 var _water_level := LEVEL_LOW
 var _pending_level := -1
@@ -62,12 +74,20 @@ var _slab_enemy: Node = null
 var _slab_intact := true
 var _slab_meshes: Array = []            # facade meshes hidden on crumble
 var _rubble: Node3D = null              # the debris pile revealed on crumble
+var _trolley: Node3D = null
+var _plate: Node3D = null
+var _crumbs: Node3D = null              # what's left of an eaten plate
+var _trolley_station := 0
+var _magnet_carrying := ""              # "" | "plate" | "swarm"
+var _plate_state := "stored"            # stored | held | placed | eaten
+var _scraps: Array = []                 # the iron-laden swarm (enemy nodes)
+var _pinned: Array = []                 # scrap ids held under the charged magnet
 
 func get_scene_title() -> String:
 	return "Set Pieces — crawl / rotate / water"
 
 func get_scene_help() -> String:
-	return "Push the wheel to line up the bent pipe, crawl it east. Crawl the wall pipe north to reach the water valve. Set the water to MID so the floats bridge the basin; set HIGH to drown the penned threat. Pry the loose strut behind the cracked slab — the facade falls on whatever lurks beneath and its rubble fills the trench. Reach the northeast pad."
+	return "Push the wheel to line up the bent pipe, crawl it east. Crawl the wall pipe north to reach the water valve. Set the water to MID so the floats bridge the basin; set HIGH to drown the penned threat. Pry the loose strut behind the cracked slab — the facade falls on whatever lurks beneath and its rubble fills the trench. At the hoist: drop the iron plate over the canal to cross — but living scraps EAT it; pin the swarm under the magnet and drop it in the canal first. Reach the northeast pad."
 
 func get_default_character() -> String:
 	return "peris"
@@ -92,35 +112,47 @@ func get_preview_anchors() -> Dictionary:
 		"bridge_north": Vector3(22.5, 0.0, 13.5),
 		"pen_rim": Vector3(26.5, 0.0, 8.5),
 		"exit": Vector3(27.5, 0.0, 15.0),
+		"hoist_switch": Vector3(9.0, 0.0, 18.0),
+		"hoist_lever": Vector3(12.0, 0.0, 18.0),
+		"hoist_west": Vector3(12.5, 0.0, 19.5),
+		"hoist_east": Vector3(18.5, 0.0, 19.5),
+		"scrap_pen": Vector3(21.5, 0.0, 19.5),
 	}
 
 func get_grid_data() -> Dictionary:
-	var bridge: Array = []
+	var extra: Array = []
 	for c in BRIDGE_CELLS:
-		bridge.append([int((c as Vector2i).x), int((c as Vector2i).y)])
+		extra.append([int((c as Vector2i).x), int((c as Vector2i).y)])
+	for c2 in CANAL_CELLS:
+		extra.append([int((c2 as Vector2i).x), int((c2 as Vector2i).y)])
 	return {
 		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
-		"origin": [0.0, 0.0, 0.0], "cell_size": 1.0, "width": 30, "height": 17,
+		"origin": [0.0, 0.0, 0.0], "cell_size": 1.0, "width": 30, "height": 23,
 		"walkable_regions": [
 			{"min": [1.0, 1.0], "max": [15.9, 9.9]},     # yard WEST (spawn, wheel)
 			{"min": [18.0, 1.0], "max": [28.9, 8.9]},    # yard EAST (basin approach)
 			{"min": [1.0, 13.0], "max": [28.9, 15.9]},   # north strip (valve, exit)
 			{"min": [26.0, 9.0], "max": [27.9, 11.9]},   # the sunken PEN (enemy shelf)
+			{"min": [10.0, 16.0], "max": [11.9, 16.9]},  # doorway from the north strip to the hoist
+			{"min": [6.0, 17.0], "max": [13.9, 21.9]},   # hoist WEST bank (lever, plate store)
+			{"min": [17.0, 17.0], "max": [25.9, 21.9]},  # hoist EAST bank (scrap pen, cache)
 		],
-		"walkable_cells": bridge,                        # float bridge — blocked until MID
+		"walkable_cells": extra,                         # float bridge + canal crossing — gated
 	}
 
 func _build_chunk() -> void:
-	_add_floor(self, Vector3(15.0, 0.0, 8.5), Vector3(30.0, 0.1, 17.0), Color(0.085, 0.09, 0.11))
+	_add_floor(self, Vector3(15.0, 0.0, 11.5), Vector3(30.0, 0.1, 23.0), Color(0.085, 0.09, 0.11))
 	_add_label(self, "SET PIECES", Vector3(15.0, 3.4, 0.6), Color(0.9, 0.85, 0.6))
 	_build_walls()
 	_build_crawl_pipe()
 	_build_rotating_hub()
 	_build_basin()
 	_build_weak_slab()
+	_build_magnet_hoist()
 	_add_light(self, Vector3(8.0, 5.0, 6.0), Color(1.0, 0.95, 0.85), 1.1, 18.0)
 	_add_light(self, Vector3(23.0, 5.0, 11.0), Color(0.8, 0.92, 1.0), 1.1, 16.0)
 	_add_light(self, Vector3(14.0, 5.0, 14.0), Color(1.0, 0.95, 0.85), 0.9, 14.0)
+	_add_light(self, Vector3(15.0, 5.5, 19.5), Color(1.0, 0.9, 0.8), 1.0, 16.0)
 
 # --- geometry --------------------------------------------------------------------------------
 
@@ -371,6 +403,183 @@ func _commit_crumble() -> void:
 	if _rubble != null:
 		_rubble.visible = true
 
+# E) the IRON-LOAD MAGNET HOIST: rail + trolley over a canal, a plate the swarm can EAT
+func _build_magnet_hoist() -> void:
+	_add_label(self, "MAGNET HOIST", Vector3(15.0, 4.6, 17.2), Color(0.95, 0.8, 0.5))
+	# the CANAL (impassable water channel between the banks)
+	_add_box(self, Vector3(15.5, -0.14, 19.5), Vector3(3.2, 0.24, 5.0), Color(0.10, 0.12, 0.15), Color.BLACK, 0.0, "HoistCanal")
+	# rail posts + the overhead rail beam
+	for px in [8.0, 23.0]:
+		_add_box(self, Vector3(px, RAIL_Y * 0.5, HOIST_Z), Vector3(0.3, RAIL_Y, 0.3), Color(0.30, 0.30, 0.34))
+	_add_box(self, Vector3(15.5, RAIL_Y, HOIST_Z), Vector3(16.0, 0.24, 0.4), Color(0.36, 0.35, 0.38), Color.BLACK, 0.0, "HoistRail")
+	# the TROLLEY + electromagnet (cosmetic mover; the STATION index is the logic)
+	_trolley = Node3D.new()
+	_trolley.name = "HoistTrolley"
+	add_child(_trolley)
+	_trolley.position = Vector3(float(STATION_X[0]), RAIL_Y - 0.3, HOIST_Z)
+	var tb := MeshInstance3D.new()
+	var tbm := BoxMesh.new()
+	tbm.size = Vector3(1.0, 0.4, 0.7)
+	tb.mesh = tbm
+	var tmat := StandardMaterial3D.new()
+	tmat.albedo_color = Color(0.5, 0.42, 0.3)
+	tmat.metallic = 0.5
+	tb.material_override = tmat
+	_trolley.add_child(tb)
+	var mag := MeshInstance3D.new()
+	mag.name = "Magnet"
+	var mm := CylinderMesh.new()
+	mm.top_radius = 0.42
+	mm.bottom_radius = 0.5
+	mm.height = 0.35
+	mag.mesh = mm
+	var mmat := StandardMaterial3D.new()
+	mmat.albedo_color = Color(0.65, 0.2, 0.15)
+	mmat.emission_enabled = true
+	mmat.emission = Color(0.9, 0.3, 0.2)
+	mmat.emission_energy_multiplier = 0.0     # lights up while charged (cosmetic)
+	mag.material_override = mmat
+	mag.position = Vector3(0, -0.5, 0)
+	_trolley.add_child(mag)
+	# the iron PLATE, stored on the west bank under station 0
+	_plate = Node3D.new()
+	_plate.name = "IronPlate"
+	add_child(_plate)
+	_plate.position = Vector3(float(STATION_X[0]), 0.12, HOIST_Z)
+	var pm := MeshInstance3D.new()
+	var pbm := BoxMesh.new()
+	pbm.size = Vector3(2.9, 0.16, 1.2)
+	pm.mesh = pbm
+	var pmat := StandardMaterial3D.new()
+	pmat.albedo_color = Color(0.42, 0.38, 0.34)
+	pmat.metallic = 0.7
+	pmat.roughness = 0.5
+	pm.material_override = pmat
+	_plate.add_child(pm)
+	# what the swarm leaves of it
+	_crumbs = Node3D.new()
+	_crumbs.name = "PlateCrumbs"
+	add_child(_crumbs)
+	_crumbs.position = Vector3(15.5, 0.0, 19.5)
+	for ci in range(4):
+		_add_box(_crumbs, Vector3(-1.0 + 0.7 * float(ci), 0.06, -0.3 + 0.25 * float(ci % 2)),
+			Vector3(0.35, 0.1, 0.3), Color(0.35, 0.30, 0.26))
+	_crumbs.visible = false
+	# CONTROLS on the west bank: the track switch + the charge lever
+	var sw := _add_interactable(self, "HoistSwitch", "Shunt the trolley to the next station", Vector3(9.0, 0.5, 18.0),
+		"SHUNT", "", 1.0, false, 1.5, Interactable.InteractableType.INSPECTION, false)
+	var swm := _add_box(sw, Vector3(0, 0.55, 0), Vector3(0.5, 1.1, 0.4), Color(0.3, 0.35, 0.45), Color(0.4, 0.7, 1.0), 0.6)
+	_outline_interactable_child(sw, swm, "HoistSwitch", 1.5)
+	sw.interacted.connect(_on_hoist_shunt)
+	var lv := _add_interactable(self, "HoistLever", "Charge / discharge the magnet", Vector3(12.0, 0.5, 18.0),
+		"CHARGE", "", 1.0, false, 1.5, Interactable.InteractableType.INSPECTION, false)
+	var lvm := _add_box(lv, Vector3(0, 0.55, 0), Vector3(0.5, 1.1, 0.4), Color(0.45, 0.3, 0.25), Color(1.0, 0.45, 0.25), 0.6)
+	_outline_interactable_child(lv, lvm, "HoistLever", 1.5)
+	lv.interacted.connect(_on_hoist_lever)
+	# the east-bank payoff pad
+	_add_box(self, Vector3(24.5, 0.06, 20.5), Vector3(1.4, 0.12, 1.4), Color(0.4, 0.35, 0.2), Color(1.0, 0.8, 0.3), 0.7, "CachePad")
+	_add_label(self, "CACHE", Vector3(24.5, 1.5, 20.5), Color(1.0, 0.85, 0.45))
+
+func _on_hoist_shunt() -> void:
+	_trolley_station = (_trolley_station + 1) % STATION_X.size()
+	if _trolley != null:
+		var tw := create_tween()
+		tw.tween_property(_trolley, "position:x", float(STATION_X[_trolley_station]), 0.5)
+	if _magnet_carrying == "plate" and _plate != null:
+		var tw2 := create_tween()
+		tw2.tween_property(_plate, "position:x", float(STATION_X[_trolley_station]), 0.5)
+
+func _on_hoist_lever() -> void:
+	var gs = _get_game_state()
+	var sched = _get_scheduler()
+	if gs == null or sched == null:
+		return
+	if _magnet_carrying == "":
+		# CHARGE: grab whatever iron sits under the trolley
+		if _trolley_station == 0 and _plate_state == "stored":
+			_magnet_carrying = "plate"
+			_plate_state = "held"
+			if _plate != null:
+				var tw := create_tween()
+				tw.tween_property(_plate, "position:y", RAIL_Y - 1.1, 0.4)
+			_set_magnet_glow(true)
+		elif _trolley_station == 2:
+			var station := Vector3(float(STATION_X[2]), 0.0, HOIST_Z)
+			for sc in _scraps:
+				if sc != null and is_instance_valid(sc) and sc.is_alive():
+					var sp: Vector3 = gs.get_position(sc.char_id)
+					if Vector2(sp.x, sp.z).distance_to(Vector2(station.x, station.z)) < PIN_RADIUS:
+						_pinned.append(sc)
+						gs.command_stop(sc.char_id)
+						gs.snap_character_to(sc.char_id, station + Vector3(float(_pinned.size()) * 0.4 - 0.6, 0.0, 0.3))
+						sc.set_roam(gs.get_position(sc.char_id), 0.05)   # held under the magnet
+			if not _pinned.is_empty():
+				_magnet_carrying = "swarm"
+				_set_magnet_glow(true)
+	else:
+		# DISCHARGE at the current station
+		if _magnet_carrying == "plate":
+			if _trolley_station == 1:
+				_plate_state = "placed"
+				if _plate != null:
+					var tw3 := create_tween()
+					tw3.tween_property(_plate, "position", Vector3(15.5, 0.12, HOIST_Z), 0.4)
+				_apply_canal_blockers()
+				# living scraps strip an unattended plate — the traversal DECAYS (analytic commit)
+				if _any_scrap_alive():
+					sched.schedule_after(PLATE_EAT_TIME, _commit_plate_eat, "plate_eat")
+			else:
+				_plate_state = "stored"
+				if _plate != null:
+					var tw4 := create_tween()
+					tw4.tween_property(_plate, "position", Vector3(float(STATION_X[0]), 0.12, HOIST_Z), 0.4)
+		elif _magnet_carrying == "swarm":
+			if _trolley_station == 1:
+				for sc in _pinned:
+					if sc != null and is_instance_valid(sc) and sc.is_alive():
+						gs.command_stop(sc.char_id)
+						sc.take_damage(float(sc.max_hp))   # dropped into the canal
+			else:
+				for sc2 in _pinned:
+					if sc2 != null and is_instance_valid(sc2) and sc2.is_alive():
+						sc2.set_roam(gs.get_position(sc2.char_id), 1.2)
+			_pinned.clear()
+		_magnet_carrying = ""
+		_set_magnet_glow(false)
+
+func _commit_plate_eat() -> void:
+	if _plate_state != "placed" or not _any_scrap_alive():
+		return
+	_plate_state = "eaten"
+	if _plate != null:
+		_plate.visible = false
+	if _crumbs != null:
+		_crumbs.visible = true
+	_apply_canal_blockers()
+
+func _any_scrap_alive() -> bool:
+	for sc in _scraps:
+		if sc != null and is_instance_valid(sc) and sc.is_alive():
+			return true
+	return false
+
+func _set_magnet_glow(on: bool) -> void:
+	if _trolley == null:
+		return
+	var mag: Variant = _trolley.find_child("Magnet", true, false)
+	if mag != null and (mag as MeshInstance3D).material_override is StandardMaterial3D:
+		((mag as MeshInstance3D).material_override as StandardMaterial3D).emission_energy_multiplier = 1.4 if on else 0.0
+
+func _apply_canal_blockers() -> void:
+	var gs = _get_game_state()
+	if gs == null or gs.grid == null:
+		return
+	for c in CANAL_CELLS:
+		if _plate_state == "placed":
+			gs.grid.remove_dynamic_blocker(c as Vector2i)
+		else:
+			gs.grid.add_dynamic_blocker(c as Vector2i, "hoist_canal")
+
 # --- runtime state (lazy: needs the host's game_state/grid/scheduler) --------------------------
 
 func _ensure_runtime() -> void:
@@ -382,10 +591,16 @@ func _ensure_runtime() -> void:
 	_runtime_ready = true
 	_apply_bridge_blockers()
 	_apply_slab_blockers()
+	_apply_canal_blockers()
 	# the PEN enemy — roams its shelf; drowns at HIGH
 	_pen_enemy = _spawn_lurker("pen_lurker", "PenLurker", Vector3(27.0, 0.0, 10.5), 0.9)
 	# the SLAB enemy — roams beneath the weak facade; the crumble field resolves over its roam disc
 	_slab_enemy = _spawn_lurker("slab_lurker", "SlabLurker", Vector3(25.5, 0.0, 2.2), 0.7)
+	# the SCRAP swarm — iron-laden strippers roaming the hoist's east bank (they eat placed plates)
+	_scraps = [
+		_spawn_lurker("scrap_a", "ScrapA", Vector3(21.2, 0.0, 19.2), 1.1),
+		_spawn_lurker("scrap_b", "ScrapB", Vector3(22.0, 0.0, 20.0), 1.1),
+	]
 
 func _spawn_lurker(id: String, node_name: String, anchor: Vector3, roam_r: float) -> Node:
 	var gs = _get_game_state()
@@ -430,12 +645,25 @@ func reset_preview_state() -> void:
 			(m as Node3D).visible = true
 	if _rubble != null:
 		_rubble.visible = false
+	_trolley_station = 0
+	_magnet_carrying = ""
+	_plate_state = "stored"
+	_pinned.clear()
+	if _trolley != null:
+		_trolley.position.x = float(STATION_X[0])
+	if _plate != null:
+		_plate.visible = true
+		_plate.position = Vector3(float(STATION_X[0]), 0.12, HOIST_Z)
+	if _crumbs != null:
+		_crumbs.visible = false
+	_set_magnet_glow(false)
 	_apply_hub_visual(false)
 	_refresh_hub_mouths()
 	_apply_water_visual()
 	if _runtime_ready:
 		_apply_bridge_blockers()
 		_apply_slab_blockers()
+		_apply_canal_blockers()
 
 func _process(delta: float) -> void:
 	_ensure_runtime()
@@ -574,5 +802,17 @@ func get_preview_state() -> Dictionary:
 		"crawling": _crawling.size() > 0,
 		"slab_intact": _slab_intact,
 		"slab_enemy_alive": _slab_enemy != null and is_instance_valid(_slab_enemy) and _slab_enemy.is_alive(),
+		"trolley_station": _trolley_station,
+		"magnet_carrying": _magnet_carrying,
+		"plate": _plate_state,
+		"scraps_alive": _scrap_alive_count(),
+		"canal_open": _plate_state == "placed",
 		"complete": complete,
 	}
+
+func _scrap_alive_count() -> int:
+	var n := 0
+	for sc in _scraps:
+		if sc != null and is_instance_valid(sc) and sc.is_alive():
+			n += 1
+	return n

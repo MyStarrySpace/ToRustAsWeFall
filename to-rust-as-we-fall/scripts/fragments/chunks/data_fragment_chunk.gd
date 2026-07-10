@@ -90,6 +90,87 @@ func _build_environment() -> void:
 	for lm in fragment.params.get("landmark_buildings", []):
 		_spawn_landmark_building(lm as Dictionary)
 
+var _weak_walls: Array = []
+
+func _spawn_weak_wall(spec: Dictionary) -> void:
+	var idx := _weak_walls.size()
+	var foot := _v3(spec, "pos")
+	var n := _v3(spec, "n").normalized()
+	var up := Vector3.UP
+	# the crack TELL on the wall face (present from first sight)
+	var crack := MeshInstance3D.new()
+	crack.name = "WeakWallCrack%d" % idx
+	var cbm := BoxMesh.new()
+	cbm.size = Vector3(0.55, 0.4, 0.1)
+	crack.mesh = cbm
+	var cmat := StandardMaterial3D.new()
+	cmat.albedo_color = Color(0.3, 0.08, 0.06)
+	cmat.emission_enabled = true
+	cmat.emission = Color(0.85, 0.15, 0.1)
+	cmat.emission_energy_multiplier = 0.9
+	crack.material_override = cmat
+	add_child(crack)
+	crack.global_position = foot + up * 2.2 + n * 0.1
+	if absf(n.dot(up)) < 0.99:
+		crack.global_transform.basis = Basis(n.cross(up).normalized(), up, n)
+	# the rubble (revealed on crumble), centred on the kill zone
+	var kmin := _v3(spec, "kill_min")
+	var kmax := _v3(spec, "kill_max")
+	var kc := (kmin + kmax) * 0.5
+	var rubble := Node3D.new()
+	rubble.name = "WeakWallRubble%d" % idx
+	add_child(rubble)
+	rubble.global_position = Vector3(kc.x, 0.0, kc.z)
+	for ri in range(4):
+		var rb := MeshInstance3D.new()
+		var rbm := BoxMesh.new()
+		rbm.size = Vector3(0.8 - 0.1 * float(ri), 0.45, 0.7)
+		rb.mesh = rbm
+		var rmat := StandardMaterial3D.new()
+		rmat.albedo_color = Color(0.30, 0.30, 0.33)
+		rb.material_override = rmat
+		rubble.add_child(rb)
+		rb.position = Vector3(-0.5 + 0.45 * float(ri), 0.2, -0.3 + 0.3 * float(ri % 2))
+	rubble.visible = false
+	# the PRY point at the wall foot
+	var ia := _add_interactable(self, "WeakWall%d" % idx, "Pry the cracked wall", foot + n * 0.9,
+		"PRY", "", 1.0, true, 1.5, Interactable.InteractableType.INSPECTION, false)
+	var iam := _add_box(ia, Vector3(0, 0.8, 0), Vector3(0.2, 1.6, 0.2), Color(0.5, 0.42, 0.3), Color(0.9, 0.6, 0.2), 0.5)
+	_outline_interactable_child(ia, iam, "WeakWall%d" % idx, 1.5)
+	var entry := {"crumbled": false, "kill_min": kmin, "kill_max": kmax, "crack": crack, "rubble": rubble}
+	_weak_walls.append(entry)
+	ia.interacted.connect(func() -> void: _on_weak_wall_pried(idx))
+
+func _on_weak_wall_pried(idx: int) -> void:
+	var sched = _get_scheduler()
+	if sched == null or idx >= _weak_walls.size() or bool((_weak_walls[idx] as Dictionary)["crumbled"]):
+		return
+	sched.schedule_after(0.9, func() -> void: _commit_weak_wall(idx), "weak_wall_%d" % idx)
+
+func _commit_weak_wall(idx: int) -> void:
+	var entry := _weak_walls[idx] as Dictionary
+	if bool(entry["crumbled"]):
+		return
+	entry["crumbled"] = true
+	var gs = _get_game_state()
+	var kmin := entry["kill_min"] as Vector3
+	var kmax := entry["kill_max"] as Vector3
+	# the debris field resolves at the commit tick (analytic, never per-frame sampled)
+	for en in _enemies.duplicate():
+		if en == null or not is_instance_valid(en) or not en.is_alive():
+			continue
+		var ep: Vector3 = gs.get_position(en.char_id) if gs != null else Vector3.ZERO
+		if ep.x > kmin.x and ep.x < kmax.x and ep.z > kmin.z and ep.z < kmax.z:
+			if gs != null:
+				gs.command_stop(en.char_id)
+			en.take_damage(float(en.max_hp))
+	var crack := entry["crack"] as Node3D
+	if crack != null and is_instance_valid(crack):
+		crack.visible = false
+	var rubble := entry["rubble"] as Node3D
+	if rubble != null and is_instance_valid(rubble):
+		rubble.visible = true
+
 func _spawn_landmark_building(lm: Dictionary) -> void:
 	var kind := str(lm.get("kind", ""))
 	if not BaseShapeBuilder.SPECS.has(kind):
@@ -258,6 +339,12 @@ func _apply_shelters() -> void:
 func _spawn_object(spec: Dictionary) -> void:
 	var gs = _get_game_state()
 	match str(spec.get("type", "")):
+		"weak_wall":
+			# {pos:Vector3 (wall foot), n:Vector3 (outward), kill_min:Vector3, kill_max:Vector3}
+			# A structural WEAK POINT consumed from a landmark's gameplay anchors: pry the strut and
+			# the facade crumbles on a scheduled beat — enemies inside the kill zone die, rubble
+			# remains. The generated-district cousin of the set-piece showcase's bay D.
+			_spawn_weak_wall(spec)
 		"flure":
 			# {pos:Vector3, targets:Array[String], attract:float, radius:float, color:Color}
 			var fl := Flure.new()

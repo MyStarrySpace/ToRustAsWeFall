@@ -419,6 +419,20 @@ static func _plan_landmarks(seed_value: int, lots: Array, walk: Dictionary, orig
 		(out["landmarks"] as Array).append({"kind": kind, "pos": [pos.x, pos.y, pos.z], "yaw": yaw,
 			"street": [sdir.x, sdir.y], "door_cell": [door_cell.x, door_cell.y], "approach": approach,
 			"sockets": socks})
+		# the FIRST landmark also spends one structural WEAK POINT as a playable crumble trap: the
+		# pry point at the wall foot, the kill zone on the ground in front of the face
+		if pi == 0:
+			var wps := anchors.get("weak_points", []) as Array
+			if not wps.is_empty():
+				var wp := wps[_ri(rng, 0, wps.size() - 1)] as Dictionary
+				var wpos := pos + basis * (wp["pos"] as Vector3)
+				var wn := (basis * (wp["n"] as Vector3)).normalized()
+				var foot := Vector3(wpos.x, 0.0, wpos.z)
+				var kc := foot + wn * 1.5
+				frag.objects.append({"type": "weak_wall",
+					"pos": foot, "n": wn,
+					"kill_min": Vector3(kc.x - 1.4, 0.0, kc.z - 1.4),
+					"kill_max": Vector3(kc.x + 1.4, 0.0, kc.z + 1.4)})
 	# the BRIDGE: first facing, level-snappable, clear-laned socket pair between the two landmarks
 	if (out["landmarks"] as Array).size() == 2:
 		var plan := plan_bridge((out["landmarks"] as Array)[0] as Dictionary,

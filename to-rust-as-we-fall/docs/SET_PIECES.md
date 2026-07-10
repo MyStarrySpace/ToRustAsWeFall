@@ -50,14 +50,14 @@ duplicates an ENVIRONMENT_ELEMENTS entry (no new valve-rotations, no new riding)
    Grammar: the lever sits in the next aisle over, inside a patrol's sweep. Build: runtime
    add/remove of grid inter-level links + dynamic blockers (both exist).
 
-2. **Iron-load magnet hoist — The Hypelines.** The Iron Heart moves payloads on an overhead
-   electromagnet trolley; a charge lever energizes/drops the magnet. CONTROL: charge lever + a
-   track switch. EFFECT: whatever iron sits under the magnet. Traversal: lift an iron PLATE, run
-   the trolley out, drop it as a bridge over a conduit gap. Combat: charge it over a Sapscrap
-   swarm — the iron-laden strippers are yanked up and pinned until discharge (dump them into the
-   backwash). TWIST (canon: Sapscraps "strip iron from fixtures"): an unattended plate-bridge gets
-   EATEN — the traversal decays unless the swarm is lured off (Flure) or pinned first. Grammar:
-   the charge lever is across the gap the plate must bridge.
+2. **Iron-load magnet hoist — The Hypelines.** *(BUILT — set-piece showcase bay E.)* The Iron Heart
+   moves payloads on an overhead electromagnet trolley; a charge lever energizes/drops the magnet.
+   CONTROL: charge lever + a track switch. EFFECT: whatever iron sits under the magnet. Traversal:
+   lift an iron PLATE, run the trolley out, drop it as a bridge over a conduit gap. Combat: charge
+   it over a Sapscrap swarm — the iron-laden strippers are yanked up and pinned until discharge
+   (dump them into the backwash). TWIST (canon: Sapscraps "strip iron from fixtures"): an unattended
+   plate-bridge gets EATEN — the traversal decays unless the swarm is lured off (Flure) or pinned
+   first. Grammar: the charge lever is across the gap the plate must bridge.
 
 3. **Irrigation ration sluice — Greenfields Collective.** The residential terraces share ONE daily
    water ration; a sluice paddle routes it to a single terrace. CONTROL: the paddle at the header.
@@ -131,10 +131,17 @@ piece, mechanics live on the data layer (scheduler-driven, replay-safe, fast-for
   facade crumbles on a scheduled beat — the debris kills the lurker roaming beneath AND the rubble
   fills the trench into a shortcut (combat + traversal from one strike; control behind the slab,
   effect in front: the grammar again).
+- **Bay E — the iron-load magnet hoist (proposal 2, BUILT):** a trolley rides an overhead rail
+  across a canal (stations: plate store / the gap / the scrap pen). CHARGE lifts whatever iron sits
+  beneath; DISCHARGE at the gap drops it. Drop the PLATE → the canal cells open — but two iron-laden
+  scraps roam the far bank, and living scraps STRIP an unattended plate (scheduled commit, ~7 s):
+  the traversal DECAYS. Pin the swarm under the magnet, carry it over the canal, drop it in — then
+  the plate bridge is permanent. The ecology contests the traversal; both orders are playable and
+  tested.
 
-Tests: `--test-set-piece-showcase` — data-layer playthrough of all four mechanics (crawl connects,
+Tests: `--test-set-piece-showcase` — data-layer playthrough of all five mechanics (crawl connects,
 rotation gates, water level rewalks the grid + aligns floats + drowns the penned enemy, the crumble
-kills + opens the shortcut), replay-safe.
+kills + opens the shortcut, the hoist's decaying vs. permanent bridge), replay-safe.
 
 ## Buildings hook into the puzzle infrastructure (director, 2026-07-09)
 
@@ -152,6 +159,12 @@ Generated buildings are not scenery — every generator emits **gameplay anchors
 
 The architecture showcase renders every socket as a small emissive gem (red = weak, green = road,
 cyan = bridge, amber = balcony) so anchors are inspectable while iterating.
+
+**Weak points are consumed too:** the first landmark in a generated district spends one hash-picked
+structural weak point as a `weak_wall` OBJECT (a new data-fragment object type): the loader spawns a
+crack tell + a pry point at the wall foot; prying it crumbles the face on a scheduled beat — enemies
+in the kill zone on the street in front die, rubble remains. Proven end-to-end in a loaded generated
+level (`--test-shape-grammar` snaps a gnawer into the zone and pries).
 
 **The generators CONSUME the sockets (2026-07-09):** the district filler places up to two LANDMARK
 heroes (BaseShapeBuilder specs) on big street-adjacent lots — each rotated so its MAIN-door road

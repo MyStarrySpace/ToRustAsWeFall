@@ -374,7 +374,7 @@ func _ready() -> void:
 				_test_chunk_batch()
 			"--test-shape-grammar":
 				ran_test = true
-				_test_shape_grammar()
+				await _test_shape_grammar()
 			"--test-building-filler":
 				ran_test = true
 				_test_building_filler()
@@ -1327,7 +1327,7 @@ func _run_all_tests() -> void:
 	_test_project_hygiene()
 	_test_poi_determinism()
 	_test_wfc_layout()
-	_test_shape_grammar()
+	await _test_shape_grammar()
 	_test_building_filler()
 	_test_creature_grammar()
 	await _test_architecture_showcase()
@@ -3197,6 +3197,17 @@ func _test_shape_grammar() -> void:
 		var det = Grammar.generate(int(lm_frag.params.get("grammar_seed", 1)))
 		_assert_equals(str(det.params.get("landmark_buildings", [])), str(lm_frag.params.get("landmark_buildings", [])),
 			"landmark placement is deterministic")
+		# the first landmark spends a WEAK POINT as a playable crumble trap (data present + sane)
+		var ww_found: Dictionary = {}
+		for ob2 in lm_frag.objects:
+			if str((ob2 as Dictionary).get("type", "")) == "weak_wall":
+				ww_found = ob2 as Dictionary
+		_assert_true(not ww_found.is_empty(), "the landmark emits a weak_wall crumble trap")
+		if not ww_found.is_empty():
+			var wl0 := (lm_frag.params.get("landmark_buildings", []) as Array)[0] as Dictionary
+			var wlp := Vector3(float((wl0["pos"] as Array)[0]), 0.0, float((wl0["pos"] as Array)[2]))
+			_assert_true((ww_found["pos"] as Vector3).distance_to(wlp) < 6.0,
+				"the weak_wall sits on its landmark")
 		# when the pair bridges: the deck cells are level-allowed and both ladder links traverse
 		var bridges: Array = lm_frag.params.get("landmark_bridges", [])
 		if not bridges.is_empty():
@@ -3213,6 +3224,46 @@ func _test_shape_grammar() -> void:
 				if not g2.can_traverse_link(lv, 0, lvl):
 					links_ok = false
 			_assert_true(links_ok, "both bridge ladders traverse street level <-> deck level")
+
+	# --- the weak_wall TRAP works in a LOADED generated level: pry -> crumble kills what's inside ---
+	var trap_seed := -1
+	for seed3 in range(1, 25):
+		var f3 = Grammar.generate(seed3)
+		var has_lm := (f3.params.get("landmark_buildings", []) as Array).size() >= 1
+		var has_enemy := false
+		for ob3 in f3.objects:
+			if str((ob3 as Dictionary).get("type", "")) == "enemy":
+				has_enemy = true
+		if has_lm and has_enemy:
+			trap_seed = seed3
+			break
+	_assert_true(trap_seed > 0, "a seed exists with both a landmark trap and a roaming pack (within 24)")
+	if trap_seed > 0:
+		var inst = await _instantiate_preview_chunk_and_wait("shape_grammar", 5, {"seed": trap_seed})
+		if inst != null:
+			var chunk = inst._active_chunk
+			var ww = chunk.find_child("WeakWall0", true, false)
+			_assert_true(ww != null, "the loader spawns the weak_wall pry point")
+			var rubble = chunk.find_child("WeakWallRubble0", true, false)
+			var gs3 = chunk._get_game_state()
+			# park a pack member inside the kill zone, then pry
+			var wwd: Dictionary = {}
+			var f4 = Grammar.generate(trap_seed)
+			for ob4 in f4.objects:
+				if str((ob4 as Dictionary).get("type", "")) == "weak_wall":
+					wwd = ob4 as Dictionary
+			var kc := ((wwd["kill_min"] as Vector3) + (wwd["kill_max"] as Vector3)) * 0.5
+			gs3.snap_character_to("gnawer_0", Vector3(kc.x, 0.0, kc.z))
+			ww._trigger()
+			inst.headless_advance(2.0, 0.1)
+			var victim = null
+			for en in chunk._enemies:
+				if en != null and is_instance_valid(en) and str(en.char_id) == "gnawer_0":
+					victim = en
+			_assert_true(victim != null and not victim.is_alive(),
+				"prying the generated weak wall crumbles it onto the pack member (dead)")
+			_assert_true(rubble != null and (rubble as Node3D).visible, "the crumble leaves rubble")
+			await _dispose_scene(inst)
 
 	# --- connectivity: spawn reaches the exit shelter on the emitted grid, every seed (the exit may
 	# sit on an upper floor now — route with the multi-level A* to its declared level) ---
@@ -18415,6 +18466,47 @@ func _test_set_piece_showcase() -> void:
 	_assert_true(not bool(st_d.get("slab_enemy_alive", true)), "The debris field kills the lurker beneath")
 	_assert_true(gs.grid.is_walkable(25, 3) and gs.grid.is_walkable(26, 3),
 		"The rubble fills the trench — the shortcut opens from the same strike")
+
+	# E) the MAGNET HOIST: the plate bridges the canal — but living scraps EAT it (the traversal
+	# decays); pin the swarm under the magnet and drop it in the canal, then the bridge is permanent.
+	var lever = chunk.find_child("HoistLever", true, false)
+	var shunt = chunk.find_child("HoistSwitch", true, false)
+	_assert_true(lever != null and shunt != null, "The hoist has its charge lever and track switch")
+	_assert_true(not gs.grid.is_walkable(15, 19), "The canal starts impassable")
+	_assert_equals(int(chunk.get_preview_state().get("scraps_alive", 0)), 2, "Two iron-laden scraps roam the east bank")
+	# Path A: bridge while the swarm lives -> the plate gets EATEN out from under the route
+	lever._trigger()                       # charge at station 0 -> plate held
+	shunt._trigger()                       # -> station 1 (the gap)
+	lever._trigger()                       # discharge -> plate placed
+	inst.headless_advance(0.3, 0.1)
+	_assert_true(gs.grid.is_walkable(15, 19), "The dropped plate bridges the canal")
+	inst.headless_advance(8.0, 0.1)
+	var st_e: Dictionary = chunk.get_preview_state()
+	_assert_equals(str(st_e.get("plate", "")), "eaten", "Living scraps STRIP the unattended plate")
+	_assert_true(not gs.grid.is_walkable(15, 19), "The eaten plate closes the crossing again")
+	# Path B: deal with the swarm FIRST (pin under the magnet, drop it in the canal), then bridge
+	chunk.reset_preview_state()
+	inst.headless_advance(0.3, 0.1)
+	shunt._trigger()                       # 0 -> 1
+	shunt._trigger()                       # 1 -> 2 (the scrap pen)
+	lever._trigger()                       # charge -> swarm pinned
+	_assert_equals(str(chunk.get_preview_state().get("magnet_carrying", "")), "swarm",
+		"The magnet pins the iron-laden swarm beneath it")
+	shunt._trigger()                       # 2 -> 0
+	shunt._trigger()                       # 0 -> 1 (over the canal)
+	lever._trigger()                       # discharge -> the swarm drops into the canal
+	inst.headless_advance(0.5, 0.1)
+	_assert_equals(int(chunk.get_preview_state().get("scraps_alive", -1)), 0,
+		"Dropping the pinned swarm in the canal finishes it")
+	shunt._trigger()                       # 1 -> 2
+	shunt._trigger()                       # 2 -> 0 (the plate store)
+	lever._trigger()                       # charge plate
+	shunt._trigger()                       # 0 -> 1
+	lever._trigger()                       # discharge -> placed
+	inst.headless_advance(8.5, 0.1)
+	var st_e2: Dictionary = chunk.get_preview_state()
+	_assert_equals(str(st_e2.get("plate", "")), "placed", "With the swarm gone the plate bridge STAYS")
+	_assert_true(gs.grid.is_walkable(15, 19), "The permanent crossing survives the eat window")
 
 	# reaching the exit pad completes the tour
 	inst.headless_set_character_position("peris", anchors["exit"] as Vector3)
