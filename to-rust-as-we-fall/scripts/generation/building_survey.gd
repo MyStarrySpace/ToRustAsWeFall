@@ -176,6 +176,27 @@ const CLEANSTREETS := {
 	"monolith": {"z": 5.2, "w": 0.95, "h": 1.8, "base_h": 0.6},
 }
 
+## THE GREENFIELDS SURVEY — measured off the plate (reference-images/architecture/
+## greenfields_collective.png, decomposed 2026-07-10). Four storeys (arcade 0.27H + 3 floors), each
+## capped by a WAVY BONE SLAB (the stacked-cushions silhouette) carrying railings + greenery; round
+## arcade arches with dark-green doors + warm sconces; 4 arched amber windows per facade per floor
+## in bone niches; teal-lit roof terrace. ONE wave function (4 crests per facade, crests on the bay
+## centres) shapes every slab. Values in METRES on the 5.2 x 6.4 x 5.0 box; storey datums come from
+## STOREY_PLANS.greenfields (ground 1.7 + 3 x 1.5667 — the same datums the slab-ring reservations
+## already ride). RECONCILED: window bands sit 0.62-1.44 above each storey base, clearing the sign
+## board below and the next slab ring above.
+const GREENFIELDS := {
+	"slab": {"t": 0.18, "overhang": 0.35, "wave": 0.18, "crests": 4},
+	"rail_h": 0.40,
+	"arcade": {"bays": 4, "arch_w": 0.70, "spring": 0.90, "apex": 1.35, "sconce_y": 1.00},
+	# window band off the storey base — y1 ends under the TOP ring's clamped band (crown-0.18),
+	# so the uniform beat fits every floor including the last (reconciled at the survey)
+	"window": {"per_face": 4, "y0": 0.62, "y1": 1.36, "w": 0.50, "frame": 0.07},
+	"ribs": {"r": 0.055},
+	"sign": {"y0": 1.72, "y1": 2.28, "w": 1.5},
+	"roof": {"shrubs": 14, "buds": 12, "shrub_h": 0.85},
+}
+
 ## Authored storey plans (ground band + floor count between plinth and eave), per building kind.
 ## Numbers trace to the plate decompositions; buildings without an entry get equal DEFAULT_STOREY
 ## bands. greenfields' ground/storey split is ALSO the slab-ring datum table the massing builds on.
@@ -402,6 +423,24 @@ func _survey_reservations(placements: Array) -> void:
 					"id": "slab_ring_%d" % k, "type": "lattice_field", "ring": true,
 					"y0": y - 0.09, "y1": y + 0.09, "keeps_clear": [],
 				})
+			# the arcade band (arches + doors + sconces, an ensemble with every placed door), the
+			# per-storey window bands (clear of the sign below and the next ring above), the sign
+			var g: Dictionary = GREENFIELDS
+			reservations.append({"id": "arcade", "type": "decoration", "ring": true,
+				"y0": 0.0, "y1": float((g["arcade"] as Dictionary)["apex"]) + 0.1,
+				"keeps_clear": opening_ids})
+			var ground := float(storeys[0])
+			for fl in range(mini(3, storeys.size() - 1)):
+				var base := ground + (float(storeys[1]) - ground) * float(fl)
+				reservations.append({"id": "window_band_%d" % fl, "type": "decoration", "ring": true,
+					"y0": base + float((g["window"] as Dictionary)["y0"]),
+					"y1": base + float((g["window"] as Dictionary)["y1"]),
+					"keeps_clear": ["sign_board"]})
+			var sgn2: Dictionary = g["sign"]
+			reservations.append({"id": "sign_board", "type": "decoration", "cyl": false,
+				"n": Vector3(0, 0, 1), "x_center": 0.0, "half_w": float(sgn2["w"]) * 0.5,
+				"y0": float(sgn2["y0"]), "y1": float(sgn2["y1"]),
+				"keeps_clear": ["slab_ring_0"]})   # the board is mounted riding the first slab band
 	if str(spec.get("composite", "")) == "canopy_piers":
 		# the canopy slab band: nothing else may claim the air the slab occupies — the fascia
 		# fixtures (title sign, corner perforations) are declared ensembles riding ON it

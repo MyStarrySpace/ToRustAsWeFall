@@ -68,6 +68,8 @@ func _build_chunk() -> void:
 			_add_hypelines_details(root, spec)
 		if str(spec.get("composite", "")) == "canopy_piers":
 			_add_cleanstreets_details(root, spec)
+		if str(spec.get("composite", "")) == "greenfields_stack":
+			_add_greenfields_details(root, spec)
 		_add_anchor_markers(root, survey.anchors())
 		_specimens.append({"building": kind, "shape": str(spec.get("shape", "")),
 			"lattice": str(spec.get("lattice", "")), "verts": verts})
@@ -347,6 +349,46 @@ func _add_cleanstreets_details(root: Node3D, spec: Dictionary) -> void:
 	cyan.emission = Color(0.25, 0.85, 0.95)   # the kiosk cross/screen — the sole cool accent
 	cyan.emission_energy_multiplier = 2.0
 	_add_lattice_mesh(root, "CleanCyan", built.get("cyan"), cyan)
+	var lbl := root.get_node_or_null("Nameplate")
+	if lbl != null and built.has("nameplate_pos"):
+		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
+
+## The greenfields BALCONIES pass (SURVEY REBUILD 1.4): wavy bone slab rings + railings + arcade +
+## amber windows + ribs + the teal-lit roof terrace, all on the survey's storey datums. Two-tone:
+## bone structure over the verdigris wall box; amber windows and warm sconces are plate-demanded.
+func _add_greenfields_details(root: Node3D, spec: Dictionary) -> void:
+	var built: Dictionary = BaseShape.greenfields_details(spec)
+	_add_lattice_mesh(root, "GreenBone", built.get("bone"),
+		_tinted_tile_material(str(spec.get("tile", "facility_metal")), Color(0.81, 0.77, 0.65)))
+	var doorm := StandardMaterial3D.new()
+	doorm.albedo_color = Color(0.18, 0.29, 0.24)   # dark-green leaves + the sign field
+	doorm.roughness = 0.9
+	_add_lattice_mesh(root, "GreenDoors", built.get("door"), doorm)
+	var amber := StandardMaterial3D.new()
+	amber.albedo_color = Color(0.42, 0.30, 0.14)
+	amber.emission_enabled = true
+	amber.emission = Color(0.95, 0.72, 0.38)   # the warm window glow (plate-demanded amber)
+	amber.emission_energy_multiplier = 1.6
+	_add_lattice_mesh(root, "GreenWindows", built.get("amber"), amber)
+	var tealm := StandardMaterial3D.new()
+	tealm.albedo_color = Color(0.10, 0.32, 0.32)
+	tealm.emission_enabled = true
+	tealm.emission = Color(0.22, 0.90, 0.85)   # the roof-bud bioluminescence (plate accent)
+	tealm.emission_energy_multiplier = 2.2
+	_add_lattice_mesh(root, "GreenBuds", built.get("teal"), tealm)
+	var leafm := StandardMaterial3D.new()
+	leafm.albedo_color = Color(0.24, 0.42, 0.20)
+	leafm.roughness = 0.9
+	_add_lattice_mesh(root, "GreenLeaf", built.get("leaf"), leafm)
+	var warmm := StandardMaterial3D.new()
+	warmm.albedo_color = Color(0.45, 0.33, 0.18)
+	warmm.emission_enabled = true
+	warmm.emission = Color(0.95, 0.64, 0.32)
+	warmm.emission_energy_multiplier = 1.3
+	_add_lattice_mesh(root, "GreenSconces", built.get("warm"), warmm)
+	var rail := _railing_material()
+	rail.albedo_color = Color(0.80, 0.76, 0.64)   # bone double-rail balustrades
+	_add_lattice_mesh(root, "GreenRails", built.get("rails"), rail)
 	var lbl := root.get_node_or_null("Nameplate")
 	if lbl != null and built.has("nameplate_pos"):
 		(lbl as Label3D).position = built["nameplate_pos"] as Vector3

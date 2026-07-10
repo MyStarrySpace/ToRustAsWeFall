@@ -111,9 +111,9 @@ const SPECS := {
 		# default 2.7 m portal ran straight through it. Plate ratio (BUILDING_REVIEW greenfields #4):
 		# arcade arch top ~80% of the 1.7 m ground storey ~= 1.35 m.
 		"entrances": {"main_w": 1.1, "main_h": 1.32, "side_w": 0.9, "side_h": 1.25, "reserve_margin": 0.08},
-		"color": Color(0.52, 0.56, 0.47),   # cast-stone over teal
-		"tile": "facility_metal",
-		"lattice": "balconies",             # wrapping per-floor balconies (Fable — beam+curve spec)
+		"color": Color(0.35, 0.45, 0.39),   # verdigris ashlar WALLS — the bone structure is the
+		"tile": "facility_metal",           # balconies pass (greenfields_details), two-tone (plate)
+		"lattice": "balconies",             # the wavy slab rings + rails + arcade + windows (survey)
 	},
 	"ancourage": {
 		"title": "Ancourage",
@@ -1238,21 +1238,175 @@ static func _rail_strip(rails: SurfaceTool, a: Vector3, b: Vector3, height: floa
 	rails.set_uv(Vector2(u1, 0.0)); rails.add_vertex(b + Vector3(0, height, 0))
 	rails.set_uv(Vector2(0.0, 0.0)); rails.add_vertex(a + Vector3(0, height, 0))
 
-## Greenfields (REVIEW P1): the stacked-cushions read — a box body wearing four overhanging
-## bone-cream balcony slab rings, one above each storey.
+## Greenfields (SURVEY REBUILD 1.4): the massing is the verdigris WALL box alone — the bone
+## structure (wavy slab rings, railings, arcade, window niches, ribs, roof terrace) is the
+## balconies pass, greenfields_details, so the plate's two-tone read is real, not one material.
 static func _greenfields_stack_mesh(spec: Dictionary, reserved: Array, recess: float) -> ArrayMesh:
+	return _box_with_doors(spec.get("size", Vector3(5.2, 6.4, 5.0)), reserved, recess)
+
+## The greenfields BALCONIES pass (the lattice the spec declared for months with no generator):
+## every part rides the survey's storey datums — four wavy bone slab rings (ONE wave function:
+## 4 crests per facade, crests on the bay centres), railings along every wavy rim, greenery tufts
+## (densest at the corner), the ground arcade (bone arches + dark-green leaves + warm sconces),
+## three floors of arched amber windows in bone niches, tendon ribs between bays, the roof terrace
+## (shrubs + teal-cyan buds — the plate's accent light), and the sign board over the arcade.
+## Families: bone / door (dark green) / amber (windows) / teal (roof buds) / leaf / warm / rails.
+static func greenfields_details(spec: Dictionary) -> Dictionary:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var g: Dictionary = Survey.GREENFIELDS
 	var size: Vector3 = spec.get("size", Vector3(5.2, 6.4, 5.0))
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	st.append_from(_box_with_doors(size, reserved, recess), 0, Transform3D.IDENTITY)
+	var bone := _st()
+	var door := _st()
+	var amber := _st()
+	var teal := _st()
+	var leaf := _st()
+	var warm := _st()
+	var rails := _st()
 	var ground := 1.7
 	var storey := (size.y - ground) / 3.0
+	var slab: Dictionary = g["slab"]
+	var kb := float(str(spec.get("kind", "greenfields")).hash() % 1000)
 	for k in range(4):
-		var slab := BoxMesh.new()
-		slab.size = Vector3(size.x + 0.7, 0.18, size.z + 0.7)
-		var y := ground + storey * float(k)
-		st.append_from(slab, 0, Transform3D(Basis(), Vector3(0.0, minf(y, size.y - 0.09), 0.0)))
-	return st.commit()
+		var y := minf(ground + storey * float(k), size.y - 0.09)
+		var rim := _slab_sweep(bone, Vector3(size.x * 0.5, 0, size.z * 0.5), y,
+			float(slab["t"]), float(slab["overhang"]), float(slab["wave"]), int(slab["crests"]))
+		# railings along the wavy rim + greenery tufts (densest at the corner bays)
+		for i in range(rim.size()):
+			var a := rim[i] as Vector3
+			var b := rim[(i + 1) % rim.size()] as Vector3
+			_rail_strip(rails, Vector3(a.x, y + float(slab["t"]) * 0.5, a.z),
+				Vector3(b.x, y + float(slab["t"]) * 0.5, b.z), float(g["rail_h"]))
+			if _h01(kb + float(k) * 31.0 + float(i) * 7.7) > 0.62:
+				var tuft := (a + b) * 0.5
+				var ts := 0.10 + 0.10 * _h01(kb + float(i) * 3.3)
+				_emit_oriented_box_st(leaf, Vector3(tuft.x, y + float(slab["t"]) * 0.5 + ts, tuft.z) - (Vector3(tuft.x, 0, tuft.z).normalized() * 0.18),
+					Vector3.RIGHT, Vector3.UP, Vector3.BACK, Vector3(ts, ts, ts))
+	# the ground ARCADE: bone arches, recessed dark-green leaves, warm sconces on the piers
+	var arc: Dictionary = g["arcade"]
+	for f in _wall_frames(size):
+		var fd := f as Dictionary
+		var n: Vector3 = fd["n"]
+		var u: Vector3 = fd["u"]
+		var hw := float(fd["w"]) * 0.5
+		var bays := int(arc["bays"])
+		for b2 in range(bays):
+			var cx := lerpf(-hw + 0.75, hw - 0.75, float(b2) / float(bays - 1))
+			var anchor := (fd["c"] as Vector3) + u * cx + n * 0.05
+			_arch_frame(bone, anchor, u, n, float(arc["arch_w"]), float(arc["spring"]), float(arc["apex"]))
+			_emit_oriented_box_st(door, anchor + Vector3(0, float(arc["spring"]) * 0.55, 0) - n * 0.02,
+				u, Vector3.UP, n, Vector3(float(arc["arch_w"]) * 0.42, float(arc["spring"]) * 0.55, 0.04))
+			if b2 < bays - 1:
+				var px := lerpf(-hw + 0.75, hw - 0.75, (float(b2) + 0.5) / float(bays - 1))
+				if absf(px) > 0.95:   # the centre pier slot holds the REAL door — no sconce in it
+					_emit_oriented_box_st(warm, (fd["c"] as Vector3) + u * px + n * 0.10 + Vector3(0, float(arc["sconce_y"]), 0),
+						u, Vector3.UP, n, Vector3(0.045, 0.10, 0.045))
+	# three floors of arched amber windows in bone niches + tendon ribs between the bays
+	var win: Dictionary = g["window"]
+	var ribs: Dictionary = g["ribs"]
+	for f2 in _wall_frames(size):
+		var fd2 := f2 as Dictionary
+		var n2: Vector3 = fd2["n"]
+		var u2: Vector3 = fd2["u"]
+		var hw2 := float(fd2["w"]) * 0.5
+		for fl in range(3):
+			var base := ground + storey * float(fl)
+			for b3 in range(int(win["per_face"])):
+				var wx := lerpf(-hw2 + 0.75, hw2 - 0.75, float(b3) / float(int(win["per_face"]) - 1))
+				var wc := (fd2["c"] as Vector3) + u2 * wx + Vector3(0, base + (float(win["y0"]) + float(win["y1"])) * 0.5, 0) + n2 * 0.03
+				var whh := (float(win["y1"]) - float(win["y0"])) * 0.5
+				_emit_oriented_box_st(bone, wc, u2, Vector3.UP, n2,
+					Vector3(float(win["w"]) * 0.5 + float(win["frame"]), whh + float(win["frame"]), 0.05))
+				_emit_oriented_box_st(amber, wc + n2 * 0.03, u2, Vector3.UP, n2,
+					Vector3(float(win["w"]) * 0.5, whh, 0.03))
+		for rb in range(int(win["per_face"]) - 1):
+			var rx := lerpf(-hw2 + 0.75, hw2 - 0.75, (float(rb) + 0.5) / float(int(win["per_face"]) - 1))
+			var rp0 := (fd2["c"] as Vector3) + u2 * rx + Vector3(0, ground + 0.1, 0) + n2 * 0.05
+			_tube(bone, [rp0, rp0 + Vector3(0, size.y - ground - 0.3, 0)], float(ribs["r"]), 4)
+	# the roof terrace: shrubs + the teal-cyan glowing buds (the plate's accent light)
+	var roof: Dictionary = g["roof"]
+	for sh in range(int(roof["shrubs"])):
+		var sx3 := (_h01(kb + 50.0 + float(sh) * 7.1) - 0.5) * (size.x - 1.2)
+		var sz3 := (_h01(kb + 60.0 + float(sh) * 11.3) - 0.5) * (size.z - 1.2)
+		var shh2 := float(roof["shrub_h"]) * (0.55 + 0.45 * _h01(kb + float(sh) * 3.7)) * 0.5
+		_emit_oriented_box_st(leaf, Vector3(sx3, size.y + shh2, sz3), Vector3.RIGHT, Vector3.UP, Vector3.BACK,
+			Vector3(shh2 * 0.8, shh2, shh2 * 0.8))
+	for bd in range(int(roof["buds"])):
+		var bx3 := (_h01(kb + 80.0 + float(bd) * 9.7) - 0.5) * (size.x - 1.4)
+		var bz3 := (_h01(kb + 90.0 + float(bd) * 5.3) - 0.5) * (size.z - 1.4)
+		_emit_oriented_box_st(teal, Vector3(bx3, size.y + 0.45 + 0.5 * _h01(kb + float(bd) * 2.1), bz3),
+			Vector3.RIGHT, Vector3.UP, Vector3.BACK, Vector3(0.05, 0.05, 0.05))
+	# the sign board riding the first slab band, front facade
+	var sgn: Dictionary = g["sign"]
+	var sc := Vector3(0, (float(sgn["y0"]) + float(sgn["y1"])) * 0.5, size.z * 0.5 + float(slab["overhang"]) + 0.05)
+	_emit_oriented_box_st(door, sc, Vector3.RIGHT, Vector3.UP, Vector3.BACK,
+		Vector3(float(sgn["w"]) * 0.5, (float(sgn["y1"]) - float(sgn["y0"])) * 0.5, 0.035))
+	for bx4 in [-1.0, 1.0]:
+		_emit_oriented_box_st(bone, sc + Vector3(float(sgn["w"]) * 0.5 * float(bx4), 0, 0.01),
+			Vector3.RIGHT, Vector3.UP, Vector3.BACK, Vector3(0.05, (float(sgn["y1"]) - float(sgn["y0"])) * 0.5 + 0.05, 0.05))
+	for stool in [bone, door, amber, teal, leaf, warm, rails]:
+		(stool as SurfaceTool).generate_normals()
+	return {"bone": bone.commit(), "door": door.commit(), "amber": amber.commit(),
+		"teal": teal.commit(), "leaf": leaf.commit(), "warm": warm.commit(), "rails": rails.commit(),
+		"nameplate_pos": sc + Vector3(0, 0, 0.25)}
+
+# the four vertical wall frames of a box (centre at ground level, in-plane u, outward n, width)
+static func _wall_frames(size: Vector3) -> Array:
+	var hx := size.x * 0.5
+	var hz := size.z * 0.5
+	return [
+		{"c": Vector3(0, 0, hz), "u": Vector3(1, 0, 0), "n": Vector3(0, 0, 1), "w": size.x},
+		{"c": Vector3(0, 0, -hz), "u": Vector3(-1, 0, 0), "n": Vector3(0, 0, -1), "w": size.x},
+		{"c": Vector3(hx, 0, 0), "u": Vector3(0, 0, -1), "n": Vector3(1, 0, 0), "w": size.z},
+		{"c": Vector3(-hx, 0, 0), "u": Vector3(0, 0, 1), "n": Vector3(-1, 0, 0), "w": size.z},
+	]
+
+# a bone arch: straight jambs + a semicircular head swept as one tube
+static func _arch_frame(st: SurfaceTool, anchor: Vector3, u: Vector3, n: Vector3, w: float,
+		spring: float, apex: float) -> void:
+	var pts: Array = []
+	pts.append(anchor - u * (w * 0.5))
+	pts.append(anchor - u * (w * 0.5) + Vector3(0, spring, 0))
+	var rise := apex - spring
+	for i in range(1, 6):
+		var a := PI - PI * float(i) / 6.0
+		pts.append(anchor + u * (cos(a) * w * 0.5) + Vector3(0, spring + sin(a) * rise, 0))
+	pts.append(anchor + u * (w * 0.5) + Vector3(0, spring, 0))
+	pts.append(anchor + u * (w * 0.5))
+	_tube(st, pts, 0.055, 4)
+
+# one wavy slab ring: the box wears an overhanging band at `y_c` whose outer rim waves in plan
+# (crests on the bay centres). Emits rim band + top/bottom annulus strips; returns the OUTER rim
+# points at the slab's mid-height so railings and tufts can follow the same wave (one authority).
+static func _slab_sweep(st: SurfaceTool, half: Vector3, y_c: float, t: float, overhang: float,
+		wave: float, crests: int) -> Array:
+	var per_edge := 10
+	var outer: Array = []
+	var inner: Array = []
+	var corners := [Vector2(half.x, half.z), Vector2(-half.x, half.z),
+		Vector2(-half.x, -half.z), Vector2(half.x, -half.z)]
+	for e in range(4):
+		var a := corners[e] as Vector2
+		var b := corners[(e + 1) % 4] as Vector2
+		for s in range(per_edge):
+			var tt := float(s) / float(per_edge)
+			var p := a.lerp(b, tt)
+			var out2 := (p / Vector2(half.x, half.z)).normalized()
+			var wv := absf(sin(tt * PI * float(crests))) * wave   # one crest per bay, corners quiet
+			var pp := p + out2 * (overhang + wv)
+			outer.append(Vector3(pp.x, y_c, pp.y))
+			inner.append(Vector3(p.x * 0.985, y_c, p.y * 0.985))
+	var n := outer.size()
+	for i in range(n):
+		var j := (i + 1) % n
+		var o0 := outer[i] as Vector3
+		var o1 := outer[j] as Vector3
+		var i0 := inner[i] as Vector3
+		var i1 := inner[j] as Vector3
+		var up := Vector3(0, t * 0.5, 0)
+		_quad_out(st, o0 - up, o1 - up, o1 + up, o0 + up, Vector3(0, y_c, 0))          # rim band
+		_quad_out(st, i0 + up, i1 + up, o1 + up, o0 + up, Vector3(0, y_c - 3.0, 0))    # top
+		_quad_out(st, i0 - up, i1 - up, o1 - up, o0 - up, Vector3(0, y_c + 3.0, 0))    # bottom
+	return outer
 
 ## Bulwark Wharf (REVIEW P1): the gatehouse earns its two round corner towers — half-embedded at the
 ## front corners, rising past the roofline, domed caps + ring collars.

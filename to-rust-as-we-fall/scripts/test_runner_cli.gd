@@ -4221,6 +4221,27 @@ func _test_building_survey() -> void:
 		(Base.cleanstreets_details(clean)["body"] as ArrayMesh).surface_get_array_len(0),
 		"cleanstreets details are deterministic")
 
+	# --- GREENFIELDS REBUILD (task 1.4): the declared-but-missing balconies lattice EXISTS now —
+	# built on the survey's storey datums, two-tone (bone structure over verdigris walls) ---
+	var green: Dictionary = Base.generate("greenfields")
+	var detg: Dictionary = Base.greenfields_details(green)
+	for famg in ["bone", "door", "amber", "teal", "leaf", "warm", "rails"]:
+		var mg = detg.get(famg)
+		_assert_true(mg != null and (mg as ArrayMesh).get_surface_count() > 0,
+			"greenfields balconies build the %s family" % famg)
+	_assert_true((detg["bone"] as ArrayMesh).surface_get_array_len(0) > 800,
+		"the balconies pass is substantial (slab rings + arcade + niches + ribs)")
+	_assert_equals((detg["bone"] as ArrayMesh).surface_get_array_len(0),
+		(Base.greenfields_details(green)["bone"] as ArrayMesh).surface_get_array_len(0),
+		"greenfields balconies are deterministic")
+	# the slab rings still ride the surveyed storey datums (the reservations enforce the door fit)
+	var svg = Survey.from_spec(green)
+	var ring_count := 0
+	for r_g in (svg.reservations as Array):
+		if str((r_g as Dictionary).get("id", "")).begins_with("slab_ring_"):
+			ring_count += 1
+	_assert_equals(ring_count, 4, "the greenfields survey reserves all four slab rings")
+
 func _find_nodes_prefixed(n: Node, prefix: String) -> Array:
 	var out: Array = []
 	if str(n.name).begins_with(prefix):
