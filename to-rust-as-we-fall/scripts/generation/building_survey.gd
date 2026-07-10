@@ -47,7 +47,7 @@ const ENTRANCE_DEFAULTS := {
 ## decomposition in docs/BUILDING_REVIEW.md.
 const EAVE_RATIOS := {
 	"plumbing_lobed": 0.65,    # dome springing, re-measured off the plate (drum band 0.47-0.65 H)
-	"ancourage_domes": 0.53,   # eave ring / dome cluster seat (plate: body ~45% H + eave band)
+	"ancourage_domes": 0.47,   # wall top under the rolled brim (plate: brim band 0.47-0.59H)
 	"hypelines_mound": 0.61,   # drum-band top / dome springing, re-measured off the plate
 	"beacon_domed": 0.75,      # drum top / dome shoulder springing (plate: shoulder top ~75% H)
 	"canopy_piers": 0.533,     # canopy slab underside at 3.2 m of 6.0 (plate: dais + open leg zone)
@@ -197,6 +197,44 @@ const GREENFIELDS := {
 	"roof": {"shrubs": 14, "buds": 12, "shrub_h": 0.85},
 }
 
+## THE ANCOURAGE SURVEY — measured off the plate (reference-images/architecture/ancourage.png,
+## decomposed 2026-07-10). A squat pumphouse kiosk WIDER than tall (H ~0.93x W): body walls to
+## 0.47H, the fat rolled BRIM (overhanging eave band) 0.47-0.59H, then the quilted 2-LOBE dome
+## cluster to the crown — ONE continuous loft (the dome rings switch to 2-lobe modulation with
+## rising amplitude; no intersecting spheres). Stacks + flame ride the saddle ABOVE the crown.
+## The entry is the plate's grand arch: plank door below, glowing green cell-glass above; the
+## root-fan of oily pipes spills from the plinth (details). Angles = offsets from the front.
+const ANCOURAGE := {
+	# [y, r, amp, lobes] — body round (6/0), brim flare, dome 2-lobed; crest = silhouette
+	"rings": [
+		[0.000, 0.489, 0.00, 6], [0.440, 0.489, 0.00, 6],
+		[0.470, 0.553, 0.00, 6], [0.530, 0.565, 0.00, 6], [0.590, 0.520, 0.00, 6],
+		[0.640, 0.470, 0.15, 2], [0.760, 0.430, 0.24, 2], [0.880, 0.330, 0.28, 2],
+		[0.950, 0.200, 0.26, 2], [0.985, 0.090, 0.20, 2],
+	],
+	"dome_phase": 0.0,          # lobe crests at +-X: the entry front sits in the saddle valley
+	"plinth": {"h": 0.36, "steps": 2, "out": 0.55},   # metres: stepped slab past the body
+	# the entry idiom: outer arch + the green cell-glass band over the plank door (metres)
+	"arch": {"w": 1.35, "door_h": 1.5, "apex": 2.16, "r_tube": 0.085,
+		"glass_y0": 1.55, "glass_y1": 2.05, "mullions": 3},
+	"readout": {"off": 0.62, "h": 1.05},              # the glowing box on a post, left of the door
+	"sign": {"y0": 0.50, "y1": 0.575, "w": 1.55},     # cream Ancourage placard on the brim front
+	"ppp": {"az": 2.42, "y0": 0.295, "y1": 0.40, "w": 0.80},   # district placard, left face
+	# dome fixtures [az_off, y0, y1, w(frac)]: two multi-foil roses, the louver, two pores
+	"roses": [[0.72, 0.70, 0.82, 0.100], [-0.72, 0.72, 0.83, 0.080]],
+	"louver": {"az": -0.28, "y0": 0.72, "y1": 0.80, "w": 0.075},
+	"pores": [[1.35, 0.68, 0.74, 0.045], [-1.30, 0.66, 0.72, 0.045]],
+	# body fixtures: engaged pipes (az list), the big spoked wheel, the rosette port
+	"engaged": {"azs": [1.85, 2.10, -1.95], "r": 0.045, "wheel_y": 0.30},
+	"wheel": {"az": 2.75, "y": 0.33, "dia": 0.115},
+	"rosette": {"az": -0.85, "y": 0.32, "dia": 0.095},
+	# the saddle stacks (offsets along the lobe axis, metres; heights above the crown)
+	"stacks": {"drum_x": -0.62, "drum_r": 0.34, "drum_h": 0.42,
+		"flare_x": 0.55, "flare_r": 0.24, "flare_h": 0.95, "flame_h": 0.38},
+	"roots": {"count": 11, "spread": 2.4, "reach": 3.2, "r": 0.085},   # fan ends ~1x building width out (plate)
+	"seams": 2,                  # piped ridge tubes along the saddle valley
+}
+
 ## Authored storey plans (ground band + floor count between plinth and eave), per building kind.
 ## Numbers trace to the plate decompositions; buildings without an entry get equal DEFAULT_STOREY
 ## bands. greenfields' ground/storey split is ALSO the slab-ring datum table the massing builds on.
@@ -235,6 +273,8 @@ static func table_for(spec_in: Dictionary, name: String) -> Dictionary:
 			base = CLEANSTREETS
 		"greenfields":
 			base = GREENFIELDS
+		"ancourage":
+			base = ANCOURAGE
 	var out := base.duplicate(true)
 	var over: Dictionary = (spec_in.get("vars", {}) as Dictionary).get(name, {})
 	for k in over.keys():
@@ -323,6 +363,31 @@ static func roll_vars(kind_in: String, seed_value: int) -> Dictionary:
 				# four thinner storeys: the sign band drops so the lower window band clears it
 				g["sign"] = {"y0": 1.70, "y1": 2.14, "w": float((g["sign"] as Dictionary)["w"])}
 			out["greenfields"] = g
+		"ancourage":
+			var h3 := 4.6 * lerpf(0.95, 1.05, float(rng.call("randf")))
+			(out["spec"] as Dictionary)["height"] = h3
+			(out["spec"] as Dictionary)["radius"] = 0.565 * h3
+			(out["spec"] as Dictionary)["door_radius"] = 0.489 * h3
+			var amp_s := lerpf(0.85, 1.15, float(rng.call("randf")))
+			var rows: Array = []
+			for row_v in (ANCOURAGE["rings"] as Array):
+				var rw := (row_v as Array).duplicate()
+				rw[2] = float(rw[2]) * amp_s
+				rows.append(rw)
+			# the arch is metre-scaled (character door) but the sign band is an h-fraction: at low
+			# rolled heights they'd collide — the arch scales with the roll (sweep-caught)
+			var ak := h3 / 4.6
+			var an := {"rings": rows,
+				"arch": {"apex": 2.16 * ak, "glass_y0": 1.55, "glass_y1": 1.55 + 0.50 * ak},
+				"dome_phase": lerpf(-0.25, 0.25, float(rng.call("randf"))),
+				"sign": {"w": lerpf(1.4, 1.7, float(rng.call("randf")))},
+				"roots": {"count": int(rng.call("randi_range", 8, 14)),
+					"reach": lerpf(2.8, 3.6, float(rng.call("randf")))},
+				"stacks": {"flare_h": 0.95 * lerpf(0.85, 1.15, float(rng.call("randf"))),
+					"drum_h": 0.42 * lerpf(0.85, 1.15, float(rng.call("randf")))}}
+			if float(rng.call("randf")) < 0.25:
+				an["louver"] = {"w": 0.0}   # some instances weld the vent shut
+			out["ancourage"] = an
 		"cleanstreets":
 			var spread := lerpf(2.2, 2.8, float(rng.call("randf")))
 			var cs := {"fins": {"xs": [-spread, -spread / 3.0, spread / 3.0, spread],
@@ -456,10 +521,8 @@ func _survey_profile() -> void:
 				# the profile IS the lathe ring table's crest line (one authority: PLUMBING.rings)
 				_profile_from_rings(table_for(spec, "plumbing")["rings"] as Array, h, crown)
 			"ancourage_domes":
-				_pr(0.0, r)
-				_pr(h * 0.53, r)                         # body top / eave ring
-				_pr(h * 0.53, r * 0.95)                  # dome cluster seat
-				_pr(crown, r * 0.2)
+				# one continuous kiosk loft: body / rolled brim / 2-lobe dome (ANCOURAGE.rings)
+				_profile_from_rings(table_for(spec, "ancourage")["rings"] as Array, h, crown)
 			"hypelines_mound":
 				# one continuous mound loft (one authority: HYPELINES.rings)
 				_profile_from_rings(table_for(spec, "hypelines")["rings"] as Array, h, crown)
@@ -609,6 +672,79 @@ func _survey_reservations(placements: Array) -> void:
 		_plumbing_reservations()
 	if str(spec.get("composite", "")) == "hypelines_mound":
 		_hypelines_reservations()
+	if str(spec.get("composite", "")) == "ancourage_domes":
+		_ancourage_reservations()
+
+## Every planned ancourage part claims its wall: the grand arch + glass + readout are the door's
+## declared ensemble; placards, roses, louver, pores, engaged pipes and valves each claim their arc.
+func _ancourage_reservations() -> void:
+	var tbl := table_for(spec, "ancourage")
+	var h := _height_total()
+	var fr := PI * 0.5
+	var arch: Dictionary = tbl["arch"]
+	var wall_r := float(plan.get("wall_radius", 2.25))
+	reservations.append({"id": "entry_arch", "type": "decoration", "cyl": true, "theta": fr,
+		"half_arc": (float(arch["w"]) * 0.5 + float(arch["r_tube"])) / maxf(0.3, wall_r),
+		"y0": 0.0, "y1": float(arch["apex"]) + 0.1,
+		"keeps_clear": ["door_main", "arch_glass", "readout"]})
+	reservations.append({"id": "arch_glass", "type": "decoration", "cyl": true, "theta": fr,
+		"half_arc": float(arch["w"]) * 0.45 / maxf(0.3, wall_r),
+		"y0": float(arch["glass_y0"]), "y1": float(arch["glass_y1"]),
+		"keeps_clear": ["door_main", "entry_arch"]})
+	reservations.append({"id": "readout", "type": "decoration", "cyl": true,
+		"theta": fr + float(tbl["readout"]["off"]) / maxf(0.3, wall_r) * 1.6,
+		"half_arc": 0.14 / maxf(0.3, wall_r),
+		"y0": 0.0, "y1": float(tbl["readout"]["h"]),
+		"keeps_clear": ["door_main", "entry_arch"]})
+	var sign: Dictionary = tbl["sign"]
+	reservations.append({"id": "sign_board", "type": "decoration", "cyl": true, "theta": fr,
+		"half_arc": float(sign["w"]) * 0.5 / maxf(0.3, radius_at((float(sign["y0"]) + float(sign["y1"])) * 0.5 * h)),
+		"y0": float(sign["y0"]) * h, "y1": float(sign["y1"]) * h, "keeps_clear": []})
+	var ppp: Dictionary = tbl["ppp"]
+	reservations.append({"id": "ppp_placard", "type": "decoration", "cyl": true,
+		"theta": wrapf(fr + float(ppp["az"]), -PI, PI),
+		"half_arc": float(ppp["w"]) * 0.5 / maxf(0.3, wall_r),
+		"y0": float(ppp["y0"]) * h, "y1": float(ppp["y1"]) * h, "keeps_clear": []})
+	var roses: Array = tbl["roses"]
+	for i in range(roses.size()):
+		var ro := roses[i] as Array
+		var rmid := (float(ro[1]) + float(ro[2])) * 0.5 * h
+		reservations.append({"id": "rose_%d" % i, "type": "decoration", "cyl": true,
+			"theta": wrapf(fr + float(ro[0]), -PI, PI),
+			"half_arc": float(ro[3]) * h * 0.55 / maxf(0.3, radius_at(rmid)),
+			"y0": float(ro[1]) * h, "y1": float(ro[2]) * h, "keeps_clear": []})
+	var lou: Dictionary = tbl["louver"]
+	if float(lou["w"]) > 0.01:
+		reservations.append({"id": "louver", "type": "decoration", "cyl": true,
+			"theta": wrapf(fr + float(lou["az"]), -PI, PI),
+			"half_arc": float(lou["w"]) * h * 0.55 / maxf(0.3, radius_at((float(lou["y0"]) + float(lou["y1"])) * 0.5 * h)),
+			"y0": float(lou["y0"]) * h, "y1": float(lou["y1"]) * h, "keeps_clear": []})
+	var pores: Array = tbl["pores"]
+	for i2 in range(pores.size()):
+		var po := pores[i2] as Array
+		reservations.append({"id": "dome_pore_%d" % i2, "type": "decoration", "cyl": true,
+			"theta": wrapf(fr + float(po[0]), -PI, PI),
+			"half_arc": float(po[3]) * h * 0.6 / maxf(0.3, radius_at((float(po[1]) + float(po[2])) * 0.5 * h)),
+			"y0": float(po[1]) * h, "y1": float(po[2]) * h, "keeps_clear": []})
+	var eng: Dictionary = tbl["engaged"]
+	var eng_azs: Array = eng["azs"]
+	for i3 in range(eng_azs.size()):
+		reservations.append({"id": "engaged_pipe_%d" % i3, "type": "decoration", "cyl": true,
+			"theta": wrapf(fr + float(eng_azs[i3]), -PI, PI),
+			"half_arc": (float(eng["r"]) * h + 0.05) / maxf(0.3, wall_r),
+			"y0": 0.0, "y1": 0.46 * h, "keeps_clear": []})
+	var whl: Dictionary = tbl["wheel"]
+	reservations.append({"id": "wheel_valve", "type": "decoration", "cyl": true,
+		"theta": wrapf(fr + float(whl["az"]), -PI, PI),
+		"half_arc": float(whl["dia"]) * h * 0.55 / maxf(0.3, wall_r),
+		"y0": (float(whl["y"]) - float(whl["dia"]) * 0.55) * h,
+		"y1": (float(whl["y"]) + float(whl["dia"]) * 0.55) * h, "keeps_clear": []})
+	var rst: Dictionary = tbl["rosette"]
+	reservations.append({"id": "rosette_port", "type": "decoration", "cyl": true,
+		"theta": wrapf(fr + float(rst["az"]), -PI, PI),
+		"half_arc": float(rst["dia"]) * h * 0.55 / maxf(0.3, wall_r),
+		"y0": (float(rst["y"]) - float(rst["dia"]) * 0.55) * h,
+		"y1": (float(rst["y"]) + float(rst["dia"]) * 0.55) * h, "keeps_clear": []})
 
 ## Every planned hypelines part claims its wall before meshing: the six arm roots, the sign stack
 ## (sign / ghost letters / toll board), the entry arch, the valve wheel, pores and the dome vent.
@@ -963,6 +1099,19 @@ static func hypelines_rings(spec_in: Dictionary) -> Array:
 	for row in (tbl["rings"] as Array):
 		var r := row as Array
 		out.append({"y": float(r[0]) * h, "r": float(r[1]) * h, "lobes": lobes,
+			"amp": float(r[2]), "phase": phase})
+	return out
+
+## The ancourage lathe rings in ABSOLUTE metres — rows carry their own lobe count (the body is
+## round, the dome rings are 2-lobed with rising amplitude: the cluster is ONE loft, no spheres).
+static func ancourage_rings(spec_in: Dictionary) -> Array:
+	var tbl := table_for(spec_in, "ancourage")
+	var h := float(spec_in.get("height", 4.6))
+	var phase := float(tbl["dome_phase"])
+	var out: Array = []
+	for row in (tbl["rings"] as Array):
+		var r := row as Array
+		out.append({"y": float(r[0]) * h, "r": float(r[1]) * h, "lobes": int(r[3]),
 			"amp": float(r[2]), "phase": phase})
 	return out
 

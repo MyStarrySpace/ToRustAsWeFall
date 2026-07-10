@@ -20,7 +20,7 @@ const GROUND_TILE := "facility_metal"
 ## found the old fixed 7 m spacing let the hypelines arms and bulwark wings overlap neighbours).
 const REACH := {
 	"plumbing_power": 2.7, "honeycomb_cooperative": 3.3, "beacon_hill": 2.7, "open_files": 3.0,
-	"hypelines": 6.7, "greenfields": 3.2, "ancourage": 3.0, "bulwark_wharf": 7.2,
+	"hypelines": 6.7, "greenfields": 3.2, "ancourage": 6.3, "bulwark_wharf": 7.2,
 	"cleanstreets": 6.1, "zone3": 3.4, "tiered_hall": 2.8, "tiered_terrace": 2.7,
 }
 const REACH_DEFAULT := 3.5
@@ -81,6 +81,8 @@ func _build_chunk() -> void:
 			_add_cleanstreets_details(root, spec)
 		if str(spec.get("composite", "")) == "greenfields_stack":
 			_add_greenfields_details(root, spec)
+		if str(spec.get("composite", "")) == "ancourage_domes":
+			_add_ancourage_details(root, spec)
 		_add_anchor_markers(root, survey.anchors())
 		_specimens.append({"building": kind, "shape": str(spec.get("shape", "")),
 			"lattice": str(spec.get("lattice", "")), "verts": verts})
@@ -400,6 +402,40 @@ func _add_greenfields_details(root: Node3D, spec: Dictionary) -> void:
 	var rail := _railing_material()
 	rail.albedo_color = Color(0.80, 0.76, 0.64)   # bone double-rail balustrades
 	_add_lattice_mesh(root, "GreenRails", built.get("rails"), rail)
+	var lbl := root.get_node_or_null("Nameplate")
+	if lbl != null and built.has("nameplate_pos"):
+		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
+
+## The ancourage detail passes (SURVEY REBUILD 1.5): arch idiom + glass, placards, roses, louver,
+## valves, saddle stacks (the flame is the plate-demanded warm accent) and the oily root-fan.
+func _add_ancourage_details(root: Node3D, spec: Dictionary) -> void:
+	var built: Dictionary = BaseShape.ancourage_details(spec)
+	_add_lattice_mesh(root, "AncBody", built.get("body"),
+		_tinted_tile_material(str(spec.get("tile", "facility_metal")), spec.get("color", Color(0.27, 0.36, 0.33))))
+	_add_lattice_mesh(root, "AncBone", built.get("bone"),
+		_tinted_tile_material("facility_metal", Color(0.80, 0.75, 0.62)))
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.06, 0.07, 0.06)   # boards, foil apertures, the oily roots
+	dark.roughness = 0.9
+	dark.metallic = 0.15
+	_add_lattice_mesh(root, "AncDark", built.get("dark"), dark)
+	var glow := StandardMaterial3D.new()
+	glow.albedo_color = Color(0.16, 0.42, 0.26)
+	glow.emission_enabled = true
+	glow.emission = Color(0.36, 0.91, 0.50)   # the arch glass + readout — terminal green
+	glow.emission_energy_multiplier = 2.6
+	_add_lattice_mesh(root, "AncGlow", built.get("glow"), glow)
+	var warm := StandardMaterial3D.new()
+	warm.albedo_color = Color(0.55, 0.30, 0.10)
+	warm.emission_enabled = true
+	warm.emission = Color(1.0, 0.55, 0.15)   # the flare-stack FLAME (plate-demanded)
+	warm.emission_energy_multiplier = 3.0
+	_add_lattice_mesh(root, "AncFlame", built.get("warm"), warm)
+	var rust := StandardMaterial3D.new()
+	rust.albedo_color = Color(0.40, 0.25, 0.16)
+	rust.roughness = 0.88
+	rust.metallic = 0.25
+	_add_lattice_mesh(root, "AncRust", built.get("rust"), rust)
 	var lbl := root.get_node_or_null("Nameplate")
 	if lbl != null and built.has("nameplate_pos"):
 		(lbl as Label3D).position = built["nameplate_pos"] as Vector3

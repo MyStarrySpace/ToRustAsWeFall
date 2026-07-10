@@ -119,16 +119,18 @@ const SPECS := {
 	},
 	"ancourage": {
 		"title": "Ancourage",
-		"shape": SHAPE_COMPOSITE,           # squat drum + eave ring + 2-lobe dome crown (REVIEW P1-P2)
-		"composite": "ancourage_domes",
+		"shape": SHAPE_COMPOSITE,           # SURVEY REBUILD 1.5: ONE continuous kiosk loft from the
+		"composite": "ancourage_domes",     # BuildingSurvey.ANCOURAGE rings (body/brim/2-lobe dome)
 		"door_frame": "cyl",
-		"radius": 2.7, "height": 4.6,       # the dome cluster restores the plate's missing top 40%
-		# RECONCILED AT THE SURVEY: the body wall ends at 0.53H = 2.44 m; the default 2.7 m portal rose
-		# past it. Plate ratio (BUILDING_REVIEW ancourage #4): arch height 0.7x body height ~= 1.7 m.
-		"entrances": {"main_w": 1.4, "main_h": 1.7, "side_w": 0.9, "side_h": 1.5},
+		"door_radius": 2.25,                # the round body wall the door cuts: 0.489H
+		"radius": 2.60, "height": 4.6,      # silhouette max = the brim: 0.565H (wider than tall)
+		# RECONCILED AT THE SURVEY: the entry is the plate's grand arch idiom (plank door under the
+		# green cell-glass band, ancourage_details) — no generic surround, no side doors.
+		"entrances": {"main_w": 1.0, "main_h": 1.5, "side_count_min": 0, "side_count_max": 0,
+			"canopy_out": 0.0, "main_surround": false},
 		"color": Color(0.27, 0.36, 0.33),   # dark verdigris
 		"tile": "facility_metal",
-		"lattice": "", "pipes": true,
+		"lattice": "", "pipes": true,       # the drapes stand in for the plate's drip veins
 	},
 	"bulwark_wharf": {
 		"title": "Bulwark Wharf",
@@ -1031,38 +1033,187 @@ static func _spike(st: SurfaceTool, base: Vector3, r: float, h: float) -> void:
 	for i in range(4):
 		_tri_out(st, apex, pts[i] as Vector3, pts[(i + 1) % 4] as Vector3, base - Vector3(0, 1, 0))
 
-## Ancourage: the squat drum earns its missing top 40% — a fat overhanging eave ring at the waist and
-## a 2-lobe squashed dome cluster seated on the eave line (the plate's silhouette), door cut kept in
-## the drum wall.
+## Ancourage (SURVEY REBUILD 1.5): the pumphouse kiosk as ONE continuous loft from the
+## BuildingSurvey.ANCOURAGE ring table — round body, the fat rolled BRIM, and the 2-LOBE quilted
+## dome cluster (per-ring lobe modulation; no intersecting spheres). Stacks, arch, roots and the
+## rest are ancourage_details, grown from the same table.
 static func _ancourage_domes_mesh(spec: Dictionary, reserved: Array, recess: float) -> ArrayMesh:
-	var r := float(spec.get("radius", 2.7))
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	return _survey_ring_loft(Survey.ancourage_rings(spec), reserved, recess, float(spec.get("height", 4.6)))
+
+## Ancourage detail passes: the stepped plinth, the grand arch idiom (tube arch + green cell-glass
+## + mullions + the readout post — the door's declared ensemble), placards, two multi-foil roses,
+## the louver, pores, engaged pipes with mini-wheels, the big valve wheel + rosette port, the two
+## saddle stacks (the flare crowned by the plate's ONLY warm accent, the flame), piped saddle
+## seams, and the signature ROOT-FAN of oily pipes spilling off the plinth.
+## Families: body / bone (cream placard) / dark (boards, foils, roots) / glow (green) / warm / rust.
+static func ancourage_details(spec: Dictionary) -> Dictionary:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var tbl: Dictionary = Survey.table_for(spec, "ancourage")
+	var rings: Array = Survey.ancourage_rings(spec)
 	var h := float(spec.get("height", 4.6))
-	var body_h := h * 0.53
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	st.append_from(_cylinder_with_doors(r, body_h, reserved, recess), 0, Transform3D.IDENTITY)
-	var eave := TorusMesh.new()
-	eave.inner_radius = r * 0.86
-	eave.outer_radius = r * 1.2
-	eave.rings = 20
-	eave.ring_segments = 8
-	st.append_from(eave, 0, Transform3D(Basis(), Vector3(0.0, body_h, 0.0)))
-	var main := SphereMesh.new()
-	main.radius = r * 0.78
-	main.height = (h - body_h) * 2.0
-	main.radial_segments = 16
-	main.rings = 8
-	# placed by its TOP so the apex lands exactly at the spec height
-	st.append_from(main, 0, Transform3D(Basis(), Vector3(-r * 0.25, h - main.height * 0.5, 0.0)))
-	var side := SphereMesh.new()
-	side.radius = r * 0.6
-	side.height = r * 0.78
-	side.radial_segments = 14
-	side.rings = 7
-	st.append_from(side, 0, Transform3D(Basis(), Vector3(r * 0.38, body_h, r * 0.12)))
-	# NO generate_normals here: on mixed append_from sources it DROPS earlier surfaces
-	# (probed live); every appended mesh already carries its normals.
-	return st.commit()
+	var wall_r := float(spec.get("door_radius", 0.489 * h))
+	var body := _st()
+	var bone := _st()
+	var dark := _st()
+	var glow := _st()
+	var warm := _st()
+	var rust := _st()
+	var n_f := Vector3(0, 0, 1)
+	var u_f := Vector3(1, 0, 0)
+	var kb := float(str(spec.get("kind", "ancourage")).hash() % 1000)
+	# the stepped plinth ring, extending past the body
+	var pl: Dictionary = tbl["plinth"]
+	var body_r := 0.489 * h
+	for stp in range(int(pl["steps"])):
+		var inset := float(stp) * 0.22
+		var sh := float(pl["h"]) / float(pl["steps"])
+		_emit_torus_st(body, Vector3(0, float(pl["h"]) - sh * (float(stp) + 0.5), 0), Vector3.UP,
+			body_r + float(pl["out"]) - inset, sh * 0.62, 20, 4)
+	# the grand arch idiom: tube arch over the doorway; the glass band glows terminal green behind
+	# mullion bars; the readout box rides a post left of the door
+	var arch: Dictionary = tbl["arch"]
+	var anchor := n_f * wall_r
+	var arch_pts: Array = []
+	for i in range(11):
+		var t := float(i) / 10.0
+		var uu := lerpf(-1.0, 1.0, t)
+		arch_pts.append(anchor + u_f * (uu * float(arch["w"]) * 0.5)
+			+ Vector3(0, maxf(0.06, float(arch["apex"]) * (1.0 - uu * uu)), 0) + n_f * 0.10)
+	_tube(body, arch_pts, float(arch["r_tube"]), 6)
+	var gy0 := float(arch["glass_y0"])
+	var gy1 := float(arch["glass_y1"])
+	_emit_oriented_box_st(glow, anchor + Vector3(0, (gy0 + gy1) * 0.5, 0) - n_f * 0.06,
+		u_f, Vector3.UP, n_f, Vector3(float(arch["w"]) * 0.40, (gy1 - gy0) * 0.5, 0.03))
+	for mb in range(int(arch["mullions"])):
+		var mx := lerpf(-float(arch["w"]) * 0.34, float(arch["w"]) * 0.34, float(mb) / float(int(arch["mullions"]) - 1))
+		_emit_oriented_box_st(dark, anchor + u_f * mx + Vector3(0, (gy0 + gy1) * 0.5, 0) - n_f * 0.02,
+			u_f, Vector3.UP, n_f, Vector3(0.035, (gy1 - gy0) * 0.5 + 0.04, 0.035))
+	var rd: Dictionary = tbl["readout"]
+	var rpos := anchor + u_f * (-float(arch["w"]) * 0.5 - 0.30) + n_f * 0.28
+	_emit_oriented_box_st(dark, rpos + Vector3(0, float(rd["h"]) * 0.45, 0), u_f, Vector3.UP, n_f,
+		Vector3(0.05, float(rd["h"]) * 0.45, 0.05))
+	_emit_oriented_box_st(glow, rpos + Vector3(0, float(rd["h"]) * 0.92, 0), u_f, Vector3.UP, n_f,
+		Vector3(0.14, 0.12, 0.06))
+	# placards: the cream Ancourage board on the brim front; the PPP board on the left face
+	var sgn: Dictionary = tbl["sign"]
+	var sy := (float(sgn["y0"]) + float(sgn["y1"])) * 0.5 * h
+	var sr := float(Survey.lathe_local_r(rings, sy, PI * 0.5))
+	var sc := n_f * (sr + 0.06) + Vector3(0, sy, 0)
+	_emit_oriented_box_st(bone, sc, u_f, Vector3.UP, n_f,
+		Vector3(float(sgn["w"]) * 0.5, (float(sgn["y1"]) - float(sgn["y0"])) * 0.5 * h, 0.035))
+	var ppp: Dictionary = tbl["ppp"]
+	var pth: float = PI * 0.5 + float(ppp["az"])
+	var pn := Vector3(cos(pth), 0.0, sin(pth))
+	var pu := Vector3(0, 1, 0).cross(pn).normalized()
+	var pyc := (float(ppp["y0"]) + float(ppp["y1"])) * 0.5 * h
+	_emit_oriented_box_st(dark, pn * (float(Survey.lathe_local_r(rings, pyc, pth)) + 0.04) + Vector3(0, pyc, 0),
+		pu, Vector3.UP, pn, Vector3(float(ppp["w"]) * 0.5, (float(ppp["y1"]) - float(ppp["y0"])) * 0.5 * h, 0.025))
+	# dome fixtures on the REAL lobed surface: multi-foil roses, the louver, round pores
+	for ro_v in (tbl["roses"] as Array):
+		var ro := ro_v as Array
+		var rth: float = PI * 0.5 + float(ro[0])
+		var rn := Vector3(cos(rth), 0.0, sin(rth))
+		var ru := Vector3(0, 1, 0).cross(rn).normalized()
+		var ryc := (float(ro[1]) + float(ro[2])) * 0.5 * h
+		var rrad := float(ro[3]) * h * 0.5
+		var rbase := rn * (float(Survey.lathe_local_r(rings, ryc, rth)) + 0.02) + Vector3(0, ryc, 0)
+		_emit_oriented_box_st(dark, rbase, ru, Vector3.UP, rn, Vector3(rrad * 0.45, rrad * 0.45, 0.03))
+		for fo in range(6):
+			var fa := TAU * float(fo) / 6.0
+			_emit_oriented_box_st(dark, rbase + (ru * cos(fa) + Vector3.UP * sin(fa)) * rrad * 0.78,
+				ru, Vector3.UP, rn, Vector3(rrad * 0.3, rrad * 0.3, 0.025))
+	var lou: Dictionary = tbl["louver"]
+	if float(lou["w"]) > 0.01:
+		var lth: float = PI * 0.5 + float(lou["az"])
+		var ln := Vector3(cos(lth), 0.0, sin(lth))
+		var lu := Vector3(0, 1, 0).cross(ln).normalized()
+		var lyc := (float(lou["y0"]) + float(lou["y1"])) * 0.5 * h
+		var lbase := ln * (float(Survey.lathe_local_r(rings, lyc, lth)) + 0.02) + Vector3(0, lyc, 0)
+		_emit_oriented_box_st(dark, lbase, lu, Vector3.UP, ln,
+			Vector3(float(lou["w"]) * h * 0.5, (float(lou["y1"]) - float(lou["y0"])) * 0.5 * h, 0.02))
+		for sl in range(3):
+			_emit_oriented_box_st(rust, lbase + Vector3(0, (float(sl) - 1.0) * (float(lou["y1"]) - float(lou["y0"])) * h * 0.26, 0) + ln * 0.025,
+				lu, Vector3.UP, ln, Vector3(float(lou["w"]) * h * 0.44, 0.018, 0.012))
+	for po_v in (tbl["pores"] as Array):
+		var po := po_v as Array
+		var poth: float = PI * 0.5 + float(po[0])
+		var pon := Vector3(cos(poth), 0.0, sin(poth))
+		var poyc := (float(po[1]) + float(po[2])) * 0.5 * h
+		_emit_oriented_box_st(dark, pon * (float(Survey.lathe_local_r(rings, poyc, poth)) + 0.02) + Vector3(0, poyc, 0),
+			Vector3(0, 1, 0).cross(pon).normalized(), Vector3.UP, pon,
+			Vector3(float(po[3]) * h * 0.5, float(po[3]) * h * 0.5, 0.02))
+	# engaged pipes hugging the wall (each with a mini wheel), the big valve wheel, the rosette
+	var eng: Dictionary = tbl["engaged"]
+	for az_v in (eng["azs"] as Array):
+		var eth: float = PI * 0.5 + float(az_v)
+		var en := Vector3(cos(eth), 0.0, sin(eth))
+		var er := float(eng["r"]) * h
+		var epts: Array = []
+		for i4 in range(6):
+			var ey := lerpf(0.05, 0.46 * h, float(i4) / 5.0)
+			epts.append(en * (float(Survey.lathe_local_r(rings, ey, eth)) + er + 0.02) + Vector3(0, ey, 0))
+		_tube(rust, epts, er, 5)
+		var wy2 := float(eng["wheel_y"]) * h
+		var wc2 := en * (float(Survey.lathe_local_r(rings, wy2, eth)) + er * 2.4) + Vector3(0, wy2, 0)
+		_emit_torus_st(rust, wc2, en, er * 1.7, er * 0.32, 10, 5)
+	var whl: Dictionary = tbl["wheel"]
+	var wth: float = PI * 0.5 + float(whl["az"])
+	var wn := Vector3(cos(wth), 0.0, sin(wth))
+	var wyc := float(whl["y"]) * h
+	var wdia := float(whl["dia"]) * h
+	var wc := wn * (float(Survey.lathe_local_r(rings, wyc, wth)) + wdia * 0.18) + Vector3(0, wyc, 0)
+	_emit_torus_st(rust, wc, wn, wdia * 0.43, wdia * 0.07, 14, 6)
+	var wbasis := Basis(Quaternion(Vector3.UP, wn))
+	for k in range(6):
+		var ang := TAU * float(k) / 6.0
+		var spoke := (wbasis * Vector3(cos(ang), 0.0, sin(ang))).normalized()
+		_tube(rust, [wc - spoke * wdia * 0.4, wc + spoke * wdia * 0.4], wdia * 0.045, 4)
+	var rst: Dictionary = tbl["rosette"]
+	var rsth: float = PI * 0.5 + float(rst["az"])
+	var rsn := Vector3(cos(rsth), 0.0, sin(rsth))
+	var rsyc := float(rst["y"]) * h
+	var rsc := rsn * (float(Survey.lathe_local_r(rings, rsyc, rsth)) + 0.04) + Vector3(0, rsyc, 0)
+	_emit_torus_st(rust, rsc, rsn, float(rst["dia"]) * h * 0.42, float(rst["dia"]) * h * 0.09, 12, 5)
+	# the saddle stacks: capped drum + the flare chimney crowned by the FLAME (the one warm accent)
+	var stk: Dictionary = tbl["stacks"]
+	var saddle_y := 0.955 * h
+	_tube(body, [Vector3(float(stk["drum_x"]), saddle_y - 0.1, 0), Vector3(float(stk["drum_x"]), h + float(stk["drum_h"]), 0)],
+		float(stk["drum_r"]), 8)
+	_emit_torus_st(body, Vector3(float(stk["drum_x"]), h + float(stk["drum_h"]), 0), Vector3.UP,
+		float(stk["drum_r"]) * 0.85, float(stk["drum_r"]) * 0.3, 12, 5)
+	_tube(body, [Vector3(float(stk["flare_x"]), saddle_y - 0.1, 0), Vector3(float(stk["flare_x"]), h + float(stk["flare_h"]), 0)],
+		float(stk["flare_r"]), 8)
+	_emit_torus_st(body, Vector3(float(stk["flare_x"]), h + float(stk["flare_h"]), 0), Vector3.UP,
+		float(stk["flare_r"]) * 1.15, float(stk["flare_r"]) * 0.22, 12, 5)
+	_emit_oriented_box_st(warm, Vector3(float(stk["flare_x"]), h + float(stk["flare_h"]) + float(stk["flame_h"]) * 0.5, 0),
+		u_f, Vector3.UP, n_f, Vector3(0.09, float(stk["flame_h"]) * 0.5, 0.09))
+	# piped seam ridges along the saddle valley (the quilted-lobe read)
+	for sm in range(int(tbl["seams"])):
+		var szn := 1.0 if sm == 0 else -1.0
+		var spts: Array = []
+		for i5 in range(7):
+			var sy2 := lerpf(0.62 * h, 0.995 * h, float(i5) / 6.0)
+			var sth: float = PI * 0.5 * szn
+			spts.append(Vector3(cos(sth), 0, sin(sth)) * (float(Survey.lathe_local_r(rings, sy2, sth)) + 0.035) + Vector3(0, sy2, 0))
+		_tube(body, spts, 0.05, 4)
+	# the ROOT-FAN: oily pipes pouring off the plinth, fanning outward across the ground
+	var rts: Dictionary = tbl["roots"]
+	for ri in range(int(rts["count"])):
+		var frac := (float(ri) + 0.5) / float(rts["count"])
+		var raz: float = PI * 0.5 + lerpf(-float(rts["spread"]), float(rts["spread"]), frac) + (_h01(kb + float(ri) * 7.7) - 0.5) * 0.18
+		var rdir := Vector3(cos(raz), 0.0, sin(raz))
+		var reach := float(rts["reach"]) * (0.65 + 0.45 * _h01(kb + float(ri) * 3.1))
+		var p0 := rdir * (body_r + 0.15) + Vector3(0, float(pl["h"]) + 0.12, 0)
+		var p1 := rdir * (body_r + float(pl["out"]) + 0.3) + Vector3(0, 0.16, 0)
+		var p2 := rdir * (body_r + reach * 0.6) + Vector3(0, 0.09, 0) + rdir.cross(Vector3.UP) * ((_h01(kb + float(ri) * 11.3) - 0.5) * 0.7)
+		var p3 := rdir * (body_r + reach) + Vector3(0, 0.05, 0)
+		_tube(dark, [p0, p1, p2, p3], float(rts["r"]) * (0.75 + 0.5 * _h01(kb + float(ri) * 5.3)), 5)
+	for stool in [body, bone, dark, glow, warm, rust]:
+		(stool as SurfaceTool).generate_normals()
+	return {"body": body.commit(), "bone": bone.commit(), "dark": dark.commit(),
+		"glow": glow.commit(), "warm": warm.commit(), "rust": rust.commit(),
+		"nameplate_pos": sc + n_f * 0.28}
 
 ## Beacon Hill (REVIEW P1): the drum ends at 0.75H, curves through an elliptical dome shoulder and
 ## closes with a rooftop lantern drum — the flat merlon top read as a water tank, not the Reading Room.
