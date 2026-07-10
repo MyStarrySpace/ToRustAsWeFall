@@ -27,13 +27,16 @@ const BUILDINGS := [
 const SPECS := {
 	"plumbing_power": {
 		"title": "Plumbing Power Project",
-		"shape": SHAPE_CYLINDER,
-		# Squat drum — the reference tower is roughly 1.3x as tall as its base is wide (H ~= 2.5 * r).
-		"radius": 2.2,
+		"shape": SHAPE_COMPOSITE,           # melted-boiler massing (BUILDING_REVIEW P1-P2): lobed
+		"composite": "plumbing_lobed",      # root-skirt + shoulder drum + onion dome + cupola
+		"door_frame": "cyl",                # doors cut the DRUM wall (drum-frame reserved regions)
+		"door_radius": 1.37,                # the shoulder drum the door actually cuts (radius*0.62)
+		"flare": 0.95,                      # footprint = flare x massing diameter (lobes reach ~1.5x the drum)
+		"radius": 2.2,                      # the flare reaches ~1.7x the drum radius at ground
 		"height": 5.6,
-		"color": Color(0.33, 0.43, 0.43),   # weathered verdigris copper
+		"color": Color(0.24, 0.35, 0.32),   # dark desaturated verdigris (plate palette)
 		"tile": "facility_metal",
-		"lattice": "",                      # facade (wheels/slits/dome) is later; draped pipes for now
+		"lattice": "",                      # spiral flume + slit windows are the next passes
 		"pipes": true,                      # the plate's draped conduit runs
 	},
 	"honeycomb_cooperative": {
@@ -94,9 +97,11 @@ const SPECS := {
 	},
 	"ancourage": {
 		"title": "Ancourage",
-		"shape": SHAPE_CYLINDER,            # squat drum; the DOME cap + pipe drainage are Fable
-		"radius": 2.7, "height": 3.0,
-		"color": Color(0.34, 0.40, 0.38),
+		"shape": SHAPE_COMPOSITE,           # squat drum + eave ring + 2-lobe dome crown (REVIEW P1-P2)
+		"composite": "ancourage_domes",
+		"door_frame": "cyl",
+		"radius": 2.7, "height": 4.6,       # the dome cluster restores the plate's missing top 40%
+		"color": Color(0.27, 0.36, 0.33),   # dark verdigris
 		"tile": "facility_metal",
 		"lattice": "", "pipes": true,
 	},
@@ -110,9 +115,10 @@ const SPECS := {
 	},
 	"cleanstreets": {
 		"title": "The Cleanstreets Initiative",
-		"shape": SHAPE_BOX,                 # wide low CANOPY massing; splayed tree-columns = Fable
-		"size": Vector3(7.0, 2.8, 4.2),
-		"color": Color(0.52, 0.56, 0.54),
+		"shape": SHAPE_COMPOSITE,           # OPEN canopy pavilion on waisted piers over a stepped
+		"composite": "canopy_piers",        # dais — air between the legs, wider than tall (REVIEW P1)
+		"size": Vector3(11.0, 6.0, 7.0),
+		"color": Color(0.45, 0.47, 0.42),   # bone/tan mosaic base, verdigris panels ride the texture pass
 		"tile": "facility_metal",
 		"lattice": "",
 	},
@@ -161,9 +167,14 @@ static func generate(kind: String, _seed_value: int = 0) -> Dictionary:
 			spec["height_total"] = float(spec["height"])
 			spec["footprint"] = float(spec["radius"]) * 2.0
 		_:
-			var s: Vector3 = spec["size"]
-			spec["height_total"] = s.y
-			spec["footprint"] = maxf(s.x, s.z)
+			# A composite may be drum-based (radius/height, no size) — the lobed/domed massings.
+			if spec.has("size"):
+				var s: Vector3 = spec["size"]
+				spec["height_total"] = s.y
+				spec["footprint"] = maxf(s.x, s.z)
+			else:
+				spec["height_total"] = float(spec.get("height", 6.0))
+				spec["footprint"] = float(spec.get("radius", 2.5)) * 2.0 * float(spec.get("flare", 1.0))
 	return spec
 
 ## The base solid, an ArrayMesh whose base rests on y=0 so it seats on a plinth/ground.
@@ -331,8 +342,150 @@ static func _composite(spec: Dictionary, reserved: Array = [], recess: float = 0
 			return _awning_stack_mesh(spec, reserved, recess)
 		"open_files_fins":
 			return _open_files_mesh(spec.get("size", Vector3(5.6, 9.0, 5.6)))
+		"plumbing_lobed":
+			return _plumbing_lobed_mesh(spec, reserved, recess)
+		"canopy_piers":
+			return _canopy_piers_mesh(spec)
+		"ancourage_domes":
+			return _ancourage_domes_mesh(spec, reserved, recess)
 		_:
 			return _box(spec.get("size", Vector3(4.0, 6.0, 4.0)))
+
+# --- REVIEW-DRIVEN MASSING (docs/BUILDING_REVIEW.md priority-1 alterations) ------------------------
+
+## Plumbing Power: the melted-boiler silhouette — a shoulder drum whose bottom 45% flares into fused
+## root-lobes reaching ~1.7x the drum radius (the plate's dominant feature), crowned by an onion dome
+## + cupola. The door keeps the drum's real wall cut; the lobe ring leaves a gap at the door theta so
+## the entry stays reachable (the plate's shadowed ground archway).
+static func _plumbing_lobed_mesh(spec: Dictionary, reserved: Array, recess: float) -> ArrayMesh:
+	var h := float(spec.get("height", 5.6))
+	var rd := float(spec.get("door_radius", float(spec.get("radius", 2.2)) * 0.62))   # the shoulder drum (plate: diameter ~0.5H)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	# the core drum carries the full height to the dome line + the real door cut
+	st.append_from(_cylinder_with_doors(rd, h * 0.74, reserved, recess), 0, Transform3D.IDENTITY)
+	# fused root-lobes: tapered cylinders leaning into the drum; skip the arc holding the door
+	var door_theta := INF
+	for reg in reserved:
+		if bool((reg as Dictionary).get("cyl", false)):
+			door_theta = float((reg as Dictionary)["theta"])
+	var lobes := 7
+	for i in range(lobes):
+		var th := TAU * float(i) / float(lobes) + 0.31
+		var dth := TAU
+		if door_theta != INF:
+			dth = absf(fposmod(th - door_theta + PI, TAU) - PI)
+		if dth < 0.62:
+			continue   # the ground archway: the door's approach stays clear of lobes
+		var lb := CylinderMesh.new()
+		lb.bottom_radius = rd * (0.52 + 0.1 * _h01(float(i) * 3.7))
+		lb.top_radius = rd * 0.26
+		lb.height = h * (0.42 + 0.06 * _h01(float(i) * 8.1))
+		lb.radial_segments = 10
+		var ring := rd * 0.92
+		st.append_from(_seated(lb, lb.height * 0.5), 0,
+			Transform3D(Basis(), Vector3(cos(th) * ring, 0.0, sin(th) * ring)))
+	# onion dome (squashed sphere) + cupola finial
+	var dome := SphereMesh.new()
+	dome.radius = rd * 1.12
+	dome.height = rd * 1.5
+	dome.radial_segments = 16
+	dome.rings = 8
+	st.append_from(dome, 0, Transform3D(Basis(), Vector3(0.0, h * 0.74, 0.0)))
+	var cup := CylinderMesh.new()
+	cup.top_radius = rd * 0.14
+	cup.bottom_radius = rd * 0.18
+	cup.radial_segments = 10
+	cup.height = h * 0.09
+	st.append_from(cup, 0, Transform3D(Basis(), Vector3(0.0, h * 0.74 + rd * 0.72, 0.0)))
+	var cap := SphereMesh.new()
+	cap.radius = rd * 0.2
+	cap.radial_segments = 10
+	cap.rings = 5
+	var cap_y := h - rd * 0.1   # finial apex lands exactly at the spec height
+	cap.height = rd * 0.2
+	st.append_from(cap, 0, Transform3D(Basis(), Vector3(0.0, cap_y, 0.0)))
+	# NO generate_normals here: on mixed append_from sources it DROPS earlier surfaces
+	# (probed live); every appended mesh already carries its normals.
+	return st.commit()
+
+## Cleanstreets: an OPEN canopy pavilion — a thick slab with swept-up corner horns riding mushroom
+## piers over a stepped dais; air between the legs (no walls). Wider than tall, unlike every
+## neighbour (the plate's defining read).
+static func _canopy_piers_mesh(spec: Dictionary) -> ArrayMesh:
+	var size: Vector3 = spec.get("size", Vector3(11.0, 6.0, 7.0))
+	var hx := size.x * 0.5
+	var hz := size.z * 0.5
+	var slab_y := size.y * 0.56
+	var slab_t := size.y * 0.22
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	# stepped dais
+	var dais := BoxMesh.new()
+	dais.size = Vector3(size.x, size.y * 0.075, size.z)
+	st.append_from(_seated(dais, dais.size.y * 0.5), 0, Transform3D.IDENTITY)
+	var step := BoxMesh.new()
+	step.size = Vector3(size.x * 0.5, size.y * 0.04, size.z * 0.22)
+	st.append_from(_seated(step, step.size.y * 0.5), 0, Transform3D(Basis(), Vector3(0.0, 0.0, hz + step.size.z * 0.4)))
+	# 6 waisted piers (2 rows x 3), flaring toward the canopy head
+	for ix in range(3):
+		for iz in range(2):
+			var pier := CylinderMesh.new()
+			pier.bottom_radius = size.y * 0.115
+			pier.top_radius = size.y * 0.16
+			pier.height = slab_y - dais.size.y
+			pier.radial_segments = 12
+			st.append_from(_seated(pier, pier.height * 0.5 + dais.size.y), 0,
+				Transform3D(Basis(), Vector3((float(ix) - 1.0) * hx * 0.68, 0.0, (float(iz) - 0.5) * hz * 1.05)))
+	# the canopy slab + swept-up corner horns
+	var slab := BoxMesh.new()
+	slab.size = Vector3(size.x, slab_t, size.z)
+	st.append_from(_seated(slab, slab_t * 0.5 + slab_y), 0, Transform3D.IDENTITY)
+	for cx in [-1.0, 1.0]:
+		for cz in [-1.0, 1.0]:
+			var horn := BoxMesh.new()
+			horn.size = Vector3(size.x * 0.2, slab_t * 0.9, size.z * 0.2)
+			var tilt := Basis(Vector3(0, 0, 1), cx * -0.32) * Basis(Vector3(1, 0, 0), cz * 0.32)
+			# the swept-up horn tips DEFINE the massing's top (exact rotated-AABB half height)
+			var horn_top := absf(tilt.x.y) * horn.size.x * 0.5 + absf(tilt.y.y) * horn.size.y * 0.5 				+ absf(tilt.z.y) * horn.size.z * 0.5
+			st.append_from(horn, 0, Transform3D(tilt,
+				Vector3(cx * (hx - horn.size.x * 0.42), size.y - horn_top, cz * (hz - horn.size.z * 0.42))))
+	# NO generate_normals here: on mixed append_from sources it DROPS earlier surfaces
+	# (probed live); every appended mesh already carries its normals.
+	return st.commit()
+
+## Ancourage: the squat drum earns its missing top 40% — a fat overhanging eave ring at the waist and
+## a 2-lobe squashed dome cluster seated on the eave line (the plate's silhouette), door cut kept in
+## the drum wall.
+static func _ancourage_domes_mesh(spec: Dictionary, reserved: Array, recess: float) -> ArrayMesh:
+	var r := float(spec.get("radius", 2.7))
+	var h := float(spec.get("height", 4.6))
+	var body_h := h * 0.53
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.append_from(_cylinder_with_doors(r, body_h, reserved, recess), 0, Transform3D.IDENTITY)
+	var eave := TorusMesh.new()
+	eave.inner_radius = r * 0.86
+	eave.outer_radius = r * 1.2
+	eave.rings = 20
+	eave.ring_segments = 8
+	st.append_from(eave, 0, Transform3D(Basis(), Vector3(0.0, body_h, 0.0)))
+	var main := SphereMesh.new()
+	main.radius = r * 0.78
+	main.height = (h - body_h) * 2.0
+	main.radial_segments = 16
+	main.rings = 8
+	# placed by its TOP so the apex lands exactly at the spec height
+	st.append_from(main, 0, Transform3D(Basis(), Vector3(-r * 0.25, h - main.height * 0.5, 0.0)))
+	var side := SphereMesh.new()
+	side.radius = r * 0.6
+	side.height = r * 0.78
+	side.radial_segments = 14
+	side.rings = 7
+	st.append_from(side, 0, Transform3D(Basis(), Vector3(r * 0.38, body_h, r * 0.12)))
+	# NO generate_normals here: on mixed append_from sources it DROPS earlier surfaces
+	# (probed live); every appended mesh already carries its normals.
+	return st.commit()
 
 # --- RECURSIVE CONNECTED AWNINGS (the Open Files massing — geometry-lab algorithm 2, ported) -------
 #

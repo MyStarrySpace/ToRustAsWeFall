@@ -106,12 +106,12 @@ func _add_entrance_meshes(root: Node3D, spec: Dictionary, built: Dictionary) -> 
 	darkmat.albedo_color = Color(0.05, 0.05, 0.06)
 	darkmat.roughness = 0.92
 	_add_lattice_mesh(root, "EntDark", built.get("dark"), darkmat)
-	var teal := StandardMaterial3D.new()
-	teal.albedo_color = Color(0.10, 0.28, 0.30)
-	teal.emission_enabled = true
-	teal.emission = Color(0.22, 0.82, 0.86)   # enforcement-vestibule glow
-	teal.emission_energy_multiplier = 1.7
-	_add_lattice_mesh(root, "EntAccent", built.get("accent"), teal)
+	var accent := StandardMaterial3D.new()
+	accent.albedo_color = Color(0.10, 0.26, 0.16)
+	accent.emission_enabled = true
+	accent.emission = Color(0.36, 0.91, 0.50)   # terminal green — the world's ONLY standard emissive
+	accent.emission_energy_multiplier = 1.6
+	_add_lattice_mesh(root, "EntAccent", built.get("accent"), accent)
 	# Readable nameplate over the main door (billboarded so it stays legible as the plinth turntables).
 	var lbl := Label3D.new()
 	lbl.name = "Nameplate"

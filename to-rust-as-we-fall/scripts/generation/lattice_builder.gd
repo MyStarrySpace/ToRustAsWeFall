@@ -1675,8 +1675,12 @@ static func entrances(spec: Dictionary, overrides: Dictionary = {}) -> Dictionar
 	dark.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var accent := SurfaceTool.new()
 	accent.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var is_cyl := str(spec.get("shape", "box")) == "cylinder"
-	var radius := float(spec.get("radius", 2.0))
+	# A drum-based COMPOSITE (lobed skirt / dome crown — radius+height, no box size) takes drum-frame
+	# doors too: its wall cut runs through _cylinder_with_doors, which only matches cyl regions.
+	var is_cyl := str(spec.get("shape", "box")) == "cylinder" or str(spec.get("door_frame", "")) == "cyl"
+	# door_radius: the wall the door ACTUALLY cuts when it differs from the massing radius (the
+	# plumbing drum sits inside its lobed skirt — the door lives on the drum, not the flare).
+	var radius := float(spec.get("door_radius", spec.get("radius", 2.0)))
 	var size: Vector3 = spec.get("size", Vector3(4, 6, 4))
 	var faces := _box_vertical_faces(size)
 	var main_w := float(p["main_w"])

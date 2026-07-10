@@ -3677,7 +3677,8 @@ func _test_architecture_showcase() -> void:
 		"the showcase carries the PPP + Honeycomb base shapes")
 
 	var ppp: Dictionary = Base.generate("plumbing_power")
-	_assert_equals(str(ppp["shape"]), Base.SHAPE_CYLINDER, "the Plumbing Power Project base shape is a cylinder")
+	_assert_equals(str(ppp["composite"]), "plumbing_lobed",
+		"the Plumbing Power Project massing is the lobed-skirt composite (BUILDING_REVIEW P1)")
 	var honey: Dictionary = Base.generate("honeycomb_cooperative")
 	_assert_equals(str(honey["shape"]), Base.SHAPE_BOX, "the Honeycomb Cooperative base shape is a box")
 
