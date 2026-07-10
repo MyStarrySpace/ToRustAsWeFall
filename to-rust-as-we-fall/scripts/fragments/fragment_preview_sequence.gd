@@ -122,10 +122,6 @@ const PREVIEW_ENTRIES := [
 	# Pure visual iteration surface — perception overlays (fog/data) OFF by default so the forms read clean.
 	{"id": "creature_grammar", "chunk": "creature_grammar", "title": "Creature Grammar (SDF morphology)", "stage": 6,
 		"config": {"seed": 1, "overlays": {"aster": false, "peris": false, "endo": false}}},
-	# ARCHITECTURE SHOWCASE: the district buildings, each built bottom-up (base shape -> lattice). The
-	# iteration surface — walk the row, N reseeds. Overlays OFF by default (it's a look-dev gallery).
-	{"id": "architecture_showcase", "chunk": "architecture_showcase", "title": "Architecture Showcase (district heroes)", "stage": 6,
-		"config": {"seed": 1, "overlays": {"aster": false, "peris": false, "endo": false}}},
 	# GEOMETRY LAB: minimal geometry-construction algorithms with labeled points (algorithm 1 = the
 	# awning/hood from a face rectangle). Overlays OFF (a look-dev workbench).
 	{"id": "geometry_lab", "chunk": "geometry_lab", "title": "Geometry Lab (minimal algorithms)", "stage": 6,
@@ -143,6 +139,10 @@ const PREVIEW_ENTRIES := [
 	# picker displays it REVERSED, so the last entries are the top buttons. When you touch a chunk,
 	# MOVE its row down here.
 	{"id": "set_piece_showcase", "chunk": "set_piece_showcase", "title": "Set Pieces — crawl / rotate / water / hoist", "stage": 1},
+	# ARCHITECTURE SHOWCASE: the district buildings, each built bottom-up (base shape -> lattice). The
+	# iteration surface — walk the row, N reseeds. Overlays OFF by default (it's a look-dev gallery).
+	{"id": "architecture_showcase", "chunk": "architecture_showcase", "title": "Architecture Showcase (district heroes)", "stage": 6,
+		"config": {"seed": 1, "overlays": {"aster": false, "peris": false, "endo": false}}},
 ]
 
 ## The menu entry for an id (or {} if none).

@@ -1218,6 +1218,11 @@ func _build_generated_node(node: Dictionary) -> void:
 		node_id,
 		interactable
 	)
+	# Cross-wire BOTH directions: the target already delegates to the interactable; the interactable
+	# must point back so hover/SHIFT light the node's real marker meshes (its auto-outline used to
+	# latch onto its own dwell ring — a flat circle — before rings were excluded from collection).
+	if target != null and interactable.has_method("set_outline_target"):
+		interactable.call("set_outline_target", target)
 	_node_targets[node_id] = target
 	if _is_diagnosis_node(node):
 		_build_diagnosis_reads(node, pos, pad_size)

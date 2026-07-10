@@ -122,6 +122,10 @@ func _ready() -> void:
 		(_collision_shape.shape as SphereShape3D).radius = interaction_radius
 
 	_progress_ring = MeshInstance3D.new()
+	# Named so mesh collectors can EXCLUDE it: the ring is a dwell-progress READOUT spanning the whole
+	# interaction radius — never object geometry. An auto-outline that wraps it inflates the pick body
+	# to the zone size and swallows neighbouring interactables' hover rays (the hub-wheel bug).
+	_progress_ring.name = "InteractableProgressRing"
 	var torus := TorusMesh.new()
 	torus.inner_radius = maxf(0.05, interaction_radius - 0.18)
 	torus.outer_radius = interaction_radius

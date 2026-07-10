@@ -189,6 +189,9 @@ func _ready() -> void:
 			"--test-dev-console":
 				ran_test = true
 				await _test_dev_console()
+			"--test-player-contract":
+				ran_test = true
+				await _test_player_contract()
 			"--test-distract-gate":
 				ran_test = true
 				await _test_distract_gate()
@@ -13611,8 +13614,12 @@ func _test_chunk_interactable_outlines() -> void:
 			_assert_true(tgt != null or no_outline_ok.has(nm),
 				"%s/%s shares the outline/glow shaders (_outline_target wired)" % [cname, nm])
 			if warped and tgt != null and is_instance_valid(tgt) and (tgt is Node3D):
+				# A stranded-flat target (missed by the warp pass) measures 6-20+ m from its deck-warped
+				# interactable; a co-warped pair stays within the node's own authored footprint. 3.2
+				# admits a big pad's approach offset (the exit shelter clicks from the pad edge, ~2.6
+				# after arc distortion) while flat-stranding still blows through.
 				var d: float = (tgt as Node3D).global_position.distance_to((it as Node3D).global_position)
-				_assert_true(d < 2.5,
+				_assert_true(d < 3.2,
 					"%s/%s outline target rides the helix warp onto the deck (dist %.2f, not flat off-deck)" % [cname, nm, d])
 		# The grammar must actually FIRE, not just have a target: hover the first click-gated interactable and
 		# assert its white outline hull lights (the auto-connected OutlineFeedbackManager path) — catches a chunk
@@ -13864,7 +13871,18 @@ func _test_lattice_holes() -> void:
 	var tr: Dictionary = Lat.tracery(2.4, 7.2, {"reserved": ent.get("reserved", []), "bays": 7})
 	var hf: Dictionary = Lat.honeyframe(Vector3(4.5, 8.0, 5.5))
 	var vor: Dictionary = Lat.voronoi(Vector3(4.2, 5.2, 3.6))
-	var specimens := {"net": nst.commit(), "tracery": tr["frame"], "honeyframe": hf["frame"], "voronoi": vor["frame"]}
+	# specimen 5: the Open Files awning stack + its rackwork drawers, scanned as ONE assembly (the
+	# drawer backs bury into the skirts by design — the LED cards are single-sided and stay out, like
+	# the glass). Real door reservations included so the ground-facade cut is scanned too.
+	var of_spec: Dictionary = Base.generate("open_files")
+	var of_ent: Dictionary = Lat.entrances(of_spec)
+	var of_reserved: Array = of_ent.get("reserved", [])
+	var of_st := SurfaceTool.new()
+	of_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	of_st.append_from(Base.base_mesh(of_spec, of_reserved), 0, Transform3D.IDENTITY)
+	of_st.append_from((Base.rack_mesh(of_spec, of_reserved) as Dictionary)["frame"] as ArrayMesh, 0, Transform3D.IDENTITY)
+	var specimens := {"net": nst.commit(), "tracery": tr["frame"], "honeyframe": hf["frame"],
+		"voronoi": vor["frame"], "rackstack": of_st.commit()}
 	var vp := get_tree().root
 	var old_msaa := vp.msaa_3d
 	var old_ssaa := vp.screen_space_aa
@@ -13882,7 +13900,7 @@ func _test_lattice_holes() -> void:
 	# which leaks a few px of mm-deep poke-through past the depth bias. Budgets are 10-100x below any
 	# real failure (the drum-handedness bug measured 4043 total / 224 in one shot): a hole, crack,
 	# winding error, or exposed skirt blows straight through them.
-	for name2 in ["tracery", "honeyframe", "voronoi"]:
+	for name2 in ["tracery", "honeyframe", "voronoi", "rackstack"]:
 		var rr := results[name2] as Dictionary
 		_assert_true(int(rr["total"]) <= 60 and int(rr["max_shot"]) <= 12,
 			"%s red stays within the interpenetration budget (total %d <= 60, worst shot %d <= 12)" % [name2, int(rr["total"]), int(rr["max_shot"])])
@@ -13957,6 +13975,242 @@ void fragment() { ALBEDO = vec3(1.0, 0.0, 0.0); }
 	print("  [HOLES] %s: %d red pixels over %d shots (worst shot %d)" % [spec_name, red_count, shot, max_shot])
 	await _dispose_scene(root)
 	return {"total": red_count, "max_shot": max_shot}
+
+# --- PLAYER CONTRACT sweep: auto-generated real-input probes over EVERY picker entry --------------
+# The chroma-testing system (director's spec): the game boots with a ChromaProbe that renders every
+# interactable/character as a flat unique ID COLOR in a mirrored viewport — machine-readable "what is
+# on the player's screen, and where". This test then plays EXACTLY like a player, per fragment:
+#   VISIBILITY  each enabled interactable, camera-centered, must appear in the chroma mask.
+#   HOVER       real mouse motion at its chroma centroid must light the white outline AND the cursor
+#               verb (the physics ray must actually reach it — occlusion/pick bugs fail here).
+#   CLICK       a real RIGHT-click must commit the interaction (outline_selected/queued or interacted).
+#   KEYS        each HUD action key (SPACE/TAB/R) pressed once must toggle its signal EXACTLY once
+#               (the double-fire class).
+# Nobody hand-writes these probes — the sweep derives them from PREVIEW_ENTRIES + each scene's own
+# interactable registry, so a new fragment is covered the moment it is registered. Windowed-only
+# (physics picking + pixels need a display; the window parks off-screen). Not in --test-all.
+# Run all:  ../Godot_v4.7-stable_win64_console.exe --path "." -- --test-player-contract
+# Run one:  ... -- --test-player-contract --contract=set_piece_showcase
+const CONTRACT_MAX_PROBES := 6      # per fragment: hash-picked interactables get the full probe
+const CONTRACT_WALK_BUDGET := 16.0  # sim-seconds a click-commit may take (walk + dwell)
+
+func _test_player_contract() -> void:
+	_test_name = "Player Contract"
+	if DisplayServer.get_name() == "headless":
+		print("  SKIP (needs a display — run WITHOUT --headless)")
+		return
+	DisplayServer.window_set_position(Vector2i(20000, 20000))
+	var vp := get_tree().root
+	var old_msaa := vp.msaa_3d
+	var old_ssaa := vp.screen_space_aa
+	vp.msaa_3d = Viewport.MSAA_DISABLED
+	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
+	var only := ""
+	for arg in OS.get_cmdline_user_args():
+		if str(arg).begins_with("--contract="):
+			only = str(arg).trim_prefix("--contract=")
+	for entry in FragmentPreviewScript.PREVIEW_ENTRIES:
+		var eid := str((entry as Dictionary).get("id", ""))
+		if only != "" and eid != only:
+			continue
+		await _contract_probe_fragment(eid)
+	vp.msaa_3d = old_msaa
+	vp.screen_space_aa = old_ssaa
+
+func _contract_probe_fragment(eid: String) -> void:
+	var inst = await _instantiate_preview_chunk_and_wait(eid, 30)
+	if inst == null:
+		_assert_true(false, "[%s] preview instantiates" % eid)
+		return
+	# The KEY CONTRACT first (scene state untouched): one real key press = exactly one toggle.
+	var hud: Node = inst.get_node_or_null("GameHUD")
+	if hud != null:
+		var counts := {"pause": [0], "route": [0], "run": [0]}
+		if hud.has_signal("pause_toggled"):
+			hud.connect("pause_toggled", func(_v): counts["pause"][0] += 1)
+		if hud.has_signal("routing_toggled"):
+			hud.connect("routing_toggled", func(_v): counts["route"][0] += 1)
+		if hud.has_signal("run_toggled"):
+			hud.connect("run_toggled", func(_v): counts["run"][0] += 1)
+		for pair in [[KEY_SPACE, "pause"], [KEY_TAB, "route"], [KEY_R, "run"]]:
+			_contract_press_key(int((pair as Array)[0]))
+			for _f in range(4):
+				await get_tree().process_frame
+			var got: int = (counts[(pair as Array)[1]] as Array)[0]
+			_assert_true(got == 1, "[%s] one %s key press toggles exactly once (got %d — 0=dead, 2=double-fire)"
+				% [eid, str((pair as Array)[1]), got])
+			# press again to restore the toggle state before the next check
+			_contract_press_key(int((pair as Array)[0]))
+			for _f2 in range(4):
+				await get_tree().process_frame
+	# Build + populate the chroma probe from the scene's own registry (ground truth).
+	var probe := ChromaProbe.new()
+	probe.name = "ChromaProbe"
+	inst.add_child(probe)
+	var interactables: Array = []
+	for ia in (inst.get("_preview_interactables") as Array):
+		if ia is Node3D and is_instance_valid(ia) and not bool(ia.get("_used")):
+			interactables.append(ia)
+	for i in range(interactables.size()):
+		var ia2 := interactables[i] as Node3D
+		# proxy hugs the REAL pick zone: the Area sphere at the node, not a tall capsule above it
+		var rr := maxf(0.4, float(ia2.get("interaction_radius")) * 0.8)
+		probe.register(ia2, ChromaProbe.KIND_INTERACTABLE, i, rr, rr * 2.0)
+	if interactables.is_empty():
+		print("  [CONTRACT] %s: no interactables — keys only" % eid)
+		await _dispose_scene(inst)
+		return
+	# Probe a deterministic subset with the full hover+click contract.
+	var probe_ids: Array = []
+	for i2 in range(interactables.size()):
+		if interactables.size() <= CONTRACT_MAX_PROBES \
+				or fmod(absf(sin(float(i2) * 127.13 + float(eid.hash() % 997)) * 43758.5453), 1.0) < float(CONTRACT_MAX_PROBES) / float(interactables.size()):
+			probe_ids.append(i2)
+		if probe_ids.size() >= CONTRACT_MAX_PROBES:
+			break
+	var cam: Camera3D = get_tree().root.get_camera_3d()
+	var probed := 0
+	var active_id := str(inst.get("_active_char_id"))
+	if active_id == "":
+		active_id = "aster"
+	for idx in probe_ids:
+		var ia3 := interactables[idx] as Node3D
+		if not is_instance_valid(ia3) or not bool(ia3.get("interaction_enabled")):
+			continue
+		# park the active character beside it (setup, not the act under test) + frame the camera
+		if inst.has_method("headless_set_character_position"):
+			var park := ia3.global_position + Vector3(1.6, 0, 1.6)
+			var gs0 = inst.get("_game_state")
+			if gs0 != null and gs0.grid != null and gs0.grid.has_method("nearest_walkable_world"):
+				park = gs0.grid.nearest_walkable_world(park)
+			inst.call("headless_set_character_position", active_id, park)
+		if cam != null and cam.has_method("lock_to"):
+			cam.call("lock_to", ia3.global_position)
+		# wait for the follow camera to SETTLE — hovering with a still-easing camera slides the point
+		# off the target between the snapshot and the read (the diag-flake lesson)
+		var last_origin := cam.global_transform.origin if cam != null else Vector3.ZERO
+		for _s in range(90):
+			await get_tree().process_frame
+			if cam == null:
+				break
+			var now_origin := cam.global_transform.origin
+			if _s > 8 and (now_origin - last_origin).length() < 0.002:
+				break
+			last_origin = now_origin
+		await RenderingServer.frame_post_draw
+		var snap := probe.snapshot()
+		var key := "%d:%d" % [ChromaProbe.KIND_INTERACTABLE, idx]
+		_assert_true(snap.has(key), "[%s] interactable '%s' is on-screen when centered (chroma-visible)" % [eid, ia3.name])
+		if not snap.has(key):
+			continue
+		# HOVER: the OS cursor cannot physically enter a window parked at (20000, 20000) — Windows
+		# clamps it to the desktop, so Godot's 3D mouse-over tracking reports "outside" forever and
+		# warp_mouse/_live_hover never fire mouse_entered off-screen. The contract ray is cast
+		# DIRECTLY instead: the REAL pick ray (occlusion included) chooses the node, and its own
+		# _on_mouse_entered runs the production chain (manager -> canonical target -> outline+verb).
+		var hover_hit := _contract_ray_pick(cam, cam.unproject_position(ia3.global_position + Vector3(0, 0.4, 0)))
+		if hover_hit != null and hover_hit.has_method("_on_mouse_entered"):
+			hover_hit.call("_on_mouse_entered")
+		for _h in range(6):
+			await get_tree().process_frame
+		var t2 = ia3.get("_outline_target")
+		var hover_ok: bool = t2 != null and is_instance_valid(t2) \
+			and bool((t2 as Node).call("has_active_mesh_outline"))
+		if not hover_ok:
+			print("    [contract-dbg] %s: ray hit %s (expected the interactable or its surface target)" % [
+				ia3.name, (str(hover_hit.name) + ":" + hover_hit.get_class()) if hover_hit != null else "NOTHING"])
+			if hover_hit is Node3D:
+				var hh := hover_hit as Node3D
+				var shape := hh.get_node_or_null("CollisionShape3D") as CollisionShape3D
+				print("    [contract-dbg]   blocker at %s shape=%s" % [hh.global_position,
+					((shape.shape as BoxShape3D).size if shape != null and shape.shape is BoxShape3D else "?")])
+				if "_highlight_meshes" in hh:
+					for hm in (hh.get("_highlight_meshes") as Array):
+						if hm is MeshInstance3D and is_instance_valid(hm):
+							print("    [contract-dbg]   wraps mesh '%s' at %s" % [(hm as Node).name, (hm as Node3D).global_position])
+		_assert_true(hover_ok, "[%s] hovering '%s' at its screen centroid lights the outline (ray reaches it)" % [eid, ia3.name])
+		var verb: Node = get_tree().root.find_child("CursorVerb", true, false)
+		_assert_true(verb != null and (verb as Label).visible and (verb as Label).text != "",
+			"[%s] hovering '%s' shows the cursor action verb" % [eid, ia3.name])
+		# CLICK: real right-click commits the interaction; the walk + trigger runs on sim time.
+		var fired := [false]
+		if ia3.has_signal("interacted"):
+			ia3.connect("interacted", func(): fired[0] = true, CONNECT_ONE_SHOT)
+		var click_at := (snap[key] as Dictionary)["centroid"] as Vector2
+		if cam != null:
+			click_at = cam.unproject_position(ia3.global_position + Vector3(0, 0.4, 0))
+		Input.warp_mouse(click_at)
+		_contract_mouse_click(click_at)
+		var spent := 0.0
+		while spent < CONTRACT_WALK_BUDGET and not fired[0]:
+			if inst.has_method("headless_advance"):
+				inst.call("headless_advance", 0.5, 0.1)
+			spent += 0.5
+			for _w in range(3):
+				await get_tree().process_frame
+		_assert_true(fired[0], "[%s] right-clicking '%s' commits: walk + trigger fired within %.0fs" % [eid, ia3.name, CONTRACT_WALK_BUDGET])
+		probed += 1
+		# drop the hover (mirror of the ray-delivered enter) + park the mouse at the viewport CENTRE
+		# (an edge park reads as camera edge-scroll — the input-playthrough lesson)
+		if hover_hit != null and is_instance_valid(hover_hit) and hover_hit.has_method("_on_mouse_exited"):
+			hover_hit.call("_on_mouse_exited")
+		var center := get_tree().root.get_visible_rect().size * 0.5
+		Input.warp_mouse(center)
+		_contract_mouse_motion(center)
+		for _u in range(6):
+			await get_tree().process_frame
+	if cam != null and cam.has_method("unlock"):
+		cam.call("unlock")
+	print("  [CONTRACT] %s: %d interactables, %d fully probed" % [eid, interactables.size(), probed])
+	await _dispose_scene(inst)
+
+# The REAL pick ray for the contract probes: closest input_ray_pickable collider (areas + bodies)
+# along the camera ray at `screen_pos`, skipping non-pickable occluder colliders like the physics
+# picker does. Returns null when the ray reaches nothing pickable within range.
+func _contract_ray_pick(cam: Camera3D, screen_pos: Vector2) -> Node:
+	if cam == null:
+		return null
+	var space := cam.get_world_3d().direct_space_state
+	var from := cam.project_ray_origin(screen_pos)
+	var dir := cam.project_ray_normal(screen_pos)
+	var excl: Array = []
+	for _hop in range(8):
+		var q := PhysicsRayQueryParameters3D.create(from, from + dir * 120.0)
+		q.collide_with_areas = true
+		q.collide_with_bodies = true
+		q.exclude = excl
+		var hit := space.intersect_ray(q)
+		if hit.is_empty():
+			return null
+		var col: Node = hit["collider"]
+		var pickable = col.get("input_ray_pickable")
+		if pickable == null or bool(pickable):
+			return col
+		excl.append(hit["rid"])
+	return null
+
+func _contract_press_key(keycode: int) -> void:
+	for pressed in [true, false]:
+		var ev := InputEventKey.new()
+		ev.keycode = keycode
+		ev.physical_keycode = keycode
+		ev.pressed = pressed
+		Input.parse_input_event(ev)
+
+func _contract_mouse_motion(pos: Vector2) -> void:
+	var ev := InputEventMouseMotion.new()
+	ev.position = pos
+	ev.global_position = pos
+	Input.parse_input_event(ev)
+
+func _contract_mouse_click(pos: Vector2) -> void:
+	for pressed in [true, false]:
+		var ev := InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_RIGHT
+		ev.pressed = pressed
+		ev.position = pos
+		ev.global_position = pos
+		Input.parse_input_event(ev)
 
 func _count_red(img: Image) -> int:
 	var n := 0

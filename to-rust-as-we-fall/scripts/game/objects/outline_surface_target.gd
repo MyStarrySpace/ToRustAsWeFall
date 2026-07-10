@@ -178,6 +178,10 @@ func set_highlight(active: bool) -> void:
 func register_highlight_mesh(mesh_instance: MeshInstance3D) -> void:
 	if mesh_instance == null or _highlight_meshes.has(mesh_instance):
 		return
+	# One mesh, ONE outline owner: the tag lets the chunk auto-outline skip meshes another target
+	# already wraps (the hub-wheel bug: the crawl mouth's auto-collect grabbed the neighbouring
+	# wheel's mesh, and its padded body then swallowed the wheel's hover/click ray entirely).
+	mesh_instance.set_meta("outline_owner_id", get_instance_id())
 	_highlight_meshes.append(mesh_instance)
 	_original_overlays[mesh_instance.get_instance_id()] = mesh_instance.material_overlay
 	# If the outline is already showing (mesh registered after a hover), feed the new mesh into the mask too.

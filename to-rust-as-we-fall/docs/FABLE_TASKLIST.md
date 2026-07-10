@@ -227,14 +227,20 @@ taper, the root-splay, and the interlacing are missing. **Fable:**
 All 10 districts now exist in the showcase (`BaseShapeBuilder.BUILDINGS`) with a base primitive, so
 Fable starts from a standing set, not a blank. Per district — what's built vs what's Fable's:
 
-### The Open Files Initiative — base BUILT (composite)
-**Shape (director's spec):** rectangular prisms combined with other rectangular prisms, each capped by
-a TRIANGULAR prism that is an EQUILATERAL triangle, the slope connecting one prism up to the next. Opus
-built this (`_open_files_mesh`) as a radial ring of tall rect-prism FINS around a core, each gabled
-with an equilateral triangular prism, stepped in height (the jagged server-rack crown).
-**Lattice (director's spec) → Fable:** like the pipes, but instead of pipes down the edges, take the
-FACES and EXTRUDE them out by a [PARAMETER] depth — the recessed server-rack CHANNELS between the fins
-(+ the emissive rack LEDs). Route junctions through the Organic merge.
+### The Open Files Initiative — REBUILT on the recursive connected awnings (director, 2026-07-10)
+**Base (DONE):** the fin-ring composite is replaced by the geometry-lab ALGORITHM 2 mass —
+`_awning_stack_mesh` (base_shape_builder): a core prism wearing recursive connected awnings on all
+four faces (curve-driven floored down-shift, hash-diced corner merges + bridge fills), each skirt
+seaming exactly onto the next level's roof, the LAST skirt = the ground facade carrying the real
+door cut + pocket. Red-shell: STRICT CLEAN (rackstack specimen, 0 red px / 24 shots). Spec knobs:
+`awning_step/angle/shift/depth/merge`, `door_clear_y`.
+**Lattice (DONE):** `rackwork` = the faces-EXTRUDE spec — `rack_mesh` stands closed DRAWER strata
+`rack_depth` proud of every exposed skirt band (the recessed channels between them; hash pull-outs
+for the open-drawer read) + green LED matrix cards as a separate emissive mesh (terminal green,
+excluded from the red-shell scan like the glass).
+**Still open (director to judge/spec):** the converging-butte read now comes from the flare
+silhouette (angle 58°) — judge against the plate; vaulted hex-arch portal + cyan scan-beam curtain;
+emissive green sign board + crest.
 
 ### Greenfields Collective — base BUILT (box placeholder); BALCONY lattice → Fable
 **Shape:** a rounded barrel block (~4 storeys); Opus placed a plain box, the rounded corners are Fable.

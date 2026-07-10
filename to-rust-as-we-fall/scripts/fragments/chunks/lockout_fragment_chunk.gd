@@ -153,7 +153,7 @@ func _build_safe_alcove() -> void:
 	add_child(beacon)
 
 func _build_boundary_panel() -> void:
-	_add_box(self, ACCESS_PANEL_POS + Vector3(0.6, 0.0, 0.0), Vector3(0.2, 1.5, 1.0), Color(0.12, 0.15, 0.2), Color(0.14, 0.22, 0.36), 0.75)
+	var panel_mesh := _add_box(self, ACCESS_PANEL_POS + Vector3(0.6, 0.0, 0.0), Vector3(0.2, 1.5, 1.0), Color(0.12, 0.15, 0.2), Color(0.14, 0.22, 0.36), 0.75)
 	_add_box(self, ACCESS_PANEL_POS + Vector3(2.4, 1.9, 0.0), Vector3(3.6, 3.8, 0.4), Color(0.17, 0.18, 0.22))
 	_add_label(self, "LOCKOUT BOUNDARY", ACCESS_PANEL_POS + Vector3(-1.0, 2.5, 0.0))
 	_access_interactable = _add_inspection_interactable(
@@ -165,6 +165,12 @@ func _build_boundary_panel() -> void:
 		"aster"
 	)
 	_access_interactable.interacted.connect(_on_access_interacted)
+	# The interactable stands a metre off the panel (the walk-up spot), beyond the auto-outline's
+	# collect reach — wire the PANEL mesh explicitly so hover/SHIFT trace the real silhouette.
+	var panel_target := _outline_object(self, "AccessPanelOutline", [panel_mesh], "access_panel", 1.5)
+	if panel_target != null:
+		panel_target.call("set_interaction_delegate", _access_interactable)
+		_access_interactable.call("set_outline_target", panel_target)
 
 func _build_pursuit_markers() -> void:
 	for i in range(PURSUER_OFFSETS.size()):

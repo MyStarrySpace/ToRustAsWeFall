@@ -500,7 +500,7 @@ func _auto_outline_interactable(interactable: Node, parent: Node3D, position: Ve
 		return
 	# Cap the collect radius: it gathers the object's OWN co-located meshes, not distant walls a big
 	# interaction radius would otherwise reach.
-	var meshes := _collect_meshes_near(parent, position, clampf(radius, 0.6, 1.6))
+	var meshes := _collect_meshes_near(parent, position, clampf(radius, 0.6, 1.6), interactable)
 	if meshes.is_empty():
 		return
 	var target := _outline_object(parent, str(interactable.name) + "Outline", meshes,
@@ -512,18 +512,36 @@ func _auto_outline_interactable(interactable: Node, parent: Node3D, position: Ve
 	if interactable.has_method("set_outline_target"):
 		interactable.call("set_outline_target", target)
 
-## MeshInstance3D under `node` whose world AABB centre is within `radius` of `position`, excluding
-## outline shells. Used to find the object an interactable belongs to (its co-located meshes).
-func _collect_meshes_near(node: Node, position: Vector3, radius: float) -> Array:
+## MeshInstance3D under `node` whose world AABB centre is within `radius` of `position`, excluding:
+## outline shells; meshes another OutlineSurfaceTarget already owns (one mesh, one outline owner);
+## and meshes living under a DIFFERENT interactable's subtree (its dwell ring, dressing, verb disc —
+## grabbing a neighbour's parts merges two objects into one oversized pick body that eats the hover
+## ray: the hub-wheel bug, where the crawl mouth's outline body swallowed the wheel entirely).
+func _collect_meshes_near(node: Node, position: Vector3, radius: float, for_interactable: Node = null) -> Array:
 	var out: Array = []
 	for mi in OutlineFeedbackManager.collect_mesh_instances(node):
-		if mi == null or mi.mesh == null or mi.name == "ObjectOutlineShell":
+		if mi == null or mi.mesh == null or mi.name == "ObjectOutlineShell" \
+				or mi.name == "InteractableProgressRing":
+			continue
+		if mi.has_meta("outline_owner_id") and is_instance_id_valid(int(mi.get_meta("outline_owner_id"))):
+			continue
+		var owner_ia := _owning_interactable(mi)
+		if owner_ia != null and owner_ia != for_interactable:
 			continue
 		var world_aabb: AABB = mi.global_transform * mi.mesh.get_aabb()
 		var center := world_aabb.position + world_aabb.size * 0.5
 		if center.distance_to(position) <= radius:
 			out.append(mi)
 	return out
+
+## The interactable a node belongs to (nearest ancestor with the interactable signature), or null.
+func _owning_interactable(node: Node) -> Node:
+	var cur := node
+	while cur != null:
+		if cur.has_signal("interacted") and "interaction_radius" in cur:
+			return cur
+		cur = cur.get_parent()
+	return null
 
 func _add_inspection_interactable(
 	parent: Node3D,

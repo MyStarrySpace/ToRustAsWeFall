@@ -135,6 +135,8 @@ func _add_lattice(root: Node3D, spec: Dictionary, reserved: Array) -> void:
 			_add_tracery(root, spec, reserved)
 		"voronoi":
 			_add_voronoi(root, spec, reserved)
+		"rackwork":
+			_add_rackwork(root, spec, reserved)
 	if bool(spec.get("pipes", false)):
 		_add_pipes(root, spec)
 
@@ -234,6 +236,20 @@ func _add_voronoi(root: Node3D, spec: Dictionary, reserved: Array) -> void:
 		quad.visibility_range_begin_margin = 2.0
 		quad.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 		root.add_child(quad)
+
+## RACKWORK (Open Files): the faces-EXTRUDE lattice — drawer strata standing proud of the awning
+## skirts (the recessed channels between them) + the green LED matrices on their fronts. The frame
+## takes the body metal; the LEDs run the project terminal green, emissive.
+func _add_rackwork(root: Node3D, spec: Dictionary, reserved: Array) -> void:
+	var built: Dictionary = BaseShape.rack_mesh(spec, reserved)
+	_add_lattice_mesh(root, "RackFrame", built.get("frame"), _tinted_tile_material("facility_metal", Color(0.40, 0.44, 0.45)))
+	var led := StandardMaterial3D.new()
+	led.albedo_color = Color(0.14, 0.42, 0.22)
+	led.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	led.emission_enabled = true
+	led.emission = Color(0.36, 0.91, 0.50)   # the terminal green
+	led.emission_energy_multiplier = 2.4
+	_add_lattice_mesh(root, "RackLeds", built.get("leds"), led)
 
 func _add_pipes(root: Node3D, spec: Dictionary) -> void:
 	var pipe_seed := int(str(spec.get("kind", "")).hash())

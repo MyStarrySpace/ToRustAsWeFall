@@ -379,6 +379,7 @@ func _init_ui() -> void:
 	add_child(_dev_console)
 	_dev_console.register_command("fog", _cmd_fog, "fog on|off — the fog of war (default on)")
 	_dev_console.register_command("fxdebug", _cmd_fxdebug, "fxdebug on|off — path/outline FX traces")
+	_dev_console.register_command("chroma", _cmd_chroma, "chroma on|off — testing-mode ID-color overlay on every interactable")
 
 	_init_chromatic_aberration_effect()
 	_setup_ui()
@@ -398,6 +399,30 @@ func _cmd_fxdebug(args: Array) -> String:
 	if not args.is_empty():
 		GridWorld._fx_debug = str(args[0]).to_lower() in ["on", "true", "1"]
 	return "fx debug traces: %s" % ("ON (see console output)" if GridWorld._fx_debug else "off")
+
+## Testing-mode chroma overlay: every interactable wears its ID color as a translucent proxy — the
+## human-visible face of the same ChromaProbe machinery the player-contract tests read as pixels.
+func _cmd_chroma(args: Array) -> String:
+	var on := not args.is_empty() and str(args[0]).to_lower() in ["on", "true", "1"]
+	var probe := ChromaProbe.ensure(self)
+	if probe == null:
+		return "chroma: no probe (null context)"
+	if on:
+		probe.clear()
+		var idx := 0
+		var stack: Array = [self as Node]
+		while not stack.is_empty():
+			var n := stack.pop_back() as Node
+			for child in n.get_children():
+				stack.append(child)
+			if n is Node3D and n.has_signal("interacted") and "interaction_radius" in n:
+				probe.register(n as Node3D, ChromaProbe.KIND_INTERACTABLE, idx,
+					maxf(0.5, float(n.get("interaction_radius"))) * 0.7, 1.4)
+				idx += 1
+		probe.set_overlay_visible(true)
+		return "chroma overlay: ON (%d interactables)" % idx
+	probe.set_overlay_visible(false)
+	return "chroma overlay: off"
 
 ## Connect the universal HUD signals every scene shares (currently: hold-SHIFT reveal-all). The HUD is
 ## resolved by NODE — every scene names it "GameHUD" and runs game_hud.gd (which owns highlight_held) —

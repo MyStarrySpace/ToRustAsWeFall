@@ -63,12 +63,18 @@ const SPECS := {
 	# --- lattices/complex massing. Simple massing here; the notes flag what is Fable's.
 	"open_files": {
 		"title": "The Open Files Initiative",
-		"shape": SHAPE_COMPOSITE,           # radial cluster of tall rect-prism FINS, each gabled
-		"composite": "open_files_fins",
-		"size": Vector3(5.6, 9.0, 5.6),
+		"shape": SHAPE_COMPOSITE,           # RECURSIVE CONNECTED AWNINGS mass (geometry-lab algo 2)
+		"composite": "open_files_awnings",
+		"size": Vector3(5.6, 9.0, 5.6),     # FULL ground footprint — the flare ends at these planes
+		"awning_step": 1.0,                 # the construction grid STEP (A->C drop per level)
+		"awning_angle": 58.0,               # awning slope (proj = step/tan) — the visible step flare
+		"awning_shift": 2.0,                # max curve-driven extra DOWN shift per level (floored steps)
+		"awning_depth": 3,                  # recursion depth (levels = depth+1, ground-clamped)
+		"awning_merge": 0.55,               # adjacent-corner merge chance ceiling (rises with depth)
+		"rack_depth": 0.2,                  # the faces-EXTRUDE parameter: drawer strata depth
 		"color": Color(0.31, 0.35, 0.37),   # dark steel-blue with rust + teal server glow
 		"tile": "facility_metal",
-		"lattice": "",                      # lattice deferred — see FABLE_TASKLIST (extruded-face channels)
+		"lattice": "rackwork",              # extruded-face drawer strata + green LED matrices
 	},
 	"hypelines": {
 		"title": "The Hypelines",
@@ -175,7 +181,7 @@ static func base_mesh(spec: Dictionary, reserved: Array = []) -> ArrayMesh:
 				return _tiered_cylinder(r, h, tiers, inset, reserved, recess)
 			return _cylinder_with_doors(r, h, reserved, recess) if not reserved.is_empty() else _cylinder(r, h)
 		SHAPE_COMPOSITE:
-			return _composite(spec)
+			return _composite(spec, reserved, recess)
 		_:
 			var s: Vector3 = spec.get("size", Vector3(4.0, 6.0, 4.0))
 			if tiers > 1:
@@ -253,6 +259,24 @@ static func gameplay_anchors(spec: Dictionary, ent: Dictionary = {}) -> Dictiona
 		var ad := a as Dictionary
 		conns.append({"kind": "road", "pos": ad["pos"] as Vector3, "dir": ad["n"] as Vector3,
 			"width": 1.2, "main": bool(ad.get("main", false))})
+	if str(spec.get("composite", "")) == "open_files_awnings":
+		# The awning stack: weak points on hash-picked skirt bands (the visible stepped facades);
+		# bridge sockets at the flat core-roof edges. The sloped awning roofs hold no balcony slots.
+		var lay := _awning_layout(spec)
+		for k3 in range(2):
+			var fi := int(_h01(kb + 3.0 + float(k3) * 13.7) * 3.99)
+			var lv: Array = (lay["faces"] as Array)[fi]
+			var li := int(_h01(kb + 8.0 + float(k3) * 5.1) * float(lv.size() - 1) * 0.99)
+			var pts := lv[li] as Dictionary
+			var mid: Vector3 = ((pts["E"] as Vector3) + (pts["F"] as Vector3)) * 0.5
+			var wy := (mid.y + float(pts["bottom_y"])) * 0.5
+			weak.append({"pos": Vector3(mid.x, wy, mid.z), "n": pts["n"] as Vector3, "radius": 0.7})
+		var core: Vector2 = lay["core"]
+		var hh: float = lay["h"]
+		for fd0 in [[Vector3(0, hh, core.y), Vector3(0, 0, 1)], [Vector3(0, hh, -core.y), Vector3(0, 0, -1)],
+				[Vector3(core.x, hh, 0), Vector3(1, 0, 0)], [Vector3(-core.x, hh, 0), Vector3(-1, 0, 0)]]:
+			conns.append({"kind": "bridge", "pos": (fd0 as Array)[0] as Vector3, "dir": (fd0 as Array)[1] as Vector3, "width": 1.0})
+		return {"weak_points": weak, "connectors": conns, "balcony_slots": balc}
 	if str(spec.get("shape", SHAPE_BOX)) == SHAPE_CYLINDER:
 		var r := float(spec.get("radius", 2.0))
 		var hgt := float(spec.get("height", 5.0))
@@ -301,12 +325,276 @@ static func gameplay_anchors(spec: Dictionary, ent: Dictionary = {}) -> Dictiona
 	return {"weak_points": weak, "connectors": conns, "balcony_slots": balc}
 
 ## A small assembly of primitives baked into one ArrayMesh (base on y=0). Dispatched by "composite".
-static func _composite(spec: Dictionary) -> ArrayMesh:
+static func _composite(spec: Dictionary, reserved: Array = [], recess: float = 0.5) -> ArrayMesh:
 	match str(spec.get("composite", "")):
+		"open_files_awnings":
+			return _awning_stack_mesh(spec, reserved, recess)
 		"open_files_fins":
 			return _open_files_mesh(spec.get("size", Vector3(5.6, 9.0, 5.6)))
 		_:
 			return _box(spec.get("size", Vector3(4.0, 6.0, 4.0)))
+
+# --- RECURSIVE CONNECTED AWNINGS (the Open Files massing — geometry-lab algorithm 2, ported) -------
+#
+# A core prism wears an awning on all four sides; each awning recurses off its skirt (out + down,
+# with a floored curve-driven extra shift), and adjacent faces' awnings MERGE at shared corners on a
+# deterministic per-level dice roll — the blocky, stepped, converging-butte mass. Building-grade
+# changes from the lab workbench: consistent OUTWARD winding (the lab ran CULL_DISABLED), skirts end
+# exactly on the next level's roof edge (a watertight seam instead of nested ground shells), the
+# LAST level's skirt is the ground facade and takes the real door cut, and the recursion stops while
+# that facade is still tall enough for a door.
+
+## The shared layout both the base mesh and the rackwork read (they must never diverge).
+## Returns {faces:[per-face Array of level dicts], levels_y, proj, step, core:Vector2(hx,hz), h}.
+## A level dict = _awning_points + "bottom_y" (where its skirt hands over to the next roof; 0 = ground).
+static func _awning_layout(spec: Dictionary) -> Dictionary:
+	var size: Vector3 = spec.get("size", Vector3(5.6, 9.0, 5.6))
+	var step := float(spec.get("awning_step", 1.0))
+	var angle := deg_to_rad(clampf(float(spec.get("awning_angle", 68.0)), 5.0, 85.0))
+	var max_shift := float(spec.get("awning_shift", 2.0))
+	var depth := maxi(1, int(spec.get("awning_depth", 3)))
+	var door_clear := float(spec.get("door_clear_y", 2.8))
+	var proj := step / tan(angle)
+	# Dry-run the level heights: y[d] is level d's A/B height. Stop while the ground facade (the last
+	# skirt, from y_last - step down to 0) can still hold a door.
+	var levels_y: Array = []
+	var y := size.y
+	var d := 0
+	while d <= depth:
+		levels_y.append(y)
+		var t := clampf(float(d + 1) / float(depth), 0.0, 1.0)
+		var shift := floorf(max_shift * t) * step
+		var next_y := y - step - shift
+		if next_y - step < door_clear + step * 0.4:
+			break
+		y = next_y
+		d += 1
+	var flare := proj * float(levels_y.size())
+	var hx := maxf(0.8, size.x * 0.5 - flare)
+	var hz := maxf(0.8, size.z * 0.5 - flare)
+	# 4 top corners in rotational order (the lab's frame): face fi spans corner[fi]->corner[fi+1],
+	# outward normal[fi]; B of face fi == A of face fi+1 (the shared merge corner).
+	var corners := [Vector3(hx, size.y, hz), Vector3(-hx, size.y, hz), Vector3(-hx, size.y, -hz), Vector3(hx, size.y, -hz)]
+	var normals := [Vector3(0, 0, 1), Vector3(-1, 0, 0), Vector3(0, 0, -1), Vector3(1, 0, 0)]
+	var faces: Array = []
+	for fi in range(4):
+		var a: Vector3 = corners[fi]
+		var b: Vector3 = corners[(fi + 1) % 4]
+		var n: Vector3 = normals[fi]
+		var lv: Array = []
+		for k in range(levels_y.size()):
+			var pts := _awning_points_at(a, b, n, proj, step)
+			pts["bottom_y"] = float(levels_y[k + 1]) if k + 1 < levels_y.size() else 0.0
+			pts["n"] = n
+			lv.append(pts)
+			if k + 1 < levels_y.size():
+				var drop: float = float(levels_y[k]) - float(levels_y[k + 1]) - step
+				a = (pts["E"] as Vector3) - Vector3(0.0, drop, 0.0)
+				b = (pts["F"] as Vector3) - Vector3(0.0, drop, 0.0)
+		faces.append(lv)
+	return {"faces": faces, "levels_y": levels_y, "proj": proj, "step": step,
+		"core": Vector2(hx, hz), "h": size.y}
+
+# The lab's 10-point awning construction off a top edge A-B (outward normal n): C/D one step below,
+# E/F out by proj at C/D's height. G/H/I/J are derived by the emitters (bottom_y varies per level).
+static func _awning_points_at(a: Vector3, b: Vector3, n: Vector3, proj: float, step: float) -> Dictionary:
+	var c := a - Vector3(0.0, step, 0.0)
+	var d := b - Vector3(0.0, step, 0.0)
+	return {"A": a, "B": b, "C": c, "D": d, "E": c + n * proj, "F": d + n * proj}
+
+## The full awning-stack solid. `reserved` box door regions cut a real opening + recessed pocket into
+## the LAST level's skirt (the ground facade) of their face.
+static func _awning_stack_mesh(spec: Dictionary, reserved: Array, recess: float) -> ArrayMesh:
+	var lay := _awning_layout(spec)
+	var faces: Array = lay["faces"]
+	var core: Vector2 = lay["core"]
+	var h: float = lay["h"]
+	var kb := float(str(spec.get("kind", "open_files")).hash() % 1000)
+	var merge_ceiling := clampf(float(spec.get("awning_merge", 0.55)), 0.0, 1.0)
+	var n_levels: int = (faces[0] as Array).size()
+
+	# Merge dice per shared corner per level (deterministic hash chain, rises with depth like the
+	# lab's default merge curve). merged[fi][k] = face fi's RIGHT corner merges face fi+1's LEFT.
+	var merged: Array = []
+	for fi in range(4):
+		var arr: Array = []
+		for k in range(n_levels):
+			var t := float(k) / float(maxi(1, n_levels - 1))
+			arr.append(_h01(kb + 7.0 + float(fi) * 31.7 + float(k) * 11.3) < merge_ceiling * t)
+		merged.append(arr)
+
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	# Core top cap (the flat roof between the four level-0 roof edges).
+	_quad_out(st, Vector3(-core.x, h, -core.y), Vector3(core.x, h, -core.y),
+		Vector3(core.x, h, core.y), Vector3(-core.x, h, core.y), Vector3(0, h - 2.0, 0))
+	for fi in range(4):
+		var lv: Array = faces[fi]
+		var right_merge: Array = merged[fi]
+		var left_merge: Array = merged[(fi + 3) % 4]
+		for k in range(lv.size()):
+			var last := k == lv.size() - 1
+			var door = _box_door_on((lv[k] as Dictionary)["n"] as Vector3, reserved) if last else null
+			_emit_awning_level(st, lv[k] as Dictionary, bool(left_merge[k]), bool(right_merge[k]), door, recess)
+	# Corner merge bridges (top tri + a fill wall dropping to the notch ground).
+	for fi in range(4):
+		var la: Array = faces[fi]
+		var lb: Array = faces[(fi + 1) % 4]
+		var rm: Array = merged[fi]
+		for k in range(rm.size()):
+			if bool(rm[k]) and k < la.size() and k < lb.size():
+				_emit_merge_bridge(st, la[k] as Dictionary, lb[k] as Dictionary)
+	_emit_awning_ground(st, lay)
+	st.generate_normals()
+	return st.commit()
+
+# One awning level: roof ABFE; end gable+wall per corner unless that corner merges; the skirt E..F
+# down to bottom_y — with a real door opening + pocket when `door` is set (the ground facade).
+static func _emit_awning_level(st: SurfaceTool, pts: Dictionary, skip_left: bool, skip_right: bool, door, recess: float) -> void:
+	var a: Vector3 = pts["A"]
+	var b: Vector3 = pts["B"]
+	var c: Vector3 = pts["C"]
+	var dd: Vector3 = pts["D"]
+	var e: Vector3 = pts["E"]
+	var f: Vector3 = pts["F"]
+	var n: Vector3 = pts["n"]
+	var by := float(pts["bottom_y"])
+	var up := Vector3.UP
+	var u := (b - a).normalized()
+	var roof_hint := (a + b + e + f) * 0.25 - n * 0.6 - up * 0.9
+	_quad_out(st, a, b, f, e, roof_hint)
+	if not skip_left:
+		_tri_out(st, a, e, c, (a + e + c) / 3.0 + u * 1.0)                 # left gable (faces -u)
+		var cg := Vector3(c.x, by, c.z)
+		var eg := Vector3(e.x, by, e.z)
+		_quad_out(st, c, e, eg, cg, (c + e + eg + cg) * 0.25 + u * 1.0)    # left end wall
+	if not skip_right:
+		_tri_out(st, b, f, dd, (b + f + dd) / 3.0 - u * 1.0)               # right gable (faces +u)
+		var dh := Vector3(dd.x, by, dd.z)
+		var fh := Vector3(f.x, by, f.z)
+		_quad_out(st, dd, f, fh, dh, (dd + f + fh + dh) * 0.25 - u * 1.0)  # right end wall
+	# the skirt (with the door cut on the ground facade)
+	var eb := Vector3(e.x, by, e.z)
+	var fb := Vector3(f.x, by, f.z)
+	var skirt_hint := (e + f + fb + eb) * 0.25 - n * 1.0
+	if door == null:
+		_quad_out(st, e, f, fb, eb, skirt_hint)
+		return
+	var fw := e.distance_to(f)
+	var hw: float = float(door.get("open_half_w", door.get("half_w", 0.5)))
+	var yt: float = float(door.get("open_y_top", door.get("y_top", 2.0)))
+	yt = minf(yt, e.y - 0.15)
+	var lx := fw * 0.5 + float(door["x_center"]) - hw
+	var rx := fw * 0.5 + float(door["x_center"]) + hw
+	var bl := eb   # skirt base-left; right along u (E->F matches the face's A->B direction)
+	_quad_out(st, bl, bl + u * lx, bl + u * lx + up * (e.y - by), bl + up * (e.y - by), skirt_hint)   # left of hole
+	_quad_out(st, bl + u * rx, fb, f, bl + u * rx + up * (e.y - by), skirt_hint)                       # right of hole
+	_quad_out(st, bl + u * lx + up * yt, bl + u * rx + up * yt,
+		bl + u * rx + up * (e.y - by), bl + u * lx + up * (e.y - by), skirt_hint)                      # above hole
+	var pl := bl + u * lx
+	var pr := bl + u * rx
+	var back := -n * recess
+	_quad_out(st, pl + back, pr + back, pr + back + up * yt, pl + back + up * yt, pl + back * 3.0)     # pocket back
+	_quad_out(st, pl, pl + back, pl + back + up * yt, pl + up * yt, pl - u * 1.0)                      # left jamb
+	_quad_out(st, pr + back, pr, pr + up * yt, pr + back + up * yt, pr + u * 1.0)                      # right jamb
+	_quad_out(st, pl + up * yt, pl + back + up * yt, pr + back + up * yt, pr + up * yt, pl + up * (yt + 3.0))  # lintel (faces down)
+
+# Bridge face fi's right corner to face fi+1's left at one level: the lab's top triangle B1-E2-F1 +
+# the diagonal fill F1-E2 dropping to the notch ground (both sides' gable/wall were skipped).
+static func _emit_merge_bridge(st: SurfaceTool, pa: Dictionary, pb: Dictionary) -> void:
+	var b1: Vector3 = pa["B"]
+	var f1: Vector3 = pa["F"]
+	var e2: Vector3 = pb["E"]
+	var hint := (b1 + f1 + e2) / 3.0 - ((f1 - b1) + (e2 - b1)).normalized() * 0.8 - Vector3.UP * 0.4
+	_tri_out(st, b1, e2, f1, hint)
+	var g2 := Vector3(e2.x, 0.0, e2.z)
+	var h1 := Vector3(f1.x, 0.0, f1.z)
+	var wall_hint := (f1 + e2 + g2 + h1) * 0.25 - ((pa["n"] as Vector3) + (pb["n"] as Vector3)).normalized() * 1.0
+	_quad_out(st, f1, e2, g2, h1, wall_hint)
+
+# --- RACKWORK: the faces-extrude lattice (director's spec) ----------------------------------------
+# "Instead of pipes down the edges, take the FACES and EXTRUDE them out by a [PARAMETER] depth" —
+# the recessed server-rack channels. Each exposed skirt band carries rows of closed DRAWER boxes
+# standing `rack_depth` proud of the facade (a hash-chosen few pulled further out — the open-drawer
+# read); the gaps between them are the recessed channels. Green LED matrices ride the drawer fronts
+# as a SEPARATE emissive mesh (single-sided cards — kept out of the red-shell scan like the glass).
+## Returns {"frame": ArrayMesh (closed drawer boxes), "leds": ArrayMesh (emissive matrix cards)}.
+static func rack_mesh(spec: Dictionary, reserved: Array = []) -> Dictionary:
+	var lay := _awning_layout(spec)
+	var depth := float(spec.get("rack_depth", 0.14))
+	var kb := float(str(spec.get("kind", "open_files")).hash() % 1000)
+	var frame := SurfaceTool.new()
+	frame.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var leds := SurfaceTool.new()
+	leds.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var row_h := 0.30
+	var gap := 0.05
+	for fi in range(4):
+		var lv: Array = (lay["faces"] as Array)[fi]
+		for k in range(lv.size()):
+			var pts := lv[k] as Dictionary
+			var n: Vector3 = pts["n"]
+			var e: Vector3 = pts["E"]
+			var f: Vector3 = pts["F"]
+			var by := float(pts["bottom_y"])
+			var door = _box_door_on(n, reserved) if k == lv.size() - 1 else null
+			var u := (f - e).normalized()
+			var band_w := e.distance_to(f) - 0.5          # keep off the corner walls
+			var band_top := e.y - 0.10
+			var band_bot := by + 0.10
+			if band_top - band_bot < row_h or band_w < 1.0:
+				continue
+			var rows := int((band_top - band_bot) / (row_h + gap))
+			var cols := int(band_w / (0.72 + gap))
+			var dw := (band_w - float(cols - 1) * gap) / float(cols)
+			var origin := e + u * 0.25 + Vector3(0, -(e.y - band_top), 0)
+			for r in range(rows):
+				var ry := band_top - float(r) * (row_h + gap) - row_h * 0.5
+				for cc in range(cols):
+					var cx := (float(cc) + 0.5) * dw + float(cc) * gap
+					var center := Vector3(origin.x, ry, origin.z) + u * cx
+					# door clearance on the ground facade: skip drawers overlapping the doorway
+					if door != null:
+						var hw := float(door.get("half_w", 0.6)) + dw * 0.5
+						var xc := e.distance_to(f) * 0.5 + float(door["x_center"])
+						if absf((cx + 0.25) - xc) < hw and ry - row_h * 0.5 < float(door.get("y_top", 2.0)) + 0.1:
+							continue
+					var pull := depth * (1.55 if _h01(kb + float(fi) * 91.3 + float(k) * 17.1 + float(r) * 5.7 + float(cc) * 2.3) > 0.82 else 1.0)
+					_emit_oriented_box_st(frame, center + n * (pull * 0.5),
+						u, Vector3.UP, n, Vector3(dw * 0.5, row_h * 0.5, pull * 0.5))
+					# the LED matrix: a hash-lit grid of small cards on the drawer front
+					var front := center + n * (pull + 0.006)
+					for my in range(2):
+						for mx in range(4):
+							if _h01(kb + float(fi) * 3.1 + float(k) * 7.7 + float(r) * 13.9 + float(cc) * 29.3 + float(my) * 4.9 + float(mx) * 1.7) > 0.72:
+								continue
+							var lc := front + u * ((float(mx) - 1.5) * dw * 0.18) + Vector3(0, (float(my) - 0.5) * row_h * 0.42, 0)
+							var lu := u * 0.032
+							var lup := Vector3(0, 0.032, 0)
+							leds.add_vertex(lc - lu - lup); leds.add_vertex(lc + lu - lup); leds.add_vertex(lc + lu + lup)
+							leds.add_vertex(lc - lu - lup); leds.add_vertex(lc + lu + lup); leds.add_vertex(lc - lu + lup)
+	frame.generate_normals()
+	leds.generate_normals()
+	return {"frame": frame.commit(), "leds": leds.commit()}
+
+# The ground underside: the core rectangle + one rectangle per face out to that face's final skirt.
+# Corner notches stay open underneath (ground-contact, invisible from any exterior angle).
+static func _emit_awning_ground(st: SurfaceTool, lay: Dictionary) -> void:
+	var core: Vector2 = lay["core"]
+	var above := Vector3(0, 2.0, 0)
+	_quad_out(st, Vector3(-core.x, 0, -core.y), Vector3(core.x, 0, -core.y),
+		Vector3(core.x, 0, core.y), Vector3(-core.x, 0, core.y), above)
+	for fi in range(4):
+		var lv: Array = (lay["faces"] as Array)[fi]
+		var lastp := lv[lv.size() - 1] as Dictionary
+		var n: Vector3 = lastp["n"]
+		var e: Vector3 = lastp["E"]
+		var f: Vector3 = lastp["F"]
+		var out_e := Vector3(e.x, 0.0, e.z)
+		var out_f := Vector3(f.x, 0.0, f.z)
+		var in_e := out_e - n * ((out_e - Vector3(0, 0, 0)).dot(n) - (core.x if absf(n.x) > 0.5 else core.y))
+		var in_f := out_f - n * ((out_f - Vector3(0, 0, 0)).dot(n) - (core.x if absf(n.x) > 0.5 else core.y))
+		_quad_out(st, in_e, in_f, out_f, out_e, above)
 
 ## The Open Files massing: a SOLID faceted tower (an n-gon core prism) skinned with tall buttress FINS
 ## on every facet, each fin capped by an equilateral triangular-prism GABLE, at STEPPED heights — the
