@@ -1655,127 +1655,51 @@ static func _box_vertical_faces(size: Vector3) -> Array:
 # faces AND the drum (placed in a right-handed local frame, so the boxes sit correctly on the curve).
 # ============================================================================================
 
-const ENTRANCE_DEFAULTS := {
-	"main_w": 1.6, "main_h": 2.7,
-	"side_w": 1.1, "side_h": 2.1,
-	"jamb": 0.20,        # frame post/lintel thickness
-	"proud": 0.16,       # how far the frame stands off the wall
-	"recess": 0.42,      # how deep the doorway pocket sinks in
-	"canopy_out": 0.5,   # canopy overhang depth
-	"side_count_min": 1, # range of SIDE entrances; the count is seeded per building
-	"side_count_max": 3,
-	"reserve_margin": 0.45,   # extra clearance (m) around a door the lattice must keep clear
-}
-
-## Build the entrances for a base shape: the MAIN door at the front (+Z), plus a seeded number of SIDE
-## doors DISTRIBUTED around the building. Returns {stone, dark, accent} meshes, the main sign anchor,
-## the full `anchors` list, `reserved` regions (so the lattice can carve space), and `side_count`.
+## Build the entrance MESHES for a base shape FROM THE SURVEY's door placements
+## (BuildingSurvey.door_placements — the one placement authority; the parameter table lives there
+## too as BuildingSurvey.ENTRANCE_DEFAULTS). Returns {stone, dark, accent} meshes, the main sign
+## anchor, the full `anchors` list, `reserved` regions (the survey's opening reservations — passed
+## to the base-mesh cutters and lattices), and the placed `side_count`.
 static func entrances(spec: Dictionary, overrides: Dictionary = {}) -> Dictionary:
-	var p := ENTRANCE_DEFAULTS.duplicate()
+	var p: Dictionary = BuildingSurvey.ENTRANCE_DEFAULTS.duplicate()
 	var spec_ov: Dictionary = spec.get("entrances", {})   # per-building entrance tuning lives on the spec
 	for k in spec_ov.keys():
 		p[k] = spec_ov[k]
 	for k in overrides.keys():
 		p[k] = overrides[k]
+	var placements: Array = BuildingSurvey.door_placements(spec, p)
 	var stone := SurfaceTool.new()
 	stone.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var dark := SurfaceTool.new()
 	dark.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var accent := SurfaceTool.new()
 	accent.begin(Mesh.PRIMITIVE_TRIANGLES)
-	# A drum-based COMPOSITE (lobed skirt / dome crown — radius+height, no box size) takes drum-frame
-	# doors too: its wall cut runs through _cylinder_with_doors, which only matches cyl regions.
-	var is_cyl := str(spec.get("shape", "box")) == "cylinder" or str(spec.get("door_frame", "")) == "cyl"
-	# door_radius: the wall the door ACTUALLY cuts when it differs from the massing radius (the
-	# plumbing drum sits inside its lobed skirt — the door lives on the drum, not the flare).
-	var radius := float(spec.get("door_radius", spec.get("radius", 2.0)))
-	var size: Vector3 = spec.get("size", Vector3(4, 6, 4))
-	var faces := _box_vertical_faces(size)
-	var main_w := float(p["main_w"])
-	var main_h := float(p["main_h"])
-	var side_w := float(p["side_w"])
-	var side_h := float(p["side_h"])
-	var margin := float(p["reserve_margin"])
-	var rng := SeededRng.new(int(str(spec.get("kind", "")).hash()) ^ 0x5177)
-	var n_side := int(rng.call("randi_range", int(p["side_count_min"]), int(p["side_count_max"])))
-	# On a TRACERY drum, doors live IN bays (the plate: each door framed by its bay's mullions). Snap
-	# every door to a bay CENTRE and reserve exactly that bay — free arcs used to eat most of the drum.
-	var snap_drum := is_cyl and str(spec.get("lattice", "")) == "tracery"
-	var bays := int(spec.get("bays", int(TRACERY_DEFAULTS["bays"])))
-	var dtheta := TAU / float(bays)
-	var used_bays: Dictionary = {}
-
 	var anchors: Array = []
 	var reserved: Array = []
-	# MAIN door at the FRONT (drum: theta = pi/2 = +Z = bay 0's centre; box: the +Z face centre).
-	var mf := _door_frame_cyl(radius, PI * 0.5) if is_cyl else _door_frame_face(faces[0], 0.0)
-	_emit_door(stone, dark, dark, mf, main_w, main_h, p, false)
-	anchors.append({"main": true, "pos": mf["anchor"], "n": mf["n"],
-		"top": (mf["anchor"] as Vector3) + Vector3(0, 1, 0) * (main_h + 0.55) + (mf["n"] as Vector3) * 0.06})
-	var mrr := _reserve_region(is_cyl, radius, mf, main_w, main_h, float(p["jamb"]), margin)
-	if snap_drum:
-		mrr["bay"] = 0
-		used_bays[0] = true
-	reserved.append(mrr)
-	# SIDE doors DISTRIBUTED around the building (drum: evenly around, skipping the front; box: spread
-	# over the non-front faces). On a tracery drum each snaps to the nearest FREE bay centre.
-	for k in range(n_side):
-		var sfr: Dictionary
-		var side_bay := -1
-		if is_cyl:
-			var theta := PI * 0.5 + TAU * float(k + 1) / float(n_side + 1)
-			if snap_drum:
-				side_bay = wrapi(int(round((theta - PI * 0.5) / dtheta)), 0, bays)
-				if used_bays.has(side_bay):
-					continue   # bay already holds a door — drop this side entrance
-				used_bays[side_bay] = true
-				theta = PI * 0.5 + float(side_bay) * dtheta
-			sfr = _door_frame_cyl(radius, theta)
+	var main_n := Vector3(0, 0, 1)
+	var main_top := Vector3(0, 3, 3)
+	var side_count := 0
+	for pl_v in placements:
+		var pl := pl_v as Dictionary
+		var fr := pl["frame"] as Dictionary
+		var is_main := bool(pl["main"])
+		_emit_door(stone, dark, dark if is_main else accent, fr, float(pl["w"]), float(pl["h"]), p, not is_main)
+		if is_main:
+			main_n = fr["n"]
+			main_top = (fr["anchor"] as Vector3) + Vector3(0, 1, 0) * (float(pl["h"]) + 0.55) + main_n * 0.06
+			anchors.append({"main": true, "pos": fr["anchor"], "n": fr["n"], "top": main_top})
 		else:
-			sfr = _door_frame_face(faces[1 + (k % 3)], 0.0)
-		_emit_door(stone, dark, accent, sfr, side_w, side_h, p, true)
-		anchors.append({"main": false, "pos": sfr["anchor"], "n": sfr["n"]})
-		var srr := _reserve_region(is_cyl, radius, sfr, side_w, side_h, float(p["jamb"]), margin)
-		if side_bay >= 0:
-			srr["bay"] = side_bay
-		reserved.append(srr)
+			side_count += 1
+			anchors.append({"main": false, "pos": fr["anchor"], "n": fr["n"]})
+		reserved.append(pl["region"])
 	stone.generate_normals()
 	dark.generate_normals()
 	accent.generate_normals()
 	return {
 		"stone": stone.commit(), "dark": dark.commit(), "accent": accent.commit(),
-		"main_top": anchors[0]["top"], "main_n": mf["n"],
-		"anchors": anchors, "reserved": reserved, "side_count": n_side,
+		"main_top": main_top, "main_n": main_n,
+		"anchors": anchors, "reserved": reserved, "side_count": side_count,
 	}
-
-# A right-handed door frame (u x v = n) on the ground at the drum wall, at absolute angle `theta`.
-static func _door_frame_cyl(radius: float, theta: float) -> Dictionary:
-	var n := Vector3(cos(theta), 0.0, sin(theta))
-	var v := Vector3(0, 1, 0)
-	return {"anchor": n * radius, "u": v.cross(n).normalized(), "v": v, "n": n}
-
-# A right-handed door frame on a box FACE (from _box_vertical_faces) at lateral offset `lateral`.
-static func _door_frame_face(face: Dictionary, lateral: float) -> Dictionary:
-	var c: Vector3 = face["c"]
-	var uf: Vector3 = face["u"]
-	var n: Vector3 = face["n"]
-	var v := Vector3(0, 1, 0)
-	return {"anchor": Vector3(c.x, 0.0, c.z) + uf * lateral, "u": v.cross(n).normalized(), "v": v, "n": n}
-
-# A door region carries TWO extents: the OPENING (open_*, = the actual door size — the base mesh cuts
-# EXACTLY this so the frame sits on solid wall at the rim, not floating in an oversized hole) and the
-# CLEARANCE (half_*/y_top, = door + frame + margin — what the lattice keeps clear).
-static func _reserve_region(is_cyl: bool, radius: float, frame: Dictionary, door_w: float, door_h: float, jamb: float, margin: float) -> Dictionary:
-	var n: Vector3 = frame["n"]
-	var clear := door_w * 0.5 + jamb + margin
-	var clear_y := door_h + jamb + margin
-	if is_cyl:
-		return {"cyl": true, "theta": atan2(n.z, n.x),
-			"open_half_arc": (door_w * 0.5) / radius, "open_y_top": door_h,
-			"half_arc": clear / radius, "y_top": clear_y}
-	return {"cyl": false, "n": n, "x_center": 0.0,
-		"open_half_w": door_w * 0.5, "open_y_top": door_h,
-		"half_w": clear, "y_top": clear_y}
 
 # Is a box cell (face-local centred cu,cv; face height h; face normal) inside a reserved door region?
 static func _cell_reserved_box(cu: float, cv: float, face_n: Vector3, h: float, reserved: Array) -> bool:

@@ -45,8 +45,10 @@ func _build_chunk() -> void:
 		root.name = "Hero_%s" % kind
 		root.position = _plinth_pos(i, kinds.size()) + Vector3(0, 0.55, 0)
 		add_child(root)
-		# Entrances FIRST (front + distributed sides): their reserved regions cut real OPENINGS into the
+		# The SURVEY first (BuildingSurvey — the measured drawing): door placements, the silhouette
+		# profile, and the gameplay sockets all read from it. Entrances cut real OPENINGS into the
 		# base mesh AND clear the lattice, so the door parts never z-fight a solid wall.
+		var survey: BuildingSurvey = BuildingSurvey.from_spec(spec)
 		var ent: Dictionary = Lattice.entrances(spec)
 		var body := BaseShape.base_mesh(spec, ent.get("reserved", []))
 		var verts := 0
@@ -57,15 +59,15 @@ func _build_chunk() -> void:
 			mi.mesh = body
 			root.add_child(mi)
 			verts = body.surface_get_array_len(0)
-		_add_lattice(root, spec, ent.get("reserved", []))
+		_add_lattice(root, spec, ent.get("reserved", []), survey)
 		_add_ledge_treatments(root, spec)
 		_add_entrance_meshes(root, spec, ent)
-		_add_anchor_markers(root, BaseShape.gameplay_anchors(spec, ent))
+		_add_anchor_markers(root, survey.anchors())
 		_specimens.append({"building": kind, "shape": str(spec.get("shape", "")),
 			"lattice": str(spec.get("lattice", "")), "verts": verts})
 		_turntables.append(root)
 
-## GAMEPLAY-ANCHOR markers (the architecture->puzzle sockets, BaseShapeBuilder.gameplay_anchors):
+## GAMEPLAY-ANCHOR markers (the architecture->puzzle sockets, from the survey's socket registry):
 ## small emissive gems so the sockets are inspectable in the gallery — dark red = structural WEAK
 ## point, green = ROAD connector, cyan = BRIDGE connector, amber = BALCONY slot.
 func _add_anchor_markers(root: Node3D, anchors: Dictionary) -> void:
@@ -127,7 +129,7 @@ func _add_entrance_meshes(root: Node3D, spec: Dictionary, built: Dictionary) -> 
 
 ## STEP 2: layer the building's declared lattice onto its base shape — a facade lattice (honeyframe /
 ## tracery) that RESERVES space for the entrances, plus optional draped pipes.
-func _add_lattice(root: Node3D, spec: Dictionary, reserved: Array) -> void:
+func _add_lattice(root: Node3D, spec: Dictionary, reserved: Array, survey: BuildingSurvey) -> void:
 	match str(spec.get("lattice", "")):
 		"honeyframe":
 			_add_honeyframe(root, spec, reserved)
@@ -138,7 +140,7 @@ func _add_lattice(root: Node3D, spec: Dictionary, reserved: Array) -> void:
 		"rackwork":
 			_add_rackwork(root, spec, reserved)
 	if bool(spec.get("pipes", false)):
-		_add_pipes(root, spec)
+		_add_pipes(root, spec, survey)
 
 func _add_honeyframe(root: Node3D, spec: Dictionary, reserved: Array) -> void:
 	# On a tiered "cake" the lattice runs PER vertical drum band (each at its tier's footprint); a flat
@@ -251,11 +253,12 @@ func _add_rackwork(root: Node3D, spec: Dictionary, reserved: Array) -> void:
 	led.emission_energy_multiplier = 2.4
 	_add_lattice_mesh(root, "RackLeds", built.get("leds"), led)
 
-func _add_pipes(root: Node3D, spec: Dictionary) -> void:
+func _add_pipes(root: Node3D, spec: Dictionary, survey: BuildingSurvey) -> void:
 	var pipe_seed := int(str(spec.get("kind", "")).hash())
-	# the massing PROFILE keeps the drapes on the real silhouette (mereotopology: parts touch hosts)
+	# the survey's silhouette PROFILE keeps the drapes on the real surface (mereotopology: parts
+	# touch hosts — never the spec's nominal radius, which the lobed/tiered massings don't follow)
 	var mesh := Lattice.pipes(spec, pipe_seed,
-		{"r_at": func(y: float) -> float: return BaseShape.massing_radius_at(spec, y)})
+		{"r_at": func(y: float) -> float: return survey.radius_at(y)})
 	var mat := StandardMaterial3D.new()
 	mat.vertex_color_use_as_albedo = true   # the pipe carries its metal/rust patina as vertex colour
 	mat.metallic = 0.5

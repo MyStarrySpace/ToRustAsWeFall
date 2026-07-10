@@ -393,6 +393,9 @@ func _ready() -> void:
 			"--test-architecture-showcase":
 				ran_test = true
 				await _test_architecture_showcase()
+			"--test-building-survey":
+				ran_test = true
+				_test_building_survey()
 			"--test-center-camera":
 				ran_test = true
 				await _test_center_camera()
@@ -1342,6 +1345,7 @@ func _run_all_tests() -> void:
 	_test_building_filler()
 	_test_creature_grammar()
 	await _test_architecture_showcase()
+	_test_building_survey()
 	await _test_center_camera()
 	await _test_sight_mask_bake()
 	_test_roguelike_run()
@@ -3915,8 +3919,10 @@ func _test_architecture_showcase() -> void:
 				vink += 1
 	_assert_true(vink > 20, "the far-LOD bake actually draws the web (got %d ink samples)" % vink)
 
-	# --- GAMEPLAY ANCHORS: the architecture->puzzle contract (weak points / connectors / balconies) ---
-	var ga_h: Dictionary = Base.gameplay_anchors(honey, Lat.entrances(honey))
+	# --- GAMEPLAY ANCHORS: the architecture->puzzle contract (weak points / connectors / balconies),
+	# read from the SURVEY's socket registry (BuildingSurvey — docs/SURVEY_REBUILD.md task 0) ---
+	var Survey = load("res://scripts/generation/building_survey.gd")
+	var ga_h: Dictionary = Survey.from_spec(honey).anchors()
 	var wp := ga_h["weak_points"] as Array
 	_assert_true(wp.size() >= 2 and wp.size() <= 5, "a building exposes a few structural WEAK points")
 	var hb: AABB = (Base.base_mesh(honey) as ArrayMesh).get_aabb().grow(1.0)
@@ -3930,14 +3936,14 @@ func _test_architecture_showcase() -> void:
 		if str((ce as Dictionary)["kind"]) == "road":
 			roads += 1
 	_assert_true(roads >= 1, "each entrance threshold is a ROAD connector")
-	var ga_t: Dictionary = Base.gameplay_anchors(Base.generate("tiered_hall"), {})
+	var ga_t: Dictionary = Survey.from_spec(Base.generate("tiered_hall")).anchors()
 	_assert_true((ga_t["balcony_slots"] as Array).size() >= 3, "tier ledges expose BALCONY content slots")
 	var bridges := 0
 	for ce2 in (ga_t["connectors"] as Array):
 		if str((ce2 as Dictionary)["kind"]) == "bridge":
 			bridges += 1
 	_assert_true(bridges >= 4, "tier ledges expose BRIDGE connectors")
-	_assert_equals(str(Base.gameplay_anchors(honey, Lat.entrances(honey))), str(ga_h),
+	_assert_equals(str(Survey.from_spec(honey).anchors()), str(ga_h),
 		"gameplay anchors are deterministic")
 
 	# --- ledge treatments: a tiered "cake" decorates its flat rings; a flat base leaves them bare ---
@@ -4050,6 +4056,67 @@ func _test_architecture_showcase() -> void:
 	_assert_true(found_sign, "the showcase raised a nameplate sign")
 	prev.queue_free()
 	await get_tree().process_frame
+
+## BUILDING SURVEY (docs/SURVEY_REBUILD.md task 0): every district building has a measured drawing —
+## datum ladder, silhouette profile, plan grid, and a RESERVATION for every planned part — and
+## validate() turns every silent collision/off-surface failure into a loud string. The survey is the
+## one placement authority: entrances mesh exactly its opening reservations.
+func _test_building_survey() -> void:
+	_test_name = "Building Survey"
+	var Base = load("res://scripts/generation/base_shape_builder.gd")
+	var Survey = load("res://scripts/generation/building_survey.gd")
+	var Lat = load("res://scripts/generation/lattice_builder.gd")
+
+	# --- every BUILDINGS entry surveys CLEAN: datums laddered, profile covers ground->crown, every
+	# opening on its wall, zero unreserved overlaps, every socket on a surveyed surface ---
+	for kind in Base.BUILDINGS:
+		var sv = Survey.from_spec(Base.generate(str(kind)))
+		var problems: Array = sv.validate()
+		for prob in problems:
+			print("    [survey:%s] %s" % [kind, prob])
+		_assert_true(problems.is_empty(), "%s surveys clean (%d problems)" % [kind, problems.size()])
+		_assert_true((sv.profile as Array).size() >= 2 and not ((sv.datums as Dictionary)["storeys"] as Array).is_empty(),
+			"%s carries a silhouette profile + storey datums" % kind)
+		_assert_true((sv.openings() as Array).size() >= 1, "%s reserves its door openings" % kind)
+		_assert_true((sv.sockets as Array).size() >= 3, "%s registers gameplay sockets" % kind)
+
+	# --- determinism: the same spec surveys to the same measured drawing ---
+	var honey: Dictionary = Base.generate("honeycomb_cooperative")
+	_assert_equals(str(Survey.from_spec(honey).summary()), str(Survey.from_spec(honey).summary()),
+		"the survey is deterministic")
+
+	# --- ONE placement authority: entrance meshes reserve exactly the survey's opening regions ---
+	var ent: Dictionary = Lat.entrances(honey)
+	_assert_equals(str(ent["reserved"]), str(Survey.from_spec(honey).openings()),
+		"entrances cut exactly the survey's opening reservations")
+
+	# --- the silhouette profile is real: the plumbing skirt flares at the ground, waists at the drum ---
+	var ppp: Dictionary = Base.generate("plumbing_power")
+	var svp = Survey.from_spec(ppp)
+	_assert_true(svp.radius_at(0.0) > svp.radius_at(float(ppp["height"]) * 0.6) + 0.3,
+		"the plumbing profile flares at the ground (lobes) and waists at the shoulder drum")
+
+	# --- RED cases: a collision or off-surface part must be LOUD, never silent ---
+	var red = Survey.from_spec(honey)
+	red.reservations.append({"id": "clash", "type": "opening", "cyl": false, "n": Vector3(0, 0, 1),
+		"x_center": 0.4, "open_half_w": 0.5, "open_y_top": 2.0, "half_w": 0.9, "y_top": 2.4,
+		"y0": 0.0, "y1": 2.4})
+	_assert_true(not red.validate().is_empty(), "two openings claiming the same wall band go RED")
+	var red2 = Survey.from_spec(honey)
+	red2.sockets.append({"kind": "weak_point", "pos": Vector3(30.0, 2.0, 0.0), "n": Vector3(1, 0, 0), "radius": 0.7})
+	_assert_true(not red2.validate().is_empty(), "an off-surface socket goes RED")
+	var red3 = Survey.from_spec(honey)
+	red3.datums["storeys"] = [5.0, 2.0]
+	_assert_true(not red3.validate().is_empty(), "a broken storey-datum ladder goes RED")
+
+	# --- the reconciled door bands are ENFORCED: an opening rising past its wall band goes RED (the
+	# hypelines/ancourage doors used to rise past their skirt walls into an inverted wall quad) ---
+	var tall: Dictionary = Base.generate("hypelines")
+	var tall_ov: Dictionary = (tall.get("entrances", {}) as Dictionary).duplicate()
+	tall_ov["main_h"] = 2.7
+	tall["entrances"] = tall_ov
+	_assert_true(not Survey.from_spec(tall).validate().is_empty(),
+		"a door rising past its wall band goes RED (the survey reconciliation is enforced)")
 
 func _find_nodes_prefixed(n: Node, prefix: String) -> Array:
 	var out: Array = []
