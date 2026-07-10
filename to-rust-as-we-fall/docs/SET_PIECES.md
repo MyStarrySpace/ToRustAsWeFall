@@ -105,7 +105,63 @@ duplicates an ENVIRONMENT_ELEMENTS entry (no new valve-rotations, no new riding)
    across a Candid zone — the ecosystem finishes it (canonical counter). Grammar: the hydrant
    points down the lane you'll cross two pieces later, and the debris heap builds at the far drain.
 
-**Chaining sketches (the grammar in action):** magnet hoist's charge lever behind a drawer-stair
+## CURE-ECHO set pieces — easier foreshadows of the nine landmark puzzles (PROPOSED, 2026-07-09)
+
+The GDD's nine cure-component puzzles (§10.4.1–10.4.9) each own a distinct mechanic class. The
+pedagogy: every landmark gets an EASIER ECHO placed earlier — a set piece (CONTROL + EFFECT) that
+teaches the landmark's *grammar* in a low-stakes, recoverable form, so mastery is layered before the
+cure version demands it. Per the director: echoes are **activation/selection-based wherever
+possible, not execution-timing**. Flora/fauna verbs are canon (`fauna_roster.md`,
+`flora_taxonomy.md`); GDD cites from the §10.4 sweep.
+
+| Cure landmark (GDD) | Echo set piece | Location / Act | Easier because | Flora / fauna |
+| --- | --- | --- | --- | --- |
+| **Inflammashunt** §10.4.2 (3-route contradictory info; patience wins) | **Tending triage rows** — three planter rows carry POSTED claims about which irrigation line is safe; two of three agree only when cross-read; watering wrong swells a Gasafoetida hedge (repel burst, recoverable); waiting one beat lets Seefern brighten over the true line | Greenfields, Act 1 (pre-shelter-10) | 2 contradictions not 3; no hold timers; the patient option always legible | Seefern (light = truth tell), Gasafoetida (fire-reactive hedge); Aember at the chokepoint |
+| **Pattern Wrap** §10.4.3 (temporal overlays, cascading edits) | **Records replay bay** — a carrel replays 2–3 archived SNAPSHOTS of the hall's shelving; activating one ghosts that era's drawer layout (one at a time); the route exists only by sequencing two activations | Open Files, Act 1/2 seam | overlays are walk-only (no cascading edits); 2–3 eras not 4 timelines | the drawer-canyon Naturalizer patrols the PRESENT only — overlays never hide you (teaches overlay ≠ safety) |
+| **Flow Aligner** §10.4.4 (fragment assembly, degrading Peris read, heavy carry) | **Flow-plate mosaic** — three mosaic plates re-slot at a junction kiosk; the assembled diagram names the ONE valve to open; only one plate is heavy; Peris's read is STABLE | Plumbing Power Project, Act 1 | no read-decay; 3 fragments; one heavy plate not all | the plates are IRON — carrying one draws the Sapscrap swarm (drop it to shed aggro; Flure pulls them off the carry line). Teaches iron-carry aggro before Act 2's Chelators |
+| **Outflow Expander** §10.4.5 (memorize the maze, run it blind, rising water) | **Lights-out stairwell** — walk one lit floor, then the breaker kills the lights and you walk it from memory; a Meeb flows slowly up the stair (sidestep-able, no wipe) | Honeycomb, Act 2 | ONE character, one short route; pursuit is slow, not a flood; **Peris can pre-plant Seefern = memory anchors you can buy back** (the difficulty dial is preparation, not reflex) | Seefern (pre-planted waypoints), Meeb (slow pursuer, canonical sidestep) |
+| **Acid Core** §10.4.6 (valve-turn sequence routing) | ALREADY SEEDED — the register's PPP valve-rotation terminal + Hypelines coupled diverters are the designated re-themed echoes (per their CANON notes); the showcase WATER BASIN (built) is the infant form: one valve, three states | PPP / Hypelines, Act 1 | one-valve state cycling → two coupled valves → full sequence logic | Climbvine couples valve pairs (canonical tie-rotating-surfaces verb) |
+| **Resonator** §10.4.7 (two-body distance = frequency; phase staffing) | **Crossing-signal duet** — two members stand on paired plates; their DISTANCE dials the crossing signal's blink rate; matching the posted rate (readable dial) arms the tram gate WHILE both hold position (P12 held, never latched) | Cleanstreets, Act 2 | one pair, visible target readout, no phase/collision constraint, nothing executes on a beat — pure positioning | the armed gate shutters a Spiker's firing lane (its brightened branch shows what you're gating) |
+| **Membrane Sealant** §10.4.8 (plan, commit, lose control; observe⊕act) | **Pore-lock dry-run** — ONE pair, two lanes, six tiles: peek the observation port (you cannot touch switches while observing), set two switches from memory, pull COMMIT — the pair autopilots through; the Override handle exists and is COSTLESS here (teaches that it exists before it tempts) | Bulwark Wharf, Act 2 | one pair not three; no cable forks/inversions; override free | Crusts vent acid across one lane on dilate-tell (the hazard the switches gate) — membrane biology in miniature |
+| **Rest Cycle Module** §10.4.9 (persistence among many identical activatables) | **Junction-box row** — one locked door, nine identical boxes, one correct; each wrong box is a priced beat (the patrol cycles back); ASTER's read NARROWS candidates (a hum rises on the half-connected circuit) — the cure version gives no info at all | Sunset Acres fringe, Act 2/3 | feedback exists (candidate set shrinks); one door; pack repellable | Gnawer pack cycling the row (Gasafoetida repel, Hushbloom stun-break — both canonical counters) |
+
+(The Chaperone Lattice, §10.4.1, has no mechanic to echo — it is a pickup with forget-me-nots, which
+canon forbids weaponizing.)
+
+## Drawer-stairs v2 — ACTIVATION logic, not timing (director's ruling, replaces proposal 1's execution)
+
+The Open Files stack wall's pull-handles are **INDEX LEVERS** at the catalog desk — one per record
+category. Activating an index extends EVERY drawer of that category at a category-fixed depth
+(deep / mid / shallow, stamped on the tag plates). A staircase forms on a column only when the
+ACTIVATED SET produces ascending depths in height order there — so the solve is **selecting the
+right ~3 of 6 indices**, deduced from readable information, and executing has no clock:
+
+- **Aster (WHEN→what):** reads the tag-plate metadata — which categories live at which heights in
+  which column (the deduction data).
+- **Peris (WHERE):** damp, rotted drawers grow Scarpet — a rotted step CANNOT bear weight (stepping
+  on one is a slip → downed, fail-forward one section, never a wipe). Her read marks which columns
+  are viable.
+- **Wrong activations are never fail states** — they extend drawer WALLS across aisles, which block
+  your path but ALSO break the overwatch Naturalizer's scan-line: the same activation system doubles
+  as deployable cover. (Selection has side-uses, not penalties.)
+- **The combat verb stays activation-based:** retract the index a climbing Gnawer pack is ON and
+  they drop — you choose *which category* to retract, you never race a timer.
+- **Grammar:** the index levers sit at the catalog desk across the hall from the stacks; the tag
+  plates are read AT the stacks (control and information separated by the room).
+- **Cure-echo position:** the selection-not-sequence rung under BOTH the Acid Core (reconfiguring
+  reachability by activation) and the Rest Cycle Module (many similar activatables — but here fully
+  information-rich). It is deliberately the easiest rung of both ladders.
+
+## Planned-location survey (register + GDD, for slotting future pieces)
+
+Act 1: PPP, Open Files, Greenfields, Hypelines, Ancourage (Inflammashunt DZ at shelter 10). Act 2:
+Honeycomb (Pattern Wrap, shelters 11-12), the Zone 2 water junction (Flow Aligner), map-edge
+drainage (Outflow Expander), Cleanstreets, Beacon Hill, Bulwark Wharf. Act 3 (register PROPOSAL
+regions): Welcombe Springs (drainage terraces / steam halls / funicular), Harmonia (Resonator,
+shelters 21-22 + entrainment ferry / civic-pulse approach), Sunset Acres (iron-burst rows /
+sinkhole field; Zone 3 waste facility = Acid Core), Root Archive (reading hall / circadian crossing
+/ artifact carry; the Hidden shelter above = Rest Cycle Module). Every echo above slots into a
+location the registers already own, one act (or more) before its landmark. magnet hoist's charge lever behind a drawer-stair
 climb; sluice header past an Aember chokepoint that the sluice itself can douse — but only after a
 chute ride commits you to the wrong wing; shutter-crank columns interleaved so each opened column
 exposes the next crank plus one slit-state sightline change. Every pair alternates one piece's
