@@ -192,6 +192,9 @@ func _ready() -> void:
 			"--test-player-contract":
 				ran_test = true
 				await _test_player_contract()
+			"--test-uv-atlas-baker":
+				ran_test = true
+				_test_uv_atlas_baker()
 			"--test-distract-gate":
 				ran_test = true
 				await _test_distract_gate()
@@ -1297,6 +1300,7 @@ func _run_all_tests() -> void:
 	await _test_chunk_robustness()
 	await _test_lure_relay_puzzle()
 	await _test_dev_console()
+	_test_uv_atlas_baker()
 	await _test_distract_gate()
 	await _test_chromatic_aberration()
 	await _test_dialogue_hold_advance()
@@ -13981,6 +13985,47 @@ void fragment() { ALBEDO = vec3(1.0, 0.0, 0.0); }
 	print("  [HOLES] %s: %d red pixels over %d shots (worst shot %d)" % [spec_name, red_count, shot, max_shot])
 	await _dispose_scene(root)
 	return {"total": red_count, "max_shot": max_shot, "shots": shot}
+
+# --- Test: the UV atlas baker (the Blockbench hand-painting kit) ---
+# Box-projected islands, packed atlas, UVs in range, crease edge wear present, and DETERMINISM —
+# the same mesh must bake byte-identical templates so re-exports never invalidate paint-over work.
+func _test_uv_atlas_baker() -> void:
+	_test_name = "UV Atlas Baker"
+	var bm := BoxMesh.new()
+	bm.size = Vector3(2.0, 3.0, 1.5)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.append_from(bm, 0, Transform3D.IDENTITY)
+	var mesh := st.commit()
+	var baked: Dictionary = UvAtlasBaker.bake(mesh)
+	_assert_true(not baked.is_empty(), "a box bakes")
+	if baked.is_empty():
+		return
+	_assert_true(int(baked["islands"]) >= 6, "a box yields one island per face direction (got %d)" % int(baked["islands"]))
+	_assert_true(int(baked["creases"]) >= 12, "all 12 box edges register as wear creases (got %d)" % int(baked["creases"]))
+	var out := baked["mesh"] as ArrayMesh
+	var uvs: PackedVector2Array = out.surface_get_arrays(0)[Mesh.ARRAY_TEX_UV]
+	_assert_true(uvs.size() > 0, "UVs are written")
+	var in_range := true
+	for uv in uvs:
+		if uv.x < 0.0 or uv.x > 1.0 or uv.y < 0.0 or uv.y > 1.0:
+			in_range = false
+	_assert_true(in_range, "every UV lands inside the atlas")
+	var img := baked["image"] as Image
+	var painted := 0
+	for y in range(0, img.get_height(), 3):
+		for x in range(0, img.get_width(), 3):
+			if img.get_pixel(x, y).a > 0.5:
+				painted += 1
+	_assert_true(painted > 40, "the template is painted (base fill + wear), got %d samples" % painted)
+	var again: Dictionary = UvAtlasBaker.bake(mesh)
+	_assert_true((again["image"] as Image).save_png_to_buffer() == img.save_png_to_buffer(),
+		"the bake is deterministic (byte-identical template on re-bake)")
+	# the real building meshes bake without erroring and stay under the atlas cap
+	var spec: Dictionary = BaseShapeBuilder.generate("open_files")
+	var big: Dictionary = UvAtlasBaker.bake(BaseShapeBuilder.base_mesh(spec, []))
+	_assert_true(not big.is_empty() and int(big["islands"]) > 10,
+		"the open_files massing bakes into a legal atlas (%d islands)" % int(big.get("islands", 0)))
 
 # --- PLAYER CONTRACT sweep: auto-generated real-input probes over EVERY picker entry --------------
 # The chroma-testing system (director's spec): the game boots with a ChromaProbe that renders every
