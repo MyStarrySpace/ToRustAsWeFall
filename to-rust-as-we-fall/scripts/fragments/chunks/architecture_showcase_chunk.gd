@@ -26,7 +26,7 @@ const REACH := {
 const REACH_DEFAULT := 3.5
 const GAP := 1.4
 
-var _seed := 1
+var _seed := 0   # 0 = the canonical plate specimens; N rerolls seeded variants
 var _turntables: Array = []
 var _specimens: Array = []
 
@@ -51,7 +51,7 @@ func _build_chunk() -> void:
 	var kinds: Array = BaseShape.BUILDINGS
 	for i in range(kinds.size()):
 		var kind := str(kinds[i])
-		var spec: Dictionary = BaseShape.generate(kind)
+		var spec: Dictionary = BaseShape.generate(kind, _seed)
 		var root := Node3D.new()
 		root.name = "Hero_%s" % kind
 		root.position = _plinth_pos(i, kinds.size()) + Vector3(0, 0.55, 0)

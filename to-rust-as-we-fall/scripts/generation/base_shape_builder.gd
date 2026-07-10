@@ -190,13 +190,25 @@ const SPECS := {
 const CYL_SEGMENTS := 24   # drum facets — smooth enough that a wrapped lattice sits flush, still low-poly
 const LEDGE_MIN_WIDTH := 0.12   # a tier ledge narrower than this (from clamped tiers) is not treatable
 
-## Resolve a building to its spec, plus convenience fields for placement/labelling. The seed argument
-## is accepted for parity with the other generation previews; base shapes are deterministic (nothing
-## to reroll yet), so it is ignored until we add varied detail.
-static func generate(kind: String, _seed_value: int = 0) -> Dictionary:
+## Resolve a building to its spec. The buildings are TYPES, not one-offs: seed 0 is the canonical
+## plate specimen; any other seed rolls a plate-plausible VARIANT (BuildingSurvey.roll_vars — the
+## roller re-reconciles dependent values, and the seed-sweep test proves every variant surveys
+## clean). N in the showcase rerolls the whole row.
+static func generate(kind: String, seed_value: int = 0) -> Dictionary:
 	var key := kind if SPECS.has(kind) else str(BUILDINGS[0])
 	var spec: Dictionary = (SPECS[key] as Dictionary).duplicate(true)
 	spec["kind"] = key
+	if seed_value != 0:
+		var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+		var roll: Dictionary = Survey.roll_vars(key, seed_value)
+		for k in (roll.get("spec", {}) as Dictionary).keys():
+			spec[k] = (roll["spec"] as Dictionary)[k]
+		var vars := {}
+		for k2 in roll.keys():
+			if k2 != "spec":
+				vars[k2] = roll[k2]
+		if not vars.is_empty():
+			spec["vars"] = vars
 	match str(spec["shape"]):
 		SHAPE_CYLINDER:
 			spec["height_total"] = float(spec["height"])
@@ -795,7 +807,7 @@ static func _tube(st: SurfaceTool, pts: Array, radius: float, sides: int) -> voi
 ## into horns peaking exactly at the crown. Air between the legs; no walls.
 static func _canopy_piers_mesh(spec: Dictionary) -> ArrayMesh:
 	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
-	var cs: Dictionary = Survey.CLEANSTREETS
+	var cs: Dictionary = Survey.table_for(spec, "cleanstreets")
 	var size: Vector3 = spec.get("size", Vector3(11.0, 6.0, 7.0))
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -888,7 +900,7 @@ static func _canopy_sweep(st: SurfaceTool, half: Vector3, y0: float, y1: float, 
 ## Families: body (bone mosaic) / dark (verdigris panels) / warm (gold vault) / cyan (the kiosk).
 static func cleanstreets_details(spec: Dictionary) -> Dictionary:
 	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
-	var cs: Dictionary = Survey.CLEANSTREETS
+	var cs: Dictionary = Survey.table_for(spec, "cleanstreets")
 	var size: Vector3 = spec.get("size", Vector3(11.0, 6.0, 7.0))
 	var body := _st()
 	var dark := _st()
@@ -998,12 +1010,13 @@ static func cleanstreets_details(spec: Dictionary) -> Dictionary:
 	# the freestanding monolith on the approach: stepped base + tombstone + teal face
 	var mono: Dictionary = cs["monolith"]
 	var mz := float(mono["z"])
-	_emit_oriented_box_st(body, Vector3(-1.6, 0.15, mz), u_x, Vector3.UP, n_z, Vector3(0.85, 0.15, 0.6))
-	_emit_oriented_box_st(body, Vector3(-1.6, float(mono["base_h"]) * 0.5 + 0.1, mz), u_x, Vector3.UP, n_z,
+	var mx := float(mono.get("x", -1.6))
+	_emit_oriented_box_st(body, Vector3(mx, 0.15, mz), u_x, Vector3.UP, n_z, Vector3(0.85, 0.15, 0.6))
+	_emit_oriented_box_st(body, Vector3(mx, float(mono["base_h"]) * 0.5 + 0.1, mz), u_x, Vector3.UP, n_z,
 		Vector3(0.65, float(mono["base_h"]) * 0.5, 0.45))
-	_emit_oriented_box_st(body, Vector3(-1.6, float(mono["base_h"]) + float(mono["h"]) * 0.5, mz),
+	_emit_oriented_box_st(body, Vector3(mx, float(mono["base_h"]) + float(mono["h"]) * 0.5, mz),
 		u_x, Vector3.UP, n_z, Vector3(float(mono["w"]) * 0.5, float(mono["h"]) * 0.5, 0.24))
-	_emit_oriented_box_st(dark, Vector3(-1.6, float(mono["base_h"]) + float(mono["h"]) * 0.55, mz + 0.25),
+	_emit_oriented_box_st(dark, Vector3(mx, float(mono["base_h"]) + float(mono["h"]) * 0.55, mz + 0.25),
 		u_x, Vector3.UP, n_z, Vector3(float(mono["w"]) * 0.36, float(mono["h"]) * 0.36, 0.015))
 	for stool in [body, dark, warm, cyan]:
 		(stool as SurfaceTool).generate_normals()
@@ -1093,7 +1106,7 @@ static func hypelines_details(spec: Dictionary) -> Dictionary:
 	var sv = Survey.from_spec(spec)
 	var rings: Array = Survey.hypelines_rings(spec)
 	var h := float(spec.get("height", 6.2))
-	var hy: Dictionary = Survey.HYPELINES
+	var hy: Dictionary = Survey.table_for(spec, "hypelines")
 	var body := _st()
 	var rust := _st()
 	var dark := _st()
@@ -1130,9 +1143,10 @@ static func hypelines_details(spec: Dictionary) -> Dictionary:
 		_emit_oriented_box_st(rust, sc + u_f * (float(sgn["w"]) * 0.5 * sx) + n_f * 0.01, u_f, Vector3.UP, n_f, Vector3(0.05, shh + 0.05, 0.05))
 		_emit_oriented_box_st(rust, sc + Vector3(0, shh * sx, 0) + n_f * 0.01, u_f, Vector3.UP, n_f, Vector3(float(sgn["w"]) * 0.5 + 0.05, 0.05, 0.05))
 	var gho: Dictionary = hy["ghost"]
-	var gr := float(Survey.lathe_local_r(rings, (float(gho["y0"]) + float(gho["y1"])) * 0.5 * h, fr))
-	_emit_oriented_box_st(dark, n_f * (gr + 0.03) + Vector3(0, (float(gho["y0"]) + float(gho["y1"])) * 0.5 * h, 0),
-		u_f, Vector3.UP, n_f, Vector3(float(gho["w"]) * 0.5, (float(gho["y1"]) - float(gho["y0"])) * 0.5 * h, 0.015))
+	if float(gho["w"]) > 0.05:
+		var gr := float(Survey.lathe_local_r(rings, (float(gho["y0"]) + float(gho["y1"])) * 0.5 * h, fr))
+		_emit_oriented_box_st(dark, n_f * (gr + 0.03) + Vector3(0, (float(gho["y0"]) + float(gho["y1"])) * 0.5 * h, 0),
+			u_f, Vector3.UP, n_f, Vector3(float(gho["w"]) * 0.5, (float(gho["y1"]) - float(gho["y0"])) * 0.5 * h, 0.015))
 	var toll: Dictionary = hy["toll"]
 	var wall_r := float(spec.get("door_radius", 1.53))
 	_emit_oriented_box_st(glow, n_f * (wall_r + 0.10) + Vector3(0, (float(toll["y0"]) + float(toll["y1"])) * 0.5 * h, 0),
@@ -1260,7 +1274,7 @@ static func _greenfields_stack_mesh(spec: Dictionary, reserved: Array, recess: f
 ## Families: bone / door (dark green) / amber (windows) / teal (roof buds) / leaf / warm / rails.
 static func greenfields_details(spec: Dictionary) -> Dictionary:
 	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
-	var g: Dictionary = Survey.GREENFIELDS
+	var g: Dictionary = Survey.table_for(spec, "greenfields")
 	var size: Vector3 = spec.get("size", Vector3(5.2, 6.4, 5.0))
 	var bone := _st()
 	var door := _st()
@@ -1270,10 +1284,11 @@ static func greenfields_details(spec: Dictionary) -> Dictionary:
 	var warm := _st()
 	var rails := _st()
 	var ground := 1.7
-	var storey := (size.y - ground) / 3.0
+	var floors := int(spec.get("storey_floors", 3))
+	var storey := (size.y - ground) / float(floors)
 	var slab: Dictionary = g["slab"]
 	var kb := float(str(spec.get("kind", "greenfields")).hash() % 1000)
-	for k in range(4):
+	for k in range(floors + 1):
 		var y := minf(ground + storey * float(k), size.y - 0.09)
 		var rim := _slab_sweep(bone, Vector3(size.x * 0.5, 0, size.z * 0.5), y,
 			float(slab["t"]), float(slab["overhang"]), float(slab["wave"]), int(slab["crests"]))
@@ -1319,12 +1334,14 @@ static func greenfields_details(spec: Dictionary) -> Dictionary:
 		var n2: Vector3 = fd2["n"]
 		var u2: Vector3 = fd2["u"]
 		var hw2 := float(fd2["w"]) * 0.5
-		for fl in range(3):
+		for fl in range(floors):
 			var base := ground + storey * float(fl)
+			var wy0 := storey * float(win["band_y0"])
+			var wy1 := storey * float(win["band_y1"])
 			for b3 in range(int(win["per_face"])):
 				var wx := lerpf(-hw2 + 0.75, hw2 - 0.75, float(b3) / float(int(win["per_face"]) - 1))
-				var wc := (fd2["c"] as Vector3) + u2 * wx + Vector3(0, base + (float(win["y0"]) + float(win["y1"])) * 0.5, 0) + n2 * 0.03
-				var whh := (float(win["y1"]) - float(win["y0"])) * 0.5
+				var wc := (fd2["c"] as Vector3) + u2 * wx + Vector3(0, base + (wy0 + wy1) * 0.5, 0) + n2 * 0.03
+				var whh := (wy1 - wy0) * 0.5
 				_emit_oriented_box_st(bone, wc, u2, Vector3.UP, n2,
 					Vector3(float(win["w"]) * 0.5 + float(win["frame"]), whh + float(win["frame"]), 0.05))
 				_emit_oriented_box_st(amber, wc + n2 * 0.03, u2, Vector3.UP, n2,

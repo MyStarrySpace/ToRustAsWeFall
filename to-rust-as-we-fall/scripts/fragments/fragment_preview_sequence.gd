@@ -142,7 +142,7 @@ const PREVIEW_ENTRIES := [
 	# ARCHITECTURE SHOWCASE: the district buildings, each built bottom-up (base shape -> lattice). The
 	# iteration surface — walk the row, N reseeds. Overlays OFF by default (it's a look-dev gallery).
 	{"id": "architecture_showcase", "chunk": "architecture_showcase", "title": "Architecture Showcase (district heroes)", "stage": 6,
-		"config": {"seed": 1, "overlays": {"aster": false, "peris": false, "endo": false}}},
+		"config": {"seed": 0, "overlays": {"aster": false, "peris": false, "endo": false}}},
 ]
 
 ## The menu entry for an id (or {} if none).

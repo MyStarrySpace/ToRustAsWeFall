@@ -4242,6 +4242,40 @@ func _test_building_survey() -> void:
 			ring_count += 1
 	_assert_equals(ring_count, 4, "the greenfields survey reserves all four slab rings")
 
+	# --- PARAMETRIC VARIATION (the buildings are TYPES): every seeded variant must survey clean —
+	# the roller re-reconciles dependent values, and THIS sweep is the proof no roll collides.
+	# Seed 0 is the canonical plate specimen; other seeds roll plate-plausible variants. ---
+	var sweep_ok := true
+	for kind_v in Base.BUILDINGS:
+		for sv_seed in [0, 1, 2, 3, 7, 11]:
+			var vspec: Dictionary = Base.generate(str(kind_v), sv_seed)
+			var vsv = Survey.from_spec(vspec)
+			var vproblems: Array = vsv.validate()
+			for vp in vproblems:
+				sweep_ok = false
+				print("    [variant %s seed %d] %s" % [kind_v, sv_seed, vp])
+			var vent: Dictionary = Lat.entrances(vspec)
+			var vmesh = Base.base_mesh(vspec, vent.get("reserved", []))
+			if vmesh == null or (vmesh as ArrayMesh).get_surface_count() == 0:
+				sweep_ok = false
+				print("    [variant %s seed %d] no base mesh" % [kind_v, sv_seed])
+				continue
+			var vb: AABB = (vmesh as ArrayMesh).get_aabb()
+			if vb.position.y < -0.05 or absf(vb.size.y - float(vspec["height_total"])) > 0.12:
+				sweep_ok = false
+				print("    [variant %s seed %d] mesh envelope off (y0 %.2f, h %.2f vs %.2f)" % [kind_v, sv_seed, vb.position.y, vb.size.y, float(vspec["height_total"])])
+	_assert_true(sweep_ok, "EVERY seeded variant of every building type surveys clean + meshes grounded at height")
+	# determinism per seed + real variety across seeds
+	_assert_equals(str(Base.generate("hypelines", 3)), str(Base.generate("hypelines", 3)),
+		"a seeded variant is deterministic")
+	var varied := 0
+	for kind_v2 in ["plumbing_power", "hypelines", "greenfields", "cleanstreets"]:
+		if str(Survey.from_spec(Base.generate(str(kind_v2), 1)).summary()) != str(Survey.from_spec(Base.generate(str(kind_v2), 2)).summary()):
+			varied += 1
+	_assert_equals(varied, 4, "the four rebuilt types actually VARY between seeds")
+	_assert_equals(str(Base.generate("plumbing_power", 0)), str(Base.generate("plumbing_power")),
+		"seed 0 IS the canonical plate specimen")
+
 func _find_nodes_prefixed(n: Node, prefix: String) -> Array:
 	var out: Array = []
 	if str(n.name).begins_with(prefix):

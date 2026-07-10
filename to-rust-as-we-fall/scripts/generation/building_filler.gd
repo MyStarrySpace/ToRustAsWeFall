@@ -379,7 +379,7 @@ static func _plan_landmarks(seed_value: int, lots: Array, walk: Dictionary, orig
 		var gx := int(lot2["gx"])
 		var gz := int(lot2["gz"])
 		var kind := kind0 if pi == 0 else str(LANDMARK_KINDS[(LANDMARK_KINDS.find(kind0) + 1) % LANDMARK_KINDS.size()])
-		var spec: Dictionary = BaseShapeBuilder.generate(kind)
+		var spec: Dictionary = BaseShapeBuilder.generate(kind, _ri(rng, 1, 999983))
 		var anchors: Dictionary = BuildingSurvey.from_spec(spec).anchors()
 		var sdir := _street_dir(lc, gx, gz, walk, w, h)
 		var yaw := atan2(float(sdir.x), float(sdir.y))   # rotate the spec's +Z (main door) onto the street

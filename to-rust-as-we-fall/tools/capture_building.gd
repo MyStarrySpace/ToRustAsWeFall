@@ -14,7 +14,8 @@ func _init() -> void:
 	var scene: Node = load("res://scenes/fragments/fragment_preview.tscn").instantiate()
 	scene.set("preview_menu", false)
 	scene.set("preview_chunk", "architecture_showcase")
-	scene.set("preview_chunk_config", {"seed": 1})
+	var seed_str := OS.get_environment("SEED")
+	scene.set("preview_chunk_config", {"seed": int(seed_str) if seed_str != "" else 0})
 	get_root().add_child(scene)
 	for _i in range(120):
 		await process_frame

@@ -138,7 +138,7 @@ const HYPELINES := {
 	],
 	"deck": {"walk_y": 4.0, "deck_w": 0.9, "deck_t": 0.12, "rail_h": 0.32},   # metres (level 1 datum)
 	"sign": {"y0": 0.43, "y1": 0.49, "w": 1.6},          # teal backlit board, front
-	"ghost": {"y0": 0.355, "y1": 0.405, "w": 1.3},       # faded IRON HEART letters under it
+	"ghost": {"y0": 0.372, "y1": 0.420, "w": 1.3},       # faded IRON HEART letters under it (y0 clears the 2.15 m door band at every rolled height)
 	"toll": {"y0": 0.290, "y1": 0.325, "w": 0.9},        # FLOW OPTIMIZATION TOLL GATE, in the arch
 	"arch": {"y_top": 0.345, "w": 1.5, "r_tube": 0.09},  # the parabolic entry arch rim
 	"ramp": {"len": 2.4, "w": 1.2},                       # railed approach, metres
@@ -173,7 +173,7 @@ const CLEANSTREETS := {
 	"toll": {"header_y0": 2.28, "header_y1": 2.78, "header_w": 1.6,   # clears the lintel top (2.2)
 		"kiosk": Vector3(0.5, 1.9, 0.5), "cross": 0.4, "screen": 0.25},
 	"vault": {"y": 3.14, "rib_r": 0.055, "light_r": 0.09},   # the warm-gold vaulted underside
-	"monolith": {"z": 5.2, "w": 0.95, "h": 1.8, "base_h": 0.6},
+	"monolith": {"z": 5.2, "x": -1.6, "w": 0.95, "h": 1.8, "base_h": 0.6},
 }
 
 ## THE GREENFIELDS SURVEY — measured off the plate (reference-images/architecture/
@@ -189,9 +189,9 @@ const GREENFIELDS := {
 	"slab": {"t": 0.18, "overhang": 0.35, "wave": 0.18, "crests": 4},
 	"rail_h": 0.40,
 	"arcade": {"bays": 4, "arch_w": 0.70, "spring": 0.90, "apex": 1.35, "sconce_y": 1.00},
-	# window band off the storey base — y1 ends under the TOP ring's clamped band (crown-0.18),
-	# so the uniform beat fits every floor including the last (reconciled at the survey)
-	"window": {"per_face": 4, "y0": 0.62, "y1": 1.36, "w": 0.50, "frame": 0.07},
+	# window band as FRACTIONS of the storey band (floors vary per instance): [0.40, 0.80] keeps
+	# the uniform beat clear of the sign below and the clamped top ring above at 3 AND 4 floors
+	"window": {"per_face": 4, "band_y0": 0.40, "band_y1": 0.80, "w": 0.50, "frame": 0.07},
 	"ribs": {"r": 0.055},
 	"sign": {"y0": 1.72, "y1": 2.28, "w": 1.5},
 	"roof": {"shrubs": 14, "buds": 12, "shrub_h": 0.85},
@@ -212,6 +212,145 @@ var plan: Dictionary = {}
 var profile: Array = []          # drum: [{y, r}] / box: [{y, hx, hz}] — ascending y, steps allowed
 var reservations: Array = []     # typed wall claims (openings carry the legacy door-region keys)
 var sockets: Array = []          # {kind: door|road|bridge|weak_point|balcony, pos, ...}
+
+
+# ============================================================================================
+# PARAMETRIC VARIATION — the const tables are CANONICAL PLATE SPECIMENS of each district TYPE.
+# BaseShapeBuilder.generate(kind, seed) rolls plate-plausible variation (roll_vars) into
+# spec["vars"]; every table read goes through table_for(), which overlays it. Dependent values
+# (door valley radius, sign bands at four floors) are RE-RECONCILED inside the roller, and the
+# seed-sweep test proves every variant still surveys clean.
+# ============================================================================================
+
+## The named canonical table, overlaid with this instance's rolled variation (arrays REPLACE,
+## dictionaries merge one level deep — the tables are flat dicts of scalars/arrays/sub-dicts).
+static func table_for(spec_in: Dictionary, name: String) -> Dictionary:
+	var base: Dictionary = {}
+	match name:
+		"plumbing":
+			base = PLUMBING
+		"hypelines":
+			base = HYPELINES
+		"cleanstreets":
+			base = CLEANSTREETS
+		"greenfields":
+			base = GREENFIELDS
+	var out := base.duplicate(true)
+	var over: Dictionary = (spec_in.get("vars", {}) as Dictionary).get(name, {})
+	for k in over.keys():
+		if out.has(k) and out[k] is Dictionary and over[k] is Dictionary:
+			var sub := (out[k] as Dictionary)
+			for k2 in (over[k] as Dictionary).keys():
+				sub[k2] = (over[k] as Dictionary)[k2]
+		else:
+			out[k] = over[k]
+	return out
+
+## Roll one variant of a building TYPE. seed 0 = the canonical plate specimen (empty roll).
+## Returns {"spec": {spec-key overrides}, "<table>": {table overlays}}. Every dependent value is
+## reconciled HERE (the roller is part of the survey), so a variant can never ship a collision the
+## canonical reconciliation only fixed for the canonical numbers.
+static func roll_vars(kind_in: String, seed_value: int) -> Dictionary:
+	if seed_value == 0:
+		return {}
+	var rng := SeededRng.new((seed_value * 2654435761) ^ (str(kind_in).hash() & 0x7fffffff))
+	var out := {"spec": {}}
+	match kind_in:
+		"plumbing_power":
+			var h := 5.6 * lerpf(0.97, 1.06, float(rng.call("randf")))
+			# the door dims scale WITH the drum so the clearance arc never swallows the cascade
+			# valley at 0.785 rad (the fixed 6-lobe geometry)
+			(out["spec"] as Dictionary)["height"] = h
+			(out["spec"] as Dictionary)["radius"] = 0.355 * 1.20 * h
+			(out["spec"] as Dictionary)["door_radius"] = 0.355 * 0.80 * h
+			(out["spec"] as Dictionary)["entrances"] = {"main_w": 0.9 * h / 5.6, "main_h": 1.5,
+				"side_count_min": 0, "side_count_max": 0, "reserve_margin": 0.25,
+				"canopy_out": 0.0, "main_surround": false}
+			var fl := {"turns": [1.0, 1.25][int(rng.call("randi_range", 0, 1))],
+				"y_start": lerpf(0.73, 0.79, float(rng.call("randf")))}
+			var pl := {"flume": fl, "sign": {"w": lerpf(0.9, 1.1, float(rng.call("randf")))},
+				"ribs": {"theta0_off": lerpf(0.22, 0.36, float(rng.call("randf")))}}   # clear of the dome slits at +-0.10/+0.48
+			if float(rng.call("randf")) < 0.4:
+				var wh: Array = (PLUMBING["wheels"] as Array).duplicate(true)
+				wh.remove_at(1)   # the upper stacked wheel is optional on this lobe
+				pl["wheels"] = wh
+			var drop: Array = []
+			for cand in [6, 7]:
+				if float(rng.call("randf")) < 0.35:
+					drop.append(cand)
+			if not drop.is_empty():
+				var sl: Array = []
+				var src: Array = PLUMBING["slits"]
+				for i in range(src.size()):
+					if not drop.has(i):
+						sl.append((src[i] as Array).duplicate())
+				pl["slits"] = sl
+			out["plumbing"] = pl
+		"hypelines":
+			var h2 := 6.2 * lerpf(0.95, 1.055, float(rng.call("randf")))
+			(out["spec"] as Dictionary)["height"] = h2
+			(out["spec"] as Dictionary)["radius"] = 0.325 * 1.24 * h2
+			(out["spec"] as Dictionary)["door_radius"] = 0.325 * 0.76 * h2
+			var arms: Array = (HYPELINES["arms"] as Array).duplicate(true)
+			var upitch := lerpf(0.32, 0.44, float(rng.call("randf")))
+			for a in arms:
+				var ad := a as Dictionary
+				if not bool(ad["lane"]) and absf(float(ad["az"])) < 2.5:
+					ad["pitch"] = upitch
+					ad["len"] = float(ad["len"]) * lerpf(0.9, 1.08, float(rng.call("randf")))
+				elif bool(ad["lane"]):
+					ad["len"] = lerpf(3.9, 4.5, float(rng.call("randf")))
+			if float(rng.call("randf")) < 0.4:
+				arms = arms.filter(func(a2): return absf(float((a2 as Dictionary)["az"])) < 2.5)
+			var hy := {"arms": arms,
+				"wheel": {"dia": lerpf(0.10, 0.13, float(rng.call("randf")))},
+				"mast": {"y_top": lerpf(1.06, 1.12, float(rng.call("randf")))}}
+			if float(rng.call("randf")) < 0.3:
+				hy["ghost"] = {"w": 0.0}   # the ghost letters weathered away on this instance
+			out["hypelines"] = hy
+		"greenfields":
+			var floors := 3 if float(rng.call("randf")) < 0.55 else 4
+			(out["spec"] as Dictionary)["storey_floors"] = floors
+			var bays := int(rng.call("randi_range", 3, 5))
+			var g := {"slab": {"wave": lerpf(0.12, 0.24, float(rng.call("randf"))),
+					"overhang": lerpf(0.28, 0.42, float(rng.call("randf")))},
+				"window": {"per_face": bays},
+				"arcade": {"bays": bays},
+				"roof": {"buds": int(rng.call("randi_range", 8, 16)),
+					"shrubs": int(rng.call("randi_range", 10, 18))},
+				"sign": {"w": lerpf(1.3, 1.7, float(rng.call("randf")))}}
+			if floors == 4:
+				# four thinner storeys: the sign band drops so the lower window band clears it
+				g["sign"] = {"y0": 1.70, "y1": 2.14, "w": float((g["sign"] as Dictionary)["w"])}
+			out["greenfields"] = g
+		"cleanstreets":
+			var spread := lerpf(2.2, 2.8, float(rng.call("randf")))
+			var cs := {"fins": {"xs": [-spread, -spread / 3.0, spread / 3.0, spread],
+					"h_rear": lerpf(1.7, 2.1, float(rng.call("randf")))},
+				"spikes": {"count_per_lane": int(rng.call("randi_range", 4, 6))},
+				"canopy": {"scallop": lerpf(0.20, 0.34, float(rng.call("randf")))},
+				"perf": {"holes": int(rng.call("randi_range", 5, 9))},
+				"monolith": {"z": 5.2, "x": lerpf(-2.2, -1.0, float(rng.call("randf")))},
+				"toll": {"header_w": lerpf(1.4, 1.8, float(rng.call("randf")))}}
+			out["cleanstreets"] = cs
+		_:
+			# the not-yet-rebuilt types take a plain size/height jitter (their massing constants
+			# are ratios, so they scale coherently); beacon's absolute tracery height scales too.
+			# tiered_terrace floors down-scale less: its bottom tier band must keep the 2.7 m door.
+			var k_lo := 0.985 if kind_in == "tiered_terrace" else 0.94
+			var k := lerpf(k_lo, 1.06, float(rng.call("randf")))
+			var spec0: Dictionary = BaseShapeBuilder.SPECS.get(kind_in, {})
+			if spec0.has("size"):
+				(out["spec"] as Dictionary)["size"] = (spec0["size"] as Vector3) * k
+			if spec0.has("height"):
+				(out["spec"] as Dictionary)["height"] = float(spec0["height"]) * k
+			if spec0.has("radius"):
+				(out["spec"] as Dictionary)["radius"] = float(spec0["radius"]) * k
+			if spec0.has("door_radius"):
+				(out["spec"] as Dictionary)["door_radius"] = float(spec0["door_radius"]) * k
+			if spec0.has("tracery_height"):
+				(out["spec"] as Dictionary)["tracery_height"] = float(spec0["tracery_height"]) * k
+	return out
 
 
 ## Survey a building from its BaseShapeBuilder spec (generate() output; raw SPECS entries work too).
@@ -265,7 +404,7 @@ func _survey_datums(plate_ratios: Dictionary) -> void:
 		storeys = (plate_ratios["storeys"] as Array).duplicate()
 	elif sp.has("ground"):
 		var ground := float(sp["ground"])
-		var floors := int(sp["floors"])
+		var floors := int(spec.get("storey_floors", sp["floors"]))
 		var band := (eave - ground) / float(maxi(1, floors))
 		storeys.append(ground)
 		for k in range(1, floors + 1):
@@ -315,7 +454,7 @@ func _survey_profile() -> void:
 		match comp:
 			"plumbing_lobed":
 				# the profile IS the lathe ring table's crest line (one authority: PLUMBING.rings)
-				_profile_from_rings(PLUMBING["rings"] as Array, h, crown)
+				_profile_from_rings(table_for(spec, "plumbing")["rings"] as Array, h, crown)
 			"ancourage_domes":
 				_pr(0.0, r)
 				_pr(h * 0.53, r)                         # body top / eave ring
@@ -323,7 +462,7 @@ func _survey_profile() -> void:
 				_pr(crown, r * 0.2)
 			"hypelines_mound":
 				# one continuous mound loft (one authority: HYPELINES.rings)
-				_profile_from_rings(HYPELINES["rings"] as Array, h, crown)
+				_profile_from_rings(table_for(spec, "hypelines")["rings"] as Array, h, crown)
 			"beacon_domed":
 				_pr(0.0, r)
 				_pr(h * 0.75, r)                         # drum
@@ -425,16 +564,17 @@ func _survey_reservations(placements: Array) -> void:
 				})
 			# the arcade band (arches + doors + sconces, an ensemble with every placed door), the
 			# per-storey window bands (clear of the sign below and the next ring above), the sign
-			var g: Dictionary = GREENFIELDS
+			var g: Dictionary = table_for(spec, "greenfields")
 			reservations.append({"id": "arcade", "type": "decoration", "ring": true,
 				"y0": 0.0, "y1": float((g["arcade"] as Dictionary)["apex"]) + 0.1,
 				"keeps_clear": opening_ids})
 			var ground := float(storeys[0])
-			for fl in range(mini(3, storeys.size() - 1)):
-				var base := ground + (float(storeys[1]) - ground) * float(fl)
+			var band := float(storeys[1]) - ground
+			for fl in range(storeys.size() - 1):
+				var base := ground + band * float(fl)
 				reservations.append({"id": "window_band_%d" % fl, "type": "decoration", "ring": true,
-					"y0": base + float((g["window"] as Dictionary)["y0"]),
-					"y1": base + float((g["window"] as Dictionary)["y1"]),
+					"y0": base + band * float((g["window"] as Dictionary)["band_y0"]),
+					"y1": base + band * float((g["window"] as Dictionary)["band_y1"]),
 					"keeps_clear": ["sign_board"]})
 			var sgn2: Dictionary = g["sign"]
 			reservations.append({"id": "sign_board", "type": "decoration", "cyl": false,
@@ -448,7 +588,7 @@ func _survey_reservations(placements: Array) -> void:
 			"id": "canopy_slab", "type": "decoration", "ring": true,
 			"y0": eave, "y1": crown, "keeps_clear": ["fascia_sign", "perf_left", "perf_right"],
 		})
-		var cs2: Dictionary = CLEANSTREETS
+		var cs2: Dictionary = table_for(spec, "cleanstreets")
 		var sgn: Dictionary = cs2["sign"]
 		reservations.append({"id": "fascia_sign", "type": "decoration", "cyl": false,
 			"n": Vector3(0, 0, 1), "x_center": 0.0, "half_w": float(sgn["w"]) * 0.5,
@@ -473,9 +613,10 @@ func _survey_reservations(placements: Array) -> void:
 ## Every planned hypelines part claims its wall before meshing: the six arm roots, the sign stack
 ## (sign / ghost letters / toll board), the entry arch, the valve wheel, pores and the dome vent.
 func _hypelines_reservations() -> void:
+	var tbl := table_for(spec, "hypelines")
 	var h := _height_total()
 	var fr := PI * 0.5
-	var arms: Array = HYPELINES["arms"]
+	var arms: Array = tbl["arms"]
 	for i in range(arms.size()):
 		var a := arms[i] as Dictionary
 		var cy := float(a["attach"]) * h
@@ -484,32 +625,33 @@ func _hypelines_reservations() -> void:
 			"theta": wrapf(fr + float(a["az"]), -PI, PI),
 			"half_arc": (pr + 0.06) / maxf(0.3, radius_at(cy)),
 			"y0": cy - pr - 0.06, "y1": cy + pr + 0.06, "keeps_clear": []})
-	var sign: Dictionary = HYPELINES["sign"]
+	var sign: Dictionary = tbl["sign"]
 	reservations.append({"id": "sign_board", "type": "decoration", "cyl": true, "theta": fr,
 		"half_arc": float(sign["w"]) * 0.5 / maxf(0.3, radius_at((float(sign["y0"]) + float(sign["y1"])) * 0.5 * h)),
 		"y0": float(sign["y0"]) * h, "y1": float(sign["y1"]) * h, "keeps_clear": []})
-	var ghost: Dictionary = HYPELINES["ghost"]
-	reservations.append({"id": "ghost_letters", "type": "decoration", "cyl": true, "theta": fr,
-		"half_arc": float(ghost["w"]) * 0.5 / maxf(0.3, radius_at((float(ghost["y0"]) + float(ghost["y1"])) * 0.5 * h)),
-		"y0": float(ghost["y0"]) * h, "y1": float(ghost["y1"]) * h, "keeps_clear": []})
-	var toll: Dictionary = HYPELINES["toll"]
+	var ghost: Dictionary = tbl["ghost"]
+	if float(ghost["w"]) > 0.05:
+		reservations.append({"id": "ghost_letters", "type": "decoration", "cyl": true, "theta": fr,
+			"half_arc": float(ghost["w"]) * 0.5 / maxf(0.3, radius_at((float(ghost["y0"]) + float(ghost["y1"])) * 0.5 * h)),
+			"y0": float(ghost["y0"]) * h, "y1": float(ghost["y1"]) * h, "keeps_clear": []})
+	var toll: Dictionary = tbl["toll"]
 	reservations.append({"id": "toll_board", "type": "decoration", "cyl": true, "theta": fr,
 		"half_arc": float(toll["w"]) * 0.5 / maxf(0.3, float(plan.get("wall_radius", 1.5))),
 		"y0": float(toll["y0"]) * h, "y1": float(toll["y1"]) * h,
 		"keeps_clear": ["door_main"]})   # the toll board hangs in the arch, over the doorway
-	var arch: Dictionary = HYPELINES["arch"]
+	var arch: Dictionary = tbl["arch"]
 	reservations.append({"id": "entry_arch", "type": "decoration", "cyl": true, "theta": fr,
 		"half_arc": (float(arch["w"]) * 0.5 + float(arch["r_tube"])) / maxf(0.3, float(plan.get("wall_radius", 1.5))),
 		"y0": 0.0, "y1": float(arch["y_top"]) * h,
 		"keeps_clear": ["door_main", "toll_board"]})   # the arch IS the door's idiom, toll board inside it
-	var wheel: Dictionary = HYPELINES["wheel"]
+	var wheel: Dictionary = tbl["wheel"]
 	var wy := float(wheel["y"]) * h
 	reservations.append({"id": "valve_wheel", "type": "decoration", "cyl": true,
 		"theta": fr + float(wheel["az"]),
 		"half_arc": float(wheel["dia"]) * h * 0.55 / maxf(0.3, radius_at(wy)),
 		"y0": wy - float(wheel["dia"]) * h * 0.55, "y1": wy + float(wheel["dia"]) * h * 0.55,
 		"keeps_clear": []})
-	var pores: Array = HYPELINES["pores"]
+	var pores: Array = tbl["pores"]
 	for i2 in range(pores.size()):
 		var p := pores[i2] as Array
 		var pmid := (float(p[1]) + float(p[2])) * 0.5 * h
@@ -517,7 +659,7 @@ func _hypelines_reservations() -> void:
 			"theta": wrapf(fr + float(p[0]), -PI, PI),
 			"half_arc": float(p[3]) * h * 0.5 / maxf(0.3, radius_at(pmid)),
 			"y0": float(p[1]) * h, "y1": float(p[2]) * h, "keeps_clear": []})
-	var vent: Dictionary = HYPELINES["vent"]
+	var vent: Dictionary = tbl["vent"]
 	reservations.append({"id": "dome_vent", "type": "decoration", "cyl": true,
 		"theta": fr + float(vent["az"]),
 		"half_arc": float(vent["w"]) * h * 0.5 / maxf(0.3, radius_at((float(vent["y0"]) + float(vent["y1"])) * 0.5 * h)) + 0.02,
@@ -526,55 +668,56 @@ func _hypelines_reservations() -> void:
 ## Every planned plumbing part claims its wall BEFORE meshing (the PLUMBING survey table). The
 ## flume's helix is claimed as stepped eighth-turn arc bands so the overlap check is meaningful.
 func _plumbing_reservations() -> void:
+	var tbl := table_for(spec, "plumbing")
 	var h := _height_total()
 	var fr := PI * 0.5   # the front axis
-	var sl: Array = PLUMBING["slits"]
+	var sl: Array = tbl["slits"]
 	for i in range(sl.size()):
 		var s := sl[i] as Array
 		var ymid := (float(s[1]) + float(s[2])) * 0.5 * h
 		reservations.append({"id": "slit_%d" % i, "type": "decoration", "cyl": true,
 			"theta": fr + float(s[0]), "half_arc": float(s[3]) * h * 0.5 / maxf(0.3, radius_at(ymid)),
 			"y0": float(s[1]) * h, "y1": float(s[2]) * h, "keeps_clear": []})
-	var wh: Array = PLUMBING["wheels"]
+	var wh: Array = tbl["wheels"]
 	for i in range(wh.size()):
 		var w := w_row(wh[i])
 		reservations.append({"id": "wheel_%d" % i, "type": "decoration", "cyl": true,
 			"theta": fr + w.x, "half_arc": w.z * h * 0.5 / maxf(0.3, radius_at(w.y * h)),
 			"y0": (w.y - w.z * 0.5) * h, "y1": (w.y + w.z * 0.5) * h, "keeps_clear": []})
-	var stub := w_row(PLUMBING["stub_wheel"])
+	var stub := w_row(tbl["stub_wheel"])
 	reservations.append({"id": "wheel_stub", "type": "decoration", "cyl": true,
 		"theta": fr + stub.x, "half_arc": stub.z * h * 0.5 / maxf(0.3, radius_at(stub.y * h)),
 		"y0": (stub.y - stub.z * 0.5) * h, "y1": (stub.y + stub.z * 0.5) * h, "keeps_clear": []})
-	var sign: Dictionary = PLUMBING["sign"]
+	var sign: Dictionary = tbl["sign"]
 	var sign_mid := (float(sign["y0"]) + float(sign["y1"])) * 0.5 * h
 	reservations.append({"id": "sign_board", "type": "decoration", "cyl": true,
 		"theta": fr + float(sign["theta_off"]),
 		"half_arc": float(sign["w"]) * 0.5 / maxf(0.3, radius_at(sign_mid)),
 		"y0": float(sign["y0"]) * h, "y1": float(sign["y1"]) * h, "keeps_clear": []})
-	var hood: Dictionary = PLUMBING["hood"]
+	var hood: Dictionary = tbl["hood"]
 	reservations.append({"id": "entry_hood", "type": "decoration", "cyl": true,
 		"theta": fr + float(hood["theta_off"]),
 		"half_arc": float(hood["w"]) * 0.5 / maxf(0.3, float(plan.get("wall_radius", 1.6))),
 		"y0": 0.0, "y1": float(hood["ridge"]) * h,
 		"keeps_clear": ["door_main"]})   # the hood IS the door's own architecture
-	var casc: Dictionary = PLUMBING["cascade"]
+	var casc: Dictionary = tbl["cascade"]
 	reservations.append({"id": "cascade", "type": "decoration", "cyl": true,
 		"theta": fr + float(casc["theta_off"]),
 		"half_arc": float(casc["w"]) * 0.5 / maxf(0.3, radius_at(0.08 * h)),
 		"y0": 0.0, "y1": float(casc["y_top"]) * h, "keeps_clear": []})
-	var pipe: Dictionary = PLUMBING["side_pipe"]
+	var pipe: Dictionary = tbl["side_pipe"]
 	reservations.append({"id": "side_pipe", "type": "decoration", "cyl": true,
 		"theta": fr + float(pipe["theta_off"]),
 		"half_arc": (float(pipe["dia"]) * 0.5 + 0.01) * h / maxf(0.3, radius_at(0.3 * h)),
 		"y0": 0.0, "y1": float(pipe["y_top"]) * h, "keeps_clear": []})
-	var ribs: Dictionary = PLUMBING["ribs"]
+	var ribs: Dictionary = tbl["ribs"]
 	for k in range(int(ribs["count"])):
 		var rth := fr + float(ribs["theta0_off"]) + TAU * float(k) / float(ribs["count"])
 		reservations.append({"id": "dome_rib_%d" % k, "type": "decoration", "cyl": true,
 			"theta": wrapf(rth, -PI, PI),
 			"half_arc": (float(ribs["r"]) + 0.004) * h / maxf(0.3, radius_at(0.81 * h)),
 			"y0": float(ribs["y0"]) * h, "y1": float(ribs["y1"]) * h, "keeps_clear": []})
-	var fl: Dictionary = PLUMBING["flume"]
+	var fl: Dictionary = tbl["flume"]
 	var arcs := int(round(float(fl["turns"]) * 8.0))   # eighth-turn claim bands, stepping down
 	var band_up := (float(fl["depth"]) + float(fl["rail_h"]) + 0.01) * h   # floor -> rail top
 	for k in range(arcs):
@@ -630,7 +773,7 @@ func _survey_sockets(placements: Array) -> void:
 		# every arm tip is a bridge dock; the LANE pair additionally carries its walkable deck
 		# descriptor (flat at the level-1 datum) so the level layer can register grid cells +
 		# an inter-level link without re-deriving the geometry (the walkable-lanes directive)
-		var deck: Dictionary = HYPELINES["deck"]
+		var deck: Dictionary = table_for(spec, "hypelines")["deck"]
 		for a in hypelines_arm_table(spec):
 			var ad := a as Dictionary
 			# "reach": an arm-tip dock legitimately extends past the massing envelope
@@ -643,7 +786,7 @@ func _survey_sockets(placements: Array) -> void:
 			sockets.append(sock)
 	if comp == "plumbing_lobed":
 		# the flume's two mouths are walkable-lane sockets (the trough is a traversable deck)
-		var fl: Dictionary = PLUMBING["flume"]
+		var fl: Dictionary = table_for(spec, "plumbing")["flume"]
 		var hh2 := _height_total()
 		for endp in [[0.0, float(fl["y_start"])], [1.0, float(fl["y_end"])]]:
 			var tt := float((endp as Array)[0])
@@ -798,11 +941,12 @@ func summary() -> Dictionary:
 ## The plumbing lathe rings in ABSOLUTE metres: [{y, r, lobes, amp, phase}]. The phase locks a lobe
 ## VALLEY onto the front axis, so the door cuts a sheltered valley wall (the plate's recessed entry).
 static func plumbing_rings(spec_in: Dictionary) -> Array:
+	var tbl := table_for(spec_in, "plumbing")
 	var h := float(spec_in.get("height", 5.6))
-	var lobes := int(PLUMBING["lobes"])
+	var lobes := int(tbl["lobes"])
 	var phase := PI / float(lobes) - PI * 0.5
 	var out: Array = []
-	for row in (PLUMBING["rings"] as Array):
+	for row in (tbl["rings"] as Array):
 		var r := row as Array
 		out.append({"y": float(r[0]) * h, "r": float(r[1]) * h, "lobes": lobes,
 			"amp": float(r[2]), "phase": phase})
@@ -811,11 +955,12 @@ static func plumbing_rings(spec_in: Dictionary) -> Array:
 ## The hypelines lathe rings in ABSOLUTE metres (same shape as plumbing_rings; the valley-at-front
 ## phase puts the toll-gate door in a sheltered lobe groove).
 static func hypelines_rings(spec_in: Dictionary) -> Array:
+	var tbl := table_for(spec_in, "hypelines")
 	var h := float(spec_in.get("height", 6.2))
-	var lobes := int(HYPELINES["lobes"])
+	var lobes := int(tbl["lobes"])
 	var phase := PI / float(lobes) - PI * 0.5
 	var out: Array = []
-	for row in (HYPELINES["rings"] as Array):
+	for row in (tbl["rings"] as Array):
 		var r := row as Array
 		out.append({"y": float(r[0]) * h, "r": float(r[1]) * h, "lobes": lobes,
 			"amp": float(r[2]), "phase": phase})
@@ -843,8 +988,9 @@ static func _ring_local_r(ring: Dictionary, theta: float) -> float:
 ## The flume helix sampled for construction: floor-datum centerline {theta, y, r} + section dims
 ## (metres). The centerline radius keeps the trough's inner rim sunk into the wall (support).
 func flume_path(steps: int = 56) -> Dictionary:
+	var tbl := table_for(spec, "plumbing")
 	var h := _height_total()
-	var fl: Dictionary = PLUMBING["flume"]
+	var fl: Dictionary = tbl["flume"]
 	var rings := plumbing_rings(spec)
 	var samples: Array = []
 	for i in range(steps + 1):
@@ -861,11 +1007,12 @@ func flume_path(steps: int = 56) -> Dictionary:
 ## junction is solid); walk_base/walk_tip are the DECK surface ends (lane arms only meaningfully).
 ## The one source the massing details, the sockets, and the level-layer docking all read.
 static func hypelines_arm_table(spec_in: Dictionary) -> Array:
+	var tbl := table_for(spec_in, "hypelines")
 	var h := float(spec_in.get("height", 6.2))
 	var fr := PI * 0.5
-	var deck: Dictionary = HYPELINES["deck"]
+	var deck: Dictionary = tbl["deck"]
 	var out: Array = []
-	for a_v in (HYPELINES["arms"] as Array):
+	for a_v in (tbl["arms"] as Array):
 		var a := a_v as Dictionary
 		var th := fr + float(a["az"])
 		var radial := Vector3(cos(th), 0.0, sin(th))
@@ -885,42 +1032,43 @@ static func hypelines_arm_table(spec_in: Dictionary) -> Array:
 
 ## Absolute fixture frames for the detail passes — every position sampled off the surveyed skin.
 func plumbing_frames() -> Dictionary:
+	var tbl := table_for(spec, "plumbing")
 	var h := _height_total()
 	var rings := plumbing_rings(spec)
 	var fr := PI * 0.5
 	var out := {"slits": [], "wheels": [], "ribs": []}
-	for s_v in (PLUMBING["slits"] as Array):
+	for s_v in (tbl["slits"] as Array):
 		var s := s_v as Array
 		var th := fr + float(s[0])
 		(out["slits"] as Array).append({"theta": th, "y0": float(s[1]) * h, "y1": float(s[2]) * h,
 			"w": float(s[3]) * h, "r0": lathe_local_r(rings, float(s[1]) * h, th),
 			"r1": lathe_local_r(rings, float(s[2]) * h, th)})
-	var wheel_rows: Array = (PLUMBING["wheels"] as Array).duplicate()
-	wheel_rows.append(PLUMBING["stub_wheel"])
+	var wheel_rows: Array = (tbl["wheels"] as Array).duplicate()
+	wheel_rows.append(tbl["stub_wheel"])
 	for i in range(wheel_rows.size()):
 		var w := w_row(wheel_rows[i])
 		var th2 := fr + w.x
 		(out["wheels"] as Array).append({"theta": th2, "y": w.y * h, "dia": w.z * h,
 			"r": lathe_local_r(rings, w.y * h, th2), "stub": i == wheel_rows.size() - 1})
-	var ribs: Dictionary = PLUMBING["ribs"]
+	var ribs: Dictionary = tbl["ribs"]
 	for k in range(int(ribs["count"])):
 		var th3 := fr + float(ribs["theta0_off"]) + TAU * float(k) / float(ribs["count"])
 		(out["ribs"] as Array).append({"theta": th3, "y0": float(ribs["y0"]) * h,
 			"y1": float(ribs["y1"]) * h, "r": float(ribs["r"]) * h})
-	var sign: Dictionary = PLUMBING["sign"]
+	var sign: Dictionary = tbl["sign"]
 	var sign_mid := (float(sign["y0"]) + float(sign["y1"])) * 0.5 * h
 	out["sign"] = {"theta": fr + float(sign["theta_off"]), "y0": float(sign["y0"]) * h,
 		"y1": float(sign["y1"]) * h, "w": float(sign["w"]),
 		"r": lathe_local_r(rings, sign_mid, fr + float(sign["theta_off"]))}
-	var hood: Dictionary = PLUMBING["hood"]
+	var hood: Dictionary = tbl["hood"]
 	out["hood"] = {"theta": fr + float(hood["theta_off"]), "ridge": float(hood["ridge"]) * h,
 		"eaves": float(hood["eaves"]) * h, "w": float(hood["w"]), "out": float(hood["out"]),
 		"r": lathe_local_r(rings, 0.1, fr + float(hood["theta_off"]))}
-	var casc: Dictionary = PLUMBING["cascade"]
+	var casc: Dictionary = tbl["cascade"]
 	var cth := fr + float(casc["theta_off"])
 	out["cascade"] = {"theta": cth, "y_top": float(casc["y_top"]) * h, "w": float(casc["w"]),
 		"r": lathe_local_r(rings, float(casc["y_top"]) * h * 0.5, cth)}
-	var pipe: Dictionary = PLUMBING["side_pipe"]
+	var pipe: Dictionary = tbl["side_pipe"]
 	var pth := fr + float(pipe["theta_off"])
 	out["side_pipe"] = {"theta": pth, "y_top": float(pipe["y_top"]) * h,
 		"dia": float(pipe["dia"]) * h, "valve_y": float(pipe["valve_y"]) * h}
