@@ -46,13 +46,64 @@ const ENTRANCE_DEFAULTS := {
 ## total height, per composite. Each ratio traces to the massing constant that traces to the plate
 ## decomposition in docs/BUILDING_REVIEW.md.
 const EAVE_RATIOS := {
-	"plumbing_lobed": 0.74,    # dome springing (plate: dome crown 72-100% H)
+	"plumbing_lobed": 0.65,    # dome springing, re-measured off the plate (drum band 0.47-0.65 H)
 	"ancourage_domes": 0.53,   # eave ring / dome cluster seat (plate: body ~45% H + eave band)
 	"hypelines_mound": 0.38,   # tier-1 skirt top (plate: base skirt 35-40% H)
 	"beacon_domed": 0.75,      # drum top / dome shoulder springing (plate: shoulder top ~75% H)
 	"canopy_piers": 0.56,      # canopy slab underside (plate: open leg zone ~45% + dais)
 	"bulwark_towers": 0.86,    # gatehouse body top (towers rise past it to the crown)
 	"zone3_split": 0.94,       # cornice underside (plate: crown slab = top ~6% H)
+}
+
+## THE PLUMBING POWER SURVEY — measured off the plate (reference-images/architecture/
+## plumbing_power_project.png, decomposed 2026-07-10). Heights are FRACTIONS of the spec height H;
+## angles are OFFSETS from the front axis (theta = PI/2, +Z), positive running leftward. Every part
+## is reserved AND reconciled here: skirt fixtures snap to lobe CRESTS (slits/wheels) or VALLEYS
+## (cascade, side pipe — the plate runs them in the grooves), nothing claims the door clearance
+## below 1.95 m, slit bands stop where the flume's helical claim begins, and the side pipe's claim
+## ends under the flume band it drinks from.
+const PLUMBING := {
+	# ONE lofted lathe profile: [y, ring radius, lobe amplitude]. The crest r*(1+amp) IS the
+	# silhouette; the valley r*(1-amp) is the wall the door cuts (the lobe phase locks a valley
+	# onto the front). Plate: fused root-skirt 0-0.47H (footprint 0.85H), shoulder drum 0.47-0.65H
+	# (dia ~0.41H), onion dome 0.65-0.905H (overhang 1.15x drum), cupola 0.905-0.968H, crown cap.
+	# 6 lobes (plate reads 6-8): at the 24-segment loft every crest AND valley lands exactly on a
+	# vertex (4 samples per lobe), so the scallop reads bold instead of aliasing away.
+	"lobes": 6,
+	"rings": [
+		[0.000, 0.355, 0.200], [0.100, 0.340, 0.190], [0.250, 0.290, 0.145],
+		[0.400, 0.235, 0.055], [0.470, 0.205, 0.000], [0.650, 0.205, 0.000],
+		[0.690, 0.235, 0.000], [0.760, 0.225, 0.000], [0.840, 0.175, 0.000],
+		[0.880, 0.115, 0.000], [0.905, 0.048, 0.000], [0.968, 0.040, 0.000],
+		[0.985, 0.030, 0.000], [0.998, 0.012, 0.000],
+	],
+	# The signature descending aqueduct as a survey HELIX: enters at the REAR riding the dome base,
+	# crosses the front at 0.62H (the plate's glowing crossing), 1.25 turns, exits low right.
+	# Section dims are fractions of H; the water strip is the terminal-green emissive.
+	"flume": {
+		"y_start": 0.76, "y_end": 0.41, "turns": 1.25, "theta_start_off": -PI,
+		"trough_w": 0.075, "depth": 0.040, "rail_h": 0.052, "water_w": 0.055, "wall_sink": 0.012,
+	},
+	# Capillary slits [theta_off, y0, y1, w(frac)] — recessed dark, never emissive. Dome pair +
+	# left single ride above the flume's high bands; the drum pair ends exactly where the front
+	# crossing's claim begins; skirt slits sit on lobe crests clear of the wheel cluster.
+	"slits": [
+		[0.10, 0.70, 0.82, 0.018], [-0.10, 0.70, 0.82, 0.018], [0.48, 0.71, 0.79, 0.016],
+		[0.08, 0.50, 0.595, 0.018], [-0.08, 0.50, 0.595, 0.018],   # over the sign, under the crossing
+		[1.178, 0.27, 0.37, 0.020], [-1.963, 0.18, 0.30, 0.020], [2.749, 0.16, 0.26, 0.020],
+		[-1.178, 0.28, 0.44, 0.020],
+	],
+	# The rusted handwheel cluster [theta_off, y_center, dia(frac)]: stacked pairs on the two lobe
+	# crests left of the entry (the plate's lower-left cluster), linked by pipe runs at build time.
+	"wheels": [
+		[1.178, 0.115, 0.085], [1.178, 0.230, 0.062], [1.963, 0.175, 0.090], [1.963, 0.085, 0.062],
+	],
+	"stub_wheel": [2.30, 0.085, 0.070],   # freestanding, on a horizontal ground pipe stub
+	"sign": {"theta_off": 0.0, "y0": 0.36, "y1": 0.48, "w": 1.0},   # board width in metres
+	"hood": {"theta_off": 0.0, "ridge": 0.34, "eaves": 0.28, "w": 1.4, "out": 0.55},   # w/out metres
+	"cascade": {"theta_off": 0.785, "y_top": 0.17, "w": 0.5},       # in a lobe valley; green glow
+	"side_pipe": {"theta_off": -0.785, "y_top": 0.58, "dia": 0.033, "valve_y": 0.35},
+	"ribs": {"count": 6, "theta0_off": 0.26, "y0": 0.72, "y1": 0.895, "r": 0.014},
 }
 
 ## Authored storey plans (ground band + floor count between plinth and eave), per building kind.
@@ -172,15 +223,11 @@ func _survey_profile() -> void:
 		var r := float(spec.get("radius", 2.0))
 		match comp:
 			"plumbing_lobed":
-				var rd := float(spec.get("door_radius", r * 0.62))
-				_pr(0.0, rd * 1.5)                       # root-lobe flare at ground
-				_pr(h * 0.47, rd)                        # lobes fuse into the shoulder drum
-				_pr(h * 0.74, rd)                        # drum top / dome springing
-				for t in [0.0, 0.35, 0.6, 0.8, 0.92, 1.0]:
-					var tf := float(t)
-					var rr := maxf(rd * 0.2, rd * 1.12 * sqrt(maxf(0.0, 1.0 - tf * tf)))
-					_pr(h * 0.74 + rd * 0.75 * tf, rr)   # onion dome, sampled
-				_pr(crown, rd * 0.2)                     # cupola shaft to the finial
+				# the profile IS the lathe ring table's crest line (one authority: PLUMBING.rings)
+				for row in (PLUMBING["rings"] as Array):
+					var rr := row as Array
+					_pr(float(rr[0]) * h, float(rr[1]) * (1.0 + float(rr[2])) * h)
+				_pr(crown, 0.01 * h)                     # crown cap apex
 			"ancourage_domes":
 				_pr(0.0, r)
 				_pr(h * 0.53, r)                         # body top / eave ring
@@ -293,6 +340,78 @@ func _survey_reservations(placements: Array) -> void:
 			"id": "canopy_slab", "type": "decoration", "ring": true,
 			"y0": eave, "y1": crown, "keeps_clear": [],
 		})
+	if str(spec.get("composite", "")) == "plumbing_lobed":
+		_plumbing_reservations()
+
+## Every planned plumbing part claims its wall BEFORE meshing (the PLUMBING survey table). The
+## flume's helix is claimed as stepped eighth-turn arc bands so the overlap check is meaningful.
+func _plumbing_reservations() -> void:
+	var h := _height_total()
+	var fr := PI * 0.5   # the front axis
+	var sl: Array = PLUMBING["slits"]
+	for i in range(sl.size()):
+		var s := sl[i] as Array
+		var ymid := (float(s[1]) + float(s[2])) * 0.5 * h
+		reservations.append({"id": "slit_%d" % i, "type": "decoration", "cyl": true,
+			"theta": fr + float(s[0]), "half_arc": float(s[3]) * h * 0.5 / maxf(0.3, radius_at(ymid)),
+			"y0": float(s[1]) * h, "y1": float(s[2]) * h, "keeps_clear": []})
+	var wh: Array = PLUMBING["wheels"]
+	for i in range(wh.size()):
+		var w := w_row(wh[i])
+		reservations.append({"id": "wheel_%d" % i, "type": "decoration", "cyl": true,
+			"theta": fr + w.x, "half_arc": w.z * h * 0.5 / maxf(0.3, radius_at(w.y * h)),
+			"y0": (w.y - w.z * 0.5) * h, "y1": (w.y + w.z * 0.5) * h, "keeps_clear": []})
+	var stub := w_row(PLUMBING["stub_wheel"])
+	reservations.append({"id": "wheel_stub", "type": "decoration", "cyl": true,
+		"theta": fr + stub.x, "half_arc": stub.z * h * 0.5 / maxf(0.3, radius_at(stub.y * h)),
+		"y0": (stub.y - stub.z * 0.5) * h, "y1": (stub.y + stub.z * 0.5) * h, "keeps_clear": []})
+	var sign: Dictionary = PLUMBING["sign"]
+	var sign_mid := (float(sign["y0"]) + float(sign["y1"])) * 0.5 * h
+	reservations.append({"id": "sign_board", "type": "decoration", "cyl": true,
+		"theta": fr + float(sign["theta_off"]),
+		"half_arc": float(sign["w"]) * 0.5 / maxf(0.3, radius_at(sign_mid)),
+		"y0": float(sign["y0"]) * h, "y1": float(sign["y1"]) * h, "keeps_clear": []})
+	var hood: Dictionary = PLUMBING["hood"]
+	reservations.append({"id": "entry_hood", "type": "decoration", "cyl": true,
+		"theta": fr + float(hood["theta_off"]),
+		"half_arc": float(hood["w"]) * 0.5 / maxf(0.3, float(plan.get("wall_radius", 1.6))),
+		"y0": 0.0, "y1": float(hood["ridge"]) * h,
+		"keeps_clear": ["door_main"]})   # the hood IS the door's own architecture
+	var casc: Dictionary = PLUMBING["cascade"]
+	reservations.append({"id": "cascade", "type": "decoration", "cyl": true,
+		"theta": fr + float(casc["theta_off"]),
+		"half_arc": float(casc["w"]) * 0.5 / maxf(0.3, radius_at(0.08 * h)),
+		"y0": 0.0, "y1": float(casc["y_top"]) * h, "keeps_clear": []})
+	var pipe: Dictionary = PLUMBING["side_pipe"]
+	reservations.append({"id": "side_pipe", "type": "decoration", "cyl": true,
+		"theta": fr + float(pipe["theta_off"]),
+		"half_arc": (float(pipe["dia"]) * 0.5 + 0.01) * h / maxf(0.3, radius_at(0.3 * h)),
+		"y0": 0.0, "y1": float(pipe["y_top"]) * h, "keeps_clear": []})
+	var ribs: Dictionary = PLUMBING["ribs"]
+	for k in range(int(ribs["count"])):
+		var rth := fr + float(ribs["theta0_off"]) + TAU * float(k) / float(ribs["count"])
+		reservations.append({"id": "dome_rib_%d" % k, "type": "decoration", "cyl": true,
+			"theta": wrapf(rth, -PI, PI),
+			"half_arc": (float(ribs["r"]) + 0.004) * h / maxf(0.3, radius_at(0.81 * h)),
+			"y0": float(ribs["y0"]) * h, "y1": float(ribs["y1"]) * h, "keeps_clear": []})
+	var fl: Dictionary = PLUMBING["flume"]
+	var arcs := int(round(float(fl["turns"]) * 8.0))   # eighth-turn claim bands, stepping down
+	var band_up := (float(fl["depth"]) + float(fl["rail_h"]) + 0.01) * h   # floor -> rail top
+	for k in range(arcs):
+		var t0 := float(k) / float(arcs)
+		var t1 := float(k + 1) / float(arcs)
+		var th := fr + float(fl["theta_start_off"]) + (t0 + t1) * 0.5 * float(fl["turns"]) * TAU
+		var y_hi := lerpf(float(fl["y_start"]), float(fl["y_end"]), t0) * h   # floor datum, descending
+		var y_lo := lerpf(float(fl["y_start"]), float(fl["y_end"]), t1) * h
+		# layer 1: the trough rides PROUD of the wall (it bridges over the on-skin dome ribs)
+		reservations.append({"id": "flume_arc_%d" % k, "type": "decoration", "cyl": true, "layer": 1,
+			"theta": wrapf(th, -PI, PI), "half_arc": TAU / 16.0,
+			"y0": y_lo - 0.015 * h, "y1": y_hi + band_up, "keeps_clear": []})
+
+# a wheel row [theta_off, y_center, dia] as a Vector3 for terse reads
+static func w_row(row_v: Variant) -> Vector3:
+	var row := row_v as Array
+	return Vector3(float(row[0]), float(row[1]), float(row[2]))
 
 ## SOCKETS — the architecture->puzzle contract (director, 2026-07-09), now placed FROM the survey:
 ##   weak_point   structural weaknesses ON the silhouette profile — may crumble when hit
@@ -333,6 +452,18 @@ func _survey_sockets(placements: Array) -> void:
 			var ad := a as Dictionary
 			sockets.append({"kind": "bridge", "lane": true, "pos": ad["tip"],
 				"dir": (ad["dir"] as Vector3).normalized(), "width": 1.1})
+	if comp == "plumbing_lobed":
+		# the flume's two mouths are walkable-lane sockets (the trough is a traversable deck)
+		var fl: Dictionary = PLUMBING["flume"]
+		var hh2 := _height_total()
+		for endp in [[0.0, float(fl["y_start"])], [1.0, float(fl["y_end"])]]:
+			var tt := float((endp as Array)[0])
+			var th := PI * 0.5 + float(fl["theta_start_off"]) + tt * float(fl["turns"]) * TAU
+			var fy := float((endp as Array)[1]) * hh2
+			var rc := radius_at(fy) + (float(fl["trough_w"]) * 0.5 - float(fl["wall_sink"])) * hh2
+			sockets.append({"kind": "bridge", "lane": true,
+				"pos": Vector3(cos(th), 0.0, sin(th)) * rc + Vector3(0, fy, 0),
+				"dir": Vector3(cos(th), 0.0, sin(th)), "width": float(fl["trough_w"]) * hh2})
 	if str(plan.get("kind", "")) == "drum":
 		var hgt := float(spec.get("height", 5.0))
 		var nw := 2 + int(BaseShapeBuilder._h01(kb + 1.0) * 1.9)
@@ -464,6 +595,101 @@ func anchors() -> Dictionary:
 func summary() -> Dictionary:
 	return {"kind": kind, "datums": datums, "plan": plan, "profile": profile,
 		"reservations": reservations, "sockets": sockets}
+
+
+# ============================================================================================
+# PLUMBING READ SURFACE — the construction passes build FROM these (never their own numbers)
+# ============================================================================================
+
+## The plumbing lathe rings in ABSOLUTE metres: [{y, r, lobes, amp, phase}]. The phase locks a lobe
+## VALLEY onto the front axis, so the door cuts a sheltered valley wall (the plate's recessed entry).
+static func plumbing_rings(spec_in: Dictionary) -> Array:
+	var h := float(spec_in.get("height", 5.6))
+	var lobes := int(PLUMBING["lobes"])
+	var phase := PI / float(lobes) - PI * 0.5
+	var out: Array = []
+	for row in (PLUMBING["rings"] as Array):
+		var r := row as Array
+		out.append({"y": float(r[0]) * h, "r": float(r[1]) * h, "lobes": lobes,
+			"amp": float(r[2]), "phase": phase})
+	return out
+
+## The LOCAL wall radius at (y, theta) — ring-interpolated with the lobe modulation. The loft mesh
+## and every mounted fixture consult THIS, so parts always touch the real skin (mereotopology).
+static func plumbing_local_r(rings: Array, y: float, theta: float) -> float:
+	if y <= float((rings[0] as Dictionary)["y"]):
+		return _ring_local_r(rings[0] as Dictionary, theta)
+	for i in range(rings.size() - 1):
+		var hi := rings[i + 1] as Dictionary
+		if y <= float(hi["y"]):
+			var lo := rings[i] as Dictionary
+			var dy := float(hi["y"]) - float(lo["y"])
+			if dy <= 0.0001:
+				continue
+			return lerpf(_ring_local_r(lo, theta), _ring_local_r(hi, theta), (y - float(lo["y"])) / dy)
+	return _ring_local_r(rings[rings.size() - 1] as Dictionary, theta)
+
+static func _ring_local_r(ring: Dictionary, theta: float) -> float:
+	return float(ring["r"]) * (1.0 + float(ring["amp"]) * cos(float(ring["lobes"]) * (theta + float(ring["phase"]))))
+
+## The flume helix sampled for construction: floor-datum centerline {theta, y, r} + section dims
+## (metres). The centerline radius keeps the trough's inner rim sunk into the wall (support).
+func flume_path(steps: int = 56) -> Dictionary:
+	var h := _height_total()
+	var fl: Dictionary = PLUMBING["flume"]
+	var rings := plumbing_rings(spec)
+	var samples: Array = []
+	for i in range(steps + 1):
+		var t := float(i) / float(steps)
+		var th := PI * 0.5 + float(fl["theta_start_off"]) + t * float(fl["turns"]) * TAU
+		var y := lerpf(float(fl["y_start"]), float(fl["y_end"]), t) * h
+		var rc := plumbing_local_r(rings, y, th) + (float(fl["trough_w"]) * 0.5 - float(fl["wall_sink"])) * h
+		samples.append({"theta": th, "y": y, "r": rc})
+	return {"samples": samples, "trough_w": float(fl["trough_w"]) * h, "depth": float(fl["depth"]) * h,
+		"rail_h": float(fl["rail_h"]) * h, "water_w": float(fl["water_w"]) * h}
+
+## Absolute fixture frames for the detail passes — every position sampled off the surveyed skin.
+func plumbing_frames() -> Dictionary:
+	var h := _height_total()
+	var rings := plumbing_rings(spec)
+	var fr := PI * 0.5
+	var out := {"slits": [], "wheels": [], "ribs": []}
+	for s_v in (PLUMBING["slits"] as Array):
+		var s := s_v as Array
+		var th := fr + float(s[0])
+		(out["slits"] as Array).append({"theta": th, "y0": float(s[1]) * h, "y1": float(s[2]) * h,
+			"w": float(s[3]) * h, "r0": plumbing_local_r(rings, float(s[1]) * h, th),
+			"r1": plumbing_local_r(rings, float(s[2]) * h, th)})
+	var wheel_rows: Array = (PLUMBING["wheels"] as Array).duplicate()
+	wheel_rows.append(PLUMBING["stub_wheel"])
+	for i in range(wheel_rows.size()):
+		var w := w_row(wheel_rows[i])
+		var th2 := fr + w.x
+		(out["wheels"] as Array).append({"theta": th2, "y": w.y * h, "dia": w.z * h,
+			"r": plumbing_local_r(rings, w.y * h, th2), "stub": i == wheel_rows.size() - 1})
+	var ribs: Dictionary = PLUMBING["ribs"]
+	for k in range(int(ribs["count"])):
+		var th3 := fr + float(ribs["theta0_off"]) + TAU * float(k) / float(ribs["count"])
+		(out["ribs"] as Array).append({"theta": th3, "y0": float(ribs["y0"]) * h,
+			"y1": float(ribs["y1"]) * h, "r": float(ribs["r"]) * h})
+	var sign: Dictionary = PLUMBING["sign"]
+	var sign_mid := (float(sign["y0"]) + float(sign["y1"])) * 0.5 * h
+	out["sign"] = {"theta": fr + float(sign["theta_off"]), "y0": float(sign["y0"]) * h,
+		"y1": float(sign["y1"]) * h, "w": float(sign["w"]),
+		"r": plumbing_local_r(rings, sign_mid, fr + float(sign["theta_off"]))}
+	var hood: Dictionary = PLUMBING["hood"]
+	out["hood"] = {"theta": fr + float(hood["theta_off"]), "ridge": float(hood["ridge"]) * h,
+		"eaves": float(hood["eaves"]) * h, "w": float(hood["w"]), "out": float(hood["out"]),
+		"r": plumbing_local_r(rings, 0.1, fr + float(hood["theta_off"]))}
+	var casc: Dictionary = PLUMBING["cascade"]
+	var cth := fr + float(casc["theta_off"])
+	out["cascade"] = {"theta": cth, "y_top": float(casc["y_top"]) * h, "w": float(casc["w"]),
+		"r": plumbing_local_r(rings, float(casc["y_top"]) * h * 0.5, cth)}
+	var pipe: Dictionary = PLUMBING["side_pipe"]
+	var pth := fr + float(pipe["theta_off"])
+	out["side_pipe"] = {"theta": pth, "y_top": float(pipe["y_top"]) * h,
+		"dia": float(pipe["dia"]) * h, "valve_y": float(pipe["valve_y"]) * h}
+	return out
 
 
 # ============================================================================================
@@ -704,7 +930,12 @@ func _validate_overlaps(problems: Array[String]) -> void:
 				problems.append("%s: '%s' and '%s' both claim the same wall band — reconcile at the survey" % [kind, ida, idb])
 
 # Two reservations overlap when they share a wall AND their height bands AND lateral spans intersect.
+# `layer` separates radial shells: 0 = parts ON the wall skin (openings, slits, boards), 1 = parts
+# riding PROUD of it (the plumbing flume bridging over the dome ribs) — different layers never fight
+# for the same skin, so cross-layer overlaps are legal by construction.
 func _res_overlap(a: Dictionary, b: Dictionary) -> bool:
+	if int(a.get("layer", 0)) != int(b.get("layer", 0)):
+		return false
 	if float(a.get("y0", 0.0)) >= float(b.get("y1", 0.0)) - EPS \
 			or float(b.get("y0", 0.0)) >= float(a.get("y1", 0.0)) - EPS:
 		return false

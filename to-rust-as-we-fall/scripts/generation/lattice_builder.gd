@@ -1748,8 +1748,10 @@ static func _emit_door(stone: SurfaceTool, dark: SurfaceTool, acc: SurfaceTool, 
 	var leaf: SurfaceTool = acc if enforcement else dark
 	for side in [-1.0, 1.0]:
 		_emit_oriented_box(leaf, a + u * (side * hw * 0.5) + v * (dh * 0.5) - n * (recess * 0.55), u, v, n, Vector3(hw * 0.5 - 0.03, dh * 0.5 - 0.04, 0.03))
-	# canopy overhang + two steps down to the ground
-	_emit_oriented_box(stone, a + v * (dh + jamb + 0.05) + n * (float(p["canopy_out"]) * 0.5), u, v, n, Vector3(hw + jamb + 0.12, 0.06, float(p["canopy_out"]) * 0.5))
+	# canopy overhang + two steps down to the ground (a building whose survey places its OWN entry
+	# idiom — the plumbing hood — zeroes canopy_out and no slab is emitted)
+	if float(p["canopy_out"]) > 0.05:
+		_emit_oriented_box(stone, a + v * (dh + jamb + 0.05) + n * (float(p["canopy_out"]) * 0.5), u, v, n, Vector3(hw + jamb + 0.12, 0.06, float(p["canopy_out"]) * 0.5))
 	_emit_oriented_box(stone, a + v * 0.07 + n * 0.18, u, v, n, Vector3(hw + 0.12, 0.07, 0.18))
 	_emit_oriented_box(stone, a + v * 0.03 + n * 0.42, u, v, n, Vector3(hw + 0.28, 0.03, 0.20))
 

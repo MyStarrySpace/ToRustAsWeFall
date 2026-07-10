@@ -4118,6 +4118,30 @@ func _test_building_survey() -> void:
 	_assert_true(not Survey.from_spec(tall).validate().is_empty(),
 		"a door rising past its wall band goes RED (the survey reconciliation is enforced)")
 
+	# --- PLUMBING REBUILD (task 1.1): the detail passes build FROM the survey, deterministic, and
+	# the flume rides the surveyed silhouette (mereotopology: the trough touches its host) ---
+	var svp2 = Survey.from_spec(ppp)
+	var det: Dictionary = Base.plumbing_details(ppp)
+	for fam in ["body", "rust", "dark", "glow", "rails"]:
+		var m = det.get(fam)
+		_assert_true(m != null and (m as ArrayMesh).get_surface_count() > 0
+			and (m as ArrayMesh).surface_get_array_len(0) > 12,
+			"plumbing details build the %s family (%d verts)" % [fam, 0 if m == null or (m as ArrayMesh).get_surface_count() == 0 else (m as ArrayMesh).surface_get_array_len(0)])
+	var det2: Dictionary = Base.plumbing_details(ppp)
+	_assert_equals((det["glow"] as ArrayMesh).surface_get_array_len(0),
+		(det2["glow"] as ArrayMesh).surface_get_array_len(0), "plumbing details are deterministic")
+	var fl_path: Dictionary = svp2.flume_path(24)
+	var on_surface := true
+	for smp in (fl_path["samples"] as Array):
+		var sd := smp as Dictionary
+		var gap: float = float(sd["r"]) - float(svp2.radius_at(float(sd["y"])))
+		if gap < -0.02 or gap > 0.35:
+			on_surface = false
+			print("    [plumbing] flume floats %.2f off the silhouette at y=%.2f" % [gap, float(sd["y"])])
+	_assert_true(on_surface, "the flume helix rides the surveyed silhouette (never floats, never buries)")
+	_assert_true((svp2.reservations as Array).size() >= 25,
+		"the plumbing survey reserves every planned part (%d reservations)" % (svp2.reservations as Array).size())
+
 func _find_nodes_prefixed(n: Node, prefix: String) -> Array:
 	var out: Array = []
 	if str(n.name).begins_with(prefix):

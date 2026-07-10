@@ -62,6 +62,8 @@ func _build_chunk() -> void:
 		_add_lattice(root, spec, ent.get("reserved", []), survey)
 		_add_ledge_treatments(root, spec)
 		_add_entrance_meshes(root, spec, ent)
+		if str(spec.get("composite", "")) == "plumbing_lobed":
+			_add_plumbing_details(root, spec)
 		_add_anchor_markers(root, survey.anchors())
 		_specimens.append({"building": kind, "shape": str(spec.get("shape", "")),
 			"lattice": str(spec.get("lattice", "")), "verts": verts})
@@ -252,6 +254,36 @@ func _add_rackwork(root: Node3D, spec: Dictionary, reserved: Array) -> void:
 	led.emission = Color(0.36, 0.91, 0.50)   # the terminal green
 	led.emission_energy_multiplier = 2.4
 	_add_lattice_mesh(root, "RackLeds", built.get("leds"), led)
+
+## The plumbing detail passes (SURVEY REBUILD 1.1) — flume + ribs + fixtures grown from the survey.
+## Materials by family: construction metal keeps the building tint; wheels/pipes run rust; slit
+## panels and the sign face stay recessed-dark; water/cascade/terminal glow the terminal green.
+func _add_plumbing_details(root: Node3D, spec: Dictionary) -> void:
+	var built: Dictionary = BaseShape.plumbing_details(spec)
+	_add_lattice_mesh(root, "PlumbBody", built.get("body"),
+		_tinted_tile_material(str(spec.get("tile", "facility_metal")), spec.get("color", Color(0.24, 0.35, 0.32))))
+	var rust := StandardMaterial3D.new()
+	rust.albedo_color = Color(0.40, 0.25, 0.16)
+	rust.roughness = 0.88
+	rust.metallic = 0.25
+	_add_lattice_mesh(root, "PlumbRust", built.get("rust"), rust)
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.05, 0.06, 0.06)
+	dark.roughness = 0.94
+	_add_lattice_mesh(root, "PlumbDark", built.get("dark"), dark)
+	var glow := StandardMaterial3D.new()
+	glow.albedo_color = Color(0.16, 0.42, 0.26)
+	glow.emission_enabled = true
+	glow.emission = Color(0.36, 0.91, 0.50)   # terminal green — the world's ONLY standard emissive
+	glow.emission_energy_multiplier = 2.4
+	_add_lattice_mesh(root, "PlumbGlow", built.get("glow"), glow)
+	var rail := _railing_material()
+	rail.albedo_color = Color(0.52, 0.40, 0.30)   # rusted mesh railing along the flume rims
+	_add_lattice_mesh(root, "PlumbRails", built.get("rails"), rail)
+	# the title label rides the PHYSICAL sign board (the plate's framed plate, not floating text)
+	var lbl := root.get_node_or_null("Nameplate")
+	if lbl != null and built.has("nameplate_pos"):
+		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
 
 func _add_pipes(root: Node3D, spec: Dictionary, survey: BuildingSurvey) -> void:
 	var pipe_seed := int(str(spec.get("kind", "")).hash())

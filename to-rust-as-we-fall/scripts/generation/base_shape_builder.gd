@@ -27,18 +27,23 @@ const BUILDINGS := [
 const SPECS := {
 	"plumbing_power": {
 		"title": "Plumbing Power Project",
-		"shape": SHAPE_COMPOSITE,           # melted-boiler massing (BUILDING_REVIEW P1-P2): lobed
-		"composite": "plumbing_lobed",      # root-skirt + shoulder drum + onion dome + cupola
-		"door_frame": "cyl",                # doors cut the DRUM wall (drum-frame reserved regions)
-		"door_radius": 1.37,                # the shoulder drum the door actually cuts (radius*0.62)
-		"flare": 0.95,                      # footprint = flare x massing diameter (lobes reach ~1.5x the drum)
-		"radius": 2.2,                      # the flare reaches ~1.7x the drum radius at ground
+		"shape": SHAPE_COMPOSITE,           # SURVEY REBUILD 1.1: ONE lofted lathe from the
+		"composite": "plumbing_lobed",      # BuildingSurvey.PLUMBING ring table (skirt/drum/dome/cupola)
+		"door_frame": "cyl",
+		"door_radius": 1.59,                # the front lobe VALLEY the door cuts: 0.355H*(1-0.20)
+		"flare": 1.0,
+		"radius": 2.39,                     # silhouette crest at ground: 0.355H*1.20 (footprint 0.85H)
 		"height": 5.6,
+		# Entry reconciled at the survey: the plate's hood scaled to the character door (0.9 x 1.5 m
+		# inside the 1.4 m pitched hood); the plate shows NO side doors; the hood replaces the generic
+		# canopy slab; the reserve margin is trimmed so the sign board clears the door band.
+		"entrances": {"main_w": 0.9, "main_h": 1.5, "side_count_min": 0, "side_count_max": 0,
+			"reserve_margin": 0.25, "canopy_out": 0.0},
 		"color": Color(0.24, 0.35, 0.32),   # dark desaturated verdigris (plate palette)
 		"tile": "facility_metal",
-		"lattice": "",                      # spiral flume + slit windows are the next passes
-		"pipes": true,                      # the plate's draped conduit runs
-	},
+		"lattice": "",
+		"pipes": false,                     # no draped tangle on the plate — the flume, dome ribs and
+	},                                      # ONE side pipe come from the survey (plumbing_details)
 	"honeycomb_cooperative": {
 		"entrances": {"reserve_margin": 0.2},   # storey-scale blobs: a fat clearance would gut the facade
 		"title": "Honeycomb Cooperative",
@@ -307,61 +312,456 @@ static func _composite(spec: Dictionary, reserved: Array = [], recess: float = 0
 
 # --- REVIEW-DRIVEN MASSING (docs/BUILDING_REVIEW.md priority-1 alterations) ------------------------
 
-## Plumbing Power: the melted-boiler silhouette — a shoulder drum whose bottom 45% flares into fused
-## root-lobes reaching ~1.7x the drum radius (the plate's dominant feature), crowned by an onion dome
-## + cupola. The door keeps the drum's real wall cut; the lobe ring leaves a gap at the door theta so
-## the entry stays reachable (the plate's shadowed ground archway).
+## Plumbing Power (SURVEY REBUILD 1.1): the melted-boiler massing as ONE LOFTED LATHE — the
+## BuildingSurvey.PLUMBING ring table (fused root-lobes -> shoulder drum -> onion dome -> cupola)
+## lofted column by column, with the door cut into the front lobe VALLEY (recessed pocket + jambs +
+## lintel) and closed by ground + crown fans. No intersecting primitives: every vertex sits on the
+## surveyed surface. (The survey script is loaded at runtime — the survey reads BaseShapeBuilder's
+## layout tables, so a parse-time class reference here would be a dependency cycle.)
 static func _plumbing_lobed_mesh(spec: Dictionary, reserved: Array, recess: float) -> ArrayMesh:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var rings: Array = Survey.plumbing_rings(spec)
 	var h := float(spec.get("height", 5.6))
-	var rd := float(spec.get("door_radius", float(spec.get("radius", 2.2)) * 0.62))   # the shoulder drum (plate: diameter ~0.5H)
+	var door_theta := INF
+	var door_half := 0.0
+	var door_top := 0.0
+	for reg in reserved:
+		var rdd := reg as Dictionary
+		if bool(rdd.get("cyl", false)):
+			door_theta = float(rdd["theta"])
+			door_half = float(rdd.get("open_half_arc", rdd.get("half_arc", 0.2)))
+			door_top = float(rdd.get("open_y_top", rdd.get("y_top", 2.0)))
+	# a ring inserted exactly at the lintel keeps every wall band on one side of the cut
+	var rows: Array = rings.duplicate()
+	if door_theta != INF:
+		for i in range(rows.size() - 1):
+			var ya := float((rows[i] as Dictionary)["y"])
+			var yb := float((rows[i + 1] as Dictionary)["y"])
+			if ya < door_top and door_top < yb:
+				var t := (door_top - ya) / (yb - ya)
+				var ra := rows[i] as Dictionary
+				var rb := rows[i + 1] as Dictionary
+				rows.insert(i + 1, {"y": door_top, "r": lerpf(float(ra["r"]), float(rb["r"]), t),
+					"lobes": ra["lobes"], "amp": lerpf(float(ra["amp"]), float(rb["amp"]), t),
+					"phase": ra["phase"]})
+				break
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	# the core drum carries the full height to the dome line + the real door cut
-	st.append_from(_cylinder_with_doors(rd, h * 0.74, reserved, recess), 0, Transform3D.IDENTITY)
-	# fused root-lobes: tapered cylinders leaning into the drum; skip the arc holding the door
-	var door_theta := INF
-	for reg in reserved:
-		if bool((reg as Dictionary).get("cyl", false)):
-			door_theta = float((reg as Dictionary)["theta"])
-	var lobes := 7
-	for i in range(lobes):
-		var th := TAU * float(i) / float(lobes) + 0.31
-		var dth := TAU
-		if door_theta != INF:
-			dth = absf(fposmod(th - door_theta + PI, TAU) - PI)
-		if dth < 0.62:
-			continue   # the ground archway: the door's approach stays clear of lobes
-		var lb := CylinderMesh.new()
-		lb.bottom_radius = rd * (0.52 + 0.1 * _h01(float(i) * 3.7))
-		lb.top_radius = rd * 0.26
-		lb.height = h * (0.42 + 0.06 * _h01(float(i) * 8.1))
-		lb.radial_segments = 10
-		var ring := rd * 0.92
-		st.append_from(_seated(lb, lb.height * 0.5), 0,
-			Transform3D(Basis(), Vector3(cos(th) * ring, 0.0, sin(th) * ring)))
-	# onion dome (squashed sphere) + cupola finial
-	var dome := SphereMesh.new()
-	dome.radius = rd * 1.12
-	dome.height = rd * 1.5
-	dome.radial_segments = 16
-	dome.rings = 8
-	st.append_from(dome, 0, Transform3D(Basis(), Vector3(0.0, h * 0.74, 0.0)))
-	var cup := CylinderMesh.new()
-	cup.top_radius = rd * 0.14
-	cup.bottom_radius = rd * 0.18
-	cup.radial_segments = 10
-	cup.height = h * 0.09
-	st.append_from(cup, 0, Transform3D(Basis(), Vector3(0.0, h * 0.74 + rd * 0.72, 0.0)))
-	var cap := SphereMesh.new()
-	cap.radius = rd * 0.2
-	cap.radial_segments = 10
-	cap.rings = 5
-	var cap_y := h - rd * 0.1   # finial apex lands exactly at the spec height
-	cap.height = rd * 0.2
-	st.append_from(cap, 0, Transform3D(Basis(), Vector3(0.0, cap_y, 0.0)))
-	# NO generate_normals here: on mixed append_from sources it DROPS earlier surfaces
-	# (probed live); every appended mesh already carries its normals.
+	var seg := CYL_SEGMENTS
+	var back_r: float = maxf(0.35, float(Survey.plumbing_local_r(rings, 0.0, door_theta if door_theta != INF else 0.0)) - recess)
+	for i in range(rows.size() - 1):
+		var ra2 := rows[i] as Dictionary
+		var rb2 := rows[i + 1] as Dictionary
+		var band_mid := (float(ra2["y"]) + float(rb2["y"])) * 0.5
+		var band_below := door_theta != INF and float(rb2["y"]) <= door_top + 0.001
+		var prev_in := false
+		if band_below:
+			prev_in = _arc_dist(TAU * (float(seg) - 0.5) / float(seg), door_theta) < door_half
+		for s in range(seg):
+			var th0 := TAU * float(s) / float(seg)
+			var th1 := TAU * float(s + 1) / float(seg)
+			var thc := (th0 + th1) * 0.5
+			var a0 := _lathe_pt(ra2, th0)
+			var a1 := _lathe_pt(ra2, th1)
+			var b0 := _lathe_pt(rb2, th0)
+			var b1 := _lathe_pt(rb2, th1)
+			var in_door := band_below and _arc_dist(thc, door_theta) < door_half
+			var hint := Vector3(0, band_mid, 0)
+			if not in_door:
+				_quad_out(st, a0, a1, b1, b0, hint)
+			else:
+				# the recessed pocket column: back wall at a fixed radius behind the valley
+				var pa0 := Vector3(cos(th0) * back_r, float(ra2["y"]), sin(th0) * back_r)
+				var pa1 := Vector3(cos(th1) * back_r, float(ra2["y"]), sin(th1) * back_r)
+				var pb0 := Vector3(cos(th0) * back_r, float(rb2["y"]), sin(th0) * back_r)
+				var pb1 := Vector3(cos(th1) * back_r, float(rb2["y"]), sin(th1) * back_r)
+				_quad_out(st, pa0, pa1, pb1, pb0, Vector3(0, band_mid, 0))
+				# lintel underside where the pocket meets the wall band above
+				if absf(float(rb2["y"]) - door_top) < 0.002:
+					_quad_out(st, pb0, pb1, b1, b0, Vector3(0, door_top + h, 0))
+			if band_below and in_door != prev_in:
+				# a jamb wall at this column boundary, outer wall -> pocket back
+				var jo := _lathe_pt(ra2, th0)
+				var jt := _lathe_pt(rb2, th0)
+				var ji := Vector3(cos(th0) * back_r, float(ra2["y"]), sin(th0) * back_r)
+				var jti := Vector3(cos(th0) * back_r, float(rb2["y"]), sin(th0) * back_r)
+				var eps := 0.09 if in_door else -0.09
+				var jc := Vector3(cos(th0 - eps), 0.0, sin(th0 - eps)) * (back_r + h) + Vector3(0, band_mid, 0)
+				_quad_out(st, ji, jo, jt, jti, jc)
+			prev_in = in_door
+	# crown fan (the cupola cap apex lands exactly at the spec height) + ground fan
+	var top_ring := rows[rows.size() - 1] as Dictionary
+	var apex := Vector3(0, h, 0)
+	for s2 in range(seg):
+		_tri_out(st, apex, _lathe_pt(top_ring, TAU * float(s2) / float(seg)),
+			_lathe_pt(top_ring, TAU * float(s2 + 1) / float(seg)), Vector3(0, -h, 0))
+	var base_ring := rows[0] as Dictionary
+	for s3 in range(seg):
+		_tri_out(st, Vector3.ZERO, _lathe_pt(base_ring, TAU * float(s3) / float(seg)),
+			_lathe_pt(base_ring, TAU * float(s3 + 1) / float(seg)), Vector3(0, h * 2.0, 0))
+	st.generate_normals()
 	return st.commit()
+
+# a point on a survey lathe ring (lobe-modulated radius) at absolute angle theta
+static func _lathe_pt(ring: Dictionary, theta: float) -> Vector3:
+	var r := float(ring["r"]) * (1.0 + float(ring["amp"]) * cos(float(ring["lobes"]) * (theta + float(ring["phase"]))))
+	return Vector3(cos(theta) * r, float(ring["y"]), sin(theta) * r)
+
+static func _arc_dist(a: float, b: float) -> float:
+	return absf(fposmod(a - b + PI, TAU) - PI)
+
+## Plumbing Power detail passes (SURVEY REBUILD 1.1), every part grown from the survey's frames:
+## the descending flume (trough + mesh rails + the terminal-green WATER strip), six dome ribs, the
+## handwheel cluster + pipe runs, capillary-slit panels, the sign board, the pitched entry hood,
+## the green cascade, and the one vertical side pipe hanging from the flume's underside.
+## Returns meshes grouped by material family:
+##   body  — construction metal (the building tint)     rust — wheels / pipes / sign frame
+##   dark  — slit panels, sign face, pool               glow — water / cascade / terminal screen
+##   rails — the flume railing bands (alpha-scissor railing texture, UV-tiled)
+## Plus "nameplate_pos": where the showcase's title label rides (ON the sign board).
+static func plumbing_details(spec: Dictionary) -> Dictionary:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var sv = Survey.from_spec(spec)
+	var rings: Array = Survey.plumbing_rings(spec)
+	var h := float(spec.get("height", 5.6))
+	var body := _st()
+	var rust := _st()
+	var dark := _st()
+	var glow := _st()
+	var rails := _st()
+	var flume: Dictionary = sv.flume_path()
+	_plumbing_flume(body, rails, glow, flume)
+	var frames: Dictionary = sv.plumbing_frames()
+	for rib in (frames["ribs"] as Array):
+		_plumbing_rib(body, rings, rib as Dictionary)
+	_plumbing_wheels(rust, rings, frames["wheels"] as Array)
+	for slit in (frames["slits"] as Array):
+		_plumbing_slit(dark, slit as Dictionary)
+	_plumbing_sign(rust, dark, frames["sign"] as Dictionary)
+	_plumbing_hood(body, frames["hood"] as Dictionary)
+	_plumbing_cascade(body, dark, glow, frames["cascade"] as Dictionary)
+	_plumbing_side_pipe(rust, rings, frames["side_pipe"] as Dictionary, flume)
+	# the terminal screen glowing in the doorway (the plate's key ground read) — PROUD of the
+	# entrance door leaves (which sit at wall - recess*0.55), so the glow reads from outside
+	var wall_r := float(spec.get("door_radius", 1.59))
+	var scr_r := wall_r - 0.18
+	_emit_oriented_box_st(glow, Vector3(0.0, 0.95, scr_r),
+		Vector3(1, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, 1), Vector3(0.26, 0.34, 0.015))
+	var sign_fr := frames["sign"] as Dictionary
+	var sn := Vector3(cos(float(sign_fr["theta"])), 0.0, sin(float(sign_fr["theta"])))
+	var nameplate := sn * (float(sign_fr["r"]) + 0.30) + Vector3(0, (float(sign_fr["y0"]) + float(sign_fr["y1"])) * 0.5, 0)
+	# every builder above emits raw vertices only (no append_from) — generate_normals is safe here
+	for stool in [body, rust, dark, glow, rails]:
+		(stool as SurfaceTool).generate_normals()
+	return {"body": body.commit(), "rust": rust.commit(), "dark": dark.commit(),
+		"glow": glow.commit(), "rails": rails.commit(), "nameplate_pos": nameplate, "height": h}
+
+static func _st() -> SurfaceTool:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	return st
+
+# The flume: sweep the surveyed helix with a U trough section (outer/inner walls + floor + rim
+# tops + underside), rail bands above both rims (UV-tiled for the railing texture), and the
+# terminal-green water strip riding the channel floor. End caps close the two mouths.
+static func _plumbing_flume(body: SurfaceTool, rails: SurfaceTool, glow: SurfaceTool, flume: Dictionary) -> void:
+	var samples: Array = flume["samples"]
+	var w: float = float(flume["trough_w"])
+	var depth: float = float(flume["depth"])
+	var rail_h: float = float(flume["rail_h"])
+	var water_w: float = float(flume["water_w"])
+	var wall := 0.045
+	var under := 0.06
+	var hw := w * 0.5
+	# section strips as [inner radial offset, y offset] pairs (outer face wound outward)
+	for i in range(samples.size() - 1):
+		var s0 := samples[i] as Dictionary
+		var s1 := samples[i + 1] as Dictionary
+		var arc_len := absf(float(s1["theta"]) - float(s0["theta"])) * float(s0["r"])
+		# strip emitter: two section points -> one quad between consecutive samples
+		var strips := [
+			[hw, -under, hw, depth, true],            # outer wall, outer face
+			[hw - wall, depth, hw - wall, 0.0, false],  # outer wall, inner face (into the trough)
+			[hw - wall, depth, hw, depth, true],      # outer rim top (up)
+			[-(hw - wall), 0.0, hw - wall, 0.0, true],  # floor top (up)
+			[-(hw - wall), 0.0, -(hw - wall), depth, true],   # inner wall, trough face
+			[-hw, depth, -hw, -under, true],          # inner wall, back face (against the building)
+			[-hw, depth, -(hw - wall), depth, true],  # inner rim top
+			[-hw, -under, hw, -under, false],         # underside (faces down)
+		]
+		for strip in strips:
+			var sp := strip as Array
+			var p00 := _flume_pt(s0, float(sp[0]), float(sp[1]))
+			var p01 := _flume_pt(s0, float(sp[2]), float(sp[3]))
+			var p10 := _flume_pt(s1, float(sp[0]), float(sp[1]))
+			var p11 := _flume_pt(s1, float(sp[2]), float(sp[3]))
+			var mid := (p00 + p11) * 0.5
+			var hint := Vector3(0, mid.y, 0) if bool(sp[4]) else mid + Vector3(0, 2.0, 0)
+			_quad_out(body, p00, p01, p11, p10, hint)
+		# rails: one two-sided textured band per rim (cull-disabled material, so single quads)
+		for side in [-1.0, 1.0]:
+			var ro := (hw - wall * 0.5) * float(side)
+			var r00 := _flume_pt(s0, ro, depth)
+			var r01 := _flume_pt(s0, ro, depth + rail_h)
+			var r10 := _flume_pt(s1, ro, depth)
+			var r11 := _flume_pt(s1, ro, depth + rail_h)
+			var u0 := float(i) * arc_len / 0.42
+			var u1 := float(i + 1) * arc_len / 0.42
+			rails.set_uv(Vector2(u0, 1.0)); rails.add_vertex(r00)
+			rails.set_uv(Vector2(u1, 1.0)); rails.add_vertex(r10)
+			rails.set_uv(Vector2(u1, 0.0)); rails.add_vertex(r11)
+			rails.set_uv(Vector2(u0, 1.0)); rails.add_vertex(r00)
+			rails.set_uv(Vector2(u1, 0.0)); rails.add_vertex(r11)
+			rails.set_uv(Vector2(u0, 0.0)); rails.add_vertex(r01)
+		# the water strip, just above the floor
+		var wq00 := _flume_pt(s0, -water_w * 0.5, 0.012)
+		var wq01 := _flume_pt(s0, water_w * 0.5, 0.012)
+		var wq10 := _flume_pt(s1, -water_w * 0.5, 0.012)
+		var wq11 := _flume_pt(s1, water_w * 0.5, 0.012)
+		_quad_out(glow, wq00, wq01, wq11, wq10, (wq00 + wq11) * 0.5 - Vector3(0, 1.0, 0))
+	# end caps close the mouths
+	for endi in [0, samples.size() - 1]:
+		var se := samples[endi] as Dictionary
+		var c0 := _flume_pt(se, -hw, -under)
+		var c1 := _flume_pt(se, hw, -under)
+		var c2 := _flume_pt(se, hw, depth)
+		var c3 := _flume_pt(se, -hw, depth)
+		var out_hint := (c0 + c2) * 0.5 + Vector3(0, 0.0, 0) + (Vector3(0, 1, 0).cross(Vector3(cos(float(se["theta"])), 0, sin(float(se["theta"]))))) * (2.0 if endi == 0 else -2.0)
+		_quad_out(body, c0, c1, c2, c3, out_hint)
+
+# a flume section point: radial offset `dr` (outward +) and vertical offset `dy` off the floor datum
+static func _flume_pt(sample: Dictionary, dr: float, dy: float) -> Vector3:
+	var th := float(sample["theta"])
+	var r := float(sample["r"]) + dr
+	return Vector3(cos(th) * r, float(sample["y"]) + dy, sin(th) * r)
+
+# one dome rib: a tube hugging the surveyed dome surface from the cupola neck to the shoulder
+static func _plumbing_rib(body: SurfaceTool, rings: Array, rib: Dictionary) -> void:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var th := float(rib["theta"])
+	var rr := float(rib["r"])
+	var pts: Array = []
+	var steps := 7
+	for i in range(steps + 1):
+		var y := lerpf(float(rib["y0"]), float(rib["y1"]), float(i) / float(steps))
+		var rad := float(Survey.plumbing_local_r(rings, y, th)) + rr * 0.55
+		pts.append(Vector3(cos(th) * rad, y, sin(th) * rad))
+	_tube(body, pts, rr, 5)
+
+# the rusted handwheel cluster: torus rim + 6 spokes + hub per wheel, vertical pipe runs linking
+# the stacked pairs, and the freestanding stub wheel on its horizontal ground pipe
+static func _plumbing_wheels(rust: SurfaceTool, rings: Array, wheels: Array) -> void:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var crest_pts := {}
+	for wd_v in wheels:
+		var wd := wd_v as Dictionary
+		var th := float(wd["theta"])
+		var dia := float(wd["dia"])
+		var n := Vector3(cos(th), 0.0, sin(th))
+		var stub := bool(wd.get("stub", false))
+		var base_r := float(wd["r"])
+		var center := n * (base_r + (0.55 if stub else dia * 0.18)) + Vector3(0, float(wd["y"]), 0)
+		var basis := Basis(Quaternion(Vector3.UP, n))
+		_emit_torus_st(rust, center, n, dia * 0.43, dia * 0.07, 14, 6)
+		for k in range(6):
+			var ang := TAU * float(k) / 6.0
+			var spoke_dir := (basis * Vector3(cos(ang), 0.0, sin(ang))).normalized()
+			_tube(rust, [center - spoke_dir * dia * 0.4, center + spoke_dir * dia * 0.4], dia * 0.045, 4)
+		_tube(rust, [center - n * dia * 0.12, center + n * dia * 0.10], dia * 0.10, 6)
+		if stub:
+			# the ground pipe stub carrying the freestanding wheel back to the wall
+			var wall_pt := n * (float(Survey.plumbing_local_r(rings, float(wd["y"]), th)) - 0.05) + Vector3(0, float(wd["y"]), 0)
+			_tube(rust, [wall_pt, center - n * dia * 0.12], 0.055, 5)
+		else:
+			var key := int(round(th * 100.0))
+			if not crest_pts.has(key):
+				crest_pts[key] = []
+			(crest_pts[key] as Array).append({"y": float(wd["y"]), "th": th})
+	# vertical pipe runs linking wheels stacked on the same lobe crest
+	for key in crest_pts.keys():
+		var stack := crest_pts[key] as Array
+		if stack.size() < 2:
+			continue
+		var th2 := float((stack[0] as Dictionary)["th"])
+		var n2 := Vector3(cos(th2), 0.0, sin(th2))
+		var y_lo := INF
+		var y_hi := -INF
+		for e in stack:
+			y_lo = minf(y_lo, float((e as Dictionary)["y"]))
+			y_hi = maxf(y_hi, float((e as Dictionary)["y"]))
+		var run_pts: Array = []
+		for i in range(5):
+			var y := lerpf(y_lo, y_hi, float(i) / 4.0)
+			run_pts.append(n2 * (float(Survey.plumbing_local_r(rings, y, th2)) + 0.05) + Vector3(0, y, 0))
+		_tube(rust, run_pts, 0.045, 5)
+
+# a capillary slit: a recessed-dark rounded-top panel riding the local surface
+static func _plumbing_slit(dark: SurfaceTool, slit: Dictionary) -> void:
+	var th := float(slit["theta"])
+	var n := Vector3(cos(th), 0.0, sin(th))
+	var u := Vector3(0, 1, 0).cross(n).normalized()
+	var hw := float(slit["w"]) * 0.5
+	var y0 := float(slit["y0"])
+	var y1 := float(slit["y1"])
+	var body_h := (y1 - y0) * 0.82   # the straight shaft; the top 18% rounds off
+	var levels := [[0.0, 1.0], [body_h, 1.0], [body_h + (y1 - y0) * 0.12, 0.62], [y1 - y0, 0.22]]
+	for i in range(levels.size() - 1):
+		var l0 := levels[i] as Array
+		var l1 := levels[i + 1] as Array
+		var ya := y0 + float(l0[0])
+		var yb := y0 + float(l1[0])
+		var ra := lerpf(float(slit["r0"]), float(slit["r1"]), (ya - y0) / maxf(0.001, y1 - y0)) + 0.022
+		var rb := lerpf(float(slit["r0"]), float(slit["r1"]), (yb - y0) / maxf(0.001, y1 - y0)) + 0.022
+		var a0 := n * ra + u * (hw * float(l0[1])) + Vector3(0, ya, 0)
+		var a1 := n * ra - u * (hw * float(l0[1])) + Vector3(0, ya, 0)
+		var b0 := n * rb + u * (hw * float(l1[1])) + Vector3(0, yb, 0)
+		var b1 := n * rb - u * (hw * float(l1[1])) + Vector3(0, yb, 0)
+		_quad_out(dark, a0, a1, b1, b0, Vector3(0, (ya + yb) * 0.5, 0))
+
+# the physical sign board: rusted raised frame + dark face (the showcase title label rides it)
+static func _plumbing_sign(rust: SurfaceTool, dark: SurfaceTool, sign: Dictionary) -> void:
+	var th := float(sign["theta"])
+	var n := Vector3(cos(th), 0.0, sin(th))
+	var u := Vector3(0, 1, 0).cross(n).normalized()
+	var v := Vector3(0, 1, 0)
+	var cy := (float(sign["y0"]) + float(sign["y1"])) * 0.5
+	var hh := (float(sign["y1"]) - float(sign["y0"])) * 0.5
+	var hw := float(sign["w"]) * 0.5
+	var c := n * (float(sign["r"]) + 0.10) + Vector3(0, cy, 0)
+	_emit_oriented_box_st(dark, c, u, v, n, Vector3(hw, hh, 0.035))
+	for sx in [-1.0, 1.0]:
+		_emit_oriented_box_st(rust, c + u * (hw * sx) + n * 0.01, u, v, n, Vector3(0.045, hh + 0.045, 0.045))
+		_emit_oriented_box_st(rust, c + v * (hh * sx) + n * 0.01, u, v, n, Vector3(hw + 0.045, 0.045, 0.045))
+
+# the pitched entry hood over the recessed doorway: the ridge runs along the wall, one tiled slope
+# falls outward to the front eave, triangular cheeks close the sides, an underside faces the door
+static func _plumbing_hood(body: SurfaceTool, hood: Dictionary) -> void:
+	var th := float(hood["theta"])
+	var n := Vector3(cos(th), 0.0, sin(th))
+	var u := Vector3(0, 1, 0).cross(n).normalized()
+	var anchor := n * float(hood["r"])
+	var hw := float(hood["w"]) * 0.5
+	var out := float(hood["out"])
+	var ridge_l := anchor - u * hw * 0.85 + Vector3(0, float(hood["ridge"]), 0) + n * 0.06
+	var ridge_r := anchor + u * hw * 0.85 + Vector3(0, float(hood["ridge"]), 0) + n * 0.06
+	var eave_l := anchor - u * hw + Vector3(0, float(hood["eaves"]), 0) + n * out
+	var eave_r := anchor + u * hw + Vector3(0, float(hood["eaves"]), 0) + n * out
+	var wall_l := anchor - u * hw + Vector3(0, float(hood["eaves"]), 0) + n * 0.03
+	var wall_r := anchor + u * hw + Vector3(0, float(hood["eaves"]), 0) + n * 0.03
+	var inside := anchor - n * 1.5 + Vector3(0, float(hood["eaves"]) * 0.5, 0)
+	_quad_out(body, ridge_l, ridge_r, eave_r, eave_l, inside)                      # the slope
+	_quad_out(body, wall_l, wall_r, ridge_r, ridge_l, inside + n)                  # back upstand
+	_quad_out(body, eave_l, eave_r, wall_r, wall_l, ridge_l + n * 2.0)             # underside
+	_tri_out(body, eave_l, ridge_l, wall_l, inside + u * 2.0)                      # left cheek
+	_tri_out(body, eave_r, ridge_r, wall_r, inside - u * 2.0)                      # right cheek
+
+# the green cascade: an arched spout, the glowing fall + steps, and a dark pool at the apron
+static func _plumbing_cascade(body: SurfaceTool, dark: SurfaceTool, glow: SurfaceTool, casc: Dictionary) -> void:
+	var th := float(casc["theta"])
+	var n := Vector3(cos(th), 0.0, sin(th))
+	var u := Vector3(0, 1, 0).cross(n).normalized()
+	var v := Vector3(0, 1, 0)
+	var hw := float(casc["w"]) * 0.5
+	var top := float(casc["y_top"])
+	var wall := n * float(casc["r"])
+	# arched spout against the wall; the glowing fall hangs CLEAR of it, spilling onto the steps
+	_emit_oriented_box_st(body, wall + Vector3(0, top, 0) + n * 0.10, u, v, n, Vector3(hw * 0.55, top * 0.16, 0.12))
+	var fall_top := wall + Vector3(0, top - 0.04, 0) + n * 0.26
+	var fall_bot := wall + Vector3(0, 0.03, 0) + n * 0.46
+	_quad_out(glow, fall_top - u * hw * 0.28, fall_top + u * hw * 0.28,
+		fall_bot + u * hw * 0.34, fall_bot - u * hw * 0.34, wall - n * 2.0)
+	_emit_oriented_box_st(body, wall + Vector3(0, 0.085, 0) + n * 0.56, u, v, n, Vector3(hw * 0.5, 0.085, 0.10))
+	_emit_oriented_box_st(body, wall + Vector3(0, 0.04, 0) + n * 0.74, u, v, n, Vector3(hw * 0.62, 0.04, 0.09))
+	_emit_oriented_box_st(dark, wall + Vector3(0, 0.012, 0) + n * 0.95, u, v, n, Vector3(hw * 0.8, 0.012, 0.20))
+
+# the one vertical side pipe: hugs the surveyed wall from under the flume down to the ground,
+# with a valve collar at the surveyed height
+static func _plumbing_side_pipe(rust: SurfaceTool, rings: Array, pipe: Dictionary, flume: Dictionary) -> void:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var th := float(pipe["theta"])
+	var pr := float(pipe["dia"]) * 0.5
+	# the pipe drinks from the flume: its top meets the trough's underside at this theta
+	var top_y := float(pipe["y_top"])
+	var best := INF
+	for s_v in (flume["samples"] as Array):
+		var s := s_v as Dictionary
+		var d := absf(fposmod(float(s["theta"]) - th + PI, TAU) - PI)
+		if d < best:
+			best = d
+			top_y = float(s["y"]) - 0.10
+	var pts: Array = []
+	var steps := 8
+	for i in range(steps + 1):
+		var y := lerpf(top_y, 0.05, float(i) / float(steps))
+		var rad := float(Survey.plumbing_local_r(rings, y, th)) + pr + 0.02
+		pts.append(Vector3(cos(th) * rad, y, sin(th) * rad))
+	_tube(rust, pts, pr, 6)
+	var vy := float(pipe["valve_y"])
+	var vrad := float(Survey.plumbing_local_r(rings, vy, th)) + pr + 0.02
+	var vc := Vector3(cos(th) * vrad, vy, sin(th) * vrad)
+	_emit_torus_st(rust, vc, Vector3.UP, pr * 1.35, pr * 0.35, 10, 5)
+
+# A hand-emitted torus (raw vertices, so generate_normals stays safe alongside the other emitters —
+# append_from would silently drop them). `axis` is the ring's normal.
+static func _emit_torus_st(st: SurfaceTool, center: Vector3, axis: Vector3, r_major: float,
+		r_minor: float, rings_n: int, segs: int) -> void:
+	var basis := Basis(Quaternion(Vector3.UP, axis.normalized()))
+	for i in range(rings_n):
+		var a0 := TAU * float(i) / float(rings_n)
+		var a1 := TAU * float(i + 1) / float(rings_n)
+		for k in range(segs):
+			var b0 := TAU * float(k) / float(segs)
+			var b1 := TAU * float(k + 1) / float(segs)
+			var p00 := center + basis * _torus_pt(a0, b0, r_major, r_minor)
+			var p01 := center + basis * _torus_pt(a0, b1, r_major, r_minor)
+			var p10 := center + basis * _torus_pt(a1, b0, r_major, r_minor)
+			var p11 := center + basis * _torus_pt(a1, b1, r_major, r_minor)
+			var hub := center + basis * (Vector3(cos((a0 + a1) * 0.5), 0.0, sin((a0 + a1) * 0.5)) * r_major)
+			_quad_out(st, p00, p01, p11, p10, hub)
+
+static func _torus_pt(a: float, b: float, r_major: float, r_minor: float) -> Vector3:
+	var ring := Vector3(cos(a), 0.0, sin(a))
+	return ring * (r_major + r_minor * cos(b)) + Vector3(0.0, r_minor * sin(b), 0.0)
+
+## A tube swept along a polyline (closed with end fans) — the shared rib/pipe/spoke emitter.
+static func _tube(st: SurfaceTool, pts: Array, radius: float, sides: int) -> void:
+	if pts.size() < 2:
+		return
+	var rings_pts: Array = []
+	for i in range(pts.size()):
+		var p := pts[i] as Vector3
+		var fwd: Vector3
+		if i == 0:
+			fwd = ((pts[1] as Vector3) - p).normalized()
+		elif i == pts.size() - 1:
+			fwd = (p - (pts[i - 1] as Vector3)).normalized()
+		else:
+			fwd = ((pts[i + 1] as Vector3) - (pts[i - 1] as Vector3)).normalized()
+		var side := fwd.cross(Vector3.UP)
+		if side.length() < 0.01:
+			side = fwd.cross(Vector3.RIGHT)
+		side = side.normalized()
+		var up2 := side.cross(fwd).normalized()
+		var ring: Array = []
+		for k in range(sides):
+			var ang := TAU * float(k) / float(sides)
+			ring.append(p + (side * cos(ang) + up2 * sin(ang)) * radius)
+		rings_pts.append(ring)
+	for i in range(rings_pts.size() - 1):
+		var ra := rings_pts[i] as Array
+		var rb := rings_pts[i + 1] as Array
+		var ca := pts[i] as Vector3
+		for k in range(sides):
+			var k2 := (k + 1) % sides
+			_quad_out(st, ra[k] as Vector3, ra[k2] as Vector3, rb[k2] as Vector3, rb[k] as Vector3, ca)
+	for endd in [[0, -1.0], [rings_pts.size() - 1, 1.0]]:
+		var ei := int((endd as Array)[0])
+		var ring_e := rings_pts[ei] as Array
+		var ce := pts[ei] as Vector3
+		var other := pts[1 if ei == 0 else ei - 1] as Vector3
+		for k in range(sides):
+			_tri_out(st, ce + (ce - other).normalized() * radius * 0.2, ring_e[k] as Vector3,
+				ring_e[(k + 1) % sides] as Vector3, other)
 
 ## Cleanstreets: an OPEN canopy pavilion — a thick slab with swept-up corner horns riding mushroom
 ## piers over a stepped dais; air between the legs (no walls). Wider than tall, unlike every
