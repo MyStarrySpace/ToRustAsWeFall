@@ -136,6 +136,23 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 				if not consumed.has(li):
 					kept_lots.append(lots[li])
 			lots = kept_lots
+			# carved road approaches changed the street set — refresh the distance field, and DROP any
+			# lot the new road now touches (it was packed against the old streets; building it would
+			# violate the street buffer)
+			dist = _distance_field(walk, w, h)
+			var filtered: Array = []
+			for lot_r in lots:
+				var ld := lot_r as Dictionary
+				var lc0: Vector2i = ld["cell"]
+				var clear := true
+				for dz in range(int(ld["gz"])):
+					for dx in range(int(ld["gx"])):
+						if int(dist.get(Vector2i(lc0.x + dx, lc0.y + dz), 99)) <= STREET_BUFFER:
+							clear = false
+				if clear:
+					ld["dist"] = int(dist.get(lc0, 99))
+					filtered.append(ld)
+			lots = filtered
 
 	# The macro fields — LOW frequency = broad districts; per-lot hash handles the micro layer.
 	var f_height := _field(seed_value, "bld:height", 0.030)
@@ -388,9 +405,9 @@ static func _plan_landmarks(seed_value: int, lots: Array, walk: Dictionary, orig
 			approach.append([ac.x, ac.y])
 			walk[ac] = true
 			_carve_walkable(grid, ac)
-			# a visible road APRON over the carved cell
-			frag.walls.append({"pos": Vector3(origin.x + (float(ac.x) + 0.5) * cs, 0.03, origin.z + (float(ac.y) + 0.5) * cs),
-				"size": Vector3(cs, 0.06, cs), "color": Color(0.17, 0.18, 0.20)})
+			# the road APRON is FLOOR, not architecture (the street-blockage invariant scans walls)
+			frag.floors.append({"pos": Vector3(origin.x + (float(ac.x) + 0.5) * cs, -0.02, origin.z + (float(ac.y) + 0.5) * cs),
+				"size": Vector3(cs, 0.06, cs), "color": Color(0.17, 0.18, 0.20), "tile": "deck_metal"})
 		# world-space bridge sockets for the pairing pass
 		var socks: Array = []
 		for a2 in (anchors.get("connectors", []) as Array):
@@ -505,10 +522,14 @@ static func _emit_bridge(frag: Fragment, plan: Dictionary, origin: Vector3, cs: 
 		var rs := Vector3(span, 0.42, 0.08) if axis_x else Vector3(0.08, 0.42, span)
 		frag.walls.append({"pos": Vector3(mid.x, y + 0.21, mid.z) + rail_off * s, "size": rs,
 			"color": Color(0.5, 0.46, 0.36)})
-	for lc in (plan["links"] as Array):
-		var lx := origin.x + (float((lc as Array)[0]) + 0.5) * cs
-		var lz := origin.z + (float((lc as Array)[1]) + 0.5) * cs
-		frag.walls.append({"pos": Vector3(lx, y * 0.5, lz), "size": Vector3(0.16, y, 0.16),
+	# ladder markers are deck-end GRAB STUBS kept ABOVE the 3m street-clearance plane (a ground post
+	# beside the lane violates the street invariants — the climb itself is the logical ladder link,
+	# already in the grid).
+	var stub_bot := maxf(3.05, y - 1.0)
+	for foot in [pa, pb]:
+		var f3 := foot as Vector3
+		frag.walls.append({"pos": Vector3(f3.x, (stub_bot + y + 0.45) * 0.5, f3.z),
+			"size": Vector3(0.16, (y + 0.45) - stub_bot, 0.16),
 			"color": Color(0.55, 0.5, 0.4), "emission": Color(0.36, 0.91, 0.50), "emission_energy": 0.4})
 
 # --- lot geometry helpers ---

@@ -3314,8 +3314,13 @@ func _test_building_filler() -> void:
 		"a default generation hosts several buildings (%d)" % int(built.params.get("buildings", 0)))
 	_assert_true(built.walls.size() > bare.walls.size(),
 		"buildings add boxes (%d -> %d)" % [bare.walls.size(), built.walls.size()])
-	_assert_equals(bare.grid.get("walkable_cells", []).size(), built.grid.get("walkable_cells", []).size(),
-		"the district skirt adds no walkable cells")
+	# the filler never changes walkability EXCEPT the landmarks' deliberate, recorded road approaches
+	var approach_total := 0
+	for lme0 in (built.params.get("landmark_buildings", []) as Array):
+		approach_total += ((lme0 as Dictionary).get("approach", []) as Array).size()
+	_assert_equals(built.grid.get("walkable_cells", []).size(),
+		bare.grid.get("walkable_cells", []).size() + approach_total,
+		"the fill adds ONLY the landmarks' carved road approaches (%d) to walkability" % approach_total)
 	var prefix_same := true
 	for i in range(bare.walls.size()):
 		if str(bare.walls[i]) != str(built.walls[i]):
