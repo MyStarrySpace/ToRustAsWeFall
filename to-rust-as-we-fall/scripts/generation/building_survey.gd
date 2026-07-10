@@ -50,7 +50,7 @@ const EAVE_RATIOS := {
 	"ancourage_domes": 0.53,   # eave ring / dome cluster seat (plate: body ~45% H + eave band)
 	"hypelines_mound": 0.61,   # drum-band top / dome springing, re-measured off the plate
 	"beacon_domed": 0.75,      # drum top / dome shoulder springing (plate: shoulder top ~75% H)
-	"canopy_piers": 0.56,      # canopy slab underside (plate: open leg zone ~45% + dais)
+	"canopy_piers": 0.533,     # canopy slab underside at 3.2 m of 6.0 (plate: dais + open leg zone)
 	"bulwark_towers": 0.86,    # gatehouse body top (towers rise past it to the crown)
 	"zone3_split": 0.94,       # cornice underside (plate: crown slab = top ~6% H)
 }
@@ -149,6 +149,31 @@ const HYPELINES := {
 	],
 	"vent": {"az": 0.0, "y0": 0.86, "y1": 0.93, "w": 0.022},   # dark recessed slit on the dome
 	"mast": {"y_top": 1.09, "r": 0.006, "lights": 3},
+}
+
+## THE CLEANSTREETS SURVEY — measured off the plate (reference-images/architecture/
+## cleanstreets_initiative.png, decomposed 2026-07-10). An OPEN toll-canopy pavilion: dais 0.115H,
+## waisted-leg zone 0.42H (underside at 3.2 m), canopy slab + swept corner horns 0.45H. All values
+## in METRES on the 11 x 6 x 7 spec box unless marked. RECONCILED: the pavilion has no front door —
+## the main door rides the TOLL PORTAL on the +X flank (door_face/door_lateral), which is where the
+## plate's road arrives; the queue front stays open lanes.
+const CLEANSTREETS := {
+	"dais": {"size": Vector3(10.4, 0.7, 6.6), "band_h": 0.42, "step_w": 1.3},
+	# the pier grid: 2 rows x 3 columns of waisted mushroom legs, lofted foot->waist->head
+	"piers": {"xs": [-3.7, 0.0, 3.7], "zs": [-2.2, 2.2],
+		"foot_r": 0.62, "waist_r": 0.34, "head_r": 1.0, "waist_frac": 0.42},
+	# the canopy: slab band 3.2-4.4 m, rim scallop, corner horns sweeping to the 6.0 m crown
+	"canopy": {"y0": 3.2, "y1": 4.4, "scallop": 0.28, "horn_rise": 1.6, "horn_reach": 0.55},
+	# queue divider fins (front-to-back walls between the pier columns), S-rise toward the rear
+	"fins": {"xs": [-2.6, -0.87, 0.87, 2.6], "z0": -2.3, "z1": 2.3,
+		"h_front": 1.1, "h_rear": 1.9, "t": 0.35},
+	"spikes": {"z": 2.95, "count_per_lane": 5, "r": 0.05, "h": 0.16},
+	"sign": {"y0": 3.5, "y1": 4.4, "w": 5.5},            # the fascia title board, front face
+	"perf": {"x_center": 4.2, "y0": 3.4, "y1": 4.35, "half_w": 0.8, "holes": 7},   # corner clusters
+	"toll": {"header_y0": 2.2, "header_y1": 2.7, "header_w": 1.6,
+		"kiosk": Vector3(0.5, 1.9, 0.5), "cross": 0.4, "screen": 0.25},
+	"vault": {"y": 3.14, "rib_r": 0.055, "light_r": 0.09},   # the warm-gold vaulted underside
+	"monolith": {"z": 5.2, "w": 0.95, "h": 1.8, "base_h": 0.6},
 }
 
 ## Authored storey plans (ground band + floor count between plinth and eave), per building kind.
@@ -378,11 +403,29 @@ func _survey_reservations(placements: Array) -> void:
 					"y0": y - 0.09, "y1": y + 0.09, "keeps_clear": [],
 				})
 	if str(spec.get("composite", "")) == "canopy_piers":
-		# the canopy slab band: nothing else may claim the air the slab occupies
+		# the canopy slab band: nothing else may claim the air the slab occupies — the fascia
+		# fixtures (title sign, corner perforations) are declared ensembles riding ON it
 		reservations.append({
 			"id": "canopy_slab", "type": "decoration", "ring": true,
-			"y0": eave, "y1": crown, "keeps_clear": [],
+			"y0": eave, "y1": crown, "keeps_clear": ["fascia_sign", "perf_left", "perf_right"],
 		})
+		var cs2: Dictionary = CLEANSTREETS
+		var sgn: Dictionary = cs2["sign"]
+		reservations.append({"id": "fascia_sign", "type": "decoration", "cyl": false,
+			"n": Vector3(0, 0, 1), "x_center": 0.0, "half_w": float(sgn["w"]) * 0.5,
+			"y0": float(sgn["y0"]), "y1": float(sgn["y1"]), "keeps_clear": []})
+		var perf: Dictionary = cs2["perf"]
+		for px in [-1.0, 1.0]:
+			reservations.append({"id": "perf_left" if px < 0.0 else "perf_right",
+				"type": "decoration", "cyl": false, "n": Vector3(0, 0, 1),
+				"x_center": float(perf["x_center"]) * px, "half_w": float(perf["half_w"]),
+				"y0": float(perf["y0"]), "y1": float(perf["y1"]), "keeps_clear": []})
+		var toll: Dictionary = cs2["toll"]
+		reservations.append({"id": "toll_header", "type": "decoration", "cyl": false,
+			"n": Vector3(1, 0, 0), "x_center": float(spec.get("door_lateral", 0.0)),
+			"half_w": float(toll["header_w"]) * 0.5,
+			"y0": float(toll["header_y0"]), "y1": float(toll["header_y1"]),
+			"keeps_clear": ["door_main"]})
 	if str(spec.get("composite", "")) == "plumbing_lobed":
 		_plumbing_reservations()
 	if str(spec.get("composite", "")) == "hypelines_mound":
@@ -880,8 +923,14 @@ static func door_placements(spec_in: Dictionary, params: Dictionary = {}) -> Arr
 	var dtheta := TAU / float(bays)
 	var used_bays: Dictionary = {}
 	var out: Array = []
-	var mf := _door_frame_cyl(radius, PI * 0.5) if is_cyl else _door_frame_face(faces[0], 0.0)
+	# box plans may survey their main door onto a chosen FACE at a lateral offset (the cleanstreets
+	# toll portal rides the +X flank where the plate's road arrives, not the open queue front)
+	var main_face := clampi(int(spec_in.get("door_face", 0)), 0, 3)
+	var main_lat := float(spec_in.get("door_lateral", 0.0))
+	var mf := _door_frame_cyl(radius, PI * 0.5) if is_cyl else _door_frame_face(faces[main_face], main_lat)
 	var mrr := _reserve_region(is_cyl, radius, mf, main_w, main_h, jamb, margin, "door_main")
+	if not is_cyl:
+		mrr["x_center"] = main_lat
 	if snap_drum:
 		mrr["bay"] = 0
 		used_bays[0] = true

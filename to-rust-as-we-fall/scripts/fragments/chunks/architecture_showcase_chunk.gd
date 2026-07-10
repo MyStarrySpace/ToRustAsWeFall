@@ -66,6 +66,8 @@ func _build_chunk() -> void:
 			_add_plumbing_details(root, spec)
 		if str(spec.get("composite", "")) == "hypelines_mound":
 			_add_hypelines_details(root, spec)
+		if str(spec.get("composite", "")) == "canopy_piers":
+			_add_cleanstreets_details(root, spec)
 		_add_anchor_markers(root, survey.anchors())
 		_specimens.append({"building": kind, "shape": str(spec.get("shape", "")),
 			"lattice": str(spec.get("lattice", "")), "verts": verts})
@@ -318,6 +320,33 @@ func _add_hypelines_details(root: Node3D, spec: Dictionary) -> void:
 	var rail := _railing_material()
 	rail.albedo_color = Color(0.52, 0.40, 0.30)
 	_add_lattice_mesh(root, "HypeRails", built.get("rails"), rail)
+	var lbl := root.get_node_or_null("Nameplate")
+	if lbl != null and built.has("nameplate_pos"):
+		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
+
+## The cleanstreets detail passes (SURVEY REBUILD 1.3): queue fins + spikes, placards, the toll
+## kiosk (its cyan cross/screen are the pavilion's only cool emissives — plate-demanded, like the
+## beacon enforcement door), the warm-gold vaulted underside, perforation clusters, the monolith.
+func _add_cleanstreets_details(root: Node3D, spec: Dictionary) -> void:
+	var built: Dictionary = BaseShape.cleanstreets_details(spec)
+	_add_lattice_mesh(root, "CleanBody", built.get("body"),
+		_tinted_tile_material(str(spec.get("tile", "facility_metal")), spec.get("color", Color(0.45, 0.47, 0.42))))
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.16, 0.25, 0.22)   # desaturated verdigris panel fields
+	dark.roughness = 0.9
+	_add_lattice_mesh(root, "CleanPanels", built.get("dark"), dark)
+	var warm := StandardMaterial3D.new()
+	warm.albedo_color = Color(0.45, 0.33, 0.18)
+	warm.emission_enabled = true
+	warm.emission = Color(0.95, 0.64, 0.32)   # the gold under-canopy glow — the pavilion's main light
+	warm.emission_energy_multiplier = 1.8
+	_add_lattice_mesh(root, "CleanWarm", built.get("warm"), warm)
+	var cyan := StandardMaterial3D.new()
+	cyan.albedo_color = Color(0.10, 0.30, 0.34)
+	cyan.emission_enabled = true
+	cyan.emission = Color(0.25, 0.85, 0.95)   # the kiosk cross/screen — the sole cool accent
+	cyan.emission_energy_multiplier = 2.0
+	_add_lattice_mesh(root, "CleanCyan", built.get("cyan"), cyan)
 	var lbl := root.get_node_or_null("Nameplate")
 	if lbl != null and built.has("nameplate_pos"):
 		(lbl as Label3D).position = built["nameplate_pos"] as Vector3

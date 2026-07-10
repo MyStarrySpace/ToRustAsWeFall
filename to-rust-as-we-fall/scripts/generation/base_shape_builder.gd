@@ -139,9 +139,15 @@ const SPECS := {
 	},
 	"cleanstreets": {
 		"title": "The Cleanstreets Initiative",
-		"shape": SHAPE_COMPOSITE,           # OPEN canopy pavilion on waisted piers over a stepped
-		"composite": "canopy_piers",        # dais — air between the legs, wider than tall (REVIEW P1)
+		"shape": SHAPE_COMPOSITE,           # SURVEY REBUILD 1.3: OPEN toll-canopy pavilion from the
+		"composite": "canopy_piers",        # BuildingSurvey.CLEANSTREETS table (dais/piers/canopy)
 		"size": Vector3(11.0, 6.0, 7.0),
+		# RECONCILED AT THE SURVEY: the pavilion has NO front door — the main door IS the toll
+		# portal on the +X flank (door_face 2) toward the front (door_lateral -2.2), where the
+		# plate's road arrives; the queue lanes stay open; no canopy slab over the portal.
+		"door_face": 2, "door_lateral": -2.2,
+		"entrances": {"main_w": 0.9, "main_h": 2.0, "side_count_min": 0, "side_count_max": 0,
+			"canopy_out": 0.0},
 		"color": Color(0.45, 0.47, 0.42),   # bone/tan mosaic base, verdigris panels ride the texture pass
 		"tile": "facility_metal",
 		"lattice": "",
@@ -776,50 +782,234 @@ static func _tube(st: SurfaceTool, pts: Array, radius: float, sides: int) -> voi
 			_tri_out(st, ce + (ce - other).normalized() * radius * 0.2, ring_e[k] as Vector3,
 				ring_e[(k + 1) % sides] as Vector3, other)
 
-## Cleanstreets: an OPEN canopy pavilion — a thick slab with swept-up corner horns riding mushroom
-## piers over a stepped dais; air between the legs (no walls). Wider than tall, unlike every
-## neighbour (the plate's defining read).
+## Cleanstreets (SURVEY REBUILD 1.3): the OPEN toll-canopy pavilion built from the survey — the
+## stepped dais, six waisted mushroom-leg piers (each ONE small loft, foot -> waist -> flaring
+## head), and the canopy as ONE perimeter sweep whose rim scallops and whose four corners sweep up
+## into horns peaking exactly at the crown. Air between the legs; no walls.
 static func _canopy_piers_mesh(spec: Dictionary) -> ArrayMesh:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var cs: Dictionary = Survey.CLEANSTREETS
 	var size: Vector3 = spec.get("size", Vector3(11.0, 6.0, 7.0))
-	var hx := size.x * 0.5
-	var hz := size.z * 0.5
-	var slab_y := size.y * 0.56
-	var slab_t := size.y * 0.22
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	# stepped dais
-	var dais := BoxMesh.new()
-	dais.size = Vector3(size.x, size.y * 0.075, size.z)
-	st.append_from(_seated(dais, dais.size.y * 0.5), 0, Transform3D.IDENTITY)
-	var step := BoxMesh.new()
-	step.size = Vector3(size.x * 0.5, size.y * 0.04, size.z * 0.22)
-	st.append_from(_seated(step, step.size.y * 0.5), 0, Transform3D(Basis(), Vector3(0.0, 0.0, hz + step.size.z * 0.4)))
-	# 6 waisted piers (2 rows x 3), flaring toward the canopy head
-	for ix in range(3):
-		for iz in range(2):
-			var pier := CylinderMesh.new()
-			pier.bottom_radius = size.y * 0.115
-			pier.top_radius = size.y * 0.16
-			pier.height = slab_y - dais.size.y
-			pier.radial_segments = 12
-			st.append_from(_seated(pier, pier.height * 0.5 + dais.size.y), 0,
-				Transform3D(Basis(), Vector3((float(ix) - 1.0) * hx * 0.68, 0.0, (float(iz) - 0.5) * hz * 1.05)))
-	# the canopy slab + swept-up corner horns
-	var slab := BoxMesh.new()
-	slab.size = Vector3(size.x, slab_t, size.z)
-	st.append_from(_seated(slab, slab_t * 0.5 + slab_y), 0, Transform3D.IDENTITY)
-	for cx in [-1.0, 1.0]:
-		for cz in [-1.0, 1.0]:
-			var horn := BoxMesh.new()
-			horn.size = Vector3(size.x * 0.2, slab_t * 0.9, size.z * 0.2)
-			var tilt := Basis(Vector3(0, 0, 1), cx * -0.32) * Basis(Vector3(1, 0, 0), cz * 0.32)
-			# the swept-up horn tips DEFINE the massing's top (exact rotated-AABB half height)
-			var horn_top := absf(tilt.x.y) * horn.size.x * 0.5 + absf(tilt.y.y) * horn.size.y * 0.5 				+ absf(tilt.z.y) * horn.size.z * 0.5
-			st.append_from(horn, 0, Transform3D(tilt,
-				Vector3(cx * (hx - horn.size.x * 0.42), size.y - horn_top, cz * (hz - horn.size.z * 0.42))))
-	# NO generate_normals here: on mixed append_from sources it DROPS earlier surfaces
-	# (probed live); every appended mesh already carries its normals.
+	# the dais + two front steps at the outer lane mouths
+	var dais: Dictionary = cs["dais"]
+	var dsz := dais["size"] as Vector3
+	_emit_oriented_box_st(st, Vector3(0, dsz.y * 0.5, 0), Vector3.RIGHT, Vector3.UP, Vector3.BACK,
+		dsz * 0.5)
+	for sx in [-1.0, 1.0]:
+		_emit_oriented_box_st(st, Vector3(float(sx) * 1.75, 0.175, dsz.z * 0.5 + 0.35),
+			Vector3.RIGHT, Vector3.UP, Vector3.BACK, Vector3(float(dais["step_w"]) * 0.5, 0.175, 0.35))
+	# six waisted piers, each a tiny loft seated on the dais
+	var piers: Dictionary = cs["piers"]
+	var canopy: Dictionary = cs["canopy"]
+	var leg_h := float(canopy["y0"]) - dsz.y
+	for px in (piers["xs"] as Array):
+		for pz in (piers["zs"] as Array):
+			_pier_loft(st, Vector3(float(px), dsz.y, float(pz)), leg_h,
+				float(piers["foot_r"]), float(piers["waist_r"]), float(piers["head_r"]),
+				float(piers["waist_frac"]))
+	# the canopy: one perimeter sweep — scalloped rim band + top/bottom caps, horns at the corners
+	_canopy_sweep(st, Vector3(size.x * 0.5, 0, size.z * 0.5), float(canopy["y0"]), float(canopy["y1"]),
+		float(canopy["scallop"]), float(canopy["horn_rise"]), float(canopy["horn_reach"]), size.y)
+	st.generate_normals()
 	return st.commit()
+
+# a waisted mushroom leg: foot ring -> waist -> flaring head, the loft closed by the dais below and
+# the canopy underside above
+static func _pier_loft(st: SurfaceTool, base: Vector3, h: float, foot_r: float, waist_r: float,
+		head_r: float, waist_frac: float) -> void:
+	var levels := [[0.0, foot_r], [waist_frac * 0.55, lerpf(foot_r, waist_r, 0.75)],
+		[waist_frac, waist_r], [0.78, lerpf(waist_r, head_r, 0.55)], [1.0, head_r]]
+	var seg := 10
+	for i in range(levels.size() - 1):
+		var l0 := levels[i] as Array
+		var l1 := levels[i + 1] as Array
+		for s in range(seg):
+			var a0 := TAU * float(s) / float(seg)
+			var a1 := TAU * float(s + 1) / float(seg)
+			var p00 := base + Vector3(cos(a0) * float(l0[1]), h * float(l0[0]), sin(a0) * float(l0[1]))
+			var p01 := base + Vector3(cos(a1) * float(l0[1]), h * float(l0[0]), sin(a1) * float(l0[1]))
+			var p10 := base + Vector3(cos(a0) * float(l1[1]), h * float(l1[0]), sin(a0) * float(l1[1]))
+			var p11 := base + Vector3(cos(a1) * float(l1[1]), h * float(l1[0]), sin(a1) * float(l1[1]))
+			_quad_out(st, p00, p01, p11, p10, base + Vector3(0, h * (float(l0[0]) + float(l1[0])) * 0.5, 0))
+
+# the canopy slab as ONE perimeter sweep: rim samples run around the plan rectangle, scalloped in
+# plan and lifted toward each corner into the horn (peaking exactly at `crown`); the rim band spans
+# underside -> fascia top, closed by top and bottom fans from the slab centre.
+static func _canopy_sweep(st: SurfaceTool, half: Vector3, y0: float, y1: float, scallop: float,
+		horn_rise: float, horn_reach: float, crown: float) -> void:
+	var per_edge := 12
+	var pts_top: Array = []
+	var pts_bot: Array = []
+	var corners := [Vector2(half.x, half.z), Vector2(-half.x, half.z),
+		Vector2(-half.x, -half.z), Vector2(half.x, -half.z)]
+	for e in range(4):
+		var a := corners[e] as Vector2
+		var b := corners[(e + 1) % 4] as Vector2
+		for s in range(per_edge):
+			var t := float(s) / float(per_edge)
+			var p := a.lerp(b, t)
+			var out2 := (p / Vector2(half.x, half.z)).normalized()
+			# plan scallop (two waves per edge) + the corner horn factor (quartic, tight to corners)
+			var wave := sin(t * PI * 2.0) * scallop
+			var cd := minf(t, 1.0 - t) * 2.0            # 0 at a corner, 1 mid-edge
+			var horn := pow(1.0 - cd, 4.0)
+			var pp := p + out2 * (wave + horn * horn_reach)
+			var lift := horn * horn_rise
+			# the horn peak lands exactly at the crown; elsewhere the fascia top stays at y1
+			pts_bot.append(Vector3(pp.x, y0 + lift * 0.75, pp.y))
+			pts_top.append(Vector3(pp.x, minf(y1 + lift, crown), pp.y))
+	var n := pts_top.size()
+	var mid := Vector3(0, (y0 + y1) * 0.5, 0)
+	for i in range(n):
+		var j := (i + 1) % n
+		_quad_out(st, pts_bot[i] as Vector3, pts_bot[j] as Vector3, pts_top[j] as Vector3, pts_top[i] as Vector3, mid)
+	var top_c := Vector3(0, y1, 0)
+	var bot_c := Vector3(0, y0, 0)
+	for i2 in range(n):
+		var j2 := (i2 + 1) % n
+		_tri_out(st, top_c, pts_top[i2] as Vector3, pts_top[j2] as Vector3, Vector3(0, y0 - 2.0, 0))
+		_tri_out(st, bot_c, pts_bot[i2] as Vector3, pts_bot[j2] as Vector3, Vector3(0, y1 + 2.0, 0))
+
+## Cleanstreets detail passes (SURVEY REBUILD 1.3), from the survey table: the S-topped queue
+## divider fins with anti-loiter spikes, the placard set (fascia title board, fin/dais regulatory
+## panels), the toll portal's header + kiosk (whose cyan '+' and screen are the building's ONLY
+## cool emissives — the plate demands cyan here, as at beacon's enforcement door), the warm-gold
+## vaulted underside (rib web + junction lights, the pavilion's main light), the honeycomb corner
+## perforation clusters, and the freestanding monolith on the approach.
+## Families: body (bone mosaic) / dark (verdigris panels) / warm (gold vault) / cyan (the kiosk).
+static func cleanstreets_details(spec: Dictionary) -> Dictionary:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var cs: Dictionary = Survey.CLEANSTREETS
+	var size: Vector3 = spec.get("size", Vector3(11.0, 6.0, 7.0))
+	var body := _st()
+	var dark := _st()
+	var warm := _st()
+	var cyan := _st()
+	var u_x := Vector3.RIGHT
+	var n_z := Vector3.BACK
+	# queue divider fins: profiled walls rising in an S toward the rear, spikes at the lane mouths
+	var fins: Dictionary = cs["fins"]
+	var dais: Dictionary = cs["dais"]
+	var dsz := dais["size"] as Vector3
+	var fz0 := float(fins["z0"])
+	var fz1 := float(fins["z1"])
+	var steps := 8
+	for fx_v in (fins["xs"] as Array):
+		var fx := float(fx_v)
+		for i in range(steps):
+			var t0 := float(i) / float(steps)
+			var t1 := float(i + 1) / float(steps)
+			var z0 := lerpf(fz1, fz0, t0)
+			var z1 := lerpf(fz1, fz0, t1)
+			var h0 := dsz.y + lerpf(float(fins["h_front"]), float(fins["h_rear"]), smoothstep(0.0, 1.0, t0))
+			var h1 := dsz.y + lerpf(float(fins["h_front"]), float(fins["h_rear"]), smoothstep(0.0, 1.0, t1))
+			var ht := float(fins["t"]) * 0.5
+			var mid := Vector3(fx, (h0 + h1) * 0.5 * 0.5, (z0 + z1) * 0.5)
+			for sside in [-1.0, 1.0]:
+				_quad_out(body, Vector3(fx + ht * float(sside), dsz.y, z0), Vector3(fx + ht * float(sside), dsz.y, z1),
+					Vector3(fx + ht * float(sside), h1, z1), Vector3(fx + ht * float(sside), h0, z0), Vector3(fx, mid.y, mid.z))
+			_quad_out(body, Vector3(fx - ht, h0, z0), Vector3(fx + ht, h0, z0),
+				Vector3(fx + ht, h1, z1), Vector3(fx - ht, h1, z1), Vector3(fx, dsz.y, (z0 + z1) * 0.5))
+		# fin front end cap
+		_quad_out(body, Vector3(fx - float(fins["t"]) * 0.5, dsz.y, fz1), Vector3(fx + float(fins["t"]) * 0.5, dsz.y, fz1),
+			Vector3(fx + float(fins["t"]) * 0.5, dsz.y + float(fins["h_front"]), fz1),
+			Vector3(fx - float(fins["t"]) * 0.5, dsz.y + float(fins["h_front"]), fz1), Vector3(fx, dsz.y + 0.5, fz1 - 2.0))
+	# anti-loiter spikes along the dais front band, one row per lane
+	var spikes: Dictionary = cs["spikes"]
+	var fin_xs: Array = fins["xs"]
+	for lane in range(fin_xs.size() + 1):
+		var x_lo := -dsz.x * 0.5 + 0.6 if lane == 0 else float(fin_xs[lane - 1]) + 0.4
+		var x_hi := dsz.x * 0.5 - 0.6 if lane == fin_xs.size() else float(fin_xs[lane]) - 0.4
+		for k in range(int(spikes["count_per_lane"])):
+			var sx2 := lerpf(x_lo, x_hi, (float(k) + 0.5) / float(spikes["count_per_lane"]))
+			_spike(body, Vector3(sx2, dsz.y, float(spikes["z"])), float(spikes["r"]), float(spikes["h"]))
+	# placards: fascia title board (front), fin panels, dais STAND BACK bands
+	var sgn: Dictionary = cs["sign"]
+	var sc := Vector3(0, (float(sgn["y0"]) + float(sgn["y1"])) * 0.5, size.z * 0.5 + 0.30)
+	_emit_oriented_box_st(dark, sc, u_x, Vector3.UP, n_z,
+		Vector3(float(sgn["w"]) * 0.5, (float(sgn["y1"]) - float(sgn["y0"])) * 0.5, 0.04))
+	for bx in [-1.0, 1.0]:
+		_emit_oriented_box_st(body, sc + u_x * (float(sgn["w"]) * 0.5 * float(bx)) + n_z * 0.01,
+			u_x, Vector3.UP, n_z, Vector3(0.06, (float(sgn["y1"]) - float(sgn["y0"])) * 0.5 + 0.06, 0.06))
+	for fpi in [1, 2]:
+		var fpx := float(fin_xs[fpi])
+		_emit_oriented_box_st(dark, Vector3(fpx, dsz.y + 1.05, 0.4), n_z, Vector3.UP, u_x,
+			Vector3(0.30, 0.42, float(fins["t"]) * 0.5 + 0.02))
+	_emit_oriented_box_st(dark, Vector3(-1.8, dsz.y - float(dais["band_h"]) * 0.5, dsz.z * 0.5 + 0.01),
+		u_x, Vector3.UP, n_z, Vector3(1.6, float(dais["band_h"]) * 0.45, 0.02))
+	_emit_oriented_box_st(dark, Vector3(2.6, dsz.y - float(dais["band_h"]) * 0.5, dsz.z * 0.5 + 0.01),
+		u_x, Vector3.UP, n_z, Vector3(1.6, float(dais["band_h"]) * 0.45, 0.02))
+	# the toll portal: header board over the surveyed door + the kiosk with its cyan cross/screen
+	var toll: Dictionary = cs["toll"]
+	var door_lat := float(spec.get("door_lateral", -2.2))
+	var face_u := Vector3(0, 0, -1)   # the +X face's in-plane axis
+	var anchor := Vector3(size.x * 0.5, 0, 0) + face_u * door_lat
+	_emit_oriented_box_st(dark, anchor + Vector3(0.14, (float(toll["header_y0"]) + float(toll["header_y1"])) * 0.5, 0),
+		face_u, Vector3.UP, Vector3.RIGHT,
+		Vector3(float(toll["header_w"]) * 0.5, (float(toll["header_y1"]) - float(toll["header_y0"])) * 0.5, 0.04))
+	var ksz := toll["kiosk"] as Vector3
+	var kpos := anchor + face_u * 0.9 + Vector3(-0.4, 0, 0)
+	_emit_oriented_box_st(dark, kpos + Vector3(0, ksz.y * 0.5, 0), face_u, Vector3.UP, Vector3.RIGHT, ksz * 0.5)
+	var cface := kpos + Vector3(ksz.z * 0.5 + 0.015, 0, 0)
+	var cr := float(toll["cross"]) * 0.5
+	_emit_oriented_box_st(cyan, cface + Vector3(0, ksz.y * 0.72, 0), face_u, Vector3.UP, Vector3.RIGHT, Vector3(cr * 0.28, cr, 0.012))
+	_emit_oriented_box_st(cyan, cface + Vector3(0, ksz.y * 0.72, 0), face_u, Vector3.UP, Vector3.RIGHT, Vector3(cr, cr * 0.28, 0.012))
+	_emit_oriented_box_st(cyan, cface + Vector3(0, ksz.y * 0.42, 0), face_u, Vector3.UP, Vector3.RIGHT,
+		Vector3(float(toll["screen"]) * 0.5, float(toll["screen"]) * 0.4, 0.012))
+	# the warm-gold vaulted underside: a diamond rib web between the pier heads + junction lights
+	var vault: Dictionary = cs["vault"]
+	var piers: Dictionary = cs["piers"]
+	var vy := float(vault["y"])
+	var pxs: Array = piers["xs"]
+	var pzs: Array = piers["zs"]
+	for i3 in range(pxs.size()):
+		_tube(body, [Vector3(float(pxs[i3]), vy, float(pzs[0])), Vector3(float(pxs[i3]), vy, float(pzs[1]))],
+			float(vault["rib_r"]), 4)
+		if i3 + 1 < pxs.size():
+			for zi in range(2):
+				_tube(body, [Vector3(float(pxs[i3]), vy, float(pzs[zi])), Vector3(float(pxs[i3 + 1]), vy, float(pzs[1 - zi]))],
+					float(vault["rib_r"]), 4)
+			var jx := (float(pxs[i3]) + float(pxs[i3 + 1])) * 0.5
+			_emit_oriented_box_st(warm, Vector3(jx, vy - 0.05, 0), u_x, Vector3.UP, n_z,
+				Vector3(float(vault["light_r"]), 0.05, float(vault["light_r"])))
+	for px2 in pxs:
+		for pz2 in pzs:
+			_emit_oriented_box_st(warm, Vector3(float(px2) * 0.72, vy - 0.05, float(pz2) * 0.6),
+				u_x, Vector3.UP, n_z, Vector3(float(vault["light_r"]), 0.05, float(vault["light_r"])))
+	# honeycomb perforation clusters on the fascia corners (front + back faces)
+	var perf: Dictionary = cs["perf"]
+	for pside in [-1.0, 1.0]:
+		for zside in [-1.0, 1.0]:
+			for hidx in range(int(perf["holes"])):
+				var hx2 := float(perf["x_center"]) * float(pside) + (BaseShapeBuilder._h01(float(hidx) * 7.3 + float(pside) * 3.0) - 0.5) * float(perf["half_w"]) * 1.7
+				var hy2 := lerpf(float(perf["y0"]) + 0.15, float(perf["y1"]) - 0.15, BaseShapeBuilder._h01(float(hidx) * 13.7 + float(zside)))
+				var hr := 0.07 + 0.09 * BaseShapeBuilder._h01(float(hidx) * 3.1 + float(pside))
+				_emit_oriented_box_st(dark, Vector3(hx2, hy2, (size.z * 0.5 + 0.32) * float(zside)),
+					u_x, Vector3.UP, n_z, Vector3(hr, hr, 0.02))
+	# the freestanding monolith on the approach: stepped base + tombstone + teal face
+	var mono: Dictionary = cs["monolith"]
+	var mz := float(mono["z"])
+	_emit_oriented_box_st(body, Vector3(-1.6, 0.15, mz), u_x, Vector3.UP, n_z, Vector3(0.85, 0.15, 0.6))
+	_emit_oriented_box_st(body, Vector3(-1.6, float(mono["base_h"]) * 0.5 + 0.1, mz), u_x, Vector3.UP, n_z,
+		Vector3(0.65, float(mono["base_h"]) * 0.5, 0.45))
+	_emit_oriented_box_st(body, Vector3(-1.6, float(mono["base_h"]) + float(mono["h"]) * 0.5, mz),
+		u_x, Vector3.UP, n_z, Vector3(float(mono["w"]) * 0.5, float(mono["h"]) * 0.5, 0.24))
+	_emit_oriented_box_st(dark, Vector3(-1.6, float(mono["base_h"]) + float(mono["h"]) * 0.55, mz + 0.25),
+		u_x, Vector3.UP, n_z, Vector3(float(mono["w"]) * 0.36, float(mono["h"]) * 0.36, 0.015))
+	for stool in [body, dark, warm, cyan]:
+		(stool as SurfaceTool).generate_normals()
+	var nameplate := sc + n_z * 0.25
+	return {"body": body.commit(), "dark": dark.commit(), "warm": warm.commit(),
+		"cyan": cyan.commit(), "nameplate_pos": nameplate}
+
+# a small anti-loiter spike: a four-sided pyramid on the dais surface
+static func _spike(st: SurfaceTool, base: Vector3, r: float, h: float) -> void:
+	var apex := base + Vector3(0, h, 0)
+	var pts := [base + Vector3(r, 0, 0), base + Vector3(0, 0, r), base + Vector3(-r, 0, 0), base + Vector3(0, 0, -r)]
+	for i in range(4):
+		_tri_out(st, apex, pts[i] as Vector3, pts[(i + 1) % 4] as Vector3, base - Vector3(0, 1, 0))
 
 ## Ancourage: the squat drum earns its missing top 40% — a fat overhanging eave ring at the waist and
 ## a 2-lobe squashed dome cluster seated on the eave line (the plate's silhouette), door cut kept in

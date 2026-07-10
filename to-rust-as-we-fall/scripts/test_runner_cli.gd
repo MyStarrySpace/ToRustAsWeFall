@@ -4200,6 +4200,27 @@ func _test_building_survey() -> void:
 	_assert_equals(ladder_links, 1, "the lane tip registers ONE inter-level ladder link down")
 	_assert_true(int(dock_grid.get("level_count", 1)) >= 2, "the grid grows a level for the lane")
 
+	# --- CLEANSTREETS REBUILD (task 1.3): the pavilion's main door IS the toll portal on the +X
+	# flank (door_face/door_lateral — the plate's road arrives there), and the details build ---
+	var clean: Dictionary = Base.generate("cleanstreets")
+	var svc = Survey.from_spec(clean)
+	var clean_door: Dictionary = {}
+	for r_c in svc.openings():
+		if str((r_c as Dictionary)["id"]) == "door_main":
+			clean_door = r_c as Dictionary
+	_assert_true(not clean_door.is_empty() and (clean_door["n"] as Vector3).dot(Vector3(1, 0, 0)) > 0.9,
+		"the cleanstreets main door rides the +X toll flank, not the open queue front")
+	_assert_true(absf(float(clean_door["x_center"]) - (-2.2)) < 0.001,
+		"the toll door sits at the surveyed lateral offset")
+	var detc: Dictionary = Base.cleanstreets_details(clean)
+	for famc in ["body", "dark", "warm", "cyan"]:
+		var mc = detc.get(famc)
+		_assert_true(mc != null and (mc as ArrayMesh).get_surface_count() > 0,
+			"cleanstreets details build the %s family" % famc)
+	_assert_equals((detc["body"] as ArrayMesh).surface_get_array_len(0),
+		(Base.cleanstreets_details(clean)["body"] as ArrayMesh).surface_get_array_len(0),
+		"cleanstreets details are deterministic")
+
 func _find_nodes_prefixed(n: Node, prefix: String) -> Array:
 	var out: Array = []
 	if str(n.name).begins_with(prefix):
