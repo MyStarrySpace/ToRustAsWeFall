@@ -436,14 +436,16 @@ static func _awning_stack_mesh(spec: Dictionary, reserved: Array, recess: float)
 			var last := k == lv.size() - 1
 			var door = _box_door_on((lv[k] as Dictionary)["n"] as Vector3, reserved) if last else null
 			_emit_awning_level(st, lv[k] as Dictionary, bool(left_merge[k]), bool(right_merge[k]), door, recess)
-	# Corner merge bridges (top tri + a fill wall dropping to the notch ground).
+	# EVERY corner gets the chamfer closure (top tri + diagonal fill): without it, the pie wedge
+	# between two adjacent gables is OPEN from above — you look straight down between the end walls
+	# into the notch shadow (the "holes" report). A merged corner additionally omitted its gables +
+	# end walls above, so the closure reads as the awnings flowing around the corner; an unmerged
+	# corner keeps its step and the closure reads as a chamfered cap.
 	for fi in range(4):
 		var la: Array = faces[fi]
 		var lb: Array = faces[(fi + 1) % 4]
-		var rm: Array = merged[fi]
-		for k in range(rm.size()):
-			if bool(rm[k]) and k < la.size() and k < lb.size():
-				_emit_merge_bridge(st, la[k] as Dictionary, lb[k] as Dictionary)
+		for k in range(mini(la.size(), lb.size())):
+			_emit_merge_bridge(st, la[k] as Dictionary, lb[k] as Dictionary)
 	_emit_awning_ground(st, lay)
 	st.generate_normals()
 	return st.commit()
@@ -560,10 +562,12 @@ static func rack_mesh(spec: Dictionary, reserved: Array = []) -> Dictionary:
 						if absf((cx + 0.25) - xc) < hw and ry - row_h * 0.5 < float(door.get("y_top", 2.0)) + 0.1:
 							continue
 					var pull := depth * (1.55 if _h01(kb + float(fi) * 91.3 + float(k) * 17.1 + float(r) * 5.7 + float(cc) * 2.3) > 0.82 else 1.0)
-					_emit_oriented_box_st(frame, center + n * (pull * 0.5),
-						u, Vector3.UP, n, Vector3(dw * 0.5, row_h * 0.5, pull * 0.5))
+					# bury the back face 5 cm INSIDE the skirt — an exactly-coplanar back z-fights
+					# with the facade (the shimmer bands report)
+					_emit_oriented_box_st(frame, center + n * ((pull - 0.05) * 0.5),
+						u, Vector3.UP, n, Vector3(dw * 0.5, row_h * 0.5, (pull + 0.05) * 0.5))
 					# the LED matrix: a hash-lit grid of small cards on the drawer front
-					var front := center + n * (pull + 0.006)
+					var front := center + n * (pull + 0.014)
 					for my in range(2):
 						for mx in range(4):
 							if _h01(kb + float(fi) * 3.1 + float(k) * 7.7 + float(r) * 13.9 + float(cc) * 29.3 + float(my) * 4.9 + float(mx) * 1.7) > 0.72:

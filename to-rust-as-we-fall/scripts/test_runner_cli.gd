@@ -13900,10 +13900,14 @@ func _test_lattice_holes() -> void:
 	# which leaks a few px of mm-deep poke-through past the depth bias. Budgets are 10-100x below any
 	# real failure (the drum-handedness bug measured 4043 total / 224 in one shot): a hole, crack,
 	# winding error, or exposed skirt blows straight through them.
+	# Budget is a PER-SHOT rate (2.5 px/shot, the original 60/24 calibration) so adding scan rings
+	# doesn't mechanically breach it; the worst-shot cap stays absolute. Real failures exceed these
+	# 10-100x (the drum-handedness bug: 4043 total / 224 worst).
 	for name2 in ["tracery", "honeyframe", "voronoi", "rackstack"]:
 		var rr := results[name2] as Dictionary
-		_assert_true(int(rr["total"]) <= 60 and int(rr["max_shot"]) <= 12,
-			"%s red stays within the interpenetration budget (total %d <= 60, worst shot %d <= 12)" % [name2, int(rr["total"]), int(rr["max_shot"])])
+		var budget := int(ceilf(2.5 * float(rr.get("shots", 24))))
+		_assert_true(int(rr["total"]) <= budget and int(rr["max_shot"]) <= 12,
+			"%s red stays within the interpenetration budget (total %d <= %d, worst shot %d <= 12)" % [name2, int(rr["total"]), budget, int(rr["max_shot"])])
 
 # Scan one mesh from a ring of exterior cameras; returns {"total": int, "max_shot": int}.
 func _red_shell_scan(spec_name: String, mesh: ArrayMesh) -> Dictionary:
@@ -13957,7 +13961,9 @@ void fragment() { ALBEDO = vec3(1.0, 0.0, 0.0); }
 	var red_count := 0
 	var max_shot := 0
 	var shot := 0
-	for elev in [-0.22, 0.15, 0.5]:
+	# The 0.95 ring looks steeply DOWN — open-top notches and roof seams hide from shallow rings
+	# (the Open Files corner-wedge holes shipped invisible to the original three).
+	for elev in [-0.22, 0.15, 0.5, 0.95]:
 		for k in range(8):
 			var a := TAU * float(k) / 8.0
 			var dir := Vector3(cos(a) * cos(elev), sin(elev), sin(a) * cos(elev))
@@ -13974,7 +13980,7 @@ void fragment() { ALBEDO = vec3(1.0, 0.0, 0.0); }
 			shot += 1
 	print("  [HOLES] %s: %d red pixels over %d shots (worst shot %d)" % [spec_name, red_count, shot, max_shot])
 	await _dispose_scene(root)
-	return {"total": red_count, "max_shot": max_shot}
+	return {"total": red_count, "max_shot": max_shot, "shots": shot}
 
 # --- PLAYER CONTRACT sweep: auto-generated real-input probes over EVERY picker entry --------------
 # The chroma-testing system (director's spec): the game boots with a ChromaProbe that renders every
