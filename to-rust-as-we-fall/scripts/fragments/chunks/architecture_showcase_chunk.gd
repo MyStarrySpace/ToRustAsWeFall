@@ -253,7 +253,9 @@ func _add_rackwork(root: Node3D, spec: Dictionary, reserved: Array) -> void:
 
 func _add_pipes(root: Node3D, spec: Dictionary) -> void:
 	var pipe_seed := int(str(spec.get("kind", "")).hash())
-	var mesh := Lattice.pipes(spec, pipe_seed)
+	# the massing PROFILE keeps the drapes on the real silhouette (mereotopology: parts touch hosts)
+	var mesh := Lattice.pipes(spec, pipe_seed,
+		{"r_at": func(y: float) -> float: return BaseShape.massing_radius_at(spec, y)})
 	var mat := StandardMaterial3D.new()
 	mat.vertex_color_use_as_albedo = true   # the pipe carries its metal/rust patina as vertex colour
 	mat.metallic = 0.5

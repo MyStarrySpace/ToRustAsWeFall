@@ -296,18 +296,19 @@ static func gameplay_anchors(spec: Dictionary, ent: Dictionary = {}) -> Dictiona
 				[Vector3(core.x, hh, 0), Vector3(1, 0, 0)], [Vector3(-core.x, hh, 0), Vector3(-1, 0, 0)]]:
 			conns.append({"kind": "bridge", "pos": (fd0 as Array)[0] as Vector3, "dir": (fd0 as Array)[1] as Vector3, "width": 1.0})
 		return {"weak_points": weak, "connectors": conns, "balcony_slots": balc}
-	if str(spec.get("shape", SHAPE_BOX)) == SHAPE_CYLINDER:
-		var r := float(spec.get("radius", 2.0))
+	if str(spec.get("composite", "")) == "hypelines_mound":
+		for a in hypelines_arms(spec):
+			var ad := a as Dictionary
+			conns.append({"kind": "bridge", "pos": ad["tip"] as Vector3,
+				"dir": (ad["dir"] as Vector3).normalized(), "width": 1.1})
+	if str(spec.get("shape", SHAPE_BOX)) == SHAPE_CYLINDER 			or (spec.has("radius") and not spec.has("size")):
 		var hgt := float(spec.get("height", 5.0))
-		var tiers := maxi(1, int(spec.get("tiers", 1)))
-		var inset := float(spec.get("tier_inset", 0.16))
-		var band := hgt / float(tiers)
 		var nw := 2 + int(_h01(kb + 1.0) * 1.9)
 		for k in range(nw):
 			var th := TAU * _h01(kb + 10.0 + float(k) * 7.7)
 			var wy := hgt * (0.45 + 0.4 * _h01(kb + 20.0 + float(k) * 3.3))
-			# on a tiered cake the wall shrinks per drum — the weak point sits on ITS tier's wall
-			var rk := maxf(0.4, r * (1.0 - inset * float(mini(tiers - 1, int(wy / band)))))
+			# the socket sits ON the real silhouette (massing profile), whatever the massing is
+			var rk := massing_radius_at(spec, wy)
 			var nrm := Vector3(cos(th), 0.0, sin(th))
 			weak.append({"pos": nrm * rk + Vector3(0, wy, 0), "n": nrm, "radius": 0.7})
 	else:
@@ -342,6 +343,46 @@ static func gameplay_anchors(spec: Dictionary, ent: Dictionary = {}) -> Dictiona
 			var bpos := smp2["pos"] as Vector3
 			balc.append({"pos": Vector3(bpos.x, ly, bpos.z), "out": smp2["outward"] as Vector3, "size": 0.5})
 	return {"weak_points": weak, "connectors": conns, "balcony_slots": balc}
+
+## MASSING PROFILE — the outer silhouette radius at height y, for every drum-based shape and
+## composite. This is the MEREOTOPOLOGY contract (director): attached parts (draped pipes, weak-point
+## sockets, arms, collars) consult THIS so they touch the real surface — never the spec's nominal
+## radius, which the lobed/tiered/domed massings no longer follow. Piecewise-linear approximations
+## of each composite's construction; keep them in lockstep with the *_mesh builders.
+static func massing_radius_at(spec: Dictionary, y: float) -> float:
+	var r := float(spec.get("radius", 2.0))
+	var h := float(spec.get("height", spec.get("height_total", 5.0)))
+	match str(spec.get("composite", "")):
+		"plumbing_lobed":
+			var rd := float(spec.get("door_radius", r * 0.62))
+			if y < h * 0.47:
+				return lerpf(rd * 1.5, rd, clampf(y / (h * 0.47), 0.0, 1.0))
+			if y < h * 0.74:
+				return rd
+			var dn := clampf((y - h * 0.74) / (rd * 0.75), 0.0, 1.0)
+			return maxf(rd * 0.2, rd * 1.12 * sqrt(maxf(0.0, 1.0 - dn * dn)))
+		"ancourage_domes":
+			var bh := h * 0.53
+			if y < bh:
+				return r
+			return maxf(0.3, lerpf(r * 0.95, r * 0.2, clampf((y - bh) / (h - bh), 0.0, 1.0)))
+		"hypelines_mound":
+			if y < h * 0.38:
+				return r
+			if y < h * 0.68:
+				return lerpf(r * 0.78, r * 0.62, (y - h * 0.38) / (h * 0.30))
+			if y < h * 0.9:
+				return lerpf(r * 0.5, r * 0.38, (y - h * 0.68) / (h * 0.22))
+			return maxf(0.2, lerpf(r * 0.4, r * 0.1, clampf((y - h * 0.9) / (h * 0.1), 0.0, 1.0)))
+		"beacon_domed":
+			if y < h * 0.75:
+				return r
+			return maxf(r * 0.4, lerpf(r, r * 0.45, clampf((y - h * 0.75) / (h * 0.25), 0.0, 1.0)))
+	var tiers := maxi(1, int(spec.get("tiers", 1)))
+	if str(spec.get("shape", "")) == SHAPE_CYLINDER and tiers > 1:
+		var band := h / float(tiers)
+		return maxf(0.4, r * (1.0 - float(spec.get("tier_inset", 0.16)) * float(mini(tiers - 1, int(y / band)))))
+	return r
 
 ## A small assembly of primitives baked into one ArrayMesh (base on y=0). Dispatched by "composite".
 static func _composite(spec: Dictionary, reserved: Array = [], recess: float = 0.5) -> ArrayMesh:
@@ -562,20 +603,35 @@ static func _hypelines_mound_mesh(spec: Dictionary, reserved: Array, recess: flo
 	cap.radial_segments = 14
 	cap.rings = 7
 	st.append_from(cap, 0, Transform3D(Basis(), Vector3(0.0, h - cap.height * 0.5, 0.0)))
-	# 6 radiating pipe arms leaving the shoulder (3 per side, one near-horizontal + a pitched pair)
-	for i in range(6):
-		var side := 1.0 if i < 3 else -1.0
-		var az := deg_to_rad(float([30.0, 60.0, 90.0][i % 3])) * side
-		var pitch := float([0.06, 0.2, 0.12][i % 3])
+	# 6 radiating LANE arms leaving the shoulder — these are level infrastructure, not dressing:
+	# each arm tip is exported as a BRIDGE connector socket (hypelines_arms), so the level layer can
+	# dock walkable lanes onto them (the director's walkable-lanes directive).
+	for a in hypelines_arms(spec):
+		var ad := a as Dictionary
 		var arm := CylinderMesh.new()
 		arm.top_radius = h * 0.045
 		arm.bottom_radius = h * 0.045
 		arm.height = r * 2.3
 		arm.radial_segments = 10
-		var dirv := Vector3(cos(az), 0.0, sin(az)).rotated(Vector3(sin(az), 0.0, -cos(az)).normalized(), pitch)
+		var dirv := ad["dir"] as Vector3
 		var basis := Basis(Quaternion(Vector3.UP, dirv.normalized()))
-		st.append_from(arm, 0, Transform3D(basis, Vector3(0.0, h * (0.55 + 0.07 * float(i % 3)), 0.0) + dirv * r * 0.9))
+		st.append_from(arm, 0, Transform3D(basis, (ad["base"] as Vector3) + dirv * r * 0.55))
 	return st.commit()
+
+## The hypelines lane-arm table: {base, dir, tip} per arm — the ONE source both the massing mesh and
+## the gameplay bridge sockets read, so a walkable lane docked at a socket always meets its arm.
+static func hypelines_arms(spec: Dictionary) -> Array:
+	var r := float(spec.get("radius", 2.6))
+	var h := float(spec.get("height", 6.2))
+	var out: Array = []
+	for i in range(6):
+		var side := 1.0 if i < 3 else -1.0
+		var az := deg_to_rad(float([30.0, 60.0, 90.0][i % 3])) * side
+		var pitch := float([0.06, 0.2, 0.12][i % 3])
+		var dirv := Vector3(cos(az), 0.0, sin(az)).rotated(Vector3(sin(az), 0.0, -cos(az)).normalized(), pitch).normalized()
+		var base := Vector3(0.0, h * (0.55 + 0.07 * float(i % 3)), 0.0)
+		out.append({"base": base, "dir": dirv, "tip": base + dirv * (r * 0.55 + r * 1.15)})
+	return out
 
 ## Greenfields (REVIEW P1): the stacked-cushions read — a box body wearing four overhanging
 ## bone-cream balcony slab rings, one above each storey.
@@ -811,17 +867,23 @@ static func _emit_awning_level(st: SurfaceTool, pts: Dictionary, skip_left: bool
 	_quad_out(st, pr + back, pr, pr + up * yt, pr + back + up * yt, pr + u * 1.0)                      # right jamb
 	_quad_out(st, pl + up * yt, pl + back + up * yt, pr + back + up * yt, pr + up * yt, pl + up * (yt + 3.0))  # lintel (faces down)
 
-# Bridge face fi's right corner to face fi+1's left at one level: the lab's top triangle B1-E2-F1 +
-# the diagonal fill F1-E2 dropping to the notch ground (both sides' gable/wall were skipped).
+# Bridge face fi's right corner to face fi+1's left at one level: the chamfer roof + the diagonal
+# fill dropping to the notch ground. FOUR points, not three (director's report): only at level 0 do
+# the two faces share one corner point — at every deeper level face i's B and face i+1's A are
+# DIFFERENT points (each face's edge moved outward along its OWN normal), so a single-apex triangle
+# left a wedge hole at every merged corner below the top. The quad degenerates to the level-0
+# triangle by itself when B == A.
 static func _emit_merge_bridge(st: SurfaceTool, pa: Dictionary, pb: Dictionary) -> void:
-	var b1: Vector3 = pa["B"]
+	var b1: Vector3 = pa["B"]     # face i's top corner point
+	var a2: Vector3 = pb["A"]     # face i+1's top corner point (== b1 only at level 0)
 	var f1: Vector3 = pa["F"]
 	var e2: Vector3 = pb["E"]
-	var hint := (b1 + f1 + e2) / 3.0 - ((f1 - b1) + (e2 - b1)).normalized() * 0.8 - Vector3.UP * 0.4
-	_tri_out(st, b1, e2, f1, hint)
+	var out_dir := ((pa["n"] as Vector3) + (pb["n"] as Vector3)).normalized()
+	var hint := (b1 + a2 + f1 + e2) * 0.25 - out_dir * 0.8 - Vector3.UP * 0.4
+	_quad_out(st, b1, a2, e2, f1, hint)
 	var g2 := Vector3(e2.x, 0.0, e2.z)
 	var h1 := Vector3(f1.x, 0.0, f1.z)
-	var wall_hint := (f1 + e2 + g2 + h1) * 0.25 - ((pa["n"] as Vector3) + (pb["n"] as Vector3)).normalized() * 1.0
+	var wall_hint := (f1 + e2 + g2 + h1) * 0.25 - out_dir * 1.0
 	_quad_out(st, f1, e2, g2, h1, wall_hint)
 
 # --- RACKWORK: the faces-extrude lattice (director's spec) ----------------------------------------

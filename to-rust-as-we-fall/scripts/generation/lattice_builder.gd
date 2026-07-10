@@ -786,9 +786,14 @@ static func pipes(spec: Dictionary, seed_value: int, overrides: Dictionary = {})
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var surfaces: Array = []
-	if str(spec.get("shape", "box")) == "cylinder":
+	if str(spec.get("shape", "box")) == "cylinder" or (spec.has("radius") and not spec.has("size")):
+		# drum-based massings (incl. composites); an r_at override (the massing profile) makes the
+		# drapes follow the REAL silhouette so pipes touch lobes/tiers/domes instead of floating
 		var r := float(spec.get("radius", 2.0))
-		surfaces.append({"kind": "cyl", "r": r, "h": float(spec.get("height", 5.0)), "w": TAU * r})
+		var surf := {"kind": "cyl", "r": r, "h": float(spec.get("height", 5.0)), "w": TAU * r}
+		if overrides.has("r_at") and overrides["r_at"] is Callable:
+			surf["r_at"] = overrides["r_at"]
+		surfaces.append(surf)
 	else:
 		for f in _box_vertical_faces(spec.get("size", Vector3(4, 6, 4))):
 			var fd := f as Dictionary
@@ -922,9 +927,12 @@ static func _emit_pipe_hardware(path_uv: PackedVector2Array, surf: Dictionary, r
 static func _surf_map(surf: Dictionary, uv: Vector2, dn: float) -> Vector3:
 	if str(surf["kind"]) == "cyl":
 		var r: float = surf["r"]
-		var a := uv.x / r
-		var rr := r + dn
-		return Vector3(rr * cos(a), float(surf["h"]) - uv.y, rr * sin(a))
+		var a := uv.x / r                      # arc-length param stays on the NOMINAL radius
+		var wy := float(surf["h"]) - uv.y
+		var rw := r
+		if surf.has("r_at"):
+			rw = float((surf["r_at"] as Callable).call(wy))   # the massing profile: hug the real wall
+		return Vector3((rw + dn) * cos(a), wy, (rw + dn) * sin(a))
 	var center: Vector3 = surf["c"]
 	var u: Vector3 = surf["u"]
 	var n: Vector3 = surf["n"]
