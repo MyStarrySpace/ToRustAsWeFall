@@ -26,8 +26,8 @@ EngramJournal="*res://scripts/system/persistence/engram_journal.gd"
 [display]
 
 window/handheld/orientation=4
-window/stretch/mode="canvas_items"
-window/stretch/aspect="expand"
+window/stretch/mode.mobile="canvas_items"
+window/stretch/aspect.mobile="expand"
 
 [input]
 

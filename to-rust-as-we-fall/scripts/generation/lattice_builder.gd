@@ -1683,7 +1683,8 @@ static func entrances(spec: Dictionary, overrides: Dictionary = {}) -> Dictionar
 		var pl := pl_v as Dictionary
 		var fr := pl["frame"] as Dictionary
 		var is_main := bool(pl["main"])
-		_emit_door(stone, dark, dark if is_main else accent, fr, float(pl["w"]), float(pl["h"]), p, not is_main)
+		var surround := not (is_main and not bool(p.get("main_surround", true)))
+		_emit_door(stone, dark, dark if is_main else accent, fr, float(pl["w"]), float(pl["h"]), p, not is_main, surround)
 		if is_main:
 			main_n = fr["n"]
 			main_top = (fr["anchor"] as Vector3) + Vector3(0, 1, 0) * (float(pl["h"]) + 0.55) + main_n * 0.06
@@ -1729,7 +1730,7 @@ static func _arc_reserved(theta: float, reserved: Array) -> bool:
 	return false
 
 static func _emit_door(stone: SurfaceTool, dark: SurfaceTool, acc: SurfaceTool, frame: Dictionary,
-		dw: float, dh: float, p: Dictionary, enforcement: bool) -> void:
+		dw: float, dh: float, p: Dictionary, enforcement: bool, surround: bool = true) -> void:
 	var a: Vector3 = frame["anchor"]
 	var u: Vector3 = frame["u"]
 	var v: Vector3 = frame["v"]
@@ -1739,15 +1740,20 @@ static func _emit_door(stone: SurfaceTool, dark: SurfaceTool, acc: SurfaceTool, 
 	var recess: float = p["recess"]
 	var hw := dw * 0.5
 	var jc := (dh + jamb) * 0.5
-	# jambs + lintel (raised stone surround)
-	_emit_oriented_box(stone, a + u * (hw + jamb * 0.5) + v * jc + n * (proud * 0.5), u, v, n, Vector3(jamb * 0.5, jc, proud * 0.5))
-	_emit_oriented_box(stone, a - u * (hw + jamb * 0.5) + v * jc + n * (proud * 0.5), u, v, n, Vector3(jamb * 0.5, jc, proud * 0.5))
-	_emit_oriented_box(stone, a + v * (dh + jamb * 0.5) + n * (proud * 0.5), u, v, n, Vector3(hw + jamb, jamb * 0.5, proud * 0.5))
+	# jambs + lintel (raised stone surround) — SKIPPED when the building's survey places its OWN
+	# entry idiom (plumbing hood / hypelines arch / greenfields arcade): the idiom IS the surround,
+	# and the generic stone used to interpenetrate it (the phone playtest's overlap report)
+	if surround:
+		_emit_oriented_box(stone, a + u * (hw + jamb * 0.5) + v * jc + n * (proud * 0.5), u, v, n, Vector3(jamb * 0.5, jc, proud * 0.5))
+		_emit_oriented_box(stone, a - u * (hw + jamb * 0.5) + v * jc + n * (proud * 0.5), u, v, n, Vector3(jamb * 0.5, jc, proud * 0.5))
+		_emit_oriented_box(stone, a + v * (dh + jamb * 0.5) + n * (proud * 0.5), u, v, n, Vector3(hw + jamb, jamb * 0.5, proud * 0.5))
 	# The doorway INTERIOR is now a real pocket cut into the base mesh (no z-fighting dark box here).
 	# Two door leaves set BACK inside that pocket; enforcement leaves glow teal (accent).
 	var leaf: SurfaceTool = acc if enforcement else dark
 	for side in [-1.0, 1.0]:
 		_emit_oriented_box(leaf, a + u * (side * hw * 0.5) + v * (dh * 0.5) - n * (recess * 0.55), u, v, n, Vector3(hw * 0.5 - 0.03, dh * 0.5 - 0.04, 0.03))
+	if not surround:
+		return
 	# canopy overhang + two steps down to the ground (a building whose survey places its OWN entry
 	# idiom — the plumbing hood — zeroes canopy_out and no slab is emitted)
 	if float(p["canopy_out"]) > 0.05:

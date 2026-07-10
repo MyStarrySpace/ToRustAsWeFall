@@ -170,7 +170,7 @@ const CLEANSTREETS := {
 	"spikes": {"z": 2.95, "count_per_lane": 5, "r": 0.05, "h": 0.16},
 	"sign": {"y0": 3.5, "y1": 4.4, "w": 5.5},            # the fascia title board, front face
 	"perf": {"x_center": 4.2, "y0": 3.4, "y1": 4.35, "half_w": 0.8, "holes": 7},   # corner clusters
-	"toll": {"header_y0": 2.2, "header_y1": 2.7, "header_w": 1.6,
+	"toll": {"header_y0": 2.28, "header_y1": 2.78, "header_w": 1.6,   # clears the lintel top (2.2)
 		"kiosk": Vector3(0.5, 1.9, 0.5), "cross": 0.4, "screen": 0.25},
 	"vault": {"y": 3.14, "rib_r": 0.055, "light_r": 0.09},   # the warm-gold vaulted underside
 	"monolith": {"z": 5.2, "w": 0.95, "h": 1.8, "base_h": 0.6},

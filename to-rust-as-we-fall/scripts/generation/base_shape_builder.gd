@@ -38,7 +38,7 @@ const SPECS := {
 		# inside the 1.4 m pitched hood); the plate shows NO side doors; the hood replaces the generic
 		# canopy slab; the reserve margin is trimmed so the sign board clears the door band.
 		"entrances": {"main_w": 0.9, "main_h": 1.5, "side_count_min": 0, "side_count_max": 0,
-			"reserve_margin": 0.25, "canopy_out": 0.0},
+			"reserve_margin": 0.25, "canopy_out": 0.0, "main_surround": false},
 		"color": Color(0.24, 0.35, 0.32),   # dark desaturated verdigris (plate palette)
 		"tile": "facility_metal",
 		"lattice": "",
@@ -97,7 +97,8 @@ const SPECS := {
 		# RECONCILED AT THE SURVEY: doors sized to the character inside the plate's parabolic
 		# toll-gate arch (the arch idiom + toll board are survey detail passes); no canopy slab —
 		# the arch is the entry architecture.
-		"entrances": {"main_w": 0.9, "main_h": 1.5, "side_w": 0.8, "side_h": 1.4, "canopy_out": 0.0},
+		"entrances": {"main_w": 0.9, "main_h": 1.5, "side_w": 0.8, "side_h": 1.4, "canopy_out": 0.0,
+			"main_surround": false},
 		"color": Color(0.26, 0.33, 0.29),   # dark verdigris-rust
 		"tile": "facility_metal",
 		"lattice": "", "pipes": true,       # the drapes stand in for the plate's vein-tendril wrap
@@ -110,7 +111,8 @@ const SPECS := {
 		# RECONCILED AT THE SURVEY: the first slab ring rides the 1.7 m ground-storey datum — the
 		# default 2.7 m portal ran straight through it. Plate ratio (BUILDING_REVIEW greenfields #4):
 		# arcade arch top ~80% of the 1.7 m ground storey ~= 1.35 m.
-		"entrances": {"main_w": 1.1, "main_h": 1.32, "side_w": 0.9, "side_h": 1.25, "reserve_margin": 0.08},
+		"entrances": {"main_w": 1.1, "main_h": 1.32, "side_w": 0.9, "side_h": 1.25, "reserve_margin": 0.08,
+			"main_surround": false, "canopy_out": 0.0},
 		"color": Color(0.35, 0.45, 0.39),   # verdigris ashlar WALLS — the bone structure is the
 		"tile": "facility_metal",           # balconies pass (greenfields_details), two-tone (plate)
 		"lattice": "balconies",             # the wavy slab rings + rails + arcade + windows (survey)
@@ -673,6 +675,11 @@ static func _plumbing_hood(body: SurfaceTool, hood: Dictionary) -> void:
 	_quad_out(body, eave_l, eave_r, wall_r, wall_l, ridge_l + n * 2.0)             # underside
 	_tri_out(body, eave_l, ridge_l, wall_l, inside + u * 2.0)                      # left cheek
 	_tri_out(body, eave_r, ridge_r, wall_r, inside - u * 2.0)                      # right cheek
+	# the hood IS the surround (main_surround=false): its own two shallow threshold steps
+	_emit_oriented_box_st(body, anchor + Vector3(0, 0.065, 0) + n * 0.16, u, Vector3.UP, n,
+		Vector3(hw * 0.62, 0.065, 0.16))
+	_emit_oriented_box_st(body, anchor + Vector3(0, 0.028, 0) + n * 0.40, u, Vector3.UP, n,
+		Vector3(hw * 0.74, 0.028, 0.15))
 
 # the green cascade: an arched spout, the glowing fall + steps, and a dark pool at the apron
 static func _plumbing_cascade(body: SurfaceTool, dark: SurfaceTool, glow: SurfaceTool, casc: Dictionary) -> void:
@@ -1300,6 +1307,10 @@ static func greenfields_details(spec: Dictionary) -> Dictionary:
 				if absf(px) > 0.95:   # the centre pier slot holds the REAL door — no sconce in it
 					_emit_oriented_box_st(warm, (fd["c"] as Vector3) + u * px + n * 0.10 + Vector3(0, float(arc["sconce_y"]), 0),
 						u, Vector3.UP, n, Vector3(0.045, 0.10, 0.045))
+		# the MAIN door (front face, centre slot) gets its own arch — the arcade IS its surround
+		# (main_surround=false suppresses the generic stone that used to spear the bay arches)
+		if (n as Vector3).dot(Vector3(0, 0, 1)) > 0.9:
+			_arch_frame(bone, (fd["c"] as Vector3) + n * 0.05, u, n, 1.32, 0.95, 1.50)
 	# three floors of arched amber windows in bone niches + tendon ribs between the bays
 	var win: Dictionary = g["window"]
 	var ribs: Dictionary = g["ribs"]
