@@ -45,9 +45,15 @@ var _fade_rect: ColorRect
 var _thought_label: Label
 var _engram_overlay
 var _pause_menu
+var _dev_console    # DevConsole (backtick) — the only in-game door to dev switches
 var _chromatic_aberration_layer: CanvasLayer
 var _chromatic_aberration_rect: ColorRect
 var _chromatic_aberration_material: ShaderMaterial
+
+# Fog of war is a standing GAMEPLAY layer, independent of the Aster/Peris perception views —
+# turning those views off must never reveal the map. Only the dev console (`fog off`) or a dev
+# surface flips this; scenes that render fog read it every overlay sync.
+var fog_of_war_enabled := true
 
 # Player and camera (populated by subclass via helpers)
 var _player         # CharacterBody3D + player.gd
@@ -366,12 +372,32 @@ func _init_ui() -> void:
 	_pause_menu.name = "PauseMenu"
 	add_child(_pause_menu)
 
+	# Backtick-toggled developer console — the one sanctioned door to dev switches in normal play
+	# (fog of war stays ON in the game proper; only this console or a dev surface may turn it off).
+	_dev_console = DevConsole.new()
+	_dev_console.name = "DevConsole"
+	add_child(_dev_console)
+	_dev_console.register_command("fog", _cmd_fog, "fog on|off — the fog of war (default on)")
+	_dev_console.register_command("fxdebug", _cmd_fxdebug, "fxdebug on|off — path/outline FX traces")
+
 	_init_chromatic_aberration_effect()
 	_setup_ui()
 	# Wire the shared hold-SHIFT reveal-all HERE, once, after the subclass built its HUD — so no scene
 	# has to remember the connection individually (it drifted: the fragment preview, showcase, and others
 	# were missing it). Scenes that build no HUD no-op.
 	_wire_shared_hud_signals()
+
+## Dev-console commands shared by every scene. Fog of war is a GAMEPLAY layer (independent of the
+## Aster/Peris perception views); scenes that render it read fog_of_war_enabled each sync.
+func _cmd_fog(args: Array) -> String:
+	if not args.is_empty():
+		fog_of_war_enabled = str(args[0]).to_lower() in ["on", "true", "1"]
+	return "fog of war: %s" % ("ON" if fog_of_war_enabled else "off (dev)")
+
+func _cmd_fxdebug(args: Array) -> String:
+	if not args.is_empty():
+		GridWorld._fx_debug = str(args[0]).to_lower() in ["on", "true", "1"]
+	return "fx debug traces: %s" % ("ON (see console output)" if GridWorld._fx_debug else "off")
 
 ## Connect the universal HUD signals every scene shares (currently: hold-SHIFT reveal-all). The HUD is
 ## resolved by NODE — every scene names it "GameHUD" and runs game_hud.gd (which owns highlight_held) —

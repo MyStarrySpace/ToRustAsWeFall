@@ -69,7 +69,6 @@ const CHUNK_SCENES := {
 const PREVIEW_ENTRIES := [
 	{"id": "endo_junction_stretch", "chunk": "endo_junction_stretch", "title": "Endo's Junction to Shelter 1", "stage": 1},
 	{"id": "showcase_gallery", "chunk": "showcase_gallery", "title": "Showcase Gallery", "stage": 1},
-	{"id": "set_piece_showcase", "chunk": "set_piece_showcase", "title": "Set Pieces — crawl / rotate / water", "stage": 1},
 	{"id": "stacks", "chunk": "stacks", "title": "Stacks Fragment Lab", "stage": 1},
 	{"id": "rings", "chunk": "rings", "title": "Rings Fragment Lab", "stage": 1},
 	{"id": "push_lab", "chunk": "push_lab", "title": "Push Lab", "stage": 2},
@@ -140,6 +139,10 @@ const PREVIEW_ENTRIES := [
 	# Algorithm 4 = railings via textured cards (balcony + pixel-art alpha railing).
 	{"id": "geometry_lab_railings", "chunk": "geometry_lab", "title": "Geometry Lab 4 (railings / cards)", "stage": 6,
 		"config": {"algorithm": 4, "overlays": {"aster": false, "peris": false, "endo": false}}},
+	# POLICY (director): the most recently worked-on fragments live at the END of this list — the
+	# picker displays it REVERSED, so the last entries are the top buttons. When you touch a chunk,
+	# MOVE its row down here.
+	{"id": "set_piece_showcase", "chunk": "set_piece_showcase", "title": "Set Pieces — crawl / rotate / water / hoist", "stage": 1},
 ]
 
 ## The menu entry for an id (or {} if none).
@@ -900,16 +903,16 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				_toggle_instructions_panel()
 			KEY_O:
 				_toggle_overlay_panel()
-			KEY_TAB:
-				_on_routing_toggled("direct" if _routing_mode == "safe" else "safe")
+			# NO raw TAB / SPACE arms: those are the `route` / `pause` INPUT ACTIONS, owned by the HUD
+			# (game_hud._unhandled_input -> routing_toggled / pause_toggled signals we're connected to).
+			# A raw arm here fired the same handler a second time per press — the toggle flipped twice
+			# and both controls looked dead in the fragments.
 			KEY_C:
 				_cycle_character()
 			KEY_Z:
 				# Z belongs to the main abilities (aster_focus / endo_patch). Run lives on its OWN key
 				# (the "run" action, R) so locomotion never fights an ability — see _apply_active_run_state.
 				_activate_keybound_preview_ability(KEY_Z)
-			KEY_SPACE:
-				_toggle_pause()
 			KEY_F5:
 				get_tree().reload_current_scene()
 			KEY_N:
@@ -933,13 +936,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				_preview_dodge_unlocked = not _preview_dodge_unlocked
 				_apply_dodge_setting()
 				show_preview_message("Dodge roll: %s" % ("ENABLED" if _preview_dodge_unlocked else "locked"), 1.4)
-			KEY_QUOTELEFT:
-				# Backtick/tilde toggles the FX path-preview + outline-hit traces (GridWorld._fx_debug) IN-GAME,
-				# without the FX_DEBUG env var — so the loader's [preview]/[ribbon]/[outline] prints work when you
-				# run the fragment loader from the editor (where setting an env var is awkward).
-				GridWorld._fx_debug = not GridWorld._fx_debug
-				print("[fx-debug] path/outline traces %s" % ("ON" if GridWorld._fx_debug else "off"))
-				show_preview_message("FX debug traces: %s" % ("ON (see console)" if GridWorld._fx_debug else "off"), 1.6)
+			# Backtick belongs to the DEV CONSOLE (tutorial_sequence builds it for every scene);
+			# fx-debug lives there as the `fxdebug` command, fog of war as `fog on|off`.
 			KEY_1:
 				if key_event.ctrl_pressed or key_event.shift_pressed:
 					_toggle_character_selected("aster")
@@ -1772,7 +1770,9 @@ func _sync_overlay_stack() -> void:
 	_sync_occluder_mask()
 	var vision_positions := _get_overlay_vision_positions()
 	var data_enabled := bool(_overlay_states.get("aster", false)) and not vision_positions.is_empty()
-	var fog_enabled := bool(_overlay_states.get("peris", false)) and not vision_positions.is_empty()
+	# Fog of war is its OWN gameplay layer — never gated on the Peris view (turning the perception
+	# overlays off must not reveal the map). Only the dev console (`fog off`) disables it.
+	var fog_enabled := fog_of_war_enabled and not vision_positions.is_empty()
 	var source_0 := _overlay_vision_source_at(vision_positions, 0)
 	var source_1 := _overlay_vision_source_at(vision_positions, 1)
 	var source_2 := _overlay_vision_source_at(vision_positions, 2)

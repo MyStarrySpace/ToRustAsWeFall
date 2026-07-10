@@ -313,9 +313,22 @@ func add_sight_blocker(cell: Vector2i) -> void:
 func clear_sight_blocker(cell: Vector2i) -> void:
 	sight_blockers.erase(cell)
 
+# SEE-OVER terrain: a WALL-tiled cell that blocks movement but NOT sight (water basins, canals,
+# pits, low kerbs). Registered at build like sight blockers — derived, never logged. An explicit
+# sight_blocker on the same cell wins (checked first).
+var sight_transparent: Dictionary = {}   # Vector2i -> true
+
+func add_sight_transparent(cell: Vector2i) -> void:
+	sight_transparent[cell] = true
+
+func clear_sight_transparent(cell: Vector2i) -> void:
+	sight_transparent.erase(cell)
+
 func is_opaque_cell(cell: Vector2i) -> bool:
 	if sight_blockers.has(cell):
 		return true
+	if sight_transparent.has(cell):
+		return false
 	var tile := get_tile(cell.x, cell.y)
 	return tile == Tile.WALL or tile == Tile.LOCKED_DOOR
 

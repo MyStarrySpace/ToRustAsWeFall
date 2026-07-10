@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode unshaded, cull_disabled, depth_test_disabled, depth_draw_never, fog_disabled;
+render_mode unshaded, cull_disabled, depth_test_disabled, depth_draw_never, fog_disabled, blend_premul_alpha;
 
 // Per-object SCREEN-SPACE outline + queued energy glow. The highlighted objects are rendered ALONE into a
 // SubViewport — each filled with its tint colour, on a transparent background (the "mask"). The fill ALPHA
@@ -11,9 +11,13 @@ render_mode unshaded, cull_disabled, depth_test_disabled, depth_draw_never, fog_
 //     OUTSIDE the object, fades smoothly with distance from the edge, and stipples through an ordered 4x4 Bayer
 //     dither (the same grammar as the hover grid / portal VFX). Hover shows the crisp outline only — no noise.
 // Both read their colour straight from the mask, so several objects can carry different tints in one pass.
+// PREMULTIPLIED-ALPHA overlay: the quad no longer reads (or repaints) the screen. A screen_tex repaint
+// used the stale opaque-pass capture, so this quad and the perception-overlay quad each ERASED the other —
+// whichever drew last won, and with any perception view on the outline vanished. Blending means both
+// compose: the outline replaces pixels only where edge coverage says so, the glow adds where alpha is 0,
+// and everything under it (including the perception rewrite, priority 126) shows through untouched.
 uniform sampler2D mask_tex : filter_linear;          // every highlighted object (drives the crisp outline)
 uniform sampler2D glow_mask_tex : filter_linear;     // QUEUED objects only (drives the energy glow)
-uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
 uniform sampler2D noise_tex : repeat_enable, filter_linear;
 uniform float thickness : hint_range(0.5, 6.0, 0.1) = 2.0;
 uniform float glow : hint_range(0.0, 4.0, 0.05) = 1.15;             // crisp-outline emission boost
@@ -38,6 +42,13 @@ float bayer(vec2 frag) {
 	int x = int(mod(frag.x, 4.0));
 	int y = int(mod(frag.y, 4.0));
 	return BAYER[y * 4 + x];
+}
+
+void vertex() {
+	// Fullscreen placement: map the 2x2 QuadMesh straight to clip space (the standard Godot 4
+	// post-process quad). Without this the quad renders as a 2m patch at the manager's origin —
+	// nowhere near the camera — and the whole outline composite silently never draws.
+	POSITION = vec4(VERTEX.xy, 1.0, 1.0);
 }
 
 // Two scrolling samples of the noise multiplied -> a churning, morphing field (not a flat scroll), so the halo
@@ -109,8 +120,9 @@ void fragment() {
 	float keep = (energy > bayer(FRAGCOORD.xy)) ? 1.0 : 0.0;
 	float glow_amt = keep * energy * glow_strength;
 
-	vec3 base = texture(screen_tex, uv).rgb;
-	vec3 outline_rgb = mix(base, oc, edge);
-	ALBEDO = outline_rgb + gcol * glow_amt;
+	// Premultiplied output: dest * (1 - ALPHA) + (ALBEDO + EMISSION). The crisp outline covers by `edge`
+	// (replacing the scene with the tint), the energy glow rides at ALPHA 0 (purely additive halo).
+	ALBEDO = oc * edge + gcol * glow_amt;
+	ALPHA = edge;
 	EMISSION = oc * edge * glow + gcol * glow_amt * 1.4;
 }

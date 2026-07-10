@@ -186,6 +186,9 @@ func _ready() -> void:
 			"--test-lure-relay":
 				ran_test = true
 				await _test_lure_relay_puzzle()
+			"--test-dev-console":
+				ran_test = true
+				await _test_dev_console()
 			"--test-distract-gate":
 				ran_test = true
 				await _test_distract_gate()
@@ -1290,6 +1293,7 @@ func _run_all_tests() -> void:
 	await _test_channels_robustness()
 	await _test_chunk_robustness()
 	await _test_lure_relay_puzzle()
+	await _test_dev_console()
 	await _test_distract_gate()
 	await _test_chromatic_aberration()
 	await _test_dialogue_hold_advance()
@@ -5196,15 +5200,17 @@ func _test_curriculum_ramp() -> void:
 		mono_codes[str((it as Dictionary).get("code", ""))] = true
 	_assert_true(not mono_codes.has("stage_regression"), "A stage-ascending main line validates with no regression")
 
-	# The preview picker (the hand-authored ramp) is authored in ascending stage order.
-	var prev_preview_stage := 0
-	var preview_monotonic := true
+	# PICKER ORDER IS NOT THE RAMP. The director's policy: the most recently worked-on fragment moves
+	# to the END of PREVIEW_ENTRIES (= the TOP of the reversed picker) regardless of its stage, so a
+	# monotonic-stage assert on the picker would go red on every legitimate touch. The learning ramp
+	# itself is validated above on the campaign regions (mono.validate). Here we only guard the stage
+	# METADATA the curriculum reads (preview_stage_for): every declared stage is a sane 1..6.
 	for entry in FragmentPreviewScript.PREVIEW_ENTRIES:
+		if not (entry as Dictionary).has("stage"):
+			continue
 		var es := int((entry as Dictionary).get("stage", 1))
-		if es < prev_preview_stage:
-			preview_monotonic = false
-		prev_preview_stage = es
-	_assert_true(preview_monotonic, "The fragment preview picker is ordered along the learning ramp (ascending stage)")
+		_assert_true(es >= 1 and es <= 6,
+			"Picker entry '%s' declares a valid curriculum stage (1..6): got %d" % [str((entry as Dictionary).get("id", "?")), es])
 
 func _spotlight_approach_for_archetype(spec: Dictionary, aid: String) -> Dictionary:
 	var node_arch := {}
@@ -8572,8 +8578,14 @@ func _test_aster_sim() -> void:
 		if macabre_target != null and awards_target != null and feedback_manager != null:
 			macabre_target.call("_on_mouse_entered")
 			instance._sync_perception_shader()
-			_assert_true(feedback_manager.call("get_hovered_target") == macabre_target,
-				"Outline feedback manager owns graybox room hover state")
+			# Hover resolves to the CANONICAL node — the target's interaction delegate (its
+			# interactable) when wired, else the target itself — so the Area/body pick flip
+			# never churns the hover (outline + cursor verb hold steady).
+			var macabre_canon: Variant = macabre_target.call("get_interaction_delegate")
+			if macabre_canon == null:
+				macabre_canon = macabre_target
+			_assert_true(feedback_manager.call("get_hovered_target") == macabre_canon,
+				"Outline feedback manager owns graybox room hover state (canonical target)")
 			_assert_true(bool(macabre_target.call("has_active_mesh_outline")),
 				"Hovering a graybox room element applies the object outline shader to its meshes")
 			_assert_true(int(macabre_target.call("get_outline_shell_count")) > 0,
@@ -13472,6 +13484,81 @@ func _test_overlay_materials() -> void:
 	_assert_true(pr._mat != null and int(pr._mat.transparency) != int(BaseMaterial3D.TRANSPARENCY_ALPHA),
 		"Path ribbon material is NOT alpha-blend — got %d" % (int(pr._mat.transparency) if pr._mat != null else -1))
 	pr.queue_free()
+	await get_tree().process_frame
+	# The screen-space outline composite: three render lessons, each of which silently killed the
+	# outline in live play while every logical flag stayed true:
+	#   1. The fullscreen vertex placement MUST exist — without `POSITION = vec4(VERTEX.xy...` the 2x2
+	#      quad renders as a 2m patch at the manager's origin and the outline never draws at all.
+	#   2. It must BLEND (premul alpha), never repaint from hint_screen_texture — two screen-repaint
+	#      quads erase each other (last one wins), which killed the outline under any perception overlay.
+	#   3. It must compose ABOVE the perception overlay quad (render_priority 126).
+	var sh_code: String = (load("res://resources/screen_outline_mask.gdshader") as Shader).code
+	_assert_true(sh_code.contains("void vertex()") and sh_code.contains("POSITION = vec4(VERTEX.xy"),
+		"Outline composite has the fullscreen vertex placement (else it never draws)")
+	_assert_true(sh_code.contains("blend_premul_alpha"),
+		"Outline composite blends premultiplied (survives under perception overlays)")
+	_assert_true(not sh_code.contains("hint_screen_texture"),
+		"Outline composite does NOT repaint the screen (a screen_tex copy erases the perception quad)")
+	var omm := OutlineMaskManager.new()
+	add_child(omm)
+	await get_tree().process_frame
+	var omm_mat: ShaderMaterial = omm.get("_mask_mat")
+	_assert_true(omm_mat != null and omm_mat.render_priority > 126,
+		"Outline composite renders ABOVE the perception overlay quad (>126): got %d"
+		% (omm_mat.render_priority if omm_mat != null else -999))
+	omm.queue_free()
+	await get_tree().process_frame
+
+# --- Test: fog of war is its OWN layer + the dev console is the only in-game switch ---
+# The director's rule: turning the Aster/Peris perception views off must NOT reveal the map — fog of
+# war stands on its own, default ON; only the backtick dev console (`fog off`) or a dev surface may
+# disable it. Before the decouple, fog rode the Peris overlay state and died with it (the bug).
+func _test_dev_console() -> void:
+	_test_name = "Dev Console + Fog Of War"
+	var inst = await _instantiate_preview_chunk_and_wait("set_piece_showcase", 5)
+	if inst == null:
+		_assert_true(false, "preview instantiates for the console test")
+		return
+	var console = inst.get("_dev_console")
+	_assert_true(console != null, "Every scene builds the backtick dev console")
+	if console == null:
+		inst.queue_free()
+		return
+	_assert_true(not bool(console.is_open()), "The console starts closed")
+	console.toggle()
+	_assert_true(bool(console.is_open()), "Backtick toggle opens the console")
+	console.toggle()
+
+	# THE FOG LAW: all perception views OFF -> fog of war still renders.
+	for who in ["aster", "peris", "endo"]:
+		inst._overlay_states[who] = false
+	inst._sync_overlay_stack()
+	var mat: ShaderMaterial = inst.get("_overlay_stack_material")
+	_assert_true(inst.get("fog_of_war_enabled") == true, "Fog of war defaults ON")
+	if mat != null:
+		_assert_true(bool(mat.get_shader_parameter("fog_enabled")),
+			"Fog of war SURVIVES all perception views being off (it is not the Peris view)")
+	# Only the console turns it off...
+	var fog_line: String = console.run("fog off")
+	inst._sync_overlay_stack()
+	_assert_true(inst.get("fog_of_war_enabled") == false and fog_line.contains("off"),
+		"`fog off` in the console disables the fog of war")
+	if mat != null:
+		_assert_true(not bool(mat.get_shader_parameter("fog_enabled")),
+			"The overlay quad honors the console's fog switch")
+	console.run("fog on")
+	_assert_true(inst.get("fog_of_war_enabled") == true, "`fog on` restores it")
+
+	# fxdebug rides the console too (backtick no longer toggles it directly).
+	var prior_fx: bool = GridWorld._fx_debug
+	console.run("fxdebug on")
+	_assert_true(GridWorld._fx_debug, "`fxdebug on` enables the FX traces")
+	console.run("fxdebug off")
+	_assert_true(not GridWorld._fx_debug, "`fxdebug off` disables them")
+	GridWorld._fx_debug = prior_fx
+	var unknown_line: String = console.run("no_such_cmd")
+	_assert_true(unknown_line.contains("unknown"), "Unknown commands answer loudly")
+	inst.queue_free()
 	await get_tree().process_frame
 
 # --- Test: chunk interactables are CLICK-GATED and share the outline/glow shaders (the safeguard) ---
@@ -18432,6 +18519,37 @@ func _test_set_piece_showcase() -> void:
 	_assert_true((gs.get_position("peris") as Vector3).z > 12.5,
 		"Crawling the wall pipe carries the character THROUGH the north wall")
 
+	# A2) GROUP entry (the portal rule): a queued party lines up at the mouth, enters ONE AT A TIME
+	# (staggered by the in-tube spacing), and each member walks off to its OWN far-side slot.
+	var mouth_s = chunk.find_child("PipeMouthSouth", true, false)
+	for cid in ["peris", "aster", "endo"]:
+		inst.headless_set_character_position(cid, (anchors["pipe_south"] as Vector3) + Vector3(0.6, 0, 0))
+	var pre_speed := float(gs.characters["peris"].get("move_speed", 2.6))
+	var entry_ticks: Array = []
+	var group_done: Array = []
+	mouth_s.crawl_started.connect(func(who: String) -> void:
+		entry_ticks.append([who, gs.scheduler.get_current_tick()]))
+	mouth_s.group_crawl_finished.connect(func(ids: Array) -> void: group_done.append(ids))
+	mouth_s.start_group_crawl(["peris", "aster", "endo"])
+	inst.headless_advance(30.0, 0.1)
+	_assert_equals(entry_ticks.size(), 3, "All three queued members enter the tube")
+	if entry_ticks.size() == 3:
+		var gap_min: float = mouth_s.ENTRY_SPACING / mouth_s.crawl_speed - 0.3
+		_assert_true(float(entry_ticks[1][1]) - float(entry_ticks[0][1]) >= gap_min
+			and float(entry_ticks[2][1]) - float(entry_ticks[1][1]) >= gap_min,
+			"Entries are STAGGERED single-file (spacing gap), not simultaneous")
+	for cid in ["peris", "aster", "endo"]:
+		_assert_true((gs.get_position(cid) as Vector3).z > 12.0,
+			"%s came through with the group" % cid)
+	var pa: Vector3 = gs.get_position("peris")
+	var pb: Vector3 = gs.get_position("aster")
+	var pc: Vector3 = gs.get_position("endo")
+	_assert_true(pa.distance_to(pb) > 0.5 and pa.distance_to(pc) > 0.5 and pb.distance_to(pc) > 0.5,
+		"Members fan out to DISTINCT far-side slots (the exit never stacks)")
+	_assert_true(not group_done.is_empty(), "group_crawl_finished reports the crossing")
+	_assert_true(absf(float(gs.characters["peris"].get("move_speed", 0.0)) - pre_speed) < 0.01,
+		"Crawl speed is restored after a group crossing")
+
 	# C1) valve -> MID commits on the scheduler: floats bridge the basin
 	chunk.find_child("WaterValve", true, false)._trigger()
 	inst.headless_advance(2.0, 0.1)
@@ -18459,6 +18577,19 @@ func _test_set_piece_showcase() -> void:
 	_assert_true(bool(st_d0.get("slab_intact", false)) and bool(st_d0.get("slab_enemy_alive", false)),
 		"The weak slab starts intact with a lurker roaming beneath")
 	_assert_true(not gs.grid.is_walkable(25, 3), "The trench starts impassable")
+	# LINE OF SIGHT: the intact facade blocks it — an enemy in radial range can't see through walls
+	_assert_true(not gs.grid.has_line_of_sight(Vector3(25.5, 0, 5.8), Vector3(25.5, 0, 2.2)),
+		"The intact slab BLOCKS line of sight through it")
+	inst.headless_set_character_position("peris", Vector3(25.5, 0.0, 5.4))
+	inst.headless_advance(3.0, 0.1)
+	var lurker = chunk.find_child("SlabLurker", true, false)
+	_assert_true(lurker != null and str(lurker.get_state()) in ["roam", "idle"],
+		"A target within radial range but BEHIND the slab is never spotted (LOS gates detection)")
+	# WATER is see-over: sight crosses the basin, while the solid rim still blocks
+	_assert_true(gs.grid.has_line_of_sight(Vector3(20.5, 0, 8.5), Vector3(20.5, 0, 13.5)),
+		"Sight crosses the WATER basin (see-over terrain: impassable but transparent)")
+	_assert_true(not gs.grid.has_line_of_sight(Vector3(17.5, 0, 10.5), Vector3(20.5, 0, 10.5)),
+		"The solid basin RIM still blocks sight")
 	chunk.find_child("LooseStrut", true, false)._trigger()
 	inst.headless_advance(2.0, 0.1)
 	var st_d: Dictionary = chunk.get_preview_state()
@@ -18466,6 +18597,8 @@ func _test_set_piece_showcase() -> void:
 	_assert_true(not bool(st_d.get("slab_enemy_alive", true)), "The debris field kills the lurker beneath")
 	_assert_true(gs.grid.is_walkable(25, 3) and gs.grid.is_walkable(26, 3),
 		"The rubble fills the trench — the shortcut opens from the same strike")
+	_assert_true(gs.grid.has_line_of_sight(Vector3(25.5, 0, 5.8), Vector3(25.5, 0, 2.2)),
+		"Crumbling the facade OPENS the sightline it blocked")
 
 	# E) the MAGNET HOIST: the plate bridges the canal — but living scraps EAT it (the traversal
 	# decays); pin the swarm under the magnet and drop it in the canal, then the bridge is permanent.
@@ -20556,6 +20689,27 @@ func _test_outline_feedback_system() -> void:
 		if target.has_method("has_active_glow"):
 			_assert_true(bool(target.call("has_active_glow")),
 				"Selection lights the target's outline particles")
+
+	# CANONICAL hover: an object is TWO pickable nodes (the interactable Area + its surface-target
+	# body), and the physics pick flips between them as the camera eases. The manager must resolve
+	# both to the interactable so a flip is a NO-OP — before this, every flip unhovered (outline off,
+	# cursor verb hidden) then re-hovered, and live hover read as "no outline at all".
+	var canon_ia := Node3D.new()
+	canon_ia.name = "CanonInteractable"
+	host.add_child(canon_ia)
+	var canon_target := system.outline_meshes(host, "CanonOutline", [mesh], "canon", 1.0, {
+		"delegate": canon_ia,
+	})
+	if canon_target != null:
+		system._on_target_hovered(canon_ia)
+		_assert_true(system.get_hovered_target() == canon_ia,
+			"Hovering the interactable Area hovers the canonical node")
+		system._on_target_hovered(canon_target)
+		_assert_true(system.get_hovered_target() == canon_ia,
+			"The pick flipping to the surface-target BODY keeps the SAME canonical hover (no churn)")
+		system._on_target_unhovered(canon_target)
+		_assert_true(system.get_hovered_target() == null,
+			"Unhovering via the body releases the canonical hover")
 
 	host.queue_free()
 

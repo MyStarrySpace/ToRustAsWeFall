@@ -67,9 +67,10 @@ func _ensure_built() -> void:
 	_quad.mesh = qm
 	_mask_mat = ShaderMaterial.new()
 	_mask_mat.shader = MASK_SHADER
-	# Compose late so it reads the rendered scene, but BELOW the perception-overlay quad (render_priority 126)
-	# and the UI ribbons/ghosts/rings (127) — the outline is object feedback, not a perception layer.
-	_mask_mat.render_priority = 8
+	# Compose ABOVE the perception-overlay quad (render_priority 126): the outline is player feedback and
+	# must survive the data/fog views. Safe now that the shader is a premultiplied-alpha BLEND (it never
+	# repaints the screen, so it can't erase the perception rewrite the way the old screen_tex copy did).
+	_mask_mat.render_priority = 127
 	_mask_mat.set_shader_parameter("mask_tex", _sub.get_texture())
 	_mask_mat.set_shader_parameter("glow_mask_tex", _glow_sub.get_texture())
 	_mask_mat.set_shader_parameter("thickness", thickness)

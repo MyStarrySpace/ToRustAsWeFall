@@ -14,6 +14,9 @@ extends Node
 ## Selection is UI pacing: it mutates no game state and emits ZERO EventLog entries (only the resulting
 ## move/interaction does). Box-select math is camera.unproject_position(world_pos) + rect.has_point() —
 ## the Phylactory pattern — so headless tests drive headless_pick / headless_box_select display-free.
+## The world_pos is the character's RENDER position (get_render_position), so on a warped scene (the
+## channels helix, where the data layer stays flat but bodies render on the spiral via coord_map) the
+## marquee hugs the VISIBLE bodies. It's identity on flat scenes, so they're unchanged.
 
 const DRAG_THRESHOLD := 10.0       # px — click vs box-drag (Phylactory CLICK_DRAG_PIXEL_THRESHOLD)
 const PICK_SCREEN_RADIUS := 56.0   # px — how near a single click must land to pick a character
@@ -114,7 +117,7 @@ func _commit_pick(screen_pos: Vector2) -> void:
 	var best := ""
 	var best_d := PICK_SCREEN_RADIUS
 	for id in _selectable_ids():
-		var d := cam.unproject_position(_game_state.get_position(id)).distance_to(screen_pos)
+		var d := cam.unproject_position(_game_state.get_render_position(id)).distance_to(screen_pos)
 		if d < best_d:
 			best_d = d
 			best = id
@@ -130,7 +133,7 @@ func _commit_box_select(rect: Rect2) -> void:
 		return
 	var inside: Array[String] = []
 	for id in _selectable_ids():
-		if rect.has_point(cam.unproject_position(_game_state.get_position(id))):
+		if rect.has_point(cam.unproject_position(_game_state.get_render_position(id))):
 			inside.append(id)
 	if inside.is_empty():
 		_deselect_extras()

@@ -186,8 +186,11 @@ CONTROL with another piece's EFFECT, per the verbatim rule above.
 `set_piece_showcase` (fragment picker: "Set Pieces — crawl / rotate / water") — one bay per set
 piece, mechanics live on the data layer (scheduler-driven, replay-safe, fast-forward invariant):
 
-- **Bay A — crawl pipes:** a pipe with two ENTRANCE mouths; click a mouth, the character ducks in
-  and traverses inside the pipe (slowed, concealed while inside) and exits at the other mouth.
+- **Bay A — crawl pipes:** a pipe with two ENTRANCE mouths (`CrawlTunnel`, the reusable object);
+  click a mouth, the character ducks in and traverses inside the pipe (slowed, concealed while
+  inside) and exits at the other mouth. **The PORTAL RULE (director):** a queued PARTY lines up at
+  the mouth and enters ONE AT A TIME — staggered by the in-tube spacing so the tube stays
+  single-file — and each member walks off to its own far-side slot so the exit never stacks.
 - **Bay B — rotating pipe:** a cross-shaped pipe hub with a PUSH WHEEL; each push rotates the hub
   90°; only when its bend connects the two fixed stubs does the crawl route through it open.
 - **Bay C — water basin:** a valve console cycles the basin water level LOW/MID/HIGH; water cells

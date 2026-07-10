@@ -219,12 +219,10 @@ func _build_crawl_pipe() -> void:
 	_add_pipe_segment(self, south, north, 0.75, "CrawlPipe")
 	_add_pipe_mouth(self, south, Vector3(0, 0, 1), "CrawlPipeMouthS")
 	_add_pipe_mouth(self, north, Vector3(0, 0, 1), "CrawlPipeMouthN")
-	var ia_s := _add_interactable(self, "PipeMouthSouth", "Crawl through the wall pipe", Vector3(4.5, 0.5, 8.2),
-		"CRAWL IN", "", 1.0, false, 1.4, Interactable.InteractableType.INSPECTION, true)
-	ia_s.interacted.connect(func() -> void: _start_crawl(ia_s, [Vector3(4.5, 0.0, 9.2), Vector3(4.5, 0.0, 13.8)]))
-	var ia_n := _add_interactable(self, "PipeMouthNorth", "Crawl through the wall pipe", Vector3(4.5, 0.5, 13.8),
-		"CRAWL IN", "", 1.0, false, 1.4, Interactable.InteractableType.INSPECTION, true)
-	ia_n.interacted.connect(func() -> void: _start_crawl(ia_n, [Vector3(4.5, 0.0, 12.8), Vector3(4.5, 0.0, 8.2)]))
+	_add_crawl_tunnel("PipeMouthSouth", "Crawl through the wall pipe", Vector3(4.5, 0.5, 8.2),
+		[Vector3(4.5, 0.0, 9.2), Vector3(4.5, 0.0, 13.8)], 1.4)
+	_add_crawl_tunnel("PipeMouthNorth", "Crawl through the wall pipe", Vector3(4.5, 0.5, 13.8),
+		[Vector3(4.5, 0.0, 12.8), Vector3(4.5, 0.0, 8.2)], 1.4)
 
 # B) the ROTATING PIPE hub through the yard divider at z=5.5
 func _build_rotating_hub() -> void:
@@ -267,12 +265,10 @@ func _build_rotating_hub() -> void:
 	_outline_interactable_child(wheel, wmesh, "HubWheel", 1.5)
 	wheel.interacted.connect(_on_wheel_pushed)
 	# the hub's own crawl mouths — enabled only when ALIGNED
-	var ia_w := _add_interactable(self, "HubMouthWest", "Crawl the aligned pipe", Vector3(15.0, 0.5, 5.5),
-		"CRAWL IN", "", 1.0, false, 1.3, Interactable.InteractableType.INSPECTION, true)
-	ia_w.interacted.connect(func() -> void: _start_crawl(ia_w, [Vector3(15.4, 0.0, 5.5), Vector3(19.2, 0.0, 5.5)]))
-	var ia_e := _add_interactable(self, "HubMouthEast", "Crawl the aligned pipe", Vector3(19.0, 0.5, 5.5),
-		"CRAWL IN", "", 1.0, false, 1.3, Interactable.InteractableType.INSPECTION, true)
-	ia_e.interacted.connect(func() -> void: _start_crawl(ia_e, [Vector3(18.6, 0.0, 5.5), Vector3(14.8, 0.0, 5.5)]))
+	var ia_w := _add_crawl_tunnel("HubMouthWest", "Crawl the aligned pipe", Vector3(15.0, 0.5, 5.5),
+		[Vector3(15.4, 0.0, 5.5), Vector3(19.2, 0.0, 5.5)], 1.3)
+	var ia_e := _add_crawl_tunnel("HubMouthEast", "Crawl the aligned pipe", Vector3(19.0, 0.5, 5.5),
+		[Vector3(18.6, 0.0, 5.5), Vector3(14.8, 0.0, 5.5)], 1.3)
 	_mouth_nodes["HubMouthWest"] = ia_w
 	_mouth_nodes["HubMouthEast"] = ia_e
 	_refresh_hub_mouths()
@@ -592,23 +588,35 @@ func _ensure_runtime() -> void:
 	_apply_bridge_blockers()
 	_apply_slab_blockers()
 	_apply_canal_blockers()
-	# the PEN enemy — roams its shelf; drowns at HIGH
-	_pen_enemy = _spawn_lurker("pen_lurker", "PenLurker", Vector3(27.0, 0.0, 10.5), 0.9)
-	# the SLAB enemy — roams beneath the weak facade; the crumble field resolves over its roam disc
-	_slab_enemy = _spawn_lurker("slab_lurker", "SlabLurker", Vector3(25.5, 0.0, 2.2), 0.7)
-	# the SCRAP swarm — iron-laden strippers roaming the hoist's east bank (they eat placed plates)
+	# WATER is see-over terrain: it blocks movement (WALL tiles / dynamic blockers) but never sight —
+	# an enemy across the basin or canal can still spot you at range
+	for wx in range(20, 28):
+		for wz in range(9, 13):
+			if not gs.grid.is_walkable(wx, wz):
+				gs.grid.add_sight_transparent(Vector2i(wx, wz))
+	for cc in CANAL_CELLS:
+		gs.grid.add_sight_transparent(cc as Vector2i)
+	for cx2 in range(14, 17):
+		for cz2 in range(17, 22):
+			gs.grid.add_sight_transparent(Vector2i(cx2, cz2))
+	# the PEN enemy — roams its shelf; drowns at HIGH (sees ACROSS the water it stands in)
+	_pen_enemy = _spawn_lurker("pen_lurker", "PenLurker", Vector3(27.0, 0.0, 10.5), 0.9, 3.5)
+	# the SLAB enemy — roams beneath the weak facade; the intact slab BLOCKS its line of sight
+	_slab_enemy = _spawn_lurker("slab_lurker", "SlabLurker", Vector3(25.5, 0.0, 2.2), 0.7, 4.0)
+	# the SCRAP swarm — iron-laden strippers roaming the hoist's east bank (they eat placed plates);
+	# short-sighted fodder, but the canal doesn't hide you from them (water is see-over)
 	_scraps = [
-		_spawn_lurker("scrap_a", "ScrapA", Vector3(21.2, 0.0, 19.2), 1.1),
-		_spawn_lurker("scrap_b", "ScrapB", Vector3(22.0, 0.0, 20.0), 1.1),
+		_spawn_lurker("scrap_a", "ScrapA", Vector3(21.2, 0.0, 19.2), 1.1, 2.8),
+		_spawn_lurker("scrap_b", "ScrapB", Vector3(22.0, 0.0, 20.0), 1.1, 2.8),
 	]
 
-func _spawn_lurker(id: String, node_name: String, anchor: Vector3, roam_r: float) -> Node:
+func _spawn_lurker(id: String, node_name: String, anchor: Vector3, roam_r: float, detect := 3.5) -> Node:
 	var gs = _get_game_state()
 	var enemy = EnemyScript.new()
 	enemy.name = node_name
 	enemy.position = anchor
 	enemy.move_speed = 1.3
-	enemy.detection_range = 3.5
+	enemy.detection_range = detect
 	enemy.char_id = id
 	enemy.game_state = gs
 	enemy._detection_targets.assign(PARTY_IDS)
@@ -631,8 +639,10 @@ func _apply_slab_blockers() -> void:
 	for sc in [Vector2i(24, 4), Vector2i(25, 4), Vector2i(26, 4)]:
 		if _slab_intact:
 			gs.grid.add_dynamic_blocker(sc, "weak_slab")
-		else:
+			gs.grid.add_sight_blocker(sc)     # the intact facade blocks LINE OF SIGHT too —
+		else:                                 # crumbling it opens the sightline both ways
 			gs.grid.remove_dynamic_blocker(sc)
+			gs.grid.clear_sight_blocker(sc)
 
 func reset_preview_state() -> void:
 	_water_level = LEVEL_LOW
@@ -699,42 +709,31 @@ func _refresh_hub_mouths() -> void:
 
 # --- set pieces A/B: the crawl -----------------------------------------------------------------
 
-func _start_crawl(ia: Area3D, waypoints: Array) -> void:
-	var id := str(ia.active_character)
-	if id == "":
-		id = str(_get_active_character())
-	if id == "" or _crawling.get(id, false):
-		return
-	var gs = _get_game_state()
-	var sched = _get_scheduler()
-	if gs == null or sched == null or not gs.characters.has(id):
-		return
-	_crawling[id] = true
-	var prior := 2.6
-	var cd: Variant = gs.characters.get(id)
-	if cd is Dictionary and (cd as Dictionary).has("move_speed"):
-		prior = float((cd as Dictionary)["move_speed"])
-	gs.command_stop(id)
-	gs.set_character_concealment(id, gs.CONCEAL_FULL)   # concealed while inside the tube
-	gs.change_move_speed(id, CRAWL_SPEED)
-	# an AUTHORED timed path — the pipe interior deliberately ignores the grid (the wall cells stay
-	# blocked; the crawl is the only way through). Tick-interpolated, so it fast-forwards and replays
-	# like every other move; the trigger re-derives it on replay.
-	var path: Array[Vector3] = [gs.get_position(id) as Vector3]
-	var total := 0.0
-	for wp in waypoints:
-		total += path[path.size() - 1].distance_to(wp as Vector3)
-		path.append(wp as Vector3)
-	gs._start_movement(id, path)
-	sched.schedule_after(total / CRAWL_SPEED + 0.1, func() -> void: _end_crawl(id, prior), "crawl_%s" % id)
+## Place a CrawlTunnel mouth (the reusable squeeze-through object). It owns the crawl mechanics —
+## conceal + slow + authored path + PORTAL-STYLE group queueing (the whole selection lines up and
+## enters one by one). The chunk just tracks who's inside for get_preview_state.
+func _add_crawl_tunnel(tunnel_name: String, description: String, mouth: Vector3,
+		waypoints: Array, radius: float) -> CrawlTunnel:
+	var ct := CrawlTunnel.new()
+	ct.name = tunnel_name
+	ct.description = description
+	ct.tutorial_label = "CRAWL IN"
+	ct.configure(_get_game_state(), mouth, waypoints, radius, CRAWL_SPEED)
+	ct.set_group_provider(_selected_party_ids)
+	add_child(ct)
+	_register_interactable(ct)
+	ct.crawl_started.connect(func(who: String) -> void: _crawling[who] = true)
+	ct.crawl_finished.connect(func(who: String) -> void: _crawling.erase(who))
+	_auto_outline_interactable(ct, self, mouth, radius)
+	if "_outline_target" in ct and ct.get("_outline_target") == null:
+		call_deferred("_auto_outline_interactable", ct, self, mouth, radius)
+	return ct
 
-func _end_crawl(id: String, prior_speed: float) -> void:
-	var gs = _get_game_state()
-	if gs == null:
-		return
-	gs.change_move_speed(id, prior_speed)
-	gs.set_character_concealment(id, gs.CONCEAL_NONE)
-	_crawling.erase(id)
+## The host's live selection (the crawl group provider — a click queues whoever is selected).
+func _selected_party_ids() -> Array:
+	if host != null and host.has_method("get_preview_selected_characters"):
+		return host.call("get_preview_selected_characters")
+	return []
 
 # --- set piece C: the water level ----------------------------------------------------------------
 

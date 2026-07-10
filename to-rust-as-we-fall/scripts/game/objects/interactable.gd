@@ -351,6 +351,13 @@ func _resolve_dialogue_key() -> String:
 		return dialogue_key
 	return ""
 
+## The one-line ACTION VERB shown above the mouse while this interactable is hovered (the cursor
+## verb, drawn by OutlineFeedbackManager). Same text the 3D tutorial hint uses.
+func get_action_verb() -> String:
+	if _used or not interaction_enabled:
+		return ""
+	return InputLabels.expand(tutorial_label) if tutorial_label != "" else InputLabels.action_label("command")
+
 func show_tutorial_label() -> void:
 	set_process(true)  # the label pulse is per-frame work
 	if _tutorial_label_3d and interaction_enabled:

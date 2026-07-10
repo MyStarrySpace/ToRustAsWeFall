@@ -67,19 +67,81 @@ func get_hovered_target() -> Node:
 func get_selected_target() -> Node:
 	return selected_target
 
+## An object is TWO pickable nodes — the meshless Interactable Area and its OutlineSurfaceTarget
+## body wrapping the visible meshes — and the physics pick flips between them as the camera eases.
+## Resolve every hover to the CANONICAL node (the surface target's interaction delegate, i.e. the
+## interactable) so a flip is a no-op: no unhover/rehover churn, the outline holds, the cursor verb
+## doesn't flicker out whenever the body wins the ray.
+func _canonical_target(target: Node) -> Node:
+	if target != null and is_instance_valid(target) and target.has_method("get_interaction_delegate"):
+		var delegate = target.call("get_interaction_delegate")
+		if delegate is Node and is_instance_valid(delegate):
+			return delegate
+	return target
+
 func _on_target_hovered(target: Node) -> void:
-	if hovered_target == target:
+	var canon := _canonical_target(target)
+	if hovered_target == canon:
 		return
 	if hovered_target != null and is_instance_valid(hovered_target):
 		_set_hover_feedback(hovered_target, false)
-	hovered_target = target
-	_set_hover_feedback(target, true)
+	hovered_target = canon
+	_set_hover_feedback(canon, true)
+	_show_cursor_verb(canon)
 
 func _on_target_unhovered(target: Node) -> void:
-	if hovered_target != target:
+	if hovered_target != _canonical_target(target):
 		return
-	_set_hover_feedback(target, false)
+	if hovered_target != null and is_instance_valid(hovered_target):
+		_set_hover_feedback(hovered_target, false)
 	hovered_target = null
+	_hide_cursor_verb()
+
+# --- the CURSOR VERB: the hovered interactable's action verb, ONE line, riding above the mouse.
+# Cosmetic UI (wall-clock per-frame follow is fine — it renders, it never touches game state). ---
+
+var _cursor_verb: Label = null
+
+func _ensure_cursor_verb() -> void:
+	if _cursor_verb != null and is_instance_valid(_cursor_verb):
+		return
+	var layer := CanvasLayer.new()
+	layer.name = "CursorVerbLayer"
+	layer.layer = 60
+	add_child(layer)
+	_cursor_verb = Label.new()
+	_cursor_verb.name = "CursorVerb"
+	_cursor_verb.add_theme_font_size_override("font_size", 15)
+	_cursor_verb.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0))
+	_cursor_verb.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	_cursor_verb.add_theme_constant_override("outline_size", 6)
+	_cursor_verb.visible = false
+	layer.add_child(_cursor_verb)
+
+func _show_cursor_verb(target: Node) -> void:
+	_ensure_cursor_verb()
+	var verb := ""
+	if target != null and is_instance_valid(target) and target.has_method("get_action_verb"):
+		verb = str(target.call("get_action_verb"))
+	_cursor_verb.text = verb
+	_cursor_verb.visible = verb != ""
+	if _cursor_verb.visible:
+		set_process(true)
+		_follow_mouse()
+
+func _hide_cursor_verb() -> void:
+	if _cursor_verb != null and is_instance_valid(_cursor_verb):
+		_cursor_verb.visible = false
+	set_process(false)
+
+func _process(_delta: float) -> void:
+	_follow_mouse()
+
+func _follow_mouse() -> void:
+	if _cursor_verb == null or not is_instance_valid(_cursor_verb) or not _cursor_verb.visible:
+		return
+	var mp := get_viewport().get_mouse_position()
+	_cursor_verb.position = mp + Vector2(-_cursor_verb.size.x * 0.5, -_cursor_verb.size.y - 14.0)
 
 func _on_target_selected(target: Node) -> void:
 	if target == null:
