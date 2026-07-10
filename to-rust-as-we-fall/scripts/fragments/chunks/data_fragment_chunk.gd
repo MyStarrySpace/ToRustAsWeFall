@@ -84,6 +84,95 @@ func _build_environment() -> void:
 	# owns scene nodes. Shell gets the tinted atlas material; window quads keep their emissive surface.
 	for lp in fragment.params.get("lathe_buildings", []):
 		_spawn_lathe_building(lp as Dictionary)
+	# LANDMARK hero plans (params-driven, from the building filler): BaseShapeBuilder specs placed by
+	# their gameplay anchors — the main door road-snapped to the street. Bridges between them are
+	# already grid data + filler boxes; here we assemble the hero's own meshes.
+	for lm in fragment.params.get("landmark_buildings", []):
+		_spawn_landmark_building(lm as Dictionary)
+
+func _spawn_landmark_building(lm: Dictionary) -> void:
+	var kind := str(lm.get("kind", ""))
+	if not BaseShapeBuilder.SPECS.has(kind):
+		return
+	var spec: Dictionary = BaseShapeBuilder.generate(kind)
+	var ent: Dictionary = LatticeBuilder.entrances(spec)
+	var root := Node3D.new()
+	root.name = "Landmark_%s" % kind
+	add_child(root)
+	root.position = _v3(lm, "pos")
+	root.rotation = Vector3(0.0, float(lm.get("yaw", 0.0)), 0.0)
+	var body := BaseShapeBuilder.base_mesh(spec, ent.get("reserved", []))
+	if body != null:
+		body.surface_set_material(0, _tinted_tile_material(str(spec.get("tile", "facility_metal")),
+			spec.get("color", Color(0.4, 0.4, 0.42))))
+		var bi := MeshInstance3D.new()
+		bi.name = "Body"
+		bi.mesh = body
+		root.add_child(bi)
+	# entrance meshes (stone surround + dark/teal leaves)
+	var mats := {"stone": _tinted_tile_material("facility_metal", Color(0.66, 0.62, 0.50))}
+	var darkm := StandardMaterial3D.new()
+	darkm.albedo_color = Color(0.05, 0.05, 0.06)
+	var tealm := StandardMaterial3D.new()
+	tealm.albedo_color = Color(0.10, 0.28, 0.30)
+	tealm.emission_enabled = true
+	tealm.emission = Color(0.22, 0.82, 0.86)
+	mats["dark"] = darkm
+	mats["accent"] = tealm
+	for mk in ["stone", "dark", "accent"]:
+		var em: Variant = ent.get(mk)
+		if em != null and (em as ArrayMesh).get_surface_count() > 0:
+			var ei := MeshInstance3D.new()
+			ei.name = "Ent%s" % mk.capitalize()
+			ei.mesh = em
+			ei.material_override = mats[mk]
+			root.add_child(ei)
+	# the district glass: emissive per-pane vertex colour on a plain material (no shader dependency)
+	var glassm := StandardMaterial3D.new()
+	glassm.vertex_color_use_as_albedo = true
+	glassm.emission_enabled = true
+	glassm.emission = Color(1.0, 0.75, 0.4)
+	glassm.emission_energy_multiplier = 0.8
+	match str(spec.get("lattice", "")):
+		"voronoi":
+			var vor: Dictionary = LatticeBuilder.voronoi(spec.get("size", Vector3(4.2, 5.2, 3.6)), {"reserved": ent.get("reserved", [])})
+			var vm := MeshInstance3D.new()
+			vm.name = "VoronoiMembrane"
+			vm.mesh = vor["frame"]
+			vm.material_override = _tinted_tile_material("facility_metal", Color(0.72, 0.70, 0.66))
+			vm.visibility_range_end = float(vor.get("lod_switch", 30.0))
+			vm.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+			root.add_child(vm)
+			for fd in (vor["faces"] as Array):
+				var f := fd as Dictionary
+				var quad := MeshInstance3D.new()
+				quad.name = "VoronoiFar"
+				var qm := QuadMesh.new()
+				qm.size = Vector2(float(f["w"]), float(f["h"]))
+				quad.mesh = qm
+				var fm := StandardMaterial3D.new()
+				fm.albedo_texture = f["tex"]
+				fm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+				fm.alpha_scissor_threshold = 0.4
+				quad.material_override = fm
+				var n3 := f["n"] as Vector3
+				quad.transform = Transform3D(Basis(f["u"] as Vector3, Vector3.UP, n3), (f["c"] as Vector3) + n3 * 0.06)
+				quad.visibility_range_begin = float(vor.get("lod_switch", 30.0))
+				quad.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+				root.add_child(quad)
+		"honeyframe":
+			var ov := {"reserved": ent.get("reserved", [])}
+			var built: Dictionary = LatticeBuilder.honeyframe_tiered(spec, ov) if int(spec.get("tiers", 1)) > 1 \
+				else LatticeBuilder.honeyframe(spec.get("size", Vector3(4.5, 8.0, 5.5)), ov)
+			for pair in [["frame", null], ["glass", glassm]]:
+				var mm: Variant = built.get(str((pair as Array)[0]))
+				if mm == null or (mm as ArrayMesh).get_surface_count() == 0:
+					continue
+				var mi2 := MeshInstance3D.new()
+				mi2.name = "Honey%s" % str((pair as Array)[0]).capitalize()
+				mi2.mesh = mm
+				mi2.material_override = (pair as Array)[1] if (pair as Array)[1] != null else _tinted_tile_material("facility_metal", Color(0.72, 0.69, 0.58))
+				root.add_child(mi2)
 
 func _spawn_lathe_building(lp: Dictionary) -> void:
 	var profile: Dictionary = LatheBuilderScript.make_profile(lp)

@@ -3154,6 +3154,66 @@ func _test_shape_grammar() -> void:
 		sigs[str(f.grid.get("walkable_cells"))] = true
 	_assert_true(sigs.size() >= 10, "the seed drives layout: %d distinct footprints over 16 seeds" % sigs.size())
 
+	# --- LANDMARKS consume gameplay anchors (docs/SET_PIECES.md): the pure bridge planner first ---
+	var Filler = load("res://scripts/generation/building_filler.gd")
+	var syn_walk := {}
+	for wx in range(3, 10):
+		syn_walk[Vector2i(wx, 5)] = true
+	var lm_a := {"sockets": [{"pos": [3.0, 4.2, 8.25], "dir": [1.0, 0.0, 0.0]}]}
+	var lm_b := {"sockets": [{"pos": [15.0, 4.0, 8.25], "dir": [-1.0, 0.0, 0.0]}]}
+	var bp: Dictionary = Filler.plan_bridge(lm_a, lm_b, syn_walk, Vector3.ZERO, 1.5, 4.0)
+	_assert_true(not bp.is_empty(), "facing ledge sockets over a clear street lane plan a bridge")
+	_assert_equals(int(bp.get("level", 0)), 1, "the deck snaps to the level plane")
+	_assert_true((bp.get("cells", []) as Array).size() >= 2 and (bp.get("links", []) as Array).size() == 2,
+		"the plan carries deck cells + a ladder link at each end")
+	var lm_c := {"sockets": [{"pos": [15.0, 4.0, 8.25], "dir": [1.0, 0.0, 0.0]}]}   # facing AWAY
+	_assert_true(Filler.plan_bridge(lm_a, lm_c, syn_walk, Vector3.ZERO, 1.5, 4.0).is_empty(),
+		"sockets facing away never bridge")
+
+	# --- integration: find a seed that places landmarks; the road connector must meet the street ---
+	var lm_frag = null
+	for seed2 in range(1, 25):
+		var f2 = Grammar.generate(seed2)
+		if (f2.params.get("landmark_buildings", []) as Array).size() >= 1:
+			lm_frag = f2
+			break
+	_assert_true(lm_frag != null, "the district places landmark heroes (within 24 seeds)")
+	if lm_frag != null:
+		var g2: GridWorld = GridWorld.from_data(lm_frag.grid)
+		var doors_ok := true
+		for lme in (lm_frag.params.get("landmark_buildings", []) as Array):
+			var lmd := lme as Dictionary
+			var dc: Array = lmd.get("door_cell", [0, 0])
+			var sd: Array = lmd.get("street", [0, 1])
+			var reach := false
+			var probe := Vector2i(int(dc[0]), int(dc[1]))
+			for step3 in range(4):
+				probe += Vector2i(int(sd[0]), int(sd[1]))
+				if g2.is_walkable(probe.x, probe.y):
+					reach = true
+					break
+			doors_ok = doors_ok and reach
+		_assert_true(doors_ok, "every landmark's MAIN door reaches walkable street along its road connector")
+		var det = Grammar.generate(int(lm_frag.params.get("grammar_seed", 1)))
+		_assert_equals(str(det.params.get("landmark_buildings", [])), str(lm_frag.params.get("landmark_buildings", [])),
+			"landmark placement is deterministic")
+		# when the pair bridges: the deck cells are level-allowed and both ladder links traverse
+		var bridges: Array = lm_frag.params.get("landmark_bridges", [])
+		if not bridges.is_empty():
+			var bd := bridges[0] as Dictionary
+			var lvl := int(bd["level"])
+			var deck_ok := true
+			for dcell in (bd["cells"] as Array):
+				if not g2.is_walkable(int((dcell as Array)[0]), int((dcell as Array)[1]), {}, {}, lvl):
+					deck_ok = false
+			_assert_true(deck_ok, "bridge deck cells are walkable on their level")
+			var links_ok := true
+			for lcell in (bd["links"] as Array):
+				var lv := Vector2i(int((lcell as Array)[0]), int((lcell as Array)[1]))
+				if not g2.can_traverse_link(lv, 0, lvl):
+					links_ok = false
+			_assert_true(links_ok, "both bridge ladders traverse street level <-> deck level")
+
 	# --- connectivity: spawn reaches the exit shelter on the emitted grid, every seed (the exit may
 	# sit on an upper floor now — route with the multi-level A* to its declared level) ---
 	var all_connected := true

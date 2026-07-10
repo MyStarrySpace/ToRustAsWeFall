@@ -118,6 +118,25 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 			var ca: Vector2i = a["cell"]; var cb: Vector2i = b["cell"]
 			return ca.y * 10000 + ca.x < cb.y * 10000 + cb.x)
 
+	# LANDMARK buildings (the architecture->puzzle hookup, docs/SET_PIECES.md): the two biggest
+	# street-adjacent lots become BaseShapeBuilder heroes whose gameplay anchors the level CONSUMES —
+	# the main-door ROAD connector snaps the building's facing to its street (an approach is carved if
+	# needed), and facing BRIDGE connectors between the pair span a walkable deck (level cells + ladder
+	# links appended to the grid — real traversal, not scenery).
+	var landmarks: Array = []
+	var bridge_plans: Array = []
+	if bool(opts.get("landmarks", true)):
+		var lm := _plan_landmarks(seed_value, lots, walk, origin, cs, w, h, frag, grid)
+		landmarks = lm["landmarks"]
+		bridge_plans = lm["bridges"]
+		var consumed: Dictionary = lm["consumed"]
+		if not consumed.is_empty():
+			var kept_lots: Array = []
+			for li in range(lots.size()):
+				if not consumed.has(li):
+					kept_lots.append(lots[li])
+			lots = kept_lots
+
 	# The macro fields — LOW frequency = broad districts; per-lot hash handles the micro layer.
 	var f_height := _field(seed_value, "bld:height", 0.030)
 	var f_pal := _field(seed_value, "bld:palette", 0.022)
@@ -292,7 +311,205 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 			_emit_viaduct(frag, via_plans[vi], origin, cs, w, h, DECK_TOP + 0.9 * float(vi), stats_v)
 
 	return {"buildings": out_lots.size(), "boxes": frag.walls.size() - boxes_before,
-		"props": prop_count, "viaducts": via_plans.size(), "lathes": lathes, "lots": out_lots}
+		"props": prop_count, "viaducts": via_plans.size(), "lathes": lathes, "lots": out_lots,
+		"landmarks": landmarks, "bridges": bridge_plans}
+
+# --- LANDMARKS: BaseShapeBuilder heroes whose gameplay anchors the level consumes ------------------
+
+const LANDMARK_KINDS := ["bulwark_wharf", "tiered_terrace"]   # box-based, both fit 3x3-cell lots
+const BRIDGE_MIN_SPAN := 3.0
+const BRIDGE_MAX_SPAN := 16.0
+const BRIDGE_LEVEL_TOL := 1.4    # a socket may sit this far off a level plane and still snap to it
+
+# Pick up to two big street-adjacent lots, orient each landmark's MAIN door to its street (the road
+# connector), carve the approach, and bridge the pair's facing ledge sockets when the lane is clear.
+static func _plan_landmarks(seed_value: int, lots: Array, walk: Dictionary, origin: Vector3, cs: float,
+		w: int, h: int, frag: Fragment, grid: Dictionary) -> Dictionary:
+	var out := {"landmarks": [], "bridges": [], "consumed": {}}
+	var cands: Array = []
+	for li in range(lots.size()):
+		var lot := lots[li] as Dictionary
+		if int(lot["gx"]) >= 3 and int(lot["gz"]) >= 3 and int(lot["dist"]) <= 3:
+			cands.append(li)
+	if cands.is_empty():
+		return out
+	var rng := _rng(seed_value, "bld:landmarks")
+	var first := int(cands[0])
+	var second := -1
+	# prefer a second lot sharing a row/column band with the first (a bridge needs alignment) at a
+	# bridgeable range; fall back to the nearest other candidate
+	var fc: Vector2i = (lots[first] as Dictionary)["cell"]
+	var best_score := 1.0e9
+	for ci in cands:
+		if int(ci) == first:
+			continue
+		var cc: Vector2i = (lots[int(ci)] as Dictionary)["cell"]
+		var d := Vector2(fc.x - cc.x, fc.y - cc.y).length() * cs
+		if d < BRIDGE_MIN_SPAN or d > BRIDGE_MAX_SPAN + 6.0:
+			continue
+		var aligned := mini(absi(cc.x - fc.x), absi(cc.y - fc.y))
+		var score := float(aligned) * 100.0 + d
+		if score < best_score:
+			best_score = score
+			second = int(ci)
+	var picks: Array = [first] if second < 0 else [first, second]
+	var kind0 := str(LANDMARK_KINDS[_ri(rng, 0, LANDMARK_KINDS.size() - 1)])
+	for pi in range(picks.size()):
+		var li2 := int(picks[pi])
+		out["consumed"][li2] = true
+		var lot2 := lots[li2] as Dictionary
+		var lc: Vector2i = lot2["cell"]
+		var gx := int(lot2["gx"])
+		var gz := int(lot2["gz"])
+		var kind := kind0 if pi == 0 else str(LANDMARK_KINDS[(LANDMARK_KINDS.find(kind0) + 1) % LANDMARK_KINDS.size()])
+		var spec: Dictionary = BaseShapeBuilder.generate(kind)
+		var ent: Dictionary = LatticeBuilder.entrances(spec)
+		var anchors: Dictionary = BaseShapeBuilder.gameplay_anchors(spec, ent)
+		var sdir := _street_dir(lc, gx, gz, walk, w, h)
+		var yaw := atan2(float(sdir.x), float(sdir.y))   # rotate the spec's +Z (main door) onto the street
+		var pos := Vector3(origin.x + (float(lc.x) + float(gx) * 0.5) * cs, 0.0,
+			origin.z + (float(lc.y) + float(gz) * 0.5) * cs)
+		var basis := Basis(Vector3.UP, yaw)
+		# the ROAD connector: the main door's threshold — carve the approach out to the street
+		var door_w := pos
+		for a in (anchors.get("connectors", []) as Array):
+			var ad := a as Dictionary
+			if str(ad["kind"]) == "road" and bool(ad.get("main", false)):
+				door_w = pos + basis * (ad["pos"] as Vector3)
+		var door_cell := Vector2i(int(floor((door_w.x - origin.x) / cs)), int(floor((door_w.z - origin.z) / cs)))
+		var approach: Array = []
+		var ac := door_cell
+		for step in range(6):
+			ac += sdir
+			if ac.x < 0 or ac.x >= w or ac.y < 0 or ac.y >= h:
+				break
+			if walk.has(ac):
+				break
+			approach.append([ac.x, ac.y])
+			walk[ac] = true
+			_carve_walkable(grid, ac)
+			# a visible road APRON over the carved cell
+			frag.walls.append({"pos": Vector3(origin.x + (float(ac.x) + 0.5) * cs, 0.03, origin.z + (float(ac.y) + 0.5) * cs),
+				"size": Vector3(cs, 0.06, cs), "color": Color(0.17, 0.18, 0.20)})
+		# world-space bridge sockets for the pairing pass
+		var socks: Array = []
+		for a2 in (anchors.get("connectors", []) as Array):
+			var ad2 := a2 as Dictionary
+			if str(ad2["kind"]) == "bridge":
+				var wp := pos + basis * (ad2["pos"] as Vector3)
+				var wd := basis * (ad2["dir"] as Vector3)
+				socks.append({"pos": [wp.x, wp.y, wp.z], "dir": [wd.x, wd.y, wd.z]})
+		(out["landmarks"] as Array).append({"kind": kind, "pos": [pos.x, pos.y, pos.z], "yaw": yaw,
+			"street": [sdir.x, sdir.y], "door_cell": [door_cell.x, door_cell.y], "approach": approach,
+			"sockets": socks})
+	# the BRIDGE: first facing, level-snappable, clear-laned socket pair between the two landmarks
+	if (out["landmarks"] as Array).size() == 2:
+		var plan := plan_bridge((out["landmarks"] as Array)[0] as Dictionary,
+			(out["landmarks"] as Array)[1] as Dictionary, walk, origin, cs,
+			float(grid.get("level_height", 4.0)))
+		if not plan.is_empty():
+			(out["bridges"] as Array).append(plan)
+			_apply_bridge_to_grid(grid, plan)
+			_emit_bridge(frag, plan, origin, cs)
+	return out
+
+## PURE bridge planner (unit-testable): the first pair of near-axis-aligned, mutually FACING bridge
+## sockets that snaps to a level plane and whose lane crosses only STREET cells. Returns {} or
+## {"a", "b", "level", "y", "cells", "links"}.
+static func plan_bridge(lm_a: Dictionary, lm_b: Dictionary, walk: Dictionary, origin: Vector3,
+		cs: float, lh: float) -> Dictionary:
+	for sa in (lm_a.get("sockets", []) as Array):
+		var pa := _arr3(sa as Dictionary, "pos")
+		var da := _arr3(sa as Dictionary, "dir")
+		for sb in (lm_b.get("sockets", []) as Array):
+			var pb := _arr3(sb as Dictionary, "pos")
+			var db := _arr3(sb as Dictionary, "dir")
+			if da.dot(db) > -0.5:
+				continue   # not facing each other
+			var lvl := int(round(((pa.y + pb.y) * 0.5) / lh))
+			if lvl < 1 or absf(pa.y - float(lvl) * lh) > BRIDGE_LEVEL_TOL or absf(pb.y - float(lvl) * lh) > BRIDGE_LEVEL_TOL:
+				continue
+			var axis_x := absf(pb.x - pa.x) >= absf(pb.z - pa.z)
+			var lateral := absf(pb.z - pa.z) if axis_x else absf(pb.x - pa.x)
+			var span := absf(pb.x - pa.x) if axis_x else absf(pb.z - pa.z)
+			if lateral > cs * 0.75 or span < BRIDGE_MIN_SPAN or span > BRIDGE_MAX_SPAN:
+				continue
+			var ca := Vector2i(int(floor((pa.x - origin.x) / cs)), int(floor((pa.z - origin.z) / cs)))
+			var cb := Vector2i(int(floor((pb.x - origin.x) / cs)), int(floor((pb.z - origin.z) / cs)))
+			var step := Vector2i(signi(cb.x - ca.x), 0) if axis_x else Vector2i(0, signi(cb.y - ca.y))
+			# lane cells strictly BETWEEN the feet, all street (the span flies over walkable ground)
+			var cells: Array = []
+			var cur := ca + step
+			var ok := true
+			while cur != cb:
+				if not walk.has(cur):
+					ok = false
+					break
+				cells.append([cur.x, cur.y])
+				cur += step
+			if not ok or cells.size() < 2:
+				continue
+			return {"a": [pa.x, pa.y, pa.z], "b": [pb.x, pb.y, pb.z], "level": lvl,
+				"y": float(lvl) * lh, "cells": cells,
+				"links": [cells[0], cells[cells.size() - 1]]}
+	return {}
+
+static func _arr3(d: Dictionary, key: String) -> Vector3:
+	var a := d.get(key, [0, 0, 0]) as Array
+	return Vector3(float(a[0]), float(a[1]), float(a[2]))
+
+# Carve one cell walkable at GROUND level: FLOOR tile + (on multi-level grids, whose level-0
+# allow-set is enumerated explicitly) the level-0 allowance.
+static func _carve_walkable(grid: Dictionary, cell: Vector2i) -> void:
+	(grid.get("walkable_cells", []) as Array).append([cell.x, cell.y])
+	if grid.has("level_cells"):
+		for lce in (grid["level_cells"] as Array):
+			if int((lce as Dictionary).get("level", -1)) == 0:
+				((lce as Dictionary)["cells"] as Array).append([cell.x, cell.y])
+
+# Append the bridge's DECK to the grid: level allowances for the deck cells + ladder links at both
+# ends. Deck cells are street cells, so level 0 stays walkable UNDER the span.
+static func _apply_bridge_to_grid(grid: Dictionary, plan: Dictionary) -> void:
+	var lvl := int(plan["level"])
+	grid["level_count"] = maxi(int(grid.get("level_count", 1)), lvl + 1)
+	if not grid.has("level_height"):
+		grid["level_height"] = 4.0
+	var level_cells := grid.get("level_cells", []) as Array
+	var entry: Dictionary = {}
+	for lce in level_cells:
+		if int((lce as Dictionary).get("level", -1)) == lvl:
+			entry = lce as Dictionary
+	if entry.is_empty():
+		entry = {"level": lvl, "cells": []}
+		level_cells.append(entry)
+	for c in (plan["cells"] as Array):
+		(entry["cells"] as Array).append(c)
+	grid["level_cells"] = level_cells
+	var links := grid.get("links", []) as Array
+	for lc in (plan["links"] as Array):
+		links.append({"cell": lc, "from": 0, "to": lvl, "type": "ladder"})
+	grid["links"] = links
+
+# The bridge's VISUAL: a deck slab with side rails and a ladder post at each end.
+static func _emit_bridge(frag: Fragment, plan: Dictionary, origin: Vector3, cs: float) -> void:
+	var pa := _arr3(plan, "a")
+	var pb := _arr3(plan, "b")
+	var y := float(plan["y"])
+	var mid := (pa + pb) * 0.5
+	var axis_x := absf(pb.x - pa.x) >= absf(pb.z - pa.z)
+	var span := absf(pb.x - pa.x) if axis_x else absf(pb.z - pa.z)
+	var deck_size := Vector3(span, 0.14, 1.15) if axis_x else Vector3(1.15, 0.14, span)
+	frag.walls.append({"pos": Vector3(mid.x, y - 0.07, mid.z), "size": deck_size, "color": Color(0.32, 0.30, 0.27)})
+	var rail_off := Vector3(0, 0, 0.62) if axis_x else Vector3(0.62, 0, 0)
+	for s in [-1.0, 1.0]:
+		var rs := Vector3(span, 0.42, 0.08) if axis_x else Vector3(0.08, 0.42, span)
+		frag.walls.append({"pos": Vector3(mid.x, y + 0.21, mid.z) + rail_off * s, "size": rs,
+			"color": Color(0.5, 0.46, 0.36)})
+	for lc in (plan["links"] as Array):
+		var lx := origin.x + (float((lc as Array)[0]) + 0.5) * cs
+		var lz := origin.z + (float((lc as Array)[1]) + 0.5) * cs
+		frag.walls.append({"pos": Vector3(lx, y * 0.5, lz), "size": Vector3(0.16, y, 0.16),
+			"color": Color(0.55, 0.5, 0.4), "emission": Color(0.36, 0.91, 0.50), "emission_energy": 0.4})
 
 # --- lot geometry helpers ---
 

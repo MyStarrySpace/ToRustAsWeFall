@@ -152,3 +152,14 @@ Generated buildings are not scenery — every generator emits **gameplay anchors
 
 The architecture showcase renders every socket as a small emissive gem (red = weak, green = road,
 cyan = bridge, amber = balcony) so anchors are inspectable while iterating.
+
+**The generators CONSUME the sockets (2026-07-09):** the district filler places up to two LANDMARK
+heroes (BaseShapeBuilder specs) on big street-adjacent lots — each rotated so its MAIN-door road
+connector faces its street (`_street_dir`), with the approach carved walkable + an apron when the
+threshold sits short of the network. Facing BRIDGE sockets between the pair span a REAL walkable
+deck: `BuildingFiller.plan_bridge` (pure, unit-tested) picks the first level-snappable aligned pair
+over a clear street lane; the deck's cells join the grid at its level with LADDER links at both ends
+(`--test-shape-grammar` proves deck walkability + link traversal + door-street connectivity +
+determinism). The loader (`_spawn_landmark_building`) assembles the heroes from plan data — the same
+pattern as the lathe towers. Preview: `--preview=shape_grammar` (seed 1 places a bulwark + terrace
+pair with a bridge).
