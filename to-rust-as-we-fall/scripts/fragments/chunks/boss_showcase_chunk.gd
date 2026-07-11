@@ -321,12 +321,17 @@ func _build_alignment_crossing() -> void:
 	add_child(_causeway)
 
 func _add_align_mouth(mouth_name: String, mouth: Vector3, waypoints: Array) -> CrawlTunnel:
-	var ct := CrawlTunnel.new()
+	var ct := AlignmentCrossing.new()
 	ct.name = mouth_name
-	ct.description = "Thread the wheels while the image holds"
+	ct.description = "Thread the wheels when the gaps align"
 	ct.tutorial_label = "THREAD"
 	ct.configure(_get_game_state(), mouth, waypoints, 1.3, CRAWL_SPEED)
 	ct.set_group_provider(_selected_party_ids)
+	# the PHYSICAL gate: open only while both wheels' gaps sit on the corridor line — pure
+	# functions of the tick, so the queued launch tick is predicted, never sampled
+	ct.set_window_gate(
+		func(t: float) -> bool: return ring_gap_at_bottom(0, t) and ring_gap_at_bottom(1, t),
+		_next_window_tick)
 	add_child(ct)
 	_register_interactable(ct)
 	# the mouth's visible body: a pair of bone kerb stubs flanking the corridor entry (the outline
@@ -340,6 +345,8 @@ func _add_align_mouth(mouth_name: String, mouth: Vector3, waypoints: Array) -> C
 ## Park ring 0 at the detent nearest its current phase (a gap CENTER on the corridor line);
 ## a second use releases it, phase continuous from the parked value.
 func _on_brake_used() -> void:
+	if _crossing_occupied():
+		return   # the caliper refuses while something is inside the wheel
 	var t := _tick()
 	var w := _wheels[0] as Dictionary
 	if _ring0_parked != INF:
@@ -378,10 +385,31 @@ func _align_poll() -> void:
 		sched.schedule_after(ALIGN_POLL, _align_poll, "align_poll")
 
 func _refresh_crossing_gate() -> void:
-	var open := crossing_open(_tick())
+	# The mouth is COMMITTABLE whenever the front vantage is held (the view rule); the physical
+	# window is the AlignmentCrossing's own gate — an order outside the window queues at the
+	# mouth and launches on the next window's predicted tick.
+	var committable := _vantage_is_front()
 	for m in _align_mouths:
 		if m != null and is_instance_valid(m) and m.has_method("set_interaction_enabled"):
-			m.set_interaction_enabled(open)
+			m.set_interaction_enabled(committable)
+
+## The first tick >= `from_tick` at which both wheels' gaps sit on the corridor line (< 0 = none
+## within the horizon). A pure scan of the tick-pure phase functions.
+func _next_window_tick(from_tick: float) -> float:
+	var dt := 0.0
+	while dt < 600.0:
+		var t := from_tick + dt
+		if ring_gap_at_bottom(0, t) and ring_gap_at_bottom(1, t):
+			return t
+		dt += 0.05
+	return -1.0
+
+## Anyone inside (or committed into) the wheel: the brake must not move it under them.
+func _crossing_occupied() -> bool:
+	for m in _align_mouths:
+		if m != null and is_instance_valid(m) and m.has_method("has_occupants") and bool(m.call("has_occupants")):
+			return true
+	return false
 
 ## Cosmetic: the causeway brightens as the picture completes (reads the same pure functions).
 func _update_causeway_visual(t: float) -> void:

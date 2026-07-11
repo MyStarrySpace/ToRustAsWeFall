@@ -233,6 +233,16 @@ on a scheduler cadence, and a ghost causeway brightens as the picture completes.
 window-scan on the pure function, the vantage gate (step off the front snap → the crossing closes
 with phases unchanged), and the full thread-through.
 
+**QUEUED THREADING (director's playtest, 2026-07-11):** the windows are seconds long, so demanding
+a click AND a walk-up INSIDE one was unplayable — and a walk that arrived after the close died
+silently. The crossing is now an **AlignmentCrossing** (CrawlTunnel subclass, reusable for any
+cyclic barrier): the mouth is committable whenever the FRONT VANTAGE is held (the view rule);
+ordering the thread outside the window is not a refusal — the group LINES UP at the mouth and the
+crawl LAUNCHES on the next window's tick, predicted analytically from the pure phase functions
+(the game's queue grammar: you commit the plan, the machine executes on the alignment). Two safety
+laws with red/green tests (`--test-projection-alignment` safety half): a committed order NEVER
+threads a closed wheel (it waits), and the BRAKE refuses to move a wheel with someone inside it.
+
 The enemy pieces below all run on ONE insight: a rooted/colonizing enemy on a rotating ring has a
 position that is a FUNCTION OF ROTATION PHASE — the same variable pieces 15/16 already read. So
 Aster's TRACE (which already predicts each ring's period) now also predicts where the threat will

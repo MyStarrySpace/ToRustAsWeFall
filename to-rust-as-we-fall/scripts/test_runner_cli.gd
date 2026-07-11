@@ -198,6 +198,7 @@ func _ready() -> void:
 			"--test-projection-alignment":
 				ran_test = true
 				await _test_projection_alignment()
+				await _test_projection_alignment_safety()
 			"--test-player-contract":
 				ran_test = true
 				await _test_player_contract()
@@ -1315,6 +1316,7 @@ func _run_all_tests() -> void:
 	await _test_touch_modes()
 	await _test_ortho_orbit()
 	await _test_projection_alignment()
+	await _test_projection_alignment_safety()
 	_test_uv_atlas_baker()
 	await _test_distract_gate()
 	await _test_chromatic_aberration()
@@ -14609,6 +14611,107 @@ func _test_projection_alignment() -> void:
 	var end_pos: Vector3 = gs.get_position("aster")
 	_assert_true(end_pos.z < -5.0 and absf(end_pos.x - para_x) < 3.5,
 		"the crawler threads the wheels to the far side (authored path through forbidden ground)")
+	inst.queue_free()
+	await get_tree().process_frame
+
+func _test_projection_alignment_safety() -> void:
+	# THE PHYSICAL LAW + THE FEEL: (1) nobody ever threads a CLOSED wheel — a committed order
+	# outside the window QUEUES at the mouth and launches on the next window's tick (predicted
+	# analytically from the pure phase functions, never sampled); (2) the brake refuses to move
+	# the wheel while someone is inside it.
+	_test_name = "Projection Alignment Safety"
+	var inst = await _instantiate_preview_chunk_and_wait("boss_showcase", 8)
+	if inst == null:
+		_assert_true(false, "boss showcase instantiates for the safety test")
+		return
+	var cam: Camera3D = inst.get("_camera")
+	var gs = inst.get("_game_state")
+	var chunk = inst.get("_active_chunk")
+	if cam == null or gs == null or chunk == null:
+		_assert_true(false, "safety test resolves camera + game state + chunk")
+		inst.queue_free()
+		await get_tree().process_frame
+		return
+	if cam.is_inside_tree() and not cam.current:
+		cam.make_current()
+	var para_x := float(chunk.PARA_X)
+	# hold the register at the FRONT vantage
+	var t_node: Node3D = cam.get("target")
+	gs.snap_character_to("aster", Vector3(para_x - 8.0, 0.0, 0.0))
+	if t_node != null:
+		t_node.global_position = Vector3(para_x - 8.0, 0.5, 0.0)
+	for i in range(6):
+		inst.headless_advance(0.05, 0.05)
+		await get_tree().process_frame
+	var guard := 0
+	while absf(wrapf(float(cam.call("orbit_target_yaw")), -PI, PI)) >= 0.1 and guard < 4:
+		cam.call("orbit_snap_step", 1)
+		guard += 1
+	chunk._on_brake_used()   # park ring 0 at its detent (ring 1 alone gates the window)
+	# find a CLOSED stretch at least 12 s long, and stand at its start (deterministic: seed 0)
+	var t0 := float(chunk._tick())
+	var probe := 0.0
+	var closed_start := -1.0
+	while probe < 600.0:
+		var t_probe := t0 + probe
+		if not bool(chunk.ring_gap_at_bottom(1, t_probe)):
+			var stretch := 0.0
+			while stretch < 12.0 and not bool(chunk.ring_gap_at_bottom(1, t_probe + stretch)):
+				stretch += 0.25
+			if stretch >= 12.0:
+				closed_start = t_probe
+				break
+			probe += stretch + 0.25
+		else:
+			probe += 0.25
+	_assert_true(closed_start >= 0.0, "a 12 s closed stretch exists to test against")
+	inst.headless_advance(closed_start - t0 + 0.3, 0.1)
+	for i in range(2):
+		await get_tree().process_frame
+	_assert_true(not bool(chunk.ring_gap_at_bottom(1, chunk._tick())),
+		"the test stands inside the closed stretch")
+	# (1) order the thread while CLOSED: the crawler must NOT pass the wheel plane early...
+	gs.snap_character_to("aster", Vector3(para_x, 0.0, 6.8))
+	var mouth: Node = chunk.find_child("AlignCrossingIn", true, false)
+	mouth.call("_trigger")
+	inst.headless_advance(9.0, 0.1)
+	for i in range(2):
+		await get_tree().process_frame
+	var mid_pos: Vector3 = gs.get_position("aster")
+	_assert_true(mid_pos.z > 0.4,
+		"a committed order NEVER threads a closed wheel (z=%.2f stays on the near side of the plane)" % mid_pos.z)
+	# ...and (2) it QUEUES: launched on the next window, the crawler comes out the far side
+	var t_now := float(chunk._tick())
+	var dt_open := 0.0
+	while dt_open < 600.0 and not bool(chunk.ring_gap_at_bottom(1, t_now + dt_open)):
+		dt_open += 0.05
+	inst.headless_advance(dt_open + 22.0, 0.1)
+	for i in range(2):
+		await get_tree().process_frame
+	var end_pos: Vector3 = gs.get_position("aster")
+	_assert_true(end_pos.z < -5.0,
+		"the queued order LAUNCHES on the next window and threads through (z=%.2f)" % end_pos.z)
+	# (3) the brake refuses while someone is inside the wheel
+	gs.snap_character_to("aster", Vector3(para_x, 0.0, 6.8))
+	var t2 := float(chunk._tick())
+	var dt2 := 0.0
+	while dt2 < 600.0 and not bool(chunk.ring_gap_at_bottom(1, t2 + dt2)):
+		dt2 += 0.05
+	inst.headless_advance(dt2 + 0.3, 0.1)
+	mouth.call("_trigger")
+	inst.headless_advance(4.0, 0.1)   # mid-crawl: inside the tube
+	for i in range(2):
+		await get_tree().process_frame
+	_assert_true(bool(chunk.get_preview_state()["ring0_parked"]), "setup: ring 0 is parked mid-crawl")
+	chunk._on_brake_used()   # attempt to RELEASE the wheel with a crawler inside
+	_assert_true(bool(chunk.get_preview_state()["ring0_parked"]),
+		"the brake REFUSES to turn the wheel while someone is inside it")
+	inst.headless_advance(20.0, 0.1)   # let the crawl finish
+	for i in range(2):
+		await get_tree().process_frame
+	chunk._on_brake_used()   # empty wheel: the release works again
+	_assert_true(not bool(chunk.get_preview_state()["ring0_parked"]),
+		"with the wheel empty, the brake releases normally")
 	inst.queue_free()
 	await get_tree().process_frame
 
