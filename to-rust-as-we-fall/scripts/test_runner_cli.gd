@@ -4440,6 +4440,48 @@ func _test_building_survey() -> void:
 	_assert_true(str(Survey.from_spec(Base.generate("open_files", 1)).summary()) != str(Survey.from_spec(Base.generate("open_files", 2)).summary()),
 		"open_files actually VARIES between seeds")
 
+	# --- Aghora (user plates 2026-07-11, the GDD's counterfeit agora): the exchange's neon ring
+	# + terrace declare each other; the stack's storey grammar reconciles signs into the gaps ---
+	var agk: Dictionary = Base.generate("aghora_exchange")
+	var svag = Survey.from_spec(agk)
+	var ring_pair := false
+	for r_a in (svag.reservations as Array):
+		var ra := r_a as Dictionary
+		if str(ra.get("id", "")) == "neon_ring" and (ra.get("keeps_clear", []) as Array).has("roof_terrace"):
+			ring_pair = true
+	_assert_true(ring_pair, "the great neon ring hangs over the terrace as a declared pair")
+	var ag_balc := 0
+	for sk_a in (svag.sockets as Array):
+		if str((sk_a as Dictionary).get("kind", "")) == "balcony":
+			ag_balc += 1
+	_assert_true(ag_balc >= 2, "the exchange terrace carries balcony slots (%d)" % ag_balc)
+	var agdet: Dictionary = Base.aghora_exchange_details(agk)
+	for bucket_a in ["metal", "dark", "amber", "neon", "leaf", "cloth"]:
+		var bma = agdet.get(bucket_a)
+		_assert_true(bma != null and (bma as ArrayMesh).get_surface_count() > 0,
+			"aghora exchange details build the %s pass" % bucket_a)
+	var askk: Dictionary = Base.generate("aghora_stack")
+	var svask = Survey.from_spec(askk)
+	var stk_bands := 0
+	var stk_banners := 0
+	for r_s in (svask.reservations as Array):
+		var rs := r_s as Dictionary
+		if str(rs.get("id", "")).begins_with("window_band_"):
+			stk_bands += 1
+		if str(rs.get("id", "")).begins_with("banner_"):
+			stk_banners += 1
+	_assert_true(stk_bands >= 4 and stk_banners >= 4,
+		"the stack reserves its storey window bands (%d) + hanging banners (%d)" % [stk_bands, stk_banners])
+	var askdet: Dictionary = Base.aghora_stack_details(askk)
+	for bucket_s in ["metal", "dark", "amber", "neon", "leaf", "cloth"]:
+		var bms = askdet.get(bucket_s)
+		_assert_true(bms != null and (bms as ArrayMesh).get_surface_count() > 0,
+			"aghora stack details build the %s pass" % bucket_s)
+	_assert_true(str(Survey.from_spec(Base.generate("aghora_exchange", 1)).summary()) != str(Survey.from_spec(Base.generate("aghora_exchange", 2)).summary()),
+		"the aghora exchange actually VARIES between seeds")
+	_assert_true(str(Survey.from_spec(Base.generate("aghora_stack", 1)).summary()) != str(Survey.from_spec(Base.generate("aghora_stack", 2)).summary()),
+		"the aghora stack actually VARIES between seeds")
+
 	# --- PARAMETRIC VARIATION (the buildings are TYPES): every seeded variant must survey clean —
 	# the roller re-reconciles dependent values, and THIS sweep is the proof no roll collides.
 	# Seed 0 is the canonical plate specimen; other seeds roll plate-plausible variants. ---

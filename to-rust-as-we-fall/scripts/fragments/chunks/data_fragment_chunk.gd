@@ -541,6 +541,46 @@ func _add_open_files_details(root: Node3D, spec: Dictionary) -> void:
 	if lbl != null and built.has("nameplate_pos"):
 		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
 
+## The Aghora material family (both Aghora kinds share it): verdigris metal, near-black, warm
+## amber interiors, the district's MAGENTA neon, foliage, and dull canvas.
+func _add_aghora_buckets(root: Node3D, prefix: String, built: Dictionary) -> void:
+	_add_lattice_mesh(root, "%sMetal" % prefix, built.get("metal"),
+		_tinted_tile_material("facility_metal", Color(0.40, 0.46, 0.44)))
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.08, 0.09, 0.10)
+	dark.roughness = 0.92
+	_add_lattice_mesh(root, "%sDark" % prefix, built.get("dark"), dark)
+	var amber := StandardMaterial3D.new()
+	amber.albedo_color = Color(0.42, 0.30, 0.14)
+	amber.emission_enabled = true
+	amber.emission = Color(0.98, 0.72, 0.36)   # the warm interior light spilling from every cell
+	amber.emission_energy_multiplier = 1.6
+	_add_lattice_mesh(root, "%sAmber" % prefix, built.get("amber"), amber)
+	var neon := StandardMaterial3D.new()
+	neon.albedo_color = Color(0.30, 0.10, 0.28)
+	neon.emission_enabled = true
+	neon.emission = Color(0.92, 0.32, 0.86)   # the Aghora's magenta — the counterfeit agora's mark
+	neon.emission_energy_multiplier = 3.2
+	_add_lattice_mesh(root, "%sNeon" % prefix, built.get("neon"), neon)
+	var leafm := StandardMaterial3D.new()
+	leafm.albedo_color = Color(0.24, 0.42, 0.20)
+	leafm.roughness = 0.9
+	_add_lattice_mesh(root, "%sLeaf" % prefix, built.get("leaf"), leafm)
+	var clothm := StandardMaterial3D.new()
+	clothm.albedo_color = Color(0.38, 0.26, 0.24)
+	clothm.roughness = 1.0
+	clothm.cull_mode = BaseMaterial3D.CULL_DISABLED   # awning/flag sheets read from both sides
+	_add_lattice_mesh(root, "%sCloth" % prefix, built.get("cloth"), clothm)
+	var lbl := root.get_node_or_null("Nameplate")
+	if lbl != null and built.has("nameplate_pos"):
+		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
+
+func _add_aghora_exchange_details(root: Node3D, spec: Dictionary) -> void:
+	_add_aghora_buckets(root, "Aghora", BaseShapeBuilder.aghora_exchange_details(spec))
+
+func _add_aghora_stack_details(root: Node3D, spec: Dictionary) -> void:
+	_add_aghora_buckets(root, "AghoraStk", BaseShapeBuilder.aghora_stack_details(spec))
+
 func _spawn_landmark_building(lm: Dictionary) -> void:
 	var kind := str(lm.get("kind", ""))
 	if not BaseShapeBuilder.SPECS.has(kind):
@@ -651,6 +691,10 @@ func _spawn_landmark_building(lm: Dictionary) -> void:
 		_add_honeycomb_details(root, spec)
 	if str(spec.get("composite", "")) == "open_files_awnings":
 		_add_open_files_details(root, spec)
+	if str(spec.get("composite", "")) == "aghora_domed":
+		_add_aghora_exchange_details(root, spec)
+	if str(spec.get("kind", "")) == "aghora_stack":
+		_add_aghora_stack_details(root, spec)
 
 func _spawn_lathe_building(lp: Dictionary) -> void:
 	var profile: Dictionary = LatheBuilderScript.make_profile(lp)

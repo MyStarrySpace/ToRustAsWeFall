@@ -53,6 +53,7 @@ const EAVE_RATIOS := {
 	"canopy_piers": 0.533,     # canopy slab underside at 3.2 m of 6.0 (plate: dais + open leg zone)
 	"bulwark_towers": 0.86,    # gatehouse body top (towers rise past it to the crown)
 	"zone3_split": 0.94,       # cornice underside (plate: crown slab = top ~6% H)
+	"aghora_domed": 0.66,      # gallery-band top / dome springing (the Aghora Exchange drum)
 }
 
 ## THE PLUMBING POWER SURVEY — measured off the plate (reference-images/architecture/
@@ -367,6 +368,42 @@ const OPEN_FILES := {
 	"bollards": {"count": 7, "radius": 3.6},
 }
 
+## THE AGHORA EXCHANGE SURVEY — measured off the user-provided Aghora plates (2026-07-11; the
+## GDD's counterfeit agora, the sensation-cult's market hall). A fat bazaar DRUM under a tiered
+## bell dome: window banks in two ring bands, a cornice ledge carrying the front roof TERRACE
+## (rail + planters + awning + laundry lines), an arched gallery band at the dome springing,
+## ribbed dome, collar and spike finial — and the district's identity, the great MAGENTA NEON
+## RING (lotus + name) standing proud of the dome face. Warm amber interiors; the entry is a wide
+## market arch under a canvas awning with a hanging neon plate. Fractions of H unless metres.
+const AGHORA := {
+	"rings": [
+		[0.000, 0.360], [0.050, 0.345], [0.520, 0.340], [0.550, 0.368], [0.560, 0.330],
+		[0.660, 0.318], [0.700, 0.300], [0.800, 0.235], [0.880, 0.150], [0.900, 0.105],
+		[0.930, 0.098], [1.000, 0.012],
+	],
+	"windows": {"bands": [[0.100, 0.225], [0.280, 0.405]], "cols": 14},
+	"gallery": {"arches": 10, "y0": 0.560, "y1": 0.655},
+	"neon_ring": {"y": 0.785, "r": 0.195, "proud": 0.42, "petals": 5},
+	"terrace": {"y": 0.550, "half_arc": 1.05, "rail_h": 0.9, "planters": 6},
+	"banners": [[0.85, 0.30], [-0.85, 0.30], [0.95, 0.45], [-0.95, 0.45]],
+	"ribs": 8,
+	"entry": {"awning_out": 0.9, "sign_drop": 0.35},
+}
+
+## THE AGHORA BAZAAR STACK SURVEY — the canyon wall unit off the same plates: a tall stacked
+## shopfront tenement. Per storey: warm mullioned window banks, an awning row at the storey top
+## (canvas/tin slats), balcony rails with plants; hanging vertical neon BANNERS and two
+## horizontal sign boards in the storey gaps; a stair zigzag on the +X flank; roof tanks +
+## laundry lines + one pole sign. Fractions of H unless metres.
+const AGHORA_STACK := {
+	"storeys": 5, "base": 0.03, "band": 0.182, "win_lo": 0.35, "win_hi": 0.75,
+	"windows": {"front_cols": 4, "side_cols": 3},
+	"banners": [[-0.14, 0.30], [0.08, 0.45], [0.17, 0.22], [-0.05, 0.62]],
+	"signs": [[0.400, 0.440], [0.760, 0.800]],
+	"stair_flank": 1, "roof_tanks": 2,
+	"entry": {"awning_out": 0.8},
+}
+
 ## Authored storey plans (ground band + floor count between plinth and eave), per building kind.
 ## Numbers trace to the plate decompositions; buildings without an entry get equal DEFAULT_STOREY
 ## bands. greenfields' ground/storey split is ALSO the slab-ring datum table the massing builds on.
@@ -417,6 +454,10 @@ static func table_for(spec_in: Dictionary, name: String) -> Dictionary:
 			base = HONEYCOMB
 		"open_files":
 			base = OPEN_FILES
+		"aghora":
+			base = AGHORA
+		"aghora_stack":
+			base = AGHORA_STACK
 	var out := base.duplicate(true)
 	var over: Dictionary = (spec_in.get("vars", {}) as Dictionary).get(name, {})
 	for k in over.keys():
@@ -601,6 +642,36 @@ static func roll_vars(kind_in: String, seed_value: int) -> Dictionary:
 				"bollards": {"count": int(rng.call("randi_range", 5, 9))},
 				"sign": {"w": lerpf(2.7, 3.2, float(rng.call("randf")))}}
 			out["open_files"] = ofv
+		"aghora_exchange":
+			var s11 := lerpf(0.95, 1.06, float(rng.call("randf")))
+			var h11 := 8.0 * s11
+			(out["spec"] as Dictionary)["height"] = h11
+			(out["spec"] as Dictionary)["radius"] = 0.360 * h11
+			(out["spec"] as Dictionary)["door_radius"] = 0.340 * h11
+			(out["spec"] as Dictionary)["entrances"] = {"main_w": 1.6 * s11, "main_h": 2.2 * s11,
+				"side_count_min": 0, "side_count_max": 0, "canopy_out": 0.0,
+				"reserve_margin": 0.25, "main_surround": false}
+			var agv := {"neon_ring": {"r": lerpf(0.180, 0.210, float(rng.call("randf")))},
+				"gallery": {"arches": int(rng.call("randi_range", 8, 12))},
+				"windows": {"cols": int(rng.call("randi_range", 12, 16))}}
+			if float(rng.call("randf")) < 0.3:
+				agv["banners"] = [[0.85, 0.30], [-0.85, 0.30]]   # a quieter flank on some instances
+			out["aghora"] = agv
+		"aghora_stack":
+			var s12 := lerpf(0.93, 1.06, float(rng.call("randf")))
+			(out["spec"] as Dictionary)["size"] = Vector3(5.0, 11.0, 4.2) * s12
+			(out["spec"] as Dictionary)["entrances"] = {"main_w": 1.4 * s12, "main_h": 2.1 * s12,
+				"side_count_min": 0, "side_count_max": 0, "canopy_out": 0.0,
+				"reserve_margin": 0.20, "main_surround": false}
+			var asv := {"windows": {"front_cols": int(rng.call("randi_range", 3, 5))},
+				"roof_tanks": int(rng.call("randi_range", 1, 3))}
+			if float(rng.call("randf")) < 0.35:
+				# RECONCILED IN THE ROLLER: 4 storeys re-derive the band AND move the sign boards
+				# into the new storey gaps (the fixed gaps would land on a window band)
+				asv["storeys"] = 4
+				asv["band"] = 0.2275
+				asv["signs"] = [[0.460, 0.500], [0.895, 0.930]]
+			out["aghora_stack"] = asv
 		"cleanstreets":
 			var spread := lerpf(2.2, 2.8, float(rng.call("randf")))
 			var cs := {"fins": {"xs": [-spread, -spread / 3.0, spread / 3.0, spread],
@@ -745,6 +816,12 @@ func _survey_profile() -> void:
 					var rb2 := row_b as Array
 					_pr(float(rb2[0]) * h, float(rb2[1]) * h)
 				_pr(crown, 0.02 * h)
+			"aghora_domed":
+				# the bazaar drum profile IS the ring table (one authority: AGHORA.rings)
+				for row_a in (table_for(spec, "aghora")["rings"] as Array):
+					var ra2 := row_a as Array
+					_pr(float(ra2[0]) * h, float(ra2[1]) * h)
+				_pr(crown, 0.012 * h)
 			_:
 				var tiers := maxi(1, int(spec.get("tiers", 1)))
 				if tiers > 1:
@@ -899,6 +976,106 @@ func _survey_reservations(placements: Array) -> void:
 		_honeycomb_reservations()
 	if str(spec.get("composite", "")) == "open_files_awnings":
 		_open_files_reservations()
+	if str(spec.get("composite", "")) == "aghora_domed":
+		_aghora_reservations()
+	if str(spec.get("kind", "")) == "aghora_stack":
+		_aghora_stack_reservations()
+
+## Every planned Aghora Exchange part claims its wall: two window ring bands (declared around the
+## market arch), the gallery arch band, the dome rib band, and the layer-1 proud pieces (the neon
+## ring on the dome face, the front terrace, the flank banners, the entry awning).
+func _aghora_reservations() -> void:
+	var tbl := table_for(spec, "aghora")
+	var h := _height_total()
+	var fr := PI * 0.5
+	var wb: Dictionary = tbl["windows"]
+	var wi := 0
+	for band_v in (wb["bands"] as Array):
+		var band := band_v as Array
+		reservations.append({"id": "window_band_%d" % wi, "type": "decoration", "ring": true,
+			"y0": float(band[0]) * h, "y1": float(band[1]) * h, "keeps_clear": ["door_main"]})
+		wi += 1
+	var ga: Dictionary = tbl["gallery"]
+	reservations.append({"id": "gallery_band", "type": "decoration", "ring": true,
+		"y0": float(ga["y0"]) * h, "y1": float(ga["y1"]) * h, "keeps_clear": []})
+	reservations.append({"id": "dome_ribs", "type": "decoration", "ring": true,
+		"y0": 0.665 * h, "y1": 0.930 * h, "keeps_clear": []})
+	var nr: Dictionary = tbl["neon_ring"]
+	# the great ring hangs over the terrace front (the plate's read) — a declared pair
+	reservations.append({"id": "neon_ring", "type": "decoration", "layer": 1, "cyl": true,
+		"theta": fr, "half_arc": 0.62,
+		"y0": (float(nr["y"]) - float(nr["r"])) * h, "y1": (float(nr["y"]) + float(nr["r"])) * h,
+		"keeps_clear": ["roof_terrace"]})
+	var te: Dictionary = tbl["terrace"]
+	reservations.append({"id": "roof_terrace", "type": "decoration", "layer": 1, "cyl": true,
+		"theta": fr, "half_arc": float(te["half_arc"]),
+		"y0": float(te["y"]) * h, "y1": float(te["y"]) * h + float(te["rail_h"]) + 0.4,
+		"keeps_clear": ["neon_ring"]})
+	var bi := 0
+	for b_v in (tbl["banners"] as Array):
+		var b := b_v as Array
+		reservations.append({"id": "banner_%d" % bi, "type": "decoration", "layer": 1, "cyl": true,
+			"theta": wrapf(fr + float(b[0]), -PI, PI), "half_arc": 0.10,
+			"y0": float(b[1]) * h - 0.06 * h, "y1": float(b[1]) * h + 0.06 * h, "keeps_clear": []})
+		bi += 1
+	var door_h := float((spec.get("entrances", {}) as Dictionary).get("main_h", 2.2))
+	reservations.append({"id": "entry_awning", "type": "decoration", "layer": 1, "cyl": true,
+		"theta": fr, "half_arc": 0.45,
+		"y0": door_h + 0.05, "y1": door_h + 0.55, "keeps_clear": ["door_main"]})
+
+## Every planned bazaar-stack part claims its wall: per-storey window ring bands (declared around
+## the storefront door), horizontal sign boards in the storey gaps, and the layer-1 proud pieces
+## (awning rows at the storey tops, hanging vertical banners, the stair zigzag flank, the entry
+## awning). Roof tanks + lines ride the crown and claim no wall.
+func _aghora_stack_reservations() -> void:
+	var tbl := table_for(spec, "aghora_stack")
+	var h := _height_total()
+	var fz := Vector3(0, 0, 1)
+	var storeys := int(tbl["storeys"])
+	var base := float(tbl["base"])
+	var band := float(tbl["band"])
+	# the layer-1 crust is CO-DESIGNED: awning rings cross the banner drops, the stair flank and
+	# the entry awning by construction — every crossing is a declared ensemble, both ways
+	var crust_ids: Array = ["stair_flank", "entry_awning"]
+	for bi0 in range((tbl["banners"] as Array).size()):
+		crust_ids.append("banner_%d" % bi0)
+	var awning_ids: Array = []
+	for k0 in range(storeys):
+		awning_ids.append("awning_row_%d" % k0)
+	for k in range(storeys):
+		reservations.append({"id": "window_band_%d" % k, "type": "decoration", "ring": true,
+			"y0": (base + band * (float(k) + float(tbl["win_lo"]))) * h,
+			"y1": (base + band * (float(k) + float(tbl["win_hi"]))) * h,
+			"keeps_clear": ["door_main"]})
+		reservations.append({"id": "awning_row_%d" % k, "type": "decoration", "layer": 1,
+			"ring": true, "y0": (base + band * float(k + 1) - 0.022) * h,
+			"y1": (base + band * float(k + 1) + 0.012) * h, "keeps_clear": crust_ids})
+	var si := 0
+	for sg_v in (tbl["signs"] as Array):
+		var sg := sg_v as Array
+		reservations.append({"id": "sign_board_%d" % si, "type": "decoration", "cyl": false,
+			"n": fz, "x_center": 0.0, "half_w": 0.10 * h,
+			"y0": float(sg[0]) * h, "y1": float(sg[1]) * h, "keeps_clear": []})
+		si += 1
+	var bi2 := 0
+	for b_v2 in (tbl["banners"] as Array):
+		var b2 := b_v2 as Array
+		reservations.append({"id": "banner_%d" % bi2, "type": "decoration", "layer": 1,
+			"cyl": false, "n": fz, "x_center": float(b2[0]) * h, "half_w": 0.032 * h,
+			"y0": (float(b2[1]) - 0.05) * h, "y1": (float(b2[1]) + 0.05) * h,
+			"keeps_clear": awning_ids})
+		bi2 += 1
+	var sizea: Vector3 = spec.get("size", Vector3(5.0, 11.0, 4.2))
+	reservations.append({"id": "stair_flank", "type": "decoration", "layer": 1, "cyl": false,
+		"n": Vector3(1, 0, 0), "x_center": 0.0, "half_w": sizea.z * 0.5 - 0.05,
+		"y0": 0.0, "y1": 0.95 * h, "keeps_clear": awning_ids})
+	var door_h2 := float((spec.get("entrances", {}) as Dictionary).get("main_h", 2.1))
+	var ea_kc := awning_ids.duplicate()
+	ea_kc.append("door_main")
+	reservations.append({"id": "entry_awning", "type": "decoration", "layer": 1, "cyl": false,
+		"n": fz, "x_center": 0.0,
+		"half_w": float((spec.get("entrances", {}) as Dictionary).get("main_w", 1.4)) * 0.5 + 0.3,
+		"y0": door_h2 + 0.05, "y1": door_h2 + 0.5, "keeps_clear": ea_kc})
 
 ## Every planned open-files part claims its wall: the nested portal surround (an ensemble with
 ## the opening), the glowing sign + heraldic crest (the rackwork field restructures around both),
@@ -1432,6 +1609,21 @@ func _survey_sockets(placements: Array) -> void:
 					float(wgs["lateral"]) * bsz.y),
 				"dir": Vector3(float(sxw), 0, 0),
 				"length": float(wgs["bay_len"]) * bsz.y * float(int(wgs["bays"]))})
+	if str(spec.get("composite", "")) == "aghora_domed":
+		var ag := table_for(spec, "aghora")
+		var agh := _height_total()
+		var ter_y := float((ag["terrace"] as Dictionary)["y"]) * agh
+		for taz in [PI * 0.5 - 0.5, PI * 0.5 + 0.5]:
+			sockets.append({"kind": "balcony",
+				"pos": Vector3(cos(float(taz)), 0, sin(float(taz))) * radius_at(ter_y) + Vector3(0, ter_y + 0.05, 0),
+				"n": Vector3(cos(float(taz)), 0, sin(float(taz))), "radius": 0.5})
+	if str(spec.get("kind", "")) == "aghora_stack":
+		var ast := table_for(spec, "aghora_stack")
+		var asz: Vector3 = spec.get("size", Vector3(5.0, 11.0, 4.2))
+		for k9 in range(1, mini(4, int(ast["storeys"]))):
+			sockets.append({"kind": "balcony",
+				"pos": Vector3(0.8, (float(ast["base"]) + float(ast["band"]) * float(k9)) * asz.y + 0.05, asz.z * 0.5),
+				"n": Vector3(0, 0, 1), "radius": 0.5})
 	if str(spec.get("kind", "")) == "honeycomb_cooperative":
 		var hc := table_for(spec, "honeycomb")
 		var hsz: Vector3 = spec.get("size", Vector3(4.5, 10.0, 6.3))
@@ -1683,6 +1875,16 @@ static func ancourage_rings(spec_in: Dictionary) -> Array:
 	return out
 
 ## The beacon lathe rings in ABSOLUTE metres (round — the bell-jar has no lobes).
+## The aghora exchange lathe rings in ABSOLUTE metres (round — the bazaar drum has no lobes).
+static func aghora_rings(spec_in: Dictionary) -> Array:
+	var tbl := table_for(spec_in, "aghora")
+	var h := float(spec_in.get("height", 8.0))
+	var out: Array = []
+	for row in (tbl["rings"] as Array):
+		var r := row as Array
+		out.append({"y": float(r[0]) * h, "r": float(r[1]) * h, "lobes": 4, "amp": 0.0, "phase": 0.0})
+	return out
+
 static func beacon_rings(spec_in: Dictionary) -> Array:
 	var tbl := table_for(spec_in, "beacon")
 	var h := float(spec_in.get("height", 7.2))
@@ -2116,7 +2318,18 @@ func _validate_socket(s: Dictionary, problems: Array[String]) -> void:
 				problems.append("%s: bridge socket floats %.2f out from a %.2f footprint" % [kind, horiz.length(), _footprint()])
 		"balcony":
 			var on_ledge := false
-			if str(spec.get("kind", "")) == "honeycomb_cooperative":
+			if str(spec.get("composite", "")) == "aghora_domed":
+				# the exchange's balconies ride the terrace ledge datum
+				var agl := table_for(spec, "aghora")
+				if absf(float((agl["terrace"] as Dictionary)["y"]) * _height_total() + 0.05 - pos.y) <= 0.1:
+					on_ledge = true
+			elif str(spec.get("kind", "")) == "aghora_stack":
+				# the stack's balconies ride the storey datums
+				var asl := table_for(spec, "aghora_stack")
+				for k_l in range(int(asl["storeys"]) + 1):
+					if absf((float(asl["base"]) + float(asl["band"]) * float(k_l)) * _height_total() + 0.05 - pos.y) <= 0.1:
+						on_ledge = true
+			elif str(spec.get("kind", "")) == "honeycomb_cooperative":
 				# the torn flank's balconies are the catwalk rows
 				var hcl := table_for(spec, "honeycomb")
 				for row_l in ((hcl["catwalks"] as Dictionary)["rows"] as Array):

@@ -22,6 +22,7 @@ const REACH := {
 	"plumbing_power": 2.7, "honeycomb_cooperative": 3.3, "beacon_hill": 3.4, "open_files": 3.0,
 	"hypelines": 6.7, "greenfields": 3.2, "ancourage": 6.3, "bulwark_wharf": 7.2,
 	"cleanstreets": 6.1, "zone3": 3.4, "tiered_hall": 2.8, "tiered_terrace": 2.7,
+	"aghora_exchange": 3.9, "aghora_stack": 3.4,
 }
 const REACH_DEFAULT := 3.5
 const GAP := 1.4
@@ -93,6 +94,10 @@ func _build_chunk() -> void:
 			_add_honeycomb_details(root, spec)
 		if str(spec.get("composite", "")) == "open_files_awnings":
 			_add_open_files_details(root, spec)
+		if str(spec.get("composite", "")) == "aghora_domed":
+			_add_aghora_exchange_details(root, spec)
+		if str(spec.get("kind", "")) == "aghora_stack":
+			_add_aghora_stack_details(root, spec)
 		_add_anchor_markers(root, survey.anchors())
 		_specimens.append({"building": kind, "shape": str(spec.get("shape", "")),
 			"lattice": str(spec.get("lattice", "")), "verts": verts})

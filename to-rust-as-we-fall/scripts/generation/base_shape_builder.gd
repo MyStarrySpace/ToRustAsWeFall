@@ -21,6 +21,7 @@ const SHAPE_COMPOSITE := "composite"   # a small assembly of primitives (e.g. th
 const BUILDINGS := [
 	"plumbing_power", "honeycomb_cooperative", "beacon_hill", "open_files", "hypelines",
 	"greenfields", "ancourage", "bulwark_wharf", "cleanstreets", "zone3", "tiered_hall", "tiered_terrace",
+	"aghora_exchange", "aghora_stack",
 ]
 
 ## Reference-derived proportions. Dimensions are metres; the base sits on y=0.
@@ -186,6 +187,33 @@ const SPECS := {
 		"tile": "facility_metal",
 		"lattice": "",
 	},
+	"aghora_exchange": {
+		"title": "Aghora Exchange",
+		"shape": SHAPE_COMPOSITE,           # the counterfeit agora's market hall (user plates,
+		"composite": "aghora_domed",        # 2026-07-11): bazaar drum + tiered bell dome + the
+		"door_frame": "cyl",                # the market arch cuts the DRUM wall, not a box face
+		"height": 8.0,                      # great magenta neon ring — BuildingSurvey.AGHORA
+		"radius": 2.88,                     # 0.360 * H (the foot flare)
+		"door_radius": 2.72,                # 0.340 * H (the wall band the arch cuts)
+		"bays": 12,
+		"entrances": {"main_w": 1.6, "main_h": 2.2, "side_count_min": 0, "side_count_max": 0,
+			"canopy_out": 0.0, "reserve_margin": 0.25, "main_surround": false},
+		"color": Color(0.26, 0.34, 0.32),   # dark verdigris; magenta neon + amber interiors ride details
+		"tile": "facility_metal",
+		"lattice": "",
+		"pipes": true,                      # the plates crawl with conduit
+	},
+	"aghora_stack": {
+		"title": "Aghora Bazaar Stack",
+		"shape": SHAPE_BOX,                 # the canyon wall unit: stacked warm storefronts +
+		"size": Vector3(5.0, 11.0, 4.2),    # awning rows + hanging neon banners (AGHORA_STACK)
+		"entrances": {"main_w": 1.4, "main_h": 2.1, "side_count_min": 0, "side_count_max": 0,
+			"canopy_out": 0.0, "reserve_margin": 0.20, "main_surround": false},
+		"color": Color(0.28, 0.35, 0.33),
+		"tile": "facility_metal",
+		"lattice": "",
+		"pipes": true,
+	},
 	"tiered_hall": {
 		"title": "Tiered Hall",
 		"shape": SHAPE_CYLINDER,            # a "cake" that shrinks upward (tiers) -> exposed ledges
@@ -347,6 +375,8 @@ static func _composite(spec: Dictionary, reserved: Array = [], recess: float = 0
 			return _greenfields_stack_mesh(spec, reserved, recess)
 		"bulwark_towers":
 			return _bulwark_towers_mesh(spec, reserved, recess)
+		"aghora_domed":
+			return _aghora_domed_mesh(spec, reserved, recess)
 		"zone3_split":
 			return _zone3_split_mesh(spec, reserved, recess)
 		_:
@@ -1246,6 +1276,368 @@ static func _beacon_domed_mesh(spec: Dictionary, reserved: Array, recess: float)
 ## vestibule (the plate's ONE cyan accent), warm sconces, the lantern clerestory and the planted
 ## roof-garden ring, and the corner planting beds.
 ## Families: bone / dark / amber (panes) / glow (green) / cyan / warm / leaf / rails.
+## Aghora Exchange (user plates 2026-07-11): the bazaar drum + tiered bell dome as ONE loft from
+## the BuildingSurvey.AGHORA ring table.
+static func _aghora_domed_mesh(spec: Dictionary, reserved: Array, recess: float) -> ArrayMesh:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	return _survey_ring_loft(Survey.aghora_rings(spec), reserved, recess, float(spec.get("height", 8.0)))
+
+## Aghora Exchange detail passes, every part from the AGHORA survey frames: two ring bands of
+## warm mullioned windows (split around the market arch), the arched gallery at the dome
+## springing, ribbed dome + collar + spike finial, the great MAGENTA NEON RING (lotus + backing
+## disc + brackets) standing proud of the dome face over the front roof TERRACE (rail + planters
+## + awning + laundry line), flank banner plates, and the entry idiom (arch + canvas awning +
+## hanging neon plate + steps).
+static func aghora_exchange_details(spec: Dictionary) -> Dictionary:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var tbl: Dictionary = Survey.table_for(spec, "aghora")
+	var rings: Array = Survey.aghora_rings(spec)
+	var h := float(spec.get("height", 8.0))
+	var metal := _st()
+	var dark := _st()
+	var amber := _st()
+	var neon := _st()
+	var leaf := _st()
+	var cloth := _st()
+	var fr := PI * 0.5
+	var kb := float(str(spec.get("kind", "aghora")).hash() % 1000)
+	# window ring bands: mullioned amber panes riding the drum, split around the market arch
+	var wb: Dictionary = tbl["windows"]
+	var cols := int(wb["cols"])
+	for band_v in (wb["bands"] as Array):
+		var band := band_v as Array
+		var by0 := float(band[0]) * h
+		var by1 := float(band[1]) * h
+		var byc := (by0 + by1) * 0.5
+		for c in range(cols):
+			var th := TAU * (float(c) + 0.5) / float(cols)
+			var dth := absf(wrapf(th - fr, -PI, PI))
+			if by0 < 2.8 and dth < 0.52:
+				continue   # the market arch owns this arc
+			var n := Vector3(cos(th), 0.0, sin(th))
+			var u := Vector3(0, 1, 0).cross(n).normalized()
+			var rad := float(Survey.lathe_local_r(rings, byc, th))
+			var ww := rad * TAU / float(cols) * 0.30
+			_emit_oriented_box_st(amber, n * (rad + 0.03) + Vector3(0, byc, 0), u, Vector3.UP, n,
+				Vector3(ww, (by1 - by0) * 0.36, 0.02))
+			_emit_oriented_box_st(metal, n * (rad + 0.045) + Vector3(0, byc, 0), u, Vector3.UP, n,
+				Vector3(0.025, (by1 - by0) * 0.38, 0.015))
+			_emit_oriented_box_st(metal, n * (rad + 0.045) + Vector3(0, byc, 0), u, Vector3.UP, n,
+				Vector3(ww + 0.02, 0.025, 0.015))
+			_emit_oriented_box_st(metal, n * (rad + 0.04) + Vector3(0, by0 - 0.04, 0), u, Vector3.UP, n,
+				Vector3(ww + 0.06, 0.035, 0.05))
+	# the gallery: open arches around the dome springing
+	var ga: Dictionary = tbl["gallery"]
+	var arches := int(ga["arches"])
+	var gy0 := float(ga["y0"]) * h
+	var gy1 := float(ga["y1"]) * h
+	for a in range(arches):
+		var ath := TAU * (float(a) + 0.5) / float(arches)
+		var half_arc := TAU / float(arches) * 0.30
+		var spring := gy1 - 0.35 * (gy1 - gy0)
+		var pts: Array = []
+		pts.append(_drum_pt(rings, ath - half_arc, gy0, 0.06))
+		pts.append(_drum_pt(rings, ath - half_arc, spring, 0.06))
+		for i in range(1, 6):
+			var aa := PI - PI * float(i) / 6.0
+			pts.append(_drum_pt(rings, ath + cos(aa) * half_arc, spring + sin(aa) * (gy1 - spring), 0.06))
+		pts.append(_drum_pt(rings, ath + half_arc, spring, 0.06))
+		pts.append(_drum_pt(rings, ath + half_arc, gy0, 0.06))
+		_tube(metal, pts, 0.042, 5)
+		var an := Vector3(cos(ath), 0.0, sin(ath))
+		var au := Vector3(0, 1, 0).cross(an).normalized()
+		var arad := float(Survey.lathe_local_r(rings, (gy0 + gy1) * 0.5, ath))
+		_emit_oriented_box_st(dark, an * (arad + 0.01) + Vector3(0, (gy0 + gy1) * 0.5, 0),
+			au, Vector3.UP, an, Vector3(half_arc * arad * 0.85, (gy1 - gy0) * 0.42, 0.012))
+	# dome ribs + collar + spike finial + antenna
+	var ribs := int(tbl["ribs"])
+	for r_i in range(ribs):
+		var rth := TAU * float(r_i) / float(ribs) + PI / float(ribs)
+		var rpts: Array = []
+		for kseg in range(7):
+			var ry := lerpf(0.665 * h, 0.925 * h, float(kseg) / 6.0)
+			rpts.append(_drum_pt(rings, rth, ry, 0.05))
+		_tube(metal, rpts, 0.045, 5)
+	_emit_torus_st(metal, Vector3(0, 0.900 * h, 0), Vector3.UP, 0.105 * h + 0.02, 0.035, 14, 5)
+	_rings_loft(metal, Vector3(0, 0.930 * h, 0), 0.085 * h, [[0.0, 0.098 * h / (0.085 * h)],
+		[0.55, 0.05 * h / (0.085 * h)], [1.0, 0.10]], 8)
+	_tube(metal, [Vector3(0, 1.005 * h, 0), Vector3(0, 1.055 * h, 0)], 0.02, 4)
+	_emit_oriented_box_st(neon, Vector3(0, 1.06 * h, 0), Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1),
+		Vector3(0.03, 0.03, 0.03))
+	# THE GREAT NEON RING: outer + inner tori, five petal arcs, dark backing disc, dome brackets
+	var nr: Dictionary = tbl["neon_ring"]
+	var nrc_y := float(nr["y"]) * h
+	var nr_r := float(nr["r"]) * h
+	var dome_r := float(Survey.lathe_local_r(rings, nrc_y, fr))
+	var nrc := Vector3(0, nrc_y, dome_r + float(nr["proud"]))
+	var nrn := Vector3(0, 0, 1)
+	_emit_torus_st(neon, nrc, nrn, nr_r, 0.055, 22, 6)
+	_emit_torus_st(neon, nrc + nrn * -0.02, nrn, nr_r * 0.80, 0.028, 18, 5)
+	var petals := int(nr["petals"])
+	for pt_i in range(petals):
+		var pa := PI * 0.5 + (float(pt_i) - float(petals - 1) * 0.5) * 0.52
+		var tip := nrc + Vector3(cos(pa), sin(pa), 0) * nr_r * 0.62
+		for side in [-1.0, 1.0]:
+			var mid := nrc + Vector3(cos(pa + float(side) * 0.16), sin(pa + float(side) * 0.16), 0) * nr_r * 0.34
+			_tube(neon, [nrc + Vector3(0, -nr_r * 0.05, 0.02), mid + Vector3(0, 0, 0.02), tip + Vector3(0, 0, 0.02)], 0.022, 4)
+	var fan := 18
+	for fi in range(fan):
+		var a0 := TAU * float(fi) / float(fan)
+		var a1 := TAU * float(fi + 1) / float(fan)
+		dark.add_vertex(nrc + Vector3(0, 0, -0.05))
+		dark.add_vertex(nrc + Vector3(cos(a1) * nr_r * 0.94, sin(a1) * nr_r * 0.94, -0.05))
+		dark.add_vertex(nrc + Vector3(cos(a0) * nr_r * 0.94, sin(a0) * nr_r * 0.94, -0.05))
+	for br in [-0.55, 0.55]:
+		var hang := _drum_pt(rings, fr + float(br), nrc_y + nr_r * 0.35, 0.0)
+		_tube(metal, [hang, nrc + Vector3(float(br) * nr_r * 0.7, nr_r * 0.25, -0.06)], 0.035, 4)
+	# the front roof TERRACE: rail ring sector + planters + awning + laundry line
+	var te: Dictionary = tbl["terrace"]
+	var ty := float(te["y"]) * h
+	var t_arc := float(te["half_arc"])
+	var t_rad := float(Survey.lathe_local_r(rings, ty, fr)) + 0.12
+	var rail_h := float(te["rail_h"])
+	var rail_pts: Array = []
+	for i2 in range(11):
+		var rth2 := fr + lerpf(-t_arc, t_arc, float(i2) / 10.0)
+		rail_pts.append(Vector3(cos(rth2) * t_rad, ty + rail_h, sin(rth2) * t_rad))
+		if i2 % 2 == 0:
+			_tube(metal, [Vector3(cos(rth2) * t_rad, ty, sin(rth2) * t_rad),
+				Vector3(cos(rth2) * t_rad, ty + rail_h, sin(rth2) * t_rad)], 0.022, 4)
+	_tube(metal, rail_pts, 0.028, 5)
+	var planters := int(te["planters"])
+	for pl_i in range(planters):
+		var pth := fr + lerpf(-t_arc * 0.85, t_arc * 0.85, (float(pl_i) + 0.5) / float(planters))
+		var pp := Vector3(cos(pth), 0, sin(pth)) * (t_rad - 0.35) + Vector3(0, ty, 0)
+		_emit_oriented_box_st(dark, pp + Vector3(0, 0.14, 0), Vector3(1, 0, 0), Vector3.UP,
+			Vector3(0, 0, 1), Vector3(0.16, 0.14, 0.16))
+		_emit_oriented_box_st(leaf, pp + Vector3(0, 0.33, 0), Vector3(1, 0, 0), Vector3.UP,
+			Vector3(0, 0, 1), Vector3(0.15, 0.07, 0.15))
+	var aw_a := fr - t_arc * 0.55
+	var awp0 := Vector3(cos(aw_a), 0, sin(aw_a)) * (t_rad - 0.15) + Vector3(0, ty, 0)
+	var aw_u := Vector3(0, 1, 0).cross(Vector3(cos(aw_a), 0, sin(aw_a))).normalized()
+	for pole in [-0.55, 0.55]:
+		_tube(metal, [awp0 + aw_u * float(pole), awp0 + aw_u * float(pole) + Vector3(0, 0.9, 0)], 0.022, 4)
+	_quad_out(cloth, awp0 + aw_u * -0.6 + Vector3(0, 0.9, 0), awp0 + aw_u * 0.6 + Vector3(0, 0.9, 0),
+		awp0 + aw_u * 0.6 - Vector3(cos(aw_a), 0, sin(aw_a)) * 0.8 + Vector3(0, 1.12, 0),
+		awp0 + aw_u * -0.6 - Vector3(cos(aw_a), 0, sin(aw_a)) * 0.8 + Vector3(0, 1.12, 0),
+		awp0 + Vector3(0, -0.4, 0))
+	var ln_a := fr + t_arc * 0.6
+	var lp0 := Vector3(cos(ln_a), 0, sin(ln_a)) * (t_rad - 0.1) + Vector3(0, ty + rail_h + 0.35, 0)
+	var lp1 := Vector3(0, 0.93 * h, 0)
+	_tube(metal, [lp0, lp0.lerp(lp1, 0.5) + Vector3(0, -0.25, 0), lp1], 0.012, 3)
+	for fl in range(4):
+		var fp := lp0.lerp(lp1, 0.15 + 0.2 * float(fl)) + Vector3(0, -0.25 * sin(PI * (0.15 + 0.2 * float(fl))), 0)
+		_emit_oriented_box_st(cloth, fp + Vector3(0, -0.12, 0), Vector3(1, 0, 0), Vector3.UP,
+			Vector3(0, 0, 1), Vector3(0.09, 0.12, 0.01))
+	# flank banner plates (magenta) on bracket tubes
+	for b_v in (tbl["banners"] as Array):
+		var b := b_v as Array
+		var bth: float = fr + float(b[0])
+		var b_y := float(b[1]) * h
+		var bn := Vector3(cos(bth), 0.0, sin(bth))
+		var bu := Vector3(0, 1, 0).cross(bn).normalized()
+		var brad := float(Survey.lathe_local_r(rings, b_y, bth))
+		_tube(metal, [bn * brad + Vector3(0, b_y + 0.05 * h, 0),
+			bn * (brad + 0.35) + Vector3(0, b_y + 0.05 * h, 0)], 0.025, 4)
+		_emit_oriented_box_st(neon, bn * (brad + 0.35) + Vector3(0, b_y, 0), bu, Vector3.UP, bn,
+			Vector3(0.13, 0.05 * h, 0.02))
+	# the entry idiom: doubled arch + canvas awning on poles + hanging neon plate + two steps
+	var door_w := float((spec.get("entrances", {}) as Dictionary).get("main_w", 1.6))
+	var door_h := float((spec.get("entrances", {}) as Dictionary).get("main_h", 2.2))
+	var wall_r := float(spec.get("door_radius", 2.72))
+	for off in [0.0, 0.10]:
+		var aw2 := door_w * 0.5 + 0.16 - float(off)
+		var spring2 := door_h - aw2 * 0.55
+		var pts2: Array = []
+		pts2.append(_drum_pt(rings, fr - aw2 / wall_r, 0.02, 0.07))
+		pts2.append(_drum_pt(rings, fr - aw2 / wall_r, spring2, 0.07))
+		for i3 in range(1, 6):
+			var aa2 := PI - PI * float(i3) / 6.0
+			pts2.append(_drum_pt(rings, fr + cos(aa2) * aw2 / wall_r, spring2 + sin(aa2) * (door_h + 0.14 - float(off) - spring2), 0.07))
+		pts2.append(_drum_pt(rings, fr + aw2 / wall_r, spring2, 0.07))
+		pts2.append(_drum_pt(rings, fr + aw2 / wall_r, 0.02, 0.07))
+		_tube(metal, pts2, 0.055, 5)
+	var en: Dictionary = tbl["entry"]
+	var aw_out := float(en["awning_out"])
+	var d_n := Vector3(cos(fr), 0.0, sin(fr))
+	var d_u := Vector3(0, 1, 0).cross(d_n).normalized()
+	var d_base := d_n * wall_r
+	for pole2 in [-1.0, 1.0]:
+		_tube(metal, [d_base + d_u * float(pole2) * (door_w * 0.5 + 0.25) + d_n * aw_out,
+			d_base + d_u * float(pole2) * (door_w * 0.5 + 0.25) + d_n * aw_out + Vector3(0, door_h - 0.25, 0)], 0.028, 4)
+	_quad_out(cloth, d_base + d_u * -(door_w * 0.5 + 0.35) + d_n * aw_out + Vector3(0, door_h - 0.25, 0),
+		d_base + d_u * (door_w * 0.5 + 0.35) + d_n * aw_out + Vector3(0, door_h - 0.25, 0),
+		d_base + d_u * (door_w * 0.5 + 0.35) + Vector3(0, door_h + 0.35, 0),
+		d_base + d_u * -(door_w * 0.5 + 0.35) + Vector3(0, door_h + 0.35, 0),
+		d_base + d_n * 0.5 + Vector3(0, door_h - 1.0, 0))
+	_tube(metal, [d_base + d_u * (door_w * 0.5 + 0.55) + Vector3(0, door_h + 0.6, 0),
+		d_base + d_u * (door_w * 0.5 + 0.55) + d_n * 0.4 + Vector3(0, door_h + 0.6, 0)], 0.02, 4)
+	_emit_oriented_box_st(neon, d_base + d_u * (door_w * 0.5 + 0.55) + d_n * 0.4 + Vector3(0, door_h + 0.6 - float(en["sign_drop"]), 0),
+		d_u, Vector3.UP, d_n, Vector3(0.10, 0.24, 0.02))
+	_emit_oriented_box_st(dark, d_base + d_n * 0.3 + Vector3(0, 0.055, 0), d_u, Vector3.UP, d_n,
+		Vector3(door_w * 0.5 + 0.4, 0.055, 0.35))
+	_emit_oriented_box_st(dark, d_base + d_n * 0.15 + Vector3(0, 0.165, 0), d_u, Vector3.UP, d_n,
+		Vector3(door_w * 0.5 + 0.25, 0.055, 0.2))
+	for stool in [metal, dark, amber, neon, leaf, cloth]:
+		(stool as SurfaceTool).generate_normals()
+	return {"metal": metal.commit(), "dark": dark.commit(), "amber": amber.commit(),
+		"neon": neon.commit(), "leaf": leaf.commit(), "cloth": cloth.commit(),
+		"nameplate_pos": nrc + Vector3(0, nr_r + 0.4, 0.3)}
+
+## Aghora Bazaar Stack detail passes, every part from the AGHORA_STACK survey frames: per-storey
+## warm window banks (front + flanks, split around the storefront), awning rows at the storey
+## tops, balcony rails with plants, hanging vertical neon banners + two horizontal sign boards in
+## the storey gaps, the stair zigzag on the +X flank, roof tanks + laundry lines + a pole sign,
+## and the storefront entry (awning + hanging plate).
+static func aghora_stack_details(spec: Dictionary) -> Dictionary:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var tbl: Dictionary = Survey.table_for(spec, "aghora_stack")
+	var size: Vector3 = spec.get("size", Vector3(5.0, 11.0, 4.2))
+	var h := size.y
+	var hx := size.x * 0.5
+	var hz := size.z * 0.5
+	var metal := _st()
+	var dark := _st()
+	var amber := _st()
+	var neon := _st()
+	var leaf := _st()
+	var cloth := _st()
+	var kb := float(str(spec.get("kind", "aghora_stack")).hash() % 1000)
+	var storeys := int(tbl["storeys"])
+	var base := float(tbl["base"])
+	var band := float(tbl["band"])
+	var wcols: Dictionary = tbl["windows"]
+	var door_w := float((spec.get("entrances", {}) as Dictionary).get("main_w", 1.4))
+	for face_v in [[Vector3(0, 0, 1), hx, hz, int(wcols["front_cols"])],
+			[Vector3(-1, 0, 0), hz, hx, int(wcols["side_cols"])],
+			[Vector3(1, 0, 0), hz, hx, int(wcols["side_cols"])]]:
+		var fa := face_v as Array
+		var n: Vector3 = fa[0]
+		var f_hw := float(fa[1])
+		var f_d := float(fa[2])
+		var cols := int(fa[3])
+		var u := Vector3(0, 1, 0).cross(n).normalized()
+		var stair_face: bool = n.x > 0.5 and int(tbl["stair_flank"]) == 1
+		for k in range(storeys):
+			var wy0 := (base + band * (float(k) + float(tbl["win_lo"]))) * h
+			var wy1 := (base + band * (float(k) + float(tbl["win_hi"]))) * h
+			var wyc := (wy0 + wy1) * 0.5
+			for c in range(cols):
+				var cx := lerpf(-f_hw + 0.5, f_hw - 0.5, (float(c) + 0.5) / float(cols))
+				if k == 0 and n.z > 0.5 and absf(cx) < door_w * 0.5 + 0.45:
+					continue   # the storefront owns the ground centre
+				if stair_face and cx > f_hw - 1.4:
+					continue   # the stair zigzag owns this strip
+				var wc := n * (f_d + 0.03) + u * cx + Vector3(0, wyc, 0)
+				var ww := (f_hw - 1.0) / float(cols) * 0.72
+				_emit_oriented_box_st(amber, wc, u, Vector3.UP, n, Vector3(ww, (wy1 - wy0) * 0.42, 0.02))
+				_emit_oriented_box_st(metal, wc + n * 0.015, u, Vector3.UP, n, Vector3(0.022, (wy1 - wy0) * 0.44, 0.014))
+				_emit_oriented_box_st(metal, wc + n * 0.015, u, Vector3.UP, n, Vector3(ww + 0.02, 0.022, 0.014))
+				_emit_oriented_box_st(metal, wc + Vector3(0, -(wy1 - wy0) * 0.46 - 0.03, 0) + n * 0.02,
+					u, Vector3.UP, n, Vector3(ww + 0.05, 0.03, 0.05))
+			# the awning row at this storey's top (skip the stair strip)
+			var ay := (base + band * float(k + 1)) * h - 0.06
+			var seg_w := (f_hw * 2.0 - 1.0) / 3.0
+			for seg in range(3):
+				if _h01(kb + float(k) * 7.7 + float(seg) * 3.1 + n.x * 40.0 + n.z * 80.0) < 0.30:
+					continue   # a gap-toothed awning line (the plates' patchwork)
+				var sc := -f_hw + 0.5 + seg_w * (float(seg) + 0.5)
+				if stair_face and sc > f_hw - 1.6:
+					continue
+				var a_c := n * f_d + u * sc + Vector3(0, ay, 0)
+				var slat_st := cloth if int(_h01(kb + float(seg) * 11.0 + float(k) * 5.0) * 2.0) == 0 else metal
+				for sl in range(5):
+					var t := (float(sl) + 0.5) / 5.0
+					_emit_oriented_box_st(slat_st, a_c + n * (0.55 * t) + Vector3(0, -0.28 * t, 0),
+						u, (Vector3.UP * 0.55 + n * 0.28).normalized(), (n * 0.55 - Vector3.UP * 0.28).normalized(),
+						Vector3(seg_w * 0.5 - 0.06, 0.055, 0.012))
+			# balcony rail + pots on ~60% of front storeys
+			if n.z > 0.5 and k > 0 and _h01(kb + float(k) * 13.0) > 0.4:
+				var b_y := (base + band * float(k)) * h + 0.02
+				_tube(metal, [n * (f_d + 0.30) + u * (-f_hw + 0.6) + Vector3(0, b_y + 0.42, 0),
+					n * (f_d + 0.30) + u * (f_hw - 0.6) + Vector3(0, b_y + 0.42, 0)], 0.022, 4)
+				for up in range(5):
+					var ux := lerpf(-f_hw + 0.6, f_hw - 0.6, float(up) / 4.0)
+					_tube(metal, [n * (f_d + 0.30) + u * ux + Vector3(0, b_y, 0),
+						n * (f_d + 0.30) + u * ux + Vector3(0, b_y + 0.42, 0)], 0.016, 4)
+				for pot in range(2):
+					var px := lerpf(-f_hw * 0.5, f_hw * 0.5, float(pot))
+					_emit_oriented_box_st(dark, n * (f_d + 0.22) + u * px + Vector3(0, b_y + 0.10, 0),
+						u, Vector3.UP, n, Vector3(0.12, 0.10, 0.12))
+					_emit_oriented_box_st(leaf, n * (f_d + 0.22) + u * px + Vector3(0, b_y + 0.25, 0),
+						u, Vector3.UP, n, Vector3(0.11, 0.06, 0.11))
+	# hanging vertical neon banners + the two horizontal sign boards (front face)
+	var fzn := Vector3(0, 0, 1)
+	var fzu := Vector3(0, 1, 0).cross(fzn).normalized()
+	for b_v in (tbl["banners"] as Array):
+		var b := b_v as Array
+		var bx := float(b[0]) * h
+		var b_y2 := float(b[1]) * h
+		var b_h := 0.05 * h
+		_tube(metal, [fzn * hz + fzu * bx + Vector3(0, b_y2 + b_h + 0.15, 0),
+			fzn * (hz + 0.30) + fzu * bx + Vector3(0, b_y2 + b_h + 0.15, 0)], 0.02, 4)
+		_emit_oriented_box_st(neon, fzn * (hz + 0.30) + fzu * bx + Vector3(0, b_y2, 0),
+			fzu, Vector3.UP, fzn, Vector3(0.032 * h, b_h, 0.02))
+	for sg_v in (tbl["signs"] as Array):
+		var sg := sg_v as Array
+		var sy := (float(sg[0]) + float(sg[1])) * 0.5 * h
+		var s_hh := (float(sg[1]) - float(sg[0])) * 0.5 * h
+		_emit_oriented_box_st(dark, fzn * (hz + 0.06) + Vector3(0, sy, 0), fzu, Vector3.UP, fzn,
+			Vector3(0.10 * h, s_hh, 0.025))
+		_emit_oriented_box_st(neon, fzn * (hz + 0.09) + Vector3(0, sy, 0), fzu, Vector3.UP, fzn,
+			Vector3(0.10 * h - 0.08, s_hh - 0.06, 0.012))
+	# the stair zigzag on the +X flank: stringer + steps + landing + rail per storey
+	if int(tbl["stair_flank"]) == 1:
+		var sx := hx + 0.05
+		for k2 in range(storeys - 1):
+			var y_a := (base + band * float(k2)) * h + 0.05
+			var y_b := (base + band * float(k2 + 1)) * h + 0.05
+			var dirn := 1.0 if k2 % 2 == 0 else -1.0
+			var z_a := dirn * (hz - 0.6)
+			var z_b := -dirn * (hz - 0.6)
+			_tube(metal, [Vector3(sx + 0.25, y_a, z_a), Vector3(sx + 0.25, y_b, z_b)], 0.035, 4)
+			_tube(metal, [Vector3(sx + 0.55, y_a + 0.35, z_a), Vector3(sx + 0.55, y_b + 0.35, z_b)], 0.022, 4)
+			for stp in range(6):
+				var t2 := (float(stp) + 0.5) / 6.0
+				_emit_oriented_box_st(dark, Vector3(sx + 0.30, lerpf(y_a, y_b, t2), lerpf(z_a, z_b, t2)),
+					Vector3(0, 0, 1), Vector3.UP, Vector3(1, 0, 0), Vector3(0.22, 0.025, 0.30))
+			_emit_oriented_box_st(dark, Vector3(sx + 0.30, y_b, z_b - dirn * 0.3),
+				Vector3(0, 0, 1), Vector3.UP, Vector3(1, 0, 0), Vector3(0.30, 0.03, 0.45))
+	# roof: tanks + laundry lines + one pole sign
+	var tanks := int(tbl["roof_tanks"])
+	for tk in range(tanks):
+		var tx := lerpf(-hx * 0.5, hx * 0.5, (float(tk) + 0.5) / float(tanks))
+		var tz := (0.3 if tk % 2 == 0 else -0.4) * hz
+		_rings_loft(metal, Vector3(tx, h, tz), 0.9, [[0.0, 0.42], [0.1, 0.38], [0.85, 0.38], [1.0, 0.05]], 8)
+	_tube(metal, [Vector3(-hx + 0.4, h + 0.8, hz - 0.3), Vector3(hx - 0.4, h + 0.55, -hz + 0.3)], 0.012, 3)
+	for fl2 in range(5):
+		var t3 := 0.12 + 0.18 * float(fl2)
+		var fp2 := Vector3(-hx + 0.4, h + 0.8, hz - 0.3).lerp(Vector3(hx - 0.4, h + 0.55, -hz + 0.3), t3)
+		_emit_oriented_box_st(cloth, fp2 + Vector3(0, -0.11, 0), Vector3(1, 0, 0), Vector3.UP,
+			Vector3(0, 0, 1), Vector3(0.08, 0.11, 0.01))
+	_tube(metal, [Vector3(hx - 0.5, h, -hz + 0.5), Vector3(hx - 0.5, h + 1.3, -hz + 0.5)], 0.025, 4)
+	_emit_oriented_box_st(neon, Vector3(hx - 0.5, h + 1.05, -hz + 0.5), Vector3(1, 0, 0), Vector3.UP,
+		Vector3(0, 0, 1), Vector3(0.28, 0.20, 0.02))
+	# the storefront entry: canvas awning on poles + a hanging neon plate
+	var door_h3 := float((spec.get("entrances", {}) as Dictionary).get("main_h", 2.1))
+	for pole3 in [-1.0, 1.0]:
+		_tube(metal, [Vector3(float(pole3) * (door_w * 0.5 + 0.25), 0, hz + 0.75),
+			Vector3(float(pole3) * (door_w * 0.5 + 0.25), door_h3 - 0.2, hz + 0.75)], 0.026, 4)
+	_quad_out(cloth, Vector3(-(door_w * 0.5 + 0.35), door_h3 - 0.2, hz + 0.75),
+		Vector3(door_w * 0.5 + 0.35, door_h3 - 0.2, hz + 0.75),
+		Vector3(door_w * 0.5 + 0.35, door_h3 + 0.28, hz + 0.02),
+		Vector3(-(door_w * 0.5 + 0.35), door_h3 + 0.28, hz + 0.02),
+		Vector3(0, door_h3 - 1.2, hz + 0.4))
+	_tube(metal, [Vector3(door_w * 0.5 + 0.5, door_h3 + 0.35, hz),
+		Vector3(door_w * 0.5 + 0.5, door_h3 + 0.35, hz + 0.4)], 0.018, 4)
+	_emit_oriented_box_st(neon, Vector3(door_w * 0.5 + 0.5, door_h3 + 0.05, hz + 0.4),
+		Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(0.09, 0.22, 0.018))
+	for stool in [metal, dark, amber, neon, leaf, cloth]:
+		(stool as SurfaceTool).generate_normals()
+	return {"metal": metal.commit(), "dark": dark.commit(), "amber": amber.commit(),
+		"neon": neon.commit(), "leaf": leaf.commit(), "cloth": cloth.commit(),
+		"nameplate_pos": Vector3(0, h + 0.6, hz + 0.2)}
+
 ## Open-Files detail passes (SURVEY REBUILD 1.10) — the massing keeps the director's recursive
 ## awnings; this pass builds the GROUND IDIOM from the OPEN_FILES survey: the nested hex-arch
 ## portal (chamfered octagon loops stepping proud) pouring a cyan inner glow + the scan-beam fan
