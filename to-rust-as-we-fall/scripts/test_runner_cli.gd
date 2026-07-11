@@ -4552,6 +4552,61 @@ func _test_building_survey() -> void:
 	(tampered["base"] as Dictionary)["engulf_platform"] = false
 	_assert_true((Para.validate(tampered) as Array).size() > 0, "an undeclared ring-through-facility contact goes LOUD")
 
+	# --- The NUTECH facility (GDD 11.2): the type the Paranucleus grew around — window bands
+	# declared around entry/dock/indicator, the roofline board, every detail family builds ---
+	var ntk: Dictionary = Base.generate("nutech_facility")
+	var svnt = Survey.from_spec(ntk)
+	var nt_bands := 0
+	var nt_dock := false
+	var nt_sign := false
+	for r_nt in (svnt.reservations as Array):
+		var rnt := r_nt as Dictionary
+		if str(rnt.get("id", "")).begins_with("window_band_"):
+			nt_bands += 1
+			if not (rnt.get("keeps_clear", []) as Array).has("door_main"):
+				nt_bands = -100
+		if str(rnt.get("id", "")) == "dock_panel":
+			nt_dock = true
+		if str(rnt.get("id", "")) == "sign_board":
+			nt_sign = true
+	_assert_true(nt_bands >= 3, "the facility reserves its storey window bands around the entry (%d)" % nt_bands)
+	_assert_true(nt_dock and nt_sign, "the loading dock panel + the NUTECH roofline board claim their walls")
+	var ntdet: Dictionary = Base.nutech_details(ntk)
+	for bucket_nt in ["concrete", "metal", "dark", "lit", "white", "green"]:
+		var bnt = ntdet.get(bucket_nt)
+		_assert_true(bnt != null and (bnt as ArrayMesh).get_surface_count() > 0,
+			"nutech details build the %s pass" % bucket_nt)
+	_assert_true(str(Survey.from_spec(Base.generate("nutech_facility", 1)).summary()) != str(Survey.from_spec(Base.generate("nutech_facility", 2)).summary()),
+		"the nutech facility actually VARIES between seeds")
+	# the Paranucleus grows over REAL facility instances: every slot's surveyed building fits its
+	# declared envelope box (fit by construction — the envelope is what cleared the rings)
+	var pslots: Array = pbuilt["building_slots"]
+	_assert_true(pslots.size() >= 2, "the aggregate keeps legible facility slots (%d)" % pslots.size())
+	var pr0 := float(pspec0["r0"])
+	var fit_ok := true
+	for sl_v in pslots:
+		var sl := sl_v as Dictionary
+		var sspec: Dictionary = Base.generate(str(sl["kind"]), int(sl["spec_seed"]))
+		var ssize: Vector3 = sspec["size"]
+		var sscale := float(sl["scale"])
+		if sscale <= 0.05 or sscale > 1.0:
+			fit_ok = false
+		var env_found := false
+		for bx_e in ((pspec0["base"] as Dictionary)["boxes"] as Array):
+			var bxe := bx_e as Dictionary
+			if not bool(bxe.get("building", false)):
+				continue
+			if absf(float(bxe["x"]) * pr0 - (sl["pos"] as Vector3).x) > 0.01:
+				continue
+			env_found = true
+			if ssize.x * sscale > float(bxe["hx"]) * 2.0 * pr0 + 0.02 \
+					or ssize.y * sscale > float(bxe["h"]) * pr0 + 0.02 \
+					or ssize.z * sscale > float(bxe["hz"]) * 2.0 * pr0 + 0.02:
+				fit_ok = false
+		if not env_found:
+			fit_ok = false
+	_assert_true(fit_ok, "every facility slot's surveyed building fits its declared envelope")
+
 	# --- PARAMETRIC VARIATION (the buildings are TYPES): every seeded variant must survey clean —
 	# the roller re-reconciles dependent values, and THIS sweep is the proof no roll collides.
 	# Seed 0 is the canonical plate specimen; other seeds roll plate-plausible variants. ---

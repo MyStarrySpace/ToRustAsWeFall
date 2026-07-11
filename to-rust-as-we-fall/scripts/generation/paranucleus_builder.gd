@@ -44,12 +44,17 @@ const CORE := {"r": 0.100, "wobble": 0.16}
 ## The NUTECH facility fragments (fractions of r0; h = full height, boxes seat on the ground).
 ## `engulfed` declares the boxes the ring bottoms legitimately pass through — the growth swallowed
 ## them (GDD: "partly engulfed by the amyloid growth, partly still legible as a working facility").
-## `sign` marks the boxes that carry a NUTECH board on their +Z face.
+## `building` marks an envelope a REAL nutech_facility model fills (the box is the reservation the
+## validator reconciles against the rings; build() scales the surveyed building INTO it — fit by
+## construction, the mereotopology contract). The rest stay raw engulfed masses.
 const BASE := {
 	"boxes": [
 		{"x": 0.00, "z": 0.02, "hx": 0.88, "h": 0.055, "hz": 0.64},                      # the apron platform
-		{"x": -0.50, "z": 0.30, "hx": 0.24, "h": 0.260, "hz": 0.18, "sign": true},
-		{"x": 0.44, "z": 0.32, "hx": 0.20, "h": 0.220, "hz": 0.16, "sign": true},
+		# the tall office is BOTH: a real building AND declared engulfed — ring 1's arc passes
+		# through its roof corner (the GDD line verbatim: "partly engulfed by the amyloid growth,
+		# partly still legible as a working facility")
+		{"x": -0.60, "z": 0.34, "hx": 0.24, "h": 0.420, "hz": 0.18, "building": true, "engulfed": true},
+		{"x": 0.46, "z": 0.36, "hx": 0.20, "h": 0.340, "hz": 0.16, "building": true},
 		{"x": 0.06, "z": -0.10, "hx": 0.16, "h": 0.400, "hz": 0.14, "engulfed": true},   # swallowed block
 		{"x": -0.16, "z": -0.44, "hx": 0.22, "h": 0.180, "hz": 0.16, "engulfed": true},
 		{"x": 0.74, "z": -0.06, "hx": 0.13, "h": 0.130, "hz": 0.11},
@@ -70,6 +75,7 @@ static func generate(seed_value: int = 0) -> Dictionary:
 		"base": BASE.duplicate(true),
 		"teeth_every": 0.13,     # radians between teeth along a ring
 		"gap_count": 3,          # porous gaps per ring (bridged by strands)
+		"building_seed": seed_value * 13 + 1,   # the facility instances roll with the aggregate
 		"seed": seed_value,
 	}
 	if seed_value == 0:
@@ -150,7 +156,10 @@ static func _ring_basis(row: Array) -> Basis:
 ##   rings          [{bone, lav, basis, spin}] — per-wheel meshes in LOCAL frame (spin = rad/s sign)
 ##   origin         the shared wheel center (world)
 ##   core           the pink-red heart (world frame, at origin)
-##   nutech / dark / signs   the facility fragments (world frame, seated on y=0)
+##   nutech / dark / signs   the RAW facility masses (platform, swallowed blocks, the gate sign)
+##   building_slots [{kind, pos, yaw, spec_seed, scale}] — the legible offices: REAL surveyed
+##                  nutech_facility instances scaled INTO their declared envelope boxes (fit by
+##                  construction; the envelope is what the validator reconciled against the rings)
 ##   sign_positions [{pos, n}] — where the scene parks its NUTECH lettering
 static func build(spec: Dictionary) -> Dictionary:
 	var r0 := float(spec.get("r0", CANON_R0))
@@ -174,18 +183,37 @@ static func build(spec: Dictionary) -> Dictionary:
 		co_rows.append([(-co_r + t_c * co_r * 2.0) / r0, maxf(0.02, rr) / r0])
 	BaseShapeBuilder._rings_loft(core_st, Vector3.ZERO, r0, co_rows, 12)
 	core_st.generate_normals()
-	# the NUTECH facility fragments
+	# the NUTECH facility: raw swallowed masses + REAL surveyed buildings in their envelopes
 	var nutech := _st()
 	var dark := _st()
 	var signs := _st()
 	var sign_positions: Array = []
+	var building_slots: Array = []
 	var base: Dictionary = spec.get("base", BASE)
+	var bseed := int(spec.get("building_seed", 1))
+	var NSurvey := load("res://scripts/generation/building_survey.gd") as GDScript
 	for bx_v in (base.get("boxes", []) as Array):
 		var bx := bx_v as Dictionary
 		var half := Vector3(float(bx["hx"]), float(bx["h"]) * 0.5, float(bx["hz"])) * r0
 		var cbox := Vector3(float(bx["x"]) * r0, float(bx["h"]) * 0.5 * r0, float(bx["z"]) * r0)
+		if bool(bx.get("building", false)):
+			# the envelope is the reservation; the surveyed building scales INTO it, and its own
+			# roofline board tells the scene where the NUTECH lettering rides (one authority)
+			var slot_seed := bseed + building_slots.size()
+			var bspec: Dictionary = BaseShapeBuilder.generate("nutech_facility", slot_seed)
+			var bsize: Vector3 = bspec.get("size", Vector3(6.0, 7.2, 4.6))
+			var fit := minf(half.x * 2.0 / bsize.x, minf(float(bx["h"]) * r0 / bsize.y, half.z * 2.0 / bsize.z))
+			var ntbl: Dictionary = NSurvey.table_for(bspec, "nutech")
+			var sg_tbl: Dictionary = ntbl["sign"]
+			var sg_mid := (float(sg_tbl["y0"]) + float(sg_tbl["y1"])) * 0.5 * bsize.y * fit
+			var slot_pos := Vector3(cbox.x, 0.0, cbox.z)
+			building_slots.append({"kind": "nutech_facility", "pos": slot_pos, "yaw": 0.0,
+				"spec_seed": slot_seed, "scale": fit})
+			sign_positions.append({"pos": slot_pos + Vector3(0, sg_mid, bsize.z * 0.5 * fit + 0.30),
+				"n": Vector3(0, 0, 1)})
+			continue
 		BaseShapeBuilder._emit_box_st(nutech, cbox, half)
-		# institutional window strips on the taller blocks
+		# institutional window strips on the taller raw masses
 		if float(bx["h"]) > 0.15:
 			for si in range(2):
 				var sy := cbox.y + half.y * (0.15 + 0.45 * float(si))
@@ -193,16 +221,21 @@ static func build(spec: Dictionary) -> Dictionary:
 					Vector3(cbox.x, sy, cbox.z + half.z + 0.015),
 					Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1),
 					Vector3(half.x * 0.78, 0.09, 0.03))
-		if bool(bx.get("sign", false)):
-			var sp := Vector3(cbox.x, cbox.y + half.y * 0.62, cbox.z + half.z + 0.06)
-			BaseShapeBuilder._emit_oriented_box_st(signs, sp, Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1),
-				Vector3(half.x * 0.66, half.y * 0.22, 0.045))
-			sign_positions.append({"pos": sp + Vector3(0, 0, 0.08), "n": Vector3(0, 0, 1)})
+	# the freestanding gate sign at the platform's front edge (still powered, still legible)
+	var plat := (base.get("boxes", []) as Array)[0] as Dictionary
+	var gate_z := (float(plat["z"]) + float(plat["hz"])) * r0 - 0.10
+	var gate := Vector3(float(plat["x"]) * r0 + float(plat["hx"]) * r0 * 0.45, 0.0, gate_z)
+	for gx in [-1.0, 1.0]:
+		BaseShapeBuilder._emit_box_st(nutech, gate + Vector3(float(gx) * 0.85, 0.75, 0),
+			Vector3(0.08, 0.75, 0.08))
+	BaseShapeBuilder._emit_oriented_box_st(signs, gate + Vector3(0, 1.28, 0.03),
+		Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(0.95, 0.26, 0.05))
+	sign_positions.append({"pos": gate + Vector3(0, 1.28, 0.16), "n": Vector3(0, 0, 1)})
 	for s_t in [nutech, dark, signs]:
 		(s_t as SurfaceTool).generate_normals()
 	return {"rings": rings_out, "origin": Vector3(0, cy, 0), "core": core_st.commit(),
 		"nutech": nutech.commit(), "dark": dark.commit(), "signs": signs.commit(),
-		"sign_positions": sign_positions}
+		"building_slots": building_slots, "sign_positions": sign_positions}
 
 ## One wheel, in its LOCAL frame: the lumpy main tube in arc chunks (porous gaps between them),
 ## thin lavender strands bridging every gap + the pale inner ribbon, the inward tooth row, and

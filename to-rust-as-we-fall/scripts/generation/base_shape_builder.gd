@@ -21,7 +21,7 @@ const SHAPE_COMPOSITE := "composite"   # a small assembly of primitives (e.g. th
 const BUILDINGS := [
 	"plumbing_power", "honeycomb_cooperative", "beacon_hill", "open_files", "hypelines",
 	"greenfields", "ancourage", "bulwark_wharf", "cleanstreets", "zone3", "tiered_hall", "tiered_terrace",
-	"aghora_exchange", "aghora_stack", "locas_watchtower",
+	"aghora_exchange", "aghora_stack", "locas_watchtower", "nutech_facility",
 ]
 
 ## Reference-derived proportions. Dimensions are metres; the base sits on y=0.
@@ -213,6 +213,19 @@ const SPECS := {
 		"tile": "facility_metal",
 		"lattice": "",
 		"pipes": true,
+	},
+	"nutech_facility": {
+		"title": "NUTECH Facility",
+		"shape": SHAPE_BOX,                 # the abandoned spray facility (GDD 11.2; paranucleus
+		"size": Vector3(6.0, 7.2, 4.6),     # plate base cluster): a flat-roofed grey institutional
+		# slab — storey window grids, the white roofline board, parapet + reservoir tanks + plant,
+		# a loading dock flank. The Paranucleus grows over instances of THIS type.
+		"entrances": {"main_w": 1.4, "main_h": 2.2, "side_count_min": 0, "side_count_max": 0,
+			"canopy_out": 0.0, "reserve_margin": 0.25, "main_surround": false},
+		"color": Color(0.40, 0.41, 0.43),   # grey institutional concrete
+		"tile": "facility_metal",
+		"lattice": "",
+		"pipes": false,
 	},
 	"locas_watchtower": {
 		"title": "Loca's Watchtower",
@@ -3284,6 +3297,140 @@ static func watchtower_details(spec: Dictionary) -> Dictionary:
 	return {"stone": stone.commit(), "dark": dark.commit(), "blue": blue.commit(),
 		"tips": tips.commit(), "rust": rust.commit(), "core": core.commit(),
 		"nameplate_pos": Vector3(0, pq_y, pq_wall + 0.45)}
+
+## NUTECH facility detail passes, every part from the NUTECH survey frames: the per-storey window
+## grids (dark recesses, a hash-lit minority pale cool-white — never all lit, it's abandoned), the
+## white NUTECH roofline board, the green status indicator, the entry's concrete surround + cool
+## transom, the loading dock (platform + posts + steps + the roll-up panel), the parapet lip, and
+## the roof gear — plant boxes, the spray RESERVOIR tanks, the antenna.
+## Families: concrete / metal (tanks, posts) / dark / lit (pale windows) / white (the board) /
+## green (indicator). Plus "nameplate_pos" (ON the board).
+static func nutech_details(spec: Dictionary) -> Dictionary:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var tbl: Dictionary = Survey.table_for(spec, "nutech")
+	var size: Vector3 = spec.get("size", Vector3(6.0, 7.2, 4.6))
+	var h := size.y
+	var kb := float(str(spec.get("kind", "nutech_facility")).hash() % 1000) \
+		+ float(spec.get("height_total", h)) * 7.0
+	var concrete := _st()
+	var metal := _st()
+	var dark := _st()
+	var lit := _st()
+	var white := _st()
+	var green := _st()
+	var storeys := int(tbl["storeys"])
+	var nbase := float(tbl["base"])
+	var band := float(tbl["band"])
+	var wb: Dictionary = tbl["windows"]
+	var lit_f := float(wb["lit"])
+	var dk: Dictionary = tbl["dock"]
+	var dock_n := Vector3(float(dk["side"]), 0, 0)
+	var ent: Dictionary = spec.get("entrances", {})
+	var door_clear := float(ent.get("main_w", 1.4)) * 0.5 + 0.55
+	var faces := [Vector3(0, 0, 1), Vector3(0, 0, -1), Vector3(1, 0, 0), Vector3(-1, 0, 0)]
+	# --- the storey window grids ---
+	for k in range(storeys):
+		var by0 := (nbase + band * (float(k) + float(tbl["win_lo"]))) * h
+		var by1 := (nbase + band * (float(k) + float(tbl["win_hi"]))) * h
+		var bmid := (by0 + by1) * 0.5
+		var bhh := (by1 - by0) * 0.5
+		for f_v in faces:
+			var n := f_v as Vector3
+			var u := Vector3(1, 0, 0) if absf(n.z) > 0.5 else Vector3(0, 0, 1)
+			var wall := (size.z * 0.5) if absf(n.z) > 0.5 else (size.x * 0.5)
+			var face_half := ((size.x * 0.5) if absf(n.z) > 0.5 else (size.z * 0.5)) * 0.9
+			var cols := int(wb["front_cols"]) if absf(n.z) > 0.5 else int(wb["side_cols"])
+			var step := face_half * 1.7 / float(maxi(1, cols))
+			var pane_w := step * 0.30
+			for ci in range(cols):
+				var xo := (float(ci) - float(cols - 1) * 0.5) * step
+				if k == 0 and n.z > 0.5 and absf(xo) < maxf(door_clear, 0.24 * h) + pane_w:
+					continue   # the entry + indicator keep their clearance (survey-declared)
+				if k == 0 and n.dot(dock_n) > 0.5 and absf(xo) < float(dk["panel_half_w"]) * h + pane_w:
+					continue   # the dock panel owns this stretch (survey-declared)
+				var pc := u * xo + n * wall + Vector3(0, bmid, 0)
+				_emit_oriented_box_st(dark, pc + n * 0.02, u, Vector3.UP, n,
+					Vector3(pane_w, bhh, 0.05))
+				if _h01(kb + float(k) * 31.0 + float(ci) * 7.3 + n.x * 3.0 + n.z * 11.0) < lit_f:
+					_emit_oriented_box_st(lit, pc + n * 0.045, u, Vector3.UP, n,
+						Vector3(pane_w * 0.72, bhh * 0.74, 0.035))
+	# --- the white NUTECH board (roofline, front) ---
+	var sg: Dictionary = tbl["sign"]
+	var sg_y := (float(sg["y0"]) + float(sg["y1"])) * 0.5 * h
+	var sg_hh := (float(sg["y1"]) - float(sg["y0"])) * 0.5 * h
+	var sg_hw := float(sg["half_w"]) * h
+	var fzn := Vector3(0, 0, 1)
+	var fxu := Vector3(1, 0, 0)
+	var hz0 := size.z * 0.5
+	_emit_oriented_box_st(white, Vector3(0, sg_y, hz0 + 0.07), fxu, Vector3.UP, fzn,
+		Vector3(sg_hw, sg_hh, 0.045))
+	_emit_oriented_box_st(dark, Vector3(0, sg_y, hz0 + 0.05), fxu, Vector3.UP, fzn,
+		Vector3(sg_hw + 0.06, sg_hh + 0.06, 0.02))
+	# --- the green status indicator by the entry ---
+	var ind: Dictionary = tbl["indicator"]
+	_emit_oriented_box_st(green, Vector3(float(ind["x"]) * h,
+		(float(ind["y0"]) + float(ind["y1"])) * 0.5 * h, hz0 + 0.04),
+		fxu, Vector3.UP, fzn,
+		Vector3(float(ind["half_w"]) * h, (float(ind["y1"]) - float(ind["y0"])) * 0.5 * h, 0.035))
+	# --- the entry: concrete surround + cool transom ---
+	var d_w := float(ent.get("main_w", 1.4)) * 0.5
+	var d_h := float(ent.get("main_h", 2.2))
+	var en: Dictionary = tbl["entry"]
+	_emit_box_st(concrete, Vector3(0, d_h + float(en["lintel_h"]) * 0.5 + 0.02, hz0 + 0.05),
+		Vector3(d_w + 0.42, float(en["lintel_h"]) * 0.5, 0.11))
+	for sx in [-1.0, 1.0]:
+		_emit_box_st(concrete, Vector3(float(sx) * (d_w + 0.24), d_h * 0.5, hz0 + 0.04),
+			Vector3(0.16, d_h * 0.5, 0.10))
+	_emit_oriented_box_st(lit, Vector3(0, d_h - float(en["transom_h"]) * 0.5 - 0.04, hz0 + 0.02),
+		fxu, Vector3.UP, fzn, Vector3(d_w * 0.8, float(en["transom_h"]) * 0.5, 0.04))
+	# --- the loading dock: platform + posts + steps + the roll-up panel ---
+	var dhx := size.x * 0.5
+	var d_out := float(dk["platform_out"]) * h
+	var plat_h := float(dk["platform_h"]) * h
+	var plat_c := dock_n * (dhx + d_out * 0.5)
+	_emit_box_st(concrete, plat_c + Vector3(0, plat_h * 0.5, 0),
+		Vector3(d_out * 0.5 + 0.05, plat_h * 0.5, size.z * 0.34))
+	for pz in [-1.0, 1.0]:
+		_emit_box_st(metal, dock_n * (dhx + d_out) + Vector3(0, plat_h + 0.35, float(pz) * size.z * 0.30),
+			Vector3(0.05, 0.35, 0.05))
+	_emit_box_st(concrete, plat_c + Vector3(0, plat_h * 0.25, size.z * 0.34 + 0.30),
+		Vector3(d_out * 0.5, plat_h * 0.25, 0.30))
+	_emit_oriented_box_st(dark, dock_n * (dhx + 0.03) + Vector3(0, (float(dk["panel_y0"]) + float(dk["panel_y1"])) * 0.5 * h, 0),
+		Vector3(0, 0, 1), Vector3.UP, dock_n,
+		Vector3(float(dk["panel_half_w"]) * h, (float(dk["panel_y1"]) - float(dk["panel_y0"])) * 0.5 * h, 0.04))
+	# --- parapet lip + roof gear (plant, the reservoir tanks, the antenna) ---
+	var pp: Dictionary = tbl["parapet"]
+	var lip_y := (float(pp["y0"]) + 1.0) * 0.5 * h
+	var lip_hh := (1.0 - float(pp["y0"])) * 0.5 * h
+	for f_v2 in faces:
+		var n2 := f_v2 as Vector3
+		var u2 := Vector3(1, 0, 0) if absf(n2.z) > 0.5 else Vector3(0, 0, 1)
+		var wall2 := (size.z * 0.5) if absf(n2.z) > 0.5 else (size.x * 0.5)
+		var run2 := (size.x * 0.5) if absf(n2.z) > 0.5 else (size.z * 0.5)
+		_emit_oriented_box_st(concrete, n2 * (wall2 + float(pp["lip"]) * 0.4) + Vector3(0, lip_y, 0),
+			u2, Vector3.UP, n2, Vector3(run2 + float(pp["lip"]) * 0.4, lip_hh, float(pp["lip"]) * 0.5))
+	var rf: Dictionary = tbl["roof"]
+	for p_i in range(int(rf["plant"])):
+		var px := (_h01(kb + 61.0 + float(p_i) * 9.1) - 0.5) * size.x * 0.55
+		var pz2 := (_h01(kb + 67.0 + float(p_i) * 5.7) - 0.5) * size.z * 0.5
+		var ph := 0.25 + 0.30 * _h01(kb + 71.0 + float(p_i) * 3.3)
+		_emit_box_st(concrete, Vector3(px, h + ph * 0.5, pz2), Vector3(0.45, ph * 0.5, 0.38))
+	var t_rows := [[0.0, float(rf["tank_r"])], [0.015, float(rf["tank_r"]) * 0.9],
+		[float(rf["tank_h"]) * 0.85, float(rf["tank_r"]) * 0.95], [float(rf["tank_h"]), 0.01]]
+	for t_i in range(int(rf["tanks"])):
+		var tx := (float(t_i) - float(int(rf["tanks"]) - 1) * 0.5) * size.x * 0.30 - size.x * 0.12
+		var tz := size.z * (0.16 if t_i % 2 == 0 else -0.16)
+		_rings_loft(metal, Vector3(tx, h, tz), h, t_rows, 10)
+		_tube(metal, [Vector3(tx, h + 0.10, tz), Vector3(tx, h + 0.10, tz) + Vector3(0.0, 0.0, -tz - size.z * 0.05)], 0.035, 5)
+	if bool(rf["antenna"]):
+		var ap := Vector3(size.x * 0.36, h, -size.z * 0.30)
+		_tube(dark, [ap, ap + Vector3(0, 0.19 * h, 0)], 0.028, 5)
+		_emit_box_st(green, ap + Vector3(0, 0.19 * h + 0.06, 0), Vector3(0.05, 0.06, 0.05))
+	for s_t in [concrete, metal, dark, lit, white, green]:
+		(s_t as SurfaceTool).generate_normals()
+	return {"concrete": concrete.commit(), "metal": metal.commit(), "dark": dark.commit(),
+		"lit": lit.commit(), "white": white.commit(), "green": green.commit(),
+		"nameplate_pos": Vector3(0, sg_y, hz0 + 0.35)}
 
 ## The (outer, inner) half fractions of the setback ledge at y_frac (consecutive tier rows sharing y).
 static func _ledge_pair_at(rows: Array, y_frac: float) -> Vector2:

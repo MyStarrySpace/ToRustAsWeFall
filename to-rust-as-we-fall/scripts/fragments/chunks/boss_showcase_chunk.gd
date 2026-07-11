@@ -168,9 +168,16 @@ func _build_paranucleus() -> void:
 	dark.roughness = 0.92
 	_add_lattice_mesh(root, "NutechDark", built["dark"], dark)
 	var signm := StandardMaterial3D.new()
-	signm.albedo_color = Color(0.86, 0.86, 0.83)
-	signm.roughness = 0.7
+	signm.albedo_color = Color(0.78, 0.80, 0.78)
+	signm.emission_enabled = true
+	signm.emission = Color(0.95, 0.97, 0.94)   # the gate board — still powered
+	signm.emission_energy_multiplier = 1.2
 	_add_lattice_mesh(root, "NutechSigns", built["signs"], signm)
+	# the legible offices: REAL surveyed nutech_facility instances scaled into their envelopes
+	for slot_v in (built["building_slots"] as Array):
+		var slot := (slot_v as Dictionary).duplicate()
+		slot["pos"] = root.position + (slot["pos"] as Vector3)
+		_spawn_landmark_building(slot)
 	for sp_v in (built["sign_positions"] as Array):
 		var sp := sp_v as Dictionary
 		_add_boss_label(root, "NUTECH", (sp["pos"] as Vector3), Color(0.16, 0.18, 0.20), 34)

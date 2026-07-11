@@ -581,6 +581,41 @@ func _add_aghora_exchange_details(root: Node3D, spec: Dictionary) -> void:
 func _add_aghora_stack_details(root: Node3D, spec: Dictionary) -> void:
 	_add_aghora_buckets(root, "AghoraStk", BaseShapeBuilder.aghora_stack_details(spec))
 
+## The NUTECH facility (GDD 11.2): grey institutional concrete, mostly-dark window grids with a
+## pale cool-white lit minority, the glowing white roofline board, the terminal-green status
+## indicator — abandoned, but still legible as a working facility.
+func _add_nutech_details(root: Node3D, spec: Dictionary) -> void:
+	var built: Dictionary = BaseShapeBuilder.nutech_details(spec)
+	_add_lattice_mesh(root, "NtConcrete", built.get("concrete"),
+		_tinted_tile_material("facility_metal", Color(0.50, 0.51, 0.52)))
+	_add_lattice_mesh(root, "NtMetal", built.get("metal"),
+		_tinted_tile_material("facility_metal", Color(0.38, 0.42, 0.42)))
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.07, 0.08, 0.09)
+	dark.roughness = 0.92
+	_add_lattice_mesh(root, "NtDark", built.get("dark"), dark)
+	var litm := StandardMaterial3D.new()
+	litm.albedo_color = Color(0.28, 0.32, 0.36)
+	litm.emission_enabled = true
+	litm.emission = Color(0.80, 0.88, 1.0)   # the pale institutional interior light
+	litm.emission_energy_multiplier = 1.3
+	_add_lattice_mesh(root, "NtLit", built.get("lit"), litm)
+	var whitem := StandardMaterial3D.new()
+	whitem.albedo_color = Color(0.72, 0.74, 0.72)
+	whitem.emission_enabled = true
+	whitem.emission = Color(0.95, 0.97, 0.94)   # the NUTECH board — white, still powered
+	whitem.emission_energy_multiplier = 1.3
+	_add_lattice_mesh(root, "NtWhite", built.get("white"), whitem)
+	var greenm := StandardMaterial3D.new()
+	greenm.albedo_color = Color(0.10, 0.26, 0.16)
+	greenm.emission_enabled = true
+	greenm.emission = Color(0.36, 0.91, 0.50)   # terminal green — the institution's standard
+	greenm.emission_energy_multiplier = 1.8
+	_add_lattice_mesh(root, "NtGreen", built.get("green"), greenm)
+	var lbl := root.get_node_or_null("Nameplate")
+	if lbl != null and built.has("nameplate_pos"):
+		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
+
 ## Loca's Watchtower (the Act 1 boss landmark): cold masonry + the cool-blue institutional light
 ## the GDD names ("glowing cool blue from interior lighting"), cyan beacon tips, the red-brown
 ## containment tangles, and the fever-red core in the summit cage — Loca's bound chamber.
@@ -630,6 +665,11 @@ func _spawn_landmark_building(lm: Dictionary) -> void:
 	add_child(root)
 	root.position = _v3(lm, "pos")
 	root.rotation = Vector3(0.0, float(lm.get("yaw", 0.0)), 0.0)
+	# a diorama slot may scale the whole landmark into its declared envelope (the paranucleus's
+	# facility slots); full-size placements omit the key
+	var lm_scale := float(lm.get("scale", 1.0))
+	if lm_scale != 1.0:
+		root.scale = Vector3.ONE * lm_scale
 	var body := BaseShapeBuilder.base_mesh(spec, ent.get("reserved", []))
 	if body != null:
 		body.surface_set_material(0, _tinted_tile_material(str(spec.get("tile", "facility_metal")),
@@ -734,6 +774,8 @@ func _spawn_landmark_building(lm: Dictionary) -> void:
 		_add_aghora_exchange_details(root, spec)
 	if str(spec.get("kind", "")) == "aghora_stack":
 		_add_aghora_stack_details(root, spec)
+	if str(spec.get("kind", "")) == "nutech_facility":
+		_add_nutech_details(root, spec)
 
 func _spawn_lathe_building(lp: Dictionary) -> void:
 	var profile: Dictionary = LatheBuilderScript.make_profile(lp)

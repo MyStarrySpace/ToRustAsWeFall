@@ -405,6 +405,27 @@ const AGHORA_STACK := {
 	"entry": {"awning_out": 0.8},
 }
 
+## THE NUTECH FACILITY SURVEY — measured off the paranucleus boss plate's base cluster
+## (reference-images/bosses/paranucleus.png, decomposed 2026-07-11; GDD 11.2 — the abandoned
+## NUTECH spray facility the aggregate grew around, "grey institutional buildings with NUTECH
+## signage and platforms, partly still legible as a working facility"). A flat-roofed grey slab
+## office: per-storey window GRIDS (institutional, mostly dark, a hash-lit minority pale
+## cool-white), the white NUTECH board near the roofline, a parapet lip, roof plant + the spray
+## RESERVOIR tanks (the Lavender Lake canon) + antenna, a loading DOCK on one flank (platform +
+## roll-up panel), and the terminal-green status indicator by the entry. Fractions of H.
+const NUTECH := {
+	"storeys": 3, "base": 0.03, "band": 0.31,
+	"win_lo": 0.35, "win_hi": 0.80,          # the window band inside each storey band
+	"windows": {"front_cols": 5, "side_cols": 4, "lit": 0.35},
+	"sign": {"half_w": 0.155, "y0": 0.905, "y1": 0.985},   # the white NUTECH board, roofline
+	"indicator": {"x": 0.185, "half_w": 0.020, "y0": 0.16, "y1": 0.215},   # green, by the entry
+	"dock": {"side": 1, "panel_half_w": 0.105, "panel_y0": 0.05, "panel_y1": 0.30,
+		"platform_out": 0.115, "platform_h": 0.062},
+	"parapet": {"y0": 0.965, "lip": 0.035},
+	"roof": {"tanks": 2, "plant": 2, "antenna": true, "tank_r": 0.075, "tank_h": 0.14},
+	"entry": {"lintel_h": 0.26, "transom_h": 0.22},        # metres — concrete surround + transom
+}
+
 ## THE LOCA'S WATCHTOWER SURVEY — measured off the boss plate (reference-images/bosses/
 ## locas_watchtower.png, decomposed 2026-07-11; GDD 11.1 — the Act 1 boss, "clean-lined and
 ## reinforced, glowing cool blue from interior lighting"; the mountain is the fragment's staging,
@@ -495,6 +516,8 @@ static func table_for(spec_in: Dictionary, name: String) -> Dictionary:
 			base = AGHORA_STACK
 		"locas":
 			base = LOCAS
+		"nutech":
+			base = NUTECH
 	var out := base.duplicate(true)
 	var over: Dictionary = (spec_in.get("vars", {}) as Dictionary).get(name, {})
 	for k in over.keys():
@@ -724,6 +747,28 @@ static func roll_vars(kind_in: String, seed_value: int) -> Dictionary:
 			if float(rng.call("randf")) < 0.3:
 				lv["turrets"] = {"r": 0.0, "h": float((LOCAS["turrets"] as Dictionary)["h"])}   # a plainer tier-3 ledge
 			out["locas"] = lv
+		"nutech_facility":
+			var s14 := lerpf(0.94, 1.06, float(rng.call("randf")))
+			(out["spec"] as Dictionary)["size"] = Vector3(6.0, 7.2, 4.6) * s14
+			(out["spec"] as Dictionary)["entrances"] = {"main_w": 1.4 * s14, "main_h": 2.2 * s14,
+				"side_count_min": 0, "side_count_max": 0, "canopy_out": 0.0,
+				"reserve_margin": 0.25, "main_surround": false}
+			var nv := {"windows": {"front_cols": int(rng.call("randi_range", 4, 6)),
+					"side_cols": int(rng.call("randi_range", 3, 5)),
+					"lit": lerpf(0.25, 0.45, float(rng.call("randf")))},
+				"dock": {"side": [1, -1][int(rng.call("randi_range", 0, 1))],
+					"panel_half_w": 0.105, "panel_y0": 0.05, "panel_y1": 0.30,
+					"platform_out": 0.115, "platform_h": 0.062},
+				"roof": {"tanks": int(rng.call("randi_range", 1, 3)),
+					"plant": int(rng.call("randi_range", 1, 3)),
+					"antenna": float(rng.call("randf")) < 0.7, "tank_r": 0.075, "tank_h": 0.14}}
+			if float(rng.call("randf")) < 0.35:
+				# RECONCILED IN THE ROLLER: 4 storeys re-derive the band AND lift the board past
+				# the new top window band (the fixed y0 would land on it)
+				nv["storeys"] = 4
+				nv["band"] = 0.2325
+				nv["sign"] = {"half_w": 0.155, "y0": 0.918, "y1": 0.985}
+			out["nutech"] = nv
 		"cleanstreets":
 			var spread := lerpf(2.2, 2.8, float(rng.call("randf")))
 			var cs := {"fins": {"xs": [-spread, -spread / 3.0, spread / 3.0, spread],
@@ -1044,6 +1089,43 @@ func _survey_reservations(placements: Array) -> void:
 		_aghora_stack_reservations()
 	if str(spec.get("composite", "")) == "watchtower_tiers":
 		_locas_reservations()
+	if str(spec.get("kind", "")) == "nutech_facility":
+		_nutech_reservations()
+
+## Every planned NUTECH facility part claims its wall: per-storey window ring bands (declared
+## around the entry, the dock panel and the green indicator), the white roofline board, the dock's
+## roll-up panel on its flank, and the layer-1 parapet lip. Roof gear (tanks / plant / antenna)
+## sits ON the roof plane and claims no wall.
+func _nutech_reservations() -> void:
+	var tbl := table_for(spec, "nutech")
+	var h := _height_total()
+	var fz := Vector3(0, 0, 1)
+	var storeys := int(tbl["storeys"])
+	var nbase := float(tbl["base"])
+	var band := float(tbl["band"])
+	var dk: Dictionary = tbl["dock"]
+	var dock_n := Vector3(float(dk["side"]), 0, 0)
+	for k in range(storeys):
+		reservations.append({"id": "window_band_%d" % k, "type": "decoration", "ring": true,
+			"y0": (nbase + band * (float(k) + float(tbl["win_lo"]))) * h,
+			"y1": (nbase + band * (float(k) + float(tbl["win_hi"]))) * h,
+			"keeps_clear": ["door_main", "dock_panel", "indicator"]})
+	var sg: Dictionary = tbl["sign"]
+	reservations.append({"id": "sign_board", "type": "decoration", "cyl": false, "n": fz,
+		"x_center": 0.0, "half_w": float(sg["half_w"]) * h,
+		"y0": float(sg["y0"]) * h, "y1": float(sg["y1"]) * h, "keeps_clear": []})
+	var ind: Dictionary = tbl["indicator"]
+	reservations.append({"id": "indicator", "type": "decoration", "cyl": false, "n": fz,
+		"x_center": float(ind["x"]) * h, "half_w": float(ind["half_w"]) * h,
+		"y0": float(ind["y0"]) * h, "y1": float(ind["y1"]) * h,
+		"keeps_clear": ["window_band_0"]})
+	reservations.append({"id": "dock_panel", "type": "decoration", "cyl": false, "n": dock_n,
+		"x_center": 0.0, "half_w": float(dk["panel_half_w"]) * h,
+		"y0": float(dk["panel_y0"]) * h, "y1": float(dk["panel_y1"]) * h,
+		"keeps_clear": ["window_band_0"]})
+	var pp: Dictionary = tbl["parapet"]
+	reservations.append({"id": "parapet", "type": "decoration", "layer": 1, "ring": true,
+		"y0": float(pp["y0"]) * h, "y1": float(datums["crown"]), "keeps_clear": []})
 
 ## Every planned watchtower part claims its wall: the blue window recess banks per tier (rings,
 ## declared around the entry + the plaque), the LOCA'S WATCHTOWER plaque on the tier-3 front, and
