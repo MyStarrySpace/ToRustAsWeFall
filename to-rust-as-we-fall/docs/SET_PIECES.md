@@ -198,14 +198,29 @@ states (§11.1 heavy queueing + the door-trap shadow; §11.2 alignment paths + t
     Build: detection/roam mode flips per region (set_roam / distraction flags exist) + a
     conserved-weight draw table.
 
-### The Paranucleus + NUTECH facility (Act 2/3 boundary, GDD §11.2 — contemplative, no combat)
+### The Paranucleus + NUTECH facility (Act 2/3 boundary, GDD §11.2)
+
+> **CANON CORRECTION (director, 2026-07-11):** the GDD §11.2 "contemplative / ophanim / approach
+> with awe / no combat" framing is FLAGGED as an AI flesh-out embellishment, not authorial — do
+> not treat it as binding. A paranucleus is an amyloid PLAQUE: biologically a siege site, swarmed
+> by plaque-associated microglia + reactive glia, ringed by hyperexcitable neurons carrying tau
+> tangles. Enemies LIVE on it. What holds from canon (§4.5) is only that it's a PLACE you route
+> THROUGH, not a creature you trade hits with — so the navigation becomes CONTESTED (the game's
+> "routing-and-tools puzzle" ethos), not serene, and not a boss fight.
+
+The enemy pieces below all run on ONE insight: a rooted/colonizing enemy on a rotating ring has a
+position that is a FUNCTION OF ROTATION PHASE — the same variable pieces 15/16 already read. So
+Aster's TRACE (which already predicts each ring's period) now also predicts where the threat will
+be, the threat folds INTO the alignment read instead of replacing it, and the one NUTECH brake
+(piece 15) becomes contested: park a ring to hold your gap, or to freeze a threat pointing away —
+you often cannot do both. Fauna are canonical (`fauna_roster.md`), used in their exact niches.
 
 15. **Wheel-gap causeways — paths that exist at certain alignments.** The ophanim rings turn
     slowly (the built rotating wheels); each ring's porous GAPS are its only passable arcs, so
     the route to the core exists only at certain alignments — the GDD's line (L2482) as literal
     geometry. CONTROL: none at first — the wheels are not yours; Aster's TRACE reads each ring's
-    period and the next gap-meet tick, and the party WAITS (the awe register: you move when it
-    lets you, L2484). One NUTECH maintenance BRAKE survives per approach: it parks ONE ring —
+    period and the next gap-meet tick, and the party times its crossings to the openings. One
+    NUTECH maintenance BRAKE survives per approach: it parks ONE ring —
     a permanent gap on that ring only, bought by choosing which. Being on an arc when it rotates
     out is a SWEEP (carried around and set down outside — fail-forward, never a death).
     Build: the wheels already turn; gap arcs = walkable windows keyed to rotation phase
@@ -232,6 +247,49 @@ states (§11.1 heavy queueing + the door-trap shadow; §11.2 alignment paths + t
     before the player ever holds it. Grammar: valves in the office, heads in the yard, and the
     yard is how you reach the reservoirs the valves drain. Build: a timed concealment/repel lane
     (the distraction/conceal flags) + a shared depleting counter.
+
+#### Enemies living ON the Paranucleus (director, 2026-07-11 — the plaque is a siege site)
+
+The plaque-associated swarm: colonizers rooted to the turning rings, so THEIR position is a
+function of rotation phase and joins the same read as the gaps (pieces 15/16). None is a "defeat
+the boss" fight — each is a hazard you route past, and each nests into the alignment mechanic.
+
+18. **Sweeping Spiker sightline.** A Spiker (rooted LOS turret — fauna_roster: locks onto movement
+    in its sightline, fires from a bright branch) bolted to a ring band; as the ring turns its
+    firing LANE sweeps the interior. CONTROL: the ring's rotation (piece 15's read/brake). EFFECT:
+    the wheel-gap crossing now has TWO phases to satisfy AT ONCE — the gap open AND the bright
+    branch swept off your arc; Aster's TRACE predicts both. The brake is contested: park the ring
+    to hold your gap, or to freeze the branch pointing away. Cover verb stays canon (Capbage /
+    Scarpet break its LOS) — but cover placed on a spinning ring rotates with it, so WHERE on the
+    arc you set it decides how long it shields. Grammar: the Spiker fires ACROSS the gap you cross,
+    control (brake) at the hub. Build: a rooted enemy parented to a ring pivot (the wheels already
+    turn) + LOS from its live world transform; Spiker aiming already exists.
+
+19. **Crust bands — fire that rotates away.** A Crust colony (fauna_roster: wall hazard, vents acid
+    from dilating pores, ONLY fire clears a stretch and it grows back, a siderophore) rings one
+    band. EFFECT: the acid arc is impassable on its pore-dilate tell. Burn a stretch (Myke / a
+    thermal source) and the cleared gap ROTATES AWAY while un-burnt crust comes around — a timed,
+    MOVING window, not a permanent clearing (fire-on-a-turntable). Iron hook: Crusts are
+    siderophores, so an iron plate from the NUTECH hoist/yard draws the colony to one side of the
+    band, thinning the arc you cross opposite it. Grammar: the fire source / iron bait sits on the
+    facility side; the band you thin is out on the ring. Build: a Crust terrain colony as ring-band
+    cells (fire-clear + regrow cadence exist) parented to the pivot; iron-draw = the siderophore
+    lure bias.
+
+20. **Tangler–Spiker ecology, aimed by timing.** Canon ecology (fauna_roster: a Spiker's firing
+    "draws the Tanglers that hunt it"; Tanglers "prefer hyperexcitable neurons" and unravel their
+    prey — and biologically the tau tangles ring the plaque's hyperexcitable neurons). So the
+    counter is to NOT break the Spiker's LOS: let it fire, a Tangler creeps toward it, and when
+    their two rings ALIGN the Tangler reaches and unravels it — clearing BOTH hazards at an
+    alignment YOU chose by withholding your intervention. Pure "aim the ecosystem" (roster L40)
+    expressed through rotation timing: the verb is a decision about WHEN to do nothing. Grammar:
+    the Spiker and its hunting Tangler ride DIFFERENT rings; you read/brake to bring them together.
+    Build: the existing Spiker-draws-Tangler behavior + contact resolved on ring-alignment tick.
+
+(Variant kept for later: a **Candid arc** — fauna_roster's costly-but-safe colony floor that blinds
+Naturalizer scans and drives other enemies off — ringing one band makes a MOVING safe corridor that
+only shelters you while its arc sweeps past your position. Folds in the same way; not written up as
+its own piece yet.)
 
 ## CURE-ECHO set pieces — easier foreshadows of the nine landmark puzzles (PROPOSED, 2026-07-09)
 
