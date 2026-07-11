@@ -581,6 +581,43 @@ func _add_aghora_exchange_details(root: Node3D, spec: Dictionary) -> void:
 func _add_aghora_stack_details(root: Node3D, spec: Dictionary) -> void:
 	_add_aghora_buckets(root, "AghoraStk", BaseShapeBuilder.aghora_stack_details(spec))
 
+## Loca's Watchtower (the Act 1 boss landmark): cold masonry + the cool-blue institutional light
+## the GDD names ("glowing cool blue from interior lighting"), cyan beacon tips, the red-brown
+## containment tangles, and the fever-red core in the summit cage — Loca's bound chamber.
+func _add_watchtower_details(root: Node3D, spec: Dictionary) -> void:
+	var built: Dictionary = BaseShapeBuilder.watchtower_details(spec)
+	_add_lattice_mesh(root, "WtStone", built.get("stone"),
+		_tinted_tile_material("facility_metal", Color(0.48, 0.52, 0.58)))
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.07, 0.08, 0.10)
+	dark.roughness = 0.92
+	_add_lattice_mesh(root, "WtDark", built.get("dark"), dark)
+	var blue := StandardMaterial3D.new()
+	blue.albedo_color = Color(0.08, 0.13, 0.24)
+	blue.emission_enabled = true
+	blue.emission = Color(0.36, 0.66, 1.0)   # the watchtower's cool blue, visible from a long way off
+	blue.emission_energy_multiplier = 2.1
+	_add_lattice_mesh(root, "WtBlue", built.get("blue"), blue)
+	var tipm := StandardMaterial3D.new()
+	tipm.albedo_color = Color(0.12, 0.24, 0.30)
+	tipm.emission_enabled = true
+	tipm.emission = Color(0.45, 0.90, 1.0)   # beacon gems — the cold cyan-white scanner family
+	tipm.emission_energy_multiplier = 3.0
+	_add_lattice_mesh(root, "WtTips", built.get("tips"), tipm)
+	var rustm := StandardMaterial3D.new()
+	rustm.albedo_color = Color(0.44, 0.17, 0.11)   # the wire/tau tangles: matte red-brown
+	rustm.roughness = 0.98
+	_add_lattice_mesh(root, "WtTangles", built.get("rust"), rustm)
+	var corem := StandardMaterial3D.new()
+	corem.albedo_color = Color(0.38, 0.07, 0.09)
+	corem.emission_enabled = true
+	corem.emission = Color(1.0, 0.30, 0.26)   # the fever-red bound state (the plate's summit glow)
+	corem.emission_energy_multiplier = 2.8
+	_add_lattice_mesh(root, "WtCore", built.get("core"), corem)
+	var lbl := root.get_node_or_null("Nameplate")
+	if lbl != null and built.has("nameplate_pos"):
+		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
+
 func _spawn_landmark_building(lm: Dictionary) -> void:
 	var kind := str(lm.get("kind", ""))
 	if not BaseShapeBuilder.SPECS.has(kind):
@@ -687,6 +724,8 @@ func _spawn_landmark_building(lm: Dictionary) -> void:
 			_add_bulwark_details(root, spec)
 		"zone3_split":
 			_add_zone3_details(root, spec)
+		"watchtower_tiers":
+			_add_watchtower_details(root, spec)
 	if str(spec.get("kind", "")) == "honeycomb_cooperative":
 		_add_honeycomb_details(root, spec)
 	if str(spec.get("composite", "")) == "open_files_awnings":

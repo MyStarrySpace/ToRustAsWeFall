@@ -21,7 +21,7 @@ const SHAPE_COMPOSITE := "composite"   # a small assembly of primitives (e.g. th
 const BUILDINGS := [
 	"plumbing_power", "honeycomb_cooperative", "beacon_hill", "open_files", "hypelines",
 	"greenfields", "ancourage", "bulwark_wharf", "cleanstreets", "zone3", "tiered_hall", "tiered_terrace",
-	"aghora_exchange", "aghora_stack",
+	"aghora_exchange", "aghora_stack", "locas_watchtower",
 ]
 
 ## Reference-derived proportions. Dimensions are metres; the base sits on y=0.
@@ -214,6 +214,20 @@ const SPECS := {
 		"lattice": "",
 		"pipes": true,
 	},
+	"locas_watchtower": {
+		"title": "Loca's Watchtower",
+		"shape": SHAPE_COMPOSITE,           # the Act 1 boss mega-landmark (GDD 11.1, boss plate
+		"composite": "watchtower_tiers",    # 2026-07-11): three battered masonry tiers as ONE box
+		"size": Vector3(6.4, 13.0, 6.4),    # loft over BuildingSurvey.LOCAS.tiers + the observation
+		# cage at the crown holding Loca's bound chamber (fever-red core + containment tangles).
+		# The mountain + switchback approach are fragment staging, not this spec.
+		"entrances": {"main_w": 1.5, "main_h": 2.4, "side_count_min": 0, "side_count_max": 0,
+			"canopy_out": 0.0, "reserve_margin": 0.20, "main_surround": false},
+		"color": Color(0.33, 0.37, 0.43),   # cold institutional masonry (the cool-blue-lit plate)
+		"tile": "facility_metal",
+		"lattice": "",
+		"pipes": false,                     # the crawl on this tower is the TANGLES (details), not pipes
+	},
 	"tiered_hall": {
 		"title": "Tiered Hall",
 		"shape": SHAPE_CYLINDER,            # a "cake" that shrinks upward (tiers) -> exposed ledges
@@ -379,6 +393,8 @@ static func _composite(spec: Dictionary, reserved: Array = [], recess: float = 0
 			return _aghora_domed_mesh(spec, reserved, recess)
 		"zone3_split":
 			return _zone3_split_mesh(spec, reserved, recess)
+		"watchtower_tiers":
+			return _watchtower_mesh(spec, reserved, recess)
 		_:
 			return _box(spec.get("size", Vector3(4.0, 6.0, 4.0)))
 
@@ -2980,6 +2996,303 @@ static func _zone3_split_mesh(spec: Dictionary, reserved: Array, recess: float) 
 	raw.generate_normals()
 	st.append_from(raw.commit(), 0, Transform3D.IDENTITY)
 	return st.commit()
+
+## Loca's Watchtower (the Act 1 boss landmark, GDD 11.1): the vertical plinth band takes the real
+## door cut, then the three battered masonry tiers rise as ONE box loft over the LOCAS tier rows
+## (double rows at a shared y = a setback ledge), capped by the cage floor. The observation CAGE's
+## four corner posts are part of the massing (they carry the envelope to the crown); rails, bars,
+## the core and the tangles are watchtower_details.
+static func _watchtower_mesh(spec: Dictionary, reserved: Array, recess: float) -> ArrayMesh:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var tbl: Dictionary = Survey.table_for(spec, "locas")
+	var size: Vector3 = spec.get("size", Vector3(6.4, 13.0, 6.4))
+	var h := size.y
+	var band := float(tbl["door_band"]) * h
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.append_from(_box_with_doors(Vector3(size.x, band, size.z), reserved, recess), 0, Transform3D.IDENTITY)
+	# the tier loft + cage posts emit raw in their OWN stool (generate-after-append drops surfaces)
+	var raw := SurfaceTool.new()
+	raw.begin(Mesh.PRIMITIVE_TRIANGLES)
+	_box_loft(raw, tbl["tiers"] as Array, h, size.x * 0.5, size.z * 0.5)
+	var cage_f := float(((tbl["tiers"] as Array)[-1] as Array)[1])
+	var post_r := float((tbl["cage"] as Dictionary)["post_r"]) * h
+	var cage_y0 := float(((tbl["tiers"] as Array)[-1] as Array)[0]) * h
+	var cage_y1 := float((tbl["cage"] as Dictionary)["y1"]) * h
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			var cx := float(sx) * (size.x * 0.5 * cage_f - post_r)
+			var cz := float(sz) * (size.z * 0.5 * cage_f - post_r)
+			_emit_box_st(raw, Vector3(cx, (cage_y0 + cage_y1) * 0.5, cz),
+				Vector3(post_r, (cage_y1 - cage_y0) * 0.5, post_r))
+	raw.generate_normals()
+	st.append_from(raw.commit(), 0, Transform3D.IDENTITY)
+	return st.commit()
+
+## A battered BOX loft over rows [[y_frac, half_frac], ...] x (h, hx, hz): walls between rows that
+## span height, flat setback LEDGE rings between rows that share a y, a top cap on the last row.
+static func _box_loft(st: SurfaceTool, rows: Array, h: float, hx: float, hz: float) -> void:
+	for i in range(rows.size() - 1):
+		var a := rows[i] as Array
+		var b := rows[i + 1] as Array
+		var y0 := float(a[0]) * h
+		var y1 := float(b[0]) * h
+		var fa := float(a[1])
+		var fb := float(b[1])
+		var c := Vector3(0, (y0 + y1) * 0.5, 0)
+		if absf(y1 - y0) < 0.0001:
+			# a setback ledge: an upward ring from the outer rect to the inner rect
+			var oxl := hx * fa
+			var ozl := hz * fa
+			var ixl := hx * fb
+			var izl := hz * fb
+			var cl := Vector3(0, y0 - 1.0, 0)
+			_quad_out(st, Vector3(-oxl, y0, ozl), Vector3(oxl, y0, ozl), Vector3(ixl, y0, izl), Vector3(-ixl, y0, izl), cl)
+			_quad_out(st, Vector3(oxl, y0, -ozl), Vector3(-oxl, y0, -ozl), Vector3(-ixl, y0, -izl), Vector3(ixl, y0, -izl), cl)
+			_quad_out(st, Vector3(oxl, y0, ozl), Vector3(oxl, y0, -ozl), Vector3(ixl, y0, -izl), Vector3(ixl, y0, izl), cl)
+			_quad_out(st, Vector3(-oxl, y0, -ozl), Vector3(-oxl, y0, ozl), Vector3(-ixl, y0, izl), Vector3(-ixl, y0, -izl), cl)
+			continue
+		var x0 := hx * fa
+		var z0 := hz * fa
+		var x1 := hx * fb
+		var z1 := hz * fb
+		_quad_out(st, Vector3(-x0, y0, z0), Vector3(x0, y0, z0), Vector3(x1, y1, z1), Vector3(-x1, y1, z1), c)
+		_quad_out(st, Vector3(x0, y0, -z0), Vector3(-x0, y0, -z0), Vector3(-x1, y1, -z1), Vector3(x1, y1, -z1), c)
+		_quad_out(st, Vector3(x0, y0, z0), Vector3(x0, y0, -z0), Vector3(x1, y1, -z1), Vector3(x1, y1, z1), c)
+		_quad_out(st, Vector3(-x0, y0, -z0), Vector3(-x0, y0, z0), Vector3(-x1, y1, z1), Vector3(-x1, y1, -z1), c)
+	var top := rows[rows.size() - 1] as Array
+	var ty := float(top[0]) * h
+	var tf := float(top[1])
+	var txc := hx * tf
+	var tzc := hz * tf
+	var ct := Vector3(0, ty - 1.0, 0)
+	_quad_out(st, Vector3(-txc, ty, tzc), Vector3(txc, ty, tzc), Vector3(txc, ty, -tzc), Vector3(-txc, ty, -tzc), ct)
+
+## The wall half-extent FRACTION at y_frac, read off the same tier rows the loft builds from (the
+## vertical door band below the first row answers the full wall).
+static func _locas_half_frac(rows: Array, y_frac: float) -> float:
+	var first := rows[0] as Array
+	if y_frac <= float(first[0]):
+		return 1.0
+	for i in range(rows.size() - 1):
+		var a := rows[i] as Array
+		var b := rows[i + 1] as Array
+		var ya := float(a[0])
+		var yb := float(b[0])
+		if y_frac <= yb:
+			if yb - ya < 0.0001:
+				continue
+			return lerpf(float(a[1]), float(b[1]), (y_frac - ya) / (yb - ya))
+	return float((rows[rows.size() - 1] as Array)[1])
+
+## Loca's Watchtower detail passes, every part from the LOCAS survey frames: the cool-blue window
+## recess banks per tier, the tier-top edge light strips, the LOCA'S WATCHTOWER plaque, corner
+## buttresses + tier-3 turrets, the observation cage's rails + bars, the beacon spires (cyan tips),
+## the entry's heavy lintel + blue transom — and Loca's bound chamber: the fever-red CORE with the
+## red-brown containment TANGLES spilling from the cage down the rear + flank walls.
+## Families: stone / dark / blue (cool institutional light) / tips (beacon gems) / rust (tangles) /
+## core (the red heart). Plus "nameplate_pos" (ON the plaque).
+static func watchtower_details(spec: Dictionary) -> Dictionary:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var tbl: Dictionary = Survey.table_for(spec, "locas")
+	var size: Vector3 = spec.get("size", Vector3(6.4, 13.0, 6.4))
+	var h := size.y
+	var hx := size.x * 0.5
+	var rows: Array = tbl["tiers"]
+	var kb := float(str(spec.get("kind", "locas_watchtower")).hash() % 1000)
+	var stone := _st()
+	var dark := _st()
+	var blue := _st()
+	var tips := _st()
+	var rust := _st()
+	var core := _st()
+	var faces := [Vector3(0, 0, 1), Vector3(0, 0, -1), Vector3(1, 0, 0), Vector3(-1, 0, 0)]
+	# --- window recess banks (dark frame + cool-blue pane, riding the battered wall) ---
+	var ent: Dictionary = spec.get("entrances", {})
+	var door_clear := float(ent.get("main_w", 1.5)) * 0.5 + 0.55
+	var wb: Dictionary = tbl["windows"]
+	var pq: Dictionary = tbl["plaque"]
+	for bk in ["plinth", "t2", "t3"]:
+		var bd := wb[bk] as Dictionary
+		var by0 := float(bd["y0"]) * h
+		var by1 := float(bd["y1"]) * h
+		var bmid := (by0 + by1) * 0.5
+		var cols := int(bd["cols"])
+		var w_out := _locas_half_frac(rows, float(bd["y0"])) * hx
+		var w_in := _locas_half_frac(rows, float(bd["y1"])) * hx
+		var depth := (w_out - w_in) * 0.5 + 0.10
+		var wall_mid := (w_out + w_in) * 0.5
+		for f_v in faces:
+			var n := f_v as Vector3
+			var u := Vector3(1, 0, 0) if absf(n.z) > 0.5 else Vector3(0, 0, 1)
+			if bk == "t3" and n.z > 0.5:
+				continue   # the plaque owns the tier-3 front (declared at the survey)
+			var face_half := wall_mid * 0.94
+			var step := face_half * 1.6 / float(maxi(1, cols))
+			var pane_w := step * 0.30
+			for ci in range(cols):
+				var xo := (float(ci) - float(cols - 1) * 0.5) * step
+				if bk == "plinth" and n.z > 0.5 and absf(xo) < door_clear + pane_w:
+					continue   # the entry keeps its clearance (reserved at the survey)
+				var pc := u * xo + n * wall_mid + Vector3(0, bmid, 0)
+				_emit_oriented_box_st(dark, pc + n * (depth * 0.5 - 0.02), u, Vector3.UP, n,
+					Vector3(pane_w, (by1 - by0) * 0.5, depth * 0.5))
+				_emit_oriented_box_st(blue, pc + n * (depth * 0.5 + 0.012), u, Vector3.UP, n,
+					Vector3(pane_w * 0.68, (by1 - by0) * 0.36, depth * 0.5))
+	# --- the plaque (dark board + stone frame; the showcase nameplate rides it) ---
+	var pq_y := (float(pq["y0"]) + float(pq["y1"])) * 0.5 * h
+	var pq_hh := (float(pq["y1"]) - float(pq["y0"])) * 0.5 * h
+	var pq_hw := float(pq["half_w"]) * h
+	var pq_wall := _locas_half_frac(rows, (float(pq["y0"]) + float(pq["y1"])) * 0.5) * hx
+	var fzn := Vector3(0, 0, 1)
+	var fxu := Vector3(1, 0, 0)
+	_emit_oriented_box_st(dark, Vector3(0, pq_y, pq_wall + 0.10), fxu, Vector3.UP, fzn,
+		Vector3(pq_hw, pq_hh, 0.05))
+	for e_s in [[Vector3(0, pq_y + pq_hh, pq_wall + 0.13), Vector3(pq_hw + 0.08, 0.05, 0.05)],
+			[Vector3(0, pq_y - pq_hh, pq_wall + 0.13), Vector3(pq_hw + 0.08, 0.05, 0.05)],
+			[Vector3(-pq_hw, pq_y, pq_wall + 0.13), Vector3(0.05, pq_hh + 0.08, 0.05)],
+			[Vector3(pq_hw, pq_y, pq_wall + 0.13), Vector3(0.05, pq_hh + 0.08, 0.05)]]:
+		_emit_box_st(stone, (e_s as Array)[0] as Vector3, (e_s as Array)[1] as Vector3)
+	# --- corner buttresses (tier 1) + tier-3 ledge turrets ---
+	var bt: Dictionary = tbl["buttresses"]
+	var bt_h := float(bt["half_w"]) * h + 0.10
+	for c1 in range(4):
+		var sx1 := 1.0 if c1 % 2 == 0 else -1.0
+		var sz1 := 1.0 if c1 < 2 else -1.0
+		_emit_box_st(stone, Vector3(sx1 * (hx - bt_h * 0.4), float(bt["y1"]) * h * 0.5, sz1 * (size.z * 0.5 - bt_h * 0.4)),
+			Vector3(bt_h, float(bt["y1"]) * h * 0.5, bt_h))
+	var tr: Dictionary = tbl["turrets"]
+	if float(tr["r"]) > 0.0:
+		var t_led := _ledge_pair_at(rows, 0.620)
+		var t_c := (t_led.x + t_led.y) * 0.5 * hx
+		var t_rows := [[0.0, float(tr["r"])], [0.018, float(tr["r"]) * 0.82],
+			[float(tr["h"]) * 0.80, float(tr["r"]) * 0.90], [float(tr["h"]), 0.006]]
+		for c2 in range(4):
+			var sx2 := 1.0 if c2 % 2 == 0 else -1.0
+			var sz2 := 1.0 if c2 < 2 else -1.0
+			_rings_loft(stone, Vector3(sx2 * t_c, 0.620 * h, sz2 * t_c), h, t_rows, 10)
+	# --- tier-top edge light strips (the plate's cool blue edge lighting) ---
+	for st_y in (tbl["strips"] as Array):
+		var sy := float(st_y) * h
+		var rim := _locas_half_frac(rows, float(st_y) - 0.004) * hx
+		for f_v2 in faces:
+			var n2 := f_v2 as Vector3
+			var u2 := Vector3(1, 0, 0) if absf(n2.z) > 0.5 else Vector3(0, 0, 1)
+			_emit_oriented_box_st(blue, n2 * (rim - 0.02) + Vector3(0, sy + 0.03, 0), u2, Vector3.UP, n2,
+				Vector3(rim * 0.98, 0.028, 0.045))
+	# --- the observation cage: rails + bars (the posts are massing) ---
+	var cg: Dictionary = tbl["cage"]
+	var cage_hx := _locas_half_frac(rows, 0.99) * hx
+	var post_r2 := float(cg["post_r"]) * h
+	var rail_half := cage_hx - post_r2
+	for ry in (cg["rail_ys"] as Array):
+		var ryy := float(ry) * h
+		for f_v3 in faces:
+			var n3 := f_v3 as Vector3
+			var u3 := Vector3(1, 0, 0) if absf(n3.z) > 0.5 else Vector3(0, 0, 1)
+			_emit_oriented_box_st(dark, n3 * (cage_hx - post_r2) + Vector3(0, ryy, 0), u3, Vector3.UP, n3,
+				Vector3(rail_half, 0.045, 0.045))
+	var nbars := int(cg["bars"])
+	var bar_y0 := 0.800 * h
+	var bar_y1 := float((cg["rail_ys"] as Array)[-1]) * h
+	for f_v4 in faces:
+		var n4 := f_v4 as Vector3
+		var u4 := Vector3(1, 0, 0) if absf(n4.z) > 0.5 else Vector3(0, 0, 1)
+		for bi in range(nbars):
+			var bo := (float(bi) - float(nbars - 1) * 0.5) / float(nbars) * rail_half * 1.7
+			_emit_oriented_box_st(dark, u4 * bo + n4 * (cage_hx - post_r2) + Vector3(0, (bar_y0 + bar_y1) * 0.5, 0),
+				u4, Vector3.UP, n4, Vector3(0.03, (bar_y1 - bar_y0) * 0.5, 0.03))
+	# --- beacon spires on the cage posts (cyan tip gems) ---
+	var sp: Dictionary = tbl["spires"]
+	var mast_r := clampf(float(sp["r"]) * h, 0.028, 0.040)
+	for c3 in range(4):
+		var sx3 := 1.0 if c3 % 2 == 0 else -1.0
+		var sz3 := 1.0 if c3 < 2 else -1.0
+		var mp := Vector3(sx3 * (cage_hx - post_r2), 0.0, sz3 * (cage_hx - post_r2))
+		_tube(dark, [mp + Vector3(0, 0.965 * h, 0), mp + Vector3(0, (1.0 + float(sp["mast_h"])) * h, 0)], mast_r, 6)
+		var gem_c := mp + Vector3(0, (1.0 + float(sp["mast_h"])) * h + 0.10, 0)
+		_emit_box_st(tips, gem_c, Vector3(0.09, 0.13, 0.09))
+	# --- the entry: heavy lintel + jambs + the blue transom over the door ---
+	var d_w := float(ent.get("main_w", 1.5)) * 0.5
+	var d_h := float(ent.get("main_h", 2.4))
+	var en: Dictionary = tbl["entry"]
+	var hz0 := size.z * 0.5
+	_emit_box_st(stone, Vector3(0, d_h + float(en["lintel_h"]) * 0.5 + 0.34, hz0 + 0.06),
+		Vector3(d_w + 0.55, float(en["lintel_h"]) * 0.5, 0.14))
+	for sx4 in [-1.0, 1.0]:
+		_emit_box_st(stone, Vector3(float(sx4) * (d_w + 0.32), d_h * 0.5, hz0 + 0.05),
+			Vector3(0.22, d_h * 0.5, 0.12))
+	_emit_oriented_box_st(blue, Vector3(0, d_h + float(en["transom_h"]) * 0.5 + 0.05, hz0 + 0.02),
+		fxu, Vector3.UP, fzn, Vector3(d_w * 0.82, float(en["transom_h"]) * 0.5, 0.05))
+	# --- Loca's bound chamber: the fever-red core (a wobbled lathe mass) ---
+	var co: Dictionary = tbl["core"]
+	var co_y := float(co["y"]) * h
+	var co_r := float(co["r"]) * h
+	var co_rows: Array = []
+	var n_co := 7
+	for i_c in range(n_co + 1):
+		var t_c2 := float(i_c) / float(n_co)
+		var rr := sin(t_c2 * PI) * co_r * (1.0 + 0.18 * (_h01(kb + 31.0 + float(i_c) * 7.7) - 0.5))
+		co_rows.append([(co_y - co_r + t_c2 * co_r * 2.0) / h, maxf(0.012, rr) / h])
+	_rings_loft(core, Vector3.ZERO, h, co_rows, 10)
+	# --- the containment tangles: strands from the core over the cage rim, down the walls ---
+	var tg: Dictionary = tbl["tangles"]
+	var strands := int(tg["strands"])
+	# the falls favour the rear + flanks but one strand always takes the front-right corner — the
+	# plate's tangles wrap the whole crown; the front face proper stays clear of the plaque + entry
+	var strand_faces := [Vector3(0, 0, -1), Vector3(1, 0, 0), Vector3(-1, 0, 0), Vector3(0, 0, -1), Vector3(1, 0, 0)]
+	var strand_lats := [0.2, 0.72, -0.3, -0.55, -0.68]
+	for s_i in range(strands):
+		var sn := strand_faces[s_i % strand_faces.size()] as Vector3
+		var su := Vector3(1, 0, 0) if absf(sn.z) > 0.5 else Vector3(0, 0, 1)
+		var lat0: float = float(strand_lats[s_i % strand_lats.size()]) * cage_hx \
+			+ (_h01(kb + 3.0 + float(s_i) * 13.7) - 0.5) * 0.3 * cage_hx
+		var pts: Array = []
+		pts.append(Vector3(0, co_y + co_r * 0.4, 0) + sn * co_r * 0.5)
+		pts.append(sn * (cage_hx * 0.7) + su * lat0 * 0.4 + Vector3(0, 0.965 * h, 0))
+		pts.append(sn * (cage_hx + 0.06) + su * lat0 + Vector3(0, float((cg["rail_ys"] as Array)[0]) * h, 0))
+		var y_end := float(tg["y0"]) * h * (1.0 + 0.35 * _h01(kb + 71.0 + float(s_i) * 3.3))
+		var n_pt := 7
+		for p_i in range(1, n_pt + 1):
+			var t_p := float(p_i) / float(n_pt)
+			var yy := lerpf(0.800 * h, y_end, t_p)
+			var wall := _locas_half_frac(rows, yy / h) * hx
+			var wander := (_h01(kb + 17.0 + float(s_i) * 5.3 + float(p_i) * 3.1) - 0.5) * 0.16 * h
+			pts.append(sn * (wall + 0.06) + su * (lat0 + wander) + Vector3(0, yy, 0))
+		var s_r := (0.0075 + 0.0035 * _h01(kb + 41.0 + float(s_i) * 9.9)) * h
+		_tube(rust, pts, s_r, 5)
+		# a thinner companion strand shadowing the fall + a drip fork off its mid-wall run — the
+		# bundled-cable read the plate has (never a single clean wire)
+		var comp: Array = []
+		for p_v in pts:
+			comp.append((p_v as Vector3) + su * s_r * 2.4 + sn * s_r * 0.6)
+		_tube(rust, comp, s_r * 0.55, 4)
+		var fork_a := pts[4] as Vector3
+		_tube(rust, [fork_a, fork_a + sn * 0.12 + su * 0.22 * h * (_h01(kb + 53.0 + float(s_i)) - 0.5)
+			+ Vector3(0, -0.10 * h, 0)], s_r * 0.6, 4)
+	# two wrap loops around the core (the containment read: wires encasing her)
+	for w_i in range(2):
+		var tilt := 0.5 + 0.7 * float(w_i)
+		var loop_pts: Array = []
+		for a_i in range(13):
+			var aa := TAU * float(a_i) / 12.0
+			var lp := Vector3(cos(aa) * co_r * 1.18, sin(aa) * sin(tilt) * co_r * 1.18, sin(aa) * cos(tilt) * co_r * 1.18)
+			loop_pts.append(Vector3(0, co_y, 0) + lp)
+		_tube(rust, loop_pts, 0.045, 5)
+	for s_t in [stone, dark, blue, tips, rust, core]:
+		(s_t as SurfaceTool).generate_normals()
+	return {"stone": stone.commit(), "dark": dark.commit(), "blue": blue.commit(),
+		"tips": tips.commit(), "rust": rust.commit(), "core": core.commit(),
+		"nameplate_pos": Vector3(0, pq_y, pq_wall + 0.45)}
+
+## The (outer, inner) half fractions of the setback ledge at y_frac (consecutive tier rows sharing y).
+static func _ledge_pair_at(rows: Array, y_frac: float) -> Vector2:
+	for i in range(rows.size() - 1):
+		var a := rows[i] as Array
+		var b := rows[i + 1] as Array
+		if absf(float(a[0]) - y_frac) < 0.001 and absf(float(b[0]) - y_frac) < 0.001:
+			return Vector2(float(a[1]), float(b[1]))
+	return Vector2(1.0, 1.0)
 
 # --- RECURSIVE CONNECTED AWNINGS (the Open Files massing — geometry-lab algorithm 2, ported) -------
 #

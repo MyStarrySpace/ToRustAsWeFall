@@ -54,6 +54,7 @@ const EAVE_RATIOS := {
 	"bulwark_towers": 0.86,    # gatehouse body top (towers rise past it to the crown)
 	"zone3_split": 0.94,       # cornice underside (plate: crown slab = top ~6% H)
 	"aghora_domed": 0.66,      # gallery-band top / dome springing (the Aghora Exchange drum)
+	"watchtower_tiers": 0.80,  # the masonry tops at the cage floor; the observation cage is the crown zone
 }
 
 ## THE PLUMBING POWER SURVEY — measured off the plate (reference-images/architecture/
@@ -404,6 +405,40 @@ const AGHORA_STACK := {
 	"entry": {"awning_out": 0.8},
 }
 
+## THE LOCA'S WATCHTOWER SURVEY — measured off the boss plate (reference-images/bosses/
+## locas_watchtower.png, decomposed 2026-07-11; GDD 11.1 — the Act 1 boss, "clean-lined and
+## reinforced, glowing cool blue from interior lighting"; the mountain is the fragment's staging,
+## the tower is this survey). THREE battered masonry tiers as ONE box loft over the tier rows
+## (double rows at a shared y = a setback ledge), a vertical plinth band below the batter carrying
+## the arched entry, and the open OBSERVATION CAGE at the crown — four corner posts + rails —
+## holding Loca's bound chamber: the fever-red CORE wrapped in red-brown wire/tau TANGLES that
+## spill down the rear and flank walls (the containment, pathology and protection at once).
+## Cool blue institutional light: window recess banks per tier, edge strips on the tier tops,
+## beacon-tipped spires. Fractions of H unless a key says metres.
+const LOCAS := {
+	# battered tier loft rows [y_frac, half_frac of size.x/2]; consecutive rows sharing y = a ledge
+	"tiers": [
+		[0.240, 1.000], [0.300, 0.940],
+		[0.300, 0.860], [0.620, 0.780],
+		[0.620, 0.660], [0.800, 0.620],
+	],
+	"door_band": 0.240,                     # the vertical plinth band the entry cuts (0..this)
+	"cage": {"y1": 1.000, "post_r": 0.017, "rail_ys": [0.86, 0.965], "bars": 4},
+	"core": {"y": 0.885, "r": 0.062},       # Loca's bound state — the summit chamber glow
+	"windows": {                            # cool-blue recess banks (cols = panels per face)
+		"plinth": {"y0": 0.100, "y1": 0.185, "cols": 4},
+		"t2": {"y0": 0.370, "y1": 0.555, "cols": 2},
+		"t3": {"y0": 0.645, "y1": 0.720, "cols": 3},
+	},
+	"plaque": {"half_w": 0.115, "y0": 0.655, "y1": 0.755},   # LOCA'S WATCHTOWER board (front, tier 3)
+	"buttresses": {"half_w": 0.052, "y1": 0.288, "out": 0.055},   # 4 corner piers under the t1 ledge
+	"turrets": {"r": 0.028, "h": 0.185},    # slim corner drums on the tier-3 ledge
+	"spires": {"mast_h": 0.145, "r": 0.0042},   # beacon masts on the cage corners, cyan tips
+	"strips": [0.300, 0.620, 0.800],        # the cool-blue edge light strips on the tier tops
+	"tangles": {"strands": 4, "y0": 0.34},  # the containment wires: cage -> rear + flank walls
+	"entry": {"lintel_h": 0.32, "transom_h": 0.26},   # metres — heavy surround + the blue transom
+}
+
 ## Authored storey plans (ground band + floor count between plinth and eave), per building kind.
 ## Numbers trace to the plate decompositions; buildings without an entry get equal DEFAULT_STOREY
 ## bands. greenfields' ground/storey split is ALSO the slab-ring datum table the massing builds on.
@@ -458,6 +493,8 @@ static func table_for(spec_in: Dictionary, name: String) -> Dictionary:
 			base = AGHORA
 		"aghora_stack":
 			base = AGHORA_STACK
+		"locas":
+			base = LOCAS
 	var out := base.duplicate(true)
 	var over: Dictionary = (spec_in.get("vars", {}) as Dictionary).get(name, {})
 	for k in over.keys():
@@ -672,6 +709,21 @@ static func roll_vars(kind_in: String, seed_value: int) -> Dictionary:
 				asv["band"] = 0.2275
 				asv["signs"] = [[0.460, 0.500], [0.895, 0.930]]
 			out["aghora_stack"] = asv
+		"locas_watchtower":
+			var s13 := lerpf(0.95, 1.06, float(rng.call("randf")))
+			(out["spec"] as Dictionary)["size"] = Vector3(6.4, 13.0, 6.4) * s13
+			(out["spec"] as Dictionary)["entrances"] = {"main_w": 1.5 * s13, "main_h": 2.4 * s13,
+				"side_count_min": 0, "side_count_max": 0, "canopy_out": 0.0,
+				"reserve_margin": 0.20, "main_surround": false}
+			# RECONCILED IN THE ROLLER: the plaque half_w stays under the tier-3 face at every roll
+			# (face half at the plaque band ~0.155H); window cols scale the banks, never the bands
+			var lv := {"plaque": {"half_w": lerpf(0.100, 0.130, float(rng.call("randf")))},
+				"windows": {"t2": {"y0": 0.370, "y1": 0.555,
+					"cols": int(rng.call("randi_range", 2, 3))}},
+				"tangles": {"strands": int(rng.call("randi_range", 3, 5)), "y0": 0.34}}
+			if float(rng.call("randf")) < 0.3:
+				lv["turrets"] = {"r": 0.0, "h": float((LOCAS["turrets"] as Dictionary)["h"])}   # a plainer tier-3 ledge
+			out["locas"] = lv
 		"cleanstreets":
 			var spread := lerpf(2.2, 2.8, float(rng.call("randf")))
 			var cs := {"fins": {"xs": [-spread, -spread / 3.0, spread / 3.0, spread],
@@ -850,6 +902,16 @@ func _survey_profile() -> void:
 				var core: Vector2 = BaseShapeBuilder._awning_layout(spec)["core"]
 				_pb(0.0, hx, hz)
 				_pb(crown, core.x, core.y)
+			"watchtower_tiers":
+				# the profile IS the tier loft rows (one authority: LOCAS.tiers) — vertical plinth
+				# band, three battered tiers with setback ledges, the cage envelope to the crown
+				var lt := table_for(spec, "locas")
+				_pb(0.0, hx, hz)
+				for row_w in (lt["tiers"] as Array):
+					var rw2 := row_w as Array
+					_pb(float(rw2[0]) * h, hx * float(rw2[1]), hz * float(rw2[1]))
+				var cage_f := float(((lt["tiers"] as Array)[-1] as Array)[1])
+				_pb(crown, hx * cage_f, hz * cage_f)
 			_:
 				var tiers := maxi(1, int(spec.get("tiers", 1)))
 				if tiers > 1:
@@ -980,6 +1042,75 @@ func _survey_reservations(placements: Array) -> void:
 		_aghora_reservations()
 	if str(spec.get("kind", "")) == "aghora_stack":
 		_aghora_stack_reservations()
+	if str(spec.get("composite", "")) == "watchtower_tiers":
+		_locas_reservations()
+
+## Every planned watchtower part claims its wall: the blue window recess banks per tier (rings,
+## declared around the entry + the plaque), the LOCA'S WATCHTOWER plaque on the tier-3 front, and
+## the layer-1 crust — corner buttresses, tier-3 corner turrets, the tier-top edge light strips,
+## the observation cage, the beacon spires and the containment TANGLE falls. Every crust crossing
+## is a declared ensemble, both ways (the strips run under the tangles; the tangles wrap the cage;
+## the spires stand on the cage).
+func _locas_reservations() -> void:
+	var tbl := table_for(spec, "locas")
+	var h := _height_total()
+	var fz := Vector3(0, 0, 1)
+	# the layer-1 crust ensemble: everything proud of the wall that crosses something else proud
+	var crust: Array = ["cage", "strip_0", "strip_1", "strip_2", "spire_band"]
+	for t0 in range(int((tbl["tangles"] as Dictionary)["strands"])):
+		crust.append("tangle_%d" % t0)
+	var wb: Dictionary = tbl["windows"]
+	for bk in ["plinth", "t2", "t3"]:
+		var band := wb[bk] as Dictionary
+		reservations.append({"id": "window_band_%s" % bk, "type": "decoration", "ring": true,
+			"y0": float(band["y0"]) * h, "y1": float(band["y1"]) * h,
+			"keeps_clear": ["door_main", "plaque"]})
+	var pq: Dictionary = tbl["plaque"]
+	reservations.append({"id": "plaque", "type": "decoration", "cyl": false, "n": fz,
+		"x_center": 0.0, "half_w": float(pq["half_w"]) * h,
+		"y0": float(pq["y0"]) * h, "y1": float(pq["y1"]) * h,
+		"keeps_clear": ["window_band_t3"]})
+	var bt: Dictionary = tbl["buttresses"]
+	var sizew: Vector3 = spec.get("size", Vector3(6.4, 13.0, 6.4))
+	for c in range(4):
+		var sx := 1.0 if c % 2 == 0 else -1.0
+		reservations.append({"id": "buttress_%d" % c, "type": "decoration", "layer": 1,
+			"cyl": false, "n": fz if c < 2 else Vector3(0, 0, -1),
+			"x_center": sx * (sizew.x * 0.5 - float(bt["half_w"]) * h),
+			"half_w": float(bt["half_w"]) * h,
+			"y0": 0.0, "y1": float(bt["y1"]) * h, "keeps_clear": []})
+	var si := 0
+	for st_y in (tbl["strips"] as Array):
+		reservations.append({"id": "strip_%d" % si, "type": "decoration", "layer": 1, "ring": true,
+			"y0": (float(st_y) - 0.012) * h, "y1": (float(st_y) + 0.012) * h,
+			"keeps_clear": crust})
+		si += 1
+	reservations.append({"id": "turret_band", "type": "decoration", "layer": 1, "ring": true,
+		"y0": 0.620 * h, "y1": (0.620 + float((tbl["turrets"] as Dictionary)["h"])) * h,
+		"keeps_clear": crust})
+	var cg: Dictionary = tbl["cage"]
+	reservations.append({"id": "cage", "type": "decoration", "layer": 1, "ring": true,
+		"y0": float(datums["eave"]), "y1": float(cg["y1"]) * h, "keeps_clear": crust + ["turret_band"]})
+	reservations.append({"id": "spire_band", "type": "decoration", "layer": 1, "ring": true,
+		"y0": 0.94 * h, "y1": float(datums["crown"]), "keeps_clear": crust})
+	var tg: Dictionary = tbl["tangles"]
+	for t in range(int(tg["strands"])):
+		reservations.append({"id": "tangle_%d" % t, "type": "decoration", "layer": 1, "ring": true,
+			"y0": float(tg["y0"]) * h, "y1": float(cg["y1"]) * h, "keeps_clear": crust + ["turret_band"]})
+
+## The watchtower's setback ledges, read off the SAME tier rows the loft builds from: consecutive
+## rows sharing a y are a ledge; mid_hx is the ledge surface's mid extent in metres.
+func _locas_ledges() -> Array:
+	var rows: Array = table_for(spec, "locas")["tiers"]
+	var wsz: Vector3 = spec.get("size", Vector3(6.4, 13.0, 6.4))
+	var out: Array = []
+	for i in range(rows.size() - 1):
+		var a := rows[i] as Array
+		var b := rows[i + 1] as Array
+		if absf(float(a[0]) - float(b[0])) < 0.0001:
+			out.append({"y": float(a[0]) * wsz.y,
+				"mid_hx": wsz.x * 0.5 * (float(a[1]) + float(b[1])) * 0.5})
+	return out
 
 ## Every planned Aghora Exchange part claims its wall: two window ring bands (declared around the
 ## market arch), the gallery arch band, the dome rib band, and the layer-1 proud pieces (the neon
@@ -1624,6 +1755,32 @@ func _survey_sockets(placements: Array) -> void:
 			sockets.append({"kind": "balcony",
 				"pos": Vector3(0.8, (float(ast["base"]) + float(ast["band"]) * float(k9)) * asz.y + 0.05, asz.z * 0.5),
 				"n": Vector3(0, 0, 1), "radius": 0.5})
+	if comp == "watchtower_tiers":
+		# the observation cage floor is the tower's deck: a bridge dock at each rim face (the
+		# GDD's observation-bridge contract), balcony slots mid-ledge on the two setbacks (read
+		# from the SAME tier rows the loft builds from), and the weak points where the tangles
+		# have been eating the wall (rear tier-2 + a cage corner).
+		# Early return: the generic box parapet sockets would float off the battered profile.
+		var wsz: Vector3 = spec.get("size", Vector3(6.4, 13.0, 6.4))
+		var wh := wsz.y
+		var cage_y := float(datums["eave"])
+		var cage_hx := half_extents_at(cage_y - 0.05).x
+		for fd_w in [[Vector3(0, cage_y, cage_hx), Vector3(0, 0, 1)], [Vector3(0, cage_y, -cage_hx), Vector3(0, 0, -1)],
+				[Vector3(cage_hx, cage_y, 0), Vector3(1, 0, 0)], [Vector3(-cage_hx, cage_y, 0), Vector3(-1, 0, 0)]]:
+			sockets.append({"kind": "bridge", "pos": (fd_w as Array)[0], "dir": (fd_w as Array)[1], "width": 1.0})
+		for lg_w in _locas_ledges():
+			var ld_w := lg_w as Dictionary
+			for sx_w in [1.0, -1.0]:
+				sockets.append({"kind": "balcony",
+					"pos": Vector3(float(sx_w) * float(ld_w["mid_hx"]), float(ld_w["y"]), 0.0),
+					"out": Vector3(float(sx_w), 0, 0), "size": 0.5})
+		sockets.append({"kind": "weak_point",
+			"pos": Vector3(0, 0.50 * wh, -half_extents_at(0.50 * wh).y),
+			"n": Vector3(0, 0, -1), "radius": 0.8})
+		var cpost := half_extents_at(cage_y + 0.1).x
+		sockets.append({"kind": "weak_point", "pos": Vector3(cpost, 0.86 * wh, cpost),
+			"n": Vector3(1, 0, 1).normalized(), "radius": 0.7})
+		return
 	if str(spec.get("kind", "")) == "honeycomb_cooperative":
 		var hc := table_for(spec, "honeycomb")
 		var hsz: Vector3 = spec.get("size", Vector3(4.5, 10.0, 6.3))
@@ -2340,6 +2497,11 @@ func _validate_socket(s: Dictionary, problems: Array[String]) -> void:
 				var z3l := table_for(spec, "zone3")
 				for sy_l in (z3l["slabs"] as Array):
 					if absf((float(sy_l) + float(z3l["slab_t"])) * _height_total() - pos.y) <= 0.1:
+						on_ledge = true
+			elif str(spec.get("composite", "")) == "watchtower_tiers":
+				# the watchtower's balconies ride the tier setback ledges (the loft's shared-y rows)
+				for lg_l in _locas_ledges():
+					if absf(float((lg_l as Dictionary)["y"]) - pos.y) <= 0.1:
 						on_ledge = true
 			else:
 				for lg in BaseShapeBuilder.tier_ledges(spec):
