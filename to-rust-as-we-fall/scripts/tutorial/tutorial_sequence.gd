@@ -46,6 +46,7 @@ var _thought_label: Label
 var _engram_overlay
 var _pause_menu
 var _dev_console    # DevConsole (backtick) — the only in-game door to dev switches
+var _touch_modes    # TouchModeController — the mobile camera/select/action mode cluster
 var _chromatic_aberration_layer: CanvasLayer
 var _chromatic_aberration_rect: ColorRect
 var _chromatic_aberration_material: ShaderMaterial
@@ -381,12 +382,31 @@ func _init_ui() -> void:
 	_dev_console.register_command("fxdebug", _cmd_fxdebug, "fxdebug on|off — path/outline FX traces")
 	_dev_console.register_command("chroma", _cmd_chroma, "chroma on|off — testing-mode ID-color overlay on every interactable")
 
+	# Mobile control modes: on touch, ONE finger carries three meanings — CAMERA drag-pan / SELECT
+	# (tap-pick + marquee, with the interactable reveal on) / ACTION (tap = the command click).
+	# The cluster appears on touchscreen devices; `touch on` forces it for desktop testing.
+	_touch_modes = TouchModeController.new()
+	_touch_modes.name = "TouchModeController"
+	add_child(_touch_modes)
+	_touch_modes.setup(self)
+	# SELECT mode is the LOOK mode: the reveal-all outline (the hold-SHIFT treatment) stays on
+	# while it's active, so every interactable advertises itself.
+	_touch_modes.mode_changed.connect(func(m: String): _on_highlight_held(m == "select"))
+	_dev_console.register_command("touch", _cmd_touch, "touch on|off — force the mobile control-mode cluster")
+
 	_init_chromatic_aberration_effect()
 	_setup_ui()
 	# Wire the shared hold-SHIFT reveal-all HERE, once, after the subclass built its HUD — so no scene
 	# has to remember the connection individually (it drifted: the fragment preview, showcase, and others
 	# were missing it). Scenes that build no HUD no-op.
 	_wire_shared_hud_signals()
+
+func _cmd_touch(args: Array) -> String:
+	if _touch_modes == null:
+		return "no touch-mode controller in this scene"
+	if not args.is_empty():
+		_touch_modes.set_forced(str(args[0]).to_lower() in ["on", "true", "1"])
+	return "touch cluster %s (mode: %s)" % ["shown" if _touch_modes.visible else "hidden", _touch_modes.mode]
 
 ## Dev-console commands shared by every scene. Fog of war is a GAMEPLAY layer (independent of the
 ## Aster/Peris perception views); scenes that render it read fog_of_war_enabled each sync.

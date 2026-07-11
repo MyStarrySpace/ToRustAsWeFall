@@ -83,14 +83,19 @@ func _unhandled_input(event: InputEvent) -> void:
 			_panning = false
 
 	if event is InputEventMouseMotion and _panning and _pan_enabled:
-		var mm := event as InputEventMouseMotion
-		var right := global_transform.basis.x.normalized()
-		var forward := Vector3(-global_transform.basis.z.x, 0, -global_transform.basis.z.z).normalized()
-		_pan_offset += right * -mm.relative.x * pan_speed
-		_pan_offset += forward * mm.relative.y * pan_speed
-		# Clamp pan distance
-		if _pan_offset.length() > max_pan_distance:
-			_pan_offset = _pan_offset.normalized() * max_pan_distance
+		pan_by((event as InputEventMouseMotion).relative)
+
+## Drag the view by a screen-space delta — the shared pan math (middle-mouse drag, the two-finger
+## gesture, and the mobile camera-mode one-finger drag all route here).
+func pan_by(rel: Vector2) -> void:
+	if _locked or not _pan_enabled:
+		return
+	var right := global_transform.basis.x.normalized()
+	var forward := Vector3(-global_transform.basis.z.x, 0, -global_transform.basis.z.z).normalized()
+	_pan_offset += right * -rel.x * pan_speed
+	_pan_offset += forward * rel.y * pan_speed
+	if _pan_offset.length() > max_pan_distance:
+		_pan_offset = _pan_offset.normalized() * max_pan_distance
 
 func _on_cam_touch(t: InputEventScreenTouch) -> void:
 	if t.pressed:
@@ -125,14 +130,7 @@ func _update_cam_gesture() -> void:
 	var p1: Vector2 = _touches[_cam_fingers[1]]
 	var mid := (p0 + p1) * 0.5
 	var dist := maxf(1.0, p0.distance_to(p1))
-	if _pan_enabled:
-		var right := global_transform.basis.x.normalized()
-		var forward := Vector3(-global_transform.basis.z.x, 0, -global_transform.basis.z.z).normalized()
-		var dmid := mid - _cam_last_mid
-		_pan_offset += right * -dmid.x * pan_speed
-		_pan_offset += forward * dmid.y * pan_speed
-		if _pan_offset.length() > max_pan_distance:
-			_pan_offset = _pan_offset.normalized() * max_pan_distance
+	pan_by(mid - _cam_last_mid)
 	_view_zoom = clampf(_view_zoom / (dist / _cam_last_dist), CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX)
 	_cam_last_mid = mid
 	_cam_last_dist = dist

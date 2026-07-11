@@ -189,6 +189,9 @@ func _ready() -> void:
 			"--test-dev-console":
 				ran_test = true
 				await _test_dev_console()
+			"--test-touch-modes":
+				ran_test = true
+				await _test_touch_modes()
 			"--test-player-contract":
 				ran_test = true
 				await _test_player_contract()
@@ -1303,6 +1306,7 @@ func _run_all_tests() -> void:
 	await _test_chunk_robustness()
 	await _test_lure_relay_puzzle()
 	await _test_dev_console()
+	await _test_touch_modes()
 	_test_uv_atlas_baker()
 	await _test_distract_gate()
 	await _test_chromatic_aberration()
@@ -14192,6 +14196,233 @@ func _test_overlay_materials() -> void:
 # The director's rule: turning the Aster/Peris perception views off must NOT reveal the map — fog of
 # war stands on its own, default ON; only the backtick dev console (`fog off`) or a dev surface may
 # disable it. Before the decouple, fog rode the Peris overlay state and died with it (the bug).
+func _test_touch_modes() -> void:
+	# The mobile control-mode cluster: one finger, three meanings. CAMERA = drag pans the view;
+	# SELECT = the finger stays the left button (pick/marquee) with the reveal-all outline ON;
+	# ACTION (default) = a tap becomes the COMMAND click (the desktop right button) through the
+	# full input pipeline. Hidden (desktop, unforced) it must intercept NOTHING.
+	_test_name = "Touch Control Modes"
+	# The headless window defaults to 64x64 — small enough that the on-screen cluster covers every
+	# pixel and every tap reads as "over a HUD control". Run this test at a realistic size so the
+	# cluster sits in its corner and open ground exists to tap (restored before returning).
+	# Host: the Peris sim (a real gameplay scene — lean HUD, click-collision floor, the same
+	# TouchModeController every tutorial_sequence scene builds).
+	var prev_window_size: Vector2i = get_tree().root.size
+	get_tree().root.size = Vector2i(640, 480)
+	var packed_tm: PackedScene = load("res://scenes/tutorial/peris_sim.tscn")
+	var inst: Node = packed_tm.instantiate()
+	# _visit_phase is STATIC — a prior suite test can leave it at 2, and _begin() reads it at
+	# _ready. start_phase is the sanctioned override: set it BEFORE the scene enters the tree.
+	inst.set("start_phase", 1)
+	get_tree().root.add_child(inst)
+	for i in range(8):
+		await get_tree().process_frame
+	inst._start_workspace()
+	for i in range(4):
+		await get_tree().process_frame
+	var tm = inst.get("_touch_modes")
+	_assert_true(tm != null, "Every scene builds the touch-mode cluster")
+	if tm == null:
+		inst.queue_free()
+		await get_tree().process_frame
+		return
+	_assert_true(not bool(tm.visible), "The cluster stays hidden without a touchscreen (desktop unchanged)")
+	_assert_equals(str(tm.mode), "action", "ACTION is the default mode (tap = the play verb)")
+	var console = inst.get("_dev_console")
+	if console != null:
+		var line: String = console.run("touch on")
+		_assert_true(line.contains("shown"), "`touch on` in the console forces the cluster (got: %s)" % line)
+	else:
+		tm.set_forced(true)
+	_assert_true(bool(tm.visible), "The forced cluster is visible")
+
+	var gs = inst.get("_game_state")
+	var cam: Camera3D = inst.get("_camera")
+	var active_id := "peris"
+	if cam != null and cam.is_inside_tree() and not cam.current:
+		cam.make_current()
+	# Drain the fragment's intro line first: while a dialogue line is ACTIVE the cluster yields
+	# every tap to it (a tap acknowledges dialogue before it means anything else) — that yield is
+	# the contract, so the mode assertions below must start with a quiet dialogue box.
+	var dlg = inst.get("_dialogue")
+	var drain := 0
+	while dlg != null and bool(dlg.call("is_active")) and drain < 200:
+		if dlg.has_method("request_advance"):
+			dlg.call("request_advance")
+		inst.headless_advance(0.25, 0.05)
+		await get_tree().process_frame
+		drain += 1
+	_assert_true(dlg == null or not bool(dlg.call("is_active")),
+		"the fragment's intro dialogue drains before the mode checks")
+
+	# --- ACTION: a LEFT tap on open ground must become the move command (LEFT -> COMMAND) ---
+	gs.command_stop(active_id)
+	# The preview's dev GUI panels legitimately own taps on their own footprints (as they own
+	# desktop clicks there) — at this window size they cover much of the screen, so probe for a
+	# ground point whose screen position is CLEAR of consuming controls before tapping. RETRY like
+	# the real input playthrough does: in a full-suite run a prior scene's leftover current camera /
+	# mouse drift can make one synthetic tap miss; recenter + re-tap until the move commits.
+	var acted := false
+	for attempt in range(6):
+		gs.command_stop(active_id)
+		var tap_world := _clear_tap_world_point(inst, gs.get_position(active_id))
+		if attempt == 0:
+			_assert_true(tap_world != Vector3.INF, "open ground clear of GUI panels exists to tap")
+		if tap_world != Vector3.INF:
+			_synthetic_left_tap(inst, tap_world)
+		for i in range(4):
+			inst.headless_advance(0.05, 0.05)
+			await get_tree().process_frame
+		if bool(gs.is_moving(active_id)):
+			acted = true
+			break
+	_assert_true(acted,
+		"ACTION mode: a tap on open ground issues the move command (left tap -> command click)")
+	gs.command_stop(active_id)
+
+	# --- SELECT: the reveal lights every interactable; a ground tap must NOT move ---
+	# (hover outlines exist in every mode — the baseline is whatever the parked cursor lights)
+	var baseline_lit := 0
+	for nb in _find_nodes_with_method(inst, "has_active_mesh_outline"):
+		if bool(nb.call("has_active_mesh_outline")):
+			baseline_lit += 1
+	tm.set_mode("select")
+	await get_tree().process_frame
+	var revealed := 0
+	var lit := 0
+	for n in _find_nodes_with_method(inst, "has_active_mesh_outline"):
+		revealed += 1
+		if bool(n.call("has_active_mesh_outline")):
+			lit += 1
+	_assert_true(revealed > 0 and lit == revealed,
+		"SELECT mode reveals every interactable outline (%d/%d lit)" % [lit, revealed])
+	var tap_world2 := _clear_tap_world_point(inst, gs.get_position(active_id))
+	if tap_world2 != Vector3.INF:
+		_synthetic_left_tap(inst, tap_world2)
+	for i in range(4):
+		inst.headless_advance(0.05, 0.05)
+		await get_tree().process_frame
+	_assert_true(not bool(gs.is_moving(active_id)),
+		"SELECT mode: a ground tap selects, never moves")
+
+	# --- leaving SELECT drops the reveal ---
+	tm.set_mode("camera")
+	await get_tree().process_frame
+	var still_lit := 0
+	for n2 in _find_nodes_with_method(inst, "has_active_mesh_outline"):
+		if bool(n2.call("has_active_mesh_outline")):
+			still_lit += 1
+	_assert_true(still_lit <= baseline_lit,
+		"leaving SELECT mode drops the reveal outlines (%d lit vs baseline %d)" % [still_lit, baseline_lit])
+
+	# --- CAMERA: a one-finger drag pans the view ---
+	var pan_before: Vector3 = cam.get("_pan_offset")
+	var center: Vector2 = get_viewport().get_visible_rect().size * 0.5
+	_synthetic_left_button(center, true)
+	for i in range(3):
+		var mv := InputEventMouseMotion.new()
+		mv.position = center + Vector2(30.0 * float(i + 1), 12.0 * float(i + 1))
+		mv.relative = Vector2(30, 12)
+		Input.parse_input_event(mv)
+		await get_tree().process_frame
+	_synthetic_left_button(center + Vector2(90, 36), false)
+	await get_tree().process_frame
+	var pan_after: Vector3 = cam.get("_pan_offset")
+	_assert_true((pan_after - pan_before).length() > 0.01,
+		"CAMERA mode: a one-finger drag pans the view (offset moved %.3f)" % (pan_after - pan_before).length())
+
+	# --- hiding the cluster resets to ACTION and restores desktop behavior ---
+	tm.set_forced(false)
+	_assert_true(not bool(tm.visible), "dropping the force hides the cluster")
+	_assert_equals(str(tm.mode), "action", "hiding the cluster resets the mode (no stuck reveal)")
+	get_tree().root.size = prev_window_size
+	# park the synthetic mouse INSIDE the restored (64x64) window: a cursor left at this test's
+	# 640x480 coordinates sits past the small window's edge and reads as EDGE-SCROLL to every
+	# later test's camera (the same trap _synthetic_ground_click documents)
+	var park := InputEventMouseMotion.new()
+	park.position = Vector2(prev_window_size) * 0.5
+	Input.parse_input_event(park)
+	inst.queue_free()
+	await get_tree().process_frame
+
+## A ground point near the character whose SCREEN position is clear of mouse-consuming Controls
+## (the preview's dev panels own their own footprints, exactly as they do for desktop clicks).
+## Vector3.INF when every probe lands on GUI.
+func _clear_tap_world_point(instance: Node, around: Vector3) -> Vector3:
+	# Screen-first: scan for a pixel clear of consuming panels, then drop that pixel's ray onto
+	# the floor plane — any clear pixel over walkable floor is a valid finger tap.
+	var camera: Camera3D = instance.get("_camera")
+	if camera == null:
+		return Vector3.INF
+	var vp_size: Vector2 = get_viewport().get_visible_rect().size
+	for fy in [0.45, 0.55, 0.4, 0.6, 0.35, 0.65, 0.5]:
+		for fx in [0.5, 0.42, 0.58, 0.35, 0.65, 0.28, 0.72]:
+			var sp := Vector2(vp_size.x * float(fx), vp_size.y * float(fy))
+			if _stop_control_at(get_tree().root, sp) != null:
+				continue
+			var from := camera.project_ray_origin(sp)
+			var dir := camera.project_ray_normal(sp)
+			if absf(dir.y) < 0.001:
+				continue
+			var t := -from.y / dir.y
+			if t <= 0.0:
+				continue
+			var wp := from + dir * t
+			if wp.distance_to(around) >= 25.0:
+				continue
+			var gs = instance.get("_game_state")
+			if gs != null and gs.grid != null:
+				var cell: Vector2i = gs.grid.world_to_grid(wp)
+				if not gs.grid.is_walkable(cell.x, cell.y):
+					continue   # clear of GUI but OFF the walkable footprint — no move target
+			return wp
+	return Vector3.INF
+
+func _stop_control_at(n: Node, pos: Vector2) -> Control:
+	if n is Control:
+		var c := n as Control
+		if c.is_visible_in_tree() and c.mouse_filter == Control.MOUSE_FILTER_STOP 				and c.get_global_rect().has_point(pos):
+			return c
+	for ch in n.get_children():
+		var found := _stop_control_at(ch, pos)
+		if found != null:
+			return found
+	return null
+
+## A synthetic LEFT tap at a world position through the real input pipeline (press + release at
+## the same point = a tap, not a drag) — the mobile finger, as the touch emulation delivers it.
+func _synthetic_left_tap(instance: Node, world_pos: Vector3) -> void:
+	var camera: Camera3D = null
+	if "_camera" in instance and instance._camera != null:
+		camera = instance._camera
+	else:
+		camera = get_viewport().get_camera_3d()
+	if camera == null:
+		return
+	if camera.is_inside_tree() and not camera.current:
+		camera.make_current()
+	var screen_pos := camera.unproject_position(world_pos)
+	_synthetic_left_button(screen_pos, true)
+	_synthetic_left_button(screen_pos, false)
+	var recenter := InputEventMouseMotion.new()
+	recenter.position = get_viewport().get_visible_rect().size * 0.5
+	Input.parse_input_event(recenter)
+
+func _synthetic_left_button(screen_pos: Vector2, pressed: bool) -> void:
+	var ev := InputEventMouseButton.new()
+	ev.button_index = MOUSE_BUTTON_LEFT
+	ev.pressed = pressed
+	ev.position = screen_pos
+	ev.global_position = screen_pos
+	Input.parse_input_event(ev)
+
+func _find_nodes_with_method(n: Node, method: String, out: Array = []) -> Array:
+	if n.has_method(method):
+		out.append(n)
+	for c in n.get_children():
+		_find_nodes_with_method(c, method, out)
+	return out
+
 func _test_dev_console() -> void:
 	_test_name = "Dev Console + Fog Of War"
 	var inst = await _instantiate_preview_chunk_and_wait("set_piece_showcase", 5)
