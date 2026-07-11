@@ -21,10 +21,22 @@ const CRAG_R := 7.6
 const PARA_ORBIT_RADIUS := 14.0   # approach distance where the flat-image register takes over
 const PARA_ORBIT_EXIT := 16.5     # hysteresis: leave a little further out than you entered
 
+const CROSSING_TOL := 0.12        # rad — how generously a gap "straddles" the corridor line
+const ALIGN_POLL := 0.25          # scheduler cadence for refreshing the crossing gate
+const CRAWL_SPEED := 1.1
+
 var _seed := 0
-var _wheels: Array = []   # [{node, spin}] — the ophanim pivots
+var _wheels: Array = []   # [{node, spin, base(Basis), gaps, bottom}] — the ophanim pivots
 var _para_center := Vector3.ZERO   # the shared wheel center (world) — the orbit pivot
 var _orbit_on := false
+var _ring0_parked := INF          # the braked ring's held phase (INF = turning)
+var _ring_offsets: Array = []     # per-ring phase offsets (phase stays continuous across release)
+var _render_phases: Array = []    # cosmetic eased copies of the tick-pure phases
+var _align_mouths: Array = []     # the two crossing mouths (CrawlTunnels)
+var _brake_ia: Area3D
+var _causeway: MeshInstance3D
+var _causeway_mat: StandardMaterial3D
+var _align_poll_started := false
 
 func configure_chunk(config: Dictionary) -> void:
 	if config.has("seed"):
@@ -47,11 +59,19 @@ func _build_chunk() -> void:
 	_build_paranucleus()
 
 func _process(delta: float) -> void:
-	for w in _wheels:
-		var wd := w as Dictionary
+	# The wheels render from the TICK-PURE phase (never per-frame accumulation): the data layer
+	# owns ring_phase(i, tick) — fast-forward invariant, replay-identical — and the render merely
+	# EASES toward it (imperceptible while turning; smooths the brake's detent snap).
+	var t := _tick()
+	for i in range(_wheels.size()):
+		var wd := _wheels[i] as Dictionary
 		var nd := wd["node"] as Node3D
-		if is_instance_valid(nd):
-			nd.rotate_object_local(Vector3(0, 0, 1), float(wd["spin"]) * delta)
+		if not is_instance_valid(nd):
+			continue
+		_render_phases[i] = lerp_angle(float(_render_phases[i]), ring_phase(i, t), minf(1.0, 10.0 * delta))
+		nd.basis = (wd["base"] as Basis) * Basis(Vector3(0, 0, 1), float(_render_phases[i]))
+	_ensure_align_poll()
+	_update_causeway_visual(t)
 	_update_paranucleus_register()
 
 ## The Paranucleus camera REGISTER (director, 2026-07-11 — the Monument Valley aspect): inside the
@@ -175,11 +195,18 @@ func _build_paranucleus() -> void:
 		var pivot := Node3D.new()
 		pivot.name = "Wheel%d" % _wheels.size()
 		pivot.position = origin
-		pivot.basis = rd["basis"] as Basis
+		var b := rd["basis"] as Basis
+		pivot.basis = b
 		root.add_child(pivot)
 		_add_lattice_mesh(pivot, "Bone", rd["bone"], bonem)
 		_add_lattice_mesh(pivot, "Lav", rd["lav"], lavm)
-		_wheels.append({"node": pivot, "spin": float(rd["spin"])})
+		# "bottom" = the ring-local angle whose direction maps to world-DOWN: where the ground
+		# corridor crosses this wheel's circle (pure geometry from the same basis the mesh uses)
+		_wheels.append({"node": pivot, "spin": float(rd["spin"]), "base": b,
+			"gaps": (rd.get("gaps", []) as Array).duplicate(true),
+			"bottom": atan2(-b.y.y, -b.x.y)})
+		_ring_offsets.append(0.0)
+		_render_phases.append(0.0)
 	var corem := StandardMaterial3D.new()
 	corem.albedo_color = Color(0.42, 0.10, 0.16)
 	corem.emission_enabled = true
@@ -212,6 +239,158 @@ func _build_paranucleus() -> void:
 		_add_boss_label(root, "NUTECH", (sp["pos"] as Vector3), Color(0.16, 0.18, 0.20), 34)
 	_add_boss_label(self, "THE PARANUCLEUS — ACT 2 BOSS",
 		Vector3(PARA_X, (built["origin"] as Vector3).y * 2.1, 0), Color(0.82, 0.72, 0.92), 52)
+	_build_alignment_crossing()
+
+# --- The projection-alignment crossing (the Monument Valley payoff, director 2026-07-11) --------
+#
+# A ground corridor threads UNDER the wheels, mouth to mouth. Ring 0's bottom tube physically
+# blocks it; ring 1 never does — but the crossing exists ONLY while the flat image shows it whole:
+# the front snap vantage held AND both wheels' gap arcs on the corridor line. The picture is the
+# path. Mechanics: ring phase is a PURE function of the scheduler tick; the NUTECH brake parks
+# ring 0 at its nearest gap-on-corridor detent (a logged interaction); the crossing itself is a
+# CrawlTunnel (authored path through grid-forbidden space, portal-rule group entry); the gate is
+# refreshed on a scheduler cadence (deterministic at any speed — the puzzle-fast-forward law).
+
+func _tick() -> float:
+	var sched = _get_scheduler()
+	return float(sched.get_current_tick()) if sched != null else 0.0
+
+## Ring i's rotation phase — a PURE function of the scheduler tick (fast-forward invariant,
+## replay-identical). The braked ring holds its parked detent.
+func ring_phase(i: int, tick: float) -> float:
+	if i == 0 and _ring0_parked != INF:
+		return _ring0_parked
+	var w := _wheels[i] as Dictionary
+	return wrapf(float(w["spin"]) * tick + float(_ring_offsets[i]), 0.0, TAU)
+
+## Whether one of ring i's gap arcs straddles the wheel's BOTTOM (the corridor's crossing line).
+func ring_gap_at_bottom(i: int, tick: float) -> bool:
+	var w := _wheels[i] as Dictionary
+	for g_v in (w["gaps"] as Array):
+		var g := g_v as Array
+		var center := (float(g[0]) + float(g[1])) * 0.5
+		var half := (float(g[1]) - float(g[0])) * 0.5
+		if absf(wrapf(center + ring_phase(i, tick) - float(w["bottom"]), -PI, PI)) <= half + CROSSING_TOL:
+			return true
+	return false
+
+## THE RULE: the crossing exists only while the IMAGE shows it whole — front vantage held AND both
+## outer wheels' gaps on the corridor line. Ring 1 never physically blocks the ground lane; if the
+## picture is broken, the path is not there.
+func crossing_open(tick: float) -> bool:
+	return _vantage_is_front() and ring_gap_at_bottom(0, tick) and ring_gap_at_bottom(1, tick)
+
+func _vantage_is_front() -> bool:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null or not cam.has_method("is_ortho_orbit") or not bool(cam.call("is_ortho_orbit")):
+		return false
+	return absf(wrapf(float(cam.call("orbit_target_yaw")), -PI, PI)) < 0.1
+
+func _build_alignment_crossing() -> void:
+	# the NUTECH ring brake: parks ring 0 at its nearest gap-on-corridor detent; used again, releases
+	_brake_ia = _add_interactable(self, "RingBrake", "The surviving NUTECH maintenance brake",
+		Vector3(PARA_X - 5.2, 0, 6.4), "BRAKE RING", "", 0.8, false, 1.6,
+		Interactable.InteractableType.INSPECTION, false)
+	_brake_ia.interacted.connect(_on_brake_used)
+	# the brake's visible body: a grey NUTECH console pedestal with a caliper lever
+	var pedestal := _add_box(_brake_ia, Vector3(0, 0.45, 0), Vector3(0.5, 0.9, 0.42),
+		Color(0.48, 0.50, 0.52))
+	_add_box(_brake_ia, Vector3(0.16, 0.98, 0), Vector3(0.08, 0.34, 0.08), Color(0.75, 0.30, 0.22))
+	_outline_interactable_child(_brake_ia, pedestal, "RingBrake", 1.6)
+	var near_mouth := Vector3(PARA_X, 0, 6.3)
+	var far_mouth := Vector3(PARA_X, 0, -6.3)
+	var thread: Array = [Vector3(PARA_X, 0.15, 4.2), Vector3(PARA_X, 0.15, 0.0), Vector3(PARA_X, 0.15, -4.2)]
+	_align_mouths.append(_add_align_mouth("AlignCrossingIn", near_mouth, thread + [far_mouth]))
+	var back := thread.duplicate()
+	back.reverse()
+	_align_mouths.append(_add_align_mouth("AlignCrossingOut", far_mouth, back + [near_mouth]))
+	_refresh_crossing_gate()
+	# the ghost causeway: the corridor's read — bright while the picture is whole
+	_causeway = MeshInstance3D.new()
+	_causeway.name = "AlignCauseway"
+	var bm := BoxMesh.new()
+	bm.size = Vector3(1.15, 0.04, 12.4)
+	_causeway.mesh = bm
+	_causeway_mat = StandardMaterial3D.new()
+	_causeway_mat.albedo_color = Color(0.55, 0.48, 0.68)
+	_causeway_mat.emission_enabled = true
+	_causeway_mat.emission = Color(0.85, 0.78, 1.0)   # pale lavender — the aggregate's own light
+	_causeway_mat.emission_energy_multiplier = 0.1
+	_causeway.material_override = _causeway_mat
+	_causeway.position = Vector3(PARA_X, 0.05, 0)
+	add_child(_causeway)
+
+func _add_align_mouth(mouth_name: String, mouth: Vector3, waypoints: Array) -> CrawlTunnel:
+	var ct := CrawlTunnel.new()
+	ct.name = mouth_name
+	ct.description = "Thread the wheels while the image holds"
+	ct.tutorial_label = "THREAD"
+	ct.configure(_get_game_state(), mouth, waypoints, 1.3, CRAWL_SPEED)
+	ct.set_group_provider(_selected_party_ids)
+	add_child(ct)
+	_register_interactable(ct)
+	# the mouth's visible body: a pair of bone kerb stubs flanking the corridor entry (the outline
+	# hull wraps them — every visible interactable shares the outline/glow shaders)
+	var stub_l := _add_box(ct, Vector3(-0.72, 0.28, 0), Vector3(0.3, 0.56, 0.34),
+		Color(0.85, 0.82, 0.77))
+	_add_box(ct, Vector3(0.72, 0.28, 0), Vector3(0.3, 0.56, 0.34), Color(0.85, 0.82, 0.77))
+	_outline_interactable_child(ct, stub_l, mouth_name, 1.3)
+	return ct
+
+## Park ring 0 at the detent nearest its current phase (a gap CENTER on the corridor line);
+## a second use releases it, phase continuous from the parked value.
+func _on_brake_used() -> void:
+	var t := _tick()
+	var w := _wheels[0] as Dictionary
+	if _ring0_parked != INF:
+		_ring_offsets[0] = wrapf(_ring0_parked - float(w["spin"]) * t, 0.0, TAU)
+		_ring0_parked = INF
+	else:
+		var cur := ring_phase(0, t)
+		var best := cur
+		var best_d := INF
+		for g_v in (w["gaps"] as Array):
+			var g := g_v as Array
+			var center := (float(g[0]) + float(g[1])) * 0.5
+			var p := wrapf(float(w["bottom"]) - center, 0.0, TAU)
+			var d := absf(wrapf(p - cur, -PI, PI))
+			if d < best_d:
+				best_d = d
+				best = p
+		_ring0_parked = best
+	_refresh_crossing_gate()
+
+## The gate refresh rides the SCHEDULER (never the frame clock): same cadence at 1x and 10x, so
+## the mouths enable/disable at the same ticks in every run and in replay.
+func _ensure_align_poll() -> void:
+	if _align_poll_started or _align_mouths.is_empty():
+		return
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	_align_poll_started = true
+	_align_poll()
+
+func _align_poll() -> void:
+	_refresh_crossing_gate()
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.schedule_after(ALIGN_POLL, _align_poll, "align_poll")
+
+func _refresh_crossing_gate() -> void:
+	var open := crossing_open(_tick())
+	for m in _align_mouths:
+		if m != null and is_instance_valid(m) and m.has_method("set_interaction_enabled"):
+			m.set_interaction_enabled(open)
+
+## Cosmetic: the causeway brightens as the picture completes (reads the same pure functions).
+func _update_causeway_visual(t: float) -> void:
+	if _causeway_mat == null:
+		return
+	var open := crossing_open(t)
+	var near_open := ring_gap_at_bottom(0, t) or ring_gap_at_bottom(1, t)
+	var target := 2.2 if open else (0.45 if near_open else 0.1)
+	_causeway_mat.emission_energy_multiplier = lerpf(_causeway_mat.emission_energy_multiplier, target, 0.15)
 
 ## A sized label riding the shared _add_label (the base already owns the Label3D idiom).
 func _add_boss_label(parent: Node3D, text: String, pos: Vector3, col: Color, size: int) -> void:
@@ -225,6 +404,8 @@ func get_preview_state() -> Dictionary:
 	var st: Dictionary = super.get_preview_state()
 	st["seed"] = _seed
 	st["wheels"] = _wheels.size()
+	st["crossing_open"] = crossing_open(_tick()) if not _wheels.is_empty() else false
+	st["ring0_parked"] = _ring0_parked != INF
 	return st
 
 func _boss_fragment() -> Fragment:

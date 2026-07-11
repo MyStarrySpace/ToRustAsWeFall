@@ -195,6 +195,9 @@ func _ready() -> void:
 			"--test-ortho-orbit":
 				ran_test = true
 				await _test_ortho_orbit()
+			"--test-projection-alignment":
+				ran_test = true
+				await _test_projection_alignment()
 			"--test-player-contract":
 				ran_test = true
 				await _test_player_contract()
@@ -1311,6 +1314,7 @@ func _run_all_tests() -> void:
 	await _test_dev_console()
 	await _test_touch_modes()
 	await _test_ortho_orbit()
+	await _test_projection_alignment()
 	_test_uv_atlas_baker()
 	await _test_distract_gate()
 	await _test_chromatic_aberration()
@@ -14509,6 +14513,102 @@ func _test_ortho_orbit() -> void:
 	_assert_true(not bool(cam.call("is_ortho_orbit")), "leaving the radius drops the register")
 	_assert_equals(int(cam.projection), int(Camera3D.PROJECTION_PERSPECTIVE),
 		"the perspective follow camera is restored outside")
+	inst.queue_free()
+	await get_tree().process_frame
+
+func _test_projection_alignment() -> void:
+	# The Monument Valley payoff on the Paranucleus: ring phases are PURE functions of the
+	# scheduler tick (the render merely eases toward them); the NUTECH brake parks ring 0 at a
+	# gap-on-corridor detent; the crossing exists ONLY while the image is whole (front vantage
+	# held + both wheels' gaps on the corridor line — ring 1 never physically blocks, the picture
+	# is the path); the crossing itself is a CrawlTunnel through grid-forbidden space.
+	_test_name = "Projection Alignment"
+	var inst = await _instantiate_preview_chunk_and_wait("boss_showcase", 8)
+	if inst == null:
+		_assert_true(false, "boss showcase instantiates for the alignment test")
+		return
+	var cam: Camera3D = inst.get("_camera")
+	var gs = inst.get("_game_state")
+	var chunk = inst.get("_active_chunk")
+	if cam == null or gs == null or chunk == null:
+		_assert_true(false, "alignment test resolves camera + game state + chunk")
+		inst.queue_free()
+		await get_tree().process_frame
+		return
+	if cam.is_inside_tree() and not cam.current:
+		cam.make_current()
+	# 1) tick purity: the phase is a pure function of the tick, and the RENDER matches it
+	var p_a := float(chunk.ring_phase(1, 25.0))
+	var p_b := float(chunk.ring_phase(1, 25.0))
+	_assert_true(absf(p_a - p_b) < 0.000001, "ring phase is a pure function of the tick")
+	inst.headless_advance(2.0, 0.05)
+	for i in range(40):
+		await get_tree().process_frame
+	var t_settle := float(chunk._tick())
+	var w1 := chunk._wheels[1] as Dictionary
+	var exp_basis := (w1["base"] as Basis) * Basis(Vector3(0, 0, 1), float(chunk.ring_phase(1, t_settle)))
+	var node1 := w1["node"] as Node3D
+	_assert_true((node1.basis.x - exp_basis.x).length() < 0.1,
+		"the wheel RENDERS the tick-pure phase (no per-frame drift accumulation)")
+	# 2) enter the register and hold the FRONT vantage
+	var para_x := float(chunk.PARA_X)
+	var t_node: Node3D = cam.get("target")
+	gs.snap_character_to("aster", Vector3(para_x - 8.0, 0.0, 0.0))
+	if t_node != null:
+		t_node.global_position = Vector3(para_x - 8.0, 0.5, 0.0)
+	for i in range(6):
+		inst.headless_advance(0.05, 0.05)
+		await get_tree().process_frame
+	_assert_true(bool(cam.call("is_ortho_orbit")), "the register is on for the alignment read")
+	var guard := 0
+	while absf(wrapf(float(cam.call("orbit_target_yaw")), -PI, PI)) >= 0.1 and guard < 4:
+		cam.call("orbit_snap_step", 1)
+		guard += 1
+	_assert_true(bool(chunk._vantage_is_front()), "the front snap vantage is held")
+	# 3) the brake parks ring 0 with a gap ON the corridor line (the detent)
+	chunk._on_brake_used()
+	_assert_true(bool(chunk.get_preview_state()["ring0_parked"]), "the brake parks ring 0")
+	_assert_true(bool(chunk.ring_gap_at_bottom(0, chunk._tick())),
+		"the parked detent puts a ring-0 gap on the corridor line")
+	# 4) scan the PURE function for ring 1's next corridor window; advance into it
+	var t0 := float(chunk._tick())
+	var dt := -1.0
+	var scan := 0.0
+	while scan < 400.0:
+		if bool(chunk.ring_gap_at_bottom(1, t0 + scan)):
+			dt = scan
+			break
+		scan += 0.05
+	_assert_true(dt >= 0.0, "ring 1's gap sweeps the corridor line within its period")
+	inst.headless_advance(dt + 0.6, 0.1)
+	for i in range(4):
+		await get_tree().process_frame
+	_assert_true(bool(chunk.crossing_open(chunk._tick())),
+		"with both gaps on the line + the front vantage, the crossing is OPEN")
+	var mouth: Node = chunk.find_child("AlignCrossingIn", true, false)
+	_assert_true(mouth != null and bool(mouth.call("is_interaction_enabled")),
+		"the crossing mouth is enabled while the image is whole")
+	# 5) the vantage gate: step one snap away — phases unchanged, but the picture broke
+	cam.call("orbit_snap_step", 1)
+	inst.headless_advance(0.6, 0.1)
+	for i in range(3):
+		await get_tree().process_frame
+	_assert_true(not bool(chunk.crossing_open(chunk._tick())),
+		"stepping off the front vantage closes the crossing (the image is the path)")
+	_assert_true(not bool(mouth.call("is_interaction_enabled")),
+		"the mouth gate follows the broken picture")
+	cam.call("orbit_snap_step", -1)
+	inst.headless_advance(0.6, 0.1)
+	for i in range(3):
+		await get_tree().process_frame
+	_assert_true(bool(mouth.call("is_interaction_enabled")), "restoring the vantage re-opens the gate")
+	# 6) thread the wheels: trigger the mouth, the crawler comes out the far side
+	gs.snap_character_to("aster", Vector3(para_x, 0.0, 6.8))
+	mouth.call("_trigger")
+	inst.headless_advance(30.0, 0.1)
+	var end_pos: Vector3 = gs.get_position("aster")
+	_assert_true(end_pos.z < -5.0 and absf(end_pos.x - para_x) < 3.5,
+		"the crawler threads the wheels to the far side (authored path through forbidden ground)")
 	inst.queue_free()
 	await get_tree().process_frame
 

@@ -311,7 +311,10 @@ static func _build_ring(row: Array, k: int, r0: float, kb: float, spec: Dictiona
 	lav.generate_normals()
 	# alternate spin directions, slower toward the core — wheels within wheels, out of phase
 	var spin := (0.05 + 0.02 * float(k % 3)) * (1.0 if k % 2 == 0 else -1.0)
-	return {"bone": bone.commit(), "lav": lav.commit(), "basis": _ring_basis(row), "spin": spin}
+	# the gap arcs ship WITH the wheel: they are the ring's passable spans, and the projection-
+	# alignment gameplay reads them (a gap's world position is basis * local(angle + phase))
+	return {"bone": bone.commit(), "lav": lav.commit(), "basis": _ring_basis(row), "spin": spin,
+		"gaps": gaps}
 
 static func _in_gap(th: float, gaps: Array) -> bool:
 	var t := fposmod(th, TAU)

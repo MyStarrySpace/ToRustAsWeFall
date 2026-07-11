@@ -219,6 +219,20 @@ the alignment IS the path. Leaving the radius restores the gameplay follow camer
 projection flips, corner-to-corner rays parallel, zoom→size, 90° snap stepping + easing, image
 pan, restore on leaving.
 
+**PROJECTION-ALIGNMENT WALKABILITY (BUILT, 2026-07-11 — the payoff on the register):** a ground
+corridor threads UNDER the wheels, mouth to mouth (`--preview=boss_showcase`). Ring 0's bottom
+tube physically blocks it; ring 1 never does — but the crossing exists ONLY while the flat image
+shows it whole: the FRONT snap vantage held AND both wheels' gap arcs on the corridor line. The
+picture is the path. Mechanics, per the engine laws: ring phase is a PURE function of the
+scheduler tick (the render eases toward it — fast-forward invariant, replay-identical); the
+surviving NUTECH RING BRAKE parks ring 0 at its nearest gap-on-corridor detent (piece 15's brake,
+now live — a second use releases, phase continuous); the crossing is a **CrawlTunnel** (authored
+path through grid-forbidden ground, portal-rule group entry, "THREAD"); the mouth gate refreshes
+on a scheduler cadence, and a ghost causeway brightens as the picture completes. Guarded by
+`--test-projection-alignment` (in `--test-all`): tick purity + render honesty, the brake detent,
+window-scan on the pure function, the vantage gate (step off the front snap → the crossing closes
+with phases unchanged), and the full thread-through.
+
 The enemy pieces below all run on ONE insight: a rooted/colonizing enemy on a rotating ring has a
 position that is a FUNCTION OF ROTATION PHASE — the same variable pieces 15/16 already read. So
 Aster's TRACE (which already predicts each ring's period) now also predicts where the threat will
