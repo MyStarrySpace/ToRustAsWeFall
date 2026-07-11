@@ -208,6 +208,17 @@ states (§11.1 heavy queueing + the door-trap shadow; §11.2 alignment paths + t
 > THROUGH, not a creature you trade hits with — so the navigation becomes CONTESTED (the game's
 > "routing-and-tools puzzle" ethos), not serene, and not a boss fight.
 
+**THE CAMERA REGISTER (director, 2026-07-11 — BUILT):** inside the Paranucleus approach radius the
+level reads as a FLAT IMAGE — the camera flips to an orthographic ORBIT around the wheel center
+with four authored SNAP vantages (Q/E steps between them, easing there); perspective is disabled,
+zoom scales the picture (ortho size), and panning stops being spatial movement — with no parallax
+it is simply looking closer at the image. This is the Monument Valley substrate the wheel puzzles
+stand on: at a given snap angle + ring phase, gaps far apart in 3D ALIGN in the projection, and
+the alignment IS the path. Leaving the radius restores the gameplay follow camera. Live in
+`--preview=boss_showcase` (walk to the wheels); guarded by `--test-ortho-orbit` (in `--test-all`):
+projection flips, corner-to-corner rays parallel, zoom→size, 90° snap stepping + easing, image
+pan, restore on leaving.
+
 The enemy pieces below all run on ONE insight: a rooted/colonizing enemy on a rotating ring has a
 position that is a FUNCTION OF ROTATION PHASE — the same variable pieces 15/16 already read. So
 Aster's TRACE (which already predicts each ring's period) now also predicts where the threat will

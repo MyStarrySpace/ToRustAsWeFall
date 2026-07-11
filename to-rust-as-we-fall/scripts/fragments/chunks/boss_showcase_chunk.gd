@@ -18,8 +18,13 @@ const PARA_X := 13.0
 const CRAG_H := 3.4
 const CRAG_R := 7.6
 
+const PARA_ORBIT_RADIUS := 14.0   # approach distance where the flat-image register takes over
+const PARA_ORBIT_EXIT := 16.5     # hysteresis: leave a little further out than you entered
+
 var _seed := 0
 var _wheels: Array = []   # [{node, spin}] — the ophanim pivots
+var _para_center := Vector3.ZERO   # the shared wheel center (world) — the orbit pivot
+var _orbit_on := false
 
 func configure_chunk(config: Dictionary) -> void:
 	if config.has("seed"):
@@ -47,6 +52,29 @@ func _process(delta: float) -> void:
 		var nd := wd["node"] as Node3D
 		if is_instance_valid(nd):
 			nd.rotate_object_local(Vector3(0, 0, 1), float(wd["spin"]) * delta)
+	_update_paranucleus_register()
+
+## The Paranucleus camera REGISTER (director, 2026-07-11 — the Monument Valley aspect): inside the
+## approach radius the level reads as a FLAT IMAGE — the camera flips to an orthographic ORBIT
+## between four authored snap vantages (Q/E steps between them), zoom scales the picture, and
+## panning is just looking closer at it (no parallax). Leaving restores the gameplay follow
+## camera. Rendering-only: the flip reads the follow target's render position and mutates no game
+## state — 1x and 10x play identically underneath it.
+func _update_paranucleus_register() -> void:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null or not cam.has_method("enter_ortho_orbit"):
+		return
+	var t: Node3D = cam.get("target")
+	if t == null or not is_instance_valid(t):
+		return
+	var d := Vector2(t.global_position.x - PARA_X, t.global_position.z).length()
+	if not _orbit_on and d < PARA_ORBIT_RADIUS:
+		_orbit_on = true
+		cam.call("enter_ortho_orbit", _para_center, [0.0, PI * 0.5, PI, PI * 1.5],
+			{"dist": 40.0, "base_size": 24.0, "elev": 0.5})
+	elif _orbit_on and d > PARA_ORBIT_EXIT:
+		_orbit_on = false
+		cam.call("exit_ortho_orbit")
 
 ## The crag + switchback approach + the act marker, with the survey-built tower on the summit.
 func _build_watchtower_staging() -> void:
@@ -141,6 +169,7 @@ func _build_paranucleus() -> void:
 	lavm.albedo_color = Color(0.70, 0.63, 0.80)    # the pale-lavender understrands
 	lavm.roughness = 0.9
 	var origin := built["origin"] as Vector3
+	_para_center = root.position + origin   # the orbit pivot: the shared wheel center, world frame
 	for r_v in (built["rings"] as Array):
 		var rd := r_v as Dictionary
 		var pivot := Node3D.new()

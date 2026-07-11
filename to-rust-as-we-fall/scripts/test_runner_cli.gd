@@ -192,6 +192,9 @@ func _ready() -> void:
 			"--test-touch-modes":
 				ran_test = true
 				await _test_touch_modes()
+			"--test-ortho-orbit":
+				ran_test = true
+				await _test_ortho_orbit()
 			"--test-player-contract":
 				ran_test = true
 				await _test_player_contract()
@@ -1307,6 +1310,7 @@ func _run_all_tests() -> void:
 	await _test_lure_relay_puzzle()
 	await _test_dev_console()
 	await _test_touch_modes()
+	await _test_ortho_orbit()
 	_test_uv_atlas_baker()
 	await _test_distract_gate()
 	await _test_chromatic_aberration()
@@ -14422,6 +14426,91 @@ func _find_nodes_with_method(n: Node, method: String, out: Array = []) -> Array:
 	for c in n.get_children():
 		_find_nodes_with_method(c, method, out)
 	return out
+
+func _test_ortho_orbit() -> void:
+	# The Paranucleus camera REGISTER (the Monument Valley aspect): approaching the aggregate
+	# flips the follow camera to an ORTHOGRAPHIC ORBIT between four authored snap vantages —
+	# perspective off (the level reads as a flat image: all projection rays parallel), zoom
+	# scales the picture, panning slides the image plane, Q/E steps between snaps with easing.
+	# Leaving the radius restores the perspective follow camera.
+	_test_name = "Paranucleus Ortho Orbit"
+	var inst = await _instantiate_preview_chunk_and_wait("boss_showcase", 8)
+	if inst == null:
+		_assert_true(false, "boss showcase instantiates for the orbit test")
+		return
+	var cam: Camera3D = inst.get("_camera")
+	var gs = inst.get("_game_state")
+	var chunk = inst.get("_active_chunk")
+	_assert_true(cam != null and gs != null and chunk != null, "orbit test resolves camera + game state + chunk")
+	if cam == null or gs == null or chunk == null:
+		inst.queue_free()
+		await get_tree().process_frame
+		return
+	if cam.is_inside_tree() and not cam.current:
+		cam.make_current()
+	_assert_equals(int(cam.projection), int(Camera3D.PROJECTION_PERSPECTIVE),
+		"the gameplay follow camera starts in perspective")
+	# walk the follow target into the aggregate's approach radius (the register reads the follow
+	# node's RENDER position — move the node as real walking would, and keep the data layer synced)
+	var para_x := float(chunk.PARA_X)
+	var t_node: Node3D = cam.get("target")
+	_assert_true(t_node != null, "the follow camera has a target")
+	gs.snap_character_to("aster", Vector3(para_x - 8.0, 0.0, 0.0))
+	if t_node != null:
+		t_node.global_position = Vector3(para_x - 8.0, 0.5, 0.0)
+	for i in range(6):
+		inst.headless_advance(0.05, 0.05)
+		await get_tree().process_frame
+	_assert_true(bool(cam.call("is_ortho_orbit")), "entering the approach radius flips the flat-image register")
+	_assert_equals(int(cam.projection), int(Camera3D.PROJECTION_ORTHOGONAL),
+		"perspective is DISABLED inside the register (orthographic)")
+	# the flat-image proof: projection rays are PARALLEL across the screen
+	var n_a: Vector3 = cam.project_ray_normal(Vector2(8, 8))
+	var n_b: Vector3 = cam.project_ray_normal(get_viewport().get_visible_rect().size - Vector2(8, 8))
+	_assert_true(n_a.distance_to(n_b) < 0.0001,
+		"projection rays are parallel corner-to-corner (no perspective — the image reads flat)")
+	# zoom scales the PICTURE (ortho size), not the field of view
+	var base_size := float(cam.get("_orbit_base_size"))
+	cam.set("_view_zoom", 0.5)
+	for i in range(2):
+		await get_tree().process_frame
+	_assert_true(absf(float(cam.size) - base_size * 0.5) < 0.2,
+		"zoom rides the ortho size (looking closer at the image)")
+	cam.set("_view_zoom", 1.0)
+	# Q/E snap stepping: the target advances one authored vantage and the yaw EASES to it
+	var yaw0 := float(cam.call("orbit_target_yaw"))
+	cam.call("orbit_snap_step", 1)
+	var yaw1 := float(cam.call("orbit_target_yaw"))
+	_assert_true(absf(absf(wrapf(yaw1 - yaw0, -PI, PI)) - PI * 0.5) < 0.01,
+		"a snap step advances exactly one 90-degree vantage")
+	var eased := false
+	for i in range(240):
+		await get_tree().process_frame
+		if absf(wrapf(float(cam.call("orbit_yaw")) - yaw1, -PI, PI)) < 0.05:
+			eased = true
+			break
+	_assert_true(eased, "the orbit EASES to the stepped snap vantage")
+	# the image pan: position slides in the view plane, the projection stays flat
+	var pos_before: Vector3 = cam.global_position
+	cam.call("pan_by", Vector2(60, 0))
+	for i in range(2):
+		await get_tree().process_frame
+	_assert_true((cam.global_position - pos_before).length() > 0.01,
+		"panning slides the image plane")
+	_assert_equals(int(cam.projection), int(Camera3D.PROJECTION_ORTHOGONAL),
+		"the image pan never re-enables perspective")
+	# leaving the radius restores the gameplay camera
+	gs.snap_character_to("aster", Vector3(para_x - 30.0, 0.0, 8.0))
+	if t_node != null:
+		t_node.global_position = Vector3(para_x - 30.0, 0.5, 8.0)
+	for i in range(8):
+		inst.headless_advance(0.05, 0.05)
+		await get_tree().process_frame
+	_assert_true(not bool(cam.call("is_ortho_orbit")), "leaving the radius drops the register")
+	_assert_equals(int(cam.projection), int(Camera3D.PROJECTION_PERSPECTIVE),
+		"the perspective follow camera is restored outside")
+	inst.queue_free()
+	await get_tree().process_frame
 
 func _test_dev_console() -> void:
 	_test_name = "Dev Console + Fog Of War"

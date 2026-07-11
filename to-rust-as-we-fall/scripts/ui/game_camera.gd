@@ -45,6 +45,25 @@ var _shake_intensity := 0.0
 var _shake_decay := 5.0
 var _shake_offset := Vector3.ZERO
 
+# --- Monument-Valley ORTHO ORBIT (the Paranucleus register, director 2026-07-11) ---
+# In this mode the level reads as a FLAT IMAGE: perspective is disabled (orthographic), the camera
+# orbits a fixed pivot between authored SNAP yaws (Q/E steps to the next vantage, easing there),
+# zoom scales the ortho size, and panning stops being spatial movement — with no parallax it is
+# simply looking closer at the image (pan slides along the IMAGE plane, camera right + screen up).
+# The point of the register: at a given snap angle + ring phase, gaps far apart in 3D can ALIGN in
+# the projection — the alignment IS the path (the Monument Valley trick the wheel puzzles build on).
+var _ortho_orbit_active := false
+var _orbit_pivot := Vector3.ZERO
+var _orbit_snaps: Array = []          # authored snap yaws (radians)
+var _orbit_yaw := 0.0
+var _orbit_target_yaw := 0.0
+var _orbit_elev := 0.55               # rad above the horizon
+var _orbit_dist := 34.0               # position only — ortho framing comes from `size`
+var _orbit_base_size := 20.0          # ortho vertical extent at zoom 1
+var _orbit_pan := Vector2.ZERO        # the image pan (view-plane), clamped
+var _orbit_pan_max := 10.0
+const ORBIT_EASE := 5.0               # snap easing rate (cosmetic, wall-clock)
+
 # Touch (Android): TWO fingers pan + pinch-zoom the view. One finger stays gameplay (move/select).
 var _touches := {}
 var _cam_fingers: Array = []
@@ -86,9 +105,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		pan_by((event as InputEventMouseMotion).relative)
 
 ## Drag the view by a screen-space delta — the shared pan math (middle-mouse drag, the two-finger
-## gesture, and the mobile camera-mode one-finger drag all route here).
+## gesture, and the mobile camera-mode one-finger drag all route here). In ORTHO ORBIT the pan is
+## an IMAGE pan (view-plane, no parallax — looking closer at the picture), not spatial movement.
 func pan_by(rel: Vector2) -> void:
 	if _locked or not _pan_enabled:
+		return
+	if _ortho_orbit_active:
+		_orbit_pan += Vector2(-rel.x, rel.y) * pan_speed * 0.6
+		_orbit_pan = _orbit_pan.limit_length(_orbit_pan_max)
 		return
 	var right := global_transform.basis.x.normalized()
 	var forward := Vector3(-global_transform.basis.z.x, 0, -global_transform.basis.z.z).normalized()
@@ -96,6 +120,63 @@ func pan_by(rel: Vector2) -> void:
 	_pan_offset += forward * rel.y * pan_speed
 	if _pan_offset.length() > max_pan_distance:
 		_pan_offset = _pan_offset.normalized() * max_pan_distance
+
+# --- Ortho orbit API (region-triggered by the level: enter near the aggregate, exit on leaving) ---
+
+## Switch to the flat-image orbit register around `pivot`, snapping between `snap_yaws`.
+## opts: elev / dist / base_size / pan_max override the defaults.
+func enter_ortho_orbit(pivot: Vector3, snap_yaws: Array, opts: Dictionary = {}) -> void:
+	_orbit_pivot = pivot
+	_orbit_snaps = snap_yaws.duplicate() if not snap_yaws.is_empty() else [0.0, PI * 0.5, PI, PI * 1.5]
+	_orbit_elev = float(opts.get("elev", _orbit_elev))
+	_orbit_dist = float(opts.get("dist", _orbit_dist))
+	_orbit_base_size = float(opts.get("base_size", _orbit_base_size))
+	_orbit_pan_max = float(opts.get("pan_max", _orbit_pan_max))
+	_orbit_pan = Vector2.ZERO
+	# start at the snap nearest the current gameplay view, so entry never whips the world around
+	_orbit_target_yaw = _nearest_snap(_view_yaw)
+	_orbit_yaw = _orbit_target_yaw
+	_ortho_orbit_active = true
+	projection = PROJECTION_ORTHOGONAL
+	size = _orbit_base_size * _view_zoom
+
+## Back to the gameplay follow camera (perspective restored).
+func exit_ortho_orbit() -> void:
+	_ortho_orbit_active = false
+	projection = PROJECTION_PERSPECTIVE
+
+func is_ortho_orbit() -> bool:
+	return _ortho_orbit_active
+
+## Step to the next authored vantage in `dir` (+1 / -1); the orbit EASES there (cosmetic motion).
+func orbit_snap_step(dir: int) -> void:
+	if _orbit_snaps.is_empty():
+		return
+	var idx := 0
+	var best := INF
+	for i in range(_orbit_snaps.size()):
+		var d := absf(wrapf(float(_orbit_snaps[i]) - _orbit_target_yaw, -PI, PI))
+		if d < best:
+			best = d
+			idx = i
+	idx = posmod(idx + dir, _orbit_snaps.size())
+	_orbit_target_yaw = float(_orbit_snaps[idx])
+
+func orbit_yaw() -> float:
+	return _orbit_yaw
+
+func orbit_target_yaw() -> float:
+	return _orbit_target_yaw
+
+func _nearest_snap(yaw: float) -> float:
+	var best_yaw := yaw
+	var best := INF
+	for s in _orbit_snaps:
+		var d := absf(wrapf(float(s) - yaw, -PI, PI))
+		if d < best:
+			best = d
+			best_yaw = float(s)
+	return best_yaw
 
 func _on_cam_touch(t: InputEventScreenTouch) -> void:
 	if t.pressed:
@@ -139,6 +220,21 @@ func _view_offset() -> Vector3:
 	return Basis(Vector3.UP, _view_yaw) * (follow_offset * _view_zoom)
 
 func _process(delta: float) -> void:
+	if _ortho_orbit_active and not _locked:
+		# The flat-image register: Q/E STEP between authored vantages (never free-spin), the yaw
+		# eases to its snap, zoom rides the ortho size, and the image pan slides the view plane.
+		if Input.is_action_just_pressed("camera_rotate_left"):
+			orbit_snap_step(1)
+		if Input.is_action_just_pressed("camera_rotate_right"):
+			orbit_snap_step(-1)
+		_orbit_yaw = lerp_angle(_orbit_yaw, _orbit_target_yaw, minf(1.0, ORBIT_EASE * delta))
+		size = _orbit_base_size * _view_zoom
+		var dir := Basis(Vector3.UP, _orbit_yaw) * Vector3(0, sin(_orbit_elev), cos(_orbit_elev))
+		global_position = _orbit_pivot + dir * _orbit_dist
+		look_at(_orbit_pivot, Vector3.UP)
+		# the image pan: shift along the view plane AFTER framing — pure 2D, no parallax
+		global_position += global_transform.basis.x * _orbit_pan.x + global_transform.basis.y * _orbit_pan.y
+		return
 	if Input.is_action_pressed("camera_rotate_left"):
 		_view_yaw += CAMERA_ROTATE_SPEED * delta
 	if Input.is_action_pressed("camera_rotate_right"):
