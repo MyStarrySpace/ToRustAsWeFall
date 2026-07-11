@@ -3846,10 +3846,16 @@ func _test_architecture_showcase() -> void:
 		"pipes are deterministic for a seed")
 	_assert_true((Lat.pipes(beacon, 3) as ArrayMesh).get_surface_count() > 0, "pipes also drape a cylinder")
 
-	# --- entrances: a stone portal + a teal enforcement accent, deterministic, on box AND drum ---
+	# --- entrances: a stone portal + a teal enforcement accent, deterministic, on box AND drum.
+	# The honeycomb's own entry idiom suppresses the generic stone (main_surround=false) — its
+	# LEAVES (dark + accent) still come from entrances; tiered_terrace still wears the stone. ---
 	var ent: Dictionary = Lat.entrances(honey)
-	_assert_true((ent.get("stone") as ArrayMesh).get_surface_count() > 0 and (ent.get("dark") as ArrayMesh).get_surface_count() > 0
-		and (ent.get("accent") as ArrayMesh).get_surface_count() > 0, "entrances build stone + dark + teal-accent meshes")
+	_assert_true((ent.get("dark") as ArrayMesh).get_surface_count() > 0,
+		"entrances build the honeycomb's dark main leaves")
+	var ent_tt: Dictionary = Lat.entrances(Base.generate("tiered_terrace"))
+	_assert_true((ent_tt.get("stone") as ArrayMesh).get_surface_count() > 0
+		and (ent_tt.get("accent") as ArrayMesh).get_surface_count() > 0,
+		"the generic stone surround + teal side accents still build where no idiom owns the threshold")
 	_assert_equals((ent.get("stone") as ArrayMesh).surface_get_array_len(0),
 		(Lat.entrances(honey).get("stone") as ArrayMesh).surface_get_array_len(0), "entrances are deterministic")
 	# beacon's survey idiom suppresses the generic stone (main_surround=false) — its LEAVES still
@@ -4368,6 +4374,49 @@ func _test_building_survey() -> void:
 			"zone3 details build the %s pass" % bucket3)
 	_assert_true(str(Survey.from_spec(Base.generate("zone3", 1)).summary()) != str(Survey.from_spec(Base.generate("zone3", 2)).summary()),
 		"zone3 actually VARIES between seeds")
+
+	# --- honeycomb (SURVEY REBUILD 1.9): the torn flank loses its field + gains catwalks/hole,
+	# fixtures ride the ENGINE's cell rects, the skipped-face honeyframe stays watertight ---
+	var hck: Dictionary = Base.generate("honeycomb_cooperative")
+	var svhc = Survey.from_spec(hck)
+	var right_field := false
+	var cw_res := 0
+	var hole_res := false
+	for r_h in (svhc.reservations as Array):
+		var rh := r_h as Dictionary
+		if str(rh.get("id", "")) == "field_honeyframe_right":
+			right_field = true
+		if str(rh.get("id", "")).begins_with("catwalk_"):
+			cw_res += 1
+		if str(rh.get("id", "")) == "torn_hole":
+			hole_res = true
+	_assert_true(not right_field, "the torn flank's honeyframe field is removed from the drawing")
+	_assert_true(cw_res >= 3 and hole_res, "the torn flank reserves its catwalk rows + the hole")
+	var hc_balc := 0
+	for sk_h in (svhc.sockets as Array):
+		if str((sk_h as Dictionary).get("kind", "")) == "balcony":
+			hc_balc += 1
+	_assert_true(hc_balc >= 3, "every catwalk row carries a balcony slot (%d)" % hc_balc)
+	var h_rects: Array = Lat.honeyframe_cell_rects(hck["size"] as Vector3,
+		{"skip_faces": (hck.get("lattice_overrides", {}) as Dictionary).get("skip_faces", [])})
+	_assert_true(h_rects.size() >= 30, "the engine reports its facade cell rects (%d)" % h_rects.size())
+	var torn_rects := 0
+	for r_r in h_rects:
+		if ((r_r as Dictionary)["n"] as Vector3).x > 0.5:
+			torn_rects += 1
+	_assert_equals(torn_rects, 0, "no cell rects on the skipped (torn) flank")
+	var LG2 = load("res://scripts/generation/lattice_graph.gd")
+	var hf_skip: Dictionary = Lat.honeyframe(hck["size"] as Vector3,
+		{"skip_faces": [Vector3(1, 0, 0)], "crown": false, "base": false})
+	_assert_equals(LG2.boundary_edge_count(hf_skip["frame"] as ArrayMesh), 0,
+		"the skipped-face honeyframe stays WATERTIGHT")
+	var hcdet: Dictionary = Base.honeycomb_details(hck)
+	for bucket_h in ["bone", "metal", "dark", "rust", "leaf", "warm", "cyan"]:
+		var bmh = hcdet.get(bucket_h)
+		_assert_true(bmh != null and (bmh as ArrayMesh).get_surface_count() > 0,
+			"honeycomb details build the %s pass" % bucket_h)
+	_assert_true(str(Survey.from_spec(Base.generate("honeycomb_cooperative", 1)).summary()) != str(Survey.from_spec(Base.generate("honeycomb_cooperative", 2)).summary()),
+		"honeycomb actually VARIES between seeds")
 
 	# --- PARAMETRIC VARIATION (the buildings are TYPES): every seeded variant must survey clean —
 	# the roller re-reconciles dependent values, and THIS sweep is the proof no roll collides.

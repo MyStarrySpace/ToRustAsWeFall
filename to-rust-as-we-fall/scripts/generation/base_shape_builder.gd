@@ -45,14 +45,17 @@ const SPECS := {
 		"pipes": false,                     # no draped tangle on the plate — the flume, dome ribs and
 	},                                      # ONE side pipe come from the survey (plumbing_details)
 	"honeycomb_cooperative": {
-		"entrances": {"reserve_margin": 0.2},   # storey-scale blobs: a fat clearance would gut the facade
 		"title": "Honeycomb Cooperative",
-		"shape": SHAPE_BOX,
-		# Tall slab: height 2.2x the front width, side face DEEPER than the front is wide (REVIEW P2).
-		"size": Vector3(4.5, 10.0, 6.3),
+		"shape": SHAPE_BOX,                 # SURVEY REBUILD 1.9: the intact faces wear the sasb
+		"size": Vector3(4.5, 10.0, 6.3),    # honeyframe; fixtures ride its REAL cell rects
+		# the entry idiom (teal door + cyan transom + sconces + kiosk) owns the threshold; the
+		# reserve margin stays slim so the clearance doesn't gut the storey-scale cell blobs
+		"entrances": {"main_w": 1.6, "main_h": 2.7, "side_count_min": 0, "side_count_max": 0,
+			"canopy_out": 0.0, "reserve_margin": 0.2, "main_surround": false},
 		"color": Color(0.48, 0.46, 0.38),   # cast-stone facade, darker (plate palette)
 		"tile": "facility_metal",
 		"lattice": "honeyframe",            # rounded-cell facade frame + lit panes
+		"lattice_overrides": {"skip_faces": [Vector3(1, 0, 0)]},   # the TORN flank goes bare
 		"pipes": true,                      # rust/conduit tangle down the flank
 	},
 	"beacon_hill": {
@@ -1239,6 +1242,180 @@ static func _beacon_domed_mesh(spec: Dictionary, reserved: Array, recess: float)
 ## vestibule (the plate's ONE cyan accent), warm sconces, the lantern clerestory and the planted
 ## roof-garden ring, and the corner planting beds.
 ## Families: bone / dark / amber (panes) / glow (green) / cyan / warm / leaf / rails.
+## Honeycomb detail passes (SURVEY REBUILD 1.9), every part from the HONEYCOMB survey + the
+## engine's OWN cell grid (honeyframe_cell_rects): a vent louver + planter per facade cell, the
+## hex-badge sign filling its storey-2 cell, the ring-balustrade parapet with red-tipped corner
+## finials, the TORN +X flank (rust wash, the strut-chaos hole, catwalk rows with ember lights),
+## and the entry idiom (cyan transom + warm sconces + CRT kiosk + planter boxes + steps).
+static func honeycomb_details(spec: Dictionary) -> Dictionary:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var Lat := load("res://scripts/generation/lattice_builder.gd") as GDScript
+	var tbl: Dictionary = Survey.table_for(spec, "honeycomb")
+	var size: Vector3 = spec.get("size", Vector3(4.5, 10.0, 6.3))
+	var h := size.y
+	var hx := size.x * 0.5
+	var hz := size.z * 0.5
+	var bone := _st()
+	var metal := _st()
+	var dark := _st()
+	var rust := _st()
+	var leaf := _st()
+	var warm := _st()
+	var cyan := _st()
+	var kb := float(str(spec.get("kind", "honeycomb")).hash() % 1000)
+	# facade fixtures ride the engine's REAL cell rects (same axes/merge hashes as the frame)
+	var ent: Dictionary = Lat.entrances(spec)
+	var rects: Array = Lat.honeyframe_cell_rects(size, {"reserved": ent.get("reserved", []),
+		"skip_faces": (spec.get("lattice_overrides", {}) as Dictionary).get("skip_faces", [])})
+	var fx: Dictionary = tbl["fixtures"]
+	var sc: Dictionary = tbl["sign_cell"]
+	var sign_y := (float(sc["y0"]) + float(sc["y1"])) * 0.5 * h
+	var sign_done := false
+	for r_v in rects:
+		var r := r_v as Dictionary
+		var n: Vector3 = r["n"]
+		var u: Vector3 = r["u"]
+		var c: Vector3 = r["center"]
+		var rw := float(r["w"])
+		var rh := float(r["h"])
+		if rw < 0.7 or rh < 0.7 or c.y > 0.95 * h:
+			continue
+		# the storey-2 centre cell on the front carries the hex-badge sign instead of fixtures
+		if not sign_done and n.z > 0.5 and absf(c.x - float(sc["x"]) * h) < rw * 0.5 and absf(c.y - sign_y) < rh * 0.5:
+			sign_done = true
+			_emit_oriented_box_st(dark, c + n * 0.055, u, Vector3.UP, n,
+				Vector3(rw * 0.34, rh * 0.30, 0.02))
+			for hex_i in range(6):
+				var a0 := TAU * float(hex_i) / 6.0 + PI / 6.0
+				var a1 := TAU * float(hex_i + 1) / 6.0 + PI / 6.0
+				var hc := c + Vector3(0, rh * 0.16, 0)
+				_tube(bone, [hc + (u * cos(a0) + Vector3.UP * sin(a0)) * 0.14 + n * 0.09,
+					hc + (u * cos(a1) + Vector3.UP * sin(a1)) * 0.14 + n * 0.09], 0.022, 4)
+			continue
+		if c.y < 1.2:
+			continue   # ground cells belong to the entry idiom
+		_emit_oriented_box_st(dark, c + u * (-rw * 0.26) + Vector3(0, rh * 0.20, 0) + n * 0.05,
+			u, Vector3.UP, n, Vector3(float(fx["vent_w"]) * 0.5, float(fx["vent_h"]) * 0.5, 0.025))
+		for sl in range(3):
+			_emit_oriented_box_st(bone, c + u * (-rw * 0.26) + Vector3(0, rh * 0.20 - float(fx["vent_h"]) * 0.30 + float(sl) * float(fx["vent_h"]) * 0.30, 0) + n * 0.075,
+				u, Vector3.UP, n, Vector3(float(fx["vent_w"]) * 0.46, 0.018, 0.012))
+		_emit_oriented_box_st(bone, c + Vector3(0, -rh * 0.32, 0) + n * 0.075,
+			u, Vector3.UP, n, Vector3(rw * 0.26, float(fx["planter_h"]) * 0.5, 0.075))
+		_emit_oriented_box_st(leaf, c + Vector3(0, -rh * 0.32 + float(fx["planter_h"]) * 0.62, 0) + n * 0.075,
+			u, Vector3.UP, n, Vector3(rw * 0.24, 0.035, 0.065))
+	# the ring-balustrade parapet riding the crown (rail + baluster rings + red-tipped posts)
+	var pp: Dictionary = tbl["parapet"]
+	var py := h + 0.6
+	var b_r := float(pp["baluster_r"])
+	var spacing := float(pp["spacing"])
+	var rim := [[Vector3(-hx - 0.09, 0, hz + 0.09), Vector3(hx + 0.09, 0, hz + 0.09)],
+		[Vector3(hx + 0.09, 0, hz + 0.09), Vector3(hx + 0.09, 0, -hz - 0.09)],
+		[Vector3(hx + 0.09, 0, -hz - 0.09), Vector3(-hx - 0.09, 0, -hz - 0.09)],
+		[Vector3(-hx - 0.09, 0, -hz - 0.09), Vector3(-hx - 0.09, 0, hz + 0.09)]]
+	for edge_v in rim:
+		var e0: Vector3 = (edge_v as Array)[0]
+		var e1: Vector3 = (edge_v as Array)[1]
+		var e_dir := (e1 - e0).normalized()
+		var e_len := (e1 - e0).length()
+		var count := int(e_len / spacing)
+		for bi in range(count):
+			var bp := e0 + e_dir * ((float(bi) + 0.5) * e_len / float(count))
+			_emit_torus_st(bone, Vector3(bp.x, py + b_r + 0.02, bp.z), e_dir.cross(Vector3.UP),
+				b_r, 0.018, 8, 4)
+		_tube(bone, [Vector3(e0.x, py + b_r * 2.0 + 0.05, e0.z), Vector3(e1.x, py + b_r * 2.0 + 0.05, e1.z)], 0.028, 5)
+	for cxp in [-1.0, 1.0]:
+		for czp in [-1.0, 1.0]:
+			var post := Vector3(float(cxp) * (hx + 0.09), py, float(czp) * (hz + 0.09))
+			_rings_loft(bone, post, float(pp["tip_h"]), [[0.0, float(pp["post_r"]) / float(pp["tip_h"])],
+				[1.0, 0.35 * float(pp["post_r"]) / float(pp["tip_h"])]], 6)
+			_emit_oriented_box_st(warm, post + Vector3(0, float(pp["tip_h"]) + 0.035, 0),
+				Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(0.032, 0.032, 0.032))
+	# THE TORN FLANK (+X): rust wash, the strut-chaos hole, catwalk rows with ember lights
+	var hole: Dictionary = tbl["hole"]
+	var hzc := float(hole["z"]) * h
+	var hhw := float(hole["half_w"]) * h
+	var hy0 := float(hole["y0"]) * h
+	var hy1 := float(hole["y1"]) * h
+	_emit_oriented_box_st(dark, Vector3(hx + 0.02, (hy0 + hy1) * 0.5, hzc),
+		Vector3(0, 0, -1), Vector3.UP, Vector3(1, 0, 0), Vector3(hhw, (hy1 - hy0) * 0.5, 0.02))
+	var rim_pts: Array = []
+	for ri in range(13):
+		var ra := TAU * float(ri) / 12.0
+		rim_pts.append(Vector3(hx + 0.06, (hy0 + hy1) * 0.5 + sin(ra) * (hy1 - hy0) * 0.5,
+			hzc + cos(ra) * hhw * (1.0 + 0.08 * _h01(kb + float(ri) * 7.7))))
+	_tube(rust, rim_pts, 0.05, 5)
+	for st_i in range(int(hole["struts"])):
+		var z_a := hzc + (_h01(kb + float(st_i) * 11.3) - 0.5) * hhw * 1.8
+		var z_b := hzc + (_h01(kb + float(st_i) * 5.9 + 30.0) - 0.5) * hhw * 1.8
+		var y_a := lerpf(hy0, hy1, _h01(kb + float(st_i) * 7.1 + 60.0))
+		var y_b := lerpf(hy0, hy1, _h01(kb + float(st_i) * 3.7 + 90.0))
+		var strut_st := rust if st_i % 3 != 0 else bone
+		_tube(strut_st, [Vector3(hx - 0.12, y_a, z_a),
+			Vector3(hx + 0.05 + 0.1 * _h01(kb + float(st_i) * 2.3), (y_a + y_b) * 0.5, (z_a + z_b) * 0.5),
+			Vector3(hx - 0.12, y_b, z_b)], 0.042, 4)
+	var cw: Dictionary = tbl["catwalks"]
+	var cw_out := float(cw["out"]) * h
+	for row_v in (cw["rows"] as Array):
+		var ry := float(row_v) * h
+		_emit_oriented_box_st(metal, Vector3(hx + cw_out * 0.5, ry, 0),
+			Vector3(0, 0, 1), Vector3.UP, Vector3(1, 0, 0), Vector3(hz - 0.15, 0.03, cw_out * 0.5))
+		var rail_y := ry + float(cw["rail_h"]) * h
+		_tube(metal, [Vector3(hx + cw_out - 0.04, rail_y, -hz + 0.15), Vector3(hx + cw_out - 0.04, rail_y, hz - 0.15)], 0.025, 4)
+		for up_i in range(6):
+			var uz := lerpf(-hz + 0.2, hz - 0.2, float(up_i) / 5.0)
+			_tube(metal, [Vector3(hx + cw_out - 0.04, ry + 0.03, uz), Vector3(hx + cw_out - 0.04, rail_y, uz)], 0.018, 4)
+		for br_i in range(int(cw["posts"])):
+			var bz := lerpf(-hz + 0.3, hz - 0.3, (float(br_i) + 0.5) / float(int(cw["posts"])))
+			_tube(metal, [Vector3(hx + cw_out - 0.06, ry - 0.03, bz), Vector3(hx + 0.02, ry - 0.5, bz)], 0.024, 4)
+	for em in range(int(tbl["embers"])):
+		var ey := lerpf(0.15 * h, 0.85 * h, _h01(kb + float(em) * 13.7 + 200.0))
+		var ez := lerpf(-hz + 0.3, hz - 0.3, _h01(kb + float(em) * 7.9 + 240.0))
+		_emit_oriented_box_st(warm, Vector3(hx + 0.10 + 0.25 * _h01(kb + float(em) * 3.1), ey, ez),
+			Vector3(0, 0, 1), Vector3.UP, Vector3(1, 0, 0), Vector3(0.028, 0.028, 0.028))
+	var rst: Dictionary = tbl["rust"]
+	for sk in range(int(rst["streaks"])):
+		var sz2 := lerpf(-hz + 0.2, hz - 0.2, _h01(kb + float(sk) * 9.3))
+		var s_top := h * (0.55 + 0.4 * _h01(kb + float(sk) * 5.1 + 20.0))
+		var s_len := h * (0.15 + 0.30 * _h01(kb + float(sk) * 3.3 + 50.0))
+		_emit_oriented_box_st(rust, Vector3(hx + 0.03, s_top - s_len * 0.5, sz2),
+			Vector3(0, 0, 1), Vector3.UP, Vector3(1, 0, 0), Vector3(0.05 + 0.05 * _h01(kb + float(sk) * 1.7), s_len * 0.5, 0.012))
+	# the ENTRY idiom: cyan transom, warm sconces, the CRT kiosk, planter boxes and two steps
+	var en: Dictionary = tbl["entry"]
+	var door_w := float((spec.get("entrances", {}) as Dictionary).get("main_w", 1.6))
+	var door_h := float((spec.get("entrances", {}) as Dictionary).get("main_h", 2.7))
+	_emit_oriented_box_st(cyan, Vector3(0, door_h + 0.05 + float(en["transom_h"]) * 0.5, hz + 0.07),
+		Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1),
+		Vector3(door_w * 0.5 + 0.12, float(en["transom_h"]) * 0.5, 0.03))
+	for so in [1.0, -1.0]:
+		var sx3 := float(so) * (door_w * 0.5 + float(en["sconce_off"]) - 0.6)
+		_emit_oriented_box_st(dark, Vector3(sx3, float(en["sconce_y"]), hz + 0.06),
+			Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(0.05, 0.12, 0.05))
+		_emit_oriented_box_st(warm, Vector3(sx3, float(en["sconce_y"]) + 0.02, hz + 0.115),
+			Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(0.035, 0.075, 0.02))
+	var kx := float(en["kiosk_x"])
+	_emit_oriented_box_st(dark, Vector3(kx, 0.42, hz + 0.50),
+		Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(0.17, 0.42, 0.13))
+	var kv := Vector3(0, 0.906, 0.423)
+	var kn := Vector3(0, -0.423, 0.906)
+	_emit_oriented_box_st(cyan, Vector3(kx, 0.90, hz + 0.55) + kn * 0.02, Vector3(1, 0, 0), kv, kn,
+		Vector3(0.11, 0.08, 0.01))
+	for pxi in range(2):
+		var plx := float((en["planters_x"] as Array)[pxi])
+		_emit_oriented_box_st(bone, Vector3(plx, 0.22, hz + 0.45),
+			Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(0.24, 0.22, 0.20))
+		_emit_oriented_box_st(leaf, Vector3(plx, 0.50, hz + 0.45),
+			Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(0.22, 0.07, 0.18))
+	_emit_oriented_box_st(bone, Vector3(0, 0.07, hz + 0.42), Vector3(1, 0, 0), Vector3.UP,
+		Vector3(0, 0, 1), Vector3(door_w * 0.5 + 0.35, 0.07, 0.42))
+	_emit_oriented_box_st(bone, Vector3(0, 0.20, hz + 0.22), Vector3(1, 0, 0), Vector3.UP,
+		Vector3(0, 0, 1), Vector3(door_w * 0.5 + 0.20, 0.06, 0.22))
+	for stool in [bone, metal, dark, rust, leaf, warm, cyan]:
+		(stool as SurfaceTool).generate_normals()
+	return {"bone": bone.commit(), "metal": metal.commit(), "dark": dark.commit(),
+		"rust": rust.commit(), "leaf": leaf.commit(), "warm": warm.commit(),
+		"cyan": cyan.commit(),
+		"nameplate_pos": Vector3(0, float(sc["y1"]) * h + 0.3, hz + 0.2)}
+
 ## Zone-3 detail passes (SURVEY REBUILD 1.8), every part from the ZONE3 survey frames: the
 ## slat-roofed PORCH row (posts + rafters + slat courses, wrapping the left flank), the boarded
 ## siding + barred shop window, the ALWAYS OPEN sign, the arched upper-window surrounds, the

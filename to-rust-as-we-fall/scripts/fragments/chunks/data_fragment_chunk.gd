@@ -477,6 +477,40 @@ func _add_zone3_details(root: Node3D, spec: Dictionary) -> void:
 	if lbl != null and built.has("nameplate_pos"):
 		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
 
+func _add_honeycomb_details(root: Node3D, spec: Dictionary) -> void:
+	var built: Dictionary = BaseShapeBuilder.honeycomb_details(spec)
+	_add_lattice_mesh(root, "HcombBone", built.get("bone"),
+		_tinted_tile_material("facility_metal", Color(0.72, 0.69, 0.58)))
+	_add_lattice_mesh(root, "HcombMetal", built.get("metal"),
+		_tinted_tile_material("facility_metal", Color(0.44, 0.42, 0.36)))
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.09, 0.10, 0.10)
+	dark.roughness = 0.92
+	_add_lattice_mesh(root, "HcombDark", built.get("dark"), dark)
+	var rustm := StandardMaterial3D.new()
+	rustm.albedo_color = Color(0.43, 0.24, 0.11)
+	rustm.roughness = 1.0
+	_add_lattice_mesh(root, "HcombRust", built.get("rust"), rustm)
+	var leafm := StandardMaterial3D.new()
+	leafm.albedo_color = Color(0.24, 0.42, 0.20)
+	leafm.roughness = 0.9
+	_add_lattice_mesh(root, "HcombLeaf", built.get("leaf"), leafm)
+	var warmm := StandardMaterial3D.new()
+	warmm.albedo_color = Color(0.45, 0.28, 0.14)
+	warmm.emission_enabled = true
+	warmm.emission = Color(0.98, 0.52, 0.22)   # ember strings + sconces + beacon tips (plate warm)
+	warmm.emission_energy_multiplier = 1.8
+	_add_lattice_mesh(root, "HcombEmber", built.get("warm"), warmm)
+	var cyanm := StandardMaterial3D.new()
+	cyanm.albedo_color = Color(0.10, 0.30, 0.34)
+	cyanm.emission_enabled = true
+	cyanm.emission = Color(0.25, 0.85, 0.95)   # the transom + kiosk CRT (the entry's teal idiom)
+	cyanm.emission_energy_multiplier = 2.0
+	_add_lattice_mesh(root, "HcombCyan", built.get("cyan"), cyanm)
+	var lbl := root.get_node_or_null("Nameplate")
+	if lbl != null and built.has("nameplate_pos"):
+		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
+
 func _spawn_landmark_building(lm: Dictionary) -> void:
 	var kind := str(lm.get("kind", ""))
 	if not BaseShapeBuilder.SPECS.has(kind):
@@ -550,6 +584,9 @@ func _spawn_landmark_building(lm: Dictionary) -> void:
 				root.add_child(quad)
 		"honeyframe":
 			var ov := {"reserved": ent.get("reserved", [])}
+			var lov: Dictionary = spec.get("lattice_overrides", {})
+			for lk in lov.keys():
+				ov[lk] = lov[lk]
 			var built: Dictionary = LatticeBuilder.honeyframe_tiered(spec, ov) if int(spec.get("tiers", 1)) > 1 \
 				else LatticeBuilder.honeyframe(spec.get("size", Vector3(4.5, 8.0, 5.5)), ov)
 			for pair in [["frame", null], ["glass", glassm]]:
@@ -580,6 +617,8 @@ func _spawn_landmark_building(lm: Dictionary) -> void:
 			_add_bulwark_details(root, spec)
 		"zone3_split":
 			_add_zone3_details(root, spec)
+	if str(spec.get("kind", "")) == "honeycomb_cooperative":
+		_add_honeycomb_details(root, spec)
 
 func _spawn_lathe_building(lp: Dictionary) -> void:
 	var profile: Dictionary = LatheBuilderScript.make_profile(lp)

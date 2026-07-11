@@ -53,6 +53,15 @@ static func honeyframe(size: Vector3, overrides: Dictionary = {}) -> Dictionary:
 	var cells := 0
 	var mode := str(p.get("rib_merge", "sasb"))
 	for f in faces:
+		# a face listed in skip_faces is left bare (the Honeycomb's TORN flank wears rust and
+		# catwalks instead of the frame); each face is its own graph, so omission stays watertight
+		var f_n := ((f as Dictionary)["n"] as Vector3)
+		var skipped := false
+		for sn_v in (p.get("skip_faces", []) as Array):
+			if f_n.dot(sn_v as Vector3) > 0.9:
+				skipped = true
+		if skipped:
+			continue
 		match mode:
 			"frame_ring":
 				cells += _honeyframe_face(f as Dictionary, p, frame_st, glass_st)
@@ -79,6 +88,77 @@ static func honeyframe(size: Vector3, overrides: Dictionary = {}) -> Dictionary:
 	frame_st.generate_normals()
 	glass_st.generate_normals()
 	return {"frame": frame_st.commit(), "glass": glass_st.commit(), "cells": cells}
+
+## The face cell RECTS the sasb subdivision produces — computed with the SAME axis/merge hashes
+## the builder uses, so facade fixtures (vents, planters, the sign badge) ride the REAL cell grid
+## instead of an invented one. Read-only: no geometry, no topology. A fused pair reports ONE rect
+## (the union); cells inside a reserved door region are omitted (the engine's own test decides).
+static func honeyframe_cell_rects(size: Vector3, overrides: Dictionary = {}) -> Array:
+	var p := HONEYFRAME_DEFAULTS.duplicate()
+	for k in overrides.keys():
+		p[k] = overrides[k]
+	var reserved: Array = p.get("reserved", [])
+	var rib_r := float(p["rib_radius"])
+	var size_var := clampf(float(p.get("size_variance", 0.0)), 0.0, 0.8)
+	var merge_chance := clampf(float(p.get("merge_chance", 0.0)), 0.0, 0.45)
+	var out: Array = []
+	for f_v in _box_vertical_faces(size):
+		var f := f_v as Dictionary
+		var f_n := (f["n"] as Vector3).normalized()
+		var skipped := false
+		for sn_v in (p.get("skip_faces", []) as Array):
+			if f_n.dot(sn_v as Vector3) > 0.9:
+				skipped = true
+		if skipped:
+			continue
+		var w: float = f["w"]
+		var h: float = f["h"]
+		var cols := int(max(1, round(w / float(p["cell_size"]))))
+		var rows := int(max(1, round(h / (float(p["cell_size"]) * float(p["cell_aspect"])))))
+		var u: Vector3 = (f["u"] as Vector3).normalized()
+		var origin: Vector3 = (f["c"] as Vector3) - u * (w * 0.5) + Vector3(0, -h * 0.5, 0)
+		var fkey := (f_n.x * 3.7 + f_n.z * 9.1) * 17.0
+		var xs := _varied_axis(cols, rib_r, w - 2.0 * rib_r, fkey + 3.0, size_var)
+		var ys := _varied_axis(rows, rib_r, h - 2.0 * rib_r, fkey + 7.0, size_var)
+		var merged: Dictionary = {}
+		for i in range(cols):
+			for j in range(1, rows):
+				var ca := i * rows + (j - 1)
+				var cb := i * rows + j
+				if not merged.has(ca) and not merged.has(cb) and _h01(fkey + float(i) * 17.3 + float(j) * 29.1 + 100.0) < merge_chance:
+					merged[ca] = cb
+					merged[cb] = ca
+		for i2 in range(1, cols):
+			for j2 in range(rows):
+				var ca2 := (i2 - 1) * rows + j2
+				var cb2 := i2 * rows + j2
+				if not merged.has(ca2) and not merged.has(cb2) and _h01(fkey + float(i2) * 23.9 + float(j2) * 11.3 + 300.0) < merge_chance:
+					merged[ca2] = cb2
+					merged[cb2] = ca2
+		for i3 in range(cols):
+			for j3 in range(rows):
+				var idx := i3 * rows + j3
+				if merged.has(idx) and int(merged[idx]) < idx:
+					continue
+				var x0 := float(xs[i3])
+				var x1 := float(xs[i3 + 1])
+				var y0 := float(ys[j3])
+				var y1 := float(ys[j3 + 1])
+				if merged.has(idx):
+					var pj := int(merged[idx])
+					var pi := int(floor(float(pj) / float(rows)))
+					var pjj := pj - pi * rows
+					x0 = minf(x0, float(xs[pi]))
+					x1 = maxf(x1, float(xs[pi + 1]))
+					y0 = minf(y0, float(ys[pjj]))
+					y1 = maxf(y1, float(ys[pjj + 1]))
+				var cx2 := (x0 + x1) * 0.5
+				var cy2 := (y0 + y1) * 0.5
+				if _seg_reserved_face(Vector2(cx2, cy2), Vector2(cx2, cy2), w, f_n, reserved):
+					continue
+				out.append({"n": f_n, "u": u, "center": origin + u * cx2 + Vector3(0, cy2, 0),
+					"w": x1 - x0, "h": y1 - y0, "fused": merged.has(idx)})
+	return out
 
 # A cornice + parapet-wall ring + a rooftop vent — the roof silhouette a bare box lacks. Closed boxes.
 static func _emit_crown(st: SurfaceTool, size: Vector3) -> void:

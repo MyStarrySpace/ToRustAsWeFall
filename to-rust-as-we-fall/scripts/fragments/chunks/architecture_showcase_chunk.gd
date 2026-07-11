@@ -89,6 +89,8 @@ func _build_chunk() -> void:
 			_add_bulwark_details(root, spec)
 		if str(spec.get("composite", "")) == "zone3_split":
 			_add_zone3_details(root, spec)
+		if str(spec.get("kind", "")) == "honeycomb_cooperative":
+			_add_honeycomb_details(root, spec)
 		_add_anchor_markers(root, survey.anchors())
 		_specimens.append({"building": kind, "shape": str(spec.get("shape", "")),
 			"lattice": str(spec.get("lattice", "")), "verts": verts})
@@ -172,8 +174,12 @@ func _add_lattice(root: Node3D, spec: Dictionary, reserved: Array, survey: Build
 func _add_honeyframe(root: Node3D, spec: Dictionary, reserved: Array) -> void:
 	# On a tiered "cake" the lattice runs PER vertical drum band (each at its tier's footprint); a flat
 	# base is one band.
-	var built: Dictionary = Lattice.honeyframe_tiered(spec, {"reserved": reserved}) if int(spec.get("tiers", 1)) > 1 \
-		else Lattice.honeyframe(spec.get("size", Vector3(4.5, 8.0, 5.5)), {"reserved": reserved})
+	var ov := {"reserved": reserved}
+	var lov: Dictionary = spec.get("lattice_overrides", {})
+	for k in lov.keys():
+		ov[k] = lov[k]
+	var built: Dictionary = Lattice.honeyframe_tiered(spec, ov) if int(spec.get("tiers", 1)) > 1 \
+		else Lattice.honeyframe(spec.get("size", Vector3(4.5, 8.0, 5.5)), ov)
 	# Brighter cream than the base body so the strut lattice reads proud of the wall.
 	_add_lattice_mesh(root, "HoneyFrame", built.get("frame"), _tinted_tile_material("facility_metal", Color(0.72, 0.69, 0.58)))
 	_add_lattice_mesh(root, "HoneyGlass", built.get("glass"), _window_material(1.8))

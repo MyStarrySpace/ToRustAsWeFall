@@ -328,6 +328,27 @@ const ZONE3 := {
 	"cavity_half_w": 0.128,
 }
 
+## THE HONEYCOMB COOPERATIVE SURVEY — measured off the plate (reference-images/architecture/
+## honeycomb_cooperative.png, decomposed 2026-07-11). A tall tenement slab whose intact faces wear
+## the bone HONEYFRAME (the engine's sasb cell grid IS the facade bay grid — fixtures ride its
+## real cell rects via honeyframe_cell_rects, never an invented grid): amber window panes (engine
+## glass), a vent louver + planter per cell, the hex-badge sign filling a storey-2 cell. The +X
+## flank is TORN: the frame is skipped there (skip_faces) and the face wears rust wash, a
+## two-storey HOLE full of strut chaos, and three CATWALK rows with ember lights (plate-demanded
+## warm). A ring-balustrade parapet rides the crown; the entry idiom is the teal door + cyan
+## transom + warm sconces + CRT kiosk + planter boxes. Fractions of H unless a key says metres.
+const HONEYCOMB := {
+	"catwalks": {"rows": [0.22, 0.475, 0.73], "out": 0.045, "rail_h": 0.034, "posts": 4},
+	"hole": {"z": -0.05, "half_w": 0.16, "y0": 0.30, "y1": 0.62, "struts": 9},
+	"embers": 7,
+	"parapet": {"spacing": 0.42, "baluster_r": 0.055, "post_r": 0.045, "tip_h": 0.30},
+	"sign_cell": {"x": 0.0, "half_w": 0.075, "y0": 0.32, "y1": 0.415},
+	"fixtures": {"vent_w": 0.30, "vent_h": 0.22, "planter_h": 0.11},
+	"entry": {"transom_h": 0.20, "sconce_off": 1.00, "sconce_y": 1.90,
+		"kiosk_x": 0.95, "planters_x": [-1.35, -1.85]},
+	"rust": {"streaks": 8},
+}
+
 ## Authored storey plans (ground band + floor count between plinth and eave), per building kind.
 ## Numbers trace to the plate decompositions; buildings without an entry get equal DEFAULT_STOREY
 ## bands. greenfields' ground/storey split is ALSO the slab-ring datum table the massing builds on.
@@ -374,6 +395,8 @@ static func table_for(spec_in: Dictionary, name: String) -> Dictionary:
 			base = BULWARK
 		"zone3":
 			base = ZONE3
+		"honeycomb":
+			base = HONEYCOMB
 	var out := base.duplicate(true)
 	var over: Dictionary = (spec_in.get("vars", {}) as Dictionary).get(name, {})
 	for k in over.keys():
@@ -533,6 +556,19 @@ static func roll_vars(kind_in: String, seed_value: int) -> Dictionary:
 			if float(rng.call("randf")) < 0.35:
 				z3v["slabs"] = [0.36, 0.66]   # a two-gallery ruin on some instances
 			out["zone3"] = z3v
+		"honeycomb_cooperative":
+			var s9 := lerpf(0.94, 1.06, float(rng.call("randf")))
+			(out["spec"] as Dictionary)["size"] = Vector3(4.5, 10.0, 6.3) * s9
+			(out["spec"] as Dictionary)["entrances"] = {"main_w": 1.6 * s9, "main_h": 2.7 * s9,
+				"side_count_min": 0, "side_count_max": 0, "canopy_out": 0.0,
+				"reserve_margin": 0.2, "main_surround": false}
+			var hcv := {"embers": int(rng.call("randi_range", 5, 9)),
+				"hole": {"half_w": lerpf(0.13, 0.18, float(rng.call("randf"))),
+					"y1": lerpf(0.58, 0.66, float(rng.call("randf")))},
+				"rust": {"streaks": int(rng.call("randi_range", 6, 11))}}
+			if float(rng.call("randf")) < 0.35:
+				hcv["catwalks"] = {"rows": [0.30, 0.62]}   # a two-catwalk flank on some instances
+			out["honeycomb"] = hcv
 		"cleanstreets":
 			var spread := lerpf(2.2, 2.8, float(rng.call("randf")))
 			var cs := {"fins": {"xs": [-spread, -spread / 3.0, spread / 3.0, spread],
@@ -827,6 +863,78 @@ func _survey_reservations(placements: Array) -> void:
 		_bulwark_reservations()
 	if str(spec.get("composite", "")) == "zone3_split":
 		_zone3_reservations()
+	if str(spec.get("kind", "")) == "honeycomb_cooperative":
+		_honeycomb_reservations()
+
+## Every planned honeycomb part claims its wall. The intact faces: the honeyframe FIELD (generic)
+## + one cell-fixtures band per face (vents/planters ride the engine's real cell rects — the band
+## and the field declare each other) + the hex sign cell. The TORN +X flank: its field reservation
+## is REMOVED (the frame is skipped there) and replaced by the hole, three layer-1 catwalk rows
+## and the rust wash (catwalks and wash declare each other). Entry fixtures are layer-1 proud.
+func _honeycomb_reservations() -> void:
+	var tbl := table_for(spec, "honeycomb")
+	var h := _height_total()
+	var fz := Vector3(0, 0, 1)
+	# the torn flank loses its honeyframe field (skip_faces leaves the face bare)
+	for ri in range(reservations.size() - 1, -1, -1):
+		if str((reservations[ri] as Dictionary).get("id", "")) == "field_honeyframe_right":
+			reservations.remove_at(ri)
+	var sizeh: Vector3 = spec.get("size", Vector3(4.5, 10.0, 6.3))
+	for face_pair in [[fz, "front", sizeh.x], [Vector3(-1, 0, 0), "left", sizeh.z], [Vector3(0, 0, -1), "back", sizeh.z]]:
+		var fp := face_pair as Array
+		var fid := "cell_fixtures_%s" % str(fp[1])
+		reservations.append({"id": fid, "type": "decoration", "cyl": false, "n": fp[0],
+			"x_center": 0.0, "half_w": float(fp[2]) * 0.5 - 0.05,
+			"y0": 0.02 * h, "y1": 0.96 * h,
+			"keeps_clear": ["field_honeyframe_%s" % str(fp[1]), "sign_cell", "door_main"]})
+		for r_v in reservations:
+			var rv := r_v as Dictionary
+			if str(rv.get("id", "")) == "field_honeyframe_%s" % str(fp[1]):
+				(rv["keeps_clear"] as Array).append(fid)
+				(rv["keeps_clear"] as Array).append("sign_cell")
+	var sc: Dictionary = tbl["sign_cell"]
+	reservations.append({"id": "sign_cell", "type": "decoration", "cyl": false, "n": fz,
+		"x_center": float(sc["x"]) * h, "half_w": float(sc["half_w"]) * h,
+		"y0": float(sc["y0"]) * h, "y1": float(sc["y1"]) * h,
+		"keeps_clear": ["field_honeyframe_front", "cell_fixtures_front"]})
+	# the torn flank: hole (wall skin) + catwalk rows and rust wash (proud crust, declared pair)
+	var hole: Dictionary = tbl["hole"]
+	reservations.append({"id": "torn_hole", "type": "decoration", "cyl": false, "n": Vector3(1, 0, 0),
+		"x_center": float(hole["z"]) * h, "half_w": float(hole["half_w"]) * h,
+		"y0": float(hole["y0"]) * h, "y1": float(hole["y1"]) * h, "keeps_clear": []})
+	var cw: Dictionary = tbl["catwalks"]
+	var cw_ids: Array = []
+	var rows: Array = cw["rows"]
+	for k in range(rows.size()):
+		cw_ids.append("catwalk_%d" % k)
+	for k2 in range(rows.size()):
+		reservations.append({"id": "catwalk_%d" % k2, "type": "decoration", "layer": 1,
+			"cyl": false, "n": Vector3(1, 0, 0), "x_center": 0.0,
+			"half_w": sizeh.z * 0.5 - 0.05,
+			"y0": float(rows[k2]) * h, "y1": (float(rows[k2]) + float(cw["rail_h"]) + 0.012) * h,
+			"keeps_clear": ["rust_wash"]})
+	reservations.append({"id": "rust_wash", "type": "decoration", "layer": 1, "cyl": false,
+		"n": Vector3(1, 0, 0), "x_center": 0.0, "half_w": sizeh.z * 0.5 - 0.05,
+		"y0": 0.05 * h, "y1": 0.90 * h, "keeps_clear": cw_ids})
+	# entry fixtures: proud layer-1 pieces around the doorway (transom, sconces, kiosk, planters)
+	var en: Dictionary = tbl["entry"]
+	var door_h := float((spec.get("entrances", {}) as Dictionary).get("main_h", 2.7))
+	var door_w := float((spec.get("entrances", {}) as Dictionary).get("main_w", 1.6))
+	reservations.append({"id": "transom", "type": "decoration", "layer": 1, "cyl": false, "n": fz,
+		"x_center": 0.0, "half_w": door_w * 0.5 + 0.15,
+		"y0": door_h + 0.05, "y1": door_h + 0.05 + float(en["transom_h"]), "keeps_clear": []})
+	for so in [1.0, -1.0]:
+		reservations.append({"id": "sconce_%s" % ("r" if so > 0.0 else "l"), "type": "decoration",
+			"layer": 1, "cyl": false, "n": fz,
+			"x_center": so * (door_w * 0.5 + float(en["sconce_off"]) - 0.6), "half_w": 0.12,
+			"y0": float(en["sconce_y"]) - 0.15, "y1": float(en["sconce_y"]) + 0.15, "keeps_clear": []})
+	reservations.append({"id": "entry_kiosk", "type": "decoration", "layer": 1, "cyl": false,
+		"n": fz, "x_center": float(en["kiosk_x"]), "half_w": 0.22,
+		"y0": 0.0, "y1": 1.35, "keeps_clear": []})
+	for pxi in range(2):
+		reservations.append({"id": "entry_planter_%d" % pxi, "type": "decoration", "layer": 1,
+			"cyl": false, "n": fz, "x_center": float((en["planters_x"] as Array)[pxi]),
+			"half_w": 0.24, "y0": 0.0, "y1": 0.5, "keeps_clear": []})
 
 ## Every planned zone3 part claims its wall: the siding band + shop window (a declared pair),
 ## the sign, the upper windows (front + side), the torn wing's cavity galleries, and the layer-1
@@ -1250,6 +1358,15 @@ func _survey_sockets(placements: Array) -> void:
 					float(wgs["lateral"]) * bsz.y),
 				"dir": Vector3(float(sxw), 0, 0),
 				"length": float(wgs["bay_len"]) * bsz.y * float(int(wgs["bays"]))})
+	if str(spec.get("kind", "")) == "honeycomb_cooperative":
+		var hc := table_for(spec, "honeycomb")
+		var hsz: Vector3 = spec.get("size", Vector3(4.5, 10.0, 6.3))
+		for row_v in ((hc["catwalks"] as Dictionary)["rows"] as Array):
+			sockets.append({"kind": "balcony", "pos": Vector3(hsz.x * 0.5 + float((hc["catwalks"] as Dictionary)["out"]) * hsz.y * 0.5, float(row_v) * hsz.y + 0.05, 0.0),
+				"n": Vector3(1, 0, 0), "radius": 0.5})
+		sockets.append({"kind": "weak_point",
+			"pos": Vector3(hsz.x * 0.5, (float((hc["hole"] as Dictionary)["y0"]) + float((hc["hole"] as Dictionary)["y1"])) * 0.5 * hsz.y, float((hc["hole"] as Dictionary)["z"]) * hsz.y),
+			"n": Vector3(1, 0, 0), "radius": 0.9})
 	if comp == "zone3_split":
 		# the gutted wing: a balcony slot on every torn gallery, the weak point at the torn seam
 		var z3 := table_for(spec, "zone3")
@@ -1925,7 +2042,13 @@ func _validate_socket(s: Dictionary, problems: Array[String]) -> void:
 				problems.append("%s: bridge socket floats %.2f out from a %.2f footprint" % [kind, horiz.length(), _footprint()])
 		"balcony":
 			var on_ledge := false
-			if str(spec.get("composite", "")) == "zone3_split":
+			if str(spec.get("kind", "")) == "honeycomb_cooperative":
+				# the torn flank's balconies are the catwalk rows
+				var hcl := table_for(spec, "honeycomb")
+				for row_l in ((hcl["catwalks"] as Dictionary)["rows"] as Array):
+					if absf(float(row_l) * _height_total() + 0.05 - pos.y) <= 0.1:
+						on_ledge = true
+			elif str(spec.get("composite", "")) == "zone3_split":
 				# the eroded ruin's balconies are the torn wing's floor slabs, not tier ledges
 				var z3l := table_for(spec, "zone3")
 				for sy_l in (z3l["slabs"] as Array):
