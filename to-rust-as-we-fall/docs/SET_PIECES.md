@@ -105,6 +105,134 @@ duplicates an ENVIRONMENT_ELEMENTS entry (no new valve-rotations, no new riding)
    across a Candid zone — the ecosystem finishes it (canonical counter). Grammar: the hydrant
    points down the lane you'll cross two pieces later, and the debris heap builds at the far drain.
 
+## PROPOSED set pieces — the Aghora + the boss zones (Claude, 2026-07-11 — director approval required)
+
+The three zones NO register or proposal covered yet (checked against ENVIRONMENT_ELEMENTS.md and
+the list above — PPP and Ancourage are exhaustively owned by the register, the other seven
+districts by proposals 1–7). Same grammar: CONTROL + EFFECT, a traversal use AND a combat/stealth
+use, control separated from effect by other pieces. The Aghora pieces derive from its BIOLOGY
+(GDD §4.12 L807-811: receptor tolerance, synchronized excitotoxic firing, hoarded stolen
+resources, the counterfeit market); the boss pieces decompose gameplay canon the GDD already
+states (§11.1 heavy queueing + the door-trap shadow; §11.2 alignment paths + the Climbvine spend).
+
+### The Aghora (the counterfeit agora — bazaar canyon, coop-district cracks, Act 2/3)
+
+8. **Dose-lantern pull-cords — TOLERANCE as a mechanic.** Stim dispensers hang along the stall
+   rows; a pull-cord fires a sensory BURST that entrances everything in its radius for a beat.
+   CONTROL: the cord. EFFECT: the freeze window — but the addiction curve is the rule: each
+   firing of the SAME lantern is weaker (the window halves — receptor tolerance, GDD L809), and
+   it never recovers. A decaying stun economy: order and spacing matter more than trigger-pulling.
+   Traversal: freeze the crowd blocking a lane and slip through. Combat: two bursts back-to-back
+   OVERDRIVE an iron-seeker (Sapscrap swarmlet / Aember) into excitotoxic burnout — the canon
+   kill, fired past what it can survive (L809) — but only if you spent a virgin lantern on it.
+   Grammar: the cords hang in the stall rows; the lanes they freeze are two stalls further on.
+   Build: Flure-class lure object + a per-lantern decay counter (scheduler state, replay-safe).
+
+9. **Exchange dumbwaiter — the market prices movement.** The counterfeit exchange runs a
+   counterweight cargo cage between canyon levels, and it moves ONLY when fed: loading trade
+   goods (iron chunks, flora pods — the hoarded stolen resources of L805-807) on the counter side
+   hoists the cage. CONTROL: what you feed the counter. EFFECT: the cage rises to the terrace
+   level bought. Traversal: vertical movement with a PRICE — the Aghora's whole cosmology as a
+   lift. Combat: bait the cage floor with an iron chunk, let a Sapscrap swarm pile in chasing it,
+   feed the counter — the swarm is hoisted out of play, hanging over the bazaar (removal, not a
+   kill; sending it back down is a choice). Grammar: the goods pile sits at the stalls you have
+   passed; the cage lands where you are going. Build: the bulwark counterweight-basket controller
+   re-skinned + the object-carry class (pending, shared with the flow-plate mosaic).
+
+10. **Synchronization floor — detection samples on the beat.** The assembly floor is the cult's
+    synchronized-excitation rite made geometry: light strips pulse on a scheduler cadence, and on
+    the floor DETECTION ONLY SAMPLES ON THE FLASH — the dark half-beat is blind. CONTROL: the
+    tempo lever on the DJ balcony. EFFECT: the flash cadence. SLOW tempo = long blind windows,
+    easy crossings, but each flash is a full-floor scan (be hidden ON the beat, P2 register:
+    Aster's TRACE reads the next flash tick); FAST tempo = entrained fauna stutter-lock to the
+    beat (pursuit crawls) but you are sampled constantly and must hug cover. Two viable settings,
+    a real choice, no execution timing — you pick the regime, then move on readable windows.
+    Combat: crank MAX with a pack mid-floor and hold it there — synchronized excitation burns the
+    entrained out (L809), the district's own practice as the weapon. Grammar: the tempo lever is
+    on the balcony only the dumbwaiter (piece 9) reaches. Build: detection recompute already
+    rides the scheduler; this quantizes its sampling ticks — no per-frame polling.
+
+11. **The SENSATION SELECTED gate (the market-gate arch, boss-arena mouth).** The plate's neon
+    arch scans for AROUSAL, not tags: it admits only the freshly dosed. CONTROL: the dose-lantern
+    chain (piece 8) — a member who took a burst within the decay window carries a "lit" state the
+    arch reads. EFFECT: the arch opens per lit member, one at a time (the portal rule). The bind:
+    dosing to pass SPENDS lantern freshness the crossing beyond may need, and the tolerance you
+    build here weakens every later lantern — entry to the deep bazaar is priced in your own
+    escalation, the addiction curve as a door. Naturalizers ignore the arch (they scan tags, not
+    arousal — fauna_roster L34); the gate is the cult's own filter. Grammar: piece 8's CONTROL is
+    this gate's KEY; the gate is a CrawlTunnel-class one-at-a-time mouth. Build: CrawlTunnel
+    group-queue + a per-character timed status flag.
+
+### Loca's Watchtower approach + interior (Act 1/2 boundary, GDD §11.1)
+
+12. **Switchback scree winches — buy sections from the tide.** The mountain trail's flights pass
+    under rockfall chutes; a winch at each landing opens the gate above the flight BELOW you.
+    CONTROL: the winch. EFFECT: scree sweeps that lower flight — locusts on it are carried down
+    the mountain (swept, not killed — the wash-sweep grammar), and the flight becomes a scramble
+    slope: still climbable, slower, for them AND for you. The ascent is a fighting retreat from a
+    tide that keeps coming (Myke's futility, L2421, as terrain): you queue winch turns and moves
+    ahead of the swarm — the canonical heavy-queueing context (L301) in its native home.
+    Grammar: every winch controls the flight below, never the one you stand on — spending one
+    always costs your own line of retreat. Build: wash-sweep controller on a slope + the queued
+    command system.
+
+13. **Ward-door breaker bus — the shadow solution as geometry.** The tower's sector doors share
+    one power BUS with a breaker budget: only N doors can HOLD at once; sealing one somewhere
+    frees nothing until another is dropped. CONTROL: per-door hack points (Aster) + the breaker
+    panel. EFFECT: which sectors are sealed. Traversal: your ascent route is whatever the budget
+    leaves open. Combat: seal a locust group in with itself — isolated and at rest, the locusts
+    cannibalize (the canon shadow solution, L497/L2435-2440, uncomfortable on purpose: you are
+    letting the containment finish what it started); the room goes quiet after a scheduled span,
+    and reopening it is a choice you make in the silence. Grammar: the breaker panel sits at the
+    tower base; the doors that matter are floors above — every re-plan is a descent.
+    Build: set_interactable_enabled gates + a door-budget invariant + enemy-vs-enemy consumption
+    (new, small: penned enemies damage each other on a cadence).
+
+14. **Signal-bleed dampers — shape where the tower converges.** Loca's bound body draws the
+    locusts upward through the riser cables (the wires/tangles, L2301-2313); clamping a damper on
+    a riser SILENCES the draw in its sector — locusts there drop from converge to roam — but the
+    total draw is conserved: every other sector's pull strengthens and its swarms densify. You
+    never reduce the tower's population, you only choose where it packs. Traversal: quiet your
+    own shaft. Combat: concentrate the drawn swarm into a sector piece 13 can seal. Grammar: a
+    riser's damper is in the NEIGHBORING shaft (clamping yours means crossing theirs).
+    Build: detection/roam mode flips per region (set_roam / distraction flags exist) + a
+    conserved-weight draw table.
+
+### The Paranucleus + NUTECH facility (Act 2/3 boundary, GDD §11.2 — contemplative, no combat)
+
+15. **Wheel-gap causeways — paths that exist at certain alignments.** The ophanim rings turn
+    slowly (the built rotating wheels); each ring's porous GAPS are its only passable arcs, so
+    the route to the core exists only at certain alignments — the GDD's line (L2482) as literal
+    geometry. CONTROL: none at first — the wheels are not yours; Aster's TRACE reads each ring's
+    period and the next gap-meet tick, and the party WAITS (the awe register: you move when it
+    lets you, L2484). One NUTECH maintenance BRAKE survives per approach: it parks ONE ring —
+    a permanent gap on that ring only, bought by choosing which. Being on an arc when it rotates
+    out is a SWEEP (carried around and set down outside — fail-forward, never a death).
+    Build: the wheels already turn; gap arcs = walkable windows keyed to rotation phase
+    (scheduler-derived, the fast-forward-invariant pattern the wash cadences use).
+
+16. **Climbvine ratline hoists — tied between rotating surfaces.** Anchor bosses stud the ring
+    rims and the facility gantries; a harvested Climbvine SPENT between two anchors becomes a
+    permanent ratline (an inter-level link bought from inventory — the encounter's canonical
+    Climbvine economy, L2506). The twist is the canonical verb itself (flora_taxonomy: Climbvine
+    ties between ROTATING surfaces): a vine tied gantry-to-RIM winds up as the ring turns and
+    HOISTS the climber to the hub — the wheel as elevator. N vines, M anchor pairs, N < M:
+    route-planning by expenditure. Grammar: the anchor you need is on the ring whose gap
+    (piece 15) you must first cross. Build: add_inter_level_link at runtime (exists) + a vine
+    inventory count; the hoist is a timed authored path (the crawl-tunnel movement pattern).
+
+17. **Reservoir siphon manifold — the last of the Lavender Lake.** The facility's central
+    reservoirs (L2490, where the bottle waits) still hold DREGS; the bottling manifold's siphon
+    valves route what pressure remains to scent heads around the engulfed yard. CONTROL: the
+    valves in the intact NUTECH office (the legible building). EFFECT: a fired head raises a
+    lavender scent CURTAIN across its lane for one crossing — the spray line's canonical power
+    is disabling security (L2530), so the curtain pacifies the lane: Gnawers denned in the
+    engulfed wing will not cross it while it hangs. Pressure is finite and falling — each curtain
+    is one crossing, and what you spend here foreshadows the bottle's own two-application economy
+    before the player ever holds it. Grammar: valves in the office, heads in the yard, and the
+    yard is how you reach the reservoirs the valves drain. Build: a timed concealment/repel lane
+    (the distraction/conceal flags) + a shared depleting counter.
+
 ## CURE-ECHO set pieces — easier foreshadows of the nine landmark puzzles (PROPOSED, 2026-07-09)
 
 The GDD's nine cure-component puzzles (§10.4.1–10.4.9) each own a distinct mechanic class. The
