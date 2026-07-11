@@ -376,6 +376,52 @@ func _add_lattice_mesh(root: Node3D, mesh_name: String, mesh, mat: Material) -> 
 	mi.material_override = mat
 	root.add_child(mi)
 
+## The beacon detail passes (SURVEY REBUILD 1.6): the five great arch bays (bone ribs + amber
+## shelf-grid panes), dome ribs to the lantern, oculi, cartouche, green status board, the
+## enforcement vestibule (the ONE cyan accent), sconces, lantern clerestory + roof garden, beds.
+func _add_beacon_details(root: Node3D, spec: Dictionary) -> void:
+	var built: Dictionary = BaseShapeBuilder.beacon_details(spec)
+	_add_lattice_mesh(root, "BeaconBone", built.get("bone"),
+		_tinted_tile_material("facility_metal", Color(0.72, 0.65, 0.52)))
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.07, 0.09, 0.08)
+	dark.roughness = 0.92
+	_add_lattice_mesh(root, "BeaconDark", built.get("dark"), dark)
+	var amber := StandardMaterial3D.new()
+	amber.albedo_color = Color(0.40, 0.28, 0.12)
+	amber.emission_enabled = true
+	amber.emission = Color(0.95, 0.72, 0.38)   # the shelf-grid glow (plate-demanded warm)
+	amber.emission_energy_multiplier = 1.7
+	_add_lattice_mesh(root, "BeaconPanes", built.get("amber"), amber)
+	var glow := StandardMaterial3D.new()
+	glow.albedo_color = Color(0.16, 0.42, 0.26)
+	glow.emission_enabled = true
+	glow.emission = Color(0.36, 0.91, 0.50)   # status board + keypads — terminal green
+	glow.emission_energy_multiplier = 2.4
+	_add_lattice_mesh(root, "BeaconGlow", built.get("glow"), glow)
+	var cyanm := StandardMaterial3D.new()
+	cyanm.albedo_color = Color(0.10, 0.30, 0.34)
+	cyanm.emission_enabled = true
+	cyanm.emission = Color(0.25, 0.85, 0.95)   # the enforcement chevron — the sole cool accent
+	cyanm.emission_energy_multiplier = 2.2
+	_add_lattice_mesh(root, "BeaconCyan", built.get("cyan"), cyanm)
+	var warmm := StandardMaterial3D.new()
+	warmm.albedo_color = Color(0.45, 0.33, 0.18)
+	warmm.emission_enabled = true
+	warmm.emission = Color(0.95, 0.64, 0.32)
+	warmm.emission_energy_multiplier = 1.4
+	_add_lattice_mesh(root, "BeaconSconces", built.get("warm"), warmm)
+	var leafm := StandardMaterial3D.new()
+	leafm.albedo_color = Color(0.24, 0.42, 0.20)
+	leafm.roughness = 0.9
+	_add_lattice_mesh(root, "BeaconLeaf", built.get("leaf"), leafm)
+	var rail := _railing_material()
+	rail.albedo_color = Color(0.78, 0.74, 0.62)
+	_add_lattice_mesh(root, "BeaconRails", built.get("rails"), rail)
+	var lbl := root.get_node_or_null("Nameplate")
+	if lbl != null and built.has("nameplate_pos"):
+		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
+
 func _spawn_landmark_building(lm: Dictionary) -> void:
 	var kind := str(lm.get("kind", ""))
 	if not BaseShapeBuilder.SPECS.has(kind):
@@ -473,6 +519,8 @@ func _spawn_landmark_building(lm: Dictionary) -> void:
 			_add_greenfields_details(root, spec)
 		"ancourage_domes":
 			_add_ancourage_details(root, spec)
+		"beacon_domed":
+			_add_beacon_details(root, spec)
 
 func _spawn_lathe_building(lp: Dictionary) -> void:
 	var profile: Dictionary = LatheBuilderScript.make_profile(lp)

@@ -19,7 +19,7 @@ const GROUND_TILE := "facility_metal"
 ## these (reach + reach + GAP), so no hero ever sweeps through its neighbour (the phone playtest
 ## found the old fixed 7 m spacing let the hypelines arms and bulwark wings overlap neighbours).
 const REACH := {
-	"plumbing_power": 2.7, "honeycomb_cooperative": 3.3, "beacon_hill": 2.7, "open_files": 3.0,
+	"plumbing_power": 2.7, "honeycomb_cooperative": 3.3, "beacon_hill": 3.4, "open_files": 3.0,
 	"hypelines": 6.7, "greenfields": 3.2, "ancourage": 6.3, "bulwark_wharf": 7.2,
 	"cleanstreets": 6.1, "zone3": 3.4, "tiered_hall": 2.8, "tiered_terrace": 2.7,
 }
@@ -83,6 +83,8 @@ func _build_chunk() -> void:
 			_add_greenfields_details(root, spec)
 		if str(spec.get("composite", "")) == "ancourage_domes":
 			_add_ancourage_details(root, spec)
+		if str(spec.get("composite", "")) == "beacon_domed":
+			_add_beacon_details(root, spec)
 		_add_anchor_markers(root, survey.anchors())
 		_specimens.append({"building": kind, "shape": str(spec.get("shape", "")),
 			"lattice": str(spec.get("lattice", "")), "verts": verts})
@@ -173,7 +175,13 @@ func _add_honeyframe(root: Node3D, spec: Dictionary, reserved: Array) -> void:
 	_add_lattice_mesh(root, "HoneyGlass", built.get("glass"), _window_material(1.8))
 
 func _add_tracery(root: Node3D, spec: Dictionary, reserved: Array) -> void:
-	var ov := {"reserved": reserved}
+	# the survey's GREAT-BAY reservations join the reserved arcs: the lancet field RESTRUCTURES
+	# around them (only unreserved — rear — arcs get lancets; the bays are survey details)
+	var reserved2 := reserved.duplicate()
+	for r_v in BuildingSurvey.from_spec(spec).reservations:
+		if str((r_v as Dictionary).get("id", "")).begins_with("great_bay_"):
+			reserved2.append(r_v)
+	var ov := {"reserved": reserved2}
 	if spec.has("bays"):
 		ov["bays"] = int(spec["bays"])   # the entrances snapped to this bay grid — keep them aligned
 	var built: Dictionary = Lattice.tracery_tiered(spec, ov) if int(spec.get("tiers", 1)) > 1 \

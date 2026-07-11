@@ -3852,7 +3852,12 @@ func _test_architecture_showcase() -> void:
 		and (ent.get("accent") as ArrayMesh).get_surface_count() > 0, "entrances build stone + dark + teal-accent meshes")
 	_assert_equals((ent.get("stone") as ArrayMesh).surface_get_array_len(0),
 		(Lat.entrances(honey).get("stone") as ArrayMesh).surface_get_array_len(0), "entrances are deterministic")
-	_assert_true((Lat.entrances(beacon).get("stone") as ArrayMesh).get_surface_count() > 0, "entrances also build on a drum")
+	# beacon's survey idiom suppresses the generic stone (main_surround=false) — its LEAVES still
+	# build; tiered_hall keeps the full stone surround, proving the drum path
+	_assert_true((Lat.entrances(beacon).get("dark") as ArrayMesh).get_surface_count() > 0,
+		"entrances build door leaves on an idiom drum (no generic stone)")
+	_assert_true((Lat.entrances(Base.generate("tiered_hall")).get("stone") as ArrayMesh).get_surface_count() > 0,
+		"entrances also build the stone surround on a drum")
 
 	# --- LatticeGraph: the junction engine — planar graph topology + watertight rib meshing ---
 	var LG = load("res://scripts/generation/lattice_graph.gd")

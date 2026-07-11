@@ -235,6 +235,38 @@ const ANCOURAGE := {
 	"seams": 2,                  # piped ridge tubes along the saddle valley
 }
 
+## THE BEACON HILL SURVEY — measured off the plate (reference-images/architecture/beacon_hill.png,
+## decomposed 2026-07-11). A BELL-JAR urn (H:W ~1.30): slight base flare, near-vertical drum,
+## dome shoulder curving into a raised LANTERN ringed by the planted roof garden. The middle half
+## is FIVE colossal round-arch windows (center tallest, sills stepped) packed with amber shelf
+## grids; the tracery RESTRUCTURES around those bay reservations (the standard lancet tracery
+## populates only the unreserved rear via its existing reserved-arc mechanism). Ground band:
+## portal + oval cartouche (the door's idiom), green status board left, the enforcement vestibule
+## right (the ONE cyan accent). Angles are offsets from the front axis.
+const BEACON := {
+	# [y, r] fractions of H — the bell-jar profile, round (the ledge at 0.905 is the garden ring)
+	"rings": [
+		[0.000, 0.385], [0.080, 0.372], [0.150, 0.367], [0.600, 0.362], [0.760, 0.352],
+		[0.830, 0.320], [0.880, 0.262], [0.905, 0.196], [0.908, 0.173], [0.975, 0.168],
+	],
+	# the five great arch bays [az_off, y0, y1]: center tallest, sills stepped clear of the door
+	# clearance band (2.35 m) where their arcs cross it
+	"bays": [
+		[0.0, 0.40, 0.78], [0.44, 0.335, 0.76], [-0.44, 0.335, 0.76],
+		[0.88, 0.30, 0.74], [-0.88, 0.30, 0.74],
+	],
+	"bay_half_arc": 0.17,        # radians of drum arc per bay
+	"panes": {"cols": 3, "row_h": 0.34},   # the shelf grid: storey-scaled rows INSIDE bays only
+	"cartouche": {"y0": 0.24, "y1": 0.315, "w": 1.55},   # the oval name board over the portal
+	"status": {"az": 0.66, "y0": 0.05, "y1": 0.165, "w": 0.62},   # terminal-green board, left
+	"vestibule": {"az": -0.74, "w": 1.05, "arch_apex": 2.05, "door_w": 0.85, "door_h": 1.6,
+		"plaque_y0": 2.12, "plaque_y1": 2.42},           # the enforcement bay: the ONE cyan door
+	"oculi": [[0.22, 0.815], [-0.22, 0.815], [0.66, 0.805], [-0.66, 0.805]],   # ovals between heads
+	"lantern": {"clerestory": 6, "cy0": 0.925, "cy1": 0.965, "rail_h": 0.30, "tufts": 10},
+	"beds": {"azs": [1.10, -1.10], "w": 0.9, "h": 0.45},   # planting beds at the front corners
+	"ribs": {"pairs": true, "r": 0.045},                   # doubled bone ribs wrap the bays
+}
+
 ## Authored storey plans (ground band + floor count between plinth and eave), per building kind.
 ## Numbers trace to the plate decompositions; buildings without an entry get equal DEFAULT_STOREY
 ## bands. greenfields' ground/storey split is ALSO the slab-ring datum table the massing builds on.
@@ -275,6 +307,8 @@ static func table_for(spec_in: Dictionary, name: String) -> Dictionary:
 			base = GREENFIELDS
 		"ancourage":
 			base = ANCOURAGE
+		"beacon":
+			base = BEACON
 	var out := base.duplicate(true)
 	var over: Dictionary = (spec_in.get("vars", {}) as Dictionary).get(name, {})
 	for k in over.keys():
@@ -388,6 +422,19 @@ static func roll_vars(kind_in: String, seed_value: int) -> Dictionary:
 			if float(rng.call("randf")) < 0.25:
 				an["louver"] = {"w": 0.0}   # some instances weld the vent shut
 			out["ancourage"] = an
+		"beacon_hill":
+			var hb := 7.2 * lerpf(0.96, 1.05, float(rng.call("randf")))
+			(out["spec"] as Dictionary)["height"] = hb
+			(out["spec"] as Dictionary)["radius"] = 0.385 * hb
+			(out["spec"] as Dictionary)["door_radius"] = 0.361 * hb   # the taper's narrowest in the door band
+			(out["spec"] as Dictionary)["tracery_height"] = 0.75 * hb
+			var bc := {"panes": {"cols": int(rng.call("randi_range", 3, 4))},
+				"lantern": {"clerestory": int(rng.call("randi_range", 5, 8)),
+					"tufts": int(rng.call("randi_range", 8, 14))},
+				"cartouche": {"w": lerpf(1.4, 1.7, float(rng.call("randf")))}}
+			if float(rng.call("randf")) < 0.3:
+				bc["oculi"] = [[0.22, 0.815], [-0.22, 0.815]]   # a plainer dome on some instances
+			out["beacon"] = bc
 		"cleanstreets":
 			var spread := lerpf(2.2, 2.8, float(rng.call("randf")))
 			var cs := {"fins": {"xs": [-spread, -spread / 3.0, spread / 3.0, spread],
@@ -527,9 +574,11 @@ func _survey_profile() -> void:
 				# one continuous mound loft (one authority: HYPELINES.rings)
 				_profile_from_rings(table_for(spec, "hypelines")["rings"] as Array, h, crown)
 			"beacon_domed":
-				_pr(0.0, r)
-				_pr(h * 0.75, r)                         # drum
-				_pr(crown, r * 0.45)                     # dome shoulder into the lantern
+				# the bell-jar profile IS the ring table (one authority: BEACON.rings)
+				for row_b in (table_for(spec, "beacon")["rings"] as Array):
+					var rb2 := row_b as Array
+					_pr(float(rb2[0]) * h, float(rb2[1]) * h)
+				_pr(crown, 0.02 * h)
 			_:
 				var tiers := maxi(1, int(spec.get("tiers", 1)))
 				if tiers > 1:
@@ -674,6 +723,60 @@ func _survey_reservations(placements: Array) -> void:
 		_hypelines_reservations()
 	if str(spec.get("composite", "")) == "ancourage_domes":
 		_ancourage_reservations()
+	if str(spec.get("composite", "")) == "beacon_domed":
+		_beacon_reservations()
+
+## Every planned beacon part claims its wall: the FIVE great arch bays (the tracery restructures
+## around them — the lancet field lists them in keeps_clear and only populates unreserved arcs),
+## the cartouche riding the portal (the door's idiom), the status board, the enforcement
+## vestibule, the dome oculi. The lantern ring and beds are crown/ground features.
+func _beacon_reservations() -> void:
+	var tbl := table_for(spec, "beacon")
+	var h := _height_total()
+	var fr := PI * 0.5
+	var bay_ids: Array = []
+	var bays: Array = tbl["bays"]
+	for i in range(bays.size()):
+		var b := bays[i] as Array
+		# the right bays NEST the enforcement vestibule under their arches (the plate's
+		# composition) — a declared ensemble, not a collision
+		reservations.append({"id": "great_bay_%d" % i, "type": "decoration", "cyl": true,
+			"theta": wrapf(fr + float(b[0]), -PI, PI), "half_arc": float(tbl["bay_half_arc"]),
+			"y0": float(b[1]) * h, "y1": float(b[2]) * h,
+			"keeps_clear": ["enforcement_vestibule"]})
+		bay_ids.append("great_bay_%d" % i)
+	# the rear lancet tracery keeps clear of every great bay AND the doors (reserved arcs)
+	for r_v in reservations:
+		if str((r_v as Dictionary).get("id", "")) == "field_tracery":
+			var kc := ((r_v as Dictionary)["keeps_clear"] as Array)
+			for bid in bay_ids:
+				kc.append(bid)
+			# the lancet field also restructures around the ground fixtures + dome oculi
+			for fid in ["cartouche", "status_board", "enforcement_vestibule",
+					"oculus_0", "oculus_1", "oculus_2", "oculus_3"]:
+				kc.append(fid)
+	var car: Dictionary = tbl["cartouche"]
+	reservations.append({"id": "cartouche", "type": "decoration", "cyl": true, "theta": fr,
+		"half_arc": float(car["w"]) * 0.5 / maxf(0.3, float(plan.get("wall_radius", 2.7))),
+		"y0": float(car["y0"]) * h, "y1": float(car["y1"]) * h,
+		"keeps_clear": ["door_main"]})
+	var st2: Dictionary = tbl["status"]
+	reservations.append({"id": "status_board", "type": "decoration", "cyl": true,
+		"theta": wrapf(fr + float(st2["az"]), -PI, PI),
+		"half_arc": float(st2["w"]) * 0.5 / maxf(0.3, float(plan.get("wall_radius", 2.7))),
+		"y0": float(st2["y0"]) * h, "y1": float(st2["y1"]) * h, "keeps_clear": []})
+	var ve: Dictionary = tbl["vestibule"]
+	reservations.append({"id": "enforcement_vestibule", "type": "decoration", "cyl": true,
+		"theta": wrapf(fr + float(ve["az"]), -PI, PI),
+		"half_arc": (float(ve["w"]) * 0.5 + 0.08) / maxf(0.3, float(plan.get("wall_radius", 2.7))),
+		"y0": 0.0, "y1": float(ve["plaque_y1"]) + 0.1, "keeps_clear": []})
+	var ocs: Array = tbl["oculi"]
+	for i2 in range(ocs.size()):
+		var oc := ocs[i2] as Array
+		reservations.append({"id": "oculus_%d" % i2, "type": "decoration", "cyl": true,
+			"theta": wrapf(fr + float(oc[0]), -PI, PI),
+			"half_arc": 0.30 / maxf(0.3, radius_at(float(oc[1]) * h)),
+			"y0": float(oc[1]) * h - 0.16, "y1": float(oc[1]) * h + 0.16, "keeps_clear": []})
 
 ## Every planned ancourage part claims its wall: the grand arch + glass + readout are the door's
 ## declared ensemble; placards, roses, louver, pores, engaged pipes and valves each claim their arc.
@@ -1113,6 +1216,16 @@ static func ancourage_rings(spec_in: Dictionary) -> Array:
 		var r := row as Array
 		out.append({"y": float(r[0]) * h, "r": float(r[1]) * h, "lobes": int(r[3]),
 			"amp": float(r[2]), "phase": phase})
+	return out
+
+## The beacon lathe rings in ABSOLUTE metres (round — the bell-jar has no lobes).
+static func beacon_rings(spec_in: Dictionary) -> Array:
+	var tbl := table_for(spec_in, "beacon")
+	var h := float(spec_in.get("height", 7.2))
+	var out: Array = []
+	for row in (tbl["rings"] as Array):
+		var r := row as Array
+		out.append({"y": float(r[0]) * h, "r": float(r[1]) * h, "lobes": 4, "amp": 0.0, "phase": 0.0})
 	return out
 
 ## The LOCAL wall radius at (y, theta) on a survey lathe — ring-interpolated with the lobe

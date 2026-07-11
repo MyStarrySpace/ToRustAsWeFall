@@ -57,17 +57,22 @@ const SPECS := {
 	},
 	"beacon_hill": {
 		"title": "Beacon Hill",
-		"shape": SHAPE_COMPOSITE,           # drum -> elliptical dome shoulder -> rooftop lantern (REVIEW P1)
-		"composite": "beacon_domed",
+		"shape": SHAPE_COMPOSITE,           # SURVEY REBUILD 1.6: the bell-jar as ONE loft from the
+		"composite": "beacon_domed",        # BuildingSurvey.BEACON rings (flare/drum/shoulder/lantern)
 		"door_frame": "cyl",
-		"radius": 2.4,
+		"door_radius": 2.60,                # the wall's NARROWEST radius in the door band (the
+											# bell-jar tapers: the portal recesses deep, plate-true)
+		"radius": 2.77,                     # H:W 1.30 off the plate (was a too-slender 1.5)
 		"height": 7.2,
-		"tracery_height": 5.4,              # the lattice climbs the DRUM only (0.75H), never the dome
-		"color": Color(0.20, 0.31, 0.28),   # dark verdigris tiled stone (REVIEW P3)
+		"tracery_height": 5.4,              # the REAR lancet tracery climbs the drum only
+		"color": Color(0.20, 0.31, 0.28),   # dark verdigris tiled stone
 		"tile": "facility_metal",
-		"lattice": "tracery",               # pointed-arch (lancet) window wall + lit glass behind
-		"bays": 7,                          # bay width 2.15 — the door assembly (~2.0) fits inside a bay
-		"entrances": {"side_count_min": 1, "side_count_max": 1},   # plate: main door + ONE enforcement door
+		"lattice": "tracery",               # restructured AROUND the five great-bay reservations:
+		"bays": 12,                         # the lancet field only populates unreserved (rear) arcs
+		# RECONCILED AT THE SURVEY: the portal + oval cartouche are the door's idiom
+		# (beacon_details); the enforcement vestibule is the plate's second door (cyan accent).
+		"entrances": {"main_w": 1.2, "main_h": 1.7, "side_count_min": 0, "side_count_max": 0,
+			"canopy_out": 0.0, "main_surround": false},
 	},
 	# --- The remaining districts: existence + a base primitive established so Fable only owns the
 	# --- lattices/complex massing. Simple massing here; the notes flag what is Fable's.
@@ -1215,35 +1220,195 @@ static func ancourage_details(spec: Dictionary) -> Dictionary:
 		"glow": glow.commit(), "warm": warm.commit(), "rust": rust.commit(),
 		"nameplate_pos": sc + n_f * 0.28}
 
-## Beacon Hill (REVIEW P1): the drum ends at 0.75H, curves through an elliptical dome shoulder and
-## closes with a rooftop lantern drum — the flat merlon top read as a water tank, not the Reading Room.
+## Beacon Hill (SURVEY REBUILD 1.6): the bell-jar urn as ONE loft from the BuildingSurvey.BEACON
+## ring table — base flare, near-vertical drum, dome shoulder, the garden ledge, the lantern.
 static func _beacon_domed_mesh(spec: Dictionary, reserved: Array, recess: float) -> ArrayMesh:
-	var r := float(spec.get("radius", 2.4))
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	return _survey_ring_loft(Survey.beacon_rings(spec), reserved, recess, float(spec.get("height", 7.2)))
+
+## Beacon Hill detail passes: the FIVE great arch bays (doubled bone rib outlines + the amber
+## shelf-grid panes, storey-scaled INSIDE the bays only), dome ribs continuing from each bay head
+## to the lantern, oval oculi, the portal's cartouche, the green status board, the enforcement
+## vestibule (the plate's ONE cyan accent), warm sconces, the lantern clerestory and the planted
+## roof-garden ring, and the corner planting beds.
+## Families: bone / dark / amber (panes) / glow (green) / cyan / warm / leaf / rails.
+static func beacon_details(spec: Dictionary) -> Dictionary:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var tbl: Dictionary = Survey.table_for(spec, "beacon")
+	var rings: Array = Survey.beacon_rings(spec)
 	var h := float(spec.get("height", 7.2))
-	var drum_h := h * 0.75
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	st.append_from(_cylinder_with_doors(r, drum_h, reserved, recess), 0, Transform3D.IDENTITY)
-	var dome := SphereMesh.new()
-	dome.radius = r * 1.0
-	dome.height = h * 0.23 * 2.0
-	dome.radial_segments = 16
-	dome.rings = 8
-	st.append_from(dome, 0, Transform3D(Basis(), Vector3(0.0, drum_h, 0.0)))
-	var lantern := CylinderMesh.new()
-	lantern.top_radius = r * 0.45
-	lantern.bottom_radius = r * 0.45
-	lantern.height = h * 0.085
-	lantern.radial_segments = 12
-	st.append_from(_seated(lantern, lantern.height * 0.5), 0, Transform3D(Basis(), Vector3(0.0, h - lantern.height - h * 0.02, 0.0)))
-	var fin := SphereMesh.new()
-	fin.radius = r * 0.16
-	fin.height = h * 0.04
-	fin.radial_segments = 10
-	fin.rings = 5
-	st.append_from(fin, 0, Transform3D(Basis(), Vector3(0.0, h - h * 0.02, 0.0)))
-	# NO generate_normals (drops earlier append_from surfaces); sources carry their own.
-	return st.commit()
+	var bone := _st()
+	var dark := _st()
+	var amber := _st()
+	var glow := _st()
+	var cyan := _st()
+	var warm := _st()
+	var leaf := _st()
+	var rails := _st()
+	var fr := PI * 0.5
+	var kb := float(str(spec.get("kind", "beacon_hill")).hash() % 1000)
+	var half_arc := float(tbl["bay_half_arc"])
+	var panes: Dictionary = tbl["panes"]
+	var lantern_base := 0.905 * h
+	for b_v in (tbl["bays"] as Array):
+		var b := b_v as Array
+		var bth: float = fr + float(b[0])
+		var by0 := float(b[1]) * h
+		var by1 := float(b[2]) * h
+		var spring := by1 - (half_arc * float(Survey.lathe_local_r(rings, by1, bth)))
+		# doubled rib outline: two concentric arch tubes riding the wall (jambs + semicircle head)
+		for off_v in [0.0, 0.09]:
+			var off := float(off_v)
+			var pts: Array = []
+			var arc_w := half_arc - off / maxf(0.5, float(Survey.lathe_local_r(rings, by0, bth)))
+			pts.append(_drum_pt(rings, bth - arc_w, by0, 0.10))
+			pts.append(_drum_pt(rings, bth - arc_w, spring, 0.10))
+			for i in range(1, 8):
+				var a := PI - PI * float(i) / 8.0
+				var uu: float = cos(a) * arc_w
+				var vy: float = spring + sin(a) * (by1 - spring - off)
+				pts.append(_drum_pt(rings, bth + uu, vy, 0.10))
+			pts.append(_drum_pt(rings, bth + arc_w, spring, 0.10))
+			pts.append(_drum_pt(rings, bth + arc_w, by0, 0.10))
+			_tube(bone, pts, float((tbl["ribs"] as Dictionary)["r"]), 5)
+		# the amber shelf grid, storey-scaled rows inside the bay (columns across the arc)
+		var cols := int(panes["cols"])
+		var row_h := float(panes["row_h"])
+		var rows := int((spring - by0) / row_h)
+		for rw in range(rows):
+			for cl in range(cols):
+				var cth: float = bth + lerpf(-half_arc * 0.72, half_arc * 0.72, (float(cl) + 0.5) / float(cols))
+				var cy := by0 + (float(rw) + 0.5) * row_h
+				var pn := Vector3(cos(cth), 0.0, sin(cth))
+				var pu := Vector3(0, 1, 0).cross(pn).normalized()
+				var prad := float(Survey.lathe_local_r(rings, cy, cth)) + 0.03
+				_emit_oriented_box_st(amber, pn * prad + Vector3(0, cy, 0), pu, Vector3.UP, pn,
+					Vector3(half_arc * prad * 0.52 / float(cols), row_h * 0.40, 0.02))
+		# the head fan: three short panes inside the arch
+		for cl2 in range(3):
+			var cth2: float = bth + lerpf(-half_arc * 0.45, half_arc * 0.45, (float(cl2) + 0.5) / 3.0)
+			var cy2 := spring + (by1 - spring) * 0.35
+			var pn2 := Vector3(cos(cth2), 0.0, sin(cth2))
+			var prad2 := float(Survey.lathe_local_r(rings, cy2, cth2)) + 0.03
+			_emit_oriented_box_st(amber, pn2 * prad2 + Vector3(0, cy2, 0),
+				Vector3(0, 1, 0).cross(pn2).normalized(), Vector3.UP, pn2,
+				Vector3(half_arc * prad2 * 0.24, (by1 - spring) * 0.24, 0.02))
+		# the dome rib: continue from the bay head over the shoulder to the lantern base
+		var rib_pts: Array = []
+		for i2 in range(6):
+			var ry := lerpf(by1 + 0.06, lantern_base, float(i2) / 5.0)
+			rib_pts.append(_drum_pt(rings, bth, ry, 0.05))
+		_tube(bone, rib_pts, float((tbl["ribs"] as Dictionary)["r"]), 5)
+	# oval oculi between the arch heads
+	for oc_v in (tbl["oculi"] as Array):
+		var oc := oc_v as Array
+		var oth: float = fr + float(oc[0])
+		var oy := float(oc[1]) * h
+		var on := Vector3(cos(oth), 0.0, sin(oth))
+		_emit_torus_st(bone, on * (float(Survey.lathe_local_r(rings, oy, oth)) + 0.04) + Vector3(0, oy, 0),
+			on, 0.16, 0.035, 10, 5)
+	# the portal's oval cartouche (the door's idiom) — the showcase title label rides it
+	var car: Dictionary = tbl["cartouche"]
+	var cyc := (float(car["y0"]) + float(car["y1"])) * 0.5 * h
+	var crad := float(Survey.lathe_local_r(rings, cyc, fr))
+	var cno := Vector3(0, 0, 1)
+	var chh := (float(car["y1"]) - float(car["y0"])) * 0.5 * h
+	_emit_oriented_box_st(dark, cno * (crad + 0.06) + Vector3(0, cyc, 0), Vector3(1, 0, 0), Vector3.UP, cno,
+		Vector3(float(car["w"]) * 0.5, chh, 0.025))
+	for cbx in [-1.0, 1.0]:
+		_emit_oriented_box_st(bone, cno * (crad + 0.07) + Vector3(float(cbx) * float(car["w"]) * 0.5, cyc, 0),
+			Vector3(1, 0, 0), Vector3.UP, cno, Vector3(0.05, chh + 0.05, 0.05))
+		_emit_oriented_box_st(bone, cno * (crad + 0.07) + Vector3(0, cyc + float(cbx) * chh, 0),
+			Vector3(1, 0, 0), Vector3.UP, cno, Vector3(float(car["w"]) * 0.5 + 0.05, 0.05, 0.05))
+	# warm sconces flanking the portal
+	for sx in [-1.0, 1.0]:
+		_emit_oriented_box_st(warm, cno * (crad + 0.10) + Vector3(float(sx) * 1.05, 0.115 * h, 0),
+			Vector3(1, 0, 0), Vector3.UP, cno, Vector3(0.055, 0.10, 0.055))
+	# the green status board on its post, left of the portal
+	var st2: Dictionary = tbl["status"]
+	var sth: float = fr + float(st2["az"])
+	var sn := Vector3(cos(sth), 0.0, sin(sth))
+	var su := Vector3(0, 1, 0).cross(sn).normalized()
+	var syc := (float(st2["y0"]) + float(st2["y1"])) * 0.5 * h
+	var srad := float(Survey.lathe_local_r(rings, syc, sth))
+	_emit_oriented_box_st(glow, sn * (srad + 0.10) + Vector3(0, syc, 0), su, Vector3.UP, sn,
+		Vector3(float(st2["w"]) * 0.5, (float(st2["y1"]) - float(st2["y0"])) * 0.5 * h, 0.03))
+	_emit_oriented_box_st(bone, sn * (srad + 0.055) + Vector3(0, syc, 0), su, Vector3.UP, sn,
+		Vector3(float(st2["w"]) * 0.5 + 0.05, (float(st2["y1"]) - float(st2["y0"])) * 0.5 * h + 0.05, 0.02))
+	# the enforcement vestibule: arched bay, plaque, the CYAN chevron door, green keypads
+	var ve: Dictionary = tbl["vestibule"]
+	var vth: float = fr + float(ve["az"])
+	var vn := Vector3(cos(vth), 0.0, sin(vth))
+	var vu := Vector3(0, 1, 0).cross(vn).normalized()
+	var vrad := float(Survey.lathe_local_r(rings, 1.0, vth))
+	var vanchor := vn * vrad
+	var vpts: Array = []
+	for i3 in range(9):
+		var t3 := float(i3) / 8.0
+		var uu3 := lerpf(-1.0, 1.0, t3)
+		vpts.append(vanchor + vu * (uu3 * float(ve["w"]) * 0.5)
+			+ Vector3(0, maxf(0.05, float(ve["arch_apex"]) * (1.0 - uu3 * uu3)), 0) + vn * 0.08)
+	_tube(bone, vpts, 0.055, 5)
+	_emit_oriented_box_st(dark, vanchor + Vector3(0, float(ve["door_h"]) * 0.5, 0) + vn * 0.03,
+		vu, Vector3.UP, vn, Vector3(float(ve["door_w"]) * 0.5, float(ve["door_h"]) * 0.5, 0.035))
+	_emit_oriented_box_st(cyan, vanchor + Vector3(0, float(ve["door_h"]) * 0.52, 0) + vn * 0.075,
+		vu, Vector3.UP, vn, Vector3(float(ve["door_w"]) * 0.30, 0.05, 0.012))
+	for chs in [-1.0, 1.0]:
+		var chp := vanchor + Vector3(0, float(ve["door_h"]) * 0.30, 0) + vn * 0.075 + vu * (float(chs) * float(ve["door_w"]) * 0.14)
+		_emit_oriented_box_st(cyan, chp, (vu + Vector3(0, float(chs) * 0.9, 0)).normalized(), (Vector3.UP - vu * float(chs) * 0.9).normalized(), vn,
+			Vector3(float(ve["door_w"]) * 0.24, 0.035, 0.012))
+	_emit_oriented_box_st(dark, vanchor + Vector3(0, (float(ve["plaque_y0"]) + float(ve["plaque_y1"])) * 0.5, 0) + vn * 0.05,
+		vu, Vector3.UP, vn, Vector3(float(ve["w"]) * 0.42, (float(ve["plaque_y1"]) - float(ve["plaque_y0"])) * 0.5, 0.02))
+	for kp in range(3):
+		_emit_oriented_box_st(glow, vanchor + vu * (float(ve["door_w"]) * 0.5 + 0.14) + Vector3(0, 0.9 + float(kp) * 0.16, 0) + vn * 0.05,
+			vu, Vector3.UP, vn, Vector3(0.03, 0.03, 0.012))
+	# the lantern: clerestory arch panes + the planted roof-garden ring on the 0.905H ledge
+	var lan: Dictionary = tbl["lantern"]
+	var lrad := float(Survey.lathe_local_r(rings, 0.94 * h, 0.0))
+	for cl3 in range(int(lan["clerestory"])):
+		var lth := TAU * (float(cl3) + 0.5) / float(lan["clerestory"])
+		var lnv := Vector3(cos(lth), 0.0, sin(lth))
+		_emit_oriented_box_st(amber, lnv * (lrad + 0.03) + Vector3(0, (float(lan["cy0"]) + float(lan["cy1"])) * 0.5 * h, 0),
+			Vector3(0, 1, 0).cross(lnv).normalized(), Vector3.UP, lnv,
+			Vector3(0.16, (float(lan["cy1"]) - float(lan["cy0"])) * 0.5 * h, 0.02))
+	var ledge_r := float(Survey.lathe_local_r(rings, 0.906 * h, 0.0)) + 0.02
+	var ring_pts := 20
+	for rp in range(ring_pts):
+		var a0 := TAU * float(rp) / float(ring_pts)
+		var a1 := TAU * float(rp + 1) / float(ring_pts)
+		_rail_strip(rails, Vector3(cos(a0) * ledge_r, lantern_base + 0.03, sin(a0) * ledge_r),
+			Vector3(cos(a1) * ledge_r, lantern_base + 0.03, sin(a1) * ledge_r), float(lan["rail_h"]))
+	for tf in range(int(lan["tufts"])):
+		var ta := TAU * _h01(kb + float(tf) * 7.7)
+		var ts := 0.09 + 0.09 * _h01(kb + float(tf) * 3.3)
+		_emit_oriented_box_st(leaf, Vector3(cos(ta) * (ledge_r - 0.12), lantern_base + 0.06 + ts, sin(ta) * (ledge_r - 0.12)),
+			Vector3.RIGHT, Vector3.UP, Vector3.BACK, Vector3(ts, ts, ts))
+	# planting beds at the front corners
+	for bd_v in ((tbl["beds"] as Dictionary)["azs"] as Array):
+		var bth2: float = fr + float(bd_v)
+		var bn := Vector3(cos(bth2), 0.0, sin(bth2))
+		var bu := Vector3(0, 1, 0).cross(bn).normalized()
+		var brad := float(Survey.lathe_local_r(rings, 0.2, bth2))
+		var bc := bn * (brad + 0.35)
+		_emit_oriented_box_st(bone, bc + Vector3(0, 0.12, 0), bu, Vector3.UP, bn,
+			Vector3(float((tbl["beds"] as Dictionary)["w"]) * 0.5, 0.12, 0.30))
+		for tf2 in range(3):
+			var toff := lerpf(-0.3, 0.3, float(tf2) / 2.0)
+			var ts2 := 0.10 + 0.08 * _h01(kb + float(tf2) * 5.1 + float(bd_v))
+			_emit_oriented_box_st(leaf, bc + bu * toff + Vector3(0, 0.24 + ts2, 0),
+				Vector3.RIGHT, Vector3.UP, Vector3.BACK, Vector3(ts2, ts2, ts2))
+	for stool in [bone, dark, amber, glow, cyan, warm, leaf, rails]:
+		(stool as SurfaceTool).generate_normals()
+	return {"bone": bone.commit(), "dark": dark.commit(), "amber": amber.commit(),
+		"glow": glow.commit(), "cyan": cyan.commit(), "warm": warm.commit(),
+		"leaf": leaf.commit(), "rails": rails.commit(),
+		"nameplate_pos": cno * (crad + 0.30) + Vector3(0, cyc, 0)}
+
+# a point riding the surveyed drum wall at (theta, y), standing `off` proud
+static func _drum_pt(rings: Array, theta: float, y: float, off: float) -> Vector3:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var rad := float(Survey.lathe_local_r(rings, y, theta)) + off
+	return Vector3(cos(theta) * rad, y, sin(theta) * rad)
 
 ## Hypelines detail passes (SURVEY REBUILD 1.2), every part grown from the survey's frames: the six
 ## pipe ARMS (the walkable LANE pair carries a flat deck at the level-1 datum with kerbs + railing
