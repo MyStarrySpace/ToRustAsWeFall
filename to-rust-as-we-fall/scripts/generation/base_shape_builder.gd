@@ -168,11 +168,13 @@ const SPECS := {
 	},
 	"zone3": {
 		"title": "Zone-3 Eroded Ruin",
-		"shape": SHAPE_COMPOSITE,           # main block + collapsed side wing + cornice slab (REVIEW P1-P2)
-		"composite": "zone3_split",
-		# plan W x 0.9W (the plate ratio the mesh already built) — the spec used to say 4.0 deep while
-		# the walls stood at 3.6, so the door frame floated 0.2 m off the wall. Surveyed coherent.
+		"shape": SHAPE_COMPOSITE,           # SURVEY REBUILD 1.8: split massing from the ZONE3 plan
+		"composite": "zone3_split",         # datums (intact main + gutted wing + cornice slab)
 		"size": Vector3(4.0, 5.4, 3.6),
+		# RECONCILED AT THE SURVEY: reserve_margin 0.18 keeps the door region under the sign band;
+		# the slat-roofed PORCH is the door idiom (no generic stone)
+		"entrances": {"main_w": 1.0, "main_h": 1.9, "side_count_min": 0, "side_count_max": 0,
+			"canopy_out": 0.0, "reserve_margin": 0.18, "main_surround": false},
 		"color": Color(0.28, 0.30, 0.28),
 		"tile": "facility_metal",
 		"lattice": "",
@@ -1237,6 +1239,189 @@ static func _beacon_domed_mesh(spec: Dictionary, reserved: Array, recess: float)
 ## vestibule (the plate's ONE cyan accent), warm sconces, the lantern clerestory and the planted
 ## roof-garden ring, and the corner planting beds.
 ## Families: bone / dark / amber (panes) / glow (green) / cyan / warm / leaf / rails.
+## Zone-3 detail passes (SURVEY REBUILD 1.8), every part from the ZONE3 survey frames: the
+## slat-roofed PORCH row (posts + rafters + slat courses, wrapping the left flank), the boarded
+## siding + barred shop window, the ALWAYS OPEN sign, the arched upper-window surrounds, the
+## terminal cabinet (sole emissive), the cornice drip crust, and the rust TENDRILS — ground
+## network, corner climbs, and the drip curtains falling through the torn wing's galleries.
+static func zone3_details(spec: Dictionary) -> Dictionary:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var tbl: Dictionary = Survey.table_for(spec, "zone3")
+	var size: Vector3 = spec.get("size", Vector3(4.0, 5.4, 3.6))
+	var h := size.y
+	var hz := size.z * 0.5
+	var wood := _st()
+	var metal := _st()
+	var dark := _st()
+	var rust := _st()
+	var glow := _st()
+	var kb := float(str(spec.get("kind", "zone3")).hash() % 1000)
+	var main_x0 := float(tbl["main_x0"]) * h
+	var main_x1 := float(tbl["main_x1"]) * h
+	var wing_x1 := float(tbl["wing_x1"]) * h
+	var main_cx := (main_x0 + main_x1) * 0.5
+	var main_hw := (main_x1 - main_x0) * 0.5
+	# the PORCH row: tapered posts, sloped rafters, slat courses laid with gaps (front + left wrap)
+	var po: Dictionary = tbl["porch"]
+	var p_out := float(po["out"]) * h
+	var y_wall := float(po["y_wall"]) * h
+	var y_post := float(po["y_post"]) * h
+	var bays := int(po["bays"])
+	for b in range(bays + 1):
+		var px := lerpf(main_x0 + 0.10, main_x1 - 0.10, float(b) / float(bays))
+		_rings_loft(wood, Vector3(px, 0.0, hz + p_out - 0.08), y_post,
+			[[0.0, 0.055 / y_post], [1.0, 0.038 / y_post]], 6)
+	for b2 in range(bays):
+		var xa := lerpf(main_x0 + 0.10, main_x1 - 0.10, float(b2) / float(bays))
+		var xb := lerpf(main_x0 + 0.10, main_x1 - 0.10, float(b2 + 1) / float(bays))
+		for rf in [xa + 0.06, (xa + xb) * 0.5, xb - 0.06]:
+			_tube(wood, [Vector3(float(rf), y_wall, hz), Vector3(float(rf), y_post, hz + p_out)], 0.035, 4)
+		var slats := int(po["slats"])
+		for sl in range(slats):
+			var t := (float(sl) + 0.5) / float(slats)
+			var sy := lerpf(y_wall, y_post, t)
+			var sz := lerpf(hz, hz + p_out, t)
+			_emit_oriented_box_st(wood, Vector3((xa + xb) * 0.5, sy, sz),
+				Vector3(1, 0, 0), Vector3(0, p_out, y_wall - y_post).normalized(), Vector3(0, y_post - y_wall, p_out).normalized().cross(Vector3(1, 0, 0)),
+				Vector3((xb - xa) * 0.5 - 0.03, 0.055, 0.014))
+	if bool(po.get("left_wrap", true)):
+		var lz0 := -hz * 0.55
+		var lz1 := hz * 0.55
+		for pzv in [lz0, lz1]:
+			_rings_loft(wood, Vector3(main_x0 - p_out + 0.08, 0.0, float(pzv)), y_post,
+				[[0.0, 0.055 / y_post], [1.0, 0.038 / y_post]], 6)
+		for rf2 in [lz0 + 0.06, (lz0 + lz1) * 0.5, lz1 - 0.06]:
+			_tube(wood, [Vector3(main_x0, y_wall, float(rf2)), Vector3(main_x0 - p_out + 0.08, y_post, float(rf2))], 0.035, 4)
+		var slats2 := int(po["slats"])
+		for sl2 in range(slats2):
+			var t2 := (float(sl2) + 0.5) / float(slats2)
+			_emit_oriented_box_st(wood, Vector3(lerpf(main_x0, main_x0 - p_out + 0.08, t2), lerpf(y_wall, y_post, t2), (lz0 + lz1) * 0.5),
+				Vector3(0, 0, 1), Vector3(-p_out, y_wall - y_post, 0).normalized(), Vector3(y_wall - y_post, p_out, 0).normalized(),
+				Vector3((lz1 - lz0) * 0.5 - 0.03, 0.055, 0.014))
+	# the boarded SIDING: horizontal courses split around the doorway
+	var sd: Dictionary = tbl["siding"]
+	var sd_y1 := float(sd["y1"]) * h
+	var rows := int(sd["rows"])
+	var door_hw := float(spec.get("entrances", {}).get("main_w", 1.0)) * 0.5 + 0.10
+	for rw in range(rows):
+		var by := (float(rw) + 0.5) / float(rows) * sd_y1
+		var bh := sd_y1 / float(rows) * 0.42
+		_emit_oriented_box_st(wood, Vector3((main_x0 - door_hw) * 0.5, by, hz + 0.03),
+			Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3((-door_hw - main_x0) * 0.5 - 0.02, bh, 0.014))
+		if main_x1 - door_hw > 0.1:
+			_emit_oriented_box_st(wood, Vector3((door_hw + main_x1) * 0.5, by, hz + 0.03),
+				Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3((main_x1 - door_hw) * 0.5 - 0.02, bh, 0.014))
+	# the barred SHOP WINDOW: dark recess + bars
+	var swn: Dictionary = tbl["shop_window"]
+	var sw_c := Vector3(float(swn["x"]) * h, (float(swn["y0"]) + float(swn["y1"])) * 0.5 * h, hz)
+	var sw_hw := float(swn["half_w"]) * h
+	var sw_hh := (float(swn["y1"]) - float(swn["y0"])) * 0.5 * h
+	_emit_oriented_box_st(dark, sw_c + Vector3(0, 0, 0.045), Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1),
+		Vector3(sw_hw, sw_hh, 0.012))
+	for bar in range(int(swn["bars"])):
+		var bx := sw_c.x + lerpf(-sw_hw * 0.6, sw_hw * 0.6, float(bar) / float(int(swn["bars"]) - 1))
+		_tube(metal, [Vector3(bx, sw_c.y - sw_hh, hz + 0.07), Vector3(bx, sw_c.y + sw_hh, hz + 0.07)], 0.022, 4)
+	for hb in [-0.5, 0.5]:
+		_tube(metal, [Vector3(sw_c.x - sw_hw, sw_c.y + float(hb) * sw_hh, hz + 0.07),
+			Vector3(sw_c.x + sw_hw, sw_c.y + float(hb) * sw_hh, hz + 0.07)], 0.022, 4)
+	_emit_oriented_box_st(wood, sw_c + Vector3(0, -sw_hh - 0.05, 0.07), Vector3(1, 0, 0), Vector3.UP,
+		Vector3(0, 0, 1), Vector3(sw_hw + 0.08, 0.045, 0.06))
+	# the ALWAYS OPEN sign: dark board + wood frame (letters are texture-time)
+	var sgn: Dictionary = tbl["sign"]
+	var sg_c := Vector3(float(sgn["x"]) * h, (float(sgn["y0"]) + float(sgn["y1"])) * 0.5 * h, hz + 0.06)
+	var sg_hw := float(sgn["half_w"]) * h
+	var sg_hh := (float(sgn["y1"]) - float(sgn["y0"])) * 0.5 * h
+	_emit_oriented_box_st(dark, sg_c, Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1),
+		Vector3(sg_hw, sg_hh, 0.02))
+	for fbar in [[0.0, sg_hh, sg_hw + 0.05, 0.045], [0.0, -sg_hh, sg_hw + 0.05, 0.045],
+			[-sg_hw, 0.0, 0.045, sg_hh + 0.05], [sg_hw, 0.0, 0.045, sg_hh + 0.05]]:
+		var fb := fbar as Array
+		_emit_oriented_box_st(wood, sg_c + Vector3(float(fb[0]), float(fb[1]), 0.02),
+			Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(float(fb[2]), float(fb[3]), 0.03))
+	# arched upper-window surrounds (front + left side): jambs + head arc + sill + dark glass
+	for win_set in [[tbl["windows"], Vector3(0, 0, 1)], [tbl["side_windows"], Vector3(-1, 0, 0)]]:
+		var wlist: Array = (win_set as Array)[0]
+		var wn_v: Vector3 = (win_set as Array)[1]
+		var wu := Vector3(0, 1, 0).cross(wn_v).normalized()
+		var wall_d := hz if absf(wn_v.z) > 0.5 else size.x * 0.5
+		for wn_r in wlist:
+			var wn := wn_r as Array
+			var wx := float(wn[0]) * h
+			var whw := float(wn[1]) * h
+			var wy0 := float(wn[2]) * h
+			var wy1 := float(wn[3]) * h
+			var spring := wy1 - whw
+			var base_pt := wn_v * (wall_d + 0.05)
+			var pts: Array = []
+			pts.append(base_pt + wu * (wx - whw) + Vector3(0, wy0, 0))
+			pts.append(base_pt + wu * (wx - whw) + Vector3(0, spring, 0))
+			for ai in range(1, 6):
+				var aa := PI - PI * float(ai) / 6.0
+				pts.append(base_pt + wu * (wx + cos(aa) * whw) + Vector3(0, spring + sin(aa) * (wy1 - spring), 0))
+			pts.append(base_pt + wu * (wx + whw) + Vector3(0, spring, 0))
+			pts.append(base_pt + wu * (wx + whw) + Vector3(0, wy0, 0))
+			_tube(metal, pts, 0.045, 5)
+			_emit_oriented_box_st(dark, wn_v * (wall_d + 0.02) + wu * wx + Vector3(0, (wy0 + wy1) * 0.5, 0),
+				wu, Vector3.UP, wn_v, Vector3(whw * 0.86, (wy1 - wy0) * 0.5 - 0.03, 0.012))
+			_emit_oriented_box_st(wood, wn_v * (wall_d + 0.06) + wu * wx + Vector3(0, wy0 - 0.04, 0),
+				wu, Vector3.UP, wn_v, Vector3(whw + 0.07, 0.04, 0.05))
+	# the TERMINAL cabinet at the entry seam — the ruin's one glow
+	var tm: Dictionary = tbl["terminal"]
+	var tm_x := float(tm["x"]) * h
+	var tm_h := float(tm["y1"]) * h
+	_emit_oriented_box_st(dark, Vector3(tm_x, tm_h * 0.5, hz + 0.22),
+		Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(0.16, tm_h * 0.5, 0.13))
+	_emit_oriented_box_st(glow, Vector3(tm_x, tm_h * 0.62, hz + 0.355),
+		Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(0.10, 0.085, 0.008))
+	_emit_oriented_box_st(dark, Vector3(tm_x, tm_h * 0.38, hz + 0.37),
+		Vector3(1, 0, 0), Vector3(0, 0.92, 0.39), Vector3(0, -0.39, 0.92), Vector3(0.11, 0.05, 0.015))
+	# cornice DRIP crust + corner root CLIMBS + the wing-gallery drip curtains + ground tendrils
+	var td: Dictionary = tbl["tendrils"]
+	var cor_y := float(tbl["cornice_y"]) * h
+	for d in range(int(td["drips"])):
+		var dx := lerpf(main_x0 - 0.2, wing_x1 + 0.1, _h01(kb + float(d) * 7.7))
+		var dl := 0.15 + 0.35 * _h01(kb + float(d) * 3.1 + 40.0)
+		_tube(rust, [Vector3(dx, cor_y + 0.06, hz + float(tbl["cornice_over"]) * h * 0.6),
+			Vector3(dx + (_h01(kb + float(d) * 5.9) - 0.5) * 0.12, cor_y - dl, hz + 0.10)], 0.038, 4)
+	var climb_xs := [-0.345, 0.345, -0.30]
+	for c in range(int(td["climbs"])):
+		var cxf := float(climb_xs[c % 3])
+		var on_front := c < 2
+		var pts_c: Array = []
+		for kseg in range(6):
+			var t3 := float(kseg) / 5.0
+			var wig := (_h01(kb + float(c) * 31.0 + float(kseg) * 9.3) - 0.5) * 0.22
+			if on_front:
+				pts_c.append(Vector3(cxf * h + wig, t3 * cor_y, hz + 0.05 + 0.04 * sin(t3 * PI)))
+			else:
+				pts_c.append(Vector3(main_x0 - 0.05 - 0.04 * sin(t3 * PI), t3 * cor_y, cxf * h + wig))
+		_tube(rust, pts_c, 0.055 - 0.02 * 0.5, 5)
+	var slabs: Array = tbl["slabs"]
+	var wing_c := (main_x1 + wing_x1) * 0.5
+	for si in range(slabs.size()):
+		var sy := float(slabs[si]) * h
+		var below := (float(slabs[si - 1]) * h + float(tbl["slab_t"]) * h) if si > 0 else 0.0
+		for dc in range(3):
+			var dcx := wing_c + lerpf(-0.5, 0.5, _h01(kb + float(si) * 17.0 + float(dc) * 5.3)) * (wing_x1 - main_x1 - 0.3)
+			_tube(rust, [Vector3(dcx, sy - float(tbl["slab_t"]) * h * 0.5, hz - 0.15),
+				Vector3(dcx + (_h01(kb + float(dc) * 11.1) - 0.5) * 0.1, below + 0.02, hz - 0.20)], 0.03, 4)
+	for g in range(int(td["ground"])):
+		var ga := TAU * (_h01(kb + float(g) * 13.7) - 0.5)
+		var g_dir := Vector3(cos(ga), 0.0, sin(ga))
+		var g0 := g_dir * (size.x * 0.42)
+		var reach := float(td["reach"]) * h * (0.6 + 0.8 * _h01(kb + float(g) * 7.1 + 60.0))
+		var pts_g: Array = []
+		for kg in range(5):
+			var tg := float(kg) / 4.0
+			var side := g_dir.cross(Vector3.UP) * ((_h01(kb + float(g) * 23.0 + float(kg) * 3.7) - 0.5) * 0.8)
+			pts_g.append(g0 + g_dir * (reach * tg) + side * tg + Vector3(0, 0.05 + 0.03 * sin(tg * PI), 0))
+		_tube(rust, pts_g, 0.065 * (1.0 - 0.4 * _h01(kb + float(g) * 3.3)), 5)
+	for stool in [wood, metal, dark, rust, glow]:
+		(stool as SurfaceTool).generate_normals()
+	return {"wood": wood.commit(), "metal": metal.commit(), "dark": dark.commit(),
+		"rust": rust.commit(), "glow": glow.commit(),
+		"nameplate_pos": sg_c + Vector3(0, sg_hh + 0.25, 0.15)}
+
 ## Bulwark detail passes (SURVEY REBUILD 1.7), every part from the BULWARK survey frames: the
 ## ogee-crested membrane FRAME + purple panel + voronoi web (restructured around the rose and
 ## pores), the ROSE APERTURE (ring + spokes + glass + clamp lugs), pore portholes, the rust weep,
@@ -2078,22 +2263,56 @@ static func _rings_loft(st: SurfaceTool, base: Vector3, h: float, rings: Array, 
 		st.add_vertex(base + Vector3(cos(a1b) * tr, ty, sin(a1b) * tr))
 		st.add_vertex(base + Vector3(cos(a0b) * tr, ty, sin(a0b) * tr))
 
-## Zone-3 (REVIEW P1-P2): the eroded ruin is a TWO-part composite — main block + a collapsed
-## side wing stepped back — crowned by a heavy projecting cornice slab on the main block only.
+## Zone-3 (SURVEY REBUILD 1.8): split massing from the ZONE3 plan datums — the intact MAIN block
+## (its door cut in the sub-box frame, shifted back into place), the heavy cornice slab over the
+## main block only, and the GUTTED wing: rear + outer walls, the torn floor slabs, a roof cap and
+## the front corner post. The torn front stays OPEN — the cavity galleries are the plate's read.
 static func _zone3_split_mesh(spec: Dictionary, reserved: Array, recess: float) -> ArrayMesh:
-	var size: Vector3 = spec.get("size", Vector3(4.0, 5.4, 4.0))
-	var w := size.x
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var tbl: Dictionary = Survey.table_for(spec, "zone3")
+	var size: Vector3 = spec.get("size", Vector3(4.0, 5.4, 3.6))
+	var h := size.y
+	var hz := size.z * 0.5
+	var main_x0 := float(tbl["main_x0"]) * h
+	var main_x1 := float(tbl["main_x1"]) * h
+	var wing_x1 := float(tbl["wing_x1"]) * h
+	var main_cx := (main_x0 + main_x1) * 0.5
+	var cor_y := float(tbl["cornice_y"]) * h
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var a_h := size.y
-	st.append_from(_box_with_doors(Vector3(w, a_h, w * 0.9), reserved, recess), 0, Transform3D.IDENTITY)
-	var cornice := BoxMesh.new()
-	cornice.size = Vector3(w + w * 0.18, a_h * 0.06, w * 0.9 + w * 0.18)
-	st.append_from(cornice, 0, Transform3D(Basis(), Vector3(0.0, a_h - cornice.size.y * 0.5, 0.0)))
-	var wing := BoxMesh.new()
-	wing.size = Vector3(w * 0.6, a_h * 0.83, w * 0.7)
-	st.append_from(_seated(wing, wing.size.y * 0.5), 0,
-		Transform3D(Basis(), Vector3(w * 0.5 + wing.size.x * 0.45, 0.0, -w * 0.9 * 0.5 + wing.size.z * 0.5)))
+	# the main block: door regions shift into the sub-box's local frame; the transform shifts back
+	var local_reserved: Array = []
+	for r_v in reserved:
+		var r := (r_v as Dictionary).duplicate(true)
+		if absf((r.get("n", Vector3.ZERO) as Vector3).z) > 0.5:
+			r["x_center"] = float(r.get("x_center", 0.0)) - main_cx
+		local_reserved.append(r)
+	st.append_from(_box_with_doors(Vector3(main_x1 - main_x0, cor_y, size.z), local_reserved, recess),
+		0, Transform3D(Basis(), Vector3(main_cx, 0.0, 0.0)))
+	var raw := SurfaceTool.new()
+	raw.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var c_over := float(tbl["cornice_over"]) * h
+	_emit_oriented_box_st(raw, Vector3(main_cx, (cor_y + h) * 0.5, 0.0),
+		Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1),
+		Vector3((main_x1 - main_x0) * 0.5 + c_over, (h - cor_y) * 0.5, hz + c_over))
+	# the gutted wing: rear wall, outer side wall, torn floor slabs, roof cap, front corner post
+	var wall_t := 0.14
+	var wcx := (main_x1 + wing_x1) * 0.5
+	var wing_hw := (wing_x1 - main_x1) * 0.5
+	_emit_oriented_box_st(raw, Vector3(wcx, cor_y * 0.5, -hz + wall_t * 0.5),
+		Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(wing_hw, cor_y * 0.5, wall_t * 0.5))
+	_emit_oriented_box_st(raw, Vector3(wing_x1 - wall_t * 0.5, cor_y * 0.5, 0.0),
+		Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(wall_t * 0.5, cor_y * 0.5, hz))
+	var slab_t := float(tbl["slab_t"]) * h
+	for sy_v in (tbl["slabs"] as Array):
+		_emit_oriented_box_st(raw, Vector3(wcx, float(sy_v) * h, 0.0),
+			Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(wing_hw, slab_t * 0.5, hz - 0.02))
+	_emit_oriented_box_st(raw, Vector3(wcx, cor_y - slab_t * 0.5, 0.0),
+		Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(wing_hw, slab_t * 0.5, hz))
+	_emit_oriented_box_st(raw, Vector3(wing_x1 - 0.10, cor_y * 0.5, hz - 0.10),
+		Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(0.10, cor_y * 0.5, 0.10))
+	raw.generate_normals()
+	st.append_from(raw.commit(), 0, Transform3D.IDENTITY)
 	return st.commit()
 
 # --- RECURSIVE CONNECTED AWNINGS (the Open Files massing — geometry-lab algorithm 2, ported) -------

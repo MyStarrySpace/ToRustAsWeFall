@@ -453,6 +453,30 @@ func _add_bulwark_details(root: Node3D, spec: Dictionary) -> void:
 	if lbl != null and built.has("nameplate_pos"):
 		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
 
+func _add_zone3_details(root: Node3D, spec: Dictionary) -> void:
+	var built: Dictionary = BaseShapeBuilder.zone3_details(spec)
+	_add_lattice_mesh(root, "Zone3Wood", built.get("wood"),
+		_tinted_tile_material("facility_metal", Color(0.33, 0.40, 0.36)))
+	_add_lattice_mesh(root, "Zone3Metal", built.get("metal"),
+		_tinted_tile_material("facility_metal", Color(0.42, 0.46, 0.43)))
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.07, 0.08, 0.08)
+	dark.roughness = 0.94
+	_add_lattice_mesh(root, "Zone3Dark", built.get("dark"), dark)
+	var rustm := StandardMaterial3D.new()
+	rustm.albedo_color = Color(0.44, 0.24, 0.12)   # the iron creep — tendrils, climbs, drips
+	rustm.roughness = 1.0
+	_add_lattice_mesh(root, "Zone3Rust", built.get("rust"), rustm)
+	var glowm := StandardMaterial3D.new()
+	glowm.albedo_color = Color(0.12, 0.34, 0.22)
+	glowm.emission_enabled = true
+	glowm.emission = Color(0.36, 0.91, 0.50)   # the terminal cabinet — the ruin's one glow
+	glowm.emission_energy_multiplier = 2.0
+	_add_lattice_mesh(root, "Zone3Glow", built.get("glow"), glowm)
+	var lbl := root.get_node_or_null("Nameplate")
+	if lbl != null and built.has("nameplate_pos"):
+		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
+
 func _spawn_landmark_building(lm: Dictionary) -> void:
 	var kind := str(lm.get("kind", ""))
 	if not BaseShapeBuilder.SPECS.has(kind):
@@ -554,6 +578,8 @@ func _spawn_landmark_building(lm: Dictionary) -> void:
 			_add_beacon_details(root, spec)
 		"bulwark_towers":
 			_add_bulwark_details(root, spec)
+		"zone3_split":
+			_add_zone3_details(root, spec)
 
 func _spawn_lathe_building(lp: Dictionary) -> void:
 	var profile: Dictionary = LatheBuilderScript.make_profile(lp)

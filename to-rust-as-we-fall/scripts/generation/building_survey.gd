@@ -301,6 +301,33 @@ const BULWARK := {
 	"door": {"surround_half_w": 0.183, "surround_top": 0.442, "chamfer": 0.068, "hub_r": 0.058},
 }
 
+## THE ZONE-3 ERODED RUIN SURVEY — measured off the plate (reference-images/architecture/
+## zone3_eroded_ruin.png, decomposed 2026-07-11). A two-storey verdigris SHOPFRONT ruin: the
+## intact MAIN block (left ~2/3 of the plan) under the heavy eroded CORNICE slab; the right wing
+## GUTTED — its facade torn off, three floor slabs exposed as open cavity galleries. Ground band:
+## the slat-roofed PORCH row sheltering the boarded siding, the barred shop window and the entry
+## (the porch IS the door idiom); the ALWAYS OPEN sign band between storeys; two arched window
+## pairs + a wider center window above; the green terminal cabinet at the entry (sole emissive).
+## Rust tendrils network the ground, climb the corners and drip from the cornice (layer-1 crust).
+## All values are FRACTIONS of the spec height H unless a key says metres.
+const ZONE3 := {
+	"main_x0": -0.370, "main_x1": 0.111, "wing_x1": 0.370,   # the plan split datums
+	"cornice_y": 0.94, "cornice_over": 0.065,
+	"slabs": [0.30, 0.55, 0.78], "slab_t": 0.045,            # the torn wing's floor datums
+	"porch": {"y0": 0.30, "y_wall": 0.46, "y_post": 0.38, "out": 0.145, "bays": 2,
+		"left_wrap": true, "slats": 8},
+	"siding": {"y1": 0.36, "rows": 6},
+	"shop_window": {"x": -0.240, "half_w": 0.074, "y0": 0.10, "y1": 0.315, "bars": 3},
+	"sign": {"x": -0.13, "half_w": 0.24, "y0": 0.43, "y1": 0.525},
+	# upper windows [x_center, half_w, y0, y1] on the front; the side face carries two more
+	"windows": [[-0.287, 0.0315, 0.60, 0.86], [-0.176, 0.0315, 0.60, 0.86],
+		[0.009, 0.0465, 0.58, 0.88]],
+	"side_windows": [[-0.093, 0.0315, 0.60, 0.86], [0.093, 0.0315, 0.60, 0.86]],
+	"terminal": {"x": 0.20, "half_w": 0.030, "y1": 0.158},   # the cabinet, proud of the seam
+	"tendrils": {"ground": 8, "reach": 0.60, "climbs": 3, "drips": 10},
+	"cavity_half_w": 0.128,
+}
+
 ## Authored storey plans (ground band + floor count between plinth and eave), per building kind.
 ## Numbers trace to the plate decompositions; buildings without an entry get equal DEFAULT_STOREY
 ## bands. greenfields' ground/storey split is ALSO the slab-ring datum table the massing builds on.
@@ -345,6 +372,8 @@ static func table_for(spec_in: Dictionary, name: String) -> Dictionary:
 			base = BEACON
 		"bulwark":
 			base = BULWARK
+		"zone3":
+			base = ZONE3
 	var out := base.duplicate(true)
 	var over: Dictionary = (spec_in.get("vars", {}) as Dictionary).get(name, {})
 	for k in over.keys():
@@ -489,6 +518,21 @@ static func roll_vars(kind_in: String, seed_value: int) -> Dictionary:
 				bw["pores"] = [[-0.269, 0.658, 0.0327], [0.246, 0.792, 0.0423, 1],
 					[0.250, 0.673, 0.0365]]   # a plainer membrane on some instances
 			out["bulwark"] = bw
+		"zone3":
+			var s8 := lerpf(0.94, 1.06, float(rng.call("randf")))
+			(out["spec"] as Dictionary)["size"] = Vector3(4.0, 5.4, 3.6) * s8
+			(out["spec"] as Dictionary)["entrances"] = {"main_w": 1.0 * s8, "main_h": 1.9 * s8,
+				"side_count_min": 0, "side_count_max": 0, "canopy_out": 0.0,
+				"reserve_margin": 0.18, "main_surround": false}
+			var z3v := {"sign": {"half_w": lerpf(0.215, 0.237, float(rng.call("randf")))},   # edge < cavity x0 0.2405-0.128
+				"porch": {"bays": int(rng.call("randi_range", 2, 3)),
+					"left_wrap": float(rng.call("randf")) < 0.6},
+				"tendrils": {"ground": int(rng.call("randi_range", 6, 12)),
+					"climbs": int(rng.call("randi_range", 2, 3)),
+					"drips": int(rng.call("randi_range", 7, 14))}}
+			if float(rng.call("randf")) < 0.35:
+				z3v["slabs"] = [0.36, 0.66]   # a two-gallery ruin on some instances
+			out["zone3"] = z3v
 		"cleanstreets":
 			var spread := lerpf(2.2, 2.8, float(rng.call("randf")))
 			var cs := {"fins": {"xs": [-spread, -spread / 3.0, spread / 3.0, spread],
@@ -781,6 +825,80 @@ func _survey_reservations(placements: Array) -> void:
 		_beacon_reservations()
 	if str(spec.get("composite", "")) == "bulwark_towers":
 		_bulwark_reservations()
+	if str(spec.get("composite", "")) == "zone3_split":
+		_zone3_reservations()
+
+## Every planned zone3 part claims its wall: the siding band + shop window (a declared pair),
+## the sign, the upper windows (front + side), the torn wing's cavity galleries, and the layer-1
+## crust (porch shelter, terminal cabinet, corner root climbs, cornice drip band — proud parts
+## that legally bridge the wall skin; drips and climbs declare each other where they cross).
+func _zone3_reservations() -> void:
+	var tbl := table_for(spec, "zone3")
+	var h := _height_total()
+	var fz := Vector3(0, 0, 1)
+	var sd: Dictionary = tbl["siding"]
+	var main_c := (float(tbl["main_x0"]) + float(tbl["main_x1"])) * 0.5
+	var main_hw := (float(tbl["main_x1"]) - float(tbl["main_x0"])) * 0.5
+	reservations.append({"id": "siding_band", "type": "decoration", "cyl": false, "n": fz,
+		"x_center": main_c * h, "half_w": main_hw * h,
+		"y0": 0.0, "y1": float(sd["y1"]) * h, "keeps_clear": ["door_main", "shop_window"]})
+	var sw: Dictionary = tbl["shop_window"]
+	reservations.append({"id": "shop_window", "type": "decoration", "cyl": false, "n": fz,
+		"x_center": float(sw["x"]) * h, "half_w": float(sw["half_w"]) * h,
+		"y0": float(sw["y0"]) * h, "y1": float(sw["y1"]) * h, "keeps_clear": ["siding_band"]})
+	var sgn: Dictionary = tbl["sign"]
+	reservations.append({"id": "sign_board", "type": "decoration", "cyl": false, "n": fz,
+		"x_center": float(sgn["x"]) * h, "half_w": float(sgn["half_w"]) * h,
+		"y0": float(sgn["y0"]) * h, "y1": float(sgn["y1"]) * h, "keeps_clear": []})
+	var wins: Array = tbl["windows"]
+	for i in range(wins.size()):
+		var wn := wins[i] as Array
+		reservations.append({"id": "window_%d" % i, "type": "decoration", "cyl": false, "n": fz,
+			"x_center": float(wn[0]) * h, "half_w": float(wn[1]) * h,
+			"y0": float(wn[2]) * h, "y1": float(wn[3]) * h, "keeps_clear": []})
+	var swins: Array = tbl["side_windows"]
+	for i2 in range(swins.size()):
+		var wn2 := swins[i2] as Array
+		reservations.append({"id": "side_window_%d" % i2, "type": "decoration", "cyl": false,
+			"n": Vector3(-1, 0, 0), "x_center": float(wn2[0]) * h, "half_w": float(wn2[1]) * h,
+			"y0": float(wn2[2]) * h, "y1": float(wn2[3]) * h, "keeps_clear": []})
+	# the torn wing's open cavity galleries (between the floor slab datums)
+	var slabs: Array = tbl["slabs"]
+	var slab_t := float(tbl["slab_t"])
+	var wing_c := (float(tbl["main_x1"]) + float(tbl["wing_x1"])) * 0.5
+	var prev_top := 0.045
+	for k in range(slabs.size() + 1):
+		var band_top := (float(slabs[k]) - slab_t * 0.5) if k < slabs.size() else float(tbl["cornice_y"]) - 0.02
+		if band_top - prev_top > 0.06:
+			reservations.append({"id": "cavity_%d" % k, "type": "decoration", "cyl": false, "n": fz,
+				"x_center": wing_c * h, "half_w": float(tbl["cavity_half_w"]) * h,
+				"y0": prev_top * h, "y1": band_top * h, "keeps_clear": ["door_main"]})
+		if k < slabs.size():
+			prev_top = float(slabs[k]) + slab_t * 0.5
+	# layer-1 crust: the porch shelter, the terminal cabinet, corner root climbs, the drip band
+	var po: Dictionary = tbl["porch"]
+	reservations.append({"id": "porch_row", "type": "decoration", "layer": 1, "cyl": false, "n": fz,
+		"x_center": main_c * h, "half_w": main_hw * h,
+		"y0": 0.0, "y1": float(po["y_wall"]) * h,
+		"keeps_clear": ["root_climb_0", "root_climb_1", "root_climb_2"]})
+	var tm: Dictionary = tbl["terminal"]
+	reservations.append({"id": "terminal_cabinet", "type": "decoration", "layer": 1, "cyl": false,
+		"n": fz, "x_center": float(tm["x"]) * h, "half_w": float(tm["half_w"]) * h,
+		"y0": 0.0, "y1": float(tm["y1"]) * h, "keeps_clear": []})
+	var td: Dictionary = tbl["tendrils"]
+	var climb_ids: Array = []
+	for c in range(int(td["climbs"])):
+		var cid := "root_climb_%d" % c
+		climb_ids.append(cid)
+		var cx: float = float([-0.345, 0.345, -0.30][c % 3])
+		reservations.append({"id": cid, "type": "decoration", "layer": 1, "cyl": false,
+			"n": fz if c < 2 else Vector3(-1, 0, 0),
+			"x_center": float(cx) * h, "half_w": 0.022 * h,
+			"y0": 0.0, "y1": float(tbl["cornice_y"]) * h,
+			"keeps_clear": ["drip_band", "porch_row"]})
+	reservations.append({"id": "drip_band", "type": "decoration", "layer": 1, "cyl": false, "n": fz,
+		"x_center": 0.0, "half_w": float(tbl["wing_x1"]) * h,
+		"y0": 0.88 * h, "y1": float(tbl["cornice_y"]) * h, "keeps_clear": climb_ids})
 
 ## Every planned bulwark part claims its wall: the framed MEMBRANE field (the voronoi web
 ## restructures around the rose, pores and weep it lists in keeps_clear), the sign band, the
@@ -1132,6 +1250,19 @@ func _survey_sockets(placements: Array) -> void:
 					float(wgs["lateral"]) * bsz.y),
 				"dir": Vector3(float(sxw), 0, 0),
 				"length": float(wgs["bay_len"]) * bsz.y * float(int(wgs["bays"]))})
+	if comp == "zone3_split":
+		# the gutted wing: a balcony slot on every torn gallery, the weak point at the torn seam
+		var z3 := table_for(spec, "zone3")
+		var zsz: Vector3 = spec.get("size", Vector3(4.0, 5.4, 3.6))
+		var zh := zsz.y
+		var wing_cx := (float(z3["main_x1"]) + float(z3["wing_x1"])) * 0.5 * zh
+		for sy_v in (z3["slabs"] as Array):
+			sockets.append({"kind": "balcony", "pos": Vector3(wing_cx, (float(sy_v) + float(z3["slab_t"])) * zh, zsz.z * 0.5 - 0.3),
+				"n": Vector3(0, 0, 1), "radius": 0.5})
+		sockets.append({"kind": "weak_point", "pos": Vector3(float(z3["main_x1"]) * zh, 0.45 * zh, zsz.z * 0.5),
+			"n": Vector3(0, 0, 1), "radius": 0.8})
+		sockets.append({"kind": "bridge", "pos": Vector3((float(z3["main_x0"]) + float(z3["main_x1"])) * 0.5 * zh, zh, 0),
+			"dir": Vector3(0, 0, 1), "width": 1.0})
 	if comp == "open_files_awnings":
 		# weak points on hash-picked skirt bands (the visible stepped facades); bridge sockets at
 		# the flat core-roof edges. The sloped awning roofs hold no balcony slots.
@@ -1793,10 +1924,16 @@ func _validate_socket(s: Dictionary, problems: Array[String]) -> void:
 			if not reach and horiz.length() > _footprint() + 1.0:
 				problems.append("%s: bridge socket floats %.2f out from a %.2f footprint" % [kind, horiz.length(), _footprint()])
 		"balcony":
-			var ledges: Array = BaseShapeBuilder.tier_ledges(spec)
 			var on_ledge := false
-			for lg in ledges:
-				if absf(float((lg as Dictionary)["y"]) - pos.y) <= 0.1:
-					on_ledge = true
+			if str(spec.get("composite", "")) == "zone3_split":
+				# the eroded ruin's balconies are the torn wing's floor slabs, not tier ledges
+				var z3l := table_for(spec, "zone3")
+				for sy_l in (z3l["slabs"] as Array):
+					if absf((float(sy_l) + float(z3l["slab_t"])) * _height_total() - pos.y) <= 0.1:
+						on_ledge = true
+			else:
+				for lg in BaseShapeBuilder.tier_ledges(spec):
+					if absf(float((lg as Dictionary)["y"]) - pos.y) <= 0.1:
+						on_ledge = true
 			if not on_ledge:
-				problems.append("%s: balcony slot at y=%.2f sits on no tier-ledge datum" % [kind, pos.y])
+				problems.append("%s: balcony slot at y=%.2f sits on no ledge/slab datum" % [kind, pos.y])

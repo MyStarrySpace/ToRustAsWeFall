@@ -4336,6 +4336,39 @@ func _test_building_survey() -> void:
 	_assert_true(str(Survey.from_spec(Base.generate("bulwark_wharf", 1)).summary()) != str(Survey.from_spec(Base.generate("bulwark_wharf", 2)).summary()),
 		"bulwark actually VARIES between seeds")
 
+	# --- zone3 (SURVEY REBUILD 1.8): split massing from the plan datums, cavity galleries with
+	# balcony slots ON the slab datums, the torn-seam weak point, all detail buckets ---
+	var z3k: Dictionary = Base.generate("zone3")
+	var svz = Survey.from_spec(z3k)
+	var cav_n := 0
+	var siding_kc := false
+	for r_z in (svz.reservations as Array):
+		var rz := r_z as Dictionary
+		if str(rz.get("id", "")).begins_with("cavity_"):
+			cav_n += 1
+		if str(rz.get("id", "")) == "siding_band" and (rz.get("keeps_clear", []) as Array).has("door_main"):
+			siding_kc = true
+	_assert_true(cav_n >= 3, "the zone3 survey reserves the torn wing's cavity galleries (%d)" % cav_n)
+	_assert_true(siding_kc, "the siding band is declared around the doorway")
+	var z3_balc := 0
+	var z3_weak_seam := false
+	var z3h := float((z3k["size"] as Vector3).y)
+	for sk_z in (svz.sockets as Array):
+		var skz := sk_z as Dictionary
+		if str(skz.get("kind", "")) == "balcony":
+			z3_balc += 1
+		if str(skz.get("kind", "")) == "weak_point" and absf((skz.get("pos", Vector3.ZERO) as Vector3).x - 0.111 * z3h) < 0.05:
+			z3_weak_seam = true
+	_assert_true(z3_balc >= 3, "every torn gallery carries a balcony slot (%d)" % z3_balc)
+	_assert_true(z3_weak_seam, "the weak point sits at the torn seam")
+	var z3det: Dictionary = Base.zone3_details(z3k)
+	for bucket3 in ["wood", "metal", "dark", "rust", "glow"]:
+		var bm3 = z3det.get(bucket3)
+		_assert_true(bm3 != null and (bm3 as ArrayMesh).get_surface_count() > 0,
+			"zone3 details build the %s pass" % bucket3)
+	_assert_true(str(Survey.from_spec(Base.generate("zone3", 1)).summary()) != str(Survey.from_spec(Base.generate("zone3", 2)).summary()),
+		"zone3 actually VARIES between seeds")
+
 	# --- PARAMETRIC VARIATION (the buildings are TYPES): every seeded variant must survey clean —
 	# the roller re-reconciles dependent values, and THIS sweep is the proof no roll collides.
 	# Seed 0 is the canonical plate specimen; other seeds roll plate-plausible variants. ---
