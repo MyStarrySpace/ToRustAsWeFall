@@ -91,6 +91,8 @@ func _build_chunk() -> void:
 			_add_zone3_details(root, spec)
 		if str(spec.get("kind", "")) == "honeycomb_cooperative":
 			_add_honeycomb_details(root, spec)
+		if str(spec.get("composite", "")) == "open_files_awnings":
+			_add_open_files_details(root, spec)
 		_add_anchor_markers(root, survey.anchors())
 		_specimens.append({"building": kind, "shape": str(spec.get("shape", "")),
 			"lattice": str(spec.get("lattice", "")), "verts": verts})
@@ -259,7 +261,7 @@ func _add_rackwork(root: Node3D, spec: Dictionary, reserved: Array) -> void:
 	_add_lattice_mesh(root, "RackFrame", built.get("frame"), _tinted_tile_material("facility_metal", Color(0.40, 0.44, 0.45)))
 	var led := StandardMaterial3D.new()
 	led.albedo_color = Color(0.14, 0.42, 0.22)
-	led.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	# shaded + emission: UNSHADED renders albedo only and silently swallows the emission
 	led.emission_enabled = true
 	led.emission = Color(0.36, 0.91, 0.50)   # the terminal green
 	led.emission_energy_multiplier = 2.4

@@ -90,6 +90,10 @@ const SPECS := {
 		"awning_depth": 3,                  # recursion depth (levels = depth+1, ground-clamped)
 		"awning_merge": 0.55,               # adjacent-corner merge chance ceiling (rises with depth)
 		"rack_depth": 0.2,                  # the faces-EXTRUDE parameter: drawer strata depth
+		# SURVEY REBUILD 1.10: the nested hex-arch portal owns the threshold (no generic stone);
+		# reserve_margin 0.25 keeps the door region under the sign band at every roll
+		"entrances": {"main_w": 1.5, "main_h": 2.2, "side_count_min": 0, "side_count_max": 0,
+			"canopy_out": 0.0, "reserve_margin": 0.25, "main_surround": false},
 		"color": Color(0.31, 0.35, 0.37),   # dark steel-blue with rust + teal server glow
 		"tile": "facility_metal",
 		"lattice": "rackwork",              # extruded-face drawer strata + green LED matrices
@@ -1242,6 +1246,99 @@ static func _beacon_domed_mesh(spec: Dictionary, reserved: Array, recess: float)
 ## vestibule (the plate's ONE cyan accent), warm sconces, the lantern clerestory and the planted
 ## roof-garden ring, and the corner planting beds.
 ## Families: bone / dark / amber (panes) / glow (green) / cyan / warm / leaf / rails.
+## Open-Files detail passes (SURVEY REBUILD 1.10) — the massing keeps the director's recursive
+## awnings; this pass builds the GROUND IDIOM from the OPEN_FILES survey: the nested hex-arch
+## portal (chamfered octagon loops stepping proud) pouring a cyan inner glow + the scan-beam fan
+## and scan bar, the heraldic crest, the glowing green sign, flanking console pedestals, fin
+## sconces and the apron bollards.
+static func open_files_details(spec: Dictionary) -> Dictionary:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var tbl: Dictionary = Survey.table_for(spec, "open_files")
+	var size: Vector3 = spec.get("size", Vector3(5.6, 9.0, 5.6))
+	var hz := size.z * 0.5
+	var bone := _st()
+	var dark := _st()
+	var warm := _st()
+	var glow := _st()
+	var cyan := _st()
+	var po: Dictionary = tbl["portal"]
+	var door_w := float((spec.get("entrances", {}) as Dictionary).get("main_w", 1.5))
+	var door_h := float((spec.get("entrances", {}) as Dictionary).get("main_h", 2.2))
+	var frames := int(po["frames"])
+	var f_step := float(po["frame_step"])
+	# the nested chamfered-octagon portal frames, each loop stepping outward and prouder
+	for f in range(frames):
+		var hw := door_w * 0.5 + 0.15 + float(f) * f_step
+		var top := door_h + 0.15 + float(f) * f_step
+		var ch := float(po["chamfer"]) + 0.05 * float(f)
+		var zf := hz + 0.05 + float(f) * 0.05
+		_tube(bone, [Vector3(-hw, 0.02, zf), Vector3(-hw, top - ch, zf), Vector3(-hw + ch, top, zf),
+			Vector3(hw - ch, top, zf), Vector3(hw, top - ch, zf), Vector3(hw, 0.02, zf)],
+			0.062, 5)
+	# the cyan light deep in the pocket + the scan bar + the threshold beam fan
+	var recess := float(spec.get("door_recess", 0.5))
+	_emit_oriented_box_st(cyan, Vector3(0, door_h * 0.52, hz - recess + 0.06),
+		Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1),
+		Vector3(door_w * 0.5 - 0.06, door_h * 0.48, 0.02))
+	var scan: Dictionary = tbl["scan"]
+	_emit_oriented_box_st(cyan, Vector3(0, float(scan["bar_y"]), hz + 0.10),
+		Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(door_w * 0.5 + 0.25, 0.03, 0.03))
+	var s_len := float(scan["len"])
+	var w_end := tan(float(scan["half_ang"])) * s_len
+	_quad_out(cyan, Vector3(-0.14, 0.02, hz + 0.12), Vector3(0.14, 0.02, hz + 0.12),
+		Vector3(w_end, 0.02, hz + 0.12 + s_len), Vector3(-w_end, 0.02, hz + 0.12 + s_len),
+		Vector3(0, -2.0, hz + 1.0))
+	# the heraldic crest + the glowing sign (letters live on the glow plate at texture time)
+	var cr: Dictionary = tbl["crest"]
+	var cr_c := Vector3(0, (float(cr["y0"]) + float(cr["y1"])) * 0.5, hz + 0.06)
+	var cr_hh := (float(cr["y1"]) - float(cr["y0"])) * 0.5
+	_emit_oriented_box_st(bone, cr_c, Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1),
+		Vector3(float(cr["w"]) * 0.5, cr_hh, 0.03))
+	_emit_oriented_box_st(dark, cr_c + Vector3(0, 0, 0.045), Vector3(1, 0, 0), Vector3.UP,
+		Vector3(0, 0, 1), Vector3(float(cr["w"]) * 0.32, cr_hh * 0.62, 0.012))
+	var sgn: Dictionary = tbl["sign"]
+	var sg_c := Vector3(0, (float(sgn["y0"]) + float(sgn["y1"])) * 0.5, hz + 0.07)
+	var sg_hw := float(sgn["w"]) * 0.5
+	var sg_hh := (float(sgn["y1"]) - float(sgn["y0"])) * 0.5
+	_emit_oriented_box_st(dark, sg_c, Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1),
+		Vector3(sg_hw, sg_hh, 0.025))
+	_emit_oriented_box_st(glow, sg_c + Vector3(0, 0, 0.035), Vector3(1, 0, 0), Vector3.UP,
+		Vector3(0, 0, 1), Vector3(sg_hw - 0.10, sg_hh - 0.10, 0.012))
+	for bar in [[0.0, sg_hh, sg_hw + 0.05, 0.04], [0.0, -sg_hh, sg_hw + 0.05, 0.04],
+			[-sg_hw, 0.0, 0.04, sg_hh + 0.05], [sg_hw, 0.0, 0.04, sg_hh + 0.05]]:
+		var br := bar as Array
+		_emit_oriented_box_st(bone, sg_c + Vector3(float(br[0]), float(br[1]), 0.02),
+			Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(float(br[2]), float(br[3]), 0.032))
+	# console pedestals (green CRTs), fin sconces, apron bollards
+	for cx_v in ((tbl["consoles"] as Dictionary)["xs"] as Array):
+		var kx := float(cx_v)
+		_emit_oriented_box_st(dark, Vector3(kx, 0.42, hz + 0.45),
+			Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(0.20, 0.42, 0.14))
+		var kv := Vector3(0, 0.906, 0.423)
+		var kn := Vector3(0, -0.423, 0.906)
+		_emit_oriented_box_st(glow, Vector3(kx, 0.92, hz + 0.50) + kn * 0.02,
+			Vector3(1, 0, 0), kv, kn, Vector3(0.13, 0.09, 0.01))
+	var scn: Dictionary = tbl["sconces"]
+	for sx_v in (scn["xs"] as Array):
+		for sy_v in (scn["ys"] as Array):
+			_emit_oriented_box_st(dark, Vector3(float(sx_v), float(sy_v), hz + 0.05),
+				Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(0.05, 0.11, 0.05))
+			_emit_oriented_box_st(warm, Vector3(float(sx_v), float(sy_v) + 0.02, hz + 0.105),
+				Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(0.035, 0.07, 0.02))
+	var bl: Dictionary = tbl["bollards"]
+	var b_count := int(bl["count"])
+	for b in range(b_count):
+		var ba := lerpf(-1.05, 1.05, (float(b) + 0.5) / float(b_count))
+		var bp := Vector3(sin(ba) * float(bl["radius"]), 0.0, hz + cos(ba) * float(bl["radius"]) * 0.55 + 0.6)
+		_rings_loft(dark, bp, 0.55, [[0.0, 0.13], [0.12, 0.10], [1.0, 0.085]], 6)
+		_emit_oriented_box_st(warm, bp + Vector3(0, 0.58, 0), Vector3(1, 0, 0), Vector3.UP,
+			Vector3(0, 0, 1), Vector3(0.028, 0.028, 0.028))
+	for stool in [bone, dark, warm, glow, cyan]:
+		(stool as SurfaceTool).generate_normals()
+	return {"bone": bone.commit(), "dark": dark.commit(), "warm": warm.commit(),
+		"glow": glow.commit(), "cyan": cyan.commit(),
+		"nameplate_pos": Vector3(0, float(sgn["y1"]) + 0.3, hz + 0.2)}
+
 ## Honeycomb detail passes (SURVEY REBUILD 1.9), every part from the HONEYCOMB survey + the
 ## engine's OWN cell grid (honeyframe_cell_rects): a vent louver + planter per facade cell, the
 ## hex-badge sign filling its storey-2 cell, the ring-balustrade parapet with red-tipped corner

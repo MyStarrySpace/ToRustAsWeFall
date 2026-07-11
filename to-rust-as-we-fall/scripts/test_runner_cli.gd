@@ -4418,6 +4418,28 @@ func _test_building_survey() -> void:
 	_assert_true(str(Survey.from_spec(Base.generate("honeycomb_cooperative", 1)).summary()) != str(Survey.from_spec(Base.generate("honeycomb_cooperative", 2)).summary()),
 		"honeycomb actually VARIES between seeds")
 
+	# --- open_files (SURVEY REBUILD 1.10): the director's awnings stay the massing; the survey
+	# owns the portal/sign/crest idiom and the field restructures around them ---
+	var ofk: Dictionary = Base.generate("open_files")
+	var svo = Survey.from_spec(ofk)
+	var of_portal := false
+	var of_field_kc := false
+	for r_o in (svo.reservations as Array):
+		var ro := r_o as Dictionary
+		if str(ro.get("id", "")) == "portal_surround" and (ro.get("keeps_clear", []) as Array).has("door_main"):
+			of_portal = true
+		if str(ro.get("id", "")) == "field_rackwork_front" and (ro.get("keeps_clear", []) as Array).has("sign_board"):
+			of_field_kc = true
+	_assert_true(of_portal, "the portal surround wraps the opening as a declared ensemble")
+	_assert_true(of_field_kc, "the rackwork field restructures around the sign")
+	var ofdet: Dictionary = Base.open_files_details(ofk)
+	for bucket_o in ["bone", "dark", "warm", "glow", "cyan"]:
+		var bmo = ofdet.get(bucket_o)
+		_assert_true(bmo != null and (bmo as ArrayMesh).get_surface_count() > 0,
+			"open_files details build the %s pass" % bucket_o)
+	_assert_true(str(Survey.from_spec(Base.generate("open_files", 1)).summary()) != str(Survey.from_spec(Base.generate("open_files", 2)).summary()),
+		"open_files actually VARIES between seeds")
+
 	# --- PARAMETRIC VARIATION (the buildings are TYPES): every seeded variant must survey clean —
 	# the roller re-reconciles dependent values, and THIS sweep is the proof no roll collides.
 	# Seed 0 is the canonical plate specimen; other seeds roll plate-plausible variants. ---

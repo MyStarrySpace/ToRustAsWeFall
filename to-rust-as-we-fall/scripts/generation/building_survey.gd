@@ -349,6 +349,24 @@ const HONEYCOMB := {
 	"rust": {"streaks": 8},
 }
 
+## THE OPEN FILES INITIATIVE SURVEY — measured off the plate (reference-images/architecture/
+## open_files_initiative.png, decomposed 2026-07-11). The MASSING stays the director's recursive
+## connected awnings (geometry-lab algo 2 — untouched); the rack STRATA live on the awning-level
+## datums the rackwork already reads (_awning_layout is the shared authority). This table owns the
+## GROUND IDIOM: the nested hex-arch PORTAL pouring cyan light + the scan-beam fan on the
+## threshold, the heraldic crest + the glowing green sign over it, flanking console pedestals,
+## fin sconces and the apron bollards. Values are METRES at the canonical H 9.0 (the massing
+## rolls +-6%; the door region is reconciled against the sign at every roll).
+const OPEN_FILES := {
+	"portal": {"frames": 3, "frame_step": 0.16, "chamfer": 0.42},
+	"scan": {"len": 2.6, "half_ang": 0.42, "bar_y": 1.1},
+	"sign": {"y0": 3.05, "y1": 3.70, "w": 3.0},
+	"crest": {"y0": 3.85, "y1": 4.35, "w": 0.66},
+	"consoles": {"xs": [-1.95, 1.95]},
+	"sconces": {"xs": [-2.45, 2.45], "ys": [2.3, 4.6]},
+	"bollards": {"count": 7, "radius": 3.6},
+}
+
 ## Authored storey plans (ground band + floor count between plinth and eave), per building kind.
 ## Numbers trace to the plate decompositions; buildings without an entry get equal DEFAULT_STOREY
 ## bands. greenfields' ground/storey split is ALSO the slab-ring datum table the massing builds on.
@@ -397,6 +415,8 @@ static func table_for(spec_in: Dictionary, name: String) -> Dictionary:
 			base = ZONE3
 		"honeycomb":
 			base = HONEYCOMB
+		"open_files":
+			base = OPEN_FILES
 	var out := base.duplicate(true)
 	var over: Dictionary = (spec_in.get("vars", {}) as Dictionary).get(name, {})
 	for k in over.keys():
@@ -569,6 +589,18 @@ static func roll_vars(kind_in: String, seed_value: int) -> Dictionary:
 			if float(rng.call("randf")) < 0.35:
 				hcv["catwalks"] = {"rows": [0.30, 0.62]}   # a two-catwalk flank on some instances
 			out["honeycomb"] = hcv
+		"open_files":
+			var k10 := lerpf(0.94, 1.06, float(rng.call("randf")))
+			(out["spec"] as Dictionary)["size"] = Vector3(5.6, 9.0, 5.6) * k10
+			(out["spec"] as Dictionary)["entrances"] = {"main_w": 1.5 * k10, "main_h": 2.2 * k10,
+				"side_count_min": 0, "side_count_max": 0, "canopy_out": 0.0,
+				"reserve_margin": 0.25, "main_surround": false}
+			(out["spec"] as Dictionary)["awning_depth"] = int(rng.call("randi_range", 2, 3))
+			(out["spec"] as Dictionary)["awning_merge"] = lerpf(0.40, 0.70, float(rng.call("randf")))
+			var ofv := {"portal": {"frames": int(rng.call("randi_range", 2, 3))},
+				"bollards": {"count": int(rng.call("randi_range", 5, 9))},
+				"sign": {"w": lerpf(2.7, 3.2, float(rng.call("randf")))}}
+			out["open_files"] = ofv
 		"cleanstreets":
 			var spread := lerpf(2.2, 2.8, float(rng.call("randf")))
 			var cs := {"fins": {"xs": [-spread, -spread / 3.0, spread / 3.0, spread],
@@ -865,6 +897,48 @@ func _survey_reservations(placements: Array) -> void:
 		_zone3_reservations()
 	if str(spec.get("kind", "")) == "honeycomb_cooperative":
 		_honeycomb_reservations()
+	if str(spec.get("composite", "")) == "open_files_awnings":
+		_open_files_reservations()
+
+## Every planned open-files part claims its wall: the nested portal surround (an ensemble with
+## the opening), the glowing sign + heraldic crest (the rackwork field restructures around both),
+## and the layer-1 proud pieces (console pedestals, fin sconces). The scan-beam fan and bollards
+## ride the apron ground and claim no wall.
+func _open_files_reservations() -> void:
+	var tbl := table_for(spec, "open_files")
+	var fz := Vector3(0, 0, 1)
+	var po: Dictionary = tbl["portal"]
+	var door_w := float((spec.get("entrances", {}) as Dictionary).get("main_w", 1.5))
+	var door_h := float((spec.get("entrances", {}) as Dictionary).get("main_h", 2.2))
+	var p_reach := float(po["frames"]) * float(po["frame_step"])
+	reservations.append({"id": "portal_surround", "type": "decoration", "cyl": false, "n": fz,
+		"x_center": 0.0, "half_w": door_w * 0.5 + p_reach + 0.15,
+		"y0": 0.0, "y1": door_h + p_reach + 0.20, "keeps_clear": ["door_main"]})
+	var sgn: Dictionary = tbl["sign"]
+	reservations.append({"id": "sign_board", "type": "decoration", "cyl": false, "n": fz,
+		"x_center": 0.0, "half_w": float(sgn["w"]) * 0.5,
+		"y0": float(sgn["y0"]), "y1": float(sgn["y1"]), "keeps_clear": []})
+	var cr: Dictionary = tbl["crest"]
+	reservations.append({"id": "crest", "type": "decoration", "cyl": false, "n": fz,
+		"x_center": 0.0, "half_w": float(cr["w"]) * 0.5,
+		"y0": float(cr["y0"]), "y1": float(cr["y1"]), "keeps_clear": []})
+	for r_v in reservations:
+		var rv := r_v as Dictionary
+		if str(rv.get("id", "")) == "field_rackwork_front":
+			(rv["keeps_clear"] as Array).append("sign_board")
+			(rv["keeps_clear"] as Array).append("crest")
+			(rv["keeps_clear"] as Array).append("portal_surround")
+	for cx_v in (tbl["consoles"] as Dictionary)["xs"]:
+		reservations.append({"id": "console_%s" % ("r" if float(cx_v) > 0.0 else "l"),
+			"type": "decoration", "layer": 1, "cyl": false, "n": fz,
+			"x_center": float(cx_v), "half_w": 0.35, "y0": 0.0, "y1": 1.4, "keeps_clear": []})
+	var scn: Dictionary = tbl["sconces"]
+	for sx_v in (scn["xs"] as Array):
+		for sy_v in (scn["ys"] as Array):
+			reservations.append({"id": "sconce_%s_%d" % ["r" if float(sx_v) > 0.0 else "l", int(float(sy_v) * 10.0)],
+				"type": "decoration", "layer": 1, "cyl": false, "n": fz,
+				"x_center": float(sx_v), "half_w": 0.12,
+				"y0": float(sy_v) - 0.15, "y1": float(sy_v) + 0.15, "keeps_clear": []})
 
 ## Every planned honeycomb part claims its wall. The intact faces: the honeyframe FIELD (generic)
 ## + one cell-fixtures band per face (vents/planters ride the engine's real cell rects — the band

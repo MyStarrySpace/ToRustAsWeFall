@@ -511,6 +511,36 @@ func _add_honeycomb_details(root: Node3D, spec: Dictionary) -> void:
 	if lbl != null and built.has("nameplate_pos"):
 		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
 
+func _add_open_files_details(root: Node3D, spec: Dictionary) -> void:
+	var built: Dictionary = BaseShapeBuilder.open_files_details(spec)
+	_add_lattice_mesh(root, "OfBone", built.get("bone"),
+		_tinted_tile_material("facility_metal", Color(0.58, 0.60, 0.55)))
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.09, 0.10, 0.11)
+	dark.roughness = 0.92
+	_add_lattice_mesh(root, "OfDark", built.get("dark"), dark)
+	var warmm := StandardMaterial3D.new()
+	warmm.albedo_color = Color(0.45, 0.30, 0.15)
+	warmm.emission_enabled = true
+	warmm.emission = Color(0.95, 0.66, 0.30)
+	warmm.emission_energy_multiplier = 1.6
+	_add_lattice_mesh(root, "OfSconces", built.get("warm"), warmm)
+	var glowm := StandardMaterial3D.new()
+	glowm.albedo_color = Color(0.12, 0.34, 0.22)
+	glowm.emission_enabled = true
+	glowm.emission = Color(0.36, 0.91, 0.50)   # the sign text + console CRTs — terminal green
+	glowm.emission_energy_multiplier = 2.2
+	_add_lattice_mesh(root, "OfGlow", built.get("glow"), glowm)
+	var cyanm := StandardMaterial3D.new()
+	cyanm.albedo_color = Color(0.10, 0.30, 0.34)
+	cyanm.emission_enabled = true
+	cyanm.emission = Color(0.25, 0.85, 0.95)   # the portal pour + scan beam (plate-demanded cyan)
+	cyanm.emission_energy_multiplier = 2.4
+	_add_lattice_mesh(root, "OfCyan", built.get("cyan"), cyanm)
+	var lbl := root.get_node_or_null("Nameplate")
+	if lbl != null and built.has("nameplate_pos"):
+		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
+
 func _spawn_landmark_building(lm: Dictionary) -> void:
 	var kind := str(lm.get("kind", ""))
 	if not BaseShapeBuilder.SPECS.has(kind):
@@ -619,6 +649,8 @@ func _spawn_landmark_building(lm: Dictionary) -> void:
 			_add_zone3_details(root, spec)
 	if str(spec.get("kind", "")) == "honeycomb_cooperative":
 		_add_honeycomb_details(root, spec)
+	if str(spec.get("composite", "")) == "open_files_awnings":
+		_add_open_files_details(root, spec)
 
 func _spawn_lathe_building(lp: Dictionary) -> void:
 	var profile: Dictionary = LatheBuilderScript.make_profile(lp)
