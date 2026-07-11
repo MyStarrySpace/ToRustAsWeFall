@@ -36,6 +36,11 @@ func _init() -> void:
 	for i in range(6):
 		await process_frame
 	await RenderingServer.frame_post_draw
-	get_root().get_texture().get_image().save_png("res://peris_reframe_capture.png")
-	print("[CAPTURE] peris reframe -> res://peris_reframe_capture.png")
+	# OUT_DIR (scratchpad) — capture tools never write into the project tree
+	var out_dir := OS.get_environment("OUT_DIR")
+	if out_dir == "":
+		out_dir = "user://"
+	var out_path := out_dir.path_join("peris_reframe_capture.png")
+	get_root().get_texture().get_image().save_png(out_path)
+	print("[CAPTURE] peris reframe -> %s" % out_path)
 	quit()

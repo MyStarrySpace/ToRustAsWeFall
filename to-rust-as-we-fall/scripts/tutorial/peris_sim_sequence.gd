@@ -35,10 +35,22 @@ var _water_plant_interactable
 var _can_pickup_interactable
 var _plant_watered := false
 var _explore_time_elapsed := false
-const WATERING_CAN_POS := Vector3(8.0, 0.0, 2.0)  # reachable, near the fern
-const FERN_POS := Vector3(6.0, 0.0, 2.4)  # Plant7 (Boston fern) — floor-standing watering target near the seating
+const WATERING_CAN_POS := Vector3(5.0, 0.0, 2.2)  # reachable, near the fern
+const FERN_POS := Vector3(3.4, 0.0, 2.0)  # Plant7 (Boston fern) — floor-standing watering target by the bench
 # The watering beat drives the player to the dry fern; the input playthrough drives this point.
 const DRY_PLANT_POS := FERN_POS
+
+## Furniture surfaces MEASURED from the loaded room models (probe 2026-07-11) — the ONE placement
+## authority for everything that sits on furniture: each surface's top Y + usable XZ rect
+## [x0, z0, x1, z1]. The peris-sim test verifies every surface against a live WITNESS prop (the
+## PlantStand top; the mug/jar/photo BASES resting on the same boards), so a furniture re-export
+## moves these numbers loudly, never silently.
+const PERIS_SURFACES := {
+	"stand": {"y": 1.295, "rect": [4.03, 4.75, 4.91, 5.65]},         # PlantStand top
+	"table": {"y": 0.805, "rect": [6.63, 2.47, 8.38, 3.53]},         # CoffeeTable top
+	"shelf_low": {"y": 1.295, "rect": [10.95, 0.56, 13.05, 1.32]},   # Bookshelf lower board (Jar base)
+	"shelf_high": {"y": 2.057, "rect": [10.95, 0.56, 13.05, 1.32]},  # Bookshelf photo board (Photo base)
+}
 
 # Exploration beat (phase 1, pre-Monos-arrival)
 var _explore_logbook_gate  # Interactable at the logbook
@@ -159,6 +171,11 @@ func _begin() -> void:
 		_visit_phase = start_phase
 	_current_step = "fade_in"
 	_player.set_move_enabled(false)
+	# The room is DRESSED from the first frame, in BOTH phases — plants on their furniture, the
+	# wall pieces, the logbook console (they used to pop in only when the workspace step fired,
+	# seconds after the fade; phase 2 had a plantless room). Interactions stay dark until the
+	# phase-1 workspace step arms them.
+	_build_exploration_objects()
 	if _visit_phase == 1:
 		_fade_from(Color(0.15, 0.1, 0.03, 1), 3.0, _start_workspace, "workspace")
 	else:
@@ -277,7 +294,10 @@ func _start_workspace() -> void:
 	# Phase 1 wanders the room while the new client's session stalls; the
 	# exploration gate is where the spoofed signal finally breaks through.
 	_show_thought(DialogueData.text("peris.sim_expand.opening.line"))
-	_build_exploration_objects()
+	_build_exploration_objects()   # idempotent — the room was dressed at _begin
+	_set_exploration_armed(true)   # the wander step is where the room becomes touchable
+	if _can_pickup_interactable != null:
+		_can_pickup_interactable.call_deferred("show_tutorial_label")
 	_explore_gate_unlocked = false
 	_explore_gate_fired = false
 	# Teach the reveal-all overlay while the player is hunting the room for what to interact with.
@@ -817,16 +837,31 @@ func _show_sanction_feed_visual(title: String, body: String, color: Color) -> vo
 # The modeled room (peris-sim.gltf + peris-furniture.gltf) carries all cosmetic decor — rug, shelves,
 # sofas, props — so there is no procedural decoration pass; gameplay objects live below.
 
+var _exploration_objects_built := false
+var _exploration_interactables: Array = []
+
 func _build_exploration_objects() -> void:
-	if Engine.is_editor_hint():
+	# Idempotent: built at _begin (the room is dressed from the first frame); a direct
+	# _start_workspace (tests) re-enters harmlessly. The watering beat is a REAL data-layer item,
+	# so it exists only in the phase that plays it.
+	if Engine.is_editor_hint() or _exploration_objects_built:
 		return
+	_exploration_objects_built = true
 	var env: Node3D = self
 	_build_peris_plants(env)
-	_build_watering_beat(env)
+	if _visit_phase == 1:
+		_build_watering_beat(env)
 	_build_peris_painting(env)
 	_build_peris_wellness_feed(env)
 	_build_peris_strike_warning(env)
 	_build_peris_logbook_gate(env)
+	# built before the workspace step: everything stays dark until the step arms it
+	_set_exploration_armed(false)
+
+func _set_exploration_armed(armed: bool) -> void:
+	for ia in _exploration_interactables:
+		if ia != null and is_instance_valid(ia) and ia.has_method("set_interaction_enabled"):
+			ia.set_interaction_enabled(armed)
 
 # The plant gltfs export at WILDLY different native scales (boston_fern ~2.9 tall, haworthia ~1.4),
 # all pot-at-Y0 and XZ-centered on their own origin. These are the measured native AABB heights — a
@@ -852,47 +887,61 @@ func _make_peris_plant(parent: Node3D, pos: Vector3, species: String, target_hei
 	return root
 
 func _build_peris_plants(parent: Node3D) -> void:
-	# Potted plants sit ON their furniture: small ones on the bookshelf shelves (east wall), the plant
-	# stand, and the coffee table; the big Boston fern (Plant7, the watering target) + the peace lily stay
-	# floor-standing where they're reachable. Heights shrink for the surface plants so they read in scale.
-	# Each plant has its OWN walk-to inspection zone, which must stay >=2.8m from every other inspectable
-	# (the --test-peris-sim spacing guard). The room is already dense with fixed inspectables (wellness,
-	# painting, strike-warning, logbook gate, the watered fern), so the plants must stay SPREAD — they
-	# can't cluster on one shelf. The jade sits on the plant stand; the rest are floor-standing at spaced
-	# spots (Peris's plants fill her room). (To cluster more on furniture we'd switch to a shared
-	# per-shelf inspect zone — a mechanic change.)
-	var plants := [
-		[Vector3(0.6, 0, 5.7), "spider", 1.2, "peris.sim_expand.plant_1.line"],        # floor, front-west
-		[Vector3(13.4, 0, 0.4), "calathea", 1.2, "peris.sim_expand.plant_2.line"],     # floor, back-east corner
-		[Vector3(1.5, 0, 3.0), "haworthia", 0.5, "peris.sim_expand.plant_3.line"],     # floor, west
-		[Vector3(4.4, 1.12, 5.2), "jade", 0.7, "peris.sim_expand.plant_4.line"],       # plant stand top
-		[Vector3(7.4, 0, 5.5), "jasmine", 1.2, "peris.sim_expand.plant_5.line"],       # floor, front
-		[Vector3(10.3, 0, 5.6), "pothos", 1.1, "peris.sim_expand.plant_6.line"],       # floor, front-east
-		[FERN_POS, "boston_fern", 1.3, "peris.sim_expand.plant_7.line"],               # floor near seating (watering)
-		[Vector3(3.8, 0, 0.5), "pilea", 1.0, "peris.sim_expand.plant_8.line"],         # floor, back-west
-		[Vector3(8.9, 0, 2.9), "peace_lily", 1.4, "peris.sim_expand.plant_9.line"],    # floor, centre-east
+	# Potted plants sit ON their furniture at the MEASURED surface heights (PERIS_SURFACES): small
+	# pots across the two bookshelf boards, the coffee table (clear of the modeled mugs) and the
+	# plant stand. Only the Boston fern (Plant7, the watering target — a walk-up beat) and the big
+	# peace lily stand on the floor, deliberately. Furniture-mates SHARE one walk-to inspection
+	# zone that advances through their lines on repeat clicks (per-plant zones could not keep the
+	# 2.8 m inspectable spacing once the pots clustered onto shared surfaces); every pot still
+	# carries its OWN outline target, delegating to its furniture's zone.
+	var plants := [  # [surface key ("" = floor), xz, species, target height]
+		["shelf_low", Vector2(12.75, 0.94), "spider", 0.55],     # Plant1
+		["shelf_high", Vector2(12.75, 0.94), "calathea", 0.50],  # Plant2
+		["table", Vector2(6.95, 3.30), "haworthia", 0.32],       # Plant3
+		["stand", Vector2(4.25, 5.05), "jade", 0.62],            # Plant4
+		["shelf_low", Vector2(12.00, 0.94), "jasmine", 0.55],    # Plant5
+		["stand", Vector2(4.62, 5.33), "pothos", 0.55],          # Plant6
+		["", Vector2(FERN_POS.x, FERN_POS.z), "boston_fern", 1.3],  # Plant7 — the watering target
+		["table", Vector2(7.62, 2.72), "pilea", 0.42],           # Plant8
+		["", Vector2(9.3, 5.3), "peace_lily", 1.4],              # Plant9
 	]
+	var plant_targets: Array = []
 	for i in range(plants.size()):
 		var p: Array = plants[i]
-		var pos: Vector3 = p[0]
-		var species: String = p[1]
-		var height: float = p[2]
-		var line_key: String = p[3]
-		var plant_node := _make_peris_plant(parent, pos, species, height)
+		var skey: String = p[0]
+		var xz: Vector2 = p[1]
+		var y := 0.0 if skey == "" else float((PERIS_SURFACES[skey] as Dictionary)["y"])
+		var plant_node := _make_peris_plant(parent, Vector3(xz.x, y, xz.y), str(p[2]), float(p[3]))
 		plant_node.name = "Plant%d" % (i + 1)
-		var zone_pos := Vector3(pos.x, 0, pos.z)
+		plant_targets.append(_outline_object_meshes(parent, "Plant%dOutline" % (i + 1),
+			_collect_mesh_instances(plant_node), "peris_plant_%d" % (i + 1), 0.7))
+	# One inspection zone per furniture group / floor plant (floor spots, spaced >=2.8 m from every
+	# other inspectable — the --test-peris-sim spacing guard). Repeat clicks walk a shelf's lines.
+	var zone_defs := [  # [name, floor pos, plant indices (1-based, line order)]
+		["BookshelfPlantsZone", Vector3(13.7, 0, 0.6), [1, 2, 5]],
+		["PlantStandZone", Vector3(4.4, 0, 5.2), [4, 6]],
+		["CoffeeTablePlantsZone", Vector3(6.8, 0, 3.4), [3, 8]],
+		["FernZone", Vector3(FERN_POS.x, 0, FERN_POS.z), [7]],
+		["PeaceLilyZone", Vector3(9.3, 0, 5.3), [9]],
+	]
+	for zd_v in zone_defs:
+		var zd := zd_v as Array
+		var idxs: Array = zd[2]
 		var zone: Area3D
-		if i == 6:  # the Boston fern: the watering-tradition line advances to a follow-up on re-inspection
-			zone = _make_exploration_sequence_zone(parent, zone_pos, "Plant7Zone",
-				[line_key, "peris.sim_expand.plant_7.line_repeat"], 1.0, 0.6)
+		if idxs == [7]:  # the fern: the watering-tradition line advances to a follow-up on re-inspection
+			zone = _make_exploration_sequence_zone(parent, zd[1] as Vector3, str(zd[0]),
+				["peris.sim_expand.plant_7.line", "peris.sim_expand.plant_7.line_repeat"], 1.0, 0.6)
+		elif idxs.size() == 1:
+			zone = _make_exploration_zone(parent, zd[1] as Vector3, str(zd[0]),
+				"peris.sim_expand.plant_%d.line" % int(idxs[0]), 1.0, 0.6)
 		else:
-			zone = _make_exploration_zone(parent, zone_pos,
-				"Plant%dZone" % (i + 1),
-				line_key,
-				1.0, 0.6)  # re-inspectable by default: re-clicking a plant replays Peris's line
-		var target := _outline_object_meshes(parent, "Plant%dOutline" % (i + 1),
-			_collect_mesh_instances(plant_node), "peris_plant_%d" % (i + 1), 0.7)
-		_set_room_target_interaction_delegate(target, zone)
+			var keys: Array = []
+			for pi in idxs:
+				keys.append("peris.sim_expand.plant_%d.line" % int(pi))
+			zone = _make_exploration_sequence_zone(parent, zd[1] as Vector3, str(zd[0]), keys, 1.0, 0.6)
+		_exploration_interactables.append(zone)
+		for pi2 in idxs:
+			_set_room_target_interaction_delegate(plant_targets[int(pi2) - 1], zone)
 
 ## The watering can is a REAL item (spawn_item + pick_up_item), not a flag: the beat teaches the
 ## hand-slot inventory. The dry fern's water spot only accepts a character actually HOLDING it.
@@ -929,17 +978,18 @@ func _build_watering_beat(parent: Node3D) -> void:
 	_can_pickup_interactable = _create_interactable(parent, WATERING_CAN_POS, "WateringCanPickup",
 		1.8, 0.7, "PICK UP", false)
 	_can_pickup_interactable.interacted.connect(_on_watering_can_picked)
+	_exploration_interactables.append(_can_pickup_interactable)
 	var can_target := _outline_object_meshes(parent, "WateringCanOutline",
 		_collect_mesh_instances(_watering_can_mesh), "watering_can", 0.5)
 	_set_room_target_interaction_delegate(can_target, _can_pickup_interactable)
-	# Tutorial labels show right away (like Aster's objects): the PICK UP prompt sits over the can
-	# from the start, not only once Peris is near it.
-	_can_pickup_interactable.call_deferred("show_tutorial_label")
+	# The PICK UP prompt shows when the workspace step arms the room (the can exists from the
+	# first frame, but the intro fade is not the time to advertise it).
 
 	# The water spot sits ON the fern (Plant7).
 	_water_plant_interactable = _create_interactable(parent, FERN_POS, "WaterPlantSpot",
 		1.8, 0.9, "WATER", false)
 	_water_plant_interactable.interacted.connect(_on_plant_watered)
+	_exploration_interactables.append(_water_plant_interactable)
 
 func _on_watering_can_picked() -> void:
 	if _watering_can_item_id == "" or _plant_watered:
@@ -1000,6 +1050,7 @@ func _build_peris_painting(parent: Node3D) -> void:
 		"PaintingZone",
 		"peris.sim_expand.painting.line",
 		1.3, 0.6)
+	_exploration_interactables.append(zone)
 	var target := _outline_object_meshes(parent, "PaintingOutline",
 		[frame, canvas], "peris_painting", 0.95)
 	_set_room_target_interaction_delegate(target, zone)
@@ -1024,6 +1075,7 @@ func _build_peris_wellness_feed(parent: Node3D) -> void:
 		"WellnessZone",
 		"peris.sim_expand.wellness.line",
 		1.0, 0.6)
+	_exploration_interactables.append(zone)
 	var target := _outline_object_meshes(parent, "WellnessOutline",
 		[screen], "peris_wellness", 0.8)
 	_set_room_target_interaction_delegate(target, zone)
@@ -1056,6 +1108,7 @@ func _build_peris_strike_warning(parent: Node3D) -> void:
 		"StrikeWarningZone",
 		"",
 		1.0, 0.8)  # re-inspectable: re-opening the warning replays the document + Peris's line
+	_exploration_interactables.append(area)
 	area.connect("interacted", func():
 		_play_focused_dialogue_keys([
 			"peris.sim_expand.strike_warning.notification",
@@ -1095,6 +1148,7 @@ func _build_peris_logbook_gate(parent: Node3D) -> void:
 		"Continue", false, Interactable.InteractableType.HOLD_ACTION, "peris.logbook_gate")
 	gate.connect("interacted", _on_exploration_gate_interacted)
 	_explore_logbook_gate = gate
+	_exploration_interactables.append(gate)
 	var target := _outline_object_meshes(parent, "LogbookOutline",
 		[console, screen], "peris_logbook", 1.0)
 	_set_room_target_interaction_delegate(target, gate)
