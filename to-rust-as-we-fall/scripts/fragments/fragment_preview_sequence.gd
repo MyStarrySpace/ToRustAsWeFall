@@ -29,6 +29,8 @@ const CREATURE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/creature_pr
 const ARCHITECTURE_SHOWCASE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/architecture_showcase.tscn")
 const GEOMETRY_LAB_CHUNK_SCENE := preload("res://scenes/fragments/chunks/geometry_lab.tscn")
 const SET_PIECE_SHOWCASE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/set_piece_showcase_chunk.tscn")
+const BOSS_SHOWCASE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/boss_showcase_chunk.tscn")
+const AGHORA_BAZAAR_CHUNK_SCENE := preload("res://scenes/fragments/chunks/aghora_bazaar_chunk.tscn")
 const SightMaskBakerScript := preload("res://scripts/game/world/sight_mask_baker.gd")
 
 # chunk name -> packed scene. The single lookup that replaced the old per-name match (and the reason
@@ -58,6 +60,8 @@ const CHUNK_SCENES := {
 	"architecture_showcase": ARCHITECTURE_SHOWCASE_CHUNK_SCENE,
 	"geometry_lab": GEOMETRY_LAB_CHUNK_SCENE,
 	"set_piece_showcase": SET_PIECE_SHOWCASE_CHUNK_SCENE,
+	"boss_showcase": BOSS_SHOWCASE_CHUNK_SCENE,
+	"aghora_bazaar": AGHORA_BAZAAR_CHUNK_SCENE,
 }
 
 # The fragment menu, ordered along the combine-characters learning ramp (its `stage` ascending). Each
@@ -143,6 +147,15 @@ const PREVIEW_ENTRIES := [
 	# iteration surface — walk the row, N reseeds. Overlays OFF by default (it's a look-dev gallery).
 	{"id": "architecture_showcase", "chunk": "architecture_showcase", "title": "Architecture Showcase (district heroes)", "stage": 6,
 		"config": {"seed": 0, "overlays": {"aster": false, "peris": false, "endo": false}}},
+	# THE AGHORA: the counterfeit agora's bazaar canyon — seed-varied stacks walling a market lane,
+	# the Exchange at its head, banner lines + stalls + the magenta neon. N reseeds the stacks.
+	{"id": "aghora_bazaar", "chunk": "aghora_bazaar", "title": "The Aghora (bazaar canyon)", "stage": 6,
+		"config": {"seed": 0, "overlays": {"aster": false, "peris": false, "endo": false}}},
+	# BOSS PIECES: the two mega-landmark boss encounters (GDD 11) — Loca's Watchtower on its crag
+	# with the switchback approach, and the Paranucleus's turning ophanim wheels over the engulfed
+	# NUTECH facility. N reseeds both.
+	{"id": "boss_showcase", "chunk": "boss_showcase", "title": "Boss Pieces (Watchtower + Paranucleus)", "stage": 6,
+		"config": {"seed": 0, "overlays": {"aster": false, "peris": false, "endo": false}}},
 ]
 
 ## The menu entry for an id (or {} if none).
@@ -211,7 +224,7 @@ const STAMINA_REGEN := 10.0
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
 @export_enum("stacks", "rings", "lockout", "mother_flure", "survival_range",
 	"endo_junction_stretch", "generated_stretch",
-	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "architecture_showcase", "geometry_lab", "set_piece_showcase") var preview_chunk := "stacks"
+	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "architecture_showcase", "geometry_lab", "set_piece_showcase", "boss_showcase", "aghora_bazaar") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 

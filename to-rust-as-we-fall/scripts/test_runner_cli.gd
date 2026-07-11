@@ -4482,6 +4482,76 @@ func _test_building_survey() -> void:
 	_assert_true(str(Survey.from_spec(Base.generate("aghora_stack", 1)).summary()) != str(Survey.from_spec(Base.generate("aghora_stack", 2)).summary()),
 		"the aghora stack actually VARIES between seeds")
 
+	# --- Loca's Watchtower (GDD 11.1, the Act 1 boss landmark): the crust declares its crossings;
+	# the cage floor rim carries the observation-deck bridge docks; every detail family builds ---
+	var lwk: Dictionary = Base.generate("locas_watchtower")
+	var svlw = Survey.from_spec(lwk)
+	var tangle_declared := false
+	for r_lw in (svlw.reservations as Array):
+		var rlw := r_lw as Dictionary
+		if str(rlw.get("id", "")) == "tangle_0" and (rlw.get("keeps_clear", []) as Array).has("cage"):
+			tangle_declared = true
+	_assert_true(tangle_declared, "the containment tangles declare their cage crossing")
+	var lw_bridges := 0
+	var lw_balc := 0
+	for s_lw in (svlw.sockets as Array):
+		var slw := s_lw as Dictionary
+		if str(slw.get("kind", "")) == "bridge" and absf((slw["pos"] as Vector3).y - float(svlw.datums["eave"])) < 0.1:
+			lw_bridges += 1
+		if str(slw.get("kind", "")) == "balcony":
+			lw_balc += 1
+	_assert_true(lw_bridges >= 4, "the cage floor rim carries the observation-deck bridge docks (%d)" % lw_bridges)
+	_assert_true(lw_balc >= 4, "the tier setback ledges carry balcony slots (%d)" % lw_balc)
+	var lwdet: Dictionary = Base.watchtower_details(lwk)
+	for bucket_lw in ["stone", "dark", "blue", "tips", "rust", "core"]:
+		var blw = lwdet.get(bucket_lw)
+		_assert_true(blw != null and (blw as ArrayMesh).get_surface_count() > 0,
+			"watchtower details build the %s pass" % bucket_lw)
+	_assert_true(str(Survey.from_spec(Base.generate("locas_watchtower", 1)).summary()) != str(Survey.from_spec(Base.generate("locas_watchtower", 2)).summary()),
+		"the watchtower actually VARIES between seeds")
+
+	# --- The Paranucleus (GDD 11.2, the Act 2 boss): not a district building — its ring table is
+	# the measured drawing and ParanucleusBuilder.validate() is the reconcile pass. The nesting
+	# chain must clear at EVERY wheel alignment; facility contacts must be DECLARED engulfment. ---
+	var Para := load("res://scripts/generation/paranucleus_builder.gd") as GDScript
+	var para_ok := true
+	for p_seed in [0, 1, 2, 3, 7, 11]:
+		var pspec: Dictionary = Para.generate(p_seed)
+		for pp in (Para.validate(pspec) as Array):
+			para_ok = false
+			print("    [paranucleus seed %d] %s" % [p_seed, pp])
+	_assert_true(para_ok, "EVERY seeded Paranucleus variant validates (nesting + ground + declared engulfment)")
+	var pspec0: Dictionary = Para.generate(0)
+	var prows: Array = pspec0["rings"]
+	var chain_ok := true
+	for pk in range(prows.size() - 1):
+		var pa := prows[pk] as Array
+		var pbr := prows[pk + 1] as Array
+		if (float(pbr[0]) + float(pbr[1])) > (float(pa[0]) - float(pa[1]) - float(pa[2])) - 0.014:
+			chain_ok = false
+	_assert_true(chain_ok, "the ring table's nesting chain clears at every alignment (teeth included)")
+	var pbuilt: Dictionary = Para.build(pspec0)
+	_assert_equals((pbuilt["rings"] as Array).size(), prows.size(), "one wheel mesh per surveyed ring")
+	var wheels_ok := true
+	for r_pv in (pbuilt["rings"] as Array):
+		var rpd := r_pv as Dictionary
+		if (rpd["bone"] as ArrayMesh).get_surface_count() == 0 or (rpd["lav"] as ArrayMesh).get_surface_count() == 0:
+			wheels_ok = false
+	_assert_true(wheels_ok, "every wheel builds its bone + lavender passes")
+	for pb2 in ["core", "nutech", "dark", "signs"]:
+		var pm = pbuilt.get(pb2)
+		_assert_true(pm != null and (pm as ArrayMesh).get_surface_count() > 0,
+			"the paranucleus builds the %s pass" % pb2)
+	_assert_true((pbuilt["sign_positions"] as Array).size() >= 2, "the facility keeps legible NUTECH boards")
+	_assert_equals(str(Para.generate(3)), str(Para.generate(3)), "a seeded paranucleus is deterministic")
+	_assert_true(str(Para.generate(1)) != str(Para.generate(2)), "the paranucleus actually VARIES between seeds")
+	# the validator BITES: undeclare the engulfment and the same drawing must go loud
+	var tampered: Dictionary = Para.generate(0)
+	for bx_t in ((tampered["base"] as Dictionary)["boxes"] as Array):
+		(bx_t as Dictionary)["engulfed"] = false
+	(tampered["base"] as Dictionary)["engulf_platform"] = false
+	_assert_true((Para.validate(tampered) as Array).size() > 0, "an undeclared ring-through-facility contact goes LOUD")
+
 	# --- PARAMETRIC VARIATION (the buildings are TYPES): every seeded variant must survey clean —
 	# the roller re-reconciles dependent values, and THIS sweep is the proof no roll collides.
 	# Seed 0 is the canonical plate specimen; other seeds roll plate-plausible variants. ---
