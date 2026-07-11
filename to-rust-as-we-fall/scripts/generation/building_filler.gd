@@ -333,7 +333,18 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 
 # --- LANDMARKS: BaseShapeBuilder heroes whose gameplay anchors the level consumes ------------------
 
-const LANDMARK_KINDS := ["bulwark_wharf", "tiered_terrace"]   # box-based, both fit 3x3-cell lots
+## The landmark pool: each kind declares the LOT SIDE it needs (cells at cs=1.5). The rebuilt
+## districts joined the pool — survey-built, parametric, with playable anchors (crumble traps,
+## balcony flora, walkable lane docks). Cleanstreets' 11 m pavilion needs bespoke lots (later).
+## Elevated overhangs (hypelines arm decks at the 4.0 m level plane) are street-legal; ground
+## overhang stays within ~0.15 m of the lot rim by these sizings.
+const LANDMARK_KINDS := {
+	"bulwark_wharf": 3, "tiered_terrace": 3, "plumbing_power": 3,
+	# hypelines' ground lobes poke ~0.25 m past a 3-cell lot rim and its arm decks fly at the
+	# legal 4.0 m plane; ancourage's overhang is the ELEVATED brim (its roots are ground clutter
+	# by design). greenfields has solid street-level walls, so it genuinely needs a 4-cell lot.
+	"ancourage": 3, "greenfields": 4, "hypelines": 3,
+}
 const BRIDGE_MIN_SPAN := 3.0
 const BRIDGE_MAX_SPAN := 16.0
 const BRIDGE_LEVEL_TOL := 1.4    # a socket may sit this far off a level plane and still snap to it
@@ -370,7 +381,7 @@ static func _plan_landmarks(seed_value: int, lots: Array, walk: Dictionary, orig
 			best_score = score
 			second = int(ci)
 	var picks: Array = [first] if second < 0 else [first, second]
-	var kind0 := str(LANDMARK_KINDS[_ri(rng, 0, LANDMARK_KINDS.size() - 1)])
+	var prev_kind := ""
 	for pi in range(picks.size()):
 		var li2 := int(picks[pi])
 		out["consumed"][li2] = true
@@ -378,8 +389,17 @@ static func _plan_landmarks(seed_value: int, lots: Array, walk: Dictionary, orig
 		var lc: Vector2i = lot2["cell"]
 		var gx := int(lot2["gx"])
 		var gz := int(lot2["gz"])
-		var kind := kind0 if pi == 0 else str(LANDMARK_KINDS[(LANDMARK_KINDS.find(kind0) + 1) % LANDMARK_KINDS.size()])
-		var spec: Dictionary = BaseShapeBuilder.generate(kind, _ri(rng, 1, 999983))
+		# kinds that FIT this lot (and differ from the pair's first pick, for variety)
+		var fits: Array = []
+		for kk in LANDMARK_KINDS.keys():
+			if int(LANDMARK_KINDS[kk]) <= mini(gx, gz) and str(kk) != prev_kind:
+				fits.append(kk)
+		if fits.is_empty():
+			fits = ["bulwark_wharf"]
+		var kind := str(fits[_ri(rng, 0, fits.size() - 1)])
+		prev_kind = kind
+		var spec_seed := _ri(rng, 1, 999983)
+		var spec: Dictionary = BaseShapeBuilder.generate(kind, spec_seed)
 		var anchors: Dictionary = BuildingSurvey.from_spec(spec).anchors()
 		var sdir := _street_dir(lc, gx, gz, walk, w, h)
 		var yaw := atan2(float(sdir.x), float(sdir.y))   # rotate the spec's +Z (main door) onto the street
@@ -428,11 +448,21 @@ static func _plan_landmarks(seed_value: int, lots: Array, walk: Dictionary, orig
 			if not lplan.is_empty():
 				_emit_lane_stub(frag, lplan)
 		(out["landmarks"] as Array).append({"kind": kind, "pos": [pos.x, pos.y, pos.z], "yaw": yaw,
+			"spec_seed": spec_seed,
 			"street": [sdir.x, sdir.y], "door_cell": [door_cell.x, door_cell.y], "approach": approach,
 			"sockets": socks, "lanes": lanes})
-		# the FIRST landmark also spends one structural WEAK POINT as a playable crumble trap: the
-		# pry point at the wall foot, the kill zone on the ground in front of the face
-		if pi == 0:
+		# BALCONY slots grow flora: seeded glowing plants on the tier ledges — the building is
+		# level dressing and a light source, not scenery (the plants ride the survey's sockets)
+		for a4 in (anchors.get("balcony_slots", []) as Array):
+			var bd := a4 as Dictionary
+			if _rf(rng) > 0.6:
+				continue
+			var fw := pos + basis * (bd["pos"] as Vector3)
+			frag.objects.append({"type": "flora_light", "pos": fw,
+				"opts": {"radius": 2.6, "energy": 1.1}})
+		# EVERY landmark spends one structural WEAK POINT as a playable crumble trap: the pry
+		# point at the wall foot, the kill zone on the ground in front of the face
+		if not (anchors.get("weak_points", []) as Array).is_empty():
 			var wps := anchors.get("weak_points", []) as Array
 			if not wps.is_empty():
 				var wp := wps[_ri(rng, 0, wps.size() - 1)] as Dictionary

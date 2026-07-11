@@ -3212,17 +3212,20 @@ func _test_shape_grammar() -> void:
 		var det = Grammar.generate(int(lm_frag.params.get("grammar_seed", 1)))
 		_assert_equals(str(det.params.get("landmark_buildings", [])), str(lm_frag.params.get("landmark_buildings", [])),
 			"landmark placement is deterministic")
-		# the first landmark spends a WEAK POINT as a playable crumble trap (data present + sane)
-		var ww_found: Dictionary = {}
+		# EVERY landmark spends a WEAK POINT as a playable crumble trap (data present + sane)
+		var ww_all: Array = []
 		for ob2 in lm_frag.objects:
 			if str((ob2 as Dictionary).get("type", "")) == "weak_wall":
-				ww_found = ob2 as Dictionary
-		_assert_true(not ww_found.is_empty(), "the landmark emits a weak_wall crumble trap")
-		if not ww_found.is_empty():
-			var wl0 := (lm_frag.params.get("landmark_buildings", []) as Array)[0] as Dictionary
-			var wlp := Vector3(float((wl0["pos"] as Array)[0]), 0.0, float((wl0["pos"] as Array)[2]))
-			_assert_true((ww_found["pos"] as Vector3).distance_to(wlp) < 6.0,
-				"the weak_wall sits on its landmark")
+				ww_all.append(ob2 as Dictionary)
+		var lm_list := lm_frag.params.get("landmark_buildings", []) as Array
+		_assert_equals(ww_all.size(), lm_list.size(), "one weak_wall crumble trap per landmark")
+		for wwf in ww_all:
+			var nearest := INF
+			for wl in lm_list:
+				var wlp := Vector3(float(((wl as Dictionary)["pos"] as Array)[0]), 0.0,
+					float(((wl as Dictionary)["pos"] as Array)[2]))
+				nearest = minf(nearest, ((wwf as Dictionary)["pos"] as Vector3).distance_to(wlp))
+			_assert_true(nearest < 6.0, "each weak_wall sits on its own landmark (%.1f)" % nearest)
 		# when the pair bridges: the deck cells are level-allowed and both ladder links traverse
 		var bridges: Array = lm_frag.params.get("landmark_bridges", [])
 		if not bridges.is_empty():
@@ -3262,11 +3265,13 @@ func _test_shape_grammar() -> void:
 			var rubble = chunk.find_child("WeakWallRubble0", true, false)
 			var gs3 = chunk._get_game_state()
 			# park a pack member inside the kill zone, then pry
+			# the FIRST weak_wall in the fragment = WeakWall0 (spawn order); park the victim in ITS zone
 			var wwd: Dictionary = {}
 			var f4 = Grammar.generate(trap_seed)
 			for ob4 in f4.objects:
 				if str((ob4 as Dictionary).get("type", "")) == "weak_wall":
 					wwd = ob4 as Dictionary
+					break
 			var kc := ((wwd["kill_min"] as Vector3) + (wwd["kill_max"] as Vector3)) * 0.5
 			gs3.snap_character_to("gnawer_0", Vector3(kc.x, 0.0, kc.z))
 			ww._trigger()
@@ -3398,6 +3403,46 @@ func _test_building_filler() -> void:
 	var built_b = Grammar.generate(7)
 	_assert_equals(str(built.walls), str(built_b.walls), "same seed -> identical architecture boxes")
 	_assert_equals(str(built.lights), str(built_b.lights), "same seed -> identical lamp light pools")
+
+	# --- the buildings are PART OF THE LEVEL: each landmark is a seeded VARIANT whose anchors are
+	# playable — a crumble trap per landmark, flora on the balcony ledges, lanes/bridges dock ---
+	var lms := built.params.get("landmark_buildings", []) as Array
+	var ww := 0
+	var flora_hi := 0
+	for ob in (built.objects as Array):
+		var od := ob as Dictionary
+		if str(od.get("type", "")) == "weak_wall":
+			ww += 1
+		if str(od.get("type", "")) == "flora_light" and (od.get("pos", Vector3.ZERO) as Vector3).y > 1.0:
+			flora_hi += 1
+	if not lms.is_empty():
+		for lme in lms:
+			_assert_true(int((lme as Dictionary).get("spec_seed", 0)) != 0,
+				"a landmark records the seeded VARIANT it was surveyed as (visual == sockets)")
+		_assert_equals(ww, lms.size(), "EVERY landmark spends one weak point as a playable crumble trap")
+	_assert_true(built.objects.size() == built_b.objects.size(),
+		"landmark objects (traps + flora) are seed-deterministic (%d)" % built.objects.size())
+	print("    [filler] %d landmarks, %d crumble walls, %d elevated flora lights" % [lms.size(), ww, flora_hi])
+
+	# --- the POOL: generated levels place the REBUILT districts as landmarks, sized to their lots,
+	# and a hypelines landmark DOCKS its walkable lane decks into the grid (level cells + ladders)
+	var pool_kinds := {}
+	var lane_docked := false
+	for ps in range(1, 41):
+		var pf = Grammar.generate(ps)
+		for plm in (pf.params.get("landmark_buildings", []) as Array):
+			pool_kinds[str((plm as Dictionary)["kind"])] = true
+			if str((plm as Dictionary)["kind"]) == "hypelines" 					and not (pf.grid.get("links", []) as Array).is_empty():
+				lane_docked = true
+	print("    [filler] landmark kinds across 40 seeds: %s" % str(pool_kinds.keys()))
+	_assert_true(pool_kinds.size() >= 4, "the landmark pool spreads across kinds (%d)" % pool_kinds.size())
+	var rebuilt := 0
+	for rk in ["plumbing_power", "hypelines", "greenfields", "ancourage"]:
+		if pool_kinds.has(str(rk)):
+			rebuilt += 1
+	_assert_true(rebuilt >= 2, "rebuilt districts appear as level landmarks (%d kinds)" % rebuilt)
+	if pool_kinds.has("hypelines"):
+		_assert_true(lane_docked, "a hypelines landmark docks its lane decks (grid links)")
 	_assert_equals(str(built.params.get("lathe_buildings", [])), str(built_b.params.get("lathe_buildings", [])),
 		"same seed -> identical lathe tower plans")
 

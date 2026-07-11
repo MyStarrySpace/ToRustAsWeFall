@@ -171,11 +171,217 @@ func _commit_weak_wall(idx: int) -> void:
 	if rubble != null and is_instance_valid(rubble):
 		rubble.visible = true
 
+## ---- DISTRICT DETAIL RENDERERS (shared by the level loader and the architecture showcase;
+## the showcase chunk extends this class) ----
+
+## The plumbing detail passes (SURVEY REBUILD 1.1) — flume + ribs + fixtures grown from the survey.
+## Materials by family: construction metal keeps the building tint; wheels/pipes run rust; slit
+## panels and the sign face stay recessed-dark; water/cascade/terminal glow the terminal green.
+func _add_plumbing_details(root: Node3D, spec: Dictionary) -> void:
+	var built: Dictionary = BaseShapeBuilder.plumbing_details(spec)
+	_add_lattice_mesh(root, "PlumbBody", built.get("body"),
+		_tinted_tile_material(str(spec.get("tile", "facility_metal")), spec.get("color", Color(0.24, 0.35, 0.32))))
+	var rust := StandardMaterial3D.new()
+	rust.albedo_color = Color(0.40, 0.25, 0.16)
+	rust.roughness = 0.88
+	rust.metallic = 0.25
+	_add_lattice_mesh(root, "PlumbRust", built.get("rust"), rust)
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.05, 0.06, 0.06)
+	dark.roughness = 0.94
+	_add_lattice_mesh(root, "PlumbDark", built.get("dark"), dark)
+	var glow := StandardMaterial3D.new()
+	glow.albedo_color = Color(0.16, 0.42, 0.26)
+	glow.emission_enabled = true
+	glow.emission = Color(0.36, 0.91, 0.50)   # terminal green — the world's ONLY standard emissive
+	glow.emission_energy_multiplier = 2.4
+	_add_lattice_mesh(root, "PlumbGlow", built.get("glow"), glow)
+	var rail := _railing_material()
+	rail.albedo_color = Color(0.52, 0.40, 0.30)   # rusted mesh railing along the flume rims
+	_add_lattice_mesh(root, "PlumbRails", built.get("rails"), rail)
+	# the title label rides the PHYSICAL sign board (the plate's framed plate, not floating text)
+	var lbl := root.get_node_or_null("Nameplate")
+	if lbl != null and built.has("nameplate_pos"):
+		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
+
+## The hypelines detail passes (SURVEY REBUILD 1.2): the six arms with the walkable lane decks,
+## trestles, valve wheel, sign stack, toll-gate arch, ramp, pores and mast — from the survey.
+## The two flanking entry lamps are the plate's only WARM accents (amber where the plate demands).
+func _add_hypelines_details(root: Node3D, spec: Dictionary) -> void:
+	var built: Dictionary = BaseShapeBuilder.hypelines_details(spec)
+	_add_lattice_mesh(root, "HypeBody", built.get("body"),
+		_tinted_tile_material(str(spec.get("tile", "facility_metal")), spec.get("color", Color(0.26, 0.33, 0.29))))
+	var rust := StandardMaterial3D.new()
+	rust.albedo_color = Color(0.40, 0.25, 0.16)
+	rust.roughness = 0.88
+	rust.metallic = 0.25
+	_add_lattice_mesh(root, "HypeRust", built.get("rust"), rust)
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.07, 0.09, 0.08)
+	dark.roughness = 0.94
+	_add_lattice_mesh(root, "HypeDark", built.get("dark"), dark)
+	var glow := StandardMaterial3D.new()
+	glow.albedo_color = Color(0.16, 0.42, 0.26)
+	glow.emission_enabled = true
+	glow.emission = Color(0.36, 0.91, 0.50)   # terminal green — the world's ONLY standard emissive
+	glow.emission_energy_multiplier = 2.4
+	_add_lattice_mesh(root, "HypeGlow", built.get("glow"), glow)
+	var warm := StandardMaterial3D.new()
+	warm.albedo_color = Color(0.45, 0.33, 0.18)
+	warm.emission_enabled = true
+	warm.emission = Color(0.95, 0.64, 0.32)
+	warm.emission_energy_multiplier = 1.4
+	_add_lattice_mesh(root, "HypeWarm", built.get("warm"), warm)
+	var rail := _railing_material()
+	rail.albedo_color = Color(0.52, 0.40, 0.30)
+	_add_lattice_mesh(root, "HypeRails", built.get("rails"), rail)
+	var lbl := root.get_node_or_null("Nameplate")
+	if lbl != null and built.has("nameplate_pos"):
+		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
+
+## The cleanstreets detail passes (SURVEY REBUILD 1.3): queue fins + spikes, placards, the toll
+## kiosk (its cyan cross/screen are the pavilion's only cool emissives — plate-demanded, like the
+## beacon enforcement door), the warm-gold vaulted underside, perforation clusters, the monolith.
+func _add_cleanstreets_details(root: Node3D, spec: Dictionary) -> void:
+	var built: Dictionary = BaseShapeBuilder.cleanstreets_details(spec)
+	_add_lattice_mesh(root, "CleanBody", built.get("body"),
+		_tinted_tile_material(str(spec.get("tile", "facility_metal")), spec.get("color", Color(0.45, 0.47, 0.42))))
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.16, 0.25, 0.22)   # desaturated verdigris panel fields
+	dark.roughness = 0.9
+	_add_lattice_mesh(root, "CleanPanels", built.get("dark"), dark)
+	var warm := StandardMaterial3D.new()
+	warm.albedo_color = Color(0.45, 0.33, 0.18)
+	warm.emission_enabled = true
+	warm.emission = Color(0.95, 0.64, 0.32)   # the gold under-canopy glow — the pavilion's main light
+	warm.emission_energy_multiplier = 1.8
+	_add_lattice_mesh(root, "CleanWarm", built.get("warm"), warm)
+	var cyan := StandardMaterial3D.new()
+	cyan.albedo_color = Color(0.10, 0.30, 0.34)
+	cyan.emission_enabled = true
+	cyan.emission = Color(0.25, 0.85, 0.95)   # the kiosk cross/screen — the sole cool accent
+	cyan.emission_energy_multiplier = 2.0
+	_add_lattice_mesh(root, "CleanCyan", built.get("cyan"), cyan)
+	var lbl := root.get_node_or_null("Nameplate")
+	if lbl != null and built.has("nameplate_pos"):
+		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
+
+## The greenfields BALCONIES pass (SURVEY REBUILD 1.4): wavy bone slab rings + railings + arcade +
+## amber windows + ribs + the teal-lit roof terrace, all on the survey's storey datums. Two-tone:
+## bone structure over the verdigris wall box; amber windows and warm sconces are plate-demanded.
+func _add_greenfields_details(root: Node3D, spec: Dictionary) -> void:
+	var built: Dictionary = BaseShapeBuilder.greenfields_details(spec)
+	_add_lattice_mesh(root, "GreenBone", built.get("bone"),
+		_tinted_tile_material(str(spec.get("tile", "facility_metal")), Color(0.81, 0.77, 0.65)))
+	var doorm := StandardMaterial3D.new()
+	doorm.albedo_color = Color(0.18, 0.29, 0.24)   # dark-green leaves + the sign field
+	doorm.roughness = 0.9
+	_add_lattice_mesh(root, "GreenDoors", built.get("door"), doorm)
+	var amber := StandardMaterial3D.new()
+	amber.albedo_color = Color(0.42, 0.30, 0.14)
+	amber.emission_enabled = true
+	amber.emission = Color(0.95, 0.72, 0.38)   # the warm window glow (plate-demanded amber)
+	amber.emission_energy_multiplier = 1.6
+	_add_lattice_mesh(root, "GreenWindows", built.get("amber"), amber)
+	var tealm := StandardMaterial3D.new()
+	tealm.albedo_color = Color(0.10, 0.32, 0.32)
+	tealm.emission_enabled = true
+	tealm.emission = Color(0.22, 0.90, 0.85)   # the roof-bud bioluminescence (plate accent)
+	tealm.emission_energy_multiplier = 2.2
+	_add_lattice_mesh(root, "GreenBuds", built.get("teal"), tealm)
+	var leafm := StandardMaterial3D.new()
+	leafm.albedo_color = Color(0.24, 0.42, 0.20)
+	leafm.roughness = 0.9
+	_add_lattice_mesh(root, "GreenLeaf", built.get("leaf"), leafm)
+	var warmm := StandardMaterial3D.new()
+	warmm.albedo_color = Color(0.45, 0.33, 0.18)
+	warmm.emission_enabled = true
+	warmm.emission = Color(0.95, 0.64, 0.32)
+	warmm.emission_energy_multiplier = 1.3
+	_add_lattice_mesh(root, "GreenSconces", built.get("warm"), warmm)
+	var rail := _railing_material()
+	rail.albedo_color = Color(0.80, 0.76, 0.64)   # bone double-rail balustrades
+	_add_lattice_mesh(root, "GreenRails", built.get("rails"), rail)
+	var lbl := root.get_node_or_null("Nameplate")
+	if lbl != null and built.has("nameplate_pos"):
+		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
+
+## The ancourage detail passes (SURVEY REBUILD 1.5): arch idiom + glass, placards, roses, louver,
+## valves, saddle stacks (the flame is the plate-demanded warm accent) and the oily root-fan.
+func _add_ancourage_details(root: Node3D, spec: Dictionary) -> void:
+	var built: Dictionary = BaseShapeBuilder.ancourage_details(spec)
+	_add_lattice_mesh(root, "AncBody", built.get("body"),
+		_tinted_tile_material(str(spec.get("tile", "facility_metal")), spec.get("color", Color(0.27, 0.36, 0.33))))
+	_add_lattice_mesh(root, "AncBone", built.get("bone"),
+		_tinted_tile_material("facility_metal", Color(0.80, 0.75, 0.62)))
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.06, 0.07, 0.06)   # boards, foil apertures, the oily roots
+	dark.roughness = 0.9
+	dark.metallic = 0.15
+	_add_lattice_mesh(root, "AncDark", built.get("dark"), dark)
+	var glow := StandardMaterial3D.new()
+	glow.albedo_color = Color(0.16, 0.42, 0.26)
+	glow.emission_enabled = true
+	glow.emission = Color(0.36, 0.91, 0.50)   # the arch glass + readout — terminal green
+	glow.emission_energy_multiplier = 2.6
+	_add_lattice_mesh(root, "AncGlow", built.get("glow"), glow)
+	var warm := StandardMaterial3D.new()
+	warm.albedo_color = Color(0.55, 0.30, 0.10)
+	warm.emission_enabled = true
+	warm.emission = Color(1.0, 0.55, 0.15)   # the flare-stack FLAME (plate-demanded)
+	warm.emission_energy_multiplier = 3.0
+	_add_lattice_mesh(root, "AncFlame", built.get("warm"), warm)
+	var rust := StandardMaterial3D.new()
+	rust.albedo_color = Color(0.40, 0.25, 0.16)
+	rust.roughness = 0.88
+	rust.metallic = 0.25
+	_add_lattice_mesh(root, "AncRust", built.get("rust"), rust)
+	var lbl := root.get_node_or_null("Nameplate")
+	if lbl != null and built.has("nameplate_pos"):
+		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
+
+## The pixel-art railing tile (alpha-scissor) — one post + top & bottom rails, the rest transparent;
+## tiled across a card it reads as evenly-spaced balusters. FILTER_NEAREST keeps it crisp.
+func _railing_material() -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = _railing_texture()
+	m.albedo_color = Color(0.86, 0.82, 0.70)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	m.alpha_scissor_threshold = 0.5
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	m.roughness = 0.85
+	return m
+
+func _railing_texture() -> ImageTexture:
+	var tw := 12
+	var th := 24
+	var img := Image.create(tw, th, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0.0, 0.0, 0.0, 0.0))
+	var bar := Color(0.90, 0.86, 0.72, 1.0)
+	for x in range(tw):
+		img.set_pixel(x, 0, bar); img.set_pixel(x, 1, bar); img.set_pixel(x, 2, bar)
+		img.set_pixel(x, th - 3, bar); img.set_pixel(x, th - 2, bar); img.set_pixel(x, th - 1, bar)
+	for x in range(1, 4):
+		for y in range(3, th - 3):
+			img.set_pixel(x, y, bar)
+	return ImageTexture.create_from_image(img)
+
+func _add_lattice_mesh(root: Node3D, mesh_name: String, mesh, mat: Material) -> void:
+	if mesh == null or (mesh as ArrayMesh).get_surface_count() == 0:
+		return
+	var mi := MeshInstance3D.new()
+	mi.name = mesh_name
+	mi.mesh = mesh
+	mi.material_override = mat
+	root.add_child(mi)
+
 func _spawn_landmark_building(lm: Dictionary) -> void:
 	var kind := str(lm.get("kind", ""))
 	if not BaseShapeBuilder.SPECS.has(kind):
 		return
-	var spec: Dictionary = BaseShapeBuilder.generate(kind)
+	# the SAME seeded variant the filler surveyed (anchors/lanes came from it — the visual must match)
+	var spec: Dictionary = BaseShapeBuilder.generate(kind, int(lm.get("spec_seed", 0)))
 	var ent: Dictionary = LatticeBuilder.entrances(spec)
 	var root := Node3D.new()
 	root.name = "Landmark_%s" % kind
@@ -254,6 +460,19 @@ func _spawn_landmark_building(lm: Dictionary) -> void:
 				mi2.mesh = mm
 				mi2.material_override = (pair as Array)[1] if (pair as Array)[1] != null else _tinted_tile_material("facility_metal", Color(0.72, 0.69, 0.58))
 				root.add_child(mi2)
+	# the district's survey-driven detail passes (flumes, arms, canopies, balconies, roots...):
+	# the landmark is a PLAYABLE piece of the level, not a bald massing
+	match str(spec.get("composite", "")):
+		"plumbing_lobed":
+			_add_plumbing_details(root, spec)
+		"hypelines_mound":
+			_add_hypelines_details(root, spec)
+		"canopy_piers":
+			_add_cleanstreets_details(root, spec)
+		"greenfields_stack":
+			_add_greenfields_details(root, spec)
+		"ancourage_domes":
+			_add_ancourage_details(root, spec)
 
 func _spawn_lathe_building(lp: Dictionary) -> void:
 	var profile: Dictionary = LatheBuilderScript.make_profile(lp)
