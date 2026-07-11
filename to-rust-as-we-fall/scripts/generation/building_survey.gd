@@ -267,6 +267,40 @@ const BEACON := {
 	"ribs": {"pairs": true, "r": 0.045},                   # doubled bone ribs wrap the bays
 }
 
+## THE BULWARK WHARF SURVEY — measured off the plate (reference-images/architecture/
+## bulwark_wharf.png, decomposed 2026-07-11). The barrier-maintenance GATEHOUSE: a squat box to the
+## eave (0.86H) with FOUR corner towers grown from the box's own corners (splay foot / banded shaft
+## / turret bulge / cap cone to the crown = H). The upper front is the FRAMED MEMBRANE — an
+## ogee-crested frame holding a purple voronoi web, pierced by the ROSE APERTURE (0.28W, left of
+## centre) and four pore portholes; rust WEEPS from the rose down over the sign band. Ground band:
+## chamfered vault-door surround (wheel hub), green indicator left, pore-clamp readout + console
+## kiosk right (all terminal green). Barrier WINGS run from both flanks on sagging posts.
+## All values are FRACTIONS of the spec height H unless a key says metres.
+const BULWARK := {
+	# the corner tower loft [y, r] fractions of H: splay foot / shaft / turret bulge / cap cone
+	"tower": {"r": 0.090, "rings": [
+			[0.000, 0.122], [0.095, 0.100], [0.860, 0.090],
+			[0.885, 0.108], [0.935, 0.108], [0.975, 0.055], [1.000, 0.012],
+		], "collars": [0.25, 0.50, 0.75]},
+	# the membrane frame: sagging bottom rail at y0, ogee crest rising to apex over the eave
+	"frame": {"half_w": 0.346, "y0": 0.588, "y1": 0.856, "apex": 0.980, "rail_r": 0.016,
+		"cupola": true},
+	"rose": {"x": -0.0865, "y": 0.740, "r": 0.1115, "spokes": 8},
+	# pore portholes [x, y, r] (4th entry 1 = the four-lobed wheel pore)
+	"pores": [[-0.269, 0.658, 0.0327], [-0.269, 0.779, 0.0327],
+		[0.246, 0.792, 0.0423, 1], [0.250, 0.673, 0.0365]],
+	"weep": {"x": -0.0865, "half_w": 0.0346, "y0": 0.500, "y1": 0.623},
+	"sign": {"half_w": 0.250, "y0": 0.465, "y1": 0.573},
+	"readout": {"x": 0.319, "half_w": 0.0577, "y0": 0.375, "y1": 0.504},
+	"indicator": {"x": -0.298, "half_w": 0.0288, "y0": 0.298, "y1": 0.356},
+	"kiosk": {"x": 0.250, "half_w": 0.0481, "y1": 0.260},
+	# the barrier wings: posts + sagging membrane bays off both flanks (lateral = rear-ward)
+	"wing": {"lateral": -0.154, "attach_half_w": 0.0673, "bays": 3, "bay_len": 0.295,
+		"panel_h": 0.721, "sag": 0.075, "post_r": 0.020},
+	# the vault-door idiom (chamfered octagon surround + wheel hub); the generic stone is off
+	"door": {"surround_half_w": 0.183, "surround_top": 0.442, "chamfer": 0.068, "hub_r": 0.058},
+}
+
 ## Authored storey plans (ground band + floor count between plinth and eave), per building kind.
 ## Numbers trace to the plate decompositions; buildings without an entry get equal DEFAULT_STOREY
 ## bands. greenfields' ground/storey split is ALSO the slab-ring datum table the massing builds on.
@@ -309,6 +343,8 @@ static func table_for(spec_in: Dictionary, name: String) -> Dictionary:
 			base = ANCOURAGE
 		"beacon":
 			base = BEACON
+		"bulwark":
+			base = BULWARK
 	var out := base.duplicate(true)
 	var over: Dictionary = (spec_in.get("vars", {}) as Dictionary).get(name, {})
 	for k in over.keys():
@@ -435,6 +471,24 @@ static func roll_vars(kind_in: String, seed_value: int) -> Dictionary:
 			if float(rng.call("randf")) < 0.3:
 				bc["oculi"] = [[0.22, 0.815], [-0.22, 0.815]]   # a plainer dome on some instances
 			out["beacon"] = bc
+		"bulwark_wharf":
+			var s7 := lerpf(0.95, 1.06, float(rng.call("randf")))
+			(out["spec"] as Dictionary)["size"] = Vector3(4.6, 5.2, 3.4) * s7
+			# the door scales with the box so the vault surround keeps wrapping it
+			(out["spec"] as Dictionary)["entrances"] = {"main_w": 1.15 * s7, "main_h": 2.0 * s7,
+				"side_count_min": 0, "side_count_max": 0, "canopy_out": 0.0,
+				"reserve_margin": 0.18, "main_surround": false}
+			# RECONCILED IN THE ROLLER: rose x >= -0.10 keeps its rim clear of the left pores;
+			# r <= 0.112 keeps its crown under the frame band top (0.856)
+			var bw := {"rose": {"x": lerpf(-0.10, -0.04, float(rng.call("randf"))),
+					"r": lerpf(0.100, 0.112, float(rng.call("randf")))},
+				"wing": {"bays": int(rng.call("randi_range", 2, 3))},
+				"sign": {"half_w": lerpf(0.225, 0.252, float(rng.call("randf")))},   # <= readout x0 0.261
+				"frame": {"cupola": float(rng.call("randf")) < 0.7}}
+			if float(rng.call("randf")) < 0.3:
+				bw["pores"] = [[-0.269, 0.658, 0.0327], [0.246, 0.792, 0.0423, 1],
+					[0.250, 0.673, 0.0365]]   # a plainer membrane on some instances
+			out["bulwark"] = bw
 		"cleanstreets":
 			var spread := lerpf(2.2, 2.8, float(rng.call("randf")))
 			var cs := {"fins": {"xs": [-spread, -spread / 3.0, spread / 3.0, spread],
@@ -725,6 +779,84 @@ func _survey_reservations(placements: Array) -> void:
 		_ancourage_reservations()
 	if str(spec.get("composite", "")) == "beacon_domed":
 		_beacon_reservations()
+	if str(spec.get("composite", "")) == "bulwark_towers":
+		_bulwark_reservations()
+
+## Every planned bulwark part claims its wall: the framed MEMBRANE field (the voronoi web
+## restructures around the rose, pores and weep it lists in keeps_clear), the sign band, the
+## readout/indicator/kiosk boards, the door surround (the vault idiom, an ensemble with the
+## opening), tower engagement strips at every corner, and the wing attachment bands. The wings
+## also register barrier_wing SOCKETS (reach — their tips run legally past the envelope).
+func _bulwark_reservations() -> void:
+	var tbl := table_for(spec, "bulwark")
+	var h := _height_total()
+	var size: Vector3 = spec.get("size", Vector3(4.6, 5.2, 3.4))
+	var fz := Vector3(0, 0, 1)
+	var fr_t: Dictionary = tbl["frame"]
+	var rose: Dictionary = tbl["rose"]
+	var pores: Array = tbl["pores"]
+	var weep: Dictionary = tbl["weep"]
+	var membrane_kc: Array = ["rose_aperture", "rust_weep"]
+	reservations.append({"id": "rose_aperture", "type": "decoration", "cyl": false, "n": fz,
+		"x_center": float(rose["x"]) * h, "half_w": float(rose["r"]) * h,
+		"y0": (float(rose["y"]) - float(rose["r"])) * h, "y1": (float(rose["y"]) + float(rose["r"])) * h,
+		"keeps_clear": []})
+	for i in range(pores.size()):
+		var pr := pores[i] as Array
+		reservations.append({"id": "pore_%d" % i, "type": "decoration", "cyl": false, "n": fz,
+			"x_center": float(pr[0]) * h, "half_w": float(pr[2]) * h,
+			"y0": (float(pr[1]) - float(pr[2])) * h, "y1": (float(pr[1]) + float(pr[2])) * h,
+			"keeps_clear": []})
+		membrane_kc.append("pore_%d" % i)
+	reservations.append({"id": "rust_weep", "type": "decoration", "cyl": false, "n": fz,
+		"x_center": float(weep["x"]) * h, "half_w": float(weep["half_w"]) * h,
+		"y0": float(weep["y0"]) * h, "y1": float(weep["y1"]) * h,
+		"keeps_clear": ["sign_board"]})
+	reservations.append({"id": "framed_membrane", "type": "lattice_field", "cyl": false, "n": fz,
+		"x_center": 0.0, "half_w": float(fr_t["half_w"]) * h,
+		"y0": float(fr_t["y0"]) * h, "y1": float(fr_t["y1"]) * h,
+		"keeps_clear": membrane_kc})
+	var sgn: Dictionary = tbl["sign"]
+	reservations.append({"id": "sign_board", "type": "decoration", "cyl": false, "n": fz,
+		"x_center": 0.0, "half_w": float(sgn["half_w"]) * h,
+		"y0": float(sgn["y0"]) * h, "y1": float(sgn["y1"]) * h, "keeps_clear": ["rust_weep"]})
+	var rd: Dictionary = tbl["readout"]
+	reservations.append({"id": "readout_panel", "type": "decoration", "cyl": false, "n": fz,
+		"x_center": float(rd["x"]) * h, "half_w": float(rd["half_w"]) * h,
+		"y0": float(rd["y0"]) * h, "y1": float(rd["y1"]) * h, "keeps_clear": []})
+	var ind: Dictionary = tbl["indicator"]
+	reservations.append({"id": "indicator_lamp", "type": "decoration", "cyl": false, "n": fz,
+		"x_center": float(ind["x"]) * h, "half_w": float(ind["half_w"]) * h,
+		"y0": float(ind["y0"]) * h, "y1": float(ind["y1"]) * h, "keeps_clear": []})
+	var ki: Dictionary = tbl["kiosk"]
+	reservations.append({"id": "console_kiosk", "type": "decoration", "cyl": false, "n": fz,
+		"x_center": float(ki["x"]) * h, "half_w": float(ki["half_w"]) * h,
+		"y0": 0.0, "y1": float(ki["y1"]) * h, "keeps_clear": []})
+	var door_t: Dictionary = tbl["door"]
+	reservations.append({"id": "door_surround", "type": "decoration", "cyl": false, "n": fz,
+		"x_center": 0.0, "half_w": float(door_t["surround_half_w"]) * h,
+		"y0": 0.0, "y1": float(door_t["surround_top"]) * h,
+		"keeps_clear": ["door_main", "console_kiosk", "indicator_lamp"]})
+	# tower engagement strips: each corner tower kisses BOTH its adjacent faces
+	var eave := float(datums["eave"])
+	var t_r := float((tbl["tower"] as Dictionary)["r"]) * h
+	for sn in [1.0, -1.0]:
+		for sx in [1.0, -1.0]:
+			reservations.append({"id": "tower_z%s_x%s" % ["p" if sn > 0.0 else "n", "p" if sx > 0.0 else "n"],
+				"type": "decoration", "cyl": false, "n": Vector3(0, 0, sn),
+				"x_center": sx * (size.x * 0.5 - t_r * 0.35), "half_w": t_r * 0.35,
+				"y0": 0.0, "y1": eave, "keeps_clear": []})
+			reservations.append({"id": "tower_x%s_z%s" % ["p" if sn > 0.0 else "n", "p" if sx > 0.0 else "n"],
+				"type": "decoration", "cyl": false, "n": Vector3(sn, 0, 0),
+				"x_center": sx * (size.z * 0.5 - t_r * 0.35), "half_w": t_r * 0.35,
+				"y0": 0.0, "y1": eave, "keeps_clear": []})
+	# wing attachment bands + the barrier_wing sockets (reach: tips run past the envelope)
+	var wg: Dictionary = tbl["wing"]
+	for sx2 in [1.0, -1.0]:
+		reservations.append({"id": "wing_attach_%s" % ("p" if sx2 > 0.0 else "n"),
+			"type": "decoration", "cyl": false, "n": Vector3(sx2, 0, 0),
+			"x_center": float(wg["lateral"]) * h, "half_w": float(wg["attach_half_w"]) * h,
+			"y0": 0.058 * h, "y1": float(wg["panel_h"]) * h, "keeps_clear": []})
 
 ## Every planned beacon part claims its wall: the FIVE great arch bays (the tracery restructures
 ## around them — the lancet field lists them in keeps_clear and only populates unreserved arcs),
@@ -990,6 +1122,16 @@ func _survey_sockets(placements: Array) -> void:
 		var fr := pl["frame"] as Dictionary
 		sockets.append({"kind": "door", "pos": fr["anchor"], "n": fr["n"], "main": bool(pl["main"])})
 		sockets.append({"kind": "road", "pos": fr["anchor"], "dir": fr["n"], "width": 1.2, "main": bool(pl["main"])})
+	if comp == "bulwark_towers":
+		# the barrier WINGS: one reach socket off each flank (tips run legally past the envelope)
+		var wgs: Dictionary = table_for(spec, "bulwark")["wing"]
+		var bsz: Vector3 = spec.get("size", Vector3(4.6, 5.2, 3.4))
+		for sxw in [1.0, -1.0]:
+			sockets.append({"kind": "barrier_wing", "reach": true,
+				"pos": Vector3(float(sxw) * bsz.x * 0.5, float(wgs["panel_h"]) * bsz.y * 0.5,
+					float(wgs["lateral"]) * bsz.y),
+				"dir": Vector3(float(sxw), 0, 0),
+				"length": float(wgs["bay_len"]) * bsz.y * float(int(wgs["bays"]))})
 	if comp == "open_files_awnings":
 		# weak points on hash-picked skirt bands (the visible stepped facades); bridge sockets at
 		# the flat core-roof edges. The sloped awning roofs hold no balcony slots.

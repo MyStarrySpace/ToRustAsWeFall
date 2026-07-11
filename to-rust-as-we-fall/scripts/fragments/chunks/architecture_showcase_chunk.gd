@@ -85,6 +85,8 @@ func _build_chunk() -> void:
 			_add_ancourage_details(root, spec)
 		if str(spec.get("composite", "")) == "beacon_domed":
 			_add_beacon_details(root, spec)
+		if str(spec.get("composite", "")) == "bulwark_towers":
+			_add_bulwark_details(root, spec)
 		_add_anchor_markers(root, survey.anchors())
 		_specimens.append({"building": kind, "shape": str(spec.get("shape", "")),
 			"lattice": str(spec.get("lattice", "")), "verts": verts})

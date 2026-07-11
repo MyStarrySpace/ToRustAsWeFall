@@ -139,12 +139,17 @@ const SPECS := {
 	},
 	"bulwark_wharf": {
 		"title": "Bulwark Wharf",
-		"shape": SHAPE_COMPOSITE,           # squat gatehouse + two domed corner towers (REVIEW P1-P2)
-		"composite": "bulwark_towers",
-		"size": Vector3(4.6, 5.2, 3.4),     # squatter than before (plate ~1:1.15 w:h with towers)
+		"shape": SHAPE_COMPOSITE,           # SURVEY REBUILD 1.7: gatehouse box + FOUR corner-tower
+		"composite": "bulwark_towers",      # lofts from the BuildingSurvey.BULWARK table
+		"size": Vector3(4.6, 5.2, 3.4),
+		# RECONCILED AT THE SURVEY: reserve_margin 0.18 keeps the door region (y_top = h+jamb+margin)
+		# under the sign band at EVERY height roll (sign y0 scales with H, the margin does not) and
+		# its clearance width off the kiosk; the vault-door idiom owns its own threshold
+		"entrances": {"main_w": 1.15, "main_h": 2.0, "side_count_min": 0, "side_count_max": 0,
+			"canopy_out": 0.0, "reserve_margin": 0.18, "main_surround": false},
 		"color": Color(0.32, 0.36, 0.39),
 		"tile": "facility_metal",
-		"lattice": "voronoi",               # the plate's catenary Voronoi MEMBRANE wall (mirrored, focal-merged)
+		"lattice": "",                      # the membrane is the FRAMED front panel + wings (details)
 	},
 	"cleanstreets": {
 		"title": "The Cleanstreets Initiative",
@@ -1232,6 +1237,273 @@ static func _beacon_domed_mesh(spec: Dictionary, reserved: Array, recess: float)
 ## vestibule (the plate's ONE cyan accent), warm sconces, the lantern clerestory and the planted
 ## roof-garden ring, and the corner planting beds.
 ## Families: bone / dark / amber (panes) / glow (green) / cyan / warm / leaf / rails.
+## Bulwark detail passes (SURVEY REBUILD 1.7), every part from the BULWARK survey frames: the
+## ogee-crested membrane FRAME + purple panel + voronoi web (restructured around the rose and
+## pores), the ROSE APERTURE (ring + spokes + glass + clamp lugs), pore portholes, the rust weep,
+## the sign board, the vault-door idiom (chamfer surround + wheel hub + steps), indicator lamp,
+## pore-clamp readout + console kiosk (terminal green), tower collars/finials, and the barrier
+## WINGS (sagging posts + membrane bays + webs) off both flanks.
+static func bulwark_details(spec: Dictionary) -> Dictionary:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var tbl: Dictionary = Survey.table_for(spec, "bulwark")
+	var size: Vector3 = spec.get("size", Vector3(4.6, 5.2, 3.4))
+	var h := size.y
+	var hx := size.x * 0.5
+	var hz := size.z * 0.5
+	var metal := _st()
+	var bone := _st()
+	var dark := _st()
+	var rust := _st()
+	var membrane := _st()
+	var glow := _st()
+	var fr_t: Dictionary = tbl["frame"]
+	var f_hw := float(fr_t["half_w"]) * h
+	var f_y0 := float(fr_t["y0"]) * h
+	var f_y1 := float(fr_t["y1"]) * h
+	var f_apex := float(fr_t["apex"]) * h
+	var rail_r := float(fr_t["rail_r"]) * h
+	var zf := hz + 0.05
+	# the sagging bottom rail (W dips at the quarter points), the jambs, the springing rail, and
+	# the ogee crest rising to the apex — one frame family, all riding the front wall plane
+	var bot_pts: Array = []
+	for i in range(13):
+		var t := float(i) / 12.0
+		var dip := 0.027 * h * pow(absf(sin(TAU * t)), 0.8)
+		bot_pts.append(Vector3(lerpf(-f_hw, f_hw, t), f_y0 - dip, zf))
+	_tube(metal, bot_pts, rail_r, 6)
+	_tube(metal, [Vector3(-f_hw, f_y1, zf), Vector3(f_hw, f_y1, zf)], rail_r, 6)
+	for sx in [-1.0, 1.0]:
+		_tube(metal, [Vector3(float(sx) * f_hw, f_y0 - 0.01, zf), Vector3(float(sx) * f_hw, f_y1, zf)], rail_r, 6)
+		var ogee: Array = []
+		for i2 in range(9):
+			var t2 := float(i2) / 8.0
+			ogee.append(Vector3(float(sx) * f_hw * (1.0 - t2), f_y1 + (f_apex - f_y1) * (0.5 - 0.5 * cos(PI * t2)), zf))
+		_tube(metal, ogee, rail_r * 1.15, 6)
+	if bool(fr_t.get("cupola", true)):
+		_emit_oriented_box_st(metal, Vector3(0, f_apex + 0.028 * h, hz - 0.02),
+			Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(0.05 * h, 0.028 * h, 0.05 * h))
+		_rings_loft(metal, Vector3(0, f_apex + 0.056 * h, hz - 0.02), 0.06 * h,
+			[[0.0, 0.8], [1.0, 0.05]], 8)
+	# the membrane PANEL: column strips from the sagging rail up to the frame band top, then the
+	# crest gable filling the ogee — the purple skin the web rides on (front-facing)
+	var cols := 12
+	for c in range(cols):
+		var t0 := float(c) / float(cols)
+		var t1 := float(c + 1) / float(cols)
+		var xa := lerpf(-f_hw, f_hw, t0)
+		var xb := lerpf(-f_hw, f_hw, t1)
+		var ya := f_y0 - 0.027 * h * pow(absf(sin(TAU * t0)), 0.8)
+		var yb := f_y0 - 0.027 * h * pow(absf(sin(TAU * t1)), 0.8)
+		_quad_out(membrane, Vector3(xa, ya, hz + 0.02), Vector3(xb, yb, hz + 0.02),
+			Vector3(xb, f_y1, hz + 0.02), Vector3(xa, f_y1, hz + 0.02), Vector3(0, (f_y0 + f_y1) * 0.5, 0))
+		var ga := f_y1 + (f_apex - f_y1) * (0.5 - 0.5 * cos(PI * (1.0 - absf(t0 * 2.0 - 1.0))))
+		var gb := f_y1 + (f_apex - f_y1) * (0.5 - 0.5 * cos(PI * (1.0 - absf(t1 * 2.0 - 1.0))))
+		_quad_out(membrane, Vector3(xa, f_y1, hz + 0.02), Vector3(xb, f_y1, hz + 0.02),
+			Vector3(xb, gb, hz + 0.02), Vector3(xa, ga, hz + 0.02), Vector3(0, f_y1, 0))
+	# the voronoi WEB on the panel, restructured around the rose + pores (the survey's keeps_clear
+	# made the holes; here the web edges are actually dropped inside them)
+	var Lat := load("res://scripts/generation/lattice_builder.gd") as GDScript
+	var web_p := {"mirror": true, "seeds": 26, "focals": 2, "merge_start": 0.7,
+		"merge_range": 2.4, "merge_max": 0.78, "sag": 0.14}
+	var rose: Dictionary = tbl["rose"]
+	var pores: Array = tbl["pores"]
+	var holes: Array = [[float(rose["x"]) * h + f_hw, float(rose["y"]) * h - f_y0, float(rose["r"]) * h + 0.06]]
+	for pr_v in pores:
+		var pr := pr_v as Array
+		holes.append([float(pr[0]) * h + f_hw, float(pr[1]) * h - f_y0, float(pr[2]) * h + 0.05])
+	var raw_paths: Array = Lat._voronoi_web(f_hw * 2.0, f_y1 - f_y0, web_p, 37.0, Vector3(0, 0, 1), [])
+	var web_paths: Array = []
+	for path_v in raw_paths:
+		var pv := path_v as PackedVector2Array
+		var mid := (pv[0] + pv[pv.size() - 1]) * 0.5
+		var inside := false
+		for hole_v in holes:
+			var hc := hole_v as Array
+			if mid.distance_to(Vector2(float(hc[0]), float(hc[1]))) < float(hc[2]):
+				inside = true
+				break
+		if not inside:
+			web_paths.append(pv)
+	var LG := load("res://scripts/generation/lattice_graph.gd") as GDScript
+	var graph: Dictionary = LG.build(web_paths, 0.012)
+	LG.mesh(bone, graph, LG.plane_surface(Vector3(-f_hw, f_y0, hz + 0.045), Vector3(1, 0, 0), Vector3(0, 1, 0)), 0.042, 5)
+	# the ROSE APERTURE: outer ring + hub + radial spokes + purple glass + two clamp lugs
+	var rc := Vector3(float(rose["x"]) * h, float(rose["y"]) * h, hz)
+	var r_rose := float(rose["r"]) * h
+	_emit_torus_st(metal, rc + Vector3(0, 0, 0.10), Vector3(0, 0, 1), r_rose, 0.055, 20, 6)
+	_emit_torus_st(metal, rc + Vector3(0, 0, 0.09), Vector3(0, 0, 1), r_rose * 0.24, 0.04, 10, 5)
+	var spokes := int(rose.get("spokes", 8))
+	for sp in range(spokes):
+		var a := TAU * float(sp) / float(spokes)
+		_tube(metal, [rc + Vector3(cos(a) * r_rose * 0.24, sin(a) * r_rose * 0.24, 0.07),
+			rc + Vector3(cos(a) * r_rose, sin(a) * r_rose, 0.07)], 0.028, 4)
+	for lug in [0.0, PI]:
+		_emit_oriented_box_st(metal, rc + Vector3(cos(lug) * (r_rose + 0.10), sin(lug) * (r_rose + 0.10), 0.09),
+			Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(0.09, 0.055, 0.035))
+	var fan := 16
+	for fi in range(fan):
+		var a0 := TAU * float(fi) / float(fan)
+		var a1 := TAU * float(fi + 1) / float(fan)
+		membrane.add_vertex(rc + Vector3(0, 0, 0.03))
+		membrane.add_vertex(rc + Vector3(cos(a1) * r_rose, sin(a1) * r_rose, 0.03))
+		membrane.add_vertex(rc + Vector3(cos(a0) * r_rose, sin(a0) * r_rose, 0.03))
+	# pore portholes (the flagged one is the four-lobed wheel)
+	for pr_v2 in pores:
+		var pr2 := pr_v2 as Array
+		var pc := Vector3(float(pr2[0]) * h, float(pr2[1]) * h, hz)
+		var r_p := float(pr2[2]) * h
+		_emit_torus_st(metal, pc + Vector3(0, 0, 0.08), Vector3(0, 0, 1), r_p, 0.035, 12, 5)
+		for fi2 in range(10):
+			var b0 := TAU * float(fi2) / 10.0
+			var b1 := TAU * float(fi2 + 1) / 10.0
+			membrane.add_vertex(pc + Vector3(0, 0, 0.03))
+			membrane.add_vertex(pc + Vector3(cos(b1) * r_p, sin(b1) * r_p, 0.03))
+			membrane.add_vertex(pc + Vector3(cos(b0) * r_p, sin(b0) * r_p, 0.03))
+		if pr2.size() > 3:
+			for sp2 in range(4):
+				var a2 := TAU * float(sp2) / 4.0 + PI * 0.25
+				_tube(metal, [pc + Vector3(0, 0, 0.06), pc + Vector3(cos(a2) * r_p, sin(a2) * r_p, 0.06)], 0.024, 4)
+	# the rust WEEP bleeding from the rose down over the sign band (three tapered streaks)
+	var weep: Dictionary = tbl["weep"]
+	var wx := float(weep["x"]) * h
+	for streak in [[0.0, 0.085, 1.0], [-0.09, 0.036, 0.66], [0.07, 0.030, 0.78]]:
+		var sk := streak as Array
+		var s_top := float(weep["y1"]) * h
+		var s_bot := lerpf(float(weep["y0"]) * h, s_top, 1.0 - float(sk[2]))
+		_emit_oriented_box_st(rust, Vector3(wx + float(sk[0]), (s_top + s_bot) * 0.5, hz + 0.095),
+			Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1),
+			Vector3(float(sk[1]), (s_top - s_bot) * 0.5, 0.012))
+	# the SIGN board (letters are texture-time; the frame is riveted verdigris, green corner studs)
+	var sgn: Dictionary = tbl["sign"]
+	var sg_hw := float(sgn["half_w"]) * h
+	var sg_y := (float(sgn["y0"]) + float(sgn["y1"])) * 0.5 * h
+	var sg_hh := (float(sgn["y1"]) - float(sgn["y0"])) * 0.5 * h
+	_emit_oriented_box_st(dark, Vector3(0, sg_y, hz + 0.08), Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1),
+		Vector3(sg_hw, sg_hh, 0.02))
+	for bar in [[0.0, sg_hh, sg_hw + 0.05, 0.04], [0.0, -sg_hh, sg_hw + 0.05, 0.04],
+			[-sg_hw, 0.0, 0.04, sg_hh + 0.05], [sg_hw, 0.0, 0.04, sg_hh + 0.05]]:
+		var br := bar as Array
+		_emit_oriented_box_st(metal, Vector3(float(br[0]), sg_y + float(br[1]), hz + 0.10),
+			Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(float(br[2]), float(br[3]), 0.035))
+	for cx in [-1.0, 1.0]:
+		for cy in [-1.0, 1.0]:
+			_emit_oriented_box_st(glow, Vector3(float(cx) * (sg_hw - 0.06), sg_y + float(cy) * (sg_hh - 0.06), hz + 0.115),
+				Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(0.025, 0.025, 0.012))
+	# the VAULT-DOOR idiom: doubled chamfered surround + wheel hub on the leaf + two steps
+	var door_t: Dictionary = tbl["door"]
+	var sw := float(door_t["surround_half_w"]) * h
+	var s_top2 := float(door_t["surround_top"]) * h
+	var ch := float(door_t["chamfer"]) * h
+	for inset in [0.0, 0.12]:
+		var swi := sw - float(inset)
+		var t_i := s_top2 - float(inset)
+		_tube(metal, [Vector3(-swi, 0.02, zf), Vector3(-swi, t_i - ch, zf), Vector3(-swi + ch, t_i, zf),
+			Vector3(swi - ch, t_i, zf), Vector3(swi, t_i - ch, zf), Vector3(swi, 0.02, zf)], 0.065, 5)
+	var recess := float(spec.get("door_recess", 0.5))
+	var hub_c := Vector3(0, float(spec.get("entrances", {}).get("main_h", 2.0)) * 0.55, hz - recess + 0.07)
+	var hub_r := float(door_t["hub_r"]) * h
+	_emit_torus_st(metal, hub_c, Vector3(0, 0, 1), hub_r, 0.042, 14, 5)
+	for sp3 in range(3):
+		var a3 := TAU * float(sp3) / 3.0 + PI * 0.5
+		_tube(metal, [hub_c + Vector3(0, 0, 0.02), hub_c + Vector3(cos(a3) * hub_r, sin(a3) * hub_r, 0.02)], 0.03, 4)
+	_emit_oriented_box_st(metal, hub_c, Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(0.06, 0.06, 0.05))
+	_emit_oriented_box_st(dark, Vector3(0, 0.055, hz + 0.42), Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1),
+		Vector3(sw + 0.15, 0.055, 0.42))
+	_emit_oriented_box_st(dark, Vector3(0, 0.165, hz + 0.24), Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1),
+		Vector3(sw + 0.02, 0.055, 0.24))
+	# indicator lamp (left) + pore-clamp READOUT on the wall + the console KIOSK (right)
+	var ind: Dictionary = tbl["indicator"]
+	var ind_c := Vector3(float(ind["x"]) * h, (float(ind["y0"]) + float(ind["y1"])) * 0.5 * h, hz)
+	var ind_hh := (float(ind["y1"]) - float(ind["y0"])) * 0.5 * h
+	_emit_oriented_box_st(dark, ind_c + Vector3(0, 0, 0.05), Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1),
+		Vector3(float(ind["half_w"]) * h, ind_hh, 0.05))
+	_emit_oriented_box_st(glow, ind_c + Vector3(0, 0, 0.105), Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1),
+		Vector3(float(ind["half_w"]) * h - 0.03, ind_hh - 0.03, 0.012))
+	var rd: Dictionary = tbl["readout"]
+	var rd_c := Vector3(float(rd["x"]) * h, (float(rd["y0"]) + float(rd["y1"])) * 0.5 * h, hz)
+	var rd_hh := (float(rd["y1"]) - float(rd["y0"])) * 0.5 * h
+	_emit_oriented_box_st(dark, rd_c + Vector3(0, 0, 0.04), Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1),
+		Vector3(float(rd["half_w"]) * h + 0.03, rd_hh + 0.03, 0.03))
+	_emit_oriented_box_st(glow, rd_c + Vector3(0, 0, 0.075), Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1),
+		Vector3(float(rd["half_w"]) * h, rd_hh, 0.012))
+	var ki: Dictionary = tbl["kiosk"]
+	var ki_x := float(ki["x"]) * h
+	_emit_oriented_box_st(dark, Vector3(ki_x, 0.36, hz + 0.55), Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1),
+		Vector3(0.20, 0.36, 0.16))
+	var desk_v := Vector3(0, 0.906, 0.423)
+	var desk_n := Vector3(0, -0.423, 0.906)
+	_emit_oriented_box_st(dark, Vector3(ki_x, 0.78, hz + 0.60), Vector3(1, 0, 0), desk_v, desk_n,
+		Vector3(0.23, 0.17, 0.025))
+	_emit_oriented_box_st(glow, Vector3(ki_x, 0.78, hz + 0.60) + desk_n * 0.032, Vector3(1, 0, 0), desk_v, desk_n,
+		Vector3(0.15, 0.10, 0.008))
+	# tower dressing: collar rings + finial spikes + the numbered placard on the front-right shaft
+	var twr: Dictionary = tbl["tower"]
+	var t_shaft := float(twr["r"]) * h
+	for sx3 in [-1.0, 1.0]:
+		for sz3 in [-1.0, 1.0]:
+			var tc := Vector3(float(sx3) * hx, 0.0, float(sz3) * hz)
+			for col_v in (twr["collars"] as Array):
+				_emit_torus_st(metal, tc + Vector3(0, float(col_v) * h, 0), Vector3.UP,
+					t_shaft + 0.015, 0.035, 14, 5)
+			_rings_loft(metal, tc + Vector3(0, h, 0), 0.06 * h, [[0.0, 0.20], [1.0, 0.016]], 6)
+	_emit_oriented_box_st(dark, Vector3(hx, 0.62 * h, hz + t_shaft + 0.02),
+		Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(0.10, 0.16, 0.015))
+	# the BARRIER WINGS: sagging membrane bays on tapered posts off both flanks; each bay carries
+	# its own small web; the top rail follows the sag; splay struts brace every post foot
+	var wg: Dictionary = tbl["wing"]
+	var bays := int(wg["bays"])
+	var bay_len := float(wg["bay_len"]) * h
+	var panel_h := float(wg["panel_h"]) * h
+	var sag := float(wg["sag"])
+	var wz := float(wg["lateral"]) * h
+	var post_r := float(wg["post_r"]) * h
+	var wing_p := {"mirror": false, "seeds": 10, "focals": 1, "merge_start": 0.6,
+		"merge_range": 2.0, "merge_max": 0.7, "sag": 0.18}
+	for sx4 in [-1.0, 1.0]:
+		for b in range(bays):
+			var x_a := float(sx4) * (hx + bay_len * float(b))
+			var x_b := float(sx4) * (hx + bay_len * float(b + 1))
+			var wcols := 6
+			for c2 in range(wcols):
+				var u0 := float(c2) / float(wcols)
+				var u1 := float(c2 + 1) / float(wcols)
+				var top_a := panel_h * (1.0 - sag * sin(PI * u0))
+				var top_b := panel_h * (1.0 - sag * sin(PI * u1))
+				# the two faces sit 12 mm apart — coplanar twins z-fight and the loser's culled
+				# front faces read as a MISSING wing from one side
+				var pa := Vector3(lerpf(x_a, x_b, u0), 0.05, wz + 0.012)
+				var pb := Vector3(lerpf(x_a, x_b, u1), 0.05, wz + 0.012)
+				_quad_out(membrane, pa, pb, Vector3(pb.x, top_b, wz + 0.012), Vector3(pa.x, top_a, wz + 0.012),
+					Vector3(pa.x, panel_h * 0.5, wz - 2.0))
+				var qa := Vector3(pa.x, 0.05, wz - 0.012)
+				var qb := Vector3(pb.x, 0.05, wz - 0.012)
+				_quad_out(membrane, qb, qa, Vector3(qa.x, top_a, wz - 0.012), Vector3(qb.x, top_b, wz - 0.012),
+					Vector3(pa.x, panel_h * 0.5, wz + 2.0))
+			var rail_pts: Array = []
+			for i3 in range(7):
+				var u2 := float(i3) / 6.0
+				rail_pts.append(Vector3(lerpf(x_a, x_b, u2), panel_h * (1.0 - sag * sin(PI * u2)), wz))
+			_tube(metal, rail_pts, 0.045, 5)
+			var bay_paths: Array = Lat._voronoi_web(bay_len, panel_h * (1.0 - sag) - 0.1, wing_p,
+				71.0 + float(b) * 13.0 + (0.0 if sx4 > 0.0 else 5.0), Vector3(0, 0, 1), [])
+			var bay_graph: Dictionary = LG.build(bay_paths, 0.012)
+			var w_origin := Vector3(minf(x_a, x_b), 0.05, wz + 0.03)
+			LG.mesh(bone, bay_graph, LG.plane_surface(w_origin, Vector3(1, 0, 0), Vector3(0, 1, 0)), 0.032, 4)
+			# the post at this bay's outer end (the last one is the tip mast)
+			var pc2 := Vector3(x_b, 0.0, wz)
+			var ph := panel_h + 0.4
+			_rings_loft(metal, pc2, ph, [[0.0, 1.6 * post_r / ph], [0.05, post_r / ph],
+				[1.0, 0.55 * post_r / ph]], 8)
+			_rings_loft(metal, pc2 + Vector3(0, ph, 0), 0.22, [[0.0, 0.32], [0.5, 0.41], [1.0, 0.05]], 6)
+			for strut_s in [-1.0, 1.0]:
+				_tube(metal, [Vector3(x_b, 0.0, wz + float(strut_s) * 0.55),
+					Vector3(x_b, panel_h * 0.32, wz)], 0.035, 4)
+	for stool in [metal, bone, dark, rust, membrane, glow]:
+		(stool as SurfaceTool).generate_normals()
+	return {"metal": metal.commit(), "bone": bone.commit(), "dark": dark.commit(),
+		"rust": rust.commit(), "membrane": membrane.commit(), "glow": glow.commit(),
+		"nameplate_pos": Vector3(0, sg_y + sg_hh + 0.25, hz + 0.2)}
+
 static func beacon_details(spec: Dictionary) -> Dictionary:
 	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
 	var tbl: Dictionary = Survey.table_for(spec, "beacon")
@@ -1755,35 +2027,56 @@ static func _slab_sweep(st: SurfaceTool, half: Vector3, y_c: float, t: float, ov
 ## Bulwark Wharf (REVIEW P1): the gatehouse earns its two round corner towers — half-embedded at the
 ## front corners, rising past the roofline, domed caps + ring collars.
 static func _bulwark_towers_mesh(spec: Dictionary, reserved: Array, recess: float) -> ArrayMesh:
-	var size: Vector3 = spec.get("size", Vector3(4.2, 5.2, 3.6))
+	# SURVEY REBUILD 1.7: the gatehouse box to the eave + FOUR corner towers GROWN from the box's
+	# own corner construction points — each tower is ONE loft over BULWARK.tower.rings (splay foot /
+	# banded shaft / turret bulge / cap cone), so a tower can never drift off its corner.
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var tbl: Dictionary = Survey.table_for(spec, "bulwark")
+	var size: Vector3 = spec.get("size", Vector3(4.6, 5.2, 3.4))
+	var h := size.y
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var body_h := size.y * 0.86
-	st.append_from(_box_with_doors(Vector3(size.x, body_h, size.z), reserved, recess), 0, Transform3D.IDENTITY)
-	var tr := size.x * 0.14
+	st.append_from(_box_with_doors(Vector3(size.x, h * 0.86, size.z), reserved, recess), 0, Transform3D.IDENTITY)
+	# the towers loft in their OWN stool: generate_normals is only safe on raw emits, and st has
+	# already appended the box (the generate-after-append trap drops appended surfaces)
+	var tw := SurfaceTool.new()
+	tw.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rings: Array = (tbl["tower"] as Dictionary)["rings"]
 	for sx in [-1.0, 1.0]:
-		var cx := float(sx) * (size.x * 0.5)
-		var cz := size.z * 0.5
-		var tower := CylinderMesh.new()
-		tower.top_radius = tr
-		tower.bottom_radius = tr * 1.15
-		tower.height = size.y * 0.94
-		tower.radial_segments = 12
-		st.append_from(_seated(tower, tower.height * 0.5), 0, Transform3D(Basis(), Vector3(cx, 0.0, cz)))
-		var capd := SphereMesh.new()
-		capd.radius = tr * 1.05
-		capd.height = (size.y - size.y * 0.94) * 2.0 + tr * 0.8
-		capd.radial_segments = 12
-		capd.rings = 6
-		st.append_from(capd, 0, Transform3D(Basis(), Vector3(cx, size.y - capd.height * 0.5, cz)))
-		for fr in [0.25, 0.5, 0.75]:
-			var collar := TorusMesh.new()
-			collar.inner_radius = tr * 0.95
-			collar.outer_radius = tr * 1.22
-			collar.rings = 14
-			collar.ring_segments = 6
-			st.append_from(collar, 0, Transform3D(Basis(), Vector3(cx, size.y * 0.94 * fr, cz)))
+		for sz in [-1.0, 1.0]:
+			var base := Vector3(float(sx) * size.x * 0.5, 0.0, float(sz) * size.z * 0.5)
+			_rings_loft(tw, base, h, rings, 12)
+	tw.generate_normals()
+	st.append_from(tw.commit(), 0, Transform3D.IDENTITY)
 	return st.commit()
+
+# a lathe loft over survey rings [[y_frac, r_frac], ...] x height, seated at `base`, top capped
+static func _rings_loft(st: SurfaceTool, base: Vector3, h: float, rings: Array, seg: int) -> void:
+	for i in range(rings.size() - 1):
+		var r0 := rings[i] as Array
+		var r1 := rings[i + 1] as Array
+		var y0 := float(r0[0]) * h
+		var y1 := float(r1[0]) * h
+		var ra := float(r0[1]) * h
+		var rb := float(r1[1]) * h
+		for k in range(seg):
+			var a0 := TAU * float(k) / float(seg)
+			var a1 := TAU * float(k + 1) / float(seg)
+			var p00 := base + Vector3(cos(a0) * ra, y0, sin(a0) * ra)
+			var p01 := base + Vector3(cos(a1) * ra, y0, sin(a1) * ra)
+			var p10 := base + Vector3(cos(a0) * rb, y1, sin(a0) * rb)
+			var p11 := base + Vector3(cos(a1) * rb, y1, sin(a1) * rb)
+			_quad_out(st, p00, p01, p11, p10, base + Vector3(0, (y0 + y1) * 0.5, 0))
+	var top := rings[rings.size() - 1] as Array
+	var ty := float(top[0]) * h
+	var tr := float(top[1]) * h
+	var apex := base + Vector3(0, ty, 0)
+	for k2 in range(seg):
+		var a0b := TAU * float(k2) / float(seg)
+		var a1b := TAU * float(k2 + 1) / float(seg)
+		st.add_vertex(apex)
+		st.add_vertex(base + Vector3(cos(a1b) * tr, ty, sin(a1b) * tr))
+		st.add_vertex(base + Vector3(cos(a0b) * tr, ty, sin(a0b) * tr))
 
 ## Zone-3 (REVIEW P1-P2): the eroded ruin is a TWO-part composite — main block + a collapsed
 ## side wing stepped back — crowned by a heavy projecting cornice slab on the main block only.

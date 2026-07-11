@@ -4292,6 +4292,50 @@ func _test_building_survey() -> void:
 			ring_count += 1
 	_assert_equals(ring_count, 4, "the greenfields survey reserves all four slab rings")
 
+	# --- bulwark (SURVEY REBUILD 1.7): four corner-tower lofts, the framed membrane field
+	# restructured around the rose + pores, barrier_wing sockets with reach, all detail buckets ---
+	var bwk: Dictionary = Base.generate("bulwark_wharf")
+	var svb = Survey.from_spec(bwk)
+	var mem_field: Dictionary = {}
+	var rose_res: Dictionary = {}
+	var pore_n := 0
+	for r_b in (svb.reservations as Array):
+		var rb := r_b as Dictionary
+		if str(rb.get("id", "")) == "framed_membrane":
+			mem_field = rb
+		if str(rb.get("id", "")) == "rose_aperture":
+			rose_res = rb
+		if str(rb.get("id", "")).begins_with("pore_"):
+			pore_n += 1
+	_assert_true(not mem_field.is_empty() and not rose_res.is_empty(),
+		"the bulwark survey reserves the framed membrane + the rose aperture")
+	_assert_equals(pore_n, 4, "the bulwark survey reserves all four pore portholes")
+	var mem_kc: Array = mem_field.get("keeps_clear", [])
+	_assert_true(mem_kc.has("rose_aperture") and mem_kc.has("pore_0") and mem_kc.has("rust_weep"),
+		"the membrane field is declared to restructure around the rose, pores and weep")
+	var rose_w := float(rose_res.get("half_w", 0.0)) * 2.0
+	var bw_face := float((bwk["size"] as Vector3).x)
+	_assert_true(absf(rose_w / bw_face - 0.252) < 0.03,
+		"the rose aperture spans ~0.25 of the face width (plate: 0.28W ring incl. rim)")
+	var wing_socks := 0
+	for sk_b in (svb.sockets as Array):
+		var skb := sk_b as Dictionary
+		if str(skb.get("kind", "")) == "barrier_wing":
+			wing_socks += 1
+			_assert_true(bool(skb.get("reach", false)), "a barrier wing socket declares reach")
+	_assert_equals(wing_socks, 2, "the bulwark registers a barrier-wing socket off each flank")
+	var bmesh = Base.base_mesh(bwk, (Lat.entrances(bwk) as Dictionary).get("reserved", []))
+	var baabb: AABB = (bmesh as ArrayMesh).get_aabb()
+	_assert_true(baabb.size.x > float((bwk["size"] as Vector3).x) + 0.4,
+		"the corner towers are grown from the box corners (the massing bulges past the box)")
+	var bdet: Dictionary = Base.bulwark_details(bwk)
+	for bucket in ["metal", "bone", "dark", "rust", "membrane", "glow"]:
+		var bm = bdet.get(bucket)
+		_assert_true(bm != null and (bm as ArrayMesh).get_surface_count() > 0,
+			"bulwark details build the %s pass" % bucket)
+	_assert_true(str(Survey.from_spec(Base.generate("bulwark_wharf", 1)).summary()) != str(Survey.from_spec(Base.generate("bulwark_wharf", 2)).summary()),
+		"bulwark actually VARIES between seeds")
+
 	# --- PARAMETRIC VARIATION (the buildings are TYPES): every seeded variant must survey clean —
 	# the roller re-reconciles dependent values, and THIS sweep is the proof no roll collides.
 	# Seed 0 is the canonical plate specimen; other seeds roll plate-plausible variants. ---

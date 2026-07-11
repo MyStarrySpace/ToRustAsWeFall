@@ -422,6 +422,37 @@ func _add_beacon_details(root: Node3D, spec: Dictionary) -> void:
 	if lbl != null and built.has("nameplate_pos"):
 		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
 
+func _add_bulwark_details(root: Node3D, spec: Dictionary) -> void:
+	var built: Dictionary = BaseShapeBuilder.bulwark_details(spec)
+	_add_lattice_mesh(root, "BulwarkFrame", built.get("metal"),
+		_tinted_tile_material("facility_metal", Color(0.40, 0.48, 0.45)))
+	_add_lattice_mesh(root, "BulwarkWeb", built.get("bone"),
+		_tinted_tile_material("facility_metal", Color(0.70, 0.68, 0.60)))
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.10, 0.12, 0.12)
+	dark.roughness = 0.9
+	_add_lattice_mesh(root, "BulwarkDark", built.get("dark"), dark)
+	var rustm := StandardMaterial3D.new()
+	rustm.albedo_color = Color(0.42, 0.25, 0.11)
+	rustm.roughness = 1.0
+	_add_lattice_mesh(root, "BulwarkRust", built.get("rust"), rustm)
+	var mem := StandardMaterial3D.new()
+	mem.albedo_color = Color(0.34, 0.26, 0.42)
+	mem.emission_enabled = true
+	mem.emission = Color(0.60, 0.42, 0.85)   # the barrier membrane's faint inner light (plate)
+	mem.emission_energy_multiplier = 1.8
+	mem.roughness = 0.35
+	_add_lattice_mesh(root, "BulwarkMembrane", built.get("membrane"), mem)
+	var glowm := StandardMaterial3D.new()
+	glowm.albedo_color = Color(0.14, 0.38, 0.24)
+	glowm.emission_enabled = true
+	glowm.emission = Color(0.36, 0.91, 0.50)   # indicator + readout + CRT — terminal green
+	glowm.emission_energy_multiplier = 2.4
+	_add_lattice_mesh(root, "BulwarkGlow", built.get("glow"), glowm)
+	var lbl := root.get_node_or_null("Nameplate")
+	if lbl != null and built.has("nameplate_pos"):
+		(lbl as Label3D).position = built["nameplate_pos"] as Vector3
+
 func _spawn_landmark_building(lm: Dictionary) -> void:
 	var kind := str(lm.get("kind", ""))
 	if not BaseShapeBuilder.SPECS.has(kind):
@@ -521,6 +552,8 @@ func _spawn_landmark_building(lm: Dictionary) -> void:
 			_add_ancourage_details(root, spec)
 		"beacon_domed":
 			_add_beacon_details(root, spec)
+		"bulwark_towers":
+			_add_bulwark_details(root, spec)
 
 func _spawn_lathe_building(lp: Dictionary) -> void:
 	var profile: Dictionary = LatheBuilderScript.make_profile(lp)
