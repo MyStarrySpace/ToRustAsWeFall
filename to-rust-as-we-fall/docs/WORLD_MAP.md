@@ -100,10 +100,10 @@ Legend: ✅ built+tested · 🟡 partial/staged · ❌ nothing yet · 📋 desig
   the FAILED RE-ENTRY beat (short scene at the checkpoint: tags rejected politely — the quiet
   antecedent), (3) the checkpoint plaza geometry that the lockout chase then re-uses under
   pursuit (one build, two scenes), (4) Peris's care facility facade for her arc beats.
-- **B. THE LOCKOUT CHASE** (director-flagged) — designed in docs/LOCKOUT_CHASE.md; needs the
-  Naturalizer enemy variant, Tyreg temp-member + Suppress, the ammo-cache portal loop, the
-  portal-offshoot beat (with the anti-cheese laws), and the Hushbloom class (which also unlocks
-  the decline-path expert solution).
+- **B. THE LOCKOUT CHASE** (director-flagged) — corridor-level spec in docs/LOCKOUT_CHASE.md
+  (fills the chase framework's own open geometry task); needs the Naturalizer class, Tyreg
+  temp-member + Suppress, the ammo-cache portal loop, portal STUN state, the Chelator cluster,
+  and the Hushbloom class (the offshoot double-seal expert solution depends on it).
 - **C. Zone-specific playable chunks**: Greenfields, Hypelines, Honeycomb, Beacon, Bulwark have
   architecture but no levels. Cheapest wins: reuse the data-fragment loader + each zone's
   STAGE_ELEMENTS/register entries (the hostile_streets pattern — one .tres each).
