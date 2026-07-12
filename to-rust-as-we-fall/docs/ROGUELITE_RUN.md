@@ -45,6 +45,11 @@ by the procedural pipeline (WFC stretches / atom chains) and varies per seed.
 Grow the generator's vocabulary so runs vary in MECHANIC, not just layout — the reusable object
 classes exist; they need loader object kinds + generator placement:
 
+0. ~~decorative_flora + spike_strip~~ — DONE (2026-07-12): the ornamental invasives
+   (docs/DECORATIVE_FLORA.md, loader kind `decorative_flora`, Peris HARVEST yellow reveal on Y,
+   runback decor pass) and the anti-loiter studs (SET_PIECES 21, loader kind `spike_strip`,
+   symmetric DoT). Demo: `--preview=hostile_streets`. Generator PLACEMENT (decor density knob +
+   strips at chokepoints) still pending — joins the crawl_tunnel item below.
 1. **crawl_tunnel** (CrawlTunnel exists) — squeeze shortcuts across node walls: the shadow-route
    element, depth-widening.
 2. **Water basin valve + floats** (set-piece bay C logic) — extract from the showcase chunk into

@@ -156,6 +156,11 @@ const PREVIEW_ENTRIES := [
 	# NUTECH facility. N reseeds both.
 	{"id": "boss_showcase", "chunk": "boss_showcase", "title": "Boss Pieces (Watchtower + Paranucleus)", "stage": 6,
 		"config": {"seed": 0, "overlays": {"aster": false, "peris": false, "endo": false}}},
+	# HOSTILE STREETS: ornamental invasives (docs/DECORATIVE_FLORA.md — no highlight until Peris's
+	# Y HARVEST read lights them yellow, CLEAR removes them) + anti-loiter spike strips
+	# (SET_PIECES 21 — lure the pack across the studs). Wipe restarts demo the runback decor pass.
+	{"id": "hostile_streets", "chunk": "data_fragment", "title": "Hostile Streets (decor + studs)", "stage": 6,
+		"config": {"fragment_path": "res://data/fragments/hostile_streets.tres"}},
 ]
 
 ## The menu entry for an id (or {} if none).

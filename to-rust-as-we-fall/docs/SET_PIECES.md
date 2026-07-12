@@ -493,3 +493,46 @@ over a clear street lane; the deck's cells join the grid at its level with LADDE
 determinism). The loader (`_spawn_landmark_building`) assembles the heroes from plan data — the same
 pattern as the lathe towers. Preview: `--preview=shape_grammar` (seed 1 places a bulwark + terrace
 pair with a bridge).
+
+## PROPOSED set pieces 21-24 — anti-homeless architecture (Claude, 2026-07-12 — director approval required)
+
+Canon (GDD L963, verbatim): "**Anti-homeless architecture.** Hostile design features (spikes,
+slanted ledges, awkward partitions) that prevent stagnation-path workers and other discarded
+populations from occupying public space. The institution's silent answer to the people it has
+discarded but hasn't formally erased." The director's brief: make these SET PIECES the player can
+strategically guide enemies into, or use to defeat them. The grammar inversion is the point: the
+city's cruelty toward the discarded becomes the discarded party's weapon — you don't get new tools,
+you learn to aim the institution's own hostility.
+
+These are EFFECT geometry with NO controls of their own — the CONTROLS are the ecology verbs that
+move enemies (Flure lures, pushes, patrol routing, water/current timing), which per the archetypes
+grammar sit elsewhere in the level. All are indiscriminate: they hurt or deny the party exactly as
+they hurt fauna. That symmetry is both the fiction and the fairness.
+
+21. **Anti-loiter spike strip** (canonical "spikes"; **BUILT v1** — `SpikeStrip`, loader kind
+    `spike_strip`). A curb of metal studs across a walkway: a symmetric damage floor. Any character
+    standing on it drains hp on the shared scheduler tick — a lured/pushed enemy pays the same
+    toll the party does. Tactics: park a Flure on the far side so the pack crosses the studs to
+    reach it; body-block a chokepoint so a charging enemy's lunge lands it on the strip; budget
+    your own crossing in hp like a Candid mat (but with no concealment payoff — the strip gives
+    NOTHING back).
+22. **Leaning rail** (canonical "slanted ledges"): a bench built to deny rest. Its zone REFUSES
+    occupation — a rooting/perching enemy (Spiker seeking a nest point, a resting pack) cannot
+    settle there and slides off to the DOWNHILL side (a deterministic displacement, not physics).
+    Party side: rest points can't be placed in its zone (a shelter denial the level reads).
+    Tactics: a leaning rail above a drop or beside a spike strip turns "the enemy tried to settle"
+    into "the enemy got dumped somewhere worse" — aim the slide.
+23. **Partition chicane** (canonical "awkward partitions"): staggered barrier rows that force
+    SINGLE-FILE transit. A pack that would surround you (the Gnawer move) must thread it one at a
+    time — hold the mouth and the fight becomes N duels instead of one surround. Costs the party
+    the same: a party group-move queues through one at a time (the CrawlTunnel portal rule
+    reused verbatim).
+24. **Anti-sit cylinder** (the rotating-bar ledge): a weighted ledge bar that ROLLS when stood on.
+    An enemy lured or pushed onto it is dumped off the ledge to the level below (a scheduled
+    displacement + fall damage). The party can still cross it the hard way — one at a time, at a
+    slow crawl speed (riding the roll), so it stays a route while staying a trap.
+
+Placement register: densest in Cleanstreets (the sanitization district IS the aesthetic) and along
+Greenfields/Aghora aprons; rare in the deep wilds — hostile architecture marks where the
+institution still claims the space. Roguelite: spike strips + chicanes join the generator's object
+vocabulary alongside crawl tunnels (ROGUELITE_RUN.md "Next").

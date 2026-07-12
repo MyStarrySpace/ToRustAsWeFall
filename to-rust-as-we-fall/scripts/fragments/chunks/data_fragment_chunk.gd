@@ -34,6 +34,10 @@ var _scheduled := false
 var _phase := "ready"
 var _spotted_count := 0
 var _wipe_count := 0
+var _decoratives: Array = []  # DecorativeFlora — ornamental invasives (docs/DECORATIVE_FLORA.md)
+var _spread_patches: Array = []  # the Verdanta patches runbacks grew (freed on host reset)
+var _spike_strips: Array = []    # SpikeStrip hostile architecture (the shared DoT tick reads them)
+var _fall_pos := Vector3.ZERO    # where the party last wiped (the runback decor pass grows here)
 
 func configure_chunk(config: Dictionary) -> void:
 	if config.has("fragment"):
@@ -936,6 +940,28 @@ func _spawn_object(spec: Dictionary) -> void:
 			mat.configure(_v3(spec, "pos"), _f(spec, "radius", 1.65))
 			add_child(mat)
 			_scarpets.append(mat)
+		"decorative_flora":
+			# {species:String, pos:Vector3, opts?:Dictionary} — ornamental invasive
+			# (docs/DECORATIVE_FLORA.md): pure scenery until Peris's HARVEST reveal lights it
+			# yellow. No gameplay value; the only verb it answers is CLEAR.
+			var deco := DecorativeFlora.new()
+			deco.name = _name(spec, "Deco")
+			deco.configure(str(spec.get("species", "curbelia")), _v3(spec, "pos"),
+				spec.get("opts", {}) as Dictionary)
+			add_child(deco)
+			_register_interactable(deco)
+			_decoratives.append(deco)
+		"spike_strip":
+			# {pos:Vector3, half:Vector2, dot:float} — anti-loiter studs (hostile architecture,
+			# SET_PIECES 21): a symmetric damage floor — ANYONE standing on it drains hp, so
+			# lure/push enemies across it to hurt them (and budget your own crossings).
+			var strip := SpikeStrip.new()
+			strip.name = _name(spec, "SpikeStrip")
+			var shalf = spec.get("half", Vector2(2.0, 0.6))
+			strip.configure(_v3(spec, "pos"), shalf if shalf is Vector2 else Vector2(2.0, 0.6),
+				_f(spec, "dot", 6.0))
+			add_child(strip)
+			_spike_strips.append(strip)
 		"exit_shelter":
 			# {pos:Vector3, radius:float, label:String, color:Color} — the fragment's win pad: rest -> complete
 			_spawn_exit_shelter(spec)
@@ -1066,6 +1092,9 @@ func _on_fragment_character_downed(cid: String) -> void:
 	if gs == null or not gs.is_party_downed(Array(fragment.party_ids)):
 		return
 	_wipe_count += 1
+	# Where the run ended — the runback decor pass landscapes over this spot (logged state, so a
+	# replayed run regrows its Verdanta in the same places).
+	_fall_pos = gs.get_position(cid)
 	_show_note("It takes everyone. From the top.", 2.6)
 	var sched = _get_scheduler()
 	if sched != null:
@@ -1095,8 +1124,37 @@ func _restart_fragment() -> void:
 		if is_instance_valid(fl):
 			fl.reset_flure()
 	_apply_downed_at_start()
+	_apply_runback_decor()
 	_phase = "ready"
 	_set_preview_step((fragment.id if fragment.id != "" else "data_fragment") + "_restart")
+
+## The runback decor pass (docs/DECORATIVE_FLORA.md): each wipe makes the level prettier and
+## deader. Verdanta SPREADS (+1 patch near where the party fell — your failures get landscaped
+## over), Festoona DROOPS for the rest of the run, Lilypall re-rolls its raft arrangement.
+## Deterministic: seeded from the fragment id + wipe count + the logged fall position, so a
+## replayed run regrows identically. Curbelia is untouched — contract plantings don't care.
+func _apply_runback_decor() -> void:
+	if _wipe_count <= 0 or _decoratives.is_empty():
+		return
+	for deco_v in _decoratives:
+		var deco := deco_v as DecorativeFlora
+		if deco == null or not is_instance_valid(deco) or deco.is_cleared():
+			continue
+		if deco.species == "festoona":
+			deco.set_drooped(true)
+		elif deco.species == "lilypall":
+			deco.reroll(hash(fragment.id) + _wipe_count)
+	var h := hash("%s_verdanta_%d" % [fragment.id, _wipe_count])
+	var ang := float(h % 628) * 0.01
+	var off := Vector3(cos(ang), 0.0, sin(ang)) * (0.8 + float((h / 628) % 10) * 0.12)
+	var patch := DecorativeFlora.new()
+	patch.name = "VerdantaSpread%d" % _wipe_count
+	patch.configure("verdanta", Vector3(_fall_pos.x, 0.0, _fall_pos.z) + off,
+		{"radius": 0.9, "wall": false})
+	add_child(patch)
+	_register_interactable(patch)
+	_decoratives.append(patch)
+	_spread_patches.append(patch)
 
 ## The host's live selection (the portal group provider — a click moves whoever is selected).
 func _selected_party_ids() -> Array:
@@ -1128,7 +1186,7 @@ func _candid_tag() -> String:
 
 func _arm_candid_tick() -> void:
 	var sched = _get_scheduler()
-	if sched == null or _candid_zones.is_empty():
+	if sched == null or (_candid_zones.is_empty() and _spike_strips.is_empty()):
 		return
 	sched.cancel_tag(_candid_tag())
 	sched.schedule_after(CANDID_TICK, _on_candid_tick, _candid_tag())
@@ -1145,12 +1203,29 @@ func _on_candid_tick() -> void:
 				if is_instance_valid(cz) and cz.covers(pos):
 					gs.adjust_stat(cid, "hp", -cz.dot_per_sec * CANDID_TICK)
 					break
+			for strip in _spike_strips:
+				if is_instance_valid(strip) and strip.covers(pos):
+					gs.adjust_stat(cid, "hp", -strip.dot_per_sec * CANDID_TICK)
+					break
+	# Hostile architecture is indiscriminate: an enemy standing on the studs drains too — that's
+	# the tactic (lure/push them across it). Candid biofilm never hurts fauna; only the strips do.
+	if gs != null and not _spike_strips.is_empty():
+		for enemy in _enemies:
+			if not is_instance_valid(enemy) or not enemy.is_alive():
+				continue
+			if not gs.characters.has(enemy.char_id):
+				continue
+			var epos: Vector3 = gs.get_position(enemy.char_id)
+			for strip in _spike_strips:
+				if is_instance_valid(strip) and strip.covers(epos):
+					enemy.take_damage(strip.dot_per_sec * CANDID_TICK)
+					break
 	_arm_candid_tick()
 
 func _ensure_scheduled() -> void:
 	if _scheduled:
 		return
-	if _channels.is_empty() and _candid_zones.is_empty():
+	if _channels.is_empty() and _candid_zones.is_empty() and _spike_strips.is_empty():
 		return
 	var sched = _get_scheduler()
 	if sched == null:
@@ -1223,7 +1298,49 @@ func get_preview_state() -> Dictionary:
 	}
 
 func get_preview_abilities() -> Array:
-	return []
+	return AbilityData.for_context("data_fragment")
+
+const HARVEST_REVEAL_RANGE := 8.0
+const HARVEST_REVEAL_SECS := 4.0
+
+## Peris's HARVEST read (docs/DECORATIVE_FLORA.md): light every ornamental within reach YELLOW
+## for the window — her worker's eye separating decoration from yield. The reveal is the only
+## thing that ever highlights a decorative; once revealed it stays clearable.
+func handle_preview_ability(ability_id: String, _ability: Dictionary = {}) -> Dictionary:
+	if ability_id != "peris_harvest":
+		return {}
+	return _pulse_harvest_reveal()
+
+func _pulse_harvest_reveal() -> Dictionary:
+	var gs = _get_game_state()
+	if gs == null or not gs.characters.has("peris"):
+		return {}
+	var origin: Vector3 = gs.get_position("peris")
+	var lit := 0
+	for deco_v in _decoratives:
+		var deco := deco_v as DecorativeFlora
+		if deco == null or not is_instance_valid(deco) or deco.is_cleared():
+			continue
+		if Vector2(deco.position.x - origin.x, deco.position.z - origin.z).length() <= HARVEST_REVEAL_RANGE:
+			deco.set_harvest_reveal(true)
+			lit += 1
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.cancel_tag(_reveal_tag())
+		sched.schedule_after(HARVEST_REVEAL_SECS, _end_harvest_reveal, _reveal_tag())
+	if lit == 0:
+		# Override the xlsx line: nothing decorative answered the read.
+		return {"message": "Nothing ornamental in reach.", "note": ""}
+	return {}
+
+func _end_harvest_reveal() -> void:
+	for deco_v in _decoratives:
+		var deco := deco_v as DecorativeFlora
+		if deco != null and is_instance_valid(deco):
+			deco.set_harvest_reveal(false)
+
+func _reveal_tag() -> String:
+	return "deco_reveal_" + (fragment.id if fragment != null and fragment.id != "" else "data_fragment")
 
 ## A fragment can open with members ALREADY DOWN where they spawned (params.downed_at_start:
 ## ["aster", ...]) — the retrieve scenarios' opening state. Applied on every reset/restart so the
@@ -1257,6 +1374,18 @@ func reset_preview_state() -> void:
 	for enemy in _enemies:
 		if is_instance_valid(enemy) and enemy.has_method("re_post") and _enemy_posts.has(enemy.char_id):
 			enemy.re_post(_enemy_posts[enemy.char_id])
+	# Decor back to the authored state: runback-grown Verdanta patches go away, everything else
+	# un-clears / un-droops / forgets it was revealed.
+	for patch in _spread_patches:
+		if is_instance_valid(patch):
+			_decoratives.erase(patch)
+			patch.queue_free()
+	_spread_patches.clear()
+	for deco_v in _decoratives:
+		var deco := deco_v as DecorativeFlora
+		if deco != null and is_instance_valid(deco):
+			deco.reset_decoration()
+	_fall_pos = Vector3.ZERO
 	_scheduled = false
 	_set_preview_step((fragment.id if fragment != null and fragment.id != "" else "data_fragment") + "_start")
 
@@ -1267,6 +1396,8 @@ func capbages() -> Array: return _capbages
 func channels() -> Array: return _channels
 func flora() -> Array: return _flora
 func enemies() -> Array: return _enemies
+func decoratives() -> Array: return _decoratives
+func spike_strips() -> Array: return _spike_strips
 
 # --- Dictionary readers (tolerant defaults so a sparse .tres still loads) ---
 

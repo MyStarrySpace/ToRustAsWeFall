@@ -186,6 +186,9 @@ func _ready() -> void:
 			"--test-lure-relay":
 				ran_test = true
 				await _test_lure_relay_puzzle()
+			"--test-decorative-flora":
+				ran_test = true
+				await _test_decorative_flora()
 			"--test-dev-console":
 				ran_test = true
 				await _test_dev_console()
@@ -1315,6 +1318,7 @@ func _run_all_tests() -> void:
 	await _test_channels_robustness()
 	await _test_chunk_robustness()
 	await _test_lure_relay_puzzle()
+	await _test_decorative_flora()
 	await _test_dev_console()
 	await _test_touch_modes()
 	await _test_ortho_orbit()
@@ -32079,6 +32083,137 @@ func _test_dodge_roll() -> void:
 		if entry == "low_sta":
 			low_sta_detected = true
 	_assert_true(low_sta_detected, "Low stamina: detection fires (auto-dodge failed)")
+
+## DECORATIVE FLORA + HOSTILE ARCHITECTURE (docs/DECORATIVE_FLORA.md, SET_PIECES 21): ornamental
+## invasives are SCENERY — dormant, un-pickable, never in the white hover grammar — until Peris's
+## HARVEST read lights them YELLOW; the only verb they answer is CLEAR. Runbacks landscape over
+## your failures (Verdanta spreads, Festoona droops, Lilypall re-rolls; Curbelia doesn't care).
+## Anti-loiter studs drain hp from ANYONE standing on them — party and enemy alike.
+func _test_decorative_flora() -> void:
+	_test_name = "Decorative Flora + Hostile Architecture"
+	var instance = await _instantiate_preview_chunk_and_wait("hostile_streets", 6)
+	if instance == null:
+		_assert_true(false, "hostile_streets preview instantiates")
+		return
+	var chunk = instance._active_chunk
+	var gs = instance._game_state
+	_assert_true(chunk != null and gs != null, "Hostile Streets loads through the data-fragment loader")
+	if chunk == null or gs == null:
+		await _dispose_scene(instance)
+		return
+
+	# --- Placement + the scenery contract ---
+	var decos: Array = chunk.decoratives()
+	var strips: Array = chunk.spike_strips()
+	_assert_equals(decos.size(), 5, "All five authored decoratives place")
+	_assert_equals(strips.size(), 2, "Both spike strips place")
+	var by_name := {}
+	for deco in decos:
+		by_name[String(deco.name)] = deco
+		_assert_true(not deco.interaction_enabled, "%s is dormant scenery (not interactive)" % deco.name)
+		_assert_true(not deco.input_ray_pickable, "%s never intercepts the hover ray" % deco.name)
+		_assert_true(deco.get("_outline_target") == null, "%s is not wired into the white outline grammar" % deco.name)
+		_assert_true(not deco.is_revealed(), "%s starts unrevealed" % deco.name)
+	# The reveal tint is YELLOW — the third outline lane, not white, not a character color.
+	var tint: Color = DecorativeFlora.REVEAL_COLOR
+	_assert_true(tint.r > 0.9 and tint.g > 0.7 and tint.b < 0.4, "The harvest reveal tint is yellow")
+
+	# --- The harvest ability itself: the data-fragment context exposes Peris's HARVEST ---
+	_assert_true((instance.get("_ability_defs") as Dictionary).has("peris_harvest"),
+		"The data-fragment context carries the peris_harvest ability (abilities.xlsx row loaded)")
+
+	# --- The harvest read: nothing in reach reveals nothing ---
+	instance.headless_set_character_position("peris", Vector3(26.0, 0.5, 3.0))
+	instance._activate_preview_ability("peris_harvest")
+	var lit := 0
+	for deco in decos:
+		if deco.is_revealed():
+			lit += 1
+	_assert_equals(lit, 0, "A harvest read with nothing ornamental in reach lights nothing")
+
+	# --- The harvest read among the plantings lights everything in range yellow ---
+	instance.set_preview_ability_state("peris_harvest", "ready")  # skip the active+cooldown wait
+	instance.headless_set_character_position("peris", Vector3(5.0, 0.5, 0.5))
+	instance._activate_preview_ability("peris_harvest")
+	for deco in decos:
+		_assert_true(deco.is_revealed(), "%s lights on the harvest read" % deco.name)
+		_assert_true(deco.interaction_enabled, "%s takes the CLEAR verb while read" % deco.name)
+	# The window closes: the yellow fades, but a READ decorative stays clearable — a committed
+	# clear order arriving after the fade must not be silently refused (the disabled-trigger lesson).
+	instance.headless_advance(chunk.HARVEST_REVEAL_SECS + 0.6, 0.1)
+	for deco in decos:
+		_assert_true(not deco.is_revealed(), "%s yellow fades when the window closes" % deco.name)
+		_assert_true(deco.interaction_enabled, "%s stays clearable once read" % deco.name)
+
+	# --- CLEAR: yields nothing, removes the instance ---
+	var patch = by_name.get("VerdantaPatch")
+	var items_before: int = gs.items.size() if "items" in gs else 0
+	patch._trigger(false)
+	_assert_true(patch.is_cleared(), "Clearing a read decorative removes it")
+	_assert_true(not patch.visible, "A cleared decorative is gone from the world")
+	if "items" in gs:
+		_assert_equals(gs.items.size(), items_before, "Clearing yields NOTHING (no item spawns)")
+	instance.set_preview_ability_state("peris_harvest", "ready")
+	instance._activate_preview_ability("peris_harvest")
+	_assert_true(not patch.is_revealed(), "A cleared decorative never lights again")
+	instance.headless_advance(chunk.HARVEST_REVEAL_SECS + 0.6, 0.1)
+
+	# --- Anti-loiter studs: symmetric drain (party AND enemy) ---
+	var strip = strips[0]
+	instance.headless_set_character_position("peris", Vector3(15.0, 0.5, 0.0))
+	var hp_before: float = gs.get_stat("peris", "hp")
+	instance.headless_advance(1.0, 0.1)
+	var hp_after: float = gs.get_stat("peris", "hp")
+	_assert_true(hp_after < hp_before - 0.5,
+		"A party member on the studs drains hp (%.1f -> %.1f)" % [hp_before, hp_after])
+	instance.headless_set_character_position("peris", Vector3(3.0, 0.5, 0.0))
+	var enemy = null
+	for e in chunk.enemies():
+		if String(e.char_id) == "street_gnawer_0":
+			enemy = e
+	_assert_true(enemy != null, "The street pack spawned")
+	gs.snap_character_to("street_gnawer_0", Vector3(float(strip.position.x), 0.5, float(strip.position.z)))
+	var ehp_before: float = enemy._hp
+	instance.headless_advance(0.6, 0.1)
+	_assert_true(enemy._hp < ehp_before,
+		"An enemy on the studs drains too (%.1f -> %.1f) — hostile architecture is indiscriminate" % [ehp_before, enemy._hp])
+
+	# --- The runback decor pass: a wipe landscapes over the fall ---
+	var festoona = by_name.get("FestoonaArch")
+	var lilypall = by_name.get("LilypallPond")
+	var curbelia = by_name.get("CurbeliaRow")
+	var pads_before: Array = []
+	for m in lilypall._species_meshes:
+		pads_before.append(m.position)
+	var fall := Vector3(10.0, 0.5, 1.0)
+	for cid in ["aster", "peris", "endo"]:
+		instance.headless_set_character_position(cid, fall)
+		gs.down_character(cid)
+	instance.headless_advance(2.2, 0.1)  # the 1.5s wipe-restart beat
+	_assert_equals(int(chunk.get_preview_state()["wipe_count"]), 1, "The party wipe counts one runback")
+	var decos_after: Array = chunk.decoratives()
+	_assert_equals(decos_after.size(), 6, "Verdanta SPREADS: the runback grew one new patch")
+	var spread = decos_after[decos_after.size() - 1]
+	_assert_equals(String(spread.species), "verdanta", "The spread patch is Verdanta")
+	var spread_dist := Vector2(spread.position.x - fall.x, spread.position.z - fall.z).length()
+	_assert_true(spread_dist < 2.5, "The new patch grows where the party fell (%.2f away)" % spread_dist)
+	_assert_true(festoona.is_drooped(), "Festoona DROOPS after the wipe — the celebration is over")
+	_assert_true(not curbelia.is_drooped() and not curbelia.is_cleared(), "Curbelia doesn't care that you died")
+	_assert_true(patch.is_cleared(), "A cleared decorative stays cleared through the runback")
+	var pads_moved := false
+	for i in mini(pads_before.size(), lilypall._species_meshes.size()):
+		if not lilypall._species_meshes[i].position.is_equal_approx(pads_before[i]):
+			pads_moved = true
+	_assert_true(pads_moved, "Lilypall re-rolls its raft arrangement per attempt")
+
+	# --- Host reset: back to the authored street ---
+	chunk.reset_preview_state()
+	await get_tree().process_frame
+	_assert_equals(chunk.decoratives().size(), 5, "Reset removes the runback-grown patches")
+	_assert_true(not festoona.is_drooped(), "Reset un-droops the Festoona")
+	_assert_true(not patch.is_cleared() and patch.visible, "Reset restores a cleared decorative")
+	_assert_true(not patch.interaction_enabled, "Restored decoration is dormant scenery again")
+	await _dispose_scene(instance)
 
 func _print_results() -> void:
 	print("")
