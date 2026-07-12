@@ -95,6 +95,10 @@ const KIND_UNREGISTER_INTERACTABLE := &"unregister_interactable"
 const KIND_TRIGGER_INTERACTABLE := &"trigger_interactable"
 const KIND_SET_INTERACTABLE_ENABLED := &"set_interactable_enabled"
 const KIND_RESET_INTERACTABLE := &"reset_interactable"
+# Named LEVEL-STATE values (the Paranucleus survey-lens vantage, committed water levels, any gate
+# the level's walkability reads): logged so replay reproduces every gate decision, and so the
+# whole mechanism stays playable through the pure data layer (no camera/UI in walkability).
+const KIND_SET_WORLD_STATE := &"set_world_state"
 
 const ALL_KINDS: Array[StringName] = [
 	KIND_REGISTER_CHARACTER,
@@ -151,6 +155,7 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_TRIGGER_INTERACTABLE,
 	KIND_SET_INTERACTABLE_ENABLED,
 	KIND_RESET_INTERACTABLE,
+	KIND_SET_WORLD_STATE,
 ]
 
 static func make(tick: float, kind: StringName, payload: Dictionary) -> Dictionary:

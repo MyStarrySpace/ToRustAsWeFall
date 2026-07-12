@@ -243,6 +243,29 @@ crawl LAUNCHES on the next window's tick, predicted analytically from the pure p
 laws with red/green tests (`--test-projection-alignment` safety half): a committed order NEVER
 threads a closed wheel (it waits), and the BRAKE refuses to move a wheel with someone inside it.
 
+**THE MOVEMENT MODEL (ratified with the director, 2026-07-11 — characters DO walk on the rings,
+and the vantage DOES matter):**
+- **The vantage is DATA** (BUILT): a logged world-state value (`gs.set_world_state /
+  KIND_SET_WORLD_STATE`, replay + serialize round-tripped), stepped by Q/E through the camera's
+  orbit AUTHORITY binding — the camera is the VIEW of the vantage, never its owner. Walkability
+  gates read `gs`, never the camera, so the whole mechanism is playable through the pure data
+  layer (headless/CLI) and replay-identical.
+- **Rendezvous is the DOCK PATTERN, deterministic:** unlike an RTS moving platform (rendezvous
+  under uncertainty — the ferry waits, or you wait at the dock), our future is exact: phases are
+  pure functions of the tick. Orders queue at the dock and launch on the analytically predicted
+  window tick (AlignmentCrossing today; the planner's temporal gates next: a gated cell inserts a
+  WAIT-UNTIL-TICK segment — the existing timed-wait path machinery — never tick-by-tick A* waits).
+- **Riding a ring = the channels pattern, phase-warped** (NEXT): each ring's walkable surface is
+  a straight LANE of cells on its own grid level (data static + replayable); the render maps lane
+  angle through `basis * (angle + phase(tick))` so the body ORBITS while the data position holds.
+  Boarding is a TIME-WINDOWED inter-level link at a dock cell whose ring-side landing cell is
+  phase-dependent (computed at commit tick, pure).
+- **The vantage gates TRANSITIONS only** — boarding, deboarding, alignment crossings — never
+  standing or walking on the surface you are already on (Ida does not fall when the world turns).
+  A vantage step mid-ride strands no one; it closes future commit points until the picture is
+  restored. Player interventions (brake/release) invalidate plans only at commit boundaries:
+  stop-at-safe + re-plan; the brake still refuses while the wheel holds someone.
+
 The enemy pieces below all run on ONE insight: a rooted/colonizing enemy on a rotating ring has a
 position that is a FUNCTION OF ROTATION PHASE — the same variable pieces 15/16 already read. So
 Aster's TRACE (which already predicts each ring's period) now also predicts where the threat will

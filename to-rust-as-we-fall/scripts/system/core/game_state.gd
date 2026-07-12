@@ -769,6 +769,7 @@ func serialize() -> Dictionary:
 	return {
 		"characters": char_data,
 		"explored": _serialize_explored(),
+		"world_state": world_state.duplicate(true),
 	}
 
 func deserialize(data: Dictionary) -> void:
@@ -779,6 +780,8 @@ func deserialize(data: Dictionary) -> void:
 			register_character(id, pos, cd.get("move_speed", 3.0), cd.get("stats", {}))
 	if data.has("explored"):
 		_deserialize_explored(data.explored)
+	if data.has("world_state"):
+		world_state = (data["world_state"] as Dictionary).duplicate(true)
 
 # --- Internal ---
 
@@ -3644,6 +3647,8 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			set_interactable_enabled(String(payload["id"]), bool(payload["enabled"]))
 		GameEvent.KIND_RESET_INTERACTABLE:
 			reset_interactable(String(payload["id"]))
+		GameEvent.KIND_SET_WORLD_STATE:
+			set_world_state(String(payload["key"]), payload["value"])
 		_:
 			push_warning("GameState._dispatch: unknown event kind %s" % kind)
 
@@ -4131,6 +4136,22 @@ func is_interactable_enabled(id: String) -> bool:
 	if bool(spec.get("one_shot", false)) and bool(spec.get("triggered", false)):
 		return false
 	return bool(spec.get("enabled", true))
+
+## Named LEVEL-STATE values (the survey-lens vantage, committed water levels — any state a
+## walkability gate reads). LOGGED: replay reproduces every gate decision, and the mechanism is
+## playable through the pure data layer (never a camera/UI read). Values are plain Variants.
+var world_state := {}
+signal world_state_changed(key: String, value: Variant)
+
+func set_world_state(key: String, value: Variant) -> void:
+	if world_state.has(key) and world_state[key] == value:
+		return   # no-op: keeps gates free to re-commit without log spam
+	_emit(GameEvent.KIND_SET_WORLD_STATE, {"key": key, "value": value})
+	world_state[key] = value
+	world_state_changed.emit(key, value)
+
+func get_world_state(key: String, default: Variant = null) -> Variant:
+	return world_state.get(key, default)
 
 func set_interactable_enabled(id: String, enabled: bool) -> void:
 	if not interactables.has(id):

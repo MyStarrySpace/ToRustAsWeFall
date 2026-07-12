@@ -63,6 +63,11 @@ var _orbit_base_size := 20.0          # ortho vertical extent at zoom 1
 var _orbit_pan := Vector2.ZERO        # the image pan (view-plane), clamped
 var _orbit_pan_max := 10.0
 const ORBIT_EASE := 5.0               # snap easing rate (cosmetic, wall-clock)
+# When an ORBIT AUTHORITY is installed, the vantage is DATA (a logged world state): Q/E requests a
+# step through the level's commit callable instead of turning the camera, and the orbit follows
+# the authority's index — the camera is the VIEW of the vantage, never its owner.
+var _orbit_authority: Callable = Callable()      # -> int (the data-layer vantage index)
+var _orbit_step_request: Callable = Callable()   # (dir: int) -> void (commit a vantage step)
 
 # Touch (Android): TWO fingers pan + pinch-zoom the view. One finger stays gameplay (move/select).
 var _touches := {}
@@ -134,7 +139,9 @@ func enter_ortho_orbit(pivot: Vector3, snap_yaws: Array, opts: Dictionary = {}) 
 	_orbit_pan_max = float(opts.get("pan_max", _orbit_pan_max))
 	_orbit_pan = Vector2.ZERO
 	# start at the snap nearest the current gameplay view, so entry never whips the world around
+	# (with a data authority installed, start AT the committed vantage instead)
 	_orbit_target_yaw = _nearest_snap(_view_yaw)
+	_sync_orbit_to_authority()
 	_orbit_yaw = _orbit_target_yaw
 	_ortho_orbit_active = true
 	projection = PROJECTION_ORTHOGONAL
@@ -148,8 +155,25 @@ func exit_ortho_orbit() -> void:
 func is_ortho_orbit() -> bool:
 	return _ortho_orbit_active
 
+## Bind the orbit to a DATA-LAYER vantage: `authority()` reads the committed index, `step_request(dir)`
+## commits a step. Installed by the level that owns the vantage (the Paranucleus register).
+func set_orbit_authority(authority: Callable, step_request: Callable) -> void:
+	_orbit_authority = authority
+	_orbit_step_request = step_request
+
+func _sync_orbit_to_authority() -> void:
+	if not _orbit_authority.is_valid() or _orbit_snaps.is_empty():
+		return
+	var idx := posmod(int(_orbit_authority.call()), _orbit_snaps.size())
+	_orbit_target_yaw = float(_orbit_snaps[idx])
+
 ## Step to the next authored vantage in `dir` (+1 / -1); the orbit EASES there (cosmetic motion).
+## With an authority installed, the step COMMITS through the data layer and the view follows.
 func orbit_snap_step(dir: int) -> void:
+	if _orbit_step_request.is_valid():
+		_orbit_step_request.call(dir)
+		_sync_orbit_to_authority()
+		return
 	if _orbit_snaps.is_empty():
 		return
 	var idx := 0
@@ -227,6 +251,7 @@ func _process(delta: float) -> void:
 			orbit_snap_step(1)
 		if Input.is_action_just_pressed("camera_rotate_right"):
 			orbit_snap_step(-1)
+		_sync_orbit_to_authority()
 		_orbit_yaw = lerp_angle(_orbit_yaw, _orbit_target_yaw, minf(1.0, ORBIT_EASE * delta))
 		size = _orbit_base_size * _view_zoom
 		var dir := Basis(Vector3.UP, _orbit_yaw) * Vector3(0, sin(_orbit_elev), cos(_orbit_elev))

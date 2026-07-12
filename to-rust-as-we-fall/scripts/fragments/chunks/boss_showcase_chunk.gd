@@ -90,6 +90,9 @@ func _update_paranucleus_register() -> void:
 	var d := Vector2(t.global_position.x - PARA_X, t.global_position.z).length()
 	if not _orbit_on and d < PARA_ORBIT_RADIUS:
 		_orbit_on = true
+		# the camera is the VIEW of the committed vantage: Q/E steps commit through the data layer
+		if cam.has_method("set_orbit_authority"):
+			cam.call("set_orbit_authority", Callable(self, "_vantage_idx"), Callable(self, "_commit_vantage_step"))
 		cam.call("enter_ortho_orbit", _para_center, [0.0, PI * 0.5, PI, PI * 1.5],
 			{"dist": 40.0, "base_size": 24.0, "elev": 0.5})
 	elif _orbit_on and d > PARA_ORBIT_EXIT:
@@ -280,11 +283,24 @@ func ring_gap_at_bottom(i: int, tick: float) -> bool:
 func crossing_open(tick: float) -> bool:
 	return _vantage_is_front() and ring_gap_at_bottom(0, tick) and ring_gap_at_bottom(1, tick)
 
+const VANTAGE_KEY := "paranucleus_vantage"
+
+## The committed survey-lens vantage — pure DATA (a logged world state), never a camera read:
+## walkability gates stay replay-identical and the mechanism is playable headless through the
+## data layer. The camera is bound to this as its VIEW (set_orbit_authority).
+func _vantage_idx() -> int:
+	var gs = _get_game_state()
+	return int(gs.get_world_state(VANTAGE_KEY, 0)) if gs != null else 0
+
+func _commit_vantage_step(dir: int) -> void:
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	gs.set_world_state(VANTAGE_KEY, posmod(_vantage_idx() + dir, 4))
+	_refresh_crossing_gate()
+
 func _vantage_is_front() -> bool:
-	var cam := get_viewport().get_camera_3d()
-	if cam == null or not cam.has_method("is_ortho_orbit") or not bool(cam.call("is_ortho_orbit")):
-		return false
-	return absf(wrapf(float(cam.call("orbit_target_yaw")), -PI, PI)) < 0.1
+	return _vantage_idx() == 0
 
 func _build_alignment_crossing() -> void:
 	# the NUTECH ring brake: parks ring 0 at its nearest gap-on-corridor detent; used again, releases

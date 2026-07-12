@@ -20355,6 +20355,33 @@ func _test_interactable_state_replay() -> void:
 	_assert_true(replayed2.trigger_interactable("terminal", ""),
 		"A replayed reset one-shot can fire again")
 
+	# (3) WORLD STATE: named level-state values (the survey-lens vantage, committed water levels)
+	# round-trip the event log — a walkability gate that reads them decides identically on replay.
+	var gs3 := GameState.new()
+	gs3.grid = grid
+	gs3.scheduler = EventScheduler.new()
+	var log3 := EventLog.new()
+	gs3.event_log = log3
+	_assert_true(gs3.get_world_state("paranucleus_vantage", 0) == 0, "world state defaults through get_world_state")
+	gs3.set_world_state("paranucleus_vantage", 2)
+	gs3.set_world_state("paranucleus_vantage", 2)   # duplicate commit: must not spam the log
+	gs3.set_world_state("reservoir_pressure", 0.4)
+	var world_events := 0
+	for ev in log3.events:
+		if str(ev.get("kind", "")) == "set_world_state":
+			world_events += 1
+	_assert_equals(world_events, 2, "duplicate world-state commits are no-ops (no log spam)")
+	var replayed3 := GameState.replay(log3, grid)
+	_assert_equals(int(replayed3.get_world_state("paranucleus_vantage", 0)), 2,
+		"Replay reproduces the committed vantage (KIND_SET_WORLD_STATE round-trips)")
+	_assert_true(absf(float(replayed3.get_world_state("reservoir_pressure", 0.0)) - 0.4) < 0.0001,
+		"Replay reproduces float world state")
+	var ser := gs3.serialize()
+	var gs4 := GameState.new()
+	gs4.deserialize(ser)
+	_assert_equals(int(gs4.get_world_state("paranucleus_vantage", 0)), 2,
+		"world state survives serialize/deserialize")
+
 # --- Test: floor overlays actually COMPOSITE pixels inside the real preview scene (windowed only) ---
 # The preview scene drops the alpha-BLEND pass, so an overlay can be structurally correct yet invisible.
 # Headless has no framebuffer to read, so this is the ONE test that must run WITH a display:
@@ -22729,6 +22756,8 @@ func _test_event_log_mutation_audit() -> void:
 		"get_time_of_day", "get_game_day", "get_day_phase", "is_rest_deprived",
 		# Floral network: pure queries over the flora registry (the commands emit).
 		"get_flora_stage", "get_flora_light_radius", "get_flora_network",
+		# World state: pure query (its mutator set_world_state emits KIND_SET_WORLD_STATE).
+		"get_world_state",
 		# Analytic time queries: pure solves over the current movement plan (position is a function of
 		# the tick) — the WHEN register's read and the tests' jump-to-tick waiting. Mutate nothing.
 		"predict_proximity_tick", "get_plan_end_tick",
