@@ -663,6 +663,16 @@ func _spawn_landmark_building(lm: Dictionary) -> void:
 		return
 	# the SAME seeded variant the filler surveyed (anchors/lanes came from it — the visual must match)
 	var spec: Dictionary = BaseShapeBuilder.generate(kind, int(lm.get("spec_seed", 0)))
+	# a placement may overlay survey-table vars (e.g. the bazaar disabling a stair whose flank
+	# faces a measured sub-alley) — layered into spec.vars exactly where roll_vars land
+	var tv: Dictionary = lm.get("table_vars", {})
+	if not tv.is_empty():
+		var spec_vars: Dictionary = spec.get("vars", {})
+		for tk in tv.keys():
+			var cur: Dictionary = (spec_vars.get(tk, {}) as Dictionary).duplicate(true)
+			cur.merge(tv[tk] as Dictionary, true)
+			spec_vars[tk] = cur
+		spec["vars"] = spec_vars
 	var ent: Dictionary = LatticeBuilder.entrances(spec)
 	var root := Node3D.new()
 	root.name = "Landmark_%s" % kind

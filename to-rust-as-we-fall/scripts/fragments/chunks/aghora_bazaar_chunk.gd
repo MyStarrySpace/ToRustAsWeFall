@@ -31,39 +31,118 @@ func _build_chunk() -> void:
 	# the Exchange holds the lane's head; the stacks wall the canyon, every one a seeded variant
 	_spawn_landmark_building({"kind": "aghora_exchange", "pos": Vector3(0, 0, LANE_HEAD_Z),
 		"yaw": 0.0, "spec_seed": _seed})
+	var measured := _measured_stacks()
+	for i in range(measured.size()):
+		var m := measured[i] as Dictionary
+		var slot := m["slot"] as Dictionary
+		var lm := {"kind": "aghora_stack",
+			"pos": Vector3(float(slot["x"]), 0, float(slot["z"])),
+			"yaw": float(slot["yaw"]), "spec_seed": int(slot["spec_seed"])}
+		# MEASURED stair clearance: the zigzag keeps its flank only when the space it sweeps into
+		# is open canyon — a flank facing a sub-alley to the next stack drops the stair (the survey
+		# override), instead of crisscrossing the neighbour's windowed wall a metre away.
+		if _stair_blocked(measured, i):
+			lm["table_vars"] = {"aghora_stack": {"stair_flank": 0}}
+		_spawn_landmark_building(lm)
+	_build_banner_lines()
+	_build_stalls()
+
+## The canyon's stack slots WITH their seeded spec ids — the single placement authority the build,
+## the banner measurement, and the clearance test all read. Each slot's real surveyed spec is
+## re-derivable (generate() is pure per seed), so cross-canyon elements measure the ACTUAL facades.
+func _stack_slots() -> Array:
 	var slots := [
 		{"x": -ROW_X, "z": -5.5, "yaw": PI * 0.5}, {"x": -ROW_X, "z": 0.5, "yaw": PI * 0.5},
 		{"x": -ROW_X, "z": 6.5, "yaw": PI * 0.5},
 		{"x": ROW_X, "z": -2.5, "yaw": -PI * 0.5}, {"x": ROW_X, "z": 3.5, "yaw": -PI * 0.5},
 	]
 	for i in range(slots.size()):
-		var s := slots[i] as Dictionary
-		_spawn_landmark_building({"kind": "aghora_stack",
-			"pos": Vector3(float(s["x"]), 0, float(s["z"])),
-			"yaw": float(s["yaw"]), "spec_seed": _seed * 7 + i + 1})
-	_build_banner_lines()
-	_build_stalls()
+		slots[i]["spec_seed"] = _seed * 7 + i + 1
+	return slots
 
-## Banner lines sagging across the canyon between the opposing rows, hung with market flags.
+## Every slot MEASURED: the real surveyed spec re-derived per seed, then the world quantities the
+## cross-canyon elements need — facade planes, spans, stair sweep direction, banner hook heights.
+## Yaw is +/- PI/2, so local width (size.x) spans world z and local depth (size.z) spans world x.
+func _measured_stacks() -> Array:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var out: Array = []
+	for slot_v in _stack_slots():
+		var slot := slot_v as Dictionary
+		var spec: Dictionary = BaseShape.generate("aghora_stack", int(slot["spec_seed"]))
+		var tbl: Dictionary = Survey.table_for(spec, "aghora_stack")
+		var size: Vector3 = spec.get("size", Vector3(5.0, 11.0, 4.2))
+		var x := float(slot["x"])
+		var toward_lane := 1.0 if x < 0.0 else -1.0
+		out.append({
+			"slot": slot, "size": size, "x": x, "z": float(slot["z"]),
+			"half_z_world": size.x * 0.5,
+			"facade_x": x + toward_lane * size.z * 0.5,
+			"toward_lane": toward_lane,
+			# local +X (the stair flank) after yaw: rotate_y(yaw) sends (1,0,0).z to -sin(yaw)
+			"stair_dir_z": -signf(sin(float(slot["yaw"]))),
+			# the banner hook rides the TOP storey gap (above the awning line, below the parapet)
+			"hook_y": minf((float(tbl["base"]) + float(tbl["band"]) * float(int(tbl["storeys"]) - 1)) * size.y + 0.30,
+				size.y - 0.6),
+		})
+	return out
+
+## True when the stack's stair flank sweeps toward a same-row neighbour closer than a real alley —
+## the measured gate for dropping the zigzag.
+func _stair_blocked(measured: Array, i: int) -> bool:
+	var m := measured[i] as Dictionary
+	for j in range(measured.size()):
+		if j == i:
+			continue
+		var o := measured[j] as Dictionary
+		if absf(float(o["x"]) - float(m["x"])) > 0.5:
+			continue   # the opposite row
+		var dz := (float(o["z"]) - float(m["z"])) * float(m["stair_dir_z"])
+		if dz <= 0.0:
+			continue   # the neighbour sits on the other flank
+		var gap := absf(float(o["z"]) - float(m["z"])) - float(m["half_z_world"]) - float(o["half_z_world"])
+		if gap < 1.8:
+			return true
+	return false
+
+## The hook's clearance past the deepest facade crust (awning slats reach 0.55, balconies 0.30) —
+## a banner endpoint may never sit inside another element's measured envelope.
+const BANNER_PROUD := 0.75
+
+var _banner_polylines: Array = []   # Array of Array[Vector3] — the built lines, for tests/debug
+
+## Banner lines sagging across the canyon, hung with market flags. MEASURED, never guessed: each
+## line ties the nearest stack in each row, hooked at that stack's REAL facade plane + BANNER_PROUD
+## at its surveyed top storey gap, z clamped into its actual span. A bracket stub ties each hook
+## back to its wall. (The old constant endpoints sat inside the stacks' detail crust — the
+## clipping report of 2026-07-12.)
 func _build_banner_lines() -> void:
-	var kb := float(_seed * 53 % 1000)
+	var measured := _measured_stacks()
 	var lines := SurfaceTool.new()
 	lines.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var brackets := SurfaceTool.new()
+	brackets.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var flags := SurfaceTool.new()
 	flags.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var flag_cols := [Color(0.62, 0.20, 0.55), Color(0.24, 0.44, 0.42), Color(0.52, 0.30, 0.20),
 		Color(0.66, 0.56, 0.30)]
+	_banner_polylines.clear()
 	for li in range(3):
 		var lz := -6.0 + 5.4 * float(li)
-		var lh := 6.4 + 1.3 * BaseShape._h01(kb + 5.0 + float(li) * 7.7)
-		var a := Vector3(-ROW_X + 2.2, lh, lz)
-		var b := Vector3(ROW_X - 2.2, lh + 0.4 * (BaseShape._h01(kb + 11.0 + float(li)) - 0.5), lz)
+		var left := _nearest_stack(measured, -1.0, lz)
+		var right := _nearest_stack(measured, 1.0, lz)
+		if left.is_empty() or right.is_empty():
+			continue
+		var a := _banner_hook(left, lz)
+		var b := _banner_hook(right, lz)
+		BaseShape._tube(brackets, [Vector3(float(left["facade_x"]), a.y, a.z), a], 0.02, 4)
+		BaseShape._tube(brackets, [Vector3(float(right["facade_x"]), b.y, b.z), b], 0.02, 4)
 		var pts: Array = []
 		for t in range(9):
 			var tt := float(t) / 8.0
 			var sag := sin(tt * PI) * 0.85
 			pts.append(a.lerp(b, tt) + Vector3(0, -sag, 0))
 		BaseShape._tube(lines, pts, 0.022, 4)
+		_banner_polylines.append(pts)
 		for f in range(6):
 			var ft := (float(f) + 0.75) / 7.0
 			var fp := a.lerp(b, ft) + Vector3(0, -sin(ft * PI) * 0.85, 0)
@@ -72,15 +151,37 @@ func _build_banner_lines() -> void:
 			BaseShape._emit_oriented_box_st(flags, fp + Vector3(0, -0.30, 0),
 				Vector3(1, 0, 0), Vector3.UP, Vector3(0, 0, 1), Vector3(0.24, 0.28, 0.012))
 	lines.generate_normals()
+	brackets.generate_normals()
 	flags.generate_normals()
 	var linem := StandardMaterial3D.new()
 	linem.albedo_color = Color(0.10, 0.10, 0.11)
 	_add_lattice_mesh(self, "BannerLines", lines.commit(), linem)
+	_add_lattice_mesh(self, "BannerBrackets", brackets.commit(), linem)
 	var flagm := StandardMaterial3D.new()
 	flagm.vertex_color_use_as_albedo = true
 	flagm.roughness = 1.0
 	flagm.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_add_lattice_mesh(self, "BannerFlags", flags.commit(), flagm)
+
+func _nearest_stack(measured: Array, side: float, lz: float) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d := INF
+	for m_v in measured:
+		var m := m_v as Dictionary
+		if float(m["x"]) * side <= 0.0:
+			continue
+		var d := absf(float(m["z"]) - lz)
+		if d < best_d:
+			best_d = d
+			best = m
+	return best
+
+func _banner_hook(m: Dictionary, lz: float) -> Vector3:
+	return Vector3(
+		float(m["facade_x"]) + float(m["toward_lane"]) * BANNER_PROUD,
+		float(m["hook_y"]),
+		clampf(lz, float(m["z"]) - float(m["half_z_world"]) + 0.8,
+			float(m["z"]) + float(m["half_z_world"]) - 0.8))
 
 ## Canvas market stalls hugging the lane edges: posts, a tilted canvas roof, a counter.
 func _build_stalls() -> void:

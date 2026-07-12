@@ -189,6 +189,9 @@ func _ready() -> void:
 			"--test-decorative-flora":
 				ran_test = true
 				await _test_decorative_flora()
+			"--test-aghora-clearance":
+				ran_test = true
+				await _test_aghora_clearance()
 			"--test-dev-console":
 				ran_test = true
 				await _test_dev_console()
@@ -1319,6 +1322,7 @@ func _run_all_tests() -> void:
 	await _test_chunk_robustness()
 	await _test_lure_relay_puzzle()
 	await _test_decorative_flora()
+	await _test_aghora_clearance()
 	await _test_dev_console()
 	await _test_touch_modes()
 	await _test_ortho_orbit()
@@ -32214,6 +32218,74 @@ func _test_decorative_flora() -> void:
 	_assert_true(not patch.is_cleared() and patch.visible, "Reset restores a cleared decorative")
 	_assert_true(not patch.interaction_enabled, "Restored decoration is dormant scenery again")
 	await _dispose_scene(instance)
+
+## AGHORA CLEARANCE (director's clipping report, 2026-07-12): cross-canyon elements must be
+## MEASURED off the real surveyed facades, never guessed constants -- banner lines/flags may not
+## pass through any stack's body; same-row stacks may not interpenetrate (including the stair
+## flank's swept envelope); windows may not sit under the stair zigzag's flight path.
+func _test_aghora_clearance() -> void:
+	_test_name = "Aghora Clearance"
+	for s in [0, 1, 2]:
+		var instance = await _instantiate_preview_chunk_and_wait("aghora_bazaar", 6, {"seed": s})
+		if instance == null:
+			_assert_true(false, "aghora_bazaar (seed %d) instantiates" % s)
+			return
+		var chunk = instance._active_chunk
+		if chunk == null:
+			_assert_true(false, "aghora chunk loads (seed %d)" % s)
+			await _dispose_scene(instance)
+			return
+		# The stacks' real surveyed bodies, as world AABBs (generate() is pure per seed -- the same
+		# specs the chunk spawned). Shrunk a hair so surface-proud detail doesn't false-positive.
+		var boxes: Array = []
+		for slot_v in chunk.call("_stack_slots"):
+			var slot := slot_v as Dictionary
+			var spec: Dictionary = BaseShapeBuilder.generate("aghora_stack", int(slot["spec_seed"]))
+			var size: Vector3 = spec.get("size", Vector3.ZERO)
+			var pos := Vector3(float(slot["x"]), 0.0, float(slot["z"]))
+			# yaw is +/- PI/2: local x-half spans world z, local z-half spans world x
+			boxes.append({"pos": pos, "hx": size.z * 0.5, "hz": size.x * 0.5, "h": size.y})
+		# 1) No banner-line / flag geometry inside any stack body OR its detail crust (awnings
+		# reach 0.55 proud, balconies 0.30 — inflate by 0.60 so "just outside the wall but inside
+		# the balconies" can never pass; the bracket stubs deliberately enter the crust and live
+		# in their own excluded mesh).
+		for mesh_name in ["BannerLines", "BannerFlags"]:
+			var mi = chunk.find_child(mesh_name, true, false)
+			_assert_true(mi != null, "%s mesh exists (seed %d)" % [mesh_name, s])
+			if mi == null:
+				continue
+			var inside := 0
+			var probe := Vector3.ZERO
+			for v in ((mi as MeshInstance3D).mesh as ArrayMesh).get_faces():
+				var wp: Vector3 = (mi as MeshInstance3D).global_transform * (v as Vector3)
+				for b_v in boxes:
+					var b := b_v as Dictionary
+					var bp: Vector3 = b["pos"]
+					if absf(wp.x - bp.x) < float(b["hx"]) + 0.60 							and absf(wp.z - bp.z) < float(b["hz"]) + 0.60 							and wp.y > 0.1 and wp.y < float(b["h"]) - 0.05:
+						inside += 1
+						probe = wp
+						break
+			_assert_equals(inside, 0, "%s clears every stack + detail crust (seed %d; %d verts inside, e.g. %s)" % [mesh_name, s, inside, str(probe)])
+		# 2) Same-row stacks never interpenetrate; the stair flank keeps its swept envelope clear.
+		for i in range(boxes.size()):
+			for j in range(i + 1, boxes.size()):
+				var a := boxes[i] as Dictionary
+				var b2 := boxes[j] as Dictionary
+				var ap: Vector3 = a["pos"]
+				var bp2: Vector3 = b2["pos"]
+				if absf(ap.x - bp2.x) > 0.5:
+					continue  # opposite rows
+				var gap := absf(ap.z - bp2.z) - float(a["hx"]) - float(b2["hx"])
+				_assert_true(gap >= 0.9,
+					"row neighbours keep the stair envelope clear (seed %d: gap %.2f)" % [s, gap])
+		await _dispose_scene(instance)
+	# 3) The stair face never emits a window crossed by a zigzag flight (the shared helper is the
+	# emitters' own gate; verify it geometrically against the flight segments).
+	for s2 in [0, 3, 5]:
+		var spec2: Dictionary = BaseShapeBuilder.generate("aghora_stack", s2)
+		var offenders: Array = BaseShapeBuilder.aghora_stair_window_offenders(spec2)
+		_assert_equals(offenders.size(), 0,
+			"no stair-face window sits under a flight (spec seed %d; %d offenders)" % [s2, offenders.size()])
 
 func _print_results() -> void:
 	print("")

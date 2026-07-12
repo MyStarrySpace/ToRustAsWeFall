@@ -1518,6 +1518,87 @@ static func aghora_exchange_details(spec: Dictionary) -> Dictionary:
 ## tops, balcony rails with plants, hanging vertical neon banners + two horizontal sign boards in
 ## the storey gaps, the stair zigzag on the +X flank, roof tanks + laundry lines + a pole sign,
 ## and the storefront entry (awning + hanging plate).
+## The stair zigzag's flight segments on the +X flank, in (y, z): the measured sweep every
+## flank-face feature must reconcile against (the survey method — reservation, not collision).
+static func aghora_stair_flights(spec: Dictionary) -> Array:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var tbl: Dictionary = Survey.table_for(spec, "aghora_stack")
+	if int(tbl["stair_flank"]) != 1:
+		return []
+	var size: Vector3 = spec.get("size", Vector3(5.0, 11.0, 4.2))
+	var h := size.y
+	var hz := size.z * 0.5
+	var storeys := int(tbl["storeys"])
+	var base := float(tbl["base"])
+	var band := float(tbl["band"])
+	var flights: Array = []
+	for k2 in range(storeys - 1):
+		var dirn := 1.0 if k2 % 2 == 0 else -1.0
+		flights.append({
+			"y_a": (base + band * float(k2)) * h + 0.05,
+			"y_b": (base + band * float(k2 + 1)) * h + 0.05,
+			"z_a": dirn * (hz - 0.6), "z_b": -dirn * (hz - 0.6), "dirn": dirn,
+		})
+	return flights
+
+## True when a zigzag flight sweeps through the (z, y) rect (half-extents + the stair's swept
+## clearance: step half-depth 0.30 + rail reach). `wz` is the rect centre's world-Z on the flank.
+static func _aghora_flight_crosses(flights: Array, wz: float, wy: float, half_z: float, half_y: float) -> bool:
+	const CLEAR := 0.45
+	for f_v in flights:
+		var f := f_v as Dictionary
+		var y0 := float(f["y_a"])
+		var y1 := float(f["y_b"])
+		var lo := maxf(minf(y0, y1), wy - half_y - CLEAR)
+		var hi := minf(maxf(y0, y1), wy + half_y + CLEAR)
+		if lo > hi:
+			continue
+		var t0 := (lo - y0) / (y1 - y0)
+		var t1 := (hi - y0) / (y1 - y0)
+		var z_at_0 := lerpf(float(f["z_a"]), float(f["z_b"]), t0)
+		var z_at_1 := lerpf(float(f["z_a"]), float(f["z_b"]), t1)
+		if maxf(z_at_0, z_at_1) >= wz - half_z - CLEAR and minf(z_at_0, z_at_1) <= wz + half_z + CLEAR:
+			return true
+	return false
+
+## The stair-face window gate — the ONE decision the emitter uses, exposed so the clearance test
+## can verify it geometrically. A window is skipped exactly when a zigzag flight SWEEPS its rect
+## (measured reconciliation, not a fixed strip — the zigzag traverses the whole flank and
+## alternates direction per storey, so no constant strip can match it). `cx` is the window centre
+## along the face's u axis (world z = -cx on the +X flank).
+static func _aghora_stair_face_skips(spec: Dictionary, cx: float, wyc: float, ww: float, wh: float) -> bool:
+	return _aghora_flight_crosses(aghora_stair_flights(spec), -cx, wyc, ww, wh)
+
+## Every stair-face window the emitter WOULD place whose rect a flight sweeps through — must be
+## empty. Mirrors aghora_stack_details' window loop (keep them in step).
+static func aghora_stair_window_offenders(spec: Dictionary) -> Array:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var tbl: Dictionary = Survey.table_for(spec, "aghora_stack")
+	if int(tbl["stair_flank"]) != 1:
+		return []
+	var size: Vector3 = spec.get("size", Vector3(5.0, 11.0, 4.2))
+	var h := size.y
+	var f_hw := size.z * 0.5
+	var cols := int((tbl["windows"] as Dictionary)["side_cols"])
+	var storeys := int(tbl["storeys"])
+	var base := float(tbl["base"])
+	var band := float(tbl["band"])
+	var flights := aghora_stair_flights(spec)
+	var offenders: Array = []
+	for k in range(storeys):
+		var wy0 := (base + band * (float(k) + float(tbl["win_lo"]))) * h
+		var wy1 := (base + band * (float(k) + float(tbl["win_hi"]))) * h
+		var wyc := (wy0 + wy1) * 0.5
+		var wh := (wy1 - wy0) * 0.42
+		for c in range(cols):
+			var cx := lerpf(-f_hw + 0.5, f_hw - 0.5, (float(c) + 0.5) / float(cols))
+			var ww := (f_hw - 1.0) / float(cols) * 0.72
+			if _aghora_stair_face_skips(spec, cx, wyc, ww, wh):
+				continue
+			if _aghora_flight_crosses(flights, -cx, wyc, ww, wh):
+				offenders.append(Vector3(-cx, wyc, float(k)))
+	return offenders
+
 static func aghora_stack_details(spec: Dictionary) -> Dictionary:
 	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
 	var tbl: Dictionary = Survey.table_for(spec, "aghora_stack")
@@ -1537,6 +1618,8 @@ static func aghora_stack_details(spec: Dictionary) -> Dictionary:
 	var band := float(tbl["band"])
 	var wcols: Dictionary = tbl["windows"]
 	var door_w := float((spec.get("entrances", {}) as Dictionary).get("main_w", 1.4))
+	# the stair zigzag's measured sweep — every +X-flank feature reconciles against it
+	var stair_flights := aghora_stair_flights(spec)
 	for face_v in [[Vector3(0, 0, 1), hx, hz, int(wcols["front_cols"])],
 			[Vector3(-1, 0, 0), hz, hx, int(wcols["side_cols"])],
 			[Vector3(1, 0, 0), hz, hx, int(wcols["side_cols"])]]:
@@ -1553,12 +1636,12 @@ static func aghora_stack_details(spec: Dictionary) -> Dictionary:
 			var wyc := (wy0 + wy1) * 0.5
 			for c in range(cols):
 				var cx := lerpf(-f_hw + 0.5, f_hw - 0.5, (float(c) + 0.5) / float(cols))
+				var ww := (f_hw - 1.0) / float(cols) * 0.72
 				if k == 0 and n.z > 0.5 and absf(cx) < door_w * 0.5 + 0.45:
 					continue   # the storefront owns the ground centre
-				if stair_face and cx > f_hw - 1.4:
-					continue   # the stair zigzag owns this strip
+				if stair_face and _aghora_stair_face_skips(spec, cx, wyc, ww, (wy1 - wy0) * 0.42):
+					continue   # a zigzag flight sweeps this window's rect
 				var wc := n * (f_d + 0.03) + u * cx + Vector3(0, wyc, 0)
-				var ww := (f_hw - 1.0) / float(cols) * 0.72
 				_emit_oriented_box_st(amber, wc, u, Vector3.UP, n, Vector3(ww, (wy1 - wy0) * 0.42, 0.02))
 				_emit_oriented_box_st(metal, wc + n * 0.015, u, Vector3.UP, n, Vector3(0.022, (wy1 - wy0) * 0.44, 0.014))
 				_emit_oriented_box_st(metal, wc + n * 0.015, u, Vector3.UP, n, Vector3(ww + 0.02, 0.022, 0.014))
@@ -1571,8 +1654,8 @@ static func aghora_stack_details(spec: Dictionary) -> Dictionary:
 				if _h01(kb + float(k) * 7.7 + float(seg) * 3.1 + n.x * 40.0 + n.z * 80.0) < 0.30:
 					continue   # a gap-toothed awning line (the plates' patchwork)
 				var sc := -f_hw + 0.5 + seg_w * (float(seg) + 0.5)
-				if stair_face and sc > f_hw - 1.6:
-					continue
+				if stair_face and _aghora_flight_crosses(stair_flights, -sc, ay - 0.14, seg_w * 0.5, 0.22):
+					continue   # a flight arrives through this awning span
 				var a_c := n * f_d + u * sc + Vector3(0, ay, 0)
 				var slat_st := cloth if int(_h01(kb + float(seg) * 11.0 + float(k) * 5.0) * 2.0) == 0 else metal
 				for sl in range(5):
@@ -1615,15 +1698,17 @@ static func aghora_stack_details(spec: Dictionary) -> Dictionary:
 			Vector3(0.10 * h, s_hh, 0.025))
 		_emit_oriented_box_st(neon, fzn * (hz + 0.09) + Vector3(0, sy, 0), fzu, Vector3.UP, fzn,
 			Vector3(0.10 * h - 0.08, s_hh - 0.06, 0.012))
-	# the stair zigzag on the +X flank: stringer + steps + landing + rail per storey
+	# the stair zigzag on the +X flank: stringer + steps + landing + rail per storey — emitted off
+	# the SAME measured flight table the window/awning gates reconciled against
 	if int(tbl["stair_flank"]) == 1:
 		var sx := hx + 0.05
-		for k2 in range(storeys - 1):
-			var y_a := (base + band * float(k2)) * h + 0.05
-			var y_b := (base + band * float(k2 + 1)) * h + 0.05
-			var dirn := 1.0 if k2 % 2 == 0 else -1.0
-			var z_a := dirn * (hz - 0.6)
-			var z_b := -dirn * (hz - 0.6)
+		for k2 in range(stair_flights.size()):
+			var fl := stair_flights[k2] as Dictionary
+			var y_a := float(fl["y_a"])
+			var y_b := float(fl["y_b"])
+			var dirn := float(fl["dirn"])
+			var z_a := float(fl["z_a"])
+			var z_b := float(fl["z_b"])
 			_tube(metal, [Vector3(sx + 0.25, y_a, z_a), Vector3(sx + 0.25, y_b, z_b)], 0.035, 4)
 			_tube(metal, [Vector3(sx + 0.55, y_a + 0.35, z_a), Vector3(sx + 0.55, y_b + 0.35, z_b)], 0.022, 4)
 			for stp in range(6):
