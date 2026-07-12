@@ -110,7 +110,41 @@ func _build_chunk() -> void:
 		for i in range(flat_child_start, get_child_count()):
 			_warp_child(get_child(i))
 		_build_return_points()
+	_register_shelter_regions()
 	reset_preview_state()
+
+## Shelter SANCTUARY registration: the entry pad and every shelter-role node become GameState
+## shelter regions, sized by their pad footprints — the detection gate, the strike gate, and the
+## revive watch all read these, so "standing in the shelter" actually means safe (a shelter that
+## was only a marker let enemies attack you inside it — the 2026-07-12 report). Regions live in
+## the FLAT data frame (character positions stay flat under the helix warp) and are logged
+## (KIND_ADD_SHELTER), like interactable registration.
+func _register_shelter_regions() -> void:
+	var gs = _get_game_state()
+	if gs == null or not gs.has_method("add_shelter_region"):
+		return
+	var done := {}
+	for node_v in (_spec.get("nodes", []) as Array):
+		var node := node_v as Dictionary
+		var role := str(node.get("role", ""))
+		var nid := str(node.get("id", ""))
+		if not (role in ["shelter", "shelter_arrival", "entry"] or nid in ["entry", "exit_shelter"]):
+			continue
+		var p := _vec3(node.get("position", []), Vector3.INF)
+		if p == Vector3.INF:
+			continue
+		var half := _node_pad_size(role if role != "" else "shelter") * 0.5
+		gs.add_shelter_region(Vector2(p.x - half.x - 0.4, p.z - half.z - 0.4),
+			Vector2(p.x + half.x + 0.4, p.z + half.z + 0.4))
+		done[nid] = true
+	# a spec may carry entry/exit as bare anchors rather than nodes — cover those too
+	for aid in ["entry", "exit_shelter"]:
+		if done.has(aid):
+			continue
+		var ap := _anchor_position(str(aid))
+		if ap == Vector3.INF:
+			continue
+		gs.add_shelter_region(Vector2(ap.x - 3.3, ap.z - 2.6), Vector2(ap.x + 3.3, ap.z + 2.6))
 
 ## Whether this stretch renders as a helix (the default) or stays a flat grid. Generated stretches spiral so a
 ## long level curls compactly around a centre (the player still walks a linear grid); a hand-authored builder

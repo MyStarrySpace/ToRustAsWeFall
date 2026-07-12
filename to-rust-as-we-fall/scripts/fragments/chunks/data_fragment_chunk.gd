@@ -1073,6 +1073,13 @@ func _spawn_exit_shelter(spec: Dictionary) -> void:
 		"Rest", [pad], "", 0.0, true, _f(spec, "radius", 1.2), Interactable.InteractableType.INSPECTION)
 	it.interacted.connect(_on_exit_shelter_rested.bind(it))
 	_exit_shelters.append(it)
+	# A pad the game CALLS a shelter must BE one: register the sanctuary region around it — the
+	# detection gate, the strike gate, and the revive watch all read gs shelter regions, and a
+	# label alone registers nothing (the attacked-in-the-shelter report, 2026-07-12).
+	var gs = _get_game_state()
+	if gs != null and gs.has_method("add_shelter_region"):
+		var shalf := maxf(_f(spec, "radius", 1.2) * 1.5, 1.8)
+		gs.add_shelter_region(Vector2(p.x - shalf, p.z - shalf), Vector2(p.x + shalf, p.z + shalf))
 
 func _on_exit_shelter_rested(it: Node = null) -> void:
 	if _phase == "complete":

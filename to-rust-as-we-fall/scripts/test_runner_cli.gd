@@ -195,6 +195,9 @@ func _ready() -> void:
 			"--test-boss-playable":
 				ran_test = true
 				await _test_boss_playable()
+			"--test-shelter-sanctuary":
+				ran_test = true
+				await _test_shelter_sanctuary()
 			"--test-dev-console":
 				ran_test = true
 				await _test_dev_console()
@@ -1327,6 +1330,7 @@ func _run_all_tests() -> void:
 	await _test_decorative_flora()
 	await _test_aghora_clearance()
 	await _test_boss_playable()
+	await _test_shelter_sanctuary()
 	await _test_dev_console()
 	await _test_touch_modes()
 	await _test_ortho_orbit()
@@ -32409,6 +32413,62 @@ func _test_boss_playable() -> void:
 	_assert_true(is_equal_approx(float(climb.get("crawl_speed")), speed_before),
 		"the climb pace restores when the scree settles")
 	await _dispose_scene(inst)
+
+## SHELTER SANCTUARY (director's report, 2026-07-12: "characters are being attacked while in the
+## shelter"): a place the game CALLS a shelter must BE one — the gs shelter region (which the
+## detection gate, the strike gate, and the revive watch already consult) must actually be
+## registered by every shelter the player can stand in: the loader's exit-shelter pad and the
+## generated stretches' entry/shelter nodes. Sanctuary ends at the rect edge — combat outside
+## stays live.
+func _test_shelter_sanctuary() -> void:
+	_test_name = "Shelter Sanctuary"
+	# --- A) the data-fragment exit-shelter pad ---
+	var inst = await _instantiate_preview_chunk_and_wait("hostile_streets", 6)
+	if inst == null:
+		_assert_true(false, "hostile_streets instantiates")
+		return
+	var chunk = inst._active_chunk
+	var gs = inst._game_state
+	var pads: Array = chunk._exit_shelters
+	_assert_true(not pads.is_empty(), "the exit shelter exists")
+	if pads.is_empty():
+		await _dispose_scene(inst)
+		return
+	var pad: Vector3 = (pads[0] as Node3D).global_position
+	gs.snap_character_to("peris", Vector3(pad.x, 0.0, pad.z))
+	_assert_true(bool(gs.is_at_shelter("peris")),
+		"standing on the exit-shelter pad IS sheltered (the pad registers a region)")
+	# an enemy parked right beside the pad must neither detect nor strike the sheltered character
+	gs.snap_character_to("street_gnawer_0", Vector3(pad.x + 1.4, 0.0, pad.z))
+	var hp0 := float(gs.get_stat("peris", "hp"))
+	inst.headless_advance(6.0, 0.1)
+	var hp1 := float(gs.get_stat("peris", "hp"))
+	_assert_true(is_equal_approx(hp0, hp1),
+		"a character IN the shelter is never struck (%.1f -> %.1f)" % [hp0, hp1])
+	_assert_true(not bool(gs.is_downed("peris")), "the sheltered character stays up")
+	# sanctuary ENDS at the rect: step out next to the enemy and combat is live again
+	gs.snap_character_to("peris", Vector3(pad.x - 7.0, 0.0, pad.z + 2.0))
+	gs.snap_character_to("street_gnawer_0", Vector3(pad.x - 8.2, 0.0, pad.z + 2.0))
+	_assert_true(not bool(gs.is_at_shelter("peris")), "off the pad is not sheltered")
+	inst.headless_advance(10.0, 0.1)
+	var hp2 := float(gs.get_stat("peris", "hp"))
+	_assert_true(hp2 < hp1 - 0.5,
+		"outside the shelter the same enemy engages (%.1f -> %.1f) — the fix is a region, not a combat kill-switch" % [hp1, hp2])
+	await _dispose_scene(inst)
+	# --- B) generated stretches (the roguelite's levels): entry + exit shelters are regions ---
+	var inst2 = await _instantiate_preview_chunk_and_wait("generated_stretch", 6)
+	if inst2 == null:
+		_assert_true(false, "generated_stretch instantiates")
+		return
+	var chunk2 = inst2._active_chunk
+	var gs2 = inst2._game_state
+	for aid in ["entry", "exit_shelter"]:
+		var ap: Vector3 = chunk2.call("_anchor_position", aid)
+		_assert_true(ap != Vector3.INF, "the stretch has an %s anchor" % aid)
+		gs2.snap_character_to("aster", Vector3(ap.x, 0.0, ap.z))
+		_assert_true(bool(gs2.is_at_shelter("aster")),
+			"the generated stretch's %s is a sheltered region" % aid)
+	await _dispose_scene(inst2)
 
 func _print_results() -> void:
 	print("")

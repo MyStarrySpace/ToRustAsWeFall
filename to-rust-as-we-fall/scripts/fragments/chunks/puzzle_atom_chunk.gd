@@ -115,6 +115,13 @@ func _build_exit_shelter() -> void:
 	var shelter := _add_object_interactable(self, "AtomExitShelter", "Shelter", end_pos + Vector3(0, 0.1, 0),
 		"Rest", [pad], "", 0.0, true, 1.2, Interactable.InteractableType.INSPECTION)
 	shelter.interacted.connect(_on_shelter_rested)
+	# A pad the game calls a shelter must BE one (the attacked-in-the-shelter report): register the
+	# sanctuary region the detection/strike gates and the revive watch read. Flat data frame — the
+	# hub warp only moves visuals.
+	var gs = _get_game_state()
+	if gs != null and gs.has_method("add_shelter_region"):
+		gs.add_shelter_region(Vector2(end_pos.x - 1.8, end_pos.z - 1.8),
+			Vector2(end_pos.x + 1.8, end_pos.z + 1.8))
 
 func _on_shelter_rested() -> void:
 	if _shelter_rested:

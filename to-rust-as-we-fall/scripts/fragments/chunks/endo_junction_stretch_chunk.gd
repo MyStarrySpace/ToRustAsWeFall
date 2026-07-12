@@ -465,6 +465,13 @@ func _build_shelter() -> void:
 	_add_light(self, SHELTER_POS + Vector3(0.0, 2.1, 0.0), Color(1.0, 0.74, 0.38), 2.0, 11.5)
 	_shelter_interactable = _add_inspection_interactable(self, "EndoJunctionShelterInteractable", "Shelter 1 Hearth", SHELTER_POS, "REST", "", SHELTER_RADIUS)
 	_shelter_interactable.interacted.connect(reach_shelter)
+	# The hearth room is a SHELTER: register the sanctuary region the detection/strike gates and
+	# the revive watch read (a shelter that is only a room lets enemies attack you inside it —
+	# the 2026-07-12 report). Sized to the built room slab (10 x 8 around SHELTER_POS).
+	var gs = _get_game_state()
+	if gs != null and gs.has_method("add_shelter_region"):
+		gs.add_shelter_region(Vector2(SHELTER_POS.x - 5.0, SHELTER_POS.z - 4.0),
+			Vector2(SHELTER_POS.x + 5.0, SHELTER_POS.z + 4.0))
 
 func _update_stretch(_delta: float) -> void:
 	if _danger_resolved and not _shelter_reached and _party_near(SHELTER_POS, SHELTER_RADIUS):
