@@ -1,109 +1,118 @@
-# The Lockout Chase — scene design (GDD §12.1) + the portal-offshoot beat
+# The Lockout Chase — corridor-level implementation spec (PROPOSED)
 
-**Status: PROPOSED (director approval required).** Canon spine: GDD §12.1 (position, phases,
-Tyreg accept/decline, aftermath at Endo's section), L751 (the lockout checkpoint at the vessel
-wall's 6 o'clock), L763 (the failed re-entry as antecedent), L2557 (the party's tags fail here —
-why later gates are credit-gated). **The GDD's satellite files `chase_scene_framework.md` (full
-mechanics + the expert solution) and `lockout_chase_aftermath.md` (dialogue) are NOT in the
-reference-docs mirror** — everything below marked [FRAMEWORK?] is designed to be overridden by
-them once refreshed. The portal-offshoot beat is DESIGN_PRINCIPLES tension seed 3 ("sacrificial
-activation"), promoted into the chase — including the shadow-solution cheese the director
-flagged, closed below.
+**Canon**: `reference-docs/chase_scene_framework.md` (now mirrored — the chase pattern is LOCKED:
+trigger → distance → corridor/levers → phase shift → boundary → chase-end beat → aftermath, real
+failure via reset; mechanics LOCKED: pause + speed-up always on, switching + abilities live,
+stamina primary, levers core, sparse dialogue) + GDD §12.1 + `lockout_chase_aftermath.md` (the
+scene draft/dialogue). This doc fills the framework's OWN open task: *"Specific corridor
+geometry: where the offshoot portal is, where the gap window opens up, where the tight-hides are
+inside the offshoot. Implementation-level spec needed when the scene moves to Godot."*
+Everything here is FLEX-tier tuning under the locked shape; director approval required.
 
-## Shape
+**Correction from the earlier draft of this doc:** the portal offshoot is NOT an exploit to
+close. It is the **decline-path expert solution** (canon: portal-stun double-seal of an offshoot
+with tight-hide spots — knowledge-gated, no UI flag, default no environmental hint). The
+anti-cheese IS the knowledge gate: portal-stunning is taught in Act 2/3, the offshoot is unmarked
+geometry, the gap window must be engineered with levers, and the two-portal seal is a
+reasoning-step beyond every taught use. Nothing else needs closing.
 
-One chunk (`lockout_chase`), three spaces, all reused geometry vocabulary:
+## The corridor (checkpoint → boundary), segment by segment
 
-1. **The checkpoint plaza** (the simulation boundary — gap A's facility checkpoint build, used
-   twice: once quiet for the failed re-entry, once hostile here). Scan gates, tag reader, cool
-   blue-white enforcement light — the one place Act 1 uses that register at full brightness.
-2. **The return corridors** — the mid-Act-1 stretch the party just walked, now hostile: same
-   rooms REVERSED, doors they opened now working against them (the GDD's "corridors they just
-   came through, now hostile under chase conditions"). Familiarity is the design material:
-   every lever they learned (doors, flora, terrain) plays mirrored.
-3. **Endo's maintained section** — the boundary wall, the quiet aftermath room.
+Linear spine, ~150 wu, six segments + the plaza and the wall. Naturalizer base speed = party
+sprint × 1.12 (framework start value 10–15%). Stamina budget: full-sprint collapses in S4;
+sprint/walk alternation + competent levers arrives with margin (framework law). Levers never
+regenerate mid-chase; a sealed door also blocks YOUR retreat.
 
-The chase is a PAIR context by construction (Aster + Peris attempted re-entry; Endo stayed out —
-GDD L763/§12.1 names only the two). So "the shadow solution" here isn't a harder alternate — it
-is the DEFAULT cast, with Tyreg as the optional third. That's why the offshoot cheese matters:
-the chase must be tense for exactly the pair.
+- **S0 — the checkpoint plaza.** The simulation-boundary scan gates (the facility build, gap A —
+  shared with the failed re-entry scene). Trigger: Aster's tag rejection escalates; Naturalizers
+  activate from concealed wall niches (initial distance ~18 wu, seen and heard). Cool blue-white
+  light; the scanner's rejection chirp is the starting gun.
+- **S1 — the queue hall** (~20 wu). LEVER 1: a **sealable service door** at the hall's exit
+  (first-sight readable: a lit panel + a heavy slab). Sealing costs ~2 s and buys the biggest
+  single delay in the chase (the wave must cut through). Teaches the lever grammar immediately.
+- **S2 — the conduit gallery** (~25 wu). LEVER 2: a **Chelator cluster** feeding on an iron
+  seep along the left wall — the signature protocol-hesitation beat: Naturalizers detour wide of
+  iron-feeding fauna (the framework's canon slowdown). Route the party THROUGH the cluster's
+  apron (safe for them) and the pursuit line breaks around it. LEVER 3 (Peris): a **Flure** on
+  a fertile lip — one decoy redirection, pulling the lead rank up the dead gallery stair.
+- **S3 — the junction + THE OFFSHOOT** (~25 wu; the corridor's midpoint). Tyreg's side corridor
+  enters here (phase shift + accept/decline choice, canon). The junction is watched by a fixed
+  scan fan. And one of the junction's THREE portal terminals is different:
+  - **The offshoot portal** sits recessed behind the junction's pipe bank — visually identical
+    to the two ammo-cache terminals beside it (no flag, canon: "not flagged as mechanically
+    important"). It ports into the **offshoot chamber**: a 6×4 dead-end maintenance pocket
+    BETWEEN S3 and S4 (parallel to the spine, no walking connection), containing its own exit
+    portal (returning to S4's mouth) and **two tight-hides** — a Capbage growth against the
+    north wall and a collapsed locker shell against the south (capacity ONE each, standard
+    tight-hide mechanics: CONCEAL_FULL, search-cycle behavior, listening-through-cover).
+  - In normal play the offshoot is a *shortcut with a toll*: hacking the portal (Aster, ~3 s
+    inside the scan fan — the sacrificial-activation grammar) skips S3's watched half. The
+    expert solution lives in the same geometry (below).
+- **S4 — the flooded undercut** (~30 wu). LEVER 4: a **Scarpet run** down the dry side
+  (friction + signal — the party crosses clean; pursuit slips wide). LEVER 5 (accept path):
+  **ammo cache A** behind portal terminal 2 (the Tyreg loop: Aster hacks, Peris runs, Tyreg
+  Suppresses the lead rank).
+- **S5 — the collapse shelf** (~30 wu). LEVER 6: a **weak wall** over the shelf (the built
+  weak-wall object): pried as the party passes, it drops rubble across the lane — the late big
+  delay, priced by the pry dwell. LEVER 7 (decline path pressure): the second wave enters HERE
+  from the side corridor Tyreg would have cleared.
+- **S6 — the boundary run** (~20 wu, lever-less by design). Pure stamina math: whatever margin
+  the levers bought is spent here. **Endo's wall**: Naturalizers stop at the maintained line
+  (canon — they do not cross into maintained territory; the wall registers a shelter region, so
+  the sanctuary is mechanical, not scripted). Chase-end beat + the aftermath scene
+  (`lockout_chase_aftermath.md`) play here.
 
-## The clock, not a leash
+**Close-approach escalation** (canon): 1st close = the warning beat (audio + a grab-whiff),
+2nd = real damage (a landed strike), 3rd = caught → the reset fires (default reset rolls back
+zone progress + kills zone flora; a carried extraction item preserves progress).
 
-The chase runs on a WAVE TIMELINE, not per-enemy leashes: Naturalizer wave N enters corridor
-segment S at scheduled tick T (scheduler-driven, fast-forward invariant, replayable). Nothing
-resets when you break line of sight — the waves keep advancing on their timetable, so TIME spent
-anywhere is spent from the escape budget. This is the architectural anti-cheese: there is no
-aggro state to launder, only a timetable to be ahead of. [FRAMEWORK? — if the framework doc
-specifies leashes instead, the timetable still drives spawns.]
+## The expert solution, placed (decline path)
 
-- Phase 1 (pure environmental): waves 1–2, readable spacing; every corridor segment offers one
-  lever (a door to close = +one segment of delay, a Chelator cluster [FRAMEWORK? not yet a
-  class] to trip, a flora beat).
-- Phase shift: Tyreg arrives at the mid-corridor junction with the accept/decline choice.
-- Accept: three-hander loop — Aster hacks a terminal (portal to an ammo cache), Peris runs the
-  ammo, Tyreg's Suppress deletes a wave's lead rank. The loop IS the chase.
-- Decline: wave density scales; the expert out is Hushbloom portal-stunning [needs the Hushbloom
-  class; full spec in the framework doc when refreshed]. First-play decline is expected to fail
-  (canon says so — the game does not telegraph it).
+Canon steps mapped onto the geometry above — Aster + Peris only, second wave live:
 
-## The portal-offshoot beat (seed 3, promoted)
+1. **Engineer the gap window**: seal S1's door AND break the line at S2's Chelator — with both
+   levers spent, the pursuit gap at S3 peaks (~9 s at tuning start). That window is the only
+   time the choreography fits; a player who spent the levers early or badly doesn't get it.
+2. **Aster hacks the offshoot portal** (the 3 s activation inside the now-empty scan fan).
+3. **Both enter.** Inside, **Peris stun-throws a Hushbloom at the offshoot's EXIT portal**
+   (sealing the back door), both step back out through the entrance portal, **stun it from the
+   corridor side**, and re-enter as the stun blooms — the two-portal seal, the reasoning step
+   no taught use demonstrates (all taught uses stun ONE portal).
+4. **Each takes a tight-hide** (one per character — capacity forces the split; the pair listens
+   through cover as the waves sweep S3).
+5. **Search cycle runs dry**: the Naturalizers patrol the spine, lose the trail (full conceal =
+   never spotted; the search→return FSM already behaves this way), and move on. The stuns
+   expire, the portals wake, the pair exits into an empty S4 and walks the rest.
 
-Mid-corridor, one side gallery sits behind a PortalPad pair: the OFFSHOOT HIDE — a dead-end
-maintenance bay parallel to the main run, rejoining two segments later. The pad's activation
-console sits INSIDE a watch fan covering the junction.
+Default: **no environmental hint** (the framework's stated default; the dead-Hushbloom-hint
+variant is listed there as the alternative if the director wants a whisper).
 
-**The presented play (with Tyreg):** she Suppresses the fan's watcher; activation is free; the
-party ports, the wave sweeps past the empty junction, they exit BEHIND it — buying the plaza's
-second gate the time it needs. Textbook seed 3 with the toll paid in ammo instead of blood.
+## Buildability (against what exists today)
 
-**The pair play (no Tyreg):** sacrificial activation, as the seed wrote it — one of the two
-stands the fan and takes the survivable strike (or times the whiff against the windup — whiff
-rules exist), the portal opens, both slip into the offshoot, the sweep passes. It SHOULD work.
+- ✅ EXISTS: pursuit/search/return FSM + two-tier detection (tight-hide = CONCEAL_FULL, the
+  Capbage grammar); PortalPad + group queueing; weak walls; Scarpet; Flure decoy; scheduler-
+  driven waves; whiff/strike timing; stamina/sprint; shelter-region sanctuary at Endo's wall
+  (the new law); wipe-restart (the reset's chassis — needs the zone-rollback + flora-kill
+  flavor); real-input test machinery.
+- ❌ NEEDS-BUILD (ordered): **Naturalizer** class (fixed-route scan, contact strike, granule
+  tell, the protocol-hesitation hook); **Hushbloom** class (stun burst + carry/throw — unlocks
+  this scene AND two register elements); **portal stun state** on PortalPad (stunned = no
+  transit, timed, enemy-blocking); **Chelator cluster** object (iron-feeding fauna terrain
+  piece with a pursuer-detour aura); **Tyreg** temp member + Suppress (the EMP ability grammar,
+  ammo-fed) + the ammo-cache carry loop (compose: terminal → portal → the carry verb);
+  the **close-approach director** (escalation counter on the scheduler); the checkpoint plaza
+  geometry (shared with the failed re-entry — build once).
+- Chunk: `lockout_chase` on the fragment loader; tests when built:
+  `--test-lockout-chase-playthrough` (accept path three-hander to the wall),
+  `--test-lockout-chase-expert` (decline path: the gap window is real, the double-seal holds,
+  the search cycle dries, exit clean — all data-layer), plus the escalation counter
+  (warning → damage → caught → reset) and "levers never regenerate."
 
-**The cheese (director's flag) and the four laws that close it:**
+## Variants + connections (from the framework, for the spec's completeness)
 
-1. **One charge per arming.** The activation burns the pad's charge; it re-arms only from the
-   NEXT terminal down the corridor (the same terminals the ammo loop uses). The offshoot is a
-   card you play once per stretch of corridor, not a revolving door. (The register's own idiom:
-   one bait = one window, P12 — no latch.)
-2. **The hide is MEDIUM, not FULL.** The offshoot sheds a wave sweeping at OUTER range — but a
-   Naturalizer that saw the entry inside its inner band posts at the mouth and camps (two-tier
-   detection, already built, does this for free). Cheesing the portal point-blank in front of a
-   watcher converts "hidden" into "cornered."
-3. **The clock keeps running.** Hiding spends the timetable: wave N+1 enters the segment on
-   schedule, and the exit corridor's own gate begins CLOSING on its own timer the moment the
-   checkpoint alarm fired. The offshoot buys one sweep's worth of seconds — it can never buy a
-   reset, because there is nothing to reset.
-4. **The toll is real for the pair.** No Tyreg means the fan is live: the activation costs the
-   strike (hp the aftermath scene will read) or the whiff-timing skill check. A pair that plays
-   the offshoot perfectly has spent EXACTLY the resources the beat prices — that's a solve, not
-   a cheese; laws 1–3 only remove the repeatable/free versions.
-
-**Why keep it at all:** the offshoot is the chase's one BREATH — the pair play teaches
-sacrificial activation under real pressure two acts before the Hushbloom expert path asks for
-its cousin, and the accept path shows Tyreg's value by making the same beat cost nothing. Cutting
-it would flatten the chase into a pure run; pricing it is better than removing it.
-
-## Aftermath
-
-At Endo's section the waves stand down at the boundary (enforcement doesn't cross into
-maintained territory — [FRAMEWORK?], and it reads right: the wall Endo keeps is the line the
-institution respects). The scene is quiet and character-forward per canon; hp/strike state from
-the offshoot toll is allowed to show (limping into Endo's light is the correct image).
-
-## Buildability
-
-- ✅ EXISTS: wave scheduling (scheduler), pursuit/search/return FSM, two-tier detection +
-  distraction, PortalPad group queueing, CrawlTunnel offshoots, whiff/dodge timing, shelters as
-  sanctuary (Endo's section registers a region — the new law), corridors from the fragment
-  vocabulary, real-input test machinery for a chase leg.
-- ❌ NEEDS-BUILD: **Naturalizer** enemy class (fixed-route scan + lethal contact strike +
-  granule-pack tell, fauna_roster L34 — tag_day fakes them scripted today); **Tyreg** temp party
-  member + Suppress (ammo-fed ranged suppress verb); the **ammo-cache portal loop** (terminal →
-  portal → carry, composes existing pieces); **Hushbloom** class (stun burst — also unlocks the
-  decline expert path and two register elements); the **wave director** (a timetable runner on
-  the scheduler); the checkpoint plaza geometry (shared with gap A's facility build).
-- Tests, when built: `--test-lockout-chase-playthrough` (pair beats phase 1 + the offshoot beat
-  via the data layer), the anti-cheese laws (charge burns, mouth-camp on inner-band entry, the
-  timetable advances while hidden), and the accept-path three-hander loop.
+- Party variants: pair (decline), trio w/ Tyreg (accept). Aftermath is Aster+Peris alone either
+  way (canon).
+- Pays off: the terminal data trail, Endo's maintenance arc, the failed re-entry; sets up Tyreg's
+  Archive Depths recruitment as a second meeting (accept) or first (decline).
+- Future chases reuse this chunk's machinery: patrol-failure chases (Act 2), swarm flights,
+  Peris-sundowning inversions, NK night infiltration (the framework's anticipated list).

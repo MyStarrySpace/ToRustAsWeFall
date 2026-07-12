@@ -118,7 +118,9 @@ Legend: ✅ built+tested · 🟡 partial/staged · ❌ nothing yet · 📋 desig
 
 ## Reference-docs holes found during this audit
 
-The GDD cites these files that are NOT in the reference-docs mirror (refresh from Downloads):
-`chase_scene_framework.md` (full chase mechanics + expert solution), `lockout_chase_aftermath.md`
-(the chase dialogue), `endo_wall_scene.md`, `world_aesthetic_reference.md` (noted missing before).
-docs/LOCKOUT_CHASE.md marks every assumption it makes that those files may override.
+RESOLVED 2026-07-12: `chase_scene_framework.md`, `lockout_chase_aftermath.md`, and
+`endo_wall_scene.md` are now mirrored from Downloads (newest versions), and
+docs/LOCKOUT_CHASE.md has been rewritten against the real framework (the portal offshoot is the
+DESIGNED decline-path expert solution — knowledge-gated, not a cheese to close). Also mirrored: `enemy_ecosystem.md`, `survival_gameplay_feel.md`. Still missing from
+Downloads entirely: `world_aesthetic_reference.md`, `trawf_timing_and_pacing_spec.md` (the
+reset-system spec the chase framework cites), and the `trawf-scene-spec-framework` skill dir.
