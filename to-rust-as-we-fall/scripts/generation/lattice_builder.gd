@@ -884,21 +884,49 @@ static func pipes(spec: Dictionary, seed_value: int, overrides: Dictionary = {})
 	st.generate_normals()
 	return st.commit()
 
+## Resolve the MEASURED clear lanes for a surface: the `clear_lanes` override restricts every run
+## to the given [x_lo, x_hi] strips of the surface width. The CALLER derives them from the
+## facade's real feature layout (a honeyframe face's solid border rim, a tracery drum's
+## bay-boundary piers), so a drape can never wander across a lit cell, a lancet, or a banner.
+## `lanes_frac: true` reads them as FRACTIONS of the width (a drum's w = TAU*r varies per spec).
+## No lanes -> today's free wander (the vein-tendril kinds want it).
+static func _surface_lanes(surf: Dictionary, p: Dictionary) -> Array:
+	if not (p.has("clear_lanes") and p["clear_lanes"] is Array):
+		return []
+	var w: float = surf["w"]
+	var out: Array = []
+	for l_v in (p["clear_lanes"] as Array):
+		var l := l_v as Array
+		var lo := float(l[0])
+		var hi := float(l[1])
+		if bool(p.get("lanes_frac", false)):
+			lo *= w
+			hi *= w
+		if hi - lo > 0.05:
+			out.append([clampf(lo, 0.0, w), clampf(hi, 0.0, w)])
+	return out
+
 static func _pipes_surface(surf: Dictionary, p: Dictionary, rng: SeededRng, st: SurfaceTool) -> void:
 	var w: float = surf["w"]
 	var h: float = surf["h"]
 	var num := int(max(1, round(float(p["density"]) * w)))
 	var lane: float = p["lane_w"]
+	var lanes := _surface_lanes(surf, p)
 	for _i in range(num):
 		# Edge-hugging: half the runs start near a vertical edge/recess (as in the plate) instead of
-		# scattering across a flat face centre.
+		# scattering across a flat face centre. With measured clear lanes, EVERY run starts inside
+		# one (and the whole walk stays inside it).
 		var x0: float
-		if float(rng.call("randf")) < float(p["edge_bias"]):
+		var bounds: Array = []
+		if not lanes.is_empty():
+			bounds = lanes[int(rng.call("randi_range", 0, lanes.size() - 1))] as Array
+			x0 = float(rng.call("randf_range", float(bounds[0]), float(bounds[1])))
+		elif float(rng.call("randf")) < float(p["edge_bias"]):
 			var near_left := float(rng.call("randf")) < 0.5
 			x0 = float(rng.call("randf_range", 0.08, lane)) if near_left else w - float(rng.call("randf_range", 0.08, lane))
 		else:
 			x0 = float(rng.call("randf_range", 0.0, w))
-		var lead := _subdivide_sag(_walk_pipe(x0, w, h, p, rng), float(p["sag"]), int(p["sag_segs"]))
+		var lead := _subdivide_sag(_walk_pipe(x0, w, h, p, rng, bounds), float(p["sag"]), int(p["sag_segs"]))
 		# Most runs are a SINGLE pipe; the rest bundle 2-3 mixed-gauge runs together.
 		var bundle := 1
 		if float(rng.call("randf")) >= float(p["single_frac"]):
@@ -906,7 +934,7 @@ static func _pipes_surface(surf: Dictionary, p: Dictionary, rng: SeededRng, st: 
 		for b in range(bundle):
 			var pr := float(rng.call("randf_range", float(p["radius_min"]), float(p["radius_max"])))
 			var off := 0.0 if b == 0 else float(ceili(b / 2.0)) * float(p["bundle_gap"]) * (1.0 if b % 2 == 1 else -1.0)
-			var path := lead if is_zero_approx(off) else _offset_path(lead, off, w)
+			var path := lead if is_zero_approx(off) else _offset_path(lead, off, w, bounds)
 			_sweep_uv(path, surf, pr, int(p["sides"]), float(p["standoff"]), p, st)
 
 # Insert a downward catenary belly into each segment. +v is down (see _surf_map), so the belly ADDS to
@@ -927,15 +955,20 @@ static func _subdivide_sag(path: PackedVector2Array, sag: float, segs: int) -> P
 	out.append(path[path.size() - 1])
 	return out
 
-static func _offset_path(path: PackedVector2Array, off: float, w: float) -> PackedVector2Array:
+static func _offset_path(path: PackedVector2Array, off: float, w: float, bounds: Array = []) -> PackedVector2Array:
+	var lo := 0.0 if bounds.is_empty() else float(bounds[0])
+	var hi := w if bounds.is_empty() else float(bounds[1])
 	var out := PackedVector2Array()
 	for pt in path:
-		out.append(Vector2(clampf(pt.x + off, 0.0, w), pt.y))
+		out.append(Vector2(clampf(pt.x + off, lo, hi), pt.y))
 	return out
 
-static func _walk_pipe(x0: float, w: float, h: float, p: Dictionary, rng: SeededRng) -> PackedVector2Array:
+static func _walk_pipe(x0: float, w: float, h: float, p: Dictionary, rng: SeededRng, bounds: Array = []) -> PackedVector2Array:
+	# a measured clear lane confines the whole walk (jogs clamp at its walls, never cross out)
+	var lo := 0.0 if bounds.is_empty() else float(bounds[0])
+	var hi := w if bounds.is_empty() else float(bounds[1])
 	var pts := PackedVector2Array()
-	var x := clampf(x0, 0.0, w)
+	var x := clampf(x0, lo, hi)
 	var v := 0.0
 	var last_jog := 0.0   # sign of the previous horizontal move; a straight step resets it to 0
 	pts.append(Vector2(x, v))
@@ -947,7 +980,7 @@ static func _walk_pipe(x0: float, w: float, h: float, p: Dictionary, rng: Seeded
 			# Keep drifting the SAME way on back-to-back diagonals (never reverse left<->right without a
 			# straight step between); only a straight step frees the pipe to pick a fresh side.
 			var s: float = last_jog if last_jog != 0.0 else (-1.0 if float(rng.call("randf")) < 0.5 else 1.0)
-			var nx := clampf(x + s * float(p["lane_w"]), 0.0, w)
+			var nx := clampf(x + s * float(p["lane_w"]), lo, hi)
 			if is_equal_approx(nx, x):   # blocked by the wall — reset so the next jog can go the other way
 				last_jog = 0.0
 			else:

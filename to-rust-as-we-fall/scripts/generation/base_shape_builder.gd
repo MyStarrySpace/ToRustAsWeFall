@@ -1398,7 +1398,19 @@ static func aghora_exchange_details(spec: Dictionary) -> Dictionary:
 	var nrc_y := float(nr["y"]) * h
 	var nr_r := float(nr["r"]) * h
 	var dome_r := float(Survey.lathe_local_r(rings, nrc_y, fr))
-	var nrc := Vector3(0, nrc_y, dome_r + float(nr["proud"]))
+	# The ring is a full vertical disc: its LOWER arc reaches down to where the dome is WIDER than
+	# at the centre height, so the plane must clear the surveyed profile over the ring's WHOLE
+	# span — an offset measured only at the centre buried the lower arc in the shoulder. `proud`
+	# stays the authored minimum standoff at the centre; the sampled clearance wins when the
+	# shoulder bulges past it (and re-reconciles automatically under roll_vars' ring-size rolls).
+	var z_clear := 0.0
+	for s_i in range(25):
+		var sa := TAU * float(s_i) / 25.0
+		var sy := nrc_y + sin(sa) * nr_r
+		var sx := cos(sa) * nr_r
+		var sr := float(Survey.lathe_local_r(rings, sy, fr))
+		z_clear = maxf(z_clear, sqrt(maxf(0.0, sr * sr - sx * sx)))
+	var nrc := Vector3(0, nrc_y, maxf(dome_r + float(nr["proud"]), z_clear + 0.16))
 	var nrn := Vector3(0, 0, 1)
 	_emit_torus_st(neon, nrc, nrn, nr_r, 0.055, 22, 6)
 	_emit_torus_st(neon, nrc + nrn * -0.02, nrn, nr_r * 0.80, 0.028, 18, 5)
@@ -2047,15 +2059,31 @@ static func zone3_details(spec: Dictionary) -> Dictionary:
 	var y_wall := float(po["y_wall"]) * h
 	var y_post := float(po["y_post"]) * h
 	var bays := int(po["bays"])
+	# Props + wall ties reconcile against the arch-window spans (measured from the same table):
+	# a full-height pole standing across a window reads as clipping from most angles, and a tie
+	# anchors INTO the glass if its wall point lands inside a span — shift both to the nearest
+	# pier between windows instead.
+	var win_spans: Array = []
+	for wn_pre in (tbl["windows"] as Array):
+		var wn_p := wn_pre as Array
+		win_spans.append([float(wn_p[0]) * h - float(wn_p[1]) * h - 0.15,
+			float(wn_p[0]) * h + float(wn_p[1]) * h + 0.15])
+	var clear_x := func(x: float) -> float:
+		for sp_v in win_spans:
+			var sp := sp_v as Array
+			if x > float(sp[0]) and x < float(sp[1]):
+				return float(sp[0]) if x - float(sp[0]) <= float(sp[1]) - x else float(sp[1])
+		return x
 	for b in range(bays + 1):
-		var px := lerpf(main_x0 + 0.10, main_x1 - 0.10, float(b) / float(bays))
+		var px: float = clear_x.call(lerpf(main_x0 + 0.10, main_x1 - 0.10, float(b) / float(bays)))
 		_rings_loft(wood, Vector3(px, 0.0, hz + p_out - 0.08), y_post,
 			[[0.0, 0.055 / y_post], [1.0, 0.038 / y_post]], 6)
 	for b2 in range(bays):
 		var xa := lerpf(main_x0 + 0.10, main_x1 - 0.10, float(b2) / float(bays))
 		var xb := lerpf(main_x0 + 0.10, main_x1 - 0.10, float(b2 + 1) / float(bays))
 		for rf in [xa + 0.06, (xa + xb) * 0.5, xb - 0.06]:
-			_tube(wood, [Vector3(float(rf), y_wall, hz), Vector3(float(rf), y_post, hz + p_out)], 0.035, 4)
+			var rfx: float = clear_x.call(float(rf))
+			_tube(wood, [Vector3(rfx, y_wall, hz), Vector3(rfx, y_post, hz + p_out)], 0.035, 4)
 		var slats := int(po["slats"])
 		for sl in range(slats):
 			var t := (float(sl) + 0.5) / float(slats)

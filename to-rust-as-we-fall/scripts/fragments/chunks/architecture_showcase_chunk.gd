@@ -280,8 +280,24 @@ func _add_pipes(root: Node3D, spec: Dictionary, survey: BuildingSurvey) -> void:
 	var pipe_seed := int(str(spec.get("kind", "")).hash())
 	# the survey's silhouette PROFILE keeps the drapes on the real surface (mereotopology: parts
 	# touch hosts — never the spec's nominal radius, which the lobed/tiered massings don't follow)
-	var mesh := Lattice.pipes(spec, pipe_seed,
-		{"r_at": func(y: float) -> float: return survey.radius_at(y)})
+	var ov: Dictionary = {"r_at": func(y: float) -> float: return survey.radius_at(y)}
+	# MEASURED clear lanes: a facade whose faces carry a CELL FIELD confines its drapes to the
+	# structure between the openings — the frame's solid border rim on box lattices, the
+	# bay-boundary piers on a tracery drum. Free wander stays for the bare vein-tendril kinds
+	# (a drape crossing a lit cell was the honeycomb clipping report, 2026-07-12).
+	var lanes: Array = []
+	match str(spec.get("lattice", "")):
+		"honeyframe", "voronoi", "rackwork":
+			lanes = [[0.0, 0.10], [0.90, 1.0]]
+		"tracery":
+			var bays := maxi(3, int(spec.get("bays", 8)))
+			for k in range(bays):
+				var c := float(k) / float(bays)
+				lanes.append([maxf(0.0, c - 0.012), minf(1.0, c + 0.012)])
+	if not lanes.is_empty():
+		ov["clear_lanes"] = lanes
+		ov["lanes_frac"] = true
+	var mesh := Lattice.pipes(spec, pipe_seed, ov)
 	var mat := StandardMaterial3D.new()
 	mat.vertex_color_use_as_albedo = true   # the pipe carries its metal/rust patina as vertex colour
 	mat.metallic = 0.5
