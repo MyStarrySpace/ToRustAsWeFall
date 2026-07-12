@@ -536,3 +536,25 @@ Placement register: densest in Cleanstreets (the sanitization district IS the ae
 Greenfields/Aghora aprons; rare in the deep wilds — hostile architecture marks where the
 institution still claims the space. Roguelite: spike strips + chicanes join the generator's object
 vocabulary alongside crawl tunnels (ROGUELITE_RUN.md "Next").
+
+## BOSS PIECES MADE PLAYABLE (director's directive, built 2026-07-12)
+
+The showcase (`--preview=boss_showcase`) is an encounter now, not a diorama:
+
+- **Paranucleus**: the reservoir cache is armed in EVERY mode ("TAKE THE SAMPLE"; the roguelite
+  finale keeps "TAKE THE DOSE") — threading the wheels has a payoff. **Piece 18 is live**: a
+  Spiker rooted to ring 0's rim (the bright branch renders on the wheel pivot, running hot when
+  it bears); its lane joins the ONE shared `thread_window(t)` predicate (gaps on the corridor
+  line AND the lane swept off it) used by the crossing rule, the mouth gates, and the analytic
+  queued-launch scan — two phases to satisfy at once, exactly the proposal. Standing exposed on
+  the corridor while the lane bears drains hp on the align-poll cadence (concealment is the
+  cover verb). The brake is contested and SAFE: a detent that would freeze the lane on the
+  corridor is refused (no soft-lock).
+- **Watchtower**: the switchback is a real CLIMB (CrawlTunnel authored path to the summit —
+  the established grid-forbidden traversal), trail-head locusts roam the approach, and the
+  **scree winch** (piece 12 lite) sweeps the apron — enemies pushed off the trail head,
+  fail-forward — while turning the climb to half-pace scramble for a span (spending it costs
+  your own line, the piece's grammar). The summit holds the ACT II SURVEY dwell (the objective
+  beat) and a click DESCEND mouth back down. Full flight-by-flight winch chains stay proposal 12.
+- Guarded by `--test-boss-playable` (in `--test-all`): window-scan honesty (gaps + Spiker),
+  purity, brake safety, the rake, climb → survey → descend, the winch sweep + scramble + settle.

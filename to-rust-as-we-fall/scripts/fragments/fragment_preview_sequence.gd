@@ -154,13 +154,16 @@ const PREVIEW_ENTRIES := [
 	# BOSS PIECES: the two mega-landmark boss encounters (GDD 11) — Loca's Watchtower on its crag
 	# with the switchback approach, and the Paranucleus's turning ophanim wheels over the engulfed
 	# NUTECH facility. N reseeds both.
-	{"id": "boss_showcase", "chunk": "boss_showcase", "title": "Boss Pieces (Watchtower + Paranucleus)", "stage": 6,
-		"config": {"seed": 0, "overlays": {"aster": false, "peris": false, "endo": false}}},
 	# HOSTILE STREETS: ornamental invasives (docs/DECORATIVE_FLORA.md — no highlight until Peris's
 	# Y HARVEST read lights them yellow, CLEAR removes them) + anti-loiter spike strips
 	# (SET_PIECES 21 — lure the pack across the studs). Wipe restarts demo the runback decor pass.
 	{"id": "hostile_streets", "chunk": "data_fragment", "title": "Hostile Streets (decor + studs)", "stage": 6,
 		"config": {"fragment_path": "res://data/fragments/hostile_streets.tres"}},
+	# BOSS PIECES, now PLAYABLE: the watchtower switchback CLIMB + trail-head scree WINCH + summit
+	# SURVEY beat; the paranucleus thread with the ring-rooted SPIKER sightline (SET_PIECES 18) and
+	# the reservoir cache beyond the far mouth. N reseeds both.
+	{"id": "boss_showcase", "chunk": "boss_showcase", "title": "Boss Pieces (Watchtower + Paranucleus)", "stage": 6,
+		"config": {"seed": 0, "overlays": {"aster": false, "peris": false, "endo": false}}},
 ]
 
 ## The menu entry for an id (or {} if none).

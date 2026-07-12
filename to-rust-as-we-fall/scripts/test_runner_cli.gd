@@ -192,6 +192,9 @@ func _ready() -> void:
 			"--test-aghora-clearance":
 				ran_test = true
 				await _test_aghora_clearance()
+			"--test-boss-playable":
+				ran_test = true
+				await _test_boss_playable()
 			"--test-dev-console":
 				ran_test = true
 				await _test_dev_console()
@@ -1323,6 +1326,7 @@ func _run_all_tests() -> void:
 	await _test_lure_relay_puzzle()
 	await _test_decorative_flora()
 	await _test_aghora_clearance()
+	await _test_boss_playable()
 	await _test_dev_console()
 	await _test_touch_modes()
 	await _test_ortho_orbit()
@@ -14596,11 +14600,11 @@ func _test_projection_alignment() -> void:
 	var dt := -1.0
 	var scan := 0.0
 	while scan < 400.0:
-		if bool(chunk.ring_gap_at_bottom(1, t0 + scan)):
+		if bool(chunk.thread_window(t0 + scan)):
 			dt = scan
 			break
 		scan += 0.05
-	_assert_true(dt >= 0.0, "ring 1's gap sweeps the corridor line within its period")
+	_assert_true(dt >= 0.0, "the full thread window (gaps + Spiker away) recurs within the period")
 	inst.headless_advance(dt + 0.6, 0.1)
 	for i in range(4):
 		await get_tree().process_frame
@@ -14891,6 +14895,10 @@ func _test_chunk_interactable_outlines() -> void:
 		"RestInteractable": true,
 		"RangeDepartureInteractable": true, "RangeScoutInteractable": true, "RangeSeamInteractable": true,
 		"RangeLureInteractable": true, "RangeHideInteractable": true,
+		# the watchtower summit's stand-and-work SURVEY beat: the summit is only reachable by the
+		# authored climb (the crag blocks the grid), so a click-walk can never commit there —
+		# proximity is the honest trigger (boss_showcase, SET_PIECES 12 lite).
+		"SummitSurvey": true,
 	}
 	var no_outline_ok := {}   # genuinely meshless zones — none today; add by exact name + justification
 	# EVERY chunk in the registry, not an allowlist — so a NEW chunk's interactables are enforced automatically
@@ -32286,6 +32294,121 @@ func _test_aghora_clearance() -> void:
 		var offenders: Array = BaseShapeBuilder.aghora_stair_window_offenders(spec2)
 		_assert_equals(offenders.size(), 0,
 			"no stair-face window sits under a flight (spec seed %d; %d offenders)" % [s2, offenders.size()])
+
+## BOSS PIECES ARE PLAYABLE (director, 2026-07-12): the showcase is an encounter, not a diorama.
+## Paranucleus: the reservoir cache is always armed; the ring-rooted Spiker (piece 18) joins the
+## thread window (one shared pure predicate) and rakes exposed corridor-standers; the brake's
+## detent never freezes the lane on the corridor. Watchtower: the switchback is a real CLIMB
+## (authored path), the trail-head winch SWEEPS the apron + turns the climb to scramble, and the
+## summit survey beat is the objective.
+func _test_boss_playable() -> void:
+	_test_name = "Boss Pieces Playable"
+	var inst = await _instantiate_preview_chunk_and_wait("boss_showcase", 8)
+	if inst == null:
+		_assert_true(false, "boss showcase instantiates")
+		return
+	var chunk = inst._active_chunk
+	var gs = inst._game_state
+	if chunk == null or gs == null:
+		_assert_true(false, "boss chunk + game state present")
+		await _dispose_scene(inst)
+		return
+
+	# --- The objective is armed in EVERY mode, not just the roguelite finale ---
+	var prize: Node = chunk.find_child("FinalePrize", true, false)
+	_assert_true(prize != null, "the reservoir cache is armed in the showcase")
+
+	# --- The Spiker sightline (piece 18): pure, gate-joined, brake-safe ---
+	var t0 := float(chunk._tick())
+	var w_next := float(chunk._next_window_tick(t0))
+	_assert_true(w_next >= 0.0, "a full thread window exists within the horizon")
+	_assert_true(bool(chunk.ring_gap_at_bottom(0, w_next)) and bool(chunk.ring_gap_at_bottom(1, w_next)),
+		"the predicted window has both gaps on the corridor line")
+	_assert_true(not bool(chunk.spiker_at_bottom(w_next)),
+		"the predicted window has the Spiker's lane swept OFF the corridor")
+	# somewhere in the horizon the spiker DOES bear on the corridor (the hazard is real)
+	var bears := false
+	var scan := 0.0
+	while scan < 400.0 and not bears:
+		bears = bool(chunk.spiker_at_bottom(t0 + scan))
+		scan += 0.1
+	_assert_true(bears, "the Spiker's lane sweeps onto the corridor within its period")
+	# purity: the same tick gives the same answer through a different call path
+	_assert_equals(bool(chunk.spiker_at_bottom(t0 + 123.45)), bool(chunk.spiker_at_bottom(t0 + 123.45)),
+		"spiker_at_bottom is a pure function of the tick")
+	# the brake's detent never freezes the lane on the corridor
+	chunk._on_brake_used()
+	_assert_true(bool(chunk.get_preview_state()["ring0_parked"]), "the brake parks ring 0")
+	_assert_true(not bool(chunk.spiker_at_bottom(float(chunk._tick()))),
+		"the parked detent leaves the Spiker's lane off the corridor (no soft-lock)")
+	chunk._on_brake_used()   # release for the fire test
+	# --- The rake: exposed on the corridor while the lane bears -> hp drains ---
+	chunk._ring0_parked = wrapf(float((chunk._wheels[0] as Dictionary)["bottom"]) - chunk._spiker_angle, 0.0, TAU)
+	_assert_true(bool(chunk.spiker_at_bottom(float(chunk._tick()))),
+		"test rig: the lane is held on the corridor")
+	gs.snap_character_to("peris", Vector3(float(chunk.PARA_X), 0.0, 2.0))
+	var hp0 := float(gs.get_stat("peris", "hp"))
+	inst.headless_advance(1.5, 0.1)
+	var hp1 := float(gs.get_stat("peris", "hp"))
+	_assert_true(hp1 < hp0 - 0.5, "the Spiker rakes an exposed corridor-stander (%.1f -> %.1f)" % [hp0, hp1])
+	chunk._ring0_parked = INF   # release the rig
+	gs.snap_character_to("peris", Vector3(float(chunk.PARA_X) - 10.0, 0.0, 8.0))
+
+	# --- The watchtower ascent: climb -> survey -> descend, and the winch sweep ---
+	var climb: Node = chunk.find_child("ClimbSwitchback", true, false)
+	var survey: Node = chunk.find_child("SummitSurvey", true, false)
+	var winch: Node = chunk.find_child("ScreeWinch", true, false)
+	_assert_true(climb != null and survey != null and winch != null,
+		"climb + survey + winch are all present")
+	var tower_x := float(chunk.TOWER_X)
+	var crag_h := float(chunk.CRAG_H)
+	gs.snap_character_to("aster", Vector3(tower_x - 5.4, 0.0, float(chunk.CRAG_R) + 1.2))
+	climb.set("active_character", "aster")
+	climb.call("_trigger")
+	inst.headless_advance(40.0, 0.1)
+	var up_pos: Vector3 = gs.get_position("aster")
+	_assert_true(up_pos.y > crag_h - 0.6,
+		"the climb carries the character to the summit (y=%.2f)" % up_pos.y)
+	# the summit survey is a PROXIMITY dwell (Area3D body-enter): sync the character NODE to the
+	# data position (idle nodes don't re-sync — the known gotcha) and interleave real frames with
+	# scheduler time so detection arms and the dwell clock runs.
+	inst.headless_set_character_position("aster", up_pos)
+	for i in range(10):
+		await get_tree().process_frame
+		inst.headless_advance(0.5, 0.1)
+	_assert_true(bool(chunk.get_preview_state()["watch_vantage"]),
+		"standing the summit fires the ACT II survey beat")
+	# the descend mouth is CLICK-gated; the character stands inside its radius, so the committed
+	# order is a zero-length walk + launch (force-fired here, the data-layer convention)
+	var descend: Node = chunk.find_child("DescendSwitchback", true, false)
+	_assert_true(descend != null, "the descend mouth waits at the summit")
+	descend.set("active_character", "aster")
+	descend.call("_trigger")
+	inst.headless_advance(40.0, 0.1)
+	var down_pos: Vector3 = gs.get_position("aster")
+	_assert_true(down_pos.y < 0.8, "the descend carries the character back down (y=%.2f)" % down_pos.y)
+	# the winch: an enemy on the apron is swept off it, and the climb turns to scramble
+	var gnawer = null
+	for e in chunk.enemies():
+		if String(e.char_id) == "trail_gnawer_0":
+			gnawer = e
+	_assert_true(gnawer != null, "the trail-head locusts spawned")
+	var apron := Vector3(tower_x - 5.4, 0.0, float(chunk.CRAG_R) + 1.0)
+	gs.snap_character_to("trail_gnawer_0", apron)
+	var speed_before := float(climb.get("crawl_speed"))
+	winch.call("_trigger")
+	inst.headless_advance(0.5, 0.1)
+	var swept_pos: Vector3 = gs.get_position("trail_gnawer_0")
+	_assert_true(Vector2(swept_pos.x - apron.x, swept_pos.z - apron.z).length() > 3.2,
+		"the winch sweeps the locust off the trail head")
+	_assert_true(bool(chunk.get_preview_state()["scramble"]), "the trail head is scree after the winch")
+	_assert_true(float(climb.get("crawl_speed")) < speed_before - 0.01,
+		"the scramble slows the climb — spending the winch costs your own line")
+	inst.headless_advance(float(chunk.SCRAMBLE_SECS) + 1.0, 0.1)
+	_assert_true(not bool(chunk.get_preview_state()["scramble"]), "the scree settles after its span")
+	_assert_true(is_equal_approx(float(climb.get("crawl_speed")), speed_before),
+		"the climb pace restores when the scree settles")
+	await _dispose_scene(inst)
 
 func _print_results() -> void:
 	print("")
