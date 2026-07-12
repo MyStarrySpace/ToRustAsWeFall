@@ -199,6 +199,9 @@ func _ready() -> void:
 				ran_test = true
 				await _test_projection_alignment()
 				await _test_projection_alignment_safety()
+			"--test-roguelike-goal":
+				ran_test = true
+				await _test_roguelike_goal()
 			"--test-player-contract":
 				ran_test = true
 				await _test_player_contract()
@@ -1317,6 +1320,7 @@ func _run_all_tests() -> void:
 	await _test_ortho_orbit()
 	await _test_projection_alignment()
 	await _test_projection_alignment_safety()
+	await _test_roguelike_goal()
 	_test_uv_atlas_baker()
 	await _test_distract_gate()
 	await _test_chromatic_aberration()
@@ -5587,11 +5591,18 @@ func _test_run_session_e2e() -> void:
 	# recruit branch grows the roster (and the NEXT level is generated with the grown party).
 	var recruited := false
 	for i in range(6):
+		if s.at_finale():
+			break
 		var before := (s.roster as Array).size()
 		var b: Dictionary = s.branch()
 		var pat := str(b.get("pattern", ""))
 		s.choose((b.get("options", []) as Array)[0])
 		_assert_true(s.current_is_playable(), "depth %d stays playable (solvable by the current roster)" % s.depth)
+		if s.at_finale():
+			# the RETRIEVAL DESCENT: the bottom of the run is the boss site, not another stretch
+			_assert_equals(str(s.spec.get("kind", "")), "finale_paranucleus",
+				"the descent bottoms out at the boss-site finale")
+			break
 		_assert_true(_run_level_connects(s.spec), "depth %d connects entry -> exit" % s.depth)
 		_assert_equals((s.spec.get("settings", {}) as Dictionary).get("roster", []), s.roster,
 			"depth %d is generated with the run's (possibly grown) roster" % s.depth)
@@ -14715,6 +14726,98 @@ func _test_projection_alignment_safety() -> void:
 	inst.queue_free()
 	await get_tree().process_frame
 
+func _test_roguelike_goal() -> void:
+	# THE RETRIEVAL DESCENT (the roguelite's goal, ratified 2026-07-12): a run is a FINITE seeded
+	# descent to a boss-site finale; retrieving the prize completes it; permadeath shrinks the
+	# roster and a wipe ends it; the summary is the score surface.
+	_test_name = "Roguelike Goal"
+	# (1) the run SHAPE: seeded finite target, the finale at the bottom, playable throughout
+	var lengths := {}
+	for sd in [1, 2, 3, 7, 11]:
+		var rs := RunSession.new(sd)
+		rs.start()
+		_assert_true(rs.target_depth >= 5 and rs.target_depth <= 7,
+			"seed %d: the descent is finite (target %d in 5..7)" % [sd, rs.target_depth])
+		lengths[rs.target_depth] = true
+	_assert_true(lengths.size() > 1, "the descent length VARIES across seeds")
+	var run := RunSession.new(3)
+	run.start()
+	var hops := 0
+	while not run.at_finale() and hops < 12:
+		var b := run.branch()
+		if run.depth == run.target_depth - 1:
+			_assert_true(bool(b.get("finale_next", false)), "the last shelter's branch announces the site")
+		run.descend("safe")
+		_assert_true(run.current_is_playable(), "depth %d stays playable" % run.depth)
+		hops += 1
+	_assert_true(run.at_finale(), "the descent ARRIVES at the finale (%d hops)" % hops)
+	_assert_equals(str(run.spec.get("kind", "")), RunSession.FINALE_PARANUCLEUS,
+		"the bottom level IS the boss site")
+	# (2) the GOAL: retrieval completes the run — and only at the finale
+	var early := RunSession.new(4)
+	early.start()
+	_assert_true(not early.retrieve(), "the prize cannot be taken before the site is reached")
+	_assert_true(run.retrieve(), "taking the dose at the site completes the run")
+	_assert_true(run.summary().get("completed", false), "the summary records the retrieval")
+	# (3) PERMADEATH: deaths shrink the roster; deeper levels regenerate for the smaller party;
+	# a wipe ends the run
+	var doomed := RunSession.new(5)
+	doomed.start()
+	doomed.descend("risky")
+	var before: int = doomed.roster.size()
+	doomed.mark_death(str(doomed.roster[0]))
+	_assert_equals(doomed.roster.size(), before - 1, "a death permanently leaves the roster")
+	_assert_true(not doomed.run_over, "survivors keep the run alive")
+	doomed.descend("safe")
+	_assert_true(run_roster_matches(doomed), "the next level generates FOR the smaller roster")
+	while not doomed.roster.is_empty():
+		doomed.mark_death(str(doomed.roster[0]))
+	_assert_true(doomed.run_over, "an empty roster is a wipe — the run is over")
+	_assert_true(not doomed.retrieve(), "a lost run cannot complete")
+	var sm: Dictionary = doomed.summary()
+	_assert_true((sm.get("deaths", []) as Array).size() >= 2 and (sm.get("survivors", []) as Array).is_empty(),
+		"the summary carries the permadeath ledger")
+	# (4) the FINALE SITE end-to-end: the prize waits beyond the crossing and completes the state
+	var inst = await _instantiate_preview_chunk_and_wait("boss_showcase", 8,
+		{"seed": 0, "finale": true, "overlays": {"aster": false, "peris": false, "endo": false}})
+	if inst == null:
+		_assert_true(false, "the finale site instantiates")
+		return
+	var chunk = inst.get("_active_chunk")
+	var prize: Node = chunk.find_child("FinalePrize", true, false)
+	_assert_true(prize != null, "the finale hosts the reservoir cache")
+	var st0: Dictionary = chunk.call("get_preview_state")
+	_assert_true(not bool(st0.get("prize_retrieved", false)), "the prize starts untaken")
+	prize.call("_trigger")
+	for i in range(3):
+		inst.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+	var st1: Dictionary = chunk.call("get_preview_state")
+	_assert_true(bool(st1.get("prize_retrieved", false)),
+		"taking the dose raises prize_retrieved (the poll's completion signal)")
+	# (5) the presenter's finale arm: at the bottom, the sync points at the boss site
+	var sess := RunSession.new(9)
+	sess.start()
+	while not sess.at_finale():
+		sess.descend("safe")
+	inst.set("_run_session", sess)
+	inst.set("_roguelike_active", true)
+	inst.call("_roguelike_sync_config")
+	_assert_equals(str(inst.get("preview_chunk")), "boss_showcase",
+		"the finale spec loads the boss site")
+	_assert_true(bool((inst.get("preview_chunk_config") as Dictionary).get("finale", false)),
+		"the finale config arms the prize")
+	inst.queue_free()
+	await get_tree().process_frame
+
+## The generated spec's roster matches the session's (the solver ran for the CURRENT party).
+func run_roster_matches(rs: RunSession) -> bool:
+	if str(rs.spec.get("kind", "")) == RunSession.FINALE_PARANUCLEUS:
+		return true
+	var src: Dictionary = rs.spec.get("source", {})
+	var spec_roster: Array = src.get("roster", rs.spec.get("roster", []))
+	return spec_roster.size() == rs.roster.size() or spec_roster.is_empty()
+
 func _test_dev_console() -> void:
 	_test_name = "Dev Console + Fog Of War"
 	var inst = await _instantiate_preview_chunk_and_wait("set_piece_showcase", 5)
@@ -16461,19 +16564,26 @@ func _test_roguelike_atom_run() -> void:
 	for stg in s1.spec.get("stages", []):
 		_assert_equals(str(stg), "distract:lure", "depth 0 is lure-only (teaching, legible)")
 	var count0 := int((s1.spec.get("stages", []) as Array).size())
+	var last_atom: Dictionary = s1.spec
 	for d in range(4):
+		if s1.at_finale():
+			break
 		s1.descend("risky")
 		_assert_true(s1.current_is_playable(), "depth %d passes its report card" % int(s1.depth))
-	_assert_true(int((s1.spec.get("stages", []) as Array).size()) >= count0,
+		if str(s1.spec.get("kind", "")) == "atom":
+			last_atom = s1.spec
+	_assert_true(int((last_atom.get("stages", []) as Array).size()) >= count0,
 		"chain length grows with depth (more puzzle, never tighter windows)")
 	var mixed := false
-	for stg2 in s1.spec.get("stages", []):
+	for stg2 in last_atom.get("stages", []):
 		if str(stg2) != "distract:lure":
 			mixed = true
 	_assert_true(mixed, "deeper levels mix variants (register demands rise)")
 	var s2 = Session.new(42, "atom")
 	s2.start()
 	for d in range(4):
+		if s2.at_finale():
+			break
 		s2.descend("risky")
 	_assert_equals(str(s2.spec.get("stages", [])), str(s1.spec.get("stages", [])),
 		"a run is reproducible from seed + choices")

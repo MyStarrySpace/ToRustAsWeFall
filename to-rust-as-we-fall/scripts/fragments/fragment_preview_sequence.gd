@@ -656,6 +656,13 @@ func _roguelike_sync_config() -> void:
 			(_run_session.spec.get("stages", []) as Array).size(),
 			str((_run_session.spec.get("hub_shape", {}) as Dictionary).get("type", "flat"))]
 		return
+	if str(_run_session.spec.get("kind", "")) == RunSession.FINALE_PARANUCLEUS:
+		# THE FINALE: the boss site. The run completes when the prize is taken (the poll watches).
+		preview_chunk = "boss_showcase"
+		preview_chunk_config = {"seed": int(_run_session.spec.get("seed", 0)), "finale": true,
+			"roguelike": true, "overlays": {"aster": false, "peris": false, "endo": false}}
+		scene_title_override = "Roguelike — THE SITE (depth %d): take the dose" % (_run_session.depth + 1)
+		return
 	preview_chunk = "generated_stretch"
 	preview_chunk_config = {"spec": _run_session.spec, "roguelike": true}
 	var tier := str(_run_session.spec.get("source", {}).get("complexity_tier", "teaching"))
@@ -680,7 +687,18 @@ func _roguelike_poll() -> void:
 		return
 	if not _active_chunk.has_method("get_preview_state"):
 		return
+	_roguelike_wire_permadeath()   # idempotent; covers the run's FIRST level (loads outside _roguelike_choose)
 	var st: Dictionary = _active_chunk.call("get_preview_state")
+	if bool(st.get("prize_retrieved", false)) and not _run_session.completed:
+		# THE GOAL: the prize is taken — the run is complete. Show the report card.
+		_roguelike_advancing = true
+		_run_session.retrieve()
+		_show_run_summary()
+		return
+	if _run_session.run_over:
+		_roguelike_advancing = true
+		_show_run_summary()
+		return
 	if bool(st.get("shelter_rested", false)):
 		_roguelike_advancing = true   # latched until the player picks a branch
 		_roguelike_present_branch()
@@ -696,6 +714,18 @@ func _roguelike_choose(option: Dictionary) -> void:
 	_close_branch_modal()
 	if _run_session == null:
 		return
+	if bool(option.get("summary_new_run", false)):
+		# a fresh run on the next seed: new descent, new target depth, full roster
+		_run_session = RunSession.new(_run_session.seed + 1, _run_session.levels)
+		_run_session.start()
+		_roguelike_sync_config()
+		_unload_chunk(preview_chunk)
+		_preview_interactables.clear()
+		_begin_chunk()
+		_roguelike_respawn_party()
+		_roguelike_wire_permadeath()
+		_roguelike_advancing = false
+		return
 	var reward: Dictionary = option.get("reward", {})
 	if reward.has("recruit"):
 		show_preview_message("%s joins the run." % RunBranchDecisions.display_name(str(reward["recruit"])), 3.5)
@@ -707,6 +737,7 @@ func _roguelike_choose(option: Dictionary) -> void:
 	_preview_interactables.clear()
 	_begin_chunk()
 	_roguelike_respawn_party()
+	_roguelike_wire_permadeath()
 	# A head-start ATP reward lands after the new level is live + the party registered.
 	if reward.has("atp_head_start") and _game_state != null:
 		for cid in _run_session.roster:
@@ -715,6 +746,44 @@ func _roguelike_choose(option: Dictionary) -> void:
 	if reward.has("gear"):
 		show_preview_message("Salvaged: %s." % str(reward["gear"]).capitalize(), 3.0)
 	_roguelike_advancing = false
+
+## PERMADEATH (the DLC doc's law): in a roguelike run a fallen character leaves the run — the
+## session shrinks the roster (every deeper level regenerates for the smaller party) and an empty
+## roster ends the run. Reconnected after every level load (the game state persists across loads).
+func _roguelike_wire_permadeath() -> void:
+	if _game_state == null or _run_session == null:
+		return
+	if not _game_state.character_downed.is_connected(_roguelike_on_downed):
+		_game_state.character_downed.connect(_roguelike_on_downed)
+
+func _roguelike_on_downed(id: String) -> void:
+	if _run_session == null or not _roguelike_active:
+		return
+	if not _run_session.roster.has(str(id)):
+		return
+	_run_session.mark_death(str(id))
+	show_preview_message("%s is gone. The run remembers." % RunBranchDecisions.display_name(str(id)), 4.5)
+
+## The run's REPORT CARD: shown on retrieval (complete) or wipe (over). One button starts a fresh
+## run on the next seed; rides the same modal plumbing as the branch choice.
+func _show_run_summary() -> void:
+	if _run_session == null:
+		return
+	var sm: Dictionary = _run_session.summary()
+	var verdict := "THE DOSE IS OUT" if bool(sm.get("completed", false)) else "THE RUN IS LOST"
+	var lines: Array = []
+	lines.append("Depth %d of %d" % [int(sm.get("depth", 0)), int(sm.get("target_depth", 0))])
+	lines.append("Survivors: %s" % (", ".join(sm.get("survivors", [])) if not (sm.get("survivors", []) as Array).is_empty() else "none"))
+	if not (sm.get("deaths", []) as Array).is_empty():
+		lines.append("Lost: %s" % ", ".join(sm.get("deaths", [])))
+	lines.append("Branches chosen: %d" % int(sm.get("choices", 0)))
+	_show_branch_modal({
+		"prompt": "%s
+%s" % [verdict, "
+".join(lines)],
+		"options": [{"id": "new_run", "label": "NEW RUN", "risk": "",
+			"reward": {}, "summary_new_run": true}],
+	})
 
 ## A modal showing the branch prompt + one button per option (label, risk, and the tradeoff). Picking calls
 ## _roguelike_choose. Built on the same UI layer as the fragment picker.

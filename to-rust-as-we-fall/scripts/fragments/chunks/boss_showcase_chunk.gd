@@ -26,6 +26,8 @@ const ALIGN_POLL := 0.25          # scheduler cadence for refreshing the crossin
 const CRAWL_SPEED := 1.1
 
 var _seed := 0
+var _finale := false             # roguelite FINALE: the prize waits beyond the crossing
+var _prize_retrieved := false
 var _wheels: Array = []   # [{node, spin, base(Basis), gaps, bottom}] — the ophanim pivots
 var _para_center := Vector3.ZERO   # the shared wheel center (world) — the orbit pivot
 var _orbit_on := false
@@ -41,6 +43,7 @@ var _align_poll_started := false
 func configure_chunk(config: Dictionary) -> void:
 	if config.has("seed"):
 		_seed = int(config["seed"])
+	_finale = bool(config.get("finale", false))
 
 func is_generation_preview() -> bool:
 	return true
@@ -55,8 +58,26 @@ func _build_chunk() -> void:
 	fragment = _boss_fragment()
 	super._build_chunk()
 	_wheels.clear()
+	_prize_retrieved = false
 	_build_watchtower_staging()
 	_build_paranucleus()
+	if _finale:
+		_build_finale_prize()
+
+## The Retrieval Descent's prize: the last sealed dose, cached beyond the far mouth — the run
+## completes when it is taken. Reaching it means the whole mechanism was played: hold the front
+## vantage, park the wheel, wait the window, thread the crossing.
+func _build_finale_prize() -> void:
+	var prize_pos := Vector3(PARA_X, 0, -8.8)
+	var prize := _add_interactable(self, "FinalePrize", "The last sealed dose from the reservoirs",
+		prize_pos, "TAKE THE DOSE", "", 0.8, true, 1.6,
+		Interactable.InteractableType.INSPECTION, false)
+	prize.interacted.connect(func() -> void: _prize_retrieved = true)
+	var vial := _add_box(prize, Vector3(0, 0.55, 0), Vector3(0.16, 0.3, 0.16),
+		Color(0.55, 0.42, 0.72), Color(0.80, 0.55, 1.0), 1.8)
+	_add_box(prize, Vector3(0, 0.18, 0), Vector3(0.32, 0.18, 0.32), Color(0.48, 0.50, 0.52))
+	_outline_interactable_child(prize, vial, "FinalePrize", 1.6)
+	_add_boss_label(self, "THE RESERVOIR CACHE", prize_pos + Vector3(0, 1.6, 0), Color(0.82, 0.70, 0.95), 34)
 
 func _process(delta: float) -> void:
 	# The wheels render from the TICK-PURE phase (never per-frame accumulation): the data layer
@@ -450,6 +471,7 @@ func get_preview_state() -> Dictionary:
 	st["wheels"] = _wheels.size()
 	st["crossing_open"] = crossing_open(_tick()) if not _wheels.is_empty() else false
 	st["ring0_parked"] = _ring0_parked != INF
+	st["prize_retrieved"] = _prize_retrieved
 	return st
 
 func _boss_fragment() -> Fragment:

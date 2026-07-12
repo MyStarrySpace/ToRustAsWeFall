@@ -24,16 +24,31 @@ const ATOM_SHAPES: Array = [
 	{"type": "triangle"},
 ]
 
+## THE RUN GOAL — the Retrieval Descent (director + Claude, 2026-07-12): a run is a FINITE,
+## seeded descent to a BOSS-SITE finale. The bottom level hosts a mega-landmark retrieval (v1:
+## the Paranucleus — thread the wheels, take the last sealed dose); retrieve() completes the run.
+## Death is PERMANENT in this mode (the DLC doc's law): a fallen character leaves the roster —
+## every deeper level regenerates for the smaller party — and a wipe ends the run. The summary
+## scores depth, survivors, retrieval, and choices.
+const FINALE_PARANUCLEUS := "finale_paranucleus"
+
 var seed: int
 var depth: int = 0
 var levels: String = LEVELS_STRETCH
 var roster: Array = ["aster", "peris"]
 var spec: Dictionary = {}        # the current level
 var history: Array = []          # one entry per descent: {depth, choice, pattern, reward, roster, spec_id}
+var target_depth: int = 6        # the finale's depth — seeded per run below
+var completed := false           # the prize was retrieved
+var run_over := false            # wiped: everyone is gone
+var deaths: Array = []           # permadeath ledger, in falling order
 
 func _init(run_seed: int = 1, levels_mode: String = LEVELS_STRETCH) -> void:
 	seed = run_seed
 	levels = levels_mode
+	# the descent length varies per run (5-7): long enough for the branch economy to matter,
+	# short enough that a run is one sitting
+	target_depth = 5 + posmod(run_seed * 2654435761, 3)
 
 ## Generate the opening level (depth 0). Returns the spec (spec.success is false on failure).
 func start() -> Dictionary:
@@ -52,6 +67,8 @@ func start() -> Dictionary:
 ## never tighter windows), marked on the option so choose() can read it without caring about risk labels.
 func branch() -> Dictionary:
 	var decision: Dictionary = BranchScript.decide({"depth": depth, "seed": seed, "roster": roster})
+	if depth == target_depth - 1:
+		decision["finale_next"] = true   # the next descent is the boss site — the modal says so
 	if levels == LEVELS_ATOM:
 		var opts: Array = decision.get("options", [])
 		for i in range(opts.size()):
@@ -67,7 +84,10 @@ func choose(option: Dictionary) -> Dictionary:
 		if who != "" and not roster.has(who):
 			roster.append(who)
 	depth += 1 + int(reward.get("depth_skip", 0))
-	if levels == LEVELS_ATOM:
+	if depth >= target_depth:
+		depth = target_depth
+		spec = _generate_finale()
+	elif levels == LEVELS_ATOM:
 		spec = _generate_atom_level(int(option.get("atom_stage_bonus", 0)))
 	else:
 		var settings: Dictionary = (option.get("settings", {}) as Dictionary).duplicate(true)
@@ -94,6 +114,8 @@ func descend(policy: String = "risky") -> Dictionary:
 func current_is_playable() -> bool:
 	if not bool(spec.get("success", false)):
 		return false
+	if str(spec.get("kind", "")) == FINALE_PARANUCLEUS:
+		return true   # the boss site is authored content with its own playthrough guards
 	if levels == LEVELS_ATOM:
 		# The report card IS the playability gate: gated (P8) + lock-before-key + SAFE-PASSAGE + every
 		# archetype backed by a real mechanic. Stronger than connectivity — the level is a provably fair,
@@ -101,6 +123,50 @@ func current_is_playable() -> bool:
 		return bool((spec.get("card", {}) as Dictionary).get("ok", false))
 	var summary: Dictionary = spec.get("headless", {}).get("solution_summary", {})
 	return bool(summary.get("bare_pair_solvable", false))
+
+## The boss-site finale: the bottom of the descent. The site itself is authored content (the
+## paranucleus wheels + alignment crossing + the prize) seeded per run; the spec is the handle
+## the presenter loads it by.
+func _generate_finale() -> Dictionary:
+	return {
+		"success": true,
+		"kind": FINALE_PARANUCLEUS,
+		"id": "finale_%d" % seed,
+		"seed": posmod(seed * 31 + depth * 7, 1000),
+	}
+
+func at_finale() -> bool:
+	return depth >= target_depth and str(spec.get("kind", "")) == FINALE_PARANUCLEUS
+
+## The prize is taken: the run is COMPLETE (only meaningful at the finale).
+func retrieve() -> bool:
+	if not at_finale() or run_over:
+		return false
+	completed = true
+	return true
+
+## PERMADEATH: a fallen character leaves the run. Every deeper level regenerates for the smaller
+## roster (choose() already passes it); an empty roster is a wipe and the run is over.
+func mark_death(id: String) -> void:
+	if not roster.has(id):
+		return
+	roster.erase(id)
+	deaths.append(id)
+	if roster.is_empty():
+		run_over = true
+
+## The run's report card — the score surface the summary screen renders.
+func summary() -> Dictionary:
+	return {
+		"seed": seed,
+		"depth": depth,
+		"target_depth": target_depth,
+		"completed": completed,
+		"run_over": run_over,
+		"survivors": roster.duplicate(),
+		"deaths": deaths.duplicate(),
+		"choices": maxi(0, history.size() - 1),
+	}
 
 ## An atom-chain level descriptor: stages scale with DEPTH (2 -> 4 gates; the costly branch adds one), the
 ## variant pool widens with depth (teaching runs are lure-only and legible; deeper runs mix patrol/twin —
