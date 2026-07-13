@@ -204,6 +204,9 @@ func _ready() -> void:
 			"--test-lockout-chase":
 				ran_test = true
 				await _test_lockout_chase()
+			"--test-chase-probe":
+				ran_test = true
+				await _test_chase_probe()
 			"--test-dev-console":
 				ran_test = true
 				await _test_dev_console()
@@ -32661,6 +32664,127 @@ func _test_lockout_chase() -> void:
 	_assert_true(bool(chunk.get_preview_state()["complete"]),
 		"resting at Endo's wall ends the chase")
 	await _dispose_scene(inst)
+
+## CHASE PLAYTEST PROBE (diagnostic, NOT in --test-all): drives the lockout chase the way NAIVE
+## first-time players would — five strategies, no meta-knowledge — and prints [PROBE] traces
+## (positions, hp, downs, wipes, notes) for the streamer-persona review pass. Asserts only that
+## each attempt runs; the OUTCOMES are the data.
+func _test_chase_probe() -> void:
+	_test_name = "Chase Playtest Probe"
+	for strat in ["panic_sprint", "curious_clicker", "door_camper", "offshoot_stumbler", "tyreg_accepter", "competent_runner"]:
+		var inst = await _instantiate_preview_chunk_and_wait("lockout_chase", 8)
+		if inst == null:
+			_assert_true(false, "probe instantiates")
+			return
+		var chunk = inst._active_chunk
+		var gs = inst._game_state
+		var scanner: Node = chunk.find_child("BoundaryScanner", true, false)
+		scanner.set("active_character", "aster")
+		scanner.call("_trigger")
+		print("[PROBE] ===== strategy: %s =====" % strat)
+		var caught_events := 0
+		var last_hp := {"aster": 100.0, "peris": 100.0}
+		match strat:
+			"panic_sprint":
+				for cid in ["aster", "peris"]:
+					gs.command_move_to_pos(cid, Vector3(float(chunk.WALL_X) + 2.0, 0, 0))
+			"curious_clicker":
+				# wanders to the flure, fires it, then stands on the scarpet "hiding"
+				for cid in ["aster", "peris"]:
+					gs.command_move_to_pos(cid, Vector3(60.0, 0, 3.4))
+			"door_camper":
+				for cid in ["aster", "peris"]:
+					gs.command_move_to_pos(cid, Vector3(float(chunk.DOOR_X) + 2.0, 0, 2.0))
+			"offshoot_stumbler":
+				for cid in ["aster", "peris"]:
+					gs.command_move_to_pos(cid, Vector3(float(chunk.JUNCTION_X) + 1.0, 0, 3.8))
+			"tyreg_accepter":
+				for cid in ["aster", "peris"]:
+					gs.command_move_to_pos(cid, Vector3(float(chunk.JUNCTION_X) + 2.0, 0, -3.8))
+			"competent_runner":
+				for cid in ["aster", "peris"]:
+					gs.command_move_to_pos(cid, Vector3(float(chunk.DOOR_X) + 1.0, 0, 2.0))
+		var t := 0.0
+		var acted := false
+		while t < 60.0:
+			inst.headless_advance(1.0, 0.1)
+			t += 1.0
+			var st: Dictionary = chunk.get_preview_state()
+			var ap: Vector3 = gs.get_position("aster")
+			var pp: Vector3 = gs.get_position("peris")
+			for cid2 in ["aster", "peris"]:
+				var hp := float(gs.get_stat(cid2, "hp"))
+				if hp < float(last_hp[cid2]) - 0.1:
+					caught_events += 1
+					print("[PROBE] t=%4.0f  %s STRUCK (hp %.0f -> %.0f)" % [t, cid2, last_hp[cid2], hp])
+				last_hp[cid2] = hp
+			if int(t) % 8 == 0:
+				print("[PROBE] t=%4.0f  aster x=%5.1f peris x=%5.1f pursuers=%d wipes=%d downs=%s" % [
+					t, ap.x, pp.x, int(st.get("pursuers", 0)), int(st.get("wipe_count", 0)),
+					str(st.get("downed", []))])
+			# per-strategy mid-run actions once they arrive somewhere
+			if not acted:
+				match strat:
+					"curious_clicker":
+						if ap.x > 55.0:
+							acted = true
+							for fl in chunk.flures():
+								fl.set("active_character", "peris")
+								fl.call("activate")
+							for cid3 in ["aster", "peris"]:
+								gs.command_move_to_pos(cid3, Vector3(98.0, 0, -2.0))
+							print("[PROBE] t=%4.0f  fired the flure, moving to the scarpet to hide" % t)
+					"door_camper":
+						if ap.x > float(chunk.DOOR_X):
+							acted = true
+							var door: Node = chunk.find_child("ServiceDoor", true, false)
+							door.set("active_character", "peris")
+							door.call("_trigger")
+							print("[PROBE] t=%4.0f  sealed the door, standing behind it to watch" % t)
+					"offshoot_stumbler":
+						if ap.x > float(chunk.JUNCTION_X) - 1.0:
+							acted = true
+							for cid4 in ["aster", "peris"]:
+								gs.snap_character_to(cid4, chunk._pad_in.position)
+								chunk._pad_in.set("active_character", cid4)
+								chunk._pad_in.call("step_through")
+							print("[PROBE] t=%4.0f  found a glowing pad, stepped through (did NOT seal)" % t)
+					"competent_runner":
+						if ap.x > float(chunk.DOOR_X):
+							acted = true
+							var door2: Node = chunk.find_child("ServiceDoor", true, false)
+							door2.set("active_character", "peris")
+							door2.call("_trigger")
+							for cid6 in ["aster", "peris"]:
+								gs.command_move_to_pos(cid6, Vector3(float(chunk.WALL_X) + 2.0, 0, -1.0))
+							print("[PROBE] t=%4.0f  sealed the door AT SPEED, running on" % t)
+					"tyreg_accepter":
+						if ap.x > float(chunk.JUNCTION_X) - 2.0:
+							acted = true
+							var ty: Node = chunk.find_child("TyregChoice", true, false)
+							ty.set("active_character", "aster")
+							ty.call("_trigger")
+							for cid5 in ["aster", "peris"]:
+								gs.command_move_to_pos(cid5, Vector3(float(chunk.WALL_X) + 2.0, 0, 0))
+							print("[PROBE] t=%4.0f  accepted Tyreg, running for the wall with her" % t)
+			var st2: Dictionary = chunk.get_preview_state()
+			if bool(st2.get("complete", false)):
+				print("[PROBE] t=%4.0f  COMPLETE — reached the wall and rested" % t)
+				break
+			if int(st2.get("wipe_count", 0)) >= 2:
+				print("[PROBE] t=%4.0f  SECOND WIPE — a real player alt-F4s about here" % t)
+				break
+			# a runner who reaches the wall tries to rest (they can see the pad)
+			if gs.get_position("aster").x > float(chunk.WALL_X) and not bool(gs.is_downed("aster")):
+				for it in chunk._exit_shelters:
+					it.set("active_character", "aster")
+					it.call("_trigger")
+		var fin: Dictionary = chunk.get_preview_state()
+		print("[PROBE] RESULT %s: complete=%s wipes=%d strikes=%d final aster x=%.1f hp a=%.0f p=%.0f" % [
+			strat, str(fin.get("complete", false)), int(fin.get("wipe_count", 0)), caught_events,
+			gs.get_position("aster").x, float(gs.get_stat("aster", "hp")), float(gs.get_stat("peris", "hp"))])
+		_assert_true(true, "probe %s ran" % strat)
+		await _dispose_scene(inst)
 
 func _print_results() -> void:
 	print("")

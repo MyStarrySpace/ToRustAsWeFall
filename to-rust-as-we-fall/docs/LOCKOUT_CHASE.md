@@ -161,3 +161,27 @@ honouring every detection gate: downed / sheltered / fully-concealed targets ref
 chunk's pursuit director (0.8 s scheduler poll re-engaging any pursuer that dropped to a
 scanning state toward the nearest party member). No detection-radius leash; tight-hides and
 Endo's wall still break the track. Red/green: the wave previously stood at the plaza forever.
+
+## Playtest probe round 1 (2026-07-13) — the streamer-persona pass
+
+`--test-chase-probe` (diagnostic, not in --test-all) drives six no-meta-knowledge strategies and
+prints traces. Findings FIXED this round:
+- Sprint-only used to WIN untouched -> pursuer speed 6.0 (effective ~3.4 vs the rescan
+  tail-chase) + Naturalizer CONTACT-strike timing (windup 0.35 / recover 0.55 — the canon
+  "lethal contact-strike"; the default lunge dance whiffed on runners forever). Now: sprint dies
+  at x=136; ONE well-played lever completes at 75/50 hp; Tyreg's route completes at 75/100.
+- The wipe-restart dropped the party 4 wu from live re-posted pursuers (instant re-wipe, the
+  alt-F4 trace) -> the chunk's restart despawns the waves, cancels the timeline, resets the
+  scanner ("Quiet again. The scanner waits. So do they.").
+- The sealed door re-stunned forever (an infinite freezer) -> holds each cutter EXACTLY once.
+- The unsealed offshoot was accidentally safe (pursuit toward the disconnected island moved
+  nobody) -> pursuers now WALK to the pad, port in, and punish unsealed campers; with nothing
+  visible to hunt they port back out (no dead-end camping).
+- Zero guidance -> the RUN-east directive + niche-activation notes + the close-call warning beat
+  ("Right behind you—", the escalation's first rung).
+
+REMAINING (round 2, director's call): scarpet reads as a hide but MEDIUM tier = death vs contact
+pursuit (teach it, or make scarpet FRICTION that slows pursuers); the Tyreg beat is a pedestal
+click with no drama; the framework's optional dead-Hushbloom hint at the offshoot; the full
+3-close-approaches-then-caught escalation rung; sprint/stamina integration for the whole party in
+preview mode.

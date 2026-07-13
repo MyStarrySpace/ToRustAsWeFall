@@ -23,7 +23,11 @@ const CORRIDOR_HALF_Z := 5.0
 
 const DOOR_HOLD_SECS := 7.0      # how long the sealed door holds a wave (they cut through)
 const SEAL_SECS := 22.0          # the Hushbloom portal seal (covers one full search cycle)
-const NAT_SPEED := 3.36          # party sprint ~3.0 x 1.12 (framework tuning start)
+const NAT_SPEED := 6.0           # party base 3.0. EFFECTIVE pursuit is ~half the raw speed (the
+                                 # rescan tail-chase), so 6.0 closes on a runner at ~0.4 wu/s —
+                                 # sprint-only fails late-corridor; the door hold (7 s) + chelator
+                                 # break buy the escape margin (probe-tuned, framework knob)
+const CLOSE_CALL_RANGE := 4.5    # the breathing-down-your-neck warning distance
 const SUPPRESS_CHARGES := 3
 const SUPPRESS_SECS := 5.0
 
@@ -35,6 +39,8 @@ var _bloom_carry := 0            # picked hushblooms in hand (the carried throw,
 var _pad_in: PortalPad
 var _pad_out: PortalPad
 var _wave_count := 0
+var _door_held := {}             # char_id -> true: the door holds each cutter exactly once
+var _last_close_call := -100.0
 
 func get_scene_title() -> String:
 	return "The Lockout Chase"
@@ -147,23 +153,33 @@ func _on_tags_rejected() -> void:
 	var sched = _get_scheduler()
 	if sched == null:
 		return
-	sched.schedule_after(2.0, _spawn_wave.bind(2), "chase_wave_1")
-	sched.schedule_after(18.0, _spawn_wave.bind(2), "chase_wave_2")
+	sched.schedule_after(1.0, _spawn_wave.bind(2, false), "chase_wave_1")
+	# wave 2 activates from CONCEALED WALL NICHES at the party's own segment (canon: "Naturalizers
+	# activate from concealed positions" — not all from the plaza; the corridor itself is hostile)
+	sched.schedule_after(14.0, _spawn_wave.bind(2, true), "chase_wave_2")
 	sched.schedule_after(1.0, _decline_watch, "chase_decline_watch")
+	sched.schedule_after(1.5, _close_call_watch, "chase_close_call")
+	_arm_portal_follow()
+	sched.schedule_after(2.2, func() -> void:
+		_show_note("RUN. East — Endo keeps the wall past the old corridors.", 2.8), "chase_directive")
 
-func _spawn_wave(count: int) -> void:
+func _spawn_wave(count: int, near_party := false) -> void:
 	var gs = _get_game_state()
 	if gs == null:
 		return
+	var base_x := 2.0
+	if near_party and gs.characters.has("aster"):
+		base_x = clampf(gs.get_position("aster").x - 9.0, 2.0, WALL_X - 20.0)
 	for i in range(count):
 		var eid := "naturalizer_%d" % _wave_count
 		_wave_count += 1
-		_spawn_enemy({"id": eid, "class": "naturalizer", "pos": Vector3(2.0, 0.5, -2.0 + 2.0 * float(i)),
+		var nz := (-3.8 if i % 2 == 0 else 3.8) if near_party else (-2.0 + 2.0 * float(i))
+		_spawn_enemy({"id": eid, "class": "naturalizer", "pos": Vector3(base_x, 0.5, nz),
 			"speed": NAT_SPEED, "detect": 9.0, "targets": ["aster", "peris"]}, gs)
 		var nat = _enemy_by_id(eid)
 		if nat != null and nat.has_method("add_hesitation_zone"):
 			nat.add_hesitation_zone(Vector3(CHELATOR_X, 0, -1.0), 6.5)
-	_show_note("Naturalizers on the corridor.", 1.6)
+	_show_note("Naturalizers out of the wall niches — behind you.", 1.8)
 	_arm_pursuit_director()
 
 ## THE CHASE CONTRACT (framework): pursuit is RELENTLESS — pursuers track the fleeing party down
@@ -261,9 +277,12 @@ func _arm_door_hold() -> void:
 		for enemy in _enemies:
 			if not is_instance_valid(enemy) or not enemy.is_alive() or enemy.is_stunned():
 				continue
+			if _door_held.has(enemy.char_id):
+				continue   # one hold per cutter — then they are THROUGH (the lever is spent on them)
 			var p: Vector3 = gs.get_position(enemy.char_id)
 			if p.x < DOOR_X and DOOR_X - p.x < 3.0:
 				enemy.stun(DOOR_HOLD_SECS)
+				_door_held[enemy.char_id] = true
 	sched.schedule_after(0.5, _arm_door_hold, "chase_door_hold")
 
 ## --- S2: the Chelator cluster (protocol hesitation made visible) ---
@@ -343,17 +362,30 @@ func _arm_portal_follow() -> void:
 			if enemy.get_state() != "search" and enemy.get_state() != "pursuit":
 				continue
 			var p: Vector3 = gs.get_position(enemy.char_id)
-			for pad in [_pad_in, _pad_out]:
-				if pad == null or pad.is_stunned():
-					continue
-				var pp: Vector3 = pad.position
-				if Vector2(p.x - pp.x, p.z - pp.z).length() < 3.0:
-					var party_in_pocket := false
-					for cid in ["aster", "peris"]:
-						if gs.characters.has(cid) and absf(gs.get_position(cid).z - OFFSHOOT_Z) < 3.0:
-							party_in_pocket = true
-					if party_in_pocket and absf(p.z - OFFSHOOT_Z) > 3.0:
-						gs.snap_character_to(enemy.char_id, pad._dest)
+			var party_in_pocket := false
+			for cid in ["aster", "peris"]:
+				if gs.characters.has(cid) and absf(gs.get_position(cid).z - OFFSHOOT_Z) < 3.0:
+					party_in_pocket = true
+			# the pocket is grid-disconnected: a pursuer whose quarry vanished through the pad
+			# WALKS TO the pad (pursuit toward an unreachable cell moves nobody), then ports
+			if party_in_pocket and absf(p.z - OFFSHOOT_Z) > 3.0 and _pad_in != null and not _pad_in.is_stunned():
+				var pp: Vector3 = _pad_in.position
+				var d := Vector2(p.x - pp.x, p.z - pp.z).length()
+				if d < 1.6:
+					gs.snap_character_to(enemy.char_id, _pad_in._dest)
+				elif d < 26.0:
+					gs.command_move_to_pos(enemy.char_id, pp)
+	# EGRESS: a pursuer inside the pocket with nothing it can hunt (everyone hidden or gone)
+	# ports back to the corridor once the entrance wakes — nobody camps a dead end forever
+	if gs != null:
+		for enemy2 in _enemies:
+			if not is_instance_valid(enemy2) or not enemy2.is_alive() or enemy2.is_stunned():
+				continue
+			var ep: Vector3 = gs.get_position(enemy2.char_id)
+			if absf(ep.z - OFFSHOOT_Z) > 3.0:
+				continue
+			if enemy2.get_state() in ["search", "return", "idle"] and _pad_in != null and not _pad_in.is_stunned():
+				gs.snap_character_to(enemy2.char_id, _pad_in.position)
 	sched.schedule_after(1.0, _arm_portal_follow, "chase_portal_follow")
 
 func _build_tyreg_junction() -> void:
@@ -403,6 +435,54 @@ func _arm_suppress() -> void:
 			_suppress_charges -= 1
 			_show_note("Suppressed. %d rounds left." % _suppress_charges, 1.4)
 	sched.schedule_after(1.2, _arm_suppress, "chase_suppress")
+
+## The first escalation rung (framework: warning -> damage -> caught): a pursuer breathing down
+## your neck announces itself once per beat — the strike itself stays the enemy's own FSM.
+func _close_call_watch() -> void:
+	var gs = _get_game_state()
+	var sched = _get_scheduler()
+	if gs != null and sched != null:
+		var t := float(sched.get_current_tick())
+		if t - _last_close_call > 8.0:
+			for enemy in _enemies:
+				if not is_instance_valid(enemy) or not enemy.is_alive() or enemy.is_stunned():
+					continue
+				var p: Vector3 = gs.get_position(enemy.char_id)
+				for cid in ["aster", "peris"]:
+					if not gs.characters.has(cid) or gs.is_at_shelter(cid):
+						continue
+					var cp: Vector3 = gs.get_position(cid)
+					if Vector2(p.x - cp.x, p.z - cp.z).length() < CLOSE_CALL_RANGE:
+						_last_close_call = t
+						_show_note("Right behind you—", 1.2)
+						break
+				if _last_close_call == t:
+					break
+	if sched != null:
+		sched.schedule_after(1.0, _close_call_watch, "chase_close_call")
+
+## F2: a wipe resets THE CHASE, not just the party — waves despawn, the timeline re-arms, and the
+## scanner waits again. Respawning four steps from live pursuers was the probe's alt-F4 moment.
+func _restart_fragment() -> void:
+	var sched = _get_scheduler()
+	if sched != null:
+		for tag in ["chase_wave_1", "chase_wave_2", "chase_decline_watch", "chase_close_call",
+				"chase_pursuit", "chase_portal_follow", "chase_door_hold", "chase_suppress", "chase_directive"]:
+			sched.cancel_tag(tag)
+	for enemy in _enemies:
+		if is_instance_valid(enemy):
+			var gs = _get_game_state()
+			if gs != null and gs.characters.has(enemy.char_id):
+				gs.unregister_character(enemy.char_id)
+			enemy.queue_free()
+	_enemies.clear()
+	_enemy_posts.clear()
+	_chase_started = false
+	_decline_wave_fired = false
+	_door_held.clear()
+	_wave_count = 0
+	super._restart_fragment()
+	_show_note("Quiet again. The scanner waits. So do they.", 2.4)
 
 ## --- S6: Endo's wall (the boundary the institution respects) ---
 

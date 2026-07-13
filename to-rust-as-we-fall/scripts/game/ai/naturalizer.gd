@@ -19,6 +19,14 @@ var _scan_ring: MeshInstance3D
 func _ready() -> void:
 	# the clean enforcement white is the BASE color (state repaints return to it)
 	color = Color(0.92, 0.94, 0.96)
+	# CONTACT strike (fauna_roster: "lethal contact-strike"): the granule tell is SHORT — a
+	# Naturalizer does not do the windup-lunge dance that whiffs against a runner. Against a
+	# fleeing target the cycle must close, or sprint-only play beats the chase (the probe's
+	# finding: the default 0.8s windup + 1.2s recover let a straight runner stay ahead forever).
+	windup_duration = 0.35
+	recover_duration = 0.55
+	charge_speed = 10.0
+	attack_range = 2.4
 	super._ready()
 	_nat_base_speed = move_speed
 
