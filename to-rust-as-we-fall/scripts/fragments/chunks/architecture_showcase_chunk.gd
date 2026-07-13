@@ -23,6 +23,7 @@ const REACH := {
 	"hypelines": 6.7, "greenfields": 3.2, "ancourage": 6.3, "bulwark_wharf": 7.2,
 	"cleanstreets": 6.1, "zone3": 3.4, "tiered_hall": 2.8, "tiered_terrace": 2.7,
 	"aghora_exchange": 3.9, "aghora_stack": 3.4, "locas_watchtower": 4.8, "nutech_facility": 4.2,
+	"facility_checkpoint": 9.5,
 }
 const REACH_DEFAULT := 3.5
 const GAP := 1.4

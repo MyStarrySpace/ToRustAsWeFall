@@ -413,6 +413,19 @@ const AGHORA_STACK := {
 ## cool-white), the white NUTECH board near the roofline, a parapet lip, roof plant + the spray
 ## RESERVOIR tanks (the Lavender Lake canon) + antenna, a loading DOCK on one flank (platform +
 ## roll-up panel), and the terminal-green status indicator by the entry. Fractions of H.
+## THE FACILITY CHECKPOINT SURVEY — the LIVING institution (the simulation-boundary gatehouse the
+## failed re-entry and the lockout chase share; WORLD_MAP gap A). Clean, lit, working: a low wide
+## gatehouse with N scan LANES through its front face, terminal-green edge light on every powered
+## lane, a reader pylon per lane, the white roofline board, cool blue-white lamp masts at the
+## corners (the enforcement register at full brightness). Fractions of H unless metres.
+const CHECKPOINT := {
+	"lanes": 3, "lane_w": 1.5, "lane_h": 2.6, "lane_gap": 3.6,
+	"sign": {"half_w": 0.42, "y0": 0.82, "y1": 0.96},
+	"parapet": {"y0": 0.965, "lip": 0.035},
+	"reader": {"w": 0.34, "h": 1.15, "out": 0.55},
+	"lamps": {"h": 1.45, "head": 0.22},
+}
+
 const NUTECH := {
 	"storeys": 3, "base": 0.03, "band": 0.31,
 	"win_lo": 0.35, "win_hi": 0.80,          # the window band inside each storey band
@@ -518,6 +531,8 @@ static func table_for(spec_in: Dictionary, name: String) -> Dictionary:
 			base = LOCAS
 		"nutech":
 			base = NUTECH
+		"checkpoint":
+			base = CHECKPOINT
 	var out := base.duplicate(true)
 	var over: Dictionary = (spec_in.get("vars", {}) as Dictionary).get(name, {})
 	for k in over.keys():

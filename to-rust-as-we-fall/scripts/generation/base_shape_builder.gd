@@ -22,6 +22,7 @@ const BUILDINGS := [
 	"plumbing_power", "honeycomb_cooperative", "beacon_hill", "open_files", "hypelines",
 	"greenfields", "ancourage", "bulwark_wharf", "cleanstreets", "zone3", "tiered_hall", "tiered_terrace",
 	"aghora_exchange", "aghora_stack", "locas_watchtower", "nutech_facility",
+	"facility_checkpoint",
 ]
 
 ## Reference-derived proportions. Dimensions are metres; the base sits on y=0.
@@ -213,6 +214,19 @@ const SPECS := {
 		"tile": "facility_metal",
 		"lattice": "",
 		"pipes": true,
+	},
+	"facility_checkpoint": {
+		"title": "Facility Checkpoint",
+		"shape": SHAPE_BOX,                 # the LIVING institution's simulation-boundary gatehouse
+		"size": Vector3(16.0, 4.6, 6.0),    # (WORLD_MAP gap A): low, wide, clean, LIT — scan lanes
+		# through the front face, terminal-green lane light, reader pylons, blue-white lamp masts.
+		# Shared by the failed re-entry beat and the lockout chase (one build, two scenes).
+		"entrances": {"main_w": 1.5, "main_h": 2.6, "side_count_min": 0, "side_count_max": 0,
+			"canopy_out": 0.0, "reserve_margin": 0.25, "main_surround": false},
+		"color": Color(0.74, 0.76, 0.78),   # clean institutional pale — the register nutech decayed FROM
+		"tile": "facility_metal",
+		"lattice": "",
+		"pipes": false,
 	},
 	"nutech_facility": {
 		"title": "NUTECH Facility",
@@ -3418,6 +3432,63 @@ static func watchtower_details(spec: Dictionary) -> Dictionary:
 ## the roof gear — plant boxes, the spray RESERVOIR tanks, the antenna.
 ## Families: concrete / metal (tanks, posts) / dark / lit (pale windows) / white (the board) /
 ## green (indicator). Plus "nameplate_pos" (ON the board).
+## THE FACILITY CHECKPOINT details (survey: CHECKPOINT): N scan-lane gate frames through the
+## front face (centre lane = the real door cut), terminal-green edge strips + a scanner line per
+## powered lane, a reader pylon beside each lane, the white roofline board, parapet lip, and the
+## cool blue-white corner lamp masts — the enforcement palette at full brightness, everything the
+## nutech ruin lost. Buckets: frame / green / dark / lamp / board.
+static func facility_checkpoint_details(spec: Dictionary) -> Dictionary:
+	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
+	var tbl: Dictionary = Survey.table_for(spec, "checkpoint")
+	var size: Vector3 = spec.get("size", Vector3(16.0, 4.6, 6.0))
+	var h := size.y
+	var hx := size.x * 0.5
+	var hz := size.z * 0.5
+	var frame := _st()
+	var green := _st()
+	var dark := _st()
+	var lamp := _st()
+	var board := _st()
+	var lanes := int(tbl["lanes"])
+	var lane_hw := float(tbl["lane_w"]) * 0.5
+	var lane_h := float(tbl["lane_h"])
+	var gap := float(tbl["lane_gap"])
+	var rd: Dictionary = tbl["reader"]
+	for li in range(lanes):
+		var lx := (float(li) - float(lanes - 1) * 0.5) * gap
+		for side in [-1.0, 1.0]:
+			_emit_box_st(frame, Vector3(lx + float(side) * (lane_hw + 0.11), lane_h * 0.5, hz + 0.10),
+				Vector3(0.11, lane_h * 0.5, 0.16))
+		_emit_box_st(frame, Vector3(lx, lane_h + 0.12, hz + 0.10), Vector3(lane_hw + 0.22, 0.12, 0.16))
+		for side2 in [-1.0, 1.0]:
+			_emit_box_st(green, Vector3(lx + float(side2) * (lane_hw + 0.02), lane_h * 0.5, hz + 0.20),
+				Vector3(0.03, lane_h * 0.48, 0.03))
+		_emit_box_st(green, Vector3(lx, 1.25, hz + 0.18), Vector3(lane_hw, 0.025, 0.02))
+		if li != lanes / 2:
+			_emit_box_st(dark, Vector3(lx, lane_h * 0.5, hz + 0.02), Vector3(lane_hw, lane_h * 0.5, 0.03))
+		var px := lx + lane_hw + 0.55
+		_emit_box_st(frame, Vector3(px, float(rd["h"]) * 0.5, hz + float(rd["out"])),
+			Vector3(float(rd["w"]) * 0.5, float(rd["h"]) * 0.5, float(rd["w"]) * 0.5))
+		_emit_box_st(green, Vector3(px, float(rd["h"]) - 0.18, hz + float(rd["out"]) + float(rd["w"]) * 0.5),
+			Vector3(0.10, 0.035, 0.02))
+	var sg: Dictionary = tbl["sign"]
+	var sy := (float(sg["y0"]) + float(sg["y1"])) * 0.5 * h
+	var s_hh := (float(sg["y1"]) - float(sg["y0"])) * 0.5 * h
+	_emit_box_st(board, Vector3(0, sy, hz + 0.06), Vector3(float(sg["half_w"]) * hx, s_hh, 0.05))
+	var pp: Dictionary = tbl["parapet"]
+	_emit_box_st(frame, Vector3(0, float(pp["y0"]) * h + float(pp["lip"]) * h * 0.5, 0),
+		Vector3(hx + 0.06, float(pp["lip"]) * h * 0.5, hz + 0.06))
+	var lp: Dictionary = tbl["lamps"]
+	for corner in [-1.0, 1.0]:
+		var cx := float(corner) * (hx - 0.5)
+		_tube(frame, [Vector3(cx, h, hz - 0.4), Vector3(cx, h + float(lp["h"]), hz - 0.4)], 0.05, 5)
+		_emit_box_st(lamp, Vector3(cx, h + float(lp["h"]), hz - 0.4),
+			Vector3(float(lp["head"]), 0.09, float(lp["head"])))
+	for st_v in [frame, green, dark, lamp, board]:
+		(st_v as SurfaceTool).generate_normals()
+	return {"frame": frame.commit(), "green": green.commit(), "dark": dark.commit(),
+		"lamp": lamp.commit(), "board": board.commit()}
+
 static func nutech_details(spec: Dictionary) -> Dictionary:
 	var Survey := load("res://scripts/generation/building_survey.gd") as GDScript
 	var tbl: Dictionary = Survey.table_for(spec, "nutech")

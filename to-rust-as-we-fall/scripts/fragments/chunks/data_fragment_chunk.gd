@@ -588,6 +588,33 @@ func _add_aghora_stack_details(root: Node3D, spec: Dictionary) -> void:
 ## The NUTECH facility (GDD 11.2): grey institutional concrete, mostly-dark window grids with a
 ## pale cool-white lit minority, the glowing white roofline board, the terminal-green status
 ## indicator — abandoned, but still legible as a working facility.
+func _add_facility_checkpoint_details(root: Node3D, spec: Dictionary) -> void:
+	var built: Dictionary = BaseShapeBuilder.facility_checkpoint_details(spec)
+	_add_lattice_mesh(root, "CpFrame", built.get("frame"),
+		_tinted_tile_material("facility_metal", Color(0.66, 0.68, 0.70)))
+	var greenm := StandardMaterial3D.new()
+	greenm.albedo_color = Color(0.16, 0.4, 0.24)
+	greenm.emission_enabled = true
+	greenm.emission = Color(0.36, 0.91, 0.5)
+	greenm.emission_energy_multiplier = 2.2
+	_add_lattice_mesh(root, "CpGreen", built.get("green"), greenm)
+	var darkm := StandardMaterial3D.new()
+	darkm.albedo_color = Color(0.06, 0.07, 0.08)
+	darkm.roughness = 0.92
+	_add_lattice_mesh(root, "CpDark", built.get("dark"), darkm)
+	var lampm := StandardMaterial3D.new()
+	lampm.albedo_color = Color(0.7, 0.78, 0.9)
+	lampm.emission_enabled = true
+	lampm.emission = Color(0.72, 0.84, 1.0)
+	lampm.emission_energy_multiplier = 2.6
+	_add_lattice_mesh(root, "CpLamp", built.get("lamp"), lampm)
+	var boardm := StandardMaterial3D.new()
+	boardm.albedo_color = Color(0.85, 0.87, 0.86)
+	boardm.emission_enabled = true
+	boardm.emission = Color(0.95, 0.97, 0.94)
+	boardm.emission_energy_multiplier = 1.4
+	_add_lattice_mesh(root, "CpBoard", built.get("board"), boardm)
+
 func _add_nutech_details(root: Node3D, spec: Dictionary) -> void:
 	var built: Dictionary = BaseShapeBuilder.nutech_details(spec)
 	_add_lattice_mesh(root, "NtConcrete", built.get("concrete"),
@@ -790,6 +817,8 @@ func _spawn_landmark_building(lm: Dictionary) -> void:
 		_add_aghora_stack_details(root, spec)
 	if str(spec.get("kind", "")) == "nutech_facility":
 		_add_nutech_details(root, spec)
+	if str(spec.get("kind", "")) == "facility_checkpoint":
+		_add_facility_checkpoint_details(root, spec)
 
 func _spawn_lathe_building(lp: Dictionary) -> void:
 	var profile: Dictionary = LatheBuilderScript.make_profile(lp)
