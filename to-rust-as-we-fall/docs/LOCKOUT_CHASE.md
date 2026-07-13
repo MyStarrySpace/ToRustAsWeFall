@@ -230,6 +230,11 @@ built machinery (grid gaps, CrawlTunnel authored paths, the topple = push-lab gr
   accepted-loss branch: sprint-only completes but LOSES the trailing member (3 strikes over the
   runway); one-lever play the same; Tyreg or fuller lever play keeps everyone alive. FLEX —
   director adjusts.
-- Perf after all rounds: mean 20 ms/step data-side (was 110); rare ~0.7-1.2 s late-chase spikes
-  REMAIN OPEN (not per-unit pathing — survived the field; instrumentation modes kept in
-  --test-chase-perf for the next hunt).
+- Perf CLOSED (2026-07-13, the hunt): the residual late spikes were the DECLINE WAVE shipping
+  without the pack wiring — no coop_exempt, so its two members ran full cooperative space-time
+  planning and wrote reservations the party's own 90-cell plan then fought. Pinned by the new
+  NATIVE per-callback scheduler profiler (EventScheduler.set_profiling/get_profile, chrono-based,
+  + a cancelled-pop counter), after GDScript-side counters proved callback volume was tiny.
+  Every wave now goes through one _wire_wave_nat. Worst step across the whole chase:
+  1900 ms -> 8.1 ms; mean 1.76 ms/step. Lesson: when a spec dict is duplicated per spawn site,
+  the wiring WILL diverge — one wiring function per pack, always.
