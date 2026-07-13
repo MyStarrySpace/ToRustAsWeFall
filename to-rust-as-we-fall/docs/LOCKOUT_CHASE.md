@@ -278,3 +278,39 @@ mid-test; three cascade red herrings before the freeze.
 Balance state: Tyreg route healthy (2 strikes). No-Tyreg routes still wipe for the semi-smart
 probe — next pass needs per-death position traces; the pinch placement tool is now available
 for it (a third pinch before the barricade approach is the obvious candidate).
+
+## Round 6 (2026-07-13): THE PAIR LAW + CHECKPOINT RUNBACKS + ROGUELITE DEALS (director's design)
+
+**The pair law.** Solo play carries you a long way, but not to the end: the S5 debris shelf is a
+boost-and-pull TWO-PERSON move (`CrawlTunnel.requirement` — a generic activation gate, reusable),
+so the clamber refuses unless both Aster and Peris are up and at (or already over) the shelf; and
+Endo's wall rest counts heads — both members up and inside the maintained section, or the gesture
+sends you back (Endo never speaks). Red-verified: without the gate a solo runner sails over.
+
+**Runbacks are checkpoints.** The corridor remembers the furthest section boundary the PAIR
+cleared together (50 / 92 / 128 / 163 — the marker only advances when both cross alive, so the
+checkpoint and the pair law are one rule). A wipe or manual restart resumes THERE: pair revived at
+the marker, pack despawned and re-raised a fair 18 wu behind (canon head-start distance — the
+first resume spawned at 9 wu and produced a death loop), world state KEPT (gantry down, door
+spent, seals spent — levers never regenerate). The full from-the-top reset only happens before the
+first marker.
+
+**Pinch 3 = the rubble apron (x=152.5, gap z=0).** The probe's death traces showed the trailing
+member dying while QUEUED at the clamber mouth (the one-at-a-time file-through is exactly what the
+crowd governor exists for) — the third pinch sits right before the mouth so the pack piles up on
+the apron while the party files over. The pinch list is ONE const now (`PINCHES` — the grid
+builder read an inline copy; deduped, the decline-wave lesson).
+
+**Roguelite deals.** Each Retrieval Descent run deals ONE chase at a seeded mid-descent depth
+(`RunSession.LEVEL_CHASE`, never the opener, never the finale), only while the pair is whole (a
+run that lost Aster or Peris gets a generated level instead). The chase's failure economy inside a
+run is the checkpoint runback, NOT permadeath (`_roguelike_on_downed` exempts it); its wall rest
+IS its shelter rest, so the branch modal follows completion naturally.
+
+**Probe matrix (140 s window):** competent_runner COMPLETES (1 runback, 3 strikes, both 100 hp) —
+the no-Tyreg route is beatable at last; tyreg_accepter survives indefinitely on checkpoint cycles
+(184 wu, both 100 hp — slow grind, never a lost run); panic/curious/camper/stumbler fail with
+cheap retries at their markers. Balance state: healthy. Open tuning: tyreg_accepter's grind pace
+(its naive wash play keeps feeding Peris to the pack) — a real player reads the wash after one
+sweep.
+

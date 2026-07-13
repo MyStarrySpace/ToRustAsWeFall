@@ -21,7 +21,7 @@ const BARRICADE_X1 := 161.5
 # PINCH POINTS (director's crowd governor): narrow gaps the party threads smoothly; a pursuer
 # barreling in TRIPS (prone = an obstacle), and the pack behind CLAMBERS OVER the body at a
 # per-body delay -- the crowd's speed self-regulates at every pinch, scaling with pack size.
-const PINCHES := [[58.0, 1.5], [112.0, -1.5]]   # [x, gap centre z]
+const PINCHES := [[58.0, 1.5], [112.0, -1.5], [152.5, 0.0]]   # [x, gap centre z]; #3 = the rubble apron guarding the clamber queue
 const PINCH_GAP_HALF := 1.1
 const TRIP_SECS := 2.6
 const CLIMB_SECS := 1.6
@@ -41,6 +41,13 @@ const NAT_SPEED := 4.4           # party base 3.0. EFFECTIVE pursuit is ~half th
                                  # sprint-only fails late-corridor; the door hold (7 s) + chelator
                                  # break buy the escape margin (probe-tuned, framework knob)
 const CLOSE_CALL_RANGE := 4.5    # the breathing-down-your-neck warning distance
+# THE PAIR LAW (director): solo play carries you a long way, but not to the end -- the shelf
+# clamber is a boost-and-pull two-person move, and Endo's wall rest counts heads. And RUNBACKS
+# ARE CHECKPOINTS: the corridor remembers the furthest section boundary the PAIR cleared
+# together; a wipe resumes there with the world kept (the gantry stays down, spent levers stay
+# spent -- levers never regenerate) and only the pack resets.
+const CHECKPOINTS := [50.0, 92.0, 128.0, 163.0]
+const PAIR_NEAR_X := 12.0        # how far behind the shelf a boosting partner may stand
 const SUPPRESS_CHARGES := 3
 const SUPPRESS_SECS := 5.0
 
@@ -54,6 +61,7 @@ var _pad_out: PortalPad
 var _wave_count := 0
 var _door_held := {}             # char_id -> true: the door holds each cutter exactly once
 var _last_close_call := -100.0
+var _checkpoint_x := -1.0
 
 func get_scene_title() -> String:
 	return "The Lockout Chase"
@@ -154,7 +162,7 @@ func _chase_fragment() -> Fragment:
 			var in_barricade: bool = wx > BARRICADE_X0 and wx < BARRICADE_X1
 			# pinch walls: everything but the narrow gap is blocked at each pinch line
 			var in_pinch_wall := false
-			for pin in [[58.0, 1.5], [112.0, -1.5]]:
+			for pin in PINCHES:
 				if wx > float((pin as Array)[0]) - 0.9 and wx < float((pin as Array)[0]) + 0.9 \
 						and absf(wz - float((pin as Array)[1])) > 1.1:
 					in_pinch_wall = true
@@ -202,12 +210,14 @@ func _on_tags_rejected() -> void:
 	sched.schedule_after(2.2, func() -> void:
 		_show_note("RUN. East — Endo keeps the wall past the old corridors.", 2.8), "chase_directive")
 
-func _spawn_wave(count: int, near_party := false) -> void:
+func _spawn_wave(count: int, near_party := false, base_x_override := -1.0) -> void:
 	var gs = _get_game_state()
 	if gs == null:
 		return
 	var base_x := 2.0
-	if near_party and gs.characters.has("aster"):
+	if base_x_override > 0.0:
+		base_x = base_x_override
+	elif near_party and gs.characters.has("aster"):
 		base_x = clampf(gs.get_position("aster").x - 9.0, 2.0, WALL_X - 20.0)
 	for i in range(count):
 		var eid := "naturalizer_%d" % _wave_count
@@ -658,6 +668,9 @@ func _close_call_watch() -> void:
 ## F2: a wipe resets THE CHASE, not just the party — waves despawn, the timeline re-arms, and the
 ## scanner waits again. Respawning four steps from live pursuers was the probe's alt-F4 moment.
 func _restart_fragment() -> void:
+	if _chase_started and _checkpoint_x > 0.0:
+		_checkpoint_resume()
+		return
 	var sched = _get_scheduler()
 	if sched != null:
 		for tag in ["chase_wave_1", "chase_wave_2", "chase_decline_watch", "chase_close_call",
@@ -681,6 +694,10 @@ func _restart_fragment() -> void:
 		if _gantry_fallen != null:
 			_gantry_fallen.visible = false
 	_door_held.clear()
+	_barricade_wait.clear()
+	_wash_refractory.clear()
+	_trip_refractory.clear()
+	_fallen.clear()
 	_wave_count = 0
 	super._restart_fragment()
 	_show_note("Quiet again. The scanner waits. So do they.", 2.4)
@@ -718,6 +735,9 @@ func _build_barricade() -> void:
 	_clamber.configure(_get_game_state(), Vector3(BARRICADE_X0 - 1.2, 0, 0),
 		[Vector3(mid, 1.3, 0.0), Vector3(BARRICADE_X1 + 1.4, 0, 0)], 1.4, 2.2)
 	_clamber.set_group_provider(_selected_party_ids)
+	_clamber.requirement = _pair_boost_ok
+	_clamber.refused.connect(func() -> void:
+		_show_note("Too high alone -- one boosts, one pulls up from the top.", 2.6))
 	add_child(_clamber)
 	_register_interactable(_clamber)
 	var stub := _add_box(_clamber, Vector3(-0.6, 0.3, 0.9), Vector3(0.24, 0.6, 0.24), Color(0.32, 0.36, 0.42))
@@ -828,6 +848,7 @@ func _hazard_poll() -> void:
 						nat.stun(2.5)
 		_pinch_rule(gs, now)
 		_sync_fallen_visuals()
+		_advance_checkpoint(gs)
 		# barricade funnel: a pursuer at the wall whose quarry is beyond clambers after a beat
 		for enemy in _enemies:
 			if not is_instance_valid(enemy) or not enemy.is_alive() or enemy.is_stunned():
@@ -849,6 +870,79 @@ func _hazard_poll() -> void:
 	if sched != null:
 		sched.schedule_after(0.5, _hazard_poll, "chase_hazards")
 
+## THE PAIR GATE: the debris shelf is a two-person move -- one boosts, one pulls up -- so both
+## Aster and Peris must be up and at (or already over) the shelf to cross. A member beyond the
+## barricade counts: they pull from the top. Solo play caps out here.
+func _pair_boost_ok() -> bool:
+	var gs = _get_game_state()
+	if gs == null:
+		return true
+	for cid in ["aster", "peris"]:
+		if not gs.characters.has(cid) or gs.is_downed(cid):
+			return false
+		if gs.get_position(cid).x < BARRICADE_X0 - PAIR_NEAR_X:
+			return false
+	return true
+
+## The marker advances to each section boundary BOTH members have crossed alive -- solo progress
+## never moves it, which keeps the checkpoint and the pair law one rule, not two.
+func _advance_checkpoint(gs) -> void:
+	var best := _checkpoint_x
+	for cx_v in CHECKPOINTS:
+		var cx := float(cx_v)
+		if cx <= best:
+			continue
+		var both := true
+		for cid in ["aster", "peris"]:
+			if not gs.characters.has(cid) or gs.is_downed(cid) or gs.get_position(cid).x < cx:
+				both = false
+				break
+		if both:
+			best = cx
+	if best > _checkpoint_x:
+		_checkpoint_x = best
+		_show_note("Checkpoint.", 1.4)
+
+## The checkpoint resume: the pair back on their feet at the marker, the pack despawned and
+## re-raised behind them after a grace beat, the world kept as it was. The full from-the-top
+## reset only happens before the first marker.
+func _checkpoint_resume() -> void:
+	var gs = _get_game_state()
+	var sched = _get_scheduler()
+	if sched != null:
+		for tag in ["chase_wave_1", "chase_wave_2", "chase_decline_watch", "chase_close_call",
+				"chase_pursuit", "chase_portal_follow", "chase_door_hold", "chase_suppress",
+				"chase_directive", "chase_hazards"]:
+			sched.cancel_tag(tag)
+	for enemy in _enemies:
+		if is_instance_valid(enemy):
+			if gs != null and gs.characters.has(enemy.char_id):
+				gs.unregister_character(enemy.char_id)
+			enemy.queue_free()
+	_enemies.clear()
+	_enemy_posts.clear()
+	_door_held.clear()
+	_barricade_wait.clear()
+	_wash_refractory.clear()
+	_trip_refractory.clear()
+	_fallen.clear()
+	if gs != null:
+		var z := -1.0
+		for cid in ["aster", "peris"]:
+			if gs.characters.has(cid):
+				gs.restore_character(cid)
+				gs.snap_character_to(cid, Vector3(_checkpoint_x + 1.5, 0.0, z))
+				z += 2.0
+	_phase = "ready"
+	if sched != null:
+		sched.schedule_after(5.5, _spawn_wave.bind(2, false, maxf(_checkpoint_x - 18.0, 2.0)), "chase_wave_2")
+		sched.schedule_after(1.5, _close_call_watch, "chase_close_call")
+		sched.schedule_after(1.0, _hazard_poll, "chase_hazards")
+		sched.schedule_after(1.0, _decline_watch, "chase_decline_watch")
+	_arm_portal_follow()
+	_set_preview_step("lockout_checkpoint")
+	_show_note("Back up at the marker. They know where you fell -- move.", 2.8)
+
 ## --- S6: Endo's wall (the boundary the institution respects) ---
 
 func _build_endo_wall() -> void:
@@ -868,6 +962,17 @@ func _on_exit_shelter_rested(it: Node = null) -> void:
 		if it != null and it.has_method("reset"):
 			it.call("reset")   # the refusal must not spend the one-shot — the real rest comes later
 		return
+	# THE END GATE NEEDS THE PAIR: both Aster and Peris, up and inside the maintained section, or
+	# nobody rests. (Endo never speaks; the refusal is a gesture.)
+	var gs = _get_game_state()
+	if gs != null:
+		for cid in ["aster", "peris"]:
+			if not gs.characters.has(cid) or gs.is_downed(cid) \
+					or gs.get_position(cid).x < WALL_X - 16.0:
+				_show_note("Endo holds up two fingers, then points back down the corridor.", 2.8)
+				if it != null and it.has_method("reset"):
+					it.call("reset")
+				return
 	super._on_exit_shelter_rested(it)
 
 func get_preview_state() -> Dictionary:
@@ -879,4 +984,8 @@ func get_preview_state() -> Dictionary:
 	st["bloom_carry"] = _bloom_carry
 	st["pursuers"] = _enemies.size()
 	st["bridge_down"] = _bridge_down
+	st["checkpoint_x"] = _checkpoint_x
+	# the roguelite presenter's descent poll reads the generated-level key; the chase's wall rest
+	# IS its shelter rest
+	st["shelter_rested"] = bool(st.get("complete", false))
 	return st

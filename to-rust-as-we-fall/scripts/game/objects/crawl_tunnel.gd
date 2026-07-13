@@ -16,6 +16,7 @@ extends Interactable
 signal crawl_started(who: String)
 signal crawl_finished(who: String)
 signal group_crawl_finished(ids: Array)
+signal refused
 
 const ENTRY_SPACING := 1.6          # in-tube distance kept between members (drives the entry gap)
 const QUEUE_SLOT_GAP := 0.9         # line-up spacing outside the mouth
@@ -66,7 +67,15 @@ func set_group_provider(provider: Callable) -> void:
 func is_group_crawl_active() -> bool:
 	return not _queue.is_empty()
 
+## Optional activation gate, checked at interaction time: a Callable returning false refuses
+## the whole activation (nothing consumed; `refused` is emitted so the host can say why). The
+## lockout barricade uses it for the pair boost -- a two-person move needs two people.
+var requirement: Callable = Callable()
+
 func _on_interacted() -> void:
+	if requirement.is_valid() and not bool(requirement.call()):
+		refused.emit()
+		return
 	var group := _group_for(str(active_character))
 	if group.size() <= 1:
 		if not group.is_empty():

@@ -5633,9 +5633,14 @@ func _test_run_session_e2e() -> void:
 			_assert_equals(str(s.spec.get("kind", "")), "finale_paranucleus",
 				"the descent bottoms out at the boss-site finale")
 			break
-		_assert_true(_run_level_connects(s.spec), "depth %d connects entry -> exit" % s.depth)
-		_assert_equals((s.spec.get("settings", {}) as Dictionary).get("roster", []), s.roster,
-			"depth %d is generated with the run's (possibly grown) roster" % s.depth)
+		if str(s.spec.get("kind", "")) == Session.LEVEL_CHASE:
+			# the run's dealt chase (director: chases intersperse the roguelite) — an authored
+			# corridor, not a generated stretch; no grid/roster fields to check here
+			pass
+		else:
+			_assert_true(_run_level_connects(s.spec), "depth %d connects entry -> exit" % s.depth)
+			_assert_equals((s.spec.get("settings", {}) as Dictionary).get("roster", []), s.roster,
+				"depth %d is generated with the run's (possibly grown) roster" % s.depth)
 		if pat == "recruit":
 			_assert_equals((s.roster as Array).size(), before + 1, "a recruit branch grows the party by one")
 			recruited = true
@@ -14837,6 +14842,57 @@ func _test_roguelike_goal() -> void:
 		"the finale spec loads the boss site")
 	_assert_true(bool((inst.get("preview_chunk_config") as Dictionary).get("finale", false)),
 		"the finale config arms the prize")
+	# (6) CHASE DEALS (director, 2026-07-13): one authored chase per run at a seeded mid-descent
+	# depth — never the opener, never the finale — and only while the PAIR is whole.
+	var chase_depths := {}
+	var dealt := 0
+	var chase_seed := -1
+	for sd2 in [1, 2, 3, 7, 11, 13]:
+		var rc := RunSession.new(sd2)
+		rc.start()
+		var chases := 0
+		var hops2 := 0
+		while not rc.at_finale() and hops2 < 12:
+			rc.descend("safe")
+			if str(rc.spec.get("kind", "")) == RunSession.LEVEL_CHASE:
+				chases += 1
+				chase_depths[rc.depth] = true
+				chase_seed = sd2
+				_assert_true(rc.current_is_playable(), "the dealt chase is playable")
+				_assert_true(rc.depth >= 1 and rc.depth < rc.target_depth,
+					"seed %d: the chase sits mid-descent (depth %d of %d)" % [sd2, rc.depth, rc.target_depth])
+			hops2 += 1
+		_assert_true(chases <= 1, "seed %d: at most one chase per run" % sd2)
+		dealt += chases
+	_assert_true(dealt >= 3, "most runs are dealt a chase (%d of 6 seeds)" % dealt)
+	_assert_true(chase_depths.size() > 1, "the chase depth VARIES across seeds")
+	# a run that lost half the pair is never dealt the chase (its end gate needs both)
+	var widow := RunSession.new(chase_seed)
+	widow.start()
+	widow.mark_death("peris")
+	var saw_chase := false
+	var hops3 := 0
+	while not widow.at_finale() and hops3 < 12:
+		widow.descend("safe")
+		saw_chase = saw_chase or str(widow.spec.get("kind", "")) == RunSession.LEVEL_CHASE
+		hops3 += 1
+	_assert_true(not saw_chase, "a run that lost Aster or Peris is dealt generated levels instead")
+	# the presenter's chase arm + the checkpoint law: a chase death is a runback, not permadeath
+	var sess2 := RunSession.new(chase_seed)
+	sess2.start()
+	var hops4 := 0
+	while str(sess2.spec.get("kind", "")) != RunSession.LEVEL_CHASE and not sess2.at_finale() and hops4 < 12:
+		sess2.descend("safe")
+		hops4 += 1
+	_assert_equals(str(sess2.spec.get("kind", "")), RunSession.LEVEL_CHASE,
+		"the walker reaches the dealt chase")
+	inst.set("_run_session", sess2)
+	inst.call("_roguelike_sync_config")
+	_assert_equals(str(inst.get("preview_chunk")), "lockout_chase", "a chase spec loads the lockout corridor")
+	var roster_before2: int = (sess2.roster as Array).size()
+	inst.call("_roguelike_on_downed", "peris")
+	_assert_equals((sess2.roster as Array).size(), roster_before2,
+		"a chase death costs a checkpoint runback, NOT the roster (the corridor revives its pair)")
 	inst.queue_free()
 	await get_tree().process_frame
 
@@ -16686,8 +16742,13 @@ func _test_roguelike_atom_run() -> void:
 	_assert_true(int(session.depth) >= 1, "the descent advanced (a shortcut reward may skip deeper)")
 	_assert_true(session.current_is_playable(), "the descended-into level passes its report card")
 	var chunk2 = inst.get("_active_chunk")
-	_assert_true(chunk2 != null and bool((chunk2.get_preview_state() as Dictionary).get("skeleton_ok", false)),
-		"the depth-1 chunk is live and its skeleton grades SHIPPABLE")
+	if str(session.spec.get("kind", "")) == RunSession.LEVEL_CHASE:
+		# the descent landed on the run's dealt chase (director: chases intersperse the roguelite)
+		_assert_equals(str(inst.get("preview_chunk")), "lockout_chase",
+			"the descent dealt the run's chase — the lockout corridor is live")
+	else:
+		_assert_true(chunk2 != null and bool((chunk2.get_preview_state() as Dictionary).get("skeleton_ok", false)),
+			"the depth-1 chunk is live and its skeleton grades SHIPPABLE")
 	inst.queue_free()
 	await tree.process_frame
 
@@ -32740,11 +32801,21 @@ func _test_lockout_chase() -> void:
 	_assert_true(gs.get_position("aster").x < float(chunk.BARRICADE_X0) + 0.5,
 		"the collapsed shelf cannot be walked through (x=%.1f)" % gs.get_position("aster").x)
 	var clamber: Node = chunk.find_child("ClamberBarricade", true, false)
+	# THE PAIR GATE: alone at the shelf (partner parked at the plaza) the boost REFUSES
+	gs.restore_character("peris")
+	gs.snap_character_to("peris", Vector3(4.0, 0.0, 2.0))
+	clamber.set("active_character", "aster")
+	clamber.call("_trigger")
+	inst.headless_advance(6.0, 0.1)
+	_assert_true(gs.get_position("aster").x < float(chunk.BARRICADE_X0) + 0.5,
+		"the shelf is a two-person move — the solo clamber refuses (x=%.1f)" % gs.get_position("aster").x)
+	gs.restore_character("peris")
+	gs.snap_character_to("peris", Vector3(float(chunk.BARRICADE_X0) - 3.0, 0.0, 1.5))
 	clamber.set("active_character", "aster")
 	clamber.call("_trigger")
 	inst.headless_advance(14.0, 0.1)
 	_assert_true(gs.get_position("aster").x > float(chunk.BARRICADE_X1),
-		"the CLAMBER carries you over the debris (x=%.1f)" % gs.get_position("aster").x)
+		"with the pair at the shelf the CLAMBER carries you over (x=%.1f)" % gs.get_position("aster").x)
 	# a pursuer at the wall follows over on the stagger (the funnel)
 	gs.snap_character_to(str(nat0.char_id), Vector3(float(chunk.BARRICADE_X0) - 2.0, 0.0, 0.0))
 	inst.headless_advance(7.0, 0.1)
@@ -32761,6 +32832,30 @@ func _test_lockout_chase() -> void:
 	inst.headless_advance(3.0, 0.1)
 	_assert_true(int(chunk._suppress_charges) < chunk.SUPPRESS_CHARGES,
 		"her Suppress spends a round on the closing pursuer")
+	# --- RUNBACKS ARE CHECKPOINTS: a wipe resumes at the marker with the world kept ---
+	_assert_true(float(chunk._checkpoint_x) >= 128.0,
+		"the pair crossing sections together advanced the marker (checkpoint_x=%.0f)" % float(chunk._checkpoint_x))
+	chunk._restart_fragment()
+	inst.headless_advance(0.5, 0.1)
+	_assert_true(gs.get_position("aster").x > 125.0 and gs.get_position("peris").x > 125.0,
+		"the runback resumes at the checkpoint, not the plaza (a=%.0f p=%.0f)" % [gs.get_position("aster").x, gs.get_position("peris").x])
+	_assert_true(not gs.is_downed("aster") and not gs.is_downed("peris"),
+		"both members back on their feet at the marker")
+	_assert_true(bool(chunk.get_preview_state()["bridge_down"]),
+		"the WORLD is kept across a runback — the gantry stays fallen")
+	_assert_equals(int(chunk.get_preview_state()["pursuers"]), 0, "the pack resets at the runback")
+	inst.headless_advance(7.0, 0.1)
+	_assert_true(int(chunk.get_preview_state()["pursuers"]) > 0, "— and comes again behind the marker")
+	# clear the fresh wave so the wall section below stays isolated
+	for tag_cp in ["chase_wave_1", "chase_wave_2", "chase_pursuit"]:
+		gs.scheduler.cancel_tag(tag_cp)
+	for e_cp in chunk._enemies:
+		if is_instance_valid(e_cp):
+			if gs.characters.has(e_cp.char_id):
+				gs.unregister_character(e_cp.char_id)
+			e_cp.queue_free()
+	chunk._enemies.clear()
+	chunk._enemy_posts.clear()
 	# --- Endo's wall: sanctuary + the rest completes the scene (the test party stood still under
 	# REAL pursuit above — restore them the way the wipe-restart does, then finish the run) ---
 	for cid4 in ["aster", "peris"]:
@@ -32770,6 +32865,15 @@ func _test_lockout_chase() -> void:
 	var wall_rest: Node = null
 	for it in chunk._exit_shelters:
 		wall_rest = it
+	# THE END GATE NEEDS THE PAIR: with Peris down, Endo counts heads and the rest refuses
+	gs.adjust_stat("peris", "hp", -999.0)
+	wall_rest.set("active_character", "aster")
+	wall_rest.call("_trigger")
+	inst.headless_advance(0.5, 0.1)
+	_assert_true(not bool(chunk.get_preview_state()["complete"]),
+		"one survivor at the wall is NOT the end — the rest needs both Aster and Peris")
+	gs.restore_character("peris")
+	gs.snap_character_to("peris", Vector3(float(chunk.WALL_X) + 2.0, 0.0, 1.5))
 	wall_rest.set("active_character", "aster")
 	wall_rest.call("_trigger")
 	inst.headless_advance(0.5, 0.1)
@@ -32818,7 +32922,7 @@ func _test_chase_probe() -> void:
 					gs.command_move_to_pos(cid, Vector3(float(chunk.DOOR_X) + 1.0, 0, 2.0))
 		var t := 0.0
 		var acted := false
-		while t < 115.0:
+		while t < 140.0:
 			inst.headless_advance(1.0, 0.1)
 			t += 1.0
 			var st: Dictionary = chunk.get_preview_state()
@@ -32893,7 +32997,8 @@ func _test_chase_probe() -> void:
 				if ap_c.x > float(chunk.BARRICADE_X0) - 3.0 and ap_c.x < float(chunk.BARRICADE_X0) + 0.6:
 					var cl: Node = chunk.find_child("ClamberBarricade", true, false)
 					if cl != null:
-						cl.set("active_character", "aster")
+						var lead_c := "peris" if gs.get_position("peris").x < ap_c.x else "aster"
+						cl.set("active_character", lead_c)
 						cl.call("_trigger")
 			if strat in ["panic_sprint", "tyreg_accepter", "competent_runner"] and acted or strat == "panic_sprint":
 				# STAGED movement (a grid move past the barricade refuses outright — the player
@@ -32912,12 +33017,17 @@ func _test_chase_probe() -> void:
 					if cl2 != null:
 						cl2.set("active_character", "aster")
 						cl2.call("_trigger")
+			# the pair law's failure economy: a lone partner down is a RUNBACK — a real player
+			# restarts at the marker (a full wipe resumes there on its own)
+			if gs.is_downed("aster") != gs.is_downed("peris") and float(chunk._checkpoint_x) > 0.0:
+				print("[PROBE] t=%4.0f  RUNBACK — partner down, back to the marker at x=%.0f" % [t, float(chunk._checkpoint_x)])
+				chunk._restart_fragment()
 			var st2: Dictionary = chunk.get_preview_state()
 			if bool(st2.get("complete", false)):
 				print("[PROBE] t=%4.0f  COMPLETE — reached the wall and rested" % t)
 				break
-			if int(st2.get("wipe_count", 0)) >= 2:
-				print("[PROBE] t=%4.0f  SECOND WIPE — a real player alt-F4s about here" % t)
+			if int(st2.get("wipe_count", 0)) >= 4:
+				print("[PROBE] t=%4.0f  FOURTH WIPE — even with checkpoints, a real player is done" % t)
 				break
 			# a runner who reaches the wall tries to rest (they can see the pad)
 			if gs.get_position("aster").x > float(chunk.WALL_X) and not bool(gs.is_downed("aster")):

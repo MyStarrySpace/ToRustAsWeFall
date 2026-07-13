@@ -32,6 +32,12 @@ const ATOM_SHAPES: Array = [
 ## scores depth, survivors, retrieval, and choices.
 const FINALE_PARANUCLEUS := "finale_paranucleus"
 
+## A CHASE level (director, 2026-07-13): once per run, at a seeded mid-descent depth, the deal
+## is the authored lockout corridor instead of a generated level. The chase needs the PAIR (its
+## end gate refuses a solo runner) and runs its own failure economy (checkpoint runbacks, not
+## permadeath), so a run that has already lost Aster or Peris is dealt a generated level.
+const LEVEL_CHASE := "chase"
+
 var seed: int
 var depth: int = 0
 var levels: String = LEVELS_STRETCH
@@ -87,6 +93,8 @@ func choose(option: Dictionary) -> Dictionary:
 	if depth >= target_depth:
 		depth = target_depth
 		spec = _generate_finale()
+	elif depth == _chase_depth() and roster.has("aster") and roster.has("peris"):
+		spec = _generate_chase_level()
 	elif levels == LEVELS_ATOM:
 		spec = _generate_atom_level(int(option.get("atom_stage_bonus", 0)))
 	else:
@@ -116,6 +124,8 @@ func current_is_playable() -> bool:
 		return false
 	if str(spec.get("kind", "")) == FINALE_PARANUCLEUS:
 		return true   # the boss site is authored content with its own playthrough guards
+	if str(spec.get("kind", "")) == LEVEL_CHASE:
+		return true   # the authored corridor ships with its own playthrough guards
 	if levels == LEVELS_ATOM:
 		# The report card IS the playability gate: gated (P8) + lock-before-key + SAFE-PASSAGE + every
 		# archetype backed by a real mechanic. Stronger than connectivity — the level is a provably fair,
@@ -133,6 +143,18 @@ func _generate_finale() -> Dictionary:
 		"kind": FINALE_PARANUCLEUS,
 		"id": "finale_%d" % seed,
 		"seed": posmod(seed * 31 + depth * 7, 1000),
+	}
+
+## The run's one chase sits at a seeded depth in [2, target) -- never the opener, never the finale.
+func _chase_depth() -> int:
+	return 2 + posmod(int(hash("chase:%d" % seed)), maxi(1, target_depth - 3))
+
+func _generate_chase_level() -> Dictionary:
+	return {
+		"success": true,
+		"kind": LEVEL_CHASE,
+		"id": "chase_d%d_%d" % [depth, seed],
+		"depth": depth,
 	}
 
 func at_finale() -> bool:

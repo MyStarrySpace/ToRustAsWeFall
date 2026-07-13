@@ -669,6 +669,13 @@ func _roguelike_sync_config() -> void:
 			(_run_session.spec.get("stages", []) as Array).size(),
 			str((_run_session.spec.get("hub_shape", {}) as Dictionary).get("type", "flat"))]
 		return
+	if str(_run_session.spec.get("kind", "")) == RunSession.LEVEL_CHASE:
+		# The run's dealt CHASE: the authored lockout corridor. Its failure economy is the
+		# checkpoint runback, so the permadeath wire skips it (see _roguelike_on_downed).
+		preview_chunk = "lockout_chase"
+		preview_chunk_config = {"roguelike": true}
+		scene_title_override = "Roguelike — Depth %d: LOCKOUT" % (_run_session.depth + 1)
+		return
 	if str(_run_session.spec.get("kind", "")) == RunSession.FINALE_PARANUCLEUS:
 		# THE FINALE: the boss site. The run completes when the prize is taken (the poll watches).
 		preview_chunk = "boss_showcase"
@@ -772,6 +779,8 @@ func _roguelike_wire_permadeath() -> void:
 func _roguelike_on_downed(id: String) -> void:
 	if _run_session == null or not _roguelike_active:
 		return
+	if str(preview_chunk) == "lockout_chase":
+		return   # a chase death costs a checkpoint runback, not the roster -- the corridor revives its pair
 	if not _run_session.roster.has(str(id)):
 		return
 	_run_session.mark_death(str(id))
