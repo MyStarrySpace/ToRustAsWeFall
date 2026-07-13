@@ -262,3 +262,19 @@ first-play path) completes, losing the trailing member. The NO-Tyreg routes curr
 the probe's semi-smart player — canon EXPECTS decline first-plays to fail, but the competent
 one-lever route should scrape through; the next balance pass needs per-death position traces
 (where exactly the pack lands kills). The probe harness is ready for it.
+
+## Round 5 (2026-07-13): PINCH POINTS — the crowd governor (director's design)
+
+Narrow FLOW CONTROL gaps (one body wide) at x=58 and x=112: the party threads them clean; a
+pursuer barreling in at pack speed TRIPS prone (a real obstacle — the body tips over) and every
+pursuer behind CLIMBS the pile at a per-body toll. The governor is self-balancing: a bigger pack
+piles higher and waits longer. Pinch 2 deliberately guards the WASH WAIT — the pack piles up at
+the squeeze while you wait out the flood. Measured: Tyreg-route strikes fell 5 -> 2. Rules ride
+the shared hazard poll (trip refractory per body; prone = stunned + tipped; climbers pay
+CLIMB_SECS x pile, capped). Test isolation lesson: freeze FSM TAGS for statue-enemies in
+multi-section tests — stun timers get overwritten by mechanics (the wash sweep) and expire
+mid-test; three cascade red herrings before the freeze.
+
+Balance state: Tyreg route healthy (2 strikes). No-Tyreg routes still wipe for the semi-smart
+probe — next pass needs per-death position traces; the pinch placement tool is now available
+for it (a third pinch before the barricade approach is the obvious candidate).
