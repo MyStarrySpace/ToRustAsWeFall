@@ -18,6 +18,14 @@ const TRENCH_X1 := 19.5
 const WASH_X := 120.0            # S4: the wash undercut (the channels quote -- a REAL Channel)
 const BARRICADE_X0 := 158.0      # S5: the collapse shelf's debris wall (clamber over)
 const BARRICADE_X1 := 161.5
+# PINCH POINTS (director's crowd governor): narrow gaps the party threads smoothly; a pursuer
+# barreling in TRIPS (prone = an obstacle), and the pack behind CLAMBERS OVER the body at a
+# per-body delay -- the crowd's speed self-regulates at every pinch, scaling with pack size.
+const PINCHES := [[58.0, 1.5], [112.0, -1.5]]   # [x, gap centre z]
+const PINCH_GAP_HALF := 1.1
+const TRIP_SECS := 2.6
+const CLIMB_SECS := 1.6
+const TRIP_REFRACTORY := 5.0
 const DOOR_X := 42.0
 const CHELATOR_X := 55.0
 const JUNCTION_X := 76.0
@@ -58,6 +66,7 @@ func _build_chunk() -> void:
 	_build_terminal_rows()
 	_build_door()
 	_build_barricade()
+	_build_pinches()
 	_build_chelator()
 	_build_offshoot()
 	_build_tyreg_junction()
@@ -143,7 +152,13 @@ func _chase_fragment() -> Fragment:
 			var in_bank_b: bool = wx > 33.0 and wx < 37.5 and wz > -0.6
 			# S5 collapse shelf: the debris barricade -- no walking through; the clamber is the way
 			var in_barricade: bool = wx > BARRICADE_X0 and wx < BARRICADE_X1
-			if (in_corridor or in_pocket) and not (in_corridor and (in_bank_a or in_bank_b or in_barricade)):
+			# pinch walls: everything but the narrow gap is blocked at each pinch line
+			var in_pinch_wall := false
+			for pin in [[58.0, 1.5], [112.0, -1.5]]:
+				if wx > float((pin as Array)[0]) - 0.9 and wx < float((pin as Array)[0]) + 0.9 \
+						and absf(wz - float((pin as Array)[1])) > 1.1:
+					in_pinch_wall = true
+			if (in_corridor or in_pocket) and not (in_corridor and (in_bank_a or in_bank_b or in_barricade or in_pinch_wall)):
 				cells.append([x, z])
 	frag.grid = {"contract_id": "unified_grid_v1", "cell_size": cs,
 		"origin": [0.0, 0.0, -10.5], "width": w, "height": hgrid, "walkable_cells": cells}
@@ -708,6 +723,77 @@ func _build_barricade() -> void:
 	var stub := _add_box(_clamber, Vector3(-0.6, 0.3, 0.9), Vector3(0.24, 0.6, 0.24), Color(0.32, 0.36, 0.42))
 	_outline_interactable_child(_clamber, stub, "ClamberBarricade", 1.4)
 
+## The pinch points: squeeze walls with one body-width gap -- institutional crowd rails gone
+## narrow. The party files through; the pack pays (below).
+var _trip_refractory := {}   # pursuer id -> next allowed trip tick
+var _fallen := {}            # pursuer id -> true while prone (cosmetic tip + climb obstacle)
+
+func _build_pinches() -> void:
+	for pin in PINCHES:
+		var px := float((pin as Array)[0])
+		var gz := float((pin as Array)[1])
+		for side in [-1.0, 1.0]:
+			var edge := float(side) * CORRIDOR_HALF_Z
+			var wall_from := gz + float(side) * (PINCH_GAP_HALF + 0.1)
+			if absf(edge - wall_from) < 0.3:
+				continue
+			var mid_z := (edge + wall_from) * 0.5
+			var half_len := absf(edge - wall_from) * 0.5
+			_add_box(self, Vector3(px, 1.1, mid_z), Vector3(0.7, 1.1, half_len), Color(0.18, 0.19, 0.22))
+			_add_box(self, Vector3(px, 2.3, mid_z), Vector3(0.5, 0.12, half_len), Color(0.36, 0.91, 0.5) * 0.4,
+				Color(0.36, 0.91, 0.5), 0.7)
+		_add_label(self, "FLOW CONTROL", Vector3(px, 3.0, gz), Color(0.6, 0.72, 0.66))
+
+## The trip-and-pile rule (in the hazard poll): a pursuer entering a pinch at pack speed TRIPS
+## prone (an obstacle); the next pursuers CLIMB the pile at a per-body delay. The party threads
+## clean -- the pinch is the crowd's governor, not the runner's.
+func _pinch_rule(gs, now: float) -> void:
+	for pin in PINCHES:
+		var px := float((pin as Array)[0])
+		var gz := float((pin as Array)[1])
+		# count the pile first
+		var pile := 0
+		for enemy in _enemies:
+			if not is_instance_valid(enemy) or not enemy.is_alive():
+				continue
+			if _fallen.has(enemy.char_id) and enemy.is_stunned():
+				var fp: Vector3 = gs.get_position(enemy.char_id)
+				if absf(fp.x - px) < 2.0 and absf(fp.z - gz) < 2.0:
+					pile += 1
+		for enemy2 in _enemies:
+			if not is_instance_valid(enemy2) or not enemy2.is_alive() or enemy2.is_stunned():
+				continue
+			var ep: Vector3 = gs.get_position(enemy2.char_id)
+			if absf(ep.x - px) > 1.4 or absf(ep.z - gz) > PINCH_GAP_HALF + 0.4:
+				continue
+			if not gs.is_moving(enemy2.char_id):
+				continue
+			if now < float(_trip_refractory.get(enemy2.char_id, -100.0)):
+				continue
+			_trip_refractory[enemy2.char_id] = now + TRIP_REFRACTORY
+			if pile == 0:
+				# the first through at speed goes DOWN -- prone, an obstacle
+				_fallen[enemy2.char_id] = true
+				enemy2.stun(TRIP_SECS)
+				pile += 1
+			else:
+				# the pack behind climbs the pile: a per-body toll, no new obstacle
+				enemy2.stun(minf(CLIMB_SECS * float(pile), 4.5))
+
+## @rendering_only -- prone bodies tip over while stunned, right themselves on recovery.
+func _sync_fallen_visuals() -> void:
+	for id_v in _fallen.keys().duplicate():
+		var id := str(id_v)
+		var nat = _enemy_by_id(id)
+		if nat == null or not is_instance_valid(nat):
+			_fallen.erase(id)
+			continue
+		if nat.is_stunned():
+			(nat as Node3D).rotation.z = 1.35
+		else:
+			(nat as Node3D).rotation.z = 0.0
+			_fallen.erase(id)
+
 ## THE HAZARD POLL (scheduler cadence): the wash SWEEPS anyone standing in the flooding strip
 ## (party knocked back + pay hp -- fail-forward; pursuers tumbled + stunned: the wash reads
 ## tells for nobody), and pursuers stuck at the barricade CLAMBER over on a stagger -- the
@@ -740,6 +826,8 @@ func _hazard_poll() -> void:
 					var nat = _enemy_by_id(id)
 					if nat != null and nat.has_method("stun"):
 						nat.stun(2.5)
+		_pinch_rule(gs, now)
+		_sync_fallen_visuals()
 		# barricade funnel: a pursuer at the wall whose quarry is beyond clambers after a beat
 		for enemy in _enemies:
 			if not is_instance_valid(enemy) or not enemy.is_alive() or enemy.is_stunned():

@@ -32682,10 +32682,13 @@ func _test_lockout_chase() -> void:
 		pad_out.set("active_character", cid3)
 		_assert_true(bool(pad_out.step_through()), "%s exits behind the wave" % cid3)
 	# --- S4 the wash: sweeps BOTH ways (nobody reads tells for you) ---
-	# isolate the terrain sections: park the hunt (stationary test bodies are not a playthrough)
+	# isolate the terrain sections: FREEZE the hunt outright (dead FSM tags = statues; commands
+	# can still move them for mechanic checks, but nothing ever re-engages)
+	gs.scheduler.cancel_tag("chase_pursuit")
 	for e_iso in chunk.enemies():
-		if is_instance_valid(e_iso) and e_iso.is_alive():
-			e_iso.stun(30.0)
+		if is_instance_valid(e_iso):
+			gs.scheduler.cancel_tag("enemy_" + str(e_iso.name))
+			gs.command_stop(str(e_iso.char_id))
 	for cid_iso in ["aster", "peris"]:
 		gs.restore_character(cid_iso)
 	var wash = null
@@ -32706,6 +32709,29 @@ func _test_lockout_chase() -> void:
 	_assert_true(gs.get_position(str(nat0.char_id)).x < float(chunk.WASH_X) - 4.0,
 		"a pursuer blundering into the wash is swept too")
 	_assert_true(bool(nat0.is_stunned()), "and tumbled (stunned) by it")
+	# --- THE PINCH (director's crowd governor): the party threads clean; a pursuer at pack
+	# speed TRIPS prone, and the next one CLIMBS the pile at a toll ---
+	var pinch_x := float((chunk.PINCHES[0] as Array)[0])
+	var pinch_z := float((chunk.PINCHES[0] as Array)[1])
+	gs.restore_character("peris")
+	gs.snap_character_to("peris", Vector3(pinch_x - 3.0, 0.0, pinch_z))
+	gs.command_move_to_pos("peris", Vector3(pinch_x + 4.0, 0.0, pinch_z))
+	inst.headless_advance(4.0, 0.1)
+	_assert_true(gs.get_position("peris").x > pinch_x + 2.0,
+		"the party threads the pinch clean (x=%.1f)" % gs.get_position("peris").x)
+	var trip_nat = null
+	for e_tr in chunk.enemies():
+		if is_instance_valid(e_tr) and e_tr.is_alive() and not e_tr.is_stunned():
+			trip_nat = e_tr
+			break
+	_assert_true(trip_nat != null, "a live pursuer exists for the trip check")
+	gs.snap_character_to(str(trip_nat.char_id), Vector3(pinch_x - 1.0, 0.0, pinch_z))
+	gs.command_move_to_pos(str(trip_nat.char_id), Vector3(pinch_x + 4.0, 0.0, pinch_z))
+	inst.headless_advance(1.5, 0.1)
+	_assert_true(bool(trip_nat.is_stunned()),
+		"a pursuer barreling the pinch TRIPS prone (the crowd governor)")
+	for cid_iso2 in ["aster", "peris"]:
+		gs.restore_character(cid_iso2)
 	# --- S5 the barricade: no walking through; the clamber crosses; pursuit funnels after ---
 	gs.restore_character("aster")
 	gs.snap_character_to("aster", Vector3(float(chunk.BARRICADE_X0) - 6.0, 0.0, 0.0))
@@ -32720,12 +32746,12 @@ func _test_lockout_chase() -> void:
 	_assert_true(gs.get_position("aster").x > float(chunk.BARRICADE_X1),
 		"the CLAMBER carries you over the debris (x=%.1f)" % gs.get_position("aster").x)
 	# a pursuer at the wall follows over on the stagger (the funnel)
-	nat0._fsm.transition_to("idle")   # wake it from the isolation stun (external pin, test-only)
 	gs.snap_character_to(str(nat0.char_id), Vector3(float(chunk.BARRICADE_X0) - 2.0, 0.0, 0.0))
 	inst.headless_advance(7.0, 0.1)
 	_assert_true(gs.get_position(str(nat0.char_id)).x > float(chunk.BARRICADE_X1),
 		"the pursuit clambers after you on a stagger — terrain funnels them too")
 	gs.snap_character_to(str(nat0.char_id), Vector3(2.0, 0.0, 0.0))
+	gs.restore_character("aster")
 	# --- Tyreg's accept arms Suppress ---
 	var tyreg: Node = chunk.find_child("TyregChoice", true, false)
 	tyreg.set("active_character", "aster")
