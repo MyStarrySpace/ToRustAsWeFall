@@ -419,10 +419,54 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 	# Raise the planned viaducts last — deck, rails, guide strips, piers, gantries, a parked tram.
 	# The second line rides 0.9 higher so crossing guideways read as an interchange, never coplanar.
 	var via_boxes_start := frag.walls.size()
+	var walk_decks := 0
+	var deck_links := 0
 	if viaducts_on:
 		var stats_v := {"boxes": 0}
+		var lh := float(grid.get("level_height", 4.0))
 		for vi2 in range(via_plans.size()):
-			_emit_viaduct(frag, via_plans[vi2], origin, cs, w, h, DECK_TOP + 0.9 * float(vi2), stats_v)
+			var pl2: Dictionary = via_plans[vi2]
+			var deck_y := DECK_TOP + 0.9 * float(vi2)
+			var lvl := int(round(deck_y / lh))
+			var walkable_line: bool = lvl >= 1 and absf(deck_y - float(lvl) * lh) < 0.05
+			if walkable_line:
+				# a WALKABLE line parks no tram across its deck (a stalled car would split the walk)
+				pl2["tram"] = -1
+			_emit_viaduct(frag, pl2, origin, cs, w, h, deck_y, stats_v)
+			if walkable_line:
+				# THE DECK IS A GRID FLOOR: register every lane cell at its level, and drop ladder
+				# links at street crossings so the line is climbable from the ground it spans.
+				var axis2 := int(pl2["axis"])
+				var lane2 := int(pl2["lane"])
+				var run2 := w if axis2 == 0 else h
+				var deck_cells: Array = []
+				var crossing_cells: Array = []
+				for i2 in range(run2):
+					var dc := Vector2i(i2, lane2) if axis2 == 0 else Vector2i(lane2, i2)
+					deck_cells.append([dc.x, dc.y])
+					if walk.has(dc):
+						crossing_cells.append(dc)
+				var link_cells: Array = []
+				if crossing_cells.size() >= 1:
+					link_cells.append(crossing_cells[0])
+				if crossing_cells.size() >= 3:
+					link_cells.append(crossing_cells[crossing_cells.size() - 1])
+				var link_arr: Array = []
+				for lcv in link_cells:
+					link_arr.append([(lcv as Vector2i).x, (lcv as Vector2i).y])
+				_apply_bridge_to_grid(grid, {"level": lvl, "cells": deck_cells, "links": link_arr})
+				walk_decks += 1
+				deck_links += link_arr.size()
+				for lcv2 in link_cells:
+					var link_c: Vector2i = lcv2
+					var stand := Vector2i(-1, -1)
+					for nb in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+						var cand: Vector2i = link_c + nb
+						if not walk.has(cand) and cand.x >= 0 and cand.y >= 0 and cand.x < w and cand.y < h:
+							stand = cand
+							break
+					if stand.x >= 0:
+						_emit_deck_ladder(frag, stand, link_c, origin, cs, deck_y, stats_v)
 		for dp in dock_plans:
 			_emit_rail_dock(frag, dp as Dictionary, origin, cs, DECK_TOP + 0.9 * float((dp as Dictionary)["vi"]), stats_v)
 
@@ -434,6 +478,7 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 		"props": prop_count, "viaducts": via_plans.size(), "lathes": lathes, "lots": out_lots,
 		"landmarks": landmarks, "bridges": bridge_plans, "programs": program_tally,
 		"through_blocks": int(program_tally.get("through", 0)), "rail_docks": dock_plans.size(),
+		"walk_decks": walk_decks, "deck_links": deck_links,
 		"volume_conflicts": vol.conflicts, "volume_violations": violations}
 
 # --- LANDMARKS: BaseShapeBuilder heroes whose gameplay anchors the level consumes ------------------
@@ -700,15 +745,35 @@ static func _apply_bridge_to_grid(grid: Dictionary, plan: Dictionary) -> void:
 	if not grid.has("level_height"):
 		grid["level_height"] = 4.0
 	var level_cells := grid.get("level_cells", []) as Array
-	var entry: Dictionary = {}
+	# THE UNION CONTRACT (unified_grid_v1): a cell is traversable at a level only if it is BOTH a
+	# FLOOR tile (walkable_cells union) and in that level's allow-set. Upper cells must therefore
+	# join the union — and the moment the union grows past the ground footprint, level 0 needs its
+	# OWN explicit allow-set or the new cells would leak into ground walkability.
+	var lvl0: Dictionary = {}
 	for lce in level_cells:
-		if int((lce as Dictionary).get("level", -1)) == lvl:
-			entry = lce as Dictionary
+		if int((lce as Dictionary).get("level", -1)) == 0:
+			lvl0 = lce as Dictionary
+	if lvl0.is_empty():
+		lvl0 = {"level": 0, "cells": (grid.get("walkable_cells", []) as Array).duplicate()}
+		level_cells.append(lvl0)
+	var entry: Dictionary = {}
+	for lce2 in level_cells:
+		if int((lce2 as Dictionary).get("level", -1)) == lvl:
+			entry = lce2 as Dictionary
 	if entry.is_empty():
 		entry = {"level": lvl, "cells": []}
 		level_cells.append(entry)
+	var union := grid.get("walkable_cells", []) as Array
+	var seen := {}
+	for uc in union:
+		seen[Vector2i(int(uc[0]), int(uc[1]))] = true
 	for c in (plan["cells"] as Array):
 		(entry["cells"] as Array).append(c)
+		var cv := Vector2i(int(c[0]), int(c[1]))
+		if not seen.has(cv):
+			seen[cv] = true
+			union.append(c)
+	grid["walkable_cells"] = union
 	grid["level_cells"] = level_cells
 	var links := grid.get("links", []) as Array
 	for lc in (plan["links"] as Array):
@@ -1267,6 +1332,31 @@ static func _emit_through_building(frag: Fragment, mn: Vector2, mx: Vector2, hei
 	_box_glow(frag, wpos, wsz, Color(0.05, 0.06, 0.08),
 		GLOW_WARM if _rf(jitter) < warm_bias else GLOW_GREEN, 0.9, stats)
 
+## The climbable LADDER at a deck link cell: twin rails + rungs up the deck edge, a green marker
+## at the top. Road furniture (emitted in the viaduct phase); the grid link at this cell is the
+## real traversal — this is its visual promise.
+static func _emit_deck_ladder(frag: Fragment, stand: Vector2i, link_c: Vector2i, origin: Vector3,
+		cs: float, deck_y: float, stats: Dictionary) -> void:
+	# the ladder stands on the kerb cell, leaning toward the link cell's deck edge — the street
+	# column itself stays clear (the grid link at the crossing is the real transition)
+	var sc := Vector3(origin.x + (float(stand.x) + 0.5) * cs, 0.0, origin.z + (float(stand.y) + 0.5) * cs)
+	var lc3 := Vector3(origin.x + (float(link_c.x) + 0.5) * cs, 0.0, origin.z + (float(link_c.y) + 0.5) * cs)
+	var toward := (lc3 - sc).normalized()
+	var base := sc + toward * 0.1
+	var across := Vector3(-toward.z, 0.0, toward.x)
+	var lad_h := deck_y + 0.65
+	var rail_col := Color(0.12, 0.14, 0.16)
+	for s_off: float in [-0.2, 0.2]:
+		var rp := base + across * s_off
+		_box(frag, Vector3(rp.x, lad_h * 0.5, rp.z), Vector3(0.06, lad_h, 0.06), rail_col, stats)
+	var rungs := int(deck_y / 0.75)
+	for r in range(1, rungs + 1):
+		_box(frag, Vector3(base.x, float(r) * 0.75, base.z),
+			Vector3(absf(across.x) * 0.42 + 0.05, 0.06, absf(across.z) * 0.42 + 0.05),
+			rail_col.lightened(0.1), stats)
+	_box_glow(frag, Vector3(base.x, deck_y + 0.9, base.z), Vector3(0.12, 0.2, 0.12),
+		Color(0.05, 0.08, 0.06), GLOW_GREEN, 1.2, stats)
+
 ## THE ROOF DOCK: a stepped gangway (the faceted-curve idiom) dropping from the viaduct deck to an
 ## adjacent building's roof — the building plugs into the side rail. Emitted with the viaduct so
 ## its boxes are road-owned; the landing pad and hatch glow sit on the roof it serves.
@@ -1389,7 +1479,7 @@ static func _tier_at(tiers: Array, y: float) -> Dictionary:
 
 # --- transit viaduct (canon §3.7 transit_viaduct — the elevated rail of a post-solarpunk city) ---
 
-const DECK_TOP := 7.0        # deck surface height; underside 6.5 clears characters (3.0 law),
+const DECK_TOP := 8.0        # deck surface = grid LEVEL 2 (level_height 4.0) so the line is WALKABLE;
                              # level-1 balustrades (6.2) and every street it bridges
 const DECK_W := 1.9
 

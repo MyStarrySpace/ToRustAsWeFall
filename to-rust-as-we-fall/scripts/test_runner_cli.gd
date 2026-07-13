@@ -3492,6 +3492,64 @@ func _test_district_volume() -> void:
 	_assert_true(dock_total >= 1,
 		"buildings plug into the side rails somewhere (roof docks; %d)" % dock_total)
 
+	# --- WALKABLE DECKS: the road is a real grid floor — registered cells, ladder links, and a
+	# LIVE ground->ladder->deck traversal through the same audited world ---
+	var walked := false
+	for seedw in range(1, 13):
+		var fw = Grammar.generate(seedw, {"buildings": false})
+		var rw: Dictionary = Filler.fill(fw, seedw)
+		if int(rw.get("walk_decks", 0)) < 1 or int(rw.get("deck_links", 0)) < 1:
+			continue
+		var deck_lvl := -1
+		var deck_cells: Array = []
+		for lce in (fw.grid.get("level_cells", []) as Array):
+			if int((lce as Dictionary).get("level", 0)) == 2:
+				deck_lvl = 2
+				deck_cells = (lce as Dictionary).get("cells", [])
+		_assert_true(deck_lvl == 2 and deck_cells.size() >= 6,
+			"seed %d: the deck registers as grid LEVEL 2 (%d cells)" % [seedw, deck_cells.size()])
+		var ladder_cell := Vector2i(-1, -1)
+		for lk in (fw.grid.get("links", []) as Array):
+			if int((lk as Dictionary).get("to", 0)) == 2:
+				var lcv: Array = (lk as Dictionary).get("cell", [0, 0])
+				ladder_cell = Vector2i(int(lcv[0]), int(lcv[1]))
+		_assert_true(ladder_cell.x >= 0, "seed %d: a ground->deck ladder link exists" % seedw)
+		var gw: GridWorld = GridWorld.from_data(fw.grid)
+		# destination: a deck cell a few cells from the ladder
+		var dest := Vector2i(-1, -1)
+		for dc in deck_cells:
+			var dcv := Vector2i(int(dc[0]), int(dc[1]))
+			var man := absi(dcv.x - ladder_cell.x) + absi(dcv.y - ladder_cell.y)
+			if man >= 3 and man <= 8:
+				dest = dcv
+				break
+		if dest.x < 0:
+			dest = Vector2i(int(deck_cells[0][0]), int(deck_cells[0][1]))
+		var route: Array = gw.find_multi_level_path(ladder_cell, 0, dest, 2)
+		_assert_true(route.size() >= 2, "seed %d: cross-level A* routes ground -> deck" % seedw)
+		# the LIVE walk
+		var sched_w := EventScheduler.new()
+		var gs_w := GameState.new()
+		gs_w.grid = gw
+		gs_w.scheduler = sched_w
+		gs_w.event_log = EventLog.new()
+		gs_w.register_character("walker", gw.grid_to_world(ladder_cell, 0), 3.0, {})
+		_assert_true(gs_w.command_move_cross_level("walker", dest, 2),
+			"seed %d: command_move_cross_level accepts the deck route" % seedw)
+		for i in range(600):
+			sched_w.advance_ticks(0.1)
+			if not gs_w.is_moving("walker") and gs_w.get_character_level("walker") == 2:
+				break
+		_assert_equals(gs_w.get_character_level("walker"), 2,
+			"seed %d: the walker CLIMBS to the deck (live traversal)" % seedw)
+		_assert_true(absf(gs_w.get_position("walker").y - 8.0) < 0.05,
+			"seed %d: deck walking height is the level plane (y=%.2f)" % [seedw, gs_w.get_position("walker").y])
+		_assert_equals(gw.world_to_grid(gs_w.get_position("walker")), dest,
+			"seed %d: the walker arrives at the deck destination" % seedw)
+		walked = true
+		break
+	_assert_true(walked, "at least one seeded district hosts a walkable deck line")
+
 ## The connective-fabric PROGRAM layer (ARCHITECTURE_DESIGN.md §4.18-4.24): the filler assigns each
 ## low box lot a program (retail / office / warehouse / fabrication / crossdock / mixed / generic) and
 ## renders its facade+crown+entry signature. This proves the mix is present, deterministic, idiom-
@@ -3597,13 +3655,36 @@ func _test_building_filler() -> void:
 		"a default generation hosts several buildings (%d)" % int(built.params.get("buildings", 0)))
 	_assert_true(built.walls.size() > bare.walls.size(),
 		"buildings add boxes (%d -> %d)" % [bare.walls.size(), built.walls.size()])
-	# the filler never changes walkability EXCEPT the landmarks' deliberate, recorded road approaches
-	var approach_total := 0
-	for lme0 in (built.params.get("landmark_buildings", []) as Array):
-		approach_total += ((lme0 as Dictionary).get("approach", []) as Array).size()
-	_assert_equals(built.grid.get("walkable_cells", []).size(),
-		bare.grid.get("walkable_cells", []).size() + approach_total,
-		"the fill adds ONLY the landmarks' carved road approaches (%d) to walkability" % approach_total)
+	# the filler changes walkability ONLY through recorded, deliberate additions: the landmarks'
+	# carved road approaches (ground) and the elevated deck/lane/bridge cells (union entries).
+	# Measured on ONE fragment: snapshot the union, fill, compare (cross-generation layouts with
+	# different opts are not byte-comparable).
+	var Filler_w = load("res://scripts/generation/building_filler.gd")
+	var snap_frag = Grammar.generate(7, {"buildings": false})
+	var pre_union := {}
+	for gc in (snap_frag.grid.get("walkable_cells", []) as Array):
+		pre_union[Vector2i(int(gc[0]), int(gc[1]))] = true
+	var snap_res: Dictionary = Filler_w.fill(snap_frag, 7)
+	var approach_snap := 0
+	for lme1 in (snap_res.get("landmarks", []) as Array):
+		approach_snap += ((lme1 as Dictionary).get("approach", []) as Array).size()
+	var elevated := {}
+	for lce_w in (snap_frag.grid.get("level_cells", []) as Array):
+		if int((lce_w as Dictionary).get("level", -1)) >= 1:
+			for dc_w in ((lce_w as Dictionary).get("cells", []) as Array):
+				elevated[Vector2i(int(dc_w[0]), int(dc_w[1]))] = true
+	var added_unaccounted: Array = []
+	var post_count := 0
+	for gc3 in (snap_frag.grid.get("walkable_cells", []) as Array):
+		post_count += 1
+		var cv3 := Vector2i(int(gc3[0]), int(gc3[1]))
+		if not pre_union.has(cv3) and not elevated.has(cv3):
+			added_unaccounted.append(cv3)
+	_assert_true(added_unaccounted.size() == approach_snap,
+		"the fill adds ONLY road approaches (%d) + elevated deck cells to the union (unaccounted: %s)"
+		% [approach_snap, str(added_unaccounted)])
+	_assert_true(post_count >= int(pre_union.size()),
+		"the fill never REMOVES walkable ground (%d -> %d)" % [pre_union.size(), post_count])
 	var prefix_same := true
 	for i in range(bare.walls.size()):
 		if str(bare.walls[i]) != str(built.walls[i]):
@@ -3766,7 +3847,11 @@ func _test_building_filler() -> void:
 		var gw := float(f.grid.get("width", 0)) * cs
 		var gh := float(f.grid.get("height", 0)) * cs
 		var streets: Array = []
-		for c in f.grid.get("walkable_cells", []):
+		var ground_cells: Array = f.grid.get("walkable_cells", [])
+		for lce_g in (f.grid.get("level_cells", []) as Array):
+			if int((lce_g as Dictionary).get("level", -1)) == 0:
+				ground_cells = (lce_g as Dictionary).get("cells", ground_cells)
+		for c in ground_cells:
 			streets.append(Rect2(org.x + float(int(c[0])) * cs - 0.5, org.z + float(int(c[1])) * cs - 0.5, cs + 1.0, cs + 1.0))
 		for i in range(fb.walls.size(), f.walls.size()):
 			var bx := f.walls[i] as Dictionary
