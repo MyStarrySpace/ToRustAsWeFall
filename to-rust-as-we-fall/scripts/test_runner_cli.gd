@@ -427,6 +427,9 @@ func _ready() -> void:
 			"--test-building-filler":
 				ran_test = true
 				_test_building_filler()
+			"--test-building-filler-programs":
+				ran_test = true
+				_test_building_filler_programs()
 			"--test-creature-grammar":
 				ran_test = true
 				_test_creature_grammar()
@@ -1395,6 +1398,7 @@ func _run_all_tests() -> void:
 	_test_wfc_layout()
 	await _test_shape_grammar()
 	_test_building_filler()
+	_test_building_filler_programs()
 	_test_creature_grammar()
 	await _test_architecture_showcase()
 	_test_building_survey()
@@ -3423,6 +3427,98 @@ func _test_shape_grammar() -> void:
 		if str((ob as Dictionary).get("type", "")) == "enemy":
 			bare_enemies += 1
 	_assert_equals(bare_enemies, 0, "populate=false yields a pure layout (no enemies)")
+
+## The connective-fabric PROGRAM layer (ARCHITECTURE_DESIGN.md §4.18-4.24): the filler assigns each
+## low box lot a program (retail / office / warehouse / fabrication / crossdock / mixed / generic) and
+## renders its facade+crown+entry signature. This proves the mix is present, deterministic, idiom-
+## weighted, and that each program emits its distinguishing signature (attributed by isolating one
+## forced program on an empty fragment).
+func _test_building_filler_programs() -> void:
+	_test_name = "Building Filler Programs"
+	var Grammar = load("res://scripts/generation/fragment_grammar.gd")
+	var Filler = load("res://scripts/generation/building_filler.gd")
+
+	# --- the MIX: aggregate program tallies across seeds; several distinct programs appear ---
+	var agg := {}
+	for seed in range(1, 31):
+		var bare = Grammar.generate(seed, {"buildings": false})
+		var res: Dictionary = Filler.fill(bare, seed)
+		for prog in (res.get("programs", {}) as Dictionary):
+			agg[prog] = int(agg.get(prog, 0)) + int(res["programs"][prog])
+	print("    [programs] mix across 30 seeds: %s" % str(agg))
+	_assert_true(agg.size() >= 4, "the fabric mixes at least 4 programs across seeds (%d)" % agg.size())
+	for want in ["retail", "office", "warehouse"]:
+		_assert_true(int(agg.get(want, 0)) > 0, "the fabric produces %s buildings (%d)" % [want, int(agg.get(want, 0))])
+
+	# --- DETERMINISM: same seed -> identical program tally AND identical walls ---
+	var bare_a = Grammar.generate(9, {"buildings": false})
+	var res_a: Dictionary = Filler.fill(bare_a, 9)
+	var bare_b = Grammar.generate(9, {"buildings": false})
+	var res_b: Dictionary = Filler.fill(bare_b, 9)
+	_assert_equals(str(res_a["programs"]), str(res_b["programs"]), "same seed -> identical program tally")
+	_assert_equals(str(bare_a.walls), str(bare_b.walls), "same seed -> byte-identical fabric geometry")
+
+	# --- IDIOM weighting: socialist has NO always-open retail; capitalist leans into it ---
+	var soc := {}
+	var cap := {}
+	for seed2 in range(1, 21):
+		var fs = Grammar.generate(seed2, {"buildings": false})
+		var rs: Dictionary = Filler.fill(fs, seed2, {"idiom": "socialist"})
+		for prog2 in (rs.get("programs", {}) as Dictionary):
+			soc[prog2] = int(soc.get(prog2, 0)) + int(rs["programs"][prog2])
+		var fc = Grammar.generate(seed2, {"buildings": false})
+		var rc: Dictionary = Filler.fill(fc, seed2, {"idiom": "capitalist"})
+		for prog3 in (rc.get("programs", {}) as Dictionary):
+			cap[prog3] = int(cap.get(prog3, 0)) + int(rc["programs"][prog3])
+	print("    [programs] socialist=%s  capitalist=%s" % [str(soc), str(cap)])
+	_assert_equals(int(soc.get("retail", 0)), 0, "the socialist idiom has NO always-open retail (its register lacks it)")
+	_assert_true(int(cap.get("retail", 0)) > 0, "the capitalist idiom fills with retail (%d)" % int(cap.get("retail", 0)))
+
+	# --- PER-PROGRAM SIGNATURE: force one program on an empty fragment and read its tells ---
+	for spec in [
+		{"program": "retail", "green": 1, "cyan": 0, "warm": 0, "why": "an ALWAYS OPEN green sign"},
+		{"program": "office", "green": 0, "cyan": 2, "warm": 0, "why": "cold-cyan ribbon glazing, tended (no warm/green)"},
+		{"program": "warehouse", "green": 1, "cyan": 1, "warm": 0, "why": "a cyan scan-cage + a green inventory readout"},
+		{"program": "fabrication", "green": 2, "cyan": 0, "warm": 0, "why": "the one green line (roof ridge + wall)"},
+		{"program": "crossdock", "green": 1, "cyan": 0, "warm": 0, "why": "a green diverter meter"},
+		{"program": "mixed", "green": 1, "cyan": 1, "warm": 1, "why": "cyan office ribbon + warm residence + green sign"},
+	]:
+		var frag = Fragment.new()
+		var jitter = SeededRng.new(42)
+		var floors := 1 if str(spec["program"]) in ["fabrication", "crossdock"] else 2
+		var height := float(floors) * 2.6
+		Filler.call("_emit_building", frag, Vector2(0, 0), Vector2(6, 6), height, floors,
+			Color(0.14, 0.22, 0.2), 0.3, 0.6, 0.4, jitter, Vector2i(0, 1), false, "facility_metal",
+			str(spec["program"]), {"boxes": 0})
+		var g := _filler_emission_count(frag, Color(0.36, 0.91, 0.50))
+		var cy := _filler_emission_count(frag, Color(0.42, 0.72, 0.95))
+		var wm := _filler_emission_count(frag, Color(0.95, 0.64, 0.32))
+		print("    [programs] %s green=%d cyan=%d warm=%d boxes=%d" % [str(spec["program"]), g, cy, wm, frag.walls.size()])
+		_assert_true(g >= int(spec["green"]), "%s emits %s (green %d>=%d)" % [str(spec["program"]), str(spec["why"]), g, int(spec["green"])])
+		_assert_true(cy >= int(spec["cyan"]), "%s cyan %d>=%d" % [str(spec["program"]), cy, int(spec["cyan"])])
+		_assert_true(wm >= int(spec["warm"]), "%s warm %d>=%d" % [str(spec["program"]), wm, int(spec["warm"])])
+		if str(spec["program"]) == "office":
+			_assert_true(g == 0 and wm == 0, "the office is TENDED — no warm/green window, only cold cyan ribbon")
+		# every program box stays on a legal atlas tile + emissive-pure
+		for wb in frag.walls:
+			var wd := wb as Dictionary
+			if wd.has("tile"):
+				_assert_true(str(wd["tile"]) in ["wall_panel", "facility_metal", "rust_iron", "grate", "deck_metal", "rock"],
+					"%s uses only shipped atlas tiles (%s)" % [str(spec["program"]), str(wd.get("tile"))])
+				_assert_true(float(wd.get("energy", 0.0)) == 0.0, "a textured box is never emissive")
+
+## Count filler walls whose emission color matches a target (the three saturated glow anchors are
+## well-separated, so a tight tolerance attributes each signature light).
+func _filler_emission_count(frag, target: Color) -> int:
+	var n := 0
+	for wb in frag.walls:
+		var wd := wb as Dictionary
+		if not wd.has("emission"):
+			continue
+		var e: Color = wd["emission"]
+		if absf(e.r - target.r) < 0.06 and absf(e.g - target.g) < 0.06 and absf(e.b - target.b) < 0.06:
+			n += 1
+	return n
 
 func _test_building_filler() -> void:
 	_test_name = "Building Filler"

@@ -32,6 +32,27 @@ const PAL_WARM := Color(0.24, 0.21, 0.16)     # warm cream-brown material
 const PAL_RUST := Color(0.28, 0.15, 0.09)     # ferric oxide endpoint
 const GLOW_GREEN := Color(0.36, 0.91, 0.50)   # terminal green #5ce87f — screens/readouts
 const GLOW_WARM := Color(0.95, 0.64, 0.32)    # warm-lit residential window / firelight anchor
+const GLOW_CYAN := Color(0.42, 0.72, 0.95)   # cold office / scanner light (the second saturated anchor)
+
+# PROGRAM ARCHETYPES — the connective economy that fills BETWEEN the district hero cores
+# (ARCHITECTURE_DESIGN.md §4.18-4.24). A low street-hugging box lot is assigned a program, which
+# drives its facade/crown/entry SIGNATURE so the fill reads as commerce / manufacturing / supply
+# chain / offices instead of anonymous boxes. Taller deep-block lots stay hero-silhouette lathe
+# towers (untouched). Programs are chosen from the same seeded fields + per-lot hash, so the mix is
+# deterministic and transitions smoothly like every other filler parameter.
+const PROGRAMS := ["retail", "office", "warehouse", "fabrication", "crossdock", "mixed", "generic"]
+
+# District-IDIOM weighting (opts.idiom): the built environment's class register (GDD §4.11).
+# capitalist = The Hypelines / The Cleanstreets (always-open commerce, logistics); institutional =
+# the central-facility clerical core; industrial = the supply-chain belt; socialist = the collectives
+# (NO always-open retail — their idiom has none); mixed = the default even spread.
+const IDIOM_WEIGHTS := {
+	"mixed":         {"retail": 3, "office": 3, "warehouse": 2, "fabrication": 2, "crossdock": 1, "mixed": 3, "generic": 4},
+	"capitalist":    {"retail": 6, "office": 2, "warehouse": 3, "fabrication": 1, "crossdock": 3, "mixed": 3, "generic": 2},
+	"institutional": {"retail": 1, "office": 7, "warehouse": 2, "fabrication": 1, "crossdock": 1, "mixed": 2, "generic": 3},
+	"industrial":    {"retail": 1, "office": 1, "warehouse": 5, "fabrication": 5, "crossdock": 4, "mixed": 1, "generic": 2},
+	"socialist":     {"retail": 0, "office": 2, "warehouse": 1, "fabrication": 3, "crossdock": 1, "mixed": 4, "generic": 6},
+}
 
 static func _rng(seed_value: int, ns: String) -> SeededRng:
 	return SeededRng.new((seed_value ^ (hash(ns) & 0x7fffffff)))
@@ -161,6 +182,10 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 	var f_glow := _field(seed_value, "bld:glow", 0.055)
 
 	var boxes_before := frag.walls.size()
+	var idiom := str(opts.get("idiom", "mixed"))
+	if not IDIOM_WEIGHTS.has(idiom):
+		idiom = "mixed"
+	var program_tally := {}
 	var props_on := bool(opts.get("props", true))
 	var prop_count := 0
 	var lathes: Array = []
@@ -205,7 +230,7 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 
 		var street := _street_dir(lc, gx, gz, walk, w, h)
 		var stats := {"boxes": 0}
-		if floors >= 2:
+		if floors >= 3:
 			# LATHE TOWER — the reference silhouettes (revolve-shaped, never boxes): drum with lobed
 			# base + dome, scalloped band stack, or ribbed spire cluster, picked by the fields.
 			# Planned as DATA; the fragment loader lofts the mesh (it owns scene nodes).
@@ -217,6 +242,8 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 				else:
 					near_lane = near_lane or (lane >= lc.x - 1 and lane <= lc.x + gx)
 			var kind := "drum"
+			# (3+ storeys only: the connective FABRIC — retail/shed/office/warehouse/dock — is the
+			#  low street-hugger and takes the program box path below; drums rise deep in the block)
 			if decay < 0.5 and t_pal < 0.38:
 				kind = "ribbed"
 			elif decay < 0.5 and t_pal > 0.6:
@@ -239,8 +266,10 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 			# the street-face entry kit still anchors the base (the reference towers keep a kiosk)
 			_emit_entry(frag, mn, mx, base_col, decay, t_pal, jitter, street, props_on, stats)
 		else:
+			var program := _pick_program(idiom, decay, t_pal, glow_density, floors, jitter)
+			program_tally[program] = int(program_tally.get(program, 0)) + 1
 			_emit_building(frag, mn, mx, height, floors, base_col, decay, glow_density, t_pal, jitter,
-				street, props_on, facade_tile, stats)
+				street, props_on, facade_tile, program, stats)
 		out_lots.append({"center": Vector3(center.x, 0.0, center.y), "floors": floors,
 			"height": height, "color": base_col})
 
@@ -329,7 +358,7 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 
 	return {"buildings": out_lots.size(), "boxes": frag.walls.size() - boxes_before,
 		"props": prop_count, "viaducts": via_plans.size(), "lathes": lathes, "lots": out_lots,
-		"landmarks": landmarks, "bridges": bridge_plans}
+		"landmarks": landmarks, "bridges": bridge_plans, "programs": program_tally}
 
 # --- LANDMARKS: BaseShapeBuilder heroes whose gameplay anchors the level consumes ------------------
 
@@ -691,7 +720,234 @@ static func _street_dir(lc: Vector2i, gx: int, gz: int, walk: Dictionary, w: int
 # occasional abstract signage on the street face. Decay strips the niceties but never the silhouette
 # (the bones stay legible). ---
 
+## The connective-fabric dispatcher (ARCHITECTURE_DESIGN.md §4.18-4.24): a low box lot renders as
+## its assigned PROGRAM — retail arcade / clerical office / bonded warehouse / fabrication shed /
+## cross-dock yard / mixed-use infill — each a distinct facade+crown+entry signature layered over a
+## shared slab massing. `generic` reproduces the original box verbatim (zero regression). Every part
+## is an axis-aligned box through _box/_boxt/_box_glow, so it stays collision-free, atlas-textured on
+## legal tiles, emissive-pure, and seed-deterministic like the rest of the filler.
 static func _emit_building(frag: Fragment, mn: Vector2, mx: Vector2, height: float, floors: int,
+		base_col: Color, decay: float, glow_density: float, warm_bias: float, jitter: SeededRng,
+		street: Vector2i, props_on: bool, facade_tile: String, program: String, stats: Dictionary) -> void:
+	if program == "generic":
+		_emit_generic_building(frag, mn, mx, height, floors, base_col, decay, glow_density, warm_bias,
+			jitter, street, props_on, facade_tile, stats)
+		return
+	var c := Vector2((mn.x + mx.x) * 0.5, (mn.y + mx.y) * 0.5)
+	var sz := Vector2(mx.x - mn.x, mx.y - mn.y)
+	var horiz := street.y != 0   # street-face normal along Z -> the face runs along X
+
+	# per-program palette + tile: industrial programs rust, offices pull toward clean teal panel
+	var col := base_col
+	var tile := facade_tile
+	if program == "warehouse" or program == "fabrication":
+		col = base_col.lerp(PAL_RUST, 0.28 + decay * 0.22)
+		tile = "rust_iron" if decay > 0.4 else "facility_metal"
+	elif program == "office":
+		col = PAL_COOL.lerp(base_col, 0.5)
+		tile = "wall_panel"
+
+	# BASE MASS — even slab tiers (no organic slide; the fabric reads rectilinear against the drums).
+	# crossdock is an open covered yard: only a low base plinth, then a canopy on posts.
+	var base_h := height if program != "crossdock" else 0.7
+	_boxt(frag, Vector3(c.x, base_h * 0.5 + 0.01, c.y), Vector3(sz.x, base_h, sz.y), col, tile, stats)
+	if program in ["warehouse", "office", "mixed"] and floors >= 2:
+		# a subtle upper set-back so the slab isn't a pure prism
+		var up_h := 0.14
+		_boxt(frag, Vector3(c.x, height + up_h * 0.5, c.y), Vector3(sz.x * 0.94, up_h, sz.y * 0.94),
+			col.darkened(0.1), tile, stats)
+
+	match program:
+		"retail":
+			_sig_retail(frag, c, sz, height, street, horiz, col, decay, jitter, stats)
+		"office":
+			_sig_office(frag, c, sz, height, floors, street, horiz, col, glow_density, stats)
+		"warehouse":
+			_sig_warehouse(frag, c, sz, height, street, horiz, col, decay, jitter, stats)
+		"fabrication":
+			_sig_fabrication(frag, c, sz, height, street, horiz, col, decay, jitter, stats)
+		"crossdock":
+			_sig_crossdock(frag, c, sz, base_h, street, horiz, col, stats)
+		"mixed":
+			_sig_mixed(frag, c, sz, height, floors, street, horiz, col, warm_bias, jitter, stats)
+
+	# props: industrial/retail keep the street kit; offices stay tended (no pipe-root decay props)
+	if program != "office":
+		_emit_entry(frag, mn, mx, col, decay if program != "retail" else minf(decay, 0.4),
+			warm_bias, jitter, street, props_on, stats)
+
+## A point on the street face, pushed `out` beyond the wall, at height y.
+static func _face_pt(c: Vector2, sz: Vector2, street: Vector2i, out: float, y: float) -> Vector3:
+	return Vector3(c.x + float(street.x) * (sz.x * 0.5 + out), y, c.y + float(street.y) * (sz.y * 0.5 + out))
+
+## A face-parallel box size: a run along the face (fraction of width) x height x thickness.
+static func _face_sz(sz: Vector2, horiz: bool, run_frac: float, h: float, thick: float) -> Vector3:
+	return Vector3(sz.x * run_frac, h, thick) if horiz else Vector3(thick, h, sz.y * run_frac)
+
+## RETAIL ARCADE (§4.18): a row of shuttered bays under a continuous sagging slat-canopy, a hoarding
+## band clad over the upper storey, an ALWAYS OPEN sign that always burns green (retail's signature).
+static func _sig_retail(frag: Fragment, c: Vector2, sz: Vector2, height: float, street: Vector2i,
+		horiz: bool, col: Color, decay: float, jitter: SeededRng, stats: Dictionary) -> void:
+	var face_len := sz.x if horiz else sz.y
+	# shutter bay row at the ground
+	var bays := clampi(int(face_len / 1.4), 2, 4)
+	for i in range(bays):
+		var f := (float(i) + 0.5) / float(bays) - 0.5
+		var along := Vector2(float(absi(street.y)), float(absi(street.x))) * (f * face_len)
+		var bp := _face_pt(c, sz, street, 0.03, 1.0) + Vector3(along.x, 0.0, along.y)
+		_box(frag, bp, _face_sz(sz, horiz, 0.7 / float(bays), 1.7, 0.06), col.darkened(0.5), stats)
+	# continuous slat-canopy in three segments, the centre segment dipped (a sag)
+	for seg in range(3):
+		var f2 := (float(seg) - 1.0) * (face_len / 3.0)
+		var along2 := Vector2(float(absi(street.y)), float(absi(street.x))) * f2
+		var sag := 0.12 if seg == 1 else 0.0
+		var cp := _face_pt(c, sz, street, 0.4, 2.0 - sag) + Vector3(along2.x, 0.0, along2.y)
+		var csz := Vector3(sz.x / 3.0 + 0.1, 0.08, 0.9) if horiz else Vector3(0.9, 0.08, sz.y / 3.0 + 0.1)
+		_box(frag, cp, csz, col.darkened(0.25), stats)
+	# hoarding band clad over the upper storey (aspirational ad panel)
+	var hb := _face_pt(c, sz, street, 0.05, height - 0.55)
+	_boxt(frag, hb, _face_sz(sz, horiz, 0.86, 0.7, 0.08), col.lightened(0.16), "wall_panel", stats)
+	# ALWAYS OPEN — always burns (the one building whose lights never go out)
+	var sp := _face_pt(c, sz, street, 0.18, height - 0.55)
+	_box_glow(frag, sp, _face_sz(sz, horiz, 0.5, 0.34, 0.06), Color(0.05, 0.08, 0.06), GLOW_GREEN,
+		1.5, stats)
+
+## CLERICAL OFFICE (§4.23): continuous cold-cyan ribbon glazing every floor on the street face and
+## one flank, a service bulkhead cap — tended, no rust. Reads as a bank of screens.
+static func _sig_office(frag: Fragment, c: Vector2, sz: Vector2, height: float, floors: int,
+		street: Vector2i, horiz: bool, col: Color, glow_density: float, stats: Dictionary) -> void:
+	var faces: Array[Vector2i] = [street, Vector2i(street.y, street.x)]
+	for face in faces:
+		var fh := face.y != 0
+		var fl_count := maxi(floors, 1)
+		for fl in range(fl_count):
+			var fy := (float(fl) + 0.55) * FLOOR_H
+			if fy > height - 0.35:
+				continue
+			var rp := _face_pt(c, sz, face, 0.04, fy)
+			_box_glow(frag, rp, _face_sz(sz, fh, 0.82, 0.34, 0.05), Color(0.05, 0.06, 0.08),
+				GLOW_CYAN, 0.9 + glow_density * 0.4, stats)
+	# service-bulkhead crown, hugging one edge
+	_boxt(frag, Vector3(c.x + sz.x * 0.18, height + 0.32, c.y - sz.y * 0.14),
+		Vector3(sz.x * 0.44, 0.64, sz.y * 0.44), col.darkened(0.18), "facility_metal", stats)
+
+## BONDED WAREHOUSE (§4.21): windowless banded racking, pore vents, a parapet, and a bonded
+## scan-cage entry (cyan) with a green inventory readout. Rust bleeds down the seams.
+static func _sig_warehouse(frag: Fragment, c: Vector2, sz: Vector2, height: float, street: Vector2i,
+		horiz: bool, col: Color, decay: float, jitter: SeededRng, stats: Dictionary) -> void:
+	# horizontal racking bands across the street face (no windows)
+	var bands := clampi(int(height / 1.3), 2, 5)
+	for b in range(1, bands):
+		var by := height * float(b) / float(bands)
+		_box(frag, _face_pt(c, sz, street, 0.02, by), _face_sz(sz, horiz, 0.9, 0.1, 0.05),
+			col.darkened(0.32), stats)
+	# a couple of pore vents high up
+	for v in range(2):
+		var f := (float(v) - 0.5) * (sz.x if horiz else sz.y) * 0.5
+		var along := Vector2(float(absi(street.y)), float(absi(street.x))) * f
+		_box(frag, _face_pt(c, sz, street, 0.03, height - 0.6) + Vector3(along.x, 0.0, along.y),
+			Vector3(0.4, 0.4, 0.06) if horiz else Vector3(0.06, 0.4, 0.4), col.darkened(0.4), stats)
+	# ferric bleed streaks down the seams
+	for st in range(2):
+		var fs := (float(st) - 0.5) * (sz.x if horiz else sz.y) * 0.6
+		var alongs := Vector2(float(absi(street.y)), float(absi(street.x))) * fs
+		_box(frag, _face_pt(c, sz, street, 0.02, height * 0.5) + Vector3(alongs.x, 0.0, alongs.y),
+			Vector3(0.12, height * 0.8, 0.04) if horiz else Vector3(0.04, height * 0.8, 0.12),
+			PAL_RUST.darkened(0.1), stats)
+	# parapet band around the top edge
+	_box(frag, Vector3(c.x, height + 0.12, c.y), Vector3(sz.x + 0.1, 0.22, sz.y + 0.1),
+		col.darkened(0.24), stats)
+	# bonded scan-cage entry: a recessed dark door in a cyan frame + a green inventory readout aside
+	var dp := _face_pt(c, sz, street, 0.03, 1.1)
+	_box(frag, dp, _face_sz(sz, horiz, 0.28, 2.1, 0.06), col.darkened(0.55), stats)
+	_box_glow(frag, dp + Vector3(0, 0.05, 0), _face_sz(sz, horiz, 0.34, 2.3, 0.04),
+		Color(0.05, 0.06, 0.08), GLOW_CYAN, 1.1, stats)
+	var side := Vector2(float(absi(street.y)), float(absi(street.x))) * ((sz.x if horiz else sz.y) * 0.3)
+	_box_glow(frag, _face_pt(c, sz, street, 0.05, 1.5) + Vector3(side.x, 0.0, side.y),
+		Vector3(0.3, 0.3, 0.05) if horiz else Vector3(0.05, 0.3, 0.3), Color(0.05, 0.08, 0.06),
+		GLOW_GREEN, 1.2, stats)
+
+## FABRICATION SHED (§4.20): a long low hall with a sawtooth monitor-roof, ONE line still running
+## (a single green strip through the clerestory + one on the wall), a wide roll-up door, vent stacks.
+static func _sig_fabrication(frag: Fragment, c: Vector2, sz: Vector2, height: float, street: Vector2i,
+		horiz: bool, col: Color, decay: float, jitter: SeededRng, stats: Dictionary) -> void:
+	# sawtooth monitor-roof: a row of short raised ridges along the long axis
+	var ridges := clampi(int((sz.x if horiz else sz.y) / 1.6), 2, 5)
+	for r in range(ridges):
+		var f := (float(r) + 0.5) / float(ridges) - 0.5
+		var along := Vector2(float(absi(street.y)), float(absi(street.x)))
+		# ridge runs ACROSS the long axis (perpendicular to the face run)
+		var rp := Vector3(c.x, height + 0.22, c.y) + Vector3(along.x * f * sz.x, 0.0, along.y * f * sz.y)
+		_boxt(frag, rp, Vector3(sz.x / float(ridges) * 0.7, 0.44, sz.y * 0.9) if horiz
+			else Vector3(sz.x * 0.9, 0.44, sz.y / float(ridges) * 0.7), col.darkened(0.2), "facility_metal", stats)
+	# the ONE live line — a green clerestory strip on the roof ridge and one low on the wall
+	_box_glow(frag, Vector3(c.x, height + 0.36, c.y), Vector3(sz.x * 0.7, 0.1, 0.06) if horiz
+		else Vector3(0.06, 0.1, sz.y * 0.7), Color(0.05, 0.08, 0.06), GLOW_GREEN, 1.3, stats)
+	_box_glow(frag, _face_pt(c, sz, street, 0.03, 0.9), _face_sz(sz, horiz, 0.55, 0.16, 0.05),
+		Color(0.05, 0.08, 0.06), GLOW_GREEN, 1.0, stats)
+	# wide roll-up loading door
+	_box(frag, _face_pt(c, sz, street, 0.02, 1.1), _face_sz(sz, horiz, 0.5, 2.2, 0.06),
+		col.darkened(0.5), stats)
+	# vent stacks on the roof
+	for vs in range(2):
+		var voff := Vector2((float(vs) - 0.5) * sz.x * 0.4, (float(vs) - 0.5) * sz.y * 0.3)
+		_boxt(frag, Vector3(c.x + voff.x, height + 0.9, c.y + voff.y), Vector3(0.4, 1.3, 0.4),
+			col.darkened(0.3), "facility_metal", stats)
+
+## CROSS-DOCK YARD (§4.22): an open covered apron — a canopy on corner posts over a low plinth —
+## with a conveyor descent stub and a green diverter meter. Everything in transit, nothing enclosed.
+static func _sig_crossdock(frag: Fragment, c: Vector2, sz: Vector2, base_h: float, street: Vector2i,
+		horiz: bool, col: Color, stats: Dictionary) -> void:
+	var cy := 2.4
+	# four corner posts
+	for dx: float in [-1.0, 1.0]:
+		for dz: float in [-1.0, 1.0]:
+			_box(frag, Vector3(c.x + dx * sz.x * 0.42, cy * 0.5, c.y + dz * sz.y * 0.42),
+				Vector3(0.2, cy, 0.2), col.darkened(0.3), stats)
+	# the canopy slab
+	_boxt(frag, Vector3(c.x, cy + 0.08, c.y), Vector3(sz.x + 0.2, 0.16, sz.y + 0.2),
+		col.darkened(0.18), "deck_metal", stats)
+	# a conveyor descent stub coming down to the deck from the canopy edge (a stepped incline)
+	for step in range(3):
+		var t := float(step) / 3.0
+		_box(frag, _face_pt(c, sz, street, 0.15, cy - 0.2 - t * 1.4),
+			_face_sz(sz, horiz, 0.3, 0.14, 0.5), col.darkened(0.28), stats)
+	# green diverter meter at the deck
+	_box_glow(frag, _face_pt(c, sz, street, 0.1, 1.0), Vector3(0.3, 0.5, 0.05) if horiz
+		else Vector3(0.05, 0.5, 0.3), Color(0.05, 0.08, 0.06), GLOW_GREEN, 1.3, stats)
+
+## MIXED-USE INFILL (§4.24): the literal in-between block — shuttered retail below, cyan office
+## ribbon in the middle, pore windows and one warm residential window at the crammed top; two signage
+## registers overlapping (green + warm), the two neighbouring districts bleeding together.
+static func _sig_mixed(frag: Fragment, c: Vector2, sz: Vector2, height: float, floors: int,
+		street: Vector2i, horiz: bool, col: Color, warm_bias: float, jitter: SeededRng, stats: Dictionary) -> void:
+	# ground: shutter bays
+	var bays := clampi(int((sz.x if horiz else sz.y) / 1.4), 2, 3)
+	for i in range(bays):
+		var f := (float(i) + 0.5) / float(bays) - 0.5
+		var along := Vector2(float(absi(street.y)), float(absi(street.x))) * (f * (sz.x if horiz else sz.y))
+		_box(frag, _face_pt(c, sz, street, 0.03, 1.0) + Vector3(along.x, 0.0, along.y),
+			_face_sz(sz, horiz, 0.7 / float(bays), 1.6, 0.06), col.darkened(0.5), stats)
+	# mid: office ribbon (cyan)
+	if height > FLOOR_H + 0.5:
+		_box_glow(frag, _face_pt(c, sz, street, 0.04, FLOOR_H + 0.55), _face_sz(sz, horiz, 0.8, 0.3, 0.05),
+			Color(0.05, 0.06, 0.08), GLOW_CYAN, 0.95, stats)
+	# top: pore windows + ONE warm residential window
+	var top_y := height - 0.55
+	for v in range(2):
+		var f2 := (float(v) - 0.5) * (sz.x if horiz else sz.y) * 0.45
+		var along2 := Vector2(float(absi(street.y)), float(absi(street.x))) * f2
+		_box_glow(frag, _face_pt(c, sz, street, 0.03, top_y) + Vector3(along2.x, 0.0, along2.y),
+			Vector3(0.32, 0.34, 0.05) if horiz else Vector3(0.05, 0.34, 0.32), Color(0.06, 0.06, 0.05),
+			GLOW_WARM if v == 0 else GLOW_GREEN, 1.1, stats)
+	# two signage registers overlapping near the door
+	var dp := _face_pt(c, sz, street, 0.16, height * 0.5)
+	_box_glow(frag, dp, Vector3(0.14, 0.5, 0.05) if horiz else Vector3(0.05, 0.5, 0.14),
+		Color(0.06, 0.06, 0.07), GLOW_GREEN, 1.2, stats)
+	_box_glow(frag, dp + Vector3(0.0, 0.7, 0.0), Vector3(0.12, 0.4, 0.05) if horiz else Vector3(0.05, 0.4, 0.12),
+		Color(0.07, 0.06, 0.05), GLOW_WARM, 1.1, stats)
+
+static func _emit_generic_building(frag: Fragment, mn: Vector2, mx: Vector2, height: float, floors: int,
 		base_col: Color, decay: float, glow_density: float, warm_bias: float, jitter: SeededRng,
 		street: Vector2i, props_on: bool, facade_tile: String, stats: Dictionary) -> void:
 	# MASSING — 1..3 setback tiers; each steps IN by a taper and slides slightly off-center
@@ -805,6 +1061,36 @@ static func _emit_building(frag: Fragment, mn: Vector2, mx: Vector2, height: flo
 
 	_emit_entry(frag, tiers[0]["mn"], tiers[0]["mx"], base_col, decay, warm_bias, jitter, street,
 		props_on, stats)
+
+## Weighted program draw for one box lot. Idiom sets the base weights; the fields nudge them
+## (decay -> industrial programs, cool/tended palette -> office, glow -> retail), and a one-storey
+## lot cannot be a stacked mixed block. Rides the lot's own `jitter` stream -> deterministic.
+static func _pick_program(idiom: String, decay: float, warm_bias: float, glow_density: float,
+		floors: int, jitter: SeededRng) -> String:
+	var base: Dictionary = IDIOM_WEIGHTS.get(idiom, IDIOM_WEIGHTS["mixed"])
+	var w := {}
+	for prog in PROGRAMS:
+		w[prog] = float(base.get(prog, 0))
+	# field nudges (multiplicative, gentle — the idiom still dominates)
+	w["warehouse"] *= 1.0 + decay * 1.2
+	w["fabrication"] *= 1.0 + decay * 0.8
+	w["office"] *= 1.0 + (1.0 - decay) * (1.0 - warm_bias) * 1.3
+	w["retail"] *= 1.0 + glow_density * 1.0
+	w["crossdock"] *= 1.0 + decay * 0.4
+	if floors < 2:
+		w["mixed"] = 0.0        # a stacked retail/office/residential block needs the height
+		w["office"] *= 0.5
+	var total := 0.0
+	for prog in PROGRAMS:
+		total += float(w[prog])
+	if total <= 0.0:
+		return "generic"
+	var r := _rf(jitter) * total
+	for prog in PROGRAMS:
+		r -= float(w[prog])
+		if r <= 0.0:
+			return prog
+	return "generic"
 
 # DOOR + AWNING + signage + the building-attached props on the street face — shared by box sheds
 # and lathe towers (the reference towers keep a ground kiosk against the curved shell).
