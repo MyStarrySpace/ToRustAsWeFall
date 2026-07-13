@@ -212,3 +212,24 @@ rack (INSPECTION lever; the fallen rack is the bridge — and the pursuers' funn
 it one at a time on a delay); (b) the S5 collapse shelf becomes literal: a debris barricade with
 a slow exposed CLAMBER crawl over it (CrawlTunnel), pursuers funneled the same way. Both reuse
 built machinery (grid gaps, CrawlTunnel authored paths, the topple = push-lab grammar).
+
+## Round 3 (2026-07-13): the flow field + the trench beat
+
+- **Crowd memoization** (director's call): pursuit hops now read ONE shared BFS distance field
+  per director tick (seeded from every engageable quarry, spread over grid.is_walkable) instead
+  of N per-unit path queries per rescan. Enemy grows `pursuit_hop_resolver` (a scene-provided
+  Callable); the chunk owns `_refresh_flow_field` / `_flow_hop`. Because the field reads
+  is_walkable LIVE, **movable objects reshape pursuit automatically** — guarded: a re-blocked
+  trench cuts the field, the fallen gantry reopens it within a tick.
+- **The trench beat** (director's design): the stretch's throat has an UNCROSSABLE service
+  trench (dynamic blockers from build) — the breaker's tagless stroll now dies architecturally,
+  not just at the wall gate. On the tag rejection, the ground-shake of enforcement tearing out
+  of the walls drops the conduit gantry across it: the way OUT opens exactly as the way home
+  closes. The wipe-restart re-seals it (gantry back up, blockers back on).
+- Tuning: NAT_SPEED 5.4 with the smarter field pursuit. The probe matrix now lands on canon's
+  accepted-loss branch: sprint-only completes but LOSES the trailing member (3 strikes over the
+  runway); one-lever play the same; Tyreg or fuller lever play keeps everyone alive. FLEX —
+  director adjusts.
+- Perf after all rounds: mean 20 ms/step data-side (was 110); rare ~0.7-1.2 s late-chase spikes
+  REMAIN OPEN (not per-unit pathing — survived the field; instrumentation modes kept in
+  --test-chase-perf for the next hunt).
