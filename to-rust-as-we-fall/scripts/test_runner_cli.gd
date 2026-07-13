@@ -430,6 +430,9 @@ func _ready() -> void:
 			"--test-building-filler-programs":
 				ran_test = true
 				_test_building_filler_programs()
+			"--test-district-volume":
+				ran_test = true
+				_test_district_volume()
 			"--test-creature-grammar":
 				ran_test = true
 				_test_creature_grammar()
@@ -1399,6 +1402,7 @@ func _run_all_tests() -> void:
 	await _test_shape_grammar()
 	_test_building_filler()
 	_test_building_filler_programs()
+	_test_district_volume()
 	_test_creature_grammar()
 	await _test_architecture_showcase()
 	_test_building_survey()
@@ -3428,6 +3432,57 @@ func _test_shape_grammar() -> void:
 			bare_enemies += 1
 	_assert_equals(bare_enemies, 0, "populate=false yields a pure layout (no enemies)")
 
+## THE 3D RESERVATION GRID (district_volume.gd): streets, viaduct corridors, landmarks and fabric
+## lots all CLAIM volume before geometry exists, so a road through a building is a recorded
+## conflict, never a render. This asserts (a) the claim machinery reports overlaps (red case),
+## (b) whole generated districts come out conflict-free, and (c) the geometry AUDIT of the actual
+## emitted boxes finds zero street-clearance or viaduct-corridor intrusions across seeds.
+func _test_district_volume() -> void:
+	_test_name = "District Volume"
+	# (a) the red case: two owners over one column must conflict; same-owner must not
+	var v = DistrictVolume.new()
+	v.cell_size = 1.5
+	v.width = 10
+	v.height = 10
+	v.claim_cell(Vector2i(2, 2), 0.0, 5.0, "lot:a")
+	_assert_true(v.claim_cell(Vector2i(2, 2), 4.0, 8.0, "viaduct") == false,
+		"a cross-owner overlap is refused and recorded")
+	_assert_true(v.conflicts.size() == 1 and "viaduct" in str(v.conflicts[0]),
+		"the conflict names both claimants (%s)" % str(v.conflicts))
+	_assert_true(v.claim_cell(Vector2i(5, 5), 0.0, 5.0, "lot:b") and v.claim_cell(Vector2i(5, 5), 5.0, 7.0, "lot:b"),
+		"same-owner extensions on a fresh column never conflict")
+	_assert_true(v.blocked(Vector2i(2, 2), 6.0, 7.5, "lot:a") == "viaduct",
+		"blocked() reports the foreign claimant")
+	_assert_true(is_equal_approx(v.free_top(Vector2i(2, 2), Vector2i(2, 2), 0.0, "lot:a"), 4.0),
+		"free_top() is the foreign ceiling (4.0)")
+	# the AUDIT red case: a synthetic box in a walkable column below clearance, and one in a
+	# viaduct corridor band, must both be flagged
+	var probe_walls: Array = [
+		{"pos": Vector3(3.0, 1.0, 3.0), "size": Vector3(1.0, 2.0, 1.0), "color": Color.WHITE},
+		{"pos": Vector3(9.0, 7.2, 3.0), "size": Vector3(1.0, 1.0, 1.0), "color": Color.WHITE},
+	]
+	var probe_walk := {Vector2i(2, 2): true}
+	var probe_cors: Array = [{"axis": 0, "lane": 2, "y0": 6.35, "y1": 9.8}]
+	var flagged: Array = v.audit_boxes(probe_walls, 0, probe_walls.size(), probe_walk, probe_cors)
+	_assert_equals(flagged.size(), 2, "the audit flags a street intrusion AND a corridor intrusion (%s)" % str(flagged))
+	# (b) + (c) whole districts: zero reservation conflicts, zero geometry violations
+	var Grammar = load("res://scripts/generation/fragment_grammar.gd")
+	var Filler = load("res://scripts/generation/building_filler.gd")
+	var lm_total := 0
+	for seed in range(1, 13):
+		var bare = Grammar.generate(seed, {"buildings": false})
+		var res: Dictionary = Filler.fill(bare, seed)
+		var confl: Array = res.get("volume_conflicts", [])
+		var viol: Array = res.get("volume_violations", [])
+		if not confl.is_empty():
+			print("    [volume] seed %d conflicts: %s" % [seed, str(confl.slice(0, 3))])
+		if not viol.is_empty():
+			print("    [volume] seed %d violations: %s" % [seed, str(viol.slice(0, 3))])
+		_assert_true(confl.is_empty(), "seed %d: zero reservation conflicts (%d)" % [seed, confl.size()])
+		_assert_true(viol.is_empty(), "seed %d: zero geometry violations — no box in a street column or viaduct corridor (%d)" % [seed, viol.size()])
+		lm_total += (res.get("landmarks", []) as Array).size()
+	_assert_true(lm_total >= 6, "landmarks still place under the lane-aware filter (%d across 12 seeds)" % lm_total)
+
 ## The connective-fabric PROGRAM layer (ARCHITECTURE_DESIGN.md §4.18-4.24): the filler assigns each
 ## low box lot a program (retail / office / warehouse / fabrication / crossdock / mixed / generic) and
 ## renders its facade+crown+entry signature. This proves the mix is present, deterministic, idiom-
@@ -3489,7 +3544,7 @@ func _test_building_filler_programs() -> void:
 		var height := float(floors) * 2.6
 		Filler.call("_emit_building", frag, Vector2(0, 0), Vector2(6, 6), height, floors,
 			Color(0.14, 0.22, 0.2), 0.3, 0.6, 0.4, jitter, Vector2i(0, 1), false, "facility_metal",
-			str(spec["program"]), {"boxes": 0})
+			str(spec["program"]), 1.0e9, {"boxes": 0})
 		var g := _filler_emission_count(frag, Color(0.36, 0.91, 0.50))
 		var cy := _filler_emission_count(frag, Color(0.42, 0.72, 0.95))
 		var wm := _filler_emission_count(frag, Color(0.95, 0.64, 0.32))

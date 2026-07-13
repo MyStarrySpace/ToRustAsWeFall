@@ -104,14 +104,31 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 
 	# TRANSIT VIADUCTS (canon transit_viaduct): plan lanes BEFORE lot packing so piers claim their
 	# ground and no building grows into a pier cell.
+	# THE 3D RESERVATION GRID (district_volume.gd): laid out FIRST, before any packing or meshing —
+	# streets claim their head-room columns, viaduct corridors claim their deck bands, landmarks and
+	# fabric lots claim their build volumes. Roads-through-buildings become a recorded conflict at
+	# reservation time instead of geometry, and the audit re-checks the emitted boxes.
+	var vol := DistrictVolume.over_grid(grid)
+	vol.claim_streets(walk)
 	var viaducts_on := bool(opts.get("viaducts", true))
 	var via_plans: Array = []
+	var corridors: Array = []
 	var used := {}
 	if viaducts_on:
 		via_plans = _plan_viaducts(seed_value, walk, upper, dist, w, h)
-		for pl in via_plans:
+		for vi in range(via_plans.size()):
+			var pl: Dictionary = via_plans[vi]
+			var deck_y := DECK_TOP + 0.9 * float(vi)
+			var band := {"axis": int(pl["axis"]), "lane": int(pl["lane"]),
+				"y0": deck_y - 0.65, "y1": deck_y + 2.8}
+			corridors.append(band)
+			var run := w if int(pl["axis"]) == 0 else h
+			for i in range(run):
+				var lane_cell := Vector2i(i, int(pl["lane"])) if int(pl["axis"]) == 0 else Vector2i(int(pl["lane"]), i)
+				vol.claim_cell(lane_cell, float(band["y0"]), float(band["y1"]), "viaduct")
 			for pc in pl["piers"]:
 				used[pc] = true
+				vol.claim_cell(pc as Vector2i, 0.0, deck_y, "viaduct")
 
 	# Greedy lot packing over gap cells, deterministic scan order.
 	var lot_rng := _rng(seed_value, "bld:lots")
@@ -147,7 +164,7 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 	var landmarks: Array = []
 	var bridge_plans: Array = []
 	if bool(opts.get("landmarks", true)):
-		var lm := _plan_landmarks(seed_value, lots, walk, origin, cs, w, h, frag, grid)
+		var lm := _plan_landmarks(seed_value, lots, walk, origin, cs, w, h, frag, grid, vol)
 		landmarks = lm["landmarks"]
 		bridge_plans = lm["bridges"]
 		var consumed: Dictionary = lm["consumed"]
@@ -230,6 +247,14 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 
 		var street := _street_dir(lc, gx, gz, walk, w, h)
 		var stats := {"boxes": 0}
+		# the lot's CEILING from the reservation grid: the lowest overhead corridor above it (the
+		# per-lane proximity heuristic stays as a soft cap; the volume is the hard authority)
+		var lot_rect_hi := Vector2i(lc.x + gx - 1, lc.y + gz - 1)
+		var lot_owner := "lot:%d,%d" % [lc.x, lc.y]
+		var ceiling := vol.free_top(lc, lot_rect_hi, 0.0, lot_owner)
+		if ceiling < height + 0.2:
+			floors = maxi(1, mini(floors, int((ceiling - 0.6) / FLOOR_H)))
+			height = floors * FLOOR_H
 		if floors >= 3:
 			# LATHE TOWER — the reference silhouettes (revolve-shaped, never boxes): drum with lobed
 			# base + dome, scalloped band stack, or ribbed spire cluster, picked by the fields.
@@ -263,13 +288,15 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 				"tile": facade_tile, "color": base_col,
 				"coil": wants_coil,
 			})
+			vol.claim_rect(lc, lot_rect_hi, 0.0, height + 2.4, lot_owner)
 			# the street-face entry kit still anchors the base (the reference towers keep a kiosk)
 			_emit_entry(frag, mn, mx, base_col, decay, t_pal, jitter, street, props_on, stats)
 		else:
 			var program := _pick_program(idiom, decay, t_pal, glow_density, floors, jitter)
 			program_tally[program] = int(program_tally.get(program, 0)) + 1
+			vol.claim_rect(lc, lot_rect_hi, 0.0, minf(height + 2.4, ceiling), lot_owner)
 			_emit_building(frag, mn, mx, height, floors, base_col, decay, glow_density, t_pal, jitter,
-				street, props_on, facade_tile, program, stats)
+				street, props_on, facade_tile, program, minf(ceiling - 0.25, 1.0e9), stats)
 		out_lots.append({"center": Vector3(center.x, 0.0, center.y), "floors": floors,
 			"height": height, "color": base_col})
 
@@ -351,14 +378,20 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 
 	# Raise the planned viaducts last — deck, rails, guide strips, piers, gantries, a parked tram.
 	# The second line rides 0.9 higher so crossing guideways read as an interchange, never coplanar.
+	var via_boxes_start := frag.walls.size()
 	if viaducts_on:
 		var stats_v := {"boxes": 0}
-		for vi in range(via_plans.size()):
-			_emit_viaduct(frag, via_plans[vi], origin, cs, w, h, DECK_TOP + 0.9 * float(vi), stats_v)
+		for vi2 in range(via_plans.size()):
+			_emit_viaduct(frag, via_plans[vi2], origin, cs, w, h, DECK_TOP + 0.9 * float(vi2), stats_v)
+
+	# THE GEOMETRY AUDIT: every non-viaduct box the filler emitted, checked against the walkable
+	# street columns and the viaduct corridor bands. Green = the reservation grid held.
+	var violations: Array = vol.audit_boxes(frag.walls, boxes_before, via_boxes_start, walk, corridors)
 
 	return {"buildings": out_lots.size(), "boxes": frag.walls.size() - boxes_before,
 		"props": prop_count, "viaducts": via_plans.size(), "lathes": lathes, "lots": out_lots,
-		"landmarks": landmarks, "bridges": bridge_plans, "programs": program_tally}
+		"landmarks": landmarks, "bridges": bridge_plans, "programs": program_tally,
+		"volume_conflicts": vol.conflicts, "volume_violations": violations}
 
 # --- LANDMARKS: BaseShapeBuilder heroes whose gameplay anchors the level consumes ------------------
 
@@ -381,12 +414,19 @@ const BRIDGE_LEVEL_TOL := 1.4    # a socket may sit this far off a level plane a
 # Pick up to two big street-adjacent lots, orient each landmark's MAIN door to its street (the road
 # connector), carve the approach, and bridge the pair's facing ledge sockets when the lane is clear.
 static func _plan_landmarks(seed_value: int, lots: Array, walk: Dictionary, origin: Vector3, cs: float,
-		w: int, h: int, frag: Fragment, grid: Dictionary) -> Dictionary:
+		w: int, h: int, frag: Fragment, grid: Dictionary, vol: DistrictVolume = null) -> Dictionary:
 	var out := {"landmarks": [], "bridges": [], "consumed": {}}
 	var cands: Array = []
 	for li in range(lots.size()):
 		var lot := lots[li] as Dictionary
 		if int(lot["gx"]) >= 3 and int(lot["gz"]) >= 3 and int(lot["dist"]) <= 3:
+			# a hero rises ~26 m — its whole column must be free of overhead corridors BEFORE it is
+			# picked (the reservation grid is the authority; previously a viaduct could slice a dome)
+			if vol != null:
+				var lc_c: Vector2i = lot["cell"]
+				var rect_hi := Vector2i(lc_c.x + int(lot["gx"]) - 1, lc_c.y + int(lot["gz"]) - 1)
+				if vol.rect_blocked(lc_c, rect_hi, 0.0, 26.0, "street") != "":
+					continue
 			cands.append(li)
 	if cands.is_empty():
 		return out
@@ -418,6 +458,9 @@ static func _plan_landmarks(seed_value: int, lots: Array, walk: Dictionary, orig
 		var lc: Vector2i = lot2["cell"]
 		var gx := int(lot2["gx"])
 		var gz := int(lot2["gz"])
+		if vol != null:
+			vol.claim_rect(lc, Vector2i(lc.x + gx - 1, lc.y + gz - 1), 0.0, 26.0,
+				"landmark:%d" % li2)
 		# kinds that FIT this lot (and differ from the pair's first pick, for variety)
 		var fits: Array = []
 		for kk in LANDMARK_KINDS.keys():
@@ -728,10 +771,11 @@ static func _street_dir(lc: Vector2i, gx: int, gz: int, walk: Dictionary, w: int
 ## legal tiles, emissive-pure, and seed-deterministic like the rest of the filler.
 static func _emit_building(frag: Fragment, mn: Vector2, mx: Vector2, height: float, floors: int,
 		base_col: Color, decay: float, glow_density: float, warm_bias: float, jitter: SeededRng,
-		street: Vector2i, props_on: bool, facade_tile: String, program: String, stats: Dictionary) -> void:
+		street: Vector2i, props_on: bool, facade_tile: String, program: String, max_top: float,
+		stats: Dictionary) -> void:
 	if program == "generic":
 		_emit_generic_building(frag, mn, mx, height, floors, base_col, decay, glow_density, warm_bias,
-			jitter, street, props_on, facade_tile, stats)
+			jitter, street, props_on, facade_tile, max_top, stats)
 		return
 	var c := Vector2((mn.x + mx.x) * 0.5, (mn.y + mx.y) * 0.5)
 	var sz := Vector2(mx.x - mn.x, mx.y - mn.y)
@@ -757,6 +801,7 @@ static func _emit_building(frag: Fragment, mn: Vector2, mx: Vector2, height: flo
 		_boxt(frag, Vector3(c.x, height + up_h * 0.5, c.y), Vector3(sz.x * 0.94, up_h, sz.y * 0.94),
 			col.darkened(0.1), tile, stats)
 
+	var crown_room: float = max_top - height   # what the program may raise above its roofline
 	match program:
 		"retail":
 			_sig_retail(frag, c, sz, height, street, horiz, col, decay, jitter, stats)
@@ -765,7 +810,7 @@ static func _emit_building(frag: Fragment, mn: Vector2, mx: Vector2, height: flo
 		"warehouse":
 			_sig_warehouse(frag, c, sz, height, street, horiz, col, decay, jitter, stats)
 		"fabrication":
-			_sig_fabrication(frag, c, sz, height, street, horiz, col, decay, jitter, stats)
+			_sig_fabrication(frag, c, sz, height, street, horiz, col, decay, jitter, crown_room, stats)
 		"crossdock":
 			_sig_crossdock(frag, c, sz, base_h, street, horiz, col, stats)
 		"mixed":
@@ -870,7 +915,7 @@ static func _sig_warehouse(frag: Fragment, c: Vector2, sz: Vector2, height: floa
 ## FABRICATION SHED (§4.20): a long low hall with a sawtooth monitor-roof, ONE line still running
 ## (a single green strip through the clerestory + one on the wall), a wide roll-up door, vent stacks.
 static func _sig_fabrication(frag: Fragment, c: Vector2, sz: Vector2, height: float, street: Vector2i,
-		horiz: bool, col: Color, decay: float, jitter: SeededRng, stats: Dictionary) -> void:
+		horiz: bool, col: Color, decay: float, jitter: SeededRng, crown_room: float, stats: Dictionary) -> void:
 	# sawtooth monitor-roof: a row of short raised ridges along the long axis
 	var ridges := clampi(int((sz.x if horiz else sz.y) / 1.6), 2, 5)
 	for r in range(ridges):
@@ -888,11 +933,12 @@ static func _sig_fabrication(frag: Fragment, c: Vector2, sz: Vector2, height: fl
 	# wide roll-up loading door
 	_box(frag, _face_pt(c, sz, street, 0.02, 1.1), _face_sz(sz, horiz, 0.5, 2.2, 0.06),
 		col.darkened(0.5), stats)
-	# vent stacks on the roof
-	for vs in range(2):
-		var voff := Vector2((float(vs) - 0.5) * sz.x * 0.4, (float(vs) - 0.5) * sz.y * 0.3)
-		_boxt(frag, Vector3(c.x + voff.x, height + 0.9, c.y + voff.y), Vector3(0.4, 1.3, 0.4),
-			col.darkened(0.3), "facility_metal", stats)
+	# vent stacks on the roof (skipped when an overhead corridor leaves no room)
+	if crown_room > 1.8:
+		for vs in range(2):
+			var voff := Vector2((float(vs) - 0.5) * sz.x * 0.4, (float(vs) - 0.5) * sz.y * 0.3)
+			_boxt(frag, Vector3(c.x + voff.x, height + 0.9, c.y + voff.y), Vector3(0.4, 1.3, 0.4),
+				col.darkened(0.3), "facility_metal", stats)
 
 ## CROSS-DOCK YARD (§4.22): an open covered apron — a canopy on corner posts over a low plinth —
 ## with a conveyor descent stub and a green diverter meter. Everything in transit, nothing enclosed.
@@ -949,7 +995,7 @@ static func _sig_mixed(frag: Fragment, c: Vector2, sz: Vector2, height: float, f
 
 static func _emit_generic_building(frag: Fragment, mn: Vector2, mx: Vector2, height: float, floors: int,
 		base_col: Color, decay: float, glow_density: float, warm_bias: float, jitter: SeededRng,
-		street: Vector2i, props_on: bool, facade_tile: String, stats: Dictionary) -> void:
+		street: Vector2i, props_on: bool, facade_tile: String, max_top: float, stats: Dictionary) -> void:
 	# MASSING — 1..3 setback tiers; each steps IN by a taper and slides slightly off-center
 	# (asymmetry), so the stack reads faceted-organic rather than gridded.
 	var tier_count := clampi(1 + floors / 2, 1, 3)
@@ -1014,7 +1060,7 @@ static func _emit_generic_building(frag: Fragment, mn: Vector2, mx: Vector2, hei
 	var top_c := Vector2((top_mn.x + top_mx.x) * 0.5, (top_mn.y + top_mx.y) * 0.5)
 	var top_sz := Vector2(top_mx.x - top_mn.x, top_mx.y - top_mn.y)
 	var roof_col := base_col.darkened(0.22)
-	if decay < 0.72:
+	if decay < 0.72 and height + 1.7 < max_top:
 		var crown_pick := _rf(jitter)
 		if crown_pick < 0.4:
 			# stepped cap: two shrinking slabs — a faceted dome read
