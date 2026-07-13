@@ -185,3 +185,30 @@ pursuit (teach it, or make scarpet FRICTION that slows pursuers); the Tyreg beat
 click with no drama; the framework's optional dead-Hushbloom hint at the offshoot; the full
 3-close-approaches-then-caught escalation rung; sprint/stamina integration for the whole party in
 preview mode.
+
+## Playtest round 2 (2026-07-13) — frame drops, the breaker, terrain
+
+**THE FRAME DROPS, measured and fixed** (`--test-chase-perf`, kept as a diagnostic with
+PERF_MODE bisection arms + Enemy.PROF accumulators): headless data-side steps averaged 110 ms
+with 1.8 s spikes. The bisection walk: not pursuit A* path length, not detection, not tweens
+alone, not get_position — the payload was the chase pack inside the COOPERATIVE PLANNER: six
+pursuers re-planning every rescan against each other's reservations drove the space-time search
+into deep wait-state explosions (a 5 wu hop cost 30-90 ms hot). Fixes, each measured:
+1. `GameState.set_coop_exempt(id)` — chase packs route by plain A* and neither write nor consult
+   reservations (a mob is not a stealth puzzle). Mean 110 -> 18.8 ms/step.
+2. Capped pursuit/search hops (`pursuit_direct` + `pursuit_hop`) — no full-length contested plans.
+3. Enemy cosmetic-tween hygiene: kill-and-replace on the flash/recover/fade sites + cosmetics
+   skip entirely on a headless tree (each FSM beat leaked a live frame-driven tween there).
+Residual: rare ~0.6-1.1 s single spikes late-chase remain UNDER INVESTIGATION (instrumentation
+is in place; suspects narrowed to the decline-wave moment + shelter-refusal churn).
+
+**The breaker pass (SpiffinBrit):** strolling the course WITHOUT presenting tags used to roll
+credits — the wall rest now refuses pre-lockout ("Endo looks up, nods at the checkpoint...")
+and the refusal re-arms the one-shot pad. Red/green in `--test-lockout-chase` (26).
+
+**Terrain (director: "the ground is too flat"):** APPROVED DIRECTION, next build — two breaks in
+the flat run: (a) a service TRENCH across S2/S3 (unwalkable band), crossed by TOPPLING a conduit
+rack (INSPECTION lever; the fallen rack is the bridge — and the pursuers' funnel: they clamber
+it one at a time on a delay); (b) the S5 collapse shelf becomes literal: a debris barricade with
+a slow exposed CLAMBER crawl over it (CrawlTunnel), pursuers funneled the same way. Both reuse
+built machinery (grid gaps, CrawlTunnel authored paths, the topple = push-lab grammar).

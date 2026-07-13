@@ -941,6 +941,10 @@ const _COOP_PREVIEW_MAX_NODES := 1500
 const _COOP_WAIT_SLACK_CELLS := 48.0
 
 func _clear_reservations(id: String) -> void:
+	# exempt characters never write reservations — nothing to scan for (the erase is a full-table
+	# walk, paid on EVERY move command; a chase pack re-commanding at rescan cadence made it hot)
+	if _coop_exempt.has(id):
+		return
 	if _reservations.is_empty():
 		return
 	var empty_cells: Array = []
@@ -958,6 +962,8 @@ func _clear_reservations(id: String) -> void:
 		_reservations.erase(cell)
 
 func _add_reservation(cell: Vector2i, t0: float, t1: float, id: String) -> void:
+	if _coop_exempt.has(id):
+		return
 	if not _reservations.has(cell):
 		_reservations[cell] = []
 	_reservations[cell].append({"t0": t0, "t1": t1, "id": id})
@@ -3804,11 +3810,35 @@ func _do_move_to_cell(id: String, cell: Vector2i) -> bool:
 ## so the character still moves (the fallback prioritizes liveness — it may
 ## briefly overlap another character). Assumes the caller already cancelled any
 ## prior movement and pinned characters[id].position to current_pos.
+## Characters exempt from cooperative (space-time) planning: chase PACKS re-planning every rescan
+## against five pack-mates' reservations drive the planner into deep wait-state searches — a 5 wu
+## hop measured 30-90 ms mid-chase (the lockout chase's frame drops). An exempt character routes
+## by plain A* and neither writes nor consults reservations; brief pack overlaps are the accepted
+## trade (a mob is not a stealth puzzle). Derived state — set at spawn, never logged.
+var _coop_exempt := {}
+
+func set_coop_exempt(id: String, exempt := true) -> void:
+	if exempt:
+		_coop_exempt[id] = true
+	else:
+		_coop_exempt.erase(id)
+
 func _begin_cooperative_move(id: String, current_pos: Vector3, current_cell: Vector2i, dest_cell: Vector2i, speed: float) -> bool:
 	var level := get_character_level(id)  # keep waypoints on the character's current floor
 	# A character parked off the carved footprint still routes: snap the START to the nearest walkable
 	# cell (the glide from current_pos to the first cell center walks it onto the mesh).
 	current_cell = grid.nearest_walkable_cell(current_cell, level)
+	if _coop_exempt.has(id):
+		# snap the destination too — a plain A* to an unwalkable cell scans the whole reachable
+		# region before failing (the residual spike)
+		var dest_snapped := grid.nearest_walkable_cell(dest_cell, level)
+		var plain := grid.find_path(current_cell, dest_snapped, {}, route_cautious, {}, {}, level)
+		if plain.is_empty():
+			return false
+		var plain_full: Array[Vector3] = [current_pos]
+		plain_full.append_array(plain)
+		_start_movement(id, plain_full)
+		return true
 	var plan := _plan_cooperative(current_cell, dest_cell, speed, scheduler.get_current_tick(), id, level)
 	if not plan.is_empty() and not plan.cells.is_empty():
 		var built := _build_timed_world_path(current_pos, plan.cells, plan.ticks, speed, level)

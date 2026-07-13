@@ -1044,6 +1044,8 @@ func _spawn_enemy(spec: Dictionary, gs) -> void:
 	enemy.char_id = eid
 	enemy.game_state = gs
 	gs.register_character(eid, enemy.position, enemy.move_speed, {"detection_range": float(enemy.detection_range)})
+	if bool(spec.get("coop_exempt", false)) and gs.has_method("set_coop_exempt"):
+		gs.set_coop_exempt(eid)
 	if enemy.has_method("activate"):
 		enemy.activate()
 	_enemy_posts[eid] = enemy.position

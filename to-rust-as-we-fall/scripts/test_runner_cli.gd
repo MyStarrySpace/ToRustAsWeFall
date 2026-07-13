@@ -207,6 +207,9 @@ func _ready() -> void:
 			"--test-chase-probe":
 				ran_test = true
 				await _test_chase_probe()
+			"--test-chase-perf":
+				ran_test = true
+				await _test_chase_perf()
 			"--test-dev-console":
 				ran_test = true
 				await _test_dev_console()
@@ -22829,6 +22832,9 @@ func _test_event_log_mutation_audit() -> void:
 	# Adding to this list requires a justification (why this public function
 	# does not represent a player/sequence input that needs replaying).
 	var allowlist := PackedStringArray([
+		# derived, never logged: coop exemption is set by the SCENE at spawn (chunk build runs in
+		# replay too) — it shapes how a logged move derives its path, it is not itself an event
+		"set_coop_exempt",
 		# Pure queries
 		"get_position", "is_moving", "get_destination", "get_grid_cell", "get_character_level",
 		# Render-only: warps get_position through the coord_map for node followers; reads, never mutates.
@@ -32575,6 +32581,17 @@ func _test_lockout_chase() -> void:
 		_assert_true(false, "chunk + gs present")
 		await _dispose_scene(inst)
 		return
+	# --- SpiffinBrit's run: stroll the whole course WITHOUT presenting tags ---
+	for cid_sb in ["aster", "peris"]:
+		gs.snap_character_to(cid_sb, Vector3(float(chunk.WALL_X) + 2.0, 0.0, 0.0))
+	for it_sb in chunk._exit_shelters:
+		it_sb.set("active_character", "aster")
+		it_sb.call("_trigger")
+	inst.headless_advance(0.5, 0.1)
+	_assert_true(not bool(chunk.get_preview_state()["complete"]),
+		"skipping the scanner skips the SCENE, not the chase — the wall rest refuses pre-lockout")
+	for cid_sb2 in ["aster", "peris"]:
+		gs.snap_character_to(cid_sb2, chunk.fragment.spawns[cid_sb2])
 	# --- the trigger raises the waves ---
 	_assert_true(not bool(chunk.get_preview_state()["chase_started"]), "quiet before the scanner")
 	var scanner: Node = chunk.find_child("BoundaryScanner", true, false)
@@ -32785,6 +32802,139 @@ func _test_chase_probe() -> void:
 			gs.get_position("aster").x, float(gs.get_stat("aster", "hp")), float(gs.get_stat("peris", "hp"))])
 		_assert_true(true, "probe %s ran" % strat)
 		await _dispose_scene(inst)
+
+## CHASE PERF PROBE (diagnostic): measures wall-clock ms per 0.1 s scheduler step across the
+## chase timeline and prints the spikes with what was happening — the frame-drop hunt's data side.
+func _test_chase_perf() -> void:
+	_test_name = "Chase Perf Probe"
+	var inst = await _instantiate_preview_chunk_and_wait("lockout_chase", 8)
+	if inst == null:
+		_assert_true(false, "instantiates")
+		return
+	var chunk = inst._active_chunk
+	var gs = inst._game_state
+	var mode := str(OS.get_environment("PERF_MODE"))
+	if mode != "baseline":
+		var scanner: Node = chunk.find_child("BoundaryScanner", true, false)
+		scanner.set("active_character", "aster")
+		scanner.call("_trigger")
+	if mode == "idle_waves":
+		var sched0 = inst._game_state.scheduler
+		sched0.cancel_tag("chase_pursuit")   # waves spawn but never engage
+	for cid in ["aster", "peris"]:
+		gs.command_move_to_pos(cid, Vector3(float(chunk.WALL_X) + 2.0, 0, 0))
+	if mode == "micro5":
+		inst.headless_advance(36.0, 0.1)   # the hot moment
+		var nat5 = chunk.enemies()[0]
+		var nid := str(nat5.char_id)
+		var np5: Vector3 = gs.get_position(nid)
+		var t_a := Time.get_ticks_usec()
+		for i in range(20):
+			gs.command_move_to_pos(nid, np5 + Vector3(2.0 + 0.05 * float(i), 0, 0))
+		print("[PERF] 20x full hop command: %.1f ms" % (float(Time.get_ticks_usec() - t_a) / 1000.0))
+		var c5: Vector2i = gs.grid.world_to_grid(np5)
+		var t_b := Time.get_ticks_usec()
+		for i2 in range(20):
+			gs.grid.find_path(c5, c5 + Vector2i(3, 0), {}, false, {}, {}, 0)
+		print("[PERF] 20x short find_path: %.1f ms" % (float(Time.get_ticks_usec() - t_b) / 1000.0))
+		var t_c := Time.get_ticks_usec()
+		for i3 in range(20):
+			gs._recompute_all_detection_predictions(nid)
+		print("[PERF] 20x detection recompute(id): %.1f ms" % (float(Time.get_ticks_usec() - t_c) / 1000.0))
+		var t_d := Time.get_ticks_usec()
+		for i4 in range(20):
+			gs._recompute_physics_predictions()
+			gs._recompute_pendulum_predictions()
+		print("[PERF] 20x physics+pendulum recompute: %.1f ms" % (float(Time.get_ticks_usec() - t_d) / 1000.0))
+		await _dispose_scene(inst)
+		return
+	if mode == "frozen_fsm":
+		inst.headless_advance(16.0, 0.1)
+		var worst_f: Array = []
+		var tf := 16.0
+		while tf < 34.0:
+			for e_f in chunk.enemies():
+				if is_instance_valid(e_f):
+					gs.scheduler.cancel_tag("enemy_" + str(e_f.name))
+			var t0f := Time.get_ticks_usec()
+			inst.headless_advance(0.1, 0.1)
+			worst_f.append(float(Time.get_ticks_usec() - t0f) / 1000.0)
+			tf += 0.1
+		worst_f.sort()
+		worst_f.reverse()
+		var tot_f := 0.0
+		for w_f in worst_f:
+			tot_f += float(w_f)
+		print("[PERF] FROZEN-FSM mean %.2f ms/step, worst %.1f / %.1f / %.1f" % [
+			tot_f / float(worst_f.size()), float(worst_f[0]), float(worst_f[1]), float(worst_f[2])])
+		await _dispose_scene(inst)
+		return
+	if mode == "micro3":
+		inst.headless_advance(18.0, 0.1)
+		var t_g := Time.get_ticks_usec()
+		for i in range(1000):
+			gs.get_position("aster")
+		print("[PERF] 1000x get_position(party, long path): %.1f ms" % (float(Time.get_ticks_usec() - t_g) / 1000.0))
+		var nat3 = chunk.enemies()[0]
+		var t_g2 := Time.get_ticks_usec()
+		for i2 in range(1000):
+			gs.get_position(str(nat3.char_id))
+		print("[PERF] 1000x get_position(pursuer, short hop): %.1f ms" % (float(Time.get_ticks_usec() - t_g2) / 1000.0))
+		await _dispose_scene(inst)
+		return
+	if mode == "micro2":
+		var scanner2: Node = chunk.find_child("BoundaryScanner", true, false)
+		inst.headless_advance(18.0, 0.1)   # mid-chase, 4 pursuers live
+		var t_s := Time.get_ticks_usec()
+		for i in range(20):
+			gs.scheduler.advance_ticks(0.1)
+		print("[PERF] 20x raw scheduler.advance_ticks(0.1): %.1f ms" % (float(Time.get_ticks_usec() - t_s) / 1000.0))
+		var t_h := Time.get_ticks_usec()
+		for i2 in range(20):
+			inst.headless_advance(0.1, 0.1)
+		print("[PERF] 20x host headless_advance(0.1): %.1f ms" % (float(Time.get_ticks_usec() - t_h) / 1000.0))
+		await _dispose_scene(inst)
+		return
+	if mode == "micro":
+		inst.headless_advance(4.0, 0.1)   # waves live
+		var nat0 = chunk.enemies()[0]
+		var np: Vector3 = gs.get_position(str(nat0.char_id))
+		var t_mv := Time.get_ticks_usec()
+		for i in range(10):
+			gs.command_move_to_pos(str(nat0.char_id), np + Vector3(2.0 + 0.1 * float(i), 0, 0))
+		print("[PERF] 10x command_move_to_pos (short): %.1f ms" % (float(Time.get_ticks_usec() - t_mv) / 1000.0))
+		var t_dt := Time.get_ticks_usec()
+		for i2 in range(10):
+			gs._recompute_all_detection_predictions()
+		print("[PERF] 10x detection recompute: %.1f ms" % (float(Time.get_ticks_usec() - t_dt) / 1000.0))
+		var t_lg := Time.get_ticks_usec()
+		for i3 in range(10):
+			gs.command_move_to_pos("aster", Vector3(float(chunk.WALL_X), 0, 0))
+		print("[PERF] 10x party LONG move_to_pos: %.1f ms" % (float(Time.get_ticks_usec() - t_lg) / 1000.0))
+		await _dispose_scene(inst)
+		return
+	var worst: Array = []
+	var t := 0.0
+	while t < 40.0:
+		if mode == "idle_waves" and int(t * 10.0) % 10 == 0:
+			gs.scheduler.cancel_tag("chase_pursuit")
+		var t0 := Time.get_ticks_usec()
+		inst.headless_advance(0.1, 0.1)
+		var ms := float(Time.get_ticks_usec() - t0) / 1000.0
+		t += 0.1
+		worst.append([ms, t, int(chunk.get_preview_state().get("pursuers", 0))])
+	worst.sort_custom(func(a, b): return float(a[0]) > float(b[0]))
+	print("[PERF] top 12 data-side spikes (ms per 0.1s step):")
+	for i in range(12):
+		var w := worst[i] as Array
+		print("[PERF]   %6.1f ms at t=%5.1f  pursuers=%d" % [float(w[0]), float(w[1]), int(w[2])])
+	var total := 0.0
+	for w2 in worst:
+		total += float((w2 as Array)[0])
+	print("[PERF] mean %.2f ms/step over %d steps" % [total / float(worst.size()), worst.size()])
+
+	_assert_true(true, "perf probe ran")
+	await _dispose_scene(inst)
 
 func _print_results() -> void:
 	print("")

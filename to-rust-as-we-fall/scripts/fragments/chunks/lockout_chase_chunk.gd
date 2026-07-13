@@ -174,11 +174,18 @@ func _spawn_wave(count: int, near_party := false) -> void:
 		var eid := "naturalizer_%d" % _wave_count
 		_wave_count += 1
 		var nz := (-3.8 if i % 2 == 0 else 3.8) if near_party else (-2.0 + 2.0 * float(i))
+		# detect 0: chase waves are driven by the pursuit DIRECTOR (engage_target), not the stealth
+		# detection layer — leaving detection on made the predictive scheduler re-fire in-range
+		# events on every command (the measured 90+ ms/tick storm)
 		_spawn_enemy({"id": eid, "class": "naturalizer", "pos": Vector3(base_x, 0.5, nz),
-			"speed": NAT_SPEED, "detect": 9.0, "targets": ["aster", "peris"]}, gs)
+			"speed": NAT_SPEED, "detect": 0.0, "coop_exempt": true,
+			"targets": ["aster", "peris"]}, gs)
 		var nat = _enemy_by_id(eid)
 		if nat != null and nat.has_method("add_hesitation_zone"):
 			nat.add_hesitation_zone(Vector3(CHELATOR_X, 0, -1.0), 6.5)
+			# the corridor is convex: the wave pursues in straight hops (the cooperative planner
+			# at this path length was the frame-drop source — see the perf probe)
+			nat.pursuit_direct = true
 	_show_note("Naturalizers out of the wall niches — behind you.", 1.8)
 	_arm_pursuit_director()
 
@@ -493,6 +500,17 @@ func _build_endo_wall() -> void:
 	_add_box(self, Vector3(WALL_X + 8.0, 1.8, 0.0), Vector3(0.6, 1.8, CORRIDOR_HALF_Z), Color(0.28, 0.24, 0.2),
 		Color(0.95, 0.8, 0.55), 0.5)
 	_add_label(self, "MAINTAINED SECTION — E.", Vector3(WALL_X + 4.0, 2.8, 0.0), Color(0.95, 0.8, 0.55))
+
+## The breaker's route (SpiffinBrit): stroll the whole course WITHOUT presenting tags, rest at
+## the wall, credits. No — the scene IS the lockout: before the rejection there is nothing to
+## flee and nothing to rest off. Endo waves you back toward the checkpoint.
+func _on_exit_shelter_rested(it: Node = null) -> void:
+	if not _chase_started:
+		_show_note("Endo looks up, nods at the checkpoint. Nothing out here for you yet.", 2.6)
+		if it != null and it.has_method("reset"):
+			it.call("reset")   # the refusal must not spend the one-shot — the real rest comes later
+		return
+	super._on_exit_shelter_rested(it)
 
 func get_preview_state() -> Dictionary:
 	var st: Dictionary = super.get_preview_state()

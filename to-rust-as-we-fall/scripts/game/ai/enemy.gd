@@ -17,6 +17,8 @@ var show_movement_path := false
 @export var pursuit_update_interval := 0.8
 
 @export var attack_range := 3.0
+@export var pursuit_direct := false    # capped-hop pursuit (near-free short plans) for chase packs
+@export var pursuit_hop := 5.0         # direct-pursuit hop length (wu) — short keeps the planner cheap
 @export var roam_step_distance := 1.6  # how far a single roam hop travels
 @export var roam_interval := 1.4       # scheduler ticks between roam hops
 @export var alert_duration := 0.6      # spotting beat before the chase begins
@@ -268,9 +270,11 @@ func _enter_state(state: String) -> void:
 			_set_eye_energy(0.8)
 			_anim_settle()
 			# Cosmetic fade blue -> base over the cooldown (never gates the transition).
-			if _mesh and _mesh.material_override:
-				var tween := create_tween()
-				tween.tween_method(_set_mesh_color, RECOVER_COLOR, _base_color, recover_duration)
+			if _mesh and _mesh.material_override and Enemy._cosmetics_on():
+				if _recover_tween != null and _recover_tween.is_valid():
+					_recover_tween.kill()
+				_recover_tween = create_tween()
+				_recover_tween.tween_method(_set_mesh_color, RECOVER_COLOR, _base_color, recover_duration)
 			_fsm.schedule(recover_duration, _after_recover)
 		"stagger":
 			_charging = false
@@ -420,12 +424,21 @@ func _pursue_target() -> void:
 	if dist <= attack_range:
 		_fsm.transition_to("windup")
 		return
-	# Otherwise keep chasing (pursuit is the ONLY state that pathfinds).
+	# Otherwise keep chasing (pursuit is the ONLY state that pathfinds). A chase-pack enemy can
+	# opt into DIRECT pursuit (straight hops, no A*, no reservations): cooperative space-time
+	# planning for 4-6 pursuers re-pathing 100+ cell routes every rescan measured up to 1.8 s per
+	# 0.1 s step — the lockout chase's frame drops. A pack in an open corridor doesn't need
+	# reservation-grade planning; convex-corridor scenes set pursuit_direct on their waves.
 	if game_state.characters.has(char_id):
-		if game_state.grid:
+		if game_state.grid and not pursuit_direct:
 			game_state.command_move_to_cell(char_id, game_state.grid.world_to_grid(target_pos))
 		else:
-			game_state.command_move_to_pos(char_id, target_pos)
+			# the roam trick at chase scale: a CAPPED hop toward the target (a move_to_pos on a
+			# grid still runs the cooperative planner, but on <=4 cells it is near-free; the
+			# rescan chains hops). Full-length plans for a 6-pack measured 1.8 s/step.
+			var to_target := target_pos - _self_pos()
+			var hop := _self_pos() + to_target.limit_length(pursuit_hop)
+			game_state.command_move_to_pos(char_id, hop)
 	_fsm.schedule(pursuit_update_interval, _pursue_target)
 
 func _begin_charge() -> void:
@@ -550,8 +563,13 @@ func _begin_search() -> void:
 
 func _begin_search_move() -> void:
 	# Walk to where the target was last seen and look around; detection stays live while searching.
+	# Chase packs hop CAPPED here too: a full-length cooperative plan through five other movers'
+	# reservations is where the space-time search explodes (the 1.9 s scheduler spikes).
 	if game_state and game_state.characters.has(char_id):
-		game_state.command_move_to_pos(char_id, _last_known_target_pos)
+		var dest := _last_known_target_pos
+		if pursuit_direct:
+			dest = _self_pos() + (_last_known_target_pos - _self_pos()).limit_length(pursuit_hop)
+		game_state.command_move_to_pos(char_id, dest)
 
 func _begin_return() -> void:
 	if get_state() != "search":
@@ -619,10 +637,14 @@ func _flash_target(target_id: String) -> void:
 	var node := _find_character_node(target_id) as Node3D
 	if node == null:
 		return
+	if not Enemy._cosmetics_on():
+		return
 	var base: Vector3 = node.scale
-	var tween := create_tween()
-	tween.tween_property(node, "scale", base * 1.25, 0.07)
-	tween.tween_property(node, "scale", base, 0.18)
+	if _flash_tween != null and _flash_tween.is_valid():
+		_flash_tween.kill()
+	_flash_tween = create_tween()
+	_flash_tween.tween_property(node, "scale", base * 1.25, 0.07)
+	_flash_tween.tween_property(node, "scale", base, 0.18)
 
 # --- Roam (local wander, no pathfinding) ---
 
@@ -766,7 +788,7 @@ func _set_mesh_color(c: Color) -> void:
 		(_mesh.material_override as StandardMaterial3D).albedo_color = c
 
 func _fade_out(duration: float) -> void:
-	if _mesh:
+	if _mesh and Enemy._cosmetics_on():
 		var tween := create_tween()
 		tween.tween_property(_mesh, "transparency", 1.0, duration)
 	_set_eye_energy(0.0)
@@ -776,9 +798,17 @@ func _fade_out(duration: float) -> void:
 # punch on impact, a flinch on stagger. ChainEnemy has no _mesh (it overrides _build_visual), so these
 # safely no-op for it — its segments carry their own motion.
 var _anim_tween: Tween
+var _flash_tween: Tween
+var _recover_tween: Tween
+
+## Cosmetic tweens are FRAME-driven: on a headless tree no frame ever steps them, so every beat
+## would leak a live tween and SceneTree bookkeeping grows O(n) — measured as the chase's
+## 110 ms/step scheduler cost. Cosmetics simply don't exist without a display.
+static func _cosmetics_on() -> bool:
+	return DisplayServer.get_name() != "headless"
 
 func _play_scale(keys: Array) -> void:
-	if _mesh == null:
+	if _mesh == null or not Enemy._cosmetics_on():
 		return
 	if _anim_tween != null and _anim_tween.is_valid():
 		_anim_tween.kill()
