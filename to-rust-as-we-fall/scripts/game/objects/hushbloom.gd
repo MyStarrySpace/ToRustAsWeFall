@@ -26,6 +26,7 @@ var _charged := true
 var _enemy_provider: Callable = Callable()
 var _portal_provider: Callable = Callable()
 var _petal_mat: StandardMaterial3D
+var _head: MeshInstance3D
 
 func configure(gs, world_pos: Vector3, opts: Dictionary = {}) -> void:
 	_gs = gs
@@ -63,7 +64,24 @@ func _ready() -> void:
 		set_interaction_enabled(false)
 	if not interacted.is_connected(_on_picked):
 		interacted.connect(_on_picked)
+	_wire_outline()
 	_arm_poll()
+
+## The shared outline/hover wiring (the Flure pattern) — every visible interactable carries the
+## outline grammar; --test-chunk-interactable-outlines enforces it.
+func _wire_outline() -> void:
+	var mgr := OutlineFeedbackManager.ensure(self)
+	if mgr == null or _head == null:
+		return
+	var target := mgr.outline_meshes(self, str(name) + "Outline", [_head], "hushbloom",
+		maxf(1.0, interaction_radius))
+	if target == null:
+		return
+	if target is Node3D:
+		(target as Node3D).global_position = _head.global_position
+	if target.has_method("set_interaction_delegate"):
+		target.call("set_interaction_delegate", self)
+	set_outline_target(target)
 
 func _build_visual() -> void:
 	var stem := MeshInstance3D.new()
@@ -90,6 +108,7 @@ func _build_visual() -> void:
 	head.material_override = _petal_mat
 	head.position = Vector3(0.04, 0.54, 0.0)
 	add_child(head)
+	_head = head
 
 func _sched():
 	return _gs.scheduler if _gs != null else null

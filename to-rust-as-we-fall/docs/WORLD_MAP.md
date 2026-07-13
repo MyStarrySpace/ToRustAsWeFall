@@ -16,9 +16,9 @@ Legend: ✅ built+tested · 🟡 partial/staged · ❌ nothing yet · 📋 desig
   (elevator-era mechanics live here as labs).
 - ❌ **The facility as a PLACE**: there is no central-facility exterior, no approach, no
   simulation-boundary checkpoint geometry — the institution the whole Act 1 revolves around
-  exists only as interior sim rooms and corridor beats. The FAILED RE-ENTRY (GDD L763 — the
-  antecedent the chase elaborates) has no scene. No "facility" survey building kind (nutech is
-  the Act 2/3 ruin, not the living institution).
+  exists only as interior sim rooms and corridor beats. The FAILED RE-ENTRY (GDD L763) still has
+  no scene — but the `facility_checkpoint` survey kind now EXISTS (built for the chase; reuse it
+  for the quiet antecedent beat).
 - ❌ Peris's care facility (her workplace, GDD L586) — referenced by her whole arc, zero geometry.
 - GAP RANK: **A** (see gap list).
 
@@ -40,9 +40,9 @@ Legend: ✅ built+tested · 🟡 partial/staged · ❌ nothing yet · 📋 desig
 
 ### Shelters 6–7 — The Open Files Initiative (+ the simulation boundary)
 - ✅ stacks fragment lab (data terminals); open_files building kind (fin-cluster composite).
-- ❌ **THE LOCKOUT CHASE (GDD §12.1)** — the Act 1 climax happens HERE and is entirely unbuilt:
-  checkpoint, tag rejection, Naturalizer waves, Tyreg, the portal-offshoot beat. Now designed:
-  docs/LOCKOUT_CHASE.md.
+- ✅ **THE LOCKOUT CHASE v1 BUILT** (`--preview=lockout_chase`): checkpoint + waves + levers +
+  the offshoot double-seal + Tyreg accept + the wall rest; `--test-lockout-chase`. Follow-ups in
+  docs/LOCKOUT_CHASE.md build state.
 - 📋 Data-conduit troughs + card drifts (STAGE_ELEMENTS stage 2); Open Files elements in the
   register.
 

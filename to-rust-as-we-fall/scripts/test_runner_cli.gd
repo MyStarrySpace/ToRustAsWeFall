@@ -201,6 +201,9 @@ func _ready() -> void:
 			"--test-naturalizer-hushbloom":
 				ran_test = true
 				await _test_naturalizer_hushbloom()
+			"--test-lockout-chase":
+				ran_test = true
+				await _test_lockout_chase()
 			"--test-dev-console":
 				ran_test = true
 				await _test_dev_console()
@@ -1335,6 +1338,7 @@ func _run_all_tests() -> void:
 	await _test_boss_playable()
 	await _test_shelter_sanctuary()
 	await _test_naturalizer_hushbloom()
+	await _test_lockout_chase()
 	await _test_dev_console()
 	await _test_touch_modes()
 	await _test_ortho_orbit()
@@ -32551,6 +32555,99 @@ func _test_naturalizer_hushbloom() -> void:
 	_assert_true(not bool(bloom2.pick()), "a picked bloom cannot be picked twice")
 	holder.queue_free()
 	await get_tree().process_frame
+
+## THE LOCKOUT CHASE (GDD 12.1, docs/LOCKOUT_CHASE.md): the trigger raises the waves; the door
+## lever holds pursuers; the offshoot's Hushbloom DOUBLE-SEAL makes the pocket a Naturalizer-proof
+## hide (the canon expert solution); Tyreg's accept arms her Suppress; Endo's wall is sanctuary
+## and the rest completes the scene.
+func _test_lockout_chase() -> void:
+	_test_name = "Lockout Chase"
+	var inst = await _instantiate_preview_chunk_and_wait("lockout_chase", 8)
+	if inst == null:
+		_assert_true(false, "lockout_chase instantiates")
+		return
+	var chunk = inst._active_chunk
+	var gs = inst._game_state
+	if chunk == null or gs == null:
+		_assert_true(false, "chunk + gs present")
+		await _dispose_scene(inst)
+		return
+	# --- the trigger raises the waves ---
+	_assert_true(not bool(chunk.get_preview_state()["chase_started"]), "quiet before the scanner")
+	var scanner: Node = chunk.find_child("BoundaryScanner", true, false)
+	scanner.set("active_character", "aster")
+	scanner.call("_trigger")
+	inst.headless_advance(3.0, 0.1)
+	_assert_true(bool(chunk.get_preview_state()["chase_started"]), "the rejection starts the chase")
+	_assert_true(int(chunk.get_preview_state()["pursuers"]) >= 2, "wave 1 takes the corridor")
+	var nat0 = chunk.enemies()[0]
+	_assert_true(not (nat0._hesitation_zones as Array).is_empty(),
+		"pursuers carry the Chelator hesitation zone (the protocol lever is armed)")
+	# --- the door lever holds a pursuer at the line ---
+	gs.snap_character_to(str(nat0.char_id), Vector3(float(chunk.DOOR_X) - 1.5, 0.0, 0.0))
+	var door: Node = chunk.find_child("ServiceDoor", true, false)
+	door.set("active_character", "peris")
+	door.call("_trigger")
+	inst.headless_advance(1.2, 0.1)
+	_assert_true(bool(chunk.get_preview_state()["door_sealed"]), "the door seals (once, forever)")
+	_assert_true(bool(nat0.is_stunned()), "a pursuer at the sealed line is HELD while cutting through")
+	# --- the expert path: pick both blooms, port in, double-seal, hide ---
+	var blooms: Array = chunk.hushblooms()
+	_assert_equals(blooms.size(), 2, "two carryable blooms grow on the corridor")
+	for hb in blooms:
+		_assert_true(bool(hb.pick()), "the bloom picks")
+	_assert_equals(int(chunk.get_preview_state()["bloom_carry"]), 2, "both blooms in hand")
+	var pad_in = chunk._pad_in
+	var pad_out = chunk._pad_out
+	for cid in ["aster", "peris"]:
+		gs.snap_character_to(cid, pad_in.position)
+		pad_in.set("active_character", cid)
+		_assert_true(bool(pad_in.step_through()), "%s ports into the offshoot" % cid)
+	for seal_name in ["SealPadIn", "SealPadOut"]:
+		var seal: Node = chunk.find_child(seal_name, true, false)
+		seal.set("active_character", "peris")
+		seal.call("_trigger")
+	_assert_true(bool(pad_in.is_stunned()) and bool(pad_out.is_stunned()),
+		"both portals sealed — the pocket is locked (the double-seal)")
+	_assert_equals(int(chunk.get_preview_state()["bloom_carry"]), 0, "the seal spends the blooms")
+	# a pursuer at the outer pad cannot follow while the seal holds
+	gs.snap_character_to(str(nat0.char_id), pad_in.position + Vector3(1.0, 0.0, 0.0))
+	var hp0 := float(gs.get_stat("peris", "hp"))
+	inst.headless_advance(8.0, 0.1)
+	for cid2 in ["aster", "peris"]:
+		_assert_true(absf(gs.get_position(cid2).z - float(chunk.OFFSHOOT_Z)) < 3.2,
+			"%s is still safe inside the pocket" % cid2)
+	_assert_true(float(gs.get_stat("peris", "hp")) >= hp0 - 0.01,
+		"nobody lands a strike into the sealed pocket")
+	# the seal expires; the recovered exit pad carries the pair out behind the sweep
+	inst.headless_advance(float(chunk.SEAL_SECS), 0.1)
+	_assert_true(not bool(pad_out.is_stunned()), "the seal expires on schedule")
+	for cid3 in ["aster", "peris"]:
+		gs.snap_character_to(cid3, pad_out.position)
+		pad_out.set("active_character", cid3)
+		_assert_true(bool(pad_out.step_through()), "%s exits behind the wave" % cid3)
+	# --- Tyreg's accept arms Suppress ---
+	var tyreg: Node = chunk.find_child("TyregChoice", true, false)
+	tyreg.set("active_character", "aster")
+	tyreg.call("_trigger")
+	_assert_true(bool(chunk.get_preview_state()["tyreg_accepted"]), "Tyreg joins on accept")
+	gs.snap_character_to(str(nat0.char_id), gs.get_position("aster") + Vector3(2.0, 0.0, 0.0))
+	inst.headless_advance(3.0, 0.1)
+	_assert_true(int(chunk._suppress_charges) < chunk.SUPPRESS_CHARGES,
+		"her Suppress spends a round on the closing pursuer")
+	# --- Endo's wall: sanctuary + the rest completes the scene ---
+	for cid4 in ["aster", "peris"]:
+		gs.snap_character_to(cid4, Vector3(float(chunk.WALL_X) + 2.0, 0.0, 0.0))
+	_assert_true(bool(gs.is_at_shelter("aster")), "the maintained section is a REAL shelter region")
+	var wall_rest: Node = null
+	for it in chunk._exit_shelters:
+		wall_rest = it
+	wall_rest.set("active_character", "aster")
+	wall_rest.call("_trigger")
+	inst.headless_advance(0.5, 0.1)
+	_assert_true(bool(chunk.get_preview_state()["complete"]),
+		"resting at Endo's wall ends the chase")
+	await _dispose_scene(inst)
 
 func _print_results() -> void:
 	print("")

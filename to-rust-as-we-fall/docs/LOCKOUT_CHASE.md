@@ -116,3 +116,20 @@ variant is listed there as the alternative if the director wants a whisper).
   Archive Depths recruitment as a second meeting (accept) or first (decline).
 - Future chases reuse this chunk's machinery: patrol-failure chases (Act 2), swarm flights,
   Peris-sundowning inversions, NK night infiltration (the framework's anticipated list).
+
+## Build state (v1 BUILT, 2026-07-12)
+
+`--preview=lockout_chase` ("The Lockout Chase (Act 1 climax)", picker top). Built: the checkpoint
+plaza (the new `facility_checkpoint` kind) + scanner trigger -> scheduled Naturalizer waves; the
+sealable door (holds cutters DOOR_HOLD_SECS, never re-opens); the Chelator hesitation zone (real
+logged slow on every pursuer); Flure + Scarpet levers; the UNMARKED offshoot pocket (portal pair,
+two capacity-one Capbage tight-hides, SEAL points that spend carried Hushblooms to stun the pads
+— pursuit follows through OPEN portals, so only the double-seal locks the pocket); Tyreg's
+junction choice (accept = v1 auto-Suppress escort, 3 charges; crossing S4 without her fires the
+side wave); Endo's wall = a real shelter region + the completing rest. Failure = party wipe ->
+the loader restart. Guarded by `--test-lockout-chase` (24 asserts, in `--test-all`).
+
+Follow-ups (the framework's full fidelity): Tyreg as temporarily CONTROLLABLE + the ammo-cache
+portal loop (hack/carry/deliver), the close-approach escalation director (warning -> damage ->
+caught) instead of native strikes only, the zone-rollback + flora-kill reset flavor, weak-wall
+lever at S5, aftermath dialogue from lockout_chase_aftermath.md, and the real-input leg.

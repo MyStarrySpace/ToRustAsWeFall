@@ -37,6 +37,7 @@ var _wipe_count := 0
 var _decoratives: Array = []  # DecorativeFlora — ornamental invasives (docs/DECORATIVE_FLORA.md)
 var _spread_patches: Array = []  # the Verdanta patches runbacks grew (freed on host reset)
 var _spike_strips: Array = []    # SpikeStrip hostile architecture (the shared DoT tick reads them)
+var _hushblooms: Array = []      # Hushbloom stun flora (thigmonastic; pickable for the carried throw)
 var _fall_pos := Vector3.ZERO    # where the party last wiped (the runback decor pass grows here)
 
 func configure_chunk(config: Dictionary) -> void:
@@ -972,6 +973,17 @@ func _spawn_object(spec: Dictionary) -> void:
 			cz.configure(_v3(spec, "pos"), half if half is Vector2 else Vector2(3.0, 3.0), _f(spec, "dot", 4.0))
 			add_child(cz)
 			_candid_zones.append(cz)
+		"hushbloom":
+			# {pos:Vector3, opts?:Dictionary} — the thigmonastic stun flower (flora_taxonomy): any
+			# body in its trigger radius fires the burst (freeze enemies, SEAL portals); pickable.
+			var hb := Hushbloom.new()
+			hb.name = _name(spec, "Hushbloom")
+			hb.configure(_get_game_state(), _v3(spec, "pos"), spec.get("opts", {}) as Dictionary)
+			hb.set_enemy_provider(func() -> Array: return _enemies)
+			hb.set_portal_provider(func() -> Array: return _portals)
+			add_child(hb)
+			_register_interactable(hb)
+			_hushblooms.append(hb)
 		"scarpet":
 			# {pos:Vector3, radius:float} — a MEDIUM-tier hide mat (the loader's concealment pass reads it)
 			var mat := Scarpet.new()
@@ -1021,7 +1033,7 @@ func _spawn_object(spec: Dictionary) -> void:
 func _spawn_enemy(spec: Dictionary, gs) -> void:
 	if gs == null:
 		return
-	var enemy := EnemyScript.new()
+	var enemy := (Naturalizer.new() as Enemy) if str(spec.get("class", "")) == "naturalizer" else EnemyScript.new()
 	var eid := str(spec.get("id", "enemy_%d" % _enemies.size()))
 	enemy.name = "Enemy_%s" % eid
 	enemy.position = _v3(spec, "pos")
@@ -1443,6 +1455,7 @@ func channels() -> Array: return _channels
 func flora() -> Array: return _flora
 func enemies() -> Array: return _enemies
 func decoratives() -> Array: return _decoratives
+func hushblooms() -> Array: return _hushblooms
 func spike_strips() -> Array: return _spike_strips
 
 # --- Dictionary readers (tolerant defaults so a sparse .tres still loads) ---

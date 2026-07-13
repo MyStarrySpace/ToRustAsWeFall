@@ -30,6 +30,7 @@ const ARCHITECTURE_SHOWCASE_CHUNK_SCENE := preload("res://scenes/fragments/chunk
 const GEOMETRY_LAB_CHUNK_SCENE := preload("res://scenes/fragments/chunks/geometry_lab.tscn")
 const SET_PIECE_SHOWCASE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/set_piece_showcase_chunk.tscn")
 const BOSS_SHOWCASE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/boss_showcase_chunk.tscn")
+const LOCKOUT_CHASE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/lockout_chase_chunk.tscn")
 const AGHORA_BAZAAR_CHUNK_SCENE := preload("res://scenes/fragments/chunks/aghora_bazaar_chunk.tscn")
 const SightMaskBakerScript := preload("res://scripts/game/world/sight_mask_baker.gd")
 
@@ -61,6 +62,7 @@ const CHUNK_SCENES := {
 	"geometry_lab": GEOMETRY_LAB_CHUNK_SCENE,
 	"set_piece_showcase": SET_PIECE_SHOWCASE_CHUNK_SCENE,
 	"boss_showcase": BOSS_SHOWCASE_CHUNK_SCENE,
+	"lockout_chase": LOCKOUT_CHASE_CHUNK_SCENE,
 	"aghora_bazaar": AGHORA_BAZAAR_CHUNK_SCENE,
 }
 
@@ -164,6 +166,9 @@ const PREVIEW_ENTRIES := [
 	# the reservoir cache beyond the far mouth. N reseeds both.
 	{"id": "boss_showcase", "chunk": "boss_showcase", "title": "Boss Pieces (Watchtower + Paranucleus)", "stage": 6,
 		"config": {"seed": 0, "overlays": {"aster": false, "peris": false, "endo": false}}},
+	# THE LOCKOUT CHASE (GDD 12.1, docs/LOCKOUT_CHASE.md): tags fail at the checkpoint, Naturalizer
+	# waves take the corridor; the levers you learned, Tyreg's choice, the unmarked offshoot.
+	{"id": "lockout_chase", "chunk": "lockout_chase", "title": "The Lockout Chase (Act 1 climax)", "stage": 4},
 ]
 
 ## The menu entry for an id (or {} if none).
@@ -232,7 +237,7 @@ const STAMINA_REGEN := 10.0
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
 @export_enum("stacks", "rings", "lockout", "mother_flure", "survival_range",
 	"endo_junction_stretch", "generated_stretch",
-	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "architecture_showcase", "geometry_lab", "set_piece_showcase", "boss_showcase", "aghora_bazaar") var preview_chunk := "stacks"
+	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "architecture_showcase", "geometry_lab", "set_piece_showcase", "boss_showcase", "aghora_bazaar", "lockout_chase") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 
