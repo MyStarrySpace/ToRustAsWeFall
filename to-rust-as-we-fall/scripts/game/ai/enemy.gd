@@ -162,6 +162,19 @@ func re_post(post: Vector3) -> void:
 
 ## Apply damage. A hit taken mid-aggro staggers the enemy (a brief interrupt → counterplay), so the
 ## player can break a windup/charge by striking first.
+## Freeze the enemy in place for `duration` (the Hushbloom stun / Tyreg's Suppress): a hard hold
+## that cancels movement and scanning, then re-evaluates like a stagger.
+func stun(duration: float) -> void:
+	if get_state() == "dead":
+		return
+	_stun_duration = duration
+	_fsm.transition_to("stunned")
+
+func is_stunned() -> bool:
+	return get_state() == "stunned"
+
+var _stun_duration := 3.0
+
 func take_damage(amount: float) -> void:
 	if get_state() == "dead":
 		return
@@ -185,7 +198,7 @@ func get_state() -> String:
 
 # --- State Machine Core (reusable StateMachine: tag-scoped scheduling + exit/enter hooks) ---
 
-const ENEMY_STATES := ["idle", "roam", "patrol", "lured", "alert", "pursuit", "windup", "charge", "impact", "recover", "stagger", "search", "return", "dead"]
+const ENEMY_STATES := ["idle", "roam", "patrol", "lured", "alert", "pursuit", "windup", "charge", "impact", "recover", "stagger", "stunned", "search", "return", "dead"]
 
 # Telegraph colours (the body reads its intent at a glance).
 const WINDUP_COLOR := Color(0.9, 0.15, 0.1)    # red — about to strike
@@ -266,6 +279,15 @@ func _enter_state(state: String) -> void:
 			_set_eye_energy(0.5)
 			_anim_recoil()
 			_fsm.schedule(stagger_duration, _after_stagger)
+		"stunned":
+			# The Hushbloom's verb (flora_taxonomy): a full neuroactive freeze — no movement, no
+			# scans (the detection gate never admits "stunned"), held for the burst's duration.
+			_charging = false
+			_stop_movement()
+			_set_mesh_color(Color(0.82, 0.78, 0.9))
+			_set_eye_energy(0.0)
+			_anim_recoil()
+			_fsm.schedule(_stun_duration, _after_stun)
 		"search":
 			_set_eye_energy(1.0)
 			_set_mesh_color(_base_color)
@@ -492,6 +514,11 @@ func _after_stagger() -> void:
 	if get_state() != "stagger":
 		return
 	_fsm.transition_to("pursuit" if _target_engageable() else "search")
+
+func _after_stun() -> void:
+	if get_state() != "stunned":
+		return
+	_fsm.transition_to("pursuit" if _target_engageable() else "return")
 
 func _begin_search() -> void:
 	if get_state() != "pursuit":

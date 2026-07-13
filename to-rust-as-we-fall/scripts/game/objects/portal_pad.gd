@@ -93,7 +93,29 @@ func _wire_outline() -> void:
 		target.call("set_interaction_delegate", self)
 	set_outline_target(target)
 
+## A STUNNED portal refuses all transit until the stun expires (the Hushbloom portal-stun — the
+## chase framework's expert-solution mechanic: sealing both of an offshoot's portals makes it a
+## locked pocket). Pure tick check; the glow dims while sealed.
+var _stunned_until := -1.0
+
+func stun(duration: float) -> void:
+	if _gs == null or _gs.scheduler == null:
+		return
+	_stunned_until = float(_gs.scheduler.get_current_tick()) + duration
+	if _glow_mat != null:
+		_glow_mat.emission_energy_multiplier = 0.08
+	_gs.scheduler.schedule_after(duration + 0.05, _refresh_stun_visual, _hop_tag() + "_stun")
+
+func is_stunned() -> bool:
+	return _gs != null and _gs.scheduler != null 		and float(_gs.scheduler.get_current_tick()) < _stunned_until
+
+func _refresh_stun_visual() -> void:
+	if not is_stunned() and _glow_mat != null:
+		_glow_mat.emission_energy_multiplier = 1.6
+
 func _on_interacted() -> void:
+	if is_stunned():
+		return
 	var group := _group_for(str(active_character))
 	if group.size() <= 1:
 		step_through()
@@ -143,6 +165,8 @@ func compute_group_arrivals(ids: Array) -> Array:
 ## steps in once the walk-off plan ENDS (read analytically off the scheduler; replay reproduces the
 ## crossing from the logged snap+move pairs alone).
 func step_group_through(ids: Array) -> bool:
+	if is_stunned():
+		return false
 	if _gs == null or ids.is_empty() or not _queue.is_empty():
 		return false
 	_queue = ids.duplicate()
@@ -235,7 +259,7 @@ func _exit_tree() -> void:
 
 ## Step the activating member (active_character) through to the paired destination.
 func step_through() -> bool:
-	if _gs == null:
+	if _gs == null or is_stunned():
 		return false
 	var who := str(active_character)
 	if who == "" or not _gs.characters.has(who):

@@ -198,6 +198,9 @@ func _ready() -> void:
 			"--test-shelter-sanctuary":
 				ran_test = true
 				await _test_shelter_sanctuary()
+			"--test-naturalizer-hushbloom":
+				ran_test = true
+				await _test_naturalizer_hushbloom()
 			"--test-dev-console":
 				ran_test = true
 				await _test_dev_console()
@@ -1331,6 +1334,7 @@ func _run_all_tests() -> void:
 	await _test_aghora_clearance()
 	await _test_boss_playable()
 	await _test_shelter_sanctuary()
+	await _test_naturalizer_hushbloom()
 	await _test_dev_console()
 	await _test_touch_modes()
 	await _test_ortho_orbit()
@@ -32469,6 +32473,84 @@ func _test_shelter_sanctuary() -> void:
 		_assert_true(bool(gs2.is_at_shelter("aster")),
 			"the generated stretch's %s is a sheltered region" % aid)
 	await _dispose_scene(inst2)
+
+## NATURALIZER + HUSHBLOOM (the lockout-chase build cluster, stage 1): the enforcement class
+## hesitates inside iron-fauna zones (the chase's signature lever), the Hushbloom's thigmonastic
+## burst FREEZES enemies and SEALS portals (the framework's expert-solution mechanic), regenerates,
+## and can be picked for the carried throw.
+func _test_naturalizer_hushbloom() -> void:
+	_test_name = "Naturalizer + Hushbloom"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	var holder := Node3D.new()
+	add_child(holder)
+	# --- Naturalizer hesitation: the same walk is slower through the zone ---
+	var nat := Naturalizer.new()
+	nat.game_state = gs
+	nat.char_id = "nat_0"
+	holder.add_child(nat)
+	gs.register_character("nat_0", Vector3(0, 0, 0), 3.0, {"detection_range": 0.0})
+	nat.activate()
+	gs.command_move_to_pos("nat_0", Vector3(20, 0, 0))
+	sched.advance_ticks(2.0)
+	var clear_dist := gs.get_position("nat_0").x
+	_assert_true(clear_dist > 5.0, "baseline: the naturalizer covers ground at full speed (%.1f)" % clear_dist)
+	gs.snap_character_to("nat_0", Vector3(0, 0, 0))
+	nat.add_hesitation_zone(Vector3(5, 0, 0), 30.0)   # the whole run sits inside the zone
+	gs.command_move_to_pos("nat_0", Vector3(20, 0, 0))
+	sched.advance_ticks(2.0)
+	var hes_dist := gs.get_position("nat_0").x
+	_assert_true(nat.is_hesitating(), "inside an iron-fauna zone the protocol hesitation engages")
+	_assert_true(hes_dist < clear_dist * 0.75,
+		"the hesitation is a REAL slow (%.1f vs %.1f clear)" % [hes_dist, clear_dist])
+	# --- Hushbloom: any body entering the trigger radius fires the burst; enemies freeze ---
+	var bloom := Hushbloom.new()
+	bloom.configure(gs, Vector3(30, 0, 0), {"trigger_radius": 1.5, "stun_radius": 4.0,
+		"stun_secs": 3.0, "regen_secs": 6.0})
+	holder.add_child(bloom)
+	bloom.set_enemy_provider(func() -> Array: return [nat])
+	gs.snap_character_to("nat_0", Vector3(26.5, 0, 0))
+	nat._hesitation_zones.clear()
+	gs.change_move_speed("nat_0", 3.0)
+	gs.command_move_to_pos("nat_0", Vector3(30, 0, 0))   # walks into the trigger radius
+	sched.advance_ticks(1.5)
+	_assert_true(not bloom.is_charged(), "a body crossing the trigger radius fires the burst")
+	_assert_equals(nat.get_state(), "stunned", "the burst freezes the enemy (Enemy.stun)")
+	var frozen_at: Vector3 = gs.get_position("nat_0")
+	sched.advance_ticks(1.0)
+	_assert_true(gs.get_position("nat_0").is_equal_approx(frozen_at),
+		"a stunned enemy holds its position")
+	sched.advance_ticks(3.0)
+	_assert_true(nat.get_state() != "stunned", "the stun expires and the enemy re-evaluates")
+	# step the enemy off the trigger radius — a recharged bloom re-fires thigmonastically on any
+	# body still standing in it (correct canon; not what this assert measures)
+	gs.snap_character_to("nat_0", Vector3(50, 0, 0))
+	sched.advance_ticks(4.0)
+	_assert_true(bloom.is_charged(), "the core regenerates on the scheduler")
+	# --- The portal seal: a stunned portal refuses transit, then recovers ---
+	var pad := PortalPad.new()
+	pad.configure(gs, Vector3(40, 0, 0), Vector3(50, 0, 0), 1.2, Color(0.55, 0.42, 0.98))
+	holder.add_child(pad)
+	gs.register_character("walker", Vector3(40, 0, 0), 2.0, {"detection_range": 0.0})
+	pad.stun(2.0)
+	pad.active_character = "walker"
+	_assert_true(bool(pad.is_stunned()), "the portal is sealed")
+	_assert_true(not bool(pad.step_through()), "a sealed portal refuses transit")
+	_assert_true(gs.get_position("walker").x < 45.0, "the walker did not teleport through the seal")
+	sched.advance_ticks(2.2)
+	_assert_true(not bool(pad.is_stunned()), "the seal expires")
+	_assert_true(bool(pad.step_through()), "the recovered portal transits again")
+	_assert_true(gs.get_position("walker").x > 45.0, "the walker arrives at the destination")
+	# --- The carry verb ---
+	var bloom2 := Hushbloom.new()
+	bloom2.configure(gs, Vector3(60, 0, 0), {})
+	holder.add_child(bloom2)
+	_assert_true(bool(bloom2.pick()), "a charged bloom can be picked")
+	_assert_true(not bloom2.visible, "a picked bloom leaves the world")
+	_assert_true(not bool(bloom2.pick()), "a picked bloom cannot be picked twice")
+	holder.queue_free()
+	await get_tree().process_frame
 
 func _print_results() -> void:
 	print("")
