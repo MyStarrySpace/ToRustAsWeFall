@@ -13,6 +13,7 @@ extends Node
 @export var aster_present := true
 @export var peris_present := true
 @export var endo_present := false
+@export var myke_present := false
 
 ## Character id -> present flag for the roster the preview can model.
 func presence_map() -> Dictionary:
@@ -20,6 +21,7 @@ func presence_map() -> Dictionary:
 		"aster": aster_present,
 		"peris": peris_present,
 		"endo": endo_present,
+		"myke": myke_present,
 	}
 
 ## Just the present character ids, in roster order.

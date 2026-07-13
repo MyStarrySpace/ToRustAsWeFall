@@ -204,6 +204,9 @@ func _ready() -> void:
 			"--test-lockout-chase":
 				ran_test = true
 				await _test_lockout_chase()
+			"--test-inflammashunt":
+				ran_test = true
+				await _test_inflammashunt()
 			"--test-chase-probe":
 				ran_test = true
 				await _test_chase_probe()
@@ -1345,6 +1348,7 @@ func _run_all_tests() -> void:
 	await _test_shelter_sanctuary()
 	await _test_naturalizer_hushbloom()
 	await _test_lockout_chase()
+	await _test_inflammashunt()
 	await _test_dev_console()
 	await _test_touch_modes()
 	await _test_ortho_orbit()
@@ -11442,7 +11446,11 @@ func _assert_preview_overlay_vision_sources(instance: Node, label: String) -> vo
 		"peris": Vector3(7.0, 0.5, 2.0),
 		"endo": Vector3(-4.0, 0.5, -3.0),
 	}
+	# This fixture asserts the overlay stack's three source SLOTS, so pin the roster it
+	# measures: the trio visible, opt-in members (chunk-presence-driven) out of the pool.
+	instance.call("set_preview_character_visible", "myke", false)
 	for char_id in ["aster", "peris", "endo"]:
+		instance.call("set_preview_character_visible", char_id, true)
 		instance.call("headless_set_overlay_state", char_id, true)
 		instance.call("headless_set_character_position", char_id, party_positions[char_id])
 	instance.call("_sync_overlay_stack")
@@ -32627,6 +32635,247 @@ func _test_naturalizer_hushbloom() -> void:
 	await get_tree().process_frame
 
 ## THE LOCKOUT CHASE (GDD 12.1, docs/LOCKOUT_CHASE.md): the trigger raises the waves; the door
+## THE INFLAMMASHUNT (data/puzzles/inflammashunt_puzzle.md "Required Tests"): the ten
+## deterministic scenarios — clean informed solve, no-info long-hold solve, the four recoverable
+## wrong approaches, the two harmless early attempts, the Aster+Peris shadow solve, and the
+## route-info hold-time table. Every scenario ends with the same five steps ("water, clean,
+## clean, tend, open") because every wrong approach must leave the puzzle solvable.
+func _test_inflammashunt() -> void:
+	_test_name = "Inflammashunt"
+	# --- (1) clean_full_info_solution + (10) route_info_timers ---
+	var inst = await _instantiate_preview_chunk_and_wait("inflammashunt", 8)
+	if inst == null:
+		_assert_true(false, "inflammashunt instantiates")
+		return
+	var chunk = inst._active_chunk
+	var gs = inst._game_state
+	_assert_true(gs.characters.has("myke"), "the opt-in roster registers Myke for this chunk")
+	_assert_true(is_equal_approx(float(chunk._valve_it.dwell_time), 14.0),
+		"without the pipe diagram the valve is a LONG hold (14s)")
+	# Myke's crawl is physically character-coded: Aster is refused, Myke goes through
+	var crawl: Node = chunk.find_child("MykeCrawlIn", true, false)
+	var aster_before: Vector3 = gs.get_position("aster")
+	crawl.set("active_character", "aster")
+	crawl.call("_trigger")
+	inst.headless_advance(3.0, 0.1)
+	_assert_true(gs.get_position("aster").distance_to(aster_before) < 2.0,
+		"the crawlspace refuses Aster (only Myke fits)")
+	gs.snap_character_to("myke", Vector3(24.5, 0.0, -4.0))
+	crawl.set("active_character", "myke")
+	crawl.call("_trigger")
+	inst.headless_advance(14.0, 0.1)
+	var mp: Vector3 = gs.get_position("myke")
+	_assert_true(mp.x > 29.0 and mp.z < -9.5,
+		"the crawl carries Myke into the observation pocket (%.1f, %.1f)" % [mp.x, mp.z])
+	# all six route reads
+	for pair in [["AsterLogTerminal", "aster"], ["PipeDiagram", "aster"], ["DeadRootNetwork", "peris"],
+			["LivingJunction", "peris"], ["GrateObservation", "myke"], ["DeviceGap", "myke"]]:
+		var it: Node = chunk.find_child(str(pair[0]), true, false)
+		it.set("active_character", str(pair[1]))
+		it.call("_trigger")
+		inst.headless_advance(0.2, 0.1)
+	var st: Dictionary = chunk.headless_get_state()
+	var all_info := true
+	for k in st["route_info"]:
+		all_info = all_info and bool(st["route_info"][k])
+	_assert_true(all_info, "all six route observations are recorded")
+	_assert_true((st["reports"] as Dictionary).size() == 3,
+		"each completed route plays its confident wrong answer")
+	_assert_true(is_equal_approx(float(chunk._valve_it.dwell_time), 2.5),
+		"the pipe diagram cuts the valve hold to 2.5s (route info is efficiency)")
+	_assert_true(is_equal_approx(float(chunk._root_it.dwell_time), 2.5),
+		"the living junction cuts the root hold to 2.5s")
+	# the five-step solve: water, clean, clean, tend, open
+	_inflam_step(inst, chunk, "DrainageValve", "aster")
+	_assert_equals(str(chunk.char_a_state), "damp", "the valve dampens char A")
+	_inflam_step(inst, chunk, "CharDepositA", "myke")
+	_inflam_step(inst, chunk, "CharDepositB", "myke")
+	_assert_equals(str(chunk.char_b_state), "cleared", "damp char B scrapes clean")
+	_inflam_step(inst, chunk, "RootTendril", "peris")
+	_assert_equals(str(chunk.root_state), "connected", "the tended root connects")
+	_assert_true(bool(chunk.housing_unlocked), "the healing zone reaches the housing")
+	_inflam_step(inst, chunk, "DeviceHousing", "aster")
+	_assert_true(bool(chunk.device_retrieved), "clean informed solve retrieves the device")
+	_assert_true((chunk.wrong_events as Array).is_empty(), "clean solve records no wrong events")
+	_assert_equals(int(chunk.long_hold_count), 0, "informed play never long-holds")
+	await _dispose_scene(inst)
+	# the opt-in member never leaks into other fragments
+	var inst_other = await _instantiate_preview_chunk_and_wait("lure_relay", 6)
+	if inst_other != null:
+		_assert_true(not inst_other._game_state.characters.has("myke"),
+			"Myke is NOT registered in chunks that predate him (opt-in isolation)")
+		await _dispose_scene(inst_other)
+
+	# --- (2) long_hold_no_info_solution + (7) early_root + (8) early_housing ---
+	var inst2 = await _instantiate_preview_chunk_and_wait("inflammashunt", 8)
+	var chunk2 = inst2._active_chunk
+	_inflam_step(inst2, chunk2, "DeviceHousing", "aster")
+	_assert_true(not bool(chunk2.device_retrieved) and not bool(chunk2.housing_unlocked),
+		"the early housing attempt fails without state destruction")
+	_inflam_step(inst2, chunk2, "RootTendril", "peris")
+	_assert_equals(str(chunk2.root_state), "suppressed",
+		"tending before the char is cleared does nothing (residue suppresses)")
+	_assert_true(is_equal_approx(float(chunk2._valve_it.dwell_time), 14.0),
+		"no-info holds stay long")
+	_inflam_step(inst2, chunk2, "DrainageValve", "aster")
+	_inflam_step(inst2, chunk2, "CharDepositA", "myke")
+	_inflam_step(inst2, chunk2, "CharDepositB", "myke")
+	_inflam_step(inst2, chunk2, "RootTendril", "peris")
+	_inflam_step(inst2, chunk2, "DeviceHousing", "aster")
+	_assert_true(bool(chunk2.device_retrieved),
+		"the correct five steps still solve with NO route info (longer timers, same puzzle)")
+	_assert_true(int(chunk2.long_hold_count) >= 3,
+		"uninformed holds are counted (%d) — the hint ladder rides them" % int(chunk2.long_hold_count))
+	_assert_true((chunk2.wrong_events as Array).is_empty(), "slow is not wrong")
+	await _dispose_scene(inst2)
+
+	# --- (3) thermal_reset_recovery ---
+	var inst3 = await _instantiate_preview_chunk_and_wait("inflammashunt", 8)
+	var chunk3 = inst3._active_chunk
+	var gs3 = inst3._game_state
+	_inflam_step(inst3, chunk3, "JunctionTerminal", "aster")
+	_inflam_step(inst3, chunk3, "ThermalResetConfirm", "aster")
+	_assert_true(bool(chunk3.headless_get_state()["active_hazards"]["popcorn"]),
+		"the thermal reset ignites the popcorn hazard")
+	_assert_true("thermal_reset" in (chunk3.wrong_events as Array), "the mistake is recorded")
+	gs3.snap_character_to("aster", Vector3(40.0, 0.0, 0.0))
+	var hp0 := float(gs3.get_stat("aster", "hp"))
+	inst3.headless_advance(3.5, 0.1)
+	_assert_true(float(gs3.get_stat("aster", "hp")) < hp0,
+		"flaming sacs hurt anyone in the junction room")
+	_inflam_step(inst3, chunk3, "DrainageValve", "aster")
+	_assert_true(not bool(chunk3.headless_get_state()["active_hazards"]["popcorn"]),
+		"the valve floods the room and douses the fire (the taught counter)")
+	_inflam_step(inst3, chunk3, "CharDepositA", "myke")
+	_inflam_step(inst3, chunk3, "CharDepositB", "myke")
+	_inflam_step(inst3, chunk3, "RootTendril", "peris")
+	_inflam_step(inst3, chunk3, "DeviceHousing", "aster")
+	_assert_true(bool(chunk3.device_retrieved), "the puzzle stays solvable after the reset mistake")
+	await _dispose_scene(inst3)
+
+	# --- (4) dry_char_a_recovery: fire works, but it wakes what must stay dormant ---
+	var inst4 = await _instantiate_preview_chunk_and_wait("inflammashunt", 8)
+	var chunk4 = inst4._active_chunk
+	_inflam_step(inst4, chunk4, "CharDepositA", "myke")
+	_assert_equals(str(chunk4.char_a_state), "burned", "Myke's Inflame clears the dry char by fire")
+	_assert_true("burned_char_a" in (chunk4.wrong_events as Array), "— recorded as the wrong approach")
+	inst4.headless_advance(1.5, 0.1)
+	var raged := false
+	for e in chunk4._enemies:
+		if is_instance_valid(e) and str(e.get_state()) in ["alert", "pursuit", "windup", "charge", "impact", "recover"]:
+			raged = true
+	_assert_true(raged, "the heat wakes the Chelators — a real combat encounter")
+	inst4.headless_advance(18.0, 0.1)
+	_assert_true(float(chunk4._rage_until) < 0.0, "the encounter cools once nothing provokes it")
+	_inflam_step(inst4, chunk4, "DrainageValve", "aster")
+	_assert_equals(str(chunk4.char_a_state), "damp", "the flood dampens the burn residue")
+	_inflam_step(inst4, chunk4, "CharDepositA", "myke")
+	_inflam_step(inst4, chunk4, "CharDepositB", "myke")
+	_inflam_step(inst4, chunk4, "RootTendril", "peris")
+	_inflam_step(inst4, chunk4, "DeviceHousing", "aster")
+	_assert_true(bool(chunk4.device_retrieved), "solvable after the char A burn")
+	await _dispose_scene(inst4)
+
+	# --- (5) dry_char_b_hostile_root_recovery: the gas-sac herding sub-puzzle ---
+	var inst5 = await _instantiate_preview_chunk_and_wait("inflammashunt", 8)
+	var chunk5 = inst5._active_chunk
+	var gs5 = inst5._game_state
+	_inflam_step(inst5, chunk5, "CharDepositB", "myke")
+	_assert_equals(str(chunk5.root_state), "hostile", "fire near the root makes it HOSTILE")
+	_assert_true(gs5.characters.has("hostile_root"), "the root is a real registered body (Chain AI)")
+	gs5.snap_character_to("peris", Vector3(44.0, 0.0, 4.0))
+	var php := float(gs5.get_stat("peris", "hp"))
+	inst5.headless_advance(4.0, 0.1)
+	_assert_true(float(gs5.get_stat("peris", "hp")) < php, "the hostile root whips whoever comes close")
+	gs5.snap_character_to("peris", Vector3(33.0, 0.0, 6.0))
+	_inflam_step(inst5, chunk5, "GasSacFlora", "peris")
+	_assert_equals(str(chunk5.gas_sac_state), "tended", "Peris tends the flora — a sac ripens")
+	_inflam_step(inst5, chunk5, "TakeSac", "aster")
+	_assert_equals(str(chunk5.headless_get_state()["sac_carrier"]), "aster", "Aster carries the repellent sac")
+	# herd it home: keep the carrier on the far side so the recoil pushes the root at its base
+	var base: Vector3 = chunk5.ROOT_BASE_POS
+	var herded := false
+	for i in range(24):
+		if not gs5.characters.has("hostile_root"):
+			herded = true
+			break
+		var rp: Vector3 = gs5.get_position("hostile_root")
+		var away := Vector2(rp.x - base.x, rp.z - base.z)
+		var dir := away.normalized() if away.length() > 0.05 else Vector2(1, 0)
+		gs5.snap_character_to("aster", Vector3(rp.x + dir.x * 1.2, 0.0, rp.z + dir.y * 1.2))
+		inst5.headless_advance(0.8, 0.1)
+	inst5.headless_advance(1.5, 0.1)
+	_assert_true(herded or not gs5.characters.has("hostile_root"),
+		"boxed against its base, the root retracts")
+	inst5.headless_advance(5.0, 0.1)
+	_assert_equals(str(chunk5.root_state), "suppressed",
+		"a tame tendril regrows — the puzzle is back in a recoverable state")
+	_inflam_step(inst5, chunk5, "DrainageValve", "aster")
+	_inflam_step(inst5, chunk5, "CharDepositA", "myke")
+	_inflam_step(inst5, chunk5, "CharDepositB", "myke")
+	_inflam_step(inst5, chunk5, "RootTendril", "peris")
+	_inflam_step(inst5, chunk5, "DeviceHousing", "aster")
+	_assert_true(bool(chunk5.device_retrieved), "solvable after the hostile-root recovery")
+	await _dispose_scene(inst5)
+
+	# --- (6) attack_buffer_recovery ---
+	var inst6 = await _instantiate_preview_chunk_and_wait("inflammashunt", 8)
+	var chunk6 = inst6._active_chunk
+	_inflam_step(inst6, chunk6, "StrikeCluster", "aster")
+	_assert_equals(str(chunk6.buffer_state), "shattered", "striking the dormant ring shatters the buffer")
+	_assert_true("attacked_buffer" in (chunk6.wrong_events as Array), "— recorded")
+	_assert_true(int(chunk6._enemies.size()) > 3, "active Chelators flood in from the broken ring")
+	inst6.headless_advance(18.0, 0.1)
+	inst6.headless_advance(5.0, 0.1)
+	_assert_equals(str(chunk6.buffer_state), "stable",
+		"left alone, the cluster reforms — the buffer is part of the system")
+	_inflam_step(inst6, chunk6, "DrainageValve", "aster")
+	_inflam_step(inst6, chunk6, "CharDepositA", "myke")
+	_inflam_step(inst6, chunk6, "CharDepositB", "myke")
+	_inflam_step(inst6, chunk6, "RootTendril", "peris")
+	_inflam_step(inst6, chunk6, "DeviceHousing", "aster")
+	_assert_true(bool(chunk6.device_retrieved), "solvable after the buffer attack")
+	await _dispose_scene(inst6)
+
+	# --- (9) shadow_solution: Aster + Peris reconstruct route C without entering it ---
+	var inst7 = await _instantiate_preview_chunk_and_wait("inflammashunt", 8, {"party": ["aster", "peris"]})
+	var chunk7 = inst7._active_chunk
+	var gs7 = inst7._game_state
+	_assert_true(not gs7.characters.has("myke"), "the shadow party has no Myke")
+	for pair2 in [["AsterLogTerminal", "aster"], ["PipeDiagram", "aster"],
+			["DeadRootNetwork", "peris"], ["LivingJunction", "peris"]]:
+		var it2: Node = chunk7.find_child(str(pair2[0]), true, false)
+		it2.set("active_character", str(pair2[1]))
+		it2.call("_trigger")
+		inst7.headless_advance(0.2, 0.1)
+	_inflam_step(inst7, chunk7, "ObserveFeeding", "aster")
+	_assert_true(bool(chunk7.route_info["myke_char_feed"]),
+		"watching the feeders + routes A/B reconstructs C1 (char is the fuel)")
+	_inflam_step(inst7, chunk7, "ExamineCluster", "peris")
+	_assert_true(bool(chunk7.route_info["myke_buffer_ring"]),
+		"examining the ring + the living junction reconstructs C2 (it's a buffer)")
+	_inflam_step(inst7, chunk7, "DrainageValve", "aster")
+	_inflam_step(inst7, chunk7, "CharDepositA", "aster")
+	_assert_equals(str(chunk7.char_a_state), "cleared",
+		"scraping is general labor — Aster clears char without Myke")
+	_inflam_step(inst7, chunk7, "CharDepositB", "peris")
+	_inflam_step(inst7, chunk7, "RootTendril", "peris")
+	_inflam_step(inst7, chunk7, "DeviceHousing", "aster")
+	_assert_true(bool(chunk7.device_retrieved), "the shadow pair completes the same five-step solve")
+	_assert_true((chunk7.wrong_events as Array).is_empty(), "— cleanly")
+	await _dispose_scene(inst7)
+
+## Fire one junction interactable through the data layer (the same force-fire path every
+## chunk test uses) and let the scheduler settle.
+func _inflam_step(inst: Node, chunk: Node, node_name: String, actor: String) -> void:
+	var it: Node = chunk.find_child(node_name, true, false)
+	if it == null:
+		_assert_true(false, "interactable %s exists" % node_name)
+		return
+	it.set("active_character", actor)
+	it.call("_trigger")
+	inst.headless_advance(0.4, 0.1)
+
 ## lever holds pursuers; the offshoot's Hushbloom DOUBLE-SEAL makes the pocket a Naturalizer-proof
 ## hide (the canon expert solution); Tyreg's accept arms her Suppress; Endo's wall is sanctuary
 ## and the rest completes the scene.

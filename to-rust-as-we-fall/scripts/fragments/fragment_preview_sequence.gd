@@ -31,6 +31,7 @@ const GEOMETRY_LAB_CHUNK_SCENE := preload("res://scenes/fragments/chunks/geometr
 const SET_PIECE_SHOWCASE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/set_piece_showcase_chunk.tscn")
 const BOSS_SHOWCASE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/boss_showcase_chunk.tscn")
 const LOCKOUT_CHASE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/lockout_chase_chunk.tscn")
+const INFLAMMASHUNT_CHUNK_SCENE := preload("res://scenes/fragments/chunks/inflammashunt_chunk.tscn")
 const AGHORA_BAZAAR_CHUNK_SCENE := preload("res://scenes/fragments/chunks/aghora_bazaar_chunk.tscn")
 const SightMaskBakerScript := preload("res://scripts/game/world/sight_mask_baker.gd")
 
@@ -63,6 +64,7 @@ const CHUNK_SCENES := {
 	"set_piece_showcase": SET_PIECE_SHOWCASE_CHUNK_SCENE,
 	"boss_showcase": BOSS_SHOWCASE_CHUNK_SCENE,
 	"lockout_chase": LOCKOUT_CHASE_CHUNK_SCENE,
+	"inflammashunt": INFLAMMASHUNT_CHUNK_SCENE,
 	"aghora_bazaar": AGHORA_BAZAAR_CHUNK_SCENE,
 }
 
@@ -169,6 +171,7 @@ const PREVIEW_ENTRIES := [
 	# THE LOCKOUT CHASE (GDD 12.1, docs/LOCKOUT_CHASE.md): tags fail at the checkpoint, Naturalizer
 	# waves take the corridor; the levers you learned, Tyreg's choice, the unmarked offshoot.
 	{"id": "lockout_chase", "chunk": "lockout_chase", "title": "The Lockout Chase (Act 1 climax)", "stage": 4},
+	{"id": "inflammashunt", "chunk": "inflammashunt", "title": "The Inflammashunt (danger zone)", "stage": 4},
 ]
 
 ## The menu entry for an id (or {} if none).
@@ -185,25 +188,34 @@ static func get_preview_stage(entry_id: String) -> int:
 	return int(get_preview_entry(entry_id).get("stage", 1))
 
 const CHARACTER_IDS := ["aster", "peris", "endo"]
+## Members recruited later in the story. They exist in a preview ONLY when a chunk's
+## presence map includes them: built hidden, registered + portraited on demand, and
+## unregistered when absent so a parked invisible body never claims grid cells (parked
+## characters are cooperative-pathfinding obstacles) in fragments that predate them.
+const OPT_IN_CHARACTER_IDS := ["myke"]
 const CHARACTER_DISPLAY_NAMES := {
 	"aster": "Aster",
 	"peris": "Peris",
 	"endo": "Endo",
+	"myke": "Myke",
 }
 const CHARACTER_COLORS := {
 	"aster": Color(0.29, 0.62, 1.0),
 	"peris": Color(1.0, 0.67, 0.27),
 	"endo": Color(0.4, 0.72, 0.55),
+	"myke": Color(0.85, 0.36, 0.2),
 }
 const CHARACTER_SPEEDS := {
 	"aster": 3.2,
 	"peris": 3.0,
 	"endo": 2.8,
+	"myke": 3.1,
 }
 const DEFAULT_SPAWNS := {
 	"aster": Vector3(4.0, 0.5, 0.0),
 	"peris": Vector3(2.0, 0.5, 1.8),
 	"endo": Vector3(0.0, 0.5, -1.8),
+	"myke": Vector3(-2.2, 0.5, 0.0),
 }
 
 const ABILITY_KEYCODES := {
@@ -237,7 +249,7 @@ const STAMINA_REGEN := 10.0
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
 @export_enum("stacks", "rings", "lockout", "mother_flure", "survival_range",
 	"endo_junction_stretch", "generated_stretch",
-	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "architecture_showcase", "geometry_lab", "set_piece_showcase", "boss_showcase", "aghora_bazaar", "lockout_chase") var preview_chunk := "stacks"
+	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "architecture_showcase", "geometry_lab", "set_piece_showcase", "boss_showcase", "aghora_bazaar", "lockout_chase", "inflammashunt") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 
@@ -352,6 +364,13 @@ func _build_characters() -> void:
 	for char_id in CHARACTER_IDS:
 		var node := _create_player_character(CHARACTER_DISPLAY_NAMES[char_id], CHARACTER_COLORS[char_id])
 		node.position = DEFAULT_SPAWNS[char_id]
+		characters_root.add_child(node)
+		_characters[char_id] = node
+
+	for char_id in OPT_IN_CHARACTER_IDS:
+		var node := _create_player_character(CHARACTER_DISPLAY_NAMES[char_id], CHARACTER_COLORS[char_id])
+		node.position = DEFAULT_SPAWNS[char_id]
+		node.visible = false
 		characters_root.add_child(node)
 		_characters[char_id] = node
 
@@ -1908,8 +1927,11 @@ func _sync_overlay_stack() -> void:
 	_overlay_stack_material.set_shader_parameter("fog_vision_pos_2", source_2)
 
 func _get_overlay_vision_positions() -> Array[Vector3]:
+	# Every VISIBLE party member clears fog — opt-in members included. The shader stack
+	# carries three source slots, so a four-member party contributes its first three
+	# (the sync clamps the count below).
 	var positions: Array[Vector3] = []
-	for char_id in CHARACTER_IDS:
+	for char_id in CHARACTER_IDS + OPT_IN_CHARACTER_IDS:
 		if not _characters.has(char_id) or _characters[char_id] == null:
 			continue
 		if not _character_is_visible(char_id):
@@ -1922,7 +1944,7 @@ func _get_overlay_vision_positions() -> Array[Vector3]:
 
 func _get_overlay_vision_source_state() -> Array[Dictionary]:
 	var sources: Array[Dictionary] = []
-	for char_id in CHARACTER_IDS:
+	for char_id in CHARACTER_IDS + OPT_IN_CHARACTER_IDS:
 		if not _characters.has(char_id) or _characters[char_id] == null:
 			continue
 		if not _character_is_visible(char_id):
@@ -2511,14 +2533,54 @@ func _position_party_for_chunk() -> void:
 ## Honour a chunk's PartyPresence node (if any): hide absent members so they
 ## can't be selected or moved. No node / empty map => keep the full roster.
 func _apply_chunk_party_presence() -> void:
-	if _active_chunk == null or not _active_chunk.has_method("get_party_presence"):
-		return
-	var presence: Variant = _active_chunk.call("get_party_presence")
-	if not (presence is Dictionary) or (presence as Dictionary).is_empty():
+	var presence: Dictionary = {}
+	if _active_chunk != null and _active_chunk.has_method("get_party_presence"):
+		var p: Variant = _active_chunk.call("get_party_presence")
+		if p is Dictionary:
+			presence = p
+	_apply_opt_in_members(presence)
+	if presence.is_empty():
 		return
 	for char_id in CHARACTER_IDS:
-		if (presence as Dictionary).has(char_id):
-			set_preview_character_visible(char_id, bool((presence as Dictionary)[char_id]))
+		if presence.has(char_id):
+			set_preview_character_visible(char_id, bool(presence[char_id]))
+
+## Opt-in members exist only while a chunk's presence map includes them. Registration is
+## the load-bearing part: an absent member must NOT be in GameState at all.
+func _apply_opt_in_members(presence: Dictionary) -> void:
+	if _game_state == null:
+		return
+	var spawns := DEFAULT_SPAWNS.duplicate(true)
+	if _active_chunk != null and _active_chunk.has_method("get_spawn_positions"):
+		spawns.merge(_active_chunk.call("get_spawn_positions"), true)
+	for cid_v in OPT_IN_CHARACTER_IDS:
+		var char_id := str(cid_v)
+		var want := bool(presence.get(char_id, false))
+		var have: bool = _game_state.characters.has(char_id)
+		if want and not have:
+			_register_gs_character(char_id, _characters.get(char_id), CHARACTER_SPEEDS[char_id], {
+				"hp": DEFAULT_HP,
+				"stamina": DEFAULT_STAMINA,
+				"atp": DEFAULT_ATP,
+			})
+			if _characters.get(char_id) != null and _characters[char_id].has_method("bind_interaction_root"):
+				_characters[char_id].call("bind_interaction_root", self)
+			_character_state[char_id] = {"hp": DEFAULT_HP, "sta": DEFAULT_STAMINA, "atp": DEFAULT_ATP,
+				"status": "", "visible": true}
+			if _hud != null:
+				_hud.add_portrait(char_id, CHARACTER_DISPLAY_NAMES[char_id], CHARACTER_COLORS[char_id])
+			if spawns.has(char_id):
+				headless_set_character_position(char_id, spawns[char_id])
+			set_preview_character_visible(char_id, true)
+			_sync_character_hud(char_id)
+		elif not want and have:
+			set_preview_character_visible(char_id, false)
+			_game_state.unregister_character(char_id)
+			_character_state.erase(char_id)
+			if _hud != null:
+				_hud.remove_portrait(char_id)
+		elif want and have:
+			set_preview_character_visible(char_id, true)
 
 func _default_chunk_character() -> String:
 	var default_id := "aster"
@@ -2539,7 +2601,7 @@ func _cycle_character() -> void:
 	var cycle_ids: Array[String] = _selected_char_ids.duplicate()
 	if cycle_ids.size() <= 1:
 		cycle_ids.clear()
-		for char_id in CHARACTER_IDS:
+		for char_id in CHARACTER_IDS + OPT_IN_CHARACTER_IDS:
 			if _character_is_available(char_id):
 				cycle_ids.append(char_id)
 	if cycle_ids.size() <= 1:
