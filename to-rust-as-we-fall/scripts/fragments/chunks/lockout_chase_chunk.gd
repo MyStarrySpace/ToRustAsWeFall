@@ -164,6 +164,44 @@ func _spawn_wave(count: int) -> void:
 		if nat != null and nat.has_method("add_hesitation_zone"):
 			nat.add_hesitation_zone(Vector3(CHELATOR_X, 0, -1.0), 6.5)
 	_show_note("Naturalizers on the corridor.", 1.6)
+	_arm_pursuit_director()
+
+## THE CHASE CONTRACT (framework): pursuit is RELENTLESS — pursuers track the fleeing party down
+## the whole corridor, no detection-radius leash. The director re-engages any pursuer that has
+## dropped back to a scanning state toward the nearest party member engage_target() will accept:
+## downed, sheltered, and FULLY CONCEALED targets are refused there, so Endo's wall and the
+## offshoot tight-hides still break the track (the expert path's whole premise).
+func _arm_pursuit_director() -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	sched.cancel_tag("chase_pursuit")
+	sched.schedule_after(0.8, _pursuit_director, "chase_pursuit")
+
+func _pursuit_director() -> void:
+	var gs = _get_game_state()
+	if gs != null:
+		for enemy in _enemies:
+			if not is_instance_valid(enemy) or not enemy.is_alive() or enemy.is_stunned():
+				continue
+			if enemy.get_state() not in ["idle", "roam", "search", "return"]:
+				continue
+			var p: Vector3 = gs.get_position(enemy.char_id)
+			var best := ""
+			var best_d := INF
+			for cid in ["aster", "peris"]:
+				if not gs.characters.has(cid):
+					continue
+				var cp: Vector3 = gs.get_position(cid)
+				var d := Vector2(p.x - cp.x, p.z - cp.z).length()
+				if d < best_d:
+					best_d = d
+					best = cid
+			if best != "":
+				enemy.engage_target(best)
+	var sched2 = _get_scheduler()
+	if sched2 != null:
+		sched2.schedule_after(0.8, _pursuit_director, "chase_pursuit")
 
 ## The decline pressure: crossing S4 without Tyreg's help fires the side-corridor wave (canon).
 func _decline_watch() -> void:

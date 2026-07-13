@@ -326,6 +326,29 @@ func _exit_state(state: String) -> void:
 
 # --- Detection (via GameState predictive signal) ---
 
+## CHASE-GRADE acquisition (chase_scene_framework: the pursuer TRACKS the fleeing party — no
+## detection-radius leash). Engages `target_id` from any scanning state, honouring every gate the
+## detection path honours: never a downed target, never sanctuary ground, never a fully concealed
+## one (the tight-hide MUST still break the track — the expert path depends on it). A chase
+## director polls this; the enemy's own FSM does the rest (and loses the trail normally).
+func engage_target(target_id: String) -> bool:
+	if game_state == null or not game_state.characters.has(target_id):
+		return false
+	if get_state() not in ["idle", "roam", "patrol", "lured", "search", "return"]:
+		return false
+	var t_stats: Dictionary = game_state.characters[target_id].stats
+	if t_stats.has("hp") and float(t_stats["hp"]) <= 0.0:
+		return false
+	if game_state.has_method("is_at_shelter") and game_state.is_at_shelter(target_id):
+		return false
+	if game_state.has_method("is_character_hidden") and game_state.is_character_hidden(target_id):
+		return false
+	_current_target_id = target_id
+	_last_known_target_pos = game_state.get_position(target_id)
+	target_spotted.emit(target_id)
+	_fsm.transition_to("alert")
+	return true
+
 func _on_detection_predicted(detector_id: String, target_id: String) -> void:
 	if detector_id != char_id:
 		return

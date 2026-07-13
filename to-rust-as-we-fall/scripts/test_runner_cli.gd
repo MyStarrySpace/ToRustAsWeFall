@@ -32580,6 +32580,17 @@ func _test_lockout_chase() -> void:
 	inst.headless_advance(3.0, 0.1)
 	_assert_true(bool(chunk.get_preview_state()["chase_started"]), "the rejection starts the chase")
 	_assert_true(int(chunk.get_preview_state()["pursuers"]) >= 2, "wave 1 takes the corridor")
+	# THE CHASE IS RELENTLESS (the framework's pursuer contract): the wave hunts the party down
+	# the corridor even when they are far beyond a normal detection radius — pursuers track the
+	# fleeing party; only full concealment breaks the track.
+	for cid0 in ["aster", "peris"]:
+		gs.snap_character_to(cid0, Vector3(42.0, 0.0, 0.0))
+	inst.headless_advance(8.0, 0.1)
+	var chased := false
+	for e0 in chunk.enemies():
+		if is_instance_valid(e0) and gs.get_position(str(e0.char_id)).x > 14.0:
+			chased = true
+	_assert_true(chased, "the wave leaves the plaza and RUNS DOWN the fleeing party (no 9 wu leash)")
 	var nat0 = chunk.enemies()[0]
 	_assert_true(not (nat0._hesitation_zones as Array).is_empty(),
 		"pursuers carry the Chelator hesitation zone (the protocol lever is armed)")
@@ -32635,8 +32646,10 @@ func _test_lockout_chase() -> void:
 	inst.headless_advance(3.0, 0.1)
 	_assert_true(int(chunk._suppress_charges) < chunk.SUPPRESS_CHARGES,
 		"her Suppress spends a round on the closing pursuer")
-	# --- Endo's wall: sanctuary + the rest completes the scene ---
+	# --- Endo's wall: sanctuary + the rest completes the scene (the test party stood still under
+	# REAL pursuit above — restore them the way the wipe-restart does, then finish the run) ---
 	for cid4 in ["aster", "peris"]:
+		gs.restore_character(cid4)
 		gs.snap_character_to(cid4, Vector3(float(chunk.WALL_X) + 2.0, 0.0, 0.0))
 	_assert_true(bool(gs.is_at_shelter("aster")), "the maintained section is a REAL shelter region")
 	var wall_rest: Node = null

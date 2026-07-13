@@ -117,7 +117,29 @@ variant is listed there as the alternative if the director wants a whisper).
 - Future chases reuse this chunk's machinery: patrol-failure chases (Act 2), swarm flights,
   Peris-sundowning inversions, NK night infiltration (the framework's anticipated list).
 
-## Build state (v1 BUILT, 2026-07-12)
+## The chunk composition (structure v2 — PROPOSED, director approval)
+
+"The corridors they just came through, now hostile" is the design material — so each segment
+QUOTES a chunk the player has already learned, replayed in reverse under pursuit. One fragment,
+one grid, one loader (no nested scene-chunks); each segment is that chunk's signature vocabulary
+rebuilt as chase dressing + its lever:
+
+| Seg | Quoted chunk | What it contributes under pursuit |
+|-----|--------------|-----------------------------------|
+| S0 | `facility_checkpoint` kind (built) | the plaza, scan gates, queue rails; the trigger |
+| S1 | **stacks** (Open Files) | data-terminal ROWS as weave-lanes; conduit troughs pulsing AGAINST your direction (you run against the data flow); the door lever at the hall's exit |
+| S2 | **pump_hall** | pipe gantries + the iron seep feeding THE CHELATOR CLUSTER; the Flure decoy on its fertile lip |
+| S3 | **lure_relay** | the watched junction fan grammar; Tyreg's side mouth; THREE look-alike portal terminals (two ammo caches + the unmarked offshoot) |
+| S4 | **channels_wash_intro** | a REAL Channel wash strip crossing the corridor, flow-strip tell live — time it like the channels taught you; a wave following badly is SWEPT (the canon environmental slowdown); the Scarpet dry lane beside it |
+| S5 | **sprint_gap** | the stamina squeeze; the weak-wall pry; the decline side-wave mouth |
+| S6 | **endo_junction_stretch** | the maintained wall + hearth light + Endo working at a distance; the sanctuary region; the aftermath framing |
+
+Pedagogy check: every lever is a mechanic the player used in the quoted chunk's own scene — the
+chase tests the course they already passed, at speed, in reverse. Build order once approved:
+S4 (the Channel object is loader-ready) → S1 terminals → S2 gantries → S3 junction dressing →
+S5 → S6 visual upgrade.
+
+## Build state (v1 BUILT 2026-07-12; pursuit fixed 2026-07-13)
 
 `--preview=lockout_chase` ("The Lockout Chase (Act 1 climax)", picker top). Built: the checkpoint
 plaza (the new `facility_checkpoint` kind) + scanner trigger -> scheduled Naturalizer waves; the
@@ -133,3 +155,9 @@ Follow-ups (the framework's full fidelity): Tyreg as temporarily CONTROLLABLE + 
 portal loop (hack/carry/deliver), the close-approach escalation director (warning -> damage ->
 caught) instead of native strikes only, the zone-rollback + flora-kill reset flavor, weak-wall
 lever at S5, aftermath dialogue from lockout_chase_aftermath.md, and the real-input leg.
+
+2026-07-13: **the chase actually chases** — `Enemy.engage_target()` (chase-grade acquisition
+honouring every detection gate: downed / sheltered / fully-concealed targets refused) + the
+chunk's pursuit director (0.8 s scheduler poll re-engaging any pursuer that dropped to a
+scanning state toward the nearest party member). No detection-radius leash; tight-hides and
+Endo's wall still break the track. Red/green: the wave previously stood at the plaza forever.
