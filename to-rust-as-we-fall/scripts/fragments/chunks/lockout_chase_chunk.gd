@@ -15,17 +15,20 @@ extends "res://scripts/fragments/chunks/data_fragment_chunk.gd"
 const PLAZA_X := 6.0
 const TRENCH_X0 := 15.0          # the uncrossable service trench at the stretch's throat
 const TRENCH_X1 := 19.5
-const DOOR_X := 32.0
+const WASH_X := 120.0            # S4: the wash undercut (the channels quote -- a REAL Channel)
+const BARRICADE_X0 := 158.0      # S5: the collapse shelf's debris wall (clamber over)
+const BARRICADE_X1 := 161.5
+const DOOR_X := 42.0
 const CHELATOR_X := 55.0
 const JUNCTION_X := 76.0
 const OFFSHOOT_Z := 14.0
 const OFFSHOOT_EXIT_X := 90.0
-const WALL_X := 140.0
+const WALL_X := 205.0
 const CORRIDOR_HALF_Z := 5.0
 
 const DOOR_HOLD_SECS := 7.0      # how long the sealed door holds a wave (they cut through)
 const SEAL_SECS := 22.0          # the Hushbloom portal seal (covers one full search cycle)
-const NAT_SPEED := 5.4           # party base 3.0. EFFECTIVE pursuit is ~half the raw speed (the
+const NAT_SPEED := 4.4           # party base 3.0. EFFECTIVE pursuit is ~half the raw speed (the
                                  # rescan tail-chase), so 6.0 closes on a runner at ~0.4 wu/s —
                                  # sprint-only fails late-corridor; the door hold (7 s) + chelator
                                  # break buy the escape margin (probe-tuned, framework knob)
@@ -52,7 +55,9 @@ func _build_chunk() -> void:
 	super._build_chunk()
 	_build_checkpoint()
 	_build_trench()
+	_build_terminal_rows()
 	_build_door()
+	_build_barricade()
 	_build_chelator()
 	_build_offshoot()
 	_build_tyreg_junction()
@@ -72,16 +77,16 @@ func _chase_fragment() -> Fragment:
 	frag.party_ids = PackedStringArray(["aster", "peris"])
 	frag.spawns = {"aster": Vector3(PLAZA_X, 0.5, 1.0), "peris": Vector3(PLAZA_X, 0.5, -1.0)}
 	frag.floors = [
-		{"pos": Vector3(75.0, -0.05, 0.0), "size": Vector3(150.0, 0.1, CORRIDOR_HALF_Z * 2.0),
+		{"pos": Vector3(111.0, -0.05, 0.0), "size": Vector3(222.0, 0.1, CORRIDOR_HALF_Z * 2.0),
 			"color": Color(0.10, 0.10, 0.12), "tile": "deck_metal"},
 		# the offshoot pocket floor (portal-only access: its island is walled off the corridor)
 		{"pos": Vector3(JUNCTION_X + 4.0, -0.05, OFFSHOOT_Z), "size": Vector3(8.0, 0.1, 5.0),
 			"color": Color(0.08, 0.08, 0.10), "tile": "deck_metal"},
 	]
 	frag.walls = [
-		{"pos": Vector3(75.0, 1.6, CORRIDOR_HALF_Z + 0.2), "size": Vector3(150.0, 3.2, 0.4),
+		{"pos": Vector3(111.0, 1.6, CORRIDOR_HALF_Z + 0.2), "size": Vector3(222.0, 3.2, 0.4),
 			"color": Color(0.07, 0.07, 0.09)},
-		{"pos": Vector3(75.0, 1.6, -CORRIDOR_HALF_Z - 0.2), "size": Vector3(150.0, 3.2, 0.4),
+		{"pos": Vector3(111.0, 1.6, -CORRIDOR_HALF_Z - 0.2), "size": Vector3(222.0, 3.2, 0.4),
 			"color": Color(0.07, 0.07, 0.09)},
 		# the offshoot pocket's own shell
 		{"pos": Vector3(JUNCTION_X + 4.0, 1.4, OFFSHOOT_Z + 2.7), "size": Vector3(8.4, 2.8, 0.3),
@@ -95,7 +100,10 @@ func _chase_fragment() -> Fragment:
 	]
 	frag.lights = [
 		{"pos": Vector3(10.0, 4.0, 0.0), "color": Color(0.72, 0.84, 1.0), "energy": 2.6, "range": 18.0},
+		{"pos": Vector3(32.0, 3.5, 0.0), "color": Color(0.36, 0.91, 0.5), "energy": 1.1, "range": 20.0},
 		{"pos": Vector3(70.0, 3.5, 0.0), "color": Color(0.8, 0.78, 0.72), "energy": 1.4, "range": 26.0},
+		{"pos": Vector3(WASH_X, 3.5, 0.0), "color": Color(0.5, 0.7, 0.75), "energy": 1.3, "range": 22.0},
+		{"pos": Vector3(170.0, 3.5, 0.0), "color": Color(0.6, 0.55, 0.5), "energy": 1.2, "range": 24.0},
 		{"pos": Vector3(WALL_X, 3.5, 0.0), "color": Color(0.95, 0.8, 0.55), "energy": 2.0, "range": 16.0},
 	]
 	frag.labels = [{"pos": Vector3(PLAZA_X, 3.4, 0.0), "text": "SIMULATION BOUNDARY — SECTION 3B",
@@ -104,7 +112,9 @@ func _chase_fragment() -> Fragment:
 		# levers the party already knows, placed where the spec puts them
 		{"type": "flure", "name": "DecoyFlure", "pos": Vector3(60.0, 0.5, 3.4), "radius": 1.5,
 			"targets": [], "attract": 20.0},
-		{"type": "scarpet", "name": "ScarpetRun", "pos": Vector3(98.0, 0.0, -2.0), "radius": 2.2},
+		{"type": "scarpet", "name": "ScarpetRun", "pos": Vector3(105.0, 0.0, -2.0), "radius": 2.2},
+		{"type": "channel", "name": "LockoutWash", "x": 120.0, "half": 2.2, "z_half": 5.0,
+			"period": 7.0, "dur": 2.2, "phase": 2.0, "tag": "lockout_wash"},
 		# the two pickable stun blooms the expert path needs (S2 + S3)
 		{"type": "hushbloom", "name": "BloomA", "pos": Vector3(50.0, 0.0, -3.6),
 			"opts": {"trigger_radius": 0.0, "regen_secs": 0.0}},
@@ -117,17 +127,23 @@ func _chase_fragment() -> Fragment:
 	frag.time_state = {"note_default": "The checkpoint refused the tags. The way home is the way out.",
 		"routing_mode": "direct"}
 	var cs := 1.5
-	var w := 104
+	var w := 148
 	var hgrid := 14
 	var cells: Array = []
 	for z in range(hgrid):
 		for x in range(w):
 			var wx := (float(x) + 0.5) * cs
 			var wz := (float(z) + 0.5) * cs - 10.5
-			var in_corridor: bool = absf(wz) < CORRIDOR_HALF_Z - 0.2 and wx < 152.0
+			var in_corridor: bool = absf(wz) < CORRIDOR_HALF_Z - 0.2 and wx < 220.0
 			var in_pocket: bool = wz > OFFSHOOT_Z - 2.4 and wz < OFFSHOOT_Z + 2.4 \
 				and wx > JUNCTION_X - 0.2 and wx < JUNCTION_X + 8.2
-			if in_corridor or in_pocket:
+			# S1 record hall: two staggered TERMINAL ROWS (the stacks quote) -- solid banks the
+			# whole chase weaves around (the flow field routes pursuit around them live)
+			var in_bank_a: bool = wx > 24.0 and wx < 28.5 and wz < 0.6
+			var in_bank_b: bool = wx > 33.0 and wx < 37.5 and wz > -0.6
+			# S5 collapse shelf: the debris barricade -- no walking through; the clamber is the way
+			var in_barricade: bool = wx > BARRICADE_X0 and wx < BARRICADE_X1
+			if (in_corridor or in_pocket) and not (in_corridor and (in_bank_a or in_bank_b or in_barricade)):
 				cells.append([x, z])
 	frag.grid = {"contract_id": "unified_grid_v1", "cell_size": cs,
 		"origin": [0.0, 0.0, -10.5], "width": w, "height": hgrid, "walkable_cells": cells}
@@ -157,12 +173,16 @@ func _on_tags_rejected() -> void:
 	var sched = _get_scheduler()
 	if sched == null:
 		return
-	sched.schedule_after(1.0, _spawn_wave.bind(2, false), "chase_wave_1")
+	# the shake beat covers the activation delay — the party gets a REAL head start (canon:
+	# initial distance ~18 wu, seen and heard; spawning on their heels made the trailing member
+	# die in the record hall every run)
+	sched.schedule_after(4.5, _spawn_wave.bind(2, false), "chase_wave_1")
 	# wave 2 activates from CONCEALED WALL NICHES at the party's own segment (canon: "Naturalizers
 	# activate from concealed positions" — not all from the plaza; the corridor itself is hostile)
 	sched.schedule_after(14.0, _spawn_wave.bind(2, true), "chase_wave_2")
 	sched.schedule_after(1.0, _decline_watch, "chase_decline_watch")
 	sched.schedule_after(1.5, _close_call_watch, "chase_close_call")
+	sched.schedule_after(1.0, _hazard_poll, "chase_hazards")
 	_arm_portal_follow()
 	sched.schedule_after(2.2, func() -> void:
 		_show_note("RUN. East — Endo keeps the wall past the old corridors.", 2.8), "chase_directive")
@@ -298,7 +318,7 @@ func _decline_watch() -> void:
 	var gs = _get_game_state()
 	if gs != null and not _tyreg_accepted and not _decline_wave_fired:
 		for cid in ["aster", "peris"]:
-			if gs.characters.has(cid) and gs.get_position(cid).x > 92.0:
+			if gs.characters.has(cid) and gs.get_position(cid).x > 132.0:
 				_decline_wave_fired = true
 				_spawn_side_wave()
 				break
@@ -318,7 +338,7 @@ func _spawn_side_wave() -> void:
 		# space-time planning and write reservations the party's own plan then fought: the
 		# late-chase 0.5-1.2 s spikes, finally pinned by the scheduler profiler
 		_spawn_enemy({"id": eid, "class": "naturalizer",
-			"pos": Vector3(112.0 + 2.0 * float(i), 0.5, -4.0),
+			"pos": Vector3(168.0 + 2.0 * float(i), 0.5, -4.0),
 			"speed": NAT_SPEED, "detect": 0.0, "coop_exempt": true,
 			"targets": ["aster", "peris"]}, gs)
 		_wire_wave_nat(eid)
@@ -626,7 +646,7 @@ func _restart_fragment() -> void:
 	var sched = _get_scheduler()
 	if sched != null:
 		for tag in ["chase_wave_1", "chase_wave_2", "chase_decline_watch", "chase_close_call",
-				"chase_pursuit", "chase_portal_follow", "chase_door_hold", "chase_suppress", "chase_directive"]:
+				"chase_pursuit", "chase_portal_follow", "chase_door_hold", "chase_suppress", "chase_directive", "chase_hazards"]:
 			sched.cancel_tag(tag)
 	for enemy in _enemies:
 		if is_instance_valid(enemy):
@@ -649,6 +669,97 @@ func _restart_fragment() -> void:
 	_wave_count = 0
 	super._restart_fragment()
 	_show_note("Quiet again. The scanner waits. So do they.", 2.4)
+
+## S1: the record hall terminal banks (the stacks quote) -- visual bodies over the blocked
+## cells: dark rows with terminal-green screen strips, the data district's furniture.
+func _build_terminal_rows() -> void:
+	for bank in [[26.25, -3.0, 7.6], [35.25, 3.0, 7.6]]:
+		var bx := float((bank as Array)[0])
+		var bz := float((bank as Array)[1])
+		var half_z := float((bank as Array)[2]) * 0.5
+		_add_box(self, Vector3(bx, 0.8, bz), Vector3(2.2, 0.8, half_z), Color(0.13, 0.14, 0.17))
+		for i in range(3):
+			_add_box(self, Vector3(bx, 1.15, bz - half_z + (float(i) + 0.5) * half_z * 0.66),
+				Vector3(2.0, 0.24, 0.06), Color(0.16, 0.4, 0.24), Color(0.36, 0.91, 0.5), 1.6)
+	_add_label(self, "RECORDS -- DO NOT REMOVE", Vector3(30.0, 2.6, 0.0), Color(0.6, 0.72, 0.66))
+
+## S5: the collapse shelf's debris barricade + the slow exposed CLAMBER over it (the approved
+## terrain break: cross by climbing what fell). Pursuers funnel over it on a stagger (below).
+var _clamber: CrawlTunnel
+var _barricade_wait := {}   # pursuer id -> the tick its clamber completes
+var _wash_refractory := {}  # body id -> the tick its next sweep is allowed
+
+func _build_barricade() -> void:
+	var mid := (BARRICADE_X0 + BARRICADE_X1) * 0.5
+	for i in range(9):
+		var rz := -CORRIDOR_HALF_Z + (float(i) + 0.5) * (CORRIDOR_HALF_Z * 2.0 / 9.0)
+		_add_box(self, Vector3(mid + (0.5 if i % 2 == 0 else -0.4), 0.5 + 0.35 * float(i % 3), rz),
+			Vector3(1.4, 0.5 + 0.3 * float(i % 3), 0.7), Color(0.16, 0.15, 0.17))
+	_add_label(self, "SHELF COLLAPSE", Vector3(mid, 3.0, 3.4), Color(0.62, 0.58, 0.55))
+	_clamber = CrawlTunnel.new()
+	_clamber.name = "ClamberBarricade"
+	_clamber.description = "Clamber over the collapsed shelf"
+	_clamber.tutorial_label = "CLAMBER"
+	_clamber.configure(_get_game_state(), Vector3(BARRICADE_X0 - 1.2, 0, 0),
+		[Vector3(mid, 1.3, 0.0), Vector3(BARRICADE_X1 + 1.4, 0, 0)], 1.4, 2.2)
+	_clamber.set_group_provider(_selected_party_ids)
+	add_child(_clamber)
+	_register_interactable(_clamber)
+	var stub := _add_box(_clamber, Vector3(-0.6, 0.3, 0.9), Vector3(0.24, 0.6, 0.24), Color(0.32, 0.36, 0.42))
+	_outline_interactable_child(_clamber, stub, "ClamberBarricade", 1.4)
+
+## THE HAZARD POLL (scheduler cadence): the wash SWEEPS anyone standing in the flooding strip
+## (party knocked back + pay hp -- fail-forward; pursuers tumbled + stunned: the wash reads
+## tells for nobody), and pursuers stuck at the barricade CLAMBER over on a stagger -- the
+## funnel is the terrain's price for them too.
+func _hazard_poll() -> void:
+	var gs = _get_game_state()
+	var sched = _get_scheduler()
+	if gs != null and sched != null:
+		var now := float(sched.get_current_tick())
+		for ch in _channels:
+			if not is_instance_valid(ch) or not ch.is_flooding():
+				continue
+			for id_v in gs.characters.keys():
+				var id := str(id_v)
+				# a refractory beat per body: one sweep per wash encounter, never a death-spiral
+				# of sweep -> land in the pack -> re-enter -> re-sweep
+				if now < float(_wash_refractory.get(id, -100.0)):
+					continue
+				var p: Vector3 = gs.get_position(id)
+				if not ch.floods_at(p.x, p.z):
+					continue
+				_wash_refractory[id] = now + 4.0
+				var is_party := id in ["aster", "peris"]
+				gs.command_stop(id)
+				gs.snap_character_to(id, Vector3(maxf(p.x - 4.5, TRENCH_X1 + 1.0), 0.0, p.z))
+				if is_party:
+					gs.adjust_stat(id, "hp", -6.0)
+					_show_note("The wash takes your feet -- swept back.", 1.6)
+				else:
+					var nat = _enemy_by_id(id)
+					if nat != null and nat.has_method("stun"):
+						nat.stun(2.5)
+		# barricade funnel: a pursuer at the wall whose quarry is beyond clambers after a beat
+		for enemy in _enemies:
+			if not is_instance_valid(enemy) or not enemy.is_alive() or enemy.is_stunned():
+				continue
+			var ep: Vector3 = gs.get_position(enemy.char_id)
+			if ep.x < BARRICADE_X0 - 4.0 or ep.x > BARRICADE_X0:
+				continue
+			var quarry_beyond := false
+			for cid in ["aster", "peris"]:
+				if gs.characters.has(cid) and gs.get_position(cid).x > BARRICADE_X1:
+					quarry_beyond = true
+			if not quarry_beyond:
+				continue
+			if not _barricade_wait.has(enemy.char_id):
+				_barricade_wait[enemy.char_id] = now + 4.0
+			elif now >= float(_barricade_wait[enemy.char_id]):
+				_barricade_wait.erase(enemy.char_id)
+				gs.snap_character_to(enemy.char_id, Vector3(BARRICADE_X1 + 1.6, 0.0, ep.z))
+	if sched != null:
+		sched.schedule_after(0.5, _hazard_poll, "chase_hazards")
 
 ## --- S6: Endo's wall (the boundary the institution respects) ---
 

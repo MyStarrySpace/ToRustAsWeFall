@@ -32604,7 +32604,7 @@ func _test_lockout_chase() -> void:
 	var scanner: Node = chunk.find_child("BoundaryScanner", true, false)
 	scanner.set("active_character", "aster")
 	scanner.call("_trigger")
-	inst.headless_advance(3.0, 0.1)
+	inst.headless_advance(6.0, 0.1)
 	_assert_true(bool(chunk.get_preview_state()["chase_started"]), "the rejection starts the chase")
 	_assert_true(bool(chunk.get_preview_state()["bridge_down"]),
 		"the shake drops the gantry — the way OUT opens as the way home closes")
@@ -32681,6 +32681,51 @@ func _test_lockout_chase() -> void:
 		gs.snap_character_to(cid3, pad_out.position)
 		pad_out.set("active_character", cid3)
 		_assert_true(bool(pad_out.step_through()), "%s exits behind the wave" % cid3)
+	# --- S4 the wash: sweeps BOTH ways (nobody reads tells for you) ---
+	# isolate the terrain sections: park the hunt (stationary test bodies are not a playthrough)
+	for e_iso in chunk.enemies():
+		if is_instance_valid(e_iso) and e_iso.is_alive():
+			e_iso.stun(30.0)
+	for cid_iso in ["aster", "peris"]:
+		gs.restore_character(cid_iso)
+	var wash = null
+	for ch_w in chunk.channels():
+		wash = ch_w
+	_assert_true(wash != null, "the wash channel crosses S4")
+	gs.snap_character_to("peris", Vector3(float(chunk.WASH_X), 0.0, 1.0))
+	var hp_w := float(gs.get_stat("peris", "hp"))
+	wash.flood_now()
+	inst.headless_advance(1.2, 0.1)
+	_assert_true(gs.get_position("peris").x < float(chunk.WASH_X) - 4.0,
+		"a party member in the flooding strip is SWEPT back (x=%.1f)" % gs.get_position("peris").x)
+	_assert_true(float(gs.get_stat("peris", "hp")) < hp_w,
+		"the sweep costs hp (fail-forward, not death)")
+	gs.snap_character_to(str(nat0.char_id), Vector3(float(chunk.WASH_X), 0.0, -1.0))
+	wash.flood_now()
+	inst.headless_advance(1.2, 0.1)
+	_assert_true(gs.get_position(str(nat0.char_id)).x < float(chunk.WASH_X) - 4.0,
+		"a pursuer blundering into the wash is swept too")
+	_assert_true(bool(nat0.is_stunned()), "and tumbled (stunned) by it")
+	# --- S5 the barricade: no walking through; the clamber crosses; pursuit funnels after ---
+	gs.restore_character("aster")
+	gs.snap_character_to("aster", Vector3(float(chunk.BARRICADE_X0) - 6.0, 0.0, 0.0))
+	gs.command_move_to_pos("aster", Vector3(float(chunk.WALL_X), 0.0, 0.0))
+	inst.headless_advance(6.0, 0.1)
+	_assert_true(gs.get_position("aster").x < float(chunk.BARRICADE_X0) + 0.5,
+		"the collapsed shelf cannot be walked through (x=%.1f)" % gs.get_position("aster").x)
+	var clamber: Node = chunk.find_child("ClamberBarricade", true, false)
+	clamber.set("active_character", "aster")
+	clamber.call("_trigger")
+	inst.headless_advance(14.0, 0.1)
+	_assert_true(gs.get_position("aster").x > float(chunk.BARRICADE_X1),
+		"the CLAMBER carries you over the debris (x=%.1f)" % gs.get_position("aster").x)
+	# a pursuer at the wall follows over on the stagger (the funnel)
+	nat0._fsm.transition_to("idle")   # wake it from the isolation stun (external pin, test-only)
+	gs.snap_character_to(str(nat0.char_id), Vector3(float(chunk.BARRICADE_X0) - 2.0, 0.0, 0.0))
+	inst.headless_advance(7.0, 0.1)
+	_assert_true(gs.get_position(str(nat0.char_id)).x > float(chunk.BARRICADE_X1),
+		"the pursuit clambers after you on a stagger — terrain funnels them too")
+	gs.snap_character_to(str(nat0.char_id), Vector3(2.0, 0.0, 0.0))
 	# --- Tyreg's accept arms Suppress ---
 	var tyreg: Node = chunk.find_child("TyregChoice", true, false)
 	tyreg.set("active_character", "aster")
@@ -32747,7 +32792,7 @@ func _test_chase_probe() -> void:
 					gs.command_move_to_pos(cid, Vector3(float(chunk.DOOR_X) + 1.0, 0, 2.0))
 		var t := 0.0
 		var acted := false
-		while t < 60.0:
+		while t < 115.0:
 			inst.headless_advance(1.0, 0.1)
 			t += 1.0
 			var st: Dictionary = chunk.get_preview_state()
@@ -32808,6 +32853,39 @@ func _test_chase_probe() -> void:
 							for cid5 in ["aster", "peris"]:
 								gs.command_move_to_pos(cid5, Vector3(float(chunk.WALL_X) + 2.0, 0, 0))
 							print("[PROBE] t=%4.0f  accepted Tyreg, running for the wall with her" % t)
+			# the competent runner READS the corridor: waits out a live wash, clambers the shelf
+			if strat == "competent_runner" and acted:
+				var ap_c: Vector3 = gs.get_position("aster")
+				for ch_p in chunk.channels():
+					if ap_c.x > float(chunk.WASH_X) - 8.0 and ap_c.x < float(chunk.WASH_X) + 3.0:
+						if ch_p.is_flooding():
+							gs.command_move_to_pos("aster", Vector3(float(chunk.WASH_X) - 5.0, 0, -1.0))
+							gs.command_move_to_pos("peris", Vector3(float(chunk.WASH_X) - 5.0, 0, 1.0))
+						else:
+							for cid_c in ["aster", "peris"]:
+								gs.command_move_to_pos(cid_c, Vector3(float(chunk.WALL_X) + 2.0, 0, -1.0))
+				if ap_c.x > float(chunk.BARRICADE_X0) - 3.0 and ap_c.x < float(chunk.BARRICADE_X0) + 0.6:
+					var cl: Node = chunk.find_child("ClamberBarricade", true, false)
+					if cl != null:
+						cl.set("active_character", "aster")
+						cl.call("_trigger")
+			if strat in ["panic_sprint", "tyreg_accepter", "competent_runner"] and acted or strat == "panic_sprint":
+				# STAGED movement (a grid move past the barricade refuses outright — the player
+				# walks TO the debris, clambers, then runs on; the probe does the same)
+				for cid_st in ["aster", "peris"]:
+					if not gs.characters.has(cid_st) or gs.is_downed(cid_st):
+						continue
+					var pp_st: Vector3 = gs.get_position(cid_st)
+					if pp_st.x < float(chunk.BARRICADE_X0) - 2.5 and not gs.is_moving(cid_st):
+						gs.command_move_to_pos(cid_st, Vector3(float(chunk.BARRICADE_X0) - 1.2, 0, 0))
+					elif pp_st.x > float(chunk.BARRICADE_X1) and not gs.is_moving(cid_st):
+						gs.command_move_to_pos(cid_st, Vector3(float(chunk.WALL_X) + 2.0, 0, 0))
+				var ap_n: Vector3 = gs.get_position("aster")
+				if ap_n.x > float(chunk.BARRICADE_X0) - 3.0 and ap_n.x < float(chunk.BARRICADE_X0) + 0.6:
+					var cl2: Node = chunk.find_child("ClamberBarricade", true, false)
+					if cl2 != null:
+						cl2.set("active_character", "aster")
+						cl2.call("_trigger")
 			var st2: Dictionary = chunk.get_preview_state()
 			if bool(st2.get("complete", false)):
 				print("[PROBE] t=%4.0f  COMPLETE — reached the wall and rested" % t)
