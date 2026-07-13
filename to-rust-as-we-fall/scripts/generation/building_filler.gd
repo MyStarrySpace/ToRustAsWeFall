@@ -120,7 +120,7 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 			var pl: Dictionary = via_plans[vi]
 			var deck_y := DECK_TOP + 0.9 * float(vi)
 			var band := {"axis": int(pl["axis"]), "lane": int(pl["lane"]),
-				"y0": deck_y - 0.65, "y1": deck_y + 2.8}
+				"y0": deck_y - 0.65, "y1": deck_y + 2.0}
 			corridors.append(band)
 			var run := w if int(pl["axis"]) == 0 else h
 			for i in range(run):
@@ -203,6 +203,7 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 	if not IDIOM_WEIGHTS.has(idiom):
 		idiom = "mixed"
 	var program_tally := {}
+	var dock_plans: Array = []
 	var props_on := bool(opts.get("props", true))
 	var prop_count := 0
 	var lathes: Array = []
@@ -228,14 +229,35 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 		var damp := clampf((float(lot["dist"]) - 1.0) / 3.0, 0.3, 1.0)
 		var floors := clampi(1 + int(round(t_h * float(MAX_FLOORS - 1) * damp)), 1, MAX_FLOORS)
 		floors = mini(floors, int(lot["dist"]))
-		# The rail corridor: anything within a cell of a viaduct lane stays under its deck.
-		for pl in via_plans:
+		# The rail corridor: a lane CROSSING the lot can PLUG THROUGH it (the road threads a framed
+		# aperture — the reservation grid makes that a legitimate shared claim); a lane merely
+		# adjacent keeps the under-deck cap and may earn a roof DOCK instead.
+		var cross_band := {}
+		var cross_count := 0
+		var adjacent_plan := {}
+		for pvi in range(via_plans.size()):
+			var pl: Dictionary = via_plans[pvi]
 			var lane := int(pl["lane"])
-			if int(pl["axis"]) == 0:
-				if lane >= lc.y - 1 and lane <= lc.y + gz:
-					floors = mini(floors, 2)
-			elif lane >= lc.x - 1 and lane <= lc.x + gx:
+			var lo := lc.y if int(pl["axis"]) == 0 else lc.x
+			var hi := lo + (gz if int(pl["axis"]) == 0 else gx) - 1
+			if lane >= lo and lane <= hi:
+				cross_count += 1
+				if cross_band.is_empty():
+					cross_band = {"plan": pl, "band": corridors[pvi], "vi": pvi}
+			elif lane == lo - 1 or lane == hi + 1:
+				if adjacent_plan.is_empty():
+					adjacent_plan = {"plan": pl, "vi": pvi, "side": -1 if lane == lo - 1 else 1}
+		var through := false
+		if not cross_band.is_empty():
+			# tall enough to bridge the corridor, moderate decay, seeded taste — and exactly ONE
+			# crossing lane (a second corridor would slice the upper mass; it stays capped instead)
+			through = cross_count == 1 and decay < 0.62 and mini(gx, gz) >= 2 and _rf(jitter) < 0.55
+			if through:
+				floors = 5 + (1 if _rf(jitter) < 0.4 else 0)
+			else:
 				floors = mini(floors, 2)
+		elif not adjacent_plan.is_empty():
+			floors = mini(floors, 2)
 		var height := floors * FLOOR_H
 
 		# Palette: smooth cool<->warm blend, dragged toward rust by the decay field, hash-jittered a hair.
@@ -247,14 +269,32 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 
 		var street := _street_dir(lc, gx, gz, walk, w, h)
 		var stats := {"boxes": 0}
-		# the lot's CEILING from the reservation grid: the lowest overhead corridor above it (the
-		# per-lane proximity heuristic stays as a soft cap; the volume is the hard authority)
 		var lot_rect_hi := Vector2i(lc.x + gx - 1, lc.y + gz - 1)
 		var lot_owner := "lot:%d,%d" % [lc.x, lc.y]
+		if through:
+			# THE THROUGH-PORTAL BLOCK: the viaduct keeps its band; the building claims BELOW and
+			# ABOVE it and walls the band off everywhere except the lane slot — a framed tunnel.
+			var band: Dictionary = cross_band["band"]
+			vol.claim_rect(lc, lot_rect_hi, 0.0, float(band["y0"]) - 0.15, lot_owner)
+			vol.claim_rect(lc, lot_rect_hi, float(band["y1"]) + 0.15, height + 1.2, lot_owner)
+			_emit_through_building(frag, mn, mx, height, base_col, decay, glow_density, t_pal,
+				jitter, origin, cs, cross_band["plan"], band, facade_tile, stats)
+			program_tally["through"] = int(program_tally.get("through", 0)) + 1
+			out_lots.append({"center": Vector3(center.x, 0.0, center.y), "floors": floors,
+				"height": height, "color": base_col, "through": true})
+			continue
+		# the lot's CEILING from the reservation grid: the lowest overhead corridor above it (the
+		# per-lane proximity heuristic stays as a soft cap; the volume is the hard authority)
 		var ceiling := vol.free_top(lc, lot_rect_hi, 0.0, lot_owner)
 		if ceiling < height + 0.2:
 			floors = maxi(1, mini(floors, int((ceiling - 0.6) / FLOOR_H)))
 			height = floors * FLOOR_H
+		if not adjacent_plan.is_empty() and floors == 2 and decay < 0.7 and _rf(jitter) < 0.5:
+			# ROOF DOCK: this building plugs into the side rail — a stepped gangway drops from the
+			# deck to its roof (planned here, emitted with the viaduct so the boxes are road-owned)
+			dock_plans.append({"plan": adjacent_plan["plan"], "vi": int(adjacent_plan["vi"]),
+				"side": int(adjacent_plan["side"]), "mn": mn, "mx": mx, "roof": height,
+				"cell": lc, "gx": gx, "gz": gz})
 		if floors >= 3:
 			# LATHE TOWER — the reference silhouettes (revolve-shaped, never boxes): drum with lobed
 			# base + dome, scalloped band stack, or ribbed spire cluster, picked by the fields.
@@ -383,6 +423,8 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 		var stats_v := {"boxes": 0}
 		for vi2 in range(via_plans.size()):
 			_emit_viaduct(frag, via_plans[vi2], origin, cs, w, h, DECK_TOP + 0.9 * float(vi2), stats_v)
+		for dp in dock_plans:
+			_emit_rail_dock(frag, dp as Dictionary, origin, cs, DECK_TOP + 0.9 * float((dp as Dictionary)["vi"]), stats_v)
 
 	# THE GEOMETRY AUDIT: every non-viaduct box the filler emitted, checked against the walkable
 	# street columns and the viaduct corridor bands. Green = the reservation grid held.
@@ -391,6 +433,7 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 	return {"buildings": out_lots.size(), "boxes": frag.walls.size() - boxes_before,
 		"props": prop_count, "viaducts": via_plans.size(), "lathes": lathes, "lots": out_lots,
 		"landmarks": landmarks, "bridges": bridge_plans, "programs": program_tally,
+		"through_blocks": int(program_tally.get("through", 0)), "rail_docks": dock_plans.size(),
 		"volume_conflicts": vol.conflicts, "volume_violations": violations}
 
 # --- LANDMARKS: BaseShapeBuilder heroes whose gameplay anchors the level consumes ------------------
@@ -795,6 +838,8 @@ static func _emit_building(frag: Fragment, mn: Vector2, mx: Vector2, height: flo
 	# crossdock is an open covered yard: only a low base plinth, then a canopy on posts.
 	var base_h := height if program != "crossdock" else 0.7
 	_boxt(frag, Vector3(c.x, base_h * 0.5 + 0.01, c.y), Vector3(sz.x, base_h, sz.y), col, tile, stats)
+	if program != "crossdock":
+		_facet_steps(frag, c, sz, base_h, col, tile, floors, stats)
 	if program in ["warehouse", "office", "mixed"] and floors >= 2:
 		# a subtle upper set-back so the slab isn't a pure prism
 		var up_h := 0.14
@@ -820,6 +865,32 @@ static func _emit_building(frag: Fragment, mn: Vector2, mx: Vector2, height: flo
 	if program != "office":
 		_emit_entry(frag, mn, mx, col, decay if program != "retail" else minf(decay, 0.4),
 			warm_bias, jitter, street, props_on, stats)
+
+## PLINTH + EAVE steps: two stepped facets that break the pure-prism read (the shape language's
+## curve law realized as offsets — a skirt slab at the ground, an inset reveal band under the top).
+static func _facet_steps(frag: Fragment, c: Vector2, sz: Vector2, height: float, col: Color,
+		tile: String, floors: int, stats: Dictionary) -> void:
+	_boxt(frag, Vector3(c.x, 0.14, c.y), Vector3(sz.x + 0.3, 0.28, sz.y + 0.3),
+		col.darkened(0.16), tile, stats)
+	if floors >= 2:
+		_box(frag, Vector3(c.x, height - 0.42, c.y), Vector3(sz.x + 0.08, 0.14, sz.y + 0.08),
+			col.darkened(0.22), stats)
+
+## A faceted ARCH over an opening: two stepped lintel courses narrowing upward — the generator's
+## curve idiom at door scale. Grate tile on the spandrel gives the lattice read.
+static func _facet_arch(frag: Fragment, base: Vector3, horiz: bool, w0: float, col: Color,
+		stats: Dictionary) -> void:
+	_box(frag, base, Vector3(w0, 0.14, 0.08) if horiz else Vector3(0.08, 0.14, w0),
+		col.darkened(0.28), stats)
+	_box(frag, base + Vector3(0, 0.14, 0), Vector3(w0 * 0.62, 0.14, 0.08) if horiz
+		else Vector3(0.08, 0.14, w0 * 0.62), col.darkened(0.34), stats)
+
+## A grate-tile LATTICE band on the street face (mesh_lattice vocabulary: the grate tile reads as
+## latticework at pixel-art scale).
+static func _lattice_band(frag: Fragment, c: Vector2, sz: Vector2, street: Vector2i, horiz: bool,
+		y: float, band_h: float, run_frac: float, col: Color, stats: Dictionary) -> void:
+	var lp := _face_pt(c, sz, street, 0.045, y)
+	_boxt(frag, lp, _face_sz(sz, horiz, run_frac, band_h, 0.07), col.lightened(0.2), "grate", stats)
 
 ## A point on the street face, pushed `out` beyond the wall, at height y.
 static func _face_pt(c: Vector2, sz: Vector2, street: Vector2i, out: float, y: float) -> Vector3:
@@ -849,6 +920,13 @@ static func _sig_retail(frag: Fragment, c: Vector2, sz: Vector2, height: float, 
 		var cp := _face_pt(c, sz, street, 0.4, 2.0 - sag) + Vector3(along2.x, 0.0, along2.y)
 		var csz := Vector3(sz.x / 3.0 + 0.1, 0.08, 0.9) if horiz else Vector3(0.9, 0.08, sz.y / 3.0 + 0.1)
 		_box(frag, cp, csz, col.darkened(0.25), stats)
+	# faceted arches over each bay + the lattice spandrel band above them (the arcade read)
+	for i2 in range(bays):
+		var fa := (float(i2) + 0.5) / float(bays) - 0.5
+		var along_a := Vector2(float(absi(street.y)), float(absi(street.x))) * (fa * face_len)
+		_facet_arch(frag, _face_pt(c, sz, street, 0.05, 1.95) + Vector3(along_a.x, 0.0, along_a.y),
+			horiz, face_len * 0.62 / float(bays), col, stats)
+	_lattice_band(frag, c, sz, street, horiz, 2.35, 0.34, 0.8, col, stats)
 	# hoarding band clad over the upper storey (aspirational ad panel)
 	var hb := _face_pt(c, sz, street, 0.05, height - 0.55)
 	_boxt(frag, hb, _face_sz(sz, horiz, 0.86, 0.7, 0.08), col.lightened(0.16), "wall_panel", stats)
@@ -872,7 +950,8 @@ static func _sig_office(frag: Fragment, c: Vector2, sz: Vector2, height: float, 
 			var rp := _face_pt(c, sz, face, 0.04, fy)
 			_box_glow(frag, rp, _face_sz(sz, fh, 0.82, 0.34, 0.05), Color(0.05, 0.06, 0.08),
 				GLOW_CYAN, 0.9 + glow_density * 0.4, stats)
-	# service-bulkhead crown, hugging one edge
+	# lattice reveal band under the crown (trabecular read), then the service bulkhead
+	_lattice_band(frag, c, sz, street, horiz, height - 0.85, 0.3, 0.72, col, stats)
 	_boxt(frag, Vector3(c.x + sz.x * 0.18, height + 0.32, c.y - sz.y * 0.14),
 		Vector3(sz.x * 0.44, 0.64, sz.y * 0.44), col.darkened(0.18), "facility_metal", stats)
 
@@ -907,6 +986,7 @@ static func _sig_warehouse(frag: Fragment, c: Vector2, sz: Vector2, height: floa
 	_box(frag, dp, _face_sz(sz, horiz, 0.28, 2.1, 0.06), col.darkened(0.55), stats)
 	_box_glow(frag, dp + Vector3(0, 0.05, 0), _face_sz(sz, horiz, 0.34, 2.3, 0.04),
 		Color(0.05, 0.06, 0.08), GLOW_CYAN, 1.1, stats)
+	_facet_arch(frag, _face_pt(c, sz, street, 0.06, 2.35), horiz, 1.7, col, stats)
 	var side := Vector2(float(absi(street.y)), float(absi(street.x))) * ((sz.x if horiz else sz.y) * 0.3)
 	_box_glow(frag, _face_pt(c, sz, street, 0.05, 1.5) + Vector3(side.x, 0.0, side.y),
 		Vector3(0.3, 0.3, 0.05) if horiz else Vector3(0.05, 0.3, 0.3), Color(0.05, 0.08, 0.06),
@@ -930,9 +1010,12 @@ static func _sig_fabrication(frag: Fragment, c: Vector2, sz: Vector2, height: fl
 		else Vector3(0.06, 0.1, sz.y * 0.7), Color(0.05, 0.08, 0.06), GLOW_GREEN, 1.3, stats)
 	_box_glow(frag, _face_pt(c, sz, street, 0.03, 0.9), _face_sz(sz, horiz, 0.55, 0.16, 0.05),
 		Color(0.05, 0.08, 0.06), GLOW_GREEN, 1.0, stats)
-	# wide roll-up loading door
+	_lattice_band(frag, c, sz, street, horiz, height - 0.5, 0.36, 0.85, col, stats)
+	# wide roll-up loading door under its faceted arch
 	_box(frag, _face_pt(c, sz, street, 0.02, 1.1), _face_sz(sz, horiz, 0.5, 2.2, 0.06),
 		col.darkened(0.5), stats)
+	_facet_arch(frag, _face_pt(c, sz, street, 0.05, 2.3), horiz, (sz.x if horiz else sz.y) * 0.55,
+		col, stats)
 	# vent stacks on the roof (skipped when an overhead corridor leaves no room)
 	if crown_room > 1.8:
 		for vs in range(2):
@@ -958,6 +1041,10 @@ static func _sig_crossdock(frag: Fragment, c: Vector2, sz: Vector2, base_h: floa
 		var t := float(step) / 3.0
 		_box(frag, _face_pt(c, sz, street, 0.15, cy - 0.2 - t * 1.4),
 			_face_sz(sz, horiz, 0.3, 0.14, 0.5), col.darkened(0.28), stats)
+	# the lattice gantry arch across the yard mouth (grate infill over stepped courses)
+	_facet_arch(frag, _face_pt(c, sz, street, 0.2, cy - 0.35), horiz, (sz.x if horiz else sz.y) * 0.8,
+		col, stats)
+	_lattice_band(frag, c, sz, street, horiz, cy - 0.62, 0.24, 0.75, col, stats)
 	# green diverter meter at the deck
 	_box_glow(frag, _face_pt(c, sz, street, 0.1, 1.0), Vector3(0.3, 0.5, 0.05) if horiz
 		else Vector3(0.05, 0.5, 0.3), Color(0.05, 0.08, 0.06), GLOW_GREEN, 1.3, stats)
@@ -986,6 +1073,12 @@ static func _sig_mixed(frag: Fragment, c: Vector2, sz: Vector2, height: float, f
 		_box_glow(frag, _face_pt(c, sz, street, 0.03, top_y) + Vector3(along2.x, 0.0, along2.y),
 			Vector3(0.32, 0.34, 0.05) if horiz else Vector3(0.05, 0.34, 0.32), Color(0.06, 0.06, 0.05),
 			GLOW_WARM if v == 0 else GLOW_GREEN, 1.1, stats)
+	# stepped cornice (two shrinking bands — the faceted-curve read) + a grate balcony rail
+	_box(frag, Vector3(c.x, height + 0.1, c.y), Vector3(sz.x * 0.98, 0.16, sz.y * 0.98),
+		col.darkened(0.2), stats)
+	_box(frag, Vector3(c.x, height + 0.24, c.y), Vector3(sz.x * 0.88, 0.12, sz.y * 0.88),
+		col.darkened(0.26), stats)
+	_lattice_band(frag, c, sz, street, horiz, top_y - 0.6, 0.4, 0.68, col, stats)
 	# two signage registers overlapping near the door
 	var dp := _face_pt(c, sz, street, 0.16, height * 0.5)
 	_box_glow(frag, dp, Vector3(0.14, 0.5, 0.05) if horiz else Vector3(0.05, 0.5, 0.14),
@@ -1107,6 +1200,105 @@ static func _emit_generic_building(frag: Fragment, mn: Vector2, mx: Vector2, hei
 
 	_emit_entry(frag, tiers[0]["mn"], tiers[0]["mx"], base_col, decay, warm_bias, jitter, street,
 		props_on, stats)
+
+## THE THROUGH-PORTAL BLOCK: a tall slab the viaduct passes THROUGH. Lower mass to just under the
+## corridor band, upper mass from just above it, SIDE masses walling the band off on every strip of
+## the lot except the lane slot — so the road threads a real framed tunnel, not a gap between two
+## buildings. Jamb columns, a lintel plate and a terminal-green edge strip frame the mouth. All
+## boxes stay outside the corridor band on the lane cells by construction (the audit re-checks).
+static func _emit_through_building(frag: Fragment, mn: Vector2, mx: Vector2, height: float,
+		base_col: Color, decay: float, glow_density: float, warm_bias: float, jitter: SeededRng,
+		origin: Vector3, cs: float, plan: Dictionary, band: Dictionary, facade_tile: String,
+		stats: Dictionary) -> void:
+	var c := Vector2((mn.x + mx.x) * 0.5, (mn.y + mx.y) * 0.5)
+	var sz := Vector2(mx.x - mn.x, mx.y - mn.y)
+	var axis := int(plan["axis"])
+	var lane := int(plan["lane"])
+	var y_lo := float(band["y0"]) - 0.15   # lower mass top
+	var y_hi := float(band["y1"]) + 0.15   # upper mass bottom
+	var col := base_col.darkened(0.04)
+	# lower + upper masses
+	_boxt(frag, Vector3(c.x, y_lo * 0.5, c.y), Vector3(sz.x, y_lo, sz.y), col, facade_tile, stats)
+	_boxt(frag, Vector3(c.x, (y_hi + height) * 0.5, c.y), Vector3(sz.x, height - y_hi, sz.y),
+		col.darkened(0.06), facade_tile, stats)
+	# side masses: wall the band off outside the lane slot. The lane slot spans the lane cell
+	# plus a margin; the side masses stop clear of it (and so clear of the corridor band cells).
+	var slot_c := (origin.z if axis == 0 else origin.x) + (float(lane) + 0.5) * cs
+	var slot_half := cs * 0.5 + 0.35
+	var band_h := y_hi - y_lo
+	if axis == 0:
+		var s0 := slot_c - slot_half   # lot strip below the slot: [mn.y .. s0]
+		if s0 - mn.y > 0.3:
+			_boxt(frag, Vector3(c.x, y_lo + band_h * 0.5, (mn.y + s0) * 0.5),
+				Vector3(sz.x, band_h, s0 - mn.y), col.darkened(0.03), facade_tile, stats)
+		var s1 := slot_c + slot_half
+		if mx.y - s1 > 0.3:
+			_boxt(frag, Vector3(c.x, y_lo + band_h * 0.5, (s1 + mx.y) * 0.5),
+				Vector3(sz.x, band_h, mx.y - s1), col.darkened(0.03), facade_tile, stats)
+		# portal frame on both mouths: jambs + lintel + the green edge strip
+		for mx_s: float in [mn.x, mx.x]:
+			for jz: float in [slot_c - slot_half + 0.12, slot_c + slot_half - 0.12]:
+				_box(frag, Vector3(mx_s, y_lo + band_h * 0.5, jz), Vector3(0.24, band_h, 0.24),
+					col.darkened(0.3), stats)
+			_box(frag, Vector3(mx_s, y_hi + 0.14, slot_c), Vector3(0.28, 0.28, slot_half * 2.0),
+				col.darkened(0.3), stats)
+			_box_glow(frag, Vector3(mx_s, y_hi + 0.03, slot_c), Vector3(0.1, 0.05, slot_half * 1.6),
+				Color(0.05, 0.08, 0.06), GLOW_GREEN, 1.2, stats)
+	else:
+		var t0 := slot_c - slot_half
+		if t0 - mn.x > 0.3:
+			_boxt(frag, Vector3((mn.x + t0) * 0.5, y_lo + band_h * 0.5, c.y),
+				Vector3(t0 - mn.x, band_h, sz.y), col.darkened(0.03), facade_tile, stats)
+		var t1 := slot_c + slot_half
+		if mx.x - t1 > 0.3:
+			_boxt(frag, Vector3((t1 + mx.x) * 0.5, y_lo + band_h * 0.5, c.y),
+				Vector3(mx.x - t1, band_h, sz.y), col.darkened(0.03), facade_tile, stats)
+		for mz_s: float in [mn.y, mx.y]:
+			for jx: float in [slot_c - slot_half + 0.12, slot_c + slot_half - 0.12]:
+				_box(frag, Vector3(jx, y_lo + band_h * 0.5, mz_s), Vector3(0.24, band_h, 0.24),
+					col.darkened(0.3), stats)
+			_box(frag, Vector3(slot_c, y_hi + 0.14, mz_s), Vector3(slot_half * 2.0, 0.28, 0.28),
+				col.darkened(0.3), stats)
+			_box_glow(frag, Vector3(slot_c, y_hi + 0.03, mz_s), Vector3(slot_half * 1.6, 0.05, 0.1),
+				Color(0.05, 0.08, 0.06), GLOW_GREEN, 1.2, stats)
+	# upper-mass window band (the building lives above the road)
+	var wsz := Vector3(sz.x * 0.7, 0.28, 0.05) if axis == 1 else Vector3(0.05, 0.28, sz.y * 0.7)
+	var wpos := Vector3(c.x, y_hi + 1.3, mn.y - 0.03) if axis == 1 else Vector3(mn.x - 0.03, y_hi + 1.3, c.y)
+	_box_glow(frag, wpos, wsz, Color(0.05, 0.06, 0.08),
+		GLOW_WARM if _rf(jitter) < warm_bias else GLOW_GREEN, 0.9, stats)
+
+## THE ROOF DOCK: a stepped gangway (the faceted-curve idiom) dropping from the viaduct deck to an
+## adjacent building's roof — the building plugs into the side rail. Emitted with the viaduct so
+## its boxes are road-owned; the landing pad and hatch glow sit on the roof it serves.
+static func _emit_rail_dock(frag: Fragment, dp: Dictionary, origin: Vector3, cs: float,
+		deck_top: float, stats: Dictionary) -> void:
+	var plan: Dictionary = dp["plan"]
+	var axis := int(plan["axis"])
+	var lane := int(plan["lane"])
+	var side := int(dp["side"])    # which side of the lot the lane runs on
+	var mn: Vector2 = dp["mn"]
+	var mx: Vector2 = dp["mx"]
+	var roof := float(dp["roof"])
+	var lane_c := (origin.z if axis == 0 else origin.x) + (float(lane) + 0.5) * cs
+	var deck_edge := lane_c - float(side) * DECK_W * 0.5
+	var along_c := (mn.x + mx.x) * 0.5 if axis == 0 else (mn.y + mx.y) * 0.5
+	var lot_edge := (mn.y if side < 0 else mx.y) if axis == 0 else (mn.x if side < 0 else mx.x)
+	# three stepped treads from deck height down to the roof, spanning deck edge -> lot edge
+	var gap := absf(lot_edge - deck_edge)
+	var step_len := maxf(gap / 3.0, 0.4)
+	for st in range(3):
+		var t := (float(st) + 0.5) / 3.0
+		var sy := lerpf(deck_top + 0.02, roof + 0.12, t)
+		var s_c := lerpf(deck_edge, lot_edge, t) + float(side) * 0.0
+		var tread_pos := Vector3(along_c, sy, s_c) if axis == 0 else Vector3(s_c, sy, along_c)
+		var tread_sz := Vector3(1.0, 0.1, step_len + 0.15) if axis == 0 else Vector3(step_len + 0.15, 0.1, 1.0)
+		_boxt(frag, tread_pos, tread_sz, Color(0.13, 0.15, 0.17), "grate", stats)
+	# roof landing pad + the hatch marker
+	var pad_c := lot_edge - float(side) * 0.8
+	var pad_pos := Vector3(along_c, roof + 0.07, pad_c) if axis == 0 else Vector3(pad_c, roof + 0.07, along_c)
+	_boxt(frag, pad_pos, Vector3(1.3, 0.12, 1.3), Color(0.12, 0.14, 0.16), "grate", stats)
+	_box_glow(frag, pad_pos + Vector3(0, 0.1, 0), Vector3(0.5, 0.06, 0.5),
+		Color(0.05, 0.08, 0.06), GLOW_GREEN, 1.1, stats)
 
 ## Weighted program draw for one box lot. Idiom sets the base weights; the fields nudge them
 ## (decay -> industrial programs, cool/tended palette -> office, glow -> retail), and a one-storey

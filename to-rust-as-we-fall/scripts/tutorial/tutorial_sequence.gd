@@ -381,6 +381,7 @@ func _init_ui() -> void:
 	_dev_console.register_command("fog", _cmd_fog, "fog on|off — the fog of war (default on)")
 	_dev_console.register_command("fxdebug", _cmd_fxdebug, "fxdebug on|off — path/outline FX traces")
 	_dev_console.register_command("chroma", _cmd_chroma, "chroma on|off — testing-mode ID-color overlay on every interactable")
+	_dev_console.register_command("photo", _cmd_photo, "photo on|off — screenshot mode: fog of war + UI hidden, restored on off")
 
 	# Mobile control modes: on touch, ONE finger carries three meanings — CAMERA drag-pan / SELECT
 	# (tap-pick + marquee, with the interactable reveal on) / ACTION (tap = the command click).
@@ -414,6 +415,30 @@ func _cmd_fog(args: Array) -> String:
 	if not args.is_empty():
 		fog_of_war_enabled = str(args[0]).to_lower() in ["on", "true", "1"]
 	return "fog of war: %s" % ("ON" if fog_of_war_enabled else "off (dev)")
+
+var _photo_mode := false
+var _photo_fog_prev := true
+
+## SCREENSHOT MODE (dev): hides the fog of war AND the UI canvases for clean captures. It rides
+## the console because fog is a gameplay layer — photo mode is a sanctioned dev exception like
+## `fog off`, and `photo off` restores exactly the fog state it found.
+func _cmd_photo(args: Array) -> String:
+	if not args.is_empty():
+		var want := str(args[0]).to_lower() in ["on", "true", "1"]
+		if want != _photo_mode:
+			_photo_mode = want
+			if want:
+				_photo_fog_prev = fog_of_war_enabled
+				fog_of_war_enabled = false
+			else:
+				fog_of_war_enabled = _photo_fog_prev
+			_apply_photo_mode(_photo_mode)
+	return "photo mode: %s" % ("ON — fog + UI hidden (`photo off` restores)" if _photo_mode else "off")
+
+## Scene hook for photo mode: the base hides nothing (scenes own their canvases); the fragment
+## preview overrides this to hide its HUD and preview UI layer.
+func _apply_photo_mode(_active: bool) -> void:
+	pass
 
 func _cmd_fxdebug(args: Array) -> String:
 	if not args.is_empty():

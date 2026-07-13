@@ -716,6 +716,13 @@ func _roguelike_respawn_party() -> void:
 		if _game_state.characters.has(cid):
 			_game_state.snap_character_to(cid, spawns[cid])
 
+func _apply_photo_mode(active: bool) -> void:
+	if _hud != null and is_instance_valid(_hud):
+		_hud.visible = not active
+	if _preview_layer != null and is_instance_valid(_preview_layer):
+		_preview_layer.visible = not active
+	_sync_overlay_stack()
+
 func _process(delta: float) -> void:
 	super._process(delta)
 	_roguelike_poll()

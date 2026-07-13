@@ -3469,6 +3469,8 @@ func _test_district_volume() -> void:
 	var Grammar = load("res://scripts/generation/fragment_grammar.gd")
 	var Filler = load("res://scripts/generation/building_filler.gd")
 	var lm_total := 0
+	var through_total := 0
+	var dock_total := 0
 	for seed in range(1, 13):
 		var bare = Grammar.generate(seed, {"buildings": false})
 		var res: Dictionary = Filler.fill(bare, seed)
@@ -3481,7 +3483,14 @@ func _test_district_volume() -> void:
 		_assert_true(confl.is_empty(), "seed %d: zero reservation conflicts (%d)" % [seed, confl.size()])
 		_assert_true(viol.is_empty(), "seed %d: zero geometry violations — no box in a street column or viaduct corridor (%d)" % [seed, viol.size()])
 		lm_total += (res.get("landmarks", []) as Array).size()
+		through_total += int(res.get("through_blocks", 0))
+		dock_total += int(res.get("rail_docks", 0))
 	_assert_true(lm_total >= 6, "landmarks still place under the lane-aware filter (%d across 12 seeds)" % lm_total)
+	print("    [volume] plugs across 12 seeds: %d through-portals, %d rail docks" % [through_total, dock_total])
+	_assert_true(through_total >= 1,
+		"viaducts PLUG THROUGH buildings somewhere (framed apertures; %d)" % through_total)
+	_assert_true(dock_total >= 1,
+		"buildings plug into the side rails somewhere (roof docks; %d)" % dock_total)
 
 ## The connective-fabric PROGRAM layer (ARCHITECTURE_DESIGN.md §4.18-4.24): the filler assigns each
 ## low box lot a program (retail / office / warehouse / fabrication / crossdock / mixed / generic) and
@@ -3814,8 +3823,12 @@ func _test_building_filler() -> void:
 			var la := lots[a] as Dictionary
 			lo = mini(lo, int(la["floors"]))
 			hi = maxi(hi, int(la["floors"]))
+			if bool(la.get("through", false)):
+				continue   # a through-portal block is a DELIBERATE vertical (the road threads it)
 			for b in range(a + 1, lots.size()):
 				var lb := lots[b] as Dictionary
+				if bool(lb.get("through", false)):
+					continue
 				var d: float = (la["center"] as Vector3).distance_to(lb["center"] as Vector3)
 				if d > 6.0:
 					continue
@@ -15108,6 +15121,18 @@ func _test_dev_console() -> void:
 	GridWorld._fx_debug = prior_fx
 	var unknown_line: String = console.run("no_such_cmd")
 	_assert_true(unknown_line.contains("unknown"), "Unknown commands answer loudly")
+
+	# PHOTO MODE: the sanctioned screenshot switch — fog + UI hidden, everything restored on off.
+	var photo_line: String = console.run("photo on")
+	_assert_true(photo_line.contains("ON"), "`photo on` answers")
+	_assert_true(inst.get("fog_of_war_enabled") == false, "photo mode hides the fog of war")
+	var hud = inst.get("_hud")
+	_assert_true(hud == null or not bool(hud.visible), "photo mode hides the HUD")
+	var players = inst.get("_preview_layer")
+	_assert_true(players == null or not bool(players.visible), "photo mode hides the preview UI layer")
+	console.run("photo off")
+	_assert_true(inst.get("fog_of_war_enabled") == true, "`photo off` restores the fog it found")
+	_assert_true(hud == null or bool(hud.visible), "`photo off` restores the HUD")
 	inst.queue_free()
 	await get_tree().process_frame
 
