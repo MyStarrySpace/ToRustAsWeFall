@@ -19,6 +19,7 @@ var show_movement_path := false
 @export var attack_range := 3.0
 @export var pursuit_direct := false    # capped-hop pursuit (near-free short plans) for chase packs
 @export var pursuit_hop := 5.0         # direct-pursuit hop length (wu) — short keeps the planner cheap
+var pursuit_hop_resolver: Callable = Callable()   # scene-provided shared-field hop (crowd memoization)
 @export var roam_step_distance := 1.6  # how far a single roam hop travels
 @export var roam_interval := 1.4       # scheduler ticks between roam hops
 @export var alert_duration := 0.6      # spotting beat before the chase begins
@@ -433,11 +434,14 @@ func _pursue_target() -> void:
 		if game_state.grid and not pursuit_direct:
 			game_state.command_move_to_cell(char_id, game_state.grid.world_to_grid(target_pos))
 		else:
-			# the roam trick at chase scale: a CAPPED hop toward the target (a move_to_pos on a
-			# grid still runs the cooperative planner, but on <=4 cells it is near-free; the
-			# rescan chains hops). Full-length plans for a 6-pack measured 1.8 s/step.
-			var to_target := target_pos - _self_pos()
-			var hop := _self_pos() + to_target.limit_length(pursuit_hop)
+			# the roam trick at chase scale: a CAPPED hop toward the target. When the scene
+			# provides a shared PURSUIT FIELD (one BFS per refresh for the whole pack — crowd
+			# memoization), the hop reads the field instead: per-unit pathfinding disappears.
+			var hop: Vector3
+			if pursuit_hop_resolver.is_valid():
+				hop = pursuit_hop_resolver.call(_self_pos(), target_pos)
+			else:
+				hop = _self_pos() + (target_pos - _self_pos()).limit_length(pursuit_hop)
 			game_state.command_move_to_pos(char_id, hop)
 	_fsm.schedule(pursuit_update_interval, _pursue_target)
 

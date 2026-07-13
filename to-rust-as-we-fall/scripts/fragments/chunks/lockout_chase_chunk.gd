@@ -13,6 +13,8 @@ extends "res://scripts/fragments/chunks/data_fragment_chunk.gd"
 ## loader's restart (the reset system's chassis).
 
 const PLAZA_X := 6.0
+const TRENCH_X0 := 15.0          # the uncrossable service trench at the stretch's throat
+const TRENCH_X1 := 19.5
 const DOOR_X := 32.0
 const CHELATOR_X := 55.0
 const JUNCTION_X := 76.0
@@ -23,7 +25,7 @@ const CORRIDOR_HALF_Z := 5.0
 
 const DOOR_HOLD_SECS := 7.0      # how long the sealed door holds a wave (they cut through)
 const SEAL_SECS := 22.0          # the Hushbloom portal seal (covers one full search cycle)
-const NAT_SPEED := 6.0           # party base 3.0. EFFECTIVE pursuit is ~half the raw speed (the
+const NAT_SPEED := 5.4           # party base 3.0. EFFECTIVE pursuit is ~half the raw speed (the
                                  # rescan tail-chase), so 6.0 closes on a runner at ~0.4 wu/s —
                                  # sprint-only fails late-corridor; the door hold (7 s) + chelator
                                  # break buy the escape margin (probe-tuned, framework knob)
@@ -49,6 +51,7 @@ func _build_chunk() -> void:
 	fragment = _chase_fragment()
 	super._build_chunk()
 	_build_checkpoint()
+	_build_trench()
 	_build_door()
 	_build_chelator()
 	_build_offshoot()
@@ -148,6 +151,7 @@ func _on_tags_rejected() -> void:
 	if _chase_started:
 		return
 	_chase_started = true
+	_drop_gantry()
 	_set_preview_step("lockout_rejected")
 	_show_note("TAG INCOHERENT // ACCESS DENIED. Concealed positions open behind you.", 3.0)
 	var sched = _get_scheduler()
@@ -186,6 +190,7 @@ func _spawn_wave(count: int, near_party := false) -> void:
 			# the corridor is convex: the wave pursues in straight hops (the cooperative planner
 			# at this path length was the frame-drop source — see the perf probe)
 			nat.pursuit_direct = true
+			nat.pursuit_hop_resolver = _flow_hop
 	_show_note("Naturalizers out of the wall niches — behind you.", 1.8)
 	_arm_pursuit_director()
 
@@ -201,7 +206,75 @@ func _arm_pursuit_director() -> void:
 	sched.cancel_tag("chase_pursuit")
 	sched.schedule_after(0.8, _pursuit_director, "chase_pursuit")
 
+## THE PACK'S SHARED PURSUIT FIELD (crowd memoization): ONE breadth-first distance field from the
+## quarry's cell per director tick, over the walkable grid — every pursuer's hop just descends
+## the field. Replaces N near-identical per-unit path queries per rescan (the residual spike
+## source: an unreachable quarry made each unit's A* sweep the region before failing; the BFS
+## pays that cost once, bounded, for everyone). Derived state on the scheduler cadence —
+## deterministic, replay-safe.
+var _flow_field := {}          # Vector2i -> int (steps to the quarry)
+const _FLOW_DIRS := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+	Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]
+
+func _refresh_flow_field() -> void:
+	_flow_field.clear()
+	var gs = _get_game_state()
+	if gs == null or gs.grid == null:
+		return
+	# seed from every ENGAGEABLE quarry (mirrors the engage gates: downed/sheltered/hidden break the field)
+	var frontier: Array = []
+	for cid in ["aster", "peris"]:
+		if not gs.characters.has(cid):
+			continue
+		if gs.is_downed(cid) or gs.is_at_shelter(cid) or gs.is_character_hidden(cid):
+			continue
+		var c: Vector2i = gs.grid.world_to_grid(gs.get_position(cid))
+		_flow_field[c] = 0
+		frontier.append(c)
+	var head := 0
+	while head < frontier.size():
+		var cur: Vector2i = frontier[head]
+		head += 1
+		var d: int = int(_flow_field[cur]) + 1
+		for dir in _FLOW_DIRS:
+			var nxt: Vector2i = cur + dir
+			if _flow_field.has(nxt):
+				continue
+			if not gs.grid.is_walkable(nxt.x, nxt.y):
+				continue
+			_flow_field[nxt] = d
+			frontier.append(nxt)
+
+## The hop a pursuer takes: descend the shared field one cell (fall back to a capped straight hop
+## when the field has no answer — quarry hidden, off-grid, or the pocket island).
+func _flow_hop(from_pos: Vector3, fallback_target: Vector3) -> Vector3:
+	var gs = _get_game_state()
+	if gs == null or gs.grid == null or _flow_field.is_empty():
+		return from_pos + (fallback_target - from_pos).limit_length(5.0)
+	var c: Vector2i = gs.grid.world_to_grid(from_pos)
+	var best := c
+	var best_d: int = int(_flow_field.get(c, 1 << 30))
+	for dir in _FLOW_DIRS:
+		var nxt: Vector2i = c + dir
+		var nd: int = int(_flow_field.get(nxt, 1 << 30))
+		if nd < best_d:
+			best_d = nd
+			best = nxt
+	if best == c:
+		return from_pos + (fallback_target - from_pos).limit_length(5.0)
+	# step two cells down the field per hop so the rescan cadence never starves the stride
+	var second := best
+	var second_d: int = best_d
+	for dir2 in _FLOW_DIRS:
+		var nxt2: Vector2i = best + dir2
+		var nd2: int = int(_flow_field.get(nxt2, 1 << 30))
+		if nd2 < second_d:
+			second_d = nd2
+			second = nxt2
+	return gs.grid.grid_to_world(second)
+
 func _pursuit_director() -> void:
+	_refresh_flow_field()
 	var gs = _get_game_state()
 	if gs != null:
 		for enemy in _enemies:
@@ -250,6 +323,78 @@ func _spawn_side_wave() -> void:
 			"pos": Vector3(112.0 + 2.0 * float(i), 0.5, -4.0),
 			"speed": NAT_SPEED, "detect": 10.0, "targets": ["aster", "peris"]}, gs)
 	_show_note("A second wave, from the side corridor Tyreg would have cleared.", 2.4)
+
+## --- The trench at the throat (the director's beat): uncrossable until the REJECTION — the
+## ground-shake of enforcement coming out of the walls drops the conduit gantry across it. The
+## way OUT opens exactly when the way home closes; before the scan the course is physically
+## sealed (the breaker's stroll dies here, architecturally).
+var _bridge_down := false
+var _gantry_standing: Node3D
+var _gantry_fallen: Node3D
+
+var _trench_applied := false
+
+## The host installs gs.grid AFTER _build_chunk — the pit's blockers apply lazily (first _process
+## frame with a live grid), and _set_trench_blocked flips them for the fall/reset.
+func _process(_delta: float) -> void:
+	if not _trench_applied:
+		var gs = _get_game_state()
+		if gs != null and gs.grid != null:
+			_trench_applied = true
+			if not _bridge_down:
+				_set_trench_blocked(true)
+
+func _set_trench_blocked(blocked: bool) -> void:
+	var gs = _get_game_state()
+	if gs == null or gs.grid == null:
+		return
+	for z in range(14):
+		for x in range(104):
+			var wx := (float(x) + 0.5) * 1.5
+			var wz := (float(z) + 0.5) * 1.5 - 10.5
+			if wx > TRENCH_X0 and wx < TRENCH_X1 and absf(wz) < CORRIDOR_HALF_Z:
+				if blocked:
+					gs.grid.add_dynamic_blocker(Vector2i(x, z), "trench")
+				else:
+					gs.grid.remove_dynamic_blocker(Vector2i(x, z))
+
+func _build_trench() -> void:
+	# the visual pit: a dark recess with edge lips
+	_add_box(self, Vector3((TRENCH_X0 + TRENCH_X1) * 0.5, -1.1, 0.0),
+		Vector3((TRENCH_X1 - TRENCH_X0) * 0.5, 1.0, CORRIDOR_HALF_Z), Color(0.03, 0.03, 0.045))
+	for lip in [TRENCH_X0, TRENCH_X1]:
+		_add_box(self, Vector3(lip, 0.06, 0.0), Vector3(0.12, 0.06, CORRIDOR_HALF_Z), Color(0.2, 0.21, 0.24))
+	_add_label(self, "SERVICE TRENCH — NO CROSSING", Vector3((TRENCH_X0 + TRENCH_X1) * 0.5, 1.6, 3.2),
+		Color(0.6, 0.62, 0.66))
+	# the conduit gantry standing beside the trench — the thing the shake brings down
+	_gantry_standing = Node3D.new()
+	_gantry_standing.name = "TrenchGantry"
+	add_child(_gantry_standing)
+	_add_box(_gantry_standing, Vector3(TRENCH_X0 + 0.4, 2.6, 4.6), Vector3(0.5, 2.6, 0.5),
+		Color(0.3, 0.32, 0.36), Color(0.36, 0.91, 0.5), 0.3)
+	_add_box(_gantry_standing, Vector3(TRENCH_X0 + 0.4, 5.0, 4.6), Vector3(1.3, 0.3, 0.7),
+		Color(0.26, 0.28, 0.32))
+	# the fallen span, hidden until the beat
+	_gantry_fallen = Node3D.new()
+	_gantry_fallen.name = "TrenchGantryFallen"
+	_gantry_fallen.visible = false
+	add_child(_gantry_fallen)
+	_add_box(_gantry_fallen, Vector3((TRENCH_X0 + TRENCH_X1) * 0.5, 0.12, 0.6),
+		Vector3((TRENCH_X1 - TRENCH_X0) * 0.5 + 0.6, 0.14, 1.6), Color(0.3, 0.32, 0.36),
+		Color(0.36, 0.91, 0.5), 0.2)
+
+## The shake beat: enforcement tears out of the walls, the gantry drops, the trench is bridged.
+func _drop_gantry() -> void:
+	if _bridge_down:
+		return
+	_bridge_down = true
+	_set_trench_blocked(false)
+	if _gantry_standing != null:
+		_gantry_standing.visible = false
+	if _gantry_fallen != null:
+		_gantry_fallen.visible = true
+	_set_preview_step("lockout_gantry_down")
+	_show_note("The ground shakes them loose — the conduit gantry crashes across the trench.", 2.6)
 
 ## --- S1: the sealable service door ---
 
@@ -486,6 +631,13 @@ func _restart_fragment() -> void:
 	_enemy_posts.clear()
 	_chase_started = false
 	_decline_wave_fired = false
+	if _bridge_down:
+		_bridge_down = false
+		_set_trench_blocked(true)
+		if _gantry_standing != null:
+			_gantry_standing.visible = true
+		if _gantry_fallen != null:
+			_gantry_fallen.visible = false
 	_door_held.clear()
 	_wave_count = 0
 	super._restart_fragment()
@@ -520,4 +672,5 @@ func get_preview_state() -> Dictionary:
 	st["decline_wave"] = _decline_wave_fired
 	st["bloom_carry"] = _bloom_carry
 	st["pursuers"] = _enemies.size()
+	st["bridge_down"] = _bridge_down
 	return st

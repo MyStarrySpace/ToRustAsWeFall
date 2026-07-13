@@ -32582,6 +32582,13 @@ func _test_lockout_chase() -> void:
 		await _dispose_scene(inst)
 		return
 	# --- SpiffinBrit's run: stroll the whole course WITHOUT presenting tags ---
+	# 1) the PHYSICAL gate (the director's trench): pre-scan, the course cannot be walked at all
+	gs.command_move_to_pos("aster", Vector3(float(chunk.WALL_X) + 2.0, 0.0, 0.0))
+	inst.headless_advance(8.0, 0.1)
+	_assert_true(gs.get_position("aster").x < float(chunk.TRENCH_X0) + 1.0,
+		"the service trench seals the course before the scan (x=%.1f)" % gs.get_position("aster").x)
+	_assert_true(not bool(chunk.get_preview_state()["bridge_down"]), "the gantry still stands")
+	# 2) the rest gate stays as defense in depth (teleports/skips still refused at the wall)
 	for cid_sb in ["aster", "peris"]:
 		gs.snap_character_to(cid_sb, Vector3(float(chunk.WALL_X) + 2.0, 0.0, 0.0))
 	for it_sb in chunk._exit_shelters:
@@ -32599,6 +32606,23 @@ func _test_lockout_chase() -> void:
 	scanner.call("_trigger")
 	inst.headless_advance(3.0, 0.1)
 	_assert_true(bool(chunk.get_preview_state()["chase_started"]), "the rejection starts the chase")
+	_assert_true(bool(chunk.get_preview_state()["bridge_down"]),
+		"the shake drops the gantry — the way OUT opens as the way home closes")
+	# MOVABLE OBJECTS RESHAPE THE FLOW FIELD (director's law): the field is rebuilt through
+	# grid.is_walkable, so dynamic blockers cut it and their removal reopens it.
+	for cid_ff in ["aster", "peris"]:
+		gs.snap_character_to(cid_ff, Vector3(40.0, 0.0, 0.0))   # ALL quarry beyond the trench
+	var plaza_cell: Vector2i = gs.grid.world_to_grid(Vector3(10.0, 0.0, 0.0))
+	chunk._set_trench_blocked(true)
+	chunk._refresh_flow_field()
+	_assert_true(not chunk._flow_field.has(plaza_cell),
+		"a re-blocked trench CUTS the pursuit field (no path leaks across a blocker)")
+	chunk._set_trench_blocked(false)
+	chunk._refresh_flow_field()
+	_assert_true(chunk._flow_field.has(plaza_cell),
+		"the fallen gantry REOPENS the field — movable objects reshape pursuit within a tick")
+	for cid_ff2 in ["aster", "peris"]:
+		gs.snap_character_to(cid_ff2, chunk.fragment.spawns[cid_ff2])
 	_assert_true(int(chunk.get_preview_state()["pursuers"]) >= 2, "wave 1 takes the corridor")
 	# THE CHASE IS RELENTLESS (the framework's pursuer contract): the wave hunts the party down
 	# the corridor even when they are far beyond a normal detection radius — pursuers track the
