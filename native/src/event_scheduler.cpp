@@ -24,6 +24,8 @@ void EventScheduler::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("cancel_tag", "tag"), &EventScheduler::cancel_tag);
 	ClassDB::bind_method(D_METHOD("advance", "real_delta"), &EventScheduler::advance);
 	ClassDB::bind_method(D_METHOD("advance_ticks", "ticks"), &EventScheduler::advance_ticks);
+	ClassDB::bind_method(D_METHOD("set_profiling", "enabled"), &EventScheduler::set_profiling);
+	ClassDB::bind_method(D_METHOD("get_profile"), &EventScheduler::get_profile);
 	ClassDB::bind_method(D_METHOD("set_speed", "mult"), &EventScheduler::set_speed);
 	ClassDB::bind_method(D_METHOD("get_speed"), &EventScheduler::get_speed);
 	ClassDB::bind_method(D_METHOD("pause"), &EventScheduler::pause);
@@ -122,12 +124,28 @@ void EventScheduler::advance_ticks(double ticks) {
 		// Lazy deletion: skip cancelled events
 		if (_cancelled.count(event.handle)) {
 			_cancelled.erase(event.handle);
+			if (_profiling) {
+				auto &slot = _profile[std::string("(cancelled_pop)/") + event.tag.utf8().get_data()];
+				slot.first += 1;
+			}
 			continue;
 		}
 
 		_live_count--;
 		_current_tick = event.key.tick;
-		event.callback.call();
+		if (_profiling) {
+			auto t0 = std::chrono::steady_clock::now();
+			event.callback.call();
+			auto usec = std::chrono::duration_cast<std::chrono::microseconds>(
+					std::chrono::steady_clock::now() - t0).count();
+			String key_s = event.tag + String("/") + String(event.callback.get_method());
+			std::string key = key_s.utf8().get_data();
+			auto &slot = _profile[key];
+			slot.first += 1;
+			slot.second += usec;
+		} else {
+			event.callback.call();
+		}
 
 		if (!event.tag.is_empty()) {
 			emit_signal("event_fired", event.tag);
@@ -135,6 +153,22 @@ void EventScheduler::advance_ticks(double ticks) {
 	}
 
 	_current_tick = target;
+}
+
+void EventScheduler::set_profiling(bool enabled) {
+	_profiling = enabled;
+	_profile.clear();
+}
+
+Dictionary EventScheduler::get_profile() const {
+	Dictionary out;
+	for (const auto &kv : _profile) {
+		Array pair;
+		pair.push_back((int64_t)kv.second.first);
+		pair.push_back((double)kv.second.second / 1000.0);
+		out[String(kv.first.c_str())] = pair;
+	}
+	return out;
 }
 
 Dictionary EventScheduler::pop_next() {

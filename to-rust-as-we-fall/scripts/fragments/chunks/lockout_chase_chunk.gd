@@ -184,13 +184,7 @@ func _spawn_wave(count: int, near_party := false) -> void:
 		_spawn_enemy({"id": eid, "class": "naturalizer", "pos": Vector3(base_x, 0.5, nz),
 			"speed": NAT_SPEED, "detect": 0.0, "coop_exempt": true,
 			"targets": ["aster", "peris"]}, gs)
-		var nat = _enemy_by_id(eid)
-		if nat != null and nat.has_method("add_hesitation_zone"):
-			nat.add_hesitation_zone(Vector3(CHELATOR_X, 0, -1.0), 6.5)
-			# the corridor is convex: the wave pursues in straight hops (the cooperative planner
-			# at this path length was the frame-drop source — see the perf probe)
-			nat.pursuit_direct = true
-			nat.pursuit_hop_resolver = _flow_hop
+		_wire_wave_nat(eid)
 	_show_note("Naturalizers out of the wall niches — behind you.", 1.8)
 	_arm_pursuit_director()
 
@@ -319,10 +313,23 @@ func _spawn_side_wave() -> void:
 	for i in range(2):
 		var eid := "naturalizer_%d" % _wave_count
 		_wave_count += 1
+		# the SAME pack wiring as every wave (coop-exempt, no stealth detection, flow-field
+		# pursuit) — this wave shipping without it made its two members run full cooperative
+		# space-time planning and write reservations the party's own plan then fought: the
+		# late-chase 0.5-1.2 s spikes, finally pinned by the scheduler profiler
 		_spawn_enemy({"id": eid, "class": "naturalizer",
 			"pos": Vector3(112.0 + 2.0 * float(i), 0.5, -4.0),
-			"speed": NAT_SPEED, "detect": 10.0, "targets": ["aster", "peris"]}, gs)
+			"speed": NAT_SPEED, "detect": 0.0, "coop_exempt": true,
+			"targets": ["aster", "peris"]}, gs)
+		_wire_wave_nat(eid)
 	_show_note("A second wave, from the side corridor Tyreg would have cleared.", 2.4)
+
+func _wire_wave_nat(eid: String) -> void:
+	var nat = _enemy_by_id(eid)
+	if nat != null and nat.has_method("add_hesitation_zone"):
+		nat.add_hesitation_zone(Vector3(CHELATOR_X, 0, -1.0), 6.5)
+		nat.pursuit_direct = true
+		nat.pursuit_hop_resolver = _flow_hop
 
 ## --- The trench at the throat (the director's beat): uncrossable until the REJECTION — the
 ## ground-shake of enforcement coming out of the walls drops the conduit gantry across it. The

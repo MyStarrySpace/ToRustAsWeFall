@@ -221,7 +221,12 @@ func _change_state(new_state: String) -> void:
 	if _fsm != null:
 		_fsm.transition_to(new_state)
 
+static var CALLS := {}   # diagnostic counters (no wall-clock; cleared by the perf probe)
+static func _count(key: String) -> void:
+	CALLS[key] = int(CALLS.get(key, 0)) + 1
+
 func _enter_state(state: String) -> void:
+	Enemy._count("enter_" + state)
 	match state:
 		"idle":
 			_set_eye_energy(0.4)
@@ -420,6 +425,7 @@ func _pursue_target() -> void:
 		return
 	var target_pos := game_state.get_position(_current_target_id)
 	_last_known_target_pos = target_pos
+	Enemy._count("pursue")
 	var dist := _planar_dist(_self_pos(), target_pos)
 	# Close enough to wind up.
 	if dist <= attack_range:
@@ -866,7 +872,22 @@ func _charge_target_world(target_id: String) -> Vector3:
 	var node := _find_character_node(target_id)
 	return (node as Node3D).global_position if node else Vector3.INF
 
+var _char_node_cache := {}
+
 func _find_character_node(target_id: String) -> Node:
+	# CACHED: the full scan walks every child of every sibling container with per-node string
+	# ops — six pack members re-alerting once a second each made it the chase's hot loop
+	# (measured: half the pack's FSM tags = 95% of the step cost). Nodes don't move between
+	# containers; one scan per target id per enemy, revalidated on use.
+	var cached = _char_node_cache.get(target_id)
+	if cached != null and is_instance_valid(cached):
+		return cached
+	var found := _find_character_node_scan(target_id)
+	if found != null:
+		_char_node_cache[target_id] = found
+	return found
+
+func _find_character_node_scan(target_id: String) -> Node:
 	# Search parent first (Characters node), then siblings of parent (chunk nodes)
 	for search_root in _get_search_roots():
 		for child in search_root.get_children():

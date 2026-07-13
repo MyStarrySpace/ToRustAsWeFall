@@ -32847,8 +32847,173 @@ func _test_chase_perf() -> void:
 		sched0.cancel_tag("chase_pursuit")   # waves spawn but never engage
 	for cid in ["aster", "peris"]:
 		gs.command_move_to_pos(cid, Vector3(float(chunk.WALL_X) + 2.0, 0, 0))
+	if mode == "profwho":
+		inst.headless_advance(30.0, 0.1)
+		print("[PERF] gs.scheduler tick=%.2f  inst._scheduler tick=%.2f  same=%s  ui=%s" % [
+			float(gs.scheduler.get_current_tick()), float(inst._scheduler.get_current_tick()),
+			str(gs.scheduler == inst._scheduler), str(inst._ui_scheduler == gs.scheduler)])
+		gs.scheduler.set_profiling(true)
+		inst._ui_scheduler.set_profiling(true)
+		inst.headless_advance(1.0, 0.1)
+		print("[PERF] gs profile entries: %d" % gs.scheduler.get_profile().size())
+		print("[PERF] ui profile entries: %d" % inst._ui_scheduler.get_profile().size())
+		var uiprof: Dictionary = gs.scheduler.get_profile()
+		var ks := uiprof.keys()
+		ks.sort_custom(func(a, b): return float((uiprof[a] as Array)[1]) > float((uiprof[b] as Array)[1]))
+		for k in ks.slice(0, 10):
+			var pr := uiprof[k] as Array
+			print("[PERF]   UI %-40s x%-5d %8.1f ms" % [str(k), int(pr[0]), float(pr[1])])
+		await _dispose_scene(inst)
+		return
+	if mode == "profself":
+		var sch := EventScheduler.new()
+		sch.set_profiling(true)
+		sch.schedule_after(0.1, func(): pass, "tagA")
+		sch.schedule_after(0.2, func(): pass, "tagB")
+		var h := sch.schedule_after(0.3, func(): pass, "tagC")
+		sch.cancel(h)
+		sch.advance_ticks(1.0)
+		print("[PERF] selftest profile: %s" % str(sch.get_profile()))
+		await _dispose_scene(inst)
+		return
+	if mode == "micro12":
+		inst.headless_advance(30.0, 0.1)
+		var parts := {
+			"advance_ticks": func(): gs.scheduler.advance_ticks(0.1),
+			"tree_scan_sync": func(): inst._headless_sync_scheduler_visuals(),
+			"sched_anims": func(): inst._sync_scheduler_animations(),
+			"on_process": func(): inst._on_process(0.1, 1.0),
+			"data_identify": func(): inst._update_data_identify(),
+			"percept_shader": func(): inst._sync_perception_shader(),
+			"headless_runtime": func(): inst._headless_sync_runtime(0.1),
+		}
+		for pk in parts.keys():
+			var t12 := Time.get_ticks_usec()
+			for i in range(15):
+				(parts[pk] as Callable).call()
+			print("[PERF] part %-18s %7.1f ms /15" % [str(pk), float(Time.get_ticks_usec() - t12) / 1000.0])
+		await _dispose_scene(inst)
+		return
+	if mode == "micro11":
+		inst.headless_advance(30.0, 0.1)
+		gs.scheduler.set_profiling(true)
+		var t11 := Time.get_ticks_usec()
+		for i in range(15):
+			inst.headless_advance(0.1, 0.1)
+		var ms11 := float(Time.get_ticks_usec() - t11) / 1000.0
+		gs.scheduler.set_profiling(false)
+		var prof11: Dictionary = gs.scheduler.get_profile()
+		print("[PERF] 15 hot steps: %.1f ms; scheduler profile (count, ms):" % ms11)
+		var keys11 := prof11.keys()
+		keys11.sort_custom(func(a, b): return float((prof11[a] as Array)[1]) > float((prof11[b] as Array)[1]))
+		for k in keys11.slice(0, 14):
+			var pr := prof11[k] as Array
+			print("[PERF]   %-44s x%-5d %8.1f ms" % [str(k), int(pr[0]), float(pr[1])])
+		await _dispose_scene(inst)
+		return
+	if mode == "micro10":
+		inst.headless_advance(30.0, 0.1)
+		Enemy.CALLS.clear()
+		var t10 := Time.get_ticks_usec()
+		for i in range(15):
+			inst.headless_advance(0.1, 0.1)
+		var ms10 := float(Time.get_ticks_usec() - t10) / 1000.0
+		print("[PERF] 15 hot steps: %.1f ms total; callback volume:" % ms10)
+		for k in Enemy.CALLS.keys():
+			print("[PERF]   %-16s x%d" % [str(k), int(Enemy.CALLS[k])])
+		await _dispose_scene(inst)
+		return
+	if mode == "micro9":
+		inst.headless_advance(30.0, 0.1)
+		var t9 := Time.get_ticks_usec()
+		for i in range(10):
+			chunk._refresh_flow_field()
+		print("[PERF] 10x _refresh_flow_field: %.1f ms (field %d cells)" % [
+			float(Time.get_ticks_usec() - t9) / 1000.0, chunk._flow_field.size()])
+		await _dispose_scene(inst)
+		return
+	if mode == "micro8":
+		inst.headless_advance(30.0, 0.1)
+		for cfg8 in ["baseline", "no_contact_cycle", "no_lunge_move"]:
+			var tot8 := 0.0
+			for e8 in chunk.enemies():
+				if not is_instance_valid(e8):
+					continue
+				if cfg8 == "no_contact_cycle":
+					e8.attack_range = 0.0     # pursue forever, never windup
+				elif cfg8 == "no_lunge_move":
+					e8.charge_speed = 0.0     # cycle runs, the lunge never moves
+			for i in range(15):
+				var t08 := Time.get_ticks_usec()
+				inst.headless_advance(0.1, 0.1)
+				tot8 += float(Time.get_ticks_usec() - t08) / 1000.0
+			print("[PERF] cfg %-16s mean %.1f ms/step" % [cfg8, tot8 / 15.0])
+		await _dispose_scene(inst)
+		return
+	if mode == "micro7":
+		inst.headless_advance(30.0, 0.1)
+		# which half of the pack owns the cost: the CLOSE contact-cyclers or the DISTANT pursuers?
+		for cfg7 in ["baseline", "kill_close_pair", "kill_far_four"]:
+			var tot7 := 0.0
+			for i in range(15):
+				var ap7: Vector3 = gs.get_position("aster")
+				for e7 in chunk.enemies():
+					if not is_instance_valid(e7) or not e7.is_alive():
+						continue
+					var d7 := absf(gs.get_position(str(e7.char_id)).x - ap7.x)
+					if cfg7 == "kill_close_pair" and d7 < 12.0:
+						gs.scheduler.cancel_tag("enemy_" + str(e7.name))
+					elif cfg7 == "kill_far_four" and d7 >= 12.0:
+						gs.scheduler.cancel_tag("enemy_" + str(e7.name))
+				var t07 := Time.get_ticks_usec()
+				inst.headless_advance(0.1, 0.1)
+				tot7 += float(Time.get_ticks_usec() - t07) / 1000.0
+			print("[PERF] cfg %-16s mean %.1f ms/step" % [cfg7, tot7 / 15.0])
+		await _dispose_scene(inst)
+		return
+	if mode == "micro6":
+		inst.headless_advance(30.0, 0.1)
+		var configs := {
+			"all_on": [],
+			"no_chunk_polls": ["chase_pursuit", "chase_portal_follow", "chase_close_call", "chase_door_hold", "chase_decline_watch"],
+			"no_hesitation": ["HES"],
+			"no_blooms": ["BLOOM"],
+			"half_pack_fsm": ["FSM_HALF"],
+			"full_pack_fsm": ["FSM_ALL"],
+		}
+		for cfg in configs.keys():
+			var tot := 0.0
+			for i in range(15):
+				for tag_v in configs[cfg]:
+					var tag := str(tag_v)
+					if tag == "HES":
+						for e_h in chunk.enemies():
+							if is_instance_valid(e_h):
+								gs.scheduler.cancel_tag("nat_hes_" + str(e_h.char_id))
+					elif tag == "BLOOM":
+						for hb in chunk.hushblooms():
+							if is_instance_valid(hb):
+								gs.scheduler.cancel_tag("hush_%d" % hb.get_instance_id())
+					elif tag == "FSM_HALF":
+						var half := 0
+						for e_f in chunk.enemies():
+							if is_instance_valid(e_f) and half < 3:
+								gs.scheduler.cancel_tag("enemy_" + str(e_f.name))
+								half += 1
+					elif tag == "FSM_ALL":
+						for e_f2 in chunk.enemies():
+							if is_instance_valid(e_f2):
+								gs.scheduler.cancel_tag("enemy_" + str(e_f2.name))
+					else:
+						gs.scheduler.cancel_tag(tag)
+				var t0m := Time.get_ticks_usec()
+				inst.headless_advance(0.1, 0.1)
+				tot += float(Time.get_ticks_usec() - t0m) / 1000.0
+			print("[PERF] cfg %-16s mean %.1f ms/step" % [cfg, tot / 15.0])
+		await _dispose_scene(inst)
+		return
 	if mode == "micro5":
-		inst.headless_advance(36.0, 0.1)   # the hot moment
+		inst.headless_advance(30.0, 0.1)   # the hot moment (6-pack live)
 		var nat5 = chunk.enemies()[0]
 		var nid := str(nat5.char_id)
 		var np5: Vector3 = gs.get_position(nid)
@@ -32939,13 +33104,35 @@ func _test_chase_perf() -> void:
 		return
 	var worst: Array = []
 	var t := 0.0
+	var prev_states := {}
 	while t < 40.0:
 		if mode == "idle_waves" and int(t * 10.0) % 10 == 0:
 			gs.scheduler.cancel_tag("chase_pursuit")
+		# snapshot BEFORE the step so the dump shows what the spike consumed
+		var pre_states := {}
+		for e_s in chunk.enemies():
+			if is_instance_valid(e_s):
+				pre_states[str(e_s.char_id)] = str(e_s.get_state())
 		var t0 := Time.get_ticks_usec()
 		inst.headless_advance(0.1, 0.1)
 		var ms := float(Time.get_ticks_usec() - t0) / 1000.0
 		t += 0.1
+		if ms > 300.0:
+			var post_states := {}
+			for e_s2 in chunk.enemies():
+				if is_instance_valid(e_s2):
+					post_states[str(e_s2.char_id)] = "%s@x%.0f" % [str(e_s2.get_state()),
+						gs.get_position(str(e_s2.char_id)).x]
+			print("[SPIKE] t=%.1f  %.0f ms" % [t, ms])
+			print("[SPIKE]   party: aster x=%.1f dn=%s shel=%s | peris x=%.1f dn=%s shel=%s" % [
+				gs.get_position("aster").x, str(gs.is_downed("aster")), str(gs.is_at_shelter("aster")),
+				gs.get_position("peris").x, str(gs.is_downed("peris")), str(gs.is_at_shelter("peris"))])
+			print("[SPIKE]   pre : %s" % str(pre_states))
+			print("[SPIKE]   post: %s" % str(post_states))
+			print("[SPIKE]   wipes=%d bridge=%s decline=%s" % [
+				int(chunk.get_preview_state().get("wipe_count", 0)),
+				str(chunk.get_preview_state().get("bridge_down", false)),
+				str(chunk.get_preview_state().get("decline_wave", false))])
 		worst.append([ms, t, int(chunk.get_preview_state().get("pursuers", 0))])
 	worst.sort_custom(func(a, b): return float(a[0]) > float(b[0]))
 	print("[PERF] top 12 data-side spikes (ms per 0.1s step):")

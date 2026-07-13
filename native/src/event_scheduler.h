@@ -35,6 +35,11 @@ public:
 	void advance(double real_delta);
 	void advance_ticks(double ticks);
 
+	// Diagnostic per-callback profiling (perf hunts): times every dispatched callback,
+	// keyed "tag/method". Off by default; enabling clears the accumulator.
+	void set_profiling(bool enabled);
+	godot::Dictionary get_profile() const;
+
 	// Speed control
 	void set_speed(double mult);
 	double get_speed() const;
@@ -104,6 +109,8 @@ private:
 	uint64_t _seq_counter;
 	int _next_handle;
 	int _live_count;
+	bool _profiling = false;
+	std::unordered_map<std::string, std::pair<long long, long long>> _profile; // key -> (count, usec)
 };
 
 #endif // EVENT_SCHEDULER_H
