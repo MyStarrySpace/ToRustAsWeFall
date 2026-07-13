@@ -238,3 +238,27 @@ built machinery (grid gaps, CrawlTunnel authored paths, the topple = push-lab gr
   Every wave now goes through one _wire_wave_nat. Worst step across the whole chase:
   1900 ms -> 8.1 ms; mean 1.76 ms/step. Lesson: when a spec dict is duplicated per spawn site,
   the wiring WILL diverge — one wiring function per pack, always.
+
+## Round 4 (2026-07-13): the LONG course — segment identities built
+
+150 -> 215 wu; the structure-v2 quotes are geometry now:
+- **S1 the record hall** (stacks): two staggered TERMINAL BANKS as real grid obstacles — the
+  whole chase S-bends through the weave lanes (the pursuit flow field routes around them live).
+- **S4 the wash undercut** (channels): a REAL Channel crosses the corridor, flow-strip tell and
+  all. The wash sweeps ANY body in the flooding strip — party knocked back + hp (fail-forward,
+  one sweep per encounter via a per-body refractory), pursuers tumbled + stunned. Time it like
+  the channels taught you; the pack reads no tells.
+- **S5 the collapse shelf** (sprint_gap + the terrain break): a debris barricade seals the
+  corridor; the CLAMBER (fast scramble crawl, group-queued) is the only way over — and pursuit
+  funnels after you on a 4 s per-member stagger. NOTE: a click PAST the barricade refuses
+  outright (disconnected grid) — the player walks to the debris and clambers, but a
+  walk-up-to-partial fallback for refused long moves is a wanted QoL follow-up.
+- Wave 1 now activates 4.5 s after the rejection (the shake beat covers it — canon's ~18 wu
+  initial distance; spawning on the party's heels killed the trailing member in the hall).
+
+TUNING STATE (FLEX, probe-measured): NAT_SPEED 4.4 — the pack falls behind on open runway and
+catches at chokepoints (the framework's "barely ahead"). Tyreg's accept route (canon's expected
+first-play path) completes, losing the trailing member. The NO-Tyreg routes currently wipe for
+the probe's semi-smart player — canon EXPECTS decline first-plays to fail, but the competent
+one-lever route should scrape through; the next balance pass needs per-death position traces
+(where exactly the pack lands kills). The probe harness is ready for it.
