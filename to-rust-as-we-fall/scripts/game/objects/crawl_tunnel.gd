@@ -72,6 +72,11 @@ func is_group_crawl_active() -> bool:
 ## lockout barricade uses it for the pair boost -- a two-person move needs two people.
 var requirement: Callable = Callable()
 
+## The grid level the crawler stands on when it emerges (-1 = keep the entry level). A gangway
+## that carries you from a deck down through a building sets 0 so the exit snaps to the ground
+## plane (set_character_level is logged — replay-safe like the rest of the crawl).
+@export var exit_level := -1
+
 func _on_interacted() -> void:
 	if requirement.is_valid() and not bool(requirement.call()):
 		refused.emit()
@@ -207,6 +212,8 @@ func _end_crawl(who: String, slot_index: int) -> void:
 	_gs.change_move_speed(who, float(_restore_speeds.get(who, 2.6)))
 	_restore_speeds.erase(who)
 	_gs.set_character_concealment(who, _gs.CONCEAL_NONE)
+	if exit_level >= 0 and _gs.has_method("set_character_level"):
+		_gs.set_character_level(who, exit_level)
 	crawl_finished.emit(who)
 	# Clear the exit mouth: walk off to this member's own arrival slot (group entries only).
 	if slot_index >= 0 and slot_index < _queue_arrivals.size() and not _gs.is_downed(who):

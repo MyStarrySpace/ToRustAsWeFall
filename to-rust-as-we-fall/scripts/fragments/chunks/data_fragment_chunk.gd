@@ -1019,6 +1019,25 @@ func _spawn_object(spec: Dictionary) -> void:
 		"enemy":
 			# {id:String, pos:Vector3, speed:float, detect:float, targets:Array[String], roam?:{radius:float}, patrol?:Array}
 			_spawn_enemy(spec, gs)
+		"crawl":
+			# a data-declared CrawlTunnel (the gangway grammar): authored squeeze path, optional
+			# exit_level so a deck gangway delivers you to the ground plane
+			var cr := CrawlTunnel.new()
+			cr.name = str(spec.get("name", "CrawlTunnel"))
+			cr.description = str(spec.get("desc", "Squeeze through"))
+			cr.tutorial_label = str(spec.get("label", "CRAWL"))
+			var cr_wps: Array = []
+			for wp_v in (spec.get("waypoints", []) as Array):
+				cr_wps.append(wp_v if wp_v is Vector3 else _v3({"p": wp_v}, "p"))
+			cr.configure(_get_game_state(), _v3(spec, "pos"), cr_wps,
+				_f(spec, "radius", 1.4), _f(spec, "speed", 1.1))
+			cr.exit_level = int(spec.get("exit_level", -1))
+			cr.set_group_provider(_selected_party_ids)
+			add_child(cr)
+			_register_interactable(cr)
+			var cr_stub := _add_box(cr, Vector3(0.0, 0.3, 0.0), Vector3(0.45, 0.6, 0.45),
+				Color(0.11, 0.12, 0.13))
+			_outline_interactable_child(cr, cr_stub, cr.name, 1.5)
 		"marker":
 			# {pos:Vector3, size:Vector3, color:Color, energy:float, label:String}
 			var color := _col(spec, "color", Color(0.3, 0.7, 0.55))
@@ -1044,6 +1063,10 @@ func _spawn_enemy(spec: Dictionary, gs) -> void:
 	enemy.char_id = eid
 	enemy.game_state = gs
 	gs.register_character(eid, enemy.position, enemy.move_speed, {"detection_range": float(enemy.detection_range)})
+	if int(spec.get("level", 0)) > 0 and gs.has_method("set_character_level"):
+		# a HIGH-LINE enemy: lives on an upper grid floor (deck sentries); same-floor moves ride
+		# its level's plane, and the detection vertical band keeps it blind to the ground below
+		gs.set_character_level(eid, int(spec["level"]))
 	if bool(spec.get("coop_exempt", false)) and gs.has_method("set_coop_exempt"):
 		gs.set_coop_exempt(eid)
 	if enemy.has_method("activate"):

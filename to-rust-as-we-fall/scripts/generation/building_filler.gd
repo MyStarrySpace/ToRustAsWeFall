@@ -294,7 +294,7 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 			# deck to its roof (planned here, emitted with the viaduct so the boxes are road-owned)
 			dock_plans.append({"plan": adjacent_plan["plan"], "vi": int(adjacent_plan["vi"]),
 				"side": int(adjacent_plan["side"]), "mn": mn, "mx": mx, "roof": height,
-				"cell": lc, "gx": gx, "gz": gz})
+				"cell": lc, "gx": gx, "gz": gz, "street": street})
 		if floors >= 3:
 			# LATHE TOWER — the reference silhouettes (revolve-shaped, never boxes): drum with lobed
 			# base + dome, scalloped band stack, or ribbed spire cluster, picked by the fields.
@@ -421,6 +421,9 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 	var via_boxes_start := frag.walls.size()
 	var walk_decks := 0
 	var deck_links := 0
+	var deck_routes: Array = []
+	var dock_gangs: Array = []
+	var walkable_vis := {}
 	if viaducts_on:
 		var stats_v := {"boxes": 0}
 		var lh := float(grid.get("level_height", 4.0))
@@ -457,6 +460,9 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 				_apply_bridge_to_grid(grid, {"level": lvl, "cells": deck_cells, "links": link_arr})
 				walk_decks += 1
 				deck_links += link_arr.size()
+				walkable_vis[vi2] = true
+				deck_routes.append({"level": lvl, "cells": deck_cells, "links": link_arr,
+					"axis": axis2, "lane": lane2, "deck_y": deck_y})
 				for lcv2 in link_cells:
 					var link_c: Vector2i = lcv2
 					var stand := Vector2i(-1, -1)
@@ -468,7 +474,13 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 					if stand.x >= 0:
 						_emit_deck_ladder(frag, stand, link_c, origin, cs, deck_y, stats_v)
 		for dp in dock_plans:
-			_emit_rail_dock(frag, dp as Dictionary, origin, cs, DECK_TOP + 0.9 * float((dp as Dictionary)["vi"]), stats_v)
+			var dpd := dp as Dictionary
+			var dock_deck_y := DECK_TOP + 0.9 * float(dpd["vi"])
+			_emit_rail_dock(frag, dpd, origin, cs, dock_deck_y, stats_v)
+			# a dock on a WALKABLE line becomes a GANGWAY crawl: deck -> roof hatch -> down
+			# through the building -> out its street door (one way; the grammar emits the object)
+			if walkable_vis.has(int(dpd["vi"])):
+				dock_gangs.append(_dock_gang_spec(dpd, origin, cs, dock_deck_y))
 
 	# THE GEOMETRY AUDIT: every non-viaduct box the filler emitted, checked against the walkable
 	# street columns and the viaduct corridor bands. Green = the reservation grid held.
@@ -479,6 +491,7 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 		"landmarks": landmarks, "bridges": bridge_plans, "programs": program_tally,
 		"through_blocks": int(program_tally.get("through", 0)), "rail_docks": dock_plans.size(),
 		"walk_decks": walk_decks, "deck_links": deck_links,
+		"deck_routes": deck_routes, "dock_gangs": dock_gangs,
 		"volume_conflicts": vol.conflicts, "volume_violations": violations}
 
 # --- LANDMARKS: BaseShapeBuilder heroes whose gameplay anchors the level consumes ------------------
@@ -1331,6 +1344,31 @@ static func _emit_through_building(frag: Fragment, mn: Vector2, mx: Vector2, hei
 	var wpos := Vector3(c.x, y_hi + 1.3, mn.y - 0.03) if axis == 1 else Vector3(mn.x - 0.03, y_hi + 1.3, c.y)
 	_box_glow(frag, wpos, wsz, Color(0.05, 0.06, 0.08),
 		GLOW_WARM if _rf(jitter) < warm_bias else GLOW_GREEN, 0.9, stats)
+
+## The gangway-crawl DATA for one roof dock: mouth on the deck beside the gangway, then the
+## authored path — roof landing, inside the building, out the street door at ground level.
+static func _dock_gang_spec(dp: Dictionary, origin: Vector3, cs: float, deck_y: float) -> Dictionary:
+	var plan: Dictionary = dp["plan"]
+	var axis := int(plan["axis"])
+	var lane := int(plan["lane"])
+	var side := int(dp["side"])
+	var mn: Vector2 = dp["mn"]
+	var mx: Vector2 = dp["mx"]
+	var roof := float(dp["roof"])
+	var street: Vector2i = dp.get("street", Vector2i(0, 1))
+	var lane_c := (origin.z if axis == 0 else origin.x) + (float(lane) + 0.5) * cs
+	var along_c := (mn.x + mx.x) * 0.5 if axis == 0 else (mn.y + mx.y) * 0.5
+	var lot_edge := (mn.y if side < 0 else mx.y) if axis == 0 else (mn.x if side < 0 else mx.x)
+	var mouth := Vector3(along_c, deck_y, lane_c) if axis == 0 else Vector3(lane_c, deck_y, along_c)
+	var pad_c := lot_edge - float(side) * 0.8
+	var pad := Vector3(along_c, roof + 0.25, pad_c) if axis == 0 else Vector3(pad_c, roof + 0.25, along_c)
+	var g_c := Vector2((mn.x + mx.x) * 0.5, (mn.y + mx.y) * 0.5)
+	var inside := Vector3(g_c.x, 1.0, g_c.y)
+	var g_sz := Vector2(mx.x - mn.x, mx.y - mn.y)
+	var door := Vector3(g_c.x + float(street.x) * (g_sz.x * 0.5 + 0.6), 0.25,
+		g_c.y + float(street.y) * (g_sz.y * 0.5 + 0.6))
+	return {"name": "DockGangway_%d_%d" % [dp["cell"].x, dp["cell"].y], "mouth": mouth,
+		"waypoints": [pad, inside, door]}
 
 ## The climbable LADDER at a deck link cell: twin rails + rungs up the deck edge, a green marker
 ## at the top. Road furniture (emitted in the viaduct phase); the grid link at this cell is the

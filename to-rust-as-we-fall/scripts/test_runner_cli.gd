@@ -3310,7 +3310,7 @@ func _test_shape_grammar() -> void:
 		var has_lm := (f3.params.get("landmark_buildings", []) as Array).size() >= 1
 		var has_enemy := false
 		for ob3 in f3.objects:
-			if str((ob3 as Dictionary).get("type", "")) == "enemy":
+			if str((ob3 as Dictionary).get("id", "")).begins_with("gnawer"):
 				has_enemy = true
 		if has_lm and has_enemy:
 			trap_seed = seed3
@@ -3411,6 +3411,11 @@ func _test_shape_grammar() -> void:
 		for ob in f.objects:
 			var od := ob as Dictionary
 			if str(od.get("type", "")) != "enemy":
+				continue
+			if str(od.get("id", "")) == "deck_sentry":
+				# the HIGH LINE's own guard: a patroller at deck level, priced onto the shortcut
+				if int(od.get("level", 0)) < 1 or not od.has("patrol"):
+					pack_rules_ok = false
 				continue
 			found_enemy = true
 			if str(od.get("species", "")) != "gnawer": pack_rules_ok = false
@@ -3549,6 +3554,63 @@ func _test_district_volume() -> void:
 		walked = true
 		break
 	_assert_true(walked, "at least one seeded district hosts a walkable deck line")
+
+	# --- THE HIGH LINE, PRICED + PLUGGED IN: full generations emit a deck SENTRY (patrolling at
+	# deck level, blind to the ground) and GANGWAY crawls (deck -> through the building -> street,
+	# exit_level 0); then a LIVE boot proves the sentry patrols the lane at y=8 ---
+	var sentry_seed := -1
+	var gang_seen := false
+	for seedg in range(1, 13):
+		var fg = Grammar.generate(seedg)
+		for ob in (fg.objects as Array):
+			var od := ob as Dictionary
+			if str(od.get("id", "")) == "deck_sentry":
+				_assert_equals(int(od.get("level", 0)), 2, "seed %d: the deck sentry lives on level 2" % seedg)
+				var pats: Array = od.get("patrol", [])
+				_assert_true(pats.size() == 2 and absf((pats[0] as Vector3).y - 8.0) < 0.05,
+					"seed %d: the sentry's patrol rides the deck plane" % seedg)
+				if sentry_seed < 0:
+					sentry_seed = seedg
+			if str(od.get("type", "")) == "crawl" and str(od.get("name", "")).begins_with("DockGangway"):
+				gang_seen = true
+				_assert_equals(int(od.get("exit_level", -1)), 0,
+					"seed %d: the gangway crawl delivers to the ground plane" % seedg)
+				_assert_true(absf((od.get("pos", Vector3.ZERO) as Vector3).y - 8.0) < 0.05,
+					"seed %d: the gangway mouth sits ON the deck" % seedg)
+	_assert_true(sentry_seed > 0, "walkable decks earn their sentry somewhere across 12 seeds")
+	_assert_true(gang_seen, "rail docks become gangway crawls somewhere across 12 seeds")
+	var inst_hl = await _instantiate_preview_chunk_and_wait("shape_grammar", 8, {"seed": sentry_seed})
+	if inst_hl == null:
+		_assert_true(false, "the grammar preview boots the sentry seed")
+		return
+	var gs_hl = inst_hl._game_state
+	_assert_true(gs_hl.characters.has("deck_sentry"), "the booted district registers the deck sentry")
+	_assert_equals(int(gs_hl.get_character_level("deck_sentry")), 2, "— standing on the deck level")
+	inst_hl.headless_advance(6.0, 0.1)
+	var sp_hl: Vector3 = gs_hl.get_position("deck_sentry")
+	_assert_true(absf(sp_hl.y - 8.0) < 0.6,
+		"after 6s of patrol the sentry is still ON the deck plane (y=%.2f — never fell to the street)" % sp_hl.y)
+	_assert_equals(int(gs_hl.get_character_level("deck_sentry")), 2, "— and still on level 2")
+	# the gangway crawl is REAL: put a party member on the deck at the mouth, trigger, and it
+	# carries them down through the building to the street at ground level
+	var gang: Node = null
+	for chld in inst_hl._active_chunk.find_children("DockGangway_*", "", true, false):
+		gang = chld
+		break
+	if gang != null:
+		var mouth_pos: Vector3 = (gang as Node3D).global_position
+		gs_hl.set_character_level("aster", 2)
+		gs_hl.snap_character_to("aster", Vector3(mouth_pos.x, 8.0, mouth_pos.z))
+		gang.set("active_character", "aster")
+		gang.call("_trigger")
+		inst_hl.headless_advance(14.0, 0.1)
+		_assert_equals(int(gs_hl.get_character_level("aster")), 0,
+			"the gangway delivers the crawler to the GROUND level")
+		_assert_true(gs_hl.get_position("aster").y < 1.2,
+			"— standing at street height (y=%.2f), out the building's door" % gs_hl.get_position("aster").y)
+	else:
+		print("    [volume] note: sentry seed %d has no dock gangway (covered by the emission asserts)" % sentry_seed)
+	await _dispose_scene(inst_hl)
 
 ## The connective-fabric PROGRAM layer (ARCHITECTURE_DESIGN.md §4.18-4.24): the filler assigns each
 ## low box lot a program (retail / office / warehouse / fabrication / crossdock / mixed / generic) and

@@ -640,6 +640,35 @@ static func _emit(seed_value: int, placed_cells: Array, placed_objects: Array, l
 	var bld_stats := {"buildings": 0, "boxes": 0, "props": 0, "viaducts": 0, "lots": []}
 	if buildings:
 		bld_stats = BuildingFillerScript.fill(frag, seed_value, fill_opts)
+		# THE HIGH LINE, PRICED: a walkable deck is a stealth shortcut (the detection vertical
+		# band blinds ground fauna to it) — so it carries its own SENTRY, patrolling the lane at
+		# deck level. And every rail dock on a walkable line becomes a GANGWAY crawl: deck ->
+		# roof hatch -> down through the building -> out its street door (exit_level 0).
+		if populate:
+			for dr in (bld_stats.get("deck_routes", []) as Array):
+				var drd := dr as Dictionary
+				var d_cells: Array = drd.get("cells", [])
+				if d_cells.size() < 8:
+					continue
+				var d_lvl := int(drd.get("level", 2))
+				var ca: Array = d_cells[int(float(d_cells.size()) * 0.2)]
+				var cb: Array = d_cells[int(float(d_cells.size()) * 0.8)]
+				var g_org: Array = frag.grid.get("origin", [0.0, 0.0, 0.0])
+				var d_cs := float(frag.grid.get("cell_size", 1.5))
+				var pa := Vector3(float(g_org[0]) + (float(int(ca[0])) + 0.5) * d_cs, float(d_lvl) * LH,
+					float(g_org[2]) + (float(int(ca[1])) + 0.5) * d_cs)
+				var pb := Vector3(float(g_org[0]) + (float(int(cb[0])) + 0.5) * d_cs, float(d_lvl) * LH,
+					float(g_org[2]) + (float(int(cb[1])) + 0.5) * d_cs)
+				frag.objects.append({"type": "enemy", "id": "deck_sentry", "species": "sentry",
+					"pos": pa + Vector3(0, 0.4, 0), "level": d_lvl, "speed": 2.3, "detect": 4.5,
+					"targets": ["aster", "peris", "endo"], "patrol": [pa, pb]})
+				break
+		for dg in (bld_stats.get("dock_gangs", []) as Array):
+			var dgd := dg as Dictionary
+			frag.objects.append({"type": "crawl", "name": str(dgd["name"]),
+				"pos": dgd["mouth"], "waypoints": dgd["waypoints"], "exit_level": 0,
+				"label": "GANGWAY", "desc": "Take the gangway down through the building",
+				"radius": 1.5, "speed": 1.2})
 
 	frag.params = {
 		"stamina_field_regen": true,
