@@ -53,6 +53,10 @@ var _last_known_target_pos := Vector3.ZERO
 
 # --- Ambient "home" the enemy returns to after losing a target ("idle" | "roam" | "patrol") ---
 var _home_mode := "idle"
+## The POST an idle-home enemy returns to after a chase (captured at activate). Roam homes to its
+## anchor and patrol resumes its beat; a standing guard walks back HERE — without this, an idle
+## enemy "returned" to wherever the chase ended and never re-manned its post.
+var _post_position := Vector3.ZERO
 
 # --- Patrol (authored routes) ---
 var _patrol_waypoints: Array[Vector3] = []
@@ -106,6 +110,7 @@ func activate() -> void:
 		_fsm.set_scheduler(_get_scheduler())
 	if game_state and not game_state.detection_predicted.is_connected(_on_detection_predicted):
 		game_state.detection_predicted.connect(_on_detection_predicted)
+	_post_position = _self_pos()
 	_fsm.transition_to("idle")
 
 ## Set patrol waypoints (an AUTHORED route — pathfinds between waypoints to route around walls).
@@ -587,12 +592,15 @@ func _begin_return() -> void:
 	_fsm.transition_to("return")
 
 func _begin_return_move() -> void:
-	# Head home, then resume the ambient mode the enemy was in before it gave chase.
+	# Head home, then resume the ambient mode the enemy was in before it gave chase. Roam homes
+	# to its anchor; a standing (idle-home) guard walks back to the POST it was activated at.
 	var dest := _self_pos()
 	if _home_mode == "roam":
 		dest = _roam_anchor
-		if game_state and game_state.characters.has(char_id):
-			game_state.command_move_to_pos(char_id, dest)
+	elif _home_mode == "idle" and _post_position != Vector3.ZERO:
+		dest = _post_position
+	if dest != _self_pos() and game_state and game_state.characters.has(char_id):
+		game_state.command_move_to_pos(char_id, dest)
 	var travel := _planar_dist(_self_pos(), dest) / maxf(move_speed, 0.1) + 0.1
 	_fsm.schedule(travel, _resume_home)
 

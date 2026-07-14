@@ -13489,26 +13489,40 @@ func _test_distract_gate() -> void:
 	_assert_equals(int(chunk.get_preview_state()["caught_count"]), 0, "behind the wall she is NEVER spotted (enemies cannot detect through walls)")
 	_assert_equals(str(chunk.get_preview_state()["sentry_state"]), "idle", "the sentry never even alerts at a wall-hidden target")
 
-	# --- 2. The gate is real: walk straight for the end -> spotted in the lane -> swept back. ---
+	# --- 2. The gate is real, KIT-NATIVE (director's correction): walking the lane exposed gets
+	# you SPOTTED, and the consequence is the kit's own — the watcher PURSUES and STRIKES (real
+	# damage). No scripted sweep-back: the design guidance ("failure costs progress") is realized
+	# by engagement pressure, never a hard-coded teleport the player can't see a mechanism for. ---
 	gs.command_move_to_pos("peris", Vector3(20.0, 0.5, 0.0))
-	inst.headless_advance(12.0, 0.1)
+	var engaged := false
+	var struck := false
+	for i in range(200):
+		inst.headless_advance(0.1, 0.1)
+		if str(chunk.get_preview_state()["sentry_state"]) in ["alert", "pursuit", "windup", "charge", "impact", "recover"]:
+			engaged = true
+		struck = struck or float(gs.get_stat("peris", "hp")) < 100.0
+		if engaged and struck:
+			break
 	var st: Dictionary = chunk.get_preview_state()
-	print("  [watched-gap] exposed cross: caught=%d complete=%s peris.x=%.1f" % [int(st["caught_count"]), str(st["complete"]), gs.get_position("peris").x])
+	print("  [watched-gap] exposed cross: caught=%d hp=%.0f peris.x=%.1f engaged=%s" % [
+		int(st["caught_count"]), float(gs.get_stat("peris", "hp")), gs.get_position("peris").x, str(engaged)])
 	_assert_true(int(st["caught_count"]) >= 1, "walking straight to the end gets you SPOTTED — the gate is the real detection, not a wall")
-	_assert_true(not bool(st["complete"]), "no free walkthrough: the end was NOT reached unsolved")
-	_assert_true(gs.get_position("peris").x < 5.0, "the caught member was swept back to the start (failure costs progress)")
-	# The catch beat also resets the sentry to its post, re-armed (one beat, like a wash sweep — otherwise
-	# it camps the spawn and re-spots the idle party forever, which this playtest originally caught).
+	_assert_true(engaged, "the watcher ENGAGES the exposed crosser (the kit's own consequence)")
+	_assert_true(struck, "the crossing is PAID in real damage (struck)")
+	_assert_true(gs.get_position("peris").x > 5.0, "no hard-coded teleport: she is where the chase left her, not snapped to the start")
+	# Break contact ALIVE behind the LOS wall: the sentry loses her and returns to its post
+	# RE-ARMED via its OWN FSM (search -> return; the kit's disengage, not a scripted reset).
+	gs.command_move_to_pos("peris", Vector3(2.5, 0.5, -1.0))
 	var settled := false
-	for i in range(30):
+	for i in range(40):
 		inst.headless_advance(1.0, 0.1)
 		st = chunk.get_preview_state()
 		if str(st["sentry_state"]) == "idle" and gs.get_position("gap_sentry").distance_to(chunk.SENTRY_POST) < 1.5:
 			settled = true
 			break
-	_assert_true(settled, "after the catch the sentry is back at its post, re-armed (state=%s)" % str(st["sentry_state"]))
-	var caught_after_settle := int(st["caught_count"])
-	_assert_true(caught_after_settle <= 2, "the catch is ONE beat, not a camp-the-spawn loop (caught=%d)" % caught_after_settle)
+	_assert_true(settled, "contact broken -> the sentry's own FSM returns it to post, re-armed (state=%s)" % str(st["sentry_state"]))
+	gs.restore_character("peris")
+	gs.snap_character_to("peris", Vector3(2.5, 0.5, -1.0))
 
 	# --- 3. The solve: tend the flure (real dwell), the sentry commits away, cross behind it. ---
 	var flure_node = chunk.find_child("FlureInteract", true, false)
@@ -13522,8 +13536,9 @@ func _test_distract_gate() -> void:
 	inst.headless_advance(float(flure_node.dwell_time) + 0.4, 0.1)
 	st = chunk.get_preview_state()
 	_assert_true(bool(st["flure_fired"]), "Peris tends the flure and it sings")
-	# Fall back out of the lured sentry's (shrunken) reach, and let it commit west through the gap.
-	gs.command_move_to_pos("peris", Vector3(2.5, 0.5, -2.0))
+	# Fall back DEEP, off the sentry's approach diagonal (kit-smart play: a lured sentry still
+	# catches anyone within its shrunken bubble, and its walk-in path crosses a lazy retreat).
+	gs.command_move_to_pos("peris", Vector3(1.0, 0.5, -3.5))
 	var lured := false
 	for i in range(30):
 		inst.headless_advance(0.5, 0.1)
@@ -13533,6 +13548,7 @@ func _test_distract_gate() -> void:
 	print("  [watched-gap] lure: sentry at %s, distracted cross window open=%s" % [str(gs.get_position("gap_sentry")), str(lured)])
 	_assert_true(lured, "the flure pulls the sentry off its watch, through the gap, to the west pocket")
 	var caught_before := int(chunk.get_preview_state()["caught_count"])
+	gs.restore_character("peris")   # healed between beats (a run rests; attrition is not the lesson here)
 	gs.command_move_to_pos("peris", Vector3(20.0, 0.5, 0.0))
 	inst.headless_advance(12.0, 0.1)
 	st = chunk.get_preview_state()
@@ -13572,6 +13588,7 @@ func _test_distract_gate() -> void:
 	inst.headless_advance(float(flure_node.dwell_time) + 0.4, 0.1)
 	_assert_true(bool(chunk.get_preview_state()["lure_active"]), "the flure fires a THIRD time (re-arm is not a one-off)")
 	var caught_pre_crowd := int(chunk.get_preview_state()["caught_count"])
+	gs.restore_character("peris")
 	gs.command_move_to_pos("peris", Vector3(5.5, 0.5, 3.0))   # inside the settled sentry's 0.4x bubble
 	var crowded := false
 	for i in range(24):
@@ -13582,11 +13599,21 @@ func _test_distract_gate() -> void:
 	_assert_true(crowded, "crowding the lured sentry still gets you caught (distraction shrinks, never blinds)")
 	inst.headless_advance(2.0, 0.1)
 	st = chunk.get_preview_state()
-	print("  [watched-gap] crowd catch cleanup: lure_active=%s returning=%s distracted=%s sentry=%s" % [str(st["lure_active"]), str(st["lure_returning"]), str(gs.is_character_distracted("gap_sentry")), str(st["sentry_state"])])
-	_assert_true(not bool(st["lure_active"]), "the catch beat cancels the running lure window (no stale clock)")
-	_assert_true(not gs.is_character_distracted("gap_sentry"), "the re-posted sentry is NOT left distracted at 0.4x reach")
-	_assert_true(gs.get_position("gap_sentry").distance_to(chunk.SENTRY_POST) < 1.5, "the catch beat re-posts the sentry")
-	_assert_true(flure_node.is_interaction_enabled(), "the flure re-arms after a catch too")
+	print("  [watched-gap] crowd spot bookkeeping: lure_active=%s returning=%s distracted=%s sentry=%s" % [str(st["lure_active"]), str(st["lure_returning"]), str(gs.is_character_distracted("gap_sentry")), str(st["sentry_state"])])
+	_assert_true(not bool(st["lure_active"]), "the spot clears the running lure window (a hunting sentry is not lured)")
+	_assert_true(not gs.is_character_distracted("gap_sentry"), "— and drops the distraction shrink (bookkeeping, not a scripted reset)")
+	# the CONSEQUENCE is the kit's: the crowder is being hunted; break contact and the sentry's
+	# own FSM re-posts it
+	gs.command_move_to_pos("peris", Vector3(2.5, 0.5, -1.0))
+	var re_posted := false
+	for i in range(40):
+		inst.headless_advance(1.0, 0.1)
+		if str(chunk.get_preview_state()["sentry_state"]) == "idle" and gs.get_position("gap_sentry").distance_to(chunk.SENTRY_POST) < 1.5:
+			re_posted = true
+			break
+	_assert_true(re_posted, "the crowded sentry hunts, loses her, and re-posts via its own FSM")
+	_assert_true(flure_node.is_interaction_enabled(), "the flure re-arms after a spot too")
+	gs.restore_character("peris")
 	inst.queue_free()
 	await get_tree().process_frame
 
@@ -17340,17 +17367,28 @@ func _test_generated_atom_playable() -> void:
 	var anchors: Dictionary = chunk.get_preview_anchors()
 	var spawn_x: float = gs.get_position("peris").x
 
-	# --- Stage 1, the gate is real: walk straight for the end -> spotted in lane 0 -> swept to START.
-	#     The catch tick is PREDICTED (first proximity to the sentry watch radius), not polled toward. ---
+	# --- Stage 1, the gate is real, KIT-NATIVE: walk straight for the end -> spotted in lane 0 ->
+	#     the watcher HUNTS her (the kit's own consequence; the spot tick is still PREDICTED). ---
 	gs.command_move_to_pos("peris", anchors["end"])
 	_advance_to_proximity(inst, gs, "peris", anchors["post_0"], float(chunk.SENTRY_RANGE), 20.0)
 	inst.headless_advance(1.5, 0.1)
 	st = chunk.get_preview_state()
 	print("  [atom] exposed: caught=%d complete=%s peris.x=%.1f" % [int(st["caught_count"]), str(st["complete"]), gs.get_position("peris").x])
 	_assert_true(int(st["caught_count"]) >= 1, "walking straight through a GENERATED watched gap gets you caught")
-	_assert_true(not bool(st["complete"]), "no free walkthrough of a generated chain")
-	_assert_true(absf(gs.get_position("peris").x - spawn_x) < 3.0, "the catch swept her back to the START (P11: the bottom)")
-	inst.headless_advance(4.0, 0.1)
+	_assert_true(absf(gs.get_position("peris").x - spawn_x) > 1.0, "no hard-coded teleport — the hunt is the consequence")
+	# Section isolation (the chase test's statue idiom): the open room has no LOS break, so the
+	# hunt would otherwise camp her through the whole next section. Freeze the watcher's pending
+	# FSM timers, re-post it idle and re-armed, and heal her for the solve lesson.
+	var sent0 = (chunk._stages[0]["sentries"] as Array)[0]["enemy"]
+	gs.scheduler.cancel_tag("enemy_" + str(sent0.name))
+	if sent0.has_method("_change_state"):
+		sent0._change_state("idle")
+	gs.command_stop("atom_sentry_0")
+	gs.snap_character_to("atom_sentry_0", anchors["post_0"])
+	sent0.position = anchors["post_0"]
+	gs.restore_character("peris")
+	gs.snap_character_to("peris", Vector3(spawn_x, 0.5, 0.0))
+	inst.headless_advance(1.0, 0.1)
 
 	# --- Stage 1 solve: tend flure 0, retreat to the conceal pocket, cross while the sentry is away. ---
 	var flure0 = chunk.find_child("AtomFlure0", true, false)
@@ -17453,15 +17491,24 @@ func _test_generated_atom_playable() -> void:
 	var north_post: Vector3 = a3["post_0"]
 	var south_post: Vector3 = a3["post_0_1"]
 	var spawn_x3: float = gs3.get_position("peris").x
-	# The wrong gap bites: head for the SOUTH gap — its watcher is never lured.
+	# The wrong gap bites, KIT-NATIVE: its watcher is never lured — she is SPOTTED and hunted
+	# (no scripted sweep; the design guidance is realized by the chase itself).
 	gs3.command_move_to_pos("peris", Vector3(south_post.x + 2.0 * cell3, 0.5, south_post.z))
 	_advance_to_proximity(inst3, gs3, "peris", south_post, float(chunk3.SENTRY_RANGE), 20.0)
 	inst3.headless_advance(1.5, 0.1)
 	st3 = chunk3.get_preview_state()
 	print("  [atom-twin] wrong gap: caught=%d peris.x=%.1f" % [int(st3["caught_count"]), gs3.get_position("peris").x])
-	_assert_equals(int(st3["caught_count"]), 1, "crossing the twin's SOUTH gap bites — its watcher is never lured")
-	_assert_true(absf(gs3.get_position("peris").x - spawn_x3) < 3.0, "the catch swept her back to the START (P11)")
-	inst3.headless_advance(3.0, 0.1)
+	_assert_true(int(st3["caught_count"]) >= 1, "crossing the twin's SOUTH gap bites — its watcher is never lured")
+	_assert_true(absf(gs3.get_position("peris").x - spawn_x3) > 1.0, "no hard-coded teleport — she is where the hunt found her")
+	# break contact ALIVE back at the start band; the watcher re-posts via its OWN FSM
+	gs3.command_move_to_pos("peris", Vector3(spawn_x3, 0.5, 0.0))
+	for i3 in range(30):
+		inst3.headless_advance(1.0, 0.1)
+		if gs3.get_position("atom_sentry_0_1").distance_to(south_post) < 2.0 and not gs3.is_moving("peris"):
+			break
+	gs3.restore_character("peris")
+	gs3.snap_character_to("peris", Vector3(spawn_x3, 0.5, 0.0))
+	inst3.headless_advance(1.0, 0.1)
 	# The informed solve: tend the flure, stage below the watcher's transit band, cross the NORTH gap.
 	var flure3 = chunk3.find_child("AtomFlure0", true, false)
 	_assert_true(flure3 != null, "the twin's flure exists")

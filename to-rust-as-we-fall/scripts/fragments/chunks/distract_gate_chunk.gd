@@ -5,8 +5,11 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 ##   START (west room) -> the ONLY way through is a one-lane GAP in a dividing wall -> END (east room).
 ##   A real Enemy sentry guards the gap's east mouth. Its detection is the game's real predictive detection,
 ##   which is LOS-GATED: the dividing wall's cells are opaque, so the sentry CANNOT see you through the wall —
-##   you are only exposed in the gap lane itself. Walking the gap exposed = spotted = swept back to the start
-##   (the failure costs progress; the run keeps going). The solve: Peris tends the FLURE in the west-south
+##   you are only exposed in the gap lane itself. Walking the gap exposed = spotted = the KIT's own
+##   consequence: the sentry pursues and STRIKES (real damage), then loses you and returns to post via its
+##   own FSM. (Director's correction: "swept back to the start" was DESIGN GUIDANCE to consider — a level
+##   that wants a literal sweep places a kit object that embodies it, e.g. a wash Channel; a chunk never
+##   hard-codes a teleport the player can't see a mechanism for.) The solve: Peris tends the FLURE in the west-south
 ##   pocket (click -> walk -> tend dwell on the scheduler); the sentry commits to it (walking the whole way,
 ##   DISTRACTED — reach shrinks but it still catches anyone who crowds it), which clears the gap; fall back,
 ##   let it settle, then cross to the end.
@@ -107,7 +110,6 @@ func _spawn_sentry() -> void:
 	gs.register_character("gap_sentry", enemy.position, enemy.move_speed, {"detection_range": SENTRY_RANGE})
 	enemy.activate()
 	enemy.target_spotted.connect(_on_spotted)
-	enemy.hit_target.connect(func(tid: String, _dmg: float) -> void: _on_spotted(tid))
 	# The sentry stays DISTRACTED for its whole walk home after a lure expires — full range comes back only
 	# once it ARRIVES at the post. Restoring it at expiry (while parked in the west pocket) put the START
 	# inside its clear-LOS 6.0 reach and insta-spotted the party for playing correctly.
@@ -185,24 +187,27 @@ func _set_flure_emission(energy: float) -> void:
 	if _flure_mesh != null and _flure_mesh.material_override is StandardMaterial3D:
 		(_flure_mesh.material_override as StandardMaterial3D).emission_energy_multiplier = energy
 
-## Spotted in the open = CAUGHT. The failure costs progress, it doesn't end the run: the caught member is
-## swept back to the start (escorted off, in fiction) AND the sentry returns to its post, re-armed — the
-## whole catch is one beat, like a wash sweep. Leaving the sentry mid-hunt instead camps it on the spawned
-## party and it re-spots them forever (the playtest caught exactly that loop). The post-reset is DEFERRED
-## one scheduler tick so it never mutates the enemy FSM from inside its own target_spotted emit.
+## Spotted in the open = the KIT runs: the sentry's own FSM pursues and strikes; when it loses
+## the target it searches and returns to post re-armed (the same disengage every enemy has). The
+## chunk only COUNTS the spot and says why — no scripted sweep, no teleport (that was design
+## guidance, not a mechanic; see the header).
 func _on_spotted(target_id: String) -> void:
 	if _phase == "complete" or not (target_id in PARTY_IDS):
 		return
 	_caught_count += 1
-	var gs = _get_game_state()
-	if gs != null and gs.characters.has(target_id):
-		gs.command_stop(target_id)
-		gs.snap_character_to(target_id, SPAWNS.get(target_id, SPAWNS["peris"]))
+	# BOOKKEEPING (not consequence): a sentry that has spotted someone is no longer lured — the
+	# running lure window, the returning flag and the distraction shrink all clear so the chunk's
+	# state never lies about a sentry that is visibly hunting.
+	_lure_until = -1.0
+	_lure_returning = false
+	_set_flure_emission(0.5)
 	var sched = _get_scheduler()
 	if sched != null:
-		sched.cancel_tag("distract_gate_catch")
-		sched.schedule_after(0.05, _reset_sentry_to_post, "distract_gate_catch")
-	_show_note("Spotted in the gap. Escorted back to the start.", 2.2)
+		sched.cancel_tag("distract_gate_lure")
+	var gs = _get_game_state()
+	if gs != null and gs.characters.has("gap_sentry"):
+		gs.set_character_distracted("gap_sentry", false)
+	_show_note("SPOTTED — the gap watcher has %s. RUN." % target_id.capitalize(), 2.6)
 	_set_preview_step("distract_gate_caught")
 
 ## The catch is ONE atomic beat: the sentry re-posts AND every scrap of lure state clears with it — the

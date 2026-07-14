@@ -3,7 +3,7 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 ## GENERATED ATOM — the bridge from a graded ChunkGenerator SKELETON to a REAL walkable room. The chunk takes
 ## {stages, seed}, regenerates the exact skeleton the report card graded (same seed = same sketch), and builds
 ## it with REAL mechanics only: real Enemy sentries with LOS-gated detection watching each gap, real flure
-## TIMED_ACTION tends, real conceal pockets (CONCEAL_MEDIUM — the Shadow's stage), catch = swept to the START
+## TIMED_ACTION tends, real conceal pockets (CONCEAL_MEDIUM — the Shadow's stage), catch = the kit's own chase
 ## (P11: the wash takes you to the bottom) + that sentry re-posts in one atomic beat. No dynamic blockers, no
 ## "click = solved" stand-ins — the gate IS the detection, exactly like the hand-built Watched Gap, but
 ## GENERATED. Only archetypes whose mechanics are PROVEN in-engine may build here (distract today); anything
@@ -282,7 +282,6 @@ func _build_distract_stage(i: int, gt: Dictionary) -> void:
 			# NOTE: a patrol sentry's beat is armed in reset_preview_state, not here — the host installs
 			# the navigation grid AFTER the chunk builds, and patrol pathfinds on it.
 			enemy.target_spotted.connect(_on_spotted.bind(i))
-			enemy.hit_target.connect(func(tid: String, _dmg: float) -> void: _on_spotted(tid, i))
 		(st["sentries"] as Array).append({"cid": cid, "enemy": enemy, "post": post, "waypoints": waypoints})
 	_stages.append(st)
 
@@ -391,21 +390,29 @@ func _on_character_arrived(id: String) -> void:
 				gs.set_character_distracted(id, false)
 			return
 
-## Spotted = ONE atomic beat: the member is swept to the START (P11 — the wash takes you to the bottom; here
-## the atom's bottom is its start), and THAT sentry re-posts with its whole lure state cleared.
+## Spotted = the KIT runs (director's correction): the watcher pursues and strikes through its
+## own FSM, disengages when it loses you, and returns to its post re-armed. The chunk counts the
+## spot and names the stage — P11's "failure costs progress" is guidance realized by engagement
+## pressure (and, in the roguelite, by the run's own stakes), never a hard-coded teleport. A
+## level that wants a literal sweep-back places a Channel/wash object that embodies it.
 func _on_spotted(target_id: String, stage_i: int) -> void:
 	if _phase == "complete" or not (target_id in PARTY_IDS):
 		return
 	_caught_count += 1
-	var gs = _get_game_state()
-	if gs != null and gs.characters.has(target_id):
-		gs.command_stop(target_id)
-		gs.snap_character_to(target_id, get_spawn_positions().get(target_id, _world(_def["start"])))
+	# bookkeeping: the spotting stage's lure state clears (a hunting sentry is not lured)
+	var st: Dictionary = _stages[stage_i]
+	st["lure_until"] = -1.0
+	st["returning"] = false
+	_set_emission(st["flure_mesh"], 0.5)
 	var sched = _get_scheduler()
 	if sched != null:
-		sched.cancel_tag("atom_catch_%d" % stage_i)
-		sched.schedule_after(0.05, func() -> void: _reset_sentry_to_post(stage_i), "atom_catch_%d" % stage_i)
-	_show_note("SPOTTED — stage %d's watcher caught %s in the lane. Escorted back to the start." % [stage_i + 1, target_id.capitalize()], 3.2)
+		sched.cancel_tag("atom_lure_%d" % stage_i)
+	var gs = _get_game_state()
+	if gs != null:
+		for target in (st["sentries"] as Array):
+			if gs.characters.has(str(target["cid"])):
+				gs.set_character_distracted(str(target["cid"]), false)
+	_show_note("SPOTTED — stage %d's watcher has %s in the lane. RUN." % [stage_i + 1, target_id.capitalize()], 2.6)
 
 func _reset_sentry_to_post(i: int) -> void:
 	var st: Dictionary = _stages[i]
