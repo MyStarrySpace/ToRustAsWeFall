@@ -17080,7 +17080,60 @@ func _test_roguelike_atom_run() -> void:
 	else:
 		_assert_true(chunk2 != null and bool((chunk2.get_preview_state() as Dictionary).get("skeleton_ok", false)),
 			"the depth-1 chunk is live and its skeleton grades SHIPPABLE")
+		# THE INTERMEDIATE ZONES dress the descent: the presenter names the district band by depth
+		var cfg_z: Dictionary = inst.get("preview_chunk_config")
+		var dz: Dictionary = cfg_z.get("district", {})
+		_assert_true(not dz.is_empty(), "the run's atom level carries its DISTRICT (zone by depth)")
+		var zone_expect: Array = ["capitalist", "institutional", "industrial", "mixed", "socialist"]
+		_assert_equals(str(dz.get("idiom", "")), str(zone_expect[mini(int(session.depth), 4)]),
+			"depth %d dresses as its zone band's idiom" % int(session.depth))
+		_assert_true((chunk2._skirt_stats as Dictionary).size() > 0 and int(chunk2._skirt_stats.get("buildings", 0)) >= 2,
+			"the district SKIRT actually built (%d fabric buildings around the room)" % int(chunk2._skirt_stats.get("buildings", 0)))
+		_assert_true((chunk2._skirt_stats.get("volume_violations", ["?"]) as Array).is_empty(),
+			"the skirt's reservation audit is clean — nothing intrudes the play columns")
 	inst.queue_free()
+	await tree.process_frame
+
+	# skirt DETERMINISM + isolation: same config -> same fabric; no district config -> no skirt
+	var atom_cfg := {"stages": ["distract:lure", "distract:lure"], "seed": 11,
+		"district": {"idiom": "industrial", "decay": 0.3}}
+	var ia = await _instantiate_preview_chunk_and_wait("puzzle_atom", 6, atom_cfg)
+	var ib = await _instantiate_preview_chunk_and_wait("puzzle_atom", 6, atom_cfg.duplicate(true))
+	if ia != null and ib != null:
+		_assert_equals(int(ia._active_chunk._skirt_stats.get("boxes", -1)),
+			int(ib._active_chunk._skirt_stats.get("boxes", -2)),
+			"the skirt is seed-deterministic (same config -> identical box count)")
+		_assert_true(int(ia._active_chunk._skirt_stats.get("boxes", 0)) > 40,
+			"an industrial zone packs a real skirt (%d boxes)" % int(ia._active_chunk._skirt_stats.get("boxes", 0)))
+	var ic = await _instantiate_preview_chunk_and_wait("puzzle_atom", 6,
+		{"stages": ["distract:lure", "distract:lure"], "seed": 11})
+	if ic != null:
+		_assert_true((ic._active_chunk._skirt_stats as Dictionary).is_empty(),
+			"no district config -> no skirt (old boots unchanged)")
+	# the presenter's zone mapping, asserted DIRECTLY (the loader flow above may deal a chase)
+	if ia != null:
+		var sess_z = Session.new(21, "atom")
+		sess_z.start()
+		var hops_z := 0
+		while (str(sess_z.spec.get("kind", "")) != "atom" or int(sess_z.depth) < 1) 				and not sess_z.at_finale() and hops_z < 8:
+			sess_z.descend("safe")
+			hops_z += 1
+		if str(sess_z.spec.get("kind", "")) == "atom" and int(sess_z.depth) >= 1:
+			ia.set("_run_session", sess_z)
+			ia.set("_roguelike_active", true)
+			ia.call("_roguelike_sync_config")
+			var dz2: Dictionary = (ia.get("preview_chunk_config") as Dictionary).get("district", {})
+			var zone_expect2: Array = ["capitalist", "institutional", "industrial", "mixed", "socialist"]
+			_assert_equals(str(dz2.get("idiom", "")), str(zone_expect2[mini(int(sess_z.depth), 4)]),
+				"the presenter maps depth %d onto its zone band's idiom" % int(sess_z.depth))
+			_assert_true(float(dz2.get("decay", -1.0)) >= 0.0 and float(dz2.get("decay", 2.0)) <= 0.6,
+				"— with depth-scaled decay (%.2f)" % float(dz2.get("decay", -1.0)))
+	if ia != null:
+		await _dispose_scene(ia)
+	if ib != null:
+		await _dispose_scene(ib)
+	if ic != null:
+		await _dispose_scene(ic)
 	await tree.process_frame
 
 ## Architecture-native waiting: the scheduler exists so tests can JUMP to the tick where a condition

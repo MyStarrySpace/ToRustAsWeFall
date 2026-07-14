@@ -200,6 +200,7 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 
 	var boxes_before := frag.walls.size()
 	var idiom := str(opts.get("idiom", "mixed"))
+	var decay_bias := clampf(float(opts.get("decay_add", 0.0)), 0.0, 0.9)
 	if not IDIOM_WEIGHTS.has(idiom):
 		idiom = "mixed"
 	var program_tally := {}
@@ -220,7 +221,7 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 		# --- sample the fields at the centroid ---
 		var t_h := _n01(f_height, center.x, center.y)
 		var t_pal := _n01(f_pal, center.x, center.y)
-		var decay := _n01(f_decay, center.x, center.y)
+		var decay := clampf(_n01(f_decay, center.x, center.y) + decay_bias, 0.0, 1.0)
 		var glow_density := _n01(f_glow, center.x, center.y) * (1.0 - decay * 0.7)
 
 		# Canyon profile: a strict height CONE from the street outward — a lot N cells from a street

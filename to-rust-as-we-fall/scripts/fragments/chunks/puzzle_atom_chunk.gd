@@ -40,6 +40,8 @@ var _hub_shape: Dictionary = {}    # optional macro shape ({type: circle|rect|he
 var _descent_per_turn := 2.0
 var _coord_map = null
 var _shelter_rested := false
+var _district: Dictionary = {}
+var _skirt_stats: Dictionary = {}
 
 func configure_chunk(config: Dictionary) -> void:
 	if config.has("stages"):
@@ -47,6 +49,7 @@ func configure_chunk(config: Dictionary) -> void:
 	_config_seed = int(config.get("seed", _config_seed))
 	_hub_shape = (config.get("hub_shape", {}) as Dictionary).duplicate(true)
 	_descent_per_turn = float(config.get("descent_per_turn", _descent_per_turn))
+	_district = (config.get("district", {}) as Dictionary).duplicate(true)
 
 # --- Build: skeleton -> real room -------------------------------------------------------------------------------
 
@@ -89,6 +92,14 @@ func _build_chunk() -> void:
 			continue
 		_build_distract_stage(i, gt)
 	_build_exit_shelter()
+	# THE INTERMEDIATE ZONE: when the run names a district, the flat level dresses itself in the
+	# connective fabric — the puzzle room becomes streets cut through the zone the descent is
+	# passing through (idiom + decay from the run's depth).
+	if not warped and not _district.is_empty():
+		_skirt_stats = _build_district_skirt(get_grid_data(), _config_seed, 6, {
+			"idiom": str(_district.get("idiom", "mixed")),
+			"decay_add": float(_district.get("decay", 0.0)),
+		})
 	if warped:
 		_apply_hub_warp()
 

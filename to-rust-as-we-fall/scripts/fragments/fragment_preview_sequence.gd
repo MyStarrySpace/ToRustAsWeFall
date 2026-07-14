@@ -96,7 +96,8 @@ const PREVIEW_ENTRIES := [
 		"config": {"fragment_path": "res://data/fragments/blind_floor.tres"}},
 	{"id": "distract_gate", "chunk": "distract_gate", "title": "The Watched Gap", "stage": 3},
 	{"id": "puzzle_atom", "chunk": "puzzle_atom", "title": "Generated Atom Chain", "stage": 3,
-		"config": {"stages": ["distract:lure", "distract:patrol", "distract:twin"], "seed": 7}},
+		"config": {"stages": ["distract:lure", "distract:patrol", "distract:twin"], "seed": 7,
+			"district": {"idiom": "capitalist", "decay": 0.15}}},
 	{"id": "lure_relay", "chunk": "lure_relay", "title": "Flure Relay", "stage": 3},
 	{"id": "generated_chain_nested_poc", "chunk": "generated_stretch", "title": "Generated Chain/Nested POC", "stage": 3,
 		"config": {"spec_path": "res://data/generated_stretches/generated_chain_nested_poc_shelter_2_to_3.json"}},
@@ -678,15 +679,24 @@ func _roguelike_sync_config() -> void:
 		# Atom-chain level: the chunk regenerates the SAME graded skeleton from (stages, seed) and lays it
 		# on the run's hub shape — the report card the session already checked is the level's provenance.
 		preview_chunk = "puzzle_atom"
+		# THE DESCENT'S INTERMEDIATE ZONES (ARCHITECTURE_DESIGN.md §4.18-4.24 as playable scenery):
+		# each depth dresses its level as the district band the run is passing through — the
+		# commerce strip first, then the clerical blocks, the supply belt, the infill wards, the
+		# collectives — with decay rising as the run goes down.
+		var zone_idioms: Array = ["capitalist", "institutional", "industrial", "mixed", "socialist"]
+		var zone_names: Array = ["the commerce strip", "the clerical blocks", "the supply belt",
+			"the infill wards", "the collectives"]
+		var zone_i: int = mini(_run_session.depth, zone_idioms.size() - 1)
 		preview_chunk_config = {
 			"stages": (_run_session.spec.get("stages", []) as Array).duplicate(),
 			"seed": int(_run_session.spec.get("seed", 0)),
 			"hub_shape": (_run_session.spec.get("hub_shape", {}) as Dictionary).duplicate(true),
 			"roguelike": true,
+			"district": {"idiom": str(zone_idioms[zone_i]),
+				"decay": clampf(float(_run_session.depth) * 0.12, 0.0, 0.6)},
 		}
 		scene_title_override = "Roguelike — Depth %d (%d gates, %s)" % [_run_session.depth + 1,
-			(_run_session.spec.get("stages", []) as Array).size(),
-			str((_run_session.spec.get("hub_shape", {}) as Dictionary).get("type", "flat"))]
+			(_run_session.spec.get("stages", []) as Array).size(), str(zone_names[zone_i])]
 		return
 	if str(_run_session.spec.get("kind", "")) == RunSession.LEVEL_CHASE:
 		# The run's dealt CHASE: the authored lockout corridor. Its failure economy is the

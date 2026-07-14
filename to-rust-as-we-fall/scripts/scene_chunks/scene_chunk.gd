@@ -314,6 +314,93 @@ func _make_material(
 	return material
 
 const TILE_DIR := "res://resources/models/elevator/tiles/"
+const SKIRT_GRIME_SHADER := preload("res://resources/tile_grime.gdshader")
+var _skirt_mat_cache: Dictionary = {}
+
+## THE DISTRICT SKIRT: wrap this chunk's play space in the connective-fabric economy
+## (ARCHITECTURE_DESIGN.md §4.18-4.24) so a generated level reads as streets cut through an
+## inhabited intermediate zone instead of a room on a void. The chunk's grid becomes the street
+## set of a synthetic fragment expanded by a margin ring; BuildingFiller packs the ring (program
+## buildings, props, viaduct skyline — landmarks off by default), and the output renders here.
+## The filler's own reservation grid + audit keep every box out of the play columns.
+func _build_district_skirt(grid_data: Dictionary, seed_v: int, margin := 6, filler_opts: Dictionary = {}) -> Dictionary:
+	var cs := float(grid_data.get("cell_size", 1.5))
+	var org: Array = grid_data.get("origin", [0.0, 0.0, 0.0])
+	var w := int(grid_data.get("width", 0))
+	var h := int(grid_data.get("height", 0))
+	if w <= 0 or h <= 0:
+		return {}
+	var synth := Fragment.new()
+	var cells: Array = []
+	for c in grid_data.get("walkable_cells", []):
+		cells.append([int(c[0]) + margin, int(c[1]) + margin])
+	synth.grid = {"contract_id": "unified_grid_v1", "cell_size": cs,
+		"origin": [float(org[0]) - float(margin) * cs, 0.0, float(org[2]) - float(margin) * cs],
+		"width": w + margin * 2, "height": h + margin * 2, "walkable_cells": cells}
+	var opts := filler_opts.duplicate(true)
+	if not opts.has("landmarks"):
+		opts["landmarks"] = false
+	var stats: Dictionary = BuildingFiller.fill(synth, seed_v, opts)
+	# the skirt ground: a darker apron under the ring, its top just below the play floors
+	var ww := float(w + margin * 2) * cs
+	var hh := float(h + margin * 2) * cs
+	_add_box(self, Vector3(float(org[0]) - float(margin) * cs + ww * 0.5, -0.08,
+		float(org[2]) - float(margin) * cs + hh * 0.5), Vector3(ww, 0.1, hh), Color(0.055, 0.06, 0.065))
+	for wb in synth.walls:
+		var wd := wb as Dictionary
+		var box := _add_box(self, wd.get("pos", Vector3.ZERO), wd.get("size", Vector3.ONE),
+			wd.get("color", Color(0.1, 0.1, 0.11)), wd.get("emission", Color.BLACK),
+			float(wd.get("energy", 0.0)))
+		if str(wd.get("tile", "")) != "":
+			box.material_override = _skirt_tile_material(str(wd["tile"]), wd.get("color", Color.WHITE))
+	for lt in synth.lights:
+		var ld := lt as Dictionary
+		_add_light(self, ld.get("pos", Vector3.ZERO), ld.get("color", Color.WHITE),
+			float(ld.get("energy", 1.0)), float(ld.get("range", 8.0)))
+	for lp in (stats.get("lathes", []) as Array):
+		_skirt_lathe(lp as Dictionary)
+	return stats
+
+## Loft one of the skirt's revolve-tower plans (the reference silhouettes).
+func _skirt_lathe(lp: Dictionary) -> void:
+	var profile: Dictionary = LatheBuilder.make_profile(lp)
+	var built: Dictionary = LatheBuilder.build(profile)
+	if built["mesh"] == null:
+		return
+	var mesh := built["mesh"] as ArrayMesh
+	mesh.surface_set_material(0, _skirt_tile_material(str(lp.get("tile", "facility_metal")),
+		lp.get("color", Color(0.4, 0.4, 0.42))))
+	var mi := MeshInstance3D.new()
+	mi.name = "SkirtLatheTower"
+	mi.mesh = mesh
+	add_child(mi)
+	if bool(lp.get("coil", false)):
+		var coil: Dictionary = SdfMesher.build(LatheBuilder.coil_prims(lp), 0.2)
+		if coil["mesh"] != null:
+			var ci := MeshInstance3D.new()
+			ci.name = "SkirtLatheCoil"
+			ci.mesh = coil["mesh"]
+			ci.material_override = _skirt_tile_material("rust_iron", Color(0.4, 0.29, 0.21))
+			add_child(ci)
+
+## tile+tint -> cached grime-shader material (the district skirt's textured boxes).
+func _skirt_tile_material(tile_name: String, tint: Color) -> ShaderMaterial:
+	var lifted := Color(minf(tint.r * 2.6, 1.2), minf(tint.g * 2.6, 1.2), minf(tint.b * 2.6, 1.2))
+	var key := "%s:%d,%d,%d" % [tile_name, int(lifted.r * 24.0), int(lifted.g * 24.0), int(lifted.b * 24.0)]
+	if _skirt_mat_cache.has(key):
+		return _skirt_mat_cache[key]
+	var mat := ShaderMaterial.new()
+	mat.shader = SKIRT_GRIME_SHADER
+	var tex = load(TILE_DIR + tile_name + ".png")
+	if tex != null:
+		mat.set_shader_parameter("tile_tex", tex)
+	mat.set_shader_parameter("tint", lifted)
+	if tile_name == "rust_iron":
+		mat.set_shader_parameter("rust_amount", 0.3)
+		mat.set_shader_parameter("grime_amount", 0.55)
+	_skirt_mat_cache[key] = mat
+	return mat
+
 
 ## A pixel-atlas material that tiles across a surface in world space (the sim-room / bridge / generated-stretch
 ## technique): 1 tile/m, NEAREST sampled, world-triplanar so it repeats crisply regardless of the mesh's size or
