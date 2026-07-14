@@ -86,6 +86,12 @@ func add_inter_level_link(cell: Vector2i, from_level: int, to_level: int, link_t
 func can_traverse_link(cell: Vector2i, from_level: int, to_level: int) -> bool:
 	return inter_level_links.has(_link_key(cell, from_level, to_level))
 
+## Remove a link (both directions) — for reversible set pieces (the sump's ledge falls when it
+## drains). Absent keys are a no-op.
+func remove_inter_level_link(cell: Vector2i, from_level: int, to_level: int) -> void:
+	inter_level_links.erase(_link_key(cell, from_level, to_level))
+	inter_level_links.erase(_link_key(cell, to_level, from_level))
+
 func get_link_cost(cell: Vector2i, from_level: int, to_level: int) -> float:
 	return float(inter_level_links.get(_link_key(cell, from_level, to_level), {}).get("cost", 1.0))
 

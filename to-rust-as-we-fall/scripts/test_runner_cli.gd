@@ -17195,6 +17195,58 @@ func _test_roguelike_atom_run() -> void:
 				"the powered belt carries the rider down the old line (%.1f from the far mouth)"
 				% gs_bl.get_position("aster").distance_to(dest_bl))
 
+		# --- SET PIECE #27, the EXTRACTION BORE SUMP (reversible water piece): DRAIN opens the
+		# pit floor for the cache; FLOOD seals it, raises the ledge LINK and DROWNS the penned
+		# scrap; drain AGAIN reverses both — and neither route is on the entry->exit path ---
+		var pump: Node = chunk_bl.find_child("SumpPump0", true, false)
+		_assert_true(pump != null, "the intermediate zone hosts its extraction bore sump")
+		if pump != null:
+			var e_su: Dictionary = chunk_bl._sumps[0]
+			var pit0: Array = e_su["pit_cells"]
+			var pit_cell := Vector2i(int(pit0[0][0]), int(pit0[0][1]))
+			var ledge0: Array = e_su["ledge_cell"]
+			var ledge_cell := Vector2i(int(ledge0[0]), int(ledge0[1]))
+			var ledge_lvl := int(e_su["ledge_level"])
+			var pen_id := "sump_scrap_0"
+			_assert_true(gs_bl.characters.has(pen_id), "the sump owns a penned scrap in the pit")
+			# start MID: pit sealed, no ledge, salvage locked
+			_assert_true(gs_bl.grid.is_walkable(pit_cell.x, pit_cell.y) == false,
+				"MID: the flooded pit floor is sealed")
+			_assert_true(not (ledge_lvl in gs_bl.grid.links_from(ledge_cell, 0)), "MID: no ledge link")
+			# pump: MID -> FLOODED (state 2 needs two cycles from MID(1))... one cycle -> FLOODED
+			pump.set("active_character", "aster")
+			pump.call("_trigger")
+			ia.headless_advance(1.6, 0.1)
+			_assert_equals(int((chunk_bl._sumps[0] as Dictionary)["state"]), 2, "one pump from MID floods the bore")
+			_assert_true(not gs_bl.is_alive(pen_id) if gs_bl.has_method("is_alive") else not gs_bl.characters.has(pen_id) or float(gs_bl.get_stat(pen_id, "hp")) <= 0.0,
+				"FLOOD drowns the penned scrap")
+			_assert_true(ledge_lvl in gs_bl.grid.links_from(ledge_cell, 0),
+				"FLOOD raises the ledge — a real inter-level link up")
+			_assert_true(gs_bl.grid.is_walkable(pit_cell.x, pit_cell.y) == false,
+				"FLOOD keeps the pit sealed (you go UP, not down)")
+			# pump: FLOODED -> DRAINED (two cycles: FLOOD(2)->DRAIN(0))
+			pump.call("_trigger")
+			ia.headless_advance(1.6, 0.1)
+			var st_su := int((chunk_bl._sumps[0] as Dictionary)["state"])
+			if st_su == 1:   # landed on MID; one more to DRAIN
+				pump.call("_trigger")
+				ia.headless_advance(1.6, 0.1)
+			_assert_equals(int((chunk_bl._sumps[0] as Dictionary)["state"]), 0, "further pumping drains the bore")
+			_assert_true(gs_bl.grid.is_walkable(pit_cell.x, pit_cell.y),
+				"DRAIN opens the pit floor — you can climb down for the cache")
+			_assert_true(not (ledge_lvl in gs_bl.grid.links_from(ledge_cell, 0)),
+				"DRAIN drops the ledge — the water piece is REVERSIBLE (unlike the one-shot silo)")
+			# no-bypass: neither the pit nor the ledge sits on the spawn->exit route
+			var spawn_su: Vector3 = chunk_bl.get_spawn_positions().get("aster", Vector3.ZERO)
+			var exit_su: Vector3 = chunk_bl._world(chunk_bl._def["end"])
+			var route_su: Array = gs_bl.grid.find_path(gs_bl.grid.world_to_grid(spawn_su), gs_bl.grid.world_to_grid(exit_su))
+			var touches := false
+			for wpc in route_su:
+				var wcell: Vector2i = wpc if wpc is Vector2i else Vector2i(int(wpc[0]), int(wpc[1]))
+				if wcell == pit_cell:
+					touches = true
+			_assert_true(not touches, "the sump pocket is a dead end — never on the entry->exit path (no gate bypass)")
+
 	# the presenter's zone mapping, asserted DIRECTLY (the loader flow above may deal a chase)
 	if ia != null:
 		var sess_z = Session.new(21, "atom")

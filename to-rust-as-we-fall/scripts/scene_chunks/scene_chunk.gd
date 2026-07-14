@@ -363,6 +363,157 @@ func _build_district_skirt(grid_data: Dictionary, seed_v: int, margin := 6, fill
 
 ## SILO DROP CHUTES (SET_PIECES.md #26): vented stockpiles this chunk hosts.
 var _silos: Array = []
+## EXTRACTION BORE SUMPS (SET_PIECES.md #27): reversible wellhead-pump sumps this chunk hosts.
+var _sumps: Array = []
+
+## An EXTRACTION BORE SUMP (SET_PIECES.md #27): the decommissioned siphon well as a REVERSIBLE
+## water-height set piece (the water family, extraction-reflavored). CONTROL: the wellhead pump
+## lever, placed apart. EFFECT cycles DRAINED -> MID -> FLOODED on a scheduled beat: DRAINED opens
+## the pit floor so you can climb down for the salvage under the wall; FLOODED seals the pit,
+## raises the float platform into a LEDGE link (a climb to a vantage), and DROWNS whatever is
+## penned in the pit; MID is neither. Fully reversible — flood then drain and the ledge is gone,
+## the pit open again (unlike the one-shot silo/belt). Owns its penned scrap, so it drowns in any
+## host. Two-read: a resource bore AND a CSF siphon site.
+func _spawn_sump(spec: Dictionary) -> void:
+	var idx := _sumps.size()
+	var pos: Vector3 = spec.get("pos", Vector3.ZERO)
+	var pit_min: Vector3 = spec.get("pit_min", pos + Vector3(-1.5, 0, -1.5))
+	var pit_max: Vector3 = spec.get("pit_max", pos + Vector3(1.5, 0, 1.5))
+	var pit_c := (pit_min + pit_max) * 0.5
+	var pit_cells: Array = spec.get("pit_cells", [])
+	var ledge_cell: Array = spec.get("ledge_cell", [])
+	var ledge_level := int(spec.get("ledge_level", 1))
+	# the wellhead casing + rim
+	for t in range(2):
+		_add_box(self, pos + Vector3(0, 0.6 + 1.1 * float(t), 0),
+			Vector3(2.6 - 0.5 * float(t), 1.1, 2.6 - 0.5 * float(t)),
+			Color(0.15, 0.16, 0.15).darkened(0.03 * float(t)))
+	_add_box(self, Vector3(pit_c.x, -0.35, pit_c.z),
+		Vector3(pit_max.x - pit_min.x + 0.4, 0.5, pit_max.z - pit_min.z + 0.4), Color(0.08, 0.09, 0.1))
+	_add_label(self, str(spec.get("label_text", "BORE %d — SIPHON DECOMMISSIONED" % (idx + 1))),
+		pos + Vector3(0, 3.0, 0), Color(0.5, 0.62, 0.6))
+	# the salvage under the wall (reachable ONLY when drained — an INSPECTION reward in the pit)
+	var salvage := _add_interactable(self, "SumpSalvage%d" % idx, "Lift the wellhead cache",
+		Vector3(pit_c.x, 0.1, pit_c.z), "SALVAGE", "", 1.0, true, 1.4,
+		Interactable.InteractableType.INSPECTION)
+	var salv_m := _add_box(salvage, Vector3(0, 0.2, 0), Vector3(0.5, 0.4, 0.5),
+		Color(0.24, 0.2, 0.12), Color(0.85, 0.6, 0.25), 0.6)
+	_outline_interactable_child(salvage, salv_m, "SumpSalvage%d" % idx, 1.4)
+	# the water plane (cosmetic; the logical water is the state) + the float platform
+	var water := _add_box(self, Vector3(pit_c.x, -0.05, pit_c.z),
+		Vector3(pit_max.x - pit_min.x, 0.12, pit_max.z - pit_min.z),
+		Color(0.16, 0.28, 0.34), Color(0.2, 0.5, 0.6), 0.35, "SumpWater%d" % idx)
+	water.visible = false
+	var plat := _add_box(self, Vector3(pit_c.x, 0.05, pit_c.z), Vector3(1.6, 0.24, 1.6),
+		Color(0.4, 0.34, 0.22), Color.BLACK, 0.0, "SumpPlatform%d" % idx)
+	# the CONTROL: the wellhead pump lever, placed apart
+	var pump := _add_interactable(self, "SumpPump%d" % idx, "Work the wellhead pump",
+		spec.get("pump_pos", pos + Vector3(3.0, 0, 0)), "PUMP", "", 1.4, false, 1.6,
+		Interactable.InteractableType.TIMED_ACTION)
+	var pump_m := _add_box(pump, Vector3(0, 0.55, 0), Vector3(0.35, 1.1, 0.35),
+		Color(0.2, 0.36, 0.42), Color(0.3, 0.7, 0.85), 0.5)
+	_outline_interactable_child(pump, pump_m, "SumpPump%d" % idx, 1.6)
+	# the penned scrap (drowns at FLOOD) — the sump owns it, so the drown lands in any host
+	var pen = null
+	if bool(spec.get("pit_enemy", true)):
+		var gs0 = _get_game_state()
+		if gs0 != null:
+			pen = Enemy.new()
+			pen.name = "SumpScrap%d" % idx
+			pen.position = Vector3(pit_c.x, 0.4, pit_c.z)
+			pen.scale = Vector3.ONE * 0.6
+			pen.color = Color(0.4, 0.2, 0.12)
+			pen.move_speed = 1.6
+			pen.detection_range = 0.0
+			add_child(pen)
+			pen.char_id = "sump_scrap_%d" % idx
+			pen.game_state = gs0
+			gs0.register_character(pen.char_id, pen.position, pen.move_speed, {})
+			if gs0.has_method("set_coop_exempt"):
+				gs0.set_coop_exempt(pen.char_id)
+			pen.activate()
+			pen.set_roam(Vector3(pit_c.x, 0.0, pit_c.z), 1.0)
+	var entry := {"state": 1, "pending": -1, "pit_cells": pit_cells, "ledge_cell": ledge_cell,
+		"ledge_level": ledge_level, "water": water, "plat": plat, "pit_c": pit_c,
+		"pen": pen, "salvage": salvage, "idx": idx}
+	_sumps.append(entry)
+	pump.interacted.connect(func() -> void: _on_sump_pumped(idx))
+	# the live grid is assigned by the host AFTER _build_chunk, so apply the initial MID state
+	# deferred (by which point _game_state.grid exists); the visual apply is idempotent
+	call_deferred("_apply_sump", idx)
+
+func _on_sump_pumped(idx: int) -> void:
+	var sched = _get_scheduler()
+	if sched == null or idx >= _sumps.size():
+		return
+	var entry := _sumps[idx] as Dictionary
+	if int(entry["pending"]) >= 0:
+		return
+	entry["pending"] = (int(entry["state"]) + 1) % 3
+	_show_note(["The pump draws the bore down—", "The level settles—", "The bore floods back up—"][int(entry["pending"])], 1.4)
+	sched.schedule_after(1.2, func() -> void: _commit_sump(idx), "sump_%d" % idx)
+
+func _commit_sump(idx: int) -> void:
+	var entry := _sumps[idx] as Dictionary
+	if int(entry["pending"]) < 0:
+		return
+	entry["state"] = int(entry["pending"])
+	entry["pending"] = -1
+	_apply_sump(idx)
+	# the DROWN: flooding takes whatever is penned in the pit (analytic, at the commit tick)
+	if int(entry["state"]) == 2:
+		var pen = entry["pen"]
+		if pen != null and is_instance_valid(pen) and pen.is_alive():
+			var gs = _get_game_state()
+			if gs != null:
+				gs.command_stop(pen.char_id)
+			pen.take_damage(float(pen.max_hp))
+
+## DRAINED(0): pit floor walkable (climb down for the salvage), ledge down. MID(1): sealed, neither.
+## FLOODED(2): pit sealed (water), the ledge LINK up, salvage locked. Reversible each commit.
+func _apply_sump(idx: int) -> void:
+	var entry := _sumps[idx] as Dictionary
+	var st := int(entry["state"])
+	var gs = _get_game_state()
+	var drained := st == 0
+	var flooded := st == 2
+	# pit floor: a walkable trough only when drained (blocked at MID/FLOOD)
+	if gs != null and gs.grid != null:
+		for c in (entry["pit_cells"] as Array):
+			var cell := Vector2i(int(c[0]), int(c[1]))
+			if drained:
+				gs.grid.remove_dynamic_blocker(cell)
+			else:
+				gs.grid.add_dynamic_blocker(cell, "sump_%d" % idx)
+		# the ledge LINK: the risen platform is a climb up, only while flooded (reversible)
+		var lc: Array = entry["ledge_cell"]
+		if lc.size() == 2 and gs.grid.has_method("add_inter_level_link"):
+			var lcell := Vector2i(int(lc[0]), int(lc[1]))
+			var lvl := int(entry["ledge_level"])
+			if flooded:
+				# the ledge must be a REAL floor the router can reach: raise the grid's level
+				# count so find_multi_level_path/links_from surface the new link (single-level
+				# atom grids default to count 1)
+				if gs.grid.has_method("set_level_count"):
+					gs.grid.set_level_count(maxi(gs.grid.level_count, lvl + 1))
+				gs.grid.add_inter_level_link(lcell, 0, lvl, "ramp")
+			elif gs.grid.has_method("remove_inter_level_link"):
+				gs.grid.remove_inter_level_link(lcell, 0, lvl)
+	# the salvage is grabbable only when the pit is drained and open
+	var salv = entry["salvage"]
+	if salv != null and is_instance_valid(salv) and gs != null:
+		gs.set_interactable_enabled(_interactable_data_id(str(salv.name)), drained)
+	# cosmetic: water shows when not drained, rises at flood; the platform lifts to the ledge
+	var water = entry["water"]
+	if water != null and is_instance_valid(water):
+		water.visible = not drained
+		var wy := 0.35 if flooded else -0.05
+		water.position.y = wy
+	var plat = entry["plat"]
+	if plat != null and is_instance_valid(plat):
+		plat.position.y = 1.4 if flooded else (0.05 if not drained else -0.35)
+
+## A DERELICT RESOURCE BELT (SET_PIECES.md #25
 
 ## A SILO DROP CHUTE (SET_PIECES.md #26): the between-zone stockpile as a set piece. CONTROL: a
 ## vent-hatch lever placed apart. EFFECT (one scheduled beat after the pull, the weak-wall law —

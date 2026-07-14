@@ -101,6 +101,7 @@ func _build_chunk() -> void:
 			"decay_add": float(_district.get("decay", 0.0)),
 		})
 		_build_zone_belt()
+		_build_zone_sump()
 	if warped:
 		_apply_hub_warp()
 
@@ -108,6 +109,43 @@ func _build_chunk() -> void:
 ## fabric behind the entry base and lands back inside it. Both mouths sit in the SAME
 ## already-connected space (the base pad), so the ride can never bypass a gate — it fleshes the
 ## zone (old supply chain crossing the streets) and teaches the belt verb for later stretches.
+## SET_PIECES.md #27: a decommissioned bore sump in a dead-end pocket at the base pad's south
+## corner — DRAIN to climb down for the cache, FLOOD to raise the ledge vantage and drown the
+## penned scrap. Both the pit and the ledge are OFF the entry->exit path (the run flows base ->
+## doorway -> skeleton), so the sump is reward + flavor, never a gate bypass. Cells derive purely
+## from _def, matching get_grid_data's union.
+func _build_zone_sump() -> void:
+	var pk := _sump_pocket()
+	if pk.is_empty():
+		return
+	_spawn_sump({"name": "ZoneSump", "pos": pk["pos"], "pump_pos": pk["pump_pos"],
+		"pit_min": pk["pit_min"], "pit_max": pk["pit_max"], "pit_cells": pk["pit_cells"],
+		"ledge_cell": pk["ledge_cell"], "ledge_level": 1, "pit_enemy": true,
+		"label_text": "BORE SUMP — SIPHON DECOMMISSIONED"})
+
+## The sump pocket, derived PURELY from _def so get_grid_data and the visuals agree. Two base-pad
+## corner cells become the pit; a base cell apart is the pump; the pit's inner edge carries the
+## ledge link. Returns {} when the base pad is too small to host it.
+func _sump_pocket() -> Dictionary:
+	var h := int(_def["h"])
+	if BASE_N < 3 or h < 5:
+		return {}
+	var to_w := func(bx: int, by: int) -> Vector3: return Vector3(
+		(float(bx) - BASE_N + 0.5) * CELL, 0.0, (float(by) - h * 0.5 + 0.5) * CELL)
+	var pit_a := Vector2i(1, 1)
+	var pit_b := Vector2i(2, 1)
+	var pump_cell := Vector2i(BASE_N - 1, h - 2)
+	var wa: Vector3 = to_w.call(pit_a.x, pit_a.y)
+	var wb: Vector3 = to_w.call(pit_b.x, pit_b.y)
+	return {
+		"pos": (wa + wb) * 0.5 + Vector3(0, 0, -CELL),
+		"pump_pos": to_w.call(pump_cell.x, pump_cell.y),
+		"pit_min": Vector3(minf(wa.x, wb.x) - CELL * 0.5, 0, minf(wa.z, wb.z) - CELL * 0.5),
+		"pit_max": Vector3(maxf(wa.x, wb.x) + CELL * 0.5, 0, maxf(wa.z, wb.z) + CELL * 0.5),
+		"pit_cells": [[pit_a.x, pit_a.y], [pit_b.x, pit_b.y]],
+		"ledge_cell": [pit_b.x, pit_b.y + 1],
+	}
+
 func _build_zone_belt() -> void:
 	var h := int(_def["h"])
 	var bx_w := (1.0 - BASE_N + 0.5) * CELL

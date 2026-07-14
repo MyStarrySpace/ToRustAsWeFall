@@ -567,8 +567,11 @@ two-reads follow each entry.
     (§4.21's warehouse read, opened). Buildability: COMPOSABLE-NOW (add_inter_level_link +
     kill-zone + dynamic blockers all exist).
 
-27. **Extraction bore sump (the decommissioned siphon well).** A capped vertical bore between
-    zones, its pit half-flooded. CONTROL: the old wellhead hand-pump/valve. EFFECT: the sump
+27. **Extraction bore sump (the decommissioned siphon well).** *(BUILT — the "sump" fragment-object
+    kind via scene_chunk._spawn_sump; REVERSIBLE 3-state pump (DRAINED/MID/FLOODED); owns its penned
+    scrap so the drown lands in any host; first placement = a dead-end pocket off the roguelite atom
+    level's base pad. GridWorld gained remove_inter_level_link for the reversible ledge.)* A capped
+    vertical bore between zones, its pit half-flooded. CONTROL: the old wellhead hand-pump/valve. EFFECT: the sump
     level — drain it to expose a walkable under-route beneath a wall; flood it to float a
     platform up to a ledge (or drown what hunts in the pit) — the water-height family (showcase
     bays) reflavored as extraction. Two-read: a resource bore AND a CSF siphon site (GDD L761,
