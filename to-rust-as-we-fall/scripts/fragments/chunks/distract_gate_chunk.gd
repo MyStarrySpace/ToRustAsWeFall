@@ -224,13 +224,7 @@ func _reset_sentry_to_post() -> void:
 	var gs = _get_game_state()
 	if _sentry == null or not is_instance_valid(_sentry) or gs == null or not gs.characters.has("gap_sentry"):
 		return
-	_sentry._current_target_id = ""
-	if _sentry.has_method("_change_state"):
-		_sentry._change_state("idle")
-	gs.command_stop("gap_sentry")
-	gs.set_character_distracted("gap_sentry", false)
-	gs.snap_character_to("gap_sentry", SENTRY_POST)
-	_sentry.position = SENTRY_POST
+	_sentry.re_post(SENTRY_POST)
 
 # --- The win check: a FIXED-cadence scheduler poll, never a per-frame sample ---
 # Completion races the tick-exact catch sweep (a member can cross END_X and be spotted within the same
@@ -308,11 +302,7 @@ func reset_preview_state() -> void:
 		sched.cancel_tag("distract_gate_catch")
 	var gs = _get_game_state()
 	if gs != null and _sentry != null and is_instance_valid(_sentry) and gs.characters.has("gap_sentry"):
-		gs.set_character_distracted("gap_sentry", false)
-		gs.snap_character_to("gap_sentry", SENTRY_POST)
-		_sentry.position = SENTRY_POST
-		if _sentry.has_method("_change_state"):
-			_sentry._change_state("idle")
+		_sentry.re_post(SENTRY_POST)
 	_start_win_poll()
 	_set_preview_step("distract_gate_briefing")
 

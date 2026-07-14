@@ -206,6 +206,7 @@ func _on_tags_rejected() -> void:
 	sched.schedule_after(1.0, _decline_watch, "chase_decline_watch")
 	sched.schedule_after(1.5, _close_call_watch, "chase_close_call")
 	sched.schedule_after(1.0, _hazard_poll, "chase_hazards")
+	_wire_wash_sweep()
 	_arm_portal_follow()
 	sched.schedule_after(2.2, func() -> void:
 		_show_note("RUN. East — Endo keeps the wall past the old corridors.", 2.8), "chase_directive")
@@ -695,7 +696,9 @@ func _restart_fragment() -> void:
 			_gantry_fallen.visible = false
 	_door_held.clear()
 	_barricade_wait.clear()
-	_wash_refractory.clear()
+	for wch in _channels:
+		if is_instance_valid(wch) and wch.has_method("clear_sweep_refractory"):
+			wch.clear_sweep_refractory()
 	_trip_refractory.clear()
 	_fallen.clear()
 	_wave_count = 0
@@ -724,7 +727,6 @@ func _build_terminal_rows() -> void:
 ## terrain break: cross by climbing what fell). Pursuers funnel over it on a stagger (below).
 var _clamber: CrawlTunnel
 var _barricade_wait := {}   # pursuer id -> the tick its clamber completes
-var _wash_refractory := {}  # body id -> the tick its next sweep is allowed
 
 func _build_barricade() -> void:
 	var mid := (BARRICADE_X0 + BARRICADE_X1) * 0.5
@@ -819,38 +821,32 @@ func _sync_fallen_visuals() -> void:
 			(nat as Node3D).rotation.z = 0.0
 			_fallen.erase(id)
 
-## THE HAZARD POLL (scheduler cadence): the wash SWEEPS anyone standing in the flooding strip
-## (party knocked back + pay hp -- fail-forward; pursuers tumbled + stunned: the wash reads
-## tells for nobody), and pursuers stuck at the barricade CLAMBER over on a stagger -- the
-## funnel is the terrain's price for them too.
+## THE HAZARD POLL (scheduler cadence): pursuers stuck at the barricade CLAMBER over on a
+## stagger -- the funnel is the terrain's price for them too. The WASH's sweep (party knocked
+## back + pay hp, fail-forward; pursuers tumbled + stunned: the wash reads tells for nobody)
+## is the Channel kit object's OWN behavior -- the chunk only names the policy in
+## _wire_wash_sweep (P-KIT).
+func _wire_wash_sweep() -> void:
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	var dest := func(_id: String, p: Vector3) -> Vector3:
+		return Vector3(maxf(p.x - 4.5, TRENCH_X1 + 1.0), 0.0, p.z)
+	var resolver := func(eid: String):
+		return _enemy_by_id(eid)
+	var noter := func(_id: String) -> void:
+		_show_note("The wash takes your feet -- swept back.", 1.6)
+	for ch in _channels:
+		if is_instance_valid(ch) and ch.has_method("set_sweep"):
+			ch.set_sweep(gs, ["aster", "peris"], dest,
+				{"party_hp": 6.0, "enemy_stun": 2.5, "refractory": 4.0,
+				"enemy_resolver": resolver, "on_swept": noter})
+
 func _hazard_poll() -> void:
 	var gs = _get_game_state()
 	var sched = _get_scheduler()
 	if gs != null and sched != null:
 		var now := float(sched.get_current_tick())
-		for ch in _channels:
-			if not is_instance_valid(ch) or not ch.is_flooding():
-				continue
-			for id_v in gs.characters.keys():
-				var id := str(id_v)
-				# a refractory beat per body: one sweep per wash encounter, never a death-spiral
-				# of sweep -> land in the pack -> re-enter -> re-sweep
-				if now < float(_wash_refractory.get(id, -100.0)):
-					continue
-				var p: Vector3 = gs.get_position(id)
-				if not ch.floods_at(p.x, p.z):
-					continue
-				_wash_refractory[id] = now + 4.0
-				var is_party := id in ["aster", "peris"]
-				gs.command_stop(id)
-				gs.snap_character_to(id, Vector3(maxf(p.x - 4.5, TRENCH_X1 + 1.0), 0.0, p.z))
-				if is_party:
-					gs.adjust_stat(id, "hp", -6.0)
-					_show_note("The wash takes your feet -- swept back.", 1.6)
-				else:
-					var nat = _enemy_by_id(id)
-					if nat != null and nat.has_method("stun"):
-						nat.stun(2.5)
 		_pinch_rule(gs, now)
 		_sync_fallen_visuals()
 		_advance_checkpoint(gs)
@@ -928,7 +924,9 @@ func _checkpoint_resume() -> void:
 	_enemy_posts.clear()
 	_door_held.clear()
 	_barricade_wait.clear()
-	_wash_refractory.clear()
+	for wch in _channels:
+		if is_instance_valid(wch) and wch.has_method("clear_sweep_refractory"):
+			wch.clear_sweep_refractory()
 	_trip_refractory.clear()
 	_fallen.clear()
 	if gs != null:

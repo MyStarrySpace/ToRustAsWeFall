@@ -448,7 +448,18 @@ return-to-post default was born exactly this way), never script around it.
 **The guard:** `--test-chunk-mutation-discipline` (in --test-all) freezes the existing debt per
 (file, mutator) exactly — a new bespoke consequence goes red naming the file and the remedy, and
 a burned-down debt must ratchet the ledger down. The loader (data_fragment_chunk) is scaffold and
-exempt. Debt worth burning: the chase/wash sweeps (fold into Channel), the inflammashunt popcorn
-and root whip (a kit hazard + the ChainEnemy's own strikes), chunk-scripted sentry re-posts (the
-kit does this now).
+exempt.
+
+**Burned down (2026-07-14, 20+ calls / 9 chunks → 9 calls / 4 chunks):** the wash sweep is now
+`Channel.set_sweep()` — the channel itself stops/carries/bites bodies standing in its flooding
+strip; a chunk supplies only the POLICY (where "downstream" lands, what the party pays, the
+enemy-id resolver for the tumble). Area burn hazards are the `HazardField` kit object (the
+inflammashunt popcorn rides it; toggled by the level's own mechanisms). The root whip rides
+`Enemy._resolve_strike` — the kit's ONE strike path, so dodge/sanctuary/conceal/corpse-skip
+apply to it for free. All five scripted sentry re-posts are `Enemy.re_post()`.
+
+**Still on the ledger (each needs a kit verb before it can burn):** the chase's portal-follow
+pursuer hops (2), its barricade clamber (1) and checkpoint resume (snap+restore — restart-grade
+machinery, like the loader's), the boss knockback (snap+adjust), the set-piece magnet pin (1),
+and the wash_relay reset flow (2).
 

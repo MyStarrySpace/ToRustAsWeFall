@@ -42,6 +42,7 @@ const ROOT_REGROW_DELAY := 4.0
 const RAGE_SECS := 16.0
 const BUFFER_REFORM_SECS := 4.0
 const POPCORN_DPS_TICK := 2.5
+const HazardFieldScript := preload("res://scripts/game/objects/hazard_field.gd")
 
 ## Hold-time table (spec "Route Information As Efficiency"): [with info, without info].
 const HOLDS := {
@@ -77,6 +78,7 @@ var _entry_played := false
 var _reports := {}               # route -> true once the confident wrong answer played
 var _reunion_played := false
 var _popcorn := false
+var _popcorn_field = null
 var _sac_carrier := ""
 var _sac_expires := -1.0
 var _sac_visual: MeshInstance3D
@@ -878,8 +880,12 @@ func _root_poll() -> void:
 				gs.command_move_to_pos("hostile_root", tp)
 			elif now >= float(_whip_ready.get(target, -100.0)):
 				_whip_ready[target] = now + 2.2
-				gs.adjust_stat(target, "hp", -5.0)
-				_show_note("The root whips %s across the deck." % target.capitalize(), 2.0)
+				# the whip rides the kit's ONE strike path -- dodge windows, sanctuary,
+				# concealment, and corpse-skip all come from Enemy._resolve_strike
+				_root_enemy.charge_damage = 5.0
+				_root_enemy._charge_hit = false
+				if _root_enemy._resolve_strike(target):
+					_show_note("The root whips %s across the deck." % target.capitalize(), 2.0)
 	sched.schedule_after(0.35, _root_poll, "inflam_root")
 
 func _retract_root() -> void:
@@ -899,35 +905,28 @@ func _retract_root() -> void:
 			root_state = "suppressed"
 			_show_note("A smaller tendril noses back out of the crack. Tame — and still smothered.", 3.0), "inflam_root")
 
-# --- The popcorn hazard (thermal reset trap) ---
+# --- The popcorn hazard (thermal reset trap): a kit HazardField owns the burn; the chunk only
+# --- places it over the junction and toggles it from its own mechanisms (reset lever / valve) ---
 
 func _arm_popcorn_poll() -> void:
-	var sched = _get_scheduler()
-	if sched != null:
-		sched.cancel_tag("inflam_popcorn")
-		sched.schedule_after(1.0, _popcorn_poll, "inflam_popcorn")
-
-func _popcorn_poll() -> void:
-	if not is_inside_tree() or not _popcorn:
-		return
 	var gs = _get_game_state()
 	var sched = _get_scheduler()
 	if gs == null or sched == null:
 		return
-	for cid in _party:
-		if not gs.characters.has(cid):
-			continue
-		var p: Vector3 = gs.get_position(cid)
-		if p.x > JCT_X0 and p.x < JCT_X1 and absf(p.z) < JCT_HALF_Z:
-			gs.adjust_stat(cid, "hp", -POPCORN_DPS_TICK)
-	sched.schedule_after(1.0, _popcorn_poll, "inflam_popcorn")
+	if _popcorn_field == null or not is_instance_valid(_popcorn_field):
+		_popcorn_field = HazardFieldScript.new()
+		_popcorn_field.name = "PopcornHazard"
+		_popcorn_field.position = Vector3((JCT_X0 + JCT_X1) * 0.5, 0.0, 0.0)
+		add_child(_popcorn_field)
+	_popcorn_field.setup(gs, sched, Vector2(JCT_X0, -JCT_HALF_Z), Vector2(JCT_X1, JCT_HALF_Z),
+		_party, {"dps_tick": POPCORN_DPS_TICK, "interval": 1.0, "tag": "inflam_popcorn"})
+	_popcorn_field.set_active(true)
 
 func _end_popcorn(msg: String) -> void:
 	_popcorn = false
 	gas_sac_state = "idle"
-	var sched = _get_scheduler()
-	if sched != null:
-		sched.cancel_tag("inflam_popcorn")
+	if _popcorn_field != null and is_instance_valid(_popcorn_field):
+		_popcorn_field.set_active(false)
 	_show_note(msg, 3.4)
 
 # --- The shared cadence poll ---

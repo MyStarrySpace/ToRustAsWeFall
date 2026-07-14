@@ -379,9 +379,7 @@ func reset_preview_state() -> void:
 		# "sentries guard the exit" only holds whenever the previous attempt happened to end early).
 		for enemy in _enemies:
 			if is_instance_valid(enemy) and enemy.is_alive() and gs.characters.has(enemy.char_id):
-				var post := _guard_post_for(enemy.char_id)
-				gs.snap_character_to(enemy.char_id, post)
-				enemy.position = post
+				enemy.re_post(_guard_post_for(enemy.char_id))
 		for char_id in PARTY_IDS:
 			if gs.characters.has(char_id):
 				gs.set_character_hidden(char_id, false)

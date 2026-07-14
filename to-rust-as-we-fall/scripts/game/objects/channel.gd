@@ -31,6 +31,40 @@ func configure(x: float, half: float, z_half: float, period: float, dur: float, 
 	_phase = phase
 	_tag = tag
 
+## THE SWEEP (P-KIT): a flooding channel carries away whatever stands in it -- the wash is the
+## visible mechanism, so the consequence lives HERE, never in a chunk script. While flooding, a
+## scheduler poll sweeps each ground-level body in the strip: stop it, carry it to wherever the
+## level's policy says "downstream" is (the dest Callable -- the only part a chunk supplies),
+## charge the party a fail-forward hp bite, and tumble (stun) enemies. A per-body refractory
+## prevents the sweep -> land -> re-enter -> re-sweep death spiral.
+var _sweep_enabled := false
+var _sweep_gs = null
+var _sweep_party: Array = []
+var _sweep_dest := Callable()
+var _sweep_party_hp := 6.0
+var _sweep_enemy_stun := 2.5
+var _sweep_refractory_secs := 4.0
+var _sweep_enemy_resolver := Callable()
+var _sweep_on_swept := Callable()
+var _sweep_refractory := {}
+
+## dest: (id, pos) -> Vector3 landing point. opts: party_hp, enemy_stun, refractory,
+## enemy_resolver (id -> Enemy node, for the tumble), on_bite-style on_swept (id) -> void.
+func set_sweep(gs, party_ids: Array, dest: Callable, opts: Dictionary = {}) -> void:
+	_sweep_gs = gs
+	_sweep_party = party_ids
+	_sweep_dest = dest
+	_sweep_party_hp = float(opts.get("party_hp", 6.0))
+	_sweep_enemy_stun = float(opts.get("enemy_stun", 2.5))
+	_sweep_refractory_secs = float(opts.get("refractory", 4.0))
+	_sweep_enemy_resolver = opts.get("enemy_resolver", Callable())
+	_sweep_on_swept = opts.get("on_swept", Callable())
+	_sweep_enabled = true
+
+## Refractory is derived pacing state -- a restart/checkpoint clears it so the next wash is fresh.
+func clear_sweep_refractory() -> void:
+	_sweep_refractory.clear()
+
 func _ready() -> void:
 	_bed = MeshInstance3D.new()
 	_bed.name = "Bed"
@@ -70,6 +104,9 @@ func _onset() -> void:
 	if _scheduler != null:
 		_scheduler.schedule_after(_dur, _off, _tag + "_off")
 		_scheduler.schedule_after(_period, _onset, _tag + "_onset")
+	if _sweep_enabled and _scheduler != null:
+		_scheduler.cancel_tag(_tag + "_sweep")
+		_scheduler.schedule_after(0.05, _sweep_poll, _tag + "_sweep")
 
 func _off() -> void:
 	_flooding = false
@@ -83,6 +120,31 @@ func is_flooding() -> bool:
 func floods_at(x: float, z: float) -> bool:
 	return _flooding and absf(x - _x) <= _half and absf(z) <= _z_half
 
+func _sweep_poll() -> void:
+	if not _flooding or not _sweep_enabled or _sweep_gs == null or _scheduler == null:
+		return
+	var now: float = float(_scheduler.get_current_tick())
+	for id_v in _sweep_gs.characters.keys():
+		var id := str(id_v)
+		if now < float(_sweep_refractory.get(id, -100.0)):
+			continue
+		var p: Vector3 = _sweep_gs.get_position(id)
+		if p.y > 1.5 or not floods_at(p.x, p.z):
+			continue
+		_sweep_refractory[id] = now + _sweep_refractory_secs
+		_sweep_gs.command_stop(id)
+		if _sweep_dest.is_valid():
+			_sweep_gs.snap_character_to(id, _sweep_dest.call(id, p))
+		if id in _sweep_party:
+			_sweep_gs.adjust_stat(id, "hp", -_sweep_party_hp)
+			if _sweep_on_swept.is_valid():
+				_sweep_on_swept.call(id)
+		elif _sweep_enemy_resolver.is_valid():
+			var foe = _sweep_enemy_resolver.call(id)
+			if foe != null and foe.has_method("stun"):
+				foe.stun(_sweep_enemy_stun)
+	_scheduler.schedule_after(0.5, _sweep_poll, _tag + "_sweep")
+
 ## Force a flood onset now (scripted beats / tests).
 func flood_now() -> void:
 	_onset()
@@ -94,3 +156,5 @@ func reset() -> void:
 	if _scheduler != null:
 		_scheduler.cancel_tag(_tag + "_onset")
 		_scheduler.cancel_tag(_tag + "_off")
+		_scheduler.cancel_tag(_tag + "_sweep")
+	_sweep_refractory.clear()

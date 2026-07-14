@@ -427,13 +427,7 @@ func _reset_sentry_to_post(i: int) -> void:
 		var enemy = target["enemy"]
 		if enemy == null or not is_instance_valid(enemy) or gs == null or not gs.characters.has(str(target["cid"])):
 			continue
-		enemy._current_target_id = ""
-		if enemy.has_method("_change_state"):
-			enemy._change_state("idle")
-		gs.command_stop(str(target["cid"]))
-		gs.set_character_distracted(str(target["cid"]), false)
-		gs.snap_character_to(str(target["cid"]), target["post"])
-		enemy.position = target["post"]
+		enemy.re_post(target["post"])
 		if not (target["waypoints"] as Array).is_empty():
 			enemy.set_patrol(_typed_waypoints(target["waypoints"]))   # a patrol sentry resumes its beat, re-armed
 
@@ -544,11 +538,7 @@ func reset_preview_state() -> void:
 		var gs = _get_game_state()
 		for target in (st["sentries"] as Array):
 			if gs != null and gs.characters.has(str(target["cid"])) and is_instance_valid(target["enemy"]):
-				gs.set_character_distracted(str(target["cid"]), false)
-				gs.snap_character_to(str(target["cid"]), target["post"])
-				target["enemy"].position = target["post"]
-				if target["enemy"].has_method("_change_state"):
-					target["enemy"]._change_state("idle")
+				target["enemy"].re_post(target["post"])
 				if not (target["waypoints"] as Array).is_empty():
 					target["enemy"].set_patrol(_typed_waypoints(target["waypoints"]))
 	_start_win_poll()

@@ -24883,11 +24883,7 @@ func _walk_for_dead_names(path: String, retired: Dictionary, offenders: Array) -
 ## linted. If the kit lacks a verb, ADD IT TO THE KIT (the Enemy return-to-post precedent).
 const CHUNK_MUTATION_DEBT := {
 	"boss_showcase_chunk.gd": {"snap_character_to": 1, "adjust_stat": 1},
-	"distract_gate_chunk.gd": {"snap_character_to": 2},
-	"inflammashunt_chunk.gd": {"adjust_stat": 2},
-	"lockout_chase_chunk.gd": {"snap_character_to": 5, "adjust_stat": 1, "restore_character": 1},
-	"lure_relay_chunk.gd": {"snap_character_to": 1},
-	"puzzle_atom_chunk.gd": {"snap_character_to": 2},
+	"lockout_chase_chunk.gd": {"snap_character_to": 4, "restore_character": 1},
 	"set_piece_showcase_chunk.gd": {"snap_character_to": 1},
 	"wash_relay_chunk.gd": {"snap_character_to": 2},
 }
