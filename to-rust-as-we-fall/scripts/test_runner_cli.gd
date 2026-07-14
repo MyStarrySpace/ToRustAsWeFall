@@ -682,6 +682,9 @@ func _ready() -> void:
 			"--test-rng-no-wallclock":
 				ran_test = true
 				_test_rng_no_wallclock()
+			"--test-chunk-mutation-discipline":
+				ran_test = true
+				_test_chunk_mutation_discipline()
 			"--test-sequence-input-discipline":
 				ran_test = true
 				_test_sequence_input_discipline()
@@ -1385,6 +1388,7 @@ func _run_all_tests() -> void:
 	_test_rng_determinism()
 	_test_rng_no_wallclock()
 	_test_sequence_input_discipline()
+	_test_chunk_mutation_discipline()
 	_test_canonical_location_names()
 	await _test_archetype_generation()
 	_test_generated_multi_solution()
@@ -24867,6 +24871,52 @@ func _walk_for_dead_names(path: String, retired: Dictionary, offenders: Array) -
 					offenders.append("%s: '%s' → use '%s'" % [fname, dead, retired[dead]])
 		fname = d.get_next()
 	d.list_dir_end()
+
+## LINT: CHUNK MUTATION DISCIPLINE (the director's architecture ruling, 2026-07-14). Chunks are
+## COMPOSITION: they place and wire kit objects, and do bookkeeping on kit signals. CONSEQUENCES
+## (teleports, damage, revives, floor changes) belong to KIT objects — loader kinds, Enemy,
+## Channel, CrawlTunnel — where the player can see the mechanism. This lint freezes the existing
+## debt per (file, mutator) EXACTLY: a new bespoke consequence goes red, and a burned-down debt
+## must update the ledger (the ratchet only turns one way). The loader (data_fragment_chunk) is
+## scaffold — its wipe-restart machinery is framework, not per-chunk mechanics — and derived-state
+## setters (concealment/distraction) are the chunks' JOB per the hide-tier law, so neither is
+## linted. If the kit lacks a verb, ADD IT TO THE KIT (the Enemy return-to-post precedent).
+const CHUNK_MUTATION_DEBT := {
+	"boss_showcase_chunk.gd": {"snap_character_to": 1, "adjust_stat": 1},
+	"distract_gate_chunk.gd": {"snap_character_to": 2},
+	"inflammashunt_chunk.gd": {"adjust_stat": 2},
+	"lockout_chase_chunk.gd": {"snap_character_to": 5, "adjust_stat": 1, "restore_character": 1},
+	"lure_relay_chunk.gd": {"snap_character_to": 1},
+	"puzzle_atom_chunk.gd": {"snap_character_to": 2},
+	"set_piece_showcase_chunk.gd": {"snap_character_to": 1},
+	"wash_relay_chunk.gd": {"snap_character_to": 2},
+}
+
+func _test_chunk_mutation_discipline() -> void:
+	_test_name = "Chunk Mutation Discipline"
+	var mutators := ["snap_character_to", "adjust_stat", "restore_character", "set_character_level"]
+	var dir := DirAccess.open("res://scripts/fragments/chunks")
+	_assert_true(dir != null, "chunks dir opens")
+	if dir == null:
+		return
+	var offenders: Array = []
+	dir.list_dir_begin()
+	var fname := dir.get_next()
+	while fname != "":
+		if not dir.current_is_dir() and fname.ends_with("_chunk.gd") and fname != "data_fragment_chunk.gd":
+			var text := FileAccess.get_file_as_string("res://scripts/fragments/chunks/".path_join(fname))
+			var debt: Dictionary = CHUNK_MUTATION_DEBT.get(fname, {})
+			for m in mutators:
+				var count := text.count(m)
+				var allowed := int(debt.get(m, 0))
+				if count > allowed:
+					offenders.append("%s: %d x %s (ledger allows %d) — a NEW bespoke consequence; build it into the KIT instead" % [fname, count, m, allowed])
+				elif count < allowed:
+					offenders.append("%s: %d x %s (ledger says %d) — debt burned down, ratchet the ledger DOWN to match" % [fname, count, m, allowed])
+		fname = dir.get_next()
+	dir.list_dir_end()
+	_assert_equals(offenders.size(), 0,
+		"chunks compose the kit; consequences live IN the kit (offenders: %s)" % str(offenders))
 
 func _test_sequence_input_discipline() -> void:
 	_test_name = "Sequence Input Discipline"

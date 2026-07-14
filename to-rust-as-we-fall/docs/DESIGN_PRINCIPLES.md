@@ -428,3 +428,27 @@ level-element composition, and a micro-chunk seed in the 80-98% band.
 - T1c **Flare-lane vent stage** (Cards 3/11 stage): the Ancourage fused-heat band + Aster vent console
   compose NOW; the Gasafoetida/Flare organisms join later without re-authoring the stage.
 - Then: Spiker/Tangler duel stages (Card 9), Meeb ferry (Card 5), Seefern/Redactor reveal gate (Card 1).
+
+## P-KIT: chunks COMPOSE, the kit CONSEQUENCES (director's architecture ruling, 2026-07-14)
+
+The scaffold is shared (one preview scene; chunks are registry data + a Fragment). But Fragment
+data cannot express WIRING, so every chunk also ships a script — and an unrestricted script with
+GameState access is an invitation to hard-code mechanics. That is exactly how "catch = swept to
+the START" (design GUIDANCE, P11) became a bespoke teleport with no visible mechanism: the escape
+hatch was open, so under doc pressure it got used — an audit found 20+ consequence-grade calls
+across 9 chunks, not one slip.
+
+**The law:** a chunk script may (a) place and wire kit objects, (b) do BOOKKEEPING on kit signals
+(e.g. a spotted sentry is no longer lure-distracted; derived hide-tier state), (c) read state for
+its preview surface. CONSEQUENCES — teleports, damage, revives, floor changes — belong to KIT
+objects (loader object kinds, Enemy behaviors, Channel, CrawlTunnel...), where the player can see
+the mechanism that did it to them. When the kit lacks a verb, EXTEND THE KIT (the Enemy
+return-to-post default was born exactly this way), never script around it.
+
+**The guard:** `--test-chunk-mutation-discipline` (in --test-all) freezes the existing debt per
+(file, mutator) exactly — a new bespoke consequence goes red naming the file and the remedy, and
+a burned-down debt must ratchet the ledger down. The loader (data_fragment_chunk) is scaffold and
+exempt. Debt worth burning: the chase/wash sweeps (fold into Channel), the inflammashunt popcorn
+and root whip (a kit hazard + the ChainEnemy's own strikes), chunk-scripted sentry re-posts (the
+kit does this now).
+
