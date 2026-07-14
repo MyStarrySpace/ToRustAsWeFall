@@ -537,6 +537,67 @@ Greenfields/Aghora aprons; rare in the deep wilds — hostile architecture marks
 institution still claims the space. Roguelite: spike strips + chicanes join the generator's object
 vocabulary alongside crawl tunnels (ROGUELITE_RUN.md "Next").
 
+## PROPOSED set pieces 25-30 — BETWEEN-ZONE derelict supply & extraction (Claude, 2026-07-13 — director approval required)
+
+The director's frame: the intermediate areas between building zones carry the OLD ECONOMY's
+infrastructure — supply chain and resource extraction left to rust — and each relic should double
+as a set piece (CONTROL + EFFECT, separated per the grammar). These live in the connective fabric
+(ARCHITECTURE_DESIGN.md §4.18-4.24, the district skirt) and in generated stretches. Biology
+two-reads follow each entry.
+
+25. **Derelict resource belt + substation breaker.** *(BUILT — `BeltLine` class + the "belt"
+    fragment-object kind; first placement = the roguelite zone belt behind the atom entry.)*
+    CONTROL: a substation breaker, placed apart. EFFECT: the dead belt POWERS and carries a
+    standing rider at belt speed down the old supply line — fast, EXPOSED transit (canon: the
+    powered-resource-belt element, ENVIRONMENT_ELEMENTS Hypelines register — "carries a standing
+    character along its length at belt speed"). Traversal: an express line over/through the
+    fabric. Combat (v2): a REVERSING switch — dump a pursuing pack backward off the line.
+    Placement law: both mouths must be ALREADY-CONNECTED on the grid (A* path exists pre-belt),
+    so a belt never bypasses a gate — it is speed and spectacle, not a skip. Two-read: a conveyor
+    AND fast axonal transport still running on a dying nerve.
+
+26. **Silo drop chute (the stockpile spill).** CONTROL: a hatch lever at the silo throat.
+    EFFECT: the hoarded stock (iron pellets / grain-dark bulk) avalanches out — the scree cone is
+    a CLIMBABLE RAMP up to a deck/roof (a runtime inter-level link, the drawer-stairs substrate)
+    AND anything standing in the spill zone is buried (the weak-wall crumble-kill substrate).
+    Grammar: the lever sits atop an adjacent roof; the ramp it builds is how you reach the NEXT
+    silo's lever. Two-read: a grain silo AND a ferritin store voiding its sequestered iron
+    (§4.21's warehouse read, opened). Buildability: COMPOSABLE-NOW (add_inter_level_link +
+    kill-zone + dynamic blockers all exist).
+
+27. **Extraction bore sump (the decommissioned siphon well).** A capped vertical bore between
+    zones, its pit half-flooded. CONTROL: the old wellhead hand-pump/valve. EFFECT: the sump
+    level — drain it to expose a walkable under-route beneath a wall; flood it to float a
+    platform up to a ledge (or drown what hunts in the pit) — the water-height family (showcase
+    bays) reflavored as extraction. Two-read: a resource bore AND a CSF siphon site (GDD L761,
+    the preservation facilities' distributed extraction; L2092 drainage constriction). CAUTION:
+    keep it visually distinct from the Plumbing district's own valves — this is a WELL, not
+    mains. Buildability: COMPOSABLE-NOW (valve + water level + float shipped in the showcase).
+
+28. **Aerial ore-skip line (the bucket ropeway).** Extraction-era cable buckets still strung
+    between zones overhead. CONTROL: a clutch lever at one tower. EFFECT: the bucket line inches
+    forward — RIDE a bucket over a trench/hazard field (authored transit, slow, exposed, the
+    crawl grammar at height), while moving buckets periodically DUMP slag on the lane below (a
+    cadenced area-denial the ground route must time — the Channel cadence law, dry). Grammar:
+    the clutch is at the far tower; you ride TOWARD the control that stops it. Two-read: a mine
+    ropeway AND vesicles on a microtubule, still trafficking cargo nobody ordered.
+
+29. **Pressure flare stack (the vent cadence).** A between-zone relief stack still burning off
+    pressure on a cadence (the Ancourage register's heat-fault, freestanding). CONTROL: a vent
+    valve one street over. EFFECT: venting REDIRECTS the flare — the stack's fire lane goes
+    quiet (opening the tight alley it blocked) while the redirected vent jet denies a DIFFERENT
+    lane; you choose which route burns. Combat: vent while fauna crowds the jet lane. Two-read:
+    a refinery flare AND an inflammatory hot-spot rerouted, never extinguished (Myke's whole
+    lesson at building scale).
+
+30. **Scrap magnet gantry field (the reclaim yard).** The between-zone scrapyard: a rolling
+    magnet gantry over heaped iron scrap (the showcase bay E hoist, field-scaled). CONTROL: the
+    gantry's charge lever + track switch. EFFECT: lift/drop scrap-slab bridges over the yard's
+    trenches; charge it over a Sapscrap swarm to pin the strippers mid-heap (fauna_roster: they
+    strip iron). The yard is where §4.21's warehouses LEAK — the informal economy's harvest
+    ground (Aghora-adjacent). Two-read: a wrecking yard AND a microglial clearance field, iron
+    debris waiting for reuptake.
+
 ## BOSS PIECES MADE PLAYABLE (director's directive, built 2026-07-12)
 
 The showcase (`--preview=boss_showcase`) is an encounter now, not a diorama:

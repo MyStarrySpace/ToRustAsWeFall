@@ -77,6 +77,10 @@ var requirement: Callable = Callable()
 ## plane (set_character_level is logged — replay-safe like the rest of the crawl).
 @export var exit_level := -1
 
+## Whether the authored transit hides its rider (a crawl tube = CONCEAL_FULL; an open resource
+## belt = exposed the whole ride). Subclasses flip it.
+@export var conceal_riders := true
+
 func _on_interacted() -> void:
 	if requirement.is_valid() and not bool(requirement.call()):
 		refused.emit()
@@ -190,7 +194,8 @@ func _begin_crawl(who: String, slot_index: int) -> void:
 		prior = float((cd as Dictionary)["move_speed"])
 	_restore_speeds[who] = prior
 	_gs.command_stop(who)
-	_gs.set_character_concealment(who, _gs.CONCEAL_FULL)
+	if conceal_riders:
+		_gs.set_character_concealment(who, _gs.CONCEAL_FULL)
 	_gs.change_move_speed(who, crawl_speed)
 	var path: Array[Vector3] = [_gs.get_position(who) as Vector3]
 	var total := 0.0

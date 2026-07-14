@@ -95,9 +95,6 @@ const PREVIEW_ENTRIES := [
 	{"id": "blind_floor", "chunk": "data_fragment", "title": "The Blind Floor (risk inversion)", "stage": 3,
 		"config": {"fragment_path": "res://data/fragments/blind_floor.tres"}},
 	{"id": "distract_gate", "chunk": "distract_gate", "title": "The Watched Gap", "stage": 3},
-	{"id": "puzzle_atom", "chunk": "puzzle_atom", "title": "Generated Atom Chain", "stage": 3,
-		"config": {"stages": ["distract:lure", "distract:patrol", "distract:twin"], "seed": 7,
-			"district": {"idiom": "capitalist", "decay": 0.15}}},
 	{"id": "lure_relay", "chunk": "lure_relay", "title": "Flure Relay", "stage": 3},
 	{"id": "generated_chain_nested_poc", "chunk": "generated_stretch", "title": "Generated Chain/Nested POC", "stage": 3,
 		"config": {"spec_path": "res://data/generated_stretches/generated_chain_nested_poc_shelter_2_to_3.json"}},
@@ -173,6 +170,9 @@ const PREVIEW_ENTRIES := [
 	# waves take the corridor; the levers you learned, Tyreg's choice, the unmarked offshoot.
 	{"id": "lockout_chase", "chunk": "lockout_chase", "title": "The Lockout Chase (Act 1 climax)", "stage": 4},
 	{"id": "inflammashunt", "chunk": "inflammashunt", "title": "The Inflammashunt (danger zone)", "stage": 4},
+	{"id": "puzzle_atom", "chunk": "puzzle_atom", "title": "Generated Atom Chain", "stage": 3,
+		"config": {"stages": ["distract:lure", "distract:patrol", "distract:twin"], "seed": 7,
+			"district": {"idiom": "capitalist", "decay": 0.15}}},
 ]
 
 ## The menu entry for an id (or {} if none).

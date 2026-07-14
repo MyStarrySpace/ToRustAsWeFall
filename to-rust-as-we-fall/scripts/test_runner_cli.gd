@@ -17110,6 +17110,44 @@ func _test_roguelike_atom_run() -> void:
 	if ic != null:
 		_assert_true((ic._active_chunk._skirt_stats as Dictionary).is_empty(),
 			"no district config -> no skirt (old boots unchanged)")
+	# --- SET PIECE #25, the DERELICT BELT (control+effect, between-zone supply relic): dead line
+	# refuses; the separated breaker powers it; the ride is fast and EXPOSED (no crawl conceal);
+	# and its mouths were ALREADY CONNECTED (a belt is never a gate bypass) ---
+	if ia != null:
+		var chunk_bl = ia._active_chunk
+		var gs_bl = ia._game_state
+		var belt: Node = chunk_bl.find_child("ZoneBelt", true, false)
+		_assert_true(belt != null, "the intermediate zone hosts its derelict supply belt")
+		if belt != null:
+			var mouth: Vector3 = (belt as Node3D).global_position
+			var wps_bl: Array = belt.get("_waypoints")
+			var dest_bl: Vector3 = wps_bl[wps_bl.size() - 1]
+			var g_bl: GridWorld = GridWorld.from_data(chunk_bl.get_grid_data())
+			_assert_true(g_bl.find_path(g_bl.world_to_grid(mouth), g_bl.world_to_grid(dest_bl)).size() >= 1,
+				"the belt's mouths were ALREADY connected — a belt is never a gate bypass")
+			gs_bl.snap_character_to("aster", mouth)
+			belt.set("active_character", "aster")
+			belt.call("_trigger")
+			ia.headless_advance(3.0, 0.1)
+			_assert_true(gs_bl.get_position("aster").distance_to(mouth) < 2.5,
+				"a DEAD line refuses the ride (x moved %.1f)" % gs_bl.get_position("aster").distance_to(mouth))
+			var brk_bl: Node = chunk_bl.find_child("ZoneBeltBreaker", true, false)
+			_assert_true(brk_bl != null, "the CONTROL (substation breaker) stands apart from the line")
+			brk_bl.set("active_character", "aster")
+			brk_bl.call("_trigger")
+			ia.headless_advance(0.4, 0.1)
+			_assert_true(bool(belt.get("powered")), "the breaker powers the belt")
+			gs_bl.snap_character_to("aster", mouth)
+			belt.set("active_character", "aster")
+			belt.call("_trigger")
+			ia.headless_advance(2.0, 0.1)
+			_assert_true(int(gs_bl.get_character_concealment("aster")) == int(gs_bl.CONCEAL_NONE),
+				"a belt rider is EXPOSED mid-ride (an open line is not a crawl tube)")
+			ia.headless_advance(10.0, 0.1)
+			_assert_true(gs_bl.get_position("aster").distance_to(dest_bl) < 3.0,
+				"the powered belt carries the rider down the old line (%.1f from the far mouth)"
+				% gs_bl.get_position("aster").distance_to(dest_bl))
+
 	# the presenter's zone mapping, asserted DIRECTLY (the loader flow above may deal a chase)
 	if ia != null:
 		var sess_z = Session.new(21, "atom")

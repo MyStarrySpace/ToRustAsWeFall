@@ -100,8 +100,24 @@ func _build_chunk() -> void:
 			"idiom": str(_district.get("idiom", "mixed")),
 			"decay_add": float(_district.get("decay", 0.0)),
 		})
+		_build_zone_belt()
 	if warped:
 		_apply_hub_warp()
+
+## SET_PIECES.md #25 in the wild: the intermediate zone's derelict supply line arcs out over the
+## fabric behind the entry base and lands back inside it. Both mouths sit in the SAME
+## already-connected space (the base pad), so the ride can never bypass a gate — it fleshes the
+## zone (old supply chain crossing the streets) and teaches the belt verb for later stretches.
+func _build_zone_belt() -> void:
+	var h := int(_def["h"])
+	var bx_w := (1.0 - BASE_N + 0.5) * CELL
+	var a := Vector3(bx_w, 0.0, (1.0 - h * 0.5 + 0.5) * CELL)
+	var b := Vector3(bx_w, 0.0, (float(h - 2) - h * 0.5 + 0.5) * CELL)
+	var out_x := bx_w - 5.5
+	_spawn_belt({"name": "ZoneBelt", "pos": a, "speed": 4.2,
+		"waypoints": [Vector3(out_x, 2.2, a.z), Vector3(out_x, 2.2, b.z), b],
+		"breaker_pos": Vector3(bx_w + 1.4, 0.0, 0.0),
+		"desc": "Ride the zone's derelict supply belt", "label": "RIDE BELT"})
 
 ## Every walkable DATA cell world centre (base + doorway + skeleton floor) — the per-cell floor set.
 func _walkable_world_cells() -> Array:

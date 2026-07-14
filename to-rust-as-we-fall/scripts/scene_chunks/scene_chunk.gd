@@ -361,6 +361,58 @@ func _build_district_skirt(grid_data: Dictionary, seed_v: int, margin := 6, fill
 		_skirt_lathe(lp as Dictionary)
 	return stats
 
+## A DERELICT RESOURCE BELT (SET_PIECES.md #25; canon: the powered resource belt element rides
+## a standing character at belt speed). The EFFECT is a fast EXPOSED transit down the old supply
+## line; the CONTROL is the substation breaker spawned apart from it (the set-piece grammar:
+## control and effect separated). Dead until the breaker is reset. Emits simple trough + post
+## visuals for the level middle segment of the run.
+func _spawn_belt(spec: Dictionary) -> BeltLine:
+	var bl := BeltLine.new()
+	bl.name = str(spec.get("name", "BeltLine"))
+	bl.description = str(spec.get("desc", "Ride the old resource belt"))
+	bl.tutorial_label = str(spec.get("label", "RIDE BELT"))
+	var wps: Array = []
+	for wv in (spec.get("waypoints", []) as Array):
+		if wv is Vector3:
+			wps.append(wv)
+	bl.configure(_get_game_state(), spec.get("pos", Vector3.ZERO), wps,
+		float(spec.get("radius", 1.4)), float(spec.get("speed", 4.2)))
+	bl.exit_level = int(spec.get("exit_level", -1))
+	bl.powered = bool(spec.get("powered", false))
+	if has_method("_selected_party_ids"):
+		bl.set_group_provider(Callable(self, "_selected_party_ids"))
+	add_child(bl)
+	_register_interactable(bl)
+	var stub := _add_box(bl, Vector3(0.0, 0.25, 0.0), Vector3(0.7, 0.5, 0.7), Color(0.13, 0.14, 0.16))
+	_outline_interactable_child(bl, stub, bl.name, 1.6)
+	bl.refused.connect(func() -> void:
+		_show_note("Dead line. The substation breaker is cut somewhere nearby.", 2.6))
+	# trough + posts along each LEVEL (constant-y) run of the line
+	var prev: Vector3 = spec.get("pos", Vector3.ZERO)
+	for wv2 in wps:
+		var seg: Vector3 = wv2
+		if absf(seg.y - prev.y) < 0.05 and prev.distance_to(seg) > 1.5:
+			var mid := (prev + seg) * 0.5
+			var run := prev.distance_to(seg)
+			var horiz := absf(seg.x - prev.x) > absf(seg.z - prev.z)
+			_add_box(self, Vector3(mid.x, seg.y - 0.12, mid.z),
+				Vector3(run, 0.16, 1.3) if horiz else Vector3(1.3, 0.16, run),
+				Color(0.1, 0.11, 0.13))
+			for t: float in [0.2, 0.5, 0.8]:
+				var pp := prev.lerp(seg, t)
+				if pp.y > 0.6:
+					_add_box(self, Vector3(pp.x, pp.y * 0.5 - 0.1, pp.z),
+						Vector3(0.22, pp.y - 0.2, 0.22), Color(0.12, 0.12, 0.14))
+		prev = seg
+	if spec.has("breaker_pos"):
+		var brk := _add_interactable(self, str(spec.get("name", "BeltLine")) + "Breaker",
+			"Reset the substation breaker", spec.get("breaker_pos", Vector3.ZERO), "RESET BREAKER",
+			"", 1.2, true, 1.6, Interactable.InteractableType.TIMED_ACTION)
+		brk.interacted.connect(func() -> void:
+			bl.set_powered(true)
+			_show_note("The breaker bites. Down the line, the old belt shudders and starts to move.", 3.0))
+	return bl
+
 ## Loft one of the skirt's revolve-tower plans (the reference silhouettes).
 func _skirt_lathe(lp: Dictionary) -> void:
 	var profile: Dictionary = LatheBuilder.make_profile(lp)
