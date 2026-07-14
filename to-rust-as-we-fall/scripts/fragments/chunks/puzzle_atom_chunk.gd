@@ -405,7 +405,7 @@ func _on_spotted(target_id: String, stage_i: int) -> void:
 	if sched != null:
 		sched.cancel_tag("atom_catch_%d" % stage_i)
 		sched.schedule_after(0.05, func() -> void: _reset_sentry_to_post(stage_i), "atom_catch_%d" % stage_i)
-	_show_note("Spotted in the lane. Escorted back to the start.", 2.2)
+	_show_note("SPOTTED — stage %d's watcher caught %s in the lane. Escorted back to the start." % [stage_i + 1, target_id.capitalize()], 3.2)
 
 func _reset_sentry_to_post(i: int) -> void:
 	var st: Dictionary = _stages[i]

@@ -1312,6 +1312,8 @@ func set_preview_character_visible(char_id: String, visible: bool) -> void:
 		_ensure_valid_selection()
 
 func show_preview_message(text: String, duration := 2.0) -> void:
+	if EventLog.print_events:
+		print("[MSG ] %s" % text)
 	if _hud != null:
 		_hud.show_message(text, duration)
 
@@ -1325,6 +1327,8 @@ func set_preview_step(step: String) -> void:
 	_current_step = step
 
 func show_preview_note(text: String, duration := 3.0) -> void:
+	if EventLog.print_events:
+		print("[NOTE] %s" % text)
 	if _note_label == null:
 		return
 	_note_label.text = text

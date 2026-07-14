@@ -132,6 +132,8 @@ func _record_tick() -> float:
 	return 0.0
 
 func _emit(kind: StringName, payload: Dictionary) -> void:
+	if EventLog.print_events:
+		print("[EVENT t=%8.2f] %-20s %s" % [_record_tick(), str(kind), str(payload)])
 	if event_log == null or not _recording:
 		return
 	event_log.append(GameEvent.make(_record_tick(), kind, payload))

@@ -15343,6 +15343,14 @@ func _test_dev_console() -> void:
 	console.run("photo off")
 	_assert_true(inst.get("fog_of_war_enabled") == true, "`photo off` restores the fog it found")
 	_assert_true(hud == null or bool(hud.visible), "`photo off` restores the HUD")
+
+	# THE EVENT TRACE: headless/test runs stay quiet by default; the console flips it live.
+	_assert_true(not EventLog.print_events,
+		"the event trace defaults OFF under the test runner (ten thousand tests stay readable)")
+	console.run("events on")
+	_assert_true(EventLog.print_events, "`events on` starts the console event trace")
+	console.run("events off")
+	_assert_true(not EventLog.print_events, "`events off` silences it")
 	inst.queue_free()
 	await get_tree().process_frame
 

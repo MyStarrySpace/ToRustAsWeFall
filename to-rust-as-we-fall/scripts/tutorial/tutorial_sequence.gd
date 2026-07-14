@@ -382,6 +382,12 @@ func _init_ui() -> void:
 	_dev_console.register_command("fxdebug", _cmd_fxdebug, "fxdebug on|off — path/outline FX traces")
 	_dev_console.register_command("chroma", _cmd_chroma, "chroma on|off — testing-mode ID-color overlay on every interactable")
 	_dev_console.register_command("photo", _cmd_photo, "photo on|off — screenshot mode: fog of war + UI hidden, restored on off")
+	_dev_console.register_command("events", _cmd_events, "events on|off — print every game event + note to the console (default on in play)")
+	# THE EVENT TRACE defaults ON for interactive play and OFF under the test runner/headless —
+	# a play session console always carries the WHY (catches, sweeps, teleports, damage), and
+	# ten thousand headless tests do not drown in it.
+	if DisplayServer.get_name() != "headless" and not _running_under_test_flags():
+		EventLog.print_events = true
 
 	# Mobile control modes: on touch, ONE finger carries three meanings — CAMERA drag-pan / SELECT
 	# (tap-pick + marquee, with the interactable reveal on) / ACTION (tap = the command click).
@@ -439,6 +445,17 @@ func _cmd_photo(args: Array) -> String:
 ## preview overrides this to hide its HUD and preview UI layer.
 func _apply_photo_mode(_active: bool) -> void:
 	pass
+
+func _cmd_events(args: Array) -> String:
+	if not args.is_empty():
+		EventLog.print_events = str(args[0]).to_lower() in ["on", "true", "1"]
+	return "event trace: %s" % ("ON" if EventLog.print_events else "off")
+
+static func _running_under_test_flags() -> bool:
+	for a in OS.get_cmdline_user_args():
+		if str(a).begins_with("--test-"):
+			return true
+	return false
 
 func _cmd_fxdebug(args: Array) -> String:
 	if not args.is_empty():

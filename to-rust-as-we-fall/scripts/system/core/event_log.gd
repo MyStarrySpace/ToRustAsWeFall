@@ -18,6 +18,14 @@ enum LoadStatus {
 	BAD_HEADER, ## Magic / header missing or unreadable
 }
 
+## THE EVENT TRACE (director: log all events with prints): when on, GameState._emit prints one
+## console line per live game event — the answer to "my character was sent back and nothing said
+## why" is always in the log. It lives at _emit (not append) so PREVIEWS print even without an
+## attached log, and replay rebuilds never double-print. Interactive scenes turn it on
+## (tutorial_sequence); headless tests stay quiet; `events on|off` overrides. Prints only —
+## determinism untouched.
+static var print_events := false
+
 var base_seed: int = 0
 var events: Array = []
 
