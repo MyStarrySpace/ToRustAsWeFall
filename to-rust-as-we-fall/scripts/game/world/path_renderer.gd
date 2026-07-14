@@ -68,11 +68,15 @@ func _ready() -> void:
 	_mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
 	_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_mat.cull_mode = BaseMaterial3D.CULL_DISABLED  # ribbon visible from either side
-	# Draw the route THROUGH occluders: a wall (or the helix deck overhead) between the camera and the floor
-	# would otherwise depth-hide the ribbon, so where the wall is faded by the occlusion cut the path vanished
-	# with it. No depth test => the planned route always reads on the floor, including behind/under faded geometry
-	# (RTS convention). Reusable: every PathRenderer the manager spawns inherits this.
-	_mat.no_depth_test = true
+	# THE THROUGH-WALL CONTRACT (the shifting-decal report): the SOLID ribbon depth-tests. It used
+	# to draw with no_depth_test so the route survived the helix deck / faded walls — but painted
+	# at floor depth onto a BUILDING FACE near the camera (the dressed districts put whole facades
+	# in the foreground), the route parallax-slides across that face as the camera moves: an "odd
+	# decal". The behind-geometry read now lives in the NEXT-PASS GHOST below: it draws through
+	# occluders, but as a dim WORLD-TRIPLANAR checker — anchored to the world, it cannot shift with
+	# the camera — and alpha-SCISSOR, because the preview scene drops the alpha-blend pass.
+	_mat.no_depth_test = false
+	_mat.next_pass = _make_ghost_pass()
 	_line.material_override = _mat
 	add_child(_line)
 	_tail = MeshInstance3D.new()
@@ -103,10 +107,37 @@ func clear_explicit_path() -> void:
 	_explicit_path = []
 	_explicit_index = 0
 
+## One shared 2x2 checker (two opaque, two clear texels) for every ghost pass — world-triplanar
+## mapped so the dither pattern is glued to world space.
+static var _ghost_checker: ImageTexture = null
+
+func _make_ghost_pass() -> StandardMaterial3D:
+	if _ghost_checker == null:
+		var img := Image.create(2, 2, false, Image.FORMAT_RGBA8)
+		img.fill(Color(1, 1, 1, 0))
+		img.set_pixel(0, 0, Color(1, 1, 1, 1))
+		img.set_pixel(1, 1, Color(1, 1, 1, 1))
+		_ghost_checker = ImageTexture.create_from_image(img)
+	var ghost := StandardMaterial3D.new()
+	ghost.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	ghost.alpha_scissor_threshold = 0.5
+	ghost.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	ghost.cull_mode = BaseMaterial3D.CULL_DISABLED
+	ghost.no_depth_test = true
+	ghost.albedo_texture = _ghost_checker
+	ghost.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	ghost.uv1_triplanar = true
+	ghost.uv1_scale = Vector3(7.0, 7.0, 7.0)
+	ghost.albedo_color = Color(color, 1.0).darkened(0.25)
+	return ghost
+
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint() or _line == null:
 		return
 	_mat.albedo_color = RUNNING_COLOR if _running else Color(color, WALK_ALPHA)
+	var ghost := _mat.next_pass as StandardMaterial3D
+	if ghost != null:
+		ghost.albedo_color = (RUNNING_COLOR if _running else Color(color, 1.0)).darkened(0.25)
 
 	# Collect the remaining waypoints first; only build a surface if there's a line to draw.
 	var points := _remaining_points()

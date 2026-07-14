@@ -14588,6 +14588,22 @@ func _test_overlay_materials() -> void:
 	await get_tree().process_frame
 	_assert_true(pr._mat != null and int(pr._mat.transparency) != int(BaseMaterial3D.TRANSPARENCY_ALPHA),
 		"Path ribbon material is NOT alpha-blend — got %d" % (int(pr._mat.transparency) if pr._mat != null else -1))
+	# THE THROUGH-WALL CONTRACT (the shifting-decal report, 2026-07-14): the SOLID ribbon is
+	# depth-tested — a route may not smear across a building face between the camera and the
+	# floor (it parallax-slides as the camera moves). The behind-geometry read lives in a
+	# NEXT-PASS ghost: no-depth-test, alpha-SCISSOR (the preview drops the blend pass), and
+	# WORLD-TRIPLANAR dither so the ghost is anchored to the world, not the screen — it cannot
+	# shift with the camera.
+	_assert_true(pr._mat != null and not pr._mat.no_depth_test,
+		"the SOLID ribbon depth-tests (no through-wall smear)")
+	var ghost := pr._mat.next_pass as BaseMaterial3D if pr._mat != null else null
+	_assert_true(ghost != null, "the ribbon carries a behind-walls GHOST pass")
+	if ghost != null:
+		_assert_true(ghost.no_depth_test, "the ghost draws through occluders")
+		_assert_equals(int(ghost.transparency), int(BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR),
+			"the ghost is alpha-SCISSOR (the preview has no blend pass)")
+		_assert_true(ghost.uv1_triplanar and ghost.albedo_texture != null,
+			"the ghost dither is WORLD-anchored (triplanar texture), never screen-space")
 	pr.queue_free()
 	await get_tree().process_frame
 	# The screen-space outline composite: three render lessons, each of which silently killed the
