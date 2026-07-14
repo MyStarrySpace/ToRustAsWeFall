@@ -556,7 +556,9 @@ two-reads follow each entry.
     so a belt never bypasses a gate — it is speed and spectacle, not a skip. Two-read: a conveyor
     AND fast axonal transport still running on a dying nerve.
 
-26. **Silo drop chute (the stockpile spill).** CONTROL: a hatch lever at the silo throat.
+26. **Silo drop chute (the stockpile spill).** *(BUILT — the "silo" fragment-object kind via
+    scene_chunk._spawn_silo; first placement = beside the walkable deck lines in generated
+    districts, the ramp landing at a crossing the ladders don't serve.)* CONTROL: a hatch lever at the silo throat.
     EFFECT: the hoarded stock (iron pellets / grain-dark bulk) avalanches out — the scree cone is
     a CLIMBABLE RAMP up to a deck/roof (a runtime inter-level link, the drawer-stairs substrate)
     AND anything standing in the spill zone is buried (the weak-wall crumble-kill substrate).

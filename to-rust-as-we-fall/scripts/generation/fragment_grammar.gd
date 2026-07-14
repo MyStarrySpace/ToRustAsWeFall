@@ -662,6 +662,57 @@ static func _emit(seed_value: int, placed_cells: Array, placed_objects: Array, l
 				frag.objects.append({"type": "enemy", "id": "deck_sentry", "species": "sentry",
 					"pos": pa + Vector3(0, 0.4, 0), "level": d_lvl, "speed": 2.3, "detect": 4.5,
 					"targets": ["aster", "peris", "endo"], "patrol": [pa, pb]})
+				# SET PIECE #26 beside the line: a sealed store silo whose vented spill BURIES the
+				# ground under it and piles a scree RAMP up to the deck — a third access point at a
+				# crossing the ladders don't serve. Needs: a mid-run deck cell walkable at ground
+				# (the ramp link cell), no ladder link there, and a non-walkable neighbour for the
+				# silo mass.
+				var ground_set := {}
+				var g0_cells: Array = frag.grid.get("walkable_cells", [])
+				for lce0 in (frag.grid.get("level_cells", []) as Array):
+					if int((lce0 as Dictionary).get("level", -1)) == 0:
+						g0_cells = (lce0 as Dictionary).get("cells", g0_cells)
+				for gcv in g0_cells:
+					ground_set[Vector2i(int(gcv[0]), int(gcv[1]))] = true
+				var laddered := {}
+				for lkv in (frag.grid.get("links", []) as Array):
+					var lcv2: Array = (lkv as Dictionary).get("cell", [])
+					if lcv2.size() == 2:
+						laddered[Vector2i(int(lcv2[0]), int(lcv2[1]))] = true
+				for ci in range(int(float(d_cells.size()) * 0.3), int(float(d_cells.size()) * 0.7)):
+					var rcell := Vector2i(int(d_cells[ci][0]), int(d_cells[ci][1]))
+					if not ground_set.has(rcell) or laddered.has(rcell):
+						continue
+					var silo_cell := Vector2i(-1, -1)
+					for nb2 in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+						var cand2: Vector2i = rcell + nb2
+						if not ground_set.has(cand2):
+							silo_cell = cand2
+							break
+					if silo_cell.x < 0:
+						continue
+					var lever_cell := Vector2i(-1, -1)
+					for off in [3, 4, 5, -3, -4, -5]:
+						var cand3 := Vector2i(rcell.x + off, rcell.y) if int(drd.get("axis", 0)) == 0 							else Vector2i(rcell.x, rcell.y + off)
+						if ground_set.has(cand3) and not laddered.has(cand3):
+							lever_cell = cand3
+							break
+					if lever_cell.x < 0:
+						continue
+					var g_org2: Array = frag.grid.get("origin", [0.0, 0.0, 0.0])
+					var s_cs := float(frag.grid.get("cell_size", 1.5))
+					var to_w := func(cc: Vector2i) -> Vector3: return Vector3(
+						float(g_org2[0]) + (float(cc.x) + 0.5) * s_cs, 0.0,
+						float(g_org2[2]) + (float(cc.y) + 0.5) * s_cs)
+					var rw: Vector3 = to_w.call(rcell)
+					var sw: Vector3 = to_w.call(silo_cell)
+					frag.objects.append({"type": "silo", "pos": sw,
+						"lever_pos": to_w.call(lever_cell),
+						"spill_min": Vector3(minf(rw.x, sw.x) - 0.8, 0.0, minf(rw.z, sw.z) - 0.8),
+						"spill_max": Vector3(maxf(rw.x, sw.x) + 0.8, 0.0, maxf(rw.z, sw.z) + 0.8),
+						"ramp_cell": [rcell.x, rcell.y], "ramp_to_level": d_lvl,
+						"ramp_top": Vector3(rw.x, float(d_lvl) * LH, rw.z)})
+					break
 				break
 		for dg in (bld_stats.get("dock_gangs", []) as Array):
 			var dgd := dg as Dictionary

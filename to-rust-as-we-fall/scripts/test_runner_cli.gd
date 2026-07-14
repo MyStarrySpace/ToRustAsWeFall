@@ -432,7 +432,7 @@ func _ready() -> void:
 				_test_building_filler_programs()
 			"--test-district-volume":
 				ran_test = true
-				_test_district_volume()
+				await _test_district_volume()
 			"--test-creature-grammar":
 				ran_test = true
 				_test_creature_grammar()
@@ -1402,7 +1402,7 @@ func _run_all_tests() -> void:
 	await _test_shape_grammar()
 	_test_building_filler()
 	_test_building_filler_programs()
-	_test_district_volume()
+	await _test_district_volume()
 	_test_creature_grammar()
 	await _test_architecture_showcase()
 	_test_building_survey()
@@ -3560,10 +3560,13 @@ func _test_district_volume() -> void:
 	# exit_level 0); then a LIVE boot proves the sentry patrols the lane at y=8 ---
 	var sentry_seed := -1
 	var gang_seen := false
+	var silo_seeds: Array = []
 	for seedg in range(1, 13):
 		var fg = Grammar.generate(seedg)
 		for ob in (fg.objects as Array):
 			var od := ob as Dictionary
+			if str(od.get("type", "")) == "silo":
+				silo_seeds.append(seedg)
 			if str(od.get("id", "")) == "deck_sentry":
 				_assert_equals(int(od.get("level", 0)), 2, "seed %d: the deck sentry lives on level 2" % seedg)
 				var pats: Array = od.get("patrol", [])
@@ -3579,6 +3582,10 @@ func _test_district_volume() -> void:
 					"seed %d: the gangway mouth sits ON the deck" % seedg)
 	_assert_true(sentry_seed > 0, "walkable decks earn their sentry somewhere across 12 seeds")
 	_assert_true(gang_seen, "rail docks become gangway crawls somewhere across 12 seeds")
+	print("    [volume] silo sites across 12 seeds: %s" % str(silo_seeds))
+	_assert_true(silo_seeds.size() >= 1, "the store silo finds a site somewhere across 12 seeds")
+	if not silo_seeds.is_empty():
+		sentry_seed = int(silo_seeds[0])   # boot a seed that has BOTH the line and the silo
 	var inst_hl = await _instantiate_preview_chunk_and_wait("shape_grammar", 8, {"seed": sentry_seed})
 	if inst_hl == null:
 		_assert_true(false, "the grammar preview boots the sentry seed")
@@ -3610,6 +3617,46 @@ func _test_district_volume() -> void:
 			"— standing at street height (y=%.2f), out the building's door" % gs_hl.get_position("aster").y)
 	else:
 		print("    [volume] note: sentry seed %d has no dock gangway (covered by the emission asserts)" % sentry_seed)
+	# --- SET PIECE #26, the SILO DROP CHUTE: vent the hoard — GROUND enemies in the spill are
+	# buried (the deck sentry eight meters above is NOT), a party member is hurt but never killed,
+	# and the scree piles into a real RAMP link up to the deck at a crossing no ladder serves ---
+	var silo_lever: Node = inst_hl._active_chunk.find_child("SiloVent0", true, false)
+	if silo_lever != null:
+		var chunk_si = inst_hl._active_chunk
+		var gs_si = inst_hl._game_state
+		var entry_si: Dictionary = chunk_si._silos[0]
+		var smin: Vector3 = entry_si["spill_min"]
+		var smax: Vector3 = entry_si["spill_max"]
+		var s_c := (smin + smax) * 0.5
+		var rc_si: Array = entry_si["ramp_cell"]
+		var ramp_cell_si := Vector2i(int(rc_si[0]), int(rc_si[1]))
+		var had_ramp: bool = 2 in gs_si.grid.links_from(ramp_cell_si, 0)
+		_assert_true(not had_ramp, "before the vent there is NO link up at the crossing")
+		# a ground victim + a party member in the spill; the deck sentry rides above it unharmed
+		var victim_si: Node = null
+		for en_si in chunk_si._enemies:
+			if is_instance_valid(en_si) and en_si.is_alive() and str(en_si.char_id) != "deck_sentry":
+				victim_si = en_si
+				break
+		if victim_si != null:
+			gs_si.snap_character_to(str(victim_si.char_id), Vector3(s_c.x, 0.0, s_c.z))
+		gs_si.snap_character_to("peris", Vector3(s_c.x + 0.4, 0.0, s_c.z))
+		var sentry_hp := float(gs_si.get_stat("deck_sentry", "hp"))
+		silo_lever.set("active_character", "aster")
+		silo_lever.call("_trigger")
+		inst_hl.headless_advance(1.6, 0.1)
+		if victim_si != null:
+			_assert_true(not victim_si.is_alive(), "the vented hoard BURIES the ground enemy in the spill")
+		_assert_true(float(gs_si.get_stat("peris", "hp")) < 100.0 and float(gs_si.get_stat("peris", "hp")) > 0.0,
+			"a party member in the spill is hurt, never killed (hp=%.0f)" % float(gs_si.get_stat("peris", "hp")))
+		_assert_true(is_equal_approx(float(gs_si.get_stat("deck_sentry", "hp")), sentry_hp),
+			"the deck sentry eight meters ABOVE the spill is untouched (the bury is ground-level)")
+		var got_ramp: bool = 2 in gs_si.grid.links_from(ramp_cell_si, 0) 			and gs_si.grid.can_traverse_link(ramp_cell_si, 0, 2)
+		_assert_true(got_ramp, "the scree piles into a REAL ramp link up to the deck")
+		_assert_true((chunk_si.find_child("SiloScree0", true, false) as Node3D).visible,
+			"— and the scree cone is visible")
+	else:
+		print("    [volume] note: sentry seed %d placed no silo (site constraints); emission covered across seeds" % sentry_seed)
 	await _dispose_scene(inst_hl)
 
 ## The connective-fabric PROGRAM layer (ARCHITECTURE_DESIGN.md §4.18-4.24): the filler assigns each
@@ -29003,8 +29050,18 @@ func _test_left_click_no_interact() -> void:
 ## RIGHT-click on the ground issues the RTS move command through the REAL player input path
 ## (synthetic RIGHT-button via Input + the player's _unhandled_input raycast). Drives the peris
 ## workspace (open room, player can move) and asserts a RIGHT-click starts a move.
+## Free any leaked preview/tutorial scene still parented to the tree root — a defensive sweep so a
+## crashed coroutine in a prior test can't leave a live scene eating the next test's input (the
+## silo-cast crash leaked a district preview whose camera swallowed the right-click move).
+func _sweep_leaked_scenes() -> void:
+	for node in get_tree().root.get_children():
+		if node is Node3D and (node.has_method("get_preview_state") or node.has_method("headless_advance")):
+			node.queue_free()
+	await get_tree().process_frame
+
 func _test_right_click_move() -> void:
 	_test_name = "Right-Click Move"
+	await _sweep_leaked_scenes()
 	var scene := load("res://scenes/tutorial/peris_sim.tscn")
 	if scene == null:
 		_assert_true(false, "peris_sim loads for right-click move")
@@ -33542,6 +33599,17 @@ func _test_lockout_chase() -> void:
 	inst.headless_advance(0.5, 0.1)
 	_assert_true(bool(chunk.get_preview_state()["complete"]),
 		"resting at Endo's wall ends the chase")
+	# --- a FROM-THE-TOP wipe re-arms the SCANNER: the run must be restartable (Dean's find —
+	# the spent one-shot left the chase unstartable after a full reset) ---
+	chunk._checkpoint_x = -1.0
+	chunk._restart_fragment()
+	inst.headless_advance(0.5, 0.1)
+	_assert_true(not bool(chunk.get_preview_state()["chase_started"]), "the full reset quiets the chase")
+	scanner.set("active_character", "aster")
+	scanner.call("_trigger")
+	inst.headless_advance(0.5, 0.1)
+	_assert_true(bool(chunk.get_preview_state()["chase_started"]),
+		"presenting tags AGAIN after a full wipe restarts the chase (the scanner re-armed)")
 	await _dispose_scene(inst)
 
 ## CHASE PLAYTEST PROBE (diagnostic, NOT in --test-all): drives the lockout chase the way NAIVE
@@ -33550,7 +33618,7 @@ func _test_lockout_chase() -> void:
 ## each attempt runs; the OUTCOMES are the data.
 func _test_chase_probe() -> void:
 	_test_name = "Chase Playtest Probe"
-	for strat in ["panic_sprint", "curious_clicker", "door_camper", "offshoot_stumbler", "tyreg_accepter", "competent_runner"]:
+	for strat in ["panic_sprint", "curious_clicker", "door_camper", "offshoot_stumbler", "tyreg_accepter", "competent_runner", "dean_takahashi"]:
 		var inst = await _instantiate_preview_chunk_and_wait("lockout_chase", 8)
 		if inst == null:
 			_assert_true(false, "probe instantiates")
@@ -33583,20 +33651,27 @@ func _test_chase_probe() -> void:
 			"competent_runner":
 				for cid in ["aster", "peris"]:
 					gs.command_move_to_pos(cid, Vector3(float(chunk.DOOR_X) + 1.0, 0, 2.0))
+			"dean_takahashi":
+				# no plan at all: strolls a little way in to look at the trench
+				for cid in ["aster", "peris"]:
+					gs.command_move_to_pos(cid, Vector3(14.0, 0, 1.0))
 		var t := 0.0
 		var acted := false
+		var dean_bumps := 0
 		while t < 140.0:
 			inst.headless_advance(1.0, 0.1)
 			t += 1.0
 			var st: Dictionary = chunk.get_preview_state()
 			var ap: Vector3 = gs.get_position("aster")
 			var pp: Vector3 = gs.get_position("peris")
+			var prev_caught := caught_events
 			for cid2 in ["aster", "peris"]:
 				var hp := float(gs.get_stat(cid2, "hp"))
 				if hp < float(last_hp[cid2]) - 0.1:
 					caught_events += 1
 					print("[PROBE] t=%4.0f  %s STRUCK (hp %.0f -> %.0f)" % [t, cid2, last_hp[cid2], hp])
 				last_hp[cid2] = hp
+			var struck_now: bool = caught_events > prev_caught
 			if int(t) % 8 == 0:
 				print("[PROBE] t=%4.0f  aster x=%5.1f peris x=%5.1f pursuers=%d wipes=%d downs=%s" % [
 					t, ap.x, pp.x, int(st.get("pursuers", 0)), int(st.get("wipe_count", 0)),
@@ -33680,6 +33755,64 @@ func _test_chase_probe() -> void:
 					if cl2 != null:
 						cl2.set("active_character", "aster")
 						cl2.call("_trigger")
+			# DEAN TAKAHASHI: no strategy, pure reaction. Struck -> flops away from the nearest
+			# pursuer with a wrong-way wobble; pursuer close -> freezes half the time; otherwise
+			# aimless short forward hops. Mashes any shiny thing he stumbles near. Bumps the shelf
+			# three times before noticing the CLAMBER prompt. Deterministic (tick-hash dither).
+			if strat == "dean_takahashi":
+				# after a from-the-top wipe he shuffles back and presents tags AGAIN (multiple
+				# attempts, zero adjustment — the same run, but flinchier)
+				if not bool(st.get("chase_started", false)):
+					if ap.distance_to((scanner as Node3D).global_position) < 2.5:
+						scanner.set("active_character", "aster")
+						scanner.call("_trigger")
+						print("[PROBE] t=%4.0f  dean presents tags again (attempt %d)" % [t, int(st.get("wipe_count", 0)) + 1])
+					elif not gs.is_moving("aster"):
+						for cid_d0 in ["aster", "peris"]:
+							gs.command_move_to_pos(cid_d0, (scanner as Node3D).global_position + Vector3(0.8, 0, 0.4))
+				var near_d := 1.0e9
+				var near_pos := ap
+				for en_d in chunk._enemies:
+					if is_instance_valid(en_d) and en_d.is_alive():
+						var dp_d: Vector3 = gs.get_position(str(en_d.char_id))
+						var dd_d := Vector2(dp_d.x - ap.x, dp_d.z - ap.z).length()
+						if dd_d < near_d:
+							near_d = dd_d
+							near_pos = dp_d
+				var dith := float(hash("dean:%d" % int(t)) % 100) / 100.0
+				if struck_now:
+					var away := Vector2(ap.x - near_pos.x, ap.z - near_pos.z)
+					var base_ang := away.angle() if away.length() > 0.1 else PI
+					var ang := base_ang + (dith - 0.5) * 1.4
+					for cid_d in ["aster", "peris"]:
+						gs.command_move_to_pos(cid_d, Vector3(ap.x + cos(ang) * 7.0, 0,
+							clampf(ap.z + sin(ang) * 7.0, -4.5, 4.5)))
+					print("[PROBE] t=%4.0f  dean flops away, %d° off the actual escape line" % [t, int((dith - 0.5) * 80.0)])
+				elif near_d < 8.0 and dith < 0.5:
+					for cid_d2 in ["aster", "peris"]:
+						gs.command_stop(cid_d2)
+				elif not gs.is_moving("aster"):
+					for cid_d3 in ["aster", "peris"]:
+						gs.command_move_to_pos(cid_d3, Vector3(ap.x + 4.0 + dith * 6.0, 0, (dith - 0.5) * 8.0))
+				for shiny in ["ServiceDoor", "TyregChoice"]:
+					var node_s: Node = chunk.find_child(shiny, true, false)
+					if node_s != null and (node_s as Node3D).global_position.distance_to(ap) < 3.0:
+						node_s.set("active_character", "aster")
+						node_s.call("_trigger")
+						print("[PROBE] t=%4.0f  dean pushes the shiny thing (%s)" % [t, shiny])
+				for fl_d in chunk.flures():
+					if (fl_d as Node3D).global_position.distance_to(ap) < 3.0:
+						fl_d.set("active_character", "aster")
+						fl_d.call("activate")
+				if ap.x > float(chunk.BARRICADE_X0) - 3.0 and ap.x < float(chunk.BARRICADE_X0) + 0.6:
+					dean_bumps += 1
+					if dean_bumps >= 3:
+						var cl_d: Node = chunk.find_child("ClamberBarricade", true, false)
+						if cl_d != null:
+							cl_d.set("active_character", "aster")
+							cl_d.call("_trigger")
+							if dean_bumps == 3:
+								print("[PROBE] t=%4.0f  dean finally notices the CLAMBER prompt (bump #3)" % t)
 			# the pair law's failure economy: a lone partner down is a RUNBACK — a real player
 			# restarts at the marker (a full wipe resumes there on its own)
 			if gs.is_downed("aster") != gs.is_downed("peris") and float(chunk._checkpoint_x) > 0.0:

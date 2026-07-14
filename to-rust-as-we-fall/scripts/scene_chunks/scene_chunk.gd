@@ -361,6 +361,114 @@ func _build_district_skirt(grid_data: Dictionary, seed_v: int, margin := 6, fill
 		_skirt_lathe(lp as Dictionary)
 	return stats
 
+## SILO DROP CHUTES (SET_PIECES.md #26): vented stockpiles this chunk hosts.
+var _silos: Array = []
+
+## A SILO DROP CHUTE (SET_PIECES.md #26): the between-zone stockpile as a set piece. CONTROL: a
+## vent-hatch lever placed apart. EFFECT (one scheduled beat after the pull, the weak-wall law —
+## analytic, never per-frame): the hoard avalanches — anything GROUND-LEVEL standing in the spill
+## rect is buried (enemies die, a party member is hurt but never killed: fail-forward), and the
+## scree piles into a climbable RAMP (a runtime ramp link up to `ramp_to_level` at `ramp_cell`).
+## Two-read: a grain silo AND a ferritin store voiding its sequestered iron.
+func _spawn_silo(spec: Dictionary) -> void:
+	var idx := _silos.size()
+	var pos: Vector3 = spec.get("pos", Vector3.ZERO)
+	var spill_min: Vector3 = spec.get("spill_min", pos + Vector3(-1.5, 0, -1.5))
+	var spill_max: Vector3 = spec.get("spill_max", pos + Vector3(1.5, 0, 1.5))
+	var spill_c := (spill_min + spill_max) * 0.5
+	# the silo drum: three shrinking tiers + the chute mouth aimed at the spill
+	var tier_r := [1.5, 1.3, 1.05]
+	for t in range(3):
+		_add_box(self, pos + Vector3(0, 1.0 + 2.0 * float(t), 0),
+			Vector3(float(tier_r[t]) * 2.0, 2.0, float(tier_r[t]) * 2.0),
+			Color(0.16, 0.15, 0.14).darkened(0.04 * float(t)))
+	_add_box(self, pos + Vector3(0, 6.3, 0), Vector3(1.6, 0.5, 1.6), Color(0.12, 0.11, 0.1))
+	var chute_dir := (Vector3(spill_c.x, 0, spill_c.z) - Vector3(pos.x, 0, pos.z)).normalized()
+	var chute_p := pos + chute_dir * 1.6 + Vector3(0, 1.3, 0)
+	_add_box(self, chute_p, Vector3(0.9, 0.9, 0.9), Color(0.13, 0.12, 0.11))
+	_add_box(self, chute_p + chute_dir * 0.5 - Vector3(0, 0.55, 0), Vector3(0.7, 0.2, 0.7),
+		Color(0.1, 0.09, 0.08))
+	# a stock glint at the throat — the hoard is still in there
+	_add_box(self, pos + Vector3(0, 5.2, 0) + chute_dir * (float(tier_r[0]) - 0.1),
+		Vector3(0.5, 0.3, 0.12) if absf(chute_dir.x) < 0.5 else Vector3(0.12, 0.3, 0.5),
+		Color(0.2, 0.14, 0.08), Color(0.85, 0.55, 0.2), 0.5)
+	_add_label(self, str(spec.get("label_text", "STORE SILO %d — SEALED" % (idx + 1))),
+		pos + Vector3(0, 7.2, 0), Color(0.6, 0.55, 0.48))
+	# the scree ramp (revealed on vent): stepped facets from the chute foot up to the ramp top
+	var ramp_root := Node3D.new()
+	ramp_root.name = "SiloScree%d" % idx
+	add_child(ramp_root)
+	var ramp_top: Vector3 = spec.get("ramp_top", spill_c + Vector3(0, 2.0, 0))
+	var foot := Vector3(spill_c.x, 0.0, spill_c.z)
+	var steps := 5
+	for st in range(steps):
+		var t2 := (float(st) + 0.5) / float(steps)
+		var sp := foot.lerp(Vector3(ramp_top.x, 0.0, ramp_top.z), t2)
+		var sh := maxf(ramp_top.y * t2, 0.25)
+		ramp_root.add_child(_scree_box(sp, sh, 1.7 - t2 * 0.5))
+	ramp_root.visible = false
+	# the CONTROL: the vent-hatch lever, apart from the spill
+	var lever := _add_interactable(self, "SiloVent%d" % idx, "Vent the silo hatch",
+		spec.get("lever_pos", pos + Vector3(2.0, 0, 2.0)), "VENT HATCH", "", 1.4, true, 1.6,
+		Interactable.InteractableType.TIMED_ACTION)
+	var lever_m := _add_box(lever, Vector3(0, 0.55, 0), Vector3(0.3, 1.1, 0.3),
+		Color(0.34, 0.28, 0.2), Color(0.85, 0.55, 0.2), 0.4)
+	_outline_interactable_child(lever, lever_m, "SiloVent%d" % idx, 1.6)
+	_silos.append({"vented": false, "spill_min": spill_min, "spill_max": spill_max,
+		"ramp_cell": spec.get("ramp_cell", []), "ramp_to_level": int(spec.get("ramp_to_level", 0)),
+		"scree": ramp_root})
+	lever.interacted.connect(func() -> void: _on_silo_vented(idx))
+
+func _scree_box(at: Vector3, height: float, side: float) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(side, height, side)
+	mi.mesh = bm
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.24, 0.18, 0.12)
+	mi.material_override = mat
+	mi.position = at + Vector3(0, height * 0.5, 0)
+	return mi
+
+func _on_silo_vented(idx: int) -> void:
+	var sched = _get_scheduler()
+	if sched == null or idx >= _silos.size() or bool((_silos[idx] as Dictionary)["vented"]):
+		return
+	_show_note("The hatch grinds open. The whole hoard shifts—", 1.4)
+	sched.schedule_after(0.8, func() -> void: _commit_silo(idx), "silo_%d" % idx)
+
+func _commit_silo(idx: int) -> void:
+	var entry := _silos[idx] as Dictionary
+	if bool(entry["vented"]):
+		return
+	entry["vented"] = true
+	var gs = _get_game_state()
+	var kmin := entry["spill_min"] as Vector3
+	var kmax := entry["spill_max"] as Vector3
+	if gs != null:
+		# the spill resolves at the commit tick, GROUND LEVEL only (a deck walker above the
+		# rect is eight meters over the pile)
+		for id_v in gs.characters.keys():
+			var cid := str(id_v)
+			var cp: Vector3 = gs.get_position(cid)
+			if cp.y > 2.0 or cp.x < kmin.x or cp.x > kmax.x or cp.z < kmin.z or cp.z > kmax.z:
+				continue
+			var en = call("_enemy_by_id", cid) if has_method("_enemy_by_id") else null
+			if en != null and is_instance_valid(en) and en.is_alive():
+				gs.command_stop(cid)
+				en.take_damage(float(en.max_hp))
+			elif not cid.begins_with("enemy") and not cid.begins_with("chelator"):
+				gs.adjust_stat(cid, "hp", -20.0)
+				_show_note("The spill takes %s off their feet — buried to the waist, hurt." % cid.capitalize(), 2.6)
+		var rc: Array = entry["ramp_cell"]
+		var lvl := int(entry["ramp_to_level"])
+		if rc.size() == 2 and lvl >= 1 and gs.grid != null and gs.grid.has_method("add_inter_level_link"):
+			gs.grid.add_inter_level_link(Vector2i(int(rc[0]), int(rc[1])), 0, lvl, "ramp")
+			_show_note("The scree piles into a climbable ramp — all the way up to the line.", 3.0)
+	var scree := entry["scree"] as Node3D
+	if scree != null and is_instance_valid(scree):
+		scree.visible = true
+
 ## A DERELICT RESOURCE BELT (SET_PIECES.md #25; canon: the powered resource belt element rides
 ## a standing character at belt speed). The EFFECT is a fast EXPOSED transit down the old supply
 ## line; the CONTROL is the substation breaker spawned apart from it (the set-piece grammar:

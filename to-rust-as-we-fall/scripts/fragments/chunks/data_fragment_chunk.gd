@@ -1021,6 +1021,8 @@ func _spawn_object(spec: Dictionary) -> void:
 			_spawn_enemy(spec, gs)
 		"belt":
 			_spawn_belt(spec)
+		"silo":
+			_spawn_silo(spec)
 		"crawl":
 			# a data-declared CrawlTunnel (the gangway grammar): authored squeeze path, optional
 			# exit_level so a deck gangway delivers you to the ground plane

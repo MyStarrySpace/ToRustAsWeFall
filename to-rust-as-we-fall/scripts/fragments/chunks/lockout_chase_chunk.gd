@@ -699,6 +699,11 @@ func _restart_fragment() -> void:
 	_trip_refractory.clear()
 	_fallen.clear()
 	_wave_count = 0
+	# from the top means FROM THE TOP: the boundary scanner re-arms so tags can be presented
+	# again (a spent one-shot left the whole run unstartable after a full wipe)
+	var scanner: Node = find_child("BoundaryScanner", true, false)
+	if scanner != null and scanner.has_method("reset"):
+		scanner.call("reset")
 	super._restart_fragment()
 	_show_note("Quiet again. The scanner waits. So do they.", 2.4)
 
