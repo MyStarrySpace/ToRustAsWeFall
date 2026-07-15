@@ -1111,6 +1111,12 @@ func _ready() -> void:
 			"--drive-peris-transition":
 				ran_test = true
 				await _drive_peris_transition_child()
+			"--test-elevator-teardown-clean":
+				ran_test = true
+				await _test_elevator_teardown_clean()
+			"--drive-elevator-teardown":
+				ran_test = true
+				await _drive_elevator_teardown_child()
 			"--test-sequence-contracts":
 				ran_test = true
 				await _test_sequence_contracts()
@@ -1532,6 +1538,7 @@ func _run_all_tests() -> void:
 	await _test_endo_junction_stretch_act1()
 	await _test_peris_phase2()
 	await _test_peris_scene_transition()
+	await _test_elevator_teardown_clean()
 	# Real-input intro legs (Aster/Peris-2/Tag Day) — first-class, not on-demand. The slow
 	# Elevator leg is sectioned to --test-elevator-realinput (by name, not by category).
 	await _test_intro_realinput_core()
@@ -31837,6 +31844,77 @@ func _test_peris_scene_transition() -> void:
 ## REAL transition lifecycle — real input to `complete`, then the actual change_scene_to_file ->
 ## teardown -> final process (NOT suppressed, NOT a manual teardown) — and prints a sentinel. A
 ## scheduler used after teardown surfaces as a SCRIPT ERROR in this child's stderr.
+## SUBPROCESS GUARD: no wall-clock timer callback may outlive its scene. The bridge collapse
+## arms SceneTree timers (debris stagger + settle cleanup) whose lambdas capture scene nodes;
+## SceneTree timers belong to the TREE, not the scene, so freeing the scene mid-tumble (a real
+## scene transition, a wipe-restart, a test teardown) left them pending -- each later fired
+## against freed captures and the engine printed "Lambda capture at index 0 was freed" (13x at
+## every --test-elevator exit). Non-fatal, so only a child-process log-grep can see it.
+func _test_elevator_teardown_clean() -> void:
+	_test_name = "Elevator Collapse Teardown Clean"
+	var exe := OS.get_executable_path()
+	if exe == "":
+		_assert_true(false, "Executable path available for the subprocess teardown guard")
+		return
+	var out: Array = []
+	var args := PackedStringArray(["--headless", "--path", ".", "--", "--drive-elevator-teardown"])
+	var code := OS.execute(exe, args, out, true)
+	var log := ""
+	for line in out:
+		log += str(line)
+	var collapsed := log.contains("[ELEVATOR-TEARDOWN-CHILD] collapsed=true")
+	var lambda_freed := log.contains("Lambda capture at index")
+	var crashed := log.contains("on a null value")
+	if lambda_freed or crashed:
+		var shown := 0
+		for raw in log.split("\n"):
+			if (raw.contains("Lambda capture at index") or raw.contains("on a null value")) and shown < 4:
+				print("  [teardown-leak] %s" % raw.strip_edges())
+				shown += 1
+	_assert_true(collapsed, "Child drove the REAL bridge collapse then freed the scene mid-tumble (exit %d)" % code)
+	_assert_true(not lambda_freed,
+		"No wall-clock timer lambda outlives the freed scene (zero 'Lambda capture ... was freed')")
+	_assert_true(not crashed, "Mid-collapse teardown derefs nothing freed (no 'on a null value')")
+
+## Child entry for the guard above (run via --drive-elevator-teardown). Builds the real elevator
+## scene, fires the real collapse beat (dialogue + camera + scheduled fall -> debris cascade),
+## then frees the scene MID-TUMBLE and keeps the SceneTree alive past every wall-clock horizon
+## the collapse armed (piece stagger <=0.5s, settle cleanup 3.0s). Any timer callback that
+## outlived the scene fires during the hold and its engine error lands in this child's stderr.
+func _drive_elevator_teardown_child() -> void:
+	_test_name = "Elevator Teardown (child)"
+	var scene := load("res://scenes/tutorial/elevator.tscn")
+	if scene == null:
+		print("[ELEVATOR-TEARDOWN-CHILD] collapsed=false reason=no-scene")
+		return
+	var instance: Node = scene.instantiate()
+	if "suppress_scene_change" in instance:
+		instance.suppress_scene_change = true
+	get_tree().root.add_child(instance)
+	for i in range(8):
+		await get_tree().process_frame
+	# isolate the bridge beat exactly like the bridge-collapse test: drop the intro, load the span
+	instance._scheduler.clear()
+	if instance._dialogue != null and instance._dialogue.has_method("clear"):
+		instance._dialogue.clear()
+	instance._load_chunk("bridge")
+	var gs = instance._game_state
+	for cid in ["aster", "peris"]:
+		gs.command_stop(cid)
+		gs.set_character_level(cid, instance.LEVEL_UPPER)
+		gs.characters[cid]["position"] = Vector3(float(instance.BRIDGE_START_X), 0.0, 0.0)
+		gs.characters[cid]["grid_cell"] = gs.grid.world_to_grid(gs.characters[cid]["position"])
+	instance._current_step = "bridge"
+	instance._start_bridge_collapse()
+	instance.headless_advance(1.0, 0.05)   # past the bridge_fall delay -> _execute_bridge_fall
+	var collapsed := str(instance._current_step) == "bridge_collapse"
+	for i in range(3):
+		await get_tree().process_frame   # stagger timers now pending, few elapsed (headless deltas are tiny)
+	instance.queue_free()
+	await get_tree().process_frame
+	await get_tree().create_timer(3.6).timeout
+	print("[ELEVATOR-TEARDOWN-CHILD] collapsed=%s survived=true" % str(collapsed))
+
 func _drive_peris_transition_child() -> void:
 	_test_name = "Peris Transition (child)"
 	var scene := load("res://scenes/tutorial/peris_sim.tscn")

@@ -155,10 +155,16 @@ func _on_target_selected(target: Node) -> void:
 	if not _is_controller_tracking(target):
 		var token := _selection_token
 		var duration := _read_target_float(target, "selected_feedback_duration", 0.8)
-		get_tree().create_timer(maxf(0.05, duration)).timeout.connect(func():
-			if token == _selection_token and selected_target == target and not _is_controller_tracking(target):
-				_complete_selected(target)
-		)
+		# node-bound tween (dies with the manager), and the lambda holds the target's ID, not
+		# the node -- a captured node freed mid-window would make the engine error on the call
+		# itself, before any is_instance_valid guard could run
+		var target_id := target.get_instance_id()
+		var expire := create_tween()
+		expire.tween_interval(maxf(0.05, duration))
+		expire.tween_callback(func():
+			var t := instance_from_id(target_id) as Node
+			if t != null and token == _selection_token and selected_target == t and not _is_controller_tracking(t):
+				_complete_selected(t))
 
 ## The queued tint comes from whichever bound controller is servicing this target — the
 ## interactor's character color (the manager itself has no notion of characters).

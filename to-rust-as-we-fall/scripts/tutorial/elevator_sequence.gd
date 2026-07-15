@@ -1074,7 +1074,12 @@ func _collapse_bridge_model(model: Node3D, break_x: float) -> void:
 		_release_debris(rb, delay, break_x, _bridge_piece_spin(gx.origin.x))
 	model.queue_free()  # the (now-empty) original model node
 	# Free everything once the debris has visually settled (wall-clock; the physics is cosmetic).
-	get_tree().create_timer(3.0).timeout.connect(_remove_collapsed_chunks)
+	# A tween bound to the sequence, NOT a SceneTree timer: the tree's timers outlive a freed
+	# scene and fire against freed captures; this dies with the scene. (Headless/data-layer
+	# teardown calls _remove_collapsed_chunks directly.)
+	var settle := create_tween()
+	settle.tween_interval(3.0)
+	settle.tween_callback(_remove_collapsed_chunks)
 
 ## Release one debris piece: unfreeze it and give it a shove away from the break + a downward kick and
 ## the deterministic tumble. `delay` staggers the cascade (a SceneTree timer; instant when ~0).
@@ -1091,7 +1096,11 @@ func _release_debris(rb: RigidBody3D, delay: float, break_x: float, spin: Vector
 	if delay <= 0.001:
 		fire.call()
 	else:
-		get_tree().create_timer(delay).timeout.connect(fire)
+		# bound to the piece itself -- a freed piece (scene teardown mid-tumble) kills its
+		# pending stagger instead of leaving a tree-owned timer to fire on freed captures
+		var stagger := rb.create_tween()
+		stagger.tween_interval(delay)
+		stagger.tween_callback(fire)
 
 ## Deterministic per-piece tumble (hashed from its X, never wall-clock RNG — replay-stable seeding).
 func _bridge_piece_spin(x: float) -> Vector3:

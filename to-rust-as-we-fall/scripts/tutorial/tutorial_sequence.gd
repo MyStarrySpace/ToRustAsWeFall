@@ -1005,11 +1005,14 @@ func _on_interactable_outline_selected(interactable: Node) -> void:
 	_outline_selection_token += 1
 	var token := _outline_selection_token
 	var duration := _read_interactable_float(interactable, "selected_feedback_duration", 0.7)
-	get_tree().create_timer(maxf(0.05, duration)).timeout.connect(func():
+	# node-bound tween, not a SceneTree timer: dies with the sequence instead of firing a
+	# freed-capture lambda after scene teardown
+	var expire := create_tween()
+	expire.tween_interval(maxf(0.05, duration))
+	expire.tween_callback(func():
 		if token == _outline_selection_token:
 			_outline_selected_source = null
-			_sync_outline_highlights()
-	)
+			_sync_outline_highlights())
 
 func _read_interactable_color(interactable: Node, property_name: String, fallback: Color) -> Color:
 	var value = interactable.get(property_name)
