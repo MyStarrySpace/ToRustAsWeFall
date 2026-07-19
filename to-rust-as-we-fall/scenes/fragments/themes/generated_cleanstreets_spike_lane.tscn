@@ -1,0 +1,102 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/game/objects/cleanstreets_spike_lane.gd" id="1_lane"]
+
+[sub_resource type="StandardMaterial3D" id="RoadMaterial"]
+albedo_color = Color(0.42, 0.45, 0.47, 1)
+metallic = 0.32
+roughness = 0.62
+
+[sub_resource type="StandardMaterial3D" id="CurbMaterial"]
+albedo_color = Color(0.09, 0.28, 0.27, 1)
+metallic = 0.48
+roughness = 0.5
+
+[sub_resource type="StandardMaterial3D" id="SpikeMaterial"]
+albedo_color = Color(0.76, 0.73, 0.61, 1)
+metallic = 0.86
+roughness = 0.28
+
+[sub_resource type="BoxMesh" id="RoadMesh"]
+material = SubResource("RoadMaterial")
+size = Vector3(0.92, 0.06, 0.92)
+
+[sub_resource type="BoxMesh" id="SlantedCurbMesh"]
+material = SubResource("CurbMaterial")
+size = Vector3(0.92, 0.12, 0.18)
+
+[sub_resource type="CylinderMesh" id="SpikeMesh"]
+material = SubResource("SpikeMaterial")
+top_radius = 0.0
+bottom_radius = 0.055
+height = 0.18
+radial_segments = 6
+
+[node name="GeneratedCleanstreetsSpikeLane" type="Node3D"]
+script = ExtResource("1_lane")
+metadata/theme_id = "cleanstreets"
+metadata/setpiece_kind = "symmetric_damage_lane"
+
+[node name="RoadInset" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.05, 0)
+mesh = SubResource("RoadMesh")
+
+[node name="HostileArchitecture" type="Node3D" parent="."]
+
+[node name="NoRestCurbLeft" type="MeshInstance3D" parent="HostileArchitecture"]
+position = Vector3(0, 0.14, -0.38)
+rotation = Vector3(0.42, 0, 0)
+mesh = SubResource("SlantedCurbMesh")
+
+[node name="NoRestCurbRight" type="MeshInstance3D" parent="HostileArchitecture"]
+position = Vector3(0, 0.14, 0.38)
+rotation = Vector3(-0.42, 0, 0)
+mesh = SubResource("SlantedCurbMesh")
+
+[node name="StudNW" type="MeshInstance3D" parent="HostileArchitecture"]
+position = Vector3(-0.28, 0.17, -0.24)
+mesh = SubResource("SpikeMesh")
+
+[node name="StudN" type="MeshInstance3D" parent="HostileArchitecture"]
+position = Vector3(0, 0.17, -0.24)
+mesh = SubResource("SpikeMesh")
+
+[node name="StudNE" type="MeshInstance3D" parent="HostileArchitecture"]
+position = Vector3(0.28, 0.17, -0.24)
+mesh = SubResource("SpikeMesh")
+
+[node name="StudW" type="MeshInstance3D" parent="HostileArchitecture"]
+position = Vector3(-0.28, 0.17, 0)
+mesh = SubResource("SpikeMesh")
+
+[node name="StudC" type="MeshInstance3D" parent="HostileArchitecture"]
+position = Vector3(0, 0.17, 0)
+mesh = SubResource("SpikeMesh")
+
+[node name="StudE" type="MeshInstance3D" parent="HostileArchitecture"]
+position = Vector3(0.28, 0.17, 0)
+mesh = SubResource("SpikeMesh")
+
+[node name="StudSW" type="MeshInstance3D" parent="HostileArchitecture"]
+position = Vector3(-0.28, 0.17, 0.24)
+mesh = SubResource("SpikeMesh")
+
+[node name="StudS" type="MeshInstance3D" parent="HostileArchitecture"]
+position = Vector3(0, 0.17, 0.24)
+mesh = SubResource("SpikeMesh")
+
+[node name="StudSE" type="MeshInstance3D" parent="HostileArchitecture"]
+position = Vector3(0.28, 0.17, 0.24)
+mesh = SubResource("SpikeMesh")
+
+[node name="Feedback" type="Node3D" parent="."]
+
+[node name="WarningLabel" type="Label3D" parent="Feedback"]
+position = Vector3(0, 0.86, 0)
+text = "NO RESTING // ACTIVE STUDS"
+modulate = Color(0.94, 0.74, 0.36, 1)
+outline_modulate = Color(0.02, 0.025, 0.025, 0.95)
+outline_size = 7
+font_size = 28
+pixel_size = 0.0027
+billboard = 1

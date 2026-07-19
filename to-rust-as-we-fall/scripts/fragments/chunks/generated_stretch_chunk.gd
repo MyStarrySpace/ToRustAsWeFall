@@ -19,6 +19,7 @@ const SCARCITY_DRAIN_TAG := "generated_stretch_food_scarcity"
 const SCARCITY_DEFAULT_INTERVAL := 60.0
 const SCARCITY_DEFAULT_ATP := 1.0
 const SCARCITY_ATP_FLOOR := 1.0
+const THEME_HAZARD_TICK := 0.25
 const GUIDE_FOOD_ATP := 0.5
 const GUIDE_FOOD_SEGMENTS := [["entry", "node_01"], ["node_02", "node_03"]]
 const HYDRAULIC_SPEC_ID := "generated_teaching_channels_shelter_1_to_2"
@@ -75,6 +76,10 @@ var _node_interactables: Dictionary = {}
 var _route_surfaces: Dictionary = {}
 var _spatial_feature_roots: Array[Node3D] = []
 var _theme_landmark_roots: Array[Node3D] = []
+var _theme_setpiece_roots: Array[Node3D] = []
+var _theme_hazard_accumulator := 0.0
+var _theme_hazard_damage_total := 0.0
+var _theme_hazard_contacts: Dictionary = {}
 var _content_marker_count := 0
 var _spatial_fixture_count := 0
 var _route_choice := ""
@@ -192,6 +197,10 @@ func _build_chunk() -> void:
 	_route_surfaces.clear()
 	_spatial_feature_roots.clear()
 	_theme_landmark_roots.clear()
+	_theme_setpiece_roots.clear()
+	_theme_hazard_accumulator = 0.0
+	_theme_hazard_damage_total = 0.0
+	_theme_hazard_contacts.clear()
 	_drop_downs.clear()
 	_climbvines.clear()
 	_branch_caches.clear()
@@ -215,6 +224,7 @@ func _build_chunk() -> void:
 	var flat_child_start := get_child_count()
 	_build_spatial_features()
 	_build_theme_landmarks()
+	_build_theme_setpieces()
 	_build_generated_nodes()
 
 	# Branch caches are authored FLAT like the node dressing, so build them BEFORE the warp pass and let it re-seat
@@ -321,6 +331,12 @@ func _hydraulic_help() -> String:
 	if not _hydraulic_enabled():
 		return ""
 	return " CHANNEL PUZZLE — Open the First Sluice, release the Cistern Bridge, borrow the current to the food spillway, then restore the main flow before leaving."
+
+
+func _theme_help() -> String:
+	if str(_spec.get("biome", "")) != "cleanstreets":
+		return ""
+	return " CLEANSTREETS — SAFE avoids marked anti-loiter cells when a detour exists; DIRECT crosses the studs and continuously spends health for time."
 
 
 func _food_test_settings() -> Dictionary:
@@ -641,7 +657,7 @@ func get_scene_help() -> String:
 			"%s archetype stretch. Read the route markers: some branches are optional supplies, while others carry the path forward."
 			% tier
 		)
-	return "%s  %s%s" % [layout_help, _food_economy_help(), _hydraulic_help()]
+	return "%s  %s%s%s" % [layout_help, _food_economy_help(), _hydraulic_help(), _theme_help()]
 
 
 func get_default_character() -> String:
@@ -821,6 +837,8 @@ func get_preview_state() -> Dictionary:
 		"biome": str(_spec.get("biome", "")),
 		"area_theme": (_spec.get("area_theme", {}) as Dictionary).duplicate(true),
 		"themed_landmarks": (_spec.get("themed_landmarks", []) as Array).duplicate(true),
+		"themed_setpieces": (_spec.get("themed_setpieces", []) as Array).duplicate(true),
+		"theme_hazard_damage_total": _theme_hazard_damage_total,
 		"complexity_tier": str(_spec.get("source", {}).get("complexity_tier", "")),
 		"resolved_budget": _spec.get("budget", {}).duplicate(true),
 		"limitations": _spec.get("settings", {}).get("limitations", {}).duplicate(true),
@@ -864,6 +882,7 @@ func get_preview_state() -> Dictionary:
 		"content_marker_count": _content_marker_count,
 		"spatial_fixture_count": _spatial_fixture_count,
 		"themed_landmark_count": _theme_landmark_roots.size(),
+		"themed_setpiece_count": _theme_setpiece_roots.size(),
 		"active_loadout": _active_loadout,
 		"active_party": _active_party.duplicate(),
 		"blocked_nodes": _blocked_nodes.duplicate(),
@@ -918,6 +937,8 @@ func get_preview_state() -> Dictionary:
 		"unsupported_placeholder_count": _unsupported_placeholder_count,
 		"spatial_fixture_count": _spatial_fixture_count,
 		"themed_landmark_count": _theme_landmark_roots.size(),
+		"themed_setpiece_count": _theme_setpiece_roots.size(),
+		"theme_hazard_damage_total": _theme_hazard_damage_total,
 		"drop_down_count": _drop_downs.size(),
 		"branch_cache_count": _branch_caches.size(),
 		"branch_atp_collected": _branch_atp_collected,
@@ -1044,8 +1065,9 @@ func on_preview_movement_started(_char_id: String) -> void:
 	begin_scarcity_clock()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	_sync_hydraulic_bridge_blocker()
+	_update_theme_hazards(delta)
 	if _scarcity_clock_started or _food_test_mode() != FOOD_TEST_SCARCITY or _shelter_reached:
 		return
 	var gs = _get_game_state()
@@ -1055,6 +1077,43 @@ func _process(_delta: float) -> void:
 		if bool(gs.call("is_moving", char_id)):
 			begin_scarcity_clock()
 			return
+
+
+## Cleanstreets studs are immediate, local feedback rather than a delayed abstract node penalty. Their source
+## cells already carry navigation risk, so SAFE avoids them where an alternate lane exists and DIRECT may spend
+## health for time. One fixture wins per tick to prevent overlapping authored nodes from multiplying damage.
+func _update_theme_hazards(delta: float) -> void:
+	if _theme_setpiece_roots.is_empty() or _shelter_reached:
+		return
+	_theme_hazard_accumulator += maxf(0.0, delta)
+	if _theme_hazard_accumulator < THEME_HAZARD_TICK:
+		return
+	var elapsed := minf(_theme_hazard_accumulator, THEME_HAZARD_TICK * 2.0)
+	_theme_hazard_accumulator = 0.0
+	var hazard_party: Array = _active_party if not _active_party.is_empty() else PARTY_IDS
+	for char_id_v in hazard_party:
+		var char_id := str(char_id_v)
+		var position := _get_character_position(char_id)
+		var highest_dps := 0.0
+		for setpiece in _theme_setpiece_roots:
+			if not is_instance_valid(setpiece) or not setpiece.has_method("covers_flat"):
+				continue
+			if bool(setpiece.call("covers_flat", position)):
+				highest_dps = maxf(highest_dps, float(setpiece.get("damage_per_second")))
+		if highest_dps <= 0.0:
+			_theme_hazard_contacts.erase(char_id)
+			continue
+		var damage := highest_dps * elapsed
+		_adjust_character_stat(char_id, "hp", -damage)
+		_theme_hazard_damage_total += damage
+		_last_outcome = "cleanstreets_studs:%s" % char_id
+		if not _theme_hazard_contacts.has(char_id):
+			_theme_hazard_contacts[char_id] = true
+			_show_note(
+				"ACTIVE STUDS // %s is taking continuous damage. SAFE routing avoids marked risk cells."
+				% char_id.capitalize(),
+				2.4
+			)
 
 
 func _arm_scarcity_drain() -> void:
@@ -1101,6 +1160,9 @@ func reset_preview_state() -> void:
 	_reset_generated_resource_items()
 	_reset_experiment_food_state()
 	_reset_scarcity_drain_state()
+	_theme_hazard_accumulator = 0.0
+	_theme_hazard_damage_total = 0.0
+	_theme_hazard_contacts.clear()
 	_reset_hydraulic_state()
 	_route_choice = ""
 	_route_phase = "unstarted"
@@ -1497,7 +1559,12 @@ func choose_generated_route(route_id: String, activate_target := true) -> bool:
 	var risk := _route_risk_value(route)
 	var kind := _route_kind(route)
 	if kind == "risky" or risk > 1:
-		_apply_risky_pressure(risk, route)
+		if str(_spec.get("biome", "")) == "cleanstreets" and not _theme_setpiece_roots.is_empty():
+			# Cleanstreets makes the route price spatial and continuous: the visible studs on the
+			# route-risk cells deal it. Do not also levy the generic destination-wide near-miss tax.
+			_show_note("DIRECT LANE // Active studs spend health only while crossed.", 2.2)
+		else:
+			_apply_risky_pressure(risk, route)
 		_route_phase = "recovering" if str(route.get("recovery", "")) != "" else "danger"
 	elif kind == "shortcut":
 		_shortcut_unlocked = true
@@ -1768,6 +1835,8 @@ func _clear_generated_children() -> void:
 	_route_surfaces.clear()
 	_spatial_feature_roots.clear()
 	_theme_landmark_roots.clear()
+	_theme_setpiece_roots.clear()
+	_theme_hazard_contacts.clear()
 
 
 func _build_foundation() -> void:
@@ -1939,6 +2008,39 @@ func _build_theme_landmarks() -> void:
 		root.add_to_group("generated_theme_landmark")
 		add_child(root)
 		_theme_landmark_roots.append(root)
+		_spatial_fixture_count += 1
+
+
+## Interactive district fixtures use authored scenes just like landmarks, but sit ON navigation risk cells.
+## Their scripts retain the flat-space coverage used by GameState after the visible root is wrapped onto a helix.
+func _build_theme_setpieces() -> void:
+	for setpiece_v in _spec.get("themed_setpieces", []):
+		if not (setpiece_v is Dictionary):
+			continue
+		var setpiece := setpiece_v as Dictionary
+		var scene_path := str(setpiece.get("scene", ""))
+		var packed := load(scene_path) as PackedScene
+		if packed == null:
+			continue
+		var root := packed.instantiate() as Node3D
+		if root == null:
+			continue
+		root.name = "GeneratedThemeSetpiece_%s" % str(setpiece.get("id", "route_setpiece"))
+		if root.has_method("configure"):
+			root.call("configure", setpiece)
+		else:
+			root.position = _vec3(setpiece.get("position", []), Vector3.ZERO)
+			root.rotation.y = float(setpiece.get("rotation_y", 0.0))
+		root.set_meta("contract_id", str(setpiece.get("contract_id", "")))
+		root.set_meta("theme_id", str(setpiece.get("theme_id", "")))
+		root.set_meta("setpiece_kind", str(setpiece.get("kind", "")))
+		root.set_meta("risk_cell", (setpiece.get("risk_cell", []) as Array).duplicate())
+		root.set_meta("primary_read", str(setpiece.get("primary_read", "")))
+		root.set_meta("leverage", str(setpiece.get("leverage", "")))
+		root.set_meta("failure_prediction", str(setpiece.get("failure_prediction", "")))
+		root.add_to_group("generated_theme_setpiece")
+		add_child(root)
+		_theme_setpiece_roots.append(root)
 		_spatial_fixture_count += 1
 
 

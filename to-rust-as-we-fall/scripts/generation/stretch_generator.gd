@@ -176,6 +176,8 @@ static func generate(settings: Dictionary) -> Dictionary:
 	graybox["spatial_feature_count"] = spatial_features.size()
 	var themed_landmarks := _build_themed_landmarks(nodes, navigation_grid, resolved)
 	graybox["themed_landmark_count"] = themed_landmarks.size()
+	var themed_setpieces := _build_themed_route_setpieces(navigation_grid, resolved)
+	graybox["themed_setpiece_count"] = themed_setpieces.size()
 	var anchors := _build_anchors(nodes)
 	var world_slot := _build_world_slot(resolved, anchors)
 	var teaching_chain := _teaching_chain_edges(catalog, archetype_chain)
@@ -210,6 +212,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 		"roompieces": _roompieces_block(layout),
 		"spatial_features": spatial_features,
 		"themed_landmarks": themed_landmarks,
+		"themed_setpieces": themed_setpieces,
 		"nodes": nodes,
 		"routes": routes,
 		"archetype_chain": archetype_chain,
@@ -257,6 +260,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 				"chunk.generation.spatial_features",
 				"chunk.generation.area_theme",
 				"chunk.generation.themed_landmarks",
+				"chunk.generation.themed_setpieces",
 				"chunk.generation.active_loadout",
 				"chunk.generation.solution_path",
 				"chunk.generation.blocked_nodes"
@@ -459,6 +463,7 @@ static func validate_area_theme(spec: Dictionary) -> Dictionary:
 	var biome := str(spec.get("biome", ""))
 	var theme: Dictionary = spec.get("area_theme", {})
 	var landmarks: Array = spec.get("themed_landmarks", [])
+	var setpieces: Array = spec.get("themed_setpieces", [])
 	if biome == "":
 		return {"valid": theme.is_empty() and landmarks.is_empty(), "errors": errors, "landmark_count": 0}
 	if theme.is_empty():
@@ -512,7 +517,35 @@ static func validate_area_theme(spec: Dictionary) -> Dictionary:
 		for field in ["primary_read", "feedback_role"]:
 			if str(landmark.get(field, "")).strip_edges() == "":
 				errors.append("Theme landmark %s is missing %s" % [str(landmark.get("id", "")), field])
-	return {"valid": errors.is_empty(), "errors": errors, "landmark_count": landmarks.size()}
+	var setpiece_defs: Array = theme.get("route_setpieces", [])
+	if not setpiece_defs.is_empty() and setpieces.is_empty():
+		errors.append("Biome '%s' emitted no interactive route setpieces" % biome)
+	var risk_cells := {}
+	for risk_v in spec.get("navigation_grid", {}).get("risk_cell_list", []):
+		if risk_v is Dictionary and (risk_v as Dictionary).get("cell", []) is Array:
+			var risk_cell: Array = (risk_v as Dictionary).get("cell", [])
+			if risk_cell.size() >= 2:
+				risk_cells["%d:%d" % [int(risk_cell[0]), int(risk_cell[1])]] = true
+	for setpiece_v in setpieces:
+		if not (setpiece_v is Dictionary):
+			errors.append("Biome '%s' emitted a malformed route setpiece" % biome)
+			continue
+		var setpiece := setpiece_v as Dictionary
+		var scene_path := str(setpiece.get("scene", ""))
+		if scene_path == "" or not ResourceLoader.exists(scene_path):
+			errors.append("Theme route setpiece has no authored scene: %s" % scene_path)
+		var source_cell: Array = setpiece.get("risk_cell", [])
+		if source_cell.size() < 2 or not risk_cells.has("%d:%d" % [int(source_cell[0]), int(source_cell[1])]):
+			errors.append("Theme route setpiece %s is not seated on a risky route cell" % str(setpiece.get("id", "")))
+		for field in ["primary_read", "leverage", "failure_prediction"]:
+			if str(setpiece.get(field, "")).strip_edges() == "":
+				errors.append("Theme route setpiece %s is missing %s" % [str(setpiece.get("id", "")), field])
+	return {
+		"valid": errors.is_empty(),
+		"errors": errors,
+		"landmark_count": landmarks.size(),
+		"setpiece_count": setpieces.size(),
+	}
 
 
 static func build_navigation_grid_from_spec(spec: Dictionary) -> Dictionary:
@@ -2029,6 +2062,93 @@ static func _build_themed_landmarks(nodes: Array, navigation_grid: Dictionary, s
 			occupied.append(landmark_position)
 			break
 	return result
+
+
+## Seat authored district hazards on the SAME risk cells the navigation layer exposes to route preview.
+## This keeps the causal model honest: SAFE can price/avoid the deterrent lane before the click, while DIRECT
+## visibly crosses it and pays continuous damage. The scene owns the fixture geometry; generation only chooses
+## deterministic cells and emits the flat-space coverage contract consumed by the runtime presenter.
+static func _build_themed_route_setpieces(navigation_grid: Dictionary, settings: Dictionary) -> Array:
+	var theme: Dictionary = settings.get("area_theme", {})
+	var definitions: Array = theme.get("route_setpieces", [])
+	var risk_entries: Array = navigation_grid.get("risk_cell_list", [])
+	if definitions.is_empty() or risk_entries.is_empty() or navigation_grid.is_empty():
+		return []
+	var grid = GridWorld.from_data(navigation_grid)
+	var risk_cells: Array[Vector2i] = []
+	for risk_v in risk_entries:
+		if not (risk_v is Dictionary):
+			continue
+		var raw_cell: Array = (risk_v as Dictionary).get("cell", [])
+		if raw_cell.size() < 2:
+			continue
+		var cell := Vector2i(int(raw_cell[0]), int(raw_cell[1]))
+		if not risk_cells.has(cell):
+			risk_cells.append(cell)
+	if risk_cells.is_empty():
+		return []
+	risk_cells.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return a.y < b.y or (a.y == b.y and a.x < b.x)
+	)
+	var level_by_cell := _navigation_level_by_cell(navigation_grid)
+	var result: Array = []
+	var seed := int(settings.get("seed", 0))
+	for definition_v in definitions:
+		if not (definition_v is Dictionary):
+			continue
+		var definition := definition_v as Dictionary
+		var wanted := clampi(int(definition.get("count", 3)), 1, 8)
+		var count := mini(wanted, risk_cells.size())
+		var start := posmod(int(hash("theme-setpiece:%d:%s" % [seed, str(definition.get("id", ""))])), risk_cells.size())
+		for i in range(count):
+			# Even sampling makes a repeated fixture read as a road system instead of one noisy pile.
+			var sample_index := posmod(start + int(floor(float(i) * float(risk_cells.size()) / float(count))), risk_cells.size())
+			var cell := risk_cells[sample_index]
+			var level := int(level_by_cell.get("%d:%d" % [cell.x, cell.y], 0))
+			var position: Vector3 = grid.grid_to_world(cell, level)
+			var tangent := _risk_cell_tangent(cell, risk_cells)
+			var placed := definition.duplicate(true)
+			placed.merge({
+				"contract_id": "generated_theme_route_setpiece_v1",
+				"theme_id": str(theme.get("id", "")),
+				"source_area": str(theme.get("source_area", "")),
+				"instance_index": i,
+				"id": "%s_%02d" % [str(definition.get("id", "route_setpiece")), i + 1],
+				"position": _vec3_to_array(position),
+				"rotation_y": -atan2(tangent.y, tangent.x),
+				"elevation_index": level,
+				"risk_cell": [cell.x, cell.y],
+				"half_size": [0.46, 0.46],
+				"show_label": i == 0,
+			}, true)
+			result.append(placed)
+	return result
+
+
+static func _navigation_level_by_cell(navigation_grid: Dictionary) -> Dictionary:
+	var result := {}
+	for level_v in navigation_grid.get("level_cells", []):
+		if not (level_v is Dictionary):
+			continue
+		var level := int((level_v as Dictionary).get("level", 0))
+		for cell_v in (level_v as Dictionary).get("cells", []):
+			if cell_v is Array and (cell_v as Array).size() >= 2:
+				result["%d:%d" % [int(cell_v[0]), int(cell_v[1])]] = level
+	return result
+
+
+static func _risk_cell_tangent(cell: Vector2i, risk_cells: Array[Vector2i]) -> Vector2:
+	var nearest := Vector2i(cell.x + 1, cell.y)
+	var nearest_distance := INF
+	for other in risk_cells:
+		if other == cell:
+			continue
+		var distance := Vector2(other.x - cell.x, other.y - cell.y).length_squared()
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest = other
+	var tangent := Vector2(nearest.x - cell.x, nearest.y - cell.y)
+	return tangent.normalized() if tangent.length_squared() > 0.0 else Vector2.RIGHT
 
 
 static func _themed_landmark_position(

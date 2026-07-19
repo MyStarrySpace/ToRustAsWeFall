@@ -8,7 +8,7 @@ extends RefCounted
 ## — specialist capabilities ride the party, and the bare pair's base capabilities don't depend on placed content.
 ## All ids are canonical content_palette.json keys (fauna use the renamed roster: Sapscraps/Aembers/Flares/Redactors).
 
-const BIOME_SEQUENCE := ["channels", "stacks", "garden", "deadzone"]
+const BIOME_SEQUENCE := ["channels", "stacks", "garden", "cleanstreets", "deadzone"]
 
 const BIOMES := {
 	"channels": {
@@ -80,6 +80,40 @@ const BIOMES := {
 				"clearance": 3.9,
 				"primary_read": "Tended roots connect refuge, forage, and traversal as one maintained living system.",
 				"feedback_role": "Healthy teal nodes sit on living roots while failed growth remains dark and brittle.",
+			}],
+		},
+	},
+	"cleanstreets": {
+		"display": "The Cleanstreets Initiative",
+		"flora": ["scarpet", "flure", "capbage", "seefern", "hushbloom"],
+		"enemies": ["naturalizers", "redactors", "gnawers", "spikers"],
+		"structures": ["shelter", "terminal", "class_gate", "shortcut_gate", "junction", "hide_slot", "barrier", "carry_gear"],
+		"theme": {
+			"source_area": "The Cleanstreets Initiative / Transit Plazas",
+			"floor_tile": "wall_panel",
+			"risk_tile": "facility_metal",
+			"light_color": [0.92, 0.78, 0.52, 1.0],
+			"light_energy": 1.35,
+			"building_vocabulary": ["toll-canopy pavilion", "sweeping arterial", "memorial traffic island"],
+			"feature_vocabulary": ["anti-loiter stud lane", "slanted no-rest bench", "flow-optimization queue fin"],
+			"landmarks": [{
+				"id": "cleanstreets_toll_pavilion",
+				"kind": "building_feature_cluster",
+				"scene": "res://scenes/fragments/themes/generated_cleanstreets_toll_pavilion.tscn",
+				"anchor_structures": ["terminal", "class_gate", "shortcut_gate", "junction", "hide_slot", "barrier", "carry_gear"],
+				"clearance": 4.8,
+				"primary_read": "The immaculate arterial narrows through a toll pavilion whose furniture is designed to prevent rest.",
+				"feedback_role": "Pale road panels identify the public route; dark studded cells identify the painful direct lane before movement is committed.",
+			}],
+			"route_setpieces": [{
+				"id": "anti_loiter_stud_lane",
+				"kind": "symmetric_damage_lane",
+				"scene": "res://scenes/fragments/themes/generated_cleanstreets_spike_lane.tscn",
+				"count": 5,
+				"damage_per_second": 4.0,
+				"primary_read": "The metal studs occupy cells the route preview already marks as risky.",
+				"leverage": "SAFE routing bends around the studded direct lane; a fast direct order trades health for time.",
+				"failure_prediction": "Standing or stopping on the studs drains health continuously, rather than dealing an unexplained hit later.",
 			}],
 		},
 	},
@@ -180,6 +214,17 @@ static func validate() -> Dictionary:
 			if str(landmark.get("primary_read", "")).strip_edges() == "" \
 					or str(landmark.get("feedback_role", "")).strip_edges() == "":
 				errors.append("Biome '%s' landmark lacks a readable causal/feedback role" % id)
+		for setpiece_v in theme.get("route_setpieces", []):
+			if not (setpiece_v is Dictionary):
+				errors.append("Biome '%s' has a malformed route setpiece" % id)
+				continue
+			var setpiece := setpiece_v as Dictionary
+			var setpiece_scene := str(setpiece.get("scene", ""))
+			if setpiece_scene == "" or not ResourceLoader.exists(setpiece_scene):
+				errors.append("Biome '%s' route setpiece scene is missing: %s" % [id, setpiece_scene])
+			for causal_field in ["primary_read", "leverage", "failure_prediction"]:
+				if str(setpiece.get(causal_field, "")).strip_edges() == "":
+					errors.append("Biome '%s' route setpiece lacks %s" % [id, causal_field])
 	return {"valid": errors.is_empty(), "errors": errors, "theme_count": BIOMES.size()}
 
 ## Pick a biome deterministically from an arbitrary string key (the roguelike keys on run-seed/depth/branch so a

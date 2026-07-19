@@ -42,16 +42,23 @@ by the procedural pipeline (WFC stretches / atom chains) and varies per seed.
 
 ## District theming — DONE (2026-07-19)
 
-Procedural depths now rotate through four mechanically grounded districts inspired by the main
-game: Channels, Open Files / Stacks, Greenfields Collective, and the Deadzone. A seeded run visits
-all four before repeating one, and adjacent depths never reuse a district.
+Procedural depths now rotate through five mechanically grounded districts inspired by the main
+game: Channels, Open Files / Stacks, Greenfields Collective, the Cleanstreets Initiative, and the
+Deadzone. A seeded run visits all five before repeating one, and adjacent depths never reuse a
+district.
 
 Each district contract controls its content pools, floor and hazard surfaces, lighting, landmark
 anchor requirements, causal read, and feedback role. The dominant landmark is an authored scene
 cluster rather than runtime-built decorative geometry: a Channels pump house, Stacks archive
-spire, Greenfields root pavilion, or Deadzone chembrane ruin. The generator places that cluster
-beside a compatible systemic node so the building vocabulary reinforces what the stretch asks the
-player to notice and manipulate.
+spire, Greenfields root pavilion, Cleanstreets toll-canopy pavilion, or Deadzone chembrane ruin.
+The generator places that cluster beside a compatible systemic node so the building vocabulary
+reinforces what the stretch asks the player to notice and manipulate.
+
+Cleanstreets also owns generated route set-pieces rather than only a skyline skin. Its pale,
+sweeping arterial uses authored slanted no-rest furniture and anti-loiter stud scenes. The active
+stud scenes are seated directly on navigation risk cells: SAFE preview can bend around them when
+an alternate lane exists, while DIRECT crosses them and pays continuous, locally messaged health
+damage. That makes the hostile architecture a legible route trade rather than unexplained attrition.
 
 ## Next (the "more elements" track)
 
@@ -61,8 +68,8 @@ classes exist; they need loader object kinds + generator placement:
 0. ~~decorative_flora + spike_strip~~ — DONE (2026-07-12): the ornamental invasives
    (docs/DECORATIVE_FLORA.md, loader kind `decorative_flora`, Peris HARVEST yellow reveal on Y,
    runback decor pass) and the anti-loiter studs (SET_PIECES 21, loader kind `spike_strip`,
-   symmetric DoT). Demo: `--preview=hostile_streets`. Generator PLACEMENT (decor density knob +
-   strips at chokepoints) still pending — joins the crawl_tunnel item below.
+   symmetric DoT). Demo: `--preview=hostile_streets`. Cleanstreets generator placement is now
+   DONE: authored stud-lane scenes occupy route-risk cells. The general decor density pass remains.
 1. **crawl_tunnel** (CrawlTunnel exists) — squeeze shortcuts across node walls: the shadow-route
    element, depth-widening.
 2. **Water basin valve + floats** (set-piece bay C logic) — extract from the showcase chunk into

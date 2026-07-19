@@ -3108,8 +3108,9 @@ func _test_biomes() -> void:
 	_assert_true(bool(registry_validation.get("valid", false)),
 		"biome area-theme registry validates (errors: %s)" % str(registry_validation.get("errors", [])))
 	var ids: Array = Biomes.biome_ids()
+	var expected_biomes := ["channels", "stacks", "garden", "cleanstreets", "deadzone"]
 	var floor_tiles := {}
-	for needed in ["channels", "stacks", "garden", "deadzone"]:
+	for needed in expected_biomes:
 		_assert_true(ids.has(needed), "biome registry has '%s'" % needed)
 		_assert_true(Biomes.has_biome(needed), "has_biome('%s')" % needed)
 		_assert_true(Biomes.display_name(needed) != "", "biome '%s' has a display name" % needed)
@@ -3140,12 +3141,26 @@ func _test_biomes() -> void:
 				_assert_true(theme_root.find_child("ThemeFeature", true, false) != null,
 					"biome '%s' landmark contains authored district features" % needed)
 				theme_root.free()
+		if needed == "cleanstreets":
+			var route_setpieces: Array = theme.get("route_setpieces", [])
+			_assert_true(not route_setpieces.is_empty(),
+				"Cleanstreets declares authored interactive hostile-architecture fixtures")
+			if not route_setpieces.is_empty():
+				var packed_setpiece := load(str((route_setpieces[0] as Dictionary).get("scene", ""))) as PackedScene
+				_assert_true(packed_setpiece != null, "Cleanstreets route setpiece scene loads")
+				if packed_setpiece != null:
+					var setpiece_root := packed_setpiece.instantiate()
+					_assert_true(setpiece_root.find_child("HostileArchitecture", true, false) != null,
+						"Cleanstreets spike lane uses authored hostile-architecture nodes")
+					_assert_true(setpiece_root.has_method("covers_flat"),
+						"Cleanstreets spike lane exposes flat-space damage coverage")
+					setpiece_root.free()
 	_assert_true(floor_tiles.size() >= 3,
 		"area themes use distinct surface languages rather than one recolored deck (saw %d)" % floor_tiles.size())
 
 	# A biome RESTRICTS generation to its palette slice: every placed flora/enemy/structure is in the biome's lists,
 	# the spec records the biome, and the level still connects entry->exit and stays bare-pair solvable.
-	for biome in ["channels", "stacks", "garden", "deadzone"]:
+	for biome in expected_biomes:
 		var lim2: Dictionary = Biomes.limitations_for(biome)
 		var allow: Dictionary = lim2.get("allowed", {})
 		var spec: Dictionary = StretchGeneratorScript.generate({
@@ -3161,6 +3176,9 @@ func _test_biomes() -> void:
 			"biome '%s' emits a valid authored landmark placement" % biome)
 		_assert_equals((spec.get("themed_landmarks", []) as Array).size(), 1,
 			"biome '%s' emits one dominant district landmark cluster" % biome)
+		if biome == "cleanstreets":
+			_assert_true(not (spec.get("themed_setpieces", []) as Array).is_empty(),
+				"Cleanstreets emits active stud lanes on route-risk cells")
 		var usage: Dictionary = spec.get("palette_usage", {})
 		for cat_key in ["flora", "enemies", "structures"]:
 			for used in usage.get(cat_key, []):
@@ -3177,10 +3195,10 @@ func _test_biomes() -> void:
 		_assert_true(bool(spec.get("headless", {}).get("solution_summary", {}).get("bare_pair_solvable", false)),
 			"biome '%s' level is bare-pair solvable" % biome)
 
-	# Theme identity is a generation invariant, not a lucky landmark placement for the four showcase seeds.
+	# Theme identity is a generation invariant, not a lucky landmark placement for the showcase seeds.
 	# Sweep enough topology/content deals to catch a biome whose compatible anchor can disappear intermittently.
 	var theme_sweep_failures: Array[String] = []
-	for biome in ["channels", "stacks", "garden", "deadzone"]:
+	for biome in expected_biomes:
 		for seed in range(12):
 			var swept: Dictionary = StretchGeneratorScript.generate({
 				"seed": seed,
@@ -3195,8 +3213,8 @@ func _test_biomes() -> void:
 					or not bool(StretchGeneratorScript.validate_area_theme(swept).get("valid", false)):
 				theme_sweep_failures.append("%s/%d:invalid_landmark" % [biome, seed])
 	_assert_true(theme_sweep_failures.is_empty(),
-		"every district keeps one valid landmark across a 48-stretch seed sweep (failures: %s)"
-		% str(theme_sweep_failures))
+		"every district keeps one valid landmark across a %d-stretch seed sweep (failures: %s)"
+		% [expected_biomes.size() * 12, str(theme_sweep_failures)])
 
 	# Deterministic + varied biome selection.
 	_assert_equals(Biomes.for_key("7:2:deep"), Biomes.for_key("7:2:deep"), "for_key is deterministic")
