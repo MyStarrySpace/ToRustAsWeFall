@@ -1,0 +1,303 @@
+[gd_scene load_steps=26 format=3]
+
+; Tooling-only geometry recipes for the authored biome landmark catalog.
+; Runtime landmark scenes reference the baked OBJ/MTL/PNG assets, never this file.
+
+[sub_resource type="CylinderMesh" id="ChannelsDrum"]
+top_radius = 2.1
+bottom_radius = 2.45
+height = 5.2
+radial_segments = 8
+
+[sub_resource type="CylinderMesh" id="ChannelsCap"]
+top_radius = 1.65
+bottom_radius = 2.25
+height = 0.7
+radial_segments = 8
+
+[sub_resource type="BoxMesh" id="ChannelsWing"]
+size = Vector3(2.8, 2.2, 2.2)
+
+[sub_resource type="CylinderMesh" id="ChannelsPipe"]
+top_radius = 0.24
+bottom_radius = 0.24
+height = 4.4
+radial_segments = 10
+
+[sub_resource type="TorusMesh" id="ChannelsValve"]
+inner_radius = 0.28
+outer_radius = 0.5
+rings = 12
+ring_segments = 8
+
+[sub_resource type="BoxMesh" id="ChannelsTrough"]
+size = Vector3(4.8, 0.34, 0.9)
+
+[sub_resource type="BoxMesh" id="ChannelsFlow"]
+size = Vector3(4.3, 0.08, 0.18)
+
+[sub_resource type="BoxMesh" id="StacksTall"]
+size = Vector3(1.75, 7.6, 2.4)
+
+[sub_resource type="BoxMesh" id="StacksMid"]
+size = Vector3(1.65, 5.8, 2.2)
+
+[sub_resource type="BoxMesh" id="StacksDrawer"]
+size = Vector3(1.9, 0.22, 2.5)
+
+[sub_resource type="BoxMesh" id="StacksPost"]
+size = Vector3(0.28, 2.6, 0.34)
+
+[sub_resource type="BoxMesh" id="StacksBeam"]
+size = Vector3(2.8, 0.22, 0.34)
+
+[sub_resource type="BoxMesh" id="StacksTerminal"]
+size = Vector3(0.8, 0.65, 0.18)
+
+[sub_resource type="CylinderMesh" id="GardenColumn"]
+top_radius = 0.25
+bottom_radius = 0.42
+height = 3.8
+radial_segments = 7
+
+[sub_resource type="CylinderMesh" id="GardenCanopy"]
+top_radius = 0.85
+bottom_radius = 3.1
+height = 1.6
+radial_segments = 9
+
+[sub_resource type="BoxMesh" id="GardenTerrace"]
+size = Vector3(5.8, 0.42, 5.2)
+
+[sub_resource type="CylinderMesh" id="GardenRoot"]
+top_radius = 0.14
+bottom_radius = 0.26
+height = 4.6
+radial_segments = 7
+
+[sub_resource type="SphereMesh" id="GardenLeaf"]
+radius = 0.7
+height = 1.15
+radial_segments = 10
+rings = 6
+
+[sub_resource type="SphereMesh" id="GardenGlow"]
+radius = 0.2
+height = 0.4
+radial_segments = 10
+rings = 6
+
+[sub_resource type="BoxMesh" id="DeadzonePylon"]
+size = Vector3(0.72, 5.8, 0.9)
+
+[sub_resource type="BoxMesh" id="DeadzoneHeader"]
+size = Vector3(5.8, 0.55, 0.72)
+
+[sub_resource type="BoxMesh" id="DeadzoneChembrane"]
+size = Vector3(2.15, 3.7, 0.16)
+
+[sub_resource type="CylinderMesh" id="DeadzoneRoot"]
+top_radius = 0.1
+bottom_radius = 0.26
+height = 4.8
+radial_segments = 6
+
+[sub_resource type="BoxMesh" id="DeadzoneRelay"]
+size = Vector3(1.15, 1.4, 0.9)
+
+[sub_resource type="SphereMesh" id="DeadzoneWarning"]
+radius = 0.22
+height = 0.44
+radial_segments = 8
+rings = 5
+
+[node name="BiomeLandmarksSource" type="Node3D"]
+
+[node name="Channels" type="Node3D" parent="."]
+
+[node name="ChannelsPumpDrum" type="MeshInstance3D" parent="Channels"]
+position = Vector3(0, 2.6, 0)
+mesh = SubResource("ChannelsDrum")
+
+[node name="ChannelsPumpCap" type="MeshInstance3D" parent="Channels"]
+position = Vector3(0, 5.55, 0)
+mesh = SubResource("ChannelsCap")
+
+[node name="ChannelsServiceWing" type="MeshInstance3D" parent="Channels"]
+position = Vector3(-2.5, 1.1, 0.2)
+rotation = Vector3(0, 0, -0.16)
+mesh = SubResource("ChannelsWing")
+
+[node name="ChannelsRiser" type="MeshInstance3D" parent="Channels"]
+position = Vector3(1.65, 3.35, 0.35)
+mesh = SubResource("ChannelsPipe")
+
+[node name="ChannelsOpenTrough" type="MeshInstance3D" parent="Channels"]
+position = Vector3(0.2, 0.32, 3.1)
+mesh = SubResource("ChannelsTrough")
+
+[node name="ChannelsFlowStrip" type="MeshInstance3D" parent="Channels"]
+position = Vector3(0.2, 0.54, 3.1)
+mesh = SubResource("ChannelsFlow")
+
+[node name="ChannelsValveLeft" type="MeshInstance3D" parent="Channels"]
+position = Vector3(-1.1, 1, 2.55)
+rotation = Vector3(1.5708, 0, 0)
+mesh = SubResource("ChannelsValve")
+
+[node name="ChannelsValveRight" type="MeshInstance3D" parent="Channels"]
+position = Vector3(1.25, 1, 2.55)
+rotation = Vector3(1.5708, 0, 0)
+mesh = SubResource("ChannelsValve")
+
+[node name="Stacks" type="Node3D" parent="."]
+
+[node name="StacksTallStack" type="MeshInstance3D" parent="Stacks"]
+position = Vector3(-1.7, 3.8, 0)
+rotation = Vector3(0, 0.08, -0.035)
+mesh = SubResource("StacksTall")
+
+[node name="StacksDrawerBandA" type="MeshInstance3D" parent="Stacks/StacksTallStack"]
+position = Vector3(0, -1.9, 0)
+mesh = SubResource("StacksDrawer")
+
+[node name="StacksDrawerBandB" type="MeshInstance3D" parent="Stacks/StacksTallStack"]
+position = Vector3(0, -0.6, 0)
+mesh = SubResource("StacksDrawer")
+
+[node name="StacksDrawerBandC" type="MeshInstance3D" parent="Stacks/StacksTallStack"]
+position = Vector3(0, 0.7, 0)
+mesh = SubResource("StacksDrawer")
+
+[node name="StacksDrawerBandD" type="MeshInstance3D" parent="Stacks/StacksTallStack"]
+position = Vector3(0, 2, 0)
+mesh = SubResource("StacksDrawer")
+
+[node name="StacksMidStack" type="MeshInstance3D" parent="Stacks"]
+position = Vector3(0.05, 2.9, -0.25)
+rotation = Vector3(0, -0.04, 0.025)
+mesh = SubResource("StacksMid")
+
+[node name="StacksRearStack" type="MeshInstance3D" parent="Stacks"]
+position = Vector3(1.65, 3.45, 0.2)
+rotation = Vector3(0, 0.05, -0.02)
+mesh = SubResource("StacksTall")
+
+[node name="StacksScanPostLeft" type="MeshInstance3D" parent="Stacks"]
+position = Vector3(-1.3, 1.3, 2.8)
+mesh = SubResource("StacksPost")
+
+[node name="StacksScanPostRight" type="MeshInstance3D" parent="Stacks"]
+position = Vector3(1.3, 1.3, 2.8)
+mesh = SubResource("StacksPost")
+
+[node name="StacksScanBeam" type="MeshInstance3D" parent="Stacks"]
+position = Vector3(0, 2.5, 2.8)
+mesh = SubResource("StacksBeam")
+
+[node name="StacksTerminalKiosk" type="MeshInstance3D" parent="Stacks"]
+position = Vector3(1.75, 0.8, 2.55)
+rotation = Vector3(-0.2, 0, 0)
+mesh = SubResource("StacksTerminal")
+
+[node name="Garden" type="Node3D" parent="."]
+
+[node name="GardenTerrace" type="MeshInstance3D" parent="Garden"]
+position = Vector3(0, 0.22, 0)
+mesh = SubResource("GardenTerrace")
+
+[node name="GardenColumnNW" type="MeshInstance3D" parent="Garden"]
+position = Vector3(-2.1, 2.1, -1.75)
+rotation = Vector3(0.04, 0, -0.08)
+mesh = SubResource("GardenColumn")
+
+[node name="GardenColumnNE" type="MeshInstance3D" parent="Garden"]
+position = Vector3(2.1, 2.1, -1.75)
+rotation = Vector3(-0.03, 0, 0.08)
+mesh = SubResource("GardenColumn")
+
+[node name="GardenColumnSW" type="MeshInstance3D" parent="Garden"]
+position = Vector3(-2.1, 2.1, 1.75)
+rotation = Vector3(-0.04, 0, -0.06)
+mesh = SubResource("GardenColumn")
+
+[node name="GardenColumnSE" type="MeshInstance3D" parent="Garden"]
+position = Vector3(2.1, 2.1, 1.75)
+rotation = Vector3(0.03, 0, 0.06)
+mesh = SubResource("GardenColumn")
+
+[node name="GardenCanopy" type="MeshInstance3D" parent="Garden"]
+position = Vector3(0, 4.65, 0)
+mesh = SubResource("GardenCanopy")
+
+[node name="GardenRootTrellisLeft" type="MeshInstance3D" parent="Garden"]
+position = Vector3(-1.8, 1.55, 2.95)
+rotation = Vector3(0.85, 0, -0.22)
+mesh = SubResource("GardenRoot")
+
+[node name="GardenRootTrellisRight" type="MeshInstance3D" parent="Garden"]
+position = Vector3(1.8, 1.55, 2.95)
+rotation = Vector3(0.85, 0, 0.22)
+mesh = SubResource("GardenRoot")
+
+[node name="GardenFoliageLeft" type="MeshInstance3D" parent="Garden"]
+position = Vector3(-1.65, 1.2, 2.75)
+mesh = SubResource("GardenLeaf")
+
+[node name="GardenFoliageRight" type="MeshInstance3D" parent="Garden"]
+position = Vector3(1.65, 1.2, 2.75)
+mesh = SubResource("GardenLeaf")
+
+[node name="GardenTendedNodeLeft" type="MeshInstance3D" parent="Garden"]
+position = Vector3(-1.55, 1.72, 2.6)
+mesh = SubResource("GardenGlow")
+
+[node name="GardenTendedNodeRight" type="MeshInstance3D" parent="Garden"]
+position = Vector3(1.55, 1.72, 2.6)
+mesh = SubResource("GardenGlow")
+
+[node name="Deadzone" type="Node3D" parent="."]
+
+[node name="DeadzonePylonLeft" type="MeshInstance3D" parent="Deadzone"]
+position = Vector3(-2.65, 2.9, 0)
+rotation = Vector3(0, 0, -0.06)
+mesh = SubResource("DeadzonePylon")
+
+[node name="DeadzonePylonRight" type="MeshInstance3D" parent="Deadzone"]
+position = Vector3(2.65, 2.45, 0.1)
+rotation = Vector3(0.04, 0, 0.14)
+mesh = SubResource("DeadzonePylon")
+
+[node name="DeadzoneCollapsedHeader" type="MeshInstance3D" parent="Deadzone"]
+position = Vector3(0.15, 5.15, 0)
+rotation = Vector3(0, 0, 0.12)
+mesh = SubResource("DeadzoneHeader")
+
+[node name="DeadzoneChembraneLeft" type="MeshInstance3D" parent="Deadzone"]
+position = Vector3(-1.45, 2.45, 0.05)
+rotation = Vector3(0, 0, -0.03)
+mesh = SubResource("DeadzoneChembrane")
+
+[node name="DeadzoneChembraneRight" type="MeshInstance3D" parent="Deadzone"]
+position = Vector3(1.45, 2.2, 0.05)
+rotation = Vector3(0, 0, 0.11)
+mesh = SubResource("DeadzoneChembrane")
+
+[node name="DeadzoneDeadRootLeft" type="MeshInstance3D" parent="Deadzone"]
+position = Vector3(-1.75, 1.2, 1.55)
+rotation = Vector3(0.9, 0.08, -0.38)
+mesh = SubResource("DeadzoneRoot")
+
+[node name="DeadzoneDeadRootRight" type="MeshInstance3D" parent="Deadzone"]
+position = Vector3(1.75, 1.05, 1.65)
+rotation = Vector3(0.9, -0.08, 0.42)
+mesh = SubResource("DeadzoneRoot")
+
+[node name="DeadzoneFailedRelay" type="MeshInstance3D" parent="Deadzone"]
+position = Vector3(0, 0.7, 2.1)
+rotation = Vector3(0.04, 0.12, -0.05)
+mesh = SubResource("DeadzoneRelay")
+
+[node name="DeadzoneWarningBeacon" type="MeshInstance3D" parent="Deadzone"]
+position = Vector3(0, 1.65, 2.1)
+mesh = SubResource("DeadzoneWarning")

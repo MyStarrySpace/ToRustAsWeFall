@@ -3132,7 +3132,19 @@ func _test_biomes() -> void:
 		var theme_landmarks: Array = theme.get("landmarks", [])
 		_assert_true(not theme_landmarks.is_empty(), "biome '%s' has an authored landmark cluster" % needed)
 		if not theme_landmarks.is_empty():
-			var packed_theme := load(str((theme_landmarks[0] as Dictionary).get("scene", ""))) as PackedScene
+			var landmark_def := theme_landmarks[0] as Dictionary
+			_assert_equals(str(landmark_def.get("asset_contract", "")), "editable_3d_v1",
+				"biome '%s' landmark declares the portable editable-asset contract" % needed)
+			var editable_assets := landmark_def.get("editable_assets", []) as Array
+			_assert_true(editable_assets.size() >= 3,
+				"biome '%s' landmark exposes its model material families" % needed)
+			for asset_v in editable_assets:
+				var asset_path := str(asset_v)
+				_assert_true(FileAccess.file_exists(asset_path)
+					and FileAccess.file_exists(asset_path.trim_suffix(".obj") + ".mtl")
+					and FileAccess.file_exists(asset_path.trim_suffix(".obj") + ".png"),
+					"biome '%s' keeps OBJ/MTL/PNG together for %s" % [needed, asset_path.get_file()])
+			var packed_theme := load(str(landmark_def.get("scene", ""))) as PackedScene
 			_assert_true(packed_theme != null, "biome '%s' landmark scene loads" % needed)
 			if packed_theme != null:
 				var theme_root := packed_theme.instantiate()
@@ -3140,6 +3152,12 @@ func _test_biomes() -> void:
 					"biome '%s' landmark contains authored building nodes" % needed)
 				_assert_true(theme_root.find_child("ThemeFeature", true, false) != null,
 					"biome '%s' landmark contains authored district features" % needed)
+				var primitive_count := 0
+				for mesh_node_v in theme_root.find_children("*", "MeshInstance3D", true, false):
+					if (mesh_node_v as MeshInstance3D).mesh is PrimitiveMesh:
+						primitive_count += 1
+				_assert_equals(primitive_count, 0,
+					"biome '%s' landmark visible geometry comes from portable models" % needed)
 				theme_root.free()
 		if needed == "cleanstreets":
 			var clean_landmark := theme_landmarks[0] as Dictionary

@@ -1,0 +1,30 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Mesh" path="res://resources/models/peris-sim/props/strike_notice/strike_notice_card.obj" id="1_card_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/peris-sim/props/strike_notice/strike_notice_card.png" id="2_card_texture"]
+[ext_resource type="Mesh" path="res://resources/models/peris-sim/props/strike_notice/strike_notice_warning.obj" id="3_warning_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/peris-sim/props/strike_notice/strike_notice_warning.png" id="4_warning_texture"]
+
+[sub_resource type="StandardMaterial3D" id="CardMaterial"]
+albedo_texture = ExtResource("2_card_texture")
+roughness = 0.82
+texture_filter = 0
+
+[sub_resource type="StandardMaterial3D" id="WarningMaterial"]
+albedo_texture = ExtResource("4_warning_texture")
+emission_enabled = true
+emission = Color(0.35, 0.12, 0.1, 1)
+emission_energy_multiplier = 0.35
+emission_texture = ExtResource("4_warning_texture")
+texture_filter = 0
+
+[node name="StrikeNotice" type="Node3D"]
+metadata/editable_asset_root = "res://resources/models/peris-sim/props/strike_notice"
+
+[node name="Card" type="MeshInstance3D" parent="."]
+material_override = SubResource("CardMaterial")
+mesh = ExtResource("1_card_mesh")
+
+[node name="Warning" type="MeshInstance3D" parent="."]
+material_override = SubResource("WarningMaterial")
+mesh = ExtResource("3_warning_mesh")

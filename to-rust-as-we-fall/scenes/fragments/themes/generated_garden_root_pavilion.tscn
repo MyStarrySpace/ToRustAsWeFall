@@ -1,125 +1,63 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=13 format=3]
 
-[sub_resource type="StandardMaterial3D" id="PavilionStone"]
-albedo_color = Color(0.29, 0.38, 0.3, 1)
+[ext_resource type="Mesh" path="res://resources/models/generated-biomes/garden_root_pavilion/garden_root_pavilion_structure.obj" id="1_structure_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/generated-biomes/garden_root_pavilion/garden_root_pavilion_structure.png" id="2_structure_texture"]
+[ext_resource type="Mesh" path="res://resources/models/generated-biomes/garden_root_pavilion/garden_root_pavilion_roots.obj" id="3_root_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/generated-biomes/garden_root_pavilion/garden_root_pavilion_roots.png" id="4_root_texture"]
+[ext_resource type="Mesh" path="res://resources/models/generated-biomes/garden_root_pavilion/garden_root_pavilion_foliage.obj" id="5_foliage_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/generated-biomes/garden_root_pavilion/garden_root_pavilion_foliage.png" id="6_foliage_texture"]
+[ext_resource type="Mesh" path="res://resources/models/generated-biomes/garden_root_pavilion/garden_root_pavilion_tended_nodes.obj" id="7_node_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/generated-biomes/garden_root_pavilion/garden_root_pavilion_tended_nodes.png" id="8_node_texture"]
+
+[sub_resource type="StandardMaterial3D" id="StructureMaterial"]
+albedo_texture = ExtResource("2_structure_texture")
 metallic = 0.18
 roughness = 0.84
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="RootMaterial"]
-albedo_color = Color(0.24, 0.15, 0.085, 1)
+albedo_texture = ExtResource("4_root_texture")
 roughness = 0.9
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="FoliageMaterial"]
-albedo_color = Color(0.2, 0.42, 0.22, 1)
+albedo_texture = ExtResource("6_foliage_texture")
 roughness = 0.82
+texture_filter = 0
 
-[sub_resource type="StandardMaterial3D" id="TendedGlow"]
-albedo_color = Color(0.08, 0.38, 0.29, 1)
+[sub_resource type="StandardMaterial3D" id="TendedMaterial"]
+albedo_texture = ExtResource("8_node_texture")
 emission_enabled = true
-emission = Color(0.2, 0.86, 0.58, 1)
+emission = Color(1, 1, 1, 1)
 emission_energy_multiplier = 1.8
-
-[sub_resource type="CylinderMesh" id="ColumnMesh"]
-material = SubResource("PavilionStone")
-top_radius = 0.25
-bottom_radius = 0.42
-height = 3.8
-radial_segments = 7
-
-[sub_resource type="CylinderMesh" id="CanopyMesh"]
-material = SubResource("PavilionStone")
-top_radius = 0.85
-bottom_radius = 3.1
-height = 1.6
-radial_segments = 9
-
-[sub_resource type="BoxMesh" id="TerraceMesh"]
-material = SubResource("PavilionStone")
-size = Vector3(5.8, 0.42, 5.2)
-
-[sub_resource type="CylinderMesh" id="RootMesh"]
-material = SubResource("RootMaterial")
-top_radius = 0.14
-bottom_radius = 0.26
-height = 4.6
-radial_segments = 7
-
-[sub_resource type="SphereMesh" id="LeafMesh"]
-material = SubResource("FoliageMaterial")
-radius = 0.7
-height = 1.15
-radial_segments = 10
-rings = 6
-
-[sub_resource type="SphereMesh" id="GlowNodeMesh"]
-material = SubResource("TendedGlow")
-radius = 0.2
-height = 0.4
-radial_segments = 10
-rings = 6
+emission_texture = ExtResource("8_node_texture")
+texture_filter = 0
 
 [node name="GeneratedGardenRootPavilion" type="Node3D"]
 metadata/theme_id = "garden"
 metadata/source_area = "Greenfields Collective / Flora Garden"
 metadata/landmark_kind = "building_feature_cluster"
+metadata/editable_asset_root = "res://resources/models/generated-biomes/garden_root_pavilion"
 
 [node name="BuildingBody" type="Node3D" parent="."]
 
-[node name="Terrace" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(0, 0.22, 0)
-mesh = SubResource("TerraceMesh")
-
-[node name="ColumnNW" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(-2.1, 2.1, -1.75)
-rotation = Vector3(0.04, 0, -0.08)
-mesh = SubResource("ColumnMesh")
-
-[node name="ColumnNE" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(2.1, 2.1, -1.75)
-rotation = Vector3(-0.03, 0, 0.08)
-mesh = SubResource("ColumnMesh")
-
-[node name="ColumnSW" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(-2.1, 2.1, 1.75)
-rotation = Vector3(-0.04, 0, -0.06)
-mesh = SubResource("ColumnMesh")
-
-[node name="ColumnSE" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(2.1, 2.1, 1.75)
-rotation = Vector3(0.03, 0, 0.06)
-mesh = SubResource("ColumnMesh")
-
-[node name="Canopy" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(0, 4.65, 0)
-mesh = SubResource("CanopyMesh")
+[node name="StructureModel" type="MeshInstance3D" parent="BuildingBody"]
+material_override = SubResource("StructureMaterial")
+mesh = ExtResource("1_structure_mesh")
 
 [node name="ThemeFeature" type="Node3D" parent="."]
 
-[node name="RootTrellisLeft" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(-1.8, 1.55, 2.95)
-rotation = Vector3(0.85, 0, -0.22)
-mesh = SubResource("RootMesh")
+[node name="RootModel" type="MeshInstance3D" parent="ThemeFeature"]
+material_override = SubResource("RootMaterial")
+mesh = ExtResource("3_root_mesh")
 
-[node name="RootTrellisRight" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(1.8, 1.55, 2.95)
-rotation = Vector3(0.85, 0, 0.22)
-mesh = SubResource("RootMesh")
+[node name="FoliageModel" type="MeshInstance3D" parent="ThemeFeature"]
+material_override = SubResource("FoliageMaterial")
+mesh = ExtResource("5_foliage_mesh")
 
-[node name="FoliageLeft" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(-1.65, 1.2, 2.75)
-mesh = SubResource("LeafMesh")
-
-[node name="FoliageRight" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(1.65, 1.2, 2.75)
-mesh = SubResource("LeafMesh")
-
-[node name="TendedNodeLeft" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(-1.55, 1.72, 2.6)
-mesh = SubResource("GlowNodeMesh")
-
-[node name="TendedNodeRight" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(1.55, 1.72, 2.6)
-mesh = SubResource("GlowNodeMesh")
+[node name="TendedNodeModel" type="MeshInstance3D" parent="ThemeFeature"]
+material_override = SubResource("TendedMaterial")
+mesh = ExtResource("7_node_mesh")
 
 [node name="TendedLight" type="OmniLight3D" parent="ThemeFeature"]
 position = Vector3(0, 1.6, 2.8)

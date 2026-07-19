@@ -19,8 +19,17 @@ const REQUIRED_ROOM_MARKERS := [
 	"PlantStandZoneMarker", "CoffeeTablePlantsZoneMarker", "PeaceLilyAnchor",
 	"PaintingZoneMarker", "WellnessZoneMarker", "StrikeWarningZoneMarker",
 	"LogbookConsoleAnchor", "LogbookGateMarker", "BookshelfPlantsApproach",
-	"PlantStandApproach", "CoffeeTableApproach", "PaintingApproach", "WellnessApproach",
+	"WellnessTerminalAnchor", "StrikeNoticeAnchor", "PlantStandApproach",
+	"CoffeeTableApproach", "PaintingApproach", "WellnessApproach", "StrikeWarningApproach",
 ]
+const ROOM_GRID_STEP := 0.5
+# Wall-mounted assets still snap along the floor-plan axis, while their other
+# coordinate is the shallow inset needed to keep the mesh clear of the wall.
+const WALL_MOUNTED_GRID_AXES := {
+	"WallArtAnchor": "x",
+	"WellnessTerminalAnchor": "z",
+	"StrikeNoticeAnchor": "z",
+}
 
 var _has_sprinted := false
 var _has_protected := false
@@ -53,8 +62,8 @@ var _fern_exploration_interactable
 var _fern_outline_target
 var _plant_watered := false
 var _explore_time_elapsed := false
-const WATERING_CAN_POS := Vector3(10.99, 2.057, 1.1)  # upper shelf edge: approached from open cell (10, 1)
-const FERN_POS := Vector3(3.4, 0.0, 2.0)  # Plant7 (Boston fern) — floor-standing watering target by the bench
+const WATERING_CAN_POS := Vector3(11.0, 2.057, 1.0)  # upper shelf, snapped in X/Z to the room plan
+const FERN_POS := Vector3(4.5, 0.0, 5.0)  # Plant7 anchors the ordered south care row
 # The watering beat drives the player to the dry fern; the input playthrough drives this point.
 const DRY_PLANT_POS := FERN_POS
 
@@ -62,10 +71,10 @@ const DRY_PLANT_POS := FERN_POS
 ## refreshed from the authored furniture markers after layout, so furniture, surface rectangles, and
 ## every procedural plant move together. The peris-sim test verifies each Y against a live witness prop.
 var PERIS_SURFACES := {
-	"stand": {"y": 1.295, "rect": [1.38, 4.80, 2.26, 5.70]},         # PlantStand top
-	"table": {"y": 0.805, "rect": [6.63, 2.47, 8.38, 3.53]},         # CoffeeTable top
-	"shelf_low": {"y": 1.295, "rect": [10.95, 0.56, 13.05, 1.32]},   # Bookshelf lower board (Jar base)
-	"shelf_high": {"y": 2.057, "rect": [10.95, 0.56, 13.05, 1.32]},  # Bookshelf photo board (Photo base)
+	"stand": {"y": 1.295, "rect": [1.13, 4.55, 2.01, 5.45]},         # PlantStand top
+	"table": {"y": 0.805, "rect": [6.13, 2.47, 7.88, 3.53]},         # CoffeeTable top
+	"shelf_low": {"y": 1.295, "rect": [10.95, 0.61, 13.05, 1.37]},   # Bookshelf lower board (Jar base)
+	"shelf_high": {"y": 2.057, "rect": [10.95, 0.61, 13.05, 1.37]},  # Bookshelf photo board (Photo base)
 }
 
 # Exploration beat (phase 1, pre-Monos-arrival)
@@ -301,13 +310,13 @@ var _is_paused := false
 var _efficiency_score := 100.0
 
 # The portal now sits on the WEST side wall facing the room (+X); the furniture turns to face it.
-const PORTAL_PANEL := Vector3(0.5, 2.4, 3.0)   # portal panel centre on the west wall
+const PORTAL_PANEL := Vector3(0.5, 2.5, 3.0)   # portal panel centre on the west wall
 const PORTAL_FACE := Vector3(1, 0, 0)          # the direction the portal faces (into the room)
-const DESK_POS := Vector3(1.75, 0, 1.0)  # floor in front of the terminal (beside the portal)
+const DESK_POS := Vector3(1.5, 0, 1.0)  # north administration row, beside the portal
 const PORTAL_POS := Vector3(2.5, 0, 3.0)  # floor in front of the portal — clear space for Peris
-const MONOS_POS := Vector3(3.5, 0, 2.5)  # open circulation cell, separate from the protect stand
+const MONOS_POS := Vector3(2.5, 0, 4.0)  # open circulation cell, separate from the protect stand
 const PROTECT_INPUT_ACTION := &"party_slot_2_ability_1"
-const PERIS_START := Vector3(5.5, 0.5, 3.25)  # circulation lane, outside the can/fern auto-dwell radii
+const PERIS_START := Vector3(6.0, 0.5, 4.5)  # circulation lane, outside the can/fern auto-dwell radii
 
 # The workspace is the modeled Crocotile room (peris-sim.gltf): floor X in [0, 14], Z in [0, 6], up
 # Y in [0, 5]. The grid is that footprint at 1 cell / unit, so movement is cell-based + cooperative
@@ -326,6 +335,12 @@ var _room_binder := RoomModelBinder.new()
 # the same Godot frame as the grid above.
 const ROOM_GLTF := preload("res://resources/models/peris-sim/peris-sim.gltf")
 const FURNITURE_GLTF := preload("res://resources/models/peris-sim/peris-furniture.gltf")
+const WATERING_CAN_SCENE := preload("res://scenes/props/peris/watering_can.tscn")
+const WELLNESS_TERMINAL_SCENE := preload("res://scenes/props/peris/wellness_terminal.tscn")
+const STRIKE_NOTICE_SCENE := preload("res://scenes/props/peris/strike_notice.tscn")
+const LOGBOOK_CONSOLE_SCENE := preload("res://scenes/props/peris/logbook_console.tscn")
+const CARE_FIELD_KIT_SCENE := preload("res://scenes/props/peris/care_field_kit.tscn")
+const MONOS_PORTAL_ROOM_VISUAL_SCENE := preload("res://scenes/props/peris/monos_portal_room_visual.tscn")
 
 
 ## The scene's Marker3Ds are the editable floor plan. Constants above are only
@@ -354,9 +369,9 @@ func _set_interaction_approach(interactable: Node, marker_name: String, fallback
 
 
 func _refresh_peris_surfaces() -> void:
-	var stand := _layout_position("PlantStandAnchor", Vector3(1.75, 0.0, 5.25))
-	var table := _layout_position("CoffeeTableAnchor", Vector3(7.5, 0.0, 3.0))
-	var shelf := _layout_position("BookshelfAnchor", Vector3(12.0, 0.0, 0.95))
+	var stand := _layout_position("PlantStandAnchor", Vector3(1.5, 0.0, 5.0))
+	var table := _layout_position("CoffeeTableAnchor", Vector3(7.0, 0.0, 3.0))
+	var shelf := _layout_position("BookshelfAnchor", Vector3(12.0, 0.0, 1.0))
 	PERIS_SURFACES = {
 		"stand": {"y": stand.y + 1.295,
 			"rect": [stand.x - 0.37, stand.z - 0.45, stand.x + 0.51, stand.z + 0.45]},
@@ -1333,30 +1348,10 @@ func _build_care_operation_kit() -> void:
 	if _care_kit_pickup_interactable != null and is_instance_valid(_care_kit_pickup_interactable):
 		return
 	var kit_pos := _care_logbook_contract_position() + Vector3(-0.35, 0.55, 0.0)
-	_care_kit_mesh = Node3D.new()
+	_care_kit_mesh = CARE_FIELD_KIT_SCENE.instantiate() as Node3D
 	_care_kit_mesh.name = "CareFieldKit"
 	_care_kit_mesh.position = kit_pos
 	add_child(_care_kit_mesh)
-	var case_mesh := MeshInstance3D.new()
-	var case_shape := BoxMesh.new()
-	case_shape.size = Vector3(0.42, 0.22, 0.28)
-	case_mesh.mesh = case_shape
-	var case_material := StandardMaterial3D.new()
-	case_material.albedo_color = Color(0.32, 0.42, 0.31)
-	case_material.metallic = 0.25
-	case_material.roughness = 0.55
-	case_mesh.material_override = case_material
-	_care_kit_mesh.add_child(case_mesh)
-	var clasp := MeshInstance3D.new()
-	var clasp_shape := BoxMesh.new()
-	clasp_shape.size = Vector3(0.09, 0.08, 0.04)
-	clasp.mesh = clasp_shape
-	var clasp_material := StandardMaterial3D.new()
-	clasp_material.albedo_color = Color(0.78, 0.58, 0.24)
-	clasp_material.metallic = 0.7
-	clasp.material_override = clasp_material
-	clasp.position = Vector3(0.0, 0.0, 0.16)
-	_care_kit_mesh.add_child(clasp)
 	_care_kit_item_id = _game_state.spawn_item("peris_care_field_kit", kit_pos)
 	_care_kit_pickup_interactable = _create_interactable(
 		self, kit_pos, "CareKitPickup", 1.25, CARE_OPERATION_WORK_SECONDS,
@@ -1946,19 +1941,19 @@ func _relayout_room(root: Node) -> void:
 	_room_layout_problems.clear()
 	_place_assembly(root, "Portal", "PortalAnchor", PORTAL_PANEL, 90.0, ["Portal"])
 	_place_assembly(root, "Kiosk", "KioskAnchor", DESK_POS, 90.0, ["Kiosk"])
-	_place_assembly(root, "PlantStand", "PlantStandAnchor", Vector3(1.75, 0.0, 5.25), 0.0,
+	_place_assembly(root, "PlantStand", "PlantStandAnchor", Vector3(1.5, 0.0, 5.0), 0.0,
 		["PlantStand"])
-	_place_assembly(root, "Armchair", "ArmchairAnchor", Vector3(4.0, 0.0, 4.75), -35.0,
+	_place_assembly(root, "Armchair", "ArmchairAnchor", Vector3(4.0, 0.0, 3.0), 0.0,
 		["Armchair", "Plush_Cat"])
-	_place_assembly(root, "CoffeeTable", "CoffeeTableAnchor", Vector3(7.5, 0.0, 3.0), 0.0,
+	_place_assembly(root, "CoffeeTable", "CoffeeTableAnchor", Vector3(7.0, 0.0, 3.0), 0.0,
 		["CoffeeTable", "Mug_Teal", "Mug_Cream", "CupSaucer"])
-	_place_assembly(root, "Bookshelf", "BookshelfAnchor", Vector3(12.0, 0.0, 0.95), 0.0,
+	_place_assembly(root, "Bookshelf", "BookshelfAnchor", Vector3(12.0, 0.0, 1.0), 0.0,
 		["Bookshelf", "Jar", "BookStack", "Photo"])
-	_place_assembly(root, "bench", "BenchAnchor", Vector3(5.625, 0.375, 0.75), 90.0, ["bench"])
-	_place_assembly(root, "couch", "CouchAnchor", Vector3(9.25, 0.5, 0.75), 90.0,
+	_place_assembly(root, "bench", "BenchAnchor", Vector3(5.5, 0.5, 1.0), 90.0, ["bench"])
+	_place_assembly(root, "couch", "CouchAnchor", Vector3(9.5, 0.5, 1.0), 0.0,
 		["couch", "Plush_Bear"])
-	_place_assembly(root, "Rug", "RugAnchor", Vector3(7.0, 0.03, 3.2), 0.0, ["Rug"])
-	_place_assembly(root, "WallArtFrame", "WallArtAnchor", Vector3(8.5, 3.3, 0.1), 0.0,
+	_place_assembly(root, "Rug", "RugAnchor", Vector3(7.0, 0.03, 3.0), 0.0, ["Rug"])
+	_place_assembly(root, "WallArtFrame", "WallArtAnchor", Vector3(8.5, 3.5, 0.1), 0.0,
 		["WallArtFrame", "WallArt"])
 	_validate_room_plan()
 	for problem in _room_layout_problems:
@@ -2018,6 +2013,16 @@ func _validate_room_plan() -> void:
 		var p := marker.global_position
 		if p.x < 0.0 or p.x > GRID_SIZE.x or p.z < 0.0 or p.z > GRID_SIZE.y:
 			_room_layout_problems.append("marker '%s' is outside the 14 m x 6 m room at %s" % [marker_name, p])
+		var grid_axes: String = WALL_MOUNTED_GRID_AXES.get(marker_name, "xz")
+		var is_off_grid := (grid_axes.contains("x") and not _is_room_grid_value(p.x)) \
+			or (grid_axes.contains("z") and not _is_room_grid_value(p.z))
+		if is_off_grid:
+			_room_layout_problems.append("marker '%s' is off the %.1f m X/Z grid at %s" % [
+				marker_name, ROOM_GRID_STEP, p])
+		if marker.get_parent() != null and marker.get_parent().name == "FurnitureMarkers":
+			var quarter_turns := marker.global_transform.basis.get_euler().y / (PI * 0.5)
+			if absf(quarter_turns - roundf(quarter_turns)) > 0.001:
+				_room_layout_problems.append("furniture marker '%s' is not aligned to a 90-degree axis" % marker_name)
 
 	var monos := placement.find_child("MonosStart", true, false) as Node3D
 	var protect := placement.find_child("PortalStand", true, false) as Node3D
@@ -2026,6 +2031,10 @@ func _validate_room_plan() -> void:
 		var protect_cell := Vector2i(floori(protect.global_position.x), floori(protect.global_position.z))
 		if monos_cell == protect_cell:
 			_room_layout_problems.append("MonosStart and PortalStand reserve the same grid cell %s" % monos_cell)
+
+
+func _is_room_grid_value(value: float) -> bool:
+	return absf(value / ROOM_GRID_STEP - roundf(value / ROOM_GRID_STEP)) <= 0.001
 
 func _build_environment() -> void:
 	var env := Node3D.new()
@@ -2210,20 +2219,10 @@ func _build_monos_room(vp: SubViewport) -> void:
 	key.light_energy = 1.1
 	vp.add_child(key)
 	# Floor + back wall + side wall (graybox).
-	_portal_room_box(vp, Vector3(0, -0.1, 0), Vector3(8, 0.2, 8), Color(0.13, 0.13, 0.16))
-	_portal_room_box(vp, Vector3(0, 1.8, -3.6), Vector3(8, 3.6, 0.2), Color(0.16, 0.15, 0.19))
-	_portal_room_box(vp, Vector3(-3.6, 1.8, 0), Vector3(0.2, 3.6, 8), Color(0.15, 0.14, 0.18))
+	var visual := MONOS_PORTAL_ROOM_VISUAL_SCENE.instantiate() as Node3D
+	visual.name = "MonosPortalRoomVisual"
+	vp.add_child(visual)
 	# Monos — a standing figure in his color, so the portal reads as "Monos's room".
-	var body := _portal_room_box(vp, Vector3(0, 0.85, 0), Vector3(0.5, 1.0, 0.5), Color(0.6, 0.5, 0.35))
-	var bm := CapsuleMesh.new()
-	bm.radius = 0.26
-	bm.height = 1.3
-	body.mesh = bm
-	var head := _portal_room_box(vp, Vector3(0, 1.62, 0), Vector3(0.34, 0.34, 0.34), Color(0.66, 0.56, 0.4))
-	var hm := SphereMesh.new()
-	hm.radius = 0.2
-	hm.height = 0.4
-	head.mesh = hm
 	# A soft portal glow behind Monos (the connection back to Peris's portal).
 	var glow := OmniLight3D.new()
 	glow.position = Vector3(0, 1.4, -2.0)
@@ -2231,18 +2230,6 @@ func _build_monos_room(vp: SubViewport) -> void:
 	glow.light_energy = 2.0
 	glow.omni_range = 6.0
 	vp.add_child(glow)
-
-func _portal_room_box(vp: SubViewport, pos: Vector3, size: Vector3, color: Color) -> MeshInstance3D:
-	var mi := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = size
-	mi.mesh = box
-	var m := StandardMaterial3D.new()
-	m.albedo_color = color
-	mi.material_override = m
-	mi.position = pos
-	vp.add_child(mi)
-	return mi
 
 func _show_sanction_feed_visual(title: String, body: String, color: Color) -> void:
 	if _sanction_feed_label:
@@ -2335,11 +2322,11 @@ func _build_peris_plants(parent: Node3D) -> void:
 	# zone that advances through their lines on repeat clicks (per-plant zones could not keep the
 	# 2.8 m inspectable spacing once the pots clustered onto shared surfaces); every pot still
 	# carries its OWN outline target, delegating to its furniture's zone.
-	var stand_anchor := _layout_position("PlantStandAnchor", Vector3(1.75, 0.0, 5.25))
-	var table_anchor := _layout_position("CoffeeTableAnchor", Vector3(7.5, 0.0, 3.0))
-	var shelf_anchor := _layout_position("BookshelfAnchor", Vector3(12.0, 0.0, 0.95))
+	var stand_anchor := _layout_position("PlantStandAnchor", Vector3(1.5, 0.0, 5.0))
+	var table_anchor := _layout_position("CoffeeTableAnchor", Vector3(7.0, 0.0, 3.0))
+	var shelf_anchor := _layout_position("BookshelfAnchor", Vector3(12.0, 0.0, 1.0))
 	var fern_pos := _layout_position("FernAnchor", FERN_POS)
-	var peace_lily_pos := _layout_position("PeaceLilyAnchor", Vector3(9.3, 0.0, 5.3))
+	var peace_lily_pos := _layout_position("PeaceLilyAnchor", Vector3(10.0, 0.0, 5.0))
 	var plants := [  # [surface key ("" = floor), xz, species, target height]
 		["shelf_low", Vector2(shelf_anchor.x + 0.75, shelf_anchor.z - 0.01), "spider", 0.55], # Plant1
 		["shelf_high", Vector2(shelf_anchor.x + 0.75, shelf_anchor.z - 0.01), "calathea", 0.50], # Plant2
@@ -2347,7 +2334,7 @@ func _build_peris_plants(parent: Node3D) -> void:
 		["stand", Vector2(stand_anchor.x - 0.15, stand_anchor.z - 0.15), "jade", 0.62],  # Plant4
 		["shelf_low", Vector2(shelf_anchor.x, shelf_anchor.z - 0.01), "jasmine", 0.55], # Plant5
 		["stand", Vector2(stand_anchor.x + 0.22, stand_anchor.z + 0.13), "pothos", 0.55], # Plant6
-		["", Vector2(fern_pos.x, fern_pos.z), "boston_fern", 1.3],  # Plant7 — the watering target
+		["", Vector2(fern_pos.x, fern_pos.z), "boston_fern", 0.9],  # Plant7 — broad, but clear of the seating lane
 		["table", Vector2(table_anchor.x + 0.12, table_anchor.z - 0.28), "pilea", 0.42], # Plant8
 		["", Vector2(peace_lily_pos.x, peace_lily_pos.z), "peace_lily", 1.4], # Plant9
 	]
@@ -2364,9 +2351,9 @@ func _build_peris_plants(parent: Node3D) -> void:
 	# One inspection zone per furniture group / floor plant (floor spots, spaced >=2.8 m from every
 	# other inspectable — the --test-peris-sim spacing guard). Repeat clicks walk a shelf's lines.
 	var zone_defs := [  # [name, floor pos, plant indices (1-based, line order)]
-		["BookshelfPlantsZone", _layout_position("BookshelfPlantsZoneMarker", Vector3(13.7, 0, 0.6)), [1, 2, 5]],
-		["PlantStandZone", _layout_position("PlantStandZoneMarker", Vector3(1.75, 0, 5.25)), [4, 6]],
-		["CoffeeTablePlantsZone", _layout_position("CoffeeTablePlantsZoneMarker", Vector3(6.8, 0, 3.4)), [3, 8]],
+		["BookshelfPlantsZone", _layout_position("BookshelfPlantsZoneMarker", Vector3(13.5, 0, 0.5)), [1, 2, 5]],
+		["PlantStandZone", _layout_position("PlantStandZoneMarker", Vector3(1.5, 0, 5.0)), [4, 6]],
+		["CoffeeTablePlantsZone", _layout_position("CoffeeTablePlantsZoneMarker", Vector3(7.0, 0, 3.0)), [3, 8]],
 		["FernZone", Vector3(fern_pos.x, 0, fern_pos.z), [7]],
 		["PeaceLilyZone", Vector3(peace_lily_pos.x, 0, peace_lily_pos.z), [9]],
 	]
@@ -2389,9 +2376,9 @@ func _build_peris_plants(parent: Node3D) -> void:
 		_register_care_context_zone(zone, "plant", str(zd[0]))
 		match str(zd[0]):
 			"BookshelfPlantsZone":
-				_set_interaction_approach(zone, "BookshelfPlantsApproach", Vector3(13.5, 0, 2.0))
+				_set_interaction_approach(zone, "BookshelfPlantsApproach", Vector3(13.0, 0, 2.0))
 			"PlantStandZone":
-				_set_interaction_approach(zone, "PlantStandApproach", Vector3(1.5, 0, 4.5))
+				_set_interaction_approach(zone, "PlantStandApproach", Vector3(1.5, 0, 4.0))
 			"CoffeeTablePlantsZone":
 				_set_interaction_approach(zone, "CoffeeTableApproach", Vector3(5.5, 0, 3.0))
 		for pi2 in idxs:
@@ -2408,31 +2395,10 @@ func _build_watering_beat(parent: Node3D) -> void:
 	# the fern turns the beat back into an actual carry instead of two overlapping auto-dwells.
 	var can_pos := _layout_position("WateringCanAnchor", WATERING_CAN_POS)
 	var fern_pos := _layout_position("FernAnchor", FERN_POS)
-	_watering_can_mesh = Node3D.new()
+	_watering_can_mesh = WATERING_CAN_SCENE.instantiate() as Node3D
 	_watering_can_mesh.name = "WateringCan"
 	_watering_can_mesh.position = can_pos
 	parent.add_child(_watering_can_mesh)
-	var body := MeshInstance3D.new()
-	var bm := CylinderMesh.new()
-	bm.top_radius = 0.12
-	bm.bottom_radius = 0.16
-	bm.height = 0.26
-	body.mesh = bm
-	var can_mat := StandardMaterial3D.new()
-	can_mat.albedo_color = Color(0.45, 0.55, 0.6)
-	can_mat.metallic = 0.5
-	can_mat.roughness = 0.35
-	body.material_override = can_mat
-	body.position = Vector3(0, 0.13, 0)
-	_watering_can_mesh.add_child(body)
-	var spout := MeshInstance3D.new()
-	var sm := BoxMesh.new()
-	sm.size = Vector3(0.22, 0.04, 0.04)
-	spout.mesh = sm
-	spout.material_override = can_mat
-	spout.position = Vector3(0.18, 0.18, 0.0)
-	spout.rotation.z = 0.5
-	_watering_can_mesh.add_child(spout)
 
 	_watering_can_item_id = _game_state.spawn_item("watering_can", can_pos)
 
@@ -2511,33 +2477,13 @@ func _build_peris_painting(parent: Node3D) -> void:
 	# second procedural painting over the same wall; retain a fallback for stripped test assets.
 	var visual_meshes: Array = _room_binder.object_meshes(["WallArtFrame", "WallArt"])
 	if visual_meshes.is_empty():
-		var pos := Vector3(8.5, 2.2, 0.12)
-		var frame := MeshInstance3D.new()
-		var fb := BoxMesh.new()
-		fb.size = Vector3(1.2, 0.85, 0.06)
-		frame.mesh = fb
-		var fm := StandardMaterial3D.new()
-		fm.albedo_color = Color(0.2, 0.14, 0.1)
-		frame.material_override = fm
-		frame.position = pos
-		parent.add_child(frame)
-		var canvas := MeshInstance3D.new()
-		var cb := BoxMesh.new()
-		cb.size = Vector3(1.1, 0.75, 0.05)
-		canvas.mesh = cb
-		var cm := StandardMaterial3D.new()
-		cm.albedo_color = Color(0.55, 0.38, 0.45)
-		cm.roughness = 0.6
-		canvas.material_override = cm
-		canvas.position = pos + Vector3(0, 0, 0.04)
-		parent.add_child(canvas)
-		visual_meshes = [frame, canvas]
+		push_warning("Peris room is missing the portable WallArt/WallArtFrame asset")
 	var zone := _make_exploration_zone(parent,
-		_layout_position("PaintingZoneMarker", Vector3(8.5, 0, 0.3)),
+		_layout_position("PaintingZoneMarker", Vector3(8.5, 0, 0.5)),
 		"PaintingZone",
 		"peris.sim_expand.painting.line",
 		1.3, 0.6)
-	_set_interaction_approach(zone, "PaintingApproach", Vector3(10.5, 0, 1.5))
+	_set_interaction_approach(zone, "PaintingApproach", Vector3(9.0, 0, 1.5))
 	_exploration_interactables.append(zone)
 	_register_care_context_zone(zone, "painting", "PaintingZone")
 	var target := _outline_object_meshes(parent, "PaintingOutline",
@@ -2546,58 +2492,30 @@ func _build_peris_painting(parent: Node3D) -> void:
 
 func _build_peris_wellness_feed(parent: Node3D) -> void:
 	# Mounted on the modeled left wall (X~0), near the back corner.
-	var pos := Vector3(0.12, 1.6, 0.6)
-	var screen := MeshInstance3D.new()
-	var sb := BoxMesh.new()
-	sb.size = Vector3(0.04, 0.5, 0.8)
-	screen.mesh = sb
-	var sm := StandardMaterial3D.new()
-	sm.albedo_color = Color(0.35, 0.4, 0.5, 0.85)
-	sm.emission_enabled = true
-	sm.emission = Color(0.3, 0.4, 0.55)
-	sm.emission_energy_multiplier = 0.9
-	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	screen.material_override = sm
-	screen.position = pos
-	parent.add_child(screen)
+	var pos := _layout_position("WellnessTerminalAnchor", Vector3(0.0, 1.5, 0.5))
+	var terminal := WELLNESS_TERMINAL_SCENE.instantiate() as Node3D
+	terminal.position = pos
+	parent.add_child(terminal)
 	var zone := _make_exploration_zone(parent,
-		_layout_position("WellnessZoneMarker", Vector3(0.7, 0, 0.3)),
+		_layout_position("WellnessZoneMarker", Vector3(0.5, 0, 0.5)),
 		"WellnessZone",
 		"peris.sim_expand.wellness.line",
 		1.0, 0.6)
-	_set_interaction_approach(zone, "WellnessApproach", Vector3(1.5, 0, 2.5))
+	_set_interaction_approach(zone, "WellnessApproach", Vector3(2.5, 0, 1.5))
 	_exploration_interactables.append(zone)
 	_register_care_context_zone(zone, "wellness", "WellnessZone")
 	var target := _outline_object_meshes(parent, "WellnessOutline",
-		[screen], "peris_wellness", 0.8)
+		_collect_mesh_instances(terminal), "peris_wellness", 0.8)
 	_set_room_target_interaction_delegate(target, zone)
 
 func _build_peris_strike_warning(parent: Node3D) -> void:
 	# Pinned to the modeled right wall (X~14), near the open front corner.
-	var pos := Vector3(13.88, 1.8, 5.6)
-	var icon := MeshInstance3D.new()
-	var ib := BoxMesh.new()
-	ib.size = Vector3(0.04, 0.55, 0.4)
-	icon.mesh = ib
-	var im := StandardMaterial3D.new()
-	im.albedo_color = Color(0.85, 0.8, 0.68)
-	im.emission_enabled = true
-	im.emission = Color(0.3, 0.25, 0.18)
-	im.emission_energy_multiplier = 0.2
-	icon.material_override = im
-	icon.position = pos
-	parent.add_child(icon)
-	var strip := MeshInstance3D.new()
-	var rb := BoxMesh.new()
-	rb.size = Vector3(0.045, 0.08, 0.4)
-	strip.mesh = rb
-	var rm := StandardMaterial3D.new()
-	rm.albedo_color = Color(0.5, 0.2, 0.2)
-	strip.material_override = rm
-	strip.position = pos + Vector3(-0.001, 0.24, 0)
-	parent.add_child(strip)
+	var pos := _layout_position("StrikeNoticeAnchor", Vector3(14.0, 2.0, 5.5))
+	var notice := STRIKE_NOTICE_SCENE.instantiate() as Node3D
+	notice.position = pos
+	parent.add_child(notice)
 	var area := _make_exploration_zone(parent,
-		_layout_position("StrikeWarningZoneMarker", Vector3(13.4, 0, 5.6)),
+		_layout_position("StrikeWarningZoneMarker", Vector3(13.5, 0, 5.5)),
 		"StrikeWarningZone",
 		"",
 		1.0, 0.8)  # re-inspectable: re-opening the warning replays the document + Peris's line
@@ -2611,34 +2529,15 @@ func _build_peris_strike_warning(parent: Node3D) -> void:
 	)
 	_register_care_context_zone(area, "strike_warning", "StrikeWarningZone")
 	var target := _outline_object_meshes(parent, "StrikeWarningOutline",
-		[icon, strip], "peris_strike_warning", 0.7)
+		_collect_mesh_instances(notice), "peris_strike_warning", 0.7)
 	_set_room_target_interaction_delegate(target, area)
 
 func _build_peris_logbook_gate(parent: Node3D) -> void:
 	# Logbook is the gate to Monos — by the modeled bookshelf on the right side.
-	var pos := _layout_position("LogbookConsoleAnchor", Vector3(11.3, 0.9, 3.0))
-	var console := MeshInstance3D.new()
-	var cb := BoxMesh.new()
-	cb.size = Vector3(0.5, 1.0, 0.4)
-	console.mesh = cb
-	var cm := StandardMaterial3D.new()
-	cm.albedo_color = Color(0.2, 0.22, 0.25)
-	console.material_override = cm
+	var pos := _layout_position("LogbookConsoleAnchor", Vector3(11.5, 0.9, 3.0))
+	var console := LOGBOOK_CONSOLE_SCENE.instantiate() as Node3D
 	console.position = pos
 	parent.add_child(console)
-	var screen := MeshInstance3D.new()
-	var sb := BoxMesh.new()
-	sb.size = Vector3(0.45, 0.45, 0.04)
-	screen.mesh = sb
-	var sm := StandardMaterial3D.new()
-	sm.albedo_color = Color(0.75, 0.55, 0.35)
-	sm.emission_enabled = true
-	sm.emission = Color(0.65, 0.45, 0.25)
-	sm.emission_energy_multiplier = 0.8
-	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	screen.material_override = sm
-	screen.position = pos + Vector3(0, 0.1, 0.22)
-	parent.add_child(screen)
 	var gate_pos := _layout_position("LogbookGateMarker", Vector3(pos.x + 0.7, 0, pos.z))
 	var gate := _create_interactable(parent, gate_pos, "LogbookGate", 1.6, 0.8,
 		"Continue", false, Interactable.InteractableType.HOLD_ACTION, "peris.logbook_gate")
@@ -2646,5 +2545,5 @@ func _build_peris_logbook_gate(parent: Node3D) -> void:
 	_explore_logbook_gate = gate
 	_exploration_interactables.append(gate)
 	var target := _outline_object_meshes(parent, "LogbookOutline",
-		[console, screen], "peris_logbook", 1.0)
+		_collect_mesh_instances(console), "peris_logbook", 1.0)
 	_set_room_target_interaction_delegate(target, gate)

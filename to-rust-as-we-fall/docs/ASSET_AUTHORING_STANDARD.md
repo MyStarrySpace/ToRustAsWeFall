@@ -25,6 +25,14 @@ Use `scripts/generation/uv_atlas_baker.gd` to turn generated `ArrayMesh` geometr
 
 The resulting `.obj` is the geometry source, `.mtl` binds the texture, and `.png` is the paintable atlas. Open the OBJ in Blockbench, repaint the linked PNG, and save/export without changing the Godot gameplay wrapper. Construction recipes used only for deterministic baking live under `tools/asset_sources/`; they must never be instantiated by runtime scenes.
 
+The repository-wide generated catalogs and their runtime/dynamic classification are listed in
+`docs/GENERATED_3D_ASSET_INVENTORY.md`. Generator changes must update that inventory and pass:
+
+```powershell
+..\Godot_v4.7-stable_win64_console.exe --headless --path . --script res://tools/verify_generated_asset_contract.gd
+..\Godot_v4.7-stable_win64_console.exe --headless --path . --script res://tools/verify_peris_room_assets.gd
+```
+
 ## Review checklist
 
 - The external model loads independently of its gameplay scene.

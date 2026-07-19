@@ -1,0 +1,11 @@
+{
+	"asset_contract": "editable_3d_v1",
+	"atlas_size": [
+		128,
+		64
+	],
+	"kind": "locas_watchtower",
+	"seed": 0,
+	"source_scene": "res://scenes/fragments/chunks/architecture_showcase.tscn",
+	"uv_islands": 70
+}

@@ -1,0 +1,17 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Mesh" path="res://resources/models/peris-sim/props/watering_can/watering_can.obj" id="1_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/peris-sim/props/watering_can/watering_can.png" id="2_texture"]
+
+[sub_resource type="StandardMaterial3D" id="CanMaterial"]
+albedo_texture = ExtResource("2_texture")
+metallic = 0.5
+roughness = 0.35
+texture_filter = 0
+
+[node name="WateringCan" type="Node3D"]
+metadata/editable_asset_root = "res://resources/models/peris-sim/props/watering_can"
+
+[node name="Model" type="MeshInstance3D" parent="."]
+material_override = SubResource("CanMaterial")
+mesh = ExtResource("1_mesh")

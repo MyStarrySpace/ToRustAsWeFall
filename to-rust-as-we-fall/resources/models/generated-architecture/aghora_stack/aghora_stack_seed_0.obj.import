@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://dxlxnwecnr6fx"
+path="res://.godot/imported/aghora_stack_seed_0.obj-ac9e6dd61b552b1a67a29a0e4b613fba.mesh"
+
+[deps]
+
+files=["res://.godot/imported/aghora_stack_seed_0.obj-ac9e6dd61b552b1a67a29a0e4b613fba.mesh"]
+
+source_file="res://resources/models/generated-architecture/aghora_stack/aghora_stack_seed_0.obj"
+dest_files=["res://.godot/imported/aghora_stack_seed_0.obj-ac9e6dd61b552b1a67a29a0e4b613fba.mesh", "res://.godot/imported/aghora_stack_seed_0.obj-ac9e6dd61b552b1a67a29a0e4b613fba.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

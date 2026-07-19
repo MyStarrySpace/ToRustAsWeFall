@@ -1,61 +1,32 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=11 format=3]
 
-[sub_resource type="StandardMaterial3D" id="TealMetal"]
-albedo_color = Color(0.16, 0.27, 0.26, 1)
+[ext_resource type="Mesh" path="res://resources/models/generated-biomes/channels_pump_house/channels_pump_house_structure.obj" id="1_structure_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/generated-biomes/channels_pump_house/channels_pump_house_structure.png" id="2_structure_texture"]
+[ext_resource type="Mesh" path="res://resources/models/generated-biomes/channels_pump_house/channels_pump_house_fixtures.obj" id="3_fixture_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/generated-biomes/channels_pump_house/channels_pump_house_fixtures.png" id="4_fixture_texture"]
+[ext_resource type="Mesh" path="res://resources/models/generated-biomes/channels_pump_house/channels_pump_house_flow.obj" id="5_flow_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/generated-biomes/channels_pump_house/channels_pump_house_flow.png" id="6_flow_texture"]
+
+[sub_resource type="StandardMaterial3D" id="StructureMaterial"]
+albedo_texture = ExtResource("2_structure_texture")
 metallic = 0.62
 roughness = 0.58
+texture_filter = 0
 
-[sub_resource type="StandardMaterial3D" id="RustMetal"]
-albedo_color = Color(0.31, 0.13, 0.065, 1)
+[sub_resource type="StandardMaterial3D" id="FixtureMaterial"]
+albedo_texture = ExtResource("4_fixture_texture")
 metallic = 0.48
 roughness = 0.72
+texture_filter = 0
 
-[sub_resource type="StandardMaterial3D" id="FlowGlow"]
-albedo_color = Color(0.08, 0.42, 0.27, 1)
+[sub_resource type="StandardMaterial3D" id="FlowMaterial"]
+albedo_texture = ExtResource("6_flow_texture")
 emission_enabled = true
-emission = Color(0.22, 0.92, 0.5, 1)
+emission = Color(1, 1, 1, 1)
 emission_energy_multiplier = 2.0
+emission_texture = ExtResource("6_flow_texture")
 roughness = 0.42
-
-[sub_resource type="CylinderMesh" id="DrumMesh"]
-material = SubResource("TealMetal")
-top_radius = 2.1
-bottom_radius = 2.45
-height = 5.2
-radial_segments = 8
-
-[sub_resource type="CylinderMesh" id="CapMesh"]
-material = SubResource("RustMetal")
-top_radius = 1.65
-bottom_radius = 2.25
-height = 0.7
-radial_segments = 8
-
-[sub_resource type="BoxMesh" id="WingMesh"]
-material = SubResource("TealMetal")
-size = Vector3(2.8, 2.2, 2.2)
-
-[sub_resource type="CylinderMesh" id="PipeMesh"]
-material = SubResource("RustMetal")
-top_radius = 0.24
-bottom_radius = 0.24
-height = 4.4
-radial_segments = 10
-
-[sub_resource type="TorusMesh" id="ValveMesh"]
-material = SubResource("RustMetal")
-inner_radius = 0.28
-outer_radius = 0.5
-rings = 12
-ring_segments = 8
-
-[sub_resource type="BoxMesh" id="TroughMesh"]
-material = SubResource("RustMetal")
-size = Vector3(4.8, 0.34, 0.9)
-
-[sub_resource type="BoxMesh" id="FlowStripMesh"]
-material = SubResource("FlowGlow")
-size = Vector3(4.3, 0.08, 0.18)
+texture_filter = 0
 
 [sub_resource type="CylinderShape3D" id="BuildingShape"]
 radius = 2.45
@@ -65,25 +36,17 @@ height = 5.2
 metadata/theme_id = "channels"
 metadata/source_area = "Plumbing Power Project / Channels"
 metadata/landmark_kind = "building_feature_cluster"
+metadata/editable_asset_root = "res://resources/models/generated-biomes/channels_pump_house"
 
 [node name="BuildingBody" type="Node3D" parent="."]
 
-[node name="PumpDrum" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(0, 2.6, 0)
-mesh = SubResource("DrumMesh")
+[node name="StructureModel" type="MeshInstance3D" parent="BuildingBody"]
+material_override = SubResource("StructureMaterial")
+mesh = ExtResource("1_structure_mesh")
 
-[node name="PumpCap" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(0, 5.55, 0)
-mesh = SubResource("CapMesh")
-
-[node name="ServiceWing" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(-2.5, 1.1, 0.2)
-rotation = Vector3(0, 0, -0.16)
-mesh = SubResource("WingMesh")
-
-[node name="Riser" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(1.65, 3.35, 0.35)
-mesh = SubResource("PipeMesh")
+[node name="FixtureModel" type="MeshInstance3D" parent="BuildingBody"]
+material_override = SubResource("FixtureMaterial")
+mesh = ExtResource("3_fixture_mesh")
 
 [node name="BuildingCollision" type="StaticBody3D" parent="BuildingBody"]
 collision_layer = 1
@@ -95,23 +58,9 @@ shape = SubResource("BuildingShape")
 
 [node name="ThemeFeature" type="Node3D" parent="."]
 
-[node name="OpenTrough" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(0.2, 0.32, 3.1)
-mesh = SubResource("TroughMesh")
-
-[node name="FlowStrip" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(0.2, 0.54, 3.1)
-mesh = SubResource("FlowStripMesh")
-
-[node name="ValveLeft" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(-1.1, 1.0, 2.55)
-rotation = Vector3(1.5708, 0, 0)
-mesh = SubResource("ValveMesh")
-
-[node name="ValveRight" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(1.25, 1.0, 2.55)
-rotation = Vector3(1.5708, 0, 0)
-mesh = SubResource("ValveMesh")
+[node name="FlowModel" type="MeshInstance3D" parent="ThemeFeature"]
+material_override = SubResource("FlowMaterial")
+mesh = ExtResource("5_flow_mesh")
 
 [node name="FlowLight" type="OmniLight3D" parent="ThemeFeature"]
 position = Vector3(0.2, 1.15, 3.1)

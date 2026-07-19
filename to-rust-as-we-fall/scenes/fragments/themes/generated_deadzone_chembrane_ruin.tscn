@@ -1,107 +1,65 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=13 format=3]
 
-[sub_resource type="StandardMaterial3D" id="RuinMetal"]
-albedo_color = Color(0.21, 0.17, 0.16, 1)
+[ext_resource type="Mesh" path="res://resources/models/generated-biomes/deadzone_chembrane_ruin/deadzone_chembrane_ruin_structure.obj" id="1_structure_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/generated-biomes/deadzone_chembrane_ruin/deadzone_chembrane_ruin_structure.png" id="2_structure_texture"]
+[ext_resource type="Mesh" path="res://resources/models/generated-biomes/deadzone_chembrane_ruin/deadzone_chembrane_ruin_chembrane.obj" id="3_chembrane_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/generated-biomes/deadzone_chembrane_ruin/deadzone_chembrane_ruin_chembrane.png" id="4_chembrane_texture"]
+[ext_resource type="Mesh" path="res://resources/models/generated-biomes/deadzone_chembrane_ruin/deadzone_chembrane_ruin_roots.obj" id="5_root_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/generated-biomes/deadzone_chembrane_ruin/deadzone_chembrane_ruin_roots.png" id="6_root_texture"]
+[ext_resource type="Mesh" path="res://resources/models/generated-biomes/deadzone_chembrane_ruin/deadzone_chembrane_ruin_warning.obj" id="7_warning_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/generated-biomes/deadzone_chembrane_ruin/deadzone_chembrane_ruin_warning.png" id="8_warning_texture"]
+
+[sub_resource type="StandardMaterial3D" id="StructureMaterial"]
+albedo_texture = ExtResource("2_structure_texture")
 metallic = 0.5
 roughness = 0.74
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="ChembraneMaterial"]
-albedo_color = Color(0.28, 0.22, 0.25, 0.72)
+albedo_color = Color(1, 1, 1, 0.72)
+albedo_texture = ExtResource("4_chembrane_texture")
 transparency = 1
 roughness = 0.68
+texture_filter = 0
 
-[sub_resource type="StandardMaterial3D" id="DeadRootMaterial"]
-albedo_color = Color(0.13, 0.095, 0.075, 1)
+[sub_resource type="StandardMaterial3D" id="RootMaterial"]
+albedo_texture = ExtResource("6_root_texture")
 roughness = 0.96
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="WarningMaterial"]
-albedo_color = Color(0.32, 0.075, 0.045, 1)
+albedo_texture = ExtResource("8_warning_texture")
 emission_enabled = true
-emission = Color(0.78, 0.15, 0.08, 1)
+emission = Color(1, 1, 1, 1)
 emission_energy_multiplier = 1.2
-
-[sub_resource type="BoxMesh" id="PylonMesh"]
-material = SubResource("RuinMetal")
-size = Vector3(0.72, 5.8, 0.9)
-
-[sub_resource type="BoxMesh" id="BrokenBeamMesh"]
-material = SubResource("RuinMetal")
-size = Vector3(5.8, 0.55, 0.72)
-
-[sub_resource type="BoxMesh" id="ChembranePanel"]
-material = SubResource("ChembraneMaterial")
-size = Vector3(2.15, 3.7, 0.16)
-
-[sub_resource type="CylinderMesh" id="DeadRootMesh"]
-material = SubResource("DeadRootMaterial")
-top_radius = 0.1
-bottom_radius = 0.26
-height = 4.8
-radial_segments = 6
-
-[sub_resource type="BoxMesh" id="RelayMesh"]
-material = SubResource("RuinMetal")
-size = Vector3(1.15, 1.4, 0.9)
-
-[sub_resource type="SphereMesh" id="WarningMesh"]
-material = SubResource("WarningMaterial")
-radius = 0.22
-height = 0.44
-radial_segments = 8
-rings = 5
+emission_texture = ExtResource("8_warning_texture")
+texture_filter = 0
 
 [node name="GeneratedDeadzoneChembraneRuin" type="Node3D"]
 metadata/theme_id = "deadzone"
 metadata/source_area = "The Dead Zone"
 metadata/landmark_kind = "building_feature_cluster"
+metadata/editable_asset_root = "res://resources/models/generated-biomes/deadzone_chembrane_ruin"
 
 [node name="BuildingBody" type="Node3D" parent="."]
 
-[node name="PylonLeft" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(-2.65, 2.9, 0)
-rotation = Vector3(0, 0, -0.06)
-mesh = SubResource("PylonMesh")
-
-[node name="PylonRight" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(2.65, 2.45, 0.1)
-rotation = Vector3(0.04, 0, 0.14)
-mesh = SubResource("PylonMesh")
-
-[node name="CollapsedHeader" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(0.15, 5.15, 0)
-rotation = Vector3(0, 0, 0.12)
-mesh = SubResource("BrokenBeamMesh")
+[node name="StructureModel" type="MeshInstance3D" parent="BuildingBody"]
+material_override = SubResource("StructureMaterial")
+mesh = ExtResource("1_structure_mesh")
 
 [node name="ThemeFeature" type="Node3D" parent="."]
 
-[node name="ChembraneLeft" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(-1.45, 2.45, 0.05)
-rotation = Vector3(0, 0, -0.03)
-mesh = SubResource("ChembranePanel")
+[node name="ChembraneModel" type="MeshInstance3D" parent="ThemeFeature"]
+material_override = SubResource("ChembraneMaterial")
+mesh = ExtResource("3_chembrane_mesh")
 
-[node name="ChembraneRight" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(1.45, 2.2, 0.05)
-rotation = Vector3(0, 0, 0.11)
-mesh = SubResource("ChembranePanel")
+[node name="DeadRootModel" type="MeshInstance3D" parent="ThemeFeature"]
+material_override = SubResource("RootMaterial")
+mesh = ExtResource("5_root_mesh")
 
-[node name="DeadRootLeft" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(-1.75, 1.2, 1.55)
-rotation = Vector3(0.9, 0.08, -0.38)
-mesh = SubResource("DeadRootMesh")
-
-[node name="DeadRootRight" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(1.75, 1.05, 1.65)
-rotation = Vector3(0.9, -0.08, 0.42)
-mesh = SubResource("DeadRootMesh")
-
-[node name="FailedRelay" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(0, 0.7, 2.1)
-rotation = Vector3(0.04, 0.12, -0.05)
-mesh = SubResource("RelayMesh")
-
-[node name="WarningBeacon" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(0, 1.65, 2.1)
-mesh = SubResource("WarningMesh")
+[node name="WarningModel" type="MeshInstance3D" parent="ThemeFeature"]
+material_override = SubResource("WarningMaterial")
+mesh = ExtResource("7_warning_mesh")
 
 [node name="WarningLight" type="OmniLight3D" parent="ThemeFeature"]
 position = Vector3(0, 1.65, 2.05)

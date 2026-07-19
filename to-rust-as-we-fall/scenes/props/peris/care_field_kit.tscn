@@ -1,0 +1,29 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Mesh" path="res://resources/models/peris-sim/props/care_field_kit/care_field_kit_case.obj" id="1_case_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/peris-sim/props/care_field_kit/care_field_kit_case.png" id="2_case_texture"]
+[ext_resource type="Mesh" path="res://resources/models/peris-sim/props/care_field_kit/care_field_kit_clasp.obj" id="3_clasp_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/peris-sim/props/care_field_kit/care_field_kit_clasp.png" id="4_clasp_texture"]
+
+[sub_resource type="StandardMaterial3D" id="CaseMaterial"]
+albedo_texture = ExtResource("2_case_texture")
+metallic = 0.25
+roughness = 0.55
+texture_filter = 0
+
+[sub_resource type="StandardMaterial3D" id="ClaspMaterial"]
+albedo_texture = ExtResource("4_clasp_texture")
+metallic = 0.7
+roughness = 0.32
+texture_filter = 0
+
+[node name="CareFieldKit" type="Node3D"]
+metadata/editable_asset_root = "res://resources/models/peris-sim/props/care_field_kit"
+
+[node name="Case" type="MeshInstance3D" parent="."]
+material_override = SubResource("CaseMaterial")
+mesh = ExtResource("1_case_mesh")
+
+[node name="Clasp" type="MeshInstance3D" parent="."]
+material_override = SubResource("ClaspMaterial")
+mesh = ExtResource("3_clasp_mesh")

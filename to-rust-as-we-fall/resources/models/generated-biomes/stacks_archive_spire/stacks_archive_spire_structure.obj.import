@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://o7jr83luqwjv"
+path="res://.godot/imported/stacks_archive_spire_structure.obj-db2f702c258a62aa89de6ee1ae403995.mesh"
+
+[deps]
+
+files=["res://.godot/imported/stacks_archive_spire_structure.obj-db2f702c258a62aa89de6ee1ae403995.mesh"]
+
+source_file="res://resources/models/generated-biomes/stacks_archive_spire/stacks_archive_spire_structure.obj"
+dest_files=["res://.godot/imported/stacks_archive_spire_structure.obj-db2f702c258a62aa89de6ee1ae403995.mesh", "res://.godot/imported/stacks_archive_spire_structure.obj-db2f702c258a62aa89de6ee1ae403995.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

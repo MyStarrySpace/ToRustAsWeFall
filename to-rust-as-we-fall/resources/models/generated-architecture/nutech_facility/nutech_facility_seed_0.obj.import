@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://r3w0vehoi2f4"
+path="res://.godot/imported/nutech_facility_seed_0.obj-d352a86bf67268cf6b2591b2b2377f71.mesh"
+
+[deps]
+
+files=["res://.godot/imported/nutech_facility_seed_0.obj-d352a86bf67268cf6b2591b2b2377f71.mesh"]
+
+source_file="res://resources/models/generated-architecture/nutech_facility/nutech_facility_seed_0.obj"
+dest_files=["res://.godot/imported/nutech_facility_seed_0.obj-d352a86bf67268cf6b2591b2b2377f71.mesh", "res://.godot/imported/nutech_facility_seed_0.obj-d352a86bf67268cf6b2591b2b2377f71.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false
