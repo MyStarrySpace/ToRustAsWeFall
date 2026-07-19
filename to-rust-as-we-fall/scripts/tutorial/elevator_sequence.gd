@@ -122,6 +122,7 @@ var _iron_route_risk_learned := false
 var _damage_feedback_labels: Dictionary = {}
 var _damage_feedback_tweens: Dictionary = {}
 var _damage_feedback_counts: Dictionary = {}
+var _iron_contact_warning_shown: Dictionary = {}
 
 # Flure
 var _flure_active := false
@@ -177,6 +178,7 @@ const BRIDGE_BLOCKADE_X := BRIDGE_END_X + BRIDGE_END_LANDING_LENGTH
 const ELEVATOR_MODEL := preload("res://resources/models/elevator/elevator_car.glb")
 const ENDO_JUNCTION_MODEL := preload("res://resources/models/elevator/endo-junction.glb")
 const BRIDGE_LIGHTING_SCENE := preload("res://scenes/tutorial/elevator_bridge_lighting.tscn")
+const LOWER_ROUTE_LIGHTING_SCENE := preload("res://scenes/tutorial/elevator_lower_route_lighting.tscn")
 const EMP_FACEPLATE_SCENE := preload("res://scenes/tutorial/elevator_emp_faceplate.tscn")
 # Collapse debris physics layers (kept off every gameplay layer so debris never touches characters —
 # they move on the grid, not via physics). Pieces collide ONLY with their own catch-floor (no inter-
@@ -679,10 +681,12 @@ func _begin() -> void:
 		_start_emp_focus()
 		return
 	if start_chunk != "":
-		_load_chunk(start_chunk)
+		_load_chunk("below" if start_chunk == "route" else start_chunk)
 		_player.set_move_enabled(true)
 		_fade_rect.color = Color(0, 0, 0, 0)
 		match start_chunk:
+			"route":
+				_start_route_focus()
 			"junction":
 				_player.global_position = Vector3(JUNCTION_POS.x, BELOW_Y + 0.5, 0)
 				_start_junction_arrive()
@@ -1868,17 +1872,47 @@ func _start_route_read_circuit() -> void:
 			"F2"
 		)
 
+## Focused browser/native probe for the route-read composite. It preserves the
+## ordinary lower-deck build and fauna lifecycle while skipping the bridge fall.
+func _start_route_focus() -> void:
+	for entry in [
+		["peris", Vector3(ROUTE_READ_PERIS_POS.x, BELOW_Y, ROUTE_READ_PERIS_POS.z)],
+		["aster", Vector3(ROUTE_READ_ASTER_POS.x, BELOW_Y, ROUTE_READ_ASTER_POS.z)],
+	]:
+		var character_id := str(entry[0])
+		_game_state.set_character_level(character_id, LEVEL_LOWER)
+		_game_state.snap_character_to(character_id, entry[1])
+		var character_node: Node3D = _peris_node if character_id == "peris" else _aster_node
+		character_node.global_position = (entry[1] as Vector3) + Vector3(0.0, 0.5, 0.0)
+	_activate_below_fauna()
+	_select_character("peris")
+	# The ordinary bridge beat releases the cabin clamp before the fall. A focused
+	# route probe bypasses that seam, so release and snap it explicitly.
+	if _camera != null:
+		_camera.clear_look_bounds()
+		_camera.call("_update_immediate")
+	_start_route_read_circuit()
+
 func _resolve_peris_overlay_route_read() -> void:
 	if bool(_route_reads_resolved.get("peris", false)):
 		return
 	_route_reads_resolved["peris"] = true
 	_learn_iron_route_risk()
-	DialogueData.say_to(_dialogue, "elevator.peris.community")
-	DialogueData.say_to(_dialogue, "elevator.aster.long_way")
+	# F2 is deliberately available while Aster's initial read is still speaking.
+	# Do not pile two reactive lines on top of that queue; let the current exchange
+	# finish, then play the response as its own short beat.
+	if _dialogue.is_active():
+		_dialogue.dialogue_finished.connect(_play_peris_route_dialogue, CONNECT_ONE_SHOT)
+	else:
+		_play_peris_route_dialogue()
 	_tutorial_prompt.show_prompt(
 		"Peris marks the iron footprints. Move previews now follow the safe outer edge to the rejoin point."
 	)
 	_scheduler.schedule_after(0.5, _start_route_choice, "route_choice")
+
+func _play_peris_route_dialogue() -> void:
+	DialogueData.say_to(_dialogue, "elevator.peris.community")
+	DialogueData.say_to(_dialogue, "elevator.aster.long_way")
 
 func _on_route_read_resolved(read_id: String) -> void:
 	if not _route_reads_resolved.has(read_id) or bool(_route_reads_resolved[read_id]):
@@ -2433,6 +2467,12 @@ func _iron_hazard_tick() -> void:
 		if _iron_patch_contains(_game_state.get_position(cid)):
 			_game_state.adjust_stat(cid, "hp", -IRON_DAMAGE_PER_TICK)
 			_show_party_damage_feedback(cid, IRON_DAMAGE_PER_TICK, "IRON", Color(1.0, 0.32, 0.08))
+			if not bool(_iron_contact_warning_shown.get(cid, false)):
+				_iron_contact_warning_shown[cid] = true
+				_hud.show_message(
+					"%s is in an IRON FIELD — move to Peris's amber outer edge." % cid.capitalize(),
+					2.2
+				)
 	_arm_iron_hazard_tick()
 
 func _iron_patch_contains(world_pos: Vector3) -> bool:
@@ -2485,7 +2525,8 @@ func _show_party_damage_feedback(
 		label_tween.kill()
 	# Keep the hit read above the character name and Peris's field annotation; those sit around 1.3-1.5m.
 	var start := target_node.global_position + Vector3(0.0, 2.25, 0.0)
-	label.text = "%s  -%d HP" % [source, int(round(amount))]
+	var hp_left := _game_state.get_stat(character_id, "hp") if _game_state != null else 0.0
+	label.text = "%s  -%d HP  /  %d LEFT" % [source, int(round(amount)), int(ceil(hp_left))]
 	label.global_position = start
 	label.modulate = Color(flash_color, 1.0)
 	label.visible = true
@@ -3196,6 +3237,7 @@ func _below_step_prepare(parent: Node3D) -> void:
 	_route_flure_meshes.clear()
 	_route_flure_enemy_groups.clear()
 	_iron_patches.clear()
+	_iron_contact_warning_shown.clear()
 	_below_dormant_enemy_setups.clear()
 	_below_fauna_active = false
 	_below_activation_cells.clear()
@@ -3229,15 +3271,9 @@ func _below_step_read_stations(parent: Node3D) -> void:
 	_peris_route_overlay_root.name = "PerisRouteOverlay"
 	overlay_guides.add_child(_peris_route_overlay_root)
 	_apply_elevator_overlay_visibility()
-	for i in range(4):
-		var rng := RandomNumberGenerator.new()
-		rng.seed = 0xBE10A5 + 10 + i
-		var bloom := OmniLight3D.new()
-		bloom.position = Vector3(BRIDGE_START_X + 1.5 + i * 3.0, BELOW_Y + 1.0, rng.randf_range(-4, 4))
-		bloom.light_color = Color(0.7, 0.3, 0.1)
-		bloom.light_energy = 0.5
-		bloom.omni_range = 3.0
-		parent.add_child(bloom)
+	# Authored broad pools keep the route readable in Web and replace the old
+	# four tiny generated lamps that left almost the entire decision space black.
+	parent.add_child(LOWER_ROUTE_LIGHTING_SCENE.instantiate())
 
 ## Aster's already-active data register describes the ecology lane as a causal network: every Flure broadcasts
 ## to the two bodies it can draw away. This is visible from the fork without walking to three read pedestals.
@@ -3299,15 +3335,28 @@ func _below_step_peris_route_overlay_path(_parent: Node3D) -> void:
 			6.45
 		))
 	points.append(Vector3(ROUTES_CONVERGE.x, BELOW_Y + 0.11, 4.0))
-	for point_i in range(points.size() - 1):
-		_add_route_overlay_segment(
-			_peris_route_overlay_root,
-			"PerisSafeRoute%d" % point_i,
-			points[point_i],
-			points[point_i + 1],
-			0.22,
-			path_mat
-		)
+	# Reuse the same dashed, grounded, depth-aware renderer as ordinary hover
+	# previews and the fragments. This keeps one visual grammar for "planned path"
+	# and avoids a second implementation made from enormous solid BoxMeshes.
+	var safe_route_guide := PathRenderer.new()
+	safe_route_guide.name = "PerisSafeRouteGuide"
+	safe_route_guide.preview_style = true
+	safe_route_guide.game_state = _game_state
+	safe_route_guide.color = Color(1.0, 0.65, 0.24)
+	_peris_route_overlay_root.add_child(safe_route_guide)
+	safe_route_guide.global_position = points[0]
+	safe_route_guide.set_explicit_path(points)
+	var start_marker := MeshInstance3D.new()
+	start_marker.name = "PerisSafeRouteStart"
+	var start_ring := TorusMesh.new()
+	start_ring.inner_radius = 0.68
+	start_ring.outer_radius = 0.78
+	start_marker.mesh = start_ring
+	start_marker.material_override = path_mat
+	start_marker.position = points[0] + Vector3(0.0, 0.02, 0.0)
+	start_marker.rotation.x = PI * 0.5
+	start_marker.set_meta("camera_occlusion_exempt", true)
+	_peris_route_overlay_root.add_child(start_marker)
 	_add_route_overlay_label(
 		_peris_route_overlay_root,
 		"PerisSafeEdgeLabel",
@@ -3381,7 +3430,7 @@ func _below_step_peris_route_overlay_beat(_parent: Node3D, beat_i: int) -> void:
 			"PerisIronBoundary%d_%d" % [beat_i, edge_i],
 			corners[edge_i],
 			corners[(edge_i + 1) % 4],
-			0.11,
+			0.16,
 			outline_mat
 		)
 	_add_route_overlay_label(
@@ -3395,14 +3444,14 @@ func _below_step_peris_route_overlay_beat(_parent: Node3D, beat_i: int) -> void:
 
 func _route_overlay_material(color: Color) -> StandardMaterial3D:
 	var material := StandardMaterial3D.new()
-	material.albedo_color = color
+	# Grounded opaque emission is stable in Web and composes with the perception
+	# pass without the transparent/no-depth sorting failures that erased this read.
+	material.albedo_color = Color(color.r, color.g, color.b, 1.0)
 	material.emission_enabled = true
 	material.emission = Color(color.r, color.g, color.b)
-	material.emission_energy_multiplier = 1.4
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.emission_energy_multiplier = 3.0
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.no_depth_test = true
-	material.render_priority = 124
+	material.no_depth_test = false
 	return material
 
 func _add_route_overlay_segment(

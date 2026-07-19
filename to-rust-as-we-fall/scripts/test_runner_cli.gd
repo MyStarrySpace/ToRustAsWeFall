@@ -13418,17 +13418,31 @@ func _test_elevator() -> void:
 			var data_view_code: String = perception_material.shader.code if perception_material != null and perception_material.shader != null else ""
 			_assert_true(not data_view_code.contains("color_edge") and not data_view_code.contains("scanline"),
 				"Elevator data view avoids material-detail speckle and screen-space banding")
-			_assert_true(data_view_code.contains("depth_curvature") and not data_view_code.contains("float gx"),
-				"Elevator data view outlines depth breaks without filling slanted surfaces")
-			_assert_true(data_view_code.contains("neighbor_geometry")
-				and data_view_code.contains("geometry_at_depth(dl)")
+			_assert_true(not data_view_code.contains("depth_curvature")
+				and not data_view_code.contains("SCREEN_UV +"),
+				"Elevator data view cannot turn repeated deck depth into screen-wide bands")
+			_assert_true(data_view_code.contains("data_blend = smoothstep")
+				and data_view_code.contains("* geometry_at_depth(depth_raw)")
+				and data_view_code.contains("screen * data_tint")
 				and data_view_code.contains("step(0.000001, depth_raw)")
 				and data_view_code.contains("step(0.999999, depth_raw)"),
-				"Elevator data view rejects camera-cut silhouettes on both sides of the void boundary")
+				"Elevator data view applies one stable geometry tint and preserves both Web depth-clear conventions")
 			var lower_chunk := instance.find_child("Chunk_below", true, false)
 			_assert_true(lower_chunk != null
 				and bool(lower_chunk.get_meta("camera_occlusion_outline_safe_clip", false)),
 				"Lower-route occlusion uses a coherent clip boundary under Aster's overlay")
+			var lower_lighting := instance.find_child("ElevatorLowerRouteLighting", true, false)
+			_assert_true(lower_lighting != null
+				and lower_lighting.find_children("*", "OmniLight3D", true, false).size() == 5,
+				"The lower route uses one authored five-pool lighting group")
+			if lower_lighting != null:
+				var route_lights_ok := true
+				for route_light in lower_lighting.find_children("*", "OmniLight3D", true, false):
+					route_lights_ok = route_lights_ok \
+						and float(route_light.light_energy) >= 1.5 \
+						and not bool(route_light.shadow_enabled)
+				_assert_true(route_lights_ok,
+					"Authored route lights are broad readable pools without shadow-map cost")
 			var peris_identity := instance._player.get_node_or_null("Label3D") as Label3D
 			_assert_true(peris_identity != null and peris_identity.pixel_size <= 0.0061,
 				"Elevator character identity tags stay compact enough to leave routes visible")
@@ -13450,8 +13464,22 @@ func _test_elevator() -> void:
 					"Peris's memory layer becomes visible independently")
 				_assert_equals(peris_overlay.find_children("PerisIronBoundary*", "MeshInstance3D", true, false).size(), 12,
 					"Peris reveals the exact four-sided footprint of all three iron fields")
-				_assert_true(peris_overlay.find_children("PerisSafeRoute*", "MeshInstance3D", true, false).size() >= 5,
-					"Peris reveals a continuous safe-edge path across the hazard lane")
+				var safe_route_guide := peris_overlay.find_child("PerisSafeRouteGuide", true, false) as PathRenderer
+				_assert_true(safe_route_guide != null
+					and safe_route_guide.preview_style
+					and safe_route_guide._explicit_path.size() >= 6,
+					"Peris reuses the shared dashed PathRenderer for the continuous safe-edge guide")
+				var safe_route_material := safe_route_guide._mat as StandardMaterial3D \
+					if safe_route_guide != null else null
+				_assert_true(safe_route_material != null
+					and safe_route_material.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED
+					and not safe_route_material.no_depth_test
+					and safe_route_material.render_priority == 127,
+					"Peris's shared safe-route ribbon stays grounded and composites after the data tint")
+				var safe_start := peris_overlay.find_child("PerisSafeRouteStart", true, false) as MeshInstance3D
+				_assert_true(safe_start != null
+					and absf(float(safe_start.rotation_degrees.x) - 90.0) < 0.1,
+					"Peris's overlay appears immediately as a flat safe-route start ring")
 				var endpoint: Node3D = peris_overlay.find_child("PerisRouteFinalPosition", true, false)
 				_assert_true(endpoint != null and endpoint.global_position.distance_to(
 					Vector3(instance.ROUTES_CONVERGE.x, instance.BELOW_Y + 0.12, 4.0)) < 0.1,
@@ -13515,8 +13543,11 @@ func _test_elevator() -> void:
 				instance.PARTY_MAX_HP - instance.IRON_DAMAGE_PER_TICK,
 				"Iron applies one clear four-HP bite per cadence")
 			var iron_feedback := instance.find_child("DamageFeedbackAster", true, false) as Label3D
-			_assert_true(iron_feedback != null and iron_feedback.text.begins_with("IRON"),
-				"Iron damage identifies its source over the affected character")
+			_assert_true(iron_feedback != null and iron_feedback.text.begins_with("IRON")
+				and "LEFT" in iron_feedback.text,
+				"Iron damage identifies its source and remaining HP over the affected character")
+			_assert_true(bool(instance._iron_contact_warning_shown.get("aster", false)),
+				"First iron contact raises the explicit move-to-amber-edge warning")
 			var aster_card: Control = instance._hud._portraits["aster"].card
 			_assert_true(aster_card.modulate.r > aster_card.modulate.g,
 				"Iron damage pulses the affected HUD portrait red")

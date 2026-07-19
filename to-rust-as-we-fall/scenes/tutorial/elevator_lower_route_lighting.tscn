@@ -1,0 +1,38 @@
+[gd_scene format=3]
+
+[node name="ElevatorLowerRouteLighting" type="Node3D"]
+
+[node name="RouteReadLight" type="OmniLight3D" parent="."]
+position = Vector3(31.34, -1.8, 0)
+light_color = Color(0.58, 0.72, 0.78, 1)
+light_energy = 1.8
+omni_range = 15.0
+shadow_enabled = false
+
+[node name="IronBeatLight1" type="OmniLight3D" parent="."]
+position = Vector3(50.34, -1.8, 5.4)
+light_color = Color(0.9, 0.38, 0.12, 1)
+light_energy = 1.8
+omni_range = 14.0
+shadow_enabled = false
+
+[node name="IronBeatLight2" type="OmniLight3D" parent="."]
+position = Vector3(74.34, -1.8, 5.4)
+light_color = Color(0.9, 0.38, 0.12, 1)
+light_energy = 1.8
+omni_range = 14.0
+shadow_enabled = false
+
+[node name="IronBeatLight3" type="OmniLight3D" parent="."]
+position = Vector3(98.34, -1.8, 5.4)
+light_color = Color(0.9, 0.38, 0.12, 1)
+light_energy = 1.8
+omni_range = 14.0
+shadow_enabled = false
+
+[node name="RouteConvergenceLight" type="OmniLight3D" parent="."]
+position = Vector3(122.34, -1.8, 2)
+light_color = Color(0.48, 0.76, 0.64, 1)
+light_energy = 1.6
+omni_range = 15.0
+shadow_enabled = false
