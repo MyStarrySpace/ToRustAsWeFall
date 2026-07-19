@@ -194,13 +194,18 @@ func _poll_arrival() -> void:
 	_complete_active_target()
 
 func _complete_active_target() -> void:
-	if active_target == null:
+	if active_target == null or not is_instance_valid(active_target):
+		active_target = null
+		_interactor_id = ""
 		return
 	var completed := active_target
-	if is_instance_valid(completed) and not _target_feedback_is_managed(completed) and completed.has_method("complete_queued_feedback"):
+	# Selection can change while a character is walking. Reassert the servicing body at arrival so
+	# a global portrait update cannot make a required-character action complete as somebody else.
+	_set_target_active_character(completed, _interactor_id)
+	if not _target_feedback_is_managed(completed) and completed.has_method("complete_queued_feedback"):
 		completed.call("complete_queued_feedback")
 	target_reached.emit(completed)
-	if is_instance_valid(completed) and completed.has_method("on_interaction_arrived"):
+	if completed.has_method("on_interaction_arrived"):
 		completed.call("on_interaction_arrived")
 	active_target = null
 	_interactor_id = ""

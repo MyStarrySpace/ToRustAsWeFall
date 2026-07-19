@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://dodfrxg1en11i"
 path.s3tc="res://.godot/imported/LeafTex.png-308ba7e0e41db1e2cd730e1bbfc2204f.s3tc.ctex"
+path.etc2="res://.godot/imported/LeafTex.png-308ba7e0e41db1e2cd730e1bbfc2204f.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://resources/models/peris-sim/plants/spider/LeafTex.png"
-dest_files=["res://.godot/imported/LeafTex.png-308ba7e0e41db1e2cd730e1bbfc2204f.s3tc.ctex"]
+dest_files=["res://.godot/imported/LeafTex.png-308ba7e0e41db1e2cd730e1bbfc2204f.s3tc.ctex", "res://.godot/imported/LeafTex.png-308ba7e0e41db1e2cd730e1bbfc2204f.etc2.ctex"]
 
 [params]
 

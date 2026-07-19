@@ -1,0 +1,52 @@
+{
+  "lines": [
+    {
+      "key": "facility.endo.shelters",
+      "speaker": "Endo",
+      "style": "normal",
+      "wait": false,
+      "text": "There are shelters past the old iron bleedway. Stay close. The walls remember the safer line.",
+      "context": "Endo joins Aster and Peris outside the facility."
+    },
+    {
+      "key": "facility.endo.iron_warn",
+      "speaker": "Endo",
+      "style": "normal",
+      "wait": false,
+      "text": "Iron ahead. Green beacons take the long way. The center is faster, but it takes flesh for toll.",
+      "context": "The party reaches the first safe-versus-direct route choice."
+    },
+    {
+      "key": "facility.endo.dusk",
+      "speaker": "Endo",
+      "style": "normal",
+      "wait": false,
+      "text": "Light is going. The next sump holds its heat after dark. Choose the line before you cross.",
+      "context": "Dusk closes in between the first and second iron sectors."
+    },
+    {
+      "key": "facility.endo.shelter",
+      "speaker": "Endo",
+      "style": "normal",
+      "wait": false,
+      "text": "There. Seal first, breathe second. Nothing outside gets to choose our pace.",
+      "context": "The full party reaches Shelter 1."
+    },
+    {
+      "key": "facility.endo.rest",
+      "speaker": "Endo",
+      "style": "normal",
+      "wait": false,
+      "text": "Sleep in shifts if you can. The wall will hold until dawn. I will listen for what follows.",
+      "context": "The party takes its first shelter rest."
+    },
+    {
+      "key": "facility.dawn",
+      "speaker": "Narration",
+      "style": "narration",
+      "wait": false,
+      "text": "At dawn, rust-light finds three sets of tracks leaving Shelter 1.",
+      "context": "Morning after the party's first shelter rest."
+    }
+  ]
+}

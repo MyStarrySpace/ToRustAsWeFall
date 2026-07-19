@@ -6,6 +6,7 @@ It is meant to be compact enough to use during iteration, not just at the end.
 
 This complements:
 
+- [Systems-Thinking Puzzle Design Standard](../../docs/SYSTEMS_THINKING_PUZZLE_STANDARD.md)
 - [Puzzle Fragment Workflow](/C:/Users/quest/Programming/Games/ToRustAsWeFall/to-rust-as-we-fall/data/puzzles/README.md)
 - [Puzzle Fragment Generation Methodology](/C:/Users/quest/Programming/Games/ToRustAsWeFall/to-rust-as-we-fall/data/puzzles/puzzle_fragment_generation_methodology.md)
 - [Puzzle Fragment Design Template](/C:/Users/quest/Programming/Games/ToRustAsWeFall/to-rust-as-we-fall/data/puzzles/puzzle_fragment_design_template.md)
@@ -31,9 +32,26 @@ If the answer to any of these is `no`, the design needs revision even if the tot
 
 - Can the player form a plausible first read within a few seconds?
 - Is there one primary insight or decision the beat is about?
+- Can the intended causal model and meaningful leverage point be stated clearly?
 - Does failure teach something visible or actionable?
+- Can a model error be distinguished from a control, timing, camera, or visibility error?
 - Is the critical path readable without relying on tooltips or outside explanation?
 - Does the beat support the campaign fantasy of guiding a vulnerable, specialized party through a dangerous expedition?
+
+## Systems-Thinking Diagnostic
+
+Before scoring, record:
+
+- the model the player is expected to form;
+- the player's most likely first model and misconception;
+- the prediction made before the representative intervention;
+- the evidence that confirms or falsifies that prediction;
+- the stock, flow, delay, feedback loop, threshold, scale shift, or network change under test;
+- the encounter's meaningful leverage point;
+- the moment the reasoning is solved;
+- how much execution remains after that moment and what new decision it adds.
+
+If these cannot be stated, the design is not ready for numerical tuning.
 
 ## Scorecard
 
@@ -55,6 +73,7 @@ Score notes:
 - Do interactables look usable before interaction?
 - Does the world answer actions with clear feedback?
 - Can the player tell whether something changed, failed, opened, closed, armed, or became unsafe?
+- Can the player trace an important consequence back to its action or prior state?
 
 Score notes:
 
@@ -81,6 +100,7 @@ Score notes:
 - Do common mistakes produce legible consequences?
 - After failure, can the player say what they missed?
 - Does the design produce "I know what to try next" instead of "I do not know what happened"?
+- Does feedback identify a wrong model separately from failed execution?
 
 Score notes:
 
@@ -94,6 +114,7 @@ Score notes:
 - Does survival pressure sharpen the decision instead of hiding it?
 - Are time, ATP, health, night length, or enemy pressure doing useful work?
 - Is the player under tension for a reason, or simply under noise?
+- Does pressure force prioritization within the system without preventing the player from reading it?
 
 Score notes:
 
@@ -120,6 +141,7 @@ Score notes:
 - Is the beat clearly `teach`, `test`, `twist`, `recovery`, `reveal`, or `set-piece`?
 - Does it fit well next to the beats before and after it?
 - Does it give enough contrast from adjacent beats?
+- Once the causal model is solved, does the remaining play introduce a new decision or transfer test?
 
 Score notes:
 

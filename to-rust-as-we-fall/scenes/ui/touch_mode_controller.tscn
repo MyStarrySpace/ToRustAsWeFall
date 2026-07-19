@@ -1,0 +1,36 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/touch_mode_controller.gd" id="1"]
+
+[node name="TouchModeController" type="CanvasLayer"]
+layer = 55
+script = ExtResource("1")
+
+[node name="TouchModeCluster" type="VBoxContainer" parent="."]
+anchors_preset = 6
+anchor_left = 1.0
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_left = -104.0
+offset_top = -72.0
+offset_right = -8.0
+offset_bottom = 72.0
+grow_horizontal = 0
+grow_vertical = 2
+theme_override_constants/separation = 6
+
+[node name="TouchMode_camera" type="Button" parent="TouchModeCluster"]
+custom_minimum_size = Vector2(96, 44)
+focus_mode = 0
+text = "CAMERA"
+
+[node name="TouchMode_select" type="Button" parent="TouchModeCluster"]
+custom_minimum_size = Vector2(96, 44)
+focus_mode = 0
+text = "SELECT"
+
+[node name="TouchMode_action" type="Button" parent="TouchModeCluster"]
+custom_minimum_size = Vector2(96, 44)
+focus_mode = 0
+text = "ACTION"

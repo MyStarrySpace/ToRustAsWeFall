@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://ds2su7mmxqok4"
-path="res://.godot/imported/channels_facility_metal_v2.png-6078d5b136c597b7f3b832dac43b6be4.ctex"
+path.s3tc="res://.godot/imported/channels_facility_metal_v2.png-6078d5b136c597b7f3b832dac43b6be4.s3tc.ctex"
+path.etc2="res://.godot/imported/channels_facility_metal_v2.png-6078d5b136c597b7f3b832dac43b6be4.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "7fa6f418faf6f076e51895344943dd1c"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://resources/models/channels/channels_facility_metal_v2.png"
-dest_files=["res://.godot/imported/channels_facility_metal_v2.png-6078d5b136c597b7f3b832dac43b6be4.ctex"]
+dest_files=["res://.godot/imported/channels_facility_metal_v2.png-6078d5b136c597b7f3b832dac43b6be4.s3tc.ctex", "res://.godot/imported/channels_facility_metal_v2.png-6078d5b136c597b7f3b832dac43b6be4.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +42,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

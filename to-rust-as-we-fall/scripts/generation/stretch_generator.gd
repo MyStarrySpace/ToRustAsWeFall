@@ -9,6 +9,7 @@ const WfcLayoutScript := preload("res://scripts/generation/stretch_wfc_layout.gd
 const GridStitcherScript := preload("res://scripts/generation/stretch_grid_stitcher.gd")
 const BiomesScript := preload("res://scripts/generation/biomes.gd")
 const PoiDistributionScript := preload("res://scripts/generation/stretch_poi_distribution.gd")
+const SystemsCurriculumScript := preload("res://scripts/generation/stretch_systems_curriculum.gd")
 
 const SPEC_SCHEMA := "trawf_generated_stretch_spec_v1"
 const DEFAULT_SPEC_DIR := "res://data/generated_stretches"
@@ -84,6 +85,16 @@ const TIER_PROGRESSION_STAGE := {
 	"setpiece": 5,
 }
 
+## Complexity tier owns traversal scale. Standard and later stretches need enough
+## physical decision space for one complete scarcity cycle to become relevant;
+## teaching stays compact, and an explicit spatial_profile always wins.
+const TIER_SLOT_PITCH := {
+	"teaching": 8,
+	"standard": 13,
+	"hard": 15,
+	"setpiece": 16,
+}
+
 static func generate(settings: Dictionary) -> Dictionary:
 	var validation := validate_settings(settings)
 	if not bool(validation.get("valid", false)):
@@ -104,6 +115,12 @@ static func generate(settings: Dictionary) -> Dictionary:
 	var palette_usage := _choose_palette_usage(catalog, resolved, budget, rng)
 	var random_walk := _build_archetype_random_walk(catalog, resolved, budget, rng)
 	var archetype_chain := _chain_from_random_walk(catalog, random_walk, rng) if _uses_archetype_random_walk(resolved) else _choose_archetype_chain(catalog, resolved, budget, rng)
+	# Reserve a later beat for the same causal model. This only grows a stretch when
+	# its selected CONTENT would otherwise be introduced once and never tested; it
+	# does not scale geometry merely because the campaign stage is higher.
+	SystemsCurriculumScript.ensure_reasoning_budget(resolved, budget, archetype_chain)
+	_ensure_complete_chain_budget(resolved, budget, archetype_chain)
+	resolved["budget"] = budget
 	var limitations: Dictionary = resolved.get("limitations", {})
 	var available_flora := _available_values(catalog, "flora", _category_limitations(limitations, "allowed", "flora"), _category_limitations(limitations, "blocked", "flora"))
 	var available_enemies := _available_values(catalog, "enemies", _category_limitations(limitations, "allowed", "enemies"), _category_limitations(limitations, "blocked", "enemies"))
@@ -121,6 +138,14 @@ static func generate(settings: Dictionary) -> Dictionary:
 	var poi_density := _apply_poi_density(nodes, poi_distribution, progression_stage, rng)
 	var element_coverage := _compute_element_coverage(nodes, poi_distribution)
 	var routes := _build_routes(nodes, budget, rng)
+	var systems_contract: Dictionary = SystemsCurriculumScript.build_contract(catalog, nodes, routes, resolved)
+	for node_index in range(nodes.size()):
+		if not (nodes[node_index] is Dictionary):
+			continue
+		var presentation_node := nodes[node_index] as Dictionary
+		if str(presentation_node.get("action_verb", "")) == "":
+			presentation_node["action_verb"] = SystemsCurriculumScript.action_verb_for_node(presentation_node)
+		nodes[node_index] = presentation_node
 	# SPATIAL layer: WFC drops a room-piece into each archetype-node slot, stitched into one unified grid (the
 	# node-graph semantics above are untouched — WFC runs on an isolated RNG stream). Falls back to the proven
 	# legacy rasterizer if WFC ever yields nothing usable, so the generator never returns an unplayable grid.
@@ -155,7 +180,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 	var warnings := _collect_warnings(catalog, nodes)
 	var solution := SolverScript.analyze(nodes, str(resolved.get("complexity_tier", "teaching")), int(resolved.get("progression_stage", 99)), resolved.get("roster", []))
 
-	return {
+	var spec := {
 		"success": true,
 		"ok": true,
 		"schema": SPEC_SCHEMA,
@@ -163,7 +188,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 		"title": str(resolved.get("title", "Generated Stretch")),
 		"biome": str(resolved.get("biome", "")),
 		"source": {
-			"generator": "archetype_based_stretch_v1",
+			"generator": "archetype_based_stretch_v2_systems",
 			"seed": int(resolved.get("seed", 0)),
 			"complexity_tier": str(resolved.get("complexity_tier", "teaching")),
 			"progression_stage": int(resolved.get("progression_stage", 99)),
@@ -181,6 +206,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 		"archetype_chain": archetype_chain,
 		"teaching_chain": teaching_chain,
 		"composition": composition_summary,
+		"systems_contract": systems_contract,
 		"palette_usage": palette_usage,
 		"headless": {
 			"golden_path": _golden_path(nodes),
@@ -235,6 +261,46 @@ static func generate(settings: Dictionary) -> Dictionary:
 			"spotlight_within_stage": solution.get("spotlight_within_stage", true),
 		},
 	}
+	var systems_validation: Dictionary = SystemsCurriculumScript.validate_contract(spec)
+	(spec["validation"] as Dictionary)["systems"] = systems_validation
+	if not bool(systems_validation.get("valid", false)):
+		return {
+			"success": false,
+			"ok": false,
+			"error": "systems_contract_failed",
+			"validation": spec["validation"],
+			"draft_spec": spec,
+		}
+	return spec
+
+
+static func _ensure_complete_chain_budget(settings: Dictionary, budget: Dictionary, archetype_chain: Array) -> void:
+	if str(settings.get("composition", {}).get("mode", "")) != "chain_nested_poc" or archetype_chain.is_empty():
+		return
+	var chain_size := 0
+	for entry_v in archetype_chain:
+		if entry_v is Dictionary and str((entry_v as Dictionary).get("composition_role", "")) == "chain_link":
+			chain_size += 1
+	if chain_size <= 0:
+		chain_size = archetype_chain.size()
+	var original_count := int(budget.get("node_count", 6))
+	var candidate_count := original_count
+	var optional_budget := int(budget.get("optional_node_count", 0))
+	while candidate_count < original_count + chain_size + optional_budget + 2:
+		var optional_remaining := optional_budget
+		var critical_count := 0
+		for node_index in range(1, candidate_count - 1):
+			var optional := optional_remaining > 0 and node_index % 3 == 0
+			if optional:
+				optional_remaining -= 1
+			else:
+				critical_count += 1
+		if critical_count >= chain_size and critical_count % chain_size == 0:
+			break
+		candidate_count += 1
+	if candidate_count > original_count:
+		budget["node_count"] = candidate_count
+		settings["reasoning_budget_added_nodes"] = int(settings.get("reasoning_budget_added_nodes", 0)) + candidate_count - original_count
 
 static func validate_settings(settings: Dictionary) -> Dictionary:
 	var catalog := CatalogScript.new()
@@ -245,7 +311,7 @@ static func validate_settings(settings: Dictionary) -> Dictionary:
 
 	var resolved := _resolve_settings(settings)
 	resolved["progression_stage"] = _resolve_progression_stage(catalog, resolved)
-	_apply_stage_depth_scaling(resolved)
+	_apply_systems_progression_profile(resolved)
 	var limitations: Dictionary = resolved.get("limitations", {})
 	for mode in ["allowed", "blocked", "required"]:
 		var group: Dictionary = limitations.get(mode, {})
@@ -259,6 +325,8 @@ static func validate_settings(settings: Dictionary) -> Dictionary:
 				if category == "archetypes":
 					if not catalog.has_archetype(value):
 						errors.append("Unknown archetype in %s: %s" % [mode, value])
+					elif mode == "required" and not SystemsCurriculumScript.is_procedurally_eligible(value):
+						errors.append("Archetype %s is not eligible for procedural generation: %s" % [value, SystemsCurriculumScript.blocked_reason(value)])
 				elif not catalog.has_content(category, value):
 					errors.append("Unknown %s in %s: %s" % [category, mode, value])
 
@@ -292,6 +360,11 @@ static func validate_settings(settings: Dictionary) -> Dictionary:
 		"resolved_settings": resolved,
 		"catalog": catalog,
 	}
+
+
+## Public verifier used by batch tools and QA without duplicating the contract law.
+static func validate_systems_contract(spec: Dictionary) -> Dictionary:
+	return SystemsCurriculumScript.validate_contract(spec)
 
 
 static func build_navigation_grid_from_spec(spec: Dictionary) -> Dictionary:
@@ -543,9 +616,8 @@ static func _resolve_settings(settings: Dictionary) -> Dictionary:
 	resolved["seed"] = seed
 	resolved["complexity_tier"] = tier
 	resolved["budget"] = base_budget
-	# Stash the tier floor + which budget keys the caller pinned, so the stage-driven depth
-	# scaling (applied once the progression stage is known) can grow the auto keys above the
-	# floor while leaving an explicit override exactly as authored.
+	# Preserve the tier floor + caller pins as audit data. Campaign stage no longer
+	# mutates these spatial budgets; the systems profile carries progression instead.
 	resolved["budget_tier_floor"] = tier_floor
 	resolved["budget_overridden_keys"] = overridden_keys
 	# A BIOME is a named content preset: if the caller named one (and didn't pin explicit
@@ -559,6 +631,12 @@ static func _resolve_settings(settings: Dictionary) -> Dictionary:
 	resolved["limitations"] = _normalize_limitations(raw_limitations)
 	resolved["composition"] = _normalize_composition(settings.get("composition", {}))
 	resolved["roster"] = settings.get("roster", [])
+	var spatial_profile: Dictionary = {}
+	if settings.get("spatial_profile", {}) is Dictionary:
+		spatial_profile = (settings.get("spatial_profile", {}) as Dictionary).duplicate(true)
+	if not spatial_profile.has("slot_pitch"):
+		spatial_profile["slot_pitch"] = int(TIER_SLOT_PITCH.get(tier, 8))
+	resolved["spatial_profile"] = spatial_profile
 	var resolved_composition: Dictionary = resolved.get("composition", {})
 	if _composition_mode_uses_random_walk(str(resolved_composition.get("mode", ""))):
 		var walk_settings: Dictionary = resolved_composition.get("random_walk", {})
@@ -640,6 +718,8 @@ static func _normalize_random_walk(raw: Variant) -> Dictionary:
 		"transition_chance": 0.35,
 		"prefer_tags": [],
 		"allow_revisit": true,
+		"max_consecutive_archetype": 2,
+		"max_archetype_share": 0.5,
 	}
 	if not (raw is Dictionary):
 		return result
@@ -650,6 +730,8 @@ static func _normalize_random_walk(raw: Variant) -> Dictionary:
 	result["transition_chance"] = clampf(float(raw_dict.get("transition_chance", 0.35)), 0.0, 1.0)
 	result["prefer_tags"] = _string_array(raw_dict.get("prefer_tags", []))
 	result["allow_revisit"] = bool(raw_dict.get("allow_revisit", true))
+	result["max_consecutive_archetype"] = maxi(1, int(raw_dict.get("max_consecutive_archetype", 2)))
+	result["max_archetype_share"] = clampf(float(raw_dict.get("max_archetype_share", 0.5)), 0.25, 1.0)
 	return result
 
 static func _normalize_composition_link(raw: Variant, fallback_ref: String, role: String) -> Dictionary:
@@ -697,8 +779,25 @@ static func _append_nested_composition_entries(result: Array, raw_entries: Varia
 static func _validate_composition(catalog, composition: Dictionary, limitations: Dictionary, budget: Dictionary, errors: Array[String]) -> void:
 	var allowed := _category_limitations(limitations, "allowed", "archetypes")
 	var blocked := _category_limitations(limitations, "blocked", "archetypes")
-	for entry in composition.get("chain", []):
+	var chain: Array = composition.get("chain", [])
+	for entry in chain:
 		_validate_composition_entry(catalog, entry, allowed, blocked, "composition chain", errors)
+	# A composed chain is a causal pipeline, not adjacency flavor. Every upstream
+	# output must be named, every downstream input must consume it, and the types
+	# must match exactly. The first input and final output remain open boundaries.
+	for i in range(chain.size() - 1):
+		if not (chain[i] is Dictionary) or not (chain[i + 1] is Dictionary):
+			continue
+		var current := chain[i] as Dictionary
+		var next := chain[i + 1] as Dictionary
+		var output := str(current.get("output", "")).strip_edges()
+		var input := str(next.get("input", "")).strip_edges()
+		if output == "":
+			errors.append("Composition chain link %d (%s) must declare an output consumed by the next link." % [i, str(current.get("id", ""))])
+		elif input == "":
+			errors.append("Composition chain link %d (%s) must declare an input produced by the previous link." % [i + 1, str(next.get("id", ""))])
+		elif output != input:
+			errors.append("Composition chain handshake mismatch at %d->%d: output '%s' does not feed input '%s'." % [i, i + 1, output, input])
 	for entry in composition.get("nested", []):
 		_validate_composition_entry(catalog, entry, allowed, blocked, "nested composition", errors)
 		if entry is Dictionary:
@@ -731,6 +830,8 @@ static func _validate_composition_entry(catalog, entry: Variant, allowed: Array,
 	if not catalog.has_archetype(id):
 		errors.append("Unknown archetype in %s: %s" % [context, id])
 		return
+	if not SystemsCurriculumScript.is_procedurally_eligible(id):
+		errors.append("%s uses procedurally blocked archetype %s: %s" % [context, id, SystemsCurriculumScript.blocked_reason(id)])
 	if blocked.has(id):
 		errors.append("%s uses blocked archetype %s" % [context, id])
 	if not allowed.is_empty() and not allowed.has(id):
@@ -780,50 +881,21 @@ static func _archetype_stage(catalog, id: String) -> int:
 		return 0
 	return int(catalog.get_archetype(id).get("stage", 1))
 
-## Per-stage growth ABOVE the tier each scalable budget key gains for every progression
-## stage past the tier's natural stage, and the bound it may not exceed. The tier stays the
-## base/floor; a late-stage stretch is genuinely bigger and deeper (more nodes, a longer
-## archetype chain, an extra branch), not just a wider archetype pool.
-const STAGE_DEPTH_SCALING := {
-	"node_count": {"per_stage": 1.0, "max": 16},
-	"archetype_depth": {"per_stage": 0.6, "max": 7},
-	"branch_count": {"per_stage": 0.34, "max": 4},
-}
-
-## Grow the auto (non-overridden) scalable budget keys with the resolved progression stage,
-## measured from the tier's natural stage so the tier remains the floor and an explicitly
-## pinned key is never touched. Runs once after the stage is resolved; deterministic.
-static func _apply_stage_depth_scaling(resolved: Dictionary) -> void:
-	var budget: Dictionary = resolved.get("budget", {})
-	var floor_budget: Dictionary = resolved.get("budget_tier_floor", budget)
-	var overridden := _string_array(resolved.get("budget_overridden_keys", []))
+## Campaign stage now increases the MODEL the player must reason about, not the
+## amount of geometry they must service. Complexity tier still owns spatial size,
+## branches, pressure, and presentation budget. The compatibility field remains so
+## old consumers do not mistake this for an unprocessed setting.
+static func _apply_systems_progression_profile(resolved: Dictionary) -> void:
 	var tier := str(resolved.get("complexity_tier", "teaching"))
 	var natural_stage := int(TIER_PROGRESSION_STAGE.get(tier, 2))
 	var stage := int(resolved.get("progression_stage", natural_stage))
-	var steps := maxi(0, stage - natural_stage)
-	resolved["stage_depth_steps"] = steps
-	if steps <= 0:
-		return
-	for key in STAGE_DEPTH_SCALING.keys():
-		if overridden.has(str(key)):
-			continue
-		var spec: Dictionary = STAGE_DEPTH_SCALING[key]
-		var floor_value := int(floor_budget.get(key, budget.get(key, 0)))
-		var grown := floor_value + int(floor(float(steps) * float(spec.get("per_stage", 0.0))))
-		grown = mini(grown, int(spec.get("max", grown)))
-		budget[key] = maxi(int(budget.get(key, floor_value)), grown)
-	# Keep the random-walk floor the composition expects (node_count >= step_count + 2).
-	var composition: Dictionary = resolved.get("composition", {})
-	if _composition_mode_uses_random_walk(str(composition.get("mode", ""))):
-		var walk_steps := int(composition.get("random_walk", {}).get("step_count", 0))
-		if walk_steps > 0:
-			budget["node_count"] = maxi(int(budget.get("node_count", 6)), walk_steps + 2)
-	resolved["budget"] = budget
+	resolved["stage_depth_steps"] = 0
+	resolved["systems_profile"] = SystemsCurriculumScript.profile_for_stage(stage)
 
 static func _filter_archetypes_by_stage(catalog, ids: Array, max_stage: int) -> Array[String]:
 	var result: Array[String] = []
 	for id in ids:
-		if _archetype_stage(catalog, str(id)) <= max_stage:
+		if SystemsCurriculumScript.is_procedurally_eligible(str(id)) and _archetype_stage(catalog, str(id)) <= max_stage:
 			result.append(str(id))
 	return result
 
@@ -861,9 +933,13 @@ static func _choose_archetype_chain(catalog, settings: Dictionary, budget: Dicti
 	for value in required:
 		if not ids.has(value):
 			ids.append(value)
+	var preferred := SystemsCurriculumScript.preferred_archetype_ids(
+		catalog, available, int(settings.get("progression_stage", 1)))
 	while ids.size() < target_count and not available.is_empty():
-		var picked := str(rng.pick(available))
+		var source: Array = preferred if not preferred.is_empty() else available
+		var picked := str(rng.pick(source))
 		available.erase(picked)
+		preferred.erase(picked)
 		if not ids.has(picked):
 			ids.append(picked)
 
@@ -880,6 +956,10 @@ static func _choose_archetype_chain(catalog, settings: Dictionary, budget: Dicti
 			"composition_role": "required_append" if required.has(id) else "generated_fill",
 			"chain_index": chain.size(),
 		}))
+	# An authored causal chain's order is semantic: output N is the declared input
+	# of N+1. Never topologically reshuffle it after validating that handshake.
+	if not composition_chain.is_empty():
+		return chain
 	return _order_chain_by_teaching(catalog, chain)
 
 ## Reorder a chain so an archetype that TEACHES a technique sits before an archetype whose
@@ -984,6 +1064,7 @@ static func _teaching_chain_edges(catalog, chain: Array) -> Array:
 
 static func _archetype_chain_entry(catalog, id: String, rng, variant_override := "", extras := {}) -> Dictionary:
 	var entry: Dictionary = catalog.get_archetype(id)
+	var systems_model: Dictionary = SystemsCurriculumScript.model_for_archetype(entry, id)
 	var variants: Array = entry.get("variants", [])
 	var variant := variant_override
 	if variant == "" and not variants.is_empty():
@@ -1007,6 +1088,7 @@ static func _archetype_chain_entry(catalog, id: String, rng, variant_override :=
 		"solve": str(entry.get("solve", "")),
 		"reads": entry.get("reads", []),
 		"correct_read": str(entry.get("correct_read", "")),
+		"systems_dimensions": (systems_model.get("dimensions", []) as Array).duplicate(),
 	}
 	if extras is Dictionary:
 		for key in (extras as Dictionary).keys():
@@ -1032,11 +1114,19 @@ static func _build_archetype_random_walk(catalog, settings: Dictionary, budget: 
 
 	var current_id := str(walk_settings.get("start_archetype", ""))
 	if current_id == "" or not available.has(current_id):
-		current_id = str(required[0]) if not required.is_empty() and available.has(str(required[0])) else str(rng.pick(available))
+		var preferred := SystemsCurriculumScript.preferred_archetype_ids(
+			catalog, available, int(settings.get("progression_stage", 1)))
+		var start_pool: Array = preferred if not preferred.is_empty() else available
+		current_id = str(required[0]) if not required.is_empty() and available.has(str(required[0])) else str(rng.pick(start_pool))
 	var current_step := maxi(0, int(walk_settings.get("start_step", 0)))
 	var transition_chance := float(walk_settings.get("transition_chance", 0.35))
 	var prefer_tags := _string_array(walk_settings.get("prefer_tags", []))
 	var allow_revisit := bool(walk_settings.get("allow_revisit", true))
+	var max_consecutive := clampi(int(walk_settings.get("max_consecutive_archetype", 2)), 1, target_steps)
+	var max_occurrences := maxi(
+		1,
+		int(ceil(float(target_steps) * float(walk_settings.get("max_archetype_share", 0.5))))
+	)
 	var missing_required: Array[String] = []
 	for id in required:
 		if not missing_required.has(id):
@@ -1046,7 +1136,13 @@ static func _build_archetype_random_walk(catalog, settings: Dictionary, budget: 
 	var edges := []
 	var layout := []
 	var lane := 0
+	var last_id := ""
+	var consecutive := 0
+	var visit_counts := {}
+	var resume_steps := {}
 	for walk_index in range(target_steps):
+		consecutive = consecutive + 1 if current_id == last_id else 1
+		last_id = current_id
 		var entry: Dictionary = catalog.get_archetype(current_id)
 		var steps: Array = entry.get("steps", [])
 		var step_count := maxi(1, steps.size())
@@ -1083,6 +1179,7 @@ static func _build_archetype_random_walk(catalog, settings: Dictionary, budget: 
 		visits.append(visit)
 		layout.append(visit["layout_step"])
 		missing_required.erase(current_id)
+		visit_counts[current_id] = int(visit_counts.get(current_id, 0)) + 1
 
 		var next_id := current_id
 		var next_step := current_step + 1
@@ -1095,9 +1192,27 @@ static func _build_archetype_random_walk(catalog, settings: Dictionary, budget: 
 		if not should_transition and float(rng.call("randf")) < transition_chance:
 			should_transition = true
 			reason = "tag_jump"
+		var diversity_break := (
+			remaining_slots > 0
+			and available.size() > 1
+			and (
+				consecutive >= max_consecutive
+				or int(visit_counts.get(current_id, 0)) >= max_occurrences
+			)
+		)
+		if diversity_break:
+			should_transition = true
+			reason = "diversity_break"
 		if should_transition:
-			next_id = _choose_next_walk_archetype(catalog, available, current_id, tags, prefer_tags, missing_required, allow_revisit, rng)
-			next_step = 0
+			if next_step < step_count:
+				resume_steps[current_id] = next_step
+			else:
+				resume_steps.erase(current_id)
+			next_id = _choose_next_walk_archetype(
+				catalog, available, current_id, tags, prefer_tags, missing_required,
+				allow_revisit, visit_counts, max_occurrences, diversity_break, rng
+			)
+			next_step = int(resume_steps.get(next_id, 0)) if next_id != current_id else next_step
 			if next_id == current_id:
 				reason = "restart"
 			elif reason != "tag_jump":
@@ -1166,15 +1281,20 @@ static func _choose_next_walk_archetype(
 	prefer_tags: Array,
 	missing_required: Array,
 	allow_revisit: bool,
+	visit_counts: Dictionary,
+	max_occurrences: int,
+	force_different: bool,
 	rng
 ) -> String:
 	for id in missing_required:
-		if available.has(id):
+		if available.has(id) and (not force_different or str(id) != current_id):
 			return str(id)
 	var weighted := []
 	for raw_id in available:
 		var id := str(raw_id)
-		if not allow_revisit and id == current_id and available.size() > 1:
+		if (force_different or not allow_revisit) and id == current_id and available.size() > 1:
+			continue
+		if int(visit_counts.get(id, 0)) >= max_occurrences and available.size() > 1:
 			continue
 		var entry: Dictionary = catalog.get_archetype(id)
 		var tags := _string_array(entry.get("tags", []))
@@ -1224,16 +1344,34 @@ static func _build_nodes(catalog, settings: Dictionary, budget: Dictionary, pale
 	var resource_beats := int(budget.get("resource_beats", 1))
 	var pressure_budget := int(budget.get("pressure_budget", 1))
 	var composition: Dictionary = settings.get("composition", {})
+	var chain_mode := str(composition.get("mode", "")) == "chain_nested_poc"
+	var playable_chain: Array = archetype_chain.duplicate(true)
+	if chain_mode:
+		playable_chain.clear()
+		for entry_v in archetype_chain:
+			if entry_v is Dictionary and str((entry_v as Dictionary).get("composition_role", "")) == "chain_link":
+				playable_chain.append((entry_v as Dictionary).duplicate(true))
+		if playable_chain.is_empty():
+			playable_chain = archetype_chain.duplicate(true)
+	var chain_cursor := 0
 	var walk_visits: Array = random_walk.get("visits", [])
 	var occurrences := {}
 	var nodes := []
 	for i in range(node_count):
 		var is_interior := i > 0 and i < node_count - 1
+		var optional := is_interior and optional_count > 0 and (i % 3 == 0)
+		if optional:
+			optional_count -= 1
 		var walk_entry := {}
-		if is_interior and not walk_visits.is_empty():
-			walk_entry = (walk_visits[mini(i - 1, walk_visits.size() - 1)] as Dictionary).duplicate(true)
+		if is_interior and i - 1 < walk_visits.size() and walk_visits[i - 1] is Dictionary:
+			walk_entry = (walk_visits[i - 1] as Dictionary).duplicate(true)
 		var node_id := "entry" if i == 0 else ("exit_shelter" if i == node_count - 1 else "node_%02d" % i)
-		var archetype: Dictionary = archetype_chain[(i - 1) % archetype_chain.size()] if is_interior and not archetype_chain.is_empty() else {}
+		# Optional slots are reward detours, not missing links in the mandatory causal
+		# chain. Only critical interior nodes advance the chain cursor.
+		var chain_position := chain_cursor
+		var archetype: Dictionary = playable_chain[chain_position % playable_chain.size()] if is_interior and not optional and not playable_chain.is_empty() else {}
+		if is_interior and not optional and not playable_chain.is_empty():
+			chain_cursor += 1
 		var archetype_id := str(archetype.get("id", "11" if i == 0 or i == node_count - 1 else ""))
 		# Vary the variant across repeated occurrences of the same archetype so a cycled
 		# chain doesn't read as the same beat twice — flora, actors and label follow it.
@@ -1246,14 +1384,11 @@ static func _build_nodes(catalog, settings: Dictionary, budget: Dictionary, pale
 				archetype["variant"] = str(all_variants[occ % all_variants.size()])
 		# Role is the archetype's identity, not a blind cycle — so a forage beat reads as
 		# foraging, a redirect as danger, never "Guidance Beat" stamped on a plant puzzle.
-		var role := "boundary" if i == 0 else ("shelter_arrival" if i == node_count - 1 else "")
+		var role := "boundary" if i == 0 else ("shelter_arrival" if i == node_count - 1 else ("foraging" if optional else ""))
 		if role == "":
 			role = str(walk_entry.get("node_role_hint", "")) if not walk_entry.is_empty() else ""
 			if role == "":
 				role = _role_for_archetype(archetype, i - 1)
-		var optional := is_interior and optional_count > 0 and (i % 3 == 0)
-		if optional:
-			optional_count -= 1
 		var position := [float(i) * 12.0, 0.45, float(((i % 3) - 1) * 3)]
 		if i == 0 and random_walk.has("entry_position"):
 			position = random_walk.get("entry_position", position)
@@ -1271,9 +1406,21 @@ static func _build_nodes(catalog, settings: Dictionary, budget: Dictionary, pale
 		var enemy_cap := clampi(pressure_budget, 2, 3)
 		var enemies := _enemies_for_node(catalog, archetype, available_enemies, enemy_cap, rng) if is_interior else []
 		var structures := _structure_for_node(archetype, role, available_structures)
-		var is_resource := resource_beats > 0 and role in ["foraging", "regroup"]
-		var nested_archetypes := _nested_for_archetype(archetype_id, composition)
-		var label := _node_label(archetype, role, i)
+		if optional and available_structures.has("forage_cache") and not structures.has("forage_cache"):
+			structures.append("forage_cache")
+		var is_chain_carry := chain_mode and archetype_id == "3" and not optional
+		var is_resource := optional or is_chain_carry or (resource_beats > 0 and role in ["foraging", "regroup"])
+		var nested_archetypes := _nested_for_archetype(archetype_id, composition) if not optional else []
+		var label := "Lysate reserve" if optional else _node_label(archetype, role, i)
+		var chain_cycle := int(chain_position / maxi(1, playable_chain.size())) if is_interior and not optional and not playable_chain.is_empty() else -1
+		var raw_chain_input := str(archetype.get("chain_input", ""))
+		var raw_chain_output := str(archetype.get("chain_output", ""))
+		var chain_input_ref := "chain_%02d:%s" % [chain_cycle, raw_chain_input] if raw_chain_input != "" else ""
+		var chain_output_ref := "chain_%02d:%s" % [chain_cycle, raw_chain_output] if raw_chain_output != "" else ""
+		if chain_mode and chain_cycle > 0 and chain_position % playable_chain.size() == 0 and raw_chain_input == "":
+			raw_chain_input = str((playable_chain[playable_chain.size() - 1] as Dictionary).get("chain_output", ""))
+			if raw_chain_input != "":
+				chain_input_ref = "chain_%02d:%s" % [chain_cycle - 1, raw_chain_input]
 		var node := {
 			"id": node_id,
 			"role": role,
@@ -1286,8 +1433,11 @@ static func _build_nodes(catalog, settings: Dictionary, budget: Dictionary, pale
 			"variant": str(archetype.get("variant", "")),
 			"composition_role": str(archetype.get("composition_role", "")),
 			"chain_index": int(archetype.get("chain_index", -1)),
-			"chain_input": str(archetype.get("chain_input", "")),
-			"chain_output": str(archetype.get("chain_output", "")),
+			"chain_cycle": chain_cycle,
+			"chain_input": raw_chain_input,
+			"chain_output": raw_chain_output,
+			"chain_input_ref": chain_input_ref,
+			"chain_output_ref": chain_output_ref,
 			"chain_label": str(archetype.get("chain_label", "")),
 			"link_ref": str(archetype.get("link_ref", "")),
 			"walk_ref": str(archetype.get("walk_ref", walk_entry.get("ref", ""))),
@@ -1303,6 +1453,11 @@ static func _build_nodes(catalog, settings: Dictionary, budget: Dictionary, pale
 			"structures": structures,
 			"resource_beat": is_resource,
 			"resource": is_resource,
+			"resource_kind": "food" if optional else ("carry" if is_chain_carry else ""),
+			"resource_item_type": "lysate" if optional else "generated_tool",
+			"reward_kind": "food" if optional else "",
+			"reward_atp": 2 if optional else 0,
+			"carry_payload": is_chain_carry,
 			"shortcut": role == "shortcut" or structures.has("shortcut_gate"),
 			"pressure": 1 if not enemies.is_empty() else 0,
 			"shadow_solution": archetype.get("shadow_solution", composition.get("shadow_solution", {})),
@@ -1317,8 +1472,23 @@ static func _build_nodes(catalog, settings: Dictionary, budget: Dictionary, pale
 			"correct_read": str(archetype.get("correct_read", "")),
 		}
 		nodes.append(node)
-		if resource_beats > 0 and role in ["foraging", "regroup"]:
+		if resource_beats > 0 and role in ["foraging", "regroup"] and not optional:
 			resource_beats -= 1
+	if chain_mode and not nodes.is_empty():
+		var final_output_ref := ""
+		var final_output := ""
+		for node_index in range(nodes.size() - 2, 0, -1):
+			if not (nodes[node_index] is Dictionary):
+				continue
+			final_output_ref = str((nodes[node_index] as Dictionary).get("chain_output_ref", ""))
+			final_output = str((nodes[node_index] as Dictionary).get("chain_output", ""))
+			if final_output_ref != "":
+				break
+		if final_output_ref != "" and nodes[nodes.size() - 1] is Dictionary:
+			var exit_node: Dictionary = nodes[nodes.size() - 1]
+			exit_node["chain_input"] = final_output
+			exit_node["chain_input_ref"] = final_output_ref
+			nodes[nodes.size() - 1] = exit_node
 	# Archetype-driven roles no longer force a 'shortcut' node, so guarantee the return
 	# ratchet the budget asks for lands on a non-optional beat — the golden run still
 	# exposes shortcut state, and the return_shortcut route has a node to anchor to.
@@ -1399,22 +1569,41 @@ static func _build_routes(nodes: Array, budget: Dictionary, rng) -> Array:
 				"bypasses_optional": str((nodes[i] as Dictionary).get("id", "")),
 			})
 	if int(budget.get("branch_count", 0)) > 0 and nodes.size() >= 4:
-		# A risky SHORTCUT across the middle SECTION — not the whole entry->exit. Bypassing the interior nodes
-		# (their rooms) via a tight risky straight shot is a real choice; the safe spine stays the clear backbone,
-		# so the level reads as "safe main path + a risky stretch", not a blanket of risk end to end.
-		var n := nodes.size()
-		var from_i := clampi(int(n / 4), 1, n - 2)
-		var to_i := clampi(int(3 * n / 4), from_i + 1, n - 2)
-		routes.append({
-			"id": "risky_direct",
-			"from": (nodes[from_i] as Dictionary).get("id", "entry"),
-			"to": (nodes[to_i] as Dictionary).get("id", "exit_shelter"),
-			"kind": "risky",
-			"risk": "risky",
-			"cost": 0,
-			"recoverable": true,
-			"damage": 18.0 + float(rng.call("randi_range", 0, 8)),
-		})
+		# Risk buys access to an optional detour; it never skips mandatory causal
+		# beats. The safe bypass stays on the golden spine, so pressure and reward
+		# describe one truthful topology instead of a solver-breaking shortcut.
+		var risky_optional_index := -1
+		for i in range(1, nodes.size() - 1):
+			if nodes[i] is Dictionary and bool((nodes[i] as Dictionary).get("optional", false)):
+				risky_optional_index = i
+				break
+		if risky_optional_index >= 1:
+			var risky_from := str((nodes[risky_optional_index - 1] as Dictionary).get("id", ""))
+			var risky_to := str((nodes[risky_optional_index] as Dictionary).get("id", ""))
+			for route_index in range(routes.size()):
+				var candidate := routes[route_index] as Dictionary
+				if str(candidate.get("from", "")) != risky_from or str(candidate.get("to", "")) != risky_to:
+					continue
+				candidate["id"] = "risky_optional_%02d_%02d" % [risky_optional_index - 1, risky_optional_index]
+				candidate["kind"] = "risky"
+				candidate["risk"] = "risky"
+				candidate["cost"] = 0
+				candidate["damage"] = 18.0 + float(rng.call("randi_range", 0, 8))
+				candidate["optional_reward_node"] = risky_to
+				var reward_atp := clampi(int(ceil(float(candidate["damage"]) / 10.0)), 2, 4)
+				var reward_node: Dictionary = nodes[risky_optional_index]
+				reward_node["reward_kind"] = "food"
+				reward_node["reward_atp"] = reward_atp
+				reward_node["atp_reward"] = reward_atp
+				reward_node["resource"] = true
+				reward_node["resource_beat"] = true
+				reward_node["resource_kind"] = "food"
+				reward_node["resource_item_type"] = "lysate"
+				reward_node["label"] = "Risk cache · %d ATP lysate" % reward_atp
+				reward_node["title"] = str(reward_node["label"])
+				nodes[risky_optional_index] = reward_node
+				routes[route_index] = candidate
+				break
 	if int(budget.get("shortcut_count", 0)) > 0 and nodes.size() >= 5:
 		routes.append({
 			"id": "return_shortcut",
@@ -1685,10 +1874,12 @@ static func _graybox_node_footprint(role: String, node: Dictionary) -> Vector3:
 
 static func _graybox_approach_offset(role: String, footprint: Vector3) -> Vector3:
 	var z_offset := footprint.z * 0.34
+	# Shelter dressing occupies the positive-Z half of its pad. Approach from the
+	# open face so the camera can see the party and Home never recenters on a shell.
+	if role in ["boundary", "shelter", "shelter_arrival"]:
+		return Vector3(-footprint.x * 0.12, 0.0, -footprint.z * 0.38)
 	if role in ["danger", "route_pressure"]:
 		return Vector3(-footprint.x * 0.22, 0.0, z_offset)
-	if role in ["shelter", "shelter_arrival"]:
-		return Vector3(-footprint.x * 0.18, 0.0, z_offset)
 	return Vector3(0.0, 0.0, z_offset)
 
 static func _build_graybox_content_placements(node: Dictionary, node_position: Vector3, footprint: Vector3, catalog) -> Array:
@@ -1908,6 +2099,7 @@ static func _navigation_floor_key(position: Vector3) -> String:
 static func _build_anchors(nodes: Array) -> Dictionary:
 	var anchors := {}
 	var entry_pos: Array = [0.0, 0.45, 0.0]
+	var entry_approach: Array = []
 	for node in nodes:
 		if node is Dictionary:
 			var id := str((node as Dictionary).get("id", ""))
@@ -1915,14 +2107,16 @@ static func _build_anchors(nodes: Array) -> Dictionary:
 			anchors[id] = pos
 			if id == "entry":
 				entry_pos = pos
-	# The party spawns ON the entry cell (the start of the stretch), fanned by small sub-cell offsets so they read
-	# as three characters without stacking — NOT at world origin off to the side of the level.
-	var ex := float(entry_pos[0])
-	var ey := float(entry_pos[1]) + 0.05
-	var ez := float(entry_pos[2])
+				entry_approach = (node as Dictionary).get("approach_position", [])
+	# Spawn on the entry's open approach face, not at the structural anchor under
+	# the shelter shell. The fan is wide enough to keep all characters readable.
+	var spawn := entry_approach if entry_approach.size() >= 3 else entry_pos
+	var ex := float(spawn[0])
+	var ey := float(spawn[1]) + 0.05
+	var ez := float(spawn[2])
 	anchors["aster"] = [ex, ey, ez]
-	anchors["peris"] = [ex + 0.4, ey, ez + 0.4]
-	anchors["endo"] = [ex - 0.4, ey, ez - 0.4]
+	anchors["peris"] = [ex + 0.9, ey, ez + 0.28]
+	anchors["endo"] = [ex - 0.9, ey, ez + 0.28]
 	return anchors
 
 static func _build_world_slot(settings: Dictionary, anchors: Dictionary) -> Dictionary:
@@ -2368,9 +2562,9 @@ static func _compute_element_coverage(nodes: Array, distribution) -> Dictionary:
 		"shared_elements": shared,
 	}
 
-## Scatter progression-scaled AMBIENT POIs onto interior nodes — denser + more varied at higher stages (mastery).
-## These live on a separate `ambient_flora` list the SOLVER IGNORES (it reads only `flora`/`structures`), so density
-## never perturbs the pressure/multi-solution math; a renderer draws them as flavor. Deterministic (seeded scatter).
+## Scatter cosmetic AMBIENT POIs onto interior nodes. Later stages may use a richer
+## palette, but these live on a separate list the solver and systems curriculum
+## ignore; they are presentation, never the source of reasoning difficulty.
 static func _apply_poi_density(nodes: Array, distribution, stage: int, rng) -> Dictionary:
 	var count: int = distribution.ambient_count(stage)
 	var variety: int = distribution.ambient_variety(stage)

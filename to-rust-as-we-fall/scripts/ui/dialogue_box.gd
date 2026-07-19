@@ -28,10 +28,6 @@ extends CanvasLayer
 
 ## A line longer than this splits into sentence-packed pages you advance through.
 const PAGE_MAX_CHARS := 180
-const READABLE_WIDTH := 720.0
-## Fixed inner height of the scrolling transcript view. The panel stays a
-## constant size; older lines scroll up out of view instead of growing it.
-const SCROLL_HEIGHT := 104.0
 ## Newest-kept cap on retained transcript entries (bounds memory in long scenes).
 const TRANSCRIPT_MAX := 40
 ## Pixels per mouse-wheel notch when reviewing history.
@@ -69,94 +65,18 @@ var _history_cache := ""
 ## the next line.
 var _user_scrolled := false
 
-var _panel: PanelContainer
-var _speaker_label: Label
-var _scroll: ScrollContainer
-var _text_label: RichTextLabel
-var _continue_hint: Label
+@onready var _panel: PanelContainer = $Margin/Center/Panel
+@onready var _speaker_label: Label = $Margin/Center/Panel/VBox/SpeakerLabel
+@onready var _scroll: ScrollContainer = $Margin/Center/Panel/VBox/TranscriptScroll
+@onready var _text_label: RichTextLabel = $Margin/Center/Panel/VBox/TranscriptScroll/TranscriptText
+@onready var _continue_hint: Label = $Margin/Center/Panel/VBox/ContinueHint
 var _hint_tween: Tween
 
 signal dialogue_finished()
 signal line_displayed(text: String)
 
 func _ready() -> void:
-	layer = 15
-	_build_ui()
 	_panel.visible = false
-
-func _build_ui() -> void:
-	# Bottom-centered, constant-size panel capped to a readable column width.
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	margin.offset_top = -(SCROLL_HEIGHT + 96.0)
-	margin.offset_bottom = 0
-	margin.add_theme_constant_override("margin_left", 24)
-	margin.add_theme_constant_override("margin_right", 24)
-	margin.add_theme_constant_override("margin_bottom", 18)
-	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(margin)
-
-	var center := CenterContainer.new()
-	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	margin.add_child(center)
-
-	_panel = PanelContainer.new()
-	_panel.custom_minimum_size.x = READABLE_WIDTH
-	_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.02, 0.02, 0.04, 0.93)
-	panel_style.border_color = Color(0.18, 0.2, 0.28, 0.7)
-	panel_style.set_border_width_all(1)
-	panel_style.border_width_left = 3
-	panel_style.set_corner_radius_all(3)
-	panel_style.content_margin_left = 20
-	panel_style.content_margin_right = 20
-	panel_style.content_margin_top = 14
-	panel_style.content_margin_bottom = 12
-	_panel.add_theme_stylebox_override("panel", panel_style)
-	center.add_child(_panel)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 6)
-	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_panel.add_child(vbox)
-
-	_speaker_label = Label.new()
-	_speaker_label.add_theme_font_size_override("font_size", 12)
-	_speaker_label.add_theme_color_override("font_color", Color(0.45, 0.65, 0.9, 0.95))
-	_speaker_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_child(_speaker_label)
-
-	# Fixed-height viewport: the transcript label grows inside, the box clips +
-	# scrolls. mouse_filter IGNORE so clicks/wheel reach _unhandled_input, where
-	# we drive advance (click) and review (wheel) ourselves.
-	_scroll = ScrollContainer.new()
-	_scroll.custom_minimum_size = Vector2(READABLE_WIDTH - 40.0, SCROLL_HEIGHT)
-	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_scroll.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_child(_scroll)
-
-	_text_label = RichTextLabel.new()
-	_text_label.bbcode_enabled = true
-	_text_label.fit_content = true
-	_text_label.scroll_active = false
-	_text_label.custom_minimum_size.x = READABLE_WIDTH - 40.0
-	_text_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_text_label.add_theme_font_size_override("normal_font_size", 16)
-	_text_label.add_theme_constant_override("line_separation", 5)
-	_text_label.add_theme_color_override("default_color", Color(0.78, 0.78, 0.84))
-	_text_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_scroll.add_child(_text_label)
-
-	_continue_hint = Label.new()
-	_continue_hint.text = ""
-	_continue_hint.add_theme_font_size_override("font_size", 12)
-	_continue_hint.add_theme_color_override("font_color", Color(0.55, 0.6, 0.7, 0.85))
-	_continue_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_continue_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_child(_continue_hint)
-
 	# Gentle pulse so the continue indicator reads as "waiting on you".
 	_hint_tween = create_tween().set_loops()
 	_hint_tween.tween_property(_continue_hint, "modulate:a", 0.35, 0.7).set_trans(Tween.TRANS_SINE)

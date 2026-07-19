@@ -4,11 +4,15 @@ render_mode unshaded, cull_disabled, depth_draw_never, depth_test_disabled;
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
 uniform sampler2D depth_tex : hint_depth_texture, filter_nearest;
 
+// One shared sight roster drives every fullscreen perception pass. The host fills this from its
+// live character registry, so sight is not coupled to Aster, the active portrait, or a three-person
+// launch roster. Positions live in a float data texture because that path is reliable on WebGL;
+// sixty-four sources is far beyond the playable party while remaining a negligible 1D texture.
+const int MAX_VISION_SOURCES = 64;
+uniform int vision_source_count = 0;
+uniform sampler2D vision_sources_tex : filter_nearest, repeat_disable;
+
 uniform bool data_enabled = false;
-uniform vec3 data_character_pos = vec3(0.0);
-uniform int data_vision_count = 1;
-uniform vec3 data_vision_pos_1 = vec3(0.0);
-uniform vec3 data_vision_pos_2 = vec3(0.0);
 uniform float data_clear_radius = 14.0;
 uniform float data_blend_width = 4.5;
 uniform vec3 data_edge_color = vec3(0.29, 0.55, 0.85);
@@ -16,6 +20,14 @@ uniform float data_edge_width = 1.5;
 uniform vec3 data_blackout_pos = vec3(0.0, 0.0, -9999.0);
 uniform float data_blackout_radius = 0.0;
 uniform float data_blackout_blend = 2.0;
+
+float depth_to_ndc(float depth_raw) {
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	return depth_raw * 2.0 - 1.0;
+#else
+	return depth_raw;
+#endif
+}
 
 // Line-of-sight: a fragment hidden behind a wall from every vision source reads as unseen (data-view / fog)
 // even inside the clear radius, so the visibility hugs walls instead of being a flat circle. Screen-space:
@@ -44,34 +56,14 @@ uniform vec2 occ_size = vec2(1.0);
 uniform float los_penumbra = 0.85;   // source tap-ring radius (m) — the fog edge's softness
 
 uniform bool fog_enabled = false;
-uniform vec3 fog_character_pos = vec3(0.0);
-uniform int fog_vision_count = 1;
-uniform vec3 fog_vision_pos_1 = vec3(0.0);
-uniform vec3 fog_vision_pos_2 = vec3(0.0);
 uniform float fog_clear_radius = 14.0;
 uniform float fog_blend_width = 5.0;
 uniform vec3 fog_color = vec3(0.15, 0.1, 0.07);
 uniform float fog_desaturation = 0.8;
 uniform float los_thickness = 2.4;   // max depth gap for a sampled surface to count as CROSSING the ray
 
-float vision_distance(vec3 world_pos, int source_count, vec3 primary_pos, vec3 secondary_pos, vec3 tertiary_pos) {
-	float dist = distance(world_pos, primary_pos);
-	if (source_count > 1) {
-		dist = min(dist, distance(world_pos, secondary_pos));
-	}
-	if (source_count > 2) {
-		dist = min(dist, distance(world_pos, tertiary_pos));
-	}
-	return dist;
-}
-
-// The vision source NEAREST a fragment (the one that decides its clear-radius distance) — we test LOS from it.
-vec3 nearest_source(vec3 world_pos, int count, vec3 p0, vec3 p1, vec3 p2) {
-	vec3 best = p0;
-	float bd = distance(world_pos, p0);
-	if (count > 1) { float d = distance(world_pos, p1); if (d < bd) { bd = d; best = p1; } }
-	if (count > 2) { float d = distance(world_pos, p2); if (d < bd) { bd = d; best = p2; } }
-	return best;
+vec3 vision_source_at(int index) {
+	return texelFetch(vision_sources_tex, ivec2(index, 0), 0).rgb;
 }
 
 // 1.0 = fully clear line of sight; 0.0 = fully blocked. SOFT: accumulates partial occlusion across the march
@@ -102,7 +94,7 @@ float los_visible(vec3 src, vec3 world_pos, sampler2D depth, mat4 view, mat4 pro
 		if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) { continue; }
 
 		float raw = texture(depth, suv).x;
-		vec4 vc = inv_proj * vec4(vec3(suv * 2.0 - 1.0, raw), 1.0);
+		vec4 vc = inv_proj * vec4(vec3(suv * 2.0 - 1.0, depth_to_ndc(raw)), 1.0);
 		vc.xyz /= vc.w;
 		vec3 w = (inv_view * vec4(vc.xyz, 1.0)).xyz;   // world point of the surface under this screen sample
 
@@ -186,23 +178,28 @@ void fragment() {
 	vec3 current = texture(screen_tex, SCREEN_UV).rgb;
 
 	float depth_raw = texture(depth_tex, SCREEN_UV).x;
-	vec3 ndc = vec3(SCREEN_UV * 2.0 - 1.0, depth_raw);
+	vec3 ndc = vec3(SCREEN_UV * 2.0 - 1.0, depth_to_ndc(depth_raw));
 	vec4 view_coords = INV_PROJECTION_MATRIX * vec4(ndc, 1.0);
 	view_coords.xyz /= view_coords.w;
 	vec3 world_pos = (INV_VIEW_MATRIX * vec4(view_coords.xyz, 1.0)).xyz;
 
 	if (data_enabled) {
-		float data_dist = vision_distance(world_pos, data_vision_count, data_character_pos, data_vision_pos_1, data_vision_pos_2);
-		float data_blend = smoothstep(data_clear_radius, data_clear_radius + data_blend_width, data_dist);
-
-		// LOS: even within the clear radius, a fragment hidden behind a wall from its nearest source reads as
-		// unseen (data-view), so the clear zone hugs walls instead of being a flat circle.
-		if (los_enabled && data_blend < 0.999) {
-			vec3 src = nearest_source(world_pos, data_vision_count, data_character_pos, data_vision_pos_1, data_vision_pos_2);
-			float vis = occ_baked_enabled
-				? los_baked(src, world_pos)
-				: los_visible(src, world_pos, depth_tex, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, INV_VIEW_MATRIX[3].xyz);
-			data_blend = max(data_blend, 1.0 - vis);
+		float data_blend = 1.0;
+		for (int i = 0; i < MAX_VISION_SOURCES; i++) {
+			if (i >= vision_source_count) { break; }
+			vec3 src = vision_source_at(i);
+			float source_blend = smoothstep(data_clear_radius, data_clear_radius + data_blend_width, distance(world_pos, src));
+			// A farther source cannot improve an already-clearer distance result. If the nearer
+			// source is occluded, however, another character still gets a chance to see the point.
+			if (source_blend >= data_blend) { continue; }
+			if (los_enabled && source_blend < 0.999) {
+				float vis = occ_baked_enabled
+					? los_baked(src, world_pos)
+					: los_visible(src, world_pos, depth_tex, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, INV_VIEW_MATRIX[3].xyz);
+				source_blend = max(source_blend, 1.0 - vis);
+			}
+			data_blend = min(data_blend, source_blend);
+			if (data_blend <= 0.001) { break; }
 		}
 
 		if (data_blend > 0.005) {
@@ -247,16 +244,20 @@ void fragment() {
 	}
 
 	if (fog_enabled) {
-		float fog_dist = vision_distance(world_pos, fog_vision_count, fog_character_pos, fog_vision_pos_1, fog_vision_pos_2);
-		float fog_blend = smoothstep(fog_clear_radius, fog_clear_radius + fog_blend_width, fog_dist);
-
-		// LOS: fog rolls in behind walls too (a fragment with no line of sight from its nearest source).
-		if (los_enabled && fog_blend < 0.999) {
-			vec3 src = nearest_source(world_pos, fog_vision_count, fog_character_pos, fog_vision_pos_1, fog_vision_pos_2);
-			float vis = occ_baked_enabled
-				? los_baked(src, world_pos)
-				: los_visible(src, world_pos, depth_tex, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, INV_VIEW_MATRIX[3].xyz);
-			fog_blend = max(fog_blend, 1.0 - vis);
+		float fog_blend = 1.0;
+		for (int i = 0; i < MAX_VISION_SOURCES; i++) {
+			if (i >= vision_source_count) { break; }
+			vec3 src = vision_source_at(i);
+			float source_blend = smoothstep(fog_clear_radius, fog_clear_radius + fog_blend_width, distance(world_pos, src));
+			if (source_blend >= fog_blend) { continue; }
+			if (los_enabled && source_blend < 0.999) {
+				float vis = occ_baked_enabled
+					? los_baked(src, world_pos)
+					: los_visible(src, world_pos, depth_tex, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, INV_VIEW_MATRIX[3].xyz);
+				source_blend = max(source_blend, 1.0 - vis);
+			}
+			fog_blend = min(fog_blend, source_blend);
+			if (fog_blend <= 0.001) { break; }
 		}
 
 		if (fog_blend > 0.005) {

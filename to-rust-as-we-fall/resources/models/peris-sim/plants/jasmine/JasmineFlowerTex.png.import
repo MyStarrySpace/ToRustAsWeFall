@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://du46ebswfn55d"
 path.s3tc="res://.godot/imported/JasmineFlowerTex.png-760fd2bcb7a25f13f51982d26c777891.s3tc.ctex"
+path.etc2="res://.godot/imported/JasmineFlowerTex.png-760fd2bcb7a25f13f51982d26c777891.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://resources/models/peris-sim/plants/jasmine/JasmineFlowerTex.png"
-dest_files=["res://.godot/imported/JasmineFlowerTex.png-760fd2bcb7a25f13f51982d26c777891.s3tc.ctex"]
+dest_files=["res://.godot/imported/JasmineFlowerTex.png-760fd2bcb7a25f13f51982d26c777891.s3tc.ctex", "res://.godot/imported/JasmineFlowerTex.png-760fd2bcb7a25f13f51982d26c777891.etc2.ctex"]
 
 [params]
 

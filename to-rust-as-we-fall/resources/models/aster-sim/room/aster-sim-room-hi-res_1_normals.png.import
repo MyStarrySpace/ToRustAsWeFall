@@ -2,17 +2,18 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dt570yoqy45by"
+uid="uid://8x1p3omf65t3"
 path.s3tc="res://.godot/imported/aster-sim-room-hi-res_1_normals.png-aff60a1140b4ceb6c47bb2d648d9a47a.s3tc.ctex"
+path.etc2="res://.godot/imported/aster-sim-room-hi-res_1_normals.png-aff60a1140b4ceb6c47bb2d648d9a47a.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://resources/models/aster-sim/room/aster-sim-room-hi-res_1_normals.png"
-dest_files=["res://.godot/imported/aster-sim-room-hi-res_1_normals.png-aff60a1140b4ceb6c47bb2d648d9a47a.s3tc.ctex"]
+dest_files=["res://.godot/imported/aster-sim-room-hi-res_1_normals.png-aff60a1140b4ceb6c47bb2d648d9a47a.s3tc.ctex", "res://.godot/imported/aster-sim-room-hi-res_1_normals.png-aff60a1140b4ceb6c47bb2d648d9a47a.etc2.ctex"]
 
 [params]
 
@@ -26,8 +27,8 @@ compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
-roughness/mode=0
-roughness/src_normal=""
+roughness/mode=1
+roughness/src_normal="res://resources/models/aster-sim/room/aster-sim-room-hi-res_1_normals.png"
 process/channel_remap/red=0
 process/channel_remap/green=1
 process/channel_remap/blue=2

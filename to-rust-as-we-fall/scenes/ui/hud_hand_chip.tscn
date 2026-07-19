@@ -1,0 +1,7 @@
+[gd_scene format=3]
+
+[node name="HandChip" type="PanelContainer"]
+
+[node name="Label" type="Label" parent="."]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12

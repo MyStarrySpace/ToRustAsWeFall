@@ -1,8 +1,9 @@
 extends SceneTree
 
 ## Generates a curated batch of sample stretches across tiers and composition
-## strategies, validates each through the solution solver (must be multi-solution,
-## shadow-solvable, with no shadow-broken errors), and only then writes it to
+## strategies, validates each through the systems contract and solution solver
+## (causal teach/test, typed composition, multi-solution, shadow-solvable, with no
+## shadow-broken errors), and only then writes it to
 ## data/generated_stretches/. A spec that fails validation is reported and skipped —
 ## the batch never ships an unsolvable or single-solution puzzle stretch.
 ##
@@ -61,8 +62,8 @@ func _batch() -> Array:
 				"chain": [
 					{"id": "1", "output": "cleared_lane"},
 					{"id": "3", "input": "cleared_lane", "output": "carried_component"},
-					{"id": "4"},
-					{"id": "6", "input": "carried_component"},
+					{"id": "4", "input": "carried_component", "output": "patrol_diverted"},
+					{"id": "6", "input": "patrol_diverted", "output": "route_reconstructed"},
 				],
 				"nested": [{"id": "2", "host_id": "3", "host_step": 2}],
 			},
@@ -141,6 +142,10 @@ func _init() -> void:
 ## Returns a list of human-readable reasons a generated spec is not ship-worthy.
 func _validation_problems(spec: Dictionary, analysis: Dictionary) -> Array:
 	var problems := []
+	var systems: Dictionary = StretchGeneratorScript.validate_systems_contract(spec)
+	if not bool(systems.get("valid", false)):
+		for error in systems.get("errors", []):
+			problems.append("systems: %s" % str(error))
 	if int(analysis.get("choice_node_count", 0)) < 1:
 		problems.append("no multi-solution puzzle nodes")
 	if not bool(analysis.get("multi_solution", false)):

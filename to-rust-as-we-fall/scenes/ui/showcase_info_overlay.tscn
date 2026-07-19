@@ -1,0 +1,13 @@
+[gd_scene format=3]
+
+[node name="ShowcaseInfoOverlay" type="CanvasLayer"]
+layer = 11
+
+[node name="InfoLabel" type="Label" parent="."]
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 1180.0
+offset_bottom = 52.0
+theme_override_colors/font_color = Color(0.56, 0.58, 0.62, 1)
+theme_override_font_sizes/font_size = 11
+text = "SHOWCASE: west spawn / northwest enemy / southwest chain / center iron and physics / east flure / far east hide encounter\nCTRL: click move  1-3 select  Tab cycle  Z run  P perception  Space pause  R reload  F fast-forward"

@@ -1,5 +1,6 @@
 extends "res://scripts/scene_chunks/scene_chunk.gd"
 
+const LevelDecoratorScript := preload("res://scripts/generation/level_decorator.gd")
 const STACKS_STORY_KEY := "stacks_support_team_log"
 const FLOOR_CENTER := Vector3(32.0, -0.05, 0.0)
 const FLOOR_SIZE := Vector3(68.0, 0.1, 24.0)
@@ -22,7 +23,9 @@ var _support_log_seen := false
 var _terminal_seen := false
 var _signal_seen := false
 var _archive_seen := false
+var _completed := false
 var _last_station := ""
+var _decoration_audit: Dictionary = {}
 
 func _build_chunk() -> void:
 	_add_floor(self, FLOOR_CENTER, FLOOR_SIZE, Color(0.05, 0.055, 0.065))
@@ -40,6 +43,16 @@ func _build_chunk() -> void:
 	_build_terminal_station()
 	_build_signal_station()
 	_build_archive_station()
+
+	# The campaign Stacks profile uses world-space Act 1 coordinates. The standalone browser
+	# fragment owns the same authored grammar, remapped exactly onto this local measured shell.
+	_decoration_audit = LevelDecoratorScript.decorate_profile(self, "stacks", {
+		"x0": FLOOR_CENTER.x - FLOOR_SIZE.x * 0.5,
+		"x1": FLOOR_CENTER.x + FLOOR_SIZE.x * 0.5,
+		"width": FLOOR_SIZE.z,
+		"wall_height": 4.0,
+		"ground_y": 0.0,
+	})
 
 func get_scene_title() -> String:
 	return "Stacks Fragment Lab"
@@ -80,14 +93,19 @@ func get_preview_state() -> Dictionary:
 		"terminal_seen": _terminal_seen,
 		"signal_seen": _signal_seen,
 		"archive_seen": _archive_seen,
+		"complete": _completed,
 		"last_station": _last_station,
 	}
+
+func get_decoration_audit() -> Dictionary:
+	return _decoration_audit.duplicate(true)
 
 func reset_preview_state() -> void:
 	_support_log_seen = false
 	_terminal_seen = false
 	_signal_seen = false
 	_archive_seen = false
+	_completed = false
 	_last_station = ""
 	for interactable in [_support_log_interactable, _terminal_interactable, _signal_interactable, _archive_interactable]:
 		if interactable != null and interactable.has_method("reset"):
@@ -230,23 +248,28 @@ func _on_support_log_interacted() -> void:
 	context["position"] = SUPPORT_LOG_POS
 	context["caption"] = "Support team maintenance log"
 
-	var entry := EngramJournal.ensure_story_log_entry(
-		STACKS_STORY_KEY,
-		DialogueData.text("stacks.engram.support_log.title"),
-		DialogueData.text("stacks.engram.support_log.body"),
-		context,
-		{
-			"caption": "Support team maintenance log",
-			"trigger_context": "support_team_log",
-			"attached_data": {
-				"channel": "#ependyma-core",
-			},
-		}
-	)
+	var entry: Dictionary = {}
+	var journal := get_node_or_null("/root/EngramJournal")
+	if journal != null and journal.has_method("ensure_story_log_entry"):
+		entry = journal.call(
+			"ensure_story_log_entry",
+			STACKS_STORY_KEY,
+			DialogueData.text("stacks.engram.support_log.title"),
+			DialogueData.text("stacks.engram.support_log.body"),
+			context,
+			{
+				"caption": "Support team maintenance log",
+				"trigger_context": "support_team_log",
+				"attached_data": {
+					"channel": "#ependyma-core",
+				},
+			}
+		)
 	var overlay := _engram_overlay()
 	if overlay != null and not entry.is_empty():
 		overlay.open_overlay_for_entry(int(entry.get("id", -1)))
 	_show_note("The support thread opens in Aster's Engram. J or Esc closes it.", 4.2)
+	_check_completion()
 
 func _on_terminal_interacted() -> void:
 	_terminal_seen = true
@@ -257,6 +280,7 @@ func _on_terminal_interacted() -> void:
 	_say_key("stacks.aster.cleaner_than_place")
 	_say_key("stacks.aster.expectation")
 	_show_note("The official feed is polished, but the room around it is not.", 3.4)
+	_check_completion()
 
 func _on_signal_interacted() -> void:
 	_signal_seen = true
@@ -267,6 +291,7 @@ func _on_signal_interacted() -> void:
 	_say_key("stacks.aster.nonstandard")
 	_say_key("stacks.aster.metrics")
 	_show_note("This lane is tuned by hand. The room starts reading like somebody cared about the right signals.", 4.0)
+	_check_completion()
 
 func _on_archive_interacted() -> void:
 	_archive_seen = true
@@ -277,3 +302,11 @@ func _on_archive_interacted() -> void:
 	_say_key("stacks.aster.ghost_ids")
 	_say_key("stacks.peris.fake_permissions")
 	_show_note("The archive turns admiration into suspicion: somebody hid good data on purpose.", 4.0)
+	_check_completion()
+
+func _check_completion() -> void:
+	if _completed or not (_support_log_seen and _terminal_seen and _signal_seen and _archive_seen):
+		return
+	_completed = true
+	_set_preview_step("stacks_fragment_complete")
+	_show_note("Stacks fragment complete — all four records are reconciled.", 4.0)

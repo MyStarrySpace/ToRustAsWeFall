@@ -9,7 +9,7 @@ func _init() -> void:
 	var frag := Fragment.new()
 	frag.id = "wash_relay"
 	frag.title = "Wash Relay"
-	frag.help = "A long gauntlet of timed water hazards, each on its own beat. Override the flush/jet/basin, hold the plate (and the DOUBLE plate — two members stay) for the bridges, time the fast current and the sluice. Guards prowl the back half: hide in an alcove to slip a roamer, fire the flure to draw the sentry off its chokepoint, and watch the guarded basin. A guard's hit, or standing in a flooding section, shoves you back to the start shelter — telephone up or drop the sloperope to recover."
+	frag.help = "Read the shared surge, but expect the coil to break. At the first break, take the violet portal into the pressure room, vent the jet manifold, then leave through cyan. At the sluice, choose the fast exposed crossing or the slow concealed outer pipe; both rejoin at the collector. Held overrides and plates still need party coordination. Later, hide, lure guards into the wash, and explore only the salvage lobes that look worth the risk. Water or a guard hit sends a crew member to start; the terminal and sloperope recover them."
 	frag.default_character = "endo"
 	frag.party_ids = PackedStringArray(["aster", "peris", "endo"])
 	frag.spawns = {
@@ -24,7 +24,7 @@ func _init() -> void:
 	frag.objects = []
 	frag.grid = {}   # derived in get_grid_data() from the sections + drain consts — stays a method
 	frag.time_state = {"day": 2, "time": 0.5, "routing_mode": "safe",
-		"note_default": "Read the flood beat. Override the flush/jet, hold the plate for the bridge, time the current and the sluice."}
+		"note_default": "Read the flood beat. Cross the broken coil through pressure transit; choose fast sluice or slow outer pipe."}
 
 	# The authored LAYOUT + level tunables (what a level designer edits). The mechanic-tuning consts
 	# (branch/drain/splash/ability/colors) stay in the subclass as the "thin logic" half of the hybrid.

@@ -41,6 +41,11 @@ var _outline_active := false
 var _glow_active := false      # the QUEUED energy glow (set on begin_queued_feedback); has_active_glow() reports it
 var _active_outline_color := Color.WHITE
 var _mask_manager: OutlineMaskManager = null
+var _highlight_requested := false
+var _external_highlight_reasons := {}
+var _interaction_pulse: MeshInstance3D = null
+var _interaction_pulse_material: StandardMaterial3D = null
+var _interaction_pulse_tween: Tween = null
 
 signal outline_hovered(interactable: Node)
 signal outline_unhovered(interactable: Node)
@@ -165,6 +170,22 @@ func set_hover_feedback(active: bool) -> void:
 ## read identically. The energy GLOW is reserved for a QUEUED interaction (click-committed, en
 ## route) — it never shows on mere hover. While a queue is active the stronger feedback stays.
 func set_highlight(active: bool) -> void:
+	_highlight_requested = active
+	_refresh_highlight_request()
+
+
+## Independent systems (causal links, accessibility reads, tutorials) can request the
+## same outline without clearing hover/SHIFT or each other. `reason` is stable per owner.
+func set_external_highlight(reason: String, active: bool) -> void:
+	if active:
+		_external_highlight_reasons[reason] = true
+	else:
+		_external_highlight_reasons.erase(reason)
+	_refresh_highlight_request()
+
+
+func _refresh_highlight_request() -> void:
+	var active := _highlight_requested or not _external_highlight_reasons.is_empty()
 	if GridWorld._fx_debug:
 		GridWorld._pf_trace("[outline] target '%s'.set_highlight(%s) selected=%s highlight_meshes=%d enabled=%s" % [
 			name, active, _selected, _highlight_meshes.size(), object_outline_enabled])
@@ -220,6 +241,7 @@ func begin_queued_feedback(_origin: Vector3 = Vector3.ZERO, queue_color: Color =
 	_selection_token += 1
 	var tint := queue_color if queue_color.a > 0.0 else selected_feedback_color
 	_apply_object_outline(tint, true)
+	_play_interaction_pulse(tint, "queued")
 
 func complete_queued_feedback() -> void:
 	_clear_queued_feedback()
@@ -235,11 +257,87 @@ func _clear_queued_feedback() -> void:
 	_selection_token += 1
 	if _debug_anchor != null:
 		_debug_anchor.visible = false
-	# Fall back to the hover OUTLINE if still hovered; the glow always ends with the queue.
-	if _hovered:
-		_apply_object_outline(hover_outline_color, false)
-	else:
-		_clear_object_outline()
+	# The glow always ends with the queue, but hover, reveal-all, and independent causal/tutorial
+	# requests may still own the crisp outline.
+	_refresh_highlight_request()
+
+
+## Actual trigger result, distinct from arrival/queue completion. Interactable forwards its
+## authoritative `interacted` / `interaction_rejected` signals here so a timed action does not
+## celebrate merely because the character reached it.
+func play_interaction_result(succeeded: bool) -> void:
+	_play_interaction_pulse(
+		Color(0.3, 1.0, 0.55, 1.0) if succeeded else Color(1.0, 0.16, 0.12, 1.0),
+		"success" if succeeded else "rejected"
+	)
+
+
+func _play_interaction_pulse(tint: Color, kind: String) -> void:
+	if DisplayServer.get_name() == "headless" or not is_inside_tree():
+		return
+	_ensure_interaction_pulse()
+	if _interaction_pulse == null or _interaction_pulse_material == null:
+		return
+	if _interaction_pulse_tween != null and _interaction_pulse_tween.is_valid():
+		_interaction_pulse_tween.kill()
+	var radius := clampf(get_outline_highlight_radius(), 0.55, 3.0)
+	var extents := get_outline_highlight_extents()
+	var floor_y := _get_feedback_origin().y - maxf(0.0, extents.y) + 0.045
+	_interaction_pulse.global_position = Vector3(_get_feedback_origin().x, floor_y, _get_feedback_origin().z)
+	var start_scale := 1.32
+	var end_scale := 0.92
+	var duration := 0.32
+	if kind == "success":
+		start_scale = 0.72
+		end_scale = 1.72
+		duration = 0.46
+	elif kind == "rejected":
+		start_scale = 1.45
+		end_scale = 0.78
+		duration = 0.42
+	_interaction_pulse.scale = Vector3.ONE * radius * start_scale
+	_interaction_pulse.visible = true
+	_interaction_pulse_material.albedo_color = Color(tint.r, tint.g, tint.b, 0.96)
+	_interaction_pulse_material.emission = tint
+	_interaction_pulse_material.emission_energy_multiplier = 5.0 if kind != "queued" else 3.8
+	_interaction_pulse_tween = create_tween()
+	_interaction_pulse_tween.set_trans(Tween.TRANS_QUAD)
+	_interaction_pulse_tween.set_ease(Tween.EASE_OUT)
+	_interaction_pulse_tween.tween_property(
+		_interaction_pulse, "scale", Vector3.ONE * radius * end_scale, duration)
+	_interaction_pulse_tween.parallel().tween_property(
+		_interaction_pulse_material, "albedo_color:a", 0.0, duration)
+	_interaction_pulse_tween.parallel().tween_property(
+		_interaction_pulse_material, "emission_energy_multiplier", 0.6, duration)
+	_interaction_pulse_tween.tween_callback(func() -> void:
+		if _interaction_pulse != null:
+			_interaction_pulse.visible = false)
+
+
+func _ensure_interaction_pulse() -> void:
+	if _interaction_pulse != null and is_instance_valid(_interaction_pulse):
+		return
+	_interaction_pulse_material = StandardMaterial3D.new()
+	_interaction_pulse_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_interaction_pulse_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_interaction_pulse_material.emission_enabled = true
+	_interaction_pulse_material.no_depth_test = false
+	_interaction_pulse_material.render_priority = 4
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.82
+	torus.outer_radius = 1.0
+	torus.rings = 28
+	torus.ring_segments = 10
+	_interaction_pulse = MeshInstance3D.new()
+	_interaction_pulse.name = "InteractionPulse"
+	_interaction_pulse.mesh = torus
+	_interaction_pulse.material_override = _interaction_pulse_material
+	_interaction_pulse.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_interaction_pulse.layers = 2
+	_interaction_pulse.set_meta("camera_occlusion_exempt", true)
+	_interaction_pulse.visible = false
+	add_child(_interaction_pulse)
+	_interaction_pulse.top_level = true
 
 ## active=hover outline (glow_on=false) OR the queued energy glow (glow_on=true). The crisp outline + the morphing
 ## energy halo are both the screen-space mask now (OutlineMaskManager); glow_on flips the mask's fill-alpha flag.

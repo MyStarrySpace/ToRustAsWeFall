@@ -1,15 +1,45 @@
-# Blender 5.1.1 MTL File: 'stylized_plant_jasmine_v4.blend'
+# Blender 5.1.1 MTL File: 'stylized_plant_jasmine_v14.blend'
 # www.blender.org
 
-newmtl BranchMat
-Ns 22.499992
+newmtl FlowerCenterMat
+Ns 159.999985
 Ka 1.000000 1.000000 1.000000
-Ks 0.200000 0.200000 0.200000
+Kd 0.950000 0.780000 0.200000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+
+newmtl FlowerMat
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Kd 1.000000 1.000000 0.950000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+
+newmtl JasLeafMat
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
 Ke 0.000000 0.000000 0.000000
 Ni 1.500000
 illum 2
-map_Kd C:/Users/quest/Programming/Games/ToRustAsWeFall/blender/peris-sim/textures/jasmine/JasmineBranchTex.png
-map_d C:/Users/quest/Programming/Games/ToRustAsWeFall/blender/peris-sim/textures/jasmine/JasmineBranchTex.png
+map_Kd C:/tex_audit_jas_JasmineLeafTex.png
+map_d C:/tex_audit_jas_JasmineLeafTex.png
+
+newmtl JasStemMat
+Ns 62.500000
+Ka 1.000000 1.000000 1.000000
+Kd 0.300000 0.420000 0.160000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
 
 newmtl PotMat
 Ns 22.499992
@@ -19,7 +49,7 @@ Ke 0.000000 0.000000 0.000000
 Ni 1.500000
 d 1.000000
 illum 2
-map_Kd C:/Users/quest/Programming/Games/ToRustAsWeFall/blender/peris-sim/textures/jasmine/PotTex.png
+map_Kd C:/Users/quest/Programming/Games/ToRustAsWeFall/blender/peris-sim/tex_audit_jas_PotTex.png
 
 newmtl SaucerMat
 Ns 22.499992
@@ -29,7 +59,7 @@ Ke 0.000000 0.000000 0.000000
 Ni 1.500000
 d 1.000000
 illum 2
-map_Kd C:/Users/quest/Programming/Games/ToRustAsWeFall/blender/peris-sim/textures/jasmine/SaucerTex.png
+map_Kd C:/Users/quest/Programming/Games/ToRustAsWeFall/blender/peris-sim/tex_audit_jas_SaucerTex.png
 
 newmtl SoilMat
 Ns 22.499992
@@ -39,4 +69,4 @@ Ke 0.000000 0.000000 0.000000
 Ni 1.500000
 d 1.000000
 illum 2
-map_Kd C:/Users/quest/Programming/Games/ToRustAsWeFall/blender/peris-sim/textures/jasmine/SoilTex.png
+map_Kd C:/Users/quest/Programming/Games/ToRustAsWeFall/blender/peris-sim/tex_audit_jas_SoilTex.png

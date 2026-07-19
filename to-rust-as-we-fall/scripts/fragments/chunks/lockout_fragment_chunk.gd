@@ -1,6 +1,7 @@
 extends "res://scripts/scene_chunks/scene_chunk.gd"
 # @rendering_only_file: visual setup and pulse animation only.
 
+const LevelDecoratorScript := preload("res://scripts/generation/level_decorator.gd")
 const FLOOR_CENTER := Vector3(28.0, -0.05, 0.0)
 const FLOOR_SIZE := Vector3(60.0, 0.1, 18.0)
 const ACCESS_PANEL_POS := Vector3(49.0, 0.8, 0.0)
@@ -25,6 +26,7 @@ var _access_denied := false
 var _chase_active := false
 var _last_outcome := ""
 var _chase_time := 0.0
+var _decoration_audit: Dictionary = {}
 
 func _build_chunk() -> void:
 	_add_floor(self, FLOOR_CENTER, FLOOR_SIZE, Color(0.1, 0.1, 0.12))
@@ -54,6 +56,16 @@ func _build_chunk() -> void:
 	_build_safe_alcove()
 	_build_boundary_panel()
 	_build_pursuit_markers()
+
+	# The preview is deliberately shorter than the campaign corridor, so resolve the canonical boundary
+	# profile against its actual measured floor. The pass creates no bodies, areas, or navigation data.
+	_decoration_audit = LevelDecoratorScript.decorate_profile(self, "lockout", {
+		"x0": FLOOR_CENTER.x - FLOOR_SIZE.x * 0.5,
+		"x1": FLOOR_CENTER.x + FLOOR_SIZE.x * 0.5,
+		"width": FLOOR_SIZE.z,
+		"wall_height": 4.8,
+		"ground_y": 0.0,
+	})
 
 func _process(delta: float) -> void:
 	_update_chase(delta)
@@ -100,6 +112,9 @@ func get_preview_state() -> Dictionary:
 		"last_outcome": _last_outcome,
 		"chase_time": _chase_time,
 	}
+
+func get_decoration_audit() -> Dictionary:
+	return _decoration_audit.duplicate(true)
 
 func reset_preview_state() -> void:
 	_access_denied = false

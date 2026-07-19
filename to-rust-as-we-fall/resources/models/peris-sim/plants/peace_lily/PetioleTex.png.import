@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://dlo7ewcc1vfwr"
 path.s3tc="res://.godot/imported/PetioleTex.png-db11be71ee61fa4d2cd8f815dc5a939e.s3tc.ctex"
+path.etc2="res://.godot/imported/PetioleTex.png-db11be71ee61fa4d2cd8f815dc5a939e.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://resources/models/peris-sim/plants/peace_lily/PetioleTex.png"
-dest_files=["res://.godot/imported/PetioleTex.png-db11be71ee61fa4d2cd8f815dc5a939e.s3tc.ctex"]
+dest_files=["res://.godot/imported/PetioleTex.png-db11be71ee61fa4d2cd8f815dc5a939e.s3tc.ctex", "res://.godot/imported/PetioleTex.png-db11be71ee61fa4d2cd8f815dc5a939e.etc2.ctex"]
 
 [params]
 

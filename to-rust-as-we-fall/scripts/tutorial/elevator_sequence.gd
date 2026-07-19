@@ -4,6 +4,8 @@ extends "res://scripts/tutorial/tutorial_sequence.gd"
 
 ## Elevator tutorial through bridge collapse, route choice, and Endo's shelter.
 
+const LevelDecoratorScript := preload("res://scripts/generation/level_decorator.gd")
+
 var _aster_node: CharacterBody3D
 var _peris_node: CharacterBody3D
 var _fall_landed_fired := false  # one-shot guard: bridge landing fires once
@@ -31,6 +33,42 @@ var _aster_wake_interactable  # Interactable for waking knocked-out Aster
 var _climb_interactable  # Interactable for checking the collapsed bridge
 var _no_exit_label: Label3D
 
+# Perception overlays are independent of the active portrait. Aster's data register is established when the
+# elevator systems wake; Peris's memory register starts off so the post-fall fork can teach why turning it on
+# matters. The route reads below are information states, not character-locked pedestal interactions.
+var _elevator_overlay_states := {"aster": false, "peris": false}
+var _elevator_overlays_available := false
+var _elevator_overlay_ui: CanvasLayer
+var _elevator_overlay_buttons: Dictionary = {}
+var _elevator_overlay_status: Label
+var _aster_route_overlay_root: Node3D
+var _peris_route_overlay_root: Node3D
+var _peris_route_overlay_endpoint: Node3D
+var _route_reads_resolved := {"aster": false, "peris": false}
+var _route_lane := ""
+var _route_beats_crossed: Array[bool] = [false, false, false]
+var _route_flure_interactables: Array = []
+var _route_flure_meshes: Array[MeshInstance3D] = []
+var _route_flure_enemy_groups: Dictionary = {}
+var _route_flures_activated: Array[bool] = [false, false, false]
+
+# Endo-junction exploration. The plant is the transition out of exploration,
+# so it stays locked until the party has made three distinct reads with both
+# perspectives and chosen one useful preparation.
+var _junction_interactables: Dictionary = {}
+var _junction_inspections: Dictionary = {}
+var _junction_inspected_by := {"aster": false, "peris": false}
+var _junction_prep_interactables: Dictionary = {}
+var _junction_preparation := ""
+var _junction_plant_interactable: Node
+var _gauntlet_safe_window_bonus := 0.0
+var _junction_field_interactables: Dictionary = {}
+var _junction_field_evidence: Dictionary = {}
+var _junction_field_choices: Dictionary = {}
+var _junction_field_protocols_completed: Dictionary = {}
+var _junction_field_protocol := ""
+var _junction_field_findings: Array[String] = []
+
 var _hud  # GameHUD
 
 # EMP state
@@ -38,13 +76,26 @@ var _emp_count := 0
 var _emp_queued := false
 var _emp_pause_locked := false
 var _emp_cooldown_end := 0.0  # scheduler tick when cooldown expires
+var _emp_guard_approach_active := false
+var _emp_guard_arrivals := {}
 var _unit_1_stunned := false
 var _unit_2_stunned := false
 var _reboot_active := false
 var _stamina := 100.0
+var _emp_animation_player: AnimationPlayer
+var _emp_pulse_visual: MeshInstance3D
+var _emp_faceplates: Array = []
+var _emp_faceplate_lights: Array = []
+var _elevator_fill_light: OmniLight3D
+var _elevator_indicator_glow: OmniLight3D
+var _elevator_standby_lights: Array = []
+var _elevator_powered := true
 
 var _enemies: Array[Enemy] = []
 var _enemy_count := 0
+var _below_dormant_enemy_setups: Array[Dictionary] = []
+var _below_fauna_active := false
+var _bridge_tile_materials: Dictionary = {}
 
 # Party HP lives ONLY in GameState (the single source of truth): adjust_stat/get_stat. The HUD,
 # downed state, and game-over all react to GameState's stat_changed via _on_party_stat_changed, so
@@ -55,12 +106,31 @@ var _game_over := false
 # Iron hazard zones: Array of {pos: Vector3, size: Vector3}.
 var _iron_patches: Array[Dictionary] = []
 const IRON_DAMAGE_PER_SEC := 8.0
+const IRON_DAMAGE_INTERVAL := 0.5
+const IRON_DAMAGE_PER_TICK := IRON_DAMAGE_PER_SEC * IRON_DAMAGE_INTERVAL
+const IRON_ROUTE_RISK_PENALTY := 80.0
+const IRON_HAZARD_TAG := "elevator_iron_hazard"
+var _iron_hazard_tick_armed := false
+var _iron_route_risk_learned := false
+var _damage_feedback_labels: Dictionary = {}
+var _damage_feedback_tweens: Dictionary = {}
 
 # Flure
 var _flure_active := false
 var _flure_mesh: MeshInstance3D
 var _flure_interactable: Node
 var _gauntlet_enemies: Array[Enemy] = []
+var _gauntlet_enemy_groups := {0: [], 1: []}
+var _gauntlet_flure_meshes: Array[MeshInstance3D] = []
+var _gauntlet_flure_interactables: Array = []
+var _gauntlet_flure_active := {0: false, 1: false}
+var _gauntlet_active_stage := -1
+var _gauntlet_stage := 0
+var _gauntlet_midpoint_reached := false
+var _gauntlet_strategy := ""
+var _gauntlet_resetting := false
+var _gauntlet_reset_count := 0
+var _gauntlet_checkpoint_hp: Dictionary = {}
 
 # Chunk system
 @export var start_chunk := ""
@@ -79,6 +149,8 @@ const ESCORT_1_POS := Vector3(-2.5, 0, -2.5)
 const ESCORT_2_POS := Vector3(-2.5, 0, 2.5)
 const PANEL_POS := Vector3(3.5, 0, 0)
 const EMP_GUARD_STANDOFF_DISTANCE := 2.6
+const EMP_INPUT_ACTION := &"party_slot_1_ability_1"
+const EMP_VISUAL_DURATION := 1.5
 
 # Below-level ecology
 const BELOW_Y := -4.0
@@ -86,6 +158,10 @@ const BRIDGE_START_X := 11.5  # ELEVATOR_SIZE.x/2 + 0.5 + 7.0
 const BRIDGE_LENGTH := 24.0   # a real crossing (2x the old 12) so dialogue paces across the walk, not up front
 const BRIDGE_END_X := BRIDGE_START_X + BRIDGE_LENGTH
 const BRIDGE_COLLAPSE_X := BRIDGE_START_X + BRIDGE_LENGTH * 0.66  # the span gives way ~2/3 across, not after 4 steps
+const BRIDGE_PIECES_PER_STREAM_STEP := 4
+const BRIDGE_RAIL_Z := 1.4
+const BRIDGE_END_LANDING_LENGTH := 4.0
+const BRIDGE_BLOCKADE_X := BRIDGE_END_X + BRIDGE_END_LANDING_LENGTH
 
 # The modeled elevator car SHELL (Blender, pixel-grid; floor grate is Geometry-Nodes): paneled walls,
 # door opening + frame, ceiling light coffer, corner posts, control housing. Static; the sliding doors,
@@ -99,25 +175,102 @@ const DEBRIS_PIECE_LAYER := 1 << 10
 const DEBRIS_FLOOR_LAYER := 1 << 11
 var _collapse_visual_active := false  # true while wall-clock debris physics is still settling
 
-# Route fork
-const FORK_POS := Vector3(BRIDGE_START_X + 4.0, BELOW_Y, 0)
-const ENEMY_ROUTE_END := Vector3(BRIDGE_END_X + 8.0, BELOW_Y, -6.0)
-const HAZARD_ROUTE_END := Vector3(BRIDGE_END_X + 12.0, BELOW_Y, 6.0)
-const ROUTES_CONVERGE := Vector3(BRIDGE_END_X + 16.0, BELOW_Y, 0)
+# Route fork. The old branch occupied only a few metres after the landing. The
+# new course starts beyond the debris footprint and holds its two lanes for
+# three readable beats before they converge.
+const ROUTE_READ_ASTER_POS := Vector3(BRIDGE_COLLAPSE_X + 4.0, BELOW_Y + 0.05, -4.5)
+const ROUTE_READ_PERIS_POS := Vector3(BRIDGE_COLLAPSE_X + 4.0, BELOW_Y + 0.05, 4.5)
+const FORK_POS := Vector3(BRIDGE_COLLAPSE_X + 9.0, BELOW_Y, 0)
+const ROUTE_BEAT_OFFSETS := [14.0, 38.0, 62.0]
+const ROUTE_LANE_LENGTH := 78.0
+const ENEMY_ROUTE_END := Vector3(FORK_POS.x + ROUTE_LANE_LENGTH, BELOW_Y, -4.0)
+const HAZARD_ROUTE_END := Vector3(FORK_POS.x + ROUTE_LANE_LENGTH, BELOW_Y, 4.0)
+const ROUTES_CONVERGE := Vector3(FORK_POS.x + ROUTE_LANE_LENGTH + 8.0, BELOW_Y, 0)
+const ROUTE_FLURE_DURATION := 16.0
+const ROUTE_REQUIRED_READS := 2
+const ROUTE_BEAT_COUNT := 3
 
 # Endo junction and shelter
-const JUNCTION_POS := Vector3(BRIDGE_END_X + 18.0, BELOW_Y, 0)
+const JUNCTION_POS := Vector3(ROUTES_CONVERGE.x + 10.0, BELOW_Y, 0)
 const SHELTER_SIZE := Vector3(6, 3, 5)
+const JUNCTION_REQUIRED_INSPECTIONS := 3
 # Aster's schematics cover the main facility out through Endo's junction (and its
 # shelter); past this X the corridors are maintenance with no blueprints, so the
 # data overlay goes dark.
 const MAIN_FACILITY_MAX_X := JUNCTION_POS.x + SHELTER_SIZE.x
 
-# Flure gauntlet
-const GAUNTLET_POS := Vector3(BRIDGE_END_X + 30.0, BELOW_Y, 0)
-const FLURE_POS := Vector3(BRIDGE_END_X + 28.0, BELOW_Y + 0.3, 4.0)
-const GAUNTLET_EXIT := Vector3(BRIDGE_END_X + 42.0, BELOW_Y, 0)
+# Flure gauntlet: two packs, two lure stations, and a real midpoint refuge.
+const GAUNTLET_POS := Vector3(JUNCTION_POS.x + 28.0, BELOW_Y, 0)
+const GAUNTLET_MIDPOINT := Vector3(GAUNTLET_POS.x + 28.0, BELOW_Y, 0)
+const FLURE_POS := Vector3(GAUNTLET_POS.x - 3.0, BELOW_Y + 0.3, 4.0)
+const GAUNTLET_FLURE_2_POS := Vector3(GAUNTLET_MIDPOINT.x + 4.0, BELOW_Y + 0.3, -4.0)
+const GAUNTLET_EXIT := Vector3(GAUNTLET_POS.x + 64.0, BELOW_Y, 0)
 const FLURE_DURATION := 18.0
+
+# A three-protocol service annex turns Endo's shelter survey into sustained, spatial preparation.
+# Each clean path performs four specialist reads, one consequential plan, and one physical execution:
+# 12x8s evidence + 3x8s plans + 3x14s executions = 162 seconds of click-gated fieldwork.
+const JUNCTION_FIELD_PROTOCOL_ORDER := ["descent_power", "shelter_ecology", "relay_signal"]
+const JUNCTION_FIELD_PROTOCOLS := {
+	"descent_power": {
+		"label": "DESCENT POWER RECOVERY",
+		"evidence": ["power_drop", "power_bus", "power_ground", "power_load"],
+		"choices": ["power_storage", "power_bypass"],
+		"resolution_sites": {
+			"power_storage": "power_storage_execution",
+			"power_bypass": "power_bypass_execution",
+		},
+		"next": "shelter_ecology",
+	},
+	"shelter_ecology": {
+		"label": "SHELTER ECOLOGY BALANCE",
+		"evidence": ["ecology_root", "ecology_heat", "ecology_spore", "ecology_water"],
+		"choices": ["ecology_warm", "ecology_sealed"],
+		"resolution_sites": {
+			"ecology_warm": "ecology_warm_execution",
+			"ecology_sealed": "ecology_sealed_execution",
+		},
+		"next": "relay_signal",
+	},
+	"relay_signal": {
+		"label": "FLURE RELAY CALIBRATION",
+		"evidence": ["relay_echo", "relay_growth", "relay_timing", "relay_exit"],
+		"choices": ["relay_safe", "relay_fast"],
+		"resolution_sites": {
+			"relay_safe": "relay_safe_execution",
+			"relay_fast": "relay_fast_execution",
+		},
+		"next": "",
+	},
+}
+const JUNCTION_FIELD_SITES := {
+	"power_drop": {"protocol": "descent_power", "kind": "evidence", "role": "aster", "pos": Vector3(JUNCTION_POS.x + 6.0, BELOW_Y + 0.05, -4.5), "dwell": 8.0, "verb": "MODEL DROP", "display": "VOLTAGE DROP"},
+	"power_bus": {"protocol": "descent_power", "kind": "evidence", "role": "peris", "pos": Vector3(JUNCTION_POS.x + 9.0, BELOW_Y + 0.05, -1.5), "dwell": 8.0, "verb": "READ LIVING BUS", "display": "LIVING BUS"},
+	"power_ground": {"protocol": "descent_power", "kind": "evidence", "role": "aster", "pos": Vector3(JUNCTION_POS.x + 12.0, BELOW_Y + 0.05, 1.5), "dwell": 8.0, "verb": "TRACE GROUND", "display": "GROUND PATH"},
+	"power_load": {"protocol": "descent_power", "kind": "evidence", "role": "peris", "pos": Vector3(JUNCTION_POS.x + 15.0, BELOW_Y + 0.05, 4.5), "dwell": 8.0, "verb": "FEEL LOAD", "display": "ROOT LOAD"},
+	"power_storage": {"protocol": "descent_power", "kind": "choice", "role": "aster", "pos": Vector3(JUNCTION_POS.x + 18.0, BELOW_Y + 0.05, -2.8), "dwell": 8.0, "verb": "PLAN STORAGE", "display": "STORE CHARGE"},
+	"power_bypass": {"protocol": "descent_power", "kind": "choice", "role": "peris", "pos": Vector3(JUNCTION_POS.x + 18.0, BELOW_Y + 0.05, 2.8), "dwell": 8.0, "verb": "PLAN BYPASS", "display": "ROOT BYPASS"},
+	"power_storage_execution": {"protocol": "descent_power", "kind": "resolution", "role": "aster", "pos": Vector3(JUNCTION_POS.x + 21.0, BELOW_Y + 0.05, -4.5), "dwell": 14.0, "verb": "SEAT CELL", "display": "SEAT STORAGE"},
+	"power_bypass_execution": {"protocol": "descent_power", "kind": "resolution", "role": "peris", "pos": Vector3(JUNCTION_POS.x + 21.0, BELOW_Y + 0.05, 4.5), "dwell": 14.0, "verb": "GRAFT BYPASS", "display": "GRAFT ROOT"},
+
+	"ecology_root": {"protocol": "shelter_ecology", "kind": "evidence", "role": "peris", "pos": Vector3(JUNCTION_POS.x + 24.0, BELOW_Y + 0.05, 4.5), "dwell": 8.0, "verb": "READ ROOT", "display": "ROOT HEALTH"},
+	"ecology_heat": {"protocol": "shelter_ecology", "kind": "evidence", "role": "aster", "pos": Vector3(JUNCTION_POS.x + 27.0, BELOW_Y + 0.05, 1.5), "dwell": 8.0, "verb": "MAP HEAT", "display": "HEAT VEIN"},
+	"ecology_spore": {"protocol": "shelter_ecology", "kind": "evidence", "role": "peris", "pos": Vector3(JUNCTION_POS.x + 30.0, BELOW_Y + 0.05, -1.5), "dwell": 8.0, "verb": "SAMPLE SPORE", "display": "SPORE LOAD"},
+	"ecology_water": {"protocol": "shelter_ecology", "kind": "evidence", "role": "aster", "pos": Vector3(JUNCTION_POS.x + 33.0, BELOW_Y + 0.05, -4.5), "dwell": 8.0, "verb": "TEST WATER", "display": "WATER LOOP"},
+	"ecology_warm": {"protocol": "shelter_ecology", "kind": "choice", "role": "peris", "pos": Vector3(JUNCTION_POS.x + 36.0, BELOW_Y + 0.05, 2.8), "dwell": 8.0, "verb": "PLAN WARM LOOP", "display": "WARM LOOP"},
+	"ecology_sealed": {"protocol": "shelter_ecology", "kind": "choice", "role": "aster", "pos": Vector3(JUNCTION_POS.x + 36.0, BELOW_Y + 0.05, -2.8), "dwell": 8.0, "verb": "PLAN HARD SEAL", "display": "HARD SEAL"},
+	"ecology_warm_execution": {"protocol": "shelter_ecology", "kind": "resolution", "role": "peris", "pos": Vector3(JUNCTION_POS.x + 39.0, BELOW_Y + 0.05, 4.5), "dwell": 14.0, "verb": "WAKE LOOP", "display": "WAKE ECOLOGY"},
+	"ecology_sealed_execution": {"protocol": "shelter_ecology", "kind": "resolution", "role": "aster", "pos": Vector3(JUNCTION_POS.x + 39.0, BELOW_Y + 0.05, -4.5), "dwell": 14.0, "verb": "DOG SEAL", "display": "DOG BULKHEAD"},
+
+	"relay_echo": {"protocol": "relay_signal", "kind": "evidence", "role": "aster", "pos": Vector3(JUNCTION_POS.x + 42.0, BELOW_Y + 0.05, -4.5), "dwell": 8.0, "verb": "MAP ECHO", "display": "RELAY ECHO"},
+	"relay_growth": {"protocol": "relay_signal", "kind": "evidence", "role": "peris", "pos": Vector3(JUNCTION_POS.x + 45.0, BELOW_Y + 0.05, -1.5), "dwell": 8.0, "verb": "READ GROWTH", "display": "FLURE GROWTH"},
+	"relay_timing": {"protocol": "relay_signal", "kind": "evidence", "role": "aster", "pos": Vector3(JUNCTION_POS.x + 48.0, BELOW_Y + 0.05, 1.5), "dwell": 8.0, "verb": "CLOCK WINDOW", "display": "LURE WINDOW"},
+	"relay_exit": {"protocol": "relay_signal", "kind": "evidence", "role": "peris", "pos": Vector3(JUNCTION_POS.x + 51.0, BELOW_Y + 0.05, 4.5), "dwell": 8.0, "verb": "READ EXIT", "display": "EXIT SCENT"},
+	"relay_safe": {"protocol": "relay_signal", "kind": "choice", "role": "peris", "pos": Vector3(JUNCTION_POS.x + 54.0, BELOW_Y + 0.05, 2.8), "dwell": 8.0, "verb": "PLAN SAFE RELAY", "display": "SAFE RELAY"},
+	"relay_fast": {"protocol": "relay_signal", "kind": "choice", "role": "aster", "pos": Vector3(JUNCTION_POS.x + 54.0, BELOW_Y + 0.05, -2.8), "dwell": 8.0, "verb": "PLAN FAST CUT", "display": "FAST CUT"},
+	"relay_safe_execution": {"protocol": "relay_signal", "kind": "resolution", "role": "peris", "pos": Vector3(JUNCTION_POS.x + 57.0, BELOW_Y + 0.05, 4.5), "dwell": 14.0, "verb": "TUNE RELAY", "display": "TUNE FLURE"},
+	"relay_fast_execution": {"protocol": "relay_signal", "kind": "resolution", "role": "aster", "pos": Vector3(JUNCTION_POS.x + 57.0, BELOW_Y + 0.05, -4.5), "dwell": 14.0, "verb": "PIN CADENCE", "display": "PIN WINDOW"},
+}
 
 # --- Multi-level grid (two stacked decks) ---
 # The scene is two physical decks: the UPPER deck (elevator interior + bridge, world Y=0) and the
@@ -135,6 +288,7 @@ const GRID_ORIGIN := Vector3(-5.0, BELOW_Y, -8.0)
 # lower-deck run east, and a hardcoded width would leave the far end off-grid (non-walkable → stranded player).
 const GRID_SIZE := Vector2i(int(GAUNTLET_EXIT.x - GRID_ORIGIN.x + 3.0), 16)  # Z in [-8, 8] — covers both decks
 var _grid: GridWorld
+var _upper_exit_footprint_unlocked := false
 # See-through level occlusion (the channels-spiral shader): level geometry between the camera and the active
 # character dither-dissolves around the character, so the party is never lost behind an elevator wall / girder.
 var _occlusion_mgr: CameraOcclusionManager
@@ -145,13 +299,23 @@ func _build_chunk(chunk_name: String, parent: Node3D) -> void:
 	match chunk_name:
 		"elevator": _build_elevator_chunk(parent)
 		"bridge": _build_bridge_chunk(parent)
-		"below": _build_below_chunk(parent); _apply_chunk_tiles(parent, "deck_metal", "facility_metal")
-		"junction": _build_junction_chunk(parent); _apply_chunk_tiles(parent, "sand", "rock"); _add_junction_model(parent)
-		"gauntlet": _build_gauntlet_chunk(parent); _apply_chunk_tiles(parent, "deck_metal", "facility_metal")
+		"below":
+			_build_below_chunk(parent, false)
+			_apply_chunk_tiles(parent, "deck_metal", "facility_metal")
+			_decorate_below_chunk(parent)
+		"junction":
+			_build_junction_chunk(parent)
+			_apply_chunk_tiles(parent, "sand", "rock")
+			_add_junction_model(parent)
+			_build_junction_field_annex(parent)
+		"gauntlet":
+			_build_gauntlet_chunk(parent)
+			_apply_chunk_tiles(parent, "deck_metal", "facility_metal")
+			_decorate_gauntlet_chunk(parent)
 	# Wrap each chunk's level meshes in the see-through occlusion shader as it loads (characters live under
 	# "Characters", outside the chunk, so they're never dissolved).
 	if _occlusion_mgr != null:
-		_occlusion_mgr.apply_to(parent)
+		_occlusion_mgr.apply_to(parent, 0.75 if chunk_name == "below" else 0.0)
 
 ## Wrap the chunk's meshes in the see-through occlusion shader — the final STREAM step (after every mesh exists),
 ## mirroring the post-`_build_chunk` apply above for chunks built in one shot.
@@ -159,26 +323,65 @@ func _chunk_occlusion_step(parent: Node3D) -> void:
 	if _occlusion_mgr != null:
 		_occlusion_mgr.apply_to(parent)
 
-# Break the streamable chunks (bridge + its lower-deck ecology) into batched build steps so the streamer can
-# spread them across frames — the heavy bridge GLB instantiate gets its OWN frame during the quiet elevator
-# opening. The synchronous _build_chunk path above produces the identical result (keep them in lock-step).
+func _below_chunk_occlusion_step(parent: Node3D) -> void:
+	if _occlusion_mgr != null:
+		# Floors, field paint, props, and fauna never obscure a character from the camera. Wrapping only
+		# wall-height geometry avoids dozens of needless ShaderMaterials during the lower-deck prewarm.
+		_occlusion_mgr.apply_to(parent, 0.75)
+
+# Break the bridge and lower-deck ecology into bounded construction steps. Repeated bridge pieces are capped per
+# frame; lower fauna is built dormant and enters the simulation only when the hidden chunk is revealed.
 func _chunk_build_steps(chunk_name: String, parent: Node3D) -> Array:
 	match chunk_name:
 		"bridge":
-			return [
+			var bridge_steps: Array = [
 				_bridge_step_corridor.bind(parent),
 				_bridge_step_floor.bind(parent),
-				_bridge_step_model.bind(parent),
-				_bridge_step_light.bind(parent),
-				_chunk_occlusion_step.bind(parent),
+				_bridge_step_model_root.bind(parent),
 			]
+			var piece_specs := _bridge_piece_specs()
+			for first in range(0, piece_specs.size(), BRIDGE_PIECES_PER_STREAM_STEP):
+				var batch: Array = []
+				for piece_i in range(first, mini(first + BRIDGE_PIECES_PER_STREAM_STEP, piece_specs.size())):
+					batch.append(piece_specs[piece_i])
+				bridge_steps.append(_bridge_step_model_batch.bind(parent, batch))
+			bridge_steps.append(_bridge_step_blocked_end.bind(parent))
+			bridge_steps.append(_bridge_step_light.bind(parent))
+			bridge_steps.append(_chunk_occlusion_step.bind(parent))
+			return bridge_steps
 		"below":
 			return [
-				_build_below_chunk.bind(parent),
+				_below_step_prepare.bind(parent),
+				_below_step_ground.bind(parent),
+				_below_step_read_stations.bind(parent),
+				_below_step_aster_route_overlay.bind(parent),
+				_below_step_peris_route_overlay_path.bind(parent),
+				_below_step_peris_route_overlay_beat.bind(parent, 0),
+				_below_step_peris_route_overlay_beat.bind(parent, 1),
+				_below_step_peris_route_overlay_beat.bind(parent, 2),
+				_below_step_huddle_chelator_batch.bind(parent, 0, 3, true),
+				_below_step_huddle_chelator_batch.bind(parent, 3, 6, true),
+				_below_step_huddle_predators.bind(parent, true),
+				_below_step_ambient_props.bind(parent),
+				_below_step_route_shell.bind(parent),
+				_below_step_enemy_route_beat.bind(parent, 0, true),
+				_below_step_enemy_route_beat.bind(parent, 1, true),
+				_below_step_enemy_route_beat.bind(parent, 2, true),
+				_below_step_hazard_shell.bind(parent),
+				_below_step_hazard_beat.bind(parent, 0),
+				_below_step_hazard_beat.bind(parent, 1),
+				_below_step_hazard_beat.bind(parent, 2),
+				_below_step_stalactites.bind(parent),
+				_below_step_convergence.bind(parent),
 				_apply_chunk_tiles.bind(parent, "deck_metal", "facility_metal"),
-				_chunk_occlusion_step.bind(parent),
+				_decorate_below_chunk.bind(parent),
+				_below_chunk_occlusion_step.bind(parent),
 			]
 	return []
+
+func _on_chunk_revealed(chunk_name: String, _chunk: Node3D) -> void:
+	if chunk_name == "below":
+		_activate_below_fauna()
 
 # --- Virtual overrides ---
 
@@ -206,6 +409,12 @@ func _build_scene() -> void:
 	add_child(_occlusion_mgr)
 	_build_grid()
 	_load_chunk("elevator")
+	# The corridor shell and click-collision slab ship with the elevator's initial load. The repeated deck
+	# pieces continue in four-piece slices during the stationary opening instead of arriving in one spike.
+	if start_chunk == "" or start_chunk == "bridge":
+		stream_chunk("bridge")
+		_advance_chunk_streams()
+		_advance_chunk_streams()
 
 ## Two stacked decks on one grid plane. No wall border — per-level footprints define the walkable
 ## area of each deck (the decks overlap in X, so a level-agnostic wall can't separate them).
@@ -228,6 +437,12 @@ func _build_characters() -> void:
 	_aster_node.position = ASTER_POS + Vector3(0, 0.5, 0)
 	_aster_node.rotation_degrees.z = 30.0
 	chars.add_child(_aster_node)
+	# The elevator camera runs closer than the simulation cameras. Keep identity
+	# tags readable without letting them cover the route line or fork geometry.
+	for character: CharacterBody3D in [_player, _aster_node]:
+		var identity_label := character.get_node_or_null("Label3D") as Label3D
+		if identity_label != null:
+			identity_label.pixel_size = 0.006
 
 	# Escort units
 	_escort_1 = _create_npc("EU-1", Color(0.7, 0.7, 0.75))
@@ -242,6 +457,7 @@ func _build_characters() -> void:
 	_endo.position = Vector3(JUNCTION_POS.x + 3, BELOW_Y + 0.5, -2)
 	_endo.visible = false
 	chars.add_child(_endo)
+	_build_emp_visuals()
 
 	if not Engine.is_editor_hint():
 		_player.grid_world = _grid  # player clicks route on the grid (cell snapping, per-deck footprint)
@@ -261,8 +477,15 @@ func _register_characters() -> void:
 	# it, enemy detection treats the party as downed (hp<=0) and the ecology never gives chase.
 	_register_gs_character("peris", _peris_node, 2.5, {"hp": PARTY_MAX_HP})
 	_register_gs_character("aster", _aster_node, 2.5, {"hp": PARTY_MAX_HP})
+	# TutorialSequence binds only the character stored in `_player` (Peris at
+	# registration time). Elevator later promotes Aster to the active controller,
+	# so his controller must also observe streamed interaction targets.
+	if _aster_node.has_method("bind_interaction_root"):
+		_aster_node.bind_interaction_root(self)
 	_register_gs_character("eu1", _escort_1, 2.0)
 	_register_gs_character("eu2", _escort_2, 2.0)
+	if not _game_state.character_arrived.is_connected(_on_emp_guard_arrived):
+		_game_state.character_arrived.connect(_on_emp_guard_arrived)
 	_aster_node.set_move_enabled(false)
 	# Reveal the level around the active character (data-layer position) now that the GameState is live.
 	if _occlusion_mgr != null:
@@ -272,16 +495,37 @@ func _register_characters() -> void:
 ## upper deck (the bridge) may be void on the lower deck and vice versa. Clicks off a deck's
 ## footprint are rejected by the grid, so the player can't walk into the void or off the bridge.
 func _setup_level_footprints() -> void:
-	# Upper deck (level 1): elevator interior + exit corridor + bridge span.
+	# Upper deck (level 1) begins as the elevator cabin only. The streamed corridor and bridge are
+	# intentionally absent from pathfinding until the rally lesson has brought BOTH characters to
+	# the doorway. Otherwise a route queued during the paused scene can carry Aster into unseen space.
 	_add_level_walkable_region(LEVEL_UPPER, Vector2(-4.0, -3.5), Vector2(4.5, 3.5))   # elevator cabin
-	_add_level_walkable_region(LEVEL_UPPER, Vector2(4.0, -2.0), Vector2(BRIDGE_END_X - 1.0, 2.0))  # corridor + bridge
 	# Lower deck (level 0): the below landing / fork / junction / gauntlet run, one open span.
 	_add_level_walkable_region(LEVEL_LOWER, Vector2(-3.5, -8.0), Vector2(GAUNTLET_EXIT.x + 1.0, 8.0))
 
+func _unlock_upper_exit_footprint() -> void:
+	if _upper_exit_footprint_unlocked:
+		return
+	_upper_exit_footprint_unlocked = true
+	# The girder inner faces sit at roughly z=±1.3. Author the two central one-metre lanes explicitly;
+	# an inclusive world rectangle previously admitted the cells centred on/outside the rails (z=±1.5/2.5),
+	# letting the grid-authoritative mover route straight through the visible railing.
+	var min_cell := _grid.world_to_grid(Vector3(4.0, 0.0, -0.5))
+	var max_cell := _grid.world_to_grid(Vector3(BRIDGE_END_X - 1.0, 0.0, 0.5))
+	_grid.allow_cell_region_on_level(min_cell, max_cell, LEVEL_UPPER)
+
+## Remove a world-space rectangle from one stacked level's allow-set. The shared tile grid cannot
+## represent a wall that blocks the lower deck without also blocking the overlapping upper bridge.
+func _block_level_walkable_region(level: int, min_xz: Vector2, max_xz: Vector2) -> void:
+	if _grid == null or not _grid.level_allowed.has(level):
+		return
+	var min_cell := _grid.world_to_grid(Vector3(min_xz.x, 0.0, min_xz.y))
+	var max_cell := _grid.world_to_grid(Vector3(max_xz.x, 0.0, max_xz.y))
+	for z in range(mini(min_cell.y, max_cell.y), maxi(min_cell.y, max_cell.y) + 1):
+		for x in range(mini(min_cell.x, max_cell.x), maxi(min_cell.x, max_cell.x) + 1):
+			_grid.level_allowed[level].erase(Vector2i(x, z))
+
 func _setup_ui() -> void:
-	_hud = CanvasLayer.new()
-	_hud.name = "GameHUD"
-	_hud.set_script(preload("res://scripts/ui/game_hud.gd"))
+	_hud = preload("res://scenes/ui/game_hud.tscn").instantiate()
 	add_child(_hud)
 	_hud.add_portrait("peris", "Peris", Color(1.0, 0.67, 0.27))
 	_hud.add_portrait("aster", "Aster", Color(0.29, 0.62, 1.0))
@@ -296,17 +540,19 @@ func _setup_ui() -> void:
 	_hud.show_pause_toggle(false)
 	_hud.pause_toggled.connect(_on_pause_toggled)
 	var emp_binding := AbilityData.binding("emp")
-	# The key hint comes from the live `emp` binding, never a baked letter, so a rebind / controller
+	# The key hint comes from Aster's live direct ability slot, never a baked legacy letter, so a rebind / controller
 	# is reflected (the xlsx keybind is only the fallback if the action somehow has no binding).
 	_hud.add_ability("emp", AbilityData.get_ability("elevator.emp").get("display_name", "EMP"),
-		InputHints.label_for_action("emp", str(emp_binding.get("keybind", ""))),
-		emp_binding.get("color", Color(0.29, 0.62, 1.0)))
+		InputHints.label_for_action(EMP_INPUT_ACTION, str(emp_binding.get("keybind", ""))),
+		emp_binding.get("color", Color(0.29, 0.62, 1.0)),
+		EMP_INPUT_ACTION, "aster", "Aster", 0, 0)
 	_hud.set_ability_state("emp", "disabled")
 	_hud.ability_pressed.connect(func(id: String):
 		if id == "emp":
 			_on_emp_pressed()
 	)
 	_hud.character_selection_changed.connect(_on_character_selected)
+	_build_elevator_overlay_ui()
 
 	# Door button changes behavior after EMP.
 	_exit_button = preload("res://scenes/game/interactable.tscn").instantiate()
@@ -323,6 +569,91 @@ func _setup_ui() -> void:
 	add_child(_exit_button)
 	_exit_button.interacted.connect(_on_exit_button_pressed)
 	_set_exit_button_interactable(false)
+
+func _build_elevator_overlay_ui() -> void:
+	_elevator_overlay_ui = preload("res://scenes/ui/perception_overlay.tscn").instantiate()
+	_elevator_overlay_ui.name = "ElevatorOverlayUI"
+	_elevator_overlay_ui.visible = false
+	add_child(_elevator_overlay_ui)
+	var margin := _elevator_overlay_ui.get_node("Margin") as MarginContainer
+	margin.offset_left = -346.0
+	margin.offset_bottom = 118.0
+	var content := _elevator_overlay_ui.get_node("Margin/Panel/Content") as VBoxContainer
+	content.add_theme_constant_override("separation", 5)
+	var title := content.get_node("Title") as Label
+	title.visible = true
+	var note := content.get_node("NoteLabel") as Label
+	note.visible = false
+	var aster_button := content.get_node("Buttons/AsterOverlayButton") as Button
+	aster_button.text = "Aster Data  F1"
+	_bind_elevator_overlay_button(aster_button, "aster", Color(0.29, 0.62, 1.0))
+	var peris_button := content.get_node("Buttons/PerisOverlayButton") as Button
+	peris_button.text = "Peris Memory  F2"
+	_bind_elevator_overlay_button(peris_button, "peris", Color(1.0, 0.67, 0.27))
+	_elevator_overlay_status = content.get_node("StatusLabel") as Label
+	_elevator_overlay_status.name = "ElevatorOverlayStatus"
+	_elevator_overlay_status.add_theme_font_size_override("font_size", 10)
+	_refresh_elevator_overlay_ui()
+
+func _bind_elevator_overlay_button(button: Button, overlay_id: String, color: Color) -> void:
+	button.add_theme_font_size_override("font_size", 10)
+	button.pressed.connect(_toggle_elevator_overlay.bind(overlay_id))
+	_elevator_overlay_buttons[overlay_id] = {"button": button, "color": color}
+
+func _unlock_elevator_overlays() -> void:
+	if not _elevator_overlays_available:
+		_elevator_overlays_available = true
+		_elevator_overlay_states["aster"] = true
+		_elevator_overlay_states["peris"] = false
+	if _elevator_overlay_ui != null:
+		_elevator_overlay_ui.visible = true
+	_apply_elevator_overlay_visibility()
+	_refresh_elevator_overlay_ui()
+
+func _toggle_elevator_overlay(overlay_id: String) -> void:
+	if not _elevator_overlays_available or not _elevator_overlay_states.has(overlay_id):
+		return
+	_set_elevator_overlay_state(overlay_id, not bool(_elevator_overlay_states[overlay_id]))
+
+func _set_elevator_overlay_state(overlay_id: String, enabled: bool) -> void:
+	if not _elevator_overlay_states.has(overlay_id):
+		return
+	if not _elevator_overlays_available:
+		_elevator_overlays_available = true
+		if _elevator_overlay_ui != null:
+			_elevator_overlay_ui.visible = true
+	_elevator_overlay_states[overlay_id] = enabled
+	_apply_elevator_overlay_visibility()
+	_refresh_elevator_overlay_ui()
+	if overlay_id == "peris" and enabled and _current_step == "route_read_circuit":
+		_resolve_peris_overlay_route_read()
+
+func _apply_elevator_overlay_visibility() -> void:
+	if bool(_elevator_overlay_states.get("aster", false)):
+		_setup_perception("data", _aster_node)
+		var aster_x := _game_state.get_position("aster").x \
+			if _game_state != null and _game_state.characters.has("aster") else _aster_node.global_position.x
+		_perception_quad.visible = aster_x <= MAIN_FACILITY_MAX_X
+	elif _perception_quad != null:
+		_perception_quad.visible = false
+	if is_instance_valid(_aster_route_overlay_root):
+		_aster_route_overlay_root.visible = bool(_elevator_overlay_states.get("aster", false))
+	if is_instance_valid(_peris_route_overlay_root):
+		_peris_route_overlay_root.visible = bool(_elevator_overlay_states.get("peris", false))
+
+func _refresh_elevator_overlay_ui() -> void:
+	for overlay_id in _elevator_overlay_buttons:
+		var info: Dictionary = _elevator_overlay_buttons[overlay_id]
+		var button: Button = info.get("button")
+		var color: Color = info.get("color", Color.WHITE)
+		var enabled := bool(_elevator_overlay_states.get(overlay_id, false))
+		button.modulate = Color(color, 1.0 if enabled else 0.55)
+		button.tooltip_text = "%s overlay %s" % [overlay_id.capitalize(), "ON" if enabled else "OFF"]
+	if _elevator_overlay_status != null:
+		_elevator_overlay_status.text = "Aster data: %s     Peris memory: %s" % [
+			"ON" if bool(_elevator_overlay_states.get("aster", false)) else "OFF",
+			"ON" if bool(_elevator_overlay_states.get("peris", false)) else "OFF",
+		]
 
 func _begin() -> void:
 	_player.set_move_enabled(false)
@@ -346,11 +677,10 @@ func _begin() -> void:
 				_player.global_position = Vector3.ZERO
 		return
 	_scheduler.schedule_after(1.0, _start_consciousness_fragments, "fragments")
-	# Stream the BRIDGE (its tiled span is dozens of meshes) in the BACKGROUND now, across the long stationary
-	# opening (consciousness fragments → conversation → EMP → doors → multiselect), so revealing the span at the
-	# corridor costs only a `visible = true`. The lower-deck ecology is NOT streamed here — its roaming fauna would
-	# come alive during the opening (extra scheduler traffic); it's built at the corridor, one beat before it matters.
+	# Finish the bridge and prewarm the lower route across the long stationary opening. Lower-deck enemies are
+	# registered and activated only on reveal, so hidden construction adds no patrol or detection scheduler traffic.
 	stream_chunk("bridge")
+	stream_chunk("below")
 
 func _compute_speed() -> float:
 	return 10.0 if Input.is_action_pressed("fast_forward") else 1.0
@@ -373,24 +703,20 @@ func _on_process(delta: float, spd: float) -> void:
 		var aster_x := _aster_node.global_position.x
 		if _game_state and _game_state.characters.has("aster"):
 			aster_x = _game_state.get_position("aster").x
-		_perception_quad.visible = aster_x <= MAIN_FACILITY_MAX_X
+		_perception_quad.visible = _elevator_overlays_available \
+			and bool(_elevator_overlay_states.get("aster", false)) \
+			and aster_x <= MAIN_FACILITY_MAX_X
 
 	# Emergency light pulse.
-	if _emergency_light and is_instance_valid(_emergency_light):
+	if _elevator_powered and _emergency_light and is_instance_valid(_emergency_light):
 		_emergency_light.light_energy = 1.5 + sin(Time.get_ticks_msec() * 0.003) * 0.5
 
 	# Floor indicator flicker.
-	if _indicator_b_label and is_instance_valid(_indicator_b_label):
+	if _elevator_powered and _indicator_b_label and is_instance_valid(_indicator_b_label):
 		_indicator_timer += delta * spd
 		if _indicator_timer > 0.3:
 			_indicator_timer = 0.0
 			_indicator_b_label.visible = not _indicator_b_label.visible
-
-	# Stunned escort flicker.
-	if _unit_1_stunned and _escort_1:
-		_escort_1.visible = int(Time.get_ticks_msec() / 100) % 2 == 0
-	if _unit_2_stunned and _escort_2:
-		_escort_2.visible = int(Time.get_ticks_msec() / 100) % 2 == 0
 
 	# Sync EMP cooldown display.
 	if _emp_cooldown_end > 0:
@@ -405,22 +731,7 @@ func _on_process(delta: float, spd: float) -> void:
 		if is_instance_valid(enemy) and enemy.is_alive():
 			enemy.rotation.y += delta * spd * 0.3
 
-	# Iron patches hurt on contact — real data-layer damage (adjust_stat); the HUD/downed/game-over all
-	# follow via _on_party_stat_changed.
-	if not _game_over and not _iron_patches.is_empty():
-		for pair in [["aster", _aster_node], ["peris", _peris_node]]:
-			var cid: String = pair[0]
-			var cnode: Node3D = pair[1]
-			if cnode == null or _game_state.get_stat(cid, "hp") <= 0.0:
-				continue
-			var cpos := cnode.global_position
-			for patch in _iron_patches:
-				var ppos: Vector3 = patch.pos
-				var psz: Vector3 = patch.size
-				if absf(cpos.x - ppos.x) < psz.x / 2.0 and absf(cpos.z - ppos.z) < psz.z / 2.0:
-					_game_state.adjust_stat(cid, "hp", -IRON_DAMAGE_PER_SEC * delta * spd)
-					break
-
+	# Iron contact is evaluated on the gameplay scheduler by _iron_hazard_tick, never once per render frame.
 	# Approach gate
 	if _current_step == "approach_aster":
 		var peris_pos := _game_state.get_position("peris")
@@ -429,17 +740,18 @@ func _on_process(delta: float, spd: float) -> void:
 			_player.set_move_enabled(false)
 			_start_wake_aster()
 
-	# Multi-select gate: both near the door exit
-	if _current_step == "multiselect_tutorial":
+	# Rally gate: the command-hold addresses the whole controllable roster without changing the
+	# singleton selection. Once both have reached the doorway the lesson is complete.
+	if _current_step == "rally_tutorial":
 		var exit_gate := Vector3(ELEVATOR_SIZE.x / 2.0, 0, 0)
 		var pp := _game_state.get_position("peris")
 		var ap := _game_state.get_position("aster")
 		var peris_at_door := pp.distance_to(exit_gate) < 2.5
 		var aster_at_door := ap.distance_to(exit_gate) < 2.5
-		if peris_at_door and aster_at_door and _multiselect_has_required_pair():
+		if peris_at_door and aster_at_door:
 			_start_corridor()
 		elif peris_at_door or aster_at_door:
-			_show_multiselect_together_hint()
+			_show_rally_together_hint()
 
 	# Bridge gate: the span gives way MID-SPAN as the player walks out onto it (the narration's
 	# "it gives way mid-span"). The trigger sits comfortably inside the walkable bridge, NOT at the far
@@ -462,15 +774,18 @@ func _on_process(delta: float, spd: float) -> void:
 	# Route convergence gate: after choosing a lane and walking it, reaching convergence
 	# opens the junction (the fall already happened — this no longer triggers the collapse).
 	if _current_step == "route_choice":
+		_update_route_course_progress()
 		# The ecology gates itself: it's distracted by its flures, so it only chases a party that cuts
 		# through the huddle (the enemy lane). The hazard lane keeps enough distance to slip past.
-		if _party_lead_x() > ROUTES_CONVERGE.x - 2.0:
+		if _party_lead_x() > ROUTES_CONVERGE.x - 2.0 and _route_beats_crossed.count(true) >= ROUTE_BEAT_COUNT:
 			_tutorial_prompt.hide_prompt()
 			_player.set_move_enabled(false)
 			_start_junction_arrive()
 
 	# Gauntlet exit gate: player passed the enemies
 	if _current_step == "gauntlet":
+		if not _gauntlet_midpoint_reached and _party_lead_x() > GAUNTLET_MIDPOINT.x - 2.0:
+			_reach_gauntlet_midpoint()
 		if _party_lead_x() > GAUNTLET_EXIT.x - 2.0:
 			_tutorial_prompt.hide_prompt()
 			_player.set_move_enabled(false)
@@ -482,40 +797,46 @@ func _on_process(delta: float, spd: float) -> void:
 func _party_lead_x() -> float:
 	return maxf(_game_state.get_position("aster").x, _game_state.get_position("peris").x)
 
+func _party_average_z() -> float:
+	return (_game_state.get_position("aster").z + _game_state.get_position("peris").z) * 0.5
+
+func _update_route_course_progress() -> void:
+	var lead := _party_lead_x()
+	if _route_lane == "" and lead > FORK_POS.x + 4.0:
+		var avg_z := _party_average_z()
+		if avg_z < -0.75:
+			_route_lane = "flure"
+		elif avg_z > 0.75:
+			_route_lane = "iron"
+		if _route_lane != "":
+			_show_marker(Vector3(FORK_POS.x + 5.0, BELOW_Y + 2.2, avg_z), _route_lane.to_upper() + " ROUTE")
+	for i in range(ROUTE_BEAT_COUNT):
+		var threshold := FORK_POS.x + float(ROUTE_BEAT_OFFSETS[i]) + 6.0
+		if not _route_beats_crossed[i] and lead > threshold:
+			_route_beats_crossed[i] = true
+			_show_marker(Vector3(threshold, BELOW_Y + 2.1, _party_average_z()), "BEAT %d / 3" % (i + 1))
+
 # --- Input ---
 
-# Pause (Space) and EMP (E) arrive as HUD signals (pause_toggled / ability_pressed)
+# Pause and Aster's direct EMP slot arrive as HUD signals (pause_toggled / ability_pressed)
 # mapped from the input map by GameHUD. Only the elevator-specific character
-# switch / multi-select shortcuts are handled here, via input actions.
+# switch shortcuts are handled here, via input actions. Multi-selection is taught later, when a
+# split perspective puzzle actually gives it a purpose; this doorway teaches whole-party rally.
 func _unhandled_key_input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
 		return
-	if event.is_action_pressed("route") and _current_step in ["hack_tutorial", "multiselect_tutorial"]:
+	if event.is_action_pressed("preview_overlay_aster"):
+		_toggle_elevator_overlay("aster")
+	elif event.is_action_pressed("preview_overlay_peris"):
+		_toggle_elevator_overlay("peris")
+	elif event.is_action_pressed("route") and _current_step in ["hack_tutorial", "junction_arrive"]:
 		_switch_character()
-	elif _current_step == "multiselect_tutorial":
-		var char_id := ""
-		if event.is_action_pressed("select_primary"):
-			char_id = "peris"
-		elif event.is_action_pressed("select_secondary"):
-			char_id = "aster"
-		if char_id == "":
-			return
-		var key_event := event as InputEventKey
-		if key_event != null and (key_event.ctrl_pressed or key_event.shift_pressed):
-			_hud.toggle_portrait_selected(char_id)
-		else:
-			_select_character(char_id)
 
 func _toggle_pause() -> void:
 	if _scheduler.is_paused():
 		if _emp_pause_locked and not _emp_queued:
 			_hud.set_paused(true)
-			_tutorial_prompt.show_prompt("%s - queue Aster's EMP before unpausing" % InputHints.bracket("emp"))
-			return
-		if _current_step == "multiselect_tutorial" and not _multiselect_has_required_pair():
-			_hud.set_paused(true)
-			_tutorial_prompt.show_prompt("Drag a selection box around Peris and Aster to select both, then move together")
-			_show_multiselect_together_hint()
+			_tutorial_prompt.show_prompt("%s - queue Aster's EMP before unpausing" % InputHints.bracket(EMP_INPUT_ACTION))
 			return
 		_scheduler.resume()
 		_hud.set_paused(false)
@@ -530,12 +851,7 @@ func _on_pause_toggled(is_paused: bool) -> void:
 	else:
 		if _emp_pause_locked and not _emp_queued:
 			_hud.set_paused(true)
-			_tutorial_prompt.show_prompt("%s - queue Aster's EMP before unpausing" % InputHints.bracket("emp"))
-			return
-		if _current_step == "multiselect_tutorial" and not _multiselect_has_required_pair():
-			_hud.set_paused(true)
-			_tutorial_prompt.show_prompt("Drag a selection box around Peris and Aster to select both, then move together")
-			_show_multiselect_together_hint()
+			_tutorial_prompt.show_prompt("%s - queue Aster's EMP before unpausing" % InputHints.bracket(EMP_INPUT_ACTION))
 			return
 		_scheduler.resume()
 		_flush_queued_abilities()
@@ -565,6 +881,7 @@ func _fire_emp_both() -> void:
 	_camera.shake(0.3, 4.0)
 	_escort_1.stop()
 	_escort_2.stop()
+	_play_emp_discharge_animation()
 	_unit_1_stunned = true
 	_unit_2_stunned = true
 	_emp_count = 2
@@ -583,7 +900,8 @@ func _on_reboot() -> void:
 		_escort_1.visible = true
 	if _escort_2:
 		_escort_2.visible = true
-	if _current_step in ["emp_tutorial", "doors_unlocked", "multiselect_tutorial"]:
+	_restore_elevator_power_visuals()
+	if _current_step in ["emp_tutorial", "doors_unlocked", "rally_tutorial"]:
 		_emp_count = 0
 		_reboot_active = false
 		_enter_step("units_activate")
@@ -650,12 +968,13 @@ func _on_character_selected(selected_ids: Array) -> void:
 		sanitized = [_active_character]
 	_selected_character_ids = sanitized
 	var preferred := sanitized[0]
-	if preferred != _active_character and _current_step in ["multiselect_tutorial", "hack_tutorial"]:
+	# Character perspective remains a live verb after the tutorial. Junction reads
+	# deliberately require both Aster and Peris, so portrait/box selection must keep
+	# switching the active controller throughout the playable descent.
+	if preferred != _active_character:
 		_select_character(preferred, bool(_hud.get("_multi_select")))
 	else:
 		_apply_character_control_selection()
-	if _current_step == "multiselect_tutorial":
-		_update_multiselect_tutorial_prompt()
 
 func _sanitize_character_selection(selected_ids: Array) -> Array[String]:
 	var sanitized: Array[String] = []
@@ -677,19 +996,21 @@ func _apply_character_control_selection() -> void:
 	_apply_party_control({"peris": _peris_node, "aster": _aster_node},
 		_sanitize_character_selection(_selected_character_ids), _active_character, group_control)
 
-func _multiselect_has_required_pair() -> bool:
-	return _selected_character_ids.has("peris") and _selected_character_ids.has("aster")
+func _update_rally_tutorial_prompt() -> void:
+	_tutorial_prompt.show_action_prompt(
+		&"command",
+		"Hold on the open doorway until RALLY ALL appears, release to queue both paths, then press %s."
+			% InputHints.bracket("pause"),
+		0.0,
+		"RMB HOLD"
+	)
 
-func _update_multiselect_tutorial_prompt() -> void:
-	if _multiselect_has_required_pair():
-		# Queue the move while paused, then unpause to run through together.
-		_tutorial_prompt.show_prompt("Both selected. Click the open doorway to set your path, then press %s." % InputHints.bracket("pause"))
-	else:
-		_tutorial_prompt.show_prompt("Drag a selection box around Peris and Aster to select both.")
+func _show_rally_together_hint() -> void:
+	_update_rally_tutorial_prompt()
 
-func _show_multiselect_together_hint() -> void:
-	# The prompt carries the instruction; Aster says his line once (no repeated nag).
-	_update_multiselect_tutorial_prompt()
+## Compatibility for old focused tools/saves that still call the former tutorial helper directly.
+func _start_multiselect_tutorial() -> void:
+	_start_rally_tutorial()
 
 # --- Event steps ---
 
@@ -836,8 +1157,9 @@ func _start_conversation() -> void:
 func _start_system_restored() -> void:
 	_enter_step("system_restored")
 	_camera.shake(0.1, 8.0)
-	# Aster's overlay activates.
-	_setup_perception("data", _aster_node)
+	# Establish the asymmetric baseline: Aster's map is online, while Peris's memory layer is available but off.
+	# The fork later gives the second toggle a concrete use instead of teaching portrait selection in the abstract.
+	_unlock_elevator_overlays()
 	DialogueData.say_to(_dialogue, "elevator.unit.wake")
 	_dialogue.dialogue_finished.connect(
 		func(): _scheduler.schedule_after(0.5, _start_units_activate, "units_activate"),
@@ -846,15 +1168,52 @@ func _start_system_restored() -> void:
 
 func _start_units_activate() -> void:
 	_enter_step("units_activate")
-	# Escorts stop short so EMP does not fire at contact range.
-	var party_center := _get_emp_party_center()
-	_escort_1.walk_to(_get_emp_guard_standoff_pos("eu1", _escort_1, party_center))
-	_escort_2.walk_to(_get_emp_guard_standoff_pos("eu2", _escort_2, party_center))
+	# Hold the units in their alcoves while the protocol exchange plays. Their approach is the final
+	# visible warning immediately before tactical time pauses, not background motion under dialogue.
+	_emp_guard_approach_active = false
+	_emp_guard_arrivals.clear()
+	_escort_1.stop()
+	_escort_2.stop()
 	_camera.shake(0.2, 6.0)
 	_dialogue_chain(
 		["elevator.unit.protocol", "elevator.peris.urgent", "elevator.aster.emp"],
-		_start_emp_tutorial
+		_start_emp_guard_approach
 	)
+
+func _start_emp_guard_approach() -> void:
+	if _current_step != "units_activate":
+		return
+	_emp_guard_approach_active = true
+	_emp_guard_arrivals.clear()
+	var party_center := _get_emp_party_center()
+	var guards := {
+		"eu1": _escort_1,
+		"eu2": _escort_2,
+	}
+	for guard_id in guards:
+		var guard: Node3D = guards[guard_id]
+		var target := _get_emp_guard_standoff_pos(str(guard_id), guard, party_center)
+		var current := _game_state.get_position(str(guard_id))
+		if Vector2(current.x - target.x, current.z - target.z).length() < 0.15:
+			_emp_guard_arrivals[str(guard_id)] = true
+		else:
+			guard.walk_to(target)
+	_maybe_finish_emp_guard_approach()
+
+func _on_emp_guard_arrived(id: String) -> void:
+	if not _emp_guard_approach_active or not (id in ["eu1", "eu2"]):
+		return
+	_emp_guard_arrivals[id] = true
+	_maybe_finish_emp_guard_approach()
+
+func _maybe_finish_emp_guard_approach() -> void:
+	if not _emp_guard_approach_active:
+		return
+	if not bool(_emp_guard_arrivals.get("eu1", false)) \
+			or not bool(_emp_guard_arrivals.get("eu2", false)):
+		return
+	_emp_guard_approach_active = false
+	_start_emp_tutorial()
 
 func _get_emp_party_center() -> Vector3:
 	var peris_pos := _game_state.get_position("peris") if _game_state and _game_state.characters.has("peris") else _peris_node.global_position
@@ -878,28 +1237,216 @@ func _start_emp_tutorial() -> void:
 	_emp_pause_locked = true
 	_emp_queued = false
 	_hud.set_ability_state("emp", "ready")
-	_tutorial_prompt.show_prompt("%s - queue Aster's EMP" % InputHints.bracket("emp"))
+	_tutorial_prompt.show_prompt("%s - queue Aster's EMP" % InputHints.bracket(EMP_INPUT_ACTION))
 	_scheduler.pause()
 	_hud.set_paused(true)
 
 func _start_emp_tutorial_2() -> void:
 	_enter_step("emp_tutorial_2")
 
+## Build the EMP as an authored world animation. The text used to claim a pulse, dimming faceplates,
+## and a room blackout while none of those changes happened on screen; these tracks make the same causal
+## chain directly inspectable: Aster -> expanding pulse -> both units dark -> elevator lock loses power.
+func _build_emp_visuals() -> void:
+	if _emp_animation_player != null:
+		return
+	_emp_faceplates.clear()
+	_emp_faceplate_lights.clear()
+	for unit in [_escort_1, _escort_2]:
+		var faceplate := MeshInstance3D.new()
+		faceplate.name = "EMPFaceplate"
+		var plate_mesh := BoxMesh.new()
+		plate_mesh.size = Vector3(0.06, 0.18, 0.30)
+		faceplate.mesh = plate_mesh
+		var plate_material := StandardMaterial3D.new()
+		plate_material.albedo_color = Color(0.64, 0.78, 1.0)
+		plate_material.emission_enabled = true
+		plate_material.emission = Color(0.32, 0.60, 1.0)
+		plate_material.emission_energy_multiplier = 2.5
+		plate_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		faceplate.material_override = plate_material
+		faceplate.position = Vector3(0.23, 0.62, 0.0)
+		faceplate.layers = 2
+		unit.add_child(faceplate)
+		_emp_faceplates.append(faceplate)
+
+		var face_light := OmniLight3D.new()
+		face_light.name = "EMPFaceLight"
+		face_light.position = Vector3(0.32, 0.62, 0.0)
+		face_light.light_color = Color(0.32, 0.60, 1.0)
+		face_light.light_energy = 1.3
+		face_light.omni_range = 1.25
+		unit.add_child(face_light)
+		_emp_faceplate_lights.append(face_light)
+
+	_emp_pulse_visual = MeshInstance3D.new()
+	_emp_pulse_visual.name = "EmpPulseVisual"
+	var pulse_mesh := TorusMesh.new()
+	pulse_mesh.inner_radius = 0.43
+	pulse_mesh.outer_radius = 0.52
+	pulse_mesh.rings = 48
+	pulse_mesh.ring_segments = 12
+	_emp_pulse_visual.mesh = pulse_mesh
+	var pulse_material := StandardMaterial3D.new()
+	pulse_material.albedo_color = Color(0.34, 0.78, 1.0, 0.82)
+	pulse_material.emission_enabled = true
+	pulse_material.emission = Color(0.24, 0.72, 1.0)
+	pulse_material.emission_energy_multiplier = 5.0
+	pulse_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	pulse_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	pulse_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	pulse_material.no_depth_test = true
+	_emp_pulse_visual.material_override = pulse_material
+	_emp_pulse_visual.visible = false
+	_emp_pulse_visual.scale = Vector3.ONE * 0.12
+	_emp_pulse_visual.transparency = 1.0
+	_emp_pulse_visual.layers = 2
+	add_child(_emp_pulse_visual)
+
+	_emp_animation_player = SEQUENCE_ANIMATION_PLAYER_SCENE.instantiate() as AnimationPlayer
+	_emp_animation_player.name = "EmpAnimationPlayer"
+	_emp_animation_player.root_node = NodePath("..")
+	add_child(_emp_animation_player)
+	var animation := Animation.new()
+	animation.length = EMP_VISUAL_DURATION
+	animation.loop_mode = Animation.LOOP_NONE
+	_emp_add_track(animation, _emp_pulse_visual, "visible", [
+		[0.0, true], [EMP_VISUAL_DURATION - 0.02, false],
+	], true)
+	_emp_add_track(animation, _emp_pulse_visual, "scale", [
+		[0.0, Vector3.ONE * 0.12], [0.12, Vector3.ONE * 0.35],
+		[1.15, Vector3.ONE * 7.5], [EMP_VISUAL_DURATION, Vector3.ONE * 9.0],
+	])
+	_emp_add_track(animation, _emp_pulse_visual, "transparency", [
+		[0.0, 0.0], [0.18, 0.05], [EMP_VISUAL_DURATION, 1.0],
+	])
+	for index in range(_emp_faceplates.size()):
+		var faceplate: MeshInstance3D = _emp_faceplates[index]
+		var face_light: OmniLight3D = _emp_faceplate_lights[index]
+		_emp_add_track(animation, faceplate, "transparency", [
+			[0.0, 0.0], [0.18, 0.70], [0.28, 0.12], [0.40, 0.82],
+			[0.55, 0.32], [0.72, 1.0],
+		])
+		_emp_add_track(animation, face_light, "light_energy", [
+			[0.0, 1.3], [0.18, 0.05], [0.28, 0.9], [0.40, 0.02],
+			[0.55, 0.45], [0.72, 0.0],
+		])
+	var escort_1_rotation: Vector3 = _escort_1.rotation
+	var escort_2_rotation: Vector3 = _escort_2.rotation
+	_emp_add_track(animation, _escort_1, "rotation", [
+		[0.0, escort_1_rotation], [0.50, escort_1_rotation],
+		[0.82, escort_1_rotation + Vector3(0.0, 0.0, -0.18)],
+	])
+	_emp_add_track(animation, _escort_2, "rotation", [
+		[0.0, escort_2_rotation], [0.50, escort_2_rotation],
+		[0.82, escort_2_rotation + Vector3(0.0, 0.0, 0.18)],
+	])
+	_emp_add_track(animation, _emergency_light, "light_energy", [
+		[0.0, 1.5], [0.08, 7.0], [0.18, 0.10], [0.30, 3.5], [0.48, 0.0],
+	])
+	_emp_add_track(animation, _elevator_fill_light, "light_energy", [
+		[0.0, 1.0], [0.12, 1.7], [0.52, 0.04],
+	])
+	_emp_add_track(animation, _elevator_indicator_glow, "light_energy", [
+		[0.0, 1.4], [0.12, 3.0], [0.46, 0.0],
+	])
+	for standby in _elevator_standby_lights:
+		_emp_add_track(animation, standby, "light_energy", [
+			[0.0, 0.5], [0.18, 1.1], [0.58, 0.0],
+		])
+	_emp_add_track(animation, _floor_indicator, "modulate", [
+		[0.0, Color(2.0, 0.45, 0.2, 1.0)], [0.46, Color(0.08, 0.02, 0.01, 0.0)],
+	])
+	_emp_add_track(animation, _indicator_b_label, "modulate", [
+		[0.0, Color(2.0, 0.45, 0.2, 1.0)], [0.46, Color(0.08, 0.02, 0.01, 0.0)],
+	])
+	var library := AnimationLibrary.new()
+	library.add_animation("emp_discharge", animation)
+	_emp_animation_player.add_animation_library("", library)
+
+func _emp_add_track(
+		animation: Animation,
+		target: Node,
+		property: String,
+		keys: Array,
+		discrete := false
+	) -> void:
+	if target == null:
+		return
+	var track := animation.add_track(Animation.TYPE_VALUE)
+	animation.track_set_path(track, NodePath("%s:%s" % [str(get_path_to(target)), property]))
+	animation.value_track_set_update_mode(
+		track,
+		Animation.UPDATE_DISCRETE if discrete else Animation.UPDATE_CONTINUOUS
+	)
+	for key in keys:
+		animation.track_insert_key(track, float(key[0]), key[1])
+
+func _play_emp_discharge_animation() -> void:
+	_elevator_powered = false
+	if _indicator_b_label != null:
+		_indicator_b_label.visible = true
+	if _emp_pulse_visual != null and _aster_node != null:
+		_emp_pulse_visual.global_position = _aster_node.global_position + Vector3(0.0, 0.40, 0.0)
+	if _emp_animation_player != null and _emp_animation_player.has_animation("emp_discharge"):
+		_emp_animation_player.stop()
+		_emp_animation_player.speed_scale = _compute_speed()
+		_emp_animation_player.play("emp_discharge")
+		_emp_animation_player.advance(0.0)
+
+## Scheduler beats and AnimationPlayer frames are deliberately separate clocks.
+## On a fast-forward frame or render hitch, doors_unlock can win their tie at 1.5 s
+## before the animation samples its final hidden-pulse key. Rally then pauses the
+## encounter with the expanded, nearly edge-on torus still covering the elevator.
+## Settle the authored end state explicitly at the scheduler boundary.
+func _finish_emp_discharge_animation() -> void:
+	if _emp_animation_player != null:
+		if _emp_animation_player.has_animation("emp_discharge"):
+			_emp_animation_player.seek(EMP_VISUAL_DURATION, true)
+		_emp_animation_player.stop()
+	if _emp_pulse_visual != null:
+		_emp_pulse_visual.visible = false
+		_emp_pulse_visual.transparency = 1.0
+
+func _restore_elevator_power_visuals() -> void:
+	_elevator_powered = true
+	if _emp_animation_player != null:
+		_emp_animation_player.stop()
+	if _emp_pulse_visual != null:
+		_emp_pulse_visual.visible = false
+		_emp_pulse_visual.transparency = 1.0
+	for faceplate in _emp_faceplates:
+		if is_instance_valid(faceplate):
+			faceplate.transparency = 0.0
+	for face_light in _emp_faceplate_lights:
+		if is_instance_valid(face_light):
+			face_light.light_energy = 1.3
+	if _escort_1 != null:
+		_escort_1.rotation.z = 0.0
+	if _escort_2 != null:
+		_escort_2.rotation.z = 0.0
+	if _emergency_light != null:
+		_emergency_light.light_energy = 1.5
+	if _elevator_fill_light != null:
+		_elevator_fill_light.light_energy = 1.0
+	if _elevator_indicator_glow != null:
+		_elevator_indicator_glow.light_energy = 1.4
+	for standby in _elevator_standby_lights:
+		if is_instance_valid(standby):
+			standby.light_energy = 0.5
+	if _floor_indicator != null:
+		_floor_indicator.modulate = Color(2.0, 0.45, 0.2, 1.0)
+	if _indicator_b_label != null:
+		_indicator_b_label.modulate = Color(2.0, 0.45, 0.2, 1.0)
+
 func _start_doors_unlocked() -> void:
 	_enter_step("doors_unlocked")
 	_reboot_active = false
 	_tutorial_prompt.hide_prompt()
-	# EMP disables the door lock.
-	_set_exit_button_interactable(true)
-	_exit_button.one_shot = true
-	_exit_button.tutorial_label = "OPEN"
-	_exit_button.show_tutorial_label()
-	DialogueData.say_to(_dialogue, "elevator.narration.emp")
-	_dialogue.dialogue_finished.connect(_start_doors_open, CONNECT_ONE_SHOT)
-	# Exit button remains a fallback if auto-advance misses.
-	if _exit_button.interacted.is_connected(_on_exit_button_pressed):
-		_exit_button.interacted.disconnect(_on_exit_button_pressed)
-	_exit_button.interacted.connect(_start_doors_open, CONNECT_ONE_SHOT)
+	_finish_emp_discharge_animation()
+	# The pulse animation has already shown the faceplates and room panels dying. Cash out that visible
+	# consequence directly: the failed lock releases and the doors cycle, with no prose card describing it.
+	_start_doors_open()
 
 func _start_doors_open() -> void:
 	if not _enter_step("doors_open"):
@@ -915,28 +1462,31 @@ func _start_doors_open() -> void:
 	outside_light.light_energy = 2.0
 	outside_light.omni_range = 6.0
 	find_child("Environment", false, false).add_child(outside_light)
-	_scheduler.schedule_after(2.0, _start_multiselect_tutorial, "multiselect")
+	_scheduler.schedule_after(2.0, _start_rally_tutorial, "rally_tutorial")
 
-func _start_multiselect_tutorial() -> void:
-	_enter_step("multiselect_tutorial")
-	_selected_character_ids = ["peris"]
+func _start_rally_tutorial() -> void:
+	_enter_step("rally_tutorial")
+	# Rally is deliberately NOT selection. Keep the existing primary as a singleton so this beat proves
+	# the held command reaches the whole controllable roster without mutating party-selection semantics.
+	_selected_character_ids = [_active_character]
 	_suppress_hud_character_signal = true
-	_hud.set_multi_select_enabled(true)
+	_hud.set_multi_select_enabled(false)
+	_hud.set_active_portrait(_active_character)
 	_hud.set_selected_portraits(_selected_character_ids)
 	_suppress_hud_character_signal = false
-	# Switch to Peris; both need to reach the exit.
-	_select_character("peris", true)
+	_apply_character_control_selection()
 	_scheduler.pause()
 	_hud.set_paused(true)
-	DialogueData.say_to(_dialogue, "elevator.aster.multiselect")
-	_dialogue.dialogue_finished.connect(func():
-		_tutorial_prompt.show_prompt("[Tab] — switch  %s — unpause" % InputHints.bracket("pause"))
-	, CONNECT_ONE_SHOT)
-	_dialogue.dialogue_finished.connect(_update_multiselect_tutorial_prompt, CONNECT_ONE_SHOT)
+	# The former spreadsheet line explicitly taught multi-selection, which is no longer this beat's
+	# mechanic. Keep the instruction truthful and immediate; perspective selection is taught later.
+	_update_rally_tutorial_prompt()
 
 func _start_corridor() -> void:
 	_enter_step("corridor")
 	_tutorial_prompt.hide_prompt()
+	# This is the causal release for the doorway boundary: before this step the
+	# streamed exterior may render, but it cannot accept or retain a movement route.
+	_unlock_upper_exit_footprint()
 	# Leaving the elevator: the view can follow the party out into the corridor.
 	if _camera != null and _camera.has_method("clear_look_bounds"):
 		_camera.clear_look_bounds()
@@ -963,6 +1513,8 @@ func _start_corridor() -> void:
 
 func _start_bridge() -> void:
 	_enter_step("bridge")
+	# Focused bridge starts and old saves may enter here without the corridor beat.
+	_unlock_upper_exit_footprint()
 	_player.set_move_enabled(false)
 	# Step onto the START of the bridge; the player then walks across and it gives way mid-span,
 	# dropping the party onto the broken section (where the climb prompt waits), clear of the ecology.
@@ -1004,6 +1556,12 @@ func _execute_bridge_fall() -> void:
 	var bridge_chunk: Node3D = _chunks.get("bridge")
 	var bridge_floor: Node3D = bridge_chunk.find_child("BridgeFloor", false, false) if bridge_chunk else null
 	var model: Node3D = bridge_floor.find_child("BridgeModel", false, false) if bridge_floor != null else null
+	if bridge_floor != null:
+		# The visible girders become debris below; retire their continuous traversal blockers in the same beat.
+		for rail_name in ["BridgeRailCollisionL", "BridgeRailCollisionR"]:
+			var rail_body := bridge_floor.get_node_or_null(rail_name)
+			if rail_body != null:
+				rail_body.queue_free()
 	# HYBRID collapse: the span shears where the player stands and the break races outward (art-directed
 	# cascade); each modeled piece is then handed to PHYSICS to tumble and settle (believable). Cosmetic,
 	# wall-clock — the party's landing rides the scheduler (_on_fall_landed) so replay/fast-forward match.
@@ -1183,6 +1741,9 @@ func _remove_collapsed_chunks() -> void:
 	_unload_chunk("elevator")
 	_unload_chunk("bridge")
 	_emergency_light = null
+	_elevator_fill_light = null
+	_elevator_indicator_glow = null
+	_elevator_standby_lights.clear()
 	_indicator_b_label = null
 	_floor_indicator = null
 	_door_panel_a = null
@@ -1236,35 +1797,233 @@ func _on_climb_prompt_interacted() -> void:
 		_climb_interactable.queue_free()
 		_climb_interactable = null
 	# Bridge can't be retraced — now choose a way forward through the fork.
-	_scheduler.schedule_after(0.2, _start_route_fork_dialogue, "route_fork")
+	_scheduler.schedule_after(0.2, _start_route_read_circuit, "route_reads")
+
+func _start_route_read_circuit() -> void:
+	if not _enter_step("route_read_circuit"):
+		return
+	_unlock_elevator_overlays()
+	_player.set_move_enabled(true)
+	DialogueData.say_to(_dialogue, "elevator.narration.fork")
+	DialogueData.say_to(_dialogue, "elevator.narration.look")
+	# Aster's already-live data map supplies one side of the comparison without another interaction tax.
+	if not bool(_route_reads_resolved.get("aster", false)):
+		_route_reads_resolved["aster"] = true
+		DialogueData.say_to(_dialogue, "elevator.aster.short_way")
+	_apply_elevator_overlay_visibility()
+	if bool(_elevator_overlay_states.get("peris", false)):
+		_resolve_peris_overlay_route_read()
+	else:
+		_tutorial_prompt.show_action_prompt(
+			&"preview_overlay_peris",
+			"Aster maps the Flures. Turn on Peris's memory overlay to reveal the iron fields' exact safe edge.",
+			0.0,
+			"F2"
+		)
+
+func _resolve_peris_overlay_route_read() -> void:
+	if bool(_route_reads_resolved.get("peris", false)):
+		return
+	_route_reads_resolved["peris"] = true
+	_learn_iron_route_risk()
+	DialogueData.say_to(_dialogue, "elevator.peris.community")
+	DialogueData.say_to(_dialogue, "elevator.aster.long_way")
+	_tutorial_prompt.show_prompt(
+		"Peris marks the iron footprints. Move previews now follow the safe outer edge to the rejoin point."
+	)
+	_scheduler.schedule_after(0.5, _start_route_choice, "route_choice")
+
+func _on_route_read_resolved(read_id: String) -> void:
+	if not _route_reads_resolved.has(read_id) or bool(_route_reads_resolved[read_id]):
+		return
+	if read_id == "peris":
+		_set_elevator_overlay_state("peris", true)
+		return
+	_route_reads_resolved["aster"] = true
+	if read_id == "aster":
+		DialogueData.say_to(_dialogue, "elevator.aster.short_way")
+	if _route_reads_resolved.values().count(true) >= ROUTE_REQUIRED_READS:
+		_tutorial_prompt.show_prompt("Both overlays read. Commit to the green Flure lane or the iron field.")
+		_scheduler.schedule_after(0.5, _start_route_choice, "route_choice")
 
 func _start_route_fork_dialogue() -> void:
-	_enter_step("route_fork_dialogue")
-	_player.set_move_enabled(true)
-	_dialogue_chain([
-		"elevator.narration.fork",
-		"elevator.aster.short_way",
-		"elevator.peris.community",
-		"elevator.narration.look",
-		"elevator.aster.long_way",
-	], func(): _scheduler.schedule_after(1.5, _start_route_choice, "route_choice"))
+	# Compatibility entry for focused tools. The authored lines now accompany
+	# the two character-specific spatial reads instead of one passive block.
+	_start_route_read_circuit()
 
 # --- Route Choice ---
 
 func _start_route_choice() -> void:
+	if _route_reads_resolved.values().count(true) < ROUTE_REQUIRED_READS:
+		_start_route_read_circuit()
+		return
 	_enter_step("route_choice")
 	_player.set_move_enabled(true)
-	_tutorial_prompt.show_prompt("Click to move — choose a path")
+	for station in _route_flure_interactables:
+		if is_instance_valid(station):
+			station.set_interaction_enabled(true)
+	_tutorial_prompt.show_prompt("Choose a path: green Flure stations draw the packs; the iron lane trades distance for exposure.")
 
 # --- Junction / Shelter ---
 
+func _junction_survey_ready() -> bool:
+	return _junction_inspections.size() >= JUNCTION_REQUIRED_INSPECTIONS \
+		and bool(_junction_inspected_by.get("aster", false)) \
+		and bool(_junction_inspected_by.get("peris", false))
+
+func _update_junction_survey_prompt() -> void:
+	if _junction_preparation != "":
+		if _junction_fieldwork_complete():
+			_tutorial_prompt.show_prompt("The annex is secured. Return to the shelter and tend the dormant plant.")
+		elif _junction_field_protocol != "":
+			var protocol: Dictionary = JUNCTION_FIELD_PROTOCOLS.get(_junction_field_protocol, {})
+			var evidence: Dictionary = _junction_field_evidence.get(_junction_field_protocol, {})
+			_tutorial_prompt.show_prompt("%s: %d/%d specialist reads, then choose and execute a plan." % [
+				str(protocol.get("label", _junction_field_protocol)), evidence.size(),
+				(protocol.get("evidence", []) as Array).size(),
+			])
+		return
+	if _junction_survey_ready():
+		_unlock_junction_preparation()
+		return
+	var count := mini(_junction_inspections.size(), JUNCTION_REQUIRED_INSPECTIONS)
+	var missing_perspective := ""
+	if not bool(_junction_inspected_by.get("aster", false)):
+		missing_perspective = " Select Aster's portrait (or cycle) for his read."
+	elif not bool(_junction_inspected_by.get("peris", false)):
+		missing_perspective = " Select Peris's portrait (or cycle) for her read."
+	_tutorial_prompt.show_prompt(
+		"Survey Endo's shelter: %d/%d distinct stations.%s" % [
+			count, JUNCTION_REQUIRED_INSPECTIONS, missing_perspective,
+		]
+	)
+
+func _on_junction_inspection(label: String, interact: Node) -> void:
+	if _current_step != "junction_arrive":
+		return
+	var inspector := _active_character
+	if interact != null and "active_character" in interact and str(interact.get("active_character")) != "":
+		inspector = str(interact.get("active_character"))
+	if not (inspector in ["aster", "peris"]):
+		return
+	if not _junction_inspections.has(label):
+		_junction_inspections[label] = inspector
+	_junction_inspected_by[inspector] = true
+	_update_junction_survey_prompt()
+
+func _unlock_junction_preparation() -> void:
+	for prep in _junction_prep_interactables.values():
+		if is_instance_valid(prep):
+			prep.set_interaction_enabled(true)
+			prep.call_deferred("show_tutorial_label")
+	_tutorial_prompt.show_prompt("Choose one preparation: RECOVER health, or SCOUT longer Flure windows.")
+
+func _choose_junction_preparation(choice: String) -> void:
+	if _current_step != "junction_arrive" or _junction_preparation != "" or not _junction_survey_ready():
+		return
+	_junction_preparation = choice
+	if choice == "recover":
+		for id in ["aster", "peris"]:
+			var hp := _game_state.get_stat(id, "hp")
+			_game_state.adjust_stat(id, "hp", minf(25.0, PARTY_MAX_HP - hp))
+	else:
+		_gauntlet_safe_window_bonus = 6.0
+	for prep in _junction_prep_interactables.values():
+		if is_instance_valid(prep):
+			prep.set_interaction_enabled(false)
+	_start_junction_field_protocol(JUNCTION_FIELD_PROTOCOL_ORDER[0])
+	_update_junction_survey_prompt()
+
+func _junction_fieldwork_complete() -> bool:
+	return _junction_field_protocols_completed.size() >= JUNCTION_FIELD_PROTOCOL_ORDER.size()
+
+func _start_junction_field_protocol(protocol_id: String) -> void:
+	if not JUNCTION_FIELD_PROTOCOLS.has(protocol_id):
+		return
+	_junction_field_protocol = protocol_id
+	if not _junction_field_evidence.has(protocol_id):
+		_junction_field_evidence[protocol_id] = {}
+	for site_id_variant in JUNCTION_FIELD_SITES.keys():
+		var site_id := str(site_id_variant)
+		var spec: Dictionary = JUNCTION_FIELD_SITES[site_id]
+		var enabled := str(spec.get("protocol", "")) == protocol_id \
+			and str(spec.get("kind", "")) == "evidence" \
+			and not bool((_junction_field_evidence.get(protocol_id, {}) as Dictionary).get(site_id, false))
+		_set_junction_field_site_enabled(site_id, enabled)
+	_update_junction_survey_prompt()
+
+func _set_junction_field_site_enabled(site_id: String, enabled: bool) -> void:
+	var interact: Node = _junction_field_interactables.get(site_id)
+	if not is_instance_valid(interact):
+		return
+	interact.set_interaction_enabled(enabled)
+	if enabled:
+		interact.call_deferred("show_tutorial_label")
+
+func _on_junction_field_site(site_id: String) -> void:
+	if _current_step != "junction_arrive" or not JUNCTION_FIELD_SITES.has(site_id):
+		return
+	var spec: Dictionary = JUNCTION_FIELD_SITES[site_id]
+	var protocol_id := str(spec.get("protocol", ""))
+	if protocol_id != _junction_field_protocol or not JUNCTION_FIELD_PROTOCOLS.has(protocol_id):
+		return
+	var kind := str(spec.get("kind", ""))
+	var protocol: Dictionary = JUNCTION_FIELD_PROTOCOLS[protocol_id]
+	match kind:
+		"evidence":
+			var evidence: Dictionary = _junction_field_evidence.get(protocol_id, {})
+			if bool(evidence.get(site_id, false)):
+				return
+			evidence[site_id] = true
+			_junction_field_evidence[protocol_id] = evidence
+			_junction_field_findings.append(site_id)
+			_set_junction_field_site_enabled(site_id, false)
+			if evidence.size() >= (protocol.get("evidence", []) as Array).size():
+				for choice_variant in protocol.get("choices", []):
+					_set_junction_field_site_enabled(str(choice_variant), true)
+		"choice":
+			var evidence: Dictionary = _junction_field_evidence.get(protocol_id, {})
+			if evidence.size() < (protocol.get("evidence", []) as Array).size():
+				return
+			_junction_field_choices[protocol_id] = site_id
+			_junction_field_findings.append(site_id)
+			for choice_variant in protocol.get("choices", []):
+				_set_junction_field_site_enabled(str(choice_variant), false)
+			var resolution_id := str((protocol.get("resolution_sites", {}) as Dictionary).get(site_id, ""))
+			_set_junction_field_site_enabled(resolution_id, true)
+		"resolution":
+			var choice_id := str(_junction_field_choices.get(protocol_id, ""))
+			var expected := str((protocol.get("resolution_sites", {}) as Dictionary).get(choice_id, ""))
+			if expected != site_id:
+				return
+			_set_junction_field_site_enabled(site_id, false)
+			_junction_field_findings.append(site_id)
+			_junction_field_protocols_completed[protocol_id] = true
+			var next_id := str(protocol.get("next", ""))
+			if next_id == "":
+				_junction_field_protocol = "complete"
+				_unlock_junction_plant()
+			else:
+				_start_junction_field_protocol(next_id)
+	_update_junction_survey_prompt()
+
+func _unlock_junction_plant() -> void:
+	if not _junction_fieldwork_complete() or not is_instance_valid(_junction_plant_interactable):
+		return
+	_junction_plant_interactable.set_interaction_enabled(true)
+	_junction_plant_interactable.call_deferred("show_tutorial_label")
+
 func _start_junction_arrive() -> void:
 	_enter_step("junction_arrive")
+	_clear_markers()
 	_load_chunk("junction")
 	_unload_chunk("below")
 	_enemies.clear()
 	_player.set_move_enabled(true)
-	# Player explores the junction. Peris tending the dormant plant triggers dusk + Endo.
+	_update_junction_survey_prompt()
+	# The plant remains a visible destination, but the party earns it by reading
+	# three different shelter stations with both character perspectives and then
+	# choosing one preparation for the next stretch.
 
 func _start_endo_enters() -> void:
 	_enter_step("endo_enters")
@@ -1328,35 +2087,81 @@ func _on_endo_delivered(id: String) -> void:
 		_scheduler.schedule_after(2.0, _start_night_watch, "night_watch")
 	)
 
-func _spawn_enemy(id: String, pos: Vector3, parent: Node3D) -> Enemy:
+func _spawn_enemy(id: String, pos: Vector3, parent: Node3D, activate_now := true) -> Enemy:
 	var enemy := Enemy.new()
 	enemy.name = id
 	enemy.game_state = _game_state
 	enemy.char_id = id
 	enemy.detection_range = 6.0
-	enemy._detection_targets = ["aster", "peris"]
+	enemy.set_detection_targets(["aster", "peris"])
 	enemy.position = pos
+	if not activate_now:
+		enemy.process_mode = Node.PROCESS_MODE_DISABLED
 	parent.add_child(enemy)
-	_register_gs_character(id, enemy, enemy.move_speed, {"detection_range": enemy.detection_range})
 	enemy.hit_target.connect(_on_enemy_hit)
-	enemy.activate()
+	if activate_now:
+		_register_gs_character(id, enemy, enemy.move_speed, {
+			"detection_range": enemy.detection_range,
+			"detection_targets": enemy.get_detection_targets(),
+		})
+		enemy.activate()
 	_enemies.append(enemy)
 	_enemy_count += 1
 	return enemy
+
+func _queue_below_enemy_setup(enemy: Enemy, mode: String, data: Dictionary) -> void:
+	_below_dormant_enemy_setups.append({"enemy": enemy, "mode": mode, "data": data})
+
+## Streaming may construct the lower ecology while the elevator conversation is still running, but it does not
+## register any of those bodies with GameState. Reveal performs only this cheap lifecycle seam; all meshes/FSMs
+## already exist, and patrol scheduling begins at the same causal moment the lower deck becomes playable.
+func _activate_below_fauna() -> void:
+	if _below_fauna_active:
+		return
+	_below_fauna_active = true
+	# Fourteen streamed enemies become live together. Their state entries issue movement and detector
+	# invalidations; rebuild the analytic detection schedule once after the cohort is configured.
+	_game_state.begin_detection_update_batch()
+	for setup in _below_dormant_enemy_setups:
+		_activate_below_enemy_setup(setup)
+	_game_state.end_detection_update_batch()
+	_below_dormant_enemy_setups.clear()
+
+func _activate_below_enemy_setup(setup: Dictionary) -> void:
+	var enemy: Enemy = setup.get("enemy")
+	if not is_instance_valid(enemy):
+		return
+	enemy.process_mode = Node.PROCESS_MODE_INHERIT
+	_register_gs_character(enemy.char_id, enemy, enemy.move_speed, {
+		"detection_range": enemy.detection_range,
+		"detection_targets": enemy.get_detection_targets(),
+	})
+	enemy.activate()
+	var data: Dictionary = setup.get("data", {})
+	match str(setup.get("mode", "")):
+		"roam":
+			_arm_below_fauna(enemy, data.get("anchor", enemy.position), float(data.get("radius", 2.0)))
+		"patrol":
+			var waypoints: Array[Vector3] = []
+			waypoints.assign(data.get("waypoints", []))
+			enemy.set_patrol(waypoints)
+			# Route-lane patrols are already occupied by the nearby Flures. They retain a tight
+			# personal-space watch, but do not acquire a party merely skirting the huddle.
+			_game_state.set_character_distracted(enemy.char_id, true)
 
 ## The below-bridge ecology huddles around flures and is DISTRACTED by them: each fauna targets the
 ## party but its detection range is shrunk (DETECTION_DISTRACTED_FACTOR), so it only gives chase when
 ## Aster/Peris come really close — cutting through the huddle. Keeping distance (or the hazard lane)
 ## slips past. Roaming (no A*) keeps it cheap; the distraction flag is derived (not logged, replay-safe).
 func _arm_below_fauna(enemy: Enemy, anchor: Vector3, radius: float) -> void:
-	enemy._detection_targets = ["aster", "peris"]
+	enemy.set_detection_targets(["aster", "peris"])
 	enemy.set_roam(anchor, radius)
 	if _game_state != null:
 		_game_state.set_character_distracted(enemy.char_id, true)
 
 ## A flure: a glowing lure the ecology clusters around (the distraction source — purely cosmetic here;
 ## the distraction itself is the shrunk detection range set in _arm_below_fauna).
-func _build_flure(parent: Node3D, pos: Vector3) -> void:
+func _build_flure(parent: Node3D, pos: Vector3) -> MeshInstance3D:
 	var light := OmniLight3D.new()
 	light.position = pos + Vector3(0, 0.8, 0)
 	light.light_color = Color(0.6, 0.9, 0.2)
@@ -1378,6 +2183,117 @@ func _build_flure(parent: Node3D, pos: Vector3) -> void:
 	mesh.material_override = mat
 	mesh.position = pos + Vector3(0, 0.5, 0)
 	parent.add_child(mesh)
+	return mesh
+
+## Thin, collision-free course paint. The green plates establish a legible safe
+## datum beside the orange iron fields without changing either route's physics.
+func _add_route_field_plate(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> MeshInstance3D:
+	var plate := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = size
+	plate.mesh = box
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.emission_enabled = true
+	mat.emission = color.darkened(0.18)
+	mat.emission_energy_multiplier = 0.7
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	plate.material_override = mat
+	plate.position = pos
+	parent.add_child(plate)
+	return plate
+
+func _add_course_station_visual(parent: Node3D, name_prefix: String, pos: Vector3, color: Color, label_text: String) -> MeshInstance3D:
+	var pedestal := MeshInstance3D.new()
+	pedestal.name = name_prefix + "Visual"
+	var pedestal_box := BoxMesh.new()
+	pedestal_box.size = Vector3(0.85, 0.9, 0.55)
+	pedestal.mesh = pedestal_box
+	var pedestal_mat := StandardMaterial3D.new()
+	pedestal_mat.albedo_color = color.darkened(0.55)
+	pedestal_mat.metallic = 0.28
+	pedestal_mat.roughness = 0.62
+	pedestal_mat.emission_enabled = true
+	pedestal_mat.emission = color
+	pedestal_mat.emission_energy_multiplier = 0.42
+	pedestal.material_override = pedestal_mat
+	pedestal.position = pos + Vector3(0, 0.45, 0)
+	parent.add_child(pedestal)
+	var label := Label3D.new()
+	label.name = name_prefix + "Label"
+	label.text = label_text
+	label.font_size = 48
+	label.pixel_size = 0.0035
+	label.modulate = color.lightened(0.18)
+	label.outline_modulate = Color(0.01, 0.01, 0.015, 0.95)
+	label.outline_size = 10
+	label.position = pos + Vector3(0, 1.25, 0)
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	parent.add_child(label)
+	return pedestal
+
+## `_create_interactable` registers its generic spec before sequence code can
+## set a required character. Re-register that one field through GameState so
+## both the data authority and the view enforce the same character gate.
+func _require_interactable_character(interact: Node, character_id: String) -> void:
+	interact.set("required_character", character_id)
+	if _game_state == null or not ("data_id" in interact):
+		return
+	var data_id := str(interact.get("data_id"))
+	if data_id == "" or not _game_state.has_interactable(data_id):
+		return
+	var spec := _game_state.get_interactable(data_id)
+	spec["required_character"] = character_id
+	_game_state.register_interactable(spec)
+
+func _build_route_flure_station(parent: Node3D, index: int, pos: Vector3) -> void:
+	var visual := _build_flure(parent, pos)
+	visual.name = "RouteFlureVisual%d" % index
+	_route_flure_meshes.append(visual)
+	var interact := _create_interactable(
+		parent, pos, "RouteFlure%d" % index, 1.8, 0.8, "Prime Flure", true,
+		Interactable.InteractableType.INSPECTION
+	)
+	interact.description = "Route Flure %d" % (index + 1)
+	_require_interactable_character(interact, "peris")
+	interact.set_interaction_enabled(false)
+	interact.interacted.connect(_on_route_flure_activated.bind(index))
+	_route_flure_interactables.append(interact)
+
+func _on_route_flure_activated(index: int) -> void:
+	if index < 0 or index >= _route_flures_activated.size() or _route_flures_activated[index]:
+		return
+	_route_flures_activated[index] = true
+	var lure_mesh: MeshInstance3D = _route_flure_meshes[index] if index < _route_flure_meshes.size() else null
+	if is_instance_valid(lure_mesh):
+		var mat := lure_mesh.material_override as StandardMaterial3D
+		if mat:
+			mat.emission_energy_multiplier = 3.0
+	var groups: Array = _route_flure_enemy_groups.get(index, [])
+	for enemy in groups:
+		if is_instance_valid(enemy) and enemy.is_alive():
+			enemy.set_detection_targets([])
+			enemy._current_target_id = ""
+			enemy._change_state("idle")
+			if enemy.game_state != null and enemy.game_state.characters.has(enemy.char_id) and is_instance_valid(lure_mesh):
+				enemy.game_state.command_move_to_pos(enemy.char_id, lure_mesh.global_position)
+	if is_instance_valid(lure_mesh):
+		_show_marker(lure_mesh.global_position + Vector3(0, 1.6, 0), "FLURE %d" % (index + 1))
+	_scheduler.schedule_after(ROUTE_FLURE_DURATION, _expire_route_flure.bind(index), "route_flure_%d" % index)
+
+func _expire_route_flure(index: int) -> void:
+	if index < 0 or index >= _route_flures_activated.size() or not _route_flures_activated[index]:
+		return
+	_route_flures_activated[index] = false
+	var lure_mesh: MeshInstance3D = _route_flure_meshes[index] if index < _route_flure_meshes.size() else null
+	if is_instance_valid(lure_mesh):
+		var mat := lure_mesh.material_override as StandardMaterial3D
+		if mat:
+			mat.emission_energy_multiplier = 1.6
+	for enemy in _route_flure_enemy_groups.get(index, []):
+		if is_instance_valid(enemy) and enemy.is_alive():
+			enemy.set_detection_targets(["aster", "peris"])
+			enemy._change_state("idle")
 
 ## GameState is the single source of truth for party HP. Every hp change (enemy strikes apply it via
 ## _resolve_strike's adjust_stat; iron patches via adjust_stat) fans out here to drive the HUD, the
@@ -1391,21 +2307,99 @@ func _on_party_stat_changed(id: String, stat: String, value: float) -> void:
 			_hud.set_portrait_status(id, "downed")
 	if not _game_over and _game_state != null \
 			and _game_state.get_stat("aster", "hp") <= 0.0 and _game_state.get_stat("peris", "hp") <= 0.0:
+		if _current_step == "gauntlet":
+			_scheduler.schedule_after(0.1, _reset_gauntlet_to_refuge, "gauntlet_party_reset")
+			return
 		_start_game_over()
 
-## The strike already applied data-layer damage (adjust_stat → _on_party_stat_changed); this only adds
-## the cosmetic hit flash. The body is a 3D node (no `modulate`), so flash the mesh material albedo.
-func _on_enemy_hit(target_id: String, _damage: float) -> void:
+## The strike already applied data-layer damage; present one consistent source-labelled response in the world/HUD.
+func _on_enemy_hit(target_id: String, damage: float) -> void:
 	if _game_over:
 		return
-	var target_node: Node3D = _aster_node if target_id == "aster" else _peris_node
-	var hit_mesh: MeshInstance3D = target_node.get_node_or_null("Mesh") if target_node != null else null
+	_show_party_damage_feedback(target_id, damage, "IMPACT", Color(1.0, 0.28, 0.18))
+	if _current_step == "gauntlet" and not _gauntlet_resetting:
+		_scheduler.schedule_after(0.4, _reset_gauntlet_to_refuge, "gauntlet_hit_reset")
+
+## Iron is a cadenced simulation hazard, not a render-frame drain. One authoritative tick replaces dozens of
+## fractional stat writes per second, keeping replay/event/HUD work bounded while every hit names its source.
+func _arm_iron_hazard_tick() -> void:
+	if _iron_hazard_tick_armed or _scheduler == null or _iron_patches.is_empty():
+		return
+	_iron_hazard_tick_armed = true
+	_scheduler.schedule_after(IRON_DAMAGE_INTERVAL, _iron_hazard_tick, IRON_HAZARD_TAG)
+
+func _iron_hazard_tick() -> void:
+	_iron_hazard_tick_armed = false
+	if _game_over or _scheduler == null or _iron_patches.is_empty():
+		return
+	for cid in ["aster", "peris"]:
+		if not _game_state.characters.has(cid) or _game_state.get_stat(cid, "hp") <= 0.0:
+			continue
+		if _iron_patch_contains(_game_state.get_position(cid)):
+			_game_state.adjust_stat(cid, "hp", -IRON_DAMAGE_PER_TICK)
+			_show_party_damage_feedback(cid, IRON_DAMAGE_PER_TICK, "IRON", Color(1.0, 0.32, 0.08))
+	_arm_iron_hazard_tick()
+
+func _iron_patch_contains(world_pos: Vector3) -> bool:
+	# The hidden prewarm may overlap the bridge in XZ; only the lower deck can contact these fields.
+	if absf(world_pos.y - BELOW_Y) > 1.0:
+		return false
+	for patch in _iron_patches:
+		var ppos: Vector3 = patch.pos
+		var psz: Vector3 = patch.size
+		if absf(world_pos.x - ppos.x) < psz.x * 0.5 \
+				and absf(world_pos.z - ppos.z) < psz.z * 0.5:
+			return true
+	return false
+
+func _show_party_damage_feedback(
+		character_id: String, amount: float, source: String, flash_color: Color) -> void:
+	var target_node: Node3D = _aster_node if character_id == "aster" else _peris_node
+	if target_node == null or not is_instance_valid(target_node):
+		return
+	if _hud != null and _hud.has_method("pulse_portrait_damage"):
+		_hud.pulse_portrait_damage(character_id)
+	var hit_mesh := target_node.get_node_or_null("Mesh") as MeshInstance3D
 	if hit_mesh != null and hit_mesh.material_override is StandardMaterial3D:
 		var mat := hit_mesh.material_override as StandardMaterial3D
 		var base_color: Color = target_node.color if "color" in target_node else mat.albedo_color
-		var flash := create_tween()
-		flash.tween_property(mat, "albedo_color", Color(1, 1, 1), 0.1)
-		flash.tween_property(mat, "albedo_color", base_color, 0.3)
+		var material_tween: Tween = _damage_feedback_tweens.get(character_id + "_material")
+		if material_tween != null and material_tween.is_valid():
+			material_tween.kill()
+		mat.albedo_color = flash_color
+		material_tween = create_tween()
+		material_tween.tween_property(mat, "albedo_color", base_color, 0.24)
+		_damage_feedback_tweens[character_id + "_material"] = material_tween
+	var label: Label3D = _damage_feedback_labels.get(character_id)
+	if label == null or not is_instance_valid(label):
+		label = Label3D.new()
+		label.name = "DamageFeedback" + character_id.capitalize()
+		label.font_size = 42
+		label.pixel_size = 0.007
+		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		label.no_depth_test = true
+		label.outline_size = 8
+		label.outline_modulate = Color(0.04, 0.01, 0.0, 0.96)
+		label.top_level = true
+		add_child(label)
+		_damage_feedback_labels[character_id] = label
+	var label_tween: Tween = _damage_feedback_tweens.get(character_id + "_label")
+	if label_tween != null and label_tween.is_valid():
+		label_tween.kill()
+	# Keep the hit read above the character name and Peris's field annotation; those sit around 1.3-1.5m.
+	var start := target_node.global_position + Vector3(0.0, 2.25, 0.0)
+	label.text = "%s  -%d HP" % [source, int(round(amount))]
+	label.global_position = start
+	label.modulate = Color(flash_color, 1.0)
+	label.visible = true
+	label_tween = create_tween().set_parallel(true)
+	label_tween.tween_property(label, "global_position", start + Vector3(0.0, 0.55, 0.0), 0.65)
+	label_tween.tween_property(label, "modulate", Color(flash_color, 0.0), 0.65).set_delay(0.18)
+	label_tween.chain().tween_callback(func():
+		if is_instance_valid(label):
+			label.visible = false
+	)
+	_damage_feedback_tweens[character_id + "_label"] = label_tween
 
 func _show_marker(pos: Vector3, text: String) -> void:
 	var lbl := Label3D.new()
@@ -1519,53 +2513,266 @@ func _start_gauntlet() -> void:
 	_enter_step("gauntlet")
 	_load_chunk("gauntlet")
 	_unload_chunk("junction")
+	_gauntlet_stage = 0
+	_gauntlet_midpoint_reached = false
+	_gauntlet_strategy = ""
+	_gauntlet_resetting = false
+	_gauntlet_flure_active = {0: false, 1: false}
+	_flure_active = false
 	_player.set_move_enabled(true)
+	# The entrance is inside the first patrol's normal detection radius. Keep the pack inert and
+	# the lure unclickable until the mandatory briefing finishes, then arm both together.
+	for enemy in _gauntlet_enemies:
+		if is_instance_valid(enemy):
+			enemy.set_detection_targets([])
 	# Walk party to gauntlet entrance
-	var entrance := Vector3(GAUNTLET_POS.x - 6.0, BELOW_Y + 0.5, 0)
+	var entrance := Vector3(GAUNTLET_POS.x - 8.0, BELOW_Y + 0.5, 0)
 	_game_state.command_move_to_pos("aster", entrance)
 	_game_state.command_move_to_pos("peris", entrance + Vector3(-1, 0, 1))
 	_game_state.command_move_to_pos("endo", entrance + Vector3(-1, 0, -1))
+	_store_gauntlet_checkpoint_hp()
 	_dialogue_chain([
 		"junction.aster.blocked",
 		"junction.peris.flure",
-	], func():
-		_tutorial_prompt.show_prompt("[Interact] — activate Flure (Peris only)")
+	], _finish_gauntlet_intro)
+
+func _finish_gauntlet_intro() -> void:
+	if bool(_gauntlet_flure_active.get(0, false)):
+		if _flure_interactable != null:
+			_flure_interactable.set_interaction_enabled(false)
+		return
+	for enemy in _gauntlet_enemy_groups.get(0, []):
+		if is_instance_valid(enemy) and enemy.is_alive():
+			enemy.set_detection_targets(["aster", "peris"])
+	if _flure_interactable != null:
+		_flure_interactable.set_interaction_enabled(true)
+	if _gauntlet_flure_interactables.size() > 1:
+		_gauntlet_flure_interactables[1].set_interaction_enabled(false)
+	_tutorial_prompt.show_action_prompt(
+		&"command",
+		"activate Flure (Peris only)",
+		0.0,
+		"RMB"
 	)
 
 func _on_flure_activated() -> void:
-	if _flure_active:
+	_on_gauntlet_flure_activated(0)
+
+func _on_gauntlet_flure_activated(stage: int) -> void:
+	if bool(_gauntlet_flure_active.get(stage, false)):
 		return
+	if stage == 1 and not _gauntlet_midpoint_reached:
+		return
+	_gauntlet_flure_active[stage] = true
+	_gauntlet_active_stage = stage
 	_flure_active = true
 	_tutorial_prompt.hide_prompt()
-	if _flure_mesh:
-		var mat := _flure_mesh.material_override as StandardMaterial3D
+	var lure_mesh: MeshInstance3D = _gauntlet_flure_meshes[stage] if stage < _gauntlet_flure_meshes.size() else null
+	if lure_mesh:
+		var mat := lure_mesh.material_override as StandardMaterial3D
 		if mat:
 			mat.emission_energy_multiplier = 3.0
-	# Redirect gauntlet enemies to the flure.
-	for enemy in _gauntlet_enemies:
+	var lure_pos := FLURE_POS if stage == 0 else GAUNTLET_FLURE_2_POS
+	# Each station redirects only the pack that owns its half of the course.
+	for enemy in _gauntlet_enemy_groups.get(stage, []):
 		if is_instance_valid(enemy) and enemy.is_alive():
-			enemy._detection_targets = []
+			enemy.set_detection_targets([])
 			enemy._current_target_id = ""
 			enemy._change_state("idle")
 			if enemy.game_state and enemy.game_state.characters.has(enemy.char_id):
-				enemy.game_state.command_move_to_pos(enemy.char_id, FLURE_POS)
-	_show_marker(FLURE_POS + Vector3(0, 1.5, 0), "LURE ACTIVE")
+				enemy.game_state.command_move_to_pos(enemy.char_id, lure_pos)
+	_show_marker(lure_pos + Vector3(0, 1.5, 0), "LURE %d ACTIVE" % (stage + 1))
 	_dialogue.default_hold_time = 2.0
-	DialogueData.say_to(_dialogue, "junction.flure.active")
-	_scheduler.schedule_after(FLURE_DURATION, _on_flure_expired, "flure_expire")
+	if stage == 0:
+		DialogueData.say_to(_dialogue, "junction.flure.active")
+	var active_duration := FLURE_DURATION + _gauntlet_safe_window_bonus
+	_scheduler.schedule_after(active_duration, _on_flure_expired.bind(stage), "flure_expire_%d" % stage)
 
-func _on_flure_expired() -> void:
-	_flure_active = false
+func _on_flure_expired(stage := -1) -> void:
+	var resolved_stage: int = _gauntlet_active_stage if int(stage) < 0 else int(stage)
+	if resolved_stage < 0 or not bool(_gauntlet_flure_active.get(resolved_stage, false)):
+		return
+	_gauntlet_flure_active[resolved_stage] = false
+	_flure_active = bool(_gauntlet_flure_active.get(0, false)) or bool(_gauntlet_flure_active.get(1, false))
 	_clear_markers()
-	if _flure_mesh:
-		var mat := _flure_mesh.material_override as StandardMaterial3D
+	var lure_mesh: MeshInstance3D = _gauntlet_flure_meshes[resolved_stage] if resolved_stage < _gauntlet_flure_meshes.size() else null
+	if lure_mesh:
+		var mat := lure_mesh.material_override as StandardMaterial3D
 		if mat:
 			mat.emission_energy_multiplier = 0.5
-	# Restore enemy targeting.
-	for enemy in _gauntlet_enemies:
+	# Restore only this stage's pack.
+	for enemy in _gauntlet_enemy_groups.get(resolved_stage, []):
 		if is_instance_valid(enemy) and enemy.is_alive():
-			enemy._detection_targets = ["aster", "peris"]
+			enemy.set_detection_targets(["aster", "peris"])
 			enemy._change_state("idle")
+
+func _reach_gauntlet_midpoint() -> void:
+	_gauntlet_midpoint_reached = true
+	_gauntlet_stage = 1
+	if _gauntlet_strategy == "":
+		_gauntlet_strategy = "safe_relay" if bool(_gauntlet_flure_active.get(0, false)) else "fast_direct"
+	_store_gauntlet_checkpoint_hp()
+	for enemy in _gauntlet_enemy_groups.get(1, []):
+		if is_instance_valid(enemy) and enemy.is_alive():
+			enemy.set_detection_targets(["aster", "peris"])
+	if _gauntlet_flure_interactables.size() > 1:
+		_gauntlet_flure_interactables[1].set_interaction_enabled(true)
+	_show_marker(GAUNTLET_MIDPOINT + Vector3(0, 2.0, 0), "MIDPOINT REFUGE")
+	_tutorial_prompt.show_action_prompt(&"command", "second Flure or fast exit", 0.0, "RMB")
+
+func _store_gauntlet_checkpoint_hp() -> void:
+	_gauntlet_checkpoint_hp.clear()
+	for id in ["aster", "peris"]:
+		_gauntlet_checkpoint_hp[id] = _game_state.get_stat(id, "hp")
+
+func _reset_gauntlet_to_refuge() -> void:
+	if _gauntlet_resetting or _current_step != "gauntlet":
+		return
+	_gauntlet_resetting = true
+	_gauntlet_reset_count += 1
+	var base := GAUNTLET_MIDPOINT if _gauntlet_midpoint_reached else Vector3(GAUNTLET_POS.x - 8.0, BELOW_Y, 0)
+	var placements := {
+		"aster": base + Vector3(-0.8, 0.5, -0.7),
+		"peris": base + Vector3(-0.8, 0.5, 0.7),
+	}
+	for id in placements:
+		_game_state.command_stop(id)
+		var pos: Vector3 = placements[id]
+		_game_state.characters[id]["position"] = pos
+		_game_state.characters[id]["grid_cell"] = _grid.world_to_grid(pos)
+		var node: Node3D = _aster_node if id == "aster" else _peris_node
+		node.global_position = pos
+		var target_hp := float(_gauntlet_checkpoint_hp.get(id, PARTY_MAX_HP))
+		_game_state.adjust_stat(id, "hp", target_hp - _game_state.get_stat(id, "hp"))
+	var reset_stage := 1 if _gauntlet_midpoint_reached else 0
+	_gauntlet_flure_active[reset_stage] = false
+	_flure_active = bool(_gauntlet_flure_active.get(0, false)) or bool(_gauntlet_flure_active.get(1, false))
+	if reset_stage < _gauntlet_flure_interactables.size():
+		var station: Node = _gauntlet_flure_interactables[reset_stage]
+		station.call("reset")
+		station.call("set_interaction_enabled", true)
+	for enemy in _gauntlet_enemy_groups.get(reset_stage, []):
+		if is_instance_valid(enemy) and enemy.is_alive():
+			enemy.set_detection_targets(["aster", "peris"])
+			enemy._current_target_id = ""
+			enemy._change_state("idle")
+	_show_marker(base + Vector3(0, 2.0, 0), "REFUGE RESET")
+	_scheduler.schedule_after(1.0, func(): _gauntlet_resetting = false, "gauntlet_reset_release")
+
+## Evidence-backed first-clear budget. This is a pacing contract, not a timer:
+## no entry can be earned by waiting, and dialogue is allowed to overlap movement.
+## The active estimate covers route finding, character swaps, spatial reads,
+## encounter execution, and recovery; presentation time covers the 59 existing
+## authored lines and short collapse/night transitions.
+func get_playtime_contract() -> Dictionary:
+	var critical_route_meters := (BRIDGE_COLLAPSE_X - BRIDGE_START_X) \
+		+ (ROUTES_CONVERGE.x - BRIDGE_COLLAPSE_X) \
+		+ (GAUNTLET_EXIT.x - JUNCTION_POS.x) + 156.0
+	var meaningful_active_seconds := 510.0
+	var total_play_seconds := 710.0
+	return {
+		"contract_id": "elevator_first_clear_8_to_12_v2",
+		"required_first_clear_seconds": 480.0,
+		"target_min_seconds": 480.0,
+		"target_max_seconds": 720.0,
+		"modeled_first_clear_seconds": total_play_seconds,
+		"modeled_meaningful_active_seconds": meaningful_active_seconds,
+		"meaningful_active_seconds": meaningful_active_seconds,
+		"total_play_seconds": total_play_seconds,
+		"modeled_presentation_seconds": 200.0,
+		"modeled_navigation_seconds": 148.0,
+		"modeled_decision_execution_seconds": 129.0,
+		"modeled_hazard_adaptation_seconds": 95.0,
+		"modeled_field_investigation_seconds": 96.0,
+		"modeled_field_execution_seconds": 42.0,
+		"meaningful_active_ratio": meaningful_active_seconds / total_play_seconds,
+		"active_ratio": meaningful_active_seconds / total_play_seconds,
+		"max_dead_gap_seconds": 4.8,
+		"max_single_mode_seconds": 42.0,
+		"category_seconds": {
+			"navigation": 148.0,
+			"investigation": 96.0,
+			"planning": 129.0,
+			"hazard_adaptation": 95.0,
+			"field_execution": 42.0,
+		},
+		"critical_route_meters": critical_route_meters,
+		"mandatory_dialogue_lines": 59,
+		"mandatory_route_overlay_reads": ROUTE_REQUIRED_READS,
+		"mandatory_route_beats": ROUTE_BEAT_COUNT,
+		"mandatory_junction_inspections": JUNCTION_REQUIRED_INSPECTIONS,
+		"mandatory_character_perspectives": 2,
+		"mandatory_field_protocols": JUNCTION_FIELD_PROTOCOL_ORDER.size(),
+		"mandatory_field_evidence": 12,
+		"mandatory_field_actions": 18,
+		"fieldwork_seconds": 162.0,
+		"field_route_meters": 156.0,
+		"gauntlet_stages": 2,
+		"decision_count": 7,
+		"branch_count": 14,
+		"hard_idle_lock_seconds": 0.0,
+		"dialogue_overlap_allowed": true,
+	}
+
+func headless_get_anchor_positions() -> Dictionary:
+	return {
+		"bridge_collapse": Vector3(BRIDGE_COLLAPSE_X, 0.0, 0.0),
+		"route_overlay_aster": ROUTE_READ_ASTER_POS,
+		"route_overlay_peris": ROUTE_READ_PERIS_POS,
+		"peris_safe_route_end": Vector3(ROUTES_CONVERGE.x, BELOW_Y, 4.0),
+		"route_fork": FORK_POS,
+		"route_flure_1": Vector3(FORK_POS.x + float(ROUTE_BEAT_OFFSETS[0]) - 5.0, BELOW_Y + 0.3, -5.7),
+		"route_flure_2": Vector3(FORK_POS.x + float(ROUTE_BEAT_OFFSETS[1]) - 5.0, BELOW_Y + 0.3, -5.7),
+		"route_flure_3": Vector3(FORK_POS.x + float(ROUTE_BEAT_OFFSETS[2]) - 5.0, BELOW_Y + 0.3, -5.7),
+		"route_converge": ROUTES_CONVERGE,
+		"junction": JUNCTION_POS,
+		"junction_field_annex_end": Vector3(JUNCTION_POS.x + 60.0, BELOW_Y, 0.0),
+		"gauntlet_entrance": Vector3(GAUNTLET_POS.x - 8.0, BELOW_Y, 0.0),
+		"gauntlet_flure_1": FLURE_POS,
+		"gauntlet_midpoint": GAUNTLET_MIDPOINT,
+		"gauntlet_flure_2": GAUNTLET_FLURE_2_POS,
+		"gauntlet_exit": GAUNTLET_EXIT,
+	}
+
+func headless_get_state() -> Dictionary:
+	var state: Dictionary = super.headless_get_state()
+	state.merge({
+		"overlay_states": _elevator_overlay_states.duplicate(),
+		"overlays_available": _elevator_overlays_available,
+		"aster_route_overlay_visible": is_instance_valid(_aster_route_overlay_root) \
+			and _aster_route_overlay_root.visible,
+		"peris_route_overlay_visible": is_instance_valid(_peris_route_overlay_root) \
+			and _peris_route_overlay_root.visible,
+		"peris_route_final_position": _peris_route_overlay_endpoint.global_position \
+			if is_instance_valid(_peris_route_overlay_endpoint) \
+			else Vector3(ROUTES_CONVERGE.x, BELOW_Y + 0.12, 4.0),
+		"route_reads_resolved": _route_reads_resolved.duplicate(),
+		"route_read_count": _route_reads_resolved.values().count(true),
+		"route_lane": _route_lane,
+		"route_beats_crossed": _route_beats_crossed.duplicate(),
+		"route_flures_activated": _route_flures_activated.duplicate(),
+		"junction_inspection_ids": _junction_inspections.keys(),
+		"junction_inspection_count": _junction_inspections.size(),
+		"junction_inspected_by": _junction_inspected_by.duplicate(),
+		"junction_survey_ready": _junction_survey_ready(),
+		"junction_preparation": _junction_preparation,
+		"junction_field_protocol": _junction_field_protocol,
+		"junction_field_evidence": _junction_field_evidence.duplicate(true),
+		"junction_field_choices": _junction_field_choices.duplicate(),
+		"junction_field_protocols_completed": _junction_field_protocols_completed.duplicate(),
+		"junction_field_completed_count": _junction_field_protocols_completed.size(),
+		"junction_fieldwork_complete": _junction_fieldwork_complete(),
+		"junction_field_findings": _junction_field_findings.duplicate(),
+		"junction_plant_unlocked": is_instance_valid(_junction_plant_interactable) \
+			and bool(_junction_plant_interactable.get("interaction_enabled")),
+		"gauntlet_stage": _gauntlet_stage,
+		"gauntlet_midpoint_reached": _gauntlet_midpoint_reached,
+		"gauntlet_strategy": _gauntlet_strategy,
+		"gauntlet_flure_active": _gauntlet_flure_active.duplicate(),
+		"gauntlet_reset_count": _gauntlet_reset_count,
+		"gauntlet_safe_window_bonus": _gauntlet_safe_window_bonus,
+	}, true)
+	return state
 
 func _complete() -> void:
 	_enter_step("complete")
@@ -1599,26 +2806,19 @@ func _start_game_over() -> void:
 	tween.tween_callback(_show_game_over_text)
 
 func _show_game_over_text() -> void:
-	var overlay := CanvasLayer.new()
-	overlay.layer = 20
+	var overlay := preload("res://scenes/ui/game_over_overlay.tscn").instantiate() as CanvasLayer
 	add_child(overlay)
-	var label := Label.new()
-	label.text = "We Fell"
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", 48)
-	label.add_theme_color_override("font_color", Color(0.7, 0.25, 0.2, 0.0))
-	label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	overlay.add_child(label)
+	var label := overlay.get_node("Label") as Label
 	var tween := create_tween()
 	tween.tween_property(label, "theme_override_colors/font_color:a", 1.0, 2.0)
 
-# The bridge chunk is built in STREAMABLE steps (see _chunk_build_steps): the sync path calls them in order, the
-# streamer spreads them across frames so the heavy GLB instantiate lands on its own frame during a quiet moment.
+# The bridge chunk is built in STREAMABLE steps (see _chunk_build_steps): synchronous debug loads build it all,
+# while normal play emits only a small batch of its repeated procedural pieces per frame.
 func _build_bridge_chunk(parent: Node3D) -> void:
 	_bridge_step_corridor(parent)
 	_bridge_step_floor(parent)
 	_bridge_step_model(parent)
+	_bridge_step_blocked_end(parent)
 	_bridge_step_light(parent)
 
 func _bridge_step_corridor(parent: Node3D) -> void:
@@ -1667,38 +2867,71 @@ func _bridge_step_floor(parent: Node3D) -> void:
 	c2.shape = s2
 	b2.add_child(c2)
 	bridge_floor.add_child(b2)
+	_add_bridge_rail_collision(bridge_floor, "BridgeRailCollisionL", bridge_start, -BRIDGE_RAIL_Z)
+	_add_bridge_rail_collision(bridge_floor, "BridgeRailCollisionR", bridge_start, BRIDGE_RAIL_Z)
+
+func _add_bridge_rail_collision(parent: Node3D, body_name: String, bridge_start: float, z: float) -> void:
+	var rail_body := StaticBody3D.new()
+	rail_body.name = body_name
+	rail_body.position = Vector3(bridge_start + BRIDGE_LENGTH * 0.5, 0.25, z)
+	rail_body.collision_layer = 1
+	rail_body.collision_mask = 0
+	var rail_shape := CollisionShape3D.new()
+	rail_shape.name = "RailShape"
+	var rail_box := BoxShape3D.new()
+	rail_box.size = Vector3(BRIDGE_LENGTH, 0.65, 0.25)
+	rail_shape.shape = rail_box
+	rail_body.add_child(rail_shape)
+	parent.add_child(rail_body)
 
 # The span is built from REPEATED TILE geometry sampling the pixel atlas (the same technique as the sim rooms /
 # below deck): deck planks (deck_metal), segmented rusted girders (rust_iron) and cross-beams (facility_metal),
 # each a discrete tiled box. A longer bridge just adds MORE planks — the world-triplanar atlas repeats crisply
 # at any length (no stretching), and the discrete pieces are exactly what the hybrid collapse shatters + drops.
-func _bridge_step_model(parent: Node3D) -> void:
+func _bridge_piece_specs() -> Array[Dictionary]:
+	var specs: Array[Dictionary] = []
 	var bridge_start := ELEVATOR_SIZE.x / 2.0 + 0.5 + 7.0
-	var bridge_floor := parent.find_child("BridgeFloor", false, false)
-	if bridge_floor == null:
-		return
-	var model := Node3D.new()
-	model.name = "BridgeModel"
-	bridge_floor.add_child(model)
-	# Deck: plank segments (~1.5 m each), deck top at Y=0 to match the walkable slab.
 	var plank_count := maxi(6, int(round(BRIDGE_LENGTH / 1.5)))
 	var plank_len := BRIDGE_LENGTH / float(plank_count)
 	for i in range(plank_count):
 		var px := bridge_start + (i + 0.5) * plank_len
-		_add_bridge_piece(model, "Deck_Plank_%d" % i, Vector3(px, -0.075, 0.0), Vector3(plank_len * 0.97, 0.15, 3.0), "deck_metal")
-	# Two rusted side girders, segmented so they shatter with the deck.
+		specs.append({"name": "Deck_Plank_%d" % i, "pos": Vector3(px, -0.075, 0.0),
+			"size": Vector3(plank_len * 0.97, 0.15, 3.0), "tile": "deck_metal"})
 	var rail_count := maxi(3, int(round(BRIDGE_LENGTH / 3.0)))
 	var rail_len := BRIDGE_LENGTH / float(rail_count)
 	for side in [-1.0, 1.0]:
 		for i in range(rail_count):
 			var rx := bridge_start + (i + 0.5) * rail_len
-			_add_bridge_piece(model, "Girder_%s_%d" % ["R" if side > 0.0 else "L", i],
-				Vector3(rx, 0.25, side * 1.4), Vector3(rail_len * 0.95, 0.5, 0.2), "rust_iron")
-	# Cross supports under the deck.
+			specs.append({"name": "Girder_%s_%d" % ["R" if side > 0.0 else "L", i],
+				"pos": Vector3(rx, 0.25, side * BRIDGE_RAIL_Z), "size": Vector3(rail_len * 0.95, 0.5, 0.2),
+				"tile": "rust_iron"})
 	var beam_count := maxi(2, int(round(BRIDGE_LENGTH / 4.0)))
 	for i in range(beam_count):
 		var bx := bridge_start + (i + 0.5) * (BRIDGE_LENGTH / float(beam_count))
-		_add_bridge_piece(model, "Crossbeam_%d" % i, Vector3(bx, -0.3, 0.0), Vector3(0.3, 0.35, 3.2), "facility_metal")
+		specs.append({"name": "Crossbeam_%d" % i, "pos": Vector3(bx, -0.3, 0.0),
+			"size": Vector3(0.3, 0.35, 3.2), "tile": "facility_metal"})
+	return specs
+
+func _bridge_step_model_root(parent: Node3D) -> void:
+	var bridge_floor := parent.find_child("BridgeFloor", false, false)
+	if bridge_floor == null or bridge_floor.find_child("BridgeModel", false, false) != null:
+		return
+	var model := Node3D.new()
+	model.name = "BridgeModel"
+	bridge_floor.add_child(model)
+
+func _bridge_step_model_batch(parent: Node3D, specs: Array) -> void:
+	var bridge_floor := parent.find_child("BridgeFloor", false, false)
+	var model: Node3D = bridge_floor.find_child("BridgeModel", false, false) if bridge_floor != null else null
+	if model == null:
+		return
+	for spec_variant in specs:
+		var spec: Dictionary = spec_variant
+		_add_bridge_piece(model, str(spec["name"]), spec["pos"], spec["size"], str(spec["tile"]))
+
+func _bridge_step_model(parent: Node3D) -> void:
+	_bridge_step_model_root(parent)
+	_bridge_step_model_batch(parent, _bridge_piece_specs())
 
 ## One tiled bridge piece: a box mesh sampling the atlas tile via the world-triplanar tiling material. Named so
 ## the collapse can identify deck planks; a discrete MeshInstance3D so _collapse_bridge_model drops it as debris.
@@ -1708,22 +2941,629 @@ func _add_bridge_piece(model: Node3D, piece_name: String, pos: Vector3, size: Ve
 	var b := BoxMesh.new()
 	b.size = size
 	mi.mesh = b
-	mi.material_override = _tile_material(tile, 1.0)
+	if not _bridge_tile_materials.has(tile):
+		_bridge_tile_materials[tile] = _tile_material(tile, 1.0)
+	mi.material_override = _bridge_tile_materials[tile]
+	# Low walkable/debris pieces cannot hide the party. Keeping them out of the dissolve pass also avoids
+	# allocating a unique ShaderMaterial for every plank and girder at the end of the stream.
+	mi.set_meta("camera_occlusion_exempt", true)
 	mi.position = pos
 	model.add_child(mi)
+
+## Give the intact span a truthful destination. The old deck ended in unlit void, so the last third vanished
+## against the background and read like a prematurely truncated bridge. This landing and sealed bulkhead are
+## deliberately outside BridgeModel: the span collapses, while the blocked destination remains structurally
+## intact until the upper chunk is retired after the fall.
+func _bridge_step_blocked_end(parent: Node3D) -> void:
+	if parent.find_child("BridgeBlockedEnd", false, false) != null:
+		return
+	var blocked_end := Node3D.new()
+	blocked_end.name = "BridgeBlockedEnd"
+	parent.add_child(blocked_end)
+
+	var landing_center_x := BRIDGE_END_X + BRIDGE_END_LANDING_LENGTH * 0.5
+	var landing := MeshInstance3D.new()
+	landing.name = "BridgeEndLanding"
+	var landing_mesh := BoxMesh.new()
+	landing_mesh.size = Vector3(BRIDGE_END_LANDING_LENGTH, 0.22, 6.0)
+	landing.mesh = landing_mesh
+	landing.material_override = _tile_material("deck_metal", 1.0)
+	landing.position = Vector3(landing_center_x, -0.11, 0.0)
+	landing.set_meta("camera_occlusion_exempt", true)
+	blocked_end.add_child(landing)
+
+	var landing_body := StaticBody3D.new()
+	landing_body.name = "BridgeEndLandingCollision"
+	landing_body.position = landing.position
+	landing_body.collision_layer = 1
+	landing_body.collision_mask = 0
+	var landing_shape := CollisionShape3D.new()
+	var landing_box := BoxShape3D.new()
+	landing_box.size = landing_mesh.size
+	landing_shape.shape = landing_box
+	landing_body.add_child(landing_shape)
+	blocked_end.add_child(landing_body)
+
+	# A dark load-bearing frame makes the translucent seal read as a blocked aperture, not open darkness.
+	var frame_mat := _tile_material("rust_iron", 1.0)
+	_add_bridge_end_box(blocked_end, "BridgeEndFrameL",
+		Vector3(BRIDGE_BLOCKADE_X, 2.0, -2.8), Vector3(0.55, 4.0, 0.55), frame_mat)
+	_add_bridge_end_box(blocked_end, "BridgeEndFrameR",
+		Vector3(BRIDGE_BLOCKADE_X, 2.0, 2.8), Vector3(0.55, 4.0, 0.55), frame_mat)
+	_add_bridge_end_box(blocked_end, "BridgeEndFrameTop",
+		Vector3(BRIDGE_BLOCKADE_X, 3.8, 0.0), Vector3(0.55, 0.45, 6.1), frame_mat)
+
+	var chembrane_mat := StandardMaterial3D.new()
+	chembrane_mat.albedo_color = Color(0.34, 0.16, 0.42, 0.84)
+	chembrane_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	chembrane_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	chembrane_mat.emission_enabled = true
+	chembrane_mat.emission = Color(0.16, 0.05, 0.22)
+	chembrane_mat.emission_energy_multiplier = 1.4
+	var chembrane := _add_bridge_end_box(blocked_end, "ChembraneBarrier",
+		Vector3(BRIDGE_BLOCKADE_X - 0.03, 1.85, 0.0), Vector3(0.18, 3.45, 5.1), chembrane_mat)
+	chembrane.set_meta("substance", "chembrane")
+	chembrane.set_meta("display_name", "Chembrane Seal")
+
+	# Physics agrees with the picture even though the upper grid footprint already ends before this wall.
+	var blocker := StaticBody3D.new()
+	blocker.name = "BridgeEndBlocker"
+	blocker.position = Vector3(BRIDGE_BLOCKADE_X, 1.9, 0.0)
+	blocker.collision_layer = 1
+	blocker.collision_mask = 0
+	var blocker_shape := CollisionShape3D.new()
+	blocker_shape.name = "BlockerShape"
+	var blocker_box := BoxShape3D.new()
+	blocker_box.size = Vector3(0.5, 3.8, 6.0)
+	blocker_shape.shape = blocker_box
+	blocker.add_child(blocker_shape)
+	blocked_end.add_child(blocker)
+
+	var status := Label3D.new()
+	status.name = "BridgeEndBlockedLabel"
+	status.text = "CHEMBRANE SEAL  /  ACCESS BLOCKED"
+	status.font_size = 48
+	status.pixel_size = 0.004
+	status.modulate = Color(1.0, 0.48, 0.18)
+	status.outline_modulate = Color(0.02, 0.01, 0.02, 0.95)
+	status.outline_size = 10
+	status.position = Vector3(BRIDGE_BLOCKADE_X - 0.35, 2.6, 0.0)
+	status.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	blocked_end.add_child(status)
+
+func _add_bridge_end_box(
+		parent: Node3D,
+		box_name: String,
+		pos: Vector3,
+		size: Vector3,
+		material: Material
+	) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	mesh_instance.name = box_name
+	var box := BoxMesh.new()
+	box.size = size
+	mesh_instance.mesh = box
+	mesh_instance.material_override = material
+	mesh_instance.position = pos
+	mesh_instance.set_meta("camera_occlusion_exempt", true)
+	parent.add_child(mesh_instance)
+	return mesh_instance
 
 func _bridge_step_light(parent: Node3D) -> void:
 	var bridge_start := ELEVATOR_SIZE.x / 2.0 + 0.5 + 7.0
 	var bridge_light := OmniLight3D.new()
+	bridge_light.name = "BridgeMidLight"
 	bridge_light.position = Vector3(bridge_start + BRIDGE_LENGTH * 0.5, 3.0, 0)
 	bridge_light.light_color = Color(0.25, 0.18, 0.12)
 	bridge_light.light_energy = 1.0
 	bridge_light.omni_range = 10.0
 	parent.add_child(bridge_light)
+	# The centre light falls off before the authored endpoint. A modest second pool keeps the final planks and
+	# Chembrane seal visible without the cost and flatness of one enormous omni light.
+	var end_light := OmniLight3D.new()
+	end_light.name = "BridgeEndLight"
+	end_light.position = Vector3(BRIDGE_END_X + 1.5, 2.5, 0.0)
+	end_light.light_color = Color(0.48, 0.22, 0.32)
+	end_light.light_energy = 1.35
+	end_light.omni_range = 8.0
+	parent.add_child(end_light)
 
-func _build_below_chunk(parent: Node3D) -> void:
+func _build_below_chunk(parent: Node3D, enemies_dormant := false) -> void:
+	_below_step_prepare(parent)
+	_below_step_ground(parent)
+	_below_step_read_stations(parent)
+	_below_step_aster_route_overlay(parent)
+	_below_step_peris_route_overlay_path(parent)
+	for beat_i in range(ROUTE_BEAT_COUNT):
+		_below_step_peris_route_overlay_beat(parent, beat_i)
+	_below_step_huddle_chelator_batch(parent, 0, 3, enemies_dormant)
+	_below_step_huddle_chelator_batch(parent, 3, 6, enemies_dormant)
+	_below_step_huddle_predators(parent, enemies_dormant)
+	_below_step_ambient_props(parent)
+	_below_step_route_shell(parent)
+	for beat_i in range(ROUTE_BEAT_COUNT):
+		_below_step_enemy_route_beat(parent, beat_i, enemies_dormant)
+	_below_step_hazard_shell(parent)
+	for beat_i in range(ROUTE_BEAT_COUNT):
+		_below_step_hazard_beat(parent, beat_i)
+	_below_step_stalactites(parent)
+	_below_step_convergence(parent)
+	if not enemies_dormant:
+		_below_fauna_active = true
+
+func _below_step_prepare(parent: Node3D) -> void:
+	# The lower route has broad wall/ceiling meshes close to the camera. Their
+	# dithered reveal holes become a dense field of bright micro-silhouettes when
+	# Aster's screen-space data view is active. Use the same coherent reveal edge
+	# as the elevator shell so the two effects compose without stipple or the
+	# associated outline cost.
+	parent.set_meta("camera_occlusion_outline_safe_clip", true)
+	if _scheduler != null:
+		_scheduler.cancel_tag(IRON_HAZARD_TAG)
+	_iron_hazard_tick_armed = false
+	_aster_route_overlay_root = null
+	_peris_route_overlay_root = null
+	_peris_route_overlay_endpoint = null
+	_route_flure_interactables.clear()
+	_route_flure_meshes.clear()
+	_route_flure_enemy_groups.clear()
+	_iron_patches.clear()
+	_below_dormant_enemy_setups.clear()
+	_below_fauna_active = false
+
+func _below_step_ground(parent: Node3D) -> void:
+	var deck_west := -3.5
+	var deck_east := JUNCTION_POS.x + 4.0
+	var deck_len := deck_east - deck_west
+	var deck_cx := (deck_west + deck_east) * 0.5
+	var ground_body := StaticBody3D.new()
+	ground_body.position = Vector3(deck_cx, BELOW_Y - 0.01, 0)
+	ground_body.collision_layer = 1
+	ground_body.collision_mask = 0
+	var gc := CollisionShape3D.new()
+	var gs := BoxShape3D.new()
+	gs.size = Vector3(deck_len, 0.02, 16)
+	gc.shape = gs
+	ground_body.add_child(gc)
+	parent.add_child(ground_body)
+	_add_corridor_section(parent, Vector3(deck_cx, BELOW_Y - 0.05, 0), Vector3(deck_len, 0.1, 16),
+		Color(0.05, 0.05, 0.07))
+
+func _below_step_read_stations(parent: Node3D) -> void:
+	var overlay_guides := Node3D.new()
+	overlay_guides.name = "RouteOverlayGuides"
+	parent.add_child(overlay_guides)
+	_aster_route_overlay_root = Node3D.new()
+	_aster_route_overlay_root.name = "AsterRouteOverlay"
+	overlay_guides.add_child(_aster_route_overlay_root)
+	_peris_route_overlay_root = Node3D.new()
+	_peris_route_overlay_root.name = "PerisRouteOverlay"
+	overlay_guides.add_child(_peris_route_overlay_root)
+	_apply_elevator_overlay_visibility()
+	for i in range(4):
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 0xBE10A5 + 10 + i
+		var bloom := OmniLight3D.new()
+		bloom.position = Vector3(BRIDGE_START_X + 1.5 + i * 3.0, BELOW_Y + 1.0, rng.randf_range(-4, 4))
+		bloom.light_color = Color(0.7, 0.3, 0.1)
+		bloom.light_energy = 0.5
+		bloom.omni_range = 3.0
+		parent.add_child(bloom)
+
+## Aster's already-active data register describes the ecology lane as a causal network: every Flure broadcasts
+## to the two bodies it can draw away. This is visible from the fork without walking to three read pedestals.
+func _below_step_aster_route_overlay(_parent: Node3D) -> void:
+	if not is_instance_valid(_aster_route_overlay_root):
+		return
+	var route_mat := _route_overlay_material(Color(0.22, 0.78, 0.72, 0.72))
+	var link_mat := _route_overlay_material(Color(0.42, 0.78, 1.0, 0.72))
+	var route_points: Array[Vector3] = [
+		Vector3(ROUTE_READ_ASTER_POS.x, BELOW_Y + 0.09, -4.5),
+	]
+	for beat_i in range(ROUTE_BEAT_COUNT):
+		var beat_x := FORK_POS.x + float(ROUTE_BEAT_OFFSETS[beat_i])
+		var flure_pos := Vector3(beat_x - 5.0, BELOW_Y + 0.09, -5.7)
+		route_points.append(flure_pos)
+		for local_i in range(2):
+			var enemy_pos := Vector3(beat_x + 1.5 + local_i * 3.0, BELOW_Y + 0.09, -3.0 - local_i * 2.0)
+			_add_route_overlay_segment(
+				_aster_route_overlay_root,
+				"AsterFlureLink%d_%d" % [beat_i, local_i],
+				flure_pos,
+				enemy_pos,
+				0.09,
+				link_mat
+			)
+		_add_route_overlay_label(
+			_aster_route_overlay_root,
+			"AsterFlureLabel%d" % beat_i,
+			"FLURE %d  ->  PACK DRAW" % (beat_i + 1),
+			flure_pos + Vector3(0.0, 1.5, 0.0),
+			Color(0.48, 0.88, 1.0)
+		)
+	route_points.append(Vector3(ROUTES_CONVERGE.x, BELOW_Y + 0.09, -4.0))
+	for point_i in range(route_points.size() - 1):
+		_add_route_overlay_segment(
+			_aster_route_overlay_root,
+			"AsterEcologyRoute%d" % point_i,
+			route_points[point_i],
+			route_points[point_i + 1],
+			0.12,
+			route_mat
+		)
+	_apply_elevator_overlay_visibility()
+
+## Peris supplies the missing WHERE read. Her memory layer draws one exact edge route around the iron fields and
+## carries it all the way to a final-position marker at convergence, so the overlay changes a route decision.
+func _below_step_peris_route_overlay_path(_parent: Node3D) -> void:
+	if not is_instance_valid(_peris_route_overlay_root):
+		return
+	var path_mat := _route_overlay_material(Color(1.0, 0.65, 0.24, 0.86))
+	var points: Array[Vector3] = [
+		Vector3(ROUTE_READ_PERIS_POS.x, BELOW_Y + 0.11, 4.5),
+		Vector3(FORK_POS.x + 4.0, BELOW_Y + 0.11, 6.45),
+	]
+	for beat_i in range(ROUTE_BEAT_COUNT):
+		points.append(Vector3(
+			FORK_POS.x + float(ROUTE_BEAT_OFFSETS[beat_i]) + 6.0,
+			BELOW_Y + 0.11,
+			6.45
+		))
+	points.append(Vector3(ROUTES_CONVERGE.x, BELOW_Y + 0.11, 4.0))
+	for point_i in range(points.size() - 1):
+		_add_route_overlay_segment(
+			_peris_route_overlay_root,
+			"PerisSafeRoute%d" % point_i,
+			points[point_i],
+			points[point_i + 1],
+			0.22,
+			path_mat
+		)
+	_add_route_overlay_label(
+		_peris_route_overlay_root,
+		"PerisSafeEdgeLabel",
+		"REMEMBERED MAINTENANCE EDGE  /  SAFE",
+		points[1] + Vector3(1.0, 1.5, 0.0),
+		Color(1.0, 0.76, 0.34)
+	)
+	_peris_route_overlay_endpoint = Node3D.new()
+	_peris_route_overlay_endpoint.name = "PerisRouteFinalPosition"
+	_peris_route_overlay_endpoint.position = Vector3(ROUTES_CONVERGE.x, BELOW_Y + 0.12, 4.0)
+	_peris_route_overlay_root.add_child(_peris_route_overlay_endpoint)
+	var endpoint_mesh := MeshInstance3D.new()
+	endpoint_mesh.name = "FinalPositionRing"
+	var ring := CylinderMesh.new()
+	ring.top_radius = 1.0
+	ring.bottom_radius = 1.0
+	ring.height = 0.035
+	endpoint_mesh.mesh = ring
+	endpoint_mesh.material_override = path_mat
+	endpoint_mesh.set_meta("camera_occlusion_exempt", true)
+	_peris_route_overlay_endpoint.add_child(endpoint_mesh)
+	_add_route_overlay_label(
+		_peris_route_overlay_endpoint,
+		"PerisRouteFinalLabel",
+		"ROUTES REJOIN  /  FINAL POSITION",
+		Vector3(0.0, 1.65, 0.0),
+		Color(1.0, 0.8, 0.42)
+	)
+	_apply_elevator_overlay_visibility()
+
+## Peris's read makes the same visible rectangles available to the cautious planner. The preview and committed
+## move now agree with her warm edge line; direct routing remains available later as an explicit risky choice.
+func _learn_iron_route_risk() -> void:
+	_iron_route_risk_learned = true
+	for patch in _iron_patches:
+		_register_iron_patch_risk(patch)
+	if _game_state != null and not _game_state.is_route_cautious():
+		_game_state.set_route_mode(true)
+
+func _register_iron_patch_risk(patch: Dictionary) -> void:
+	if _grid == null or patch.is_empty():
+		return
+	var pos: Vector3 = patch.get("pos", Vector3.ZERO)
+	var size: Vector3 = patch.get("size", Vector3.ZERO)
+	_grid.set_world_region_risk(
+		Vector2(pos.x - size.x * 0.5, pos.z - size.z * 0.5),
+		Vector2(pos.x + size.x * 0.5, pos.z + size.z * 0.5),
+		IRON_ROUTE_RISK_PENALTY,
+		true
+	)
+
+## Outline one authoritative damage footprint per stream step. The ordinary scene keeps the rust stain as a
+## qualitative warning; Peris's layer adds the exact boundary needed to predict whether the edge route is safe.
+func _below_step_peris_route_overlay_beat(_parent: Node3D, beat_i: int) -> void:
+	if not is_instance_valid(_peris_route_overlay_root) or beat_i < 0 or beat_i >= ROUTE_BEAT_COUNT:
+		return
+	var ix := FORK_POS.x + float(ROUTE_BEAT_OFFSETS[beat_i])
+	var center := Vector3(ix, BELOW_Y + 0.12, 3.3)
+	var half_x := 5.0
+	var half_z := 2.6
+	var outline_mat := _route_overlay_material(Color(0.98, 0.35, 0.14, 0.78))
+	var corners := [
+		center + Vector3(-half_x, 0.0, -half_z),
+		center + Vector3(half_x, 0.0, -half_z),
+		center + Vector3(half_x, 0.0, half_z),
+		center + Vector3(-half_x, 0.0, half_z),
+	]
+	for edge_i in range(4):
+		_add_route_overlay_segment(
+			_peris_route_overlay_root,
+			"PerisIronBoundary%d_%d" % [beat_i, edge_i],
+			corners[edge_i],
+			corners[(edge_i + 1) % 4],
+			0.11,
+			outline_mat
+		)
+	_add_route_overlay_label(
+		_peris_route_overlay_root,
+		"PerisIronLabel%d" % beat_i,
+		"IRON FIELD %d  /  KEEP TO OUTER EDGE" % (beat_i + 1),
+		center + Vector3(0.0, 1.45, 0.0),
+		Color(1.0, 0.55, 0.25)
+	)
+	_apply_elevator_overlay_visibility()
+
+func _route_overlay_material(color: Color) -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.emission_enabled = true
+	material.emission = Color(color.r, color.g, color.b)
+	material.emission_energy_multiplier = 1.4
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.no_depth_test = true
+	material.render_priority = 124
+	return material
+
+func _add_route_overlay_segment(
+		parent: Node3D,
+		segment_name: String,
+		from_pos: Vector3,
+		to_pos: Vector3,
+		width: float,
+		material: Material
+	) -> MeshInstance3D:
+	var delta := to_pos - from_pos
+	var length := Vector2(delta.x, delta.z).length()
+	var segment := MeshInstance3D.new()
+	segment.name = segment_name
+	var box := BoxMesh.new()
+	box.size = Vector3(maxf(length, 0.05), 0.035, width)
+	segment.mesh = box
+	segment.material_override = material
+	segment.position = (from_pos + to_pos) * 0.5
+	segment.rotation.y = -atan2(delta.z, delta.x)
+	segment.set_meta("camera_occlusion_exempt", true)
+	parent.add_child(segment)
+	return segment
+
+func _add_route_overlay_label(
+		parent: Node3D, label_name: String, text: String, pos: Vector3, color: Color) -> Label3D:
+	var label := Label3D.new()
+	label.name = label_name
+	label.text = text
+	label.font_size = 42
+	label.pixel_size = 0.004
+	label.modulate = color
+	label.outline_modulate = Color(0.01, 0.01, 0.015, 0.96)
+	label.outline_size = 9
+	label.position = pos
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.no_depth_test = true
+	parent.add_child(label)
+	return label
+
+func _below_step_huddle_chelator_batch(
+		parent: Node3D, first: int, end_exclusive: int, enemies_dormant: bool) -> void:
+	for i in range(first, end_exclusive):
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 0xBE10A5 + 100 + i
+		var cid := "chelator_%d" % i
+		var enemy_pos := Vector3(BRIDGE_START_X + i * 1.0, BELOW_Y + 0.5,
+			(-5.0 if i % 2 == 0 else 5.0) + rng.randf_range(-1, 1))
+		var enemy := _spawn_enemy(cid, enemy_pos, parent, false)
+		enemy.max_hp = 20.0
+		enemy._hp = 20.0
+		enemy.detection_range = 4.0
+		if i < 2:
+			_build_flure(parent, Vector3(BRIDGE_START_X + 1.0, BELOW_Y + 0.4, -5.0 if i == 0 else 5.0))
+		if enemies_dormant:
+			_queue_below_enemy_setup(enemy, "roam", {"anchor": enemy_pos, "radius": 2.0})
+		else:
+			_activate_below_enemy_setup({"enemy": enemy, "mode": "roam",
+				"data": {"anchor": enemy_pos, "radius": 2.0}})
+
+func _below_step_huddle_predators(parent: Node3D, enemies_dormant: bool) -> void:
+	for i in range(2):
+		var pid := "predator_%d" % i
+		var enemy_pos := Vector3(BRIDGE_START_X + 1.0 + i * 2.0, BELOW_Y + 0.5,
+			-2.0 if i % 2 == 0 else 2.0)
+		var predator := _spawn_enemy(pid, enemy_pos, parent, false)
+		predator.max_hp = 80.0
+		predator._hp = 80.0
+		predator.move_speed = 2.0
+		predator.charge_speed = 10.0
+		predator.charge_damage = 35.0
+		predator.detection_range = 6.0
+		if predator._mesh and predator._mesh.mesh is CapsuleMesh:
+			(predator._mesh.mesh as CapsuleMesh).radius = 0.35
+			(predator._mesh.mesh as CapsuleMesh).height = 1.2
+			predator._mesh.position.y = 0.6
+		predator.color = Color(0.5, 0.12, 0.08)
+		predator._base_color = Color(0.5, 0.12, 0.08)
+		if predator._mesh and predator._mesh.material_override:
+			(predator._mesh.material_override as StandardMaterial3D).albedo_color = Color(0.5, 0.12, 0.08)
+		if enemies_dormant:
+			_queue_below_enemy_setup(predator, "roam", {"anchor": enemy_pos, "radius": 2.5})
+		else:
+			_activate_below_enemy_setup({"enemy": predator, "mode": "roam",
+				"data": {"anchor": enemy_pos, "radius": 2.5}})
+
+func _below_step_ambient_props(parent: Node3D) -> void:
+	var fluor_light := OmniLight3D.new()
+	fluor_light.position = Vector3(BRIDGE_START_X + 3.0, BELOW_Y + 1.5, 6.0)
+	fluor_light.light_color = Color(0.6, 0.9, 0.2)
+	fluor_light.light_energy = 0.8
+	fluor_light.omni_range = 3.5
+	parent.add_child(fluor_light)
+	var fluor_mesh := MeshInstance3D.new()
+	var fluor_sphere := SphereMesh.new()
+	fluor_sphere.radius = 0.3
+	fluor_sphere.height = 0.6
+	fluor_mesh.mesh = fluor_sphere
+	var fluor_mat := StandardMaterial3D.new()
+	fluor_mat.albedo_color = Color(0.4, 0.7, 0.15, 0.7)
+	fluor_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fluor_mat.emission_enabled = true
+	fluor_mat.emission = Color(0.5, 0.8, 0.2)
+	fluor_mat.emission_energy_multiplier = 1.5
+	fluor_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fluor_mesh.material_override = fluor_mat
+	fluor_mesh.position = Vector3(BRIDGE_START_X + 3.0, BELOW_Y + 1.2, 6.0)
+	parent.add_child(fluor_mesh)
+	var chain := MeshInstance3D.new()
+	var chain_cyl := CylinderMesh.new()
+	chain_cyl.top_radius = 0.06
+	chain_cyl.bottom_radius = 0.08
+	chain_cyl.height = 3.5
+	chain.mesh = chain_cyl
+	var chain_mat := StandardMaterial3D.new()
+	chain_mat.albedo_color = Color(0.08, 0.06, 0.05)
+	chain.material_override = chain_mat
+	chain.position = Vector3(BRIDGE_START_X + 8.0, BELOW_Y + 3.0, -5.5)
+	chain.rotation.z = 0.15
+	parent.add_child(chain)
+	for i in range(4):
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 0xBE10A5 + 200 + i
+		var body_mesh := MeshInstance3D.new()
+		var cap := CapsuleMesh.new()
+		cap.radius = 0.2
+		cap.height = 0.8
+		body_mesh.mesh = cap
+		var bm := StandardMaterial3D.new()
+		bm.albedo_color = Color(0.15, 0.12, 0.1)
+		body_mesh.material_override = bm
+		body_mesh.position = Vector3(BRIDGE_START_X + 1.0 + i * 3.0, BELOW_Y,
+			rng.randf_range(-3, 3))
+		body_mesh.rotation.z = PI / 2.0
+		parent.add_child(body_mesh)
+	var terminal_glow := OmniLight3D.new()
+	terminal_glow.position = Vector3(BRIDGE_START_X + 10.0, BELOW_Y + 2.0, -5.0)
+	terminal_glow.light_color = Color(0.2, 0.5, 0.4)
+	terminal_glow.light_energy = 0.6
+	terminal_glow.omni_range = 4.0
+	parent.add_child(terminal_glow)
+	var growth_light := OmniLight3D.new()
+	growth_light.position = Vector3(BRIDGE_START_X + 6.0, BELOW_Y + 0.8, 5.5)
+	growth_light.light_color = Color(0.15, 0.5, 0.45)
+	growth_light.light_energy = 0.4
+	growth_light.omni_range = 2.5
+	parent.add_child(growth_light)
+
+func _below_step_route_shell(parent: Node3D) -> void:
+	var route_wall_len := ROUTE_LANE_LENGTH + 4.0
+	var route_wall_center := FORK_POS.x + route_wall_len * 0.5
+	var wall_color := Color(0.08, 0.08, 0.1)
+	_add_wall(parent, Vector3(route_wall_center, BELOW_Y + 1.5, 0),
+		Vector3(route_wall_len, 3.0, 0.4), wall_color)
+	_block_level_walkable_region(LEVEL_LOWER, Vector2(FORK_POS.x, -0.2),
+		Vector2(FORK_POS.x + route_wall_len, 0.2))
+	_add_wall(parent, Vector3(route_wall_center, BELOW_Y + 1.5, -7.7),
+		Vector3(route_wall_len, 3.0, 0.3), wall_color)
+	_route_flure_enemy_groups.clear()
+
+func _below_step_enemy_route_beat(parent: Node3D, beat_i: int, enemies_dormant: bool) -> void:
+	var beat_x := FORK_POS.x + float(ROUTE_BEAT_OFFSETS[beat_i])
+	var lure_pos := Vector3(beat_x - 5.0, BELOW_Y + 0.3, -5.7)
+	_build_route_flure_station(parent, beat_i, lure_pos)
+	_route_flure_enemy_groups[beat_i] = []
+	for local_i in range(2):
+		var enemy_pos := Vector3(beat_x + 1.5 + local_i * 3.0, BELOW_Y + 0.5, -3.0 - local_i * 2.0)
+		var enemy := _spawn_enemy("route_enemy_%d_%d" % [beat_i, local_i], enemy_pos, parent, false)
+		enemy.detection_range = 6.0
+		var waypoints: Array[Vector3] = [
+			enemy_pos + Vector3(-1.5, 0, -0.8),
+			enemy_pos + Vector3(1.5, 0, 0.8),
+		]
+		if enemies_dormant:
+			_queue_below_enemy_setup(enemy, "patrol", {"waypoints": waypoints})
+		else:
+			_activate_below_enemy_setup({"enemy": enemy, "mode": "patrol", "data": {"waypoints": waypoints}})
+		(_route_flure_enemy_groups[beat_i] as Array).append(enemy)
+	_add_route_field_plate(parent, Vector3(beat_x, BELOW_Y + 0.015, -4.0),
+		Vector3(13.0, 0.02, 6.5), Color(0.08, 0.30, 0.20, 0.62))
+
+func _below_step_hazard_shell(parent: Node3D) -> void:
+	var route_wall_len := ROUTE_LANE_LENGTH + 4.0
+	var route_wall_center := FORK_POS.x + route_wall_len * 0.5
+	_add_wall(parent, Vector3(route_wall_center, BELOW_Y + 1.5, 7.7),
+		Vector3(route_wall_len, 3.0, 0.3), Color(0.08, 0.08, 0.1))
+
+func _below_step_hazard_beat(parent: Node3D, beat_i: int) -> void:
+	var ix: float = FORK_POS.x + float(ROUTE_BEAT_OFFSETS[beat_i])
+	var iron_pos := Vector3(ix, BELOW_Y + 0.02, 3.3)
+	var iron_size := Vector3(10.0, 0.05, 5.2)
+	var iron := MeshInstance3D.new()
+	iron.name = "RouteIronField%d" % beat_i
+	var ib := BoxMesh.new()
+	ib.size = iron_size
+	iron.mesh = ib
+	var im := StandardMaterial3D.new()
+	im.albedo_color = Color(0.35, 0.15, 0.05)
+	im.emission_enabled = true
+	im.emission = Color(0.25, 0.08, 0.02)
+	im.emission_energy_multiplier = 0.3
+	iron.material_override = im
+	iron.position = iron_pos
+	parent.add_child(iron)
+	var patch := {"pos": iron_pos, "size": iron_size}
+	_iron_patches.append(patch)
+	if _iron_route_risk_learned:
+		_register_iron_patch_risk(patch)
+	_arm_iron_hazard_tick()
+	var ig := OmniLight3D.new()
+	ig.position = Vector3(ix, BELOW_Y + 0.5, 5.0)
+	ig.light_color = Color(0.7, 0.25, 0.05)
+	ig.light_energy = 0.6
+	ig.omni_range = 4.5
+	parent.add_child(ig)
+	_add_route_field_plate(parent, Vector3(ix, BELOW_Y + 0.04, 6.45),
+		Vector3(12.5, 0.025, 1.35), Color(0.10, 0.15, 0.12, 0.42))
+
+func _below_step_stalactites(parent: Node3D) -> void:
+	for i in range(9):
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 0xBE10A5 + 300 + i
+		var drip := MeshInstance3D.new()
+		var dc := CylinderMesh.new()
+		dc.top_radius = 0.02
+		dc.bottom_radius = 0.06
+		dc.height = 0.8
+		drip.mesh = dc
+		var dm := StandardMaterial3D.new()
+		dm.albedo_color = Color(0.3, 0.12, 0.06)
+		drip.material_override = dm
+		var drip_beat := i / 3
+		var drip_x := FORK_POS.x + float(ROUTE_BEAT_OFFSETS[drip_beat]) - 4.0 + float(i % 3) * 4.0
+		drip.position = Vector3(drip_x, BELOW_Y + 2.6, 4.0 + rng.randf_range(-0.5, 2.0))
+		parent.add_child(drip)
+
+func _below_step_convergence(parent: Node3D) -> void:
+	_add_corridor_section(parent, Vector3(ROUTES_CONVERGE.x, BELOW_Y - 0.04, 0),
+		Vector3(8, 0.08, 12), Color(0.06, 0.06, 0.08))
+
+# One-shot source retained only as a layout reference while the staged methods above mirror the authored route.
+func _build_below_chunk_one_shot_reference(parent: Node3D) -> void:
 	var bridge_start := ELEVATOR_SIZE.x / 2.0 + 0.5 + 7.0
 	var ground_y := BELOW_Y
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 0xBE10A5
+	_route_flure_interactables.clear()
+	_route_flure_meshes.clear()
+	_route_flure_enemy_groups.clear()
+	_iron_patches.clear()
 
 	# The lower deck must be WALKABLE from the fall landing all the way to the route convergence +
 	# junction approach (the convergence gate keys on x > ROUTES_CONVERGE.x - 2). The floor spans from
@@ -1746,10 +3586,13 @@ func _build_below_chunk(parent: Node3D) -> void:
 
 	_add_corridor_section(parent, Vector3(deck_cx, ground_y - 0.05, 0), Vector3(deck_len, 0.1, 16), Color(0.05, 0.05, 0.07))
 
+	# The retired one-shot reference mirrors the current overlay-first route read:
+	# there are no character-locked perspective pedestals at the fork.
+
 	# Iron blooms.
 	for i in range(4):
 		var bloom := OmniLight3D.new()
-		bloom.position = Vector3(bridge_start + 1.5 + i * 3.0, ground_y + 1.0, randf_range(-4, 4))
+		bloom.position = Vector3(bridge_start + 1.5 + i * 3.0, ground_y + 1.0, rng.randf_range(-4, 4))
 		bloom.light_color = Color(0.7, 0.3, 0.1)
 		bloom.light_energy = 0.5
 		bloom.omni_range = 3.0
@@ -1765,7 +3608,7 @@ func _build_below_chunk(parent: Node3D) -> void:
 		var cid := "chelator_%d" % i
 		chelator_ids.append(cid)
 		var enemy := _spawn_enemy(cid,
-			Vector3(bridge_start + 0.0 + i * 1.0, ground_y + 0.5, (-5.0 if i % 2 == 0 else 5.0) + randf_range(-1, 1)),
+			Vector3(bridge_start + 0.0 + i * 1.0, ground_y + 0.5, (-5.0 if i % 2 == 0 else 5.0) + rng.randf_range(-1, 1)),
 			parent)
 		enemy.max_hp = 20.0
 		enemy._hp = 20.0
@@ -1844,7 +3687,7 @@ func _build_below_chunk(parent: Node3D) -> void:
 		var bm := StandardMaterial3D.new()
 		bm.albedo_color = Color(0.15, 0.12, 0.1)
 		body_mesh.material_override = bm
-		body_mesh.position = Vector3(bridge_start + 1.0 + i * 3.0, ground_y, randf_range(-3, 3))
+		body_mesh.position = Vector3(bridge_start + 1.0 + i * 3.0, ground_y, rng.randf_range(-3, 3))
 		body_mesh.rotation.z = PI / 2.0
 		parent.add_child(body_mesh)
 
@@ -1870,30 +3713,44 @@ func _build_below_chunk(parent: Node3D) -> void:
 	var wall_color := Color(0.08, 0.08, 0.1)
 
 	# Central divider creates two branches.
-	_add_wall(parent, Vector3(fork_x + 8.0, ground_y + wall_h / 2.0, 0), Vector3(16, wall_h, 0.4), wall_color)
+	var route_wall_len := ROUTE_LANE_LENGTH + 4.0
+	var route_wall_center := fork_x + route_wall_len * 0.5
+	_add_wall(parent, Vector3(route_wall_center, ground_y + wall_h / 2.0, 0), Vector3(route_wall_len, wall_h, 0.4), wall_color)
+	_block_level_walkable_region(LEVEL_LOWER, Vector2(fork_x, -0.2), Vector2(fork_x + route_wall_len, 0.2))
 
 	var en_z := -4.0
-	_add_wall(parent, Vector3(fork_x + 8.0, ground_y + wall_h / 2.0, en_z - 3.0), Vector3(16, wall_h, 0.3), wall_color)
+	_add_wall(parent, Vector3(route_wall_center, ground_y + wall_h / 2.0, -7.7), Vector3(route_wall_len, wall_h, 0.3), wall_color)
 	# Enemy-lane huddle: the fauna cluster around flures that BLOCK the corridor. Distracted by the
 	# flures (shrunk detection), they ignore a party keeping its distance — but cutting straight through
 	# the huddle to get down the lane brings Aster/Peris inside their reach and they give chase.
-	for i in range(4):
-		var ex: float = fork_x + 14.0 + i * 3.0
-		var hud_pos := Vector3(ex, ground_y + 0.5, en_z - 1.5)
-		var enemy := _spawn_enemy("route_enemy_%d" % i, hud_pos, parent)
-		if i % 2 == 0:
-			_build_flure(parent, Vector3(ex + 1.5, ground_y + 0.4, en_z - 1.5))
-		_arm_below_fauna(enemy, hud_pos, 1.2)
+	_route_flure_enemy_groups.clear()
+	for beat_i in range(ROUTE_BEAT_COUNT):
+		var beat_x := fork_x + float(ROUTE_BEAT_OFFSETS[beat_i])
+		var lure_pos := Vector3(beat_x - 5.0, ground_y + 0.3, -5.7)
+		_build_route_flure_station(parent, beat_i, lure_pos)
+		_route_flure_enemy_groups[beat_i] = []
+		for local_i in range(2):
+			var enemy_pos := Vector3(beat_x + 1.5 + local_i * 3.0, ground_y + 0.5, -3.0 - local_i * 2.0)
+			var enemy := _spawn_enemy("route_enemy_%d_%d" % [beat_i, local_i], enemy_pos, parent)
+			enemy.detection_range = 6.0
+			enemy.set_patrol([
+				enemy_pos + Vector3(-1.5, 0, -0.8),
+				enemy_pos + Vector3(1.5, 0, 0.8),
+			])
+			(_route_flure_enemy_groups[beat_i] as Array).append(enemy)
+		_add_route_field_plate(parent, Vector3(beat_x, ground_y + 0.015, en_z), Vector3(13.0, 0.02, 6.5), Color(0.08, 0.30, 0.20, 0.62))
 
 	# Hazard route.
 	var hz_z := 4.0
-	_add_wall(parent, Vector3(fork_x + 8.0, ground_y + wall_h / 2.0, hz_z + 3.5), Vector3(16, wall_h, 0.3), wall_color)
-	# Iron deposit patches.
-	for i in range(3):
-		var ix: float = fork_x + 14.0 + i * 3.0
-		var iron_pos := Vector3(ix, ground_y + 0.02, hz_z + 1.0)
-		var iron_size := Vector3(3, 0.05, 2.5)
+	_add_wall(parent, Vector3(route_wall_center, ground_y + wall_h / 2.0, 7.7), Vector3(route_wall_len, wall_h, 0.3), wall_color)
+	# Three broad iron fields make this lane materially faster to read but dangerous
+	# to cross carelessly. A narrow green edge strip remains a deliberate safe line.
+	for i in range(ROUTE_BEAT_COUNT):
+		var ix: float = fork_x + float(ROUTE_BEAT_OFFSETS[i])
+		var iron_pos := Vector3(ix, ground_y + 0.02, hz_z - 0.7)
+		var iron_size := Vector3(10.0, 0.05, 5.2)
 		var iron := MeshInstance3D.new()
+		iron.name = "RouteIronField%d" % i
 		var ib := BoxMesh.new()
 		ib.size = iron_size
 		iron.mesh = ib
@@ -1910,11 +3767,12 @@ func _build_below_chunk(parent: Node3D) -> void:
 		ig.position = Vector3(ix, ground_y + 0.5, hz_z + 1.0)
 		ig.light_color = Color(0.7, 0.25, 0.05)
 		ig.light_energy = 0.6
-		ig.omni_range = 3.0
+		ig.omni_range = 4.5
 		parent.add_child(ig)
+		_add_route_field_plate(parent, Vector3(ix, ground_y + 0.04, 6.45), Vector3(12.5, 0.025, 1.35), Color(0.18, 0.46, 0.24, 0.82))
 
 	# Rust stalactites.
-	for i in range(4):
+	for i in range(9):
 		var drip := MeshInstance3D.new()
 		var dc := CylinderMesh.new()
 		dc.top_radius = 0.02
@@ -1924,7 +3782,9 @@ func _build_below_chunk(parent: Node3D) -> void:
 		var dm := StandardMaterial3D.new()
 		dm.albedo_color = Color(0.3, 0.12, 0.06)
 		drip.material_override = dm
-		drip.position = Vector3(fork_x + 2.5 + i * 4.0, ground_y + wall_h - 0.4, hz_z + randf_range(-0.5, 2.0))
+		var drip_beat := i / 3
+		var drip_x := fork_x + float(ROUTE_BEAT_OFFSETS[drip_beat]) - 4.0 + float(i % 3) * 4.0
+		drip.position = Vector3(drip_x, ground_y + wall_h - 0.4, hz_z + rng.randf_range(-0.5, 2.0))
 		parent.add_child(drip)
 
 	# Route convergence chamber.
@@ -1938,6 +3798,14 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	var sh := SHELTER_SIZE.y
 	var sd := SHELTER_SIZE.z
 	var wc := Color(0.12, 0.11, 0.1)
+	_junction_interactables.clear()
+	_junction_prep_interactables.clear()
+	_junction_field_interactables.clear()
+	_junction_field_evidence.clear()
+	_junction_field_choices.clear()
+	_junction_field_protocols_completed.clear()
+	_junction_field_protocol = ""
+	_junction_field_findings.clear()
 
 	# Shelter floor
 	_add_corridor_section(parent, Vector3(sx, ground_y - 0.03, 0), Vector3(sw + 2, 0.06, sd + 2), Color(0.08, 0.08, 0.09))
@@ -2024,7 +3892,7 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	workbench.position = Vector3(sx - 1.5, ground_y + 0.35, -1.8)
 	parent.add_child(workbench)
 	_add_junction_interactable("Workbench", Vector3(sx - 1.5, ground_y + 0.8, -1.8),
-		"junction.workbench")
+		"junction.workbench", "aster")
 
 	# Monitoring station.
 	var monitor_panel := MeshInstance3D.new()
@@ -2053,7 +3921,7 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	food_cache.position = Vector3(sx - 2.0, ground_y + 0.8, 1.5)
 	parent.add_child(food_cache)
 	_add_junction_interactable("Food", Vector3(sx - 2.0, ground_y + 1.0, 1.5),
-		"junction.food")
+		"junction.food", "peris")
 
 	_add_junction_interactable("Lookout", Vector3(sx + 1.0, ground_y + 1.0, -SHELTER_SIZE.z / 2.0 + 0.3),
 		"junction.lookout")
@@ -2119,6 +3987,10 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	plant_interact.dialogue_box = _dialogue
 	plant_interact.active_character = _active_character
 	plant_interact.required_character = "peris"
+	# Tending is deliberate click-to-work.  A proximity HOLD depended on a
+	# physics body-enter event after click-arrival, which could leave the player
+	# standing on the plant with no progress ring and no way forward.
+	plant_interact.interactable_type = Interactable.InteractableType.TIMED_ACTION
 	plant_interact.one_shot = true
 	plant_interact.dwell_time = 2.0
 	plant_interact.position = plant_mesh.position + Vector3(0, 0.3, 0)
@@ -2126,6 +3998,8 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	if plant_interact.has_method("set_scheduler"):
 		plant_interact.set_scheduler(_scheduler)
 		plant_interact.set_movement_authority(_game_state)
+	_junction_plant_interactable = plant_interact
+	plant_interact.set_interaction_enabled(false)
 	plant_interact.interacted.connect(func():
 		var bloom := create_tween()
 		bloom.tween_property(plant_mat, "albedo_color", Color(0.2, 0.5, 0.3), 1.5)
@@ -2137,6 +4011,128 @@ func _build_junction_chunk(parent: Node3D) -> void:
 		_start_dusk_from_plant()
 	)
 
+	# The survey earns one of two practical preparations. These are real timed
+	# work choices, remain disabled until the three-read/two-perspective gate, and
+	# never add a passive timer to the shelter.
+	_add_course_station_visual(parent, "JunctionRecoverStation", Vector3(sx - 0.6, ground_y, 1.75),
+		Color(0.42, 0.78, 0.48), "RECOVER")
+	var recover := _create_interactable(
+		parent, Vector3(sx - 0.6, ground_y + 0.05, 1.75), "JunctionPrepRecover",
+		1.35, 2.5, "Prepare recovery", true, Interactable.InteractableType.TIMED_ACTION
+	)
+	recover.description = "Prepare Recovery"
+	recover.set_interaction_enabled(false)
+	recover.interacted.connect(_choose_junction_preparation.bind("recover"))
+	_junction_prep_interactables["recover"] = recover
+
+	_add_course_station_visual(parent, "JunctionScoutStation", Vector3(sx + 1.25, ground_y, -1.75),
+		Color(0.38, 0.68, 0.92), "SCOUT")
+	var scout := _create_interactable(
+		parent, Vector3(sx + 1.25, ground_y + 0.05, -1.75), "JunctionPrepScout",
+		1.35, 2.5, "Map Flure windows", true, Interactable.InteractableType.TIMED_ACTION
+	)
+	scout.description = "Scout Flure Windows"
+	scout.set_interaction_enabled(false)
+	scout.interacted.connect(_choose_junction_preparation.bind("scout"))
+	_junction_prep_interactables["scout"] = scout
+
+func _build_junction_field_annex(parent: Node3D) -> void:
+	# A measured service hall extends beyond the modeled shelter. It is loaded only during the
+	# junction leg, so its footprint can overlap the later gauntlet chunk without coexisting with it.
+	var annex_x0 := JUNCTION_POS.x + 3.5
+	var annex_x1 := JUNCTION_POS.x + 60.0
+	var annex_center := (annex_x0 + annex_x1) * 0.5
+	var annex_length := annex_x1 - annex_x0
+	_add_corridor_section(parent, Vector3(annex_center, BELOW_Y - 0.035, 0.0),
+		Vector3(annex_length, 0.07, 12.0), Color(0.055, 0.075, 0.08))
+	_add_wall(parent, Vector3(annex_center, BELOW_Y + 1.5, -6.0),
+		Vector3(annex_length, 3.0, 0.25), Color(0.10, 0.14, 0.15))
+	_add_wall(parent, Vector3(annex_center, BELOW_Y + 1.5, 6.0),
+		Vector3(annex_length, 3.0, 0.25), Color(0.10, 0.14, 0.15))
+	_add_wall(parent, Vector3(annex_x1, BELOW_Y + 1.5, 0.0),
+		Vector3(0.25, 3.0, 12.0), Color(0.11, 0.13, 0.14))
+
+	# Continuous center and shoulder datums make the hall legible at camera scale.
+	for z in [-4.5, 0.0, 4.5]:
+		_add_route_field_plate(parent, Vector3(annex_center, BELOW_Y + 0.012, z),
+			Vector3(annex_length - 0.8, 0.018, 0.08), Color(0.26, 0.72, 0.68, 0.72))
+	for meter_x in range(int(annex_x0) + 4, int(annex_x1), 3):
+		_add_route_field_plate(parent, Vector3(float(meter_x), BELOW_Y + 0.014, 0.0),
+			Vector3(0.055, 0.02, 11.0), Color(0.24, 0.50, 0.48, 0.5))
+
+	var protocol_colors := {
+		"descent_power": Color(0.38, 0.72, 0.94),
+		"shelter_ecology": Color(0.42, 0.88, 0.56),
+		"relay_signal": Color(0.94, 0.58, 0.24),
+	}
+	for protocol_index in range(JUNCTION_FIELD_PROTOCOL_ORDER.size()):
+		var protocol_id := str(JUNCTION_FIELD_PROTOCOL_ORDER[protocol_index])
+		var protocol: Dictionary = JUNCTION_FIELD_PROTOCOLS[protocol_id]
+		var section_x := JUNCTION_POS.x + 12.0 + float(protocol_index) * 18.0
+		var heading := Label3D.new()
+		heading.name = "JunctionFieldHeading_%s" % protocol_id
+		heading.text = "%02d  %s" % [protocol_index + 1, str(protocol.get("label", protocol_id))]
+		heading.font_size = 48
+		heading.pixel_size = 0.0035
+		heading.modulate = (protocol_colors[protocol_id] as Color).lightened(0.15)
+		heading.outline_modulate = Color(0.01, 0.02, 0.025, 0.96)
+		heading.outline_size = 10
+		heading.position = Vector3(section_x, BELOW_Y + 2.35, -5.72)
+		heading.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		parent.add_child(heading)
+
+	for site_id_variant in JUNCTION_FIELD_SITES.keys():
+		var site_id := str(site_id_variant)
+		var spec: Dictionary = JUNCTION_FIELD_SITES[site_id]
+		var protocol_id := str(spec.get("protocol", ""))
+		var kind := str(spec.get("kind", "evidence"))
+		var role := str(spec.get("role", ""))
+		var pos: Vector3 = spec.get("pos", Vector3.ZERO)
+		var color: Color = protocol_colors.get(protocol_id, Color.WHITE)
+		if kind == "choice":
+			color = color.lightened(0.18)
+		elif kind == "resolution":
+			color = color.lerp(Color(1.0, 0.76, 0.30), 0.35)
+		var node_prefix := "JunctionField_%s" % site_id
+		var visual := _add_course_station_visual(parent, node_prefix, pos, color,
+			"%s / %s" % [str(spec.get("display", site_id)), role.to_upper()])
+		var interact := _create_interactable(
+			parent, pos, node_prefix, 1.55, float(spec.get("dwell", 8.0)),
+			str(spec.get("verb", "WORK")), true, Interactable.InteractableType.TIMED_ACTION
+		)
+		interact.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
+		interact.description = str(spec.get("display", site_id)).capitalize()
+		_require_interactable_character(interact, role)
+		interact.set_interaction_enabled(false)
+		interact.interacted.connect(_on_junction_field_site.bind(site_id))
+		var outline_target := _outline_object_meshes(parent, node_prefix + "Outline", [visual],
+			"elevator_field_%s" % site_id, 1.55, 0.10)
+		_set_room_target_interaction_delegate(outline_target, interact)
+		_junction_field_interactables[site_id] = interact
+
+	LevelDecoratorScript.decorate_corridor(parent, {
+		"id": "elevator_junction_field_annex",
+		"x0": annex_x0,
+		"x1": annex_x1,
+		"width": 12.0,
+		"wall_height": 3.0,
+		"ground_y": BELOW_Y,
+		"seed": 0xE1E7A70,
+		"program": "hydraulic",
+		"spacing": 9.0,
+		"replace_shell_materials": false,
+		"floor_tint": Color(0.08, 0.13, 0.14),
+		"wall_tint": Color(0.11, 0.17, 0.18),
+		"trim": Color(0.30, 0.49, 0.48),
+		"inset": Color(0.025, 0.045, 0.05),
+		"service": Color(0.14, 0.24, 0.24),
+		"rust": Color(0.40, 0.17, 0.06),
+		"glow": Color(0.35, 0.90, 0.70),
+		"light": Color(0.27, 0.56, 0.50),
+		"signs": ["DESCENT POWER", "SHELTER ECOLOGY", "FLURE RELAY", "RETURN TO SHELTER  <"],
+		"landmark_lights": true,
+	})
+
 func _start_dusk_from_plant() -> void:
 	var env_node: Node = find_child("Environment", false, false)
 	if env_node:
@@ -2147,13 +4143,23 @@ func _start_dusk_from_plant() -> void:
 				break
 	_scheduler.schedule_after(2.0, _start_endo_enters, "endo_enters")
 
-func _add_junction_interactable(label: String, pos: Vector3, dialogue_prefix: String) -> void:
+func _add_junction_interactable(
+		label: String,
+		pos: Vector3,
+		dialogue_prefix: String,
+		required_character := ""
+	) -> Area3D:
 	var interact := preload("res://scenes/game/interactable.tscn").instantiate()
 	interact.name = "Junction_" + label
-	interact.description = label
+	interact.description = ("%s — %s" % [label, required_character.capitalize()]
+		if required_character != "" else label)
 	interact.dialogue_key = dialogue_prefix
 	interact.dialogue_box = _dialogue
 	interact.active_character = _active_character
+	interact.required_character = required_character
+	# Shelter props are repeatable inspections, but they must never auto-trigger merely because a
+	# character stands nearby. The old HOLD_ACTION re-armed itself and flooded the dialogue queue.
+	interact.interactable_type = Interactable.InteractableType.INSPECTION
 	interact.one_shot = false
 	interact.dwell_time = 1.0
 	interact.position = pos
@@ -2161,6 +4167,38 @@ func _add_junction_interactable(label: String, pos: Vector3, dialogue_prefix: St
 	if interact.has_method("set_scheduler"):
 		interact.set_scheduler(_scheduler)
 		interact.set_movement_authority(_game_state)
+	interact.interacted.connect(_on_junction_inspection.bind(label, interact))
+	_junction_interactables[label] = interact
+	return interact
+
+func _make_gauntlet_flure_mesh(parent: Node3D, pos: Vector3, station_name: String, station_number: int) -> MeshInstance3D:
+	var mesh := MeshInstance3D.new()
+	mesh.name = station_name
+	var sphere := SphereMesh.new()
+	sphere.radius = 0.25
+	sphere.height = 0.5
+	mesh.mesh = sphere
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.7, 0.4, 0.1)
+	mat.emission_enabled = true
+	mat.emission = Color(0.6, 0.3, 0.05)
+	mat.emission_energy_multiplier = 0.5
+	mat.metallic = 0.5
+	mesh.material_override = mat
+	mesh.position = pos
+	parent.add_child(mesh)
+	var label := Label3D.new()
+	label.name = station_name + "Label"
+	label.text = "FLURE %d" % station_number
+	label.font_size = 44
+	label.pixel_size = 0.0035
+	label.modulate = Color(1.0, 0.66, 0.24)
+	label.outline_modulate = Color(0.02, 0.01, 0.0, 0.95)
+	label.outline_size = 9
+	label.position = pos + Vector3(0, 1.0, 0)
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	parent.add_child(label)
+	return mesh
 
 func _build_gauntlet_chunk(parent: Node3D) -> void:
 	var ground_y := BELOW_Y
@@ -2171,7 +4209,7 @@ func _build_gauntlet_chunk(parent: Node3D) -> void:
 	# The old chamber + east wall both ended at x = GAUNTLET_EXIT.x - 2 (exactly the exit gate), so the
 	# wall blocked the player from ever crossing it. Spans from the west entrance to the grid's east edge.
 	var g_west := gx - 10.0
-	var g_east := 67.0
+	var g_east := GAUNTLET_EXIT.x + 2.0
 	var g_len := g_east - g_west
 	var g_cx := (g_west + g_east) * 0.5
 	_add_corridor_section(parent, Vector3(g_cx, ground_y - 0.03, 0), Vector3(g_len, 0.06, 14), Color(0.05, 0.05, 0.07))
@@ -2192,47 +4230,80 @@ func _build_gauntlet_chunk(parent: Node3D) -> void:
 	_add_wall(parent, Vector3(g_cx, ground_y + 1.5, 7.0), Vector3(g_len, 3, 0.3), wc)
 	_add_wall(parent, Vector3(g_east, ground_y + 1.5, 0), Vector3(0.3, 3, 14), wc)
 
-	# Peris-only iron lure.
-	_flure_mesh = MeshInstance3D.new()
-	_flure_mesh.name = "Flure"
-	var fsp := SphereMesh.new()
-	fsp.radius = 0.25
-	fsp.height = 0.5
-	_flure_mesh.mesh = fsp
-	var fmat := StandardMaterial3D.new()
-	fmat.albedo_color = Color(0.7, 0.4, 0.1)
-	fmat.emission_enabled = true
-	fmat.emission = Color(0.6, 0.3, 0.05)
-	fmat.emission_energy_multiplier = 0.5
-	fmat.metallic = 0.5
-	_flure_mesh.material_override = fmat
-	_flure_mesh.position = FLURE_POS
-	parent.add_child(_flure_mesh)
+	# Two Peris-only stations divide the run into independently readable halves.
+	_gauntlet_flure_meshes.clear()
+	_gauntlet_flure_interactables.clear()
+	_flure_mesh = _make_gauntlet_flure_mesh(parent, FLURE_POS, "Flure", 1)
+	_gauntlet_flure_meshes.append(_flure_mesh)
+	var flure_1 := _create_interactable(
+		parent, FLURE_POS, "FlureInteract", 1.8, 1.0, "Activate Flure 1", true,
+		Interactable.InteractableType.INSPECTION
+	)
+	flure_1.description = "Flure 1"
+	_require_interactable_character(flure_1, "peris")
+	flure_1.set_interaction_enabled(false)
+	flure_1.interacted.connect(_on_flure_activated)
+	_flure_interactable = flure_1
+	_gauntlet_flure_interactables.append(flure_1)
 
-	_flure_interactable = preload("res://scenes/game/interactable.tscn").instantiate()
-	_flure_interactable.name = "FlureInteract"
-	_flure_interactable.description = "Flure"
-	_flure_interactable.one_shot = true
-	_flure_interactable.dwell_time = 1.0
-	_flure_interactable.position = FLURE_POS
-	add_child(_flure_interactable)
-	if _flure_interactable.has_method("set_scheduler"):
-		_flure_interactable.set_scheduler(_scheduler)
-		_flure_interactable.set_movement_authority(_game_state)
-	_flure_interactable.interacted.connect(_on_flure_activated)
+	var flure_2_mesh := _make_gauntlet_flure_mesh(parent, GAUNTLET_FLURE_2_POS, "FlureRelay", 2)
+	_gauntlet_flure_meshes.append(flure_2_mesh)
+	var flure_2 := _create_interactable(
+		parent, GAUNTLET_FLURE_2_POS, "FlureInteract2", 1.8, 1.0, "Activate Flure 2", true,
+		Interactable.InteractableType.INSPECTION
+	)
+	flure_2.description = "Flure 2"
+	_require_interactable_character(flure_2, "peris")
+	flure_2.set_interaction_enabled(false)
+	flure_2.interacted.connect(_on_gauntlet_flure_activated.bind(1))
+	_gauntlet_flure_interactables.append(flure_2)
 
-	# Enemy cluster blocking the direct path.
+	# The midpoint is a visible, collision-free refuge and a real reset anchor.
+	_add_route_field_plate(parent, GAUNTLET_MIDPOINT + Vector3(0, 0.025, 0),
+		Vector3(7.0, 0.035, 9.0), Color(0.12, 0.42, 0.30, 0.78))
+	var refuge_label := Label3D.new()
+	refuge_label.name = "GauntletMidpointLabel"
+	refuge_label.text = "MIDPOINT REFUGE"
+	refuge_label.font_size = 54
+	refuge_label.pixel_size = 0.0035
+	refuge_label.modulate = Color(0.48, 0.94, 0.66)
+	refuge_label.outline_modulate = Color(0.01, 0.03, 0.02, 0.95)
+	refuge_label.outline_size = 10
+	refuge_label.position = GAUNTLET_MIDPOINT + Vector3(0, 2.0, 0)
+	refuge_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	parent.add_child(refuge_label)
+	var refuge_light := OmniLight3D.new()
+	refuge_light.name = "GauntletRefugeLight"
+	refuge_light.position = GAUNTLET_MIDPOINT + Vector3(0, 2.2, 0)
+	refuge_light.light_color = Color(0.30, 0.72, 0.48)
+	refuge_light.light_energy = 1.15
+	refuge_light.omni_range = 8.0
+	parent.add_child(refuge_light)
+
+	# Five deterministic enemies form two independent packs: three in stage one,
+	# two beyond the refuge. This preserves the established encounter budget while
+	# making the relay/reset structure spatially honest.
 	_gauntlet_enemies.clear()
-	for i in range(5):
-		var ex: float = gx - 2.0 + i * 2.5
-		var ez: float = randf_range(-3.0, 3.0)
+	_gauntlet_enemy_groups = {0: [], 1: []}
+	var enemy_specs := [
+		{"stage": 0, "pos": Vector3(gx - 4.0, ground_y + 0.5, 0.0)},
+		{"stage": 0, "pos": Vector3(gx + 4.0, ground_y + 0.5, -2.4)},
+		{"stage": 0, "pos": Vector3(gx + 12.0, ground_y + 0.5, 2.4)},
+		{"stage": 1, "pos": GAUNTLET_MIDPOINT + Vector3(6.0, 0.5, -2.2)},
+		{"stage": 1, "pos": GAUNTLET_MIDPOINT + Vector3(16.0, 0.5, 2.2)},
+	]
+	for i in range(enemy_specs.size()):
+		var spec: Dictionary = enemy_specs[i]
+		var stage := int(spec["stage"])
+		var enemy_pos: Vector3 = spec["pos"]
 		var eid := "gauntlet_%d" % i
-		var enemy := _spawn_enemy(eid, Vector3(ex, ground_y + 0.5, ez), parent)
+		var enemy := _spawn_enemy(eid, enemy_pos, parent)
 		enemy.detection_range = 5.0
-		var pa := Vector3(ex - 1.0, ground_y + 0.5, ez - 1.5)
-		var pb := Vector3(ex + 1.0, ground_y + 0.5, ez + 1.5)
+		var pa := enemy_pos + Vector3(-1.0, 0, -1.5)
+		var pb := enemy_pos + Vector3(1.0, 0, 1.5)
 		enemy.set_patrol([pa, pb])
 		_gauntlet_enemies.append(enemy)
+		(_gauntlet_enemy_groups[stage] as Array).append(enemy)
 
 	var gauntlet_light := OmniLight3D.new()
 	gauntlet_light.position = Vector3(gx, ground_y + 2.5, 0)
@@ -2240,6 +4311,61 @@ func _build_gauntlet_chunk(parent: Node3D) -> void:
 	gauntlet_light.light_energy = 1.5
 	gauntlet_light.omni_range = 12.0
 	parent.add_child(gauntlet_light)
+
+## The shared authored corridor grammar supplies the same structural hierarchy
+## as the building pass: repeated facade bays, attached service detail, route
+## datums, restrained landmarks, and zero gameplay collision.
+func _decorate_below_chunk(parent: Node3D) -> void:
+	LevelDecoratorScript.decorate_corridor(parent, {
+		"id": "elevator_below_routes",
+		"x0": -3.5,
+		"x1": JUNCTION_POS.x + 4.0,
+		"width": 16.0,
+		"wall_height": 3.0,
+		"ground_y": BELOW_Y,
+		"seed": 0xBE10A5,
+		"program": "hydraulic",
+		"spacing": 11.5,
+		"replace_shell_materials": false,
+		"floor_tile": "deck_metal",
+		"wall_tile": "facility_metal",
+		"floor_tint": Color(0.10, 0.15, 0.16),
+		"wall_tint": Color(0.13, 0.19, 0.19),
+		"trim": Color(0.31, 0.41, 0.38),
+		"inset": Color(0.035, 0.055, 0.06),
+		"service": Color(0.15, 0.23, 0.21),
+		"rust": Color(0.37, 0.16, 0.06),
+		"glow": Color(0.36, 0.91, 0.50),
+		"light": Color(0.24, 0.48, 0.40),
+		"signs": ["LOWER DECK / ROUTE READ", "FLURE LANE  <", "IRON FIELD  >"],
+		"landmark_lights": true,
+	})
+
+func _decorate_gauntlet_chunk(parent: Node3D) -> void:
+	LevelDecoratorScript.decorate_corridor(parent, {
+		"id": "elevator_flure_relay",
+		"x0": GAUNTLET_POS.x - 10.0,
+		"x1": GAUNTLET_EXIT.x + 2.0,
+		"width": 14.0,
+		"wall_height": 3.0,
+		"ground_y": BELOW_Y,
+		"seed": 0xF1A2E2,
+		"program": "boundary",
+		"spacing": 9.0,
+		"replace_shell_materials": false,
+		"floor_tile": "deck_metal",
+		"wall_tile": "rust_iron",
+		"floor_tint": Color(0.10, 0.11, 0.14),
+		"wall_tint": Color(0.16, 0.13, 0.12),
+		"trim": Color(0.38, 0.34, 0.31),
+		"inset": Color(0.045, 0.04, 0.05),
+		"service": Color(0.22, 0.19, 0.18),
+		"rust": Color(0.43, 0.17, 0.055),
+		"glow": Color(0.95, 0.46, 0.12),
+		"light": Color(0.58, 0.31, 0.18),
+		"signs": ["FLURE RELAY / STAGE 1", "MIDPOINT REFUGE", "STAGE 2 / EXIT  >"],
+		"landmark_lights": true,
+	})
 
 # --- Tiling pixel-art textures (the 32 px/m atlas, house technique) ---
 # A world-triplanar material that REPEATS a tile in world space (no UV setup needed) with NEAREST
@@ -2318,6 +4444,9 @@ func _add_corridor_section(parent: Node3D, pos: Vector3, size: Vector3, color: C
 func _build_elevator_chunk(parent: Node3D) -> void:
 	var hw := ELEVATOR_SIZE.x / 2.0
 	var h := ELEVATOR_SIZE.y
+	# Aster's data outline follows this room. Give the car a continuous reveal
+	# boundary so the outline cannot turn the occlusion dither into white pixels.
+	parent.set_meta("camera_occlusion_outline_safe_clip", true)
 
 	# The car SHELL is the modeled, pixel-grid elevator (Blender + a Geometry-Nodes floor grate): paneled
 	# walls, the door opening + frame, ceiling light coffer, corner posts, control housing.
@@ -2349,12 +4478,13 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 	_emergency_light.omni_range = 10.0
 	parent.add_child(_emergency_light)
 
-	var fill := OmniLight3D.new()
-	fill.position = Vector3(0, h * 0.6, 0)
-	fill.light_color = Color(0.4, 0.25, 0.2)
-	fill.light_energy = 1.0
-	fill.omni_range = 8.0
-	parent.add_child(fill)
+	_elevator_fill_light = OmniLight3D.new()
+	_elevator_fill_light.name = "ElevatorFillLight"
+	_elevator_fill_light.position = Vector3(0, h * 0.6, 0)
+	_elevator_fill_light.light_color = Color(0.4, 0.25, 0.2)
+	_elevator_fill_light.light_energy = 1.0
+	_elevator_fill_light.omni_range = 8.0
+	parent.add_child(_elevator_fill_light)
 
 	# Floor readout "3B" on the wall beside the door: "3" steady, "B" flickering, both glowing. HDR
 	# (>1) modulate blooms through the environment glow; a small red light backs it.
@@ -2377,12 +4507,13 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 	_indicator_b_label.rotation.y = -PI / 2.0
 	parent.add_child(_indicator_b_label)
 
-	var indicator_glow := OmniLight3D.new()
-	indicator_glow.light_color = Color(0.95, 0.25, 0.15)
-	indicator_glow.light_energy = 1.4
-	indicator_glow.omni_range = 1.6
-	indicator_glow.position = Vector3(indicator_x - 0.15, 2.85, 1.5)
-	parent.add_child(indicator_glow)
+	_elevator_indicator_glow = OmniLight3D.new()
+	_elevator_indicator_glow.name = "ElevatorIndicatorGlow"
+	_elevator_indicator_glow.light_color = Color(0.95, 0.25, 0.15)
+	_elevator_indicator_glow.light_energy = 1.4
+	_elevator_indicator_glow.omni_range = 1.6
+	_elevator_indicator_glow.position = Vector3(indicator_x - 0.15, 2.85, 1.5)
+	parent.add_child(_elevator_indicator_glow)
 
 	# Flashes before door access is restored.
 	_no_exit_label = Label3D.new()
@@ -2394,13 +4525,16 @@ func _build_elevator_chunk(parent: Node3D) -> void:
 	_no_exit_label.rotation.y = -PI / 2.0
 	parent.add_child(_no_exit_label)
 
+	_elevator_standby_lights.clear()
 	for pos in [ESCORT_1_POS, ESCORT_2_POS]:
 		var standby := OmniLight3D.new()
+		standby.name = "EscortStandbyLight%d" % _elevator_standby_lights.size()
 		standby.position = pos + Vector3(0, 1.5, 0)
 		standby.light_color = Color(0.3, 0.3, 0.4)
 		standby.light_energy = 0.5
 		standby.omni_range = 2.5
 		parent.add_child(standby)
+		_elevator_standby_lights.append(standby)
 
 func _make_door_panel(parent: Node3D, pos: Vector3) -> MeshInstance3D:
 	var panel := MeshInstance3D.new()

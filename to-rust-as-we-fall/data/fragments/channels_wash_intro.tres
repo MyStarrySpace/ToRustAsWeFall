@@ -6,7 +6,7 @@
 script = ExtResource("1_5hiys")
 id = "channels_wash_intro"
 title = "Channels — Wash Intro"
-help = "The hunters guard the way down. Light the flure to draw them into the channels — the wash takes them — then step through the portal across. Tuck into a Capbage if one gets close."
+help = "The hunters guard the way down. Light the flure to draw them into the channels — the wash takes them — then send the whole party through the portal and gather on the far TO SPIRAL pad. Tuck into a Capbage if one gets close."
 default_character = "endo"
 party_ids = PackedStringArray("aster", "peris", "endo")
 spawns = {
@@ -52,7 +52,7 @@ lights = Array[Dictionary]([{
 labels = Array[Dictionary]([{
 "color": Color(0.5, 0.8, 0.9, 1),
 "pos": Vector3(27.5, 2.5, 0.5),
-"text": "TO SPIRAL"
+"text": "ALL CREW // TO SPIRAL"
 }, {
 "color": Color(0.4, 0.75, 0.85, 1),
 "pos": Vector3(11, 1.4, 0),
@@ -207,7 +207,8 @@ params = {
 },
 "enemy_detect": 4.0,
 "exit_pos": Vector3(27.5, 0.5, 0.5),
-"exit_radius": 2.2,
+"exit_radius": 3.75,
 "flure_attract": 32.0,
+"restart_on_wipe": true,
 "wash_back_pos": Vector3(2.5, 0.5, 0.5)
 }

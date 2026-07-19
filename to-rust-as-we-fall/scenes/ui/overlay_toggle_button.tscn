@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[node name="OverlayToggleButton" type="Button"]
+mouse_filter = 0
+theme_override_font_sizes/font_size = 11
+alignment = 0

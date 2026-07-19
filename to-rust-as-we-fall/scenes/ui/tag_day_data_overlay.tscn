@@ -1,0 +1,22 @@
+[gd_scene format=3]
+
+[node name="TagDayDataOverlay" type="CanvasLayer"]
+layer = 9
+
+[node name="CheckpointReadout" type="Label" parent="."]
+offset_left = 12.0
+offset_top = 8.0
+offset_right = 620.0
+offset_bottom = 24.0
+theme_override_colors/font_color = Color(0.25, 0.4, 0.6, 0.5)
+theme_override_font_sizes/font_size = 11
+text = "CHECKPOINT 7-B  //  ATMOSPHERIC Fe: 12.4 ppb  //  TAG QUEUE: ACTIVE"
+
+[node name="PerceptionReadout" type="Label" parent="."]
+offset_left = 12.0
+offset_top = 24.0
+offset_right = 620.0
+offset_bottom = 40.0
+theme_override_colors/font_color = Color(0.2, 0.35, 0.5, 0.35)
+theme_override_font_sizes/font_size = 10
+text = "AST-PERCEPT: DATA-MAP  //  STRUCT: GEOMETRY  //  BIO: DATAPOINT"

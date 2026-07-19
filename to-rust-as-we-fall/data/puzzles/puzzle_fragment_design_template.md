@@ -20,6 +20,27 @@ Copy this file when drafting a new fragment. Keep it short enough that the fragm
 - `why_this_exists_in_the_level`:
 - `what_makes_this_feel_like_an_encounter`:
 
+## Systems-Thinking Contract
+
+Use [the systems-thinking puzzle standard](../../docs/SYSTEMS_THINKING_PUZZLE_STANDARD.md).
+Write `none` when a field genuinely does not apply.
+
+- `system_boundary_and_goal`:
+- `intended_player_model`:
+- `load_bearing_elements_and_links`:
+- `stocks_inflows_and_outflows`:
+- `feedback_loops`:
+- `delays`:
+- `nonlinear_thresholds`:
+- `local_and_party_scales`:
+- `meaningful_leverage_point`:
+- `likely_first_model`:
+- `likely_misconception`:
+- `evidence_that_corrects_it`:
+- `later_transfer_test`:
+- `point_where_reasoning_is_solved`:
+- `solved_state_execution_tail`:
+
 ## Cognitive Targets
 
 - `main_target`: recognition / recall / timing / prospective_memory / route_planning / map_layer_arbitration / pressure_management

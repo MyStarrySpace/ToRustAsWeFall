@@ -1,6 +1,6 @@
 {
 	"schema": "trawf_poi_distribution_v1",
-	"notes": "Archetype-driven POI distribution. The element<->content inversion is DERIVED from StretchCapabilities.CONTENT_CAPABILITIES (single source of truth, no duplication) — this file holds only the survival/variant element mappings (which crucial element each survival kind / variant leans on) and the progression-scaled ambient DENSITY knobs. A 'crucial element' is the content-suppliable capability an archetype's shadow approach requires; coverage guarantees every archetype in a stretch has its element placed, and a shared element (one needed by several archetypes) is placed ONCE (merge).",
+	"notes": "Archetype-driven POI distribution. The element<->content inversion is DERIVED from StretchCapabilities.CONTENT_CAPABILITIES (single source of truth, no duplication) — this file holds only the survival/variant element mappings and solver-neutral ambient richness knobs. Ambient richness is presentation, never a substitute for increased causal difficulty. A 'crucial element' is the content-suppliable capability an archetype's shadow approach requires; coverage guarantees every archetype in a stretch has its element placed, and a shared element (one needed by several archetypes) is placed ONCE (merge).",
 	"survival_elements": {
 		"forage": ["forage", "cover"],
 		"rest": ["cover"],

@@ -57,6 +57,9 @@ var _scheduler = null
 # stays as the external flag API below (scenes set interaction_enabled directly).
 var _dwell_fsm: StateMachine
 var _dwell_start_tick := 0.0
+# Standalone previews can omit the gameplay scheduler. Keep an explicit fallback
+# state so their wall-clock dwell has the same armed/dwelling lifecycle as the FSM.
+var _fallback_dwelling := false
 
 # Data-layer binding. When set, GameState owns this interactable's trigger /
 # enabled / one-shot state and records triggers for replay; the node is a view.
@@ -171,7 +174,7 @@ func _process(delta: float) -> void:
 		var pulse := 0.6 + sin(Time.get_ticks_msec() * 0.003) * 0.25  # @rendering_only: label pulse
 		_tutorial_label_3d.modulate.a = pulse
 
-	if _uses_hold_timer() and _player_in_range:
+	if _uses_hold_timer() and _player_in_range and _is_dwelling():
 		if _scheduler != null:
 			# Scheduler lane: completion is a scheduled event (_on_dwell_complete).
 			# The ring is a cosmetic readout of the scheduler clock, nothing more.
@@ -183,7 +186,7 @@ func _process(delta: float) -> void:
 		_progress_ring.scale = Vector3.ONE * (0.8 + t * 0.4)
 
 		if _scheduler == null and _dwell_progress >= dwell_time:
-			_trigger()
+			_on_dwell_complete()
 	else:
 		if _dwell_progress > 0:
 			_dwell_progress = maxf(0, _dwell_progress - delta * 2.0)
@@ -199,7 +202,7 @@ func _process(delta: float) -> void:
 func _frame_work_pending() -> bool:
 	if _tutorial_label_3d != null and _tutorial_label_3d.visible:
 		return true
-	if _uses_hold_timer() and _player_in_range:
+	if _uses_hold_timer() and _is_dwelling():
 		return true
 	return _dwell_progress > 0.0
 
@@ -235,7 +238,7 @@ func bind_data(game_state, id: String) -> void:
 	interaction_enabled = _game_state.is_interactable_enabled(id)
 
 func _begin_dwell() -> void:
-	if _dwell_fsm == null or not _uses_hold_timer() or not _player_in_range:
+	if not _uses_hold_timer() or not _player_in_range:
 		return
 	if _used or not interaction_enabled:
 		return
@@ -247,6 +250,11 @@ func _begin_dwell() -> void:
 		_dwell_pending = true
 		return
 	_dwell_pending = false
+	set_process(true)
+	if _dwell_fsm == null:
+		_fallback_dwelling = true
+		_dwell_progress = 0.0
+		return
 	# (Re)start the dwell: bounce through 'armed' so re-entering 'dwelling' re-arms the timer even
 	# if we were already dwelling (the FSM tag cancels any prior pending completion).
 	_dwell_fsm.transition_to("armed")
@@ -259,6 +267,7 @@ func _enter_dwelling() -> void:
 	_dwell_fsm.schedule(dwell_time, _on_dwell_complete)
 
 func _cancel_dwell() -> void:
+	_fallback_dwelling = false
 	# Back to 'armed' — the FSM cancels the pending completion via its tag.
 	if _dwell_fsm != null:
 		_dwell_fsm.transition_to("armed")
@@ -290,24 +299,37 @@ func _on_authority_movement_started(id: String) -> void:
 		_dwell_pending = _player_in_range and _proximity_dwell()
 
 func _is_dwelling() -> bool:
-	return _dwell_fsm != null and _dwell_fsm.current() == "dwelling"
+	if _dwell_fsm != null:
+		return _dwell_fsm.current() == "dwelling"
+	return _fallback_dwelling
 
 func _on_dwell_complete() -> void:
+	var accepted := false
 	if _player_in_range and not _used and interaction_enabled and _uses_hold_timer():
-		_trigger()
-		# Non-one-shot interactables re-arm while the player keeps standing in range — verified against
+		# A TIMED_ACTION belongs to the body that arrived, not whichever portrait happens to be active
+		# when its work ring finishes. HOLD_ACTION already records this from body_entered; click-arrival
+		# records it below.
+		if _dwell_char_id != "":
+			active_character = _dwell_char_id
+		accepted = _trigger()
+		# Non-one-shot proximity holds re-arm while the player keeps standing in range — verified against
 		# REAL overlapping bodies, not the sticky flag. on_interaction_arrived sets _player_in_range from
 		# a DATA-layer arrival (no body event ever clears it), so re-arming on the flag alone made a
 		# non-one-shot TIMED_ACTION re-tend itself forever after the character had left (The Watched
 		# Gap's flure kept re-firing, endlessly yo-yoing the lured sentry).
-		if not _used and interaction_enabled:
+		if accepted and not _used and interaction_enabled and _proximity_dwell():
 			_refresh_player_range()
 			if _player_in_range and not _is_dwelling():
 				_begin_dwell()
+	# The scheduled completion was consumed even when its range/authority guard rejected the action.
+	# Never leave the FSM claiming it is dwelling with no completion event behind it; a TIMED_ACTION
+	# can be clicked again, while a proximity HOLD_ACTION will re-arm on its next range transition.
+	if not accepted and _is_dwelling():
+		_cancel_dwell()
 
-func _trigger(play_feedback := true) -> void:
+func _trigger(play_feedback := true) -> bool:
 	if _used or not interaction_enabled:
-		return
+		return false
 	# When bound, the data layer is the trigger authority (guards the required
 	# character + enabled state, records the event for replay, disables one-shots).
 	# Unbound, the node guards locally.
@@ -316,10 +338,10 @@ func _trigger(play_feedback := true) -> void:
 			# Not a silent no-op when the cause is the wrong character: say who is needed.
 			if required_character != "" and active_character != "" and active_character != required_character:
 				interaction_rejected.emit(self, required_character)
-			return
+			return false
 	elif required_character != "" and active_character != "" and active_character != required_character:
 		interaction_rejected.emit(self, required_character)
-		return
+		return false
 
 	if one_shot:
 		_used = true
@@ -341,6 +363,23 @@ func _trigger(play_feedback := true) -> void:
 		dialogue_triggered.emit(resolved, active_character)
 
 	interacted.emit()
+	return true
+
+## Abort a click-gated/timed action because its owning scenario is resetting. This is distinct
+## from reset(): it retracts the scheduled dwell without changing one-shot usage or enablement,
+## so checkpoint systems can preserve completed work while preventing an in-flight callback from
+## firing after the actor has been downed/teleported.
+func cancel_pending_interaction() -> void:
+	_dwell_pending = false
+	_cancel_dwell()
+	_dwell_progress = 0.0
+	_dwell_char_id = ""
+	if _progress_mat != null:
+		_progress_mat.albedo_color.a = 0.0
+	if _progress_ring != null:
+		_progress_ring.scale = Vector3.ONE
+	if interactable_type == InteractableType.TIMED_ACTION:
+		_player_in_range = false
 
 func _resolve_dialogue_key() -> String:
 	if dialogue_key == "":
@@ -392,6 +431,22 @@ func set_outline_target(target) -> void:
 	_outline_target = target
 	if _outline_target != null and is_instance_valid(_outline_target):
 		_outline_target.set_highlight(_feedback_emitting)
+	if not interacted.is_connected(_on_visual_interaction_succeeded):
+		interacted.connect(_on_visual_interaction_succeeded)
+	if not interaction_rejected.is_connected(_on_visual_interaction_rejected):
+		interaction_rejected.connect(_on_visual_interaction_rejected)
+
+
+func _on_visual_interaction_succeeded() -> void:
+	if _outline_target != null and is_instance_valid(_outline_target) \
+			and _outline_target.has_method("play_interaction_result"):
+		_outline_target.call("play_interaction_result", true)
+
+
+func _on_visual_interaction_rejected(_interactable: Node, _required_character: String) -> void:
+	if _outline_target != null and is_instance_valid(_outline_target) \
+			and _outline_target.has_method("play_interaction_result"):
+		_outline_target.call("play_interaction_result", false)
 
 func _on_body_entered(body: Node3D) -> void:
 	if _used or not interaction_enabled:
@@ -399,16 +454,48 @@ func _on_body_entered(body: Node3D) -> void:
 	if body is CharacterBody3D:
 		set_process(true)  # dwell ring / label work resumes
 		_player_in_range = true
-		_dwell_char_id = str(body.get("char_id")) if body.get("char_id") != null else ""
-		_dwell_progress = 0.0
-		if _proximity_dwell():  # only HOLD_ACTION auto-dwells on proximity; TIMED_ACTION waits for a click
-			_begin_dwell()
+		# The first body owns the whole dwell, including its still-walking pending state. A bystander
+		# crossing later must neither steal the actor nor restart the timer; exit hands ownership off.
+		if not _is_dwelling() and not _dwell_pending:
+			_dwell_char_id = str(body.get("char_id")) if body.get("char_id") != null else ""
+			_dwell_progress = 0.0
+			if _proximity_dwell():  # only HOLD_ACTION auto-dwells on proximity; TIMED_ACTION waits for a click
+				_begin_dwell()
 
 func _on_body_exited(body: Node3D) -> void:
-	if body is CharacterBody3D:
-		_player_in_range = false
-		_dwell_pending = false
-		_cancel_dwell()
+	if not body is CharacterBody3D:
+		return
+	var exiting_id := str(body.get("char_id")) if body.get("char_id") != null else ""
+	var remaining := _first_overlapping_character(body)
+	var exiting_dweller := exiting_id != "" and exiting_id == _dwell_char_id
+	if not exiting_dweller:
+		# A bystander leaving must not break another character's click-gated work. A
+		# TIMED_ACTION arrival can be data-layer-only, so preserve its synthetic range
+		# while it is dwelling even when there is no physics overlap to rediscover.
+		_player_in_range = remaining != null or _is_dwelling()
+		return
+
+	_dwell_pending = false
+	_cancel_dwell()
+	_dwell_progress = 0.0
+	_dwell_char_id = ""
+	_player_in_range = remaining != null
+	if remaining != null and _proximity_dwell():
+		_dwell_char_id = str(remaining.get("char_id")) if remaining.get("char_id") != null else ""
+		_begin_dwell()
+
+func _first_overlapping_character(excluding: Node3D = null) -> CharacterBody3D:
+	# A one-shot can disable monitoring inside its dwell callback; Godot may still
+	# deliver the queued body_exited signal afterward. Overlap queries are invalid
+	# once monitoring is off, and there cannot be a replacement dweller anyway.
+	if not monitoring:
+		return null
+	for candidate in get_overlapping_bodies():
+		if candidate == excluding or not is_instance_valid(candidate):
+			continue
+		if candidate is CharacterBody3D:
+			return candidate as CharacterBody3D
+	return null
 
 func _on_mouse_entered() -> void:
 	if GridWorld._fx_debug:
@@ -613,6 +700,7 @@ func on_interaction_arrived() -> void:
 	elif _works_on_arrival():
 		# Walked over via a click; now run the work/tend timer (the character is here, so it's in range),
 		# and _on_dwell_complete fires the actual trigger once dwell_time elapses.
+		_dwell_char_id = active_character
 		_player_in_range = true
 		_begin_dwell()
 
@@ -699,6 +787,16 @@ func get_outline_highlight_origin() -> Vector3:
 	return global_position + Vector3(0.0, outline_highlight_height, 0.0)
 
 func get_interaction_target_position(_from_position: Vector3 = Vector3.ZERO, _requested_position: Vector3 = Vector3.INF) -> Vector3:
+	if has_meta("interaction_target_position"):
+		var target_position = get_meta("interaction_target_position")
+		if target_position is Vector3:
+			return target_position
+		if target_position is Array and (target_position as Array).size() >= 3:
+			return Vector3(
+				float((target_position as Array)[0]),
+				float((target_position as Array)[1]),
+				float((target_position as Array)[2])
+			)
 	return global_position
 
 func reset() -> void:

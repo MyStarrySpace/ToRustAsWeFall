@@ -12,9 +12,17 @@ extends Node3D
 var show_movement_path := false
 @export var max_hp := 50.0
 @export var move_speed := 1.5
+## Optional chase gear. A negative value preserves the legacy one-speed behavior; authored
+## sentries can keep a slow, readable patrol beat while still becoming a real threat once they
+## acquire somebody.
+@export var pursuit_speed := -1.0
 @export var detection_range := 6.0
 @export var scan_interval := 0.5
 @export var pursuit_update_interval := 0.8
+## AI bodies use ordinary spatial A* by default. Cooperative space-time reservations are valuable for
+## player formations, but make a roaming/pursuing crowd repeatedly solve around its own future paths.
+## Opt a special single enemy back in only when non-overlap is itself part of the encounter.
+@export var cooperative_navigation := false
 
 @export var attack_range := 3.0
 @export var pursuit_direct := false    # capped-hop pursuit (near-free short plans) for chase packs
@@ -85,6 +93,8 @@ var _mesh: MeshInstance3D
 var _eye_left: OmniLight3D
 var _eye_right: OmniLight3D
 var _base_color: Color
+var _threat_marker: Node3D
+var _threat_marker_material: StandardMaterial3D
 
 signal damaged(amount: float, new_hp: float)
 signal died()
@@ -96,6 +106,7 @@ func _ready() -> void:
 	_base_color = color
 	_state_tag = "enemy_%s" % name
 	_build_visual()
+	_build_threat_marker()
 	_build_fsm()
 
 # --- Public API ---
@@ -110,8 +121,33 @@ func activate() -> void:
 		_fsm.set_scheduler(_get_scheduler())
 	if game_state and not game_state.detection_predicted.is_connected(_on_detection_predicted):
 		game_state.detection_predicted.connect(_on_detection_predicted)
+	if game_state != null:
+		if game_state.has_method("set_coop_exempt"):
+			game_state.set_coop_exempt(char_id, not cooperative_navigation)
+		_publish_detection_targets()
+		_sync_detection_subscription(get_state())
 	_post_position = _self_pos()
 	_fsm.transition_to("idle")
+
+## The FSM publishes a narrow detector->target subscription to GameState. Callers should use this
+## instead of mutating _detection_targets after activation so prediction is invalidated immediately.
+func set_detection_targets(target_ids: Array) -> void:
+	var normalized: Array[String] = []
+	for raw_id in target_ids:
+		var target_id := str(raw_id)
+		if target_id == char_id or normalized.has(target_id):
+			continue
+		normalized.append(target_id)
+	_detection_targets = normalized
+	_publish_detection_targets()
+
+func get_detection_targets() -> Array[String]:
+	return _detection_targets.duplicate()
+
+func _publish_detection_targets() -> void:
+	if game_state != null and game_state.has_method("set_detection_targets") \
+			and game_state.characters.has(char_id):
+		game_state.set_detection_targets(char_id, _detection_targets)
 
 ## Set patrol waypoints (an AUTHORED route — pathfinds between waypoints to route around walls).
 func set_patrol(waypoints: Array[Vector3]) -> void:
@@ -157,6 +193,7 @@ func re_post(post: Vector3) -> void:
 	_current_target_id = ""
 	if game_state and game_state.characters.has(char_id):
 		game_state.command_stop(char_id)
+		game_state.change_move_speed(char_id, move_speed)
 		game_state.set_character_distracted(char_id, false)
 		game_state.snap_character_to(char_id, post)
 	position = post
@@ -207,6 +244,7 @@ func get_state() -> String:
 # --- State Machine Core (reusable StateMachine: tag-scoped scheduling + exit/enter hooks) ---
 
 const ENEMY_STATES := ["idle", "roam", "patrol", "lured", "alert", "pursuit", "windup", "charge", "impact", "recover", "stagger", "stunned", "search", "return", "dead"]
+const DETECTION_SCANNING_STATES := ["idle", "roam", "patrol", "lured", "search", "return"]
 
 # Telegraph colours (the body reads its intent at a glance).
 const WINDUP_COLOR := Color(0.9, 0.15, 0.1)    # red — about to strike
@@ -230,8 +268,15 @@ static var CALLS := {}   # diagnostic counters (no wall-clock; cleared by the pe
 static func _count(key: String) -> void:
 	CALLS[key] = int(CALLS.get(key, 0)) + 1
 
+func _sync_detection_subscription(state: String) -> void:
+	if game_state != null and game_state.has_method("set_detection_enabled") \
+			and game_state.characters.has(char_id):
+		game_state.set_detection_enabled(char_id, state in DETECTION_SCANNING_STATES)
+
 func _enter_state(state: String) -> void:
 	Enemy._count("enter_" + state)
+	_publish_detection_targets()
+	_sync_detection_subscription(state)
 	match state:
 		"idle":
 			_set_eye_energy(0.4)
@@ -256,6 +301,8 @@ func _enter_state(state: String) -> void:
 			_anim_pop(1.18)
 			_fsm.schedule(alert_duration, _begin_pursuit)
 		"pursuit":
+			if game_state != null and game_state.characters.has(char_id):
+				game_state.change_move_speed(char_id, get_pursuit_speed())
 			_set_eye_energy(2.0)
 			_set_mesh_color(_base_color)
 			_pursue_target()
@@ -333,6 +380,8 @@ func _exit_state(state: String) -> void:
 			_remove_alert_label()
 		"pursuit":
 			_stop_movement()
+			if game_state != null and game_state.characters.has(char_id):
+				game_state.change_move_speed(char_id, move_speed)
 		"charge":
 			_charging = false
 			# Restore the chase speed (the lunge ran at charge_speed through the data layer).
@@ -795,6 +844,96 @@ func _make_eye(pos: Vector3) -> OmniLight3D:
 	add_child(eye)
 	return eye
 
+
+## Universal faction/state read at gameplay distance. Creature silhouettes can vary wildly
+## (especially subclasses), so every hostile gets the same red floor halo. Lure/stun/attack
+## states recolor and pulse it without affecting collision, detection, or scheduler timing.
+func _build_threat_marker() -> void:
+	if not Enemy._cosmetics_on():
+		return
+	_threat_marker = Node3D.new()
+	_threat_marker.name = "ThreatHalo"
+	_threat_marker.position.y = -0.46
+	add_child(_threat_marker)
+
+	_threat_marker_material = StandardMaterial3D.new()
+	_threat_marker_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_threat_marker_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_threat_marker_material.albedo_color = Color(0.95, 0.08, 0.12, 0.78)
+	_threat_marker_material.emission_enabled = true
+	_threat_marker_material.emission = Color(1.0, 0.04, 0.08)
+	_threat_marker_material.emission_energy_multiplier = 2.2
+	# Persistent faction reads obey walls/fog. Only deliberate planning/causal overlays
+	# are allowed to reveal a target through geometry.
+	_threat_marker_material.no_depth_test = false
+	_threat_marker_material.render_priority = 3
+
+	var ring := MeshInstance3D.new()
+	ring.name = "HostileRing"
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.36
+	torus.outer_radius = 0.43
+	torus.rings = 24
+	torus.ring_segments = 10
+	ring.mesh = torus
+	ring.material_override = _threat_marker_material
+	ring.set_meta("camera_occlusion_exempt", true)
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	ring.layers = 2
+	_threat_marker.add_child(ring)
+
+	var pip_mesh := BoxMesh.new()
+	pip_mesh.size = Vector3(0.09, 0.035, 0.24)
+	for i in range(3):
+		var angle := TAU * float(i) / 3.0
+		var pip := MeshInstance3D.new()
+		pip.name = "ThreatPip%d" % i
+		pip.mesh = pip_mesh
+		pip.material_override = _threat_marker_material
+		pip.set_meta("camera_occlusion_exempt", true)
+		pip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		pip.layers = 2
+		pip.position = Vector3(cos(angle), 0.0, sin(angle)) * 0.55
+		pip.rotation.y = -angle
+		_threat_marker.add_child(pip)
+
+
+func _update_threat_marker() -> void:
+	if _threat_marker == null or _threat_marker_material == null:
+		return
+	var state := get_state()
+	_threat_marker.visible = state != "dead"
+	if not _threat_marker.visible:
+		return
+	var tint := Color(0.95, 0.07, 0.11)
+	var speed := 0.75
+	var energy_base := 1.7
+	match state:
+		"lured", "return":
+			tint = Color(1.0, 0.58, 0.12)
+			speed = 1.15
+			energy_base = 2.3
+		"stagger", "stunned":
+			tint = Color(0.68, 0.4, 1.0)
+			speed = -1.6
+			energy_base = 2.5
+		"alert", "pursuit":
+			tint = Color(1.0, 0.04, 0.03)
+			speed = 2.2
+			energy_base = 3.2
+		"windup", "charge", "impact":
+			tint = Color(1.0, 0.02, 0.01)
+			speed = 4.2
+			energy_base = 4.0
+	var now := float(Time.get_ticks_msec()) * 0.001
+	var pulse := 0.5 + 0.5 * sin(now * (5.0 + absf(speed) * 2.0))
+	var urgent := state in ["alert", "pursuit", "windup", "charge", "impact"]
+	_threat_marker.rotation.y = now * speed
+	_threat_marker.scale = Vector3.ONE * (0.92 + pulse * (0.22 if urgent else 0.1))
+	_threat_marker_material.albedo_color = Color(tint.r, tint.g, tint.b, 0.7 + pulse * 0.2)
+	_threat_marker_material.emission = tint
+	_threat_marker_material.emission_energy_multiplier = energy_base + pulse * 1.25
+
 func _set_eye_energy(energy: float) -> void:
 	if _eye_left:
 		_eye_left.light_energy = energy
@@ -802,8 +941,19 @@ func _set_eye_energy(energy: float) -> void:
 		_eye_right.light_energy = energy
 
 func _set_mesh_color(c: Color) -> void:
-	if _mesh and _mesh.material_override:
-		(_mesh.material_override as StandardMaterial3D).albedo_color = c
+	if _mesh == null or _mesh.material_override == null:
+		return
+	var material := _mesh.material_override
+	if material is StandardMaterial3D:
+		(material as StandardMaterial3D).albedo_color = c
+	elif material is ShaderMaterial:
+		# CameraOcclusionManager replaces the enemy's StandardMaterial3D with
+		# its see-through wrapper after a streamed chunk loads.  State colors
+		# must update the wrapper parameter instead of casting it back to a
+		# StandardMaterial3D (that cast is null and used to error on pursuit).
+		var shader_material := material as ShaderMaterial
+		if shader_material.get_shader_parameter("albedo_color") is Color:
+			shader_material.set_shader_parameter("albedo_color", c)
 
 func _fade_out(duration: float) -> void:
 	if _mesh and Enemy._cosmetics_on():
@@ -852,6 +1002,7 @@ func _anim_recoil() -> void:               # stagger: flinch inward
 # --- Movement / Charge collision ---
 
 func _process(_delta: float) -> void:
+	_update_threat_marker()
 	# The body is a pure mirror of the data layer — including the charge, which is now a real
 	# data-layer move at charge_speed (so the lunge is smooth and never teleport-snaps at impact).
 	if game_state and char_id != "" and game_state.is_moving(char_id):
@@ -864,6 +1015,11 @@ func _process(_delta: float) -> void:
 func _stop_movement() -> void:
 	if game_state and game_state.characters.has(char_id):
 		game_state.command_stop(char_id)
+
+## The effective speed used only while tracking a target. Exposed as a query so level contracts
+## and tests can assert the walk < threat < sprint relationship without reaching into FSM state.
+func get_pursuit_speed() -> float:
+	return pursuit_speed if pursuit_speed > 0.0 else move_speed
 
 # --- Utilities ---
 

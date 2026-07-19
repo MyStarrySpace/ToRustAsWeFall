@@ -27,6 +27,11 @@ uniform float reveal_radius : hint_range(0.0, 12.0) = 5.5;
 uniform float reveal_min_factor : hint_range(0.0, 1.0) = 0.5;
 uniform float reveal_softness : hint_range(0.0, 1.0) = 0.75;   // fraction of the radius that feathers (dither band)
 uniform float reveal_strength : hint_range(0.0, 1.0) = 1.0;    // 0 => occlusion disabled for this material
+// Screen-space outline passes interpret every Bayer discard as a tiny silhouette.
+// Outline-heavy rooms can request one continuous clip boundary instead: the
+// occluder still opens around the player, but it produces no white pixel cloud.
+uniform bool outline_safe_clip = false;
+uniform float outline_safe_threshold : hint_range(0.0, 1.0) = 0.5;
 // ZOOM-OUT auto-off: the reveal cut only matters when the camera is close enough that walls hide the player.
 // Past `reveal_max_cam_dist` (the camera sits this far from the watched character — i.e. zoomed well out, where
 // the view is already near top-down and nothing hides them) the cut fades to nothing, so the fade circle simply
@@ -79,10 +84,16 @@ void fragment() {
 				float radius = reveal_radius * mix(reveal_min_factor, 1.0, t / player_dist);  // cone, wider at the player
 				float reveal = (1.0 - smoothstep(radius * (1.0 - reveal_softness), radius, perp)) * reveal_strength * zoom_fade;
 				if (reveal > 0.0) {
-					int bx = int(FRAGCOORD.x) & 3;
-					int by = int(FRAGCOORD.y) & 3;
-					if (reveal > BAYER4[by * 4 + bx]) {
-						discard;   // punch a dithered hole so the character shows through
+					if (outline_safe_clip) {
+						if (reveal > outline_safe_threshold) {
+							discard;   // one coherent boundary for downstream outline passes
+						}
+					} else {
+						int bx = int(FRAGCOORD.x) & 3;
+						int by = int(FRAGCOORD.y) & 3;
+						if (reveal > BAYER4[by * 4 + bx]) {
+							discard;   // punch a dithered hole so the character shows through
+						}
 					}
 				}
 			}

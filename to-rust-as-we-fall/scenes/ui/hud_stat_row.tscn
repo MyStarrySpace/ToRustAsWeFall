@@ -1,0 +1,36 @@
+[gd_scene load_steps=3 format=3]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bg"]
+resource_local_to_scene = true
+bg_color = Color(0.06, 0.06, 0.08, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_fill"]
+resource_local_to_scene = true
+bg_color = Color(0.3, 0.6, 0.35, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[node name="StatRow" type="HBoxContainer"]
+theme_override_constants/separation = 6
+
+[node name="Label" type="Label" parent="."]
+custom_minimum_size = Vector2(65, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+
+[node name="Bar" type="ProgressBar" parent="."]
+custom_minimum_size = Vector2(80, 10)
+layout_mode = 2
+theme_override_styles/background = SubResource("StyleBoxFlat_bg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_fill")
+show_percentage = false
+
+[node name="PipMount" type="HBoxContainer" parent="."]
+visible = false
+layout_mode = 2

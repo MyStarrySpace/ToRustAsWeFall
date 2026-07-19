@@ -4,7 +4,7 @@
 [ext_resource type="Script" path="res://scripts/editor/editor_camera.gd" id="2"]
 [ext_resource type="MeshLibrary" path="res://resources/block_library.tres" id="3"]
 [ext_resource type="Script" path="res://scripts/editor/floor_grid.gd" id="4"]
-[ext_resource type="Script" path="res://scripts/editor/editor_hud.gd" id="5"]
+[ext_resource type="PackedScene" path="res://scenes/editor/editor_hud.tscn" id="5"]
 
 [sub_resource type="Environment" id="Env_1"]
 background_mode = 1
@@ -45,5 +45,4 @@ environment = SubResource("Env_1")
 transform = Transform3D(0.866, -0.25, 0.433, 0, 0.866, 0.5, -0.5, -0.433, 0.75, 0, 10, 0)
 shadow_enabled = true
 
-[node name="HUD" type="CanvasLayer" parent="."]
-script = ExtResource("5")
+[node name="HUD" parent="." instance=ExtResource("5")]

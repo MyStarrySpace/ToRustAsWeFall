@@ -2,6 +2,14 @@ extends "res://scripts/tutorial/tutorial_sequence.gd"
 
 const DayNightCycleScript = preload("res://scripts/system/simulation/day_night_cycle.gd")
 const GameHUDScript = preload("res://scripts/ui/game_hud.gd")
+const GameHUDScene = preload("res://scenes/ui/game_hud.tscn")
+const InputGlyphScene = preload("res://scenes/ui/input_glyph.tscn")
+const FragmentPreviewUIScene = preload("res://scenes/ui/fragment_preview_ui.tscn")
+const FragmentMenuButtonScene = preload("res://scenes/ui/fragment_menu_button.tscn")
+const BranchOptionButtonScene = preload("res://scenes/ui/branch_option_button.tscn")
+const InputHintChipScene = preload("res://scenes/ui/input_hint_chip.tscn")
+const OverlayToggleButtonScene = preload("res://scenes/ui/overlay_toggle_button.tscn")
+const StretchSeedCatalogScript = preload("res://scripts/generation/stretch_seed_catalog.gd")
 # ItemData is inherited from tutorial_sequence.gd (the shared chunk-host base).
 const PERCEPTION_STACK_SHADER := preload("res://resources/perception_stack.gdshader")
 
@@ -34,6 +42,11 @@ const LOCKOUT_CHASE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/lockou
 const INFLAMMASHUNT_CHUNK_SCENE := preload("res://scenes/fragments/chunks/inflammashunt_chunk.tscn")
 const AGHORA_BAZAAR_CHUNK_SCENE := preload("res://scenes/fragments/chunks/aghora_bazaar_chunk.tscn")
 const SightMaskBakerScript := preload("res://scripts/game/world/sight_mask_baker.gd")
+const PREVIEW_EMPHASIS_TAG := "preview_event_emphasis"
+const DEFAULT_PREVIEW_EDGE_SCROLL_MARGIN := 6.0
+## Matches perception_stack.gdshader's fully-clear fog radius. Relationship UI uses
+## the clear region rather than the soft fringe so it cannot reveal a fogged endpoint.
+const PARTY_PERCEPTION_CLEAR_RADIUS := 14.0
 
 # chunk name -> packed scene. The single lookup that replaced the old per-name match (and the reason
 # we no longer need one *_preview.tscn per chunk: one scene reads this registry and picks at runtime).
@@ -171,8 +184,10 @@ const PREVIEW_ENTRIES := [
 	{"id": "lockout_chase", "chunk": "lockout_chase", "title": "The Lockout Chase (Act 1 climax)", "stage": 4},
 	{"id": "inflammashunt", "chunk": "inflammashunt", "title": "The Inflammashunt (danger zone)", "stage": 4},
 	{"id": "puzzle_atom", "chunk": "puzzle_atom", "title": "Generated Atom Chain", "stage": 3,
+		# A mechanics-first benchmark: production roguelike chains still receive district dressing,
+		# while this standalone preview keeps every gate, signal, and failure readable for tuning.
 		"config": {"stages": ["distract:lure", "distract:patrol", "distract:twin"], "seed": 7,
-			"district": {"idiom": "capitalist", "decay": 0.15}}},
+			"zone_setpieces": false}},
 ]
 
 ## The menu entry for an id (or {} if none).
@@ -189,6 +204,9 @@ static func get_preview_stage(entry_id: String) -> int:
 	return int(get_preview_entry(entry_id).get("stage", 1))
 
 const CHARACTER_IDS := ["aster", "peris", "endo"]
+const MAX_VISION_SOURCES := 64
+const PROCEDURAL_OCCLUSION_CHUNKS := ["channels_wash_intro", "wash_relay"]
+const NO_VISION_SOURCE := Vector3(0.0, 0.0, -9999.0)
 ## Members recruited later in the story. They exist in a preview ONLY when a chunk's
 ## presence map includes them: built hidden, registered + portraited on demand, and
 ## unregistered when absent so a parked invisible body never claims grid cells (parked
@@ -227,10 +245,50 @@ const ABILITY_KEYCODES := {
 	"X": KEY_X,
 	"V": KEY_V,
 }
+## The spreadsheet still owns which legacy slot an ability uses; InputMap owns the live key behind
+## that slot. Abilities that share a slot (Aster/Endo on primary) are resolved by active owner.
+const ABILITY_INPUT_ACTION_BY_KEYBIND := {
+	"Z": "ability_primary",
+	"X": "ability_secondary",
+	"Y": "ability_tertiary",
+}
+## Direct party abilities are arranged as six stable character columns with two rows each. InputMap
+## owns the live, remappable right-hand layout (UIOP[] / JKL;'\\ by default). Spreadsheet Z/X/Y
+## bindings remain compatibility fallbacks only when a direct action is explicitly unbound.
+const PARTY_ABILITY_OWNER_ORDER := ["aster", "peris", "endo", "myke"]
+const PARTY_ABILITY_ACTIONS := [
+	["party_slot_1_ability_1", "party_slot_1_ability_2"],
+	["party_slot_2_ability_1", "party_slot_2_ability_2"],
+	["party_slot_3_ability_1", "party_slot_3_ability_2"],
+	["party_slot_4_ability_1", "party_slot_4_ability_2"],
+	["party_slot_5_ability_1", "party_slot_5_ability_2"],
+	["party_slot_6_ability_1", "party_slot_6_ability_2"],
+]
 const PREVIEW_GUI_CONTRACT_ID := "fragment_preview_shared_gui_v1"
 const GAME_HUD_SCRIPT_PATH := "res://scripts/ui/game_hud.gd"
-const PREVIEW_CONTROL_HELP := "Click move  WASD/middle-drag pan  1-3 focus  Ctrl+1-3 multi-select  C cycle  Z/X abilities  V drop  T transfer  B retrieve  F1-F3 overlays  O drawer  Tab route  G dodge  Space pause  R reload  H hide"
-const PREVIEW_INVENTORY_CONTROL_HELP := "Controls: Z/X abilities  V drop  T transfer  B retrieve"
+const PREVIEW_CONTROL_ACTIONS := [
+	"command", "camera_pan_forward", "camera_pan_back", "camera_pan_left", "camera_pan_right",
+	"camera_pan", "select_primary", "select_secondary", "select_tertiary",
+	"preview_cycle_character", "ability_primary", "ability_secondary", "preview_drop_item",
+	"preview_transfer_item", "preview_retrieve_item", "preview_overlay_aster",
+	"preview_overlay_peris", "preview_overlay_endo", "preview_overlay_drawer", "route",
+	"preview_toggle_dodge", "pause", "run", "preview_reload", "preview_toggle_instructions",
+	"party_slot_1_ability_1", "party_slot_1_ability_2",
+	"party_slot_2_ability_1", "party_slot_2_ability_2",
+	"party_slot_3_ability_1", "party_slot_3_ability_2",
+	"party_slot_4_ability_1", "party_slot_4_ability_2",
+	"party_slot_5_ability_1", "party_slot_5_ability_2",
+	"party_slot_6_ability_1", "party_slot_6_ability_2",
+]
+const PREVIEW_INVENTORY_ACTIONS := [
+	"party_slot_1_ability_1", "party_slot_1_ability_2",
+	"party_slot_2_ability_1", "party_slot_2_ability_2",
+	"party_slot_3_ability_1", "party_slot_3_ability_2",
+	"party_slot_4_ability_1", "party_slot_4_ability_2",
+	"party_slot_5_ability_1", "party_slot_5_ability_2",
+	"party_slot_6_ability_1", "party_slot_6_ability_2",
+	"ability_secondary", "preview_drop_item", "preview_transfer_item", "preview_retrieve_item",
+]
 # The canonical per-ability key/owner bindings now live in data/abilities/en/abilities.xlsx (the
 # "bindings" sheet), read via AbilityData.binding(id) — see _apply_canonical_main_ability_binding.
 
@@ -260,7 +318,7 @@ var _roguelike_advancing := false
 var _run_session: RunSession = null
 var _branch_modal: Control = null
 ## When true, boot into a fragment PICKER instead of loading a chunk directly. The single
-## fragment_preview.tscn sets this; selecting an entry loads it, and reloading (R) returns here.
+## fragment_preview.tscn sets this; selecting an entry loads it, and the Menu action (M) returns here.
 ## A `--preview=<id>` command-line arg (or a preset preview_chunk) skips the menu and loads directly.
 @export var preview_menu := false
 
@@ -269,6 +327,10 @@ var _branch_modal: Control = null
 ## directly (the peris `_visit_phase` static pattern). Cleared on consume — R still returns to the
 ## picker afterwards.
 static var menu_launch_id := ""
+static var menu_launch_entry: Dictionary = {}
+var _active_preview_entry_id := ""
+var _active_preview_entry: Dictionary = {}
+var _pending_preview_handoff_id := ""
 
 var _characters: Dictionary = {}
 var _character_state: Dictionary = {}
@@ -289,6 +351,12 @@ var _preview_dodge_unlocked := false
 var _pushed_active_char_id := ""
 var _preview_interactables: Array = []
 var _active_chunk: Node3D
+var _preview_emphasis_active := false
+var _preview_emphasis_uses_exploration_focus := false
+var _preview_emphasis_token := 0
+var _preview_emphasis_prev_camera_target: Node3D = null
+var _preview_emphasis_prev_camera_offset := Vector3.ZERO
+var _preview_emphasis_prev_camera_state := {}
 var _preview_day := DEFAULT_DAY
 var _preview_time := DEFAULT_TIME
 var _preview_clock_running := true
@@ -311,17 +379,28 @@ var _overlay_panel_collapsed := false
 var _overlay_panel_margin: MarginContainer
 var _overlay_stack_quad: MeshInstance3D
 var _overlay_stack_material: ShaderMaterial
+var _vision_sources_image: Image
+var _vision_sources_texture: ImageTexture
+var _vision_sources_cache: Array[Vector3] = []
 var _inventory_panel_label: Label
 var _inventory_panel_title: Label
+var _inventory_controls_flow: HFlowContainer
 var _preview_item_nodes: Dictionary = {}
 
 var _preview_layer: CanvasLayer
 var _menu_panel: PanelContainer
 var _menu_backdrop: ColorRect
 var _in_menu := false
+var _seed_case_selector: OptionButton
+var _seed_value_edit: LineEdit
+var _seed_tier_selector: OptionButton
+var _seed_case_note: Label
+var _seed_cases: Array[Dictionary] = []
 var _instructions_margin: MarginContainer   # the top briefing/instructions panel — toggled with H
 var _title_label: Label
 var _help_label: Label
+var _control_hint_flow: HFlowContainer
+var _ability_hint_flow: HFlowContainer
 var _note_label: Label
 var _note_default := ""
 var _note_timer := 0.0
@@ -404,6 +483,9 @@ func _begin() -> void:
 	var cli_id := _cli_preview_id()
 	if cli_id != "":
 		_apply_preview_entry(get_preview_entry(cli_id))
+	elif not menu_launch_entry.is_empty():
+		_apply_preview_entry(menu_launch_entry)
+		menu_launch_entry = {}
 	elif menu_launch_id != "":
 		_apply_preview_entry(get_preview_entry(menu_launch_id))
 		menu_launch_id = ""
@@ -417,6 +499,16 @@ func _begin() -> void:
 func _pdbg(msg: String) -> void:
 	if OS.has_environment("PREVIEW_DEBUG"):
 		print("[preview] → ", msg)
+
+func _configure_hud_atp_granularity() -> void:
+	if _hud == null or not _hud.has_method("set_atp_pip_subdivisions"):
+		return
+	var subdivisions := 1
+	if _active_chunk != null and _active_chunk.has_method("get_preview_state"):
+		var state: Dictionary = _active_chunk.call("get_preview_state")
+		if str(state.get("food_test", "")) == "scarcity":
+			subdivisions = 2
+	_hud.call("set_atp_pip_subdivisions", subdivisions)
 
 ## Build (or load) the chunk named by preview_chunk and wire up the party/UI around it.
 func _begin_chunk() -> void:
@@ -436,6 +528,15 @@ func _begin_chunk() -> void:
 	set_preview_step(preview_chunk)
 	_pdbg("load_chunk")
 	_active_chunk = _load_chunk(preview_chunk)
+	_configure_hud_atp_granularity()
+	# These Channels chunks add tall procedural walls/branch frames outside their imported
+	# backdrop. Wrap that environment-scale geometry too; other chunks keep their authored
+	# dynamic materials untouched until they explicitly opt in.
+	if preview_chunk in PROCEDURAL_OCCLUSION_CHUNKS:
+		_ensure_occlusion_manager()
+	if _occlusion_mgr != null and _active_chunk != null and preview_chunk in PROCEDURAL_OCCLUSION_CHUNKS:
+		var chunk_wrapped: int = _occlusion_mgr.apply_to(_active_chunk, 2.0)
+		_pdbg("camera occlusion applied to %d chunk surfaces" % chunk_wrapped)
 	_pdbg("load_environment_model")
 	_load_environment_model()
 	_maybe_install_chunk_coord_map()
@@ -446,6 +547,12 @@ func _begin_chunk() -> void:
 	if _active_chunk != null and _active_chunk.has_method("reset_preview_state"):
 		_pdbg("reset_preview_state")
 		_active_chunk.call("reset_preview_state")
+	# Optional cosmetic contract: a chunk may annotate paused queued paths (for example, learned surge
+	# timing). Rebinding every load/reset also clears cached feedback from the previous fragment.
+	if _path_render_manager != null:
+		_path_render_manager.set_path_feedback_source(_active_chunk)
+	if _active_chunk != null and _active_chunk.has_method("set_preview_planning_feedback"):
+		_active_chunk.call("set_preview_planning_feedback", _scheduler != null and _scheduler.is_paused())
 	_pdbg("apply_chunk_navigation_graph")
 	_apply_chunk_navigation_graph()
 	_apply_chunk_metadata()
@@ -457,6 +564,9 @@ func _begin_chunk() -> void:
 		_preview_dodge_unlocked = bool(_active_chunk.call("preview_dodge_unlocked"))
 	_apply_dodge_setting()
 	_select_character(_default_chunk_character())
+	# Camera profiles depend on the final rendered spawn + selected follow target. Apply and snap only
+	# after both are established, so a stacked level never eases through a neighbouring floor on entry.
+	_configure_preview_camera_feedback()
 	# Per-entry overlay defaults: a config `"overlays": {"peris": true}` boots the view with that
 	# perception layer on (fog for generated districts). Applied once per ENTRY — F1-F3 / the panel
 	# buttons toggle live, and an N-regenerate keeps the player's current choice.
@@ -467,7 +577,7 @@ func _begin_chunk() -> void:
 			headless_set_overlay_state(str(ov_id), bool(overlay_defaults[ov_id]))
 	_refresh_preview_items()
 	_refresh_inventory_panel()
-	_tutorial_prompt.show_prompt("Click to move")
+	_tutorial_prompt.show_action_prompt("command", "Move", 0.0, "RMB")
 	show_preview_message("Preview booted with full HP, stamina, and ATP.", 2.0)
 
 ## N in a GENERATION preview (a chunk answering is_generation_preview): bump the seed and rebuild the
@@ -476,13 +586,21 @@ func _begin_chunk() -> void:
 func _regenerate_preview_variation() -> void:
 	if _active_chunk == null or not _active_chunk.has_method("is_generation_preview"):
 		return
-	var next_seed := int(preview_chunk_config.get("seed", 0)) + 1
+	var current_seed := int(preview_chunk_config.get("seed", 0))
+	if not preview_chunk_config.has("seed") and _active_chunk.has_method("get_generation_seed"):
+		current_seed = int(_active_chunk.call("get_generation_seed"))
+	var next_seed := current_seed + 1
 	preview_chunk_config = preview_chunk_config.duplicate()
 	preview_chunk_config["seed"] = next_seed
 	_unload_chunk(preview_chunk)
 	_preview_interactables.clear()
 	_begin_chunk()
 	show_preview_message("Regenerated — seed %d" % next_seed, 1.8)
+
+
+func _unload_chunk(chunk_name: String) -> void:
+	cancel_preview_emphasis()
+	super._unload_chunk(chunk_name)
 
 # If the chunk names an environment GLB (a modeled backdrop), instantiate it under the scene and force
 # NEAREST texture filtering so the pixel-art tiles stay crisp. The gameplay data layer is unchanged —
@@ -513,9 +631,7 @@ func _load_environment_model() -> void:
 	_pdbg("deck collision added")
 	# See-through level: wrap the model's meshes so geometry that comes between the camera and the active
 	# character dither-dissolves around them (you never lose the party behind a wall / an upper helix loop).
-	_occlusion_mgr = CameraOcclusionManager.new()
-	add_child(_occlusion_mgr)
-	_occlusion_mgr.set_watch(_game_state, _active_char_id)
+	_ensure_occlusion_manager()
 	var wrapped: int = _occlusion_mgr.apply_to(model)
 	_pdbg("camera occlusion applied to %d surfaces" % wrapped)
 	# If the chunk maps its flat gauntlet onto this model (the channels helix), install the coord_map so
@@ -536,6 +652,12 @@ func _load_environment_model() -> void:
 		# (narrow set-pieces, chord-vs-curve branch boxes), so ~30% of walkable cells had no deck to ray-hit and
 		# were un-clickable. This makes collision == walkable by construction for ANY coord_map chunk.
 		_add_warped_walkable_collision()
+
+func _ensure_occlusion_manager() -> void:
+	if _occlusion_mgr == null or not is_instance_valid(_occlusion_mgr):
+		_occlusion_mgr = CameraOcclusionManager.new()
+		add_child(_occlusion_mgr)
+	_occlusion_mgr.set_watch(_game_state, _active_char_id)
 
 ## A chunk can WARP its OWN procedural geometry (the generated stretch builds its tiled floor + node dressing
 ## pre-warped onto a helix) and expose a coord_map WITHOUT an environment GLB. Install it so character render +
@@ -658,6 +780,8 @@ func _cli_preview_id() -> String:
 func _apply_preview_entry(entry: Dictionary) -> void:
 	if entry.is_empty():
 		return
+	_active_preview_entry = entry.duplicate(true)
+	_active_preview_entry_id = String(entry.get("id", ""))
 	preview_chunk = String(entry.get("chunk", preview_chunk))
 	scene_title_override = String(entry.get("title", scene_title_override))
 	preview_chunk_config = (entry.get("config", {}) as Dictionary).duplicate(true)
@@ -669,6 +793,52 @@ func _apply_preview_entry(entry: Dictionary) -> void:
 			str(preview_chunk_config.get("levels", RunSession.LEVELS_STRETCH)))
 		_run_session.start()
 		_roguelike_sync_config()
+
+## PauseMenu calls this immediately before reloading the scene. Preserve the selected picker
+## entry across that reload so "Restart Scene" restarts the active fragment instead of silently
+## dropping the player back at the picker. The M action remains the explicit fragment-menu route.
+func prepare_scene_restart() -> void:
+	if not _active_preview_entry.is_empty() and get_preview_entry(_active_preview_entry_id).is_empty():
+		menu_launch_entry = _active_preview_entry.duplicate(true)
+		return
+	if _active_preview_entry_id != "":
+		menu_launch_id = _active_preview_entry_id
+		return
+	for entry in PREVIEW_ENTRIES:
+		if String(entry.get("chunk", "")) == preview_chunk:
+			menu_launch_id = String(entry.get("id", ""))
+			return
+
+## Hosted chunks may request a continuation while running in the normal picker-backed
+## preview. Wait for their final narrative line, then reload the whole preview scene so
+## chunk-scoped shelters, scheduler callbacks, models, collision, and coord maps cannot
+## leak into the next fragment. Direct/CLI previews and campaign hosts do not chain.
+func request_preview_handoff(entry_id: String) -> void:
+	if not preview_menu or _pending_preview_handoff_id != "":
+		return
+	if get_preview_entry(entry_id).is_empty():
+		push_warning("fragment_preview: unknown handoff entry '%s'" % entry_id)
+		return
+	_pending_preview_handoff_id = entry_id
+	if _dialogue != null and _dialogue.is_active():
+		_dialogue.dialogue_finished.connect(_defer_pending_preview_handoff, CONNECT_ONE_SHOT)
+	else:
+		call_deferred("_commit_pending_preview_handoff")
+
+func _defer_pending_preview_handoff() -> void:
+	call_deferred("_commit_pending_preview_handoff")
+
+func _commit_pending_preview_handoff() -> void:
+	if not preview_menu or _pending_preview_handoff_id == "":
+		_pending_preview_handoff_id = ""
+		return
+	var entry_id := _pending_preview_handoff_id
+	_pending_preview_handoff_id = ""
+	menu_launch_id = entry_id
+	var reload_error := get_tree().reload_current_scene()
+	if reload_error != OK:
+		menu_launch_id = ""
+		push_error("fragment_preview: failed to hand off to '%s' (%s)" % [entry_id, error_string(reload_error)])
 
 ## Point the chunk config at the session's current level (or warn if generation failed).
 func _roguelike_sync_config() -> void:
@@ -735,7 +905,44 @@ func _apply_photo_mode(active: bool) -> void:
 
 func _process(delta: float) -> void:
 	super._process(delta)
+	_sync_preview_character_holds()
 	_roguelike_poll()
+
+## A chunk may report positional work without the shared HUD knowing any level-specific details. The
+## same portrait badge also falls back to a carried item, matching the rally rule: click the visible
+## holder badge to leave that character in place while the rest of the party rallies.
+func _sync_preview_character_holds() -> void:
+	if (_hud == null or not is_instance_valid(_hud)
+			or not _hud.has_method("set_portrait_hold_state") or not _hud.has_method("get_portrait_ids")):
+		return
+	var holds: Dictionary = {}
+	if (_active_chunk != null and is_instance_valid(_active_chunk)
+			and _active_chunk.has_method("get_preview_character_holds")):
+		var reported = _active_chunk.call("get_preview_character_holds")
+		if reported is Dictionary:
+			holds = reported
+	for raw_id in _hud.get_portrait_ids():
+		var char_id := str(raw_id)
+		var info = holds.get(char_id, {})
+		if not (info is Dictionary) or (info as Dictionary).is_empty():
+			info = _preview_carried_item_hold(char_id)
+		_hud.call("set_portrait_hold_state", char_id, info if info is Dictionary else {})
+
+func _preview_carried_item_hold(char_id: String) -> Dictionary:
+	if (_game_state == null or not _game_state.characters.has(char_id)
+			or not _game_state.has_method("get_hand_items")):
+		return {}
+	var hand_items: Array = _game_state.call("get_hand_items", char_id)
+	for raw_item_id in hand_items:
+		var item_id := str(raw_item_id)
+		if item_id == "":
+			continue
+		return {
+			"control_id": "carried_item:%s" % item_id,
+			"kind": "carried_item",
+			"label": get_preview_item_display_name(item_id, char_id),
+		}
+	return {}
 
 ## When the roguelike party rests at the exit shelter, present the run's next branch CHOICE (the meta-decision).
 func _roguelike_poll() -> void:
@@ -849,59 +1056,33 @@ func _show_branch_modal(decision: Dictionary) -> void:
 	_close_branch_modal()
 	if _preview_layer == null:
 		return
-	var backdrop := ColorRect.new()
-	backdrop.name = "BranchBackdrop"
-	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
-	backdrop.color = Color(0.03, 0.035, 0.05, 0.82)
-	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
-	_preview_layer.add_child(backdrop)
-	var panel := PanelContainer.new()
-	panel.name = "BranchModal"
-	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	var margin := MarginContainer.new()
-	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 24)
-	panel.add_child(margin)
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 10)
-	margin.add_child(col)
-	var prompt := Label.new()
+	var backdrop := _preview_layer.get_node("BranchBackdrop") as ColorRect
+	var panel := _preview_layer.get_node("BranchModal") as PanelContainer
+	var prompt := panel.get_node("Margin/Content/Prompt") as Label
 	prompt.text = str(decision.get("prompt", "The route forks."))
-	prompt.add_theme_font_size_override("font_size", 20)
-	prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	prompt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	prompt.custom_minimum_size = Vector2(560, 0)
-	col.add_child(prompt)
-	var sub := Label.new()
+	var sub := panel.get_node("Margin/Content/Subtitle") as Label
 	sub.text = "Choose your descent — Depth %d" % ((_run_session.depth if _run_session != null else 0) + 2)
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub.modulate = Color(0.68, 0.71, 0.78)
-	col.add_child(sub)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 14)
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_child(row)
+	var row := panel.get_node("Margin/Content/Options") as HBoxContainer
 	for opt in decision.get("options", []):
 		var o: Dictionary = opt
-		var b := Button.new()
+		var b := BranchOptionButtonScene.instantiate() as Button
 		b.text = "%s\n[%s RISK]\n\n%s" % [str(o.get("label", "?")), str(o.get("risk", "")).to_upper(), str(o.get("desc", ""))]
-		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		b.clip_text = false
-		b.custom_minimum_size = Vector2(270, 140)
 		b.pressed.connect(_roguelike_choose.bind(o))
 		row.add_child(b)
-	_preview_layer.add_child(panel)
-	panel.set_meta("backdrop", backdrop)
+	backdrop.visible = true
+	panel.visible = true
 	_branch_modal = panel
 
 func _close_branch_modal() -> void:
 	if _branch_modal != null and is_instance_valid(_branch_modal):
-		var bd = _branch_modal.get_meta("backdrop", null)
-		if bd != null and is_instance_valid(bd):
-			(bd as Node).queue_free()
-		_branch_modal.queue_free()
+		_branch_modal.visible = false
+		var options := _branch_modal.get_node("Margin/Content/Options") as HBoxContainer
+		for child in options.get_children():
+			options.remove_child(child)
+			child.queue_free()
+		var backdrop := _preview_layer.get_node_or_null("BranchBackdrop") as ColorRect
+		if backdrop != null:
+			backdrop.visible = false
 	_branch_modal = null
 
 ## Build and show the picker: one button per PREVIEW_ENTRIES row. Selecting one loads that fragment.
@@ -918,57 +1099,103 @@ func _show_fragment_menu() -> void:
 func _build_fragment_menu() -> void:
 	if _preview_layer == null:
 		return
-	# Full-screen dim backdrop so the picker reads as a clean modal (the gameplay panels sit behind it).
-	_menu_backdrop = ColorRect.new()
-	_menu_backdrop.name = "FragmentMenuBackdrop"
-	_menu_backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_menu_backdrop.color = Color(0.04, 0.045, 0.06, 1.0)
-	_preview_layer.add_child(_menu_backdrop)
-	_menu_panel = PanelContainer.new()
-	_menu_panel.name = "FragmentMenu"
-	_menu_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_menu_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_menu_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	var margin := MarginContainer.new()
-	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 24)
-	_menu_panel.add_child(margin)
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 4)
-	margin.add_child(col)
-	var heading := Label.new()
-	heading.text = "Select a fragment"
-	heading.add_theme_font_size_override("font_size", 22)
-	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(heading)
-	var sub := Label.new()
-	sub.text = "Pick a fragment to preview  ·  R reloads back to this list"
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub.modulate = Color(0.68, 0.71, 0.78)
-	col.add_child(sub)
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 10)
-	col.add_child(spacer)
+	_menu_backdrop = _preview_layer.get_node("FragmentMenuBackdrop") as ColorRect
+	_menu_panel = _preview_layer.get_node("FragmentMenu") as PanelContainer
+	var reload_glyph := _menu_panel.get_node("Margin/Content/Subtitle/ReloadGlyph") as InputGlyph
+	reload_glyph.configure_action("preview_reload", "M")
+	_build_seed_lab_controls()
 	# A wrapping grid instead of one tall column, so the list fits on screen. Columns scale with the
 	# entry count (~sqrt), capped so each cell stays wide enough for the longest title.
-	var grid := GridContainer.new()
+	var grid := _menu_panel.get_node("Margin/Content/EntryGrid") as GridContainer
 	grid.columns = clampi(int(ceil(sqrt(float(PREVIEW_ENTRIES.size())))), 2, 3)
-	grid.add_theme_constant_override("h_separation", 8)
-	grid.add_theme_constant_override("v_separation", 6)
-	col.add_child(grid)
 	# Display NEWEST-first: PREVIEW_ENTRIES stays in canonical (append) order for the data/tests, but the
 	# picker shows it reversed, so a freshly-added fragment (appended to the list) lands at the top here.
 	var ordered := PREVIEW_ENTRIES.duplicate()
 	ordered.reverse()
 	for entry in ordered:
-		var button := Button.new()
+		var button := FragmentMenuButtonScene.instantiate() as Button
 		button.text = String(entry.get("title", entry.get("id", "?")))
-		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		button.custom_minimum_size = Vector2(238, 36)
-		button.clip_text = true
 		button.pressed.connect(_on_menu_entry_pressed.bind(entry))
 		grid.add_child(button)
-	_preview_layer.add_child(_menu_panel)
+
+func _build_seed_lab_controls() -> void:
+	_seed_case_selector = _menu_panel.get_node("Margin/Content/SeedRow/CaseSelector") as OptionButton
+	_seed_case_selector.add_item("Custom profile")
+	var catalog: Dictionary = StretchSeedCatalogScript.load_catalog()
+	_seed_cases = StretchSeedCatalogScript.cases(catalog)
+	for case_def in _seed_cases:
+		_seed_case_selector.add_item(StretchSeedCatalogScript.display_name(case_def))
+	_seed_case_selector.item_selected.connect(_on_seed_case_selected)
+	_seed_value_edit = _menu_panel.get_node("Margin/Content/SeedRow/SeedEdit") as LineEdit
+	_seed_value_edit.text_submitted.connect(func(_value: String) -> void: _on_seed_play_pressed())
+	_seed_tier_selector = _menu_panel.get_node("Margin/Content/SeedRow/TierSelector") as OptionButton
+	for tier in StretchSeedCatalogScript.VALID_TIERS:
+		_seed_tier_selector.add_item(str(tier))
+	var play_button := _menu_panel.get_node("Margin/Content/SeedRow/PlayButton") as Button
+	play_button.pressed.connect(_on_seed_play_pressed)
+	_seed_case_note = _menu_panel.get_node("Margin/Content/SeedNote") as Label
+	var validation: Dictionary = catalog.get("validation", {})
+	if not bool(validation.get("valid", false)):
+		_seed_case_note.text = "Seed corpus error: %s" % ", ".join(validation.get("errors", []))
+		_seed_case_note.modulate = Color(1.0, 0.42, 0.38)
+
+func _on_seed_case_selected(index: int) -> void:
+	if index <= 0 or index - 1 >= _seed_cases.size():
+		_seed_tier_selector.disabled = false
+		_seed_case_note.text = "Custom profile uses the selected tier; enter any integer seed."
+		return
+	var case_def: Dictionary = _seed_cases[index - 1]
+	_seed_tier_selector.disabled = true
+	_seed_value_edit.text = str(int(case_def.get("seed", 1)))
+	var settings: Dictionary = case_def.get("settings", {})
+	var tier := str(settings.get("complexity_tier", "teaching"))
+	for tier_index in range(_seed_tier_selector.item_count):
+		if _seed_tier_selector.get_item_text(tier_index) == tier:
+			_seed_tier_selector.select(tier_index)
+			break
+	_seed_case_note.text = "%s: %s" % [
+		str(case_def.get("status", "candidate")).to_upper(),
+		str(case_def.get("purpose", "")),
+	]
+
+func _on_seed_play_pressed() -> void:
+	var seed_text := _seed_value_edit.text.strip_edges()
+	if not seed_text.is_valid_int():
+		_seed_case_note.text = "Seed must be a whole number."
+		_seed_case_note.modulate = Color(1.0, 0.42, 0.38)
+		return
+	var seed := int(seed_text)
+	var settings := {}
+	var case_id := "custom"
+	var case_status := "custom"
+	if _seed_case_selector.selected > 0 and _seed_case_selector.selected - 1 < _seed_cases.size():
+		var case_def: Dictionary = _seed_cases[_seed_case_selector.selected - 1]
+		case_id = str(case_def.get("id", "custom"))
+		case_status = str(case_def.get("status", "candidate"))
+		settings = StretchSeedCatalogScript.settings_for_case(case_id, seed)
+	else:
+		var tier := _seed_tier_selector.get_item_text(_seed_tier_selector.selected)
+		settings = StretchSeedCatalogScript.custom_settings(seed, tier)
+	if settings.is_empty():
+		_seed_case_note.text = "Could not build generator settings for this seed case."
+		_seed_case_note.modulate = Color(1.0, 0.42, 0.38)
+		return
+	var chunk_config := StretchSeedCatalogScript.play_config_for_case(case_id)
+	chunk_config.merge({
+		"settings": settings,
+		"seed": seed,
+		"seed_case_id": case_id,
+		"seed_case_status": case_status,
+	}, true)
+	var entry := {
+		"id": "generated_seed_lab_%s" % case_id,
+		"chunk": "generated_stretch",
+		"title": "%s  [seed %d, %s]" % [str(settings.get("title", "Generated Stretch")), seed, case_status],
+		"stage": int(settings.get("progression_stage", 2)),
+		"config": chunk_config,
+	}
+	_apply_preview_entry(entry)
+	_begin_chunk()
 
 func _on_menu_entry_pressed(entry: Dictionary) -> void:
 	_apply_preview_entry(entry)
@@ -978,7 +1205,17 @@ func _configure_loaded_chunk(chunk: Node3D, chunk_name: String) -> void:
 	if chunk_name != preview_chunk:
 		return
 	if chunk != null and chunk.has_method("configure_chunk"):
-		chunk.call("configure_chunk", preview_chunk_config)
+		# Game modes are Settings configurations projected onto a chunk at load time.
+		# The authored preview config merges last so a focused QA case can explicitly
+		# override the player's persisted mode without changing the level spec/seed.
+		var resolved_config: Dictionary = {}
+		var settings := get_tree().root.get_node_or_null("Settings")
+		if settings != null and settings.has_method("chunk_config_overrides"):
+			var overrides: Variant = settings.call("chunk_config_overrides", chunk_name)
+			if overrides is Dictionary:
+				resolved_config = (overrides as Dictionary).duplicate(true)
+		resolved_config.merge(preview_chunk_config, true)
+		chunk.call("configure_chunk", resolved_config)
 
 ## Wire every PushTarget in the scene to the ACTIVE player's queued-push mode. Signal plumbing only
 ## (no input handling here — the target itself consumes the click; the player owns the mode).
@@ -1038,63 +1275,87 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		var key_event := event as InputEventKey
-		match key_event.keycode:
-			KEY_H:
-				_toggle_instructions_panel()
-			KEY_O:
-				_toggle_overlay_panel()
-			# NO raw TAB / SPACE arms: those are the `route` / `pause` INPUT ACTIONS, owned by the HUD
-			# (game_hud._unhandled_input -> routing_toggled / pause_toggled signals we're connected to).
-			# A raw arm here fired the same handler a second time per press — the toggle flipped twice
-			# and both controls looked dead in the fragments.
-			KEY_C:
-				_cycle_character()
-			KEY_Z:
-				# Z belongs to the main abilities (aster_focus / endo_patch). Run lives on its OWN key
-				# (the "run" action, R) so locomotion never fights an ability — see _apply_active_run_state.
-				_activate_keybound_preview_ability(KEY_Z)
-			KEY_F5:
-				get_tree().reload_current_scene()
-			KEY_N:
-				_regenerate_preview_variation()
-			KEY_F1:
-				_toggle_overlay("aster")
-			KEY_F2:
-				_toggle_overlay("peris")
-			KEY_F3:
-				_toggle_overlay("endo")
-			KEY_X:
-				if not _activate_keybound_preview_ability(KEY_X):
-					_consume_active_item()
-			KEY_V:
-				_drop_active_item()
-			KEY_T:
-				_transfer_active_item()
-			KEY_B:
-				_exocytose_active_item()
-			KEY_G:
-				_preview_dodge_unlocked = not _preview_dodge_unlocked
-				_apply_dodge_setting()
-				show_preview_message("Dodge roll: %s" % ("ENABLED" if _preview_dodge_unlocked else "locked"), 1.4)
-			# Backtick belongs to the DEV CONSOLE (tutorial_sequence builds it for every scene);
-			# fx-debug lives there as the `fxdebug` command, fog of war as `fog on|off`.
-			KEY_1:
-				if key_event.ctrl_pressed or key_event.shift_pressed:
-					_toggle_character_selected("aster")
-				else:
-					_select_character("aster")
-			KEY_2:
-				if key_event.ctrl_pressed or key_event.shift_pressed:
-					_toggle_character_selected("peris")
-				else:
-					_select_character("peris")
-			KEY_3:
-				if key_event.ctrl_pressed or key_event.shift_pressed:
-					_toggle_character_selected("endo")
-				else:
-					_select_character("endo")
-			_:
-				_activate_keybound_preview_ability(key_event.keycode)
+		var direct_ability_action := _pressed_party_ability_action(event)
+		if direct_ability_action != "":
+			_activate_action_bound_preview_ability(direct_ability_action)
+		elif event.is_action_pressed("preview_toggle_instructions"):
+			_toggle_instructions_panel()
+		elif event.is_action_pressed("preview_overlay_drawer"):
+			_toggle_overlay_panel()
+		# `route`, `pause`, and `run` remain owned by GameHUD. Keeping one action owner prevents a
+		# single press from toggling twice as events traverse the scene tree.
+		elif event.is_action_pressed("preview_cycle_character"):
+			_cycle_character()
+		elif event.is_action_pressed("ability_primary"):
+			_activate_action_bound_preview_ability("ability_primary")
+		elif event.is_action_pressed("ability_secondary"):
+			if not _activate_action_bound_preview_ability("ability_secondary"):
+				_consume_active_item()
+		elif event.is_action_pressed("ability_tertiary"):
+			_activate_action_bound_preview_ability("ability_tertiary")
+		elif event.is_action_pressed("preview_reload"):
+			get_tree().reload_current_scene()
+		elif event.is_action_pressed("preview_regenerate"):
+			_regenerate_preview_variation()
+		elif event.is_action_pressed("preview_overlay_aster"):
+			_toggle_overlay("aster")
+		elif event.is_action_pressed("preview_overlay_peris"):
+			_toggle_overlay("peris")
+		elif event.is_action_pressed("preview_overlay_endo"):
+			_toggle_overlay("endo")
+		elif event.is_action_pressed("preview_drop_item"):
+			_drop_active_item()
+		elif event.is_action_pressed("preview_transfer_item"):
+			_transfer_active_item()
+		elif event.is_action_pressed("preview_retrieve_item"):
+			_exocytose_active_item()
+		elif event.is_action_pressed("preview_toggle_dodge"):
+			_preview_dodge_unlocked = not _preview_dodge_unlocked
+			_apply_dodge_setting()
+			show_preview_message("Dodge roll: %s" % ("ENABLED" if _preview_dodge_unlocked else "locked"), 1.4)
+		elif event.is_action_pressed("select_primary"):
+			_select_or_toggle_character("aster", key_event)
+		elif event.is_action_pressed("select_secondary"):
+			_select_or_toggle_character("peris", key_event)
+		elif event.is_action_pressed("select_tertiary"):
+			_select_or_toggle_character("endo", key_event)
+		else:
+			# Data-only/experimental abilities may still carry an explicit keycode outside the three
+			# shared slots. Preserve that fallback until their data gains a named InputMap action.
+			var code := key_event.physical_keycode if key_event.physical_keycode != KEY_NONE else key_event.keycode
+			_activate_keybound_preview_ability(code)
+
+func _input(event: InputEvent) -> void:
+	# Deterministic QA tapes store the resolved generated-node command as an InputEventAction.
+	# This avoids baking camera projection and window scaling into a replay while still entering
+	# through the ordinary interaction coordinator: the servicing character walks to the live
+	# target, performs its timed action, and produces the same GameState events as a right-click.
+	if not (event is InputEventAction) or not (event as InputEventAction).pressed:
+		return
+	var action_name := str((event as InputEventAction).action)
+	const GENERATED_COMMAND_PREFIX := "qa_generated_node_command/"
+	if not action_name.begins_with(GENERATED_COMMAND_PREFIX) or _active_chunk == null:
+		return
+	var node_id := action_name.trim_prefix(GENERATED_COMMAND_PREFIX)
+	var target := _active_chunk.get_node_or_null("GeneratedNode_%s" % node_id) as Node3D
+	if target == null or not target.has_signal("interaction_requested"):
+		return
+	var active_character: Node = _characters.get(_active_char_id, null)
+	var interaction_controller := (
+		active_character.get_node_or_null("CharacterInteractionController")
+		if active_character != null else null
+	)
+	if interaction_controller != null and interaction_controller.has_method("_on_interaction_requested"):
+		interaction_controller.call("_on_interaction_requested", target, target.global_position)
+	else:
+		target.emit_signal("interaction_requested", target, target.global_position)
+	get_viewport().set_input_as_handled()
+
+func _select_or_toggle_character(char_id: String, key_event: InputEventKey) -> void:
+	if key_event.ctrl_pressed or key_event.shift_pressed:
+		_toggle_character_selected(char_id)
+	else:
+		_select_character(char_id)
 
 func register_preview_interactable(interactable: Node) -> void:
 	if _preview_interactables.has(interactable):
@@ -1277,7 +1538,17 @@ func set_preview_character_stat(char_id: String, stat_name: String, value: float
 	# stat_changed. Pushing the ledger INTO gs instead let the per-frame stamina regen overwrite real
 	# enemy strike damage the same frame it landed.
 	if _game_state != null and _game_state.characters.has(char_id):
-		_game_state.set_stat(char_id, "stamina" if normalized == "sta" else normalized, value)
+		var game_stat := "stamina" if normalized == "sta" else normalized
+		var canonical := value
+		if game_stat == "atp":
+			canonical = clampf(GameState.quantize_atp(value), 0.0, _game_state.get_stat_cap(char_id, game_stat))
+		else:
+			canonical = clampf(value, 0.0, _game_state.get_stat_cap(char_id, game_stat))
+		# Continuous regeneration at an already-full cap used to emit a logged
+		# over-cap set_stat every render frame, only for GameState to clamp it back
+		# to the same value. A semantic no-op must not pollute deterministic traces.
+		if not is_equal_approx(_game_state.get_stat(char_id, game_stat), canonical):
+			_game_state.set_stat(char_id, game_stat, canonical)
 		return
 	var previous_value := float(_character_state[char_id].get(normalized, 0.0))
 	match normalized:
@@ -1311,11 +1582,147 @@ func set_preview_character_visible(char_id: String, visible: bool) -> void:
 	if not visible:
 		_ensure_valid_selection()
 
+## Story/chunk-facing presence query. A character provides gameplay presence only while its body is
+## visible in this beat and its canonical GameState record is registered.
+func is_preview_character_present(char_id: String) -> bool:
+	return _game_state != null and _game_state.characters.has(char_id) \
+		and _characters.has(char_id) and _characters[char_id] != null \
+		and _character_is_visible(char_id)
+
+## Runback recovery may need to repair more than HP: a party member can have been hidden or
+## unregistered by story presence. Re-register the existing body, restore it, and put it at the
+## checkpoint so the next run really begins with the authored party.
+func restore_preview_character_for_restart(char_id: String, world_pos: Vector3) -> bool:
+	if _game_state == null or not _characters.has(char_id) or _characters[char_id] == null \
+			or not _character_state.has(char_id):
+		return false
+	# A scenario reset invalidates any click-to-interact walk already in flight. Cancel it before
+	# stopping/snapping the body; otherwise the controller observes the forced stop as an arrival and
+	# can complete the old target remotely from the checkpoint on its next poll.
+	if _characters[char_id].has_method("cancel_interaction_target"):
+		_characters[char_id].call("cancel_interaction_target")
+	if not _game_state.characters.has(char_id):
+		_register_gs_character(char_id, _characters[char_id],
+			float(CHARACTER_SPEEDS.get(char_id, 3.0)), {
+				"hp": DEFAULT_HP,
+				"stamina": DEFAULT_STAMINA,
+				"atp": DEFAULT_ATP,
+			})
+		if _characters[char_id].has_method("bind_interaction_root"):
+			_characters[char_id].call("bind_interaction_root", self)
+	set_preview_character_visible(char_id, true)
+	_game_state.restore_character(char_id)
+	_game_state.snap_character_to(char_id, world_pos)
+	_sync_character_from_game_state(char_id)
+	return true
+
+func select_preview_character(char_id: String) -> void:
+	_select_character(char_id)
+
 func show_preview_message(text: String, duration := 2.0) -> void:
 	if EventLog.print_events:
 		print("[MSG ] %s" % text)
 	if _hud != null:
 		_hud.show_message(text, duration)
+
+
+## A short, guarded camera beat for a consequential world change. The default keeps
+## gameplay moving so the player can watch machinery/enemies respond; pause_gameplay
+## reuses the dialogue focus contract for static explanation beats. The timeout lives
+## on the UI scheduler, which continues through gameplay planning pause.
+func emphasize_preview_target(
+		target_node: Node3D,
+		duration := 0.9,
+		pause_gameplay := false,
+		opts: Dictionary = {}
+	) -> bool:
+	if target_node == null or not is_instance_valid(target_node):
+		return false
+	# Camera emphasis is presentation-only. Headless simulations jump gameplay ticks directly;
+	# pausing that scheduler for an invisible UI beat makes predicted arrival ticks finish early.
+	if DisplayServer.get_name() == "headless":
+		return true
+	if _camera == null or _ui_scheduler == null:
+		return false
+	if _preview_emphasis_active or _exploration_focus_active or _camera.is_locked():
+		return false
+	var shake_amount := float(opts.get("shake", 0.1))
+	if shake_amount > 0.0:
+		_camera.shake(shake_amount, float(opts.get("shake_decay", 8.0)))
+	if bool(opts.get("offscreen_only", true)) and _camera.is_position_on_screen(target_node.global_position):
+		return true
+
+	_preview_emphasis_token += 1
+	var token := _preview_emphasis_token
+	_preview_emphasis_active = true
+	_preview_emphasis_uses_exploration_focus = pause_gameplay
+	if pause_gameplay:
+		_begin_exploration_focus(target_node)
+	else:
+		_preview_emphasis_prev_camera_target = _camera.target
+		_preview_emphasis_prev_camera_offset = _camera.follow_offset
+		_preview_emphasis_prev_camera_state = _camera.capture_view_state() \
+			if _camera.has_method("capture_view_state") else {}
+		var focus_height := float(opts.get("focus_height", 0.7))
+		_camera.lock_to(target_node.global_position + Vector3.UP * focus_height)
+
+	_ui_scheduler.cancel_tag(PREVIEW_EMPHASIS_TAG)
+	_ui_scheduler.schedule_after(maxf(0.15, duration), func() -> void:
+		if token == _preview_emphasis_token:
+			_finish_preview_emphasis(), PREVIEW_EMPHASIS_TAG)
+	return true
+
+
+func _finish_preview_emphasis() -> void:
+	if not _preview_emphasis_active:
+		return
+	if _ui_scheduler != null:
+		_ui_scheduler.cancel_tag(PREVIEW_EMPHASIS_TAG)
+	if _preview_emphasis_uses_exploration_focus:
+		_finish_exploration_focus()
+	elif _camera != null:
+		if not _preview_emphasis_prev_camera_state.is_empty() and _camera.has_method("restore_view_state"):
+			_camera.restore_view_state(_preview_emphasis_prev_camera_state)
+		else:
+			_camera.follow_offset = _preview_emphasis_prev_camera_offset
+			_camera.target = _preview_emphasis_prev_camera_target if is_instance_valid(_preview_emphasis_prev_camera_target) else null
+			_camera.unlock()
+	_preview_emphasis_active = false
+	_preview_emphasis_uses_exploration_focus = false
+	_preview_emphasis_prev_camera_target = null
+	_preview_emphasis_prev_camera_state.clear()
+
+
+func cancel_preview_emphasis() -> void:
+	_preview_emphasis_token += 1
+	_finish_preview_emphasis()
+
+
+func shake_preview_camera(intensity := 0.12, decay := 7.0) -> void:
+	if _camera != null:
+		_camera.shake(maxf(0.0, intensity), maxf(0.1, decay))
+
+
+## Atom is a long planning board. Browser pointers naturally rest against the viewport
+## edge and used to drift the board away from the decision the player was reading. Keep
+## intentional WASD/middle-drag pan, but disable accidental edge pan for this preview.
+func _configure_preview_camera_feedback() -> void:
+	if _camera == null:
+		return
+	_camera.edge_scroll_margin = 0.0 if preview_chunk == "puzzle_atom" else DEFAULT_PREVIEW_EDGE_SCROLL_MARGIN
+	_camera.clear_look_bounds()
+	var profile := {
+		"follow_offset": Vector3(0.0, 12.0, 9.0),
+		"min_zoom": 0.45,
+		"max_zoom": 2.2,
+		"initial_zoom": 1.0,
+		"reset_yaw": false,
+	}
+	if _active_chunk != null and _active_chunk.has_method("get_preview_camera_profile"):
+		var chunk_profile = _active_chunk.call("get_preview_camera_profile")
+		if chunk_profile is Dictionary:
+			profile.merge(chunk_profile as Dictionary, true)
+	_camera.apply_follow_profile(profile, true)
 
 func set_preview_ability_state(ability_id: String, state: String, remaining := 0.0) -> void:
 	_set_runtime_ability_state(ability_id, state, remaining)
@@ -1400,9 +1807,16 @@ func headless_get_state() -> Dictionary:
 			"display_name": str(ability_def.get("display_name", ability_id.to_upper())),
 			"keybind": str(ability_def.get("keybind", "")),
 			"keycode": int(ability_def.get("keycode", 0)),
+			"input_action": str(ability_def.get("input_action", "")),
+			"legacy_input_action": str(ability_def.get("legacy_input_action", "")),
+			"legacy_keybind": str(ability_def.get("legacy_keybind", "")),
+			"legacy_keycode": int(ability_def.get("legacy_keycode", ability_def.get("keycode", 0))),
 			"state": str(ability_runtime.get("base_state", "ready")),
 			"remaining": float(ability_runtime.get("remaining", 0.0)),
 			"owner": str(ability_def.get("owner", "")),
+			"owner_display": str(ability_def.get("owner_display", "")),
+			"party_slot": int(ability_def.get("party_slot", -1)),
+			"ability_slot": int(ability_def.get("ability_slot", -1)),
 		}
 
 	if _active_chunk != null and _active_chunk.has_method("get_preview_state"):
@@ -1418,11 +1832,66 @@ func _get_preview_ui_state() -> Dictionary:
 		"contract_id": PREVIEW_GUI_CONTRACT_ID,
 		"hud_script": GAME_HUD_SCRIPT_PATH,
 		"shared_hud": _hud != null and _hud.get_script() == GameHUDScript,
-		"controls": PREVIEW_CONTROL_HELP,
-		"inventory_controls": PREVIEW_INVENTORY_CONTROL_HELP,
+		"controls": _preview_control_help_text(),
+		"inventory_controls": _preview_inventory_control_help_text(),
+		"control_bindings": _input_binding_contract(PREVIEW_CONTROL_ACTIONS),
+		"party_ability_actions": PARTY_ABILITY_ACTIONS.duplicate(true),
 		"ability_keymap": _get_canonical_main_ability_keymap(),
 		"hud": hud_contract,
 	}
+
+func _input_binding_contract(actions: Array) -> Dictionary:
+	var bindings := {}
+	for action_v in actions:
+		var action := str(action_v)
+		bindings[action] = InputHints.label_for_action(action, "")
+	return bindings
+
+func _preview_control_help_text() -> String:
+	var labels := _input_binding_contract(PREVIEW_CONTROL_ACTIONS)
+	return "%s move  %s/%s/%s/%s or %s pan  %s/%s/%s focus  Ctrl+%s/%s/%s group  %s cycle  %s party abilities  %s drop  %s transfer  %s retrieve  %s/%s/%s overlays  %s drawer  %s route  %s dodge  %s pause  %s run  %s reload  %s hide" % [
+		labels.get("command", ""),
+		labels.get("camera_pan_forward", ""), labels.get("camera_pan_left", ""),
+		labels.get("camera_pan_back", ""), labels.get("camera_pan_right", ""),
+		labels.get("camera_pan", ""),
+		labels.get("select_primary", ""), labels.get("select_secondary", ""),
+		labels.get("select_tertiary", ""),
+		labels.get("select_primary", ""), labels.get("select_secondary", ""),
+		labels.get("select_tertiary", ""),
+		labels.get("preview_cycle_character", ""),
+		_party_ability_bank_help_text(),
+		labels.get("preview_drop_item", ""), labels.get("preview_transfer_item", ""),
+		labels.get("preview_retrieve_item", ""),
+		labels.get("preview_overlay_aster", ""), labels.get("preview_overlay_peris", ""),
+		labels.get("preview_overlay_endo", ""), labels.get("preview_overlay_drawer", ""),
+		labels.get("route", ""), labels.get("preview_toggle_dodge", ""),
+		labels.get("pause", ""), labels.get("run", ""), labels.get("preview_reload", ""),
+		labels.get("preview_toggle_instructions", ""),
+	]
+
+func _preview_inventory_control_help_text() -> String:
+	var labels := _input_binding_contract(PREVIEW_INVENTORY_ACTIONS)
+	return "%s party abilities  %s use item  %s drop  %s transfer  %s retrieve" % [
+		_party_ability_bank_help_text(),
+		labels.get("ability_secondary", ""),
+		labels.get("preview_drop_item", ""), labels.get("preview_transfer_item", ""),
+		labels.get("preview_retrieve_item", ""),
+	]
+
+## Render the remappable six-column/two-row bank exactly as InputMap exposes it. Empty direct slots
+## stay out of help; their spreadsheet Z/X/Y compatibility route is intentionally not advertised once
+## a direct slot is bound.
+func _party_ability_bank_help_text() -> String:
+	var columns: Array[String] = []
+	for row_v in PARTY_ABILITY_ACTIONS:
+		var column_labels: Array[String] = []
+		for action_v in row_v:
+			var label := InputHints.label_for_action(str(action_v), "")
+			if label != "":
+				column_labels.append(label)
+		if not column_labels.is_empty():
+			columns.append("/".join(column_labels))
+	return "  ".join(columns)
 
 func _get_canonical_main_ability_keymap() -> Dictionary:
 	var keymap := {}
@@ -1430,10 +1899,39 @@ func _get_canonical_main_ability_keymap() -> Dictionary:
 		var binding := AbilityData.binding(ability_id)
 		if binding.is_empty():
 			continue
+		var ability: Dictionary = _ability_defs.get(ability_id, {})
+		var legacy_keybind := str(binding.get("keybind", "")).to_upper()
+		var legacy_input_action := str(ability.get(
+			"legacy_input_action",
+			ABILITY_INPUT_ACTION_BY_KEYBIND.get(legacy_keybind, "")
+		))
+		var input_action := str(ability.get("input_action", ""))
+		var input_event := (
+			InputHints.primary_event_for_action(legacy_input_action, "keyboard")
+			if legacy_input_action != ""
+			else null
+		)
+		var keycode := int(ability.get("legacy_keycode", binding.get("keycode", 0)))
+		if input_event is InputEventKey:
+			var key_event := input_event as InputEventKey
+			keycode = (
+				key_event.physical_keycode
+				if key_event.physical_keycode != KEY_NONE
+				else key_event.keycode
+			)
 		keymap[ability_id] = {
-			"owner": str(binding.get("owner", "")),
-			"keybind": str(binding.get("keybind", "")),
-			"keycode": int(binding.get("keycode", 0)),
+			"owner": str(ability.get("owner", binding.get("owner", ""))),
+			"input_action": input_action,
+			"legacy_input_action": legacy_input_action,
+			"keybind": str(ability.get("keybind", InputHints.label_for_action(
+				legacy_input_action,
+				legacy_keybind
+			))),
+			"legacy_keybind": str(ability.get("legacy_keybind", legacy_keybind)),
+			"keycode": keycode,
+			"legacy_keycode": keycode,
+			"party_slot": int(ability.get("party_slot", -1)),
+			"ability_slot": int(ability.get("ability_slot", -1)),
 		}
 	return keymap
 
@@ -1449,7 +1947,7 @@ func _preview_party_preset() -> String:
 	return str(slot.get("preview_party_preset", "full_party_full_health"))
 
 func headless_select_character(char_id: String) -> void:
-	_select_character(char_id)
+	select_preview_character(char_id)
 
 func headless_set_selected_characters(char_ids: Array) -> void:
 	var preferred_active := str(char_ids[0]) if char_ids.size() > 0 else ""
@@ -1459,7 +1957,17 @@ func headless_move_character(char_id: String, pos: Vector3, running := false) ->
 	if _game_state == null or not _game_state.characters.has(char_id):
 		return false
 	_game_state.change_move_speed(char_id, get_preview_character_move_speed(char_id, running))
-	return _game_state.command_move_to_pos(char_id, pos)
+	var commanded := _game_state.command_move_to_pos(char_id, pos)
+	# Deterministic replays do not run every visual _process callback. Surface the
+	# same semantic movement-start event explicitly so scheduler-owned systems such
+	# as scarcity begin at the same moment in live play and replay.
+	if (
+		commanded
+		and _active_chunk != null
+		and _active_chunk.has_method("on_preview_movement_started")
+	):
+		_active_chunk.call("on_preview_movement_started", char_id)
+	return commanded
 
 func headless_is_character_moving(char_id: String) -> bool:
 	if _game_state == null:
@@ -1496,6 +2004,30 @@ func headless_get_character_movement_info(char_id: String) -> Dictionary:
 
 func headless_activate_ability(ability_id: String) -> bool:
 	if not _ability_defs.has(ability_id):
+		return false
+	var before: Dictionary = _ability_runtime.get(ability_id, {}).duplicate(true)
+	_activate_preview_ability(ability_id)
+	return before != _ability_runtime.get(ability_id, {})
+
+## Deterministic QA contract for the 6x2 drawer. The direct action names are stable while their
+## physical keys remain entirely InputMap/settings-owned.
+func headless_get_party_ability_routes() -> Dictionary:
+	var routes := {}
+	for ability_id in _ability_order:
+		var ability: Dictionary = _ability_defs.get(ability_id, {})
+		routes[ability_id] = {
+			"owner": str(ability.get("owner", "")),
+			"party_slot": int(ability.get("party_slot", -1)),
+			"ability_slot": int(ability.get("ability_slot", -1)),
+			"input_action": str(ability.get("input_action", "")),
+			"legacy_input_action": str(ability.get("legacy_input_action", "")),
+			"legacy_keycode": int(ability.get("legacy_keycode", ability.get("keycode", 0))),
+		}
+	return routes
+
+func headless_activate_ability_action(input_action: String) -> bool:
+	var ability_id := _get_ability_for_input_action(input_action)
+	if ability_id == "":
 		return false
 	var before: Dictionary = _ability_runtime.get(ability_id, {}).duplicate(true)
 	_activate_preview_ability(ability_id)
@@ -1553,92 +2085,129 @@ func _headless_sync_runtime(delta: float) -> void:
 		_active_chunk.call("headless_process", delta)
 
 func _build_preview_ui() -> void:
-	_preview_layer = CanvasLayer.new()
-	_preview_layer.layer = 13
+	_preview_layer = FragmentPreviewUIScene.instantiate()
 	add_child(_preview_layer)
-
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	margin.offset_bottom = 118
-	margin.add_theme_constant_override("margin_left", 12)
-	margin.add_theme_constant_override("margin_right", 12)
-	margin.add_theme_constant_override("margin_top", 10)
-	_preview_layer.add_child(margin)
-	_instructions_margin = margin   # remembered so H can hide/show the whole instructions panel
-
-	var panel := PanelContainer.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.025, 0.028, 0.036, 0.82)
-	style.border_color = Color(0.14, 0.16, 0.2, 0.55)
-	style.set_border_width_all(1)
-	style.set_corner_radius_all(4)
-	style.set_content_margin_all(10)
-	panel.add_theme_stylebox_override("panel", style)
-	margin.add_child(panel)
-
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 4)
-	panel.add_child(box)
-
-	_title_label = Label.new()
-	_title_label.add_theme_font_size_override("font_size", 18)
-	_title_label.add_theme_color_override("font_color", Color(0.9, 0.92, 0.96))
-	box.add_child(_title_label)
-
-	_help_label = Label.new()
-	_help_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_help_label.add_theme_font_size_override("font_size", 11)
-	_help_label.add_theme_color_override("font_color", Color(0.66, 0.7, 0.76))
-	box.add_child(_help_label)
-
-	_note_label = Label.new()
-	_note_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_note_label.add_theme_font_size_override("font_size", 11)
-	_note_label.add_theme_color_override("font_color", Color(0.82, 0.76, 0.62))
-	box.add_child(_note_label)
-
+	_instructions_margin = _preview_layer.get_node("InstructionsMargin") as MarginContainer
+	_title_label = _preview_layer.get_node("InstructionsMargin/Panel/Content/TitleLabel") as Label
+	_help_label = _preview_layer.get_node("InstructionsMargin/Panel/Content/HelpLabel") as Label
+	_control_hint_flow = _preview_layer.get_node("InstructionsMargin/Panel/Content/ControlHints") as HFlowContainer
+	_refresh_control_hint_flow()
+	_ability_hint_flow = _preview_layer.get_node("InstructionsMargin/Panel/Content/AbilityHints") as HFlowContainer
+	_note_label = _preview_layer.get_node("InstructionsMargin/Panel/Content/NoteLabel") as Label
 	_build_inventory_panel()
 	_build_overlay_stack()
 	_build_overlay_panel()
 
+func _add_action_hint(
+	parent: Container,
+	action: StringName,
+	description: String,
+	fallback_label := "",
+	tint := Color(0.42, 0.66, 0.74)
+) -> PanelContainer:
+	return _add_input_hint(parent, [{"action": action, "fallback": fallback_label}], description, tint)
+
+func _add_input_hint(
+	parent: Container,
+	parts: Array,
+	description: String,
+	tint := Color(0.42, 0.66, 0.74)
+) -> PanelContainer:
+	var chip := InputHintChipScene.instantiate() as PanelContainer
+	var style := chip.get_theme_stylebox("panel") as StyleBoxFlat
+	style.border_color = Color(tint, 0.34)
+	parent.add_child(chip)
+	var row := chip.get_node("Row") as HBoxContainer
+	var label := row.get_node("Description") as Label
+	for part_v in parts:
+		var part: Dictionary = part_v if part_v is Dictionary else {"action": str(part_v)}
+		var glyph := InputGlyphScene.instantiate() as InputGlyph
+		if part.has("key"):
+			glyph.configure_key_label(str(part.get("key", "")))
+		else:
+			glyph.configure_action(
+				StringName(str(part.get("action", ""))),
+				str(part.get("fallback", ""))
+			)
+		row.add_child(glyph)
+		row.move_child(glyph, label.get_index())
+	label.text = description
+	label.add_theme_color_override("font_color", Color(tint.lightened(0.3), 0.95))
+	return chip
+
+func _clear_hint_flow(flow: Container) -> void:
+	for child in flow.get_children():
+		flow.remove_child(child)
+		child.queue_free()
+
+func _refresh_control_hint_flow() -> void:
+	if _control_hint_flow == null:
+		return
+	_clear_hint_flow(_control_hint_flow)
+	_add_action_hint(_control_hint_flow, "command", "Move", "RMB")
+	_add_input_hint(_control_hint_flow, [
+		{"action": "camera_pan_forward", "fallback": "W"},
+		{"action": "camera_pan_left", "fallback": "A"},
+		{"action": "camera_pan_back", "fallback": "S"},
+		{"action": "camera_pan_right", "fallback": "D"},
+	], "Pan")
+	_add_action_hint(_control_hint_flow, "camera_pan", "Drag pan", "MMB")
+	_add_input_hint(_control_hint_flow, [
+		{"action": "select_primary", "fallback": "1"},
+		{"action": "select_secondary", "fallback": "2"},
+		{"action": "select_tertiary", "fallback": "3"},
+	], "Focus")
+	_add_input_hint(_control_hint_flow, [
+		{"key": "Ctrl"},
+		{"action": "select_primary", "fallback": "1"},
+		{"action": "select_secondary", "fallback": "2"},
+		{"action": "select_tertiary", "fallback": "3"},
+	], "Group")
+	_add_action_hint(_control_hint_flow, "preview_cycle_character", "Cycle", "C")
+	_add_action_hint(_control_hint_flow, "route", "Route", "Tab")
+	_add_action_hint(_control_hint_flow, "preview_toggle_dodge", "Dodge", "G")
+	_add_action_hint(_control_hint_flow, "pause", "Pause", "Space")
+	_add_action_hint(_control_hint_flow, "run", "Run", "R")
+	_add_action_hint(_control_hint_flow, "preview_reload", "Menu", "M")
+	_add_action_hint(_control_hint_flow, "preview_toggle_instructions", "Hide", "H")
+
+func _refresh_ability_hint_flow() -> void:
+	if _ability_hint_flow == null:
+		return
+	_clear_hint_flow(_ability_hint_flow)
+	for ability_id in _ability_order:
+		var ability: Dictionary = _ability_defs.get(ability_id, {})
+		var action := str(ability.get("input_action", ""))
+		var keybind := str(ability.get("keybind", ""))
+		if action == "" and keybind == "":
+			continue
+		var owner := str(ability.get("owner", ""))
+		var owner_name := str(CHARACTER_DISPLAY_NAMES.get(owner, owner.capitalize()))
+		var display := str(ability.get("display_name", ability_id.to_upper()))
+		var parts: Array = (
+			[{"action": action, "fallback": keybind}]
+			if action != ""
+			else [{"key": keybind}]
+		)
+		_add_input_hint(
+			_ability_hint_flow,
+			parts,
+			"%s · %s" % [owner_name, display] if owner_name != "" else display,
+			CHARACTER_COLORS.get(owner, Color(0.68, 0.72, 0.78))
+		)
+	_ability_hint_flow.visible = _ability_hint_flow.get_child_count() > 0
+
 func _build_inventory_panel() -> void:
-	# Sits just above the bottom HUD bar (the character details), not floating top-left. The HUD
-	# bar is 64px tall; offset up past it so carry/consume reads as part of the character row.
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	margin.offset_left = 12
-	margin.offset_right = 320
-	margin.offset_top = -288
-	margin.offset_bottom = -72
-	margin.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_preview_layer.add_child(margin)
+	_inventory_panel_title = _preview_layer.get_node("InventoryMargin/Panel/Content/Title") as Label
+	_inventory_controls_flow = _preview_layer.get_node("InventoryMargin/Panel/Content/ControlHints") as HFlowContainer
+	# The old secondary action remains the explicit consume-item key. Direct party abilities have their
+	# own 6x2 drawer and hints, so this must not imply that X still fires one of them.
+	_add_action_hint(_inventory_controls_flow, "ability_secondary", "Use item", "X")
+	_add_action_hint(_inventory_controls_flow, "preview_drop_item", "Drop", "V")
+	_add_action_hint(_inventory_controls_flow, "preview_transfer_item", "Transfer", "T")
+	_add_action_hint(_inventory_controls_flow, "preview_retrieve_item", "Retrieve", "B")
 
-	var panel := PanelContainer.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.024, 0.028, 0.034, 0.9)
-	style.border_color = Color(0.17, 0.21, 0.25, 0.54)
-	style.set_border_width_all(1)
-	style.set_corner_radius_all(4)
-	style.set_content_margin_all(10)
-	panel.add_theme_stylebox_override("panel", style)
-	margin.add_child(panel)
-
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 6)
-	panel.add_child(box)
-
-	_inventory_panel_title = Label.new()
-	_inventory_panel_title.text = "CARRY / CONSUME"
-	_inventory_panel_title.add_theme_font_size_override("font_size", 12)
-	_inventory_panel_title.add_theme_color_override("font_color", Color(0.9, 0.92, 0.95))
-	box.add_child(_inventory_panel_title)
-
-	_inventory_panel_label = Label.new()
-	_inventory_panel_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_inventory_panel_label.custom_minimum_size = Vector2(260, 0)
-	_inventory_panel_label.add_theme_font_size_override("font_size", 11)
-	_inventory_panel_label.add_theme_color_override("font_color", Color(0.74, 0.77, 0.82))
-	box.add_child(_inventory_panel_label)
+	_inventory_panel_label = _preview_layer.get_node("InventoryMargin/Panel/Content/InventoryLabel") as Label
 	_refresh_inventory_panel()
 
 const OVERLAY_PANEL_TOP := 12.0
@@ -1646,74 +2215,28 @@ const OVERLAY_PANEL_EXPANDED_BOTTOM := 260.0
 const OVERLAY_PANEL_COLLAPSED_BOTTOM := 56.0  # header-only height when collapsed
 
 func _build_overlay_panel() -> void:
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	margin.offset_left = -364
-	margin.offset_top = OVERLAY_PANEL_TOP
-	margin.offset_right = -12
-	margin.offset_bottom = OVERLAY_PANEL_EXPANDED_BOTTOM
-	# The PanelContainer fills the margin's rect, so a fixed height keeps the dark window full-size
-	# even when the content is hidden. Shrink the margin itself on collapse (see _set_overlay_panel_collapsed).
-	_overlay_panel_margin = margin
-	_preview_layer.add_child(margin)
-
-	var panel := PanelContainer.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.025, 0.03, 0.038, 0.9)
-	style.border_color = Color(0.17, 0.19, 0.24, 0.58)
-	style.set_border_width_all(1)
-	style.set_corner_radius_all(4)
-	style.set_content_margin_all(10)
-	panel.add_theme_stylebox_override("panel", style)
-	margin.add_child(panel)
-
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 6)
-	panel.add_child(box)
-
-	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation", 8)
-	box.add_child(header)
-
-	var title := Label.new()
-	title.text = "OVERLAY STACK"
-	title.add_theme_font_size_override("font_size", 12)
-	title.add_theme_color_override("font_color", Color(0.88, 0.9, 0.94))
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(title)
-
-	_overlay_panel_collapse_button = Button.new()
-	_overlay_panel_collapse_button.text = "HIDE  O"
-	_overlay_panel_collapse_button.add_theme_font_size_override("font_size", 10)
-	_overlay_panel_collapse_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	_overlay_panel_margin = _preview_layer.get_node("OverlayMargin") as MarginContainer
+	_overlay_panel_collapse_button = _preview_layer.get_node("OverlayMargin/Panel/Content/Header/CollapseButton") as Button
 	_overlay_panel_collapse_button.pressed.connect(_toggle_overlay_panel)
-	header.add_child(_overlay_panel_collapse_button)
+	var drawer_glyph := _overlay_panel_collapse_button.get_node("DrawerGlyph") as InputGlyph
+	drawer_glyph.configure_action("preview_overlay_drawer", "F4")
+	drawer_glyph.attach_to_button(_overlay_panel_collapse_button)
+	_overlay_panel_content = _preview_layer.get_node("OverlayMargin/Panel/Content/PanelContent") as VBoxContainer
+	var selection_hints := _overlay_panel_content.get_node("SelectionHints") as HFlowContainer
+	_add_action_hint(selection_hints, "select", "Primary portrait", "LMB")
+	_add_input_hint(selection_hints, [
+		{"key": "Ctrl"},
+		{"action": "select_primary", "fallback": "1"},
+		{"action": "select_secondary", "fallback": "2"},
+		{"action": "select_tertiary", "fallback": "3"},
+	], "Add / remove")
 
-	_overlay_panel_content = VBoxContainer.new()
-	_overlay_panel_content.add_theme_constant_override("separation", 6)
-	box.add_child(_overlay_panel_content)
+	var buttons := _overlay_panel_content.get_node("Buttons") as VBoxContainer
+	_add_overlay_toggle_button(buttons, "aster", "Aster Data", "preview_overlay_aster", CHARACTER_COLORS["aster"])
+	_add_overlay_toggle_button(buttons, "peris", "Peris Flora", "preview_overlay_peris", CHARACTER_COLORS["peris"])
+	_add_overlay_toggle_button(buttons, "endo", "Endo Survival", "preview_overlay_endo", CHARACTER_COLORS["endo"])
 
-	var hint := Label.new()
-	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hint.add_theme_font_size_override("font_size", 10)
-	hint.add_theme_color_override("font_color", Color(0.62, 0.68, 0.74))
-	hint.text = "Click a selected portrait to swap the primary view. Ctrl-click portraits or Ctrl+1-3 adds and removes party members. Overlays stack together instead of following the primary portrait."
-	_overlay_panel_content.add_child(hint)
-
-	var buttons := VBoxContainer.new()
-	buttons.add_theme_constant_override("separation", 4)
-	_overlay_panel_content.add_child(buttons)
-
-	_add_overlay_toggle_button(buttons, "aster", "Aster Data  F1", CHARACTER_COLORS["aster"])
-	_add_overlay_toggle_button(buttons, "peris", "Peris Flora  F2", CHARACTER_COLORS["peris"])
-	_add_overlay_toggle_button(buttons, "endo", "Endo Survival  F3", CHARACTER_COLORS["endo"])
-
-	_overlay_panel_status_label = Label.new()
-	_overlay_panel_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_overlay_panel_status_label.custom_minimum_size = Vector2(320, 0)
-	_overlay_panel_status_label.add_theme_font_size_override("font_size", 11)
-	_overlay_panel_status_label.add_theme_color_override("font_color", Color(0.74, 0.76, 0.8))
-	_overlay_panel_content.add_child(_overlay_panel_status_label)
+	_overlay_panel_status_label = _overlay_panel_content.get_node("StatusLabel") as Label
 	_refresh_overlay_panel_status()
 
 func _build_overlay_stack() -> void:
@@ -1729,24 +2252,33 @@ func _build_overlay_stack() -> void:
 
 	_overlay_stack_material = ShaderMaterial.new()
 	_overlay_stack_material.shader = PERCEPTION_STACK_SHADER
+	_overlay_stack_material.set_shader_parameter("fog_clear_radius", PARTY_PERCEPTION_CLEAR_RADIUS)
 	_overlay_stack_material.render_priority = 126
 	_overlay_stack_quad.material_override = _overlay_stack_material
 	_overlay_stack_quad.visible = false
 	add_child(_overlay_stack_quad)
 	_sync_overlay_stack()
 
-func _add_overlay_toggle_button(parent: VBoxContainer, overlay_id: String, label: String, color: Color) -> void:
-	var button := Button.new()
-	button.add_theme_font_size_override("font_size", 11)
-	button.mouse_filter = Control.MOUSE_FILTER_STOP
+func _add_overlay_toggle_button(
+	parent: VBoxContainer,
+	overlay_id: String,
+	label: String,
+	input_action: String,
+	color: Color
+) -> void:
+	var button := OverlayToggleButtonScene.instantiate() as Button
 	button.pressed.connect(func() -> void:
 		_toggle_overlay(overlay_id)
 	)
 	parent.add_child(button)
+	var glyph := InputGlyphScene.instantiate() as InputGlyph
+	glyph.configure_action(input_action)
+	glyph.attach_to_button(button)
 	_overlay_buttons[overlay_id] = {
 		"button": button,
 		"label": label,
 		"color": color,
+		"glyph": glyph,
 	}
 	_refresh_overlay_button(overlay_id)
 
@@ -1768,15 +2300,16 @@ func _refresh_overlay_button(overlay_id: String) -> void:
 	var info: Dictionary = _overlay_buttons[overlay_id]
 	var button: Button = info.get("button")
 	var color: Color = info.get("color", Color.WHITE)
+	var glyph: InputGlyph = info.get("glyph", null)
 	var enabled := bool(_overlay_states.get(overlay_id, false))
 	var state_label := "ON" if enabled else "OFF"
-	button.text = "%s  %s" % [str(info.get("label", overlay_id)), state_label]
+	button.text = "%s  ·  %s" % [str(info.get("label", overlay_id)), state_label]
 
 	var normal := StyleBoxFlat.new()
 	normal.set_border_width_all(1)
 	normal.set_corner_radius_all(3)
 	normal.content_margin_left = 10
-	normal.content_margin_right = 10
+	normal.content_margin_right = glyph.custom_minimum_size.x + 12.0 if glyph != null else 10.0
 	normal.content_margin_top = 5
 	normal.content_margin_bottom = 5
 	var hover := normal.duplicate()
@@ -1823,7 +2356,7 @@ func _set_overlay_panel_collapsed(collapsed: bool) -> void:
 	if _overlay_panel_margin != null:
 		_overlay_panel_margin.offset_bottom = OVERLAY_PANEL_COLLAPSED_BOTTOM if collapsed else OVERLAY_PANEL_EXPANDED_BOTTOM
 	if _overlay_panel_collapse_button != null:
-		_overlay_panel_collapse_button.text = "SHOW  O" if collapsed else "HIDE  O"
+		_overlay_panel_collapse_button.text = "SHOW" if collapsed else "HIDE"
 
 func _refresh_overlay_panel_status() -> void:
 	if _overlay_panel_status_label == null:
@@ -1897,6 +2430,13 @@ func _sync_occluder_mask() -> void:
 	if _overlay_stack_material == null:
 		return
 	var grid: Object = _game_state.grid if _game_state != null else null
+	# A WARPED (coord_map) scene renders every position through the warp, but the mask is baked in
+	# the FLAT data frame and the shader samples it with WORLD xz — there is no inverse warp on the
+	# GPU, so baked occlusion there reads phantom walls (fog over the party's own feet). Warped
+	# scenes keep the screen-space depth-march LOS, which is warp-agnostic; the CPU twin
+	# (_perception_line_of_sight) already converts through coord_map.to_data for the same reason.
+	if _game_state != null and _game_state.coord_map != null:
+		grid = null
 	if grid == _occ_mask_grid:
 		return
 	_occ_mask_grid = grid
@@ -1913,19 +2453,25 @@ func _sync_occluder_mask() -> void:
 func _sync_overlay_stack() -> void:
 	_sync_occluder_mask()
 	var vision_positions := _get_overlay_vision_positions()
-	var data_enabled := bool(_overlay_states.get("aster", false)) and not vision_positions.is_empty()
+	var data_enabled := bool(_overlay_states.get("aster", false)) \
+		and _character_contributes_perception("aster") and not vision_positions.is_empty()
 	# Fog of war is its OWN gameplay layer — never gated on the Peris view (turning the perception
-	# overlays off must not reveal the map). Only the dev console (`fog off`) disables it.
-	var fog_enabled := fog_of_war_enabled and not vision_positions.is_empty()
+	# overlays off must not reveal the map). With zero viewers the shader remains on and resolves to
+	# full fog; only the dev console (`fog off`) disables it.
+	var fog_enabled := fog_of_war_enabled
 	var source_0 := _overlay_vision_source_at(vision_positions, 0)
 	var source_1 := _overlay_vision_source_at(vision_positions, 1)
 	var source_2 := _overlay_vision_source_at(vision_positions, 2)
-	var source_count := mini(vision_positions.size(), CHARACTER_IDS.size())
+	var source_count := mini(vision_positions.size(), MAX_VISION_SOURCES)
+	_sync_vision_source_texture(vision_positions, source_count)
 
 	# Shared "visible range" globals: transparent effects (the flood water) fade THEMSELVES past the clear
 	# radius, since a transparent surface is excluded from the perception overlay's screen rewrite and can't be
-	# data-viewed like the opaque geometry. Set even when the quad is absent so the water tracks the live view.
+	# data-viewed like the opaque geometry. The same registry-driven texture feeds those effects; the three
+	# legacy positions remain populated for shaders outside this stack that have not migrated yet.
 	RenderingServer.global_shader_parameter_set("visible_range_active", data_enabled or fog_enabled)
+	RenderingServer.global_shader_parameter_set("vision_source_count", source_count)
+	RenderingServer.global_shader_parameter_set("vision_sources_tex", _vision_sources_texture)
 	RenderingServer.global_shader_parameter_set("vision_pos_0", source_0)
 	RenderingServer.global_shader_parameter_set("vision_pos_1", source_1)
 	RenderingServer.global_shader_parameter_set("vision_pos_2", source_2)
@@ -1934,28 +2480,49 @@ func _sync_overlay_stack() -> void:
 		return
 	_overlay_stack_quad.visible = data_enabled or fog_enabled
 
+	_overlay_stack_material.set_shader_parameter("vision_source_count", source_count)
+	_overlay_stack_material.set_shader_parameter("vision_sources_tex", _vision_sources_texture)
 	_overlay_stack_material.set_shader_parameter("data_enabled", data_enabled)
-	_overlay_stack_material.set_shader_parameter("data_character_pos", source_0)
-	_overlay_stack_material.set_shader_parameter("data_vision_count", source_count)
-	_overlay_stack_material.set_shader_parameter("data_vision_pos_1", source_1)
-	_overlay_stack_material.set_shader_parameter("data_vision_pos_2", source_2)
 	_overlay_stack_material.set_shader_parameter("data_blackout_pos", Vector3(0.0, 0.0, -9999.0))
 	_overlay_stack_material.set_shader_parameter("data_blackout_radius", 0.0)
 	_overlay_stack_material.set_shader_parameter("fog_enabled", fog_enabled)
-	_overlay_stack_material.set_shader_parameter("fog_character_pos", source_0)
-	_overlay_stack_material.set_shader_parameter("fog_vision_count", source_count)
-	_overlay_stack_material.set_shader_parameter("fog_vision_pos_1", source_1)
-	_overlay_stack_material.set_shader_parameter("fog_vision_pos_2", source_2)
+
+## WebGL does not reliably upload vector uniform arrays through ShaderMaterial. A tiny float data
+## texture is portable across native and web renderers and keeps the roster registry-driven: adding
+## another visible, conscious character only appends another texel.
+func _sync_vision_source_texture(positions: Array[Vector3], source_count: int) -> void:
+	var next_sources: Array[Vector3] = []
+	for source_index in range(source_count):
+		next_sources.append(positions[source_index])
+	# Headless tests validate the registry-driven perception state directly. Uploading a float
+	# texture for every simulated movement tick adds minutes of RenderingServer work without
+	# exercising any browser-visible behaviour.
+	if DisplayServer.get_name() == "headless":
+		_vision_sources_cache = next_sources
+		return
+	if _vision_sources_texture != null and _vision_sources_cache == next_sources:
+		return
+	if _vision_sources_image == null:
+		_vision_sources_image = Image.create(MAX_VISION_SOURCES, 1, false, Image.FORMAT_RGBAF)
+	for source_index in range(MAX_VISION_SOURCES):
+		var source_pos := next_sources[source_index] if source_index < source_count else NO_VISION_SOURCE
+		_vision_sources_image.set_pixel(source_index, 0,
+			Color(source_pos.x, source_pos.y, source_pos.z, 1.0))
+	if _vision_sources_texture == null:
+		_vision_sources_texture = ImageTexture.create_from_image(_vision_sources_image)
+	else:
+		_vision_sources_texture.update(_vision_sources_image)
+	_vision_sources_cache = next_sources
 
 func _get_overlay_vision_positions() -> Array[Vector3]:
-	# Every VISIBLE party member clears fog — opt-in members included. The shader stack
-	# carries three source slots, so a four-member party contributes its first three
-	# (the sync clamps the count below).
+	# Every present, conscious character clears fog. Iterate the actual character registry rather
+	# than the three launch characters so future/opt-in members contribute automatically.
 	var positions: Array[Vector3] = []
-	for char_id in CHARACTER_IDS + OPT_IN_CHARACTER_IDS:
+	for char_id_v in _characters.keys():
+		var char_id := str(char_id_v)
 		if not _characters.has(char_id) or _characters[char_id] == null:
 			continue
-		if not _character_is_visible(char_id):
+		if not _character_contributes_perception(char_id):
 			continue
 		var character_node := _characters[char_id] as CharacterBody3D
 		if character_node == null:
@@ -1965,10 +2532,11 @@ func _get_overlay_vision_positions() -> Array[Vector3]:
 
 func _get_overlay_vision_source_state() -> Array[Dictionary]:
 	var sources: Array[Dictionary] = []
-	for char_id in CHARACTER_IDS + OPT_IN_CHARACTER_IDS:
+	for char_id_v in _characters.keys():
+		var char_id := str(char_id_v)
 		if not _characters.has(char_id) or _characters[char_id] == null:
 			continue
-		if not _character_is_visible(char_id):
+		if not _character_contributes_perception(char_id):
 			continue
 		var character_node := _characters[char_id] as CharacterBody3D
 		if character_node == null:
@@ -1978,6 +2546,44 @@ func _get_overlay_vision_source_state() -> Array[Dictionary]:
 			"position": character_node.global_position + Vector3(0.0, 1.0, 0.0),
 		})
 	return sources
+
+
+## Both cause and effect must be perceived by the union of every present, conscious
+## character. Different characters may reveal the two endpoints, so scouting with Endo
+## while Peris tends a cause works and future party members opt in automatically.
+func can_party_perceive_feedback_link(source_world: Vector3, target_world: Vector3) -> bool:
+	return _party_can_perceive_world_point(source_world) \
+		and _party_can_perceive_world_point(target_world)
+
+
+func _party_can_perceive_world_point(world_point: Vector3) -> bool:
+	for vision_source in _get_overlay_vision_positions():
+		if vision_source.distance_to(world_point) > PARTY_PERCEPTION_CLEAR_RADIUS:
+			continue
+		if _perception_line_of_sight(vision_source, world_point):
+			return true
+	return false
+
+
+func _perception_line_of_sight(from_world: Vector3, to_world: Vector3) -> bool:
+	if _game_state == null or _game_state.grid == null:
+		return true
+	var from_data := from_world
+	var to_data := to_world
+	if _game_state.coord_map != null and _game_state.coord_map.has_method("to_data"):
+		from_data = _game_state.coord_map.to_data(from_world)
+		to_data = _game_state.coord_map.to_data(to_world)
+	return _game_state.grid.has_line_of_sight(from_data, to_data)
+
+
+func _character_contributes_perception(char_id: String) -> bool:
+	if not _character_is_visible(char_id):
+		return false
+	if _game_state != null:
+		if not _game_state.characters.has(char_id):
+			return false
+		return not _game_state.is_downed(char_id) and float(_game_state.get_stat(char_id, "hp")) > 0.0
+	return float(_character_state.get(char_id, {}).get("hp", 0.0)) > 0.0
 
 func _overlay_vision_source_at(positions: Array[Vector3], index: int) -> Vector3:
 	if index >= 0 and index < positions.size():
@@ -2001,6 +2607,8 @@ func _connect_preview_item_signals() -> void:
 		_game_state.item_exocytosed.connect(_on_preview_item_changed)
 	if not _game_state.stat_changed.is_connected(_on_gs_stat_changed):
 		_game_state.stat_changed.connect(_on_gs_stat_changed)
+	if not _game_state.character_downed.is_connected(_on_preview_character_downed):
+		_game_state.character_downed.connect(_on_preview_character_downed)
 
 ## The mirror half of the one-truth rule: every gs stat change (combat strikes, drains, restores,
 ## revives) lands in the HUD ledger — the portraits can never show a fiction again.
@@ -2012,9 +2620,25 @@ func _on_gs_stat_changed(char_id: String, stat: String, value: float) -> void:
 		return
 	var previous := float(_character_state[char_id].get(normalized, 0.0))
 	_character_state[char_id][normalized] = value
+	# Some chunks seed a presentation-only "downed" label alongside canonical
+	# GameState data. Once a real revive/restore makes the character conscious,
+	# retire that seed so the portrait does not keep lying after HP returns.
+	if normalized == "hp" and value > 0.0 \
+			and str(_character_state[char_id].get("status", "")) == "downed" \
+			and _game_state != null and not _game_state.is_downed(char_id):
+		_character_state[char_id]["status"] = ""
 	_sync_character_hud(char_id)
 	if normalized == "hp" and previous > 0.0 and value <= 0.0:
 		_ensure_valid_selection()
+
+## Scripted downs do not emit stat_changed. Mirror the canonical GameState transition here too,
+## so control, HUD state, and the perception roster all hand off in the same frame.
+func _on_preview_character_downed(char_id: String) -> void:
+	if not _character_state.has(char_id):
+		return
+	_sync_character_from_game_state(char_id)
+	_ensure_valid_selection()
+	_refresh_active_overlay()
 
 func _on_preview_item_changed(_char_id: String, _item_id: String) -> void:
 	_refresh_inventory_panel()
@@ -2172,7 +2796,6 @@ func _refresh_inventory_panel() -> void:
 	if _inventory_panel_label == null:
 		return
 	var lines: Array[String] = []
-	lines.append(PREVIEW_INVENTORY_CONTROL_HELP)
 	for char_id in CHARACTER_IDS:
 		var slot_names: Array[String] = []
 		for slot in get_preview_hand_slots(char_id):
@@ -2265,9 +2888,7 @@ func _exocytose_active_item() -> void:
 		show_preview_message("Couldn't retrieve that item right now.", 1.2)
 
 func _build_game_hud() -> void:
-	_hud = CanvasLayer.new()
-	_hud.name = "GameHUD"
-	_hud.set_script(GameHUDScript)
+	_hud = GameHUDScene.instantiate()
 	add_child(_hud)
 
 	_hud.add_stat_bar("hp", Color(0.72, 0.3, 0.26), DEFAULT_HP, DEFAULT_HP)
@@ -2282,6 +2903,8 @@ func _build_game_hud() -> void:
 	_hud.routing_toggled.connect(_on_routing_toggled)
 	_hud.ability_pressed.connect(_on_ability_pressed)
 	_hud.center_camera_requested.connect(_on_center_camera_requested)
+	if _hud.has_signal("portrait_hold_lock_changed"):
+		_hud.connect("portrait_hold_lock_changed", _on_portrait_hold_lock_changed)
 
 	for char_id in CHARACTER_IDS:
 		_hud.add_portrait(char_id, CHARACTER_DISPLAY_NAMES[char_id], CHARACTER_COLORS[char_id])
@@ -2407,15 +3030,51 @@ func _apply_preview_lighting() -> void:
 		_preview_environment.glow_intensity = lerpf(0.18, 0.28, dusk_blend)
 		_preview_directional_light.light_color = Color(0.84, 0.9, 0.98).lerp(Color(0.97, 0.53, 0.26), dusk_blend)
 		_preview_directional_light.light_energy = lerpf(1.0, 0.38, dusk_blend)
+		_apply_chunk_preview_lighting_profile()
 		return
 
 	var night_blend := clampf((normalized - DayNightCycleScript.NIGHT_START) / DayNightCycleScript.SEGMENT_SPAN, 0.0, 1.0)
 	_preview_environment.background_color = Color(0.015, 0.02, 0.035).lerp(Color(0.005, 0.008, 0.015), night_blend)
-	_preview_environment.ambient_light_color = Color(0.11, 0.14, 0.21).lerp(Color(0.04, 0.06, 0.1), night_blend)
-	_preview_environment.ambient_light_energy = lerpf(0.18, 0.08, night_blend)
-	_preview_environment.glow_intensity = lerpf(0.24, 0.12, night_blend)
+	# Night must still support tactical reading in Web builds, where display black levels and
+	# fog-of-war compound. Keep the sky dark, but retain a moonlit ambient floor around the party.
+	_preview_environment.ambient_light_color = Color(0.15, 0.19, 0.28).lerp(Color(0.08, 0.11, 0.18), night_blend)
+	_preview_environment.ambient_light_energy = lerpf(0.30, 0.20, night_blend)
+	_preview_environment.glow_intensity = lerpf(0.28, 0.18, night_blend)
 	_preview_directional_light.light_color = Color(0.22, 0.34, 0.58).lerp(Color(0.1, 0.16, 0.3), night_blend)
-	_preview_directional_light.light_energy = lerpf(0.18, 0.06, night_blend)
+	_preview_directional_light.light_energy = lerpf(0.24, 0.14, night_blend)
+	_apply_chunk_preview_lighting_profile()
+
+## A chunk can preserve a dark authored time while raising the tactical light floor needed by
+## its materials and camera. This is applied after the shared day/night curve so it survives
+## clock updates and Web compatibility's reduced glow without globally flattening every night.
+func _apply_chunk_preview_lighting_profile() -> void:
+	if _active_chunk == null or not _active_chunk.has_method("get_preview_lighting_profile"):
+		return
+	var profile_variant = _active_chunk.call("get_preview_lighting_profile")
+	if not (profile_variant is Dictionary):
+		return
+	var profile: Dictionary = profile_variant
+	_preview_environment.ambient_light_energy = maxf(
+		_preview_environment.ambient_light_energy,
+		float(profile.get("ambient_energy_floor", 0.0))
+	)
+	_preview_directional_light.light_energy = maxf(
+		_preview_directional_light.light_energy,
+		float(profile.get("directional_energy_floor", 0.0))
+	)
+	_preview_environment.glow_intensity = maxf(
+		_preview_environment.glow_intensity,
+		float(profile.get("glow_intensity_floor", 0.0))
+	)
+	var color_mix := clampf(float(profile.get("color_mix", 0.0)), 0.0, 1.0)
+	if color_mix > 0.0 and profile.has("ambient_color"):
+		var ambient_target: Color = profile.get("ambient_color", _preview_environment.ambient_light_color)
+		_preview_environment.ambient_light_color = _preview_environment.ambient_light_color.lerp(
+			ambient_target, color_mix)
+	if color_mix > 0.0 and profile.has("directional_color"):
+		var directional_target: Color = profile.get("directional_color", _preview_directional_light.light_color)
+		_preview_directional_light.light_color = _preview_directional_light.light_color.lerp(
+			directional_target, color_mix)
 
 func _apply_character_override(char_id: String, override: Dictionary) -> void:
 	if not _character_state.has(char_id):
@@ -2478,31 +3137,184 @@ func _configure_preview_abilities(chunk_abilities: Array) -> void:
 		if not _ability_order.has(ability_id):
 			_ability_order.append(ability_id)
 
+	_assign_party_ability_routes()
 	for ability_id in _ability_order:
 		var ability: Dictionary = _ability_defs[ability_id]
 		_ability_runtime[ability_id] = {
 			"base_state": str(ability.get("initial_state", "ready")),
 			"remaining": float(ability.get("initial_remaining", 0.0)),
 		}
-		if _hud != null:
+		if (
+			_hud != null
+			and int(ability.get("party_slot", -1)) >= 0
+			and int(ability.get("ability_slot", -1)) >= 0
+		):
 			_hud.add_ability(
 				ability_id,
 				str(ability.get("display_name", ability_id.to_upper())),
 				str(ability.get("keybind", "")),
-				ability.get("color", Color(0.7, 0.7, 0.75))
+				ability.get("color", Color(0.7, 0.7, 0.75)),
+				str(ability.get("input_action", "")),
+				str(ability.get("owner", "")),
+				str(ability.get("owner_display", "")),
+				int(ability.get("party_slot", -1)),
+				int(ability.get("ability_slot", -1))
 			)
 
 	_refresh_ability_display()
+
+func _ability_owner_id(ability_id: String, ability: Dictionary) -> String:
+	var owner := str(ability.get("owner", "")).strip_edges().to_lower()
+	if owner != "":
+		return owner
+	var prefix := ability_id.get_slice("_", 0).strip_edges().to_lower()
+	if prefix in PARTY_ABILITY_OWNER_ORDER or prefix in CHARACTER_IDS or prefix in OPT_IN_CHARACTER_IDS:
+		return prefix
+	# Ownerless/global abilities still need a deterministic drawer home without pretending one of
+	# the named protagonists owns them.
+	return "party"
+
+func _capture_legacy_ability_binding(ability: Dictionary) -> void:
+	if not ability.has("legacy_input_action"):
+		ability["legacy_input_action"] = str(ability.get("input_action", ""))
+	if not ability.has("legacy_keybind"):
+		ability["legacy_keybind"] = str(ability.get("keybind", ""))
+	if not ability.has("legacy_keycode"):
+		ability["legacy_keycode"] = int(ability.get("keycode", 0))
+
+func _legacy_ability_binding_label(ability: Dictionary) -> String:
+	var fallback := str(ability.get("legacy_keybind", ability.get("keybind", "")))
+	var legacy_action := str(ability.get("legacy_input_action", ""))
+	return InputHints.label_for_action(legacy_action, fallback) if legacy_action != "" else fallback
+
+func _set_party_ability_route(ability_id: String, party_slot: int, ability_slot: int) -> void:
+	var ability: Dictionary = _ability_defs.get(ability_id, {})
+	var legacy_label := _legacy_ability_binding_label(ability)
+	ability["party_slot"] = party_slot
+	ability["ability_slot"] = ability_slot
+	if (
+		party_slot >= 0
+		and party_slot < PARTY_ABILITY_ACTIONS.size()
+		and ability_slot >= 0
+		and ability_slot < 2
+	):
+		var actions: Array = PARTY_ABILITY_ACTIONS[party_slot]
+		var direct_action := str(actions[ability_slot])
+		ability["input_action"] = direct_action
+		ability["keybind"] = InputHints.label_for_action(direct_action, legacy_label)
+	else:
+		ability["input_action"] = ""
+		ability["keybind"] = legacy_label
+	_ability_defs[ability_id] = ability
+
+## Resolve party columns independently of selection. Known protagonists retain the same column even
+## when a particular fragment hides another member; future owners are sorted into columns five/six.
+## Within a column explicit zero-based ability_slot values win, then remaining abilities fill 0, 1.
+func _assign_party_ability_routes() -> void:
+	var abilities_by_owner := {}
+	for ability_id in _ability_order:
+		var ability: Dictionary = _ability_defs.get(ability_id, {})
+		_capture_legacy_ability_binding(ability)
+		var owner := _ability_owner_id(ability_id, ability)
+		ability["owner"] = owner
+		ability["owner_display"] = str(CHARACTER_DISPLAY_NAMES.get(owner, owner.capitalize()))
+		_ability_defs[ability_id] = ability
+		if not abilities_by_owner.has(owner):
+			abilities_by_owner[owner] = []
+		(abilities_by_owner[owner] as Array).append(ability_id)
+
+	var ordered_owners: Array[String] = []
+	for owner_v in PARTY_ABILITY_OWNER_ORDER:
+		var owner := str(owner_v)
+		if abilities_by_owner.has(owner):
+			ordered_owners.append(owner)
+	var extra_owners: Array[String] = []
+	for owner_v in abilities_by_owner.keys():
+		var owner := str(owner_v)
+		if owner not in PARTY_ABILITY_OWNER_ORDER:
+			extra_owners.append(owner)
+	extra_owners.sort()
+	ordered_owners.append_array(extra_owners)
+
+	var owner_party_slots := {}
+	for owner in ordered_owners:
+		var known_slot := PARTY_ABILITY_OWNER_ORDER.find(owner)
+		if known_slot >= 0:
+			owner_party_slots[owner] = known_slot
+		else:
+			var extra_slot := PARTY_ABILITY_OWNER_ORDER.size() + extra_owners.find(owner)
+			if extra_slot < PARTY_ABILITY_ACTIONS.size():
+				owner_party_slots[owner] = extra_slot
+
+	for owner in ordered_owners:
+		var ids: Array = abilities_by_owner.get(owner, [])
+		var party_slot := int(owner_party_slots.get(owner, -1))
+		if party_slot < 0:
+			for ability_id_v in ids:
+				_set_party_ability_route(str(ability_id_v), -1, -1)
+			push_warning("The six party ability columns are full; owner '%s' has no direct slot." % owner)
+			continue
+
+		var assigned := {}
+		var pending: Array[String] = []
+		# Reserve valid explicit rows before assigning any automatic rows.
+		for ability_id_v in ids:
+			var ability_id := str(ability_id_v)
+			var ability: Dictionary = _ability_defs.get(ability_id, {})
+			var requested := int(ability.get("ability_slot", -1))
+			if requested >= 0 and requested < 2 and not assigned.has(requested):
+				assigned[requested] = ability_id
+				_set_party_ability_route(ability_id, party_slot, requested)
+			else:
+				pending.append(ability_id)
+		for ability_id in pending:
+			var open_slot := -1
+			for candidate in range(2):
+				if not assigned.has(candidate):
+					open_slot = candidate
+					break
+			if open_slot < 0:
+				_set_party_ability_route(ability_id, -1, -1)
+				push_warning("Ability owner '%s' has more than two abilities; '%s' stays legacy-only." % [
+					owner,
+					ability_id,
+				])
+				continue
+			assigned[open_slot] = ability_id
+			_set_party_ability_route(ability_id, party_slot, open_slot)
 
 ## Apply an ability's MECHANICS from the abilities xlsx bindings sheet (owner / keybind / keycode / color /
 ## atp_cost / active_status / deltas) — the canonical, per-ability_id values that don't change per context.
 func _apply_canonical_main_ability_binding(ability_id: String, ability: Dictionary) -> Dictionary:
 	var binding := AbilityData.binding(ability_id)
 	if binding.is_empty():
+		_capture_legacy_ability_binding(ability)
 		return ability
 	ability["owner"] = str(binding.get("owner", ability.get("owner", "")))
-	ability["keybind"] = str(binding.get("keybind", ability.get("keybind", "")))
-	ability["keycode"] = int(binding.get("keycode", ability.get("keycode", 0)))
+	var legacy_keybind := str(binding.get("keybind", ability.get("keybind", ""))).to_upper()
+	var legacy_input_action := str(ABILITY_INPUT_ACTION_BY_KEYBIND.get(legacy_keybind, ""))
+	ability["legacy_input_action"] = legacy_input_action
+	ability["legacy_keybind"] = legacy_keybind
+	ability["keybind"] = (
+		InputHints.label_for_action(legacy_input_action, legacy_keybind)
+		if legacy_input_action != ""
+		else legacy_keybind
+	)
+	var input_event := (
+		InputHints.primary_event_for_action(legacy_input_action, "keyboard")
+		if legacy_input_action != ""
+		else null
+	)
+	if input_event is InputEventKey:
+		var key_event := input_event as InputEventKey
+		ability["legacy_keycode"] = (
+			key_event.physical_keycode
+			if key_event.physical_keycode != KEY_NONE
+			else key_event.keycode
+		)
+	else:
+		ability["legacy_keycode"] = int(binding.get("keycode", ability.get("keycode", 0)))
+	ability["keycode"] = int(ability.get("legacy_keycode", 0))
 	for k in ["color", "atp_cost", "active_status", "sta_delta", "hp_delta"]:
 		if binding.has(k):
 			ability[k] = binding[k]
@@ -2519,23 +3331,13 @@ func _apply_chunk_metadata() -> void:
 	if _active_chunk != null and _active_chunk.has_method("get_scene_help"):
 		help = str(_active_chunk.call("get_scene_help"))
 
-	var ability_hints: Array[String] = []
-	for ability_id in _ability_order:
-		var ability: Dictionary = _ability_defs.get(ability_id, {})
-		var owner := str(ability.get("owner", ""))
-		var keybind := str(ability.get("keybind", ""))
-		var display := str(ability.get("display_name", ability_id.to_upper()))
-		if owner != "" and keybind != "":
-			ability_hints.append("%s:%s %s" % [CHARACTER_DISPLAY_NAMES.get(owner, owner.capitalize()), keybind, display])
-
-	var controls := PREVIEW_CONTROL_HELP
-	if not ability_hints.is_empty():
-		controls += "  " + "  ".join(ability_hints)
-
 	if _title_label != null:
 		_title_label.text = title
 	if _help_label != null:
-		_help_label.text = help + "\n" + controls if help != "" else controls
+		_help_label.text = help
+		_help_label.visible = help != ""
+	_refresh_control_hint_flow()
+	_refresh_ability_hint_flow()
 
 	if _note_default == "":
 		_note_default = "All three characters start topped off. Run drains stamina and abilities spend ATP."
@@ -2736,7 +3538,10 @@ func _set_active_character(char_id: String) -> void:
 		_active_chunk.call("on_preview_character_selected", char_id)
 
 func _sync_character_move_enabled() -> void:
-	for char_id in CHARACTER_IDS:
+	# Opt-in companions use the same Player controller as the launch roster. Leaving one out here
+	# keeps its controller live after selecting somebody else, so both bodies answer one right-click
+	# and the late arrival can steal a timed action's actor.
+	for char_id in CHARACTER_IDS + OPT_IN_CHARACTER_IDS:
 		var character_node = _characters.get(char_id, null)
 		if character_node != null and character_node.has_method("set_move_enabled"):
 			character_node.call("set_move_enabled", char_id == _active_char_id)
@@ -2758,7 +3563,7 @@ func _apply_dodge_setting() -> void:
 ## active character moves. Mirrors the elevator's _apply_character_control_selection.
 func _apply_group_control() -> void:
 	var nodes := {}
-	for char_id in CHARACTER_IDS:
+	for char_id in CHARACTER_IDS + OPT_IN_CHARACTER_IDS:
 		nodes[char_id] = _characters.get(char_id, null)
 	_apply_party_control(nodes, _selected_char_ids, _active_char_id, _selected_char_ids.size() > 1)
 
@@ -2766,7 +3571,7 @@ func _sanitize_selected_ids(selected_ids: Array) -> Array[String]:
 	var sanitized: Array[String] = []
 	for raw_id in selected_ids:
 		var char_id := str(raw_id)
-		if not CHARACTER_IDS.has(char_id):
+		if char_id not in CHARACTER_IDS + OPT_IN_CHARACTER_IDS:
 			continue
 		if not _character_is_available(char_id):
 			continue
@@ -2822,6 +3627,8 @@ func _on_pause_toggled(is_paused: bool) -> void:
 		_scheduler.pause()
 	else:
 		_scheduler.resume()
+	if _active_chunk != null and _active_chunk.has_method("set_preview_planning_feedback"):
+		_active_chunk.call("set_preview_planning_feedback", _scheduler.is_paused())
 	if _hud != null:
 		_hud.set_paused(_scheduler.is_paused())
 
@@ -2838,6 +3645,18 @@ func _on_character_selected(selected_ids: Array) -> void:
 		return
 	var preferred_active := str(selected_ids[0]) if selected_ids.size() > 0 else ""
 	_apply_selection_state(selected_ids, preferred_active)
+
+func _on_portrait_hold_lock_changed(char_id: String, locked: bool) -> void:
+	var display_name := str(CHARACTER_DISPLAY_NAMES.get(char_id, char_id.capitalize()))
+	var hold_label := "their post"
+	if _hud != null and _hud.has_method("get_portrait_hold_state"):
+		var info = _hud.call("get_portrait_hold_state", char_id)
+		if info is Dictionary:
+			hold_label = str(info.get("label", hold_label)).to_lower()
+	if locked:
+		show_preview_message("%s locked at %s — whole-party rallies leave them in place." % [display_name, hold_label], 2.4)
+	else:
+		show_preview_message("%s unlocked — whole-party rallies include them again." % display_name, 2.0)
 
 func _on_ability_pressed(ability_id: String) -> void:
 	_activate_preview_ability(ability_id)
@@ -2871,9 +3690,6 @@ func _activate_preview_ability(ability_id: String) -> void:
 	var runtime: Dictionary = _ability_runtime[ability_id]
 	var owner := str(ability.get("owner", ""))
 
-	if owner != "" and owner != _active_char_id:
-		show_preview_message("%s is not active." % CHARACTER_DISPLAY_NAMES.get(owner, owner.capitalize()), 1.1)
-		return
 	if owner != "" and not _character_is_available(owner):
 		show_preview_message("%s is unavailable." % CHARACTER_DISPLAY_NAMES.get(owner, owner.capitalize()), 1.1)
 		return
@@ -3027,7 +3843,7 @@ func _refresh_ability_display(ability_id := "") -> void:
 		var display_remaining := float(runtime.get("remaining", 0.0))
 
 		if owner != "":
-			if not _character_is_available(owner) or owner != _active_char_id:
+			if not _character_is_available(owner):
 				display_state = "disabled"
 				display_remaining = 0.0
 			elif display_state == "ready":
@@ -3039,13 +3855,40 @@ func _refresh_ability_display(ability_id := "") -> void:
 
 		_hud.set_ability_state(current_id, display_state, display_remaining)
 
+func _pressed_party_ability_action(event: InputEvent) -> String:
+	for row_v in PARTY_ABILITY_ACTIONS:
+		var row: Array = row_v
+		for action_v in row:
+			var action := str(action_v)
+			if event.is_action_pressed(action):
+				return action
+	return ""
+
+func _is_party_ability_action(input_action: String) -> bool:
+	for row_v in PARTY_ABILITY_ACTIONS:
+		var row: Array = row_v
+		if row.has(input_action):
+			return true
+	return false
+
+func _input_action_is_bound(input_action: String) -> bool:
+	return (
+		input_action != ""
+		and InputMap.has_action(input_action)
+		and not InputMap.action_get_events(input_action).is_empty()
+	)
+
 func _get_ability_for_keycode(keycode: int) -> String:
 	var fallback := ""
 	for ability_id in _ability_order:
 		var ability: Dictionary = _ability_defs.get(ability_id, {})
-		var mapped_keycode := int(ability.get("keycode", 0))
+		# A direct 6x2 binding supersedes this ability's spreadsheet key. Until then the old keycode
+		# remains a selection-aware compatibility route.
+		if _input_action_is_bound(str(ability.get("input_action", ""))):
+			continue
+		var mapped_keycode := int(ability.get("legacy_keycode", ability.get("keycode", 0)))
 		if mapped_keycode == 0:
-			var keybind := str(ability.get("keybind", "")).to_upper()
+			var keybind := str(ability.get("legacy_keybind", ability.get("keybind", ""))).to_upper()
 			mapped_keycode = int(ABILITY_KEYCODES.get(keybind, 0))
 		if mapped_keycode == keycode:
 			if str(ability.get("owner", "")) == _active_char_id:
@@ -3053,6 +3896,34 @@ func _get_ability_for_keycode(keycode: int) -> String:
 			if fallback == "":
 				fallback = ability_id
 	return fallback
+
+func _get_ability_for_input_action(input_action: String) -> String:
+	if _is_party_ability_action(input_action):
+		for ability_id in _ability_order:
+			var ability: Dictionary = _ability_defs.get(ability_id, {})
+			if str(ability.get("input_action", "")) == input_action:
+				return ability_id
+		return ""
+
+	var fallback := ""
+	for ability_id in _ability_order:
+		var ability: Dictionary = _ability_defs.get(ability_id, {})
+		if str(ability.get("legacy_input_action", "")) != input_action:
+			continue
+		if _input_action_is_bound(str(ability.get("input_action", ""))):
+			continue
+		if str(ability.get("owner", "")) == _active_char_id:
+			return ability_id
+		if fallback == "":
+			fallback = ability_id
+	return fallback
+
+func _activate_action_bound_preview_ability(input_action: String) -> bool:
+	var ability_id := _get_ability_for_input_action(input_action)
+	if ability_id == "":
+		return false
+	_activate_preview_ability(ability_id)
+	return true
 
 func _activate_keybound_preview_ability(keycode: int) -> bool:
 	var ability_id := _get_ability_for_keycode(keycode)

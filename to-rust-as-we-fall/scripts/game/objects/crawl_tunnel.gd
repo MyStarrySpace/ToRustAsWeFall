@@ -26,6 +26,9 @@ const ARRIVAL_RING_RADIUS := 1.6    # the walk-off fan past the exit mouth
 
 var _gs
 var _waypoints: Array[Vector3] = []
+var _data_authored := false
+var _mouth_data := Vector3.ZERO
+var _data_waypoints: Array[Vector3] = []
 var _group_provider: Callable = Callable()
 var _queue: Array = []
 var _queue_arrivals: Array = []
@@ -36,8 +39,10 @@ var _live_tags := {}                # every scheduler tag this tunnel has armed 
 ## Configure BEFORE adding to the tree. `waypoints` is the tube interior from just inside THIS
 ## mouth to the far exit (world space); the crawler's own position is prepended at entry time.
 func configure(gs, mouth_world: Vector3, waypoints: Array, radius := 1.4, speed := 0.9) -> void:
+	_data_authored = false
 	_gs = gs
 	position = mouth_world
+	_waypoints.clear()
 	for wp in waypoints:
 		_waypoints.append(wp as Vector3)
 	interaction_radius = radius
@@ -48,6 +53,36 @@ func configure(gs, mouth_world: Vector3, waypoints: Array, radius := 1.4, speed 
 		description = "Crawl through"
 	if tutorial_label == "":
 		tutorial_label = "CRAWL"
+
+## Data-coordinate authoring for warped levels. Movement remains canonical in GameState space; the mouth,
+## queue, arrival fan, and hover geometry are projected through the coord map only for presentation.
+func configure_data(gs, mouth_data: Vector3, waypoints_data: Array, radius := 1.4, speed := 0.9) -> void:
+	configure(gs, mouth_data, waypoints_data, radius, speed)
+	_data_authored = true
+	_mouth_data = mouth_data
+	_data_waypoints.clear()
+	for wp in waypoints_data:
+		_data_waypoints.append(wp as Vector3)
+	set_meta("flat_authored_position", mouth_data)
+	if _gs != null and _gs.coord_map != null:
+		position = _gs.coord_map.to_world(mouth_data)
+
+func get_data_mouth() -> Vector3:
+	return _mouth_data if _data_authored else position
+
+func get_data_waypoints() -> Array:
+	return _data_waypoints.duplicate() if _data_authored else _waypoints.duplicate()
+
+func _movement_waypoints() -> Array[Vector3]:
+	return _data_waypoints if _data_authored else _waypoints
+
+func _render_waypoints() -> Array[Vector3]:
+	if not _data_authored or _gs == null or _gs.coord_map == null:
+		return _waypoints
+	var out: Array[Vector3] = []
+	for wp in _data_waypoints:
+		out.append(_gs.coord_map.to_world(wp))
+	return out
 
 func _ready() -> void:
 	if get_node_or_null("CollisionShape3D") == null:
@@ -124,9 +159,10 @@ func compute_queue_slots(ids: Array) -> Array:
 ## parks on the far mouth and the next crawler always has a clear exit.
 func compute_group_arrivals(ids: Array) -> Array:
 	var out: Array = []
-	if _waypoints.is_empty():
+	var render_waypoints := _render_waypoints()
+	if render_waypoints.is_empty():
 		return out
-	var exit_pos := _waypoints[_waypoints.size() - 1]
+	var exit_pos := render_waypoints[render_waypoints.size() - 1]
 	var onward := _exit_dir()
 	var base_angle := atan2(onward.z, onward.x)
 	for i in range(ids.size()):
@@ -199,7 +235,7 @@ func _begin_crawl(who: String, slot_index: int) -> void:
 	_gs.change_move_speed(who, crawl_speed)
 	var path: Array[Vector3] = [_gs.get_position(who) as Vector3]
 	var total := 0.0
-	for wp in _waypoints:
+	for wp in _movement_waypoints():
 		total += path[path.size() - 1].distance_to(wp)
 		path.append(wp)
 	_gs._start_movement(who, path)
@@ -225,15 +261,17 @@ func _end_crawl(who: String, slot_index: int) -> void:
 		_gs.command_move_to_pos(who, _to_data(_queue_arrivals[slot_index]))
 
 func _tube_dir() -> Vector3:
-	if _waypoints.is_empty():
+	var render_waypoints := _render_waypoints()
+	if render_waypoints.is_empty():
 		return Vector3.FORWARD
-	var into := _waypoints[0] - global_position
+	var into := render_waypoints[0] - global_position
 	into.y = 0.0
 	return into.normalized() if into.length() > 0.01 else Vector3.FORWARD
 
 func _exit_dir() -> Vector3:
-	if _waypoints.size() >= 2:
-		var d := _waypoints[_waypoints.size() - 1] - _waypoints[_waypoints.size() - 2]
+	var render_waypoints := _render_waypoints()
+	if render_waypoints.size() >= 2:
+		var d := render_waypoints[render_waypoints.size() - 1] - render_waypoints[render_waypoints.size() - 2]
 		d.y = 0.0
 		if d.length() > 0.01:
 			return d.normalized()
@@ -241,6 +279,10 @@ func _exit_dir() -> Vector3:
 
 func _snap_walkable(pos: Vector3) -> Vector3:
 	if _gs != null and _gs.grid != null and _gs.grid.has_method("nearest_walkable_world"):
+		if _data_authored and _gs.coord_map != null:
+			var data_pos: Vector3 = _gs.coord_map.to_data(pos)
+			data_pos = _gs.grid.nearest_walkable_world(data_pos)
+			return _gs.coord_map.to_world(data_pos)
 		var snapped_pos: Vector3 = _gs.grid.nearest_walkable_world(pos)
 		snapped_pos.y = pos.y
 		return snapped_pos

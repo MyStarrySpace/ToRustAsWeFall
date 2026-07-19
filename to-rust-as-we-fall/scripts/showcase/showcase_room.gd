@@ -202,9 +202,7 @@ func _register_characters() -> void:
 	_game_state.reset_characters_to_full()
 
 func _setup_ui() -> void:
-	_hud = CanvasLayer.new()
-	_hud.name = "GameHUD"
-	_hud.set_script(preload("res://scripts/ui/game_hud.gd"))
+	_hud = preload("res://scenes/ui/game_hud.tscn").instantiate()
 	add_child(_hud)
 	_hud.show_pause_toggle(false)
 	_hud.show_run_toggle(false)
@@ -223,21 +221,9 @@ func _setup_ui() -> void:
 		_hud.set_portrait_stat(char_id, "sta", 100.0)
 		_hud.set_portrait_stat(char_id, "atp", 6.0)
 
-	var panel := CanvasLayer.new()
-	panel.layer = 11
+	var panel := preload("res://scenes/ui/showcase_info_overlay.tscn").instantiate() as CanvasLayer
 	add_child(panel)
-
-	_info_label = Label.new()
-	_info_label.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	_info_label.offset_left = 12
-	_info_label.offset_top = 12
-	_info_label.add_theme_font_size_override("font_size", 11)
-	_info_label.add_theme_color_override("font_color", Color(0.56, 0.58, 0.62))
-	_info_label.text = (
-		"SHOWCASE: west spawn / northwest enemy / southwest chain / center iron and physics / east flure / far east hide encounter\n" +
-		"CTRL: click move  1-3 select  Tab cycle  Z run  P perception  Space pause  R reload  F fast-forward"
-	)
-	panel.add_child(_info_label)
+	_info_label = panel.get_node("InfoLabel") as Label
 
 func _begin() -> void:
 	_game_state.physics_collision.connect(_on_physics_collision)
@@ -1063,7 +1049,7 @@ func _on_showcase_flure_activated() -> void:
 	for enemy in _flure_enemies:
 		if not is_instance_valid(enemy):
 			continue
-		enemy._detection_targets = []
+		enemy.set_detection_targets([])
 		enemy._current_target_id = ""
 		enemy._change_state("idle")
 		if enemy.game_state and enemy.game_state.characters.has(enemy.char_id):
@@ -1079,7 +1065,7 @@ func _on_showcase_flure_expired() -> void:
 	for enemy in _flure_enemies:
 		if not is_instance_valid(enemy):
 			continue
-		enemy._detection_targets = ["aster", "peris", "endo"]
+		enemy.set_detection_targets(["aster", "peris", "endo"])
 		enemy._change_state("idle")
 
 func _reset_hide_encounter() -> void:

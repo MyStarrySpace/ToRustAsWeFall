@@ -1,54 +1,74 @@
 {
 	"anchors": {
 		"aster": [
-			0.0,
-			0.5,
-			1.6
+			1.89999997615814,
+			0.499999988079071,
+			0.600000023841858
 		],
 		"endo": [
-			-1.2,
-			0.5,
-			-1.8
+			0.999999976158142,
+			0.499999988079071,
+			0.880000023841858
 		],
 		"entry": [
-			0.0,
+			2.5,
 			0.449999988079071,
-			-3.0
+			2.5
 		],
 		"exit_shelter": [
-			72.0,
+			131.5,
 			0.449999988079071,
-			-3.0
+			1.5
 		],
 		"node_01": [
-			12.0,
-			1.16999995708466,
-			0.0
+			14.5,
+			0.449999988079071,
+			0.5
 		],
 		"node_02": [
-			24.0,
-			1.88999998569489,
-			3.0
+			27.5,
+			0.449999988079071,
+			2.5
 		],
 		"node_03": [
-			36.0,
+			41.5,
 			0.449999988079071,
-			-3.0
+			1.5
 		],
 		"node_04": [
-			48.0,
-			1.88999998569489,
-			0.0
+			54.5,
+			0.449999988079071,
+			1.5
 		],
 		"node_05": [
-			60.0,
-			1.88999998569489,
-			3.0
+			67.5,
+			0.449999988079071,
+			2.5
+		],
+		"node_06": [
+			80.5,
+			0.449999988079071,
+			1.5
+		],
+		"node_07": [
+			92.5,
+			0.449999988079071,
+			1.5
+		],
+		"node_08": [
+			105.5,
+			0.449999988079071,
+			1.5
+		],
+		"node_09": [
+			118.5,
+			0.449999988079071,
+			0.5
 		],
 		"peris": [
-			-1.6,
-			0.5,
-			0.0
+			2.79999997615814,
+			0.499999988079071,
+			0.880000023841858
 		]
 	},
 	"archetype_chain": [
@@ -126,19 +146,29 @@
 			],
 			"composition_mode": "chain_nested_poc",
 			"composition_role": "chain_link",
+			"correct_read": "",
 			"exploit_target": "",
 			"id": "1",
 			"kind": "puzzle",
 			"link_ref": "chain_00",
 			"name": "Redirected enemy aggression",
 			"pressure_cost": 0,
+			"reads": [],
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Use overlay timing plus flora or scarpet cover to substitute for a combat specialist."
 			},
+			"solve": "",
 			"stage": 2,
 			"step_count": 6,
 			"survival_kind": "",
+			"systems_dimensions": [
+				"relation",
+				"delay",
+				"threshold",
+				"leverage",
+				"transfer"
+			],
 			"tags": [
 				"enemy",
 				"impact",
@@ -220,19 +250,31 @@
 			],
 			"composition_mode": "chain_nested_poc",
 			"composition_role": "chain_link",
+			"correct_read": "",
 			"exploit_target": "",
 			"id": "2",
 			"kind": "puzzle",
 			"link_ref": "chain_01",
 			"name": "Plant as tool",
 			"pressure_cost": 0,
+			"reads": [],
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
 			},
+			"solve": "",
 			"stage": 1,
 			"step_count": 5,
 			"survival_kind": "",
+			"systems_dimensions": [
+				"relation",
+				"stock",
+				"flow",
+				"delay",
+				"threshold",
+				"leverage",
+				"transfer"
+			],
 			"tags": [
 				"flora",
 				"peris",
@@ -327,19 +369,31 @@
 			],
 			"composition_mode": "chain_nested_poc",
 			"composition_role": "chain_link",
+			"correct_read": "",
 			"exploit_target": "",
 			"id": "3",
 			"kind": "puzzle",
 			"link_ref": "chain_02",
 			"name": "Carry the heavy thing",
 			"pressure_cost": 0,
+			"reads": [],
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Use drag routes, scarpet masking, and slower recovery windows."
 			},
+			"solve": "",
 			"stage": 2,
 			"step_count": 5,
 			"survival_kind": "",
+			"systems_dimensions": [
+				"relation",
+				"stock",
+				"flow",
+				"feedback",
+				"local_global",
+				"leverage",
+				"transfer"
+			],
 			"tags": [
 				"carry",
 				"escort",
@@ -423,19 +477,31 @@
 			],
 			"composition_mode": "chain_nested_poc",
 			"composition_role": "chain_link",
+			"correct_read": "",
 			"exploit_target": "",
 			"id": "6",
 			"kind": "puzzle",
 			"link_ref": "chain_03",
 			"name": "Pattern reconstruction",
 			"pressure_cost": 0,
+			"reads": [],
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Aster finds hidden structure; Peris preserves relational or flora context."
 			},
+			"solve": "",
 			"stage": 3,
 			"step_count": 5,
 			"survival_kind": "",
+			"systems_dimensions": [
+				"relation",
+				"stock",
+				"threshold",
+				"topology",
+				"diagnosis",
+				"leverage",
+				"transfer"
+			],
 			"tags": [
 				"fragments",
 				"memory",
@@ -514,18 +580,31 @@
 				"shortcut"
 			],
 			"composition_role": "required_append",
+			"correct_read": "",
 			"exploit_target": "",
 			"id": "4",
 			"kind": "puzzle",
 			"name": "Distract the patrol",
 			"pressure_cost": 0,
+			"reads": [],
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Aster provides electrical/data distraction while Peris performs the physical or flora task."
 			},
+			"solve": "",
 			"stage": 3,
 			"step_count": 8,
 			"survival_kind": "",
+			"systems_dimensions": [
+				"relation",
+				"stock",
+				"flow",
+				"delay",
+				"threshold",
+				"local_global",
+				"leverage",
+				"transfer"
+			],
 			"tags": [
 				"patrol",
 				"distraction",
@@ -535,12 +614,13 @@
 			"variant": "terminal_task"
 		}
 	],
+	"biome": "",
 	"budget": {
 		"archetype_depth": 5,
 		"branch_count": 1,
 		"enemy_slots": 2,
 		"flora_slots": 3,
-		"node_count": 7,
+		"node_count": 11,
 		"optional_node_count": 1,
 		"pressure_budget": 2,
 		"resource_beats": 1,
@@ -591,11 +671,108 @@
 			}
 		],
 		"chain_count": 4,
+		"element_coverage": {
+			"complete": false,
+			"contract_id": "trawf_element_coverage_v1",
+			"covered_count": 7,
+			"elements": {
+				"barrier": {
+					"covered": true,
+					"required_by": [
+						"3"
+					],
+					"supplied_by": [
+						"entry",
+						"node_01",
+						"node_06"
+					]
+				},
+				"carry": {
+					"covered": true,
+					"required_by": [
+						"3"
+					],
+					"supplied_by": [
+						"node_04",
+						"node_08"
+					]
+				},
+				"combustible": {
+					"covered": false,
+					"required_by": [
+						"1"
+					],
+					"supplied_by": []
+				},
+				"cover": {
+					"covered": true,
+					"required_by": [
+						"1",
+						"3"
+					],
+					"supplied_by": [
+						"node_01",
+						"node_03",
+						"node_04",
+						"node_06",
+						"node_08"
+					]
+				},
+				"iron_decoy": {
+					"covered": true,
+					"required_by": [
+						"2"
+					],
+					"supplied_by": [
+						"entry",
+						"node_02"
+					]
+				},
+				"lure": {
+					"covered": true,
+					"required_by": [
+						"2"
+					],
+					"supplied_by": [
+						"entry",
+						"node_02"
+					]
+				},
+				"stun": {
+					"covered": true,
+					"required_by": [
+						"2"
+					],
+					"supplied_by": [
+						"node_07",
+						"exit_shelter"
+					]
+				},
+				"terminal": {
+					"covered": true,
+					"required_by": [
+						"6"
+					],
+					"supplied_by": [
+						"node_02",
+						"node_05"
+					]
+				}
+			},
+			"required_count": 8,
+			"shared_elements": [
+				"cover"
+			],
+			"uncovered": [
+				"combustible"
+			]
+		},
 		"has_nested": true,
 		"host_nodes": [
-			"node_03",
 			"node_04",
-			"node_05"
+			"node_05",
+			"node_08",
+			"node_09"
 		],
 		"links": [
 			{
@@ -670,9 +847,26 @@
 		],
 		"nested_count": 3,
 		"nested_depth": 1,
-		"random_walk": {
-
+		"poi_density": {
+			"contract_id": "trawf_poi_density_v1",
+			"distinct_ambient": 2,
+			"per_node_count": 3,
+			"per_node_variety": 2,
+			"stage": 3,
+			"total_ambient": 27
 		},
+		"random_walk": {},
+		"teaching_chain": [
+			{
+				"approach": "false_pattern_spoof",
+				"from": "6",
+				"from_index": 3,
+				"ordered": true,
+				"technique": "false_pattern_spoof",
+				"to": "4",
+				"to_index": 4
+			}
+		],
 		"uses_random_walk": false,
 		"walk_archetype_count": 0,
 		"walk_element_count": 0
@@ -680,47 +874,47 @@
 	"graybox": {
 		"bounds": {
 			"center": [
-				36.2999992370605,
-				2.76500010490417,
-				-0.149999856948853
+				66.25,
+				2.04999995231628,
+				2.5
 			],
 			"max": [
-				76.5999984741211,
-				5.17000007629395,
-				6.40000009536743
+				133.5,
+				3.72000002861023,
+				6.0
 			],
 			"min": [
-				-4.0,
-				0.359999984502792,
-				-6.69999980926514
+				-1.0,
+				0.379999995231628,
+				-1.0
 			],
 			"size": [
-				80.5999984741211,
-				4.80999994277954,
-				13.1000003814697
+				134.5,
+				3.34000015258789,
+				7.0
 			]
 		},
-		"content_placement_count": 15,
+		"content_placement_count": 22,
 		"contract_id": "generated_stretch_graybox_v1",
-		"elevation_count": 3,
+		"elevation_count": 1,
 		"elevation_indices": [
-			0,
-			1,
-			2
+			0
 		],
 		"elevation_step": 0.72,
-		"navigation_contract_id": "multi_level_navigation_graph_v1",
-		"navigation_edge_count": 9,
-		"navigation_node_count": 7,
-		"node_surface_count": 7,
-		"route_surface_count": 9,
+		"layout_engine": "wfc_v1",
+		"navigation_contract_id": "unified_grid_v1",
+		"navigation_edge_count": 12,
+		"navigation_node_count": 11,
+		"node_surface_count": 11,
+		"roompiece_catalog": "trawf_roompiece_catalog_v1",
+		"route_surface_count": 12,
 		"source": {
 			"complexity_tier": "standard",
-			"node_budget": 7,
+			"node_budget": 11,
 			"spec_id": "generated_chain_nested_poc_shelter_2_to_3"
 		},
 		"supports_click_to_move": true,
-		"supports_multiple_elevations": true,
+		"supports_multiple_elevations": false,
 		"supports_outline_targets": true,
 		"surface_y_base": 0.45,
 		"unit_scale": 1.0
@@ -732,12 +926,119 @@
 			"node_02",
 			"node_04",
 			"node_05",
+			"node_06",
+			"node_07",
+			"node_08",
+			"node_09",
 			"exit_shelter"
 		],
 		"risky_recovery": [
-			"risky_direct",
+			"risky_optional_02_03",
 			"exit_shelter"
 		],
+		"solution": {
+			"actions": [
+				{
+					"approach_id": "traverse",
+					"kind": "traverse",
+					"node": "entry",
+					"party": "any",
+					"requires": [],
+					"risk": "safe"
+				},
+				{
+					"approach_id": "redirect_combat",
+					"kind": "primary",
+					"node": "node_01",
+					"party": "specialist",
+					"requires": [
+						"combat"
+					],
+					"risk": "direct"
+				},
+				{
+					"approach_id": "force_clear",
+					"kind": "primary",
+					"node": "node_02",
+					"party": "specialist",
+					"requires": [
+						"impact"
+					],
+					"risk": "direct"
+				},
+				{
+					"approach_id": "guarded_escort",
+					"kind": "primary",
+					"node": "node_04",
+					"party": "specialist",
+					"requires": [
+						"combat"
+					],
+					"risk": "direct"
+				},
+				{
+					"approach_id": "combat_retrieval",
+					"kind": "primary",
+					"node": "node_05",
+					"party": "specialist",
+					"requires": [
+						"combat"
+					],
+					"risk": "direct"
+				},
+				{
+					"approach_id": "redirect_combat",
+					"kind": "primary",
+					"node": "node_06",
+					"party": "specialist",
+					"requires": [
+						"combat"
+					],
+					"risk": "direct"
+				},
+				{
+					"approach_id": "force_clear",
+					"kind": "primary",
+					"node": "node_07",
+					"party": "specialist",
+					"requires": [
+						"impact"
+					],
+					"risk": "direct"
+				},
+				{
+					"approach_id": "guarded_escort",
+					"kind": "primary",
+					"node": "node_08",
+					"party": "specialist",
+					"requires": [
+						"combat"
+					],
+					"risk": "direct"
+				},
+				{
+					"approach_id": "combat_retrieval",
+					"kind": "primary",
+					"node": "node_09",
+					"party": "specialist",
+					"requires": [
+						"combat"
+					],
+					"risk": "direct"
+				},
+				{
+					"approach_id": "traverse",
+					"kind": "traverse",
+					"node": "exit_shelter",
+					"party": "any",
+					"requires": [],
+					"risk": "safe"
+				}
+			],
+			"loadout": "spotlight",
+			"reaches": "exit_shelter",
+			"solvable": true
+		},
 		"solution_paths": [
 			{
 				"approach_per_node": [
@@ -755,11 +1056,13 @@
 						"approach_id": "redirect_combat",
 						"blocked": false,
 						"borrows_from": "",
+						"combination_premium": -0.5,
 						"expert": false,
 						"kind": "primary",
 						"label": "Bait a combat specialist's charge into the target",
 						"min_stage": 2,
 						"node": "node_01",
+						"node_pressure": 1.0,
 						"party": "specialist",
 						"requires": [
 							"combat"
@@ -777,11 +1080,13 @@
 						"approach_id": "force_clear",
 						"blocked": false,
 						"borrows_from": "",
+						"combination_premium": -0.5,
 						"expert": false,
 						"kind": "primary",
 						"label": "Force the obstacle open with raw impact",
 						"min_stage": 1,
 						"node": "node_02",
+						"node_pressure": 1.0,
 						"party": "specialist",
 						"requires": [
 							"impact"
@@ -795,20 +1100,32 @@
 						]
 					},
 					{
+						"approach_id": "traverse",
+						"blocked": false,
+						"kind": "traverse",
+						"node": "node_03",
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
+						"role": "foraging"
+					},
+					{
 						"approach_id": "guarded_escort",
 						"blocked": false,
 						"borrows_from": "",
+						"combination_premium": -0.5,
 						"expert": false,
 						"kind": "primary",
 						"label": "A combat specialist guards the carrier across the open",
 						"min_stage": 2,
-						"node": "node_03",
+						"node": "node_04",
+						"node_pressure": 1.0,
 						"party": "specialist",
 						"requires": [
 							"combat"
 						],
 						"risk": "direct",
-						"role": "mixed",
+						"role": "setpiece",
 						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
@@ -819,11 +1136,83 @@
 						"approach_id": "combat_retrieval",
 						"blocked": false,
 						"borrows_from": "",
+						"combination_premium": -0.5,
 						"expert": false,
 						"kind": "primary",
 						"label": "Fight through to retrieve the scattered fragments",
 						"min_stage": 3,
-						"node": "node_04",
+						"node": "node_05",
+						"node_pressure": 1.0,
+						"party": "specialist",
+						"requires": [
+							"combat"
+						],
+						"risk": "direct",
+						"role": "guidance",
+						"stage_ahead": false,
+						"taught_by": "",
+						"uses": [
+							"combat_retrieval"
+						]
+					},
+					{
+						"approach_id": "redirect_combat",
+						"blocked": false,
+						"borrows_from": "",
+						"combination_premium": -0.5,
+						"expert": false,
+						"kind": "primary",
+						"label": "Bait a combat specialist's charge into the target",
+						"min_stage": 2,
+						"node": "node_06",
+						"node_pressure": 1.0,
+						"party": "specialist",
+						"requires": [
+							"combat"
+						],
+						"risk": "direct",
+						"role": "danger",
+						"stage_ahead": false,
+						"taught_by": "",
+						"uses": [
+							"kill_enemy",
+							"destroy_barrier"
+						]
+					},
+					{
+						"approach_id": "force_clear",
+						"blocked": false,
+						"borrows_from": "",
+						"combination_premium": -0.5,
+						"expert": false,
+						"kind": "primary",
+						"label": "Force the obstacle open with raw impact",
+						"min_stage": 1,
+						"node": "node_07",
+						"node_pressure": 1.0,
+						"party": "specialist",
+						"requires": [
+							"impact"
+						],
+						"risk": "direct",
+						"role": "foraging",
+						"stage_ahead": false,
+						"taught_by": "",
+						"uses": [
+							"destroy"
+						]
+					},
+					{
+						"approach_id": "guarded_escort",
+						"blocked": false,
+						"borrows_from": "",
+						"combination_premium": -0.5,
+						"expert": false,
+						"kind": "primary",
+						"label": "A combat specialist guards the carrier across the open",
+						"min_stage": 2,
+						"node": "node_08",
+						"node_pressure": 1.0,
 						"party": "specialist",
 						"requires": [
 							"combat"
@@ -833,28 +1222,30 @@
 						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
-							"combat_retrieval"
+							"critical_resource"
 						]
 					},
 					{
-						"approach_id": "loud_draw",
+						"approach_id": "combat_retrieval",
 						"blocked": false,
 						"borrows_from": "",
+						"combination_premium": -0.5,
 						"expert": false,
 						"kind": "primary",
-						"label": "Draw the patrol with a loud combat action",
+						"label": "Fight through to retrieve the scattered fragments",
 						"min_stage": 3,
-						"node": "node_05",
+						"node": "node_09",
+						"node_pressure": 1.0,
 						"party": "specialist",
 						"requires": [
 							"combat"
 						],
 						"risk": "direct",
-						"role": "route_pressure",
+						"role": "guidance",
 						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
-							"loud_action"
+							"combat_retrieval"
 						]
 					},
 					{
@@ -869,6 +1260,10 @@
 					}
 				],
 				"blocked_nodes": [],
+				"choice_nodes_taken": 8,
+				"combination_premium": -4.0,
+				"diagnosis_nodes_taken": 0,
+				"diagnosis_penalty": 0.0,
 				"label": "Full party",
 				"loadout": "spotlight",
 				"max_stage_used": 3,
@@ -880,9 +1275,10 @@
 					"oli",
 					"tyreg"
 				],
+				"pressure": 4.0,
 				"solvable": true,
 				"techniques": [],
-				"total_risk": 5,
+				"total_risk": 8,
 				"uses_future_technique": false,
 				"within_stage": true
 			},
@@ -902,11 +1298,13 @@
 						"approach_id": "overlay_cover",
 						"blocked": false,
 						"borrows_from": "",
+						"combination_premium": 4.0,
 						"expert": false,
 						"kind": "shadow",
 						"label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover",
 						"min_stage": 2,
 						"node": "node_01",
+						"node_pressure": 2.0,
 						"party": "aster_peris",
 						"requires": [
 							"overlay",
@@ -925,11 +1323,13 @@
 						"approach_id": "flora_chain_trap",
 						"blocked": false,
 						"borrows_from": "10",
+						"combination_premium": 4.0,
 						"expert": true,
 						"kind": "shadow_expert",
 						"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
 						"min_stage": 5,
 						"node": "node_02",
+						"node_pressure": 2.0,
 						"party": "aster_peris",
 						"requires": [
 							"flora",
@@ -942,14 +1342,26 @@
 						"uses": []
 					},
 					{
+						"approach_id": "traverse",
+						"blocked": false,
+						"kind": "traverse",
+						"node": "node_03",
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
+						"role": "foraging"
+					},
+					{
 						"approach_id": "split_carry",
 						"blocked": false,
 						"borrows_from": "5",
+						"combination_premium": 4.0,
 						"expert": true,
 						"kind": "shadow_expert",
 						"label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
 						"min_stage": 3,
-						"node": "node_03",
+						"node": "node_04",
+						"node_pressure": 2.0,
 						"party": "aster_peris",
 						"requires": [
 							"carry",
@@ -957,7 +1369,7 @@
 							"data"
 						],
 						"risk": "risky",
-						"role": "mixed",
+						"role": "setpiece",
 						"stage_ahead": false,
 						"taught_by": "split_carry",
 						"uses": []
@@ -966,11 +1378,13 @@
 						"approach_id": "terminal_cache_recall",
 						"blocked": false,
 						"borrows_from": "8",
+						"combination_premium": 4.0,
 						"expert": true,
 						"kind": "shadow_expert",
 						"label": "Skip the scavenger hunt: Aster pulls the missing fragment from an AST terminal's cached records, reconstructing the whole from the network",
 						"min_stage": 3,
-						"node": "node_04",
+						"node": "node_05",
+						"node_pressure": 2.0,
 						"party": "aster_peris",
 						"requires": [
 							"terminal",
@@ -978,30 +1392,105 @@
 							"data"
 						],
 						"risk": "risky",
-						"role": "setpiece",
+						"role": "guidance",
 						"stage_ahead": false,
 						"taught_by": "terminal_cache_recall",
 						"uses": []
 					},
 					{
-						"approach_id": "false_pattern_spoof",
+						"approach_id": "overlay_cover",
 						"blocked": false,
-						"borrows_from": "6",
-						"expert": true,
-						"kind": "shadow_expert",
-						"label": "Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for",
-						"min_stage": 3,
-						"node": "node_05",
+						"borrows_from": "",
+						"combination_premium": 4.0,
+						"expert": false,
+						"kind": "shadow",
+						"label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover",
+						"min_stage": 2,
+						"node": "node_06",
+						"node_pressure": 2.0,
 						"party": "aster_peris",
 						"requires": [
-							"signal",
 							"overlay",
-							"scan"
+							"cover"
 						],
 						"risk": "risky",
-						"role": "route_pressure",
+						"role": "danger",
 						"stage_ahead": false,
-						"taught_by": "false_pattern_spoof",
+						"taught_by": "overlay_timing",
+						"uses": [
+							"reveal_plant",
+							"reveal_passage"
+						]
+					},
+					{
+						"approach_id": "flora_finesse",
+						"blocked": false,
+						"borrows_from": "",
+						"combination_premium": 4.0,
+						"expert": false,
+						"kind": "shadow",
+						"label": "Peris grows or tends the plant tool; Aster confirms the target",
+						"min_stage": 1,
+						"node": "node_07",
+						"node_pressure": 0.0,
+						"party": "aster_peris",
+						"requires": [
+							"flora"
+						],
+						"risk": "safe",
+						"role": "foraging",
+						"stage_ahead": false,
+						"taught_by": "flora_tending",
+						"uses": [
+							"flure_iron_decoy",
+							"hushbloom_stun",
+							"climbvine_traversal"
+						]
+					},
+					{
+						"approach_id": "split_carry",
+						"blocked": false,
+						"borrows_from": "5",
+						"combination_premium": 4.0,
+						"expert": true,
+						"kind": "shadow_expert",
+						"label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
+						"min_stage": 3,
+						"node": "node_08",
+						"node_pressure": 2.0,
+						"party": "aster_peris",
+						"requires": [
+							"carry",
+							"cover",
+							"data"
+						],
+						"risk": "risky",
+						"role": "setpiece",
+						"stage_ahead": false,
+						"taught_by": "split_carry",
+						"uses": []
+					},
+					{
+						"approach_id": "terminal_cache_recall",
+						"blocked": false,
+						"borrows_from": "8",
+						"combination_premium": 4.0,
+						"expert": true,
+						"kind": "shadow_expert",
+						"label": "Skip the scavenger hunt: Aster pulls the missing fragment from an AST terminal's cached records, reconstructing the whole from the network",
+						"min_stage": 3,
+						"node": "node_09",
+						"node_pressure": 2.0,
+						"party": "aster_peris",
+						"requires": [
+							"terminal",
+							"scan",
+							"data"
+						],
+						"risk": "risky",
+						"role": "guidance",
+						"stage_ahead": false,
+						"taught_by": "terminal_cache_recall",
 						"uses": []
 					},
 					{
@@ -1016,6 +1505,10 @@
 					}
 				],
 				"blocked_nodes": [],
+				"choice_nodes_taken": 8,
+				"combination_premium": 32.0,
+				"diagnosis_nodes_taken": 0,
+				"diagnosis_penalty": 0.0,
 				"label": "Aster + Peris (shadow)",
 				"loadout": "shadow",
 				"max_stage_used": 5,
@@ -1023,49 +1516,65 @@
 					"aster",
 					"peris"
 				],
+				"pressure": 46.0,
 				"solvable": true,
 				"techniques": [
 					"overlay_timing",
 					"nested_flora_zone",
 					"split_carry",
 					"terminal_cache_recall",
-					"false_pattern_spoof"
+					"flora_tending"
 				],
-				"total_risk": 10,
+				"total_risk": 14,
 				"uses_future_technique": true,
 				"within_stage": true
 			}
 		],
 		"solution_summary": {
 			"bare_pair_solvable": true,
-			"choice_node_count": 4,
+			"choice_node_count": 8,
 			"choice_nodes": [
 				"node_01",
 				"node_02",
 				"node_04",
-				"node_05"
+				"node_05",
+				"node_06",
+				"node_07",
+				"node_08",
+				"node_09"
 			],
-			"distinct_node_count": 4,
+			"combination_pressure_gap": 42.0,
+			"diagnosis_node_count": 0,
+			"diagnosis_nodes": [],
+			"diagnosis_penalty": 0.0,
+			"distinct_node_count": 8,
 			"distinct_nodes": [
 				"node_01",
 				"node_02",
 				"node_04",
-				"node_05"
+				"node_05",
+				"node_06",
+				"node_07",
+				"node_08",
+				"node_09"
 			],
 			"multi_solution": true,
 			"multi_solution_ok": true,
 			"multi_solution_required": false,
 			"progression_stage": 3,
+			"shadow_combination_premium": 32.0,
+			"shadow_pressure": 46.0,
 			"shadow_solvable": true,
 			"shadow_techniques": [
 				"overlay_timing",
 				"nested_flora_zone",
 				"split_carry",
 				"terminal_cache_recall",
-				"false_pattern_spoof"
+				"flora_tending"
 			],
 			"shadow_uses_future_technique": true,
 			"solvable_loadout_count": 2,
+			"spotlight_pressure": 4.0,
 			"spotlight_within_stage": true
 		},
 		"state_paths": [
@@ -1083,596 +1592,4734 @@
 		]
 	},
 	"id": "generated_chain_nested_poc_shelter_2_to_3",
-	"navigation": {
-		"contract_id": "multi_level_navigation_graph_v1",
-		"edges": [
-			{
-				"bidirectional": true,
-				"from": "entry",
-				"height_delta": 0.719999969005585,
-				"id": "main_00_01",
-				"kind": "safe",
-				"path_cost": 12.3902540206909,
-				"physical_cost": 12.3902540206909,
-				"recoverable": true,
-				"risk": "safe",
-				"risk_penalty": 0.0,
-				"route_id": "main_00_01",
-				"slope_ratio": 0.0582085466658145,
-				"to": "node_01",
-				"traversal": "ramp",
-				"waypoints": [
-					[
-						0.0,
-						0.449999988079071,
-						-3.0
-					],
-					[
-						6.0,
-						0.809999942779541,
-						-1.5
-					],
-					[
-						12.0,
-						1.16999995708466,
-						0.0
-					]
-				],
-				"width": 1.85
-			},
-			{
-				"bidirectional": true,
-				"from": "node_01",
-				"height_delta": 0.720000028610229,
-				"id": "main_01_02",
-				"kind": "safe",
-				"path_cost": 12.3902540206909,
-				"physical_cost": 12.3902540206909,
-				"recoverable": true,
-				"risk": "safe",
-				"risk_penalty": 0.0,
-				"route_id": "main_01_02",
-				"slope_ratio": 0.0582085514845643,
-				"to": "node_02",
-				"traversal": "ramp",
-				"waypoints": [
-					[
-						12.0,
-						1.16999995708466,
-						0.0
-					],
-					[
-						18.0,
-						1.52999997138977,
-						1.5
-					],
-					[
-						24.0,
-						1.88999998569489,
-						3.0
-					]
-				],
-				"width": 1.85
-			},
-			{
-				"bidirectional": true,
-				"from": "node_02",
-				"height_delta": -1.43999999761581,
-				"id": "main_02_03",
-				"kind": "safe",
-				"path_cost": 13.4934644699097,
-				"physical_cost": 13.4934644699097,
-				"recoverable": true,
-				"risk": "safe",
-				"risk_penalty": 0.0,
-				"route_id": "main_02_03",
-				"slope_ratio": -0.107331264981121,
-				"to": "node_03",
-				"traversal": "ramp",
-				"waypoints": [
-					[
-						24.0,
-						1.88999998569489,
-						3.0
-					],
-					[
-						30.0,
-						1.16999995708466,
-						0.0
-					],
-					[
-						36.0,
-						0.449999988079071,
-						-3.0
-					]
-				],
-				"width": 1.85
-			},
-			{
-				"bidirectional": true,
-				"from": "node_03",
-				"height_delta": 1.43999999761581,
-				"id": "main_03_04",
-				"kind": "safe",
-				"path_cost": 12.4528551101685,
-				"physical_cost": 12.4528551101685,
-				"recoverable": true,
-				"risk": "safe",
-				"risk_penalty": 0.0,
-				"route_id": "main_03_04",
-				"slope_ratio": 0.116417098150379,
-				"to": "node_04",
-				"traversal": "ramp",
-				"waypoints": [
-					[
-						36.0,
-						0.449999988079071,
-						-3.0
-					],
-					[
-						42.0,
-						1.16999995708466,
-						-1.5
-					],
-					[
-						48.0,
-						1.88999998569489,
-						0.0
-					]
-				],
-				"width": 1.85
-			},
-			{
-				"bidirectional": true,
-				"from": "node_04",
-				"height_delta": 0.0,
-				"id": "main_04_05",
-				"kind": "safe",
-				"path_cost": 12.3693170547485,
-				"physical_cost": 12.3693170547485,
-				"recoverable": true,
-				"risk": "safe",
-				"risk_penalty": 0.0,
-				"route_id": "main_04_05",
-				"slope_ratio": 0.0,
-				"to": "node_05",
-				"traversal": "walkway",
-				"waypoints": [
-					[
-						48.0,
-						1.88999998569489,
-						0.0
-					],
-					[
-						54.0,
-						1.88999998569489,
-						1.5
-					],
-					[
-						60.0,
-						1.88999998569489,
-						3.0
-					]
-				],
-				"width": 1.85
-			},
-			{
-				"bidirectional": true,
-				"from": "node_05",
-				"height_delta": -1.43999999761581,
-				"id": "main_05_06",
-				"kind": "safe",
-				"path_cost": 13.4934644699097,
-				"physical_cost": 13.4934644699097,
-				"recoverable": true,
-				"risk": "safe",
-				"risk_penalty": 0.0,
-				"route_id": "main_05_06",
-				"slope_ratio": -0.107331264981121,
-				"to": "exit_shelter",
-				"traversal": "ramp",
-				"waypoints": [
-					[
-						60.0,
-						1.88999998569489,
-						3.0
-					],
-					[
-						66.0,
-						1.16999995708466,
-						0.0
-					],
-					[
-						72.0,
-						0.449999988079071,
-						-3.0
-					]
-				],
-				"width": 1.85
-			},
-			{
-				"bidirectional": true,
-				"from": "node_02",
-				"height_delta": 0.0,
-				"id": "optional_bypass_02_04",
-				"kind": "safe",
-				"path_cost": 24.1867733001709,
-				"physical_cost": 24.1867733001709,
-				"recoverable": true,
-				"risk": "safe",
-				"risk_penalty": 0.0,
-				"route_id": "optional_bypass_02_04",
-				"slope_ratio": 0.0,
-				"to": "node_04",
-				"traversal": "walkway",
-				"waypoints": [
-					[
-						24.0,
-						1.88999998569489,
-						3.0
-					],
-					[
-						36.0,
-						1.88999998569489,
-						1.5
-					],
-					[
-						48.0,
-						1.88999998569489,
-						0.0
-					]
-				],
-				"width": 1.35
-			},
-			{
-				"bidirectional": true,
-				"from": "entry",
-				"height_delta": 0.0,
-				"id": "risky_direct",
-				"kind": "risky",
-				"path_cost": 100.0,
-				"physical_cost": 72.0,
-				"recoverable": true,
-				"risk": "risky",
-				"risk_penalty": 28.0,
-				"route_id": "risky_direct",
-				"slope_ratio": 0.0,
-				"to": "exit_shelter",
-				"traversal": "walkway",
-				"waypoints": [
-					[
-						0.0,
-						0.449999988079071,
-						-3.0
-					],
-					[
-						36.0,
-						0.449999988079071,
-						-3.0
-					],
-					[
-						72.0,
-						0.449999988079071,
-						-3.0
-					]
-				],
-				"width": 1.15
-			},
-			{
-				"bidirectional": true,
-				"from": "node_05",
-				"height_delta": -1.43999999761581,
-				"id": "return_shortcut",
-				"kind": "shortcut",
-				"path_cost": 64.3164443969727,
-				"physical_cost": 60.3164443969727,
-				"recoverable": true,
-				"risk": "shortcut",
-				"risk_penalty": 4.0,
-				"route_id": "return_shortcut",
-				"slope_ratio": -0.0238808918742655,
-				"to": "entry",
-				"traversal": "ramp",
-				"waypoints": [
-					[
-						60.0,
-						1.88999998569489,
-						3.0
-					],
-					[
-						30.0,
-						1.16999995708466,
-						0.0
-					],
-					[
-						0.0,
-						0.449999988079071,
-						-3.0
-					]
-				],
-				"width": 1.25
-			}
-		],
+	"navigation_grid": {
+		"cell_size": 1.0,
+		"contract_id": "unified_grid_v1",
 		"elevation_indices": [
-			0,
-			1,
-			2
+			0
 		],
 		"entry_anchor": "entry",
-		"entry_node": "entry",
 		"exit_anchor": "exit_shelter",
-		"exit_node": "exit_shelter",
-		"floor_columns": [
+		"height": 12,
+		"level_cells": [],
+		"level_count": 1,
+		"level_height": 0.72,
+		"links": [],
+		"origin": [
+			-3.0,
+			0.449999988079071,
+			-4.0
+		],
+		"risk_cell_list": [
 			{
-				"floors": [
-					{
-						"elevation_index": 0,
-						"node_id": "entry",
-						"y": 0.449999988079071
-					}
+				"cell": [
+					7,
+					4
 				],
-				"xz": [
-					0.0,
-					-3.0
-				]
+				"penalty": 3.0,
+				"recoverable": true
 			},
 			{
-				"floors": [
-					{
-						"elevation_index": 1,
-						"node_id": "node_01",
-						"y": 1.16999995708466
-					}
+				"cell": [
+					8,
+					4
 				],
-				"xz": [
-					12.0,
-					0.0
-				]
+				"penalty": 3.0,
+				"recoverable": true
 			},
 			{
-				"floors": [
-					{
-						"elevation_index": 2,
-						"node_id": "node_02",
-						"y": 1.88999998569489
-					}
+				"cell": [
+					9,
+					4
 				],
-				"xz": [
-					24.0,
-					3.0
-				]
+				"penalty": 3.0,
+				"recoverable": true
 			},
 			{
-				"floors": [
-					{
-						"elevation_index": 0,
-						"node_id": "node_03",
-						"y": 0.449999988079071
-					}
+				"cell": [
+					10,
+					4
 				],
-				"xz": [
-					36.0,
-					-3.0
-				]
+				"penalty": 3.0,
+				"recoverable": true
 			},
 			{
-				"floors": [
-					{
-						"elevation_index": 2,
-						"node_id": "node_04",
-						"y": 1.88999998569489
-					}
+				"cell": [
+					11,
+					4
 				],
-				"xz": [
-					48.0,
-					0.0
-				]
+				"penalty": 3.0,
+				"recoverable": true
 			},
 			{
-				"floors": [
-					{
-						"elevation_index": 2,
-						"node_id": "node_05",
-						"y": 1.88999998569489
-					}
+				"cell": [
+					12,
+					4
 				],
-				"xz": [
-					60.0,
-					3.0
-				]
+				"penalty": 3.0,
+				"recoverable": true
 			},
 			{
-				"floors": [
-					{
-						"elevation_index": 0,
-						"node_id": "exit_shelter",
-						"y": 0.449999988079071
-					}
+				"cell": [
+					13,
+					4
 				],
-				"xz": [
-					72.0,
-					-3.0
-				]
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					14,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					15,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					16,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					17,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					18,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					19,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					20,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					21,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					22,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					23,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					24,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					25,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					26,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					27,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					28,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					29,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					30,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					31,
+					4
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					32,
+					4
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					33,
+					4
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					34,
+					4
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					35,
+					4
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					36,
+					4
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					37,
+					4
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					38,
+					4
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					39,
+					4
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					40,
+					4
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					41,
+					4
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					42,
+					4
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					43,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					44,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					45,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					46,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					47,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					48,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					49,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					50,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					51,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					52,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					53,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					54,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					55,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					56,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					57,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					58,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					59,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					60,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					61,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					62,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					63,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					64,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					65,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					66,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					67,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					68,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					69,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					70,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					71,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					72,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					73,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					74,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					75,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					76,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					77,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					78,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					79,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					80,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					81,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					82,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					83,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					84,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					85,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					86,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					87,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					88,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					89,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					90,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					91,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					92,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					93,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					94,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					95,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					96,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					97,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					98,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					99,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					100,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					101,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					102,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					103,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					104,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					105,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					106,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					107,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					108,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					109,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					110,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					111,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					112,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					113,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					114,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					115,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					116,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					117,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					118,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					119,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					120,
+					4
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					7,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					31,
+					5
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					32,
+					5
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					33,
+					5
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					34,
+					5
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					35,
+					5
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					36,
+					5
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					37,
+					5
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					38,
+					5
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					39,
+					5
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					40,
+					5
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					41,
+					5
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					42,
+					5
+				],
+				"penalty": 6.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					7,
+					6
+				],
+				"penalty": 3.0,
+				"recoverable": true
 			}
 		],
-		"golden_path_nodes": [
-			"entry",
-			"node_01",
-			"node_02",
-			"node_04",
-			"node_05",
-			"exit_shelter"
-		],
-		"max_snap_distance": 9.0,
-		"nodes": [
-			{
-				"content_count": 2,
-				"elevation_index": 0,
-				"floor_size": [
-					6.0,
-					0.159999996423721,
-					4.19999980926514
+		"route_cells": {
+			"main_00_01": {
+				"cells": [
+					[
+						7,
+						5
+					],
+					[
+						7,
+						6
+					],
+					[
+						7,
+						7
+					],
+					[
+						8,
+						5
+					],
+					[
+						8,
+						6
+					],
+					[
+						8,
+						7
+					],
+					[
+						9,
+						5
+					],
+					[
+						9,
+						6
+					],
+					[
+						9,
+						7
+					],
+					[
+						10,
+						5
+					],
+					[
+						10,
+						6
+					],
+					[
+						10,
+						7
+					],
+					[
+						11,
+						5
+					],
+					[
+						11,
+						6
+					],
+					[
+						11,
+						7
+					],
+					[
+						12,
+						5
+					],
+					[
+						12,
+						6
+					],
+					[
+						12,
+						7
+					],
+					[
+						13,
+						5
+					],
+					[
+						13,
+						6
+					],
+					[
+						13,
+						7
+					],
+					[
+						14,
+						5
+					],
+					[
+						14,
+						6
+					],
+					[
+						14,
+						7
+					],
+					[
+						15,
+						5
+					],
+					[
+						15,
+						6
+					],
+					[
+						15,
+						7
+					],
+					[
+						16,
+						6
+					],
+					[
+						17,
+						6
+					],
+					[
+						16,
+						5
+					],
+					[
+						17,
+						5
+					],
+					[
+						15,
+						3
+					],
+					[
+						16,
+						3
+					],
+					[
+						17,
+						3
+					],
+					[
+						15,
+						4
+					],
+					[
+						16,
+						4
+					],
+					[
+						17,
+						4
+					],
+					[
+						16,
+						7
+					],
+					[
+						17,
+						7
+					]
 				],
-				"id": "entry",
-				"position": [
-					0.0,
-					0.449999988079071,
-					-3.0
-				],
-				"radius": 3.0,
-				"role": "boundary",
-				"supports_click_to_move": true,
-				"surface_id": "node:entry",
-				"surface_y": 0.45
+				"kind": "safe"
 			},
-			{
-				"content_count": 3,
-				"elevation_index": 1,
-				"floor_size": [
-					5.40000009536743,
-					0.140000000596046,
-					4.80000019073486
+			"main_01_02": {
+				"cells": [
+					[
+						18,
+						3
+					],
+					[
+						18,
+						4
+					],
+					[
+						18,
+						5
+					],
+					[
+						19,
+						3
+					],
+					[
+						19,
+						4
+					],
+					[
+						19,
+						5
+					],
+					[
+						20,
+						3
+					],
+					[
+						20,
+						4
+					],
+					[
+						20,
+						5
+					],
+					[
+						21,
+						3
+					],
+					[
+						21,
+						4
+					],
+					[
+						21,
+						5
+					],
+					[
+						22,
+						3
+					],
+					[
+						22,
+						4
+					],
+					[
+						22,
+						5
+					],
+					[
+						23,
+						3
+					],
+					[
+						23,
+						4
+					],
+					[
+						23,
+						5
+					],
+					[
+						24,
+						3
+					],
+					[
+						24,
+						4
+					],
+					[
+						24,
+						5
+					],
+					[
+						25,
+						3
+					],
+					[
+						25,
+						4
+					],
+					[
+						25,
+						5
+					],
+					[
+						26,
+						3
+					],
+					[
+						26,
+						4
+					],
+					[
+						26,
+						5
+					],
+					[
+						27,
+						3
+					],
+					[
+						27,
+						4
+					],
+					[
+						27,
+						5
+					],
+					[
+						28,
+						3
+					],
+					[
+						28,
+						4
+					],
+					[
+						28,
+						5
+					],
+					[
+						29,
+						4
+					],
+					[
+						30,
+						4
+					],
+					[
+						29,
+						3
+					],
+					[
+						30,
+						3
+					],
+					[
+						29,
+						5
+					],
+					[
+						30,
+						5
+					],
+					[
+						28,
+						6
+					],
+					[
+						29,
+						6
+					],
+					[
+						30,
+						6
+					]
 				],
-				"id": "node_01",
-				"position": [
-					12.0,
-					1.16999995708466,
-					0.0
-				],
-				"radius": 2.70000004768372,
-				"role": "route_pressure",
-				"supports_click_to_move": true,
-				"surface_id": "node:node_01",
-				"surface_y": 1.17
+				"kind": "safe"
 			},
-			{
-				"content_count": 2,
-				"elevation_index": 2,
-				"floor_size": [
-					4.80000019073486,
-					0.140000000596046,
-					4.0
+			"main_03_04": {
+				"cells": [
+					[
+						45,
+						4
+					],
+					[
+						45,
+						5
+					],
+					[
+						46,
+						4
+					],
+					[
+						46,
+						5
+					],
+					[
+						47,
+						4
+					],
+					[
+						47,
+						5
+					],
+					[
+						48,
+						4
+					],
+					[
+						48,
+						5
+					],
+					[
+						49,
+						4
+					],
+					[
+						49,
+						5
+					],
+					[
+						50,
+						4
+					],
+					[
+						50,
+						5
+					],
+					[
+						51,
+						4
+					],
+					[
+						51,
+						5
+					],
+					[
+						52,
+						4
+					],
+					[
+						52,
+						5
+					],
+					[
+						53,
+						4
+					],
+					[
+						53,
+						5
+					],
+					[
+						54,
+						4
+					],
+					[
+						54,
+						5
+					],
+					[
+						55,
+						4
+					],
+					[
+						55,
+						5
+					]
 				],
-				"id": "node_02",
-				"position": [
-					24.0,
-					1.88999998569489,
-					3.0
-				],
-				"radius": 2.40000009536743,
-				"role": "guidance",
-				"supports_click_to_move": true,
-				"surface_id": "node:node_02",
-				"surface_y": 1.89
+				"kind": "safe"
 			},
-			{
-				"content_count": 2,
-				"elevation_index": 0,
-				"floor_size": [
-					5.59999990463257,
-					0.140000000596046,
-					4.59999990463257
+			"main_04_05": {
+				"cells": [
+					[
+						58,
+						5
+					],
+					[
+						59,
+						5
+					],
+					[
+						60,
+						5
+					],
+					[
+						61,
+						5
+					],
+					[
+						62,
+						5
+					],
+					[
+						63,
+						5
+					],
+					[
+						64,
+						5
+					],
+					[
+						65,
+						5
+					],
+					[
+						66,
+						5
+					],
+					[
+						67,
+						5
+					],
+					[
+						68,
+						5
+					],
+					[
+						68,
+						6
+					]
 				],
-				"id": "node_03",
-				"position": [
-					36.0,
-					0.449999988079071,
-					-3.0
-				],
-				"radius": 2.79999995231628,
-				"role": "mixed",
-				"supports_click_to_move": true,
-				"surface_id": "node:node_03",
-				"surface_y": 0.45
+				"kind": "safe"
 			},
-			{
-				"content_count": 1,
-				"elevation_index": 2,
-				"floor_size": [
-					6.59999990463257,
-					0.159999996423721,
-					5.19999980926514
+			"main_05_06": {
+				"cells": [
+					[
+						72,
+						6
+					],
+					[
+						73,
+						6
+					],
+					[
+						74,
+						6
+					],
+					[
+						75,
+						6
+					],
+					[
+						76,
+						6
+					],
+					[
+						77,
+						6
+					],
+					[
+						78,
+						6
+					],
+					[
+						79,
+						6
+					],
+					[
+						80,
+						6
+					],
+					[
+						81,
+						6
+					],
+					[
+						81,
+						5
+					],
+					[
+						81,
+						4
+					]
 				],
-				"id": "node_04",
-				"position": [
-					48.0,
-					1.88999998569489,
-					0.0
-				],
-				"radius": 3.29999995231628,
-				"role": "setpiece",
-				"supports_click_to_move": true,
-				"surface_id": "node:node_04",
-				"surface_y": 1.89
+				"kind": "safe"
 			},
-			{
-				"content_count": 3,
-				"elevation_index": 2,
-				"floor_size": [
-					5.40000009536743,
-					0.140000000596046,
-					4.80000019073486
+			"main_06_07": {
+				"cells": [
+					[
+						84,
+						3
+					],
+					[
+						84,
+						4
+					],
+					[
+						84,
+						5
+					],
+					[
+						85,
+						3
+					],
+					[
+						85,
+						4
+					],
+					[
+						85,
+						5
+					],
+					[
+						86,
+						3
+					],
+					[
+						86,
+						4
+					],
+					[
+						86,
+						5
+					],
+					[
+						87,
+						3
+					],
+					[
+						87,
+						4
+					],
+					[
+						87,
+						5
+					],
+					[
+						88,
+						3
+					],
+					[
+						88,
+						4
+					],
+					[
+						88,
+						5
+					],
+					[
+						89,
+						3
+					],
+					[
+						89,
+						4
+					],
+					[
+						89,
+						5
+					],
+					[
+						90,
+						3
+					],
+					[
+						90,
+						4
+					],
+					[
+						90,
+						5
+					],
+					[
+						91,
+						3
+					],
+					[
+						91,
+						4
+					],
+					[
+						91,
+						5
+					],
+					[
+						92,
+						3
+					],
+					[
+						92,
+						4
+					],
+					[
+						92,
+						5
+					],
+					[
+						93,
+						3
+					],
+					[
+						93,
+						4
+					],
+					[
+						93,
+						5
+					],
+					[
+						94,
+						4
+					],
+					[
+						95,
+						4
+					],
+					[
+						94,
+						3
+					],
+					[
+						95,
+						3
+					],
+					[
+						94,
+						5
+					],
+					[
+						95,
+						5
+					],
+					[
+						93,
+						6
+					],
+					[
+						94,
+						6
+					],
+					[
+						95,
+						6
+					]
 				],
-				"id": "node_05",
-				"position": [
-					60.0,
-					1.88999998569489,
-					3.0
-				],
-				"radius": 2.70000004768372,
-				"role": "route_pressure",
-				"supports_click_to_move": true,
-				"surface_id": "node:node_05",
-				"surface_y": 1.89
+				"kind": "safe"
 			},
-			{
-				"content_count": 2,
-				"elevation_index": 0,
-				"floor_size": [
-					7.19999980926514,
-					0.180000007152557,
-					5.40000009536743
+			"main_07_08": {
+				"cells": [
+					[
+						96,
+						4
+					],
+					[
+						96,
+						5
+					],
+					[
+						96,
+						6
+					],
+					[
+						97,
+						4
+					],
+					[
+						97,
+						5
+					],
+					[
+						97,
+						6
+					],
+					[
+						98,
+						4
+					],
+					[
+						98,
+						5
+					],
+					[
+						98,
+						6
+					],
+					[
+						99,
+						4
+					],
+					[
+						99,
+						5
+					],
+					[
+						99,
+						6
+					],
+					[
+						100,
+						4
+					],
+					[
+						100,
+						5
+					],
+					[
+						100,
+						6
+					],
+					[
+						101,
+						4
+					],
+					[
+						101,
+						5
+					],
+					[
+						101,
+						6
+					],
+					[
+						102,
+						4
+					],
+					[
+						102,
+						5
+					],
+					[
+						102,
+						6
+					],
+					[
+						103,
+						4
+					],
+					[
+						103,
+						5
+					],
+					[
+						103,
+						6
+					],
+					[
+						104,
+						4
+					],
+					[
+						104,
+						5
+					],
+					[
+						104,
+						6
+					],
+					[
+						105,
+						4
+					],
+					[
+						105,
+						5
+					],
+					[
+						105,
+						6
+					],
+					[
+						106,
+						4
+					],
+					[
+						106,
+						5
+					],
+					[
+						106,
+						6
+					],
+					[
+						107,
+						4
+					],
+					[
+						108,
+						4
+					],
+					[
+						107,
+						5
+					],
+					[
+						108,
+						5
+					],
+					[
+						107,
+						6
+					],
+					[
+						108,
+						6
+					]
 				],
-				"id": "exit_shelter",
-				"position": [
-					72.0,
-					0.449999988079071,
-					-3.0
+				"kind": "safe"
+			},
+			"main_08_09": {
+				"cells": [
+					[
+						109,
+						4
+					],
+					[
+						109,
+						5
+					],
+					[
+						109,
+						6
+					],
+					[
+						110,
+						4
+					],
+					[
+						110,
+						5
+					],
+					[
+						110,
+						6
+					],
+					[
+						111,
+						4
+					],
+					[
+						111,
+						5
+					],
+					[
+						111,
+						6
+					],
+					[
+						112,
+						4
+					],
+					[
+						112,
+						5
+					],
+					[
+						112,
+						6
+					],
+					[
+						113,
+						4
+					],
+					[
+						113,
+						5
+					],
+					[
+						113,
+						6
+					],
+					[
+						114,
+						4
+					],
+					[
+						114,
+						5
+					],
+					[
+						114,
+						6
+					],
+					[
+						115,
+						4
+					],
+					[
+						115,
+						5
+					],
+					[
+						115,
+						6
+					],
+					[
+						116,
+						4
+					],
+					[
+						116,
+						5
+					],
+					[
+						116,
+						6
+					],
+					[
+						117,
+						4
+					],
+					[
+						117,
+						5
+					],
+					[
+						117,
+						6
+					],
+					[
+						118,
+						4
+					],
+					[
+						118,
+						5
+					],
+					[
+						118,
+						6
+					],
+					[
+						119,
+						4
+					],
+					[
+						119,
+						5
+					],
+					[
+						119,
+						6
+					],
+					[
+						120,
+						5
+					],
+					[
+						121,
+						5
+					],
+					[
+						119,
+						3
+					],
+					[
+						120,
+						3
+					],
+					[
+						120,
+						4
+					],
+					[
+						121,
+						3
+					],
+					[
+						121,
+						4
+					],
+					[
+						120,
+						6
+					],
+					[
+						121,
+						6
+					]
 				],
-				"radius": 3.59999990463257,
-				"role": "shelter_arrival",
-				"supports_click_to_move": true,
-				"surface_id": "node:exit_shelter",
-				"surface_y": 0.45
+				"kind": "safe"
+			},
+			"main_09_10": {
+				"cells": [
+					[
+						122,
+						3
+					],
+					[
+						122,
+						4
+					],
+					[
+						123,
+						3
+					],
+					[
+						123,
+						4
+					],
+					[
+						124,
+						3
+					],
+					[
+						124,
+						4
+					],
+					[
+						125,
+						3
+					],
+					[
+						125,
+						4
+					],
+					[
+						126,
+						3
+					],
+					[
+						126,
+						4
+					],
+					[
+						127,
+						3
+					],
+					[
+						127,
+						4
+					],
+					[
+						128,
+						3
+					],
+					[
+						128,
+						4
+					],
+					[
+						129,
+						3
+					],
+					[
+						129,
+						4
+					],
+					[
+						130,
+						3
+					],
+					[
+						130,
+						4
+					],
+					[
+						131,
+						3
+					],
+					[
+						131,
+						4
+					],
+					[
+						132,
+						3
+					],
+					[
+						132,
+						4
+					],
+					[
+						133,
+						3
+					],
+					[
+						133,
+						4
+					]
+				],
+				"kind": "safe"
+			},
+			"optional_bypass_02_04": {
+				"cells": [
+					[
+						31,
+						4
+					],
+					[
+						31,
+						5
+					],
+					[
+						31,
+						6
+					],
+					[
+						32,
+						4
+					],
+					[
+						32,
+						5
+					],
+					[
+						32,
+						6
+					],
+					[
+						33,
+						4
+					],
+					[
+						33,
+						5
+					],
+					[
+						33,
+						6
+					],
+					[
+						34,
+						4
+					],
+					[
+						34,
+						5
+					],
+					[
+						34,
+						6
+					],
+					[
+						35,
+						4
+					],
+					[
+						35,
+						5
+					],
+					[
+						35,
+						6
+					],
+					[
+						36,
+						4
+					],
+					[
+						36,
+						5
+					],
+					[
+						36,
+						6
+					],
+					[
+						37,
+						4
+					],
+					[
+						37,
+						5
+					],
+					[
+						37,
+						6
+					],
+					[
+						38,
+						4
+					],
+					[
+						38,
+						5
+					],
+					[
+						38,
+						6
+					],
+					[
+						39,
+						4
+					],
+					[
+						39,
+						5
+					],
+					[
+						39,
+						6
+					],
+					[
+						40,
+						4
+					],
+					[
+						40,
+						5
+					],
+					[
+						40,
+						6
+					],
+					[
+						41,
+						4
+					],
+					[
+						41,
+						5
+					],
+					[
+						41,
+						6
+					],
+					[
+						42,
+						4
+					],
+					[
+						42,
+						5
+					],
+					[
+						42,
+						6
+					],
+					[
+						43,
+						4
+					],
+					[
+						43,
+						5
+					],
+					[
+						43,
+						6
+					],
+					[
+						44,
+						4
+					],
+					[
+						44,
+						5
+					],
+					[
+						44,
+						6
+					],
+					[
+						45,
+						4
+					],
+					[
+						45,
+						5
+					],
+					[
+						45,
+						6
+					],
+					[
+						46,
+						4
+					],
+					[
+						46,
+						5
+					],
+					[
+						46,
+						6
+					],
+					[
+						47,
+						4
+					],
+					[
+						47,
+						5
+					],
+					[
+						47,
+						6
+					],
+					[
+						48,
+						4
+					],
+					[
+						48,
+						5
+					],
+					[
+						48,
+						6
+					],
+					[
+						49,
+						4
+					],
+					[
+						49,
+						5
+					],
+					[
+						49,
+						6
+					],
+					[
+						50,
+						4
+					],
+					[
+						50,
+						5
+					],
+					[
+						50,
+						6
+					],
+					[
+						51,
+						4
+					],
+					[
+						51,
+						5
+					],
+					[
+						51,
+						6
+					],
+					[
+						52,
+						4
+					],
+					[
+						52,
+						5
+					],
+					[
+						52,
+						6
+					],
+					[
+						53,
+						4
+					],
+					[
+						53,
+						5
+					],
+					[
+						53,
+						6
+					],
+					[
+						54,
+						4
+					],
+					[
+						54,
+						5
+					],
+					[
+						54,
+						6
+					],
+					[
+						55,
+						4
+					],
+					[
+						56,
+						4
+					],
+					[
+						55,
+						5
+					],
+					[
+						56,
+						5
+					],
+					[
+						55,
+						6
+					],
+					[
+						56,
+						6
+					]
+				],
+				"kind": "safe"
+			},
+			"return_shortcut": {
+				"cells": [
+					[
+						120,
+						4
+					],
+					[
+						119,
+						4
+					],
+					[
+						118,
+						4
+					],
+					[
+						117,
+						4
+					],
+					[
+						116,
+						4
+					],
+					[
+						115,
+						4
+					],
+					[
+						114,
+						4
+					],
+					[
+						113,
+						4
+					],
+					[
+						112,
+						4
+					],
+					[
+						111,
+						4
+					],
+					[
+						110,
+						4
+					],
+					[
+						109,
+						4
+					],
+					[
+						108,
+						4
+					],
+					[
+						107,
+						4
+					],
+					[
+						106,
+						4
+					],
+					[
+						105,
+						4
+					],
+					[
+						104,
+						4
+					],
+					[
+						103,
+						4
+					],
+					[
+						102,
+						4
+					],
+					[
+						101,
+						4
+					],
+					[
+						100,
+						4
+					],
+					[
+						99,
+						4
+					],
+					[
+						98,
+						4
+					],
+					[
+						97,
+						4
+					],
+					[
+						96,
+						4
+					],
+					[
+						95,
+						4
+					],
+					[
+						94,
+						4
+					],
+					[
+						93,
+						4
+					],
+					[
+						92,
+						4
+					],
+					[
+						91,
+						4
+					],
+					[
+						90,
+						4
+					],
+					[
+						89,
+						4
+					],
+					[
+						88,
+						4
+					],
+					[
+						87,
+						4
+					],
+					[
+						86,
+						4
+					],
+					[
+						85,
+						4
+					],
+					[
+						84,
+						4
+					],
+					[
+						83,
+						4
+					],
+					[
+						82,
+						4
+					],
+					[
+						81,
+						4
+					],
+					[
+						80,
+						4
+					],
+					[
+						79,
+						4
+					],
+					[
+						78,
+						4
+					],
+					[
+						77,
+						4
+					],
+					[
+						76,
+						4
+					],
+					[
+						75,
+						4
+					],
+					[
+						74,
+						4
+					],
+					[
+						73,
+						4
+					],
+					[
+						72,
+						4
+					],
+					[
+						71,
+						4
+					],
+					[
+						70,
+						4
+					],
+					[
+						69,
+						4
+					],
+					[
+						68,
+						4
+					],
+					[
+						67,
+						4
+					],
+					[
+						66,
+						4
+					],
+					[
+						65,
+						4
+					],
+					[
+						64,
+						4
+					],
+					[
+						63,
+						4
+					],
+					[
+						62,
+						4
+					],
+					[
+						61,
+						4
+					],
+					[
+						60,
+						4
+					],
+					[
+						59,
+						4
+					],
+					[
+						58,
+						4
+					],
+					[
+						57,
+						4
+					],
+					[
+						56,
+						4
+					],
+					[
+						55,
+						4
+					],
+					[
+						54,
+						4
+					],
+					[
+						53,
+						4
+					],
+					[
+						52,
+						4
+					],
+					[
+						51,
+						4
+					],
+					[
+						50,
+						4
+					],
+					[
+						49,
+						4
+					],
+					[
+						48,
+						4
+					],
+					[
+						47,
+						4
+					],
+					[
+						46,
+						4
+					],
+					[
+						45,
+						4
+					],
+					[
+						44,
+						4
+					],
+					[
+						43,
+						4
+					],
+					[
+						42,
+						4
+					],
+					[
+						41,
+						4
+					],
+					[
+						40,
+						4
+					],
+					[
+						39,
+						4
+					],
+					[
+						38,
+						4
+					],
+					[
+						37,
+						4
+					],
+					[
+						36,
+						4
+					],
+					[
+						35,
+						4
+					],
+					[
+						34,
+						4
+					],
+					[
+						33,
+						4
+					],
+					[
+						32,
+						4
+					],
+					[
+						31,
+						4
+					],
+					[
+						30,
+						4
+					],
+					[
+						29,
+						4
+					],
+					[
+						28,
+						4
+					],
+					[
+						27,
+						4
+					],
+					[
+						26,
+						4
+					],
+					[
+						25,
+						4
+					],
+					[
+						24,
+						4
+					],
+					[
+						23,
+						4
+					],
+					[
+						22,
+						4
+					],
+					[
+						21,
+						4
+					],
+					[
+						20,
+						4
+					],
+					[
+						19,
+						4
+					],
+					[
+						18,
+						4
+					],
+					[
+						17,
+						4
+					],
+					[
+						16,
+						4
+					],
+					[
+						15,
+						4
+					],
+					[
+						14,
+						4
+					],
+					[
+						13,
+						4
+					],
+					[
+						12,
+						4
+					],
+					[
+						11,
+						4
+					],
+					[
+						10,
+						4
+					],
+					[
+						9,
+						4
+					],
+					[
+						8,
+						4
+					],
+					[
+						7,
+						4
+					],
+					[
+						7,
+						5
+					],
+					[
+						7,
+						6
+					]
+				],
+				"kind": "shortcut"
+			},
+			"risky_optional_02_03": {
+				"cells": [
+					[
+						31,
+						4
+					],
+					[
+						31,
+						5
+					],
+					[
+						32,
+						4
+					],
+					[
+						32,
+						5
+					],
+					[
+						33,
+						4
+					],
+					[
+						33,
+						5
+					],
+					[
+						34,
+						4
+					],
+					[
+						34,
+						5
+					],
+					[
+						35,
+						4
+					],
+					[
+						35,
+						5
+					],
+					[
+						36,
+						4
+					],
+					[
+						36,
+						5
+					],
+					[
+						37,
+						4
+					],
+					[
+						37,
+						5
+					],
+					[
+						38,
+						4
+					],
+					[
+						38,
+						5
+					],
+					[
+						39,
+						4
+					],
+					[
+						39,
+						5
+					],
+					[
+						40,
+						4
+					],
+					[
+						40,
+						5
+					],
+					[
+						41,
+						4
+					],
+					[
+						41,
+						5
+					],
+					[
+						42,
+						4
+					],
+					[
+						42,
+						5
+					]
+				],
+				"kind": "risky"
 			}
-		],
-		"route_modes": [
-			"safe",
-			"direct"
-		],
-		"source": {
-			"complexity_tier": "standard",
-			"generator": "archetype_based_stretch_v1",
-			"spec_id": "generated_chain_nested_poc_shelter_2_to_3"
 		},
 		"space_id": "generated_chain_nested_poc_shelter_2_to_3",
-		"supports_multiple_elevations": true
+		"supports_multiple_elevations": false,
+		"walkable_cells": [
+			[
+				15,
+				3
+			],
+			[
+				16,
+				3
+			],
+			[
+				17,
+				3
+			],
+			[
+				18,
+				3
+			],
+			[
+				19,
+				3
+			],
+			[
+				20,
+				3
+			],
+			[
+				21,
+				3
+			],
+			[
+				22,
+				3
+			],
+			[
+				23,
+				3
+			],
+			[
+				24,
+				3
+			],
+			[
+				25,
+				3
+			],
+			[
+				26,
+				3
+			],
+			[
+				27,
+				3
+			],
+			[
+				28,
+				3
+			],
+			[
+				29,
+				3
+			],
+			[
+				30,
+				3
+			],
+			[
+				84,
+				3
+			],
+			[
+				85,
+				3
+			],
+			[
+				86,
+				3
+			],
+			[
+				87,
+				3
+			],
+			[
+				88,
+				3
+			],
+			[
+				89,
+				3
+			],
+			[
+				90,
+				3
+			],
+			[
+				91,
+				3
+			],
+			[
+				92,
+				3
+			],
+			[
+				93,
+				3
+			],
+			[
+				94,
+				3
+			],
+			[
+				95,
+				3
+			],
+			[
+				119,
+				3
+			],
+			[
+				120,
+				3
+			],
+			[
+				121,
+				3
+			],
+			[
+				122,
+				3
+			],
+			[
+				123,
+				3
+			],
+			[
+				124,
+				3
+			],
+			[
+				125,
+				3
+			],
+			[
+				126,
+				3
+			],
+			[
+				127,
+				3
+			],
+			[
+				128,
+				3
+			],
+			[
+				129,
+				3
+			],
+			[
+				130,
+				3
+			],
+			[
+				131,
+				3
+			],
+			[
+				132,
+				3
+			],
+			[
+				133,
+				3
+			],
+			[
+				3,
+				4
+			],
+			[
+				4,
+				4
+			],
+			[
+				5,
+				4
+			],
+			[
+				6,
+				4
+			],
+			[
+				7,
+				4
+			],
+			[
+				8,
+				4
+			],
+			[
+				9,
+				4
+			],
+			[
+				10,
+				4
+			],
+			[
+				11,
+				4
+			],
+			[
+				12,
+				4
+			],
+			[
+				13,
+				4
+			],
+			[
+				14,
+				4
+			],
+			[
+				15,
+				4
+			],
+			[
+				16,
+				4
+			],
+			[
+				17,
+				4
+			],
+			[
+				18,
+				4
+			],
+			[
+				19,
+				4
+			],
+			[
+				20,
+				4
+			],
+			[
+				21,
+				4
+			],
+			[
+				22,
+				4
+			],
+			[
+				23,
+				4
+			],
+			[
+				24,
+				4
+			],
+			[
+				25,
+				4
+			],
+			[
+				26,
+				4
+			],
+			[
+				27,
+				4
+			],
+			[
+				28,
+				4
+			],
+			[
+				29,
+				4
+			],
+			[
+				30,
+				4
+			],
+			[
+				31,
+				4
+			],
+			[
+				32,
+				4
+			],
+			[
+				33,
+				4
+			],
+			[
+				34,
+				4
+			],
+			[
+				35,
+				4
+			],
+			[
+				36,
+				4
+			],
+			[
+				37,
+				4
+			],
+			[
+				38,
+				4
+			],
+			[
+				39,
+				4
+			],
+			[
+				40,
+				4
+			],
+			[
+				41,
+				4
+			],
+			[
+				42,
+				4
+			],
+			[
+				43,
+				4
+			],
+			[
+				44,
+				4
+			],
+			[
+				45,
+				4
+			],
+			[
+				46,
+				4
+			],
+			[
+				47,
+				4
+			],
+			[
+				48,
+				4
+			],
+			[
+				49,
+				4
+			],
+			[
+				50,
+				4
+			],
+			[
+				51,
+				4
+			],
+			[
+				52,
+				4
+			],
+			[
+				53,
+				4
+			],
+			[
+				54,
+				4
+			],
+			[
+				55,
+				4
+			],
+			[
+				56,
+				4
+			],
+			[
+				57,
+				4
+			],
+			[
+				58,
+				4
+			],
+			[
+				59,
+				4
+			],
+			[
+				60,
+				4
+			],
+			[
+				61,
+				4
+			],
+			[
+				62,
+				4
+			],
+			[
+				63,
+				4
+			],
+			[
+				64,
+				4
+			],
+			[
+				65,
+				4
+			],
+			[
+				66,
+				4
+			],
+			[
+				67,
+				4
+			],
+			[
+				68,
+				4
+			],
+			[
+				69,
+				4
+			],
+			[
+				70,
+				4
+			],
+			[
+				71,
+				4
+			],
+			[
+				72,
+				4
+			],
+			[
+				73,
+				4
+			],
+			[
+				74,
+				4
+			],
+			[
+				75,
+				4
+			],
+			[
+				76,
+				4
+			],
+			[
+				77,
+				4
+			],
+			[
+				78,
+				4
+			],
+			[
+				79,
+				4
+			],
+			[
+				80,
+				4
+			],
+			[
+				81,
+				4
+			],
+			[
+				82,
+				4
+			],
+			[
+				83,
+				4
+			],
+			[
+				84,
+				4
+			],
+			[
+				85,
+				4
+			],
+			[
+				86,
+				4
+			],
+			[
+				87,
+				4
+			],
+			[
+				88,
+				4
+			],
+			[
+				89,
+				4
+			],
+			[
+				90,
+				4
+			],
+			[
+				91,
+				4
+			],
+			[
+				92,
+				4
+			],
+			[
+				93,
+				4
+			],
+			[
+				94,
+				4
+			],
+			[
+				95,
+				4
+			],
+			[
+				96,
+				4
+			],
+			[
+				97,
+				4
+			],
+			[
+				98,
+				4
+			],
+			[
+				99,
+				4
+			],
+			[
+				100,
+				4
+			],
+			[
+				101,
+				4
+			],
+			[
+				102,
+				4
+			],
+			[
+				103,
+				4
+			],
+			[
+				104,
+				4
+			],
+			[
+				105,
+				4
+			],
+			[
+				106,
+				4
+			],
+			[
+				107,
+				4
+			],
+			[
+				108,
+				4
+			],
+			[
+				109,
+				4
+			],
+			[
+				110,
+				4
+			],
+			[
+				111,
+				4
+			],
+			[
+				112,
+				4
+			],
+			[
+				113,
+				4
+			],
+			[
+				114,
+				4
+			],
+			[
+				115,
+				4
+			],
+			[
+				116,
+				4
+			],
+			[
+				117,
+				4
+			],
+			[
+				118,
+				4
+			],
+			[
+				119,
+				4
+			],
+			[
+				120,
+				4
+			],
+			[
+				121,
+				4
+			],
+			[
+				122,
+				4
+			],
+			[
+				123,
+				4
+			],
+			[
+				124,
+				4
+			],
+			[
+				125,
+				4
+			],
+			[
+				126,
+				4
+			],
+			[
+				127,
+				4
+			],
+			[
+				128,
+				4
+			],
+			[
+				129,
+				4
+			],
+			[
+				130,
+				4
+			],
+			[
+				131,
+				4
+			],
+			[
+				132,
+				4
+			],
+			[
+				133,
+				4
+			],
+			[
+				134,
+				4
+			],
+			[
+				3,
+				5
+			],
+			[
+				4,
+				5
+			],
+			[
+				5,
+				5
+			],
+			[
+				6,
+				5
+			],
+			[
+				7,
+				5
+			],
+			[
+				8,
+				5
+			],
+			[
+				9,
+				5
+			],
+			[
+				10,
+				5
+			],
+			[
+				11,
+				5
+			],
+			[
+				12,
+				5
+			],
+			[
+				13,
+				5
+			],
+			[
+				14,
+				5
+			],
+			[
+				15,
+				5
+			],
+			[
+				16,
+				5
+			],
+			[
+				17,
+				5
+			],
+			[
+				18,
+				5
+			],
+			[
+				19,
+				5
+			],
+			[
+				20,
+				5
+			],
+			[
+				21,
+				5
+			],
+			[
+				22,
+				5
+			],
+			[
+				23,
+				5
+			],
+			[
+				24,
+				5
+			],
+			[
+				25,
+				5
+			],
+			[
+				26,
+				5
+			],
+			[
+				27,
+				5
+			],
+			[
+				28,
+				5
+			],
+			[
+				29,
+				5
+			],
+			[
+				30,
+				5
+			],
+			[
+				31,
+				5
+			],
+			[
+				32,
+				5
+			],
+			[
+				33,
+				5
+			],
+			[
+				34,
+				5
+			],
+			[
+				35,
+				5
+			],
+			[
+				36,
+				5
+			],
+			[
+				37,
+				5
+			],
+			[
+				38,
+				5
+			],
+			[
+				39,
+				5
+			],
+			[
+				40,
+				5
+			],
+			[
+				41,
+				5
+			],
+			[
+				42,
+				5
+			],
+			[
+				43,
+				5
+			],
+			[
+				44,
+				5
+			],
+			[
+				45,
+				5
+			],
+			[
+				46,
+				5
+			],
+			[
+				47,
+				5
+			],
+			[
+				48,
+				5
+			],
+			[
+				49,
+				5
+			],
+			[
+				50,
+				5
+			],
+			[
+				51,
+				5
+			],
+			[
+				52,
+				5
+			],
+			[
+				53,
+				5
+			],
+			[
+				54,
+				5
+			],
+			[
+				55,
+				5
+			],
+			[
+				56,
+				5
+			],
+			[
+				57,
+				5
+			],
+			[
+				58,
+				5
+			],
+			[
+				59,
+				5
+			],
+			[
+				60,
+				5
+			],
+			[
+				61,
+				5
+			],
+			[
+				62,
+				5
+			],
+			[
+				63,
+				5
+			],
+			[
+				64,
+				5
+			],
+			[
+				65,
+				5
+			],
+			[
+				66,
+				5
+			],
+			[
+				67,
+				5
+			],
+			[
+				68,
+				5
+			],
+			[
+				69,
+				5
+			],
+			[
+				70,
+				5
+			],
+			[
+				71,
+				5
+			],
+			[
+				72,
+				5
+			],
+			[
+				81,
+				5
+			],
+			[
+				82,
+				5
+			],
+			[
+				83,
+				5
+			],
+			[
+				84,
+				5
+			],
+			[
+				85,
+				5
+			],
+			[
+				86,
+				5
+			],
+			[
+				87,
+				5
+			],
+			[
+				88,
+				5
+			],
+			[
+				89,
+				5
+			],
+			[
+				90,
+				5
+			],
+			[
+				91,
+				5
+			],
+			[
+				92,
+				5
+			],
+			[
+				93,
+				5
+			],
+			[
+				94,
+				5
+			],
+			[
+				95,
+				5
+			],
+			[
+				96,
+				5
+			],
+			[
+				97,
+				5
+			],
+			[
+				98,
+				5
+			],
+			[
+				99,
+				5
+			],
+			[
+				100,
+				5
+			],
+			[
+				101,
+				5
+			],
+			[
+				102,
+				5
+			],
+			[
+				103,
+				5
+			],
+			[
+				104,
+				5
+			],
+			[
+				105,
+				5
+			],
+			[
+				106,
+				5
+			],
+			[
+				107,
+				5
+			],
+			[
+				108,
+				5
+			],
+			[
+				109,
+				5
+			],
+			[
+				110,
+				5
+			],
+			[
+				111,
+				5
+			],
+			[
+				112,
+				5
+			],
+			[
+				113,
+				5
+			],
+			[
+				114,
+				5
+			],
+			[
+				115,
+				5
+			],
+			[
+				116,
+				5
+			],
+			[
+				117,
+				5
+			],
+			[
+				118,
+				5
+			],
+			[
+				119,
+				5
+			],
+			[
+				120,
+				5
+			],
+			[
+				121,
+				5
+			],
+			[
+				133,
+				5
+			],
+			[
+				134,
+				5
+			],
+			[
+				3,
+				6
+			],
+			[
+				4,
+				6
+			],
+			[
+				5,
+				6
+			],
+			[
+				6,
+				6
+			],
+			[
+				7,
+				6
+			],
+			[
+				8,
+				6
+			],
+			[
+				9,
+				6
+			],
+			[
+				10,
+				6
+			],
+			[
+				11,
+				6
+			],
+			[
+				12,
+				6
+			],
+			[
+				13,
+				6
+			],
+			[
+				14,
+				6
+			],
+			[
+				15,
+				6
+			],
+			[
+				16,
+				6
+			],
+			[
+				17,
+				6
+			],
+			[
+				28,
+				6
+			],
+			[
+				29,
+				6
+			],
+			[
+				30,
+				6
+			],
+			[
+				31,
+				6
+			],
+			[
+				32,
+				6
+			],
+			[
+				33,
+				6
+			],
+			[
+				34,
+				6
+			],
+			[
+				35,
+				6
+			],
+			[
+				36,
+				6
+			],
+			[
+				37,
+				6
+			],
+			[
+				38,
+				6
+			],
+			[
+				39,
+				6
+			],
+			[
+				40,
+				6
+			],
+			[
+				41,
+				6
+			],
+			[
+				42,
+				6
+			],
+			[
+				43,
+				6
+			],
+			[
+				44,
+				6
+			],
+			[
+				45,
+				6
+			],
+			[
+				46,
+				6
+			],
+			[
+				47,
+				6
+			],
+			[
+				48,
+				6
+			],
+			[
+				49,
+				6
+			],
+			[
+				50,
+				6
+			],
+			[
+				51,
+				6
+			],
+			[
+				52,
+				6
+			],
+			[
+				53,
+				6
+			],
+			[
+				54,
+				6
+			],
+			[
+				55,
+				6
+			],
+			[
+				56,
+				6
+			],
+			[
+				57,
+				6
+			],
+			[
+				58,
+				6
+			],
+			[
+				68,
+				6
+			],
+			[
+				69,
+				6
+			],
+			[
+				70,
+				6
+			],
+			[
+				71,
+				6
+			],
+			[
+				72,
+				6
+			],
+			[
+				73,
+				6
+			],
+			[
+				74,
+				6
+			],
+			[
+				75,
+				6
+			],
+			[
+				76,
+				6
+			],
+			[
+				77,
+				6
+			],
+			[
+				78,
+				6
+			],
+			[
+				79,
+				6
+			],
+			[
+				80,
+				6
+			],
+			[
+				81,
+				6
+			],
+			[
+				93,
+				6
+			],
+			[
+				94,
+				6
+			],
+			[
+				95,
+				6
+			],
+			[
+				96,
+				6
+			],
+			[
+				97,
+				6
+			],
+			[
+				98,
+				6
+			],
+			[
+				99,
+				6
+			],
+			[
+				100,
+				6
+			],
+			[
+				101,
+				6
+			],
+			[
+				102,
+				6
+			],
+			[
+				103,
+				6
+			],
+			[
+				104,
+				6
+			],
+			[
+				105,
+				6
+			],
+			[
+				106,
+				6
+			],
+			[
+				107,
+				6
+			],
+			[
+				108,
+				6
+			],
+			[
+				109,
+				6
+			],
+			[
+				110,
+				6
+			],
+			[
+				111,
+				6
+			],
+			[
+				112,
+				6
+			],
+			[
+				113,
+				6
+			],
+			[
+				114,
+				6
+			],
+			[
+				115,
+				6
+			],
+			[
+				116,
+				6
+			],
+			[
+				117,
+				6
+			],
+			[
+				118,
+				6
+			],
+			[
+				119,
+				6
+			],
+			[
+				120,
+				6
+			],
+			[
+				121,
+				6
+			],
+			[
+				3,
+				7
+			],
+			[
+				4,
+				7
+			],
+			[
+				5,
+				7
+			],
+			[
+				6,
+				7
+			],
+			[
+				7,
+				7
+			],
+			[
+				8,
+				7
+			],
+			[
+				9,
+				7
+			],
+			[
+				10,
+				7
+			],
+			[
+				11,
+				7
+			],
+			[
+				12,
+				7
+			],
+			[
+				13,
+				7
+			],
+			[
+				14,
+				7
+			],
+			[
+				15,
+				7
+			],
+			[
+				16,
+				7
+			],
+			[
+				17,
+				7
+			],
+			[
+				29,
+				7
+			],
+			[
+				30,
+				7
+			],
+			[
+				31,
+				7
+			],
+			[
+				68,
+				7
+			],
+			[
+				69,
+				7
+			],
+			[
+				70,
+				7
+			],
+			[
+				71,
+				7
+			],
+			[
+				72,
+				7
+			],
+			[
+				3,
+				8
+			],
+			[
+				4,
+				8
+			],
+			[
+				5,
+				8
+			],
+			[
+				6,
+				8
+			],
+			[
+				7,
+				8
+			],
+			[
+				68,
+				8
+			],
+			[
+				69,
+				8
+			],
+			[
+				70,
+				8
+			],
+			[
+				71,
+				8
+			],
+			[
+				72,
+				8
+			]
+		],
+		"width": 138
 	},
 	"nodes": [
 		{
+			"action_verb": "ENTER STRETCH",
 			"approach_position": [
-				0.0,
+				1.89999997615814,
 				0.449999988079071,
-				-1.57200002670288
+				0.600000023841858
 			],
 			"approaches": [],
 			"archetype_id": "11",
 			"archetype_name": "Narrative beat",
 			"atp_reward": 0,
+			"carry_payload": false,
+			"chain_cycle": -1,
 			"chain_index": -1,
 			"chain_input": "",
+			"chain_input_ref": "",
 			"chain_label": "",
 			"chain_output": "",
+			"chain_output_ref": "",
 			"composition_role": "",
 			"content_placements": [
 				{
@@ -1680,14 +6327,14 @@
 					"id": "flure",
 					"label": "flure",
 					"local_offset": [
-						-2.13000011444092,
+						-1.85000002384186,
 						0.725000023841858,
-						-0.923999965190887
+						-1.10000002384186
 					],
 					"position": [
-						-2.13000011444092,
+						0.649999976158142,
 						1.17499995231628,
-						-3.92400002479553
+						1.39999997615814
 					],
 					"role": "puzzle_flora",
 					"rotation_y_degrees": -11.0,
@@ -1706,12 +6353,12 @@
 					"local_offset": [
 						0.0,
 						0.625,
-						0.755999982357025
+						0.899999976158142
 					],
 					"position": [
-						0.0,
+						2.5,
 						1.07500004768372,
-						-2.24399995803833
+						3.40000009536743
 					],
 					"role": "structure",
 					"rotation_y_degrees": 26.0,
@@ -1724,41 +6371,45 @@
 					"support": "implemented"
 				}
 			],
+			"correct_read": "",
 			"elevation_index": 0,
-			"elevation_meters": 0.0,
+			"elevation_meters": -0.0000000119209289661804,
 			"enemies": [],
 			"exploit_target": "",
 			"floor_size": [
-				6.0,
-				0.159999996423721,
-				4.19999980926514
+				5.0,
+				0.140000000596046,
+				5.0
 			],
 			"flora": [
 				"flure"
 			],
 			"footprint": [
-				6.0,
-				0.159999996423721,
-				4.19999980926514
+				5.0,
+				0.140000000596046,
+				5.0
 			],
 			"id": "entry",
 			"label": "Entry Boundary",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
 			"position": [
-				0.0,
+				2.5,
 				0.449999988079071,
-				-3.0
+				2.5
 			],
 			"pressure": 0,
 			"pressure_cost": 0,
+			"reads": [],
 			"resource": false,
 			"resource_beat": false,
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
 			"role": "boundary",
 			"shadow_solution": {
 				"aster": "Read the patrol timing and confirm which plant effect is safe to trigger.",
@@ -1766,11 +6417,12 @@
 				"peris": "Tend the flure and hushbloom so the carrier never needs a combat-only solution."
 			},
 			"shortcut": false,
+			"solve": "",
 			"stage": 1,
 			"structures": [
 				"barrier"
 			],
-			"surface_y": 0.45,
+			"surface_y": 0.449999988079071,
 			"survival_kind": "",
 			"title": "Entry Boundary",
 			"variant": "",
@@ -1781,10 +6433,16 @@
 			"walk_transition": ""
 		},
 		{
+			"action_verb": "BAIT THE CHARGE",
+			"ambient_flora": [
+				"seefern",
+				"seefern",
+				"capbage"
+			],
 			"approach_position": [
-				10.8120002746582,
-				1.16999995708466,
-				1.63200008869171
+				13.8400001525879,
+				0.449999988079071,
+				0.840000033378601
 			],
 			"approaches": [
 				{
@@ -1841,10 +6499,14 @@
 			"archetype_id": "1",
 			"archetype_name": "Redirected enemy aggression",
 			"atp_reward": 0,
+			"carry_payload": false,
+			"chain_cycle": 0,
 			"chain_index": 0,
 			"chain_input": "",
+			"chain_input_ref": "",
 			"chain_label": "Break a brittle service barrier to expose usable flure",
 			"chain_output": "flure_exposed",
+			"chain_output_ref": "chain_00:flure_exposed",
 			"composition_role": "chain_link",
 			"content_placements": [
 				{
@@ -1852,14 +6514,14 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.96200001239777,
+						-1.28999996185303,
 						0.0799999982118607,
-						-1.05599999427795
+						-0.219999998807907
 					],
 					"position": [
-						10.0380001068115,
-						1.25,
-						-1.05599999427795
+						13.210000038147,
+						0.529999971389771,
+						0.280000001192093
 					],
 					"role": "cover",
 					"rotation_y_degrees": 0.0,
@@ -1876,14 +6538,14 @@
 					"id": "sapscraps",
 					"label": "sapscraps",
 					"local_offset": [
-						1.2960000038147,
+						0.720000028610229,
 						0.550000011920929,
-						-0.240000009536743
+						-0.0500000007450581
 					],
 					"position": [
-						13.2959995269775,
-						1.72000002861023,
-						-0.240000009536743
+						15.2200002670288,
+						1.0,
+						0.449999988079071
 					],
 					"role": "pressure",
 					"rotation_y_degrees": 37.0,
@@ -1902,12 +6564,12 @@
 					"local_offset": [
 						0.550000011920929,
 						0.625,
-						0.864000022411346
+						0.180000007152557
 					],
 					"position": [
-						12.5500001907349,
-						1.79499995708466,
-						0.864000022411346
+						15.0500001907349,
+						1.07500004768372,
+						0.680000007152557
 					],
 					"role": "structure",
 					"rotation_y_degrees": 74.0,
@@ -1920,55 +6582,75 @@
 					"support": "implemented"
 				}
 			],
-			"elevation_index": 1,
-			"elevation_meters": 0.72,
+			"correct_read": "",
+			"elevation_index": 0,
+			"elevation_meters": -0.0000000119209289661804,
 			"enemies": [
 				"sapscraps"
 			],
+			"evidence_hint": "the tell, charge path, impact, and changed target remain visible",
 			"exploit_target": "",
 			"floor_size": [
-				5.40000009536743,
+				3.0,
 				0.140000000596046,
-				4.80000019073486
+				1.0
 			],
 			"flora": [
 				"scarpet"
 			],
 			"footprint": [
-				5.40000009536743,
+				3.0,
 				0.140000000596046,
-				4.80000019073486
+				1.0
 			],
 			"id": "node_01",
 			"label": "Redirected enemy aggression · Destroy Barrier",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "chain_00",
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
 			"position": [
-				12.0,
-				1.16999995708466,
-				0.0
+				14.5,
+				0.449999988079071,
+				0.5
 			],
+			"prediction_hint": "the enemy will strike the aligned target after committing",
 			"pressure": 1,
 			"pressure_cost": 0,
+			"reads": [],
 			"resource": false,
 			"resource_beat": false,
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
 			"role": "route_pressure",
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Use overlay timing plus flora or scarpet cover to substitute for a combat specialist."
 			},
 			"shortcut": false,
+			"solve": "",
 			"stage": 2,
 			"structures": [
 				"barrier"
 			],
-			"surface_y": 1.17,
+			"surface_y": 0.449999988079071,
 			"survival_kind": "",
+			"systems_beat": {
+				"beat": "teach",
+				"cause": "the party enters the charge line before commitment",
+				"changed_condition": "destroy barrier",
+				"critical": true,
+				"effect": "enemy momentum changes the target state",
+				"evidence": "the tell, charge path, impact, and changed target remain visible",
+				"intervention": "align the bait, trigger the tell, then leave the line",
+				"likely_misconception": "the enemy must be defeated directly",
+				"model_id": "archetype_1",
+				"prediction": "the enemy will strike the aligned target after committing",
+				"verb": "redirect"
+			},
 			"title": "Redirected enemy aggression · Destroy Barrier",
 			"variant": "destroy_barrier",
 			"walk_element": "",
@@ -1978,10 +6660,16 @@
 			"walk_transition": ""
 		},
 		{
+			"action_verb": "DEPLOY FLURE DECOY",
+			"ambient_flora": [
+				"capbage",
+				"capbage",
+				"capbage"
+			],
 			"approach_position": [
-				24.0,
-				1.88999998569489,
-				4.3600001335144
+				27.5,
+				0.449999988079071,
+				3.8600001335144
 			],
 			"approaches": [
 				{
@@ -2036,10 +6724,14 @@
 			"archetype_id": "2",
 			"archetype_name": "Plant as tool",
 			"atp_reward": 0,
+			"carry_payload": false,
+			"chain_cycle": 0,
 			"chain_index": 1,
 			"chain_input": "flure_exposed",
+			"chain_input_ref": "chain_00:flure_exposed",
 			"chain_label": "Use the exposed flure as a patrol decoy",
 			"chain_output": "patrol_diverted",
+			"chain_output_ref": "chain_00:patrol_diverted",
 			"composition_role": "chain_link",
 			"content_placements": [
 				{
@@ -2047,14 +6739,14 @@
 					"id": "flure",
 					"label": "flure",
 					"local_offset": [
-						-1.7940000295639,
+						-1.28999996185303,
 						0.725000023841858,
 						-0.879999995231628
 					],
 					"position": [
-						22.2059993743896,
-						2.61500000953674,
-						2.11999988555908
+						26.2099990844727,
+						1.17499995231628,
+						1.62000000476837
 					],
 					"role": "puzzle_flora",
 					"rotation_y_degrees": 11.0,
@@ -2076,9 +6768,9 @@
 						0.720000028610229
 					],
 					"position": [
-						24.0,
-						2.71499991416931,
-						3.72000002861023
+						27.5,
+						1.27499997615814,
+						3.22000002861023
 					],
 					"role": "guidance",
 					"rotation_y_degrees": 48.0,
@@ -2091,12 +6783,14 @@
 					"support": "implemented"
 				}
 			],
-			"elevation_index": 2,
-			"elevation_meters": 1.44,
+			"correct_read": "",
+			"elevation_index": 0,
+			"elevation_meters": -0.0000000119209289661804,
 			"enemies": [],
+			"evidence_hint": "growth state, target link, and resulting target response are visible",
 			"exploit_target": "",
 			"floor_size": [
-				4.80000019073486,
+				3.0,
 				0.140000000596046,
 				4.0
 			],
@@ -2104,40 +6798,58 @@
 				"flure"
 			],
 			"footprint": [
-				4.80000019073486,
+				3.0,
 				0.140000000596046,
 				4.0
 			],
 			"id": "node_02",
 			"label": "Plant as tool · Flure Iron Decoy",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "chain_01",
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
 			"position": [
-				24.0,
-				1.88999998569489,
-				3.0
+				27.5,
+				0.449999988079071,
+				2.5
 			],
+			"prediction_hint": "the placed plant will affect the target after its readiness tell",
 			"pressure": 0,
 			"pressure_cost": 0,
+			"reads": [],
 			"resource": false,
 			"resource_beat": false,
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
 			"role": "guidance",
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
 			},
 			"shortcut": false,
+			"solve": "",
 			"stage": 1,
 			"structures": [
 				"terminal"
 			],
-			"surface_y": 1.89,
+			"surface_y": 0.449999988079071,
 			"survival_kind": "",
+			"systems_beat": {
+				"beat": "teach",
+				"cause": "Peris places or tends the plant in the relevant relation",
+				"changed_condition": "flure iron decoy",
+				"critical": true,
+				"effect": "the mature plant changes the target state",
+				"evidence": "growth state, target link, and resulting target response are visible",
+				"intervention": "place once at the causal location and wait for the tell",
+				"likely_misconception": "the plant effect is immediate or useful anywhere",
+				"model_id": "archetype_2",
+				"prediction": "the placed plant will affect the target after its readiness tell",
+				"verb": "cultivate"
+			},
 			"title": "Plant as tool · Flure Iron Decoy",
 			"variant": "flure_iron_decoy",
 			"walk_element": "",
@@ -2147,10 +6859,167 @@
 			"walk_transition": ""
 		},
 		{
+			"action_verb": "SECURE +2 ATP LYSATE",
+			"ambient_flora": [
+				"capbage",
+				"seefern",
+				"seefern"
+			],
 			"approach_position": [
-				36.0,
+				41.5,
 				0.449999988079071,
-				-1.43599998950958
+				2.1800000667572
+			],
+			"approaches": [],
+			"archetype_id": "",
+			"archetype_name": "",
+			"atp_reward": 2,
+			"carry_payload": false,
+			"chain_cycle": -1,
+			"chain_index": -1,
+			"chain_input": "",
+			"chain_input_ref": "",
+			"chain_label": "",
+			"chain_output": "",
+			"chain_output_ref": "",
+			"composition_role": "",
+			"content_placements": [
+				{
+					"category": "flora",
+					"id": "scarpet",
+					"label": "scarpet",
+					"local_offset": [
+						-1.57000005245209,
+						0.0799999982118607,
+						-0.439999997615814
+					],
+					"position": [
+						39.9300003051758,
+						0.529999971389771,
+						1.05999994277954
+					],
+					"role": "cover",
+					"rotation_y_degrees": -11.0,
+					"shape": "mat",
+					"size": [
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "structures",
+					"id": "forage_cache",
+					"label": "forage_cache",
+					"local_offset": [
+						0.0,
+						0.375,
+						0.360000014305115
+					],
+					"position": [
+						41.5,
+						0.824999988079071,
+						1.86000001430511
+					],
+					"role": "resource",
+					"rotation_y_degrees": 26.0,
+					"shape": "structure_box",
+					"size": [
+						1.70000004768372,
+						0.75,
+						1.0
+					],
+					"support": "implemented"
+				}
+			],
+			"correct_read": "",
+			"elevation_index": 0,
+			"elevation_meters": -0.0000000119209289661804,
+			"enemies": [],
+			"evidence_hint": "the target state and route visibly change",
+			"exploit_target": "",
+			"floor_size": [
+				4.0,
+				0.140000000596046,
+				2.0
+			],
+			"flora": [
+				"scarpet"
+			],
+			"footprint": [
+				4.0,
+				0.140000000596046,
+				2.0
+			],
+			"id": "node_03",
+			"label": "Risk cache · 2 ATP lysate",
+			"layout_step": {},
+			"link_ref": "",
+			"nested_archetypes": [],
+			"nested_depth": 0,
+			"optional": true,
+			"position": [
+				41.5,
+				0.449999988079071,
+				1.5
+			],
+			"prediction_hint": "changing the load-bearing element will alter the reachable state",
+			"pressure": 0,
+			"pressure_cost": 0,
+			"reads": [],
+			"resource": true,
+			"resource_beat": true,
+			"resource_item_type": "lysate",
+			"resource_kind": "food",
+			"reward_atp": 2,
+			"reward_kind": "food",
+			"role": "foraging",
+			"shadow_solution": {
+				"aster": "Read the patrol timing and confirm which plant effect is safe to trigger.",
+				"endo": "Marks the return shortcut and stabilizes the carried shelter component.",
+				"peris": "Tend the flure and hushbloom so the carrier never needs a combat-only solution."
+			},
+			"shortcut": false,
+			"solve": "",
+			"stage": 1,
+			"structures": [
+				"forage_cache"
+			],
+			"surface_y": 0.449999988079071,
+			"survival_kind": "",
+			"systems_beat": {
+				"beat": "optional_probe",
+				"cause": "the player changes the load-bearing element",
+				"changed_condition": "",
+				"critical": false,
+				"effect": "the next state becomes reachable",
+				"evidence": "the target state and route visibly change",
+				"intervention": "change the load-bearing element once, then observe",
+				"likely_misconception": "every visible object must be serviced independently",
+				"model_id": "archetype_",
+				"prediction": "changing the load-bearing element will alter the reachable state",
+				"verb": "intervene"
+			},
+			"title": "Risk cache · 2 ATP lysate",
+			"variant": "",
+			"walk_element": "",
+			"walk_index": -1,
+			"walk_ref": "",
+			"walk_step_index": -1,
+			"walk_transition": ""
+		},
+		{
+			"action_verb": "STAGE THE CARRY",
+			"ambient_flora": [
+				"capbage",
+				"capbage",
+				"capbage"
+			],
+			"approach_position": [
+				54.5,
+				0.449999988079071,
+				2.51999998092651
 			],
 			"approaches": [
 				{
@@ -2220,10 +7089,14 @@
 			"archetype_id": "3",
 			"archetype_name": "Carry the heavy thing",
 			"atp_reward": 0,
+			"carry_payload": true,
+			"chain_cycle": 0,
 			"chain_index": 2,
 			"chain_input": "patrol_diverted",
+			"chain_input_ref": "chain_00:patrol_diverted",
 			"chain_label": "Carry the shelter component through the diverted patrol lane",
 			"chain_output": "carry_component_secured",
+			"chain_output_ref": "chain_00:carry_component_secured",
 			"composition_role": "chain_link",
 			"content_placements": [
 				{
@@ -2231,14 +7104,14 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-2.01799988746643,
+						-1.57000005245209,
 						0.0799999982118607,
-						-1.01199996471405
+						-0.660000026226044
 					],
 					"position": [
-						33.9819984436035,
+						52.9300003051758,
 						0.529999971389771,
-						-4.01200008392334
+						0.839999973773956
 					],
 					"role": "cover",
 					"rotation_y_degrees": 22.0,
@@ -2257,12 +7130,12 @@
 					"local_offset": [
 						0.0,
 						0.400000005960464,
-						0.828000009059906
+						0.540000021457672
 					],
 					"position": [
-						36.0,
+						54.5,
 						0.850000023841858,
-						-2.17199993133545
+						2.03999996185303
 					],
 					"role": "structure",
 					"rotation_y_degrees": 59.0,
@@ -2275,28 +7148,28 @@
 					"support": "implemented"
 				}
 			],
+			"correct_read": "",
 			"elevation_index": 0,
-			"elevation_meters": 0.0,
+			"elevation_meters": -0.0000000119209289661804,
 			"enemies": [],
+			"evidence_hint": "mobility, exposure, capacity, and delivery progress remain visible",
 			"exploit_target": "",
 			"floor_size": [
-				5.59999990463257,
+				4.0,
 				0.140000000596046,
-				4.59999990463257
+				3.0
 			],
 			"flora": [
 				"scarpet"
 			],
 			"footprint": [
-				5.59999990463257,
+				4.0,
 				0.140000000596046,
-				4.59999990463257
+				3.0
 			],
-			"id": "node_03",
+			"id": "node_04",
 			"label": "Carry the heavy thing · Cure Component",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "chain_02",
 			"nested_archetypes": [
 				{
@@ -2314,28 +7187,48 @@
 				}
 			],
 			"nested_depth": 1,
-			"optional": true,
+			"optional": false,
 			"position": [
-				36.0,
+				54.5,
 				0.449999988079071,
-				-3.0
+				1.5
 			],
+			"prediction_hint": "an unsupported carrier will lose more capacity on the exposed segment",
 			"pressure": 0,
 			"pressure_cost": 0,
-			"resource": false,
-			"resource_beat": false,
-			"role": "mixed",
+			"reads": [],
+			"resource": true,
+			"resource_beat": true,
+			"resource_item_type": "generated_tool",
+			"resource_kind": "carry",
+			"reward_atp": 0,
+			"reward_kind": "",
+			"role": "setpiece",
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Use drag routes, scarpet masking, and slower recovery windows."
 			},
 			"shortcut": false,
+			"solve": "",
 			"stage": 2,
 			"structures": [
 				"carry_gear"
 			],
-			"surface_y": 0.45,
+			"surface_y": 0.449999988079071,
 			"survival_kind": "",
+			"systems_beat": {
+				"beat": "teach",
+				"cause": "one character accepts the load and its constraints",
+				"changed_condition": "cure component",
+				"critical": true,
+				"effect": "the resource moves while the carrier becomes vulnerable",
+				"evidence": "mobility, exposure, capacity, and delivery progress remain visible",
+				"intervention": "stage cover and clear the next segment before moving the load",
+				"likely_misconception": "the carrier can move as if unburdened",
+				"model_id": "archetype_3",
+				"prediction": "an unsupported carrier will lose more capacity on the exposed segment",
+				"verb": "support"
+			},
 			"title": "Carry the heavy thing · Cure Component",
 			"variant": "cure_component",
 			"walk_element": "",
@@ -2345,10 +7238,16 @@
 			"walk_transition": ""
 		},
 		{
+			"action_verb": "RELATE THE FRAGMENTS",
+			"ambient_flora": [
+				"capbage",
+				"capbage",
+				"capbage"
+			],
 			"approach_position": [
-				48.0,
-				1.88999998569489,
-				1.76799988746643
+				67.5,
+				0.449999988079071,
+				4.19999980926514
 			],
 			"approaches": [
 				{
@@ -2404,10 +7303,14 @@
 			"archetype_id": "6",
 			"archetype_name": "Pattern reconstruction",
 			"atp_reward": 0,
+			"carry_payload": false,
+			"chain_cycle": 0,
 			"chain_index": 3,
 			"chain_input": "carry_component_secured",
+			"chain_input_ref": "chain_00:carry_component_secured",
 			"chain_label": "Reconstruct the return map from carried fragments",
 			"chain_output": "shelter_route_reassembled",
+			"chain_output_ref": "chain_00:shelter_route_reassembled",
 			"composition_role": "chain_link",
 			"content_placements": [
 				{
@@ -2417,12 +7320,12 @@
 					"local_offset": [
 						-0.550000011920929,
 						0.824999988079071,
-						0.935999989509583
+						0.899999976158142
 					],
 					"position": [
-						47.4500007629395,
-						2.71499991416931,
-						0.935999989509583
+						66.9499969482422,
+						1.27499997615814,
+						3.40000009536743
 					],
 					"role": "guidance",
 					"rotation_y_degrees": 33.0,
@@ -2435,26 +7338,26 @@
 					"support": "implemented"
 				}
 			],
-			"elevation_index": 2,
-			"elevation_meters": 1.44,
+			"correct_read": "",
+			"elevation_index": 0,
+			"elevation_meters": -0.0000000119209289661804,
 			"enemies": [],
+			"evidence_hint": "contradictions and confirmed links stay visible",
 			"exploit_target": "",
 			"floor_size": [
-				6.59999990463257,
-				0.159999996423721,
-				5.19999980926514
+				5.0,
+				0.140000000596046,
+				5.0
 			],
 			"flora": [],
 			"footprint": [
-				6.59999990463257,
-				0.159999996423721,
-				5.19999980926514
+				5.0,
+				0.140000000596046,
+				5.0
 			],
-			"id": "node_04",
+			"id": "node_05",
 			"label": "Pattern reconstruction · Area Map",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "chain_03",
 			"nested_archetypes": [
 				{
@@ -2474,26 +7377,46 @@
 			"nested_depth": 1,
 			"optional": false,
 			"position": [
-				48.0,
-				1.88999998569489,
-				0.0
+				67.5,
+				0.449999988079071,
+				2.5
 			],
+			"prediction_hint": "the proposed arrangement will explain all recovered relations",
 			"pressure": 0,
 			"pressure_cost": 0,
+			"reads": [],
 			"resource": false,
 			"resource_beat": false,
-			"role": "setpiece",
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
+			"role": "guidance",
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Aster finds hidden structure; Peris preserves relational or flora context."
 			},
 			"shortcut": false,
+			"solve": "",
 			"stage": 3,
 			"structures": [
 				"terminal"
 			],
-			"surface_y": 1.89,
+			"surface_y": 0.449999988079071,
 			"survival_kind": "",
+			"systems_beat": {
+				"beat": "teach",
+				"cause": "the party retrieves and relates fragments",
+				"changed_condition": "area map",
+				"critical": true,
+				"effect": "the hidden pattern or route becomes legible",
+				"evidence": "contradictions and confirmed links stay visible",
+				"intervention": "place fragments by relationship and test the implied route",
+				"likely_misconception": "collecting every fragment automatically solves the pattern",
+				"model_id": "archetype_6",
+				"prediction": "the proposed arrangement will explain all recovered relations",
+				"verb": "reconstruct"
+			},
 			"title": "Pattern reconstruction · Area Map",
 			"variant": "area_map",
 			"walk_element": "",
@@ -2503,16 +7426,676 @@
 			"walk_transition": ""
 		},
 		{
+			"action_verb": "BAIT THE CHARGE",
+			"ambient_flora": [
+				"capbage",
+				"capbage",
+				"capbage"
+			],
 			"approach_position": [
-				58.8120002746582,
-				1.88999998569489,
-				4.63199996948242
+				79.620002746582,
+				0.449999988079071,
+				2.1800000667572
 			],
 			"approaches": [
 				{
-					"id": "loud_draw",
+					"id": "redirect_combat",
 					"kind": "primary",
-					"label": "Draw the patrol with a loud combat action",
+					"label": "Bait a combat specialist's charge into the target",
+					"min_stage": 2.0,
+					"party": "specialist",
+					"requires": [
+						"combat"
+					],
+					"risk": "direct",
+					"taught_by": "",
+					"uses": [
+						"kill_enemy",
+						"destroy_barrier"
+					]
+				},
+				{
+					"borrows_from": "7",
+					"expert": true,
+					"id": "overlay_combustion",
+					"kind": "shadow_expert",
+					"label": "Aster predicts the charge window on the overlay and seeds a gasafoetida bloom on the impact line; the enemy demolishes the barrier with its own momentum while Peris reads it from cover",
+					"min_stage": 4.0,
+					"party": "aster_peris",
+					"requires": [
+						"overlay",
+						"timing",
+						"combustible"
+					],
+					"risk": "risky",
+					"taught_by": "charge_window_prediction",
+					"uses": []
+				},
+				{
+					"id": "overlay_cover",
+					"kind": "shadow",
+					"label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover",
+					"min_stage": 2.0,
+					"party": "aster_peris",
+					"requires": [
+						"overlay",
+						"cover"
+					],
+					"risk": "risky",
+					"taught_by": "overlay_timing",
+					"uses": [
+						"reveal_plant",
+						"reveal_passage"
+					]
+				}
+			],
+			"archetype_id": "1",
+			"archetype_name": "Redirected enemy aggression",
+			"atp_reward": 0,
+			"carry_payload": false,
+			"chain_cycle": 1,
+			"chain_index": 0,
+			"chain_input": "shelter_route_reassembled",
+			"chain_input_ref": "chain_00:shelter_route_reassembled",
+			"chain_label": "Break a brittle service barrier to expose usable flure",
+			"chain_output": "flure_exposed",
+			"chain_output_ref": "chain_01:flure_exposed",
+			"composition_role": "chain_link",
+			"content_placements": [
+				{
+					"category": "flora",
+					"id": "scarpet",
+					"label": "scarpet",
+					"local_offset": [
+						-1.57000005245209,
+						0.0799999982118607,
+						-0.439999997615814
+					],
+					"position": [
+						78.9300003051758,
+						0.529999971389771,
+						1.05999994277954
+					],
+					"role": "cover",
+					"rotation_y_degrees": 0.0,
+					"shape": "mat",
+					"size": [
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "enemies",
+					"id": "sapscraps",
+					"label": "sapscraps",
+					"local_offset": [
+						0.959999978542328,
+						0.550000011920929,
+						-0.100000001490116
+					],
+					"position": [
+						81.4599990844727,
+						1.0,
+						1.39999997615814
+					],
+					"role": "pressure",
+					"rotation_y_degrees": 37.0,
+					"shape": "enemy_volume",
+					"size": [
+						1.20000004768372,
+						1.10000002384186,
+						1.20000004768372
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "structures",
+					"id": "barrier",
+					"label": "barrier",
+					"local_offset": [
+						0.550000011920929,
+						0.625,
+						0.360000014305115
+					],
+					"position": [
+						81.0500030517578,
+						1.07500004768372,
+						1.86000001430511
+					],
+					"role": "structure",
+					"rotation_y_degrees": 74.0,
+					"shape": "structure_box",
+					"size": [
+						2.59999990463257,
+						1.25,
+						0.5
+					],
+					"support": "implemented"
+				}
+			],
+			"correct_read": "",
+			"elevation_index": 0,
+			"elevation_meters": -0.0000000119209289661804,
+			"enemies": [
+				"sapscraps"
+			],
+			"evidence_hint": "the tell, charge path, impact, and changed target remain visible",
+			"exploit_target": "",
+			"floor_size": [
+				4.0,
+				0.140000000596046,
+				2.0
+			],
+			"flora": [
+				"scarpet"
+			],
+			"footprint": [
+				4.0,
+				0.140000000596046,
+				2.0
+			],
+			"id": "node_06",
+			"label": "Redirected enemy aggression · Kill Enemy",
+			"layout_step": {},
+			"link_ref": "chain_00",
+			"nested_archetypes": [],
+			"nested_depth": 0,
+			"optional": false,
+			"position": [
+				80.5,
+				0.449999988079071,
+				1.5
+			],
+			"prediction_hint": "the enemy will strike the aligned target after committing",
+			"pressure": 1,
+			"pressure_cost": 0,
+			"reads": [],
+			"resource": false,
+			"resource_beat": false,
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
+			"role": "danger",
+			"shadow_solution": {
+				"aster_peris": true,
+				"notes": "Use overlay timing plus flora or scarpet cover to substitute for a combat specialist."
+			},
+			"shortcut": false,
+			"solve": "",
+			"stage": 2,
+			"structures": [
+				"barrier"
+			],
+			"surface_y": 0.449999988079071,
+			"survival_kind": "",
+			"systems_beat": {
+				"beat": "test",
+				"cause": "the party enters the charge line before commitment",
+				"changed_condition": "kill enemy",
+				"critical": true,
+				"effect": "enemy momentum changes the target state",
+				"evidence": "the tell, charge path, impact, and changed target remain visible",
+				"intervention": "align the bait, trigger the tell, then leave the line",
+				"likely_misconception": "the enemy must be defeated directly",
+				"model_id": "archetype_1",
+				"prediction": "the enemy will strike the aligned target after committing",
+				"verb": "redirect"
+			},
+			"title": "Redirected enemy aggression · Kill Enemy",
+			"variant": "kill_enemy",
+			"walk_element": "",
+			"walk_index": -1,
+			"walk_ref": "",
+			"walk_step_index": -1,
+			"walk_transition": ""
+		},
+		{
+			"action_verb": "PLACE THE FLORA",
+			"ambient_flora": [
+				"seefern",
+				"seefern",
+				"seefern"
+			],
+			"approach_position": [
+				92.5,
+				0.449999988079071,
+				2.51999998092651
+			],
+			"approaches": [
+				{
+					"id": "force_clear",
+					"kind": "primary",
+					"label": "Force the obstacle open with raw impact",
+					"min_stage": 1.0,
+					"party": "specialist",
+					"requires": [
+						"impact"
+					],
+					"risk": "direct",
+					"taught_by": "",
+					"uses": [
+						"destroy"
+					]
+				},
+				{
+					"borrows_from": "10",
+					"expert": true,
+					"id": "flora_chain_trap",
+					"kind": "shadow_expert",
+					"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
+					"min_stage": 5.0,
+					"party": "aster_peris",
+					"requires": [
+						"flora",
+						"lure"
+					],
+					"risk": "risky",
+					"taught_by": "nested_flora_zone",
+					"uses": []
+				},
+				{
+					"id": "flora_finesse",
+					"kind": "shadow",
+					"label": "Peris grows or tends the plant tool; Aster confirms the target",
+					"min_stage": 1.0,
+					"party": "aster_peris",
+					"requires": [
+						"flora"
+					],
+					"risk": "safe",
+					"taught_by": "flora_tending",
+					"uses": [
+						"flure_iron_decoy",
+						"hushbloom_stun",
+						"climbvine_traversal"
+					]
+				}
+			],
+			"archetype_id": "2",
+			"archetype_name": "Plant as tool",
+			"atp_reward": 0,
+			"carry_payload": false,
+			"chain_cycle": 1,
+			"chain_index": 1,
+			"chain_input": "flure_exposed",
+			"chain_input_ref": "chain_01:flure_exposed",
+			"chain_label": "Use the exposed flure as a patrol decoy",
+			"chain_output": "patrol_diverted",
+			"chain_output_ref": "chain_01:patrol_diverted",
+			"composition_role": "chain_link",
+			"content_placements": [
+				{
+					"category": "flora",
+					"id": "hushbloom",
+					"label": "hushbloom",
+					"local_offset": [
+						-1.28999996185303,
+						0.550000011920929,
+						-0.660000026226044
+					],
+					"position": [
+						91.2099990844727,
+						1.0,
+						0.839999973773956
+					],
+					"role": "resource",
+					"rotation_y_degrees": 11.0,
+					"shape": "plant_cluster",
+					"size": [
+						1.0,
+						1.10000002384186,
+						1.0
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "structures",
+					"id": "forage_cache",
+					"label": "forage_cache",
+					"local_offset": [
+						0.0,
+						0.375,
+						0.540000021457672
+					],
+					"position": [
+						92.5,
+						0.824999988079071,
+						2.03999996185303
+					],
+					"role": "resource",
+					"rotation_y_degrees": 48.0,
+					"shape": "structure_box",
+					"size": [
+						1.70000004768372,
+						0.75,
+						1.0
+					],
+					"support": "implemented"
+				}
+			],
+			"correct_read": "",
+			"elevation_index": 0,
+			"elevation_meters": -0.0000000119209289661804,
+			"enemies": [],
+			"evidence_hint": "growth state, target link, and resulting target response are visible",
+			"exploit_target": "",
+			"floor_size": [
+				3.0,
+				0.140000000596046,
+				3.0
+			],
+			"flora": [
+				"hushbloom"
+			],
+			"footprint": [
+				3.0,
+				0.140000000596046,
+				3.0
+			],
+			"id": "node_07",
+			"label": "Plant as tool · Hushbloom Stun",
+			"layout_step": {},
+			"link_ref": "chain_01",
+			"nested_archetypes": [],
+			"nested_depth": 0,
+			"optional": false,
+			"position": [
+				92.5,
+				0.449999988079071,
+				1.5
+			],
+			"prediction_hint": "the placed plant will affect the target after its readiness tell",
+			"pressure": 0,
+			"pressure_cost": 0,
+			"reads": [],
+			"resource": true,
+			"resource_beat": true,
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
+			"role": "foraging",
+			"shadow_solution": {
+				"aster_peris": true,
+				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
+			},
+			"shortcut": false,
+			"solve": "",
+			"stage": 1,
+			"structures": [
+				"forage_cache"
+			],
+			"surface_y": 0.449999988079071,
+			"survival_kind": "",
+			"systems_beat": {
+				"beat": "test",
+				"cause": "Peris places or tends the plant in the relevant relation",
+				"changed_condition": "hushbloom stun",
+				"critical": true,
+				"effect": "the mature plant changes the target state",
+				"evidence": "growth state, target link, and resulting target response are visible",
+				"intervention": "place once at the causal location and wait for the tell",
+				"likely_misconception": "the plant effect is immediate or useful anywhere",
+				"model_id": "archetype_2",
+				"prediction": "the placed plant will affect the target after its readiness tell",
+				"verb": "cultivate"
+			},
+			"title": "Plant as tool · Hushbloom Stun",
+			"variant": "hushbloom_stun",
+			"walk_element": "",
+			"walk_index": -1,
+			"walk_ref": "",
+			"walk_step_index": -1,
+			"walk_transition": ""
+		},
+		{
+			"action_verb": "STAGE THE CARRY",
+			"ambient_flora": [
+				"capbage",
+				"capbage",
+				"seefern"
+			],
+			"approach_position": [
+				105.5,
+				0.449999988079071,
+				2.51999998092651
+			],
+			"approaches": [
+				{
+					"id": "guarded_escort",
+					"kind": "primary",
+					"label": "A combat specialist guards the carrier across the open",
+					"min_stage": 2.0,
+					"party": "specialist",
+					"requires": [
+						"combat"
+					],
+					"risk": "direct",
+					"taught_by": "",
+					"uses": [
+						"critical_resource"
+					]
+				},
+				{
+					"borrows_from": "5",
+					"expert": true,
+					"id": "split_carry",
+					"kind": "shadow_expert",
+					"label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
+					"min_stage": 3.0,
+					"party": "aster_peris",
+					"requires": [
+						"carry",
+						"cover",
+						"data"
+					],
+					"risk": "risky",
+					"taught_by": "split_carry",
+					"uses": []
+				},
+				{
+					"id": "endo_lane",
+					"kind": "primary",
+					"label": "Endo bridges or repairs a protected carry lane",
+					"min_stage": 2.0,
+					"party": "specialist",
+					"requires": [
+						"barrier"
+					],
+					"risk": "safe",
+					"taught_by": "",
+					"uses": [
+						"cure_component"
+					]
+				},
+				{
+					"id": "drag_mask",
+					"kind": "shadow",
+					"label": "Drag the load along scarpet-masked routes with slow recovery windows",
+					"min_stage": 2.0,
+					"party": "aster_peris",
+					"requires": [
+						"carry",
+						"cover"
+					],
+					"risk": "risky",
+					"taught_by": "drag_routes",
+					"uses": [
+						"puzzle_piece"
+					]
+				}
+			],
+			"archetype_id": "3",
+			"archetype_name": "Carry the heavy thing",
+			"atp_reward": 0,
+			"carry_payload": true,
+			"chain_cycle": 1,
+			"chain_index": 2,
+			"chain_input": "patrol_diverted",
+			"chain_input_ref": "chain_01:patrol_diverted",
+			"chain_label": "Carry the shelter component through the diverted patrol lane",
+			"chain_output": "carry_component_secured",
+			"chain_output_ref": "chain_01:carry_component_secured",
+			"composition_role": "chain_link",
+			"content_placements": [
+				{
+					"category": "flora",
+					"id": "scarpet",
+					"label": "scarpet",
+					"local_offset": [
+						-1.28999996185303,
+						0.0799999982118607,
+						-0.660000026226044
+					],
+					"position": [
+						104.209999084473,
+						0.529999971389771,
+						0.839999973773956
+					],
+					"role": "cover",
+					"rotation_y_degrees": 22.0,
+					"shape": "mat",
+					"size": [
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
+					],
+					"support": "implemented"
+				},
+				{
+					"category": "structures",
+					"id": "carry_gear",
+					"label": "carry_gear",
+					"local_offset": [
+						0.0,
+						0.400000005960464,
+						0.540000021457672
+					],
+					"position": [
+						105.5,
+						0.850000023841858,
+						2.03999996185303
+					],
+					"role": "structure",
+					"rotation_y_degrees": 59.0,
+					"shape": "structure_box",
+					"size": [
+						1.10000002384186,
+						0.800000011920929,
+						1.10000002384186
+					],
+					"support": "implemented"
+				}
+			],
+			"correct_read": "",
+			"elevation_index": 0,
+			"elevation_meters": -0.0000000119209289661804,
+			"enemies": [],
+			"evidence_hint": "mobility, exposure, capacity, and delivery progress remain visible",
+			"exploit_target": "",
+			"floor_size": [
+				3.0,
+				0.140000000596046,
+				3.0
+			],
+			"flora": [
+				"scarpet"
+			],
+			"footprint": [
+				3.0,
+				0.140000000596046,
+				3.0
+			],
+			"id": "node_08",
+			"label": "Carry the heavy thing · Puzzle Piece",
+			"layout_step": {},
+			"link_ref": "chain_02",
+			"nested_archetypes": [
+				{
+					"depth": 1,
+					"host_id": "3",
+					"host_step": 4,
+					"id": "4",
+					"input": "carry_component_secured",
+					"label": "Carrier hazard is managed as a patrol distraction",
+					"output": "carrier_window_opened",
+					"parent_ref": "",
+					"ref": "nested_00",
+					"role": "nested",
+					"variant": "false_scent"
+				}
+			],
+			"nested_depth": 1,
+			"optional": false,
+			"position": [
+				105.5,
+				0.449999988079071,
+				1.5
+			],
+			"prediction_hint": "an unsupported carrier will lose more capacity on the exposed segment",
+			"pressure": 0,
+			"pressure_cost": 0,
+			"reads": [],
+			"resource": true,
+			"resource_beat": true,
+			"resource_item_type": "generated_tool",
+			"resource_kind": "carry",
+			"reward_atp": 0,
+			"reward_kind": "",
+			"role": "setpiece",
+			"shadow_solution": {
+				"aster_peris": true,
+				"notes": "Use drag routes, scarpet masking, and slower recovery windows."
+			},
+			"shortcut": false,
+			"solve": "",
+			"stage": 2,
+			"structures": [
+				"carry_gear"
+			],
+			"surface_y": 0.449999988079071,
+			"survival_kind": "",
+			"systems_beat": {
+				"beat": "test",
+				"cause": "one character accepts the load and its constraints",
+				"changed_condition": "puzzle piece",
+				"critical": true,
+				"effect": "the resource moves while the carrier becomes vulnerable",
+				"evidence": "mobility, exposure, capacity, and delivery progress remain visible",
+				"intervention": "stage cover and clear the next segment before moving the load",
+				"likely_misconception": "the carrier can move as if unburdened",
+				"model_id": "archetype_3",
+				"prediction": "an unsupported carrier will lose more capacity on the exposed segment",
+				"verb": "support"
+			},
+			"title": "Carry the heavy thing · Puzzle Piece",
+			"variant": "puzzle_piece",
+			"walk_element": "",
+			"walk_index": -1,
+			"walk_ref": "",
+			"walk_step_index": -1,
+			"walk_transition": ""
+		},
+		{
+			"action_verb": "RELATE THE FRAGMENTS",
+			"ambient_flora": [
+				"seefern",
+				"capbage",
+				"capbage"
+			],
+			"approach_position": [
+				118.5,
+				0.449999988079071,
+				0.840000033378601
+			],
+			"approaches": [
+				{
+					"id": "combat_retrieval",
+					"kind": "primary",
+					"label": "Fight through to retrieve the scattered fragments",
 					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
@@ -2521,117 +8104,73 @@
 					"risk": "direct",
 					"taught_by": "",
 					"uses": [
-						"loud_action"
+						"combat_retrieval"
 					]
 				},
 				{
-					"borrows_from": "6",
+					"borrows_from": "8",
 					"expert": true,
-					"id": "false_pattern_spoof",
+					"id": "terminal_cache_recall",
 					"kind": "shadow_expert",
-					"label": "Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for",
+					"label": "Skip the scavenger hunt: Aster pulls the missing fragment from an AST terminal's cached records, reconstructing the whole from the network",
 					"min_stage": 3.0,
 					"party": "aster_peris",
 					"requires": [
-						"signal",
-						"overlay",
-						"scan"
+						"terminal",
+						"scan",
+						"data"
 					],
 					"risk": "risky",
-					"taught_by": "false_pattern_spoof",
+					"taught_by": "terminal_cache_recall",
 					"uses": []
 				},
 				{
-					"id": "signal_split",
+					"id": "scan_preserve",
 					"kind": "shadow",
-					"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"label": "Aster reads the hidden overlay structure; Peris preserves the relational context",
 					"min_stage": 3.0,
 					"party": "aster_peris",
 					"requires": [
-						"electrical",
+						"scan",
 						"flora"
 					],
 					"risk": "safe",
-					"taught_by": "signal_decoy",
+					"taught_by": "overlay_reading",
 					"uses": [
-						"electrical_signature",
-						"plant_tending_task"
+						"hidden_overlay",
+						"memory_pressure"
 					]
 				}
 			],
-			"archetype_id": "4",
-			"archetype_name": "Distract the patrol",
+			"archetype_id": "6",
+			"archetype_name": "Pattern reconstruction",
 			"atp_reward": 0,
-			"chain_index": 4,
-			"chain_input": "",
-			"chain_label": "",
-			"chain_output": "",
-			"composition_role": "required_append",
+			"carry_payload": false,
+			"chain_cycle": 1,
+			"chain_index": 3,
+			"chain_input": "carry_component_secured",
+			"chain_input_ref": "chain_01:carry_component_secured",
+			"chain_label": "Reconstruct the return map from carried fragments",
+			"chain_output": "shelter_route_reassembled",
+			"chain_output_ref": "chain_01:shelter_route_reassembled",
+			"composition_role": "chain_link",
 			"content_placements": [
-				{
-					"category": "flora",
-					"id": "flure",
-					"label": "flure",
-					"local_offset": [
-						-1.96200001239777,
-						0.725000023841858,
-						-1.05599999427795
-					],
-					"position": [
-						58.0379981994629,
-						2.61500000953674,
-						1.94400000572205
-					],
-					"role": "puzzle_flora",
-					"rotation_y_degrees": 44.0,
-					"shape": "plant_cluster",
-					"size": [
-						1.79999995231628,
-						1.45000004768372,
-						1.79999995231628
-					],
-					"support": "implemented"
-				},
-				{
-					"category": "enemies",
-					"id": "naturalizers",
-					"label": "naturalizers",
-					"local_offset": [
-						1.2960000038147,
-						0.550000011920929,
-						-0.240000009536743
-					],
-					"position": [
-						61.2960014343262,
-						2.44000005722046,
-						2.75999999046326
-					],
-					"role": "pressure",
-					"rotation_y_degrees": 81.0,
-					"shape": "enemy_volume",
-					"size": [
-						1.5,
-						1.10000002384186,
-						1.5
-					],
-					"support": "implemented"
-				},
 				{
 					"category": "structures",
 					"id": "shortcut_gate",
 					"label": "shortcut_gate",
 					"local_offset": [
-						0.550000011920929,
+						-0.550000011920929,
 						1.10000002384186,
-						0.864000022411346
+						0.180000007152557
 					],
 					"position": [
-						60.5499992370605,
-						2.99000000953674,
-						3.86400008201599
+						117.949996948242,
+						1.54999995231628,
+						0.680000007152557
 					],
 					"role": "shortcut",
-					"rotation_y_degrees": 118.0,
+					"rotation_y_degrees": 33.0,
 					"shape": "gate",
 					"size": [
 						2.40000009536743,
@@ -2641,71 +8180,87 @@
 					"support": "implemented"
 				}
 			],
-			"elevation_index": 2,
-			"elevation_meters": 1.44,
-			"enemies": [
-				"naturalizers"
-			],
+			"correct_read": "",
+			"elevation_index": 0,
+			"elevation_meters": -0.0000000119209289661804,
+			"enemies": [],
+			"evidence_hint": "contradictions and confirmed links stay visible",
 			"exploit_target": "",
 			"floor_size": [
-				5.40000009536743,
+				3.0,
 				0.140000000596046,
-				4.80000019073486
+				1.0
 			],
-			"flora": [
-				"flure"
-			],
+			"flora": [],
 			"footprint": [
-				5.40000009536743,
+				3.0,
 				0.140000000596046,
-				4.80000019073486
+				1.0
 			],
-			"id": "node_05",
-			"label": "Distract the patrol · Loud Action",
-			"layout_step": {
-
-			},
-			"link_ref": "",
+			"id": "node_09",
+			"label": "Pattern reconstruction · Flow Diagram",
+			"layout_step": {},
+			"link_ref": "chain_03",
 			"nested_archetypes": [
 				{
 					"depth": 1,
-					"host_id": "4",
-					"host_step": 5,
-					"id": "2",
-					"input": "carrier_window_opened",
-					"label": "The distraction trigger is a plant tending task",
-					"output": "patrol_staggered",
+					"host_id": "6",
+					"host_step": 3,
+					"id": "3",
+					"input": "fragment_found",
+					"label": "Each map fragment is a vulnerable carry beat",
+					"output": "fragment_delivered",
 					"parent_ref": "",
-					"ref": "nested_00_00",
+					"ref": "nested_01",
 					"role": "nested",
-					"variant": "hushbloom_stun"
+					"variant": "information_artifact"
 				}
 			],
 			"nested_depth": 1,
 			"optional": false,
 			"position": [
-				60.0,
-				1.88999998569489,
-				3.0
+				118.5,
+				0.449999988079071,
+				0.5
 			],
-			"pressure": 1,
+			"prediction_hint": "the proposed arrangement will explain all recovered relations",
+			"pressure": 0,
 			"pressure_cost": 0,
+			"reads": [],
 			"resource": false,
 			"resource_beat": false,
-			"role": "route_pressure",
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
+			"role": "guidance",
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Aster provides electrical/data distraction while Peris performs the physical or flora task."
+				"notes": "Aster finds hidden structure; Peris preserves relational or flora context."
 			},
 			"shortcut": true,
+			"solve": "",
 			"stage": 3,
 			"structures": [
 				"shortcut_gate"
 			],
-			"surface_y": 1.89,
+			"surface_y": 0.449999988079071,
 			"survival_kind": "",
-			"title": "Distract the patrol · Loud Action",
-			"variant": "loud_action",
+			"systems_beat": {
+				"beat": "test",
+				"cause": "the party retrieves and relates fragments",
+				"changed_condition": "flow diagram",
+				"critical": true,
+				"effect": "the hidden pattern or route becomes legible",
+				"evidence": "contradictions and confirmed links stay visible",
+				"intervention": "place fragments by relationship and test the implied route",
+				"likely_misconception": "collecting every fragment automatically solves the pattern",
+				"model_id": "archetype_6",
+				"prediction": "the proposed arrangement will explain all recovered relations",
+				"verb": "reconstruct"
+			},
+			"title": "Pattern reconstruction · Flow Diagram",
+			"variant": "flow_diagram",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -2713,42 +8268,47 @@
 			"walk_transition": ""
 		},
 		{
+			"action_verb": "REST AT SHELTER",
 			"approach_position": [
-				70.7040023803711,
+				131.259994506836,
 				0.449999988079071,
-				-1.16399991512299
+				0.740000009536743
 			],
 			"approaches": [],
 			"archetype_id": "11",
 			"archetype_name": "Narrative beat",
 			"atp_reward": 0,
+			"carry_payload": false,
+			"chain_cycle": -1,
 			"chain_index": -1,
-			"chain_input": "",
+			"chain_input": "shelter_route_reassembled",
+			"chain_input_ref": "chain_01:shelter_route_reassembled",
 			"chain_label": "",
 			"chain_output": "",
+			"chain_output_ref": "",
 			"composition_role": "",
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "flure",
-					"label": "flure",
+					"id": "hushbloom",
+					"label": "hushbloom",
 					"local_offset": [
-						-2.46599984169006,
-						0.725000023841858,
-						-1.18799996376038
+						-1.00999999046326,
+						0.550000011920929,
+						-0.439999997615814
 					],
 					"position": [
-						69.5339965820313,
-						1.17499995231628,
-						-4.1879997253418
+						130.490005493164,
+						1.0,
+						1.05999994277954
 					],
-					"role": "puzzle_flora",
+					"role": "resource",
 					"rotation_y_degrees": -11.0,
 					"shape": "plant_cluster",
 					"size": [
-						1.79999995231628,
-						1.45000004768372,
-						1.79999995231628
+						1.0,
+						1.10000002384186,
+						1.0
 					],
 					"support": "implemented"
 				},
@@ -2759,12 +8319,12 @@
 					"local_offset": [
 						0.0,
 						1.20000004768372,
-						0.972000002861023
+						0.360000014305115
 					],
 					"position": [
-						72.0,
+						131.5,
 						1.65000009536743,
-						-2.02799987792969
+						1.86000001430511
 					],
 					"role": "rest",
 					"rotation_y_degrees": 26.0,
@@ -2777,41 +8337,45 @@
 					"support": "implemented"
 				}
 			],
+			"correct_read": "",
 			"elevation_index": 0,
-			"elevation_meters": 0.0,
+			"elevation_meters": -0.0000000119209289661804,
 			"enemies": [],
 			"exploit_target": "",
 			"floor_size": [
-				7.19999980926514,
-				0.180000007152557,
-				5.40000009536743
+				2.0,
+				0.140000000596046,
+				2.0
 			],
 			"flora": [
-				"flure"
+				"hushbloom"
 			],
 			"footprint": [
-				7.19999980926514,
-				0.180000007152557,
-				5.40000009536743
+				2.0,
+				0.140000000596046,
+				2.0
 			],
 			"id": "exit_shelter",
 			"label": "Shelter Arrival",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
 			"position": [
-				72.0,
+				131.5,
 				0.449999988079071,
-				-3.0
+				1.5
 			],
 			"pressure": 0,
 			"pressure_cost": 0,
+			"reads": [],
 			"resource": false,
 			"resource_beat": false,
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
 			"role": "shelter_arrival",
 			"shadow_solution": {
 				"aster": "Read the patrol timing and confirm which plant effect is safe to trigger.",
@@ -2819,11 +8383,12 @@
 				"peris": "Tend the flure and hushbloom so the carrier never needs a combat-only solution."
 			},
 			"shortcut": false,
+			"solve": "",
 			"stage": 1,
 			"structures": [
 				"shelter"
 			],
-			"surface_y": 0.45,
+			"surface_y": 0.449999988079071,
 			"survival_kind": "",
 			"title": "Shelter Arrival",
 			"variant": "",
@@ -2853,32 +8418,2654 @@
 			"shortcut_gate"
 		]
 	},
+	"roompieces": {
+		"contract_id": "trawf_roompieces_v1",
+		"corridors": [
+			{
+				"cells": [
+					[
+						4,
+						1
+					],
+					[
+						4,
+						2
+					],
+					[
+						4,
+						3
+					],
+					[
+						5,
+						1
+					],
+					[
+						5,
+						2
+					],
+					[
+						5,
+						3
+					],
+					[
+						6,
+						1
+					],
+					[
+						6,
+						2
+					],
+					[
+						6,
+						3
+					],
+					[
+						7,
+						1
+					],
+					[
+						7,
+						2
+					],
+					[
+						7,
+						3
+					],
+					[
+						8,
+						1
+					],
+					[
+						8,
+						2
+					],
+					[
+						8,
+						3
+					],
+					[
+						9,
+						1
+					],
+					[
+						9,
+						2
+					],
+					[
+						9,
+						3
+					],
+					[
+						10,
+						1
+					],
+					[
+						10,
+						2
+					],
+					[
+						10,
+						3
+					],
+					[
+						11,
+						1
+					],
+					[
+						11,
+						2
+					],
+					[
+						11,
+						3
+					],
+					[
+						12,
+						1
+					],
+					[
+						12,
+						2
+					],
+					[
+						12,
+						3
+					],
+					[
+						13,
+						2
+					],
+					[
+						14,
+						2
+					],
+					[
+						13,
+						1
+					],
+					[
+						14,
+						1
+					],
+					[
+						12,
+						-1
+					],
+					[
+						13,
+						-1
+					],
+					[
+						14,
+						-1
+					],
+					[
+						12,
+						0
+					],
+					[
+						13,
+						0
+					],
+					[
+						14,
+						0
+					],
+					[
+						13,
+						3
+					],
+					[
+						14,
+						3
+					]
+				],
+				"from": "entry",
+				"from_level": 0,
+				"kind": "safe",
+				"recoverable": true,
+				"route": "main_00_01",
+				"to": "node_01",
+				"to_level": 0
+			},
+			{
+				"cells": [
+					[
+						15,
+						-1
+					],
+					[
+						15,
+						0
+					],
+					[
+						15,
+						1
+					],
+					[
+						16,
+						-1
+					],
+					[
+						16,
+						0
+					],
+					[
+						16,
+						1
+					],
+					[
+						17,
+						-1
+					],
+					[
+						17,
+						0
+					],
+					[
+						17,
+						1
+					],
+					[
+						18,
+						-1
+					],
+					[
+						18,
+						0
+					],
+					[
+						18,
+						1
+					],
+					[
+						19,
+						-1
+					],
+					[
+						19,
+						0
+					],
+					[
+						19,
+						1
+					],
+					[
+						20,
+						-1
+					],
+					[
+						20,
+						0
+					],
+					[
+						20,
+						1
+					],
+					[
+						21,
+						-1
+					],
+					[
+						21,
+						0
+					],
+					[
+						21,
+						1
+					],
+					[
+						22,
+						-1
+					],
+					[
+						22,
+						0
+					],
+					[
+						22,
+						1
+					],
+					[
+						23,
+						-1
+					],
+					[
+						23,
+						0
+					],
+					[
+						23,
+						1
+					],
+					[
+						24,
+						-1
+					],
+					[
+						24,
+						0
+					],
+					[
+						24,
+						1
+					],
+					[
+						25,
+						-1
+					],
+					[
+						25,
+						0
+					],
+					[
+						25,
+						1
+					],
+					[
+						26,
+						0
+					],
+					[
+						27,
+						0
+					],
+					[
+						26,
+						-1
+					],
+					[
+						27,
+						-1
+					],
+					[
+						26,
+						1
+					],
+					[
+						27,
+						1
+					],
+					[
+						25,
+						2
+					],
+					[
+						26,
+						2
+					],
+					[
+						27,
+						2
+					]
+				],
+				"from": "node_01",
+				"from_level": 0,
+				"kind": "safe",
+				"recoverable": true,
+				"route": "main_01_02",
+				"to": "node_02",
+				"to_level": 0
+			},
+			{
+				"cells": [
+					[
+						28,
+						0
+					],
+					[
+						28,
+						1
+					],
+					[
+						29,
+						0
+					],
+					[
+						29,
+						1
+					],
+					[
+						30,
+						0
+					],
+					[
+						30,
+						1
+					],
+					[
+						31,
+						0
+					],
+					[
+						31,
+						1
+					],
+					[
+						32,
+						0
+					],
+					[
+						32,
+						1
+					],
+					[
+						33,
+						0
+					],
+					[
+						33,
+						1
+					],
+					[
+						34,
+						0
+					],
+					[
+						34,
+						1
+					],
+					[
+						35,
+						0
+					],
+					[
+						35,
+						1
+					],
+					[
+						36,
+						0
+					],
+					[
+						36,
+						1
+					],
+					[
+						37,
+						0
+					],
+					[
+						37,
+						1
+					],
+					[
+						38,
+						0
+					],
+					[
+						38,
+						1
+					],
+					[
+						39,
+						0
+					],
+					[
+						39,
+						1
+					]
+				],
+				"from": "node_02",
+				"from_level": 0,
+				"kind": "risky",
+				"recoverable": true,
+				"route": "risky_optional_02_03",
+				"to": "node_03",
+				"to_level": 0
+			},
+			{
+				"cells": [
+					[
+						42,
+						0
+					],
+					[
+						42,
+						1
+					],
+					[
+						43,
+						0
+					],
+					[
+						43,
+						1
+					],
+					[
+						44,
+						0
+					],
+					[
+						44,
+						1
+					],
+					[
+						45,
+						0
+					],
+					[
+						45,
+						1
+					],
+					[
+						46,
+						0
+					],
+					[
+						46,
+						1
+					],
+					[
+						47,
+						0
+					],
+					[
+						47,
+						1
+					],
+					[
+						48,
+						0
+					],
+					[
+						48,
+						1
+					],
+					[
+						49,
+						0
+					],
+					[
+						49,
+						1
+					],
+					[
+						50,
+						0
+					],
+					[
+						50,
+						1
+					],
+					[
+						51,
+						0
+					],
+					[
+						51,
+						1
+					],
+					[
+						52,
+						0
+					],
+					[
+						52,
+						1
+					]
+				],
+				"from": "node_03",
+				"from_level": 0,
+				"kind": "safe",
+				"recoverable": true,
+				"route": "main_03_04",
+				"to": "node_04",
+				"to_level": 0
+			},
+			{
+				"cells": [
+					[
+						55,
+						1
+					],
+					[
+						56,
+						1
+					],
+					[
+						57,
+						1
+					],
+					[
+						58,
+						1
+					],
+					[
+						59,
+						1
+					],
+					[
+						60,
+						1
+					],
+					[
+						61,
+						1
+					],
+					[
+						62,
+						1
+					],
+					[
+						63,
+						1
+					],
+					[
+						64,
+						1
+					],
+					[
+						65,
+						1
+					],
+					[
+						65,
+						2
+					]
+				],
+				"from": "node_04",
+				"from_level": 0,
+				"kind": "safe",
+				"recoverable": true,
+				"route": "main_04_05",
+				"to": "node_05",
+				"to_level": 0
+			},
+			{
+				"cells": [
+					[
+						69,
+						2
+					],
+					[
+						70,
+						2
+					],
+					[
+						71,
+						2
+					],
+					[
+						72,
+						2
+					],
+					[
+						73,
+						2
+					],
+					[
+						74,
+						2
+					],
+					[
+						75,
+						2
+					],
+					[
+						76,
+						2
+					],
+					[
+						77,
+						2
+					],
+					[
+						78,
+						2
+					],
+					[
+						78,
+						1
+					],
+					[
+						78,
+						0
+					]
+				],
+				"from": "node_05",
+				"from_level": 0,
+				"kind": "safe",
+				"recoverable": true,
+				"route": "main_05_06",
+				"to": "node_06",
+				"to_level": 0
+			},
+			{
+				"cells": [
+					[
+						81,
+						-1
+					],
+					[
+						81,
+						0
+					],
+					[
+						81,
+						1
+					],
+					[
+						82,
+						-1
+					],
+					[
+						82,
+						0
+					],
+					[
+						82,
+						1
+					],
+					[
+						83,
+						-1
+					],
+					[
+						83,
+						0
+					],
+					[
+						83,
+						1
+					],
+					[
+						84,
+						-1
+					],
+					[
+						84,
+						0
+					],
+					[
+						84,
+						1
+					],
+					[
+						85,
+						-1
+					],
+					[
+						85,
+						0
+					],
+					[
+						85,
+						1
+					],
+					[
+						86,
+						-1
+					],
+					[
+						86,
+						0
+					],
+					[
+						86,
+						1
+					],
+					[
+						87,
+						-1
+					],
+					[
+						87,
+						0
+					],
+					[
+						87,
+						1
+					],
+					[
+						88,
+						-1
+					],
+					[
+						88,
+						0
+					],
+					[
+						88,
+						1
+					],
+					[
+						89,
+						-1
+					],
+					[
+						89,
+						0
+					],
+					[
+						89,
+						1
+					],
+					[
+						90,
+						-1
+					],
+					[
+						90,
+						0
+					],
+					[
+						90,
+						1
+					],
+					[
+						91,
+						0
+					],
+					[
+						92,
+						0
+					],
+					[
+						91,
+						-1
+					],
+					[
+						92,
+						-1
+					],
+					[
+						91,
+						1
+					],
+					[
+						92,
+						1
+					],
+					[
+						90,
+						2
+					],
+					[
+						91,
+						2
+					],
+					[
+						92,
+						2
+					]
+				],
+				"from": "node_06",
+				"from_level": 0,
+				"kind": "safe",
+				"recoverable": true,
+				"route": "main_06_07",
+				"to": "node_07",
+				"to_level": 0
+			},
+			{
+				"cells": [
+					[
+						93,
+						0
+					],
+					[
+						93,
+						1
+					],
+					[
+						93,
+						2
+					],
+					[
+						94,
+						0
+					],
+					[
+						94,
+						1
+					],
+					[
+						94,
+						2
+					],
+					[
+						95,
+						0
+					],
+					[
+						95,
+						1
+					],
+					[
+						95,
+						2
+					],
+					[
+						96,
+						0
+					],
+					[
+						96,
+						1
+					],
+					[
+						96,
+						2
+					],
+					[
+						97,
+						0
+					],
+					[
+						97,
+						1
+					],
+					[
+						97,
+						2
+					],
+					[
+						98,
+						0
+					],
+					[
+						98,
+						1
+					],
+					[
+						98,
+						2
+					],
+					[
+						99,
+						0
+					],
+					[
+						99,
+						1
+					],
+					[
+						99,
+						2
+					],
+					[
+						100,
+						0
+					],
+					[
+						100,
+						1
+					],
+					[
+						100,
+						2
+					],
+					[
+						101,
+						0
+					],
+					[
+						101,
+						1
+					],
+					[
+						101,
+						2
+					],
+					[
+						102,
+						0
+					],
+					[
+						102,
+						1
+					],
+					[
+						102,
+						2
+					],
+					[
+						103,
+						0
+					],
+					[
+						103,
+						1
+					],
+					[
+						103,
+						2
+					],
+					[
+						104,
+						0
+					],
+					[
+						105,
+						0
+					],
+					[
+						104,
+						1
+					],
+					[
+						105,
+						1
+					],
+					[
+						104,
+						2
+					],
+					[
+						105,
+						2
+					]
+				],
+				"from": "node_07",
+				"from_level": 0,
+				"kind": "safe",
+				"recoverable": true,
+				"route": "main_07_08",
+				"to": "node_08",
+				"to_level": 0
+			},
+			{
+				"cells": [
+					[
+						106,
+						0
+					],
+					[
+						106,
+						1
+					],
+					[
+						106,
+						2
+					],
+					[
+						107,
+						0
+					],
+					[
+						107,
+						1
+					],
+					[
+						107,
+						2
+					],
+					[
+						108,
+						0
+					],
+					[
+						108,
+						1
+					],
+					[
+						108,
+						2
+					],
+					[
+						109,
+						0
+					],
+					[
+						109,
+						1
+					],
+					[
+						109,
+						2
+					],
+					[
+						110,
+						0
+					],
+					[
+						110,
+						1
+					],
+					[
+						110,
+						2
+					],
+					[
+						111,
+						0
+					],
+					[
+						111,
+						1
+					],
+					[
+						111,
+						2
+					],
+					[
+						112,
+						0
+					],
+					[
+						112,
+						1
+					],
+					[
+						112,
+						2
+					],
+					[
+						113,
+						0
+					],
+					[
+						113,
+						1
+					],
+					[
+						113,
+						2
+					],
+					[
+						114,
+						0
+					],
+					[
+						114,
+						1
+					],
+					[
+						114,
+						2
+					],
+					[
+						115,
+						0
+					],
+					[
+						115,
+						1
+					],
+					[
+						115,
+						2
+					],
+					[
+						116,
+						0
+					],
+					[
+						116,
+						1
+					],
+					[
+						116,
+						2
+					],
+					[
+						117,
+						1
+					],
+					[
+						118,
+						1
+					],
+					[
+						116,
+						-1
+					],
+					[
+						117,
+						-1
+					],
+					[
+						117,
+						0
+					],
+					[
+						118,
+						-1
+					],
+					[
+						118,
+						0
+					],
+					[
+						117,
+						2
+					],
+					[
+						118,
+						2
+					]
+				],
+				"from": "node_08",
+				"from_level": 0,
+				"kind": "safe",
+				"recoverable": true,
+				"route": "main_08_09",
+				"to": "node_09",
+				"to_level": 0
+			},
+			{
+				"cells": [
+					[
+						119,
+						-1
+					],
+					[
+						119,
+						0
+					],
+					[
+						120,
+						-1
+					],
+					[
+						120,
+						0
+					],
+					[
+						121,
+						-1
+					],
+					[
+						121,
+						0
+					],
+					[
+						122,
+						-1
+					],
+					[
+						122,
+						0
+					],
+					[
+						123,
+						-1
+					],
+					[
+						123,
+						0
+					],
+					[
+						124,
+						-1
+					],
+					[
+						124,
+						0
+					],
+					[
+						125,
+						-1
+					],
+					[
+						125,
+						0
+					],
+					[
+						126,
+						-1
+					],
+					[
+						126,
+						0
+					],
+					[
+						127,
+						-1
+					],
+					[
+						127,
+						0
+					],
+					[
+						128,
+						-1
+					],
+					[
+						128,
+						0
+					],
+					[
+						129,
+						-1
+					],
+					[
+						129,
+						0
+					],
+					[
+						130,
+						-1
+					],
+					[
+						130,
+						0
+					]
+				],
+				"from": "node_09",
+				"from_level": 0,
+				"kind": "safe",
+				"recoverable": true,
+				"route": "main_09_10",
+				"to": "exit_shelter",
+				"to_level": 0
+			},
+			{
+				"cells": [
+					[
+						28,
+						0
+					],
+					[
+						28,
+						1
+					],
+					[
+						28,
+						2
+					],
+					[
+						29,
+						0
+					],
+					[
+						29,
+						1
+					],
+					[
+						29,
+						2
+					],
+					[
+						30,
+						0
+					],
+					[
+						30,
+						1
+					],
+					[
+						30,
+						2
+					],
+					[
+						31,
+						0
+					],
+					[
+						31,
+						1
+					],
+					[
+						31,
+						2
+					],
+					[
+						32,
+						0
+					],
+					[
+						32,
+						1
+					],
+					[
+						32,
+						2
+					],
+					[
+						33,
+						0
+					],
+					[
+						33,
+						1
+					],
+					[
+						33,
+						2
+					],
+					[
+						34,
+						0
+					],
+					[
+						34,
+						1
+					],
+					[
+						34,
+						2
+					],
+					[
+						35,
+						0
+					],
+					[
+						35,
+						1
+					],
+					[
+						35,
+						2
+					],
+					[
+						36,
+						0
+					],
+					[
+						36,
+						1
+					],
+					[
+						36,
+						2
+					],
+					[
+						37,
+						0
+					],
+					[
+						37,
+						1
+					],
+					[
+						37,
+						2
+					],
+					[
+						38,
+						0
+					],
+					[
+						38,
+						1
+					],
+					[
+						38,
+						2
+					],
+					[
+						39,
+						0
+					],
+					[
+						39,
+						1
+					],
+					[
+						39,
+						2
+					],
+					[
+						40,
+						0
+					],
+					[
+						40,
+						1
+					],
+					[
+						40,
+						2
+					],
+					[
+						41,
+						0
+					],
+					[
+						41,
+						1
+					],
+					[
+						41,
+						2
+					],
+					[
+						42,
+						0
+					],
+					[
+						42,
+						1
+					],
+					[
+						42,
+						2
+					],
+					[
+						43,
+						0
+					],
+					[
+						43,
+						1
+					],
+					[
+						43,
+						2
+					],
+					[
+						44,
+						0
+					],
+					[
+						44,
+						1
+					],
+					[
+						44,
+						2
+					],
+					[
+						45,
+						0
+					],
+					[
+						45,
+						1
+					],
+					[
+						45,
+						2
+					],
+					[
+						46,
+						0
+					],
+					[
+						46,
+						1
+					],
+					[
+						46,
+						2
+					],
+					[
+						47,
+						0
+					],
+					[
+						47,
+						1
+					],
+					[
+						47,
+						2
+					],
+					[
+						48,
+						0
+					],
+					[
+						48,
+						1
+					],
+					[
+						48,
+						2
+					],
+					[
+						49,
+						0
+					],
+					[
+						49,
+						1
+					],
+					[
+						49,
+						2
+					],
+					[
+						50,
+						0
+					],
+					[
+						50,
+						1
+					],
+					[
+						50,
+						2
+					],
+					[
+						51,
+						0
+					],
+					[
+						51,
+						1
+					],
+					[
+						51,
+						2
+					],
+					[
+						52,
+						0
+					],
+					[
+						53,
+						0
+					],
+					[
+						52,
+						1
+					],
+					[
+						53,
+						1
+					],
+					[
+						52,
+						2
+					],
+					[
+						53,
+						2
+					]
+				],
+				"from": "node_02",
+				"from_level": 0,
+				"kind": "safe",
+				"recoverable": true,
+				"route": "optional_bypass_02_04",
+				"to": "node_04",
+				"to_level": 0
+			},
+			{
+				"cells": [
+					[
+						117,
+						0
+					],
+					[
+						116,
+						0
+					],
+					[
+						115,
+						0
+					],
+					[
+						114,
+						0
+					],
+					[
+						113,
+						0
+					],
+					[
+						112,
+						0
+					],
+					[
+						111,
+						0
+					],
+					[
+						110,
+						0
+					],
+					[
+						109,
+						0
+					],
+					[
+						108,
+						0
+					],
+					[
+						107,
+						0
+					],
+					[
+						106,
+						0
+					],
+					[
+						105,
+						0
+					],
+					[
+						104,
+						0
+					],
+					[
+						103,
+						0
+					],
+					[
+						102,
+						0
+					],
+					[
+						101,
+						0
+					],
+					[
+						100,
+						0
+					],
+					[
+						99,
+						0
+					],
+					[
+						98,
+						0
+					],
+					[
+						97,
+						0
+					],
+					[
+						96,
+						0
+					],
+					[
+						95,
+						0
+					],
+					[
+						94,
+						0
+					],
+					[
+						93,
+						0
+					],
+					[
+						92,
+						0
+					],
+					[
+						91,
+						0
+					],
+					[
+						90,
+						0
+					],
+					[
+						89,
+						0
+					],
+					[
+						88,
+						0
+					],
+					[
+						87,
+						0
+					],
+					[
+						86,
+						0
+					],
+					[
+						85,
+						0
+					],
+					[
+						84,
+						0
+					],
+					[
+						83,
+						0
+					],
+					[
+						82,
+						0
+					],
+					[
+						81,
+						0
+					],
+					[
+						80,
+						0
+					],
+					[
+						79,
+						0
+					],
+					[
+						78,
+						0
+					],
+					[
+						77,
+						0
+					],
+					[
+						76,
+						0
+					],
+					[
+						75,
+						0
+					],
+					[
+						74,
+						0
+					],
+					[
+						73,
+						0
+					],
+					[
+						72,
+						0
+					],
+					[
+						71,
+						0
+					],
+					[
+						70,
+						0
+					],
+					[
+						69,
+						0
+					],
+					[
+						68,
+						0
+					],
+					[
+						67,
+						0
+					],
+					[
+						66,
+						0
+					],
+					[
+						65,
+						0
+					],
+					[
+						64,
+						0
+					],
+					[
+						63,
+						0
+					],
+					[
+						62,
+						0
+					],
+					[
+						61,
+						0
+					],
+					[
+						60,
+						0
+					],
+					[
+						59,
+						0
+					],
+					[
+						58,
+						0
+					],
+					[
+						57,
+						0
+					],
+					[
+						56,
+						0
+					],
+					[
+						55,
+						0
+					],
+					[
+						54,
+						0
+					],
+					[
+						53,
+						0
+					],
+					[
+						52,
+						0
+					],
+					[
+						51,
+						0
+					],
+					[
+						50,
+						0
+					],
+					[
+						49,
+						0
+					],
+					[
+						48,
+						0
+					],
+					[
+						47,
+						0
+					],
+					[
+						46,
+						0
+					],
+					[
+						45,
+						0
+					],
+					[
+						44,
+						0
+					],
+					[
+						43,
+						0
+					],
+					[
+						42,
+						0
+					],
+					[
+						41,
+						0
+					],
+					[
+						40,
+						0
+					],
+					[
+						39,
+						0
+					],
+					[
+						38,
+						0
+					],
+					[
+						37,
+						0
+					],
+					[
+						36,
+						0
+					],
+					[
+						35,
+						0
+					],
+					[
+						34,
+						0
+					],
+					[
+						33,
+						0
+					],
+					[
+						32,
+						0
+					],
+					[
+						31,
+						0
+					],
+					[
+						30,
+						0
+					],
+					[
+						29,
+						0
+					],
+					[
+						28,
+						0
+					],
+					[
+						27,
+						0
+					],
+					[
+						26,
+						0
+					],
+					[
+						25,
+						0
+					],
+					[
+						24,
+						0
+					],
+					[
+						23,
+						0
+					],
+					[
+						22,
+						0
+					],
+					[
+						21,
+						0
+					],
+					[
+						20,
+						0
+					],
+					[
+						19,
+						0
+					],
+					[
+						18,
+						0
+					],
+					[
+						17,
+						0
+					],
+					[
+						16,
+						0
+					],
+					[
+						15,
+						0
+					],
+					[
+						14,
+						0
+					],
+					[
+						13,
+						0
+					],
+					[
+						12,
+						0
+					],
+					[
+						11,
+						0
+					],
+					[
+						10,
+						0
+					],
+					[
+						9,
+						0
+					],
+					[
+						8,
+						0
+					],
+					[
+						7,
+						0
+					],
+					[
+						6,
+						0
+					],
+					[
+						5,
+						0
+					],
+					[
+						4,
+						0
+					],
+					[
+						4,
+						1
+					],
+					[
+						4,
+						2
+					]
+				],
+				"from": "node_09",
+				"from_level": 0,
+				"kind": "shortcut",
+				"recoverable": true,
+				"route": "return_shortcut",
+				"to": "entry",
+				"to_level": 0
+			}
+		],
+		"fallback_used": false,
+		"layout_engine": "wfc_v1",
+		"placements": [
+			{
+				"level": 0,
+				"node": "entry",
+				"origin_cell": [
+					0,
+					0
+				],
+				"piece": "arena",
+				"rotation": 270,
+				"size": [
+					5,
+					5
+				]
+			},
+			{
+				"level": 0,
+				"node": "node_01",
+				"origin_cell": [
+					13,
+					0
+				],
+				"piece": "corridor_straight",
+				"rotation": 180,
+				"size": [
+					3,
+					1
+				]
+			},
+			{
+				"level": 0,
+				"node": "node_02",
+				"origin_cell": [
+					26,
+					0
+				],
+				"piece": "chamber",
+				"rotation": 90,
+				"size": [
+					3,
+					4
+				]
+			},
+			{
+				"level": 0,
+				"node": "node_03",
+				"origin_cell": [
+					39,
+					0
+				],
+				"piece": "hall",
+				"rotation": 180,
+				"size": [
+					4,
+					2
+				]
+			},
+			{
+				"level": 0,
+				"node": "node_04",
+				"origin_cell": [
+					52,
+					0
+				],
+				"piece": "chamber",
+				"rotation": 0,
+				"size": [
+					4,
+					3
+				]
+			},
+			{
+				"level": 0,
+				"node": "node_05",
+				"origin_cell": [
+					65,
+					0
+				],
+				"piece": "arena",
+				"rotation": 0,
+				"size": [
+					5,
+					5
+				]
+			},
+			{
+				"level": 0,
+				"node": "node_06",
+				"origin_cell": [
+					78,
+					0
+				],
+				"piece": "hall",
+				"rotation": 0,
+				"size": [
+					4,
+					2
+				]
+			},
+			{
+				"level": 0,
+				"node": "node_07",
+				"origin_cell": [
+					91,
+					0
+				],
+				"piece": "junction_x",
+				"rotation": 0,
+				"size": [
+					3,
+					3
+				]
+			},
+			{
+				"level": 0,
+				"node": "node_08",
+				"origin_cell": [
+					104,
+					0
+				],
+				"piece": "junction_t",
+				"rotation": 0,
+				"size": [
+					3,
+					3
+				]
+			},
+			{
+				"level": 0,
+				"node": "node_09",
+				"origin_cell": [
+					117,
+					0
+				],
+				"piece": "corridor_straight",
+				"rotation": 0,
+				"size": [
+					3,
+					1
+				]
+			},
+			{
+				"level": 0,
+				"node": "exit_shelter",
+				"origin_cell": [
+					130,
+					0
+				],
+				"piece": "alcove",
+				"rotation": 90,
+				"size": [
+					2,
+					2
+				]
+			}
+		],
+		"slot_cells": {
+			"entry": {
+				"connection_cell": [
+					2,
+					2
+				],
+				"connection_points": {
+					"e": [
+						4,
+						2
+					],
+					"n": [
+						2,
+						0
+					],
+					"s": [
+						2,
+						4
+					],
+					"w": [
+						0,
+						2
+					]
+				},
+				"footprint": [
+					5,
+					5
+				],
+				"level": 0,
+				"origin_cell": [
+					0,
+					0
+				],
+				"walkable": [
+					".....",
+					".....",
+					".....",
+					".....",
+					"....."
+				]
+			},
+			"exit_shelter": {
+				"connection_cell": [
+					131,
+					1
+				],
+				"connection_points": {
+					"w": [
+						0,
+						0
+					]
+				},
+				"footprint": [
+					2,
+					2
+				],
+				"level": 0,
+				"origin_cell": [
+					130,
+					0
+				],
+				"walkable": [
+					"..",
+					".."
+				]
+			},
+			"node_01": {
+				"connection_cell": [
+					14,
+					0
+				],
+				"connection_points": {
+					"e": [
+						2,
+						0
+					],
+					"w": [
+						0,
+						0
+					]
+				},
+				"footprint": [
+					3,
+					1
+				],
+				"level": 0,
+				"origin_cell": [
+					13,
+					0
+				],
+				"walkable": [
+					"..."
+				]
+			},
+			"node_02": {
+				"connection_cell": [
+					27,
+					2
+				],
+				"connection_points": {
+					"e": [
+						2,
+						1
+					],
+					"n": [
+						1,
+						0
+					],
+					"s": [
+						1,
+						3
+					],
+					"w": [
+						0,
+						1
+					]
+				},
+				"footprint": [
+					3,
+					4
+				],
+				"level": 0,
+				"origin_cell": [
+					26,
+					0
+				],
+				"walkable": [
+					"...",
+					"...",
+					"...",
+					"..."
+				]
+			},
+			"node_03": {
+				"connection_cell": [
+					41,
+					1
+				],
+				"connection_points": {
+					"e": [
+						3,
+						1
+					],
+					"w": [
+						0,
+						1
+					]
+				},
+				"footprint": [
+					4,
+					2
+				],
+				"level": 0,
+				"origin_cell": [
+					39,
+					0
+				],
+				"walkable": [
+					"....",
+					"...."
+				]
+			},
+			"node_04": {
+				"connection_cell": [
+					54,
+					1
+				],
+				"connection_points": {
+					"e": [
+						3.0,
+						1.0
+					],
+					"n": [
+						1.0,
+						0.0
+					],
+					"s": [
+						1.0,
+						2.0
+					],
+					"w": [
+						0.0,
+						1.0
+					]
+				},
+				"footprint": [
+					4,
+					3
+				],
+				"level": 0,
+				"origin_cell": [
+					52,
+					0
+				],
+				"walkable": [
+					"....",
+					"....",
+					"...."
+				]
+			},
+			"node_05": {
+				"connection_cell": [
+					67,
+					2
+				],
+				"connection_points": {
+					"e": [
+						4.0,
+						2.0
+					],
+					"n": [
+						2.0,
+						0.0
+					],
+					"s": [
+						2.0,
+						4.0
+					],
+					"w": [
+						0.0,
+						2.0
+					]
+				},
+				"footprint": [
+					5,
+					5
+				],
+				"level": 0,
+				"origin_cell": [
+					65,
+					0
+				],
+				"walkable": [
+					".....",
+					".....",
+					".....",
+					".....",
+					"....."
+				]
+			},
+			"node_06": {
+				"connection_cell": [
+					80,
+					1
+				],
+				"connection_points": {
+					"e": [
+						3.0,
+						0.0
+					],
+					"w": [
+						0.0,
+						0.0
+					]
+				},
+				"footprint": [
+					4,
+					2
+				],
+				"level": 0,
+				"origin_cell": [
+					78,
+					0
+				],
+				"walkable": [
+					"....",
+					"...."
+				]
+			},
+			"node_07": {
+				"connection_cell": [
+					92,
+					1
+				],
+				"connection_points": {
+					"e": [
+						2.0,
+						1.0
+					],
+					"n": [
+						1.0,
+						0.0
+					],
+					"s": [
+						1.0,
+						2.0
+					],
+					"w": [
+						0.0,
+						1.0
+					]
+				},
+				"footprint": [
+					3,
+					3
+				],
+				"level": 0,
+				"origin_cell": [
+					91,
+					0
+				],
+				"walkable": [
+					".#.",
+					"...",
+					".#."
+				]
+			},
+			"node_08": {
+				"connection_cell": [
+					105,
+					1
+				],
+				"connection_points": {
+					"e": [
+						2.0,
+						1.0
+					],
+					"s": [
+						1.0,
+						2.0
+					],
+					"w": [
+						0.0,
+						1.0
+					]
+				},
+				"footprint": [
+					3,
+					3
+				],
+				"level": 0,
+				"origin_cell": [
+					104,
+					0
+				],
+				"walkable": [
+					"...",
+					"...",
+					".#."
+				]
+			},
+			"node_09": {
+				"connection_cell": [
+					118,
+					0
+				],
+				"connection_points": {
+					"e": [
+						2.0,
+						0.0
+					],
+					"w": [
+						0.0,
+						0.0
+					]
+				},
+				"footprint": [
+					3,
+					1
+				],
+				"level": 0,
+				"origin_cell": [
+					117,
+					0
+				],
+				"walkable": [
+					"..."
+				]
+			}
+		},
+		"tile_size": 1
+	},
 	"routes": [
 		{
 			"cost": 1,
 			"from": "entry",
-			"height_delta": 0.719999969005585,
+			"height_delta": 0.0,
 			"id": "main_00_01",
 			"kind": "safe",
 			"recoverable": true,
 			"risk": "safe",
 			"surface": {
 				"from": [
-					0.0,
+					2.5,
 					0.449999988079071,
-					-3.0
+					2.5
 				],
 				"midpoint": [
-					6.0,
-					0.809999942779541,
-					-1.5
+					8.5,
+					0.449999988079071,
+					1.5
 				],
-				"slope": 0.719999969005585,
+				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					12.0,
-					1.16999995708466,
-					0.0
+					14.5,
+					0.449999988079071,
+					0.5
 				],
 				"width": 1.85
 			},
@@ -2888,28 +11075,28 @@
 		{
 			"cost": 1,
 			"from": "node_01",
-			"height_delta": 0.720000028610229,
+			"height_delta": 0.0,
 			"id": "main_01_02",
 			"kind": "safe",
 			"recoverable": true,
 			"risk": "safe",
 			"surface": {
 				"from": [
-					12.0,
-					1.16999995708466,
-					0.0
+					14.5,
+					0.449999988079071,
+					0.5
 				],
 				"midpoint": [
-					18.0,
-					1.52999997138977,
+					21.0,
+					0.449999988079071,
 					1.5
 				],
-				"slope": 0.720000028610229,
+				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					24.0,
-					1.88999998569489,
-					3.0
+					27.5,
+					0.449999988079071,
+					2.5
 				],
 				"width": 1.85
 			},
@@ -2917,61 +11104,63 @@
 			"width": 1.85
 		},
 		{
-			"cost": 1,
+			"cost": 0,
+			"damage": 20.0,
 			"from": "node_02",
-			"height_delta": -1.43999999761581,
-			"id": "main_02_03",
-			"kind": "safe",
+			"height_delta": 0.0,
+			"id": "risky_optional_02_03",
+			"kind": "risky",
+			"optional_reward_node": "node_03",
 			"recoverable": true,
-			"risk": "safe",
+			"risk": "risky",
 			"surface": {
 				"from": [
-					24.0,
-					1.88999998569489,
-					3.0
+					27.5,
+					0.449999988079071,
+					2.5
 				],
 				"midpoint": [
-					30.0,
-					1.16999995708466,
-					0.0
+					34.5,
+					0.449999988079071,
+					2.0
 				],
-				"slope": -1.43999999761581,
+				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					36.0,
+					41.5,
 					0.449999988079071,
-					-3.0
+					1.5
 				],
-				"width": 1.85
+				"width": 1.15
 			},
 			"to": "node_03",
-			"width": 1.85
+			"width": 1.15
 		},
 		{
 			"cost": 1,
 			"from": "node_03",
-			"height_delta": 1.43999999761581,
+			"height_delta": 0.0,
 			"id": "main_03_04",
 			"kind": "safe",
 			"recoverable": true,
 			"risk": "safe",
 			"surface": {
 				"from": [
-					36.0,
+					41.5,
 					0.449999988079071,
-					-3.0
+					1.5
 				],
 				"midpoint": [
-					42.0,
-					1.16999995708466,
-					-1.5
+					48.0,
+					0.449999988079071,
+					1.5
 				],
-				"slope": 1.43999999761581,
+				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					48.0,
-					1.88999998569489,
-					0.0
+					54.5,
+					0.449999988079071,
+					1.5
 				],
 				"width": 1.85
 			},
@@ -2988,21 +11177,21 @@
 			"risk": "safe",
 			"surface": {
 				"from": [
-					48.0,
-					1.88999998569489,
-					0.0
+					54.5,
+					0.449999988079071,
+					1.5
 				],
 				"midpoint": [
-					54.0,
-					1.88999998569489,
-					1.5
+					61.0,
+					0.449999988079071,
+					2.0
 				],
 				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					60.0,
-					1.88999998569489,
-					3.0
+					67.5,
+					0.449999988079071,
+					2.5
 				],
 				"width": 1.85
 			},
@@ -3012,28 +11201,152 @@
 		{
 			"cost": 1,
 			"from": "node_05",
-			"height_delta": -1.43999999761581,
+			"height_delta": 0.0,
 			"id": "main_05_06",
 			"kind": "safe",
 			"recoverable": true,
 			"risk": "safe",
 			"surface": {
 				"from": [
-					60.0,
-					1.88999998569489,
-					3.0
+					67.5,
+					0.449999988079071,
+					2.5
 				],
 				"midpoint": [
-					66.0,
-					1.16999995708466,
-					0.0
+					74.0,
+					0.449999988079071,
+					2.0
 				],
-				"slope": -1.43999999761581,
+				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					72.0,
+					80.5,
 					0.449999988079071,
-					-3.0
+					1.5
+				],
+				"width": 1.85
+			},
+			"to": "node_06",
+			"width": 1.85
+		},
+		{
+			"cost": 1,
+			"from": "node_06",
+			"height_delta": 0.0,
+			"id": "main_06_07",
+			"kind": "safe",
+			"recoverable": true,
+			"risk": "safe",
+			"surface": {
+				"from": [
+					80.5,
+					0.449999988079071,
+					1.5
+				],
+				"midpoint": [
+					86.5,
+					0.449999988079071,
+					1.5
+				],
+				"slope": 0.0,
+				"supports_click_to_move": true,
+				"to": [
+					92.5,
+					0.449999988079071,
+					1.5
+				],
+				"width": 1.85
+			},
+			"to": "node_07",
+			"width": 1.85
+		},
+		{
+			"cost": 1,
+			"from": "node_07",
+			"height_delta": 0.0,
+			"id": "main_07_08",
+			"kind": "safe",
+			"recoverable": true,
+			"risk": "safe",
+			"surface": {
+				"from": [
+					92.5,
+					0.449999988079071,
+					1.5
+				],
+				"midpoint": [
+					99.0,
+					0.449999988079071,
+					1.5
+				],
+				"slope": 0.0,
+				"supports_click_to_move": true,
+				"to": [
+					105.5,
+					0.449999988079071,
+					1.5
+				],
+				"width": 1.85
+			},
+			"to": "node_08",
+			"width": 1.85
+		},
+		{
+			"cost": 1,
+			"from": "node_08",
+			"height_delta": 0.0,
+			"id": "main_08_09",
+			"kind": "safe",
+			"recoverable": true,
+			"risk": "safe",
+			"surface": {
+				"from": [
+					105.5,
+					0.449999988079071,
+					1.5
+				],
+				"midpoint": [
+					112.0,
+					0.449999988079071,
+					1.0
+				],
+				"slope": 0.0,
+				"supports_click_to_move": true,
+				"to": [
+					118.5,
+					0.449999988079071,
+					0.5
+				],
+				"width": 1.85
+			},
+			"to": "node_09",
+			"width": 1.85
+		},
+		{
+			"cost": 1,
+			"from": "node_09",
+			"height_delta": 0.0,
+			"id": "main_09_10",
+			"kind": "safe",
+			"recoverable": true,
+			"risk": "safe",
+			"surface": {
+				"from": [
+					118.5,
+					0.449999988079071,
+					0.5
+				],
+				"midpoint": [
+					125.0,
+					0.449999988079071,
+					1.0
+				],
+				"slope": 0.0,
+				"supports_click_to_move": true,
+				"to": [
+					131.5,
+					0.449999988079071,
+					1.5
 				],
 				"width": 1.85
 			},
@@ -3051,21 +11364,21 @@
 			"risk": "safe",
 			"surface": {
 				"from": [
-					24.0,
-					1.88999998569489,
-					3.0
+					27.5,
+					0.449999988079071,
+					2.5
 				],
 				"midpoint": [
-					36.0,
-					1.88999998569489,
-					1.5
+					41.0,
+					0.449999988079071,
+					2.0
 				],
 				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					48.0,
-					1.88999998569489,
-					0.0
+					54.5,
+					0.449999988079071,
+					1.5
 				],
 				"width": 1.35
 			},
@@ -3074,61 +11387,29 @@
 		},
 		{
 			"cost": 0,
-			"damage": 26.0,
-			"from": "entry",
+			"from": "node_09",
 			"height_delta": 0.0,
-			"id": "risky_direct",
-			"kind": "risky",
-			"recoverable": true,
-			"risk": "risky",
-			"surface": {
-				"from": [
-					0.0,
-					0.449999988079071,
-					-3.0
-				],
-				"midpoint": [
-					36.0,
-					0.449999988079071,
-					-3.0
-				],
-				"slope": 0.0,
-				"supports_click_to_move": true,
-				"to": [
-					72.0,
-					0.449999988079071,
-					-3.0
-				],
-				"width": 1.15
-			},
-			"to": "exit_shelter",
-			"width": 1.15
-		},
-		{
-			"cost": 0,
-			"from": "node_05",
-			"height_delta": -1.43999999761581,
 			"id": "return_shortcut",
 			"kind": "shortcut",
 			"recoverable": true,
 			"risk": "shortcut",
 			"surface": {
 				"from": [
-					60.0,
-					1.88999998569489,
-					3.0
+					118.5,
+					0.449999988079071,
+					0.5
 				],
 				"midpoint": [
-					30.0,
-					1.16999995708466,
-					0.0
+					60.5,
+					0.449999988079071,
+					1.5
 				],
-				"slope": -1.43999999761581,
+				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					0.0,
+					2.5,
 					0.449999988079071,
-					-3.0
+					2.5
 				],
 				"width": 1.25
 			},
@@ -3139,17 +11420,42 @@
 	],
 	"schema": "trawf_generated_stretch_spec_v1",
 	"settings": {
+		"biome": "",
 		"budget": {
 			"archetype_depth": 5,
 			"branch_count": 1,
 			"enemy_slots": 2,
 			"flora_slots": 3,
-			"node_count": 7,
+			"node_count": 11,
 			"optional_node_count": 1,
 			"pressure_budget": 2,
 			"resource_beats": 1,
 			"shortcut_count": 1,
 			"structures_slots": 5
+		},
+		"budget_overridden_keys": [
+			"archetype_depth",
+			"branch_count",
+			"enemy_slots",
+			"flora_slots",
+			"node_count",
+			"optional_node_count",
+			"pressure_budget",
+			"resource_beats",
+			"shortcut_count",
+			"structures_slots"
+		],
+		"budget_tier_floor": {
+			"archetype_depth": 3,
+			"branch_count": 1,
+			"enemy_slots": 2,
+			"flora_slots": 3,
+			"node_count": 8,
+			"optional_node_count": 1,
+			"pressure_budget": 2,
+			"resource_beats": 1,
+			"shortcut_count": 1,
+			"structures_slots": 4
 		},
 		"complexity_tier": "standard",
 		"composition": {
@@ -3239,6 +11545,8 @@
 			],
 			"random_walk": {
 				"allow_revisit": true,
+				"max_archetype_share": 0.5,
+				"max_consecutive_archetype": 2,
 				"prefer_tags": [],
 				"start_archetype": "",
 				"start_step": 0,
@@ -3308,8 +11616,36 @@
 			}
 		},
 		"progression_stage": 3,
+		"reasoning_budget_added_nodes": 4,
 		"roster": [],
 		"seed": 2403,
+		"spatial_profile": {
+			"slot_pitch": 13
+		},
+		"stage_depth_steps": 0,
+		"systems_profile": {
+			"complexity_rank": 3,
+			"information_policy": "local_reads_with_overview_on_pause",
+			"name": "stock_and_delay",
+			"perception_degradation": "none",
+			"preferred_dimensions": [
+				"stock",
+				"flow",
+				"delay",
+				"threshold"
+			],
+			"reasoning_demand": "track a stock, flow, threshold, or delayed response",
+			"required_any_dimensions": [
+				"stock",
+				"flow",
+				"delay",
+				"threshold"
+			],
+			"required_dimensions": [
+				"relation"
+			],
+			"transfer_required": true
+		},
 		"title": "Generated Chain/Nested POC: Shelter 2 -> Shelter 3",
 		"world_slot": {
 			"act": 1.0,
@@ -3330,12 +11666,461 @@
 	},
 	"source": {
 		"complexity_tier": "standard",
-		"generator": "archetype_based_stretch_v1",
+		"generator": "archetype_based_stretch_v2_systems",
 		"progression_stage": 3,
 		"roster": [],
 		"seed": 2403
 	},
 	"success": true,
+	"systems_contract": {
+		"boundary": "the generated entry-to-shelter route and the states changed inside it",
+		"causal_links": [
+			{
+				"display": "highlight_or_pause",
+				"from": "node_01",
+				"kind": "typed_state_flow",
+				"state": "chain_00:flure_exposed",
+				"state_label": "flure_exposed",
+				"to": "node_02",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "highlight_or_pause",
+				"from": "node_02",
+				"kind": "typed_state_flow",
+				"state": "chain_00:patrol_diverted",
+				"state_label": "patrol_diverted",
+				"to": "node_04",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "highlight_or_pause",
+				"from": "node_04",
+				"kind": "typed_state_flow",
+				"state": "chain_00:carry_component_secured",
+				"state_label": "carry_component_secured",
+				"to": "node_05",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "highlight_or_pause",
+				"from": "node_05",
+				"kind": "typed_state_flow",
+				"state": "chain_00:shelter_route_reassembled",
+				"state_label": "shelter_route_reassembled",
+				"to": "node_06",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "highlight_or_pause",
+				"from": "node_06",
+				"kind": "typed_state_flow",
+				"state": "chain_01:flure_exposed",
+				"state_label": "flure_exposed",
+				"to": "node_07",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "highlight_or_pause",
+				"from": "node_07",
+				"kind": "typed_state_flow",
+				"state": "chain_01:patrol_diverted",
+				"state_label": "patrol_diverted",
+				"to": "node_08",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "highlight_or_pause",
+				"from": "node_08",
+				"kind": "typed_state_flow",
+				"state": "chain_01:carry_component_secured",
+				"state_label": "carry_component_secured",
+				"to": "node_09",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "highlight_or_pause",
+				"from": "node_09",
+				"kind": "typed_state_flow",
+				"state": "chain_01:shelter_route_reassembled",
+				"state_label": "shelter_route_reassembled",
+				"to": "exit_shelter",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "highlight_or_pause",
+				"from": "node_01",
+				"kind": "model_transfer",
+				"state": "bait position redirects a committed enemy charge into an impact target",
+				"to": "node_06",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "highlight_or_pause",
+				"from": "node_02",
+				"kind": "model_transfer",
+				"state": "plant placement plus time changes a nearby actor or route",
+				"to": "node_07",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "highlight_or_pause",
+				"from": "node_04",
+				"kind": "model_transfer",
+				"state": "carried load trades mobility for persistent progress while party support limits exposure",
+				"to": "node_08",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "highlight_or_pause",
+				"from": "node_05",
+				"kind": "model_transfer",
+				"state": "partial observations become actionable only through their arrangement and shared relationships",
+				"to": "node_09",
+				"visibility_policy": "party_visibility_union"
+			}
+		],
+		"causal_models": [
+			{
+				"archetype_id": "1",
+				"archetype_name": "Redirected enemy aggression",
+				"cause": "the party enters the charge line before commitment",
+				"delay": "visible charge wind-up",
+				"dimensions": [
+					"relation",
+					"delay",
+					"threshold",
+					"leverage",
+					"transfer"
+				],
+				"effect": "enemy momentum changes the target state",
+				"evidence": "the tell, charge path, impact, and changed target remain visible",
+				"feedback_loop": "none",
+				"flow": "enemy momentum into the impact target",
+				"id": "archetype_1",
+				"intervention": "align the bait, trigger the tell, then leave the line",
+				"leverage_point": "bait position immediately before commitment",
+				"likely_misconception": "the enemy must be defeated directly",
+				"local_vs_party_scale": "a local action changes the party route",
+				"node_ids": [
+					"node_01",
+					"node_06"
+				],
+				"polarity": "positive",
+				"prediction": "the enemy will strike the aligned target after committing",
+				"relationship": "bait position redirects a committed enemy charge into an impact target",
+				"stock": "none",
+				"teach_node": "node_01",
+				"test_nodes": [
+					"node_06"
+				],
+				"threshold": "the enemy commits after its tell",
+				"transfer_test": "redirect the same commitment into a different target",
+				"verb": "redirect"
+			},
+			{
+				"archetype_id": "2",
+				"archetype_name": "Plant as tool",
+				"cause": "Peris places or tends the plant in the relevant relation",
+				"delay": "growth or trigger delay",
+				"dimensions": [
+					"relation",
+					"stock",
+					"flow",
+					"delay",
+					"threshold",
+					"leverage",
+					"transfer"
+				],
+				"effect": "the mature plant changes the target state",
+				"evidence": "growth state, target link, and resulting target response are visible",
+				"feedback_loop": "none",
+				"flow": "tending and elapsed time into readiness",
+				"id": "archetype_2",
+				"intervention": "place once at the causal location and wait for the tell",
+				"leverage_point": "where the plant is placed",
+				"likely_misconception": "the plant effect is immediate or useful anywhere",
+				"local_vs_party_scale": "a local action changes the party route",
+				"node_ids": [
+					"node_02",
+					"node_07"
+				],
+				"polarity": "positive",
+				"prediction": "the placed plant will affect the target after its readiness tell",
+				"relationship": "plant placement plus time changes a nearby actor or route",
+				"stock": "plant readiness",
+				"teach_node": "node_02",
+				"test_nodes": [
+					"node_07"
+				],
+				"threshold": "the plant becomes active at readiness",
+				"transfer_test": "use a different plant or target while preserving the placement relation",
+				"verb": "cultivate"
+			},
+			{
+				"archetype_id": "",
+				"archetype_name": "",
+				"cause": "the player changes the load-bearing element",
+				"delay": "none",
+				"dimensions": [
+					"relation",
+					"leverage",
+					"transfer"
+				],
+				"effect": "the next state becomes reachable",
+				"evidence": "the target state and route visibly change",
+				"feedback_loop": "none",
+				"flow": "state change through the encounter",
+				"id": "archetype_",
+				"intervention": "change the load-bearing element once, then observe",
+				"leverage_point": "the load-bearing interaction",
+				"likely_misconception": "every visible object must be serviced independently",
+				"local_vs_party_scale": "a local action changes the party route",
+				"node_ids": [
+					"node_03"
+				],
+				"polarity": "mixed",
+				"prediction": "changing the load-bearing element will alter the reachable state",
+				"relationship": "an intervention changes the reachable state of generated system",
+				"stock": "none",
+				"teach_node": "",
+				"test_nodes": [],
+				"threshold": "the interaction's completion condition",
+				"transfer_test": "recognize the same relationship with a changed target or layout",
+				"verb": "intervene"
+			},
+			{
+				"archetype_id": "3",
+				"archetype_name": "Carry the heavy thing",
+				"cause": "one character accepts the load and its constraints",
+				"delay": "none",
+				"dimensions": [
+					"relation",
+					"stock",
+					"flow",
+					"feedback",
+					"local_global",
+					"leverage",
+					"transfer"
+				],
+				"effect": "the resource moves while the carrier becomes vulnerable",
+				"evidence": "mobility, exposure, capacity, and delivery progress remain visible",
+				"feedback_loop": "slower movement increases exposure, which further drains carrying capacity",
+				"flow": "support converts safe windows into delivered distance",
+				"id": "archetype_3",
+				"intervention": "stage cover and clear the next segment before moving the load",
+				"leverage_point": "route staging and who covers the carrier",
+				"likely_misconception": "the carrier can move as if unburdened",
+				"local_vs_party_scale": "a local action changes the party route",
+				"node_ids": [
+					"node_04",
+					"node_08"
+				],
+				"polarity": "mixed",
+				"prediction": "an unsupported carrier will lose more capacity on the exposed segment",
+				"relationship": "carried load trades mobility for persistent progress while party support limits exposure",
+				"stock": "carrier stamina and carried progress",
+				"teach_node": "node_04",
+				"test_nodes": [
+					"node_08"
+				],
+				"threshold": "the load is delivered before capacity fails",
+				"transfer_test": "carry a different object through a route with a changed hazard",
+				"verb": "support"
+			},
+			{
+				"archetype_id": "6",
+				"archetype_name": "Pattern reconstruction",
+				"cause": "the party retrieves and relates fragments",
+				"delay": "none",
+				"dimensions": [
+					"relation",
+					"stock",
+					"threshold",
+					"topology",
+					"diagnosis",
+					"leverage",
+					"transfer"
+				],
+				"effect": "the hidden pattern or route becomes legible",
+				"evidence": "contradictions and confirmed links stay visible",
+				"feedback_loop": "none",
+				"flow": "retrieval adds evidence to the model",
+				"id": "archetype_6",
+				"intervention": "place fragments by relationship and test the implied route",
+				"leverage_point": "the relationship between fragments, not fragment count alone",
+				"likely_misconception": "collecting every fragment automatically solves the pattern",
+				"local_vs_party_scale": "a local action changes the party route",
+				"node_ids": [
+					"node_05",
+					"node_09"
+				],
+				"polarity": "positive",
+				"prediction": "the proposed arrangement will explain all recovered relations",
+				"relationship": "partial observations become actionable only through their arrangement and shared relationships",
+				"stock": "verified fragments",
+				"teach_node": "node_05",
+				"test_nodes": [
+					"node_09"
+				],
+				"threshold": "enough relational evidence exists to distinguish the pattern",
+				"transfer_test": "reconstruct the same relation from a different presentation",
+				"verb": "reconstruct"
+			}
+		],
+		"difficulty_dimensions": {
+			"camera": "constant",
+			"controls": "constant",
+			"execution_precision": "not used as progression scaling",
+			"geometry_density": "controlled by complexity tier, not campaign stage",
+			"reasoning": "track a stock, flow, threshold, or delayed response"
+		},
+		"feedback_contract": {
+			"critical_reads": "stable_or_recoverable",
+			"failure_cost": "recoverable state setback or bounded pressure",
+			"input_error_evidence": "show the rejected or mistimed action separately",
+			"model_error_evidence": "show the predicted relationship and the observed result",
+			"visibility_policy": "party_visibility_union"
+		},
+		"focus_model_id": "archetype_1",
+		"goal": "make the exit shelter reachable by changing the modeled relationships",
+		"lesson_spine": [
+			{
+				"archetype_id": "1",
+				"beat": "teach",
+				"changed_condition": "destroy barrier",
+				"critical": true,
+				"model_id": "archetype_1",
+				"node": "node_01",
+				"prediction_required": false,
+				"verb": "redirect"
+			},
+			{
+				"archetype_id": "2",
+				"beat": "teach",
+				"changed_condition": "flure iron decoy",
+				"critical": true,
+				"model_id": "archetype_2",
+				"node": "node_02",
+				"prediction_required": false,
+				"verb": "cultivate"
+			},
+			{
+				"archetype_id": "",
+				"beat": "optional_probe",
+				"changed_condition": "",
+				"critical": false,
+				"model_id": "archetype_",
+				"node": "node_03",
+				"prediction_required": false,
+				"verb": "intervene"
+			},
+			{
+				"archetype_id": "3",
+				"beat": "teach",
+				"changed_condition": "cure component",
+				"critical": true,
+				"model_id": "archetype_3",
+				"node": "node_04",
+				"prediction_required": false,
+				"verb": "support"
+			},
+			{
+				"archetype_id": "6",
+				"beat": "teach",
+				"changed_condition": "area map",
+				"critical": true,
+				"model_id": "archetype_6",
+				"node": "node_05",
+				"prediction_required": false,
+				"verb": "reconstruct"
+			},
+			{
+				"archetype_id": "1",
+				"beat": "test",
+				"changed_condition": "kill enemy",
+				"critical": true,
+				"model_id": "archetype_1",
+				"node": "node_06",
+				"prediction_required": true,
+				"verb": "redirect"
+			},
+			{
+				"archetype_id": "2",
+				"beat": "test",
+				"changed_condition": "hushbloom stun",
+				"critical": true,
+				"model_id": "archetype_2",
+				"node": "node_07",
+				"prediction_required": true,
+				"verb": "cultivate"
+			},
+			{
+				"archetype_id": "3",
+				"beat": "test",
+				"changed_condition": "puzzle piece",
+				"critical": true,
+				"model_id": "archetype_3",
+				"node": "node_08",
+				"prediction_required": true,
+				"verb": "support"
+			},
+			{
+				"archetype_id": "6",
+				"beat": "test",
+				"changed_condition": "flow diagram",
+				"critical": true,
+				"model_id": "archetype_6",
+				"node": "node_09",
+				"prediction_required": true,
+				"verb": "reconstruct"
+			}
+		],
+		"perception_lock": {
+			"hidden_from_each": "none",
+			"when_register": "before commitment and again on state change",
+			"where_register": "world causal tell plus affected target"
+		},
+		"progression_profile": {
+			"complexity_rank": 3,
+			"information_policy": "local_reads_with_overview_on_pause",
+			"name": "stock_and_delay",
+			"perception_degradation": "none",
+			"preferred_dimensions": [
+				"stock",
+				"flow",
+				"delay",
+				"threshold"
+			],
+			"reasoning_demand": "track a stock, flow, threshold, or delayed response",
+			"required_any_dimensions": [
+				"stock",
+				"flow",
+				"delay",
+				"threshold"
+			],
+			"required_dimensions": [
+				"relation"
+			],
+			"transfer_required": true
+		},
+		"reasoning_solved_at": "node_09",
+		"route_count": 12,
+		"schema": "trawf_generated_systems_contract_v1",
+		"solved_state_execution_tail_nodes": 1,
+		"transfer_test_required": true
+	},
+	"teaching_chain": [
+		{
+			"approach": "false_pattern_spoof",
+			"from": "6",
+			"from_index": 3,
+			"ordered": true,
+			"technique": "false_pattern_spoof",
+			"to": "4",
+			"to_index": 4
+		}
+	],
 	"title": "Generated Chain/Nested POC: Shelter 2 -> Shelter 3",
 	"validation": {
 		"bare_pair_solvable": true,
@@ -3345,6 +12130,15 @@
 		"shadow_solvable": true,
 		"solution_warnings": [],
 		"spotlight_within_stage": true,
+		"systems": {
+			"critical_beat_count": 8,
+			"errors": [],
+			"focus_has_teach": true,
+			"focus_has_test": true,
+			"focus_matches_profile": true,
+			"model_count": 5,
+			"valid": true
+		},
 		"warnings": []
 	},
 	"world_slot": {

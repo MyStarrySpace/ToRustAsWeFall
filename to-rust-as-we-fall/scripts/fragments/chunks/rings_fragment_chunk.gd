@@ -1,6 +1,7 @@
 extends "res://scripts/scene_chunks/scene_chunk.gd"
 # @rendering_only_file: visual setup and pulse animation only.
 
+const LevelDecoratorScript := preload("res://scripts/generation/level_decorator.gd")
 const FLOOR_CENTER := Vector3(34.0, -0.05, 0.0)
 const FLOOR_SIZE := Vector3(72.0, 0.1, 30.0)
 const CLIENT_POS := Vector3(14.0, 0.55, -4.5)
@@ -20,9 +21,11 @@ var _forget_me_not_interactable
 var _client_seen := false
 var _propagation_seen := false
 var _forget_me_not_seen := false
+var _completed := false
 var _last_fragment := ""
 
 var _flora_materials: Array[StandardMaterial3D] = []
+var _decoration_audit: Dictionary = {}
 
 func _build_chunk() -> void:
 	_add_floor(self, FLOOR_CENTER, FLOOR_SIZE, Color(0.13, 0.11, 0.1))
@@ -39,6 +42,16 @@ func _build_chunk() -> void:
 	_build_client_fragment()
 	_build_propagation_fragment()
 	_build_forget_me_not_fragment()
+
+	# Reuse the campaign habitat language in local fragment coordinates. Decoration remains render-only;
+	# these exact extents keep its facade on the existing walls and its markings on the existing floor.
+	_decoration_audit = LevelDecoratorScript.decorate_profile(self, "rings", {
+		"x0": FLOOR_CENTER.x - FLOOR_SIZE.x * 0.5,
+		"x1": FLOOR_CENTER.x + FLOOR_SIZE.x * 0.5,
+		"width": FLOOR_SIZE.z,
+		"wall_height": 4.4,
+		"ground_y": 0.0,
+	})
 
 func _process(_delta: float) -> void:
 	_update_flora_pulse()
@@ -84,13 +97,18 @@ func get_preview_state() -> Dictionary:
 		"client_seen": _client_seen,
 		"propagation_seen": _propagation_seen,
 		"forget_me_not_seen": _forget_me_not_seen,
+		"complete": _completed,
 		"last_fragment": _last_fragment,
 	}
+
+func get_decoration_audit() -> Dictionary:
+	return _decoration_audit.duplicate(true)
 
 func reset_preview_state() -> void:
 	_client_seen = false
 	_propagation_seen = false
 	_forget_me_not_seen = false
+	_completed = false
 	_last_fragment = ""
 	for interactable in [_client_interactable, _propagation_interactable, _forget_me_not_interactable]:
 		if interactable != null and interactable.has_method("reset"):
@@ -212,6 +230,7 @@ func _on_client_interacted() -> void:
 	_say("Hello? ...No answer. Just the bloom still listening.", "PERIS")
 	_say("The flora kept the emotional outline of the room after the client left it.", "ASTER", "data")
 	_show_note("Client bloom: the plant remembers the relationship even after the person is gone.", 4.0)
+	_check_completion()
 
 func _on_propagation_interacted() -> void:
 	_propagation_seen = true
@@ -221,6 +240,7 @@ func _on_propagation_interacted() -> void:
 	_say("It spread along the routes people used to take home.", "PERIS")
 	_say("Not random growth. It is following habit, warmth, and repeated contact.", "ASTER", "data")
 	_show_note("Propagation trace: the flora maps former routines instead of just occupying space.", 4.0)
+	_check_completion()
 
 func _on_forget_me_not_interacted() -> void:
 	_forget_me_not_seen = true
@@ -233,3 +253,11 @@ func _on_forget_me_not_interacted() -> void:
 		_say("This one remembers before either of us had language for it.", "PERIS")
 	_say("The room feels domestic again for half a second, and then it doesn't.", "", "fragment")
 	_show_note("Forget-me-not: a small domestic species carrying more intimacy than the architecture can hold.", 4.2)
+	_check_completion()
+
+func _check_completion() -> void:
+	if _completed or not (_client_seen and _propagation_seen and _forget_me_not_seen):
+		return
+	_completed = true
+	_set_preview_step("rings_fragment_complete")
+	_show_note("Rings fragment complete — the three memory traces resolve into one route.", 4.0)

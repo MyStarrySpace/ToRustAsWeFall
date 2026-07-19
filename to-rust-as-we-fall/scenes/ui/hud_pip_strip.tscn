@@ -1,0 +1,4 @@
+[gd_scene format=3]
+
+[node name="PipStrip" type="HBoxContainer"]
+theme_override_constants/separation = 1

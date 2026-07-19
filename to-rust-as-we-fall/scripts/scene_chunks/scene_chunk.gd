@@ -2,11 +2,14 @@ class_name SceneChunk
 extends Node3D
 
 const INTERACTABLE_SCENE := preload("res://scenes/game/interactable.tscn")
+const CAUSAL_FEEDBACK_LINK_SCRIPT := preload("res://scripts/game/world/causal_feedback_link.gd")
 
 var host: Node = null
 var chunk_name := ""
 var _built := false
 var _interactables: Array = []
+var _causal_feedback_links: Array = []
+var _causal_feedback_wired := false
 
 func attach_chunk_host(next_host: Node, next_chunk_name := "") -> void:
 	host = next_host
@@ -16,6 +19,12 @@ func attach_chunk_host(next_host: Node, next_chunk_name := "") -> void:
 func detach_chunk_host() -> void:
 	host = null
 	_interactables.clear()
+	for link in _causal_feedback_links:
+		if link != null and is_instance_valid(link):
+			link.call("set_source_hovered", false)
+			link.call("set_planning_active", false)
+			link.call("set_latched", false)
+	_causal_feedback_links.clear()
 
 func configure_chunk(_config: Dictionary) -> void:
 	pass
@@ -111,6 +120,13 @@ func _show_message(text: String, duration := 2.0) -> void:
 func _set_preview_step(step: String) -> void:
 	if host != null and host.has_method("set_preview_step"):
 		host.call("set_preview_step", step)
+
+## Preview-only continuation hook. Campaign/tutorial hosts deliberately need not
+## implement it, so a chunk can offer a seamless lab handoff without changing
+## runtime progression ownership.
+func _request_preview_handoff(entry_id: String) -> void:
+	if host != null and host.has_method("request_preview_handoff"):
+		host.call("request_preview_handoff", entry_id)
 
 func _get_character_position(char_id: String) -> Vector3:
 	if host != null and host.has_method("get_preview_character_position"):
@@ -395,7 +411,7 @@ func _spawn_sump(spec: Dictionary) -> void:
 	# the salvage under the wall (reachable ONLY when drained — an INSPECTION reward in the pit)
 	var salvage := _add_interactable(self, "SumpSalvage%d" % idx, "Lift the wellhead cache",
 		Vector3(pit_c.x, 0.1, pit_c.z), "SALVAGE", "", 1.0, true, 1.4,
-		Interactable.InteractableType.INSPECTION)
+		Interactable.InteractableType.INSPECTION, false)
 	var salv_m := _add_box(salvage, Vector3(0, 0.2, 0), Vector3(0.5, 0.4, 0.5),
 		Color(0.24, 0.2, 0.12), Color(0.85, 0.6, 0.25), 0.6)
 	_outline_interactable_child(salvage, salv_m, "SumpSalvage%d" % idx, 1.4)
@@ -409,7 +425,7 @@ func _spawn_sump(spec: Dictionary) -> void:
 	# the CONTROL: the wellhead pump lever, placed apart
 	var pump := _add_interactable(self, "SumpPump%d" % idx, "Work the wellhead pump",
 		spec.get("pump_pos", pos + Vector3(3.0, 0, 0)), "PUMP", "", 1.4, false, 1.6,
-		Interactable.InteractableType.TIMED_ACTION)
+		Interactable.InteractableType.TIMED_ACTION, false)
 	var pump_m := _add_box(pump, Vector3(0, 0.55, 0), Vector3(0.35, 1.1, 0.35),
 		Color(0.2, 0.36, 0.42), Color(0.3, 0.7, 0.85), 0.5)
 	_outline_interactable_child(pump, pump_m, "SumpPump%d" % idx, 1.6)
@@ -666,7 +682,10 @@ func _spawn_belt(spec: Dictionary) -> BeltLine:
 	if spec.has("breaker_pos"):
 		var brk := _add_interactable(self, str(spec.get("name", "BeltLine")) + "Breaker",
 			"Reset the substation breaker", spec.get("breaker_pos", Vector3.ZERO), "RESET BREAKER",
-			"", 1.2, true, 1.6, Interactable.InteractableType.TIMED_ACTION)
+			"", 1.2, true, 1.6, Interactable.InteractableType.TIMED_ACTION, false)
+		var brk_mesh := _add_box(brk, Vector3(0.0, 0.45, 0.0), Vector3(0.45, 0.9, 0.45),
+			Color(0.18, 0.24, 0.26), Color(0.32, 0.72, 0.82), 0.45)
+		_outline_interactable_child(brk, brk_mesh, str(spec.get("name", "BeltLine")) + "Breaker", 1.6)
 		brk.interacted.connect(func() -> void:
 			bl.set_powered(true)
 			_show_note("The breaker bites. Down the line, the old belt shudders and starts to move.", 3.0))
@@ -1008,6 +1027,121 @@ func _outline_target(
 	if system == null:
 		return null
 	return system.create_outline_target(parent, target_name, center, size, meshes, element_id, radius, opts)
+
+# --- Cause -> effect feedback ---------------------------------------------------------------
+# Chunks register relationships here instead of inventing bespoke beams, camera cuts, or pause
+# behavior. The one language is: hover the cause, hold reveal-all, or pause to plan; activation
+# can latch/flash the same link while a consequence unfolds.
+
+func _wire_causal_feedback_manager() -> void:
+	if _causal_feedback_wired:
+		return
+	var system := _outline_system()
+	if system == null:
+		return
+	if not system.hovered_target_changed.is_connected(_on_causal_hovered_target_changed):
+		system.hovered_target_changed.connect(_on_causal_hovered_target_changed)
+	if not system.selected_target_changed.is_connected(_on_causal_selected_target_changed):
+		system.selected_target_changed.connect(_on_causal_selected_target_changed)
+	_causal_feedback_wired = true
+
+## Register a readable cause -> effect relationship between any two 3D nodes.
+## opts: label, source_offset, target_offset, arc_height, dash_count, target_highlight,
+## visibility_query, visibility_policy, owner_character, character_tint, path_style,
+## flow_speed, feedback_mode, draw_duration, name.
+## Preview hosts automatically supply the shared party-perception query.
+func _add_causal_feedback_link(
+		source: Node3D,
+		target: Node3D,
+		tint := Color(1.0, 0.64, 0.2),
+		opts: Dictionary = {}
+	) -> Node3D:
+	if source == null or target == null:
+		return null
+	_wire_causal_feedback_manager()
+	var resolved_opts := opts.duplicate()
+	if not resolved_opts.has("visibility_query") and host != null \
+			and host.has_method("can_party_perceive_feedback_link"):
+		resolved_opts["visibility_query"] = Callable(host, "can_party_perceive_feedback_link")
+	var link := CAUSAL_FEEDBACK_LINK_SCRIPT.new() as Node3D
+	add_child(link)
+	link.call("configure", source, target, tint, resolved_opts)
+	_causal_feedback_links.append(link)
+	return link
+
+
+func _on_causal_hovered_target_changed(target: Node) -> void:
+	for link in _causal_feedback_links:
+		if link != null and is_instance_valid(link):
+			link.call("set_source_hovered", bool(link.call("matches_source", target)))
+
+
+func _on_causal_selected_target_changed(target: Node) -> void:
+	for link in _causal_feedback_links:
+		if link != null and is_instance_valid(link) and bool(link.call("matches_source", target)):
+			link.call("flash", 1.5, 1.25)
+
+
+## Fragment preview planning-pause hook. Kept separate from reveal-all so either input can be
+## released without hiding a relationship the other still requests.
+func set_preview_planning_feedback(active: bool) -> void:
+	for link in _causal_feedback_links:
+		if link != null and is_instance_valid(link):
+			link.call("set_planning_active", active)
+	for child in get_children():
+		_forward_preview_planning_feedback(child, active)
+
+
+func _forward_preview_planning_feedback(node: Node, active: bool) -> void:
+	if node.has_method("set_preview_planning_feedback"):
+		node.call("set_preview_planning_feedback", active)
+		return
+	for child in node.get_children():
+		_forward_preview_planning_feedback(child, active)
+
+
+func _flash_causal_feedback(source: Node, duration := 1.25, strength := 1.0) -> void:
+	for link in _causal_feedback_links:
+		if link != null and is_instance_valid(link) and bool(link.call("matches_source", source)):
+			link.call("flash", duration, strength)
+
+
+func _set_causal_feedback_latched(source: Node, active: bool) -> void:
+	for link in _causal_feedback_links:
+		if link != null and is_instance_valid(link) and bool(link.call("matches_source", source)):
+			link.call("set_latched", active)
+
+
+func _set_causal_feedback_mode(source: Node, mode: String) -> void:
+	for link in _causal_feedback_links:
+		if link != null and is_instance_valid(link) and bool(link.call("matches_source", source)):
+			link.call("set_feedback_mode", mode)
+
+
+## Ask the preview host for a short, guarded camera emphasis. Full campaign hosts and headless
+## chunk stubs safely no-op; the gameplay relationship remains valid without presentation.
+func _request_preview_focus(target: Node3D, duration := 0.9, pause_gameplay := false, opts: Dictionary = {}) -> bool:
+	if host == null or target == null or not host.has_method("emphasize_preview_target"):
+		return false
+	return bool(host.call("emphasize_preview_target", target, duration, pause_gameplay, opts))
+
+
+func _request_preview_shake(intensity := 0.12, decay := 7.0) -> void:
+	if host != null and host.has_method("shake_preview_camera"):
+		host.call("shake_preview_camera", intensity, decay)
+
+
+func get_causal_feedback_state() -> Dictionary:
+	var states: Array = []
+	var visible_count := 0
+	for link in _causal_feedback_links:
+		if link == null or not is_instance_valid(link):
+			continue
+		var state: Dictionary = link.call("get_feedback_state")
+		states.append(state)
+		if bool(state.get("visible", false)):
+			visible_count += 1
+	return {"count": states.size(), "visible_count": visible_count, "links": states}
 
 ## Create an interactable for an OBJECT and cross-wire it to the shared outline+particle highlight, so
 ## the object gets the hover OUTLINE and the click/active SHIMMER — the SAME feedback tutorial objects

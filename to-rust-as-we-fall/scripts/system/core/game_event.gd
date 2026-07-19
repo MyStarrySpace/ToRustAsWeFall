@@ -85,6 +85,9 @@ const KIND_DIE_SCRIPTED := &"die_scripted"
 const KIND_SET_PARTY := &"set_party"
 const KIND_PARTY_MOVE_TO_CELL := &"party_move_to_cell"
 const KIND_PARTY_MOVE_TO_POS := &"party_move_to_pos"
+## Explicit-member formation move. Its payload records the resolved destination for every member,
+## so replay never depends on whichever characters happen to be selected later.
+const KIND_RALLY_MEMBERS := &"rally_members"
 const KIND_START_SPLIT := &"start_split"
 const KIND_END_SPLIT := &"end_split"
 
@@ -145,6 +148,7 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_SET_PARTY,
 	KIND_PARTY_MOVE_TO_CELL,
 	KIND_PARTY_MOVE_TO_POS,
+	KIND_RALLY_MEMBERS,
 	KIND_START_SPLIT,
 	KIND_END_SPLIT,
 	KIND_SET_STAT,

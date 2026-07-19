@@ -30,6 +30,8 @@ static func load_dir(dir_path: String) -> void:
 				_load_xlsx_file(dir_path.path_join(file_name))
 			elif file_name.ends_with(".csv"):
 				_load_csv_file(dir_path.path_join(file_name))
+			elif file_name.ends_with(".json"):
+				_load_json_file(dir_path.path_join(file_name))
 		file_name = dir.get_next()
 	_loaded = true
 
@@ -59,7 +61,7 @@ static func _load_xlsx_file(path: String) -> void:
 			if line.style == "thought":
 				line.is_thought = true
 				line.style = "normal"
-			_lines[line.key] = line
+			_store_line(line)
 	reader.close()
 
 ## Load a single CSV file (merges into existing lines, fallback for non-xlsx)
@@ -99,7 +101,52 @@ static func _load_csv_file(path: String) -> void:
 			line.is_thought = true
 			line.style = "normal"
 
-		_lines[line.key] = line
+		_store_line(line)
+
+## JSON sidecars are the export-safe source for small dialogue additions. Godot's
+## CSV importer treats arbitrary six-column dialogue tables as translations and
+## strips the source CSV from web packs; JSON remains a normal runtime resource.
+static func _load_json_file(path: String) -> void:
+	var file := FileAccess.open(path, FileAccess.READ)
+	if not file:
+		push_error("DialogueData: Could not open %s" % path)
+		return
+	var parsed = JSON.parse_string(file.get_as_text())
+	var rows: Array = []
+	if parsed is Array:
+		rows = parsed
+	elif parsed is Dictionary:
+		rows = parsed.get("lines", [])
+	else:
+		push_error("DialogueData: Invalid JSON root in %s" % path)
+		return
+	for row_value in rows:
+		if not (row_value is Dictionary):
+			continue
+		var row: Dictionary = row_value
+		var key := str(row.get("key", "")).strip_edges()
+		if key == "":
+			continue
+		var line := DialogueLine.new()
+		line.key = key
+		line.speaker = str(row.get("speaker", "")).strip_edges()
+		line.style = str(row.get("style", "normal")).strip_edges()
+		line.wait = bool(row.get("wait", false))
+		line.text = str(row.get("text", "")).strip_edges().replace("|", "\n")
+		line.context = str(row.get("context", "")).strip_edges()
+		if line.style == "thought":
+			line.is_thought = true
+			line.style = "normal"
+		_store_line(line)
+
+## Blank migration placeholders may fill a missing key, but must never overwrite
+## authored text merely because directory iteration happened to load them later.
+static func _store_line(line: DialogueLine) -> void:
+	if line.text == "" and _lines.has(line.key):
+		var existing: DialogueLine = _lines[line.key]
+		if existing.text != "":
+			return
+	_lines[line.key] = line
 
 static func _find_col(header: PackedStringArray, name: String) -> int:
 	for i in range(header.size()):

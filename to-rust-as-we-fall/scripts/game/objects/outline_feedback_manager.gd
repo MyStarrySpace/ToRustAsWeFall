@@ -8,6 +8,7 @@ extends Node
 ## chunks (where outline targets previously had no manager and silently did nothing).
 
 const OUTLINE_TARGET_SCRIPT := preload("res://scripts/game/objects/outline_surface_target.gd")
+const CURSOR_VERB_SCENE := preload("res://scenes/ui/cursor_verb.tscn")
 
 ## Default OutlineSurfaceTarget tuning; a per-call opts dict overrides individual keys.
 const OUTLINE_DEFAULTS := {
@@ -20,6 +21,12 @@ const OUTLINE_DEFAULTS := {
 	"outline_particles_enabled": true,
 	"outline_particles_per_mesh": 220,
 }
+
+## Canonical object-level events for systems that augment hover/selection (causal
+## links, contextual help, accessibility reads). Consumers receive the interaction
+## delegate even when the physics ray alternates between its Area and surface body.
+signal hovered_target_changed(target: Node)
+signal selected_target_changed(target: Node)
 
 var hovered_target: Node = null
 var selected_target: Node = null
@@ -46,6 +53,8 @@ func bind_target(target: Node) -> void:
 		target.connect("outline_unhovered", _on_target_unhovered)
 	if target.has_signal("outline_selected") and not target.is_connected("outline_selected", _on_target_selected):
 		target.connect("outline_selected", _on_target_selected)
+	if target.is_inside_tree():
+		target.tree_exiting.connect(_on_bound_target_exiting.bind(target_id), CONNECT_ONE_SHOT)
 
 func bind_interaction_controller(controller: Node) -> void:
 	if controller == null:
@@ -60,6 +69,25 @@ func bind_interaction_controller(controller: Node) -> void:
 		controller.connect("target_reached", _on_controller_target_reached)
 	if controller.has_signal("target_cancelled") and not controller.is_connected("target_cancelled", _on_controller_target_cancelled):
 		controller.connect("target_cancelled", _on_controller_target_cancelled)
+	if controller.is_inside_tree():
+		controller.tree_exiting.connect(_on_bound_controller_exiting.bind(controller_id), CONNECT_ONE_SHOT)
+
+
+func _on_bound_target_exiting(target_id: int) -> void:
+	var target = _bound_targets.get(target_id, null)
+	var canon := _canonical_target(target)
+	if hovered_target == target or hovered_target == canon:
+		hovered_target = null
+		_hide_cursor_verb()
+		hovered_target_changed.emit(null)
+	if selected_target == target or selected_target == canon:
+		selected_target = null
+		_selection_token += 1
+	_bound_targets.erase(target_id)
+
+
+func _on_bound_controller_exiting(controller_id: int) -> void:
+	_bound_controllers.erase(controller_id)
 
 func get_hovered_target() -> Node:
 	return hovered_target
@@ -88,6 +116,7 @@ func _on_target_hovered(target: Node) -> void:
 	hovered_target = canon
 	_set_hover_feedback(canon, true)
 	_show_cursor_verb(canon)
+	hovered_target_changed.emit(canon)
 
 func _on_target_unhovered(target: Node) -> void:
 	if hovered_target != _canonical_target(target):
@@ -96,6 +125,7 @@ func _on_target_unhovered(target: Node) -> void:
 		_set_hover_feedback(hovered_target, false)
 	hovered_target = null
 	_hide_cursor_verb()
+	hovered_target_changed.emit(null)
 
 # --- the CURSOR VERB: the hovered interactable's action verb, ONE line, riding above the mouse.
 # Cosmetic UI (wall-clock per-frame follow is fine — it renders, it never touches game state). ---
@@ -105,18 +135,9 @@ var _cursor_verb: Label = null
 func _ensure_cursor_verb() -> void:
 	if _cursor_verb != null and is_instance_valid(_cursor_verb):
 		return
-	var layer := CanvasLayer.new()
-	layer.name = "CursorVerbLayer"
-	layer.layer = 60
+	var layer := CURSOR_VERB_SCENE.instantiate() as CanvasLayer
 	add_child(layer)
-	_cursor_verb = Label.new()
-	_cursor_verb.name = "CursorVerb"
-	_cursor_verb.add_theme_font_size_override("font_size", 15)
-	_cursor_verb.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0))
-	_cursor_verb.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	_cursor_verb.add_theme_constant_override("outline_size", 6)
-	_cursor_verb.visible = false
-	layer.add_child(_cursor_verb)
+	_cursor_verb = layer.get_node("CursorVerb") as Label
 
 func _show_cursor_verb(target: Node) -> void:
 	_ensure_cursor_verb()
@@ -146,6 +167,7 @@ func _follow_mouse() -> void:
 func _on_target_selected(target: Node) -> void:
 	if target == null:
 		return
+	selected_target_changed.emit(_canonical_target(target))
 	if selected_target != null and selected_target != target and is_instance_valid(selected_target):
 		_cancel_selected(selected_target)
 	selected_target = target

@@ -16,6 +16,7 @@ uniform vec4 rust_color : source_color = vec4(0.36, 0.18, 0.10, 1.0);
 uniform float rust_amount = 0.42;
 uniform float grime_scale = 0.16;    // 1/size of the broad grime patches (world metres)
 uniform float roughness_val = 0.85;
+uniform float emission_energy = 0.0; // opt-in low self-light for readable night-route surfaces
 
 varying vec3 v_obj;      // object-space position (tile UVs — locked to the mesh)
 varying vec3 v_world;    // world-space position (noise field — varies per building/facade)
@@ -68,6 +69,8 @@ void fragment() {
 	base = mix(base, rust_color.rgb, rust * rust_amount);
 	base *= 0.9 + 0.28 * vnoise(v_world * (grime_scale * 0.5) + 31.0);
 
-	ALBEDO = base * tint.rgb;
+	vec3 final_color = base * tint.rgb;
+	ALBEDO = final_color;
+	EMISSION = final_color * emission_energy;
 	ROUGHNESS = roughness_val;
 }

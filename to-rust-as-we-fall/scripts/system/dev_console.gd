@@ -12,17 +12,14 @@ extends CanvasLayer
 const MAX_LOG_LINES := 120
 
 var _commands := {}          # name -> {call: Callable, help: String}
-var _panel: PanelContainer
-var _log: RichTextLabel
-var _input: LineEdit
+@onready var _panel: PanelContainer = $ConsolePanel
+@onready var _log: RichTextLabel = $ConsolePanel/Content/Log
+@onready var _input: LineEdit = $ConsolePanel/Content/Input
 var _history: Array[String] = []
 var _history_i := -1
 
 func _ready() -> void:
-	layer = 90
-	process_mode = Node.PROCESS_MODE_ALWAYS
 	visible = false
-	_build_ui()
 	register_command("help", _cmd_help, "list every command")
 	if DisplayServer.is_touchscreen_available():
 		_spawn_touch_toggle.call_deferred()
@@ -30,47 +27,11 @@ func _ready() -> void:
 ## A touch device has no backtick: a small translucent edge button opens the console (the LineEdit
 ## then pops the OS soft keyboard). It rides its OWN layer — this layer hides while closed.
 func _spawn_touch_toggle() -> void:
-	var lay := CanvasLayer.new()
-	lay.name = "DevConsoleTouchToggle"
-	lay.layer = 89
-	lay.process_mode = Node.PROCESS_MODE_ALWAYS
-	var btn := Button.new()
-	btn.name = "ConsoleTouchButton"
-	btn.text = ">_"
-	btn.flat = true
-	btn.modulate = Color(1.0, 1.0, 1.0, 0.4)
-	btn.custom_minimum_size = Vector2(56, 44)
-	btn.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT)
-	btn.position.x = 4.0
+	var lay := preload("res://scenes/ui/dev_console_touch_toggle.tscn").instantiate() as CanvasLayer
+	var btn := lay.get_node("ConsoleTouchButton") as Button
 	btn.pressed.connect(toggle)
-	lay.add_child(btn)
 	if get_parent() != null:
 		get_parent().add_child(lay)
-
-func _build_ui() -> void:
-	_panel = PanelContainer.new()
-	_panel.name = "ConsolePanel"
-	_panel.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	_panel.custom_minimum_size = Vector2(0, 220)
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.05, 0.07, 0.08, 0.92)
-	style.border_color = Color(0.36, 0.91, 0.5, 0.5)
-	style.set_border_width_all(1)
-	_panel.add_theme_stylebox_override("panel", style)
-	add_child(_panel)
-	var vb := VBoxContainer.new()
-	_panel.add_child(vb)
-	_log = RichTextLabel.new()
-	_log.scroll_following = true
-	_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_log.add_theme_font_size_override("normal_font_size", 13)
-	vb.add_child(_log)
-	_input = LineEdit.new()
-	_input.placeholder_text = "Esc closes // help lists commands"
-	_input.gui_input.connect(_on_input_gui_input)
-	_input.add_theme_font_size_override("font_size", 13)
-	_input.text_submitted.connect(_on_submitted)
-	vb.add_child(_input)
 
 ## Register a command. `fn` receives the argument list (Array of String) and returns the line to
 ## print (or "" for silence). Re-registering a name replaces it, so scenes can override built-ins.

@@ -4,22 +4,22 @@ extends CanvasLayer
 @onready var editor: Node3D
 
 var _palette_buttons: Array[Button] = []
-var _info_label: Label
-var _rotation_label: Label
-var _plan_selector: OptionButton
-var _plan_title_label: Label
-var _plan_slot_label: Label
-var _plan_help_label: Label
-var _plan_visibility_button: Button
-var _generation_tier_selector: OptionButton
-var _generation_seed_edit: LineEdit
-var _generation_slot_edit: LineEdit
-var _generation_entry_edit: LineEdit
-var _generation_exit_edit: LineEdit
-var _generation_allowed_edit: LineEdit
-var _generation_blocked_edit: LineEdit
-var _generation_required_edit: LineEdit
-var _generation_status_label: Label
+@onready var _info_label: Label = $InfoLabel
+@onready var _rotation_label: Label = $Palette/RotationLabel
+@onready var _plan_selector: OptionButton = $PlanBrowserPanel/PlanBrowser/PlanSelector
+@onready var _plan_title_label: Label = $PlanBrowserPanel/PlanBrowser/PlanTitle
+@onready var _plan_slot_label: Label = $PlanBrowserPanel/PlanBrowser/PlanSlot
+@onready var _plan_help_label: Label = $PlanBrowserPanel/PlanBrowser/PlanHelp
+@onready var _plan_visibility_button: Button = $PlanBrowserPanel/PlanBrowser/PlanButtons/PlanVisibilityButton
+@onready var _generation_tier_selector: OptionButton = $PlanBrowserPanel/PlanBrowser/TierRow/GenerationTierSelector
+@onready var _generation_seed_edit: LineEdit = $PlanBrowserPanel/PlanBrowser/TierRow/GenerationSeedEdit
+@onready var _generation_slot_edit: LineEdit = $PlanBrowserPanel/PlanBrowser/SlotRow/GenerationSlotEdit
+@onready var _generation_entry_edit: LineEdit = $PlanBrowserPanel/PlanBrowser/SlotRow/GenerationEntryEdit
+@onready var _generation_exit_edit: LineEdit = $PlanBrowserPanel/PlanBrowser/SlotRow/GenerationExitEdit
+@onready var _generation_allowed_edit: LineEdit = $PlanBrowserPanel/PlanBrowser/GenerationAllowedEdit
+@onready var _generation_blocked_edit: LineEdit = $PlanBrowserPanel/PlanBrowser/GenerationBlockedEdit
+@onready var _generation_required_edit: LineEdit = $PlanBrowserPanel/PlanBrowser/GenerationRequiredEdit
+@onready var _generation_status_label: Label = $PlanBrowserPanel/PlanBrowser/GenerationStatus
 
 const BLOCK_LABELS: Array[String] = [
 	"1: Wall", "2: Floor", "3: Pipe (auto)", "4: Flora",
@@ -43,7 +43,7 @@ func _ready() -> void:
 	editor = get_parent()
 	grid_map = editor.get_node("GridMap")
 
-	_build_ui()
+	_bind_authored_ui()
 
 	# Connect to editor signals
 	editor.block_changed.connect(_on_block_changed)
@@ -53,38 +53,9 @@ func _ready() -> void:
 	if editor.has_signal("plan_visibility_changed"):
 		editor.plan_visibility_changed.connect(_on_plan_visibility_changed)
 
-func _build_ui() -> void:
-	# Controls info, top left.
-	_info_label = Label.new()
-	_info_label.position = Vector2(12, 12)
-	_info_label.add_theme_font_size_override("font_size", 13)
-	_info_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.75, 0.85))
-	_info_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
-	_info_label.add_theme_constant_override("shadow_offset_x", 1)
-	_info_label.add_theme_constant_override("shadow_offset_y", 1)
-	add_child(_info_label)
-
-	# Palette, bottom of screen.
-	var palette_container := VBoxContainer.new()
-	palette_container.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	palette_container.position = Vector2(12, -12)
-	palette_container.offset_top = -300
-	palette_container.offset_bottom = -12
-	add_child(palette_container)
-
-	var title := Label.new()
-	title.text = "BLOCKS"
-	title.add_theme_font_size_override("font_size", 12)
-	title.add_theme_color_override("font_color", Color(0.5, 0.5, 0.55))
-	palette_container.add_child(title)
-
+func _bind_authored_ui() -> void:
 	for i in range(BLOCK_LABELS.size()):
-		var btn := Button.new()
-		btn.text = BLOCK_LABELS[i]
-		btn.custom_minimum_size = Vector2(140, 28)
-		btn.add_theme_font_size_override("font_size", 12)
-
-		# Style
+		var btn := get_node("Palette/Block%d" % (i + 1)) as Button
 		var style := StyleBoxFlat.new()
 		style.bg_color = Color(0.12, 0.12, 0.14, 0.85)
 		style.border_color = BLOCK_COLORS[i].darkened(0.3)
@@ -105,17 +76,9 @@ func _build_ui() -> void:
 
 		var idx := i
 		btn.pressed.connect(func(): editor.select_block(idx))
-		palette_container.add_child(btn)
 		_palette_buttons.append(btn)
-
-	# Rotation indicator
-	_rotation_label = Label.new()
-	_rotation_label.add_theme_font_size_override("font_size", 12)
-	_rotation_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.65))
-	palette_container.add_child(_rotation_label)
-
 	_highlight_selected(0)
-	_build_plan_browser_ui()
+	_bind_plan_browser_ui()
 
 func _process(_delta: float) -> void:
 	var cell_count := grid_map.get_used_cells().size()
@@ -156,41 +119,7 @@ func _on_block_changed(index: int) -> void:
 func _on_orientation_changed(_rot: int) -> void:
 	pass  # Rotation label updates in _process
 
-func _build_plan_browser_ui() -> void:
-	var panel := PanelContainer.new()
-	panel.name = "PlanBrowserPanel"
-	panel.anchor_left = 1.0
-	panel.anchor_right = 1.0
-	panel.anchor_top = 0.0
-	panel.anchor_bottom = 0.0
-	panel.offset_left = -380.0
-	panel.offset_right = -12.0
-	panel.offset_top = 12.0
-	panel.offset_bottom = 520.0
-
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.085, 0.1, 0.88)
-	style.border_color = Color(0.32, 0.36, 0.42, 0.9)
-	style.set_border_width_all(1)
-	style.set_corner_radius_all(4)
-	style.set_content_margin_all(10)
-	panel.add_theme_stylebox_override("panel", style)
-	add_child(panel)
-
-	var container := VBoxContainer.new()
-	container.name = "PlanBrowser"
-	container.add_theme_constant_override("separation", 6)
-	panel.add_child(container)
-
-	var title := Label.new()
-	title.text = "SCENE PLANS / GRAYBOXES"
-	title.add_theme_font_size_override("font_size", 12)
-	title.add_theme_color_override("font_color", Color(0.68, 0.72, 0.8))
-	container.add_child(title)
-
-	_plan_selector = OptionButton.new()
-	_plan_selector.name = "PlanSelector"
-	_plan_selector.custom_minimum_size = Vector2(340, 30)
+func _bind_plan_browser_ui() -> void:
 	if editor.has_method("get_editor_plan_entries"):
 		var entries: Array = editor.call("get_editor_plan_entries")
 		for entry in entries:
@@ -200,165 +129,35 @@ func _build_plan_browser_ui() -> void:
 		if editor.has_method("show_plan_scene"):
 			editor.call("show_plan_scene", index)
 	)
-	container.add_child(_plan_selector)
-
-	var button_row := HBoxContainer.new()
-	button_row.add_theme_constant_override("separation", 6)
-	container.add_child(button_row)
-
-	var previous_button := Button.new()
-	previous_button.name = "PlanPreviousButton"
-	previous_button.text = "<"
-	previous_button.tooltip_text = "Previous plan"
-	previous_button.custom_minimum_size = Vector2(34, 28)
+	var previous_button := $PlanBrowserPanel/PlanBrowser/PlanButtons/PlanPreviousButton as Button
 	previous_button.pressed.connect(func() -> void:
 		if editor.has_method("cycle_plan_scene"):
 			editor.call("cycle_plan_scene", -1)
 	)
-	button_row.add_child(previous_button)
-
-	var next_button := Button.new()
-	next_button.name = "PlanNextButton"
-	next_button.text = ">"
-	next_button.tooltip_text = "Next plan"
-	next_button.custom_minimum_size = Vector2(34, 28)
+	var next_button := $PlanBrowserPanel/PlanBrowser/PlanButtons/PlanNextButton as Button
 	next_button.pressed.connect(func() -> void:
 		if editor.has_method("cycle_plan_scene"):
 			editor.call("cycle_plan_scene", 1)
 	)
-	button_row.add_child(next_button)
-
-	_plan_visibility_button = Button.new()
-	_plan_visibility_button.name = "PlanVisibilityButton"
-	_plan_visibility_button.text = "Hide"
-	_plan_visibility_button.tooltip_text = "Show or hide the loaded plan graybox"
-	_plan_visibility_button.custom_minimum_size = Vector2(78, 28)
 	_plan_visibility_button.pressed.connect(func() -> void:
 		if editor.has_method("toggle_plan_visibility"):
 			editor.call("toggle_plan_visibility")
 	)
-	button_row.add_child(_plan_visibility_button)
-
-	var focus_button := Button.new()
-	focus_button.name = "PlanFocusButton"
-	focus_button.text = "Focus"
-	focus_button.tooltip_text = "Center the camera on the loaded plan"
-	focus_button.custom_minimum_size = Vector2(78, 28)
+	var focus_button := $PlanBrowserPanel/PlanBrowser/PlanButtons/PlanFocusButton as Button
 	focus_button.pressed.connect(func() -> void:
 		if editor.has_method("focus_active_plan"):
 			editor.call("focus_active_plan")
 	)
-	button_row.add_child(focus_button)
-
-	_plan_title_label = Label.new()
-	_plan_title_label.name = "PlanTitle"
-	_plan_title_label.add_theme_font_size_override("font_size", 14)
-	_plan_title_label.add_theme_color_override("font_color", Color(0.95, 0.96, 1.0))
-	container.add_child(_plan_title_label)
-
-	_plan_slot_label = Label.new()
-	_plan_slot_label.name = "PlanSlot"
-	_plan_slot_label.add_theme_font_size_override("font_size", 11)
-	_plan_slot_label.add_theme_color_override("font_color", Color(0.66, 0.76, 0.86))
-	_plan_slot_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_plan_slot_label.custom_minimum_size = Vector2(340, 0)
-	container.add_child(_plan_slot_label)
-
-	_plan_help_label = Label.new()
-	_plan_help_label.name = "PlanHelp"
-	_plan_help_label.add_theme_font_size_override("font_size", 11)
-	_plan_help_label.add_theme_color_override("font_color", Color(0.72, 0.73, 0.78))
-	_plan_help_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_plan_help_label.custom_minimum_size = Vector2(340, 80)
-	container.add_child(_plan_help_label)
-
-	_build_generation_controls(container)
+	_bind_generation_controls()
 	_on_plan_changed({"loaded": false})
 
-func _build_generation_controls(container: VBoxContainer) -> void:
-	var divider := HSeparator.new()
-	container.add_child(divider)
-
-	var title := Label.new()
-	title.text = "GENERATOR"
-	title.add_theme_font_size_override("font_size", 12)
-	title.add_theme_color_override("font_color", Color(0.68, 0.72, 0.8))
-	container.add_child(title)
-
-	var tier_row := HBoxContainer.new()
-	tier_row.add_theme_constant_override("separation", 6)
-	container.add_child(tier_row)
-	tier_row.add_child(_make_generation_label("Tier"))
-	_generation_tier_selector = OptionButton.new()
-	_generation_tier_selector.name = "GenerationTierSelector"
-	_generation_tier_selector.custom_minimum_size = Vector2(132, 28)
+func _bind_generation_controls() -> void:
 	for tier in ["teaching", "standard", "hard", "setpiece"]:
 		_generation_tier_selector.add_item(tier)
-	tier_row.add_child(_generation_tier_selector)
-
-	_generation_seed_edit = _make_generation_line_edit("GenerationSeedEdit", "1701", Vector2(86, 28))
-	tier_row.add_child(_make_generation_label("Seed"))
-	tier_row.add_child(_generation_seed_edit)
-
-	var slot_row := HBoxContainer.new()
-	slot_row.add_theme_constant_override("separation", 6)
-	container.add_child(slot_row)
-	_generation_slot_edit = _make_generation_line_edit("GenerationSlotEdit", "generated_editor_stretch", Vector2(148, 28))
-	_generation_entry_edit = _make_generation_line_edit("GenerationEntryEdit", "shelter_1", Vector2(82, 28))
-	_generation_exit_edit = _make_generation_line_edit("GenerationExitEdit", "shelter_2", Vector2(82, 28))
-	slot_row.add_child(_generation_slot_edit)
-	slot_row.add_child(_generation_entry_edit)
-	slot_row.add_child(_generation_exit_edit)
-
-	_generation_allowed_edit = _make_generation_line_edit("GenerationAllowedEdit", "allowed flora/enemy/structure/archetype", Vector2(340, 26))
-	_generation_blocked_edit = _make_generation_line_edit("GenerationBlockedEdit", "blocked flora/enemy/structure/archetype", Vector2(340, 26))
-	_generation_required_edit = _make_generation_line_edit("GenerationRequiredEdit", "required flora/enemy/structure/archetype", Vector2(340, 26))
-	container.add_child(_generation_allowed_edit)
-	container.add_child(_generation_blocked_edit)
-	container.add_child(_generation_required_edit)
-
-	var action_row := HBoxContainer.new()
-	action_row.add_theme_constant_override("separation", 6)
-	container.add_child(action_row)
-	var generate_button := Button.new()
-	generate_button.name = "GenerationButton"
-	generate_button.text = "Generate"
-	generate_button.tooltip_text = "Generate and show a stretch plan from the current settings"
-	generate_button.custom_minimum_size = Vector2(104, 28)
+	var generate_button := $PlanBrowserPanel/PlanBrowser/GeneratorActions/GenerationButton as Button
 	generate_button.pressed.connect(_on_generate_stretch_pressed)
-	action_row.add_child(generate_button)
-
-	var save_button := Button.new()
-	save_button.name = "GenerationSaveButton"
-	save_button.text = "Save"
-	save_button.tooltip_text = "Save the last generated stretch spec"
-	save_button.custom_minimum_size = Vector2(74, 28)
+	var save_button := $PlanBrowserPanel/PlanBrowser/GeneratorActions/GenerationSaveButton as Button
 	save_button.pressed.connect(_on_save_generated_stretch_pressed)
-	action_row.add_child(save_button)
-
-	_generation_status_label = Label.new()
-	_generation_status_label.name = "GenerationStatus"
-	_generation_status_label.add_theme_font_size_override("font_size", 11)
-	_generation_status_label.add_theme_color_override("font_color", Color(0.7, 0.74, 0.78))
-	_generation_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_generation_status_label.custom_minimum_size = Vector2(340, 32)
-	container.add_child(_generation_status_label)
-
-func _make_generation_label(text: String) -> Label:
-	var label := Label.new()
-	label.text = text
-	label.add_theme_font_size_override("font_size", 11)
-	label.add_theme_color_override("font_color", Color(0.64, 0.68, 0.74))
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	return label
-
-func _make_generation_line_edit(node_name: String, placeholder: String, size: Vector2) -> LineEdit:
-	var edit := LineEdit.new()
-	edit.name = node_name
-	edit.placeholder_text = placeholder
-	edit.custom_minimum_size = size
-	edit.add_theme_font_size_override("font_size", 11)
-	return edit
 
 func _on_generate_stretch_pressed() -> void:
 	if editor == null or not editor.has_method("generate_stretch_plan"):

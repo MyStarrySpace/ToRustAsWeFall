@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://b5xfd2emmsuhv"
 path.s3tc="res://.godot/imported/glass-bead-game_4.png-5eb0dabff2249167fe6c1175832f3387.s3tc.ctex"
+path.etc2="res://.godot/imported/glass-bead-game_4.png-5eb0dabff2249167fe6c1175832f3387.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://resources/models/aster-sim/glass-bead-game/glass-bead-game_4.png"
-dest_files=["res://.godot/imported/glass-bead-game_4.png-5eb0dabff2249167fe6c1175832f3387.s3tc.ctex"]
+dest_files=["res://.godot/imported/glass-bead-game_4.png-5eb0dabff2249167fe6c1175832f3387.s3tc.ctex", "res://.godot/imported/glass-bead-game_4.png-5eb0dabff2249167fe6c1175832f3387.etc2.ctex"]
 
 [params]
 

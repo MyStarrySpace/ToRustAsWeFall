@@ -23,7 +23,7 @@ var _has_entry := false
 var _has_exit := false
 var _level_name := "my_level"
 
-var _camera: Camera3D
+@onready var _camera: Camera3D = $Camera3D
 var _cam_target := Vector3.ZERO
 var _cam_size := 22.0
 var _visual: Node3D
@@ -36,15 +36,14 @@ var _paint_finger := -1
 var _cam_fingers: Array = []
 var _cam_last_mid := Vector2.ZERO
 var _cam_last_dist := 1.0
-var _status: Label
-var _name_edit: LineEdit
+@onready var _status: Label = $HUD/Status
+@onready var _name_edit: LineEdit = $HUD/Actions/NameEdit
 var _brush_buttons := {}
 
 func _ready() -> void:
-	_build_camera()
-	_build_lighting()
+	_place_camera()
 	_build_grid_overlay()
-	_build_hud()
+	_bind_hud()
 	# A little starter floor so the canvas isn't blank.
 	for x in range(-3, 4):
 		for z in range(-2, 3):
@@ -58,32 +57,10 @@ func _ready() -> void:
 
 # --- camera ----------------------------------------------------------------------------------------------------
 
-func _build_camera() -> void:
-	_camera = Camera3D.new()
-	_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	_camera.size = _cam_size
-	add_child(_camera)
-	_place_camera()
-
 func _place_camera() -> void:
 	_camera.size = _cam_size
 	_camera.position = _cam_target + Vector3(0.0, 30.0, 18.0)
 	_camera.look_at(_cam_target, Vector3.UP)
-
-func _build_lighting() -> void:
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-62.0, -38.0, 0.0)
-	sun.light_energy = 1.25
-	add_child(sun)
-	var env := WorldEnvironment.new()
-	var e := Environment.new()
-	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color(0.04, 0.05, 0.06)
-	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.5, 0.55, 0.6)
-	e.ambient_light_energy = 0.9
-	env.environment = e
-	add_child(env)
 
 # --- input / painting ------------------------------------------------------------------------------------------
 
@@ -321,8 +298,7 @@ func _marker(cell: Vector2i, color: Color) -> void:
 	_visual.add_child(mi)
 
 func _build_grid_overlay() -> void:
-	var mi := MeshInstance3D.new()
-	mi.name = "GridOverlay"
+	var mi := $GridOverlay as MeshInstance3D
 	var im := ImmediateMesh.new()
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -337,65 +313,19 @@ func _build_grid_overlay() -> void:
 		im.surface_add_vertex(Vector3(r, -0.01, i))
 	im.surface_end()
 	mi.mesh = im
-	add_child(mi)
 
 # --- HUD -------------------------------------------------------------------------------------------------------
 
-func _build_hud() -> void:
-	var layer := CanvasLayer.new()
-	add_child(layer)
-
-	var top := HBoxContainer.new()
-	top.position = Vector2(16, 12)
-	top.add_theme_constant_override("separation", 6)
-	layer.add_child(top)
+func _bind_hud() -> void:
 	for spec in [["Floor", Brush.FLOOR], ["Risky", Brush.RISK], ["Entry", Brush.ENTRY], ["Exit", Brush.EXIT], ["Node", Brush.NODE], ["Erase", Brush.ERASE]]:
-		var b := Button.new()
-		b.text = str(spec[0])
-		b.toggle_mode = true
-		b.custom_minimum_size = Vector2(78, 34)
+		var b := get_node("HUD/Brushes/%s" % str(spec[0])) as Button
 		b.pressed.connect(_select_brush.bind(spec[1] as Brush))
-		top.add_child(b)
 		_brush_buttons[spec[1]] = b
-	(_brush_buttons[Brush.FLOOR] as Button).button_pressed = true
-
-	var right := VBoxContainer.new()
-	right.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	right.position = Vector2(-190, 12)
-	right.add_theme_constant_override("separation", 6)
-	layer.add_child(right)
-	_name_edit = LineEdit.new()
-	_name_edit.text = _level_name
-	_name_edit.placeholder_text = "level name"
-	_name_edit.custom_minimum_size = Vector2(174, 32)
 	_name_edit.text_changed.connect(func(t): _level_name = t.strip_edges() if t.strip_edges() != "" else "my_level")
-	right.add_child(_name_edit)
-	_add_action(right, "Save", _on_save)
-	_add_action(right, "Load", _on_load)
-	_add_action(right, "Play", _on_play)
-	_add_action(right, "Main Menu", _on_menu)
-
-	_status = Label.new()
-	_status.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	_status.position = Vector2(16, -58)
-	_status.add_theme_font_size_override("font_size", 13)
-	_status.add_theme_color_override("font_color", Color(0.7, 0.78, 0.84))
-	layer.add_child(_status)
-
-	var help := Label.new()
-	help.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	help.position = Vector2(16, -32)
-	help.text = "L-click paint  •  R-click erase  •  wheel zoom  •  WASD pan"
-	help.add_theme_font_size_override("font_size", 12)
-	help.add_theme_color_override("font_color", Color(0.5, 0.58, 0.66))
-	layer.add_child(help)
-
-func _add_action(parent: Node, text: String, cb: Callable) -> void:
-	var b := Button.new()
-	b.text = text
-	b.custom_minimum_size = Vector2(174, 34)
-	b.pressed.connect(cb)
-	parent.add_child(b)
+	($HUD/Actions/Save as Button).pressed.connect(_on_save)
+	($HUD/Actions/Load as Button).pressed.connect(_on_load)
+	($HUD/Actions/Play as Button).pressed.connect(_on_play)
+	($HUD/Actions/MainMenu as Button).pressed.connect(_on_menu)
 
 func _select_brush(brush: Brush) -> void:
 	_brush = brush

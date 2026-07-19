@@ -10,7 +10,16 @@ const SPEC_PATHS := [
 ]
 
 func _init() -> void:
-	for path in SPEC_PATHS:
+	var selected_paths: Array = SPEC_PATHS.duplicate()
+	for raw_arg in OS.get_cmdline_user_args():
+		var arg := str(raw_arg)
+		if arg.begins_with("--path="):
+			selected_paths = [arg.trim_prefix("--path=")]
+	for path in selected_paths:
+		if not SPEC_PATHS.has(path):
+			push_error("Unsupported generated stretch spec path: %s" % path)
+			quit(1)
+			return
 		var existing: Dictionary = StretchGeneratorScript.load_spec(path)
 		if existing.is_empty():
 			push_error("Missing generated stretch spec: %s" % path)

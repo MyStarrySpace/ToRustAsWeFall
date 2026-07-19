@@ -104,6 +104,7 @@ private:
 
 	std::priority_queue<ScheduledEvent, std::vector<ScheduledEvent>, EventComparator> _heap;
 	std::unordered_set<int> _cancelled;
+	std::unordered_set<int> _live_handles;
 	std::unordered_map<std::string, std::vector<int>> _tag_to_handles;
 
 	uint64_t _seq_counter;

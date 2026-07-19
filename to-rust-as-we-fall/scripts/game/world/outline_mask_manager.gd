@@ -127,7 +127,11 @@ func _spawn_copies(vp: SubViewport, meshes: Array, color: Color) -> Array:
 			continue
 		var src := m as MeshInstance3D
 		var copy := MeshInstance3D.new()
-		copy.mesh = src.mesh
+		# The GLES3 and dummy renderers query mesh-surface shader parameters before
+		# consulting an instance override. A shared primitive with a null base material
+		# therefore logs an error exactly when hover creates its mask copy. Give every
+		# private mask mesh an explicit fill material at both levels.
+		copy.mesh = src.mesh.duplicate()
 		copy.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		copy.extra_cull_margin = maxf(src.extra_cull_margin, 4.0)
 		_apply_fill_materials(copy, src, color)
@@ -213,14 +217,31 @@ func _apply_fill_materials(copy: MeshInstance3D, src: MeshInstance3D, color: Col
 		var mat := ShaderMaterial.new()
 		mat.shader = FILL_SHADER
 		mat.set_shader_parameter("fill_color", color)
-		var source := src.get_active_material(s)
+		var source := _source_surface_material(src, s)
 		if source is BaseMaterial3D:
 			var base := source as BaseMaterial3D
 			var transparent: bool = base.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or base.albedo_color.a < 0.999
 			if transparent and base.albedo_texture != null:
 				mat.set_shader_parameter("use_alpha", true)
 				mat.set_shader_parameter("src_albedo", base.albedo_texture)
+		if copy.mesh is PrimitiveMesh:
+			(copy.mesh as PrimitiveMesh).material = mat
+		elif copy.mesh is ArrayMesh:
+			(copy.mesh as ArrayMesh).surface_set_material(s, mat)
 		copy.set_surface_override_material(s, mat)
+
+
+func _source_surface_material(src: MeshInstance3D, surface: int) -> Material:
+	if src.material_override != null:
+		return src.material_override
+	var override := src.get_surface_override_material(surface)
+	if override != null:
+		return override
+	if src.mesh is PrimitiveMesh:
+		return (src.mesh as PrimitiveMesh).material
+	if src.mesh is ArrayMesh and surface < (src.mesh as ArrayMesh).get_surface_count():
+		return (src.mesh as ArrayMesh).surface_get_material(surface)
+	return null
 
 ## Shared morphing-noise texture for the energy-glow halo (one synchronous seamless image for all managers).
 static func _noise_texture() -> Texture2D:

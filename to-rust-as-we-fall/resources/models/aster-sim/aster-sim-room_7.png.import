@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://bfkkx0fpoyht"
 path.s3tc="res://.godot/imported/aster-sim-room_7.png-f083766f61b0a3df0af71e4a6cade5a9.s3tc.ctex"
+path.etc2="res://.godot/imported/aster-sim-room_7.png-f083766f61b0a3df0af71e4a6cade5a9.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://resources/models/aster-sim/aster-sim-room_7.png"
-dest_files=["res://.godot/imported/aster-sim-room_7.png-f083766f61b0a3df0af71e4a6cade5a9.s3tc.ctex"]
+dest_files=["res://.godot/imported/aster-sim-room_7.png-f083766f61b0a3df0af71e4a6cade5a9.s3tc.ctex", "res://.godot/imported/aster-sim-room_7.png-f083766f61b0a3df0af71e4a6cade5a9.etc2.ctex"]
 
 [params]
 

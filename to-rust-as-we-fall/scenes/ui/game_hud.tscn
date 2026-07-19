@@ -1,0 +1,187 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/game_hud.gd" id="1_hud"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bottom"]
+content_margin_left = 8.0
+content_margin_top = 8.0
+content_margin_right = 8.0
+content_margin_bottom = 8.0
+bg_color = Color(0.02, 0.02, 0.04, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.15, 0.15, 0.2, 0.5)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_time_bg"]
+bg_color = Color(0.06, 0.06, 0.08, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_time_fill"]
+bg_color = Color(0.7, 0.5, 0.2, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_message"]
+bg_color = Color(0.015, 0.02, 0.03, 0.88)
+border_width_left = 3
+border_width_bottom = 1
+border_color = Color(0.72, 0.5, 0.2, 0.62)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[node name="GameHUD" type="CanvasLayer"]
+layer = 10
+script = ExtResource("1_hud")
+
+[node name="BottomMargin" type="MarginContainer" parent="."]
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -64.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 8
+
+[node name="BottomPanel" type="PanelContainer" parent="BottomMargin"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_bottom")
+
+[node name="BottomRow" type="HBoxContainer" parent="BottomMargin/BottomPanel"]
+layout_mode = 2
+theme_override_constants/separation = 14
+alignment = 1
+
+[node name="PortraitSection" type="HBoxContainer" parent="BottomMargin/BottomPanel/BottomRow"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Separator1" type="VSeparator" parent="BottomMargin/BottomPanel/BottomRow"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="StatSection" type="VBoxContainer" parent="BottomMargin/BottomPanel/BottomRow"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="Separator2" type="VSeparator" parent="BottomMargin/BottomPanel/BottomRow"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="HandsSection" type="HBoxContainer" parent="BottomMargin/BottomPanel/BottomRow"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Separator3" type="VSeparator" parent="BottomMargin/BottomPanel/BottomRow"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ControlSection" type="HBoxContainer" parent="BottomMargin/BottomPanel/BottomRow"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 6
+alignment = 1
+
+[node name="Separator4" type="VSeparator" parent="BottomMargin/BottomPanel/BottomRow"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="AbilitySection" type="VBoxContainer" parent="BottomMargin/BottomPanel/BottomRow"]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="AbilityDrawerToggle" type="Button" parent="BottomMargin/BottomPanel/BottomRow/AbilitySection"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+text = "ABILITIES"
+
+[node name="AbilityDrawerScroll" type="ScrollContainer" parent="BottomMargin/BottomPanel/BottomRow/AbilitySection"]
+custom_minimum_size = Vector2(0, 72)
+layout_mode = 2
+size_flags_horizontal = 3
+horizontal_scroll_mode = 1
+vertical_scroll_mode = 0
+scroll_deadzone = 8
+
+[node name="AbilityColumns" type="HBoxContainer" parent="BottomMargin/BottomPanel/BottomRow/AbilitySection/AbilityDrawerScroll"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="TimeContainer" type="HBoxContainer" parent="."]
+visible = false
+anchors_preset = 10
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -140.0
+offset_top = 10.0
+offset_right = 140.0
+offset_bottom = 30.0
+grow_horizontal = 2
+theme_override_constants/separation = 8
+
+[node name="TimeLabel" type="Label" parent="TimeContainer"]
+custom_minimum_size = Vector2(90, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.5, 0.55, 1)
+theme_override_font_sizes/font_size = 11
+
+[node name="TimeBar" type="ProgressBar" parent="TimeContainer"]
+custom_minimum_size = Vector2(140, 10)
+layout_mode = 2
+theme_override_styles/background = SubResource("StyleBoxFlat_time_bg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_time_fill")
+show_percentage = false
+
+[node name="MessageBacking" type="PanelContainer" parent="."]
+modulate = Color(1, 1, 1, 0)
+anchors_preset = 10
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -300.0
+offset_top = 34.0
+offset_right = 300.0
+offset_bottom = 68.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_message")
+
+[node name="MessageLabel" type="Label" parent="."]
+modulate = Color(1, 1, 1, 0)
+anchors_preset = 10
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -300.0
+offset_top = 40.0
+offset_right = 300.0
+offset_bottom = 66.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.75, 0.7, 0.6, 1)
+theme_override_font_sizes/font_size = 12
+horizontal_alignment = 1
+vertical_alignment = 1

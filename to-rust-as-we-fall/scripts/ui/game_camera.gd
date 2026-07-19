@@ -17,6 +17,8 @@ const CAMERA_ZOOM_MIN := 0.45
 const CAMERA_ZOOM_MAX := 2.2
 var _view_yaw := 0.0
 var _view_zoom := 1.0
+var _zoom_min := CAMERA_ZOOM_MIN
+var _zoom_max := CAMERA_ZOOM_MAX
 @export var follow_speed := 4.0
 @export var pan_speed := 0.03
 ## Edge-scroll fires only when the cursor is hard against the screen edge. A wide margin (this was 40)
@@ -83,10 +85,10 @@ func _ready() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("camera_zoom_in"):
-		_view_zoom = clampf(_view_zoom * CAMERA_ZOOM_STEP, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX)
+		_view_zoom = clampf(_view_zoom * CAMERA_ZOOM_STEP, _zoom_min, _zoom_max)
 		return
 	if event.is_action_pressed("camera_zoom_out"):
-		_view_zoom = clampf(_view_zoom / CAMERA_ZOOM_STEP, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX)
+		_view_zoom = clampf(_view_zoom / CAMERA_ZOOM_STEP, _zoom_min, _zoom_max)
 		return
 	if _locked:
 		return
@@ -236,9 +238,28 @@ func _update_cam_gesture() -> void:
 	var mid := (p0 + p1) * 0.5
 	var dist := maxf(1.0, p0.distance_to(p1))
 	pan_by(mid - _cam_last_mid)
-	_view_zoom = clampf(_view_zoom / (dist / _cam_last_dist), CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX)
+	_view_zoom = clampf(_view_zoom / (dist / _cam_last_dist), _zoom_min, _zoom_max)
 	_cam_last_mid = mid
 	_cam_last_dist = dist
+
+## Apply a level-authored follow profile without making camera policy global. This is used by
+## vertically stacked spaces whose adjacent floors impose a stricter height/zoom envelope than
+## ordinary rooms. Snapping after the target is selected avoids an entry lerp through intervening
+## geometry, which is especially disorienting on a helix.
+func apply_follow_profile(profile: Dictionary, snap_immediately := true) -> void:
+	follow_offset = profile.get("follow_offset", follow_offset) as Vector3
+	var requested_min := float(profile.get("min_zoom", CAMERA_ZOOM_MIN))
+	var requested_max := float(profile.get("max_zoom", CAMERA_ZOOM_MAX))
+	_zoom_min = maxf(0.05, minf(requested_min, requested_max))
+	_zoom_max = maxf(_zoom_min, maxf(requested_min, requested_max))
+	_view_zoom = clampf(float(profile.get("initial_zoom", 1.0)), _zoom_min, _zoom_max)
+	if bool(profile.get("reset_yaw", false)):
+		_view_yaw = 0.0
+	_pan_offset = Vector3.ZERO
+	_panning = false
+	if snap_immediately:
+		_update_immediate()
+
 
 func _view_offset() -> Vector3:
 	return Basis(Vector3.UP, _view_yaw) * (follow_offset * _view_zoom)
@@ -287,7 +308,7 @@ func _process(delta: float) -> void:
 		return
 
 	# Edge scrolling (when not dragging)
-	if _pan_enabled and not _panning:
+	if _pan_enabled and not _panning and edge_scroll_margin > 0.0:
 		var vp := get_viewport()
 		if vp:
 			var mouse := vp.get_mouse_position()
@@ -313,13 +334,13 @@ func _process(delta: float) -> void:
 		var wasd_dir := Vector3.ZERO
 		var right := global_transform.basis.x.normalized()
 		var forward := Vector3(-global_transform.basis.z.x, 0, -global_transform.basis.z.z).normalized()
-		if Input.is_key_pressed(KEY_W):
+		if Input.is_action_pressed("camera_pan_forward"):
 			wasd_dir += forward
-		if Input.is_key_pressed(KEY_S):
+		if Input.is_action_pressed("camera_pan_back"):
 			wasd_dir -= forward
-		if Input.is_key_pressed(KEY_A):
+		if Input.is_action_pressed("camera_pan_left"):
 			wasd_dir -= right
-		if Input.is_key_pressed(KEY_D):
+		if Input.is_action_pressed("camera_pan_right"):
 			wasd_dir += right
 		if wasd_dir.length() > 0:
 			_pan_offset += wasd_dir.normalized() * wasd_pan_speed * delta
@@ -350,7 +371,7 @@ func _process(delta: float) -> void:
 func _update_immediate() -> void:
 	if target:
 		var look := _clamp_look(target.global_position)
-		global_position = look + follow_offset
+		global_position = look + _view_offset()
 		look_at(look, Vector3.UP)
 
 ## Clamp a look-at point to the active bounds (X/Z), keeping the view inside a
@@ -372,6 +393,28 @@ func set_look_bounds(min_corner: Vector3, max_corner: Vector3) -> void:
 
 func clear_look_bounds() -> void:
 	_look_bounds_active = false
+
+
+## Scripted focus beats must be reversible: preserve the player's deliberate board framing,
+## including pan/orbit/zoom, instead of merely restoring the followed character.
+func capture_view_state() -> Dictionary:
+	return {
+		"target": target,
+		"follow_offset": follow_offset,
+		"pan_offset": _pan_offset,
+		"view_yaw": _view_yaw,
+		"view_zoom": _view_zoom,
+	}
+
+
+func restore_view_state(state: Dictionary) -> void:
+	unlock()
+	var previous_target = state.get("target", null)
+	target = previous_target if previous_target == null or is_instance_valid(previous_target) else null
+	follow_offset = state.get("follow_offset", follow_offset) as Vector3
+	_pan_offset = state.get("pan_offset", Vector3.ZERO) as Vector3
+	_view_yaw = float(state.get("view_yaw", _view_yaw))
+	_view_zoom = float(state.get("view_zoom", _view_zoom))
 
 ## Lock camera to a world position (for scripted sequences). An optional `offset_override` frames the
 ## lock from a FIXED direction (camera sits at pos + offset, ignoring the gameplay view yaw/zoom) — use

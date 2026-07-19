@@ -24,6 +24,32 @@ timeout 120 ../Godot_v4.6.1-stable_win64_console.exe --headless --path "." \
 
 The output shows each command executing and `status` dumps at section boundaries.
 
+## Record Normal Play and Render It Without Planning Pauses
+
+This is the player-facing workflow. It records ordinary keyboard, mouse, touch, and controller
+input against gameplay scheduler ticks while embedding each scene's authoritative `EventLog`
+and final `GameState` snapshot.
+
+```powershell
+# 1. Play normally. Closing the game seals the artifact.
+.\tools\record_playthrough.ps1 -Output .\playthroughs\channels.trwfplay
+
+# 2. Replay at exact recorded simulation ticks and render a fixed-60-FPS movie.
+.\tools\render_playthrough.ps1 `
+  -Recording .\playthroughs\channels.trwfplay `
+  -Output .\playthroughs\channels.avi
+```
+
+Space-planning pauses collapse because no scheduler ticks elapsed between the inputs issued
+while paused. Time spent thinking while the simulation was still running remains: enemies,
+hunger, water, and movement experienced that time, so deleting it would change the run.
+
+For a Web build, open the game with `?record_playthrough=channels.trwfplay`, play normally,
+then press **F10** to seal and download the artifact. Render that downloaded file with the
+same `render_playthrough.ps1` command. Browser-local replay can use
+`?replay_playthrough=channels.trwfplay` while the artifact remains in that origin's `user://`
+storage.
+
 ## How to Write a Playthrough Script
 
 ### File format

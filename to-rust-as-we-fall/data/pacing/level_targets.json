@@ -1,0 +1,158 @@
+{
+	"schema": "trawf_level_pacing_targets_v1",
+	"contract_version": 1,
+	"definitions": {
+		"target_basis": {
+			"explicit": "A first-clear duration is stated directly in an authored level or puzzle document.",
+			"operative": "An existing project-wide workflow establishes the duration as the current production standard.",
+			"planning": "A provisional production target introduced here; playtests may revise it without changing canon."
+		},
+		"authored_metrics": {
+			"meaningful_active_seconds": "Time spent traversing, exploring, planning, deciding, interacting, or executing a hazard. Passive waits and non-interactive presentation do not count.",
+			"total_play_seconds": "First-clear elapsed play time, including presentation and unavoidable inactive time, but excluding pause-menu time.",
+			"max_dead_gap_seconds": "Longest continuous interval in which the player has no useful decision or input available.",
+			"max_single_mode_seconds": "Longest uninterrupted interval spent in one play mode, such as pure walking, pure dialogue, or repeating one interaction.",
+			"decision_count": "Count of consequential decisions that can change route, cost, risk, information, or resource state.",
+			"branch_count": "Count of authored route, strategy, or optional-exploration branches available on first clear.",
+			"category_seconds": "Mutually exclusive meaningful-active time buckets. Their sum must equal meaningful_active_seconds."
+		}
+	},
+	"rules": {
+		"minimum_active_ratio": 0.70,
+		"maximum_dead_gap_seconds": 5.0,
+		"maximum_single_mode_seconds": 45.0,
+		"maximum_category_share_of_minimum": 0.50
+	},
+	"targets": [
+		{
+			"id": "aster_sim",
+			"label": "Aster Simulation",
+			"target_basis": "planning",
+			"first_clear_seconds": {"minimum": 300, "maximum": 480},
+			"min_decisions": 3,
+			"min_branches": 1,
+			"basis_note": "Planning band for a substantial first character tutorial with room to inspect the simulation rather than rush prompts."
+		},
+		{
+			"id": "peris_sim",
+			"label": "Peris Simulation",
+			"target_basis": "planning",
+			"first_clear_seconds": {"minimum": 300, "maximum": 480},
+			"min_decisions": 3,
+			"min_branches": 1,
+			"basis_note": "Planning band for the second character tutorial, including spatial practice with Peris's distinct verbs."
+		},
+		{
+			"id": "tag_day",
+			"label": "Tag Day",
+			"target_basis": "planning",
+			"first_clear_seconds": {"minimum": 240, "maximum": 360},
+			"min_decisions": 1,
+			"min_branches": 1,
+			"basis_note": "Planning band for a narrative sequence that still gives the player a consequential action and an explorable branch."
+		},
+		{
+			"id": "elevator_and_below",
+			"label": "Elevator and Below",
+			"target_basis": "planning",
+			"first_clear_seconds": {"minimum": 480, "maximum": 720},
+			"min_decisions": 4,
+			"min_branches": 2,
+			"basis_note": "Planning band for the combined elevator set piece, fall, recovery, and below-facility play."
+		},
+		{
+			"id": "leaving_facility",
+			"label": "Leaving the Facility",
+			"target_basis": "planning",
+			"first_clear_seconds": {"minimum": 240, "maximum": 360},
+			"min_decisions": 2,
+			"min_branches": 1,
+			"basis_note": "Planning band for a connective level with active traversal, a recovery choice, and environmental exploration."
+		},
+		{
+			"id": "endo_junction_stretch",
+			"label": "Endo Junction Stretch",
+			"target_basis": "planning",
+			"first_clear_seconds": {"minimum": 180, "maximum": 300},
+			"min_decisions": 1,
+			"min_branches": 2,
+			"basis_note": "Planning target aligned with one ordinary shelter-to-shelter stretch."
+		},
+		{
+			"id": "channels",
+			"label": "The Channels",
+			"target_basis": "explicit",
+			"first_clear_seconds": {"minimum": 1200, "maximum": 1800},
+			"min_decisions": 6,
+			"min_branches": 3,
+			"source": "../reference-docs/channels_edits.md:221",
+			"basis_note": "The authored six-beat Channels design states roughly 20-30 minutes."
+		},
+		{
+			"id": "stacks",
+			"label": "The Open Files Initiative / Stacks",
+			"target_basis": "planning",
+			"first_clear_seconds": {"minimum": 240, "maximum": 360},
+			"min_decisions": 2,
+			"min_branches": 2,
+			"basis_note": "Planning band for an inference-focused district with a four-part interaction chain and optional archive exploration."
+		},
+		{
+			"id": "rings",
+			"label": "Residential Rings",
+			"target_basis": "planning",
+			"first_clear_seconds": {"minimum": 240, "maximum": 360},
+			"min_decisions": 2,
+			"min_branches": 2,
+			"basis_note": "Planning band for residence inspection, route choice, and the client/departure story beats."
+		},
+		{
+			"id": "lockout",
+			"label": "Lockout Chase",
+			"target_basis": "planning",
+			"first_clear_seconds": {"minimum": 300, "maximum": 480},
+			"min_decisions": 3,
+			"min_branches": 2,
+			"basis_note": "Planning band for the full chase course, its checkpoint strategies, and pair-survival recovery."
+		},
+		{
+			"id": "mother_flure",
+			"label": "Mother Flure",
+			"target_basis": "explicit",
+			"first_clear_seconds": {"minimum": 300, "maximum": 480},
+			"min_decisions": 4,
+			"min_branches": 2,
+			"source": "data/puzzles/mother_flure_board_layout.md:16",
+			"basis_note": "The authored 6x6 board draft specifies a 5-8 minute first clear."
+		},
+		{
+			"id": "inflammashunt",
+			"label": "Inflammashunt",
+			"target_basis": "explicit",
+			"first_clear_seconds": {"minimum": 420, "maximum": 540},
+			"min_decisions": 5,
+			"min_branches": 3,
+			"source": "data/puzzles/inflammashunt_puzzle.md:146",
+			"basis_note": "The authored puzzle spec specifies a 7-9 minute clean informed first clear."
+		},
+		{
+			"id": "ordinary_stretch",
+			"label": "Ordinary Shelter Stretch",
+			"target_basis": "operative",
+			"first_clear_seconds": {"minimum": 180, "maximum": 300},
+			"min_decisions": 1,
+			"min_branches": 2,
+			"source": "data/PLAYTHROUGH_WORKFLOW.md:11,75,89",
+			"basis_note": "The existing optimal-playthrough workflow sets 3-5 minutes, 1-2 decision points, and 2-3 side branches per shelter stretch."
+		},
+		{
+			"id": "mechanic_fragment",
+			"label": "Standalone Mechanic Fragment",
+			"target_basis": "planning",
+			"first_clear_seconds": {"minimum": 120, "maximum": 240},
+			"min_decisions": 1,
+			"min_branches": 1,
+			"basis_note": "Planning band for an atomic teaching or reinforcement fragment; shorter than a complete shelter stretch but not a hallway-sized prompt."
+		}
+	]
+}

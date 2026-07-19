@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://c1nq6jc4sbu1t"
 path.s3tc="res://.godot/imported/peris-sim_10.png-3ab3e816a31fef47e5ade802add4011a.s3tc.ctex"
+path.etc2="res://.godot/imported/peris-sim_10.png-3ab3e816a31fef47e5ade802add4011a.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://resources/models/peris-sim/peris-sim_10.png"
-dest_files=["res://.godot/imported/peris-sim_10.png-3ab3e816a31fef47e5ade802add4011a.s3tc.ctex"]
+dest_files=["res://.godot/imported/peris-sim_10.png-3ab3e816a31fef47e5ade802add4011a.s3tc.ctex", "res://.godot/imported/peris-sim_10.png-3ab3e816a31fef47e5ade802add4011a.etc2.ctex"]
 
 [params]
 

@@ -30,6 +30,9 @@ var _gs   # GameState (Interactable keeps its own _game_state for data binding; 
 var _glow: MeshInstance3D
 var _glow_mat: StandardMaterial3D
 var _dest := Vector3.ZERO
+var _data_authored := false
+var _source_data := Vector3.ZERO
+var _dest_data := Vector3.ZERO
 var _group_provider: Callable = Callable()   # -> Array of selected char ids (the loader installs it)
 var _queue: Array = []
 var _queue_arrivals: Array = []
@@ -39,6 +42,7 @@ var _ghosts: Array = []
 ## Configure BEFORE adding to the tree. `dest_world` is the paired portal's position this one sends you to.
 func configure(gs, world_pos: Vector3, dest_world: Vector3, radius := 1.2,
 		color := Color(0.55, 0.42, 0.98)) -> void:
+	_data_authored = false
 	_gs = gs
 	position = world_pos
 	_dest = dest_world
@@ -48,6 +52,51 @@ func configure(gs, world_pos: Vector3, dest_world: Vector3, radius := 1.2,
 	one_shot = false   # reusable: step through, and back
 	description = "Step through"
 	tutorial_label = "PORTAL"
+
+## Configure in GameState data coordinates while allowing the pad, destination, ghosts, and hover fan to
+## render through a later-installed coord map. The canonical destination never becomes a warped world point,
+## so a portal authored before the environment model loads cannot double-convert its arrival.
+func configure_data(gs, source_data: Vector3, dest_data: Vector3, radius := 1.2,
+		color := Color(0.55, 0.42, 0.98)) -> void:
+	configure(gs, source_data, dest_data, radius, color)
+	_data_authored = true
+	_source_data = source_data
+	_dest_data = dest_data
+	set_meta("flat_authored_position", source_data)
+	if _gs != null and _gs.coord_map != null:
+		position = _gs.coord_map.to_world(source_data)
+
+func get_data_source() -> Vector3:
+	return _source_data if _data_authored else position
+
+func get_data_destination() -> Vector3:
+	return _dest_data if _data_authored else _destination_data()
+
+func _destination_world() -> Vector3:
+	if _data_authored and _gs != null and _gs.coord_map != null:
+		return _gs.coord_map.to_world(_dest_data)
+	return _dest_data if _data_authored else _dest
+
+func _destination_data() -> Vector3:
+	if _data_authored:
+		return _dest_data
+	if _gs != null and _gs.coord_map != null:
+		return _gs.coord_map.to_data(_dest)
+	return _dest
+
+func _arrival_world_to_data(world: Vector3) -> Vector3:
+	if _gs != null and _gs.coord_map != null:
+		return _gs.coord_map.to_data(world)
+	return world
+
+func _snap_arrival_world(world: Vector3) -> Vector3:
+	if _gs == null or _gs.grid == null or not _gs.grid.has_method("nearest_walkable_world"):
+		return world
+	if _gs.coord_map != null:
+		var data: Vector3 = _gs.coord_map.to_data(world)
+		data = _gs.grid.nearest_walkable_world(data)
+		return _gs.coord_map.to_world(data)
+	return _gs.grid.nearest_walkable_world(world)
 
 func _ready() -> void:
 	if get_node_or_null("CollisionShape3D") == null:
@@ -148,16 +197,15 @@ func _group_for(activator: String) -> Array:
 ## THIS, so the preview always matches the crossing.
 func compute_group_arrivals(ids: Array) -> Array:
 	var out: Array = []
-	var away := _dest - global_position
+	var dest_world := _destination_world()
+	var away := dest_world - global_position
 	away.y = 0.0
 	var base_angle := atan2(away.z, away.x) if away.length() > 0.01 else 0.0
 	for i in range(ids.size()):
 		var ang := base_angle + (float(i) - (float(ids.size()) - 1.0) * 0.5) * 0.9
-		var pos := _dest + Vector3(cos(ang), 0.0, sin(ang)) * ARRIVAL_RING_RADIUS
-		pos.y = _dest.y
-		if _gs != null and _gs.grid != null and _gs.grid.has_method("nearest_walkable_world"):
-			pos = _gs.grid.nearest_walkable_world(pos)
-			pos.y = _dest.y
+		var pos := dest_world + Vector3(cos(ang), 0.0, sin(ang)) * ARRIVAL_RING_RADIUS
+		pos.y = dest_world.y
+		pos = _snap_arrival_world(pos)
 		out.append(pos)
 	return out
 
@@ -187,11 +235,8 @@ func _hop_next() -> void:
 	_queue_i += 1
 	if _gs.characters.has(who) and not _gs.is_downed(who):
 		_gs.command_stop(who)
-		var dest := _dest
-		var slot_d := slot
-		if _gs.coord_map != null:
-			dest = _gs.coord_map.to_data(_dest)
-			slot_d = _gs.coord_map.to_data(slot)
+		var dest := _destination_data()
+		var slot_d := _arrival_world_to_data(slot)
 		_gs.snap_character_to(who, dest)
 		_gs.command_move_to_pos(who, slot_d)
 		stepped_through.emit(who, dest)
@@ -265,9 +310,7 @@ func step_through() -> bool:
 	if who == "" or not _gs.characters.has(who):
 		return false
 	_gs.command_stop(who)
-	var dest := _dest
-	if _gs.coord_map != null:
-		dest = _gs.coord_map.to_data(_dest)
+	var dest := _destination_data()
 	_gs.snap_character_to(who, dest)
 	stepped_through.emit(who, dest)
 	return true

@@ -88,6 +88,11 @@ var _preview_last_cell := Vector2i(0x7fffffff, 0x7fffffff)
 ## The FLAT hovered move target while planning (Vector3.INF when not hovering). The scene's PathRenderManager
 ## reads this to draw a BG3-style destination ghost at the cursor BEFORE a move is committed.
 var preview_move_target := Vector3.INF
+## A held rally owns every member's path/endpoint preview until it is committed or cancelled. Without
+## this hand-off, each Player keeps running its ordinary cursor preview after SelectionController has
+## assigned the formation: the active member writes the shared cursor cell over its resolved slot, while
+## inactive members clear their slots because movement is disabled.
+var _external_path_preview_active := false
 
 
 signal arrived()
@@ -366,6 +371,9 @@ func _build_grid_texture() -> ImageTexture:
 func _update_hover_from_screen(screen_pos: Vector2) -> void:
 	if _hover_grid == null:
 		return
+	if _external_path_preview_active:
+		_hover_grid.visible = false
+		return
 	if _click_mode != "move" or not _move_enabled:
 		_hover_grid.visible = false
 		_clear_path_preview()
@@ -456,6 +464,10 @@ func _hover_grid_center(hit: Vector3) -> Vector3:
 ## actually moving (the committed path shows then) and when not hovering the floor. With a party selected
 ## (group_move) it previews EVERY member's path to its own spread destination, not just the active one.
 func _update_path_preview(hit: Vector3) -> void:
+	# SelectionController is displaying the exact per-member Rally formation. The ordinary hover
+	# preview targets one shared cursor cell, so it must not compete for preview_move_target here.
+	if _external_path_preview_active:
+		return
 	if _path_preview == null or game_state == null or char_id == "":
 		if GridWorld._fx_debug:
 			GridWorld._pf_trace("[preview] SKIP (path_preview=%s game_state=%s char_id='%s')" % [_path_preview != null, game_state != null, char_id])
@@ -666,6 +678,23 @@ func _clear_path_preview() -> void:
 	_preview_last_cell = Vector2i(0x7fffffff, 0x7fffffff)  # force a recompute on the next hover
 	preview_move_target = Vector3.INF   # stop ghosting a destination once we're no longer planning one
 
+## Temporarily hand ownership of this character's route and destination pill to a scene-level command
+## preview (currently Rally). Enabling clears the old hover preview before the command assigns its exact
+## endpoint; disabling only invalidates the hover cache so normal feedback resumes on the next frame.
+func set_external_path_preview_active(active: bool) -> void:
+	if _external_path_preview_active == active:
+		return
+	_external_path_preview_active = active
+	if active:
+		if _hover_grid != null:
+			_hover_grid.visible = false
+		_clear_path_preview()
+	else:
+		_hover_last_mouse = Vector2(-1e9, -1e9)
+
+func is_external_path_preview_active() -> bool:
+	return _external_path_preview_active
+
 ## The scene node for a character id (this player, or a sibling party member) — used to anchor each
 ## member's preview ribbon to that member and tint it their colour.
 var _char_node_cache := {}
@@ -807,6 +836,9 @@ func _process(_delta: float) -> void:
 ## active, move-enabled player (others gate out before it), so it's one cheap ray per frame.
 func _update_hover_grid() -> void:
 	if _hover_grid == null:
+		return
+	if _external_path_preview_active:
+		_hover_grid.visible = false
 		return
 	var vp := get_viewport()
 	if vp == null:

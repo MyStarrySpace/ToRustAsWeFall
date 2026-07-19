@@ -1,6 +1,346 @@
-[gd_scene load_steps=2 format=3 uid="uid://cpausemenu0ui01"]
+[gd_scene load_steps=3 format=3 uid="uid://cpausemenu0ui01"]
 
-[ext_resource type="Script" path="res://scripts/ui/pause_menu.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/ui/pause_menu.gd" id="1_pause"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+content_margin_left = 22.0
+content_margin_top = 22.0
+content_margin_right = 22.0
+content_margin_bottom = 22.0
+bg_color = Color(0.04, 0.045, 0.06, 0.97)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.3, 0.34, 0.42, 0.85)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
 
 [node name="PauseMenu" type="CanvasLayer"]
-script = ExtResource("1")
+layer = 40
+visible = false
+process_mode = 3
+script = ExtResource("1_pause")
+
+[node name="Dim" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0, 0, 0, 0.55)
+
+[node name="PauseView" type="CenterContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="PauseView"]
+custom_minimum_size = Vector2(380, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="Content" type="VBoxContainer" parent="PauseView/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="PauseView/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.82, 0.86, 0.94, 1)
+theme_override_font_sizes/font_size = 20
+text = "Paused"
+horizontal_alignment = 1
+
+[node name="ResumeButton" type="Button" parent="PauseView/Panel/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "Resume"
+
+[node name="RestartButton" type="Button" parent="PauseView/Panel/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "Restart Scene"
+
+[node name="SettingsButton" type="Button" parent="PauseView/Panel/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "Settings"
+
+[node name="MainMenuButton" type="Button" parent="PauseView/Panel/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "Main Menu"
+
+[node name="Hint" type="Label" parent="PauseView/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.45, 0.48, 0.55, 0.7)
+theme_override_font_sizes/font_size = 11
+text = "Esc to resume"
+horizontal_alignment = 1
+
+[node name="SettingsView" type="CenterContainer" parent="."]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="SettingsView"]
+custom_minimum_size = Vector2(690, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="Content" type="VBoxContainer" parent="SettingsView/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="SettingsView/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.82, 0.86, 0.94, 1)
+theme_override_font_sizes/font_size = 20
+text = "Settings"
+horizontal_alignment = 1
+
+[node name="AccessibilityGroup" type="Label" parent="SettingsView/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.6, 0.75, 0.85)
+theme_override_font_sizes/font_size = 12
+text = "Accessibility"
+
+[node name="TextSpeedLabel" type="Label" parent="SettingsView/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.82, 0.88, 1)
+theme_override_font_sizes/font_size = 14
+text = "Text Speed"
+
+[node name="SpeedButtons" type="HBoxContainer" parent="SettingsView/Panel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 6
+alignment = 1
+
+[node name="Slow" type="Button" parent="SettingsView/Panel/Content/SpeedButtons"]
+custom_minimum_size = Vector2(78, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "Slow"
+
+[node name="Normal" type="Button" parent="SettingsView/Panel/Content/SpeedButtons"]
+custom_minimum_size = Vector2(78, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "Normal"
+
+[node name="Fast" type="Button" parent="SettingsView/Panel/Content/SpeedButtons"]
+custom_minimum_size = Vector2(78, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "Fast"
+
+[node name="Instant" type="Button" parent="SettingsView/Panel/Content/SpeedButtons"]
+custom_minimum_size = Vector2(78, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "Instant"
+
+[node name="GameplayGroup" type="Label" parent="SettingsView/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.6, 0.75, 0.85)
+theme_override_font_sizes/font_size = 12
+text = "Gameplay"
+
+[node name="FoodEconomyLabel" type="Label" parent="SettingsView/Panel/Content"]
+layout_mode = 2
+tooltip_text = "Selects a gameplay-settings preset without changing the level seed or layout."
+theme_override_colors/font_color = Color(0.8, 0.82, 0.88, 1)
+theme_override_font_sizes/font_size = 14
+text = "Food Economy"
+
+[node name="ModeButtons" type="HBoxContainer" parent="SettingsView/Panel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 6
+alignment = 1
+
+[node name="Neutral" type="Button" parent="SettingsView/Panel/Content/ModeButtons"]
+custom_minimum_size = Vector2(112, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "Neutral"
+
+[node name="Expedition" type="Button" parent="SettingsView/Panel/Content/ModeButtons"]
+custom_minimum_size = Vector2(112, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "Expedition"
+
+[node name="Scarcity" type="Button" parent="SettingsView/Panel/Content/ModeButtons"]
+custom_minimum_size = Vector2(112, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "Scarcity"
+
+[node name="ModeHint" type="Label" parent="SettingsView/Panel/Content"]
+layout_mode = 2
+tooltip_text = "Selects a gameplay-settings preset without changing the level seed or layout."
+theme_override_colors/font_color = Color(0.45, 0.48, 0.55, 0.7)
+theme_override_font_sizes/font_size = 11
+text = "Applies on the next generated level or Restart Scene."
+horizontal_alignment = 1
+
+[node name="ControlsGroup" type="Label" parent="SettingsView/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.6, 0.75, 0.85)
+theme_override_font_sizes/font_size = 12
+text = "Controls"
+
+[node name="RallyLabel" type="Label" parent="SettingsView/Panel/Content"]
+layout_mode = 2
+tooltip_text = "How long COMMAND is held before it queues the whole controllable party."
+theme_override_colors/font_color = Color(0.8, 0.82, 0.88, 1)
+theme_override_font_sizes/font_size = 14
+text = "Rally Hold Duration"
+
+[node name="RallyRow" type="HBoxContainer" parent="SettingsView/Panel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Slider" type="HSlider" parent="SettingsView/Panel/Content/RallyRow"]
+custom_minimum_size = Vector2(250, 28)
+layout_mode = 2
+tooltip_text = "How long COMMAND is held before it queues the whole controllable party."
+min_value = 0.15
+max_value = 2.0
+step = 0.05
+
+[node name="Value" type="Label" parent="SettingsView/Panel/Content/RallyRow"]
+custom_minimum_size = Vector2(52, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.76, 0.84, 1)
+vertical_alignment = 1
+
+[node name="AbilityLabel" type="Label" parent="SettingsView/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.82, 0.88, 1)
+theme_override_font_sizes/font_size = 14
+text = "Direct Party Abilities — 2 per character"
+
+[node name="BindingGrid" type="GridContainer" parent="SettingsView/Panel/Content"]
+layout_mode = 2
+theme_override_constants/h_separation = 7
+theme_override_constants/v_separation = 4
+columns = 6
+
+[node name="Char1" type="VBoxContainer" parent="SettingsView/Panel/Content/BindingGrid"]
+layout_mode = 2
+theme_override_constants/separation = 4
+[node name="Label" type="Label" parent="SettingsView/Panel/Content/BindingGrid/Char1"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.62, 0.76, 1)
+theme_override_font_sizes/font_size = 9
+text = "CHAR 1"
+horizontal_alignment = 1
+[node name="Ability1" type="Button" parent="SettingsView/Panel/Content/BindingGrid/Char1"]
+custom_minimum_size = Vector2(96, 32)
+layout_mode = 2
+[node name="Ability2" type="Button" parent="SettingsView/Panel/Content/BindingGrid/Char1"]
+custom_minimum_size = Vector2(96, 32)
+layout_mode = 2
+
+[node name="Char2" type="VBoxContainer" parent="SettingsView/Panel/Content/BindingGrid"]
+layout_mode = 2
+theme_override_constants/separation = 4
+[node name="Label" type="Label" parent="SettingsView/Panel/Content/BindingGrid/Char2"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.62, 0.76, 1)
+theme_override_font_sizes/font_size = 9
+text = "CHAR 2"
+horizontal_alignment = 1
+[node name="Ability1" type="Button" parent="SettingsView/Panel/Content/BindingGrid/Char2"]
+custom_minimum_size = Vector2(96, 32)
+layout_mode = 2
+[node name="Ability2" type="Button" parent="SettingsView/Panel/Content/BindingGrid/Char2"]
+custom_minimum_size = Vector2(96, 32)
+layout_mode = 2
+
+[node name="Char3" type="VBoxContainer" parent="SettingsView/Panel/Content/BindingGrid"]
+layout_mode = 2
+theme_override_constants/separation = 4
+[node name="Label" type="Label" parent="SettingsView/Panel/Content/BindingGrid/Char3"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.62, 0.76, 1)
+theme_override_font_sizes/font_size = 9
+text = "CHAR 3"
+horizontal_alignment = 1
+[node name="Ability1" type="Button" parent="SettingsView/Panel/Content/BindingGrid/Char3"]
+custom_minimum_size = Vector2(96, 32)
+layout_mode = 2
+[node name="Ability2" type="Button" parent="SettingsView/Panel/Content/BindingGrid/Char3"]
+custom_minimum_size = Vector2(96, 32)
+layout_mode = 2
+
+[node name="Char4" type="VBoxContainer" parent="SettingsView/Panel/Content/BindingGrid"]
+layout_mode = 2
+theme_override_constants/separation = 4
+[node name="Label" type="Label" parent="SettingsView/Panel/Content/BindingGrid/Char4"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.62, 0.76, 1)
+theme_override_font_sizes/font_size = 9
+text = "CHAR 4"
+horizontal_alignment = 1
+[node name="Ability1" type="Button" parent="SettingsView/Panel/Content/BindingGrid/Char4"]
+custom_minimum_size = Vector2(96, 32)
+layout_mode = 2
+[node name="Ability2" type="Button" parent="SettingsView/Panel/Content/BindingGrid/Char4"]
+custom_minimum_size = Vector2(96, 32)
+layout_mode = 2
+
+[node name="Char5" type="VBoxContainer" parent="SettingsView/Panel/Content/BindingGrid"]
+layout_mode = 2
+theme_override_constants/separation = 4
+[node name="Label" type="Label" parent="SettingsView/Panel/Content/BindingGrid/Char5"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.62, 0.76, 1)
+theme_override_font_sizes/font_size = 9
+text = "CHAR 5"
+horizontal_alignment = 1
+[node name="Ability1" type="Button" parent="SettingsView/Panel/Content/BindingGrid/Char5"]
+custom_minimum_size = Vector2(96, 32)
+layout_mode = 2
+[node name="Ability2" type="Button" parent="SettingsView/Panel/Content/BindingGrid/Char5"]
+custom_minimum_size = Vector2(96, 32)
+layout_mode = 2
+
+[node name="Char6" type="VBoxContainer" parent="SettingsView/Panel/Content/BindingGrid"]
+layout_mode = 2
+theme_override_constants/separation = 4
+[node name="Label" type="Label" parent="SettingsView/Panel/Content/BindingGrid/Char6"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.62, 0.76, 1)
+theme_override_font_sizes/font_size = 9
+text = "CHAR 6"
+horizontal_alignment = 1
+[node name="Ability1" type="Button" parent="SettingsView/Panel/Content/BindingGrid/Char6"]
+custom_minimum_size = Vector2(96, 32)
+layout_mode = 2
+[node name="Ability2" type="Button" parent="SettingsView/Panel/Content/BindingGrid/Char6"]
+custom_minimum_size = Vector2(96, 32)
+layout_mode = 2
+
+[node name="BindingHint" type="Label" parent="SettingsView/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.45, 0.48, 0.55, 0.7)
+theme_override_font_sizes/font_size = 11
+text = "Click a slot, then press a key. Conflicting gameplay bindings are swapped."
+horizontal_alignment = 1
+
+[node name="BackButton" type="Button" parent="SettingsView/Panel/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "Back"

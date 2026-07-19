@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://c550yqslqh7tn"
 path.s3tc="res://.godot/imported/SoilTex.png-c4ba02eb9dab1d52d729a9184d71f8ae.s3tc.ctex"
+path.etc2="res://.godot/imported/SoilTex.png-c4ba02eb9dab1d52d729a9184d71f8ae.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://resources/models/peris-sim/plants/pilea/SoilTex.png"
-dest_files=["res://.godot/imported/SoilTex.png-c4ba02eb9dab1d52d729a9184d71f8ae.s3tc.ctex"]
+dest_files=["res://.godot/imported/SoilTex.png-c4ba02eb9dab1d52d729a9184d71f8ae.s3tc.ctex", "res://.godot/imported/SoilTex.png-c4ba02eb9dab1d52d729a9184d71f8ae.etc2.ctex"]
 
 [params]
 

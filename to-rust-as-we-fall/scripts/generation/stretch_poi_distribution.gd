@@ -4,8 +4,8 @@ extends RefCounted
 ## The archetype-driven POI distribution (Layer A: per-fragment composition). Two jobs:
 ##  1. CRUCIAL-ELEMENT COVERAGE — every archetype in a stretch has its essential content placed somewhere, and a
 ##     SHARED element (one several archetypes need) is placed ONCE (dedup at the element level, not the node).
-##  2. PROGRESSION-SCALED DENSITY — ambient POI count + variety grow with the stretch's stage, so a late-game
-##     stretch reads as denser/richer (mastery) without changing the solver's pressure math.
+##  2. COSMETIC RICHNESS — ambient POI count + variety may grow with the stretch's stage for visual identity.
+##     This list is solver-neutral and must never stand in for increased causal difficulty.
 ##
 ## A "crucial element" is a content-suppliable CAPABILITY an archetype's shadow approach requires (cover, lure,
 ## reveal, barrier, ...). The element<->content inversion is read straight off StretchCapabilities.CONTENT_CAPABILITIES
@@ -95,7 +95,7 @@ func crucial_elements_for(node: Dictionary) -> Array:
 		keys[str(variant_elements[variant])] = true
 	return keys.keys()
 
-# --- Progression-scaled ambient density -----------------------------------------------------------------------
+# --- Solver-neutral ambient richness --------------------------------------------------------------------------
 
 func ambient_flora() -> Array:
 	return density.get("ambient_flora", [])

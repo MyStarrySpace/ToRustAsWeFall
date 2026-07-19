@@ -12,6 +12,9 @@ const EXPLORATION_FOCUS_OFFSET := Vector3(0, 4.2, 3.2)
 const EXPLORATION_FOCUS_HEIGHT := 0.9
 const OUTLINE_POST_PROCESS_ENABLED := false
 const CHROMATIC_ABERRATION_SHADER := preload("res://resources/chromatic_aberration.gdshader")
+const SCREEN_EFFECT_SCENE := preload("res://scenes/ui/screen_effect.tscn")
+const SEQUENCE_ANIMATION_PLAYER_SCENE := preload("res://scenes/ui/sequence_animation_player.tscn")
+const TOUCH_MODE_CONTROLLER_SCENE := preload("res://scenes/ui/touch_mode_controller.tscn")
 
 @export_group("Post Processing")
 @export var chromatic_aberration_enabled := false:
@@ -35,6 +38,7 @@ var _path_render_manager                # PathRenderManager: movement paths for 
 var _downed_body_manager                # DownedBodyManager: fallen members become clickable carry targets
 var _outline_mask_manager               # OutlineMaskManager: screen-space object outlines for all targets
 var _selection_controller               # SelectionController: RTS left-click / marquee character select
+var _playthrough_recorder               # normal-play deterministic tape / movie replay autoload
 var _current_step := ""
 var _fade_start_tick := 0.0
 
@@ -95,6 +99,7 @@ var _thought_fade_to_alpha := 0.0
 var _exploration_focus_active := false
 var _exploration_focus_prev_camera_offset := Vector3.ZERO
 var _exploration_focus_prev_camera_target: Node3D = null
+var _exploration_focus_prev_camera_state := {}
 var _exploration_focus_prev_scheduler_paused := false
 var _exploration_focus_prev_move_enabled := true
 
@@ -117,6 +122,11 @@ func _ready() -> void:
 	_ui_scheduler = EventScheduler.new()
 	_game_state = GameState.new()
 	_game_state.scheduler = _scheduler
+	# A normal-play recording attaches here, before character/object registration, so its
+	# authoritative EventLog covers the complete scene segment. Playback uses the same seam.
+	_playthrough_recorder = get_node_or_null("/root/PlaythroughRecorder")
+	if _playthrough_recorder != null and _playthrough_recorder.has_method("attach_game_state"):
+		_playthrough_recorder.attach_game_state(_game_state, scene_file_path)
 	_register_characters()
 	# One scene-level path renderer for EVERY moving character (player, party, NPC, escort) — the
 	# reusable home for movement-path visuals, not a per-controller one-off.
@@ -158,12 +168,25 @@ func _process(delta: float) -> void:
 	# Gameplay lane.
 	var spd := _compute_speed()
 	_scheduler.set_speed(spd)
+	var gameplay_scheduler: EventScheduler = _scheduler
+	var gameplay_tick_before := gameplay_scheduler.get_current_tick()
 	for node in _get_speed_recipients():
 		# A chunk reload (the roguelike loader) queue_frees the old chunk's recipients; skip any that a
 		# subclass list hasn't pruned yet rather than writing to a freed node.
 		if is_instance_valid(node):
 			node.speed_multiplier = spd
-	_scheduler.advance(delta)
+	# A rendered deterministic playthrough may have input boundaries between fixed movie
+	# frames. Stop exactly on those ticks; the recorder injects the inputs next frame and
+	# ordinary gameplay continues. Live play keeps the scheduler's normal real-delta path.
+	if _playthrough_recorder != null and _playthrough_recorder.has_method("constrain_playback_advance") \
+			and bool(_playthrough_recorder.call("is_playing_back")):
+		var requested_ticks := delta * spd
+		var allowed_ticks := float(_playthrough_recorder.call(
+			"constrain_playback_advance", gameplay_scheduler, requested_ticks))
+		gameplay_scheduler.advance_ticks(allowed_ticks)
+	else:
+		gameplay_scheduler.advance(delta)
+	var gameplay_ticks_advanced := gameplay_scheduler.get_current_tick() - gameplay_tick_before
 	# advance() can fire a scheduled callback — e.g. a scene transition's _complete →
 	# change_scene_to_file → _teardown_sequence — that tears this sequence down synchronously,
 	# nulling both schedulers. The guard above only ran BEFORE advance, so re-check here before
@@ -182,7 +205,10 @@ func _process(delta: float) -> void:
 	_update_thought_fade()
 	_sync_perception_shader()
 	_update_data_identify()
-	_on_process(delta, spd)
+	# Subclass gameplay integration must consume SIMULATION time, not render time. This
+	# keeps planning pause free and makes fixed-FPS movie replay preserve live outcomes.
+	var gameplay_delta := gameplay_ticks_advanced / spd if spd > 0.000001 else 0.0
+	_on_process(gameplay_delta, spd)
 
 func _exit_tree() -> void:
 	if Engine.is_editor_hint():
@@ -284,7 +310,11 @@ func _setup_perception(mode: String, tracking_node: Node3D) -> void:
 		_perception_quad.mesh = qm
 		_perception_quad.extra_cull_margin = 10000.0
 		_perception_material = ShaderMaterial.new()
-		_perception_material.render_priority = 127
+		# Leave the final priority slot to world-space planning feedback. Path ribbons,
+		# destination ghosts/rings, causal links, and object outlines all render at 127
+		# so they remain legible after this full-screen rewrite (the shared managers
+		# already document and test that composition contract).
+		_perception_material.render_priority = 126
 		_perception_quad.material_override = _perception_material
 		add_child(_perception_quad)
 	_set_perception_mode(mode)
@@ -362,9 +392,7 @@ func _init_ui() -> void:
 	_thought_label = ui.get_node("ThoughtOverlay/ThoughtLabel")
 	_fade_rect.color.a = 0.0
 
-	_engram_overlay = CanvasLayer.new()
-	_engram_overlay.name = "EngramOverlay"
-	_engram_overlay.set_script(preload("res://scripts/ui/engram_overlay.gd"))
+	_engram_overlay = preload("res://scenes/ui/engram_overlay.tscn").instantiate()
 	add_child(_engram_overlay)
 
 	# Esc-toggled pause menu (Resume / Settings → accessibility). Self-contained:
@@ -375,8 +403,7 @@ func _init_ui() -> void:
 
 	# Backtick-toggled developer console — the one sanctioned door to dev switches in normal play
 	# (fog of war stays ON in the game proper; only this console or a dev surface may turn it off).
-	_dev_console = DevConsole.new()
-	_dev_console.name = "DevConsole"
+	_dev_console = preload("res://scenes/ui/dev_console.tscn").instantiate()
 	add_child(_dev_console)
 	_dev_console.register_command("fog", _cmd_fog, "fog on|off — the fog of war (default on)")
 	_dev_console.register_command("fxdebug", _cmd_fxdebug, "fxdebug on|off — path/outline FX traces")
@@ -386,14 +413,15 @@ func _init_ui() -> void:
 	# THE EVENT TRACE defaults ON for interactive play and OFF under the test runner/headless —
 	# a play session console always carries the WHY (catches, sweeps, teleports, damage), and
 	# ten thousand headless tests do not drown in it.
-	if DisplayServer.get_name() != "headless" and not _running_under_test_flags():
+	if DisplayServer.get_name() != "headless" and not _running_under_test_flags() \
+			and not (_playthrough_recorder != null \
+				and bool(_playthrough_recorder.call("is_playing_back"))):
 		EventLog.print_events = true
 
 	# Mobile control modes: on touch, ONE finger carries three meanings — CAMERA drag-pan / SELECT
 	# (tap-pick + marquee, with the interactable reveal on) / ACTION (tap = the command click).
 	# The cluster appears on touchscreen devices; `touch on` forces it for desktop testing.
-	_touch_modes = TouchModeController.new()
-	_touch_modes.name = "TouchModeController"
+	_touch_modes = TOUCH_MODE_CONTROLLER_SCENE.instantiate()
 	add_child(_touch_modes)
 	_touch_modes.setup(self)
 	# SELECT mode is the LOOK mode: the reveal-all outline (the hold-SHIFT treatment) stays on
@@ -500,19 +528,13 @@ func _init_chromatic_aberration_effect() -> void:
 		_sync_chromatic_aberration_effect()
 		return
 
-	_chromatic_aberration_layer = CanvasLayer.new()
+	_chromatic_aberration_layer = SCREEN_EFFECT_SCENE.instantiate() as CanvasLayer
 	_chromatic_aberration_layer.name = "ChromaticAberrationLayer"
 	_chromatic_aberration_layer.layer = 0
 	add_child(_chromatic_aberration_layer)
 
-	_chromatic_aberration_rect = ColorRect.new()
+	_chromatic_aberration_rect = _chromatic_aberration_layer.get_node("ScreenEffect") as ColorRect
 	_chromatic_aberration_rect.name = "ChromaticAberrationRect"
-	_chromatic_aberration_rect.anchor_right = 1.0
-	_chromatic_aberration_rect.anchor_bottom = 1.0
-	_chromatic_aberration_rect.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_chromatic_aberration_rect.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_chromatic_aberration_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_chromatic_aberration_layer.add_child(_chromatic_aberration_rect)
 
 	_chromatic_aberration_material = ShaderMaterial.new()
 	_chromatic_aberration_material.shader = CHROMATIC_ABERRATION_SHADER
@@ -581,6 +603,7 @@ func _teardown_sequence() -> void:
 	_path_render_manager = null
 	_outline_mask_manager = null
 	_selection_controller = null
+	_playthrough_recorder = null
 	_dialogue = null
 	_tutorial_prompt = null
 	_fade_rect = null
@@ -788,20 +811,17 @@ func _spawn_at_marker(grid: GridWorld, marker_name: String, fallback: Vector3) -
 ## A fullscreen SCREEN EFFECT (canvas_item shader) for a scene's look — e.g. the chromatic
 ## aberration both sim rooms use. Mounted on its own CanvasLayer UNDER the HUD; purely cosmetic.
 func _add_screen_effect(effect_name: String, shader: Shader, params: Dictionary = {}) -> ColorRect:
-	var layer := CanvasLayer.new()
+	var layer := SCREEN_EFFECT_SCENE.instantiate() as CanvasLayer
 	layer.name = effect_name + "Layer"
 	layer.layer = 0
 	add_child(layer)
-	var rect := ColorRect.new()
+	var rect := layer.get_node("ScreenEffect") as ColorRect
 	rect.name = effect_name
-	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
-	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var mat := ShaderMaterial.new()
 	mat.shader = shader
 	for key in params:
 		mat.set_shader_parameter(key, params[key])
 	rect.material = mat
-	layer.add_child(rect)
 	return rect
 
 ## ONE KNOB for modeled scenes (Blockbench/Crocotile/Blender): the visible floor's top surface
@@ -866,12 +886,18 @@ func _on_push_queue_requested(obj_id: String) -> void:
 		_player.call("queue_push", obj_id)
 
 ## The ONE party-control invariant, shared by every scene that lets the player select characters:
-## the ACTIVE character's node is the only move-enabled one and (in group control) the only
-## group_move driver; a multi-selection becomes the GameState party. Sequences pass their own
+## the current selection is always the GameState party, while the ACTIVE character's node is the
+## only move-enabled one and (in group control) the only group_move driver. Sequences pass their
 ## node map — the lookup is scene-specific, the wiring must not be.
 func _apply_party_control(nodes: Dictionary, selected_ids: Array, active_id: String, group_control: bool) -> void:
-	if group_control and _game_state != null:
-		_game_state.set_party(selected_ids.duplicate())
+	if _game_state != null:
+		var synchronized_party: Array = selected_ids.duplicate()
+		# Selection handlers normally keep one active member selected. Keep the
+		# authoritative party usable during transient empty-selection handoffs too.
+		if synchronized_party.is_empty() and active_id != "":
+			synchronized_party.append(active_id)
+		if _game_state.get_party() != synchronized_party:
+			_game_state.set_party(synchronized_party)
 	for cid in nodes.keys():
 		var node = nodes[cid]
 		if node == null:
@@ -1216,6 +1242,8 @@ func _begin_exploration_focus(focus_node: Node3D) -> void:
 	if _camera != null:
 		_exploration_focus_prev_camera_offset = _camera.follow_offset
 		_exploration_focus_prev_camera_target = _camera.target
+		_exploration_focus_prev_camera_state = _camera.capture_view_state() \
+			if _camera.has_method("capture_view_state") else {}
 		_camera.follow_offset = EXPLORATION_FOCUS_OFFSET
 		_camera.lock_to(_exploration_focus_point(focus_node))
 
@@ -1223,9 +1251,13 @@ func _finish_exploration_focus() -> void:
 	if not _exploration_focus_active:
 		return
 	if _camera != null:
-		_camera.follow_offset = _exploration_focus_prev_camera_offset
-		_camera.target = _exploration_focus_prev_camera_target
-		_camera.unlock()
+		if not _exploration_focus_prev_camera_state.is_empty() and _camera.has_method("restore_view_state"):
+			_camera.restore_view_state(_exploration_focus_prev_camera_state)
+		else:
+			_camera.follow_offset = _exploration_focus_prev_camera_offset
+			_camera.target = _exploration_focus_prev_camera_target
+			_camera.unlock()
+	_exploration_focus_prev_camera_state.clear()
 	if _player != null and _player.has_method("set_move_enabled"):
 		_player.set_move_enabled(_exploration_focus_prev_move_enabled)
 	if _scheduler != null and not _exploration_focus_prev_scheduler_paused:
@@ -1565,8 +1597,8 @@ func _ensure_chunk_item_node(item_id: String) -> void:
 	mat.emission_energy_multiplier = 0.24
 	node.material_override = mat
 	var pos: Vector3 = item.get("position", Vector3.ZERO)
-	node.global_position = Vector3(pos.x, pos.y + 0.42, pos.z)
 	add_child(node)
+	node.global_position = Vector3(pos.x, pos.y + 0.42, pos.z)
 	_chunk_item_nodes[item_id] = node
 
 ## Register a chunk interactable with the scene's input/feedback wiring (the preview host's
@@ -1692,6 +1724,7 @@ func reveal_chunk(chunk_name: String) -> Node3D:
 		chunk = _load_chunk(chunk_name)
 	if chunk != null:
 		chunk.visible = true
+		_on_chunk_revealed(chunk_name, chunk)
 	return chunk
 
 ## True while a chunk is still being built in the background (nothing revealed it yet).
@@ -1704,6 +1737,11 @@ func is_chunk_streaming(chunk_name: String) -> bool:
 ## every step in order (keep them in sync — a scene can implement one in terms of the other).
 func _chunk_build_steps(_chunk_name: String, _parent: Node3D) -> Array:
 	return []
+
+## Subclass hook for work that must wait until a prewarmed chunk becomes playable. Keep this cheap: the
+## expensive construction belongs in `_chunk_build_steps`; this is for lifecycle activation (AI, audio, etc.).
+func _on_chunk_revealed(_chunk_name: String, _chunk: Node3D) -> void:
+	pass
 
 func _build_chunk(_chunk_name: String, _parent: Node3D) -> void:
 	pass
@@ -1725,8 +1763,7 @@ func _register_scheduler_animation_player(player: AnimationPlayer) -> void:
 
 func _create_animation(anim_name: String, length: float) -> Animation:
 	if not _anim_player:
-		_anim_player = AnimationPlayer.new()
-		_anim_player.name = "SequenceAnimations"
+		_anim_player = SEQUENCE_ANIMATION_PLAYER_SCENE.instantiate() as AnimationPlayer
 		add_child(_anim_player)
 		_anim_lib = AnimationLibrary.new()
 		_anim_player.add_animation_library("", _anim_lib)

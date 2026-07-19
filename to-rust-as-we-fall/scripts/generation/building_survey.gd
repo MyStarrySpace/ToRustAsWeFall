@@ -2074,7 +2074,12 @@ func anchors() -> Dictionary:
 					c["deck"] = s["deck"]   # the walkable-lane descriptor the level layer docks
 				conns.append(c)
 			"balcony":
-				balc.append({"pos": s["pos"], "out": s["out"], "size": float(s["size"])})
+				# Legacy survey profiles called these fields `n` and `radius`; newer
+				# profiles use the clearer `out` and `size` names. Normalize both at
+				# the read boundary so downstream construction code sees one schema.
+				var balcony_out: Vector3 = s.get("out", s.get("n", Vector3.ZERO))
+				var balcony_size := float(s.get("size", s.get("radius", 0.5)))
+				balc.append({"pos": s["pos"], "out": balcony_out, "size": balcony_size})
 	return {"weak_points": weak, "connectors": conns, "balcony_slots": balc}
 
 ## The whole measured drawing as one dictionary (deterministic printing / comparison).

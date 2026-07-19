@@ -50,10 +50,13 @@ func _watch_pos() -> Vector3:
 	return Vector3.INF
 
 ## Wrap every mesh surface under `root` with the occlusion shader. Returns the surface count wrapped.
-## Call once after the level model has loaded (and after any emissive-sidecar wiring).
-func apply_to(root: Node) -> int:
+## `minimum_occluder_height` is useful for procedural chunk roots: it limits wrapping to wall/ceiling-scale
+## geometry, preserving low animated props whose scripts retain references to their original materials.
+## Imported environment models should use the default and wrap every compatible surface.
+func apply_to(root: Node, minimum_occluder_height := 0.0) -> int:
 	if root == null:
 		return 0
+	var outline_safe_clip := bool(root.get_meta("camera_occlusion_outline_safe_clip", false))
 	var meshes: Array = root.find_children("*", "MeshInstance3D", true, false)
 	if root is MeshInstance3D:
 		meshes.append(root)
@@ -62,22 +65,61 @@ func apply_to(root: Node) -> int:
 		var mi := n as MeshInstance3D
 		if mi == null or mi.mesh == null:
 			continue
+		if bool(mi.get_meta("camera_occlusion_exempt", false)) or mi.is_in_group("camera_occlusion_exempt"):
+			continue
+		if minimum_occluder_height > 0.0 and mi.get_aabb().size.y < minimum_occluder_height:
+			continue
 		# A whole-mesh material_override wins over per-surface overrides, so wrap THAT; otherwise wrap each
 		# surface so per-surface materials (the gltf case) are preserved.
 		if mi.material_override != null:
-			mi.material_override = _wrap(mi.material_override)
-			count += 1
+			var wrapped_override := _wrap(mi.material_override, outline_safe_clip)
+			if wrapped_override != null:
+				mi.material_override = wrapped_override
+				count += 1
 			continue
 		for s in range(mi.mesh.get_surface_count()):
-			mi.set_surface_override_material(s, _wrap(mi.get_active_material(s)))
-			count += 1
+			var active_surface := mi.get_active_material(s)
+			if active_surface == null:
+				continue
+			var wrapped_surface := _wrap(active_surface, outline_safe_clip)
+			if wrapped_surface != null:
+				mi.set_surface_override_material(s, wrapped_surface)
+				count += 1
+
+	# LevelDecorator batches its dense render-only facade grammar into MultiMeshInstance3D nodes.
+	# They are GeometryInstance3D siblings of MeshInstance3D, not subclasses, so the scan above cannot
+	# see them. Their whole-instance override is sufficient to dissolve every instance in the batch.
+	var multimeshes: Array = root.find_children("*", "MultiMeshInstance3D", true, false)
+	if root is MultiMeshInstance3D:
+		multimeshes.append(root)
+	for n in multimeshes:
+		var multimesh_instance := n as MultiMeshInstance3D
+		if multimesh_instance == null or multimesh_instance.multimesh == null:
+			continue
+		if bool(multimesh_instance.get_meta("camera_occlusion_exempt", false)) \
+				or multimesh_instance.is_in_group("camera_occlusion_exempt"):
+			continue
+		if minimum_occluder_height > 0.0 and multimesh_instance.get_aabb().size.y < minimum_occluder_height:
+			continue
+		if multimesh_instance.material_override != null:
+			var wrapped_multimesh := _wrap(multimesh_instance.material_override, outline_safe_clip)
+			if wrapped_multimesh != null:
+				multimesh_instance.material_override = wrapped_multimesh
+				count += 1
 	return count
 
 ## Build a ShaderMaterial that runs the occlusion shader but looks like `src` (a StandardMaterial3D).
-## Non-standard sources still get the shader (the level stays see-through), just with default surfacing.
-func _wrap(src: Material) -> ShaderMaterial:
+## Authored ShaderMaterials are returned untouched by the caller because replacing them would erase
+## water, outline, fog, and other effect behavior.
+func _wrap(src: Material, outline_safe_clip := false) -> ShaderMaterial:
+	# Water, outlines, fog surfaces, and other authored ShaderMaterials encode behavior that
+	# cannot be reconstructed from StandardMaterial fields. Leave them intact; procedural
+	# walls/ceilings and imported GLB surfaces are the actual occlusion targets.
+	if src is ShaderMaterial:
+		return null
 	var m := ShaderMaterial.new()
 	m.shader = OCCLUSION_SHADER
+	m.set_shader_parameter("outline_safe_clip", outline_safe_clip)
 	if src is StandardMaterial3D:
 		var std := src as StandardMaterial3D
 		m.set_shader_parameter("albedo_color", std.albedo_color)

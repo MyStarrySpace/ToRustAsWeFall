@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[node name="FragmentMenuButton" type="Button"]
+custom_minimum_size = Vector2(238, 36)
+alignment = 0
+clip_text = true

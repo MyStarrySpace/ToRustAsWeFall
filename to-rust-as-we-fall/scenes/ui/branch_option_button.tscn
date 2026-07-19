@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[node name="BranchOptionButton" type="Button"]
+custom_minimum_size = Vector2(270, 140)
+clip_text = false
+autowrap_mode = 2

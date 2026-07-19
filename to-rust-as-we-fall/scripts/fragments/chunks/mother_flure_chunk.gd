@@ -29,14 +29,113 @@ const BASE_PORTAL_POS := Vector3(24.0, 0.45, 0.0)
 const HIDE_SPOT_POS := Vector3(32.0, 0.0, 17.0)
 const COLLAPSE_POS := Vector3(44.0, 0.0, 20.0)
 const GEAR_POS := Vector3(35.0, 0.42, 8.4)
-const INSTALL_SOCKET_POS := Vector3(86.0, 0.55, 0.0)
+const INSTALL_SOCKET_POS := Vector3(93.0, 0.55, 0.0)
 const MOTHER_POS := Vector3(100.0, 0.95, 0.0)
+const EXIT_POS := Vector3(112.0, 0.45, -22.0)
+const FIRST_CLEAR_TARGET_MIN_SECONDS := 300.0
+const FIRST_CLEAR_TARGET_MAX_SECONDS := 480.0
+const ASTER_WALK_SPEED := 3.2
+const PERIS_WALK_SPEED := 3.0
+const ENDO_WALK_SPEED := 2.8
+const TERMINAL_WORK_SECONDS := 3.2
+const PORTAL_CALIBRATION_SECONDS := 1.4
+const ROOT_WORK_SECONDS := 4.2
+const DIAGNOSTIC_WORK_SECONDS := 4.5
+const GEAR_LIFT_SECONDS := 4.5
+const REPAIR_MOUNT_SECONDS := 6.0
+const CARE_NODE_WORK_SECONDS := 4.5
+const MOTHER_TEND_SECONDS := 7.5
+const EXIT_HANDOFF_SECONDS := 3.0
+const EXIT_INTERACTION_RADIUS := 2.2
+const CARE_NODE_REQUIRED_COUNT := 3
+
+# The full first-clear diagnosis. Every station gives one role a different piece
+# of the same answer; none is a dialogue/timer gate, and the six locations force
+# the party to read the chamber rather than guess among the three repair mounts.
+const DIAGNOSTIC_ORDER := [
+	"service_manifest",
+	"freight_spindle",
+	"caretaker_trace",
+	"stress_cistern",
+	"load_witness",
+	"socket_torque",
+]
+const DIAGNOSTIC_DEFS := {
+	"service_manifest": {
+		"label": "SERVICE MANIFEST",
+		"character": "aster",
+		"terminal": "term_alpha",
+		"position": Vector3(28.0, 0.42, -19.0),
+		"color": Color(0.48, 0.8, 1.0),
+		"note": "Aster reconstructs the withdrawn edge-route order. Neither bypass was certified to take the mother's freight load.",
+	},
+	"freight_spindle": {
+		"label": "FREIGHT SPINDLE",
+		"character": "aster",
+		"terminal": "term_alpha",
+		"position": Vector3(46.0, 0.42, -20.5),
+		"color": Color(0.48, 0.8, 1.0),
+		"note": "Aster traces every surviving freight ghost into the center spindle and the load regulator below it.",
+	},
+	"caretaker_trace": {
+		"label": "CARETAKER TRACE",
+		"character": "peris",
+		"terminal": "term_beta",
+		"position": Vector3(32.0, 0.42, 17.0),
+		"color": Color(0.96, 0.68, 0.34),
+		"note": "Peris reads old caretaker pressure marks: every hand braced inward, toward the regulator rather than either edge vent.",
+	},
+	"stress_cistern": {
+		"label": "STRESS CISTERN",
+		"character": "peris",
+		"terminal": "term_beta",
+		"position": Vector3(78.0, 0.42, 17.5),
+		"color": Color(0.96, 0.68, 0.34),
+		"note": "Peris samples the root pulse. The edge pain is an echo; the sustained pressure is pooled at the mother's core.",
+	},
+	"load_witness": {
+		"label": "LOAD WITNESS",
+		"character": "endo",
+		"terminal": "term_gamma",
+		"position": Vector3(50.0, 0.42, 20.0),
+		"color": Color(0.54, 0.9, 0.66),
+		"note": "Endo checks the collapse scar. The workers turned away from both edge mounts before the ceiling came down.",
+	},
+	"socket_torque": {
+		"label": "SOCKET TORQUE",
+		"character": "endo",
+		"terminal": "term_gamma",
+		"position": Vector3(91.0, 0.42, 10.0),
+		"color": Color(0.54, 0.9, 0.66),
+		"note": "Endo loads the test arm. Only the center socket accepts the gear's full two-hand torque without kicking back.",
+	},
+}
+
+const CARE_NODE_ORDER := ["west_capillary", "crown_vent", "east_feed", "south_return"]
+const CARE_NODE_DEFS := {
+	"west_capillary": {"label": "WEST CAPILLARY", "position": Vector3(89.5, 0.42, -14.0)},
+	"crown_vent": {"label": "CROWN VENT", "position": Vector3(105.0, 0.42, -13.5)},
+	"east_feed": {"label": "EAST FEED", "position": Vector3(112.0, 0.42, 1.5)},
+	"south_return": {"label": "SOUTH RETURN", "position": Vector3(103.0, 0.42, 15.0)},
+}
+
+const CLEAN_ROOT_MOVES := [
+	{"terminal": "term_gamma", "root": "gear_latch", "direction": 1},
+	{"terminal": "term_beta", "root": "socket_brace", "direction": 1},
+	{"terminal": "term_alpha", "root": "spine_gate", "direction": -1},
+	{"terminal": "term_beta", "root": "socket_brace", "direction": 1},
+	{"terminal": "term_gamma", "root": "tending_step", "direction": -1},
+	{"terminal": "term_beta", "root": "crossbar", "direction": -1},
+	{"terminal": "term_beta", "root": "bloom_curtain", "direction": 1},
+	{"terminal": "term_alpha", "root": "mother_veil", "direction": 1},
+	{"terminal": "term_alpha", "root": "mother_veil", "direction": 1},
+]
 const REPAIR_POINT_ORDER := ["edge_relief", "load_regulator", "bloom_bypass"]
 const CORRECT_REPAIR_ID := "load_regulator"
 const REPAIR_POINT_DEFS := {
 	"edge_relief": {
 		"label": "EDGE RELIEF",
-		"position": Vector3(81.4, 0.55, -4.0),
+		"position": Vector3(89.5, 0.55, -4.0),
 		"color": Color(0.56, 0.72, 0.88),
 		"flare_root": "spine_gate",
 		"flare_direction": 1,
@@ -49,7 +148,7 @@ const REPAIR_POINT_DEFS := {
 	},
 	"bloom_bypass": {
 		"label": "BLOOM BYPASS",
-		"position": Vector3(81.4, 0.55, 4.0),
+		"position": Vector3(89.5, 0.55, 4.0),
 		"color": Color(0.88, 0.72, 0.96),
 		"flare_root": "tending_step",
 		"flare_direction": 1,
@@ -122,7 +221,7 @@ const ROOT_DEFS := {
 	"tending_step": {"label": "TENDING STEP", "short": "J", "orientation": "horizontal", "length": 2, "fixed_line": 4, "anchor": 3, "min_anchor": 2, "max_anchor": 4, "terminal": "term_gamma", "color": Color(0.6, 0.42, 0.22), "swarm_color": Color(0.94, 0.7, 0.36)},
 }
 
-const PORTAL_DURATION := 11.0
+const PORTAL_DURATION := 18.0
 const ROOT_SLIDE_DURATION := 2.8
 const ROOT_SWARM_LAG := 0.95
 const ROOT_SWARM_DURATION := 1.5
@@ -139,11 +238,15 @@ var _gear_item_id := ""
 var _gear_installed := false
 var _installed_repair_id := ""
 var _mother_tended := false
+var _route_phase := "investigate"
+var _exit_reached := false
 var _endo_cloak_until := 0.0
 var _hazard_cooldowns: Dictionary = {}
 var _log_entries_seen: Array[String] = []
 var _body_remaining: Dictionary = {}
 var _repair_attempts: Array[String] = []
+var _diagnostics_completed: Array[String] = []
+var _care_nodes_primed: Array[String] = []
 
 var _terminal_materials: Dictionary = {}
 var _terminal_labels: Dictionary = {}
@@ -159,12 +262,21 @@ var _install_interactable
 var _repair_interactables: Dictionary = {}
 var _collapse_interactable
 var _mother_interactable
+var _exit_interactable
 
 var _body_materials: Dictionary = {}
 var _body_labels: Dictionary = {}
 var _mother_bloom_materials: Array[StandardMaterial3D] = []
 var _repair_point_materials: Dictionary = {}
 var _repair_point_labels: Dictionary = {}
+var _diagnostic_interactables: Dictionary = {}
+var _diagnostic_materials: Dictionary = {}
+var _diagnostic_labels: Dictionary = {}
+var _care_node_interactables: Dictionary = {}
+var _care_node_materials: Dictionary = {}
+var _care_node_labels: Dictionary = {}
+var _exit_material: StandardMaterial3D
+var _exit_label: Label3D
 
 var _aster_overlay_root: Node3D
 var _peris_overlay_root: Node3D
@@ -174,13 +286,17 @@ var _endo_overlay_materials: Dictionary = {}
 
 func _build_chunk() -> void:
 	_build_chamber_shell()
+	_build_environment_decoration()
 	_build_terminal_bank()
 	_build_root_board()
 	_build_service_alcoves()
 	_build_portal_bank()
 	_build_gear_station()
 	_build_install_socket()
+	_build_diagnostic_circuit()
 	_build_mother()
+	_build_care_circuit()
+	_build_exit_handoff()
 	_build_collapse_offshoot()
 	_build_hide_spot()
 	_build_overlay_roots()
@@ -196,7 +312,7 @@ func get_scene_title() -> String:
 	return "Mother Flure"
 
 func get_scene_help() -> String:
-	return "Pilot the full Mother chamber with the in-game preview stack: the board still matters, but the solve is diagnosis now. Aster reads the old logistics, Peris reads the mother's stress, and Endo has to carry the gear to the repair point that actually matches the fault."
+	return "Run the full Mother chamber as a party investigation. Shift the 6x6 root board, follow each terminal's two role-specific evidence stations, then let Endo commit the gear to the repair point those six reads support. Once the east lane opens, Peris can prime any three capillary nodes, tend the mother, and open the Rings handoff."
 
 func get_default_character() -> String:
 	return "aster"
@@ -214,6 +330,7 @@ func get_preview_anchors() -> Dictionary:
 		"load_regulator": _repair_point_position("load_regulator"),
 		"bloom_bypass": _repair_point_position("bloom_bypass"),
 		"mother": MOTHER_POS,
+		"exit": EXIT_POS,
 		"collapse": COLLAPSE_POS,
 		"hide_spot": HIDE_SPOT_POS,
 		"service_alpha": SERVICE_ALPHA_POS,
@@ -232,6 +349,251 @@ func get_preview_time_state() -> Dictionary:
 		"routing_mode": "safe",
 		"note_default": "This preview drops the full Mother chamber into the regular game UI with the party topped off. The board is only the first layer now: read the old logistics, diagnose the mother's actual fault, then decide which repair point Endo should commit the carry to.",
 	}
+
+func get_playtime_contract() -> Dictionary:
+	var traversal := _modeled_traversal_breakdown()
+	var terminal_work := 0.0
+	for move in CLEAN_ROOT_MOVES:
+		if str(move.get("terminal", "")) != "term_alpha":
+			terminal_work += TERMINAL_WORK_SECONDS
+	var work := {
+		"terminal_reconstruction_seconds": terminal_work,
+		"portal_calibration_seconds": float(CLEAN_ROOT_MOVES.size()) * 2.0 * PORTAL_CALIBRATION_SECONDS,
+		"root_shift_work_seconds": float(CLEAN_ROOT_MOVES.size()) * ROOT_WORK_SECONDS,
+		"diagnostic_work_seconds": float(DIAGNOSTIC_ORDER.size()) * DIAGNOSTIC_WORK_SECONDS,
+		"gear_lift_seconds": GEAR_LIFT_SECONDS,
+		"repair_mount_seconds": REPAIR_MOUNT_SECONDS,
+		"care_work_seconds": float(CARE_NODE_REQUIRED_COUNT) * CARE_NODE_WORK_SECONDS,
+		"mother_tend_seconds": MOTHER_TEND_SECONDS,
+		"exit_handoff_seconds": EXIT_HANDOFF_SECONDS,
+	}
+	var work_seconds := 0.0
+	for seconds in work.values():
+		work_seconds += float(seconds)
+	var movement_seconds := float(traversal.get("seconds", 0.0))
+	var modeled_total := movement_seconds + work_seconds
+	var diagnosis_travel_seconds := (
+		float(traversal.get("aster_diagnostic_meters", 0.0)) / ASTER_WALK_SPEED
+		+ float(traversal.get("peris_diagnostic_meters", 0.0)) / PERIS_WALK_SPEED
+		+ float(traversal.get("endo_diagnostic_meters", 0.0)) / ENDO_WALK_SPEED
+	)
+	# Mutually exclusive buckets follow the actual role/mechanic handoffs in the
+	# clean route. This keeps the contract honest about what the player does:
+	# terminal reconstruction, portal calibration, remote root service, spatial
+	# diagnosis, the two-hand repair, and Peris's choose-three care circuit.
+	var category_seconds := {
+		"board_reconstruction": float(traversal.get("aster_terminal_meters", 0.0)) / ASTER_WALK_SPEED + float(work.get("terminal_reconstruction_seconds", 0.0)),
+		"portal_calibration": float(traversal.get("peris_portal_meters", 0.0)) / PERIS_WALK_SPEED + float(work.get("portal_calibration_seconds", 0.0)),
+		"root_service": float(traversal.get("remote_service_meters", 0.0)) / PERIS_WALK_SPEED + float(work.get("root_shift_work_seconds", 0.0)),
+		"field_diagnosis": diagnosis_travel_seconds + float(work.get("diagnostic_work_seconds", 0.0)),
+		"gear_repair": float(traversal.get("endo_gear_meters", 0.0)) / ENDO_WALK_SPEED + float(work.get("gear_lift_seconds", 0.0)) + float(work.get("repair_mount_seconds", 0.0)),
+		"care_circuit": float(traversal.get("peris_care_meters", 0.0)) / PERIS_WALK_SPEED + float(work.get("care_work_seconds", 0.0)) + float(work.get("mother_tend_seconds", 0.0)),
+		"exit_handoff": float(traversal.get("peris_handoff_meters", 0.0)) / PERIS_WALK_SPEED + float(work.get("exit_handoff_seconds", 0.0)),
+	}
+	return {
+		"required_first_clear_seconds": FIRST_CLEAR_TARGET_MIN_SECONDS,
+		"target_max_seconds": FIRST_CLEAR_TARGET_MAX_SECONDS,
+		"modeled_first_clear_seconds": modeled_total,
+		"modeled_meaningful_active_seconds": modeled_total,
+		"meaningful_active_ratio": 1.0,
+		"meaningful_active_seconds": modeled_total,
+		"total_play_seconds": modeled_total,
+		"active_ratio": 1.0,
+		"max_dead_gap_seconds": 0.0,
+		"max_single_mode_seconds": _modeled_max_single_mode_seconds(),
+		"category_seconds": category_seconds,
+		"controlled_traversal_meters": float(traversal.get("meters", 0.0)),
+		"critical_route_meters": float(traversal.get("meters", 0.0)),
+		"modeled_traversal_seconds": movement_seconds,
+		"modeled_interaction_work_seconds": work_seconds,
+		"hard_idle_lock_seconds": 0.0,
+		"root_settle_seconds_counted": 0.0,
+		"diagnostic_station_count": DIAGNOSTIC_ORDER.size(),
+		"care_node_count": CARE_NODE_ORDER.size(),
+		"care_node_required_count": CARE_NODE_REQUIRED_COUNT,
+		"decision_count": 4,
+		"branch_count": 7,
+		"traversal_breakdown": traversal,
+		"work_breakdown": work,
+		"model_note": "Walk-speed geometry plus click-gated work only. Dialogue reading, root animation settling, portal expiry, wrong repairs, optional roots, and corpse harvesting contribute zero seconds to the clean first-clear claim.",
+	}
+
+func _modeled_traversal_breakdown() -> Dictionary:
+	var aster_path := [
+		SPAWNS["aster"], TERM_GAMMA_POS, TERM_BETA_POS, TERM_ALPHA_POS,
+		TERM_BETA_POS, TERM_GAMMA_POS, TERM_BETA_POS, TERM_BETA_POS,
+		TERM_ALPHA_POS, TERM_ALPHA_POS,
+	]
+	var aster_base_meters := _planar_path_distance(aster_path)
+
+	var return_pos := BASE_PORTAL_POS + Vector3(2.6, 0.0, 0.0)
+	var peris_portal_meters := _planar_distance(SPAWNS["peris"], BASE_PORTAL_POS)
+	peris_portal_meters += _planar_distance(return_pos, BASE_PORTAL_POS) * float(CLEAN_ROOT_MOVES.size() - 1)
+	var peris_base_meters := peris_portal_meters
+	peris_base_meters += _planar_distance(return_pos, MOTHER_POS)
+	var peris_handoff_meters := _planar_distance(MOTHER_POS, EXIT_POS)
+
+	var endo_base_meters := _planar_distance(SPAWNS["endo"], GEAR_POS)
+	endo_base_meters += _planar_distance(GEAR_POS, _repair_point_position(CORRECT_REPAIR_ID))
+
+	var remote_service_meters := 0.0
+	for move in CLEAN_ROOT_MOVES:
+		var terminal_id := str(move.get("terminal", ""))
+		var root_id := str(move.get("root", ""))
+		var direction := int(move.get("direction", 0))
+		var service_spawn := _terminal_service_spawn(terminal_id)
+		var bud_pos := _modeled_service_bud_position(terminal_id, root_id, direction)
+		var service_return := _terminal_service_position(terminal_id) + Vector3(-1.25, 0.0, 0.0)
+		remote_service_meters += _planar_distance(service_spawn, bud_pos)
+		remote_service_meters += _planar_distance(bud_pos, service_return)
+
+	# These are detours over the old direct legs, so the base route is not
+	# double-counted. The route order is the conservative authored recommendation;
+	# all six stations still accept any completion order in play.
+	var aster_diagnostic_route := _planar_path_distance([
+		TERM_ALPHA_POS,
+		Vector3(DIAGNOSTIC_DEFS["service_manifest"].get("position", Vector3.ZERO)),
+		Vector3(DIAGNOSTIC_DEFS["freight_spindle"].get("position", Vector3.ZERO)),
+		TERM_BETA_POS,
+	])
+	var aster_direct_leg := _planar_distance(TERM_ALPHA_POS, TERM_BETA_POS)
+	var aster_diagnostic_extra := maxf(0.0, aster_diagnostic_route - aster_direct_leg)
+
+	var peris_diagnostic_route := _planar_path_distance([
+		return_pos,
+		Vector3(DIAGNOSTIC_DEFS["caretaker_trace"].get("position", Vector3.ZERO)),
+		Vector3(DIAGNOSTIC_DEFS["stress_cistern"].get("position", Vector3.ZERO)),
+		BASE_PORTAL_POS,
+	])
+	var peris_direct_leg := _planar_distance(return_pos, BASE_PORTAL_POS)
+	var peris_diagnostic_extra := maxf(0.0, peris_diagnostic_route - peris_direct_leg)
+
+	var endo_diagnostic_route := _planar_path_distance([
+		SPAWNS["endo"],
+		Vector3(DIAGNOSTIC_DEFS["load_witness"].get("position", Vector3.ZERO)),
+		Vector3(DIAGNOSTIC_DEFS["socket_torque"].get("position", Vector3.ZERO)),
+		GEAR_POS,
+	])
+	var endo_direct_leg := _planar_distance(SPAWNS["endo"], GEAR_POS)
+	var endo_diagnostic_extra := maxf(0.0, endo_diagnostic_route - endo_direct_leg)
+
+	var direct_mother_leg := _planar_distance(return_pos, MOTHER_POS)
+	var care_route_meters := _shortest_care_route_meters(return_pos, MOTHER_POS)
+	var care_extra_meters := maxf(0.0, care_route_meters - direct_mother_leg)
+
+	var aster_meters := aster_base_meters + aster_diagnostic_extra
+	var peris_meters := peris_base_meters + remote_service_meters + peris_diagnostic_extra + care_extra_meters + peris_handoff_meters
+	var endo_meters := endo_base_meters + endo_diagnostic_extra
+	return {
+		"meters": aster_meters + peris_meters + endo_meters,
+		"seconds": aster_meters / ASTER_WALK_SPEED + peris_meters / PERIS_WALK_SPEED + endo_meters / ENDO_WALK_SPEED,
+		"aster_meters": aster_meters,
+		"peris_meters": peris_meters,
+		"endo_meters": endo_meters,
+		"aster_terminal_meters": aster_base_meters,
+		"peris_portal_meters": peris_portal_meters,
+		"endo_gear_meters": endo_base_meters,
+		"peris_care_meters": care_route_meters,
+		"peris_handoff_meters": peris_handoff_meters,
+		"aster_diagnostic_meters": aster_diagnostic_extra,
+		"peris_diagnostic_meters": peris_diagnostic_extra,
+		"endo_diagnostic_meters": endo_diagnostic_extra,
+		"remote_service_meters": remote_service_meters,
+		"diagnostic_detour_meters": aster_diagnostic_extra + peris_diagnostic_extra + endo_diagnostic_extra,
+		"care_choice_detour_meters": care_extra_meters,
+	}
+
+func _modeled_max_single_mode_seconds() -> float:
+	var longest := maxf(
+		maxf(TERMINAL_WORK_SECONDS, ROOT_WORK_SECONDS),
+		maxf(DIAGNOSTIC_WORK_SECONDS, maxf(MOTHER_TEND_SECONDS, REPAIR_MOUNT_SECONDS))
+	)
+	var aster_path := [
+		SPAWNS["aster"], TERM_GAMMA_POS, TERM_BETA_POS, TERM_ALPHA_POS,
+		Vector3(DIAGNOSTIC_DEFS["service_manifest"].get("position", Vector3.ZERO)),
+		Vector3(DIAGNOSTIC_DEFS["freight_spindle"].get("position", Vector3.ZERO)),
+		TERM_BETA_POS, TERM_GAMMA_POS, TERM_BETA_POS, TERM_BETA_POS,
+		TERM_ALPHA_POS, TERM_ALPHA_POS,
+	]
+	longest = maxf(longest, _longest_path_leg_seconds(aster_path, ASTER_WALK_SPEED))
+
+	var return_pos := BASE_PORTAL_POS + Vector3(2.6, 0.0, 0.0)
+	longest = maxf(longest, _planar_distance(SPAWNS["peris"], BASE_PORTAL_POS) / PERIS_WALK_SPEED)
+	longest = maxf(longest, _planar_distance(return_pos, BASE_PORTAL_POS) / PERIS_WALK_SPEED)
+	longest = maxf(longest, _longest_path_leg_seconds([
+		return_pos,
+		Vector3(DIAGNOSTIC_DEFS["caretaker_trace"].get("position", Vector3.ZERO)),
+		Vector3(DIAGNOSTIC_DEFS["stress_cistern"].get("position", Vector3.ZERO)),
+		BASE_PORTAL_POS,
+	], PERIS_WALK_SPEED))
+	for first in CARE_NODE_ORDER:
+		longest = maxf(longest, _planar_distance(return_pos, Vector3(CARE_NODE_DEFS[first].get("position", Vector3.ZERO))) / PERIS_WALK_SPEED)
+		longest = maxf(longest, _planar_distance(Vector3(CARE_NODE_DEFS[first].get("position", Vector3.ZERO)), MOTHER_POS) / PERIS_WALK_SPEED)
+		for second in CARE_NODE_ORDER:
+			if second != first:
+				longest = maxf(longest, _planar_distance(Vector3(CARE_NODE_DEFS[first].get("position", Vector3.ZERO)), Vector3(CARE_NODE_DEFS[second].get("position", Vector3.ZERO))) / PERIS_WALK_SPEED)
+	longest = maxf(longest, _planar_distance(MOTHER_POS, EXIT_POS) / PERIS_WALK_SPEED)
+
+	longest = maxf(longest, _longest_path_leg_seconds([
+		SPAWNS["endo"],
+		Vector3(DIAGNOSTIC_DEFS["load_witness"].get("position", Vector3.ZERO)),
+		Vector3(DIAGNOSTIC_DEFS["socket_torque"].get("position", Vector3.ZERO)),
+		GEAR_POS,
+		_repair_point_position(CORRECT_REPAIR_ID),
+	], ENDO_WALK_SPEED))
+	for move in CLEAN_ROOT_MOVES:
+		var terminal_id := str(move.get("terminal", ""))
+		var root_id := str(move.get("root", ""))
+		var direction := int(move.get("direction", 0))
+		var service_path := [
+			_terminal_service_spawn(terminal_id),
+			_modeled_service_bud_position(terminal_id, root_id, direction),
+			_terminal_service_position(terminal_id) + Vector3(-1.25, 0.0, 0.0),
+		]
+		longest = maxf(longest, _longest_path_leg_seconds(service_path, PERIS_WALK_SPEED))
+	return longest
+
+func _longest_path_leg_seconds(points: Array, speed: float) -> float:
+	var longest := 0.0
+	for index in range(1, points.size()):
+		longest = maxf(longest, _planar_distance(Vector3(points[index - 1]), Vector3(points[index])) / maxf(speed, 0.1))
+	return longest
+
+func _modeled_service_bud_position(terminal_id: String, root_id: String, direction: int) -> Vector3:
+	var service_roots: Array = TERMINAL_SERVICES.get(terminal_id, [])
+	var root_index := service_roots.find(root_id)
+	if root_index < 0:
+		return _terminal_service_position(terminal_id)
+	var row_pos := _service_row_position(terminal_id, root_index, service_roots.size())
+	return row_pos + Vector3(-1.55 if direction < 0 else 1.55, 0.0, -0.48)
+
+func _shortest_care_route_meters(start: Vector3, finish: Vector3) -> float:
+	var best := INF
+	for first in CARE_NODE_ORDER:
+		for second in CARE_NODE_ORDER:
+			if second == first:
+				continue
+			for third in CARE_NODE_ORDER:
+				if third == first or third == second:
+					continue
+				var route := [
+					start,
+					Vector3(CARE_NODE_DEFS[first].get("position", Vector3.ZERO)),
+					Vector3(CARE_NODE_DEFS[second].get("position", Vector3.ZERO)),
+					Vector3(CARE_NODE_DEFS[third].get("position", Vector3.ZERO)),
+					finish,
+				]
+				best = minf(best, _planar_path_distance(route))
+	return best
+
+func _planar_path_distance(points: Array) -> float:
+	var total := 0.0
+	for index in range(1, points.size()):
+		total += _planar_distance(Vector3(points[index - 1]), Vector3(points[index]))
+	return total
+
+func _planar_distance(from: Vector3, to: Vector3) -> float:
+	return Vector2(from.x, from.z).distance_to(Vector2(to.x, to.z))
 
 func get_preview_abilities() -> Array:
 	# Display names + descriptions + tuning live in data/abilities/en/abilities.xlsx (per-context rows).
@@ -265,7 +627,17 @@ func get_preview_state() -> Dictionary:
 		"socket_lane_open": _is_socket_lane_open(),
 		"mother_lane_clear": _is_mother_lane_clear(),
 		"mother_tended": _mother_tended,
+		"route_phase": _route_phase,
+		"exit_open": _route_phase == "handoff",
+		"exit_reached": _exit_reached,
+		"complete": _route_phase == "complete",
 		"repair_attempts": _repair_attempts.duplicate(),
+		"diagnostics_completed": _diagnostics_completed.duplicate(),
+		"diagnostics_required": DIAGNOSTIC_ORDER.size(),
+		"diagnosis_ready_for_repair": _full_diagnosis_ready(),
+		"care_nodes_primed": _care_nodes_primed.duplicate(),
+		"care_nodes_required": CARE_NODE_REQUIRED_COUNT,
+		"care_circuit_ready": _care_circuit_ready(),
 		"repair_target": CORRECT_REPAIR_ID,
 		"diagnosis": _diagnosis_summary(),
 		"endo_cloak_remaining": maxf(0.0, _endo_cloak_until - current_tick),
@@ -283,10 +655,14 @@ func reset_preview_state() -> void:
 	_gear_installed = false
 	_installed_repair_id = ""
 	_mother_tended = false
+	_route_phase = "investigate"
+	_exit_reached = false
 	_endo_cloak_until = 0.0
 	_hazard_cooldowns.clear()
 	_log_entries_seen.clear()
 	_repair_attempts.clear()
+	_diagnostics_completed.clear()
+	_care_nodes_primed.clear()
 	_body_remaining = {}
 	for body_id in BODY_POSITIONS.keys():
 		_body_remaining[body_id] = BODY_YIELD_PER_CORPSE
@@ -312,6 +688,9 @@ func reset_preview_state() -> void:
 	_update_portal_visuals()
 	_update_body_visuals()
 	_update_mother_visuals()
+	_reset_extension_interactables()
+	_update_extension_visuals()
+	_update_extension_interactable_states()
 	_update_overlay_label_states()
 
 func handle_preview_ability(ability_id: String, _ability: Dictionary = {}) -> Dictionary:
@@ -347,12 +726,14 @@ func get_preview_overlay_status(overlay_id: String, current_tick: float) -> Arra
 			return [
 				"Portal bank: %s" % (_portal_label(_active_terminal_id) if _is_portal_open(current_tick) else "idle"),
 				"Live service braid: %s  |  Ghost load: %s" % [_active_service_overlay_label(), _aster_load_read()],
+				"Field evidence: %d/%d role reads" % [_diagnostics_completed.size(), DIAGNOSTIC_ORDER.size()],
 				"Shows terminal IDs, route ties, and the old Unit NV maintenance ghost over the chamber.",
 			]
 		"peris":
 			return [
 				"Mother stress: %s  |  Board pulse: %s" % [_mother_stress_label(), _peris_board_read()],
 				"Care read: %s" % _peris_fault_read(),
+				"Capillary circuit: %d/%d primed" % [mini(_care_nodes_primed.size(), CARE_NODE_REQUIRED_COUNT), CARE_NODE_REQUIRED_COUNT],
 				"Memory blur: %s  |  Caretaker traces layered" % _peris_memory_blur_read(),
 				"Dormant buds, flora memory, and caretaker echoes stack together instead of forcing portrait swaps.",
 			]
@@ -360,6 +741,7 @@ func get_preview_overlay_status(overlay_id: String, current_tick: float) -> Arra
 			return [
 				"Food sources: %d units left  |  Gear: %s" % [_body_units_remaining(), "mounted" if _gear_installed else "loose"],
 				"Carry lane: %s  |  Repair target: %s" % [("open" if _is_socket_lane_open() else "closed"), _endo_repair_read()],
+				"Evidence stations: %d/%d complete" % [_diagnostics_completed.size(), DIAGNOSTIC_ORDER.size()],
 				"Cloak: %.1fs" % maxf(0.0, _endo_cloak_until - current_tick),
 			]
 		_:
@@ -376,6 +758,8 @@ func activate_terminal(terminal_id: String) -> bool:
 	_update_terminal_visuals()
 	_update_portal_visuals()
 	_surface_terminal_log(terminal_id)
+	_update_extension_interactable_states()
+	_update_extension_visuals()
 	_set_preview_step("mother_%s_online" % terminal_id)
 	_show_note("%s opens. Peris can cross while the bank holds." % _portal_label(terminal_id), 3.2)
 	return true
@@ -442,6 +826,8 @@ func activate_fragment_move(root_id: String, direction: int) -> bool:
 	root["swarm_to_pos"] = Vector3(root.get("anim_to_pos", Vector3.ZERO)) + Vector3(0.0, ROOT_SWARM_Y_OFFSET, 0.0)
 	_set_preview_step("mother_%s_%s_%d" % [root_id, "forward" if target_anchor > from_anchor else "back", target_anchor])
 	_show_note("Peris wakes one of %s's dormant buds. The root drifts and the Techo mat follows." % _fragment_label(root_id), 3.6)
+	_update_extension_interactable_states()
+	_update_extension_visuals()
 	_update_overlay_label_states()
 	return true
 
@@ -510,12 +896,24 @@ func pick_up_gear() -> bool:
 		return false
 	_set_preview_step("mother_gear_carried")
 	_show_note("Endo lifts the mother gear with both hands.", 2.8)
+	_update_extension_interactable_states()
+	_update_extension_visuals()
 	_update_overlay_label_states()
 	_update_gear_interactable_position()
 	return true
 
 func install_gear() -> bool:
 	return install_gear_at(CORRECT_REPAIR_ID)
+
+## Authored interaction path. The public install_gear_at method remains the
+## deterministic board-state seam used by old replay fixtures; every visible
+## repair mount comes through this gate and therefore requires the six spatial
+## diagnosis actions.
+func install_gear_from_interaction(repair_id: String) -> bool:
+	if not _full_diagnosis_ready():
+		_show_message("The party still has unread chamber evidence.", 1.4)
+		return false
+	return install_gear_at(repair_id)
 
 func install_gear_at(repair_id: String) -> bool:
 	if not REPAIR_POINT_DEFS.has(repair_id):
@@ -543,6 +941,8 @@ func install_gear_at(repair_id: String) -> bool:
 	_set_preview_step("mother_gear_installed")
 	_show_note("The load regulator takes the gear cleanly. The mother's stress profile loosens instead of flaring and the east side begins to unravel.", 3.8)
 	_update_mother_visuals()
+	_update_extension_interactable_states()
+	_update_extension_visuals()
 	_update_overlay_label_states()
 	_update_gear_interactable_position()
 	return true
@@ -564,12 +964,94 @@ func tend_mother() -> bool:
 		_show_message("The mother is already awake.", 1.0)
 		return false
 	_mother_tended = true
+	_route_phase = "handoff"
 	_set_preview_step("mother_bloomed")
 	_clear_dialogue()
 	_say("You're all right. You just needed the load to move.", "PERIS")
 	_say("The chamber's opening toward the Rings. That's our handoff.", "ASTER")
-	_show_note("Mother Flure stabilized. This preview now runs the full board, carry, and consume loop together.", 4.0)
+	_show_note("Mother Flure stabilized. Follow the lit Rings handoff to finish the chamber.", 4.0)
 	_update_mother_visuals()
+	_update_extension_interactable_states()
+	_update_extension_visuals()
+	_update_overlay_label_states()
+	return true
+
+## The visible mother interaction uses the capillary circuit gate. Keeping the
+## low-level tend_mother state transition separate preserves replay fixtures
+## while making the playable scene honor the authored care route.
+func tend_mother_from_interaction() -> bool:
+	if not _care_circuit_ready():
+		_show_message("Prime three capillary nodes before waking the mother.", 1.4)
+		return false
+	return tend_mother()
+
+func complete_exit_handoff() -> bool:
+	if _route_phase == "complete":
+		return true
+	if not _mother_tended or _route_phase != "handoff":
+		_show_message("Stabilize Mother Flure before taking the Rings handoff.", 1.4)
+		return false
+	var active_character := _get_active_character()
+	if active_character == "" or _get_character_position(active_character).distance_to(EXIT_POS) > EXIT_INTERACTION_RADIUS:
+		_show_message("Move the active character into the Rings handoff.", 1.3)
+		return false
+	_exit_reached = true
+	_route_phase = "complete"
+	_set_preview_step("mother_complete")
+	_clear_dialogue()
+	_say("Mother's stable. The Rings route is ours.", "ASTER")
+	_show_note("Mother Flure complete — the party can continue toward the Residential Rings.", 3.4)
+	_update_extension_interactable_states()
+	_update_extension_visuals()
+	_update_overlay_label_states()
+	return true
+
+func inspect_diagnostic(diagnostic_id: String) -> bool:
+	if not DIAGNOSTIC_DEFS.has(diagnostic_id):
+		return false
+	if _diagnostics_completed.has(diagnostic_id):
+		return false
+	var def: Dictionary = DIAGNOSTIC_DEFS[diagnostic_id]
+	var required_character := str(def.get("character", ""))
+	if _get_active_character() != required_character:
+		_show_message("%s needs to read this evidence." % _display_name(required_character), 1.2)
+		return false
+	var terminal_id := str(def.get("terminal", ""))
+	if not _log_entries_seen.has(terminal_id):
+		_show_message("Bring %s online before reading this station." % _portal_label(terminal_id), 1.3)
+		return false
+	_diagnostics_completed.append(diagnostic_id)
+	_set_preview_step("mother_diagnostic_%s" % diagnostic_id)
+	_show_note(str(def.get("note", "The chamber evidence resolves another part of the fault.")), 4.0)
+	if _full_diagnosis_ready():
+		_show_note("Six independent reads agree: the load regulator is the only mount that can take the mother gear.", 4.4)
+	_update_extension_interactable_states()
+	_update_extension_visuals()
+	_update_overlay_label_states()
+	return true
+
+func prime_care_node(node_id: String) -> bool:
+	if not CARE_NODE_DEFS.has(node_id):
+		return false
+	if _care_nodes_primed.has(node_id):
+		return false
+	if _get_active_character() != "peris":
+		_show_message("Only Peris can tune the mother's capillary roots.", 1.2)
+		return false
+	if not _gear_installed or not _is_mother_lane_clear():
+		_show_message("The repair and east lane need to be stable first.", 1.3)
+		return false
+	_care_nodes_primed.append(node_id)
+	_set_preview_step("mother_care_%s" % node_id)
+	_show_note("Peris tunes %s into the repaired load circuit (%d/%d)." % [
+		str(CARE_NODE_DEFS[node_id].get("label", node_id)).to_lower(),
+		mini(_care_nodes_primed.size(), CARE_NODE_REQUIRED_COUNT),
+		CARE_NODE_REQUIRED_COUNT,
+	], 3.2)
+	if _care_circuit_ready():
+		_show_note("Three capillary paths are carrying cleanly. Peris can choose her approach and tend the mother now.", 4.0)
+	_update_extension_interactable_states()
+	_update_extension_visuals()
 	_update_overlay_label_states()
 	return true
 
@@ -682,6 +1164,103 @@ func _build_chamber_shell() -> void:
 	_add_label(self, "MOTHER FLURE", MOTHER_POS + Vector3(-1.0, 3.2, 0.0), Color(0.94, 0.82, 0.58))
 	_add_label(self, "LOT CLOT CHAMBER", Vector3(60.0, 2.8, -22.8), Color(0.72, 0.62, 0.46))
 
+func _build_environment_decoration() -> void:
+	var decoration := Node3D.new()
+	decoration.name = "MotherFlureDecoration"
+	add_child(decoration)
+
+	# Repeated wall bays give the 120 m chamber the same measured facade rhythm
+	# as the authored district buildings: pier, inset panel, illuminated datum.
+	var wall_bays := Node3D.new()
+	wall_bays.name = "WallBays"
+	decoration.add_child(wall_bays)
+	for side in [-1.0, 1.0]:
+		for bay_index in range(14):
+			var bay_x := 4.0 + float(bay_index) * 8.3
+			var wall_z: float = side * 26.78
+			_add_box(wall_bays, Vector3(bay_x, 1.55, wall_z), Vector3(6.9, 2.6, 0.12),
+				Color(0.105, 0.1, 0.09), Color.BLACK, 0.0,
+				"WallInset_%d_%d" % [int(side), bay_index])
+			_add_box(wall_bays, Vector3(bay_x - 3.55, 1.65, wall_z - side * 0.06), Vector3(0.22, 3.3, 0.3),
+				Color(0.25, 0.21, 0.16), Color.BLACK, 0.0,
+				"WallPier_%d_%d" % [int(side), bay_index])
+			_add_box(wall_bays, Vector3(bay_x, 2.78, wall_z - side * 0.12), Vector3(4.6, 0.11, 0.16),
+				Color(0.32, 0.23, 0.13), Color(0.8, 0.48, 0.18), 0.34,
+				"WallDatum_%d_%d" % [int(side), bay_index])
+
+	var trusses := Node3D.new()
+	trusses.name = "CeilingTrusses"
+	decoration.add_child(trusses)
+	for truss_index in range(12):
+		var truss_x := 5.0 + float(truss_index) * 9.7
+		_add_box(trusses, Vector3(truss_x, 4.02, 0.0), Vector3(0.28, 0.28, 52.4),
+			Color(0.19, 0.17, 0.14), Color.BLACK, 0.0, "TrussSpine%d" % truss_index)
+		for side in [-1.0, 1.0]:
+			_add_box(trusses, Vector3(truss_x, 3.62, side * 18.0), Vector3(1.5, 0.18, 0.18),
+				Color(0.34, 0.25, 0.15), Color(0.9, 0.54, 0.2), 0.42,
+				"TrussLamp%d_%d" % [truss_index, int(side)])
+			if truss_index % 2 == 0:
+				var light := _add_light(trusses, Vector3(truss_x, 3.45, side * 18.0),
+					Color(0.92, 0.67, 0.36), 0.72, 8.0)
+				light.name = "TrussWorkLight%d_%d" % [truss_index, int(side)]
+
+	# Drain lips and datum studs make every board row legible without turning the
+	# chamber into a literal toy grid.
+	var gutters := Node3D.new()
+	gutters.name = "BoardGutters"
+	decoration.add_child(gutters)
+	for lane_index in range(7):
+		var lane_offset := -18.0 + float(lane_index) * BOARD_CELL_SIZE
+		_add_box(gutters, Vector3(60.0, 0.18, lane_offset), Vector3(38.6, 0.12, 0.32),
+			Color(0.29, 0.2, 0.11), Color(0.62, 0.38, 0.14), 0.16,
+			"RowGutter%d" % lane_index)
+		_add_box(gutters, Vector3(42.0 + float(lane_index) * BOARD_CELL_SIZE, 0.18, 0.0), Vector3(0.32, 0.12, 38.6),
+			Color(0.29, 0.2, 0.11), Color(0.62, 0.38, 0.14), 0.16,
+			"ColumnGutter%d" % lane_index)
+	for stud_index in range(18):
+		var stud_x := 42.5 + float(stud_index % 9) * 4.35
+		var stud_z := -19.2 if stud_index < 9 else 19.2
+		_add_box(gutters, Vector3(stud_x, 0.28, stud_z), Vector3(0.42, 0.22, 0.42),
+			Color(0.4, 0.29, 0.15), Color(0.9, 0.56, 0.2), 0.32,
+			"BoardDatumStud%d" % stud_index)
+
+	var conduits := Node3D.new()
+	conduits.name = "ServiceConduits"
+	decoration.add_child(conduits)
+	for conduit_index in range(3):
+		var source: Vector3 = [TERM_ALPHA_POS, TERM_BETA_POS, TERM_GAMMA_POS][conduit_index]
+		var tint: Color = [Color(0.36, 0.66, 0.9), Color(0.56, 0.8, 0.48), Color(0.88, 0.58, 0.28)][conduit_index]
+		for segment_index in range(6):
+			var segment_x := source.x + 5.0 + float(segment_index) * 7.2
+			_add_box(conduits, Vector3(segment_x, 0.24, source.z), Vector3(6.5, 0.12, 0.24),
+				Color(0.2, 0.17, 0.13), tint, 0.22,
+				"ServiceConduit%d_%d" % [conduit_index, segment_index])
+
+	var mother_nave := Node3D.new()
+	mother_nave.name = "MotherNave"
+	decoration.add_child(mother_nave)
+	for rib_index in range(6):
+		var rib_x := 88.0 + float(rib_index) * 5.2
+		_add_box(mother_nave, Vector3(rib_x, 0.22, -18.5), Vector3(0.3, 0.32, 6.0),
+			Color(0.28, 0.2, 0.12), Color(0.72, 0.42, 0.18), 0.2,
+			"NaveRibNorth%d" % rib_index)
+		_add_box(mother_nave, Vector3(rib_x, 0.22, 18.5), Vector3(0.3, 0.32, 6.0),
+			Color(0.28, 0.2, 0.12), Color(0.72, 0.42, 0.18), 0.2,
+			"NaveRibSouth%d" % rib_index)
+	for pylon_index in range(5):
+		var pylon_z := -16.0 + float(pylon_index) * 8.0
+		_add_box(mother_nave, Vector3(113.5, 1.25, pylon_z), Vector3(0.65, 2.5, 0.65),
+			Color(0.18, 0.16, 0.13), Color(0.86, 0.58, 0.24), 0.25,
+			"NavePylon%d" % pylon_index)
+
+	decoration.set_meta("decoration_audit", {
+		"instances": decoration.find_children("*", "MeshInstance3D", true, false).size(),
+		"lights": decoration.find_children("*", "OmniLight3D", true, false).size(),
+		"collision_shapes": decoration.find_children("*", "CollisionShape3D", true, false).size(),
+		"clearance": "surface_only_no_obstacles",
+		"families": ["wall_bays", "ceiling_trusses", "board_gutters", "service_conduits", "mother_nave"],
+	})
+
 func _build_terminal_bank() -> void:
 	_build_terminal("term_alpha", TERM_ALPHA_POS, "TERM-12A", "PORTAL-12A")
 	_build_terminal("term_beta", TERM_BETA_POS, "TERM-12B", "PORTAL-12B")
@@ -712,13 +1291,17 @@ func _build_service_alcove(terminal_id: String) -> void:
 			var bud_pos := row_pos + Vector3(-1.55 if direction < 0 else 1.55, 0.14, -0.48)
 			_add_box(self, bud_pos + Vector3(0.0, 0.18, 0.0), Vector3(0.54, 0.36, 0.54), Color(0.24, 0.18, 0.12), Color(0.72, 0.54, 0.26), 0.22)
 			_add_label(self, _bud_label(direction), bud_pos + Vector3(0.0, 0.86, 0.0), Color(0.96, 0.8, 0.52))
-			var interactable = _add_inspection_interactable(
+			var interactable = _add_interactable(
 				self,
 				"%s_%s_%s" % [terminal_id.capitalize(), root_id.capitalize(), "neg" if direction < 0 else "pos"],
 				"%s / %s" % [ROOT_DEFS[root_id].get("label", root_id), _bud_label(direction)],
 				bud_pos,
 				"SHIFT",
-				"peris"
+				"peris",
+				ROOT_WORK_SECONDS,
+				false,
+				1.5,
+				Interactable.InteractableType.TIMED_ACTION
 			)
 			interactable.interacted.connect(Callable(self, "activate_fragment_move").bind(root_id, direction))
 
@@ -728,19 +1311,31 @@ func _build_portal_bank() -> void:
 	_add_box(self, BASE_PORTAL_POS + Vector3(0.0, 2.22, 0.0), Vector3(1.56, 0.18, 0.18), Color(0.22, 0.2, 0.18))
 	_portal_base_fill = _add_box(self, BASE_PORTAL_POS + Vector3(0.0, 1.08, 0.0), Vector3(1.2, 1.84, 0.08), Color(0.18, 0.16, 0.14), Color(0.76, 0.56, 0.28), 0.2)
 	_portal_base_material = _portal_base_fill.material_override
-	_portal_entry_interactable = _add_inspection_interactable(self, "MotherPortalEntry", "Portal Entry", BASE_PORTAL_POS + Vector3(0.0, 0.2, 0.0), "CROSS", "peris")
+	_portal_entry_interactable = _add_interactable(
+		self, "MotherPortalEntry", "Calibrate portal crossing",
+		BASE_PORTAL_POS + Vector3(0.0, 0.2, 0.0), "CROSS", "peris",
+		PORTAL_CALIBRATION_SECONDS, false, 1.5, Interactable.InteractableType.TIMED_ACTION
+	)
 	_portal_entry_interactable.interacted.connect(func() -> void: use_portal())
 	_portal_remote_fill = _add_box(self, Vector3(2000.0, 1.08, 2000.0), Vector3(1.2, 1.84, 0.08), Color(0.18, 0.16, 0.14), Color(0.92, 0.66, 0.32), 0.2)
 	_portal_remote_material = _portal_remote_fill.material_override
 	_portal_remote_label = _add_label(self, "RETURN", Vector3(2000.0, 3.0, 2000.0), Color(0.94, 0.76, 0.46))
-	_portal_return_interactable = _add_inspection_interactable(self, "MotherPortalReturn", "Portal Return", Vector3(2000.0, 0.2, 2000.0), "RETURN", "peris")
+	_portal_return_interactable = _add_interactable(
+		self, "MotherPortalReturn", "Calibrate return crossing",
+		Vector3(2000.0, 0.2, 2000.0), "RETURN", "peris",
+		PORTAL_CALIBRATION_SECONDS, false, 1.5, Interactable.InteractableType.TIMED_ACTION
+	)
 	_portal_return_interactable.interacted.connect(func() -> void: use_portal())
 
 func _build_gear_station() -> void:
 	_add_box(self, GEAR_POS + Vector3(0.0, -0.1, 0.0), Vector3(3.8, 0.28, 3.4), Color(0.12, 0.1, 0.08))
 	_add_box(self, GEAR_POS + Vector3(0.0, 0.38, 0.0), Vector3(2.1, 0.26, 2.1), Color(0.18, 0.14, 0.1), Color(0.46, 0.3, 0.16), 0.22)
 	_add_label(self, "MOTHER GEAR", GEAR_POS + Vector3(0.0, 2.2, 0.0), Color(0.88, 0.76, 0.58))
-	_gear_interactable = _add_inspection_interactable(self, "MotherGearInteractable", "Mother Gear", GEAR_POS + Vector3(0.0, 0.25, 0.0), "LIFT")
+	_gear_interactable = _add_interactable(
+		self, "MotherGearInteractable", "Brace and lift Mother Gear",
+		GEAR_POS + Vector3(0.0, 0.25, 0.0), "LIFT", "endo",
+		GEAR_LIFT_SECONDS, false, 1.8, Interactable.InteractableType.TIMED_ACTION
+	)
 	_gear_interactable.interacted.connect(func() -> void: pick_up_gear())
 
 func _build_install_socket() -> void:
@@ -752,11 +1347,79 @@ func _build_install_socket() -> void:
 		var mount := _add_box(self, repair_pos + Vector3(0.0, 0.78, 0.0), Vector3(1.14, 0.24, 1.14), Color(0.18, 0.2, 0.24), repair_color, 0.22)
 		_repair_point_materials[repair_id] = mount.material_override
 		_repair_point_labels[repair_id] = _add_label(self, str(REPAIR_POINT_DEFS[repair_id].get("label", repair_id)).to_upper(), repair_pos + Vector3(0.0, 2.1, 0.0), repair_color.lightened(0.15))
-		var interactable := _add_inspection_interactable(self, "%sRepairInteractable" % repair_id.capitalize(), str(REPAIR_POINT_DEFS[repair_id].get("label", repair_id)), repair_pos + Vector3(0.0, 0.2, 0.0), "MOUNT")
-		interactable.interacted.connect(Callable(self, "install_gear_at").bind(repair_id))
+		var interactable := _add_interactable(
+			self, "%sRepairInteractable" % repair_id.capitalize(),
+			str(REPAIR_POINT_DEFS[repair_id].get("label", repair_id)),
+			repair_pos + Vector3(0.0, 0.2, 0.0), "MOUNT", "endo",
+			REPAIR_MOUNT_SECONDS, false, 1.7, Interactable.InteractableType.TIMED_ACTION
+		)
+		interactable.interacted.connect(Callable(self, "install_gear_from_interaction").bind(repair_id))
 		_repair_interactables[repair_id] = interactable
 		if repair_id == CORRECT_REPAIR_ID:
 			_install_interactable = interactable
+
+func _build_diagnostic_circuit() -> void:
+	for diagnostic_id in DIAGNOSTIC_ORDER:
+		var def: Dictionary = DIAGNOSTIC_DEFS[diagnostic_id]
+		var pos: Vector3 = def.get("position", Vector3.ZERO)
+		var color: Color = def.get("color", Color(0.72, 0.82, 0.94))
+		var pedestal := _add_box(self, pos + Vector3(0.0, 0.32, 0.0), Vector3(1.4, 0.62, 1.4),
+			Color(0.13, 0.14, 0.15), Color.BLACK, 0.0, "%sPedestal" % diagnostic_id.capitalize())
+		var lens := _add_box(self, pos + Vector3(0.0, 0.78, 0.0), Vector3(0.82, 0.18, 0.82),
+			Color(0.18, 0.2, 0.22), color, 0.28, "%sLens" % diagnostic_id.capitalize())
+		_diagnostic_materials[diagnostic_id] = lens.material_override
+		_diagnostic_labels[diagnostic_id] = _add_label(self,
+			str(def.get("label", diagnostic_id)).to_upper(), pos + Vector3(0.0, 1.9, 0.0), color)
+		var interactable := _add_object_interactable(
+			self, "%sDiagnosticInteractable" % diagnostic_id.capitalize(),
+			str(def.get("label", diagnostic_id)), pos + Vector3(0.0, 0.2, 0.0), "READ",
+			[pedestal, lens], str(def.get("character", "")), DIAGNOSTIC_WORK_SECONDS,
+			false, 1.8, Interactable.InteractableType.TIMED_ACTION
+		)
+		interactable.interacted.connect(Callable(self, "inspect_diagnostic").bind(diagnostic_id))
+		_diagnostic_interactables[diagnostic_id] = interactable
+
+func _build_care_circuit() -> void:
+	for node_id in CARE_NODE_ORDER:
+		var def: Dictionary = CARE_NODE_DEFS[node_id]
+		var pos: Vector3 = def.get("position", Vector3.ZERO)
+		var stem := _add_box(self, pos + Vector3(0.0, 0.52, 0.0), Vector3(0.42, 1.04, 0.42),
+			Color(0.22, 0.17, 0.11), Color(0.78, 0.48, 0.18), 0.2,
+			"%sStem" % node_id.capitalize())
+		var crown := _add_box(self, pos + Vector3(0.0, 1.16, 0.0), Vector3(1.05, 0.28, 1.05),
+			Color(0.32, 0.24, 0.12), Color(0.96, 0.68, 0.24), 0.32,
+			"%sCrown" % node_id.capitalize())
+		_care_node_materials[node_id] = crown.material_override
+		_care_node_labels[node_id] = _add_label(self,
+			str(def.get("label", node_id)).to_upper(), pos + Vector3(0.0, 2.1, 0.0), Color(0.94, 0.72, 0.36))
+		var interactable := _add_object_interactable(
+			self, "%sCareInteractable" % node_id.capitalize(),
+			str(def.get("label", node_id)), pos + Vector3(0.0, 0.25, 0.0), "PRIME",
+			[stem, crown], "peris", CARE_NODE_WORK_SECONDS, false, 1.8,
+			Interactable.InteractableType.TIMED_ACTION
+		)
+		interactable.interacted.connect(Callable(self, "prime_care_node").bind(node_id))
+		_care_node_interactables[node_id] = interactable
+
+func _build_exit_handoff() -> void:
+	var pad := _add_box(self, EXIT_POS + Vector3(0.0, -0.05, 0.0), Vector3(5.2, 0.14, 4.2),
+		Color(0.11, 0.12, 0.1), Color(0.42, 0.72, 0.5), 0.08, "MotherExitPad")
+	var left_pylon := _add_box(self, EXIT_POS + Vector3(-1.65, 1.35, 0.0), Vector3(0.34, 2.7, 0.44),
+		Color(0.18, 0.2, 0.16), Color(0.54, 0.86, 0.62), 0.16, "MotherExitPylonLeft")
+	var right_pylon := _add_box(self, EXIT_POS + Vector3(1.65, 1.35, 0.0), Vector3(0.34, 2.7, 0.44),
+		Color(0.18, 0.2, 0.16), Color(0.54, 0.86, 0.62), 0.16, "MotherExitPylonRight")
+	var lintel := _add_box(self, EXIT_POS + Vector3(0.0, 2.62, 0.0), Vector3(3.65, 0.3, 0.44),
+		Color(0.18, 0.2, 0.16), Color(0.54, 0.86, 0.62), 0.16, "MotherExitLintel")
+	var beacon := _add_box(self, EXIT_POS + Vector3(0.0, 0.62, 0.0), Vector3(0.72, 1.12, 0.72),
+		Color(0.16, 0.2, 0.17), Color(0.52, 0.9, 0.62), 0.18, "MotherExitBeacon")
+	_exit_material = beacon.material_override
+	_exit_label = _add_label(self, "RINGS HANDOFF  ·  SEALED", EXIT_POS + Vector3(0.0, 3.35, 0.0), Color(0.46, 0.5, 0.42))
+	_exit_interactable = _add_object_interactable(
+		self, "MotherExitInteractable", "Continue to the Residential Rings", EXIT_POS,
+		"LEAVE", [pad, left_pylon, right_pylon, lintel, beacon], "", EXIT_HANDOFF_SECONDS,
+		false, EXIT_INTERACTION_RADIUS, Interactable.InteractableType.TIMED_ACTION
+	)
+	_exit_interactable.interacted.connect(func() -> void: complete_exit_handoff())
 
 func _build_mother() -> void:
 	for i in range(3):
@@ -776,8 +1439,12 @@ func _build_mother() -> void:
 		bloom.position = MOTHER_POS + bloom_offset
 		add_child(bloom)
 		_mother_bloom_materials.append(material)
-	_mother_interactable = _add_inspection_interactable(self, "MotherTendInteractable", "Mother Flure", MOTHER_POS + Vector3(-2.2, 0.4, 0.0), "TEND")
-	_mother_interactable.interacted.connect(func() -> void: tend_mother())
+	_mother_interactable = _add_interactable(
+		self, "MotherTendInteractable", "Tend Mother Flure",
+		MOTHER_POS + Vector3(-2.2, 0.4, 0.0), "TEND", "peris",
+		MOTHER_TEND_SECONDS, false, 2.0, Interactable.InteractableType.TIMED_ACTION
+	)
+	_mother_interactable.interacted.connect(func() -> void: tend_mother_from_interaction())
 
 func _build_collapse_offshoot() -> void:
 	_add_box(self, Vector3(50.0, 0.01, 18.0), Vector3(28.0, 0.04, 8.0), Color(0.1, 0.085, 0.08))
@@ -844,7 +1511,15 @@ func _build_terminal(terminal_id: String, position: Vector3, label_text: String,
 	_terminal_materials[terminal_id] = screen.material_override
 	_terminal_labels[terminal_id] = _add_label(self, portal_label, position + Vector3(0.0, 1.72, -0.82), Color(0.72, 0.66, 0.54))
 	_add_label(self, label_text, position + Vector3(0.0, 2.2, 0.0), Color(0.76, 0.84, 0.92))
-	var interactable = _add_inspection_interactable(self, "%sInteractable" % terminal_id.capitalize(), label_text, position + Vector3(0.0, 0.2, 0.0), "HACK", "aster")
+	# TERM-12A is the click-arrival onboarding seam used by the shared preview
+	# contract. The two later banks are deliberate trace/reconstruction work.
+	var interaction_type := Interactable.InteractableType.INSPECTION if terminal_id == "term_alpha" else Interactable.InteractableType.TIMED_ACTION
+	var dwell_time := 0.0 if terminal_id == "term_alpha" else TERMINAL_WORK_SECONDS
+	var interactable = _add_interactable(
+		self, "%sInteractable" % terminal_id.capitalize(), label_text,
+		position + Vector3(0.0, 0.2, 0.0), "HACK", "aster", dwell_time,
+		false, 1.5, interaction_type
+	)
 	interactable.interacted.connect(Callable(self, "activate_terminal").bind(terminal_id))
 
 func _build_root(root_id: String) -> void:
@@ -971,6 +1646,89 @@ func _update_mother_visuals() -> void:
 		if _repair_point_labels.has(repair_id):
 			_repair_point_labels[repair_id].modulate = base_color.lightened(0.16) if _installed_repair_id == repair_id else (base_color.darkened(0.15) if _repair_attempts.has(repair_id) else base_color)
 
+func _reset_extension_interactables() -> void:
+	for interactable in _diagnostic_interactables.values():
+		if is_instance_valid(interactable) and interactable.has_method("reset"):
+			interactable.reset()
+	for interactable in _care_node_interactables.values():
+		if is_instance_valid(interactable) and interactable.has_method("reset"):
+			interactable.reset()
+	for interactable in _repair_interactables.values():
+		if is_instance_valid(interactable) and interactable.has_method("reset"):
+			interactable.reset()
+	if is_instance_valid(_mother_interactable) and _mother_interactable.has_method("reset"):
+		_mother_interactable.reset()
+	if is_instance_valid(_exit_interactable) and _exit_interactable.has_method("reset"):
+		_exit_interactable.reset()
+
+func _update_extension_interactable_states() -> void:
+	for diagnostic_id in DIAGNOSTIC_ORDER:
+		if not _diagnostic_interactables.has(diagnostic_id):
+			continue
+		var diagnostic_def: Dictionary = DIAGNOSTIC_DEFS[diagnostic_id]
+		var diagnostic_enabled := (
+			not _mother_tended
+			and not _diagnostics_completed.has(diagnostic_id)
+			and _log_entries_seen.has(str(diagnostic_def.get("terminal", "")))
+		)
+		_set_extension_interactable_enabled(_diagnostic_interactables[diagnostic_id], diagnostic_enabled)
+
+	var repair_enabled := _full_diagnosis_ready() and not _gear_installed and _endo_holds_gear()
+	for interactable in _repair_interactables.values():
+		_set_extension_interactable_enabled(interactable, repair_enabled)
+
+	var care_available := _gear_installed and _is_mother_lane_clear() and not _care_circuit_ready()
+	for node_id in CARE_NODE_ORDER:
+		if not _care_node_interactables.has(node_id):
+			continue
+		_set_extension_interactable_enabled(
+			_care_node_interactables[node_id],
+			care_available and not _care_nodes_primed.has(node_id)
+		)
+	_set_extension_interactable_enabled(_mother_interactable, _care_circuit_ready() and not _mother_tended)
+	_set_extension_interactable_enabled(_exit_interactable, _route_phase == "handoff" and _mother_tended and not _exit_reached)
+
+func _set_extension_interactable_enabled(interactable, enabled: bool) -> void:
+	if not is_instance_valid(interactable):
+		return
+	if interactable.has_method("set_interaction_enabled"):
+		interactable.set_interaction_enabled(enabled)
+	else:
+		interactable.set("interaction_enabled", enabled)
+
+func _update_extension_visuals() -> void:
+	for diagnostic_id in DIAGNOSTIC_ORDER:
+		var completed := _diagnostics_completed.has(diagnostic_id)
+		var def: Dictionary = DIAGNOSTIC_DEFS[diagnostic_id]
+		var unlocked := _log_entries_seen.has(str(def.get("terminal", "")))
+		var color: Color = def.get("color", Color(0.72, 0.82, 0.94))
+		if _diagnostic_materials.has(diagnostic_id):
+			var material: StandardMaterial3D = _diagnostic_materials[diagnostic_id]
+			material.albedo_color = color.lightened(0.14) if completed else Color(0.18, 0.2, 0.22)
+			material.emission_energy_multiplier = 0.92 if completed else (0.48 if unlocked else 0.1)
+		if _diagnostic_labels.has(diagnostic_id):
+			var suffix := "READ" if completed else ("READY" if unlocked else "WAITING")
+			_diagnostic_labels[diagnostic_id].text = "%s  ·  %s" % [str(def.get("label", diagnostic_id)).to_upper(), suffix]
+			_diagnostic_labels[diagnostic_id].modulate = color.lightened(0.16) if completed else (color if unlocked else Color(0.42, 0.4, 0.36))
+
+	var care_unlocked := _gear_installed and _is_mother_lane_clear()
+	for node_id in CARE_NODE_ORDER:
+		var primed := _care_nodes_primed.has(node_id)
+		if _care_node_materials.has(node_id):
+			var material: StandardMaterial3D = _care_node_materials[node_id]
+			material.albedo_color = Color(0.76, 0.58, 0.22) if primed else Color(0.32, 0.24, 0.12)
+			material.emission_energy_multiplier = 1.0 if primed else (0.42 if care_unlocked else 0.12)
+		if _care_node_labels.has(node_id):
+			var suffix := "PRIMED" if primed else ("READY" if care_unlocked and not _care_circuit_ready() else "DORMANT")
+			_care_node_labels[node_id].text = "%s  ·  %s" % [str(CARE_NODE_DEFS[node_id].get("label", node_id)).to_upper(), suffix]
+			_care_node_labels[node_id].modulate = Color(1.0, 0.82, 0.4) if primed else (Color(0.94, 0.72, 0.36) if care_unlocked else Color(0.42, 0.36, 0.28))
+	if _exit_material != null:
+		_exit_material.albedo_color = Color(0.46, 0.78, 0.54) if _route_phase == "handoff" else (Color(0.28, 0.46, 0.32) if _route_phase == "complete" else Color(0.16, 0.2, 0.17))
+		_exit_material.emission_energy_multiplier = 0.92 if _route_phase == "handoff" else (0.36 if _route_phase == "complete" else 0.1)
+	if _exit_label != null:
+		_exit_label.text = "RINGS HANDOFF  ·  %s" % ("OPEN" if _route_phase == "handoff" else ("COMPLETE" if _route_phase == "complete" else "SEALED"))
+		_exit_label.modulate = Color(0.72, 1.0, 0.76) if _route_phase == "handoff" else (Color(0.54, 0.72, 0.58) if _route_phase == "complete" else Color(0.46, 0.5, 0.42))
+
 func _update_overlay_label_states() -> void:
 	if _peris_overlay_labels.has("mother"):
 		_peris_overlay_labels["mother"].text = "MOTHER: %s" % _mother_stress_label().to_upper()
@@ -1092,6 +1850,8 @@ func _reject_wrong_repair(repair_id: String) -> void:
 	_set_preview_step("mother_%s_rejected" % repair_id)
 	_show_note(str(REPAIR_POINT_DEFS[repair_id].get("flare_note", "The chamber rejects the mount and kicks the gear back into the alcove.")), 4.2)
 	_update_mother_visuals()
+	_update_extension_interactable_states()
+	_update_extension_visuals()
 	_update_overlay_label_states()
 
 func _apply_wrong_repair_shift(repair_id: String, current_tick: float) -> void:
@@ -1124,13 +1884,21 @@ func _apply_wrong_repair_shift(repair_id: String, current_tick: float) -> void:
 func _diagnosis_ready() -> bool:
 	return "term_alpha" in _log_entries_seen and "term_beta" in _log_entries_seen
 
+func _full_diagnosis_ready() -> bool:
+	return _diagnostics_completed.size() >= DIAGNOSTIC_ORDER.size()
+
+func _care_circuit_ready() -> bool:
+	return _care_nodes_primed.size() >= CARE_NODE_REQUIRED_COUNT
+
 func _diagnosis_summary() -> String:
 	if _mother_tended:
 		return "resolved through the load regulator"
 	if _gear_installed:
 		return "load regulator mounted"
-	if _diagnosis_ready():
+	if _full_diagnosis_ready():
 		return "core load jam; center spindle wants the gear"
+	if _diagnosis_ready():
+		return "terminal logs align; field reads %d/%d" % [_diagnostics_completed.size(), DIAGNOSTIC_ORDER.size()]
 	if "term_alpha" in _log_entries_seen:
 		return "old traffic signatures still converge through the center"
 	if "term_beta" in _log_entries_seen:
@@ -1140,8 +1908,10 @@ func _diagnosis_summary() -> String:
 func _aster_load_read() -> String:
 	if _mother_tended:
 		return "handoff open"
-	if _diagnosis_ready():
+	if _full_diagnosis_ready():
 		return "center spindle still owns the freight load"
+	if _diagnosis_ready():
+		return "freight ghost found; field reads %d/%d" % [_diagnostics_completed.size(), DIAGNOSTIC_ORDER.size()]
 	if "term_alpha" in _log_entries_seen:
 		return "construction ghost converges toward the middle"
 	return "ghost map incomplete"
@@ -1151,8 +1921,10 @@ func _peris_fault_read() -> String:
 		return "she's taking the weight cleanly again"
 	if _gear_installed:
 		return "the core is easing instead of flaring"
-	if _diagnosis_ready():
+	if _full_diagnosis_ready():
 		return "the pain is pooled at her core; edge vents are only echoes"
+	if _diagnosis_ready():
+		return "the logs point inward; care reads %d/%d" % [_diagnostics_completed.size(), DIAGNOSTIC_ORDER.size()]
 	if "term_beta" in _log_entries_seen:
 		return "the outer lanes hurt, but the knot is deeper"
 	return "she feels stalled, not venting"
@@ -1162,8 +1934,10 @@ func _endo_repair_read() -> String:
 		return "handoff complete"
 	if _gear_installed:
 		return _repair_point_label(_installed_repair_id).to_lower()
-	if _diagnosis_ready():
+	if _full_diagnosis_ready():
 		return _repair_point_label(CORRECT_REPAIR_ID).to_lower()
+	if _diagnosis_ready():
+		return "field evidence %d/%d" % [_diagnostics_completed.size(), DIAGNOSTIC_ORDER.size()]
 	if _repair_attempts.is_empty():
 		return "unconfirmed"
 	return "rejected: %s" % _repair_point_label(str(_repair_attempts[_repair_attempts.size() - 1])).to_lower()

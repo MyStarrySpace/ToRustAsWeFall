@@ -1,8 +1,8 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://nj4k4dvocet1"]
 
-[ext_resource type="Script" path="res://scripts/fragments/fragment_preview_sequence.gd" id="1"]
+[ext_resource type="Script" uid="uid://brmu7d1hq158w" path="res://scripts/fragments/fragment_preview_sequence.gd" id="1"]
 
-[node name="FragmentPreview" type="Node3D"]
+[node name="FragmentPreview" type="Node3D" unique_id=1404533502]
 script = ExtResource("1")
-preview_chunk = ""
+preview_chunk = "refuge_run"
 preview_menu = true

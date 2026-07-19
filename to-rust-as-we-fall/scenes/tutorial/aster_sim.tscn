@@ -44,6 +44,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0, 1.6)
 [node name="DrinkMachineInteract" type="Marker3D" parent="ScenePlacement/InteractableMarkers" unique_id=535154689]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.5, 0.9, 2.2)
 
+[node name="DrinkMachineApproach" type="Marker3D" parent="ScenePlacement/InteractableMarkers"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 0.063, 3.08)
+
 [node name="GlassBeadAnchor" type="Marker3D" parent="ScenePlacement/InteractableMarkers" unique_id=946738527]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.6, 0, 10.1)
 

@@ -6,50 +6,86 @@ extends Node
 
 var _label: Label
 var _prompt_layer: CanvasLayer
+var _prompt_row: HBoxContainer
+var _prompt_glyph: InputGlyph
 var _prompt_tween: Tween
 
 func _ready() -> void:
 	_setup_prompt()
 
 func show_prompt(text: String, duration := 0.0) -> void:
+	var legacy_action_prompt := _resolve_legacy_action_prompt(text)
+	if not legacy_action_prompt.is_empty():
+		show_action_prompt(
+			legacy_action_prompt.action,
+			legacy_action_prompt.text,
+			duration,
+			legacy_action_prompt.fallback
+		)
+		return
 	_setup_prompt()
 	_label.text = text
+	_prompt_glyph.visible = false
+	_animate_prompt(duration)
+
+## Older scenes sent control names as prose before action glyphs existed. Resolve the two shared
+## movement/interaction forms here so those prompts follow a rebind without every sequence carrying
+## its own compatibility logic. New prompts should call show_action_prompt() directly.
+static func _resolve_legacy_action_prompt(text: String) -> Dictionary:
+	if text.begins_with("Click to move"):
+		return {
+			"action": &"command",
+			"text": text.trim_prefix("Click "),
+			"fallback": "RMB",
+		}
+	if text.begins_with("[Interact]"):
+		var prompt_text := text.trim_prefix("[Interact]").strip_edges()
+		if prompt_text.begins_with("—"):
+			prompt_text = prompt_text.trim_prefix("—").strip_edges()
+		elif prompt_text.begins_with("-"):
+			prompt_text = prompt_text.trim_prefix("-").strip_edges()
+		return {
+			"action": &"command",
+			"text": prompt_text,
+			"fallback": "RMB",
+		}
+	return {}
+
+## Composite prompt for a real InputMap action. The same action drives both gameplay and artwork,
+## so changing a mouse button or key in settings cannot leave this prompt lying about the control.
+func show_action_prompt(
+	action: StringName,
+	text: String,
+	duration := 0.0,
+	fallback_label := ""
+) -> void:
+	_setup_prompt()
+	_prompt_glyph.configure_action(action, fallback_label)
+	_prompt_glyph.visible = true
+	_label.text = text
+	_animate_prompt(duration)
+
+func _animate_prompt(duration: float) -> void:
 	if _prompt_tween:
 		_prompt_tween.kill()
+	_prompt_row.modulate.a = 0.0
 	_prompt_tween = create_tween()
-	_prompt_tween.tween_property(_label, "theme_override_colors/font_color:a", 0.75, 0.4)
+	_prompt_tween.tween_property(_prompt_row, "modulate:a", 0.85, 0.4)
 	if duration > 0.0:
 		_prompt_tween.tween_interval(duration)
-		_prompt_tween.tween_property(_label, "theme_override_colors/font_color:a", 0.0, 0.6)
+		_prompt_tween.tween_property(_prompt_row, "modulate:a", 0.0, 0.6)
 
 func hide_prompt() -> void:
 	_setup_prompt()
 	if _prompt_tween:
 		_prompt_tween.kill()
 	_prompt_tween = create_tween()
-	_prompt_tween.tween_property(_label, "theme_override_colors/font_color:a", 0.0, 0.4)
+	_prompt_tween.tween_property(_prompt_row, "modulate:a", 0.0, 0.4)
 
 func _setup_prompt() -> void:
 	if _label != null:
 		return
-	_prompt_layer = get_node_or_null("TutorialPrompt") as CanvasLayer
-	if _prompt_layer == null:
-		_prompt_layer = CanvasLayer.new()
-		_prompt_layer.name = "TutorialPrompt"
-		add_child(_prompt_layer)
-	_prompt_layer.layer = 12
-
-	_label = Label.new()
-	_label.name = "PromptLabel"
-	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_label.add_theme_font_size_override("font_size", 18)
-	_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.75, 0.0))
-	# Sit above the dialogue panel (bottom ~150px) so prompts never overlap it.
-	_label.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_label.offset_top = -196
-	_label.offset_bottom = -166
-	_label.offset_left = -240
-	_label.offset_right = 240
-	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_prompt_layer.add_child(_label)
+	_prompt_layer = get_node("TutorialPrompt") as CanvasLayer
+	_prompt_row = get_node("TutorialPrompt/PromptRow") as HBoxContainer
+	_prompt_glyph = get_node("TutorialPrompt/PromptRow/PromptGlyph") as InputGlyph
+	_label = get_node("TutorialPrompt/PromptRow/PromptLabel") as Label

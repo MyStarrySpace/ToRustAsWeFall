@@ -13,6 +13,14 @@ uniform float blend_width = 4.0;
 uniform vec3 fog_color = vec3(0.15, 0.1, 0.07);
 uniform float desaturation = 0.8;
 
+float depth_to_ndc(float depth_raw) {
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	return depth_raw * 2.0 - 1.0;
+#else
+	return depth_raw;
+#endif
+}
+
 void vertex() {
 	POSITION = vec4(VERTEX.xy, 1.0, 1.0);
 }
@@ -22,7 +30,7 @@ void fragment() {
 
 	// Reconstruct world position from depth buffer
 	float depth_raw = texture(depth_tex, SCREEN_UV).x;
-	vec3 ndc = vec3(SCREEN_UV * 2.0 - 1.0, depth_raw);
+	vec3 ndc = vec3(SCREEN_UV * 2.0 - 1.0, depth_to_ndc(depth_raw));
 	vec4 view_coords = INV_PROJECTION_MATRIX * vec4(ndc, 1.0);
 	view_coords.xyz /= view_coords.w;
 	vec3 world_pos = (INV_VIEW_MATRIX * vec4(view_coords.xyz, 1.0)).xyz;

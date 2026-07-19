@@ -1,5 +1,11 @@
 extends "res://scripts/fragments/chunks/data_fragment_chunk.gd"
 
+const LevelDecoratorScript := preload("res://scripts/generation/level_decorator.gd")
+
+## Campaign hosts can use this hand-off to play the rejection beat before the pursuit clock
+## starts. Fragment preview keeps the immediate starting-gun behavior by default.
+signal tags_rejected
+
 ## THE LOCKOUT CHASE (GDD §12.1; corridor spec docs/LOCKOUT_CHASE.md; canon mechanics
 ## reference-docs/chase_scene_framework.md): the Act 1 climax. The party's tags fail at the
 ## simulation-boundary checkpoint; Naturalizer waves pursue them back down the corridor to Endo's
@@ -47,9 +53,164 @@ const CLOSE_CALL_RANGE := 4.5    # the breathing-down-your-neck warning distance
 # together; a wipe resumes there with the world kept (the gantry stays down, spent levers stay
 # spent -- levers never regenerate) and only the pack resets.
 const CHECKPOINTS := [50.0, 92.0, 128.0, 163.0]
+# Broken-pair fail lines. Most are the runback markers themselves; the extra line on the
+# barricade apron is deliberately BEFORE the two-person clamber, so a lone survivor cannot
+# become stranded at the shelf, and the final line catches a broken pair before Endo's rest.
+const PAIR_FAIL_BOUNDARIES := [50.0, 92.0, 128.0, BARRICADE_X0 - 4.0, 163.0, WALL_X - 16.0]
 const PAIR_NEAR_X := 12.0        # how far behind the shelf a boosting partner may stand
 const SUPPRESS_CHARGES := 3
 const SUPPRESS_SECS := 5.0
+
+# Four paired rally sectors turn the long retreat into sustained, player-authored chase play.
+# Entry and commit are both real 4.8-second actions. Between them, the live clock only advances
+# while the pair is together and either moving or under nearby Naturalizer pressure; hiding in a
+# quiet corner therefore cannot manufacture the duration. Six specialist stations, one spatial
+# strategy choice, and two selected branch executions fit inside every live window.
+const LOCKOUT_RALLY_WORK_SECONDS := 4.8
+const LOCKOUT_RALLY_LIVE_SECONDS := 80.9
+const LOCKOUT_RALLY_STAGE_FLOOR_SECONDS := 90.5
+const LOCKOUT_RALLY_PAIR_RADIUS := 13.5
+const LOCKOUT_RALLY_ACTIVE_THREAT_RADIUS := 18.0
+const LOCKOUT_RALLY_RUN_SPEED := 5.0
+const LOCKOUT_RALLY_TICK_SECONDS := 0.5
+const LOCKOUT_RALLY_TICK_TAG := "lockout_rally_tick"
+
+# The pre-extension baseline comes from the current human playthrough measurement. It remains
+# separately named so this contract never misrepresents inherited time as newly instrumented work.
+const LOCKOUT_EXISTING_ACTIVE_SECONDS := 113.5
+const LOCKOUT_EXISTING_TOTAL_SECONDS := 316.5
+const LOCKOUT_EXISTING_MAX_SINGLE_MODE_SECONDS := 44.0
+const LOCKOUT_EXISTING_MAX_DEAD_GAP_SECONDS := 4.5
+# Each live-sector directive is non-blocking and plays over the first two seconds of player work.
+# That replaces eight seconds of presentation previously measured in series with the course.
+const LOCKOUT_OVERLAPPED_PRESENTATION_SECONDS := 8.0
+
+const LOCKOUT_RALLY_STAGES := [
+	{
+		"id": "records",
+		"display": "RECORDS RELAY",
+		"center": Vector3(48.0, 0.0, 0.0),
+		"common": [
+			{"id": "index_trace", "role": "aster", "verb": "TRACE", "display": "trace the rejected index", "offset": Vector3(-3.6, 0.0, -2.6)},
+			{"id": "checksum_read", "role": "aster", "verb": "READ", "display": "read the checksum drift", "offset": Vector3(-0.9, 0.0, -3.0)},
+			{"id": "shutter_route", "role": "aster", "verb": "ROUTE", "display": "route the archive shutter", "offset": Vector3(2.2, 0.0, -2.5)},
+			{"id": "rail_brace", "role": "peris", "verb": "BRACE", "display": "brace the buckled rail", "offset": Vector3(-3.1, 0.0, 2.7)},
+			{"id": "counterweight_free", "role": "peris", "verb": "FREE", "display": "free the counterweight", "offset": Vector3(0.0, 0.0, 3.0)},
+			{"id": "cable_tension", "role": "peris", "verb": "TENSION", "display": "tension the shutter cable", "offset": Vector3(3.3, 0.0, 2.5)},
+		],
+		"strategies": [
+			{
+				"id": "north_shutter", "display": "DROP NORTH SHUTTER", "role": "aster",
+				"offset": Vector3(3.9, 0.0, -1.2), "effect": "shutter", "relief": 7.0,
+				"executions": [
+					{"id": "decode_shutter", "role": "aster", "verb": "DECODE", "display": "decode the north latch", "offset": Vector3(1.4, 0.0, -3.8)},
+					{"id": "drop_shutter", "role": "peris", "verb": "DROP", "display": "drop the north shutter", "offset": Vector3(-2.0, 0.0, -3.7)},
+				],
+			},
+			{
+				"id": "south_echo", "display": "LOOP SOUTH SIGNAL", "role": "aster",
+				"offset": Vector3(3.9, 0.0, 1.2), "effect": "decoy", "relief": 4.5,
+				"executions": [
+					{"id": "splice_echo", "role": "aster", "verb": "SPLICE", "display": "splice the credential echo", "offset": Vector3(1.4, 0.0, 3.8)},
+					{"id": "cast_echo", "role": "peris", "verb": "CAST", "display": "cast the false return", "offset": Vector3(-2.0, 0.0, 3.7)},
+				],
+			},
+		],
+	},
+	{
+		"id": "relay",
+		"display": "JUNCTION RELAY",
+		"center": Vector3(96.0, 0.0, 0.0),
+		"common": [
+			{"id": "relay_map", "role": "aster", "verb": "MAP", "display": "map the relay aliases", "offset": Vector3(-3.7, 0.0, -2.5)},
+			{"id": "portal_phase", "role": "aster", "verb": "PHASE", "display": "read the portal phase", "offset": Vector3(-0.8, 0.0, -3.0)},
+			{"id": "protocol_cut", "role": "aster", "verb": "CUT", "display": "cut the pursuit protocol", "offset": Vector3(2.3, 0.0, -2.5)},
+			{"id": "relay_ground", "role": "peris", "verb": "GROUND", "display": "ground the relay frame", "offset": Vector3(-3.2, 0.0, 2.7)},
+			{"id": "chelator_prime", "role": "peris", "verb": "PRIME", "display": "prime the chelator salts", "offset": Vector3(0.0, 0.0, 3.0)},
+			{"id": "return_valve", "role": "peris", "verb": "VENT", "display": "vent the return valve", "offset": Vector3(3.3, 0.0, 2.5)},
+		],
+		"strategies": [
+			{
+				"id": "north_portal", "display": "FEINT THROUGH NORTH", "role": "aster",
+				"offset": Vector3(3.9, 0.0, -1.2), "effect": "decoy", "relief": 5.0,
+				"executions": [
+					{"id": "seed_portal", "role": "aster", "verb": "SEED", "display": "seed the portal afterimage", "offset": Vector3(1.5, 0.0, -3.8)},
+					{"id": "swing_frame", "role": "peris", "verb": "SWING", "display": "swing the return frame", "offset": Vector3(-2.1, 0.0, -3.7)},
+				],
+			},
+			{
+				"id": "south_chelator", "display": "DRAG THROUGH CHELATOR", "role": "aster",
+				"offset": Vector3(3.9, 0.0, 1.2), "effect": "chelator", "relief": 8.0,
+				"executions": [
+					{"id": "mark_hesitation", "role": "aster", "verb": "MARK", "display": "mark the hesitation lane", "offset": Vector3(1.5, 0.0, 3.8)},
+					{"id": "spill_chelator", "role": "peris", "verb": "SPILL", "display": "spill the chelator charge", "offset": Vector3(-2.1, 0.0, 3.7)},
+				],
+			},
+		],
+	},
+	{
+		"id": "wash",
+		"display": "WASH RECOVERY",
+		"center": Vector3(132.0, 0.0, 0.0),
+		"common": [
+			{"id": "sweep_read", "role": "aster", "verb": "READ", "display": "read the sweep cadence", "offset": Vector3(-3.7, 0.0, -2.5)},
+			{"id": "drain_route", "role": "aster", "verb": "ROUTE", "display": "route the undercut drain", "offset": Vector3(-0.8, 0.0, -3.0)},
+			{"id": "gate_sync", "role": "aster", "verb": "SYNC", "display": "sync the wash gate", "offset": Vector3(2.3, 0.0, -2.5)},
+			{"id": "grate_lift", "role": "peris", "verb": "LIFT", "display": "lift the fouled grate", "offset": Vector3(-3.2, 0.0, 2.7)},
+			{"id": "pressure_bleed", "role": "peris", "verb": "BLEED", "display": "bleed the pressure drum", "offset": Vector3(0.0, 0.0, 3.0)},
+			{"id": "handrail_lock", "role": "peris", "verb": "LOCK", "display": "lock the recovery rail", "offset": Vector3(3.3, 0.0, 2.5)},
+		],
+		"strategies": [
+			{
+				"id": "north_wash", "display": "RIDE THE NORTH SWEEP", "role": "aster",
+				"offset": Vector3(3.9, 0.0, -1.2), "effect": "wash", "relief": 3.5,
+				"executions": [
+					{"id": "open_sluice", "role": "aster", "verb": "OPEN", "display": "open the north sluice", "offset": Vector3(1.5, 0.0, -3.8)},
+					{"id": "brace_sweep", "role": "peris", "verb": "BRACE", "display": "brace through the sweep", "offset": Vector3(-2.1, 0.0, -3.7)},
+				],
+			},
+			{
+				"id": "south_bypass", "display": "OPEN SOUTH BYPASS", "role": "aster",
+				"offset": Vector3(3.9, 0.0, 1.2), "effect": "shutter", "relief": 6.5,
+				"executions": [
+					{"id": "release_bypass", "role": "aster", "verb": "RELEASE", "display": "release the bypass latch", "offset": Vector3(1.5, 0.0, 3.8)},
+					{"id": "haul_bypass", "role": "peris", "verb": "HAUL", "display": "haul the bypass leaf", "offset": Vector3(-2.1, 0.0, 3.7)},
+				],
+			},
+		],
+	},
+	{
+		"id": "collapse",
+		"display": "COLLAPSE RUNBACK",
+		"center": Vector3(176.0, 0.0, 0.0),
+		"common": [
+			{"id": "load_trace", "role": "aster", "verb": "TRACE", "display": "trace the shelf load", "offset": Vector3(-3.7, 0.0, -2.5)},
+			{"id": "pinch_map", "role": "aster", "verb": "MAP", "display": "map the broken pinch", "offset": Vector3(-0.8, 0.0, -3.0)},
+			{"id": "wall_signal", "role": "aster", "verb": "SIGNAL", "display": "signal Endo's wall", "offset": Vector3(2.3, 0.0, -2.5)},
+			{"id": "rubble_wedge", "role": "peris", "verb": "WEDGE", "display": "wedge the rubble shelf", "offset": Vector3(-3.2, 0.0, 2.7)},
+			{"id": "haul_line", "role": "peris", "verb": "HAUL", "display": "haul the boost line", "offset": Vector3(0.0, 0.0, 3.0)},
+			{"id": "landing_brace", "role": "peris", "verb": "BRACE", "display": "brace the far landing", "offset": Vector3(3.3, 0.0, 2.5)},
+		],
+		"strategies": [
+			{
+				"id": "north_pinch", "display": "PILE THE NORTH PINCH", "role": "aster",
+				"offset": Vector3(3.9, 0.0, -1.2), "effect": "trip", "relief": 7.0,
+				"executions": [
+					{"id": "cant_rubble", "role": "aster", "verb": "CANT", "display": "cant the rubble face", "offset": Vector3(1.5, 0.0, -3.8)},
+					{"id": "pull_tripline", "role": "peris", "verb": "PULL", "display": "pull the tripline", "offset": Vector3(-2.1, 0.0, -3.7)},
+				],
+			},
+			{
+				"id": "south_suppress", "display": "BUILD SOUTH FIRELINE", "role": "aster",
+				"offset": Vector3(3.9, 0.0, 1.2), "effect": "suppress", "relief": 6.0,
+				"executions": [
+					{"id": "range_marker", "role": "aster", "verb": "MARK", "display": "mark the suppression range", "offset": Vector3(1.5, 0.0, 3.8)},
+					{"id": "raise_screen", "role": "peris", "verb": "RAISE", "display": "raise the firing screen", "offset": Vector3(-2.1, 0.0, 3.7)},
+				],
+			},
+		],
+	},
+]
 
 var _chase_started := false
 var _door_sealed := false
@@ -62,6 +223,24 @@ var _wave_count := 0
 var _door_held := {}             # char_id -> true: the door holds each cutter exactly once
 var _last_close_call := -100.0
 var _checkpoint_x := -1.0
+var _defer_pursuit_start := false
+var _pursuit_armed := false
+var _rally_nodes := {}
+var _rally_completed_actions := {}
+var _rally_choices := {}
+var _rally_completed_stages := {}
+var _rally_elapsed_by_stage := {}
+var _rally_history: Array = []
+var _rally_stage_index := 0
+var _rally_phase := "awaiting_entry"
+var _rally_elapsed := 0.0
+var _decoration_audit := {}
+
+func set_pursuit_start_deferred(deferred: bool) -> void:
+	_defer_pursuit_start = deferred
+
+func begin_deferred_pursuit() -> void:
+	_arm_chase_pursuit()
 
 func get_scene_title() -> String:
 	return "The Lockout Chase"
@@ -79,6 +258,17 @@ func _build_chunk() -> void:
 	_build_offshoot()
 	_build_tyreg_junction()
 	_build_endo_wall()
+	_build_rally_stages()
+	_decoration_audit = LevelDecoratorScript.decorate_profile(self, "lockout", {
+		"x0": 0.0,
+		"x1": 220.0,
+		"width": CORRIDOR_HALF_Z * 2.0,
+		"wall_height": 3.2,
+		"ground_y": 0.0,
+		"spacing": 8.4,
+		"seed": 0x10C0A7,
+		"signs": ["CIVIC LIMIT", "PAIR RELAY", "MAINTAINED SECTION  >"],
+	})
 	for hb in _hushblooms:
 		if is_instance_valid(hb):
 			hb.picked.connect(func() -> void: _bloom_carry += 1)
@@ -193,6 +383,511 @@ func _on_tags_rejected() -> void:
 	_drop_gantry()
 	_set_preview_step("lockout_rejected")
 	_show_note("TAG INCOHERENT // ACCESS DENIED. Concealed positions open behind you.", 3.0)
+	tags_rejected.emit()
+	if _defer_pursuit_start:
+		return
+	_arm_chase_pursuit()
+
+## --- Paired rally sectors: live survival, spatial decisions, and persistent execution ---
+
+func _build_rally_stages() -> void:
+	for stage_index in range(LOCKOUT_RALLY_STAGES.size()):
+		var stage: Dictionary = LOCKOUT_RALLY_STAGES[stage_index]
+		var stage_id := str(stage.get("id", "stage_%d" % stage_index))
+		var center: Vector3 = stage.get("center", Vector3.ZERO)
+		var root_node := Node3D.new()
+		root_node.name = "LockoutRallyFrame_%s" % stage_id
+		add_child(root_node)
+		_build_rally_frame(root_node, stage_index, stage)
+
+		var nodes := {"common": {}, "choices": {}, "branches": {}}
+		var entry := _add_rally_interactable(
+			root_node, stage_id, "entry", "ASTER", center + Vector3(-4.2, 0.0, 0.0),
+			"LATCH", "aster", Color(0.42, 0.72, 0.95), "latch the pair into %s" % str(stage.get("display", stage_id)))
+		entry.set_meta("rally_kind", "entry")
+		entry.interacted.connect(_on_rally_entered.bind(stage_index, entry))
+		nodes["entry"] = entry
+
+		for action_variant in (stage.get("common", []) as Array):
+			var action: Dictionary = action_variant
+			var action_id := str(action.get("id", "work"))
+			var role := str(action.get("role", ""))
+			var action_node := _add_rally_interactable(
+				root_node, stage_id, action_id, role.to_upper(), center + (action.get("offset", Vector3.ZERO) as Vector3),
+				str(action.get("verb", "WORK")), role, _rally_role_color(role), str(action.get("display", action_id)))
+			action_node.set_meta("rally_kind", "specialist_work")
+			action_node.interacted.connect(_on_rally_common_completed.bind(stage_index, action_id, action_node))
+			(nodes["common"] as Dictionary)[action_id] = action_node
+
+		for strategy_variant in (stage.get("strategies", []) as Array):
+			var strategy: Dictionary = strategy_variant
+			var strategy_id := str(strategy.get("id", "strategy"))
+			var strategy_role := str(strategy.get("role", "aster"))
+			var strategy_color := _rally_strategy_color(strategy_id)
+			var choice := _add_rally_interactable(
+				root_node, stage_id, "choose_%s" % strategy_id, strategy_role.to_upper(),
+				center + (strategy.get("offset", Vector3.ZERO) as Vector3), "CHOOSE", strategy_role,
+				strategy_color, str(strategy.get("display", strategy_id)))
+			choice.set_meta("rally_kind", "strategy_choice")
+			choice.set_meta("rally_strategy", strategy_id)
+			choice.interacted.connect(_on_rally_strategy_chosen.bind(stage_index, strategy_id, choice))
+			(nodes["choices"] as Dictionary)[strategy_id] = choice
+
+			var execution_nodes := {}
+			var execution_index := 0
+			for execution_variant in (strategy.get("executions", []) as Array):
+				var execution: Dictionary = execution_variant
+				var execution_id := str(execution.get("id", "execute_%d" % execution_index))
+				var execution_role := str(execution.get("role", ""))
+				var execution_node := _add_rally_interactable(
+					root_node, stage_id, execution_id, execution_role.to_upper(),
+					center + (execution.get("offset", Vector3.ZERO) as Vector3),
+					str(execution.get("verb", "EXECUTE")), execution_role, strategy_color,
+					str(execution.get("display", execution_id)))
+				execution_node.set_meta("rally_kind", "branch_execution")
+				execution_node.set_meta("rally_strategy", strategy_id)
+				execution_node.interacted.connect(_on_rally_branch_executed.bind(
+					stage_index, strategy_id, execution_id, execution_index, execution_node))
+				execution_nodes[execution_id] = execution_node
+				execution_index += 1
+			(nodes["branches"] as Dictionary)[strategy_id] = execution_nodes
+
+		var commit := _add_rally_interactable(
+			root_node, stage_id, "commit", "PERIS", center + Vector3(4.2, 0.0, 0.0),
+			"COMMIT", "peris", Color(0.36, 0.91, 0.50), "commit the pair's cleared route")
+		commit.set_meta("rally_kind", "commit")
+		commit.interacted.connect(_on_rally_committed.bind(stage_index, commit))
+		nodes["commit"] = commit
+		_rally_nodes[stage_id] = nodes
+	_reset_rally_progress()
+
+func _build_rally_frame(parent: Node3D, stage_index: int, stage: Dictionary) -> void:
+	var center: Vector3 = stage.get("center", Vector3.ZERO)
+	var stage_id := str(stage.get("id", "stage_%d" % stage_index))
+	var tint := Color(0.42, 0.72, 0.95).lerp(Color(0.95, 0.64, 0.32), float(stage_index) / 3.0)
+	# Measured structural bay: wall-hugging uprights, an overhead datum, a numbered beacon, and
+	# two floor routes. Everything is visual-only and leaves the full chase/navigation lane clear.
+	for side in [-1.0, 1.0]:
+		_add_box(parent, center + Vector3(0.0, 1.55, float(side) * 4.55),
+			Vector3(0.24, 3.10, 0.32), Color(0.24, 0.27, 0.31), tint, 0.35,
+			"LockoutRallyUpright_%s_%s" % [stage_id, "N" if side < 0.0 else "S"])
+		_add_box(parent, center + Vector3(-2.4, 2.65, float(side) * 4.42),
+			Vector3(4.6, 0.14, 0.12), Color(0.18, 0.21, 0.25), tint, 0.85)
+	_add_box(parent, center + Vector3(0.0, 3.05, 0.0), Vector3(0.30, 0.22, 9.15),
+		Color(0.28, 0.31, 0.35), tint, 0.75, "LockoutRallyCrossbeam_%s" % stage_id)
+	for route_z in [-3.35, 3.35]:
+		_add_box(parent, center + Vector3(0.0, 0.026, float(route_z)), Vector3(8.8, 0.022, 0.07),
+			Color(0.04, 0.05, 0.06), tint, 1.1, "LockoutRallyDatum_%s" % stage_id)
+	_add_box(parent, center + Vector3(0.0, 2.42, -4.36), Vector3(1.2, 0.46, 0.08),
+		Color(0.06, 0.08, 0.11), tint, 1.6, "LockoutRallyBeacon_%s" % stage_id)
+	_add_label(parent, "%02d // %s" % [stage_index + 1, str(stage.get("display", stage_id))],
+		center + Vector3(0.0, 2.42, -4.24), tint.lightened(0.18))
+	var light := _add_light(parent, center + Vector3(0.0, 2.8, 0.0), tint, 0.82, 9.5)
+	light.name = "LockoutRallyLight_%s" % stage_id
+
+func _add_rally_interactable(parent: Node3D, stage_id: String, action_id: String, role_label: String,
+		position: Vector3, verb: String, role: String, tint: Color, description: String) -> Area3D:
+	var node_name := "LockoutRally_%s_%s" % [stage_id, action_id]
+	var interactable := _add_interactable(parent, node_name, description, position, verb, role,
+		LOCKOUT_RALLY_WORK_SECONDS, true, 1.45, Interactable.InteractableType.TIMED_ACTION, false)
+	interactable.set_meta("rally_stage", stage_id)
+	interactable.set_meta("rally_action", action_id)
+	var pedestal := _add_box(interactable, Vector3(0.0, 0.38, 0.0), Vector3(0.54, 0.76, 0.54),
+		Color(0.14, 0.16, 0.19), tint, 0.55, "%sBody" % node_name)
+	_add_box(interactable, Vector3(0.0, 0.82, 0.0), Vector3(0.72, 0.12, 0.72),
+		Color(0.26, 0.29, 0.33), tint, 1.25, "%sReadout" % node_name)
+	var role_plate := _add_label(interactable, role_label, Vector3(0.0, 1.18, 0.0), tint.lightened(0.20))
+	role_plate.font_size = 30
+	role_plate.pixel_size = 0.007
+	_outline_interactable_child(interactable, pedestal, node_name, 1.45)
+	interactable.set_interaction_enabled(false)
+	return interactable
+
+func _rally_role_color(role: String) -> Color:
+	return Color(0.42, 0.72, 0.95) if role == "aster" else Color(0.36, 0.91, 0.50)
+
+func _rally_strategy_color(strategy_id: String) -> Color:
+	return Color(0.48, 0.78, 1.0) if "north" in strategy_id else Color(0.95, 0.62, 0.28)
+
+func _all_rally_interactables() -> Array:
+	var result: Array = []
+	for stage_nodes_variant in _rally_nodes.values():
+		var stage_nodes: Dictionary = stage_nodes_variant
+		result.append(stage_nodes.get("entry"))
+		result.append(stage_nodes.get("commit"))
+		for node in (stage_nodes.get("common", {}) as Dictionary).values():
+			result.append(node)
+		for node in (stage_nodes.get("choices", {}) as Dictionary).values():
+			result.append(node)
+		for branch_variant in (stage_nodes.get("branches", {}) as Dictionary).values():
+			for node in (branch_variant as Dictionary).values():
+				result.append(node)
+	return result
+
+func _reset_rally_progress() -> void:
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.cancel_tag(LOCKOUT_RALLY_TICK_TAG)
+	_rally_completed_actions.clear()
+	_rally_choices.clear()
+	_rally_completed_stages.clear()
+	_rally_elapsed_by_stage.clear()
+	_rally_history.clear()
+	_rally_stage_index = 0
+	_rally_phase = "awaiting_entry"
+	_rally_elapsed = 0.0
+	for interactable in _all_rally_interactables():
+		if interactable == null or not is_instance_valid(interactable):
+			continue
+		if interactable.has_method("reset"):
+			interactable.call("reset")
+		interactable.set_interaction_enabled(false)
+	if not LOCKOUT_RALLY_STAGES.is_empty():
+		var first_id := str((LOCKOUT_RALLY_STAGES[0] as Dictionary).get("id", ""))
+		var first_entry = (_rally_nodes.get(first_id, {}) as Dictionary).get("entry")
+		if first_entry != null:
+			first_entry.set_interaction_enabled(true)
+
+func _cancel_rally_dwells() -> void:
+	for interactable in _all_rally_interactables():
+		if interactable != null and is_instance_valid(interactable) \
+				and interactable.has_method("cancel_pending_interaction"):
+			interactable.call("cancel_pending_interaction")
+
+func _rally_action_key(stage_id: String, action_id: String) -> String:
+	return "%s:%s" % [stage_id, action_id]
+
+func _rally_pair_state(stage_index: int) -> String:
+	var gs = _get_game_state()
+	if gs == null:
+		return "missing_state"
+	var stage: Dictionary = LOCKOUT_RALLY_STAGES[stage_index]
+	var center: Vector3 = stage.get("center", Vector3.ZERO)
+	for cid in ["aster", "peris"]:
+		if not _pair_member_present(gs, cid) or gs.is_downed(cid):
+			return "broken"
+	for cid in ["aster", "peris"]:
+		var pos: Vector3 = gs.get_position(cid)
+		if Vector2(pos.x - center.x, pos.z - center.z).length() > LOCKOUT_RALLY_PAIR_RADIUS:
+			return "separated"
+	return "ready"
+
+func _refuse_rally_action(interactable: Node, message: String, keep_enabled := true) -> void:
+	_show_note(message, 2.4)
+	if interactable != null and interactable.has_method("reset"):
+		interactable.call("reset")
+		if not keep_enabled:
+			interactable.set_interaction_enabled(false)
+
+func _break_pair_at_rally() -> void:
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	_cancel_rally_dwells()
+	var survivor := ""
+	for cid in ["aster", "peris"]:
+		if _pair_member_present(gs, cid) and not gs.is_downed(cid):
+			survivor = cid
+			break
+	if survivor != "":
+		gs.down_character(survivor)
+		if fragment != null and not gs.is_party_downed(Array(fragment.party_ids)):
+			_schedule_broken_pair_reset(gs, survivor)
+	_show_note("The relay loses one signal. The chase resets the broken pair.", 2.6)
+
+func _rally_pair_gate(stage_index: int, interactable: Node) -> bool:
+	if not _chase_started:
+		_refuse_rally_action(interactable, "The relay is quiet until the checkpoint rejects you.")
+		return false
+	var pair_state := _rally_pair_state(stage_index)
+	if pair_state == "ready":
+		return true
+	if pair_state == "broken":
+		_refuse_rally_action(interactable, "One signal is gone.")
+		_break_pair_at_rally()
+	else:
+		_refuse_rally_action(interactable, "Bring Aster and Peris into the marked bay together.")
+	return false
+
+func _on_rally_entered(stage_index: int, interactable: Node) -> void:
+	if stage_index != _rally_stage_index or _rally_phase != "awaiting_entry":
+		_refuse_rally_action(interactable, "This relay is not the live one.", false)
+		return
+	if not _rally_pair_gate(stage_index, interactable):
+		return
+	var stage: Dictionary = LOCKOUT_RALLY_STAGES[stage_index]
+	var stage_id := str(stage.get("id", ""))
+	_rally_phase = "surviving"
+	_rally_elapsed = float(_rally_elapsed_by_stage.get(stage_id, 0.0))
+	for node in ((_rally_nodes[stage_id] as Dictionary).get("common", {}) as Dictionary).values():
+		node.set_interaction_enabled(true)
+	_ensure_rally_pressure(stage_index)
+	_arm_rally_tick()
+	_set_preview_step("lockout_rally_%s" % stage_id)
+	_show_note("PAIR LATCHED // Work the bay while the pursuit is live.", 2.5)
+
+func _on_rally_common_completed(stage_index: int, action_id: String, interactable: Node) -> void:
+	if stage_index != _rally_stage_index or _rally_phase != "surviving":
+		_refuse_rally_action(interactable, "That relay is no longer live.", false)
+		return
+	if not _rally_pair_gate(stage_index, interactable):
+		return
+	var stage: Dictionary = LOCKOUT_RALLY_STAGES[stage_index]
+	var stage_id := str(stage.get("id", ""))
+	_rally_completed_actions[_rally_action_key(stage_id, action_id)] = true
+	_apply_rally_work_pulse(stage_index)
+	if _rally_common_complete(stage):
+		for node in ((_rally_nodes[stage_id] as Dictionary).get("choices", {}) as Dictionary).values():
+			node.set_interaction_enabled(true)
+		_show_note("Six reads agree. Choose a physical lane and execute it.", 2.2)
+
+func _on_rally_strategy_chosen(stage_index: int, strategy_id: String, interactable: Node) -> void:
+	if stage_index != _rally_stage_index or _rally_phase != "surviving":
+		_refuse_rally_action(interactable, "That decision window has closed.", false)
+		return
+	if not _rally_pair_gate(stage_index, interactable):
+		return
+	var stage: Dictionary = LOCKOUT_RALLY_STAGES[stage_index]
+	var stage_id := str(stage.get("id", ""))
+	if not _rally_common_complete(stage):
+		_refuse_rally_action(interactable, "Finish both specialists' reads before choosing.")
+		return
+	_rally_choices[stage_id] = strategy_id
+	_rally_completed_actions[_rally_action_key(stage_id, "choose_%s" % strategy_id)] = true
+	var stage_nodes: Dictionary = _rally_nodes[stage_id]
+	for choice_id in (stage_nodes.get("choices", {}) as Dictionary):
+		var choice_node = (stage_nodes.get("choices", {}) as Dictionary)[choice_id]
+		choice_node.set_interaction_enabled(false)
+	for execution_node in (((stage_nodes.get("branches", {}) as Dictionary).get(strategy_id, {})) as Dictionary).values():
+		execution_node.set_interaction_enabled(true)
+	var strategy := _rally_strategy_by_id(stage, strategy_id)
+	_show_note("ROUTE HELD // %s. Execute both ends." % str(strategy.get("display", strategy_id)), 2.5)
+
+func _on_rally_branch_executed(stage_index: int, strategy_id: String, action_id: String,
+		execution_index: int, interactable: Node) -> void:
+	if stage_index != _rally_stage_index or _rally_phase != "surviving":
+		_refuse_rally_action(interactable, "That branch is no longer live.", false)
+		return
+	if not _rally_pair_gate(stage_index, interactable):
+		return
+	var stage: Dictionary = LOCKOUT_RALLY_STAGES[stage_index]
+	var stage_id := str(stage.get("id", ""))
+	if str(_rally_choices.get(stage_id, "")) != strategy_id:
+		_refuse_rally_action(interactable, "The pair committed to the other lane.", false)
+		return
+	_rally_completed_actions[_rally_action_key(stage_id, action_id)] = true
+	_apply_rally_strategy_effect(stage_index, strategy_id, execution_index)
+	_refresh_rally_commit(stage_index)
+
+func _on_rally_committed(stage_index: int, interactable: Node) -> void:
+	if stage_index != _rally_stage_index or _rally_phase != "surviving":
+		_refuse_rally_action(interactable, "That relay is already settled.", false)
+		return
+	if not _rally_pair_gate(stage_index, interactable):
+		return
+	var stage: Dictionary = LOCKOUT_RALLY_STAGES[stage_index]
+	var stage_id := str(stage.get("id", ""))
+	if not _rally_branch_complete(stage) or _rally_elapsed + 0.001 < LOCKOUT_RALLY_LIVE_SECONDS:
+		_refuse_rally_action(interactable, "The lane is not stable yet. Keep moving under pressure.")
+		return
+	_rally_completed_stages[stage_id] = true
+	_rally_elapsed_by_stage[stage_id] = _rally_elapsed
+	_rally_history.append({
+		"stage": stage_id,
+		"strategy": str(_rally_choices.get(stage_id, "")),
+		"live_seconds": _rally_elapsed,
+	})
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.cancel_tag(LOCKOUT_RALLY_TICK_TAG)
+	var gs = _get_game_state()
+	if gs != null:
+		_advance_checkpoint(gs)
+	_apply_rally_clear_relief(stage_index)
+	_rally_stage_index += 1
+	_rally_elapsed = 0.0
+	if _rally_stage_index < LOCKOUT_RALLY_STAGES.size():
+		_rally_phase = "awaiting_entry"
+		var next_id := str((LOCKOUT_RALLY_STAGES[_rally_stage_index] as Dictionary).get("id", ""))
+		var next_entry = (_rally_nodes.get(next_id, {}) as Dictionary).get("entry")
+		if next_entry != null:
+			next_entry.set_interaction_enabled(true)
+		_show_note("PAIR CHECKPOINT HELD // Take the next live relay.", 2.4)
+	else:
+		_rally_phase = "complete"
+		_set_preview_step("lockout_rallies_complete")
+		_show_note("ALL PAIR RELAYS HELD // Endo's wall can receive both of you.", 3.0)
+
+func _rally_common_complete(stage: Dictionary) -> bool:
+	var stage_id := str(stage.get("id", ""))
+	for action_variant in (stage.get("common", []) as Array):
+		var action: Dictionary = action_variant
+		if not bool(_rally_completed_actions.get(_rally_action_key(stage_id, str(action.get("id", ""))), false)):
+			return false
+	return true
+
+func _rally_branch_complete(stage: Dictionary) -> bool:
+	var stage_id := str(stage.get("id", ""))
+	var strategy_id := str(_rally_choices.get(stage_id, ""))
+	if strategy_id == "":
+		return false
+	var strategy := _rally_strategy_by_id(stage, strategy_id)
+	for execution_variant in (strategy.get("executions", []) as Array):
+		var execution: Dictionary = execution_variant
+		if not bool(_rally_completed_actions.get(
+				_rally_action_key(stage_id, str(execution.get("id", ""))), false)):
+			return false
+	return true
+
+func _rally_strategy_by_id(stage: Dictionary, strategy_id: String) -> Dictionary:
+	for strategy_variant in (stage.get("strategies", []) as Array):
+		var strategy: Dictionary = strategy_variant
+		if str(strategy.get("id", "")) == strategy_id:
+			return strategy
+	return {}
+
+func _refresh_rally_commit(stage_index: int) -> void:
+	if stage_index != _rally_stage_index or _rally_phase != "surviving":
+		return
+	var stage: Dictionary = LOCKOUT_RALLY_STAGES[stage_index]
+	if not _rally_branch_complete(stage) or _rally_elapsed + 0.001 < LOCKOUT_RALLY_LIVE_SECONDS:
+		return
+	var stage_id := str(stage.get("id", ""))
+	var commit = (_rally_nodes.get(stage_id, {}) as Dictionary).get("commit")
+	if commit != null:
+		commit.set_interaction_enabled(true)
+
+func _arm_rally_tick() -> void:
+	var sched = _get_scheduler()
+	if sched == null or _rally_phase != "surviving" \
+			or _rally_elapsed + 0.001 >= LOCKOUT_RALLY_LIVE_SECONDS:
+		return
+	var step_seconds := minf(LOCKOUT_RALLY_TICK_SECONDS, LOCKOUT_RALLY_LIVE_SECONDS - _rally_elapsed)
+	sched.cancel_tag(LOCKOUT_RALLY_TICK_TAG)
+	sched.schedule_after(step_seconds, _rally_tick.bind(step_seconds), LOCKOUT_RALLY_TICK_TAG)
+
+func _rally_tick(step_seconds := LOCKOUT_RALLY_TICK_SECONDS) -> void:
+	if _rally_phase != "surviving" or _rally_stage_index >= LOCKOUT_RALLY_STAGES.size():
+		return
+	var pair_state := _rally_pair_state(_rally_stage_index)
+	if pair_state == "broken":
+		_break_pair_at_rally()
+		return
+	var stage: Dictionary = LOCKOUT_RALLY_STAGES[_rally_stage_index]
+	var stage_id := str(stage.get("id", ""))
+	if pair_state == "ready" and _rally_tick_is_meaningful(_rally_stage_index):
+		_rally_elapsed = minf(LOCKOUT_RALLY_LIVE_SECONDS, _rally_elapsed + float(step_seconds))
+		_rally_elapsed_by_stage[stage_id] = _rally_elapsed
+		_refresh_rally_commit(_rally_stage_index)
+	_arm_rally_tick()
+
+func _rally_tick_is_meaningful(stage_index: int) -> bool:
+	var gs = _get_game_state()
+	if gs == null:
+		return false
+	for cid in ["aster", "peris"]:
+		if gs.characters.has(cid) and gs.is_moving(cid):
+			return true
+	if _rally_has_active_work(stage_index):
+		return true
+	var center: Vector3 = (LOCKOUT_RALLY_STAGES[stage_index] as Dictionary).get("center", Vector3.ZERO)
+	for enemy in _enemies:
+		if not is_instance_valid(enemy) or not enemy.is_alive() or enemy.is_stunned():
+			continue
+		var pos: Vector3 = gs.get_position(enemy.char_id)
+		if Vector2(pos.x - center.x, pos.z - center.z).length() <= LOCKOUT_RALLY_ACTIVE_THREAT_RADIUS:
+			return true
+	return false
+
+func _rally_has_active_work(stage_index: int) -> bool:
+	var stage_id := str((LOCKOUT_RALLY_STAGES[stage_index] as Dictionary).get("id", ""))
+	var stage_nodes: Dictionary = _rally_nodes.get(stage_id, {})
+	var candidates: Array = []
+	candidates.append_array((stage_nodes.get("common", {}) as Dictionary).values())
+	candidates.append_array((stage_nodes.get("choices", {}) as Dictionary).values())
+	for branch_variant in (stage_nodes.get("branches", {}) as Dictionary).values():
+		candidates.append_array((branch_variant as Dictionary).values())
+	candidates.append(stage_nodes.get("commit"))
+	for node in candidates:
+		if node != null and is_instance_valid(node) and node.has_method("_is_dwelling") \
+				and bool(node.call("_is_dwelling")):
+			return true
+	return false
+
+func _ensure_rally_pressure(stage_index: int) -> void:
+	for enemy in _enemies:
+		if is_instance_valid(enemy) and enemy.is_alive():
+			return
+	# Ordinarily the original concealed waves are already on the pair. This only closes the edge
+	# case where a rally is entered before a delayed wave or after every pursuer has been removed.
+	_spawn_wave(1, true)
+	_arm_pursuit_director()
+	var stage_id := str((LOCKOUT_RALLY_STAGES[stage_index] as Dictionary).get("id", ""))
+	_show_note("%s draws a fresh niche response." % stage_id.capitalize(), 1.8)
+
+func _rally_nearby_enemies(stage_index: int, radius: float) -> Array:
+	var result: Array = []
+	var gs = _get_game_state()
+	if gs == null:
+		return result
+	var center: Vector3 = (LOCKOUT_RALLY_STAGES[stage_index] as Dictionary).get("center", Vector3.ZERO)
+	for enemy in _enemies:
+		if not is_instance_valid(enemy) or not enemy.is_alive():
+			continue
+		var pos: Vector3 = gs.get_position(enemy.char_id)
+		var distance := Vector2(pos.x - center.x, pos.z - center.z).length()
+		if distance <= radius:
+			result.append({"enemy": enemy, "distance": distance, "position": pos})
+	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return float(a.get("distance", INF)) < float(b.get("distance", INF)))
+	return result
+
+func _apply_rally_work_pulse(stage_index: int) -> void:
+	var nearby := _rally_nearby_enemies(stage_index, 11.0)
+	if not nearby.is_empty():
+		var enemy = (nearby[0] as Dictionary).get("enemy")
+		if enemy != null and not enemy.is_stunned():
+			enemy.stun(1.6)
+
+func _apply_rally_strategy_effect(stage_index: int, strategy_id: String, execution_index: int) -> void:
+	var stage: Dictionary = LOCKOUT_RALLY_STAGES[stage_index]
+	var strategy := _rally_strategy_by_id(stage, strategy_id)
+	var effect := str(strategy.get("effect", "suppress"))
+	var relief := float(strategy.get("relief", 5.0)) + float(execution_index) * 0.8
+	var nearby := _rally_nearby_enemies(stage_index, 22.0)
+	var gs = _get_game_state()
+	var center: Vector3 = stage.get("center", Vector3.ZERO)
+	var lane_z := -3.6 if "north" in strategy_id else 3.6
+	var affected := 0
+	for enemy_data_variant in nearby:
+		var enemy_data: Dictionary = enemy_data_variant
+		var enemy = enemy_data.get("enemy")
+		if enemy == null:
+			continue
+		if effect == "suppress" and affected >= 2:
+			break
+		if effect == "wash" and gs != null:
+			var pos: Vector3 = enemy_data.get("position", center)
+			gs.snap_character_to(enemy.char_id, Vector3(maxf(TRENCH_X1 + 1.0, pos.x - 4.0), 0.0, pos.z))
+		elif effect == "decoy" and gs != null:
+			gs.command_move_to_pos(enemy.char_id, Vector3(center.x - 6.0, 0.0, lane_z))
+		elif effect == "trip":
+			_fallen[enemy.char_id] = true
+		enemy.stun(relief)
+		affected += 1
+	_show_note("%s executes: %d pursuer%s displaced." % [
+		str(strategy.get("display", strategy_id)), affected, "" if affected == 1 else "s"], 1.8)
+
+func _apply_rally_clear_relief(stage_index: int) -> void:
+	for enemy_data_variant in _rally_nearby_enemies(stage_index, 18.0):
+		var enemy = (enemy_data_variant as Dictionary).get("enemy")
+		if enemy != null:
+			enemy.stun(3.0)
+
+func _arm_chase_pursuit() -> void:
+	if not _chase_started or _pursuit_armed:
+		return
+	_pursuit_armed = true
 	var sched = _get_scheduler()
 	if sched == null:
 		return
@@ -669,16 +1364,25 @@ func _close_call_watch() -> void:
 ## F2: a wipe resets THE CHASE, not just the party — waves despawn, the timeline re-arms, and the
 ## scanner waits again. Respawning four steps from live pursuers was the probe's alt-F4 moment.
 func _restart_fragment() -> void:
+	# The first rally sits before the first checkpoint, so a from-the-top wipe can happen while its
+	# timed work is live. Retract that work before either reset branch; reset() alone re-enables an
+	# Interactable but deliberately does not cancel its FSM callback.
+	_cancel_rally_dwells()
 	if _chase_started and _checkpoint_x > 0.0:
 		_checkpoint_resume()
 		return
 	var sched = _get_scheduler()
 	if sched != null:
 		for tag in ["chase_wave_1", "chase_wave_2", "chase_decline_watch", "chase_close_call",
-				"chase_pursuit", "chase_portal_follow", "chase_door_hold", "chase_suppress", "chase_directive", "chase_hazards"]:
+				"chase_pursuit", "chase_portal_follow", "chase_door_hold", "chase_suppress", "chase_directive",
+				"chase_hazards", LOCKOUT_RALLY_TICK_TAG]:
 			sched.cancel_tag(tag)
 	for enemy in _enemies:
 		if is_instance_valid(enemy):
+			# queue_free is deferred; retract the enemy FSM now so a same-frame Web
+			# scheduler advance cannot dispatch through a node being torn down.
+			if sched != null:
+				sched.cancel_tag("enemy_%s" % enemy.name)
 			var gs = _get_game_state()
 			if gs != null and gs.characters.has(enemy.char_id):
 				gs.unregister_character(enemy.char_id)
@@ -686,6 +1390,7 @@ func _restart_fragment() -> void:
 	_enemies.clear()
 	_enemy_posts.clear()
 	_chase_started = false
+	_pursuit_armed = false
 	_decline_wave_fired = false
 	if _bridge_down:
 		_bridge_down = false
@@ -708,6 +1413,8 @@ func _restart_fragment() -> void:
 	if scanner != null and scanner.has_method("reset"):
 		scanner.call("reset")
 	super._restart_fragment()
+	_restore_pair_after_reset(fragment.spawns if fragment != null else {})
+	_reset_rally_progress()
 	_show_note("Quiet again. The scanner waits. So do they.", 2.4)
 
 ## S1: the record hall terminal banks (the stacks quote) -- visual bodies over the blocked
@@ -850,6 +1557,10 @@ func _hazard_poll() -> void:
 		_pinch_rule(gs, now)
 		_sync_fallen_visuals()
 		_advance_checkpoint(gs)
+		if _enforce_pair_boundary(gs):
+			# down_character emits the full-wipe signal. The inherited restart fires in 1.5s
+			# and re-arms this poll from either the last checkpoint or the scanner.
+			return
 		# barricade funnel: a pursuer at the wall whose quarry is beyond clambers after a beat
 		for enemy in _enemies:
 			if not is_instance_valid(enemy) or not enemy.is_alive() or enemy.is_stunned():
@@ -874,12 +1585,19 @@ func _hazard_poll() -> void:
 ## THE PAIR GATE: the debris shelf is a two-person move -- one boosts, one pulls up -- so both
 ## Aster and Peris must be up and at (or already over) the shelf to cross. A member beyond the
 ## barricade counts: they pull from the top. Solo play caps out here.
+func _pair_member_present(gs, cid: String) -> bool:
+	if not gs.characters.has(cid):
+		return false
+	if host != null and host.has_method("is_preview_character_present"):
+		return bool(host.call("is_preview_character_present", cid))
+	return true
+
 func _pair_boost_ok() -> bool:
 	var gs = _get_game_state()
 	if gs == null:
 		return true
 	for cid in ["aster", "peris"]:
-		if not gs.characters.has(cid) or gs.is_downed(cid):
+		if not _pair_member_present(gs, cid) or gs.is_downed(cid):
 			return false
 		if gs.get_position(cid).x < BARRICADE_X0 - PAIR_NEAR_X:
 			return false
@@ -895,7 +1613,7 @@ func _advance_checkpoint(gs) -> void:
 			continue
 		var both := true
 		for cid in ["aster", "peris"]:
-			if not gs.characters.has(cid) or gs.is_downed(cid) or gs.get_position(cid).x < cx:
+			if not _pair_member_present(gs, cid) or gs.is_downed(cid) or gs.get_position(cid).x < cx:
 				both = false
 				break
 		if both:
@@ -904,19 +1622,84 @@ func _advance_checkpoint(gs) -> void:
 		_checkpoint_x = best
 		_show_note("Checkpoint.", 1.4)
 
+## A broken pair cannot continue into the next chase section. Crossing a fail line with exactly
+## one conscious member drops the survivor too; the ordinary full-wipe handler then owns the
+## checkpoint/full reset. A conscious partner merely lagging behind is never punished.
+func _enforce_pair_boundary(gs) -> bool:
+	if not _chase_started or _phase == "complete":
+		return false
+	var survivor := ""
+	for cid in ["aster", "peris"]:
+		if not _pair_member_present(gs, cid) or gs.is_downed(cid):
+			continue
+		if survivor != "":
+			return false   # both members are still up; separation alone is allowed
+		survivor = cid
+	if survivor == "":
+		return false
+	var survivor_x := float(gs.get_position(survivor).x)
+	for boundary_v in PAIR_FAIL_BOUNDARIES:
+		var boundary := float(boundary_v)
+		if boundary <= _checkpoint_x:
+			continue
+		if survivor_x >= boundary:
+			gs.down_character(survivor)
+			# A hidden/unregistered partner is absent rather than downed, so the inherited
+			# is_party_downed check cannot schedule this reset. Close that path explicitly.
+			if fragment != null and not gs.is_party_downed(Array(fragment.party_ids)):
+				_schedule_broken_pair_reset(gs, survivor)
+			_show_note("The pair is broken. The chase resets.", 2.6)
+			return true
+	return false
+
+func _schedule_broken_pair_reset(gs, fallen_id: String) -> void:
+	_cancel_rally_dwells()
+	_wipe_count += 1
+	_fall_pos = gs.get_position(fallen_id)
+	var sched = _get_scheduler()
+	if sched == null:
+		_restart_fragment()
+		return
+	sched.cancel_tag(_restart_tag())
+	sched.schedule_after(1.5, _restart_fragment, _restart_tag())
+
+## Restore both authored runners even if story-presence code hid or unregistered one, then put
+## control/camera back on the chase pair instead of leaving the checkpoint focused on Endo.
+func _restore_pair_after_reset(positions: Dictionary) -> void:
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	for cid in ["aster", "peris"]:
+		if not positions.has(cid):
+			continue
+		var restored_by_host := false
+		if host != null and host.has_method("restore_preview_character_for_restart"):
+			restored_by_host = bool(host.call("restore_preview_character_for_restart", cid, positions[cid]))
+		if not restored_by_host and gs.characters.has(cid):
+			gs.restore_character(cid)
+			gs.snap_character_to(cid, positions[cid])
+	if host != null and host.has_method("select_preview_character"):
+		for preferred in ["aster", "peris"]:
+			if _pair_member_present(gs, preferred) and not gs.is_downed(preferred):
+				host.call("select_preview_character", preferred)
+				break
+
 ## The checkpoint resume: the pair back on their feet at the marker, the pack despawned and
 ## re-raised behind them after a grace beat, the world kept as it was. The full from-the-top
 ## reset only happens before the first marker.
 func _checkpoint_resume() -> void:
 	var gs = _get_game_state()
 	var sched = _get_scheduler()
+	_cancel_rally_dwells()
 	if sched != null:
 		for tag in ["chase_wave_1", "chase_wave_2", "chase_decline_watch", "chase_close_call",
 				"chase_pursuit", "chase_portal_follow", "chase_door_hold", "chase_suppress",
-				"chase_directive", "chase_hazards"]:
+				"chase_directive", "chase_hazards", LOCKOUT_RALLY_TICK_TAG]:
 			sched.cancel_tag(tag)
 	for enemy in _enemies:
 		if is_instance_valid(enemy):
+			if sched != null:
+				sched.cancel_tag("enemy_%s" % enemy.name)
 			if gs != null and gs.characters.has(enemy.char_id):
 				gs.unregister_character(enemy.char_id)
 			enemy.queue_free()
@@ -930,12 +1713,10 @@ func _checkpoint_resume() -> void:
 	_trip_refractory.clear()
 	_fallen.clear()
 	if gs != null:
-		var z := -1.0
-		for cid in ["aster", "peris"]:
-			if gs.characters.has(cid):
-				gs.restore_character(cid)
-				gs.snap_character_to(cid, Vector3(_checkpoint_x + 1.5, 0.0, z))
-				z += 2.0
+		_restore_pair_after_reset({
+			"aster": Vector3(_checkpoint_x + 1.5, 0.0, -1.0),
+			"peris": Vector3(_checkpoint_x + 1.5, 0.0, 1.0),
+		})
 	_phase = "ready"
 	if sched != null:
 		sched.schedule_after(5.5, _spawn_wave.bind(2, false, maxf(_checkpoint_x - 18.0, 2.0)), "chase_wave_2")
@@ -943,6 +1724,8 @@ func _checkpoint_resume() -> void:
 		sched.schedule_after(1.0, _hazard_poll, "chase_hazards")
 		sched.schedule_after(1.0, _decline_watch, "chase_decline_watch")
 	_arm_portal_follow()
+	if _rally_phase == "surviving":
+		_arm_rally_tick()
 	_set_preview_step("lockout_checkpoint")
 	_show_note("Back up at the marker. They know where you fell -- move.", 2.8)
 
@@ -970,17 +1753,23 @@ func _on_exit_shelter_rested(it: Node = null) -> void:
 	var gs = _get_game_state()
 	if gs != null:
 		for cid in ["aster", "peris"]:
-			if not gs.characters.has(cid) or gs.is_downed(cid) \
+			if not _pair_member_present(gs, cid) or gs.is_downed(cid) \
 					or gs.get_position(cid).x < WALL_X - 16.0:
 				_show_note("Endo holds up two fingers, then points back down the corridor.", 2.8)
 				if it != null and it.has_method("reset"):
 					it.call("reset")
 				return
+	if _rally_completed_stages.size() < LOCKOUT_RALLY_STAGES.size():
+		_show_note("Endo counts four pair relays, then points back to the first dark one.", 2.8)
+		if it != null and it.has_method("reset"):
+			it.call("reset")
+		return
 	super._on_exit_shelter_rested(it)
 
 func get_preview_state() -> Dictionary:
 	var st: Dictionary = super.get_preview_state()
 	st["chase_started"] = _chase_started
+	st["pursuit_armed"] = _pursuit_armed
 	st["door_sealed"] = _door_sealed
 	st["tyreg_accepted"] = _tyreg_accepted
 	st["decline_wave"] = _decline_wave_fired
@@ -988,7 +1777,253 @@ func get_preview_state() -> Dictionary:
 	st["pursuers"] = _enemies.size()
 	st["bridge_down"] = _bridge_down
 	st["checkpoint_x"] = _checkpoint_x
+	st["rally_stage_index"] = _rally_stage_index
+	st["rally_phase"] = _rally_phase
+	st["rally_elapsed_seconds"] = _rally_elapsed
+	st["rally_elapsed_by_stage"] = _rally_elapsed_by_stage.duplicate(true)
+	st["rally_choices"] = _rally_choices.duplicate(true)
+	st["rally_completed_stages"] = _rally_completed_stages.keys().duplicate()
+	st["rally_completed_actions"] = _rally_completed_actions.keys().duplicate()
+	st["rally_history"] = _rally_history.duplicate(true)
 	# the roguelite presenter's descent poll reads the generated-level key; the chase's wall rest
 	# IS its shelter rest
 	st["shelter_rested"] = bool(st.get("complete", false))
 	return st
+
+func get_decoration_audit() -> Dictionary:
+	return _decoration_audit.duplicate(true)
+
+## Standardized canonical pacing contract. The new contribution is derived from live node counts,
+## authored work dwells, an exact shortest route through each role/strategy layout, and the live
+## survival floor. The older 113.5 / 316.5 measurement remains explicitly marked as inherited.
+func get_playtime_contract() -> Dictionary:
+	var routes := _modeled_rally_route_breakdown()
+	var stage_count := LOCKOUT_RALLY_STAGES.size()
+	var added_active := float(stage_count) * LOCKOUT_RALLY_STAGE_FLOOR_SECONDS
+	var meaningful_active := LOCKOUT_EXISTING_ACTIVE_SECONDS + added_active
+	var total_play := LOCKOUT_EXISTING_TOTAL_SECONDS + added_active - LOCKOUT_OVERLAPPED_PRESENTATION_SECONDS
+	var local_route_seconds := float(routes.get("shortest_route_seconds", 0.0))
+	var specialist_seconds := float(stage_count) * 6.0 * LOCKOUT_RALLY_WORK_SECONDS
+	var strategy_seconds := float(stage_count) * LOCKOUT_RALLY_WORK_SECONDS
+	var branch_seconds := float(stage_count) * 2.0 * LOCKOUT_RALLY_WORK_SECONDS
+	var live_evasion_seconds := float(stage_count) * LOCKOUT_RALLY_LIVE_SECONDS \
+		- specialist_seconds - strategy_seconds - branch_seconds - local_route_seconds
+	var category_seconds := {
+		"existing_escape_traversal": 68.0,
+		"existing_lever_execution": 45.5,
+		"pair_relay_entry_and_commit": float(stage_count) * 2.0 * LOCKOUT_RALLY_WORK_SECONDS,
+		"specialist_fieldwork": specialist_seconds,
+		"spatial_strategy_decisions": strategy_seconds,
+		"persistent_branch_execution": branch_seconds,
+		"local_repositioning": local_route_seconds,
+		"live_pressure_evasion": live_evasion_seconds,
+	}
+	var active_ratio := meaningful_active / maxf(total_play, 0.001)
+	return {
+		"contract_id": "lockout_active_pacing_v1",
+		"target_id": "lockout",
+		"target_min_seconds": 300.0,
+		"target_max_seconds": 480.0,
+		"required_first_clear_seconds": 300.0,
+		"modeled_first_clear_seconds": total_play,
+		"modeled_meaningful_active_seconds": meaningful_active,
+		"meaningful_active_seconds": meaningful_active,
+		"total_play_seconds": total_play,
+		"active_ratio": active_ratio,
+		"meaningful_active_ratio": active_ratio,
+		"max_dead_gap_seconds": LOCKOUT_EXISTING_MAX_DEAD_GAP_SECONDS,
+		"max_single_mode_seconds": maxf(LOCKOUT_EXISTING_MAX_SINGLE_MODE_SECONDS,
+			float(routes.get("max_pressure_evasion_seconds", 0.0))),
+		"decision_count": 5,
+		"branch_count": 10,
+		"category_seconds": category_seconds,
+		"hard_idle_lock_seconds": 0.0,
+		"measured_existing_meaningful_active_seconds": LOCKOUT_EXISTING_ACTIVE_SECONDS,
+		"measured_existing_total_play_seconds": LOCKOUT_EXISTING_TOTAL_SECONDS,
+		"existing_measurement_status": "inherited_human_playtest_baseline",
+		"measured_new_meaningful_active_seconds": added_active,
+		"modeled_added_elapsed_seconds": added_active - LOCKOUT_OVERLAPPED_PRESENTATION_SECONDS,
+		"overlapped_nonblocking_presentation_seconds": LOCKOUT_OVERLAPPED_PRESENTATION_SECONDS,
+		"rally_stage_count": stage_count,
+		"rally_stage_floor_seconds": LOCKOUT_RALLY_STAGE_FLOOR_SECONDS,
+		"rally_live_seconds_each": LOCKOUT_RALLY_LIVE_SECONDS,
+		"rally_work_seconds_each": LOCKOUT_RALLY_WORK_SECONDS,
+		"mandatory_pair_checks": stage_count * 11,
+		"mandatory_specialist_actions": stage_count * 6,
+		"mandatory_strategy_choices": stage_count,
+		"mandatory_branch_actions": stage_count * 2,
+		"shortest_rally_route_meters": float(routes.get("shortest_route_meters", 0.0)),
+		"shortest_rally_route_seconds": local_route_seconds,
+		"rally_route_breakdown": routes,
+		"driver_hooks": get_lockout_driver_hooks(),
+		"model_note": "The four live clocks advance only while the intact pair is in its sector and moving, performing timed work, or evading an unstunned nearby pursuer. Eight seconds of non-blocking directives overlap sector work instead of extending elapsed time. Dialogue reading, refusal notes, failed routes, deaths, and checkpoint retries count zero toward the clean first-clear claim.",
+	}
+
+func _modeled_rally_route_breakdown() -> Dictionary:
+	var stage_routes := {}
+	var total_meters := 0.0
+	var total_seconds := 0.0
+	var max_pressure_evasion := 0.0
+	for stage_variant in LOCKOUT_RALLY_STAGES:
+		var stage: Dictionary = stage_variant
+		var stage_id := str(stage.get("id", ""))
+		var strategy_routes := {}
+		var shortest_strategy := ""
+		var shortest_meters := INF
+		var shortest_seconds := INF
+		var shortest_interior_work := 0.0
+		for strategy_variant in (stage.get("strategies", []) as Array):
+			var strategy: Dictionary = strategy_variant
+			var strategy_id := str(strategy.get("id", ""))
+			var route := _modeled_rally_strategy_route(stage, strategy)
+			strategy_routes[strategy_id] = route
+			var route_meters := float(route.get("meters", 0.0))
+			if route_meters < shortest_meters:
+				shortest_strategy = strategy_id
+				shortest_meters = route_meters
+				shortest_seconds = float(route.get("seconds", 0.0))
+				shortest_interior_work = float(route.get("interior_work_seconds", 0.0))
+		var pressure_evasion := maxf(0.0, LOCKOUT_RALLY_LIVE_SECONDS - shortest_interior_work - shortest_seconds)
+		max_pressure_evasion = maxf(max_pressure_evasion, pressure_evasion)
+		total_meters += shortest_meters
+		total_seconds += shortest_seconds
+		stage_routes[stage_id] = {
+			"shortest_strategy": shortest_strategy,
+			"shortest_meters": shortest_meters,
+			"shortest_seconds": shortest_seconds,
+			"pressure_evasion_seconds": pressure_evasion,
+			"strategies": strategy_routes,
+		}
+	return {
+		"movement_speed_meters_per_second": LOCKOUT_RALLY_RUN_SPEED,
+		"shortest_route_meters": total_meters,
+		"shortest_route_seconds": total_seconds,
+		"max_pressure_evasion_seconds": max_pressure_evasion,
+		"stages": stage_routes,
+	}
+
+func _modeled_rally_strategy_route(stage: Dictionary, strategy: Dictionary) -> Dictionary:
+	var center: Vector3 = stage.get("center", Vector3.ZERO)
+	var start := center + Vector3(-4.2, 0.0, 0.0)
+	var finish := center + Vector3(4.2, 0.0, 0.0)
+	var points_by_role := {"aster": [], "peris": []}
+	for action_variant in (stage.get("common", []) as Array):
+		var action: Dictionary = action_variant
+		var role := str(action.get("role", ""))
+		if points_by_role.has(role):
+			(points_by_role[role] as Array).append(center + (action.get("offset", Vector3.ZERO) as Vector3))
+	var choice_role := str(strategy.get("role", "aster"))
+	if points_by_role.has(choice_role):
+		(points_by_role[choice_role] as Array).append(center + (strategy.get("offset", Vector3.ZERO) as Vector3))
+	for execution_variant in (strategy.get("executions", []) as Array):
+		var execution: Dictionary = execution_variant
+		var role := str(execution.get("role", ""))
+		if points_by_role.has(role):
+			(points_by_role[role] as Array).append(center + (execution.get("offset", Vector3.ZERO) as Vector3))
+	var role_meters := {}
+	var meters := 0.0
+	for role in ["aster", "peris"]:
+		var role_distance := _shortest_rally_path_distance(start, finish, points_by_role[role] as Array)
+		role_meters[role] = role_distance
+		meters += role_distance
+	var interior_action_count := (stage.get("common", []) as Array).size() + 1 \
+		+ (strategy.get("executions", []) as Array).size()
+	return {
+		"meters": meters,
+		"seconds": meters / LOCKOUT_RALLY_RUN_SPEED,
+		"role_meters": role_meters,
+		"interior_action_count": interior_action_count,
+		"interior_work_seconds": float(interior_action_count) * LOCKOUT_RALLY_WORK_SECONDS,
+	}
+
+## Exact open-path TSP for one role: both members enter at the west latch, visit their own
+## stations in the best legal order, and regroup at the east commit. Five points is the largest
+## role set, so this bitmask dynamic program is tiny and deterministic.
+func _shortest_rally_path_distance(start: Vector3, finish: Vector3, points: Array) -> float:
+	if points.is_empty():
+		return start.distance_to(finish)
+	var point_count := points.size()
+	var all_mask := (1 << point_count) - 1
+	var distances := {}
+	for point_index in range(point_count):
+		distances[Vector2i(1 << point_index, point_index)] = start.distance_to(points[point_index] as Vector3)
+	for mask in range(1, all_mask + 1):
+		for last_index in range(point_count):
+			var state_key := Vector2i(mask, last_index)
+			if not distances.has(state_key):
+				continue
+			var current_distance := float(distances[state_key])
+			for next_index in range(point_count):
+				var next_bit := 1 << next_index
+				if mask & next_bit:
+					continue
+				var next_mask := mask | next_bit
+				var next_key := Vector2i(next_mask, next_index)
+				var candidate := current_distance + (points[last_index] as Vector3).distance_to(points[next_index] as Vector3)
+				if candidate < float(distances.get(next_key, INF)):
+					distances[next_key] = candidate
+	var best := INF
+	for last_index in range(point_count):
+		var key := Vector2i(all_mask, last_index)
+		if distances.has(key):
+			best = minf(best, float(distances[key]) + (points[last_index] as Vector3).distance_to(finish))
+	return best
+
+func get_lockout_driver_hooks() -> Dictionary:
+	var stages: Array = []
+	for stage_variant in LOCKOUT_RALLY_STAGES:
+		var stage: Dictionary = stage_variant
+		var stage_id := str(stage.get("id", ""))
+		var common: Array = []
+		for action_variant in (stage.get("common", []) as Array):
+			var action: Dictionary = action_variant
+			common.append({
+				"node": "LockoutRally_%s_%s" % [stage_id, str(action.get("id", ""))],
+				"role": str(action.get("role", "")),
+			})
+		var strategies := {}
+		for strategy_variant in (stage.get("strategies", []) as Array):
+			var strategy: Dictionary = strategy_variant
+			var strategy_id := str(strategy.get("id", ""))
+			var executions: Array = []
+			for execution_variant in (strategy.get("executions", []) as Array):
+				var execution: Dictionary = execution_variant
+				executions.append({
+					"node": "LockoutRally_%s_%s" % [stage_id, str(execution.get("id", ""))],
+					"role": str(execution.get("role", "")),
+				})
+			strategies[strategy_id] = {
+				"choice_node": "LockoutRally_%s_choose_%s" % [stage_id, strategy_id],
+				"choice_role": str(strategy.get("role", "aster")),
+				"execution_nodes": executions,
+			}
+		stages.append({
+			"id": stage_id,
+			"center": stage.get("center", Vector3.ZERO),
+			"pair_radius": LOCKOUT_RALLY_PAIR_RADIUS,
+			"live_seconds": LOCKOUT_RALLY_LIVE_SECONDS,
+			"entry_node": "LockoutRally_%s_entry" % stage_id,
+			"entry_role": "aster",
+			"common_nodes": common,
+			"strategies": strategies,
+			"commit_node": "LockoutRally_%s_commit" % stage_id,
+			"commit_role": "peris",
+		})
+	return {
+		"start_node": "BoundaryScanner",
+		"stages": stages,
+		"finish_node": "EndoWall",
+		"input_contract": "select required role, issue the ordinary interact command, walk to the node, and let the TIMED_ACTION dwell finish",
+	}
+
+func _exit_tree() -> void:
+	var sched = _get_scheduler()
+	if sched != null:
+		for tag in ["chase_wave_1", "chase_wave_2", "chase_decline_watch", "chase_close_call",
+				"chase_pursuit", "chase_portal_follow", "chase_door_hold", "chase_suppress",
+				"chase_directive", "chase_hazards", LOCKOUT_RALLY_TICK_TAG]:
+			sched.cancel_tag(tag)
+		for enemy in _enemies:
+			if is_instance_valid(enemy):
+				sched.cancel_tag("enemy_%s" % enemy.name)
+	super._exit_tree()

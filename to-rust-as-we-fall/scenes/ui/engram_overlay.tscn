@@ -1,0 +1,186 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/engram_overlay.gd" id="1_engram"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+content_margin_left = 12.0
+content_margin_top = 12.0
+content_margin_right = 12.0
+content_margin_bottom = 12.0
+bg_color = Color(0.04, 0.05, 0.07, 0.96)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.18, 0.22, 0.3, 0.55)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[node name="EngramOverlay" type="CanvasLayer"]
+layer = 40
+visible = false
+script = ExtResource("1_engram")
+
+[node name="OverlayRoot" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Backdrop" type="ColorRect" parent="OverlayRoot"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.02, 0.025, 0.04, 0.92)
+
+[node name="Margin" type="MarginContainer" parent="OverlayRoot"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 24
+
+[node name="Shell" type="VBoxContainer" parent="OverlayRoot/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Header" type="HBoxContainer" parent="OverlayRoot/Margin/Shell"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="HeaderText" type="VBoxContainer" parent="OverlayRoot/Margin/Shell/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Heading" type="Label" parent="OverlayRoot/Margin/Shell/Header/HeaderText"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.66, 0.8, 0.98, 1)
+theme_override_font_sizes/font_size = 20
+text = "ASTER'S ENGRAM"
+
+[node name="ShortcutLabel" type="Label" parent="OverlayRoot/Margin/Shell/Header/HeaderText"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.54, 0.58, 0.66, 1)
+theme_override_font_sizes/font_size = 11
+
+[node name="CloseButton" type="Button" parent="OverlayRoot/Margin/Shell/Header"]
+layout_mode = 2
+text = "Close"
+
+[node name="Split" type="HSplitContainer" parent="OverlayRoot/Margin/Shell"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="TimelinePanel" type="PanelContainer" parent="OverlayRoot/Margin/Shell/Split"]
+custom_minimum_size = Vector2(330, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="TimelineBox" type="VBoxContainer" parent="OverlayRoot/Margin/Shell/Split/TimelinePanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TimelineHeading" type="Label" parent="OverlayRoot/Margin/Shell/Split/TimelinePanel/TimelineBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.88, 0.9, 0.95, 1)
+theme_override_font_sizes/font_size = 14
+text = "Timeline"
+
+[node name="Timeline" type="ItemList" parent="OverlayRoot/Margin/Shell/Split/TimelinePanel/TimelineBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="DetailPanel" type="PanelContainer" parent="OverlayRoot/Margin/Shell/Split"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="DetailBox" type="VBoxContainer" parent="OverlayRoot/Margin/Shell/Split/DetailPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="TitleLabel" type="Label" parent="OverlayRoot/Margin/Shell/Split/DetailPanel/DetailBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.88, 0.9, 0.95, 1)
+theme_override_font_sizes/font_size = 16
+text = "No Capture Selected"
+
+[node name="Preview" type="TextureRect" parent="OverlayRoot/Margin/Shell/Split/DetailPanel/DetailBox"]
+custom_minimum_size = Vector2(0, 360)
+layout_mode = 2
+size_flags_vertical = 3
+expand_mode = 1
+stretch_mode = 5
+
+[node name="EmptyLabel" type="Label" parent="OverlayRoot/Margin/Shell/Split/DetailPanel/DetailBox"]
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.58, 0.6, 0.68, 1)
+theme_override_font_sizes/font_size = 13
+text = "No entries yet."
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="TimestampLabel" type="Label" parent="OverlayRoot/Margin/Shell/Split/DetailPanel/DetailBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.74, 0.77, 0.84, 1)
+theme_override_font_sizes/font_size = 12
+
+[node name="LocationLabel" type="Label" parent="OverlayRoot/Margin/Shell/Split/DetailPanel/DetailBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.74, 0.77, 0.84, 1)
+theme_override_font_sizes/font_size = 12
+
+[node name="CaptionLabel" type="Label" parent="OverlayRoot/Margin/Shell/Split/DetailPanel/DetailBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.74, 0.77, 0.84, 1)
+theme_override_font_sizes/font_size = 12
+autowrap_mode = 2
+
+[node name="BodyLabel" type="RichTextLabel" parent="OverlayRoot/Margin/Shell/Split/DetailPanel/DetailBox"]
+visible = false
+custom_minimum_size = Vector2(0, 140)
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_colors/default_color = Color(0.77, 0.79, 0.84, 1)
+theme_override_font_sizes/normal_font_size = 13
+fit_content = true
+
+[node name="Actions" type="HBoxContainer" parent="OverlayRoot/Margin/Shell/Split/DetailPanel/DetailBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="BookmarkButton" type="Button" parent="OverlayRoot/Margin/Shell/Split/DetailPanel/DetailBox/Actions"]
+layout_mode = 2
+disabled = true
+text = "Bookmark"
+
+[node name="ExportButton" type="Button" parent="OverlayRoot/Margin/Shell/Split/DetailPanel/DetailBox/Actions"]
+layout_mode = 2
+disabled = true
+text = "Export PNG"
+
+[node name="ExportDialog" type="FileDialog" parent="."]
+access = 2
+file_mode = 4
+filters = PackedStringArray("*.png ; PNG image")
+
+[connection signal="pressed" from="OverlayRoot/Margin/Shell/Header/CloseButton" to="." method="close_overlay"]
+[connection signal="item_selected" from="OverlayRoot/Margin/Shell/Split/TimelinePanel/TimelineBox/Timeline" to="." method="_on_item_selected"]
+[connection signal="pressed" from="OverlayRoot/Margin/Shell/Split/DetailPanel/DetailBox/Actions/BookmarkButton" to="." method="_toggle_bookmark"]
+[connection signal="pressed" from="OverlayRoot/Margin/Shell/Split/DetailPanel/DetailBox/Actions/ExportButton" to="." method="_open_export_dialog"]
+[connection signal="file_selected" from="ExportDialog" to="." method="_export_selected_capture"]

@@ -3,6 +3,8 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
+#include <chrono>
+
 using namespace godot;
 
 EventScheduler::EventScheduler() :
@@ -42,6 +44,14 @@ void EventScheduler::_bind_methods() {
 }
 
 int EventScheduler::schedule_at(double tick, const Callable &callback, const String &tag, int priority) {
+	// Scene changes and fragment resets can invalidate a bound object before its event is
+	// dispatched. Never enqueue an already-dead callable: native builds report an ordinary
+	// invalid-call error, but WebAssembly can trap as a `null function` invocation.
+	if (callback.is_null() || !callback.is_valid()) {
+		UtilityFunctions::push_warning("EventScheduler refused an invalid callback for tag: " + tag);
+		return 0;
+	}
+
 	int handle = _next_handle++;
 
 	ScheduledEvent event;
@@ -51,6 +61,7 @@ int EventScheduler::schedule_at(double tick, const Callable &callback, const Str
 	event.handle = handle;
 
 	_heap.push(event);
+	_live_handles.insert(handle);
 	_live_count++;
 
 	if (!tag.is_empty()) {
@@ -66,14 +77,13 @@ int EventScheduler::schedule_after(double delay, const Callable &callback, const
 }
 
 bool EventScheduler::cancel(int handle) {
-	if (_cancelled.count(handle)) {
-		return false;
-	}
-	// Check if this handle exists (it's < _next_handle and not already cancelled)
-	if (handle <= 0 || handle >= _next_handle) {
+	// A handle that already fired is no longer cancellable. Tracking live handles also
+	// prevents stale tag entries from driving the public pending count below zero.
+	if (!_live_handles.count(handle) || _cancelled.count(handle)) {
 		return false;
 	}
 	_cancelled.insert(handle);
+	_live_handles.erase(handle);
 	_live_count--;
 	return true;
 }
@@ -87,8 +97,9 @@ int EventScheduler::cancel_tag(const String &tag) {
 
 	int removed = 0;
 	for (int h : it->second) {
-		if (!_cancelled.count(h)) {
+		if (_live_handles.count(h) && !_cancelled.count(h)) {
 			_cancelled.insert(h);
+			_live_handles.erase(h);
 			_live_count--;
 			removed++;
 		}
@@ -131,8 +142,13 @@ void EventScheduler::advance_ticks(double ticks) {
 			continue;
 		}
 
+		_live_handles.erase(event.handle);
 		_live_count--;
 		_current_tick = event.key.tick;
+		if (event.callback.is_null() || !event.callback.is_valid()) {
+			UtilityFunctions::push_warning("EventScheduler skipped an invalidated callback for tag: " + event.tag);
+			continue;
+		}
 		if (_profiling) {
 			auto t0 = std::chrono::steady_clock::now();
 			event.callback.call();
@@ -181,7 +197,12 @@ Dictionary EventScheduler::pop_next() {
 			continue;
 		}
 
+		_live_handles.erase(event.handle);
 		_live_count--;
+		if (event.callback.is_null() || !event.callback.is_valid()) {
+			UtilityFunctions::push_warning("EventScheduler skipped an invalidated callback for tag: " + event.tag);
+			continue;
+		}
 		double delta = event.key.tick - _current_tick;
 		_current_tick = event.key.tick;
 		event.callback.call();
@@ -247,6 +268,7 @@ void EventScheduler::clear() {
 		_heap.pop();
 	}
 	_cancelled.clear();
+	_live_handles.clear();
 	_tag_to_handles.clear();
 	_live_count = 0;
 }

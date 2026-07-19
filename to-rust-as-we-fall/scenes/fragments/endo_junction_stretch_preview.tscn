@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://bwn026lkklq10"]
+
+[ext_resource type="Script" uid="uid://brmu7d1hq158w" path="res://scripts/fragments/fragment_preview_sequence.gd" id="1"]
+
+[node name="EndoJunctionStretchPreview" type="Node3D" unique_id=251330148]
+script = ExtResource("1")
+preview_chunk = "endo_junction_stretch"
+scene_title_override = "Endo's Junction to Shelter 1"

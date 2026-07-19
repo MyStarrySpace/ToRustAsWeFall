@@ -14,6 +14,7 @@ to-rust-as-we-fall/.godot/
 # Built native libraries and linker artifacts
 to-rust-as-we-fall/bin/*.dll
 to-rust-as-we-fall/bin/*.so
+to-rust-as-we-fall/bin/*.wasm
 to-rust-as-we-fall/bin/*.dylib
 to-rust-as-we-fall/bin/*.framework/
 to-rust-as-we-fall/bin/*.lib
@@ -63,6 +64,8 @@ reference-docs/
 
 # Generated reports + run artifacts
 to-rust-as-we-fall/reports/
+to-rust-as-we-fall/.qa-logs/
+to-rust-as-we-fall/.qa-videos/
 
 # Temp logs and editor lock files
 *.err.log

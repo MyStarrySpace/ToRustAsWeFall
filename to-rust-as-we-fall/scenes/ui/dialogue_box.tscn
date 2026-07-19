@@ -1,0 +1,84 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/dialogue_box.gd" id="1_dialogue"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_dialogue"]
+content_margin_left = 20.0
+content_margin_top = 14.0
+content_margin_right = 20.0
+content_margin_bottom = 12.0
+bg_color = Color(0.02, 0.02, 0.04, 0.93)
+border_width_left = 3
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.18, 0.2, 0.28, 0.7)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[node name="DialogueBox" type="CanvasLayer"]
+layer = 15
+script = ExtResource("1_dialogue")
+
+[node name="Margin" type="MarginContainer" parent="."]
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -200.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 18
+
+[node name="Center" type="CenterContainer" parent="Margin"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="Margin/Center"]
+visible = false
+custom_minimum_size = Vector2(720, 0)
+layout_mode = 2
+size_flags_horizontal = 4
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_dialogue")
+
+[node name="VBox" type="VBoxContainer" parent="Margin/Center/Panel"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="SpeakerLabel" type="Label" parent="Margin/Center/Panel/VBox"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.45, 0.65, 0.9, 0.95)
+theme_override_font_sizes/font_size = 12
+
+[node name="TranscriptScroll" type="ScrollContainer" parent="Margin/Center/Panel/VBox"]
+custom_minimum_size = Vector2(680, 104)
+layout_mode = 2
+mouse_filter = 2
+horizontal_scroll_mode = 0
+
+[node name="TranscriptText" type="RichTextLabel" parent="Margin/Center/Panel/VBox/TranscriptScroll"]
+custom_minimum_size = Vector2(680, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_colors/default_color = Color(0.78, 0.78, 0.84, 1)
+theme_override_constants/line_separation = 5
+theme_override_font_sizes/normal_font_size = 16
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+
+[node name="ContinueHint" type="Label" parent="Margin/Center/Panel/VBox"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.55, 0.6, 0.7, 0.85)
+theme_override_font_sizes/font_size = 12
+horizontal_alignment = 2

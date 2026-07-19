@@ -1,0 +1,5 @@
+[gd_scene format=3]
+
+[node name="Pip" type="ColorRect"]
+custom_minimum_size = Vector2(8, 10)
+mouse_filter = 2

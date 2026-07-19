@@ -13,7 +13,9 @@ extends RefCounted
 
 const SeededRngScript := preload("res://scripts/system/random/seeded_rng.gd")
 
-const PITCH := 8         # tile-cells between adjacent slot lattice points (> max piece dim, leaves a corridor gap)
+const PITCH := 8         # default tile-cells between adjacent slot lattice points
+const MIN_PITCH := 7     # must stay wider than the largest common room-piece footprint
+const MAX_PITCH := 18    # prevents a malformed profile from producing impractically long corridors
 const ROTATIONS := [0, 90, 180, 270]
 
 ## solve(nodes, routes, settings, budget, piece_catalog, levels) ->
@@ -23,6 +25,8 @@ const ROTATIONS := [0, 90, 180, 270]
 ## {} = a single flat floor.
 static func solve(nodes: Array, routes: Array, settings: Dictionary, _budget: Dictionary, piece_catalog, levels: Dictionary = {}) -> Dictionary:
 	var base_seed := int(settings.get("seed", 0))
+	var spatial_profile: Dictionary = settings.get("spatial_profile", {})
+	var pitch := clampi(int(spatial_profile.get("slot_pitch", PITCH)), MIN_PITCH, MAX_PITCH)
 	var slots: Array = []
 	var by_id := {}
 	var max_level := 0
@@ -39,7 +43,7 @@ static func solve(nodes: Array, routes: Array, settings: Dictionary, _budget: Di
 		max_level = maxi(max_level, level)
 		var slot := {
 			"id": sid, "index": i, "level": level,
-			"lx": i * PITCH, "ly": row * PITCH,
+			"lx": i * pitch, "ly": row * pitch,
 			"tags": _slot_tags(nd),
 			"neighbors": [], "required": {},
 		}

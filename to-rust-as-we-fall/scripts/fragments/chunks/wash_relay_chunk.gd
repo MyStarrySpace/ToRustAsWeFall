@@ -79,6 +79,43 @@ var _branch_loot := 0
 var _branch_root: Node3D
 var _branch_guard_spawns := {}      # guard id -> flat spawn (so reset re-snaps branch guards too)
 
+# --- Authored transit breaks ---------------------------------------------------------------
+# The old relay was one uninterrupted curl: even with optional salvage spokes, the mandatory read was
+# simply walking the next wet strip. These two composed routes give the coil a different spatial verb without
+# disturbing the proven ChannelsArc mapping:
+#   * a PORTAL pressure-room tucked toward the centre vents the upcoming jet for a generous window;
+#   * a slow covered CRAWL loop bulges outside the coil and rejoins beyond the timed sluice.
+# Both are genuine choices: the direct wet route remains the fast route, while the set piece is safer and
+# costs traversal time. Positions below are DATA-space (s, y, lane); the transit objects own the conversion.
+const PRESSURE_GAP_S0 := 19.7
+const PRESSURE_GAP_S1 := 21.6
+const PRESSURE_PORTAL_ENTRY := Vector3(19.0, 0.5, -3.0)
+const PRESSURE_ROOM_ARRIVAL := Vector3(22.5, 0.5, -7.2)
+const PRESSURE_ROOM_RETURN := Vector3(25.0, 0.5, -7.2)
+const PRESSURE_PORTAL_LANDING := Vector3(22.25, 0.5, -3.0)
+const PRESSURE_VALVE_POS := Vector3(24.0, 0.5, -9.0)
+const PRESSURE_ROOM_CENTER := Vector3(23.7, 0.5, -8.1)
+const PRESSURE_VENT_SECTION := 2       # the jet (22..27)
+const PRESSURE_VENT_WINDOW := 18.0
+
+const SLUICE_TUNNEL_MOUTH_A := Vector3(36.5, 0.5, 10.8)
+const SLUICE_TUNNEL_MOUTH_B := Vector3(43.5, 0.5, 10.8)
+const SLUICE_TUNNEL_DATA_PATH := [
+	Vector3(37.5, 0.5, 12.0),
+	Vector3(39.5, 0.5, 13.0),
+	Vector3(41.5, 0.5, 13.0),
+	Vector3(42.5, 0.5, 12.0),
+	SLUICE_TUNNEL_MOUTH_B,
+]
+
+var _setpiece_root: Node3D
+var _section_setpiece_count := 0
+var _transit_root: Node3D
+var _pressure_portals: Array = []
+var _sluice_tunnels: Array = []
+var _pressure_valve: Area3D
+var _pressure_vent_until := -1.0
+
 # --- Drain loop: an OPTIONAL flooding DETOUR off the spiral ("out the deck rim and back in"). It leaves the
 # deck at S0, runs a flooding channel along the OUTER lane, and rejoins at S1, with a DRY salvage ledge across
 # the water. A guard posts on that ledge; you BAIT it across the flooding run and let the current DROWN it
@@ -98,12 +135,14 @@ const DRAIN_LOOP_PHASE := 1.0        # stagger from FIRST_FLOOD so the loop isn'
 const DRAIN_BAIT_PULL := 6.5         # the bait holds the guard committed in the run a bit longer than one flood
 									 # PERIOD, so a surge is GUARANTEED to catch it while it's parked there
 const DRAIN_KILL_DELAY := 0.7        # the drowned guard's body lingers this long (cosmetic dissolve) then is removed
-const DRAIN_DROWN_SWEEPS := 4        # enemy-drown re-checks spread across the flood WINDOW (not just the onset tick)
+const FLOOD_SWEEP_INTERVAL := 0.1    # scheduler ticks: visible water is dangerous for its whole window
+const DRAIN_DROWN_SWEEPS := 16       # DRAIN_LOOP_DUR / FLOOD_SWEEP_INTERVAL
 var _drain_root: Node3D
 var _drain_water: Array = []         # the run's flood-water segments (toggled by _drain_flooding)
 var _drain_flooding := false         # the run is mid-surge this window (scheduler-set)
 var _drain_flood_count := 0          # surges fired (for the analytic next-onset read)
 var _drowned_count := 0             # guards the current has taken down the drain this run
+var _section_drowned_count := 0     # main-relay guards caught by visible section water
 var _cadence_t0 := 0.0              # scheduler tick the hazard cadence was (re)armed at — the analytic safe-window
 									# reads are relative to THIS, so a reset that re-arms at a non-zero tick stays
 									# self-consistent (the real onset and the predicted onset agree)
@@ -111,13 +150,18 @@ var _cadence_t0 := 0.0              # scheduler tick the hazard cadence was (re)
 var _flooding := []                # cosmetic surge window
 var _flood_counts := []            # per section — how many surges have fired (cadence variety / tests)
 var _plate_held := []              # per section — all the section's plates are held this frame
+## Character-level view of positional work. Unlike _plate_held (the aggregate mechanism truth), this
+## also reports a single member on one half of a double plate so the HUD can protect that holder from
+## a whole-party rally. The preview host treats this optional dictionary as the generic hold contract.
+var _character_holds: Dictionary = {}   # char_id -> {control_id, kind, label, section}
 var _sluice_blocked := []          # per section — the sluice gate cells are currently walled off
-var _washed := {}                  # char_id -> true: members swept to the start, stranded until recovered (gates re-washing)
+var _washed := {}                  # char_id -> true: members waiting at the start shelter for optional fast recovery
 var _sweep_count := 0              # how many times the party was swept back this run (a "rough run" read)
 var _section_wash_counts := []     # per section — times THIS section has washed the party (the flush hint trigger)
 var _run_hint_shown := false       # one-shot: after enough washes, a character grumbles that you must RUN the surges
 const FLUSH_HINT_THRESHOLD := 3    # the flush hint only appears once a SINGLE section has washed you this many times
 # _scheduled is inherited from DataFragmentChunk (same one-time-scheduling guard).
+var _wipe_restart_pending := false
 var _flow_strips: Array = []
 # The surge-telegraph strips ride the helix under their OWN Node3D root, so they survive hide_flat_graybox (which
 # hides the chunk's flat direct-child graybox) — the strip is the only "about-to-flood" tell without TRACE, and it
@@ -137,6 +181,11 @@ var _lure_meshes: Array = []
 var _sloperope_deployed := false   # the chunk-end line has been dropped (the start climb point is live)
 var _debug_tick := 0               # throttles the CHANNELS_DEBUG position log
 var _rope_mesh: MeshInstance3D
+var _climb_interactable: Area3D
+var _guidance_root: Node3D
+var _section_guides: Array = []
+var _guidance_section := -1
+var _override_controls: Dictionary = {}   # section index -> held console (for cause/effect feedback)
 
 # --- Character abilities (TRACE / BLOOM / BRACE) — each protagonist's signature read ---
 # Aster TRACE (aster_focus): reads the flood cadence and surfaces the next SAFE window for the section he
@@ -146,7 +195,9 @@ var _rope_mesh: MeshInstance3D
 const ABILITY_CONTEXT := "channels_rhythm"
 const TELEGRAPH_LEAD := 1.2         # seconds before an onset the flow strip brightens (the surge tell)
 const TRACE_HOLD := 6.0             # how long a TRACE read stays surfaced
+const SURGE_CLOSE_MARGIN := 0.75     # amber when a crossing nearly touches an active-water window
 const ABILITY_OWNERS := {"aster_focus": "aster", "peris_tune": "peris", "endo_patch": "endo"}
+var _surge_timing_learned := false  # run knowledge: nearby visible surge/telegraph, or TRACE, unlocks timing
 var _trace_section := -1            # section TRACE is reading (-1 = none) — derived, cleared on reset
 var _trace_until := 0.0            # scheduler tick the TRACE read expires
 var _blooms: Array = []            # peris's flora lights: [{pos, node}] — persistent for the run
@@ -200,6 +251,7 @@ func _build_chunk() -> void:
 	_add_box(self, Vector3((px0 + px1) * 0.5, 4.4, FLOOR_Z_HALF - 0.4), Vector3(px1 - px0 + 2.0, 1.2, 1.2), Color(0.2, 0.19, 0.18))
 
 	_strip_root = Node3D.new(); _strip_root.name = "FlowStrips"; add_child(_strip_root)
+	_override_controls.clear()
 	for i in range(SECTIONS.size()):
 		var s: Dictionary = SECTIONS[i]
 		var t := str(s["type"]); var x0: float = s["x0"]; var x1: float = s["x1"]; var cx := (x0 + x1) * 0.5; var w := x1 - x0
@@ -250,12 +302,24 @@ func _build_chunk() -> void:
 				Color(0.3, 0.9, 1.0), 1.0)   # a console post (child -> rides the helix warp)
 			_outline_interactable_child(ov, ovm, "Override%d" % i, 1.6)
 			ov.interacted.connect(func() -> void: _on_override(i))
+			_override_controls[i] = ov
+			_add_causal_feedback_link(ov, strip, Color(0.25, 0.9, 1.0), {
+				"label": "HOLD TO STOP THIS FLOW",
+				"source_offset": Vector3(0.0, 1.0, 0.0),
+				"target_offset": Vector3(0.0, 0.35, 0.0),
+				"arc_height": 1.4,
+				"name": "OverrideFlowLink%d" % i,
+			})
 	_wdbg("sections built")
 	_build_threats()
 	_wdbg("threats built")
 	_build_connect_backs()
 	_wdbg("connect-backs built")
+	_build_section_guidance()
+	_build_section_setpieces()
+	_wdbg("section guidance built")
 	_build_branches()
+	_build_transit_breaks()
 	_wdbg("branches built")
 	_build_water_layer()
 	_wdbg("water built")
@@ -263,6 +327,11 @@ func _build_chunk() -> void:
 	_wdbg("drain loop built")
 	_build_splash_planes()
 	_wdbg("pipe splashes built")
+	# This chunk authors its environment directly instead of calling DataFragmentChunk._build_chunk(),
+	# so it must opt into the shared full-wipe signal explicitly.
+	var gs = _get_game_state()
+	if gs != null and not gs.character_downed.is_connected(_on_wash_relay_character_downed):
+		gs.character_downed.connect(_on_wash_relay_character_downed)
 
 # A box pre-warped onto the helix under an arbitrary parent (generalises _add_warped_box, which targets the
 # branch root). y_off lifts it along the deck's local up. Used for the flood-water layer + sluice gates.
@@ -283,6 +352,16 @@ func _make_water_material(variant := 0) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = WaterShader
 	mat.set_shader_parameter("water_tex", WaterTexV1 if variant % 2 == 1 else WaterTexV0)
+	# Set the readability contract explicitly on every material instead of relying solely on shader defaults.
+	# This makes Web/Compatibility imports and tests agree on the nonzero water + overhead-fade floors.
+	mat.set_shader_parameter("water_alpha", 0.88)
+	mat.set_shader_parameter("emission_strength", 2.2)
+	mat.set_shader_parameter("reveal_radius", 6.0)
+	mat.set_shader_parameter("reveal_min_factor", 0.45)
+	mat.set_shader_parameter("reveal_softness", 0.7)
+	mat.set_shader_parameter("reveal_alpha_floor", 0.14)
+	mat.set_shader_parameter("reveal_emission_floor", 0.2)
+	mat.set_shader_parameter("reveal_cut_above_player", 1.8)
 	# Draw the translucent flood AFTER the perception-overlay quad (render_priority 126) so it blends on TOP of
 	# the data-view instead of vanishing under it (transparent surfaces aren't in the overlay's screen texture).
 	mat.render_priority = 127
@@ -337,12 +416,226 @@ func _build_connect_backs() -> void:
 	var rpost := _add_box(rope, Vector3(0.0, 1.4, 0.0), Vector3(0.4, 2.8, 0.4), Color(0.3, 0.22, 0.12))   # the reel post
 	_outline_interactable_child(rope, rpost, "Sloperope", 1.7)
 	# CLIMB POINT at the start — a washed member climbs the dropped line back up to the chunk end.
-	var climb := _add_interactable(self, "ClimbLine", "Climb the line", CLIMB_POS,
+	_climb_interactable = _add_interactable(self, "ClimbLine", "Climb the line", CLIMB_POS,
 		"CLIMB", "", 1.4, false, 1.7, Interactable.InteractableType.INSPECTION, false)
-	climb.interacted.connect(func() -> void: _on_climb())
-	_rope_mesh = _add_box(climb, Vector3(0.0, 1.4, 0.0), Vector3(0.16, 2.8, 0.16), Color(0.25, 0.18, 0.1))
+	_climb_interactable.interacted.connect(func() -> void: _on_climb())
+	_rope_mesh = _add_box(_climb_interactable, Vector3(0.0, 1.4, 0.0), Vector3(0.16, 2.8, 0.16), Color(0.25, 0.18, 0.1))
 	_rope_mesh.visible = false   # the line only appears once dropped from the chunk end
-	_outline_interactable_child(climb, _rope_mesh, "ClimbLine", 1.7)
+	_outline_interactable_child(_climb_interactable, _rope_mesh, "ClimbLine", 1.7)
+	# Hiding the rope mesh alone leaves the Area3D, hover verb, and click target live. The line has no readable
+	# meaning until it is physically dropped from the end, so remove the entire affordance until then.
+	_climb_interactable.set_interaction_enabled(false)
+
+
+## One local instruction at a time. Each guide is pre-warped onto the spiral and nested below a Node3D so the
+## modeled Channels backdrop can hide flat graybox meshes without also deleting the gameplay wayfinding.
+func _build_section_guidance() -> void:
+	_guidance_root = Node3D.new()
+	_guidance_root.name = "SectionGuidance"
+	add_child(_guidance_root)
+	_section_guides.clear()
+	_guidance_section = -1
+	for i in range(SECTIONS.size()):
+		var spec := _guidance_spec(i)
+		var guide := Node3D.new()
+		guide.name = "Guide%02d_%s" % [i + 1, str(SECTIONS[i]["type"]).capitalize()]
+		_guidance_root.add_child(guide)
+		_add_warped_guidance_label(guide, "Objective", str(spec["objective"]),
+			float(spec["objective_s"]), -3.0, Color(0.78, 0.92, 1.0))
+		if str(spec["cue"]) != "":
+			var cue := _warped_box(guide, float(spec["cue_s"]), -2.15,
+				Vector3(0.85, 0.07, 1.1), Color(0.08, 0.32, 0.38), Color(0.25, 0.9, 1.0), 1.4, 0.06)
+			cue.name = "DecisionCue"
+			_add_warped_guidance_label(guide, "DecisionCueLabel", str(spec["cue"]),
+				float(spec["cue_s"]), -2.15, Color(0.35, 0.95, 1.0))
+		var marker_color: Color = spec["marker_color"]
+		var marker := _warped_box(guide, float(spec["destination_s"]), float(spec["destination_lane"]),
+			Vector3(1.7, 0.09, 1.4), marker_color * 0.45, marker_color, 1.8, 0.07)
+		marker.name = "DestinationMarker"
+		_add_warped_guidance_label(guide, "Destination", str(spec["destination"]),
+			float(spec["destination_s"]), float(spec["destination_lane"]), marker_color)
+		guide.visible = false
+		_section_guides.append(guide)
+
+
+func _guidance_spec(i: int) -> Dictionary:
+	var s: Dictionary = SECTIONS[i]
+	var t := str(s["type"])
+	var x0 := float(s["x0"])
+	var x1 := float(s["x1"])
+	var objective := "READ THE SURGE // THEN RUN"
+	var destination := "SAFE SIDE"
+	var destination_s := x1 + 0.8
+	var destination_lane := 0.0
+	var marker_color := Color(0.35, 1.0, 0.58)
+	var cue := ""
+	var cue_s := x0 + 0.75
+	match t:
+		"flush", "jet":
+			objective = "RUN ONE THROUGH"
+			cue = ">> OVERRIDE AHEAD"
+			destination = "HOLD HERE // SEND REST"
+			destination_s = x1 + 1.5
+			marker_color = Color(0.25, 0.9, 1.0)
+		"current", "sluice":
+			objective = "WAIT FOR SURGE // THEN RUN"
+		"plate":
+			objective = "HOLD PLATE // SEND REST"
+			marker_color = Color(1.0, 0.72, 0.22)
+		"patrol":
+			objective = "HIDE IN CYAN ALCOVE // THEN RUN"
+		"lure":
+			objective = "FIRE FLURE // THEN RUN"
+		"basin":
+			objective = "HIDE // RUN ONE TO OVERRIDE"
+			cue = ">> OVERRIDE AHEAD"
+			destination = "HOLD HERE // SEND REST"
+			destination_s = x1 + 1.5
+			marker_color = Color(0.25, 0.9, 1.0)
+		"double_plate":
+			objective = "TWO HOLD // SEND THIRD"
+			destination = "ALL CREW // EXIT"
+			destination_s = CHUNK_END_X + 0.5
+	return {
+		"objective": objective,
+		"objective_s": x0 - 0.35,
+		"destination": destination,
+		"destination_s": destination_s,
+		"destination_lane": destination_lane,
+		"marker_color": marker_color,
+		"cue": cue,
+		"cue_s": cue_s,
+	}
+
+
+func _add_warped_guidance_label(parent: Node3D, node_name: String, text: String,
+		s: float, lane: float, color: Color) -> Label3D:
+	var anchor := Node3D.new()
+	anchor.name = "%sAnchor" % node_name
+	anchor.transform = _branch_warp_xform(s, lane)
+	parent.add_child(anchor)
+	var label := _add_label(anchor, text, Vector3(0.0, 1.25, 0.0), color)
+	label.name = node_name
+	return label
+
+
+func _guidance_index_for_x(x: float) -> int:
+	if SECTIONS.is_empty():
+		return -1
+	for i in range(SECTIONS.size() - 1):
+		var boundary := (float(SECTIONS[i]["x1"]) + float(SECTIONS[i + 1]["x0"])) * 0.5
+		if x < boundary:
+			return i
+	return SECTIONS.size() - 1
+
+
+func _refresh_section_guidance() -> void:
+	if _guidance_root == null or not is_instance_valid(_guidance_root):
+		return
+	var char_id := _get_active_character()
+	if char_id == "" or char_id not in PARTY_IDS:
+		char_id = "aster"
+	_set_guidance_section(_guidance_index_for_x(_get_character_position(char_id).x))
+
+
+func _set_guidance_section(index: int) -> void:
+	_guidance_section = index
+	for i in range(_section_guides.size()):
+		if is_instance_valid(_section_guides[i]):
+			_section_guides[i].visible = i == index
+
+# Persistent section silhouettes. The original type dressing was built as direct children of the chunk and
+# intentionally disappears when the authored Channels model replaces the flat graybox. These nested warped
+# landmarks survive that swap, so a player can read the next verb before the water itself turns on.
+func _build_section_setpieces() -> void:
+	_setpiece_root = Node3D.new()
+	_setpiece_root.name = 'SetpieceSilhouettes'
+	add_child(_setpiece_root)
+	_section_setpiece_count = 0
+	for i in range(SECTIONS.size()):
+		var section: Dictionary = SECTIONS[i]
+		var kind := str(section['type'])
+		var x0 := float(section['x0'])
+		var x1 := float(section['x1'])
+		var cx := (x0 + x1) * 0.5
+		var span := x1 - x0
+		var root := Node3D.new()
+		root.name = 'Setpiece%02d_%s' % [i + 1, kind.capitalize()]
+		_setpiece_root.add_child(root)
+		var base := _section_color(kind)
+		match kind:
+			'flush':
+				_setpiece_arch(root, x0 + 0.7, base, 3.6)
+				_setpiece_mesh(root, 'Spout', cx, 3.15, Vector3(1.1, 1.15, 1.8),
+					Color(0.16, 0.2, 0.24), Color(0.2, 0.65, 1.0), 0.8, 3.0)
+				_setpiece_mesh(root, 'LowerLip', cx, -3.25, Vector3(0.45, 0.7, span),
+					base * 0.5, base, 0.7, 0.35)
+			'current':
+				for lane in [-2.8, 2.8]:
+					_setpiece_mesh(root, 'CurrentRail', cx, lane, Vector3(0.28, 0.75, span),
+						base * 0.55, Color(0.2, 0.75, 1.0), 0.75, 0.45)
+				for sc in [x0 + 1.0, cx, x1 - 1.0]:
+					_setpiece_mesh(root, 'FlowFin', sc, 0.0, Vector3(3.6, 0.08, 0.5),
+						base * 0.45, base, 1.0, 0.12)
+			'jet':
+				_setpiece_arch(root, cx, Color(0.32, 0.48, 0.72), 3.9)
+				for sc in [x0 + 1.0, cx, x1 - 1.0]:
+					for lane in [-2.45, 2.45]:
+						_setpiece_mesh(root, 'JetNozzle', sc, lane, Vector3(0.72, 0.6, 0.72),
+							Color(0.12, 0.16, 0.22), Color(0.35, 0.8, 1.0), 1.15, 0.32)
+			'plate':
+				for lane in [-1.15, 1.15]:
+					_setpiece_mesh(root, 'BridgeRail', cx, lane, Vector3(0.16, 0.55, span),
+						Color(0.16, 0.17, 0.2), base, 0.7, 0.35)
+				_setpiece_mesh(root, 'PlatePylon', x0 - 0.65, -2.7, Vector3(0.8, 1.8, 0.8),
+					Color(0.24, 0.18, 0.08), Color(1.0, 0.7, 0.2), 1.4, 0.9)
+			'sluice':
+				_setpiece_arch(root, x0 + 0.25, Color(0.32, 0.16, 0.1), 4.3)
+				_setpiece_arch(root, x1 - 0.25, Color(0.32, 0.16, 0.1), 4.3)
+				_setpiece_mesh(root, 'SluiceHeader', cx, 0.0, Vector3(7.4, 0.6, span),
+					Color(0.13, 0.14, 0.17), Color(1.0, 0.34, 0.18), 0.55, 4.15)
+			'patrol':
+				for lane in [-3.15, 3.15]:
+					_setpiece_mesh(root, 'HideCowl', cx, lane, Vector3(1.35, 2.2, span * 0.42),
+						Color(0.12, 0.14, 0.18), Color(0.15, 0.85, 0.9), 0.6, 1.1)
+				_setpiece_arch(root, x1 - 0.5, base, 3.7)
+			'lure':
+				for sc in [x0 + 0.55, x1 - 0.55]:
+					_setpiece_arch(root, sc, Color(0.38, 0.17, 0.4), 3.5)
+				_setpiece_mesh(root, 'LureBeacon', cx, 0.0, Vector3(0.7, 2.9, 0.7),
+					Color(0.2, 0.11, 0.22), Color(1.0, 0.35, 0.9), 1.3, 2.2)
+			'basin':
+				for sc in [x0 + 1.0, cx, x1 - 1.0]:
+					_setpiece_mesh(root, 'PumpTower', sc, 3.15, Vector3(1.0, 3.0, 1.0),
+						Color(0.13, 0.18, 0.22), Color(0.2, 0.65, 1.0), 0.9, 1.5)
+				for lane in [-3.35, 3.35]:
+					_setpiece_mesh(root, 'BasinRim', cx, lane, Vector3(0.35, 0.7, span),
+						base * 0.45, base, 0.65, 0.35)
+			'double_plate':
+				for lane in [-DOUBLE_PLATE_Z, DOUBLE_PLATE_Z]:
+					_setpiece_mesh(root, 'CrewPylon', x0 - 0.55, lane, Vector3(0.8, 2.0, 0.8),
+						Color(0.25, 0.18, 0.08), Color(1.0, 0.72, 0.18), 1.5, 1.0)
+				for lane in [-1.0, 1.0]:
+					_setpiece_mesh(root, 'FinalRail', cx, lane, Vector3(0.16, 0.62, span),
+						Color(0.16, 0.17, 0.2), base, 0.8, 0.4)
+				_setpiece_arch(root, x1 - 0.35, base, 4.0)
+		_section_setpiece_count += 1
+
+
+func _setpiece_mesh(parent: Node3D, node_name: String, s: float, lane: float, size: Vector3,
+		color: Color, emission := Color.BLACK, energy := 0.0, y_off := 0.0) -> MeshInstance3D:
+	var mesh := _warped_box(parent, s, lane, size, color, emission, energy, y_off)
+	mesh.name = node_name
+	return mesh
+
+
+func _setpiece_arch(parent: Node3D, s: float, color: Color, height: float) -> void:
+	for lane in [-3.35, 3.35]:
+		_setpiece_mesh(parent, 'ArchPost', s, lane, Vector3(0.5, height, 0.55),
+			Color(0.12, 0.14, 0.17), color, 0.55, height * 0.5)
+	_setpiece_mesh(parent, 'ArchLintel', s, 0.0, Vector3(7.2, 0.45, 0.65),
+		Color(0.13, 0.15, 0.18), color, 0.8, height)
+
 
 # --- Branch puzzle offshoots ---
 
@@ -350,12 +643,23 @@ func _wdbg(msg: String) -> void:
 	if OS.has_environment("PREVIEW_DEBUG"):
 		print("[wash_relay] → ", msg)
 
+func _accepts_gameplay_events() -> bool:
+	return _phase == "ready" or _phase == "active"
+
 # The mid-s of each GAP between consecutive sections (where a branch attaches).
 func _gap_mids() -> Array:
 	var mids: Array = []
 	for i in range(SECTIONS.size() - 1):
 		mids.append((float(SECTIONS[i]["x1"]) + float(SECTIONS[i + 1]["x0"])) * 0.5)
 	return mids
+
+func _is_mandatory_pressure_gap(mid: float) -> bool:
+	return mid > PRESSURE_GAP_S0 and mid < PRESSURE_GAP_S1
+
+func _is_authored_transit_gap(mid: float) -> bool:
+	return _is_mandatory_pressure_gap(mid) \
+		or absf(mid - SLUICE_TUNNEL_MOUTH_A.x) < 0.1 \
+		or absf(mid - SLUICE_TUNNEL_MOUTH_B.x) < 0.1
 
 # Generate ONE stretch (one node per gap) through the archetype framework — each node hands a branch its
 # archetype + content placements. Falls back to a fixed archetype rotation so the offshoots still build if
@@ -391,6 +695,9 @@ func _build_branches() -> void:
 	var guards_spawned := 0
 	for g in range(mids.size()):
 		var mid: float = mids[g]
+		if _is_authored_transit_gap(mid):
+			continue
+		var branch_i := _branches.size()
 		var node: Dictionary = nodes[g] if g < nodes.size() else {}
 		var archetype := str(node.get("archetype_name", "Offshoot"))
 		var placements: Array = node.get("content_placements", [])
@@ -398,14 +705,17 @@ func _build_branches() -> void:
 		var deck_color := Color(0.12, 0.14, 0.17)
 		_add_warped_deck(mid, BRANCH_DECK_CENTER_LANE, Vector3(BRANCH_LANE_SPAN, 0.2, BRANCH_S_SPAN), deck_color)
 		# A marker post at the deck rim so the offshoot reads as a turn-off from the main run.
-		_add_warped_box(mid, BRANCH_NECK_LANE + 0.4, Vector3(0.4, 1.6, 0.4), Color(0.2, 0.5, 0.55), Color(0.2, 0.7, 0.8), 0.8)
+		_add_warped_box(mid, BRANCH_NECK_LANE + 0.4, Vector3(0.4, 1.6, 0.4),
+			Color(0.48, 0.3, 0.08), Color(1.0, 0.64, 0.18), 1.1)
+		_add_warped_guidance_label(_branch_root, "BranchOptional%d" % g, "OPTIONAL // SALVAGE",
+			mid, BRANCH_NECK_LANE + 0.9, Color(1.0, 0.7, 0.25))
 		# The archetype's content placements, clustered on the pad (graybox identity of the puzzle).
 		var content_count := _build_branch_content(mid, placements)
 		# Reward cache — authored FLAT (the host warp pass lifts every interactable onto the helix); its mesh
 		# is a CHILD so it rides the warp and stays visible (it isn't in the GLB the flat-graybox hide replaces).
 		# Click to walk over, then a salvage WORK beat (TIMED_ACTION). The cache box is a CHILD of the
 		# interactable so the visual + its outline+glow ride the helix warp together.
-		var cache := _add_interactable(self, "BranchCache%d" % g, "Salvage cache",
+		var cache := _add_interactable(self, "BranchCache%d" % g, "Optional salvage cache",
 			Vector3(mid, 0.5, BRANCH_PAD_LANE), "SALVAGE", "", 1.2, true, 1.6,
 			Interactable.InteractableType.TIMED_ACTION, false)
 		var cm := MeshInstance3D.new()
@@ -414,7 +724,7 @@ func _build_branches() -> void:
 		cm.position = Vector3(0.0, 0.45, 0.0)
 		cache.add_child(cm)
 		_outline_interactable_child(cache, cm, "BranchCache%d" % g, 1.6)
-		cache.interacted.connect(func() -> void: _on_branch_cache(g))
+		cache.interacted.connect(func() -> void: _on_branch_cache(branch_i))
 		# A guarded branch (the archetype carries an enemy) spawns a roamer on the pad — a real risk detour.
 		var guard = null
 		if guards_spawned < BRANCH_GUARD_CAP and _branch_has_enemy(node):
@@ -429,7 +739,7 @@ func _build_branches() -> void:
 		if gate_kind != "open":
 			cache.set_interaction_enabled(false)   # locked until the switch fires (synced to the data layer)
 			gate_bar = _build_branch_gate_bar(mid)
-			switch = _build_branch_switch(g, mid, gate_kind)
+			switch = _build_branch_switch(g, branch_i, mid, gate_kind)
 		_branches.append({
 			"gap": g, "mid_x": mid, "pad_lane": BRANCH_PAD_LANE, "archetype": archetype,
 			"content_count": content_count, "collected": false, "cache": cache, "guard": guard,
@@ -523,6 +833,164 @@ func _add_warped_deck(s: float, lane_center: float, size: Vector3, color: Color)
 	body.add_child(col)
 	_branch_root.add_child(body)
 
+# --- Authored transit breaks ---------------------------------------------------------------
+
+func _build_transit_breaks() -> void:
+	_transit_root = Node3D.new()
+	_transit_root.name = 'TransitBreaks'
+	add_child(_transit_root)
+	_pressure_portals.clear()
+	_sluice_tunnels.clear()
+	_build_pressure_bridge()
+	_build_sluice_tunnel_choice()
+
+
+# The first discontinuity in the coil is mandatory. A pair of portal links carries the party into a dry
+# pressure pocket, then back onto the far lip. The reverse pads keep the space honest for later return trips.
+func _build_pressure_bridge() -> void:
+	var void_mesh := _warped_box(_transit_root, (PRESSURE_GAP_S0 + PRESSURE_GAP_S1) * 0.5, 0.0,
+		Vector3(FLOOR_Z_HALF * 2.05, 0.28, PRESSURE_GAP_S1 - PRESSURE_GAP_S0),
+		Color(0.008, 0.012, 0.018), Color(0.08, 0.2, 0.32), 0.35, 0.18)
+	void_mesh.name = 'MandatoryCoilBreak'
+	for edge_s in [PRESSURE_GAP_S0, PRESSURE_GAP_S1]:
+		_setpiece_mesh(_transit_root, 'BrokenCoilLip', edge_s, 0.0,
+			Vector3(FLOOR_Z_HALF * 2.15, 0.5, 0.32), Color(0.18, 0.12, 0.08),
+			Color(1.0, 0.38, 0.14), 1.25, 0.28)
+
+	_add_transit_deck(PRESSURE_ROOM_CENTER.x, PRESSURE_ROOM_CENTER.z,
+		Vector3(4.4, 0.24, 5.2), Color(0.09, 0.14, 0.18))
+	for sc in [21.35, 26.05]:
+		for lane in [-10.2, -6.0]:
+			_setpiece_mesh(_transit_root, 'PressurePylon', sc, lane, Vector3(0.55, 3.2, 0.55),
+				Color(0.12, 0.16, 0.2), Color(0.45, 0.82, 1.0), 0.75, 1.6)
+	_setpiece_mesh(_transit_root, 'PressureHeader', PRESSURE_ROOM_CENTER.x, -10.05,
+		Vector3(0.55, 0.55, 5.2), Color(0.13, 0.18, 0.22), Color(0.3, 0.75, 1.0), 0.9, 2.9)
+	_setpiece_mesh(_transit_root, 'PressureWindow', PRESSURE_ROOM_CENTER.x, -6.0,
+		Vector3(0.25, 1.6, 4.4), Color(0.08, 0.2, 0.26), Color(0.22, 0.7, 1.0), 0.55, 1.25)
+
+	_spawn_pressure_portal('PressurePortalIn', 'PRESSURE TRANSIT', PRESSURE_PORTAL_ENTRY,
+		PRESSURE_ROOM_ARRIVAL, Color(0.75, 0.38, 1.0))
+	_spawn_pressure_portal('PressurePortalBack', 'BACK TO INLET', PRESSURE_ROOM_ARRIVAL,
+		PRESSURE_PORTAL_ENTRY, Color(0.75, 0.38, 1.0))
+	_spawn_pressure_portal('PressurePortalOut', 'RETURN TO CHANNEL', PRESSURE_ROOM_RETURN,
+		PRESSURE_PORTAL_LANDING, Color(0.25, 0.88, 1.0))
+	_spawn_pressure_portal('PressurePortalReentry', 'BACK TO VALVE', PRESSURE_PORTAL_LANDING,
+		PRESSURE_ROOM_RETURN, Color(0.25, 0.88, 1.0))
+
+	_add_warped_guidance_label(_transit_root, 'PressureMandatory', 'COIL BREAK // PRESSURE TRANSIT',
+		PRESSURE_PORTAL_ENTRY.x, -2.65, Color(0.82, 0.62, 1.0))
+	_add_warped_guidance_label(_transit_root, 'PressureRoomRead', 'VENT JETS // THEN EXIT CYAN',
+		PRESSURE_ROOM_CENTER.x, -7.45, Color(0.35, 0.9, 1.0))
+
+	_pressure_valve = _add_interactable(self, 'PressureValve', 'Vent the jet manifold', PRESSURE_VALVE_POS,
+		'VENT JETS', '', 1.25, false, 1.65, Interactable.InteractableType.TIMED_ACTION, false)
+	_pressure_valve.interacted.connect(_on_pressure_valve)
+	var wheel := _add_box(_pressure_valve, Vector3(0.0, 0.65, 0.0), Vector3(0.9, 1.3, 0.55),
+		Color(0.12, 0.3, 0.34), Color(0.2, 0.9, 1.0), 1.2)
+	_outline_interactable_child(_pressure_valve, wheel, 'PressureValve', 1.65)
+	if PRESSURE_VENT_SECTION < _flow_strips.size():
+		_add_causal_feedback_link(_pressure_valve, _flow_strips[PRESSURE_VENT_SECTION], Color(0.2, 0.9, 1.0), {
+			'label': 'VENTS THE JET MANIFOLD',
+			'source_offset': Vector3(0.0, 1.0, 0.0),
+			'target_offset': Vector3(0.0, 0.35, 0.0),
+			'arc_height': 2.4,
+			'name': 'PressureValveJetLink',
+		})
+
+
+func _spawn_pressure_portal(node_name: String, label: String, source_flat: Vector3,
+		dest_flat: Vector3, color: Color) -> PortalPad:
+	var pad := PortalPad.new()
+	pad.name = node_name
+	var gs = _get_game_state()
+	if pad.has_method('configure_data'):
+		pad.call('configure_data', gs, source_flat, dest_flat, 1.25, color)
+	else:
+		pad.configure(gs, source_flat, dest_flat, 1.25, color)
+	pad.description = label.capitalize()
+	pad.tutorial_label = label
+	pad.set_group_provider(_selected_party_ids)
+	add_child(pad)
+	_register_interactable(pad)
+	_portals.append(pad)
+	_pressure_portals.append(pad)
+	return pad
+
+
+func _build_sluice_tunnel_choice() -> void:
+	_add_transit_deck(SLUICE_TUNNEL_MOUTH_A.x, 7.4, Vector3(7.4, 0.22, 2.8), Color(0.09, 0.13, 0.16))
+	_add_transit_deck(SLUICE_TUNNEL_MOUTH_B.x, 7.4, Vector3(7.4, 0.22, 2.8), Color(0.09, 0.13, 0.16))
+	_build_tunnel_mouth_frame(SLUICE_TUNNEL_MOUTH_A.x, SLUICE_TUNNEL_MOUTH_A.z)
+	_build_tunnel_mouth_frame(SLUICE_TUNNEL_MOUTH_B.x, SLUICE_TUNNEL_MOUTH_B.z)
+	for point_v in SLUICE_TUNNEL_DATA_PATH:
+		var point := point_v as Vector3
+		for side in [-1.15, 1.15]:
+			_setpiece_mesh(_transit_root, 'PipeRib', point.x, point.z + side,
+				Vector3(0.28, 2.2, 0.48), Color(0.1, 0.14, 0.17),
+				Color(0.28, 0.75, 0.86), 0.55, 1.1)
+		_setpiece_mesh(_transit_root, 'PipeRoof', point.x, point.z,
+			Vector3(2.6, 0.28, 0.62), Color(0.1, 0.15, 0.18),
+			Color(0.25, 0.72, 0.84), 0.65, 2.15)
+
+	var reverse_path: Array = [
+		Vector3(42.5, 0.5, 12.0), Vector3(41.5, 0.5, 13.0),
+		Vector3(39.5, 0.5, 13.0), Vector3(37.5, 0.5, 12.0), SLUICE_TUNNEL_MOUTH_A,
+	]
+	_spawn_sluice_tunnel('OuterPipeIn', 'SLOW SAFE PIPE', SLUICE_TUNNEL_MOUTH_A,
+		SLUICE_TUNNEL_DATA_PATH, Color(0.25, 0.82, 0.88))
+	_spawn_sluice_tunnel('OuterPipeBack', 'RETURN THROUGH PIPE', SLUICE_TUNNEL_MOUTH_B,
+		reverse_path, Color(0.25, 0.82, 0.88))
+	_add_warped_guidance_label(_transit_root, 'SluiceChoice', 'FAST SLUICE // SLOW SAFE PIPE',
+		SLUICE_TUNNEL_MOUTH_A.x, 7.8, Color(0.4, 0.95, 1.0))
+	_add_warped_guidance_label(_transit_root, 'SluiceRejoin', 'COLLECTOR // RALLY',
+		SLUICE_TUNNEL_MOUTH_B.x, 7.8, Color(0.45, 1.0, 0.65))
+
+
+func _spawn_sluice_tunnel(node_name: String, label: String, mouth_flat: Vector3,
+		waypoints_flat: Array, color: Color) -> CrawlTunnel:
+	var tunnel := CrawlTunnel.new()
+	tunnel.name = node_name
+	tunnel.description = label.capitalize()
+	tunnel.tutorial_label = label
+	var gs = _get_game_state()
+	if tunnel.has_method('configure_data'):
+		tunnel.call('configure_data', gs, mouth_flat, waypoints_flat, 1.5, 1.15)
+	else:
+		tunnel.configure(gs, mouth_flat, waypoints_flat, 1.5, 1.15)
+	tunnel.set_group_provider(_selected_party_ids)
+	add_child(tunnel)
+	_register_interactable(tunnel)
+	var stub := _add_box(tunnel, Vector3(0.0, 0.45, 0.0), Vector3(0.62, 0.9, 0.62),
+		Color(0.1, 0.16, 0.18), color, 0.85)
+	_outline_interactable_child(tunnel, stub, node_name, 1.5)
+	_sluice_tunnels.append(tunnel)
+	return tunnel
+
+
+func _build_tunnel_mouth_frame(s: float, lane: float) -> void:
+	for side in [-1.35, 1.35]:
+		_setpiece_mesh(_transit_root, 'PipeMouthPost', s, lane + side,
+			Vector3(0.42, 2.7, 0.72), Color(0.1, 0.15, 0.18),
+			Color(0.28, 0.82, 0.9), 0.75, 1.35)
+	_setpiece_mesh(_transit_root, 'PipeMouthHeader', s, lane, Vector3(3.1, 0.42, 0.8),
+		Color(0.1, 0.15, 0.18), Color(0.28, 0.82, 0.9), 0.9, 2.65)
+
+
+func _add_transit_deck(s: float, lane_center: float, size: Vector3, color: Color) -> void:
+	var mesh := _warped_box(_transit_root, s, lane_center, size, color)
+	mesh.name = 'TransitDeck'
+	var body := StaticBody3D.new()
+	body.collision_layer = 1
+	body.collision_mask = 0
+	body.transform = mesh.transform
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = size
+	col.shape = shape
+	body.add_child(col)
+	_transit_root.add_child(body)
+
+
 # --- Drain loop (the flooding detour) ---
 
 # A walkable warped plank under _drain_root (its own Node3D root so it survives hide_flat_graybox). Same as
@@ -567,7 +1035,9 @@ func _build_drain_loop() -> void:
 	_warped_box(_drain_root, smid, DRAIN_LEDGE_LANE + 0.7, Vector3(0.3, 2.6, run_len + 1.0),
 		Color(0.12, 0.13, 0.16), Color(0.15, 0.4, 0.6), 0.5)
 	_warped_box(_drain_root, smid, DRAIN_LEDGE_LANE, Vector3(0.4, 1.6, 0.4),
-		Color(0.2, 0.5, 0.55), Color(0.2, 0.7, 0.8), 0.7)
+		Color(0.48, 0.3, 0.08), Color(1.0, 0.64, 0.18), 1.0)
+	_add_warped_guidance_label(_drain_root, "DrainOptional", "OPTIONAL // DRAIN CACHE",
+		smid, DRAIN_LEDGE_LANE - 0.8, Color(1.0, 0.7, 0.25))
 	# Flood water on the run (own segments so the toggle is independent of the section water). Hidden until surge.
 	_drain_water = []
 	for k in range(nseg):
@@ -579,7 +1049,7 @@ func _build_drain_loop() -> void:
 		seg.visible = false
 		_drain_water.append(seg)
 	# A salvage cache on the dry ledge — the reward that makes the crossing worth it.
-	var cache := _add_interactable(self, "DrainCache", "Strip cache", Vector3(smid, 0.5, DRAIN_LEDGE_LANE),
+	var cache := _add_interactable(self, "DrainCache", "Optional drain cache", Vector3(smid, 0.5, DRAIN_LEDGE_LANE),
 		"SALVAGE", "", 1.2, true, 1.6, Interactable.InteractableType.TIMED_ACTION, false)
 	var cm := _add_box(cache, Vector3(0.0, 0.1, 0.0), Vector3(0.7, 0.7, 0.7), Color(0.3, 0.35, 0.2),
 		Color(0.6, 0.8, 0.3), 0.6)
@@ -602,7 +1072,7 @@ func _build_drain_bait() -> void:
 	_outline_interactable_child(bait, bm, "DrainBait", 1.4)
 
 func _on_branch_cache(g: int) -> void:
-	if g < 0 or g >= _branches.size():
+	if not _accepts_gameplay_events() or g < 0 or g >= _branches.size():
 		return
 	if bool(_branches[g].get("collected", false)):
 		return
@@ -649,7 +1119,7 @@ func _build_branch_gate_bar(mid: float) -> MeshInstance3D:
 
 # The gate switch: a themed click-to-walk post at the neck. Authored FLAT (the host warp pass lifts it onto
 # the helix); its post mesh + outline are children so they ride the warp. One-shot — firing it unlocks the branch.
-func _build_branch_switch(g: int, mid: float, kind: String) -> Area3D:
+func _build_branch_switch(g: int, branch_i: int, mid: float, kind: String) -> Area3D:
 	var theme := _branch_gate_theme(kind)
 	var switch := _add_interactable(self, "BranchSwitch%d" % g, str(theme["label"]),
 		Vector3(mid, 0.5, BRANCH_SWITCH_LANE), str(theme["label"]), "", 1.0, true, 1.4,
@@ -660,13 +1130,13 @@ func _build_branch_switch(g: int, mid: float, kind: String) -> Area3D:
 	post.position = Vector3(0.0, 0.65, 0.0)
 	switch.add_child(post)
 	_outline_interactable_child(switch, post, "BranchSwitch%d" % g, 1.4)
-	switch.interacted.connect(func() -> void: _on_branch_switch(g))
+	switch.interacted.connect(func() -> void: _on_branch_switch(branch_i))
 	return switch
 
 # Activating a branch switch: unlock the cache, drop the gate bar, and (for a guarded branch) lure the guard
 # off the pad — distract it (shrinks its reach) and pull its roam anchor back to the neck corner.
 func _on_branch_switch(g: int) -> void:
-	if g < 0 or g >= _branches.size():
+	if not _accepts_gameplay_events() or g < 0 or g >= _branches.size():
 		return
 	var b: Dictionary = _branches[g]
 	if bool(b.get("unlocked", false)):
@@ -746,12 +1216,12 @@ func _enemy_spawn_for(id: String) -> Vector3:
 	return Vector3.ZERO
 
 func _on_enemy_hit(target_id: String) -> void:
-	if target_id in PARTY_IDS:
-		_wash_character(target_id)   # the guard shoves you into the channel -> back to the start shelter
-		_announce_wash()
+	if _phase == "active" and target_id in PARTY_IDS:
+		if _wash_character(target_id):   # the guard shoves you into the channel -> back to the start shelter
+			_announce_wash([target_id])
 
 func _on_lure(idx: int) -> void:
-	if idx < 0 or idx >= LURE_SPECS.size():
+	if not _accepts_gameplay_events() or idx < 0 or idx >= LURE_SPECS.size():
 		return
 	var l: Dictionary = LURE_SPECS[idx]
 	var target := str(l["target"])
@@ -772,6 +1242,8 @@ func _on_lure(idx: int) -> void:
 	_say("// FLURE SINGS // guard drawn")
 
 func _on_lure_expired(idx: int) -> void:
+	if _phase != "active":
+		return
 	if idx < _lure_until.size():
 		_lure_until[idx] = -1.0
 	_set_lure_emission(idx, 0.6)
@@ -797,7 +1269,7 @@ func _lure_active() -> bool:
 # --- Wash cadence (scheduler-driven; fires at exact ticks) ---
 
 func _ensure_scheduled() -> void:
-	if _scheduled:
+	if _scheduled or _phase != "active":
 		return
 	var sched = _get_scheduler()
 	if sched == null:
@@ -823,14 +1295,14 @@ func _make_pretel(i: int) -> Callable:
 func _pre_telegraph(i: int) -> void:
 	if _phase == "active" and not _flooding[i] and not _section_disabled(i):
 		_set_strip(i, 1.1)
+		_learn_surge_timing_if_near(i)
 
 # COSMETIC tutorial preview on the flush section: a rising-then-receding ghost of the surge so the first-time
 # player sees where the water breaks before it actually does. Spawns its OWN throwaway warped boxes (NOT the
 # real _section_water — that stays driven by the scheduler, so the flood-visual/water-capture invariants hold)
 # and tweens them up then back, then frees them. Pure visuals: it never touches _flooding or the cadence.
 func _play_flush_hint(i: int = 0) -> void:
-	_say("// FLUSH // surge incoming — read the water, then run it")
-	_say("Watch—it breaks right here. Time it and run.", "ASTER")
+	_show_note("// FLUSH // It breaks right here. Wait for the surge, then RUN.", 4.5)
 	if not is_instance_valid(_flush_hint_root):
 		_flush_hint_root = Node3D.new()
 		_flush_hint_root.name = "FlushHint"
@@ -927,18 +1399,30 @@ func _section_next_onset_in(i: int) -> float:
 
 func _flood_onset(i: int) -> void:
 	var sched = _get_scheduler()
-	if _phase == "active" and not _section_disabled(i):
-		_wash_section(i)
+	if _phase != "active":
+		return
+	# Count cadence beats even while a held control suppresses the water. TRACE predicts the next scheduled beat;
+	# skipping disabled beats here made that read drift as soon as a player released an override or plate.
+	if i < _flood_counts.size():
+		_flood_counts[i] += 1
+	if not _section_disabled(i):
+		_learn_surge_timing_if_near(i)
 		_flooding[i] = true
-		if i < _flood_counts.size():
-			_flood_counts[i] += 1
+		_sweep_flooded_section(i)       # immediate capture at the onset
 		_set_strip(i, 2.6)
 		_play_water_surge(i)            # COSMETIC: a foam/spray accent + rise-pop as the section floods
 		if str(SECTIONS[i]["type"]) == "sluice":
 			_set_sluice(i, true)            # the gate slams shut — the threshold is impassable
 		if sched != null:
+			var sweep_count := ceili(_dur(i) / FLOOD_SWEEP_INTERVAL)
+			for k in range(1, sweep_count + 1):
+				sched.schedule_after(
+					minf(_dur(i), FLOOD_SWEEP_INTERVAL * float(k)),
+					_make_section_sweep(i),
+					"wash_section_sweep_%d_%d" % [i, k]
+				)
 			sched.schedule_after(_dur(i), func() -> void: _set_flood_off(i), "wash_off_%d" % i)
-	if sched != null:
+	if sched != null and _phase == "active":
 		sched.schedule_after(_period(i), _make_onset(i), "wash_onset_%d" % i)
 		var lead := _period(i) - TELEGRAPH_LEAD
 		if lead > 0.0:
@@ -950,7 +1434,45 @@ func _set_flood_off(i: int) -> void:
 	if i < SECTIONS.size() and str(SECTIONS[i]["type"]) == "sluice":
 		_set_sluice(i, false)               # the gate lifts — the threshold opens again
 
+func _make_section_sweep(i: int) -> Callable:
+	return func() -> void: _sweep_flooded_section(i)
+
+## Scheduler-driven rechecks make the rule match the picture: entering water at any point while it is
+## visibly up is dangerous. This cannot live in _process because gameplay results must be invariant under
+## frame rate, fast-forward, pause, and replay.
+func _sweep_flooded_section(i: int) -> void:
+	if (_phase != "active" or i < 0 or i >= _flooding.size()
+			or not _flooding[i] or _section_disabled(i)):
+		return
+	_wash_section(i)
+	_drown_enemies_in_section(i)
+
+func _drown_enemies_in_section(i: int) -> void:
+	var s: Dictionary = SECTIONS[i]
+	var x0 := float(s["x0"])
+	var x1 := float(s["x1"])
+	var gs = _get_game_state()
+	for enemy in _enemies.duplicate():
+		if (not is_instance_valid(enemy) or not enemy.is_alive() or enemy.char_id == ""
+				or _branch_guard_spawns.has(enemy.char_id)):
+			continue
+		# Ambient guards know their posts and must still exist when the player reaches the back half.
+		# The current becomes a weapon only after the player has committed one to the play: a chase,
+		# attack, or lure distraction. Otherwise every guard spawned inside its authored section and
+		# drowned in the first unattended cadence before the encounter ever began.
+		var enemy_state := str(enemy.get_state()) if enemy.has_method("get_state") else ""
+		var committed_to_play := enemy_state in ["alert", "pursuit", "windup", "charge", "impact"]
+		if gs != null and gs.characters.has(enemy.char_id):
+			committed_to_play = committed_to_play or gs.is_character_distracted(enemy.char_id)
+		if not committed_to_play:
+			continue
+		var p := _get_character_position(enemy.char_id)
+		if p.x >= x0 and p.x <= x1 and absf(p.z) <= FLOOR_Z_HALF:
+			_drown_enemy(enemy, i)
+
 func _section_disabled(i: int) -> bool:
+	if i == PRESSURE_VENT_SECTION and _pressure_vent_remaining() > 0.0:
+		return true
 	var dis := str(SECTIONS[i]["disable"])
 	# plate / double_plate / override are all HELD controls: disabled only WHILE a member stands on the
 	# plate(s) / the override console. Vacate and the flow resumes — no permanent latch (principle #5). The
@@ -958,6 +1480,13 @@ func _section_disabled(i: int) -> bool:
 	if dis == "plate" or dis == "double_plate" or dis == "override":
 		return _plate_held[i]
 	return false
+
+func _pressure_vent_remaining() -> float:
+	var sched = _get_scheduler()
+	if sched == null or _pressure_vent_until < 0.0:
+		return 0.0
+	return maxf(0.0, _pressure_vent_until - float(sched.get_current_tick()))
+
 
 # The sluice gate is a real movement BLOCKER: while closed, its threshold cells are non-walkable, so
 # pathfinding refuses to route a character through (they wait / route around) — not just a wash hazard.
@@ -988,16 +1517,14 @@ func _set_sluice(i: int, closed: bool) -> void:
 func _wash_section(i: int) -> void:
 	var s: Dictionary = SECTIONS[i]
 	var x0: float = s["x0"]; var x1: float = s["x1"]
-	var washed_any := false
+	var washed_ids: Array[String] = []
 	for char_id in PARTY_IDS:
-		if _washed.has(char_id):
-			continue
 		var p := _get_character_position(char_id)
 		if p.x >= x0 and p.x <= x1 and abs(p.z) <= FLOOR_Z_HALF:
-			_wash_character(char_id)
-			washed_any = true
-	if washed_any:
-		_announce_wash()   # one line + one sweep tally for the whole event, however many members got caught
+			if _wash_character(char_id):
+				washed_ids.append(char_id)
+	if not washed_ids.is_empty():
+		_announce_wash(washed_ids)   # one HUD event + one sweep tally, however many members got caught
 		# Per-section tally: the flush hint (a preview of where THIS section's surge breaks) only appears once a
 		# SINGLE section has caught the party FLUSH_HINT_THRESHOLD times — you keep getting washed HERE, so here's
 		# the read. It never fires on a startup timer; it's earned by repeated failure on the same section.
@@ -1007,9 +1534,13 @@ func _wash_section(i: int) -> void:
 				_flush_hint_shown = true
 				_play_flush_hint(i)
 
-func _wash_character(char_id: String) -> void:
+func _wash_character(char_id: String) -> bool:
+	if char_id not in PARTY_IDS:
+		return false
 	var gs = _get_game_state()
 	if gs != null:
+		if not gs.characters.has(char_id):
+			return false
 		gs.command_stop(char_id)   # cancel any in-flight move so the runner is carried off, not walking on
 	# Capture the pre-wash RENDER position + the flat data position BEFORE the snap — the cosmetic streak slides
 	# from where the current grabbed you, down the spiral, to the start. (Purely for the visual; the data snap
@@ -1018,25 +1549,41 @@ func _wash_character(char_id: String) -> void:
 	var pre_render := pre_flat
 	if gs != null and gs.characters.has(char_id):
 		pre_render = gs.get_render_position(char_id)
-	# The flood carries you all the way DOWN the spiral to the start shelter, where the member is STRANDED until
-	# the party recovers them — telephone up (Terminal) or climb (sloperope) back to rejoin at the chunk end (see
-	# CHANNELS_DESIGN.md). Recording them in _washed is what gives the recovery devices + Endo's BRACE a real job:
-	# a stranded member doesn't count toward plates, can be refunded by BRACE, and is what the Terminal calls up.
+	# The flood carries you all the way DOWN the spiral to the start shelter. `_washed` means the member is still
+	# WAITING there and can be telephoned/climbed up as a convenience; moving into the relay clears the mark. It is
+	# deliberately not an immunity flag or hidden control lock — a retrying character follows the normal rules.
 	_set_character_position(char_id, START_POS)
 	_washed[char_id] = true
 	# COSMETIC ONLY: the current visibly carries you down the helix (a surge + a colour streak that follows the
 	# curve to the start, then a splash). The body already snapped above — this is just the eye-candy.
 	_play_sweep_animation(char_id, pre_render, pre_flat.x)
+	return true
 
-## One announcement + sweep tally per wash EVENT (not per character): washing the whole party at once is a
-## single "// WASHED //" line, and the run-hint counts events, not bodies (3 washes, not 3 swept members).
-func _announce_wash() -> void:
+func _format_party_names(ids: Array) -> String:
+	var names: Array[String] = []
+	for raw_id in ids:
+		var display := str(raw_id).capitalize()
+		if not names.has(display):
+			names.append(display)
+	match names.size():
+		0:
+			return "Crew"
+		1:
+			return names[0]
+		2:
+			return "%s and %s" % [names[0], names[1]]
+		_:
+			return "%s, and %s" % [", ".join(names.slice(0, names.size() - 1)), names[-1]]
+
+
+## One character-specific, nonblocking announcement per wash EVENT. The run-hint counts events, not bodies.
+func _announce_wash(ids: Array) -> void:
 	_sweep_count += 1
-	_say("// WASHED // the current carries you down to the start")
+	_show_message("// WASHED // %s swept back to the start shelter — regroup or retry" % _format_party_names(ids), 3.0)
 	# After a few washes the lesson lands diegetically: you can't walk the surges, you have to RUN them.
 	if _sweep_count >= 3 and not _run_hint_shown:
 		_run_hint_shown = true
-		_say("Can't just calmly stroll past these channels. Water comes too often—we run it.", "ASTER")
+		_show_note("Aster: The water comes too often to walk it. Wait for the surge, then RUN.", 4.5)
 
 # --- Drain loop flood + drown (the recurring hazard on the detour) ---
 
@@ -1044,19 +1591,19 @@ func _announce_wash() -> void:
 # identical at 1x and 10x), flags the cosmetic flood window, and self-reschedules the next onset.
 func _drain_onset() -> void:
 	var sched = _get_scheduler()
-	if _phase == "active":
-		_wash_drain()
-		_drain_flooding = true
-		_drain_flood_count += 1
-		if sched != null:
-			# Re-check enemies across the visible flood WINDOW, not just this instant: a guard that's baited or
-			# chased INTO the run mid-surge still drowns, so the lead-it-in kill can't depend on landing the one
-			# onset tick. The sweeps ride the scheduler, so they're fast-forward invariant.
-			for k in range(1, DRAIN_DROWN_SWEEPS + 1):
-				sched.schedule_after(DRAIN_LOOP_DUR * float(k) / float(DRAIN_DROWN_SWEEPS),
-					func() -> void: _drown_enemies_in_run(), "wash_drain_sweep_%d" % k)
-			sched.schedule_after(DRAIN_LOOP_DUR, func() -> void: _set_drain_off(), "wash_drain_off")
+	if _phase != "active":
+		return
+	_wash_drain()
+	_drain_flooding = true
+	_drain_flood_count += 1
 	if sched != null:
+		# Re-check the whole run across the visible flood WINDOW: party and guards entering mid-surge obey
+		# the same rule. The sweeps ride the scheduler, so they're fast-forward invariant.
+		for k in range(1, DRAIN_DROWN_SWEEPS + 1):
+			sched.schedule_after(DRAIN_LOOP_DUR * float(k) / float(DRAIN_DROWN_SWEEPS),
+				func() -> void: _wash_drain(), "wash_drain_sweep_%d" % k)
+		sched.schedule_after(DRAIN_LOOP_DUR, func() -> void: _set_drain_off(), "wash_drain_off")
+	if sched != null and _phase == "active":
 		sched.schedule_after(DRAIN_LOOP_PERIOD, func() -> void: _drain_onset(), "wash_drain_onset")
 
 func _set_drain_off() -> void:
@@ -1078,21 +1625,21 @@ func _in_drain_channel(p: Vector3) -> bool:
 # Decide the loop wash AT THE ONSET TICK: a party member caught in the run is washed to the start (same as a
 # section); an ENEMY caught in the run is DROWNED — swept down the central drain and removed. Never per-frame.
 func _wash_drain() -> void:
-	var washed_any := false
+	var washed_ids: Array[String] = []
 	for char_id in PARTY_IDS:
-		if _washed.has(char_id):
-			continue
 		if _in_drain_channel(_get_character_position(char_id)):
-			_wash_character(char_id)
-			washed_any = true
-	if washed_any:
-		_announce_wash()
+			if _wash_character(char_id):
+				washed_ids.append(char_id)
+	if not washed_ids.is_empty():
+		_announce_wash(washed_ids)
 	_drown_enemies_in_run()
 
 # Drown every alive enemy currently standing in the flooding run. Called at the onset AND a few times across the
 # flood window (the sweeps in _drain_onset), so a guard that walks/chases IN mid-surge is caught — the lead-it-in
 # kill doesn't hinge on landing the single onset instant. Iterate a copy so _drown_enemy can schedule removal.
 func _drown_enemies_in_run() -> void:
+	if _phase != "active":
+		return
 	for enemy in _enemies.duplicate():
 		if is_instance_valid(enemy) and enemy.is_alive() and enemy.char_id != "" \
 				and _in_drain_channel(_get_character_position(enemy.char_id)):
@@ -1102,7 +1649,7 @@ func _drown_enemies_in_run() -> void:
 # is_alive() flips false) decided at the onset tick, plus the cosmetic "current drags it down the drain" streak
 # (the same inward-toward-centre sweep the party gets). The registered character + node are removed a beat
 # later on the SCHEDULER (tick-locked, not a tween) so a re-run can respawn the guard.
-func _drown_enemy(enemy) -> void:
+func _drown_enemy(enemy, section_index := -1) -> void:
 	var id: String = enemy.char_id
 	var gs = _get_game_state()
 	var rp := _get_character_position(id)
@@ -1111,8 +1658,12 @@ func _drown_enemy(enemy) -> void:
 		gs.command_stop(id)
 	enemy.take_damage(enemy.max_hp)   # _hp -> 0, die() -> FSM 'dead' (stops moving, emits died); is_alive() == false
 	_play_sweep_animation(id, rp, rp.x)   # cosmetic: the current carries it inward toward the central drain, dissolving
-	_drowned_count += 1
-	_say("// DRAINED // the current took the guard down the shaft")
+	if section_index >= 0:
+		_section_drowned_count += 1
+		_say("// SURGE HIT // section %d took the guard" % (section_index + 1))
+	else:
+		_drowned_count += 1
+		_say("// DRAINED // the current took the guard down the shaft")
 	var sched = _get_scheduler()
 	if sched != null:
 		sched.schedule_after(DRAIN_KILL_DELAY, func() -> void: _remove_enemy(id), "wash_drain_kill_%s" % id)
@@ -1155,7 +1706,7 @@ func _respawn_missing_enemies() -> void:
 # loop then keeps it in the current). The player clicks the bait from the SAFE mouth, then steps clear.
 func _on_drain_bait() -> void:
 	var gs = _get_game_state()
-	if gs == null:
+	if not _accepts_gameplay_events() or gs == null:
 		return
 	var lure_flat := Vector3((DRAIN_LOOP_S0 + DRAIN_LOOP_S1) * 0.5, 0.5, DRAIN_RUN_LANE)   # mid-run, IN the flood band
 	var committed := false
@@ -1177,11 +1728,15 @@ func _on_drain_bait() -> void:
 # The bait window ends: clear the distraction so the guard's detection resumes — now a player in the loop is
 # spotted and the guard CHASES them through the flooding run (it stays in the current).
 func _drain_chase_resume() -> void:
+	if _phase != "active":
+		return
 	var gs = _get_game_state()
 	if gs != null and gs.characters.has(DRAIN_GUARD_ID):
 		gs.set_character_distracted(DRAIN_GUARD_ID, false)
 
 func _on_drain_cache() -> void:
+	if not _accepts_gameplay_events():
+		return
 	_branch_loot += BRANCH_REWARD
 	_say("// SALVAGE // drain cache stripped (%d)" % _branch_loot)
 
@@ -1344,12 +1899,45 @@ func _update_pipe_splashes(delta: float) -> void:
 
 # --- Interactions ---
 
+func _on_pressure_valve() -> void:
+	if not _accepts_gameplay_events():
+		return
+	var sched = _get_scheduler()
+	var now := float(sched.get_current_tick()) if sched != null else 0.0
+	_pressure_vent_until = now + PRESSURE_VENT_WINDOW
+	_show_message('// PRESSURE VENTED // jet manifold safe for %.0f seconds' % PRESSURE_VENT_WINDOW, 3.0)
+	_set_preview_step('wash_relay_pressure_vented')
+	if is_instance_valid(_pressure_valve):
+		_flash_causal_feedback(_pressure_valve, 2.2, 1.55)
+		_set_causal_feedback_latched(_pressure_valve, true)
+	if PRESSURE_VENT_SECTION < _flow_strips.size() and is_instance_valid(_flow_strips[PRESSURE_VENT_SECTION]):
+		_set_strip(PRESSURE_VENT_SECTION, 0.08)
+		_request_preview_focus(_flow_strips[PRESSURE_VENT_SECTION], 1.1, true, {
+			'label': 'JET PRESSURE FALLING', 'zoom': 1.08,
+		})
+	if sched != null:
+		sched.cancel_tag('wash_pressure_vent')
+		sched.schedule_after(PRESSURE_VENT_WINDOW, _on_pressure_vent_closed, 'wash_pressure_vent')
+
+
+func _on_pressure_vent_closed() -> void:
+	_pressure_vent_until = -1.0
+	if is_instance_valid(_pressure_valve):
+		_set_causal_feedback_latched(_pressure_valve, false)
+	if PRESSURE_VENT_SECTION < _flow_strips.size():
+		_set_strip(PRESSURE_VENT_SECTION, 0.4)
+	if _phase == 'active':
+		_show_message('// PRESSURE RETURNING // the jet manifold is live again', 2.2)
+
 func _on_override(i: int) -> void:
 	# The override is a HELD console — the hold is positional (refreshed in _update like a plate), so arriving
 	# only confirms the member is manning the station. Step off and the flow resumes (no permanent latch).
-	if i < 0 or i >= SECTIONS.size():
+	if not _accepts_gameplay_events() or i < 0 or i >= SECTIONS.size():
 		return
-	_say("// SECTION %d FLOW // HOLD THE OVERRIDE" % (i + 1))
+	_show_message("// SECTION %d // HOLD HERE while the rest cross" % (i + 1), 2.5)
+	var control = _override_controls.get(i, null)
+	if is_instance_valid(control):
+		_flash_causal_feedback(control, 1.8, 1.25)
 
 func _recover_washed() -> int:
 	var n := _washed.size()
@@ -1359,28 +1947,135 @@ func _recover_washed() -> int:
 	return n
 
 func _on_terminal() -> void:
+	if not _accepts_gameplay_events():
+		return
 	var n := _recover_washed()
-	_say("// TERMINAL // %d crew telephoned up" % n if n > 0 else "// TERMINAL // no crew stranded")
+	_show_message("// TERMINAL // %d waiting crew telephoned up" % n if n > 0 else "// TERMINAL // no crew waiting at start", 2.6)
 
 func _on_sloperope() -> void:
+	if not _accepts_gameplay_events():
+		return
 	_sloperope_deployed = true
 	if is_instance_valid(_rope_mesh):
 		_rope_mesh.visible = true
-	_say("// SLOPEROPE DROPPED // climb it from the start")
+	if is_instance_valid(_climb_interactable):
+		_climb_interactable.set_interaction_enabled(true)
+		_climb_interactable.show_tutorial_label()
+	_show_message("// SLOPEROPE DROPPED // the CLIMB point is now live at the start", 3.0)
 
 func _on_climb() -> void:
+	if not _accepts_gameplay_events():
+		return
 	if not _sloperope_deployed:
-		_say("// NO LINE // drop the sloperope from the chunk end first")
+		_show_message("// NO LINE // drop the sloperope from the chunk end first", 2.5)
 		return
 	var n := _recover_washed()
 	if n > 0:
-		_say("// CLIMBED UP // %d crew recovered" % n)
+		_show_message("// CLIMBED UP // %d waiting crew recovered" % n, 2.5)
 
 func _set_strip(i: int, energy: float) -> void:
 	if i < _flow_strips.size() and is_instance_valid(_flow_strips[i]):
 		var mat := _flow_strips[i].material_override as StandardMaterial3D
 		if mat != null:
 			mat.emission_energy_multiplier = energy
+
+## The preview host and its scheduler survive in-place chunk resets/reloads. Keep every
+## Wash Relay-owned tag in one list so completion, reset, and teardown cannot diverge.
+func _cancel_wash_events() -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		_scheduled = false
+		return
+	sched.cancel_tag(_restart_tag())
+	sched.cancel_tag('wash_pressure_vent')
+	sched.cancel_tag("wash_drain_onset")
+	sched.cancel_tag("wash_drain_off")
+	sched.cancel_tag("wash_drain_bait")
+	for k in range(1, DRAIN_DROWN_SWEEPS + 1):
+		sched.cancel_tag("wash_drain_sweep_%d" % k)
+	for i in range(SECTIONS.size()):
+		sched.cancel_tag("wash_onset_%d" % i)
+		sched.cancel_tag("wash_off_%d" % i)
+		sched.cancel_tag("wash_pretel_%d" % i)
+		for k in range(1, ceili(_dur(i) / FLOOD_SWEEP_INTERVAL) + 1):
+			sched.cancel_tag("wash_section_sweep_%d_%d" % [i, k])
+	for i in range(LURE_SPECS.size()):
+		sched.cancel_tag("wash_lure_%d" % i)
+	var enemy_ids: Array[String] = []
+	for spec in ENEMY_SPECS:
+		enemy_ids.append(str(spec["id"]))
+	for id_v in _branch_guard_spawns.keys():
+		var enemy_id := str(id_v)
+		if not enemy_ids.has(enemy_id):
+			enemy_ids.append(enemy_id)
+	for enemy_id in enemy_ids:
+		sched.cancel_tag("wash_drain_kill_%s" % enemy_id)
+	_scheduled = false
+
+func _quiesce_wash_hazards() -> void:
+	_cancel_wash_events()
+	for i in range(_flooding.size()):
+		_flooding[i] = false
+		if i < SECTIONS.size() and str(SECTIONS[i]["type"]) == "sluice":
+			_set_sluice(i, false)
+		_set_strip(i, 0.15)
+	for segs in _section_water:
+		for seg in segs:
+			if is_instance_valid(seg):
+				seg.visible = false
+	_drain_flooding = false
+	for seg in _drain_water:
+		if is_instance_valid(seg):
+			seg.visible = false
+	for i in range(_splash_planes.size()):
+		_splash_intensity[i] = 0.0
+		if is_instance_valid(_splash_planes[i]):
+			_splash_planes[i].visible = false
+
+func _on_wash_relay_character_downed(char_id: String) -> void:
+	if _phase != "active" or _wipe_restart_pending or char_id not in PARTY_IDS:
+		return
+	var gs = _get_game_state()
+	if gs == null or not gs.is_party_downed(PARTY_IDS):
+		return
+	_wipe_restart_pending = true
+	_wipe_count += 1
+	_show_note("The relay takes everyone. Back to the upper shelter.", 2.6)
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.cancel_tag(_restart_tag())
+		sched.schedule_after(1.5, _restart_wash_relay_after_wipe, _restart_tag())
+	else:
+		_restart_wash_relay_after_wipe()
+
+func _restart_wash_relay_after_wipe() -> void:
+	reset_preview_state()
+	_set_preview_step("wash_relay_restart")
+
+func _complete_wash_relay() -> void:
+	if _phase == "complete":
+		return
+	_phase = "complete"
+	_quiesce_wash_hazards()
+	# Enemy strike resolution happens before hit_target emits. Full concealment is the
+	# completion sanctuary that makes an already-committed charge harmless too.
+	var gs = _get_game_state()
+	if gs != null:
+		for char_id in PARTY_IDS:
+			if gs.characters.has(char_id):
+				gs.command_stop(char_id)
+				gs.set_character_concealment(char_id, GameState.CONCEAL_FULL)
+	for interactable in _interactables:
+		if is_instance_valid(interactable) and interactable.has_method("set_interaction_enabled"):
+			interactable.set_interaction_enabled(false)
+	_set_preview_step("wash_relay_complete")
+	if is_instance_valid(_guidance_root):
+		_guidance_root.visible = false
+	_show_message("// RELAY CLEAR // all crew through", 3.0)
+
+func _exit_tree() -> void:
+	_cancel_wash_events()
+	super._exit_tree()
 
 # --- Lifecycle ---
 
@@ -1424,38 +2119,59 @@ func _debug_log_positions() -> void:
 func _update(delta := 0.0) -> void:
 	if _phase == "ready":
 		_phase = "active"
+	if _phase == "complete" or _phase == "failed":
+		return
 	_ensure_scheduled()
 	_debug_log_positions()
 	_update_pipe_splashes(delta)
-	# A stranded member who has rejoined the party up at the chunk end (recovered by a device, or who climbed all
-	# the way back up) is no longer stranded — clear them so plates/BRACE stop treating them as down. (Iterating
-	# .keys() returns a copy, so erasing mid-loop is safe.)
+	_refresh_section_guidance()
+	var gsc = _get_game_state()
+	# `_washed` only marks crew who are still WAITING in the start shelter for an optional fast recovery. The moment
+	# they walk back into the relay they are a normal runner again: hazards can wash them and controls can read them.
+	# `.keys()` returns a copy, so erasing mid-loop is safe.
+	var retry_boundary := float(SECTIONS[0]["x0"]) - 0.5 if not SECTIONS.is_empty() else START_POS.x + 2.5
 	for id in _washed.keys():
-		if _get_character_position(id).x >= RETURN_LANDING.x - 2.0:
+		if _get_character_position(id).x >= retry_boundary:
 			_washed.erase(id)
-	# refresh plate-held state — a section is held only when EVERY one of its pads has a member on it
+	# Refresh plate-held state — a section is held only when EVERY one of its pads has a member on it.
+	# Keep the occupant identity separately: the portrait needs to say WHO is committed even when a
+	# double plate is only half-complete, and a rally lock excludes that member without changing selection.
+	var next_character_holds: Dictionary = {}
 	for i in range(SECTIONS.size()):
 		var dis := str(SECTIONS[i]["disable"])
 		if dis != "plate" and dis != "double_plate" and dis != "override":
 			continue
 		var all_held := true
-		for fp in _plate_footprints(i):
+		var footprints := _plate_footprints(i)
+		for footprint_index in range(footprints.size()):
+			var fp: Vector2 = footprints[footprint_index]
 			var pad_held := false
 			for char_id in PARTY_IDS:
-				if _washed.has(char_id):
+				if gsc == null or not gsc.characters.has(char_id) or gsc.is_downed(char_id):
 					continue
 				var p := _get_character_position(char_id)
 				if abs(p.x - fp.x) <= PLATE_RADIUS and abs(p.z - fp.y) <= PLATE_RADIUS:
 					pad_held = true
+					var hold_kind := "override" if dis == "override" else "plate"
+					var hold_label := "OVERRIDE" if dis == "override" else ("DUAL PLATE" if dis == "double_plate" else "PLATE")
+					next_character_holds[char_id] = {
+						"control_id": "wash_%s_%d_%d" % [dis, i, footprint_index],
+						"kind": hold_kind,
+						"label": "%s %d" % [hold_label, i + 1],
+						"section": i,
+					}
 					break
 			if not pad_held:
 				all_held = false
-				break
 		if all_held != _plate_held[i]:
 			_plate_held[i] = all_held
 			_set_strip(i, 0.15 if all_held else 0.4)
+			if dis == "override":
+				var control = _override_controls.get(i, null)
+				if is_instance_valid(control):
+					_set_causal_feedback_latched(control, all_held)
+	_character_holds = next_character_holds
 	# hide alcoves: a party member tucked in a nook is fully concealed from the guards
-	var gsc = _get_game_state()
 	if gsc != null and not _enemies.is_empty():
 		for cid in PARTY_IDS:
 			if not gsc.characters.has(cid):
@@ -1480,7 +2196,8 @@ func _update(delta := 0.0) -> void:
 	# _sluice_blocked (so it's replay-safe + fast-forward invariant); the per-frame work is just the toggle, so
 	# the surging water you got washed by is always VISIBLE (and the sluice gate reads open vs closed).
 	for i in range(_section_water.size()):
-		var flooding: bool = i < _flooding.size() and _flooding[i]
+		# A held control calms the water itself, not just its damage. Never show visible-but-safe water.
+		var flooding: bool = i < _flooding.size() and _flooding[i] and not _section_disabled(i)
 		for seg in _section_water[i]:
 			if is_instance_valid(seg):
 				seg.visible = flooding
@@ -1491,16 +2208,233 @@ func _update(delta := 0.0) -> void:
 		if is_instance_valid(_sluice_gate[gi]):
 			_sluice_gate[gi].visible = gi < _sluice_blocked.size() and bool(_sluice_blocked[gi])
 	if _phase == "active":
-		var all_through := true
+		var all_through := gsc != null
 		for char_id in PARTY_IDS:
-			if _get_character_position(char_id).x < CHUNK_END_X:
+			if gsc == null or not gsc.characters.has(char_id) or gsc.is_downed(char_id) \
+					or _get_character_position(char_id).x < CHUNK_END_X:
 				all_through = false
 				break
 		if all_through:
-			_phase = "complete"
-			_say("// CHUNK CLEAR")
+			_complete_wash_relay()
 
 # --- Scene/preview interface ---
+
+## Optional generic portrait contract consumed by FragmentPreviewSequence. Other chunks can expose the
+## same method for levers, cranks, channelled abilities, or any future positional job without teaching the
+## shared HUD about their mechanics.
+func get_preview_character_holds() -> Dictionary:
+	if _phase != "active":
+		return {}
+	return _character_holds.duplicate(true)
+
+## A visible section tell establishes this mechanic once for the run. The approach allowance lets the
+## starting party learn from section one's telegraph without already standing in the lethal footprint.
+func _learn_surge_timing_if_near(section_index: int) -> void:
+	if _surge_timing_learned or section_index < 0 or section_index >= SECTIONS.size():
+		return
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	var section: Dictionary = SECTIONS[section_index]
+	var x0 := float(section["x0"]) - 5.0
+	var x1 := float(section["x1"]) + 5.0
+	for char_id in PARTY_IDS:
+		if not gs.characters.has(char_id) or gs.is_downed(char_id):
+			continue
+		var p: Vector3 = gs.get_position(char_id)
+		if p.x >= x0 and p.x <= x1 and absf(p.z) <= FLOOR_Z_HALF + 3.0:
+			_surge_timing_learned = true
+			return
+
+## Optional read-only contract consumed by PathRenderManager. It is intentionally absent until the
+## player has learned the cadence and only answers while paused: resuming therefore clears every overlay.
+## Returned points remain in flat data space; the shared manager owns helix warping and rendering.
+func get_paused_path_feedback(char_id: String) -> Array:
+	var feedback: Array = []
+	if not _surge_timing_learned or _phase != "active" or not _scheduled:
+		return feedback
+	var gs = _get_game_state()
+	var sched = _get_scheduler()
+	if gs == null or sched == null or not sched.is_paused() or not gs.characters.has(char_id):
+		return feedback
+	var character: Dictionary = gs.characters[char_id]
+	var movement = character.get("movement", null)
+	if not (movement is Dictionary):
+		return feedback
+	var movement_data: Dictionary = movement
+	var path: Array = movement_data.get("path", [])
+	var ticks: Array = movement_data.get("arrival_ticks", [])
+	if path.size() < 2 or ticks.size() != path.size():
+		return feedback
+	var now: float = sched.get_current_tick()
+	for raw_hazard in _surge_path_hazards(char_id):
+		var hazard: Dictionary = raw_hazard
+		var pieces := _clip_timed_path_to_hazard(path, ticks, hazard, now)
+		var spans := _merge_surge_path_pieces(pieces)
+		for span_index in range(spans.size()):
+			var span: Dictionary = spans[span_index]
+			var timing := _classify_surge_path_span(span, hazard, now)
+			feedback.append({
+				"id": "%s_%d" % [str(hazard["id"]), span_index],
+				"points": span["points"],
+				"risk": timing["risk"],
+				"label": timing["label"],
+				"arrival_tick": span["entry_tick"],
+				"surge_tick": timing["surge_tick"],
+			})
+	return feedback
+
+func _surge_path_hazards(char_id: String) -> Array:
+	var hazards: Array = []
+	for i in range(SECTIONS.size()):
+		var section: Dictionary = SECTIONS[i]
+		hazards.append({
+			"id": "section_%d" % i,
+			"min_x": float(section["x0"]), "max_x": float(section["x1"]),
+			"min_z": -FLOOR_Z_HALF, "max_z": FLOOR_Z_HALF,
+			"base_tick": _cadence_t0 + FIRST_FLOOD + float(section["phase"]),
+			"period": _period(i), "duration": _dur(i),
+			# The current holder's own queued departure cannot promise the control will remain held.
+			"held": _section_disabled(i) and not _character_holds.has(char_id),
+		})
+	hazards.append({
+		"id": "drain",
+		"min_x": DRAIN_LOOP_S0, "max_x": DRAIN_LOOP_S1,
+		"min_z": DRAIN_RUN_LANE - DRAIN_RUN_HALF,
+		"max_z": DRAIN_RUN_LANE + DRAIN_RUN_HALF,
+		"base_tick": _cadence_t0 + FIRST_FLOOD + DRAIN_LOOP_PHASE,
+		"period": DRAIN_LOOP_PERIOD, "duration": DRAIN_LOOP_DUR,
+		"held": false,
+	})
+	return hazards
+
+func _clip_timed_path_to_hazard(path: Array, ticks: Array, hazard: Dictionary, now: float) -> Array:
+	var pieces: Array = []
+	for i in range(1, path.size()):
+		if not (path[i - 1] is Vector3) or not (path[i] is Vector3):
+			continue
+		var p0: Vector3 = path[i - 1]
+		var p1: Vector3 = path[i]
+		var t0 := float(ticks[i - 1])
+		var t1 := float(ticks[i])
+		if not p0.is_finite() or not p1.is_finite() or t1 <= now or t1 <= t0:
+			continue
+		if t0 < now:
+			var remaining := clampf((now - t0) / (t1 - t0), 0.0, 1.0)
+			p0 = p0.lerp(p1, remaining)
+			t0 = now
+		var clip := _clip_segment_to_surge_rect(
+			p0, p1,
+			float(hazard["min_x"]), float(hazard["max_x"]),
+			float(hazard["min_z"]), float(hazard["max_z"])
+		)
+		if clip.is_empty():
+			continue
+		var enter_u := float(clip["enter"])
+		var exit_u := float(clip["exit"])
+		var entry := p0.lerp(p1, enter_u)
+		var exit := p0.lerp(p1, exit_u)
+		pieces.append({
+			"points": [entry, exit],
+			"entry_tick": lerpf(t0, t1, enter_u),
+			"exit_tick": lerpf(t0, t1, exit_u),
+		})
+	return pieces
+
+## Slab/Liang-Barsky clipping in the flat x/z movement plane. The returned fractions preserve each
+## segment's exact arrival-tick interpolation, including cooperative paths that contain scheduled waits.
+func _clip_segment_to_surge_rect(
+		p0: Vector3, p1: Vector3, min_x: float, max_x: float, min_z: float, max_z: float) -> Dictionary:
+	var enter := 0.0
+	var exit := 1.0
+	var dx := p1.x - p0.x
+	if absf(dx) < 0.000001:
+		if p0.x < min_x or p0.x > max_x:
+			return {}
+	else:
+		var xa := (min_x - p0.x) / dx
+		var xb := (max_x - p0.x) / dx
+		enter = maxf(enter, minf(xa, xb))
+		exit = minf(exit, maxf(xa, xb))
+		if enter > exit:
+			return {}
+	var dz := p1.z - p0.z
+	if absf(dz) < 0.000001:
+		if p0.z < min_z or p0.z > max_z:
+			return {}
+	else:
+		var za := (min_z - p0.z) / dz
+		var zb := (max_z - p0.z) / dz
+		enter = maxf(enter, minf(za, zb))
+		exit = minf(exit, maxf(za, zb))
+		if enter > exit:
+			return {}
+	return {"enter": clampf(enter, 0.0, 1.0), "exit": clampf(exit, 0.0, 1.0)}
+
+func _merge_surge_path_pieces(pieces: Array) -> Array:
+	var merged: Array = []
+	for raw_piece in pieces:
+		if not (raw_piece is Dictionary):
+			continue
+		var piece: Dictionary = raw_piece
+		var points: Array = piece["points"]
+		if not merged.is_empty():
+			var last: Dictionary = merged[merged.size() - 1]
+			var last_points: Array = last["points"]
+			var joins_in_space := (last_points[last_points.size() - 1] as Vector3).distance_to(points[0]) < 0.01
+			var joins_in_time := absf(float(last["exit_tick"]) - float(piece["entry_tick"])) < 0.01
+			if joins_in_space and joins_in_time:
+				if (last_points[last_points.size() - 1] as Vector3).distance_to(points[1]) > 0.001:
+					last_points.append(points[1])
+				last["points"] = last_points
+				last["exit_tick"] = piece["exit_tick"]
+				merged[merged.size() - 1] = last
+				continue
+		merged.append({
+			"points": points.duplicate(),
+			"entry_tick": piece["entry_tick"],
+			"exit_tick": piece["exit_tick"],
+		})
+	return merged
+
+func _classify_surge_path_span(span: Dictionary, hazard: Dictionary, now: float) -> Dictionary:
+	var entry_tick := float(span["entry_tick"])
+	var exit_tick := float(span["exit_tick"])
+	var arrival_in := maxf(0.0, entry_tick - now)
+	if bool(hazard.get("held", false)):
+		return {
+			"risk": "safe", "surge_tick": -1.0,
+			"label": "HELD OPEN | ARRIVE +%.1fs" % arrival_in,
+		}
+	var base_tick := float(hazard["base_tick"])
+	var period := maxf(0.001, float(hazard["period"]))
+	var duration := maxf(0.0, float(hazard["duration"]))
+	var first_k := maxi(0, int(floor((entry_tick - base_tick) / period)) - 1)
+	var last_k := maxi(first_k + 2, int(ceil((exit_tick - base_tick) / period)) + 1)
+	var danger_found := false
+	var danger_onset := base_tick
+	var nearest_gap := INF
+	for k in range(first_k, last_k + 1):
+		var onset := base_tick + period * float(k)
+		var off := onset + duration
+		if exit_tick >= onset and entry_tick <= off:
+			if not danger_found:
+				danger_onset = onset
+			danger_found = true
+			nearest_gap = 0.0
+		elif exit_tick < onset:
+			nearest_gap = minf(nearest_gap, onset - exit_tick)
+		else:
+			nearest_gap = minf(nearest_gap, entry_tick - off)
+	var risk := "danger" if danger_found else ("close" if nearest_gap <= SURGE_CLOSE_MARGIN else "safe")
+	var surge_tick := danger_onset
+	if not danger_found:
+		var next_k := maxi(0, int(ceil((entry_tick - base_tick) / period)))
+		surge_tick = base_tick + period * float(next_k)
+	var label := "ARRIVE +%.1fs | SURGE +%.1fs" % [arrival_in, surge_tick - now]
+	if danger_found and surge_tick <= now and now <= surge_tick + duration:
+		label = "WATER ACTIVE | ARRIVE +%.1fs" % arrival_in
+	return {"risk": risk, "surge_tick": surge_tick, "label": label}
 
 ## The modeled environment this gauntlet plays inside — the textured channels spiral. It is built along
 ## the SAME helix as ChannelsArc, so arc_pos(section x, lane z) lands each section on its set piece.
@@ -1511,6 +2445,19 @@ func get_environment_model() -> String:
 ## node followers render through it, and a click on the GLB deck maps back to a flat (s, lane) target.
 func get_coord_map():
 	return ChannelsCoordMap.new()
+
+## Adjacent helix turns are only ~9.24 world units apart vertically. The shared preview camera's
+## 12-unit rise therefore starts above the next turn and looks straight through it. Keep this live
+## follow camera below that pitch at every allowed zoom while retaining enough elevation to read
+## the current channel, and snap on entry so the view never lerps through the upper deck.
+func get_preview_camera_profile() -> Dictionary:
+	return {
+		"follow_offset": Vector3(0.0, 6.0, 7.0),
+		"min_zoom": 0.8,
+		"max_zoom": 1.25,
+		"initial_zoom": 1.0,
+		"reset_yaw": true,
+	}
 
 ## With the textured GLB as the environment, the flat graybox geometry would double the set pieces and
 ## float below the helix — hide it. Only this chunk's own DIRECT meshes go; the meshless interaction
@@ -1535,8 +2482,13 @@ func get_spawn_positions() -> Dictionary:
 func get_grid_data() -> Dictionary:
 	# The main deck lane, plus one OUTWARD spur per gap (lane 3.5..10) — the branch offshoots. Each spur
 	# overlaps the deck rim (lane 4) so it's path-connected; the height grows to admit the outer lane.
-	var regions: Array = [{"min": [FLOOR_MIN_X, -FLOOR_Z_HALF], "max": [FLOOR_MAX_X, FLOOR_Z_HALF]}]
+	var regions: Array = [
+		{"min": [FLOOR_MIN_X, -FLOOR_Z_HALF], "max": [PRESSURE_GAP_S0, FLOOR_Z_HALF]},
+		{"min": [PRESSURE_GAP_S1, -FLOOR_Z_HALF], "max": [FLOOR_MAX_X, FLOOR_Z_HALF]},
+	]
 	for mid in _gap_mids():
+		if _is_authored_transit_gap(float(mid)):
+			continue
 		regions.append({"min": [float(mid) - BRANCH_HALF_S, BRANCH_NECK_LANE], "max": [float(mid) + BRANCH_HALF_S, BRANCH_OUTER_LANE]})
 	# The drain loop: entry/exit legs (overlap the deck rim -> connected), the flooding run between them, and
 	# the stub out to the dry salvage ledge across the water. Authored flat in (s, lane) exactly like the branches.
@@ -1545,9 +2497,15 @@ func get_grid_data() -> Dictionary:
 	regions.append({"min": [DRAIN_LOOP_S1 - 0.8, BRANCH_NECK_LANE], "max": [DRAIN_LOOP_S1 + 0.8, DRAIN_RUN_LANE + 0.6]})
 	regions.append({"min": [DRAIN_LOOP_S0 - 0.8, DRAIN_RUN_LANE - DRAIN_RUN_HALF], "max": [DRAIN_LOOP_S1 + 0.8, DRAIN_RUN_LANE + DRAIN_RUN_HALF]})
 	regions.append({"min": [drain_mid - 1.1, DRAIN_RUN_LANE - 0.3], "max": [drain_mid + 1.1, DRAIN_LEDGE_LANE + 0.6]})
+	# The mandatory pressure pocket is deliberately separated from the main deck by a blocked cell row. The
+	# portal is the graph edge; raster adjacency must never turn the room into an ordinary walking shortcut.
+	regions.append({"min": [21.0, -10.4], "max": [26.3, -6.0]})
+	# Only the crawl mouths are walkable. Its visible outer bulge remains grid-forbidden authored transit.
+	regions.append({"min": [35.1, BRANCH_NECK_LANE], "max": [37.9, 12.0]})
+	regions.append({"min": [42.1, BRANCH_NECK_LANE], "max": [44.9, 12.0]})
 	return {
 		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
-		"origin": [-2.0, 0.0, -6.0], "cell_size": 1.0, "width": 92, "height": 18,
+		"origin": [-2.0, 0.0, -11.0], "cell_size": 1.0, "width": 92, "height": 27,
 		"walkable_regions": regions,
 	}
 
@@ -1572,6 +2530,13 @@ func get_preview_anchors() -> Dictionary:
 	anchors["drain_bait"] = Vector3(DRAIN_LOOP_S0, 0.5, BRANCH_NECK_LANE + 0.8) # the bait at the loop mouth
 	anchors["drain_entry"] = Vector3(DRAIN_LOOP_S0, 0.5, BRANCH_NECK_LANE)      # where the loop leaves the deck
 	anchors["drain_exit"] = Vector3(DRAIN_LOOP_S1, 0.5, BRANCH_NECK_LANE)       # where it rejoins
+	anchors['pressure_portal_entry'] = PRESSURE_PORTAL_ENTRY
+	anchors['pressure_room_arrival'] = PRESSURE_ROOM_ARRIVAL
+	anchors['pressure_room_return'] = PRESSURE_ROOM_RETURN
+	anchors['pressure_portal_landing'] = PRESSURE_PORTAL_LANDING
+	anchors['pressure_valve'] = PRESSURE_VALVE_POS
+	anchors['sluice_tunnel_in'] = SLUICE_TUNNEL_MOUTH_A
+	anchors['sluice_tunnel_out'] = SLUICE_TUNNEL_MOUTH_B
 	return anchors
 
 func get_preview_time_state() -> Dictionary:
@@ -1587,6 +2552,8 @@ func get_preview_abilities() -> Array:
 # (note text, per-character stat deltas). Owner stat deltas (aster +atp, peris +sta, endo +hp) auto-apply
 # upstream; here we add the channels-specific EFFECT. Pure derived state — replay/fast-forward safe.
 func handle_preview_ability(ability_id: String, _ability: Dictionary = {}) -> Dictionary:
+	if not _accepts_gameplay_events():
+		return {"note": "// RELAY CLEAR // no active channel read"}
 	match ability_id:
 		"aster_focus":
 			return _ability_trace()
@@ -1598,6 +2565,8 @@ func handle_preview_ability(ability_id: String, _ability: Dictionary = {}) -> Di
 
 # TRACE — Aster reads the cadence: find the section he's in (or the next ahead) and surface its safe window.
 func _ability_trace() -> Dictionary:
+	# TRACE establishes the cadence vocabulary immediately, even if Aster is between sections.
+	_surge_timing_learned = true
 	var x := _owner_x("aster_focus")
 	var i := _section_index_at(x)
 	if i < 0:
@@ -1623,8 +2592,8 @@ func _ability_bloom() -> Dictionary:
 	_spawn_bloom(world, flat)
 	return {"note": "// BLOOM // bioluminescence takes — the lane reads clear"}
 
-# BRACE — Endo braces the party: refund stamina to any washed/lower-deck member for the re-cross, and mark the
-# deep hide alcove. If nobody's down, it still steadies the party (the owner hp refund applies upstream).
+# BRACE — Endo braces the party: refund stamina to anyone still waiting at the start shelter for the re-cross,
+# and mark the deep hide alcove. If nobody is waiting, it still steadies the party (owner HP applies upstream).
 func _ability_brace() -> Dictionary:
 	var result := {}
 	var deltas := {}
@@ -1632,7 +2601,7 @@ func _ability_brace() -> Dictionary:
 		deltas[id] = {"sta_delta": 14.0}
 	if not deltas.is_empty():
 		result["characters"] = deltas
-		result["note"] = "// BRACE // %d down — steadied for the climb back" % deltas.size()
+		result["note"] = "// BRACE // %d waiting at start — steadied for the retry" % deltas.size()
 	else:
 		result["note"] = "// BRACE // the party reads the deep cover"
 	return result
@@ -1679,25 +2648,19 @@ func get_preview_overlay_status(_overlay_id: String, _current_tick: float) -> Ar
 
 func reset_preview_state() -> void:
 	var n := SECTIONS.size()
+	_pressure_vent_until = -1.0
 	# The host scheduler PERSISTS across an in-place reset, and every hazard onset self-reschedules forever — so a
 	# reset must CANCEL the live cadence and re-arm it, or the old (un-rebased) chain keeps firing while the
 	# analytic safe-window reads recompute from the zeroed counts (predicted vs real onset drift). Cancel every
 	# recurring tag + the pending drowned-guard removals, then clear _scheduled so _ensure_scheduled re-anchors
 	# the whole cadence to the post-reset 'now' (matching a fresh boot).
-	var sched = _get_scheduler()
-	if sched != null:
-		sched.cancel_tag("wash_drain_onset"); sched.cancel_tag("wash_drain_off"); sched.cancel_tag("wash_drain_bait")
-		for k in range(1, DRAIN_DROWN_SWEEPS + 1):
-			sched.cancel_tag("wash_drain_sweep_%d" % k)
-		for i in range(n):
-			sched.cancel_tag("wash_onset_%d" % i); sched.cancel_tag("wash_off_%d" % i); sched.cancel_tag("wash_pretel_%d" % i)
-		for spec in ENEMY_SPECS:
-			sched.cancel_tag("wash_drain_kill_%s" % str(spec["id"]))
-	_scheduled = false   # _ensure_scheduled re-arms (and re-captures _cadence_t0) on the next _update
+	_cancel_wash_events()
+	_wipe_restart_pending = false
 	# A guard drowned in the drain loop was unregistered + freed — bring it (and any other missing spec guard) back
 	# before the re-snap below assumes every guard still exists.
 	_respawn_missing_enemies()
 	_phase = "ready"
+	_character_holds.clear()
 	_flooding = []; _plate_held = []; _sluice_blocked = []; _flood_counts = []; _section_wash_counts = []
 	for i in range(n):
 		_flooding.append(false); _plate_held.append(false); _sluice_blocked.append(false); _flood_counts.append(0); _section_wash_counts.append(0)
@@ -1711,6 +2674,7 @@ func reset_preview_state() -> void:
 	_drain_flooding = false
 	_drain_flood_count = 0
 	_drowned_count = 0
+	_section_drowned_count = 0
 	for seg in _drain_water:
 		if is_instance_valid(seg):
 			seg.visible = false
@@ -1721,6 +2685,7 @@ func reset_preview_state() -> void:
 	# Ability state is derived per-run — clear it so a reset/replay doesn't leak a stale TRACE read or blooms.
 	_trace_section = -1
 	_trace_until = 0.0
+	# Learned cadence is player knowledge, not transient hazard state: keep it across an in-place retry.
 	for segs in _section_water:
 		for seg in segs:
 			if is_instance_valid(seg):
@@ -1746,6 +2711,17 @@ func reset_preview_state() -> void:
 		_surge_root.queue_free()
 		_surge_root = null
 	_branch_loot = 0
+	for interactable in _interactables:
+		if is_instance_valid(interactable) and interactable.has_method("reset"):
+			interactable.reset()
+	# reset() re-enables every interactable; the climb stays nonexistent as an affordance until the end reel drops it.
+	if is_instance_valid(_climb_interactable):
+		_climb_interactable.set_interaction_enabled(false)
+	for control in _override_controls.values():
+		if is_instance_valid(control):
+			_set_causal_feedback_latched(control, false)
+	if is_instance_valid(_pressure_valve):
+		_set_causal_feedback_latched(_pressure_valve, false)
 	for b in _branches:
 		b["collected"] = false
 		var gated := str(b.get("gate_kind", "open")) != "open"
@@ -1774,6 +2750,7 @@ func reset_preview_state() -> void:
 						gs.grid.remove_dynamic_blocker(cell)
 		for char_id in PARTY_IDS:
 			if gs.characters.has(char_id):
+				gs.restore_character(char_id)
 				gs.snap_character_to(char_id, SPAWNS.get(char_id, START_POS))
 				gs.set_character_concealment(char_id, GameState.CONCEAL_NONE)
 		for enemy in _enemies:
@@ -1784,6 +2761,9 @@ func reset_preview_state() -> void:
 		_set_strip(i, 0.4)
 	for i in range(_lure_meshes.size()):
 		_set_lure_emission(i, 0.6)
+	if is_instance_valid(_guidance_root):
+		_guidance_root.visible = true
+	_refresh_section_guidance()
 	_set_preview_step("wash_relay_briefing")
 
 func get_preview_state() -> Dictionary:
@@ -1838,21 +2818,29 @@ func get_preview_state() -> Dictionary:
 			"unlocked": bool(b.get("unlocked", true)),
 		})
 	return {
-		"phase": _phase, "complete": _phase == "complete",
+		"phase": _phase, "complete": _phase == "complete", "wipe_count": _wipe_count,
 		"sections": secs, "section_count": SECTIONS.size(),
 		"washed_count": _washed.size(), "washed": _washed.keys(),
 		"flow_period": FLOW_PERIOD, "flood_duration": FLOOD_DURATION,
 		"enemy_count": guards.size(), "guards": guards,
 		"lure_active": _lure_active(), "hidden": hidden_ids,
 		"sloperope_deployed": _sloperope_deployed,
+		"climb_available": is_instance_valid(_climb_interactable) and _climb_interactable.is_interaction_enabled(),
+		"guidance_section": _guidance_section, "guidance_count": _section_guides.size(),
+		"section_setpiece_count": _section_setpiece_count,
+		"pressure_portal_count": _pressure_portals.size(), "sluice_tunnel_count": _sluice_tunnels.size(),
+		"pressure_vent_active": _pressure_vent_remaining() > 0.0,
+		"pressure_vent_remaining": _pressure_vent_remaining(),
 		"branches": branches, "branch_count": _branches.size(), "branch_loot": _branch_loot,
 		"branch_guard_count": branch_guard_count,
-		"trace_section": _trace_section, "bloom_count": _blooms.size(),
+		"trace_section": _trace_section, "surge_timing_learned": _surge_timing_learned,
+		"bloom_count": _blooms.size(),
 		"sweep_count": _sweep_count, "section_wash_counts": _section_wash_counts.duplicate(),
 		"flush_hint_shown": _flush_hint_shown,
 		"water_shown": _water_shown_state(),
 		"drain_flooding": _drain_flooding, "drain_next_onset_in": _drain_next_onset_in(),
-		"drowned_count": _drowned_count, "drain_guard": drain_guard,
+		"drowned_count": _drowned_count, "section_drowned_count": _section_drowned_count,
+		"drain_guard": drain_guard,
 	}
 
 # Per-section: is the flood water currently visible? (Drives the flood-visual test + any HUD read.)

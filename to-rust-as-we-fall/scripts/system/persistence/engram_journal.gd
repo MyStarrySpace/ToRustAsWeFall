@@ -4,8 +4,8 @@ signal entry_added(entry_id: int)
 signal entry_updated(entry_id: int)
 signal journal_reset()
 
-const MANUAL_CAPTURE_KEY := KEY_C
-const ENGRAM_TOGGLE_KEY := KEY_J
+## Capture and journal visibility are driven by the `engram_capture` and
+## `engram_toggle` InputMap actions so both shortcuts remain remappable.
 const MAX_CAPTURE_EDGE := 1280
 
 var _entries: Array[Dictionary] = []

@@ -2222,6 +2222,12 @@
 		"progression_stage": 2,
 		"roster": [],
 		"seed": 1701,
+		"spatial_profile": {
+			"branch_room_count": 3,
+			"slot_pitch": 14,
+			"spiral_descent_per_turn": 10.0,
+			"spiral_min_radius": 7.5
+		},
 		"title": "Generated Teaching Channels: Shelter 1 -> Shelter 2",
 		"world_slot": {
 			"act": 1.0,

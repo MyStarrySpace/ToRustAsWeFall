@@ -1,0 +1,21 @@
+[gd_scene format=3]
+
+[node name="DevConsoleTouchToggle" type="CanvasLayer"]
+layer = 89
+process_mode = 3
+
+[node name="ConsoleTouchButton" type="Button" parent="."]
+custom_minimum_size = Vector2(56, 44)
+anchors_preset = 4
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = 4.0
+offset_top = -22.0
+offset_right = 60.0
+offset_bottom = 22.0
+grow_vertical = 2
+modulate = Color(1, 1, 1, 0.4)
+focus_mode = 0
+mouse_default_cursor_shape = 2
+text = ">_"
+flat = true

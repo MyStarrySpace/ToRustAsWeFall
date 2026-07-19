@@ -31,6 +31,7 @@ const PATH_WIDTH := 0.34
 const PREVIEW_WIDTH := 0.14     # the dim hover ribbon is a hint, not a hose
 const DASH_LENGTH := 0.5
 const DASH_GAP := 0.32
+const PATH_GHOST_SHADER := preload("res://resources/path_ghost.gdshader")
 
 ## Preview style: thinner and DASHED — the visual grammar for "not committed yet". A click commits
 ## and the solid ribbon takes over.
@@ -68,13 +69,18 @@ func _ready() -> void:
 	_mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
 	_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_mat.cull_mode = BaseMaterial3D.CULL_DISABLED  # ribbon visible from either side
+	# Full-screen perception materials stop at priority 126. Routes are planning
+	# feedback, so draw in the reserved final slot like destination rings/ghosts;
+	# otherwise Aster's data view repaints the solid ground ribbon and leaves only
+	# the sparse through-wall checker pass visible.
+	_mat.render_priority = 127
 	# THE THROUGH-WALL CONTRACT (the shifting-decal report): the SOLID ribbon depth-tests. It used
 	# to draw with no_depth_test so the route survived the helix deck / faded walls — but painted
 	# at floor depth onto a BUILDING FACE near the camera (the dressed districts put whole facades
 	# in the foreground), the route parallax-slides across that face as the camera moves: an "odd
 	# decal". The behind-geometry read now lives in the NEXT-PASS GHOST below: it draws through
-	# occluders, but as a dim WORLD-TRIPLANAR checker — anchored to the world, it cannot shift with
-	# the camera — and alpha-SCISSOR, because the preview scene drops the alpha-blend pass.
+	# occluders, but as a dim world-anchored checker that samples scene depth and discards itself
+	# wherever the solid ribbon is already visible.
 	_mat.no_depth_test = false
 	_mat.next_pass = _make_ghost_pass()
 	_line.material_override = _mat
@@ -107,37 +113,21 @@ func clear_explicit_path() -> void:
 	_explicit_path = []
 	_explicit_index = 0
 
-## One shared 2x2 checker (two opaque, two clear texels) for every ghost pass — world-triplanar
-## mapped so the dither pattern is glued to world space.
-static var _ghost_checker: ImageTexture = null
-
-func _make_ghost_pass() -> StandardMaterial3D:
-	if _ghost_checker == null:
-		var img := Image.create(2, 2, false, Image.FORMAT_RGBA8)
-		img.fill(Color(1, 1, 1, 0))
-		img.set_pixel(0, 0, Color(1, 1, 1, 1))
-		img.set_pixel(1, 1, Color(1, 1, 1, 1))
-		_ghost_checker = ImageTexture.create_from_image(img)
-	var ghost := StandardMaterial3D.new()
-	ghost.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-	ghost.alpha_scissor_threshold = 0.5
-	ghost.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	ghost.cull_mode = BaseMaterial3D.CULL_DISABLED
-	ghost.no_depth_test = true
-	ghost.albedo_texture = _ghost_checker
-	ghost.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	ghost.uv1_triplanar = true
-	ghost.uv1_scale = Vector3(7.0, 7.0, 7.0)
-	ghost.albedo_color = Color(color, 1.0).darkened(0.25)
+## Depth-aware checker fallback: visible only where opaque geometry covers the solid route.
+func _make_ghost_pass() -> ShaderMaterial:
+	var ghost := ShaderMaterial.new()
+	ghost.shader = PATH_GHOST_SHADER
+	ghost.render_priority = 127
+	ghost.set_shader_parameter("tint", Color(color, 1.0).darkened(0.25))
 	return ghost
 
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint() or _line == null:
 		return
 	_mat.albedo_color = RUNNING_COLOR if _running else Color(color, WALK_ALPHA)
-	var ghost := _mat.next_pass as StandardMaterial3D
+	var ghost := _mat.next_pass as ShaderMaterial
 	if ghost != null:
-		ghost.albedo_color = (RUNNING_COLOR if _running else Color(color, 1.0)).darkened(0.25)
+		ghost.set_shader_parameter("tint", (RUNNING_COLOR if _running else Color(color, 1.0)).darkened(0.25))
 
 	# Collect the remaining waypoints first; only build a surface if there's a line to draw.
 	var points := _remaining_points()
@@ -333,10 +323,16 @@ func _remaining_points() -> Array[Vector3]:
 func _ground_y() -> float:
 	# Ride the grid's floor surface whenever there's a grid — INCLUDING preview ribbons (char_id == "").
 	# Keying this on char_id buried the hover preview under a lifted modeled floor (origin.y > HEIGHT_OFFSET).
+	# A preview deliberately has no movement char_id, but it is anchored to the character whose route it
+	# previews. In a stacked scene (the elevator), inherit that anchor's level; defaulting every preview to
+	# level 0 put the upper-deck route four metres below the cabin floor.
 	if game_state != null and game_state.grid != null:
 		var lvl := 0
-		if char_id != "" and game_state.characters.has(char_id):
-			lvl = game_state.get_character_level(char_id)
+		var ground_char_id := char_id
+		if ground_char_id == "" and anchor != null and "char_id" in anchor:
+			ground_char_id = str(anchor.get("char_id"))
+		if ground_char_id != "" and game_state.characters.has(ground_char_id):
+			lvl = game_state.get_character_level(ground_char_id)
 		return game_state.grid.origin.y + game_state.grid.level_height * float(lvl) + HEIGHT_OFFSET
 	return HEIGHT_OFFSET
 

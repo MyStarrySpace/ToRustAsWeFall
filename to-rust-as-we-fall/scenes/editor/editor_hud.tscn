@@ -1,0 +1,250 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/editor/editor_hud.gd" id="1_hud"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_plan"]
+content_margin_left = 10.0
+content_margin_top = 10.0
+content_margin_right = 10.0
+content_margin_bottom = 10.0
+bg_color = Color(0.08, 0.085, 0.1, 0.88)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.32, 0.36, 0.42, 0.9)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[node name="HUD" type="CanvasLayer"]
+script = ExtResource("1_hud")
+
+[node name="InfoLabel" type="Label" parent="."]
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 380.0
+offset_bottom = 150.0
+theme_override_colors/font_color = Color(0.7, 0.7, 0.75, 0.85)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 13
+
+[node name="Palette" type="VBoxContainer" parent="."]
+anchors_preset = 3
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = -312.0
+offset_right = 152.0
+offset_bottom = -12.0
+grow_vertical = 0
+
+[node name="Title" type="Label" parent="Palette"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.5, 0.55, 1)
+theme_override_font_sizes/font_size = 12
+text = "BLOCKS"
+
+[node name="Block1" type="Button" parent="Palette"]
+custom_minimum_size = Vector2(140, 28)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "1: Wall"
+[node name="Block2" type="Button" parent="Palette"]
+custom_minimum_size = Vector2(140, 28)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "2: Floor"
+[node name="Block3" type="Button" parent="Palette"]
+custom_minimum_size = Vector2(140, 28)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "3: Pipe (auto)"
+[node name="Block4" type="Button" parent="Palette"]
+custom_minimum_size = Vector2(140, 28)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "4: Flora"
+[node name="Block5" type="Button" parent="Palette"]
+custom_minimum_size = Vector2(140, 28)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "5: Iron Bloom"
+[node name="Block6" type="Button" parent="Palette"]
+custom_minimum_size = Vector2(140, 28)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "6: Terminal"
+[node name="Block7" type="Button" parent="Palette"]
+custom_minimum_size = Vector2(140, 28)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "7: Shelter"
+[node name="Block8" type="Button" parent="Palette"]
+custom_minimum_size = Vector2(140, 28)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "8: Membrane"
+
+[node name="RotationLabel" type="Label" parent="Palette"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.6, 0.65, 1)
+theme_override_font_sizes/font_size = 12
+
+[node name="PlanBrowserPanel" type="PanelContainer" parent="."]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -380.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = 520.0
+grow_horizontal = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_plan")
+
+[node name="PlanBrowser" type="VBoxContainer" parent="PlanBrowserPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="PlanBrowserPanel/PlanBrowser"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.68, 0.72, 0.8, 1)
+theme_override_font_sizes/font_size = 12
+text = "SCENE PLANS / GRAYBOXES"
+
+[node name="PlanSelector" type="OptionButton" parent="PlanBrowserPanel/PlanBrowser"]
+custom_minimum_size = Vector2(340, 30)
+layout_mode = 2
+
+[node name="PlanButtons" type="HBoxContainer" parent="PlanBrowserPanel/PlanBrowser"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="PlanPreviousButton" type="Button" parent="PlanBrowserPanel/PlanBrowser/PlanButtons"]
+custom_minimum_size = Vector2(34, 28)
+layout_mode = 2
+tooltip_text = "Previous plan"
+text = "<"
+[node name="PlanNextButton" type="Button" parent="PlanBrowserPanel/PlanBrowser/PlanButtons"]
+custom_minimum_size = Vector2(34, 28)
+layout_mode = 2
+tooltip_text = "Next plan"
+text = ">"
+[node name="PlanVisibilityButton" type="Button" parent="PlanBrowserPanel/PlanBrowser/PlanButtons"]
+custom_minimum_size = Vector2(78, 28)
+layout_mode = 2
+tooltip_text = "Show or hide the loaded plan graybox"
+text = "Hide"
+[node name="PlanFocusButton" type="Button" parent="PlanBrowserPanel/PlanBrowser/PlanButtons"]
+custom_minimum_size = Vector2(78, 28)
+layout_mode = 2
+tooltip_text = "Center the camera on the loaded plan"
+text = "Focus"
+
+[node name="PlanTitle" type="Label" parent="PlanBrowserPanel/PlanBrowser"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.96, 1, 1)
+theme_override_font_sizes/font_size = 14
+[node name="PlanSlot" type="Label" parent="PlanBrowserPanel/PlanBrowser"]
+custom_minimum_size = Vector2(340, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.66, 0.76, 0.86, 1)
+theme_override_font_sizes/font_size = 11
+autowrap_mode = 2
+[node name="PlanHelp" type="Label" parent="PlanBrowserPanel/PlanBrowser"]
+custom_minimum_size = Vector2(340, 80)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.72, 0.73, 0.78, 1)
+theme_override_font_sizes/font_size = 11
+autowrap_mode = 2
+
+[node name="GeneratorDivider" type="HSeparator" parent="PlanBrowserPanel/PlanBrowser"]
+layout_mode = 2
+[node name="GeneratorTitle" type="Label" parent="PlanBrowserPanel/PlanBrowser"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.68, 0.72, 0.8, 1)
+theme_override_font_sizes/font_size = 12
+text = "GENERATOR"
+
+[node name="TierRow" type="HBoxContainer" parent="PlanBrowserPanel/PlanBrowser"]
+layout_mode = 2
+theme_override_constants/separation = 6
+[node name="TierLabel" type="Label" parent="PlanBrowserPanel/PlanBrowser/TierRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.64, 0.68, 0.74, 1)
+theme_override_font_sizes/font_size = 11
+text = "Tier"
+vertical_alignment = 1
+[node name="GenerationTierSelector" type="OptionButton" parent="PlanBrowserPanel/PlanBrowser/TierRow"]
+custom_minimum_size = Vector2(132, 28)
+layout_mode = 2
+[node name="SeedLabel" type="Label" parent="PlanBrowserPanel/PlanBrowser/TierRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.64, 0.68, 0.74, 1)
+theme_override_font_sizes/font_size = 11
+text = "Seed"
+vertical_alignment = 1
+[node name="GenerationSeedEdit" type="LineEdit" parent="PlanBrowserPanel/PlanBrowser/TierRow"]
+custom_minimum_size = Vector2(86, 28)
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+placeholder_text = "1701"
+
+[node name="SlotRow" type="HBoxContainer" parent="PlanBrowserPanel/PlanBrowser"]
+layout_mode = 2
+theme_override_constants/separation = 6
+[node name="GenerationSlotEdit" type="LineEdit" parent="PlanBrowserPanel/PlanBrowser/SlotRow"]
+custom_minimum_size = Vector2(148, 28)
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+placeholder_text = "generated_editor_stretch"
+[node name="GenerationEntryEdit" type="LineEdit" parent="PlanBrowserPanel/PlanBrowser/SlotRow"]
+custom_minimum_size = Vector2(82, 28)
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+placeholder_text = "shelter_1"
+[node name="GenerationExitEdit" type="LineEdit" parent="PlanBrowserPanel/PlanBrowser/SlotRow"]
+custom_minimum_size = Vector2(82, 28)
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+placeholder_text = "shelter_2"
+
+[node name="GenerationAllowedEdit" type="LineEdit" parent="PlanBrowserPanel/PlanBrowser"]
+custom_minimum_size = Vector2(340, 26)
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+placeholder_text = "allowed flora/enemy/structure/archetype"
+[node name="GenerationBlockedEdit" type="LineEdit" parent="PlanBrowserPanel/PlanBrowser"]
+custom_minimum_size = Vector2(340, 26)
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+placeholder_text = "blocked flora/enemy/structure/archetype"
+[node name="GenerationRequiredEdit" type="LineEdit" parent="PlanBrowserPanel/PlanBrowser"]
+custom_minimum_size = Vector2(340, 26)
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+placeholder_text = "required flora/enemy/structure/archetype"
+
+[node name="GeneratorActions" type="HBoxContainer" parent="PlanBrowserPanel/PlanBrowser"]
+layout_mode = 2
+theme_override_constants/separation = 6
+[node name="GenerationButton" type="Button" parent="PlanBrowserPanel/PlanBrowser/GeneratorActions"]
+custom_minimum_size = Vector2(104, 28)
+layout_mode = 2
+tooltip_text = "Generate and show a stretch plan from the current settings"
+text = "Generate"
+[node name="GenerationSaveButton" type="Button" parent="PlanBrowserPanel/PlanBrowser/GeneratorActions"]
+custom_minimum_size = Vector2(74, 28)
+layout_mode = 2
+tooltip_text = "Save the last generated stretch spec"
+text = "Save"
+
+[node name="GenerationStatus" type="Label" parent="PlanBrowserPanel/PlanBrowser"]
+custom_minimum_size = Vector2(340, 32)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.78, 1)
+theme_override_font_sizes/font_size = 11
+autowrap_mode = 2

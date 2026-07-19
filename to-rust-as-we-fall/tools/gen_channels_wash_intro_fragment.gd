@@ -21,7 +21,8 @@ const PORTAL_OUT_POS := Vector3(21.5, 0.5, -1.5)
 const PORTAL_RADIUS := 1.2
 const WASH_BACK_POS := Vector3(2.5, 0.5, 0.5)
 const EXIT_POS := Vector3(27.5, 0.5, 0.5)
-const EXIT_RADIUS := 2.2
+const EXIT_RADIUS := 3.75
+const EXIT_MARKER_SIZE := Vector3(3.52, 0.4, 3.52)
 const ENEMY_SPECS := [
 	{"id": "wash_intro_guard_0", "pos": Vector3(23.5, 0.5, 2.5)},
 	{"id": "wash_intro_guard_1", "pos": Vector3(24.5, 0.5, -1.5)},
@@ -34,7 +35,7 @@ func _init() -> void:
 	var frag := Fragment.new()
 	frag.id = "channels_wash_intro"
 	frag.title = "Channels — Wash Intro"
-	frag.help = "The hunters guard the way down. Light the flure to draw them into the channels — the wash takes them — then step through the portal across. Tuck into a Capbage if one gets close."
+	frag.help = "The hunters guard the way down. Light the flure to draw them into the channels — the wash takes them — then send the whole party through the portal and gather on the far TO SPIRAL pad. Tuck into a Capbage if one gets close."
 	frag.default_character = "endo"
 	frag.party_ids = PackedStringArray(["aster", "peris", "endo"])
 	frag.spawns = {
@@ -50,7 +51,7 @@ func _init() -> void:
 	frag.lights = []
 	for lx in [3.0, 11.0, 19.0, 27.0]:
 		frag.lights.append({"pos": Vector3(lx, 4.2, 0.0), "color": Color(0.62, 0.68, 0.78), "energy": 2.4, "range": 16.0})
-	frag.labels = [{"text": "TO SPIRAL", "pos": EXIT_POS + Vector3(0.0, 2.0, 0.0), "color": Color(0.5, 0.8, 0.9)}]
+	frag.labels = [{"text": "ALL CREW // TO SPIRAL", "pos": EXIT_POS + Vector3(0.0, 2.0, 0.0), "color": Color(0.5, 0.8, 0.9)}]
 	for i in range(CHANNEL_X.size()):
 		frag.labels.append({"text": "Channel %d" % (i + 1), "pos": Vector3(CHANNEL_X[i], 1.4, 0.0), "color": Color(0.4, 0.75, 0.85)})
 	for cp in CAPBAGE_POS:
@@ -76,7 +77,7 @@ func _init() -> void:
 		objs.append({"type": "enemy", "id": str(spec["id"]), "pos": spec["pos"], "speed": ENEMY_SPEED, "detect": ENEMY_DETECT,
 			"targets": ["aster", "peris", "endo"]})
 	# Exit marker (the green pad toward the spiral; its "TO SPIRAL" label is a separate label entry).
-	objs.append({"type": "marker", "pos": EXIT_POS, "size": Vector3(EXIT_RADIUS * 1.6, 0.4, EXIT_RADIUS * 1.6),
+	objs.append({"type": "marker", "pos": EXIT_POS, "size": EXIT_MARKER_SIZE,
 		"color": Color(0.3, 0.7, 0.55), "energy": 1.4, "label": ""})
 	frag.objects = objs
 
@@ -96,6 +97,7 @@ func _init() -> void:
 		"wash_back_pos": WASH_BACK_POS,
 		"flure_attract": FLURE_ATTRACT,
 		"enemy_detect": ENEMY_DETECT,
+		"restart_on_wipe": true,
 		"anchors": {
 			"flure": FLURE_POS, "portal_in": PORTAL_IN_POS, "portal_out": PORTAL_OUT_POS, "exit": EXIT_POS,
 			"capbage_0": CAPBAGE_POS[0], "capbage_1": CAPBAGE_POS[1], "capbage_2": CAPBAGE_POS[2],

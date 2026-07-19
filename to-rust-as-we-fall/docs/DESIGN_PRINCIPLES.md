@@ -1,5 +1,9 @@
 # TRAWF Design Principle Register
 
+Mandatory companion standard: [Systems-Thinking Puzzle Design Standard](SYSTEMS_THINKING_PUZZLE_STANDARD.md).
+For every puzzle or encounter, define the causal model the player is meant to build, the evidence
+that tests it, and the point where reasoning ends and repetitive execution begins.
+
 Derived from the canonical corpus (GDD v02, CHANNELS_DESIGN, design_archetypes, shadow-solutions,
 dlc_roguelike_mode, run_meta_decisions) plus the director's session corrections (2026-07-01), by a
 five-slice extraction + synthesis pass. Every principle cites its sources; every translation is marked
@@ -462,4 +466,3 @@ apply to it for free. All five scripted sentry re-posts are `Enemy.re_post()`.
 pursuer hops (2), its barricade clamber (1) and checkpoint resume (snap+restore — restart-grade
 machinery, like the loader's), the boss knockback (snap+adjust), the set-piece magnet pin (1),
 and the wash_relay reset flow (2).
-

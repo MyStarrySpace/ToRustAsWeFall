@@ -69,6 +69,7 @@ var _cross_level_plan: Dictionary = {}
 const HP_MAX := 100.0
 const STAMINA_MAX := 100.0
 const ATP_MAX_PIPS := 8.0
+const ATP_PIP_STEP := 0.5
 const WALK_SPEED := 3.0
 const RUN_SPEED := 6.0
 # Tunable (not const) so the tension sweep can measure candidate economies; the DEFAULT is the
@@ -89,16 +90,67 @@ const DETECTION_LOS_RECHECK_INTERVAL := 0.25
 ## fresh primary event starts a new chain with a fresh budget.
 const DETECTION_LOS_RECHECK_MAX_HOPS := 120
 
+## Detection is invalidated by movement/state changes, then solved analytically into scheduler events.
+## These derived registries keep that work proportional to active detector->target subscriptions instead
+## of every character pair in the scene. The counters are deliberately cheap and exposed for performance
+## regressions; they never affect simulation or serialization.
+var _detection_active_pairs: Dictionary = {}  # symmetric pair tag -> {a, b}
+var _detection_batch_depth := 0
+var _detection_batch_dirty := false
+var _detection_batch_all_dirty := false
+var _detection_batch_dirty_ids: Dictionary = {}
+var _performance_counters := {
+	"detection_recomputes": 0,
+	"detection_pairs_considered": 0,
+	"detection_predictions_solved": 0,
+	"detection_events_scheduled": 0,
+	"cooperative_plans": 0,
+	"plain_plans": 0,
+}
+
+func reset_performance_counters() -> void:
+	for key in _performance_counters.keys():
+		_performance_counters[key] = 0
+
+func get_performance_counters() -> Dictionary:
+	return _performance_counters.duplicate()
+
+## Coalesce a burst of state/movement invalidations (for example, revealing a streamed ecology) into
+## one detection rebuild. Nestable so scene activation and movement replacement can share the seam.
+func begin_detection_update_batch() -> void:
+	_detection_batch_depth += 1
+
+func end_detection_update_batch() -> void:
+	if _detection_batch_depth <= 0:
+		return
+	_detection_batch_depth -= 1
+	if _detection_batch_depth == 0 and _detection_batch_dirty:
+		var all_dirty := _detection_batch_all_dirty
+		var dirty_ids := _detection_batch_dirty_ids.keys()
+		_detection_batch_dirty = false
+		_detection_batch_all_dirty = false
+		_detection_batch_dirty_ids.clear()
+		if not all_dirty and dirty_ids.size() == 1:
+			_recompute_all_detection_predictions(str(dirty_ids[0]))
+		else:
+			_recompute_all_detection_predictions()
+
 static func normalize_atp(value: float) -> float:
 	if value > ATP_MAX_PIPS + 0.001:
-		return clampf(roundf((value / 100.0) * ATP_MAX_PIPS), 0.0, ATP_MAX_PIPS)
-	return clampf(roundf(value), 0.0, ATP_MAX_PIPS)
+		return clampf(quantize_atp((value / 100.0) * ATP_MAX_PIPS), 0.0, ATP_MAX_PIPS)
+	return clamp_atp(value)
+
+static func quantize_atp(value: float) -> float:
+	return roundf(value / ATP_PIP_STEP) * ATP_PIP_STEP
 
 static func clamp_atp(value: float) -> float:
-	return clampf(roundf(value), 0.0, ATP_MAX_PIPS)
+	return clampf(quantize_atp(value), 0.0, ATP_MAX_PIPS)
 
 static func atp_text(value: float) -> String:
-	return "%d/%d" % [int(normalize_atp(value)), int(ATP_MAX_PIPS)]
+	var normalized := normalize_atp(value)
+	if is_equal_approx(normalized, roundf(normalized)):
+		return "%d/%d" % [int(normalized), int(ATP_MAX_PIPS)]
+	return "%.1f/%d" % [normalized, int(ATP_MAX_PIPS)]
 
 ## Optional log for external commands.
 var event_log: EventLog
@@ -258,8 +310,10 @@ func unregister_character(id: String) -> void:
 			for other in characters.keys():
 				if str(other) != id:
 					scheduler.cancel_tag(_detection_pair_tag(id, str(other)))
+		_cancel_detection_prediction_tags(id)
 	characters.erase(id)
 	explored.erase(id)
+	_coop_exempt.erase(id)
 
 # --- Movement Commands ---
 
@@ -281,23 +335,32 @@ func get_navigation_state() -> Dictionary:
 		}
 	return {}
 
-## A* pathfind to a grid cell on the character's current floor. Returns true if a path was found.
-func command_move_to_cell(id: String, cell: Vector2i) -> bool:
-	_cross_level_plan.erase(id)  # a fresh explicit move supersedes any in-flight cross-level traversal
-	if not _push_plans.is_empty() and _push_plans.has(id):
-		_push_plans.erase(id)    # ...and any in-flight push
-	_stop_rest(id)               # moving gets you out of bed
-	cancel_field_restore(id)     # ...and breaks a field-restore cast
-	_emit(GameEvent.KIND_MOVE_TO_CELL, {"id": id, "cell": GameEvent.v2i_to_arr(cell)})
-	return _do_move_to_cell(id, cell)
+## Whether a character can currently accept an ordinary explicit movement command.
+## Keep this in lockstep with the internal position/cell move guards so UI previews and
+## multi-character commands can report the exact movable roster before issuing an event.
+func can_accept_move_command(id: String) -> bool:
+	if not characters.has(id) or not scheduler:
+		return false
+	return not is_endocytosing(id) and not is_knocked_down(id) and not is_downed(id)
 
-## Straight-line move to a world position.
-func command_move_to_pos(id: String, pos: Vector3) -> bool:
+## Shared side effects of a fresh explicit movement command. These are derived state, so replay
+## applies them through the same command/application path without recording additional events.
+func _prepare_explicit_move(id: String) -> void:
 	_cross_level_plan.erase(id)
 	if not _push_plans.is_empty() and _push_plans.has(id):
 		_push_plans.erase(id)
 	_stop_rest(id)
 	cancel_field_restore(id)
+
+## A* pathfind to a grid cell on the character's current floor. Returns true if a path was found.
+func command_move_to_cell(id: String, cell: Vector2i) -> bool:
+	_prepare_explicit_move(id)
+	_emit(GameEvent.KIND_MOVE_TO_CELL, {"id": id, "cell": GameEvent.v2i_to_arr(cell)})
+	return _do_move_to_cell(id, cell)
+
+## Straight-line move to a world position.
+func command_move_to_pos(id: String, pos: Vector3) -> bool:
+	_prepare_explicit_move(id)
 	_emit(GameEvent.KIND_MOVE_TO_POS, {"id": id, "pos": GameEvent.v3_to_arr(pos)})
 	return _do_move_to_pos(id, pos)
 
@@ -366,9 +429,7 @@ func _on_cross_level_arrival(id: String) -> void:
 
 # Internal move without its own log entry.
 func _do_move_to_pos(id: String, pos: Vector3) -> bool:
-	if not characters.has(id) or not scheduler:
-		return false
-	if is_endocytosing(id) or is_knocked_down(id) or is_downed(id):
+	if not can_accept_move_command(id):
 		return false
 	# On a grid a position move routes on the CELLS (the cooperative planner, same as a cell move) —
 	# never a straight line that would cut through walls. The target quantizes to its cell, exactly
@@ -633,7 +694,7 @@ func set_stat(id: String, stat: String, value: float) -> void:
 		"hp":
 			clamped = clampf(value, 0.0, get_stat_cap(id, "hp"))
 		"atp":
-			clamped = clampf(roundf(value), 0.0, get_stat_cap(id, "atp"))
+			clamped = clampf(quantize_atp(value), 0.0, get_stat_cap(id, "atp"))
 	characters[id].stats[stat] = clamped
 	stat_changed.emit(id, stat, clamped)
 	# Combat damage that zeroes hp IS a down (GDD 2.4.3: a knockout, not death) — the same transition
@@ -1249,6 +1310,52 @@ func set_character_distracted(id: String, distracted: bool) -> void:
 	characters[id].stats["distracted"] = distracted
 	_recompute_all_detection_predictions(id)
 
+## Publish the only character ids a detector is interested in. Enemy owns the semantic roster; GameState
+## owns prediction. An explicit empty list means the detector is listening to nobody. Older callers that
+## never publish a list retain the legacy all-character fallback.
+func set_detection_targets(detector_id: String, target_ids: Array) -> void:
+	if not characters.has(detector_id):
+		return
+	var normalized: Array[String] = []
+	for raw_id in target_ids:
+		var target_id := str(raw_id)
+		if target_id == detector_id or normalized.has(target_id):
+			continue
+		normalized.append(target_id)
+	var stats: Dictionary = characters[detector_id].stats
+	var previous: Array = stats.get("detection_targets", [])
+	if stats.has("detection_targets") and previous == normalized:
+		return
+	stats["detection_targets"] = normalized
+	_recompute_all_detection_predictions(detector_id)
+
+## Scanning is a state-machine capability, not a permanent property. Alert/pursuit/attack states disable
+## their outgoing prediction subscription; returning to idle/roam/patrol/search enables it again.
+func set_detection_enabled(detector_id: String, enabled: bool) -> void:
+	if not characters.has(detector_id):
+		return
+	var stats: Dictionary = characters[detector_id].stats
+	if bool(stats.get("detection_enabled", true)) == enabled and stats.has("detection_enabled"):
+		return
+	stats["detection_enabled"] = enabled
+	_recompute_all_detection_predictions(detector_id)
+
+func _detection_target_ids(detector_id: String) -> Array[String]:
+	var out: Array[String] = []
+	if not characters.has(detector_id):
+		return out
+	var stats: Dictionary = characters[detector_id].stats
+	if stats.has("detection_targets"):
+		for raw_id in stats.get("detection_targets", []):
+			out.append(str(raw_id))
+		return out
+	# Compatibility for data-only detectors that predate explicit subscriptions.
+	for raw_id in characters.keys():
+		var id := str(raw_id)
+		if id != detector_id:
+			out.append(id)
+	return out
+
 ## A detector's outer reach, after any distraction shrink — the base from which the target's
 ## concealment tier then carves the effective spotting range.
 func _detector_outer_range(detector_id: String) -> float:
@@ -1276,45 +1383,74 @@ func _effective_detection_range(detector_outer: float, target_concealment: int) 
 func _detection_pair_tag(a: String, b: String) -> String:
 	return "dp_%s|%s" % [a, b] if a < b else "dp_%s|%s" % [b, a]
 
+func _cancel_detection_prediction_tags(only_id: String = "") -> void:
+	for raw_tag in _detection_active_pairs.keys():
+		var tag := str(raw_tag)
+		var pair: Dictionary = _detection_active_pairs[tag]
+		if only_id != "" and str(pair.get("a", "")) != only_id and str(pair.get("b", "")) != only_id:
+			continue
+		scheduler.cancel_tag(tag)
+		_detection_active_pairs.erase(tag)
+
 func _recompute_all_detection_predictions(only_id: String = "") -> void:
+	if _detection_batch_depth > 0:
+		_detection_batch_dirty = true
+		if only_id == "":
+			_detection_batch_all_dirty = true
+		else:
+			_detection_batch_dirty_ids[only_id] = true
+		return
 	if not scheduler:
 		return
+	_performance_counters["detection_recomputes"] = int(_performance_counters["detection_recomputes"]) + 1
+	_cancel_detection_prediction_tags(only_id)
 	var now := scheduler.get_current_tick()
-	var ids := characters.keys()
-	for i in range(ids.size()):
-		for j in range(i + 1, ids.size()):
-			var id_a: String = ids[i]
-			var id_b: String = ids[j]
-			if only_id != "" and id_a != only_id and id_b != only_id:
+	for raw_detector_id in characters.keys():
+		var detector_id := str(raw_detector_id)
+		var detector_stats: Dictionary = characters[detector_id].stats
+		if not bool(detector_stats.get("detection_enabled", true)):
+			continue
+		var outer_range := _detector_outer_range(detector_id)
+		if outer_range <= 0.0:
+			continue
+		for target_id in _detection_target_ids(detector_id):
+			if target_id == detector_id or not characters.has(target_id):
 				continue
-			scheduler.cancel_tag(_detection_pair_tag(id_a, id_b))
+			if only_id != "" and detector_id != only_id and target_id != only_id:
+				continue
+			_performance_counters["detection_pairs_considered"] = int(
+				_performance_counters["detection_pairs_considered"]) + 1
 			# Enemies don't see across floors: a target more than a floor's vertical gap away (e.g.
 			# the party crossing the bridge ABOVE the lower ecology) isn't spotted until it's on the
 			# same level. Recomputed on every move/level change, so detection resumes after a fall.
-			if absf(get_position(id_a).y - get_position(id_b).y) > DETECTION_VERTICAL_BAND:
+			if absf(get_position(detector_id).y - get_position(target_id).y) > DETECTION_VERTICAL_BAND:
 				continue
-			# Two-tier detection: the effective range each side spots the OTHER depends on the other's
-			# concealment tier (full when exposed, the inner band when medium-hidden, nothing when fully
-			# hidden) — a medium hide loses an outer-range chaser but not a close one.
-			var range_a := _effective_detection_range(
-				_detector_outer_range(id_a), get_character_concealment(id_b))
-			var range_b := _effective_detection_range(
-				_detector_outer_range(id_b), get_character_concealment(id_a))
-			if range_a > 0.0:
-				var t := _predict_detection_time(id_a, id_b, range_a, now)
-				if t >= 0.0:
-					var det_id := id_a
-					var tgt_id := id_b
-					scheduler.schedule_at(t, func(): _on_detection_event(det_id, tgt_id), _detection_pair_tag(id_a, id_b))
-			if range_b > 0.0:
-				var t := _predict_detection_time(id_b, id_a, range_b, now)
-				if t >= 0.0:
-					var det_id := id_b
-					var tgt_id := id_a
-					scheduler.schedule_at(t, func(): _on_detection_event(det_id, tgt_id), _detection_pair_tag(id_a, id_b))
+			var effective_range := _effective_detection_range(
+				outer_range, get_character_concealment(target_id))
+			if effective_range <= 0.0:
+				continue
+			_performance_counters["detection_predictions_solved"] = int(
+				_performance_counters["detection_predictions_solved"]) + 1
+			var detection_tick := _predict_detection_time(
+				detector_id, target_id, effective_range, now)
+			if detection_tick < 0.0:
+				continue
+			var scheduled_detector := detector_id
+			var scheduled_target := target_id
+			var tag := _detection_pair_tag(detector_id, target_id)
+			_detection_active_pairs[tag] = {"a": detector_id, "b": target_id}
+			_performance_counters["detection_events_scheduled"] = int(
+				_performance_counters["detection_events_scheduled"]) + 1
+			scheduler.schedule_at(detection_tick,
+				func(): _on_detection_event(scheduled_detector, scheduled_target), tag)
 
 func _on_detection_event(detector_id: String, target_id: String, recheck_hops: int = 0) -> void:
 	if not characters.has(detector_id) or not characters.has(target_id):
+		return
+	var detector_stats: Dictionary = characters[detector_id].stats
+	if not bool(detector_stats.get("detection_enabled", true)):
+		return
+	if detector_stats.has("detection_targets") and target_id not in _detection_target_ids(detector_id):
 		return
 	# Line of sight: a wall between detector and target blocks the spot (enemies can't see through walls).
 	# A blocked spot is NOT the last word while the pair is still in motion: the range-crossing event fires
@@ -1364,9 +1500,11 @@ func _arm_detection_los_recheck(detector_id: String, target_id: String, hops: in
 		return
 	if not (is_moving(detector_id) or is_moving(target_id)):
 		return
+	var tag := _detection_pair_tag(detector_id, target_id)
+	_detection_active_pairs[tag] = {"a": detector_id, "b": target_id}
 	scheduler.schedule_after(DETECTION_LOS_RECHECK_INTERVAL,
 		func(): _recheck_detection_after_los_block(detector_id, target_id, hops + 1),
-		_detection_pair_tag(detector_id, target_id))
+		tag)
 
 ## The follow-up to a wall-blocked spot on a pair still in motion. Unlike the primary event (whose scheduled
 ## tick IS the range-crossing proof), time has passed — so re-verify the pair is STILL spottable now (band,
@@ -1979,7 +2117,10 @@ func pick_interactor(required_char: String, target_pos: Vector3, candidates: Arr
 	var pool: Array[String] = []
 	for raw in candidates:
 		var id := str(raw)
-		if characters.has(id) and not pool.has(id):
+		# Downed bodies remain registered so they can be dragged/revived, but they cannot
+		# service a queued interaction. Excluding them here prevents the nearest corpse
+		# from owning a walk-to action that can never legitimately complete.
+		if characters.has(id) and not is_downed(id) and not pool.has(id):
 			pool.append(id)
 	if pool.is_empty():
 		return ""
@@ -2594,7 +2735,7 @@ func _apply_stat_delta(char_id: String, stat: String, delta: float) -> void:
 		"hp":
 			value = clampf(value, 0.0, get_stat_cap(char_id, "hp"))
 		"atp":
-			value = clampf(roundf(value), 0.0, get_stat_cap(char_id, "atp"))
+			value = clampf(quantize_atp(value), 0.0, get_stat_cap(char_id, "atp"))
 		"stamina":
 			value = clampf(value, 0.0, get_stat_cap(char_id, "stamina"))
 	characters[char_id].stats[stat] = value
@@ -3641,6 +3782,12 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			party_move_to_cell(GameEvent.arr_to_v2i(payload["cell"]))
 		GameEvent.KIND_PARTY_MOVE_TO_POS:
 			party_move_to_pos(GameEvent.arr_to_v3(payload["pos"]))
+		GameEvent.KIND_RALLY_MEMBERS:
+			# Formation slots were resolved when the command was recorded. Apply those exact
+			# destinations instead of recomputing from the replay's current selection/occupancy.
+			_apply_rally_destinations(
+				payload.get("members", []),
+				GameEvent.arr_to_path(payload.get("destinations", [])))
 		GameEvent.KIND_START_SPLIT:
 			start_split(payload.get("members", []))
 		GameEvent.KIND_END_SPLIT:
@@ -3730,6 +3877,73 @@ func party_move_to_pos(pos: Vector3) -> void:
 			var lateral := (float(i) - float(count - 1) / 2.0) * _PARTY_GRIDLESS_SPACING
 			_do_move_to_pos(members[i], pos + Vector3(0.0, 0.0, lateral))
 
+## Move an explicit ordered set of characters into a deterministic formation around `target`.
+## This deliberately does NOT read or mutate `party`: the caller owns availability/lock filtering,
+## and a rally must not change the current portrait selection. `anchor_id` only reserves the target's
+## centre slot (and selects a ring formation when gridless); it never removes that id from member_ids.
+##
+## The command records both the canonical member ids and their fully resolved destinations. Replay
+## applies those destinations directly, so later selection, occupancy, or formation-rule changes cannot
+## alter an already-recorded rally.
+func command_rally_members(member_ids: Array, target: Vector3, anchor_id := "") -> int:
+	var members: Array[String] = []
+	for raw_id in member_ids:
+		members.append(str(raw_id))
+	var destinations: Array[Vector3] = compute_rally_destinations(members, target, str(anchor_id))
+	_emit(GameEvent.KIND_RALLY_MEMBERS, {
+		"members": members.duplicate(),
+		"target": GameEvent.v3_to_arr(target),
+		"anchor_id": str(anchor_id),
+		"destinations": GameEvent.path_to_arr(destinations),
+	})
+	return _apply_rally_destinations(members, destinations)
+
+## Pure/read-only formation resolver shared by command previews. Returns one destination per supplied
+## id, in the same order, without filtering or de-duplicating the caller's list.
+func compute_rally_destinations(member_ids: Array, target: Vector3, anchor_id := "") -> Array[Vector3]:
+	var destinations: Array[Vector3] = []
+	var count := member_ids.size()
+	if count == 0:
+		return destinations
+	if grid != null:
+		var target_cell := grid.world_to_grid(target)
+		var taken: Dictionary = {}
+		if str(anchor_id) != "":
+			taken[target_cell] = true
+		for raw_id in member_ids:
+			var id := str(raw_id)
+			var cell := _nearest_free_cell(target_cell, taken)
+			taken[cell] = true
+			var level := get_character_level(id) if characters.has(id) else grid.level_for_y(target.y)
+			destinations.append(grid.grid_to_world(cell, level))
+		return destinations
+
+	if str(anchor_id) != "":
+		# With a character at the centre, every mover gets a genuine surrounding slot — including
+		# the one-member case, which a centred lateral fan would otherwise stack onto the anchor.
+		for i in range(count):
+			var angle := -PI * 0.5 + TAU * float(i) / float(count)
+			var offset := Vector3(cos(angle), 0.0, sin(angle)) * _PARTY_GRIDLESS_SPACING
+			destinations.append(target + offset)
+	else:
+		for i in range(count):
+			var lateral := (float(i) - float(count - 1) / 2.0) * _PARTY_GRIDLESS_SPACING
+			destinations.append(target + Vector3(0.0, 0.0, lateral))
+	return destinations
+
+## Replay entry point: destinations are already final data-space positions and must not be spread again.
+func _apply_rally_destinations(member_ids: Array, destinations: Array[Vector3]) -> int:
+	if member_ids.size() != destinations.size():
+		push_warning("Rally event has %d members but %d destinations" % [member_ids.size(), destinations.size()])
+		return 0
+	var moved_count := 0
+	for i in range(member_ids.size()):
+		var id := str(member_ids[i])
+		_prepare_explicit_move(id)
+		if _do_move_to_pos(id, destinations[i]):
+			moved_count += 1
+	return moved_count
+
 ## Give each party member a distinct, walkable destination cell around target so
 ## a single party move never stacks everyone on one cell. The order of members
 ## is deterministic (party order), so this replays and fast-forwards identically.
@@ -3795,16 +4009,17 @@ func end_split() -> void:
 
 # Internal cell move without its own log entry.
 func _do_move_to_cell(id: String, cell: Vector2i) -> bool:
-	if not characters.has(id) or not grid or not scheduler:
-		return false
-	if is_endocytosing(id) or is_knocked_down(id) or is_downed(id):
+	if not grid or not can_accept_move_command(id):
 		return false
 	var current_pos := get_position(id)
 	var current_cell := grid.world_to_grid(current_pos)
 	var speed: float = characters[id].move_speed
+	begin_detection_update_batch()
 	_cancel_movement(id)
 	characters[id].position = current_pos
-	return _begin_cooperative_move(id, current_pos, current_cell, cell, speed)
+	var moved := _begin_cooperative_move(id, current_pos, current_cell, cell, speed)
+	end_detection_update_batch()
+	return moved
 
 ## Plan a cooperative path from current_cell to dest_cell (waiting/detouring to
 ## avoid other characters' reserved cell-time windows) and start it. Falls back
@@ -3831,6 +4046,7 @@ func _begin_cooperative_move(id: String, current_pos: Vector3, current_cell: Vec
 	# cell (the glide from current_pos to the first cell center walks it onto the mesh).
 	current_cell = grid.nearest_walkable_cell(current_cell, level)
 	if _coop_exempt.has(id):
+		_performance_counters["plain_plans"] = int(_performance_counters["plain_plans"]) + 1
 		# snap the destination too — a plain A* to an unwalkable cell scans the whole reachable
 		# region before failing (the residual spike)
 		var dest_snapped := grid.nearest_walkable_cell(dest_cell, level)
@@ -3841,6 +4057,7 @@ func _begin_cooperative_move(id: String, current_pos: Vector3, current_cell: Vec
 		plain_full.append_array(plain)
 		_start_movement(id, plain_full)
 		return true
+	_performance_counters["cooperative_plans"] = int(_performance_counters["cooperative_plans"]) + 1
 	var plan := _plan_cooperative(current_cell, dest_cell, speed, scheduler.get_current_tick(), id, level)
 	if not plan.is_empty() and not plan.cells.is_empty():
 		var built := _build_timed_world_path(current_pos, plan.cells, plan.ticks, speed, level)

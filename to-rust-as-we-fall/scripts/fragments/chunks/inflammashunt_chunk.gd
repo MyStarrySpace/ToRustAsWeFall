@@ -43,6 +43,128 @@ const RAGE_SECS := 16.0
 const BUFFER_REFORM_SECS := 4.0
 const POPCORN_DPS_TICK := 2.5
 const HazardFieldScript := preload("res://scripts/game/objects/hazard_field.gd")
+const LevelDecoratorScript := preload("res://scripts/generation/level_decorator.gd")
+
+# The device housing is the end of the original five-step puzzle, but not the end of
+# the level.  A live Resolution Catalyst cannot simply be carried out through the
+# fire-damaged branch: the party must recommission its four support loops and seat it
+# in the insulated extraction cradle.  Every site is spatial, click-gated work.  No
+# phase advances from dialogue, elapsed time, or a platform-specific fallback.
+const COMMISSIONING_EVIDENCE_SECONDS := 9.0
+const COMMISSIONING_DECISION_SECONDS := 8.0
+const COMMISSIONING_EXECUTION_SECONDS := 14.0
+const EXTRACTION_WORK_SECONDS := 16.0
+const COMMISSIONING_PROTOCOL_ORDER := ["coolant", "root_return", "buffer", "transfer"]
+const COMMISSIONING_CLEAN_CHOICES := {
+	"coolant": "coolant_balanced_feed",
+	"root_return": "root_capillary_feed",
+	# The wet lane is also the Aster+Peris shadow solution.  With Myke present the
+	# dry-burn lane remains a distinct, equally valid specialist branch.
+	"buffer": "buffer_wet_lane",
+	"transfer": "transfer_linked_clock",
+}
+const COMMISSIONING_PROTOCOLS := {
+	"coolant": {
+		"label": "FLUSH LOOP / 01",
+		"category": "hydraulic_recommissioning",
+		"evidence": [
+			{"id": "coolant_inlet_trace", "pos": Vector3(63.0, 0.5, -7.0), "role": "aster", "verb": "TRACE INLET", "kind": "data"},
+			{"id": "coolant_root_sample", "pos": Vector3(68.0, 0.5, 6.5), "role": "peris", "verb": "SAMPLE RETURN", "kind": "root"},
+			{"id": "coolant_pressure_read", "pos": Vector3(73.0, 0.5, -5.5), "role": "aster", "verb": "READ PRESSURE", "kind": "data"},
+			{"id": "coolant_biofilm_read", "pos": Vector3(78.0, 0.5, 7.5), "role": "peris", "verb": "READ BIOFILM", "kind": "root"},
+			{"id": "coolant_crossfeed_trace", "pos": Vector3(83.0, 0.5, -3.5), "role": "aster", "verb": "TRACE CROSSFEED", "kind": "data"},
+		],
+		"choices": [
+			{"id": "coolant_balanced_feed", "pos": Vector3(88.0, 0.5, -7.0), "role": "aster", "verb": "BALANCE FEED", "kind": "decision"},
+			{"id": "coolant_root_priority", "pos": Vector3(88.0, 0.5, 7.0), "role": "peris", "verb": "PRIORITIZE ROOT", "kind": "decision"},
+		],
+		"resolutions": {
+			"coolant_balanced_feed": {"id": "coolant_metered_flush", "pos": Vector3(94.0, 0.5, -5.5), "role": "aster", "verb": "METER FLUSH", "kind": "execution"},
+			"coolant_root_priority": {"id": "coolant_living_flush", "pos": Vector3(94.0, 0.5, 5.5), "role": "peris", "verb": "TEND FLUSH", "kind": "execution"},
+		},
+	},
+	"root_return": {
+		"label": "ROOT RETURN / 02",
+		"category": "living_network_balance",
+		"evidence": [
+			{"id": "return_capillary_sample", "pos": Vector3(101.0, 0.5, 7.0), "role": "peris", "verb": "SAMPLE CAPILLARY", "kind": "root"},
+			{"id": "return_load_trace", "pos": Vector3(106.0, 0.5, -6.5), "role": "aster", "verb": "TRACE LOAD", "kind": "data"},
+			{"id": "return_growth_read", "pos": Vector3(111.0, 0.5, 5.5), "role": "peris", "verb": "READ GROWTH", "kind": "root"},
+			{"id": "return_valve_scan", "pos": Vector3(116.0, 0.5, -7.5), "role": "aster", "verb": "SCAN VALVE", "kind": "data"},
+			{"id": "return_pulse_map", "pos": Vector3(121.0, 0.5, 3.5), "role": "peris", "verb": "MAP PULSE", "kind": "root"},
+		],
+		"choices": [
+			{"id": "root_capillary_feed", "pos": Vector3(126.0, 0.5, 7.0), "role": "peris", "verb": "FEED CAPILLARY", "kind": "decision"},
+			{"id": "root_bypass_feed", "pos": Vector3(126.0, 0.5, -7.0), "role": "aster", "verb": "OPEN BYPASS", "kind": "decision"},
+		],
+		"resolutions": {
+			"root_capillary_feed": {"id": "root_tend_return", "pos": Vector3(132.0, 0.5, 5.5), "role": "peris", "verb": "TEND RETURN", "kind": "execution"},
+			"root_bypass_feed": {"id": "root_meter_bypass", "pos": Vector3(132.0, 0.5, -5.5), "role": "aster", "verb": "METER BYPASS", "kind": "execution"},
+		},
+	},
+	"buffer": {
+		"label": "BUFFER PERIMETER / 03",
+		"category": "buffer_containment",
+		"evidence": [
+			{"id": "buffer_thermal_read", "pos": Vector3(139.0, 0.5, -7.0), "role": "aster", "verb": "READ THERMAL", "kind": "data"},
+			{"id": "buffer_husk_sample", "pos": Vector3(144.0, 0.5, 6.5), "role": "peris", "verb": "SAMPLE HUSK", "kind": "root"},
+			{"id": "buffer_gap_trace", "pos": Vector3(149.0, 0.5, -5.5), "role": "aster", "verb": "TRACE GAP", "kind": "data"},
+			{"id": "buffer_filament_read", "pos": Vector3(154.0, 0.5, 7.5), "role": "peris", "verb": "READ FILAMENT", "kind": "root"},
+			{"id": "buffer_airflow_scan", "pos": Vector3(159.0, 0.5, -3.5), "role": "aster", "verb": "SCAN AIRFLOW", "kind": "data"},
+		],
+		"choices": [
+			{"id": "buffer_dry_burn_lane", "pos": Vector3(164.0, 0.5, -7.0), "role": "myke", "verb": "MARK BURN LANE", "kind": "decision"},
+			{"id": "buffer_wet_lane", "pos": Vector3(164.0, 0.5, 7.0), "role": "aster", "verb": "MARK WET LANE", "kind": "decision"},
+		],
+		"resolutions": {
+			"buffer_dry_burn_lane": {"id": "buffer_burn_break", "pos": Vector3(170.0, 0.5, -5.5), "role": "myke", "verb": "BURN BREAK", "kind": "execution"},
+			"buffer_wet_lane": {"id": "buffer_scrape_break", "pos": Vector3(170.0, 0.5, 5.5), "role": "aster", "verb": "SCRAPE BREAK", "kind": "execution"},
+		},
+	},
+	"transfer": {
+		"label": "TRANSFER CLOCK / 04",
+		"category": "catalyst_transfer",
+		"evidence": [
+			{"id": "transfer_root_clock", "pos": Vector3(177.0, 0.5, 7.0), "role": "peris", "verb": "READ ROOT CLOCK", "kind": "root"},
+			{"id": "transfer_phase_trace", "pos": Vector3(182.0, 0.5, -6.5), "role": "aster", "verb": "TRACE PHASE", "kind": "data"},
+			{"id": "transfer_membrane_read", "pos": Vector3(187.0, 0.5, 5.5), "role": "peris", "verb": "READ MEMBRANE", "kind": "root"},
+			{"id": "transfer_cradle_scan", "pos": Vector3(192.0, 0.5, -7.5), "role": "aster", "verb": "SCAN CRADLE", "kind": "data"},
+			{"id": "transfer_pulse_match", "pos": Vector3(197.0, 0.5, 3.5), "role": "peris", "verb": "MATCH PULSE", "kind": "root"},
+		],
+		"choices": [
+			{"id": "transfer_linked_clock", "pos": Vector3(202.0, 0.5, 7.0), "role": "peris", "verb": "LINK CLOCK", "kind": "decision"},
+			{"id": "transfer_isolated_clock", "pos": Vector3(202.0, 0.5, -7.0), "role": "aster", "verb": "ISOLATE CLOCK", "kind": "decision"},
+		],
+		"resolutions": {
+			"transfer_linked_clock": {"id": "transfer_living_sync", "pos": Vector3(208.0, 0.5, 5.5), "role": "peris", "verb": "SYNC TRANSFER", "kind": "execution"},
+			"transfer_isolated_clock": {"id": "transfer_machine_sync", "pos": Vector3(208.0, 0.5, -5.5), "role": "aster", "verb": "SYNC TRANSFER", "kind": "execution"},
+		},
+	},
+}
+const EXTRACTION_POS := Vector3(219.0, 0.5, 0.0)
+const ROLE_WALK_SPEEDS := {"aster": 3.2, "peris": 3.0, "myke": 3.1}
+const COMMISSIONING_DECORATION_PROFILE := {
+	"id": "inflammashunt_commissioning",
+	"x0": 56.0,
+	"x1": 224.0,
+	"width": 28.0,
+	"wall_height": 4.8,
+	"ground_y": 0.0,
+	"seed": 0x1F1A5A,
+	"program": "hydraulic",
+	"spacing": 10.5,
+	"floor_tile": "deck_metal",
+	"wall_tile": "rust_iron",
+	"floor_tint": Color(0.12, 0.14, 0.15),
+	"wall_tint": Color(0.17, 0.15, 0.14),
+	"trim": Color(0.40, 0.38, 0.34),
+	"inset": Color(0.045, 0.050, 0.055),
+	"service": Color(0.20, 0.23, 0.22),
+	"rust": Color(0.40, 0.16, 0.065),
+	"glow": Color(0.36, 0.91, 0.50),
+	"light": Color(0.45, 0.53, 0.43),
+	"signs": ["RESOLUTION SERVICE / 01", "LIVING RETURN SPINE", "CATALYST TRANSFER  >"],
+}
 
 ## Hold-time table (spec "Route Information As Efficiency"): [with info, without info].
 const HOLDS := {
@@ -105,6 +227,14 @@ var _housing_it: Area3D
 var _examine_it: Area3D
 var _strike_it: Area3D
 var _observe_it: Area3D
+var _commissioning_sites := {}
+var _commissioning_evidence := {}
+var _commissioning_choices := {}
+var _commissioning_resolved := {}
+var _commissioning_completed_actions: Array[String] = []
+var _commissioning_phase := "locked"
+var _extraction_it: Area3D
+var _decoration_audit := {}
 
 func get_scene_title() -> String:
 	return "The Inflammashunt (danger zone)"
@@ -132,8 +262,10 @@ func _build_chunk() -> void:
 	_build_approach()
 	_build_routes()
 	_build_junction_room()
+	_build_commissioning_gallery()
 	_spawn_active_chelators()
 	_refresh_hold_times()
+	_decoration_audit = LevelDecoratorScript.decorate_corridor(self, COMMISSIONING_DECORATION_PROFILE)
 
 func _update(delta: float) -> void:
 	super._update(delta)
@@ -167,6 +299,8 @@ func _inflammashunt_fragment() -> Fragment:
 		{"pos": Vector3(28.5, -0.05, 0.0), "size": Vector3(3.5, 0.1, 3.2), "color": scorch, "tile": "deck_metal"},
 		{"pos": Vector3(42.75, -0.05, 0.0), "size": Vector3(25.5, 0.1, JCT_HALF_Z * 2.0), "color": Color(0.1, 0.095, 0.09), "tile": "deck_metal"},
 		{"pos": Vector3(32.5, -0.05, -12.25), "size": Vector3(6.0, 0.1, 4.5), "color": Color(0.07, 0.065, 0.06), "tile": "deck_metal"},
+		# The measured service gallery begins at the housing's east threshold.
+		{"pos": Vector3(140.0, -0.05, 0.0), "size": Vector3(168.0, 0.1, 28.0), "color": Color(0.105, 0.11, 0.115), "tile": "deck_metal"},
 	]
 	var wallc := Color(0.06, 0.055, 0.05)
 	frag.walls = [
@@ -189,7 +323,9 @@ func _inflammashunt_fragment() -> Fragment:
 		# junction shell
 		{"pos": Vector3(42.75, 1.5, -8.9), "size": Vector3(25.5, 3.0, 0.4), "color": wallc},
 		{"pos": Vector3(42.75, 1.5, 8.9), "size": Vector3(25.5, 3.0, 0.4), "color": wallc},
-		{"pos": Vector3(55.9, 1.5, 0.0), "size": Vector3(0.4, 3.0, 18.2), "color": wallc},
+		# split around the service-gallery threshold
+		{"pos": Vector3(55.9, 1.5, -6.0), "size": Vector3(0.4, 3.0, 6.2), "color": wallc},
+		{"pos": Vector3(55.9, 1.5, 6.0), "size": Vector3(0.4, 3.0, 6.2), "color": wallc},
 		{"pos": Vector3(29.8, 1.5, -5.25), "size": Vector3(0.4, 3.0, 7.3), "color": wallc},
 		{"pos": Vector3(29.8, 1.5, 5.25), "size": Vector3(0.4, 3.0, 7.3), "color": wallc},
 		# the crawl pocket's sealed shell
@@ -197,6 +333,10 @@ func _inflammashunt_fragment() -> Fragment:
 		{"pos": Vector3(32.5, 1.2, -14.7), "size": Vector3(6.4, 2.4, 0.4), "color": wallc},
 		{"pos": Vector3(29.3, 1.2, -12.25), "size": Vector3(0.4, 2.4, 4.9), "color": wallc},
 		{"pos": Vector3(35.7, 1.2, -12.25), "size": Vector3(0.4, 2.4, 4.9), "color": wallc},
+		# commissioning gallery shell
+		{"pos": Vector3(140.0, 2.4, -14.15), "size": Vector3(168.0, 4.8, 0.3), "color": Color(0.12, 0.11, 0.105), "tile": "rust_iron"},
+		{"pos": Vector3(140.0, 2.4, 14.15), "size": Vector3(168.0, 4.8, 0.3), "color": Color(0.12, 0.11, 0.105), "tile": "rust_iron"},
+		{"pos": Vector3(224.15, 2.4, 0.0), "size": Vector3(0.3, 4.8, 28.0), "color": Color(0.10, 0.095, 0.09), "tile": "rust_iron"},
 	]
 	frag.lights = [
 		{"pos": Vector3(8.0, 3.6, 0.0), "color": Color(0.9, 0.68, 0.5), "energy": 1.2, "range": 16.0},
@@ -205,16 +345,21 @@ func _inflammashunt_fragment() -> Fragment:
 		{"pos": Vector3(22.0, 3.4, -10.0), "color": Color(0.6, 0.75, 0.95), "energy": 1.1, "range": 14.0},
 		{"pos": Vector3(38.0, 3.8, 0.0), "color": Color(0.85, 0.78, 0.68), "energy": 1.6, "range": 22.0},
 		{"pos": Vector3(50.0, 3.6, 4.0), "color": Color(0.5, 0.9, 0.62), "energy": 1.2, "range": 14.0},
+		{"pos": Vector3(75.0, 3.7, 0.0), "color": Color(0.42, 0.62, 0.58), "energy": 1.1, "range": 18.0},
+		{"pos": Vector3(116.0, 3.7, 0.0), "color": Color(0.40, 0.58, 0.48), "energy": 1.1, "range": 18.0},
+		{"pos": Vector3(157.0, 3.7, 0.0), "color": Color(0.54, 0.46, 0.36), "energy": 1.1, "range": 18.0},
+		{"pos": Vector3(198.0, 3.7, 0.0), "color": Color(0.38, 0.62, 0.44), "energy": 1.2, "range": 18.0},
 	]
 	frag.labels = [
 		{"pos": Vector3(8.0, 3.0, 0.0), "text": "MAINTENANCE BRANCH 7 — DECOMMISSIONED", "color": Color(0.62, 0.58, 0.55)},
 	]
+	frag.labels.append({"pos": Vector3(58.0, 3.1, 0.0), "text": "RESOLUTION SUPPORT // FOUR LOOPS", "color": Color(0.44, 0.78, 0.56)})
 	frag.objects = []
 	frag.params = {"restart_on_wipe": false}
 	frag.time_state = {"note_default": "Salvage run. The survival clock holds outside — in here the danger is local.",
 		"routing_mode": "direct"}
 	var cs := 1.5
-	var w := 40
+	var w := 150
 	var hgrid := 22
 	var cells: Array = []
 	for z in range(hgrid):
@@ -237,6 +382,8 @@ func _inflammashunt_fragment() -> Fragment:
 			elif wx >= HUB_X1 and wx < JCT_X0 and absf(wz) < 1.6:
 				ok = true
 			elif wx >= JCT_X0 and wx < JCT_X1 and absf(wz) < JCT_HALF_Z:
+				ok = true
+			elif wx >= JCT_X1 and wx < 224.0 and absf(wz) < 13.5:
 				ok = true
 			elif wx > POCKET[0] and wx < POCKET[1] and wz > POCKET[2] and wz < POCKET[3]:
 				ok = true
@@ -422,6 +569,181 @@ func _build_junction_room() -> void:
 	# the thermal-reset command is not offered until the terminal has been hacked
 	if gs != null:
 		gs.set_interactable_enabled(_interactable_data_id("ThermalResetConfirm"), false)
+
+# --- Long-form commissioning gallery: four evidence -> decision -> execution loops ---
+
+func _build_commissioning_gallery() -> void:
+	var gallery := Node3D.new()
+	gallery.name = "CommissioningGallery"
+	add_child(gallery)
+	var frames := Node3D.new()
+	frames.name = "ProtocolFrames"
+	gallery.add_child(frames)
+	var datums := Node3D.new()
+	datums.name = "MeasurementDatums"
+	gallery.add_child(datums)
+	var instruments := Node3D.new()
+	instruments.name = "CommissioningInstruments"
+	gallery.add_child(instruments)
+
+	var datum_count := 0
+	var station_count := 0
+	for protocol_index in range(COMMISSIONING_PROTOCOL_ORDER.size()):
+		var protocol_id := str(COMMISSIONING_PROTOCOL_ORDER[protocol_index])
+		var protocol: Dictionary = COMMISSIONING_PROTOCOLS[protocol_id]
+		_build_commissioning_protocol_frame(frames, datums, protocol_id, protocol_index, protocol)
+		for evidence_index in range((protocol["evidence"] as Array).size()):
+			var evidence: Dictionary = (protocol["evidence"] as Array)[evidence_index]
+			_build_commissioning_site(instruments, protocol_id, evidence, "evidence",
+				COMMISSIONING_EVIDENCE_SECONDS, evidence_index)
+			station_count += 1
+			datum_count += 1
+		for choice_variant in protocol["choices"] as Array:
+			var choice: Dictionary = choice_variant
+			_build_commissioning_site(instruments, protocol_id, choice, "decision",
+				COMMISSIONING_DECISION_SECONDS)
+			station_count += 1
+		for choice_id_variant in (protocol["resolutions"] as Dictionary).keys():
+			var choice_id := str(choice_id_variant)
+			var resolution: Dictionary = (protocol["resolutions"] as Dictionary)[choice_id]
+			_build_commissioning_site(instruments, protocol_id, resolution, "execution",
+				COMMISSIONING_EXECUTION_SECONDS, -1, choice_id)
+			station_count += 1
+
+	# The cradle is not a presentation trigger: seating and sealing the live device is
+	# one final outlined timed action, enabled only after all four executions.
+	_extraction_it = _add_interactable(instruments, "Commissioning_extraction_cradle",
+		"Seat the live Resolution Catalyst in the insulated extraction cradle",
+		EXTRACTION_POS, "SEAT CATALYST", "aster", EXTRACTION_WORK_SECONDS, true, 2.0,
+		Interactable.InteractableType.TIMED_ACTION, false)
+	var cradle := _add_box(_extraction_it, Vector3(0.0, 0.55, 0.0), Vector3(2.4, 1.1, 1.6),
+		Color(0.14, 0.17, 0.16), Color(0.36, 0.91, 0.50), 0.65, "ExtractionCradle")
+	_outline_interactable_child(_extraction_it, cradle, "Commissioning_extraction_cradle", 2.0)
+	_extraction_it.set_meta("commissioning_stage", "extraction")
+	_extraction_it.set_meta("commissioning_category", "extraction_handoff")
+	_extraction_it.interacted.connect(_on_extraction_cradle_completed)
+	_extraction_it.set_interaction_enabled(false)
+	_commissioning_sites["extraction_cradle"] = _extraction_it
+	station_count += 1
+
+	# Continuous longitudinal measurement rails bind the four bays into one readable
+	# service system.  They are paper-thin rendering-only datums, not obstacles.
+	for guide_z in [-9.6, 0.0, 9.6]:
+		var guide := _add_box(datums, Vector3(140.0, 0.024, float(guide_z)),
+			Vector3(164.0, 0.018, 0.055), Color(0.08, 0.15, 0.11),
+			Color(0.36, 0.91, 0.50), 0.55, "LongitudinalDatum_%s" % str(guide_z))
+		guide.set_meta("rendering_only", true)
+		datum_count += 1
+
+	gallery.set_meta("environment_audit", {
+		"contract_id": "inflammashunt_commissioning_environment_v1",
+		"protocol_frames": COMMISSIONING_PROTOCOL_ORDER.size(),
+		"station_count": station_count,
+		"measurement_datums": datum_count,
+		"collision_shapes": 0,
+		"clearance": "rendering_only_outside_station_footprints",
+		"deterministic": true,
+	})
+
+func _build_commissioning_protocol_frame(
+	frames: Node3D,
+	datums: Node3D,
+	protocol_id: String,
+	protocol_index: int,
+	protocol: Dictionary
+) -> void:
+	var evidence: Array = protocol["evidence"]
+	var first_x := float((evidence[0] as Dictionary)["pos"].x) - 3.0
+	var resolutions: Dictionary = protocol["resolutions"]
+	var last_x := first_x + 34.0
+	for resolution_variant in resolutions.values():
+		last_x = maxf(last_x, float((resolution_variant as Dictionary)["pos"].x) + 3.0)
+	var frame := Node3D.new()
+	frame.name = "ProtocolFrame_%02d_%s" % [protocol_index + 1, protocol_id]
+	frames.add_child(frame)
+	var frame_color := Color(0.26, 0.29, 0.28) if protocol_index % 2 == 0 else Color(0.30, 0.25, 0.21)
+	for arch_x in [first_x, last_x]:
+		for side_z in [-10.8, 10.8]:
+			_add_box(frame, Vector3(float(arch_x), 1.8, float(side_z)), Vector3(0.34, 3.6, 0.34),
+				frame_color, Color.BLACK, 0.0, "ArchColumn")
+		_add_box(frame, Vector3(float(arch_x), 3.45, 0.0), Vector3(0.34, 0.24, 21.9),
+			frame_color, Color.BLACK, 0.0, "ArchBeam")
+	var span := last_x - first_x
+	_add_box(frame, Vector3((first_x + last_x) * 0.5, 0.035, -11.0),
+		Vector3(span, 0.025, 0.12), frame_color, Color(0.36, 0.91, 0.50), 0.42,
+		"ProtocolBoundary")
+	_add_label(frame, "%s // %03dm-%03dm" % [str(protocol["label"]), int(first_x), int(last_x)],
+		Vector3(first_x + 3.0, 2.75, -10.55), Color(0.58, 0.86, 0.67))
+	var light := _add_light(frame, Vector3((first_x + last_x) * 0.5, 3.25, 0.0),
+		Color(0.38, 0.58, 0.46), 0.72, 10.0)
+	light.name = "ProtocolLight_%02d" % (protocol_index + 1)
+	light.shadow_enabled = false
+
+	for evidence_variant in evidence:
+		var pos: Vector3 = (evidence_variant as Dictionary)["pos"]
+		_add_box(datums, Vector3(pos.x, 0.026, 0.0), Vector3(0.055, 0.022, 22.0),
+			Color(0.07, 0.12, 0.10), Color(0.36, 0.91, 0.50), 0.38,
+			"StationDatum_%s" % str((evidence_variant as Dictionary)["id"]))
+
+func _build_commissioning_site(
+	parent: Node3D,
+	protocol_id: String,
+	site: Dictionary,
+	stage: String,
+	dwell_seconds: float,
+	evidence_index := -1,
+	choice_id := ""
+) -> void:
+	var site_id := str(site["id"])
+	var role := str(site["role"])
+	var node_name := "Commissioning_%s" % site_id
+	var interactable := _add_interactable(parent, node_name,
+		"%s: %s" % [str((COMMISSIONING_PROTOCOLS[protocol_id] as Dictionary)["label"]),
+			str(site["verb"]).capitalize()],
+		site["pos"], str(site["verb"]), role, dwell_seconds, true, 1.8,
+		Interactable.InteractableType.TIMED_ACTION, false)
+	var role_color := Color(0.34, 0.58, 0.92) if role == "aster" else (
+		Color(0.50, 0.78, 0.38) if role == "peris" else Color(0.86, 0.34, 0.18))
+	var kind := str(site.get("kind", "data"))
+	var body_size := Vector3(0.9, 1.05, 0.65)
+	if kind == "root":
+		body_size = Vector3(1.35, 0.60, 1.10)
+	elif kind == "decision":
+		body_size = Vector3(1.25, 0.86, 0.82)
+	elif kind == "execution":
+		body_size = Vector3(1.65, 1.20, 1.10)
+	var body := _add_box(interactable, Vector3(0.0, body_size.y * 0.5, 0.0), body_size,
+		Color(0.13, 0.15, 0.15), role_color, 0.48, "%sBody" % site_id)
+	# A second silhouette layer tells evidence, choice, and execution apart at camera distance.
+	if kind == "root":
+		for offset in [-0.38, 0.0, 0.38]:
+			_add_box(interactable, Vector3(float(offset), 0.76, 0.0), Vector3(0.11, 0.55, 0.11),
+				role_color.darkened(0.20), role_color, 0.30, "%sRootStem" % site_id)
+	elif kind == "decision":
+		_add_box(interactable, Vector3(0.0, 1.05, 0.0), Vector3(1.75, 0.10, 0.22),
+			role_color.darkened(0.25), role_color, 0.55, "%sDecisionBar" % site_id)
+	elif kind == "execution":
+		_add_box(interactable, Vector3(0.0, 1.45, 0.0), Vector3(0.28, 0.42, 0.28),
+			role_color.darkened(0.25), role_color, 0.70, "%sExecutionBeacon" % site_id)
+	else:
+		_add_box(interactable, Vector3(0.0, 1.18, 0.0), Vector3(0.58, 0.18, 0.16),
+			role_color.darkened(0.25), role_color, 0.65, "%sDataVane" % site_id)
+	_outline_interactable_child(interactable, body, node_name, 1.8)
+	interactable.set_meta("commissioning_protocol", protocol_id)
+	interactable.set_meta("commissioning_stage", stage)
+	interactable.set_meta("commissioning_role", role)
+	interactable.set_meta("commissioning_category",
+		str((COMMISSIONING_PROTOCOLS[protocol_id] as Dictionary)["category"]))
+	if stage == "evidence":
+		interactable.set_meta("commissioning_index", evidence_index)
+		interactable.interacted.connect(_on_commissioning_evidence.bind(protocol_id, evidence_index, site_id))
+	elif stage == "decision":
+		interactable.interacted.connect(_on_commissioning_choice.bind(protocol_id, site_id))
+	else:
+		interactable.set_meta("commissioning_choice", choice_id)
+		interactable.interacted.connect(_on_commissioning_execution.bind(protocol_id, choice_id, site_id))
+	interactable.set_interaction_enabled(false)
+	_commissioning_sites[site_id] = interactable
 
 func _spawn_active_chelators() -> void:
 	var gs = _get_game_state()
@@ -685,14 +1007,106 @@ func _on_open_housing() -> void:
 		_show_note("It does not budge. The lock is warm, but the warmth is coming from below, not from the panel.", 3.4)
 		return
 	device_retrieved = true
-	_phase = "complete"
-	_set_preview_step("inflammashunt_complete")
+	_phase = "catalyst_retrieved"
 	_sync_healing_visual()
+	_begin_commissioning()
 	_show_note("The housing opens. The Inflammashunt — still running, still warm. Salvage worth the walk.", 3.6)
 	var sched = _get_scheduler()
 	if sched != null and _party.has("myke"):
 		sched.schedule_after(4.0, func() -> void:
 			_show_note("Myke: \"...Huh. So that's what it looks like when somebody finishes the job.\"", 3.8), "inflam_after")
+
+func _begin_commissioning() -> void:
+	if _commissioning_phase != "locked":
+		return
+	_commissioning_evidence.clear()
+	_commissioning_choices.clear()
+	_commissioning_resolved.clear()
+	_commissioning_completed_actions.clear()
+	for protocol_id_variant in COMMISSIONING_PROTOCOL_ORDER:
+		var protocol_id := str(protocol_id_variant)
+		_commissioning_evidence[protocol_id] = []
+		_commissioning_resolved[protocol_id] = false
+	_commissioning_phase = str(COMMISSIONING_PROTOCOL_ORDER[0])
+	_set_preview_step("inflammashunt_commissioning_%s" % _commissioning_phase)
+	_enable_commissioning_site(_first_evidence_id(_commissioning_phase), true)
+	_show_note("The east service gallery answers: FLUSH // ROOT RETURN // BUFFER // TRANSFER. Five reads, one decision, one execution per loop.", 4.4)
+
+func _on_commissioning_evidence(protocol_id: String, evidence_index: int, site_id: String) -> void:
+	if _commissioning_phase != protocol_id:
+		return
+	var completed: Array = _commissioning_evidence.get(protocol_id, [])
+	if evidence_index != completed.size():
+		return
+	completed.append(site_id)
+	_commissioning_evidence[protocol_id] = completed
+	_commissioning_completed_actions.append(site_id)
+	var protocol: Dictionary = COMMISSIONING_PROTOCOLS[protocol_id]
+	var evidence: Array = protocol["evidence"]
+	if completed.size() < evidence.size():
+		var next_site: Dictionary = evidence[completed.size()]
+		_enable_commissioning_site(str(next_site["id"]), true)
+		_show_note("%s evidence %d/%d recorded. The next datum lights east." % [
+			str(protocol["label"]), completed.size(), evidence.size()], 2.6)
+	else:
+		for choice_variant in protocol["choices"] as Array:
+			_enable_commissioning_site(str((choice_variant as Dictionary)["id"]), true)
+		_show_note("%s is mapped. Choose the support strategy the evidence can sustain." % str(protocol["label"]), 3.2)
+
+func _on_commissioning_choice(protocol_id: String, choice_id: String) -> void:
+	if _commissioning_phase != protocol_id or _commissioning_choices.has(protocol_id):
+		return
+	var protocol: Dictionary = COMMISSIONING_PROTOCOLS[protocol_id]
+	if (_commissioning_evidence.get(protocol_id, []) as Array).size() < (protocol["evidence"] as Array).size():
+		return
+	_commissioning_choices[protocol_id] = choice_id
+	_commissioning_completed_actions.append(choice_id)
+	for choice_variant in protocol["choices"] as Array:
+		_enable_commissioning_site(str((choice_variant as Dictionary)["id"]), false)
+	var resolution: Dictionary = (protocol["resolutions"] as Dictionary)[choice_id]
+	_enable_commissioning_site(str(resolution["id"]), true)
+	_show_note("Strategy committed. The matching execution rig is live; the unused lane goes dark.", 3.0)
+
+func _on_commissioning_execution(protocol_id: String, choice_id: String, site_id: String) -> void:
+	if _commissioning_phase != protocol_id \
+			or str(_commissioning_choices.get(protocol_id, "")) != choice_id \
+			or bool(_commissioning_resolved.get(protocol_id, false)):
+		return
+	_commissioning_resolved[protocol_id] = true
+	_commissioning_completed_actions.append(site_id)
+	var protocol_index := COMMISSIONING_PROTOCOL_ORDER.find(protocol_id)
+	if protocol_index + 1 < COMMISSIONING_PROTOCOL_ORDER.size():
+		_commissioning_phase = str(COMMISSIONING_PROTOCOL_ORDER[protocol_index + 1])
+		_set_preview_step("inflammashunt_commissioning_%s" % _commissioning_phase)
+		_enable_commissioning_site(_first_evidence_id(_commissioning_phase), true)
+		_show_note("%s holds. The next loop answers farther down the service spine." %
+			str((COMMISSIONING_PROTOCOLS[protocol_id] as Dictionary)["label"]), 3.2)
+	else:
+		_commissioning_phase = "extraction"
+		_set_preview_step("inflammashunt_extraction")
+		_extraction_it.set_interaction_enabled(true)
+		_show_note("All four support loops hold together. Carry the catalyst to the green cradle and seal it for transit.", 3.6)
+
+func _on_extraction_cradle_completed() -> void:
+	if _commissioning_phase != "extraction":
+		return
+	for protocol_id_variant in COMMISSIONING_PROTOCOL_ORDER:
+		if not bool(_commissioning_resolved.get(str(protocol_id_variant), false)):
+			return
+	_commissioning_completed_actions.append("extraction_cradle")
+	_commissioning_phase = "complete"
+	_phase = "complete"
+	_set_preview_step("inflammashunt_complete")
+	_show_note("The cradle closes around the warm housing. The Inflammashunt is stable, portable, and finally clear of the burn branch.", 4.0)
+
+func _first_evidence_id(protocol_id: String) -> String:
+	var evidence: Array = (COMMISSIONING_PROTOCOLS[protocol_id] as Dictionary)["evidence"]
+	return str((evidence[0] as Dictionary)["id"])
+
+func _enable_commissioning_site(site_id: String, enabled: bool) -> void:
+	var site: Node = _commissioning_sites.get(site_id)
+	if site != null and is_instance_valid(site):
+		site.call("set_interaction_enabled", enabled)
 
 # --- Wrong-approach machinery ---
 
@@ -1060,11 +1474,226 @@ func _chunk_character_node(cid: String) -> Node3D:
 			return chars[cid]
 	return null
 
+# --- Evidence-backed first-clear pacing model and QA surfaces ---
+
+func get_commissioning_clean_action_plan() -> Array:
+	var plan: Array = []
+	for protocol_id_variant in COMMISSIONING_PROTOCOL_ORDER:
+		var protocol_id := str(protocol_id_variant)
+		var protocol: Dictionary = COMMISSIONING_PROTOCOLS[protocol_id]
+		for evidence_variant in protocol["evidence"] as Array:
+			var evidence: Dictionary = evidence_variant
+			plan.append(_pacing_action(protocol_id, evidence, "evidence",
+				COMMISSIONING_EVIDENCE_SECONDS))
+		var choice_id := str(COMMISSIONING_CLEAN_CHOICES[protocol_id])
+		var chosen: Dictionary = {}
+		for choice_variant in protocol["choices"] as Array:
+			if str((choice_variant as Dictionary)["id"]) == choice_id:
+				chosen = choice_variant
+				break
+		plan.append(_pacing_action(protocol_id, chosen, "decision",
+			COMMISSIONING_DECISION_SECONDS))
+		var resolution: Dictionary = (protocol["resolutions"] as Dictionary)[choice_id]
+		plan.append(_pacing_action(protocol_id, resolution, "execution",
+			COMMISSIONING_EXECUTION_SECONDS))
+	plan.append({
+		"id": "extraction_cradle",
+		"node_name": "Commissioning_extraction_cradle",
+		"protocol": "extraction",
+		"category": "extraction_handoff",
+		"stage": "extraction",
+		"role": "aster",
+		"pos": EXTRACTION_POS,
+		"work_seconds": EXTRACTION_WORK_SECONDS,
+	})
+	return plan
+
+func _pacing_action(protocol_id: String, site: Dictionary, stage: String, work_seconds: float) -> Dictionary:
+	return {
+		"id": str(site["id"]),
+		"node_name": "Commissioning_%s" % str(site["id"]),
+		"protocol": protocol_id,
+		"category": str((COMMISSIONING_PROTOCOLS[protocol_id] as Dictionary)["category"]),
+		"stage": stage,
+		"role": str(site["role"]),
+		"pos": site["pos"],
+		"work_seconds": work_seconds,
+	}
+
+## Hook order for a normal-input driver.  Route C's two crawl interactions are
+## deliberately explicit; a shadow-party driver substitutes ObserveFeeding and
+## ExamineCluster for Myke's crawl/read quartet, then uses the same commissioning plan.
+func get_normal_input_hook_order() -> Array:
+	var order: Array = [
+		{"node_name": "AsterLogTerminal", "role": "aster"},
+		{"node_name": "PipeDiagram", "role": "aster"},
+		{"node_name": "DeadRootNetwork", "role": "peris"},
+		{"node_name": "LivingJunction", "role": "peris"},
+		{"node_name": "MykeCrawlIn", "role": "myke"},
+		{"node_name": "GrateObservation", "role": "myke"},
+		{"node_name": "DeviceGap", "role": "myke"},
+		{"node_name": "MykeCrawlOut", "role": "myke"},
+		{"node_name": "DrainageValve", "role": "aster"},
+		{"node_name": "CharDepositA", "role": "myke"},
+		{"node_name": "CharDepositB", "role": "myke"},
+		{"node_name": "RootTendril", "role": "peris"},
+		{"node_name": "DeviceHousing", "role": "aster"},
+	]
+	for action_variant in get_commissioning_clean_action_plan():
+		var action: Dictionary = action_variant
+		order.append({"node_name": str(action["node_name"]), "role": str(action["role"])})
+	return order
+
+func get_playtime_contract() -> Dictionary:
+	var core := _modeled_core_route()
+	var commissioning := _modeled_commissioning_route()
+	var meaningful_active_seconds := float(core["active_seconds"]) + float(commissioning["active_seconds"])
+	var category_seconds: Dictionary = {"route_reconstruction_and_core_solve": float(core["active_seconds"])}
+	for category_name in (commissioning["category_seconds"] as Dictionary):
+		category_seconds[category_name] = float((commissioning["category_seconds"] as Dictionary)[category_name])
+	var max_single_mode_seconds := maxf(float(core["max_single_mode_seconds"]),
+		float(commissioning["max_single_mode_seconds"]))
+	return {
+		"contract_id": "inflammashunt_first_clear_7_to_9_v1",
+		"required_first_clear_seconds": 420.0,
+		"target_min_seconds": 420.0,
+		"target_max_seconds": 540.0,
+		"modeled_first_clear_seconds": meaningful_active_seconds,
+		"modeled_meaningful_active_seconds": meaningful_active_seconds,
+		"meaningful_active_seconds": meaningful_active_seconds,
+		"total_play_seconds": meaningful_active_seconds,
+		"active_ratio": 1.0,
+		"meaningful_active_ratio": 1.0,
+		"max_dead_gap_seconds": 0.0,
+		"max_single_mode_seconds": max_single_mode_seconds,
+		"category_seconds": category_seconds,
+		"critical_route_meters": float(core["route_meters"]) + float(commissioning["route_meters"]),
+		"modeled_traversal_seconds": float(core["traversal_seconds"]) + float(commissioning["traversal_seconds"]),
+		"modeled_interaction_work_seconds": float(core["work_seconds"]) + float(commissioning["work_seconds"]),
+		"mandatory_route_observations": 6,
+		"mandatory_core_actions": 5,
+		"mandatory_commissioning_protocols": COMMISSIONING_PROTOCOL_ORDER.size(),
+		"mandatory_commissioning_evidence": 20,
+		"mandatory_commissioning_actions": get_commissioning_clean_action_plan().size(),
+		"authored_commissioning_station_count": _commissioning_sites.size(),
+		"decision_count": 7,
+		"branch_count": 10,
+		"hard_idle_lock_seconds": 0.0,
+		"dialogue_seconds_in_model": 0.0,
+		"idle_padding_seconds": 0.0,
+		"platform_fallback_seconds": 0.0,
+		"core_breakdown": core,
+		"commissioning_breakdown": commissioning,
+		"model_note": "Exact authored role-route distances at preview walk speeds plus real TIMED_ACTION dwell. Dialogue, scheduler waiting, failed approaches, combat cooling, and platform fallbacks contribute zero seconds.",
+	}
+
+func _modeled_core_route() -> Dictionary:
+	var route_meters := 0.0
+	var traversal_seconds := 0.0
+	var max_mode := 0.0
+	var role_routes := {
+		"aster": [Vector3(4.0, 0.5, 0.0), Vector3(20.0, 0.6, -11.5),
+			Vector3(24.0, 0.6, -11.5), VALVE_POS, HOUSING_POS],
+		"peris": [Vector3(2.5, 0.5, 1.6), Vector3(20.0, 0.4, 11.5),
+			Vector3(24.0, 0.4, 11.5), ROOT_BASE_POS],
+		# The crawl's slow internal waypoints are priced separately below.
+		"myke": [Vector3(2.5, 0.5, -1.6), Vector3(26.2, 0.0, -4.5)],
+	}
+	for role_variant in role_routes:
+		var role := str(role_variant)
+		var points: Array = role_routes[role]
+		for index in range(1, points.size()):
+			var meters := _planar_distance(points[index - 1], points[index])
+			var seconds := meters / float(ROLE_WALK_SPEEDS[role])
+			route_meters += meters
+			traversal_seconds += seconds
+			max_mode = maxf(max_mode, seconds)
+	var myke_walk_and_crawl := [
+		{"from": Vector3(26.2, 0.0, -4.5), "to": Vector3(28.2, 0.7, -8.0), "speed": 1.1},
+		{"from": Vector3(28.2, 0.7, -8.0), "to": Vector3(31.0, 0.0, -12.0), "speed": 1.1},
+		{"from": Vector3(31.0, 0.0, -12.0), "to": Vector3(31.8, 0.4, -13.2), "speed": 3.1},
+		{"from": Vector3(31.8, 0.4, -13.2), "to": Vector3(34.2, 0.4, -13.2), "speed": 3.1},
+		{"from": Vector3(34.2, 0.4, -13.2), "to": Vector3(30.4, 0.0, -11.0), "speed": 3.1},
+		{"from": Vector3(30.4, 0.0, -11.0), "to": Vector3(28.2, 0.7, -8.0), "speed": 1.1},
+		{"from": Vector3(28.2, 0.7, -8.0), "to": Vector3(25.4, 0.0, -4.0), "speed": 1.1},
+		{"from": Vector3(25.4, 0.0, -4.0), "to": CHAR_A_POS, "speed": 3.1},
+		{"from": CHAR_A_POS, "to": CHAR_B_POS, "speed": 3.1},
+	]
+	for leg_variant in myke_walk_and_crawl:
+		var leg: Dictionary = leg_variant
+		var meters := _planar_distance(leg["from"], leg["to"])
+		var seconds := meters / float(leg["speed"])
+		route_meters += meters
+		traversal_seconds += seconds
+		max_mode = maxf(max_mode, seconds)
+	var work_seconds := HOLDS["valve"][0] + HOLDS["char_a"][0] + HOLDS["char_b"][0] \
+		+ HOLDS["root"][0] + 1.2
+	max_mode = maxf(max_mode, HOLDS["valve"][0])
+	return {
+		"route_meters": route_meters,
+		"traversal_seconds": traversal_seconds,
+		"work_seconds": work_seconds,
+		"active_seconds": traversal_seconds + work_seconds,
+		"max_single_mode_seconds": max_mode,
+	}
+
+func _modeled_commissioning_route() -> Dictionary:
+	# Each next station is state-hidden until the previous action resolves, so this
+	# is an ordered role route rather than a sum of simultaneous free-roam paths.
+	var last_positions := {
+		"aster": HOUSING_POS,
+		"peris": ROOT_BASE_POS,
+		"myke": CHAR_B_POS,
+	}
+	var route_meters := 0.0
+	var traversal_seconds := 0.0
+	var work_seconds := 0.0
+	var max_mode := 0.0
+	var categories := {}
+	for action_variant in get_commissioning_clean_action_plan():
+		var action: Dictionary = action_variant
+		var role := str(action["role"])
+		var pos: Vector3 = action["pos"]
+		var meters := _planar_distance(last_positions[role], pos)
+		var travel_seconds := meters / float(ROLE_WALK_SPEEDS[role])
+		var action_work := float(action["work_seconds"])
+		var category := str(action["category"])
+		route_meters += meters
+		traversal_seconds += travel_seconds
+		work_seconds += action_work
+		categories[category] = float(categories.get(category, 0.0)) + travel_seconds + action_work
+		max_mode = maxf(max_mode, maxf(travel_seconds, action_work))
+		last_positions[role] = pos
+	return {
+		"route_meters": route_meters,
+		"traversal_seconds": traversal_seconds,
+		"work_seconds": work_seconds,
+		"active_seconds": traversal_seconds + work_seconds,
+		"max_single_mode_seconds": max_mode,
+		"category_seconds": categories,
+		"clean_action_count": get_commissioning_clean_action_plan().size(),
+	}
+
+func _planar_distance(a: Vector3, b: Vector3) -> float:
+	return Vector2(a.x - b.x, a.z - b.z).length()
+
+func get_commissioning_anchor_positions() -> Dictionary:
+	var anchors := {"device_housing": HOUSING_POS, "extraction_cradle": EXTRACTION_POS}
+	for protocol_id_variant in COMMISSIONING_PROTOCOL_ORDER:
+		var protocol_id := str(protocol_id_variant)
+		var protocol: Dictionary = COMMISSIONING_PROTOCOLS[protocol_id]
+		anchors[protocol_id] = (protocol["evidence"] as Array)[0]["pos"]
+	return anchors
+
+func get_decoration_audit() -> Dictionary:
+	return _decoration_audit.duplicate(true)
+
 # --- State surfaces (spec: headless_get_state) ---
 
 func headless_get_state() -> Dictionary:
 	return {
-		"current_step": "complete" if device_retrieved else "ready",
+		"current_step": "complete" if _commissioning_phase == "complete" else (
+			"commissioning_%s" % _commissioning_phase if device_retrieved else "ready"),
 		"route_info": route_info.duplicate(),
 		"valve_open": valve_open,
 		"char_a_state": char_a_state,
@@ -1080,6 +1709,13 @@ func headless_get_state() -> Dictionary:
 		"long_hold_count": long_hold_count,
 		"sac_carrier": _sac_carrier,
 		"reports": _reports.duplicate(),
+		"commissioning_phase": _commissioning_phase,
+		"commissioning_evidence": _commissioning_evidence.duplicate(true),
+		"commissioning_choices": _commissioning_choices.duplicate(true),
+		"commissioning_resolved": _commissioning_resolved.duplicate(true),
+		"commissioning_completed_actions": _commissioning_completed_actions.duplicate(),
+		"commissioning_complete": _commissioning_phase == "complete",
+		"decoration_audit": _decoration_audit.duplicate(true),
 	}
 
 func get_preview_state() -> Dictionary:

@@ -6,10 +6,10 @@ uid="uid://dwhmgtsdm4ch1"
 
 [deps]
 
-files=["res://data/dialogue/en/placeholder_missing_keys.en.translation", "res://data/dialogue/en/placeholder_missing_keys.style.translation", "res://data/dialogue/en/placeholder_missing_keys.wait.translation", "res://data/dialogue/en/placeholder_missing_keys.en.translation", "res://data/dialogue/en/placeholder_missing_keys.context.translation"]
+files=["res://data/dialogue/en/placeholder_missing_keys.style.translation", "res://data/dialogue/en/placeholder_missing_keys.wait.translation", "res://data/dialogue/en/placeholder_missing_keys.context.translation"]
 
 source_file="res://data/dialogue/en/placeholder_missing_keys.csv"
-dest_files=["res://data/dialogue/en/placeholder_missing_keys.en.translation", "res://data/dialogue/en/placeholder_missing_keys.style.translation", "res://data/dialogue/en/placeholder_missing_keys.wait.translation", "res://data/dialogue/en/placeholder_missing_keys.en.translation", "res://data/dialogue/en/placeholder_missing_keys.context.translation"]
+dest_files=["res://data/dialogue/en/placeholder_missing_keys.style.translation", "res://data/dialogue/en/placeholder_missing_keys.wait.translation", "res://data/dialogue/en/placeholder_missing_keys.context.translation"]
 
 [params]
 

@@ -105,6 +105,23 @@ static func build_html(playtest_report: Dictionary) -> String:
       background: #0c0f11;
       min-height: 620px;
     }
+    .pressure-flash {
+      position: absolute;
+      inset: 18px;
+      display: grid;
+      place-items: center;
+      border: 4px solid #ff6b4b;
+      background: rgba(120, 18, 8, 0.42);
+      color: #fff3eb;
+      font-size: 30px;
+      font-weight: 850;
+      letter-spacing: 0.04em;
+      text-shadow: 0 2px 12px #000;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 100ms linear;
+    }
+    .pressure-flash.visible { opacity: 1; }
     svg { display: block; width: 100%; height: 620px; }
     .foundation { fill: #0f1417; stroke: #263039; stroke-width: 1; }
     .route { fill: none; stroke-width: 8; stroke-linecap: round; opacity: 0.72; }
@@ -139,6 +156,7 @@ static func build_html(playtest_report: Dictionary) -> String:
     .token.walk circle.core { transform-origin: center; animation: walkbob 0.46s infinite alternate ease-in-out; }
     .token.run circle.core { transform-origin: center; animation: runpulse 0.26s infinite alternate ease-in-out; }
     .token.consume circle.core { animation: consume 0.7s infinite alternate ease-in-out; stroke: #f4d36a; }
+    .token.excluded { opacity: 0.12; filter: grayscale(1); }
     .aura { fill: none; stroke: #f4d36a; stroke-width: 3; opacity: 0; }
     .token.consume .aura { opacity: 0.9; animation: aura 0.9s infinite ease-out; }
     @keyframes walkbob { from { transform: translateY(0); } to { transform: translateY(-2px); } }
@@ -157,6 +175,8 @@ static func build_html(playtest_report: Dictionary) -> String:
       border-radius: 5px;
       padding: 8px;
     }
+    .member.excluded { opacity: 0.28; border-style: dashed; filter: grayscale(0.9); }
+    .member.excluded .locomotion { color: #9ba4aa; }
     .member-head { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; margin-bottom: 6px; }
     .locomotion { color: var(--muted); text-transform: uppercase; font-size: 10px; letter-spacing: 0.04em; }
     .bars { display: grid; gap: 4px; }
@@ -222,6 +242,7 @@ static func build_html(playtest_report: Dictionary) -> String:
           <g id="paths"></g>
           <g id="tokens"></g>
         </svg>
+        <div class="pressure-flash" id="pressure-flash">NEAR MISS</div>
       </div>
     </section>
     <aside class="side-card">
@@ -271,11 +292,32 @@ static func build_html(playtest_report: Dictionary) -> String:
     const metaEl = document.getElementById("snapshot-meta");
     const chunkEl = document.getElementById("chunk-state");
     const tagsEl = document.getElementById("tags");
+    const pressureFlash = document.getElementById("pressure-flash");
     let index = 0;
     let progress = 0;
     let playing = snapshots.length > 1;
     let lastFrame = performance.now();
-    let msPerSnapshot = 280;
+    let playbackRate = 1;
+
+    // Scheduler time resets between golden, risky, and shadow runs. Convert those
+    // segments into one monotonic reel while preserving real in-game duration;
+    // duplicate event snapshots advance nearly instantly instead of adding pauses.
+    const playTimes = [];
+    let segmentOffset = 0;
+    let previousRawTime = snapshots.length ? Number(snapshots[0].time || 0) : 0;
+    let previousPlayTime = previousRawTime;
+    for (let i = 0; i < snapshots.length; i += 1) {
+      const rawTime = Number(snapshots[i].time || 0);
+      if (i > 0 && rawTime + 0.001 < previousRawTime) {
+        segmentOffset = previousPlayTime + 0.8 - rawTime;
+      }
+      const candidate = rawTime + segmentOffset;
+      const playTime = i === 0 ? candidate : Math.max(previousPlayTime + 0.001, candidate);
+      playTimes.push(playTime);
+      previousRawTime = rawTime;
+      previousPlayTime = playTime;
+    }
+    let playheadTime = playTimes[0] || 0;
 
     scrub.max = Math.max(0, snapshots.length - 1);
 
@@ -290,27 +332,43 @@ static func build_html(playtest_report: Dictionary) -> String:
     }
 
     function bounds() {
-      const points = [];
-      for (const node of nodes) points.push(vec3(node.position));
+      let pointCount = 0;
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      let minZ = Infinity;
+      let maxZ = -Infinity;
+      function includePoint(value) {
+        const point = vec3(value);
+        minX = Math.min(minX, point[0]);
+        maxX = Math.max(maxX, point[0]);
+        minY = Math.min(minY, point[1]);
+        maxY = Math.max(maxY, point[1]);
+        minZ = Math.min(minZ, point[2]);
+        maxZ = Math.max(maxZ, point[2]);
+        pointCount += 1;
+      }
+      for (const node of nodes) includePoint(node.position);
       for (const snapshot of snapshots) {
         for (const charId of partyIds) {
           const char = snapshot.characters?.[charId];
-          if (char) points.push(vec3(char.position));
+          if (char) includePoint(char.position);
           const path = char?.movement?.path || [];
-          for (const p of path) points.push(vec3(p));
+          for (const p of path) includePoint(p);
         }
       }
-      if (!points.length) points.push([0, 0, 0], [24, 0, 12]);
-      const xs = points.map((p) => p[0]);
-      const ys = points.map((p) => p[1]);
-      const zs = points.map((p) => p[2]);
+      if (!pointCount) {
+        includePoint([0, 0, 0]);
+        includePoint([24, 0, 12]);
+      }
       return {
-        minX: Math.min(...xs) - 4,
-        maxX: Math.max(...xs) + 4,
-        minY: Math.min(...ys),
-        maxY: Math.max(...ys),
-        minZ: Math.min(...zs) - 4,
-        maxZ: Math.max(...zs) + 4
+        minX: minX - 4,
+        maxX: maxX + 4,
+        minY: minY,
+        maxY: maxY,
+        minZ: minZ - 4,
+        maxZ: maxZ + 4
       };
     }
 
@@ -371,7 +429,7 @@ static func build_html(playtest_report: Dictionary) -> String:
         label.textContent = node.id === "exit_shelter" ? "exit shelter" : (node.title || node.id);
         g.appendChild(label);
         const role = svgEl("text", { class: "node-role", x: p.x, y: p.y + h / 2 + 13 });
-        role.textContent = `${node.role || "route"}  y:${vec3(node.position)[1].toFixed(2)}`;
+        role.textContent = `${node.action_verb || node.role || "route"}  ·  ${node.role || "route"}`;
         g.appendChild(role);
         nodesLayer.appendChild(g);
         drawContent(node, p);
@@ -430,7 +488,9 @@ static func build_html(playtest_report: Dictionary) -> String:
 
     function drawPaths(snapshot) {
       pathsLayer.replaceChildren();
+      const activeParty = new Set(snapshot.chunk?.active_party || partyIds);
       for (const charId of partyIds) {
+        if (!activeParty.has(charId)) continue;
         const path = snapshot.characters?.[charId]?.movement?.path || [];
         if (path.length < 2) continue;
         const d = path.map((p, i) => {
@@ -448,14 +508,16 @@ static func build_html(playtest_report: Dictionary) -> String:
 
     function renderParty(snapshot) {
       partyPanel.innerHTML = "";
+      const activeParty = new Set(snapshot.chunk?.active_party || partyIds);
       for (const charId of partyIds) {
         const char = snapshot.characters?.[charId] || {};
         const stats = char.stats || {};
-        const slots = char.hand_slots || [];
+        const slots = char.hand_labels || char.hand_slots || [];
         const member = document.createElement("div");
-        member.className = "member";
+        const isActive = activeParty.has(charId);
+        member.className = `member${isActive ? "" : " excluded"}`;
         member.innerHTML = `
-          <div class="member-head"><strong>${escapeText(charId.toUpperCase())}</strong><span class="locomotion">${escapeText(char.locomotion || "idle")}</span></div>
+          <div class="member-head"><strong>${escapeText(charId.toUpperCase())}</strong><span class="locomotion">${escapeText(isActive ? (char.locomotion || "idle") : "not in shadow party")}</span></div>
           <div class="bars">
             <div class="bar hp"><span style="width:${statWidth(stats.hp, 100)}"></span></div>
             <div class="bar sta"><span style="width:${statWidth(stats.sta, 100)}"></span></div>
@@ -497,18 +559,29 @@ static func build_html(playtest_report: Dictionary) -> String:
       for (const charId of partyIds) {
         const token = document.getElementById(`token-${charId}`);
         const char = snapshot.characters?.[charId] || {};
+        const activeParty = new Set(snapshot.chunk?.active_party || partyIds);
+        const isActive = activeParty.has(charId);
         const p = characterPoint(snapshot, nextSnapshot, charId);
         token.setAttribute("transform", `translate(${p.x.toFixed(2)} ${p.y.toFixed(2)})`);
-        token.setAttribute("class", `token ${charId} ${char.locomotion || "idle"}`);
+        token.setAttribute("class", `token ${charId} ${isActive ? (char.locomotion || "idle") : "excluded"}`);
       }
       drawPaths(snapshot);
       renderParty(snapshot);
       titleEl.textContent = snapshot.label || "Snapshot";
       metaEl.textContent = `${snapshot.phase || "phase"} / t=${Number(snapshot.time || 0).toFixed(2)} / ${snapshot.data?.event_type || "state"}`;
+      const eventType = snapshot.data?.event_type || "";
+      const pressureVisible = eventType === "route_pressure_impact" || eventType === "route_pressure_recovery";
+      pressureFlash.classList.toggle("visible", pressureVisible);
+      pressureFlash.textContent = pressureVisible
+        ? `NEAR MISS // -${Number(snapshot.data?.damage || 0).toFixed(0)} HP EACH`
+        : "NEAR MISS";
       const chunk = snapshot.chunk || {};
-      chunkEl.textContent = `phase=${chunk.route_phase || "-"}  route=${chunk.route_choice || "-"}  resources=${chunk.resources_collected ?? 0}  shortcut=${chunk.shortcut_unlocked ? "yes" : "no"}  shelter=${chunk.shelter_rested ? "rested" : "not yet"}  damage=${Number(chunk.risky_damage_total || 0).toFixed(1)}`;
+      const chainStates = Object.keys(chunk.produced_chain_states || {}).length;
+      const nestedReady = Object.keys(chunk.prepared_nested_nodes || {}).length;
+      const delivered = (chunk.delivered_resource_nodes || []).length;
+      chunkEl.textContent = `phase=${chunk.route_phase || "-"}  party=${(chunk.active_party || partyIds).join("+")}  resources=${chunk.resources_collected ?? 0}  chain_states=${chainStates}  nested_ready=${nestedReady}  delivered=${delivered}  shelter=${chunk.shelter_rested ? "rested" : "not yet"}  damage=${Number(chunk.risky_damage_total || 0).toFixed(1)}`;
       scrub.value = String(index);
-      readout.textContent = `snapshot ${snapshot.index} / ${snapshots.length}`;
+      readout.textContent = `t ${Number(snapshot.time || 0).toFixed(1)}s · ${playbackRate.toFixed(2)}x`;
     }
 
     function buildTimeline() {
@@ -520,6 +593,7 @@ static func build_html(playtest_report: Dictionary) -> String:
         item.textContent = `${snapshot.index}. ${snapshot.phase} - ${snapshot.label}`;
         item.addEventListener("click", () => {
           index = snapshot.index - 1;
+          playheadTime = playTimes[index] || 0;
           progress = 0;
           playing = false;
           playButton.textContent = "Play";
@@ -547,17 +621,19 @@ static func build_html(playtest_report: Dictionary) -> String:
       const delta = now - lastFrame;
       lastFrame = now;
       if (playing && snapshots.length > 1) {
-        progress += delta / msPerSnapshot;
-        while (progress >= 1) {
-          progress -= 1;
+        playheadTime += (delta / 1000) * playbackRate;
+        while (index < snapshots.length - 1 && (playTimes[index + 1] || 0) <= playheadTime) {
           index += 1;
-          if (index >= snapshots.length - 1) {
-            index = snapshots.length - 1;
-            progress = 0;
-            playing = false;
-            playButton.textContent = "Play";
-            break;
-          }
+        }
+        if (index >= snapshots.length - 1) {
+          index = snapshots.length - 1;
+          progress = 0;
+          playing = false;
+          playButton.textContent = "Play";
+        } else {
+          const start = playTimes[index] || 0;
+          const finish = playTimes[index + 1] || start;
+          progress = Math.max(0, Math.min(1, (playheadTime - start) / Math.max(0.001, finish - start)));
         }
       }
       render(snapshots[index], snapshots[index + 1] || snapshots[index]);
@@ -571,18 +647,20 @@ static func build_html(playtest_report: Dictionary) -> String:
     restartButton.addEventListener("click", () => {
       index = 0;
       progress = 0;
+      playheadTime = playTimes[0] || 0;
       playing = snapshots.length > 1;
       playButton.textContent = playing ? "Pause" : "Play";
     });
     scrub.addEventListener("input", () => {
       index = Number(scrub.value);
       progress = 0;
+      playheadTime = playTimes[index] || 0;
       playing = false;
       playButton.textContent = "Play";
       render(snapshots[index], snapshots[index + 1] || snapshots[index]);
     });
-    slower.addEventListener("click", () => { msPerSnapshot = Math.min(1400, msPerSnapshot * 1.25); });
-    faster.addEventListener("click", () => { msPerSnapshot = Math.max(80, msPerSnapshot * 0.8); });
+    slower.addEventListener("click", () => { playbackRate = Math.max(0.25, playbackRate / 1.25); });
+    faster.addEventListener("click", () => { playbackRate = Math.min(4, playbackRate * 1.25); });
 
     buildTags();
     drawRoutes();
