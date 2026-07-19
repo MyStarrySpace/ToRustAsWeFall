@@ -51,6 +51,10 @@ var _route_flure_interactables: Array = []
 var _route_flure_meshes: Array[MeshInstance3D] = []
 var _route_flure_enemy_groups: Dictionary = {}
 var _route_flures_activated: Array[bool] = [false, false, false]
+var _grated_platforms: Node3D
+var _grated_platform_signal_marker: Marker3D
+var _grated_platform_enemy_markers: Array[Marker3D] = []
+var _grated_platform_wall_openings: Array[Marker3D] = []
 
 # Endo-junction exploration. The plant is the transition out of exploration,
 # so it stays locked until the party has made three distinct reads with both
@@ -180,6 +184,7 @@ const ENDO_JUNCTION_MODEL := preload("res://resources/models/elevator/endo-junct
 const BRIDGE_LIGHTING_SCENE := preload("res://scenes/tutorial/elevator_bridge_lighting.tscn")
 const LOWER_ROUTE_LIGHTING_SCENE := preload("res://scenes/tutorial/elevator_lower_route_lighting.tscn")
 const EMP_FACEPLATE_SCENE := preload("res://scenes/tutorial/elevator_emp_faceplate.tscn")
+const GRATED_PLATFORMS_SCENE := preload("res://scenes/tutorial/elevator_grated_platforms.tscn")
 # Collapse debris physics layers (kept off every gameplay layer so debris never touches characters —
 # they move on the grid, not via physics). Pieces collide ONLY with their own catch-floor (no inter-
 # piece explosions from the initially-touching span).
@@ -201,6 +206,8 @@ const ROUTES_CONVERGE := Vector3(FORK_POS.x + ROUTE_LANE_LENGTH + 8.0, BELOW_Y, 
 const ROUTE_FLURE_DURATION := 16.0
 const ROUTE_REQUIRED_READS := 2
 const ROUTE_BEAT_COUNT := 3
+const GRATED_PLATFORM_ROUTE_BEAT := 1
+const GRATED_PLATFORM_POS := Vector3(FORK_POS.x + 33.0, BELOW_Y, -10.0)
 
 # Endo junction and shelter
 const JUNCTION_POS := Vector3(ROUTES_CONVERGE.x + 10.0, BELOW_Y, 0)
@@ -295,10 +302,10 @@ const JUNCTION_FIELD_SITES := {
 # is a real set_character_level transition, not a hand-tweened position poke.
 const LEVEL_LOWER := 0
 const LEVEL_UPPER := 1
-const GRID_ORIGIN := Vector3(-5.0, BELOW_Y, -8.0)
+const GRID_ORIGIN := Vector3(-5.0, BELOW_Y, -13.0)
 # DERIVED from the layout so it always covers to just past the gauntlet exit — a longer bridge shifts the whole
 # lower-deck run east, and a hardcoded width would leave the far end off-grid (non-walkable → stranded player).
-const GRID_SIZE := Vector2i(int(GAUNTLET_EXIT.x - GRID_ORIGIN.x + 3.0), 16)  # Z in [-8, 8] — covers both decks
+const GRID_SIZE := Vector2i(int(GAUNTLET_EXIT.x - GRID_ORIGIN.x + 3.0), 21)  # Z in [-13, 8] covers route side platforms
 var _grid: GridWorld
 var _upper_exit_footprint_unlocked := false
 # See-through level occlusion (the channels-spiral shader): level geometry between the camera and the active
@@ -365,6 +372,7 @@ func _chunk_build_steps(chunk_name: String, parent: Node3D) -> Array:
 			return [
 				_below_step_prepare.bind(parent),
 				_below_step_ground.bind(parent),
+				_below_step_grated_platforms.bind(parent),
 				_below_step_read_stations.bind(parent),
 				_below_step_aster_route_overlay.bind(parent),
 				_below_step_peris_route_overlay_path.bind(parent),
@@ -3212,6 +3220,7 @@ func _bridge_step_light(parent: Node3D) -> void:
 func _build_below_chunk(parent: Node3D, enemies_dormant := false) -> void:
 	_below_step_prepare(parent)
 	_below_step_ground(parent)
+	_below_step_grated_platforms(parent)
 	_below_step_read_stations(parent)
 	_below_step_aster_route_overlay(parent)
 	_below_step_peris_route_overlay_path(parent)
@@ -3248,6 +3257,10 @@ func _below_step_prepare(parent: Node3D) -> void:
 	_route_flure_interactables.clear()
 	_route_flure_meshes.clear()
 	_route_flure_enemy_groups.clear()
+	_grated_platforms = null
+	_grated_platform_signal_marker = null
+	_grated_platform_enemy_markers.clear()
+	_grated_platform_wall_openings.clear()
 	_iron_patches.clear()
 	_iron_contact_warning_shown.clear()
 	_below_dormant_enemy_setups.clear()
@@ -3272,6 +3285,56 @@ func _below_step_ground(parent: Node3D) -> void:
 	_add_corridor_section(parent, Vector3(deck_cx, BELOW_Y - 0.05, 0), Vector3(deck_len, 0.1, 16),
 		Color(0.05, 0.05, 0.07))
 
+## Two authored standing decks turn the second ecology beat into a spatial composition: Peris can
+## light the western Flure while the eastern fauna are still on their roost, or cross first and let
+## their ordinary perception react. The scene owns geometry/collision/sockets; this loader only binds
+## those sockets to the shared grid and the existing stage-1 Plant-as-tool beat.
+func _below_step_grated_platforms(parent: Node3D) -> void:
+	if is_instance_valid(_grated_platforms):
+		return
+	_grated_platforms = GRATED_PLATFORMS_SCENE.instantiate() as Node3D
+	_grated_platforms.position = GRATED_PLATFORM_POS
+	parent.add_child(_grated_platforms)
+	_grated_platform_signal_marker = _grated_platforms.get_node_or_null("Markers/SignalMarker") as Marker3D
+	for marker_name in ["EnemySpawn0", "EnemySpawn1"]:
+		var marker := _grated_platforms.get_node_or_null("Markers/" + marker_name) as Marker3D
+		if marker != null:
+			_grated_platform_enemy_markers.append(marker)
+	for marker_name in ["WallOpening0", "WallOpening1"]:
+		var marker := _grated_platforms.get_node_or_null("Markers/" + marker_name) as Marker3D
+		if marker != null:
+			_grated_platform_wall_openings.append(marker)
+	for marker_name in ["WalkableSignalDeck", "WalkableConnector", "WalkableRoostDeck"]:
+		var marker := _grated_platforms.get_node_or_null("Markers/" + marker_name) as Marker3D
+		if marker == null:
+			continue
+		var half_extents: Vector2 = marker.get_meta("half_extents", Vector2.ZERO)
+		var center := Vector2(marker.global_position.x, marker.global_position.z)
+		_add_level_walkable_region(LEVEL_LOWER, center - half_extents, center + half_extents)
+	_block_grated_platform_rail_cells()
+
+## Grid movement is authoritative for both the party and fauna, so the authored rail collision is
+## mirrored into the level allow-set. Reading the BoxShape3D nodes keeps visual/physics/grid bounds
+## coupled: moving a rail in the scene moves the gameplay blocker with it.
+func _block_grated_platform_rail_cells() -> void:
+	if not is_instance_valid(_grated_platforms):
+		return
+	var rail_body := _grated_platforms.get_node_or_null("RailCollision") as StaticBody3D
+	if rail_body == null:
+		return
+	for child in rail_body.get_children():
+		var collision := child as CollisionShape3D
+		if collision == null or not (collision.shape is BoxShape3D):
+			continue
+		var size := (collision.shape as BoxShape3D).size
+		var center := collision.global_position
+		var half := Vector2(size.x, size.z) * 0.5
+		_block_level_walkable_region(
+			LEVEL_LOWER,
+			Vector2(center.x, center.z) - half,
+			Vector2(center.x, center.z) + half
+		)
+
 func _below_step_read_stations(parent: Node3D) -> void:
 	var overlay_guides := Node3D.new()
 	overlay_guides.name = "RouteOverlayGuides"
@@ -3289,6 +3352,24 @@ func _below_step_read_stations(parent: Node3D) -> void:
 
 ## Aster's already-active data register describes the ecology lane as a causal network: every Flure broadcasts
 ## to the two bodies it can draw away. This is visible from the fork without walking to three read pedestals.
+func _route_flure_position(beat_i: int) -> Vector3:
+	if beat_i == GRATED_PLATFORM_ROUTE_BEAT and is_instance_valid(_grated_platform_signal_marker):
+		return _grated_platform_signal_marker.global_position
+	return Vector3(
+		FORK_POS.x + float(ROUTE_BEAT_OFFSETS[beat_i]) - 5.0,
+		BELOW_Y + 0.3,
+		-5.7
+	)
+
+func _route_enemy_position(beat_i: int, local_i: int) -> Vector3:
+	if beat_i == GRATED_PLATFORM_ROUTE_BEAT and local_i >= 0 \
+			and local_i < _grated_platform_enemy_markers.size():
+		var marker := _grated_platform_enemy_markers[local_i]
+		if is_instance_valid(marker):
+			return marker.global_position
+	var beat_x := FORK_POS.x + float(ROUTE_BEAT_OFFSETS[beat_i])
+	return Vector3(beat_x + 1.5 + local_i * 3.0, BELOW_Y + 0.5, -3.0 - local_i * 2.0)
+
 func _below_step_aster_route_overlay(_parent: Node3D) -> void:
 	if not is_instance_valid(_aster_route_overlay_root):
 		return
@@ -3298,11 +3379,17 @@ func _below_step_aster_route_overlay(_parent: Node3D) -> void:
 		Vector3(ROUTE_READ_ASTER_POS.x, BELOW_Y + 0.09, -4.5),
 	]
 	for beat_i in range(ROUTE_BEAT_COUNT):
-		var beat_x := FORK_POS.x + float(ROUTE_BEAT_OFFSETS[beat_i])
-		var flure_pos := Vector3(beat_x - 5.0, BELOW_Y + 0.09, -5.7)
+		var flure_world := _route_flure_position(beat_i)
+		var flure_pos := Vector3(flure_world.x, BELOW_Y + 0.09, flure_world.z)
+		if beat_i == GRATED_PLATFORM_ROUTE_BEAT \
+				and not _grated_platform_wall_openings.is_empty() \
+				and is_instance_valid(_grated_platform_wall_openings[0]):
+			var entry := _grated_platform_wall_openings[0].global_position
+			route_points.append(Vector3(entry.x, BELOW_Y + 0.09, entry.z))
 		route_points.append(flure_pos)
 		for local_i in range(2):
-			var enemy_pos := Vector3(beat_x + 1.5 + local_i * 3.0, BELOW_Y + 0.09, -3.0 - local_i * 2.0)
+			var enemy_world := _route_enemy_position(beat_i, local_i)
+			var enemy_pos := Vector3(enemy_world.x, BELOW_Y + 0.09, enemy_world.z)
 			_add_route_overlay_segment(
 				_aster_route_overlay_root,
 				"AsterFlureLink%d_%d" % [beat_i, local_i],
@@ -3318,6 +3405,11 @@ func _below_step_aster_route_overlay(_parent: Node3D) -> void:
 			flure_pos + Vector3(0.0, 1.5, 0.0),
 			Color(0.48, 0.88, 1.0)
 		)
+		if beat_i == GRATED_PLATFORM_ROUTE_BEAT \
+				and _grated_platform_wall_openings.size() > 1 \
+				and is_instance_valid(_grated_platform_wall_openings[1]):
+			var exit_marker_pos := _grated_platform_wall_openings[1].global_position
+			route_points.append(Vector3(exit_marker_pos.x, BELOW_Y + 0.09, exit_marker_pos.z))
 	route_points.append(Vector3(ROUTES_CONVERGE.x, BELOW_Y + 0.09, -4.0))
 	for point_i in range(route_points.size() - 1):
 		_add_route_overlay_segment(
@@ -3612,6 +3704,37 @@ func _below_step_ambient_props(parent: Node3D) -> void:
 	growth_light.omni_range = 2.5
 	parent.add_child(growth_light)
 
+func _add_route_outer_wall_segment(
+		parent: Node3D, from_x: float, to_x: float, wall_color: Color) -> void:
+	if to_x - from_x <= 0.05:
+		return
+	_add_wall(
+		parent,
+		Vector3((from_x + to_x) * 0.5, BELOW_Y + 1.5, -7.7),
+		Vector3(to_x - from_x, 3.0, 0.3),
+		wall_color
+	)
+	_block_level_walkable_region(LEVEL_LOWER, Vector2(from_x, -7.85), Vector2(to_x, -7.55))
+
+## The ordinary corridor wall remains authoritative except at the two authored mouths. Keeping the
+## openings as scene markers makes moving/resizing a platform an editor operation rather than a second
+## set of hard-coded wall coordinates.
+func _add_route_outer_wall_with_platform_openings(
+		parent: Node3D, from_x: float, to_x: float, wall_color: Color) -> void:
+	if _grated_platform_wall_openings.is_empty():
+		_add_route_outer_wall_segment(parent, from_x, to_x, wall_color)
+		return
+	var cursor := from_x
+	for opening in _grated_platform_wall_openings:
+		if not is_instance_valid(opening):
+			continue
+		var half_width := float(opening.get_meta("width", 2.4)) * 0.5
+		var opening_left := clampf(opening.global_position.x - half_width, from_x, to_x)
+		var opening_right := clampf(opening.global_position.x + half_width, from_x, to_x)
+		_add_route_outer_wall_segment(parent, cursor, opening_left, wall_color)
+		cursor = maxf(cursor, opening_right)
+	_add_route_outer_wall_segment(parent, cursor, to_x, wall_color)
+
 func _below_step_route_shell(parent: Node3D) -> void:
 	var route_wall_len := ROUTE_LANE_LENGTH + 4.0
 	var route_wall_center := FORK_POS.x + route_wall_len * 0.5
@@ -3620,17 +3743,18 @@ func _below_step_route_shell(parent: Node3D) -> void:
 		Vector3(route_wall_len, 3.0, 0.4), wall_color)
 	_block_level_walkable_region(LEVEL_LOWER, Vector2(FORK_POS.x, -0.2),
 		Vector2(FORK_POS.x + route_wall_len, 0.2))
-	_add_wall(parent, Vector3(route_wall_center, BELOW_Y + 1.5, -7.7),
-		Vector3(route_wall_len, 3.0, 0.3), wall_color)
+	_add_route_outer_wall_with_platform_openings(
+		parent, FORK_POS.x, FORK_POS.x + route_wall_len, wall_color
+	)
 	_route_flure_enemy_groups.clear()
 
 func _below_step_enemy_route_beat(parent: Node3D, beat_i: int, enemies_dormant: bool) -> void:
 	var beat_x := FORK_POS.x + float(ROUTE_BEAT_OFFSETS[beat_i])
-	var lure_pos := Vector3(beat_x - 5.0, BELOW_Y + 0.3, -5.7)
+	var lure_pos := _route_flure_position(beat_i)
 	_build_route_flure_station(parent, beat_i, lure_pos)
 	_route_flure_enemy_groups[beat_i] = []
 	for local_i in range(2):
-		var enemy_pos := Vector3(beat_x + 1.5 + local_i * 3.0, BELOW_Y + 0.5, -3.0 - local_i * 2.0)
+		var enemy_pos := _route_enemy_position(beat_i, local_i)
 		var enemy := _spawn_enemy("route_enemy_%d_%d" % [beat_i, local_i], enemy_pos, parent, false)
 		enemy.detection_range = 6.0
 		# These animals huddle around the Flure; they do not need an A* patrol to

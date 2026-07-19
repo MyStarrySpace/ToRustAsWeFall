@@ -12793,7 +12793,7 @@ func _test_chunk_streaming() -> void:
 	var streamed_blocked_end := b1.find_child("BridgeBlockedEnd", true, false)
 	_assert_true(streamed_blocked_end != null \
 		and streamed_blocked_end.find_child("ChembraneBarrier", false, false) != null \
-		and b1.find_child("BridgeEndLight", false, false) != null,
+		and b1.find_child("BridgeEndLight", true, false) != null,
 		"the completed stream includes the lit, Chembrane-blocked far destination")
 
 	# (C) The lower route also streams region-by-region, but no prewarmed enemy enters GameState before reveal.
@@ -12833,6 +12833,10 @@ func _test_chunk_streaming() -> void:
 	if dormant_enemy != null:
 		_assert_equals(dormant_enemy.process_mode, Node.PROCESS_MODE_DISABLED,
 			"revealed lower-deck fauna still performs no per-frame processing")
+	for party_id in ["aster", "peris"]:
+		instance._game_state.set_character_level(party_id, instance.LEVEL_LOWER)
+		_set_sequence_character_position(instance, party_id, Vector3(
+			instance.BRIDGE_START_X, instance.BELOW_Y, -5.0))
 	instance._activate_below_fauna()
 	_assert_true(instance._game_state.characters.has("chelator_0") and instance._below_fauna_active,
 		"the lower-deck lifecycle seam activates the prewarmed fauna")
@@ -12843,6 +12847,29 @@ func _test_chunk_streaming() -> void:
 	var streamed_peris_overlay := below.find_child("PerisRouteOverlay", true, false)
 	_assert_true(streamed_aster_overlay != null and streamed_peris_overlay != null,
 		"the streamed lower route includes both independent perception guides")
+	var grated_platforms := below.find_child("ElevatorGratedPlatforms", true, false) as Node3D
+	_assert_true(grated_platforms != null
+			and str(grated_platforms.get_meta("archetype_id", "")) == "2",
+		"the lower route streams the authored Plant-as-tool grated platform composition")
+	if grated_platforms != null:
+		var deck_collision := grated_platforms.get_node_or_null("DeckCollision") as StaticBody3D
+		var rail_collision := grated_platforms.get_node_or_null("RailCollision") as StaticBody3D
+		_assert_true(deck_collision != null and deck_collision.get_child_count() == 3,
+			"both grated standing decks and their connector have authored collision")
+		_assert_true(rail_collision != null and rail_collision.get_child_count() >= 9,
+			"the grated platform perimeter has authored rail collision")
+		var signal_center := grated_platforms.global_position
+		var west_rail := grated_platforms.global_position + Vector3(-2.8, 0.0, 0.0)
+		var opening := grated_platforms.get_node_or_null("Markers/WallOpening0") as Marker3D
+		_assert_true(instance._grid.is_cell_allowed_on_level(
+			instance._grid.world_to_grid(signal_center), instance.LEVEL_LOWER),
+			"the signal deck is a real lower-level standing area")
+		_assert_true(not instance._grid.is_cell_allowed_on_level(
+			instance._grid.world_to_grid(west_rail), instance.LEVEL_LOWER),
+			"the platform rail is blocked in the grid-authoritative movement layer")
+		_assert_true(opening != null and instance._grid.is_cell_allowed_on_level(
+			instance._grid.world_to_grid(opening.global_position), instance.LEVEL_LOWER),
+			"the authored platform mouth remains a reachable route from the main lane")
 	if streamed_peris_overlay != null:
 		_assert_equals(streamed_peris_overlay.find_children(
 			"PerisIronBoundary*", "MeshInstance3D", true, false).size(), 12,
@@ -12880,6 +12907,12 @@ func _test_elevator_distracted_fauna() -> void:
 	instance._load_chunk("below")
 	# This focused test starts on the playable lower deck; normal reveal while
 	# the party is still above deliberately leaves this cohort dormant.
+	for party_id in ["aster", "peris"]:
+		instance._game_state.set_character_level(party_id, instance.LEVEL_LOWER)
+		_set_sequence_character_position(instance, party_id, Vector3(
+			instance.FORK_POS.x + float(instance.ROUTE_BEAT_OFFSETS[0]),
+			instance.BELOW_Y,
+			-4.0))
 	instance._activate_below_fauna()
 	var guard: Node = null
 	for e in instance._enemies:
@@ -12899,6 +12932,13 @@ func _test_elevator_distracted_fauna() -> void:
 	# the party (a non-distracted enemy would chase here, which is exactly what we're guarding against).
 	var mid_gap: float = (normal_range + distracted_range) * 0.5
 	var anchor: Vector3 = gs.get_position(guard.char_id)
+	# Both characters were staged beside the cohort to wake it. Move Peris out of
+	# ordinary reach so this focused read measures Aster's chosen distance rather
+	# than a second, still-adjacent target.
+	gs.command_stop("peris")
+	gs.characters["peris"]["position"] = anchor + Vector3(0.0, 0.0, normal_range + 4.0)
+	gs.characters["peris"]["grid_cell"] = gs.grid.world_to_grid(gs.characters["peris"]["position"])
+	gs._recompute_all_detection_predictions("peris")
 	gs.command_stop("aster")
 	gs.set_character_level("aster", instance.LEVEL_LOWER)
 	gs.characters["aster"]["position"] = anchor + Vector3(mid_gap, 0.0, 0.0)
@@ -13575,6 +13615,57 @@ func _test_elevator() -> void:
 			instance.headless_advance(0.6, 0.05)
 			_assert_equals(instance._current_step, "route_choice",
 				"The useful Peris overlay read releases the route choice")
+
+			# The second beat is composed from the stage-1 Plant-as-tool archetype rather than
+			# a bespoke platform script: the ordinary Flure clears perception and routes the
+			# ordinary fauna over the authored grated connector. Triggering it early or late
+			# therefore changes the live spatial state instead of playing a fixed cutscene.
+			var platform_root := instance.find_child("ElevatorGratedPlatforms", true, false) as Node3D
+			var platform_signal := platform_root.get_node_or_null("Markers/SignalMarker") as Marker3D \
+				if platform_root != null else null
+			var platform_group: Array = instance._route_flure_enemy_groups.get(
+				instance.GRATED_PLATFORM_ROUTE_BEAT, [])
+			_assert_true(platform_root != null and platform_signal != null and platform_group.size() == 2,
+				"The grated signal deck composes one Flure with the two-fauna roost")
+			if platform_signal != null and platform_group.size() == 2:
+				for party_id in ["aster", "peris"]:
+					instance._game_state.set_character_level(party_id, instance.LEVEL_LOWER)
+					_set_sequence_character_position(instance, party_id,
+						platform_signal.global_position + Vector3(0.0, 0.0, 1.0))
+				instance._update_below_fauna_activation(true)
+				var distances_before: Dictionary = {}
+				var platform_cohort_active := true
+				for enemy in platform_group:
+					platform_cohort_active = platform_cohort_active \
+						and instance._game_state.characters.has(enemy.char_id)
+					distances_before[enemy.char_id] = instance._game_state.get_position(
+						enemy.char_id).distance_to(platform_signal.global_position)
+				_assert_true(platform_cohort_active,
+					"Approaching the grated decks wakes their existing spatial cohort")
+				var platform_flure: Node = instance._route_flure_interactables[
+					instance.GRATED_PLATFORM_ROUTE_BEAT]
+				_assert_true(platform_flure != null and bool(platform_flure.get("interaction_enabled")),
+					"The signal-deck Flure arms with the route choice")
+				if platform_flure != null:
+					platform_flure.set("active_character", "peris")
+					platform_flure.call("_trigger", false)
+				instance.headless_advance(2.0, 0.05)
+				var all_crossing_to_signal := bool(instance._route_flures_activated[
+					instance.GRATED_PLATFORM_ROUTE_BEAT])
+				var crossing_diagnostics: Array[String] = []
+				for enemy in platform_group:
+					var distance_after: float = instance._game_state.get_position(enemy.char_id).distance_to(
+						platform_signal.global_position)
+					crossing_diagnostics.append("%s %.2f->%.2f state=%s moving=%s dest=%s" % [
+						enemy.char_id, float(distances_before[enemy.char_id]), distance_after,
+						enemy.get_state(), str(instance._game_state.is_moving(enemy.char_id)),
+						str(instance._game_state.get_destination(enemy.char_id))])
+					all_crossing_to_signal = all_crossing_to_signal \
+						and enemy.get_detection_targets().is_empty() \
+						and distance_after < float(distances_before[enemy.char_id])
+				_assert_true(all_crossing_to_signal,
+					"Lighting the platform Flure makes both roost fauna cross the grated connector (%s)" \
+						% "; ".join(crossing_diagnostics))
 
 		# Route convergence gate: after choosing a lane and walking it, reaching convergence
 		# opens the junction (the fall already happened — this no longer triggers the collapse).

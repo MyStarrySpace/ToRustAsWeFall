@@ -1,0 +1,466 @@
+[gd_scene load_steps=21 format=3]
+
+[sub_resource type="StandardMaterial3D" id="GrateMaterial"]
+albedo_color = Color(0.13, 0.16, 0.17, 1)
+metallic = 0.72
+roughness = 0.46
+
+[sub_resource type="StandardMaterial3D" id="FrameMaterial"]
+albedo_color = Color(0.105, 0.075, 0.055, 1)
+metallic = 0.58
+roughness = 0.66
+
+[sub_resource type="StandardMaterial3D" id="SignalMaterial"]
+albedo_color = Color(0.12, 0.36, 0.3, 1)
+emission_enabled = true
+emission = Color(0.16, 0.68, 0.48, 1)
+emission_energy_multiplier = 1.2
+metallic = 0.3
+roughness = 0.5
+
+[sub_resource type="BoxMesh" id="PadLongBar"]
+material = SubResource("GrateMaterial")
+size = Vector3(5.4, 0.1, 0.12)
+
+[sub_resource type="BoxMesh" id="PadCrossBar"]
+material = SubResource("GrateMaterial")
+size = Vector3(0.12, 0.08, 3.8)
+
+[sub_resource type="BoxMesh" id="ConnectorLongBar"]
+material = SubResource("GrateMaterial")
+size = Vector3(4.6, 0.1, 0.1)
+
+[sub_resource type="BoxMesh" id="ConnectorCrossBar"]
+material = SubResource("GrateMaterial")
+size = Vector3(0.1, 0.08, 1.35)
+
+[sub_resource type="BoxMesh" id="SupportBeam"]
+material = SubResource("FrameMaterial")
+size = Vector3(0.22, 2.4, 0.22)
+
+[sub_resource type="BoxMesh" id="RailPost"]
+material = SubResource("FrameMaterial")
+size = Vector3(0.18, 1.2, 0.18)
+
+[sub_resource type="BoxMesh" id="RailLong"]
+material = SubResource("FrameMaterial")
+size = Vector3(15.6, 0.12, 0.12)
+
+[sub_resource type="BoxMesh" id="RailConnector"]
+material = SubResource("FrameMaterial")
+size = Vector3(4.6, 0.12, 0.12)
+
+[sub_resource type="BoxMesh" id="RailSide"]
+material = SubResource("FrameMaterial")
+size = Vector3(0.12, 0.12, 4.0)
+
+[sub_resource type="BoxMesh" id="RailShort"]
+material = SubResource("FrameMaterial")
+size = Vector3(1.5, 0.12, 0.12)
+
+[sub_resource type="CylinderMesh" id="SignalSocketMesh"]
+material = SubResource("SignalMaterial")
+top_radius = 0.55
+bottom_radius = 0.68
+height = 0.24
+
+[sub_resource type="BoxShape3D" id="PadShape"]
+size = Vector3(5.5, 0.16, 4.0)
+
+[sub_resource type="BoxShape3D" id="ConnectorShape"]
+size = Vector3(4.6, 0.16, 1.5)
+
+[sub_resource type="BoxShape3D" id="RailLongShape"]
+size = Vector3(15.6, 1.2, 0.2)
+
+[sub_resource type="BoxShape3D" id="RailConnectorShape"]
+size = Vector3(4.6, 1.2, 0.2)
+
+[sub_resource type="BoxShape3D" id="RailSideShape"]
+size = Vector3(0.2, 1.2, 4.0)
+
+[sub_resource type="BoxShape3D" id="RailShortShape"]
+size = Vector3(1.5, 1.2, 0.2)
+
+[node name="ElevatorGratedPlatforms" type="Node3D"]
+metadata/archetype_id = "2"
+metadata/archetype_name = "Plant as tool"
+metadata/composition_tags = PackedStringArray("flora", "enemy_routing", "emergent_timing", "optional_route")
+
+[node name="DeckCollision" type="StaticBody3D" parent="."]
+collision_layer = 1
+collision_mask = 0
+
+[node name="SignalDeck" type="CollisionShape3D" parent="DeckCollision"]
+shape = SubResource("PadShape")
+
+[node name="Connector" type="CollisionShape3D" parent="DeckCollision"]
+position = Vector3(5, 0, 0)
+shape = SubResource("ConnectorShape")
+
+[node name="RoostDeck" type="CollisionShape3D" parent="DeckCollision"]
+position = Vector3(10, 0, 0)
+shape = SubResource("PadShape")
+
+[node name="RailCollision" type="StaticBody3D" parent="."]
+collision_layer = 1
+collision_mask = 0
+
+[node name="OuterRail" type="CollisionShape3D" parent="RailCollision"]
+position = Vector3(5, 0.6, -2.05)
+shape = SubResource("RailLongShape")
+
+[node name="ConnectorSouthRail" type="CollisionShape3D" parent="RailCollision"]
+position = Vector3(5, 0.6, 1.2)
+shape = SubResource("RailConnectorShape")
+
+[node name="ConnectorNorthRail" type="CollisionShape3D" parent="RailCollision"]
+position = Vector3(5, 0.6, -1.2)
+shape = SubResource("RailConnectorShape")
+
+[node name="WestRail" type="CollisionShape3D" parent="RailCollision"]
+position = Vector3(-2.8, 0.6, 0)
+shape = SubResource("RailSideShape")
+
+[node name="EastRail" type="CollisionShape3D" parent="RailCollision"]
+position = Vector3(12.8, 0.6, 0)
+shape = SubResource("RailSideShape")
+
+[node name="SignalSouthRailLeft" type="CollisionShape3D" parent="RailCollision"]
+position = Vector3(-2.02, 0.6, 2.05)
+shape = SubResource("RailShortShape")
+
+[node name="SignalSouthRailRight" type="CollisionShape3D" parent="RailCollision"]
+position = Vector3(2.02, 0.6, 2.05)
+shape = SubResource("RailShortShape")
+
+[node name="RoostSouthRailLeft" type="CollisionShape3D" parent="RailCollision"]
+position = Vector3(7.98, 0.6, 2.05)
+shape = SubResource("RailShortShape")
+
+[node name="RoostSouthRailRight" type="CollisionShape3D" parent="RailCollision"]
+position = Vector3(12.02, 0.6, 2.05)
+shape = SubResource("RailShortShape")
+
+[node name="SignalDeck" type="Node3D" parent="."]
+
+[node name="LongBar0" type="MeshInstance3D" parent="SignalDeck"]
+position = Vector3(0, 0.04, -1.65)
+mesh = SubResource("PadLongBar")
+cast_shadow = 0
+
+[node name="LongBar1" type="MeshInstance3D" parent="SignalDeck"]
+position = Vector3(0, 0.04, -1.1)
+mesh = SubResource("PadLongBar")
+cast_shadow = 0
+
+[node name="LongBar2" type="MeshInstance3D" parent="SignalDeck"]
+position = Vector3(0, 0.04, -0.55)
+mesh = SubResource("PadLongBar")
+cast_shadow = 0
+
+[node name="LongBar3" type="MeshInstance3D" parent="SignalDeck"]
+position = Vector3(0, 0.04, 0)
+mesh = SubResource("PadLongBar")
+cast_shadow = 0
+
+[node name="LongBar4" type="MeshInstance3D" parent="SignalDeck"]
+position = Vector3(0, 0.04, 0.55)
+mesh = SubResource("PadLongBar")
+cast_shadow = 0
+
+[node name="LongBar5" type="MeshInstance3D" parent="SignalDeck"]
+position = Vector3(0, 0.04, 1.1)
+mesh = SubResource("PadLongBar")
+cast_shadow = 0
+
+[node name="LongBar6" type="MeshInstance3D" parent="SignalDeck"]
+position = Vector3(0, 0.04, 1.65)
+mesh = SubResource("PadLongBar")
+cast_shadow = 0
+
+[node name="CrossBar0" type="MeshInstance3D" parent="SignalDeck"]
+position = Vector3(-2.15, 0.01, 0)
+mesh = SubResource("PadCrossBar")
+cast_shadow = 0
+
+[node name="CrossBar1" type="MeshInstance3D" parent="SignalDeck"]
+position = Vector3(-1.08, 0.01, 0)
+mesh = SubResource("PadCrossBar")
+cast_shadow = 0
+
+[node name="CrossBar2" type="MeshInstance3D" parent="SignalDeck"]
+position = Vector3(0, 0.01, 0)
+mesh = SubResource("PadCrossBar")
+cast_shadow = 0
+
+[node name="CrossBar3" type="MeshInstance3D" parent="SignalDeck"]
+position = Vector3(1.08, 0.01, 0)
+mesh = SubResource("PadCrossBar")
+cast_shadow = 0
+
+[node name="CrossBar4" type="MeshInstance3D" parent="SignalDeck"]
+position = Vector3(2.15, 0.01, 0)
+mesh = SubResource("PadCrossBar")
+cast_shadow = 0
+
+[node name="RoostDeck" type="Node3D" parent="."]
+position = Vector3(10, 0, 0)
+
+[node name="LongBar0" type="MeshInstance3D" parent="RoostDeck"]
+position = Vector3(0, 0.04, -1.65)
+mesh = SubResource("PadLongBar")
+cast_shadow = 0
+
+[node name="LongBar1" type="MeshInstance3D" parent="RoostDeck"]
+position = Vector3(0, 0.04, -1.1)
+mesh = SubResource("PadLongBar")
+cast_shadow = 0
+
+[node name="LongBar2" type="MeshInstance3D" parent="RoostDeck"]
+position = Vector3(0, 0.04, -0.55)
+mesh = SubResource("PadLongBar")
+cast_shadow = 0
+
+[node name="LongBar3" type="MeshInstance3D" parent="RoostDeck"]
+position = Vector3(0, 0.04, 0)
+mesh = SubResource("PadLongBar")
+cast_shadow = 0
+
+[node name="LongBar4" type="MeshInstance3D" parent="RoostDeck"]
+position = Vector3(0, 0.04, 0.55)
+mesh = SubResource("PadLongBar")
+cast_shadow = 0
+
+[node name="LongBar5" type="MeshInstance3D" parent="RoostDeck"]
+position = Vector3(0, 0.04, 1.1)
+mesh = SubResource("PadLongBar")
+cast_shadow = 0
+
+[node name="LongBar6" type="MeshInstance3D" parent="RoostDeck"]
+position = Vector3(0, 0.04, 1.65)
+mesh = SubResource("PadLongBar")
+cast_shadow = 0
+
+[node name="CrossBar0" type="MeshInstance3D" parent="RoostDeck"]
+position = Vector3(-2.15, 0.01, 0)
+mesh = SubResource("PadCrossBar")
+cast_shadow = 0
+
+[node name="CrossBar1" type="MeshInstance3D" parent="RoostDeck"]
+position = Vector3(-1.08, 0.01, 0)
+mesh = SubResource("PadCrossBar")
+cast_shadow = 0
+
+[node name="CrossBar2" type="MeshInstance3D" parent="RoostDeck"]
+position = Vector3(0, 0.01, 0)
+mesh = SubResource("PadCrossBar")
+cast_shadow = 0
+
+[node name="CrossBar3" type="MeshInstance3D" parent="RoostDeck"]
+position = Vector3(1.08, 0.01, 0)
+mesh = SubResource("PadCrossBar")
+cast_shadow = 0
+
+[node name="CrossBar4" type="MeshInstance3D" parent="RoostDeck"]
+position = Vector3(2.15, 0.01, 0)
+mesh = SubResource("PadCrossBar")
+cast_shadow = 0
+
+[node name="GratedConnector" type="Node3D" parent="."]
+position = Vector3(5, 0, 0)
+
+[node name="LongBar0" type="MeshInstance3D" parent="GratedConnector"]
+position = Vector3(0, 0.04, -0.56)
+mesh = SubResource("ConnectorLongBar")
+cast_shadow = 0
+
+[node name="LongBar1" type="MeshInstance3D" parent="GratedConnector"]
+position = Vector3(0, 0.04, -0.28)
+mesh = SubResource("ConnectorLongBar")
+cast_shadow = 0
+
+[node name="LongBar2" type="MeshInstance3D" parent="GratedConnector"]
+position = Vector3(0, 0.04, 0)
+mesh = SubResource("ConnectorLongBar")
+cast_shadow = 0
+
+[node name="LongBar3" type="MeshInstance3D" parent="GratedConnector"]
+position = Vector3(0, 0.04, 0.28)
+mesh = SubResource("ConnectorLongBar")
+cast_shadow = 0
+
+[node name="LongBar4" type="MeshInstance3D" parent="GratedConnector"]
+position = Vector3(0, 0.04, 0.56)
+mesh = SubResource("ConnectorLongBar")
+cast_shadow = 0
+
+[node name="CrossBar0" type="MeshInstance3D" parent="GratedConnector"]
+position = Vector3(-1.55, 0.01, 0)
+mesh = SubResource("ConnectorCrossBar")
+cast_shadow = 0
+
+[node name="CrossBar1" type="MeshInstance3D" parent="GratedConnector"]
+position = Vector3(0, 0.01, 0)
+mesh = SubResource("ConnectorCrossBar")
+cast_shadow = 0
+
+[node name="CrossBar2" type="MeshInstance3D" parent="GratedConnector"]
+position = Vector3(1.55, 0.01, 0)
+mesh = SubResource("ConnectorCrossBar")
+cast_shadow = 0
+
+[node name="Frame" type="Node3D" parent="."]
+
+[node name="OuterRail" type="MeshInstance3D" parent="Frame"]
+position = Vector3(5, 1, -2.05)
+mesh = SubResource("RailLong")
+
+[node name="ConnectorSouthRail" type="MeshInstance3D" parent="Frame"]
+position = Vector3(5, 1, 1.2)
+mesh = SubResource("RailConnector")
+
+[node name="ConnectorNorthRail" type="MeshInstance3D" parent="Frame"]
+position = Vector3(5, 1, -1.2)
+mesh = SubResource("RailConnector")
+
+[node name="WestRail" type="MeshInstance3D" parent="Frame"]
+position = Vector3(-2.8, 1, 0)
+mesh = SubResource("RailSide")
+
+[node name="EastRail" type="MeshInstance3D" parent="Frame"]
+position = Vector3(12.8, 1, 0)
+mesh = SubResource("RailSide")
+
+[node name="SignalSouthRailLeft" type="MeshInstance3D" parent="Frame"]
+position = Vector3(-2.02, 1, 2.05)
+mesh = SubResource("RailShort")
+
+[node name="SignalSouthRailRight" type="MeshInstance3D" parent="Frame"]
+position = Vector3(2.02, 1, 2.05)
+mesh = SubResource("RailShort")
+
+[node name="RoostSouthRailLeft" type="MeshInstance3D" parent="Frame"]
+position = Vector3(7.98, 1, 2.05)
+mesh = SubResource("RailShort")
+
+[node name="RoostSouthRailRight" type="MeshInstance3D" parent="Frame"]
+position = Vector3(12.02, 1, 2.05)
+mesh = SubResource("RailShort")
+
+[node name="Post0" type="MeshInstance3D" parent="Frame"]
+position = Vector3(-2.8, 0.6, -2.05)
+mesh = SubResource("RailPost")
+
+[node name="Post1" type="MeshInstance3D" parent="Frame"]
+position = Vector3(2.75, 0.6, -2.05)
+mesh = SubResource("RailPost")
+
+[node name="Post2" type="MeshInstance3D" parent="Frame"]
+position = Vector3(7.25, 0.6, -2.05)
+mesh = SubResource("RailPost")
+
+[node name="Post3" type="MeshInstance3D" parent="Frame"]
+position = Vector3(12.8, 0.6, -2.05)
+mesh = SubResource("RailPost")
+
+[node name="Post4" type="MeshInstance3D" parent="Frame"]
+position = Vector3(2.75, 0.6, 1.2)
+mesh = SubResource("RailPost")
+
+[node name="Post5" type="MeshInstance3D" parent="Frame"]
+position = Vector3(7.25, 0.6, 1.2)
+mesh = SubResource("RailPost")
+
+[node name="Post6" type="MeshInstance3D" parent="Frame"]
+position = Vector3(-1.25, 0.6, 2.05)
+mesh = SubResource("RailPost")
+
+[node name="Post7" type="MeshInstance3D" parent="Frame"]
+position = Vector3(1.25, 0.6, 2.05)
+mesh = SubResource("RailPost")
+
+[node name="Post8" type="MeshInstance3D" parent="Frame"]
+position = Vector3(8.75, 0.6, 2.05)
+mesh = SubResource("RailPost")
+
+[node name="Post9" type="MeshInstance3D" parent="Frame"]
+position = Vector3(11.25, 0.6, 2.05)
+mesh = SubResource("RailPost")
+
+[node name="Support0" type="MeshInstance3D" parent="Frame"]
+position = Vector3(-2.35, -1.2, -1.6)
+mesh = SubResource("SupportBeam")
+
+[node name="Support1" type="MeshInstance3D" parent="Frame"]
+position = Vector3(2.35, -1.2, -1.6)
+mesh = SubResource("SupportBeam")
+
+[node name="Support2" type="MeshInstance3D" parent="Frame"]
+position = Vector3(7.65, -1.2, -1.6)
+mesh = SubResource("SupportBeam")
+
+[node name="Support3" type="MeshInstance3D" parent="Frame"]
+position = Vector3(12.35, -1.2, -1.6)
+mesh = SubResource("SupportBeam")
+
+[node name="SignalSocket" type="MeshInstance3D" parent="."]
+position = Vector3(-1.1, 0.16, -0.35)
+mesh = SubResource("SignalSocketMesh")
+
+[node name="SignalLight" type="OmniLight3D" parent="SignalSocket"]
+position = Vector3(0, 0.55, 0)
+light_color = Color(0.24, 0.86, 0.58, 1)
+light_energy = 1.4
+omni_range = 5.5
+shadow_enabled = false
+
+[node name="SignalDeckLabel" type="Label3D" parent="."]
+position = Vector3(0, 1.65, -1.65)
+text = "FLURE SIGNAL DECK"
+modulate = Color(0.48, 0.9, 0.68, 1)
+outline_modulate = Color(0.01, 0.015, 0.015, 0.95)
+outline_size = 8
+font_size = 38
+pixel_size = 0.0035
+billboard = 1
+
+[node name="RoostLabel" type="Label3D" parent="."]
+position = Vector3(10, 1.65, -1.65)
+text = "FAUNA ROOST"
+modulate = Color(0.84, 0.52, 0.28, 1)
+outline_modulate = Color(0.01, 0.015, 0.015, 0.95)
+outline_size = 8
+font_size = 38
+pixel_size = 0.0035
+billboard = 1
+
+[node name="Markers" type="Node3D" parent="."]
+
+[node name="SignalMarker" type="Marker3D" parent="Markers"]
+position = Vector3(-1.1, 0.3, -0.35)
+
+[node name="EnemySpawn0" type="Marker3D" parent="Markers"]
+position = Vector3(9.15, 0.5, -0.7)
+
+[node name="EnemySpawn1" type="Marker3D" parent="Markers"]
+position = Vector3(10.85, 0.5, 0.65)
+
+[node name="WallOpening0" type="Marker3D" parent="Markers"]
+position = Vector3(0, 0, 2.3)
+metadata/width = 2.6
+
+[node name="WallOpening1" type="Marker3D" parent="Markers"]
+position = Vector3(10, 0, 2.3)
+metadata/width = 2.6
+
+[node name="WalkableSignalDeck" type="Marker3D" parent="Markers"]
+metadata/half_extents = Vector2(2.55, 1.8)
+
+[node name="WalkableConnector" type="Marker3D" parent="Markers"]
+position = Vector3(5, 0, 0)
+metadata/half_extents = Vector2(2.45, 0.6)
+
+[node name="WalkableRoostDeck" type="Marker3D" parent="Markers"]
+position = Vector3(10, 0, 0)
+metadata/half_extents = Vector2(2.55, 1.8)
