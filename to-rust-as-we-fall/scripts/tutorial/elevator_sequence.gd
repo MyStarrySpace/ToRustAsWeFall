@@ -82,8 +82,11 @@ var _unit_1_stunned := false
 var _unit_2_stunned := false
 var _reboot_active := false
 var _stamina := 100.0
+var _emp_visual_root: Node3D
 var _emp_animation_player: AnimationPlayer
 var _emp_pulse_visual: MeshInstance3D
+var _emp_pulse_core: MeshInstance3D
+var _emp_pulse_light: OmniLight3D
 var _emp_faceplates: Array = []
 var _emp_faceplate_lights: Array = []
 var _elevator_fill_light: OmniLight3D
@@ -174,6 +177,7 @@ const BRIDGE_BLOCKADE_X := BRIDGE_END_X + BRIDGE_END_LANDING_LENGTH
 const ELEVATOR_MODEL := preload("res://resources/models/elevator/elevator_car.glb")
 const ENDO_JUNCTION_MODEL := preload("res://resources/models/elevator/endo-junction.glb")
 const BRIDGE_LIGHTING_SCENE := preload("res://scenes/tutorial/elevator_bridge_lighting.tscn")
+const EMP_FACEPLATE_SCENE := preload("res://scenes/tutorial/elevator_emp_faceplate.tscn")
 # Collapse debris physics layers (kept off every gameplay layer so debris never touches characters —
 # they move on the grid, not via physics). Pieces collide ONLY with their own catch-floor (no inter-
 # piece explosions from the initially-touching span).
@@ -668,6 +672,12 @@ func _refresh_elevator_overlay_ui() -> void:
 func _begin() -> void:
 	_player.set_move_enabled(false)
 	_fade_rect.color = Color(0, 0, 0, 1)
+	if start_chunk == "emp":
+		# Focused render/export probe: all ordinary scene construction still runs,
+		# but dialogue is skipped so the EMP can be inspected frame by frame.
+		_fade_rect.color = Color(0, 0, 0, 0)
+		_start_emp_focus()
+		return
 	if start_chunk != "":
 		_load_chunk(start_chunk)
 		_player.set_move_enabled(true)
@@ -1264,118 +1274,104 @@ func _start_emp_tutorial() -> void:
 	_scheduler.pause()
 	_hud.set_paused(true)
 
+func _start_emp_focus() -> void:
+	var party_center := _get_emp_party_center()
+	for guard_info in [["eu1", _escort_1], ["eu2", _escort_2]]:
+		var guard_id := str(guard_info[0])
+		var guard := guard_info[1] as Node3D
+		var standoff := _get_emp_guard_standoff_pos(guard_id, guard, party_center)
+		_game_state.snap_character_to(guard_id, standoff)
+	_start_emp_tutorial()
+
 func _start_emp_tutorial_2() -> void:
 	_enter_step("emp_tutorial_2")
 
-## Build the EMP as an authored world animation. The text used to claim a pulse, dimming faceplates,
-## and a room blackout while none of those changes happened on screen; these tracks make the same causal
-## chain directly inspectable: Aster -> expanding pulse -> both units dark -> elevator lock loses power.
+## Bind the authored EMP nodes to one in-world AnimationPlayer. The fixed meshes,
+## materials, lights, and faceplate hierarchy live in .tscn files; this script only
+## adds tracks for runtime-owned elevator lights and guard instances.
 func _build_emp_visuals() -> void:
 	if _emp_animation_player != null:
 		return
+	_emp_visual_root = get_node_or_null("EmpVisuals") as Node3D
+	if _emp_visual_root == null:
+		push_error("Elevator: authored EmpVisuals scene is missing")
+		return
+	_emp_pulse_visual = _emp_visual_root.get_node_or_null("EmpPulseVisual") as MeshInstance3D
+	_emp_pulse_core = _emp_visual_root.get_node_or_null("EmpPulseCore") as MeshInstance3D
+	_emp_pulse_light = _emp_visual_root.get_node_or_null("EmpPulseLight") as OmniLight3D
+	_emp_animation_player = _emp_visual_root.get_node_or_null("EmpAnimationPlayer") as AnimationPlayer
+	if _emp_pulse_visual == null or _emp_pulse_core == null or _emp_pulse_light == null \
+			or _emp_animation_player == null:
+		push_error("Elevator: authored EMP effect is incomplete")
+		_emp_animation_player = null
+		return
+	# Animation paths are authored/built relative to the Elevator root so the one
+	# player can address both EmpVisuals children and runtime guard/light nodes.
+	_emp_animation_player.root_node = NodePath("../..")
 	_emp_faceplates.clear()
 	_emp_faceplate_lights.clear()
 	for unit in [_escort_1, _escort_2]:
-		var faceplate := MeshInstance3D.new()
-		faceplate.name = "EMPFaceplate"
-		var plate_mesh := BoxMesh.new()
-		plate_mesh.size = Vector3(0.06, 0.18, 0.30)
-		faceplate.mesh = plate_mesh
-		var plate_material := StandardMaterial3D.new()
-		plate_material.albedo_color = Color(0.64, 0.78, 1.0)
-		plate_material.emission_enabled = true
-		plate_material.emission = Color(0.32, 0.60, 1.0)
-		plate_material.emission_energy_multiplier = 2.5
-		plate_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		faceplate.material_override = plate_material
-		faceplate.position = Vector3(0.23, 0.62, 0.0)
-		faceplate.layers = 2
-		unit.add_child(faceplate)
+		var faceplate_effect := EMP_FACEPLATE_SCENE.instantiate() as Node3D
+		unit.add_child(faceplate_effect)
+		var faceplate := faceplate_effect.get_node("Faceplate") as MeshInstance3D
+		var face_light := faceplate_effect.get_node("FaceLight") as OmniLight3D
 		_emp_faceplates.append(faceplate)
-
-		var face_light := OmniLight3D.new()
-		face_light.name = "EMPFaceLight"
-		face_light.position = Vector3(0.32, 0.62, 0.0)
-		face_light.light_color = Color(0.32, 0.60, 1.0)
-		face_light.light_energy = 1.3
-		face_light.omni_range = 1.25
-		unit.add_child(face_light)
 		_emp_faceplate_lights.append(face_light)
-
-	_emp_pulse_visual = MeshInstance3D.new()
-	_emp_pulse_visual.name = "EmpPulseVisual"
-	var pulse_mesh := TorusMesh.new()
-	pulse_mesh.inner_radius = 0.43
-	pulse_mesh.outer_radius = 0.52
-	pulse_mesh.rings = 48
-	pulse_mesh.ring_segments = 12
-	_emp_pulse_visual.mesh = pulse_mesh
-	var pulse_material := StandardMaterial3D.new()
-	pulse_material.albedo_color = Color(0.34, 0.78, 1.0, 0.82)
-	pulse_material.emission_enabled = true
-	pulse_material.emission = Color(0.24, 0.72, 1.0)
-	pulse_material.emission_energy_multiplier = 5.0
-	pulse_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	pulse_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	pulse_material.cull_mode = BaseMaterial3D.CULL_DISABLED
-	pulse_material.no_depth_test = true
-	_emp_pulse_visual.material_override = pulse_material
-	_emp_pulse_visual.visible = false
-	_emp_pulse_visual.scale = Vector3.ONE * 0.12
-	_emp_pulse_visual.transparency = 1.0
-	_emp_pulse_visual.layers = 2
-	add_child(_emp_pulse_visual)
-
-	_emp_animation_player = SEQUENCE_ANIMATION_PLAYER_SCENE.instantiate() as AnimationPlayer
-	_emp_animation_player.name = "EmpAnimationPlayer"
-	_emp_animation_player.root_node = NodePath("..")
-	add_child(_emp_animation_player)
 	var animation := Animation.new()
 	animation.length = EMP_VISUAL_DURATION
 	animation.loop_mode = Animation.LOOP_NONE
 	_emp_add_track(animation, _emp_pulse_visual, "visible", [
-		[0.0, true], [EMP_VISUAL_DURATION - 0.02, false],
+		[0.0, true], [1.08, false],
 	], true)
 	_emp_add_track(animation, _emp_pulse_visual, "scale", [
 		[0.0, Vector3.ONE * 0.12], [0.12, Vector3.ONE * 0.35],
-		[1.15, Vector3.ONE * 7.5], [EMP_VISUAL_DURATION, Vector3.ONE * 9.0],
+		[0.95, Vector3.ONE * 5.2], [1.06, Vector3.ONE * 5.4],
 	])
-	_emp_add_track(animation, _emp_pulse_visual, "transparency", [
-		[0.0, 0.0], [0.18, 0.05], [EMP_VISUAL_DURATION, 1.0],
+	# A short emissive core and local blue flash make the source readable even
+	# against the elevator's red lighting; the torus then carries direction/scale.
+	_emp_add_track(animation, _emp_pulse_core, "visible", [
+		[0.0, true], [0.32, false],
+	], true)
+	_emp_add_track(animation, _emp_pulse_core, "scale", [
+		[0.0, Vector3.ONE * 0.12], [0.10, Vector3.ONE * 0.55],
+		[0.30, Vector3.ONE * 0.78],
+	])
+	_emp_add_track(animation, _emp_pulse_light, "light_energy", [
+		[0.0, 0.0], [0.05, 2.5], [0.20, 1.1], [0.58, 0.0],
 	])
 	for index in range(_emp_faceplates.size()):
 		var faceplate: MeshInstance3D = _emp_faceplates[index]
 		var face_light: OmniLight3D = _emp_faceplate_lights[index]
 		_emp_add_track(animation, faceplate, "transparency", [
-			[0.0, 0.0], [0.18, 0.70], [0.28, 0.12], [0.40, 0.82],
-			[0.55, 0.32], [0.72, 1.0],
+			[0.0, 0.0], [0.30, 0.70], [0.45, 0.12], [0.60, 0.82],
+			[0.75, 0.32], [0.95, 1.0],
 		])
 		_emp_add_track(animation, face_light, "light_energy", [
-			[0.0, 1.3], [0.18, 0.05], [0.28, 0.9], [0.40, 0.02],
-			[0.55, 0.45], [0.72, 0.0],
+			[0.0, 1.3], [0.30, 0.05], [0.45, 0.9], [0.60, 0.02],
+			[0.75, 0.45], [0.95, 0.0],
 		])
 	var escort_1_rotation: Vector3 = _escort_1.rotation
 	var escort_2_rotation: Vector3 = _escort_2.rotation
 	_emp_add_track(animation, _escort_1, "rotation", [
-		[0.0, escort_1_rotation], [0.50, escort_1_rotation],
-		[0.82, escort_1_rotation + Vector3(0.0, 0.0, -0.18)],
+		[0.0, escort_1_rotation], [0.75, escort_1_rotation],
+		[1.02, escort_1_rotation + Vector3(0.0, 0.0, -0.18)],
 	])
 	_emp_add_track(animation, _escort_2, "rotation", [
-		[0.0, escort_2_rotation], [0.50, escort_2_rotation],
-		[0.82, escort_2_rotation + Vector3(0.0, 0.0, 0.18)],
+		[0.0, escort_2_rotation], [0.75, escort_2_rotation],
+		[1.02, escort_2_rotation + Vector3(0.0, 0.0, 0.18)],
 	])
 	_emp_add_track(animation, _emergency_light, "light_energy", [
-		[0.0, 1.5], [0.08, 7.0], [0.18, 0.10], [0.30, 3.5], [0.48, 0.0],
+		[0.0, 1.5], [0.08, 5.0], [0.18, 0.15], [0.30, 2.5], [0.48, 0.35],
 	])
 	_emp_add_track(animation, _elevator_fill_light, "light_energy", [
-		[0.0, 1.0], [0.12, 1.7], [0.52, 0.04],
+		[0.0, 1.0], [0.12, 1.4], [0.52, 0.18],
 	])
 	_emp_add_track(animation, _elevator_indicator_glow, "light_energy", [
 		[0.0, 1.4], [0.12, 3.0], [0.46, 0.0],
 	])
 	for standby in _elevator_standby_lights:
 		_emp_add_track(animation, standby, "light_energy", [
-			[0.0, 0.5], [0.18, 1.1], [0.58, 0.0],
+			[0.0, 0.5], [0.18, 0.9], [0.58, 0.08],
 		])
 	_emp_add_track(animation, _floor_indicator, "modulate", [
 		[0.0, Color(2.0, 0.45, 0.2, 1.0)], [0.46, Color(0.08, 0.02, 0.01, 0.0)],
@@ -1409,8 +1405,10 @@ func _play_emp_discharge_animation() -> void:
 	_elevator_powered = false
 	if _indicator_b_label != null:
 		_indicator_b_label.visible = true
-	if _emp_pulse_visual != null and _aster_node != null:
-		_emp_pulse_visual.global_position = _aster_node.global_position + Vector3(0.0, 0.40, 0.0)
+	if _emp_visual_root != null and _aster_node != null:
+		_emp_visual_root.global_position = _aster_node.global_position + Vector3(0.0, 0.48, 0.0)
+		_emp_pulse_visual.transparency = 0.0
+		_emp_pulse_core.transparency = 0.0
 	if _emp_animation_player != null and _emp_animation_player.has_animation("emp_discharge"):
 		_emp_animation_player.stop()
 		_emp_animation_player.speed_scale = _compute_speed()
@@ -1429,7 +1427,12 @@ func _finish_emp_discharge_animation() -> void:
 		_emp_animation_player.stop()
 	if _emp_pulse_visual != null:
 		_emp_pulse_visual.visible = false
-		_emp_pulse_visual.transparency = 1.0
+		_emp_pulse_visual.transparency = 0.0
+	if _emp_pulse_core != null:
+		_emp_pulse_core.visible = false
+		_emp_pulse_core.transparency = 0.0
+	if _emp_pulse_light != null:
+		_emp_pulse_light.light_energy = 0.0
 
 func _restore_elevator_power_visuals() -> void:
 	_elevator_powered = true
@@ -1437,7 +1440,12 @@ func _restore_elevator_power_visuals() -> void:
 		_emp_animation_player.stop()
 	if _emp_pulse_visual != null:
 		_emp_pulse_visual.visible = false
-		_emp_pulse_visual.transparency = 1.0
+		_emp_pulse_visual.transparency = 0.0
+	if _emp_pulse_core != null:
+		_emp_pulse_core.visible = false
+		_emp_pulse_core.transparency = 0.0
+	if _emp_pulse_light != null:
+		_emp_pulse_light.light_energy = 0.0
 	for faceplate in _emp_faceplates:
 		if is_instance_valid(faceplate):
 			faceplate.transparency = 0.0

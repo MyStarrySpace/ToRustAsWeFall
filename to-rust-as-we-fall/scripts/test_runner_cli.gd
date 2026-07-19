@@ -13161,6 +13161,18 @@ func _test_elevator() -> void:
 
 		var dialogue: Node = instance.find_child("DialogueBox", true, false)
 		_assert_true(dialogue != null, "DialogueBox node exists")
+		var emp_visuals: Node = instance.get_node_or_null("EmpVisuals")
+		_assert_true(emp_visuals != null
+				and emp_visuals.get_node_or_null("EmpPulseVisual") is MeshInstance3D
+				and emp_visuals.get_node_or_null("EmpPulseCore") is MeshInstance3D
+				and emp_visuals.get_node_or_null("EmpPulseLight") is OmniLight3D
+				and emp_visuals.get_node_or_null("EmpAnimationPlayer") is AnimationPlayer,
+			"EMP feedback hierarchy is authored in the elevator scene")
+		_assert_true(absf(float(instance._emp_pulse_visual.rotation_degrees.x) - 90.0) < 0.1
+				and float(instance._emp_pulse_visual.position.y) < -0.3,
+			"EMP ring is authored flat and grounded instead of edge-on through Aster")
+		_assert_equals(instance.find_children("EMPFaceplateEffect", "Node3D", true, false).size(), 2,
+			"Both escort faceplate effects are authored scene instances")
 
 		if "_scheduler" in instance:
 			_assert_true(instance._scheduler != null, "EventScheduler exists")
@@ -13250,16 +13262,27 @@ func _test_elevator() -> void:
 				and instance._emp_animation_player.has_animation("emp_discharge")
 				and instance._emp_animation_player.current_animation == "emp_discharge",
 			"Queued EMP plays the authored in-world discharge animation")
-		instance._emp_animation_player.advance(0.8)
+		instance._emp_animation_player.advance(0.12)
+		_assert_true(instance._emp_pulse_core.visible
+				and float(instance._emp_pulse_light.light_energy) > 1.0,
+			"EMP begins with a readable blue source flash around Aster")
+		instance._emp_animation_player.advance(0.85)
 		_assert_true(instance._emp_pulse_visual.visible
 				and instance._emp_pulse_visual.scale.x > 1.0,
 			"EMP animation expands a visible pulse outward from Aster")
+		var pulse_material := instance._emp_pulse_visual.mesh.material as StandardMaterial3D
+		_assert_true(pulse_material != null
+				and pulse_material.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED
+				and pulse_material.emission_enabled
+				and not pulse_material.no_depth_test,
+			"EMP pulse uses an opaque emissive, depth-correct authored material")
 		_assert_true(float(instance._emp_faceplates[0].transparency) > 0.9
 				and float(instance._emp_faceplate_lights[0].light_energy) < 0.05,
 			"EMP animation visibly kills the escort faceplate lights")
-		_assert_true(float(instance._emergency_light.light_energy) < 0.1
+		_assert_true(float(instance._emergency_light.light_energy) >= 0.25
+				and float(instance._emergency_light.light_energy) < 0.45
 				and float(instance._elevator_indicator_glow.light_energy) < 0.1,
-			"EMP animation blacks out the elevator's powered panels")
+			"EMP kills powered panels while retaining a readable emergency silhouette")
 		_assert_elevator_escort_standoff(instance, 2.0,
 			"Escort units are not touching the party when EMP fires")
 		instance.headless_advance(1.6, 0.1)
@@ -13275,9 +13298,11 @@ func _test_elevator() -> void:
 			"Door opening advances to the whole-party rally tutorial")
 		_assert_true(instance._scheduler.is_paused(),
 			"Rally tutorial pauses after doors finish opening")
-		_assert_true(not instance._emp_pulse_visual.visible
-				and float(instance._emp_pulse_visual.transparency) >= 0.999,
+		_assert_true(not instance._emp_pulse_visual.visible,
 			"Rally cannot preserve the expanded EMP torus as a cyan screen artifact")
+		_assert_true(not instance._emp_pulse_core.visible
+				and float(instance._emp_pulse_light.light_energy) <= 0.001,
+			"Rally cannot preserve the EMP source flash or pulse light")
 		_assert_true(not bool(instance._hud.get("_multi_select")),
 			"Rally tutorial leaves HUD multi-select disabled")
 		var rally_selection_before: Array = instance._hud.get_selected_ids().duplicate()
