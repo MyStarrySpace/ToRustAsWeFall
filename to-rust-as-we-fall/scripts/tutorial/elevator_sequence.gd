@@ -12,6 +12,11 @@ var _fall_landed_fired := false  # one-shot guard: bridge landing fires once
 var _fall_tween: Tween           # the cosmetic fall animation (wall-clock)
 var _fall_prev_offset_y := 12.0  # camera follow_offset.y before the fall dipped it (restored on landing)
 var _fall_offset_dipped := false # true once _execute_bridge_fall dipped the camera (so landing knows to restore)
+var _collapse_settle_tween: Tween
+var _collapse_stagger_tweens: Array[Tween] = []
+var _collapse_debris: Array[RigidBody3D] = []
+var _collapse_paused_debris: Dictionary = {}
+var _collapse_visual_paused := false
 var _bridge_lines_pending: Array = []  # crossing dialogue fired by POSITION as the party walks the span
 var _bridge_lines_fired := 0
 var _collapsed_chunks_removed := false  # one-shot guard: old level chunks freed once
@@ -55,6 +60,14 @@ var _grated_platforms: Node3D
 var _grated_platform_signal_marker: Marker3D
 var _grated_platform_enemy_markers: Array[Marker3D] = []
 var _grated_platform_wall_openings: Array[Marker3D] = []
+var _wreckage_gate: Node3D
+var _wreckage_interactable: Area3D
+var _wreckage_listeners: Array[Enemy] = []
+var _wreckage_armed := false
+var _wreckage_cleared := false
+var _wreckage_solo_attempted := false
+var _wreckage_failure_active := false
+var _wreckage_alert_target := ""
 
 # Endo-junction exploration. The plant is the transition out of exploration,
 # so it stays locked until the party has made three distinct reads with both
@@ -183,8 +196,10 @@ const ELEVATOR_MODEL := preload("res://resources/models/elevator/elevator_car.gl
 const ENDO_JUNCTION_MODEL := preload("res://resources/models/elevator/endo-junction.glb")
 const BRIDGE_LIGHTING_SCENE := preload("res://scenes/tutorial/elevator_bridge_lighting.tscn")
 const LOWER_ROUTE_LIGHTING_SCENE := preload("res://scenes/tutorial/elevator_lower_route_lighting.tscn")
+const LOWER_ROUTE_BLOCKADE_SCENE := preload("res://scenes/tutorial/elevator_lower_route_blockade.tscn")
 const EMP_FACEPLATE_SCENE := preload("res://scenes/tutorial/elevator_emp_faceplate.tscn")
 const GRATED_PLATFORMS_SCENE := preload("res://scenes/tutorial/elevator_grated_platforms.tscn")
+const WRECKAGE_GATE_SCENE := preload("res://scenes/tutorial/elevator_wreckage_gate.tscn")
 # Collapse debris physics layers (kept off every gameplay layer so debris never touches characters —
 # they move on the grid, not via physics). Pieces collide ONLY with their own catch-floor (no inter-
 # piece explosions from the initially-touching span).
@@ -208,6 +223,10 @@ const ROUTE_REQUIRED_READS := 2
 const ROUTE_BEAT_COUNT := 3
 const GRATED_PLATFORM_ROUTE_BEAT := 1
 const GRATED_PLATFORM_POS := Vector3(FORK_POS.x + 33.0, BELOW_Y, -10.0)
+const WRECKAGE_GATE_POS := Vector3(ROUTES_CONVERGE.x + 5.0, BELOW_Y, 0.0)
+const WRECKAGE_ASSIST_RADIUS := 3.25
+const WRECKAGE_CLEAR_SECONDS := 1.15
+const LOWER_ROUTE_WEST_X := BRIDGE_COLLAPSE_X - 5.0
 
 # Endo junction and shelter
 const JUNCTION_POS := Vector3(ROUTES_CONVERGE.x + 10.0, BELOW_Y, 0)
@@ -393,6 +412,7 @@ func _chunk_build_steps(chunk_name: String, parent: Node3D) -> Array:
 				_below_step_hazard_beat.bind(parent, 2),
 				_below_step_stalactites.bind(parent),
 				_below_step_convergence.bind(parent),
+				_below_step_wreckage_gate.bind(parent, true),
 				_apply_chunk_tiles.bind(parent, "deck_metal", "facility_metal"),
 				_decorate_below_chunk.bind(parent),
 				_below_chunk_occlusion_step.bind(parent),
@@ -402,7 +422,7 @@ func _chunk_build_steps(chunk_name: String, parent: Node3D) -> Array:
 func _on_chunk_revealed(_chunk_name: String, _chunk: Node3D) -> void:
 	# The lower deck must be visible from the intact bridge, but it is not playable
 	# until the party lands there.  Revealing its prewarmed geometry is therefore
-	# not an AI lifecycle transition: activating here made fourteen hidden FSMs
+	# not an AI lifecycle transition: activating here made the whole hidden ecology
 	# roam, invalidate detection, and emit move events throughout the bridge scene.
 	# _on_fall_landed() activates the already-constructed cohort at the causal seam.
 	pass
@@ -524,7 +544,31 @@ func _setup_level_footprints() -> void:
 	# the doorway. Otherwise a route queued during the paused scene can carry Aster into unseen space.
 	_add_level_walkable_region(LEVEL_UPPER, Vector2(-4.0, -3.5), Vector2(4.5, 3.5))   # elevator cabin
 	# Lower deck (level 0): the below landing / fork / junction / gauntlet run, one open span.
-	_add_level_walkable_region(LEVEL_LOWER, Vector2(-3.5, -8.0), Vector2(GAUNTLET_EXIT.x + 1.0, 8.0))
+	_add_level_walkable_region(LEVEL_LOWER, Vector2(LOWER_ROUTE_WEST_X, -8.0), Vector2(GAUNTLET_EXIT.x + 1.0, 8.0))
+
+func _set_lower_route_camera_bounds() -> void:
+	if _camera == null or not _camera.has_method("set_look_bounds"):
+		return
+	_camera.set_look_bounds(
+		Vector3(LOWER_ROUTE_WEST_X + 0.5, BELOW_Y, -8.0),
+		Vector3(JUNCTION_POS.x + 5.0, BELOW_Y, 8.0)
+	)
+
+func _set_junction_camera_bounds() -> void:
+	if _camera == null or not _camera.has_method("set_look_bounds"):
+		return
+	_camera.set_look_bounds(
+		Vector3(ROUTES_CONVERGE.x - 3.0, BELOW_Y, -12.0),
+		Vector3(JUNCTION_POS.x + 64.0, BELOW_Y, 12.0)
+	)
+
+func _set_gauntlet_camera_bounds() -> void:
+	if _camera == null or not _camera.has_method("set_look_bounds"):
+		return
+	_camera.set_look_bounds(
+		Vector3(GAUNTLET_POS.x - 10.0, BELOW_Y, -8.0),
+		Vector3(GAUNTLET_EXIT.x + 4.0, BELOW_Y, 8.0)
+	)
 
 func _unlock_upper_exit_footprint() -> void:
 	if _upper_exit_footprint_unlocked:
@@ -689,12 +733,14 @@ func _begin() -> void:
 		_start_emp_focus()
 		return
 	if start_chunk != "":
-		_load_chunk("below" if start_chunk == "route" else start_chunk)
+		_load_chunk("below" if start_chunk in ["route", "wreckage"] else start_chunk)
 		_player.set_move_enabled(true)
 		_fade_rect.color = Color(0, 0, 0, 0)
 		match start_chunk:
 			"route":
 				_start_route_focus()
+			"wreckage":
+				_start_wreckage_focus()
 			"junction":
 				_player.global_position = Vector3(JUNCTION_POS.x, BELOW_Y + 0.5, 0)
 				_start_junction_arrive()
@@ -704,9 +750,16 @@ func _begin() -> void:
 			"bridge":
 				# Focused bridge playtests still need the lower geometry in view, but
 				# must preserve the normal prewarm lifecycle: a one-shot _load_chunk
-				# constructs its fauna live and would run fourteen hidden FSMs.
+				# constructs its fauna live and would run the whole hidden ecology.
 				stream_chunk("below")
 				reveal_chunk("below")
+				# The escorts have completed their story role before this checkpoint.
+				# Keeping them visible in a focused Web probe leaves two oversized labels
+				# at the bridge mouth and misrepresents the playable composition.
+				if _escort_1 != null:
+					_escort_1.visible = false
+				if _escort_2 != null:
+					_escort_2.visible = false
 				_player.global_position = Vector3(0, 0.5, 0)
 				_start_bridge()
 			_:
@@ -811,16 +864,16 @@ func _on_process(delta: float, spd: float) -> void:
 			_player.set_move_enabled(false)
 			_start_bridge_collapse()
 
-	# Route convergence gate: after choosing a lane and walking it, reaching convergence
-	# opens the junction (the fall already happened — this no longer triggers the collapse).
+	# Route convergence reveals the last causal gate instead of unloading the level under a trailing
+	# partner. The wreckage itself decides whether the party distributes the load or makes enough
+	# noise to wake the nearby fauna.
 	if _current_step == "route_choice":
 		_update_route_course_progress()
 		# The ecology gates itself: it's distracted by its flures, so it only chases a party that cuts
 		# through the huddle (the enemy lane). The hazard lane keeps enough distance to slip past.
-		if _party_lead_x() > ROUTES_CONVERGE.x - 2.0 and _route_beats_crossed.count(true) >= ROUTE_BEAT_COUNT:
-			_tutorial_prompt.hide_prompt()
-			_player.set_move_enabled(false)
-			_start_junction_arrive()
+		if not _wreckage_armed and _party_lead_x() > ROUTES_CONVERGE.x - 2.0 \
+				and _route_beats_crossed.count(true) >= ROUTE_BEAT_COUNT:
+			_arm_wreckage_gate()
 
 	# Gauntlet exit gate: player passed the enemies
 	if _current_step == "gauntlet":
@@ -883,23 +936,71 @@ func _toggle_pause() -> void:
 			_hud.set_paused(true)
 			_tutorial_prompt.show_prompt("%s - queue Aster's EMP before unpausing" % InputHints.bracket(EMP_INPUT_ACTION))
 			return
+		_set_collapse_visual_paused(false)
 		_scheduler.resume()
 		_hud.set_paused(false)
 		_flush_queued_abilities()
+		if _current_step == "rally_tutorial":
+			_update_rally_tutorial_prompt()
 	else:
 		_scheduler.pause()
+		_set_collapse_visual_paused(true)
 		_hud.set_paused(true)
 
 func _on_pause_toggled(is_paused: bool) -> void:
 	if is_paused:
 		_scheduler.pause()
+		_set_collapse_visual_paused(true)
 	else:
 		if _emp_pause_locked and not _emp_queued:
 			_hud.set_paused(true)
 			_tutorial_prompt.show_prompt("%s - queue Aster's EMP before unpausing" % InputHints.bracket(EMP_INPUT_ACTION))
 			return
+		_set_collapse_visual_paused(false)
 		_scheduler.resume()
 		_flush_queued_abilities()
+		if _current_step == "rally_tutorial":
+			_update_rally_tutorial_prompt()
+
+## Gameplay pause is scheduler-owned, while the bridge collapse deliberately uses wall-clock
+## presentation (Tween + rigid-body settling). Keep those two clocks observationally atomic: a
+## paused player must never watch the bridge retire while the authoritative landing is frozen.
+func _set_collapse_visual_paused(paused: bool) -> void:
+	_collapse_visual_paused = paused
+	for tween in [_fall_tween, _collapse_settle_tween]:
+		if tween != null and tween.is_valid():
+			if paused:
+				tween.pause()
+			else:
+				tween.play()
+	for stagger in _collapse_stagger_tweens:
+		if stagger != null and stagger.is_valid():
+			if paused:
+				stagger.pause()
+			else:
+				stagger.play()
+	if paused:
+		for rb in _collapse_debris:
+			if not is_instance_valid(rb) or rb.freeze:
+				continue
+			_collapse_paused_debris[rb.get_instance_id()] = {
+				"linear_velocity": rb.linear_velocity,
+				"angular_velocity": rb.angular_velocity,
+			}
+			rb.freeze = true
+		return
+	for rb in _collapse_debris:
+		if not is_instance_valid(rb):
+			continue
+		var saved: Dictionary = _collapse_paused_debris.get(rb.get_instance_id(), {})
+		if not saved.is_empty():
+			rb.freeze = false
+			rb.linear_velocity = saved.get("linear_velocity", Vector3.ZERO)
+			rb.angular_velocity = saved.get("angular_velocity", Vector3.ZERO)
+		elif bool(rb.get_meta("collapse_release_ready", false)) \
+				and not bool(rb.get_meta("collapse_impulse_applied", false)):
+			_release_debris_now(rb)
+	_collapse_paused_debris.clear()
 
 func _flush_queued_abilities() -> void:
 	if _emp_queued:
@@ -939,6 +1040,12 @@ func _fire_emp_both() -> void:
 func _on_reboot() -> void:
 	if not _reboot_active:
 		return
+	_reboot_active = false
+	# Once the EMP has visibly released the doors, the guard-reboot fallback no
+	# longer owns the encounter. Never let a stale callback erase Rally's prompt
+	# or repower the room underneath the player.
+	if _current_step not in ["emp_tutorial", "doors_unlocked"]:
+		return
 	_unit_1_stunned = false
 	_unit_2_stunned = false
 	if _escort_1:
@@ -946,11 +1053,9 @@ func _on_reboot() -> void:
 	if _escort_2:
 		_escort_2.visible = true
 	_restore_elevator_power_visuals()
-	if _current_step in ["emp_tutorial", "doors_unlocked", "rally_tutorial"]:
-		_emp_count = 0
-		_reboot_active = false
-		_enter_step("units_activate")
-		_start_units_activate()
+	_emp_count = 0
+	_enter_step("units_activate")
+	_start_units_activate()
 
 func _on_exit_button_pressed() -> void:
 	# Flash "NO EXIT" on the indicator
@@ -993,7 +1098,9 @@ func _select_character(id: String, preserve_multi_selection := false) -> void:
 		_camera.target = _aster_node
 	_active_character = id
 	if _occlusion_mgr != null:
-		_occlusion_mgr.watch_id = id   # the level reveals around whoever the camera now follows
+		# Camera and reveal target change in the same input frame; publishing the
+		# uniform synchronously avoids a transient full-wall occlusion plane.
+		_occlusion_mgr.set_watch(_game_state, id)
 	if not preserve_multi_selection:
 		_selected_character_ids = [id]
 	elif not _selected_character_ids.has(id):
@@ -1497,6 +1604,7 @@ func _restore_elevator_power_visuals() -> void:
 func _start_doors_unlocked() -> void:
 	_enter_step("doors_unlocked")
 	_reboot_active = false
+	_scheduler.cancel_tag("reboot")
 	_tutorial_prompt.hide_prompt()
 	_finish_emp_discharge_animation()
 	# The pulse animation has already shown the faceplates and room panels dying. Cash out that visible
@@ -1532,6 +1640,7 @@ func _start_rally_tutorial() -> void:
 	_apply_character_control_selection()
 	_scheduler.pause()
 	_hud.set_paused(true)
+	_hud.show_message("RALLY ALL READY  //  preview both final positions, then release to queue", 3.0)
 	# The former spreadsheet line explicitly taught multi-selection, which is no longer this beat's
 	# mechanic. Keep the instruction truthful and immediate; perspective selection is taught later.
 	_update_rally_tutorial_prompt()
@@ -1568,6 +1677,11 @@ func _start_corridor() -> void:
 
 func _start_bridge() -> void:
 	_enter_step("bridge")
+	# Focused bridge probes and old saves bypass Aster's wake tween. The bridge beat
+	# starts with both characters conscious, so do not carry the incapacitated pose
+	# into a traversal/collapse test.
+	if _aster_node != null:
+		_aster_node.rotation_degrees.z = 0.0
 	# Focused bridge starts and old saves may enter here without the corridor beat.
 	_unlock_upper_exit_footprint()
 	# Those entry seams also bypass _start_corridor(), which normally releases the
@@ -1657,6 +1771,9 @@ func _execute_bridge_fall() -> void:
 ## layer so debris collides with nothing but the floor (no character interference, no inter-piece blowups).
 func _collapse_bridge_model(model: Node3D, break_x: float) -> void:
 	_collapse_visual_active = true
+	_collapse_debris.clear()
+	_collapse_stagger_tweens.clear()
+	_collapse_paused_debris.clear()
 	var host: Node = model.get_parent()
 	# A catch-floor at the lower deck so the debris lands instead of falling forever.
 	var catch := StaticBody3D.new()
@@ -1683,6 +1800,7 @@ func _collapse_bridge_model(model: Node3D, break_x: float) -> void:
 		rb.collision_mask = DEBRIS_FLOOR_LAYER   # only the catch-floor — never each other or characters
 		rb.gravity_scale = 1.4
 		rb.freeze = true
+		_collapse_debris.append(rb)
 		host.add_child(rb)
 		rb.global_transform = gx
 		mi.get_parent().remove_child(mi)
@@ -1701,30 +1819,45 @@ func _collapse_bridge_model(model: Node3D, break_x: float) -> void:
 	# A tween bound to the sequence, NOT a SceneTree timer: the tree's timers outlive a freed
 	# scene and fire against freed captures; this dies with the scene. (Headless/data-layer
 	# teardown calls _remove_collapsed_chunks directly.)
-	var settle := create_tween()
-	settle.tween_interval(3.0)
-	settle.tween_callback(_remove_collapsed_chunks)
+	_collapse_settle_tween = create_tween()
+	_collapse_settle_tween.tween_interval(3.0)
+	_collapse_settle_tween.tween_callback(_remove_collapsed_chunks)
 
 ## Release one debris piece: unfreeze it and give it a shove away from the break + a downward kick and
 ## the deterministic tumble. `delay` staggers the cascade (a SceneTree timer; instant when ~0).
 func _release_debris(rb: RigidBody3D, delay: float, break_x: float, spin: Vector3) -> void:
+	rb.set_meta("collapse_break_x", break_x)
+	rb.set_meta("collapse_spin", spin)
+	rb.set_meta("collapse_release_ready", false)
+	rb.set_meta("collapse_impulse_applied", false)
 	var fire := func() -> void:
 		if not is_instance_valid(rb):
 			return
-		rb.freeze = false
-		var away: float = signf(rb.global_position.x - break_x)
-		if away == 0.0:
-			away = 1.0
-		rb.apply_central_impulse(Vector3(away * 1.3, -1.0, 0.0))
-		rb.angular_velocity = spin * 2.2
+		rb.set_meta("collapse_release_ready", true)
+		_release_debris_now(rb)
 	if delay <= 0.001:
 		fire.call()
 	else:
 		# bound to the piece itself -- a freed piece (scene teardown mid-tumble) kills its
 		# pending stagger instead of leaving a tree-owned timer to fire on freed captures
 		var stagger := rb.create_tween()
+		_collapse_stagger_tweens.append(stagger)
 		stagger.tween_interval(delay)
 		stagger.tween_callback(fire)
+
+func _release_debris_now(rb: RigidBody3D) -> void:
+	if not is_instance_valid(rb) or _collapse_visual_paused \
+			or bool(rb.get_meta("collapse_impulse_applied", false)):
+		return
+	var break_x := float(rb.get_meta("collapse_break_x", rb.global_position.x))
+	var spin: Vector3 = rb.get_meta("collapse_spin", Vector3.ZERO)
+	rb.freeze = false
+	var away: float = signf(rb.global_position.x - break_x)
+	if away == 0.0:
+		away = 1.0
+	rb.apply_central_impulse(Vector3(away * 1.3, -1.0, 0.0))
+	rb.angular_velocity = spin * 2.2
+	rb.set_meta("collapse_impulse_applied", true)
 
 ## Deterministic per-piece tumble (hashed from its X, never wall-clock RNG — replay-stable seeding).
 func _bridge_piece_spin(x: float) -> Vector3:
@@ -1790,6 +1923,7 @@ func _on_fall_landed() -> void:
 		_game_state.characters[char_id]["position"] = Vector3(pos.x, lp.y, lp.z)
 		if _game_state.grid != null:
 			_game_state.characters[char_id]["grid_cell"] = _game_state.grid.world_to_grid(_game_state.characters[char_id]["position"])
+	_set_lower_route_camera_bounds()
 	# Geometry was revealed above the bridge so the lower route could be read, but
 	# its ecology has remained outside GameState and entirely unprocessed.  The
 	# landing is the first moment those actors can affect (or be affected by) the
@@ -1809,6 +1943,10 @@ func _remove_collapsed_chunks() -> void:
 		return
 	_collapsed_chunks_removed = true
 	_collapse_visual_active = false
+	_collapse_settle_tween = null
+	_collapse_stagger_tweens.clear()
+	_collapse_debris.clear()
+	_collapse_paused_debris.clear()
 	_unload_chunk("elevator")
 	_unload_chunk("bridge")
 	_emergency_light = null
@@ -1909,9 +2047,36 @@ func _start_route_focus() -> void:
 	# The ordinary bridge beat releases the cabin clamp before the fall. A focused
 	# route probe bypasses that seam, so release and snap it explicitly.
 	if _camera != null:
-		_camera.clear_look_bounds()
+		_set_lower_route_camera_bounds()
 		_camera.call("_update_immediate")
 	_start_route_read_circuit()
+
+## Focused browser/native probe for the hallway's final causal gate. Both characters begin on their
+## clearly labelled brace marks so success can be inspected immediately; the dedicated wreckage test
+## drives the one-person failure and verifies that the ordinary enemy FSM delivers the consequence.
+func _start_wreckage_focus() -> void:
+	var anchor := _wreckage_interaction_anchor()
+	for entry in [
+		["peris", anchor + Vector3(-1.0, 0.0, -1.0)],
+		["aster", anchor + Vector3(-1.0, 0.0, 1.0)],
+	]:
+		var character_id := str(entry[0])
+		var position := entry[1] as Vector3
+		_game_state.set_character_level(character_id, LEVEL_LOWER)
+		_game_state.snap_character_to(character_id, position)
+		var character_node: Node3D = _peris_node if character_id == "peris" else _aster_node
+		character_node.global_position = position + Vector3(0.0, 0.5, 0.0)
+	_activate_below_fauna()
+	_route_reads_resolved["aster"] = true
+	_route_reads_resolved["peris"] = true
+	for beat_i in range(ROUTE_BEAT_COUNT):
+		_route_beats_crossed[beat_i] = true
+	_enter_step("route_choice")
+	_select_character("peris")
+	if _camera != null:
+		_set_lower_route_camera_bounds()
+		_camera.call("_update_immediate")
+	_arm_wreckage_gate()
 
 func _resolve_peris_overlay_route_read() -> void:
 	if bool(_route_reads_resolved.get("peris", false)):
@@ -1964,6 +2129,127 @@ func _start_route_choice() -> void:
 		if is_instance_valid(station):
 			station.set_interaction_enabled(true)
 	_tutorial_prompt.show_prompt("Choose a path: green Flure stations draw the packs; the iron lane trades distance for exposure.")
+
+func _wreckage_interaction_anchor() -> Vector3:
+	if is_instance_valid(_wreckage_gate):
+		var marker := _wreckage_gate.get_node_or_null("Markers/InteractionAnchor") as Marker3D
+		if marker != null:
+			return marker.global_position
+	return WRECKAGE_GATE_POS + Vector3(-2.3, 0.0, 0.0)
+
+func _wreckage_member_ready(character_id: String) -> bool:
+	if _game_state == null or not _game_state.characters.has(character_id) \
+			or _game_state.is_downed(character_id):
+		return false
+	var pos := _game_state.get_position(character_id)
+	var anchor := _wreckage_interaction_anchor()
+	return Vector2(pos.x - anchor.x, pos.z - anchor.z).length() <= WRECKAGE_ASSIST_RADIUS
+
+func _wreckage_party_ready() -> bool:
+	return _wreckage_member_ready("aster") and _wreckage_member_ready("peris")
+
+func _arm_wreckage_gate() -> void:
+	if _wreckage_armed or _wreckage_cleared or not is_instance_valid(_wreckage_interactable):
+		return
+	_wreckage_armed = true
+	_wreckage_interactable.set_interaction_enabled(true)
+	_wreckage_interactable.call_deferred("show_tutorial_label")
+	_tutorial_prompt.show_prompt(
+		"Wreckage blocks Endo's hall. Rally Aster and Peris onto both brace marks, then clear it."
+	)
+
+func _on_wreckage_interacted() -> void:
+	if not _wreckage_armed or _wreckage_cleared or _wreckage_failure_active:
+		return
+	var interactor := _active_character
+	if is_instance_valid(_wreckage_interactable):
+		var recorded := str(_wreckage_interactable.get("active_character"))
+		if recorded != "":
+			interactor = recorded
+	if _wreckage_party_ready():
+		_clear_wreckage_together()
+	else:
+		_fail_wreckage_solo(interactor)
+
+func _wreckage_animation(animation_name: String) -> void:
+	if not is_instance_valid(_wreckage_gate):
+		return
+	var animation := _wreckage_gate.get_node_or_null("GateAnimation") as AnimationPlayer
+	if animation != null and animation.has_animation(animation_name):
+		animation.play(animation_name)
+
+func _clear_wreckage_together() -> void:
+	_wreckage_cleared = true
+	_wreckage_failure_active = false
+	if is_instance_valid(_wreckage_interactable):
+		_wreckage_interactable.set_interaction_enabled(false)
+	_wreckage_animation("clear_together")
+	var blocker := _wreckage_gate.get_node_or_null("RubbleBlocker/BlockerShape") as CollisionShape3D \
+		if is_instance_valid(_wreckage_gate) else null
+	if blocker != null:
+		blocker.set_deferred("disabled", true)
+	if _grid != null:
+		_grid.allow_world_region_on_level(
+			Vector2(WRECKAGE_GATE_POS.x - 0.75, -6.0),
+			Vector2(WRECKAGE_GATE_POS.x + 0.75, 6.0),
+			LEVEL_LOWER
+		)
+	_tutorial_prompt.show_prompt("Both braces take the load. The passage to Endo is clear.")
+	_show_marker(WRECKAGE_GATE_POS + Vector3(0.0, 2.4, 0.0), "TWO BRACES  /  CLEAR")
+	_player.set_move_enabled(false)
+	_scheduler.schedule_after(WRECKAGE_CLEAR_SECONDS, _finish_wreckage_clear, "wreckage_clear")
+
+func _finish_wreckage_clear() -> void:
+	if _current_step != "route_choice" or not _wreckage_cleared:
+		return
+	_tutorial_prompt.hide_prompt()
+	_start_junction_arrive()
+
+func _wake_wreckage_listeners() -> void:
+	var remaining: Array[Dictionary] = []
+	for setup in _below_dormant_enemy_setups:
+		var enemy = setup.get("enemy")
+		if is_instance_valid(enemy) and _wreckage_listeners.has(enemy as Enemy):
+			_activate_below_enemy_setup(setup)
+		else:
+			remaining.append(setup)
+	_below_dormant_enemy_setups = remaining
+
+func _fail_wreckage_solo(interactor: String) -> void:
+	if not (interactor in ["aster", "peris"]) or not _game_state.characters.has(interactor) \
+			or _game_state.is_downed(interactor):
+		return
+	_wreckage_solo_attempted = true
+	_wreckage_failure_active = true
+	_wreckage_alert_target = interactor
+	if is_instance_valid(_wreckage_interactable):
+		_wreckage_interactable.set_interaction_enabled(false)
+	_game_state.command_stop(interactor)
+	_wreckage_animation("solo_failure")
+	_camera.shake(0.14, 14.0)
+	_show_marker(WRECKAGE_GATE_POS + Vector3(-1.0, 2.5, 0.0), "RUBBLE  ->  NOISE  ->  FAUNA")
+	_hud.show_message(
+		"Loose rubble fell. The side-niche fauna heard %s." % interactor.capitalize(),
+		2.8
+	)
+	_wake_wreckage_listeners()
+	for enemy in _wreckage_listeners:
+		if not is_instance_valid(enemy) or not enemy.is_alive():
+			continue
+		_game_state.set_character_distracted(enemy.char_id, false)
+		enemy.engage_target(interactor)
+	_scheduler.schedule_after(1.05, _rearm_wreckage_after_solo_failure, "wreckage_rearm")
+
+func _rearm_wreckage_after_solo_failure() -> void:
+	_wreckage_failure_active = false
+	if _wreckage_cleared or _current_step != "route_choice" \
+			or not is_instance_valid(_wreckage_interactable):
+		return
+	_wreckage_interactable.set_interaction_enabled(true)
+	_wreckage_interactable.call_deferred("show_tutorial_label")
+	_tutorial_prompt.show_prompt(
+		"The noise brought the fauna in. Regroup both conscious characters at the brace marks."
+	)
 
 # --- Junction / Shelter ---
 
@@ -2116,6 +2402,7 @@ func _unlock_junction_plant() -> void:
 
 func _start_junction_arrive() -> void:
 	_enter_step("junction_arrive")
+	_set_junction_camera_bounds()
 	_clear_markers()
 	_load_chunk("junction")
 	_unload_chunk("below")
@@ -2669,6 +2956,7 @@ func _start_morning() -> void:
 
 func _start_gauntlet() -> void:
 	_enter_step("gauntlet")
+	_set_gauntlet_camera_bounds()
 	_load_chunk("gauntlet")
 	_unload_chunk("junction")
 	_gauntlet_stage = 0
@@ -2825,11 +3113,12 @@ func _reset_gauntlet_to_refuge() -> void:
 func get_playtime_contract() -> Dictionary:
 	var critical_route_meters := (BRIDGE_COLLAPSE_X - BRIDGE_START_X) \
 		+ (ROUTES_CONVERGE.x - BRIDGE_COLLAPSE_X) \
+		+ (JUNCTION_POS.x - ROUTES_CONVERGE.x) \
 		+ (GAUNTLET_EXIT.x - JUNCTION_POS.x) + 156.0
-	var meaningful_active_seconds := 510.0
-	var total_play_seconds := 710.0
+	var meaningful_active_seconds := 516.0
+	var total_play_seconds := 716.0
 	return {
-		"contract_id": "elevator_first_clear_8_to_12_v2",
+		"contract_id": "elevator_first_clear_8_to_12_v3",
 		"required_first_clear_seconds": 480.0,
 		"target_min_seconds": 480.0,
 		"target_max_seconds": 720.0,
@@ -2842,7 +3131,7 @@ func get_playtime_contract() -> Dictionary:
 		"modeled_decision_execution_seconds": 129.0,
 		"modeled_hazard_adaptation_seconds": 95.0,
 		"modeled_field_investigation_seconds": 96.0,
-		"modeled_field_execution_seconds": 42.0,
+		"modeled_field_execution_seconds": 48.0,
 		"meaningful_active_ratio": meaningful_active_seconds / total_play_seconds,
 		"active_ratio": meaningful_active_seconds / total_play_seconds,
 		"max_dead_gap_seconds": 4.8,
@@ -2852,12 +3141,13 @@ func get_playtime_contract() -> Dictionary:
 			"investigation": 96.0,
 			"planning": 129.0,
 			"hazard_adaptation": 95.0,
-			"field_execution": 42.0,
+			"field_execution": 48.0,
 		},
 		"critical_route_meters": critical_route_meters,
 		"mandatory_dialogue_lines": 59,
 		"mandatory_route_overlay_reads": ROUTE_REQUIRED_READS,
 		"mandatory_route_beats": ROUTE_BEAT_COUNT,
+		"mandatory_wreckage_assists": 2,
 		"mandatory_junction_inspections": JUNCTION_REQUIRED_INSPECTIONS,
 		"mandatory_character_perspectives": 2,
 		"mandatory_field_protocols": JUNCTION_FIELD_PROTOCOL_ORDER.size(),
@@ -2883,6 +3173,7 @@ func headless_get_anchor_positions() -> Dictionary:
 		"route_flure_2": Vector3(FORK_POS.x + float(ROUTE_BEAT_OFFSETS[1]) - 5.0, BELOW_Y + 0.3, -5.7),
 		"route_flure_3": Vector3(FORK_POS.x + float(ROUTE_BEAT_OFFSETS[2]) - 5.0, BELOW_Y + 0.3, -5.7),
 		"route_converge": ROUTES_CONVERGE,
+		"wreckage_gate": WRECKAGE_GATE_POS,
 		"junction": JUNCTION_POS,
 		"junction_field_annex_end": Vector3(JUNCTION_POS.x + 60.0, BELOW_Y, 0.0),
 		"gauntlet_entrance": Vector3(GAUNTLET_POS.x - 8.0, BELOW_Y, 0.0),
@@ -2909,6 +3200,12 @@ func headless_get_state() -> Dictionary:
 		"route_lane": _route_lane,
 		"route_beats_crossed": _route_beats_crossed.duplicate(),
 		"route_flures_activated": _route_flures_activated.duplicate(),
+		"wreckage_armed": _wreckage_armed,
+		"wreckage_party_ready": _wreckage_party_ready(),
+		"wreckage_cleared": _wreckage_cleared,
+		"wreckage_solo_attempted": _wreckage_solo_attempted,
+		"wreckage_failure_active": _wreckage_failure_active,
+		"wreckage_alert_target": _wreckage_alert_target,
 		"junction_inspection_ids": _junction_inspections.keys(),
 		"junction_inspection_count": _junction_inspections.size(),
 		"junction_inspected_by": _junction_inspected_by.duplicate(),
@@ -3238,6 +3535,7 @@ func _build_below_chunk(parent: Node3D, enemies_dormant := false) -> void:
 		_below_step_hazard_beat(parent, beat_i)
 	_below_step_stalactites(parent)
 	_below_step_convergence(parent)
+	_below_step_wreckage_gate(parent, enemies_dormant)
 	if not enemies_dormant:
 		_below_fauna_active = true
 
@@ -3261,6 +3559,14 @@ func _below_step_prepare(parent: Node3D) -> void:
 	_grated_platform_signal_marker = null
 	_grated_platform_enemy_markers.clear()
 	_grated_platform_wall_openings.clear()
+	_wreckage_gate = null
+	_wreckage_interactable = null
+	_wreckage_listeners.clear()
+	_wreckage_armed = false
+	_wreckage_cleared = false
+	_wreckage_solo_attempted = false
+	_wreckage_failure_active = false
+	_wreckage_alert_target = ""
 	_iron_patches.clear()
 	_iron_contact_warning_shown.clear()
 	_below_dormant_enemy_setups.clear()
@@ -3268,7 +3574,7 @@ func _below_step_prepare(parent: Node3D) -> void:
 	_below_activation_cells.clear()
 
 func _below_step_ground(parent: Node3D) -> void:
-	var deck_west := -3.5
+	var deck_west := LOWER_ROUTE_WEST_X
 	var deck_east := JUNCTION_POS.x + 4.0
 	var deck_len := deck_east - deck_west
 	var deck_cx := (deck_west + deck_east) * 0.5
@@ -3284,6 +3590,9 @@ func _below_step_ground(parent: Node3D) -> void:
 	parent.add_child(ground_body)
 	_add_corridor_section(parent, Vector3(deck_cx, BELOW_Y - 0.05, 0), Vector3(deck_len, 0.1, 16),
 		Color(0.05, 0.05, 0.07))
+	var west_blockade := LOWER_ROUTE_BLOCKADE_SCENE.instantiate() as Node3D
+	west_blockade.position = Vector3(LOWER_ROUTE_WEST_X - 0.75, BELOW_Y, 0.0)
+	parent.add_child(west_blockade)
 
 ## Two authored standing decks turn the second ecology beat into a spatial composition: Peris can
 ## light the western Flure while the eastern fauna are still on their roost, or cross first and let
@@ -3831,6 +4140,79 @@ func _below_step_convergence(parent: Node3D) -> void:
 	_add_corridor_section(parent, Vector3(ROUTES_CONVERGE.x, BELOW_Y - 0.04, 0),
 		Vector3(8, 0.08, 12), Color(0.06, 0.06, 0.08))
 
+## Authored transfer gate at the end of the lower route. The wreckage presents a visible two-body
+## threshold; its two listeners remain dormant with the rest of the streamed ecology until the party
+## approaches. A noisy solo attempt only WAKES + points ordinary Enemy FSMs at the actor -- strikes,
+## damage feedback, downs, and game-over all stay in their shared gameplay systems.
+func _below_step_wreckage_gate(parent: Node3D, enemies_dormant := false) -> void:
+	if is_instance_valid(_wreckage_gate):
+		return
+	_wreckage_gate = WRECKAGE_GATE_SCENE.instantiate() as Node3D
+	_wreckage_gate.position = WRECKAGE_GATE_POS
+	parent.add_child(_wreckage_gate)
+	_block_level_walkable_region(
+		LEVEL_LOWER,
+		Vector2(WRECKAGE_GATE_POS.x - 0.75, -6.0),
+		Vector2(WRECKAGE_GATE_POS.x + 0.75, 6.0)
+	)
+
+	var anchor := _wreckage_interaction_anchor()
+	_wreckage_interactable = _create_interactable(
+		parent,
+		anchor,
+		"WreckageClear",
+		2.0,
+		2.2,
+		"Clear together",
+		false,
+		Interactable.InteractableType.TIMED_ACTION
+	)
+	_wreckage_interactable.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
+	_wreckage_interactable.set("description", "Unstable wreckage -- two braces required")
+	_wreckage_interactable.set_interaction_enabled(false)
+	_wreckage_interactable.interacted.connect(_on_wreckage_interacted)
+	var rubble := _wreckage_gate.get_node_or_null("Rubble")
+	var outline_target := _outline_object_meshes(
+		parent,
+		"WreckageGateOutline",
+		_collect_mesh_instances(rubble) if rubble != null else [],
+		"elevator_wreckage_gate",
+		2.4,
+		0.16
+	)
+	_set_room_target_interaction_delegate(outline_target, _wreckage_interactable)
+
+	for marker_name in ["ListenerSpawnA", "ListenerSpawnB"]:
+		var marker := _wreckage_gate.get_node_or_null("Markers/" + marker_name) as Marker3D
+		if marker == null:
+			continue
+		var listener := _spawn_enemy("wreckage_listener_%d" % _wreckage_listeners.size(),
+			marker.global_position, parent, false)
+		listener.display_name = "Rubble Listener"
+		listener.detection_range = 6.0
+		listener.move_speed = 2.2
+		listener.pursuit_speed = 4.2
+		listener.pursuit_direct = true
+		listener.charge_speed = 10.0
+		listener.charge_damage = PARTY_MAX_HP
+		listener.alert_duration = 0.45
+		listener.windup_duration = 0.85
+		listener.color = Color(0.56, 0.19, 0.08)
+		listener._base_color = listener.color
+		if listener._mesh != null and listener._mesh.material_override is StandardMaterial3D:
+			(listener._mesh.material_override as StandardMaterial3D).albedo_color = listener.color
+		_wreckage_listeners.append(listener)
+		var setup := {
+			"enemy": listener,
+			"mode": "roam",
+			"data": {"anchor": marker.global_position, "radius": 0.8},
+			"wake_radius": 9.0,
+		}
+		if enemies_dormant:
+			_below_dormant_enemy_setups.append(setup)
+		else:
+			_activate_below_enemy_setup(setup)
+
 # One-shot source retained only as a layout reference while the staged methods above mirror the authored route.
 func _build_below_chunk_one_shot_reference(parent: Node3D) -> void:
 	var bridge_start := ELEVATOR_SIZE.x / 2.0 + 0.5 + 7.0
@@ -3842,11 +4224,10 @@ func _build_below_chunk_one_shot_reference(parent: Node3D) -> void:
 	_route_flure_enemy_groups.clear()
 	_iron_patches.clear()
 
-	# The lower deck must be WALKABLE from the fall landing all the way to the route convergence +
-	# junction approach (the convergence gate keys on x > ROUTES_CONVERGE.x - 2). The floor spans from
-	# the west landing (~-3.5) to just past the junction so a real click out there lands on collision
-	# instead of raycasting into void (the old 40-unit slab stopped at x~36.5, short of the 37.5 gate).
-	var deck_west := -3.5
+	# The lower deck must be WALKABLE from the fall landing east to route convergence +
+	# junction approach. The collapsed shaft is a truthful western system boundary;
+	# extending the footprint back under the elevator created a long, black non-route.
+	var deck_west := LOWER_ROUTE_WEST_X
 	var deck_east := JUNCTION_POS.x + 4.0
 	var deck_len := deck_east - deck_west
 	var deck_cx := (deck_west + deck_east) * 0.5
@@ -3862,6 +4243,9 @@ func _build_below_chunk_one_shot_reference(parent: Node3D) -> void:
 	parent.add_child(ground_body)
 
 	_add_corridor_section(parent, Vector3(deck_cx, ground_y - 0.05, 0), Vector3(deck_len, 0.1, 16), Color(0.05, 0.05, 0.07))
+	var west_blockade := LOWER_ROUTE_BLOCKADE_SCENE.instantiate() as Node3D
+	west_blockade.position = Vector3(LOWER_ROUTE_WEST_X - 0.75, ground_y, 0.0)
+	parent.add_child(west_blockade)
 
 	# The retired one-shot reference mirrors the current overlay-first route read:
 	# there are no character-locked perspective pedestals at the fork.

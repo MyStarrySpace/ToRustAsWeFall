@@ -547,6 +547,7 @@ func _begin_chunk() -> void:
 	if _active_chunk != null and _active_chunk.has_method("reset_preview_state"):
 		_pdbg("reset_preview_state")
 		_active_chunk.call("reset_preview_state")
+	_apply_chunk_ui_defaults()
 	# Optional cosmetic contract: a chunk may annotate paused queued paths (for example, learned surge
 	# timing). Rebinding every load/reset also clears cached feedback from the previous fragment.
 	if _path_render_manager != null:
@@ -579,6 +580,17 @@ func _begin_chunk() -> void:
 	_refresh_inventory_panel()
 	_tutorial_prompt.show_action_prompt("command", "Move", 0.0, "RMB")
 	show_preview_message("Preview booted with full HP, stamina, and ATP.", 2.0)
+
+## Optional presentation contract for authored showcase-like chunks. It lets a scene protect its
+## first read from the diagnostic chrome while preserving H/F4 as explicit inspection controls.
+func _apply_chunk_ui_defaults() -> void:
+	if _active_chunk == null or not _active_chunk.has_method("get_preview_ui_defaults"):
+		return
+	var defaults: Dictionary = _active_chunk.call("get_preview_ui_defaults")
+	if _instructions_margin != null and defaults.has("instructions_visible"):
+		_instructions_margin.visible = bool(defaults.get("instructions_visible", true))
+	if defaults.has("overlay_collapsed"):
+		_set_overlay_panel_collapsed(bool(defaults.get("overlay_collapsed", false)))
 
 ## N in a GENERATION preview (a chunk answering is_generation_preview): bump the seed and rebuild the
 ## layout in place — the roguelike regenerate flow (_roguelike_choose), so all nav/party/outline wiring

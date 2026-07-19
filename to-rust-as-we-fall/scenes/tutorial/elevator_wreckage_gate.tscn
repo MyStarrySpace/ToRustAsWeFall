@@ -1,0 +1,302 @@
+[gd_scene load_steps=17 format=3]
+
+[sub_resource type="StandardMaterial3D" id="Material_rubble"]
+albedo_color = Color(0.19, 0.16, 0.14, 1)
+metallic = 0.18
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="Material_metal"]
+albedo_color = Color(0.11, 0.12, 0.13, 1)
+metallic = 0.74
+roughness = 0.5
+
+[sub_resource type="StandardMaterial3D" id="Material_aster"]
+albedo_color = Color(0.08, 0.24, 0.34, 1)
+emission_enabled = true
+emission = Color(0.18, 0.66, 1, 1)
+emission_energy_multiplier = 1.6
+
+[sub_resource type="StandardMaterial3D" id="Material_peris"]
+albedo_color = Color(0.31, 0.18, 0.06, 1)
+emission_enabled = true
+emission = Color(1, 0.56, 0.16, 1)
+emission_energy_multiplier = 1.6
+
+[sub_resource type="StandardMaterial3D" id="Material_warning"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(1, 0.22, 0.06, 0.82)
+emission_enabled = true
+emission = Color(1, 0.12, 0.025, 1)
+emission_energy_multiplier = 4.0
+
+[sub_resource type="BoxMesh" id="Mesh_slab"]
+size = Vector3(1.15, 2.15, 8.8)
+
+[sub_resource type="BoxMesh" id="Mesh_beam"]
+size = Vector3(0.48, 0.48, 10.2)
+
+[sub_resource type="BoxMesh" id="Mesh_stone"]
+size = Vector3(1.25, 0.85, 1.45)
+
+[sub_resource type="CylinderMesh" id="Mesh_pad"]
+top_radius = 0.72
+bottom_radius = 0.82
+height = 0.08
+radial_segments = 24
+
+[sub_resource type="TorusMesh" id="Mesh_noise"]
+inner_radius = 0.92
+outer_radius = 1.02
+rings = 32
+ring_segments = 12
+
+[sub_resource type="BoxShape3D" id="Shape_blocker"]
+size = Vector3(1.2, 2.5, 11)
+
+[sub_resource type="Animation" id="Animation_reset"]
+resource_name = "RESET"
+length = 0.0
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Rubble/MainSlab:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(0, 1.08, 0)]}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Rubble/CrossBeam:position")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(-0.24, 1.32, 0)]}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("LooseBits/LooseBitA:position")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(-0.65, 2.7, -1.7)]}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("LooseBits/LooseBitB:position")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(-0.55, 2.85, 1.6)]}
+tracks/4/type = "value"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath("NoisePulse:scale")
+tracks/4/interp = 1
+tracks/4/loop_wrap = true
+tracks/4/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(0.15, 0.15, 0.15)]}
+tracks/5/type = "value"
+tracks/5/imported = false
+tracks/5/enabled = true
+tracks/5/path = NodePath("NoisePulse:transparency")
+tracks/5/interp = 1
+tracks/5/loop_wrap = true
+tracks/5/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [1.0]}
+
+[sub_resource type="Animation" id="Animation_clear"]
+resource_name = "clear_together"
+length = 1.15
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Rubble/MainSlab:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {"times": PackedFloat32Array(0, 0.25, 1.15), "transitions": PackedFloat32Array(1, 0.7, 1), "update": 0, "values": [Vector3(0, 1.08, 0), Vector3(0.05, 1.22, 0), Vector3(0.2, 0.62, -5.25)]}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Rubble/MainSlab:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {"times": PackedFloat32Array(0, 1.15), "transitions": PackedFloat32Array(1, 1), "update": 0, "values": [Vector3(0.08, 0, -0.12), Vector3(0.18, 0.2, -0.78)]}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Rubble/CrossBeam:position")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {"times": PackedFloat32Array(0, 0.2, 1.15), "transitions": PackedFloat32Array(1, 0.7, 1), "update": 0, "values": [Vector3(-0.24, 1.32, 0), Vector3(-0.08, 1.48, 0), Vector3(0.35, 0.45, 5.1)]}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Rubble/CrossBeam:rotation")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {"times": PackedFloat32Array(0, 1.15), "transitions": PackedFloat32Array(1, 1), "update": 0, "values": [Vector3(0.04, 0, 0.18), Vector3(-0.32, 0.1, 0.92)]}
+
+[sub_resource type="Animation" id="Animation_solo"]
+resource_name = "solo_failure"
+length = 1.0
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("LooseBits/LooseBitA:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {"times": PackedFloat32Array(0, 0.18, 0.62, 1), "transitions": PackedFloat32Array(1, 1, 0.6, 1), "update": 0, "values": [Vector3(-0.65, 2.7, -1.7), Vector3(-0.55, 2.9, -1.55), Vector3(-1.45, 0.35, -1.1), Vector3(-1.55, 0.25, -1.0)]}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("LooseBits/LooseBitB:position")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {"times": PackedFloat32Array(0, 0.12, 0.58, 1), "transitions": PackedFloat32Array(1, 1, 0.6, 1), "update": 0, "values": [Vector3(-0.55, 2.85, 1.6), Vector3(-0.45, 3.0, 1.5), Vector3(-1.2, 0.3, 0.9), Vector3(-1.3, 0.22, 0.85)]}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("NoisePulse:scale")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {"times": PackedFloat32Array(0, 0.2, 1), "transitions": PackedFloat32Array(1, 0.65, 1), "update": 0, "values": [Vector3(0.15, 0.15, 0.15), Vector3(1.2, 1.2, 1.2), Vector3(6.5, 6.5, 6.5)]}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("NoisePulse:transparency")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {"times": PackedFloat32Array(0, 0.12, 0.6, 1), "transitions": PackedFloat32Array(1, 1, 1, 1), "update": 0, "values": [1.0, 0.05, 0.4, 1.0]}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_gate"]
+_data = {&"RESET": SubResource("Animation_reset"), &"clear_together": SubResource("Animation_clear"), &"solo_failure": SubResource("Animation_solo")}
+
+[node name="ElevatorWreckageGate" type="Node3D"]
+metadata/causal_model = "Two living party members distribute the load; one brace sheds loose rubble and alerts the nearby fauna."
+metadata/primary_insight = "Regroup before committing to a shared load."
+metadata/composition_tags = PackedStringArray("party_coordination", "noise", "enemy_alert", "threshold")
+
+[node name="Rubble" type="Node3D" parent="."]
+
+[node name="MainSlab" type="MeshInstance3D" parent="Rubble"]
+position = Vector3(0, 1.08, 0)
+rotation = Vector3(0.08, 0, -0.12)
+mesh = SubResource("Mesh_slab")
+material_override = SubResource("Material_rubble")
+
+[node name="CrossBeam" type="MeshInstance3D" parent="Rubble"]
+position = Vector3(-0.24, 1.32, 0)
+rotation = Vector3(0.04, 0, 0.18)
+mesh = SubResource("Mesh_beam")
+material_override = SubResource("Material_metal")
+
+[node name="StoneA" type="MeshInstance3D" parent="Rubble"]
+position = Vector3(-0.75, 0.42, -3.6)
+rotation = Vector3(0.1, 0.4, 0.25)
+mesh = SubResource("Mesh_stone")
+material_override = SubResource("Material_rubble")
+
+[node name="StoneB" type="MeshInstance3D" parent="Rubble"]
+position = Vector3(-0.72, 0.36, 3.55)
+rotation = Vector3(-0.16, -0.28, -0.2)
+mesh = SubResource("Mesh_stone")
+material_override = SubResource("Material_rubble")
+
+[node name="RubbleBlocker" type="StaticBody3D" parent="."]
+collision_layer = 1
+collision_mask = 0
+
+[node name="BlockerShape" type="CollisionShape3D" parent="RubbleBlocker"]
+position = Vector3(0, 1.25, 0)
+shape = SubResource("Shape_blocker")
+
+[node name="LooseBits" type="Node3D" parent="."]
+
+[node name="LooseBitA" type="MeshInstance3D" parent="LooseBits"]
+position = Vector3(-0.65, 2.7, -1.7)
+scale = Vector3(0.38, 0.32, 0.34)
+mesh = SubResource("Mesh_stone")
+material_override = SubResource("Material_rubble")
+
+[node name="LooseBitB" type="MeshInstance3D" parent="LooseBits"]
+position = Vector3(-0.55, 2.85, 1.6)
+scale = Vector3(0.3, 0.26, 0.34)
+mesh = SubResource("Mesh_stone")
+material_override = SubResource("Material_rubble")
+
+[node name="AssistPads" type="Node3D" parent="."]
+
+[node name="AsterPad" type="MeshInstance3D" parent="AssistPads"]
+position = Vector3(-2.3, 0.06, -1.25)
+mesh = SubResource("Mesh_pad")
+material_override = SubResource("Material_aster")
+
+[node name="PerisPad" type="MeshInstance3D" parent="AssistPads"]
+position = Vector3(-2.3, 0.06, 1.25)
+mesh = SubResource("Mesh_pad")
+material_override = SubResource("Material_peris")
+
+[node name="AsterBraceLabel" type="Label3D" parent="AssistPads"]
+position = Vector3(-2.3, 0.16, -1.25)
+text = "1"
+modulate = Color(0.55, 0.84, 1, 1)
+outline_modulate = Color(0.01, 0.02, 0.03, 0.95)
+outline_size = 8
+font_size = 42
+pixel_size = 0.0035
+billboard = 1
+
+[node name="PerisBraceLabel" type="Label3D" parent="AssistPads"]
+position = Vector3(-2.3, 0.16, 1.25)
+text = "2"
+modulate = Color(1, 0.76, 0.35, 1)
+outline_modulate = Color(0.03, 0.015, 0.005, 0.95)
+outline_size = 8
+font_size = 42
+pixel_size = 0.0035
+billboard = 1
+
+[node name="GateLabel" type="Label3D" parent="."]
+position = Vector3(-0.85, 2.9, 0)
+text = "TWO BRACES  /  BOTH REQUIRED"
+modulate = Color(0.9, 0.92, 0.9, 1)
+outline_modulate = Color(0.01, 0.01, 0.015, 0.96)
+outline_size = 10
+font_size = 46
+pixel_size = 0.0035
+billboard = 1
+
+[node name="WarningLabel" type="Label3D" parent="."]
+position = Vector3(-0.72, 2.35, 0)
+text = "LOOSE OVERHEAD  /  SOUND CARRIES"
+modulate = Color(1, 0.42, 0.17, 1)
+outline_modulate = Color(0.03, 0.01, 0.005, 0.96)
+outline_size = 10
+font_size = 36
+pixel_size = 0.0035
+billboard = 1
+
+[node name="NoisePulse" type="MeshInstance3D" parent="."]
+position = Vector3(-1.1, 0.09, 0)
+rotation = Vector3(1.5708, 0, 0)
+scale = Vector3(0.15, 0.15, 0.15)
+mesh = SubResource("Mesh_noise")
+material_override = SubResource("Material_warning")
+cast_shadow = 0
+transparency = 1.0
+
+[node name="Markers" type="Node3D" parent="."]
+
+[node name="InteractionAnchor" type="Marker3D" parent="Markers"]
+position = Vector3(-2.3, 0, 0)
+
+[node name="AsterAssist" type="Marker3D" parent="Markers"]
+position = Vector3(-2.3, 0, -1.25)
+
+[node name="PerisAssist" type="Marker3D" parent="Markers"]
+position = Vector3(-2.3, 0, 1.25)
+
+[node name="ListenerSpawnA" type="Marker3D" parent="Markers"]
+position = Vector3(-3.1, 0.5, -5.25)
+
+[node name="ListenerSpawnB" type="Marker3D" parent="Markers"]
+position = Vector3(-3.1, 0.5, 5.25)
+
+[node name="GateAnimation" type="AnimationPlayer" parent="."]
+libraries = {&"": SubResource("AnimationLibrary_gate")}

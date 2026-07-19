@@ -57,29 +57,29 @@ func _verify_duration(chunk: Node) -> void:
 	var ratio := float(contract.get("modeled_active_ratio", 0.0))
 	var sprint_lower_bound := float(contract.get("modeled_theoretical_full_sprint_seconds", 0.0))
 	var field_route := float(contract.get("shortest_field_route_meters", 0.0))
-	_check(float(contract.get("target_seconds_min", 0.0)) == 180.0
-		and float(contract.get("target_seconds_max", 0.0)) == 300.0,
-		"the chunk owns the central three-to-five-minute target")
-	_check(shortest >= 180.0 and shortest <= 300.0,
+	_check(float(contract.get("target_seconds_min", 0.0)) == 75.0
+		and float(contract.get("target_seconds_max", 0.0)) == 150.0,
+		"the compact quality pass owns a no-padding 75-to-150-second target")
+	_check(shortest >= 75.0 and shortest <= 150.0,
 		"shortest successful first clear is inside target (%.1fs)" % shortest)
-	_check(clean >= 180.0 and clean <= 300.0,
+	_check(clean >= 75.0 and clean <= 150.0,
 		"health-preserving clean route is inside target (%.1fs)" % clean)
-	_check(active >= 170.0 and ratio >= 0.70,
+	_check(active >= 70.0 and ratio >= 0.70,
 		"the model is meaningful traversal/work, not padding (%.1fs active, %.1f%%)" % [active, ratio * 100.0])
-	_check(sprint_lower_bound >= 180.0 and sprint_lower_bound <= 300.0,
-		"even an impossible continuous 6m/s sprint lower bound remains in target (%.1fs)" % sprint_lower_bound)
-	_check(field_route >= 250.0,
-		"exact shortest-path search yields a substantive three-loop field route (%.1fm)" % field_route)
-	_check(int(contract.get("mandatory_action_count_clean", 0)) == 27
-		and int(contract.get("mandatory_timed_action_count_clean", 0)) == 25
-		and int(contract.get("station_marked_timed_action_count_clean", 0)) == 26,
-		"clean first-clear measures 27 active inputs; Focus has 25 timed stations and physical marking has 26")
-	_check(int(contract.get("mandatory_field_evidence_count", 0)) == 15,
-		"fifteen non-repeating specialist reads are mandatory")
-	_check(int(contract.get("decision_count", 0)) == 4
-		and int(contract.get("branch_variant_count", 0)) == 16,
-		"one route and three resource plans preserve sixteen valid outcomes")
-	_check(str(contract.get("timing_basis", "")).contains("no dialogue, idle, or reset time counted"),
+	_check(sprint_lower_bound >= 50.0 and sprint_lower_bound <= 150.0,
+		"the impossible continuous-sprint bound still prices the authored work (%.1fs)" % sprint_lower_bound)
+	_check(field_route >= 55.0,
+		"exact shortest-path search prices the cross-lane specialist circuit (%.1fm)" % field_route)
+	_check(int(contract.get("mandatory_action_count_clean", 0)) == 11
+		and int(contract.get("mandatory_timed_action_count_clean", 0)) == 9
+		and int(contract.get("station_marked_timed_action_count_clean", 0)) == 10,
+		"clean first-clear is eleven active inputs instead of a twenty-seven-stop checklist")
+	_check(int(contract.get("mandatory_field_evidence_count", 0)) == 3,
+		"one non-repeating read from each specialist is mandatory")
+	_check(int(contract.get("decision_count", 0)) == 2
+		and int(contract.get("branch_variant_count", 0)) == 4,
+		"the crossing and pulse prediction remain meaningful branch points")
+	_check(str(contract.get("timing_basis", "")).contains("no dialogue, idle, failure, or reset time counted"),
 		"the contract explicitly excludes dialogue, idle, and failure padding")
 	print("  INFO: shortest %.1fs | clean %.1fs | full-sprint bound %.1fs | active %.1f%% | field route %.1fm | safe route %.1fm" % [
 		shortest, clean, sprint_lower_bound, ratio * 100.0, field_route, float(contract.get("safe_route_meters", 0.0)),
@@ -93,21 +93,26 @@ func _verify_environment(preview: Node, chunk: Node) -> void:
 	var frames := chunk.find_children("EndoJunctionFieldFrame_*", "Node3D", true, false)
 	var lights := chunk.find_children("EndoJunctionFieldLight_*", "OmniLight3D", true, false)
 	var datums := chunk.find_children("EndoJunctionDatum_*", "MeshInstance3D", true, false)
-	_check(field_root != null, "three field loops live in a dedicated authored construction layer")
-	_check(field_sites.size() == 27,
-		"15 evidence, six plans, and six branch executions are real Interactables")
-	_check(frames.size() == 3 and lights.size() == 3,
-		"each operation has a measured portal hall and WebGL-safe landmark light")
-	_check(datums.size() == 33,
-		"continuous emissive measurement datums show every evidence and branch route")
+	var authored_set := chunk.find_child("EndoJunctionAuthoredPulseCircuit", true, false)
+	var cadence_player := chunk.find_child("CircuitAnimation", true, false) as AnimationPlayer
+	_check(field_root != null and authored_set != null,
+		"the pulse junction is a dedicated reusable scene asset, not seven generated posts")
+	_check(cadence_player != null and cadence_player.has_animation("cadence"),
+		"the pressure and root response are authored as a visible AnimationPlayer cadence")
+	_check(field_sites.size() == 7,
+		"three evidence objects, two predictions, and two physical executions are real Interactables")
+	_check(frames.size() == 1 and lights.size() == 1,
+		"the single reasoning beat has one measured hall and one landmark light")
+	_check(datums.size() == 9,
+		"continuous emissive datums show the evidence chain and both predicted outcomes")
 	var decoration := chunk.find_child("LevelDecoration", true, false)
 	var audit: Dictionary = decoration.get_meta("decoration_audit", {}) if decoration != null else {}
 	_check(decoration != null and not audit.is_empty(),
 		"the expanded corridor also uses the shared building-quality decoration pass")
-	_check(int(audit.get("stations", 0)) >= 20,
-		"shared facade decoration spans the full 284m shell (%d measured bays)" % int(audit.get("stations", 0)))
-	_check(int(audit.get("instances", 0)) >= 400,
-		"deterministic facade density supports the long route (%d instances)" % int(audit.get("instances", 0)))
+	_check(int(audit.get("stations", 0)) >= 8,
+		"shared facade decoration spans the compact 114m shell (%d measured bays)" % int(audit.get("stations", 0)))
+	_check(int(audit.get("instances", 0)) >= 150,
+		"deterministic facade density supports the authored route (%d instances)" % int(audit.get("instances", 0)))
 
 	var role_counts := {"aster": 0, "peris": 0, "endo": 0}
 	var timed := 0
@@ -127,11 +132,11 @@ func _verify_environment(preview: Node, chunk: Node) -> void:
 			var registered_spec: Dictionary = gs.get_interactable(data_id)
 			if str(registered_spec.get("required_character", "")) == role:
 				registered += 1
-	_check(timed == 27, "all field stations are click-gated timed actions")
-	_check(outlined == 27, "all field stations bind their visible constructed object outline")
-	_check(registered == 27, "all specialist requirements are authoritative in GameState")
-	_check(int(role_counts["aster"]) >= 6 and int(role_counts["peris"]) >= 9 and int(role_counts["endo"]) >= 9,
-		"fieldwork distributes substantive roles across Aster, Peris, and Endo")
+	_check(timed == 7, "all circuit stations are click-gated timed actions")
+	_check(outlined == 7, "all circuit stations outline their authored object assemblies")
+	_check(registered == 7, "all specialist requirements are authoritative in GameState")
+	_check(int(role_counts["aster"]) == 1 and int(role_counts["peris"]) == 3 and int(role_counts["endo"]) == 3,
+		"the causal chain gives every specialist a distinct load-bearing read")
 
 	var legacy_nodes := [
 		chunk.find_child("EndoJunctionReadInteractable", true, false),
@@ -170,10 +175,10 @@ func _verify_initial_and_safe_gates(preview: Node, chunk: Node) -> void:
 		"the route cannot abandon the only food cache")
 	_move_and_call(preview, chunk, "endo", chunk.FORAGE_CACHE_POS, "collect_forage", "Endo recovers the cache")
 	_move_and_call(preview, chunk, "endo", chunk.SAFE_LEDGE_POS, "commit_safe_route", "Endo commits the clean crossing")
-	_check(str((chunk.call("get_preview_state") as Dictionary).get("fieldwork", {}).get("phase", "")) == "conduit",
-		"crossing starts the conduit loop")
+	_check(str((chunk.call("get_preview_state") as Dictionary).get("fieldwork", {}).get("phase", "")) == "pulse",
+		"crossing starts the pulse circuit")
 
-	var operation_order := ["conduit", "signal", "approach"]
+	var operation_order := ["pulse"]
 	for operation_id in operation_order:
 		var operation: Dictionary = chunk.FIELD_OPERATIONS[operation_id]
 		for choice_id in operation.get("choices", []):
@@ -195,8 +200,8 @@ func _verify_initial_and_safe_gates(preview: Node, chunk: Node) -> void:
 			_complete_site(preview, chunk, str(evidence_id_variant))
 		for choice_id in operation.get("choices", []):
 			_check(field_sites[str(choice_id)].is_interaction_enabled(),
-				"%s unlocks both valid plans after five distinct reads" % operation_id)
-		var committed_choice := str(operation.get("choices", [])[0])
+				"%s unlocks both predictions after three distinct reads" % operation_id)
+		var committed_choice := str(operation.get("presented_choice", ""))
 		_complete_site(preview, chunk, committed_choice)
 		var resolution_id := str((operation.get("resolution_sites", {}) as Dictionary).get(committed_choice, ""))
 		_check(field_sites[resolution_id].is_interaction_enabled(),
@@ -205,14 +210,13 @@ func _verify_initial_and_safe_gates(preview: Node, chunk: Node) -> void:
 
 	var state: Dictionary = chunk.call("get_preview_state")
 	var field_state: Dictionary = state.get("fieldwork", {})
-	_check(int(field_state.get("operation_count", 0)) == 3 and str(field_state.get("phase", "")) == "complete",
-		"all three operations independently gate fieldwork completion")
-	_check(str((field_state.get("effects", {}) as Dictionary).get("conduit_mode", "")) == "dry_service_brace"
-		and str((field_state.get("effects", {}) as Dictionary).get("signal_mode", "")) == "living_memory"
-		and str((field_state.get("effects", {}) as Dictionary).get("entry_mode", "")) == "warm_recovery",
-		"the three committed resource outcomes persist to the refuge")
-	_check((field_state.get("findings", []) as Array).size() == 21,
-		"the completed path records fifteen reads, three plans, and three executions")
+	_check(int(field_state.get("operation_count", 0)) == 1 and str(field_state.get("phase", "")) == "complete",
+		"the one causal circuit gates fieldwork completion")
+	_check(str((field_state.get("effects", {}) as Dictionary).get("conduit_mode", "")) == "living_root_buffer"
+		and bool((field_state.get("effects", {}) as Dictionary).get("pulse_resolved", false)),
+		"the successful intervention persists as a visible quiet-lane state")
+	_check((field_state.get("findings", []) as Array).size() == 5,
+		"the clean path records three reads, one prediction, and one observed consequence")
 
 	_move_and_call(preview, chunk, "endo", chunk.SHORTCUT_LOCK_POS, "unlock_shortcut", "Endo opens the return grate")
 	preview.call("headless_select_character", "aster")
@@ -258,7 +262,7 @@ func _verify_direct_tradeoff(preview: Node, chunk: Node) -> void:
 	preview.call("headless_select_character", "endo")
 	preview.call("headless_set_character_position", "endo", chunk.SHORTCUT_LOCK_POS)
 	_check(not bool(chunk.call("unlock_shortcut")),
-		"the risky crossing cannot skip the three active field loops")
+		"the risky crossing cannot skip the active pulse circuit")
 
 
 func _move_and_call(preview: Node, chunk: Node, character_id: String, position: Vector3,

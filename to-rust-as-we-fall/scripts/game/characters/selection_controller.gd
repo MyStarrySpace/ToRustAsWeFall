@@ -297,7 +297,23 @@ func _command_belongs_to_gui() -> bool:
 	if not is_inside_tree():
 		return false
 	var hovered := get_viewport().gui_get_hovered_control()
-	return hovered != null and hovered.mouse_filter == Control.MOUSE_FILTER_STOP
+	return _control_chain_blocks_command(hovered)
+
+## COMMAND is captured in _input() before normal GUI dispatch. Direct STOP controls (buttons, panels)
+## own the click. Decorative children can opt their containing surface in with
+## `blocks_world_commands`; do not treat every STOP ancestor as blocking because CanvasLayer UI roots
+## may span the viewport and would swallow every world command.
+static func _control_chain_blocks_command(hovered: Control) -> bool:
+	if hovered == null:
+		return false
+	if hovered.mouse_filter == Control.MOUSE_FILTER_STOP:
+		return true
+	var control := hovered
+	while control != null:
+		if bool(control.get_meta("blocks_world_commands", false)):
+			return true
+		control = control.get_parent_control()
+	return false
 
 func _commit_rally_at_screen(screen_pos: Vector2) -> int:
 	var anchor_id := _pick_character_id(screen_pos)

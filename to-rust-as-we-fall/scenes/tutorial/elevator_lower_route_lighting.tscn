@@ -2,6 +2,13 @@
 
 [node name="ElevatorLowerRouteLighting" type="Node3D"]
 
+[node name="LandingRecoveryLight" type="OmniLight3D" parent="."]
+position = Vector3(26.5, -1.6, 0)
+light_color = Color(0.36, 0.66, 0.72, 1)
+light_energy = 2.35
+omni_range = 12.0
+shadow_enabled = false
+
 [node name="RouteReadLight" type="OmniLight3D" parent="."]
 position = Vector3(31.34, -1.8, 0)
 light_color = Color(0.58, 0.72, 0.78, 1)

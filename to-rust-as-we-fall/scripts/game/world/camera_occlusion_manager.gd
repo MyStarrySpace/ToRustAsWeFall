@@ -24,12 +24,22 @@ var _player_node: Node3D
 
 func set_player(node: Node3D) -> void:
 	_player_node = node
+	sync_now()
 
 func set_watch(state, char_id: String) -> void:
 	game_state = state
 	watch_id = char_id
+	sync_now()
 
 func _process(_delta: float) -> void:
+	if Engine.is_editor_hint():
+		return
+	sync_now()
+
+## Camera target switches happen during input, before the next process pass. Publish
+## the matching reveal centre immediately so the close cabin wall cannot render one
+## frame against the previous character and appear as a solid screen-sized plane.
+func sync_now() -> void:
 	if Engine.is_editor_hint():
 		return
 	var pos := _watch_pos()

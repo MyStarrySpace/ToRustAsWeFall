@@ -111,31 +111,22 @@ func _run() -> void:
 		_check((sequence._route_flure_enemy_groups.get(beat_index, []) as Array).size() == 2,
 			"route beat %d owns exactly two deterministic enemies" % (beat_index + 1))
 
-	var read_aster: Node = below.find_child("RouteReadAster", true, false)
-	var read_peris: Node = below.find_child("RouteReadPeris", true, false)
-	_check(read_aster != null and read_peris != null,
-		"Aster and Peris have separate spatial route-read stations")
-	if read_aster == null or read_peris == null:
-		await _dispose(sequence)
-		_finish()
-		return
-	_check(str(read_aster.get("required_character")) == "aster"
-		and str(read_peris.get("required_character")) == "peris",
-		"each route read is data-authorized to its intended character")
+	_check(below.find_child("RouteReadAster", true, false) == null
+		and below.find_child("RouteReadPeris", true, false) == null,
+		"the route comparison uses independent overlays instead of perspective pedestals")
 	sequence._start_route_read_circuit()
 	sequence._dialogue.clear()
-	await _trigger_as(read_aster, "peris")
-	_check(int(sequence.headless_get_state().get("route_read_count", -1)) == 0,
-		"the wrong perspective cannot satisfy Aster's route read")
-	await _trigger_as(read_aster, "aster")
-	sequence._dialogue.clear()
-	await _trigger_as(read_peris, "peris")
-	sequence._dialogue.clear()
+	_check(int(sequence.headless_get_state().get("route_read_count", -1)) == 1,
+		"Aster's already-live data layer supplies the first route read")
+	sequence._set_elevator_overlay_state("peris", true)
 	sequence.headless_advance(0.6, 0.05)
 	var state: Dictionary = sequence.headless_get_state()
 	_check(int(state.get("route_read_count", 0)) == 2
 		and str(state.get("current_step", "")) == "route_choice",
-		"both character reads are mandatory before route commitment")
+		"turning on Peris's independent layer completes the mandatory composite read")
+	_check(bool(state.get("aster_route_overlay_visible", false))
+		and bool(state.get("peris_route_overlay_visible", false)),
+		"both character registers remain simultaneously visible for route planning")
 
 	var route_flure: Node = sequence._route_flure_interactables[0]
 	await _trigger_as(route_flure, "aster")
@@ -163,13 +154,35 @@ func _run() -> void:
 	var hp_before_iron: float = sequence._game_state.get_stat("aster", "hp")
 	var iron_x: float = sequence.FORK_POS.x + float(sequence.ROUTE_BEAT_OFFSETS[1])
 	sequence.set_preview_character_position("aster", Vector3(iron_x, sequence.BELOW_Y + 0.5, 3.3))
-	sequence._on_process(0.5, 1.0)
+	sequence._iron_hazard_tick()
 	_check(sequence._game_state.get_stat("aster", "hp") < hp_before_iron,
 		"crossing an orange iron field changes authoritative party HP")
 
+	# The final hall is a visible two-person threshold. It stays closed when only
+	# the scout reaches it, then plays its authored lift once both brace marks are occupied.
+	var wreckage: Node = below.find_child("ElevatorWreckageGate", true, false)
+	var wreckage_animation := wreckage.get_node_or_null("GateAnimation") as AnimationPlayer \
+		if wreckage != null else null
+	_check(wreckage != null and wreckage_animation != null,
+		"the post-hazard wreckage is an authored animated scene asset")
+	sequence.set_preview_character_position("aster", sequence.ROUTES_CONVERGE + Vector3(0.5, 0.5, 0.0))
+	sequence.set_preview_character_position("peris", sequence.ROUTES_CONVERGE + Vector3(-8.0, 0.5, 0.0))
+	sequence._on_process(0.01, 1.0)
+	state = sequence.headless_get_state()
+	_check(bool(state.get("wreckage_armed", false)) and not bool(state.get("wreckage_party_ready", false)),
+		"a lead scout reveals the gate without unloading the trailing character")
+	var wreckage_anchor: Vector3 = sequence._wreckage_interaction_anchor()
+	_place_party(sequence, wreckage_anchor, 2.0)
+	await _trigger_as(sequence._wreckage_interactable, "aster")
+	_check(bool(sequence.headless_get_state().get("wreckage_cleared", false))
+		and wreckage_animation.current_animation == "clear_together",
+		"both characters distribute the load through the in-world lift animation")
+	sequence.headless_advance(float(sequence.WRECKAGE_CLEAR_SECONDS) + 0.1, 0.05)
+	_check(str(sequence.headless_get_state().get("current_step", "")) == "junction_arrive",
+		"only the reunited pair advances to Endo's Junction")
+
 	# Junction: three different stations, both character perspectives, then one
 	# preparation choice before the plant can advance the story.
-	sequence._start_junction_arrive()
 	await process_frame
 	_check(sequence._junction_interactables.size() >= 6,
 		"Endo's shelter retains a broad set of distinct inspection stations")

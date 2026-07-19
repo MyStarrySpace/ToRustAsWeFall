@@ -107,9 +107,13 @@ offset_top = 12.0
 offset_right = -12.0
 offset_bottom = 220.0
 grow_horizontal = 0
+mouse_filter = 0
+metadata/blocks_world_commands = true
 
 [node name="Panel" type="PanelContainer" parent="Margin"]
 layout_mode = 2
+mouse_filter = 0
+metadata/blocks_world_commands = true
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
 [node name="Content" type="VBoxContainer" parent="Margin/Panel"]

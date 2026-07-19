@@ -3639,7 +3639,7 @@ func _start_endo_junction_stretch_enter() -> void:
 		"endo_stretch.route.endo_gesture",
 	], func():
 		_player.set_move_enabled(true)
-		_tutorial_prompt.show_prompt("Read Endo's junction marks, then run the stretch to Shelter 1"))
+		_tutorial_prompt.show_prompt("Read Endo's junction, then combine all three views at the pulse crossing"))
 
 ## The stretch resolved (party rested at Shelter 1). Hand off to the existing flow.
 func _start_endo_junction_stretch_complete() -> void:

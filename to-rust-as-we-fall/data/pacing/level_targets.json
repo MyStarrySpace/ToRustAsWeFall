@@ -73,10 +73,10 @@
 			"id": "endo_junction_stretch",
 			"label": "Endo Junction Stretch",
 			"target_basis": "planning",
-			"first_clear_seconds": {"minimum": 180, "maximum": 300},
+			"first_clear_seconds": {"minimum": 75, "maximum": 150},
 			"min_decisions": 1,
 			"min_branches": 2,
-			"basis_note": "Planning target aligned with one ordinary shelter-to-shelter stretch."
+			"basis_note": "Compact first-night teaching beat: one three-specialist causal circuit, with no repeated solved-model loops."
 		},
 		{
 			"id": "channels",

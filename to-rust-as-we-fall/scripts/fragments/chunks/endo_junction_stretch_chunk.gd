@@ -1,6 +1,8 @@
 extends "res://scripts/scene_chunks/scene_chunk.gd"
 
 const LevelDecoratorScript := preload("res://scripts/generation/level_decorator.gd")
+const HazardFieldScript := preload("res://scripts/game/objects/hazard_field.gd")
+const PulseCircuitSet := preload("res://scenes/fragments/sets/endo_junction_pulse_circuit.tscn")
 
 const WORLD_SLOT := {
 	"slot_id": "act1_endo_junction_to_shelter_1",
@@ -15,18 +17,17 @@ const WORLD_SLOT := {
 	"next_slot": "act1_channels_first_spiral",
 }
 
-const FLOOR_CENTER := Vector3(140.0, -0.05, 0.0)
-const FLOOR_SIZE := Vector3(284.0, 0.1, 44.0)
+const FLOOR_CENTER := Vector3(55.0, -0.05, 0.0)
+const FLOOR_SIZE := Vector3(114.0, 0.1, 34.0)
 const JUNCTION_POS := Vector3(7.0, 0.45, 0.0)
-const WALL_MARKS_POS := Vector3(15.0, 0.45, -4.8)
-const GUIDE_MARK_POS := Vector3(23.0, 0.45, -4.2)
-const FORAGE_CACHE_POS := Vector3(31.0, 0.45, 5.5)
-const SAFE_LEDGE_POS := Vector3(43.0, 0.45, -5.2)
-const RISKY_BLOOM_POS := Vector3(43.5, 0.45, 5.6)
-const HIDE_SLOT_POS := Vector3(254.0, 0.45, -7.0)
-const SHORTCUT_LOCK_POS := Vector3(260.0, 0.45, -1.4)
-const SHELTER_APPROACH_POS := Vector3(266.0, 0.45, 0.0)
-const SHELTER_POS := Vector3(274.0, 0.45, 0.0)
+const WALL_MARKS_POS := Vector3(13.0, 0.45, -4.8)
+const GUIDE_MARK_POS := Vector3(19.0, 0.45, -4.2)
+const FORAGE_CACHE_POS := Vector3(27.0, 0.45, 5.5)
+const SAFE_LEDGE_POS := Vector3(39.0, 0.45, -5.2)
+const RISKY_BLOOM_POS := Vector3(39.5, 0.45, 5.6)
+const SHORTCUT_LOCK_POS := Vector3(92.0, 0.45, -1.4)
+const SHELTER_APPROACH_POS := Vector3(97.0, 0.45, 0.0)
+const SHELTER_POS := Vector3(104.0, 0.45, 0.0)
 
 const PARTY_ROUTE_SPEED_METERS_PER_SECOND := 2.5
 const THEORETICAL_SPRINT_SPEED_METERS_PER_SECOND := 6.0
@@ -34,85 +35,36 @@ const ORIENTATION_SECONDS := 4.0
 const BASE_DECISION_SECONDS := 3.5
 const FIELD_DECISION_SECONDS := 3.5
 
-# Three measured field loops turn the old junction-to-hearth corridor into the first full-party
-# survival lesson. Evidence can be gathered in any order, but each loop requires all five distinct
-# reads, an explicit plan, and a spatial execution station. Both plans are valid and persistent:
-# the player is choosing what resource to preserve, not hunting for a hidden correct button.
+# One compact circuit is the stretch's whole reasoning beat. The three specialists expose a single
+# causal chain: the pressure strip tells WHEN the next pulse arrives, the living roots reveal WHERE
+# it can be absorbed, and Endo's guide latch identifies WHAT is too weak to take it. The player then
+# predicts which intervention will work. The tempting hard-brace prediction fails visibly and
+# recoverably; the root-buffer plan transfers the combined read into a physical change in the lane.
 const FIELD_OPERATIONS := {
-	"conduit": {
-		"label": "CONDUIT LOAD SURVEY",
-		"start": Vector3(48.0, 0.45, 0.0),
-		"end": Vector3(134.0, 0.45, 0.0),
+	"pulse": {
+		"label": "PULSE JUNCTION",
+		"start": Vector3(46.0, 0.45, 0.0),
+		"end": Vector3(86.0, 0.45, 0.0),
 		"tint": Color(0.34, 0.78, 0.68),
-		"evidence": ["conduit_pressure", "conduit_root", "conduit_grate", "conduit_spore", "conduit_latch"],
-		"choices": ["conduit_brace", "conduit_buffer"],
+		"evidence": ["pulse_pressure", "pulse_root", "pulse_latch"],
+		"choices": ["pulse_brace", "pulse_buffer"],
+		"presented_choice": "pulse_buffer",
 		"resolution_sites": {
-			"conduit_brace": "conduit_brace_execution",
-			"conduit_buffer": "conduit_buffer_execution",
-		},
-		"next": "signal",
-	},
-	"signal": {
-		"label": "SHELTER SIGNAL TRACE",
-		"start": Vector3(134.0, 0.45, 0.0),
-		"end": Vector3(220.0, 0.45, 0.0),
-		"tint": Color(0.46, 0.70, 0.94),
-		"evidence": ["signal_memory", "signal_echo", "signal_pin", "signal_vine", "signal_draft"],
-		"choices": ["signal_memory_beacon", "signal_data_beacon"],
-		"resolution_sites": {
-			"signal_memory_beacon": "signal_memory_execution",
-			"signal_data_beacon": "signal_data_execution",
-		},
-		"next": "approach",
-	},
-	"approach": {
-		"label": "REFUGE ENTRY PLAN",
-		"start": Vector3(220.0, 0.45, 0.0),
-		"end": Vector3(266.0, 0.45, 0.0),
-		"tint": Color(0.92, 0.69, 0.34),
-		"evidence": ["approach_seam", "approach_growth", "approach_hinge", "approach_heat", "approach_floor"],
-		"choices": ["approach_warm", "approach_sealed"],
-		"resolution_sites": {
-			"approach_warm": "approach_warm_execution",
-			"approach_sealed": "approach_sealed_execution",
+			"pulse_brace": "pulse_brace_execution",
+			"pulse_buffer": "pulse_buffer_execution",
 		},
 		"next": "",
 	},
 }
 
 const FIELD_SITES := {
-	# Conduit evidence: a full-width maintenance loop with one specialist read per system.
-	"conduit_pressure": {"operation": "conduit", "kind": "evidence", "role": "aster", "pos": Vector3(56.0, 0.45, -12.0), "dwell": 3.2, "verb": "MODEL PRESSURE", "display": "PRESSURE", "finding": "Aster isolates a pressure loss at the north race."},
-	"conduit_root": {"operation": "conduit", "kind": "evidence", "role": "peris", "pos": Vector3(72.0, 0.45, 11.0), "dwell": 3.4, "verb": "READ ROOT LOAD", "display": "ROOT LOAD", "finding": "Peris feels living roots absorbing every third pulse."},
-	"conduit_grate": {"operation": "conduit", "kind": "evidence", "role": "endo", "pos": Vector3(88.0, 0.45, -11.0), "dwell": 3.6, "verb": "TEST GRATE", "display": "GRATE", "finding": "Endo finds the grate sound but under-braced."},
-	"conduit_spore": {"operation": "conduit", "kind": "evidence", "role": "peris", "pos": Vector3(104.0, 0.45, 12.0), "dwell": 3.4, "verb": "TRACE SPORE WAKE", "display": "SPORE WAKE", "finding": "The spore wake bends away from the living buffer."},
-	"conduit_latch": {"operation": "conduit", "kind": "evidence", "role": "endo", "pos": Vector3(116.0, 0.45, 0.0), "dwell": 3.6, "verb": "PACE LATCH", "display": "LATCH", "finding": "The service latch can carry one deliberate reroute."},
-	"conduit_brace": {"operation": "conduit", "kind": "choice", "role": "endo", "pos": Vector3(124.0, 0.45, -6.0), "dwell": 2.4, "verb": "PLAN HARD BRACE", "display": "BRACE", "finding": "The party will preserve the dry service lane."},
-	"conduit_buffer": {"operation": "conduit", "kind": "choice", "role": "peris", "pos": Vector3(124.0, 0.45, 6.0), "dwell": 2.4, "verb": "PLAN ROOT BUFFER", "display": "BUFFER", "finding": "The party will preserve stamina through the living buffer."},
-	"conduit_brace_execution": {"operation": "conduit", "kind": "resolution", "role": "endo", "pos": Vector3(130.0, 0.45, -10.0), "dwell": 4.5, "verb": "SEAT BRACE", "display": "SEAT BRACE", "finding": "Endo locks the service race against the next pulse."},
-	"conduit_buffer_execution": {"operation": "conduit", "kind": "resolution", "role": "peris", "pos": Vector3(130.0, 0.45, 10.0), "dwell": 4.5, "verb": "FEED BUFFER", "display": "FEED ROOTS", "finding": "Peris settles the living buffer into the conduit rhythm."},
-
-	# Signal evidence: reconstruct whether Shelter 1's beacon is machine or remembered life.
-	"signal_memory": {"operation": "signal", "kind": "evidence", "role": "peris", "pos": Vector3(142.0, 0.45, 12.0), "dwell": 3.4, "verb": "RECALL SIGNAL", "display": "MEMORY", "finding": "Peris remembers the beacon as warmth, not an alarm."},
-	"signal_echo": {"operation": "signal", "kind": "evidence", "role": "aster", "pos": Vector3(158.0, 0.45, -12.0), "dwell": 3.2, "verb": "CORRELATE ECHO", "display": "ECHO", "finding": "Aster proves the echo repeats from one fixed refuge source."},
-	"signal_pin": {"operation": "signal", "kind": "evidence", "role": "endo", "pos": Vector3(174.0, 0.45, 11.0), "dwell": 3.6, "verb": "READ GUIDE PIN", "display": "GUIDE PIN", "finding": "Endo's guide pin points to the protected service face."},
-	"signal_vine": {"operation": "signal", "kind": "evidence", "role": "peris", "pos": Vector3(190.0, 0.45, -11.0), "dwell": 3.4, "verb": "FOLLOW VINE", "display": "VINE", "finding": "A living vine carries heat toward Shelter 1."},
-	"signal_draft": {"operation": "signal", "kind": "evidence", "role": "aster", "pos": Vector3(202.0, 0.45, 0.0), "dwell": 3.2, "verb": "MAP DRAFT", "display": "DRAFT", "finding": "The warm draft and beacon share the same protected opening."},
-	"signal_memory_beacon": {"operation": "signal", "kind": "choice", "role": "peris", "pos": Vector3(210.0, 0.45, 6.0), "dwell": 2.4, "verb": "PLAN LIVING BEACON", "display": "LIVING", "finding": "The party will tune the signal through the refuge vine."},
-	"signal_data_beacon": {"operation": "signal", "kind": "choice", "role": "aster", "pos": Vector3(210.0, 0.45, -6.0), "dwell": 2.4, "verb": "PLAN DATA BEACON", "display": "DATA", "finding": "The party will pin the signal to Aster's measured echo."},
-	"signal_memory_execution": {"operation": "signal", "kind": "resolution", "role": "peris", "pos": Vector3(216.0, 0.45, 10.0), "dwell": 4.5, "verb": "TUNE VINE", "display": "TUNE VINE", "finding": "The living beacon settles into a warm, steady pulse."},
-	"signal_data_execution": {"operation": "signal", "kind": "resolution", "role": "aster", "pos": Vector3(216.0, 0.45, -10.0), "dwell": 4.5, "verb": "PIN ECHO", "display": "PIN ECHO", "finding": "Aster fixes a clean data cadence on the shelter door."},
-
-	# Approach evidence: inspect the actual refuge before deciding how to open it.
-	"approach_seam": {"operation": "approach", "kind": "evidence", "role": "aster", "pos": Vector3(226.0, 0.45, -11.0), "dwell": 3.2, "verb": "TRACE DOOR SEAM", "display": "SEAM", "finding": "Aster maps one intact pressure seam along the refuge face."},
-	"approach_growth": {"operation": "approach", "kind": "evidence", "role": "peris", "pos": Vector3(234.0, 0.45, 11.0), "dwell": 3.4, "verb": "READ DOOR GROWTH", "display": "GROWTH", "finding": "The door growth is dormant, not hostile."},
-	"approach_hinge": {"operation": "approach", "kind": "evidence", "role": "endo", "pos": Vector3(242.0, 0.45, -11.0), "dwell": 3.6, "verb": "TEST HINGE", "display": "HINGE", "finding": "Endo finds the lower hinge able to take a slow opening."},
-	"approach_heat": {"operation": "approach", "kind": "evidence", "role": "peris", "pos": Vector3(250.0, 0.45, 11.0), "dwell": 3.4, "verb": "CHECK HEAT", "display": "HEAT", "finding": "Shelter heat is stable enough to share with the corridor."},
-	"approach_floor": {"operation": "approach", "kind": "evidence", "role": "endo", "pos": Vector3(256.0, 0.45, 0.0), "dwell": 3.6, "verb": "CHECK THRESHOLD", "display": "THRESHOLD", "finding": "The threshold will hold either a warm opening or a hard seal."},
-	"approach_warm": {"operation": "approach", "kind": "choice", "role": "peris", "pos": Vector3(260.0, 0.45, 6.0), "dwell": 2.4, "verb": "PLAN WARM ENTRY", "display": "WARM", "finding": "The party will preserve recovery and accept a softer seal."},
-	"approach_sealed": {"operation": "approach", "kind": "choice", "role": "endo", "pos": Vector3(260.0, 0.45, -6.0), "dwell": 2.4, "verb": "PLAN SEALED ENTRY", "display": "SEALED", "finding": "The party will preserve the hard boundary and spend stamina."},
-	"approach_warm_execution": {"operation": "approach", "kind": "resolution", "role": "peris", "pos": Vector3(264.0, 0.45, 10.0), "dwell": 4.5, "verb": "WAKE HEAT VEIN", "display": "WAKE HEAT", "finding": "Peris opens a warm vein into the shelter threshold."},
-	"approach_sealed_execution": {"operation": "approach", "kind": "resolution", "role": "endo", "pos": Vector3(264.0, 0.45, -10.0), "dwell": 4.5, "verb": "DOG SEAL", "display": "DOG SEAL", "finding": "Endo dogs the outer seal before opening the return grate."},
+	"pulse_pressure": {"operation": "pulse", "kind": "evidence", "role": "aster", "pos": Vector3(52.0, 0.45, -8.0), "dwell": 3.2, "verb": "TRACE PULSE", "display": "PRESSURE STRIP", "finding": "Aster: The warning strip brightens one beat before the pressure arrives."},
+	"pulse_root": {"operation": "pulse", "kind": "evidence", "role": "peris", "pos": Vector3(61.0, 0.45, 8.0), "dwell": 3.4, "verb": "READ ROOT RHYTHM", "display": "ROOT BUFFER", "finding": "Peris: The living bed is ready to drink the next pulse, then it needs time."},
+	"pulse_latch": {"operation": "pulse", "kind": "evidence", "role": "endo", "pos": Vector3(70.0, 0.45, -8.0), "dwell": 3.6, "verb": "TEST GUIDE LATCH", "display": "GUIDE LATCH", "finding": "Endo marks the dry race's cracked brace: it will not hold the next pulse."},
+	"pulse_brace": {"operation": "pulse", "kind": "choice", "role": "endo", "pos": Vector3(76.0, 0.45, -5.0), "dwell": 2.4, "verb": "TRY HARD BRACE", "display": "HARD BRACE", "finding": "Prediction: force the cracked dry race to carry the next pulse."},
+	"pulse_buffer": {"operation": "pulse", "kind": "choice", "role": "peris", "pos": Vector3(76.0, 0.45, 5.0), "dwell": 2.4, "verb": "ROUTE TO ROOTS", "display": "ROOT ROUTE", "finding": "Prediction: route this pulse through the ready living buffer."},
+	"pulse_brace_execution": {"operation": "pulse", "kind": "resolution", "role": "endo", "pos": Vector3(82.0, 0.45, -8.0), "dwell": 4.0, "verb": "SEAT BRACE", "display": "SEAT BRACE", "finding": "The cracked brace takes the load."},
+	"pulse_buffer_execution": {"operation": "pulse", "kind": "resolution", "role": "peris", "pos": Vector3(82.0, 0.45, 8.0), "dwell": 4.0, "verb": "FEED BUFFER", "display": "FEED ROOTS", "finding": "The roots pull the surge out of the walking lane."},
 }
 
 const INTERACT_RADIUS := 2.6
@@ -138,6 +90,8 @@ var _shelter_interactable
 var _field_sites: Dictionary = {}
 var _field_route_visuals: Dictionary = {}
 var _entry_guide: Node3D
+var _pulse_circuit_set: Node3D
+var _brace_failure_field: HazardField
 
 var _junction_material: StandardMaterial3D
 var _safe_material: StandardMaterial3D
@@ -167,6 +121,7 @@ var _field_choices: Dictionary = {}
 var _field_operations_completed: Dictionary = {}
 var _field_effects: Dictionary = {}
 var _field_findings: Array[String] = []
+var _field_failure_count := 0
 var _playtime_contract_cache: Dictionary = {}
 
 func _build_chunk() -> void:
@@ -176,7 +131,7 @@ func _build_chunk() -> void:
 	_build_forage_cache()
 	_build_crossing()
 	_build_fieldwork()
-	_build_hide_and_shortcut()
+	_build_shortcut()
 	_build_shelter()
 	LevelDecoratorScript.decorate_profile(self, "endo_stretch", {
 		"x1": FLOOR_CENTER.x + FLOOR_SIZE.x * 0.5,
@@ -184,7 +139,7 @@ func _build_chunk() -> void:
 		"spacing": 13.0,
 		"floor_tint": Color(0.22, 0.29, 0.31),
 		"floor_emission_energy": 0.34,
-		"signs": ["ENDO'S JUNCTION", "CONDUIT SURVEY", "SHELTER SIGNAL", "REFUGE ENTRY", "SHELTER 1  >"],
+		"signs": ["ENDO'S JUNCTION", "READ THE PULSE", "ROOT BUFFER", "SHELTER 1  >"],
 	})
 	reset_preview_state()
 
@@ -198,7 +153,7 @@ func get_scene_title() -> String:
 	return "Endo's Junction to Shelter 1"
 
 func get_scene_help() -> String:
-	return "Run the first real shelter stretch as a topped-off party: bring Endo to the glowing junction console and read it, collect the cache, choose the ledge or bloom, then use all three specialists to survey the conduit, reconstruct the shelter signal, plan the refuge entry, open the return grate, and bring the full conscious party to Shelter 1 to spend one ATP each on rest."
+	return "Read Endo's junction, collect the cache, and choose a crossing. At the pulse junction, combine Aster's timing trace, Peris's living-buffer read, and Endo's guide-latch mark to predict where the next surge should go. Then open the return grate and bring the conscious party to Shelter 1."
 
 func get_default_character() -> String:
 	return "endo"
@@ -215,7 +170,6 @@ func get_preview_anchors() -> Dictionary:
 		"forage_cache": FORAGE_CACHE_POS,
 		"safe_ledge": SAFE_LEDGE_POS,
 		"risky_bloom": RISKY_BLOOM_POS,
-		"hide_slot": HIDE_SLOT_POS,
 		"shortcut_lock": SHORTCUT_LOCK_POS,
 		"shelter_approach": SHELTER_APPROACH_POS,
 		"shelter": SHELTER_POS,
@@ -245,6 +199,12 @@ func get_preview_lighting_profile() -> Dictionary:
 		"ambient_color": Color(0.28, 0.36, 0.46),
 		"directional_color": Color(0.46, 0.58, 0.78),
 		"color_mix": 0.72,
+	}
+
+func get_preview_ui_defaults() -> Dictionary:
+	return {
+		"instructions_visible": false,
+		"overlay_collapsed": true,
 	}
 
 func get_preview_abilities() -> Array:
@@ -277,6 +237,7 @@ func get_preview_state() -> Dictionary:
 			"operation_count": _field_operations_completed.size(),
 			"effects": _field_effects.duplicate(true),
 			"findings": _field_findings.duplicate(),
+			"failed_predictions": _field_failure_count,
 		},
 		"playtime_contract": get_playtime_contract(),
 		"stretch": {
@@ -286,7 +247,7 @@ func get_preview_state() -> Dictionary:
 			"foraging": "one Endo-readable starch cache",
 			"food_cost": 1,
 			"shelter_quality": "warm first-night refuge",
-			"shortcut": "return grate after three full-party field loops",
+			"shortcut": "return grate after the three-specialist pulse circuit",
 		},
 	}
 
@@ -299,6 +260,8 @@ func get_playtime_contract() -> Dictionary:
 	var operation_routes := {}
 	var field_route_meters := 0.0
 	var field_work_seconds := 0.0
+	var field_evidence_count := 0
+	var field_action_count := 0
 	for operation_id_variant in FIELD_OPERATIONS.keys():
 		var operation_id := str(operation_id_variant)
 		var operation_route := _shortest_field_operation_route(operation_id)
@@ -307,6 +270,8 @@ func get_playtime_contract() -> Dictionary:
 		var operation: Dictionary = FIELD_OPERATIONS[operation_id]
 		for site_id in operation.get("evidence", []):
 			field_work_seconds += float(FIELD_SITES[str(site_id)].get("dwell", 0.0))
+			field_evidence_count += 1
+			field_action_count += 1
 		var shortest_branch_work := INF
 		for choice_id_variant in operation.get("choices", []):
 			var choice_id := str(choice_id_variant)
@@ -316,22 +281,23 @@ func get_playtime_contract() -> Dictionary:
 				branch_work += float(FIELD_SITES[resolution_id].get("dwell", 0.0))
 			shortest_branch_work = minf(shortest_branch_work, branch_work)
 		field_work_seconds += 0.0 if is_inf(shortest_branch_work) else shortest_branch_work
+		field_action_count += 2
 
 	var start := SPAWNS["endo"]
 	var station_safe_base_route := start.distance_to(JUNCTION_POS) \
 		+ JUNCTION_POS.distance_to(GUIDE_MARK_POS) \
 		+ GUIDE_MARK_POS.distance_to(FORAGE_CACHE_POS) \
 		+ FORAGE_CACHE_POS.distance_to(SAFE_LEDGE_POS) \
-		+ SAFE_LEDGE_POS.distance_to(FIELD_OPERATIONS["conduit"].get("start", Vector3.ZERO))
+		+ SAFE_LEDGE_POS.distance_to(FIELD_OPERATIONS["pulse"].get("start", Vector3.ZERO))
 	var focus_safe_base_route := start.distance_to(JUNCTION_POS) \
 		+ JUNCTION_POS.distance_to(FORAGE_CACHE_POS) \
 		+ FORAGE_CACHE_POS.distance_to(SAFE_LEDGE_POS) \
-		+ SAFE_LEDGE_POS.distance_to(FIELD_OPERATIONS["conduit"].get("start", Vector3.ZERO))
+		+ SAFE_LEDGE_POS.distance_to(FIELD_OPERATIONS["pulse"].get("start", Vector3.ZERO))
 	var direct_base_route := start.distance_to(JUNCTION_POS) \
 		+ JUNCTION_POS.distance_to(FORAGE_CACHE_POS) \
 		+ FORAGE_CACHE_POS.distance_to(RISKY_BLOOM_POS) \
-		+ RISKY_BLOOM_POS.distance_to(FIELD_OPERATIONS["conduit"].get("start", Vector3.ZERO))
-	var tail_route := (FIELD_OPERATIONS["approach"].get("end", Vector3.ZERO) as Vector3).distance_to(SHORTCUT_LOCK_POS) \
+		+ RISKY_BLOOM_POS.distance_to(FIELD_OPERATIONS["pulse"].get("start", Vector3.ZERO))
+	var tail_route := (FIELD_OPERATIONS["pulse"].get("end", Vector3.ZERO) as Vector3).distance_to(SHORTCUT_LOCK_POS) \
 		+ SHORTCUT_LOCK_POS.distance_to(SHELTER_POS)
 	var station_safe_route_meters := station_safe_base_route + field_route_meters + tail_route
 	var focus_safe_route_meters := focus_safe_base_route + field_route_meters + tail_route
@@ -356,8 +322,8 @@ func get_playtime_contract() -> Dictionary:
 		direct_route_meters / THEORETICAL_SPRINT_SPEED_METERS_PER_SECOND + direct_nonmovement
 	) + ORIENTATION_SECONDS
 	_playtime_contract_cache = {
-		"target_seconds_min": 180.0,
-		"target_seconds_max": 300.0,
+		"target_seconds_min": 75.0,
+		"target_seconds_max": 150.0,
 		"modeled_shortest_first_clear_seconds": shortest_total,
 		"modeled_clean_first_clear_seconds": clean_total,
 		"modeled_station_marked_clean_seconds": station_clean_total,
@@ -370,13 +336,13 @@ func get_playtime_contract() -> Dictionary:
 		"direct_route_meters": direct_route_meters,
 		"shortest_field_route_meters": field_route_meters,
 		"route_meters_by_operation": operation_routes,
-		"mandatory_action_count_clean": 4 + FIELD_OPERATIONS.size() * 7 + 2,
-		"mandatory_timed_action_count_clean": 2 + FIELD_OPERATIONS.size() * 7 + 2,
-		"station_marked_timed_action_count_clean": 3 + FIELD_OPERATIONS.size() * 7 + 2,
-		"mandatory_field_evidence_count": FIELD_OPERATIONS.size() * 5,
+		"mandatory_action_count_clean": 4 + field_action_count + 2,
+		"mandatory_timed_action_count_clean": 2 + field_action_count + 2,
+		"station_marked_timed_action_count_clean": 3 + field_action_count + 2,
+		"mandatory_field_evidence_count": field_evidence_count,
 		"decision_count": 1 + FIELD_OPERATIONS.size(),
 		"branch_variant_count": 2 * int(pow(2, FIELD_OPERATIONS.size())),
-		"timing_basis": "exact geometric shortest paths through authored evidence, Aster Focus safe-route shortcut, shortest valid execution branch, 2.5 m/s party pace, authored TIMED_ACTION dwell, explicit planning allowance; no dialogue, idle, or reset time counted",
+		"timing_basis": "exact geometric shortest path through the authored three-specialist circuit, Aster Focus safe-route shortcut, correct root-buffer execution, 2.5 m/s party pace, authored TIMED_ACTION dwell, explicit prediction allowance; no dialogue, idle, failure, or reset time counted",
 	}
 	return _playtime_contract_cache.duplicate(true)
 
@@ -384,19 +350,20 @@ func get_preview_overlay_status(overlay_id: String, _current_tick: float) -> Arr
 	match overlay_id:
 		"aster":
 			return [
-				"DATA: Endo's wall marks line up with a shelter symbol and three measured maintenance loops.",
+				"DATA: the blue warning strip leads the pressure pulse by one beat.",
 				"Route: %s" % ("marked" if _safe_route_marked else "unresolved"),
-				"Field loop: %s" % (_field_phase if _field_phase != "" else "locked"),
+				"Pulse circuit: %s" % (_field_phase if _field_phase != "" else "locked"),
 			]
 		"peris":
 			return [
-				"FOG: the refuge feels lived-in, not abandoned.",
-				"Plant memory: %s" % ("settling inside Shelter 1" if _shelter_reached else "pulling through the refuge signal"),
+				"FOG: the green root bed is alive and rests between pulses.",
+				"Plant memory: %s" % ("settled into the safe lane" if bool(_field_effects.get("pulse_resolved", false)) else "ready for the next surge"),
 				"Food cache: %s" % ("collected" if _forage_collected else "still tucked in the wall"),
 			]
 		"endo":
 			return [
-				"SURVIVAL: junction -> route -> conduit -> signal -> refuge entry -> shelter.",
+				"SURVIVAL: junction -> crossing -> read pulse -> route pulse -> shelter.",
+				"Guide latch: %s" % ("cracked; do not hard-brace" if bool((_field_evidence.get("pulse", {}) as Dictionary).get("pulse_latch", false)) else "unread"),
 				"Shortcut: %s" % ("open" if _shortcut_unlocked else "locked"),
 				"Next: %s" % _current_instruction(),
 			]
@@ -427,6 +394,9 @@ func reset_preview_state() -> void:
 	_field_operations_completed.clear()
 	_field_effects.clear()
 	_field_findings.clear()
+	_field_failure_count = 0
+	if _brace_failure_field != null and is_instance_valid(_brace_failure_field):
+		_brace_failure_field.set_active(false)
 	_set_preview_step("endo_junction_stretch_start")
 	_reset_story_interactables()
 	_reset_field_interactables()
@@ -467,9 +437,7 @@ func read_junction() -> bool:
 	_mark_segment("junction_read")
 	_set_preview_step("endo_junction_read")
 	_clear_dialogue()
-	_say_key("endo_stretch.entry.aster_space")
-	_say_key("endo_stretch.entry.peris_home")
-	_say_key("endo_stretch.route.endo_gesture")
+	_show_message("Endo's route marks wake: warning strip, living buffer, cracked guide latch.", 2.4)
 	_complete_interactable(_junction_interactable)
 	_update_visual_state()
 	return true
@@ -540,7 +508,7 @@ func commit_safe_route() -> bool:
 	_show_message("Endo threads the maintenance ledge without drawing the bloom.", 1.7)
 	_complete_interactable(_safe_interactable)
 	_complete_interactable(_direct_interactable)
-	_start_field_operation("conduit")
+	_start_field_operation("pulse")
 	_update_visual_state()
 	return true
 
@@ -565,11 +533,12 @@ func commit_direct_route() -> bool:
 	_adjust_character_stat("aster", "hp", -DIRECT_DAMAGE_ASTER)
 	_adjust_character_stat("peris", "hp", -DIRECT_DAMAGE_PERIS)
 	_adjust_character_stat("endo", "hp", -DIRECT_DAMAGE_ENDO)
+	_clear_dialogue()
 	_say_key("endo_stretch.direct.aster")
 	_show_message("The direct bloom burns, but the party stays on its feet.", 1.7)
 	_complete_interactable(_safe_interactable)
 	_complete_interactable(_direct_interactable)
-	_start_field_operation("conduit")
+	_start_field_operation("pulse")
 	_update_visual_state()
 	return _party_min_hp() > 0.0
 
@@ -578,7 +547,7 @@ func unlock_shortcut() -> bool:
 		_show_message("Resolve the crossing before opening the return grate.", 1.2)
 		return false
 	if _field_operations_completed.size() < FIELD_OPERATIONS.size():
-		_show_message("Finish the conduit, signal, and refuge-entry field loops first.", 1.4)
+		_show_message("Resolve the pulse junction before opening the return grate.", 1.4)
 		return false
 	if _shortcut_unlocked:
 		return true
@@ -638,9 +607,9 @@ func _build_shell() -> void:
 	_add_box(self, Vector3(FLOOR_CENTER.x, 2.2, half_z + 0.1), Vector3(FLOOR_SIZE.x, 4.4, 0.3), Color(0.11, 0.13, 0.14))
 	_add_box(self, Vector3(FLOOR_CENTER.x - half_x - 0.1, 2.2, 0.0), Vector3(0.3, 4.4, FLOOR_SIZE.z), Color(0.09, 0.11, 0.12))
 	_add_box(self, Vector3(FLOOR_CENTER.x + half_x + 0.1, 2.2, 0.0), Vector3(0.3, 4.4, FLOOR_SIZE.z), Color(0.09, 0.11, 0.12))
-	for i in range(16):
-		var blend := float(i) / 15.0
-		_add_light(self, Vector3(7.0 + float(i) * 17.2, 3.8, -1.0 + sin(float(i) * 1.7) * 1.4), Color(0.38 + blend * 0.2, 0.48 + blend * 0.1, 0.56 - blend * 0.08), 1.1 + blend * 0.65, 14.0)
+	for i in range(8):
+		var blend := float(i) / 7.0
+		_add_light(self, Vector3(7.0 + float(i) * 13.6, 3.8, -1.0 + sin(float(i) * 1.7) * 1.4), Color(0.38 + blend * 0.2, 0.48 + blend * 0.1, 0.56 - blend * 0.08), 1.1 + blend * 0.65, 14.0)
 	_add_label(self, "ENDO'S JUNCTION", JUNCTION_POS + Vector3(2.6, 2.7, -4.0), Color(0.68, 0.9, 0.74))
 	_add_label(self, "SHELTER 1", SHELTER_POS + Vector3(0.0, 2.85, 0.0), Color(0.98, 0.82, 0.52))
 
@@ -727,6 +696,9 @@ func _build_fieldwork() -> void:
 	var root := Node3D.new()
 	root.name = "EndoJunctionFieldwork"
 	add_child(root)
+	_pulse_circuit_set = PulseCircuitSet.instantiate()
+	_pulse_circuit_set.name = "EndoJunctionAuthoredPulseCircuit"
+	root.add_child(_pulse_circuit_set)
 	var operation_index := 0
 	for operation_id_variant in FIELD_OPERATIONS.keys():
 		var operation_id := str(operation_id_variant)
@@ -782,8 +754,8 @@ func _build_field_operation_frame(parent: Node3D, operation_id: String, operatio
 			_add_box(frame, Vector3(portal_x, 0.035, 0.0), Vector3(0.07, 0.03, 28.0), Color(0.12, 0.16, 0.16), tint, 0.16)
 		portal_x += 12.0
 		portal_index += 1
-	_add_box(frame, Vector3(start.x + 4.5, 2.0, -20.9), Vector3(8.0, 2.4, 0.16), Color(0.055, 0.075, 0.075), tint, 0.18)
-	_add_label(frame, "%02d // %s" % [operation_index + 1, str(operation.get("label", operation_id))], Vector3(start.x + 4.5, 2.0, -20.65), tint.lightened(0.22))
+	_add_box(frame, Vector3(start.x + 4.5, 2.0, -16.75), Vector3(8.0, 2.4, 0.16), Color(0.055, 0.075, 0.075), tint, 0.18)
+	_add_label(frame, "%02d // %s" % [operation_index + 1, str(operation.get("label", operation_id))], Vector3(start.x + 4.5, 2.0, -16.5), tint.lightened(0.22))
 	var landmark := _add_light(frame, Vector3(center_x, 3.3, 0.0), tint, 1.15, 15.0)
 	landmark.name = "EndoJunctionFieldLight_%s" % operation_id
 
@@ -795,20 +767,28 @@ func _build_field_site(parent: Node3D, site_id: String) -> void:
 	var role_color := _field_role_color(role)
 	var operation: Dictionary = FIELD_OPERATIONS[str(spec.get("operation", ""))]
 	var tint: Color = operation.get("tint", role_color)
-	var base_color := role_color.darkened(0.52)
-	var base := _add_box(parent, position + Vector3(0.0, 0.18, 0.0), Vector3(1.75, 0.36, 1.75), base_color, tint, 0.1)
-	var post_height := 1.15 if kind == "evidence" else 1.45
-	var post := _add_box(parent, position + Vector3(0.0, 0.36 + post_height * 0.5, 0.0), Vector3(0.42, post_height, 0.42), role_color.darkened(0.38), role_color, 0.24)
-	var lens := MeshInstance3D.new()
-	var lens_mesh := SphereMesh.new()
-	lens_mesh.radius = 0.26 if kind == "evidence" else 0.34
-	lens_mesh.height = lens_mesh.radius * 2.0
-	lens.mesh = lens_mesh
-	lens.material_override = _make_material(tint.darkened(0.3), tint, 0.48 if kind == "resolution" else 0.28)
-	lens.position = position + Vector3(0.0, 0.5 + post_height, 0.0)
-	parent.add_child(lens)
+	var visuals: Array = []
+	var authored_object := parent.find_child("EndoJunctionObject_%s" % site_id, true, false) as Node3D
+	if authored_object != null:
+		visuals.assign(authored_object.find_children("*", "MeshInstance3D", true, false))
+	else:
+		# Keep a small fallback so an isolated script preview remains usable if the authored set is
+		# ever temporarily unavailable during asset iteration.
+		var base_color := role_color.darkened(0.52)
+		var base := _add_box(parent, position + Vector3(0.0, 0.18, 0.0), Vector3(1.75, 0.36, 1.75), base_color, tint, 0.1)
+		var post_height := 1.15 if kind == "evidence" else 1.45
+		var post := _add_box(parent, position + Vector3(0.0, 0.36 + post_height * 0.5, 0.0), Vector3(0.42, post_height, 0.42), role_color.darkened(0.38), role_color, 0.24)
+		var lens := MeshInstance3D.new()
+		var lens_mesh := SphereMesh.new()
+		lens_mesh.radius = 0.26 if kind == "evidence" else 0.34
+		lens_mesh.height = lens_mesh.radius * 2.0
+		lens.mesh = lens_mesh
+		lens.material_override = _make_material(tint.darkened(0.3), tint, 0.48 if kind == "resolution" else 0.28)
+		lens.position = position + Vector3(0.0, 0.5 + post_height, 0.0)
+		parent.add_child(lens)
+		visuals = [base, post, lens]
 	var node_name := "EndoJunctionField_%s" % site_id
-	var interactable := _add_object_interactable(parent, node_name, str(spec.get("display", site_id)), position, str(spec.get("verb", "WORK")), [base, post, lens], role, float(spec.get("dwell", 3.5)), false, INTERACT_RADIUS, Interactable.InteractableType.TIMED_ACTION)
+	var interactable := _add_object_interactable(parent, node_name, str(spec.get("display", site_id)), position, str(spec.get("verb", "WORK")), visuals, role, float(spec.get("dwell", 3.5)), false, INTERACT_RADIUS, Interactable.InteractableType.TIMED_ACTION)
 	interactable.interacted.connect(_on_field_site_interacted.bind(site_id))
 	_field_sites[site_id] = interactable
 	_add_label(parent, "%s // %s" % [_display_name(role).to_upper(), str(spec.get("display", site_id))], position + Vector3(0.0, 2.25, 0.0), role_color.lightened(0.22))
@@ -891,6 +871,26 @@ func _resolve_field_site_state(site_id: String) -> bool:
 			if site_id != expected_resolution:
 				return false
 			_set_field_site_enabled(site_id, false)
+			if committed_choice == "pulse_brace":
+				# The warning strip, root rhythm, and cracked latch all falsify this prediction. The
+				# physical race bucks, the kit-owned hazard bites whoever stayed at the brace, and
+				# the plan stations reopen immediately so failure becomes information, not a reset.
+				_field_failure_count += 1
+				_field_effects["brace_failed"] = true
+				_field_choices.erase(operation_id)
+				_route_phase = "pulse_replan"
+				_arm_brace_failure()
+				for choice_id in FIELD_OPERATIONS[operation_id].get("choices", []):
+					if str(choice_id) == "pulse_brace":
+						_set_field_site_enabled(str(choice_id), false)
+						continue
+					var choice_site: Node = _field_sites.get(str(choice_id))
+					if choice_site != null and choice_site.has_method("reset"):
+						choice_site.call("reset")
+					_set_field_site_enabled(str(choice_id), true)
+				_show_note("The cracked race bows on the warning beat. The root bed is still ready: reroute the next pulse.", 3.2)
+				_update_visual_state()
+				return true
 			_field_operations_completed[operation_id] = true
 			_mark_segment("%s_complete" % operation_id)
 			_apply_field_choice(operation_id, committed_choice)
@@ -899,7 +899,7 @@ func _resolve_field_site_state(site_id: String) -> bool:
 				_field_phase = "complete"
 				_route_phase = "fieldwork_complete"
 				_set_preview_step("endo_junction_fieldwork_complete")
-				_show_note("The conduit, signal, and refuge entry are secured. Open Endo's return grate.", 3.0)
+				_show_note("The root bed takes the pulse and the walking lane falls quiet. Open Endo's return grate.", 3.0)
 			else:
 				_start_field_operation(next_id)
 			return true
@@ -917,7 +917,7 @@ func _start_field_operation(operation_id: String) -> void:
 		var spec: Dictionary = FIELD_SITES[site_id]
 		_set_field_site_enabled(site_id, str(spec.get("operation", "")) == operation_id and str(spec.get("kind", "")) == "evidence" and not bool((_field_evidence.get(operation_id, {}) as Dictionary).get(site_id, false)))
 	_set_preview_step("endo_junction_%s_survey" % operation_id)
-	_show_note("%s: gather all five specialist reads, choose a plan, then execute it in the corridor." % str(FIELD_OPERATIONS[operation_id].get("label", operation_id)), 3.0)
+	_show_note("%s: combine the three specialist reads, predict where the pulse should go, then test it in the corridor." % str(FIELD_OPERATIONS[operation_id].get("label", operation_id)), 3.0)
 	_update_visual_state()
 
 func _field_operation_evidence_complete(operation_id: String) -> bool:
@@ -931,25 +931,31 @@ func _field_operation_evidence_complete(operation_id: String) -> bool:
 
 func _apply_field_choice(operation_id: String, choice_id: String) -> void:
 	match choice_id:
-		"conduit_brace":
-			_field_effects["conduit_mode"] = "dry_service_brace"
-			_adjust_character_stat("endo", "sta", -4.0)
-		"conduit_buffer":
+		"pulse_buffer":
 			_field_effects["conduit_mode"] = "living_root_buffer"
+			_field_effects["pulse_resolved"] = true
 			for char_id in ["aster", "peris", "endo"]:
 				_adjust_character_stat(char_id, "sta", 4.0)
-		"signal_memory_beacon":
-			_field_effects["signal_mode"] = "living_memory"
-		"signal_data_beacon":
-			_field_effects["signal_mode"] = "measured_echo"
-		"approach_warm":
-			_field_effects["entry_mode"] = "warm_recovery"
-			for char_id in ["aster", "peris", "endo"]:
-				_adjust_character_stat(char_id, "hp", 3.0)
-		"approach_sealed":
-			_field_effects["entry_mode"] = "hard_boundary"
-			_adjust_character_stat("endo", "sta", -4.0)
 	_field_effects["last_operation"] = operation_id
+
+func _arm_brace_failure() -> void:
+	var gs = _get_game_state()
+	var scheduler = _get_scheduler()
+	if gs == null or scheduler == null:
+		return
+	if _brace_failure_field == null or not is_instance_valid(_brace_failure_field):
+		_brace_failure_field = HazardFieldScript.new()
+		_brace_failure_field.name = "EndoJunctionBraceSurge"
+		add_child(_brace_failure_field)
+	_brace_failure_field.setup(gs, scheduler, Vector2(78.5, -11.5), Vector2(85.5, -4.5),
+		["aster", "peris", "endo"], {"dps_tick": 6.0, "interval": 0.55, "tag": "endo_junction_brace_surge", "on_bite": _on_brace_hazard_bite})
+	_brace_failure_field.set_active(true)
+	scheduler.schedule_after(2.2, func() -> void:
+		if _brace_failure_field != null and is_instance_valid(_brace_failure_field):
+			_brace_failure_field.set_active(false), "endo_junction_brace_surge_stop")
+
+func _on_brace_hazard_bite(_char_id: String) -> void:
+	_show_message("Pressure surge — leave the cracked race.", 0.9)
 
 func _set_field_site_enabled(site_id: String, enabled: bool) -> void:
 	var site: Node = _field_sites.get(site_id)
@@ -963,10 +969,7 @@ func _reset_field_interactables() -> void:
 			site.call("reset")
 		_set_field_site_enabled(str(site_id), false)
 
-func _build_hide_and_shortcut() -> void:
-	_add_box(self, HIDE_SLOT_POS + Vector3(0.0, -0.03, 0.0), Vector3(7.0, 0.18, 3.2), Color(0.07, 0.11, 0.1))
-	_add_box(self, HIDE_SLOT_POS + Vector3(-3.3, 1.2, 0.0), Vector3(0.25, 2.4, 3.2), Color(0.1, 0.14, 0.12))
-	_add_label(self, "HIDE SLOT", HIDE_SLOT_POS + Vector3(0.0, 1.8, 0.0), Color(0.62, 0.88, 0.68))
+func _build_shortcut() -> void:
 	_shortcut_material = _make_material(Color(0.15, 0.15, 0.14), Color(0.9, 0.76, 0.42), 0.14)
 	var grate := _add_box(self, SHORTCUT_LOCK_POS + Vector3(0.0, 0.45, 0.0), Vector3(2.2, 0.9, 2.2), Color(0.16, 0.14, 0.12), Color(0.82, 0.62, 0.28), 0.16)
 	grate.material_override = _shortcut_material
@@ -1142,7 +1145,7 @@ func _current_instruction() -> String:
 		var operation: Dictionary = FIELD_OPERATIONS[_field_phase]
 		if not _field_operation_evidence_complete(_field_phase):
 			var completed: Dictionary = _field_evidence.get(_field_phase, {})
-			return "%s reads %d/%d" % [str(operation.get("label", _field_phase)).to_lower(), completed.size(), operation.get("evidence", []).size()]
+			return "%s specialist reads %d/%d" % [str(operation.get("label", _field_phase)).to_lower(), completed.size(), operation.get("evidence", []).size()]
 		var choice := str(_field_choices.get(_field_phase, ""))
 		if choice == "":
 			return "choose the %s plan" % str(operation.get("label", _field_phase)).to_lower()
@@ -1187,3 +1190,12 @@ func _update_visual_state() -> void:
 		_shortcut_material.emission_energy_multiplier = 0.85 if _shortcut_unlocked else 0.14
 	if _shelter_material != null:
 		_shelter_material.emission_energy_multiplier = 1.05 if _shelter_reached else 0.3
+	if _pulse_circuit_set != null:
+		var dry_race := _pulse_circuit_set.find_child("DryRace", true, false) as MeshInstance3D
+		var living_race := _pulse_circuit_set.find_child("LivingRace", true, false) as MeshInstance3D
+		if dry_race != null and dry_race.material_override is StandardMaterial3D:
+			var dry_material := dry_race.material_override as StandardMaterial3D
+			dry_material.emission_energy_multiplier = 2.15 if bool(_field_effects.get("brace_failed", false)) else (0.18 if bool(_field_effects.get("pulse_resolved", false)) else 0.82)
+		if living_race != null and living_race.material_override is StandardMaterial3D:
+			var living_material := living_race.material_override as StandardMaterial3D
+			living_material.emission_energy_multiplier = 1.65 if bool(_field_effects.get("pulse_resolved", false)) else 0.72

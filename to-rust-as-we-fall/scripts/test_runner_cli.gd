@@ -815,6 +815,9 @@ func _ready() -> void:
 			"--test-elevator-performance":
 				ran_test = true
 				await _test_elevator_enemy_performance()
+			"--test-elevator-wreckage":
+				ran_test = true
+				await _test_elevator_wreckage_gate()
 			"--test-elevator-distraction":
 				ran_test = true
 				await _test_elevator_distracted_fauna()
@@ -1494,6 +1497,7 @@ func _run_all_tests() -> void:
 	await _test_chunk_streaming()
 	await _test_elevator_box_select_multiselect()
 	await _test_elevator_enemy_performance()
+	await _test_elevator_wreckage_gate()
 	await _test_elevator_distracted_fauna()
 	await _test_elevator_fall_level()
 	await _test_act1_chunk_grids()
@@ -8168,6 +8172,18 @@ func _test_endo_junction_stretch_preview() -> void:
 	var initial_chunk_state: Dictionary = chunk.get_preview_state()
 	_assert_true(not bool(initial_chunk_state.get("shelter_reached", false)), "Endo stretch starts before Shelter 1 is reached")
 	_assert_true(not bool(initial_chunk_state.get("shortcut_unlocked", false)), "Endo stretch starts with the shortcut locked")
+	_assert_true(instance._instructions_margin != null and not instance._instructions_margin.visible,
+		"Endo Junction protects its opening composition from the diagnostic help panel")
+	_assert_true(bool(instance._overlay_panel_collapsed),
+		"Endo Junction starts with the diagnostic overlay collapsed but still available")
+	var authored_pulse_set := chunk.find_child("EndoJunctionAuthoredPulseCircuit", true, false)
+	var pulse_animation := chunk.find_child("CircuitAnimation", true, false) as AnimationPlayer
+	_assert_true(authored_pulse_set != null,
+		"Endo Junction instantiates its reusable authored pulse-circuit scene asset")
+	_assert_true(pulse_animation != null and pulse_animation.has_animation("cadence"),
+		"Endo Junction uses an AnimationPlayer to show pressure leading the root response")
+	_assert_equals(chunk._field_sites.size(), 7,
+		"Endo Junction exposes three reads, two predictions, and two execution objects")
 	var junction_time: Dictionary = chunk.get_preview_time_state()
 	var junction_lighting: Dictionary = chunk.get_preview_lighting_profile()
 	_assert_true(absf(float(junction_time.get("time", 0.0)) - 0.58) < 0.001,
@@ -8223,7 +8239,7 @@ func _test_endo_junction_stretch_preview() -> void:
 		var safe_stats: Dictionary = safe_state.get("character_stats", {}).get(char_id, {})
 		_assert_equals(float(safe_stats.get("hp", -1.0)), 100.0, "Safe Endo stretch keeps %s at full HP before rest" % char_id)
 
-	_complete_endo_junction_fieldwork(instance, chunk, "Preview safe route")
+	_complete_endo_junction_fieldwork(instance, chunk, "Preview safe route", true)
 	instance.headless_select_character("endo")
 	instance.headless_set_character_position("endo", chunk.SHORTCUT_LOCK_POS)
 	_assert_true(chunk.unlock_shortcut(), "Endo can open the return shortcut")
@@ -8391,10 +8407,11 @@ func _test_endo_junction_stretch_act1() -> void:
 	instance.queue_free()
 	await get_tree().process_frame
 
-func _complete_endo_junction_fieldwork(host: Node, chunk: Node, label: String) -> void:
+func _complete_endo_junction_fieldwork(host: Node, chunk: Node, label: String, test_failure := false) -> void:
 	# Shared preview and Act 1 drivers resolve the same public field-site gates as real input:
-	# correct specialist, correct station, five reads, one plan, then its spatial execution.
-	for operation_id in ["conduit", "signal", "approach"]:
+	# correct specialist, correct station, distinct reads, one prediction, then spatial execution.
+	for operation_variant in chunk.FIELD_OPERATIONS.keys():
+		var operation_id := str(operation_variant)
 		var operation: Dictionary = chunk.FIELD_OPERATIONS[operation_id]
 		for evidence_variant in operation.get("evidence", []):
 			_complete_endo_junction_field_site(host, chunk, str(evidence_variant), label)
@@ -8402,7 +8419,20 @@ func _complete_endo_junction_fieldwork(host: Node, chunk: Node, label: String) -
 		if choices.is_empty():
 			_assert_true(false, "%s: %s exposes a planning choice" % [label, operation_id])
 			continue
-		var choice_id := str(choices[0])
+		if test_failure and operation_id == "pulse":
+			_complete_endo_junction_field_site(host, chunk, "pulse_brace", label)
+			_complete_endo_junction_field_site(host, chunk, "pulse_brace_execution", label)
+			if host.has_method("headless_advance"):
+				host.call("headless_advance", 0.7, 0.1)
+			var failure_state: Dictionary = chunk.call("get_preview_state")
+			var failure_field: Dictionary = failure_state.get("fieldwork", {})
+			_assert_equals(int(failure_field.get("failed_predictions", 0)), 1,
+				"%s: the cracked-brace prediction is recorded as a legible failure" % label)
+			_assert_equals(int(failure_field.get("operation_count", 0)), 0,
+				"%s: the failed prediction does not falsely solve the circuit" % label)
+			_assert_true(chunk._field_sites["pulse_buffer"].is_interaction_enabled(),
+				"%s: failure reopens the correct intervention without resetting evidence" % label)
+		var choice_id := str(operation.get("presented_choice", choices[0]))
 		_complete_endo_junction_field_site(host, chunk, choice_id, label)
 		var resolutions: Dictionary = operation.get("resolution_sites", {})
 		var resolution_id := str(resolutions.get(choice_id, ""))
@@ -10057,12 +10087,23 @@ func _elevator_realinput_beats(instance: Node) -> Dictionary:
 		var overlays: Dictionary = state.get("overlay_states", {})
 		if not bool(overlays.get("peris", false)):
 			_press_unhandled_key(instance, KEY_F2)
-	# After the fall the party is on the LOWER deck (BELOW_Y). Walk EAST to the route convergence; the
-	# floor now reaches past it and the gate fires on whichever member leads (_party_lead_x).
+	# After the fall the party is on the LOWER deck (BELOW_Y). Read the route with one scout, then
+	# rally both bodies onto the wreckage's visible brace marks before committing the shared lift.
 	beats["route_choice"] = func():
 		_disable_enemy_detection(instance)
 		var state: Dictionary = instance.headless_get_state()
 		var beats_crossed: Array = state.get("route_beats_crossed", [])
+		if beats_crossed.count(true) >= int(instance.ROUTE_BEAT_COUNT):
+			var wreckage_anchor: Vector3 = instance._wreckage_interaction_anchor()
+			if not bool(state.get("wreckage_party_ready", false)):
+				instance._selection_controller.headless_commit_rally(wreckage_anchor)
+				return
+			if bool(state.get("wreckage_armed", false)) \
+					and not bool(state.get("wreckage_cleared", false)) \
+					and instance._wreckage_interactable != null \
+					and not _interactable_work_in_progress(instance._wreckage_interactable):
+				_synthetic_click_interactable(instance, instance._wreckage_interactable)
+			return
 		var route_target := Vector3(instance.FORK_POS.x + 5.0, float(instance.BELOW_Y), -5.5)
 		if str(state.get("route_lane", "")) != "":
 			var missing_beat := -1
@@ -10076,8 +10117,6 @@ func _elevator_realinput_beats(instance: Node) -> Dictionary:
 					float(instance.BELOW_Y),
 					-5.5
 				)
-			else:
-				route_target = Vector3(instance.ROUTES_CONVERGE.x, float(instance.BELOW_Y), 0.0)
 		_synthetic_player_move_click(instance, route_target)
 	# Climb prompt zone (HOLD_ACTION dwell) — now at the landing under where the span gave way (~BRIDGE_COLLAPSE_X).
 	beats["climb_attempt"] = func(): _synthetic_player_move_click(instance, Vector3(float(instance.BRIDGE_COLLAPSE_X), float(instance.BELOW_Y), 0.0))
@@ -12785,6 +12824,8 @@ func _test_elevator_bridge_collapse() -> void:
 	instance._start_bridge()
 	_assert_true(not bool(instance._camera.get("_look_bounds_active")),
 		"Focused bridge entry releases the elevator-only camera bounds")
+	_assert_true(absf(float(instance._aster_node.rotation_degrees.z)) < 0.01,
+		"Focused bridge entry normalizes Aster's completed wake pose")
 	# The span is the MODELED bridge (Blender, pixel-grid): a BridgeModel node of named pieces (deck
 	# planks, girders, etc.) the collapse drops individually — not one rigid slab.
 	var bridge_chunk_node: Node = instance._chunks.get("bridge")
@@ -12833,6 +12874,23 @@ func _test_elevator_bridge_collapse() -> void:
 		"A dedicated endpoint light keeps the final bridge section and blockade legible")
 	_assert_true(bridge_chunk_node.find_child("BridgeEntryLight", true, false) is OmniLight3D,
 		"An authored entry light keeps bridge rails and grounded paths legible at handoff")
+	var below_chunk_node: Node = instance._chunks.get("below")
+	var west_blockade := below_chunk_node.find_child("LowerRouteWestBlockade", true, false) \
+		if below_chunk_node != null else null
+	_assert_true(west_blockade != null
+			and west_blockade.find_child("BlockerShape", true, false) is CollisionShape3D,
+		"The post-fall route has a visible, physical collapsed-shaft boundary to the west")
+	_assert_true(below_chunk_node != null
+			and below_chunk_node.find_child("LandingRecoveryLight", true, false) is OmniLight3D,
+		"The fall landing has an authored recovery light before the route decision")
+	var west_void_cell: Vector2i = gs.grid.world_to_grid(
+		Vector3(float(instance.LOWER_ROUTE_WEST_X) - 1.0, float(instance.BELOW_Y), 0.0))
+	var landing_cell: Vector2i = gs.grid.world_to_grid(
+		Vector3(float(instance.BRIDGE_COLLAPSE_X), float(instance.BELOW_Y), 0.0))
+	_assert_true(not gs.grid.is_cell_allowed_on_level(west_void_cell, int(instance.LEVEL_LOWER)),
+		"Lower-deck pathfinding cannot route back into the unauthored darkness")
+	_assert_true(gs.grid.is_cell_allowed_on_level(landing_cell, int(instance.LEVEL_LOWER)),
+		"Constraining the western boundary preserves the actual fall landing")
 	var bridge_body_line := DialogueData.text("elevator.peris.bodies")
 	_assert_true("Chembrane" in bridge_body_line and not "Wonderweave" in bridge_body_line,
 		"Elevator dialogue uses the canonical Chembrane name")
@@ -12941,6 +12999,29 @@ func _test_elevator_bridge_collapse() -> void:
 	_assert_true(debris >= 30,
 		"The collapse converts the modeled pieces into physics debris bodies (%d)" % debris)
 	_assert_true(catch_floor, "The collapse drops a catch-floor for the debris to land on")
+	# The visual fall and the authoritative scheduler are one observable consequence.
+	# Reproduce the browser failure: pause after a piece has released, before the
+	# scheduler-owned landing. No tween, rigid body, or retirement timer may advance.
+	var pause_probe: RigidBody3D = instance._collapse_debris[0] \
+		if not instance._collapse_debris.is_empty() else null
+	if pause_probe != null:
+		pause_probe.set_meta("collapse_release_ready", true)
+		instance._release_debris_now(pause_probe)
+		_assert_true(not pause_probe.freeze, "Collapse pause probe begins as released debris")
+	instance._on_pause_toggled(true)
+	_assert_true(instance._scheduler.is_paused(), "Pausing during collapse freezes authoritative time")
+	_assert_true(instance._fall_tween != null and not instance._fall_tween.is_running(),
+		"Pausing during collapse freezes the party/camera fall tween")
+	_assert_true(instance._collapse_settle_tween != null and not instance._collapse_settle_tween.is_running(),
+		"Pausing during collapse freezes the chunk-retirement timer")
+	if pause_probe != null:
+		_assert_true(pause_probe.freeze, "Pausing during collapse freezes released physics debris")
+	instance._on_pause_toggled(false)
+	_assert_true(not instance._scheduler.is_paused(), "Resuming collapse releases authoritative time")
+	_assert_true(instance._fall_tween != null and instance._fall_tween.is_running(),
+		"Resuming collapse continues the same party/camera fall tween")
+	if pause_probe != null:
+		_assert_true(not pause_probe.freeze, "Resuming collapse continues released physics debris")
 	if instance.has_method("_teardown_sequence"):
 		instance._teardown_sequence()
 	instance.queue_free()
@@ -12994,6 +13075,11 @@ func _test_elevator_camera_after_collapse() -> void:
 	instance._on_fall_landed()
 	_assert_equals(cam.follow_offset.y, original_offset_y,
 		"after the collapse the camera offset is restored, so the lower deck is framed normally (not BELOW_Y too low)")
+	_assert_true(bool(cam.get("_look_bounds_active")),
+		"the lower-deck landing restores authored camera bounds instead of allowing a pan into void")
+	var lower_camera_min: Vector3 = cam.get("_look_bounds_min")
+	_assert_true(lower_camera_min.x >= float(instance.LOWER_ROUTE_WEST_X),
+		"the lower-deck camera cannot pan west of the collapsed-shaft boundary")
 	# And the party really is on the lower deck now (so the framing is genuinely the lower-deck framing).
 	_assert_equals(gs.get_character_level("aster"), instance.LEVEL_LOWER, "the party landed on the lower deck")
 
@@ -13412,7 +13498,7 @@ func _test_elevator_enemy_performance() -> void:
 		activation_ms, active_enemies, str(activation)])
 	_assert_equals(active_enemies, 2,
 		"Approaching the first route beat wakes only its two-enemy cohort")
-	_assert_equals(instance._below_dormant_enemy_setups.size(), 12,
+	_assert_equals(instance._below_dormant_enemy_setups.size(), 14,
 		"The huddle and later route cohorts remain outside the simulation")
 	_assert_true(activation_ms < 750.0,
 		"Prewarmed enemy activation stays below the 750ms hitch ceiling (%.2fms)" % activation_ms)
@@ -13448,8 +13534,108 @@ func _test_elevator_enemy_performance() -> void:
 	var recomputes := int(idle.get("detection_recomputes", 0))
 	_assert_true(int(idle.get("detection_pairs_considered", 0)) <= recomputes * 2,
 		"Each detection invalidation remains bounded to two subscribed targets")
-	_assert_equals(instance._below_dormant_enemy_setups.size(), 12,
+	_assert_equals(instance._below_dormant_enemy_setups.size(), 14,
 		"Ten idle seconds do not wake cohorts the party has not approached")
+
+	if instance.has_method("_teardown_sequence"):
+		instance._teardown_sequence()
+	instance.queue_free()
+	await get_tree().process_frame
+
+# --- Test: the post-hazard wreckage is a truthful two-person threshold ---
+func _test_elevator_wreckage_gate() -> void:
+	_test_name = "Elevator Wreckage Gate"
+	var scene := load("res://scenes/tutorial/elevator.tscn")
+	if scene == null:
+		_assert_true(false, "elevator scene loads")
+		return
+	var instance: Node = scene.instantiate()
+	if "suppress_scene_change" in instance:
+		instance.suppress_scene_change = true
+	get_tree().root.add_child(instance)
+	for _frame in range(8):
+		await get_tree().process_frame
+	_clear_sequence_runtime_for_spatial_test(instance)
+	instance._load_chunk("below")
+	var gs: GameState = instance._game_state
+	for party_id in ["aster", "peris"]:
+		gs.set_character_level(party_id, instance.LEVEL_LOWER)
+		gs.restore_character(party_id)
+	instance._route_reads_resolved = {"aster": true, "peris": true}
+	instance._route_beats_crossed.assign([true, true, true])
+	instance._enter_step("route_choice")
+	var anchor: Vector3 = instance._wreckage_interaction_anchor()
+	_set_sequence_character_position(instance, "aster", anchor + Vector3(0.0, 0.0, -1.0))
+	_set_sequence_character_position(instance, "peris", anchor + Vector3(-8.0, 0.0, 1.0))
+	instance._arm_wreckage_gate()
+
+	var gate_scene: Node = instance.find_child("ElevatorWreckageGate", true, false)
+	var gate_animation := gate_scene.get_node_or_null("GateAnimation") as AnimationPlayer \
+		if gate_scene != null else null
+	var blocker := gate_scene.get_node_or_null("RubbleBlocker/BlockerShape") as CollisionShape3D \
+		if gate_scene != null else null
+	_assert_true(gate_scene != null and gate_animation != null,
+		"The hallway gate is an inspectable authored scene with an AnimationPlayer")
+	_assert_true(gate_scene != null and gate_scene.find_child("AsterAssist", true, false) != null \
+		and gate_scene.find_child("PerisAssist", true, false) != null,
+		"Two visible brace positions communicate the cooperation threshold")
+	_assert_true(blocker != null and not blocker.disabled,
+		"Intact wreckage has authoritative collision before the pair clears it")
+	_assert_true(instance._wreckage_interactable != null \
+		and int(instance._wreckage_interactable.get("interactable_type")) == Interactable.InteractableType.TIMED_ACTION,
+		"Clearing wreckage is a deliberate click-to-work action")
+
+	# Representative misconception: one nearby body is enough. Loose pieces fall,
+	# the animation names the noise, and ordinary Enemy FSMs acquire that actor.
+	instance._wreckage_interactable.set("active_character", "aster")
+	instance._wreckage_interactable.call("_trigger", false)
+	var solo_state: Dictionary = instance.headless_get_state()
+	_assert_true(bool(solo_state.get("wreckage_solo_attempted", false)) \
+		and not bool(solo_state.get("wreckage_cleared", false)),
+		"A solo brace visibly fails without falsely opening the passage")
+	_assert_equals(str(solo_state.get("wreckage_alert_target", "")), "aster",
+		"The noise keeps explicit provenance to the character who shifted the rubble")
+	_assert_equals(gate_animation.current_animation if gate_animation != null else "", "solo_failure",
+		"Loose rubble and the expanding noise ring animate the failed prediction")
+	var listeners_alerted := 0
+	for enemy in instance._wreckage_listeners:
+		if is_instance_valid(enemy) and str(enemy._current_target_id) == "aster" \
+				and enemy.get_state() in ["alert", "pursuit", "windup", "charge", "impact", "recover"]:
+			listeners_alerted += 1
+	_assert_equals(listeners_alerted, 2,
+		"Both nearby listeners enter their shared combat FSM against the noisy solo actor")
+	_assert_true(instance._wreckage_listeners.all(func(enemy):
+		return is_instance_valid(enemy) and float(enemy.charge_damage) >= float(instance.PARTY_MAX_HP)),
+		"The alerted listeners' next ordinary strike downs the remaining character")
+	instance.headless_advance(6.0, 0.05)
+	_assert_true(gs.is_downed("aster"),
+		"The noise consequence resolves through a visible listener strike, not a scripted HP mutation")
+	_assert_true(int(instance._damage_feedback_counts.get("aster:IMPACT", 0)) >= 1,
+		"The fatal listener strike uses the ordinary source-labelled damage feedback")
+
+	# Revision: bring both characters to the two marks. The same interaction now clears,
+	# opens collision, and advances only after its authored lift animation.
+	gs.restore_character("aster")
+	instance._rearm_wreckage_after_solo_failure()
+	for enemy in instance._wreckage_listeners:
+		if is_instance_valid(enemy):
+			enemy._change_state("idle")
+			gs.set_character_distracted(enemy.char_id, true)
+	_set_sequence_character_position(instance, "aster", anchor + Vector3(0.0, 0.0, -1.0))
+	_set_sequence_character_position(instance, "peris", anchor + Vector3(0.0, 0.0, 1.0))
+	instance._wreckage_interactable.set("active_character", "peris")
+	instance._wreckage_interactable.call("_trigger", false)
+	_assert_true(bool(instance.headless_get_state().get("wreckage_party_ready", false)) \
+		and bool(instance.headless_get_state().get("wreckage_cleared", false)),
+		"The revised two-person model clears the gate")
+	_assert_equals(gate_animation.current_animation if gate_animation != null else "", "clear_together",
+		"The two-person lift plays in the world rather than being described in a dialogue card")
+	await get_tree().process_frame
+	_assert_true(blocker == null or blocker.disabled,
+		"The clear animation removes the matching physical blocker")
+	instance.headless_advance(float(instance.WRECKAGE_CLEAR_SECONDS) + 0.1, 0.05)
+	_assert_equals(instance._current_step, "junction_arrive",
+		"Only the intact Aster-Peris pair reaches Endo's Junction")
 
 	if instance.has_method("_teardown_sequence"):
 		instance._teardown_sequence()
@@ -13638,6 +13824,13 @@ func _test_elevator() -> void:
 			"Rally keeps both opaque emissive escort faceplates visibly shut down")
 		_assert_true(not bool(instance._hud.get("_multi_select")),
 			"Rally tutorial leaves HUD multi-select disabled")
+		instance._reboot_active = true
+		instance._on_reboot()
+		_assert_equals(instance._current_step, "rally_tutorial",
+			"A stale guard-reboot callback cannot replace the Rally lesson")
+		_assert_true(not bool(instance._elevator_powered)
+				and str(instance._tutorial_prompt._label.text).contains("RALLY"),
+			"The Rally prompt and EMP-dark room remain truthful after a stale reboot callback")
 		var rally_selection_before: Array = instance._hud.get_selected_ids().duplicate()
 		_assert_equals(rally_selection_before.size(), 1,
 			"Rally tutorial keeps one active portrait selected")
@@ -13766,8 +13959,8 @@ func _test_elevator() -> void:
 				"Lower-route occlusion uses a coherent clip boundary under Aster's overlay")
 			var lower_lighting := instance.find_child("ElevatorLowerRouteLighting", true, false)
 			_assert_true(lower_lighting != null
-				and lower_lighting.find_children("*", "OmniLight3D", true, false).size() == 5,
-				"The lower route uses one authored five-pool lighting group")
+				and lower_lighting.find_children("*", "OmniLight3D", true, false).size() == 6,
+				"The lower route uses one authored six-pool lighting group, including the landing")
 			if lower_lighting != null:
 				var route_lights_ok := true
 				for route_light in lower_lighting.find_children("*", "OmniLight3D", true, false):
@@ -13963,18 +14156,35 @@ func _test_elevator() -> void:
 		_assert_elevator_movement_gate(instance, {
 			"label": "Route convergence gate",
 			"start_step": "route_choice",
-			"expected_step": "junction_arrive",
+			"expected_step": "route_choice",
 			"characters": [
 				{
 					"id": "aster",
 					"outside": Vector3(instance.ROUTES_CONVERGE.x - 4.0, instance.BELOW_Y + 0.5, 0.0),
 					"target": instance.ROUTES_CONVERGE + Vector3(0.5, 0.5, 0.0),
 				},
+				{
+					"id": "peris",
+					"outside": Vector3(instance.ROUTES_CONVERGE.x - 8.0, instance.BELOW_Y + 0.5, 4.0),
+					"target": Vector3(instance.ROUTES_CONVERGE.x - 7.0, instance.BELOW_Y + 0.5, 4.0),
+				},
 			],
 			"max_time": 3.0,
 		})
-		_assert_true(instance._game_state.get_position("aster").x > instance.ROUTES_CONVERGE.x - 2.0,
-			"Junction opens after Aster passes the enemy/hazard routes")
+		_assert_true(bool(instance.headless_get_state().get("wreckage_armed", false)),
+			"Finishing the environmental routes arms the authored wreckage interaction")
+		_assert_true(instance._chunks.has("below") and not instance._chunks.has("junction"),
+			"A lead unit cannot unload the hazardous hallway under a trailing partner")
+		var wreckage_anchor: Vector3 = instance._wreckage_interaction_anchor()
+		_set_sequence_character_position(instance, "aster", wreckage_anchor + Vector3(0.0, 0.0, -1.1))
+		_set_sequence_character_position(instance, "peris", wreckage_anchor + Vector3(0.0, 0.0, 1.1))
+		instance._wreckage_interactable.set("active_character", "aster")
+		instance._wreckage_interactable.call("_trigger", false)
+		_assert_true(bool(instance.headless_get_state().get("wreckage_cleared", false)),
+			"Aster and Peris together distribute the wreckage load")
+		instance.headless_advance(float(instance.WRECKAGE_CLEAR_SECONDS) + 0.1, 0.05)
+		_assert_equals(instance._current_step, "junction_arrive",
+			"The cleared two-person gate hands the intact pair to Endo's Junction")
 
 		for k in range(2):
 			await get_tree().process_frame
@@ -33556,6 +33766,20 @@ func _test_selection_controller() -> void:
 	sel.set_hud(hud)
 	sel.setup(gs, preview_root)
 	sel.set_camera(cam)
+	var hud_panel := PanelContainer.new()
+	hud_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	hud_panel.set_meta("blocks_world_commands", true)
+	var hud_copy := Label.new()
+	hud_copy.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud_panel.add_child(hud_copy)
+	_assert_true(sel._control_chain_blocks_command(hud_copy),
+		"COMMAND treats copy/layout children as HUD when a STOP panel owns them")
+	var decorative_copy := Label.new()
+	decorative_copy.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_assert_true(not sel._control_chain_blocks_command(decorative_copy),
+		"A genuinely unowned IGNORE control does not block world commands")
+	hud_panel.free()
+	decorative_copy.free()
 
 	var log_before := gs.event_log.size() if gs.event_log != null else 0
 
