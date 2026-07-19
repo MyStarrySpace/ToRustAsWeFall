@@ -12,6 +12,7 @@ const PORTABLE_SCENES := [
 	"res://scenes/props/peris/logbook_console.tscn",
 	"res://scenes/props/peris/care_field_kit.tscn",
 	"res://scenes/props/peris/monos_portal_room_visual.tscn",
+	"res://scenes/props/peris/plant_table.tscn",
 ]
 const MIN_FURNITURE_CLEARANCE := 0.08
 
@@ -33,12 +34,11 @@ func _init() -> void:
 	_check(str(room.get_meta("layout_contract", "")) == "peris_ordered_grid_v1",
 		"Peris room declares its ordered grid layout")
 	var problems: Array = room.call("get_room_layout_problems")
-	_check(problems.is_empty(), "Peris marker layout validates clean: %s" % problems)
+	_check(problems.is_empty(), "Peris marker layout validates clean: %s" % [problems])
 	_check_furniture_clearance(room)
-	_check_floor_plant_clearance(room)
-	var couch_anchor := room.find_child("CouchAnchor", true, false) as Node3D
-	_check(couch_anchor != null and absf(couch_anchor.rotation.y) <= 0.001,
-		"The couch is oriented west toward the portal")
+	_check_removed_composition(room)
+	_check_plant_tables(room)
+	_check_portal_layer_separation(room)
 	for scene_path in PORTABLE_SCENES:
 		_check_portable_scene(scene_path)
 	room.queue_free()
@@ -64,20 +64,52 @@ func _check_furniture_clearance(room: Node) -> void:
 					a_name, b_name, MIN_FURNITURE_CLEARANCE, overlap_x, overlap_z])
 
 
-func _check_floor_plant_clearance(room: Node) -> void:
-	var binder = room._room_binder
-	for plant_name in ["Plant7", "Plant9"]:
-		var plant_node := room.find_child(plant_name, true, false) as Node3D
-		var plant := _node_aabb(plant_node)
-		print("[PERIS AABB] %s center=%s size=%s" % [plant_name, plant.get_center(), plant.size])
-		for raw_name in room.ROOM_OCCUPANTS:
-			var furniture_name := str(raw_name)
-			var furniture: AABB = binder.object_aabb(furniture_name)
-			var overlap_x := minf(plant.end.x, furniture.end.x) - maxf(plant.position.x, furniture.position.x)
-			var overlap_z := minf(plant.end.z, furniture.end.z) - maxf(plant.position.z, furniture.position.z)
+func _check_removed_composition(room: Node) -> void:
+	for node_name in ["couch", "Plush_Bear", "PlantStand"]:
+		var obsolete := room.find_child(node_name, true, false) as Node3D
+		_check(obsolete == null or not obsolete.is_visible_in_tree(),
+			"%s is removed from the live room composition" % node_name)
+
+
+func _check_plant_tables(room: Node) -> void:
+	var plant_bounds: Array[AABB] = []
+	for i in range(1, 10):
+		var table := room.find_child("Plant%dTable" % i, true, false) as Node3D
+		var plant := room.find_child("Plant%d" % i, true, false) as Node3D
+		var marker := room.find_child("Plant%dTableAnchor" % i, true, false) as Node3D
+		_check(table != null and plant != null and marker != null,
+			"Plant%d has its own authored table and marker" % i)
+		if table == null or plant == null or marker == null:
+			continue
+		_check(table.global_position.is_equal_approx(marker.global_position),
+			"Plant%d table follows its grid marker" % i)
+		var table_bounds := _node_aabb(table)
+		var plant_box := _node_aabb(plant)
+		plant_bounds.append(plant_box)
+		_check(absf(plant.global_position.y - table_bounds.end.y) <= 0.015,
+			"Plant%d pot rests on its own table" % i)
+		_check(absf(table.global_position.x / room.ROOM_GRID_STEP - roundf(table.global_position.x / room.ROOM_GRID_STEP)) <= 0.001
+			and absf(table.global_position.z / room.ROOM_GRID_STEP - roundf(table.global_position.z / room.ROOM_GRID_STEP)) <= 0.001,
+			"Plant%d table is aligned to the room grid" % i)
+	for i in range(plant_bounds.size()):
+		for j in range(i + 1, plant_bounds.size()):
+			var a := plant_bounds[i]
+			var b := plant_bounds[j]
+			var overlap_x := minf(a.end.x, b.end.x) - maxf(a.position.x, b.position.x)
+			var overlap_z := minf(a.end.z, b.end.z) - maxf(a.position.z, b.position.z)
 			_check(overlap_x <= 0.0 or overlap_z <= 0.0,
-				"floor-standing %s does not clip %s (overlap %.2f, %.2f)" % [
-					plant_name, furniture_name, overlap_x, overlap_z])
+				"Plant%d and Plant%d canopies do not clip" % [i + 1, j + 1])
+
+
+func _check_portal_layer_separation(room: Node) -> void:
+	var glow := room.find_child("PortalGlowSurface", true, false) as MeshInstance3D
+	var view := room.find_child("PortalViewSurface", true, false) as MeshInstance3D
+	_check(glow != null and view != null, "Portal glow and live view surfaces exist")
+	if glow == null or view == null:
+		return
+	var glow_box := glow.global_transform * glow.mesh.get_aabb()
+	_check(view.global_position.x - glow_box.end.x >= 0.02,
+		"Portal live view keeps a depth gap from the transparent glow")
 
 
 func _node_aabb(root: Node3D) -> AABB:
@@ -106,12 +138,13 @@ func _check_portable_scene(scene_path: String) -> void:
 	var mesh_count := 0
 	for node in instance.find_children("*", "MeshInstance3D", true, false):
 		var mesh := (node as MeshInstance3D).mesh
+		var node_label := "%s:%s" % [scene_path, str(node.name)]
 		mesh_count += 1
-		_check(mesh is ArrayMesh, "%s uses an imported ArrayMesh" % node.get_path())
+		_check(mesh is ArrayMesh, "%s uses an imported ArrayMesh" % node_label)
 		if mesh is ArrayMesh:
 			var arrays := mesh.surface_get_arrays(0)
 			_check(not (arrays[Mesh.ARRAY_TEX_UV] as PackedVector2Array).is_empty(),
-				"%s has editable UVs" % node.get_path())
+				"%s has editable UVs" % node_label)
 	_check(mesh_count > 0, "%s contains visible imported geometry" % scene_path)
 	instance.free()
 

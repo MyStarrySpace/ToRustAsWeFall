@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=18 format=3]
 
 [sub_resource type="CylinderMesh" id="WateringCanBodyMesh"]
 top_radius = 0.12
@@ -32,6 +32,12 @@ size = Vector3(0.42, 0.22, 0.28)
 
 [sub_resource type="BoxMesh" id="CareKitClaspMesh"]
 size = Vector3(0.09, 0.08, 0.04)
+
+[sub_resource type="BoxMesh" id="PlantTableTopMesh"]
+size = Vector3(0.65, 0.08, 0.65)
+
+[sub_resource type="BoxMesh" id="PlantTableLegMesh"]
+size = Vector3(0.08, 0.52, 0.08)
 
 [sub_resource type="BoxMesh" id="PortalRoomFloorMesh"]
 size = Vector3(8, 0.2, 8)
@@ -94,6 +100,26 @@ mesh = SubResource("CareKitCaseMesh")
 position = Vector3(0, 0, 0.16)
 mesh = SubResource("CareKitClaspMesh")
 
+[node name="PlantTableTop" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.56, 0)
+mesh = SubResource("PlantTableTopMesh")
+
+[node name="PlantTableLegNW" type="MeshInstance3D" parent="."]
+position = Vector3(-0.24, 0.26, -0.24)
+mesh = SubResource("PlantTableLegMesh")
+
+[node name="PlantTableLegNE" type="MeshInstance3D" parent="."]
+position = Vector3(0.24, 0.26, -0.24)
+mesh = SubResource("PlantTableLegMesh")
+
+[node name="PlantTableLegSW" type="MeshInstance3D" parent="."]
+position = Vector3(-0.24, 0.26, 0.24)
+mesh = SubResource("PlantTableLegMesh")
+
+[node name="PlantTableLegSE" type="MeshInstance3D" parent="."]
+position = Vector3(0.24, 0.26, 0.24)
+mesh = SubResource("PlantTableLegMesh")
+
 [node name="PortalRoomFloor" type="MeshInstance3D" parent="."]
 position = Vector3(0, -0.1, 0)
 mesh = SubResource("PortalRoomFloorMesh")
@@ -107,9 +133,9 @@ position = Vector3(-3.6, 1.8, 0)
 mesh = SubResource("PortalRoomSideWallMesh")
 
 [node name="MonosPortalBody" type="MeshInstance3D" parent="."]
-position = Vector3(0, 0.85, 0)
+position = Vector3(0, 0.85, -1.2)
 mesh = SubResource("MonosBodyMesh")
 
 [node name="MonosPortalHead" type="MeshInstance3D" parent="."]
-position = Vector3(0, 1.62, 0)
+position = Vector3(0, 1.62, -1.2)
 mesh = SubResource("MonosHeadMesh")

@@ -8,19 +8,23 @@ static var _visit_phase := 1
 
 const PLACEMENT_ROOT := "ScenePlacement"
 const ROOM_OCCUPANTS := [
-	"Portal", "Kiosk", "PlantStand", "Armchair", "CoffeeTable",
-	"Bookshelf", "bench", "couch",
+	"Portal", "Kiosk", "Armchair", "CoffeeTable", "Bookshelf", "bench",
 ]
 const REQUIRED_ROOM_MARKERS := [
-	"PortalAnchor", "KioskAnchor", "PlantStandAnchor", "ArmchairAnchor",
-	"CoffeeTableAnchor", "BookshelfAnchor", "BenchAnchor", "CouchAnchor",
+	"PortalAnchor", "KioskAnchor", "ArmchairAnchor",
+	"CoffeeTableAnchor", "BookshelfAnchor", "BenchAnchor",
 	"RugAnchor", "WallArtAnchor", "PerisStart", "MonosStart", "PortalStand",
-	"WateringCanAnchor", "FernAnchor", "BookshelfPlantsZoneMarker",
-	"PlantStandZoneMarker", "CoffeeTablePlantsZoneMarker", "PeaceLilyAnchor",
+	"WateringCanAnchor",
 	"PaintingZoneMarker", "WellnessZoneMarker", "StrikeWarningZoneMarker",
-	"LogbookConsoleAnchor", "LogbookGateMarker", "BookshelfPlantsApproach",
-	"WellnessTerminalAnchor", "StrikeNoticeAnchor", "PlantStandApproach",
-	"CoffeeTableApproach", "PaintingApproach", "WellnessApproach", "StrikeWarningApproach",
+	"LogbookConsoleAnchor", "LogbookGateMarker",
+	"WellnessTerminalAnchor", "StrikeNoticeAnchor",
+	"PaintingApproach", "WellnessApproach", "StrikeWarningApproach",
+	"Plant1TableAnchor", "Plant2TableAnchor", "Plant3TableAnchor",
+	"Plant4TableAnchor", "Plant5TableAnchor", "Plant6TableAnchor",
+	"Plant7TableAnchor", "Plant8TableAnchor", "Plant9TableAnchor",
+	"Plant1Approach", "Plant2Approach", "Plant3Approach",
+	"Plant4Approach", "Plant5Approach", "Plant6Approach",
+	"Plant7Approach", "Plant8Approach", "Plant9Approach",
 ]
 const ROOM_GRID_STEP := 0.5
 # Wall-mounted assets still snap along the floor-plan axis, while their other
@@ -62,20 +66,15 @@ var _fern_exploration_interactable
 var _fern_outline_target
 var _plant_watered := false
 var _explore_time_elapsed := false
-const WATERING_CAN_POS := Vector3(11.0, 2.057, 1.0)  # upper shelf, snapped in X/Z to the room plan
-const FERN_POS := Vector3(4.5, 0.0, 5.0)  # Plant7 anchors the ordered south care row
+const WATERING_CAN_POS := Vector3(11.5, 2.057, 1.0)  # upper shelf, snapped in X/Z to the room plan
+const FERN_POS := Vector3(7.0, 0.0, 5.0)  # Plant7 anchors the ordered south care row
 # The watering beat drives the player to the dry fern; the input playthrough drives this point.
 const DRY_PLANT_POS := FERN_POS
 
-## Furniture surfaces MEASURED from the loaded room models (probe 2026-07-11). These defaults are
-## refreshed from the authored furniture markers after layout, so furniture, surface rectangles, and
-## every procedural plant move together. The peris-sim test verifies each Y against a live witness prop.
-var PERIS_SURFACES := {
-	"stand": {"y": 1.295, "rect": [1.13, 4.55, 2.01, 5.45]},         # PlantStand top
-	"table": {"y": 0.805, "rect": [6.13, 2.47, 7.88, 3.53]},         # CoffeeTable top
-	"shelf_low": {"y": 1.295, "rect": [10.95, 0.61, 13.05, 1.37]},   # Bookshelf lower board (Jar base)
-	"shelf_high": {"y": 2.057, "rect": [10.95, 0.61, 13.05, 1.37]},  # Bookshelf photo board (Photo base)
-}
+## Every plant owns a portable 0.6 m-high table and its own readable interaction
+## position. These runtime surfaces are refreshed from the authored table markers,
+## keeping the visual, interaction, and grid contracts on the same source of truth.
+var PERIS_SURFACES := {}
 
 # Exploration beat (phase 1, pre-Monos-arrival)
 var _explore_logbook_gate  # Interactable at the logbook
@@ -90,11 +89,11 @@ var _explore_gate_fired := false
 # or duplicating any room object.
 const CARE_CONTEXT_REQUIRED := ["plant", "painting", "wellness", "strike_warning"]
 const CARE_CONTEXT_PLANT_BRANCHES := [
-	"BookshelfPlantsZone",
-	"PlantStandZone",
-	"CoffeeTablePlantsZone",
-	"FernZone",
-	"PeaceLilyZone",
+	"shelf",
+	"survivor",
+	"client",
+	"fern",
+	"peace",
 ]
 
 # A first read now covers every distinct room-context station. The second pass is
@@ -162,11 +161,11 @@ const CARE_AUDIT_FINAL_CASES := {
 	},
 }
 const CARE_AUDIT_EVIDENCE_SOURCES := {
-	"bookshelf": {"zone": "BookshelfPlantsZone", "targets": ["Plant1Outline", "Plant2Outline", "Plant5Outline"], "label": "BOOKSHELF PLANTS"},
-	"stand": {"zone": "PlantStandZone", "targets": ["Plant4Outline", "Plant6Outline"], "label": "SURVIVOR PLANTS"},
-	"coffee": {"zone": "CoffeeTablePlantsZone", "targets": ["Plant3Outline", "Plant8Outline"], "label": "CLIENT PLANTS"},
-	"fern": {"zone": "FernZone", "targets": ["Plant7Outline"], "label": "WATERING LOG"},
-	"peace": {"zone": "PeaceLilyZone", "targets": ["Plant9Outline"], "label": "LEGACY PLANT"},
+	"bookshelf": {"zone": "Plant1Zone", "targets": ["Plant1Outline", "Plant2Outline", "Plant5Outline"], "label": "BOOKSHELF PLANTS"},
+	"stand": {"zone": "Plant4Zone", "targets": ["Plant4Outline", "Plant6Outline"], "label": "SURVIVOR PLANTS"},
+	"coffee": {"zone": "Plant3Zone", "targets": ["Plant3Outline", "Plant8Outline"], "label": "CLIENT PLANTS"},
+	"fern": {"zone": "Plant7Zone", "targets": ["Plant7Outline"], "label": "WATERING LOG"},
+	"peace": {"zone": "Plant9Zone", "targets": ["Plant9Outline"], "label": "LEGACY PLANT"},
 	"painting": {"zone": "PaintingZone", "targets": ["PaintingOutline"], "label": "WALL ART"},
 	"wellness": {"zone": "WellnessZone", "targets": ["WellnessOutline"], "label": "WELLNESS FEED"},
 	"strike": {"zone": "StrikeWarningZone", "targets": ["StrikeWarningOutline"], "label": "STRIKE WARNING"},
@@ -341,6 +340,7 @@ const STRIKE_NOTICE_SCENE := preload("res://scenes/props/peris/strike_notice.tsc
 const LOGBOOK_CONSOLE_SCENE := preload("res://scenes/props/peris/logbook_console.tscn")
 const CARE_FIELD_KIT_SCENE := preload("res://scenes/props/peris/care_field_kit.tscn")
 const MONOS_PORTAL_ROOM_VISUAL_SCENE := preload("res://scenes/props/peris/monos_portal_room_visual.tscn")
+const PLANT_TABLE_SCENE := preload("res://scenes/props/peris/plant_table.tscn")
 
 
 ## The scene's Marker3Ds are the editable floor plan. Constants above are only
@@ -369,19 +369,22 @@ func _set_interaction_approach(interactable: Node, marker_name: String, fallback
 
 
 func _refresh_peris_surfaces() -> void:
-	var stand := _layout_position("PlantStandAnchor", Vector3(1.5, 0.0, 5.0))
-	var table := _layout_position("CoffeeTableAnchor", Vector3(7.0, 0.0, 3.0))
-	var shelf := _layout_position("BookshelfAnchor", Vector3(12.0, 0.0, 1.0))
-	PERIS_SURFACES = {
-		"stand": {"y": stand.y + 1.295,
-			"rect": [stand.x - 0.37, stand.z - 0.45, stand.x + 0.51, stand.z + 0.45]},
-		"table": {"y": table.y + 0.805,
-			"rect": [table.x - 0.87, table.z - 0.53, table.x + 0.88, table.z + 0.53]},
-		"shelf_low": {"y": shelf.y + 1.295,
-			"rect": [shelf.x - 1.05, shelf.z - 0.39, shelf.x + 1.05, shelf.z + 0.37]},
-		"shelf_high": {"y": shelf.y + 2.057,
-			"rect": [shelf.x - 1.05, shelf.z - 0.39, shelf.x + 1.05, shelf.z + 0.37]},
-	}
+	PERIS_SURFACES.clear()
+	var fallbacks := _plant_table_fallback_positions()
+	for i in range(9):
+		var table := _layout_position("Plant%dTableAnchor" % (i + 1), fallbacks[i])
+		PERIS_SURFACES["plant_%d" % (i + 1)] = {
+			"y": table.y + 0.6,
+			"rect": [table.x - 0.325, table.z - 0.325, table.x + 0.325, table.z + 0.325],
+		}
+
+
+func _plant_table_fallback_positions() -> Array[Vector3]:
+	return [
+		Vector3(1.0, 0.0, 5.0), Vector3(2.5, 0.0, 5.0), Vector3(4.0, 0.0, 5.0),
+		Vector3(5.5, 0.0, 5.0), Vector3(8.5, 0.0, 5.0), Vector3(10.0, 0.0, 5.0),
+		FERN_POS, Vector3(11.5, 0.0, 5.0), Vector3(13.0, 0.0, 5.0),
+	]
 
 
 # --- Virtual method overrides ---
@@ -799,7 +802,7 @@ func _care_minimum_route(
 func _care_logbook_contract_position() -> Vector3:
 	if _explore_logbook_gate != null and is_instance_valid(_explore_logbook_gate):
 		return _explore_logbook_gate.global_position
-	return _layout_position("LogbookGateMarker", Vector3(12.0, 0.0, 3.0))
+	return _layout_position("LogbookGateMarker", Vector3(12.5, 0.0, 3.5))
 
 func _care_audit_evidence_contract_position(evidence_id: String) -> Vector3:
 	var live = _care_audit_evidence_interactables.get(evidence_id)
@@ -1027,15 +1030,15 @@ func _show_care_context_progress_hint() -> void:
 
 func _care_context_plant_label(branch_id: String) -> String:
 	match branch_id:
-		"BookshelfPlantsZone":
+		"shelf":
 			return "bookshelf plants"
-		"PlantStandZone":
+		"survivor":
 			return "survivor plants"
-		"CoffeeTablePlantsZone":
+		"client":
 			return "client plants"
-		"FernZone":
+		"fern":
 			return "watering fern"
-		"PeaceLilyZone":
+		"peace":
 			return "legacy lily"
 		_:
 			return branch_id
@@ -1941,23 +1944,29 @@ func _relayout_room(root: Node) -> void:
 	_room_layout_problems.clear()
 	_place_assembly(root, "Portal", "PortalAnchor", PORTAL_PANEL, 90.0, ["Portal"])
 	_place_assembly(root, "Kiosk", "KioskAnchor", DESK_POS, 90.0, ["Kiosk"])
-	_place_assembly(root, "PlantStand", "PlantStandAnchor", Vector3(1.5, 0.0, 5.0), 0.0,
-		["PlantStand"])
 	_place_assembly(root, "Armchair", "ArmchairAnchor", Vector3(4.0, 0.0, 3.0), 0.0,
 		["Armchair", "Plush_Cat"])
 	_place_assembly(root, "CoffeeTable", "CoffeeTableAnchor", Vector3(7.0, 0.0, 3.0), 0.0,
 		["CoffeeTable", "Mug_Teal", "Mug_Cream", "CupSaucer"])
-	_place_assembly(root, "Bookshelf", "BookshelfAnchor", Vector3(12.0, 0.0, 1.0), 0.0,
+	_place_assembly(root, "Bookshelf", "BookshelfAnchor", Vector3(12.5, 0.0, 1.0), 0.0,
 		["Bookshelf", "Jar", "BookStack", "Photo"])
 	_place_assembly(root, "bench", "BenchAnchor", Vector3(5.5, 0.5, 1.0), 90.0, ["bench"])
-	_place_assembly(root, "couch", "CouchAnchor", Vector3(9.5, 0.5, 1.0), 0.0,
-		["couch", "Plush_Bear"])
+	# The purple couch and legacy plant stand fought the room's ordered layout. Keep
+	# their imported source editable, but remove them from this authored composition.
+	_hide_modeled_members(root, ["couch", "Plush_Bear", "PlantStand"])
 	_place_assembly(root, "Rug", "RugAnchor", Vector3(7.0, 0.03, 3.0), 0.0, ["Rug"])
 	_place_assembly(root, "WallArtFrame", "WallArtAnchor", Vector3(8.5, 3.5, 0.1), 0.0,
 		["WallArtFrame", "WallArt"])
 	_validate_room_plan()
 	for problem in _room_layout_problems:
 		push_warning("Peris room layout: %s" % problem)
+
+
+func _hide_modeled_members(root: Node, member_names: Array) -> void:
+	for raw_name in member_names:
+		var member := root.find_child(str(raw_name), true, false) as Node3D
+		if member != null:
+			member.visible = false
 
 
 func _place_assembly(
@@ -2105,9 +2114,10 @@ func _build_environment() -> void:
 func _build_portal() -> void:
 	# The modeled portal is on the WEST wall facing +X; the glow surface sits just in front of the panel.
 	var portal_panel := _layout_position("PortalAnchor", PORTAL_PANEL)
-	var portal_surface := portal_panel + PORTAL_FACE * 0.12
+	var portal_surface := portal_panel + PORTAL_FACE * 0.10
 
 	_portal_visual = MeshInstance3D.new()
+	_portal_visual.name = "PortalGlowSurface"
 	var pv := BoxMesh.new()
 	pv.size = Vector3(0.06, 2.0, 0.9)   # thin along X — the panel faces +X
 	_portal_visual.mesh = pv
@@ -2190,7 +2200,7 @@ func _build_portal_view() -> void:
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_portal_view_surface.material_override = mat
 	# Just in front of the panel; the quad's +Z normal rotated to PORTAL_FACE (+X) faces the room.
-	_portal_view_surface.position = _layout_position("PortalAnchor", PORTAL_PANEL) + PORTAL_FACE * 0.14
+	_portal_view_surface.position = _layout_position("PortalAnchor", PORTAL_PANEL) + PORTAL_FACE * 0.16
 	_portal_view_surface.rotation = Vector3(0.0, deg_to_rad(90.0), 0.0)
 	add_child(_portal_view_surface)
 
@@ -2315,78 +2325,60 @@ func _make_peris_plant(parent: Node3D, pos: Vector3, species: String, target_hei
 	return root
 
 func _build_peris_plants(parent: Node3D) -> void:
-	# Potted plants sit ON their furniture at the MEASURED surface heights (PERIS_SURFACES): small
-	# pots across the two bookshelf boards, the coffee table (clear of the modeled mugs) and the
-	# plant stand. Only the Boston fern (Plant7, the watering target — a walk-up beat) and the big
-	# peace lily stand on the floor, deliberately. Furniture-mates SHARE one walk-to inspection
-	# zone that advances through their lines on repeat clicks (per-plant zones could not keep the
-	# 2.8 m inspectable spacing once the pots clustered onto shared surfaces); every pot still
-	# carries its OWN outline target, delegating to its furniture's zone.
-	var stand_anchor := _layout_position("PlantStandAnchor", Vector3(1.5, 0.0, 5.0))
-	var table_anchor := _layout_position("CoffeeTableAnchor", Vector3(7.0, 0.0, 3.0))
-	var shelf_anchor := _layout_position("BookshelfAnchor", Vector3(12.0, 0.0, 1.0))
-	var fern_pos := _layout_position("FernAnchor", FERN_POS)
-	var peace_lily_pos := _layout_position("PeaceLilyAnchor", Vector3(10.0, 0.0, 5.0))
-	var plants := [  # [surface key ("" = floor), xz, species, target height]
-		["shelf_low", Vector2(shelf_anchor.x + 0.75, shelf_anchor.z - 0.01), "spider", 0.55], # Plant1
-		["shelf_high", Vector2(shelf_anchor.x + 0.75, shelf_anchor.z - 0.01), "calathea", 0.50], # Plant2
-		["table", Vector2(table_anchor.x - 0.55, table_anchor.z + 0.30), "haworthia", 0.32], # Plant3
-		["stand", Vector2(stand_anchor.x - 0.15, stand_anchor.z - 0.15), "jade", 0.62],  # Plant4
-		["shelf_low", Vector2(shelf_anchor.x, shelf_anchor.z - 0.01), "jasmine", 0.55], # Plant5
-		["stand", Vector2(stand_anchor.x + 0.22, stand_anchor.z + 0.13), "pothos", 0.55], # Plant6
-		["", Vector2(fern_pos.x, fern_pos.z), "boston_fern", 0.9],  # Plant7 — broad, but clear of the seating lane
-		["table", Vector2(table_anchor.x + 0.12, table_anchor.z - 0.28), "pilea", 0.42], # Plant8
-		["", Vector2(peace_lily_pos.x, peace_lily_pos.z), "peace_lily", 1.4], # Plant9
+	# Each plant now owns a portable, UV-mapped table and a distinct interaction
+	# point. The five semantic care records remain grouped so the tutorial teaches
+	# the causal categories without requiring nine repetitive reads.
+	var plants := [ # species, target height, semantic context group
+		["spider", 0.55, "shelf"],
+		["calathea", 0.50, "shelf"],
+		["haworthia", 0.32, "client"],
+		["jade", 0.62, "survivor"],
+		["jasmine", 0.55, "shelf"],
+		["pothos", 0.55, "survivor"],
+		["boston_fern", 0.90, "fern"],
+		["pilea", 0.42, "client"],
+		["peace_lily", 1.40, "peace"],
 	]
-	var plant_targets: Array = []
+	var fallbacks := _plant_table_fallback_positions()
 	for i in range(plants.size()):
-		var p: Array = plants[i]
-		var skey: String = p[0]
-		var xz: Vector2 = p[1]
-		var y := 0.0 if skey == "" else float((PERIS_SURFACES[skey] as Dictionary)["y"])
-		var plant_node := _make_peris_plant(parent, Vector3(xz.x, y, xz.y), str(p[2]), float(p[3]))
-		plant_node.name = "Plant%d" % (i + 1)
-		plant_targets.append(_outline_object_meshes(parent, "Plant%dOutline" % (i + 1),
-			_collect_mesh_instances(plant_node), "peris_plant_%d" % (i + 1), 0.7))
-	# One inspection zone per furniture group / floor plant (floor spots, spaced >=2.8 m from every
-	# other inspectable — the --test-peris-sim spacing guard). Repeat clicks walk a shelf's lines.
-	var zone_defs := [  # [name, floor pos, plant indices (1-based, line order)]
-		["BookshelfPlantsZone", _layout_position("BookshelfPlantsZoneMarker", Vector3(13.5, 0, 0.5)), [1, 2, 5]],
-		["PlantStandZone", _layout_position("PlantStandZoneMarker", Vector3(1.5, 0, 5.0)), [4, 6]],
-		["CoffeeTablePlantsZone", _layout_position("CoffeeTablePlantsZoneMarker", Vector3(7.0, 0, 3.0)), [3, 8]],
-		["FernZone", Vector3(fern_pos.x, 0, fern_pos.z), [7]],
-		["PeaceLilyZone", Vector3(peace_lily_pos.x, 0, peace_lily_pos.z), [9]],
-	]
-	for zd_v in zone_defs:
-		var zd := zd_v as Array
-		var idxs: Array = zd[2]
+		var plant_number := i + 1
+		var table_pos := _layout_position("Plant%dTableAnchor" % plant_number, fallbacks[i])
+		var table := PLANT_TABLE_SCENE.instantiate() as Node3D
+		table.name = "Plant%dTable" % plant_number
+		table.position = table_pos
+		parent.add_child(table)
+		if _grid != null:
+			_grid.add_dynamic_blocker(_grid.world_to_grid(table_pos), "peris_plant_table_%d" % plant_number)
+
+		var surface: Dictionary = PERIS_SURFACES["plant_%d" % plant_number]
+		var definition: Array = plants[i]
+		var plant_node := _make_peris_plant(
+			parent,
+			Vector3(table_pos.x, float(surface["y"]), table_pos.z),
+			str(definition[0]),
+			float(definition[1])
+		)
+		plant_node.name = "Plant%d" % plant_number
+		var target := _outline_object_meshes(parent, "Plant%dOutline" % plant_number,
+			_collect_mesh_instances(plant_node), "peris_plant_%d" % plant_number, 0.7)
+
+		var zone_name := "Plant%dZone" % plant_number
 		var zone: Area3D
-		if idxs == [7]:  # the fern: the watering-tradition line advances to a follow-up on re-inspection
-			zone = _make_exploration_sequence_zone(parent, zd[1] as Vector3, str(zd[0]),
-				["peris.sim_expand.plant_7.line", "peris.sim_expand.plant_7.line_repeat"], 1.0, 0.6)
-		elif idxs.size() == 1:
-			zone = _make_exploration_zone(parent, zd[1] as Vector3, str(zd[0]),
-				"peris.sim_expand.plant_%d.line" % int(idxs[0]), 1.0, 0.6)
+		if plant_number == 7:
+			zone = _make_exploration_sequence_zone(parent, table_pos, zone_name,
+				["peris.sim_expand.plant_7.line", "peris.sim_expand.plant_7.line_repeat"], 0.7, 0.6)
 		else:
-			var keys: Array = []
-			for pi in idxs:
-				keys.append("peris.sim_expand.plant_%d.line" % int(pi))
-			zone = _make_exploration_sequence_zone(parent, zd[1] as Vector3, str(zd[0]), keys, 1.0, 0.6)
+			zone = _make_exploration_zone(parent, table_pos, zone_name,
+				"peris.sim_expand.plant_%d.line" % plant_number, 0.7, 0.6)
+		_set_interaction_approach(zone, "Plant%dApproach" % plant_number,
+			Vector3(table_pos.x, 0.0, table_pos.z - 1.0))
 		_exploration_interactables.append(zone)
-		_register_care_context_zone(zone, "plant", str(zd[0]))
-		match str(zd[0]):
-			"BookshelfPlantsZone":
-				_set_interaction_approach(zone, "BookshelfPlantsApproach", Vector3(13.0, 0, 2.0))
-			"PlantStandZone":
-				_set_interaction_approach(zone, "PlantStandApproach", Vector3(1.5, 0, 4.0))
-			"CoffeeTablePlantsZone":
-				_set_interaction_approach(zone, "CoffeeTableApproach", Vector3(5.5, 0, 3.0))
-		for pi2 in idxs:
-			var target = plant_targets[int(pi2) - 1]
-			_set_room_target_interaction_delegate(target, zone)
-			if int(pi2) == 7:
-				_fern_exploration_interactable = zone
-				_fern_outline_target = target
+		_register_care_context_zone(zone, "plant", str(definition[2]))
+		_set_room_target_interaction_delegate(target, zone)
+		if plant_number == 7:
+			_fern_exploration_interactable = zone
+			_fern_outline_target = target
+
 
 ## The watering can is a REAL item (spawn_item + pick_up_item), not a flag: the beat teaches the
 ## hand-slot inventory. The dry fern's water spot only accepts a character actually HOLDING it.
@@ -2394,7 +2386,7 @@ func _build_watering_beat(parent: Node3D) -> void:
 	# The can: a small kettle on the bookshelf, mirrored by a data-layer item. Separating it from
 	# the fern turns the beat back into an actual carry instead of two overlapping auto-dwells.
 	var can_pos := _layout_position("WateringCanAnchor", WATERING_CAN_POS)
-	var fern_pos := _layout_position("FernAnchor", FERN_POS)
+	var fern_pos := _layout_position("Plant7TableAnchor", FERN_POS)
 	_watering_can_mesh = WATERING_CAN_SCENE.instantiate() as Node3D
 	_watering_can_mesh.name = "WateringCan"
 	_watering_can_mesh.position = can_pos
@@ -2446,7 +2438,7 @@ func _on_plant_watered() -> void:
 	_plant_watered = true
 	_game_state.drop_item("peris", _watering_can_item_id)
 	if _watering_can_mesh != null:
-		_watering_can_mesh.position = _layout_position("FernAnchor", FERN_POS) + Vector3(0.5, 0.0, 0.3)
+		_watering_can_mesh.position = _layout_position("Plant7TableAnchor", FERN_POS) + Vector3(0.5, 0.6, 0.3)
 		_watering_can_mesh.visible = true
 	# The watering ACTION narration — Peris's habitual motion over the fern.
 	_show_thought(DialogueData.text("peris.sim_expand.plant_7.look"))
@@ -2510,16 +2502,16 @@ func _build_peris_wellness_feed(parent: Node3D) -> void:
 
 func _build_peris_strike_warning(parent: Node3D) -> void:
 	# Pinned to the modeled right wall (X~14), near the open front corner.
-	var pos := _layout_position("StrikeNoticeAnchor", Vector3(14.0, 2.0, 5.5))
+	var pos := _layout_position("StrikeNoticeAnchor", Vector3(14.0, 2.0, 2.5))
 	var notice := STRIKE_NOTICE_SCENE.instantiate() as Node3D
 	notice.position = pos
 	parent.add_child(notice)
 	var area := _make_exploration_zone(parent,
-		_layout_position("StrikeWarningZoneMarker", Vector3(13.5, 0, 5.5)),
+		_layout_position("StrikeWarningZoneMarker", Vector3(13.5, 0, 2.5)),
 		"StrikeWarningZone",
 		"",
 		1.0, 0.8)  # re-inspectable: re-opening the warning replays the document + Peris's line
-	_set_interaction_approach(area, "StrikeWarningApproach", Vector3(12.5, 0.0, 4.5))
+	_set_interaction_approach(area, "StrikeWarningApproach", Vector3(12.5, 0.0, 2.5))
 	_exploration_interactables.append(area)
 	area.connect("interacted", func():
 		_play_focused_dialogue_keys([
@@ -2534,10 +2526,22 @@ func _build_peris_strike_warning(parent: Node3D) -> void:
 
 func _build_peris_logbook_gate(parent: Node3D) -> void:
 	# Logbook is the gate to Monos — by the modeled bookshelf on the right side.
-	var pos := _layout_position("LogbookConsoleAnchor", Vector3(11.5, 0.9, 3.0))
+	var pos := _layout_position("LogbookConsoleAnchor", Vector3(13.0, 0.5, 3.5))
 	var console := LOGBOOK_CONSOLE_SCENE.instantiate() as Node3D
+	console.name = "CareLogbookConsole"
 	console.position = pos
 	parent.add_child(console)
+	var label := Label3D.new()
+	label.name = "CareLogbookLabel"
+	label.text = "CARE LOGBOOK"
+	label.font_size = 26
+	label.pixel_size = 0.006
+	label.modulate = Color(0.72, 0.92, 0.82, 0.9)
+	label.outline_modulate = Color(0.02, 0.03, 0.03, 0.9)
+	label.outline_size = 5
+	label.position = pos + Vector3(0.0, 0.72, 0.0)
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	parent.add_child(label)
 	var gate_pos := _layout_position("LogbookGateMarker", Vector3(pos.x + 0.7, 0, pos.z))
 	var gate := _create_interactable(parent, gate_pos, "LogbookGate", 1.6, 0.8,
 		"Continue", false, Interactable.InteractableType.HOLD_ACTION, "peris.logbook_gate")

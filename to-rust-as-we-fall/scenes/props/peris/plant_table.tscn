@@ -1,0 +1,17 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Mesh" path="res://resources/models/peris-sim/props/plant_table/plant_table.obj" id="1_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/peris-sim/props/plant_table/plant_table.png" id="2_texture"]
+
+[sub_resource type="StandardMaterial3D" id="TableMaterial"]
+albedo_texture = ExtResource("2_texture")
+roughness = 0.78
+texture_filter = 0
+
+[node name="PlantTable" type="Node3D"]
+metadata/editable_asset_root = "res://resources/models/peris-sim/props/plant_table"
+metadata/surface_height = 0.6
+
+[node name="Model" type="MeshInstance3D" parent="."]
+material_override = SubResource("TableMaterial")
+mesh = ExtResource("1_mesh")

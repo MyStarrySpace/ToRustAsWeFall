@@ -38,10 +38,10 @@ architecture preview/generation code remains the deterministic construction sour
 
 | Zone | Assets | Portable location |
 | --- | --- | --- |
-| Shell | floor, walls, room envelope, bench, couch | `resources/models/peris-sim/peris-sim.gltf` |
-| Furniture | portal, kiosk, plant stand, armchair, coffee table, bookshelf, rug, wall art and small decor | `resources/models/peris-sim/peris-furniture.gltf` |
+| Shell source | floor, walls, room envelope, bench, and retired couch geometry | `resources/models/peris-sim/peris-sim.gltf` |
+| Furniture source | portal, kiosk, retired plant stand, armchair, coffee table, bookshelf, rug, wall art and small decor | `resources/models/peris-sim/peris-furniture.gltf` |
 | Plants | nine individually editable plant models | `resources/models/peris-sim/plants/` |
-| Care props | watering can, wellness terminal, strike notice, logbook console, field kit | `resources/models/peris-sim/props/` |
+| Care props | watering can, wellness terminal, strike notice, labeled logbook console, field kit, and reusable plant table | `resources/models/peris-sim/props/` |
 | Portal view | connected-room shell and Monos figure | `resources/models/peris-sim/portal_room/` |
 
 The room layout lives in `scenes/tutorial/peris_sim.tscn`, not in scripted coordinates. Floor-plan
@@ -51,10 +51,10 @@ axis and retain only the shallow wall-clearance inset on the perpendicular axis.
 The organized plan is intentional character writing:
 
 - West wall: portal and wellness administration.
-- North wall: bench, couch facing west toward the portal, painting, and bookshelf records.
+- North wall: bench, painting, and bookshelf records; the purple couch is retired from the live layout.
 - Center: one coffee/care surface with an open circulation lane around it.
-- South row: plant care and warning evidence, with the floor fern kept clear of seating volumes.
-- East side: logbook handoff and strike notice.
+- South row: nine independently interactable plants, each on its own 0.5 m-grid-authored portable table.
+- East side: the labeled logbook is beside the shifted bookshelf; the strike notice is separated from Plant9.
 
 `verify_peris_room_assets.gd` checks real post-import AABBs, not only marker centers. This prevents a
 large plant canopy or odd DCC pivot from clipping furniture while still appearing grid-valid.
@@ -90,4 +90,5 @@ added to that queue: they must start as portable assets under `resources/models/
 The generated-asset guard requires every biome definition to declare its portable model list, ensures
 runtime landmark scenes contain external meshes instead of visible scene primitives, and verifies all
 17 canonical architecture manifests. The Peris guard additionally checks UV-bearing imported props,
-layout contracts, furniture clearance, floor-plant clearance, and couch facing.
+layout contracts, furniture clearance, individual plant-table support and canopy clearance, retired
+composition visibility, and a non-intersecting portal glow/live-view depth gap.

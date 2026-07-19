@@ -9737,11 +9737,11 @@ func _aster_realinput_beats(instance: Node) -> Dictionary:
 func _peris1_realinput_beats(instance: Node) -> Dictionary:
 	var beats := {}
 	var context_reads := [
-		{"category": "plant", "branch": "BookshelfPlantsZone", "target": "Plant1Outline"},
-		{"category": "plant", "branch": "PlantStandZone", "target": "Plant4Outline"},
-		{"category": "plant", "branch": "CoffeeTablePlantsZone", "target": "Plant3Outline"},
-		{"category": "plant", "branch": "FernZone", "target": "Plant7Outline"},
-		{"category": "plant", "branch": "PeaceLilyZone", "target": "Plant9Outline"},
+		{"category": "plant", "branch": "shelf", "target": "Plant1Outline"},
+		{"category": "plant", "branch": "survivor", "target": "Plant4Outline"},
+		{"category": "plant", "branch": "client", "target": "Plant3Outline"},
+		{"category": "plant", "branch": "fern", "target": "Plant7Outline"},
+		{"category": "plant", "branch": "peace", "target": "Plant9Outline"},
 		{"category": "painting", "branch": "painting", "target": "PaintingOutline"},
 		{"category": "wellness", "branch": "wellness", "target": "WellnessOutline"},
 		{"category": "strike_warning", "branch": "strike_warning", "target": "StrikeWarningOutline"},
@@ -11856,68 +11856,53 @@ func _test_peris_sim() -> void:
 			_assert_true(not DialogueData.has_key(retired_key),
 				"Retired Peris sim dialogue key is absent: %s" % retired_key)
 
-		# The room is DRESSED from the first frame: Peris's plants exist at scene BUILD (they used
-		# to pop in only when the workspace step fired, seconds into the fade) and every potted one
-		# sits ON its furniture at the MEASURED surface height — witnessed against live props (the
-		# jar/mug/photo bases prove the shelf/table tops, so a furniture re-export goes loud).
+		# The room is dressed from the first frame. Every plant has one portable,
+		# grid-authored table and rests on that table's measured mesh top.
 		for pi in range(1, 10):
-			_assert_true(instance.find_child("Plant%d" % pi, true, false) != null,
-				"Plant%d exists at scene build, before the workspace step" % pi)
-		var furn_root: Node = instance.find_child("RoomFurniture", true, false)
-		var witness_pairs := [
-			["stand", "PlantStand", "top"],
-			["table", "Mug_Teal", "base"],
-			["shelf_low", "Jar", "base"],
-			["shelf_high", "Photo", "base"],
-		]
-		for wp_v in witness_pairs:
-			var wp := wp_v as Array
-			var surf: Dictionary = instance.PERIS_SURFACES.get(str(wp[0]), {})
-			var bounds := _world_mesh_bounds(furn_root.find_child(str(wp[1]), true, false) if furn_root != null else null)
-			if surf.is_empty() or bounds.is_empty():
-				_assert_true(false, "surface '%s' + witness prop '%s' both exist" % [wp[0], wp[1]])
+			var plant := instance.find_child("Plant%d" % pi, true, false) as Node3D
+			var table := instance.find_child("Plant%dTable" % pi, true, false) as Node3D
+			var marker := instance.find_child("Plant%dTableAnchor" % pi, true, false) as Node3D
+			_assert_true(plant != null and table != null and marker != null,
+				"Plant%d has its own plant, portable table, and authored marker" % pi)
+			if plant == null or table == null or marker == null:
 				continue
-			var witness_y := float((bounds["max"] as Vector3).y) if str(wp[2]) == "top" else float((bounds["min"] as Vector3).y)
-			_assert_true(absf(float(surf["y"]) - witness_y) <= 0.03,
-				"measured surface '%s' (%.3f) matches its live witness prop %s (%.3f)" % [wp[0], float(surf["y"]), wp[1], witness_y])
-		var floor_standing := [7, 9]   # the watering fern + the big peace lily stand on the floor
-		for pi2 in range(1, 10):
-			var pn := instance.find_child("Plant%d" % pi2, true, false) as Node3D
-			if pn == null:
+			var surf: Dictionary = instance.PERIS_SURFACES.get("plant_%d" % pi, {})
+			var table_bounds := _world_mesh_bounds(table)
+			_assert_true(not surf.is_empty() and not table_bounds.is_empty(),
+				"Plant%d table exposes a measured support surface" % pi)
+			if surf.is_empty() or table_bounds.is_empty():
 				continue
-			if pi2 in floor_standing:
-				_assert_true(pn.position.y < 0.1,
-					"Plant%d stays deliberately floor-standing" % pi2)
-				continue
-			var on_surface := false
-			for sk in (instance.PERIS_SURFACES as Dictionary):
-				var sd: Dictionary = instance.PERIS_SURFACES[sk]
-				var r: Array = sd["rect"]
-				if absf(pn.position.y - float(sd["y"])) <= 0.01 \
-						and pn.position.x >= float(r[0]) - 0.02 and pn.position.x <= float(r[2]) + 0.02 \
-						and pn.position.z >= float(r[1]) - 0.02 and pn.position.z <= float(r[3]) + 0.02:
-					on_surface = true
-			_assert_true(on_surface,
-				"Plant%d sits ON a measured furniture surface (y=%.2f)" % [pi2, pn.position.y])
+			var table_top := float((table_bounds["max"] as Vector3).y)
+			var rect: Array = surf["rect"]
+			_assert_true(table.global_position.is_equal_approx(marker.global_position),
+				"Plant%d table follows its authored grid marker" % pi)
+			_assert_true(absf(float(surf["y"]) - table_top) <= 0.015,
+				"Plant%d support height matches the live table top" % pi)
+			_assert_true(absf(plant.position.y - table_top) <= 0.015
+				and plant.position.x >= float(rect[0]) and plant.position.x <= float(rect[2])
+				and plant.position.z >= float(rect[1]) and plant.position.z <= float(rect[3]),
+				"Plant%d rests on its own table surface" % pi)
+			var table_cell: Vector2i = instance._grid.world_to_grid(table.global_position)
+			_assert_true(not instance._grid.is_walkable(table_cell.x, table_cell.y),
+				"Plant%d table blocks walking through its footprint" % pi)
+		for removed_name in ["couch", "Plush_Bear", "PlantStand"]:
+			var removed := instance.find_child(removed_name, true, false) as Node3D
+			_assert_true(removed == null or not removed.is_visible_in_tree(),
+				"%s is absent from the live room composition" % removed_name)
 
 		instance._visit_phase = 1
 		instance._start_workspace()
 		for i in range(2):
 			await get_tree().process_frame
 
-		# Furniture-mates share one walk-to zone (plants clustered on real surfaces can't carry
-		# per-plant zones at the 2.8 m spacing); floor plants + fixtures keep their own.
-		var peris_explore_zones := [
-			"BookshelfPlantsZone",
-			"PlantStandZone",
-			"CoffeeTablePlantsZone",
-			"FernZone",
-			"PeaceLilyZone",
-			"PaintingZone",
-			"WellnessZone",
-			"StrikeWarningZone",
-			"LogbookGate",
-		]
+		# Each table owns a plant interaction. The independent volumes remain far
+		# enough apart to avoid ambiguous click/proximity ownership.
+		var peris_explore_zones := []
+		for plant_index in range(1, 10):
+			peris_explore_zones.append("Plant%dZone" % plant_index)
+		peris_explore_zones.append_array([
+			"PaintingZone", "WellnessZone", "StrikeWarningZone", "LogbookGate",
+		])
 		for zone_name in peris_explore_zones:
 			# The logbook is intentionally dormant until watering plus all eight
 			# first-read records are complete.  The shared object contract still
@@ -11940,7 +11925,7 @@ func _test_peris_sim() -> void:
 				# instead of going silent — the same re-read affordance as Aster's monitor.
 				_assert_true(not bool(zone.get("one_shot")),
 					"%s is re-interactable (re-inspecting replays the line, not one-shot)" % zone_name)
-		_assert_interactable_spacing(instance, peris_explore_zones, 2.8,
+		_assert_interactable_spacing(instance, peris_explore_zones, 1.2,
 			"Peris exploration interactables are spaced apart")
 
 		# Exploration objects now carry the shared outline + surface-particle feedback.
@@ -11963,8 +11948,8 @@ func _test_peris_sim() -> void:
 					"%s builds object-local outline shells" % target_name)
 
 		var camera = instance.find_child("GameCamera", true, false)
-		# the bookshelf zone opens on its FIRST plant's line (plant_1, the spider up on the board)
-		var plant_zone := instance.find_child("BookshelfPlantsZone", true, false)
+		# Plant1 owns its own table and inspection point.
+		var plant_zone := instance.find_child("Plant1Zone", true, false)
 		if plant_zone != null and camera != null:
 			dialogue.clear()
 			_drive_interactable_zone(plant_zone, peris as Node3D, 1.0)
@@ -12210,17 +12195,17 @@ func _assert_aster_interaction_click_matrix(instance: Node, dialogue: Node) -> v
 	await _reset_dialogue_focus(instance, dialogue)
 
 func _assert_peris_interaction_click_matrix(instance: Node, dialogue: Node) -> void:
-	# Furniture-mates SHARE their walk-to zone: repeat clicks advance through each pot's line in
-	# order, so every plant line stays reachable from one spot per furniture piece.
+	# Every plant owns a distinct table, outline, walk-to point, and dialogue line.
 	var checks := [
-		{"target": "BookshelfPlantsZone", "lines": ["peris.sim_expand.plant_1.line",
-			"peris.sim_expand.plant_2.line", "peris.sim_expand.plant_5.line"]},
-		{"target": "PlantStandZone", "lines": ["peris.sim_expand.plant_4.line",
-			"peris.sim_expand.plant_6.line"]},
-		{"target": "CoffeeTablePlantsZone", "lines": ["peris.sim_expand.plant_3.line",
-			"peris.sim_expand.plant_8.line"]},
-		{"target": "FernZone", "lines": ["peris.sim_expand.plant_7.line"]},
-		{"target": "PeaceLilyZone", "lines": ["peris.sim_expand.plant_9.line"]},
+		{"target": "Plant1Zone", "lines": ["peris.sim_expand.plant_1.line"]},
+		{"target": "Plant2Zone", "lines": ["peris.sim_expand.plant_2.line"]},
+		{"target": "Plant3Zone", "lines": ["peris.sim_expand.plant_3.line"]},
+		{"target": "Plant4Zone", "lines": ["peris.sim_expand.plant_4.line"]},
+		{"target": "Plant5Zone", "lines": ["peris.sim_expand.plant_5.line"]},
+		{"target": "Plant6Zone", "lines": ["peris.sim_expand.plant_6.line"]},
+		{"target": "Plant7Zone", "lines": ["peris.sim_expand.plant_7.line"]},
+		{"target": "Plant8Zone", "lines": ["peris.sim_expand.plant_8.line"]},
+		{"target": "Plant9Zone", "lines": ["peris.sim_expand.plant_9.line"]},
 		{"target": "PaintingZone", "lines": ["peris.sim_expand.painting.line"]},
 		{"target": "WellnessZone", "lines": ["peris.sim_expand.wellness.line"]},
 		{"target": "StrikeWarningZone", "lines": ["peris.sim_expand.strike_warning.notification"]},

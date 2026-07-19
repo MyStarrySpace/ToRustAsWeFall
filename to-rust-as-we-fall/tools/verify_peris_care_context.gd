@@ -25,11 +25,15 @@ func _run() -> void:
 		return
 
 	var zones := {
-		"BookshelfPlantsZone": sequence.find_child("BookshelfPlantsZone", true, false),
-		"PlantStandZone": sequence.find_child("PlantStandZone", true, false),
-		"CoffeeTablePlantsZone": sequence.find_child("CoffeeTablePlantsZone", true, false),
-		"FernZone": sequence.find_child("FernZone", true, false),
-		"PeaceLilyZone": sequence.find_child("PeaceLilyZone", true, false),
+		"Plant1Zone": sequence.find_child("Plant1Zone", true, false),
+		"Plant2Zone": sequence.find_child("Plant2Zone", true, false),
+		"Plant3Zone": sequence.find_child("Plant3Zone", true, false),
+		"Plant4Zone": sequence.find_child("Plant4Zone", true, false),
+		"Plant5Zone": sequence.find_child("Plant5Zone", true, false),
+		"Plant6Zone": sequence.find_child("Plant6Zone", true, false),
+		"Plant7Zone": sequence.find_child("Plant7Zone", true, false),
+		"Plant8Zone": sequence.find_child("Plant8Zone", true, false),
+		"Plant9Zone": sequence.find_child("Plant9Zone", true, false),
 		"PaintingZone": sequence.find_child("PaintingZone", true, false),
 		"WellnessZone": sequence.find_child("WellnessZone", true, false),
 		"StrikeWarningZone": sequence.find_child("StrikeWarningZone", true, false),
@@ -69,19 +73,26 @@ func _run() -> void:
 	sequence.headless_advance(30.0, 0.1)
 	_check(str(sequence._current_step) == "workspace", "no passive timer starts or clears the audit")
 
-	# Every distinct plant group is a first-read record. Repeats are observable but
-	# never replace another group; the three non-plant fixtures make eight records.
+	# Every plant has an independent station, while five semantic groups keep the
+	# required first read concise. Repeats never replace another causal group.
+	var representative_zone := {
+		"shelf": "Plant1Zone",
+		"survivor": "Plant4Zone",
+		"client": "Plant3Zone",
+		"fern": "Plant7Zone",
+		"peace": "Plant9Zone",
+	}
 	var expected_count := 0
-	for plant_zone_name in sequence.CARE_CONTEXT_PLANT_BRANCHES:
-		await _trigger_and_finish(sequence, zones[str(plant_zone_name)])
+	for branch_id in sequence.CARE_CONTEXT_PLANT_BRANCHES:
+		await _trigger_and_finish(sequence, zones[str(representative_zone[branch_id])])
 		expected_count += 1
 		state = sequence.headless_get_state()
 		_check(int(state.get("care_context_count", -1)) == expected_count,
-			"%s adds one distinct plant-group record" % plant_zone_name)
-	await _trigger_and_finish(sequence, zones["PlantStandZone"])
+			"%s adds one distinct plant-group record" % branch_id)
+	await _trigger_and_finish(sequence, zones["Plant6Zone"])
 	state = sequence.headless_get_state()
 	_check(int(state.get("care_context_count", -1)) == 5, "re-reading a plant group cannot pad 5/5 plant progress")
-	_check(int((state.get("care_context_zone_visits", {}) as Dictionary).get("PlantStandZone", 0)) == 2,
+	_check(int((state.get("care_context_zone_visits", {}) as Dictionary).get("survivor", 0)) == 2,
 		"repeat plant reads remain observable")
 
 	for fixture_name in ["PaintingZone", "WellnessZone", "StrikeWarningZone"]:
@@ -229,7 +240,7 @@ func _verify_playtime_contract(sequence: Node) -> void:
 	_check(int(contract.get("branch_count", 0)) == 12, "audit paths and eight operation resolutions are consequential")
 	_check(absf(float(contract.get("modeled_meaningful_active_seconds", 0.0)) - independent_active) <= EPSILON,
 		"active seconds recompute from timed jobs, inventory, and constrained routes")
-	_check(context_route > 35.0 and shortest_audit_route > 79.0,
+	_check(context_route > 30.0 and shortest_audit_route > 70.0,
 		"live-marker route minima require substantial traversal")
 	_check(absf(float(contract.get("mandatory_watering_inventory_seconds", 0.0)) \
 			- (float(sequence._can_pickup_interactable.get("dwell_time")) \

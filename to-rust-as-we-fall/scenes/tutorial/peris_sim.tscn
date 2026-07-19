@@ -29,9 +29,6 @@ rotation = Vector3(0, 1.570796, 0)
 position = Vector3(1.5, 0, 1)
 rotation = Vector3(0, 1.570796, 0)
 
-[node name="PlantStandAnchor" type="Marker3D" parent="ScenePlacement/FurnitureMarkers"]
-position = Vector3(1.5, 0, 5)
-
 [node name="ArmchairAnchor" type="Marker3D" parent="ScenePlacement/FurnitureMarkers"]
 position = Vector3(4, 0, 3)
 
@@ -39,14 +36,11 @@ position = Vector3(4, 0, 3)
 position = Vector3(7, 0, 3)
 
 [node name="BookshelfAnchor" type="Marker3D" parent="ScenePlacement/FurnitureMarkers"]
-position = Vector3(12, 0, 1)
+position = Vector3(12.5, 0, 1)
 
 [node name="BenchAnchor" type="Marker3D" parent="ScenePlacement/FurnitureMarkers"]
 position = Vector3(5.5, 0.5, 1)
 rotation = Vector3(0, 1.570796, 0)
-
-[node name="CouchAnchor" type="Marker3D" parent="ScenePlacement/FurnitureMarkers"]
-position = Vector3(9.5, 0.5, 1)
 
 [node name="RugAnchor" type="Marker3D" parent="ScenePlacement/FurnitureMarkers"]
 position = Vector3(7, 0.03, 3)
@@ -68,22 +62,7 @@ position = Vector3(2.5, 0, 3)
 [node name="InteractableMarkers" type="Node3D" parent="ScenePlacement"]
 
 [node name="WateringCanAnchor" type="Marker3D" parent="ScenePlacement/InteractableMarkers"]
-position = Vector3(11, 2.057, 1)
-
-[node name="FernAnchor" type="Marker3D" parent="ScenePlacement/InteractableMarkers"]
-position = Vector3(4.5, 0, 5)
-
-[node name="BookshelfPlantsZoneMarker" type="Marker3D" parent="ScenePlacement/InteractableMarkers"]
-position = Vector3(13.5, 0, 0.5)
-
-[node name="PlantStandZoneMarker" type="Marker3D" parent="ScenePlacement/InteractableMarkers"]
-position = Vector3(1.5, 0, 5)
-
-[node name="CoffeeTablePlantsZoneMarker" type="Marker3D" parent="ScenePlacement/InteractableMarkers"]
-position = Vector3(7, 0, 3)
-
-[node name="PeaceLilyAnchor" type="Marker3D" parent="ScenePlacement/InteractableMarkers"]
-position = Vector3(10, 0, 5)
+position = Vector3(11.5, 2.057, 1)
 
 [node name="PaintingZoneMarker" type="Marker3D" parent="ScenePlacement/InteractableMarkers"]
 position = Vector3(8.5, 0, 0.5)
@@ -92,30 +71,21 @@ position = Vector3(8.5, 0, 0.5)
 position = Vector3(0.5, 0, 0.5)
 
 [node name="StrikeWarningZoneMarker" type="Marker3D" parent="ScenePlacement/InteractableMarkers"]
-position = Vector3(13.5, 0, 5.5)
+position = Vector3(13.5, 0, 2.5)
 
 [node name="LogbookConsoleAnchor" type="Marker3D" parent="ScenePlacement/InteractableMarkers"]
-position = Vector3(11.5, 0.9, 3)
+position = Vector3(13, 0.5, 3.5)
 
 [node name="LogbookGateMarker" type="Marker3D" parent="ScenePlacement/InteractableMarkers"]
-position = Vector3(12, 0, 3)
+position = Vector3(12.5, 0, 3.5)
 
 [node name="WellnessTerminalAnchor" type="Marker3D" parent="ScenePlacement/InteractableMarkers"]
 position = Vector3(0, 1.5, 0.5)
 
 [node name="StrikeNoticeAnchor" type="Marker3D" parent="ScenePlacement/InteractableMarkers"]
-position = Vector3(14, 2, 5.5)
+position = Vector3(14, 2, 2.5)
 
 [node name="ApproachMarkers" type="Node3D" parent="ScenePlacement"]
-
-[node name="BookshelfPlantsApproach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
-position = Vector3(13, 0, 2)
-
-[node name="PlantStandApproach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
-position = Vector3(1.5, 0, 4)
-
-[node name="CoffeeTableApproach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
-position = Vector3(5.5, 0, 3)
 
 [node name="PaintingApproach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
 position = Vector3(9, 0, 1.5)
@@ -124,4 +94,60 @@ position = Vector3(9, 0, 1.5)
 position = Vector3(2.5, 0, 1.5)
 
 [node name="StrikeWarningApproach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
-position = Vector3(12.5, 0, 4.5)
+position = Vector3(12.5, 0, 2.5)
+
+[node name="PlantTableMarkers" type="Node3D" parent="ScenePlacement"]
+
+[node name="Plant1TableAnchor" type="Marker3D" parent="ScenePlacement/PlantTableMarkers"]
+position = Vector3(1, 0, 5)
+
+[node name="Plant2TableAnchor" type="Marker3D" parent="ScenePlacement/PlantTableMarkers"]
+position = Vector3(2.5, 0, 5)
+
+[node name="Plant3TableAnchor" type="Marker3D" parent="ScenePlacement/PlantTableMarkers"]
+position = Vector3(4, 0, 5)
+
+[node name="Plant4TableAnchor" type="Marker3D" parent="ScenePlacement/PlantTableMarkers"]
+position = Vector3(5.5, 0, 5)
+
+[node name="Plant5TableAnchor" type="Marker3D" parent="ScenePlacement/PlantTableMarkers"]
+position = Vector3(8.5, 0, 5)
+
+[node name="Plant6TableAnchor" type="Marker3D" parent="ScenePlacement/PlantTableMarkers"]
+position = Vector3(10, 0, 5)
+
+[node name="Plant7TableAnchor" type="Marker3D" parent="ScenePlacement/PlantTableMarkers"]
+position = Vector3(7, 0, 5)
+
+[node name="Plant8TableAnchor" type="Marker3D" parent="ScenePlacement/PlantTableMarkers"]
+position = Vector3(11.5, 0, 5)
+
+[node name="Plant9TableAnchor" type="Marker3D" parent="ScenePlacement/PlantTableMarkers"]
+position = Vector3(13, 0, 5)
+
+[node name="Plant1Approach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
+position = Vector3(1, 0, 4)
+
+[node name="Plant2Approach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
+position = Vector3(2.5, 0, 4)
+
+[node name="Plant3Approach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
+position = Vector3(4, 0, 4)
+
+[node name="Plant4Approach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
+position = Vector3(5.5, 0, 4)
+
+[node name="Plant5Approach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
+position = Vector3(8.5, 0, 4)
+
+[node name="Plant6Approach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
+position = Vector3(10, 0, 4)
+
+[node name="Plant7Approach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
+position = Vector3(7, 0, 4)
+
+[node name="Plant8Approach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
+position = Vector3(11.5, 0, 4)
+
+[node name="Plant9Approach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
+position = Vector3(13, 0, 4)
