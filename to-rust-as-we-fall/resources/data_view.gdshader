@@ -26,13 +26,11 @@ float depth_to_ndc(float depth_raw) {
 }
 
 float geometry_at_depth(float depth_raw) {
-#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
-	// Compatibility uses conventional depth: the untouched background is 1.
-	return 1.0 - step(0.999999, depth_raw);
-#else
-	// Forward+/Mobile use reversed Z: the untouched background is 0.
-	return step(0.000001, depth_raw);
-#endif
+	// Godot's Web compatibility target can expose either conventional or
+	// reversed-Z clears depending on the browser/backend path. Treat BOTH exact
+	// depth extremes as untouched background; rendered geometry lies between
+	// them. This avoids compiling the wrong background convention into WebGL.
+	return step(0.000001, depth_raw) * (1.0 - step(0.999999, depth_raw));
 }
 
 void vertex() {
@@ -72,11 +70,17 @@ void fragment() {
 		// Geometry edges only. A screen-color Laplacian used to reinterpret every
 		// floor grate, dither texel, and iron-field material detail as geometry,
 		// producing dense white pixels and a large GPU cost in the lower route.
-		// Never ink the empty side of a silhouette. Camera-occlusion holes put
-		// geometry beside background pixels; treating those background pixels as
-		// drawable edges produced the giant white/cyan elevator boundary and the
-		// old dither produced a cloud of individual bright pixels.
-		float edge = depth_edge * geometry_at_depth(depth_raw);
+		// Never ink either side of a geometry-to-background silhouette. Camera-
+		// occlusion holes put an artificial background boundary through the room
+		// shell; checking only the centre pixel still drew that boundary on its
+		// geometry side as a giant cyan triangle. Requiring the four depth taps to
+		// contain geometry keeps real interior depth breaks while rejecting the
+		// synthetic cut edge (and the viewport's outer void).
+		float neighbor_geometry = geometry_at_depth(dl)
+			* geometry_at_depth(dr)
+			* geometry_at_depth(du)
+			* geometry_at_depth(dd);
+		float edge = depth_edge * geometry_at_depth(depth_raw) * neighbor_geometry;
 
 		// Data view: near-black base with bright edge lines
 		vec3 data = vec3(0.01, 0.012, 0.02) + edge * edge_color;

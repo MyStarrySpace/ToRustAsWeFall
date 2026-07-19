@@ -12456,6 +12456,12 @@ func _test_elevator_bridge_collapse() -> void:
 	instance._load_chunk("bridge")
 	instance._load_chunk("below")
 	instance._unlock_upper_exit_footprint()
+	# Reproduce a focused bridge start / old save that skips the corridor beat.
+	# The bridge entry itself must release the cabin camera clamp.
+	instance._camera.set_look_bounds(Vector3(-1.0, 0.0, -1.0), Vector3(1.0, 0.0, 1.0))
+	instance._start_bridge()
+	_assert_true(not bool(instance._camera.get("_look_bounds_active")),
+		"Focused bridge entry releases the elevator-only camera bounds")
 	# The span is the MODELED bridge (Blender, pixel-grid): a BridgeModel node of named pieces (deck
 	# planks, girders, etc.) the collapse drops individually — not one rigid slab.
 	var bridge_chunk_node: Node = instance._chunks.get("bridge")
@@ -12533,6 +12539,21 @@ func _test_elevator_bridge_collapse() -> void:
 	var bridge_path_end: Vector2i = gs.grid.world_to_grid(Vector3(float(instance.BRIDGE_COLLAPSE_X) + 2.0, 0.0, 0.0))
 	_assert_true(not gs.grid.find_path(bridge_path_start, bridge_path_end, {}, false, {}, {},
 		instance.LEVEL_UPPER).is_empty(), "Narrowing the rail boundary preserves the intended bridge crossing")
+	# The corridor shell is camera-occluded from this close bridge framing. Its
+	# collision must not steal a move ray aimed at the visible deck (the live Web
+	# failure snapped every click back to Peris's current cell).
+	var ray_start := Vector3(float(instance.BRIDGE_START_X) + 2.0, 0.5, 0.0)
+	instance._player.global_position = ray_start
+	instance._camera.target = instance._player
+	instance._camera._update_immediate()
+	instance._camera.make_current()
+	await get_tree().physics_frame
+	var intended_deck := ray_start + Vector3(2.5, -0.5, 0.0)
+	var intended_screen: Vector2 = instance._camera.unproject_position(intended_deck)
+	var picked_deck: Vector3 = instance._player._raycast_ground(intended_screen)
+	_assert_true(picked_deck.is_finite() and picked_deck.distance_to(intended_deck) < 0.75,
+		"The staged bridge camera reaches the pointed-at deck instead of the corridor end-cap (screen %s, picked %s, want %s)" \
+			% [str(intended_screen), str(picked_deck), str(intended_deck)])
 	# Park the party at the bridge START on the upper deck.
 	for cid in ["aster", "peris"]:
 		gs.command_stop(cid)
@@ -12648,8 +12669,9 @@ func _test_elevator_camera_after_collapse() -> void:
 
 # --- Test: the reusable chunk STREAMING feature (prewarm + incremental build, revealed with no hitch) ---
 # Driven through the elevator (its real consumer): its initial load includes the bridge shell, then repeated
-# pieces and lower-deck regions are built in bounded hidden slices. Lower AI stays dormant until reveal, and
-# reveal_chunk still block-finishes an in-flight build so correctness never depends on stream timing.
+# pieces and lower-deck regions are built in bounded hidden slices. Lower AI stays dormant through reveal
+# (the route is visible beneath the intact bridge) and wakes only when the party lands. reveal_chunk still
+# block-finishes an in-flight build so correctness never depends on stream timing.
 func _test_chunk_streaming() -> void:
 	_test_name = "Chunk Streaming"
 	var scene := load("res://scenes/tutorial/elevator.tscn")
@@ -12758,11 +12780,17 @@ func _test_chunk_streaming() -> void:
 	_assert_true(not instance.is_chunk_streaming("below"), "reveal_chunk finishes the remaining build synchronously")
 	_assert_true(below.visible, "the revealed chunk is visible")
 	_assert_true(below.get_child_count() > 0, "the revealed chunk is fully built")
+	_assert_true(not instance._game_state.characters.has("chelator_0") and not instance._below_fauna_active,
+		"revealing the lower deck keeps its already-constructed fauna dormant above the bridge")
+	if dormant_enemy != null:
+		_assert_equals(dormant_enemy.process_mode, Node.PROCESS_MODE_DISABLED,
+			"revealed lower-deck fauna still performs no per-frame processing")
+	instance._activate_below_fauna()
 	_assert_true(instance._game_state.characters.has("chelator_0") and instance._below_fauna_active,
-		"revealing the lower deck activates its already-constructed fauna")
+		"the lower-deck lifecycle seam activates the prewarmed fauna")
 	if dormant_enemy != null:
 		_assert_equals(dormant_enemy.process_mode, Node.PROCESS_MODE_INHERIT,
-			"revealed fauna resumes ordinary processing")
+			"activated fauna resumes ordinary processing")
 	var streamed_aster_overlay := below.find_child("AsterRouteOverlay", true, false)
 	var streamed_peris_overlay := below.find_child("PerisRouteOverlay", true, false)
 	_assert_true(streamed_aster_overlay != null and streamed_peris_overlay != null,
@@ -12802,6 +12830,9 @@ func _test_elevator_distracted_fauna() -> void:
 	var gs = instance._game_state
 	instance._scheduler.clear()
 	instance._load_chunk("below")
+	# This focused test starts on the playable lower deck; normal reveal while
+	# the party is still above deliberately leaves this cohort dormant.
+	instance._activate_below_fauna()
 	var guard: Node = null
 	for e in instance._enemies:
 		if is_instance_valid(e) and str(e.char_id).begins_with("route_enemy"):
@@ -12970,8 +13001,24 @@ func _test_elevator_enemy_performance() -> void:
 	var gs: GameState = instance._game_state
 	gs.reset_performance_counters()
 	Enemy.CALLS.clear()
+	# The lower route is already visible from the bridge, but visibility is not
+	# playability. Ten bridge-side seconds must produce literally no hidden AI
+	# work: no registered cohort, movement plans, or detection invalidations.
+	for _dormant_step in range(100):
+		instance._scheduler.advance_ticks(0.1)
+	var dormant: Dictionary = gs.get_performance_counters()
+	_assert_equals(instance._below_fauna_active, false,
+		"The visible lower ecology remains dormant until the party lands")
+	_assert_equals(int(dormant.get("detection_recomputes", 0)), 0,
+		"Dormant lower ecology causes no bridge-side detection recomputes")
+	_assert_equals(int(dormant.get("plain_plans", 0)), 0,
+		"Dormant lower ecology causes no hidden movement plans")
+	gs.reset_performance_counters()
 	var activation_started := Time.get_ticks_usec()
 	instance.reveal_chunk("below")
+	_assert_equals(instance._game_state.characters.has("chelator_0"), false,
+		"revealing the route beneath the bridge does not start enemy simulation")
+	instance._activate_below_fauna()
 	var activation_ms := float(Time.get_ticks_usec() - activation_started) / 1000.0
 	var activation: Dictionary = gs.get_performance_counters()
 	var active_enemies := 0
@@ -13283,6 +13330,11 @@ func _test_elevator() -> void:
 				"Elevator data view avoids material-detail speckle and screen-space banding")
 			_assert_true(data_view_code.contains("depth_curvature") and not data_view_code.contains("float gx"),
 				"Elevator data view outlines depth breaks without filling slanted surfaces")
+			_assert_true(data_view_code.contains("neighbor_geometry")
+				and data_view_code.contains("geometry_at_depth(dl)")
+				and data_view_code.contains("step(0.000001, depth_raw)")
+				and data_view_code.contains("step(0.999999, depth_raw)"),
+				"Elevator data view rejects camera-cut silhouettes on both sides of the void boundary")
 			var lower_chunk := instance.find_child("Chunk_below", true, false)
 			_assert_true(lower_chunk != null
 				and bool(lower_chunk.get_meta("camera_occlusion_outline_safe_clip", false)),
@@ -25920,6 +25972,20 @@ func _test_player_cross_level_click() -> void:
 	p2.global_position = flat.grid_to_world(Vector2i(1, 1))
 	_assert_true(not p2.move_to_world_position(flat.grid_to_world(Vector2i(6, 6)) + Vector3(0, 5.0, 0)),
 		"On a single-floor grid, a click far above the floor is still rejected")
+	# A visible hover preview owns the command endpoint. The release must consume
+	# that exact cached cell instead of producing a second, potentially occluded
+	# ray hit that disagrees with the route/ghost the player just inspected.
+	var cached_target := flat.grid_to_world(Vector2i(6, 5))
+	p2._preview_commit_target = cached_target
+	p2._hover_last_mouse = Vector2(42.0, 42.0)
+	var cached_click := InputEventMouseButton.new()
+	cached_click.button_index = MOUSE_BUTTON_RIGHT
+	cached_click.pressed = true
+	cached_click.position = Vector2(42.0, 42.0)
+	p2._unhandled_input(cached_click)
+	_assert_true(gs2.is_moving("hero2")
+		and gs2.get_destination("hero2").distance_to(cached_target) < 0.1,
+		"A command commits the exact final position displayed by its hover preview")
 	p2.queue_free()
 
 # The move-raycast height gate: on the warped helix the camera looks down through an upper coil onto the
@@ -25944,6 +26010,16 @@ func _test_player_overhead_height_gate() -> void:
 	# Zoomed out: the same overhead hit is allowed (navigating an upper level is then intended).
 	_assert_true(player._hit_height_ok(9.0, char_y, zoomed_out),
 		"zoomed out: the overhead hit is allowed (reach the upper level)")
+	# Camera-occluded geometry remains physically ray-pickable. The move picker
+	# must pierce a wall/underside and keep looking for the actual deck.
+	_assert_true(player._hit_surface_ok(Vector3.UP),
+		"an upward floor face is accepted as move ground")
+	_assert_true(player._hit_surface_ok(Vector3(0.0, 0.7, 0.7)),
+		"an authored ramp remains acceptable move ground")
+	_assert_true(not player._hit_surface_ok(Vector3.FORWARD),
+		"a camera-occluded vertical wall is not accepted as move ground")
+	_assert_true(not player._hit_surface_ok(Vector3.DOWN),
+		"a structure underside is not accepted as move ground")
 	player.queue_free()
 	await get_tree().process_frame
 

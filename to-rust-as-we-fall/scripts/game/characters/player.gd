@@ -24,6 +24,10 @@ const LEVEL_GAP := 1.6
 ## sits a full turn (~9 units) above, well beyond it.
 const CLIMB_HEIGHT_GATE := 3.0
 const ZOOM_OUT_FREE_DIST := 24.0
+## A move ray may pass through camera-occluded walls before it reaches the deck.
+## Accept ordinary floors and authored ramps, but never treat a vertical wall or
+## the underside of a structure as a movement surface.
+const GROUND_NORMAL_MIN_DOT := 0.45
 
 ## Optional A* grid.
 var grid_world: GridWorld
@@ -88,6 +92,10 @@ var _preview_last_cell := Vector2i(0x7fffffff, 0x7fffffff)
 ## The FLAT hovered move target while planning (Vector3.INF when not hovering). The scene's PathRenderManager
 ## reads this to draw a BG3-style destination ghost at the cursor BEFORE a move is committed.
 var preview_move_target := Vector3.INF
+## World-space command target that produced the currently displayed preview.
+## A command consumes this exact endpoint instead of raycasting a second time
+## through camera-occluded geometry and disagreeing with the visible route.
+var _preview_commit_target := Vector3.INF
 ## A held rally owns every member's path/endpoint preview until it is committed or cancelled. Without
 ## this hand-off, each Player keeps running its ordinary cursor preview after SelectionController has
 ## assigned the formation: the active member writes the shared cursor cell over its resolved slot, while
@@ -184,7 +192,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if _auto_path.size() > 0 and not (game_state and char_id != ""):
 			return  # Don't interrupt fallback auto-path with clicks
-		var rhit := _raycast_ground(mb.position)
+		var rhit := _preview_commit_target \
+			if _preview_commit_target.is_finite() \
+			and mb.position.distance_to(_hover_last_mouse) <= 2.0 else Vector3.INF
+		if rhit == Vector3.INF:
+			rhit = _raycast_ground(mb.position)
 		if rhit != Vector3.INF:
 			ground_clicked.emit(rhit)
 			_set_click_target(rhit)
@@ -232,10 +244,13 @@ func _raycast_ground(screen_pos: Vector2) -> Vector3:
 		if result.is_empty():
 			break
 		var hitpos: Vector3 = result.position
-		if _hit_height_ok(hitpos.y, global_position.y, cam_dist):
-			_last_ground_normal = result.get("normal", Vector3.UP)
+		var hit_normal: Vector3 = result.get("normal", Vector3.UP)
+		if _hit_height_ok(hitpos.y, global_position.y, cam_dist) and _hit_surface_ok(hit_normal):
+			_last_ground_normal = hit_normal
 			return hitpos
-		exclude.append(result.get("rid"))   # too high for this zoom: drop this deck and look beneath it
+		# Too high for this zoom, or not a walkable-facing surface (commonly a
+		# camera-occluded wall): drop that collider and continue to the deck.
+		exclude.append(result.get("rid"))
 	_last_ground_normal = Vector3.UP
 	return Vector3.INF
 
@@ -246,6 +261,11 @@ func _raycast_ground(screen_pos: Vector2) -> Vector3:
 ## is then intended). Pure decision so it's unit-testable without a camera/physics scene.
 func _hit_height_ok(hit_y: float, char_y: float, cam_dist: float) -> bool:
 	return cam_dist > ZOOM_OUT_FREE_DIST or hit_y <= char_y + CLIMB_HEIGHT_GATE
+
+func _hit_surface_ok(hit_normal: Vector3) -> bool:
+	if not hit_normal.is_finite() or hit_normal.length_squared() < 0.0001:
+		return false
+	return hit_normal.normalized().dot(Vector3.UP) >= GROUND_NORMAL_MIN_DOT
 
 # --- Hover grid (target preview) ---
 
@@ -492,6 +512,13 @@ func _update_path_preview(hit: Vector3) -> void:
 	if group_move and game_state.get_party().size() > 1:
 		_path_preview.clear_explicit_path()  # the per-member previews replace the single one
 		_update_party_preview(hit)
+		# Group commit consumes the same snapped anchor cell the party preview used.
+		var group_target := hit
+		if game_state.grid != null:
+			var group_level := game_state.get_character_level(char_id)
+			group_target = game_state.grid.grid_to_world(game_state.grid.world_to_grid(hit), group_level)
+		_preview_commit_target = game_state.coord_map.to_world(group_target) \
+			if game_state.coord_map != null else group_target
 		return
 	_clear_party_preview()
 	var path := game_state.compute_preview_path(char_id, hit)
@@ -499,12 +526,18 @@ func _update_path_preview(hit: Vector3) -> void:
 		GridWorld._pf_trace("[preview] hit=%s cell=%s char=%s -> compute_preview_path = %d pts: %s" % [str(hit), str(cell), char_id, path.size(), str(path)])
 	if path.size() >= 2:
 		_path_preview.set_explicit_path(path, 1)  # from_index 1: the renderer prepends the live start point
+		var endpoint: Vector3 = path[path.size() - 1]
+		preview_move_target = endpoint
+		_preview_commit_target = game_state.coord_map.to_world(endpoint) \
+			if game_state.coord_map != null else endpoint
 	else:
 		_path_preview.clear_explicit_path()
+		preview_move_target = Vector3.INF
+		_preview_commit_target = Vector3.INF
 		if GridWorld._fx_debug:
 			GridWorld._pf_trace("[preview] CLEARED — compute_preview_path returned < 2 points (no route to this cell)")
-	# Tell the path manager where to ghost this character (the flat path END, or the raw hover if no route).
-	preview_move_target = path[path.size() - 1] if path.size() >= 1 else hit
+	# A raw, unroutable surface hit is not a truthful final position, so it does
+	# not receive a destination ghost or become the cached command target.
 
 ## One dim ribbon per selected member, each in that member's colour, anchored to that member so it starts
 ## at them. Mirrors the party spread, so the preview matches the click.
@@ -677,6 +710,7 @@ func _clear_path_preview() -> void:
 	_clear_party_preview()
 	_preview_last_cell = Vector2i(0x7fffffff, 0x7fffffff)  # force a recompute on the next hover
 	preview_move_target = Vector3.INF   # stop ghosting a destination once we're no longer planning one
+	_preview_commit_target = Vector3.INF
 
 ## Temporarily hand ownership of this character's route and destination pill to a scene-level command
 ## preview (currently Rally). Enabling clears the old hover preview before the command assigns its exact

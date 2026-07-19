@@ -379,9 +379,13 @@ func _chunk_build_steps(chunk_name: String, parent: Node3D) -> Array:
 			]
 	return []
 
-func _on_chunk_revealed(chunk_name: String, _chunk: Node3D) -> void:
-	if chunk_name == "below":
-		_activate_below_fauna()
+func _on_chunk_revealed(_chunk_name: String, _chunk: Node3D) -> void:
+	# The lower deck must be visible from the intact bridge, but it is not playable
+	# until the party lands there.  Revealing its prewarmed geometry is therefore
+	# not an AI lifecycle transition: activating here made fourteen hidden FSMs
+	# roam, invalidate detection, and emit move events throughout the bridge scene.
+	# _on_fall_landed() activates the already-constructed cohort at the causal seam.
+	pass
 
 # --- Virtual overrides ---
 
@@ -670,7 +674,11 @@ func _begin() -> void:
 				_player.global_position = Vector3(GAUNTLET_POS.x, BELOW_Y + 0.5, 0)
 				_start_gauntlet()
 			"bridge":
-				_load_chunk("below")
+				# Focused bridge playtests still need the lower geometry in view, but
+				# must preserve the normal prewarm lifecycle: a one-shot _load_chunk
+				# constructs its fauna live and would run fourteen hidden FSMs.
+				stream_chunk("below")
+				reveal_chunk("below")
 				_player.global_position = Vector3(0, 0.5, 0)
 				_start_bridge()
 			_:
@@ -1515,10 +1523,21 @@ func _start_bridge() -> void:
 	_enter_step("bridge")
 	# Focused bridge starts and old saves may enter here without the corridor beat.
 	_unlock_upper_exit_footprint()
+	# Those entry seams also bypass _start_corridor(), which normally releases the
+	# cabin-only camera clamp. Leaving it active pins the look point inside the
+	# elevator while the party and route ribbons move onto the bridge, producing a
+	# black level with floating horizontal paths in focused Web playtests/saves.
+	if _camera != null and _camera.has_method("clear_look_bounds"):
+		_camera.clear_look_bounds()
 	_player.set_move_enabled(false)
 	# Step onto the START of the bridge; the player then walks across and it gives way mid-span,
 	# dropping the party onto the broken section (where the climb prompt waits), clear of the ecology.
-	var bridge_pos := Vector3(BRIDGE_START_X, 0, 0)
+	# Stage just inside the long intact span. At BRIDGE_START_X exactly, the
+	# close follow camera sits outside the corridor side wall and looks through
+	# its occluded end-cap; the room appears black and ground rays land on that
+	# hidden corner instead of the bridge. Two metres preserves the long crossing
+	# while putting both the view and its command rays clear of the corridor shell.
+	var bridge_pos := Vector3(BRIDGE_START_X + 2.0, 0, 0)
 	_game_state.command_move_to_pos("aster", bridge_pos + Vector3(1.0, 0, 0))
 	_game_state.command_move_to_pos("peris", bridge_pos)
 	# One line at the bridge mouth, THEN hand control — the rest of the crossing dialogue fires by POSITION as the
@@ -1724,6 +1743,11 @@ func _on_fall_landed() -> void:
 		_game_state.characters[char_id]["position"] = Vector3(pos.x, lp.y, lp.z)
 		if _game_state.grid != null:
 			_game_state.characters[char_id]["grid_cell"] = _game_state.grid.world_to_grid(_game_state.characters[char_id]["position"])
+	# Geometry was revealed above the bridge so the lower route could be read, but
+	# its ecology has remained outside GameState and entirely unprocessed.  The
+	# landing is the first moment those actors can affect (or be affected by) the
+	# party, so wake the cohort now in one batched detection update.
+	_activate_below_fauna()
 	# Free the old level once the debris has visually settled. In real play _collapse_bridge_model set
 	# _collapse_visual_active and owns the removal (a wall-clock timer), so we don't rip the bridge away
 	# mid-fall. Headless / force-fire (no live collapse) removes here.
@@ -2112,9 +2136,9 @@ func _spawn_enemy(id: String, pos: Vector3, parent: Node3D, activate_now := true
 func _queue_below_enemy_setup(enemy: Enemy, mode: String, data: Dictionary) -> void:
 	_below_dormant_enemy_setups.append({"enemy": enemy, "mode": mode, "data": data})
 
-## Streaming may construct the lower ecology while the elevator conversation is still running, but it does not
-## register any of those bodies with GameState. Reveal performs only this cheap lifecycle seam; all meshes/FSMs
-## already exist, and patrol scheduling begins at the same causal moment the lower deck becomes playable.
+## Streaming may construct and reveal the lower ecology while the party is still on the bridge, but it does not
+## register any of those bodies with GameState. Landing performs only this cheap lifecycle seam; all meshes/FSMs
+## already exist, and behavior scheduling begins at the same causal moment the lower deck becomes playable.
 func _activate_below_fauna() -> void:
 	if _below_fauna_active:
 		return
@@ -3483,14 +3507,14 @@ func _below_step_enemy_route_beat(parent: Node3D, beat_i: int, enemies_dormant: 
 		var enemy_pos := Vector3(beat_x + 1.5 + local_i * 3.0, BELOW_Y + 0.5, -3.0 - local_i * 2.0)
 		var enemy := _spawn_enemy("route_enemy_%d_%d" % [beat_i, local_i], enemy_pos, parent, false)
 		enemy.detection_range = 6.0
-		var waypoints: Array[Vector3] = [
-			enemy_pos + Vector3(-1.5, 0, -0.8),
-			enemy_pos + Vector3(1.5, 0, 0.8),
-		]
+		# These animals huddle around the Flure; they do not need an A* patrol to
+		# communicate that relationship. Cheap deterministic roam keeps them alive
+		# and readable without six hidden route searches running under the bridge.
+		var roam_data := {"anchor": enemy_pos, "radius": 1.8}
 		if enemies_dormant:
-			_queue_below_enemy_setup(enemy, "patrol", {"waypoints": waypoints})
+			_queue_below_enemy_setup(enemy, "roam", roam_data)
 		else:
-			_activate_below_enemy_setup({"enemy": enemy, "mode": "patrol", "data": {"waypoints": waypoints}})
+			_activate_below_enemy_setup({"enemy": enemy, "mode": "roam", "data": roam_data})
 		(_route_flure_enemy_groups[beat_i] as Array).append(enemy)
 	_add_route_field_plate(parent, Vector3(beat_x, BELOW_Y + 0.015, -4.0),
 		Vector3(13.0, 0.02, 6.5), Color(0.08, 0.30, 0.20, 0.62))
