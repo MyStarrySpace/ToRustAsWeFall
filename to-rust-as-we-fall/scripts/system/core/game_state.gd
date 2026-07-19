@@ -3912,7 +3912,11 @@ func compute_rally_destinations(member_ids: Array, target: Vector3, anchor_id :=
 			taken[target_cell] = true
 		for raw_id in member_ids:
 			var id := str(raw_id)
-			var cell := _nearest_free_cell(target_cell, taken)
+			# A cautious rally must keep every formation pill out of a known hazard,
+			# not merely route the centre member around it.  The old resolver chose
+			# adjacent walkable cells without consulting risk, so a safe target on
+			# the edge of an iron field could place the second unit inside the field.
+			var cell := _nearest_free_cell(target_cell, taken, route_cautious)
 			taken[cell] = true
 			var level := get_character_level(id) if characters.has(id) else grid.level_for_y(target.y)
 			destinations.append(grid.grid_to_world(cell, level))
@@ -3958,8 +3962,9 @@ func _assign_party_cells(members: Array, target: Vector2i) -> Dictionary:
 
 ## Outward ring search from target for the closest walkable cell not already
 ## taken by another member. Deterministic tie-break by distance then coordinate.
-func _nearest_free_cell(target: Vector2i, taken: Dictionary) -> Vector2i:
-	if grid.is_in_bounds(target.x, target.y) and grid.is_walkable(target.x, target.y) and not taken.has(target):
+func _nearest_free_cell(target: Vector2i, taken: Dictionary, avoid_risk := false) -> Vector2i:
+	if grid.is_in_bounds(target.x, target.y) and grid.is_walkable(target.x, target.y) \
+			and not taken.has(target) and (not avoid_risk or not grid.is_cell_risky(target)):
 		return target
 	# Search the whole reachable extent (capped) so a large party on a big map
 	# never falsely stacks just because a free cell sits past a fixed radius.
@@ -3972,7 +3977,8 @@ func _nearest_free_cell(target: Vector2i, taken: Dictionary) -> Vector2i:
 				if maxi(absi(dx), absi(dz)) != radius:
 					continue
 				var c := target + Vector2i(dx, dz)
-				if taken.has(c) or not grid.is_in_bounds(c.x, c.y) or not grid.is_walkable(c.x, c.y):
+				if taken.has(c) or not grid.is_in_bounds(c.x, c.y) or not grid.is_walkable(c.x, c.y) \
+						or (avoid_risk and grid.is_cell_risky(c)):
 					continue
 				if not found or _ring_closer(c, best, target):
 					best = c

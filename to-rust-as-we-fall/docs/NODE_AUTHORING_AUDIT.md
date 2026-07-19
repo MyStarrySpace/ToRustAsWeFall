@@ -24,6 +24,7 @@ The constructor counts are the pre-migration audit counts for stable UI nodes.
 | Developer console | 5 | `dev_console.tscn` and `dev_console_touch_toggle.tscn` |
 | Shared selection feedback | 4 | `selection_marquee_layer.tscn` and `rally_hold_layer.tscn` |
 | Shared screen effects and sequence animation host | 4 | `screen_effect.tscn` and `sequence_animation_player.tscn` |
+| Elevator bridge lighting | 3 | `elevator_bridge_lighting.tscn`, streamed as one authored lighting group |
 | Showcase and Tag Day readouts | 4 | `showcase_info_overlay.tscn` and `tag_day_data_overlay.tscn` |
 | Touch mode cluster | 4 | `touch_mode_controller.tscn` |
 | Cursor verb and game-over presentation | 4 | `cursor_verb.tscn` and `game_over_overlay.tscn` |

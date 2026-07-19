@@ -94,7 +94,11 @@ var _elevator_powered := true
 var _enemies: Array[Enemy] = []
 var _enemy_count := 0
 var _below_dormant_enemy_setups: Array[Dictionary] = []
+# Landing enables the lower-deck ecology, but individual FSMs wake only when a
+# lower-level party member enters their spatial band.  Cache the last cells so
+# the proximity pass runs on cell changes, not every rendered frame.
 var _below_fauna_active := false
+var _below_activation_cells: Dictionary = {}
 var _bridge_tile_materials: Dictionary = {}
 
 # Party HP lives ONLY in GameState (the single source of truth): adjust_stat/get_stat. The HUD,
@@ -114,6 +118,7 @@ var _iron_hazard_tick_armed := false
 var _iron_route_risk_learned := false
 var _damage_feedback_labels: Dictionary = {}
 var _damage_feedback_tweens: Dictionary = {}
+var _damage_feedback_counts: Dictionary = {}
 
 # Flure
 var _flure_active := false
@@ -168,6 +173,7 @@ const BRIDGE_BLOCKADE_X := BRIDGE_END_X + BRIDGE_END_LANDING_LENGTH
 # emergency light, and floor indicators stay procedural in Godot because they animate.
 const ELEVATOR_MODEL := preload("res://resources/models/elevator/elevator_car.glb")
 const ENDO_JUNCTION_MODEL := preload("res://resources/models/elevator/endo-junction.glb")
+const BRIDGE_LIGHTING_SCENE := preload("res://scenes/tutorial/elevator_bridge_lighting.tscn")
 # Collapse debris physics layers (kept off every gameplay layer so debris never touches characters —
 # they move on the grid, not via physics). Pieces collide ONLY with their own catch-floor (no inter-
 # piece explosions from the initially-touching span).
@@ -774,7 +780,11 @@ func _on_process(delta: float, spd: float) -> void:
 				and lead > BRIDGE_START_X + span * (float(_bridge_lines_fired + 1) / float(_bridge_lines_pending.size() + 1)):
 			DialogueData.say_to(_dialogue, str(_bridge_lines_pending[_bridge_lines_fired]))
 			_bridge_lines_fired += 1
-		if lead > BRIDGE_COLLAPSE_X:
+		# The whole party falls only when the whole party is actually on the
+		# failing span.  Previously the lead unit could trigger this alone; the
+		# trailing unit was then teleported straight down from the bridge mouth
+		# into the dormant huddle and could be killed off-screen.
+		if _party_tail_x() > BRIDGE_COLLAPSE_X:
 			_tutorial_prompt.hide_prompt()
 			_player.set_move_enabled(false)
 			_start_bridge_collapse()
@@ -799,11 +809,16 @@ func _on_process(delta: float, spd: float) -> void:
 			_player.set_move_enabled(false)
 			_complete()
 
+	_update_below_fauna_activation()
+
 ## Whichever party member (aster/peris) is furthest east. The descent's position gates fire on the
 ## LEAD member, so they trigger whether the player walks aster, peris, or both as a group (party-move)
 ## — not just when aster happens to be the one who advanced.
 func _party_lead_x() -> float:
 	return maxf(_game_state.get_position("aster").x, _game_state.get_position("peris").x)
+
+func _party_tail_x() -> float:
+	return minf(_game_state.get_position("aster").x, _game_state.get_position("peris").x)
 
 func _party_average_z() -> float:
 	return (_game_state.get_position("aster").z + _game_state.get_position("peris").z) * 0.5
@@ -1548,7 +1563,7 @@ func _start_bridge() -> void:
 	_dialogue.dialogue_finished.connect(func():
 		# Hand control to the player: walk out across the bridge — that's what collapses it.
 		_player.set_move_enabled(true)
-		_tutorial_prompt.show_prompt("Cross the bridge")
+		_tutorial_prompt.show_prompt("Rally both units across the bridge")
 	, CONNECT_ONE_SHOT)
 
 # --- Bridge Collapse ---
@@ -2133,23 +2148,71 @@ func _spawn_enemy(id: String, pos: Vector3, parent: Node3D, activate_now := true
 	_enemy_count += 1
 	return enemy
 
-func _queue_below_enemy_setup(enemy: Enemy, mode: String, data: Dictionary) -> void:
-	_below_dormant_enemy_setups.append({"enemy": enemy, "mode": mode, "data": data})
+func _queue_below_enemy_setup(
+		enemy: Enemy, mode: String, data: Dictionary, wake_radius: float) -> void:
+	_below_dormant_enemy_setups.append({
+		"enemy": enemy,
+		"mode": mode,
+		"data": data,
+		"wake_radius": wake_radius,
+	})
 
 ## Streaming may construct and reveal the lower ecology while the party is still on the bridge, but it does not
-## register any of those bodies with GameState. Landing performs only this cheap lifecycle seam; all meshes/FSMs
-## already exist, and behavior scheduling begins at the same causal moment the lower deck becomes playable.
+## register any of those bodies with GameState. Landing enables proximity activation; only the cohort near a
+## lower-deck party member joins the simulation. This keeps later packs from planning and detecting through an
+## encounter the player has not reached yet.
 func _activate_below_fauna() -> void:
 	if _below_fauna_active:
 		return
 	_below_fauna_active = true
-	# Fourteen streamed enemies become live together. Their state entries issue movement and detector
-	# invalidations; rebuild the analytic detection schedule once after the cohort is configured.
-	_game_state.begin_detection_update_batch()
+	_below_activation_cells.clear()
+	_update_below_fauna_activation(true)
+
+func _update_below_fauna_activation(force := false) -> void:
+	if not _below_fauna_active or _below_dormant_enemy_setups.is_empty() \
+			or _game_state == null or _game_state.grid == null:
+		return
+	var lower_party: Array[String] = []
+	var cells_changed := force
+	for character_id in ["aster", "peris"]:
+		if not _game_state.characters.has(character_id) \
+				or _game_state.get_character_level(character_id) != LEVEL_LOWER \
+				or _game_state.get_stat(character_id, "hp") <= 0.0:
+			continue
+		lower_party.append(character_id)
+		var cell := _game_state.grid.world_to_grid(_game_state.get_position(character_id))
+		if _below_activation_cells.get(character_id, Vector2i(-99999, -99999)) != cell:
+			cells_changed = true
+			_below_activation_cells[character_id] = cell
+	if lower_party.is_empty() or not cells_changed:
+		return
+	var remaining: Array[Dictionary] = []
+	var waking: Array[Dictionary] = []
 	for setup in _below_dormant_enemy_setups:
+		# A test/focused chunk transition can free the below chunk between
+		# proximity samples. Keep the Variant untyped until validity is known;
+		# assigning a freed Object to a typed Enemy raises before the guard runs.
+		var enemy = setup.get("enemy")
+		if not is_instance_valid(enemy):
+			continue
+		var wake_radius := float(setup.get("wake_radius", 12.0))
+		var wake := false
+		for character_id in lower_party:
+			var party_pos := _game_state.get_position(character_id)
+			if Vector2(party_pos.x - enemy.position.x, party_pos.z - enemy.position.z).length() <= wake_radius:
+				wake = true
+				break
+		if wake:
+			waking.append(setup)
+		else:
+			remaining.append(setup)
+	if waking.is_empty():
+		return
+	_game_state.begin_detection_update_batch()
+	for setup in waking:
 		_activate_below_enemy_setup(setup)
 	_game_state.end_detection_update_batch()
-	_below_dormant_enemy_setups.clear()
+	_below_dormant_enemy_setups = remaining
 
 func _activate_below_enemy_setup(setup: Dictionary) -> void:
 	var enemy: Enemy = setup.get("enemy")
@@ -2378,6 +2441,8 @@ func _iron_patch_contains(world_pos: Vector3) -> bool:
 
 func _show_party_damage_feedback(
 		character_id: String, amount: float, source: String, flash_color: Color) -> void:
+	var feedback_key := "%s:%s" % [character_id, source]
+	_damage_feedback_counts[feedback_key] = int(_damage_feedback_counts.get(feedback_key, 0)) + 1
 	var target_node: Node3D = _aster_node if character_id == "aster" else _peris_node
 	if target_node == null or not is_instance_valid(target_node):
 		return
@@ -2795,6 +2860,9 @@ func headless_get_state() -> Dictionary:
 		"gauntlet_flure_active": _gauntlet_flure_active.duplicate(),
 		"gauntlet_reset_count": _gauntlet_reset_count,
 		"gauntlet_safe_window_bonus": _gauntlet_safe_window_bonus,
+		"damage_feedback_counts": _damage_feedback_counts.duplicate(),
+		"below_fauna_enabled": _below_fauna_active,
+		"below_fauna_dormant": _below_dormant_enemy_setups.size(),
 	}, true)
 	return state
 
@@ -3074,23 +3142,11 @@ func _add_bridge_end_box(
 	return mesh_instance
 
 func _bridge_step_light(parent: Node3D) -> void:
-	var bridge_start := ELEVATOR_SIZE.x / 2.0 + 0.5 + 7.0
-	var bridge_light := OmniLight3D.new()
-	bridge_light.name = "BridgeMidLight"
-	bridge_light.position = Vector3(bridge_start + BRIDGE_LENGTH * 0.5, 3.0, 0)
-	bridge_light.light_color = Color(0.25, 0.18, 0.12)
-	bridge_light.light_energy = 1.0
-	bridge_light.omni_range = 10.0
-	parent.add_child(bridge_light)
-	# The centre light falls off before the authored endpoint. A modest second pool keeps the final planks and
-	# Chembrane seal visible without the cost and flatness of one enormous omni light.
-	var end_light := OmniLight3D.new()
-	end_light.name = "BridgeEndLight"
-	end_light.position = Vector3(BRIDGE_END_X + 1.5, 2.5, 0.0)
-	end_light.light_color = Color(0.48, 0.22, 0.32)
-	end_light.light_energy = 1.35
-	end_light.omni_range = 8.0
-	parent.add_child(end_light)
+	if parent.find_child("BridgeLighting", false, false) != null:
+		return
+	# Fixed light hierarchy and defaults belong in the authored scene. Streaming
+	# decides WHEN it exists; the .tscn remains the inspectable source of WHAT it is.
+	parent.add_child(BRIDGE_LIGHTING_SCENE.instantiate())
 
 func _build_below_chunk(parent: Node3D, enemies_dormant := false) -> void:
 	_below_step_prepare(parent)
@@ -3134,6 +3190,7 @@ func _below_step_prepare(parent: Node3D) -> void:
 	_iron_patches.clear()
 	_below_dormant_enemy_setups.clear()
 	_below_fauna_active = false
+	_below_activation_cells.clear()
 
 func _below_step_ground(parent: Node3D) -> void:
 	var deck_west := -3.5
@@ -3393,7 +3450,7 @@ func _below_step_huddle_chelator_batch(
 		if i < 2:
 			_build_flure(parent, Vector3(BRIDGE_START_X + 1.0, BELOW_Y + 0.4, -5.0 if i == 0 else 5.0))
 		if enemies_dormant:
-			_queue_below_enemy_setup(enemy, "roam", {"anchor": enemy_pos, "radius": 2.0})
+			_queue_below_enemy_setup(enemy, "roam", {"anchor": enemy_pos, "radius": 2.0}, 8.5)
 		else:
 			_activate_below_enemy_setup({"enemy": enemy, "mode": "roam",
 				"data": {"anchor": enemy_pos, "radius": 2.0}})
@@ -3419,7 +3476,7 @@ func _below_step_huddle_predators(parent: Node3D, enemies_dormant: bool) -> void
 		if predator._mesh and predator._mesh.material_override:
 			(predator._mesh.material_override as StandardMaterial3D).albedo_color = Color(0.5, 0.12, 0.08)
 		if enemies_dormant:
-			_queue_below_enemy_setup(predator, "roam", {"anchor": enemy_pos, "radius": 2.5})
+			_queue_below_enemy_setup(predator, "roam", {"anchor": enemy_pos, "radius": 2.5}, 9.0)
 		else:
 			_activate_below_enemy_setup({"enemy": predator, "mode": "roam",
 				"data": {"anchor": enemy_pos, "radius": 2.5}})
@@ -3512,7 +3569,10 @@ func _below_step_enemy_route_beat(parent: Node3D, beat_i: int, enemies_dormant: 
 		# and readable without six hidden route searches running under the bridge.
 		var roam_data := {"anchor": enemy_pos, "radius": 1.8}
 		if enemies_dormant:
-			_queue_below_enemy_setup(enemy, "roam", roam_data)
+			# Wake the two-body beat as one readable cohort before either member
+			# reaches detection distance; the farther partner sits ~17.5m from the
+			# approach seam.
+			_queue_below_enemy_setup(enemy, "roam", roam_data, 19.0)
 		else:
 			_activate_below_enemy_setup({"enemy": enemy, "mode": "roam", "data": roam_data})
 		(_route_flure_enemy_groups[beat_i] as Array).append(enemy)

@@ -9248,6 +9248,8 @@ func _run_realinput_leg(label: String, scene_path: String, visit: int, factory: 
 			"%s is real-input reachable through '%s' (reached: %s)" % [label, milestone, str(result.last_step)])
 	print("[REALINPUT] %s: %s @ %s -> %s | steps: %s" % [
 		label, str(result.termination), str(result.last_step), str(result.next), str(result.steps)])
+	if str(result.termination) != "complete":
+		print("[REALINPUT:STALL] %s | %s" % [label, str(result.get("stall_diagnostics", {}))])
 	# Reset the static phase so later peris loads default to phase 1.
 	if scene_path.ends_with("peris_sim.tscn") and "_visit_phase" in instance:
 		instance._visit_phase = 1
@@ -9296,11 +9298,38 @@ func _drive_scene_real_input(instance: Node, beat_actions: Dictionary, max_iters
 	var next_scene := ""
 	if "requested_scene_change" in instance:
 		next_scene = str(instance.requested_scene_change)
+	var stall_diagnostics := {}
+	if str(instance._current_step) != "complete" and "_game_state" in instance:
+		var stalled_state: GameState = instance.get("_game_state")
+		if stalled_state != null:
+			var stalled_positions := {}
+			var stalled_hp := {}
+			for stalled_id in ["aster", "peris", "endo"]:
+				if stalled_state.characters.has(stalled_id):
+					stalled_positions[stalled_id] = stalled_state.get_position(stalled_id)
+					stalled_hp[stalled_id] = stalled_state.get_stat(stalled_id, "hp")
+			stall_diagnostics = {
+				"positions": stalled_positions,
+				"hp": stalled_hp,
+			}
+			if stalled_state.event_log != null:
+				var hp_events: Array = []
+				for logged_event in stalled_state.event_log.events:
+					if logged_event.get("kind", &"") == GameEvent.KIND_SET_STAT \
+							and str((logged_event.get("payload", {}) as Dictionary).get("stat", "")) == "hp":
+						hp_events.append(logged_event)
+				stall_diagnostics["hp_events"] = hp_events.slice(maxi(0, hp_events.size() - 16))
+		if instance.has_method("headless_get_state"):
+			var sequence_state: Dictionary = instance.headless_get_state()
+			for diagnostic_key in ["game_over", "gauntlet_stage", "gauntlet_midpoint_reached", "gauntlet_reset_count", "gauntlet_flure_active", "damage_feedback_counts", "below_fauna_enabled", "below_fauna_dormant"]:
+				if sequence_state.has(diagnostic_key):
+					stall_diagnostics[diagnostic_key] = sequence_state[diagnostic_key]
 	return {
 		"termination": ("complete" if str(instance._current_step) == "complete" else "stall"),
 		"last_step": str(instance._current_step),
 		"steps": step_history,
 		"next": next_scene,
+		"stall_diagnostics": stall_diagnostics,
 	}
 
 func _aster_realinput_beats(instance: Node) -> Dictionary:
@@ -9682,6 +9711,7 @@ func _synthetic_hud_portrait_click(instance: Node, character_id: String, ctrl :=
 func _elevator_realinput_beats(instance: Node) -> Dictionary:
 	var beats := {}
 	var exit_gate := Vector3(float(instance.ELEVATOR_SIZE.x) / 2.0, 0.0, 0.0)
+	var bridge_rally_queued := [false]
 	# Movement + interaction are the RIGHT-click ("command") action; LEFT is select. Every walk/interact
 	# beat uses the move-click helper (the old LEFT-click beats never moved anyone — the test only
 	# reached route_choice because that step is SCHEDULED after the fall, not walked to).
@@ -9707,9 +9737,15 @@ func _elevator_realinput_beats(instance: Node) -> Dictionary:
 	# Corridor: the sequence auto-walks the party out of the elevator (command_move_to_pos); just clear
 	# enemy detection so the loaded combat chunks can't game-over the reachability run.
 	beats["corridor"] = func(): _disable_enemy_detection(instance)
-	# Bridge: walk EAST across the (long) span toward the far end — passing BRIDGE_COLLAPSE_X (~2/3 across) gives
-	# way (the collapse). Click well past the trigger so the walk crosses it instead of arriving short and stopping.
-	beats["bridge"] = func(): _synthetic_player_move_click(instance, Vector3(float(instance.BRIDGE_END_X) - 2.0, 0.0, 0.0))
+	# Bridge: rally both units EAST. The span gives way only once both are actually over the failing section;
+	# a lead unit can no longer teleport its trailing partner down into the huddle at the bridge mouth.
+	beats["bridge"] = func():
+		if bridge_rally_queued[0] or instance._dialogue.is_active():
+			return
+		var moved := int(instance._selection_controller.headless_commit_rally(
+			Vector3(float(instance.BRIDGE_END_X) - 2.0, 0.0, 0.0)))
+		if moved == 2:
+			bridge_rally_queued[0] = true
 	# Aster's data layer is already on. F2 adds Peris's independent memory layer;
 	# portrait selection must not change just to compare the two route reads.
 	beats["route_read_circuit"] = func():
@@ -12506,8 +12542,10 @@ func _test_elevator_bridge_collapse() -> void:
 		"A named Chembrane seal visibly blocks the far landing")
 	_assert_true(endpoint_shape != null and endpoint_shape.shape is BoxShape3D,
 		"The blocked far landing has authoritative physical collision")
-	_assert_true(bridge_chunk_node.find_child("BridgeEndLight", false, false) is OmniLight3D,
+	_assert_true(bridge_chunk_node.find_child("BridgeEndLight", true, false) is OmniLight3D,
 		"A dedicated endpoint light keeps the final bridge section and blockade legible")
+	_assert_true(bridge_chunk_node.find_child("BridgeEntryLight", true, false) is OmniLight3D,
+		"An authored entry light keeps bridge rails and grounded paths legible at handoff")
 	var bridge_body_line := DialogueData.text("elevator.peris.bodies")
 	_assert_true("Chembrane" in bridge_body_line and not "Wonderweave" in bridge_body_line,
 		"Elevator dialogue uses the canonical Chembrane name")
@@ -12583,10 +12621,20 @@ func _test_elevator_bridge_collapse() -> void:
 			if e.get_state() in ["alert", "pursuit", "windup", "charge", "impact"] \
 					and str(e._current_target_id) in ["aster", "peris"]:
 				party_pursued = true
+		if not gs.is_moving("aster"):
+			break
+	_assert_equals(instance._current_step, "bridge",
+		"One lead unit cannot collapse the bridge under a trailing partner")
+	_assert_true(gs.get_position("peris").x < float(instance.BRIDGE_COLLAPSE_X),
+		"The trailing unit remains physically at the bridge mouth before the rally")
+	gs.command_move_to_pos("peris", Vector3(mid_x, 0.0, 0.5))
+	for s in range(400):
+		instance.headless_advance(0.1, 0.05)
+		instance._on_process(0.1, 1.0)
 		if instance._current_step != "bridge":
 			break
 	_assert_equals(instance._current_step, "bridge_collapse",
-		"Walking onto the mid-span (x=%.1f) triggers the collapse (step=%s)" % [mid_x, instance._current_step])
+		"Rallying both units onto the mid-span (x=%.1f) triggers the collapse (step=%s)" % [mid_x, instance._current_step])
 	_assert_true(not party_pursued,
 		"The ecology below does not pursue the party while it crosses the bridge above")
 	_assert_true(not ecology_pathfound,
@@ -13014,11 +13062,19 @@ func _test_elevator_enemy_performance() -> void:
 	_assert_equals(int(dormant.get("plain_plans", 0)), 0,
 		"Dormant lower ecology causes no hidden movement plans")
 	gs.reset_performance_counters()
-	var activation_started := Time.get_ticks_usec()
 	instance.reveal_chunk("below")
 	_assert_equals(instance._game_state.characters.has("chelator_0"), false,
 		"revealing the route beneath the bridge does not start enemy simulation")
 	instance._activate_below_fauna()
+	_assert_equals(instance._game_state.characters.has("chelator_0"), false,
+		"landing lifecycle stays spatial: an out-of-range huddle remains asleep")
+	for party_id in ["aster", "peris"]:
+		gs.set_character_level(party_id, instance.LEVEL_LOWER)
+		_set_sequence_character_position(instance, party_id, Vector3(
+			instance.FORK_POS.x + 1.0, instance.BELOW_Y, -4.0))
+	gs.reset_performance_counters()
+	var activation_started := Time.get_ticks_usec()
+	instance._update_below_fauna_activation(true)
 	var activation_ms := float(Time.get_ticks_usec() - activation_started) / 1000.0
 	var activation: Dictionary = gs.get_performance_counters()
 	var active_enemies := 0
@@ -13027,12 +13083,14 @@ func _test_elevator_enemy_performance() -> void:
 			active_enemies += 1
 	print("[PERF:ELEVATOR] reveal %.2f ms | enemies=%d | counters=%s" % [
 		activation_ms, active_enemies, str(activation)])
-	_assert_equals(active_enemies, 14,
-		"The performance probe activates the complete lower-deck enemy cohort")
+	_assert_equals(active_enemies, 2,
+		"Approaching the first route beat wakes only its two-enemy cohort")
+	_assert_equals(instance._below_dormant_enemy_setups.size(), 12,
+		"The huddle and later route cohorts remain outside the simulation")
 	_assert_true(activation_ms < 750.0,
 		"Prewarmed enemy activation stays below the 750ms hitch ceiling (%.2fms)" % activation_ms)
 	_assert_true(int(activation.get("detection_recomputes", 0)) <= 1,
-		"The 14-enemy reveal coalesces detection invalidations into one rebuild")
+		"The nearby two-enemy cohort coalesces detection invalidations into one rebuild")
 	_assert_equals(int(activation.get("cooperative_plans", -1)), 0,
 		"Ambient enemy activation performs no cooperative space-time searches")
 	_assert_true(int(activation.get("plain_plans", 0)) <= active_enemies,
@@ -13040,8 +13098,8 @@ func _test_elevator_enemy_performance() -> void:
 	_assert_true(int(activation.get("detection_pairs_considered", 0)) <= active_enemies * 2,
 		"Detection considers only each enemy's two declared party targets")
 
-	# Ten simulated seconds with the party still on the upper floor: fauna may execute its authored
-	# roam/patrol legs, but must never enter tactical states or perform cooperative searches. Ratios use
+	# Ten simulated seconds beside (but outside the distracted reach of) the first cohort: fauna may execute
+	# authored roam legs, but later cohorts must remain dormant and no cooperative search may run. Ratios use
 	# deterministic work units; wall-clock is reported as an additional diagnosis, not the sole oracle.
 	gs.reset_performance_counters()
 	Enemy.CALLS.clear()
@@ -13063,6 +13121,8 @@ func _test_elevator_enemy_performance() -> void:
 	var recomputes := int(idle.get("detection_recomputes", 0))
 	_assert_true(int(idle.get("detection_pairs_considered", 0)) <= recomputes * 2,
 		"Each detection invalidation remains bounded to two subscribed targets")
+	_assert_equals(instance._below_dormant_enemy_setups.size(), 12,
+		"Ten idle seconds do not wake cohorts the party has not approached")
 
 	if instance.has_method("_teardown_sequence"):
 		instance._teardown_sequence()
@@ -13276,8 +13336,13 @@ func _test_elevator() -> void:
 					"outside": Vector3(instance.BRIDGE_COLLAPSE_X - 3.0, 0.5, 0.0),
 					"target": Vector3(instance.BRIDGE_COLLAPSE_X + 3.0, 0.5, 0.0),
 				},
+				{
+					"id": "peris",
+					"outside": Vector3(instance.BRIDGE_COLLAPSE_X - 3.5, 0.5, 0.5),
+					"target": Vector3(instance.BRIDGE_COLLAPSE_X + 2.5, 0.5, 0.5),
+				},
 			],
-			"max_time": 2.5,
+			"max_time": 5.0,
 		})
 		_assert_true(instance._game_state.get_position("aster").x >= instance.BRIDGE_COLLAPSE_X - 0.5,
 			"Bridge gives way ~2/3 across (Aster need not reach the far, un-clickable edge)")
@@ -13384,6 +13449,19 @@ func _test_elevator() -> void:
 				"Clicking Peris's final marker plans a route that never enters an iron footprint")
 			_assert_true(safe_preview_uses_outer_edge,
 				"The planned safe route follows Peris's displayed outer edge")
+			var safe_rally_target := Vector3(
+				instance.FORK_POS.x + float(instance.ROUTE_BEAT_OFFSETS[0]),
+				instance.BELOW_Y,
+				6.45)
+			var safe_rally_destinations: Array[Vector3] = instance._game_state.compute_rally_destinations(
+				["aster", "peris"], safe_rally_target)
+			_assert_equals(safe_rally_destinations.size(), 2,
+				"The safe-route rally previews one final position per party member")
+			for safe_destination in safe_rally_destinations:
+				_assert_true(not instance._iron_patch_contains(safe_destination),
+					"Every cautious rally pill stays outside the visible iron footprint (%s)" % str(safe_destination))
+				_assert_true(not instance._grid.is_cell_risky(instance._grid.world_to_grid(safe_destination)),
+					"Every cautious rally endpoint occupies a non-risk cell")
 
 			# Regression for the reported frame collapse: rendering frames do no HP/event work. Iron emits one
 			# discrete scheduler hit per cadence, with an explicit source label and portrait acknowledgement.
