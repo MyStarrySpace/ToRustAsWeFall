@@ -1437,6 +1437,17 @@ func _finish_emp_discharge_animation() -> void:
 		_emp_pulse_core.transparency = 0.0
 	if _emp_pulse_light != null:
 		_emp_pulse_light.light_energy = 0.0
+	# AnimationPlayer's sampled `transparency = 1` is not a reliable rendered
+	# shutdown on Web when the faceplate material itself is opaque/emissive. Cash
+	# out the consequence as visibility as well as energy so a stopped animation
+	# cannot leave a powered-blue plate in the rally frame.
+	for faceplate in _emp_faceplates:
+		if is_instance_valid(faceplate):
+			faceplate.transparency = 1.0
+			faceplate.visible = false
+	for face_light in _emp_faceplate_lights:
+		if is_instance_valid(face_light):
+			face_light.light_energy = 0.0
 
 func _restore_elevator_power_visuals() -> void:
 	_elevator_powered = true
@@ -1452,6 +1463,7 @@ func _restore_elevator_power_visuals() -> void:
 		_emp_pulse_light.light_energy = 0.0
 	for faceplate in _emp_faceplates:
 		if is_instance_valid(faceplate):
+			faceplate.visible = true
 			faceplate.transparency = 0.0
 	for face_light in _emp_faceplate_lights:
 		if is_instance_valid(face_light):

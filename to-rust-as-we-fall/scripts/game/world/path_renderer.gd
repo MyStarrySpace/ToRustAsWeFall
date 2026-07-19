@@ -31,6 +31,13 @@ const PATH_WIDTH := 0.34
 const PREVIEW_WIDTH := 0.14     # the dim hover ribbon is a hint, not a hose
 const DASH_LENGTH := 0.5
 const DASH_GAP := 0.32
+## PATH_WIDTH was authored against the ~10 m Aster-sim camera. The elevator's
+## camera is less than half that distance, where the same world width becomes a
+## screen-filling hose. Scale the cosmetic ribbon with camera distance so its
+## apparent width and dash cadence stay consistent between fragments.
+const REFERENCE_CAMERA_DISTANCE := 10.0
+const MIN_PROJECTED_WIDTH_SCALE := 0.38
+const MAX_PROJECTED_WIDTH_SCALE := 1.5
 const PATH_GHOST_SHADER := preload("res://resources/path_ghost.gdshader")
 
 ## Preview style: thinner and DASHED — the visual grammar for "not committed yet". A click commits
@@ -55,6 +62,7 @@ var _tail: MeshInstance3D      # the static TAIL: the fixed remaining waypoints 
 var _mat: StandardMaterial3D
 var _tail_cache: Array[Vector3] = []
 var _points_cache: Array[Vector3] = []
+var _projected_width_scale := 1.0
 
 func _ready() -> void:
 	_line = MeshInstance3D.new()
@@ -124,6 +132,15 @@ func _make_ghost_pass() -> ShaderMaterial:
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint() or _line == null:
 		return
+	# The world-space ribbon meshes are top-level so their vertices are not
+	# transformed twice. Top-level also bypasses the usual inherited Node3D
+	# visibility on Web, so explicitly mirror the renderer's tree visibility.
+	# Without this, Peris's safe path leaked while her overlay said OFF.
+	var render_visible := is_visible_in_tree()
+	_line.visible = render_visible
+	_tail.visible = render_visible
+	if not render_visible:
+		return
 	_mat.albedo_color = RUNNING_COLOR if _running else Color(color, WALK_ALPHA)
 	var ghost := _mat.next_pass as ShaderMaterial
 	if ghost != null:
@@ -142,6 +159,13 @@ func _process(_delta: float) -> void:
 		_tail_cache = []
 		_points_cache = []
 		return
+	var projected_width_scale := _width_scale_for_world_point(points[0])
+	if not is_equal_approx(projected_width_scale, _projected_width_scale):
+		_projected_width_scale = projected_width_scale
+		# Width is baked into the meshes. Invalidate both static caches when a
+		# zoom/camera-distance change crosses the quantized scale boundary.
+		_tail_cache = []
+		_points_cache = []
 	# PREVIEW ribbons are static while hovering: rebuild only when the path itself changes.
 	if preview_style:
 		if points != _points_cache:
@@ -169,7 +193,7 @@ func _build_tail(tail: Array[Vector3]) -> Mesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	st.set_normal(Vector3.UP)
-	var half := PATH_WIDTH * 0.5
+	var half := PATH_WIDTH * _projected_width_scale * 0.5
 	for i in range(1, tail.size()):
 		_emit_quad(st, tail[i - 1], tail[i], half)
 	for point in tail:
@@ -180,7 +204,7 @@ func _build_head(start: Vector3, first: Vector3) -> Mesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	st.set_normal(Vector3.UP)
-	_emit_quad(st, start, first, PATH_WIDTH * 0.5)
+	_emit_quad(st, start, first, PATH_WIDTH * _projected_width_scale * 0.5)
 	return st.commit()
 
 ## Build a flat ground-ribbon along the polyline, so the path actually reads from the gameplay camera
@@ -191,7 +215,7 @@ func _build_ribbon(points: Array[Vector3]) -> Mesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	st.set_normal(Vector3.UP)
-	var half := (PREVIEW_WIDTH if preview_style else PATH_WIDTH) * 0.5
+	var half := (PREVIEW_WIDTH if preview_style else PATH_WIDTH) * _projected_width_scale * 0.5
 	if preview_style:
 		_build_dashed(st, points, half)
 	else:
@@ -234,7 +258,9 @@ const _MAX_DASHES := 6000   # crash-proof cap (a normal preview is ~100-500). A 
                             # would otherwise make seg_len enormous and spin this loop ~forever -> hang/OOM.
 
 func _build_dashed(st: SurfaceTool, points: Array[Vector3], half: float) -> void:
-	var cycle := DASH_LENGTH + DASH_GAP
+	var dash_length := DASH_LENGTH * _projected_width_scale
+	var dash_gap := DASH_GAP * _projected_width_scale
+	var cycle := dash_length + dash_gap
 	var travelled := 0.0
 	var emitted := 0
 	for i in range(1, points.size()):
@@ -257,8 +283,8 @@ func _build_dashed(st: SurfaceTool, points: Array[Vector3], half: float) -> void
 			# bounds the total.
 			emitted += 1
 			var phase := fmod(travelled + s, cycle)
-			if phase < DASH_LENGTH:
-				var run := minf(DASH_LENGTH - phase, seg_len - s)
+			if phase < dash_length:
+				var run := minf(dash_length - phase, seg_len - s)
 				_emit_quad(st, p0 + dir * s, p0 + dir * (s + run), half)
 				s += maxf(run, 0.0001)
 			else:
@@ -266,6 +292,22 @@ func _build_dashed(st: SurfaceTool, points: Array[Vector3], half: float) -> void
 		travelled += seg_len
 		if emitted >= _MAX_DASHES:
 			break
+
+func _width_scale_for_camera_distance(camera_distance: float) -> float:
+	return clampf(
+		camera_distance / REFERENCE_CAMERA_DISTANCE,
+		MIN_PROJECTED_WIDTH_SCALE,
+		MAX_PROJECTED_WIDTH_SCALE
+	)
+
+func _width_scale_for_world_point(world_point: Vector3) -> float:
+	var camera := get_viewport().get_camera_3d()
+	if camera == null:
+		return 1.0
+	# Quantization avoids rebuilding static route meshes for imperceptible follow-
+	# camera interpolation while still responding promptly to player zoom.
+	var raw_scale := _width_scale_for_camera_distance(camera.global_position.distance_to(world_point))
+	return snappedf(raw_scale, 0.025)
 
 ## The not-yet-traversed leg as a polyline (start point + remaining waypoints), or
 ## fewer than 2 points when there's nothing to draw.

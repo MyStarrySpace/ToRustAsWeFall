@@ -13303,6 +13303,12 @@ func _test_elevator() -> void:
 		_assert_true(not instance._emp_pulse_core.visible
 				and float(instance._emp_pulse_light.light_energy) <= 0.001,
 			"Rally cannot preserve the EMP source flash or pulse light")
+		var faceplates_visibly_dead := true
+		for faceplate in instance._emp_faceplates:
+			faceplates_visibly_dead = faceplates_visibly_dead \
+				and is_instance_valid(faceplate) and not faceplate.visible
+		_assert_true(faceplates_visibly_dead,
+			"Rally keeps both opaque emissive escort faceplates visibly shut down")
 		_assert_true(not bool(instance._hud.get("_multi_select")),
 			"Rally tutorial leaves HUD multi-select disabled")
 		var rally_selection_before: Array = instance._hud.get_selected_ids().duplicate()
@@ -13452,6 +13458,14 @@ func _test_elevator() -> void:
 				"Aster's active data overlay maps the ecology lane")
 			_assert_true(peris_overlay != null and not peris_overlay.visible,
 				"Peris's route information remains hidden until her overlay is turned on")
+			var hidden_safe_route := peris_overlay.find_child("PerisSafeRouteGuide", true, false) as PathRenderer \
+				if peris_overlay != null else null
+			if hidden_safe_route != null:
+				hidden_safe_route._process(0.0)
+			_assert_true(hidden_safe_route != null
+				and not hidden_safe_route._line.visible
+				and not hidden_safe_route._tail.visible,
+				"Peris's top-level safe-route meshes do not leak while her overlay is off")
 			var active_before: String = str(instance._active_character)
 			var selection_before: Array = instance._hud.get_selected_ids().duplicate()
 			instance._set_elevator_overlay_state("peris", true)
@@ -13465,9 +13479,12 @@ func _test_elevator() -> void:
 				_assert_equals(peris_overlay.find_children("PerisIronBoundary*", "MeshInstance3D", true, false).size(), 12,
 					"Peris reveals the exact four-sided footprint of all three iron fields")
 				var safe_route_guide := peris_overlay.find_child("PerisSafeRouteGuide", true, false) as PathRenderer
+				if safe_route_guide != null:
+					safe_route_guide._process(0.0)
 				_assert_true(safe_route_guide != null
 					and safe_route_guide.preview_style
-					and safe_route_guide._explicit_path.size() >= 6,
+					and safe_route_guide._explicit_path.size() >= 6
+					and safe_route_guide._line.visible,
 					"Peris reuses the shared dashed PathRenderer for the continuous safe-edge guide")
 				var safe_route_material := safe_route_guide._mat as StandardMaterial3D \
 					if safe_route_guide != null else null
@@ -15670,6 +15687,13 @@ func _test_path_renderer() -> void:
 	var pr := PathRenderer.new()
 	add_child(pr)  # _ready builds the line MeshInstance (not @tool → runs headless)
 	pr.setup(gs, "mover", Color(0.2, 0.6, 1.0))
+	_assert_true(is_equal_approx(pr._width_scale_for_camera_distance(10.0), 1.0),
+		"Path width preserves the Aster-sim reference camera")
+	var elevator_camera_distance := Vector3(0.0, 3.5, 2.5).length()
+	var elevator_width := PathRenderer.PATH_WIDTH \
+		* pr._width_scale_for_camera_distance(elevator_camera_distance)
+	_assert_true(elevator_width < 0.18,
+		"Close elevator camera scales the committed ribbon below hose width (%.3f)" % elevator_width)
 
 	# Idle: nothing to draw.
 	pr._process(0.0)
@@ -15684,6 +15708,14 @@ func _test_path_renderer() -> void:
 	if pr._line.mesh != null:
 		_assert_true(pr._line.mesh.get_surface_count() > 0,
 			"Path line mesh has a surface (vertices were added)")
+	pr.visible = false
+	pr._process(0.0)
+	_assert_true(not pr._line.visible and not pr._tail.visible,
+		"Top-level path meshes inherit a hidden overlay parent")
+	pr.visible = true
+	pr._process(0.0)
+	_assert_true(pr._line.visible and pr._tail.visible,
+		"Top-level path meshes return when their overlay is shown")
 
 	# Running flips the line to the orange running tint.
 	pr.set_running(true)
