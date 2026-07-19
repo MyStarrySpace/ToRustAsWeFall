@@ -3052,9 +3052,19 @@ func _test_roompiece_catalog() -> void:
 	var cat = RoomPieceCatalogScript.new()
 	var v: Dictionary = cat.validate()
 	_assert_true(bool(v.get("valid", false)), "room-piece catalog validates clean (errors: %s)" % str(v.get("errors", [])))
-	_assert_true(int(v.get("piece_count", 0)) >= 8, "catalog has the v1 + variety pieces (got %d)" % int(v.get("piece_count", 0)))
-	for needed in ["corridor_straight", "junction_t", "junction_x", "arena", "alcove", "hall", "chamber", "vault"]:
+	_assert_true(int(v.get("piece_count", 0)) >= 9, "catalog has the v1 + feature pieces (got %d)" % int(v.get("piece_count", 0)))
+	_assert_true(int(v.get("spatial_feature_count", 0)) >= 1,
+		"catalog exposes authored spatial feature room-pieces")
+	for needed in ["corridor_straight", "junction_t", "junction_x", "arena", "alcove", "hall", "chamber", "grated_platform", "vault"]:
 		_assert_true(cat.has_piece(needed), "catalog has piece '%s'" % needed)
+	var grated_piece: Dictionary = cat.get_piece("grated_platform")
+	var grated_feature: Dictionary = grated_piece.get("spatial_feature", {})
+	_assert_equals(str(grated_feature.get("kind", "")), "grated_platform",
+		"grated room-piece declares its spatial feature kind")
+	_assert_true(FileAccess.file_exists(str(grated_feature.get("scene", ""))),
+		"grated room-piece resolves to an authored scene")
+	_assert_true((grated_feature.get("content_sockets", {}).get("enemies", []) as Array).size() >= 2,
+		"grated room-piece provides a real fauna roost socket pair")
 
 	# Every archetype node ROLE must have at least one eligible piece (so a slot's domain is never empty).
 	for role in ["boundary", "shelter", "shelter_arrival", "foraging", "guidance", "route_pressure", "danger", "shortcut", "setpiece", "mixed"]:
@@ -3231,7 +3241,15 @@ func _test_wfc_layout() -> void:
 	var nodes: Array = [
 		{"id": "entry", "role": "boundary", "layout_step": {"turn": 0}},
 		{"id": "node_01", "role": "guidance", "layout_step": {"turn": 1}},
-		{"id": "node_02", "role": "danger", "layout_step": {"turn": -1}},
+		{"id": "node_02", "role": "danger", "layout_step": {"turn": -1},
+			"variant": "flure_iron_decoy", "flora": ["flure"], "enemies": ["sapscraps"],
+			"structures": ["root_slide"], "spatial_affordances": [{
+				"id": "test_signal_roost", "feature_kind": "grated_platform",
+				"feature_variant": "signal_roost", "variants": ["flure_iron_decoy"],
+				"priority": 100, "primary_insight": "signal redirects fauna",
+				"leverage": "tend before crossing", "failure_prediction": "crossing first preserves pursuit",
+				"emergent_inputs": ["flora", "fauna", "position"],
+			}]},
 		{"id": "node_03", "role": "foraging", "layout_step": {"turn": 0}},
 		{"id": "exit_shelter", "role": "shelter", "layout_step": {"turn": 0}},
 	]
@@ -3248,6 +3266,17 @@ func _test_wfc_layout() -> void:
 	_assert_equals((layout["placements"] as Array).size(), nodes.size(), "one room-piece placement per node")
 	_assert_equals((layout["corridors"] as Array).size(), routes.size(), "one corridor per route")
 	_assert_true(not bool(layout.get("fallback_used", true)), "no universal-fallback needed for the basic chain")
+	var feature_placements: Array = []
+	for placement_v in layout.get("placements", []):
+		if placement_v is Dictionary and str((placement_v as Dictionary).get("spatial_feature_kind", "")) != "":
+			feature_placements.append(placement_v)
+	_assert_equals(feature_placements.size(), 1,
+		"the standard tier spends one spatial-feature budget slot")
+	if not feature_placements.is_empty():
+		_assert_equals(str((feature_placements[0] as Dictionary).get("piece", "")), "grated_platform",
+			"the compatible archetype slot collapses to the grated platform room-piece")
+		_assert_equals(str((feature_placements[0] as Dictionary).get("node", "")), "node_02",
+			"the feature never replaces entry or shelter geometry")
 
 	# Determinism: same seed -> byte-identical placements; a different seed changes the layout somewhere.
 	var layout_b: Dictionary = Wfc.solve(nodes, routes, settings, {}, cat)
@@ -5724,7 +5753,36 @@ func _test_generated_stretch_quality() -> void:
 		"wider corridor width carves more cells (%d < %d < %d)" % [c1.size(), c2.size(), c3.size()])
 
 	# (b) The party spawns ON the stretch — its anchors sit AT the entry node, not at world origin off to the side.
-	var spec: Dictionary = StretchGeneratorScript.generate({"seed": 5, "complexity_tier": "standard", "id": "q"})
+	var spec: Dictionary = StretchGeneratorScript.generate({
+		"seed": 5,
+		"complexity_tier": "standard",
+		"progression_stage": 1,
+		"id": "q",
+		"limitations": {"allowed": {"archetypes": ["2", "11"]}, "required": {"archetypes": ["2"]}},
+		"composition": {"chain": [{"id": "2", "variant": "flure_iron_decoy"}]},
+	})
+	_assert_true(bool(spec.get("success", false)), "the feature-focused generated stretch builds")
+	var features: Array = spec.get("spatial_features", [])
+	_assert_true(not features.is_empty(), "an eligible archetype emits a spatial feature contract")
+	if not features.is_empty():
+		var feature := features[0] as Dictionary
+		_assert_equals(str(feature.get("kind", "")), "grated_platform",
+			"the generated feature is a grated standing platform")
+		_assert_true((feature.get("floor_cells", []) as Array).size() >= 9,
+			"the platform replaces a real multi-cell standing area")
+		var assignment_categories := {}
+		for assignment_v in feature.get("socket_assignments", []):
+			if assignment_v is Dictionary:
+				assignment_categories[str((assignment_v as Dictionary).get("category", ""))] = true
+		_assert_true(assignment_categories.has("flora") and assignment_categories.has("enemies") \
+				and assignment_categories.has("structures"),
+			"flora, fauna and the puzzle structure occupy authored platform sockets")
+		var causal_model: Dictionary = feature.get("causal_model", {})
+		_assert_true(str(causal_model.get("leverage", "")) != "" \
+				and (causal_model.get("emergent_inputs", []) as Array).size() >= 3,
+			"the feature records leverage plus interacting systems instead of a scripted answer")
+	_assert_true(bool(StretchGeneratorScript.validate_spatial_features(spec).get("valid", false)),
+		"the generated platform contract validates against its navigation grid")
 	var entry := _generated_node(spec, "entry")
 	var anchors: Dictionary = spec.get("anchors", {})
 	for cid in ["aster", "peris", "endo"]:
@@ -5736,11 +5794,12 @@ func _test_generated_stretch_quality() -> void:
 
 	# (c) The generated chunk renders a TILED FLOOR + node markers, and NONE of the old scaffolding clutter.
 	var chunk = load("res://scenes/fragments/chunks/generated_stretch_chunk.tscn").instantiate()
-	chunk.configure_chunk({"spec": spec})
+	chunk.configure_chunk({"spec": spec, "spiral": false})
 	get_tree().root.add_child(chunk)
 	if chunk.has_method("_build_chunk"):
 		chunk._build_chunk()
 	await get_tree().process_frame
+	await get_tree().physics_frame
 	var names: Array = []
 	_collect_node_names(chunk, names)
 	_assert_true(_names_any_prefix(names, "GeneratedFloor"), "the generated level renders a tiled walkable floor")
@@ -5748,7 +5807,90 @@ func _test_generated_stretch_quality() -> void:
 	_assert_true(not _names_any_prefix(names, "GeneratedFoundation"), "no big foundation slab (clutter removed)")
 	_assert_true(not _names_any_prefix(names, "Route_"), "no route-connector boxes (clutter removed)")
 	_assert_true(not _names_any_prefix(names, "NodePad_"), "no big role pads over the floor (clutter removed)")
+	var feature_root := chunk.find_child("GeneratedSpatialFeature_*", true, false) as Node3D
+	_assert_true(feature_root != null, "the authored spatial feature scene is instanced into the generated chunk")
+	if feature_root != null:
+		var deck_collision := feature_root.get_node_or_null("DeckCollision") as StaticBody3D
+		var rail_collision := feature_root.get_node_or_null("RailCollision") as StaticBody3D
+		_assert_true(deck_collision != null and deck_collision.get_child_count() == 1,
+			"the authored grate supplies its own standing collision")
+		_assert_true(rail_collision != null and rail_collision.get_child_count() == 8,
+			"all four platform sides have authored rail collision around their route mouths")
+		_assert_true(feature_root.find_children("LongBar*", "MeshInstance3D", true, false).size() == 9,
+			"the platform surface is visible grate geometry rather than a recolored solid tile")
+		var graybox_state: Dictionary = chunk.get_graybox_state()
+		_assert_equals(int(graybox_state.get("instanced_spatial_feature_count", 0)), features.size(),
+			"every emitted spatial feature contract gets exactly one prefab instance")
+		if not features.is_empty():
+			var feature_grid = GridWorld.from_data(spec.get("navigation_grid", {}))
+			var direct_space = chunk.get_world_3d().direct_space_state
+			var platform_collision_hits := 0
+			var non_feature_collision_rids: Array[RID] = []
+			for collision_object in chunk.find_children("*", "CollisionObject3D", true, false):
+				if collision_object is CollisionObject3D \
+						and not feature_root.is_ancestor_of(collision_object as Node):
+					non_feature_collision_rids.append((collision_object as CollisionObject3D).get_rid())
+			for cell_v in (features[0] as Dictionary).get("floor_cells", []):
+				var cell := Vector2i(int(cell_v[0]), int(cell_v[1]))
+				var flat: Vector3 = feature_grid.grid_to_world(
+					cell, int((features[0] as Dictionary).get("elevation_index", 0)))
+				_assert_true(bool(chunk.call("_spatial_feature_replaces_flat_cell", flat,
+					int((features[0] as Dictionary).get("elevation_index", 0)))),
+					"feature cell %s is excluded from the generic solid-floor mesh" % str(cell))
+				var query := PhysicsRayQueryParameters3D.create(
+					flat + Vector3.UP * 3.0, flat + Vector3.DOWN * 3.0)
+				query.collision_mask = 1
+				query.exclude = non_feature_collision_rids
+				var hit: Dictionary = direct_space.intersect_ray(query)
+				var collider: Node = hit.get("collider") as Node
+				if collider != null and feature_root.is_ancestor_of(collider):
+					platform_collision_hits += 1
+			_assert_equals(platform_collision_hits,
+				((features[0] as Dictionary).get("floor_cells", []) as Array).size(),
+				"every replaced walkable cell raycasts to the authored platform collision")
 	chunk.queue_free()
+	await get_tree().process_frame
+
+	# The normal generated-stretch presentation bends the same data grid onto a helix. The authored prefab rides
+	# that transform as one rigid systems deck; every one of its data cells must still have click collision at the
+	# corresponding warped world point.
+	var spiral_chunk = load("res://scenes/fragments/chunks/generated_stretch_chunk.tscn").instantiate()
+	spiral_chunk.configure_chunk({"spec": spec})
+	get_tree().root.add_child(spiral_chunk)
+	if spiral_chunk.has_method("_build_chunk"):
+		spiral_chunk._build_chunk()
+	await get_tree().process_frame
+	await get_tree().physics_frame
+	var spiral_feature := spiral_chunk.find_child("GeneratedSpatialFeature_*", true, false) as Node3D
+	var spiral_map = spiral_chunk.get_coord_map()
+	_assert_true(spiral_feature != null and spiral_map != null,
+		"the authored platform rides the normal generated helix transform")
+	if spiral_feature != null and spiral_map != null and not features.is_empty():
+		var spiral_space = spiral_chunk.get_world_3d().direct_space_state
+		var spiral_excludes: Array[RID] = []
+		for collision_object in spiral_chunk.find_children("*", "CollisionObject3D", true, false):
+			if collision_object is CollisionObject3D \
+					and not spiral_feature.is_ancestor_of(collision_object as Node):
+				spiral_excludes.append((collision_object as CollisionObject3D).get_rid())
+		var feature_grid = GridWorld.from_data(spec.get("navigation_grid", {}))
+		var warped_collision_hits := 0
+		for cell_v in (features[0] as Dictionary).get("floor_cells", []):
+			var cell := Vector2i(int(cell_v[0]), int(cell_v[1]))
+			var flat: Vector3 = feature_grid.grid_to_world(
+				cell, int((features[0] as Dictionary).get("elevation_index", 0)))
+			var world: Vector3 = spiral_map.to_world(flat)
+			var query := PhysicsRayQueryParameters3D.create(
+				world + Vector3.UP * 4.0, world + Vector3.DOWN * 4.0)
+			query.collision_mask = 1
+			query.exclude = spiral_excludes
+			var hit: Dictionary = spiral_space.intersect_ray(query)
+			var collider: Node = hit.get("collider") as Node
+			if collider != null and spiral_feature.is_ancestor_of(collider):
+				warped_collision_hits += 1
+		_assert_equals(warped_collision_hits,
+			((features[0] as Dictionary).get("floor_cells", []) as Array).size(),
+			"every platform cell retains authored collision after the helix warp")
+	spiral_chunk.queue_free()
 	await get_tree().process_frame
 
 ## Three settings configurations, one immutable level. This guards the comparison

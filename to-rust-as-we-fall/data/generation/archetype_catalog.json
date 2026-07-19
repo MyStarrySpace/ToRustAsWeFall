@@ -104,6 +104,33 @@
         "environment",
         "enemy_routing"
       ],
+      "spatial_affordances": [
+        {
+          "id": "grated_signal_roost",
+          "feature_kind": "grated_platform",
+          "feature_variant": "signal_roost",
+          "variants": [
+            "flure_iron_decoy",
+            "hushbloom_stun"
+          ],
+          "priority": 100,
+          "socket_policy": "separate_leverage_from_response",
+          "primary_insight": "The plant on one exposed deck changes how fauna use the connected route.",
+          "leverage": "Tend the flora before committing the party to the fauna side.",
+          "failure_prediction": "Crossing before changing the signal leaves ordinary fauna perception intact.",
+          "feedback": [
+            "the flora state changes at the signal socket",
+            "the fauna response remains visible from the approach"
+          ],
+          "emergent_inputs": [
+            "flora state",
+            "fauna perception",
+            "party position",
+            "intervention timing",
+            "route topology"
+          ]
+        }
+      ],
       "compatible_node_roles": [
         "foraging",
         "guidance",
@@ -292,6 +319,29 @@
         "distraction",
         "coordination",
         "timing"
+      ],
+      "spatial_affordances": [
+        {
+          "id": "grated_split_perch",
+          "feature_kind": "grated_platform",
+          "feature_variant": "split_perch",
+          "priority": 80,
+          "socket_policy": "separate_distraction_from_task",
+          "primary_insight": "A distraction changes which part of the exposed platform the patrol can safely contest.",
+          "leverage": "Position the distractor apart from the task socket, then act during the patrol response.",
+          "failure_prediction": "Stacking the party at the task keeps the patrol's attention on the real objective.",
+          "feedback": [
+            "the patrol response is visible across the open grate",
+            "the task socket remains readable from the distraction position"
+          ],
+          "emergent_inputs": [
+            "patrol perception",
+            "party split",
+            "task duration",
+            "intervention timing",
+            "route topology"
+          ]
+        }
       ],
       "compatible_node_roles": [
         "route_pressure",

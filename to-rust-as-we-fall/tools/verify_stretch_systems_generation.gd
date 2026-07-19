@@ -33,6 +33,44 @@ func _init() -> void:
 	check((replay.get("solutions", []) as Array).size() == 2, "replay keeps spotlight and shadow solutions")
 	check(JSON.stringify(replay) == JSON.stringify(Replay.build(b)), "same systems seed emits the same replay")
 
+	# Spatial composition is selected through the archetype's affordance contract. Plant-as-tool's
+	# Flure variant must provide a response actor, separate it from the flora leverage socket, and
+	# preserve those authored cells as ordinary walkable GridWorld truth.
+	var platform_settings := {
+		"id": "systems_grated_signal_roost",
+		"seed": 4417,
+		"complexity_tier": "standard",
+		"progression_stage": 1,
+		"limitations": {
+			"allowed": {"archetypes": ["2", "11"]},
+			"required": {"archetypes": ["2"]},
+		},
+		"composition": {"chain": [{"id": "2", "variant": "flure_iron_decoy"}]},
+	}
+	var platform_spec: Dictionary = Generator.generate(platform_settings)
+	var platform_spec_again: Dictionary = Generator.generate(platform_settings)
+	check(bool(platform_spec.get("success", false)), "eligible Plant-as-tool stretch generates")
+	check(JSON.stringify(platform_spec) == JSON.stringify(platform_spec_again),
+		"spatial feature selection and sockets are seed-deterministic")
+	var platform_features: Array = platform_spec.get("spatial_features", [])
+	check(platform_features.size() == 1, "standard tier emits one grated spatial composition")
+	if not platform_features.is_empty():
+		var platform := platform_features[0] as Dictionary
+		check(str(platform.get("kind", "")) == "grated_platform",
+			"archetype affordance selects the grated room-piece")
+		check((platform.get("floor_cells", []) as Array).size() == 25,
+			"the five-by-five grate replaces exactly 25 walkable cells")
+		var categories := {}
+		for assignment_v in platform.get("socket_assignments", []):
+			if assignment_v is Dictionary:
+				categories[str((assignment_v as Dictionary).get("category", ""))] = true
+		check(categories.has("flora") and categories.has("enemies") and categories.has("structures"),
+			"platform sockets separate leverage flora, response fauna, and puzzle structure")
+		check((platform.get("causal_model", {}).get("emergent_inputs", []) as Array).size() >= 3,
+			"platform contract names the interacting systems that can produce emergence")
+	check(bool(Generator.validate_spatial_features(platform_spec).get("valid", false)),
+		"platform feature contract validates against authoritative navigation")
+
 	var tier_nodes := -1
 	var tier_depth := -1
 	var previous_rank := 0

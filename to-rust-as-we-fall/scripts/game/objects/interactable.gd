@@ -415,6 +415,13 @@ func hide_tutorial_label() -> void:
 		tween.tween_property(_tutorial_label_3d, "modulate:a", 0.0, 0.3)
 		tween.tween_callback(func(): _tutorial_label_3d.visible = false)
 
+## Construction-time suppression for dense compositions that already carry authored world labels.
+## Unlike hide_tutorial_label(), this does not create a second tween alongside the factory reveal.
+func hide_tutorial_label_immediate() -> void:
+	if _tutorial_label_3d:
+		_tutorial_label_3d.visible = false
+		_tutorial_label_3d.modulate.a = 0.0
+
 ## Reveal-all overlay (hold SHIFT): show this interactable's highlight. Shares the same feedback
 ## as hover — a hovered object and a revealed one read identically. The interactable is a meshless
 ## proximity zone that intercepts the hover ray, so the actual visual is its OBJECT's

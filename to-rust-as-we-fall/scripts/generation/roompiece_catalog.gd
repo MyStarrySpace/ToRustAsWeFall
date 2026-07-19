@@ -67,6 +67,7 @@ func pieces_for_tags(tags: Array) -> Array[String]:
 func validate() -> Dictionary:
 	var errs: Array[String] = []
 	var pieces: Dictionary = data.get("pieces", {})
+	var spatial_feature_count := 0
 	if pieces.is_empty():
 		errs.append("Room-piece catalog has no pieces")
 	var kinds := {}
@@ -102,8 +103,29 @@ func validate() -> Dictionary:
 			for kind in sockets[side]:
 				if not kinds.has(str(kind)):
 					errs.append("%s: unknown socket kind '%s' on %s" % [id, str(kind), side])
+		var feature: Dictionary = (p as Dictionary).get("spatial_feature", {})
+		if not feature.is_empty():
+			spatial_feature_count += 1
+			if str(feature.get("kind", "")) == "":
+				errs.append("%s: spatial_feature requires a kind" % id)
+			var scene_path := str(feature.get("scene", ""))
+			if scene_path == "" or not FileAccess.file_exists(scene_path):
+				errs.append("%s: spatial_feature scene does not exist: %s" % [id, scene_path])
+			var content_sockets: Variant = feature.get("content_sockets", {})
+			if not (content_sockets is Dictionary) or (content_sockets as Dictionary).is_empty():
+				errs.append("%s: spatial_feature requires content_sockets" % id)
+			else:
+				for category in (content_sockets as Dictionary).keys():
+					for socket in (content_sockets as Dictionary).get(category, []):
+						if not (socket is Array) or (socket as Array).size() != 3:
+							errs.append("%s: %s content socket must be [x,y,z]" % [id, str(category)])
 	errors.append_array(errs)
-	return {"valid": errs.is_empty(), "errors": errs, "piece_count": pieces.size()}
+	return {
+		"valid": errs.is_empty(),
+		"errors": errs,
+		"piece_count": pieces.size(),
+		"spatial_feature_count": spatial_feature_count,
+	}
 
 # --- Static geometry helpers (shared by WFC + stitcher) ---
 

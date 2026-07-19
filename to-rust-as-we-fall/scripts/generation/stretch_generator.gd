@@ -161,15 +161,19 @@ static func generate(settings: Dictionary) -> Dictionary:
 	var navigation_grid: Dictionary = GridStitcherScript.build(
 		layout.get("placements", []), layout.get("corridors", []), layout.get("slot_cells", {}), resolved)
 	var graybox: Dictionary
+	var spatial_features: Array = []
 	if navigation_grid.is_empty():
 		layout = {}   # signal legacy in the roompieces block
 		graybox = _apply_graybox_layout(nodes, routes, catalog, resolved, budget)
 		navigation_grid = _build_navigation_grid_legacy(nodes, routes, resolved, graybox)
 	else:
+		_assign_spatial_features(nodes, layout, piece_catalog)
 		graybox = _apply_wfc_graybox(nodes, routes, layout, catalog, resolved, budget)
+		spatial_features = _collect_spatial_features(nodes, navigation_grid)
 	graybox["navigation_contract_id"] = str(navigation_grid.get("contract_id", ""))
 	graybox["navigation_node_count"] = nodes.size()
 	graybox["navigation_edge_count"] = routes.size()
+	graybox["spatial_feature_count"] = spatial_features.size()
 	var anchors := _build_anchors(nodes)
 	var world_slot := _build_world_slot(resolved, anchors)
 	var teaching_chain := _teaching_chain_edges(catalog, archetype_chain)
@@ -201,6 +205,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 		"graybox": graybox,
 		"navigation_grid": navigation_grid,
 		"roompieces": _roompieces_block(layout),
+		"spatial_features": spatial_features,
 		"nodes": nodes,
 		"routes": routes,
 		"archetype_chain": archetype_chain,
@@ -245,6 +250,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 				"chunk.generation.composition.random_walk",
 				"chunk.generation.unsupported_placeholder_count",
 				"chunk.generation.navigation",
+				"chunk.generation.spatial_features",
 				"chunk.generation.active_loadout",
 				"chunk.generation.solution_path",
 				"chunk.generation.blocked_nodes"
@@ -268,6 +274,16 @@ static func generate(settings: Dictionary) -> Dictionary:
 			"success": false,
 			"ok": false,
 			"error": "systems_contract_failed",
+			"validation": spec["validation"],
+			"draft_spec": spec,
+		}
+	var spatial_validation := validate_spatial_features(spec)
+	(spec["validation"] as Dictionary)["spatial_features"] = spatial_validation
+	if not bool(spatial_validation.get("valid", false)):
+		return {
+			"success": false,
+			"ok": false,
+			"error": "spatial_feature_contract_failed",
 			"validation": spec["validation"],
 			"draft_spec": spec,
 		}
@@ -365,6 +381,59 @@ static func validate_settings(settings: Dictionary) -> Dictionary:
 ## Public verifier used by batch tools and QA without duplicating the contract law.
 static func validate_systems_contract(spec: Dictionary) -> Dictionary:
 	return SystemsCurriculumScript.validate_contract(spec)
+
+
+## Public verifier for generated feature prefabs. A platform is only valid when it replaces real walkable cells,
+## assigns its archetype content to explicit sockets, and names the causal relationship it is meant to expose.
+static func validate_spatial_features(spec: Dictionary) -> Dictionary:
+	var errors: Array[String] = []
+	var features: Array = spec.get("spatial_features", [])
+	var nodes_by_id := {}
+	for node_v in spec.get("nodes", []):
+		if node_v is Dictionary:
+			nodes_by_id[str((node_v as Dictionary).get("id", ""))] = node_v
+	var grid = GridWorld.from_data(spec.get("navigation_grid", {}))
+	var seen_nodes := {}
+	for raw_feature in features:
+		if not (raw_feature is Dictionary):
+			errors.append("Spatial feature is not a dictionary")
+			continue
+		var feature := raw_feature as Dictionary
+		var feature_id := str(feature.get("id", "spatial_feature"))
+		var node_id := str(feature.get("node_id", ""))
+		if not nodes_by_id.has(node_id):
+			errors.append("%s references unknown node %s" % [feature_id, node_id])
+			continue
+		if seen_nodes.has(node_id):
+			errors.append("Node %s owns more than one primary spatial feature" % node_id)
+		seen_nodes[node_id] = true
+		var node := nodes_by_id[node_id] as Dictionary
+		if str(node.get("role", "")) in ["boundary", "shelter", "shelter_arrival"]:
+			errors.append("%s occupies a boundary/shelter node" % feature_id)
+		var scene_path := str(feature.get("scene", ""))
+		if scene_path == "" or not FileAccess.file_exists(scene_path):
+			errors.append("%s has no authored scene" % feature_id)
+		var floor_cells: Array = feature.get("floor_cells", [])
+		if floor_cells.size() < 9:
+			errors.append("%s replaces fewer than nine standing cells" % feature_id)
+		var level := int(feature.get("elevation_index", 0))
+		for cell_v in floor_cells:
+			if not (cell_v is Array) or (cell_v as Array).size() < 2:
+				errors.append("%s has a malformed floor cell" % feature_id)
+				continue
+			var cell := Vector2i(int(cell_v[0]), int(cell_v[1]))
+			if not grid.is_walkable(cell.x, cell.y, {}, {}, level):
+				errors.append("%s replaces non-walkable cell %s" % [feature_id, str(cell)])
+		var assignments: Array = feature.get("socket_assignments", [])
+		if assignments.size() < 2:
+			errors.append("%s does not spatially separate at least two system elements" % feature_id)
+		var causal_model: Dictionary = feature.get("causal_model", {})
+		for key in ["primary_insight", "leverage", "failure_prediction"]:
+			if str(causal_model.get(key, "")).strip_edges() == "":
+				errors.append("%s causal model is missing %s" % [feature_id, key])
+		if (causal_model.get("emergent_inputs", []) as Array).size() < 3:
+			errors.append("%s does not name enough interacting systems for emergence" % feature_id)
+	return {"valid": errors.is_empty(), "errors": errors, "feature_count": features.size()}
 
 
 static func build_navigation_grid_from_spec(spec: Dictionary) -> Dictionary:
@@ -1075,6 +1144,7 @@ static func _archetype_chain_entry(catalog, id: String, rng, variant_override :=
 		"kind": str(entry.get("kind", "")),
 		"variant": variant,
 		"tags": entry.get("tags", []),
+		"spatial_affordances": (entry.get("spatial_affordances", []) as Array).duplicate(true),
 		"step_count": (entry.get("steps", []) as Array).size() if entry.get("steps", []) is Array else 0,
 		"shadow_solution": entry.get("shadow_solution", {}),
 		"approaches": entry.get("approaches", []),
@@ -1448,6 +1518,7 @@ static func _build_nodes(catalog, settings: Dictionary, budget: Dictionary, pale
 			"layout_step": walk_entry.get("layout_step", {}),
 			"nested_archetypes": nested_archetypes,
 			"nested_depth": _max_nested_depth(nested_archetypes),
+			"spatial_affordances": (archetype.get("spatial_affordances", []) as Array).duplicate(true),
 			"flora": flora,
 			"enemies": enemies,
 			"structures": structures,
@@ -1714,6 +1785,93 @@ static func _apply_graybox_layout(nodes: Array, routes: Array, catalog, settings
 	}
 
 
+## Bind WFC's selected feature room-pieces back to their semantic archetype nodes. Geometry owns the prefab and
+## socket positions; the archetype affinity owns why those sockets matter. Keeping both halves in the emitted
+## contract lets presentation change without losing the intended causal model.
+static func _assign_spatial_features(nodes: Array, layout: Dictionary, piece_catalog) -> void:
+	var node_indices := {}
+	for i in range(nodes.size()):
+		if nodes[i] is Dictionary:
+			node_indices[str((nodes[i] as Dictionary).get("id", ""))] = i
+	for placement_v in layout.get("placements", []):
+		if not (placement_v is Dictionary):
+			continue
+		var placement := placement_v as Dictionary
+		var node_id := str(placement.get("node", ""))
+		if not node_indices.has(node_id):
+			continue
+		var piece: Dictionary = piece_catalog.rotate_piece(
+			piece_catalog.get_piece(str(placement.get("piece", ""))),
+			int(placement.get("rotation", 0))
+		)
+		var feature_def: Dictionary = piece.get("spatial_feature", {})
+		var affordance: Dictionary = placement.get("spatial_affordance", {})
+		if feature_def.is_empty() or affordance.is_empty():
+			continue
+		var node_index := int(node_indices[node_id])
+		var node := nodes[node_index] as Dictionary
+		var feature := feature_def.duplicate(true)
+		feature.merge({
+			"contract_id": "generated_spatial_feature_v1",
+			"id": "feature_%s" % node_id,
+			"node_id": node_id,
+			"roompiece": str(placement.get("piece", "")),
+			"rotation": int(placement.get("rotation", 0)),
+			"affordance_id": str(affordance.get("id", "")),
+			"feature_variant": str(affordance.get("feature_variant", "systems_deck")),
+			"archetype_id": str(node.get("archetype_id", "")),
+			"archetype_name": str(node.get("archetype_name", "")),
+			"archetype_variant": str(node.get("variant", "")),
+			"causal_model": {
+				"system_boundary": "the grated platform, its system sockets, and connected route mouths",
+				"primary_insight": str(affordance.get("primary_insight", "")),
+				"leverage": str(affordance.get("leverage", "")),
+				"failure_prediction": str(affordance.get("failure_prediction", "")),
+				"feedback": (affordance.get("feedback", []) as Array).duplicate(true),
+				"emergent_inputs": (affordance.get("emergent_inputs", []) as Array).duplicate(true),
+				"reasoning_ends": "when the player can predict the response before committing across the deck",
+			},
+		}, true)
+		node["spatial_feature"] = feature
+		nodes[node_index] = node
+
+
+static func _collect_spatial_features(nodes: Array, navigation_grid: Dictionary) -> Array:
+	var result: Array = []
+	var grid = GridWorld.from_data(navigation_grid)
+	var cells_by_level := {}
+	var level_cells: Array = navigation_grid.get("level_cells", [])
+	if level_cells.is_empty():
+		cells_by_level[0] = navigation_grid.get("walkable_cells", [])
+	else:
+		for entry_v in level_cells:
+			if entry_v is Dictionary:
+				cells_by_level[int((entry_v as Dictionary).get("level", 0))] = (entry_v as Dictionary).get("cells", [])
+	for node_v in nodes:
+		if not (node_v is Dictionary):
+			continue
+		var node := node_v as Dictionary
+		var feature: Dictionary = node.get("spatial_feature", {})
+		if feature.is_empty():
+			continue
+		var center := _array_to_vec3(feature.get("position", node.get("position", [])), Vector3.ZERO)
+		var footprint := _array_to_vec3(feature.get("footprint", node.get("footprint", [])), Vector3(5.0, 0.14, 5.0))
+		var half := Vector2(footprint.x, footprint.z) * 0.5
+		var level := int(feature.get("elevation_index", node.get("elevation_index", 0)))
+		var floor_cells: Array = []
+		for cell_v in cells_by_level.get(level, []):
+			if not (cell_v is Array) or (cell_v as Array).size() < 2:
+				continue
+			var cell := Vector2i(int(cell_v[0]), int(cell_v[1]))
+			var world: Vector3 = grid.grid_to_world(cell, level)
+			if absf(world.x - center.x) <= half.x - 0.01 \
+					and absf(world.z - center.z) <= half.y - 0.01:
+				floor_cells.append([cell.x, cell.y])
+		feature["floor_cells"] = floor_cells
+		result.append(feature.duplicate(true))
+	return result
+
+
 ## The WFC analogue of _apply_graybox_layout: node spatial fields come from the room-piece each slot collapsed
 ## to (position = piece centre, footprint = piece size), not the role-based footprint. Content placements + route
 ## surfaces + the graybox contract block are otherwise identical, so the chunk + the grid test consume it unchanged.
@@ -1746,9 +1904,23 @@ static func _apply_wfc_graybox(nodes: Array, routes: Array, layout: Dictionary, 
 			var fc: Array = sc.get("footprint", [4, 4])
 			footprint = Vector3(float(fc[0]), 0.14, float(fc[1]))
 		var surface_y := position.y
-		var approach := position + _graybox_approach_offset(role, footprint)
+		var feature: Dictionary = node.get("spatial_feature", {})
+		var interaction_offset := _array_to_vec3(
+			feature.get("interaction_socket", []), Vector3.INF
+		) if not feature.is_empty() else Vector3.INF
+		var approach := (
+			position + interaction_offset
+			if interaction_offset != Vector3.INF
+			else position + _graybox_approach_offset(role, footprint)
+		)
 		var placements := _build_graybox_content_placements(node, position, footprint, catalog)
 		content_placement_count += placements.size()
+		if not feature.is_empty():
+			feature["position"] = _vec3_to_array(position)
+			feature["footprint"] = _vec3_to_array(footprint)
+			feature["elevation_index"] = level
+			feature["socket_assignments"] = _spatial_feature_socket_assignments(placements)
+			node["spatial_feature"] = feature
 
 		node["position"] = _vec3_to_array(position)
 		node["elevation_index"] = level
@@ -1885,12 +2057,19 @@ static func _graybox_approach_offset(role: String, footprint: Vector3) -> Vector
 static func _build_graybox_content_placements(node: Dictionary, node_position: Vector3, footprint: Vector3, catalog) -> Array:
 	var placements := []
 	var slot_index := 0
+	var category_indices := {}
 	for category in ["flora", "enemies", "structures"]:
 		var values: Array = node.get(category, [])
 		for value in values:
 			var content_id := str(value)
 			var size := _graybox_content_size(category, content_id)
-			var offset := _graybox_content_offset(category, slot_index, footprint)
+			var category_index := int(category_indices.get(category, 0))
+			var socket := _spatial_feature_content_socket(node, category, category_index)
+			var offset := (
+				_array_to_vec3(socket.get("offset", []), Vector3.ZERO)
+				if not socket.is_empty()
+				else _graybox_content_offset(category, slot_index, footprint)
+			)
 			offset.y = size.y * 0.5
 			var position := node_position + offset
 			var support: String = catalog.support_level(category, content_id) if catalog != null and catalog.has_method("support_level") else "placeholder"
@@ -1905,9 +2084,45 @@ static func _build_graybox_content_placements(node: Dictionary, node_position: V
 				"position": _vec3_to_array(position),
 				"rotation_y_degrees": float((slot_index * 37 + int(node.get("chain_index", 0)) * 11) % 180),
 				"label": content_id,
+				"socket_id": str(socket.get("id", "")),
 			})
 			slot_index += 1
+			category_indices[category] = category_index + 1
 	return placements
+
+
+static func _spatial_feature_content_socket(
+		node: Dictionary, category: String, category_index: int) -> Dictionary:
+	var feature: Dictionary = node.get("spatial_feature", {})
+	var sockets: Dictionary = feature.get("content_sockets", {})
+	var category_sockets: Array = sockets.get(category, [])
+	if category_index < 0 or category_index >= category_sockets.size():
+		return {}
+	var socket_prefix := str({
+		"flora": "flora", "enemies": "enemy", "structures": "structure",
+	}.get(category, category))
+	return {
+		"id": "%s_%d" % [socket_prefix, category_index],
+		"offset": category_sockets[category_index],
+	}
+
+
+static func _spatial_feature_socket_assignments(placements: Array) -> Array:
+	var assignments: Array = []
+	for placement_v in placements:
+		if not (placement_v is Dictionary):
+			continue
+		var placement := placement_v as Dictionary
+		var socket_id := str(placement.get("socket_id", ""))
+		if socket_id == "":
+			continue
+		assignments.append({
+			"socket": socket_id,
+			"category": str(placement.get("category", "")),
+			"content_id": str(placement.get("id", "")),
+			"position": (placement.get("position", []) as Array).duplicate(),
+		})
+	return assignments
 
 static func _graybox_content_offset(category: String, slot_index: int, footprint: Vector3) -> Vector3:
 	var stagger := float(slot_index % 3) - 1.0
@@ -2366,6 +2581,15 @@ static func _enemy_needs(archetype: Dictionary) -> Array:
 	match str(archetype.get("id", "")):
 		"1":
 			return [["hunter", "swarm", "siderophore", "metabolic"]]
+		"2":
+			# Plant-as-tool only needs fauna when the named plant verb acts on fauna. The old
+			# catalog tagged this archetype enemy_routing but emitted an empty target set,
+			# leaving Flure/Hushbloom beats as decorative plants beside an abstract button.
+			if variant == "flure_iron_decoy":
+				return [["siderophore", "iron", "patrol"]]
+			if variant == "hushbloom_stun":
+				return [["patrol", "enforcement", "hunter"]]
+			return []
 		"4":
 			return [["patrol", "enforcement"]]
 		"7":

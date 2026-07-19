@@ -51,9 +51,9 @@
 			1.5
 		],
 		"node_07": [
-			92.5,
+			93.5,
 			0.449999988079071,
-			1.5
+			2.5
 		],
 		"node_08": [
 			105.5,
@@ -159,6 +159,7 @@
 				"notes": "Use overlay timing plus flora or scarpet cover to substitute for a combat specialist."
 			},
 			"solve": "",
+			"spatial_affordances": [],
 			"stage": 2,
 			"step_count": 6,
 			"survival_kind": "",
@@ -263,6 +264,33 @@
 				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
 			},
 			"solve": "",
+			"spatial_affordances": [
+				{
+					"emergent_inputs": [
+						"flora state",
+						"fauna perception",
+						"party position",
+						"intervention timing",
+						"route topology"
+					],
+					"failure_prediction": "Crossing before changing the signal leaves ordinary fauna perception intact.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "signal_roost",
+					"feedback": [
+						"the flora state changes at the signal socket",
+						"the fauna response remains visible from the approach"
+					],
+					"id": "grated_signal_roost",
+					"leverage": "Tend the flora before committing the party to the fauna side.",
+					"primary_insight": "The plant on one exposed deck changes how fauna use the connected route.",
+					"priority": 100.0,
+					"socket_policy": "separate_leverage_from_response",
+					"variants": [
+						"flure_iron_decoy",
+						"hushbloom_stun"
+					]
+				}
+			],
 			"stage": 1,
 			"step_count": 5,
 			"survival_kind": "",
@@ -382,6 +410,7 @@
 				"notes": "Use drag routes, scarpet masking, and slower recovery windows."
 			},
 			"solve": "",
+			"spatial_affordances": [],
 			"stage": 2,
 			"step_count": 5,
 			"survival_kind": "",
@@ -490,6 +519,7 @@
 				"notes": "Aster finds hidden structure; Peris preserves relational or flora context."
 			},
 			"solve": "",
+			"spatial_affordances": [],
 			"stage": 3,
 			"step_count": 5,
 			"survival_kind": "",
@@ -592,6 +622,29 @@
 				"notes": "Aster provides electrical/data distraction while Peris performs the physical or flora task."
 			},
 			"solve": "",
+			"spatial_affordances": [
+				{
+					"emergent_inputs": [
+						"patrol perception",
+						"party split",
+						"task duration",
+						"intervention timing",
+						"route topology"
+					],
+					"failure_prediction": "Stacking the party at the task keeps the patrol's attention on the real objective.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "split_perch",
+					"feedback": [
+						"the patrol response is visible across the open grate",
+						"the task socket remains readable from the distraction position"
+					],
+					"id": "grated_split_perch",
+					"leverage": "Position the distractor apart from the task socket, then act during the patrol response.",
+					"primary_insight": "A distraction changes which part of the exposed platform the patrol can safely contest.",
+					"priority": 80.0,
+					"socket_policy": "separate_distraction_from_task"
+				}
+			],
 			"stage": 3,
 			"step_count": 8,
 			"survival_kind": "",
@@ -894,7 +947,7 @@
 				7.0
 			]
 		},
-		"content_placement_count": 22,
+		"content_placement_count": 24,
 		"contract_id": "generated_stretch_graybox_v1",
 		"elevation_count": 1,
 		"elevation_indices": [
@@ -913,6 +966,7 @@
 			"node_budget": 11,
 			"spec_id": "generated_chain_nested_poc_shelter_2_to_3"
 		},
+		"spatial_feature_count": 1,
 		"supports_click_to_move": true,
 		"supports_multiple_elevations": false,
 		"supports_outline_targets": true,
@@ -1586,6 +1640,7 @@
 			"chunk.generation.composition.random_walk",
 			"chunk.generation.unsupported_placeholder_count",
 			"chunk.generation.navigation",
+			"chunk.generation.spatial_features",
 			"chunk.generation.active_loadout",
 			"chunk.generation.solution_path",
 			"chunk.generation.blocked_nodes"
@@ -3302,19 +3357,19 @@
 					],
 					[
 						94,
-						3
+						5
 					],
 					[
 						95,
-						3
+						5
 					],
 					[
 						94,
-						5
+						3
 					],
 					[
 						95,
-						5
+						3
 					],
 					[
 						93,
@@ -3327,6 +3382,18 @@
 					[
 						95,
 						6
+					],
+					[
+						93,
+						7
+					],
+					[
+						94,
+						7
+					],
+					[
+						95,
+						7
 					]
 				],
 				"kind": "safe"
@@ -3334,34 +3401,6 @@
 			"main_07_08": {
 				"cells": [
 					[
-						96,
-						4
-					],
-					[
-						96,
-						5
-					],
-					[
-						96,
-						6
-					],
-					[
-						97,
-						4
-					],
-					[
-						97,
-						5
-					],
-					[
-						97,
-						6
-					],
-					[
-						98,
-						4
-					],
-					[
 						98,
 						5
 					],
@@ -3370,8 +3409,8 @@
 						6
 					],
 					[
-						99,
-						4
+						98,
+						7
 					],
 					[
 						99,
@@ -3382,8 +3421,8 @@
 						6
 					],
 					[
-						100,
-						4
+						99,
+						7
 					],
 					[
 						100,
@@ -3394,8 +3433,8 @@
 						6
 					],
 					[
-						101,
-						4
+						100,
+						7
 					],
 					[
 						101,
@@ -3406,8 +3445,8 @@
 						6
 					],
 					[
-						102,
-						4
+						101,
+						7
 					],
 					[
 						102,
@@ -3418,8 +3457,8 @@
 						6
 					],
 					[
-						103,
-						4
+						102,
+						7
 					],
 					[
 						103,
@@ -3430,8 +3469,8 @@
 						6
 					],
 					[
-						104,
-						4
+						103,
+						7
 					],
 					[
 						104,
@@ -3442,8 +3481,8 @@
 						6
 					],
 					[
-						105,
-						4
+						104,
+						7
 					],
 					[
 						105,
@@ -3454,8 +3493,8 @@
 						6
 					],
 					[
-						106,
-						4
+						105,
+						7
 					],
 					[
 						106,
@@ -3466,20 +3505,8 @@
 						6
 					],
 					[
-						107,
-						4
-					],
-					[
-						108,
-						4
-					],
-					[
-						107,
-						5
-					],
-					[
-						108,
-						5
+						106,
+						7
 					],
 					[
 						107,
@@ -3488,6 +3515,34 @@
 					[
 						108,
 						6
+					],
+					[
+						106,
+						4
+					],
+					[
+						107,
+						4
+					],
+					[
+						107,
+						5
+					],
+					[
+						108,
+						4
+					],
+					[
+						108,
+						5
+					],
+					[
+						107,
+						7
+					],
+					[
+						108,
+						7
 					]
 				],
 				"kind": "safe"
@@ -6258,6 +6313,70 @@
 				7
 			],
 			[
+				93,
+				7
+			],
+			[
+				94,
+				7
+			],
+			[
+				95,
+				7
+			],
+			[
+				96,
+				7
+			],
+			[
+				97,
+				7
+			],
+			[
+				98,
+				7
+			],
+			[
+				99,
+				7
+			],
+			[
+				100,
+				7
+			],
+			[
+				101,
+				7
+			],
+			[
+				102,
+				7
+			],
+			[
+				103,
+				7
+			],
+			[
+				104,
+				7
+			],
+			[
+				105,
+				7
+			],
+			[
+				106,
+				7
+			],
+			[
+				107,
+				7
+			],
+			[
+				108,
+				7
+			],
+			[
 				3,
 				8
 			],
@@ -6295,6 +6414,26 @@
 			],
 			[
 				72,
+				8
+			],
+			[
+				94,
+				8
+			],
+			[
+				95,
+				8
+			],
+			[
+				96,
+				8
+			],
+			[
+				97,
+				8
+			],
+			[
+				98,
 				8
 			]
 		],
@@ -6344,6 +6483,7 @@
 						1.45000004768372,
 						1.79999995231628
 					],
+					"socket_id": "",
 					"support": "implemented"
 				},
 				{
@@ -6368,6 +6508,7 @@
 						1.25,
 						0.5
 					],
+					"socket_id": "",
 					"support": "implemented"
 				}
 			],
@@ -6418,6 +6559,7 @@
 			},
 			"shortcut": false,
 			"solve": "",
+			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
 				"barrier"
@@ -6435,7 +6577,7 @@
 		{
 			"action_verb": "BAIT THE CHARGE",
 			"ambient_flora": [
-				"seefern",
+				"capbage",
 				"seefern",
 				"capbage"
 			],
@@ -6531,6 +6673,7 @@
 						0.159999996423721,
 						1.70000004768372
 					],
+					"socket_id": "",
 					"support": "implemented"
 				},
 				{
@@ -6555,6 +6698,7 @@
 						1.10000002384186,
 						1.20000004768372
 					],
+					"socket_id": "",
 					"support": "implemented"
 				},
 				{
@@ -6579,6 +6723,7 @@
 						1.25,
 						0.5
 					],
+					"socket_id": "",
 					"support": "implemented"
 				}
 			],
@@ -6632,6 +6777,7 @@
 			},
 			"shortcut": false,
 			"solve": "",
+			"spatial_affordances": [],
 			"stage": 2,
 			"structures": [
 				"barrier"
@@ -6662,8 +6808,8 @@
 		{
 			"action_verb": "DEPLOY FLURE DECOY",
 			"ambient_flora": [
-				"capbage",
-				"capbage",
+				"seefern",
+				"seefern",
 				"capbage"
 			],
 			"approach_position": [
@@ -6756,6 +6902,32 @@
 						1.45000004768372,
 						1.79999995231628
 					],
+					"socket_id": "",
+					"support": "implemented"
+				},
+				{
+					"category": "enemies",
+					"id": "sapscraps",
+					"label": "sapscraps",
+					"local_offset": [
+						0.720000028610229,
+						0.550000011920929,
+						-0.200000002980232
+					],
+					"position": [
+						28.2199993133545,
+						1.0,
+						2.29999995231628
+					],
+					"role": "pressure",
+					"rotation_y_degrees": 48.0,
+					"shape": "enemy_volume",
+					"size": [
+						1.20000004768372,
+						1.10000002384186,
+						1.20000004768372
+					],
+					"socket_id": "",
 					"support": "implemented"
 				},
 				{
@@ -6763,30 +6935,33 @@
 					"id": "terminal",
 					"label": "terminal",
 					"local_offset": [
-						0.0,
+						0.550000011920929,
 						0.824999988079071,
 						0.720000028610229
 					],
 					"position": [
-						27.5,
+						28.0499992370605,
 						1.27499997615814,
 						3.22000002861023
 					],
 					"role": "guidance",
-					"rotation_y_degrees": 48.0,
+					"rotation_y_degrees": 85.0,
 					"shape": "console",
 					"size": [
 						1.20000004768372,
 						1.64999997615814,
 						0.75
 					],
+					"socket_id": "",
 					"support": "implemented"
 				}
 			],
 			"correct_read": "",
 			"elevation_index": 0,
 			"elevation_meters": -0.0000000119209289661804,
-			"enemies": [],
+			"enemies": [
+				"sapscraps"
+			],
 			"evidence_hint": "growth state, target link, and resulting target response are visible",
 			"exploit_target": "",
 			"floor_size": [
@@ -6815,7 +6990,7 @@
 				2.5
 			],
 			"prediction_hint": "the placed plant will affect the target after its readiness tell",
-			"pressure": 0,
+			"pressure": 1,
 			"pressure_cost": 0,
 			"reads": [],
 			"resource": false,
@@ -6831,6 +7006,33 @@
 			},
 			"shortcut": false,
 			"solve": "",
+			"spatial_affordances": [
+				{
+					"emergent_inputs": [
+						"flora state",
+						"fauna perception",
+						"party position",
+						"intervention timing",
+						"route topology"
+					],
+					"failure_prediction": "Crossing before changing the signal leaves ordinary fauna perception intact.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "signal_roost",
+					"feedback": [
+						"the flora state changes at the signal socket",
+						"the fauna response remains visible from the approach"
+					],
+					"id": "grated_signal_roost",
+					"leverage": "Tend the flora before committing the party to the fauna side.",
+					"primary_insight": "The plant on one exposed deck changes how fauna use the connected route.",
+					"priority": 100.0,
+					"socket_policy": "separate_leverage_from_response",
+					"variants": [
+						"flure_iron_decoy",
+						"hushbloom_stun"
+					]
+				}
+			],
 			"stage": 1,
 			"structures": [
 				"terminal"
@@ -6859,11 +7061,11 @@
 			"walk_transition": ""
 		},
 		{
-			"action_verb": "SECURE +2 ATP LYSATE",
+			"action_verb": "SECURE +3 ATP LYSATE",
 			"ambient_flora": [
 				"capbage",
-				"seefern",
-				"seefern"
+				"capbage",
+				"capbage"
 			],
 			"approach_position": [
 				41.5,
@@ -6873,7 +7075,7 @@
 			"approaches": [],
 			"archetype_id": "",
 			"archetype_name": "",
-			"atp_reward": 2,
+			"atp_reward": 3,
 			"carry_payload": false,
 			"chain_cycle": -1,
 			"chain_index": -1,
@@ -6906,6 +7108,7 @@
 						0.159999996423721,
 						1.70000004768372
 					],
+					"socket_id": "",
 					"support": "implemented"
 				},
 				{
@@ -6930,6 +7133,7 @@
 						0.75,
 						1.0
 					],
+					"socket_id": "",
 					"support": "implemented"
 				}
 			],
@@ -6953,7 +7157,7 @@
 				2.0
 			],
 			"id": "node_03",
-			"label": "Risk cache · 2 ATP lysate",
+			"label": "Risk cache · 3 ATP lysate",
 			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
@@ -6972,7 +7176,7 @@
 			"resource_beat": true,
 			"resource_item_type": "lysate",
 			"resource_kind": "food",
-			"reward_atp": 2,
+			"reward_atp": 3,
 			"reward_kind": "food",
 			"role": "foraging",
 			"shadow_solution": {
@@ -6982,6 +7186,7 @@
 			},
 			"shortcut": false,
 			"solve": "",
+			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
 				"forage_cache"
@@ -7001,7 +7206,7 @@
 				"prediction": "changing the load-bearing element will alter the reachable state",
 				"verb": "intervene"
 			},
-			"title": "Risk cache · 2 ATP lysate",
+			"title": "Risk cache · 3 ATP lysate",
 			"variant": "",
 			"walk_element": "",
 			"walk_index": -1,
@@ -7012,8 +7217,8 @@
 		{
 			"action_verb": "STAGE THE CARRY",
 			"ambient_flora": [
-				"capbage",
-				"capbage",
+				"seefern",
+				"seefern",
 				"capbage"
 			],
 			"approach_position": [
@@ -7121,6 +7326,7 @@
 						0.159999996423721,
 						1.70000004768372
 					],
+					"socket_id": "",
 					"support": "implemented"
 				},
 				{
@@ -7145,6 +7351,7 @@
 						0.800000011920929,
 						1.10000002384186
 					],
+					"socket_id": "",
 					"support": "implemented"
 				}
 			],
@@ -7210,6 +7417,7 @@
 			},
 			"shortcut": false,
 			"solve": "",
+			"spatial_affordances": [],
 			"stage": 2,
 			"structures": [
 				"carry_gear"
@@ -7240,8 +7448,8 @@
 		{
 			"action_verb": "RELATE THE FRAGMENTS",
 			"ambient_flora": [
-				"capbage",
-				"capbage",
+				"seefern",
+				"seefern",
 				"capbage"
 			],
 			"approach_position": [
@@ -7335,6 +7543,7 @@
 						1.64999997615814,
 						0.75
 					],
+					"socket_id": "",
 					"support": "implemented"
 				}
 			],
@@ -7398,6 +7607,7 @@
 			},
 			"shortcut": false,
 			"solve": "",
+			"spatial_affordances": [],
 			"stage": 3,
 			"structures": [
 				"terminal"
@@ -7428,9 +7638,9 @@
 		{
 			"action_verb": "BAIT THE CHARGE",
 			"ambient_flora": [
-				"capbage",
-				"capbage",
-				"capbage"
+				"seefern",
+				"seefern",
+				"seefern"
 			],
 			"approach_position": [
 				79.620002746582,
@@ -7524,6 +7734,7 @@
 						0.159999996423721,
 						1.70000004768372
 					],
+					"socket_id": "",
 					"support": "implemented"
 				},
 				{
@@ -7548,6 +7759,7 @@
 						1.10000002384186,
 						1.20000004768372
 					],
+					"socket_id": "",
 					"support": "implemented"
 				},
 				{
@@ -7572,6 +7784,7 @@
 						1.25,
 						0.5
 					],
+					"socket_id": "",
 					"support": "implemented"
 				}
 			],
@@ -7625,6 +7838,7 @@
 			},
 			"shortcut": false,
 			"solve": "",
+			"spatial_affordances": [],
 			"stage": 2,
 			"structures": [
 				"barrier"
@@ -7655,14 +7869,14 @@
 		{
 			"action_verb": "PLACE THE FLORA",
 			"ambient_flora": [
-				"seefern",
-				"seefern",
-				"seefern"
+				"capbage",
+				"capbage",
+				"capbage"
 			],
 			"approach_position": [
-				92.5,
+				93.5,
 				0.449999988079071,
-				2.51999998092651
+				2.5
 			],
 			"approaches": [
 				{
@@ -7732,14 +7946,14 @@
 					"id": "hushbloom",
 					"label": "hushbloom",
 					"local_offset": [
-						-1.28999996185303,
+						-1.45000004768372,
 						0.550000011920929,
-						-0.660000026226044
+						-1.04999995231628
 					],
 					"position": [
-						91.2099990844727,
+						92.0500030517578,
 						1.0,
-						0.839999973773956
+						1.45000004768372
 					],
 					"role": "resource",
 					"rotation_y_degrees": 11.0,
@@ -7749,6 +7963,32 @@
 						1.10000002384186,
 						1.0
 					],
+					"socket_id": "flora_0",
+					"support": "implemented"
+				},
+				{
+					"category": "enemies",
+					"id": "naturalizers",
+					"label": "naturalizers",
+					"local_offset": [
+						1.35000002384186,
+						0.550000011920929,
+						-1.0
+					],
+					"position": [
+						94.8499984741211,
+						1.0,
+						1.5
+					],
+					"role": "pressure",
+					"rotation_y_degrees": 48.0,
+					"shape": "enemy_volume",
+					"size": [
+						1.5,
+						1.10000002384186,
+						1.5
+					],
+					"socket_id": "enemy_0",
 					"support": "implemented"
 				},
 				{
@@ -7758,42 +7998,45 @@
 					"local_offset": [
 						0.0,
 						0.375,
-						0.540000021457672
+						1.25
 					],
 					"position": [
-						92.5,
+						93.5,
 						0.824999988079071,
-						2.03999996185303
+						3.75
 					],
 					"role": "resource",
-					"rotation_y_degrees": 48.0,
+					"rotation_y_degrees": 85.0,
 					"shape": "structure_box",
 					"size": [
 						1.70000004768372,
 						0.75,
 						1.0
 					],
+					"socket_id": "structure_0",
 					"support": "implemented"
 				}
 			],
 			"correct_read": "",
 			"elevation_index": 0,
 			"elevation_meters": -0.0000000119209289661804,
-			"enemies": [],
+			"enemies": [
+				"naturalizers"
+			],
 			"evidence_hint": "growth state, target link, and resulting target response are visible",
 			"exploit_target": "",
 			"floor_size": [
-				3.0,
+				5.0,
 				0.140000000596046,
-				3.0
+				5.0
 			],
 			"flora": [
 				"hushbloom"
 			],
 			"footprint": [
-				3.0,
+				5.0,
 				0.140000000596046,
-				3.0
+				5.0
 			],
 			"id": "node_07",
 			"label": "Plant as tool · Hushbloom Stun",
@@ -7803,12 +8046,12 @@
 			"nested_depth": 0,
 			"optional": false,
 			"position": [
-				92.5,
+				93.5,
 				0.449999988079071,
-				1.5
+				2.5
 			],
 			"prediction_hint": "the placed plant will affect the target after its readiness tell",
-			"pressure": 0,
+			"pressure": 1,
 			"pressure_cost": 0,
 			"reads": [],
 			"resource": true,
@@ -7824,6 +8067,265 @@
 			},
 			"shortcut": false,
 			"solve": "",
+			"spatial_affordances": [
+				{
+					"emergent_inputs": [
+						"flora state",
+						"fauna perception",
+						"party position",
+						"intervention timing",
+						"route topology"
+					],
+					"failure_prediction": "Crossing before changing the signal leaves ordinary fauna perception intact.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "signal_roost",
+					"feedback": [
+						"the flora state changes at the signal socket",
+						"the fauna response remains visible from the approach"
+					],
+					"id": "grated_signal_roost",
+					"leverage": "Tend the flora before committing the party to the fauna side.",
+					"primary_insight": "The plant on one exposed deck changes how fauna use the connected route.",
+					"priority": 100.0,
+					"socket_policy": "separate_leverage_from_response",
+					"variants": [
+						"flure_iron_decoy",
+						"hushbloom_stun"
+					]
+				}
+			],
+			"spatial_feature": {
+				"affordance_id": "grated_signal_roost",
+				"archetype_id": "2",
+				"archetype_name": "Plant as tool",
+				"archetype_variant": "hushbloom_stun",
+				"causal_model": {
+					"emergent_inputs": [
+						"flora state",
+						"fauna perception",
+						"party position",
+						"intervention timing",
+						"route topology"
+					],
+					"failure_prediction": "Crossing before changing the signal leaves ordinary fauna perception intact.",
+					"feedback": [
+						"the flora state changes at the signal socket",
+						"the fauna response remains visible from the approach"
+					],
+					"leverage": "Tend the flora before committing the party to the fauna side.",
+					"primary_insight": "The plant on one exposed deck changes how fauna use the connected route.",
+					"reasoning_ends": "when the player can predict the response before committing across the deck",
+					"system_boundary": "the grated platform, its system sockets, and connected route mouths"
+				},
+				"content_sockets": {
+					"enemies": [
+						[
+							1.35,
+							0.0,
+							-1.0
+						],
+						[
+							1.35,
+							0.0,
+							0.9
+						],
+						[
+							0.35,
+							0.0,
+							-1.55
+						]
+					],
+					"flora": [
+						[
+							-1.45,
+							0.0,
+							-1.05
+						],
+						[
+							-1.45,
+							0.0,
+							0.85
+						]
+					],
+					"structures": [
+						[
+							0.0,
+							0.0,
+							1.25
+						],
+						[
+							-0.15,
+							0.0,
+							-1.45
+						]
+					]
+				},
+				"contract_id": "generated_spatial_feature_v1",
+				"elevation_index": 0,
+				"feature_variant": "signal_roost",
+				"floor_cells": [
+					[
+						94,
+						4
+					],
+					[
+						95,
+						4
+					],
+					[
+						96,
+						4
+					],
+					[
+						97,
+						4
+					],
+					[
+						98,
+						4
+					],
+					[
+						94,
+						5
+					],
+					[
+						95,
+						5
+					],
+					[
+						96,
+						5
+					],
+					[
+						97,
+						5
+					],
+					[
+						98,
+						5
+					],
+					[
+						94,
+						6
+					],
+					[
+						95,
+						6
+					],
+					[
+						96,
+						6
+					],
+					[
+						97,
+						6
+					],
+					[
+						98,
+						6
+					],
+					[
+						94,
+						7
+					],
+					[
+						95,
+						7
+					],
+					[
+						96,
+						7
+					],
+					[
+						97,
+						7
+					],
+					[
+						98,
+						7
+					],
+					[
+						94,
+						8
+					],
+					[
+						95,
+						8
+					],
+					[
+						96,
+						8
+					],
+					[
+						97,
+						8
+					],
+					[
+						98,
+						8
+					]
+				],
+				"floor_replacement": true,
+				"footprint": [
+					5.0,
+					0.140000000596046,
+					5.0
+				],
+				"id": "feature_node_07",
+				"interaction_socket": [
+					0.0,
+					0.0,
+					0.0
+				],
+				"kind": "grated_platform",
+				"node_id": "node_07",
+				"position": [
+					93.5,
+					0.449999988079071,
+					2.5
+				],
+				"rail_mouths": [
+					"n",
+					"s",
+					"e",
+					"w"
+				],
+				"roompiece": "grated_platform",
+				"rotation": 0,
+				"scene": "res://scenes/fragments/features/generated_grated_platform.tscn",
+				"socket_assignments": [
+					{
+						"category": "flora",
+						"content_id": "hushbloom",
+						"position": [
+							92.0500030517578,
+							1.0,
+							1.45000004768372
+						],
+						"socket": "flora_0"
+					},
+					{
+						"category": "enemies",
+						"content_id": "naturalizers",
+						"position": [
+							94.8499984741211,
+							1.0,
+							1.5
+						],
+						"socket": "enemy_0"
+					},
+					{
+						"category": "structures",
+						"content_id": "forage_cache",
+						"position": [
+							93.5,
+							0.824999988079071,
+							3.75
+						],
+						"socket": "structure_0"
+					}
+				]
+			},
 			"stage": 1,
 			"structures": [
 				"forage_cache"
@@ -7854,7 +8356,7 @@
 		{
 			"action_verb": "STAGE THE CARRY",
 			"ambient_flora": [
-				"capbage",
+				"seefern",
 				"capbage",
 				"seefern"
 			],
@@ -7963,6 +8465,7 @@
 						0.159999996423721,
 						1.70000004768372
 					],
+					"socket_id": "",
 					"support": "implemented"
 				},
 				{
@@ -7987,6 +8490,7 @@
 						0.800000011920929,
 						1.10000002384186
 					],
+					"socket_id": "",
 					"support": "implemented"
 				}
 			],
@@ -8052,6 +8556,7 @@
 			},
 			"shortcut": false,
 			"solve": "",
+			"spatial_affordances": [],
 			"stage": 2,
 			"structures": [
 				"carry_gear"
@@ -8083,8 +8588,8 @@
 			"action_verb": "RELATE THE FRAGMENTS",
 			"ambient_flora": [
 				"seefern",
-				"capbage",
-				"capbage"
+				"seefern",
+				"seefern"
 			],
 			"approach_position": [
 				118.5,
@@ -8177,6 +8682,7 @@
 						2.20000004768372,
 						0.379999995231628
 					],
+					"socket_id": "",
 					"support": "implemented"
 				}
 			],
@@ -8240,6 +8746,7 @@
 			},
 			"shortcut": true,
 			"solve": "",
+			"spatial_affordances": [],
 			"stage": 3,
 			"structures": [
 				"shortcut_gate"
@@ -8310,6 +8817,7 @@
 						1.10000002384186,
 						1.0
 					],
+					"socket_id": "",
 					"support": "implemented"
 				},
 				{
@@ -8334,6 +8842,7 @@
 						2.40000009536743,
 						3.40000009536743
 					],
+					"socket_id": "",
 					"support": "implemented"
 				}
 			],
@@ -8384,6 +8893,7 @@
 			},
 			"shortcut": false,
 			"solve": "",
+			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
 				"shelter"
@@ -9223,19 +9733,19 @@
 					],
 					[
 						91,
-						-1
+						1
 					],
 					[
 						92,
-						-1
+						1
 					],
 					[
 						91,
-						1
+						-1
 					],
 					[
 						92,
-						1
+						-1
 					],
 					[
 						90,
@@ -9248,6 +9758,18 @@
 					[
 						92,
 						2
+					],
+					[
+						90,
+						3
+					],
+					[
+						91,
+						3
+					],
+					[
+						92,
+						3
 					]
 				],
 				"from": "node_06",
@@ -9261,34 +9783,6 @@
 			{
 				"cells": [
 					[
-						93,
-						0
-					],
-					[
-						93,
-						1
-					],
-					[
-						93,
-						2
-					],
-					[
-						94,
-						0
-					],
-					[
-						94,
-						1
-					],
-					[
-						94,
-						2
-					],
-					[
-						95,
-						0
-					],
-					[
 						95,
 						1
 					],
@@ -9297,8 +9791,8 @@
 						2
 					],
 					[
-						96,
-						0
+						95,
+						3
 					],
 					[
 						96,
@@ -9309,8 +9803,8 @@
 						2
 					],
 					[
-						97,
-						0
+						96,
+						3
 					],
 					[
 						97,
@@ -9321,8 +9815,8 @@
 						2
 					],
 					[
-						98,
-						0
+						97,
+						3
 					],
 					[
 						98,
@@ -9333,8 +9827,8 @@
 						2
 					],
 					[
-						99,
-						0
+						98,
+						3
 					],
 					[
 						99,
@@ -9345,8 +9839,8 @@
 						2
 					],
 					[
-						100,
-						0
+						99,
+						3
 					],
 					[
 						100,
@@ -9357,8 +9851,8 @@
 						2
 					],
 					[
-						101,
-						0
+						100,
+						3
 					],
 					[
 						101,
@@ -9369,8 +9863,8 @@
 						2
 					],
 					[
-						102,
-						0
+						101,
+						3
 					],
 					[
 						102,
@@ -9381,8 +9875,8 @@
 						2
 					],
 					[
-						103,
-						0
+						102,
+						3
 					],
 					[
 						103,
@@ -9393,20 +9887,8 @@
 						2
 					],
 					[
-						104,
-						0
-					],
-					[
-						105,
-						0
-					],
-					[
-						104,
-						1
-					],
-					[
-						105,
-						1
+						103,
+						3
 					],
 					[
 						104,
@@ -9415,6 +9897,34 @@
 					[
 						105,
 						2
+					],
+					[
+						103,
+						0
+					],
+					[
+						104,
+						0
+					],
+					[
+						104,
+						1
+					],
+					[
+						105,
+						0
+					],
+					[
+						105,
+						1
+					],
+					[
+						104,
+						3
+					],
+					[
+						105,
+						3
 					]
 				],
 				"from": "node_07",
@@ -10525,7 +11035,9 @@
 				"size": [
 					5,
 					5
-				]
+				],
+				"spatial_affordance": {},
+				"spatial_feature_kind": ""
 			},
 			{
 				"level": 0,
@@ -10539,7 +11051,9 @@
 				"size": [
 					3,
 					1
-				]
+				],
+				"spatial_affordance": {},
+				"spatial_feature_kind": ""
 			},
 			{
 				"level": 0,
@@ -10553,7 +11067,9 @@
 				"size": [
 					3,
 					4
-				]
+				],
+				"spatial_affordance": {},
+				"spatial_feature_kind": ""
 			},
 			{
 				"level": 0,
@@ -10567,7 +11083,9 @@
 				"size": [
 					4,
 					2
-				]
+				],
+				"spatial_affordance": {},
+				"spatial_feature_kind": ""
 			},
 			{
 				"level": 0,
@@ -10581,7 +11099,9 @@
 				"size": [
 					4,
 					3
-				]
+				],
+				"spatial_affordance": {},
+				"spatial_feature_kind": ""
 			},
 			{
 				"level": 0,
@@ -10595,7 +11115,9 @@
 				"size": [
 					5,
 					5
-				]
+				],
+				"spatial_affordance": {},
+				"spatial_feature_kind": ""
 			},
 			{
 				"level": 0,
@@ -10609,7 +11131,9 @@
 				"size": [
 					4,
 					2
-				]
+				],
+				"spatial_affordance": {},
+				"spatial_feature_kind": ""
 			},
 			{
 				"level": 0,
@@ -10618,12 +11142,38 @@
 					91,
 					0
 				],
-				"piece": "junction_x",
+				"piece": "grated_platform",
 				"rotation": 0,
 				"size": [
-					3,
-					3
-				]
+					5,
+					5
+				],
+				"spatial_affordance": {
+					"emergent_inputs": [
+						"flora state",
+						"fauna perception",
+						"party position",
+						"intervention timing",
+						"route topology"
+					],
+					"failure_prediction": "Crossing before changing the signal leaves ordinary fauna perception intact.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "signal_roost",
+					"feedback": [
+						"the flora state changes at the signal socket",
+						"the fauna response remains visible from the approach"
+					],
+					"id": "grated_signal_roost",
+					"leverage": "Tend the flora before committing the party to the fauna side.",
+					"primary_insight": "The plant on one exposed deck changes how fauna use the connected route.",
+					"priority": 100.0,
+					"socket_policy": "separate_leverage_from_response",
+					"variants": [
+						"flure_iron_decoy",
+						"hushbloom_stun"
+					]
+				},
+				"spatial_feature_kind": "grated_platform"
 			},
 			{
 				"level": 0,
@@ -10637,7 +11187,9 @@
 				"size": [
 					3,
 					3
-				]
+				],
+				"spatial_affordance": {},
+				"spatial_feature_kind": ""
 			},
 			{
 				"level": 0,
@@ -10651,7 +11203,9 @@
 				"size": [
 					3,
 					1
-				]
+				],
+				"spatial_affordance": {},
+				"spatial_feature_kind": ""
 			},
 			{
 				"level": 0,
@@ -10665,7 +11219,9 @@
 				"size": [
 					2,
 					2
-				]
+				],
+				"spatial_affordance": {},
+				"spatial_feature_kind": ""
 			}
 		],
 		"slot_cells": {
@@ -10939,30 +11495,30 @@
 			},
 			"node_07": {
 				"connection_cell": [
-					92,
-					1
+					93,
+					2
 				],
 				"connection_points": {
 					"e": [
-						2.0,
-						1.0
+						4.0,
+						2.0
 					],
 					"n": [
-						1.0,
+						2.0,
 						0.0
 					],
 					"s": [
-						1.0,
-						2.0
+						2.0,
+						4.0
 					],
 					"w": [
 						0.0,
-						1.0
+						2.0
 					]
 				},
 				"footprint": [
-					3,
-					3
+					5,
+					5
 				],
 				"level": 0,
 				"origin_cell": [
@@ -10970,9 +11526,11 @@
 					0
 				],
 				"walkable": [
-					".#.",
-					"...",
-					".#."
+					".....",
+					".....",
+					".....",
+					".....",
+					"....."
 				]
 			},
 			"node_08": {
@@ -11105,7 +11663,7 @@
 		},
 		{
 			"cost": 0,
-			"damage": 20.0,
+			"damage": 21.0,
 			"from": "node_02",
 			"height_delta": 0.0,
 			"id": "risky_optional_02_03",
@@ -11244,16 +11802,16 @@
 					1.5
 				],
 				"midpoint": [
-					86.5,
+					87.0,
 					0.449999988079071,
-					1.5
+					2.0
 				],
 				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					92.5,
+					93.5,
 					0.449999988079071,
-					1.5
+					2.5
 				],
 				"width": 1.85
 			},
@@ -11270,14 +11828,14 @@
 			"risk": "safe",
 			"surface": {
 				"from": [
-					92.5,
+					93.5,
 					0.449999988079071,
-					1.5
+					2.5
 				],
 				"midpoint": [
-					99.0,
+					99.5,
 					0.449999988079071,
-					1.5
+					2.0
 				],
 				"slope": 0.0,
 				"supports_click_to_move": true,
@@ -11616,11 +12174,11 @@
 			}
 		},
 		"progression_stage": 3,
-		"reasoning_budget_added_nodes": 4,
+		"reasoning_budget_added_nodes": 0,
 		"roster": [],
 		"seed": 2403,
 		"spatial_profile": {
-			"slot_pitch": 13
+			"slot_pitch": 13.0
 		},
 		"stage_depth_steps": 0,
 		"systems_profile": {
@@ -11671,6 +12229,240 @@
 		"roster": [],
 		"seed": 2403
 	},
+	"spatial_features": [
+		{
+			"affordance_id": "grated_signal_roost",
+			"archetype_id": "2",
+			"archetype_name": "Plant as tool",
+			"archetype_variant": "hushbloom_stun",
+			"causal_model": {
+				"emergent_inputs": [
+					"flora state",
+					"fauna perception",
+					"party position",
+					"intervention timing",
+					"route topology"
+				],
+				"failure_prediction": "Crossing before changing the signal leaves ordinary fauna perception intact.",
+				"feedback": [
+					"the flora state changes at the signal socket",
+					"the fauna response remains visible from the approach"
+				],
+				"leverage": "Tend the flora before committing the party to the fauna side.",
+				"primary_insight": "The plant on one exposed deck changes how fauna use the connected route.",
+				"reasoning_ends": "when the player can predict the response before committing across the deck",
+				"system_boundary": "the grated platform, its system sockets, and connected route mouths"
+			},
+			"content_sockets": {
+				"enemies": [
+					[
+						1.35,
+						0.0,
+						-1.0
+					],
+					[
+						1.35,
+						0.0,
+						0.9
+					],
+					[
+						0.35,
+						0.0,
+						-1.55
+					]
+				],
+				"flora": [
+					[
+						-1.45,
+						0.0,
+						-1.05
+					],
+					[
+						-1.45,
+						0.0,
+						0.85
+					]
+				],
+				"structures": [
+					[
+						0.0,
+						0.0,
+						1.25
+					],
+					[
+						-0.15,
+						0.0,
+						-1.45
+					]
+				]
+			},
+			"contract_id": "generated_spatial_feature_v1",
+			"elevation_index": 0,
+			"feature_variant": "signal_roost",
+			"floor_cells": [
+				[
+					94,
+					4
+				],
+				[
+					95,
+					4
+				],
+				[
+					96,
+					4
+				],
+				[
+					97,
+					4
+				],
+				[
+					98,
+					4
+				],
+				[
+					94,
+					5
+				],
+				[
+					95,
+					5
+				],
+				[
+					96,
+					5
+				],
+				[
+					97,
+					5
+				],
+				[
+					98,
+					5
+				],
+				[
+					94,
+					6
+				],
+				[
+					95,
+					6
+				],
+				[
+					96,
+					6
+				],
+				[
+					97,
+					6
+				],
+				[
+					98,
+					6
+				],
+				[
+					94,
+					7
+				],
+				[
+					95,
+					7
+				],
+				[
+					96,
+					7
+				],
+				[
+					97,
+					7
+				],
+				[
+					98,
+					7
+				],
+				[
+					94,
+					8
+				],
+				[
+					95,
+					8
+				],
+				[
+					96,
+					8
+				],
+				[
+					97,
+					8
+				],
+				[
+					98,
+					8
+				]
+			],
+			"floor_replacement": true,
+			"footprint": [
+				5.0,
+				0.140000000596046,
+				5.0
+			],
+			"id": "feature_node_07",
+			"interaction_socket": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"kind": "grated_platform",
+			"node_id": "node_07",
+			"position": [
+				93.5,
+				0.449999988079071,
+				2.5
+			],
+			"rail_mouths": [
+				"n",
+				"s",
+				"e",
+				"w"
+			],
+			"roompiece": "grated_platform",
+			"rotation": 0,
+			"scene": "res://scenes/fragments/features/generated_grated_platform.tscn",
+			"socket_assignments": [
+				{
+					"category": "flora",
+					"content_id": "hushbloom",
+					"position": [
+						92.0500030517578,
+						1.0,
+						1.45000004768372
+					],
+					"socket": "flora_0"
+				},
+				{
+					"category": "enemies",
+					"content_id": "naturalizers",
+					"position": [
+						94.8499984741211,
+						1.0,
+						1.5
+					],
+					"socket": "enemy_0"
+				},
+				{
+					"category": "structures",
+					"content_id": "forage_cache",
+					"position": [
+						93.5,
+						0.824999988079071,
+						3.75
+					],
+					"socket": "structure_0"
+				}
+			]
+		}
+	],
 	"success": true,
 	"systems_contract": {
 		"boundary": "the generated entry-to-shelter route and the states changed inside it",
@@ -12129,6 +12921,11 @@
 		"multi_solution_required": false,
 		"shadow_solvable": true,
 		"solution_warnings": [],
+		"spatial_features": {
+			"errors": [],
+			"feature_count": 1,
+			"valid": true
+		},
 		"spotlight_within_stage": true,
 		"systems": {
 			"critical_beat_count": 8,

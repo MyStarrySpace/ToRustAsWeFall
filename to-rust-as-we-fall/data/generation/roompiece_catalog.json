@@ -108,6 +108,33 @@
 			},
 			"connection_points": {"n": [1, 0], "s": [1, 2], "w": [0, 1], "e": [3, 1]}
 		},
+		"grated_platform": {
+			"display_name": "Grated Systems Platform",
+			"size": [5, 5],
+			"elevation_span": 0,
+			"weight": 1,
+			"tags": ["foraging", "guidance", "route_pressure", "danger", "shortcut", "setpiece", "mixed"],
+			"walkable": [".....", ".....", ".....", ".....", "....."],
+			"sockets": {
+				"n": ["wall", "open", "open", "open", "wall"],
+				"s": ["wall", "open", "open", "open", "wall"],
+				"e": ["wall", "open", "open", "open", "wall"],
+				"w": ["wall", "open", "open", "open", "wall"]
+			},
+			"connection_points": {"n": [2, 0], "s": [2, 4], "w": [0, 2], "e": [4, 2]},
+			"spatial_feature": {
+				"kind": "grated_platform",
+				"scene": "res://scenes/fragments/features/generated_grated_platform.tscn",
+				"floor_replacement": true,
+				"interaction_socket": [0, 0, 0],
+				"content_sockets": {
+					"flora": [[-1.45, 0, -1.05], [-1.45, 0, 0.85]],
+					"enemies": [[1.35, 0, -1.0], [1.35, 0, 0.9], [0.35, 0, -1.55]],
+					"structures": [[0, 0, 1.25], [-0.15, 0, -1.45]]
+				},
+				"rail_mouths": ["n", "s", "e", "w"]
+			}
+		},
 		"vault": {
 			"display_name": "Vault",
 			"size": [4, 4],

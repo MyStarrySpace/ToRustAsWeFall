@@ -1,49 +1,49 @@
 {
 	"anchors": {
 		"aster": [
-			0.0,
-			0.5,
-			1.6
+			2.01999998092651,
+			0.499999988079071,
+			0.360000014305115
 		],
 		"endo": [
-			-1.2,
-			0.5,
-			-1.8
+			1.11999998092651,
+			0.499999988079071,
+			0.640000014305115
 		],
 		"entry": [
-			0.0,
+			2.5,
 			0.449999988079071,
-			-3.0
+			1.5
 		],
 		"exit_shelter": [
-			60.0,
+			72.5,
 			0.449999988079071,
-			3.0
+			1.5
 		],
 		"node_01": [
-			12.0,
+			15.5,
 			0.449999988079071,
-			0.0
+			1.5
 		],
 		"node_02": [
-			24.0,
-			2.60999989509583,
-			3.0
+			29.5,
+			0.449999988079071,
+			1.5
 		],
 		"node_03": [
-			36.0,
+			43.5,
 			0.449999988079071,
-			-3.0
+			0.5
 		],
 		"node_04": [
-			48.0,
-			1.88999998569489,
-			0.0
+			57.5,
+			0.449999988079071,
+			1.5
 		],
 		"peris": [
-			-1.6,
-			0.5,
-			0.0
+			2.91999998092651,
+			0.499999988079071,
+			0.640000014305115
 		]
 	},
 	"archetype_chain": [
@@ -82,18 +82,27 @@
 				"shelter_arrival"
 			],
 			"composition_role": "required_append",
+			"correct_read": "",
 			"exploit_target": "",
 			"id": "11",
 			"kind": "meta",
 			"name": "Narrative beat",
 			"pressure_cost": 0,
+			"reads": [],
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Narrative beat adapts to available party but should preserve state transition."
 			},
+			"solve": "",
+			"spatial_affordances": [],
 			"stage": 1,
 			"step_count": 3,
 			"survival_kind": "",
+			"systems_dimensions": [
+				"relation",
+				"threshold",
+				"transfer"
+			],
 			"tags": [
 				"dialogue",
 				"recognition",
@@ -104,74 +113,89 @@
 		},
 		{
 			"all_variants": [
-				"organic_remains",
-				"rich_kill",
-				"capbage_head",
-				"forage_cache_station"
+				"full_rest",
+				"field_hide_rest",
+				"contested_rest",
+				"short_rest"
 			],
 			"approaches": [
 				{
-					"id": "guarded_forage",
+					"id": "held_rest",
 					"kind": "primary",
-					"label": "A combat member covers the open while the party splits off to harvest the remains",
+					"label": "The party regroups; a combat member holds the approach while a downed ally is dragged in to rest",
 					"min_stage": 1.0,
 					"party": "specialist",
 					"requires": [
 						"combat"
 					],
-					"risk": "direct",
+					"risk": "safe",
 					"taught_by": "",
 					"uses": [
-						"rich_kill"
+						"contested_rest"
 					]
 				},
 				{
-					"id": "masked_forage",
+					"id": "field_hide_rest",
 					"kind": "shadow",
-					"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+					"label": "With no shelter reachable, Peris's capbage gives a field hide-rest while Aster reads the dusk clock",
 					"min_stage": 1.0,
 					"party": "aster_peris",
 					"requires": [
-						"flora",
 						"cover",
 						"timing"
 					],
-					"risk": "safe",
-					"taught_by": "scent_masked_dwell",
+					"risk": "risky",
+					"taught_by": "capbage_hide_rest",
 					"uses": [
-						"forage_cache_station"
+						"field_hide_rest"
 					]
 				}
 			],
-			"atp_reward": 2,
+			"atp_reward": 0,
 			"chain_index": 1,
 			"compatible_node_roles": [
-				"foraging",
 				"regroup",
-				"mixed"
+				"shelter_arrival",
+				"boundary"
 			],
 			"composition_role": "generated_fill",
+			"correct_read": "",
 			"exploit_target": "",
-			"id": "12",
+			"id": "16",
 			"kind": "survival",
-			"name": "Lysate forage cache",
+			"name": "Shelter-rest management",
 			"pressure_cost": 0,
+			"reads": [],
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Peris finds caches under scarpet cover while Aster times the dwell into a blind window."
+				"notes": "When no shelter is reachable, Peris's capbage gives a field hide-rest while Aster reads the dusk clock."
 			},
+			"solve": "",
+			"spatial_affordances": [],
 			"stage": 1,
 			"step_count": 5,
-			"survival_kind": "forage",
-			"tags": [
-				"forage",
-				"atp",
-				"lysate",
-				"resource"
+			"survival_kind": "rest",
+			"systems_dimensions": [
+				"relation",
+				"stock",
+				"flow",
+				"delay",
+				"feedback",
+				"local_global",
+				"threshold",
+				"leverage",
+				"transfer"
 			],
-			"variant": "forage_cache_station"
+			"tags": [
+				"rest",
+				"shelter",
+				"atp",
+				"recovery"
+			],
+			"variant": "short_rest"
 		}
 	],
+	"biome": "",
 	"budget": {
 		"archetype_depth": 2,
 		"branch_count": 1,
@@ -187,6 +211,28 @@
 	"composition": {
 		"chain": [],
 		"chain_count": 2,
+		"element_coverage": {
+			"complete": true,
+			"contract_id": "trawf_element_coverage_v1",
+			"covered_count": 1,
+			"elements": {
+				"cover": {
+					"covered": true,
+					"required_by": [
+						"16"
+					],
+					"supplied_by": [
+						"node_01",
+						"node_02",
+						"node_03",
+						"node_04"
+					]
+				}
+			},
+			"required_count": 1,
+			"shared_elements": [],
+			"uncovered": []
+		},
 		"has_nested": false,
 		"host_nodes": [],
 		"links": [],
@@ -194,9 +240,16 @@
 		"nested": [],
 		"nested_count": 0,
 		"nested_depth": 0,
-		"random_walk": {
-
+		"poi_density": {
+			"contract_id": "trawf_poi_density_v1",
+			"distinct_ambient": 2,
+			"per_node_count": 2,
+			"per_node_variety": 2,
+			"stage": 2,
+			"total_ambient": 6
 		},
+		"random_walk": {},
+		"teaching_chain": [],
 		"uses_random_walk": false,
 		"walk_archetype_count": 0,
 		"walk_element_count": 0
@@ -204,47 +257,48 @@
 	"graybox": {
 		"bounds": {
 			"center": [
-				30.2999992370605,
-				3.12000012397766,
-				0.299999952316284
+				37.5,
+				2.04999995231628,
+				1.5
 			],
 			"max": [
-				64.5999984741211,
-				5.88000011444092,
-				6.69999980926514
+				75.5,
+				3.72000002861023,
+				4.0
 			],
 			"min": [
-				-4.0,
-				0.359999984502792,
-				-6.09999990463257
+				-0.5,
+				0.379999995231628,
+				-1.0
 			],
 			"size": [
-				68.5999984741211,
-				5.51999998092651,
-				12.7999992370605
+				76.0,
+				3.34000015258789,
+				5.0
 			]
 		},
-		"content_placement_count": 16,
+		"content_placement_count": 14,
 		"contract_id": "generated_stretch_graybox_v1",
-		"elevation_count": 3,
+		"elevation_count": 1,
 		"elevation_indices": [
-			0,
-			2,
-			3
+			0
 		],
 		"elevation_step": 0.72,
-		"navigation_contract_id": "multi_level_navigation_graph_v1",
-		"navigation_edge_count": 7,
+		"layout_engine": "wfc_v1",
+		"navigation_contract_id": "unified_grid_v1",
+		"navigation_edge_count": 6,
 		"navigation_node_count": 6,
 		"node_surface_count": 6,
-		"route_surface_count": 7,
+		"roompiece_catalog": "trawf_roompiece_catalog_v1",
+		"route_surface_count": 6,
 		"source": {
 			"complexity_tier": "teaching",
 			"node_budget": 6,
 			"spec_id": "generated_teaching_channels_shelter_1_to_2"
 		},
+		"spatial_feature_count": 0,
 		"supports_click_to_move": true,
-		"supports_multiple_elevations": true,
+		"supports_multiple_elevations": false,
 		"supports_outline_targets": true,
 		"surface_y_base": 0.45,
 		"unit_scale": 1.0
@@ -259,9 +313,72 @@
 			"exit_shelter"
 		],
 		"risky_recovery": [
-			"risky_direct",
+			"entry",
+			"node_01",
+			"node_02",
+			"node_03",
+			"node_04",
 			"exit_shelter"
 		],
+		"solution": {
+			"actions": [
+				{
+					"approach_id": "traverse",
+					"kind": "traverse",
+					"node": "entry",
+					"party": "any",
+					"requires": [],
+					"risk": "safe"
+				},
+				{
+					"approach_id": "play_the_beat",
+					"kind": "meta",
+					"node": "node_01",
+					"party": "any",
+					"requires": [],
+					"risk": "safe"
+				},
+				{
+					"approach_id": "held_rest",
+					"kind": "primary",
+					"node": "node_02",
+					"party": "specialist",
+					"requires": [
+						"combat"
+					],
+					"risk": "safe"
+				},
+				{
+					"approach_id": "play_the_beat",
+					"kind": "meta",
+					"node": "node_03",
+					"party": "any",
+					"requires": [],
+					"risk": "safe"
+				},
+				{
+					"approach_id": "held_rest",
+					"kind": "primary",
+					"node": "node_04",
+					"party": "specialist",
+					"requires": [
+						"combat"
+					],
+					"risk": "safe"
+				},
+				{
+					"approach_id": "traverse",
+					"kind": "traverse",
+					"node": "exit_shelter",
+					"party": "any",
+					"requires": [],
+					"risk": "safe"
+				}
+			],
+			"loadout": "spotlight",
+			"reaches": "exit_shelter",
+			"solvable": true
+		},
 		"solution_paths": [
 			{
 				"approach_per_node": [
@@ -279,11 +396,13 @@
 						"approach_id": "play_the_beat",
 						"blocked": false,
 						"borrows_from": "",
+						"combination_premium": 0.0,
 						"expert": false,
 						"kind": "meta",
 						"label": "Adapt to the available party; preserve the state transition",
 						"min_stage": 1,
 						"node": "node_01",
+						"node_pressure": 0.0,
 						"party": "any",
 						"requires": [],
 						"risk": "safe",
@@ -293,35 +412,39 @@
 						"uses": []
 					},
 					{
-						"approach_id": "guarded_forage",
+						"approach_id": "held_rest",
 						"blocked": false,
 						"borrows_from": "",
+						"combination_premium": -0.5,
 						"expert": false,
 						"kind": "primary",
-						"label": "A combat member covers the open while the party splits off to harvest the remains",
+						"label": "The party regroups; a combat member holds the approach while a downed ally is dragged in to rest",
 						"min_stage": 1,
 						"node": "node_02",
+						"node_pressure": 0.0,
 						"party": "specialist",
 						"requires": [
 							"combat"
 						],
-						"risk": "direct",
-						"role": "foraging",
+						"risk": "safe",
+						"role": "regroup",
 						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
-							"rich_kill"
+							"contested_rest"
 						]
 					},
 					{
 						"approach_id": "play_the_beat",
 						"blocked": false,
 						"borrows_from": "",
+						"combination_premium": 0.0,
 						"expert": false,
 						"kind": "meta",
 						"label": "Adapt to the available party; preserve the state transition",
 						"min_stage": 1,
 						"node": "node_03",
+						"node_pressure": 0.0,
 						"party": "any",
 						"requires": [],
 						"risk": "safe",
@@ -331,24 +454,26 @@
 						"uses": []
 					},
 					{
-						"approach_id": "guarded_forage",
+						"approach_id": "held_rest",
 						"blocked": false,
 						"borrows_from": "",
+						"combination_premium": -0.5,
 						"expert": false,
 						"kind": "primary",
-						"label": "A combat member covers the open while the party splits off to harvest the remains",
+						"label": "The party regroups; a combat member holds the approach while a downed ally is dragged in to rest",
 						"min_stage": 1,
 						"node": "node_04",
+						"node_pressure": 0.0,
 						"party": "specialist",
 						"requires": [
 							"combat"
 						],
-						"risk": "direct",
-						"role": "foraging",
+						"risk": "safe",
+						"role": "regroup",
 						"stage_ahead": false,
 						"taught_by": "",
 						"uses": [
-							"rich_kill"
+							"contested_rest"
 						]
 					},
 					{
@@ -363,6 +488,10 @@
 					}
 				],
 				"blocked_nodes": [],
+				"choice_nodes_taken": 2,
+				"combination_premium": -1.0,
+				"diagnosis_nodes_taken": 0,
+				"diagnosis_penalty": 0.0,
 				"label": "Full party",
 				"loadout": "spotlight",
 				"max_stage_used": 1,
@@ -374,9 +503,10 @@
 					"oli",
 					"tyreg"
 				],
+				"pressure": 0.0,
 				"solvable": true,
 				"techniques": [],
-				"total_risk": 2,
+				"total_risk": 0,
 				"uses_future_technique": false,
 				"within_stage": true
 			},
@@ -396,11 +526,13 @@
 						"approach_id": "play_the_beat",
 						"blocked": false,
 						"borrows_from": "",
+						"combination_premium": 0.0,
 						"expert": false,
 						"kind": "meta",
 						"label": "Adapt to the available party; preserve the state transition",
 						"min_stage": 1,
 						"node": "node_01",
+						"node_pressure": 0.0,
 						"party": "any",
 						"requires": [],
 						"risk": "safe",
@@ -410,37 +542,40 @@
 						"uses": []
 					},
 					{
-						"approach_id": "masked_forage",
+						"approach_id": "field_hide_rest",
 						"blocked": false,
 						"borrows_from": "",
+						"combination_premium": 3.0,
 						"expert": false,
 						"kind": "shadow",
-						"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+						"label": "With no shelter reachable, Peris's capbage gives a field hide-rest while Aster reads the dusk clock",
 						"min_stage": 1,
 						"node": "node_02",
+						"node_pressure": 2.0,
 						"party": "aster_peris",
 						"requires": [
-							"flora",
 							"cover",
 							"timing"
 						],
-						"risk": "safe",
-						"role": "foraging",
+						"risk": "risky",
+						"role": "regroup",
 						"stage_ahead": false,
-						"taught_by": "scent_masked_dwell",
+						"taught_by": "capbage_hide_rest",
 						"uses": [
-							"forage_cache_station"
+							"field_hide_rest"
 						]
 					},
 					{
 						"approach_id": "play_the_beat",
 						"blocked": false,
 						"borrows_from": "",
+						"combination_premium": 0.0,
 						"expert": false,
 						"kind": "meta",
 						"label": "Adapt to the available party; preserve the state transition",
 						"min_stage": 1,
 						"node": "node_03",
+						"node_pressure": 0.0,
 						"party": "any",
 						"requires": [],
 						"risk": "safe",
@@ -450,26 +585,27 @@
 						"uses": []
 					},
 					{
-						"approach_id": "masked_forage",
+						"approach_id": "field_hide_rest",
 						"blocked": false,
 						"borrows_from": "",
+						"combination_premium": 3.0,
 						"expert": false,
 						"kind": "shadow",
-						"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+						"label": "With no shelter reachable, Peris's capbage gives a field hide-rest while Aster reads the dusk clock",
 						"min_stage": 1,
 						"node": "node_04",
+						"node_pressure": 2.0,
 						"party": "aster_peris",
 						"requires": [
-							"flora",
 							"cover",
 							"timing"
 						],
-						"risk": "safe",
-						"role": "foraging",
+						"risk": "risky",
+						"role": "regroup",
 						"stage_ahead": false,
-						"taught_by": "scent_masked_dwell",
+						"taught_by": "capbage_hide_rest",
 						"uses": [
-							"forage_cache_station"
+							"field_hide_rest"
 						]
 					},
 					{
@@ -484,6 +620,10 @@
 					}
 				],
 				"blocked_nodes": [],
+				"choice_nodes_taken": 2,
+				"combination_premium": 6.0,
+				"diagnosis_nodes_taken": 0,
+				"diagnosis_penalty": 0.0,
 				"label": "Aster + Peris (shadow)",
 				"loadout": "shadow",
 				"max_stage_used": 1,
@@ -491,11 +631,12 @@
 					"aster",
 					"peris"
 				],
+				"pressure": 10.0,
 				"solvable": true,
 				"techniques": [
-					"scent_masked_dwell"
+					"capbage_hide_rest"
 				],
-				"total_risk": 0,
+				"total_risk": 4,
 				"uses_future_technique": false,
 				"within_stage": true
 			}
@@ -507,6 +648,10 @@
 				"node_02",
 				"node_04"
 			],
+			"combination_pressure_gap": 10.0,
+			"diagnosis_node_count": 0,
+			"diagnosis_nodes": [],
+			"diagnosis_penalty": 0.0,
 			"distinct_node_count": 2,
 			"distinct_nodes": [
 				"node_02",
@@ -516,12 +661,15 @@
 			"multi_solution_ok": true,
 			"multi_solution_required": false,
 			"progression_stage": 2,
+			"shadow_combination_premium": 6.0,
+			"shadow_pressure": 10.0,
 			"shadow_solvable": true,
 			"shadow_techniques": [
-				"scent_masked_dwell"
+				"capbage_hide_rest"
 			],
 			"shadow_uses_future_technique": false,
 			"solvable_loadout_count": 2,
+			"spotlight_pressure": 0.0,
 			"spotlight_within_stage": true
 		},
 		"state_paths": [
@@ -533,501 +681,1999 @@
 			"chunk.generation.composition.random_walk",
 			"chunk.generation.unsupported_placeholder_count",
 			"chunk.generation.navigation",
+			"chunk.generation.spatial_features",
 			"chunk.generation.active_loadout",
 			"chunk.generation.solution_path",
 			"chunk.generation.blocked_nodes"
 		]
 	},
 	"id": "generated_teaching_channels_shelter_1_to_2",
-	"navigation": {
-		"contract_id": "multi_level_navigation_graph_v1",
-		"edges": [
-			{
-				"bidirectional": true,
-				"from": "entry",
-				"height_delta": 0.0,
-				"id": "main_00_01",
-				"kind": "safe",
-				"path_cost": 12.3693170547485,
-				"physical_cost": 12.3693170547485,
-				"recoverable": true,
-				"risk": "safe",
-				"risk_penalty": 0.0,
-				"route_id": "main_00_01",
-				"slope_ratio": 0.0,
-				"to": "node_01",
-				"traversal": "walkway",
-				"waypoints": [
-					[
-						0.0,
-						0.449999988079071,
-						-3.0
-					],
-					[
-						6.0,
-						0.449999988079071,
-						-1.5
-					],
-					[
-						12.0,
-						0.449999988079071,
-						0.0
-					]
-				],
-				"width": 1.85
-			},
-			{
-				"bidirectional": true,
-				"from": "node_01",
-				"height_delta": 2.15999990701675,
-				"id": "main_01_02",
-				"kind": "safe",
-				"path_cost": 12.5564966201782,
-				"physical_cost": 12.5564966201782,
-				"recoverable": true,
-				"risk": "safe",
-				"risk_penalty": 0.0,
-				"route_id": "main_01_02",
-				"slope_ratio": 0.174625639997443,
-				"to": "node_02",
-				"traversal": "ramp",
-				"waypoints": [
-					[
-						12.0,
-						0.449999988079071,
-						0.0
-					],
-					[
-						18.0,
-						1.52999997138977,
-						1.5
-					],
-					[
-						24.0,
-						2.60999989509583,
-						3.0
-					]
-				],
-				"width": 1.85
-			},
-			{
-				"bidirectional": true,
-				"from": "node_02",
-				"height_delta": -2.15999990701675,
-				"id": "main_02_03",
-				"kind": "safe",
-				"path_cost": 13.5891723632813,
-				"physical_cost": 13.5891723632813,
-				"recoverable": true,
-				"risk": "safe",
-				"risk_penalty": 0.0,
-				"route_id": "main_02_03",
-				"slope_ratio": -0.160996890807679,
-				"to": "node_03",
-				"traversal": "ramp",
-				"waypoints": [
-					[
-						24.0,
-						2.60999989509583,
-						3.0
-					],
-					[
-						30.0,
-						1.52999997138977,
-						0.0
-					],
-					[
-						36.0,
-						0.449999988079071,
-						-3.0
-					]
-				],
-				"width": 1.85
-			},
-			{
-				"bidirectional": true,
-				"from": "node_03",
-				"height_delta": 1.43999999761581,
-				"id": "main_03_04",
-				"kind": "safe",
-				"path_cost": 12.4528551101685,
-				"physical_cost": 12.4528551101685,
-				"recoverable": true,
-				"risk": "safe",
-				"risk_penalty": 0.0,
-				"route_id": "main_03_04",
-				"slope_ratio": 0.116417098150379,
-				"to": "node_04",
-				"traversal": "ramp",
-				"waypoints": [
-					[
-						36.0,
-						0.449999988079071,
-						-3.0
-					],
-					[
-						42.0,
-						1.16999995708466,
-						-1.5
-					],
-					[
-						48.0,
-						1.88999998569489,
-						0.0
-					]
-				],
-				"width": 1.85
-			},
-			{
-				"bidirectional": true,
-				"from": "node_04",
-				"height_delta": -1.43999999761581,
-				"id": "main_04_05",
-				"kind": "safe",
-				"path_cost": 12.4528551101685,
-				"physical_cost": 12.4528551101685,
-				"recoverable": true,
-				"risk": "safe",
-				"risk_penalty": 0.0,
-				"route_id": "main_04_05",
-				"slope_ratio": -0.116417098150379,
-				"to": "exit_shelter",
-				"traversal": "ramp",
-				"waypoints": [
-					[
-						48.0,
-						1.88999998569489,
-						0.0
-					],
-					[
-						54.0,
-						1.16999995708466,
-						1.5
-					],
-					[
-						60.0,
-						0.449999988079071,
-						3.0
-					]
-				],
-				"width": 1.85
-			},
-			{
-				"bidirectional": true,
-				"from": "entry",
-				"height_delta": 0.0,
-				"id": "risky_direct",
-				"kind": "risky",
-				"path_cost": 88.2992553710938,
-				"physical_cost": 60.2992553710938,
-				"recoverable": true,
-				"risk": "risky",
-				"risk_penalty": 28.0,
-				"route_id": "risky_direct",
-				"slope_ratio": 0.0,
-				"to": "exit_shelter",
-				"traversal": "walkway",
-				"waypoints": [
-					[
-						0.0,
-						0.449999988079071,
-						-3.0
-					],
-					[
-						30.0,
-						0.449999988079071,
-						0.0
-					],
-					[
-						60.0,
-						0.449999988079071,
-						3.0
-					]
-				],
-				"width": 1.15
-			},
-			{
-				"bidirectional": true,
-				"from": "node_04",
-				"height_delta": -1.43999999761581,
-				"id": "return_shortcut",
-				"kind": "shortcut",
-				"path_cost": 52.1152114868164,
-				"physical_cost": 48.1152114868164,
-				"recoverable": true,
-				"risk": "shortcut",
-				"risk_penalty": 4.0,
-				"route_id": "return_shortcut",
-				"slope_ratio": -0.0299415774159657,
-				"to": "entry",
-				"traversal": "ramp",
-				"waypoints": [
-					[
-						48.0,
-						1.88999998569489,
-						0.0
-					],
-					[
-						24.0,
-						1.16999995708466,
-						-1.5
-					],
-					[
-						0.0,
-						0.449999988079071,
-						-3.0
-					]
-				],
-				"width": 1.25
-			}
-		],
+	"navigation_grid": {
+		"cell_size": 1.0,
+		"contract_id": "unified_grid_v1",
 		"elevation_indices": [
-			0,
-			2,
-			3
+			0
 		],
 		"entry_anchor": "entry",
-		"entry_node": "entry",
 		"exit_anchor": "exit_shelter",
-		"exit_node": "exit_shelter",
-		"floor_columns": [
+		"height": 10,
+		"level_cells": [],
+		"level_count": 1,
+		"level_height": 0.72,
+		"links": [],
+		"origin": [
+			-3.0,
+			0.449999988079071,
+			-4.0
+		],
+		"risk_cell_list": [
 			{
-				"floors": [
-					{
-						"elevation_index": 0,
-						"node_id": "entry",
-						"y": 0.449999988079071
-					}
+				"cell": [
+					6,
+					5
 				],
-				"xz": [
-					0.0,
-					-3.0
-				]
+				"penalty": 3.0,
+				"recoverable": true
 			},
 			{
-				"floors": [
-					{
-						"elevation_index": 0,
-						"node_id": "node_01",
-						"y": 0.449999988079071
-					}
+				"cell": [
+					7,
+					5
 				],
-				"xz": [
-					12.0,
-					0.0
-				]
+				"penalty": 3.0,
+				"recoverable": true
 			},
 			{
-				"floors": [
-					{
-						"elevation_index": 3,
-						"node_id": "node_02",
-						"y": 2.60999989509583
-					}
+				"cell": [
+					8,
+					5
 				],
-				"xz": [
-					24.0,
-					3.0
-				]
+				"penalty": 3.0,
+				"recoverable": true
 			},
 			{
-				"floors": [
-					{
-						"elevation_index": 0,
-						"node_id": "node_03",
-						"y": 0.449999988079071
-					}
+				"cell": [
+					9,
+					5
 				],
-				"xz": [
-					36.0,
-					-3.0
-				]
+				"penalty": 3.0,
+				"recoverable": true
 			},
 			{
-				"floors": [
-					{
-						"elevation_index": 2,
-						"node_id": "node_04",
-						"y": 1.88999998569489
-					}
+				"cell": [
+					10,
+					5
 				],
-				"xz": [
-					48.0,
-					0.0
-				]
+				"penalty": 3.0,
+				"recoverable": true
 			},
 			{
-				"floors": [
-					{
-						"elevation_index": 0,
-						"node_id": "exit_shelter",
-						"y": 0.449999988079071
-					}
+				"cell": [
+					11,
+					5
 				],
-				"xz": [
-					60.0,
-					3.0
-				]
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					12,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					13,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					14,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					15,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					16,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					17,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					18,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					19,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					20,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					21,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					22,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					23,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					24,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					25,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					26,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					27,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					28,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					29,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					30,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					31,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					32,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					33,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					34,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					35,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					36,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					37,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					38,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					39,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					40,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					41,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					42,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					43,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					44,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					45,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					46,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					47,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					48,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					49,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					50,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					51,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					52,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					53,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					54,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					55,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					56,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					57,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					58,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
+			},
+			{
+				"cell": [
+					59,
+					5
+				],
+				"penalty": 3.0,
+				"recoverable": true
 			}
 		],
-		"golden_path_nodes": [
-			"entry",
-			"node_01",
-			"node_02",
-			"node_03",
-			"node_04",
-			"exit_shelter"
-		],
-		"max_snap_distance": 9.0,
-		"nodes": [
-			{
-				"content_count": 2,
-				"elevation_index": 0,
-				"floor_size": [
-					6.0,
-					0.159999996423721,
-					4.19999980926514
+		"route_cells": {
+			"main_00_01": {
+				"cells": [
+					[
+						6,
+						5
+					],
+					[
+						7,
+						5
+					],
+					[
+						8,
+						5
+					],
+					[
+						9,
+						5
+					],
+					[
+						10,
+						5
+					],
+					[
+						11,
+						5
+					],
+					[
+						12,
+						5
+					],
+					[
+						13,
+						5
+					],
+					[
+						14,
+						5
+					],
+					[
+						15,
+						5
+					],
+					[
+						16,
+						5
+					],
+					[
+						17,
+						5
+					]
 				],
-				"id": "entry",
-				"position": [
-					0.0,
-					0.449999988079071,
-					-3.0
-				],
-				"radius": 3.0,
-				"role": "boundary",
-				"supports_click_to_move": true,
-				"surface_id": "node:entry",
-				"surface_y": 0.45
+				"kind": "safe"
 			},
-			{
-				"content_count": 2,
-				"elevation_index": 0,
-				"floor_size": [
-					6.0,
-					0.159999996423721,
-					4.19999980926514
+			"main_01_02": {
+				"cells": [
+					[
+						19,
+						5
+					],
+					[
+						20,
+						5
+					],
+					[
+						21,
+						5
+					],
+					[
+						22,
+						5
+					],
+					[
+						23,
+						5
+					],
+					[
+						24,
+						5
+					],
+					[
+						25,
+						5
+					],
+					[
+						26,
+						5
+					],
+					[
+						27,
+						5
+					],
+					[
+						28,
+						5
+					],
+					[
+						29,
+						5
+					],
+					[
+						30,
+						5
+					],
+					[
+						31,
+						5
+					]
 				],
-				"id": "node_01",
-				"position": [
-					12.0,
-					0.449999988079071,
-					0.0
-				],
-				"radius": 3.0,
-				"role": "boundary",
-				"supports_click_to_move": true,
-				"surface_id": "node:node_01",
-				"surface_y": 0.45
+				"kind": "safe"
 			},
-			{
-				"content_count": 4,
-				"elevation_index": 3,
-				"floor_size": [
-					5.80000019073486,
-					0.140000000596046,
-					4.40000009536743
+			"main_02_03": {
+				"cells": [
+					[
+						33,
+						4
+					],
+					[
+						33,
+						5
+					],
+					[
+						33,
+						6
+					],
+					[
+						34,
+						4
+					],
+					[
+						34,
+						5
+					],
+					[
+						34,
+						6
+					],
+					[
+						35,
+						4
+					],
+					[
+						35,
+						5
+					],
+					[
+						35,
+						6
+					],
+					[
+						36,
+						4
+					],
+					[
+						36,
+						5
+					],
+					[
+						36,
+						6
+					],
+					[
+						37,
+						4
+					],
+					[
+						37,
+						5
+					],
+					[
+						37,
+						6
+					],
+					[
+						38,
+						4
+					],
+					[
+						38,
+						5
+					],
+					[
+						38,
+						6
+					],
+					[
+						39,
+						4
+					],
+					[
+						39,
+						5
+					],
+					[
+						39,
+						6
+					],
+					[
+						40,
+						4
+					],
+					[
+						40,
+						5
+					],
+					[
+						40,
+						6
+					],
+					[
+						41,
+						4
+					],
+					[
+						41,
+						5
+					],
+					[
+						41,
+						6
+					],
+					[
+						42,
+						4
+					],
+					[
+						42,
+						5
+					],
+					[
+						42,
+						6
+					],
+					[
+						43,
+						4
+					],
+					[
+						43,
+						5
+					],
+					[
+						43,
+						6
+					],
+					[
+						44,
+						4
+					],
+					[
+						44,
+						5
+					],
+					[
+						44,
+						6
+					],
+					[
+						45,
+						5
+					],
+					[
+						46,
+						5
+					],
+					[
+						44,
+						3
+					],
+					[
+						45,
+						3
+					],
+					[
+						45,
+						4
+					],
+					[
+						46,
+						3
+					],
+					[
+						46,
+						4
+					],
+					[
+						45,
+						6
+					],
+					[
+						46,
+						6
+					]
 				],
-				"id": "node_02",
-				"position": [
-					24.0,
-					2.60999989509583,
-					3.0
-				],
-				"radius": 2.90000009536743,
-				"role": "foraging",
-				"supports_click_to_move": true,
-				"surface_id": "node:node_02",
-				"surface_y": 2.61
+				"kind": "safe"
 			},
-			{
-				"content_count": 2,
-				"elevation_index": 0,
-				"floor_size": [
-					5.19999980926514,
-					0.140000000596046,
-					4.19999980926514
+			"main_03_04": {
+				"cells": [
+					[
+						47,
+						3
+					],
+					[
+						47,
+						4
+					],
+					[
+						47,
+						5
+					],
+					[
+						48,
+						3
+					],
+					[
+						48,
+						4
+					],
+					[
+						48,
+						5
+					],
+					[
+						49,
+						3
+					],
+					[
+						49,
+						4
+					],
+					[
+						49,
+						5
+					],
+					[
+						50,
+						3
+					],
+					[
+						50,
+						4
+					],
+					[
+						50,
+						5
+					],
+					[
+						51,
+						3
+					],
+					[
+						51,
+						4
+					],
+					[
+						51,
+						5
+					],
+					[
+						52,
+						3
+					],
+					[
+						52,
+						4
+					],
+					[
+						52,
+						5
+					],
+					[
+						53,
+						3
+					],
+					[
+						53,
+						4
+					],
+					[
+						53,
+						5
+					],
+					[
+						54,
+						3
+					],
+					[
+						54,
+						4
+					],
+					[
+						54,
+						5
+					],
+					[
+						55,
+						3
+					],
+					[
+						55,
+						4
+					],
+					[
+						55,
+						5
+					],
+					[
+						56,
+						3
+					],
+					[
+						56,
+						4
+					],
+					[
+						56,
+						5
+					],
+					[
+						57,
+						3
+					],
+					[
+						57,
+						4
+					],
+					[
+						57,
+						5
+					],
+					[
+						58,
+						3
+					],
+					[
+						58,
+						4
+					],
+					[
+						58,
+						5
+					],
+					[
+						59,
+						4
+					],
+					[
+						60,
+						4
+					],
+					[
+						59,
+						3
+					],
+					[
+						60,
+						3
+					],
+					[
+						59,
+						5
+					],
+					[
+						60,
+						5
+					],
+					[
+						58,
+						6
+					],
+					[
+						59,
+						6
+					],
+					[
+						60,
+						6
+					]
 				],
-				"id": "node_03",
-				"position": [
-					36.0,
-					0.449999988079071,
-					-3.0
-				],
-				"radius": 2.59999990463257,
-				"role": "regroup",
-				"supports_click_to_move": true,
-				"surface_id": "node:node_03",
-				"surface_y": 0.45
+				"kind": "safe"
 			},
-			{
-				"content_count": 4,
-				"elevation_index": 2,
-				"floor_size": [
-					5.80000019073486,
-					0.140000000596046,
-					4.40000009536743
+			"main_04_05": {
+				"cells": [
+					[
+						61,
+						4
+					],
+					[
+						61,
+						5
+					],
+					[
+						62,
+						4
+					],
+					[
+						62,
+						5
+					],
+					[
+						63,
+						4
+					],
+					[
+						63,
+						5
+					],
+					[
+						64,
+						4
+					],
+					[
+						64,
+						5
+					],
+					[
+						65,
+						4
+					],
+					[
+						65,
+						5
+					],
+					[
+						66,
+						4
+					],
+					[
+						66,
+						5
+					],
+					[
+						67,
+						4
+					],
+					[
+						67,
+						5
+					],
+					[
+						68,
+						4
+					],
+					[
+						68,
+						5
+					],
+					[
+						69,
+						4
+					],
+					[
+						69,
+						5
+					],
+					[
+						70,
+						4
+					],
+					[
+						70,
+						5
+					],
+					[
+						71,
+						4
+					],
+					[
+						71,
+						5
+					],
+					[
+						72,
+						4
+					],
+					[
+						72,
+						5
+					],
+					[
+						73,
+						4
+					],
+					[
+						73,
+						5
+					]
 				],
-				"id": "node_04",
-				"position": [
-					48.0,
-					1.88999998569489,
-					0.0
-				],
-				"radius": 2.90000009536743,
-				"role": "foraging",
-				"supports_click_to_move": true,
-				"surface_id": "node:node_04",
-				"surface_y": 1.89
+				"kind": "safe"
 			},
-			{
-				"content_count": 2,
-				"elevation_index": 0,
-				"floor_size": [
-					7.19999980926514,
-					0.180000007152557,
-					5.40000009536743
+			"return_shortcut": {
+				"cells": [
+					[
+						59,
+						5
+					],
+					[
+						58,
+						5
+					],
+					[
+						57,
+						5
+					],
+					[
+						56,
+						5
+					],
+					[
+						55,
+						5
+					],
+					[
+						54,
+						5
+					],
+					[
+						53,
+						5
+					],
+					[
+						52,
+						5
+					],
+					[
+						51,
+						5
+					],
+					[
+						50,
+						5
+					],
+					[
+						49,
+						5
+					],
+					[
+						48,
+						5
+					],
+					[
+						47,
+						5
+					],
+					[
+						46,
+						5
+					],
+					[
+						45,
+						5
+					],
+					[
+						44,
+						5
+					],
+					[
+						43,
+						5
+					],
+					[
+						42,
+						5
+					],
+					[
+						41,
+						5
+					],
+					[
+						40,
+						5
+					],
+					[
+						39,
+						5
+					],
+					[
+						38,
+						5
+					],
+					[
+						37,
+						5
+					],
+					[
+						36,
+						5
+					],
+					[
+						35,
+						5
+					],
+					[
+						34,
+						5
+					],
+					[
+						33,
+						5
+					],
+					[
+						32,
+						5
+					],
+					[
+						31,
+						5
+					],
+					[
+						30,
+						5
+					],
+					[
+						29,
+						5
+					],
+					[
+						28,
+						5
+					],
+					[
+						27,
+						5
+					],
+					[
+						26,
+						5
+					],
+					[
+						25,
+						5
+					],
+					[
+						24,
+						5
+					],
+					[
+						23,
+						5
+					],
+					[
+						22,
+						5
+					],
+					[
+						21,
+						5
+					],
+					[
+						20,
+						5
+					],
+					[
+						19,
+						5
+					],
+					[
+						18,
+						5
+					],
+					[
+						17,
+						5
+					],
+					[
+						16,
+						5
+					],
+					[
+						15,
+						5
+					],
+					[
+						14,
+						5
+					],
+					[
+						13,
+						5
+					],
+					[
+						12,
+						5
+					],
+					[
+						11,
+						5
+					],
+					[
+						10,
+						5
+					],
+					[
+						9,
+						5
+					],
+					[
+						8,
+						5
+					],
+					[
+						7,
+						5
+					],
+					[
+						6,
+						5
+					]
 				],
-				"id": "exit_shelter",
-				"position": [
-					60.0,
-					0.449999988079071,
-					3.0
-				],
-				"radius": 3.59999990463257,
-				"role": "shelter_arrival",
-				"supports_click_to_move": true,
-				"surface_id": "node:exit_shelter",
-				"surface_y": 0.45
+				"kind": "shortcut"
 			}
-		],
-		"route_modes": [
-			"safe",
-			"direct"
-		],
-		"source": {
-			"complexity_tier": "teaching",
-			"generator": "archetype_based_stretch_v1",
-			"spec_id": "generated_teaching_channels_shelter_1_to_2"
 		},
 		"space_id": "generated_teaching_channels_shelter_1_to_2",
-		"supports_multiple_elevations": true
+		"supports_multiple_elevations": false,
+		"walkable_cells": [
+			[
+				44,
+				3
+			],
+			[
+				45,
+				3
+			],
+			[
+				46,
+				3
+			],
+			[
+				47,
+				3
+			],
+			[
+				48,
+				3
+			],
+			[
+				49,
+				3
+			],
+			[
+				50,
+				3
+			],
+			[
+				51,
+				3
+			],
+			[
+				52,
+				3
+			],
+			[
+				53,
+				3
+			],
+			[
+				54,
+				3
+			],
+			[
+				55,
+				3
+			],
+			[
+				56,
+				3
+			],
+			[
+				57,
+				3
+			],
+			[
+				58,
+				3
+			],
+			[
+				59,
+				3
+			],
+			[
+				60,
+				3
+			],
+			[
+				3,
+				4
+			],
+			[
+				4,
+				4
+			],
+			[
+				5,
+				4
+			],
+			[
+				6,
+				4
+			],
+			[
+				17,
+				4
+			],
+			[
+				18,
+				4
+			],
+			[
+				19,
+				4
+			],
+			[
+				31,
+				4
+			],
+			[
+				33,
+				4
+			],
+			[
+				34,
+				4
+			],
+			[
+				35,
+				4
+			],
+			[
+				36,
+				4
+			],
+			[
+				37,
+				4
+			],
+			[
+				38,
+				4
+			],
+			[
+				39,
+				4
+			],
+			[
+				40,
+				4
+			],
+			[
+				41,
+				4
+			],
+			[
+				42,
+				4
+			],
+			[
+				43,
+				4
+			],
+			[
+				44,
+				4
+			],
+			[
+				45,
+				4
+			],
+			[
+				46,
+				4
+			],
+			[
+				47,
+				4
+			],
+			[
+				48,
+				4
+			],
+			[
+				49,
+				4
+			],
+			[
+				50,
+				4
+			],
+			[
+				51,
+				4
+			],
+			[
+				52,
+				4
+			],
+			[
+				53,
+				4
+			],
+			[
+				54,
+				4
+			],
+			[
+				55,
+				4
+			],
+			[
+				56,
+				4
+			],
+			[
+				57,
+				4
+			],
+			[
+				58,
+				4
+			],
+			[
+				59,
+				4
+			],
+			[
+				60,
+				4
+			],
+			[
+				61,
+				4
+			],
+			[
+				62,
+				4
+			],
+			[
+				63,
+				4
+			],
+			[
+				64,
+				4
+			],
+			[
+				65,
+				4
+			],
+			[
+				66,
+				4
+			],
+			[
+				67,
+				4
+			],
+			[
+				68,
+				4
+			],
+			[
+				69,
+				4
+			],
+			[
+				70,
+				4
+			],
+			[
+				71,
+				4
+			],
+			[
+				72,
+				4
+			],
+			[
+				73,
+				4
+			],
+			[
+				74,
+				4
+			],
+			[
+				75,
+				4
+			],
+			[
+				76,
+				4
+			],
+			[
+				3,
+				5
+			],
+			[
+				4,
+				5
+			],
+			[
+				5,
+				5
+			],
+			[
+				6,
+				5
+			],
+			[
+				7,
+				5
+			],
+			[
+				8,
+				5
+			],
+			[
+				9,
+				5
+			],
+			[
+				10,
+				5
+			],
+			[
+				11,
+				5
+			],
+			[
+				12,
+				5
+			],
+			[
+				13,
+				5
+			],
+			[
+				14,
+				5
+			],
+			[
+				15,
+				5
+			],
+			[
+				16,
+				5
+			],
+			[
+				17,
+				5
+			],
+			[
+				18,
+				5
+			],
+			[
+				19,
+				5
+			],
+			[
+				20,
+				5
+			],
+			[
+				21,
+				5
+			],
+			[
+				22,
+				5
+			],
+			[
+				23,
+				5
+			],
+			[
+				24,
+				5
+			],
+			[
+				25,
+				5
+			],
+			[
+				26,
+				5
+			],
+			[
+				27,
+				5
+			],
+			[
+				28,
+				5
+			],
+			[
+				29,
+				5
+			],
+			[
+				30,
+				5
+			],
+			[
+				31,
+				5
+			],
+			[
+				32,
+				5
+			],
+			[
+				33,
+				5
+			],
+			[
+				34,
+				5
+			],
+			[
+				35,
+				5
+			],
+			[
+				36,
+				5
+			],
+			[
+				37,
+				5
+			],
+			[
+				38,
+				5
+			],
+			[
+				39,
+				5
+			],
+			[
+				40,
+				5
+			],
+			[
+				41,
+				5
+			],
+			[
+				42,
+				5
+			],
+			[
+				43,
+				5
+			],
+			[
+				44,
+				5
+			],
+			[
+				45,
+				5
+			],
+			[
+				46,
+				5
+			],
+			[
+				47,
+				5
+			],
+			[
+				48,
+				5
+			],
+			[
+				49,
+				5
+			],
+			[
+				50,
+				5
+			],
+			[
+				51,
+				5
+			],
+			[
+				52,
+				5
+			],
+			[
+				53,
+				5
+			],
+			[
+				54,
+				5
+			],
+			[
+				55,
+				5
+			],
+			[
+				56,
+				5
+			],
+			[
+				57,
+				5
+			],
+			[
+				58,
+				5
+			],
+			[
+				59,
+				5
+			],
+			[
+				60,
+				5
+			],
+			[
+				61,
+				5
+			],
+			[
+				62,
+				5
+			],
+			[
+				63,
+				5
+			],
+			[
+				64,
+				5
+			],
+			[
+				65,
+				5
+			],
+			[
+				66,
+				5
+			],
+			[
+				67,
+				5
+			],
+			[
+				68,
+				5
+			],
+			[
+				69,
+				5
+			],
+			[
+				70,
+				5
+			],
+			[
+				71,
+				5
+			],
+			[
+				72,
+				5
+			],
+			[
+				73,
+				5
+			],
+			[
+				74,
+				5
+			],
+			[
+				75,
+				5
+			],
+			[
+				76,
+				5
+			],
+			[
+				3,
+				6
+			],
+			[
+				4,
+				6
+			],
+			[
+				5,
+				6
+			],
+			[
+				6,
+				6
+			],
+			[
+				17,
+				6
+			],
+			[
+				18,
+				6
+			],
+			[
+				19,
+				6
+			],
+			[
+				31,
+				6
+			],
+			[
+				32,
+				6
+			],
+			[
+				33,
+				6
+			],
+			[
+				34,
+				6
+			],
+			[
+				35,
+				6
+			],
+			[
+				36,
+				6
+			],
+			[
+				37,
+				6
+			],
+			[
+				38,
+				6
+			],
+			[
+				39,
+				6
+			],
+			[
+				40,
+				6
+			],
+			[
+				41,
+				6
+			],
+			[
+				42,
+				6
+			],
+			[
+				43,
+				6
+			],
+			[
+				44,
+				6
+			],
+			[
+				45,
+				6
+			],
+			[
+				46,
+				6
+			],
+			[
+				58,
+				6
+			],
+			[
+				59,
+				6
+			],
+			[
+				60,
+				6
+			],
+			[
+				61,
+				6
+			],
+			[
+				73,
+				6
+			],
+			[
+				74,
+				6
+			],
+			[
+				75,
+				6
+			],
+			[
+				76,
+				6
+			]
+		],
+		"width": 80
 	},
 	"nodes": [
 		{
+			"action_verb": "ENTER STRETCH",
 			"approach_position": [
-				0.0,
+				2.01999998092651,
 				0.449999988079071,
-				-1.57200002670288
+				0.360000014305115
 			],
 			"approaches": [],
 			"archetype_id": "11",
 			"archetype_name": "Narrative beat",
 			"atp_reward": 0,
+			"carry_payload": false,
+			"chain_cycle": -1,
 			"chain_index": -1,
 			"chain_input": "",
+			"chain_input_ref": "",
 			"chain_label": "",
 			"chain_output": "",
+			"chain_output_ref": "",
 			"composition_role": "",
 			"content_placements": [
 				{
@@ -1035,14 +2681,14 @@
 					"id": "capbage",
 					"label": "capbage",
 					"local_offset": [
-						-2.13000011444092,
+						-1.57000005245209,
 						0.449999988079071,
-						-0.923999965190887
+						-0.660000026226044
 					],
 					"position": [
-						-2.13000011444092,
+						0.929999947547913,
 						0.899999976158142,
-						-3.92400002479553
+						0.839999973773956
 					],
 					"role": "resource",
 					"rotation_y_degrees": -11.0,
@@ -1052,6 +2698,7 @@
 						0.899999976158142,
 						1.35000002384186
 					],
+					"socket_id": "",
 					"support": "placeholder"
 				},
 				{
@@ -1061,12 +2708,12 @@
 					"local_offset": [
 						0.0,
 						0.600000023841858,
-						0.755999982357025
+						0.540000021457672
 					],
 					"position": [
-						0.0,
+						2.5,
 						1.04999995231628,
-						-2.24399995803833
+						2.03999996185303
 					],
 					"role": "structure",
 					"rotation_y_degrees": 26.0,
@@ -1076,54 +2723,59 @@
 						1.20000004768372,
 						2.0
 					],
+					"socket_id": "",
 					"support": "implemented"
 				}
 			],
+			"correct_read": "",
 			"elevation_index": 0,
-			"elevation_meters": 0.0,
+			"elevation_meters": -0.0000000119209289661804,
 			"enemies": [],
 			"exploit_target": "",
 			"floor_size": [
-				6.0,
-				0.159999996423721,
-				4.19999980926514
+				4.0,
+				0.140000000596046,
+				3.0
 			],
 			"flora": [
 				"capbage"
 			],
 			"footprint": [
-				6.0,
-				0.159999996423721,
-				4.19999980926514
+				4.0,
+				0.140000000596046,
+				3.0
 			],
 			"id": "entry",
 			"label": "Entry Boundary",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
 			"position": [
-				0.0,
+				2.5,
 				0.449999988079071,
-				-3.0
+				1.5
 			],
 			"pressure": 0,
 			"pressure_cost": 0,
+			"reads": [],
 			"resource": false,
 			"resource_beat": false,
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
 			"role": "boundary",
-			"shadow_solution": {
-
-			},
+			"shadow_solution": {},
 			"shortcut": false,
+			"solve": "",
+			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
 				"junction"
 			],
-			"surface_y": 0.45,
+			"surface_y": 0.449999988079071,
 			"survival_kind": "",
 			"title": "Entry Boundary",
 			"variant": "",
@@ -1134,10 +2786,11 @@
 			"walk_transition": ""
 		},
 		{
+			"action_verb": "ENTER STRETCH",
 			"approach_position": [
-				12.0,
+				15.1400003433228,
 				0.449999988079071,
-				1.42799997329712
+				0.360000014305115
 			],
 			"approaches": [
 				{
@@ -1155,10 +2808,14 @@
 			"archetype_id": "11",
 			"archetype_name": "Narrative beat",
 			"atp_reward": 0,
+			"carry_payload": false,
+			"chain_cycle": 0,
 			"chain_index": 0,
 			"chain_input": "",
+			"chain_input_ref": "",
 			"chain_label": "",
 			"chain_output": "",
+			"chain_output_ref": "",
 			"composition_role": "required_append",
 			"content_placements": [
 				{
@@ -1166,14 +2823,14 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-2.13000011444092,
+						-1.28999996185303,
 						0.0799999982118607,
-						-0.923999965190887
+						-0.660000026226044
 					],
 					"position": [
-						9.86999988555908,
+						14.210000038147,
 						0.529999971389771,
-						-0.923999965190887
+						0.839999973773956
 					],
 					"role": "cover",
 					"rotation_y_degrees": 0.0,
@@ -1183,6 +2840,7 @@
 						0.159999996423721,
 						1.70000004768372
 					],
+					"socket_id": "",
 					"support": "implemented"
 				},
 				{
@@ -1192,12 +2850,12 @@
 					"local_offset": [
 						0.0,
 						0.600000023841858,
-						0.755999982357025
+						0.540000021457672
 					],
 					"position": [
-						12.0,
+						15.5,
 						1.04999995231628,
-						0.755999982357025
+						2.03999996185303
 					],
 					"role": "structure",
 					"rotation_y_degrees": 37.0,
@@ -1207,55 +2865,62 @@
 						1.20000004768372,
 						2.0
 					],
+					"socket_id": "",
 					"support": "implemented"
 				}
 			],
+			"correct_read": "",
 			"elevation_index": 0,
-			"elevation_meters": 0.0,
+			"elevation_meters": -0.0000000119209289661804,
 			"enemies": [],
 			"exploit_target": "",
 			"floor_size": [
-				6.0,
-				0.159999996423721,
-				4.19999980926514
+				3.0,
+				0.140000000596046,
+				3.0
 			],
 			"flora": [
 				"scarpet"
 			],
 			"footprint": [
-				6.0,
-				0.159999996423721,
-				4.19999980926514
+				3.0,
+				0.140000000596046,
+				3.0
 			],
 			"id": "node_01",
 			"label": "Entry Boundary",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
 			"position": [
-				12.0,
+				15.5,
 				0.449999988079071,
-				0.0
+				1.5
 			],
 			"pressure": 0,
 			"pressure_cost": 0,
+			"reads": [],
 			"resource": false,
 			"resource_beat": false,
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
 			"role": "boundary",
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Narrative beat adapts to available party but should preserve state transition."
 			},
 			"shortcut": false,
+			"solve": "",
+			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
 				"junction"
 			],
-			"surface_y": 0.45,
+			"surface_y": 0.449999988079071,
 			"survival_kind": "",
 			"title": "Entry Boundary",
 			"variant": "setup_pivot_payoff",
@@ -1266,52 +2931,60 @@
 			"walk_transition": ""
 		},
 		{
+			"action_verb": "SPEND ATP TO REST",
+			"ambient_flora": [
+				"capbage",
+				"capbage"
+			],
 			"approach_position": [
-				24.0,
-				2.60999989509583,
-				4.49600028991699
+				29.5,
+				0.449999988079071,
+				2.51999998092651
 			],
 			"approaches": [
 				{
-					"id": "guarded_forage",
+					"id": "held_rest",
 					"kind": "primary",
-					"label": "A combat member covers the open while the party splits off to harvest the remains",
+					"label": "The party regroups; a combat member holds the approach while a downed ally is dragged in to rest",
 					"min_stage": 1.0,
 					"party": "specialist",
 					"requires": [
 						"combat"
 					],
-					"risk": "direct",
+					"risk": "safe",
 					"taught_by": "",
 					"uses": [
-						"rich_kill"
+						"contested_rest"
 					]
 				},
 				{
-					"id": "masked_forage",
+					"id": "field_hide_rest",
 					"kind": "shadow",
-					"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+					"label": "With no shelter reachable, Peris's capbage gives a field hide-rest while Aster reads the dusk clock",
 					"min_stage": 1.0,
 					"party": "aster_peris",
 					"requires": [
-						"flora",
 						"cover",
 						"timing"
 					],
-					"risk": "safe",
-					"taught_by": "scent_masked_dwell",
+					"risk": "risky",
+					"taught_by": "capbage_hide_rest",
 					"uses": [
-						"forage_cache_station"
+						"field_hide_rest"
 					]
 				}
 			],
-			"archetype_id": "12",
-			"archetype_name": "Lysate forage cache",
-			"atp_reward": 2,
+			"archetype_id": "16",
+			"archetype_name": "Shelter-rest management",
+			"atp_reward": 0,
+			"carry_payload": false,
+			"chain_cycle": 0,
 			"chain_index": 1,
 			"chain_input": "",
+			"chain_input_ref": "",
 			"chain_label": "",
 			"chain_output": "",
+			"chain_output_ref": "",
 			"composition_role": "generated_fill",
 			"content_placements": [
 				{
@@ -1319,14 +2992,14 @@
 					"id": "capbage",
 					"label": "capbage",
 					"local_offset": [
-						-2.07400012016296,
+						-1.28999996185303,
 						0.449999988079071,
-						-0.967999994754791
+						-0.660000026226044
 					],
 					"position": [
-						21.9260005950928,
-						3.05999994277954,
-						2.03200006484985
+						28.2099990844727,
+						0.899999976158142,
+						0.839999973773956
 					],
 					"role": "resource",
 					"rotation_y_degrees": 11.0,
@@ -1336,6 +3009,7 @@
 						0.899999976158142,
 						1.35000002384186
 					],
+					"socket_id": "",
 					"support": "placeholder"
 				},
 				{
@@ -1343,14 +3017,14 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.62400007247925,
+						-0.839999973773956,
 						0.0799999982118607,
-						-0.967999994754791
+						-0.660000026226044
 					],
 					"position": [
-						22.3759994506836,
-						2.68999981880188,
-						2.03200006484985
+						28.6599998474121,
+						0.529999971389771,
+						0.839999973773956
 					],
 					"role": "cover",
 					"rotation_y_degrees": 48.0,
@@ -1360,109 +3034,106 @@
 						0.159999996423721,
 						1.70000004768372
 					],
-					"support": "implemented"
-				},
-				{
-					"category": "enemies",
-					"id": "sapscraps",
-					"label": "sapscraps",
-					"local_offset": [
-						1.39200007915497,
-						0.550000011920929,
-						0.329999983310699
-					],
-					"position": [
-						25.3920001983643,
-						3.15999984741211,
-						3.32999992370605
-					],
-					"role": "pressure",
-					"rotation_y_degrees": 85.0,
-					"shape": "enemy_volume",
-					"size": [
-						1.20000004768372,
-						1.10000002384186,
-						1.20000004768372
-					],
+					"socket_id": "",
 					"support": "implemented"
 				},
 				{
 					"category": "structures",
-					"id": "forage_cache",
-					"label": "forage_cache",
+					"id": "hide_slot",
+					"label": "hide_slot",
 					"local_offset": [
-						-0.550000011920929,
-						0.375,
-						0.791999995708466
+						0.550000011920929,
+						0.699999988079071,
+						0.540000021457672
 					],
 					"position": [
-						23.4500007629395,
-						2.98499989509583,
-						3.79200005531311
+						30.0499992370605,
+						1.14999997615814,
+						2.03999996185303
 					],
-					"role": "resource",
-					"rotation_y_degrees": 122.0,
+					"role": "structure",
+					"rotation_y_degrees": 85.0,
 					"shape": "structure_box",
 					"size": [
-						1.70000004768372,
-						0.75,
+						1.60000002384186,
+						1.39999997615814,
 						1.0
 					],
+					"socket_id": "",
 					"support": "implemented"
 				}
 			],
-			"elevation_index": 3,
-			"elevation_meters": 2.16,
-			"enemies": [
-				"sapscraps"
-			],
+			"correct_read": "",
+			"elevation_index": 0,
+			"elevation_meters": -0.0000000119209289661804,
+			"enemies": [],
+			"evidence_hint": "ATP spent, debt cleared, and capacity restored are visible",
 			"exploit_target": "",
 			"floor_size": [
-				5.80000019073486,
+				3.0,
 				0.140000000596046,
-				4.40000009536743
+				3.0
 			],
 			"flora": [
 				"capbage",
 				"scarpet"
 			],
 			"footprint": [
-				5.80000019073486,
+				3.0,
 				0.140000000596046,
-				4.40000009536743
+				3.0
 			],
 			"id": "node_02",
-			"label": "Lysate forage cache · Organic Remains",
-			"layout_step": {
-
-			},
+			"label": "Shelter-rest management · Full Rest",
+			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
 			"position": [
-				24.0,
-				2.60999989509583,
-				3.0
+				29.5,
+				0.449999988079071,
+				1.5
 			],
-			"pressure": 1,
+			"prediction_hint": "the banked ATP will cover the chosen recovery before the next stretch",
+			"pressure": 0,
 			"pressure_cost": 0,
+			"reads": [],
 			"resource": true,
 			"resource_beat": true,
-			"role": "foraging",
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
+			"role": "regroup",
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Peris finds caches under scarpet cover while Aster times the dwell into a blind window."
+				"notes": "When no shelter is reachable, Peris's capbage gives a field hide-rest while Aster reads the dusk clock."
 			},
 			"shortcut": false,
+			"solve": "",
+			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
-				"forage_cache"
+				"hide_slot"
 			],
-			"surface_y": 2.61,
-			"survival_kind": "forage",
-			"title": "Lysate forage cache · Organic Remains",
-			"variant": "organic_remains",
+			"surface_y": 0.449999988079071,
+			"survival_kind": "rest",
+			"systems_beat": {
+				"beat": "teach",
+				"cause": "the regrouped party spends ATP at a valid rest state",
+				"changed_condition": "full rest",
+				"critical": true,
+				"effect": "recovery increases and sleep deprivation clears",
+				"evidence": "ATP spent, debt cleared, and capacity restored are visible",
+				"intervention": "regroup, compare debt with ATP, then choose the rest spend",
+				"likely_misconception": "rest is free or every cache must be collected",
+				"model_id": "archetype_16",
+				"prediction": "the banked ATP will cover the chosen recovery before the next stretch",
+				"verb": "recover"
+			},
+			"title": "Shelter-rest management · Full Rest",
+			"variant": "full_rest",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -1470,10 +3141,15 @@
 			"walk_transition": ""
 		},
 		{
+			"action_verb": "CROSS THE BOUNDARY",
+			"ambient_flora": [
+				"seefern",
+				"seefern"
+			],
 			"approach_position": [
-				36.0,
+				43.5,
 				0.449999988079071,
-				-1.57200002670288
+				0.840000033378601
 			],
 			"approaches": [
 				{
@@ -1491,10 +3167,14 @@
 			"archetype_id": "11",
 			"archetype_name": "Narrative beat",
 			"atp_reward": 0,
+			"carry_payload": false,
+			"chain_cycle": 1,
 			"chain_index": 0,
 			"chain_input": "",
+			"chain_input_ref": "",
 			"chain_label": "",
 			"chain_output": "",
+			"chain_output_ref": "",
 			"composition_role": "required_append",
 			"content_placements": [
 				{
@@ -1502,14 +3182,14 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.90599989891052,
+						-1.28999996185303,
 						0.0799999982118607,
-						-0.923999965190887
+						-0.219999998807907
 					],
 					"position": [
-						34.0940017700195,
+						42.2099990844727,
 						0.529999971389771,
-						-3.92400002479553
+						0.280000001192093
 					],
 					"role": "cover",
 					"rotation_y_degrees": 0.0,
@@ -1519,6 +3199,7 @@
 						0.159999996423721,
 						1.70000004768372
 					],
+					"socket_id": "",
 					"support": "implemented"
 				},
 				{
@@ -1528,12 +3209,12 @@
 					"local_offset": [
 						0.0,
 						0.600000023841858,
-						0.755999982357025
+						0.180000007152557
 					],
 					"position": [
-						36.0,
+						43.5,
 						1.04999995231628,
-						-2.24399995803833
+						0.680000007152557
 					],
 					"role": "structure",
 					"rotation_y_degrees": 37.0,
@@ -1543,56 +3224,78 @@
 						1.20000004768372,
 						2.0
 					],
+					"socket_id": "",
 					"support": "implemented"
 				}
 			],
+			"correct_read": "",
 			"elevation_index": 0,
-			"elevation_meters": 0.0,
+			"elevation_meters": -0.0000000119209289661804,
 			"enemies": [],
+			"evidence_hint": "pre-state, transition, and post-state are recorded",
 			"exploit_target": "",
 			"floor_size": [
-				5.19999980926514,
+				3.0,
 				0.140000000596046,
-				4.19999980926514
+				1.0
 			],
 			"flora": [
 				"scarpet"
 			],
 			"footprint": [
-				5.19999980926514,
+				3.0,
 				0.140000000596046,
-				4.19999980926514
+				1.0
 			],
 			"id": "node_03",
 			"label": "Narrative beat · Recognition",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
 			"position": [
-				36.0,
+				43.5,
 				0.449999988079071,
-				-3.0
+				0.5
 			],
+			"prediction_hint": "the transition will preserve the declared state into the next section",
 			"pressure": 0,
 			"pressure_cost": 0,
+			"reads": [],
 			"resource": false,
 			"resource_beat": false,
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
 			"role": "regroup",
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Narrative beat adapts to available party but should preserve state transition."
 			},
 			"shortcut": false,
+			"solve": "",
+			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
 				"junction"
 			],
-			"surface_y": 0.45,
+			"surface_y": 0.449999988079071,
 			"survival_kind": "",
+			"systems_beat": {
+				"beat": "apply",
+				"cause": "the transition mechanism is completed",
+				"changed_condition": "recognition",
+				"critical": true,
+				"effect": "the post-transition state becomes active",
+				"evidence": "pre-state, transition, and post-state are recorded",
+				"intervention": "complete the transition and inspect the carried state",
+				"likely_misconception": "the beat is flavor with no persistent state change",
+				"model_id": "archetype_11",
+				"prediction": "the transition will preserve the declared state into the next section",
+				"verb": "recognize"
+			},
 			"title": "Narrative beat · Recognition",
 			"variant": "recognition",
 			"walk_element": "",
@@ -1602,52 +3305,60 @@
 			"walk_transition": ""
 		},
 		{
+			"action_verb": "SPEND ATP TO REST",
+			"ambient_flora": [
+				"capbage",
+				"seefern"
+			],
 			"approach_position": [
-				48.0,
-				1.88999998569489,
-				1.49600005149841
+				57.5,
+				0.449999988079071,
+				2.51999998092651
 			],
 			"approaches": [
 				{
-					"id": "guarded_forage",
+					"id": "held_rest",
 					"kind": "primary",
-					"label": "A combat member covers the open while the party splits off to harvest the remains",
+					"label": "The party regroups; a combat member holds the approach while a downed ally is dragged in to rest",
 					"min_stage": 1.0,
 					"party": "specialist",
 					"requires": [
 						"combat"
 					],
-					"risk": "direct",
+					"risk": "safe",
 					"taught_by": "",
 					"uses": [
-						"rich_kill"
+						"contested_rest"
 					]
 				},
 				{
-					"id": "masked_forage",
+					"id": "field_hide_rest",
 					"kind": "shadow",
-					"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+					"label": "With no shelter reachable, Peris's capbage gives a field hide-rest while Aster reads the dusk clock",
 					"min_stage": 1.0,
 					"party": "aster_peris",
 					"requires": [
-						"flora",
 						"cover",
 						"timing"
 					],
-					"risk": "safe",
-					"taught_by": "scent_masked_dwell",
+					"risk": "risky",
+					"taught_by": "capbage_hide_rest",
 					"uses": [
-						"forage_cache_station"
+						"field_hide_rest"
 					]
 				}
 			],
-			"archetype_id": "12",
-			"archetype_name": "Lysate forage cache",
-			"atp_reward": 2,
+			"archetype_id": "16",
+			"archetype_name": "Shelter-rest management",
+			"atp_reward": 0,
+			"carry_payload": false,
+			"chain_cycle": 1,
 			"chain_index": 1,
 			"chain_input": "",
+			"chain_input_ref": "",
 			"chain_label": "",
 			"chain_output": "",
+			"chain_output_ref": "",
 			"composition_role": "generated_fill",
 			"content_placements": [
 				{
@@ -1655,14 +3366,14 @@
 					"id": "capbage",
 					"label": "capbage",
 					"local_offset": [
-						-2.07400012016296,
+						-1.28999996185303,
 						0.449999988079071,
-						-0.967999994754791
+						-0.660000026226044
 					],
 					"position": [
-						45.9259986877441,
-						2.33999991416931,
-						-0.967999994754791
+						56.2099990844727,
+						0.899999976158142,
+						0.839999973773956
 					],
 					"role": "resource",
 					"rotation_y_degrees": 11.0,
@@ -1672,6 +3383,7 @@
 						0.899999976158142,
 						1.35000002384186
 					],
+					"socket_id": "",
 					"support": "placeholder"
 				},
 				{
@@ -1679,14 +3391,14 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.62400007247925,
+						-0.839999973773956,
 						0.0799999982118607,
-						-0.967999994754791
+						-0.660000026226044
 					],
 					"position": [
-						46.3759994506836,
-						1.97000002861023,
-						-0.967999994754791
+						56.6599998474121,
+						0.529999971389771,
+						0.839999973773956
 					],
 					"role": "cover",
 					"rotation_y_degrees": 48.0,
@@ -1696,109 +3408,106 @@
 						0.159999996423721,
 						1.70000004768372
 					],
+					"socket_id": "",
 					"support": "implemented"
-				},
-				{
-					"category": "enemies",
-					"id": "hidras",
-					"label": "hidras",
-					"local_offset": [
-						1.39200007915497,
-						0.75,
-						0.329999983310699
-					],
-					"position": [
-						49.3919982910156,
-						2.6399998664856,
-						0.329999983310699
-					],
-					"role": "pressure",
-					"rotation_y_degrees": 85.0,
-					"shape": "enemy_volume",
-					"size": [
-						1.79999995231628,
-						1.5,
-						1.79999995231628
-					],
-					"support": "placeholder"
 				},
 				{
 					"category": "structures",
 					"id": "shortcut_gate",
 					"label": "shortcut_gate",
 					"local_offset": [
-						-0.550000011920929,
+						0.550000011920929,
 						1.10000002384186,
-						0.791999995708466
+						0.540000021457672
 					],
 					"position": [
-						47.4500007629395,
-						2.99000000953674,
-						0.791999995708466
+						58.0499992370605,
+						1.54999995231628,
+						2.03999996185303
 					],
 					"role": "shortcut",
-					"rotation_y_degrees": 122.0,
+					"rotation_y_degrees": 85.0,
 					"shape": "gate",
 					"size": [
 						2.40000009536743,
 						2.20000004768372,
 						0.379999995231628
 					],
+					"socket_id": "",
 					"support": "implemented"
 				}
 			],
-			"elevation_index": 2,
-			"elevation_meters": 1.44,
-			"enemies": [
-				"hidras"
-			],
+			"correct_read": "",
+			"elevation_index": 0,
+			"elevation_meters": -0.0000000119209289661804,
+			"enemies": [],
+			"evidence_hint": "ATP spent, debt cleared, and capacity restored are visible",
 			"exploit_target": "",
 			"floor_size": [
-				5.80000019073486,
+				3.0,
 				0.140000000596046,
-				4.40000009536743
+				3.0
 			],
 			"flora": [
 				"capbage",
 				"scarpet"
 			],
 			"footprint": [
-				5.80000019073486,
+				3.0,
 				0.140000000596046,
-				4.40000009536743
+				3.0
 			],
 			"id": "node_04",
-			"label": "Lysate forage cache · Rich Kill",
-			"layout_step": {
-
-			},
+			"label": "Shelter-rest management · Field Hide Rest",
+			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
 			"position": [
-				48.0,
-				1.88999998569489,
-				0.0
+				57.5,
+				0.449999988079071,
+				1.5
 			],
-			"pressure": 1,
+			"prediction_hint": "the banked ATP will cover the chosen recovery before the next stretch",
+			"pressure": 0,
 			"pressure_cost": 0,
+			"reads": [],
 			"resource": false,
 			"resource_beat": false,
-			"role": "foraging",
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
+			"role": "regroup",
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Peris finds caches under scarpet cover while Aster times the dwell into a blind window."
+				"notes": "When no shelter is reachable, Peris's capbage gives a field hide-rest while Aster reads the dusk clock."
 			},
 			"shortcut": true,
+			"solve": "",
+			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
 				"shortcut_gate"
 			],
-			"surface_y": 1.89,
-			"survival_kind": "forage",
-			"title": "Lysate forage cache · Rich Kill",
-			"variant": "rich_kill",
+			"surface_y": 0.449999988079071,
+			"survival_kind": "rest",
+			"systems_beat": {
+				"beat": "test",
+				"cause": "the regrouped party spends ATP at a valid rest state",
+				"changed_condition": "field hide rest",
+				"critical": true,
+				"effect": "recovery increases and sleep deprivation clears",
+				"evidence": "ATP spent, debt cleared, and capacity restored are visible",
+				"intervention": "regroup, compare debt with ATP, then choose the rest spend",
+				"likely_misconception": "rest is free or every cache must be collected",
+				"model_id": "archetype_16",
+				"prediction": "the banked ATP will cover the chosen recovery before the next stretch",
+				"verb": "recover"
+			},
+			"title": "Shelter-rest management · Field Hide Rest",
+			"variant": "field_hide_rest",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -1806,19 +3515,24 @@
 			"walk_transition": ""
 		},
 		{
+			"action_verb": "REST AT SHELTER",
 			"approach_position": [
-				58.7039985656738,
+				72.0199966430664,
 				0.449999988079071,
-				4.83599996566772
+				0.360000014305115
 			],
 			"approaches": [],
 			"archetype_id": "11",
 			"archetype_name": "Narrative beat",
 			"atp_reward": 0,
+			"carry_payload": false,
+			"chain_cycle": -1,
 			"chain_index": -1,
 			"chain_input": "",
+			"chain_input_ref": "",
 			"chain_label": "",
 			"chain_output": "",
+			"chain_output_ref": "",
 			"composition_role": "",
 			"content_placements": [
 				{
@@ -1826,14 +3540,14 @@
 					"id": "gasafoetida",
 					"label": "gasafoetida",
 					"local_offset": [
-						-2.46599984169006,
+						-1.57000005245209,
 						0.675000011920929,
-						-1.18799996376038
+						-0.660000026226044
 					],
 					"position": [
-						57.5340003967285,
+						70.9300003051758,
 						1.125,
-						1.81200003623962
+						0.839999973773956
 					],
 					"role": "resource",
 					"rotation_y_degrees": -11.0,
@@ -1843,6 +3557,7 @@
 						1.35000002384186,
 						1.0
 					],
+					"socket_id": "",
 					"support": "placeholder"
 				},
 				{
@@ -1852,12 +3567,12 @@
 					"local_offset": [
 						0.0,
 						1.20000004768372,
-						0.972000002861023
+						0.540000021457672
 					],
 					"position": [
-						60.0,
+						72.5,
 						1.65000009536743,
-						3.97200012207031
+						2.03999996185303
 					],
 					"role": "rest",
 					"rotation_y_degrees": 26.0,
@@ -1867,54 +3582,59 @@
 						2.40000009536743,
 						3.40000009536743
 					],
+					"socket_id": "",
 					"support": "implemented"
 				}
 			],
+			"correct_read": "",
 			"elevation_index": 0,
-			"elevation_meters": 0.0,
+			"elevation_meters": -0.0000000119209289661804,
 			"enemies": [],
 			"exploit_target": "",
 			"floor_size": [
-				7.19999980926514,
-				0.180000007152557,
-				5.40000009536743
+				4.0,
+				0.140000000596046,
+				3.0
 			],
 			"flora": [
 				"gasafoetida"
 			],
 			"footprint": [
-				7.19999980926514,
-				0.180000007152557,
-				5.40000009536743
+				4.0,
+				0.140000000596046,
+				3.0
 			],
 			"id": "exit_shelter",
 			"label": "Shelter Arrival",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
 			"position": [
-				60.0,
+				72.5,
 				0.449999988079071,
-				3.0
+				1.5
 			],
 			"pressure": 0,
 			"pressure_cost": 0,
+			"reads": [],
 			"resource": false,
 			"resource_beat": false,
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
 			"role": "shelter_arrival",
-			"shadow_solution": {
-
-			},
+			"shadow_solution": {},
 			"shortcut": false,
+			"solve": "",
+			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
 				"shelter"
 			],
-			"surface_y": 0.45,
+			"surface_y": 0.449999988079071,
 			"survival_kind": "",
 			"title": "Shelter Arrival",
 			"variant": "",
@@ -1928,7 +3648,7 @@
 	"ok": true,
 	"palette_usage": {
 		"enemies": [
-			"spikers"
+			"redactors"
 		],
 		"flora": [
 			"flure",
@@ -1939,6 +3659,1170 @@
 			"class_gate",
 			"shortcut_gate"
 		]
+	},
+	"roompieces": {
+		"contract_id": "trawf_roompieces_v1",
+		"corridors": [
+			{
+				"cells": [
+					[
+						3,
+						1
+					],
+					[
+						4,
+						1
+					],
+					[
+						5,
+						1
+					],
+					[
+						6,
+						1
+					],
+					[
+						7,
+						1
+					],
+					[
+						8,
+						1
+					],
+					[
+						9,
+						1
+					],
+					[
+						10,
+						1
+					],
+					[
+						11,
+						1
+					],
+					[
+						12,
+						1
+					],
+					[
+						13,
+						1
+					],
+					[
+						14,
+						1
+					]
+				],
+				"from": "entry",
+				"from_level": 0,
+				"kind": "safe",
+				"recoverable": true,
+				"route": "main_00_01",
+				"to": "node_01",
+				"to_level": 0
+			},
+			{
+				"cells": [
+					[
+						16,
+						1
+					],
+					[
+						17,
+						1
+					],
+					[
+						18,
+						1
+					],
+					[
+						19,
+						1
+					],
+					[
+						20,
+						1
+					],
+					[
+						21,
+						1
+					],
+					[
+						22,
+						1
+					],
+					[
+						23,
+						1
+					],
+					[
+						24,
+						1
+					],
+					[
+						25,
+						1
+					],
+					[
+						26,
+						1
+					],
+					[
+						27,
+						1
+					],
+					[
+						28,
+						1
+					]
+				],
+				"from": "node_01",
+				"from_level": 0,
+				"kind": "safe",
+				"recoverable": true,
+				"route": "main_01_02",
+				"to": "node_02",
+				"to_level": 0
+			},
+			{
+				"cells": [
+					[
+						30,
+						0
+					],
+					[
+						30,
+						1
+					],
+					[
+						30,
+						2
+					],
+					[
+						31,
+						0
+					],
+					[
+						31,
+						1
+					],
+					[
+						31,
+						2
+					],
+					[
+						32,
+						0
+					],
+					[
+						32,
+						1
+					],
+					[
+						32,
+						2
+					],
+					[
+						33,
+						0
+					],
+					[
+						33,
+						1
+					],
+					[
+						33,
+						2
+					],
+					[
+						34,
+						0
+					],
+					[
+						34,
+						1
+					],
+					[
+						34,
+						2
+					],
+					[
+						35,
+						0
+					],
+					[
+						35,
+						1
+					],
+					[
+						35,
+						2
+					],
+					[
+						36,
+						0
+					],
+					[
+						36,
+						1
+					],
+					[
+						36,
+						2
+					],
+					[
+						37,
+						0
+					],
+					[
+						37,
+						1
+					],
+					[
+						37,
+						2
+					],
+					[
+						38,
+						0
+					],
+					[
+						38,
+						1
+					],
+					[
+						38,
+						2
+					],
+					[
+						39,
+						0
+					],
+					[
+						39,
+						1
+					],
+					[
+						39,
+						2
+					],
+					[
+						40,
+						0
+					],
+					[
+						40,
+						1
+					],
+					[
+						40,
+						2
+					],
+					[
+						41,
+						0
+					],
+					[
+						41,
+						1
+					],
+					[
+						41,
+						2
+					],
+					[
+						42,
+						1
+					],
+					[
+						43,
+						1
+					],
+					[
+						41,
+						-1
+					],
+					[
+						42,
+						-1
+					],
+					[
+						42,
+						0
+					],
+					[
+						43,
+						-1
+					],
+					[
+						43,
+						0
+					],
+					[
+						42,
+						2
+					],
+					[
+						43,
+						2
+					]
+				],
+				"from": "node_02",
+				"from_level": 0,
+				"kind": "safe",
+				"recoverable": true,
+				"route": "main_02_03",
+				"to": "node_03",
+				"to_level": 0
+			},
+			{
+				"cells": [
+					[
+						44,
+						-1
+					],
+					[
+						44,
+						0
+					],
+					[
+						44,
+						1
+					],
+					[
+						45,
+						-1
+					],
+					[
+						45,
+						0
+					],
+					[
+						45,
+						1
+					],
+					[
+						46,
+						-1
+					],
+					[
+						46,
+						0
+					],
+					[
+						46,
+						1
+					],
+					[
+						47,
+						-1
+					],
+					[
+						47,
+						0
+					],
+					[
+						47,
+						1
+					],
+					[
+						48,
+						-1
+					],
+					[
+						48,
+						0
+					],
+					[
+						48,
+						1
+					],
+					[
+						49,
+						-1
+					],
+					[
+						49,
+						0
+					],
+					[
+						49,
+						1
+					],
+					[
+						50,
+						-1
+					],
+					[
+						50,
+						0
+					],
+					[
+						50,
+						1
+					],
+					[
+						51,
+						-1
+					],
+					[
+						51,
+						0
+					],
+					[
+						51,
+						1
+					],
+					[
+						52,
+						-1
+					],
+					[
+						52,
+						0
+					],
+					[
+						52,
+						1
+					],
+					[
+						53,
+						-1
+					],
+					[
+						53,
+						0
+					],
+					[
+						53,
+						1
+					],
+					[
+						54,
+						-1
+					],
+					[
+						54,
+						0
+					],
+					[
+						54,
+						1
+					],
+					[
+						55,
+						-1
+					],
+					[
+						55,
+						0
+					],
+					[
+						55,
+						1
+					],
+					[
+						56,
+						0
+					],
+					[
+						57,
+						0
+					],
+					[
+						56,
+						-1
+					],
+					[
+						57,
+						-1
+					],
+					[
+						56,
+						1
+					],
+					[
+						57,
+						1
+					],
+					[
+						55,
+						2
+					],
+					[
+						56,
+						2
+					],
+					[
+						57,
+						2
+					]
+				],
+				"from": "node_03",
+				"from_level": 0,
+				"kind": "safe",
+				"recoverable": true,
+				"route": "main_03_04",
+				"to": "node_04",
+				"to_level": 0
+			},
+			{
+				"cells": [
+					[
+						58,
+						0
+					],
+					[
+						58,
+						1
+					],
+					[
+						59,
+						0
+					],
+					[
+						59,
+						1
+					],
+					[
+						60,
+						0
+					],
+					[
+						60,
+						1
+					],
+					[
+						61,
+						0
+					],
+					[
+						61,
+						1
+					],
+					[
+						62,
+						0
+					],
+					[
+						62,
+						1
+					],
+					[
+						63,
+						0
+					],
+					[
+						63,
+						1
+					],
+					[
+						64,
+						0
+					],
+					[
+						64,
+						1
+					],
+					[
+						65,
+						0
+					],
+					[
+						65,
+						1
+					],
+					[
+						66,
+						0
+					],
+					[
+						66,
+						1
+					],
+					[
+						67,
+						0
+					],
+					[
+						67,
+						1
+					],
+					[
+						68,
+						0
+					],
+					[
+						68,
+						1
+					],
+					[
+						69,
+						0
+					],
+					[
+						69,
+						1
+					],
+					[
+						70,
+						0
+					],
+					[
+						70,
+						1
+					]
+				],
+				"from": "node_04",
+				"from_level": 0,
+				"kind": "safe",
+				"recoverable": true,
+				"route": "main_04_05",
+				"to": "exit_shelter",
+				"to_level": 0
+			},
+			{
+				"cells": [
+					[
+						56,
+						1
+					],
+					[
+						55,
+						1
+					],
+					[
+						54,
+						1
+					],
+					[
+						53,
+						1
+					],
+					[
+						52,
+						1
+					],
+					[
+						51,
+						1
+					],
+					[
+						50,
+						1
+					],
+					[
+						49,
+						1
+					],
+					[
+						48,
+						1
+					],
+					[
+						47,
+						1
+					],
+					[
+						46,
+						1
+					],
+					[
+						45,
+						1
+					],
+					[
+						44,
+						1
+					],
+					[
+						43,
+						1
+					],
+					[
+						42,
+						1
+					],
+					[
+						41,
+						1
+					],
+					[
+						40,
+						1
+					],
+					[
+						39,
+						1
+					],
+					[
+						38,
+						1
+					],
+					[
+						37,
+						1
+					],
+					[
+						36,
+						1
+					],
+					[
+						35,
+						1
+					],
+					[
+						34,
+						1
+					],
+					[
+						33,
+						1
+					],
+					[
+						32,
+						1
+					],
+					[
+						31,
+						1
+					],
+					[
+						30,
+						1
+					],
+					[
+						29,
+						1
+					],
+					[
+						28,
+						1
+					],
+					[
+						27,
+						1
+					],
+					[
+						26,
+						1
+					],
+					[
+						25,
+						1
+					],
+					[
+						24,
+						1
+					],
+					[
+						23,
+						1
+					],
+					[
+						22,
+						1
+					],
+					[
+						21,
+						1
+					],
+					[
+						20,
+						1
+					],
+					[
+						19,
+						1
+					],
+					[
+						18,
+						1
+					],
+					[
+						17,
+						1
+					],
+					[
+						16,
+						1
+					],
+					[
+						15,
+						1
+					],
+					[
+						14,
+						1
+					],
+					[
+						13,
+						1
+					],
+					[
+						12,
+						1
+					],
+					[
+						11,
+						1
+					],
+					[
+						10,
+						1
+					],
+					[
+						9,
+						1
+					],
+					[
+						8,
+						1
+					],
+					[
+						7,
+						1
+					],
+					[
+						6,
+						1
+					],
+					[
+						5,
+						1
+					],
+					[
+						4,
+						1
+					],
+					[
+						3,
+						1
+					]
+				],
+				"from": "node_04",
+				"from_level": 0,
+				"kind": "shortcut",
+				"recoverable": true,
+				"route": "return_shortcut",
+				"to": "entry",
+				"to_level": 0
+			}
+		],
+		"fallback_used": false,
+		"layout_engine": "wfc_v1",
+		"placements": [
+			{
+				"level": 0,
+				"node": "entry",
+				"origin_cell": [
+					0,
+					0
+				],
+				"piece": "chamber",
+				"rotation": 180,
+				"size": [
+					4,
+					3
+				],
+				"spatial_affordance": {},
+				"spatial_feature_kind": ""
+			},
+			{
+				"level": 0,
+				"node": "node_01",
+				"origin_cell": [
+					14,
+					0
+				],
+				"piece": "junction_x",
+				"rotation": 90,
+				"size": [
+					3,
+					3
+				],
+				"spatial_affordance": {},
+				"spatial_feature_kind": ""
+			},
+			{
+				"level": 0,
+				"node": "node_02",
+				"origin_cell": [
+					28,
+					0
+				],
+				"piece": "junction_t",
+				"rotation": 180,
+				"size": [
+					3,
+					3
+				],
+				"spatial_affordance": {},
+				"spatial_feature_kind": ""
+			},
+			{
+				"level": 0,
+				"node": "node_03",
+				"origin_cell": [
+					42,
+					0
+				],
+				"piece": "corridor_straight",
+				"rotation": 180,
+				"size": [
+					3,
+					1
+				],
+				"spatial_affordance": {},
+				"spatial_feature_kind": ""
+			},
+			{
+				"level": 0,
+				"node": "node_04",
+				"origin_cell": [
+					56,
+					0
+				],
+				"piece": "junction_t",
+				"rotation": 0,
+				"size": [
+					3,
+					3
+				],
+				"spatial_affordance": {},
+				"spatial_feature_kind": ""
+			},
+			{
+				"level": 0,
+				"node": "exit_shelter",
+				"origin_cell": [
+					70,
+					0
+				],
+				"piece": "chamber",
+				"rotation": 0,
+				"size": [
+					4,
+					3
+				],
+				"spatial_affordance": {},
+				"spatial_feature_kind": ""
+			}
+		],
+		"slot_cells": {
+			"entry": {
+				"connection_cell": [
+					2,
+					1
+				],
+				"connection_points": {
+					"e": [
+						3,
+						1
+					],
+					"n": [
+						2,
+						0
+					],
+					"s": [
+						2,
+						2
+					],
+					"w": [
+						0,
+						1
+					]
+				},
+				"footprint": [
+					4,
+					3
+				],
+				"level": 0,
+				"origin_cell": [
+					0,
+					0
+				],
+				"walkable": [
+					"....",
+					"....",
+					"...."
+				]
+			},
+			"exit_shelter": {
+				"connection_cell": [
+					72,
+					1
+				],
+				"connection_points": {
+					"e": [
+						3.0,
+						1.0
+					],
+					"n": [
+						1.0,
+						0.0
+					],
+					"s": [
+						1.0,
+						2.0
+					],
+					"w": [
+						0.0,
+						1.0
+					]
+				},
+				"footprint": [
+					4,
+					3
+				],
+				"level": 0,
+				"origin_cell": [
+					70,
+					0
+				],
+				"walkable": [
+					"....",
+					"....",
+					"...."
+				]
+			},
+			"node_01": {
+				"connection_cell": [
+					15,
+					1
+				],
+				"connection_points": {
+					"e": [
+						2,
+						1
+					],
+					"n": [
+						1,
+						0
+					],
+					"s": [
+						1,
+						2
+					],
+					"w": [
+						0,
+						1
+					]
+				},
+				"footprint": [
+					3,
+					3
+				],
+				"level": 0,
+				"origin_cell": [
+					14,
+					0
+				],
+				"walkable": [
+					"...",
+					"#.#",
+					"..."
+				]
+			},
+			"node_02": {
+				"connection_cell": [
+					29,
+					1
+				],
+				"connection_points": {
+					"e": [
+						2,
+						1
+					],
+					"n": [
+						1,
+						0
+					],
+					"w": [
+						0,
+						1
+					]
+				},
+				"footprint": [
+					3,
+					3
+				],
+				"level": 0,
+				"origin_cell": [
+					28,
+					0
+				],
+				"walkable": [
+					".#.",
+					"...",
+					"..."
+				]
+			},
+			"node_03": {
+				"connection_cell": [
+					43,
+					0
+				],
+				"connection_points": {
+					"e": [
+						2,
+						0
+					],
+					"w": [
+						0,
+						0
+					]
+				},
+				"footprint": [
+					3,
+					1
+				],
+				"level": 0,
+				"origin_cell": [
+					42,
+					0
+				],
+				"walkable": [
+					"..."
+				]
+			},
+			"node_04": {
+				"connection_cell": [
+					57,
+					1
+				],
+				"connection_points": {
+					"e": [
+						2.0,
+						1.0
+					],
+					"s": [
+						1.0,
+						2.0
+					],
+					"w": [
+						0.0,
+						1.0
+					]
+				},
+				"footprint": [
+					3,
+					3
+				],
+				"level": 0,
+				"origin_cell": [
+					56,
+					0
+				],
+				"walkable": [
+					"...",
+					"...",
+					".#."
+				]
+			}
+		},
+		"tile_size": 1
 	},
 	"routes": [
 		{
@@ -1951,21 +4835,21 @@
 			"risk": "safe",
 			"surface": {
 				"from": [
-					0.0,
+					2.5,
 					0.449999988079071,
-					-3.0
+					1.5
 				],
 				"midpoint": [
-					6.0,
+					9.0,
 					0.449999988079071,
-					-1.5
+					1.5
 				],
 				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					12.0,
+					15.5,
 					0.449999988079071,
-					0.0
+					1.5
 				],
 				"width": 1.85
 			},
@@ -1975,28 +4859,28 @@
 		{
 			"cost": 1,
 			"from": "node_01",
-			"height_delta": 2.15999990701675,
+			"height_delta": 0.0,
 			"id": "main_01_02",
 			"kind": "safe",
 			"recoverable": true,
 			"risk": "safe",
 			"surface": {
 				"from": [
-					12.0,
+					15.5,
 					0.449999988079071,
-					0.0
-				],
-				"midpoint": [
-					18.0,
-					1.52999997138977,
 					1.5
 				],
-				"slope": 2.15999990701675,
+				"midpoint": [
+					22.5,
+					0.449999988079071,
+					1.5
+				],
+				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					24.0,
-					2.60999989509583,
-					3.0
+					29.5,
+					0.449999988079071,
+					1.5
 				],
 				"width": 1.85
 			},
@@ -2006,28 +4890,28 @@
 		{
 			"cost": 1,
 			"from": "node_02",
-			"height_delta": -2.15999990701675,
+			"height_delta": 0.0,
 			"id": "main_02_03",
 			"kind": "safe",
 			"recoverable": true,
 			"risk": "safe",
 			"surface": {
 				"from": [
-					24.0,
-					2.60999989509583,
-					3.0
+					29.5,
+					0.449999988079071,
+					1.5
 				],
 				"midpoint": [
-					30.0,
-					1.52999997138977,
-					0.0
+					36.5,
+					0.449999988079071,
+					1.0
 				],
-				"slope": -2.15999990701675,
+				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					36.0,
+					43.5,
 					0.449999988079071,
-					-3.0
+					0.5
 				],
 				"width": 1.85
 			},
@@ -2037,28 +4921,28 @@
 		{
 			"cost": 1,
 			"from": "node_03",
-			"height_delta": 1.43999999761581,
+			"height_delta": 0.0,
 			"id": "main_03_04",
 			"kind": "safe",
 			"recoverable": true,
 			"risk": "safe",
 			"surface": {
 				"from": [
-					36.0,
+					43.5,
 					0.449999988079071,
-					-3.0
+					0.5
 				],
 				"midpoint": [
-					42.0,
-					1.16999995708466,
-					-1.5
+					50.5,
+					0.449999988079071,
+					1.0
 				],
-				"slope": 1.43999999761581,
+				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					48.0,
-					1.88999998569489,
-					0.0
+					57.5,
+					0.449999988079071,
+					1.5
 				],
 				"width": 1.85
 			},
@@ -2068,28 +4952,28 @@
 		{
 			"cost": 1,
 			"from": "node_04",
-			"height_delta": -1.43999999761581,
+			"height_delta": 0.0,
 			"id": "main_04_05",
 			"kind": "safe",
 			"recoverable": true,
 			"risk": "safe",
 			"surface": {
 				"from": [
-					48.0,
-					1.88999998569489,
-					0.0
-				],
-				"midpoint": [
-					54.0,
-					1.16999995708466,
+					57.5,
+					0.449999988079071,
 					1.5
 				],
-				"slope": -1.43999999761581,
+				"midpoint": [
+					65.0,
+					0.449999988079071,
+					1.5
+				],
+				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					60.0,
+					72.5,
 					0.449999988079071,
-					3.0
+					1.5
 				],
 				"width": 1.85
 			},
@@ -2098,61 +4982,29 @@
 		},
 		{
 			"cost": 0,
-			"damage": 20.0,
-			"from": "entry",
-			"height_delta": 0.0,
-			"id": "risky_direct",
-			"kind": "risky",
-			"recoverable": true,
-			"risk": "risky",
-			"surface": {
-				"from": [
-					0.0,
-					0.449999988079071,
-					-3.0
-				],
-				"midpoint": [
-					30.0,
-					0.449999988079071,
-					0.0
-				],
-				"slope": 0.0,
-				"supports_click_to_move": true,
-				"to": [
-					60.0,
-					0.449999988079071,
-					3.0
-				],
-				"width": 1.15
-			},
-			"to": "exit_shelter",
-			"width": 1.15
-		},
-		{
-			"cost": 0,
 			"from": "node_04",
-			"height_delta": -1.43999999761581,
+			"height_delta": 0.0,
 			"id": "return_shortcut",
 			"kind": "shortcut",
 			"recoverable": true,
 			"risk": "shortcut",
 			"surface": {
 				"from": [
-					48.0,
-					1.88999998569489,
-					0.0
+					57.5,
+					0.449999988079071,
+					1.5
 				],
 				"midpoint": [
-					24.0,
-					1.16999995708466,
-					-1.5
+					30.0,
+					0.449999988079071,
+					1.5
 				],
-				"slope": -1.43999999761581,
+				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					0.0,
+					2.5,
 					0.449999988079071,
-					-3.0
+					1.5
 				],
 				"width": 1.25
 			},
@@ -2163,7 +5015,32 @@
 	],
 	"schema": "trawf_generated_stretch_spec_v1",
 	"settings": {
+		"biome": "",
 		"budget": {
+			"archetype_depth": 2,
+			"branch_count": 1,
+			"enemy_slots": 1,
+			"flora_slots": 2,
+			"node_count": 6,
+			"optional_node_count": 0,
+			"pressure_budget": 1,
+			"resource_beats": 1,
+			"shortcut_count": 1,
+			"structures_slots": 3
+		},
+		"budget_overridden_keys": [
+			"archetype_depth",
+			"branch_count",
+			"enemy_slots",
+			"flora_slots",
+			"node_count",
+			"optional_node_count",
+			"pressure_budget",
+			"resource_beats",
+			"shortcut_count",
+			"structures_slots"
+		],
+		"budget_tier_floor": {
 			"archetype_depth": 2,
 			"branch_count": 1,
 			"enemy_slots": 1,
@@ -2182,15 +5059,15 @@
 			"nested": [],
 			"random_walk": {
 				"allow_revisit": true,
+				"max_archetype_share": 0.5,
+				"max_consecutive_archetype": 2,
 				"prefer_tags": [],
 				"start_archetype": "",
 				"start_step": 0,
 				"step_count": 0,
 				"transition_chance": 0.35
 			},
-			"shadow_solution": {
-
-			}
+			"shadow_solution": {}
 		},
 		"id": "generated_teaching_channels_shelter_1_to_2",
 		"limitations": {
@@ -2220,13 +5097,35 @@
 			}
 		},
 		"progression_stage": 2,
+		"reasoning_budget_added_nodes": 0,
 		"roster": [],
 		"seed": 1701,
 		"spatial_profile": {
-			"branch_room_count": 3,
-			"slot_pitch": 14,
+			"branch_room_count": 3.0,
+			"slot_pitch": 14.0,
 			"spiral_descent_per_turn": 10.0,
 			"spiral_min_radius": 7.5
+		},
+		"stage_depth_steps": 0,
+		"systems_profile": {
+			"complexity_rank": 2,
+			"information_policy": "full_local_read",
+			"name": "prediction_chain",
+			"perception_degradation": "none",
+			"preferred_dimensions": [
+				"delay",
+				"threshold",
+				"relation"
+			],
+			"reasoning_demand": "predict the effect before intervening",
+			"required_any_dimensions": [
+				"delay",
+				"threshold"
+			],
+			"required_dimensions": [
+				"relation"
+			],
+			"transfer_required": true
 		},
 		"title": "Generated Teaching Channels: Shelter 1 -> Shelter 2",
 		"world_slot": {
@@ -2248,12 +5147,180 @@
 	},
 	"source": {
 		"complexity_tier": "teaching",
-		"generator": "archetype_based_stretch_v1",
+		"generator": "archetype_based_stretch_v2_systems",
 		"progression_stage": 2,
 		"roster": [],
 		"seed": 1701
 	},
+	"spatial_features": [],
 	"success": true,
+	"systems_contract": {
+		"boundary": "the generated entry-to-shelter route and the states changed inside it",
+		"causal_links": [
+			{
+				"display": "highlight_or_pause",
+				"from": "node_02",
+				"kind": "model_transfer",
+				"state": "rest converts banked ATP and shelter access into reduced sleep debt and restored capacity",
+				"to": "node_04",
+				"visibility_policy": "party_visibility_union"
+			}
+		],
+		"causal_models": [
+			{
+				"archetype_id": "16",
+				"archetype_name": "Shelter-rest management",
+				"cause": "the regrouped party spends ATP at a valid rest state",
+				"delay": "the rest interval",
+				"dimensions": [
+					"relation",
+					"stock",
+					"flow",
+					"delay",
+					"feedback",
+					"local_global",
+					"threshold",
+					"leverage",
+					"transfer"
+				],
+				"effect": "recovery increases and sleep deprivation clears",
+				"evidence": "ATP spent, debt cleared, and capacity restored are visible",
+				"feedback_loop": "poor recovery reduces future collection capacity, increasing future scarcity",
+				"flow": "rest spends ATP to restore capacity and reduce debt",
+				"id": "archetype_16",
+				"intervention": "regroup, compare debt with ATP, then choose the rest spend",
+				"leverage_point": "when and where ATP is banked before rest",
+				"likely_misconception": "rest is free or every cache must be collected",
+				"local_vs_party_scale": "one cache decision changes the whole party's next stretch",
+				"node_ids": [
+					"node_02",
+					"node_04"
+				],
+				"polarity": "negative",
+				"prediction": "the banked ATP will cover the chosen recovery before the next stretch",
+				"relationship": "rest converts banked ATP and shelter access into reduced sleep debt and restored capacity",
+				"stock": "ATP, health, stamina, and sleep debt",
+				"teach_node": "node_02",
+				"test_nodes": [
+					"node_04"
+				],
+				"threshold": "enough ATP and safety exist for worthwhile rest",
+				"transfer_test": "choose recovery under a different scarcity configuration",
+				"verb": "recover"
+			},
+			{
+				"archetype_id": "11",
+				"archetype_name": "Narrative beat",
+				"cause": "the transition mechanism is completed",
+				"delay": "none",
+				"dimensions": [
+					"relation",
+					"threshold",
+					"transfer"
+				],
+				"effect": "the post-transition state becomes active",
+				"evidence": "pre-state, transition, and post-state are recorded",
+				"feedback_loop": "none",
+				"flow": "state change through the encounter",
+				"id": "archetype_11",
+				"intervention": "complete the transition and inspect the carried state",
+				"leverage_point": "the state transition, not traversal length",
+				"likely_misconception": "the beat is flavor with no persistent state change",
+				"local_vs_party_scale": "a local action changes the party route",
+				"node_ids": [
+					"node_03"
+				],
+				"polarity": "positive",
+				"prediction": "the transition will preserve the declared state into the next section",
+				"relationship": "a visible transition changes party or world state while preserving continuity",
+				"stock": "none",
+				"teach_node": "",
+				"test_nodes": [],
+				"threshold": "the required party state reaches the transition",
+				"transfer_test": "recognize the same state continuity in another transition",
+				"verb": "recognize"
+			}
+		],
+		"difficulty_dimensions": {
+			"camera": "constant",
+			"controls": "constant",
+			"execution_precision": "not used as progression scaling",
+			"geometry_density": "controlled by complexity tier, not campaign stage",
+			"reasoning": "predict the effect before intervening"
+		},
+		"feedback_contract": {
+			"critical_reads": "stable_or_recoverable",
+			"failure_cost": "recoverable state setback or bounded pressure",
+			"input_error_evidence": "show the rejected or mistimed action separately",
+			"model_error_evidence": "show the predicted relationship and the observed result",
+			"visibility_policy": "party_visibility_union"
+		},
+		"focus_model_id": "archetype_16",
+		"goal": "make the exit shelter reachable by changing the modeled relationships",
+		"lesson_spine": [
+			{
+				"archetype_id": "16",
+				"beat": "teach",
+				"changed_condition": "full rest",
+				"critical": true,
+				"model_id": "archetype_16",
+				"node": "node_02",
+				"prediction_required": false,
+				"verb": "recover"
+			},
+			{
+				"archetype_id": "11",
+				"beat": "apply",
+				"changed_condition": "recognition",
+				"critical": true,
+				"model_id": "archetype_11",
+				"node": "node_03",
+				"prediction_required": false,
+				"verb": "recognize"
+			},
+			{
+				"archetype_id": "16",
+				"beat": "test",
+				"changed_condition": "field hide rest",
+				"critical": true,
+				"model_id": "archetype_16",
+				"node": "node_04",
+				"prediction_required": true,
+				"verb": "recover"
+			}
+		],
+		"perception_lock": {
+			"hidden_from_each": "none",
+			"when_register": "before commitment and again on state change",
+			"where_register": "world causal tell plus affected target"
+		},
+		"progression_profile": {
+			"complexity_rank": 2,
+			"information_policy": "full_local_read",
+			"name": "prediction_chain",
+			"perception_degradation": "none",
+			"preferred_dimensions": [
+				"delay",
+				"threshold",
+				"relation"
+			],
+			"reasoning_demand": "predict the effect before intervening",
+			"required_any_dimensions": [
+				"delay",
+				"threshold"
+			],
+			"required_dimensions": [
+				"relation"
+			],
+			"transfer_required": true
+		},
+		"reasoning_solved_at": "node_04",
+		"route_count": 6,
+		"schema": "trawf_generated_systems_contract_v1",
+		"solved_state_execution_tail_nodes": 1,
+		"transfer_test_required": true
+	},
+	"teaching_chain": [],
 	"title": "Generated Teaching Channels: Shelter 1 -> Shelter 2",
 	"validation": {
 		"bare_pair_solvable": true,
@@ -2262,17 +5329,26 @@
 		"multi_solution_required": false,
 		"shadow_solvable": true,
 		"solution_warnings": [],
+		"spatial_features": {
+			"errors": [],
+			"feature_count": 0,
+			"valid": true
+		},
 		"spotlight_within_stage": true,
+		"systems": {
+			"critical_beat_count": 3,
+			"errors": [],
+			"focus_has_teach": true,
+			"focus_has_test": true,
+			"focus_matches_profile": true,
+			"model_count": 2,
+			"valid": true
+		},
 		"warnings": [
 			{
 				"category": "flora",
 				"id": "capbage",
 				"message": "capbage is represented by a generated graybox placeholder."
-			},
-			{
-				"category": "enemies",
-				"id": "hidras",
-				"message": "hidras is represented by a generated graybox placeholder."
 			},
 			{
 				"category": "flora",

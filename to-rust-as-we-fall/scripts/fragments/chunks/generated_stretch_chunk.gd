@@ -73,6 +73,7 @@ var _node_markers: Dictionary = {}
 var _node_targets: Dictionary = {}
 var _node_interactables: Dictionary = {}
 var _route_surfaces: Dictionary = {}
+var _spatial_feature_roots: Array[Node3D] = []
 var _content_marker_count := 0
 var _spatial_fixture_count := 0
 var _route_choice := ""
@@ -188,6 +189,7 @@ func _build_chunk() -> void:
 	_node_targets.clear()
 	_node_interactables.clear()
 	_route_surfaces.clear()
+	_spatial_feature_roots.clear()
 	_drop_downs.clear()
 	_climbvines.clear()
 	_branch_caches.clear()
@@ -209,6 +211,7 @@ func _build_chunk() -> void:
 	# FLAT; capture the boundary so the warp pass below re-seats only those children onto the helix — the floor
 	# (warped at the vertex level in _build_walkable_floor) and the fill light keep their own transforms.
 	var flat_child_start := get_child_count()
+	_build_spatial_features()
 	_build_generated_nodes()
 
 	# Branch caches are authored FLAT like the node dressing, so build them BEFORE the warp pass and let it re-seat
@@ -1755,6 +1758,7 @@ func _clear_generated_children() -> void:
 	_node_targets.clear()
 	_node_interactables.clear()
 	_route_surfaces.clear()
+	_spatial_feature_roots.clear()
 
 
 func _build_foundation() -> void:
@@ -1809,6 +1813,8 @@ func _build_floor_surface(grid, lvl: int, cells: Array, risk: Dictionary, cell: 
 	for cp in cells:
 		var v := Vector2i(int((cp as Array)[0]), int((cp as Array)[1]))
 		var w: Vector3 = grid.grid_to_world(v, lvl)
+		if _spatial_feature_replaces_flat_cell(w, lvl):
+			continue
 		var is_risk: bool = risk.has(v)
 		if is_risk:
 			has_risk = true
@@ -1831,6 +1837,65 @@ func _build_floor_surface(grid, lvl: int, cells: Array, risk: Dictionary, cell: 
 		_commit_floor_surface(
 			st_risk, "GeneratedFloorRisk_L%d" % lvl, _tiled_floor_material("rust_iron")
 		)
+
+
+## Feature prefabs own the visible standing surface and its raycast collision. Excluding those cells from the
+## generic solid floor is what makes the grate gaps visually real while the authoritative GridWorld remains
+## unchanged. The comparison happens in flat data space, before any helix warp.
+func _spatial_feature_replaces_flat_cell(flat_position: Vector3, level: int) -> bool:
+	for feature_v in _spec.get("spatial_features", []):
+		if not (feature_v is Dictionary):
+			continue
+		var feature := feature_v as Dictionary
+		if not bool(feature.get("floor_replacement", false)) \
+				or int(feature.get("elevation_index", 0)) != level:
+			continue
+		var center := _vec3(feature.get("position", []), Vector3.INF)
+		var footprint := _vec3(feature.get("footprint", []), Vector3.ZERO)
+		if center == Vector3.INF or footprint == Vector3.ZERO:
+			continue
+		if absf(flat_position.x - center.x) <= footprint.x * 0.5 - 0.01 \
+				and absf(flat_position.z - center.z) <= footprint.z * 0.5 - 0.01:
+			return true
+	return false
+
+
+## Instantiate authored room-piece features selected by WFC. The generator supplies only data bindings and a
+## causal contract; mesh, grate spacing, rail collision, sockets, supports and lighting remain editor-authored
+## nodes in the prefab. This root is built in flat space and warped with the other node dressing below.
+func _build_spatial_features() -> void:
+	for feature_v in _spec.get("spatial_features", []):
+		if not (feature_v is Dictionary):
+			continue
+		var feature := feature_v as Dictionary
+		var scene_path := str(feature.get("scene", ""))
+		var packed := load(scene_path) as PackedScene
+		if packed == null:
+			continue
+		var root := packed.instantiate() as Node3D
+		if root == null:
+			continue
+		var node_id := str(feature.get("node_id", "node"))
+		root.name = "GeneratedSpatialFeature_%s" % node_id
+		root.position = _vec3(feature.get("position", []), Vector3.ZERO)
+		root.set_meta("contract_id", str(feature.get("contract_id", "")))
+		root.set_meta("feature_kind", str(feature.get("kind", "")))
+		root.set_meta("node_id", node_id)
+		root.set_meta("archetype_id", str(feature.get("archetype_id", "")))
+		root.set_meta("causal_model", (feature.get("causal_model", {}) as Dictionary).duplicate(true))
+		root.add_to_group("generated_spatial_feature")
+		var label := root.get_node_or_null("DeckLabel") as Label3D
+		if label != null:
+			match str(feature.get("feature_variant", "")):
+				"signal_roost":
+					label.text = "SIGNAL / RESPONSE DECK"
+				"split_perch":
+					label.text = "DISTRACTION / TASK DECK"
+				_:
+					label.text = "GRATED SYSTEM DECK"
+		add_child(root)
+		_spatial_feature_roots.append(root)
+		_spatial_fixture_count += 1
 
 
 ## A thin box (floor tile with thickness) built from four already-warped TOP corner points (order: -s-lane,
@@ -3494,12 +3559,15 @@ func _build_generated_node(node: Dictionary) -> void:
 	)
 	highlight_meshes.append(marker)
 	_node_markers[node_id] = marker
-	_add_label(
-		self,
-		str(node.get("title", node_id)).to_upper(),
-		pos + Vector3(0.0, 1.78, 0.0),
-		Color(0.88, 0.93, 0.95)
-	)
+	# Authored feature prefabs carry their own edge label. Repeating the generic node title over
+	# it obscures the sockets and turns the causal composition into a block of floating copy.
+	if (node.get("spatial_feature", {}) as Dictionary).is_empty():
+		_add_label(
+			self,
+			str(node.get("title", node_id)).to_upper(),
+			pos + Vector3(0.0, 1.78, 0.0),
+			Color(0.88, 0.93, 0.95)
+		)
 	highlight_meshes.append_array(_build_node_content_markers(node, pos))
 	var approach := _vec3(
 		node.get("approach_position", []), pos + Vector3(0.0, 0.0, pad_size.z * 0.34)
@@ -3525,6 +3593,11 @@ func _build_generated_node(node: Dictionary) -> void:
 		interaction_type,
 		false
 	)
+	# Procedural stretches can put several actionable nodes in one camera view. Persistent
+	# binding billboards turn that composition into a wall of repeated "Right-click" copy;
+	# the shared outline cursor still exposes this same action verb on hover.
+	if interactable.has_method("hide_tutorial_label_immediate"):
+		interactable.call("hide_tutorial_label_immediate")
 	interactable.interacted.connect(Callable(self, "activate_generated_node").bind(node_id))
 	_node_interactables[node_id] = interactable
 	var target_size := Vector3(maxf(1.8, pad_size.x), 1.35, maxf(1.8, pad_size.z))
@@ -3622,6 +3695,10 @@ func _build_diagnosis_reads(node: Dictionary, pos: Vector3, pad_size: Vector3) -
 			1.4,
 			false
 		)
+		# The authored station label identifies the perspective; keep the control binding on
+		# hover so a bank of reads remains legible as one causal choice.
+		if read_interactable.has_method("hide_tutorial_label_immediate"):
+			read_interactable.call("hide_tutorial_label_immediate")
 		read_interactable.interacted.connect(
 			Callable(self, "diagnose_generated_node").bind(node_id, read_id)
 		)
@@ -3665,14 +3742,18 @@ func _build_node_content_markers(node: Dictionary, pos: Vector3) -> Array[MeshIn
 			)
 			meshes.append(marker)
 			_content_marker_count += 1
-			_add_label(
+			var content_label := _add_label(
 				self,
 				key.to_upper(),
 				marker_pos + Vector3(0.0, marker_size.y * 0.55 + 0.34, 0.0),
 				_content_color(category, support).lightened(0.25)
 			)
+			if not (node.get("spatial_feature", {}) as Dictionary).is_empty():
+				content_label.pixel_size = 0.0045
+				content_label.font_size = 40
 			label_parts.append("%s:%s" % [category.substr(0, 1), key])
-		_add_content_summary_labels(node, pos, label_parts, placements.size())
+		if (node.get("spatial_feature", {}) as Dictionary).is_empty():
+			_add_content_summary_labels(node, pos, label_parts, placements.size())
 		return meshes
 
 	var offsets := [Vector3(-1.45, 0.35, -1.0), Vector3(1.45, 0.35, -1.0), Vector3(0.0, 0.35, 1.15)]
@@ -4014,6 +4095,8 @@ func _graybox_state() -> Dictionary:
 		"content_placement_count":
 		int(graybox.get("content_placement_count", _content_marker_count)),
 		"instanced_content_marker_count": _content_marker_count,
+		"spatial_feature_count": int(graybox.get("spatial_feature_count", 0)),
+		"instanced_spatial_feature_count": _spatial_feature_roots.size(),
 		"outline_target_count": _node_targets.size(),
 		"route_surface_instance_count": _route_surfaces.size(),
 		"bounds": graybox.get("bounds", {}).duplicate(true),

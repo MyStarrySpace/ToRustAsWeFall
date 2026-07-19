@@ -30,9 +30,32 @@ func load_from_files(next_archetype_path := DEFAULT_ARCHETYPE_PATH, next_palette
 func validate() -> Dictionary:
 	var local_errors: Array[String] = []
 	var archetypes: Dictionary = archetype_data.get("archetypes", {})
+	var spatial_affordance_count := 0
 	for id in range(1, 12):
 		if not archetypes.has(str(id)):
 			local_errors.append("Missing archetype %d" % id)
+	for id in archetypes.keys():
+		if not (archetypes[id] is Dictionary):
+			continue
+		var archetype := archetypes[id] as Dictionary
+		var affordances: Variant = archetype.get("spatial_affordances", [])
+		if not (affordances is Array):
+			local_errors.append("Archetype %s spatial_affordances must be an array" % str(id))
+			continue
+		for raw_affordance in affordances as Array:
+			spatial_affordance_count += 1
+			if not (raw_affordance is Dictionary):
+				local_errors.append("Archetype %s has a non-dictionary spatial affordance" % str(id))
+				continue
+			var affordance := raw_affordance as Dictionary
+			for required_key in ["id", "feature_kind", "primary_insight", "leverage"]:
+				if str(affordance.get(required_key, "")).strip_edges() == "":
+					local_errors.append("Archetype %s spatial affordance requires %s" % [str(id), required_key])
+			if (affordance.get("emergent_inputs", []) as Array).size() < 3:
+				local_errors.append("Archetype %s spatial affordance needs at least three emergent inputs" % str(id))
+			for variant in affordance.get("variants", []):
+				if not (archetype.get("variants", []) as Array).has(str(variant)):
+					local_errors.append("Archetype %s spatial affordance names unknown variant %s" % [str(id), str(variant)])
 	for category in ["flora", "enemies", "structures"]:
 		if not (palette_data.get(category, {}) is Dictionary):
 			local_errors.append("Missing palette category %s" % category)
@@ -42,6 +65,7 @@ func validate() -> Dictionary:
 		"valid": local_errors.is_empty() and errors.is_empty(),
 		"errors": errors.duplicate(),
 		"archetype_count": archetypes.size(),
+		"spatial_affordance_count": spatial_affordance_count,
 		"flora_count": get_content_keys("flora").size(),
 		"enemy_count": get_content_keys("enemies").size(),
 		"structure_count": get_content_keys("structures").size(),

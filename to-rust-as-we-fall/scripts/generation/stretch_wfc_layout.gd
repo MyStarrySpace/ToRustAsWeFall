@@ -45,6 +45,11 @@ static func solve(nodes: Array, routes: Array, settings: Dictionary, _budget: Di
 			"id": sid, "index": i, "level": level,
 			"lx": i * pitch, "ly": row * pitch,
 			"tags": _slot_tags(nd),
+			"variant": str(nd.get("variant", "")),
+			"spatial_affordances": (nd.get("spatial_affordances", []) as Array).duplicate(true),
+			"flora_count": (nd.get("flora", []) as Array).size(),
+			"enemy_count": (nd.get("enemies", []) as Array).size(),
+			"structure_count": (nd.get("structures", []) as Array).size(),
 			"neighbors": [], "required": {},
 		}
 		slots.append(slot)
@@ -83,7 +88,11 @@ static func solve(nodes: Array, routes: Array, settings: Dictionary, _budget: Di
 		return int(x["index"]) < int(y["index"]))
 	for s in order:
 		var rng = SeededRngScript.new(base_seed ^ _salt(int(s["index"])))
-		s["choice"] = _weighted_pick(s["domain"], piece_catalog, rng)
+		var ordinary_domain := _without_spatial_features(s["domain"], piece_catalog)
+		s["choice"] = _weighted_pick(
+			ordinary_domain if not ordinary_domain.is_empty() else s["domain"], piece_catalog, rng
+		)
+	_enforce_spatial_feature_budget(slots, piece_catalog, settings)
 
 	# Assemble placements + per-slot footprint cells.
 	var placements: Array = []
@@ -95,9 +104,12 @@ static func solve(nodes: Array, routes: Array, settings: Dictionary, _budget: Di
 		var ox := int(s["lx"])
 		var oy := int(s["ly"])
 		var lvl := int(s["level"])
+		var feature: Dictionary = piece.get("spatial_feature", {})
 		placements.append({
 			"node": s["id"], "piece": str(s["choice"]["piece_id"]), "rotation": int(s["choice"]["rotation"]),
 			"origin_cell": [ox, oy], "level": lvl, "size": [w, h],
+			"spatial_feature_kind": str(feature.get("kind", "")),
+			"spatial_affordance": (s.get("selected_spatial_affordance", {}) as Dictionary).duplicate(true),
 		})
 		@warning_ignore("integer_division")
 		var center := [ox + w / 2, oy + h / 2]
@@ -155,6 +167,9 @@ static func _build_domain(slot: Dictionary, catalog) -> Array:
 	var required: Dictionary = slot["required"]
 	for pid in catalog.pieces_for_tags(slot["tags"]):
 		var base: Dictionary = catalog.get_piece(pid)
+		var feature: Dictionary = base.get("spatial_feature", {})
+		if not feature.is_empty() and _matching_spatial_affordance(slot, str(feature.get("kind", ""))).is_empty():
+			continue
 		for deg in ROTATIONS:
 			var rp: Dictionary = catalog.rotate_piece(base, deg)
 			var os: Dictionary = catalog.open_sides(rp)
@@ -166,6 +181,85 @@ static func _build_domain(slot: Dictionary, catalog) -> Array:
 			if ok:
 				out.append({"piece_id": pid, "rotation": deg})
 	return out
+
+
+## Spatial features are archetype affordances, not generic decoration. Ordinary WFC first resolves a truthful
+## room layout; this pass then spends a small complexity-tier budget on the best compatible interior slots.
+## Keeping the budget independent of progression stage prevents later campaigns from becoming harder through
+## denser geometry, while the seed still chooses among equally suitable hosts.
+static func _enforce_spatial_feature_budget(slots: Array, catalog, settings: Dictionary) -> void:
+	var tier := str(settings.get("complexity_tier", "teaching"))
+	var budget := 2 if tier in ["hard", "setpiece"] else 1
+	var seed := int(settings.get("seed", 0))
+	var candidates: Array = []
+	for slot in slots:
+		if int(slot.get("index", 0)) <= 0 or int(slot.get("index", 0)) >= slots.size() - 1:
+			continue
+		var picked_choice := {}
+		var picked_affordance := {}
+		for choice in slot.get("domain", []):
+			var piece: Dictionary = catalog.get_piece(str((choice as Dictionary).get("piece_id", "")))
+			var feature: Dictionary = piece.get("spatial_feature", {})
+			if feature.is_empty():
+				continue
+			var affordance := _matching_spatial_affordance(slot, str(feature.get("kind", "")))
+			if affordance.is_empty():
+				continue
+			picked_choice = (choice as Dictionary).duplicate(true)
+			picked_affordance = affordance
+			break
+		if picked_choice.is_empty():
+			continue
+		var synergy := (
+			int(slot.get("flora_count", 0)) * 7
+			+ int(slot.get("enemy_count", 0)) * 9
+			+ int(slot.get("structure_count", 0)) * 3
+		)
+		var seed_tiebreak: int = absi(int(hash(
+			"spatial-feature:%d:%s" % [seed, str(slot.get("id", ""))]
+		))) % 100
+		candidates.append({
+			"slot": slot,
+			"choice": picked_choice,
+			"affordance": picked_affordance,
+			"score": int(picked_affordance.get("priority", 0)) * 1000 + synergy * 100 + seed_tiebreak,
+		})
+	candidates.sort_custom(func(a, b):
+		if int(a.get("score", 0)) != int(b.get("score", 0)):
+			return int(a.get("score", 0)) > int(b.get("score", 0))
+		return int((a.get("slot", {}) as Dictionary).get("index", 0)) \
+			< int((b.get("slot", {}) as Dictionary).get("index", 0))
+	)
+	for i in range(mini(budget, candidates.size())):
+		var candidate := candidates[i] as Dictionary
+		var slot := candidate.get("slot", {}) as Dictionary
+		slot["choice"] = (candidate.get("choice", {}) as Dictionary).duplicate(true)
+		slot["selected_spatial_affordance"] = (candidate.get("affordance", {}) as Dictionary).duplicate(true)
+
+
+static func _without_spatial_features(domain: Array, catalog) -> Array:
+	var result: Array = []
+	for choice in domain:
+		var piece: Dictionary = catalog.get_piece(str((choice as Dictionary).get("piece_id", "")))
+		if (piece.get("spatial_feature", {}) as Dictionary).is_empty():
+			result.append(choice)
+	return result
+
+
+static func _matching_spatial_affordance(slot: Dictionary, feature_kind: String) -> Dictionary:
+	if feature_kind == "":
+		return {}
+	var variant := str(slot.get("variant", ""))
+	for raw_affordance in slot.get("spatial_affordances", []):
+		if not (raw_affordance is Dictionary):
+			continue
+		var affordance := raw_affordance as Dictionary
+		if str(affordance.get("feature_kind", "")) != feature_kind:
+			continue
+		var variants: Array = affordance.get("variants", [])
+		if variants.is_empty() or variants.has(variant):
+			return affordance.duplicate(true)
+	return {}
 
 static func _universal_fallback(catalog) -> String:
 	for pid in ["junction_x", "arena"]:
